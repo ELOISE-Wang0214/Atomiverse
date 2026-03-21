@@ -1,0 +1,112 @@
+/**
+@mainpage Atomiverse -- Unified Molecular Simulation Platform
+
+@tableofcontents
+
+@section intro Overview
+
+Atomiverse is a molecular simulation codebase written in modern C++ and CUDA.
+It uses one staged execution model to express three families of workflows:
+molecular dynamics, minimization, and self-consistent electronic-structure
+calculations.
+
+The project is built around a clear separation of responsibilities:
+
+- the **user-facing data model** lives in `cpu::Frame`
+- the **facade layer** compiles a staged execution plan
+- the **CPU and CUDA backends** execute that plan with different storage models
+- the **API reference** documents the exact classes, functions, and headers
+
+All public examples and build instructions in this repository assume
+**C++17 or later**.
+
+@section docs Documentation Structure
+
+The documentation is intentionally split into three layers. Each layer answers a
+different kind of question.
+
+- [User Guide](user-guide/index.md) -- how to build the project, choose examples,
+  and understand the main workflows without assuming prior chemistry knowledge
+- [Developer Manual](developer/index.md) -- how the repository is organized
+  internally, why the facade/backend split exists, and how to extend the code
+- [API Reference](api/index.md) -- where to find the exact classes, functions,
+  headers, and generated reference pages
+
+@section quickstart Start Here
+
+If you are new to Atomiverse, read these pages first:
+
+1. [Getting Started](user-guide/getting-started.md)
+2. [SCF Deep-Dive Tutorials](tutorial/index.md)
+
+The tutorial track is deliberately progressive. It starts with the toy SCF loop,
+then adds RHF, UHF, and UKS one layer at a time.
+
+@section arch Architecture At A Glance
+
+The shortest correct architectural summary is:
+
+@code{.unparsed}
+  cpu::Frame
+      |
+      v
+  Driver + Plan + Phase enums        -- backend-agnostic orchestration
+      |
+      +--> cpu::Backend              -- zero-copy execution on host data
+      |
+      +--> CUDA Backend              -- materialize cuda::Frame, run staged GPU components,
+                                       retrieve results back to cpu::Frame
+@endcode
+
+Two design rules matter more than anything else:
+
+- host and device data are represented by different types
+- components follow a strict `build() -> launch() -> destroy()` lifecycle
+
+For the full explanation, read [Architecture](developer/architecture.md).
+For contribution guidance, read [Extending Components](developer/extending-components.md).
+
+@section workflows Workflow Families
+
+Atomiverse currently exposes three workflow families.
+
+@subsection workflows_md Molecular Dynamics
+
+`md::MD` executes a LAMMPS-style phase sequence. Typical components include
+`VelocityVerlet`, `NeighborList`, `LJ`, `NoseHoover`, `Thermo`, and `Recorder`.
+
+@subsection workflows_min Minimization
+
+`minimizer::SD` and related minimizer drivers reuse the staged execution model
+with a phase order centered on force evaluation and convergence checks.
+
+@subsection workflows_scf Electronic Structure
+
+Electronic-structure code exists in two complementary forms:
+
+- CPU reference solvers such as `rhf_solve`, `uhf_solve`, and `uks_solve`
+- staged CUDA SCF components such as `Hamiltonian`, `EigenSolver`,
+  `DensityBuilder`, `RHFFock`, `RHFDensity`, and `ConvergenceCheck`
+
+The user guide explains when to choose each path. The developer manual explains
+why both layers exist.
+
+@section examples Example Programs
+
+Representative entry points:
+
+- `examples/toy-scf.cpp` -- explicit CPU toy SCF example
+- `examples/scf.cu` -- staged CUDA toy SCF example
+- `examples/h2-rhf.cpp` -- CPU RHF example
+- `examples/h2_rhf.cu` -- CPU and CUDA RHF comparison
+- `examples/lj.cu` -- minimization + MD + thermo + trajectory + RDF
+
+@section docsbuild Building The Docs
+
+Generate the documentation with:
+
+@code{.bash}
+cmake -B build/docs -DATV_DOCS_ONLY=ON
+cmake --build build/docs --target docs
+@endcode
+*/

@@ -1,0 +1,167 @@
+/// @file driver.h
+/// @brief Driver -- user-facing simulation facade with fluent API.
+///
+/// Backend-agnostic template: DeviceTag selects CPU or CUDA at compile time.
+/// All method bodies are defined inline (template class). Explicit
+/// instantiations live in src/cpu/driver.cpp and src/cuda/driver.cu.
+#pragma once
+
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <type_traits>
+#include <vector>
+
+#include "atomiverse/core/backend_traits.h"
+#include "atomiverse/core/binding.h"
+#include "atomiverse/core/device.h"
+#include "atomiverse/cpu/frame.h"
+#include "atomiverse/facade/plan.h"
+
+namespace ATV {
+
+#ifdef ATV_HAS_CUDA
+class Timer;
+#else
+/// @brief Stub Timer for non-CUDA builds (never instantiated).
+class Timer {
+public:
+    void init() {}
+    void shutdown() {}
+    std::string summary(const std::vector<std::string>&) const { return ""; }
+};
+#endif
+
+namespace detail {
+/// @brief Unresolved component binding collected before `Driver::build()`.
+///
+/// The driver stores these lightweight records while the user is still calling
+/// `add()` and `on(...).add(...)`. `PlanBuilder` later resolves them into
+/// sorted `StageSlot` operations.
+template <typename Component>
+struct PendingBinding {
+    int phase;          ///< Target phase index.
+    int order;          ///< Ordering within the phase (lower runs earlier).
+    Component* component; ///< Non-owning pointer to the registered component.
+};
+} // namespace detail
+
+/// @brief Fluent phase-binding helper returned by Driver::on().
+template <typename PhaseEnum, typename DeviceTag>
+class PhaseBuilder {
+    using Component = typename backend_traits<DeviceTag>::component_type;
+public:
+    /// @brief Register a component explicitly on the current phase.
+    /// @tparam Comp Concrete component type.
+    /// @param comp Component instance to own and bind.
+    /// @param order Ordering within the phase (lower runs earlier).
+    /// @return `*this` for fluent chaining.
+    template <typename Comp>
+    PhaseBuilder& add(Comp comp, int order = 0) {
+        auto ptr = std::make_unique<Comp>(std::move(comp));
+        auto* raw = ptr.get();
+        owned_->push_back(std::move(ptr));
+        bindings_->push_back({static_cast<int>(phase_), order, raw});
+        return *this;
+    }
+
+private:
+    template <typename PE, typename DT> friend class Driver;
+    PhaseBuilder(std::vector<detail::PendingBinding<Component>>* b,
+                 std::vector<std::unique_ptr<Component>>* o, PhaseEnum p)
+        : bindings_(b), owned_(o), phase_(p) {}
+    std::vector<detail::PendingBinding<Component>>* bindings_;
+    std::vector<std::unique_ptr<Component>>* owned_;
+    PhaseEnum phase_;
+};
+
+/// @brief Simulation driver -- user-facing facade.
+///
+/// @tparam PhaseEnum Phase enum type (must end with COUNT sentinel).
+/// @tparam DeviceTag Device tag (cpu::device_tag or cuda::device_tag).
+template <typename PhaseEnum, typename DeviceTag>
+class Driver {
+    using traits    = backend_traits<DeviceTag>;
+    using Component = typename traits::component_type;
+    using BackendT  = typename traits::backend_type;
+
+public:
+    Driver() = default;
+    ~Driver() { shutdown(); }
+    Driver(const Driver&) = delete;
+    Driver& operator=(const Driver&) = delete;
+
+    Driver(Driver&& o) noexcept
+        : pending_(std::move(o.pending_)),
+          owned_components_(std::move(o.owned_components_)),
+          plan_(std::move(o.plan_)), backend_(std::move(o.backend_)),
+          timer_(std::move(o.timer_)) {}
+
+    Driver& operator=(Driver&& o) noexcept {
+        if (this != &o) {
+            shutdown();
+            pending_ = std::move(o.pending_);
+            owned_components_ = std::move(o.owned_components_);
+            plan_ = std::move(o.plan_);
+            backend_ = std::move(o.backend_);
+            timer_ = std::move(o.timer_);
+        }
+        return *this;
+    }
+
+    /// @brief Add a component using its default_bindings().
+    /// @tparam Comp Concrete component type.
+    /// @param comp Component instance to register and transfer into driver ownership.
+    template <typename Comp>
+    void add(Comp comp) {
+        auto ptr = std::make_unique<Comp>(std::move(comp));
+        auto bindings = ptr->default_bindings();
+        if (bindings.empty())
+            throw std::runtime_error("Component '" + ptr->name() +
+                "' has no default bindings. Use .on(phase).add().");
+        auto* raw = ptr.get();
+        owned_components_.push_back(std::move(ptr));
+        for (auto& db : bindings)
+            pending_.push_back({db.phase, db.order, raw});
+    }
+
+    /// @brief Begin explicit phase binding.
+    /// @param phase Phase value returned by the driver's `Phase` enum.
+    /// @return A `PhaseBuilder` bound to that phase.
+    PhaseBuilder<PhaseEnum, DeviceTag> on(PhaseEnum phase) {
+        return PhaseBuilder<PhaseEnum, DeviceTag>(&pending_, &owned_components_, phase);
+    }
+
+    /// @brief Compile the execution Plan.
+    void build() {
+        PlanBuilder<Component> builder;
+        for (auto& pb : pending_)
+            builder.add({pb.phase, pb.order, pb.component});
+        pending_.clear();
+        plan_ = builder.build(static_cast<int>(PhaseEnum::COUNT));
+    }
+
+    /// @brief Run the full simulation lifecycle.
+    /// @param frame Host-side frame used as input and final output.
+    /// @param n_steps Number of time steps or SCF iterations to execute.
+    void run(cpu::Frame& frame, int n_steps);
+
+    /// @brief Enable per-component timing (call before run).
+    void enable_timing();
+
+    /// @brief Timing summary (call after run).
+    /// @return Human-readable per-phase timing report, or an empty string on CPU.
+    std::string summary() const;
+
+    /// @brief Shut down Backend and release all resources.
+    void shutdown();
+
+private:
+    std::vector<detail::PendingBinding<Component>> pending_;
+    std::vector<std::unique_ptr<Component>> owned_components_;
+    Plan<Component> plan_;
+    std::unique_ptr<BackendT> backend_;
+    std::unique_ptr<Timer> timer_;
+};
+
+} // namespace ATV

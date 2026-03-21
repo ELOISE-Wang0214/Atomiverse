@@ -1,0 +1,65 @@
+/// @file cpu/observer/density.h
+/// @brief Electron density grid evaluation on the CPU (STO-3G basis).
+///
+/// Called by cuda::DensityRecorder after async D2H of the density matrix P.
+/// The CUDA component owns no computation — it lives here.
+///
+/// @see cuda::DensityRecorder (cuda/recorder/density_recorder.cuh)
+#pragma once
+
+#include <vector>
+
+#include "atomiverse/core/int.h"
+#include "atomiverse/core/real.h"
+
+namespace ATV {
+namespace cpu {
+
+// ── Result type ───────────────────────────────────────────────────────────────
+
+/// @brief Uniform real-space grid of electron density rho(r).
+///
+/// The grid is axis-aligned and non-periodic.
+/// Indexing: rho[ix * ny * nz + iy * nz + iz]  (C order).
+struct DensityGrid {
+    int    nx = 0, ny = 0, nz = 0; ///< Grid dimensions.
+    double ox = 0, oy = 0, oz = 0; ///< Grid origin [Angstrom].
+    double lx = 0, ly = 0, lz = 0; ///< Box extent [Angstrom].
+    std::vector<double> rho;        ///< Density values [nx*ny*nz, e/Angstrom^3].
+
+    bool empty() const { return rho.empty(); }
+};
+
+// ── Free function ─────────────────────────────────────────────────────────────
+
+/// @brief Evaluate RHF electron density on a uniform grid (STO-3G, H/He/Li only).
+///
+/// rho(r) = sum_{mu,nu} P_{mu,nu} phi_mu(r) phi_nu(r)
+///
+/// The grid bounds are determined from atom positions +/- padding.
+/// Returns an empty DensityGrid (rho.empty() == true) if any atom's Z
+/// is outside the supported range [1, 3].
+///
+/// @param type_id   Atomic numbers [n_atoms].
+/// @param x         Atom x positions [n_atoms, Angstrom].
+/// @param y         Atom y positions [n_atoms, Angstrom].
+/// @param z         Atom z positions [n_atoms, Angstrom].
+/// @param P         Density matrix [n_basis * n_basis], row-major (P is symmetric).
+/// @param n_basis   Number of STO-3G basis functions.
+/// @param nx        Grid points along x.
+/// @param ny        Grid points along y.
+/// @param nz        Grid points along z.
+/// @param padding   Extra padding around atom bounds [Angstrom].
+/// @return Populated DensityGrid, or empty on failure.
+DensityGrid eval_density_grid(
+    const std::vector<Int>&  type_id,
+    const std::vector<Real>& x,
+    const std::vector<Real>& y,
+    const std::vector<Real>& z,
+    const Real*  P,
+    Int          n_basis,
+    int nx, int ny, int nz,
+    Real padding);
+
+} // namespace cpu
+} // namespace ATV

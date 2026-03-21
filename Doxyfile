@@ -1,0 +1,65 @@
+# Doxyfile for Atomiverse
+
+PROJECT_NAME           = "Atomiverse"
+PROJECT_BRIEF          = "Unified Molecular Simulation Platform — MD / DFT / MLIP"
+PROJECT_NUMBER         = "0.1.0-poc"
+
+# Input
+INPUT                  = include docs
+FILE_PATTERNS          = *.h *.cuh *.dox *.md
+RECURSIVE              = YES
+STRIP_FROM_PATH        = include
+EXCLUDE_PATTERNS       = docs/html/* docs/latex/*
+
+# Output
+OUTPUT_DIRECTORY       = docs/html
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+HTML_OUTPUT            = .
+LAYOUT_FILE            = docs/DoxygenLayout.xml
+
+# C++ / CUDA
+EXTENSION_MAPPING      = cu=C++ cuh=C++ h=C++
+BUILTIN_STL_SUPPORT    = YES
+EXTRACT_ALL            = NO
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = NO
+
+# Documentation style
+JAVADOC_AUTOBRIEF      = NO
+QT_AUTOBRIEF           = NO
+BRIEF_MEMBER_DESC      = YES
+REPEAT_BRIEF           = YES
+ALWAYS_DETAILED_SEC    = NO
+INLINE_INHERITED_MEMB  = YES
+
+# Source browsing
+SOURCE_BROWSER         = NO
+VERBATIM_HEADERS       = NO
+
+# Graphs
+HAVE_DOT               = NO
+COLLABORATION_GRAPH    = NO
+INCLUDE_GRAPH          = NO
+INCLUDED_BY_GRAPH      = NO
+
+# Formulas (LaTeX in docstrings)
+USE_MATHJAX            = YES
+
+# Preprocessor — skip CUDA qualifiers
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+PREDEFINED             = __global__= \
+                         __device__= \
+                         __host__= \
+                         __shared__= \
+                         __constant__=
+
+# Warnings
+WARN_IF_UNDOCUMENTED   = YES
+WARN_IF_DOC_ERROR      = YES
+WARN_NO_PARAMDOC       = YES
+
+# Sorting
+SORT_MEMBER_DOCS       = NO
+SORT_BRIEF_DOCS        = NO
