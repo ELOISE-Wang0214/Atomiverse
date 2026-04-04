@@ -1,11 +1,18 @@
-/// @file examples/uks.cpp
-/// @brief UKS examples: closed-shell He, open-shell H/Li, H2 dissociation curve.
+/// @file examples/tutorial/04_uks.cpp
+/// @brief Tutorial example for unrestricted Kohn-Sham DFT.
 ///
 /// Demonstrates:
 ///   - UKS(LSDA) on atoms and molecules
 ///   - Energy decomposition (E_1e + E_J + E_xc + V_nuc = E_total)
 ///   - UKS vs UHF comparison
 ///   - Grid-integrated electron counts
+///
+/// Build:
+///   cmake -B build -DATV_BUILD_CUDA=OFF -DATV_BUILD_RHF=ON -DATV_BUILD_EXAMPLES=ON
+///   cmake --build build --target 04_uks
+///
+/// Run:
+///   ./build/examples/04_uks
 
 #ifdef ATV_HAS_RHF
 

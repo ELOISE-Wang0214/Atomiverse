@@ -1,12 +1,19 @@
-/// @file examples/h2_rhf.cu
-/// @brief H2/STO-3G/RHF: first physically meaningful electronic-structure example.
+/// @file examples/tutorial/02_rhf.cu
+/// @brief CUDA translation of the RHF tutorial example.
 ///
 /// Demonstrates the full Atomiverse RHF workflow:
 ///   1. Build H2 geometry in cpu::Frame
-///   2. Compute molecular integrals via libcint (CPU)
-///   3. Run CPU reference RHF (xtensor-blas)
-///   4. Run CUDA RHF through scf::SCF Driver
+///   2. Compute molecular integrals on the host
+///   3. Run CPU reference RHF
+///   4. Run CUDA RHF
 ///   5. Compare results
+///
+/// Build:
+///   cmake -B build -DATV_BUILD_CUDA=ON -DATV_BUILD_RHF=ON -DATV_BUILD_EXAMPLES=ON
+///   cmake --build build --target 02_rhf_cuda
+///
+/// Run:
+///   ./build/examples/02_rhf_cuda
 ///
 /// Expected total energy: -1.1167 Hartree (textbook H2/STO-3G/RHF)
 
@@ -37,7 +44,7 @@ int main() {
     frame.type_id[0] = 1; frame.type_id[1] = 1;  // H: Z=1
     frame.box = Mat3::cubic(100.0);
 
-    std::cout << "=== H2/STO-3G/RHF ===\n"
+    std::cout << "=== H2/STO-3G/RHF (CPU and CUDA) ===\n"
               << "Geometry: H-H at 0.74 Angstrom\n\n";
 
     // ── 2. Compute integrals on CPU (libcint) ─────────────────────────

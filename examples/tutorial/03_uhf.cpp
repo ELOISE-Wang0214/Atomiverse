@@ -1,5 +1,5 @@
-/// @file examples/rhf_vs_uhf.cpp
-/// @brief RHF vs UHF comparison: H atom, H2 equilibrium, and H2 bond-length scan.
+/// @file examples/tutorial/03_uhf.cpp
+/// @brief Tutorial example for unrestricted Hartree-Fock.
 ///
 /// Demonstrates the unrestricted Hartree-Fock capability on three cases:
 ///
@@ -21,12 +21,12 @@
 ///
 /// Build without plots:
 ///   cmake -B build -DATV_BUILD_CUDA=OFF -DATV_BUILD_RHF=ON -DATV_BUILD_EXAMPLES=ON
-///   cmake --build build --target rhf_vs_uhf
+///   cmake --build build --target 03_uhf
 ///
 /// Build with plots (requires gnuplot):
 ///   cmake -B build -DATV_BUILD_CUDA=OFF -DATV_BUILD_RHF=ON \
 ///         -DATV_BUILD_EXAMPLES=ON -DATV_USE_MATPLOT=ON
-///   cmake --build build --target rhf_vs_uhf
+///   cmake --build build --target 03_uhf
 
 #include <cmath>
 #include <iostream>

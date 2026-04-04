@@ -1,22 +1,16 @@
-/// @file examples/toy_scf.cpp
-/// @brief Standalone SCF demo — pure C++ / xtensor-blas, no CUDA.
+/// @file examples/tutorial/01_scf.cpp
+/// @brief Standalone SCF introduction example.
 ///
 /// Shows the complete SCF algorithm in xtensor code:
 ///   1. Build a deterministic Hamiltonian H0
 ///   2. Iterate: H = H0 + alpha*P, diagonalize, rebuild P, check convergence
 ///   3. Print per-iteration energy and residual
 ///
-/// This is the same algorithm that runs on GPU through the scf::SCF Driver,
-/// but here everything is explicit xtensor + LAPACK (via xtensor-blas).
-///
-/// The Atomiverse CUDA path (examples/scf.cu) runs the identical algorithm
-/// through the Driver<scf::Phase> / ComponentBase architecture, fully on GPU.
-///
 /// Build (via CMake):
-///   cmake --build build --target toy_scf
+///   cmake --build build --target 01_scf
 ///
 /// Run:
-///   ./build/examples/toy_scf
+///   ./build/examples/01_scf
 
 #include <cmath>
 #include <iostream>
@@ -35,7 +29,7 @@ int main() {
     double tol   = 1e-10; // convergence tolerance
     int max_iter = 100;
 
-    std::cout << "=== Toy SCF (xtensor-blas) ===\n"
+    std::cout << "=== SCF Introduction ===\n"
               << "n=" << n << ", n_occ=" << n_occ
               << ", alpha=" << std::fixed << std::setprecision(2) << alpha
               << ", tol=" << std::scientific << std::setprecision(1) << tol

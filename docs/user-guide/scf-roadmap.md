@@ -13,14 +13,13 @@ pattern:
 5. stop when the density stops changing
 
 What changes from chapter to chapter is not the loop itself, but what the
-matrix means physically and which Atomiverse APIs are responsible for building
-it.
+matrix means physically.
 
 ## Recommended Reading Order
 
 Read these chapters in order:
 
-1. [Tutorial 1: Toy SCF from First Principles](../tutorial/01-scf.md)
+1. [Tutorial 1: SCF From First Principles](../tutorial/01-scf.md)
 2. [Tutorial 2: Restricted Hartree-Fock (RHF)](../tutorial/02-rhf.md)
 3. [Tutorial 3: Unrestricted Hartree-Fock (UHF)](../tutorial/03-uhf.md)
 4. [Tutorial 4: Unrestricted Kohn-Sham DFT (UKS)](../tutorial/04-uks.md)
@@ -41,16 +40,15 @@ Hartree-Fock exchange with exchange-correlation functionals evaluated on a grid.
 
 ## Which Example Matches Which Tutorial?
 
-| Tutorial | Primary example or API | Why it matters |
+| Tutorial | Primary example | Why it matters |
 |---|---|---|
-| Toy SCF | `examples/toy-scf.cpp`, `examples/scf.cu`, `cpu::scf::solve` | Learn the loop before learning chemistry |
-| RHF | `examples/h2-rhf.cpp`, `examples/h2_rhf.cu`, `cpu::scf::rhf_solve` | First physically meaningful calculation |
-| UHF | `cpu::scf::uhf_solve` | Open-shell systems and spin contamination |
-| UKS | `cpu::scf::uks_solve` | DFT, grids, and exchange-correlation potentials |
+| SCF introduction | `examples/tutorial/01_scf.cpp` | Learn the loop before learning chemistry |
+| RHF | `examples/tutorial/02_rhf.cpp` | First physically meaningful calculation |
+| UHF | `examples/tutorial/03_uhf.cpp` | Open-shell systems and spin contamination |
+| UKS | `examples/tutorial/04_uks.cpp` | DFT, grids, and exchange-correlation potentials |
 
-The examples and solver APIs are intentionally paired. The example shows how to
-assemble a complete calculation. The solver header shows the exact input and
-output structures you need to understand.
+The examples are intentionally numbered to match the chapters. Read the theory
+and the matching code side by side.
 
 ## When To Use CPU Solvers Versus CUDA SCF Components
 
@@ -66,14 +64,7 @@ by one or more components.
 
 ## What To Read Alongside The Tutorials
 
-Pair each tutorial with one code-reading target:
-
-- after Tutorial 1, read [`cpu::scf::solve`](../../include/atomiverse/cpu/scf/solve.h)
-- after Tutorial 2, read [`IntegralPack`](../../include/atomiverse/cpu/scf/integrals.h) and [`rhf_solve`](../../include/atomiverse/cpu/scf/rhf_solve.h)
-- after Tutorial 3, read [`uhf_solve`](../../include/atomiverse/cpu/scf/uhf_solve.h)
-- after Tutorial 4, read [`uks_solve`](../../include/atomiverse/cpu/scf/uks_solve.h) and [`xc_functional.h`](../../include/atomiverse/cpu/scf/xc_functional.h)
-
-If you want to understand how the same ideas map onto the runtime system, then
-read the [Developer Manual](../developer/index.md) after finishing Tutorial 2.
-That is usually the point where `Driver`, `Plan`, and `Component` start to make
-sense instead of feeling abstract.
+Keep the matching tutorial example open while you read each chapter. If you
+want to understand the runtime system after that, then read the
+[Developer Manual](../developer/index.md). The tutorials themselves should be
+enough to learn the chemistry without dropping straight into architecture.

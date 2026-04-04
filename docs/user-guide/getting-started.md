@@ -25,25 +25,25 @@ Important CMake options:
 
 ## Recommended Build Profiles
 
-If you want the smallest CPU-only starting point, build the toy SCF example:
+If you want the smallest CPU-only starting point, build the SCF introduction example:
 
 ```bash
 cmake -B build -DATV_BUILD_CUDA=OFF -DATV_BUILD_EXAMPLES=ON
-cmake --build build --target toy-scf
+cmake --build build --target 01_scf
 ```
 
 If you want the CPU Hartree-Fock examples as well:
 
 ```bash
 cmake -B build -DATV_BUILD_CUDA=OFF -DATV_BUILD_RHF=ON -DATV_BUILD_EXAMPLES=ON
-cmake --build build --target h2-rhf
+cmake --build build --target 02_rhf
 ```
 
 If you want the CUDA workflows:
 
 ```bash
 cmake -B build -DATV_BUILD_CUDA=ON -DATV_BUILD_RHF=ON -DATV_BUILD_EXAMPLES=ON
-cmake --build build
+cmake --build build --target 02_rhf_cuda
 ```
 
 If you only want the documentation:
@@ -59,10 +59,11 @@ Choose the example that matches the question you are trying to answer.
 
 | Program | When to use it | What you learn |
 |---|---|---|
-| `toy-scf.cpp` | You are completely new to SCF | The feedback loop without chemistry details |
-| `scf.cu` | You want to see the staged CUDA driver model | How SCF is expressed as `Driver + Component` |
-| `h2-rhf.cpp` | You want the first real chemistry result | How integrals and the CPU RHF solver fit together |
-| `h2_rhf.cu` | You want CPU and CUDA RHF in one program | How the same `cpu::Frame` feeds both backends |
+| `examples/tutorial/01_scf.cpp` | You are completely new to SCF | The feedback loop without chemistry details |
+| `examples/tutorial/02_rhf.cpp` | You want the first real chemistry result | How RHF turns the SCF loop into a molecular calculation |
+| `examples/tutorial/02_rhf.cu` | You want one concrete CPU-to-CUDA translation | How the same RHF lesson is expressed on CUDA |
+| `examples/tutorial/03_uhf.cpp` | You want open-shell Hartree-Fock | How unrestricted spin channels change the solve |
+| `examples/tutorial/04_uks.cpp` | You want the first DFT example | How grid-based XC enters the same SCF loop |
 | `lj.cu` | You want a full molecular simulation workflow | Minimization, MD, thermo output, trajectory, and RDF |
 
 ## The One Data Structure To Remember
@@ -89,7 +90,12 @@ Read the documentation in this order if you are starting from zero:
 4. [`docs/tutorial/02-rhf.md`](../tutorial/02-rhf.md)
 5. [`docs/tutorial/03-uhf.md`](../tutorial/03-uhf.md)
 6. [`docs/tutorial/04-uks.md`](../tutorial/04-uks.md)
+7. [Switching Backends](backend-switching.md)
 
 The four tutorial chapters are intentionally progressive. The first chapter
 teaches the SCF loop as a matrix feedback problem. The later chapters keep the
 same loop and add physically meaningful ingredients one at a time.
+
+If your goal is differentiable parameter fitting or PyTorch interop rather than
+electronic-structure theory, read [LibTorch Backend](libtorch-backend.md) after
+this page instead of going straight into the SCF tutorial track.

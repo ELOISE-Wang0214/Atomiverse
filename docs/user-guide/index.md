@@ -21,11 +21,17 @@ If you are new to the project, read these pages in order:
 1. [Getting Started](getting-started.md)
 2. [SCF Learning Path](scf-roadmap.md)
 3. [SCF Deep-Dive Tutorials](../tutorial/index.md)
+4. [Switching Backends](backend-switching.md)
+5. [LibTorch Backend](libtorch-backend.md), if you need differentiable operators
+   or PyTorch interop
 
 The getting-started page explains what to build and which example to run first.
 The roadmap explains how the SCF chapters fit together. The tutorial track then
 teaches the self-consistent field workflow from the toy model upward to RHF,
-UHF, and UKS.
+UHF, and UKS. The backend-switching page explains how to move the same problem
+between CPU, CUDA, and tensor-backed workflows. The LibTorch page is separate
+because it is a usage and backend integration guide rather than a
+computational-chemistry tutorial.
 
 ## What Atomiverse Can Do Today
 

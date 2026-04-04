@@ -1,20 +1,23 @@
-/// @file examples/h2_rhf_cpu.cpp
-/// @brief H2 / STO-3G / RHF — CPU-only example using the Atomiverse library.
+/// @file examples/tutorial/02_rhf.cpp
+/// @brief Tutorial example for restricted Hartree-Fock on molecular hydrogen.
 ///
 /// End-to-end RHF workflow on CPU:
 ///   1. Build H2 geometry in cpu::Frame
-///   2. Compute molecular integrals via build_integrals_sto3g() (libcint)
-///   3. Run RHF via rhf_solve() (xtensor-blas)
+///   2. Compute molecular integrals
+///   3. Run RHF
 ///   4. Print results and compare with textbook
 ///
-/// This is the CPU counterpart of examples/h2_rhf.cu (which runs the same
-/// algorithm on GPU through the scf::SCF Driver).
+/// The matching CUDA translation of the same tutorial is
+/// examples/tutorial/02_rhf.cu.
 ///
 /// Build:
 ///   cmake -B build -DATV_BUILD_RHF=ON -DATV_BUILD_EXAMPLES=ON
-///   cmake --build build --target h2_rhf_cpu
+///   cmake --build build --target 02_rhf
 ///
-/// Expected total energy: -1.1168 Hartree (Szabo & Ostlund, Table 3.7)
+/// Run:
+///   ./build/examples/02_rhf
+///
+/// Expected total energy: about -1.1168 Hartree (Szabo & Ostlund, Table 3.7)
 
 #include <cmath>
 #include <iostream>

@@ -95,10 +95,11 @@ why both layers exist.
 
 Representative entry points:
 
-- `examples/toy-scf.cpp` -- explicit CPU toy SCF example
-- `examples/scf.cu` -- staged CUDA toy SCF example
-- `examples/h2-rhf.cpp` -- CPU RHF example
-- `examples/h2_rhf.cu` -- CPU and CUDA RHF comparison
+- `examples/tutorial/01_scf.cpp` -- explicit SCF introduction example
+- `examples/tutorial/02_rhf.cpp` -- CPU RHF tutorial example
+- `examples/tutorial/02_rhf.cu` -- CUDA translation of the same RHF lesson
+- `examples/tutorial/03_uhf.cpp` -- UHF bond breaking and spin contamination
+- `examples/tutorial/04_uks.cpp` -- UKS / LSDA examples
 - `examples/lj.cu` -- minimization + MD + thermo + trajectory + RDF
 
 @section docsbuild Building The Docs
