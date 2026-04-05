@@ -213,9 +213,15 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config) {
         P_alpha = build_density_matrix(C0, n_alpha, n, Real(2));
         P_beta  = P_alpha;  // alias — not used independently
     } else {
-        // UHF/UKS: break spin symmetry via HOMO-LUMO mixing on alpha
+        // UHF: always apply HOMO-LUMO mixing to break spin symmetry
+        // (needed to find broken-symmetry solutions at stretched geometries).
+        // UKS: skip mixing for closed-shell singlets — LSDA has no
+        // Coulson-Fischer point for H2/STO-3G, so the symmetric solution
+        // is correct. Mixing creates a pathological initial guess.
         RealMatrix C_alpha_init = C0;
-        if (n_alpha > 0 && n_beta > 0)
+        bool is_ks = (config.method == MeanFieldType::KS);
+        bool skip_mixing = is_ks && (n_alpha == n_beta);
+        if (n_alpha > 0 && n_beta > 0 && !skip_mixing)
             apply_homo_lumo_mixing(C_alpha_init, n_alpha, n);
         P_alpha = build_density_matrix(C_alpha_init, n_alpha, n);
         P_beta  = build_density_matrix(C0, n_beta, n);
@@ -224,6 +230,7 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config) {
     // ── 4. Convergence infrastructure ───────────────────────────────────
     DIIS diis(config.diis_max_vectors);
     Real damping = config.damping_factor;
+    Real prev_residual = Real(1);  // track residual from previous iteration
 
     RealMatrix C_alpha = C0, C_beta = C0;
     RealVector eig_alpha = eig0, eig_beta = eig0;
@@ -307,7 +314,11 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config) {
             P_beta_new  = build_density_matrix(C_beta,  n_beta,  n);
         }
 
-        // ── 5e. Apply damping (pre-DIIS iterations) ─────────────────────
+        // ── 5e. Apply damping ────────────────────────────────────────────
+        // Pre-DIIS: linear mixing to stabilize the first few iterations.
+        // Post-DIIS: no density damping. DIIS on the Fock matrix handles
+        // convergence. Density damping with DIIS creates spurious fixed
+        // points (Pulay, J. Comp. Chem. 3, 556, 1982).
         RealMatrix P_alpha_next, P_beta_next;
         if (!diis_active) {
             P_alpha_next = damping * P_alpha_new + (Real(1) - damping) * P_alpha;
@@ -355,6 +366,7 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config) {
         Real res_b = restricted ? Real(0) :
                      (n_beta > 0 ? xt::norm_l2(P_beta_next - P_beta)() : Real(0));
         Real residual = std::max(res_a, res_b);
+        prev_residual = residual;
 
         P_alpha = P_alpha_next;
         P_beta  = P_beta_next;

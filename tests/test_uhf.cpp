@@ -33,33 +33,33 @@ constexpr double kEnergyTol = 1e-3;
 
 cpu::Frame make_h_atom() {
     cpu::Frame f(1);
-    f.x[0] = Real(0); f.y[0] = Real(0); f.z[0] = Real(0);
-    f.type_id[0] = 1;  // H: Z=1
+    f.atoms.x[0] = Real(0); f.atoms.y[0] = Real(0); f.atoms.z[0] = Real(0);
+    f.atoms.type[0] = 1;  // H: Z=1
     f.box = Mat3::cubic(100.0);
     return f;
 }
 
 cpu::Frame make_he_atom() {
     cpu::Frame f(1);
-    f.x[0] = Real(0); f.y[0] = Real(0); f.z[0] = Real(0);
-    f.type_id[0] = 2;  // He: Z=2
+    f.atoms.x[0] = Real(0); f.atoms.y[0] = Real(0); f.atoms.z[0] = Real(0);
+    f.atoms.type[0] = 2;  // He: Z=2
     f.box = Mat3::cubic(100.0);
     return f;
 }
 
 cpu::Frame make_li_atom() {
     cpu::Frame f(1);
-    f.x[0] = Real(0); f.y[0] = Real(0); f.z[0] = Real(0);
-    f.type_id[0] = 3;  // Li: Z=3
+    f.atoms.x[0] = Real(0); f.atoms.y[0] = Real(0); f.atoms.z[0] = Real(0);
+    f.atoms.type[0] = 3;  // Li: Z=3
     f.box = Mat3::cubic(100.0);
     return f;
 }
 
 cpu::Frame make_h2(double bond_length_angstrom) {
     cpu::Frame f(2);
-    f.x[0] = Real(0);                       f.y[0] = Real(0); f.z[0] = Real(0);
-    f.x[1] = Real(bond_length_angstrom);    f.y[1] = Real(0); f.z[1] = Real(0);
-    f.type_id[0] = 1; f.type_id[1] = 1;    // H: Z=1
+    f.atoms.x[0] = Real(0);                       f.atoms.y[0] = Real(0); f.atoms.z[0] = Real(0);
+    f.atoms.x[1] = Real(bond_length_angstrom);    f.atoms.y[1] = Real(0); f.atoms.z[1] = Real(0);
+    f.atoms.type[0] = 1; f.atoms.type[1] = 1;    // H: Z=1
     f.box = Mat3::cubic(100.0);
     return f;
 }

@@ -22,23 +22,28 @@ namespace scf {
 // ── Constants ────────────────────────────────────────────────────────────
 
 static constexpr double kPi = 3.14159265358979323846;
-static constexpr double kRhoMin = 1e-12;   // density cutoff
+static constexpr double kRhoMin = 1e-12;   // total density cutoff
+static constexpr double kSpinDensMin = 1e-15; // per-spin density floor (matches libxc dens_threshold)
 static constexpr double kSigmaMin = 1e-20; // gradient cutoff for GGA
 
 // Slater exchange constant: C_x = (3/4)(3/π)^{1/3}
 static constexpr double kCx = 0.7385587663820224; // (3.0/4.0) * std::cbrt(3.0/kPi)
 
-// ── VWN5 parameters (Table 4.4, Vosko et al. 1980) ──────────────────────
+// ── VWN5 parameters (Hartree convention, matching libxc) ─────────────────
+//
+// VWN paper (Can. J. Phys. 58, 1200, 1980) Table 4.4 lists A in Rydberg.
+// Following libxc (maple/vwn.mpl), we store A_Ha = A_Ry / 2 so the Pade
+// form is  eps(x) = A * {...}  without an extra 1/2 factor.
 
 struct VWN5Params {
     double A, x0, b, c;
 };
 
-// Paramagnetic (ζ=0)
-static constexpr VWN5Params kVWN5_P = {0.0621814, -0.10498, 3.72744, 12.9352};
-// Ferromagnetic (ζ=1)
-static constexpr VWN5Params kVWN5_F = {0.0310907, -0.32500, 7.06042, 18.0578};
-// Spin stiffness α_c
+// Paramagnetic: A_Ry = 0.0621814 -> A_Ha = 0.0310907
+static constexpr VWN5Params kVWN5_P = {0.0310907, -0.10498, 3.72744, 12.9352};
+// Ferromagnetic: A_Ry = 0.0310907 -> A_Ha = 0.01554535
+static constexpr VWN5Params kVWN5_F = {0.01554535, -0.32500, 7.06042, 18.0578};
+// Spin stiffness alpha_c: A_Ry = -1/(3*pi^2) -> A_Ha = -1/(6*pi^2)
 static constexpr VWN5Params kVWN5_A = {
     -1.0 / (6.0 * kPi * kPi), -0.0047584, 1.13107, 13.0045
 };
@@ -149,13 +154,15 @@ static void slater_exchange(double rho_a, double rho_b,
 
 static void vwn5_correlation(double rho_a, double rho_b,
                              double& ec, double& vc_a, double& vc_b) {
+    // Per-spin density floor matching libxc work_lda clamping.
+    // Prevents exact zeta = +/-1 while keeping exchange unaffected.
+    rho_a = std::max(rho_a, kSpinDensMin);
+    rho_b = std::max(rho_b, kSpinDensMin);
+
     double rho = rho_a + rho_b;
     double rs = std::pow(3.0 / (4.0 * kPi * rho), 1.0/3.0);
     double x = std::sqrt(rs);
     double zeta = (rho_a - rho_b) / rho;
-
-    // Clamp zeta to avoid numerical issues at full polarization
-    zeta = std::max(-1.0 + 1e-14, std::min(1.0 - 1e-14, zeta));
 
     // Evaluate the three VWN5 functions
     double ecP = vwn5_F(x, kVWN5_P);
@@ -211,7 +218,7 @@ static void vwn5_correlation(double rho_a, double rho_b,
 // Implementation: compute per-spin exchange with enhancement.
 
 static constexpr double kPBE_kappa = 0.804;
-static constexpr double kPBE_mu = 0.21951;
+static constexpr double kPBE_mu = 0.2195149727645171;  // beta*pi^2/3
 
 // Compute PBE exchange for a single spin channel.
 // Returns: (energy density contribution, v_rho, v_sigma) for this spin.
@@ -271,8 +278,8 @@ static void pbe_exchange_spin(double rho_s, double sigma_ss,
 //   k_s = √(4k_F/π),  k_F = (3π²ρ)^{1/3}
 //   β = 0.066725,  γ = (1 - ln2)/π² ≈ 0.031091
 
-static constexpr double kPBE_beta = 0.066725;
-static constexpr double kPBE_gamma = 0.031091;  // (1 - ln2)/π²
+static constexpr double kPBE_beta = 0.06672455060314922;
+static constexpr double kPBE_gamma = 0.031090690869654895034;  // (1 - ln2)/π²
 
 static double phi_pbe(double zeta) {
     return 0.5 * (std::pow(1.0 + zeta, 2.0/3.0) + std::pow(1.0 - zeta, 2.0/3.0));
@@ -350,9 +357,9 @@ static void pbe_correlation(double rho_a, double rho_b,
     double dH_dsigma_total = dH_dt2 * dt2_dsigma;
 
     // σ_total = σ_αα + 2σ_αβ + σ_ββ
-    vsigma_aa = dH_dsigma_total;
-    vsigma_ab = 2.0 * dH_dsigma_total;
-    vsigma_bb = dH_dsigma_total;
+    vsigma_aa = rho * dH_dsigma_total;
+    vsigma_ab = 2.0 * rho * dH_dsigma_total;
+    vsigma_bb = rho * dH_dsigma_total;
 
     // For v_rho: more complex — H depends on ρ through t, k_s, A, ec_lda, phi
     // Use the identity for uniform scaling:
@@ -381,105 +388,105 @@ static void pbe_correlation(double rho_a, double rho_b,
     // The LDA part gives vc_lda_a = d(ρ·ec_lda)/dρ_α.
     // So we need: vc_lda_a + H + ρ * dH/dρ_α.
     //
-    // dH/dρ_α = dH/dt² * dt²/dρ_α + dH/dA * dA/dρ_α + dH/dφ * dφ/dρ_α
+    // For numerical stability and correctness, compute dH/drho_a and dH/drho_b
+    // using direct per-spin derivatives.  We avoid computing dphi/dzeta, which
+    // diverges at full polarization (zeta = +/-1), by computing dphi/drho_sigma
+    // directly with a libxc-compatible zeta threshold.
     //
-    // For numerical stability and correctness, compute all partial derivatives:
+    // phi = [(1+zeta)^{2/3} + (1-zeta)^{2/3}]/2
+    // Define za = 1+zeta = 2*rho_a/rho, zb = 1-zeta = 2*rho_b/rho.
+    // When za or zb < zeta_threshold, that term's derivative is clamped to 0.
 
-    // ∂t²/∂ρ_α = ∂t²/∂ρ * ∂ρ/∂ρ_α + ∂t²/∂ζ * ∂ζ/∂ρ_α
-    // ∂ρ/∂ρ_α = 1, ∂ζ/∂ρ_α = (1 - ζ)/ρ
-    // ∂t²/∂ρ (at fixed ζ) = -(7/3) t²/ρ
-    // ∂t²/∂ζ (at fixed ρ): t² ~ 1/φ², so ∂t²/∂ζ = -2 t²/φ * dφ/dζ
+    static constexpr double kZetaThreshold = 2.2204460492503131e-16; // DBL_EPSILON
 
-    double dphi_dzeta = (1.0/3.0) * (std::pow(1.0 + zeta, -1.0/3.0) - std::pow(1.0 - zeta, -1.0/3.0));
+    double za = 1.0 + zeta;
+    double zb = 1.0 - zeta;
+
+    // dphi/drho_sigma: direct computation avoiding dphi/dzeta singularity.
+    // dzeta/drho_a = (1-zeta)/rho = zb/rho
+    // dzeta/drho_b = -(1+zeta)/rho = -za/rho
+    //
+    // dphi/dzeta = (1/3)*[za^{-1/3} - zb^{-1/3}] / ... but we don't compute this.
+    // Instead: dphi/drho_sigma = sum of per-term derivatives
+    //   d/drho_a [(1+zeta)^{2/3}] / 2 = (2/3)(1+zeta)^{-1/3} * (dzeta/drho_a) / 2
+    //                                   = (1/3)*za^{-1/3} * zb/rho  [if za > threshold]
+    //   d/drho_a [(1-zeta)^{2/3}] / 2 = (2/3)(1-zeta)^{-1/3} * (-dzeta/drho_a) / 2
+    //                                   = -(1/3)*zb^{-1/3} * zb/rho = -(1/3)*zb^{2/3}/rho  [if zb > threshold]
+    //
+    // Note: the zb^{-1/3} * zb = zb^{2/3} form is safe even as zb -> 0, but
+    // for consistency with libxc we still apply the threshold.
+
+    double dphi_drho_a, dphi_drho_b;
+    {
+        double term_a_da = (za > kZetaThreshold) ?
+            (1.0/3.0) * std::pow(za, -1.0/3.0) * zb / rho : 0.0;
+        double term_b_da = (zb > kZetaThreshold) ?
+            -(1.0/3.0) * std::pow(zb, 2.0/3.0) / rho : 0.0;
+        dphi_drho_a = term_a_da + term_b_da;
+
+        // Correction: re-derive term_b_da properly.
+        // d/drho_a [(1-zeta)^{2/3}] = (2/3)(1-zeta)^{-1/3} * d(1-zeta)/drho_a
+        //   d(1-zeta)/drho_a = -dzeta/drho_a = -zb/rho
+        // So d/drho_a [(1-zeta)^{2/3}] = (2/3)*zb^{-1/3}*(-zb/rho) = -(2/3)*zb^{2/3}/rho
+        // Then /2 for phi: -(1/3)*zb^{2/3}/rho  -- this matches above.
+
+        double term_a_db = (za > kZetaThreshold) ?
+            -(1.0/3.0) * std::pow(za, 2.0/3.0) / rho : 0.0;
+        double term_b_db = (zb > kZetaThreshold) ?
+            (1.0/3.0) * std::pow(zb, -1.0/3.0) * za / rho : 0.0;
+        dphi_drho_b = term_a_db + term_b_db;
+    }
+
+    // dt^2/drho_a, dt^2/drho_b: t^2 = sigma/(4*phi^2*ks^2*rho^2)
+    // t^2 depends on rho_sigma through rho, ks (via kF ~ rho^{1/3}), and phi (via zeta).
+    // At fixed sigma and zeta: dt^2/drho = -(7/3)*t^2/rho
+    // Zeta dependence:         dt^2/dphi = -2*t^2/phi (since t^2 ~ 1/phi^2)
     double dt2_drho = -(7.0/3.0) * t2 / rho;
-    double dt2_dzeta = -2.0 * t2 / phi * dphi_dzeta;
+    double dt2_dphi = -2.0 * t2 / phi;
 
-    double dzeta_drho_a = (1.0 - zeta) / rho;
-    double dzeta_drho_b = -(1.0 + zeta) / rho;
 
-    double dt2_drho_a = dt2_drho + dt2_dzeta * dzeta_drho_a;
-    double dt2_drho_b = dt2_drho + dt2_dzeta * dzeta_drho_b;
-
-    // ∂A/∂ρ_α: A depends on ec_lda and φ
-    // A = (β/γ) / (exp(-ec_lda/(γφ³)) - 1)
-    // dA/dec_lda = A² * exp_val / (β/γ) * 1/(γφ³)
-    // dA/dφ = A² * exp_val / (β/γ) * (-3 ec_lda/(γφ⁴))
+    // dA/drho_sigma: A depends on ec_lda (through vc_lda) and phi.
+    // A = (beta/gamma) / (exp(-ec_lda/(gamma*phi^3)) - 1)
     double dA_dfactor = A * A * exp_val / (kPBE_beta / kPBE_gamma);
     double dA_dec_lda = dA_dfactor / (kPBE_gamma * phi3);
     double dA_dphi = dA_dfactor * (-3.0 * ec_lda / (kPBE_gamma * phi3 * phi));
 
-    // dec_lda/dρ_α = vc_lda_a - ec_lda (since d(ρ ec_lda)/dρ_α = vc_lda_a, so dec_lda/dρ_α = (vc_lda_a - ec_lda)/ρ ... no)
-    // Actually: vc_lda_α = ε_c + ρ ∂ε_c/∂ρ_α, so ∂ε_c/∂ρ_α = (vc_lda_α - ε_c)/ρ ... no, that's not right either.
-    // vc_lda_α = ∂(ρ ε_c)/∂ρ_α = ε_c + ρ ∂ε_c/∂ρ_α
-    // So ∂ε_c/∂ρ_α = (vc_lda_α - ε_c) ... no, ρ ∂ε_c/∂ρ_α = vc_lda_α - ε_c
-    // ∂ε_c/∂ρ_α = (vc_lda_α - ε_c) / ρ ... hmm this seems off.
-    // Actually from the chain rule: d(ρ·ec)/dρ_α = ec + ρ · dec/dρ_α = vc_lda_a
-    // So dec/dρ_α = (vc_lda_a - ec_lda) / ρ ... wait, no.
-    // d(ρ·ec)/dρ_α = ec · dρ/dρ_α + ρ · dec/dρ_α = ec + ρ · dec/dρ_α
-    // = vc_lda_a
-    // So dec/dρ_α = (vc_lda_a - ec_lda) / ρ
+    // dec_lda/drho_a = (vc_lda_a - ec_lda) / rho
+    // (from: d(rho*ec)/drho_a = ec + rho*dec/drho_a = vc_lda_a)
     double dec_lda_drho_a = (vc_lda_a - ec_lda) / rho;
     double dec_lda_drho_b = (vc_lda_b - ec_lda) / rho;
 
-    double dA_drho_a = dA_dec_lda * dec_lda_drho_a + dA_dphi * dphi_dzeta * dzeta_drho_a;
-    double dA_drho_b = dA_dec_lda * dec_lda_drho_b + dA_dphi * dphi_dzeta * dzeta_drho_b;
 
-    // ∂H/∂A: from the ratio
-    // ratio = (β/γ) t² (1+At²)/(1+At²+A²t⁴)
-    // d(ratio)/dA = (β/γ) t² * d/dA[(1+At²)/(1+At²+A²t⁴)]
-    // = (β/γ) t² * [t²(1+At²+A²t⁴) - (1+At²)(t²+2At⁴)] / (1+At²+A²t⁴)²
-    // = (β/γ) t² * t² [1+At²+A²t⁴ - (1+At²)(1+2At²)] / (...)²  ... wait let me be more careful
-    // Let N = 1+u, D = 1+u+u², du/dA = t²
-    // d(N/D)/dA = (dN/dA * D - N * dD/dA) / D²
-    //           = (t² * D - N * (t² + 2u t²)) / D²
-    //           = t² * (D - N(1+2u)) / D²
-    //           = t² * (1+u+u² - (1+u)(1+2u)) / D²
-    //           = t² * (1+u+u² - 1 - 2u - u - 2u²) / D²
-    //           = t² * (-2u - u²) / D²
-    //           = -t² * u * (2+u) / D²
+    // dH/dA: from the ratio expression
     double d_frac_dA = -t2 * u * (2.0 + u) / (one_u_u2 * one_u_u2);
     double dratio_dA = (kPBE_beta / kPBE_gamma) * t2 * d_frac_dA;
     double dH_dA = kPBE_gamma * phi3 / (1.0 + ratio) * dratio_dA;
 
-    // ∂H/∂φ: H = γ φ³ ln(1+ratio)
-    // dH/dφ = 3γφ² ln(1+ratio) + γφ³ * d(ln(1+ratio))/dφ
-    // The ratio depends on φ only through t (at fixed A):
-    // t² ~ 1/φ², so this is captured by dt²/dφ = -2t²/φ
-    // But A also depends on φ, which we handle separately.
-    // For the explicit φ³ prefactor:
+    // dH/dphi: H = gamma * phi^3 * ln(1+ratio)
+    // Explicit phi^3 prefactor:
     double dH_dphi_explicit = 3.0 * kPBE_gamma * phi * phi * std::log(1.0 + ratio);
-    // Plus the implicit φ dependence through t²:
-    double dH_dphi_implicit = dH_dt2 * (-2.0 * t2 / phi);
-    // And through A:
+    // Implicit phi dependence through t^2 (t^2 ~ 1/phi^2):
+    double dH_dphi_implicit = dH_dt2 * dt2_dphi;
+    // Implicit phi dependence through A:
     double dH_dphi_A = dH_dA * dA_dphi;
     double dH_dphi_total = dH_dphi_explicit + dH_dphi_implicit + dH_dphi_A;
 
-    // Now assemble dH/dρ_α:
-    // dH/dρ_α = dH/dt² * dt²/dρ_α + dH/dA * dA/dρ_α + dH/dφ_explicit * dφ/dρ_α
-    //   where dH/dφ_explicit includes only the prefactor + implicit t² dependence
-    //   and dA/dρ_α already includes the φ contribution to A
-    // Wait, let me reorganize. Total dH/dρ_α:
-    // = (∂H/∂t²)(dt²/dρ_α) + (∂H/∂A)(dA/dρ_α) + (∂H/∂φ)_direct * (dφ/dρ_α)
-    // where (∂H/∂φ)_direct = 3γφ² ln(1+ratio) only (the explicit φ³ prefactor)
-    // and dt²/dρ_α already includes the φ dependence of t²
-    // and dA/dρ_α already includes the φ dependence of A
-    //
-    // Hmm, actually let's think about it differently.
-    // H depends on ρ_α through: ρ, ζ (which determines φ), ec_lda, and σ (fixed).
-    // The chain is: ρ_α → (ρ, ζ) → (φ, ec_lda, t², A) → H
-    //
-    // Let me just compute dH/dρ_α directly:
-    double dH_drho_a = dH_dt2 * dt2_drho_a
+    // Assemble dH/drho_sigma:
+    // H depends on rho_sigma through: rho (-> kF, ks, t), zeta (-> phi), ec_lda (-> A).
+    // Use dt2_drho (constant-phi part) to avoid double-counting the phi path,
+    // which is fully handled by dH_dphi_total * dphi_drho_sigma.
+    double dH_drho_a = dH_dt2 * dt2_drho
                      + dH_dA * (dA_dec_lda * dec_lda_drho_a)
-                     + (dH_dphi_explicit + dH_dphi_implicit + dH_dA * dA_dphi) * dphi_dzeta * dzeta_drho_a;
+                     + dH_dphi_total * dphi_drho_a;
 
-    double dH_drho_b = dH_dt2 * dt2_drho_b
+    double dH_drho_b = dH_dt2 * dt2_drho
                      + dH_dA * (dA_dec_lda * dec_lda_drho_b)
-                     + (dH_dphi_explicit + dH_dphi_implicit + dH_dA * dA_dphi) * dphi_dzeta * dzeta_drho_b;
+                     + dH_dphi_total * dphi_drho_b;
 
-    // Final: v_c^σ = d(ρ·(ec_lda + H))/dρ_σ = vc_lda_σ + H + ρ * dH/dρ_σ
+    // Final: v_c^sigma = d(rho*(ec_lda + H))/drho_sigma = vc_lda_sigma + H + rho * dH/drho_sigma
     vc_a = vc_lda_a + H + rho * dH_drho_a;
     vc_b = vc_lda_b + H + rho * dH_drho_b;
+
 }
 
 // ── Public API ──────────────────────────────────────────────────────────
@@ -504,32 +511,45 @@ XCOutput evaluate_xc(XCType type, Real rho_a, Real rho_b,
         out.vrho_alpha = static_cast<Real>(vx_a + vc_a);
         out.vrho_beta  = static_cast<Real>(vx_b + vc_b);
     } else if (type == XCType::PBE) {
-        // PBE = LSDA + gradient corrections
+        // PBE = LSDA + gradient corrections.
+        // Clamp per-spin densities to kRhoMin (matching libxc dens_threshold).
+        // All subroutines use clamped values for self-consistent derivatives.
+        double ra_pbe = std::max(ra, kRhoMin);
+        double rb_pbe = std::max(rb, kRhoMin);
+        double rho_pbe = ra_pbe + rb_pbe;
 
-        // LSDA part (Slater + VWN5)
+        // LSDA part (Slater + VWN5) at clamped densities
         double ex_lda, vx_lda_a, vx_lda_b;
-        slater_exchange(ra, rb, ex_lda, vx_lda_a, vx_lda_b);
+        slater_exchange(ra_pbe, rb_pbe, ex_lda, vx_lda_a, vx_lda_b);
 
         double ec_lda, vc_lda_a, vc_lda_b;
-        vwn5_correlation(ra, rb, ec_lda, vc_lda_a, vc_lda_b);
+        vwn5_correlation(ra_pbe, rb_pbe, ec_lda, vc_lda_a, vc_lda_b);
 
         // PBE exchange (per-spin)
         double sa = static_cast<double>(sigma_aa);
         double sab = static_cast<double>(sigma_ab);
         double sb = static_cast<double>(sigma_bb);
 
+        // Clamp sigma (matching libxc sigma_threshold = dens_threshold^{4/3})
+        double sigma_min = std::pow(kRhoMin, 4.0/3.0);
+        sa = std::max(sa, sigma_min);
+        sb = std::max(sb, sigma_min);
+        double s_ave = 0.5 * (sa + sb);
+        sab = std::max(sab, -s_ave);
+        sab = std::min(sab, +s_ave);
+
         double ex_pbe_a, vrho_x_a, vsig_x_aa;
         double ex_pbe_b, vrho_x_b, vsig_x_bb;
-        pbe_exchange_spin(ra, sa, ex_pbe_a, vrho_x_a, vsig_x_aa);
-        pbe_exchange_spin(rb, sb, ex_pbe_b, vrho_x_b, vsig_x_bb);
+        pbe_exchange_spin(ra_pbe, sa, ex_pbe_a, vrho_x_a, vsig_x_aa);
+        pbe_exchange_spin(rb_pbe, sb, ex_pbe_b, vrho_x_b, vsig_x_bb);
 
         // Total PBE exchange energy density (per electron)
-        double ex_pbe = (ex_pbe_a + ex_pbe_b) / rho;
+        double ex_pbe = (ex_pbe_a + ex_pbe_b) / rho_pbe;
 
         // PBE correlation
         double ec_pbe, vc_pbe_a, vc_pbe_b;
         double vsig_c_aa, vsig_c_ab, vsig_c_bb;
-        pbe_correlation(ra, rb, ec_lda, vc_lda_a, vc_lda_b,
+        pbe_correlation(ra_pbe, rb_pbe, ec_lda, vc_lda_a, vc_lda_b,
                        sa, sab, sb,
                        ec_pbe, vc_pbe_a, vc_pbe_b,
                        vsig_c_aa, vsig_c_ab, vsig_c_bb);

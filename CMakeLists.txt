@@ -32,7 +32,9 @@ if(NOT ATV_DOCS_ONLY)
     option(ATV_BUILD_RHF "Build RHF electronic structure code" OFF)
     option(ATV_BUILD_TORCH "Build LibTorch backend (requires LibTorch)" OFF)
     option(ATV_BUILD_LIBCINT "Fetch libcint for integral validation tests" OFF)
+    option(ATV_USE_LIBXC "Use libxc for XC ground-truth validation" OFF)
     set(ATV_MOLRS_PATH "${CMAKE_SOURCE_DIR}/../molrs" CACHE PATH "Path to molrs source tree")
+    option(ATV_BUILD_PYTHON "Build Python bindings (nanobind)" OFF)
     option(ATV_BUILD_TESTS "Build tests" OFF)
     option(ATV_BUILD_BENCHMARKS "Build benchmarks" OFF)
     option(ATV_BUILD_EXAMPLES "Build examples" OFF)
@@ -143,7 +145,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/aspc_predictor.cpp
             src/cpu/scf/rhf_force.cpp
             src/cpu/scf/uhf_force.cpp
-            src/cpu/observer/mulliken.cpp
+            # src/cpu/observer/mulliken.cpp  # TODO: fix molrs FFI mismatch
         )
         if(ATV_BUILD_CUDA)
             target_sources(atomiverse PRIVATE
@@ -184,6 +186,40 @@ if(NOT ATV_DOCS_ONLY)
         )
         target_link_libraries(atomiverse PUBLIC cint)
         target_compile_definitions(atomiverse PUBLIC ATV_HAS_LIBCINT)
+    endif()
+
+    # Optional: fetch libxc for XC ground-truth validation
+    if(ATV_USE_LIBXC)
+        find_package(Libxc 6 CONFIG QUIET)
+        if(Libxc_FOUND)
+            message(STATUS "Found system libxc: ${Libxc_DIR}")
+            target_link_libraries(atomiverse PUBLIC Libxc::xc)
+        else()
+            message(STATUS "System libxc not found; fetching from source (tag 6.2.2)")
+            set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+            set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+            set(ENABLE_FORTRAN OFF CACHE BOOL "" FORCE)
+            set(ENABLE_PYTHON OFF CACHE BOOL "" FORCE)
+            set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
+            FetchContent_Declare(
+                libxc
+                GIT_REPOSITORY https://gitlab.com/libxc/libxc.git
+                GIT_TAG 6.2.2
+            )
+            FetchContent_MakeAvailable(libxc)
+            unset(CMAKE_POLICY_VERSION_MINIMUM CACHE)
+            target_link_libraries(atomiverse PUBLIC xc)
+            # libxc only sets INSTALL_INTERFACE includes; add BUILD_INTERFACE manually
+            target_include_directories(atomiverse PUBLIC
+                "${libxc_SOURCE_DIR}/src"
+                "${libxc_BINARY_DIR}/src"
+                "${libxc_BINARY_DIR}"
+            )
+        endif()
+        target_sources(atomiverse PRIVATE
+            src/cpu/scf/xc_libxc.cpp
+        )
+        target_compile_definitions(atomiverse PUBLIC ATV_HAS_LIBXC)
     endif()
 
     if(ATV_BUILD_CUDA)
@@ -238,6 +274,39 @@ if(NOT ATV_DOCS_ONLY)
             GIT_TAG v1.2.1
         )
         FetchContent_MakeAvailable(matplotplusplus)
+    endif()
+
+    # ── Python bindings (nanobind) ──
+    # When built via scikit-build-core (pip install), nanobind is installed into
+    # the build venv before CMake runs, so find_package(nanobind) resolves via
+    # `python -m nanobind --cmake_dir`.  For standalone cmake builds, nanobind
+    # must be installed in the active Python environment (pip install nanobind).
+    if(ATV_BUILD_PYTHON)
+        find_package(Python 3.9 COMPONENTS Interpreter Development.Module REQUIRED)
+
+        # Locate nanobind from the active Python environment
+        execute_process(
+            COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            OUTPUT_VARIABLE NB_CMAKE_DIR
+            RESULT_VARIABLE NB_RESULT
+        )
+        if(NOT NB_RESULT EQUAL 0)
+            message(FATAL_ERROR "nanobind not found in Python environment. "
+                "Run: pip install nanobind>=2.4")
+        endif()
+        list(APPEND CMAKE_PREFIX_PATH "${NB_CMAKE_DIR}")
+        find_package(nanobind CONFIG REQUIRED)
+
+        nanobind_add_module(_atomiverse
+            python/src/bindings/bind.cpp
+            python/src/bindings/bind_frame.cpp
+            python/src/bindings/bind_md.cpp
+            python/src/bindings/bind_scf.cpp
+        )
+        target_link_libraries(_atomiverse PRIVATE atomiverse)
+        target_include_directories(_atomiverse PRIVATE include python/src/bindings)
+        install(TARGETS _atomiverse LIBRARY DESTINATION atomiverse)
     endif()
 
     if(ATV_BUILD_TESTS)

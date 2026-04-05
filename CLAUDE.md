@@ -46,11 +46,11 @@ Atomiverse is a C++/CUDA molecular simulation platform with a **dual-backend arc
 Facade (Driver, Plan, Stage)    -- orchestration, CUDA-free headers
   |
   +-- cpu:: device             -- xtensor storage, .h/.cpp files
-  |     cpu::Frame             -- host-side data (xtensor arrays)
+  |     cpu::Frame             -- host-side data (sub-structs: atoms, bonds, angles, dihedrals)
   |     cpu::to_cuda()         -- cpu::Frame -> cuda::Frame (allocate + H2D copy)
   |
   +-- cuda:: device            -- device pointers, .cuh/.cu files
-        cuda::Frame            -- GPU-side data (SoA device pointers)
+        cuda::Frame            -- GPU-side data (sub-structs: atoms, bonds, angles, dihedrals)
         cuda::Context          -- CUDA streams (void* to keep headers CUDA-free)
         cuda::to_cpu()         -- cuda::Frame -> cpu::Frame (D2H copy)
         cuda::destroy()        -- free all device memory
@@ -281,6 +281,8 @@ These components participate in the main compute path but require host scalars o
 - **CMake registration:** new library sources go in root `CMakeLists.txt`; new tests use `atv_add_test(test_name)` in `tests/CMakeLists.txt`
 - **No factory functions** -- components are classes with constructors
 - **No `kernel_` prefix** on kernel functions
+- **No fallback values** -- lookup tables (atomic radii, basis sets, element data) must cover all supported elements explicitly. Unsupported input **must** `throw std::invalid_argument` with a descriptive message, never silently return a default. This applies to Bragg-Slater radii, basis set parameters, and any element-indexed data.
+- **libxc as XC ground truth** -- when `ATV_USE_LIBXC` is enabled, native XC functional output (exc, vrho, vsigma) must match libxc to 1e-12 at every test point. Any discrepancy is a bug in the native code, not a "numerical difference".
 - **Acronyms in prose/comments:** always full uppercase (CPU, CUDA, XYZ, MD, DFT, MLIP, NVE, NVT, NPT, SoA, D2H, etc.), never title-case or lower-case
 - **Phase naming:** LAMMPS-style for MD (`initial_integrate`, `pre_force`, `force`, `post_force`, `final_integrate`, `end_of_step`); minimizer phases (`search_direction`, `line_search`, `force`, `convergence_check`, `end_of_step`); SCF phases (`build_hamiltonian`, `diagonalize`, `build_density`, `convergence_check`, `end_of_step`)
 - **Box:** `Mat3` (3x3 matrix), not separate scalars
@@ -293,8 +295,8 @@ These components participate in the main compute path but require host scalars o
 
 | Type | Layer | Header | Purpose |
 |------|-------|--------|---------|
-| `cpu::Frame` | CPU device | `cpu/frame.h` | System state: xtensor arrays (SoA), Mat3 box, topology, scalars |
-| `cuda::Frame` | CUDA backend | `cuda/frame.cuh` | SoA device pointers + PairList + topology lists + host-cached metadata |
+| `cpu::Frame` | CPU device | `cpu/frame.h` | System state: sub-structs (atoms, bonds, angles, dihedrals), Mat3 box, scalars |
+| `cuda::Frame` | CUDA backend | `cuda/frame.cuh` | SoA device pointers in sub-structs (atoms, bonds, angles, dihedrals) + PairList + host-cached metadata |
 | `cuda::Context` | CUDA backend | `cuda/context.cuh` | CUDA stream handles as `void*` (main + defer) |
 | `cpu::Context` | CPU backend | `cpu/context.h` | Minimal CPU context (empty for now) |
 | `BuildContext` | Lifecycle | `cuda/component.cuh` | Context for build(): Context + Frame (backend-specific) |
@@ -386,7 +388,7 @@ solver.run(frame, 50);
 
 // Phase 4: RHF (requires -DATV_BUILD_RHF=ON)
 cpu::Frame h2(2);
-h2.x[0] = 0; h2.x[1] = 0.74; h2.type_id[0] = 1; h2.type_id[1] = 1; // H2
+h2.atoms.x[0] = 0; h2.atoms.x[1] = 0.74; h2.atoms.type[0] = 1; h2.atoms.type[1] = 1; // H2
 h2.box = Mat3::cubic(100.0);
 auto integrals = cpu::scf::build_integrals_sto3g(h2);  // native C++
 scf::SCF rhf;

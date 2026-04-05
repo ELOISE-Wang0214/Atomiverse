@@ -123,12 +123,13 @@ inline SCFConfig uhf_config(const IntegralPack& ints, int n_alpha, int n_beta,
     c.n_alpha = n_alpha;
     c.n_beta = n_beta;
     c.tol = tol;
-    c.use_diis = false;
+    c.use_diis = true;
+    c.diis_start_iter = 5;  // allow HOMO-LUMO mixing to settle before DIIS
+    c.damping_factor = Real(0.3);  // lighter damping for faster exploration
     return c;
 }
 
 /// @brief Convenience: UKS configuration.
-/// @note DIIS disabled by default for UKS — same reason as UHF (HOMO-LUMO mixing).
 /// @param ints Integral pack retained for API symmetry with `rhf_config`.
 /// @param n_alpha Number of alpha electrons.
 /// @param n_beta Number of beta electrons.
@@ -145,7 +146,8 @@ inline SCFConfig uks_config(const IntegralPack& ints, int n_alpha, int n_beta,
     c.n_alpha = n_alpha;
     c.n_beta = n_beta;
     c.tol = tol;
-    c.use_diis = false;
+    c.use_diis = true;
+    c.diis_start_iter = 1;
     return c;
 }
 
