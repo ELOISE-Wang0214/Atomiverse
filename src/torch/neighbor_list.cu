@@ -69,11 +69,11 @@ void NeighborList::update(Frame& frame) {
     cudaStream_t stream = static_cast<cudaStream_t>(ctx_.stream);
 
     Int n = frame.n_atoms();
-    cudaMemcpyAsync(cframe_.x, frame.x.data_ptr<Real>(), n * sizeof(Real),
+    cudaMemcpyAsync(cframe_.atoms.x, frame.atoms.x.data_ptr<Real>(), n * sizeof(Real),
                     cudaMemcpyDeviceToDevice, stream);
-    cudaMemcpyAsync(cframe_.y, frame.y.data_ptr<Real>(), n * sizeof(Real),
+    cudaMemcpyAsync(cframe_.atoms.y, frame.atoms.y.data_ptr<Real>(), n * sizeof(Real),
                     cudaMemcpyDeviceToDevice, stream);
-    cudaMemcpyAsync(cframe_.z, frame.z.data_ptr<Real>(), n * sizeof(Real),
+    cudaMemcpyAsync(cframe_.atoms.z, frame.atoms.z.data_ptr<Real>(), n * sizeof(Real),
                     cudaMemcpyDeviceToDevice, stream);
     if (frame.box.defined() && cframe_.box) {
         cudaMemcpyAsync(cframe_.box, frame.box.data_ptr<Real>(), 9 * sizeof(Real),

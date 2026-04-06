@@ -76,7 +76,7 @@ void Barostat::launch(const LaunchContext& ctx) {
     Real beta_dt_tau = dt_ / tau_p_;
 
     berendsen_scale_k<<<grid, block, 0, stream>>>(
-        f.x, f.y, f.z, f.box, f.stress,
+        f.atoms.x, f.atoms.y, f.atoms.z, f.box, f.stress,
         P_target_, beta_dt_tau, n);
 }
 

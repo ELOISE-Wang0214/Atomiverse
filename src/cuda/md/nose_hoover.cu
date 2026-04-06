@@ -126,7 +126,7 @@ void NoseHoover::launch(const LaunchContext& ctx) {
     // Fused: reduce KE + update xi/scale (last block computes scale)
     cudaMemsetAsync(state_->d_ke_temp, 0, sizeof(Real), stream);
     reduce_ke_and_update<<<grid, block, block * sizeof(Real), stream>>>(
-        f.vx, f.vy, f.vz, f.mass, state_->d_ke_temp,
+        f.atoms.vx, f.atoms.vy, f.atoms.vz, f.atoms.mass, state_->d_ke_temp,
         n, kMvv2e,
         state_->d_xi, state_->d_scale,
         state_->Q, ndof_kbT, half_dt,
@@ -134,7 +134,7 @@ void NoseHoover::launch(const LaunchContext& ctx) {
 
     // Scale velocities (reads scale written by the last block above)
     scale_vel<<<grid, block, 0, stream>>>(
-        f.vx, f.vy, f.vz, state_->d_scale, n);
+        f.atoms.vx, f.atoms.vy, f.atoms.vz, state_->d_scale, n);
 }
 
 void NoseHoover::destroy(const DestroyContext& ctx) {

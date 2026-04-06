@@ -1,6 +1,6 @@
 ---
 title: Frame Block-Model Refactor (molcrafts naming alignment)
-status: draft
+status: done
 created: 2026-04-04
 ---
 

@@ -1,5 +1,5 @@
 /// @file cpu/scf/native_integrals.cpp
-/// @brief Native C++ molecular integral implementations for s-type Gaussians.
+/// @brief Native C++ molecular integral implementations for s+p type Gaussians.
 ///
 /// Drop-in replacements for libcint functions. All formulas from:
 ///   Szabo & Ostlund, "Modern Quantum Chemistry" (1996), Ch. 3 (Appendix A).
@@ -31,6 +31,7 @@ static inline double dist2(const double a[3], const double b[3]) {
 
 double gto_norm(int l, double alpha) { return ATV::gto_norm(l, alpha); }
 double phys_norm(double alpha) { return ATV::phys_norm_s(alpha); }
+double phys_norm_p(double alpha) { return ATV::phys_norm_p(alpha); }
 
 // ── Phase 4 prerequisite: Boys function ───────────────────────────────
 
@@ -162,6 +163,1009 @@ double eri_ssss(const Shell& a, const Shell& b,
           }
       }
     return result;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// General integrals (s+p type, l_max=1) — Obara-Saika recurrence
+// ═══════════════════════════════════════════════════════════════════════
+
+// ── Angular momentum helpers ─────────────────────────────────────────
+
+/// @brief Get Cartesian angular momentum exponents for a shell.
+/// @details s-type (l=0): (0,0,0). p-type (l=1, cart=c): unit vector along c.
+///   Returns the angular momentum in each Cartesian direction via output array.
+/// @param sh    Shell descriptor.
+/// @param a_out Output array [3] with (a_x, a_y, a_z).
+static inline void cart_exponents(const Shell& sh, int a_out[3]) {
+    a_out[0] = a_out[1] = a_out[2] = 0;
+    if (sh.l == 1) a_out[sh.cart] = 1;
+}
+
+// ── 1D Obara-Saika overlap table ────────────────────────────────────
+
+/// @brief 1D overlap integrals S_{i,j} for i in [0, imax], j in [0, jmax].
+/// @details Uses the Obara-Saika recurrence:
+///   S_{i+1,j} = (P-A) * S_{ij} + (1/(2*gamma)) * (i*S_{i-1,j} + j*S_{i,j-1})
+///   S_{0,j+1} = (P-B) * S_{0,j} + (1/(2*gamma)) * j * S_{0,j-1}
+///   S_{0,0}   = sqrt(pi/gamma) * exp(-mu * d^2)  [1D factor]
+///
+///   The table is stored as S[i*(jmax+1)+j].
+///   Maximum needed: imax=1, jmax=3 for kinetic; imax=1, jmax=1 for overlap.
+/// @param PA     P_d - A_d for this direction.
+/// @param PB     P_d - B_d for this direction.
+/// @param inv2g  0.5 / gamma.
+/// @param S00    S_{0,0} = sqrt(pi/gamma) * exp(-mu * d^2).
+/// @param imax   Maximum first index.
+/// @param jmax   Maximum second index.
+/// @param S      Output array of size (imax+1)*(jmax+1).
+static void os_overlap_1d(double PA, double PB, double inv2g, double S00,
+                          int imax, int jmax, double* S) {
+    const int jstride = jmax + 1;
+
+    // Accessor lambda (row = i, col = j)
+    auto at = [&](int i, int j) -> double& { return S[i * jstride + j]; };
+
+    // Base: S_{0,0}
+    at(0, 0) = S00;
+
+    // Build row i=0: S_{0, j+1} = PB * S_{0,j} + inv2g * j * S_{0, j-1}
+    for (int j = 0; j < jmax; ++j) {
+        double prev = (j > 0) ? at(0, j - 1) : 0.0;
+        at(0, j + 1) = PB * at(0, j) + inv2g * j * prev;
+    }
+
+    // Build rows i=1..imax using:
+    //   S_{i+1, j} = PA * S_{i,j} + inv2g * (i * S_{i-1,j} + j * S_{i,j-1})
+    for (int i = 0; i < imax; ++i) {
+        for (int j = 0; j <= jmax; ++j) {
+            double s_im1_j = (i > 0) ? at(i - 1, j) : 0.0;
+            double s_i_jm1 = (j > 0) ? at(i, j - 1) : 0.0;
+            at(i + 1, j) = PA * at(i, j) + inv2g * (i * s_im1_j + j * s_i_jm1);
+        }
+    }
+}
+
+// ── Phase 6: General overlap integral ────────────────────────────────
+
+double overlap(const Shell& a, const Shell& b) {
+    int a_ang[3], b_ang[3];
+    cart_exponents(a, a_ang);
+    cart_exponents(b, b_ang);
+
+    double result = 0.0;
+
+    for (int p = 0; p < a.n_prim; ++p) {
+        for (int q = 0; q < b.n_prim; ++q) {
+            const double aa = a.alpha[p];
+            const double ab = b.alpha[q];
+            const double gamma = aa + ab;
+            const double mu = aa * ab / gamma;
+            const double inv2g = 0.5 / gamma;
+            const double sqrt_pi_g = std::sqrt(PI / gamma);
+
+            // Compute 3D overlap as product of 1D overlaps
+            double prim_ovlp = 1.0;
+            for (int d = 0; d < 3; ++d) {
+                const double dd = a.center[d] - b.center[d];
+                const double Pd = (aa * a.center[d] + ab * b.center[d]) / gamma;
+                const double PA = Pd - a.center[d];
+                const double PB = Pd - b.center[d];
+                const double S00 = sqrt_pi_g * std::exp(-mu * dd * dd);
+
+                // Only need S[0..1][0..1] for overlap
+                double S[4]; // 2x2 table
+                os_overlap_1d(PA, PB, inv2g, S00, 1, 1, S);
+
+                // Look up S[a_d][b_d]
+                prim_ovlp *= S[a_ang[d] * 2 + b_ang[d]];
+            }
+
+            result += a.coeff[p] * b.coeff[q] * prim_ovlp;
+        }
+    }
+    return result;
+}
+
+// ── Phase 7: General kinetic energy integral ─────────────────────────
+
+/// @brief 1D kinetic integral T_1d(i,j) from 1D overlaps and beta.
+/// @details Uses the direct second-derivative formula:
+///   d^2/dx^2 [x^j exp(-b x^2)] =
+///     j(j-1) x^{j-2} exp - 2b(2j+1) x^j exp + 4b^2 x^{j+2} exp
+///
+///   So T_1d(i,j) = -(1/2) * [j(j-1)*S(i,j-2) - 2b(2j+1)*S(i,j) + 4b^2*S(i,j+2)]
+///
+///   For j=0: T_1d(i,0) = b * S(i,0) - 2b^2 * S(i,2)
+///   For j=1: T_1d(i,1) = 3b * S(i,1) - 2b^2 * S(i,3)
+///
+/// @param i    Angular momentum on first center (0 or 1).
+/// @param j    Angular momentum on second center (0 or 1).
+/// @param beta Exponent of second Gaussian (alpha_b).
+/// @param S    1D overlap table (imax=1, jmax=3), stored as S[i*4+j].
+/// @return 1D kinetic integral.
+static inline double kinetic_1d(int i, int j, double beta, const double* S) {
+    const int jstride = 4; // jmax+1 = 3+1
+
+    // T_1d(i,j) = -(1/2) * [j(j-1)*S(i,j-2) - 2*beta*(2j+1)*S(i,j) + 4*beta^2*S(i,j+2)]
+    double s_ij = S[i * jstride + j];
+    double s_ijp2 = S[i * jstride + j + 2];
+    double s_ijm2 = (j >= 2) ? S[i * jstride + j - 2] : 0.0;
+
+    return -0.5 * (j * (j - 1) * s_ijm2
+                   - 2.0 * beta * (2 * j + 1) * s_ij
+                   + 4.0 * beta * beta * s_ijp2);
+}
+
+double kinetic(const Shell& a, const Shell& b) {
+    int a_ang[3], b_ang[3];
+    cart_exponents(a, a_ang);
+    cart_exponents(b, b_ang);
+
+    double result = 0.0;
+
+    for (int p = 0; p < a.n_prim; ++p) {
+        for (int q = 0; q < b.n_prim; ++q) {
+            const double aa = a.alpha[p];
+            const double ab = b.alpha[q];
+            const double gamma = aa + ab;
+            const double mu = aa * ab / gamma;
+            const double inv2g = 0.5 / gamma;
+            const double sqrt_pi_g = std::sqrt(PI / gamma);
+
+            // Pre-compute 1D overlap tables in each direction.
+            // For kinetic we need S(i, j+2), so jmax = max(b_ang[d]) + 2 = 3.
+            // imax = max(a_ang[d]) = 1.
+            double Sx[8], Sy[8], Sz[8]; // 2x4 tables
+            double* Sd[3] = {Sx, Sy, Sz};
+
+            // Also store the 1D S_{a_d, b_d} overlaps for the product
+            double S1d[3]; // S_{a_d, b_d} for each direction
+
+            for (int d = 0; d < 3; ++d) {
+                const double dd = a.center[d] - b.center[d];
+                const double Pd = (aa * a.center[d] + ab * b.center[d]) / gamma;
+                const double PA = Pd - a.center[d];
+                const double PB = Pd - b.center[d];
+                const double S00 = sqrt_pi_g * std::exp(-mu * dd * dd);
+
+                os_overlap_1d(PA, PB, inv2g, S00, 1, 3, Sd[d]);
+                S1d[d] = Sd[d][a_ang[d] * 4 + b_ang[d]];
+            }
+
+            // T_3D = sum_d { T_1d(a_d, b_d) * product_{e!=d} S_1d(a_e, b_e) }
+            double prim_kin = 0.0;
+            for (int d = 0; d < 3; ++d) {
+                double T1d_val = kinetic_1d(a_ang[d], b_ang[d], ab, Sd[d]);
+                double other = 1.0;
+                for (int e = 0; e < 3; ++e) {
+                    if (e != d) other *= S1d[e];
+                }
+                prim_kin += T1d_val * other;
+            }
+
+            result += a.coeff[p] * b.coeff[q] * prim_kin;
+        }
+    }
+    return result;
+}
+
+// ── Phase 8: General nuclear attraction integral ─────────────────────
+
+/// @brief Compute primitive nuclear attraction integral for one nucleus C
+///   using the McMurchie-Davidson scheme with Hermite Coulomb integrals.
+/// @details Expands the Cartesian overlap distribution in Hermite Gaussians:
+///   V(a,b) = (2*pi/gamma) * K_AB * sum_{tuv} E_x[t] E_y[u] E_z[v] R^0_{tuv}
+///
+///   E coefficients: E^{i,j}_t from Obara-Saika Hermite expansion.
+///   R integrals:    R^m_{t+1,u,v} = t*R^{m+1}_{t-1,u,v} + PC_x*R^{m+1}_{t,u,v}
+///                   R^m_{0,0,0}   = (-2*gamma)^m * F_m(gamma*|PC|^2)
+///
+///   For l_max=1: Ltot <= 2, requiring F_0..F_2.
+/// @param a_ang Angular momenta on center A (each 0 or 1).
+/// @param b_ang Angular momenta on center B (each 0 or 1).
+/// @param gamma Sum of exponents.
+/// @param PA    P - A (3D vector).
+/// @param PB    P - B (3D vector).
+/// @param PC    P - C (3D vector, C = nucleus position).
+/// @param K_AB  exp(-mu * |A-B|^2).
+/// @return The primitive nuclear attraction integral (without -Z prefactor).
+static double nuclear_prim_3d(const int a_ang[3], const int b_ang[3],
+                              double gamma, const double PA[3],
+                              const double PB[3], const double PC[3],
+                              double K_AB) {
+    const double inv2g = 0.5 / gamma;
+    const double prefactor = 2.0 * PI / gamma * K_AB;
+    const double PC2 = PC[0]*PC[0] + PC[1]*PC[1] + PC[2]*PC[2];
+    const double T = gamma * PC2;
+
+    // Compute Boys functions F_m for m = 0..2
+    double Fm[3];
+    for (int m = 0; m <= 2; ++m) {
+        Fm[m] = boys_fn(m, T);
+    }
+
+    // Step 1: McMurchie-Davidson E coefficients for each Cartesian direction.
+    // E^{i,j}_t: Hermite expansion coefficient, t = 0..i+j.
+    // Pre-computed analytically for all (i,j) combinations with i,j in {0,1}.
+    double E[3][3]; // E[d][t]
+    for (int d = 0; d < 3; ++d) {
+        const int ai = a_ang[d];
+        const int bj = b_ang[d];
+
+        if (ai == 0 && bj == 0) {
+            E[d][0] = 1.0;
+            E[d][1] = 0.0;
+            E[d][2] = 0.0;
+        } else if (ai == 1 && bj == 0) {
+            E[d][0] = PA[d];
+            E[d][1] = inv2g;
+            E[d][2] = 0.0;
+        } else if (ai == 0 && bj == 1) {
+            E[d][0] = PB[d];
+            E[d][1] = inv2g;
+            E[d][2] = 0.0;
+        } else { // ai == 1, bj == 1
+            E[d][0] = PA[d] * PB[d] + inv2g;
+            E[d][1] = inv2g * (PA[d] + PB[d]);
+            E[d][2] = inv2g * inv2g;
+        }
+    }
+
+    // Step 2: Hermite Coulomb integrals R^0_{t,u,v}.
+    // R^m_{0,0,0} = (-2*gamma)^m * F_m(T), then build up via recurrence.
+    // For l_max=1, Ltot <= 2, so we enumerate entries directly.
+    const int Lx = a_ang[0] + b_ang[0];
+    const int Ly = a_ang[1] + b_ang[1];
+    const int Lz = a_ang[2] + b_ang[2];
+    const int Ltot = Lx + Ly + Lz;
+
+    // R^m_{0,0,0} = (-2*gamma)^m * F_m(T)
+    double R000[3]; // R^m_{0,0,0} for m = 0..2
+    double neg2g = -2.0 * gamma;
+    double neg2g_pow = 1.0;
+    for (int m = 0; m <= Ltot; ++m) {
+        R000[m] = neg2g_pow * Fm[m];
+        neg2g_pow *= neg2g;
+    }
+
+    // Build R^0_{t,u,v} by direct enumeration (Ltot <= 2).
+    double R[3][3][3]; // R^0_{t,u,v}, t,u,v in {0..2}
+    // Initialize to zero
+    for (int t = 0; t < 3; ++t)
+        for (int u = 0; u < 3; ++u)
+            for (int v = 0; v < 3; ++v)
+                R[t][u][v] = 0.0;
+
+    R[0][0][0] = R000[0];
+
+    if (Ltot >= 1) {
+        // R^0_{1,0,0} = PC_x * R^1_{0,0,0}
+        R[1][0][0] = PC[0] * R000[1];
+        R[0][1][0] = PC[1] * R000[1];
+        R[0][0][1] = PC[2] * R000[1];
+    }
+
+    if (Ltot >= 2) {
+        // R^0_{2,0,0} = R000[1] + PC_x^2 * R000[2]
+        R[2][0][0] = R000[1] + PC[0] * PC[0] * R000[2];
+        R[0][2][0] = R000[1] + PC[1] * PC[1] * R000[2];
+        R[0][0][2] = R000[1] + PC[2] * PC[2] * R000[2];
+
+        // Cross terms: R^0_{1,1,0} = PC_x * PC_y * R000[2]
+        R[1][1][0] = PC[0] * PC[1] * R000[2];
+        R[1][0][1] = PC[0] * PC[2] * R000[2];
+        R[0][1][1] = PC[1] * PC[2] * R000[2];
+    }
+
+    // Step 3: Compute V = prefactor * sum_{t,u,v} E_x[t] * E_y[u] * E_z[v] * R[t][u][v]
+    double V = 0.0;
+    for (int t = 0; t <= Lx; ++t) {
+        for (int u = 0; u <= Ly; ++u) {
+            for (int v = 0; v <= Lz; ++v) {
+                V += E[0][t] * E[1][u] * E[2][v] * R[t][u][v];
+            }
+        }
+    }
+
+    return prefactor * V;
+}
+
+double nuclear(const Shell& a, const Shell& b,
+               const Atom* atoms, int natm) {
+    int a_ang[3], b_ang[3];
+    cart_exponents(a, a_ang);
+    cart_exponents(b, b_ang);
+
+    double V_total = 0.0;
+
+    for (int p = 0; p < a.n_prim; ++p) {
+        for (int q = 0; q < b.n_prim; ++q) {
+            const double aa = a.alpha[p];
+            const double ab = b.alpha[q];
+            const double gamma = aa + ab;
+            const double mu = aa * ab / gamma;
+            const double R2_AB = dist2(a.center, b.center);
+            const double K_AB = std::exp(-mu * R2_AB);
+
+            // Gaussian product center
+            double P[3], PA[3], PB[3];
+            for (int d = 0; d < 3; ++d) {
+                P[d] = (aa * a.center[d] + ab * b.center[d]) / gamma;
+                PA[d] = P[d] - a.center[d];
+                PB[d] = P[d] - b.center[d];
+            }
+
+            // Sum over all nuclei
+            for (int c = 0; c < natm; ++c) {
+                double PC[3];
+                for (int d = 0; d < 3; ++d) {
+                    PC[d] = P[d] - atoms[c].pos[d];
+                }
+
+                double V_prim = nuclear_prim_3d(a_ang, b_ang, gamma, PA, PB, PC, K_AB);
+                V_total += a.coeff[p] * b.coeff[q] * (-atoms[c].Z) * V_prim;
+            }
+        }
+    }
+    return V_total;
+}
+
+// ── Phase 9: General two-electron repulsion integral ─────────────────
+
+/// @brief Compute a primitive ERI using McMurchie-Davidson approach.
+/// @details For four primitive Gaussians with angular momenta a_ang, b_ang,
+///   c_ang, d_ang (each component 0 or 1), computes the two-electron integral
+///   (ab|cd) in chemist's notation.
+///
+///   Uses McMurchie-Davidson expansion with Hermite Coulomb integrals R_{tuv}.
+///   For l_max=1, total angular momentum Ltot <= 4, requiring Boys functions
+///   up to F_4.
+///
+/// @return Primitive ERI value (without contraction coefficients).
+static double eri_prim_md(const int a_ang[3], const int b_ang[3],
+                          const int c_ang[3], const int d_ang[3],
+                          double alpha_a, const double A[3],
+                          double alpha_b, const double B[3],
+                          double alpha_c, const double C[3],
+                          double alpha_d, const double D[3]) {
+    const double gamma1 = alpha_a + alpha_b;
+    const double gamma2 = alpha_c + alpha_d;
+    const double delta = gamma1 + gamma2;
+    const double mu1 = alpha_a * alpha_b / gamma1;
+    const double mu2 = alpha_c * alpha_d / gamma2;
+    const double rho = gamma1 * gamma2 / delta;
+    const double inv2g1 = 0.5 / gamma1;
+    const double inv2g2 = 0.5 / gamma2;
+
+    // Gaussian product centers
+    double P[3], Q[3], PA[3], PB[3], QC[3], QD[3], PQ[3];
+    double R2_AB = 0.0, R2_CD = 0.0, PQ2 = 0.0;
+    for (int d = 0; d < 3; ++d) {
+        P[d] = (alpha_a * A[d] + alpha_b * B[d]) / gamma1;
+        Q[d] = (alpha_c * C[d] + alpha_d * D[d]) / gamma2;
+        PA[d] = P[d] - A[d];
+        PB[d] = P[d] - B[d];
+        QC[d] = Q[d] - C[d];
+        QD[d] = Q[d] - D[d];
+        PQ[d] = P[d] - Q[d];
+        double dAB = A[d] - B[d];
+        double dCD = C[d] - D[d];
+        R2_AB += dAB * dAB;
+        R2_CD += dCD * dCD;
+        PQ2 += PQ[d] * PQ[d];
+    }
+
+    const double K_AB = std::exp(-mu1 * R2_AB);
+    const double K_CD = std::exp(-mu2 * R2_CD);
+    const double T = rho * PQ2;
+
+    // Prefactor: 2*pi^{5/2} / (gamma1 * gamma2 * sqrt(delta))
+    const double prefactor = 2.0 * std::pow(PI, 2.5) / (gamma1 * gamma2 * std::sqrt(delta))
+                           * K_AB * K_CD;
+
+    // Angular momentum totals per direction
+    const int Lx1 = a_ang[0] + b_ang[0]; // bra x angular momentum
+    const int Ly1 = a_ang[1] + b_ang[1];
+    const int Lz1 = a_ang[2] + b_ang[2];
+    const int Lx2 = c_ang[0] + d_ang[0]; // ket x angular momentum
+    const int Ly2 = c_ang[1] + d_ang[1];
+    const int Lz2 = c_ang[2] + d_ang[2];
+    const int Ltot = Lx1 + Ly1 + Lz1 + Lx2 + Ly2 + Lz2;
+
+    // Boys functions F_m(T) for m = 0..Ltot (max 4)
+    double Fm[5]; // max Ltot = 4
+    for (int m = 0; m <= Ltot; ++m) {
+        Fm[m] = boys_fn(m, T);
+    }
+
+    // E coefficients for bra pair (a,b) in each direction
+    // E1[d][t] for t = 0..Lx1 (or Ly1, Lz1)
+    double E1[3][3]; // E^{a_d, b_d}_t for bra, max t = 2
+    for (int d = 0; d < 3; ++d) {
+        E1[d][0] = E1[d][1] = E1[d][2] = 0.0;
+        const int ai = a_ang[d];
+        const int bj = b_ang[d];
+
+        if (ai == 0 && bj == 0) {
+            E1[d][0] = 1.0;
+        } else if (ai == 1 && bj == 0) {
+            E1[d][0] = PA[d];
+            E1[d][1] = inv2g1;
+        } else if (ai == 0 && bj == 1) {
+            E1[d][0] = PB[d];
+            E1[d][1] = inv2g1;
+        } else { // ai == 1, bj == 1
+            E1[d][0] = PA[d] * PB[d] + inv2g1;
+            E1[d][1] = inv2g1 * (PA[d] + PB[d]);
+            E1[d][2] = inv2g1 * inv2g1;
+        }
+    }
+
+    // E coefficients for ket pair (c,d)
+    double E2[3][3]; // E^{c_d, d_d}_t for ket, max t = 2
+    for (int d = 0; d < 3; ++d) {
+        E2[d][0] = E2[d][1] = E2[d][2] = 0.0;
+        const int ci = c_ang[d];
+        const int dj = d_ang[d];
+
+        if (ci == 0 && dj == 0) {
+            E2[d][0] = 1.0;
+        } else if (ci == 1 && dj == 0) {
+            E2[d][0] = QC[d];
+            E2[d][1] = inv2g2;
+        } else if (ci == 0 && dj == 1) {
+            E2[d][0] = QD[d];
+            E2[d][1] = inv2g2;
+        } else { // ci == 1, dj == 1
+            E2[d][0] = QC[d] * QD[d] + inv2g2;
+            E2[d][1] = inv2g2 * (QC[d] + QD[d]);
+            E2[d][2] = inv2g2 * inv2g2;
+        }
+    }
+
+    // Hermite Coulomb integrals R^0_{t,u,v}.
+    // ERI formula: (ab|cd) = prefactor * sum_{t,u,v} sum_{tau,nu,phi}
+    //   E1[t] E1[u] E1[v] * E2[tau] E2[nu] E2[phi] *
+    //   (-1)^{tau+nu+phi} * R^0_{t+tau, u+nu, v+phi}
+    //
+    // R recursion: R^m_{t+1,u,v} = t*R^{m+1}_{t-1,u,v} + PQ_x*R^{m+1}_{t,u,v}
+    // Starting:    R^m_{0,0,0} = (-2*rho)^m * F_m(T)
+
+    const int Rx_max = Lx1 + Lx2;
+    const int Ry_max = Ly1 + Ly2;
+    const int Rz_max = Lz1 + Lz2;
+
+    // R table: R_tab[m][t][u][v]. Build from m=Ltot down to m=0.
+    // Valid entries satisfy m + t + u + v <= Ltot.
+    // For l_max=1: Ltot <= 4, so 5^4 = 625 doubles on stack.
+    double R_tab[5][5][5][5]; // [m][t][u][v]
+    // Zero-initialize
+    for (int m = 0; m < 5; ++m)
+        for (int t = 0; t < 5; ++t)
+            for (int u = 0; u < 5; ++u)
+                for (int v = 0; v < 5; ++v)
+                    R_tab[m][t][u][v] = 0.0;
+
+    // Initialize: R^m_{0,0,0} for m = 0..Ltot
+    double neg2rho = -2.0 * rho;
+    double neg2rho_pow = 1.0;
+    for (int m = 0; m <= Ltot; ++m) {
+        R_tab[m][0][0][0] = neg2rho_pow * Fm[m];
+        neg2rho_pow *= neg2rho;
+    }
+
+    // Build R^m for m = Ltot-1 down to 0.
+    // At each m, compute all R^m_{t,u,v} with t+u+v <= Ltot-m.
+    // Three passes per level: x-pass (u=v=0), y-pass (v=0), z-pass.
+    for (int m = Ltot - 1; m >= 0; --m) {
+        const int max_tuv = Ltot - m;
+
+        // x-pass: R^m_{t,0,0} = (t-1)*R^{m+1}_{t-2,0,0} + PQ_x*R^{m+1}_{t-1,0,0}
+        for (int t = 1; t <= max_tuv && t <= Rx_max; ++t) {
+            R_tab[m][t][0][0] = PQ[0] * R_tab[m+1][t-1][0][0];
+            if (t >= 2) {
+                R_tab[m][t][0][0] += (t - 1) * R_tab[m+1][t-2][0][0];
+            }
+        }
+
+        // y-pass: R^m_{t,u,0} for u >= 1
+        for (int t = 0; t <= Rx_max && t <= max_tuv; ++t) {
+            for (int u = 1; u <= Ry_max && t + u <= max_tuv; ++u) {
+                R_tab[m][t][u][0] = PQ[1] * R_tab[m+1][t][u-1][0];
+                if (u >= 2) {
+                    R_tab[m][t][u][0] += (u - 1) * R_tab[m+1][t][u-2][0];
+                }
+            }
+        }
+
+        // z-pass: build R^m_{t, u, v} for v >= 1
+        for (int t = 0; t <= Rx_max && t <= max_tuv; ++t) {
+            for (int u = 0; u <= Ry_max && t + u <= max_tuv; ++u) {
+                for (int v = 1; v <= Rz_max && t + u + v <= max_tuv; ++v) {
+                    R_tab[m][t][u][v] = PQ[2] * R_tab[m+1][t][u][v-1];
+                    if (v >= 2) {
+                        R_tab[m][t][u][v] += (v - 1) * R_tab[m+1][t][u][v-2];
+                    }
+                }
+            }
+        }
+    }
+
+    // Now compute the ERI:
+    // (ab|cd) = prefactor * sum_{t,u,v} sum_{tau,nu,phi}
+    //           E1_x[t] * E1_y[u] * E1_z[v] *
+    //           E2_x[tau] * E2_y[nu] * E2_z[phi] *
+    //           (-1)^{tau+nu+phi} * R^0_{t+tau, u+nu, v+phi}
+
+    double eri_val = 0.0;
+    for (int t = 0; t <= Lx1; ++t) {
+        for (int u = 0; u <= Ly1; ++u) {
+            for (int v = 0; v <= Lz1; ++v) {
+                const double e1_tuv = E1[0][t] * E1[1][u] * E1[2][v];
+                if (e1_tuv == 0.0) continue;
+                for (int tau = 0; tau <= Lx2; ++tau) {
+                    for (int nu = 0; nu <= Ly2; ++nu) {
+                        for (int phi = 0; phi <= Lz2; ++phi) {
+                            const double e2_tnp = E2[0][tau] * E2[1][nu] * E2[2][phi];
+                            if (e2_tnp == 0.0) continue;
+                            int sign = ((tau + nu + phi) & 1) ? -1 : 1;
+                            eri_val += e1_tuv * e2_tnp * sign
+                                     * R_tab[0][t+tau][u+nu][v+phi];
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return prefactor * eri_val;
+}
+
+double eri(const Shell& a, const Shell& b,
+           const Shell& c, const Shell& d) {
+    int a_ang[3], b_ang[3], c_ang[3], d_ang[3];
+    cart_exponents(a, a_ang);
+    cart_exponents(b, b_ang);
+    cart_exponents(c, c_ang);
+    cart_exponents(d, d_ang);
+
+    double result = 0.0;
+
+    for (int p = 0; p < a.n_prim; ++p) {
+      for (int q = 0; q < b.n_prim; ++q) {
+        for (int r = 0; r < c.n_prim; ++r) {
+          for (int s = 0; s < d.n_prim; ++s) {
+            result += a.coeff[p] * b.coeff[q] * c.coeff[r] * d.coeff[s]
+                    * eri_prim_md(a_ang, b_ang, c_ang, d_ang,
+                                  a.alpha[p], a.center, b.alpha[q], b.center,
+                                  c.alpha[r], c.center, d.alpha[s], d.center);
+          }
+        }
+      }
+    }
+    return result;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// General primitive functions (l up to 2 per component for derivatives)
+// ═══════════════════════════════════════════════════════════════════════
+
+double overlap_prim_3d(const int a_ang[3], const int b_ang[3],
+                       double alpha_a, const double A[3],
+                       double alpha_b, const double B[3]) {
+    const double gamma = alpha_a + alpha_b;
+    const double mu = alpha_a * alpha_b / gamma;
+    const double inv2g = 0.5 / gamma;
+    const double sqrt_pi_g = std::sqrt(PI / gamma);
+
+    double result = 1.0;
+    for (int d = 0; d < 3; ++d) {
+        const double dd = A[d] - B[d];
+        const double Pd = (alpha_a * A[d] + alpha_b * B[d]) / gamma;
+        const double PA = Pd - A[d];
+        const double PB = Pd - B[d];
+        const double S00 = sqrt_pi_g * std::exp(-mu * dd * dd);
+
+        // Build 1D overlap table up to (imax, jmax)
+        const int imax = a_ang[d];
+        const int jmax = b_ang[d];
+        // Need table of size (imax+1)*(jmax+1), max 3x3=9
+        double S[9]; // up to 3x3
+        os_overlap_1d(PA, PB, inv2g, S00, imax, jmax, S);
+
+        result *= S[imax * (jmax + 1) + jmax];
+    }
+    return result;
+}
+
+double kinetic_prim_3d(const int a_ang[3], const int b_ang[3],
+                       double alpha_a, const double A[3],
+                       double alpha_b, const double B[3]) {
+    const double gamma = alpha_a + alpha_b;
+    const double mu = alpha_a * alpha_b / gamma;
+    const double inv2g = 0.5 / gamma;
+    const double sqrt_pi_g = std::sqrt(PI / gamma);
+
+    // Determine uniform table size across all directions.
+    // For kinetic, need S(i, j+2) in each direction.
+    // imax = max(a_ang[d]) across all d, jmax = max(b_ang[d]) + 2.
+    int imax_all = a_ang[0];
+    int jmax_base = b_ang[0];
+    for (int d = 1; d < 3; ++d) {
+        if (a_ang[d] > imax_all) imax_all = a_ang[d];
+        if (b_ang[d] > jmax_base) jmax_base = b_ang[d];
+    }
+    const int im = imax_all;       // max 2
+    const int jm = jmax_base + 2;  // max 4
+    const int jstride = jm + 1;    // max 5
+
+    // Build 1D overlap tables in each direction with uniform size.
+    // Table size: (im+1)*(jm+1) = max 3*5 = 15 per direction.
+    double Sd[3][15];
+    double S1d[3];
+
+    for (int d = 0; d < 3; ++d) {
+        const double dd = A[d] - B[d];
+        const double Pd = (alpha_a * A[d] + alpha_b * B[d]) / gamma;
+        const double PA = Pd - A[d];
+        const double PB = Pd - B[d];
+        const double S00 = sqrt_pi_g * std::exp(-mu * dd * dd);
+
+        os_overlap_1d(PA, PB, inv2g, S00, im, jm, Sd[d]);
+        S1d[d] = Sd[d][a_ang[d] * jstride + b_ang[d]];
+    }
+
+    // T_3D = sum_d { T_1d(a_d, b_d) * product_{e!=d} S_1d(a_e, b_e) }
+    double prim_kin = 0.0;
+    for (int d = 0; d < 3; ++d) {
+        const int i = a_ang[d];
+        const int j = b_ang[d];
+        const double beta = alpha_b;
+
+        double s_ij   = Sd[d][i * jstride + j];
+        double s_ijp2 = Sd[d][i * jstride + j + 2];
+        double s_ijm2 = (j >= 2) ? Sd[d][i * jstride + j - 2] : 0.0;
+
+        double T1d_val = -0.5 * (j * (j - 1) * s_ijm2
+                                 - 2.0 * beta * (2 * j + 1) * s_ij
+                                 + 4.0 * beta * beta * s_ijp2);
+
+        double other = 1.0;
+        for (int e = 0; e < 3; ++e) {
+            if (e != d) other *= S1d[e];
+        }
+        prim_kin += T1d_val * other;
+    }
+    return prim_kin;
+}
+
+/// @brief Compute McMurchie-Davidson E coefficients for angular momentum up to 2.
+/// @details E^{i,j}_t for the Hermite expansion of a Cartesian Gaussian pair.
+///   Supports i, j in {0, 1, 2}. Output stored in E[0..i+j].
+/// @param ai Angular momentum on center A for this direction (0, 1, or 2).
+/// @param bj Angular momentum on center B for this direction (0, 1, or 2).
+/// @param PA P_d - A_d for this direction.
+/// @param PB P_d - B_d for this direction.
+/// @param inv2g 0.5 / gamma.
+/// @param E Output array [5] (max t = ai + bj = 4).
+static void md_e_coeffs(int ai, int bj, double PA, double PB, double inv2g,
+                         double E[5]) {
+    E[0] = E[1] = E[2] = E[3] = E[4] = 0.0;
+
+    // Build E^{i,0}_t first (increment first index only):
+    // E^{0,0}_0 = 1
+    // E^{1,0}_0 = PA,         E^{1,0}_1 = inv2g
+    // E^{2,0}_0 = PA^2+inv2g, E^{2,0}_1 = 2*PA*inv2g, E^{2,0}_2 = inv2g^2
+    //
+    // Recurrence: E^{i+1,j}_t = (1/(2*(i+j+1))) * ... actually use the
+    // explicit Obara-Saika Hermite expansion recurrence:
+    //   E^{i+1,j}_t = inv2g * E^{i,j}_{t-1} + PA * E^{i,j}_t + (t+1) * E^{i,j}_{t+1}
+    //   (But this is the wrong direction.)
+    //
+    // Standard McMurchie-Davidson E recurrence:
+    //   E^{i+1,j}_t = (1/(2p)) * E^{i,j}_{t-1} + X_PA * E^{i,j}_t + (t+1)*E^{i,j}_{t+1}
+    // where p = gamma, X_PA = PA.
+    //
+    // Build by incrementing i from 0, then j from 0.
+
+    // Step 1: Build E^{i,0}_t for i = 0..ai
+    // Use temporary buffer E_i0[i][t], max i=2, max t=2
+    double E_buf[3][5]; // [i][t], support up to i=2, t=4
+    for (int ii = 0; ii < 3; ++ii)
+        for (int tt = 0; tt < 5; ++tt)
+            E_buf[ii][tt] = 0.0;
+
+    E_buf[0][0] = 1.0;
+
+    if (ai >= 1) {
+        // E^{1,0}_t = inv2g * E^{0,0}_{t-1} + PA * E^{0,0}_t + (t+1)*E^{0,0}_{t+1}
+        for (int t = 0; t <= 1; ++t) {
+            double etm1 = (t > 0) ? E_buf[0][t - 1] : 0.0;
+            double et   = E_buf[0][t];
+            double etp1 = E_buf[0][t + 1];
+            E_buf[1][t] = inv2g * etm1 + PA * et + (t + 1) * etp1;
+        }
+    }
+
+    if (ai >= 2) {
+        for (int t = 0; t <= 2; ++t) {
+            double etm1 = (t > 0) ? E_buf[1][t - 1] : 0.0;
+            double et   = E_buf[1][t];
+            double etp1 = E_buf[1][t + 1];
+            E_buf[2][t] = inv2g * etm1 + PA * et + (t + 1) * etp1;
+        }
+    }
+
+    // Step 2: From E^{ai,0}_t, build E^{ai,j}_t for j = 1..bj
+    // Recurrence for incrementing j:
+    //   E^{i,j+1}_t = inv2g * E^{i,j}_{t-1} + PB * E^{i,j}_t + (t+1)*E^{i,j}_{t+1}
+    //
+    // Copy E^{ai,0} into working buffer, then increment j.
+    double W[2][5]; // double-buffer for j-recurrence
+    int cur = 0;
+    for (int t = 0; t < 5; ++t)
+        W[cur][t] = E_buf[ai][t];
+
+    for (int jj = 0; jj < bj; ++jj) {
+        int nxt = 1 - cur;
+        for (int t = 0; t < 5; ++t)
+            W[nxt][t] = 0.0;
+        int tmax = ai + jj + 1; // max t after incrementing j
+        for (int t = 0; t <= tmax && t < 5; ++t) {
+            double etm1 = (t > 0) ? W[cur][t - 1] : 0.0;
+            double et   = W[cur][t];
+            double etp1 = (t + 1 < 5) ? W[cur][t + 1] : 0.0;
+            W[nxt][t] = inv2g * etm1 + PB * et + (t + 1) * etp1;
+        }
+        cur = nxt;
+    }
+
+    // Copy result
+    for (int t = 0; t <= ai + bj && t < 5; ++t)
+        E[t] = W[cur][t];
+}
+
+double nuclear_prim(const int a_ang[3], const int b_ang[3],
+                    double gamma, const double PA[3],
+                    const double PB[3], const double PC[3],
+                    double K_AB) {
+    const double inv2g = 0.5 / gamma;
+    const double prefactor = 2.0 * PI / gamma * K_AB;
+    const double PC2 = PC[0]*PC[0] + PC[1]*PC[1] + PC[2]*PC[2];
+    const double T = gamma * PC2;
+
+    // Angular momentum totals per direction
+    const int Lx = a_ang[0] + b_ang[0];
+    const int Ly = a_ang[1] + b_ang[1];
+    const int Lz = a_ang[2] + b_ang[2];
+    const int Ltot = Lx + Ly + Lz; // max 6 for derivative of p-type
+
+    // Boys functions F_m for m = 0..Ltot
+    double Fm[7]; // max Ltot = 6
+    for (int m = 0; m <= Ltot; ++m) {
+        Fm[m] = boys_fn(m, T);
+    }
+
+    // E coefficients for each direction (support i,j up to 2)
+    double E[3][5]; // E[d][t], max t = 4
+    for (int d = 0; d < 3; ++d) {
+        md_e_coeffs(a_ang[d], b_ang[d], PA[d], PB[d], inv2g, E[d]);
+    }
+
+    // R^m_{0,0,0} = (-2*gamma)^m * F_m(T)
+    double R000[7]; // m = 0..Ltot
+    double neg2g = -2.0 * gamma;
+    double neg2g_pow = 1.0;
+    for (int m = 0; m <= Ltot; ++m) {
+        R000[m] = neg2g_pow * Fm[m];
+        neg2g_pow *= neg2g;
+    }
+
+    // Build R^0_{t,u,v} by recurrence. Table up to (Lx, Ly, Lz).
+    // R^m_{t+1,u,v} = t*R^{m+1}_{t-1,u,v} + PC_x*R^{m+1}_{t,u,v}
+    // We need R_tab[m][t][u][v] for m = 0..Ltot.
+    // Max indices: Lx=4, Ly=4, Lz=4 (unlikely but safe), Ltot=6.
+    // Use 7^4 table.
+    const int RMAX = 7;
+    double R_tab[RMAX][5][5][5]; // [m][t][u][v]
+    for (int m = 0; m < RMAX; ++m)
+        for (int t = 0; t < 5; ++t)
+            for (int u = 0; u < 5; ++u)
+                for (int v = 0; v < 5; ++v)
+                    R_tab[m][t][u][v] = 0.0;
+
+    // Initialize: R^m_{0,0,0}
+    for (int m = 0; m <= Ltot; ++m)
+        R_tab[m][0][0][0] = R000[m];
+
+    // Build R^m for m = Ltot-1 down to 0.
+    for (int m = Ltot - 1; m >= 0; --m) {
+        const int max_tuv = Ltot - m;
+
+        // x-pass
+        for (int t = 1; t <= Lx && t <= max_tuv; ++t) {
+            R_tab[m][t][0][0] = PC[0] * R_tab[m+1][t-1][0][0];
+            if (t >= 2)
+                R_tab[m][t][0][0] += (t - 1) * R_tab[m+1][t-2][0][0];
+        }
+
+        // y-pass
+        for (int t = 0; t <= Lx && t <= max_tuv; ++t) {
+            for (int u = 1; u <= Ly && t + u <= max_tuv; ++u) {
+                R_tab[m][t][u][0] = PC[1] * R_tab[m+1][t][u-1][0];
+                if (u >= 2)
+                    R_tab[m][t][u][0] += (u - 1) * R_tab[m+1][t][u-2][0];
+            }
+        }
+
+        // z-pass
+        for (int t = 0; t <= Lx && t <= max_tuv; ++t) {
+            for (int u = 0; u <= Ly && t + u <= max_tuv; ++u) {
+                for (int v = 1; v <= Lz && t + u + v <= max_tuv; ++v) {
+                    R_tab[m][t][u][v] = PC[2] * R_tab[m+1][t][u][v-1];
+                    if (v >= 2)
+                        R_tab[m][t][u][v] += (v - 1) * R_tab[m+1][t][u][v-2];
+                }
+            }
+        }
+    }
+
+    // Compute V = prefactor * sum_{t,u,v} E_x[t] * E_y[u] * E_z[v] * R^0[t][u][v]
+    double V = 0.0;
+    for (int t = 0; t <= Lx; ++t) {
+        for (int u = 0; u <= Ly; ++u) {
+            for (int v = 0; v <= Lz; ++v) {
+                V += E[0][t] * E[1][u] * E[2][v] * R_tab[0][t][u][v];
+            }
+        }
+    }
+
+    return prefactor * V;
+}
+
+double eri_prim(const int a_ang[3], const int b_ang[3],
+                const int c_ang[3], const int d_ang[3],
+                double alpha_a, const double A[3],
+                double alpha_b, const double B[3],
+                double alpha_c, const double C[3],
+                double alpha_d, const double D[3]) {
+    const double gamma1 = alpha_a + alpha_b;
+    const double gamma2 = alpha_c + alpha_d;
+    const double delta = gamma1 + gamma2;
+    const double mu1 = alpha_a * alpha_b / gamma1;
+    const double mu2 = alpha_c * alpha_d / gamma2;
+    const double rho = gamma1 * gamma2 / delta;
+    const double inv2g1 = 0.5 / gamma1;
+    const double inv2g2 = 0.5 / gamma2;
+
+    // Gaussian product centers
+    double P[3], Q[3], PA[3], PB[3], QC[3], QD[3], PQ[3];
+    double R2_AB = 0.0, R2_CD = 0.0, PQ2 = 0.0;
+    for (int d = 0; d < 3; ++d) {
+        P[d] = (alpha_a * A[d] + alpha_b * B[d]) / gamma1;
+        Q[d] = (alpha_c * C[d] + alpha_d * D[d]) / gamma2;
+        PA[d] = P[d] - A[d];
+        PB[d] = P[d] - B[d];
+        QC[d] = Q[d] - C[d];
+        QD[d] = Q[d] - D[d];
+        PQ[d] = P[d] - Q[d];
+        double dAB = A[d] - B[d];
+        double dCD = C[d] - D[d];
+        R2_AB += dAB * dAB;
+        R2_CD += dCD * dCD;
+        PQ2 += PQ[d] * PQ[d];
+    }
+
+    const double K_AB = std::exp(-mu1 * R2_AB);
+    const double K_CD = std::exp(-mu2 * R2_CD);
+    const double T = rho * PQ2;
+
+    // Prefactor: 2*pi^{5/2} / (gamma1 * gamma2 * sqrt(delta))
+    const double prefactor = 2.0 * std::pow(PI, 2.5) / (gamma1 * gamma2 * std::sqrt(delta))
+                           * K_AB * K_CD;
+
+    // Angular momentum totals per direction
+    const int Lx1 = a_ang[0] + b_ang[0];
+    const int Ly1 = a_ang[1] + b_ang[1];
+    const int Lz1 = a_ang[2] + b_ang[2];
+    const int Lx2 = c_ang[0] + d_ang[0];
+    const int Ly2 = c_ang[1] + d_ang[1];
+    const int Lz2 = c_ang[2] + d_ang[2];
+    const int Ltot = Lx1 + Ly1 + Lz1 + Lx2 + Ly2 + Lz2; // max 8 for derivative
+
+    // Boys functions F_m(T) for m = 0..Ltot
+    double Fm[9]; // max Ltot = 8
+    for (int m = 0; m <= Ltot; ++m) {
+        Fm[m] = boys_fn(m, T);
+    }
+
+    // E coefficients for bra pair (a,b) using general routine
+    double E1[3][5]; // max t = 4
+    for (int d = 0; d < 3; ++d) {
+        md_e_coeffs(a_ang[d], b_ang[d], PA[d], PB[d], inv2g1, E1[d]);
+    }
+
+    // E coefficients for ket pair (c,d)
+    double E2[3][5]; // max t = 4
+    for (int d = 0; d < 3; ++d) {
+        md_e_coeffs(c_ang[d], d_ang[d], QC[d], QD[d], inv2g2, E2[d]);
+    }
+
+    // R table
+    const int Rx_max = Lx1 + Lx2;
+    const int Ry_max = Ly1 + Ly2;
+    const int Rz_max = Lz1 + Lz2;
+
+    // R_tab[m][t][u][v], max Ltot=8, max per-dir=4
+    const int RMAX = 9;
+    const int DMAX = 5;
+    double R_tab[RMAX][DMAX][DMAX][DMAX];
+    for (int m = 0; m < RMAX; ++m)
+        for (int t = 0; t < DMAX; ++t)
+            for (int u = 0; u < DMAX; ++u)
+                for (int v = 0; v < DMAX; ++v)
+                    R_tab[m][t][u][v] = 0.0;
+
+    // Initialize: R^m_{0,0,0}
+    double neg2rho = -2.0 * rho;
+    double neg2rho_pow = 1.0;
+    for (int m = 0; m <= Ltot; ++m) {
+        R_tab[m][0][0][0] = neg2rho_pow * Fm[m];
+        neg2rho_pow *= neg2rho;
+    }
+
+    // Build R^m for m = Ltot-1 down to 0
+    for (int m = Ltot - 1; m >= 0; --m) {
+        const int max_tuv = Ltot - m;
+
+        for (int t = 1; t <= Rx_max && t <= max_tuv; ++t) {
+            R_tab[m][t][0][0] = PQ[0] * R_tab[m+1][t-1][0][0];
+            if (t >= 2)
+                R_tab[m][t][0][0] += (t - 1) * R_tab[m+1][t-2][0][0];
+        }
+
+        for (int t = 0; t <= Rx_max && t <= max_tuv; ++t) {
+            for (int u = 1; u <= Ry_max && t + u <= max_tuv; ++u) {
+                R_tab[m][t][u][0] = PQ[1] * R_tab[m+1][t][u-1][0];
+                if (u >= 2)
+                    R_tab[m][t][u][0] += (u - 1) * R_tab[m+1][t][u-2][0];
+            }
+        }
+
+        for (int t = 0; t <= Rx_max && t <= max_tuv; ++t) {
+            for (int u = 0; u <= Ry_max && t + u <= max_tuv; ++u) {
+                for (int v = 1; v <= Rz_max && t + u + v <= max_tuv; ++v) {
+                    R_tab[m][t][u][v] = PQ[2] * R_tab[m+1][t][u][v-1];
+                    if (v >= 2)
+                        R_tab[m][t][u][v] += (v - 1) * R_tab[m+1][t][u][v-2];
+                }
+            }
+        }
+    }
+
+    // Compute ERI
+    double eri_val = 0.0;
+    for (int t = 0; t <= Lx1; ++t) {
+        for (int u = 0; u <= Ly1; ++u) {
+            for (int v = 0; v <= Lz1; ++v) {
+                const double e1_tuv = E1[0][t] * E1[1][u] * E1[2][v];
+                if (e1_tuv == 0.0) continue;
+                for (int tau = 0; tau <= Lx2; ++tau) {
+                    for (int nu = 0; nu <= Ly2; ++nu) {
+                        for (int phi = 0; phi <= Lz2; ++phi) {
+                            const double e2_tnp = E2[0][tau] * E2[1][nu] * E2[2][phi];
+                            if (e2_tnp == 0.0) continue;
+                            int sign = ((tau + nu + phi) & 1) ? -1 : 1;
+                            eri_val += e1_tuv * e2_tnp * sign
+                                     * R_tab[0][t+tau][u+nu][v+phi];
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return prefactor * eri_val;
 }
 
 } // namespace native

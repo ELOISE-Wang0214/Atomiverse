@@ -77,7 +77,7 @@ void LJ::launch(const LaunchContext& ctx) {
     int block = cuda::kDefaultBlock;
     int grid = cuda::grid_size(max_pairs);
     cuda::kernels::lj_force<<<grid, block, block * sizeof(Real), stream>>>(
-        frame.fx, frame.fy, frame.fz, frame.energy,
+        frame.atoms.fx, frame.atoms.fy, frame.atoms.fz, frame.energy,
         frame.pairs.i, frame.pairs.j, frame.pairs.dx, frame.pairs.dy,
         frame.pairs.dz, frame.pairs.dist,
         epsilon_, sigma_, cutoff_, v_shift_, frame.pairs.n_pairs);

@@ -1,138 +1,96 @@
-"""Atomiverse: molecular simulation compute backend.
+"""Atomiverse: molecular simulation compute backend for molpy.
 
-Provides CPU (and optionally CUDA) simulation drivers that operate on
-molpy Frame objects via zero-copy numpy transfer.
+Users work with ``mp.Frame`` — Atomiverse handles conversion internally.
+
+Example — MD::
+
+    import molpy as mp
+    import atomiverse as av
+
+    frame = mp.Frame({"atoms": mp.Block({
+        "x": [0, 3.4], "y": [0, 0], "z": [0, 0],
+        "type": [0, 0], "mass": [39.948, 39.948],
+    })})
+    frame.box = mp.Box(np.eye(3) * 30.0)
+
+    sim = av.MD(dt=0.001)
+    sim.add(av.InitVelocity(temperature=10.0, seed=42))
+    sim.on("force").add(av.NeighborList(cutoff=8.5), order=-10)
+    sim.on("force").add(av.LJ(epsilon=0.0104, sigma=3.4, cutoff=8.5))
+    sim.on("end_of_step").add(av.Thermo(freq=100))
+    sim.run(frame, 1000)
+
+Example — RHF::
+
+    frame = mp.Frame({"atoms": mp.Block({
+        "x": [0, 0.74], "y": [0, 0], "z": [0, 0],
+        "type": [1, 1], "mass": [1.008, 1.008],
+    })})
+    frame.box = mp.Box(np.eye(3) * 100.0)
+
+    rhf = av.RHF(frame, basis="sto-3g")
+    result = rhf.solve(tol=1e-10)
+    print(result.energy)
+
+Example — Unified SCF::
+
+    scf = av.SCF(frame, method="uks", xc="PBE")
+    result = scf.solve()
+    print(result.xc_energy)
+
+Example — Geometry Optimization::
+
+    opt = av.GeometryOptimizer(frame, method="rhf")
+    result = opt.run()
+    print(result.final_energy)
 """
 
-try:
-    from atomiverse._atomiverse import (  # installed wheel
-        CpuFrame, MD, Phase, PhaseBuilder,
-        VelocityVerlet, InitVelocity, NoseHoover,
-        LJ, NeighborList, HarmonicBond, HarmonicAngle, MultiHarmonicDihedral,
-        Thermo,
-        # SCF
-        IntegralPack, RHFResult, UHFResult, UKSResult, XCType,
-        build_integrals_sto3g, rhf_solve, uhf_solve, uks_solve,
-    )
-except ImportError:
-    from _atomiverse import (  # development: .so in PYTHONPATH
-        CpuFrame, MD, Phase, PhaseBuilder,
-        VelocityVerlet, InitVelocity, NoseHoover,
-        LJ, NeighborList, HarmonicBond, HarmonicAngle, MultiHarmonicDihedral,
-        Thermo,
-        # SCF
-        IntegralPack, RHFResult, UHFResult, UKSResult, XCType,
-        build_integrals_sto3g, rhf_solve, uhf_solve, uks_solve,
-    )
+# ── Drivers (OOP wrappers) ──
+from atomiverse.md import MD
+from atomiverse.scf import (
+    SCF, SCFResult, GradientResult, Integrals,
+    RHF, RHFResult,
+    UHF, UHFResult,
+    UKS, UKSResult,
+)
+from atomiverse.optimizer import GeometryOptimizer, OptResult
+
+# ── Components (value objects — direct from C++) ──
+from atomiverse._binding import _cpp as _cpp
+
+VelocityVerlet = _cpp.VelocityVerlet
+InitVelocity = _cpp.InitVelocity
+NoseHoover = _cpp.NoseHoover
+LJ = _cpp.LJ
+NeighborList = _cpp.NeighborList
+HarmonicBond = _cpp.HarmonicBond
+HarmonicAngle = _cpp.HarmonicAngle
+MultiHarmonicDihedral = _cpp.MultiHarmonicDihedral
+Thermo = _cpp.Thermo
+
+
+def register_molpy() -> None:
+    """Register Atomiverse device handlers into molpy's device registry."""
+    from atomiverse._device import register_devices
+    register_devices()
+
 
 __all__ = [
-    # Frame
-    "CpuFrame",
-    # MD
-    "MD", "Phase", "PhaseBuilder",
+    # Drivers
+    "MD",
+    # SCF (unified)
+    "SCF", "SCFResult", "GradientResult", "Integrals",
+    # SCF (convenience wrappers, backward compatible)
+    "RHF", "RHFResult",
+    "UHF", "UHFResult",
+    "UKS", "UKSResult",
+    # Optimizer
+    "GeometryOptimizer", "OptResult",
+    # Components
     "VelocityVerlet", "InitVelocity", "NoseHoover",
-    "LJ", "NeighborList", "HarmonicBond", "HarmonicAngle", "MultiHarmonicDihedral",
+    "LJ", "NeighborList", "HarmonicBond", "HarmonicAngle",
+    "MultiHarmonicDihedral",
     "Thermo",
-    # SCF
-    "IntegralPack", "RHFResult", "UHFResult", "UKSResult", "XCType",
-    "build_integrals_sto3g", "rhf_solve", "uhf_solve", "uks_solve",
-    # Helpers
-    "run_md",
+    # molpy integration
+    "register_molpy",
 ]
-
-
-def run_md(frame, sim, n_steps):
-    """Run MD simulation on a molpy Frame.
-
-    Transfers data from molpy Frame to cpu::Frame, runs the simulation,
-    and writes results back.
-
-    Parameters
-    ----------
-    frame : molpy.Frame
-        Input frame with "atoms" block (x, y, z, mass, type required).
-    sim : MD
-        Configured and built MD driver.
-    n_steps : int
-        Number of simulation steps.
-
-    Returns
-    -------
-    molpy.Frame
-        The same frame object, updated with simulation results.
-    """
-    import numpy as np
-
-    atoms = frame["atoms"]
-    n_atoms = atoms.nrows
-
-    cf = CpuFrame(n_atoms)
-
-    # Populate atoms
-    cf.set_positions(
-        np.ascontiguousarray(atoms["x"], dtype=np.float32),
-        np.ascontiguousarray(atoms["y"], dtype=np.float32),
-        np.ascontiguousarray(atoms["z"], dtype=np.float32),
-    )
-    cf.set_mass(np.ascontiguousarray(atoms["mass"], dtype=np.float32))
-    cf.set_type(np.ascontiguousarray(atoms["type"], dtype=np.float32))
-
-    if "vx" in atoms:
-        cf.set_velocities(
-            np.ascontiguousarray(atoms["vx"], dtype=np.float32),
-            np.ascontiguousarray(atoms["vy"], dtype=np.float32),
-            np.ascontiguousarray(atoms["vz"], dtype=np.float32),
-        )
-
-    # Box
-    if frame.box is not None:
-        cf.set_box(np.ascontiguousarray(
-            np.asarray(frame.box.matrix), dtype=np.float32
-        ))
-
-    # Topology
-    if "bonds" in frame:
-        bonds = frame["bonds"]
-        cf.set_bonds(
-            np.ascontiguousarray(bonds["atomi"], dtype=np.int32),
-            np.ascontiguousarray(bonds["atomj"], dtype=np.int32),
-            np.ascontiguousarray(bonds["type"], dtype=np.int32),
-        )
-
-    if "angles" in frame:
-        angles = frame["angles"]
-        cf.set_angles(
-            np.ascontiguousarray(angles["atomi"], dtype=np.int32),
-            np.ascontiguousarray(angles["atomj"], dtype=np.int32),
-            np.ascontiguousarray(angles["atomk"], dtype=np.int32),
-            np.ascontiguousarray(angles["type"], dtype=np.int32),
-        )
-
-    if "dihedrals" in frame:
-        dihedrals = frame["dihedrals"]
-        cf.set_dihedrals(
-            np.ascontiguousarray(dihedrals["atomi"], dtype=np.int32),
-            np.ascontiguousarray(dihedrals["atomj"], dtype=np.int32),
-            np.ascontiguousarray(dihedrals["atomk"], dtype=np.int32),
-            np.ascontiguousarray(dihedrals["atoml"], dtype=np.int32),
-            np.ascontiguousarray(dihedrals["type"], dtype=np.int32),
-        )
-
-    # Run
-    sim.run(cf, n_steps)
-
-    # Write results back
-    atoms["x"] = cf.get_x()
-    atoms["y"] = cf.get_y()
-    atoms["z"] = cf.get_z()
-    atoms["vx"] = cf.get_vx()
-    atoms["vy"] = cf.get_vy()
-    atoms["vz"] = cf.get_vz()
-    atoms["fx"] = cf.get_fx()
-    atoms["fy"] = cf.get_fy()
-    atoms["fz"] = cf.get_fz()
-
-    frame.metadata["energy"] = float(cf.energy)
-    frame.metadata["kinetic"] = float(cf.kinetic)
-
-    return frame

@@ -49,7 +49,7 @@ void KineticEnergy::launch(const LaunchContext& ctx) {
     int block = cuda::kDefaultBlock;
     int grid = cuda::grid_size(static_cast<int>(n));
     kinetic_energy<<<grid, block, block * sizeof(Real), stream>>>(
-        frame.vx, frame.vy, frame.vz, frame.mass,
+        frame.atoms.vx, frame.atoms.vy, frame.atoms.vz, frame.atoms.mass,
         frame.kinetic, n);
 }
 

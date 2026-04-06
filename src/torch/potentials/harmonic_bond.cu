@@ -148,10 +148,10 @@ Tensor harmonic_bond(Frame& frame, const Tensor& K, const Tensor& r0) {
     frame.energy.zero_();
 
     auto result = HarmonicBondFunction::apply(
-        frame.x, frame.y, frame.z,
-        frame.fx, frame.fy, frame.fz,
+        frame.atoms.x, frame.atoms.y, frame.atoms.z,
+        frame.atoms.fx, frame.atoms.fy, frame.atoms.fz,
         frame.energy, frame.box,
-        frame.bond_i, frame.bond_j, frame.bond_type,
+        frame.bonds.atomi, frame.bonds.atomj, frame.bonds.type,
         K, r0,
         static_cast<int64_t>(nb));
 

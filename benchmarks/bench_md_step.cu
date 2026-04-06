@@ -18,10 +18,10 @@ static void BM_MDStep(benchmark::State& state) {
     cpu::Frame frame(n);
     std::srand(42);
     for (int i = 0; i < n; ++i) {
-        frame.x[i] = box_len * Real(std::rand()) / Real(RAND_MAX);
-        frame.y[i] = box_len * Real(std::rand()) / Real(RAND_MAX);
-        frame.z[i] = box_len * Real(std::rand()) / Real(RAND_MAX);
-        frame.mass[i] = Real(1.0);
+        frame.atoms.x[i] = box_len * Real(std::rand()) / Real(RAND_MAX);
+        frame.atoms.y[i] = box_len * Real(std::rand()) / Real(RAND_MAX);
+        frame.atoms.z[i] = box_len * Real(std::rand()) / Real(RAND_MAX);
+        frame.atoms.mass[i] = Real(1.0);
     }
     frame.box = Mat3::cubic(static_cast<double>(box_len));
 

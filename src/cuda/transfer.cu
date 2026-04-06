@@ -13,31 +13,31 @@ namespace ATV {
 namespace cpu {
 
 cuda::Frame to_cuda(const Frame& frame) {
-    Int n = frame.n_atoms();
+    Int n = frame.atoms.size();
     cuda::Frame d{};
 
     // Host-cached metadata
     d.n_atoms_ = n;
-    d.n_bonds_ = static_cast<Int>(frame.bond_i.size());
-    d.n_angles_ = static_cast<Int>(frame.angle_i.size());
-    d.n_dihedrals_ = static_cast<Int>(frame.dihedral_i.size());
+    d.n_bonds_ = frame.bonds.size();
+    d.n_angles_ = frame.angles.size();
+    d.n_dihedrals_ = frame.dihedrals.size();
 
     // Scalar metadata on device
-    cudaMalloc(&d.d_n_atoms, sizeof(Int));
-    cudaMemcpy(d.d_n_atoms, &n, sizeof(Int), cudaMemcpyHostToDevice);
+    cudaMalloc(&d.atoms.d_size, sizeof(Int));
+    cudaMemcpy(d.atoms.d_size, &n, sizeof(Int), cudaMemcpyHostToDevice);
 
     // Per-atom arrays
-    cudaMalloc(&d.x, n * sizeof(Real));
-    cudaMalloc(&d.y, n * sizeof(Real));
-    cudaMalloc(&d.z, n * sizeof(Real));
-    cudaMalloc(&d.vx, n * sizeof(Real));
-    cudaMalloc(&d.vy, n * sizeof(Real));
-    cudaMalloc(&d.vz, n * sizeof(Real));
-    cudaMalloc(&d.fx, n * sizeof(Real));
-    cudaMalloc(&d.fy, n * sizeof(Real));
-    cudaMalloc(&d.fz, n * sizeof(Real));
-    cudaMalloc(&d.mass, n * sizeof(Real));
-    cudaMalloc(&d.type_id, n * sizeof(Int));
+    cudaMalloc(&d.atoms.x, n * sizeof(Real));
+    cudaMalloc(&d.atoms.y, n * sizeof(Real));
+    cudaMalloc(&d.atoms.z, n * sizeof(Real));
+    cudaMalloc(&d.atoms.vx, n * sizeof(Real));
+    cudaMalloc(&d.atoms.vy, n * sizeof(Real));
+    cudaMalloc(&d.atoms.vz, n * sizeof(Real));
+    cudaMalloc(&d.atoms.fx, n * sizeof(Real));
+    cudaMalloc(&d.atoms.fy, n * sizeof(Real));
+    cudaMalloc(&d.atoms.fz, n * sizeof(Real));
+    cudaMalloc(&d.atoms.mass, n * sizeof(Real));
+    cudaMalloc(&d.atoms.type, n * sizeof(Int));
     cudaMalloc(&d.energy, sizeof(Real));
     cudaMalloc(&d.kinetic, sizeof(Real));
 
@@ -45,18 +45,18 @@ cuda::Frame to_cuda(const Frame& frame) {
     cudaMalloc(&d.stress, 6 * sizeof(Real));
     cudaMemset(d.stress, 0, 6 * sizeof(Real));
 
-    cudaMemcpy(d.x, frame.x.data(), n * sizeof(Real), cudaMemcpyHostToDevice);
-    cudaMemcpy(d.y, frame.y.data(), n * sizeof(Real), cudaMemcpyHostToDevice);
-    cudaMemcpy(d.z, frame.z.data(), n * sizeof(Real), cudaMemcpyHostToDevice);
-    cudaMemcpy(d.vx, frame.vx.data(), n * sizeof(Real), cudaMemcpyHostToDevice);
-    cudaMemcpy(d.vy, frame.vy.data(), n * sizeof(Real), cudaMemcpyHostToDevice);
-    cudaMemcpy(d.vz, frame.vz.data(), n * sizeof(Real), cudaMemcpyHostToDevice);
-    cudaMemcpy(d.mass, frame.mass.data(), n * sizeof(Real), cudaMemcpyHostToDevice);
-    cudaMemcpy(d.type_id, frame.type_id.data(), n * sizeof(Int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d.atoms.x, frame.atoms.x.data(), n * sizeof(Real), cudaMemcpyHostToDevice);
+    cudaMemcpy(d.atoms.y, frame.atoms.y.data(), n * sizeof(Real), cudaMemcpyHostToDevice);
+    cudaMemcpy(d.atoms.z, frame.atoms.z.data(), n * sizeof(Real), cudaMemcpyHostToDevice);
+    cudaMemcpy(d.atoms.vx, frame.atoms.vx.data(), n * sizeof(Real), cudaMemcpyHostToDevice);
+    cudaMemcpy(d.atoms.vy, frame.atoms.vy.data(), n * sizeof(Real), cudaMemcpyHostToDevice);
+    cudaMemcpy(d.atoms.vz, frame.atoms.vz.data(), n * sizeof(Real), cudaMemcpyHostToDevice);
+    cudaMemcpy(d.atoms.mass, frame.atoms.mass.data(), n * sizeof(Real), cudaMemcpyHostToDevice);
+    cudaMemcpy(d.atoms.type, frame.atoms.type.data(), n * sizeof(Int), cudaMemcpyHostToDevice);
 
-    cudaMemset(d.fx, 0, n * sizeof(Real));
-    cudaMemset(d.fy, 0, n * sizeof(Real));
-    cudaMemset(d.fz, 0, n * sizeof(Real));
+    cudaMemset(d.atoms.fx, 0, n * sizeof(Real));
+    cudaMemset(d.atoms.fy, 0, n * sizeof(Real));
+    cudaMemset(d.atoms.fz, 0, n * sizeof(Real));
     Real zero = 0;
     cudaMemcpy(d.energy, &zero, sizeof(Real), cudaMemcpyHostToDevice);
     cudaMemcpy(d.kinetic, &zero, sizeof(Real), cudaMemcpyHostToDevice);
@@ -77,12 +77,12 @@ cuda::Frame to_cuda(const Frame& frame) {
     if (nb > 0) {
         cudaMalloc(&d.bonds.n_bonds, sizeof(Int));
         cudaMemcpy(d.bonds.n_bonds, &nb, sizeof(Int), cudaMemcpyHostToDevice);
-        cudaMalloc(&d.bonds.i, nb * sizeof(Int));
-        cudaMalloc(&d.bonds.j, nb * sizeof(Int));
+        cudaMalloc(&d.bonds.atomi, nb * sizeof(Int));
+        cudaMalloc(&d.bonds.atomj, nb * sizeof(Int));
         cudaMalloc(&d.bonds.type, nb * sizeof(Int));
-        cudaMemcpy(d.bonds.i, frame.bond_i.data(), nb * sizeof(Int), cudaMemcpyHostToDevice);
-        cudaMemcpy(d.bonds.j, frame.bond_j.data(), nb * sizeof(Int), cudaMemcpyHostToDevice);
-        cudaMemcpy(d.bonds.type, frame.bond_type.data(), nb * sizeof(Int), cudaMemcpyHostToDevice);
+        cudaMemcpy(d.bonds.atomi, frame.bonds.atomi.data(), nb * sizeof(Int), cudaMemcpyHostToDevice);
+        cudaMemcpy(d.bonds.atomj, frame.bonds.atomj.data(), nb * sizeof(Int), cudaMemcpyHostToDevice);
+        cudaMemcpy(d.bonds.type, frame.bonds.type.data(), nb * sizeof(Int), cudaMemcpyHostToDevice);
     }
 
     // Angle topology
@@ -90,14 +90,14 @@ cuda::Frame to_cuda(const Frame& frame) {
     if (na > 0) {
         cudaMalloc(&d.angles.n_angles, sizeof(Int));
         cudaMemcpy(d.angles.n_angles, &na, sizeof(Int), cudaMemcpyHostToDevice);
-        cudaMalloc(&d.angles.i, na * sizeof(Int));
-        cudaMalloc(&d.angles.j, na * sizeof(Int));
-        cudaMalloc(&d.angles.k, na * sizeof(Int));
+        cudaMalloc(&d.angles.atomi, na * sizeof(Int));
+        cudaMalloc(&d.angles.atomj, na * sizeof(Int));
+        cudaMalloc(&d.angles.atomk, na * sizeof(Int));
         cudaMalloc(&d.angles.type, na * sizeof(Int));
-        cudaMemcpy(d.angles.i, frame.angle_i.data(), na * sizeof(Int), cudaMemcpyHostToDevice);
-        cudaMemcpy(d.angles.j, frame.angle_j.data(), na * sizeof(Int), cudaMemcpyHostToDevice);
-        cudaMemcpy(d.angles.k, frame.angle_k.data(), na * sizeof(Int), cudaMemcpyHostToDevice);
-        cudaMemcpy(d.angles.type, frame.angle_type.data(), na * sizeof(Int), cudaMemcpyHostToDevice);
+        cudaMemcpy(d.angles.atomi, frame.angles.atomi.data(), na * sizeof(Int), cudaMemcpyHostToDevice);
+        cudaMemcpy(d.angles.atomj, frame.angles.atomj.data(), na * sizeof(Int), cudaMemcpyHostToDevice);
+        cudaMemcpy(d.angles.atomk, frame.angles.atomk.data(), na * sizeof(Int), cudaMemcpyHostToDevice);
+        cudaMemcpy(d.angles.type, frame.angles.type.data(), na * sizeof(Int), cudaMemcpyHostToDevice);
     }
 
     // Dihedral topology
@@ -105,16 +105,16 @@ cuda::Frame to_cuda(const Frame& frame) {
     if (nd > 0) {
         cudaMalloc(&d.dihedrals.n_dihedrals, sizeof(Int));
         cudaMemcpy(d.dihedrals.n_dihedrals, &nd, sizeof(Int), cudaMemcpyHostToDevice);
-        cudaMalloc(&d.dihedrals.i, nd * sizeof(Int));
-        cudaMalloc(&d.dihedrals.j, nd * sizeof(Int));
-        cudaMalloc(&d.dihedrals.k, nd * sizeof(Int));
-        cudaMalloc(&d.dihedrals.l, nd * sizeof(Int));
+        cudaMalloc(&d.dihedrals.atomi, nd * sizeof(Int));
+        cudaMalloc(&d.dihedrals.atomj, nd * sizeof(Int));
+        cudaMalloc(&d.dihedrals.atomk, nd * sizeof(Int));
+        cudaMalloc(&d.dihedrals.atoml, nd * sizeof(Int));
         cudaMalloc(&d.dihedrals.type, nd * sizeof(Int));
-        cudaMemcpy(d.dihedrals.i, frame.dihedral_i.data(), nd * sizeof(Int), cudaMemcpyHostToDevice);
-        cudaMemcpy(d.dihedrals.j, frame.dihedral_j.data(), nd * sizeof(Int), cudaMemcpyHostToDevice);
-        cudaMemcpy(d.dihedrals.k, frame.dihedral_k.data(), nd * sizeof(Int), cudaMemcpyHostToDevice);
-        cudaMemcpy(d.dihedrals.l, frame.dihedral_l.data(), nd * sizeof(Int), cudaMemcpyHostToDevice);
-        cudaMemcpy(d.dihedrals.type, frame.dihedral_type.data(), nd * sizeof(Int), cudaMemcpyHostToDevice);
+        cudaMemcpy(d.dihedrals.atomi, frame.dihedrals.atomi.data(), nd * sizeof(Int), cudaMemcpyHostToDevice);
+        cudaMemcpy(d.dihedrals.atomj, frame.dihedrals.atomj.data(), nd * sizeof(Int), cudaMemcpyHostToDevice);
+        cudaMemcpy(d.dihedrals.atomk, frame.dihedrals.atomk.data(), nd * sizeof(Int), cudaMemcpyHostToDevice);
+        cudaMemcpy(d.dihedrals.atoml, frame.dihedrals.atoml.data(), nd * sizeof(Int), cudaMemcpyHostToDevice);
+        cudaMemcpy(d.dihedrals.type, frame.dihedrals.type.data(), nd * sizeof(Int), cudaMemcpyHostToDevice);
     }
 
     return d;
@@ -127,16 +127,16 @@ cuda::Frame to_cuda(const Frame& frame) {
 namespace cuda {
 
 void to_cpu(const Frame& d, cpu::Frame& frame) {
-    Int n = frame.n_atoms();
-    cudaMemcpy(frame.x.data(), d.x, n * sizeof(Real), cudaMemcpyDeviceToHost);
-    cudaMemcpy(frame.y.data(), d.y, n * sizeof(Real), cudaMemcpyDeviceToHost);
-    cudaMemcpy(frame.z.data(), d.z, n * sizeof(Real), cudaMemcpyDeviceToHost);
-    cudaMemcpy(frame.vx.data(), d.vx, n * sizeof(Real), cudaMemcpyDeviceToHost);
-    cudaMemcpy(frame.vy.data(), d.vy, n * sizeof(Real), cudaMemcpyDeviceToHost);
-    cudaMemcpy(frame.vz.data(), d.vz, n * sizeof(Real), cudaMemcpyDeviceToHost);
-    cudaMemcpy(frame.fx.data(), d.fx, n * sizeof(Real), cudaMemcpyDeviceToHost);
-    cudaMemcpy(frame.fy.data(), d.fy, n * sizeof(Real), cudaMemcpyDeviceToHost);
-    cudaMemcpy(frame.fz.data(), d.fz, n * sizeof(Real), cudaMemcpyDeviceToHost);
+    Int n = frame.atoms.size();
+    cudaMemcpy(frame.atoms.x.data(), d.atoms.x, n * sizeof(Real), cudaMemcpyDeviceToHost);
+    cudaMemcpy(frame.atoms.y.data(), d.atoms.y, n * sizeof(Real), cudaMemcpyDeviceToHost);
+    cudaMemcpy(frame.atoms.z.data(), d.atoms.z, n * sizeof(Real), cudaMemcpyDeviceToHost);
+    cudaMemcpy(frame.atoms.vx.data(), d.atoms.vx, n * sizeof(Real), cudaMemcpyDeviceToHost);
+    cudaMemcpy(frame.atoms.vy.data(), d.atoms.vy, n * sizeof(Real), cudaMemcpyDeviceToHost);
+    cudaMemcpy(frame.atoms.vz.data(), d.atoms.vz, n * sizeof(Real), cudaMemcpyDeviceToHost);
+    cudaMemcpy(frame.atoms.fx.data(), d.atoms.fx, n * sizeof(Real), cudaMemcpyDeviceToHost);
+    cudaMemcpy(frame.atoms.fy.data(), d.atoms.fy, n * sizeof(Real), cudaMemcpyDeviceToHost);
+    cudaMemcpy(frame.atoms.fz.data(), d.atoms.fz, n * sizeof(Real), cudaMemcpyDeviceToHost);
     cudaMemcpy(&frame.energy, d.energy, sizeof(Real), cudaMemcpyDeviceToHost);
     cudaMemcpy(&frame.kinetic, d.kinetic, sizeof(Real), cudaMemcpyDeviceToHost);
     if (d.stress)
@@ -153,27 +153,27 @@ void to_cpu(const Frame& d, cpu::Frame& frame) {
 }
 
 void destroy(Frame& d) {
-    cudaFree(d.x); cudaFree(d.y); cudaFree(d.z);
-    cudaFree(d.vx); cudaFree(d.vy); cudaFree(d.vz);
-    cudaFree(d.fx); cudaFree(d.fy); cudaFree(d.fz);
-    cudaFree(d.mass); cudaFree(d.type_id);
+    cudaFree(d.atoms.x); cudaFree(d.atoms.y); cudaFree(d.atoms.z);
+    cudaFree(d.atoms.vx); cudaFree(d.atoms.vy); cudaFree(d.atoms.vz);
+    cudaFree(d.atoms.fx); cudaFree(d.atoms.fy); cudaFree(d.atoms.fz);
+    cudaFree(d.atoms.mass); cudaFree(d.atoms.type);
     cudaFree(d.energy); cudaFree(d.kinetic);
     cudaFree(d.stress);
-    cudaFree(d.box); cudaFree(d.d_n_atoms);
+    cudaFree(d.box); cudaFree(d.atoms.d_size);
 
     cudaFree(d.pairs.i); cudaFree(d.pairs.j);
     cudaFree(d.pairs.dx); cudaFree(d.pairs.dy);
     cudaFree(d.pairs.dz); cudaFree(d.pairs.dist);
     cudaFree(d.pairs.n_pairs); cudaFree(d.pairs.capacity);
 
-    cudaFree(d.bonds.i); cudaFree(d.bonds.j);
+    cudaFree(d.bonds.atomi); cudaFree(d.bonds.atomj);
     cudaFree(d.bonds.type); cudaFree(d.bonds.n_bonds);
 
-    cudaFree(d.angles.i); cudaFree(d.angles.j); cudaFree(d.angles.k);
+    cudaFree(d.angles.atomi); cudaFree(d.angles.atomj); cudaFree(d.angles.atomk);
     cudaFree(d.angles.type); cudaFree(d.angles.n_angles);
 
-    cudaFree(d.dihedrals.i); cudaFree(d.dihedrals.j);
-    cudaFree(d.dihedrals.k); cudaFree(d.dihedrals.l);
+    cudaFree(d.dihedrals.atomi); cudaFree(d.dihedrals.atomj);
+    cudaFree(d.dihedrals.atomk); cudaFree(d.dihedrals.atoml);
     cudaFree(d.dihedrals.type); cudaFree(d.dihedrals.n_dihedrals);
 
     // SCF workspace (shared)

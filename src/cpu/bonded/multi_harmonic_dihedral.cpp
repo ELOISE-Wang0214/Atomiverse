@@ -42,7 +42,7 @@ void MultiHarmonicDihedral::build(const cpu::BuildContext& ctx) {
 #ifdef _OPENMP
     n_threads_ = omp_get_max_threads();
 #endif
-    Int n = ctx.frame.n_atoms();
+    Int n = ctx.frame.atoms.size();
     fx_thr_.resize(n_threads_);
     fy_thr_.resize(n_threads_);
     fz_thr_.resize(n_threads_);
@@ -55,10 +55,10 @@ void MultiHarmonicDihedral::build(const cpu::BuildContext& ctx) {
 
 void MultiHarmonicDihedral::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
-    Int n_dihedrals = static_cast<Int>(f.dihedral_i.size());
+    Int n_dihedrals = static_cast<Int>(f.dihedrals.atomi.size());
     if (n_dihedrals == 0) return;
 
-    Int n_atoms = f.n_atoms();
+    Int n_atoms = f.atoms.size();
     Real energy_total = 0;
 
     #pragma omp parallel reduction(+:energy_total)
@@ -76,16 +76,16 @@ void MultiHarmonicDihedral::launch(const cpu::LaunchContext& ctx) {
 
         #pragma omp for schedule(static)
         for (Int d = 0; d < n_dihedrals; ++d) {
-            Int i1 = f.dihedral_i[d];
-            Int i2 = f.dihedral_j[d];
-            Int i3 = f.dihedral_k[d];
-            Int i4 = f.dihedral_l[d];
-            Int type = f.dihedral_type[d];
+            Int i1 = f.dihedrals.atomi[d];
+            Int i2 = f.dihedrals.atomj[d];
+            Int i3 = f.dihedrals.atomk[d];
+            Int i4 = f.dihedrals.atoml[d];
+            Int type = f.dihedrals.type[d];
 
             // Vectors: b1 = r2-r1, b2 = r3-r2, b3 = r4-r3
-            Real b1x = f.x[i2] - f.x[i1], b1y = f.y[i2] - f.y[i1], b1z = f.z[i2] - f.z[i1];
-            Real b2x = f.x[i3] - f.x[i2], b2y = f.y[i3] - f.y[i2], b2z = f.z[i3] - f.z[i2];
-            Real b3x = f.x[i4] - f.x[i3], b3y = f.y[i4] - f.y[i3], b3z = f.z[i4] - f.z[i3];
+            Real b1x = f.atoms.x[i2] - f.atoms.x[i1], b1y = f.atoms.y[i2] - f.atoms.y[i1], b1z = f.atoms.z[i2] - f.atoms.z[i1];
+            Real b2x = f.atoms.x[i3] - f.atoms.x[i2], b2y = f.atoms.y[i3] - f.atoms.y[i2], b2z = f.atoms.z[i3] - f.atoms.z[i2];
+            Real b3x = f.atoms.x[i4] - f.atoms.x[i3], b3y = f.atoms.y[i4] - f.atoms.y[i3], b3z = f.atoms.z[i4] - f.atoms.z[i3];
             minimum_image(b1x, b1y, b1z, f.box);
             minimum_image(b2x, b2y, b2z, f.box);
             minimum_image(b3x, b3y, b3z, f.box);
@@ -153,9 +153,9 @@ void MultiHarmonicDihedral::launch(const cpu::LaunchContext& ctx) {
         #pragma omp for schedule(static)
         for (Int i = 0; i < n_atoms; ++i) {
             for (int t = 0; t < n_threads_; ++t) {
-                f.fx[i] += fx_thr_[t][i];
-                f.fy[i] += fy_thr_[t][i];
-                f.fz[i] += fz_thr_[t][i];
+                f.atoms.fx[i] += fx_thr_[t][i];
+                f.atoms.fy[i] += fy_thr_[t][i];
+                f.atoms.fz[i] += fz_thr_[t][i];
             }
         }
     }

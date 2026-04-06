@@ -296,10 +296,10 @@ BENCHMARK(BM_ERI_CUDA_Kernel);
 
 static cpu::Frame make_h2() {
     cpu::Frame frame(2);
-    frame.x[0] = Real(0);     frame.y[0] = Real(0); frame.z[0] = Real(0);
-    frame.x[1] = Real(0.74);  frame.y[1] = Real(0); frame.z[1] = Real(0);
-    frame.mass[0] = Real(1.008); frame.mass[1] = Real(1.008);
-    frame.type_id[0] = 1; frame.type_id[1] = 1;
+    frame.atoms.x[0] = Real(0);     frame.atoms.y[0] = Real(0); frame.atoms.z[0] = Real(0);
+    frame.atoms.x[1] = Real(0.74);  frame.atoms.y[1] = Real(0); frame.atoms.z[1] = Real(0);
+    frame.atoms.mass[0] = Real(1.008); frame.atoms.mass[1] = Real(1.008);
+    frame.atoms.type[0] = 1; frame.atoms.type[1] = 1;
     frame.box = Mat3::cubic(100.0);
     return frame;
 }
@@ -353,10 +353,10 @@ BENCHMARK(BM_CUDARHFSolve)->Unit(benchmark::kMicrosecond);
 
 static cpu::Frame make_lih() {
     cpu::Frame frame(2);
-    frame.x[0] = Real(0);     frame.y[0] = Real(0); frame.z[0] = Real(0);
-    frame.x[1] = Real(1.595); frame.y[1] = Real(0); frame.z[1] = Real(0);
-    frame.mass[0] = Real(6.941); frame.mass[1] = Real(1.008);
-    frame.type_id[0] = 3; frame.type_id[1] = 1;
+    frame.atoms.x[0] = Real(0);     frame.atoms.y[0] = Real(0); frame.atoms.z[0] = Real(0);
+    frame.atoms.x[1] = Real(1.595); frame.atoms.y[1] = Real(0); frame.atoms.z[1] = Real(0);
+    frame.atoms.mass[0] = Real(6.941); frame.atoms.mass[1] = Real(1.008);
+    frame.atoms.type[0] = 3; frame.atoms.type[1] = 1;
     frame.box = Mat3::cubic(100.0);
     return frame;
 }

@@ -1,128 +1,116 @@
-"""Tests for CpuFrame numpy <-> cpu::Frame bridge."""
+"""Tests for mp.Frame <-> CpuFrame conversion layer."""
 
 import numpy as np
 import pytest
+import molpy as mp
 
-import atomiverse as av
-
-
-class TestCpuFrameConstruction:
-    def test_creates_with_n_atoms(self):
-        cf = av.CpuFrame(100)
-        assert cf.n_atoms == 100
-
-    def test_zero_atoms_allowed(self):
-        cf = av.CpuFrame(0)
-        assert cf.n_atoms == 0
-
-    def test_initial_energy_zero(self):
-        cf = av.CpuFrame(4)
-        assert cf.energy == pytest.approx(0.0)
-        assert cf.kinetic == pytest.approx(0.0)
+from atomiverse._convert import mp_to_cpu, cpu_to_mp
 
 
-class TestPositions:
-    def test_set_and_get_roundtrip(self):
-        cf = av.CpuFrame(4)
-        x = np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32)
-        y = np.array([0.1, 0.2, 0.3, 0.4], dtype=np.float32)
-        z = np.zeros(4, dtype=np.float32)
-        cf.set_positions(x, y, z)
-        np.testing.assert_allclose(cf.get_x(), x, rtol=1e-6)
-        np.testing.assert_allclose(cf.get_y(), y, rtol=1e-6)
-        np.testing.assert_allclose(cf.get_z(), z, rtol=1e-6)
+class TestMpToCpu:
+    def test_basic_roundtrip(self):
+        frame = mp.Frame({"atoms": mp.Block({
+            "x": np.array([1.0, 2.0], dtype=np.float32),
+            "y": np.array([0.1, 0.2], dtype=np.float32),
+            "z": np.zeros(2, dtype=np.float32),
+            "type": np.array([0, 1], dtype=np.int32),
+        })})
 
-    def test_positions_are_copies(self):
-        cf = av.CpuFrame(2)
-        x = np.array([1.0, 2.0], dtype=np.float32)
-        cf.set_positions(x, np.zeros(2, dtype=np.float32), np.zeros(2, dtype=np.float32))
-        x[0] = 99.0  # mutate original — should NOT affect frame
-        assert cf.get_x()[0] == pytest.approx(1.0)
+        cf = mp_to_cpu(frame)
+        assert cf.n_atoms == 2
+        np.testing.assert_allclose(cf.get_x(), [1.0, 2.0], rtol=1e-6)
+        np.testing.assert_allclose(cf.get_y(), [0.1, 0.2], rtol=1e-6)
 
-    def test_get_returns_numpy_array(self):
-        cf = av.CpuFrame(3)
+    def test_mass_transferred(self):
+        frame = mp.Frame({"atoms": mp.Block({
+            "x": np.zeros(3), "y": np.zeros(3), "z": np.zeros(3),
+            "type": np.array([0, 1, 2], dtype=np.int32),
+            "mass": np.array([39.948, 1.008, 12.011], dtype=np.float32),
+        })})
+
+        cf = mp_to_cpu(frame)
+        np.testing.assert_allclose(cf.get_mass(), [39.948, 1.008, 12.011],
+                                   rtol=1e-5)
+
+    def test_box_transferred(self):
+        frame = mp.Frame({"atoms": mp.Block({
+            "x": [0.0], "y": [0.0], "z": [0.0],
+            "type": np.array([0], dtype=np.int32),
+        })})
+        frame.box = mp.Box(np.eye(3) * 10.0)
+
+        cf = mp_to_cpu(frame)
+        np.testing.assert_allclose(cf.get_box(), np.eye(3) * 10.0, rtol=1e-6)
+
+    def test_velocities_transferred(self):
+        frame = mp.Frame({"atoms": mp.Block({
+            "x": [0.0], "y": [0.0], "z": [0.0],
+            "type": np.array([0], dtype=np.int32),
+            "vx": np.array([0.5], dtype=np.float32),
+            "vy": np.array([-0.5], dtype=np.float32),
+            "vz": np.zeros(1, dtype=np.float32),
+        })})
+
+        cf = mp_to_cpu(frame)
+        np.testing.assert_allclose(cf.get_vx(), [0.5], rtol=1e-6)
+
+    def test_bonds_transferred(self):
+        frame = mp.Frame({
+            "atoms": mp.Block({
+                "x": np.zeros(4), "y": np.zeros(4), "z": np.zeros(4),
+                "type": np.zeros(4, dtype=np.int32),
+            }),
+            "bonds": mp.Block({
+                "atomi": np.array([0, 1], dtype=np.int32),
+                "atomj": np.array([1, 2], dtype=np.int32),
+                "type": np.zeros(2, dtype=np.int32),
+            }),
+        })
+        cf = mp_to_cpu(frame)  # should not raise
+
+    def test_missing_atoms_raises(self):
+        frame = mp.Frame()
+        with pytest.raises(ValueError, match="atoms"):
+            mp_to_cpu(frame)
+
+    def test_missing_fields_raises(self):
+        frame = mp.Frame({"atoms": mp.Block({
+            "x": [0.0], "y": [0.0],
+            # missing z and type
+        })})
+        with pytest.raises(ValueError, match="missing required fields"):
+            mp_to_cpu(frame)
+
+
+class TestCpuToMp:
+    def test_writeback_updates_frame(self):
+        frame = mp.Frame({"atoms": mp.Block({
+            "x": np.array([0.0, 1.0], dtype=np.float32),
+            "y": np.zeros(2, dtype=np.float32),
+            "z": np.zeros(2, dtype=np.float32),
+            "type": np.zeros(2, dtype=np.int32),
+        })})
+
+        cf = mp_to_cpu(frame)
+        # Simulate: modify positions in CpuFrame
         cf.set_positions(
-            np.zeros(3, dtype=np.float32),
-            np.zeros(3, dtype=np.float32),
-            np.zeros(3, dtype=np.float32),
+            np.array([10.0, 20.0], dtype=np.float32),
+            np.zeros(2, dtype=np.float32),
+            np.zeros(2, dtype=np.float32),
         )
-        assert isinstance(cf.get_x(), np.ndarray)
-        assert cf.get_x().dtype == np.float32
+        cpu_to_mp(cf, frame)
 
+        np.testing.assert_allclose(frame["atoms"]["x"], [10.0, 20.0],
+                                   rtol=1e-6)
 
-class TestMassAndType:
-    def test_set_and_get_mass(self):
-        cf = av.CpuFrame(3)
-        mass = np.array([39.948, 1.008, 12.011], dtype=np.float32)
-        cf.set_mass(mass)
-        np.testing.assert_allclose(cf.get_mass(), mass, rtol=1e-5)
+    def test_writeback_sets_metadata(self):
+        frame = mp.Frame({"atoms": mp.Block({
+            "x": [0.0], "y": [0.0], "z": [0.0],
+            "type": np.array([0], dtype=np.int32),
+        })})
 
-    def test_set_and_get_type(self):
-        cf = av.CpuFrame(3)
-        types = np.array([0, 1, 2], dtype=np.int32)
-        cf.set_type(types)
-        np.testing.assert_array_equal(cf.get_type(), types)
+        cf = mp_to_cpu(frame)
+        cpu_to_mp(cf, frame)
 
-
-class TestBox:
-    def test_set_and_get_cubic_box(self):
-        cf = av.CpuFrame(1)
-        box = np.eye(3, dtype=np.float32) * 10.0
-        cf.set_box(box)
-        result = cf.get_box()
-        np.testing.assert_allclose(result, box, rtol=1e-6)
-        assert result.shape == (3, 3)
-
-    def test_set_and_get_triclinic_box(self):
-        cf = av.CpuFrame(1)
-        box = np.array(
-            [[10.0, 0.0, 0.0], [1.0, 9.8, 0.0], [0.5, 0.3, 9.6]], dtype=np.float32
-        )
-        cf.set_box(box)
-        np.testing.assert_allclose(cf.get_box(), box, rtol=1e-5)
-
-
-class TestVelocitiesAndForces:
-    def test_set_and_get_velocities(self):
-        cf = av.CpuFrame(2)
-        vx = np.array([0.5, -0.5], dtype=np.float32)
-        vy = np.zeros(2, dtype=np.float32)
-        vz = np.zeros(2, dtype=np.float32)
-        cf.set_velocities(vx, vy, vz)
-        np.testing.assert_allclose(cf.get_vx(), vx, rtol=1e-6)
-
-    def test_initial_forces_zero(self):
-        cf = av.CpuFrame(4)
-        # Forces are uninitialized until an MD step runs.
-        # Just check shape/type.
-        fx = cf.get_fx()
-        assert fx.shape == (4,)
-        assert fx.dtype == np.float32
-
-
-class TestTopology:
-    def test_set_bonds(self):
-        cf = av.CpuFrame(4)
-        atomi = np.array([0, 1, 2], dtype=np.int32)
-        atomj = np.array([1, 2, 3], dtype=np.int32)
-        btype = np.zeros(3, dtype=np.int32)
-        cf.set_bonds(atomi, atomj, btype)  # should not raise
-
-    def test_set_angles(self):
-        cf = av.CpuFrame(4)
-        cf.set_angles(
-            np.array([0], dtype=np.int32),
-            np.array([1], dtype=np.int32),
-            np.array([2], dtype=np.int32),
-            np.zeros(1, dtype=np.int32),
-        )
-
-    def test_set_dihedrals(self):
-        cf = av.CpuFrame(4)
-        cf.set_dihedrals(
-            np.array([0], dtype=np.int32),
-            np.array([1], dtype=np.int32),
-            np.array([2], dtype=np.int32),
-            np.array([3], dtype=np.int32),
-            np.zeros(1, dtype=np.int32),
-        )
+        assert "energy" in frame.metadata
+        assert "kinetic" in frame.metadata

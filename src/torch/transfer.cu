@@ -91,17 +91,17 @@ Frame to_torch(const cuda::Frame& src) {
     dst.n_dihedrals_ = src.n_dihedrals();
 
     // Per-atom arrays
-    dst.x = wrap_real(src.x, na);
-    dst.y = wrap_real(src.y, na);
-    dst.z = wrap_real(src.z, na);
-    dst.vx = wrap_real(src.vx, na);
-    dst.vy = wrap_real(src.vy, na);
-    dst.vz = wrap_real(src.vz, na);
-    dst.fx = wrap_real(src.fx, na);
-    dst.fy = wrap_real(src.fy, na);
-    dst.fz = wrap_real(src.fz, na);
-    dst.mass = wrap_real(src.mass, na);
-    dst.type_id = wrap_int(src.type_id, na);
+    dst.atoms.x = wrap_real(src.atoms.x, na);
+    dst.atoms.y = wrap_real(src.atoms.y, na);
+    dst.atoms.z = wrap_real(src.atoms.z, na);
+    dst.atoms.vx = wrap_real(src.atoms.vx, na);
+    dst.atoms.vy = wrap_real(src.atoms.vy, na);
+    dst.atoms.vz = wrap_real(src.atoms.vz, na);
+    dst.atoms.fx = wrap_real(src.atoms.fx, na);
+    dst.atoms.fy = wrap_real(src.atoms.fy, na);
+    dst.atoms.fz = wrap_real(src.atoms.fz, na);
+    dst.atoms.mass = wrap_real(src.atoms.mass, na);
+    dst.atoms.type = wrap_int(src.atoms.type, na);
 
     // System scalars
     dst.energy = wrap_scalar(src.energy);
@@ -117,22 +117,22 @@ Frame to_torch(const cuda::Frame& src) {
 
     // Topology
     Int nb = src.n_bonds();
-    dst.bond_i = wrap_int(src.bonds.i, nb);
-    dst.bond_j = wrap_int(src.bonds.j, nb);
-    dst.bond_type = wrap_int(src.bonds.type, nb);
+    dst.bonds.atomi = wrap_int(src.bonds.atomi, nb);
+    dst.bonds.atomj = wrap_int(src.bonds.atomj, nb);
+    dst.bonds.type = wrap_int(src.bonds.type, nb);
 
     Int nang = src.n_angles();
-    dst.angle_i = wrap_int(src.angles.i, nang);
-    dst.angle_j = wrap_int(src.angles.j, nang);
-    dst.angle_k = wrap_int(src.angles.k, nang);
-    dst.angle_type = wrap_int(src.angles.type, nang);
+    dst.angles.atomi = wrap_int(src.angles.atomi, nang);
+    dst.angles.atomj = wrap_int(src.angles.atomj, nang);
+    dst.angles.atomk = wrap_int(src.angles.atomk, nang);
+    dst.angles.type = wrap_int(src.angles.type, nang);
 
     Int ndih = src.n_dihedrals();
-    dst.dihedral_i = wrap_int(src.dihedrals.i, ndih);
-    dst.dihedral_j = wrap_int(src.dihedrals.j, ndih);
-    dst.dihedral_k = wrap_int(src.dihedrals.k, ndih);
-    dst.dihedral_l = wrap_int(src.dihedrals.l, ndih);
-    dst.dihedral_type = wrap_int(src.dihedrals.type, ndih);
+    dst.dihedrals.atomi = wrap_int(src.dihedrals.atomi, ndih);
+    dst.dihedrals.atomj = wrap_int(src.dihedrals.atomj, ndih);
+    dst.dihedrals.atomk = wrap_int(src.dihedrals.atomk, ndih);
+    dst.dihedrals.atoml = wrap_int(src.dihedrals.atoml, ndih);
+    dst.dihedrals.type = wrap_int(src.dihedrals.type, ndih);
 
     // Pair list (may not be populated yet)
     // PairList n_pairs is on device -- we don't D2H here; caller sets n_pairs_ if known.
@@ -146,37 +146,37 @@ void to_cuda(const Frame& src, cuda::Frame& dst) {
     dst.n_angles_ = src.n_angles_;
     dst.n_dihedrals_ = src.n_dihedrals_;
 
-    dst.x = unwrap_real(src.x, "x");
-    dst.y = unwrap_real(src.y, "y");
-    dst.z = unwrap_real(src.z, "z");
-    dst.vx = unwrap_real(src.vx, "vx");
-    dst.vy = unwrap_real(src.vy, "vy");
-    dst.vz = unwrap_real(src.vz, "vz");
-    dst.fx = unwrap_real(src.fx, "fx");
-    dst.fy = unwrap_real(src.fy, "fy");
-    dst.fz = unwrap_real(src.fz, "fz");
-    dst.mass = unwrap_real(src.mass, "mass");
-    dst.type_id = unwrap_int(src.type_id, "type_id");
+    dst.atoms.x = unwrap_real(src.atoms.x, "x");
+    dst.atoms.y = unwrap_real(src.atoms.y, "y");
+    dst.atoms.z = unwrap_real(src.atoms.z, "z");
+    dst.atoms.vx = unwrap_real(src.atoms.vx, "vx");
+    dst.atoms.vy = unwrap_real(src.atoms.vy, "vy");
+    dst.atoms.vz = unwrap_real(src.atoms.vz, "vz");
+    dst.atoms.fx = unwrap_real(src.atoms.fx, "fx");
+    dst.atoms.fy = unwrap_real(src.atoms.fy, "fy");
+    dst.atoms.fz = unwrap_real(src.atoms.fz, "fz");
+    dst.atoms.mass = unwrap_real(src.atoms.mass, "mass");
+    dst.atoms.type = unwrap_int(src.atoms.type, "type");
 
     dst.energy = unwrap_real(src.energy, "energy");
     dst.kinetic = unwrap_real(src.kinetic, "kinetic");
     dst.stress = unwrap_real(src.stress, "stress");
     dst.box = unwrap_real(src.box, "box");
 
-    dst.bonds.i = unwrap_int(src.bond_i, "bond_i");
-    dst.bonds.j = unwrap_int(src.bond_j, "bond_j");
-    dst.bonds.type = unwrap_int(src.bond_type, "bond_type");
+    dst.bonds.atomi = unwrap_int(src.bonds.atomi, "bonds.atomi");
+    dst.bonds.atomj = unwrap_int(src.bonds.atomj, "bonds.atomj");
+    dst.bonds.type = unwrap_int(src.bonds.type, "bonds.type");
 
-    dst.angles.i = unwrap_int(src.angle_i, "angle_i");
-    dst.angles.j = unwrap_int(src.angle_j, "angle_j");
-    dst.angles.k = unwrap_int(src.angle_k, "angle_k");
-    dst.angles.type = unwrap_int(src.angle_type, "angle_type");
+    dst.angles.atomi = unwrap_int(src.angles.atomi, "angles.atomi");
+    dst.angles.atomj = unwrap_int(src.angles.atomj, "angles.atomj");
+    dst.angles.atomk = unwrap_int(src.angles.atomk, "angles.atomk");
+    dst.angles.type = unwrap_int(src.angles.type, "angles.type");
 
-    dst.dihedrals.i = unwrap_int(src.dihedral_i, "dihedral_i");
-    dst.dihedrals.j = unwrap_int(src.dihedral_j, "dihedral_j");
-    dst.dihedrals.k = unwrap_int(src.dihedral_k, "dihedral_k");
-    dst.dihedrals.l = unwrap_int(src.dihedral_l, "dihedral_l");
-    dst.dihedrals.type = unwrap_int(src.dihedral_type, "dihedral_type");
+    dst.dihedrals.atomi = unwrap_int(src.dihedrals.atomi, "dihedrals.atomi");
+    dst.dihedrals.atomj = unwrap_int(src.dihedrals.atomj, "dihedrals.atomj");
+    dst.dihedrals.atomk = unwrap_int(src.dihedrals.atomk, "dihedrals.atomk");
+    dst.dihedrals.atoml = unwrap_int(src.dihedrals.atoml, "dihedrals.atoml");
+    dst.dihedrals.type = unwrap_int(src.dihedrals.type, "dihedrals.type");
 
     dst.pairs.i = unwrap_int(src.pair_i, "pair_i");
     dst.pairs.j = unwrap_int(src.pair_j, "pair_j");
@@ -187,17 +187,17 @@ void to_cuda(const Frame& src, cuda::Frame& dst) {
 }
 
 void to_cpu(const Frame& src, cpu::Frame& dst) {
-    cuda_to_xtensor<Real>(src.x, dst.x);
-    cuda_to_xtensor<Real>(src.y, dst.y);
-    cuda_to_xtensor<Real>(src.z, dst.z);
-    cuda_to_xtensor<Real>(src.vx, dst.vx);
-    cuda_to_xtensor<Real>(src.vy, dst.vy);
-    cuda_to_xtensor<Real>(src.vz, dst.vz);
-    cuda_to_xtensor<Real>(src.fx, dst.fx);
-    cuda_to_xtensor<Real>(src.fy, dst.fy);
-    cuda_to_xtensor<Real>(src.fz, dst.fz);
-    cuda_to_xtensor<Real>(src.mass, dst.mass);
-    cuda_to_xtensor<Int>(src.type_id, dst.type_id);
+    cuda_to_xtensor<Real>(src.atoms.x, dst.atoms.x);
+    cuda_to_xtensor<Real>(src.atoms.y, dst.atoms.y);
+    cuda_to_xtensor<Real>(src.atoms.z, dst.atoms.z);
+    cuda_to_xtensor<Real>(src.atoms.vx, dst.atoms.vx);
+    cuda_to_xtensor<Real>(src.atoms.vy, dst.atoms.vy);
+    cuda_to_xtensor<Real>(src.atoms.vz, dst.atoms.vz);
+    cuda_to_xtensor<Real>(src.atoms.fx, dst.atoms.fx);
+    cuda_to_xtensor<Real>(src.atoms.fy, dst.atoms.fy);
+    cuda_to_xtensor<Real>(src.atoms.fz, dst.atoms.fz);
+    cuda_to_xtensor<Real>(src.atoms.mass, dst.atoms.mass);
+    cuda_to_xtensor<Int>(src.atoms.type, dst.atoms.type);
 
     if (src.energy.defined() && src.energy.numel() > 0) {
         auto cpu_e = src.energy.to(::torch::kCPU);
@@ -222,20 +222,20 @@ void to_cpu(const Frame& src, cpu::Frame& dst) {
 
 Frame from_cpu(const cpu::Frame& src) {
     Frame dst;
-    Int na = src.n_atoms();
+    Int na = src.atoms.size();
     dst.n_atoms_ = na;
 
-    dst.x = xtensor_to_cuda<Real, kRealDtype>(src.x);
-    dst.y = xtensor_to_cuda<Real, kRealDtype>(src.y);
-    dst.z = xtensor_to_cuda<Real, kRealDtype>(src.z);
-    dst.vx = xtensor_to_cuda<Real, kRealDtype>(src.vx);
-    dst.vy = xtensor_to_cuda<Real, kRealDtype>(src.vy);
-    dst.vz = xtensor_to_cuda<Real, kRealDtype>(src.vz);
-    dst.fx = xtensor_to_cuda<Real, kRealDtype>(src.fx);
-    dst.fy = xtensor_to_cuda<Real, kRealDtype>(src.fy);
-    dst.fz = xtensor_to_cuda<Real, kRealDtype>(src.fz);
-    dst.mass = xtensor_to_cuda<Real, kRealDtype>(src.mass);
-    dst.type_id = xtensor_to_cuda<Int, kIntDtype>(src.type_id);
+    dst.atoms.x = xtensor_to_cuda<Real, kRealDtype>(src.atoms.x);
+    dst.atoms.y = xtensor_to_cuda<Real, kRealDtype>(src.atoms.y);
+    dst.atoms.z = xtensor_to_cuda<Real, kRealDtype>(src.atoms.z);
+    dst.atoms.vx = xtensor_to_cuda<Real, kRealDtype>(src.atoms.vx);
+    dst.atoms.vy = xtensor_to_cuda<Real, kRealDtype>(src.atoms.vy);
+    dst.atoms.vz = xtensor_to_cuda<Real, kRealDtype>(src.atoms.vz);
+    dst.atoms.fx = xtensor_to_cuda<Real, kRealDtype>(src.atoms.fx);
+    dst.atoms.fy = xtensor_to_cuda<Real, kRealDtype>(src.atoms.fy);
+    dst.atoms.fz = xtensor_to_cuda<Real, kRealDtype>(src.atoms.fz);
+    dst.atoms.mass = xtensor_to_cuda<Real, kRealDtype>(src.atoms.mass);
+    dst.atoms.type = xtensor_to_cuda<Int, kIntDtype>(src.atoms.type);
 
     // System scalars
     auto real_opts = ::torch::TensorOptions().dtype(kRealDtype).device(::torch::kCUDA);
@@ -253,26 +253,26 @@ Frame from_cpu(const cpu::Frame& src) {
     dst.box = ::torch::from_blob(box_data, {9}, cpu_opts).to(::torch::kCUDA);
 
     // Topology
-    if (src.bond_i.size() > 0) {
-        dst.n_bonds_ = static_cast<Int>(src.bond_i.size());
-        dst.bond_i = xtensor_to_cuda<Int, kIntDtype>(src.bond_i);
-        dst.bond_j = xtensor_to_cuda<Int, kIntDtype>(src.bond_j);
-        dst.bond_type = xtensor_to_cuda<Int, kIntDtype>(src.bond_type);
+    if (src.bonds.atomi.size() > 0) {
+        dst.n_bonds_ = static_cast<Int>(src.bonds.atomi.size());
+        dst.bonds.atomi = xtensor_to_cuda<Int, kIntDtype>(src.bonds.atomi);
+        dst.bonds.atomj = xtensor_to_cuda<Int, kIntDtype>(src.bonds.atomj);
+        dst.bonds.type = xtensor_to_cuda<Int, kIntDtype>(src.bonds.type);
     }
-    if (src.angle_i.size() > 0) {
-        dst.n_angles_ = static_cast<Int>(src.angle_i.size());
-        dst.angle_i = xtensor_to_cuda<Int, kIntDtype>(src.angle_i);
-        dst.angle_j = xtensor_to_cuda<Int, kIntDtype>(src.angle_j);
-        dst.angle_k = xtensor_to_cuda<Int, kIntDtype>(src.angle_k);
-        dst.angle_type = xtensor_to_cuda<Int, kIntDtype>(src.angle_type);
+    if (src.angles.atomi.size() > 0) {
+        dst.n_angles_ = static_cast<Int>(src.angles.atomi.size());
+        dst.angles.atomi = xtensor_to_cuda<Int, kIntDtype>(src.angles.atomi);
+        dst.angles.atomj = xtensor_to_cuda<Int, kIntDtype>(src.angles.atomj);
+        dst.angles.atomk = xtensor_to_cuda<Int, kIntDtype>(src.angles.atomk);
+        dst.angles.type = xtensor_to_cuda<Int, kIntDtype>(src.angles.type);
     }
-    if (src.dihedral_i.size() > 0) {
-        dst.n_dihedrals_ = static_cast<Int>(src.dihedral_i.size());
-        dst.dihedral_i = xtensor_to_cuda<Int, kIntDtype>(src.dihedral_i);
-        dst.dihedral_j = xtensor_to_cuda<Int, kIntDtype>(src.dihedral_j);
-        dst.dihedral_k = xtensor_to_cuda<Int, kIntDtype>(src.dihedral_k);
-        dst.dihedral_l = xtensor_to_cuda<Int, kIntDtype>(src.dihedral_l);
-        dst.dihedral_type = xtensor_to_cuda<Int, kIntDtype>(src.dihedral_type);
+    if (src.dihedrals.atomi.size() > 0) {
+        dst.n_dihedrals_ = static_cast<Int>(src.dihedrals.atomi.size());
+        dst.dihedrals.atomi = xtensor_to_cuda<Int, kIntDtype>(src.dihedrals.atomi);
+        dst.dihedrals.atomj = xtensor_to_cuda<Int, kIntDtype>(src.dihedrals.atomj);
+        dst.dihedrals.atomk = xtensor_to_cuda<Int, kIntDtype>(src.dihedrals.atomk);
+        dst.dihedrals.atoml = xtensor_to_cuda<Int, kIntDtype>(src.dihedrals.atoml);
+        dst.dihedrals.type = xtensor_to_cuda<Int, kIntDtype>(src.dihedrals.type);
     }
 
     return dst;

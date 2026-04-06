@@ -38,10 +38,10 @@ using namespace ATV;
 int main() {
     // ── 1. Build H2 geometry ──────────────────────────────────────────
     cpu::Frame frame(2);
-    frame.x[0] = Real(0);     frame.y[0] = Real(0); frame.z[0] = Real(0);
-    frame.x[1] = Real(0.74);  frame.y[1] = Real(0); frame.z[1] = Real(0);
-    frame.mass[0] = Real(1.008); frame.mass[1] = Real(1.008);
-    frame.type_id[0] = 1; frame.type_id[1] = 1;  // H: Z=1
+    frame.atoms.x[0] = Real(0);     frame.atoms.y[0] = Real(0); frame.atoms.z[0] = Real(0);
+    frame.atoms.x[1] = Real(0.74);  frame.atoms.y[1] = Real(0); frame.atoms.z[1] = Real(0);
+    frame.atoms.mass[0] = Real(1.008); frame.atoms.mass[1] = Real(1.008);
+    frame.atoms.type[0] = 1; frame.atoms.type[1] = 1;  // H: Z=1
     frame.box = Mat3::cubic(100.0);
 
     std::cout << "=== H2/STO-3G/RHF (CPU and CUDA) ===\n"
@@ -95,7 +95,7 @@ int main() {
     rec.add_scalar("n_beta",     Real(integrals.n_occ()));
     rec.add_scalar("spin_contamination", Real(0));
     rec.add_field("charge",       cpu::mulliken_charge(frame, cpu_result.P, integrals.S));
-    rec.add_field("spin_density", std::vector<Real>(frame.n_atoms(), Real(0)));
+    rec.add_field("spin_density", std::vector<Real>(frame.atoms.size(), Real(0)));
     rec.commit_frame();
     cpu::print_summary(rec);
     cpu::XYZ("h2_rhf.xyz").write_ext(rec);
@@ -132,7 +132,7 @@ int main() {
         cuda_rec.add_scalar("n_beta",             Real(mulliken_obs.n_occ()));
         cuda_rec.add_scalar("spin_contamination", Real(0));
         cuda_rec.add_field("charge",              mulliken_obs.charges());
-        cuda_rec.add_field("spin_density",        std::vector<Real>(frame.n_atoms(), Real(0)));
+        cuda_rec.add_field("spin_density",        std::vector<Real>(frame.atoms.size(), Real(0)));
         cuda_rec.commit_frame();
         cpu::print_summary(cuda_rec);
         cpu::XYZ("h2_rhf_cuda.xyz").write_ext(cuda_rec);

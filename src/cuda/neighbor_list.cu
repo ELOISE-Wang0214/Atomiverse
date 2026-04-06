@@ -132,7 +132,7 @@ void NeighborList::launch(const LaunchContext& ctx) {
 
     // K1: Morton codes
     launch_compute_morton<Real>(
-        frame.x, frame.y, frame.z, n,
+        frame.atoms.x, frame.atoms.y, frame.atoms.z, n,
         s.d_inv_cell.data(), s.periodic,
         s.buf.morton_codes.data(), s.buf.atom_indices.data(), stream);
 
@@ -145,7 +145,7 @@ void NeighborList::launch(const LaunchContext& ctx) {
     // K3: Fused scatter + AABB
     launch_scatter_and_aabb<Real>(
         s.buf.indices_sorted.data(),
-        frame.x, frame.y, frame.z, n, nc,
+        frame.atoms.x, frame.atoms.y, frame.atoms.z, n, nc,
         s.buf.cluster_x.data(), s.buf.cluster_y.data(), s.buf.cluster_z.data(),
         s.buf.original_index.data(), s.buf.cluster_count.data(),
         s.buf.aabb_min_x.data(), s.buf.aabb_min_y.data(), s.buf.aabb_min_z.data(),
@@ -231,7 +231,7 @@ void NeighborList::launch(const LaunchContext& ctx) {
     launch_export_atom_pairs(
         s.buf.flat_ci.data(), s.buf.flat_cj.data(), s.buf.flat_mask.data(),
         s.buf.flat_pair_counter.data(), cap, s.buf.original_index.data(),
-        frame.x, frame.y, frame.z,
+        frame.atoms.x, frame.atoms.y, frame.atoms.z,
         s.periodic, s.d_cell.data(), s.d_inv_cell.data(),
         frame.pairs.i, frame.pairs.j,
         frame.pairs.dx, frame.pairs.dy, frame.pairs.dz, frame.pairs.dist,

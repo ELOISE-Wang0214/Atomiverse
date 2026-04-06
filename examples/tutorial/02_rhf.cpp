@@ -34,10 +34,10 @@ int main() {
     // cpu::Frame is the user-facing data container. Positions in Angstrom,
     // type_id = atomic number Z. The library converts to Bohr internally.
     cpu::Frame frame(2);
-    frame.x[0] = Real(0);     frame.y[0] = Real(0); frame.z[0] = Real(0);
-    frame.x[1] = Real(0.74);  frame.y[1] = Real(0); frame.z[1] = Real(0);
-    frame.mass[0] = Real(1.008); frame.mass[1] = Real(1.008);
-    frame.type_id[0] = 1; frame.type_id[1] = 1;  // H: Z=1
+    frame.atoms.x[0] = Real(0);     frame.atoms.y[0] = Real(0); frame.atoms.z[0] = Real(0);
+    frame.atoms.x[1] = Real(0.74);  frame.atoms.y[1] = Real(0); frame.atoms.z[1] = Real(0);
+    frame.atoms.mass[0] = Real(1.008); frame.atoms.mass[1] = Real(1.008);
+    frame.atoms.type[0] = 1; frame.atoms.type[1] = 1;  // H: Z=1
     frame.box = Mat3::cubic(100.0);
 
     std::cout << "=== H2 / STO-3G / RHF (CPU) ===\n"

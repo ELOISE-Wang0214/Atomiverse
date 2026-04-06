@@ -30,11 +30,11 @@ namespace cpu {
 ///
 /// Delegates to molrs::mulliken_charge via CXX bridge.
 ///
-/// @param frame   CPU Frame supplying type_id[] and n_atoms().
+/// @param frame   CPU Frame supplying atoms.type[] and atoms.size().
 /// @param P_flat  Density matrix as flat row-major array [n_basis * n_basis].
 /// @param S_flat  Overlap matrix as flat row-major array [n_basis * n_basis].
 /// @param n_basis Number of basis functions.
-/// @return Per-atom Mulliken net charges [e], size == frame.n_atoms().
+/// @return Per-atom Mulliken net charges [e], size == frame.atoms.size().
 std::vector<Real> mulliken_charge(const cpu::Frame& frame,
                                   const Real* P_flat,
                                   const Real* S_flat,
@@ -42,12 +42,12 @@ std::vector<Real> mulliken_charge(const cpu::Frame& frame,
 
 /// @brief Compute Mulliken spin densities: sigma_A = Tr_A((P^alpha - P^beta) S).
 ///
-/// @param frame     CPU Frame supplying type_id[] and n_atoms().
+/// @param frame     CPU Frame supplying atoms.type[] and atoms.size().
 /// @param Pa_flat   Alpha density matrix as flat row-major array.
 /// @param Pb_flat   Beta  density matrix as flat row-major array.
 /// @param S_flat    Overlap matrix as flat row-major array.
 /// @param n_basis   Number of basis functions.
-/// @return Per-atom Mulliken spin densities [e], size == frame.n_atoms().
+/// @return Per-atom Mulliken spin densities [e], size == frame.atoms.size().
 std::vector<Real> mulliken_spin(const cpu::Frame& frame,
                                 const Real* Pa_flat,
                                 const Real* Pb_flat,

@@ -97,8 +97,8 @@ void HarmonicBond::launch(const LaunchContext& ctx) {
     int block = cuda::kDefaultBlock;
     int grid = cuda::grid_size(static_cast<int>(nb));
     cuda::kernels::harmonic_bond_k<<<grid, block, block * sizeof(Real), stream>>>(
-        f.x, f.y, f.z, f.fx, f.fy, f.fz, f.energy,
-        f.bonds.i, f.bonds.j, f.bonds.type,
+        f.atoms.x, f.atoms.y, f.atoms.z, f.atoms.fx, f.atoms.fy, f.atoms.fz, f.energy,
+        f.bonds.atomi, f.bonds.atomj, f.bonds.type,
         state_->d_K, state_->d_r0, f.box, nb);
 }
 

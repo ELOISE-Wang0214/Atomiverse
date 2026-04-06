@@ -1,6 +1,6 @@
 ---
 title: Python Binding Layer (nanobind + DLPack)
-status: draft
+status: in-progress
 created: 2026-04-04
 ---
 
@@ -347,21 +347,69 @@ nb::class_<LJ>(m, "LJ")
 
 ## Python package (`atomiverse`)
 
+Two-layer design: thin C++ nanobind layer (`_atomiverse`) + Pythonic OOP wrapper.
+
+**Core principle:** `mp.Frame` is the sole user-facing type. Atomiverse never exposes its own Frame. `mp.Frame ↔ CpuFrame` conversion is internal.
+
 ```
-python/
+python/src/
   atomiverse/
-    __init__.py           # public API, re-exports, device registration
-    _device.py            # CudaDeviceHandler, register into molpy
-    md.py                 # MD(...) convenience wrapper
-    scf.py                # SCF convenience wrapper
-src/
-  python/
+    __init__.py           # public API: MD, RHF, UHF, UKS, components
+    _binding.py           # C++ import shim (_atomiverse → _cpp)
+    _convert.py           # mp.Frame ↔ CpuFrame conversion (internal)
+    md.py                 # MD driver: generic add(), string phases, auto-build
+    scf.py                # RHF/UHF/UKS solvers, Integrals, result classes
+    _device.py            # device handlers for molpy registry (opt-in)
+  bindings/
     bind.cpp              # NB_MODULE(_atomiverse, m) — top-level
-    bind_frame.cpp        # CpuFrame, CudaFrame, transfer, layout conversion
-    bind_md.cpp           # MD driver + MD components
-    bind_scf.cpp          # SCF driver + SCF components
-    bind_potentials.cpp   # LJ, HarmonicBond, HarmonicAngle, ...
-    bind_observers.cpp    # Thermo, Recorder, RDF, ...
+    bind_frame.cpp        # CpuFrame (internal), numpy transfer
+    bind_md.cpp           # MD driver + MD components (per-type add methods)
+    bind_scf.cpp          # SCF integrals + solvers (free functions)
+    cpu_frame_wrapper.h   # CpuFrame C++ wrapper struct
+```
+
+### Python API
+
+```python
+import molpy as mp
+import atomiverse as av
+import numpy as np
+
+# Data layer: molpy — mp.Frame is the ONLY user-facing type
+frame = mp.Frame({"atoms": mp.Block({
+    "x": [0.0, 0.74], "y": [0, 0], "z": [0, 0],
+    "type": [1, 1], "mass": [1.008, 1.008],
+})})
+frame.box = mp.Box(np.eye(3) * 100.0)
+
+# Compute layer: atomiverse — accepts mp.Frame, converts internally
+sim = av.MD(dt=0.001)
+sim.add(av.InitVelocity(temperature=10.0, seed=42))
+sim.on("force").add(av.NeighborList(cutoff=8.5), order=-10)
+sim.on("force").add(av.LJ(epsilon=0.01, sigma=3.4, cutoff=8.5))
+sim.run(frame, 1000)   # mp.Frame in → CpuFrame → compute → write back
+# frame["atoms"]["x"] now has updated positions
+# frame.metadata["energy"] has the total energy
+
+# SCF — OOP solvers, also accept mp.Frame
+rhf = av.RHF(frame, basis="sto-3g")
+result = rhf.solve(tol=1e-10)
+result.energy           # property
+result.eigenvalues      # property (numpy)
+result.density_matrix   # property (numpy)
+rhf.integrals.S         # overlap matrix
+
+# UHF — charge/multiplicity
+uhf = av.UHF(frame, multiplicity=2)
+result = uhf.solve()
+
+# DFT
+dft = av.UKS(frame, xc="LSDA", multiplicity=1)
+result = dft.solve()
+result.xc_energy
+
+# Optional: register device handlers for frame.to("cuda")
+av.register_molpy()   # raises if molpy protocol not ready
 ```
 
 ### `__init__.py`

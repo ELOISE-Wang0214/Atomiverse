@@ -61,10 +61,10 @@ protected:
         // Synchronous D2H of geometry at build time.
         std::vector<Int>  tid(n);
         std::vector<Real> xh(n), yh(n), zh(n);
-        cudaMemcpyAsync(tid.data(), frame.type_id, n * sizeof(Int),  cudaMemcpyDeviceToHost, stream);
-        cudaMemcpyAsync(xh.data(),  frame.x,       n * sizeof(Real), cudaMemcpyDeviceToHost, stream);
-        cudaMemcpyAsync(yh.data(),  frame.y,       n * sizeof(Real), cudaMemcpyDeviceToHost, stream);
-        cudaMemcpyAsync(zh.data(),  frame.z,       n * sizeof(Real), cudaMemcpyDeviceToHost, stream);
+        cudaMemcpyAsync(tid.data(), frame.atoms.type, n * sizeof(Int),  cudaMemcpyDeviceToHost, stream);
+        cudaMemcpyAsync(xh.data(),  frame.atoms.x,       n * sizeof(Real), cudaMemcpyDeviceToHost, stream);
+        cudaMemcpyAsync(yh.data(),  frame.atoms.y,       n * sizeof(Real), cudaMemcpyDeviceToHost, stream);
+        cudaMemcpyAsync(zh.data(),  frame.atoms.z,       n * sizeof(Real), cudaMemcpyDeviceToHost, stream);
         cudaStreamSynchronize(stream);
 
         cpu_frame_ = std::make_unique<cpu::Frame>(n);

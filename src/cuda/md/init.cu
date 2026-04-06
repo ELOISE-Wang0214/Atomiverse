@@ -17,9 +17,9 @@ void ZeroForces::launch(const LaunchContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& frame = ctx.frame;
     auto n = static_cast<size_t>(ctx.frame.n_atoms());
-    cudaMemsetAsync(frame.fx, 0, n * sizeof(Real), stream);
-    cudaMemsetAsync(frame.fy, 0, n * sizeof(Real), stream);
-    cudaMemsetAsync(frame.fz, 0, n * sizeof(Real), stream);
+    cudaMemsetAsync(frame.atoms.fx, 0, n * sizeof(Real), stream);
+    cudaMemsetAsync(frame.atoms.fy, 0, n * sizeof(Real), stream);
+    cudaMemsetAsync(frame.atoms.fz, 0, n * sizeof(Real), stream);
 }
 
 void ZeroEnergy::launch(const LaunchContext& ctx) {
@@ -105,8 +105,8 @@ void InitVelocity::build(const BuildContext& ctx) {
 
     // 1. Generate Gaussian velocities
     generate_velocities<<<grid, block, 0, stream>>>(
-        frame.vx, frame.vy, frame.vz, frame.mass,
-        kbt_over_mvv2e, seed_, frame.d_n_atoms);
+        frame.atoms.vx, frame.atoms.vy, frame.atoms.vz, frame.atoms.mass,
+        kbt_over_mvv2e, seed_, frame.atoms.d_size);
 
     // 2. Compute total momentum + total mass
     Real* d_px;  Real* d_py;  Real* d_pz;  Real* d_M;
@@ -120,8 +120,8 @@ void InitVelocity::build(const BuildContext& ctx) {
     cudaMemsetAsync(d_M,  0, sizeof(Real), stream);
 
     accumulate_momentum<<<grid, block, 0, stream>>>(
-        frame.vx, frame.vy, frame.vz, frame.mass,
-        d_px, d_py, d_pz, d_M, frame.d_n_atoms);
+        frame.atoms.vx, frame.atoms.vy, frame.atoms.vz, frame.atoms.mass,
+        d_px, d_py, d_pz, d_M, frame.atoms.d_size);
 
     // 3. D2H momentum + mass (build-time D2H allowed)
     Real px = 0, py = 0, pz = 0, M = 0;
@@ -139,8 +139,8 @@ void InitVelocity::build(const BuildContext& ctx) {
         Real vcm_y = py / M;
         Real vcm_z = pz / M;
         remove_com<<<grid, block, 0, stream>>>(
-            frame.vx, frame.vy, frame.vz,
-            vcm_x, vcm_y, vcm_z, frame.d_n_atoms);
+            frame.atoms.vx, frame.atoms.vy, frame.atoms.vz,
+            vcm_x, vcm_y, vcm_z, frame.atoms.d_size);
         cudaStreamSynchronize(stream);
     }
 }

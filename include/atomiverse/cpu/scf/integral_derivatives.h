@@ -1,12 +1,16 @@
 /// @file cpu/scf/integral_derivatives.h
 /// @brief Analytic derivatives of STO-3G molecular integrals w.r.t. nuclear positions.
 ///
-/// Computes dS/dR, dT/dR, dV/dR, d(ERI)/dR, and dV_nuc/dR for s-type Gaussians.
+/// Computes dS/dR, dT/dR, dV/dR, d(ERI)/dR, and dV_nuc/dR for s+p type Gaussians.
+/// Supports elements H through O (Z=1..8) with STO-3G basis (s and sp shells).
+/// Uses the angular momentum raising formula for derivatives:
+///   d/dA_d <a|O|b> = 2*alpha_a * <a+1_d|O|b> - a_d * <a-1_d|O|b>
+///
 /// All internal computation in atomic units (Bohr, Hartree).
 /// Output in Hartree/Bohr.
 ///
 /// @see cpu::scf::native for the undifferentiated integrals
-/// @see cpu::scf::rhf_gradient for the gradient assembly
+/// @see cpu::scf::scf_gradient for the gradient assembly
 #pragma once
 
 #include <xtensor/xtensor.hpp>
@@ -35,10 +39,10 @@ struct IntegralDerivPack {
 
 /// @brief Compute all integral derivatives for STO-3G at current geometry.
 ///
-/// Reads atom positions from frame.x/y/z (Angstrom) and nuclear charges
-/// from frame.type_id. Converts to Bohr internally. Output in Hartree/Bohr.
+/// Reads atom positions from frame.atoms.x/y/z (Angstrom) and nuclear charges
+/// from frame.atoms.type. Converts to Bohr internally. Output in Hartree/Bohr.
 ///
-/// @param frame CPU Frame with atom positions and types (type_id = Z).
+/// @param frame CPU Frame with atom positions and types (atoms.type = Z).
 /// @param charge Molecular charge (0 = neutral).
 /// @return IntegralDerivPack with all derivative tensors.
 IntegralDerivPack build_integral_derivatives_sto3g(const Frame& frame, int charge = 0);

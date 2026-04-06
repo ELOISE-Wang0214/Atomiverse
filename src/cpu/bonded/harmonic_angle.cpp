@@ -33,7 +33,7 @@ void HarmonicAngle::build(const cpu::BuildContext& ctx) {
 #ifdef _OPENMP
     n_threads_ = omp_get_max_threads();
 #endif
-    Int n = ctx.frame.n_atoms();
+    Int n = ctx.frame.atoms.size();
     fx_thr_.resize(n_threads_);
     fy_thr_.resize(n_threads_);
     fz_thr_.resize(n_threads_);
@@ -46,10 +46,10 @@ void HarmonicAngle::build(const cpu::BuildContext& ctx) {
 
 void HarmonicAngle::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
-    Int n_angles = static_cast<Int>(f.angle_i.size());
+    Int n_angles = static_cast<Int>(f.angles.atomi.size());
     if (n_angles == 0) return;
 
-    Int n_atoms = f.n_atoms();
+    Int n_atoms = f.atoms.size();
     Real energy_total = 0;
 
     #pragma omp parallel reduction(+:energy_total)
@@ -67,21 +67,21 @@ void HarmonicAngle::launch(const cpu::LaunchContext& ctx) {
 
         #pragma omp for schedule(static)
         for (Int a = 0; a < n_angles; ++a) {
-            Int i = f.angle_i[a];
-            Int j = f.angle_j[a]; // center atom
-            Int k = f.angle_k[a];
-            Int type = f.angle_type[a];
+            Int i = f.angles.atomi[a];
+            Int j = f.angles.atomj[a]; // center atom
+            Int k = f.angles.atomk[a];
+            Int type = f.angles.type[a];
 
             // r_ji = r_i - r_j
-            Real dx_ji = f.x[i] - f.x[j];
-            Real dy_ji = f.y[i] - f.y[j];
-            Real dz_ji = f.z[i] - f.z[j];
+            Real dx_ji = f.atoms.x[i] - f.atoms.x[j];
+            Real dy_ji = f.atoms.y[i] - f.atoms.y[j];
+            Real dz_ji = f.atoms.z[i] - f.atoms.z[j];
             minimum_image(dx_ji, dy_ji, dz_ji, f.box);
 
             // r_jk = r_k - r_j
-            Real dx_jk = f.x[k] - f.x[j];
-            Real dy_jk = f.y[k] - f.y[j];
-            Real dz_jk = f.z[k] - f.z[j];
+            Real dx_jk = f.atoms.x[k] - f.atoms.x[j];
+            Real dy_jk = f.atoms.y[k] - f.atoms.y[j];
+            Real dz_jk = f.atoms.z[k] - f.atoms.z[j];
             minimum_image(dx_jk, dy_jk, dz_jk, f.box);
 
             Real r_ji = std::sqrt(dx_ji * dx_ji + dy_ji * dy_ji + dz_ji * dz_ji);
@@ -125,9 +125,9 @@ void HarmonicAngle::launch(const cpu::LaunchContext& ctx) {
         #pragma omp for schedule(static)
         for (Int i = 0; i < n_atoms; ++i) {
             for (int t = 0; t < n_threads_; ++t) {
-                f.fx[i] += fx_thr_[t][i];
-                f.fy[i] += fy_thr_[t][i];
-                f.fz[i] += fz_thr_[t][i];
+                f.atoms.fx[i] += fx_thr_[t][i];
+                f.atoms.fy[i] += fy_thr_[t][i];
+                f.atoms.fz[i] += fz_thr_[t][i];
             }
         }
     }

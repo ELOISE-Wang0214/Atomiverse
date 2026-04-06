@@ -18,6 +18,14 @@ inline double phys_norm_s(double alpha) {
     return std::pow(2.0 * alpha / M_PI, 0.75);
 }
 
+/// @brief Physical GTO normalization for p-type (l=1).
+/// @details N = (128*alpha^5/pi^3)^{1/4} ensuring <x*g|x*g> = 1.
+/// @param alpha Gaussian exponent.
+/// @return Normalization factor.
+inline double phys_norm_p(double alpha) {
+    return std::pow(128.0 * std::pow(alpha, 5) / (M_PI * M_PI * M_PI), 0.25);
+}
+
 /// @brief GTO normalization factor (libcint convention, matches CINTgto_norm).
 /// @details Includes the 2*sqrt(pi) spherical harmonic factor on top of phys_norm.
 ///   For validation against libcint only.

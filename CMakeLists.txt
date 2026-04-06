@@ -143,8 +143,9 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/integral_derivatives.cpp
             src/cpu/scf/gradient.cpp
             src/cpu/scf/aspc_predictor.cpp
-            src/cpu/scf/rhf_force.cpp
-            src/cpu/scf/uhf_force.cpp
+            src/cpu/scf/scf_evaluator.cpp
+            src/cpu/minimizer/init.cpp
+            src/cpu/minimizer/lbfgs.cpp
             # src/cpu/observer/mulliken.cpp  # TODO: fix molrs FFI mismatch
         )
         if(ATV_BUILD_CUDA)
@@ -303,6 +304,7 @@ if(NOT ATV_DOCS_ONLY)
             python/src/bindings/bind_frame.cpp
             python/src/bindings/bind_md.cpp
             python/src/bindings/bind_scf.cpp
+            python/src/bindings/bind_optimizer.cpp
         )
         target_link_libraries(_atomiverse PRIVATE atomiverse)
         target_include_directories(_atomiverse PRIVATE include python/src/bindings)

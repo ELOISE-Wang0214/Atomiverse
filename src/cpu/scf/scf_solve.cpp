@@ -22,6 +22,7 @@
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
+#include "atomiverse/cpu/scf/basis_eval.h"
 
 #include <cmath>
 #include <algorithm>
@@ -34,41 +35,6 @@
 namespace ATV {
 namespace cpu {
 namespace scf {
-
-// ── Forward declarations for XC grid evaluation (from uks_solve.cpp) ────
-
-static double eval_basis(const native::Shell& sh, double rx, double ry, double rz) {
-    double dx = rx - sh.center[0];
-    double dy = ry - sh.center[1];
-    double dz = rz - sh.center[2];
-    double r2 = dx*dx + dy*dy + dz*dz;
-    double min_alpha = 1e30;
-    for (int k = 0; k < sh.n_prim; ++k)
-        if (sh.alpha[k] < min_alpha) min_alpha = sh.alpha[k];
-    if (min_alpha * r2 > 36.0) return 0.0;
-    double val = 0;
-    for (int k = 0; k < sh.n_prim; ++k)
-        val += sh.coeff[k] * std::exp(-sh.alpha[k] * r2);
-    return val;
-}
-
-static void eval_basis_grad(const native::Shell& sh, double rx, double ry, double rz,
-                            double& gx, double& gy, double& gz) {
-    double dx = rx - sh.center[0];
-    double dy = ry - sh.center[1];
-    double dz = rz - sh.center[2];
-    double r2 = dx*dx + dy*dy + dz*dz;
-    gx = gy = gz = 0;
-    double min_alpha = 1e30;
-    for (int k = 0; k < sh.n_prim; ++k)
-        if (sh.alpha[k] < min_alpha) min_alpha = sh.alpha[k];
-    if (min_alpha * r2 > 36.0) return;
-    for (int k = 0; k < sh.n_prim; ++k) {
-        double e = sh.coeff[k] * std::exp(-sh.alpha[k] * r2);
-        double fac = -2.0 * sh.alpha[k] * e;
-        gx += fac * dx; gy += fac * dy; gz += fac * dz;
-    }
-}
 
 struct XCGridResult {
     RealMatrix Vxc_alpha;

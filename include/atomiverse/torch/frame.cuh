@@ -4,6 +4,9 @@
 /// Parallel to cpu::Frame (xtensor) and cuda::Frame (raw device pointers).
 /// Tensors may have requires_grad=true for autograd-enabled workflows.
 ///
+/// Data is organized into sub-structs (atoms, bonds, angles, dihedrals)
+/// matching the molcrafts naming convention (molpy Block model).
+///
 /// @see cpu::Frame for the host-side counterpart
 /// @see cuda::Frame for the raw-pointer CUDA counterpart
 /// @see torch::to_torch() / torch::to_cuda() for transfer
@@ -46,19 +49,40 @@ inline constexpr ScalarType kIntDtype =
 /// energy.backward();
 /// @endcode
 struct Frame {
-    // ---- Per-atom tensors [N], dtype=kRealDtype, device=CUDA ----
+    // ---- Per-atom block (molcrafts "atoms" namespace) ----
 
-    Tensor x, y, z;              ///< Positions [Angstrom].
-    Tensor vx, vy, vz;           ///< Velocities [Angstrom/fs].
-    Tensor fx, fy, fz;           ///< Forces [eV/Angstrom].
-    Tensor mass;                 ///< Masses [amu].
-    Tensor type_id;              ///< Atom type indices (kIntDtype, no grad).
+    /// @brief Per-atom tensors matching molpy atoms namespace.
+    struct Atoms {
+        Tensor x, y, z;              ///< Positions [Angstrom].
+        Tensor vx, vy, vz;           ///< Velocities [Angstrom/fs].
+        Tensor fx, fy, fz;           ///< Forces [eV/Angstrom].
+        Tensor mass;                 ///< Masses [amu].
+        Tensor type;                 ///< Atom type indices (kIntDtype, no grad).
+    } atoms;
 
-    // ---- Topology (kIntDtype, no grad) ----
+    // ---- Bond topology block (molcrafts "bonds" namespace) ----
 
-    Tensor bond_i, bond_j, bond_type;              ///< Bond topology [n_bonds].
-    Tensor angle_i, angle_j, angle_k, angle_type;  ///< Angle topology [n_angles], j is center.
-    Tensor dihedral_i, dihedral_j, dihedral_k, dihedral_l, dihedral_type; ///< Dihedral topology [n_dihedrals].
+    /// @brief Bond topology matching molpy bonds namespace.
+    struct Bonds {
+        Tensor atomi, atomj;         ///< Bond atom indices [n_bonds], kIntDtype.
+        Tensor type;                 ///< Bond types [n_bonds], kIntDtype.
+    } bonds;
+
+    // ---- Angle topology block (molcrafts "angles" namespace) ----
+
+    /// @brief Angle topology matching molpy angles namespace.
+    struct Angles {
+        Tensor atomi, atomj, atomk;  ///< Angle atom indices [n_angles], j is center.
+        Tensor type;                 ///< Angle types [n_angles], kIntDtype.
+    } angles;
+
+    // ---- Dihedral topology block (molcrafts "dihedrals" namespace) ----
+
+    /// @brief Dihedral topology matching molpy dihedrals namespace.
+    struct Dihedrals {
+        Tensor atomi, atomj, atomk, atoml; ///< Dihedral atom indices [n_dihedrals].
+        Tensor type;                       ///< Dihedral types [n_dihedrals], kIntDtype.
+    } dihedrals;
 
     // ---- Pair list (populated by neighbor_list, no grad on indices) ----
 

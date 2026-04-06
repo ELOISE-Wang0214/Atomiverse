@@ -15,8 +15,8 @@ using namespace ATV;
 static cpu::Frame make_frame(int n) {
     cpu::Frame frame(n);
     for (int i = 0; i < n; ++i) {
-        frame.x[i] = Real(i);
-        frame.mass[i] = Real(1);
+        frame.atoms.x[i] = Real(i);
+        frame.atoms.mass[i] = Real(1);
     }
     frame.box = Mat3::cubic(100.0);
     return frame;

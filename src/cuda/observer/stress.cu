@@ -77,7 +77,7 @@ void VirialStress::launch(const LaunchContext& ctx) {
 
     // Kinetic contribution (volume factor folded into reduction)
     kinetic_stress_k<<<grid, block, 6 * block * sizeof(Real), stream>>>(
-        f.vx, f.vy, f.vz, f.mass, f.stress, f.box, n);
+        f.atoms.vx, f.atoms.vy, f.atoms.vz, f.atoms.mass, f.stress, f.box, n);
 }
 
 void VirialStress::destroy(const DestroyContext& ctx) {

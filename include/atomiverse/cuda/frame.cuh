@@ -5,6 +5,9 @@
 /// etc.) avoids D2H transfers during the simulation loop.
 /// CUDA-free header (contains only pointer declarations).
 ///
+/// Data is organized into sub-structs (atoms, bonds, angles, dihedrals)
+/// matching the molcrafts naming convention (molpy Block model).
+///
 /// @see cpu::Frame for the host-side counterpart
 /// @see cpu::to_cuda / cuda::to_cpu for transfer
 #pragma once
@@ -30,29 +33,29 @@ struct PairList {
     Int* capacity = nullptr;  ///< Pre-allocated slot count [device, 1 element].
 };
 
-/// @brief Bond topology list -- all arrays on device.
+/// @brief Bond topology list -- all arrays on device, molcrafts naming.
 struct BondList {
-    Int* i = nullptr;        ///< First atom index [device].
-    Int* j = nullptr;        ///< Second atom index [device].
+    Int* atomi = nullptr;    ///< First atom index [device].
+    Int* atomj = nullptr;    ///< Second atom index [device].
     Int* type = nullptr;     ///< Bond type index [device].
     Int* n_bonds = nullptr;  ///< Bond count [device, 1 element].
 };
 
-/// @brief Angle topology list -- all arrays on device.
+/// @brief Angle topology list -- all arrays on device, molcrafts naming.
 struct AngleList {
-    Int* i = nullptr;         ///< First atom index [device].
-    Int* j = nullptr;         ///< Center atom index [device].
-    Int* k = nullptr;         ///< Third atom index [device].
+    Int* atomi = nullptr;     ///< First atom index [device].
+    Int* atomj = nullptr;     ///< Center atom index [device].
+    Int* atomk = nullptr;     ///< Third atom index [device].
     Int* type = nullptr;      ///< Angle type index [device].
     Int* n_angles = nullptr;  ///< Angle count [device, 1 element].
 };
 
-/// @brief Dihedral topology list -- all arrays on device.
+/// @brief Dihedral topology list -- all arrays on device, molcrafts naming.
 struct DihedralList {
-    Int* i = nullptr;            ///< First atom index [device].
-    Int* j = nullptr;            ///< Second atom index [device].
-    Int* k = nullptr;            ///< Third atom index [device].
-    Int* l = nullptr;            ///< Fourth atom index [device].
+    Int* atomi = nullptr;        ///< First atom index [device].
+    Int* atomj = nullptr;        ///< Second atom index [device].
+    Int* atomk = nullptr;        ///< Third atom index [device].
+    Int* atoml = nullptr;        ///< Fourth atom index [device].
     Int* type = nullptr;         ///< Dihedral type index [device].
     Int* n_dihedrals = nullptr;  ///< Dihedral count [device, 1 element].
 };
@@ -64,19 +67,23 @@ struct DihedralList {
 ///
 /// Created by cpu::to_cuda(), freed by cuda::destroy().
 struct Frame {
-    // ── Per-atom arrays (device pointers) ──
+    // ── Per-atom arrays (device pointers, molcrafts "atoms" block) ──
 
-    Real* x = nullptr;      ///< x positions [Angstrom, device].
-    Real* y = nullptr;      ///< y positions [Angstrom, device].
-    Real* z = nullptr;      ///< z positions [Angstrom, device].
-    Real* vx = nullptr;     ///< x velocities [Angstrom/fs, device].
-    Real* vy = nullptr;     ///< y velocities [Angstrom/fs, device].
-    Real* vz = nullptr;     ///< z velocities [Angstrom/fs, device].
-    Real* fx = nullptr;     ///< x forces [eV/Angstrom, device].
-    Real* fy = nullptr;     ///< y forces [eV/Angstrom, device].
-    Real* fz = nullptr;     ///< z forces [eV/Angstrom, device].
-    Real* mass = nullptr;   ///< Masses [amu, device].
-    Int* type_id = nullptr; ///< Atom types [device].
+    /// @brief Per-atom data block matching molpy atoms namespace.
+    struct Atoms {
+        Real* x = nullptr;      ///< x positions [Angstrom, device].
+        Real* y = nullptr;      ///< y positions [Angstrom, device].
+        Real* z = nullptr;      ///< z positions [Angstrom, device].
+        Real* vx = nullptr;     ///< x velocities [Angstrom/fs, device].
+        Real* vy = nullptr;     ///< y velocities [Angstrom/fs, device].
+        Real* vz = nullptr;     ///< z velocities [Angstrom/fs, device].
+        Real* fx = nullptr;     ///< x forces [eV/Angstrom, device].
+        Real* fy = nullptr;     ///< y forces [eV/Angstrom, device].
+        Real* fz = nullptr;     ///< z forces [eV/Angstrom, device].
+        Real* mass = nullptr;   ///< Masses [amu, device].
+        Int* type = nullptr;    ///< Atom types [device].
+        Int* d_size = nullptr;  ///< Atom count [device, 1 element].
+    } atoms;
 
     // ── System scalars (device pointers) ──
 
@@ -129,8 +136,6 @@ struct Frame {
         Int   natm = 0;                ///< Number of atoms (host-cached).
     };
     SCFWorkspace scf;                             ///< SCF workspace (allocated by SCF components).
-
-    Int* d_n_atoms = nullptr;                     ///< Atom count [device, 1 element].
 
     // ── Host-cached metadata (set at materialize, avoids D2H in loop) ──
 

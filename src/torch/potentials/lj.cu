@@ -210,8 +210,8 @@ Tensor lj(Frame& frame, const Tensor& epsilon, const Tensor& sigma, Real cutoff)
     frame.energy.zero_();
 
     auto result = LJFunction::apply(
-        frame.x, frame.y, frame.z,
-        frame.fx, frame.fy, frame.fz,
+        frame.atoms.x, frame.atoms.y, frame.atoms.z,
+        frame.atoms.fx, frame.atoms.fy, frame.atoms.fz,
         frame.energy,
         frame.pair_i, frame.pair_j,
         frame.pair_dx, frame.pair_dy, frame.pair_dz,

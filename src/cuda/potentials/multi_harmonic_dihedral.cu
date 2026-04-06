@@ -169,8 +169,8 @@ void MultiHarmonicDihedral::launch(const LaunchContext& ctx) {
     int block = cuda::kDefaultBlock;
     int grid = cuda::grid_size(static_cast<int>(nd));
     multi_harmonic_dihedral_k<<<grid, block, block * sizeof(Real), stream>>>(
-        f.x, f.y, f.z, f.fx, f.fy, f.fz, f.energy,
-        f.dihedrals.i, f.dihedrals.j, f.dihedrals.k, f.dihedrals.l,
+        f.atoms.x, f.atoms.y, f.atoms.z, f.atoms.fx, f.atoms.fy, f.atoms.fz, f.energy,
+        f.dihedrals.atomi, f.dihedrals.atomj, f.dihedrals.atomk, f.dihedrals.atoml,
         f.dihedrals.type, state_->d_C, f.box, nd);
 }
 

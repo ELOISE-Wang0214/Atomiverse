@@ -48,9 +48,9 @@ void Deform::launch(const LaunchContext& ctx) {
 
     Real* pos = nullptr;
     switch (axis_) {
-        case 0: pos = f.x; break;
-        case 1: pos = f.y; break;
-        case 2: pos = f.z; break;
+        case 0: pos = f.atoms.x; break;
+        case 1: pos = f.atoms.y; break;
+        case 2: pos = f.atoms.z; break;
     }
 
     deform_k<<<grid, block, 0, stream>>>(pos, f.box, axis_, scale, n);

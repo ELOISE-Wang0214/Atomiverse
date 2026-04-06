@@ -5,6 +5,9 @@
 /// as a device, symmetric with CUDA. Transfer between devices uses
 /// cpu::to_cuda() and cuda::to_cpu().
 ///
+/// Data is organized into sub-structs (atoms, bonds, angles, dihedrals)
+/// matching the molcrafts naming convention (molpy Block model).
+///
 /// @see cuda::Frame for the GPU device counterpart
 /// @see cpu::to_cuda() for CPU -> CUDA transfer
 /// @see cuda::to_cpu() for CUDA -> CPU transfer
@@ -22,69 +25,108 @@ namespace cpu {
 /// @brief CPU device system state backed by xtensor arrays.
 ///
 /// All arrays use SoA layout (one xtensor per dimension).
+/// Fields are organized into sub-structs matching molpy's Block model:
+/// atoms, bonds, angles, dihedrals.
 ///
 /// Usage:
 /// @code{.cpp}
 /// cpu::Frame frame(1000);
-/// frame.x(0) = 0.0;
-/// frame.mass(0) = 12.011;
+/// frame.atoms.x(0) = 0.0;
+/// frame.atoms.mass(0) = 12.011;
 /// frame.box = Mat3::cubic(10.0);
 /// @endcode
 class Frame {
 public:
     /// @brief Construct a Frame for the given number of atoms.
     ///
-    /// All arrays are allocated and zero-initialized.
+    /// All per-atom arrays are allocated and zero-initialized.
+    /// Topology blocks (bonds, angles, dihedrals) default to empty.
     ///
     /// @param n_atoms Number of atoms in the system.
     explicit Frame(Int n_atoms)
-        : x(xt::zeros<Real>({n_atoms})),
-          y(xt::zeros<Real>({n_atoms})),
-          z(xt::zeros<Real>({n_atoms})),
-          vx(xt::zeros<Real>({n_atoms})),
-          vy(xt::zeros<Real>({n_atoms})),
-          vz(xt::zeros<Real>({n_atoms})),
-          fx(xt::zeros<Real>({n_atoms})),
-          fy(xt::zeros<Real>({n_atoms})),
-          fz(xt::zeros<Real>({n_atoms})),
-          mass(xt::zeros<Real>({n_atoms})),
-          type_id(xt::zeros<Int>({n_atoms})),
-          n_atoms_(n_atoms) {}
+        : atoms(n_atoms) {}
 
-    /// @brief Number of atoms in the system.
-    /// @return Atom count fixed at construction.
-    Int n_atoms() const { return n_atoms_; }
+    // ── Per-atom block (molcrafts: "atoms" namespace) ──
 
-    // ── Per-atom arrays ──
+    /// @brief Per-atom data block matching molpy atoms namespace.
+    struct Atoms {
+        /// @brief Construct Atoms block for the given number of atoms.
+        /// @param n Number of atoms.
+        explicit Atoms(Int n)
+            : x(xt::zeros<Real>({n})),
+              y(xt::zeros<Real>({n})),
+              z(xt::zeros<Real>({n})),
+              vx(xt::zeros<Real>({n})),
+              vy(xt::zeros<Real>({n})),
+              vz(xt::zeros<Real>({n})),
+              fx(xt::zeros<Real>({n})),
+              fy(xt::zeros<Real>({n})),
+              fz(xt::zeros<Real>({n})),
+              mass(xt::zeros<Real>({n})),
+              type(xt::zeros<Int>({n})),
+              n_(n) {}
 
-    xt::xtensor<Real, 1> x;             ///< x positions [Angstrom].
-    xt::xtensor<Real, 1> y;             ///< y positions [Angstrom].
-    xt::xtensor<Real, 1> z;             ///< z positions [Angstrom].
-    xt::xtensor<Real, 1> vx;            ///< x velocities [Angstrom/fs].
-    xt::xtensor<Real, 1> vy;            ///< y velocities [Angstrom/fs].
-    xt::xtensor<Real, 1> vz;            ///< z velocities [Angstrom/fs].
-    xt::xtensor<Real, 1> fx;            ///< x forces [eV/Angstrom].
-    xt::xtensor<Real, 1> fy;            ///< y forces [eV/Angstrom].
-    xt::xtensor<Real, 1> fz;            ///< z forces [eV/Angstrom].
-    xt::xtensor<Real, 1> mass;          ///< Masses [amu].
-    xt::xtensor<Int, 1>  type_id;       ///< Atom type indices.
+        xt::xtensor<Real, 1> x;      ///< x positions [Angstrom].
+        xt::xtensor<Real, 1> y;      ///< y positions [Angstrom].
+        xt::xtensor<Real, 1> z;      ///< z positions [Angstrom].
+        xt::xtensor<Real, 1> vx;     ///< x velocities [Angstrom/fs].
+        xt::xtensor<Real, 1> vy;     ///< y velocities [Angstrom/fs].
+        xt::xtensor<Real, 1> vz;     ///< z velocities [Angstrom/fs].
+        xt::xtensor<Real, 1> fx;     ///< x forces [eV/Angstrom].
+        xt::xtensor<Real, 1> fy;     ///< y forces [eV/Angstrom].
+        xt::xtensor<Real, 1> fz;     ///< z forces [eV/Angstrom].
+        xt::xtensor<Real, 1> mass;   ///< Masses [amu].
+        xt::xtensor<Int, 1>  type;   ///< Atom type indices.
 
-    // ── Topology ──
+        /// @brief Number of atoms.
+        /// @return Atom count.
+        Int size() const { return n_; }
 
-    xt::xtensor<Int, 1> bond_i;            ///< First atom index for each bond.
-    xt::xtensor<Int, 1> bond_j;            ///< Second atom index for each bond.
-    xt::xtensor<Int, 1> bond_type;         ///< Bond type index.
+    private:
+        Int n_;
+    } atoms;
 
-    xt::xtensor<Int, 1> angle_i;           ///< First atom index for each angle.
-    xt::xtensor<Int, 1> angle_j;           ///< Center atom index for each angle.
-    xt::xtensor<Int, 1> angle_k;           ///< Third atom index for each angle.
-    xt::xtensor<Int, 1> angle_type;        ///< Angle type index.
+    // ── Bond topology block (molcrafts: "bonds" namespace) ──
 
-    xt::xtensor<Int, 1> dihedral_i;        ///< First atom index for each dihedral.
-    xt::xtensor<Int, 1> dihedral_j;        ///< Second atom index for each dihedral.
-    xt::xtensor<Int, 1> dihedral_k;        ///< Third atom index for each dihedral.
-    xt::xtensor<Int, 1> dihedral_l;        ///< Fourth atom index for each dihedral.
-    xt::xtensor<Int, 1> dihedral_type;     ///< Dihedral type index.
+    /// @brief Bond topology block matching molpy bonds namespace.
+    struct Bonds {
+        xt::xtensor<Int, 1> atomi;   ///< First atom index for each bond.
+        xt::xtensor<Int, 1> atomj;   ///< Second atom index for each bond.
+        xt::xtensor<Int, 1> type;    ///< Bond type index.
+
+        /// @brief Number of bonds.
+        /// @return Bond count.
+        Int size() const { return static_cast<Int>(atomi.size()); }
+    } bonds;
+
+    // ── Angle topology block (molcrafts: "angles" namespace) ──
+
+    /// @brief Angle topology block matching molpy angles namespace.
+    struct Angles {
+        xt::xtensor<Int, 1> atomi;   ///< First atom index for each angle.
+        xt::xtensor<Int, 1> atomj;   ///< Center atom index for each angle.
+        xt::xtensor<Int, 1> atomk;   ///< Third atom index for each angle.
+        xt::xtensor<Int, 1> type;    ///< Angle type index.
+
+        /// @brief Number of angles.
+        /// @return Angle count.
+        Int size() const { return static_cast<Int>(atomi.size()); }
+    } angles;
+
+    // ── Dihedral topology block (molcrafts: "dihedrals" namespace) ──
+
+    /// @brief Dihedral topology block matching molpy dihedrals namespace.
+    struct Dihedrals {
+        xt::xtensor<Int, 1> atomi;   ///< First atom index for each dihedral.
+        xt::xtensor<Int, 1> atomj;   ///< Second atom index for each dihedral.
+        xt::xtensor<Int, 1> atomk;   ///< Third atom index for each dihedral.
+        xt::xtensor<Int, 1> atoml;   ///< Fourth atom index for each dihedral.
+        xt::xtensor<Int, 1> type;    ///< Dihedral type index.
+
+        /// @brief Number of dihedrals.
+        /// @return Dihedral count.
+        Int size() const { return static_cast<Int>(atomi.size()); }
+    } dihedrals;
 
     // ── System scalars ──
 
@@ -97,9 +139,6 @@ public:
     // ── Component communication ──
 
     const void* pair_list = nullptr; ///< Non-owning pointer to active PairList (set by NeighborList).
-
-private:
-    Int n_atoms_; ///< Cached atom count set at construction.
 };
 
 } // namespace cpu

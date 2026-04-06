@@ -46,7 +46,7 @@ protected:
         cudaMallocHost(&hz_, n * sizeof(Real));
 
         htype_.resize(n);
-        cudaMemcpyAsync(htype_.data(), frame.type_id, n * sizeof(Int),
+        cudaMemcpyAsync(htype_.data(), frame.atoms.type, n * sizeof(Int),
                         cudaMemcpyDeviceToHost, stream);
         cudaStreamSynchronize(stream);
 
@@ -56,9 +56,9 @@ protected:
     void issue_d2h(const LaunchContext& ctx) override {
         auto ds = static_cast<cudaStream_t>(ctx.runtime.defer_stream);
         auto n  = static_cast<size_t>(n_atoms_);
-        cudaMemcpyAsync(hx_, ctx.frame.x, n * sizeof(Real), cudaMemcpyDeviceToHost, ds);
-        cudaMemcpyAsync(hy_, ctx.frame.y, n * sizeof(Real), cudaMemcpyDeviceToHost, ds);
-        cudaMemcpyAsync(hz_, ctx.frame.z, n * sizeof(Real), cudaMemcpyDeviceToHost, ds);
+        cudaMemcpyAsync(hx_, ctx.frame.atoms.x, n * sizeof(Real), cudaMemcpyDeviceToHost, ds);
+        cudaMemcpyAsync(hy_, ctx.frame.atoms.y, n * sizeof(Real), cudaMemcpyDeviceToHost, ds);
+        cudaMemcpyAsync(hz_, ctx.frame.atoms.z, n * sizeof(Real), cudaMemcpyDeviceToHost, ds);
     }
 
     void on_data_ready(const LaunchContext& ctx) override {

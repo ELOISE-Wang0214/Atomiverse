@@ -16,13 +16,13 @@ std::vector<Real> mulliken_charge(const cpu::Frame& frame,
                                   const Real* S_flat,
                                   int n_basis)
 {
-    const int n  = frame.n_atoms();
+    const int n  = frame.atoms.size();
     const int n2 = n_basis * n_basis;
 
-    // Build type_id slice for molrs (Int -> i32 conversion)
+    // Build type slice for molrs (Int -> i32 conversion)
     std::vector<int32_t> type_id_i32(n);
     for (int i = 0; i < n; ++i)
-        type_id_i32[i] = static_cast<int32_t>(frame.type_id[i]);
+        type_id_i32[i] = static_cast<int32_t>(frame.atoms.type[i]);
 
     rust::Slice<const int32_t> tid(type_id_i32.data(), type_id_i32.size());
     rust::Slice<const double>  p(reinterpret_cast<const double*>(P_flat), n2);
@@ -43,12 +43,12 @@ std::vector<Real> mulliken_spin(const cpu::Frame& frame,
                                 const Real* S_flat,
                                 int n_basis)
 {
-    const int n  = frame.n_atoms();
+    const int n  = frame.atoms.size();
     const int n2 = n_basis * n_basis;
 
     std::vector<int32_t> type_id_i32(n);
     for (int i = 0; i < n; ++i)
-        type_id_i32[i] = static_cast<int32_t>(frame.type_id[i]);
+        type_id_i32[i] = static_cast<int32_t>(frame.atoms.type[i]);
 
     rust::Slice<const int32_t> tid(type_id_i32.data(), type_id_i32.size());
     rust::Slice<const double>  pa(reinterpret_cast<const double*>(Pa_flat), n2);

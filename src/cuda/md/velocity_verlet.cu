@@ -62,13 +62,13 @@ void VelocityVerlet::launch(const LaunchContext& ctx) {
     int grid = cuda::grid_size(static_cast<int>(n));
     if (ctx.stage == static_cast<int>(Phase::initial_integrate)) {
         initial_integrate<<<grid, block, 0, stream>>>(
-            frame.x, frame.y, frame.z, frame.vx, frame.vy, frame.vz,
-            frame.fx, frame.fy, frame.fz, frame.mass,
+            frame.atoms.x, frame.atoms.y, frame.atoms.z, frame.atoms.vx, frame.atoms.vy, frame.atoms.vz,
+            frame.atoms.fx, frame.atoms.fy, frame.atoms.fz, frame.atoms.mass,
             frame.box, dt_, n);
     } else {
         final_integrate<<<grid, block, 0, stream>>>(
-            frame.vx, frame.vy, frame.vz, frame.fx, frame.fy, frame.fz,
-            frame.mass, dt_, n);
+            frame.atoms.vx, frame.atoms.vy, frame.atoms.vz, frame.atoms.fx, frame.atoms.fy, frame.atoms.fz,
+            frame.atoms.mass, dt_, n);
     }
 }
 

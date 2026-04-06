@@ -53,13 +53,13 @@ protected:
         const auto na = static_cast<size_t>(n_atoms_);
 
         htype_.resize(na); hx_.resize(na); hy_.resize(na); hz_.resize(na);
-        cudaMemcpyAsync(htype_.data(), frame.type_id,
+        cudaMemcpyAsync(htype_.data(), frame.atoms.type,
                         na * sizeof(Int),  cudaMemcpyDeviceToHost, stream);
-        cudaMemcpyAsync(hx_.data(), frame.x,
+        cudaMemcpyAsync(hx_.data(), frame.atoms.x,
                         na * sizeof(Real), cudaMemcpyDeviceToHost, stream);
-        cudaMemcpyAsync(hy_.data(), frame.y,
+        cudaMemcpyAsync(hy_.data(), frame.atoms.y,
                         na * sizeof(Real), cudaMemcpyDeviceToHost, stream);
-        cudaMemcpyAsync(hz_.data(), frame.z,
+        cudaMemcpyAsync(hz_.data(), frame.atoms.z,
                         na * sizeof(Real), cudaMemcpyDeviceToHost, stream);
         cudaStreamSynchronize(stream);
 

@@ -128,8 +128,8 @@ void HarmonicAngle::launch(const LaunchContext& ctx) {
     int block = cuda::kDefaultBlock;
     int grid = cuda::grid_size(static_cast<int>(na));
     harmonic_angle_k<<<grid, block, block * sizeof(Real), stream>>>(
-        f.x, f.y, f.z, f.fx, f.fy, f.fz, f.energy,
-        f.angles.i, f.angles.j, f.angles.k, f.angles.type,
+        f.atoms.x, f.atoms.y, f.atoms.z, f.atoms.fx, f.atoms.fy, f.atoms.fz, f.energy,
+        f.angles.atomi, f.angles.atomj, f.angles.atomk, f.angles.type,
         state_->d_K, state_->d_theta0, f.box, na);
 }
 

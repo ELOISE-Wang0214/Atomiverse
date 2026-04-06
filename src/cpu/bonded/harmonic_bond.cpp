@@ -33,7 +33,7 @@ void HarmonicBond::build(const cpu::BuildContext& ctx) {
 #ifdef _OPENMP
     n_threads_ = omp_get_max_threads();
 #endif
-    Int n = ctx.frame.n_atoms();
+    Int n = ctx.frame.atoms.size();
     fx_thr_.resize(n_threads_);
     fy_thr_.resize(n_threads_);
     fz_thr_.resize(n_threads_);
@@ -46,10 +46,10 @@ void HarmonicBond::build(const cpu::BuildContext& ctx) {
 
 void HarmonicBond::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
-    Int n_bonds = static_cast<Int>(f.bond_i.size());
+    Int n_bonds = static_cast<Int>(f.bonds.atomi.size());
     if (n_bonds == 0) return;
 
-    Int n_atoms = f.n_atoms();
+    Int n_atoms = f.atoms.size();
     Real energy_total = 0;
 
     #pragma omp parallel reduction(+:energy_total)
@@ -67,13 +67,13 @@ void HarmonicBond::launch(const cpu::LaunchContext& ctx) {
 
         #pragma omp for schedule(static)
         for (Int b = 0; b < n_bonds; ++b) {
-            Int i = f.bond_i[b];
-            Int j = f.bond_j[b];
-            Int type = f.bond_type[b];
+            Int i = f.bonds.atomi[b];
+            Int j = f.bonds.atomj[b];
+            Int type = f.bonds.type[b];
 
-            Real dx = f.x[i] - f.x[j];
-            Real dy = f.y[i] - f.y[j];
-            Real dz = f.z[i] - f.z[j];
+            Real dx = f.atoms.x[i] - f.atoms.x[j];
+            Real dy = f.atoms.y[i] - f.atoms.y[j];
+            Real dz = f.atoms.z[i] - f.atoms.z[j];
             minimum_image(dx, dy, dz, f.box);
 
             Real r = std::sqrt(dx * dx + dy * dy + dz * dz);
@@ -95,9 +95,9 @@ void HarmonicBond::launch(const cpu::LaunchContext& ctx) {
         #pragma omp for schedule(static)
         for (Int i = 0; i < n_atoms; ++i) {
             for (int t = 0; t < n_threads_; ++t) {
-                f.fx[i] += fx_thr_[t][i];
-                f.fy[i] += fy_thr_[t][i];
-                f.fz[i] += fz_thr_[t][i];
+                f.atoms.fx[i] += fx_thr_[t][i];
+                f.atoms.fy[i] += fy_thr_[t][i];
+                f.atoms.fz[i] += fz_thr_[t][i];
             }
         }
     }

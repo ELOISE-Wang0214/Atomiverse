@@ -49,7 +49,7 @@ void CellList::init(const cpu::Frame& frame, Real cutoff_skin) {
     compute_grid(frame);
     build_stencil();
 
-    Int n = frame.n_atoms();
+    Int n = frame.atoms.size();
     atom_cell_ = xt::zeros<Int>({n});
     binned_atoms_ = xt::zeros<Int>({n});
     x_save_ = xt::zeros<Real>({n});
@@ -93,7 +93,7 @@ void CellList::build_stencil() {
 }
 
 void CellList::bin_atoms(const cpu::Frame& frame) {
-    Int n = frame.n_atoms();
+    Int n = frame.atoms.size();
     Real lx = frame.box(0, 0);
     Real ly = frame.box(1, 1);
     Real lz = frame.box(2, 2);
@@ -105,9 +105,9 @@ void CellList::bin_atoms(const cpu::Frame& frame) {
     #pragma omp parallel for schedule(static)
     for (Int i = 0; i < n; ++i) {
         // Wrap position into [0, L)
-        Real xi = frame.x[i] - lx * std::floor(frame.x[i] / lx);
-        Real yi = frame.y[i] - ly * std::floor(frame.y[i] / ly);
-        Real zi = frame.z[i] - lz * std::floor(frame.z[i] / lz);
+        Real xi = frame.atoms.x[i] - lx * std::floor(frame.atoms.x[i] / lx);
+        Real yi = frame.atoms.y[i] - ly * std::floor(frame.atoms.y[i] / ly);
+        Real zi = frame.atoms.z[i] - lz * std::floor(frame.atoms.z[i] / lz);
 
         Int cx = std::min(static_cast<Int>(xi / csx_), ncx_ - 1);
         Int cy = std::min(static_cast<Int>(yi / csy_), ncy_ - 1);
@@ -135,11 +135,11 @@ void CellList::bin_atoms(const cpu::Frame& frame) {
 }
 
 void CellList::save_positions(const cpu::Frame& frame) {
-    Int n = frame.n_atoms();
+    Int n = frame.atoms.size();
     for (Int i = 0; i < n; ++i) {
-        x_save_[i] = frame.x[i];
-        y_save_[i] = frame.y[i];
-        z_save_[i] = frame.z[i];
+        x_save_[i] = frame.atoms.x[i];
+        y_save_[i] = frame.atoms.y[i];
+        z_save_[i] = frame.atoms.z[i];
     }
 }
 
@@ -149,15 +149,15 @@ void CellList::build(const cpu::Frame& frame) {
 }
 
 bool CellList::needs_rebuild(const cpu::Frame& frame) const {
-    Int n = frame.n_atoms();
+    Int n = frame.atoms.size();
     Real max_disp_sq = 0;
     Real threshold = skin_ * Real(0.5);
     Real threshold_sq = threshold * threshold;
 
     for (Int i = 0; i < n; ++i) {
-        Real dx = frame.x[i] - x_save_[i];
-        Real dy = frame.y[i] - y_save_[i];
-        Real dz = frame.z[i] - z_save_[i];
+        Real dx = frame.atoms.x[i] - x_save_[i];
+        Real dy = frame.atoms.y[i] - y_save_[i];
+        Real dz = frame.atoms.z[i] - z_save_[i];
         Real dsq = dx * dx + dy * dy + dz * dz;
         if (dsq > max_disp_sq) max_disp_sq = dsq;
     }
@@ -172,7 +172,7 @@ void CellList::update(const cpu::Frame& frame) {
 }
 
 PairList CellList::build_half(const cpu::Frame& frame) const {
-    Int n = frame.n_atoms();
+    Int n = frame.atoms.size();
     Real rc_sq = cutoff_skin_ * cutoff_skin_;
 
     PairList result;
@@ -238,9 +238,9 @@ PairList CellList::build_half(const cpu::Frame& frame) const {
                     Int j = binned_atoms_[idx];
                     if (j <= i) continue;  // Half list: i < j
 
-                    Real dx = frame.x[i] - frame.x[j];
-                    Real dy = frame.y[i] - frame.y[j];
-                    Real dz = frame.z[i] - frame.z[j];
+                    Real dx = frame.atoms.x[i] - frame.atoms.x[j];
+                    Real dy = frame.atoms.y[i] - frame.atoms.y[j];
+                    Real dz = frame.atoms.z[i] - frame.atoms.z[j];
                     minimum_image(dx, dy, dz, frame.box);
 
                     Real r2 = dx * dx + dy * dy + dz * dz;
@@ -279,7 +279,7 @@ PairList CellList::build_half(const cpu::Frame& frame) const {
 }
 
 PairList CellList::build_full(const cpu::Frame& frame) const {
-    Int n = frame.n_atoms();
+    Int n = frame.atoms.size();
     Real rc_sq = cutoff_skin_ * cutoff_skin_;
 
     PairList result;
@@ -317,9 +317,9 @@ PairList CellList::build_full(const cpu::Frame& frame) const {
                     Int j = binned_atoms_[idx];
                     if (j == i) continue;
 
-                    Real dx = frame.x[i] - frame.x[j];
-                    Real dy = frame.y[i] - frame.y[j];
-                    Real dz = frame.z[i] - frame.z[j];
+                    Real dx = frame.atoms.x[i] - frame.atoms.x[j];
+                    Real dy = frame.atoms.y[i] - frame.atoms.y[j];
+                    Real dz = frame.atoms.z[i] - frame.atoms.z[j];
                     minimum_image(dx, dy, dz, frame.box);
 
                     Real r2 = dx * dx + dy * dy + dz * dz;

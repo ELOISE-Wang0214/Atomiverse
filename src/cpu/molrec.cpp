@@ -51,11 +51,11 @@ const void* MolRec::ffi_handle() const { return &*impl_->inner; }
 // ── Staging API ──────────────────────────────────────────────────────────────
 
 void MolRec::set_geometry(const Frame& frame) {
-    const Int n = frame.n_atoms();
+    const Int n = frame.atoms.size();
 
     std::vector<int32_t> tid(n);
     for (Int i = 0; i < n; ++i)
-        tid[i] = static_cast<int32_t>(frame.type_id[i]);
+        tid[i] = static_cast<int32_t>(frame.atoms.type[i]);
 
     double box_mat[9];
     for (int i = 0; i < 3; ++i)
@@ -66,9 +66,9 @@ void MolRec::set_geometry(const Frame& frame) {
     molrs::molrec_set_geometry(
         *impl_->inner,
         {tid.data(), tid.size()},
-        as_f64(frame.x.data(), n, xb),
-        as_f64(frame.y.data(), n, yb),
-        as_f64(frame.z.data(), n, zb),
+        as_f64(frame.atoms.x.data(), n, xb),
+        as_f64(frame.atoms.y.data(), n, yb),
+        as_f64(frame.atoms.z.data(), n, zb),
         {box_mat, 9}
     );
 }

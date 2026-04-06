@@ -49,8 +49,8 @@ void SteepestDescentStep::launch(const LaunchContext& ctx) {
     int block = cuda::kDefaultBlock;
     int grid = cuda::grid_size(static_cast<int>(n));
     sd_step<<<grid, block, 0, stream>>>(
-        frame.x, frame.y, frame.z,
-        frame.fx, frame.fy, frame.fz, frame.mass,
+        frame.atoms.x, frame.atoms.y, frame.atoms.z,
+        frame.atoms.fx, frame.atoms.fy, frame.atoms.fz, frame.atoms.mass,
         frame.box, alpha_, n);
 }
 

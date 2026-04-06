@@ -61,11 +61,11 @@ cpu::Frame make_fcc(int n_cells, Real lattice_const) {
         for (int iy = 0; iy < n_cells; ++iy)
             for (int iz = 0; iz < n_cells; ++iz)
                 for (int b = 0; b < 4; ++b) {
-                    frame.x[idx] = (Real(ix) + basis[b][0]) * lattice_const;
-                    frame.y[idx] = (Real(iy) + basis[b][1]) * lattice_const;
-                    frame.z[idx] = (Real(iz) + basis[b][2]) * lattice_const;
-                    frame.mass[idx] = Real(39.948);  // Argon [amu]
-                    frame.type_id[idx] = 0;
+                    frame.atoms.x[idx] = (Real(ix) + basis[b][0]) * lattice_const;
+                    frame.atoms.y[idx] = (Real(iy) + basis[b][1]) * lattice_const;
+                    frame.atoms.z[idx] = (Real(iz) + basis[b][2]) * lattice_const;
+                    frame.atoms.mass[idx] = Real(39.948);  // Argon [amu]
+                    frame.atoms.type[idx] = 0;
                     idx++;
                 }
 
@@ -168,7 +168,7 @@ int main() {
     Real a0      = Real(5.26);            // lattice constant [A]
 
     auto frame = make_fcc(n_cells, a0);
-    int n = frame.n_atoms();
+    int n = frame.atoms.size();
     std::cout << "System: " << n << " Ar atoms, FCC lattice a="
               << std::fixed << std::setprecision(2) << static_cast<double>(a0)
               << " A, box=" << static_cast<double>(a0 * Real(n_cells)) << " A\n";

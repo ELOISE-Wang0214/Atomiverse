@@ -220,10 +220,10 @@ void RHFFockDevice::build(const BuildContext& ctx) {
     // read from device.
     Real* h_x = new Real[natm]; Real* h_y = new Real[natm]; Real* h_z = new Real[natm];
     Int* h_type = new Int[natm];
-    cudaMemcpy(h_x, ctx.frame.x, natm * sizeof(Real), cudaMemcpyDeviceToHost);
-    cudaMemcpy(h_y, ctx.frame.y, natm * sizeof(Real), cudaMemcpyDeviceToHost);
-    cudaMemcpy(h_z, ctx.frame.z, natm * sizeof(Real), cudaMemcpyDeviceToHost);
-    cudaMemcpy(h_type, ctx.frame.type_id, natm * sizeof(Int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_x, ctx.frame.atoms.x, natm * sizeof(Real), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_y, ctx.frame.atoms.y, natm * sizeof(Real), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_z, ctx.frame.atoms.z, natm * sizeof(Real), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_type, ctx.frame.atoms.type, natm * sizeof(Int), cudaMemcpyDeviceToHost);
 
     for (Int a = 0; a < natm; ++a) {
         double cx = static_cast<double>(h_x[a]) * kAngstromToBohr;

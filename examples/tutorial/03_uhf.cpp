@@ -53,17 +53,17 @@ using namespace ATV;
 
 static cpu::Frame single_atom(int z) {
     cpu::Frame f(1);
-    f.x[0] = Real(0); f.y[0] = Real(0); f.z[0] = Real(0);
-    f.type_id[0] = z;
+    f.atoms.x[0] = Real(0); f.atoms.y[0] = Real(0); f.atoms.z[0] = Real(0);
+    f.atoms.type[0] = z;
     f.box = Mat3::cubic(100.0);
     return f;
 }
 
 static cpu::Frame diatomic_h2(double r_angstrom) {
     cpu::Frame f(2);
-    f.x[0] = Real(0);           f.y[0] = Real(0); f.z[0] = Real(0);
-    f.x[1] = Real(r_angstrom);  f.y[1] = Real(0); f.z[1] = Real(0);
-    f.type_id[0] = 1; f.type_id[1] = 1;
+    f.atoms.x[0] = Real(0);           f.atoms.y[0] = Real(0); f.atoms.z[0] = Real(0);
+    f.atoms.x[1] = Real(r_angstrom);  f.atoms.y[1] = Real(0); f.atoms.z[1] = Real(0);
+    f.atoms.type[0] = 1; f.atoms.type[1] = 1;
     f.box = Mat3::cubic(100.0);
     return f;
 }
@@ -254,7 +254,7 @@ int main() {
             rhf_rec.add_scalar("n_beta",     Real(ints.n_occ()));
             rhf_rec.add_scalar("spin_contamination", Real(0));
             rhf_rec.add_field("charge",       cpu::mulliken_charge(frame, rhf.P, ints.S));
-            rhf_rec.add_field("spin_density", std::vector<Real>(frame.n_atoms(), Real(0)));
+            rhf_rec.add_field("spin_density", std::vector<Real>(frame.atoms.size(), Real(0)));
             rhf_rec.commit_frame();
             cpu::print_summary(rhf_rec);
             cpu::XYZ("h2_eq_rhf.xyz").write_ext(rhf_rec);
@@ -320,7 +320,7 @@ int main() {
         rhf_scan.add_scalar("spin_contamination", Real(0));
         auto rhf_charge = cpu::mulliken_charge(frame, rhf.P, ints.S);
         rhf_scan.add_field("charge",       rhf_charge);
-        rhf_scan.add_field("spin_density", std::vector<Real>(frame.n_atoms(), Real(0)));
+        rhf_scan.add_field("spin_density", std::vector<Real>(frame.atoms.size(), Real(0)));
         rhf_scan.commit_frame();
         rhf_xyz.append_ext(rhf_scan);
 

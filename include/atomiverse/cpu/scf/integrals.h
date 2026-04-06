@@ -5,7 +5,7 @@
 /// core Hamiltonian (Hcore = T + V), two-electron repulsion integrals (ERI),
 /// and nuclear repulsion energy (V_nuc) for a given molecular geometry.
 ///
-/// Supports elements H (Z=1), He (Z=2), Li (Z=3) with STO-3G basis.
+/// Supports elements H through O (Z=1..8) with STO-3G basis (s and sp shells).
 ///
 /// @see cpu::scf::rhf_solve for the CPU RHF solver that consumes IntegralPack
 #pragma once
@@ -52,10 +52,10 @@ struct IntegralPack {
 
 /// @brief Compute STO-3G integrals for a molecular geometry via native C++.
 ///
-/// Reads atom positions from frame.x/y/z (Angstrom) and nuclear charges
-/// from frame.type_id. Converts to Bohr internally.
+/// Reads atom positions from frame.atoms.x/y/z (Angstrom) and nuclear charges
+/// from frame.atoms.type. Converts to Bohr internally.
 ///
-/// @param frame CPU Frame with atom positions and types (type_id = Z).
+/// @param frame CPU Frame with atom positions and types (atoms.type = Z).
 /// @param charge Molecular charge (0 = neutral, +1 = cation, etc.).
 /// @return IntegralPack with all integrals computed.
 IntegralPack build_integrals_sto3g(const Frame& frame, int charge = 0);

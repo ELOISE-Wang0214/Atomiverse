@@ -3,13 +3,13 @@
 Follows the C++ tutorial examples/tutorial/04_uks.cpp.
 
 Demonstrates unrestricted Kohn-Sham DFT (LSDA = Slater + VWN5):
-  1. He atom (closed-shell singlet)
-  2. H atom (doublet)
-  3. Li atom (doublet)
-  4. H2 dissociation curve: UHF vs UKS-LSDA
+  1. H atom  (doublet)  — spin-polarized single electron
+  2. He atom (singlet)  — closed-shell, UKS vs UHF vs PySCF
+  3. Li atom (doublet)  — multi-shell spin-polarized
+  4. H2 dissociation    — UHF vs UKS-LSDA PES + E_xc + timing benchmark
 
 Output:
-  03_uks.png             — dissociation curve + relative error + E_xc comparison
+  03_uks.png             — energy + E_xc + wall-clock timing (3-panel)
   03_he_density_atv.cube — He atom density (Atomiverse)
   03_he_density_ref.cube — He atom density (PySCF)
 
@@ -22,62 +22,59 @@ This example documents the current state and serves as a regression baseline.
 from __future__ import annotations
 
 import sys
-from pathlib import Path
+import time
 
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
-
-from utils.timing import timed
+import molpy as mp
 
 import atomiverse as av
 from pyscf import gto, scf, dft
 from pyscf.tools import cubegen
 
+# ── Matplotlib style ─────────────────────────────────────────────────────────
+plt.rcParams.update({
+    "mathtext.fontset": "cm",
+    "font.family": "serif",
+    "font.size": 9,
+    "axes.labelsize": 10,
+    "axes.titlesize": 10,
+    "legend.fontsize": 7,
+    "xtick.labelsize": 8,
+    "ytick.labelsize": 8,
+})
 
-# ── Geometry helpers ─────────────────────────────────────────────���───────────
-
-def _detect_dtype() -> np.dtype:
-    f = av.CpuFrame(1)
-    return f.get_x().dtype
-
-
-DTYPE = None
+# ── Colors ───────────────────────────────────────────────────────────────────
+C_ATV = "#0066CC"
+C_REF = "#CC4400"
+C_UHF = "#888888"
 
 
-def get_dtype() -> np.dtype:
-    global DTYPE
-    if DTYPE is None:
-        DTYPE = _detect_dtype()
-    return DTYPE
+# ── Geometry helpers ─────────────────────────────────────────────────────────
+
+MASS = {1: 1.008, 2: 4.003, 3: 6.941}
 
 
-def make_atom_frame(z: int) -> av.CpuFrame:
-    dtype = get_dtype()
-    frame = av.CpuFrame(1)
-    frame.set_positions(
-        np.zeros(1, dtype=dtype),
-        np.zeros(1, dtype=dtype),
-        np.zeros(1, dtype=dtype),
-    )
-    mass = {1: 1.008, 2: 4.003, 3: 6.941}
-    frame.set_mass(np.array([mass.get(z, 1.0)], dtype=dtype))
-    frame.set_type(np.array([z], dtype=np.int32))
-    frame.set_box(np.eye(3, dtype=dtype) * 100.0)
+def make_atom_frame(z: int) -> mp.Frame:
+    frame = mp.Frame({"atoms": mp.Block({
+        "x": np.zeros(1), "y": np.zeros(1), "z": np.zeros(1),
+        "mass": np.array([MASS.get(z, 1.0)]),
+        "type": np.array([z], dtype=np.int32),
+    })})
+    frame.box = mp.Box(np.eye(3) * 100.0)
     return frame
 
 
-def make_h2_frame(r: float) -> av.CpuFrame:
-    dtype = get_dtype()
-    frame = av.CpuFrame(2)
-    frame.set_positions(
-        np.array([0.0, r], dtype=dtype),
-        np.zeros(2, dtype=dtype),
-        np.zeros(2, dtype=dtype),
-    )
-    frame.set_mass(np.array([1.008, 1.008], dtype=dtype))
-    frame.set_type(np.array([1, 1], dtype=np.int32))
-    frame.set_box(np.eye(3, dtype=dtype) * 100.0)
+def make_h2_frame(r: float) -> mp.Frame:
+    frame = mp.Frame({"atoms": mp.Block({
+        "x": np.array([0.0, r]),
+        "y": np.zeros(2),
+        "z": np.zeros(2),
+        "mass": np.array([1.008, 1.008]),
+        "type": np.array([1, 1], dtype=np.int32),
+    })})
+    frame.box = mp.Box(np.eye(3) * 100.0)
     return frame
 
 
@@ -94,10 +91,9 @@ def make_pyscf_h2(r: float) -> gto.Mole:
 def run_pyscf_uks(mol: gto.Mole) -> dft.UKS:
     """Run PySCF UKS-LSDA with grid settings matched to Atomiverse."""
     mf = dft.UKS(mol)
-    mf.xc = "lda,vwn"  # Slater exchange + VWN5 correlation
+    mf.xc = "lda,vwn"
     mf.conv_tol = 1e-12
     mf.max_cycle = 200
-    # Match Atomiverse grid: 50 radial, 110 angular Lebedev, no pruning
     mf.grids.atom_grid = {s: (50, 110) for s in ("H", "He", "Li")}
     mf.grids.prune = None
     mf.kernel()
@@ -131,65 +127,79 @@ def plot(
     dissoc: dict,
     outfile: str = "03_uks.png",
 ) -> None:
-    fig = plt.figure(figsize=(14, 4))
-    gs = gridspec.GridSpec(1, 3, figure=fig, wspace=0.4)
+    fig = plt.figure(figsize=(14, 4.2))
+    gs = gridspec.GridSpec(1, 3, figure=fig, wspace=0.38)
     R = np.array(dissoc["R"])
     atv_uks = np.array(dissoc["atv_uks"])
     ref_uks = np.array(dissoc["ref_uks"])
     atv_uhf = np.array(dissoc["atv_uhf"])
     conv = np.array(dissoc["converged"])
+    atv_exc = np.array(dissoc["atv_exc"])
+    ref_exc = np.array(dissoc["ref_exc"])
+    atv_ms = np.array(dissoc["atv_time_ms"])
+    ref_ms = np.array(dissoc["ref_time_ms"])
 
-    # Separate converged / non-converged
     R_ok, R_bad = R[conv], R[~conv]
-    atv_ok, atv_bad = atv_uks[conv], atv_uks[~conv]
+    atv_ok = atv_uks[conv]
 
-    # Panel 1: H2 dissociation — UHF vs UKS (both codes)
+    # ── Panel 1: Energy PES ──
     ax1 = fig.add_subplot(gs[0])
-    ax1.plot(R, atv_uhf, "-", color="gray", lw=1.5, label="ATV UHF")
-    ax1.plot(R, ref_uks, "--", color="#CC4400", lw=2, label="PySCF UKS-LSDA")
-    ax1.plot(R_ok, atv_ok, "-o", color="#0066CC", lw=2, ms=4,
+    ax1.plot(R, atv_uhf, "-", color=C_UHF, lw=1.2, label="ATV UHF")
+    ax1.plot(R, ref_uks, "--s", color=C_REF, lw=1.8, ms=3,
+             label="PySCF UKS-LSDA")
+    ax1.plot(R_ok, atv_ok, "-o", color=C_ATV, lw=1.8, ms=3.5,
              label="ATV UKS-LSDA")
     if len(R_bad) > 0:
-        ax1.plot(R_bad, atv_bad, "x", color="#0066CC", ms=8, mew=2,
-                 label="ATV (not converged)")
-    ax1.set_xlabel("R(H-H) [Angstrom]")
-    ax1.set_ylabel("Energy [Hartree]")
-    ax1.set_title("H2 Dissociation: UHF vs UKS")
-    ax1.legend(fontsize=6)
+        ax1.plot(R_bad, atv_uks[~conv], "x", color=C_ATV, ms=7, mew=2,
+                 label="ATV (not conv.)")
+    exact_limit = 2.0 * (-0.4666)
+    ax1.axhline(exact_limit, color="gray", ls=":", lw=0.8,
+                label=rf"$2E_{{\mathrm{{H}}}}^{{\mathrm{{STO\text{{-}}3G}}}}={exact_limit:.4f}$")
+    ax1.set_xlabel(r"$R_{\mathrm{H\text{-}H}}$ [\AA]")
+    ax1.set_ylabel(r"$E_{\mathrm{tot}}$ [Ha]")
+    ax1.set_title(r"$\mathrm{H_2}$ Dissociation")
+    ax1.legend()
 
-    # Panel 2: relative error (%) — converged points only
+    # ── Panel 2: E_xc ──
     ax2 = fig.add_subplot(gs[1])
-    rel_ok = np.abs(atv_ok - ref_uks[conv]) / np.abs(ref_uks[conv]) * 100
-    ax2.plot(R_ok, rel_ok, "-o", color="#0066CC", lw=2, ms=4)
-    ax2.axhline(1.0, color="red", ls="--", lw=1, alpha=0.7, label="1% threshold")
+    ax2.plot(R_ok, atv_exc[conv], "-o", color=C_ATV, lw=1.8, ms=3.5,
+             label="Atomiverse")
+    ax2.plot(R, ref_exc, "--s", color=C_REF, lw=1.8, ms=3,
+             label="PySCF")
     if len(R_bad) > 0:
-        ax2.axvspan(R_bad.min() - 0.125, R_bad.max() + 0.125,
-                    color="red", alpha=0.08, label="not converged")
-    ax2.set_xlabel("R(H-H) [Angstrom]")
-    ax2.set_ylabel("Relative error [%]")
-    ax2.set_title("UKS Agreement (converged only)")
-    ax2.legend(fontsize=7)
+        ax2.plot(R_bad, atv_exc[~conv], "x", color=C_ATV, ms=7, mew=2)
+    ax2.set_xlabel(r"$R_{\mathrm{H\text{-}H}}$ [\AA]")
+    ax2.set_ylabel(r"$E_{\mathrm{xc}}$ [Ha]")
+    ax2.set_title(r"Exchange-Correlation Energy")
+    ax2.legend()
 
-    # Panel 3: E_xc comparison — converged points only
+    # ── Panel 3: Wall-clock timing ──
     ax3 = fig.add_subplot(gs[2])
-    if "atv_exc" in dissoc and "ref_exc" in dissoc:
-        atv_exc = np.array(dissoc["atv_exc"])
-        ref_exc = np.array(dissoc["ref_exc"])
-        ax3.plot(R_ok, atv_exc[conv], "-o", color="#0066CC", lw=2, ms=3,
-                 label="ATV E_xc")
-        ax3.plot(R, ref_exc, "--s", color="#CC4400", lw=2, ms=3,
-                 label="PySCF E_xc")
-        ax3.set_xlabel("R(H-H) [Angstrom]")
-        ax3.set_ylabel("E_xc [Hartree]")
-        ax3.set_title("XC Energy Comparison")
-        ax3.legend(fontsize=7)
+    ax3.plot(R, atv_ms, "-o", color=C_ATV, lw=1.8, ms=3.5,
+             label="Atomiverse")
+    ax3.plot(R, ref_ms, "--s", color=C_REF, lw=1.8, ms=3,
+             label="PySCF")
+    ax3.set_xlabel(r"$R_{\mathrm{H\text{-}H}}$ [\AA]")
+    ax3.set_ylabel(r"Wall time [ms]")
+    ax3.set_title(r"UKS-LSDA Solve Time")
+    ax3.legend()
 
-    max_rel = np.max(rel_ok) if len(rel_ok) > 0 else 0
+    # Speedup annotation
+    mean_speedup = np.mean(ref_ms / np.where(atv_ms > 0, atv_ms, 1))
+    ax3.text(0.97, 0.95,
+             rf"mean $\times${mean_speedup:.1f}",
+             transform=ax3.transAxes, ha="right", va="top",
+             fontsize=8, color=C_ATV,
+             bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=C_ATV, alpha=0.8))
+
+    max_rel = (np.max(np.abs(atv_ok - ref_uks[conv]) / np.abs(ref_uks[conv]) * 100)
+               if len(atv_ok) > 0 else 0)
     n_conv = int(conv.sum())
     fig.suptitle(
-        f"UKS-LSDA / STO-3G  —  {n_conv}/{len(R)} converged, "
-        f"max rel. error = {max_rel:.2f}%",
-        fontsize=9,
+        rf"$\mathrm{{H_2}}$ / STO-3G / UKS-LSDA  —  "
+        rf"{n_conv}/{len(R)} converged, "
+        rf"max rel. error = {max_rel:.2f}\%",
+        fontsize=10,
     )
     fig.savefig(outfile, dpi=150, bbox_inches="tight")
     print(f"\nSaved {outfile}")
@@ -202,165 +212,141 @@ def main() -> None:
     atoms_data: dict[str, dict] = {}
 
     # =====================================================================
-    # Example 1: He atom (closed-shell singlet)
+    # Atom 1: H atom (doublet)
     # =====================================================================
     print("=" * 60)
-    print("Example 1: He atom / STO-3G / UKS-LSDA (singlet)")
+    print("H atom / STO-3G / UKS-LSDA (doublet)")
     print("=" * 60)
 
-    frame_he = make_atom_frame(2)
-    ip_he = av.build_integrals_sto3g(frame_he)
-    uks_he = av.uks_solve(ip_he, n_alpha=1, n_beta=1,
-                          xc_type=av.XCType.LSDA, tol=1e-8, max_iter=200)
-    uhf_he = av.uhf_solve(ip_he, n_alpha=1, n_beta=1, tol=1e-10)
+    uks_h = av.UKS(make_atom_frame(1), xc="LSDA", multiplicity=2) \
+              .solve(tol=1e-8, max_iter=200)
+    mol_h = make_pyscf_atom("H", spin=1)
+    ref_uks_h = run_pyscf_uks(mol_h)
 
+    dE_h = abs(uks_h.energy - ref_uks_h.e_tot)
+    print(f"  Atomiverse: E = {uks_h.energy:.8f} Ha")
+    print(f"    E_1e  = {uks_h.one_electron_energy:.6f}, "
+          f"E_J = {uks_h.coulomb_energy:.6f}, "
+          f"E_xc = {uks_h.xc_energy:.6f}")
+    print(f"  PySCF:      E = {ref_uks_h.e_tot:.8f} Ha")
+    print(f"  |dE| = {dE_h:.2e} Ha  (exact H: -0.5 Ha)")
+    atoms_data["H"] = {"atv_uks": uks_h.energy, "ref_uks": ref_uks_h.e_tot}
+
+    # =====================================================================
+    # Atom 2: He atom (singlet) — closed-shell reference
+    # =====================================================================
+    print(f"\n{'='*60}")
+    print("He atom / STO-3G / UKS-LSDA (singlet)")
+    print("=" * 60)
+
+    uks_he = av.UKS(make_atom_frame(2), xc="LSDA", multiplicity=1) \
+               .solve(tol=1e-8, max_iter=200)
+    uhf_he = av.UHF(make_atom_frame(2), multiplicity=1).solve(tol=1e-10)
     mol_he = make_pyscf_atom("He", spin=0)
     ref_uks_he = run_pyscf_uks(mol_he)
     ref_uhf_he = run_pyscf_uhf(mol_he)
 
-    dE_uks = abs(float(uks_he.energy) - ref_uks_he.e_tot)
-    print(f"  Atomiverse UKS:  E = {float(uks_he.energy):.8f} Ha")
-    print(f"    E_1e  = {float(uks_he.one_electron_energy):.6f}, "
-          f"E_J = {float(uks_he.coulomb_energy):.6f}, "
-          f"E_xc = {float(uks_he.xc_energy):.6f}")
-    print(f"    <S^2>_c = {float(uks_he.spin_contamination):.6f}")
+    dE_he = abs(uks_he.energy - ref_uks_he.e_tot)
+    print(f"  Atomiverse UKS:  E = {uks_he.energy:.8f} Ha  "
+          f"(E_xc = {uks_he.xc_energy:.6f})")
     print(f"  PySCF UKS:       E = {ref_uks_he.e_tot:.8f} Ha")
-    print(f"  Atomiverse UHF:  E = {float(uhf_he.energy):.8f} Ha")
+    print(f"  Atomiverse UHF:  E = {uhf_he.energy:.8f} Ha")
     print(f"  PySCF UHF:       E = {ref_uhf_he.e_tot:.8f} Ha")
-    print(f"  |dE| UKS = {dE_uks:.2e} Ha, "
-          f"UKS-UHF diff = {float(uks_he.energy) - float(uhf_he.energy):.6f} Ha")
-
-    atoms_data["He"] = {
-        "atv_uks": float(uks_he.energy),
-        "ref_uks": ref_uks_he.e_tot,
-        "atv_uhf": float(uhf_he.energy),
-        "ref_uhf": ref_uhf_he.e_tot,
-    }
+    print(f"  |dE| UKS = {dE_he:.2e} Ha")
+    atoms_data["He"] = {"atv_uks": uks_he.energy, "ref_uks": ref_uks_he.e_tot}
 
     # =====================================================================
-    # Example 2: H atom (doublet)
+    # Atom 3: Li atom (doublet)
     # =====================================================================
     print(f"\n{'='*60}")
-    print("Example 2: H atom / STO-3G / UKS-LSDA (doublet)")
+    print("Li atom / STO-3G / UKS-LSDA (doublet)")
     print("=" * 60)
 
-    frame_h = make_atom_frame(1)
-    ip_h = av.build_integrals_sto3g(frame_h)
-    uks_h = av.uks_solve(ip_h, n_alpha=1, n_beta=0,
-                         xc_type=av.XCType.LSDA, tol=1e-8, max_iter=200)
-
-    mol_h = make_pyscf_atom("H", spin=1)
-    ref_uks_h = run_pyscf_uks(mol_h)
-
-    dE_h = abs(float(uks_h.energy) - ref_uks_h.e_tot)
-    print(f"  Atomiverse: E = {float(uks_h.energy):.8f} Ha")
-    print(f"    E_1e  = {float(uks_h.one_electron_energy):.6f}, "
-          f"E_J = {float(uks_h.coulomb_energy):.6f}, "
-          f"E_xc = {float(uks_h.xc_energy):.6f}")
-    print(f"  PySCF:      E = {ref_uks_h.e_tot:.8f} Ha")
-    print(f"  |dE| = {dE_h:.2e} Ha  (exact H: -0.5 Ha)")
-
-    atoms_data["H"] = {
-        "atv_uks": float(uks_h.energy),
-        "ref_uks": ref_uks_h.e_tot,
-    }
-
-    # =====================================================================
-    # Example 3: Li atom (doublet)
-    # =====================================================================
-    print(f"\n{'='*60}")
-    print("Example 3: Li atom / STO-3G / UKS-LSDA (doublet)")
-    print("=" * 60)
-
-    frame_li = make_atom_frame(3)
-    ip_li = av.build_integrals_sto3g(frame_li)
-    uks_li = av.uks_solve(ip_li, n_alpha=2, n_beta=1,
-                          xc_type=av.XCType.LSDA, tol=1e-8, max_iter=200)
-
+    uks_li = av.UKS(make_atom_frame(3), xc="LSDA", multiplicity=2) \
+               .solve(tol=1e-8, max_iter=200)
     mol_li = make_pyscf_atom("Li", spin=1)
     ref_uks_li = run_pyscf_uks(mol_li)
 
-    dE_li = abs(float(uks_li.energy) - ref_uks_li.e_tot)
-    print(f"  Atomiverse: E = {float(uks_li.energy):.8f} Ha")
-    print(f"    E_1e  = {float(uks_li.one_electron_energy):.6f}, "
-          f"E_J = {float(uks_li.coulomb_energy):.6f}, "
-          f"E_xc = {float(uks_li.xc_energy):.6f}")
+    dE_li = abs(uks_li.energy - ref_uks_li.e_tot)
+    print(f"  Atomiverse: E = {uks_li.energy:.8f} Ha  "
+          f"(E_xc = {uks_li.xc_energy:.6f})")
     print(f"  PySCF:      E = {ref_uks_li.e_tot:.8f} Ha")
     print(f"  |dE| = {dE_li:.2e} Ha")
-
-    eig_a = np.array(uks_li.get_eigenvalues_alpha())
-    eig_b = np.array(uks_li.get_eigenvalues_beta())
-    print(f"  Eigenvalues alpha: {eig_a}")
-    print(f"  Eigenvalues beta:  {eig_b}")
-
-    atoms_data["Li"] = {
-        "atv_uks": float(uks_li.energy),
-        "ref_uks": ref_uks_li.e_tot,
-    }
+    print(f"  Eigenvalues alpha: {uks_li.eigenvalues_alpha}")
+    print(f"  Eigenvalues beta:  {uks_li.eigenvalues_beta}")
+    atoms_data["Li"] = {"atv_uks": uks_li.energy, "ref_uks": ref_uks_li.e_tot}
 
     # =====================================================================
-    # Example 4: H2 dissociation — UHF vs UKS-LSDA
+    # H2 dissociation — UHF vs UKS-LSDA + timing benchmark
     # =====================================================================
     print(f"\n{'='*60}")
-    print("Example 4: H2 dissociation / STO-3G / UHF vs UKS-LSDA")
+    print("H2 dissociation / STO-3G / UHF vs UKS-LSDA")
     print("=" * 60)
 
     R_vals = [0.5, 0.6, 0.74, 1.0, 1.5, 2.0, 2.5, 3.0]
     dissoc: dict[str, list] = {
         "R": R_vals,
         "atv_uhf": [], "atv_uks": [], "atv_exc": [],
-        "ref_uks": [], "ref_exc": [], "converged": [],
+        "ref_uks": [], "ref_exc": [],
+        "converged": [],
+        "atv_time_ms": [], "ref_time_ms": [],
     }
 
-    print(f"  {'R':>6s}  {'ATV_UKS':>12s}  {'PySCF_UKS':>12s}  "
-          f"{'rel_err%':>10s}  {'conv':>5s}")
-    print(f"  {'------':>6s}  {'----------':>12s}  {'----------':>12s}  "
-          f"{'--------':>10s}  {'-----':>5s}")
+    header = (f"  {'R':>5s}  {'ATV_UKS':>12s}  {'PySCF_UKS':>12s}  "
+              f"{'rel%':>7s}  {'ATV ms':>8s}  {'PySCF ms':>8s}  {'conv':>4s}")
+    print(header)
+    print("  " + "-" * (len(header) - 2))
 
     for r in R_vals:
         frame = make_h2_frame(r)
-        ip = av.build_integrals_sto3g(frame)
 
-        uhf = av.uhf_solve(ip, n_alpha=1, n_beta=1, tol=1e-10, max_iter=400)
-        uks = av.uks_solve(ip, n_alpha=1, n_beta=1,
-                           xc_type=av.XCType.LSDA, tol=1e-5, max_iter=500)
+        # Atomiverse UHF (no timing — just for PES reference)
+        uhf = av.UHF(frame, multiplicity=1).solve(tol=1e-10, max_iter=400)
 
+        # Atomiverse UKS — timed
+        t0 = time.perf_counter()
+        uks = av.UKS(frame, xc="LSDA", multiplicity=1) \
+                .solve(tol=1e-5, max_iter=500)
+        atv_dt = (time.perf_counter() - t0) * 1e3
+
+        # PySCF UKS — timed
         mol = make_pyscf_h2(r)
+        t0 = time.perf_counter()
         ref = run_pyscf_uks(mol)
+        ref_dt = (time.perf_counter() - t0) * 1e3
 
-        dissoc["atv_uhf"].append(float(uhf.energy))
-        dissoc["atv_uks"].append(float(uks.energy))
-        dissoc["atv_exc"].append(float(uks.xc_energy))
-        dissoc["ref_uks"].append(float(ref.e_tot))
-        # PySCF xc energy: e_tot - (e_tot - e_xc_component) ... use internal
+        # E_xc from PySCF internals
         exc_ref = float(ref.e_tot - ref.energy_nuc()
                         - float(ref.scf_summary.get("e1", 0))
                         - float(ref.scf_summary.get("coul", 0)))
+
+        dissoc["atv_uhf"].append(uhf.energy)
+        dissoc["atv_uks"].append(uks.energy)
+        dissoc["atv_exc"].append(uks.xc_energy)
+        dissoc["ref_uks"].append(float(ref.e_tot))
         dissoc["ref_exc"].append(exc_ref)
         dissoc["converged"].append(uks.converged)
+        dissoc["atv_time_ms"].append(atv_dt)
+        dissoc["ref_time_ms"].append(ref_dt)
 
-        rel = abs(dissoc["atv_uks"][-1] - dissoc["ref_uks"][-1]) / abs(dissoc["ref_uks"][-1]) * 100
+        rel = abs(uks.energy - ref.e_tot) / abs(ref.e_tot) * 100
         conv = "yes" if uks.converged else "NO"
-        print(f"  {r:6.2f}  {float(uks.energy):12.8f}  {ref.e_tot:12.8f}  "
-              f"{rel:10.4f}  {conv:>5s}")
+        print(f"  {r:5.2f}  {uks.energy:12.8f}  {ref.e_tot:12.8f}  "
+              f"{rel:7.3f}  {atv_dt:8.1f}  {ref_dt:8.1f}  {conv:>4s}")
 
     # ── Summary ──
     print(f"\n{'='*60}")
     print("Agreement (Atomiverse vs PySCF)")
     print("=" * 60)
 
-    # Atoms: print relative error for each
-    print(f"  Atoms (UKS-LSDA):")
+    print("  Atoms (UKS-LSDA):")
     for name, d in atoms_data.items():
         dE = abs(d["atv_uks"] - d["ref_uks"])
         rel = dE / abs(d["ref_uks"]) * 100
         print(f"    {name:4s}: ATV={d['atv_uks']:.8f}  "
               f"PySCF={d['ref_uks']:.8f}  rel={rel:.4f}%")
 
-    # H2 scan: relative error at each point
-    print(f"\n  H2 scan (relative error %):")
-    all_rel = []
-    converged_rel = []
+    all_rel, converged_rel = [], []
     for a, b, r in zip(dissoc["atv_uks"], dissoc["ref_uks"], R_vals):
         rel = abs(a - b) / abs(b) * 100
         all_rel.append(rel)
@@ -374,11 +360,20 @@ def main() -> None:
     h2_conv_max_rel = max(converged_rel) if converged_rel else 0
     h2_all_max_rel = max(all_rel) if all_rel else 0
 
-    THRESHOLD = 1.0  # 1%
+    print(f"\n  H2 scan:")
+    print(f"    Converged (R<=1.5): max rel = {h2_conv_max_rel:.4f}%")
+    print(f"    All points:         max rel = {h2_all_max_rel:.2f}%")
+
+    atv_total = sum(dissoc["atv_time_ms"])
+    ref_total = sum(dissoc["ref_time_ms"])
+    print(f"\n  Timing:")
+    print(f"    Atomiverse total: {atv_total:.0f} ms")
+    print(f"    PySCF total:      {ref_total:.0f} ms")
+    print(f"    Speedup:          {ref_total / atv_total:.1f}x")
+
+    THRESHOLD = 1.0  # %
     passed = atom_max_rel < THRESHOLD and h2_conv_max_rel < THRESHOLD
     status = "PASS" if passed else "FAIL"
-    print(f"    Converged (R<=1.5): max = {h2_conv_max_rel:.4f}%")
-    print(f"    All points:         max = {h2_all_max_rel:.2f}%")
     print(f"\n  Result: {status}  (threshold = {THRESHOLD}% on converged points)")
     if h2_all_max_rel > THRESHOLD:
         print(f"  Warning: stretched H2 (R>1.5) shows {h2_all_max_rel:.1f}% error "
@@ -388,7 +383,7 @@ def main() -> None:
     print(f"\n{'='*60}")
     print("Electron density cube files (He atom)")
     print("=" * 60)
-    P_he_atv = np.array(uks_he.get_P_alpha()) + np.array(uks_he.get_P_beta())
+    P_he_atv = uks_he.density_matrix_alpha + uks_he.density_matrix_beta
     P_he_ref = ref_uks_he.make_rdm1()
     if P_he_ref.ndim == 3:
         P_he_ref = P_he_ref[0] + P_he_ref[1]

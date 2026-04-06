@@ -1,5 +1,8 @@
 /// @file python/bind_scf.cpp
-/// @brief SCF solver bindings: integrals, RHF, UHF, UKS.
+/// @brief Unified SCF engine bindings: integrals, scf_solve, scf_gradient.
+///
+/// Breaking change from v1: replaces per-method solvers (rhf_solve, uhf_solve,
+/// uks_solve) with the unified scf_solve() + convenience config factories.
 
 #include "cpu_frame_wrapper.h"
 
@@ -7,11 +10,23 @@
 #include <nanobind/stl/vector.h>
 
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/rhf_solve.h"
-#include "atomiverse/cpu/scf/uhf_solve.h"
-#include "atomiverse/cpu/scf/uks_solve.h"
+#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/gradient.h"
 
+using namespace ATV;
 using namespace ATV::cpu::scf;
+
+// ── xtensor → numpy helpers ────────────────────────────────────────────────
+
+/// Copy a 1D xtensor to a numpy array.
+static nb::ndarray<nb::numpy, Real, nb::ndim<1>>
+xt1d_to_numpy(const xt::xtensor<Real, 1>& t) {
+    auto n = static_cast<size_t>(t.shape(0));
+    Real* buf = new Real[n];
+    std::memcpy(buf, t.data(), n * sizeof(Real));
+    nb::capsule owner(buf, [](void* p) noexcept { delete[] static_cast<Real*>(p); });
+    return nb::ndarray<nb::numpy, Real, nb::ndim<1>>(buf, {n}, owner);
+}
 
 /// Copy a 2D xtensor to a numpy array (row-major).
 static nb::ndarray<nb::numpy, Real, nb::ndim<2>>
@@ -36,34 +51,138 @@ xt4d_to_numpy(const xt::xtensor<Real, 4>& t) {
     return nb::ndarray<nb::numpy, Real, nb::ndim<4>>(buf, {s[0], s[1], s[2], s[3]}, owner);
 }
 
-/// Copy a 1D xtensor to a numpy array.
-static nb::ndarray<nb::numpy, Real, nb::ndim<1>>
-xt1d_to_numpy(const xt::xtensor<Real, 1>& t) {
-    auto n = static_cast<size_t>(t.shape(0));
-    Real* buf = new Real[n];
-    std::memcpy(buf, t.data(), n * sizeof(Real));
-    nb::capsule owner(buf, [](void* p) noexcept { delete[] static_cast<Real*>(p); });
-    return nb::ndarray<nb::numpy, Real, nb::ndim<1>>(buf, {n}, owner);
-}
-
 
 void bind_scf(nb::module_& m) {
 
+    // ── Enums ──
+
+    nb::enum_<SpinType>(m, "SpinType", "Spin treatment for SCF.")
+        .value("Restricted",   SpinType::Restricted)
+        .value("Unrestricted", SpinType::Unrestricted)
+    ;
+
+    nb::enum_<MeanFieldType>(m, "MeanFieldType", "Mean-field method type.")
+        .value("HF", MeanFieldType::HF)
+        .value("KS", MeanFieldType::KS)
+    ;
+
+    nb::enum_<XCType>(m, "XCType", "Exchange-correlation functional type.")
+        .value("LSDA", XCType::LSDA)
+        .value("PBE",  XCType::PBE)
+    ;
+
+    // ── SCFConfig ──
+
+    nb::class_<SCFConfig>(m, "SCFConfig",
+        "Configuration for the unified SCF solver.")
+        .def(nb::init<>())
+        .def_rw("spin",             &SCFConfig::spin)
+        .def_rw("method",           &SCFConfig::method)
+        .def_rw("xc_type",          &SCFConfig::xc_type)
+        .def_rw("n_alpha",          &SCFConfig::n_alpha)
+        .def_rw("n_beta",           &SCFConfig::n_beta)
+        .def_rw("tol",              &SCFConfig::tol)
+        .def_rw("max_iter",         &SCFConfig::max_iter)
+        .def_rw("use_diis",         &SCFConfig::use_diis)
+        .def_rw("diis_max_vectors", &SCFConfig::diis_max_vectors)
+        .def_rw("diis_start_iter",  &SCFConfig::diis_start_iter)
+        .def_rw("damping_factor",   &SCFConfig::damping_factor)
+        .def_rw("n_radial",         &SCFConfig::n_radial)
+        .def_rw("n_angular",        &SCFConfig::n_angular)
+        .def("__repr__", [](const SCFConfig& c) {
+            std::string spin_str = (c.spin == SpinType::Restricted)
+                ? "Restricted" : "Unrestricted";
+            std::string method_str = (c.method == MeanFieldType::HF)
+                ? "HF" : "KS";
+            return "SCFConfig(spin=" + spin_str + ", method=" + method_str +
+                   ", n_alpha=" + std::to_string(c.n_alpha) +
+                   ", n_beta=" + std::to_string(c.n_beta) +
+                   ", tol=" + std::to_string(c.tol) + ")";
+        })
+    ;
+
+    // ── SCFResult ──
+
+    nb::class_<SCFResult>(m, "SCFResult",
+        "Unified SCF result with full energy decomposition.")
+        // Core
+        .def_prop_ro("converged",    [](const SCFResult& r) { return r.converged; })
+        .def_prop_ro("iterations",   [](const SCFResult& r) { return r.iterations; })
+        .def_prop_ro("energy",       [](const SCFResult& r) { return r.energy; })
+        .def_prop_ro("residual",     [](const SCFResult& r) { return r.residual; })
+        // Energy decomposition
+        .def_prop_ro("one_electron_energy", [](const SCFResult& r) { return r.one_electron_energy; })
+        .def_prop_ro("coulomb_energy",      [](const SCFResult& r) { return r.coulomb_energy; })
+        .def_prop_ro("exchange_energy",     [](const SCFResult& r) { return r.exchange_energy; })
+        .def_prop_ro("xc_energy",           [](const SCFResult& r) { return r.xc_energy; })
+        .def_prop_ro("nuclear_repulsion",   [](const SCFResult& r) { return r.nuclear_repulsion; })
+        // Spin info
+        .def_prop_ro("n_alpha",            [](const SCFResult& r) { return r.n_alpha; })
+        .def_prop_ro("n_beta",             [](const SCFResult& r) { return r.n_beta; })
+        .def_prop_ro("spin_contamination", [](const SCFResult& r) { return r.spin_contamination; })
+        // Orbitals and densities (as numpy arrays)
+        .def("get_eigenvalues_alpha", [](const SCFResult& r) { return xt1d_to_numpy(r.eigenvalues_alpha); })
+        .def("get_eigenvalues_beta",  [](const SCFResult& r) { return xt1d_to_numpy(r.eigenvalues_beta); })
+        .def("get_P_alpha", [](const SCFResult& r) { return xt2d_to_numpy(r.P_alpha); })
+        .def("get_P_beta",  [](const SCFResult& r) { return xt2d_to_numpy(r.P_beta); })
+        .def("get_C_alpha", [](const SCFResult& r) { return xt2d_to_numpy(r.C_alpha); })
+        .def("get_C_beta",  [](const SCFResult& r) { return xt2d_to_numpy(r.C_beta); })
+        // Grid quality (KS only)
+        .def_prop_ro("integrated_n_alpha", [](const SCFResult& r) { return r.integrated_n_alpha; })
+        .def_prop_ro("integrated_n_beta",  [](const SCFResult& r) { return r.integrated_n_beta; })
+        // Diagnostics
+        .def_prop_ro("trace", [](const SCFResult& r) {
+            nb::list trace;
+            for (const auto& rec : r.trace) {
+                nb::dict d;
+                d["iter"] = rec.iter;
+                d["energy"] = rec.energy;
+                d["residual"] = rec.residual;
+                d["diis_active"] = rec.diis_active;
+                trace.append(d);
+            }
+            return trace;
+        })
+        .def("__repr__", [](const SCFResult& r) {
+            std::string conv = r.converged ? "converged" : "NOT converged";
+            return "SCFResult(" + conv +
+                   ", E=" + std::to_string(r.energy) +
+                   " Ha, iters=" + std::to_string(r.iterations) + ")";
+        })
+    ;
+
+    // ── GradientResult ──
+
+    nb::class_<GradientResult>(m, "GradientResult",
+        "Result of an analytic gradient computation.")
+        .def("get_forces", [](const GradientResult& r) { return xt2d_to_numpy(r.forces); },
+             "Forces [n_atoms, 3] in eV/Angstrom.")
+        .def_prop_ro("energy", [](const GradientResult& r) { return r.energy; },
+                     "Total energy in eV.")
+        .def("__repr__", [](const GradientResult& r) {
+            auto n = r.forces.shape(0);
+            return "GradientResult(n_atoms=" + std::to_string(n) +
+                   ", E=" + std::to_string(r.energy) + " eV)";
+        })
+    ;
+
     // ── IntegralPack ──
+
     nb::class_<IntegralPack>(m, "IntegralPack",
         "Molecular integrals (S, T, V, Hcore, ERI, V_nuc) for HF/DFT.")
-        .def("get_S", [](const IntegralPack& ip) { return xt2d_to_numpy(ip.S); })
-        .def("get_T", [](const IntegralPack& ip) { return xt2d_to_numpy(ip.T); })
-        .def("get_V", [](const IntegralPack& ip) { return xt2d_to_numpy(ip.V); })
+        .def("get_S",     [](const IntegralPack& ip) { return xt2d_to_numpy(ip.S); })
+        .def("get_T",     [](const IntegralPack& ip) { return xt2d_to_numpy(ip.T); })
+        .def("get_V",     [](const IntegralPack& ip) { return xt2d_to_numpy(ip.V); })
         .def("get_Hcore", [](const IntegralPack& ip) { return xt2d_to_numpy(ip.Hcore); })
-        .def("get_ERI", [](const IntegralPack& ip) { return xt4d_to_numpy(ip.ERI); })
-        .def_prop_ro("V_nuc", [](const IntegralPack& ip) { return ip.V_nuc; })
-        .def_prop_ro("n_basis", [](const IntegralPack& ip) { return ip.n_basis; })
+        .def("get_ERI",   [](const IntegralPack& ip) { return xt4d_to_numpy(ip.ERI); })
+        .def_prop_ro("V_nuc",       [](const IntegralPack& ip) { return ip.V_nuc; })
+        .def_prop_ro("n_basis",     [](const IntegralPack& ip) { return ip.n_basis; })
         .def_prop_ro("n_electrons", [](const IntegralPack& ip) { return ip.n_electrons; })
-        .def_prop_ro("n_occ", [](const IntegralPack& ip) { return ip.n_occ(); })
+        .def_prop_ro("n_occ",       [](const IntegralPack& ip) { return ip.n_occ(); })
     ;
 
     // ── build_integrals_sto3g ──
+
     m.def("build_integrals_sto3g",
         [](nb::object frame_obj, int charge) {
             auto& cf = nb::cast<CpuFrame&>(frame_obj);
@@ -77,130 +196,61 @@ void bind_scf(nb::module_& m) {
         "atoms.type must be atomic number Z (1=H, 2=He, 3=Li)."
     );
 
-    // ── RHFResult ──
-    nb::class_<RHFResult>(m, "RHFResult", "Result of an RHF calculation.")
-        .def_prop_ro("converged", [](const RHFResult& r) { return r.converged; })
-        .def_prop_ro("iterations", [](const RHFResult& r) { return r.iterations; })
-        .def_prop_ro("energy", [](const RHFResult& r) { return r.energy; })
-        .def_prop_ro("electronic_energy", [](const RHFResult& r) { return r.electronic_energy; })
-        .def_prop_ro("residual", [](const RHFResult& r) { return r.residual; })
-        .def("get_eigenvalues", [](const RHFResult& r) { return xt1d_to_numpy(r.eigenvalues); })
-        .def("get_P", [](const RHFResult& r) { return xt2d_to_numpy(r.P); })
-        .def("get_C", [](const RHFResult& r) { return xt2d_to_numpy(r.C); })
-        .def_prop_ro("trace", [](const RHFResult& r) {
-            nb::list trace;
-            for (auto& rec : r.trace) {
-                nb::dict d;
-                d["iter"] = rec.iter;
-                d["energy"] = rec.energy;
-                d["residual"] = rec.residual;
-                trace.append(d);
-            }
-            return trace;
-        })
-    ;
+    // ── scf_solve ──
 
-    // ── rhf_solve ──
-    m.def("rhf_solve",
-        [](const IntegralPack& ip, Real tol, int max_iter) {
-            RHFResult result;
+    m.def("scf_solve",
+        [](const IntegralPack& ip, const SCFConfig& config) {
+            SCFResult result;
             { nb::gil_scoped_release release;
-              result = rhf_solve(ip, tol, max_iter); }
+              result = scf_solve(ip, config); }
             return result;
         },
-        nb::arg("integrals"), nb::arg("tol") = Real(1e-8), nb::arg("max_iter") = 100,
-        "Run Restricted Hartree-Fock on CPU (xtensor-blas)."
+        nb::arg("integrals"), nb::arg("config"),
+        "Run the unified SCF solver. Method/spin dispatched via SCFConfig."
     );
 
-    // ── UHFResult ──
-    nb::class_<UHFResult>(m, "UHFResult", "Result of a UHF calculation.")
-        .def_prop_ro("converged", [](const UHFResult& r) { return r.converged; })
-        .def_prop_ro("iterations", [](const UHFResult& r) { return r.iterations; })
-        .def_prop_ro("energy", [](const UHFResult& r) { return r.energy; })
-        .def_prop_ro("electronic_energy", [](const UHFResult& r) { return r.electronic_energy; })
-        .def_prop_ro("residual", [](const UHFResult& r) { return r.residual; })
-        .def_prop_ro("n_alpha", [](const UHFResult& r) { return r.n_alpha; })
-        .def_prop_ro("n_beta", [](const UHFResult& r) { return r.n_beta; })
-        .def_prop_ro("spin_contamination", [](const UHFResult& r) { return r.spin_contamination; })
-        .def("get_eigenvalues_alpha", [](const UHFResult& r) { return xt1d_to_numpy(r.eigenvalues_alpha); })
-        .def("get_eigenvalues_beta", [](const UHFResult& r) { return xt1d_to_numpy(r.eigenvalues_beta); })
-        .def("get_P_alpha", [](const UHFResult& r) { return xt2d_to_numpy(r.P_alpha); })
-        .def("get_P_beta", [](const UHFResult& r) { return xt2d_to_numpy(r.P_beta); })
-        .def_prop_ro("trace", [](const UHFResult& r) {
-            nb::list trace;
-            for (auto& rec : r.trace) {
-                nb::dict d;
-                d["iter"] = rec.iter;
-                d["energy"] = rec.energy;
-                d["residual"] = rec.residual;
-                trace.append(d);
-            }
-            return trace;
-        })
-    ;
+    // ── scf_gradient ──
 
-    // ── uhf_solve ──
-    m.def("uhf_solve",
-        [](const IntegralPack& ip, int n_alpha, int n_beta, Real tol, int max_iter) {
-            UHFResult result;
+    m.def("scf_gradient",
+        [](nb::object frame_obj, const IntegralPack& ip,
+           const SCFResult& result, const SCFConfig& config) {
+            auto& cf = nb::cast<CpuFrame&>(frame_obj);
+            GradientResult grad;
             { nb::gil_scoped_release release;
-              result = uhf_solve(ip, n_alpha, n_beta, tol, max_iter); }
-            return result;
+              grad = scf_gradient(cf.frame, ip, result, config); }
+            return grad;
+        },
+        nb::arg("frame"), nb::arg("integrals"),
+        nb::arg("result"), nb::arg("config"),
+        "Compute analytic nuclear gradient (forces in eV/Angstrom)."
+    );
+
+    // ── Convenience config factories ──
+
+    m.def("rhf_config",
+        [](const IntegralPack& ip, Real tol) {
+            return rhf_config(ip, tol);
+        },
+        nb::arg("integrals"), nb::arg("tol") = Real(1e-8),
+        "Create an SCFConfig for restricted Hartree-Fock."
+    );
+
+    m.def("uhf_config",
+        [](const IntegralPack& ip, int n_alpha, int n_beta, Real tol) {
+            return uhf_config(ip, n_alpha, n_beta, tol);
         },
         nb::arg("integrals"), nb::arg("n_alpha"), nb::arg("n_beta"),
-        nb::arg("tol") = Real(1e-8), nb::arg("max_iter") = 100,
-        "Run Unrestricted Hartree-Fock on CPU."
+        nb::arg("tol") = Real(1e-8),
+        "Create an SCFConfig for unrestricted Hartree-Fock."
     );
 
-    // ── XCType enum ──
-    nb::enum_<XCType>(m, "XCType", "Exchange-correlation functional type.")
-        .value("LSDA", XCType::LSDA)
-        .value("PBE",  XCType::PBE)
-    ;
-
-    // ── UKSResult ──
-    nb::class_<UKSResult>(m, "UKSResult", "Result of a UKS (DFT) calculation.")
-        .def_prop_ro("converged", [](const UKSResult& r) { return r.converged; })
-        .def_prop_ro("iterations", [](const UKSResult& r) { return r.iterations; })
-        .def_prop_ro("energy", [](const UKSResult& r) { return r.energy; })
-        .def_prop_ro("electronic_energy", [](const UKSResult& r) { return r.electronic_energy; })
-        .def_prop_ro("one_electron_energy", [](const UKSResult& r) { return r.one_electron_energy; })
-        .def_prop_ro("coulomb_energy", [](const UKSResult& r) { return r.coulomb_energy; })
-        .def_prop_ro("xc_energy", [](const UKSResult& r) { return r.xc_energy; })
-        .def_prop_ro("residual", [](const UKSResult& r) { return r.residual; })
-        .def_prop_ro("spin_contamination", [](const UKSResult& r) { return r.spin_contamination; })
-        .def("get_eigenvalues_alpha", [](const UKSResult& r) { return xt1d_to_numpy(r.eigenvalues_alpha); })
-        .def("get_eigenvalues_beta", [](const UKSResult& r) { return xt1d_to_numpy(r.eigenvalues_beta); })
-        .def("get_P_alpha", [](const UKSResult& r) { return xt2d_to_numpy(r.P_alpha); })
-        .def("get_P_beta", [](const UKSResult& r) { return xt2d_to_numpy(r.P_beta); })
-        .def_prop_ro("trace", [](const UKSResult& r) {
-            nb::list trace;
-            for (auto& rec : r.trace) {
-                nb::dict d;
-                d["iter"] = rec.iter;
-                d["energy"] = rec.energy;
-                d["residual"] = rec.residual;
-                trace.append(d);
-            }
-            return trace;
-        })
-    ;
-
-    // ── uks_solve ──
-    m.def("uks_solve",
+    m.def("uks_config",
         [](const IntegralPack& ip, int n_alpha, int n_beta,
-           XCType xc_type, int n_radial, int n_angular,
-           Real tol, int max_iter) {
-            UKSResult result;
-            { nb::gil_scoped_release release;
-              result = uks_solve(ip, n_alpha, n_beta, xc_type,
-                                 n_radial, n_angular, tol, max_iter); }
-            return result;
+           XCType xc, Real tol) {
+            return uks_config(ip, n_alpha, n_beta, xc, tol);
         },
         nb::arg("integrals"), nb::arg("n_alpha"), nb::arg("n_beta"),
-        nb::arg("xc_type") = XCType::LSDA,
-        nb::arg("n_radial") = 50, nb::arg("n_angular") = 110,
-        nb::arg("tol") = Real(1e-8), nb::arg("max_iter") = 100,
-        "Run Unrestricted Kohn-Sham DFT (LSDA or PBE) on CPU."
+        nb::arg("xc") = XCType::LSDA, nb::arg("tol") = Real(1e-8),
+        "Create an SCFConfig for unrestricted Kohn-Sham DFT."
     );
 }

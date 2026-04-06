@@ -16,7 +16,7 @@ void Thermo::launch(const cpu::LaunchContext& ctx) {
     if (ctx.runtime.mpi_rank != 0) return;
 
     auto& f = ctx.frame;
-    Int n = f.n_atoms();
+    Int n = f.atoms.size();
     Int n_dof = 3 * n - 3;
 
     Real temperature = 0;
