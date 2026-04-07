@@ -565,6 +565,75 @@ XCOutput evaluate_xc(XCType type, Real rho_a, Real rho_b,
     return out;
 }
 
+void evaluate_xc_batch(XCType type, int n,
+                       const double* rho_a_arr, const double* rho_b_arr,
+                       const double* sigma_aa_arr, const double* sigma_ab_arr,
+                       const double* sigma_bb_arr,
+                       double* exc_arr, double* vrho_a_arr, double* vrho_b_arr,
+                       double* vsigma_aa_arr, double* vsigma_ab_arr,
+                       double* vsigma_bb_arr) {
+    for (int g = 0; g < n; ++g) {
+        double ra = rho_a_arr[g];
+        double rb = rho_b_arr[g];
+        double rho = ra + rb;
+
+        if (rho < kRhoMin) {
+            exc_arr[g] = 0;
+            vrho_a_arr[g] = 0;
+            vrho_b_arr[g] = 0;
+            if (vsigma_aa_arr) { vsigma_aa_arr[g] = 0; vsigma_ab_arr[g] = 0; vsigma_bb_arr[g] = 0; }
+            continue;
+        }
+
+        if (type == XCType::LSDA) {
+            double ex, vx_a, vx_b;
+            slater_exchange(ra, rb, ex, vx_a, vx_b);
+            double ec, vc_a, vc_b;
+            vwn5_correlation(ra, rb, ec, vc_a, vc_b);
+            exc_arr[g] = ex + ec;
+            vrho_a_arr[g] = vx_a + vc_a;
+            vrho_b_arr[g] = vx_b + vc_b;
+        } else if (type == XCType::PBE) {
+            double ra_pbe = std::max(ra, kRhoMin);
+            double rb_pbe = std::max(rb, kRhoMin);
+            double rho_pbe = ra_pbe + rb_pbe;
+
+            double ex_lda, vx_lda_a, vx_lda_b;
+            slater_exchange(ra_pbe, rb_pbe, ex_lda, vx_lda_a, vx_lda_b);
+            double ec_lda, vc_lda_a, vc_lda_b;
+            vwn5_correlation(ra_pbe, rb_pbe, ec_lda, vc_lda_a, vc_lda_b);
+
+            double sa = sigma_aa_arr[g], sab = sigma_ab_arr[g], sb = sigma_bb_arr[g];
+            double sigma_min = std::pow(kRhoMin, 4.0/3.0);
+            sa = std::max(sa, sigma_min);
+            sb = std::max(sb, sigma_min);
+            double s_ave = 0.5 * (sa + sb);
+            sab = std::max(sab, -s_ave);
+            sab = std::min(sab, +s_ave);
+
+            double ex_pbe_a, vrho_x_a, vsig_x_aa;
+            double ex_pbe_b, vrho_x_b, vsig_x_bb;
+            pbe_exchange_spin(ra_pbe, sa, ex_pbe_a, vrho_x_a, vsig_x_aa);
+            pbe_exchange_spin(rb_pbe, sb, ex_pbe_b, vrho_x_b, vsig_x_bb);
+            double ex_pbe = (ex_pbe_a + ex_pbe_b) / rho_pbe;
+
+            double ec_pbe, vc_pbe_a, vc_pbe_b;
+            double vsig_c_aa, vsig_c_ab, vsig_c_bb;
+            pbe_correlation(ra_pbe, rb_pbe, ec_lda, vc_lda_a, vc_lda_b,
+                           sa, sab, sb,
+                           ec_pbe, vc_pbe_a, vc_pbe_b,
+                           vsig_c_aa, vsig_c_ab, vsig_c_bb);
+
+            exc_arr[g] = ex_pbe + ec_pbe;
+            vrho_a_arr[g] = vrho_x_a + vc_pbe_a;
+            vrho_b_arr[g] = vrho_x_b + vc_pbe_b;
+            vsigma_aa_arr[g] = vsig_x_aa + vsig_c_aa;
+            vsigma_ab_arr[g] = vsig_c_ab;
+            vsigma_bb_arr[g] = vsig_x_bb + vsig_c_bb;
+        }
+    }
+}
+
 } // namespace scf
 } // namespace cpu
 } // namespace ATV

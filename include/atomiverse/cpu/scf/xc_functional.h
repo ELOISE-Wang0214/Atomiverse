@@ -47,6 +47,32 @@ struct XCOutput {
 XCOutput evaluate_xc(XCType type, Real rho_a, Real rho_b,
                      Real sigma_aa = 0, Real sigma_ab = 0, Real sigma_bb = 0);
 
+/// @brief Batched XC evaluation over an array of grid points.
+///
+/// Processes `n` grid points at once, enabling SIMD auto-vectorization of
+/// transcendental functions (pow, log, exp).
+///
+/// @param type     Functional type (LSDA or PBE).
+/// @param n        Number of grid points.
+/// @param rho_a    Alpha densities [n].
+/// @param rho_b    Beta densities [n].
+/// @param sigma_aa |∇ρ_α|² array [n] (GGA only, may be nullptr for LDA).
+/// @param sigma_ab ∇ρ_α · ∇ρ_β array [n] (GGA only).
+/// @param sigma_bb |∇ρ_β|² array [n] (GGA only).
+/// @param[out] exc     XC energy density per electron [n].
+/// @param[out] vrho_a  ∂f/∂ρ_α [n].
+/// @param[out] vrho_b  ∂f/∂ρ_β [n].
+/// @param[out] vsigma_aa ∂f/∂σ_αα [n] (GGA only, may be nullptr for LDA).
+/// @param[out] vsigma_ab ∂f/∂σ_αβ [n] (GGA only).
+/// @param[out] vsigma_bb ∂f/∂σ_ββ [n] (GGA only).
+void evaluate_xc_batch(XCType type, int n,
+                       const double* rho_a, const double* rho_b,
+                       const double* sigma_aa, const double* sigma_ab,
+                       const double* sigma_bb,
+                       double* exc, double* vrho_a, double* vrho_b,
+                       double* vsigma_aa, double* vsigma_ab,
+                       double* vsigma_bb);
+
 } // namespace scf
 } // namespace cpu
 } // namespace ATV

@@ -16,6 +16,7 @@
 
 #include <xtensor/xview.hpp>
 #include <xtensor/xio.hpp>
+#include <xtensor-blas/xlinalg.hpp>
 #include <cmath>
 #include <functional>
 
@@ -70,10 +71,20 @@ static GradientResult make_result(
     return out;
 }
 
-// ── XC grid contribution (KS only) ──────────────────────────────────
+// ── XC grid gradient (KS only) — batched with GEMM ─────────────────
+//
+// For the LDA part:
+//   dE_xc/dR_{A,d} = sum_g w * [vrho_a * drho_a/dR_{A,d} + vrho_b * drho_b/dR_{A,d}]
+//   drho_a/dR_{A,d} = -2 * sum_{mu in A} sum_nu P_a(mu,nu) * dphi_mu_d * phi_nu
+//
+// In matrix form:  drho_a/dR_{A,d}[g] = -2 * sum_{mu in A} T_a(g,mu) * dPhi_d(g,mu)
+// where T_a = Phi @ P_a  (precomputed via GEMM).
+//
+// The GGA part involves Hessians and is kept per-point for now (it's a smaller
+// contribution and batching the Hessian evaluation is more complex).
 
 static void accumulate_xc_gradient(
-    xt::xtensor<Real, 2>& grad,
+    xt::xtensor<Real, 2>& grad_out,
     const IntegralPack& integrals,
     const SCFResult& result,
     const SCFConfig& config,
@@ -82,130 +93,165 @@ static void accumulate_xc_gradient(
     int natm, Int n)
 {
     bool is_gga = (config.xc_type == XCType::PBE);
+    const int N = static_cast<int>(n);
+    const size_t Ns = static_cast<size_t>(N);
 
     auto grid = build_molecular_grid(integrals.atoms.data(), natm,
                                      config.n_radial, config.n_angular);
+    const int G = static_cast<int>(grid.points.size());
+    const size_t Gs = static_cast<size_t>(G);
 
-    std::vector<double> Pa(n*n), Pb(n*n);
-    for (Int mu = 0; mu < n; ++mu)
-        for (Int nu = 0; nu < n; ++nu) {
-            Pa[mu*n + nu] = static_cast<double>(result.P_alpha(mu, nu));
-            Pb[mu*n + nu] = static_cast<double>(result.P_beta(mu, nu));
-        }
+    // ── 1. Build Phi[G×N], dPhi[G×N×3], (Hess[G×N×9] for GGA) ─────
+    xt::xtensor<double, 2> Phi = xt::zeros<double>({Gs, Ns});
+    xt::xtensor<double, 3> dPhi = xt::zeros<double>({Gs, Ns, size_t(3)});
+    xt::xtensor<double, 3> Hess;
+    if (is_gga) Hess = xt::zeros<double>({Gs, Ns, size_t(9)});
 
-    std::vector<double> phi(n);
-    std::vector<double> dphi(n * 3);
-    std::vector<double> hess(is_gga ? n * 9 : 0);
+    for (int mu = 0; mu < N; ++mu) {
+        const auto& sh = integrals.shells[mu];
+        double min_alpha = sh.alpha[0];
+        for (int k = 1; k < sh.n_prim; ++k)
+            if (sh.alpha[k] < min_alpha) min_alpha = sh.alpha[k];
 
-    for (const auto& gp : grid.points) {
-        double rx = static_cast<double>(gp.x);
-        double ry = static_cast<double>(gp.y);
-        double rz = static_cast<double>(gp.z);
-        double w  = static_cast<double>(gp.weight);
+        for (int g = 0; g < G; ++g) {
+            double rx = static_cast<double>(grid.points[g].x);
+            double ry = static_cast<double>(grid.points[g].y);
+            double rz = static_cast<double>(grid.points[g].z);
+            double dx = rx - sh.center[0], dy = ry - sh.center[1], dz = rz - sh.center[2];
+            double r2 = dx*dx + dy*dy + dz*dz;
+            if (min_alpha * r2 > 36.0) continue;
 
-        bool any_nonzero = false;
-        for (Int mu = 0; mu < n; ++mu) {
             if (is_gga) {
-                eval_basis_all(integrals.shells[mu], rx, ry, rz,
-                    phi[mu], dphi[mu*3], dphi[mu*3+1], dphi[mu*3+2],
-                    hess[mu*9+0], hess[mu*9+1], hess[mu*9+2],
-                    hess[mu*9+4], hess[mu*9+5], hess[mu*9+8]);
-                hess[mu*9+3] = hess[mu*9+1];
-                hess[mu*9+6] = hess[mu*9+2];
-                hess[mu*9+7] = hess[mu*9+5];
+                double val, gx, gy, gz, hxx, hxy, hxz, hyy, hyz, hzz;
+                eval_basis_all(sh, rx, ry, rz, val, gx, gy, gz,
+                               hxx, hxy, hxz, hyy, hyz, hzz);
+                Phi(g, mu) = val;
+                dPhi(g, mu, 0) = gx; dPhi(g, mu, 1) = gy; dPhi(g, mu, 2) = gz;
+                // Hess stored as flat [xx,xy,xz, yx,yy,yz, zx,zy,zz]
+                Hess(g, mu, 0) = hxx; Hess(g, mu, 1) = hxy; Hess(g, mu, 2) = hxz;
+                Hess(g, mu, 3) = hxy; Hess(g, mu, 4) = hyy; Hess(g, mu, 5) = hyz;
+                Hess(g, mu, 6) = hxz; Hess(g, mu, 7) = hyz; Hess(g, mu, 8) = hzz;
             } else {
-                eval_basis_val_grad(integrals.shells[mu], rx, ry, rz,
-                    phi[mu], dphi[mu*3], dphi[mu*3+1], dphi[mu*3+2]);
+                double val, gx, gy, gz;
+                eval_basis_val_grad(sh, rx, ry, rz, val, gx, gy, gz);
+                Phi(g, mu) = val;
+                dPhi(g, mu, 0) = gx; dPhi(g, mu, 1) = gy; dPhi(g, mu, 2) = gz;
             }
-            if (std::abs(phi[mu]) > 1e-20) any_nonzero = true;
         }
-        if (!any_nonzero) continue;
+    }
 
-        double rho_a = 0, rho_b = 0;
-        for (Int mu = 0; mu < n; ++mu)
-            for (Int nu = 0; nu < n; ++nu) {
-                double pp = phi[mu] * phi[nu];
-                rho_a += Pa[mu*n + nu] * pp;
-                rho_b += Pb[mu*n + nu] * pp;
-            }
-        rho_a = std::max(0.0, rho_a);
-        rho_b = std::max(0.0, rho_b);
-        if (rho_a + rho_b < 1e-20) continue;
-
-        double grad_rho_a[3] = {0,0,0}, grad_rho_b[3] = {0,0,0};
-        double sigma_aa = 0, sigma_ab = 0, sigma_bb = 0;
-        if (is_gga) {
-            for (Int mu = 0; mu < n; ++mu)
-                for (Int nu = 0; nu < n; ++nu) {
-                    double pa = Pa[mu*n + nu];
-                    double pb = Pb[mu*n + nu];
-                    for (int i = 0; i < 3; ++i) {
-                        grad_rho_a[i] += pa * dphi[mu*3+i] * phi[nu];
-                        grad_rho_b[i] += pb * dphi[mu*3+i] * phi[nu];
-                    }
-                }
-            for (int i = 0; i < 3; ++i) { grad_rho_a[i] *= 2.0; grad_rho_b[i] *= 2.0; }
-            sigma_aa = grad_rho_a[0]*grad_rho_a[0] + grad_rho_a[1]*grad_rho_a[1] + grad_rho_a[2]*grad_rho_a[2];
-            sigma_ab = grad_rho_a[0]*grad_rho_b[0] + grad_rho_a[1]*grad_rho_b[1] + grad_rho_a[2]*grad_rho_b[2];
-            sigma_bb = grad_rho_b[0]*grad_rho_b[0] + grad_rho_b[1]*grad_rho_b[1] + grad_rho_b[2]*grad_rho_b[2];
+    // ── 2. Density via GEMM ────────────────────────────────────────────
+    xt::xtensor<double, 2> Pa({Ns, Ns}), Pb({Ns, Ns});
+    for (int mu = 0; mu < N; ++mu)
+        for (int nu = 0; nu < N; ++nu) {
+            Pa(mu, nu) = static_cast<double>(result.P_alpha(mu, nu));
+            Pb(mu, nu) = static_cast<double>(result.P_beta(mu, nu));
         }
 
-        XCOutput xc = evaluate_xc(config.xc_type,
-            static_cast<Real>(rho_a), static_cast<Real>(rho_b),
-            static_cast<Real>(sigma_aa), static_cast<Real>(sigma_ab), static_cast<Real>(sigma_bb));
-        double vrho_a = static_cast<double>(xc.vrho_alpha);
-        double vrho_b = static_cast<double>(xc.vrho_beta);
+    auto T_a = xt::linalg::dot(Phi, Pa);  // [G × N]
+    auto T_b = xt::linalg::dot(Phi, Pb);
 
-        for (int A = 0; A < natm; ++A) {
-            const auto& shells_A = atom_shells[A];
-            if (shells_A.empty()) continue;
+    xt::xtensor<double, 1> rho_a_arr = xt::maximum(xt::sum(T_a * Phi, {1}), 0.0);
+    xt::xtensor<double, 1> rho_b_arr = xt::maximum(xt::sum(T_b * Phi, {1}), 0.0);
 
-            for (int dd = 0; dd < 3; ++dd) {
-                double xc_contrib = 0;
+    // Gradient density for GGA
+    xt::xtensor<double, 2> grad_rho_a, grad_rho_b;  // [G × 3]
+    xt::xtensor<double, 1> sigma_aa_arr, sigma_ab_arr, sigma_bb_arr;
+    if (is_gga) {
+        grad_rho_a = xt::zeros<double>({Gs, size_t(3)});
+        grad_rho_b = xt::zeros<double>({Gs, size_t(3)});
+        for (int d = 0; d < 3; ++d) {
+            auto dPhi_d = xt::view(dPhi, xt::all(), xt::all(), d);
+            xt::view(grad_rho_a, xt::all(), d) = 2.0 * xt::sum(T_a * dPhi_d, {1});
+            xt::view(grad_rho_b, xt::all(), d) = 2.0 * xt::sum(T_b * dPhi_d, {1});
+        }
+        sigma_aa_arr = xt::sum(grad_rho_a * grad_rho_a, {1});
+        sigma_ab_arr = xt::sum(grad_rho_a * grad_rho_b, {1});
+        sigma_bb_arr = xt::sum(grad_rho_b * grad_rho_b, {1});
+    }
 
-                double drho_a = 0, drho_b = 0;
-                for (Int mu : shells_A) {
-                    double dphi_d = dphi[mu*3 + dd];
-                    for (Int nu = 0; nu < n; ++nu) {
-                        drho_a += Pa[mu*n + nu] * dphi_d * phi[nu];
-                        drho_b += Pb[mu*n + nu] * dphi_d * phi[nu];
-                    }
+    // ── 3. Batch XC evaluation ─────────────────────────────────────────
+    xt::xtensor<double, 1> exc_arr = xt::zeros<double>({Gs});
+    xt::xtensor<double, 1> vrho_a_arr = xt::zeros<double>({Gs});
+    xt::xtensor<double, 1> vrho_b_arr = xt::zeros<double>({Gs});
+    xt::xtensor<double, 1> vsigma_aa_arr, vsigma_ab_arr, vsigma_bb_arr;
+    if (is_gga) {
+        vsigma_aa_arr = xt::zeros<double>({Gs});
+        vsigma_ab_arr = xt::zeros<double>({Gs});
+        vsigma_bb_arr = xt::zeros<double>({Gs});
+    }
+
+    evaluate_xc_batch(config.xc_type, G,
+                      rho_a_arr.data(), rho_b_arr.data(),
+                      is_gga ? sigma_aa_arr.data() : nullptr,
+                      is_gga ? sigma_ab_arr.data() : nullptr,
+                      is_gga ? sigma_bb_arr.data() : nullptr,
+                      exc_arr.data(), vrho_a_arr.data(), vrho_b_arr.data(),
+                      is_gga ? vsigma_aa_arr.data() : nullptr,
+                      is_gga ? vsigma_ab_arr.data() : nullptr,
+                      is_gga ? vsigma_bb_arr.data() : nullptr);
+
+    // ── 4. Weights ─────────────────────────────────────────────────────
+    xt::xtensor<double, 1> w_arr = xt::zeros<double>({Gs});
+    for (int g = 0; g < G; ++g) w_arr(g) = static_cast<double>(grid.points[g].weight);
+
+    // ── 5. XC gradient accumulation (per atom, per direction) ──────────
+    // LDA:  dE_xc/dR_{A,d} = -2 * sum_g w * (vrho_a * sum_{mu in A} T_a(g,mu)*dPhi_d(g,mu)
+    //                                        + vrho_b * sum_{mu in A} T_b(g,mu)*dPhi_d(g,mu))
+    //
+    // Pre-weight T by w*vrho: WT_a(g,mu) = w(g)*vrho_a(g)*T_a(g,mu)
+    auto w_vrho_a_col = xt::reshape_view(w_arr * vrho_a_arr, {Gs, size_t(1)});
+    auto w_vrho_b_col = xt::reshape_view(w_arr * vrho_b_arr, {Gs, size_t(1)});
+    xt::xtensor<double, 2> WT_a = T_a * w_vrho_a_col;
+    xt::xtensor<double, 2> WT_b = T_b * w_vrho_b_col;
+
+    for (int A = 0; A < natm; ++A) {
+        const auto& shells_A = atom_shells[A];
+        if (shells_A.empty()) continue;
+
+        for (int dd = 0; dd < 3; ++dd) {
+            double xc_grad = 0;
+
+            // LDA contribution via pre-weighted T
+            for (Int mu : shells_A) {
+                for (int g = 0; g < G; ++g) {
+                    double dphi_d = dPhi(g, mu, dd);
+                    xc_grad -= 2.0 * (WT_a(g, mu) + WT_b(g, mu)) * dphi_d;
                 }
-                drho_a *= -2.0;
-                drho_b *= -2.0;
-                xc_contrib += vrho_a * drho_a + vrho_b * drho_b;
+            }
 
-                if (is_gga) {
-                    double vsa = static_cast<double>(xc.vsigma_aa);
-                    double vsab = static_cast<double>(xc.vsigma_ab);
-                    double vsb = static_cast<double>(xc.vsigma_bb);
+            // GGA contribution (per-point for correctness)
+            if (is_gga) {
+                for (int g = 0; g < G; ++g) {
+                    double rho = rho_a_arr(g) + rho_b_arr(g);
+                    if (rho < 1e-20) continue;
+                    double w = w_arr(g);
+                    double vsa = vsigma_aa_arr(g), vsab = vsigma_ab_arr(g), vsb = vsigma_bb_arr(g);
 
                     double dgrad_rho_a[3] = {0,0,0}, dgrad_rho_b[3] = {0,0,0};
 
                     for (Int mu : shells_A) {
-                        double dphi_mu_d = dphi[mu*3 + dd];
-                        for (Int nu = 0; nu < n; ++nu) {
-                            double pa = Pa[mu*n + nu];
-                            double pb = Pb[mu*n + nu];
+                        double dphi_mu_d = dPhi(g, mu, dd);
+                        for (int nu = 0; nu < N; ++nu) {
+                            double pa = Pa(mu, nu), pb = Pb(mu, nu);
                             for (int i = 0; i < 3; ++i) {
-                                double h_mu_di = hess[mu*9 + dd*3 + i];
-                                double contrib = (-h_mu_di) * phi[nu]
-                                               + (-dphi_mu_d) * dphi[nu*3+i];
+                                double h_mu_di = Hess(g, mu, dd*3 + i);
+                                double contrib = (-h_mu_di) * Phi(g, nu)
+                                               + (-dphi_mu_d) * dPhi(g, nu, i);
                                 dgrad_rho_a[i] += pa * contrib;
                                 dgrad_rho_b[i] += pb * contrib;
                             }
                         }
                     }
                     for (Int nu : shells_A) {
-                        double dphi_nu_d = dphi[nu*3 + dd];
-                        for (Int mu = 0; mu < n; ++mu) {
+                        double dphi_nu_d = dPhi(g, nu, dd);
+                        for (int mu = 0; mu < N; ++mu) {
                             if (shell_to_atom[mu] == A) continue;
-                            double pa = Pa[mu*n + nu];
-                            double pb = Pb[mu*n + nu];
+                            double pa = Pa(mu, nu), pb = Pb(mu, nu);
                             for (int i = 0; i < 3; ++i) {
-                                double h_nu_di = hess[nu*9 + dd*3 + i];
-                                double contrib = phi[mu] * (-h_nu_di)
-                                               + dphi[mu*3+i] * (-dphi_nu_d);
+                                double h_nu_di = Hess(g, nu, dd*3 + i);
+                                double contrib = Phi(g, mu) * (-h_nu_di)
+                                               + dPhi(g, mu, i) * (-dphi_nu_d);
                                 dgrad_rho_a[i] += pa * contrib;
                                 dgrad_rho_b[i] += pb * contrib;
                             }
@@ -214,16 +260,16 @@ static void accumulate_xc_gradient(
 
                     double dsigma_aa = 0, dsigma_ab = 0, dsigma_bb = 0;
                     for (int i = 0; i < 3; ++i) {
-                        dsigma_aa += 2.0 * grad_rho_a[i] * dgrad_rho_a[i];
-                        dsigma_bb += 2.0 * grad_rho_b[i] * dgrad_rho_b[i];
-                        dsigma_ab += grad_rho_a[i] * dgrad_rho_b[i] + grad_rho_b[i] * dgrad_rho_a[i];
+                        dsigma_aa += 2.0 * grad_rho_a(g, i) * dgrad_rho_a[i];
+                        dsigma_bb += 2.0 * grad_rho_b(g, i) * dgrad_rho_b[i];
+                        dsigma_ab += grad_rho_a(g, i) * dgrad_rho_b[i]
+                                   + grad_rho_b(g, i) * dgrad_rho_a[i];
                     }
-
-                    xc_contrib += vsa * dsigma_aa + vsab * dsigma_ab + vsb * dsigma_bb;
+                    xc_grad += w * (vsa * dsigma_aa + vsab * dsigma_ab + vsb * dsigma_bb);
                 }
-
-                grad(A, dd) += static_cast<Real>(w * xc_contrib);
             }
+
+            grad_out(A, dd) += static_cast<Real>(xc_grad);
         }
     }
 }

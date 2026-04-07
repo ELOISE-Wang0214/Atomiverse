@@ -20,9 +20,7 @@
 #include "atomiverse/cpu/scf/operators.h"
 #include "atomiverse/cpu/scf/diis.h"
 #include "atomiverse/cpu/scf/grid.h"
-#include "atomiverse/cpu/scf/xc_functional.h"
-#include "atomiverse/cpu/scf/native_integrals.h"
-#include "atomiverse/cpu/scf/basis_eval.h"
+#include "atomiverse/cpu/scf/xc_grid_engine.h"
 
 #include <cmath>
 #include <algorithm>
@@ -35,117 +33,6 @@
 namespace ATV {
 namespace cpu {
 namespace scf {
-
-struct XCGridResult {
-    RealMatrix Vxc_alpha;
-    RealMatrix Vxc_beta;
-    Real E_xc;
-    Real n_alpha_integrated;
-    Real n_beta_integrated;
-};
-
-static XCGridResult evaluate_xc_on_grid(
-    const MolecularGrid& grid, const std::vector<native::Shell>& shells,
-    Int n_basis, const RealMatrix& P_alpha, const RealMatrix& P_beta,
-    XCType xc_type) {
-
-    XCGridResult result;
-    result.Vxc_alpha = xt::zeros<Real>({n_basis, n_basis});
-    result.Vxc_beta  = xt::zeros<Real>({n_basis, n_basis});
-    result.E_xc = 0; result.n_alpha_integrated = 0; result.n_beta_integrated = 0;
-
-    bool is_gga = (xc_type == XCType::PBE);
-    std::vector<double> phi(n_basis);
-    std::vector<double> dphi_x(n_basis), dphi_y(n_basis), dphi_z(n_basis);
-
-    for (const auto& gp : grid.points) {
-        double rx = static_cast<double>(gp.x);
-        double ry = static_cast<double>(gp.y);
-        double rz = static_cast<double>(gp.z);
-        double w  = static_cast<double>(gp.weight);
-
-        bool any_nonzero = false;
-        for (Int mu = 0; mu < n_basis; ++mu) {
-            phi[mu] = eval_basis(shells[mu], rx, ry, rz);
-            if (std::abs(phi[mu]) > 1e-20) any_nonzero = true;
-            if (is_gga) eval_basis_grad(shells[mu], rx, ry, rz, dphi_x[mu], dphi_y[mu], dphi_z[mu]);
-        }
-        if (!any_nonzero) continue;
-
-        double rho_a = 0, rho_b = 0;
-        for (Int mu = 0; mu < n_basis; ++mu)
-            for (Int nu = 0; nu < n_basis; ++nu) {
-                double pp = phi[mu] * phi[nu];
-                rho_a += static_cast<double>(P_alpha(mu, nu)) * pp;
-                rho_b += static_cast<double>(P_beta(mu, nu))  * pp;
-            }
-        rho_a = std::max(0.0, rho_a); rho_b = std::max(0.0, rho_b);
-        result.n_alpha_integrated += static_cast<Real>(w * rho_a);
-        result.n_beta_integrated  += static_cast<Real>(w * rho_b);
-
-        double grad_rho_a[3] = {0,0,0}, grad_rho_b[3] = {0,0,0};
-        double sigma_aa = 0, sigma_ab = 0, sigma_bb = 0;
-        if (is_gga) {
-            for (Int mu = 0; mu < n_basis; ++mu)
-                for (Int nu = 0; nu < n_basis; ++nu) {
-                    double pa = static_cast<double>(P_alpha(mu, nu));
-                    double pb = static_cast<double>(P_beta(mu, nu));
-                    grad_rho_a[0] += pa * dphi_x[mu] * phi[nu];
-                    grad_rho_a[1] += pa * dphi_y[mu] * phi[nu];
-                    grad_rho_a[2] += pa * dphi_z[mu] * phi[nu];
-                    grad_rho_b[0] += pb * dphi_x[mu] * phi[nu];
-                    grad_rho_b[1] += pb * dphi_y[mu] * phi[nu];
-                    grad_rho_b[2] += pb * dphi_z[mu] * phi[nu];
-                }
-            for (int d = 0; d < 3; ++d) { grad_rho_a[d] *= 2.0; grad_rho_b[d] *= 2.0; }
-            sigma_aa = grad_rho_a[0]*grad_rho_a[0] + grad_rho_a[1]*grad_rho_a[1] + grad_rho_a[2]*grad_rho_a[2];
-            sigma_ab = grad_rho_a[0]*grad_rho_b[0] + grad_rho_a[1]*grad_rho_b[1] + grad_rho_a[2]*grad_rho_b[2];
-            sigma_bb = grad_rho_b[0]*grad_rho_b[0] + grad_rho_b[1]*grad_rho_b[1] + grad_rho_b[2]*grad_rho_b[2];
-        }
-
-        XCOutput xc = evaluate_xc(xc_type, static_cast<Real>(rho_a), static_cast<Real>(rho_b),
-                                  static_cast<Real>(sigma_aa), static_cast<Real>(sigma_ab), static_cast<Real>(sigma_bb));
-        double rho = rho_a + rho_b;
-        result.E_xc += static_cast<Real>(w * static_cast<double>(xc.exc) * rho);
-
-        double vrho_a = static_cast<double>(xc.vrho_alpha);
-        double vrho_b = static_cast<double>(xc.vrho_beta);
-
-        if (!is_gga) {
-            for (Int mu = 0; mu < n_basis; ++mu) {
-                if (std::abs(phi[mu]) < 1e-20) continue;
-                for (Int nu = 0; nu <= mu; ++nu) {
-                    if (std::abs(phi[nu]) < 1e-20) continue;
-                    double pp = phi[mu] * phi[nu];
-                    Real va = static_cast<Real>(w * vrho_a * pp);
-                    Real vb = static_cast<Real>(w * vrho_b * pp);
-                    result.Vxc_alpha(mu, nu) += va; result.Vxc_beta(mu, nu) += vb;
-                    if (mu != nu) { result.Vxc_alpha(nu, mu) += va; result.Vxc_beta(nu, mu) += vb; }
-                }
-            }
-        } else {
-            double vsa = static_cast<double>(xc.vsigma_aa), vsab = static_cast<double>(xc.vsigma_ab);
-            double vsb = static_cast<double>(xc.vsigma_bb);
-            double ga[3], gb[3];
-            for (int d = 0; d < 3; ++d) {
-                ga[d] = 2.0 * (2.0 * vsa * grad_rho_a[d] + vsab * grad_rho_b[d]);
-                gb[d] = 2.0 * (2.0 * vsb * grad_rho_b[d] + vsab * grad_rho_a[d]);
-            }
-            for (Int mu = 0; mu < n_basis; ++mu)
-                for (Int nu = 0; nu <= mu; ++nu) {
-                    double pp = phi[mu] * phi[nu];
-                    double sx = phi[mu]*dphi_x[nu] + dphi_x[mu]*phi[nu];
-                    double sy = phi[mu]*dphi_y[nu] + dphi_y[mu]*phi[nu];
-                    double sz = phi[mu]*dphi_z[nu] + dphi_z[mu]*phi[nu];
-                    Real va = static_cast<Real>(w * (vrho_a * pp + ga[0]*sx + ga[1]*sy + ga[2]*sz));
-                    Real vb = static_cast<Real>(w * (vrho_b * pp + gb[0]*sx + gb[1]*sy + gb[2]*sz));
-                    result.Vxc_alpha(mu, nu) += va; result.Vxc_beta(mu, nu) += vb;
-                    if (mu != nu) { result.Vxc_alpha(nu, mu) += va; result.Vxc_beta(nu, mu) += vb; }
-                }
-        }
-    }
-    return result;
-}
 
 // ── Unified SCF solver ──────────────────────────────────────────────���───
 
@@ -234,7 +121,7 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config) {
             // UKS: J + V_xc from grid
             RealMatrix P_total = P_alpha + P_beta;
             build_coulomb(P_total, integrals.ERI, n, J);
-            auto xc_result = evaluate_xc_on_grid(grid, integrals.shells, n,
+            auto xc_result = evaluate_xc_batched(grid, integrals.shells, n,
                                                   P_alpha, P_beta, config.xc_type);
             F_alpha = Hcore_cm + J + xc_result.Vxc_alpha;
             F_beta  = Hcore_cm + J + xc_result.Vxc_beta;
