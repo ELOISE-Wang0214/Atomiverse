@@ -3,6 +3,8 @@
 
 #include "atomiverse/cuda/backend.cuh"
 #include "atomiverse/cuda/backend_traits.cuh"
+#include "atomiverse/cuda/error.cuh"
+#include "atomiverse/cuda/log_callback.h"
 #include "atomiverse/cpu/transfer.h"
 #include "atomiverse/cuda/transfer.cuh"
 #include "atomiverse/facade/driver_impl.h"
@@ -14,9 +16,10 @@ namespace ATV {
 // ── Backend ────────────────────────────────────────────────────────
 
 void Backend::init() {
+    cuda::register_log_callback();
     cudaStream_t main, defer;
-    cudaStreamCreate(&main);
-    cudaStreamCreate(&defer);
+    ATV_CUDA_CHECK(cudaStreamCreate(&main));
+    ATV_CUDA_CHECK(cudaStreamCreate(&defer));
     context_.stream = main;
     context_.defer_stream = defer;
 }
@@ -92,6 +95,7 @@ void Backend::shutdown() {
     if (defer) cudaStreamDestroy(defer);
     context_ = {};
     plan_ = nullptr;
+    cuda::unregister_log_callback();
 }
 
 // ── Explicit instantiations (CUDA) ───────────────────────────────

@@ -60,7 +60,12 @@ if(NOT ATV_DOCS_ONLY)
         GIT_REPOSITORY https://github.com/xtensor-stack/xtensor-blas.git
         GIT_TAG 0.21.0
     )
-    FetchContent_MakeAvailable(xtl xtensor xtensor-blas)
+    FetchContent_Declare(
+        spdlog
+        GIT_REPOSITORY https://github.com/gabime/spdlog.git
+        GIT_TAG v1.15.0
+    )
+    FetchContent_MakeAvailable(xtl xtensor xtensor-blas spdlog)
 
     # ── Library ──
 
@@ -96,6 +101,7 @@ if(NOT ATV_DOCS_ONLY)
 
     if(ATV_BUILD_CUDA)
         list(APPEND ATOMIVERSE_SRCS
+            src/cuda/log_callback.cpp
             src/cuda/async_bridge.cu
             src/cuda/transfer.cu
             src/cuda/driver.cu
@@ -233,9 +239,9 @@ if(NOT ATV_DOCS_ONLY)
         target_include_directories(atomiverse PRIVATE src/cuda/md/neighborlist)
     endif()
     target_include_directories(atomiverse PUBLIC include)
-    target_link_libraries(atomiverse PUBLIC xtensor xtensor-blas ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES})
+    target_link_libraries(atomiverse PUBLIC xtensor xtensor-blas spdlog::spdlog ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES})
     if(ATV_BUILD_CUDA)
-        target_link_libraries(atomiverse PUBLIC CUDA::cublas CUDA::cusolver)
+        target_link_libraries(atomiverse PUBLIC CUDA::cuda_driver CUDA::cublas CUDA::cusolver)
         set_target_properties(atomiverse PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
         target_compile_definitions(atomiverse PUBLIC ATV_HAS_CUDA)
     endif()

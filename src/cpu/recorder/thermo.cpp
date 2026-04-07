@@ -2,9 +2,10 @@
 /// @brief CPU thermodynamic output: temperature calculation + formatted printing.
 
 #include "atomiverse/cpu/recorder/thermo.h"
+#include "atomiverse/core/log.h"
 #include "atomiverse/core/units.h"
 
-#include <cstdio>
+#include <spdlog/fmt/fmt.h>
 
 namespace ATV {
 namespace cpu {
@@ -18,26 +19,24 @@ void thermo_print(int step, Real pe, Real ke, Int n_atoms,
     Real total = pe + ke;
 
     if (!header_printed) {
-        std::printf("%8s %12s %14s %14s %14s\n",
-                    "Step", "Temp", "PotEng", "KinEng", "TotEng");
+        ATV_INFO("{:>8s} {:>12s} {:>14s} {:>14s} {:>14s}",
+                 "Step", "Temp", "PotEng", "KinEng", "TotEng");
         header_printed = true;
     }
-    std::printf("%8d %12.4f %14.6f %14.6f %14.6f\n",
-                step,
-                static_cast<double>(temp),
-                static_cast<double>(pe),
-                static_cast<double>(ke),
-                static_cast<double>(total));
+    ATV_INFO("{:8d} {:12.4f} {:14.6f} {:14.6f} {:14.6f}",
+             step,
+             static_cast<double>(temp),
+             static_cast<double>(pe),
+             static_cast<double>(ke),
+             static_cast<double>(total));
 
     if (file.is_open()) {
-        char buf[128];
-        std::snprintf(buf, sizeof(buf), "%d %.6f %.6f %.6f %.6f\n",
-                      step,
-                      static_cast<double>(temp),
-                      static_cast<double>(pe),
-                      static_cast<double>(ke),
-                      static_cast<double>(total));
-        file << buf;
+        file << fmt::format("{} {:.6f} {:.6f} {:.6f} {:.6f}\n",
+                            step,
+                            static_cast<double>(temp),
+                            static_cast<double>(pe),
+                            static_cast<double>(ke),
+                            static_cast<double>(total));
     }
 }
 
