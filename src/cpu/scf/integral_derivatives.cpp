@@ -334,8 +334,8 @@ IntegralDerivPack build_integral_derivatives_sto3g(const Frame& frame, int charg
     const int natm = static_cast<int>(frame.atoms.size());
 
     // Count total expanded basis functions using sto3g_data.h
-    Int n_basis = 0;
-    for (Int i = 0; i < natm; ++i) {
+    int n_basis = 0;
+    for (int i = 0; i < natm; ++i) {
         int Z = static_cast<int>(frame.atoms.type[i]);
         n_basis += sto3g_n_basis(Z);
     }
@@ -343,11 +343,11 @@ IntegralDerivPack build_integral_derivatives_sto3g(const Frame& frame, int charg
     IntegralDerivPack pack;
     pack.n_atoms = natm;
     pack.n_basis = n_basis;
-    pack.dS     = xt::zeros<Real>({(Int)natm, (Int)3, n_basis, n_basis});
-    pack.dT     = xt::zeros<Real>({(Int)natm, (Int)3, n_basis, n_basis});
-    pack.dV     = xt::zeros<Real>({(Int)natm, (Int)3, n_basis, n_basis});
-    pack.dERI   = xt::zeros<Real>({(Int)natm, (Int)3, n_basis, n_basis, n_basis, n_basis});
-    pack.dV_nuc = xt::zeros<Real>({(Int)natm, (Int)3});
+    pack.dS     = xt::zeros<double>({(int)natm, (int)3, n_basis, n_basis});
+    pack.dT     = xt::zeros<double>({(int)natm, (int)3, n_basis, n_basis});
+    pack.dV     = xt::zeros<double>({(int)natm, (int)3, n_basis, n_basis});
+    pack.dERI   = xt::zeros<double>({(int)natm, (int)3, n_basis, n_basis, n_basis, n_basis});
+    pack.dV_nuc = xt::zeros<double>({(int)natm, (int)3});
 
     // Build shells and atoms (same structure as integrals.cpp)
     std::vector<native::Shell> shells(n_basis);
@@ -469,17 +469,17 @@ IntegralDerivPack build_integral_derivatives_sto3g(const Frame& frame, int charg
 
             // Assign to atom_i (derivative w.r.t. center of shell i)
             for (int d = 0; d < 3; ++d) {
-                pack.dS(atom_i, d, i, j) += static_cast<Real>(dS_total[d]);
-                pack.dT(atom_i, d, i, j) += static_cast<Real>(dT_total[d]);
+                pack.dS(atom_i, d, i, j) += static_cast<double>(dS_total[d]);
+                pack.dT(atom_i, d, i, j) += static_cast<double>(dT_total[d]);
                 // Translational invariance: d/dB = -d/dA for S and T
-                pack.dS(atom_j, d, i, j) += static_cast<Real>(-dS_total[d]);
-                pack.dT(atom_j, d, i, j) += static_cast<Real>(-dT_total[d]);
+                pack.dS(atom_j, d, i, j) += static_cast<double>(-dS_total[d]);
+                pack.dT(atom_j, d, i, j) += static_cast<double>(-dT_total[d]);
                 // Symmetry: S(i,j) = S(j,i)
                 if (i != j) {
-                    pack.dS(atom_i, d, j, i) += static_cast<Real>(dS_total[d]);
-                    pack.dT(atom_i, d, j, i) += static_cast<Real>(dT_total[d]);
-                    pack.dS(atom_j, d, j, i) += static_cast<Real>(-dS_total[d]);
-                    pack.dT(atom_j, d, j, i) += static_cast<Real>(-dT_total[d]);
+                    pack.dS(atom_i, d, j, i) += static_cast<double>(dS_total[d]);
+                    pack.dT(atom_i, d, j, i) += static_cast<double>(dT_total[d]);
+                    pack.dS(atom_j, d, j, i) += static_cast<double>(-dS_total[d]);
+                    pack.dT(atom_j, d, j, i) += static_cast<double>(-dT_total[d]);
                 }
             }
 
@@ -549,13 +549,13 @@ IntegralDerivPack build_integral_derivatives_sto3g(const Frame& frame, int charg
                 }
 
                 for (int d = 0; d < 3; ++d) {
-                    pack.dV(atom_i, d, i, j) += static_cast<Real>(dV_center_i[d]);
-                    pack.dV(atom_j, d, i, j) += static_cast<Real>(dV_center_j[d]);
-                    pack.dV(c,      d, i, j) += static_cast<Real>(dV_nuc_c[d]);
+                    pack.dV(atom_i, d, i, j) += static_cast<double>(dV_center_i[d]);
+                    pack.dV(atom_j, d, i, j) += static_cast<double>(dV_center_j[d]);
+                    pack.dV(c,      d, i, j) += static_cast<double>(dV_nuc_c[d]);
                     if (i != j) {
-                        pack.dV(atom_i, d, j, i) += static_cast<Real>(dV_center_i[d]);
-                        pack.dV(atom_j, d, j, i) += static_cast<Real>(dV_center_j[d]);
-                        pack.dV(c,      d, j, i) += static_cast<Real>(dV_nuc_c[d]);
+                        pack.dV(atom_i, d, j, i) += static_cast<double>(dV_center_i[d]);
+                        pack.dV(atom_j, d, j, i) += static_cast<double>(dV_center_j[d]);
+                        pack.dV(c,      d, j, i) += static_cast<double>(dV_nuc_c[d]);
                     }
                 }
             }
@@ -632,10 +632,10 @@ IntegralDerivPack build_integral_derivatives_sto3g(const Frame& frame, int charg
                                 dD);
 
                             for (int d = 0; d < 3; ++d) {
-                                pack.dERI(ai, d, i, j, k, l) += static_cast<Real>(coeff * dA[d]);
-                                pack.dERI(aj, d, i, j, k, l) += static_cast<Real>(coeff * dB[d]);
-                                pack.dERI(ak, d, i, j, k, l) += static_cast<Real>(coeff * dC[d]);
-                                pack.dERI(al, d, i, j, k, l) += static_cast<Real>(coeff * dD[d]);
+                                pack.dERI(ai, d, i, j, k, l) += static_cast<double>(coeff * dA[d]);
+                                pack.dERI(aj, d, i, j, k, l) += static_cast<double>(coeff * dB[d]);
+                                pack.dERI(ak, d, i, j, k, l) += static_cast<double>(coeff * dC[d]);
+                                pack.dERI(al, d, i, j, k, l) += static_cast<double>(coeff * dD[d]);
                             }
                           }
                         }
@@ -658,9 +658,9 @@ IntegralDerivPack build_integral_derivatives_sto3g(const Frame& frame, int charg
             double r = std::sqrt(dx*dx + dy*dy + dz*dz);
             double r3_inv = 1.0 / (r * r * r);
             double ZZ = atoms[a].Z * atoms[b].Z;
-            pack.dV_nuc(a, 0) += static_cast<Real>(ZZ * dx * r3_inv);
-            pack.dV_nuc(a, 1) += static_cast<Real>(ZZ * dy * r3_inv);
-            pack.dV_nuc(a, 2) += static_cast<Real>(ZZ * dz * r3_inv);
+            pack.dV_nuc(a, 0) += static_cast<double>(ZZ * dx * r3_inv);
+            pack.dV_nuc(a, 1) += static_cast<double>(ZZ * dy * r3_inv);
+            pack.dV_nuc(a, 2) += static_cast<double>(ZZ * dz * r3_inv);
         }
     }
 

@@ -120,7 +120,7 @@ void launch_cluster_displacement(const real_t* cluster_x, const real_t* cluster_
                                   const real_t* ref_cluster_z,
                                   const int* cluster_count, int num_clusters,
                                   work_t dirty_threshold_sq,
-                                  Real* cluster_disp_sq, int* dirty_flags,
+                                  work_t* cluster_disp_sq, int* dirty_flags,
                                   int* rebuild_flag, work_t half_skin_sq,
                                   cudaStream_t stream) {
     if (num_clusters == 0) return;

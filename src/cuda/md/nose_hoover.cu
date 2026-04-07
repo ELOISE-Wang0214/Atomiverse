@@ -17,15 +17,15 @@ using cuda::prec_t;
 namespace md {
 
 struct NoseHoover::State {
-    Real* d_xi = nullptr;        // thermostat variable [1/fs]
-    Real* d_ke_temp = nullptr;   // temporary KE [eV]
-    Real* d_scale = nullptr;     // velocity scale factor [1 element]
+    work_t* d_xi = nullptr;        // thermostat variable [1/fs]
+    work_t* d_ke_temp = nullptr;   // temporary KE [eV]
+    work_t* d_scale = nullptr;     // velocity scale factor [1 element]
     unsigned int* d_block_count = nullptr; // last-block detection counter
     work_t Q = 0;                  // thermostat mass
     int ndof = 0;
 };
 
-NoseHoover::NoseHoover(work_t T_target, work_t tau, work_t dt)
+NoseHoover::NoseHoover(double T_target, double tau, double dt)
     : T_target_(T_target), tau_(tau), dt_(dt),
       state_(std::make_unique<State>()) {}
 
@@ -48,9 +48,9 @@ namespace {
 /// factor, eliminating the separate <<<1,1>>> kernel launch.
 __global__ void reduce_ke_and_update(
     const real_t* __restrict__ vx, const real_t* __restrict__ vy, const real_t* __restrict__ vz,
-    const real_t* __restrict__ mass, real_t* __restrict__ ke_out,
+    const real_t* __restrict__ mass, work_t* __restrict__ ke_out,
     int n, work_t kMvv2e_val,
-    real_t* __restrict__ xi, real_t* __restrict__ scale,
+    work_t* __restrict__ xi, work_t* __restrict__ scale,
     work_t Q, work_t ndof_kbT, work_t half_dt,
     unsigned int* __restrict__ block_count)
 {
@@ -58,9 +58,12 @@ __global__ void reduce_ke_and_update(
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     work_t val = 0;
     if (idx < n) {
-        work_t m = mass[idx];
+        work_t m = static_cast<work_t>(mass[idx]);
+        work_t vx_w = static_cast<work_t>(vx[idx]);
+        work_t vy_w = static_cast<work_t>(vy[idx]);
+        work_t vz_w = static_cast<work_t>(vz[idx]);
         val = work_t(0.5) * kMvv2e_val * m *
-              (vx[idx] * vx[idx] + vy[idx] * vy[idx] + vz[idx] * vz[idx]);
+              (vx_w * vx_w + vy_w * vy_w + vz_w * vz_w);
     }
     sdata[threadIdx.x] = val;
     __syncthreads();
@@ -90,14 +93,14 @@ __global__ void reduce_ke_and_update(
 /// @brief Scale all velocities by the precomputed factor.
 __global__ void scale_vel(
     real_t* __restrict__ vx, real_t* __restrict__ vy, real_t* __restrict__ vz,
-    const real_t* __restrict__ scale, int n)
+    const work_t* __restrict__ scale, int n)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= n) return;
     work_t s = *scale;
-    vx[idx] *= s;
-    vy[idx] *= s;
-    vz[idx] *= s;
+    vx[idx] = static_cast<real_t>(static_cast<work_t>(vx[idx]) * s);
+    vy[idx] = static_cast<real_t>(static_cast<work_t>(vy[idx]) * s);
+    vz[idx] = static_cast<real_t>(static_cast<work_t>(vz[idx]) * s);
 }
 
 } // anonymous namespace

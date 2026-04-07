@@ -113,7 +113,7 @@ __global__ void setup_cell_from_scalars(
     work_t b00, work_t b01, work_t b02,
     work_t b10, work_t b11, work_t b12,
     work_t b20, work_t b21, work_t b22,
-    Real* d_cell, Real* d_inv_cell,
+    work_t* d_cell, work_t* d_inv_cell,
     int* d_dims, int* d_stencil_dx, int* d_stencil_dy, int* d_stencil_dz,
     int* d_n_stencil, int* d_ncells,
     work_t cutoff_plus_skin, bool periodic, int max_stencil) {
@@ -155,7 +155,7 @@ __global__ void write_int_value(int* __restrict__ arr, int idx, int val) {
 
 void launch_setup_cell(
     const real_t* box_data,
-    Real* d_cell, Real* d_inv_cell,
+    work_t* d_cell, work_t* d_inv_cell,
     int* d_dims, int* d_stencil_dx, int* d_stencil_dy, int* d_stencil_dz,
     int* d_n_stencil, int* d_ncells,
     work_t cutoff_plus_skin, bool periodic, int max_stencil,
@@ -173,7 +173,7 @@ void launch_setup_cell(
 
 void launch_setup_cell_device(
     const real_t* d_box,
-    Real* d_cell, Real* d_inv_cell,
+    work_t* d_cell, work_t* d_inv_cell,
     int* d_dims, int* d_stencil_dx, int* d_stencil_dy, int* d_stencil_dz,
     int* d_n_stencil, int* d_ncells,
     work_t cutoff_plus_skin, bool periodic, int max_stencil,

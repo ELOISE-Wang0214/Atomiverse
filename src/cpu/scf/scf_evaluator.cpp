@@ -11,7 +11,7 @@ SCFEvaluator::SCFEvaluator(SCFConfig config, int charge)
     : config_(std::move(config)), charge_(charge) {}
 
 SCFEvaluator& SCFEvaluator::predictor(int order, int corrector_steps,
-                                       Real corrector_tol, bool fallback) {
+                                       double corrector_tol, bool fallback) {
     use_predictor_ = true;
     corrector_steps_ = corrector_steps;
     corrector_tol_ = corrector_tol;
@@ -40,7 +40,7 @@ void SCFEvaluator::launch(const cpu::LaunchContext& ctx) {
     SCFResult result;
 
     if (use_predictor_ && aspc_alpha_ && aspc_beta_) {
-        xt::xtensor<Real, 2> Pa_guess, Pb_guess;
+        xt::xtensor<double, 2> Pa_guess, Pb_guess;
         bool have_alpha = aspc_alpha_->predict(Pa_guess);
         bool have_beta = aspc_beta_->predict(Pb_guess);
 
@@ -53,7 +53,7 @@ void SCFEvaluator::launch(const cpu::LaunchContext& ctx) {
             if (!result.converged && fallback_full_scf_)
                 result = scf_solve(integrals, config_);
 
-            xt::xtensor<Real, 2> Pa_corr, Pb_corr;
+            xt::xtensor<double, 2> Pa_corr, Pb_corr;
             aspc_alpha_->correct(result.P_alpha, Pa_guess, Pa_corr);
             aspc_beta_->correct(result.P_beta, Pb_guess, Pb_corr);
             aspc_alpha_->record(Pa_corr);

@@ -23,7 +23,7 @@ void ZeroDensity::launch(const LaunchContext& ctx) {
     auto& scf = ctx.frame.scf;
     if (scf.n > 0) {
         int nn = scf.n * scf.n;
-        cudaMemsetAsync(scf.P, 0, nn * sizeof(work_t), stream);
+        cudaMemsetAsync(scf.P, 0, nn * sizeof(prec_t), stream);
     }
 }
 

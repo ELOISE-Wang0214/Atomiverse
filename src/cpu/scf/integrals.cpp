@@ -19,13 +19,13 @@ namespace scf {
 IntegralPack build_integrals_sto3g(const Frame& frame, int charge) {
     const int natm = static_cast<int>(frame.atoms.size());
 
-    Int n_electrons = -charge;
-    for (Int i = 0; i < natm; ++i)
+    int n_electrons = -charge;
+    for (int i = 0; i < natm; ++i)
         n_electrons += frame.atoms.type[i];
 
     // Count total expanded basis functions
-    Int n_basis = 0;
-    for (Int i = 0; i < natm; ++i) {
+    int n_basis = 0;
+    for (int i = 0; i < natm; ++i) {
         int Z = static_cast<int>(frame.atoms.type[i]);
         n_basis += sto3g_n_basis(Z);
     }
@@ -33,10 +33,10 @@ IntegralPack build_integrals_sto3g(const Frame& frame, int charge) {
     IntegralPack pack;
     pack.n_basis = n_basis;
     pack.n_electrons = n_electrons;
-    pack.S = xt::zeros<Real>({n_basis, n_basis});
-    pack.T = xt::zeros<Real>({n_basis, n_basis});
-    pack.V = xt::zeros<Real>({n_basis, n_basis});
-    pack.ERI = xt::zeros<Real>({n_basis, n_basis, n_basis, n_basis});
+    pack.S = xt::zeros<double>({n_basis, n_basis});
+    pack.T = xt::zeros<double>({n_basis, n_basis});
+    pack.V = xt::zeros<double>({n_basis, n_basis});
+    pack.ERI = xt::zeros<double>({n_basis, n_basis, n_basis, n_basis});
 
     // Temporary storage for shell construction within this function.
     // norm_store owns the exponent+coefficient data that shells point into.
@@ -116,11 +116,11 @@ IntegralPack build_integrals_sto3g(const Frame& frame, int charge) {
     // 1e integrals (general s+p functions)
     for (int i = 0; i < n_basis; ++i)
         for (int j = 0; j <= i; ++j) {
-            pack.S(i, j) = static_cast<Real>(native::overlap(shells[i], shells[j]));
+            pack.S(i, j) = static_cast<double>(native::overlap(shells[i], shells[j]));
             pack.S(j, i) = pack.S(i, j);
-            pack.T(i, j) = static_cast<Real>(native::kinetic(shells[i], shells[j]));
+            pack.T(i, j) = static_cast<double>(native::kinetic(shells[i], shells[j]));
             pack.T(j, i) = pack.T(i, j);
-            pack.V(i, j) = static_cast<Real>(native::nuclear(shells[i], shells[j], atoms.data(), natm));
+            pack.V(i, j) = static_cast<double>(native::nuclear(shells[i], shells[j], atoms.data(), natm));
             pack.V(j, i) = pack.V(i, j);
         }
 
@@ -129,7 +129,7 @@ IntegralPack build_integrals_sto3g(const Frame& frame, int charge) {
         for (int j = 0; j < n_basis; ++j)
             for (int k = 0; k < n_basis; ++k)
                 for (int l = 0; l < n_basis; ++l)
-                    pack.ERI(i, j, k, l) = static_cast<Real>(
+                    pack.ERI(i, j, k, l) = static_cast<double>(
                         native::eri(shells[i], shells[j], shells[k], shells[l]));
 
     pack.Hcore = pack.T + pack.V;
@@ -156,13 +156,13 @@ IntegralPack build_integrals_sto3g(const Frame& frame, int charge) {
 
     // Nuclear repulsion energy
     pack.V_nuc = 0;
-    for (Int a = 0; a < natm; ++a)
-        for (Int b = a + 1; b < natm; ++b) {
+    for (int a = 0; a < natm; ++a)
+        for (int b = a + 1; b < natm; ++b) {
             double dx = (static_cast<double>(frame.atoms.x[a]) - static_cast<double>(frame.atoms.x[b])) * kAngstromToBohr;
             double dy = (static_cast<double>(frame.atoms.y[a]) - static_cast<double>(frame.atoms.y[b])) * kAngstromToBohr;
             double dz = (static_cast<double>(frame.atoms.z[a]) - static_cast<double>(frame.atoms.z[b])) * kAngstromToBohr;
             double r = std::sqrt(dx * dx + dy * dy + dz * dz);
-            pack.V_nuc += static_cast<Real>(frame.atoms.type[a] * frame.atoms.type[b] / r);
+            pack.V_nuc += static_cast<double>(frame.atoms.type[a] * frame.atoms.type[b] / r);
         }
 
     return pack;

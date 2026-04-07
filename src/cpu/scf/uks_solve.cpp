@@ -12,7 +12,7 @@ UKSResult uks_solve(const IntegralPack& integrals,
                     int n_alpha, int n_beta,
                     XCType xc_type,
                     int n_radial, int n_angular,
-                    Real tol, int max_iter) {
+                    double tol, int max_iter) {
     auto config = uks_config(integrals, n_alpha, n_beta, xc_type, tol);
     config.max_iter = max_iter;
     config.n_radial = n_radial;

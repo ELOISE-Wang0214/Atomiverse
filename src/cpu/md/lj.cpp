@@ -16,25 +16,25 @@ namespace ATV {
 namespace cpu {
 namespace md {
 
-static inline void minimum_image(Real& dx, Real& dy, Real& dz, const Mat3& box) {
-    Real lx = box(0, 0), ly = box(1, 1), lz = box(2, 2);
-    if (dx >  lx * Real(0.5)) dx -= lx;
-    if (dx < -lx * Real(0.5)) dx += lx;
-    if (dy >  ly * Real(0.5)) dy -= ly;
-    if (dy < -ly * Real(0.5)) dy += ly;
-    if (dz >  lz * Real(0.5)) dz -= lz;
-    if (dz < -lz * Real(0.5)) dz += lz;
+static inline void minimum_image(double& dx, double& dy, double& dz, const Mat3& box) {
+    double lx = box(0, 0), ly = box(1, 1), lz = box(2, 2);
+    if (dx >  lx * double(0.5)) dx -= lx;
+    if (dx < -lx * double(0.5)) dx += lx;
+    if (dy >  ly * double(0.5)) dy -= ly;
+    if (dy < -ly * double(0.5)) dy += ly;
+    if (dz >  lz * double(0.5)) dz -= lz;
+    if (dz < -lz * double(0.5)) dz += lz;
 }
 
-LJ::LJ(Real epsilon, Real sigma, Real cutoff)
+LJ::LJ(double epsilon, double sigma, double cutoff)
     : epsilon_(epsilon), sigma_(sigma), cutoff_(cutoff) {
     sigma6_ = sigma * sigma * sigma * sigma * sigma * sigma;
     cutoff_sq_ = cutoff * cutoff;
 
     // Compute V_shift = V(r_cutoff)
-    Real r2inv = Real(1) / cutoff_sq_;
-    Real r6inv = r2inv * r2inv * r2inv * sigma6_;
-    v_shift_ = Real(4) * epsilon_ * (r6inv * r6inv - r6inv);
+    double r2inv = double(1) / cutoff_sq_;
+    double r6inv = r2inv * r2inv * r2inv * sigma6_;
+    v_shift_ = double(4) * epsilon_ * (r6inv * r6inv - r6inv);
 }
 
 void LJ::build(const cpu::BuildContext& ctx) {
@@ -42,14 +42,14 @@ void LJ::build(const cpu::BuildContext& ctx) {
 #ifdef _OPENMP
     n_threads_ = omp_get_max_threads();
 #endif
-    Int n = ctx.frame.atoms.size();
+    int n = ctx.frame.atoms.size();
     fx_thr_.resize(n_threads_);
     fy_thr_.resize(n_threads_);
     fz_thr_.resize(n_threads_);
     for (int t = 0; t < n_threads_; ++t) {
-        fx_thr_[t].resize(n, Real(0));
-        fy_thr_[t].resize(n, Real(0));
-        fz_thr_[t].resize(n, Real(0));
+        fx_thr_[t].resize(n, double(0));
+        fy_thr_[t].resize(n, double(0));
+        fz_thr_[t].resize(n, double(0));
     }
 }
 
@@ -57,8 +57,8 @@ void LJ::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
     auto& pairs = *static_cast<const PairList*>(f.pair_list);
     const auto& box = f.box;
-    Int n = f.atoms.size();
-    Real energy_total = 0;
+    int n = f.atoms.size();
+    double energy_total = 0;
 
     #pragma omp parallel reduction(+:energy_total)
     {
@@ -69,39 +69,39 @@ void LJ::launch(const cpu::LaunchContext& ctx) {
         auto& fxt = fx_thr_[tid];
         auto& fyt = fy_thr_[tid];
         auto& fzt = fz_thr_[tid];
-        std::fill(fxt.begin(), fxt.end(), Real(0));
-        std::fill(fyt.begin(), fyt.end(), Real(0));
-        std::fill(fzt.begin(), fzt.end(), Real(0));
+        std::fill(fxt.begin(), fxt.end(), double(0));
+        std::fill(fyt.begin(), fyt.end(), double(0));
+        std::fill(fzt.begin(), fzt.end(), double(0));
 
         #pragma omp for schedule(static)
-        for (Int ii = 0; ii < pairs.inum; ++ii) {
-            Int i = pairs.ilist[ii];
-            Int jnum = pairs.numneigh[i];
-            Int off = pairs.firstneigh[i];
-            for (Int jj = 0; jj < jnum; ++jj) {
-                Int j = pairs.neighbors[off + jj];
-                Real dx = f.atoms.x[i] - f.atoms.x[j];
-                Real dy = f.atoms.y[i] - f.atoms.y[j];
-                Real dz = f.atoms.z[i] - f.atoms.z[j];
+        for (int ii = 0; ii < pairs.inum; ++ii) {
+            int i = pairs.ilist[ii];
+            int jnum = pairs.numneigh[i];
+            int off = pairs.firstneigh[i];
+            for (int jj = 0; jj < jnum; ++jj) {
+                int j = pairs.neighbors[off + jj];
+                double dx = f.atoms.x[i] - f.atoms.x[j];
+                double dy = f.atoms.y[i] - f.atoms.y[j];
+                double dz = f.atoms.z[i] - f.atoms.z[j];
                 minimum_image(dx, dy, dz, box);
-                Real r2 = dx * dx + dy * dy + dz * dz;
+                double r2 = dx * dx + dy * dy + dz * dz;
                 if (r2 >= cutoff_sq_) continue;
 
-                Real r2inv = Real(1) / r2;
-                Real r6inv = r2inv * r2inv * r2inv * sigma6_;
-                Real fpair = Real(24) * epsilon_ * r2inv * (Real(2) * r6inv * r6inv - r6inv);
+                double r2inv = double(1) / r2;
+                double r6inv = r2inv * r2inv * r2inv * sigma6_;
+                double fpair = double(24) * epsilon_ * r2inv * (double(2) * r6inv * r6inv - r6inv);
 
                 fxt[i] += fpair * dx;  fxt[j] -= fpair * dx;
                 fyt[i] += fpair * dy;  fyt[j] -= fpair * dy;
                 fzt[i] += fpair * dz;  fzt[j] -= fpair * dz;
 
-                energy_total += Real(4) * epsilon_ * (r6inv * r6inv - r6inv) - v_shift_;
+                energy_total += double(4) * epsilon_ * (r6inv * r6inv - r6inv) - v_shift_;
             }
         }
 
         // Reduce per-thread forces into frame
         #pragma omp for schedule(static)
-        for (Int i = 0; i < n; ++i) {
+        for (int i = 0; i < n; ++i) {
             for (int t = 0; t < n_threads_; ++t) {
                 f.atoms.fx[i] += fx_thr_[t][i];
                 f.atoms.fy[i] += fy_thr_[t][i];

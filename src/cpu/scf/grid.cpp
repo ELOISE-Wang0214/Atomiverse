@@ -532,10 +532,10 @@ MolecularGrid build_molecular_grid(const native::Atom* atoms, int natm,
 
                 if (w > 1e-30) {
                     grid.points.push_back({
-                        static_cast<Real>(px),
-                        static_cast<Real>(py),
-                        static_cast<Real>(pz),
-                        static_cast<Real>(w)
+                        static_cast<double>(px),
+                        static_cast<double>(py),
+                        static_cast<double>(pz),
+                        static_cast<double>(w)
                     });
                 }
             }

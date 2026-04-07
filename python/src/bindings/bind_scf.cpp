@@ -19,36 +19,36 @@ using namespace ATV::cpu::scf;
 // ── xtensor → numpy helpers ────────────────────────────────────────────────
 
 /// Copy a 1D xtensor to a numpy array.
-static nb::ndarray<nb::numpy, Real, nb::ndim<1>>
-xt1d_to_numpy(const xt::xtensor<Real, 1>& t) {
+static nb::ndarray<nb::numpy, double, nb::ndim<1>>
+xt1d_to_numpy(const xt::xtensor<double, 1>& t) {
     auto n = static_cast<size_t>(t.shape(0));
-    Real* buf = new Real[n];
-    std::memcpy(buf, t.data(), n * sizeof(Real));
-    nb::capsule owner(buf, [](void* p) noexcept { delete[] static_cast<Real*>(p); });
-    return nb::ndarray<nb::numpy, Real, nb::ndim<1>>(buf, {n}, owner);
+    double* buf = new double[n];
+    std::memcpy(buf, t.data(), n * sizeof(double));
+    nb::capsule owner(buf, [](void* p) noexcept { delete[] static_cast<double*>(p); });
+    return nb::ndarray<nb::numpy, double, nb::ndim<1>>(buf, {n}, owner);
 }
 
 /// Copy a 2D xtensor to a numpy array (row-major).
-static nb::ndarray<nb::numpy, Real, nb::ndim<2>>
-xt2d_to_numpy(const xt::xtensor<Real, 2>& t) {
+static nb::ndarray<nb::numpy, double, nb::ndim<2>>
+xt2d_to_numpy(const xt::xtensor<double, 2>& t) {
     auto s0 = static_cast<size_t>(t.shape(0));
     auto s1 = static_cast<size_t>(t.shape(1));
-    Real* buf = new Real[s0 * s1];
-    std::memcpy(buf, t.data(), s0 * s1 * sizeof(Real));
-    nb::capsule owner(buf, [](void* p) noexcept { delete[] static_cast<Real*>(p); });
-    return nb::ndarray<nb::numpy, Real, nb::ndim<2>>(buf, {s0, s1}, owner);
+    double* buf = new double[s0 * s1];
+    std::memcpy(buf, t.data(), s0 * s1 * sizeof(double));
+    nb::capsule owner(buf, [](void* p) noexcept { delete[] static_cast<double*>(p); });
+    return nb::ndarray<nb::numpy, double, nb::ndim<2>>(buf, {s0, s1}, owner);
 }
 
 /// Copy a 4D xtensor to a numpy array.
-static nb::ndarray<nb::numpy, Real, nb::ndim<4>>
-xt4d_to_numpy(const xt::xtensor<Real, 4>& t) {
+static nb::ndarray<nb::numpy, double, nb::ndim<4>>
+xt4d_to_numpy(const xt::xtensor<double, 4>& t) {
     size_t s[4];
     for (int i = 0; i < 4; ++i) s[i] = static_cast<size_t>(t.shape(i));
     size_t total = s[0] * s[1] * s[2] * s[3];
-    Real* buf = new Real[total];
-    std::memcpy(buf, t.data(), total * sizeof(Real));
-    nb::capsule owner(buf, [](void* p) noexcept { delete[] static_cast<Real*>(p); });
-    return nb::ndarray<nb::numpy, Real, nb::ndim<4>>(buf, {s[0], s[1], s[2], s[3]}, owner);
+    double* buf = new double[total];
+    std::memcpy(buf, t.data(), total * sizeof(double));
+    nb::capsule owner(buf, [](void* p) noexcept { delete[] static_cast<double*>(p); });
+    return nb::ndarray<nb::numpy, double, nb::ndim<4>>(buf, {s[0], s[1], s[2], s[3]}, owner);
 }
 
 
@@ -228,29 +228,29 @@ void bind_scf(nb::module_& m) {
     // ── Convenience config factories ──
 
     m.def("rhf_config",
-        [](const IntegralPack& ip, Real tol) {
+        [](const IntegralPack& ip, double tol) {
             return rhf_config(ip, tol);
         },
-        nb::arg("integrals"), nb::arg("tol") = Real(1e-8),
+        nb::arg("integrals"), nb::arg("tol") = double(1e-8),
         "Create an SCFConfig for restricted Hartree-Fock."
     );
 
     m.def("uhf_config",
-        [](const IntegralPack& ip, int n_alpha, int n_beta, Real tol) {
+        [](const IntegralPack& ip, int n_alpha, int n_beta, double tol) {
             return uhf_config(ip, n_alpha, n_beta, tol);
         },
         nb::arg("integrals"), nb::arg("n_alpha"), nb::arg("n_beta"),
-        nb::arg("tol") = Real(1e-8),
+        nb::arg("tol") = double(1e-8),
         "Create an SCFConfig for unrestricted Hartree-Fock."
     );
 
     m.def("uks_config",
         [](const IntegralPack& ip, int n_alpha, int n_beta,
-           XCType xc, Real tol) {
+           XCType xc, double tol) {
             return uks_config(ip, n_alpha, n_beta, xc, tol);
         },
         nb::arg("integrals"), nb::arg("n_alpha"), nb::arg("n_beta"),
-        nb::arg("xc") = XCType::LSDA, nb::arg("tol") = Real(1e-8),
+        nb::arg("xc") = XCType::LSDA, nb::arg("tol") = double(1e-8),
         "Create an SCFConfig for unrestricted Kohn-Sham DFT."
     );
 }

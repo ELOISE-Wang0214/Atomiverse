@@ -30,7 +30,7 @@ using cuda::prec_t;
 // ============================================================================
 
 struct NeighborList::State {
-    NListBuffers<work_t> buf;
+    NListBuffers<real_t> buf;
 
     DeviceVector<work_t> d_cell{9};
     DeviceVector<work_t> d_inv_cell{9};
@@ -103,10 +103,10 @@ void NeighborList::build(const BuildContext& ctx) {
     int atom_pair_cap = std::max(1, n * 50);
     cudaMalloc(&frame.pairs.i, atom_pair_cap * sizeof(int));
     cudaMalloc(&frame.pairs.j, atom_pair_cap * sizeof(int));
-    cudaMalloc(&frame.pairs.dx, atom_pair_cap * sizeof(work_t));
-    cudaMalloc(&frame.pairs.dy, atom_pair_cap * sizeof(work_t));
-    cudaMalloc(&frame.pairs.dz, atom_pair_cap * sizeof(work_t));
-    cudaMalloc(&frame.pairs.dist, atom_pair_cap * sizeof(work_t));
+    cudaMalloc(&frame.pairs.dx, atom_pair_cap * sizeof(real_t));
+    cudaMalloc(&frame.pairs.dy, atom_pair_cap * sizeof(real_t));
+    cudaMalloc(&frame.pairs.dz, atom_pair_cap * sizeof(real_t));
+    cudaMalloc(&frame.pairs.dist, atom_pair_cap * sizeof(real_t));
     cudaMalloc(&frame.pairs.n_pairs, sizeof(int));
     cudaMemset(frame.pairs.n_pairs, 0, sizeof(int));
     cudaMalloc(&frame.pairs.capacity, sizeof(int));
@@ -267,8 +267,8 @@ void NeighborList::destroy(const DestroyContext& ctx) {
 // Constructor / move
 // ============================================================================
 
-NeighborList::NeighborList(work_t cutoff, work_t skin)
-    : cutoff_(cutoff), skin_(skin < work_t(0) ? work_t(0.3) * cutoff : skin) {}
+NeighborList::NeighborList(double cutoff, double skin)
+    : cutoff_(cutoff), skin_(skin < 0.0 ? 0.3 * cutoff : skin) {}
 
 NeighborList::~NeighborList() = default;
 NeighborList::NeighborList(NeighborList&&) noexcept = default;

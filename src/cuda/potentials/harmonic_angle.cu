@@ -16,12 +16,12 @@ using cuda::prec_t;
 
 
 struct HarmonicAngle::State {
-    Real* d_K = nullptr;
-    Real* d_theta0 = nullptr;  // in radians
+    work_t* d_K = nullptr;
+    work_t* d_theta0 = nullptr;  // in radians
     int n_types = 0;
 };
 
-HarmonicAngle::HarmonicAngle(std::vector<work_t> K, std::vector<work_t> theta0)
+HarmonicAngle::HarmonicAngle(std::vector<double> K, std::vector<double> theta0)
     : K_(std::move(K)), theta0_(std::move(theta0)),
       state_(std::make_unique<State>()) {}
 
@@ -34,11 +34,11 @@ namespace {
 __global__ void harmonic_angle_k(
     const real_t* __restrict__ x, const real_t* __restrict__ y, const real_t* __restrict__ z,
     real_t* __restrict__ fx, real_t* __restrict__ fy, real_t* __restrict__ fz,
-    real_t* __restrict__ energy,
+    prec_t* __restrict__ energy,
     const int* __restrict__ ai, const int* __restrict__ aj, const int* __restrict__ ak,
     const int* __restrict__ at,
-    const real_t* __restrict__ K, const real_t* __restrict__ theta0,
-    const real_t* __restrict__ box, int n_angles)
+    const work_t* __restrict__ K, const work_t* __restrict__ theta0,
+    const prec_t* __restrict__ box, int n_angles)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= n_angles) return;
@@ -91,11 +91,11 @@ __global__ void harmonic_angle_k(
     work_t fk_y = prefactor * (rij_y * cross_inv - cos_theta * rkj_y * rkj_inv2);
     work_t fk_z = prefactor * (rij_z * cross_inv - cos_theta * rkj_z * rkj_inv2);
 
-    atomicAdd(&fx[i], fi_x); atomicAdd(&fy[i], fi_y); atomicAdd(&fz[i], fi_z);
-    atomicAdd(&fx[k], fk_x); atomicAdd(&fy[k], fk_y); atomicAdd(&fz[k], fk_z);
-    atomicAdd(&fx[j], -(fi_x + fk_x));
-    atomicAdd(&fy[j], -(fi_y + fk_y));
-    atomicAdd(&fz[j], -(fi_z + fk_z));
+    atomicAdd(&fx[i], static_cast<real_t>(fi_x)); atomicAdd(&fy[i], static_cast<real_t>(fi_y)); atomicAdd(&fz[i], static_cast<real_t>(fi_z));
+    atomicAdd(&fx[k], static_cast<real_t>(fk_x)); atomicAdd(&fy[k], static_cast<real_t>(fk_y)); atomicAdd(&fz[k], static_cast<real_t>(fk_z));
+    atomicAdd(&fx[j], static_cast<real_t>(-(fi_x + fk_x)));
+    atomicAdd(&fy[j], static_cast<real_t>(-(fi_y + fk_y)));
+    atomicAdd(&fz[j], static_cast<real_t>(-(fi_z + fk_z)));
 
     // Energy reduction
     extern __shared__ work_t sdata[];
@@ -105,7 +105,7 @@ __global__ void harmonic_angle_k(
         if (threadIdx.x < s) sdata[threadIdx.x] += sdata[threadIdx.x + s];
         __syncthreads();
     }
-    if (threadIdx.x == 0) atomicAdd(energy, sdata[0]);
+    if (threadIdx.x == 0) atomicAdd(energy, static_cast<prec_t>(sdata[0]));
 }
 
 } // anonymous namespace

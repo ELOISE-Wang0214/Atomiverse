@@ -25,14 +25,17 @@ namespace {
 __global__ void kinetic_energy(
     const real_t* __restrict__ vx, const real_t* __restrict__ vy,
     const real_t* __restrict__ vz, const real_t* __restrict__ mass,
-    real_t* __restrict__ kinetic, int n) {
+    prec_t* __restrict__ kinetic, int n) {
 
     int i = blockIdx.x * blockDim.x + threadIdx.x;
 
     work_t my_ke = work_t(0);
     if (i < n) {
-        work_t v2 = vx[i] * vx[i] + vy[i] * vy[i] + vz[i] * vz[i];
-        my_ke = work_t(0.5) * kMvv2e * mass[i] * v2;
+        work_t vx_w = static_cast<work_t>(vx[i]);
+        work_t vy_w = static_cast<work_t>(vy[i]);
+        work_t vz_w = static_cast<work_t>(vz[i]);
+        work_t v2 = vx_w * vx_w + vy_w * vy_w + vz_w * vz_w;
+        my_ke = work_t(0.5) * kMvv2e * static_cast<work_t>(mass[i]) * v2;
     }
 
     extern __shared__ work_t s_ke[];
@@ -43,7 +46,7 @@ __global__ void kinetic_energy(
         __syncthreads();
     }
     if (threadIdx.x == 0 && s_ke[0] != work_t(0))
-        atomicAdd(kinetic, s_ke[0]);
+        atomicAdd(kinetic, static_cast<prec_t>(s_ke[0]));
 }
 
 } // anonymous namespace

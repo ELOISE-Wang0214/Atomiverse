@@ -1,5 +1,5 @@
 /// @file cpu/scf/scf_solve.h
-/// @brief Unified mean-field SCF solver — RHF, UHF, UKS through one engine.
+/// @brief Unified mean-field SCF solver -- RHF, UHF, UKS through one engine.
 ///
 /// Factorized design:
 ///   - SpinType: Restricted (1 channel) or Unrestricted (2 channels)
@@ -18,8 +18,6 @@
 #include <vector>
 #include <xtensor/xtensor.hpp>
 
-#include "atomiverse/core/real.h"
-#include "atomiverse/core/int.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/rhf_solve.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
@@ -34,7 +32,7 @@ enum class MeanFieldType { HF, KS };
 /// @brief Spin treatment.
 enum class SpinType { Restricted, Unrestricted };
 
-/// @brief SCF configuration — all method/convergence/grid parameters.
+/// @brief SCF configuration -- all method/convergence/grid parameters.
 struct SCFConfig {
     SpinType spin = SpinType::Unrestricted;   ///< Restricted or unrestricted spin treatment.
     MeanFieldType method = MeanFieldType::HF; ///< Hartree-Fock or Kohn-Sham mean field.
@@ -43,59 +41,59 @@ struct SCFConfig {
     int n_beta = 0;                          ///< Beta electrons.
 
     // Convergence
-    Real tol = Real(1e-8);                   ///< Convergence tolerance.
+    double tol = 1e-8;                       ///< Convergence tolerance.
     int max_iter = 100;                      ///< Maximum SCF iterations.
     bool use_diis = true;                    ///< Enable DIIS acceleration.
     int diis_max_vectors = 6;                ///< DIIS history size.
     int diis_start_iter = 2;                 ///< Start DIIS after this many damped iterations.
-    Real damping_factor = Real(0.5);         ///< Linear mixing for early/non-DIIS iterations.
+    double damping_factor = 0.5;             ///< Linear mixing for early/non-DIIS iterations.
 
     // Grid (KS only)
     int n_radial = 50;                       ///< Radial grid points per atom.
     int n_angular = 110;                     ///< Angular grid points per atom.
 };
 
-/// @brief Unified SCF result — full energy decomposition and spin-resolved quantities.
+/// @brief Unified SCF result -- full energy decomposition and spin-resolved quantities.
 struct SCFResult {
     // Core
     bool converged = false;           ///< Whether SCF converged within `max_iter`.
     int iterations = 0;               ///< Number of iterations performed.
-    Real energy = 0;                 ///< Total energy [Hartree].
-    Real residual = 0;               ///< Final convergence metric.
+    double energy = 0;               ///< Total energy [Hartree].
+    double residual = 0;             ///< Final convergence metric.
 
     // Energy decomposition (always populated)
-    Real one_electron_energy = 0;    ///< Σ_σ Tr[Hcore · P^σ].
-    Real coulomb_energy = 0;         ///< 0.5 · Tr[J · P_total].
-    Real exchange_energy = 0;        ///< HF exchange. Zero for pure KS.
-    Real xc_energy = 0;             ///< E_xc from grid. Zero for pure HF.
-    Real nuclear_repulsion = 0;      ///< V_nuc.
+    double one_electron_energy = 0;  ///< sum_sigma Tr[Hcore * P^sigma].
+    double coulomb_energy = 0;       ///< 0.5 * Tr[J * P_total].
+    double exchange_energy = 0;      ///< HF exchange. Zero for pure KS.
+    double xc_energy = 0;           ///< E_xc from grid. Zero for pure HF.
+    double nuclear_repulsion = 0;    ///< V_nuc.
 
     // Spin info
     int n_alpha = 0;                  ///< Number of alpha electrons.
     int n_beta = 0;                   ///< Number of beta electrons.
-    Real spin_contamination = 0;     ///< ⟨S²⟩ - S(S+1). Zero for restricted.
+    double spin_contamination = 0;   ///< <S^2> - S(S+1). Zero for restricted.
 
     // Orbitals and densities (always spin-resolved)
-    xt::xtensor<Real, 1> eigenvalues_alpha; ///< Alpha orbital energies [Hartree].
-    xt::xtensor<Real, 1> eigenvalues_beta;  ///< Beta orbital energies [Hartree].
-    xt::xtensor<Real, 2> P_alpha;           ///< Final alpha density matrix.
-    xt::xtensor<Real, 2> P_beta;            ///< Final beta density matrix.
-    xt::xtensor<Real, 2> C_alpha;           ///< Final alpha MO coefficients.
-    xt::xtensor<Real, 2> C_beta;            ///< Final beta MO coefficients.
+    xt::xtensor<double, 1> eigenvalues_alpha; ///< Alpha orbital energies [Hartree].
+    xt::xtensor<double, 1> eigenvalues_beta;  ///< Beta orbital energies [Hartree].
+    xt::xtensor<double, 2> P_alpha;           ///< Final alpha density matrix.
+    xt::xtensor<double, 2> P_beta;            ///< Final beta density matrix.
+    xt::xtensor<double, 2> C_alpha;           ///< Final alpha MO coefficients.
+    xt::xtensor<double, 2> C_beta;            ///< Final beta MO coefficients.
 
     // Diagnostics
     std::vector<IterationRecord> trace;     ///< Per-iteration convergence trace.
 
     // Grid quality (KS only)
-    Real integrated_n_alpha = 0;            ///< Grid-integrated alpha electron count.
-    Real integrated_n_beta = 0;             ///< Grid-integrated beta electron count.
+    double integrated_n_alpha = 0;          ///< Grid-integrated alpha electron count.
+    double integrated_n_beta = 0;           ///< Grid-integrated beta electron count.
 };
 
 /// @brief Convenience: RHF configuration.
 /// @param ints Integral pack supplying electron count.
 /// @param tol Density convergence tolerance.
 /// @return `SCFConfig` initialized for restricted Hartree-Fock.
-inline SCFConfig rhf_config(const IntegralPack& ints, Real tol = Real(1e-8)) {
+inline SCFConfig rhf_config(const IntegralPack& ints, double tol = 1e-8) {
     SCFConfig c;
     c.spin = SpinType::Restricted;
     c.method = MeanFieldType::HF;
@@ -106,7 +104,7 @@ inline SCFConfig rhf_config(const IntegralPack& ints, Real tol = Real(1e-8)) {
 }
 
 /// @brief Convenience: UHF configuration.
-/// @note DIIS disabled by default for UHF — HOMO-LUMO mixing can destabilize DIIS
+/// @note DIIS disabled by default for UHF -- HOMO-LUMO mixing can destabilize DIIS
 ///       before the density is near stationary. Use damped SCF (matching original
 ///       uhf_solve behavior). Enable DIIS manually for advanced usage.
 /// @param ints Integral pack retained for API symmetry with `rhf_config`.
@@ -115,7 +113,7 @@ inline SCFConfig rhf_config(const IntegralPack& ints, Real tol = Real(1e-8)) {
 /// @param tol Density convergence tolerance.
 /// @return `SCFConfig` initialized for unrestricted Hartree-Fock.
 inline SCFConfig uhf_config(const IntegralPack& ints, int n_alpha, int n_beta,
-                            Real tol = Real(1e-8)) {
+                            double tol = 1e-8) {
     (void)ints;
     SCFConfig c;
     c.spin = SpinType::Unrestricted;
@@ -125,7 +123,7 @@ inline SCFConfig uhf_config(const IntegralPack& ints, int n_alpha, int n_beta,
     c.tol = tol;
     c.use_diis = true;
     c.diis_start_iter = 5;  // allow HOMO-LUMO mixing to settle before DIIS
-    c.damping_factor = Real(0.3);  // lighter damping for faster exploration
+    c.damping_factor = 0.3;  // lighter damping for faster exploration
     return c;
 }
 
@@ -137,7 +135,7 @@ inline SCFConfig uhf_config(const IntegralPack& ints, int n_alpha, int n_beta,
 /// @param tol Density convergence tolerance.
 /// @return `SCFConfig` initialized for unrestricted Kohn-Sham DFT.
 inline SCFConfig uks_config(const IntegralPack& ints, int n_alpha, int n_beta,
-                            XCType xc = XCType::LSDA, Real tol = Real(1e-8)) {
+                            XCType xc = XCType::LSDA, double tol = 1e-8) {
     (void)ints;
     SCFConfig c;
     c.spin = SpinType::Unrestricted;
@@ -155,8 +153,8 @@ inline SCFConfig uks_config(const IntegralPack& ints, int n_alpha, int n_beta,
 ///
 /// Dispatches internally based on SCFConfig:
 ///   - Restricted HF:    F = Hcore + G(P)        [fused J-0.5K, DIIS]
-///   - Unrestricted HF:  F^σ = Hcore + J - K^σ   [combined DIIS]
-///   - Unrestricted KS:  F^σ = Hcore + J + V^σ_xc [grid XC, combined DIIS]
+///   - Unrestricted HF:  F^sigma = Hcore + J - K^sigma   [combined DIIS]
+///   - Unrestricted KS:  F^sigma = Hcore + J + V^sigma_xc [grid XC, combined DIIS]
 ///
 /// @param integrals Molecular integrals (S, Hcore, ERI, V_nuc, atoms, shells).
 /// @param config    SCF configuration (method, spin, convergence, grid).

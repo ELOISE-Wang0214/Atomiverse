@@ -15,7 +15,7 @@
 namespace ATV::md::nlist {
 
 // ---------------------------------------------------------------------------
-// Kernel: AoS double* → SoA Real* (x, y, z separate arrays)
+// Kernel: AoS double* → SoA real_t* (x, y, z separate arrays)
 // ---------------------------------------------------------------------------
 
 template <typename work_t>
@@ -33,7 +33,7 @@ __global__ void aos_to_soa(const double* __restrict__ positions,
 
 template <typename work_t>
 void launch_aos_to_soa(const double* positions_aos, int num_atoms,
-                       Real* x, Real* y, Real* z, cudaStream_t stream) {
+                       real_t* x, real_t* y, real_t* z, cudaStream_t stream) {
     if (num_atoms == 0) return;
     int block = ATV::cuda::kDefaultBlock;
     int grid = (num_atoms + block - 1) / block;
@@ -180,8 +180,8 @@ void launch_scatter_to_soa(const int* sorted_indices,
                            const real_t* pos_x, const real_t* pos_y,
                            const real_t* pos_z, int num_atoms,
                            int num_clusters,
-                           Real* cluster_x, Real* cluster_y,
-                           Real* cluster_z,
+                           work_t* cluster_x, work_t* cluster_y,
+                           work_t* cluster_z,
                            int* original_index, int* cluster_count,
                            cudaStream_t stream) {
     int padded = num_clusters * kClusterSize;
@@ -246,7 +246,7 @@ __global__ void aos_to_soa_morton(
 
 template <typename work_t>
 void launch_aos_to_soa_morton(const double* positions_aos, int num_atoms,
-                               Real* x, Real* y, Real* z,
+                               work_t* x, work_t* y, work_t* z,
                                const real_t* inv_cell, bool periodic,
                                uint32_t* morton_codes, int* atom_indices,
                                cudaStream_t stream) {
@@ -353,12 +353,12 @@ void launch_scatter_and_aabb(const int* sorted_indices,
                               const real_t* pos_x, const real_t* pos_y,
                               const real_t* pos_z,
                               int num_atoms, int num_clusters,
-                              Real* cluster_x, Real* cluster_y, Real* cluster_z,
+                              work_t* cluster_x, work_t* cluster_y, work_t* cluster_z,
                               int* original_index, int* cluster_count,
-                              Real* aabb_min_x, Real* aabb_min_y,
-                              Real* aabb_min_z,
-                              Real* aabb_max_x, Real* aabb_max_y,
-                              Real* aabb_max_z,
+                              work_t* aabb_min_x, work_t* aabb_min_y,
+                              work_t* aabb_min_z,
+                              work_t* aabb_max_x, work_t* aabb_max_y,
+                              work_t* aabb_max_z,
                               cudaStream_t stream) {
     if (num_clusters == 0) return;
     int threads_needed = num_clusters * kClusterSize;

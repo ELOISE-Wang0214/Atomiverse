@@ -34,7 +34,7 @@ public:
     /// @brief Copy atom geometry from a cpu::Frame into the staging area.
     void set_geometry(const Frame& frame);
 
-    /// @brief Attach a per-atom Real field.
+    /// @brief Attach a per-atom double field.
     void add_field(const std::string& name, std::vector<double> values);
 
     /// @brief Attach a frame-level scalar (always f64 across FFI).

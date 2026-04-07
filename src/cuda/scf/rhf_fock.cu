@@ -61,21 +61,21 @@ void RHFFock::build(const BuildContext& ctx) {
     scf.converged = false;
 
     // Allocate device matrices
-    cudaMalloc(&scf.H,       nn * sizeof(work_t));
-    cudaMalloc(&scf.P,       nn * sizeof(work_t));
-    cudaMalloc(&scf.P_old,   nn * sizeof(work_t));
-    cudaMalloc(&scf.C,       nn * sizeof(work_t));
-    cudaMalloc(&scf.eig,     n * sizeof(work_t));
-    cudaMalloc(&scf.work,    nn * sizeof(work_t));
-    cudaMalloc(&scf.Hcore,   nn * sizeof(work_t));
-    cudaMalloc(&scf.X,       nn * sizeof(work_t));
-    cudaMalloc(&scf.F_prime, nn * sizeof(work_t));
-    cudaMalloc(&scf.ERI,     n4 * sizeof(work_t));
-    cudaMalloc(&d_temp_,     nn * sizeof(work_t));
+    cudaMalloc(&scf.H,       nn * sizeof(prec_t));
+    cudaMalloc(&scf.P,       nn * sizeof(prec_t));
+    cudaMalloc(&scf.P_old,   nn * sizeof(prec_t));
+    cudaMalloc(&scf.C,       nn * sizeof(prec_t));
+    cudaMalloc(&scf.eig,     n * sizeof(prec_t));
+    cudaMalloc(&scf.work,    nn * sizeof(prec_t));
+    cudaMalloc(&scf.Hcore,   nn * sizeof(prec_t));
+    cudaMalloc(&scf.X,       nn * sizeof(prec_t));
+    cudaMalloc(&scf.F_prime, nn * sizeof(prec_t));
+    cudaMalloc(&scf.ERI,     n4 * sizeof(prec_t));
+    cudaMalloc(&d_temp_,     nn * sizeof(prec_t));
 
     // Zero P
-    cudaMemsetAsync(scf.P, 0, nn * sizeof(work_t), stream);
-    cudaMemsetAsync(scf.P_old, 0, nn * sizeof(work_t), stream);
+    cudaMemsetAsync(scf.P, 0, nn * sizeof(prec_t), stream);
+    cudaMemsetAsync(scf.P_old, 0, nn * sizeof(prec_t), stream);
 
     // Upload Hcore (row-major xtensor -> column-major device)
     // For symmetric matrices, row-major == column-major, so direct copy works.
@@ -83,7 +83,7 @@ void RHFFock::build(const BuildContext& ctx) {
     for (int i = 0; i < n; ++i)
         for (int j = 0; j < n; ++j)
             buf[i + j * n] = integrals_.Hcore(i, j);  // col-major
-    cudaMemcpy(scf.Hcore, buf.data(), nn * sizeof(work_t), cudaMemcpyHostToDevice);
+    cudaMemcpy(scf.Hcore, buf.data(), nn * sizeof(prec_t), cudaMemcpyHostToDevice);
 
     // Upload ERI (row-major 4D xtensor -> column-major 4D device)
     std::vector<work_t> eri_buf(n4);
@@ -92,7 +92,7 @@ void RHFFock::build(const BuildContext& ctx) {
             for (int k = 0; k < n; ++k)
                 for (int l = 0; l < n; ++l)
                     eri_buf[i + j*n + k*nn + l*nn*n] = integrals_.ERI(i, j, k, l);
-    cudaMemcpy(scf.ERI, eri_buf.data(), n4 * sizeof(work_t), cudaMemcpyHostToDevice);
+    cudaMemcpy(scf.ERI, eri_buf.data(), n4 * sizeof(prec_t), cudaMemcpyHostToDevice);
 
     // Compute X = S^{-1/2} on host using xtensor-blas
     auto [s_eig, U] = xt::linalg::eigh(integrals_.S);
@@ -105,7 +105,7 @@ void RHFFock::build(const BuildContext& ctx) {
     for (int i = 0; i < n; ++i)
         for (int j = 0; j < n; ++j)
             buf[i + j * n] = X_host(i, j);
-    cudaMemcpy(scf.X, buf.data(), nn * sizeof(work_t), cudaMemcpyHostToDevice);
+    cudaMemcpy(scf.X, buf.data(), nn * sizeof(prec_t), cudaMemcpyHostToDevice);
 
     // cuBLAS handle
     cublasHandle_t handle;
@@ -127,13 +127,13 @@ void RHFFock::launch(const LaunchContext& ctx) {
 
     // Step 1: G(P) from ERI
     // Use work buffer for G
-    cudaMemsetAsync(scf.work, 0, nn * sizeof(work_t), stream);
+    cudaMemsetAsync(scf.work, 0, nn * sizeof(prec_t), stream);
     int threads = cuda::kDefaultBlock;
     int blocks = cuda::grid_size(nn, threads);
     build_G_kernel<<<blocks, threads, 0, stream>>>(scf.work, scf.P, scf.ERI, n);
 
     // Step 2: F = Hcore + G (H serves as F)
-    cudaMemcpyAsync(scf.H, scf.Hcore, nn * sizeof(work_t), cudaMemcpyDeviceToDevice, stream);
+    cudaMemcpyAsync(scf.H, scf.Hcore, nn * sizeof(prec_t), cudaMemcpyDeviceToDevice, stream);
     work_t one = work_t(1);
     detail::axpy(handle, nn, &one, scf.work, 1, scf.H, 1);
 
@@ -159,8 +159,8 @@ void RHFFock::launch(const LaunchContext& ctx) {
     // We can use P_old as temp (it's only used later in build_density).
     // Actually, simpler: EigenSolver reads scf.H. So we just overwrite scf.H with F_prime.
     // We need F for energy later → store it in work.
-    cudaMemcpyAsync(scf.work, scf.H, nn * sizeof(work_t), cudaMemcpyDeviceToDevice, stream);
-    cudaMemcpyAsync(scf.H, scf.F_prime, nn * sizeof(work_t), cudaMemcpyDeviceToDevice, stream);
+    cudaMemcpyAsync(scf.work, scf.H, nn * sizeof(prec_t), cudaMemcpyDeviceToDevice, stream);
+    cudaMemcpyAsync(scf.H, scf.F_prime, nn * sizeof(prec_t), cudaMemcpyDeviceToDevice, stream);
     // Now: scf.H = F' (for EigenSolver), scf.work = F (for energy in RHFDensity)
 }
 
@@ -180,13 +180,13 @@ void RHFFock::destroy(const DestroyContext& /*ctx*/) {
 
 } // namespace scf (temporarily close for cuda::scf access)
 
-static void call_1e_integrals(ATV::Real* S, ATV::Real* T, ATV::Real* V,
-    const ATV::Real* a, const ATV::Real* c, const ATV::Real* ctr,
-    const ATV::int* Z, const ATV::Real* pos, int ns, int np, int na, void* st) {
+static void call_1e_integrals(ATV::cuda::prec_t* S, ATV::cuda::prec_t* T, ATV::cuda::prec_t* V,
+    const ATV::cuda::prec_t* a, const ATV::cuda::prec_t* c, const ATV::cuda::prec_t* ctr,
+    const int* Z, const ATV::cuda::prec_t* pos, int ns, int np, int na, void* st) {
     ATV::cuda::scf::launch_1e_integrals(S, T, V, a, c, ctr, Z, pos, ns, np, na, st);
 }
-static void call_eri(ATV::Real* ERI, const ATV::Real* a, const ATV::Real* c,
-    const ATV::Real* ctr, int ns, int np, void* st) {
+static void call_eri(ATV::cuda::prec_t* ERI, const ATV::cuda::prec_t* a, const ATV::cuda::prec_t* c,
+    const ATV::cuda::prec_t* ctr, int ns, int np, void* st) {
     ATV::cuda::scf::launch_eri(ERI, a, c, ctr, ns, np, st);
 }
 
@@ -224,11 +224,11 @@ void RHFFockDevice::build(const BuildContext& ctx) {
     // host Frame that Backend::materialize() copied. The positions are stored
     // in ctx.frame (device). We'll reconstruct from the known atom count and
     // read from device.
-    Real* h_x = new work_t[natm]; Real* h_y = new work_t[natm]; Real* h_z = new work_t[natm];
+    real_t* h_x = new real_t[natm]; real_t* h_y = new real_t[natm]; real_t* h_z = new real_t[natm];
     int* h_type = new int[natm];
-    cudaMemcpy(h_x, ctx.frame.atoms.x, natm * sizeof(work_t), cudaMemcpyDeviceToHost);
-    cudaMemcpy(h_y, ctx.frame.atoms.y, natm * sizeof(work_t), cudaMemcpyDeviceToHost);
-    cudaMemcpy(h_z, ctx.frame.atoms.z, natm * sizeof(work_t), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_x, ctx.frame.atoms.x, natm * sizeof(real_t), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_y, ctx.frame.atoms.y, natm * sizeof(real_t), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_z, ctx.frame.atoms.z, natm * sizeof(real_t), cudaMemcpyDeviceToHost);
     cudaMemcpy(h_type, ctx.frame.atoms.type, natm * sizeof(int), cudaMemcpyDeviceToHost);
 
     for (int a = 0; a < natm; ++a) {
@@ -259,35 +259,35 @@ void RHFFockDevice::build(const BuildContext& ctx) {
     delete[] h_x; delete[] h_y; delete[] h_z; delete[] h_type;
 
     // Upload basis data
-    cudaMalloc(&scf.d_shell_alpha, n * n_prim_ * sizeof(work_t));
-    cudaMalloc(&scf.d_shell_coeff, n * n_prim_ * sizeof(work_t));
-    cudaMalloc(&scf.d_shell_center, n * 3 * sizeof(work_t));
+    cudaMalloc(&scf.d_shell_alpha, n * n_prim_ * sizeof(prec_t));
+    cudaMalloc(&scf.d_shell_coeff, n * n_prim_ * sizeof(prec_t));
+    cudaMalloc(&scf.d_shell_center, n * 3 * sizeof(prec_t));
     cudaMalloc(&scf.d_atom_Z, natm * sizeof(int));
-    cudaMalloc(&scf.d_atom_pos, natm * 3 * sizeof(work_t));
-    cudaMemcpy(scf.d_shell_alpha, h_alpha.data(), n * n_prim_ * sizeof(work_t), cudaMemcpyHostToDevice);
-    cudaMemcpy(scf.d_shell_coeff, h_coeff.data(), n * n_prim_ * sizeof(work_t), cudaMemcpyHostToDevice);
-    cudaMemcpy(scf.d_shell_center, h_centers.data(), n * 3 * sizeof(work_t), cudaMemcpyHostToDevice);
+    cudaMalloc(&scf.d_atom_pos, natm * 3 * sizeof(prec_t));
+    cudaMemcpy(scf.d_shell_alpha, h_alpha.data(), n * n_prim_ * sizeof(prec_t), cudaMemcpyHostToDevice);
+    cudaMemcpy(scf.d_shell_coeff, h_coeff.data(), n * n_prim_ * sizeof(prec_t), cudaMemcpyHostToDevice);
+    cudaMemcpy(scf.d_shell_center, h_centers.data(), n * 3 * sizeof(prec_t), cudaMemcpyHostToDevice);
     cudaMemcpy(scf.d_atom_Z, h_Z.data(), natm * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(scf.d_atom_pos, h_pos.data(), natm * 3 * sizeof(work_t), cudaMemcpyHostToDevice);
+    cudaMemcpy(scf.d_atom_pos, h_pos.data(), natm * 3 * sizeof(prec_t), cudaMemcpyHostToDevice);
 
     // ── 2. Allocate SCF workspace matrices ────────────────────────────
-    cudaMalloc(&scf.H, nn * sizeof(work_t));
-    cudaMalloc(&scf.P, nn * sizeof(work_t));
-    cudaMalloc(&scf.P_old, nn * sizeof(work_t));
-    cudaMalloc(&scf.C, nn * sizeof(work_t));
-    cudaMalloc(&scf.eig, n * sizeof(work_t));
-    cudaMalloc(&scf.work, nn * sizeof(work_t));
-    cudaMalloc(&scf.Hcore, nn * sizeof(work_t));
-    cudaMalloc(&scf.X, nn * sizeof(work_t));
-    cudaMalloc(&scf.F_prime, nn * sizeof(work_t));
-    cudaMalloc(&scf.ERI, n4 * sizeof(work_t));
-    cudaMalloc(&d_temp_, nn * sizeof(work_t));
-    cudaMalloc(&d_S_, nn * sizeof(work_t));
-    cudaMalloc(&d_T_, nn * sizeof(work_t));
-    cudaMalloc(&d_V_, nn * sizeof(work_t));
+    cudaMalloc(&scf.H, nn * sizeof(prec_t));
+    cudaMalloc(&scf.P, nn * sizeof(prec_t));
+    cudaMalloc(&scf.P_old, nn * sizeof(prec_t));
+    cudaMalloc(&scf.C, nn * sizeof(prec_t));
+    cudaMalloc(&scf.eig, n * sizeof(prec_t));
+    cudaMalloc(&scf.work, nn * sizeof(prec_t));
+    cudaMalloc(&scf.Hcore, nn * sizeof(prec_t));
+    cudaMalloc(&scf.X, nn * sizeof(prec_t));
+    cudaMalloc(&scf.F_prime, nn * sizeof(prec_t));
+    cudaMalloc(&scf.ERI, n4 * sizeof(prec_t));
+    cudaMalloc(&d_temp_, nn * sizeof(prec_t));
+    cudaMalloc(&d_S_, nn * sizeof(prec_t));
+    cudaMalloc(&d_T_, nn * sizeof(prec_t));
+    cudaMalloc(&d_V_, nn * sizeof(prec_t));
 
-    cudaMemsetAsync(scf.P, 0, nn * sizeof(work_t), stream);
-    cudaMemsetAsync(scf.P_old, 0, nn * sizeof(work_t), stream);
+    cudaMemsetAsync(scf.P, 0, nn * sizeof(prec_t), stream);
+    cudaMemsetAsync(scf.P_old, 0, nn * sizeof(prec_t), stream);
 
     // ── 3. Launch GPU integral kernels ────────────────────────────────
     // Fused 1e: S, T, V computed simultaneously on device
@@ -308,7 +308,7 @@ void RHFFockDevice::build(const BuildContext& ctx) {
     cublasSetStream(handle, stream);
     cublas_handle_ = handle;
 
-    cudaMemcpyAsync(scf.Hcore, d_T_, nn * sizeof(work_t), cudaMemcpyDeviceToDevice, stream);
+    cudaMemcpyAsync(scf.Hcore, d_T_, nn * sizeof(prec_t), cudaMemcpyDeviceToDevice, stream);
     work_t one = work_t(1);
     detail::axpy(handle, nn, &one, d_V_, 1, scf.Hcore, 1);
 
@@ -321,19 +321,19 @@ void RHFFockDevice::build(const BuildContext& ctx) {
     cusolver_handle_ = solver;
 
     // Copy S -> X (cuSOLVER overwrites input with eigenvectors)
-    cudaMemcpyAsync(scf.X, d_S_, nn * sizeof(work_t), cudaMemcpyDeviceToDevice, stream);
+    cudaMemcpyAsync(scf.X, d_S_, nn * sizeof(prec_t), cudaMemcpyDeviceToDevice, stream);
 
     // Query workspace and solve
     int lwork = 0;
-    Real* d_eigenvalues;
-    cudaMalloc(&d_eigenvalues, n * sizeof(work_t));
+    prec_t* d_eigenvalues;
+    cudaMalloc(&d_eigenvalues, n * sizeof(prec_t));
     int* d_info;
     cudaMalloc(&d_info, sizeof(int));
 
     detail::syevd_bufferSize(solver, CUSOLVER_EIG_MODE_VECTOR, CUBLAS_FILL_MODE_LOWER,
                              n, scf.X, n, d_eigenvalues, &lwork);
-    Real* d_work_solver;
-    cudaMalloc(&d_work_solver, lwork * sizeof(work_t));
+    prec_t* d_work_solver;
+    cudaMalloc(&d_work_solver, lwork * sizeof(prec_t));
 
     detail::syevd(solver, CUSOLVER_EIG_MODE_VECTOR, CUBLAS_FILL_MODE_LOWER,
                   n, scf.X, n, d_eigenvalues, d_work_solver, lwork, d_info);
@@ -347,13 +347,13 @@ void RHFFockDevice::build(const BuildContext& ctx) {
 
     // Read eigenvalues to host and compute diag(1/sqrt(lambda))
     std::vector<work_t> h_eig(n);
-    cudaMemcpy(h_eig.data(), d_eigenvalues, n * sizeof(work_t), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_eig.data(), d_eigenvalues, n * sizeof(prec_t), cudaMemcpyDeviceToHost);
     std::vector<work_t> h_diag(nn, 0);
     for (int i = 0; i < n; ++i)
         h_diag[i + i * n] = work_t(1) / std::sqrt(h_eig[i]);
 
     // Upload diag to device (into d_T_ as temp)
-    cudaMemcpy(d_T_, h_diag.data(), nn * sizeof(work_t), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_T_, h_diag.data(), nn * sizeof(prec_t), cudaMemcpyHostToDevice);
 
     // X_final = U * diag * U^T  →  temp = U * diag, X = temp * U^T
     work_t zero = work_t(0);
@@ -363,7 +363,7 @@ void RHFFockDevice::build(const BuildContext& ctx) {
                  n, n, n, &one, d_temp_, n, scf.X, n, &zero, d_V_, n);
 
     // Copy result back to scf.X
-    cudaMemcpyAsync(scf.X, d_V_, nn * sizeof(work_t), cudaMemcpyDeviceToDevice, stream);
+    cudaMemcpyAsync(scf.X, d_V_, nn * sizeof(prec_t), cudaMemcpyDeviceToDevice, stream);
 
     cudaFree(d_eigenvalues);
     cudaFree(d_work_solver);
@@ -382,12 +382,12 @@ void RHFFockDevice::launch(const LaunchContext& ctx) {
     int n = scf.n;
     int nn = n * n;
 
-    cudaMemsetAsync(scf.work, 0, nn * sizeof(work_t), stream);
+    cudaMemsetAsync(scf.work, 0, nn * sizeof(prec_t), stream);
     int threads = cuda::kDefaultBlock;
     int blocks = cuda::grid_size(nn, threads);
     build_G_kernel<<<blocks, threads, 0, stream>>>(scf.work, scf.P, scf.ERI, n);
 
-    cudaMemcpyAsync(scf.H, scf.Hcore, nn * sizeof(work_t), cudaMemcpyDeviceToDevice, stream);
+    cudaMemcpyAsync(scf.H, scf.Hcore, nn * sizeof(prec_t), cudaMemcpyDeviceToDevice, stream);
     work_t one = work_t(1);
     detail::axpy(handle, nn, &one, scf.work, 1, scf.H, 1);
 
@@ -397,8 +397,8 @@ void RHFFockDevice::launch(const LaunchContext& ctx) {
     detail::gemm(handle, CUBLAS_OP_T, CUBLAS_OP_N,
                  n, n, n, &one, scf.X, n, d_temp_, n, &zero, scf.F_prime, n);
 
-    cudaMemcpyAsync(scf.work, scf.H, nn * sizeof(work_t), cudaMemcpyDeviceToDevice, stream);
-    cudaMemcpyAsync(scf.H, scf.F_prime, nn * sizeof(work_t), cudaMemcpyDeviceToDevice, stream);
+    cudaMemcpyAsync(scf.work, scf.H, nn * sizeof(prec_t), cudaMemcpyDeviceToDevice, stream);
+    cudaMemcpyAsync(scf.H, scf.F_prime, nn * sizeof(prec_t), cudaMemcpyDeviceToDevice, stream);
 }
 
 void RHFFockDevice::destroy(const DestroyContext& /*ctx*/) {

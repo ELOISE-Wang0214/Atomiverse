@@ -28,7 +28,7 @@ __global__ void sd_step(
     real_t* __restrict__ x, real_t* __restrict__ y, real_t* __restrict__ z,
     const real_t* __restrict__ fx, const real_t* __restrict__ fy,
     const real_t* __restrict__ fz, const real_t* __restrict__ mass,
-    const real_t* __restrict__ box,
+    const prec_t* __restrict__ box,
     work_t alpha, int n) {
 
     int i = blockIdx.x * blockDim.x + threadIdx.x;

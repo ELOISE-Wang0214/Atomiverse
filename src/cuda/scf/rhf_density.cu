@@ -26,7 +26,7 @@ void RHFDensity::build(const BuildContext& ctx) {
     scf.n_occ = n_occ_;
 
     // Allocate Hcore+F temporary
-    cudaMalloc(&d_HplusF_, n * n * sizeof(work_t));
+    cudaMalloc(&d_HplusF_, n * n * sizeof(prec_t));
 
     cublasHandle_t handle;
     cublasCreate(&handle);
@@ -49,15 +49,15 @@ void RHFDensity::launch(const LaunchContext& ctx) {
     // Step 1: Back-transform C = X * C'
     // C' is in scf.C (from EigenSolver). We need C = X * C'.
     // Use d_HplusF_ as temp to hold C' before overwriting scf.C.
-    cudaMemcpyAsync(d_HplusF_, scf.C, nn * sizeof(work_t), cudaMemcpyDeviceToDevice, stream);
-    work_t one = work_t(1);
-    work_t zero = work_t(0);
+    cudaMemcpyAsync(d_HplusF_, scf.C, nn * sizeof(prec_t), cudaMemcpyDeviceToDevice, stream);
+    prec_t one = prec_t(1);
+    prec_t zero = prec_t(0);
     detail::gemm(handle, CUBLAS_OP_N, CUBLAS_OP_N,
                  n, n, n, &one, scf.X, n, d_HplusF_, n, &zero, scf.C, n);
 
     // Step 2: P_old = P; P = 2 * C_occ * C_occ^T
-    cudaMemcpyAsync(scf.P_old, scf.P, nn * sizeof(work_t), cudaMemcpyDeviceToDevice, stream);
-    work_t two = work_t(2);
+    cudaMemcpyAsync(scf.P_old, scf.P, nn * sizeof(prec_t), cudaMemcpyDeviceToDevice, stream);
+    prec_t two = prec_t(2);
     detail::gemm(handle, CUBLAS_OP_N, CUBLAS_OP_T,
                  n, n, n_occ_,
                  &two, scf.C, n, scf.C, n, &zero, scf.P, n);
@@ -65,16 +65,16 @@ void RHFDensity::launch(const LaunchContext& ctx) {
     // Step 3: Energy = 0.5 * Tr[(Hcore + F) * P] + V_nuc
     // scf.work = F (saved by RHFFock). Hcore = scf.Hcore.
     // d_HplusF_ = Hcore + F
-    cudaMemcpyAsync(d_HplusF_, scf.Hcore, nn * sizeof(work_t), cudaMemcpyDeviceToDevice, stream);
+    cudaMemcpyAsync(d_HplusF_, scf.Hcore, nn * sizeof(prec_t), cudaMemcpyDeviceToDevice, stream);
     detail::axpy(handle, nn, &one, scf.work, 1, d_HplusF_, 1);
 
     // E_elec = 0.5 * dot(HplusF, P)
-    work_t dot_val = 0;
+    prec_t dot_val = 0;
     detail::dot(handle, nn, d_HplusF_, 1, scf.P, 1, &dot_val);
-    work_t energy = work_t(0.5) * dot_val + scf.V_nuc;
+    prec_t energy = prec_t(0.5) * dot_val + static_cast<prec_t>(scf.V_nuc);
 
     // Write to device energy scalar
-    cudaMemcpyAsync(ctx.frame.energy, &energy, sizeof(work_t),
+    cudaMemcpyAsync(ctx.frame.energy, &energy, sizeof(prec_t),
                     cudaMemcpyHostToDevice, stream);
     cudaStreamSynchronize(stream);
 }

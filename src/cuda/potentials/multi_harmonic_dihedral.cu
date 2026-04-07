@@ -15,11 +15,11 @@ using cuda::prec_t;
 
 
 struct MultiHarmonicDihedral::State {
-    Real* d_C = nullptr;  // n_types * 5 coefficients, flat
+    work_t* d_C = nullptr;  // n_types * 5 coefficients, flat
     int n_types = 0;
 };
 
-MultiHarmonicDihedral::MultiHarmonicDihedral(std::vector<std::array<work_t, 5>> C)
+MultiHarmonicDihedral::MultiHarmonicDihedral(std::vector<std::array<double, 5>> C)
     : C_(std::move(C)), state_(std::make_unique<State>()) {}
 
 MultiHarmonicDihedral::~MultiHarmonicDihedral() = default;
@@ -31,19 +31,19 @@ namespace {
 __global__ void multi_harmonic_dihedral_k(
     const real_t* __restrict__ x, const real_t* __restrict__ y, const real_t* __restrict__ z,
     real_t* __restrict__ fx, real_t* __restrict__ fy, real_t* __restrict__ fz,
-    real_t* __restrict__ energy,
+    prec_t* __restrict__ energy,
     const int* __restrict__ di, const int* __restrict__ dj,
     const int* __restrict__ dk, const int* __restrict__ dl,
     const int* __restrict__ dt,
-    const real_t* __restrict__ C,  // [n_types * 5]
-    const real_t* __restrict__ box, int n_dihed)
+    const work_t* __restrict__ C,  // [n_types * 5]
+    const prec_t* __restrict__ box, int n_dihed)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= n_dihed) return;
 
     int i = di[idx], j = dj[idx], k = dk[idx], l = dl[idx];
     int type = dt[idx];
-    const real_t* Cn = &C[type * 5];
+    const work_t* Cn = &C[type * 5];
 
     // Vectors along the backbone
     work_t b1x = x[j] - x[i], b1y = y[j] - y[i], b1z = z[j] - z[i];
@@ -136,10 +136,10 @@ __global__ void multi_harmonic_dihedral_k(
     work_t fky = -fly - a12 * n1y + a23 * n2y;
     work_t fkz = -flz - a12 * n1z + a23 * n2z;
 
-    atomicAdd(&fx[i], fix); atomicAdd(&fy[i], fiy); atomicAdd(&fz[i], fiz);
-    atomicAdd(&fx[j], fjx); atomicAdd(&fy[j], fjy); atomicAdd(&fz[j], fjz);
-    atomicAdd(&fx[k], fkx); atomicAdd(&fy[k], fky); atomicAdd(&fz[k], fkz);
-    atomicAdd(&fx[l], flx); atomicAdd(&fy[l], fly); atomicAdd(&fz[l], flz);
+    atomicAdd(&fx[i], static_cast<real_t>(fix)); atomicAdd(&fy[i], static_cast<real_t>(fiy)); atomicAdd(&fz[i], static_cast<real_t>(fiz));
+    atomicAdd(&fx[j], static_cast<real_t>(fjx)); atomicAdd(&fy[j], static_cast<real_t>(fjy)); atomicAdd(&fz[j], static_cast<real_t>(fjz));
+    atomicAdd(&fx[k], static_cast<real_t>(fkx)); atomicAdd(&fy[k], static_cast<real_t>(fky)); atomicAdd(&fz[k], static_cast<real_t>(fkz));
+    atomicAdd(&fx[l], static_cast<real_t>(flx)); atomicAdd(&fy[l], static_cast<real_t>(fly)); atomicAdd(&fz[l], static_cast<real_t>(flz));
 
     // Energy reduction
     extern __shared__ work_t sdata[];
@@ -149,7 +149,7 @@ __global__ void multi_harmonic_dihedral_k(
         if (threadIdx.x < s) sdata[threadIdx.x] += sdata[threadIdx.x + s];
         __syncthreads();
     }
-    if (threadIdx.x == 0) atomicAdd(energy, sdata[0]);
+    if (threadIdx.x == 0) atomicAdd(energy, static_cast<prec_t>(sdata[0]));
 }
 
 } // anonymous namespace

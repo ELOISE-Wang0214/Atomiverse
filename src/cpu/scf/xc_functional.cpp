@@ -491,8 +491,8 @@ static void pbe_correlation(double rho_a, double rho_b,
 
 // ── Public API ──────────────────────────────────────────────────────────
 
-XCOutput evaluate_xc(XCType type, Real rho_a, Real rho_b,
-                     Real sigma_aa, Real sigma_ab, Real sigma_bb) {
+XCOutput evaluate_xc(XCType type, double rho_a, double rho_b,
+                     double sigma_aa, double sigma_ab, double sigma_bb) {
     XCOutput out{};
     double ra = static_cast<double>(rho_a);
     double rb = static_cast<double>(rho_b);
@@ -507,9 +507,9 @@ XCOutput evaluate_xc(XCType type, Real rho_a, Real rho_b,
         double ec, vc_a, vc_b;
         vwn5_correlation(ra, rb, ec, vc_a, vc_b);
 
-        out.exc = static_cast<Real>(ex + ec);
-        out.vrho_alpha = static_cast<Real>(vx_a + vc_a);
-        out.vrho_beta  = static_cast<Real>(vx_b + vc_b);
+        out.exc = static_cast<double>(ex + ec);
+        out.vrho_alpha = static_cast<double>(vx_a + vc_a);
+        out.vrho_beta  = static_cast<double>(vx_b + vc_b);
     } else if (type == XCType::PBE) {
         // PBE = LSDA + gradient corrections.
         // Clamp per-spin densities to kRhoMin (matching libxc dens_threshold).
@@ -554,12 +554,12 @@ XCOutput evaluate_xc(XCType type, Real rho_a, Real rho_b,
                        ec_pbe, vc_pbe_a, vc_pbe_b,
                        vsig_c_aa, vsig_c_ab, vsig_c_bb);
 
-        out.exc = static_cast<Real>(ex_pbe + ec_pbe);
-        out.vrho_alpha = static_cast<Real>(vrho_x_a + vc_pbe_a);
-        out.vrho_beta  = static_cast<Real>(vrho_x_b + vc_pbe_b);
-        out.vsigma_aa = static_cast<Real>(vsig_x_aa + vsig_c_aa);
-        out.vsigma_ab = static_cast<Real>(vsig_c_ab);
-        out.vsigma_bb = static_cast<Real>(vsig_x_bb + vsig_c_bb);
+        out.exc = static_cast<double>(ex_pbe + ec_pbe);
+        out.vrho_alpha = static_cast<double>(vrho_x_a + vc_pbe_a);
+        out.vrho_beta  = static_cast<double>(vrho_x_b + vc_pbe_b);
+        out.vsigma_aa = static_cast<double>(vsig_x_aa + vsig_c_aa);
+        out.vsigma_ab = static_cast<double>(vsig_c_ab);
+        out.vsigma_bb = static_cast<double>(vsig_x_bb + vsig_c_bb);
     }
 
     return out;

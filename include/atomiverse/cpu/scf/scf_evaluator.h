@@ -47,7 +47,7 @@ public:
     /// @param fallback        Fall back to full SCF if corrector fails.
     /// @return Reference to this for chaining.
     SCFEvaluator& predictor(int order = 3, int corrector_steps = 2,
-                            Real corrector_tol = Real(1e-4), bool fallback = true);
+                            double corrector_tol = 1e-4, bool fallback = true);
 
     /// @brief Set a per-step callback for diagnostics.
     /// @param cb Callback invoked after each force evaluation.
@@ -64,7 +64,7 @@ private:
 
     bool use_predictor_ = false;
     int corrector_steps_ = 2;
-    Real corrector_tol_ = Real(1e-4);
+    double corrector_tol_ = 1e-4;
     bool fallback_full_scf_ = true;
     std::unique_ptr<ASPCPredictor> aspc_alpha_;
     std::unique_ptr<ASPCPredictor> aspc_beta_;

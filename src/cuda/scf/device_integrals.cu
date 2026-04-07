@@ -49,13 +49,13 @@ __device__ __forceinline__ work_t dist2_device(
 
 // ── Kernel: Boys function test (for validation) ───────────────────────
 
-__global__ void boys_f0_test_kernel(const real_t* x, Real* out, int n) {
+__global__ void boys_f0_test_kernel(const prec_t* x, prec_t* out, int n) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     for (int i = idx; i < n; i += blockDim.x * gridDim.x)
         out[i] = boys_f0_device(x[i]);
 }
 
-void launch_boys_f0_test(const real_t* d_x, Real* d_out, int n, void* stream) {
+void launch_boys_f0_test(const prec_t* d_x, prec_t* d_out, int n, void* stream) {
     auto s = static_cast<cudaStream_t>(stream);
     int threads = cuda::kDefaultBlock;
     int blocks = cuda::grid_size(n, threads);
@@ -74,7 +74,7 @@ void launch_boys_f0_test(const real_t* d_x, Real* d_out, int n, void* stream) {
 // This avoids 3× redundant exp() calls compared to separate S, T, V kernels.
 
 __global__ void compute_1e_kernel(
-    Real* S, Real* T, Real* V,
+    prec_t* S, prec_t* T, prec_t* V,
     const real_t* shell_alpha,     // [n_shells * n_prim]
     const real_t* shell_coeff,     // [n_shells * n_prim]
     const real_t* shell_centers,   // [n_shells * 3]
@@ -157,7 +157,7 @@ __global__ void compute_1e_kernel(
 }
 
 void launch_1e_integrals(
-    Real* S, Real* T, Real* V,
+    prec_t* S, prec_t* T, prec_t* V,
     const real_t* shell_alpha, const real_t* shell_coeff, const real_t* shell_centers,
     const int* atom_Z, const real_t* atom_pos,
     int n_shells, int n_prim, int natm,
@@ -183,7 +183,7 @@ void launch_1e_integrals(
 // On GPU, exp() costs ~20 cycles vs ~4 cycles for multiply.
 
 __global__ void compute_eri_kernel(
-    Real* ERI,
+    prec_t* ERI,
     const real_t* shell_alpha,     // [n_shells * n_prim]
     const real_t* shell_coeff,     // [n_shells * n_prim]
     const real_t* shell_centers,   // [n_shells * 3]
@@ -269,7 +269,7 @@ __global__ void compute_eri_kernel(
 }
 
 void launch_eri(
-    Real* ERI,
+    prec_t* ERI,
     const real_t* shell_alpha, const real_t* shell_coeff, const real_t* shell_centers,
     int n_shells, int n_prim,
     void* stream)

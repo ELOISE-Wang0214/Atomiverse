@@ -90,20 +90,20 @@ void bind_md(nb::module_& m) {
 
     nb::class_<cpu::md::VelocityVerlet>(m, "VelocityVerlet",
         "Symplectic velocity-Verlet integrator.")
-        .def(nb::init<Real>(), nb::arg("dt"),
+        .def(nb::init<double>(), nb::arg("dt"),
              "Construct with timestep dt [fs].")
     ;
 
     nb::class_<cpu::md::InitVelocity>(m, "InitVelocity",
         "Maxwell-Boltzmann velocity initialization.")
-        .def(nb::init<Real, unsigned>(),
+        .def(nb::init<double, unsigned>(),
              nb::arg("temperature"), nb::arg("seed"),
              "Construct with target temperature [K] and RNG seed.")
     ;
 
     nb::class_<cpu::md::NoseHoover>(m, "NoseHoover",
         "Nose-Hoover thermostat.")
-        .def(nb::init<Real, Real, Real>(),
+        .def(nb::init<double, double, double>(),
              nb::arg("T_target"), nb::arg("tau"), nb::arg("dt"),
              "Construct with target temperature [K], coupling time [fs], and timestep [fs].")
     ;
@@ -112,35 +112,35 @@ void bind_md(nb::module_& m) {
 
     nb::class_<cpu::md::LJ>(m, "LJ",
         "Lennard-Jones 12-6 pair potential.")
-        .def(nb::init<Real, Real, Real>(),
+        .def(nb::init<double, double, double>(),
              nb::arg("epsilon"), nb::arg("sigma"), nb::arg("cutoff"),
              "Construct with epsilon [eV], sigma [A], and cutoff [A].")
     ;
 
     nb::class_<cpu::md::NeighborList<>>(m, "NeighborList",
         "Cell-list based neighbor list component.")
-        .def(nb::init<Real, Real>(),
-             nb::arg("cutoff"), nb::arg("skin") = Real(-1),
+        .def(nb::init<double, double>(),
+             nb::arg("cutoff"), nb::arg("skin") = double(-1),
              "Construct with cutoff [A] and optional skin distance [A].")
     ;
 
     nb::class_<cpu::bonded::HarmonicBond>(m, "HarmonicBond",
         "Harmonic bond potential V = K(r - r0)^2.")
-        .def(nb::init<std::vector<Real>, std::vector<Real>>(),
+        .def(nb::init<std::vector<double>, std::vector<double>>(),
              nb::arg("K"), nb::arg("r0"),
              "Construct with force constants K and equilibrium distances r0 per bond type.")
     ;
 
     nb::class_<cpu::bonded::HarmonicAngle>(m, "HarmonicAngle",
         "Harmonic angle potential V = K(theta - theta0)^2.")
-        .def(nb::init<std::vector<Real>, std::vector<Real>>(),
+        .def(nb::init<std::vector<double>, std::vector<double>>(),
              nb::arg("K"), nb::arg("theta0"),
              "Construct with force constants K and equilibrium angles theta0 per angle type.")
     ;
 
     nb::class_<cpu::bonded::MultiHarmonicDihedral>(m, "MultiHarmonicDihedral",
         "Multi-harmonic dihedral potential.")
-        .def(nb::init<std::vector<std::vector<Real>>>(),
+        .def(nb::init<std::vector<std::vector<double>>>(),
              nb::arg("Cn"),
              "Construct with coefficients Cn per dihedral type.")
     ;

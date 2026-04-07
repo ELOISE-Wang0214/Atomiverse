@@ -15,17 +15,17 @@ namespace ATV {
 namespace cpu {
 namespace bonded {
 
-static inline void minimum_image(Real& dx, Real& dy, Real& dz, const Mat3& box) {
-    Real lx = box(0, 0), ly = box(1, 1), lz = box(2, 2);
-    if (dx >  lx * Real(0.5)) dx -= lx;
-    if (dx < -lx * Real(0.5)) dx += lx;
-    if (dy >  ly * Real(0.5)) dy -= ly;
-    if (dy < -ly * Real(0.5)) dy += ly;
-    if (dz >  lz * Real(0.5)) dz -= lz;
-    if (dz < -lz * Real(0.5)) dz += lz;
+static inline void minimum_image(double& dx, double& dy, double& dz, const Mat3& box) {
+    double lx = box(0, 0), ly = box(1, 1), lz = box(2, 2);
+    if (dx >  lx * double(0.5)) dx -= lx;
+    if (dx < -lx * double(0.5)) dx += lx;
+    if (dy >  ly * double(0.5)) dy -= ly;
+    if (dy < -ly * double(0.5)) dy += ly;
+    if (dz >  lz * double(0.5)) dz -= lz;
+    if (dz < -lz * double(0.5)) dz += lz;
 }
 
-HarmonicAngle::HarmonicAngle(std::vector<Real> K, std::vector<Real> theta0)
+HarmonicAngle::HarmonicAngle(std::vector<double> K, std::vector<double> theta0)
     : K_(std::move(K)), theta0_(std::move(theta0)) {}
 
 void HarmonicAngle::build(const cpu::BuildContext& ctx) {
@@ -33,24 +33,24 @@ void HarmonicAngle::build(const cpu::BuildContext& ctx) {
 #ifdef _OPENMP
     n_threads_ = omp_get_max_threads();
 #endif
-    Int n = ctx.frame.atoms.size();
+    int n = ctx.frame.atoms.size();
     fx_thr_.resize(n_threads_);
     fy_thr_.resize(n_threads_);
     fz_thr_.resize(n_threads_);
     for (int t = 0; t < n_threads_; ++t) {
-        fx_thr_[t].resize(n, Real(0));
-        fy_thr_[t].resize(n, Real(0));
-        fz_thr_[t].resize(n, Real(0));
+        fx_thr_[t].resize(n, double(0));
+        fy_thr_[t].resize(n, double(0));
+        fz_thr_[t].resize(n, double(0));
     }
 }
 
 void HarmonicAngle::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
-    Int n_angles = static_cast<Int>(f.angles.atomi.size());
+    int n_angles = static_cast<int>(f.angles.atomi.size());
     if (n_angles == 0) return;
 
-    Int n_atoms = f.atoms.size();
-    Real energy_total = 0;
+    int n_atoms = f.atoms.size();
+    double energy_total = 0;
 
     #pragma omp parallel reduction(+:energy_total)
     {
@@ -61,58 +61,58 @@ void HarmonicAngle::launch(const cpu::LaunchContext& ctx) {
         auto& fxt = fx_thr_[tid];
         auto& fyt = fy_thr_[tid];
         auto& fzt = fz_thr_[tid];
-        std::fill(fxt.begin(), fxt.end(), Real(0));
-        std::fill(fyt.begin(), fyt.end(), Real(0));
-        std::fill(fzt.begin(), fzt.end(), Real(0));
+        std::fill(fxt.begin(), fxt.end(), double(0));
+        std::fill(fyt.begin(), fyt.end(), double(0));
+        std::fill(fzt.begin(), fzt.end(), double(0));
 
         #pragma omp for schedule(static)
-        for (Int a = 0; a < n_angles; ++a) {
-            Int i = f.angles.atomi[a];
-            Int j = f.angles.atomj[a]; // center atom
-            Int k = f.angles.atomk[a];
-            Int type = f.angles.type[a];
+        for (int a = 0; a < n_angles; ++a) {
+            int i = f.angles.atomi[a];
+            int j = f.angles.atomj[a]; // center atom
+            int k = f.angles.atomk[a];
+            int type = f.angles.type[a];
 
             // r_ji = r_i - r_j
-            Real dx_ji = f.atoms.x[i] - f.atoms.x[j];
-            Real dy_ji = f.atoms.y[i] - f.atoms.y[j];
-            Real dz_ji = f.atoms.z[i] - f.atoms.z[j];
+            double dx_ji = f.atoms.x[i] - f.atoms.x[j];
+            double dy_ji = f.atoms.y[i] - f.atoms.y[j];
+            double dz_ji = f.atoms.z[i] - f.atoms.z[j];
             minimum_image(dx_ji, dy_ji, dz_ji, f.box);
 
             // r_jk = r_k - r_j
-            Real dx_jk = f.atoms.x[k] - f.atoms.x[j];
-            Real dy_jk = f.atoms.y[k] - f.atoms.y[j];
-            Real dz_jk = f.atoms.z[k] - f.atoms.z[j];
+            double dx_jk = f.atoms.x[k] - f.atoms.x[j];
+            double dy_jk = f.atoms.y[k] - f.atoms.y[j];
+            double dz_jk = f.atoms.z[k] - f.atoms.z[j];
             minimum_image(dx_jk, dy_jk, dz_jk, f.box);
 
-            Real r_ji = std::sqrt(dx_ji * dx_ji + dy_ji * dy_ji + dz_ji * dz_ji);
-            Real r_jk = std::sqrt(dx_jk * dx_jk + dy_jk * dy_jk + dz_jk * dz_jk);
+            double r_ji = std::sqrt(dx_ji * dx_ji + dy_ji * dy_ji + dz_ji * dz_ji);
+            double r_jk = std::sqrt(dx_jk * dx_jk + dy_jk * dy_jk + dz_jk * dz_jk);
 
-            Real cos_theta = (dx_ji * dx_jk + dy_ji * dy_jk + dz_ji * dz_jk) / (r_ji * r_jk);
-            cos_theta = std::max(Real(-1), std::min(Real(1), cos_theta));
-            Real theta = std::acos(cos_theta);
+            double cos_theta = (dx_ji * dx_jk + dy_ji * dy_jk + dz_ji * dz_jk) / (r_ji * r_jk);
+            cos_theta = std::max(double(-1), std::min(double(1), cos_theta));
+            double theta = std::acos(cos_theta);
 
-            Real dtheta = theta - theta0_[type];
+            double dtheta = theta - theta0_[type];
             energy_total += K_[type] * dtheta * dtheta;
 
             // dV/dtheta = 2 * K * dtheta
-            Real dV = Real(2) * K_[type] * dtheta;
+            double dV = double(2) * K_[type] * dtheta;
 
             // sin(theta) for force projection
-            Real sin_theta = std::sqrt(Real(1) - cos_theta * cos_theta);
-            if (sin_theta < Real(1e-10)) continue;
+            double sin_theta = std::sqrt(double(1) - cos_theta * cos_theta);
+            if (sin_theta < double(1e-10)) continue;
 
-            Real a_coeff = -dV / (r_ji * sin_theta);
-            Real c_coeff = -dV / (r_jk * sin_theta);
+            double a_coeff = -dV / (r_ji * sin_theta);
+            double c_coeff = -dV / (r_jk * sin_theta);
 
             // Force on i: a * (r_jk/r_jk - cos*r_ji/r_ji)
-            Real fi_x = a_coeff * (dx_jk / r_jk - cos_theta * dx_ji / r_ji);
-            Real fi_y = a_coeff * (dy_jk / r_jk - cos_theta * dy_ji / r_ji);
-            Real fi_z = a_coeff * (dz_jk / r_jk - cos_theta * dz_ji / r_ji);
+            double fi_x = a_coeff * (dx_jk / r_jk - cos_theta * dx_ji / r_ji);
+            double fi_y = a_coeff * (dy_jk / r_jk - cos_theta * dy_ji / r_ji);
+            double fi_z = a_coeff * (dz_jk / r_jk - cos_theta * dz_ji / r_ji);
 
             // Force on k: c * (r_ji/r_ji - cos*r_jk/r_jk)
-            Real fk_x = c_coeff * (dx_ji / r_ji - cos_theta * dx_jk / r_jk);
-            Real fk_y = c_coeff * (dy_ji / r_ji - cos_theta * dy_jk / r_jk);
-            Real fk_z = c_coeff * (dz_ji / r_ji - cos_theta * dz_jk / r_jk);
+            double fk_x = c_coeff * (dx_ji / r_ji - cos_theta * dx_jk / r_jk);
+            double fk_y = c_coeff * (dy_ji / r_ji - cos_theta * dy_jk / r_jk);
+            double fk_z = c_coeff * (dz_ji / r_ji - cos_theta * dz_jk / r_jk);
 
             // Force on j: -(fi + fk) (Newton's 3rd law)
             fxt[i] += fi_x;  fyt[i] += fi_y;  fzt[i] += fi_z;
@@ -123,7 +123,7 @@ void HarmonicAngle::launch(const cpu::LaunchContext& ctx) {
         }
 
         #pragma omp for schedule(static)
-        for (Int i = 0; i < n_atoms; ++i) {
+        for (int i = 0; i < n_atoms; ++i) {
             for (int t = 0; t < n_threads_; ++t) {
                 f.atoms.fx[i] += fx_thr_[t][i];
                 f.atoms.fy[i] += fy_thr_[t][i];

@@ -17,7 +17,7 @@ namespace cuda { namespace kernels {
 
 __global__ void lj_force(
     real_t* __restrict__ fx, real_t* __restrict__ fy, real_t* __restrict__ fz,
-    real_t* __restrict__ energy,
+    prec_t* __restrict__ energy,
     const int* __restrict__ pi, const int* __restrict__ pj,
     const real_t* __restrict__ pdx, const real_t* __restrict__ pdy,
     const real_t* __restrict__ pdz, const real_t* __restrict__ pdist,
@@ -41,12 +41,12 @@ __global__ void lj_force(
             work_t dx = pdx[idx], dy = pdy[idx], dz = pdz[idx];
 
             int i = pi[idx], j = pj[idx];
-            atomicAdd(&fx[i], -f_over_r * dx);
-            atomicAdd(&fy[i], -f_over_r * dy);
-            atomicAdd(&fz[i], -f_over_r * dz);
-            atomicAdd(&fx[j],  f_over_r * dx);
-            atomicAdd(&fy[j],  f_over_r * dy);
-            atomicAdd(&fz[j],  f_over_r * dz);
+            atomicAdd(&fx[i], static_cast<real_t>(-f_over_r * dx));
+            atomicAdd(&fy[i], static_cast<real_t>(-f_over_r * dy));
+            atomicAdd(&fz[i], static_cast<real_t>(-f_over_r * dz));
+            atomicAdd(&fx[j], static_cast<real_t>(f_over_r * dx));
+            atomicAdd(&fy[j], static_cast<real_t>(f_over_r * dy));
+            atomicAdd(&fz[j], static_cast<real_t>(f_over_r * dz));
 
             my_energy = work_t(4) * epsilon * (sr12 - sr6) - v_shift;
         }
@@ -60,7 +60,7 @@ __global__ void lj_force(
         __syncthreads();
     }
     if (threadIdx.x == 0 && s_energy[0] != work_t(0))
-        atomicAdd(energy, s_energy[0]);
+        atomicAdd(energy, static_cast<prec_t>(s_energy[0]));
 }
 
 }} // namespace cuda::kernels
@@ -70,7 +70,7 @@ namespace {
 constexpr int kEstMaxNeighbors = 100;
 } // anonymous namespace
 
-LJ::LJ(work_t epsilon, work_t sigma, work_t cutoff)
+LJ::LJ(double epsilon, double sigma, double cutoff)
     : epsilon_(epsilon), sigma_(sigma), cutoff_(cutoff) {
     v_shift_ = cuda::kernels::lj_shift(epsilon, sigma, cutoff);
 }

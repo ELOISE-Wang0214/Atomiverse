@@ -8,7 +8,7 @@ namespace ATV {
 namespace cpu {
 namespace scf {
 
-RHFResult rhf_solve(const IntegralPack& integrals, Real tol, int max_iter) {
+RHFResult rhf_solve(const IntegralPack& integrals, double tol, int max_iter) {
     auto config = rhf_config(integrals, tol);
     config.max_iter = max_iter;
     auto r = scf_solve(integrals, config);

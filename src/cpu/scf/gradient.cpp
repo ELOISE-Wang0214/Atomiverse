@@ -27,29 +27,29 @@ namespace scf {
 // ── Shared helpers ───────────────────────────────────────────────────
 
 static void accumulate_W(
-    xt::xtensor<Real, 2>& W,
-    const xt::xtensor<Real, 2>& C,
-    const xt::xtensor<Real, 1>& eigenvalues,
-    Int n_occ, Int n_basis)
+    xt::xtensor<double, 2>& W,
+    const xt::xtensor<double, 2>& C,
+    const xt::xtensor<double, 1>& eigenvalues,
+    int n_occ, int n_basis)
 {
-    for (Int i = 0; i < n_occ; ++i)
-        for (Int mu = 0; mu < n_basis; ++mu)
-            for (Int nu = 0; nu < n_basis; ++nu)
+    for (int i = 0; i < n_occ; ++i)
+        for (int mu = 0; mu < n_basis; ++mu)
+            for (int nu = 0; nu < n_basis; ++nu)
                 W(mu, nu) += eigenvalues(i) * C(mu, i) * C(nu, i);
 }
 
 static void accumulate_common_gradient(
-    xt::xtensor<Real, 2>& grad,
-    const xt::xtensor<Real, 2>& P,
-    const xt::xtensor<Real, 2>& W,
+    xt::xtensor<double, 2>& grad,
+    const xt::xtensor<double, 2>& P,
+    const xt::xtensor<double, 2>& W,
     const IntegralDerivPack& dpack,
-    Int n_basis, int natm)
+    int n_basis, int natm)
 {
     for (int A = 0; A < natm; ++A) {
         for (int d = 0; d < 3; ++d) {
-            Real val = 0;
-            for (Int mu = 0; mu < n_basis; ++mu)
-                for (Int nu = 0; nu < n_basis; ++nu) {
+            double val = 0;
+            for (int mu = 0; mu < n_basis; ++mu)
+                for (int nu = 0; nu < n_basis; ++nu) {
                     val += P(mu, nu) * (dpack.dT(A, d, mu, nu) + dpack.dV(A, d, mu, nu));
                     val -= W(mu, nu) * dpack.dS(A, d, mu, nu);
                 }
@@ -60,10 +60,10 @@ static void accumulate_common_gradient(
 }
 
 static GradientResult make_result(
-    const xt::xtensor<Real, 2>& grad, Real energy_hartree, int natm)
+    const xt::xtensor<double, 2>& grad, double energy_hartree, int natm)
 {
     GradientResult out;
-    out.forces = xt::zeros<Real>({(Int)natm, (Int)3});
+    out.forces = xt::zeros<double>({(int)natm, (int)3});
     for (int A = 0; A < natm; ++A)
         for (int d = 0; d < 3; ++d)
             out.forces(A, d) = -grad(A, d) * kForceAU2Metal;
@@ -84,13 +84,13 @@ static GradientResult make_result(
 // contribution and batching the Hessian evaluation is more complex).
 
 static void accumulate_xc_gradient(
-    xt::xtensor<Real, 2>& grad_out,
+    xt::xtensor<double, 2>& grad_out,
     const IntegralPack& integrals,
     const SCFResult& result,
     const SCFConfig& config,
     const std::vector<int>& shell_to_atom,
-    const std::vector<std::vector<Int>>& atom_shells,
-    int natm, Int n)
+    const std::vector<std::vector<int>>& atom_shells,
+    int natm, int n)
 {
     bool is_gga = (config.xc_type == XCType::PBE);
     const int N = static_cast<int>(n);
@@ -213,7 +213,7 @@ static void accumulate_xc_gradient(
             double xc_grad = 0;
 
             // LDA contribution via pre-weighted T
-            for (Int mu : shells_A) {
+            for (int mu : shells_A) {
                 for (int g = 0; g < G; ++g) {
                     double dphi_d = dPhi(g, mu, dd);
                     xc_grad -= 2.0 * (WT_a(g, mu) + WT_b(g, mu)) * dphi_d;
@@ -230,7 +230,7 @@ static void accumulate_xc_gradient(
 
                     double dgrad_rho_a[3] = {0,0,0}, dgrad_rho_b[3] = {0,0,0};
 
-                    for (Int mu : shells_A) {
+                    for (int mu : shells_A) {
                         double dphi_mu_d = dPhi(g, mu, dd);
                         for (int nu = 0; nu < N; ++nu) {
                             double pa = Pa(mu, nu), pb = Pb(mu, nu);
@@ -243,7 +243,7 @@ static void accumulate_xc_gradient(
                             }
                         }
                     }
-                    for (Int nu : shells_A) {
+                    for (int nu : shells_A) {
                         double dphi_nu_d = dPhi(g, nu, dd);
                         for (int mu = 0; mu < N; ++mu) {
                             if (shell_to_atom[mu] == A) continue;
@@ -269,7 +269,7 @@ static void accumulate_xc_gradient(
                 }
             }
 
-            grad_out(A, dd) += static_cast<Real>(xc_grad);
+            grad_out(A, dd) += static_cast<double>(xc_grad);
         }
     }
 }
@@ -283,7 +283,7 @@ GradientResult scf_gradient(
     const SCFConfig& config)
 {
     int natm = static_cast<int>(frame.atoms.size());
-    Int n = integrals.n_basis;
+    int n = integrals.n_basis;
     bool is_ks = (config.method == MeanFieldType::KS);
     bool restricted = (config.spin == SpinType::Restricted);
 
@@ -291,15 +291,15 @@ GradientResult scf_gradient(
 
     // Restricted: P_alpha IS P_total (factor 2 included in scf_solve)
     // Unrestricted: P_total = P_alpha + P_beta (per-spin)
-    xt::xtensor<Real, 2> P = restricted
-        ? xt::xtensor<Real, 2>(result.P_alpha)
-        : xt::xtensor<Real, 2>(result.P_alpha + result.P_beta);
+    xt::xtensor<double, 2> P = restricted
+        ? xt::xtensor<double, 2>(result.P_alpha)
+        : xt::xtensor<double, 2>(result.P_alpha + result.P_beta);
 
-    xt::xtensor<Real, 2> W = xt::zeros<Real>({n, n});
+    xt::xtensor<double, 2> W = xt::zeros<double>({n, n});
     accumulate_W(W, result.C_alpha, result.eigenvalues_alpha, result.n_alpha, n);
     accumulate_W(W, result.C_beta, result.eigenvalues_beta, result.n_beta, n);
 
-    xt::xtensor<Real, 2> grad = xt::zeros<Real>({(Int)natm, (Int)3});
+    xt::xtensor<double, 2> grad = xt::zeros<double>({(int)natm, (int)3});
 
     accumulate_common_gradient(grad, P, W, dpack, n, natm);
 
@@ -311,10 +311,10 @@ GradientResult scf_gradient(
 
     for (int A = 0; A < natm; ++A)
         for (int d = 0; d < 3; ++d)
-            for (Int mu = 0; mu < n; ++mu)
-                for (Int nu = 0; nu < n; ++nu)
-                    for (Int k = 0; k < n; ++k)
-                        for (Int l = 0; l < n; ++l) {
+            for (int mu = 0; mu < n; ++mu)
+                for (int nu = 0; nu < n; ++nu)
+                    for (int k = 0; k < n; ++k)
+                        for (int l = 0; l < n; ++l) {
                             if (is_restricted_hf) {
                                 // RHF fused: 0.5*P*P*[dERI_coulomb - 0.5*dERI_exchange]
                                 grad(A, d) += 0.5 * P(mu, nu) * P(k, l)
@@ -337,11 +337,11 @@ GradientResult scf_gradient(
     // XC grid contribution (KS only)
     if (is_ks) {
         std::vector<int> shell_to_atom(n);
-        std::vector<std::vector<Int>> atom_shells(natm);
+        std::vector<std::vector<int>> atom_shells(natm);
         {
             int idx = 0;
             for (int a = 0; a < natm; ++a) {
-                for (Int mu = idx; mu < n; ++mu) {
+                for (int mu = idx; mu < n; ++mu) {
                     double dx = integrals.shells[mu].center[0] - integrals.atoms[a].pos[0];
                     double dy = integrals.shells[mu].center[1] - integrals.atoms[a].pos[1];
                     double dz = integrals.shells[mu].center[2] - integrals.atoms[a].pos[2];
@@ -368,16 +368,16 @@ GradientResult scf_finite_difference_gradient(
     const Frame& frame,
     const SCFConfig& config,
     int charge,
-    Real h)
+    double h)
 {
     int natm = static_cast<int>(frame.atoms.size());
 
     auto energy_fn = [&](const Frame& f) {
         return scf_solve(build_integrals_sto3g(f, charge), config).energy;
     };
-    Real ref_energy = energy_fn(frame);
+    double ref_energy = energy_fn(frame);
 
-    xt::xtensor<Real, 2> forces = xt::zeros<Real>({(Int)natm, (Int)3});
+    xt::xtensor<double, 2> forces = xt::zeros<double>({(int)natm, (int)3});
 
     for (int A = 0; A < natm; ++A) {
         for (int d = 0; d < 3; ++d) {
@@ -385,13 +385,13 @@ GradientResult scf_finite_difference_gradient(
             if (d == 0) fwd.atoms.x(A) += h;
             else if (d == 1) fwd.atoms.y(A) += h;
             else fwd.atoms.z(A) += h;
-            Real e_fwd = energy_fn(fwd);
+            double e_fwd = energy_fn(fwd);
 
             Frame bwd = frame;
             if (d == 0) bwd.atoms.x(A) -= h;
             else if (d == 1) bwd.atoms.y(A) -= h;
             else bwd.atoms.z(A) -= h;
-            Real e_bwd = energy_fn(bwd);
+            double e_bwd = energy_fn(bwd);
 
             forces(A, d) = -(e_fwd - e_bwd) / (2.0 * h) * kHartree2eV;
         }

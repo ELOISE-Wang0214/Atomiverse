@@ -17,11 +17,11 @@ using cuda::prec_t;
 namespace md {
 
 struct Barostat::State {
-    Real* d_mu = nullptr;  // scale factor [device, 1 element]
+    work_t* d_mu = nullptr;  // scale factor [device, 1 element]
     int n_atoms = 0;
 };
 
-Barostat::Barostat(work_t P_target, work_t tau_p, work_t dt)
+Barostat::Barostat(double P_target, double tau_p, double dt)
     : P_target_(P_target), tau_p_(tau_p), dt_(dt),
       state_(std::make_unique<State>()) {}
 
@@ -38,14 +38,14 @@ namespace {
 // Compute μ from pressure and target, then scale box + positions
 __global__ void berendsen_scale_k(
     real_t* __restrict__ x, real_t* __restrict__ y, real_t* __restrict__ z,
-    real_t* __restrict__ box, const real_t* __restrict__ stress,
+    prec_t* __restrict__ box, const prec_t* __restrict__ stress,
     work_t P_target, work_t beta_dt_tau, int n)
 {
     // Isotropic pressure = -(σ_xx + σ_yy + σ_zz) / 3
     // Compute P and mu once per block via shared memory
     __shared__ work_t s_mu;
     if (threadIdx.x == 0) {
-        work_t P = -(stress[0] + stress[1] + stress[2]) / work_t(3);
+        work_t P = -(static_cast<work_t>(stress[0]) + static_cast<work_t>(stress[1]) + static_cast<work_t>(stress[2])) / work_t(3);
         s_mu = cbrt(work_t(1) - beta_dt_tau * (P_target - P));
     }
     __syncthreads();
@@ -53,15 +53,17 @@ __global__ void berendsen_scale_k(
 
     // Thread 0 of block 0 rescales box
     if (threadIdx.x == 0 && blockIdx.x == 0) {
-        box[0] *= mu; box[4] *= mu; box[8] *= mu;
+        box[0] = static_cast<prec_t>(static_cast<work_t>(box[0]) * mu);
+        box[4] = static_cast<prec_t>(static_cast<work_t>(box[4]) * mu);
+        box[8] = static_cast<prec_t>(static_cast<work_t>(box[8]) * mu);
     }
 
     // All threads rescale positions
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= n) return;
-    x[idx] *= mu;
-    y[idx] *= mu;
-    z[idx] *= mu;
+    x[idx] = static_cast<real_t>(static_cast<work_t>(x[idx]) * mu);
+    y[idx] = static_cast<real_t>(static_cast<work_t>(y[idx]) * mu);
+    z[idx] = static_cast<real_t>(static_cast<work_t>(z[idx]) * mu);
 }
 
 } // anonymous namespace

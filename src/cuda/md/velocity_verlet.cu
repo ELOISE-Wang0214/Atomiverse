@@ -22,14 +22,14 @@ __global__ void initial_integrate(
     real_t* __restrict__ vx, real_t* __restrict__ vy, real_t* __restrict__ vz,
     const real_t* __restrict__ fx, const real_t* __restrict__ fy,
     const real_t* __restrict__ fz, const real_t* __restrict__ mass,
-    const real_t* __restrict__ box, work_t dt, int n) {
+    const prec_t* __restrict__ box, work_t dt, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n) return;
-    work_t inv_m = work_t(1) / mass[i];
+    work_t inv_m = work_t(1) / static_cast<work_t>(mass[i]);
     work_t hdt = work_t(0.5) * dt;
-    work_t ax = fx[i] * inv_m * kFtm2v;
-    work_t ay = fy[i] * inv_m * kFtm2v;
-    work_t az = fz[i] * inv_m * kFtm2v;
+    work_t ax = static_cast<work_t>(fx[i]) * inv_m * kFtm2v;
+    work_t ay = static_cast<work_t>(fy[i]) * inv_m * kFtm2v;
+    work_t az = static_cast<work_t>(fz[i]) * inv_m * kFtm2v;
     vx[i] += hdt * ax;
     vy[i] += hdt * ay;
     vz[i] += hdt * az;
@@ -51,11 +51,11 @@ __global__ void final_integrate(
     work_t dt, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n) return;
-    work_t inv_m = work_t(1) / mass[i];
+    work_t inv_m = work_t(1) / static_cast<work_t>(mass[i]);
     work_t hdt = work_t(0.5) * dt;
-    vx[i] += hdt * fx[i] * inv_m * kFtm2v;
-    vy[i] += hdt * fy[i] * inv_m * kFtm2v;
-    vz[i] += hdt * fz[i] * inv_m * kFtm2v;
+    vx[i] += hdt * static_cast<work_t>(fx[i]) * inv_m * kFtm2v;
+    vy[i] += hdt * static_cast<work_t>(fy[i]) * inv_m * kFtm2v;
+    vz[i] += hdt * static_cast<work_t>(fz[i]) * inv_m * kFtm2v;
 }
 
 } // anonymous namespace

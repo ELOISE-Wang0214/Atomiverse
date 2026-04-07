@@ -30,10 +30,10 @@ void bind_optimizer(nb::module_& m) {
 
     nb::class_<cpu::minimizer::LBFGSStep>(m, "LBFGSStep",
         "L-BFGS step component (search direction + convergence check).")
-        .def(nb::init<int, Real, Real, int>(),
+        .def(nb::init<int, double, double, int>(),
              nb::arg("memory") = 5,
-             nb::arg("alpha0") = Real(0.01),
-             nb::arg("ftol") = Real(0.05),
+             nb::arg("alpha0") = double(0.01),
+             nb::arg("ftol") = double(0.05),
              nb::arg("max_ls") = 10,
              "Construct L-BFGS step.\n"
              "memory: correction pair history size.\n"

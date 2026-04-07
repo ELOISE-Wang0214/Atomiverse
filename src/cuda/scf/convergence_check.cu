@@ -34,29 +34,29 @@ void ConvergenceCheck::launch(const LaunchContext& ctx) {
     int nn = n * n;
 
     // work = P - P_old
-    cudaMemcpyAsync(scf.work, scf.P, nn * sizeof(work_t),
+    cudaMemcpyAsync(scf.work, scf.P, nn * sizeof(prec_t),
                     cudaMemcpyDeviceToDevice, stream);
-    work_t neg_one = work_t(-1);
+    prec_t neg_one = prec_t(-1);
     detail::axpy(handle, nn, &neg_one, scf.P_old, 1, scf.work, 1);
 
     // ||P - P_old||_F = nrm2(work)
-    work_t norm = 0;
+    prec_t norm = 0;
     detail::nrm2(handle, nn, scf.work, 1, &norm);
 
     // Optionally compute energy = dot(H, P) (toy-scf mode)
     if (compute_energy_) {
-        work_t energy = 0;
+        prec_t energy = 0;
         detail::dot(handle, nn, scf.H, 1, scf.P, 1, &energy);
-        cudaMemcpyAsync(ctx.frame.energy, &energy, sizeof(work_t),
+        cudaMemcpyAsync(ctx.frame.energy, &energy, sizeof(prec_t),
                         cudaMemcpyHostToDevice, stream);
     }
     cudaStreamSynchronize(stream);
 
     // Update host-cached convergence state
-    scf.residual = norm;
+    scf.residual = static_cast<double>(norm);
     scf.iteration = ctx.step;
 
-    if (ctx.step > 0 && norm < tol_) {
+    if (ctx.step > 0 && static_cast<double>(norm) < tol_) {
         scf.converged = true;
     }
 }

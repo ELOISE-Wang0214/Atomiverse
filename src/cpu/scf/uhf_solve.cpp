@@ -9,7 +9,7 @@ namespace cpu {
 namespace scf {
 
 UHFResult uhf_solve(const IntegralPack& integrals, int n_alpha, int n_beta,
-                    Real tol, int max_iter) {
+                    double tol, int max_iter) {
     auto config = uhf_config(integrals, n_alpha, n_beta, tol);
     config.max_iter = max_iter;
     auto r = scf_solve(integrals, config);

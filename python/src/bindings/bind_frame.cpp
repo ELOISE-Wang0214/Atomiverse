@@ -6,7 +6,7 @@
 void bind_frame(nb::module_& m) {
     nb::class_<CpuFrame>(m, "CpuFrame",
         "Internal CPU frame wrapper (numpy <-> cpu::Frame bridge).")
-        .def(nb::init<Int>(), nb::arg("n_atoms"),
+        .def(nb::init<int>(), nb::arg("n_atoms"),
              "Create a CpuFrame with the given number of atoms.")
         .def_prop_ro("n_atoms", &CpuFrame::n_atoms)
         // Populate

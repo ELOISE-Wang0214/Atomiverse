@@ -15,7 +15,7 @@ using cuda::prec_t;
 
 namespace md {
 
-Deform::Deform(int axis, work_t strain_rate, work_t dt)
+Deform::Deform(int axis, double strain_rate, double dt)
     : axis_(axis), strain_rate_(strain_rate), dt_(dt) {}
 
 std::vector<DefaultBinding> Deform::default_bindings() const {
@@ -26,18 +26,19 @@ namespace {
 
 __global__ void deform_k(
     real_t* __restrict__ pos,       // x, y, or z depending on axis
-    real_t* __restrict__ box,       // 3x3 row-major
+    prec_t* __restrict__ box,       // 3x3 row-major
     int axis, work_t scale_factor, int n)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= n) return;
 
     // Remap atom position proportionally
-    pos[idx] *= scale_factor;
+    pos[idx] = static_cast<real_t>(static_cast<work_t>(pos[idx]) * scale_factor);
 
     // Thread 0 updates the box diagonal element
     if (idx == 0) {
-        box[axis * 3 + axis] *= scale_factor;
+        int box_idx = axis * 3 + axis;
+        box[box_idx] = static_cast<prec_t>(static_cast<work_t>(box[box_idx]) * scale_factor);
     }
 }
 
@@ -52,7 +53,7 @@ void Deform::launch(const LaunchContext& ctx) {
 
     work_t scale = work_t(1) + strain_rate_ * dt_;
 
-    Real* pos = nullptr;
+    real_t* pos = nullptr;
     switch (axis_) {
         case 0: pos = f.atoms.x; break;
         case 1: pos = f.atoms.y; break;

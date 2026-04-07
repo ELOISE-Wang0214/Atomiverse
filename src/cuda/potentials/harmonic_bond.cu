@@ -20,10 +20,10 @@ namespace cuda { namespace kernels {
 __global__ void harmonic_bond_k(
     const real_t* __restrict__ x, const real_t* __restrict__ y, const real_t* __restrict__ z,
     real_t* __restrict__ fx, real_t* __restrict__ fy, real_t* __restrict__ fz,
-    real_t* __restrict__ energy,
+    prec_t* __restrict__ energy,
     const int* __restrict__ bi, const int* __restrict__ bj, const int* __restrict__ bt,
-    const real_t* __restrict__ K, const real_t* __restrict__ r0,
-    const real_t* __restrict__ box, int n_bonds)
+    const work_t* __restrict__ K, const work_t* __restrict__ r0,
+    const prec_t* __restrict__ box, int n_bonds)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= n_bonds) return;
@@ -52,12 +52,12 @@ __global__ void harmonic_bond_k(
     work_t f_y = f_over_r * dy;
     work_t f_z = f_over_r * dz;
 
-    atomicAdd(&fx[j], f_x);
-    atomicAdd(&fy[j], f_y);
-    atomicAdd(&fz[j], f_z);
-    atomicAdd(&fx[i], -f_x);
-    atomicAdd(&fy[i], -f_y);
-    atomicAdd(&fz[i], -f_z);
+    atomicAdd(&fx[j], static_cast<real_t>(f_x));
+    atomicAdd(&fy[j], static_cast<real_t>(f_y));
+    atomicAdd(&fz[j], static_cast<real_t>(f_z));
+    atomicAdd(&fx[i], static_cast<real_t>(-f_x));
+    atomicAdd(&fy[i], static_cast<real_t>(-f_y));
+    atomicAdd(&fz[i], static_cast<real_t>(-f_z));
 
     // Block-level energy reduction
     extern __shared__ work_t sdata[];
@@ -67,18 +67,18 @@ __global__ void harmonic_bond_k(
         if (threadIdx.x < s) sdata[threadIdx.x] += sdata[threadIdx.x + s];
         __syncthreads();
     }
-    if (threadIdx.x == 0) atomicAdd(energy, sdata[0]);
+    if (threadIdx.x == 0) atomicAdd(energy, static_cast<prec_t>(sdata[0]));
 }
 
 }} // namespace cuda::kernels
 
 struct HarmonicBond::State {
-    Real* d_K = nullptr;
-    Real* d_r0 = nullptr;
+    work_t* d_K = nullptr;
+    work_t* d_r0 = nullptr;
     int n_types = 0;
 };
 
-HarmonicBond::HarmonicBond(std::vector<work_t> K, std::vector<work_t> r0)
+HarmonicBond::HarmonicBond(std::vector<double> K, std::vector<double> r0)
     : K_(std::move(K)), r0_(std::move(r0)), state_(std::make_unique<State>()) {}
 
 HarmonicBond::~HarmonicBond() = default;

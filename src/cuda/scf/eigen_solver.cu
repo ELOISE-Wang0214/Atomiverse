@@ -29,10 +29,10 @@ void EigenSolver::build(const BuildContext& ctx) {
     int lwork = 0;
     detail::syevd_bufferSize(
         handle, CUSOLVER_EIG_MODE_VECTOR, CUBLAS_FILL_MODE_LOWER,
-        n, static_cast<Real*>(nullptr), n, static_cast<Real*>(nullptr), &lwork);
+        n, static_cast<prec_t*>(nullptr), n, static_cast<prec_t*>(nullptr), &lwork);
 
     work_size_ = lwork;
-    cudaMalloc(&d_work_, lwork * sizeof(work_t));
+    cudaMalloc(&d_work_, lwork * sizeof(prec_t));
     cudaMalloc(&d_info_, sizeof(int));
 
     cudaStreamSynchronize(stream);
@@ -47,7 +47,7 @@ void EigenSolver::launch(const LaunchContext& ctx) {
     int n = scf.n;
 
     // Copy H -> C (syevd solves in-place, overwrites input with eigenvectors)
-    cudaMemcpyAsync(scf.C, scf.H, n * n * sizeof(work_t),
+    cudaMemcpyAsync(scf.C, scf.H, n * n * sizeof(prec_t),
                     cudaMemcpyDeviceToDevice, stream);
 
     // Solve: C -> eigenvectors (column-major), eig -> eigenvalues (ascending)

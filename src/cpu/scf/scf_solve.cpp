@@ -37,7 +37,7 @@ namespace scf {
 // ── Unified SCF solver ──────────────────────────────────────────────���───
 
 SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config) {
-    Int n = integrals.n_basis;
+    int n = integrals.n_basis;
     RealMatrix S_cm     = integrals.S;
     RealMatrix Hcore_cm = integrals.Hcore;
 
@@ -63,7 +63,7 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config) {
     RealMatrix P_alpha, P_beta;
     if (restricted) {
         // RHF: P = 2 * C_occ * C_occ^T
-        P_alpha = build_density_matrix(C0, n_alpha, n, Real(2));
+        P_alpha = build_density_matrix(C0, n_alpha, n, double(2));
         P_beta  = P_alpha;  // alias — not used independently
     } else {
         // UHF: always apply HOMO-LUMO mixing to break spin symmetry
@@ -82,8 +82,8 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config) {
 
     // ── 4. Convergence infrastructure ───────────────────────────────────
     DIIS diis(config.diis_max_vectors);
-    Real damping = config.damping_factor;
-    Real prev_residual = Real(1);  // track residual from previous iteration
+    double damping = config.damping_factor;
+    double prev_residual = double(1);  // track residual from previous iteration
 
     RealMatrix C_alpha = C0, C_beta = C0;
     RealVector eig_alpha = eig0, eig_beta = eig0;
@@ -99,8 +99,8 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config) {
         // ── 5a. Build Fock matrices (method-dependent) ──────────────────
         RealMatrix F_alpha, F_beta;
         RealMatrix J;
-        Real E_xc_grid = 0;
-        Real int_n_alpha = 0, int_n_beta = 0;
+        double E_xc_grid = 0;
+        double int_n_alpha = 0, int_n_beta = 0;
 
         if (restricted && is_hf) {
             // RHF: fused G = J - 0.5K
@@ -160,7 +160,7 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config) {
         // ── 5d. Build density ───────────────────────────────────────────
         RealMatrix P_alpha_new, P_beta_new;
         if (restricted) {
-            P_alpha_new = build_density_matrix(C_alpha, n_alpha, n, Real(2));
+            P_alpha_new = build_density_matrix(C_alpha, n_alpha, n, double(2));
             P_beta_new  = P_alpha_new;
         } else {
             P_alpha_new = build_density_matrix(C_alpha, n_alpha, n);
@@ -174,9 +174,9 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config) {
         // points (Pulay, J. Comp. Chem. 3, 556, 1982).
         RealMatrix P_alpha_next, P_beta_next;
         if (!diis_active) {
-            P_alpha_next = damping * P_alpha_new + (Real(1) - damping) * P_alpha;
+            P_alpha_next = damping * P_alpha_new + (double(1) - damping) * P_alpha;
             if (!restricted)
-                P_beta_next = damping * P_beta_new + (Real(1) - damping) * P_beta;
+                P_beta_next = damping * P_beta_new + (double(1) - damping) * P_beta;
             else
                 P_beta_next = P_alpha_next;
         } else {
@@ -187,12 +187,12 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config) {
         // ── 5f. Energy evaluation ───────────────────────────────────────
         // Use the trace form: E = 0.5 * Σ_σ Tr[(Hcore + F^σ) · P^σ] + V_nuc
         // This is self-consistent with the Fock matrices that were actually built.
-        Real E_total;
-        Real E_one = 0, E_J = 0, E_K = 0;
+        double E_total;
+        double E_one = 0, E_J = 0, E_K = 0;
 
         if (restricted) {
             // RHF: E = 0.5 * Tr[(Hcore + F) * P] + V_nuc
-            E_total = Real(0.5) * xt::sum((Hcore_cm + F_alpha) * P_alpha_new)()
+            E_total = double(0.5) * xt::sum((Hcore_cm + F_alpha) * P_alpha_new)()
                     + integrals.V_nuc;
             // Decompose: E_one = Tr[Hcore * P], E_J = 0.5*Tr[J*P], E_K via difference
             E_one = xt::sum(Hcore_cm * P_alpha_new)();
@@ -201,7 +201,7 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config) {
             // Approximate via: E_elec = E_total - V_nuc, E_J+E_K = E_elec - E_one
         } else if (is_hf) {
             // UHF: E = 0.5 * [Tr((H+F^α)*P^α) + Tr((H+F^β)*P^β)] + V_nuc
-            E_total = Real(0.5) * (
+            E_total = double(0.5) * (
                 xt::sum((Hcore_cm + F_alpha) * P_alpha_new)() +
                 xt::sum((Hcore_cm + F_beta)  * P_beta_new)()
             ) + integrals.V_nuc;
@@ -210,15 +210,15 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config) {
             // UKS: E = Σ_σ Tr[Hcore·P^σ] + 0.5*Tr[J·P_total] + E_xc + V_nuc
             RealMatrix P_total_new = P_alpha_new + P_beta_new;
             E_one = xt::sum(Hcore_cm * P_alpha_new)() + xt::sum(Hcore_cm * P_beta_new)();
-            E_J = Real(0.5) * xt::sum(J * P_total_new)();
+            E_J = double(0.5) * xt::sum(J * P_total_new)();
             E_total = E_one + E_J + E_xc_grid + integrals.V_nuc;
         }
 
         // ── 5g. Convergence check ───────────────────────────────────────
-        Real res_a = xt::norm_l2(P_alpha_next - P_alpha)();
-        Real res_b = restricted ? Real(0) :
-                     (n_beta > 0 ? xt::norm_l2(P_beta_next - P_beta)() : Real(0));
-        Real residual = std::max(res_a, res_b);
+        double res_a = xt::norm_l2(P_alpha_next - P_alpha)();
+        double res_b = restricted ? double(0) :
+                     (n_beta > 0 ? xt::norm_l2(P_beta_next - P_beta)() : double(0));
+        double residual = std::max(res_a, res_b);
         prev_residual = residual;
 
         P_alpha = P_alpha_next;

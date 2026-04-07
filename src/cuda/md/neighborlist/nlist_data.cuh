@@ -18,17 +18,17 @@ inline constexpr int kClusterSize = 8;
 /// @note Non-owning view; lifetime managed by NListBuffers.
 template <typename work_t>
 struct ClusterData {
-    Real* x;                ///< [num_clusters * kClusterSize]
-    Real* y;                ///< [num_clusters * kClusterSize]
-    Real* z;                ///< [num_clusters * kClusterSize]
+    work_t* x;                ///< [num_clusters * kClusterSize]
+    work_t* y;                ///< [num_clusters * kClusterSize]
+    work_t* z;                ///< [num_clusters * kClusterSize]
     int* original_index;    ///< [num_clusters * kClusterSize] map to input order
     int* cluster_count;     ///< [num_clusters] actual atom count (<=kClusterSize)
-    Real* aabb_min_x;       ///< [num_clusters]
-    Real* aabb_min_y;       ///< [num_clusters]
-    Real* aabb_min_z;       ///< [num_clusters]
-    Real* aabb_max_x;       ///< [num_clusters]
-    Real* aabb_max_y;       ///< [num_clusters]
-    Real* aabb_max_z;       ///< [num_clusters]
+    work_t* aabb_min_x;       ///< [num_clusters]
+    work_t* aabb_min_y;       ///< [num_clusters]
+    work_t* aabb_min_z;       ///< [num_clusters]
+    work_t* aabb_max_x;       ///< [num_clusters]
+    work_t* aabb_max_y;       ///< [num_clusters]
+    work_t* aabb_max_z;       ///< [num_clusters]
     int num_clusters;
     int num_atoms;
 };

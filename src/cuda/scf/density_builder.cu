@@ -34,13 +34,13 @@ void DensityBuilder::launch(const LaunchContext& ctx) {
     int n_occ = scf.n_occ;
 
     // Save P -> P_old
-    cudaMemcpyAsync(scf.P_old, scf.P, n * n * sizeof(work_t),
+    cudaMemcpyAsync(scf.P_old, scf.P, n * n * sizeof(prec_t),
                     cudaMemcpyDeviceToDevice, stream);
 
     // P = C_occ * C_occ^T  (gemm: C * C^T, using first n_occ columns)
     // C is n x n column-major. C_occ = C[:, 0:n_occ] = first n_occ*n elements.
-    work_t one = work_t(1);
-    work_t zero = work_t(0);
+    prec_t one = prec_t(1);
+    prec_t zero = prec_t(0);
     detail::gemm(handle, CUBLAS_OP_N, CUBLAS_OP_T,
                  n, n, n_occ,
                  &one, scf.C, n, scf.C, n,

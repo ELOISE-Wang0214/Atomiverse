@@ -1,9 +1,9 @@
 /// @file cpu/scf/xc_libxc.h
-/// @brief libxc-based XC evaluator — ground truth reference for native validation.
+/// @brief libxc-based XC evaluator -- ground truth reference for native validation.
 ///
 /// Provides the same interface as evaluate_xc() but delegates to libxc.
 /// Gated by ATV_HAS_LIBXC. When enabled, native XC output must match
-/// libxc to 1e-12 at every test point — any discrepancy is a bug in native code.
+/// libxc to 1e-12 at every test point -- any discrepancy is a bug in native code.
 ///
 /// LSDA: XC_LDA_X (Slater) + XC_LDA_C_VWN (VWN5, functional id 7)
 /// PBE:  XC_GGA_X_PBE + XC_GGA_C_PBE
@@ -29,8 +29,8 @@ namespace scf {
 /// @param sigma_ab grad rho_alpha . grad rho_beta (GGA only).
 /// @param sigma_bb |grad rho_beta|^2 (GGA only).
 /// @return XCOutput with energy density and potential derivatives.
-XCOutput evaluate_xc_libxc(XCType type, Real rho_a, Real rho_b,
-                           Real sigma_aa = 0, Real sigma_ab = 0, Real sigma_bb = 0);
+XCOutput evaluate_xc_libxc(XCType type, double rho_a, double rho_b,
+                           double sigma_aa = 0, double sigma_ab = 0, double sigma_bb = 0);
 
 } // namespace scf
 } // namespace cpu

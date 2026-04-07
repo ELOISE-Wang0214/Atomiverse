@@ -18,8 +18,6 @@
 #include <xtensor/xview.hpp>
 #include <xtensor-blas/xlinalg.hpp>
 
-#include "atomiverse/core/real.h"
-#include "atomiverse/core/int.h"
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
@@ -31,11 +29,11 @@ namespace scf {
 
 /// @brief Result of batched XC grid integration.
 struct XCGridResult {
-    xt::xtensor<Real, 2> Vxc_alpha;   ///< XC potential matrix (alpha) [n_basis × n_basis].
-    xt::xtensor<Real, 2> Vxc_beta;    ///< XC potential matrix (beta) [n_basis × n_basis].
-    Real E_xc;                         ///< Total XC energy [Hartree].
-    Real n_alpha_integrated;           ///< Grid-integrated alpha electron count.
-    Real n_beta_integrated;            ///< Grid-integrated beta electron count.
+    xt::xtensor<double, 2> Vxc_alpha;   ///< XC potential matrix (alpha) [n_basis × n_basis].
+    xt::xtensor<double, 2> Vxc_beta;    ///< XC potential matrix (beta) [n_basis × n_basis].
+    double E_xc;                         ///< Total XC energy [Hartree].
+    double n_alpha_integrated;           ///< Grid-integrated alpha electron count.
+    double n_beta_integrated;            ///< Grid-integrated beta electron count.
 };
 
 /// @brief Batched XC grid integration engine.
@@ -53,9 +51,9 @@ struct XCGridResult {
 inline XCGridResult evaluate_xc_batched(
     const MolecularGrid& grid,
     const std::vector<native::Shell>& shells,
-    Int n_basis,
-    const xt::xtensor<Real, 2>& P_alpha,
-    const xt::xtensor<Real, 2>& P_beta,
+    int n_basis,
+    const xt::xtensor<double, 2>& P_alpha,
+    const xt::xtensor<double, 2>& P_beta,
     XCType xc_type)
 {
     const int G = static_cast<int>(grid.points.size());
@@ -268,18 +266,18 @@ inline XCGridResult evaluate_xc_batched(
     Vxc_a_d = 0.5 * (Vxc_a_d + xt::transpose(Vxc_a_d));
     Vxc_b_d = 0.5 * (Vxc_b_d + xt::transpose(Vxc_b_d));
 
-    // Convert to Real
+    // Convert to double
     XCGridResult result;
-    result.Vxc_alpha = xt::xtensor<Real, 2>::from_shape({Ns, Ns});
-    result.Vxc_beta  = xt::xtensor<Real, 2>::from_shape({Ns, Ns});
+    result.Vxc_alpha = xt::xtensor<double, 2>::from_shape({Ns, Ns});
+    result.Vxc_beta  = xt::xtensor<double, 2>::from_shape({Ns, Ns});
     for (int mu = 0; mu < N; ++mu)
         for (int nu = 0; nu < N; ++nu) {
-            result.Vxc_alpha(mu, nu) = static_cast<Real>(Vxc_a_d(mu, nu));
-            result.Vxc_beta(mu, nu)  = static_cast<Real>(Vxc_b_d(mu, nu));
+            result.Vxc_alpha(mu, nu) = static_cast<double>(Vxc_a_d(mu, nu));
+            result.Vxc_beta(mu, nu)  = static_cast<double>(Vxc_b_d(mu, nu));
         }
-    result.E_xc = static_cast<Real>(E_xc);
-    result.n_alpha_integrated = static_cast<Real>(n_alpha_int);
-    result.n_beta_integrated  = static_cast<Real>(n_beta_int);
+    result.E_xc = static_cast<double>(E_xc);
+    result.n_alpha_integrated = static_cast<double>(n_alpha_int);
+    result.n_beta_integrated  = static_cast<double>(n_beta_int);
     return result;
 }
 

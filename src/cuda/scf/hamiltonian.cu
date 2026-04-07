@@ -22,7 +22,7 @@ namespace scf {
 /// H0[i,j] = 1.0 / (1 + |i-j|)  for off-diagonal
 /// H0[i,i] = n + 1 - i           for diagonal (ensures positive-definite)
 /// Column-major layout.
-__global__ void init_h0_kernel(Real* H0, int n) {
+__global__ void init_h0_kernel(prec_t* H0, int n) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int total = n * n;
     for (int k = idx; k < total; k += blockDim.x * gridDim.x) {
@@ -54,17 +54,17 @@ void Hamiltonian::build(const BuildContext& ctx) {
     int nn = n * n;
 
     // Allocate all SCF workspace matrices
-    cudaMalloc(&scf.H0,    nn * sizeof(work_t));
-    cudaMalloc(&scf.H,     nn * sizeof(work_t));
-    cudaMalloc(&scf.P,     nn * sizeof(work_t));
-    cudaMalloc(&scf.P_old, nn * sizeof(work_t));
-    cudaMalloc(&scf.C,     nn * sizeof(work_t));
-    cudaMalloc(&scf.eig,   n * sizeof(work_t));
-    cudaMalloc(&scf.work,  nn * sizeof(work_t));
+    cudaMalloc(&scf.H0,    nn * sizeof(prec_t));
+    cudaMalloc(&scf.H,     nn * sizeof(prec_t));
+    cudaMalloc(&scf.P,     nn * sizeof(prec_t));
+    cudaMalloc(&scf.P_old, nn * sizeof(prec_t));
+    cudaMalloc(&scf.C,     nn * sizeof(prec_t));
+    cudaMalloc(&scf.eig,   n * sizeof(prec_t));
+    cudaMalloc(&scf.work,  nn * sizeof(prec_t));
 
     // Zero-initialize P
-    cudaMemsetAsync(scf.P, 0, nn * sizeof(work_t), stream);
-    cudaMemsetAsync(scf.P_old, 0, nn * sizeof(work_t), stream);
+    cudaMemsetAsync(scf.P, 0, nn * sizeof(prec_t), stream);
+    cudaMemsetAsync(scf.P_old, 0, nn * sizeof(prec_t), stream);
 
     // Initialize H0
     int threads = cuda::kDefaultBlock;
@@ -90,7 +90,7 @@ void Hamiltonian::launch(const LaunchContext& ctx) {
     int nn = n * n;
 
     // H = H0 (copy)
-    cudaMemcpyAsync(scf.H, scf.H0, nn * sizeof(work_t), cudaMemcpyDeviceToDevice, stream);
+    cudaMemcpyAsync(scf.H, scf.H0, nn * sizeof(prec_t), cudaMemcpyDeviceToDevice, stream);
 
     // H += alpha * P
     work_t alpha = alpha_;

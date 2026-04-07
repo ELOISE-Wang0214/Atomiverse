@@ -15,14 +15,14 @@ void Thermo::launch(const cpu::LaunchContext& ctx) {
     if (ctx.runtime.mpi_rank != 0) return;
 
     auto& f = ctx.frame;
-    Int n = f.atoms.size();
-    Int n_dof = 3 * n - 3;
+    int n = f.atoms.size();
+    int n_dof = 3 * n - 3;
 
-    Real temperature = 0;
+    double temperature = 0;
     if (n_dof > 0)
-        temperature = Real(2) * f.kinetic / (static_cast<Real>(n_dof) * kBoltzmann);
+        temperature = double(2) * f.kinetic / (static_cast<double>(n_dof) * kBoltzmann);
 
-    Real total_energy = f.energy + f.kinetic;
+    double total_energy = f.energy + f.kinetic;
 
     if (ctx.step == 0) {
         ATV_INFO("  Step          PE              KE           Temp         TotalE");

@@ -13,9 +13,9 @@ namespace minimizer {
 
 void ZeroForces::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
-    Int n = f.atoms.size();
+    int n = f.atoms.size();
     #pragma omp parallel for schedule(static)
-    for (Int i = 0; i < n; ++i) {
+    for (int i = 0; i < n; ++i) {
         f.atoms.fx[i] = 0;
         f.atoms.fy[i] = 0;
         f.atoms.fz[i] = 0;

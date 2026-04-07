@@ -67,8 +67,8 @@ static void eval_gga(int func_id, double rho_a, double rho_b,
     vsigma[2] += vs[2];
 }
 
-XCOutput evaluate_xc_libxc(XCType type, Real rho_a, Real rho_b,
-                           Real sigma_aa, Real sigma_ab, Real sigma_bb) {
+XCOutput evaluate_xc_libxc(XCType type, double rho_a, double rho_b,
+                           double sigma_aa, double sigma_ab, double sigma_bb) {
     XCOutput out{};
 
     double ra = static_cast<double>(rho_a);
@@ -106,12 +106,12 @@ XCOutput evaluate_xc_libxc(XCType type, Real rho_a, Real rho_b,
         break;
     }
 
-    out.exc = static_cast<Real>(exc);
-    out.vrho_alpha = static_cast<Real>(vrho[0]);
-    out.vrho_beta  = static_cast<Real>(vrho[1]);
-    out.vsigma_aa  = static_cast<Real>(vsigma[0]);
-    out.vsigma_ab  = static_cast<Real>(vsigma[1]);
-    out.vsigma_bb  = static_cast<Real>(vsigma[2]);
+    out.exc = static_cast<double>(exc);
+    out.vrho_alpha = static_cast<double>(vrho[0]);
+    out.vrho_beta  = static_cast<double>(vrho[1]);
+    out.vsigma_aa  = static_cast<double>(vsigma[0]);
+    out.vsigma_ab  = static_cast<double>(vsigma[1]);
+    out.vsigma_bb  = static_cast<double>(vsigma[2]);
 
     return out;
 }

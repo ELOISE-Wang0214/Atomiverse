@@ -14,7 +14,7 @@ using cuda::prec_t;
 
 
 struct VirialStress::State {
-    Real* d_stress_tmp = nullptr;  // [6] accumulation buffer
+    prec_t* d_stress_tmp = nullptr;  // [6] accumulation buffer
     int n_atoms = 0;
 };
 
@@ -30,8 +30,8 @@ namespace {
 // before the atomicAdd, eliminating the separate <<<1,1>>> volume kernel.
 __global__ void kinetic_stress_k(
     const real_t* __restrict__ vx, const real_t* __restrict__ vy, const real_t* __restrict__ vz,
-    const real_t* __restrict__ mass, real_t* __restrict__ stress,
-    const real_t* __restrict__ box, int n)
+    const real_t* __restrict__ mass, prec_t* __restrict__ stress,
+    const prec_t* __restrict__ box, int n)
 {
     extern __shared__ work_t sdata[];  // 6 * blockDim.x
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -60,7 +60,7 @@ __global__ void kinetic_stress_k(
         // V = box[0][0] * box[1][1] * box[2][2] for orthorhombic
         work_t V_inv = work_t(1) / (box[0] * box[4] * box[8]);
         for (int c = 0; c < 6; ++c)
-            atomicAdd(&stress[c], sdata[c * blockDim.x] * V_inv);
+            atomicAdd(&stress[c], static_cast<prec_t>(sdata[c * blockDim.x] * V_inv));
     }
 }
 
@@ -68,7 +68,7 @@ __global__ void kinetic_stress_k(
 
 void VirialStress::build(const BuildContext& ctx) {
     state_->n_atoms = ctx.frame.n_atoms();
-    cudaMalloc(&state_->d_stress_tmp, 6 * sizeof(work_t));
+    cudaMalloc(&state_->d_stress_tmp, 6 * sizeof(prec_t));
 }
 
 void VirialStress::launch(const LaunchContext& ctx) {
@@ -79,10 +79,10 @@ void VirialStress::launch(const LaunchContext& ctx) {
     int grid = cuda::grid_size(static_cast<int>(n));
 
     // Zero accumulation buffer
-    cudaMemsetAsync(f.stress, 0, 6 * sizeof(work_t), stream);
+    cudaMemsetAsync(f.stress, 0, 6 * sizeof(prec_t), stream);
 
     // Kinetic contribution (volume factor folded into reduction)
-    kinetic_stress_k<<<grid, block, 6 * block * sizeof(work_t), stream>>>(
+    kinetic_stress_k<<<grid, block, 6 * block * sizeof(prec_t), stream>>>(
         f.atoms.vx, f.atoms.vy, f.atoms.vz, f.atoms.mass, f.stress, f.box, n);
 }
 
