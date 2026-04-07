@@ -29,10 +29,10 @@ __global__ void init_h0_kernel(prec_t* H0, int n) {
         int col = k / n;
         int row = k % n;
         if (row == col) {
-            H0[k] = work_t(n + 1 - row);
+            H0[k] = static_cast<prec_t>(n + 1 - row);
         } else {
             int diff = row > col ? row - col : col - row;
-            H0[k] = work_t(1) / work_t(1 + diff);
+            H0[k] = static_cast<prec_t>(prec_t(1) / prec_t(1 + diff));
         }
     }
 }
@@ -49,7 +49,7 @@ void Hamiltonian::build(const BuildContext& ctx) {
     scf.n_occ = n_occ_;
     scf.converged = false;
     scf.iteration = 0;
-    scf.residual = work_t(0);
+    scf.residual = 0.0;  // residual is double, not work_t
 
     int nn = n * n;
 
@@ -93,7 +93,7 @@ void Hamiltonian::launch(const LaunchContext& ctx) {
     cudaMemcpyAsync(scf.H, scf.H0, nn * sizeof(prec_t), cudaMemcpyDeviceToDevice, stream);
 
     // H += alpha * P
-    work_t alpha = alpha_;
+    prec_t alpha = static_cast<prec_t>(alpha_);
     detail::axpy(handle, nn, &alpha, scf.P, 1, scf.H, 1);
 }
 

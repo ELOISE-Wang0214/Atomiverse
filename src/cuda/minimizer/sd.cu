@@ -34,16 +34,19 @@ __global__ void sd_step(
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n) return;
 
-    work_t inv_m = work_t(1) / mass[i];
-    x[i] += alpha * fx[i] * inv_m * kFtm2v;
-    y[i] += alpha * fy[i] * inv_m * kFtm2v;
-    z[i] += alpha * fz[i] * inv_m * kFtm2v;
+    work_t inv_m = work_t(1) / static_cast<work_t>(mass[i]);
+    x[i] = static_cast<real_t>(static_cast<work_t>(x[i]) + alpha * static_cast<work_t>(fx[i]) * inv_m * kFtm2v);
+    y[i] = static_cast<real_t>(static_cast<work_t>(y[i]) + alpha * static_cast<work_t>(fy[i]) * inv_m * kFtm2v);
+    z[i] = static_cast<real_t>(static_cast<work_t>(z[i]) + alpha * static_cast<work_t>(fz[i]) * inv_m * kFtm2v);
     // PBC wrapping
-    work_t Lx = box[0], Ly = box[4], Lz = box[8];
+    work_t Lx = static_cast<work_t>(box[0]), Ly = static_cast<work_t>(box[4]), Lz = static_cast<work_t>(box[8]);
     work_t inv_Lx = work_t(1) / Lx, inv_Ly = work_t(1) / Ly, inv_Lz = work_t(1) / Lz;
-    x[i] -= Lx * floor(x[i] * inv_Lx);
-    y[i] -= Ly * floor(y[i] * inv_Ly);
-    z[i] -= Lz * floor(z[i] * inv_Lz);
+    work_t x_w = static_cast<work_t>(x[i]);
+    work_t y_w = static_cast<work_t>(y[i]);
+    work_t z_w = static_cast<work_t>(z[i]);
+    x[i] = static_cast<real_t>(x_w - Lx * floor(x_w * inv_Lx));
+    y[i] = static_cast<real_t>(y_w - Ly * floor(y_w * inv_Ly));
+    z[i] = static_cast<real_t>(z_w - Lz * floor(z_w * inv_Lz));
 }
 
 } // anonymous namespace

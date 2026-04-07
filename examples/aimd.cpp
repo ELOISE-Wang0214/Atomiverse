@@ -8,7 +8,7 @@
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/scf/rhf_force.h"
+// #include "atomiverse/cpu/scf/rhf_force.h"  // TODO: RHFForce component (not yet implemented)
 
 using namespace ATV;
 

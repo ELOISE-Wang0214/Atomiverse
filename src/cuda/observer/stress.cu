@@ -38,8 +38,8 @@ __global__ void kinetic_stress_k(
 
     work_t s[6] = {};
     if (idx < n) {
-        work_t m = mass[idx];
-        work_t vxi = vx[idx], vyi = vy[idx], vzi = vz[idx];
+        work_t m = static_cast<work_t>(mass[idx]);
+        work_t vxi = static_cast<work_t>(vx[idx]), vyi = static_cast<work_t>(vy[idx]), vzi = static_cast<work_t>(vz[idx]);
         s[0] = m * vxi * vxi;  // xx
         s[1] = m * vyi * vyi;  // yy
         s[2] = m * vzi * vzi;  // zz
@@ -58,7 +58,7 @@ __global__ void kinetic_stress_k(
     }
     if (threadIdx.x == 0) {
         // V = box[0][0] * box[1][1] * box[2][2] for orthorhombic
-        work_t V_inv = work_t(1) / (box[0] * box[4] * box[8]);
+        work_t V_inv = work_t(1) / (static_cast<work_t>(box[0]) * static_cast<work_t>(box[4]) * static_cast<work_t>(box[8]));
         for (int c = 0; c < 6; ++c)
             atomicAdd(&stress[c], static_cast<prec_t>(sdata[c * blockDim.x] * V_inv));
     }
@@ -82,7 +82,7 @@ void VirialStress::launch(const LaunchContext& ctx) {
     cudaMemsetAsync(f.stress, 0, 6 * sizeof(prec_t), stream);
 
     // Kinetic contribution (volume factor folded into reduction)
-    kinetic_stress_k<<<grid, block, 6 * block * sizeof(prec_t), stream>>>(
+    kinetic_stress_k<<<grid, block, 6 * block * sizeof(work_t), stream>>>(
         f.atoms.vx, f.atoms.vy, f.atoms.vz, f.atoms.mass, f.stress, f.box, n);
 }
 

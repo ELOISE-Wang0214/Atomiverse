@@ -75,11 +75,11 @@ void launch_boys_f0_test(const prec_t* d_x, prec_t* d_out, int n, void* stream) 
 
 __global__ void compute_1e_kernel(
     prec_t* S, prec_t* T, prec_t* V,
-    const real_t* shell_alpha,     // [n_shells * n_prim]
-    const real_t* shell_coeff,     // [n_shells * n_prim]
-    const real_t* shell_centers,   // [n_shells * 3]
+    const prec_t* shell_alpha,     // [n_shells * n_prim]
+    const prec_t* shell_coeff,     // [n_shells * n_prim]
+    const prec_t* shell_centers,   // [n_shells * 3]
     const int* atom_Z,           // [natm]
-    const real_t* atom_pos,        // [natm * 3]
+    const prec_t* atom_pos,        // [natm * 3]
     int n, int n_prim, int natm)
 {
     // Triangular indexing: n_pairs = n*(n+1)/2
@@ -95,24 +95,24 @@ __global__ void compute_1e_kernel(
         if (sj > si) { si++; sj = pair - si*(si+1)/2; }
 
         // Shell centers
-        work_t Ax = shell_centers[si*3 + 0];
-        work_t Ay = shell_centers[si*3 + 1];
-        work_t Az = shell_centers[si*3 + 2];
-        work_t Bx = shell_centers[sj*3 + 0];
-        work_t By = shell_centers[sj*3 + 1];
-        work_t Bz = shell_centers[sj*3 + 2];
+        work_t Ax = static_cast<work_t>(shell_centers[si*3 + 0]);
+        work_t Ay = static_cast<work_t>(shell_centers[si*3 + 1]);
+        work_t Az = static_cast<work_t>(shell_centers[si*3 + 2]);
+        work_t Bx = static_cast<work_t>(shell_centers[sj*3 + 0]);
+        work_t By = static_cast<work_t>(shell_centers[sj*3 + 1]);
+        work_t Bz = static_cast<work_t>(shell_centers[sj*3 + 2]);
         work_t R2 = dist2_device(Ax, Ay, Az, Bx, By, Bz);
 
         work_t acc_S = 0, acc_T = 0, acc_V = 0;
 
         // Contract over primitive pairs
         for (int p = 0; p < n_prim; ++p) {
-            work_t alpha_p = shell_alpha[si * n_prim + p];
-            work_t c_p     = shell_coeff[si * n_prim + p];
+            work_t alpha_p = static_cast<work_t>(shell_alpha[si * n_prim + p]);
+            work_t c_p     = static_cast<work_t>(shell_coeff[si * n_prim + p]);
 
             for (int q = 0; q < n_prim; ++q) {
-                work_t alpha_q = shell_alpha[sj * n_prim + q];
-                work_t c_q     = shell_coeff[sj * n_prim + q];
+                work_t alpha_q = static_cast<work_t>(shell_alpha[sj * n_prim + q]);
+                work_t c_q     = static_cast<work_t>(shell_coeff[sj * n_prim + q]);
                 work_t c_pq    = c_p * c_q;
 
                 work_t gamma = alpha_p + alpha_q;
@@ -137,9 +137,9 @@ __global__ void compute_1e_kernel(
                 work_t v_prefactor = c_pq * work_t(2) * work_t(kPI) * inv_gamma * K_AB;
 
                 for (int a = 0; a < natm; ++a) {
-                    work_t Cx = atom_pos[a*3 + 0];
-                    work_t Cy = atom_pos[a*3 + 1];
-                    work_t Cz = atom_pos[a*3 + 2];
+                    work_t Cx = static_cast<work_t>(atom_pos[a*3 + 0]);
+                    work_t Cy = static_cast<work_t>(atom_pos[a*3 + 1]);
+                    work_t Cz = static_cast<work_t>(atom_pos[a*3 + 2]);
                     work_t PC2 = dist2_device(Px, Py, Pz, Cx, Cy, Cz);
                     acc_V += v_prefactor * work_t(-atom_Z[a]) * boys_f0_device(gamma * PC2);
                 }
@@ -158,8 +158,8 @@ __global__ void compute_1e_kernel(
 
 void launch_1e_integrals(
     prec_t* S, prec_t* T, prec_t* V,
-    const real_t* shell_alpha, const real_t* shell_coeff, const real_t* shell_centers,
-    const int* atom_Z, const real_t* atom_pos,
+    const prec_t* shell_alpha, const prec_t* shell_coeff, const prec_t* shell_centers,
+    const int* atom_Z, const prec_t* atom_pos,
     int n_shells, int n_prim, int natm,
     void* stream)
 {
@@ -184,9 +184,9 @@ void launch_1e_integrals(
 
 __global__ void compute_eri_kernel(
     prec_t* ERI,
-    const real_t* shell_alpha,     // [n_shells * n_prim]
-    const real_t* shell_coeff,     // [n_shells * n_prim]
-    const real_t* shell_centers,   // [n_shells * 3]
+    const prec_t* shell_alpha,     // [n_shells * n_prim]
+    const prec_t* shell_coeff,     // [n_shells * n_prim]
+    const prec_t* shell_centers,   // [n_shells * 3]
     int n, int n_prim)
 {
     // Total shell quartets: n^4. We compute all and let threads handle full set.
@@ -204,10 +204,10 @@ __global__ void compute_eri_kernel(
         int si = rem % n;
 
         // Shell centers
-        work_t Ax = shell_centers[si*3], Ay = shell_centers[si*3+1], Az = shell_centers[si*3+2];
-        work_t Bx = shell_centers[sj*3], By = shell_centers[sj*3+1], Bz = shell_centers[sj*3+2];
-        work_t Cx = shell_centers[sk*3], Cy = shell_centers[sk*3+1], Cz = shell_centers[sk*3+2];
-        work_t Dx = shell_centers[sl*3], Dy = shell_centers[sl*3+1], Dz = shell_centers[sl*3+2];
+        work_t Ax = static_cast<work_t>(shell_centers[si*3]), Ay = static_cast<work_t>(shell_centers[si*3+1]), Az = static_cast<work_t>(shell_centers[si*3+2]);
+        work_t Bx = static_cast<work_t>(shell_centers[sj*3]), By = static_cast<work_t>(shell_centers[sj*3+1]), Bz = static_cast<work_t>(shell_centers[sj*3+2]);
+        work_t Cx = static_cast<work_t>(shell_centers[sk*3]), Cy = static_cast<work_t>(shell_centers[sk*3+1]), Cz = static_cast<work_t>(shell_centers[sk*3+2]);
+        work_t Dx = static_cast<work_t>(shell_centers[sl*3]), Dy = static_cast<work_t>(shell_centers[sl*3+1]), Dz = static_cast<work_t>(shell_centers[sl*3+2]);
 
         work_t R2_AB = dist2_device(Ax, Ay, Az, Bx, By, Bz);
         work_t R2_CD = dist2_device(Cx, Cy, Cz, Dx, Dy, Dz);
@@ -216,11 +216,11 @@ __global__ void compute_eri_kernel(
 
         // Outer primitive pair (p,q) — hoist exp(-mu1 * R_AB^2)
         for (int p = 0; p < n_prim; ++p) {
-            work_t a_p = shell_alpha[si * n_prim + p];
-            work_t c_p = shell_coeff[si * n_prim + p];
+            work_t a_p = static_cast<work_t>(shell_alpha[si * n_prim + p]);
+            work_t c_p = static_cast<work_t>(shell_coeff[si * n_prim + p]);
             for (int q = 0; q < n_prim; ++q) {
-                work_t a_q = shell_alpha[sj * n_prim + q];
-                work_t c_q = shell_coeff[sj * n_prim + q];
+                work_t a_q = static_cast<work_t>(shell_alpha[sj * n_prim + q]);
+                work_t c_q = static_cast<work_t>(shell_coeff[sj * n_prim + q]);
 
                 work_t gamma1 = a_p + a_q;
                 work_t mu1 = a_p * a_q / gamma1;
@@ -234,11 +234,11 @@ __global__ void compute_eri_kernel(
 
                 // Inner primitive pair (r,s)
                 for (int r = 0; r < n_prim; ++r) {
-                    work_t a_r = shell_alpha[sk * n_prim + r];
-                    work_t c_r = shell_coeff[sk * n_prim + r];
+                    work_t a_r = static_cast<work_t>(shell_alpha[sk * n_prim + r]);
+                    work_t c_r = static_cast<work_t>(shell_coeff[sk * n_prim + r]);
                     for (int s = 0; s < n_prim; ++s) {
-                        work_t a_s = shell_alpha[sl * n_prim + s];
-                        work_t c_s = shell_coeff[sl * n_prim + s];
+                        work_t a_s = static_cast<work_t>(shell_alpha[sl * n_prim + s]);
+                        work_t c_s = static_cast<work_t>(shell_coeff[sl * n_prim + s]);
 
                         work_t gamma2 = a_r + a_s;
                         work_t mu2 = a_r * a_s / gamma2;
@@ -270,7 +270,7 @@ __global__ void compute_eri_kernel(
 
 void launch_eri(
     prec_t* ERI,
-    const real_t* shell_alpha, const real_t* shell_coeff, const real_t* shell_centers,
+    const prec_t* shell_alpha, const prec_t* shell_coeff, const prec_t* shell_centers,
     int n_shells, int n_prim,
     void* stream)
 {
