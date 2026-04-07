@@ -5,8 +5,9 @@
 #include "atomiverse/core/constants.h"
 
 #include <cmath>
-#include <cstdio>
 #include <fstream>
+
+#include <spdlog/fmt/fmt.h>
 
 namespace ATV {
 namespace cpu {
@@ -48,10 +49,8 @@ void rdf_write(const std::string& filename,
             ? Real(2) * Real(histogram[i]) / (Real(n_samples) * ideal)
             : Real(0);
 
-        char buf[64];
-        std::snprintf(buf, sizeof(buf), "%.6f  %.6f\n",
-                      static_cast<double>(r), static_cast<double>(gr));
-        out << buf;
+        out << fmt::format("{:.6f}  {:.6f}\n",
+                           static_cast<double>(r), static_cast<double>(gr));
     }
 }
 
