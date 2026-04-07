@@ -22,7 +22,7 @@ public:
     /// @param axis        Deformation axis (0=x, 1=y, 2=z).
     /// @param strain_rate Engineering strain rate [1/fs].
     /// @param dt          Time step [fs] (must match integrator).
-    Deform(int axis, Real strain_rate, Real dt);
+    Deform(int axis, double strain_rate, double dt);
 
     std::string name() const override { return "deform"; }
     std::vector<DefaultBinding> default_bindings() const override;
@@ -30,7 +30,7 @@ public:
 
 private:
     int axis_;
-    Real strain_rate_, dt_;
+    double strain_rate_, dt_;
 };
 
 } // namespace md

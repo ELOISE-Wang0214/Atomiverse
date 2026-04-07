@@ -17,7 +17,7 @@ namespace bonded {
 class MultiHarmonicDihedral : public cpu::ComponentBase {
 public:
     /// @param Cn Coefficients per dihedral type. Cn[type] = {C0, C1, C2, ...}.
-    explicit MultiHarmonicDihedral(std::vector<std::vector<Real>> Cn);
+    explicit MultiHarmonicDihedral(std::vector<std::vector<double>> Cn);
 
     std::string name() const override { return "multi_harmonic_dihedral"; }
     void build(const cpu::BuildContext& ctx) override;
@@ -25,10 +25,10 @@ public:
     void destroy(const cpu::DestroyContext& ctx) override;
 
 private:
-    std::vector<std::vector<Real>> Cn_;
+    std::vector<std::vector<double>> Cn_;
 
     int n_threads_ = 1;
-    std::vector<std::vector<Real>> fx_thr_, fy_thr_, fz_thr_;
+    std::vector<std::vector<double>> fx_thr_, fy_thr_, fz_thr_;
 };
 
 } // namespace bonded

@@ -5,9 +5,15 @@
 #include "atomiverse/cuda/launch.cuh"
 #include "atomiverse/core/constants.h"
 #include <cuda_runtime.h>
+#include "atomiverse/cuda/types.cuh"
 #include <cmath>
 
 namespace ATV {
+
+using cuda::real_t;
+using cuda::work_t;
+using cuda::prec_t;
+
 
 struct HarmonicAngle::State {
     Real* d_K = nullptr;
@@ -15,7 +21,7 @@ struct HarmonicAngle::State {
     int n_types = 0;
 };
 
-HarmonicAngle::HarmonicAngle(std::vector<Real> K, std::vector<Real> theta0)
+HarmonicAngle::HarmonicAngle(std::vector<work_t> K, std::vector<work_t> theta0)
     : K_(std::move(K)), theta0_(std::move(theta0)),
       state_(std::make_unique<State>()) {}
 
@@ -26,26 +32,26 @@ HarmonicAngle& HarmonicAngle::operator=(HarmonicAngle&&) noexcept = default;
 namespace {
 
 __global__ void harmonic_angle_k(
-    const Real* __restrict__ x, const Real* __restrict__ y, const Real* __restrict__ z,
-    Real* __restrict__ fx, Real* __restrict__ fy, Real* __restrict__ fz,
-    Real* __restrict__ energy,
-    const Int* __restrict__ ai, const Int* __restrict__ aj, const Int* __restrict__ ak,
-    const Int* __restrict__ at,
-    const Real* __restrict__ K, const Real* __restrict__ theta0,
-    const Real* __restrict__ box, Int n_angles)
+    const real_t* __restrict__ x, const real_t* __restrict__ y, const real_t* __restrict__ z,
+    real_t* __restrict__ fx, real_t* __restrict__ fy, real_t* __restrict__ fz,
+    real_t* __restrict__ energy,
+    const int* __restrict__ ai, const int* __restrict__ aj, const int* __restrict__ ak,
+    const int* __restrict__ at,
+    const real_t* __restrict__ K, const real_t* __restrict__ theta0,
+    const real_t* __restrict__ box, int n_angles)
 {
-    Int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= n_angles) return;
 
-    Int i = ai[idx], j = aj[idx], k = ak[idx];
-    Int type = at[idx];
+    int i = ai[idx], j = aj[idx], k = ak[idx];
+    int type = at[idx];
 
     // Vectors from center atom j
-    Real rij_x = x[i] - x[j], rij_y = y[i] - y[j], rij_z = z[i] - z[j];
-    Real rkj_x = x[k] - x[j], rkj_y = y[k] - y[j], rkj_z = z[k] - z[j];
+    work_t rij_x = x[i] - x[j], rij_y = y[i] - y[j], rij_z = z[i] - z[j];
+    work_t rkj_x = x[k] - x[j], rkj_y = y[k] - y[j], rkj_z = z[k] - z[j];
 
     // Minimum image
-    Real bx = box[0], by = box[4], bz = box[8];
+    work_t bx = box[0], by = box[4], bz = box[8];
     rij_x -= bx * round(rij_x / bx);
     rij_y -= by * round(rij_y / by);
     rij_z -= bz * round(rij_z / bz);
@@ -53,37 +59,37 @@ __global__ void harmonic_angle_k(
     rkj_y -= by * round(rkj_y / by);
     rkj_z -= bz * round(rkj_z / bz);
 
-    Real rij2 = rij_x * rij_x + rij_y * rij_y + rij_z * rij_z;
-    Real rkj2 = rkj_x * rkj_x + rkj_y * rkj_y + rkj_z * rkj_z;
-    Real rij_inv = rsqrt(rij2);
-    Real rkj_inv = rsqrt(rkj2);
+    work_t rij2 = rij_x * rij_x + rij_y * rij_y + rij_z * rij_z;
+    work_t rkj2 = rkj_x * rkj_x + rkj_y * rkj_y + rkj_z * rkj_z;
+    work_t rij_inv = rsqrt(rij2);
+    work_t rkj_inv = rsqrt(rkj2);
 
-    Real cos_theta = (rij_x * rkj_x + rij_y * rkj_y + rij_z * rkj_z) * rij_inv * rkj_inv;
-    cos_theta = fmin(fmax(cos_theta, Real(-1)), Real(1));
-    Real theta = acos(cos_theta);
-    Real dtheta = theta - theta0[type];
+    work_t cos_theta = (rij_x * rkj_x + rij_y * rkj_y + rij_z * rkj_z) * rij_inv * rkj_inv;
+    cos_theta = fmin(fmax(cos_theta, work_t(-1)), work_t(1));
+    work_t theta = acos(cos_theta);
+    work_t dtheta = theta - theta0[type];
 
     // V = K(θ - θ0)^2
-    Real v = K[type] * dtheta * dtheta;
+    work_t v = K[type] * dtheta * dtheta;
 
     // dV/dθ = 2K(θ - θ0)
-    Real sin_theta = sqrt(Real(1) - cos_theta * cos_theta);
-    constexpr Real kSinEpsilon = Real(1e-6);
+    work_t sin_theta = sqrt(work_t(1) - cos_theta * cos_theta);
+    constexpr work_t kSinEpsilon = work_t(1e-6);
     if (sin_theta < kSinEpsilon) sin_theta = kSinEpsilon;
-    Real prefactor = -Real(2) * K[type] * dtheta / sin_theta;
+    work_t prefactor = -work_t(2) * K[type] * dtheta / sin_theta;
 
     // Force on atom i: prefactor * (rkj_hat / |rij| - cos_theta * rij_hat / |rij|)
-    Real rij_inv2 = rij_inv * rij_inv;
-    Real rkj_inv2 = rkj_inv * rkj_inv;
-    Real cross_inv = rij_inv * rkj_inv;
+    work_t rij_inv2 = rij_inv * rij_inv;
+    work_t rkj_inv2 = rkj_inv * rkj_inv;
+    work_t cross_inv = rij_inv * rkj_inv;
 
-    Real fi_x = prefactor * (rkj_x * cross_inv - cos_theta * rij_x * rij_inv2);
-    Real fi_y = prefactor * (rkj_y * cross_inv - cos_theta * rij_y * rij_inv2);
-    Real fi_z = prefactor * (rkj_z * cross_inv - cos_theta * rij_z * rij_inv2);
+    work_t fi_x = prefactor * (rkj_x * cross_inv - cos_theta * rij_x * rij_inv2);
+    work_t fi_y = prefactor * (rkj_y * cross_inv - cos_theta * rij_y * rij_inv2);
+    work_t fi_z = prefactor * (rkj_z * cross_inv - cos_theta * rij_z * rij_inv2);
 
-    Real fk_x = prefactor * (rij_x * cross_inv - cos_theta * rkj_x * rkj_inv2);
-    Real fk_y = prefactor * (rij_y * cross_inv - cos_theta * rkj_y * rkj_inv2);
-    Real fk_z = prefactor * (rij_z * cross_inv - cos_theta * rkj_z * rkj_inv2);
+    work_t fk_x = prefactor * (rij_x * cross_inv - cos_theta * rkj_x * rkj_inv2);
+    work_t fk_y = prefactor * (rij_y * cross_inv - cos_theta * rkj_y * rkj_inv2);
+    work_t fk_z = prefactor * (rij_z * cross_inv - cos_theta * rkj_z * rkj_inv2);
 
     atomicAdd(&fx[i], fi_x); atomicAdd(&fy[i], fi_y); atomicAdd(&fz[i], fi_z);
     atomicAdd(&fx[k], fk_x); atomicAdd(&fy[k], fk_y); atomicAdd(&fz[k], fk_z);
@@ -92,7 +98,7 @@ __global__ void harmonic_angle_k(
     atomicAdd(&fz[j], -(fi_z + fk_z));
 
     // Energy reduction
-    extern __shared__ Real sdata[];
+    extern __shared__ work_t sdata[];
     sdata[threadIdx.x] = v;
     __syncthreads();
     for (int s = blockDim.x / 2; s > 0; s >>= 1) {
@@ -109,25 +115,25 @@ void HarmonicAngle::build(const BuildContext& ctx) {
     state_->n_types = nt;
 
     // Convert degrees to radians
-    std::vector<Real> theta0_rad(nt);
+    std::vector<work_t> theta0_rad(nt);
     for (int i = 0; i < nt; ++i)
-        theta0_rad[i] = theta0_[i] * Real(kDegToRad);
+        theta0_rad[i] = theta0_[i] * work_t(kDegToRad);
 
-    cudaMalloc(&state_->d_K, nt * sizeof(Real));
-    cudaMalloc(&state_->d_theta0, nt * sizeof(Real));
-    cudaMemcpy(state_->d_K, K_.data(), nt * sizeof(Real), cudaMemcpyHostToDevice);
-    cudaMemcpy(state_->d_theta0, theta0_rad.data(), nt * sizeof(Real), cudaMemcpyHostToDevice);
+    cudaMalloc(&state_->d_K, nt * sizeof(work_t));
+    cudaMalloc(&state_->d_theta0, nt * sizeof(work_t));
+    cudaMemcpy(state_->d_K, K_.data(), nt * sizeof(work_t), cudaMemcpyHostToDevice);
+    cudaMemcpy(state_->d_theta0, theta0_rad.data(), nt * sizeof(work_t), cudaMemcpyHostToDevice);
 }
 
 void HarmonicAngle::launch(const LaunchContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& f = ctx.frame;
-    Int na = f.n_angles();
+    int na = f.n_angles();
     if (na == 0) return;
 
     int block = cuda::kDefaultBlock;
     int grid = cuda::grid_size(static_cast<int>(na));
-    harmonic_angle_k<<<grid, block, block * sizeof(Real), stream>>>(
+    harmonic_angle_k<<<grid, block, block * sizeof(work_t), stream>>>(
         f.atoms.x, f.atoms.y, f.atoms.z, f.atoms.fx, f.atoms.fy, f.atoms.fz, f.energy,
         f.angles.atomi, f.angles.atomj, f.angles.atomk, f.angles.type,
         state_->d_K, state_->d_theta0, f.box, na);

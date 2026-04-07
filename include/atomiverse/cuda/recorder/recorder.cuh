@@ -41,12 +41,12 @@ protected:
         n_atoms_    = frame.n_atoms();
         auto n      = static_cast<size_t>(n_atoms_);
 
-        cudaMallocHost(&hx_, n * sizeof(Real));
-        cudaMallocHost(&hy_, n * sizeof(Real));
-        cudaMallocHost(&hz_, n * sizeof(Real));
+        cudaMallocHost(&hx_, n * sizeof(double));
+        cudaMallocHost(&hy_, n * sizeof(double));
+        cudaMallocHost(&hz_, n * sizeof(double));
 
         htype_.resize(n);
-        cudaMemcpyAsync(htype_.data(), frame.atoms.type, n * sizeof(Int),
+        cudaMemcpyAsync(htype_.data(), frame.atoms.type, n * sizeof(int),
                         cudaMemcpyDeviceToHost, stream);
         cudaStreamSynchronize(stream);
 
@@ -56,9 +56,9 @@ protected:
     void issue_d2h(const LaunchContext& ctx) override {
         auto ds = static_cast<cudaStream_t>(ctx.runtime.defer_stream);
         auto n  = static_cast<size_t>(n_atoms_);
-        cudaMemcpyAsync(hx_, ctx.frame.atoms.x, n * sizeof(Real), cudaMemcpyDeviceToHost, ds);
-        cudaMemcpyAsync(hy_, ctx.frame.atoms.y, n * sizeof(Real), cudaMemcpyDeviceToHost, ds);
-        cudaMemcpyAsync(hz_, ctx.frame.atoms.z, n * sizeof(Real), cudaMemcpyDeviceToHost, ds);
+        cudaMemcpyAsync(hx_, ctx.frame.atoms.x, n * sizeof(double), cudaMemcpyDeviceToHost, ds);
+        cudaMemcpyAsync(hy_, ctx.frame.atoms.y, n * sizeof(double), cudaMemcpyDeviceToHost, ds);
+        cudaMemcpyAsync(hz_, ctx.frame.atoms.z, n * sizeof(double), cudaMemcpyDeviceToHost, ds);
     }
 
     void on_data_ready(const LaunchContext& ctx) override {
@@ -76,10 +76,10 @@ private:
     std::string filename_;
     int every_;
     int n_atoms_ = 0;
-    Real* hx_ = nullptr;
-    Real* hy_ = nullptr;
-    Real* hz_ = nullptr;
-    std::vector<Int> htype_;
+    double* hx_ = nullptr;
+    double* hy_ = nullptr;
+    double* hz_ = nullptr;
+    std::vector<int> htype_;
     std::ofstream file_;
 };
 

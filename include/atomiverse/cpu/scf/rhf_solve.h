@@ -1,5 +1,5 @@
 /// @file cpu/scf/rhf_solve.h
-/// @brief CPU RHF solver using xtensor-blas — reference implementation.
+/// @brief CPU RHF solver using xtensor-blas -- reference implementation.
 ///
 /// Full Restricted Hartree-Fock for closed-shell systems.
 /// Uses xt::linalg for eigendecomposition and matrix operations.
@@ -11,8 +11,6 @@
 #include <vector>
 #include <xtensor/xtensor.hpp>
 
-#include "atomiverse/core/real.h"
-#include "atomiverse/core/int.h"
 #include "atomiverse/cpu/scf/integrals.h"
 
 namespace ATV {
@@ -22,22 +20,22 @@ namespace scf {
 /// @brief Per-iteration data for convergence analysis.
 struct IterationRecord {
     int iter = 0;              ///< Iteration number (1-based).
-    Real energy = 0;           ///< Total energy at this iteration [Hartree].
-    Real residual = 0;         ///< ||P_new - P_old||_F.
+    double energy = 0;         ///< Total energy at this iteration [Hartree].
+    double residual = 0;       ///< ||P_new - P_old||_F.
     bool diis_active = false;  ///< Whether DIIS was used this iteration.
 };
 
 /// @brief RHF solver result.
 struct RHFResult {
-    bool converged = false;            ///< Whether SCF converged within max_iter.
-    int iterations = 0;                ///< Number of iterations performed.
-    Real energy = 0;                   ///< Total energy (electronic + nuclear) [Hartree].
-    Real electronic_energy = 0;        ///< Electronic energy only [Hartree].
-    Real residual = 0;                 ///< Final ||P_new - P_old||_F.
-    xt::xtensor<Real, 1> eigenvalues;  ///< Orbital energies [Hartree].
-    xt::xtensor<Real, 2> P;           ///< Final density matrix.
-    xt::xtensor<Real, 2> C;           ///< Final MO coefficient matrix.
-    std::vector<IterationRecord> trace; ///< Per-iteration convergence trace.
+    bool converged = false;              ///< Whether SCF converged within max_iter.
+    int iterations = 0;                  ///< Number of iterations performed.
+    double energy = 0;                   ///< Total energy (electronic + nuclear) [Hartree].
+    double electronic_energy = 0;        ///< Electronic energy only [Hartree].
+    double residual = 0;                 ///< Final ||P_new - P_old||_F.
+    xt::xtensor<double, 1> eigenvalues;  ///< Orbital energies [Hartree].
+    xt::xtensor<double, 2> P;           ///< Final density matrix.
+    xt::xtensor<double, 2> C;           ///< Final MO coefficient matrix.
+    std::vector<IterationRecord> trace;  ///< Per-iteration convergence trace.
 };
 
 /// @brief Run RHF on CPU using xtensor-blas.
@@ -57,7 +55,7 @@ struct RHFResult {
 /// @param tol Convergence tolerance.
 /// @param max_iter Maximum SCF iterations.
 /// @return RHFResult with energy, eigenvalues, density, MO coefficients.
-RHFResult rhf_solve(const IntegralPack& integrals, Real tol, int max_iter);
+RHFResult rhf_solve(const IntegralPack& integrals, double tol, int max_iter);
 
 } // namespace scf
 } // namespace cpu

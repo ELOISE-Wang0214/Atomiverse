@@ -22,20 +22,20 @@ using namespace ATV;
 namespace {
 
 /// Create a simple cubic lattice of LJ particles.
-cpu::Frame make_lj_system(int n_side, Real density) {
+cpu::Frame make_lj_system(int n_side, double density) {
     int n = n_side * n_side * n_side;
-    Real box_len = std::cbrt(Real(n) / density);
-    Real spacing = box_len / Real(n_side);
+    double box_len = std::cbrt(double(n) / density);
+    double spacing = box_len / double(n_side);
 
     cpu::Frame frame(n);
     int idx = 0;
     for (int ix = 0; ix < n_side; ++ix)
         for (int iy = 0; iy < n_side; ++iy)
             for (int iz = 0; iz < n_side; ++iz) {
-                frame.atoms.x[idx] = (Real(ix) + Real(0.5)) * spacing;
-                frame.atoms.y[idx] = (Real(iy) + Real(0.5)) * spacing;
-                frame.atoms.z[idx] = (Real(iz) + Real(0.5)) * spacing;
-                frame.atoms.mass[idx] = Real(1.0);
+                frame.atoms.x[idx] = (double(ix) + double(0.5)) * spacing;
+                frame.atoms.y[idx] = (double(iy) + double(0.5)) * spacing;
+                frame.atoms.z[idx] = (double(iz) + double(0.5)) * spacing;
+                frame.atoms.mass[idx] = double(1.0);
                 frame.atoms.type[idx] = 0;
                 idx++;
             }
@@ -44,19 +44,19 @@ cpu::Frame make_lj_system(int n_side, Real density) {
     // Small random velocities
     std::srand(42);
     for (int i = 0; i < n; ++i) {
-        frame.atoms.vx[i] = Real(0.001) * (Real(std::rand()) / Real(RAND_MAX) - Real(0.5));
-        frame.atoms.vy[i] = Real(0.001) * (Real(std::rand()) / Real(RAND_MAX) - Real(0.5));
-        frame.atoms.vz[i] = Real(0.001) * (Real(std::rand()) / Real(RAND_MAX) - Real(0.5));
+        frame.atoms.vx[i] = double(0.001) * (double(std::rand()) / double(RAND_MAX) - double(0.5));
+        frame.atoms.vy[i] = double(0.001) * (double(std::rand()) / double(RAND_MAX) - double(0.5));
+        frame.atoms.vz[i] = double(0.001) * (double(std::rand()) / double(RAND_MAX) - double(0.5));
     }
 
     // Remove center-of-mass velocity
-    Real mvx = 0, mvy = 0, mvz = 0;
+    double mvx = 0, mvy = 0, mvz = 0;
     for (int i = 0; i < n; ++i) {
         mvx += frame.atoms.vx[i];
         mvy += frame.atoms.vy[i];
         mvz += frame.atoms.vz[i];
     }
-    mvx /= Real(n); mvy /= Real(n); mvz /= Real(n);
+    mvx /= double(n); mvy /= double(n); mvz /= double(n);
     for (int i = 0; i < n; ++i) {
         frame.atoms.vx[i] -= mvx;
         frame.atoms.vy[i] -= mvy;
@@ -69,55 +69,55 @@ cpu::Frame make_lj_system(int n_side, Real density) {
 } // anonymous namespace
 
 TEST(MD, NVEEnergyConservation) {
-    auto frame = make_lj_system(4, Real(0.8));  // 64 atoms
-    Real cutoff = Real(3.0);
+    auto frame = make_lj_system(4, double(0.8));  // 64 atoms
+    double cutoff = double(3.0);
 
     // First run: get initial total energy
     cpu::Frame frame1 = frame;
     {
         md::MD sim;
-        sim.add(md::VelocityVerlet{Real(0.001)});
+        sim.add(md::VelocityVerlet{double(0.001)});
         sim.on(md::Phase::force)
             .add(NeighborList{cutoff}, -10)
-            .add(LJ{Real(1.0), Real(1.0), cutoff});
+            .add(LJ{double(1.0), double(1.0), cutoff});
         sim.build();
         sim.run(frame1, 1);
     }
-    Real e_initial = frame1.energy + frame1.kinetic;
+    double e_initial = frame1.energy + frame1.kinetic;
 
     // Run 100 steps
     cpu::Frame frame2 = frame;
     {
         md::MD sim;
-        sim.add(md::VelocityVerlet{Real(0.001)});
+        sim.add(md::VelocityVerlet{double(0.001)});
         sim.on(md::Phase::force)
             .add(NeighborList{cutoff}, -10)
-            .add(LJ{Real(1.0), Real(1.0), cutoff});
+            .add(LJ{double(1.0), double(1.0), cutoff});
         sim.build();
         sim.run(frame2, 100);
     }
-    Real e_final = frame2.energy + frame2.kinetic;
+    double e_final = frame2.energy + frame2.kinetic;
 
     // KE should be positive after integration
-    EXPECT_GT(frame2.kinetic, Real(0));
+    EXPECT_GT(frame2.kinetic, double(0));
 
     // Total energy should be conserved within tolerance
     // (small dt = 0.001 fs, 100 steps, float precision)
-    Real tol = std::abs(e_initial) * Real(0.01) + Real(0.01);
+    double tol = std::abs(e_initial) * double(0.01) + double(0.01);
     EXPECT_NEAR(static_cast<double>(e_final),
                 static_cast<double>(e_initial),
                 static_cast<double>(tol));
 }
 
 TEST(MD, ThermoOutput) {
-    auto frame = make_lj_system(4, Real(0.8));
-    Real cutoff = Real(3.0);
+    auto frame = make_lj_system(4, double(0.8));
+    double cutoff = double(3.0);
 
     md::MD sim;
-    sim.add(md::VelocityVerlet{Real(0.001)});
+    sim.add(md::VelocityVerlet{double(0.001)});
     sim.on(md::Phase::force)
         .add(NeighborList{cutoff}, -10)
-        .add(LJ{Real(1.0), Real(1.0), cutoff});
+        .add(LJ{double(1.0), double(1.0), cutoff});
     sim.on(md::Phase::end_of_step)
         .add(Thermo{5});
     sim.build();
@@ -134,16 +134,16 @@ TEST(MD, ThermoOutput) {
 }
 
 TEST(MD, RecorderXYZ) {
-    auto frame = make_lj_system(3, Real(0.8));  // 27 atoms
-    Real cutoff = Real(3.0);
+    auto frame = make_lj_system(3, double(0.8));  // 27 atoms
+    double cutoff = double(3.0);
     std::string filename = "test_traj.xyz";
 
     {
         md::MD sim;
-        sim.add(md::VelocityVerlet{Real(0.001)});
+        sim.add(md::VelocityVerlet{double(0.001)});
         sim.on(md::Phase::force)
             .add(NeighborList{cutoff}, -10)
-            .add(LJ{Real(1.0), Real(1.0), cutoff});
+            .add(LJ{double(1.0), double(1.0), cutoff});
         sim.on(md::Phase::end_of_step)
             .add(Recorder{filename, 3});
         sim.build();
@@ -169,16 +169,16 @@ TEST(MD, RecorderXYZ) {
 }
 
 TEST(MD, RDFOutput) {
-    auto frame = make_lj_system(4, Real(0.8));
-    Real cutoff = Real(3.0);
+    auto frame = make_lj_system(4, double(0.8));
+    double cutoff = double(3.0);
     std::string filename = "test_rdf.dat";
 
     {
         md::MD sim;
-        sim.add(md::VelocityVerlet{Real(0.001)});
+        sim.add(md::VelocityVerlet{double(0.001)});
         sim.on(md::Phase::force)
             .add(NeighborList{cutoff}, -10)
-            .add(LJ{Real(1.0), Real(1.0), cutoff});
+            .add(LJ{double(1.0), double(1.0), cutoff});
         sim.on(md::Phase::end_of_step)
             .add(RDF{cutoff, 50, filename});
         sim.build();
@@ -206,36 +206,36 @@ TEST(MD, InitVelocity) {
     // Create system with zero velocities
     int n = 64;
     cpu::Frame frame(n);
-    Real box_len = std::cbrt(Real(n) / Real(0.8));
-    Real spacing = box_len / Real(4);
+    double box_len = std::cbrt(double(n) / double(0.8));
+    double spacing = box_len / double(4);
     int idx = 0;
     for (int ix = 0; ix < 4; ++ix)
         for (int iy = 0; iy < 4; ++iy)
             for (int iz = 0; iz < 4; ++iz) {
-                frame.atoms.x[idx] = (Real(ix) + Real(0.5)) * spacing;
-                frame.atoms.y[idx] = (Real(iy) + Real(0.5)) * spacing;
-                frame.atoms.z[idx] = (Real(iz) + Real(0.5)) * spacing;
-                frame.atoms.mass[idx] = Real(1.0);
+                frame.atoms.x[idx] = (double(ix) + double(0.5)) * spacing;
+                frame.atoms.y[idx] = (double(iy) + double(0.5)) * spacing;
+                frame.atoms.z[idx] = (double(iz) + double(0.5)) * spacing;
+                frame.atoms.mass[idx] = double(1.0);
                 idx++;
             }
     frame.box = Mat3::cubic(static_cast<double>(box_len));
 
     // All velocities should be zero initially
     for (int i = 0; i < n; ++i) {
-        ASSERT_EQ(frame.atoms.vx[i], Real(0));
+        ASSERT_EQ(frame.atoms.vx[i], double(0));
     }
 
-    Real target_temp = Real(300.0);
-    Real cutoff = Real(3.0);
+    double target_temp = double(300.0);
+    double cutoff = double(3.0);
 
     // Run 1 step with InitVelocity — velocities should be set
     {
         md::MD sim;
         sim.add(md::InitVelocity{target_temp, 42});
-        sim.add(md::VelocityVerlet{Real(0.001)});
+        sim.add(md::VelocityVerlet{double(0.001)});
         sim.on(md::Phase::force)
             .add(NeighborList{cutoff}, -10)
-            .add(LJ{Real(1.0), Real(1.0), cutoff});
+            .add(LJ{double(1.0), double(1.0), cutoff});
         sim.build();
         sim.run(frame, 1);
     }
@@ -243,13 +243,13 @@ TEST(MD, InitVelocity) {
     // Velocities should now be non-zero
     bool has_nonzero = false;
     for (int i = 0; i < n; ++i) {
-        if (frame.atoms.vx[i] != Real(0) || frame.atoms.vy[i] != Real(0) || frame.atoms.vz[i] != Real(0))
+        if (frame.atoms.vx[i] != double(0) || frame.atoms.vy[i] != double(0) || frame.atoms.vz[i] != double(0))
             has_nonzero = true;
     }
     EXPECT_TRUE(has_nonzero);
 
     // Center-of-mass velocity should be near zero
-    Real mvx = 0, mvy = 0, mvz = 0, M = 0;
+    double mvx = 0, mvy = 0, mvz = 0, M = 0;
     for (int i = 0; i < n; ++i) {
         mvx += frame.atoms.mass[i] * frame.atoms.vx[i];
         mvy += frame.atoms.mass[i] * frame.atoms.vy[i];
@@ -263,11 +263,11 @@ TEST(MD, InitVelocity) {
     EXPECT_NEAR(static_cast<double>(mvz / M), 0.0, 0.01);
 
     // Kinetic energy should be positive (velocities were generated)
-    EXPECT_GT(frame.kinetic, Real(0));
+    EXPECT_GT(frame.kinetic, double(0));
 
     // Temperature should be in the right ballpark (within factor 3 for 64 atoms)
-    Int ndof = 3 * n - 3;
-    Real temp = Real(2) * frame.kinetic / (Real(ndof) * kBoltzmann);
+    int ndof = 3 * n - 3;
+    double temp = double(2) * frame.kinetic / (double(ndof) * kBoltzmann);
     EXPECT_GT(static_cast<double>(temp), static_cast<double>(target_temp) * 0.3);
     EXPECT_LT(static_cast<double>(temp), static_cast<double>(target_temp) * 3.0);
 }

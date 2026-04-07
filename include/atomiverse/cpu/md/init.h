@@ -64,7 +64,7 @@ class InitVelocity : public cpu::ComponentBase {
 public:
     /// @param temperature Target temperature [K].
     /// @param seed Random number generator seed.
-    InitVelocity(Real temperature, unsigned seed);
+    InitVelocity(double temperature, unsigned seed);
 
     std::string name() const override { return "init_velocity"; }
     std::vector<DefaultBinding> default_bindings() const override {
@@ -74,7 +74,7 @@ public:
     void launch(const cpu::LaunchContext& ctx) override {}
 
 private:
-    Real temperature_;
+    double temperature_;
     unsigned seed_;
 };
 

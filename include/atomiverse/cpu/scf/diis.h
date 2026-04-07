@@ -16,8 +16,6 @@
 #include <xtensor/xtensor.hpp>
 #include <xtensor-blas/xlinalg.hpp>
 
-#include "atomiverse/core/real.h"
-#include "atomiverse/core/int.h"
 #include "atomiverse/cpu/scf/scf_utils.h"
 
 namespace ATV {
@@ -25,10 +23,10 @@ namespace cpu {
 namespace scf {
 
 /// @brief Compute DIIS error vector: e = F P S - S P F (commutator in AO basis).
-/// @param F Fock matrix [n×n].
-/// @param P Density matrix [n×n].
-/// @param S Overlap matrix [n×n].
-/// @return DIIS error matrix [n×n]. At self-consistency, e → 0.
+/// @param F Fock matrix [n x n].
+/// @param P Density matrix [n x n].
+/// @param S Overlap matrix [n x n].
+/// @return DIIS error matrix [n x n]. At self-consistency, e -> 0.
 inline RealMatrix diis_error(const RealMatrix& F, const RealMatrix& P,
                              const RealMatrix& S) {
     return xt::linalg::dot(F, xt::linalg::dot(P, S))
@@ -39,7 +37,7 @@ inline RealMatrix diis_error(const RealMatrix& F, const RealMatrix& P,
 ///
 /// Stores history of Fock matrices and DIIS error vectors for both spin channels.
 /// Solves the Pulay B-matrix equations with combined error metric:
-///   B_ij = Tr(e^α_i · e^α_j) + Tr(e^β_i · e^β_j)
+///   B_ij = Tr(e^alpha_i * e^alpha_j) + Tr(e^beta_i * e^beta_j)
 ///
 /// For restricted (single-spin), pass the same F/e for both channels or use
 /// the single-channel overload. The combined B matrix naturally reduces to

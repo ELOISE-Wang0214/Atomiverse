@@ -2,13 +2,10 @@
 /// @brief CPU-side plain-XYZ trajectory frame writer.
 ///
 /// Called by cuda::Recorder after async D2H of positions.
-/// The CUDA component owns no file-format logic — it is here.
+/// The CUDA component owns no file-format logic -- it is here.
 #pragma once
 
 #include <fstream>
-
-#include "atomiverse/core/int.h"
-#include "atomiverse/core/real.h"
 
 namespace ATV {
 namespace cpu {
@@ -31,9 +28,9 @@ namespace cpu {
 /// @param n_atoms  Number of atoms.
 /// @param step     Current step number (written in comment line).
 void trajectory_append(std::ofstream& os,
-                       const Int* type_id,
-                       const Real* x, const Real* y, const Real* z,
-                       Int n_atoms, int step);
+                       const int* type_id,
+                       const double* x, const double* y, const double* z,
+                       int n_atoms, int step);
 
 } // namespace cpu
 } // namespace ATV

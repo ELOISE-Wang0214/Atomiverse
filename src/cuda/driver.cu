@@ -13,6 +13,11 @@
 
 namespace ATV {
 
+using cuda::real_t;
+using cuda::work_t;
+using cuda::prec_t;
+
+
 // ── Backend ────────────────────────────────────────────────────────
 
 void Backend::init() {

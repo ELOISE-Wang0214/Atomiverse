@@ -7,9 +7,10 @@
 #include "nlist_memory.cuh"
 #include "triclinic.cuh"
 
-#include "atomiverse/core/int.h"
+
 
 #include <cuda_runtime.h>
+#include "atomiverse/cuda/types.cuh"
 
 #include <cstddef>
 #include <cstdint>
@@ -17,7 +18,7 @@
 namespace ATV::md::nlist {
 
 /// @brief Manages all device memory and kernel orchestration.
-template <typename Real>
+template <typename work_t>
 struct NListBuffers {
     // Morton sort temporaries
     DeviceVector<uint32_t> morton_codes;
@@ -27,13 +28,13 @@ struct NListBuffers {
     DeviceVector<char> sort_temp;
 
     // Cluster SoA
-    DeviceVector<Real> cluster_x, cluster_y, cluster_z;
+    DeviceVector<work_t> cluster_x, cluster_y, cluster_z;
     DeviceVector<int> original_index;
     DeviceVector<int> cluster_count;
 
     // AABB
-    DeviceVector<Real> aabb_min_x, aabb_min_y, aabb_min_z;
-    DeviceVector<Real> aabb_max_x, aabb_max_y, aabb_max_z;
+    DeviceVector<work_t> aabb_min_x, aabb_min_y, aabb_min_z;
+    DeviceVector<work_t> aabb_max_x, aabb_max_y, aabb_max_z;
 
     // Grid
     DeviceVector<int> cluster_cell_idx;  // [num_clusters] cell assignment
@@ -51,11 +52,11 @@ struct NListBuffers {
     DeviceVector<char> prefix_temp;
 
     // Reference positions for rebuild check
-    DeviceVector<Real> ref_x, ref_y, ref_z;
+    DeviceVector<work_t> ref_x, ref_y, ref_z;
     DeviceVector<int> rebuild_flag; // single device-side flag
 
     // Input positions (device copy)
-    DeviceVector<Real> pos_x, pos_y, pos_z;
+    DeviceVector<work_t> pos_x, pos_y, pos_z;
 
     // Stencil (device copy)
     DeviceVector<int> stencil_dx, stencil_dy, stencil_dz;
@@ -66,8 +67,8 @@ struct NListBuffers {
     DeviceVector<int> flat_pair_counter;  // single int, atomic counter
 
     // Displacement tracking (smart prune)
-    DeviceVector<Real> ref_cluster_x, ref_cluster_y, ref_cluster_z;
-    DeviceVector<Real> cluster_disp_sq;
+    DeviceVector<work_t> ref_cluster_x, ref_cluster_y, ref_cluster_z;
+    DeviceVector<work_t> cluster_disp_sq;
     DeviceVector<int> dirty_flags;
     DeviceVector<int> flat_histogram;
 
@@ -135,7 +136,7 @@ struct NListBuffers {
         flat_histogram.resize(n_clusters);
     }
 
-    ClusterData<Real> cluster_data(int num_clusters, int num_atoms) {
+    ClusterData<work_t> cluster_data(int num_clusters, int num_atoms) {
         return {cluster_x.data(), cluster_y.data(), cluster_z.data(),
                 original_index.data(), cluster_count.data(),
                 aabb_min_x.data(), aabb_min_y.data(), aabb_min_z.data(),
@@ -143,12 +144,12 @@ struct NListBuffers {
                 num_clusters, num_atoms};
     }
 
-    ClusterPairList<Real> pair_list(int num_clusters, int num_pairs) {
+    ClusterPairList<work_t> pair_list(int num_clusters, int num_pairs) {
         return {row_ptr.data(), col_idx.data(), interaction_mask.data(),
                 num_pairs, num_clusters};
     }
 
-    FlatPairList<Real> flat_pair_list() {
+    FlatPairList<work_t> flat_pair_list() {
         return {flat_ci.data(), flat_cj.data(), flat_mask.data(),
                 flat_pair_counter.data(),
                 static_cast<int>(flat_ci.size())};
@@ -156,22 +157,22 @@ struct NListBuffers {
 };
 
 // Kernel launch declarations (defined in .cu files)
-template <typename Real>
-void launch_compute_morton(const Real* pos_x, const Real* pos_y,
-                           const Real* pos_z, int num_atoms,
-                           const Real* inv_cell, bool periodic,
+template <typename work_t>
+void launch_compute_morton(const real_t* pos_x, const real_t* pos_y,
+                           const real_t* pos_z, int num_atoms,
+                           const real_t* inv_cell, bool periodic,
                            uint32_t* morton_codes, int* atom_indices,
                            cudaStream_t stream = 0);
 
-template <typename Real>
-void launch_assign_clusters_to_cells(const Real* aabb_min_x,
-                                     const Real* aabb_min_y,
-                                     const Real* aabb_min_z,
-                                     const Real* aabb_max_x,
-                                     const Real* aabb_max_y,
-                                     const Real* aabb_max_z,
+template <typename work_t>
+void launch_assign_clusters_to_cells(const real_t* aabb_min_x,
+                                     const real_t* aabb_min_y,
+                                     const real_t* aabb_min_z,
+                                     const real_t* aabb_max_x,
+                                     const real_t* aabb_max_y,
+                                     const real_t* aabb_max_z,
                                      int num_clusters,
-                                     const Real* inv_cell,
+                                     const real_t* inv_cell,
                                      int dims_x, int dims_y, int dims_z,
                                      bool periodic,
                                      int* cluster_cell_idx,
@@ -189,7 +190,7 @@ void launch_coarse_count_pairs(const int* cell_start,
                                 cudaStream_t stream = 0);
 
 // Single-pass AABB fill: writes pairs at row_ptr_upper offsets, outputs actual pair_counts
-template <typename Real>
+template <typename work_t>
 void launch_fill_cluster_pairs(const int* cell_start,
                                const int* cell_clusters,
                                const int* cluster_cell_idx,
@@ -198,16 +199,16 @@ void launch_fill_cluster_pairs(const int* cell_start,
                                const int* stencil_dy,
                                const int* stencil_dz,
                                const int* num_stencil_ptr,
-                               const Real* aabb_min_x,
-                               const Real* aabb_min_y,
-                               const Real* aabb_min_z,
-                               const Real* aabb_max_x,
-                               const Real* aabb_max_y,
-                               const Real* aabb_max_z,
+                               const real_t* aabb_min_x,
+                               const real_t* aabb_min_y,
+                               const real_t* aabb_min_z,
+                               const real_t* aabb_max_x,
+                               const real_t* aabb_max_y,
+                               const real_t* aabb_max_z,
                                int num_clusters, bool periodic,
-                               Real cutoff_plus_skin_sq,
-                               const Real* cell_matrix,
-                               const Real* inv_cell,
+                               work_t cutoff_plus_skin_sq,
+                               const real_t* cell_matrix,
+                               const real_t* inv_cell,
                                const int* row_ptr_upper,
                                int* col_idx,
                                int* pair_counts,
@@ -244,18 +245,18 @@ void launch_build_grid_csr(const int* cluster_cell_idx, int num_clusters,
 // --- Fused pipeline kernels (Phase 2-4) ---
 
 // Fused AoS→SoA + Morton code computation (replaces separate K1+K2)
-template <typename Real>
+template <typename work_t>
 void launch_aos_to_soa_morton(const double* positions_aos, int num_atoms,
                                Real* x, Real* y, Real* z,
-                               const Real* inv_cell, bool periodic,
+                               const real_t* inv_cell, bool periodic,
                                uint32_t* morton_codes, int* atom_indices,
                                cudaStream_t stream = 0);
 
 // Fused scatter-to-cluster + AABB computation (replaces separate K4+K5)
-template <typename Real>
+template <typename work_t>
 void launch_scatter_and_aabb(const int* sorted_indices,
-                              const Real* pos_x, const Real* pos_y,
-                              const Real* pos_z,
+                              const real_t* pos_x, const real_t* pos_y,
+                              const real_t* pos_z,
                               int num_atoms, int num_clusters,
                               Real* cluster_x, Real* cluster_y, Real* cluster_z,
                               int* original_index, int* cluster_count,
@@ -271,28 +272,28 @@ void launch_csr_to_flat(const int* row_ptr, const int* col_idx,
                          cudaStream_t stream = 0);
 
 // Per-cluster displacement + dirty flags + rebuild flag
-template <typename Real>
-void launch_cluster_displacement(const Real* cluster_x, const Real* cluster_y,
-                                  const Real* cluster_z,
-                                  const Real* ref_cluster_x,
-                                  const Real* ref_cluster_y,
-                                  const Real* ref_cluster_z,
+template <typename work_t>
+void launch_cluster_displacement(const real_t* cluster_x, const real_t* cluster_y,
+                                  const real_t* cluster_z,
+                                  const real_t* ref_cluster_x,
+                                  const real_t* ref_cluster_y,
+                                  const real_t* ref_cluster_z,
                                   const int* cluster_count, int num_clusters,
-                                  Real dirty_threshold_sq,
+                                  work_t dirty_threshold_sq,
                                   Real* cluster_disp_sq, int* dirty_flags,
-                                  int* rebuild_flag, Real half_skin_sq,
+                                  int* rebuild_flag, work_t half_skin_sq,
                                   cudaStream_t stream = 0);
 
 // Smart rolling prune on flat pair list (skip clean pairs)
-template <typename Real>
-void launch_smart_rolling_prune(const Real* cluster_x, const Real* cluster_y,
-                                 const Real* cluster_z,
+template <typename work_t>
+void launch_smart_rolling_prune(const real_t* cluster_x, const real_t* cluster_y,
+                                 const real_t* cluster_z,
                                  const int* flat_ci, const int* flat_cj,
                                  const int* num_flat_pairs_device,
                                  int pair_capacity,
                                  const int* dirty_flags,
-                                 bool periodic, Real cutoff_sq,
-                                 const Real* cell_matrix, const Real* inv_cell,
+                                 bool periodic, work_t cutoff_sq,
+                                 const real_t* cell_matrix, const real_t* inv_cell,
                                  uint64_t* flat_mask,
                                  int prune_step, int prune_period,
                                  cudaStream_t stream = 0);
@@ -300,19 +301,19 @@ void launch_smart_rolling_prune(const Real* cluster_x, const Real* cluster_y,
 // --- GPU-side setup (setup.cu) ---
 
 void launch_setup_cell_device(
-    const Real* d_box,
+    const real_t* d_box,
     Real* d_cell, Real* d_inv_cell,
     int* d_dims, int* d_stencil_dx, int* d_stencil_dy, int* d_stencil_dz,
     int* d_n_stencil, int* d_ncells,
-    Real cutoff_plus_skin, bool periodic, int max_stencil,
+    work_t cutoff_plus_skin, bool periodic, int max_stencil,
     cudaStream_t stream = 0);
 
 void launch_setup_cell(
-    const Real* box_data,
+    const real_t* box_data,
     Real* d_cell, Real* d_inv_cell,
     int* d_dims, int* d_stencil_dx, int* d_stencil_dy, int* d_stencil_dz,
     int* d_n_stencil, int* d_ncells,
-    Real cutoff_plus_skin, bool periodic, int max_stencil,
+    work_t cutoff_plus_skin, bool periodic, int max_stencil,
     cudaStream_t stream = 0);
 
 void launch_write_int(int* arr, int idx, int val, cudaStream_t stream = 0);
@@ -322,10 +323,10 @@ void launch_write_int(int* arr, int idx, int val, cudaStream_t stream = 0);
 void launch_export_atom_pairs(
     const int* flat_ci, const int* flat_cj, const uint64_t* flat_mask,
     const int* num_flat_device, int n_flat, const int* original_index,
-    const Real* pos_x, const Real* pos_y, const Real* pos_z,
-    bool periodic, const Real* cell_matrix, const Real* inv_cell,
-    Int* out_i, Int* out_j, Real* out_dx, Real* out_dy, Real* out_dz,
-    Real* out_dist, Int* out_count, const Int* capacity_ptr,
+    const real_t* pos_x, const real_t* pos_y, const real_t* pos_z,
+    bool periodic, const real_t* cell_matrix, const real_t* inv_cell,
+    int* out_i, int* out_j, Real* out_dx, Real* out_dy, Real* out_dz,
+    Real* out_dist, int* out_count, const int* capacity_ptr,
     cudaStream_t stream = 0);
 
 } // namespace ATV::md::nlist

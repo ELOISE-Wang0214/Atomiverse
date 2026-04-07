@@ -42,18 +42,18 @@
 using namespace ATV;
 
 /// Build an FCC lattice of n_cells^3 * 4 atoms.
-cpu::Frame make_fcc(int n_cells, Real lattice_const) {
+cpu::Frame make_fcc(int n_cells, double lattice_const) {
     int n = n_cells * n_cells * n_cells * 4;
-    Real box_len = lattice_const * Real(n_cells);
+    double box_len = lattice_const * double(n_cells);
 
     cpu::Frame frame(n);
 
     // FCC basis: (0,0,0), (0.5,0.5,0), (0.5,0,0.5), (0,0.5,0.5)
-    const Real basis[4][3] = {
-        {Real(0),    Real(0),    Real(0)},
-        {Real(0.5),  Real(0.5),  Real(0)},
-        {Real(0.5),  Real(0),    Real(0.5)},
-        {Real(0),    Real(0.5),  Real(0.5)},
+    const double basis[4][3] = {
+        {double(0),    double(0),    double(0)},
+        {double(0.5),  double(0.5),  double(0)},
+        {double(0.5),  double(0),    double(0.5)},
+        {double(0),    double(0.5),  double(0.5)},
     };
 
     int idx = 0;
@@ -61,10 +61,10 @@ cpu::Frame make_fcc(int n_cells, Real lattice_const) {
         for (int iy = 0; iy < n_cells; ++iy)
             for (int iz = 0; iz < n_cells; ++iz)
                 for (int b = 0; b < 4; ++b) {
-                    frame.atoms.x[idx] = (Real(ix) + basis[b][0]) * lattice_const;
-                    frame.atoms.y[idx] = (Real(iy) + basis[b][1]) * lattice_const;
-                    frame.atoms.z[idx] = (Real(iz) + basis[b][2]) * lattice_const;
-                    frame.atoms.mass[idx] = Real(39.948);  // Argon [amu]
+                    frame.atoms.x[idx] = (double(ix) + basis[b][0]) * lattice_const;
+                    frame.atoms.y[idx] = (double(iy) + basis[b][1]) * lattice_const;
+                    frame.atoms.z[idx] = (double(iz) + basis[b][2]) * lattice_const;
+                    frame.atoms.mass[idx] = double(39.948);  // Argon [amu]
                     frame.atoms.type[idx] = 0;
                     idx++;
                 }
@@ -161,23 +161,23 @@ int main() {
     // LJ argon: epsilon = 0.0104 eV, sigma = 3.4 A
     // Cutoff = 2.5*sigma = 8.5 A
     // FCC lattice constant for Ar ~ 5.26 A
-    Real epsilon = Real(0.0104);
-    Real sigma   = Real(3.4);
-    Real cutoff  = Real(6.8);             // 2.0*sigma (1.3*cutoff < L/2)
+    double epsilon = double(0.0104);
+    double sigma   = double(3.4);
+    double cutoff  = double(6.8);             // 2.0*sigma (1.3*cutoff < L/2)
     int  n_cells = 5;                     // 5x5x5 FCC -> 500 atoms
-    Real a0      = Real(5.26);            // lattice constant [A]
+    double a0      = double(5.26);            // lattice constant [A]
 
     auto frame = make_fcc(n_cells, a0);
     int n = frame.atoms.size();
     std::cout << "System: " << n << " Ar atoms, FCC lattice a="
               << std::fixed << std::setprecision(2) << static_cast<double>(a0)
-              << " A, box=" << static_cast<double>(a0 * Real(n_cells)) << " A\n";
+              << " A, box=" << static_cast<double>(a0 * double(n_cells)) << " A\n";
 
     // ── Phase 1: Energy minimization ──────────────────────────────────
     std::cout << "\n=== Energy Minimization (Steepest Descent, 500 steps) ===\n";
     {
         minimizer::SD min;
-        min.add(minimizer::SteepestDescentStep{Real(0.01)});
+        min.add(minimizer::SteepestDescentStep{double(0.01)});
         min.on(minimizer::Phase::force)
             .add(NeighborList{cutoff}, -10)
             .add(LJ{epsilon, sigma, cutoff});
@@ -196,8 +196,8 @@ int main() {
     // pairs, inflating energies. Absolute energy values are not physical
     // until the NeighborList deduplication is fixed. Energy *conservation*
     // (constant TotEng) can still be verified at small dt.
-    Real dt = Real(0.01);          // 0.01 fs timestep
-    Real temperature = Real(5.0);  // 5 K initial temperature
+    double dt = double(0.01);          // 0.01 fs timestep
+    double temperature = double(5.0);  // 5 K initial temperature
     int  n_steps = 1000;
     int  thermo_freq = 100;
     int  dump_freq   = 100;

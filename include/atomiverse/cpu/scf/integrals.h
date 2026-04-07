@@ -1,5 +1,5 @@
 /// @file cpu/scf/integrals.h
-/// @brief IntegralPack + build_integrals_sto3g() — molecular integrals via native C++.
+/// @brief IntegralPack + build_integrals_sto3g() -- molecular integrals via native C++.
 ///
 /// All arrays are xtensor. Computes overlap (S), kinetic (T), nuclear attraction (V),
 /// core Hamiltonian (Hcore = T + V), two-electron repulsion integrals (ERI),
@@ -14,8 +14,6 @@
 #include <array>
 #include <xtensor/xtensor.hpp>
 
-#include "atomiverse/core/real.h"
-#include "atomiverse/core/int.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 
@@ -25,14 +23,14 @@ namespace scf {
 
 /// @brief Molecular integrals for a Hartree-Fock / Kohn-Sham calculation.
 struct IntegralPack {
-    xt::xtensor<Real, 2> S;       ///< Overlap matrix [n_basis x n_basis].
-    xt::xtensor<Real, 2> T;       ///< Kinetic energy matrix [n_basis x n_basis].
-    xt::xtensor<Real, 2> V;       ///< Nuclear attraction matrix [n_basis x n_basis].
-    xt::xtensor<Real, 2> Hcore;   ///< Core Hamiltonian T + V [n_basis x n_basis].
-    xt::xtensor<Real, 4> ERI;     ///< Two-electron integrals (ij|kl) [n^4].
-    Real V_nuc = 0;               ///< Nuclear repulsion energy [Hartree].
-    Int n_basis = 0;              ///< Number of basis functions.
-    Int n_electrons = 0;          ///< Total number of electrons.
+    xt::xtensor<double, 2> S;       ///< Overlap matrix [n_basis x n_basis].
+    xt::xtensor<double, 2> T;       ///< Kinetic energy matrix [n_basis x n_basis].
+    xt::xtensor<double, 2> V;       ///< Nuclear attraction matrix [n_basis x n_basis].
+    xt::xtensor<double, 2> Hcore;   ///< Core Hamiltonian T + V [n_basis x n_basis].
+    xt::xtensor<double, 4> ERI;     ///< Two-electron integrals (ij|kl) [n^4].
+    double V_nuc = 0;               ///< Nuclear repulsion energy [Hartree].
+    int n_basis = 0;                ///< Number of basis functions.
+    int n_electrons = 0;            ///< Total number of electrons.
 
     /// @brief Atom descriptors (Z, position in Bohr). Populated by build_integrals_sto3g.
     std::vector<native::Atom> atoms;
@@ -47,7 +45,7 @@ struct IntegralPack {
 
     /// @brief Number of doubly-occupied orbitals (RHF closed-shell).
     /// @return `n_electrons / 2`.
-    Int n_occ() const { return n_electrons / 2; }
+    int n_occ() const { return n_electrons / 2; }
 };
 
 /// @brief Compute STO-3G integrals for a molecular geometry via native C++.

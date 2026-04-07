@@ -4,8 +4,14 @@
 #include "atomiverse/cuda/scf/scf.cuh"
 
 #include <cuda_runtime.h>
+#include "atomiverse/cuda/types.cuh"
 
 namespace ATV {
+
+using cuda::real_t;
+using cuda::work_t;
+using cuda::prec_t;
+
 namespace scf {
 
 void ZeroDensity::launch(const LaunchContext& ctx) {
@@ -16,8 +22,8 @@ void ZeroDensity::launch(const LaunchContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& scf = ctx.frame.scf;
     if (scf.n > 0) {
-        Int nn = scf.n * scf.n;
-        cudaMemsetAsync(scf.P, 0, nn * sizeof(Real), stream);
+        int nn = scf.n * scf.n;
+        cudaMemsetAsync(scf.P, 0, nn * sizeof(work_t), stream);
     }
 }
 

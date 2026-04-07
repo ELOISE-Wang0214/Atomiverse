@@ -10,6 +10,7 @@
 #include "triclinic.cuh"
 
 #include <cuda_runtime.h>
+#include "atomiverse/cuda/types.cuh"
 
 #include <cstdint>
 
@@ -65,21 +66,21 @@ void launch_csr_to_flat(const int* row_ptr, const int* col_idx,
 // Kernel: Per-cluster displacement + dirty flags + rebuild flag
 // ---------------------------------------------------------------------------
 
-template <typename Real>
+template <typename work_t>
 __global__ void cluster_displacement(
-    const Real* __restrict__ cluster_x,
-    const Real* __restrict__ cluster_y,
-    const Real* __restrict__ cluster_z,
-    const Real* __restrict__ ref_cluster_x,
-    const Real* __restrict__ ref_cluster_y,
-    const Real* __restrict__ ref_cluster_z,
+    const real_t* __restrict__ cluster_x,
+    const real_t* __restrict__ cluster_y,
+    const real_t* __restrict__ cluster_z,
+    const real_t* __restrict__ ref_cluster_x,
+    const real_t* __restrict__ ref_cluster_y,
+    const real_t* __restrict__ ref_cluster_z,
     const int* __restrict__ cluster_count,
     int num_clusters,
-    Real dirty_threshold_sq,
-    Real* __restrict__ disp_sq_out,
+    work_t dirty_threshold_sq,
+    real_t* __restrict__ disp_sq_out,
     int* __restrict__ dirty_flags,
     int* __restrict__ rebuild_flag,
-    Real half_skin_sq) {
+    work_t half_skin_sq) {
 
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     int lane = tid % kClusterSize;
@@ -90,15 +91,15 @@ __global__ void cluster_displacement(
     int count = cluster_count[ci];
     int idx = ci * kClusterSize + lane;
 
-    Real dx = (lane < count) ? (cluster_x[idx] - ref_cluster_x[idx]) : Real(0);
-    Real dy = (lane < count) ? (cluster_y[idx] - ref_cluster_y[idx]) : Real(0);
-    Real dz = (lane < count) ? (cluster_z[idx] - ref_cluster_z[idx]) : Real(0);
-    Real d2 = dx * dx + dy * dy + dz * dz;
+    work_t dx = (lane < count) ? (cluster_x[idx] - ref_cluster_x[idx]) : work_t(0);
+    work_t dy = (lane < count) ? (cluster_y[idx] - ref_cluster_y[idx]) : work_t(0);
+    work_t dz = (lane < count) ? (cluster_z[idx] - ref_cluster_z[idx]) : work_t(0);
+    work_t d2 = dx * dx + dy * dy + dz * dz;
 
     // Warp-level max reduction within the kClusterSize-thread group
     unsigned mask = 0xFFu << (((threadIdx.x % 32) / kClusterSize) * kClusterSize);
     for (int offset = kClusterSize / 2; offset >= 1; offset >>= 1) {
-        Real tmp = __shfl_down_sync(mask, d2, offset);
+        work_t tmp = __shfl_down_sync(mask, d2, offset);
         d2 = fmax(d2, tmp);
     }
 
@@ -111,16 +112,16 @@ __global__ void cluster_displacement(
     }
 }
 
-template <typename Real>
-void launch_cluster_displacement(const Real* cluster_x, const Real* cluster_y,
-                                  const Real* cluster_z,
-                                  const Real* ref_cluster_x,
-                                  const Real* ref_cluster_y,
-                                  const Real* ref_cluster_z,
+template <typename work_t>
+void launch_cluster_displacement(const real_t* cluster_x, const real_t* cluster_y,
+                                  const real_t* cluster_z,
+                                  const real_t* ref_cluster_x,
+                                  const real_t* ref_cluster_y,
+                                  const real_t* ref_cluster_z,
                                   const int* cluster_count, int num_clusters,
-                                  Real dirty_threshold_sq,
+                                  work_t dirty_threshold_sq,
                                   Real* cluster_disp_sq, int* dirty_flags,
-                                  int* rebuild_flag, Real half_skin_sq,
+                                  int* rebuild_flag, work_t half_skin_sq,
                                   cudaStream_t stream) {
     if (num_clusters == 0) return;
 
@@ -130,7 +131,7 @@ void launch_cluster_displacement(const Real* cluster_x, const Real* cluster_y,
     int block = ATV::cuda::kDefaultBlock;
     int grid = (threads_needed + block - 1) / block;
 
-    cluster_displacement<Real><<<grid, block, 0, stream>>>(
+    cluster_displacement<work_t><<<grid, block, 0, stream>>>(
         cluster_x, cluster_y, cluster_z,
         ref_cluster_x, ref_cluster_y, ref_cluster_z,
         cluster_count, num_clusters, dirty_threshold_sq,
@@ -157,19 +158,19 @@ template void launch_cluster_displacement<double>(
 // permanently.
 // ---------------------------------------------------------------------------
 
-template <typename Real>
+template <typename work_t>
 __global__ __launch_bounds__(ATV::cuda::kDefaultBlock)
 void smart_rolling_prune(
-    const Real* __restrict__ cluster_x,
-    const Real* __restrict__ cluster_y,
-    const Real* __restrict__ cluster_z,
+    const real_t* __restrict__ cluster_x,
+    const real_t* __restrict__ cluster_y,
+    const real_t* __restrict__ cluster_z,
     const int* __restrict__ flat_ci,
     const int* __restrict__ flat_cj,
     const int* __restrict__ num_flat_pairs_device,
     const int* __restrict__ dirty_flags,
-    bool periodic, Real cutoff_sq,
-    const Real* __restrict__ cell_matrix,
-    const Real* __restrict__ inv_cell,
+    bool periodic, work_t cutoff_sq,
+    const real_t* __restrict__ cell_matrix,
+    const real_t* __restrict__ inv_cell,
     uint64_t* __restrict__ flat_mask,
     int prune_step, int prune_period) {
 
@@ -184,13 +185,13 @@ void smart_rolling_prune(
     int ci = flat_ci[pair_idx];
     int cj = flat_cj[pair_idx];
 
-    Real xi = cluster_x[ci * kClusterSize + i_lane];
-    Real yi = cluster_y[ci * kClusterSize + i_lane];
-    Real zi = cluster_z[ci * kClusterSize + i_lane];
+    work_t xi = cluster_x[ci * kClusterSize + i_lane];
+    work_t yi = cluster_y[ci * kClusterSize + i_lane];
+    work_t zi = cluster_z[ci * kClusterSize + i_lane];
 
-    Real jx = cluster_x[cj * kClusterSize + i_lane];
-    Real jy = cluster_y[cj * kClusterSize + i_lane];
-    Real jz = cluster_z[cj * kClusterSize + i_lane];
+    work_t jx = cluster_x[cj * kClusterSize + i_lane];
+    work_t jy = cluster_y[cj * kClusterSize + i_lane];
+    work_t jz = cluster_z[cj * kClusterSize + i_lane];
 
     uint8_t my_bits = 0;
     int group_in_warp = (threadIdx.x % 32) / kClusterSize;
@@ -198,19 +199,19 @@ void smart_rolling_prune(
     int group_base = group_in_warp * kClusterSize;
 
     for (int j = 0; j < kClusterSize; ++j) {
-        Real jx_j = __shfl_sync(submask, jx, group_base + j);
-        Real jy_j = __shfl_sync(submask, jy, group_base + j);
-        Real jz_j = __shfl_sync(submask, jz, group_base + j);
+        work_t jx_j = __shfl_sync(submask, jx, group_base + j);
+        work_t jy_j = __shfl_sync(submask, jy, group_base + j);
+        work_t jz_j = __shfl_sync(submask, jz, group_base + j);
 
-        Real dx = jx_j - xi;
-        Real dy = jy_j - yi;
-        Real dz = jz_j - zi;
+        work_t dx = jx_j - xi;
+        work_t dy = jy_j - yi;
+        work_t dz = jz_j - zi;
 
         if (periodic) {
             minimum_image(dx, dy, dz, cell_matrix, inv_cell);
         }
 
-        Real r2 = dx * dx + dy * dy + dz * dz;
+        work_t r2 = dx * dx + dy * dy + dz * dz;
         if (r2 < cutoff_sq) {
             my_bits |= (1u << j);
         }
@@ -234,15 +235,15 @@ void smart_rolling_prune(
     }
 }
 
-template <typename Real>
-void launch_smart_rolling_prune(const Real* cluster_x, const Real* cluster_y,
-                                 const Real* cluster_z,
+template <typename work_t>
+void launch_smart_rolling_prune(const real_t* cluster_x, const real_t* cluster_y,
+                                 const real_t* cluster_z,
                                  const int* flat_ci, const int* flat_cj,
                                  const int* num_flat_pairs_device,
                                  int pair_capacity,
                                  const int* dirty_flags,
-                                 bool periodic, Real cutoff_sq,
-                                 const Real* cell_matrix, const Real* inv_cell,
+                                 bool periodic, work_t cutoff_sq,
+                                 const real_t* cell_matrix, const real_t* inv_cell,
                                  uint64_t* flat_mask,
                                  int prune_step, int prune_period,
                                  cudaStream_t stream) {
@@ -252,7 +253,7 @@ void launch_smart_rolling_prune(const Real* cluster_x, const Real* cluster_y,
     int block = ATV::cuda::kDefaultBlock;
     int grid = (threads_needed + block - 1) / block;
 
-    smart_rolling_prune<Real><<<grid, block, 0, stream>>>(
+    smart_rolling_prune<work_t><<<grid, block, 0, stream>>>(
         cluster_x, cluster_y, cluster_z,
         flat_ci, flat_cj, num_flat_pairs_device,
         dirty_flags, periodic, cutoff_sq,

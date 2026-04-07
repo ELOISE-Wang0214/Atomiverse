@@ -7,6 +7,7 @@
 #include "triclinic.cuh"
 
 #include <cuda_runtime.h>
+#include "atomiverse/cuda/types.cuh"
 #include <cmath>
 
 namespace ATV::md::nlist {
@@ -17,30 +18,30 @@ namespace ATV::md::nlist {
 
 /// @brief Compute inverse, dims, stencil from d_cell already populated.
 __device__ void setup_cell_body(
-    Real* __restrict__ d_cell,
-    Real* __restrict__ d_inv_cell,
+    real_t* __restrict__ d_cell,
+    real_t* __restrict__ d_inv_cell,
     int* __restrict__ d_dims,
     int* __restrict__ d_stencil_dx,
     int* __restrict__ d_stencil_dy,
     int* __restrict__ d_stencil_dz,
     int* __restrict__ d_n_stencil,
     int* __restrict__ d_ncells,
-    Real cutoff_plus_skin,
+    work_t cutoff_plus_skin,
     bool periodic,
     int max_stencil) {
 
     invert_3x3(d_cell, d_inv_cell);
 
     // Perpendicular widths via cross products
-    Real widths[3];
+    work_t widths[3];
     {
-        Real inv[9];
-        Real det = invert_3x3(d_cell, inv);
-        Real volume = (det < Real(0)) ? -det : det;
-        auto cross_norm = [&](int i, int j) -> Real {
-            Real cx = d_cell[i*3+1]*d_cell[j*3+2] - d_cell[i*3+2]*d_cell[j*3+1];
-            Real cy = d_cell[i*3+2]*d_cell[j*3+0] - d_cell[i*3+0]*d_cell[j*3+2];
-            Real cz = d_cell[i*3+0]*d_cell[j*3+1] - d_cell[i*3+1]*d_cell[j*3+0];
+        work_t inv[9];
+        work_t det = invert_3x3(d_cell, inv);
+        work_t volume = (det < work_t(0)) ? -det : det;
+        auto cross_norm = [&](int i, int j) -> work_t {
+            work_t cx = d_cell[i*3+1]*d_cell[j*3+2] - d_cell[i*3+2]*d_cell[j*3+1];
+            work_t cy = d_cell[i*3+2]*d_cell[j*3+0] - d_cell[i*3+0]*d_cell[j*3+2];
+            work_t cz = d_cell[i*3+0]*d_cell[j*3+1] - d_cell[i*3+1]*d_cell[j*3+0];
             return sqrt(cx*cx + cy*cy + cz*cz);
         };
         widths[0] = volume / cross_norm(1, 2);
@@ -49,7 +50,7 @@ __device__ void setup_cell_body(
     }
 
     // Grid dimensions
-    Real rs = cutoff_plus_skin;
+    work_t rs = cutoff_plus_skin;
     int dx = max(3, int(widths[0] / rs));
     int dy = max(3, int(widths[1] / rs));
     int dz = max(3, int(widths[2] / rs));
@@ -60,28 +61,28 @@ __device__ void setup_cell_body(
     int range[3];
     int dim_arr[3] = {dx, dy, dz};
     for (int d = 0; d < 3; ++d) {
-        Real row_norm = sqrt(d_inv_cell[d*3+0]*d_inv_cell[d*3+0] +
+        work_t row_norm = sqrt(d_inv_cell[d*3+0]*d_inv_cell[d*3+0] +
                              d_inv_cell[d*3+1]*d_inv_cell[d*3+1] +
                              d_inv_cell[d*3+2]*d_inv_cell[d*3+2]);
-        range[d] = max(1, int(rs * row_norm * Real(dim_arr[d])) + 1);
+        range[d] = max(1, int(rs * row_norm * work_t(dim_arr[d])) + 1);
     }
-    Real fx = Real(1)/Real(dx), fy = Real(1)/Real(dy), fz = Real(1)/Real(dz);
-    Real cut_sq = rs * rs;
+    work_t fx = work_t(1)/work_t(dx), fy = work_t(1)/work_t(dy), fz = work_t(1)/work_t(dz);
+    work_t cut_sq = rs * rs;
     int count = 0;
 
     for (int di = -range[0]; di <= range[0]; ++di)
       for (int dj = -range[1]; dj <= range[1]; ++dj)
         for (int dk = -range[2]; dk <= range[2]; ++dk) {
-            Real cfx = Real(di)*fx, cfy = Real(dj)*fy, cfz = Real(dk)*fz;
-            Real cx = d_cell[0]*cfx + d_cell[1]*cfy + d_cell[2]*cfz;
-            Real cy = d_cell[3]*cfx + d_cell[4]*cfy + d_cell[5]*cfz;
-            Real cz = d_cell[6]*cfx + d_cell[7]*cfy + d_cell[8]*cfz;
-            Real hwx = Real(0.5)*(fabs(d_cell[0]*fx) + fabs(d_cell[1]*fy) + fabs(d_cell[2]*fz));
-            Real hwy = Real(0.5)*(fabs(d_cell[3]*fx) + fabs(d_cell[4]*fy) + fabs(d_cell[5]*fz));
-            Real hwz = Real(0.5)*(fabs(d_cell[6]*fx) + fabs(d_cell[7]*fy) + fabs(d_cell[8]*fz));
-            Real gx = fmax(Real(0), fabs(cx) - Real(2)*hwx);
-            Real gy = fmax(Real(0), fabs(cy) - Real(2)*hwy);
-            Real gz = fmax(Real(0), fabs(cz) - Real(2)*hwz);
+            work_t cfx = work_t(di)*fx, cfy = work_t(dj)*fy, cfz = work_t(dk)*fz;
+            work_t cx = d_cell[0]*cfx + d_cell[1]*cfy + d_cell[2]*cfz;
+            work_t cy = d_cell[3]*cfx + d_cell[4]*cfy + d_cell[5]*cfz;
+            work_t cz = d_cell[6]*cfx + d_cell[7]*cfy + d_cell[8]*cfz;
+            work_t hwx = work_t(0.5)*(fabs(d_cell[0]*fx) + fabs(d_cell[1]*fy) + fabs(d_cell[2]*fz));
+            work_t hwy = work_t(0.5)*(fabs(d_cell[3]*fx) + fabs(d_cell[4]*fy) + fabs(d_cell[5]*fz));
+            work_t hwz = work_t(0.5)*(fabs(d_cell[6]*fx) + fabs(d_cell[7]*fy) + fabs(d_cell[8]*fz));
+            work_t gx = fmax(work_t(0), fabs(cx) - work_t(2)*hwx);
+            work_t gy = fmax(work_t(0), fabs(cy) - work_t(2)*hwy);
+            work_t gz = fmax(work_t(0), fabs(cz) - work_t(2)*hwz);
             if (gx*gx + gy*gy + gz*gz <= cut_sq) {
                 bool dup = false;
                 if (periodic) {
@@ -109,13 +110,13 @@ __device__ void setup_cell_body(
 
 /// @brief Setup from host-passed box scalars (used by tests/host-side setup).
 __global__ void setup_cell_from_scalars(
-    Real b00, Real b01, Real b02,
-    Real b10, Real b11, Real b12,
-    Real b20, Real b21, Real b22,
+    work_t b00, work_t b01, work_t b02,
+    work_t b10, work_t b11, work_t b12,
+    work_t b20, work_t b21, work_t b22,
     Real* d_cell, Real* d_inv_cell,
     int* d_dims, int* d_stencil_dx, int* d_stencil_dy, int* d_stencil_dz,
     int* d_n_stencil, int* d_ncells,
-    Real cutoff_plus_skin, bool periodic, int max_stencil) {
+    work_t cutoff_plus_skin, bool periodic, int max_stencil) {
 
     d_cell[0] = b00; d_cell[1] = b01; d_cell[2] = b02;
     d_cell[3] = b10; d_cell[4] = b11; d_cell[5] = b12;
@@ -128,13 +129,13 @@ __global__ void setup_cell_from_scalars(
 
 /// @brief Setup from device box pointer (production path).
 __global__ void setup_cell_from_device(
-    const Real* __restrict__ d_box,
-    Real* __restrict__ d_cell, Real* __restrict__ d_inv_cell,
+    const real_t* __restrict__ d_box,
+    real_t* __restrict__ d_cell, real_t* __restrict__ d_inv_cell,
     int* __restrict__ d_dims,
     int* __restrict__ d_stencil_dx, int* __restrict__ d_stencil_dy,
     int* __restrict__ d_stencil_dz,
     int* __restrict__ d_n_stencil, int* __restrict__ d_ncells,
-    Real cutoff_plus_skin, bool periodic, int max_stencil) {
+    work_t cutoff_plus_skin, bool periodic, int max_stencil) {
 
     for (int i = 0; i < 9; ++i) d_cell[i] = d_box[i];
 
@@ -153,11 +154,11 @@ __global__ void write_int_value(int* __restrict__ arr, int idx, int val) {
 // ---------------------------------------------------------------------------
 
 void launch_setup_cell(
-    const Real* box_data,
+    const real_t* box_data,
     Real* d_cell, Real* d_inv_cell,
     int* d_dims, int* d_stencil_dx, int* d_stencil_dy, int* d_stencil_dz,
     int* d_n_stencil, int* d_ncells,
-    Real cutoff_plus_skin, bool periodic, int max_stencil,
+    work_t cutoff_plus_skin, bool periodic, int max_stencil,
     cudaStream_t stream) {
     setup_cell_from_scalars<<<1, 1, 0, stream>>>(
         box_data[0], box_data[1], box_data[2],
@@ -171,11 +172,11 @@ void launch_setup_cell(
 }
 
 void launch_setup_cell_device(
-    const Real* d_box,
+    const real_t* d_box,
     Real* d_cell, Real* d_inv_cell,
     int* d_dims, int* d_stencil_dx, int* d_stencil_dy, int* d_stencil_dz,
     int* d_n_stencil, int* d_ncells,
-    Real cutoff_plus_skin, bool periodic, int max_stencil,
+    work_t cutoff_plus_skin, bool periodic, int max_stencil,
     cudaStream_t stream) {
     setup_cell_from_device<<<1, 1, 0, stream>>>(
         d_box, d_cell, d_inv_cell, d_dims,

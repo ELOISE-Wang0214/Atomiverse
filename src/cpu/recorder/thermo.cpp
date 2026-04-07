@@ -10,13 +10,15 @@
 namespace ATV {
 namespace cpu {
 
-void thermo_print(int step, Real pe, Real ke, Int n_atoms,
+void thermo_print(int step, double pe, double ke, int n_atoms,
                   bool& header_printed, std::ofstream& file)
 {
     // Temperature: T = 2*KE / (ndof * kB),  ndof = 3N - 3
-    Int ndof = 3 * n_atoms - 3;
-    Real temp = (ndof > 0) ? Real(2) * ke / (Real(ndof) * kBoltzmann) : Real(0);
-    Real total = pe + ke;
+    const int ndof = 3 * n_atoms - 3;
+    const double temp = (ndof > 0)
+        ? 2.0 * ke / (static_cast<double>(ndof) * kBoltzmann)
+        : 0.0;
+    const double total = pe + ke;
 
     if (!header_printed) {
         ATV_INFO("{:>8s} {:>12s} {:>14s} {:>14s} {:>14s}",

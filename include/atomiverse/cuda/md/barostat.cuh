@@ -24,7 +24,7 @@ public:
     /// @param P_target Target pressure [eV/Angstrom^3].
     /// @param tau_p    Pressure coupling time [fs].
     /// @param dt       Time step [fs].
-    Barostat(Real P_target, Real tau_p, Real dt);
+    Barostat(double P_target, double tau_p, double dt);
     ~Barostat() override;
     Barostat(Barostat&&) noexcept;
     Barostat& operator=(Barostat&&) noexcept;
@@ -36,7 +36,7 @@ public:
     void destroy(const DestroyContext& ctx) override;
 
 private:
-    Real P_target_, tau_p_, dt_;
+    double P_target_, tau_p_, dt_;
     struct State;
     std::unique_ptr<State> state_;
 };

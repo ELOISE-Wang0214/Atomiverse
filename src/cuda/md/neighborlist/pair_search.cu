@@ -8,6 +8,7 @@
 #include "triclinic.cuh"
 
 #include <cuda_runtime.h>
+#include "atomiverse/cuda/types.cuh"
 
 namespace ATV::md::nlist {
 
@@ -15,34 +16,34 @@ namespace ATV::md::nlist {
 // Device: Minimum AABB distance² between two clusters
 // ---------------------------------------------------------------------------
 
-template <typename Real>
-__device__ Real min_aabb_dist_sq(Real ci_min_x, Real ci_min_y, Real ci_min_z,
-                                 Real ci_max_x, Real ci_max_y, Real ci_max_z,
-                                 Real cj_min_x, Real cj_min_y, Real cj_min_z,
-                                 Real cj_max_x, Real cj_max_y, Real cj_max_z,
+template <typename work_t>
+__device__ work_t min_aabb_dist_sq(work_t ci_min_x, work_t ci_min_y, work_t ci_min_z,
+                                 work_t ci_max_x, work_t ci_max_y, work_t ci_max_z,
+                                 work_t cj_min_x, work_t cj_min_y, work_t cj_min_z,
+                                 work_t cj_max_x, work_t cj_max_y, work_t cj_max_z,
                                  bool periodic,
-                                 const Real* __restrict__ cell_matrix,
-                                 const Real* __restrict__ inv_cell) {
-    Real cx_i = (ci_min_x + ci_max_x) * Real(0.5);
-    Real cy_i = (ci_min_y + ci_max_y) * Real(0.5);
-    Real cz_i = (ci_min_z + ci_max_z) * Real(0.5);
-    Real cx_j = (cj_min_x + cj_max_x) * Real(0.5);
-    Real cy_j = (cj_min_y + cj_max_y) * Real(0.5);
-    Real cz_j = (cj_min_z + cj_max_z) * Real(0.5);
+                                 const real_t* __restrict__ cell_matrix,
+                                 const real_t* __restrict__ inv_cell) {
+    work_t cx_i = (ci_min_x + ci_max_x) * work_t(0.5);
+    work_t cy_i = (ci_min_y + ci_max_y) * work_t(0.5);
+    work_t cz_i = (ci_min_z + ci_max_z) * work_t(0.5);
+    work_t cx_j = (cj_min_x + cj_max_x) * work_t(0.5);
+    work_t cy_j = (cj_min_y + cj_max_y) * work_t(0.5);
+    work_t cz_j = (cj_min_z + cj_max_z) * work_t(0.5);
 
-    Real dx = cx_j - cx_i, dy = cy_j - cy_i, dz = cz_j - cz_i;
+    work_t dx = cx_j - cx_i, dy = cy_j - cy_i, dz = cz_j - cz_i;
     if (periodic) minimum_image(dx, dy, dz, cell_matrix, inv_cell);
 
-    Real hx_i = (ci_max_x - ci_min_x) * Real(0.5);
-    Real hy_i = (ci_max_y - ci_min_y) * Real(0.5);
-    Real hz_i = (ci_max_z - ci_min_z) * Real(0.5);
-    Real hx_j = (cj_max_x - cj_min_x) * Real(0.5);
-    Real hy_j = (cj_max_y - cj_min_y) * Real(0.5);
-    Real hz_j = (cj_max_z - cj_min_z) * Real(0.5);
+    work_t hx_i = (ci_max_x - ci_min_x) * work_t(0.5);
+    work_t hy_i = (ci_max_y - ci_min_y) * work_t(0.5);
+    work_t hz_i = (ci_max_z - ci_min_z) * work_t(0.5);
+    work_t hx_j = (cj_max_x - cj_min_x) * work_t(0.5);
+    work_t hy_j = (cj_max_y - cj_min_y) * work_t(0.5);
+    work_t hz_j = (cj_max_z - cj_min_z) * work_t(0.5);
 
-    Real gx = fmax(Real(0), fabs(dx) - hx_i - hx_j);
-    Real gy = fmax(Real(0), fabs(dy) - hy_i - hy_j);
-    Real gz = fmax(Real(0), fabs(dz) - hz_i - hz_j);
+    work_t gx = fmax(work_t(0), fabs(dx) - hx_i - hx_j);
+    work_t gy = fmax(work_t(0), fabs(dy) - hy_i - hy_j);
+    work_t gz = fmax(work_t(0), fabs(dz) - hz_i - hz_j);
     return gx * gx + gy * gy + gz * gz;
 }
 
@@ -120,7 +121,7 @@ void launch_coarse_count_pairs(const int* cell_start,
 // Uses cluster_cell_idx to avoid recomputing home cell (P5).
 // ---------------------------------------------------------------------------
 
-template <typename Real>
+template <typename work_t>
 __global__ __launch_bounds__(ATV::cuda::kDefaultBlock)
 void fill_pairs(
     const int* __restrict__ cell_start,
@@ -131,16 +132,16 @@ void fill_pairs(
     const int* __restrict__ stencil_dy,
     const int* __restrict__ stencil_dz,
     const int* __restrict__ num_stencil_ptr,
-    const Real* __restrict__ aabb_min_x,
-    const Real* __restrict__ aabb_min_y,
-    const Real* __restrict__ aabb_min_z,
-    const Real* __restrict__ aabb_max_x,
-    const Real* __restrict__ aabb_max_y,
-    const Real* __restrict__ aabb_max_z,
+    const real_t* __restrict__ aabb_min_x,
+    const real_t* __restrict__ aabb_min_y,
+    const real_t* __restrict__ aabb_min_z,
+    const real_t* __restrict__ aabb_max_x,
+    const real_t* __restrict__ aabb_max_y,
+    const real_t* __restrict__ aabb_max_z,
     int num_clusters, bool periodic,
-    Real cutoff_plus_skin_sq,
-    const Real* __restrict__ cell_matrix,
-    const Real* __restrict__ inv_cell,
+    work_t cutoff_plus_skin_sq,
+    const real_t* __restrict__ cell_matrix,
+    const real_t* __restrict__ inv_cell,
     const int* __restrict__ row_ptr_upper,
     int* __restrict__ col_idx,
     int* __restrict__ pair_counts) {
@@ -190,7 +191,7 @@ void fill_pairs(
             if (local < num_cj) {
                 cj_val = cell_clusters[start + local];
                 if (cj_val >= ci) {
-                    Real dist_sq = min_aabb_dist_sq(
+                    work_t dist_sq = min_aabb_dist_sq(
                         aabb_min_x[ci], aabb_min_y[ci], aabb_min_z[ci],
                         aabb_max_x[ci], aabb_max_y[ci], aabb_max_z[ci],
                         aabb_min_x[cj_val], aabb_min_y[cj_val],
@@ -220,7 +221,7 @@ void fill_pairs(
     }
 }
 
-template <typename Real>
+template <typename work_t>
 void launch_fill_cluster_pairs(const int* cell_start,
                                const int* cell_clusters,
                                const int* cluster_cell_idx,
@@ -229,16 +230,16 @@ void launch_fill_cluster_pairs(const int* cell_start,
                                const int* stencil_dy,
                                const int* stencil_dz,
                                const int* num_stencil_ptr,
-                               const Real* aabb_min_x,
-                               const Real* aabb_min_y,
-                               const Real* aabb_min_z,
-                               const Real* aabb_max_x,
-                               const Real* aabb_max_y,
-                               const Real* aabb_max_z,
+                               const real_t* aabb_min_x,
+                               const real_t* aabb_min_y,
+                               const real_t* aabb_min_z,
+                               const real_t* aabb_max_x,
+                               const real_t* aabb_max_y,
+                               const real_t* aabb_max_z,
                                int num_clusters, bool periodic,
-                               Real cutoff_plus_skin_sq,
-                               const Real* cell_matrix,
-                               const Real* inv_cell,
+                               work_t cutoff_plus_skin_sq,
+                               const real_t* cell_matrix,
+                               const real_t* inv_cell,
                                const int* row_ptr_upper,
                                int* col_idx,
                                int* pair_counts,
@@ -247,7 +248,7 @@ void launch_fill_cluster_pairs(const int* cell_start,
     int threads_needed = num_clusters * 32;
     int block = ATV::cuda::kDefaultBlock;
     int grid = (threads_needed + block - 1) / block;
-    fill_pairs<Real><<<grid, block, 0, stream>>>(
+    fill_pairs<work_t><<<grid, block, 0, stream>>>(
         cell_start, cell_clusters, cluster_cell_idx,
         dims_x, dims_y, dims_z,
         stencil_dx, stencil_dy, stencil_dz, num_stencil_ptr,

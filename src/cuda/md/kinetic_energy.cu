@@ -5,8 +5,14 @@
 #include "atomiverse/cuda/launch.cuh"
 #include "atomiverse/core/units.h"
 #include <cuda_runtime.h>
+#include "atomiverse/cuda/types.cuh"
 
 namespace ATV {
+
+using cuda::real_t;
+using cuda::work_t;
+using cuda::prec_t;
+
 namespace md {
 
 namespace {
@@ -17,26 +23,26 @@ namespace {
 /// Block-level shared-memory reduction sums contributions.
 /// Thread 0 of each block atomicAdds the block sum to the global accumulator.
 __global__ void kinetic_energy(
-    const Real* __restrict__ vx, const Real* __restrict__ vy,
-    const Real* __restrict__ vz, const Real* __restrict__ mass,
-    Real* __restrict__ kinetic, Int n) {
+    const real_t* __restrict__ vx, const real_t* __restrict__ vy,
+    const real_t* __restrict__ vz, const real_t* __restrict__ mass,
+    real_t* __restrict__ kinetic, int n) {
 
-    Int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
 
-    Real my_ke = Real(0);
+    work_t my_ke = work_t(0);
     if (i < n) {
-        Real v2 = vx[i] * vx[i] + vy[i] * vy[i] + vz[i] * vz[i];
-        my_ke = Real(0.5) * kMvv2e * mass[i] * v2;
+        work_t v2 = vx[i] * vx[i] + vy[i] * vy[i] + vz[i] * vz[i];
+        my_ke = work_t(0.5) * kMvv2e * mass[i] * v2;
     }
 
-    extern __shared__ Real s_ke[];
+    extern __shared__ work_t s_ke[];
     s_ke[threadIdx.x] = my_ke;
     __syncthreads();
     for (int s = blockDim.x / 2; s > 0; s >>= 1) {
         if (threadIdx.x < s) s_ke[threadIdx.x] += s_ke[threadIdx.x + s];
         __syncthreads();
     }
-    if (threadIdx.x == 0 && s_ke[0] != Real(0))
+    if (threadIdx.x == 0 && s_ke[0] != work_t(0))
         atomicAdd(kinetic, s_ke[0]);
 }
 
@@ -45,10 +51,10 @@ __global__ void kinetic_energy(
 void KineticEnergy::launch(const LaunchContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& frame = ctx.frame;
-    Int n = ctx.frame.n_atoms();
+    int n = ctx.frame.n_atoms();
     int block = cuda::kDefaultBlock;
     int grid = cuda::grid_size(static_cast<int>(n));
-    kinetic_energy<<<grid, block, block * sizeof(Real), stream>>>(
+    kinetic_energy<<<grid, block, block * sizeof(work_t), stream>>>(
         frame.atoms.vx, frame.atoms.vy, frame.atoms.vz, frame.atoms.mass,
         frame.kinetic, n);
 }

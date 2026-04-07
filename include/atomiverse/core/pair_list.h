@@ -25,9 +25,6 @@
 /// - Units: Angstrom for all distances.
 #pragma once
 
-#include "atomiverse/core/int.h"
-#include "atomiverse/core/real.h"
-
 namespace ATV {
 
 /// @brief Number of SoA array fields in the canonical PairList layout.

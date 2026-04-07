@@ -40,7 +40,7 @@ public:
     /// @brief Construct with cutoff and optional skin width.
     /// @param cutoff Interaction cutoff [Angstrom].
     /// @param skin   Verlet skin width [Angstrom]. Negative = auto (0.3 * cutoff).
-    explicit NeighborList(Real cutoff, Real skin = Real(-1));
+    explicit NeighborList(double cutoff, double skin = -1.0);
     ~NeighborList();
 
     NeighborList(NeighborList&&) noexcept;
@@ -55,8 +55,8 @@ public:
     void update(Frame& frame);
 
 private:
-    Real cutoff_;
-    Real skin_;
+    double cutoff_;
+    double skin_;
     std::unique_ptr<ATV::NeighborList> nl_;
     cuda::Context ctx_;
     cuda::Frame cframe_;
@@ -67,7 +67,7 @@ private:
 /// @param frame   torch::Frame with positions and box.
 /// @param cutoff  Interaction cutoff [Angstrom].
 /// @param skin    Verlet skin width [Angstrom]. Negative = auto (0.3 * cutoff).
-void neighbor_list(Frame& frame, Real cutoff, Real skin = Real(-1));
+void neighbor_list(Frame& frame, double cutoff, double skin = -1.0);
 
 } // namespace torch
 } // namespace ATV

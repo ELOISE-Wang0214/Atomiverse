@@ -19,7 +19,7 @@ using namespace ATV;
 
 class SCFEvaluatorTest : public ::testing::Test {
 protected:
-    static cpu::Frame make_h2(Real bond_length, Real v_stretch = 0) {
+    static cpu::Frame make_h2(double bond_length, double v_stretch = 0) {
         cpu::Frame f(2);
         f.atoms.x = {0.0, bond_length};
         f.atoms.y = {0.0, 0.0};
@@ -45,7 +45,7 @@ TEST_F(SCFEvaluatorTest, SinglePointRHF) {
     auto config = cpu::scf::rhf_config(integrals);
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{Real(0.5)});
+    sim.add(cpu::md::VelocityVerlet{double(0.5)});
     sim.on(md::Phase::force).add(cpu::scf::SCFEvaluator{config});
     sim.build();
     sim.run(frame, 1);
@@ -62,7 +62,7 @@ TEST_F(SCFEvaluatorTest, SinglePointUHF) {
     auto config = cpu::scf::uhf_config(integrals, 1, 1);
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{Real(0.5)});
+    sim.add(cpu::md::VelocityVerlet{double(0.5)});
     sim.on(md::Phase::force).add(cpu::scf::SCFEvaluator{config});
     sim.build();
     sim.run(frame, 1);
@@ -77,7 +77,7 @@ TEST_F(SCFEvaluatorTest, SinglePointKSLSDA) {
     auto config = cpu::scf::uks_config(integrals, 1, 1, cpu::scf::XCType::LSDA);
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{Real(0.5)});
+    sim.add(cpu::md::VelocityVerlet{double(0.5)});
     sim.on(md::Phase::force).add(cpu::scf::SCFEvaluator{config});
     sim.build();
     sim.run(frame, 1);
@@ -94,7 +94,7 @@ TEST_F(SCFEvaluatorTest, SinglePointKSPBE) {
     auto config = cpu::scf::uks_config(integrals, 1, 1, cpu::scf::XCType::PBE);
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{Real(0.5)});
+    sim.add(cpu::md::VelocityVerlet{double(0.5)});
     sim.on(md::Phase::force).add(cpu::scf::SCFEvaluator{config});
     sim.build();
     sim.run(frame, 1);
@@ -113,7 +113,7 @@ TEST_F(BOMDTest, RHFEnergyConservation) {
     auto config = cpu::scf::rhf_config(integrals);
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{Real(0.5)});
+    sim.add(cpu::md::VelocityVerlet{double(0.5)});
     sim.on(md::Phase::force).add(cpu::scf::SCFEvaluator{config});
     sim.build();
     sim.run(frame, 5);
@@ -128,12 +128,12 @@ TEST_F(BOMDTest, RHFBondOscillation) {
     auto config = cpu::scf::rhf_config(integrals);
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{Real(0.5)});
+    sim.add(cpu::md::VelocityVerlet{double(0.5)});
     sim.on(md::Phase::force).add(cpu::scf::SCFEvaluator{config});
     sim.build();
     sim.run(frame, 5);
 
-    Real bond = frame.atoms.x(1) - frame.atoms.x(0);
+    double bond = frame.atoms.x(1) - frame.atoms.x(0);
     EXPECT_LT(static_cast<double>(bond), 0.80)
         << "H2 bond should contract from stretched state";
     EXPECT_GT(static_cast<double>(bond), 0.50);
@@ -144,15 +144,15 @@ TEST_F(BOMDTest, MomentumConservation) {
     auto integrals = cpu::scf::build_integrals_sto3g(frame);
     auto config = cpu::scf::rhf_config(integrals);
 
-    Real px0 = frame.atoms.mass(0) * frame.atoms.vx(0) + frame.atoms.mass(1) * frame.atoms.vx(1);
+    double px0 = frame.atoms.mass(0) * frame.atoms.vx(0) + frame.atoms.mass(1) * frame.atoms.vx(1);
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{Real(0.5)});
+    sim.add(cpu::md::VelocityVerlet{double(0.5)});
     sim.on(md::Phase::force).add(cpu::scf::SCFEvaluator{config});
     sim.build();
     sim.run(frame, 5);
 
-    Real px1 = frame.atoms.mass(0) * frame.atoms.vx(0) + frame.atoms.mass(1) * frame.atoms.vx(1);
+    double px1 = frame.atoms.mass(0) * frame.atoms.vx(0) + frame.atoms.mass(1) * frame.atoms.vx(1);
     EXPECT_NEAR(static_cast<double>(px1), static_cast<double>(px0), 1e-4);
 }
 
@@ -162,10 +162,10 @@ TEST_F(BOMDTest, RHFWithASPC) {
     auto config = cpu::scf::rhf_config(integrals);
 
     cpu::scf::SCFEvaluator evaluator{config};
-    evaluator.predictor(3, 2, Real(1e-4), true);
+    evaluator.predictor(3, 2, double(1e-4), true);
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{Real(0.5)});
+    sim.add(cpu::md::VelocityVerlet{double(0.5)});
     sim.on(md::Phase::force).add(std::move(evaluator));
     sim.build();
     sim.run(frame, 5);
@@ -181,12 +181,12 @@ class ASPCPredictorTest : public ::testing::Test {};
 TEST_F(ASPCPredictorTest, BasicFunctionality) {
     cpu::scf::ASPCPredictor pred(3);
 
-    xt::xtensor<Real, 2> P1 = {{1.0, 0.0}, {0.0, 1.0}};
-    xt::xtensor<Real, 2> P2 = {{1.1, 0.0}, {0.0, 1.1}};
-    xt::xtensor<Real, 2> P3 = {{1.2, 0.0}, {0.0, 1.2}};
-    xt::xtensor<Real, 2> P4 = {{1.3, 0.0}, {0.0, 1.3}};
+    xt::xtensor<double, 2> P1 = {{1.0, 0.0}, {0.0, 1.0}};
+    xt::xtensor<double, 2> P2 = {{1.1, 0.0}, {0.0, 1.1}};
+    xt::xtensor<double, 2> P3 = {{1.2, 0.0}, {0.0, 1.2}};
+    xt::xtensor<double, 2> P4 = {{1.3, 0.0}, {0.0, 1.3}};
 
-    xt::xtensor<Real, 2> P_pred;
+    xt::xtensor<double, 2> P_pred;
 
     pred.record(P1); EXPECT_FALSE(pred.predict(P_pred));
     pred.record(P2); EXPECT_FALSE(pred.predict(P_pred));
@@ -199,9 +199,9 @@ TEST_F(ASPCPredictorTest, BasicFunctionality) {
 TEST_F(ASPCPredictorTest, CorrectorBlending) {
     cpu::scf::ASPCPredictor pred(3);
 
-    xt::xtensor<Real, 2> P_scf = {{2.0}};
-    xt::xtensor<Real, 2> P_pred = {{1.8}};
-    xt::xtensor<Real, 2> P_corr;
+    xt::xtensor<double, 2> P_scf = {{2.0}};
+    xt::xtensor<double, 2> P_pred = {{1.8}};
+    xt::xtensor<double, 2> P_corr;
 
     pred.correct(P_scf, P_pred, P_corr);
 

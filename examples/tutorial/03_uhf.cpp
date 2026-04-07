@@ -53,7 +53,7 @@ using namespace ATV;
 
 static cpu::Frame single_atom(int z) {
     cpu::Frame f(1);
-    f.atoms.x[0] = Real(0); f.atoms.y[0] = Real(0); f.atoms.z[0] = Real(0);
+    f.atoms.x[0] = double(0); f.atoms.y[0] = double(0); f.atoms.z[0] = double(0);
     f.atoms.type[0] = z;
     f.box = Mat3::cubic(100.0);
     return f;
@@ -61,8 +61,8 @@ static cpu::Frame single_atom(int z) {
 
 static cpu::Frame diatomic_h2(double r_angstrom) {
     cpu::Frame f(2);
-    f.atoms.x[0] = Real(0);           f.atoms.y[0] = Real(0); f.atoms.z[0] = Real(0);
-    f.atoms.x[1] = Real(r_angstrom);  f.atoms.y[1] = Real(0); f.atoms.z[1] = Real(0);
+    f.atoms.x[0] = double(0);           f.atoms.y[0] = double(0); f.atoms.z[0] = double(0);
+    f.atoms.x[1] = double(r_angstrom);  f.atoms.y[1] = double(0); f.atoms.z[1] = double(0);
     f.atoms.type[0] = 1; f.atoms.type[1] = 1;
     f.box = Mat3::cubic(100.0);
     return f;
@@ -188,7 +188,7 @@ static void plot_mulliken_scan(const std::vector<double>& r_vals,
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 int main() {
-    const Real tol = (sizeof(Real) == sizeof(float)) ? Real(1e-5) : Real(1e-8);
+    const double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-8);
     const int max_iter_atoms = 50;
     const int max_iter_h2    = 200;
     const int max_iter_scan  = 400;
@@ -212,11 +212,11 @@ int main() {
         rec.set_geometry(frame);
         rec.add_string("method", "UHF");
         rec.add_scalar("energy",            result.energy);
-        rec.add_scalar("iterations",        Real(result.iterations));
-        rec.add_scalar("n_alpha",           Real(result.n_alpha));
-        rec.add_scalar("n_beta",            Real(result.n_beta));
+        rec.add_scalar("iterations",        double(result.iterations));
+        rec.add_scalar("n_alpha",           double(result.n_alpha));
+        rec.add_scalar("n_beta",            double(result.n_beta));
         rec.add_scalar("spin_contamination", result.spin_contamination);
-        xt::xtensor<Real,2> P_total = result.P_alpha + result.P_beta;
+        xt::xtensor<double,2> P_total = result.P_alpha + result.P_beta;
         rec.add_field("charge",       cpu::mulliken_charge(frame, P_total, ints.S));
         rec.add_field("spin_density", cpu::mulliken_spin(frame, result.P_alpha, result.P_beta, ints.S));
         rec.commit_frame();
@@ -249,12 +249,12 @@ int main() {
             rhf_rec.set_geometry(frame);
             rhf_rec.add_string("method", "RHF");
             rhf_rec.add_scalar("energy",     rhf.energy);
-            rhf_rec.add_scalar("iterations", Real(rhf.iterations));
-            rhf_rec.add_scalar("n_alpha",    Real(ints.n_occ()));
-            rhf_rec.add_scalar("n_beta",     Real(ints.n_occ()));
-            rhf_rec.add_scalar("spin_contamination", Real(0));
+            rhf_rec.add_scalar("iterations", double(rhf.iterations));
+            rhf_rec.add_scalar("n_alpha",    double(ints.n_occ()));
+            rhf_rec.add_scalar("n_beta",     double(ints.n_occ()));
+            rhf_rec.add_scalar("spin_contamination", double(0));
             rhf_rec.add_field("charge",       cpu::mulliken_charge(frame, rhf.P, ints.S));
-            rhf_rec.add_field("spin_density", std::vector<Real>(frame.atoms.size(), Real(0)));
+            rhf_rec.add_field("spin_density", std::vector<double>(frame.atoms.size(), double(0)));
             rhf_rec.commit_frame();
             cpu::print_summary(rhf_rec);
             cpu::XYZ("h2_eq_rhf.xyz").write_ext(rhf_rec);
@@ -264,11 +264,11 @@ int main() {
             uhf_rec.set_geometry(frame);
             uhf_rec.add_string("method", "UHF");
             uhf_rec.add_scalar("energy",     uhf.energy);
-            uhf_rec.add_scalar("iterations", Real(uhf.iterations));
-            uhf_rec.add_scalar("n_alpha",    Real(uhf.n_alpha));
-            uhf_rec.add_scalar("n_beta",     Real(uhf.n_beta));
+            uhf_rec.add_scalar("iterations", double(uhf.iterations));
+            uhf_rec.add_scalar("n_alpha",    double(uhf.n_alpha));
+            uhf_rec.add_scalar("n_beta",     double(uhf.n_beta));
             uhf_rec.add_scalar("spin_contamination", uhf.spin_contamination);
-            xt::xtensor<Real,2> P_total = uhf.P_alpha + uhf.P_beta;
+            xt::xtensor<double,2> P_total = uhf.P_alpha + uhf.P_beta;
             uhf_rec.add_field("charge",       cpu::mulliken_charge(frame, P_total, ints.S));
             uhf_rec.add_field("spin_density", cpu::mulliken_spin(frame, uhf.P_alpha, uhf.P_beta, ints.S));
             uhf_rec.commit_frame();
@@ -314,26 +314,26 @@ int main() {
         rhf_scan.set_geometry(frame);
         rhf_scan.add_string("method", "RHF");
         rhf_scan.add_scalar("energy",     rhf.energy);
-        rhf_scan.add_scalar("iterations", Real(rhf.iterations));
-        rhf_scan.add_scalar("n_alpha",    Real(ints.n_occ()));
-        rhf_scan.add_scalar("n_beta",     Real(ints.n_occ()));
-        rhf_scan.add_scalar("spin_contamination", Real(0));
+        rhf_scan.add_scalar("iterations", double(rhf.iterations));
+        rhf_scan.add_scalar("n_alpha",    double(ints.n_occ()));
+        rhf_scan.add_scalar("n_beta",     double(ints.n_occ()));
+        rhf_scan.add_scalar("spin_contamination", double(0));
         auto rhf_charge = cpu::mulliken_charge(frame, rhf.P, ints.S);
         rhf_scan.add_field("charge",       rhf_charge);
-        rhf_scan.add_field("spin_density", std::vector<Real>(frame.atoms.size(), Real(0)));
+        rhf_scan.add_field("spin_density", std::vector<double>(frame.atoms.size(), double(0)));
         rhf_scan.commit_frame();
         rhf_xyz.append_ext(rhf_scan);
 
         // Build UHF frame and stream to XYZ
-        xt::xtensor<Real,2> P_total = uhf.P_alpha + uhf.P_beta;
+        xt::xtensor<double,2> P_total = uhf.P_alpha + uhf.P_beta;
         auto uhf_charge = cpu::mulliken_charge(frame, P_total, ints.S);
         auto uhf_spin   = cpu::mulliken_spin(frame, uhf.P_alpha, uhf.P_beta, ints.S);
         uhf_scan.set_geometry(frame);
         uhf_scan.add_string("method", "UHF");
         uhf_scan.add_scalar("energy",     uhf.energy);
-        uhf_scan.add_scalar("iterations", Real(uhf.iterations));
-        uhf_scan.add_scalar("n_alpha",    Real(uhf.n_alpha));
-        uhf_scan.add_scalar("n_beta",     Real(uhf.n_beta));
+        uhf_scan.add_scalar("iterations", double(uhf.iterations));
+        uhf_scan.add_scalar("n_alpha",    double(uhf.n_alpha));
+        uhf_scan.add_scalar("n_beta",     double(uhf.n_beta));
         uhf_scan.add_scalar("spin_contamination", uhf.spin_contamination);
         uhf_scan.add_field("charge",       uhf_charge);
         uhf_scan.add_field("spin_density", uhf_spin);

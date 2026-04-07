@@ -51,10 +51,10 @@ const void* MolRec::ffi_handle() const { return &*impl_->inner; }
 // ── Staging API ──────────────────────────────────────────────────────────────
 
 void MolRec::set_geometry(const Frame& frame) {
-    const Int n = frame.atoms.size();
+    const int n = static_cast<int>(frame.atoms.size());
 
     std::vector<int32_t> tid(n);
-    for (Int i = 0; i < n; ++i)
+    for (int i = 0; i < n; ++i)
         tid[i] = static_cast<int32_t>(frame.atoms.type[i]);
 
     double box_mat[9];
@@ -73,7 +73,7 @@ void MolRec::set_geometry(const Frame& frame) {
     );
 }
 
-void MolRec::add_field(const std::string& name, std::vector<Real> values) {
+void MolRec::add_field(const std::string& name, std::vector<double> values) {
     std::vector<double> buf;
     molrs::molrec_add_field(
         *impl_->inner, {name.data(), name.size()},
@@ -81,7 +81,7 @@ void MolRec::add_field(const std::string& name, std::vector<Real> values) {
     );
 }
 
-void MolRec::add_scalar(const std::string& name, Real value) {
+void MolRec::add_scalar(const std::string& name, double value) {
     molrs::molrec_add_scalar(*impl_->inner, {name.data(), name.size()},
                              static_cast<double>(value));
 }
@@ -96,8 +96,8 @@ void MolRec::commit_frame() {
     molrs::molrec_commit_frame(*impl_->inner);
 }
 
-Int MolRec::n_frames() const {
-    return static_cast<Int>(molrs::molrec_n_frames(
+int MolRec::n_frames() const {
+    return static_cast<int>(molrs::molrec_n_frames(
         *static_cast<const molrs::AtvMolRec*>(ffi_handle())));
 }
 

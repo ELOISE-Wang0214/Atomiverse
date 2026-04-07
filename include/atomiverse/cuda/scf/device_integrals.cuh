@@ -12,8 +12,8 @@
 /// Validated against CPU native integrals (ground truth: libcint).
 #pragma once
 
-#include "atomiverse/core/real.h"
-#include "atomiverse/core/int.h"
+
+
 
 namespace ATV {
 namespace cuda {
@@ -38,9 +38,9 @@ namespace scf {
 /// @param natm Number of atoms.
 /// @param stream CUDA stream.
 void launch_1e_integrals(
-    Real* S, Real* T, Real* V,
-    const Real* shell_alpha, const Real* shell_coeff, const Real* shell_centers,
-    const Int* atom_Z, const Real* atom_pos,
+    double* S, double* T, double* V,
+    const double* shell_alpha, const double* shell_coeff, const double* shell_centers,
+    const int* atom_Z, const double* atom_pos,
     int n_shells, int n_prim, int natm,
     void* stream);
 
@@ -58,8 +58,8 @@ void launch_1e_integrals(
 /// @param n_prim Primitives per shell.
 /// @param stream CUDA stream.
 void launch_eri(
-    Real* ERI,
-    const Real* shell_alpha, const Real* shell_coeff, const Real* shell_centers,
+    double* ERI,
+    const double* shell_alpha, const double* shell_coeff, const double* shell_centers,
     int n_shells, int n_prim,
     void* stream);
 
@@ -67,7 +67,7 @@ void launch_eri(
 ///
 /// Exposed for testing. Uses CUDA hardware erf() intrinsic.
 /// Host wrapper that launches a single-element kernel for validation.
-void launch_boys_f0_test(const Real* d_x, Real* d_out, int n, void* stream);
+void launch_boys_f0_test(const double* d_x, double* d_out, int n, void* stream);
 
 } // namespace scf
 } // namespace cuda

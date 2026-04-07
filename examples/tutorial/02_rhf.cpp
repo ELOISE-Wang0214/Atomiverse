@@ -34,9 +34,9 @@ int main() {
     // cpu::Frame is the user-facing data container. Positions in Angstrom,
     // type_id = atomic number Z. The library converts to Bohr internally.
     cpu::Frame frame(2);
-    frame.atoms.x[0] = Real(0);     frame.atoms.y[0] = Real(0); frame.atoms.z[0] = Real(0);
-    frame.atoms.x[1] = Real(0.74);  frame.atoms.y[1] = Real(0); frame.atoms.z[1] = Real(0);
-    frame.atoms.mass[0] = Real(1.008); frame.atoms.mass[1] = Real(1.008);
+    frame.atoms.x[0] = double(0);     frame.atoms.y[0] = double(0); frame.atoms.z[0] = double(0);
+    frame.atoms.x[1] = double(0.74);  frame.atoms.y[1] = double(0); frame.atoms.z[1] = double(0);
+    frame.atoms.mass[0] = double(1.008); frame.atoms.mass[1] = double(1.008);
     frame.atoms.type[0] = 1; frame.atoms.type[1] = 1;  // H: Z=1
     frame.box = Mat3::cubic(100.0);
 
@@ -60,15 +60,15 @@ int main() {
               << "V_nuc:           " << static_cast<double>(integrals.V_nuc) << " Hartree\n\n";
 
     std::cout << "Overlap S:\n" << std::fixed << std::setprecision(6);
-    for (Int i = 0; i < integrals.n_basis; ++i) {
-        for (Int j = 0; j < integrals.n_basis; ++j)
+    for (int i = 0; i < integrals.n_basis; ++i) {
+        for (int j = 0; j < integrals.n_basis; ++j)
             std::cout << "  " << std::setw(10) << static_cast<double>(integrals.S(i, j));
         std::cout << "\n";
     }
 
     std::cout << "\nCore Hamiltonian Hcore = T + V:\n";
-    for (Int i = 0; i < integrals.n_basis; ++i) {
-        for (Int j = 0; j < integrals.n_basis; ++j)
+    for (int i = 0; i < integrals.n_basis; ++i) {
+        for (int j = 0; j < integrals.n_basis; ++j)
             std::cout << "  " << std::setw(10) << static_cast<double>(integrals.Hcore(i, j));
         std::cout << "\n";
     }
@@ -86,7 +86,7 @@ int main() {
     //     P = 2 C_occ C_occ^T  ->  E = 0.5 Tr[(Hcore+F)P] + V_nuc
     //
     // All linear algebra via xtensor-blas (LAPACK).
-    Real tol = (sizeof(Real) == sizeof(float)) ? Real(1e-5) : Real(1e-10);
+    double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     auto result = cpu::scf::rhf_solve(integrals, tol, 100);
 
     // ── 4. Results ────────────────────────────────────────────────────
@@ -99,13 +99,13 @@ int main() {
               << "E_total:          " << static_cast<double>(result.energy) << " Hartree\n\n";
 
     std::cout << "Orbital energies:\n" << std::setprecision(6);
-    for (Int i = 0; i < integrals.n_basis; ++i)
+    for (int i = 0; i < integrals.n_basis; ++i)
         std::cout << "  epsilon[" << i << "] = " << std::setw(12)
                   << static_cast<double>(result.eigenvalues(i)) << " Hartree"
                   << (i < integrals.n_occ() ? "  (occupied)" : "") << "\n";
 
     // Density check: Tr(P * S) = n_electrons
-    Real tr_PS = xt::sum(result.P * integrals.S)();
+    double tr_PS = xt::sum(result.P * integrals.S)();
     std::cout << "\nDensity check: Tr(P*S) = " << static_cast<double>(tr_PS)
               << " (expected: " << integrals.n_electrons << ")\n";
 

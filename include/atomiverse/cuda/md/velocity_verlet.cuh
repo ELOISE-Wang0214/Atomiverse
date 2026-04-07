@@ -37,7 +37,7 @@ class VelocityVerlet : public ComponentBase {
 public:
     /// @brief Construct with a time step.
     /// @param dt Time step [fs].
-    explicit VelocityVerlet(Real dt) : dt_(dt) {}
+    explicit VelocityVerlet(double dt) : dt_(dt) {}
 
     /// @brief Component name.
     /// @return "velocity_verlet".
@@ -55,7 +55,7 @@ public:
     void launch(const LaunchContext& ctx) override;
 
 private:
-    Real dt_;  ///< Time step [fs].
+    double dt_;  ///< Time step [fs].
 };
 
 } // namespace md

@@ -27,7 +27,7 @@ public:
     /// @brief Construct with per-type parameters.
     /// @param K  Spring constants per bond type [eV/Angstrom^2].
     /// @param r0 Equilibrium distances per bond type [Angstrom].
-    HarmonicBond(std::vector<Real> K, std::vector<Real> r0);
+    HarmonicBond(std::vector<double> K, std::vector<double> r0);
     ~HarmonicBond() override;
     HarmonicBond(HarmonicBond&&) noexcept;
     HarmonicBond& operator=(HarmonicBond&&) noexcept;
@@ -38,7 +38,7 @@ public:
     void destroy(const DestroyContext& ctx) override;
 
 private:
-    std::vector<Real> K_, r0_;
+    std::vector<double> K_, r0_;
     struct State;
     std::unique_ptr<State> state_;
 };

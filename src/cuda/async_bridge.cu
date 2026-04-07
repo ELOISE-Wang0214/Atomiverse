@@ -4,8 +4,14 @@
 #include "atomiverse/cuda/async_bridge.cuh"
 
 #include <cuda_runtime.h>
+#include "atomiverse/cuda/types.cuh"
 
 namespace ATV {
+
+using cuda::real_t;
+using cuda::work_t;
+using cuda::prec_t;
+
 
 void AsyncBridge::build(const BuildContext& ctx) {
     cudaEvent_t ev;

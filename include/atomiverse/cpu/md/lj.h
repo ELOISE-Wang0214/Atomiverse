@@ -22,7 +22,7 @@ public:
     /// @param epsilon Well depth [eV].
     /// @param sigma Size parameter [Angstrom].
     /// @param cutoff Cutoff distance [Angstrom].
-    LJ(Real epsilon, Real sigma, Real cutoff);
+    LJ(double epsilon, double sigma, double cutoff);
 
     std::string name() const override { return "lj"; }
     void build(const cpu::BuildContext& ctx) override;
@@ -30,12 +30,12 @@ public:
     void destroy(const cpu::DestroyContext& ctx) override;
 
 private:
-    Real epsilon_, sigma_, cutoff_;
-    Real sigma6_, cutoff_sq_, v_shift_;
+    double epsilon_, sigma_, cutoff_;
+    double sigma6_, cutoff_sq_, v_shift_;
 
     // Per-thread force reduction buffers
     int n_threads_ = 1;
-    std::vector<std::vector<Real>> fx_thr_, fy_thr_, fz_thr_;
+    std::vector<std::vector<double>> fx_thr_, fy_thr_, fz_thr_;
 };
 
 } // namespace md

@@ -6,6 +6,7 @@
 #include "nlist_error.cuh"
 
 #include <cuda_runtime.h>
+#include "atomiverse/cuda/types.cuh"
 
 #include <cstddef>
 #include <utility>

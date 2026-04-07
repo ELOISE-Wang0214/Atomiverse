@@ -28,14 +28,14 @@ TEST(Frame, Mat3Box) {
 
 TEST(Frame, ToDeviceAndBack) {
     cpu::Frame frame(4);
-    frame.atoms.x = xt::xtensor<Real, 1>({1.0, 2.0, 3.0, 4.0});
-    frame.atoms.mass = xt::xtensor<Real, 1>({1.0, 1.0, 1.0, 1.0});
+    frame.atoms.x = xt::xtensor<double, 1>({1.0, 2.0, 3.0, 4.0});
+    frame.atoms.mass = xt::xtensor<double, 1>({1.0, 1.0, 1.0, 1.0});
     frame.box = Mat3::cubic(10.0);
 
     auto d_frame = cpu::to_cuda(frame);
     EXPECT_NE(d_frame.atoms.d_size, nullptr);
 
-    frame.atoms.x.fill(Real(0));
+    frame.atoms.x.fill(double(0));
     cuda::to_cpu(d_frame, frame);
     EXPECT_DOUBLE_EQ(frame.atoms.x[0], 1.0);
     EXPECT_DOUBLE_EQ(frame.atoms.x[3], 4.0);
@@ -45,29 +45,29 @@ TEST(Frame, ToDeviceAndBack) {
 
 TEST(Frame, TopologyRoundTrip) {
     cpu::Frame frame(4);
-    frame.atoms.x = xt::xtensor<Real, 1>({0.0, 1.53, 3.06, 4.59});
-    frame.atoms.y = xt::xtensor<Real, 1>({0.0, 0.0, 0.0, 0.0});
-    frame.atoms.z = xt::xtensor<Real, 1>({0.0, 0.0, 0.0, 0.0});
-    frame.atoms.mass = xt::xtensor<Real, 1>({14.0, 14.0, 14.0, 14.0});
+    frame.atoms.x = xt::xtensor<double, 1>({0.0, 1.53, 3.06, 4.59});
+    frame.atoms.y = xt::xtensor<double, 1>({0.0, 0.0, 0.0, 0.0});
+    frame.atoms.z = xt::xtensor<double, 1>({0.0, 0.0, 0.0, 0.0});
+    frame.atoms.mass = xt::xtensor<double, 1>({14.0, 14.0, 14.0, 14.0});
     frame.box = Mat3::cubic(20.0);
 
     // 3 bonds: 0-1, 1-2, 2-3
-    frame.bonds.atomi = xt::xtensor<Int, 1>({0, 1, 2});
-    frame.bonds.atomj = xt::xtensor<Int, 1>({1, 2, 3});
-    frame.bonds.type = xt::xtensor<Int, 1>({0, 0, 0});
+    frame.bonds.atomi = xt::xtensor<int, 1>({0, 1, 2});
+    frame.bonds.atomj = xt::xtensor<int, 1>({1, 2, 3});
+    frame.bonds.type = xt::xtensor<int, 1>({0, 0, 0});
 
     // 2 angles: 0-1-2, 1-2-3
-    frame.angles.atomi = xt::xtensor<Int, 1>({0, 1});
-    frame.angles.atomj = xt::xtensor<Int, 1>({1, 2});
-    frame.angles.atomk = xt::xtensor<Int, 1>({2, 3});
-    frame.angles.type = xt::xtensor<Int, 1>({0, 0});
+    frame.angles.atomi = xt::xtensor<int, 1>({0, 1});
+    frame.angles.atomj = xt::xtensor<int, 1>({1, 2});
+    frame.angles.atomk = xt::xtensor<int, 1>({2, 3});
+    frame.angles.type = xt::xtensor<int, 1>({0, 0});
 
     // 1 dihedral: 0-1-2-3
-    frame.dihedrals.atomi = xt::xtensor<Int, 1>({0});
-    frame.dihedrals.atomj = xt::xtensor<Int, 1>({1});
-    frame.dihedrals.atomk = xt::xtensor<Int, 1>({2});
-    frame.dihedrals.atoml = xt::xtensor<Int, 1>({3});
-    frame.dihedrals.type = xt::xtensor<Int, 1>({0});
+    frame.dihedrals.atomi = xt::xtensor<int, 1>({0});
+    frame.dihedrals.atomj = xt::xtensor<int, 1>({1});
+    frame.dihedrals.atomk = xt::xtensor<int, 1>({2});
+    frame.dihedrals.atoml = xt::xtensor<int, 1>({3});
+    frame.dihedrals.type = xt::xtensor<int, 1>({0});
 
     auto d_frame = cpu::to_cuda(frame);
 
@@ -81,18 +81,18 @@ TEST(Frame, TopologyRoundTrip) {
     EXPECT_NE(d_frame.stress, nullptr);
 
     // Verify counts via D2H
-    Int nb = 0, na = 0, nd = 0;
-    cudaMemcpy(&nb, d_frame.bonds.n_bonds, sizeof(Int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&na, d_frame.angles.n_angles, sizeof(Int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&nd, d_frame.dihedrals.n_dihedrals, sizeof(Int), cudaMemcpyDeviceToHost);
+    int nb = 0, na = 0, nd = 0;
+    cudaMemcpy(&nb, d_frame.bonds.n_bonds, sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&na, d_frame.angles.n_angles, sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&nd, d_frame.dihedrals.n_dihedrals, sizeof(int), cudaMemcpyDeviceToHost);
     EXPECT_EQ(nb, 3);
     EXPECT_EQ(na, 2);
     EXPECT_EQ(nd, 1);
 
     // Verify bond indices round-trip
-    std::vector<Int> host_bond_i(3), host_bond_j(3);
-    cudaMemcpy(host_bond_i.data(), d_frame.bonds.atomi, 3 * sizeof(Int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(host_bond_j.data(), d_frame.bonds.atomj, 3 * sizeof(Int), cudaMemcpyDeviceToHost);
+    std::vector<int> host_bond_i(3), host_bond_j(3);
+    cudaMemcpy(host_bond_i.data(), d_frame.bonds.atomi, 3 * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(host_bond_j.data(), d_frame.bonds.atomj, 3 * sizeof(int), cudaMemcpyDeviceToHost);
     EXPECT_EQ(host_bond_i[0], 0); EXPECT_EQ(host_bond_j[0], 1);
     EXPECT_EQ(host_bond_i[1], 1); EXPECT_EQ(host_bond_j[1], 2);
     EXPECT_EQ(host_bond_i[2], 2); EXPECT_EQ(host_bond_j[2], 3);
@@ -113,8 +113,8 @@ TEST(Frame, TopologyRoundTrip) {
 TEST(Frame, EmptyTopologyRoundTrip) {
     // cpu::Frame with no topology should still work
     cpu::Frame frame(4);
-    frame.atoms.x = xt::xtensor<Real, 1>({1.0, 2.0, 3.0, 4.0});
-    frame.atoms.mass = xt::xtensor<Real, 1>({1.0, 1.0, 1.0, 1.0});
+    frame.atoms.x = xt::xtensor<double, 1>({1.0, 2.0, 3.0, 4.0});
+    frame.atoms.mass = xt::xtensor<double, 1>({1.0, 1.0, 1.0, 1.0});
     frame.box = Mat3::cubic(10.0);
 
     auto d_frame = cpu::to_cuda(frame);
@@ -124,7 +124,7 @@ TEST(Frame, EmptyTopologyRoundTrip) {
     EXPECT_EQ(d_frame.dihedrals.atomi, nullptr);
 
     // Round-trip positions still work
-    frame.atoms.x.fill(Real(0));
+    frame.atoms.x.fill(double(0));
     cuda::to_cpu(d_frame, frame);
     EXPECT_DOUBLE_EQ(frame.atoms.x[0], 1.0);
     EXPECT_DOUBLE_EQ(frame.atoms.x[3], 4.0);
@@ -134,7 +134,7 @@ TEST(Frame, EmptyTopologyRoundTrip) {
 
 TEST(Frame, ZeroForces) {
     cpu::Frame frame(32);
-    frame.atoms.mass.fill(Real(1.0));
+    frame.atoms.mass.fill(double(1.0));
     frame.box = Mat3::cubic(10.0);
 
     // Use Driver-level lifecycle
@@ -145,8 +145,8 @@ TEST(Frame, ZeroForces) {
     auto& d_frame = backend.frame();
 
     // Set forces to 1 via host copy
-    std::vector<Real> ones(32, Real(1));
-    cudaMemcpy(d_frame.atoms.fx, ones.data(), 32 * sizeof(Real), cudaMemcpyHostToDevice);
+    std::vector<double> ones(32, double(1));
+    cudaMemcpy(d_frame.atoms.fx, ones.data(), 32 * sizeof(double), cudaMemcpyHostToDevice);
 
     // Build + launch ZeroForces via Plan
     md::ZeroForces zf;

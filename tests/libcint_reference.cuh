@@ -39,14 +39,14 @@ inline double libcint_gto_norm(int l, double alpha) {
 /// Used exclusively for validation — never in production code.
 inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
     int natm = static_cast<int>(frame.atoms.size());
-    Int n_electrons = 0;
-    for (Int i = 0; i < natm; ++i)
+    int n_electrons = 0;
+    for (int i = 0; i < natm; ++i)
         n_electrons += frame.atoms.type[i];
 
     // Count basis functions and shells using shared STO-3G data
     int n_basis = 0;
     int n_shells = 0;
-    for (Int i = 0; i < natm; ++i) {
+    for (int i = 0; i < natm; ++i) {
         int Z = static_cast<int>(frame.atoms.type[i]);
         n_basis += cpu::scf::sto3g_n_basis(Z);
         const auto& basis = cpu::scf::sto3g_data[Z];
@@ -61,11 +61,11 @@ inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
     cpu::scf::IntegralPack pack;
     pack.n_basis = n_basis;
     pack.n_electrons = n_electrons;
-    pack.S = xt::zeros<Real>({static_cast<Int>(n_basis), static_cast<Int>(n_basis)});
-    pack.T = xt::zeros<Real>({static_cast<Int>(n_basis), static_cast<Int>(n_basis)});
-    pack.V = xt::zeros<Real>({static_cast<Int>(n_basis), static_cast<Int>(n_basis)});
-    pack.ERI = xt::zeros<Real>({static_cast<Int>(n_basis), static_cast<Int>(n_basis),
-                                static_cast<Int>(n_basis), static_cast<Int>(n_basis)});
+    pack.S = xt::zeros<double>({static_cast<int>(n_basis), static_cast<int>(n_basis)});
+    pack.T = xt::zeros<double>({static_cast<int>(n_basis), static_cast<int>(n_basis)});
+    pack.V = xt::zeros<double>({static_cast<int>(n_basis), static_cast<int>(n_basis)});
+    pack.ERI = xt::zeros<double>({static_cast<int>(n_basis), static_cast<int>(n_basis),
+                                static_cast<int>(n_basis), static_cast<int>(n_basis)});
 
     // Build libcint atm/bas/env arrays
     int off = PTR_ENV_START;
@@ -178,7 +178,7 @@ inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
             int1e_ovlp_cart(buf.data(), nullptr, shls, atm_p, natm, bas_p, n_shells, env_p, nullptr, nullptr);
             for (int ii = 0; ii < ni; ++ii)
                 for (int jj = 0; jj < nj; ++jj) {
-                    pack.S(oi+ii, oj+jj) = static_cast<Real>(buf[ii + ni * jj]);
+                    pack.S(oi+ii, oj+jj) = static_cast<double>(buf[ii + ni * jj]);
                     pack.S(oj+jj, oi+ii) = pack.S(oi+ii, oj+jj);
                 }
 
@@ -186,7 +186,7 @@ inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
             int1e_kin_cart(buf.data(), nullptr, shls, atm_p, natm, bas_p, n_shells, env_p, nullptr, nullptr);
             for (int ii = 0; ii < ni; ++ii)
                 for (int jj = 0; jj < nj; ++jj) {
-                    pack.T(oi+ii, oj+jj) = static_cast<Real>(buf[ii + ni * jj]);
+                    pack.T(oi+ii, oj+jj) = static_cast<double>(buf[ii + ni * jj]);
                     pack.T(oj+jj, oi+ii) = pack.T(oi+ii, oj+jj);
                 }
 
@@ -194,7 +194,7 @@ inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
             int1e_nuc_cart(buf.data(), nullptr, shls, atm_p, natm, bas_p, n_shells, env_p, nullptr, nullptr);
             for (int ii = 0; ii < ni; ++ii)
                 for (int jj = 0; jj < nj; ++jj) {
-                    pack.V(oi+ii, oj+jj) = static_cast<Real>(buf[ii + ni * jj]);
+                    pack.V(oi+ii, oj+jj) = static_cast<double>(buf[ii + ni * jj]);
                     pack.V(oj+jj, oi+ii) = pack.V(oi+ii, oj+jj);
                 }
         }
@@ -219,7 +219,7 @@ inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
                       for (int jj = 0; jj < nj; ++jj)
                         for (int kk = 0; kk < nk; ++kk)
                           for (int ll = 0; ll < nl; ++ll)
-                            pack.ERI(oi+ii, oj+jj, ok+kk, ol+ll) = static_cast<Real>(
+                            pack.ERI(oi+ii, oj+jj, ok+kk, ol+ll) = static_cast<double>(
                                 buf[ii + ni * (jj + nj * (kk + nk * ll))]);
                 }
             }
@@ -230,13 +230,13 @@ inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
 
     // Nuclear repulsion
     pack.V_nuc = 0;
-    for (Int a = 0; a < natm; ++a)
-        for (Int b = a + 1; b < natm; ++b) {
+    for (int a = 0; a < natm; ++a)
+        for (int b = a + 1; b < natm; ++b) {
             double dx = (static_cast<double>(frame.atoms.x[a]) - static_cast<double>(frame.atoms.x[b])) * kAngstromToBohr;
             double dy = (static_cast<double>(frame.atoms.y[a]) - static_cast<double>(frame.atoms.y[b])) * kAngstromToBohr;
             double dz = (static_cast<double>(frame.atoms.z[a]) - static_cast<double>(frame.atoms.z[b])) * kAngstromToBohr;
             double r = std::sqrt(dx*dx + dy*dy + dz*dz);
-            pack.V_nuc += static_cast<Real>(frame.atoms.type[a] * frame.atoms.type[b] / r);
+            pack.V_nuc += static_cast<double>(frame.atoms.type[a] * frame.atoms.type[b] / r);
         }
 
     return pack;

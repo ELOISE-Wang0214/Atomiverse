@@ -23,11 +23,14 @@ if(NOT ATV_DOCS_ONLY)
         endif()
     endif()
 
-    set(ATV_REAL "float" CACHE STRING "Floating-point precision (float or double)")
-    set_property(CACHE ATV_REAL PROPERTY STRINGS float double)
+    set(ATV_CUDA_REAL "float" CACHE STRING "CUDA per-atom storage precision (float or double)")
+    set_property(CACHE ATV_CUDA_REAL PROPERTY STRINGS float double)
 
-    set(ATV_INT "int" CACHE STRING "Integer precision (int or int64_t)")
-    set_property(CACHE ATV_INT PROPERTY STRINGS int int64_t)
+    set(ATV_CUDA_WORK "double" CACHE STRING "CUDA kernel computation precision (float or double)")
+    set_property(CACHE ATV_CUDA_WORK PROPERTY STRINGS float double)
+
+    set(ATV_CUDA_PREC "double" CACHE STRING "CUDA accumulator/SCF precision (float or double)")
+    set_property(CACHE ATV_CUDA_PREC PROPERTY STRINGS float double)
 
     option(ATV_BUILD_RHF "Build RHF electronic structure code" OFF)
     option(ATV_BUILD_TORCH "Build LibTorch backend (requires LibTorch)" OFF)
@@ -245,7 +248,7 @@ if(NOT ATV_DOCS_ONLY)
         set_target_properties(atomiverse PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
         target_compile_definitions(atomiverse PUBLIC ATV_HAS_CUDA)
     endif()
-    target_compile_definitions(atomiverse PUBLIC ATV_REAL_TYPE=${ATV_REAL} ATV_INT_TYPE=${ATV_INT})
+    target_compile_definitions(atomiverse PUBLIC ATV_CUDA_REAL_TYPE=${ATV_CUDA_REAL} ATV_CUDA_WORK_TYPE=${ATV_CUDA_WORK} ATV_CUDA_PREC_TYPE=${ATV_CUDA_PREC})
 
     if(OpenMP_CXX_FOUND)
         target_link_libraries(atomiverse PUBLIC OpenMP::OpenMP_CXX)
@@ -267,7 +270,7 @@ if(NOT ATV_DOCS_ONLY)
         CRATES molrs-cxxapi
     )
     # molrs-core hardcodes F = f64.  Bridge always uses double.
-    # Zero-copy when ATV_REAL=double; promotion when ATV_REAL=float.
+    # CPU backend uses double; zero-copy across the FFI boundary.
     corrosion_add_cxxbridge(molrs_cxx
         CRATE molrs_cxxapi
         FILES bridge.rs

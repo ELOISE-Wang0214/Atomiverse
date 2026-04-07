@@ -27,7 +27,7 @@ class RHFDensity : public ComponentBase {
 public:
     /// @brief Construct with occupation count.
     /// @param n_occ Number of doubly-occupied orbitals.
-    explicit RHFDensity(Int n_occ) : n_occ_(n_occ) {}
+    explicit RHFDensity(int n_occ) : n_occ_(n_occ) {}
 
     std::string name() const override { return "rhf_density"; }
 
@@ -40,9 +40,9 @@ public:
     void destroy(const DestroyContext& ctx) override;
 
 private:
-    Int n_occ_;
+    int n_occ_;
     void* cublas_handle_ = nullptr;
-    Real* d_HplusF_ = nullptr;  ///< Temporary Hcore+F for energy [device, n*n].
+    double* d_HplusF_ = nullptr;  ///< Temporary Hcore+F for energy [device, n*n].
 };
 
 #endif // ATV_HAS_RHF

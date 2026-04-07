@@ -6,8 +6,14 @@
 #include "cublas_dispatch.cuh"
 
 #include <cuda_runtime.h>
+#include "atomiverse/cuda/types.cuh"
 
 namespace ATV {
+
+using cuda::real_t;
+using cuda::work_t;
+using cuda::prec_t;
+
 namespace scf {
 
 // ── Kernel: initialize H0 as a deterministic symmetric matrix ────────
@@ -16,17 +22,17 @@ namespace scf {
 /// H0[i,j] = 1.0 / (1 + |i-j|)  for off-diagonal
 /// H0[i,i] = n + 1 - i           for diagonal (ensures positive-definite)
 /// Column-major layout.
-__global__ void init_h0_kernel(Real* H0, Int n) {
+__global__ void init_h0_kernel(Real* H0, int n) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int total = n * n;
     for (int k = idx; k < total; k += blockDim.x * gridDim.x) {
         int col = k / n;
         int row = k % n;
         if (row == col) {
-            H0[k] = Real(n + 1 - row);
+            H0[k] = work_t(n + 1 - row);
         } else {
             int diff = row > col ? row - col : col - row;
-            H0[k] = Real(1) / Real(1 + diff);
+            H0[k] = work_t(1) / work_t(1 + diff);
         }
     }
 }
@@ -36,29 +42,29 @@ __global__ void init_h0_kernel(Real* H0, Int n) {
 void Hamiltonian::build(const BuildContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& scf = ctx.frame.scf;
-    Int n = ctx.frame.n_atoms();
+    int n = ctx.frame.n_atoms();
 
     // Store metadata
     scf.n = n;
     scf.n_occ = n_occ_;
     scf.converged = false;
     scf.iteration = 0;
-    scf.residual = Real(0);
+    scf.residual = work_t(0);
 
-    Int nn = n * n;
+    int nn = n * n;
 
     // Allocate all SCF workspace matrices
-    cudaMalloc(&scf.H0,    nn * sizeof(Real));
-    cudaMalloc(&scf.H,     nn * sizeof(Real));
-    cudaMalloc(&scf.P,     nn * sizeof(Real));
-    cudaMalloc(&scf.P_old, nn * sizeof(Real));
-    cudaMalloc(&scf.C,     nn * sizeof(Real));
-    cudaMalloc(&scf.eig,   n * sizeof(Real));
-    cudaMalloc(&scf.work,  nn * sizeof(Real));
+    cudaMalloc(&scf.H0,    nn * sizeof(work_t));
+    cudaMalloc(&scf.H,     nn * sizeof(work_t));
+    cudaMalloc(&scf.P,     nn * sizeof(work_t));
+    cudaMalloc(&scf.P_old, nn * sizeof(work_t));
+    cudaMalloc(&scf.C,     nn * sizeof(work_t));
+    cudaMalloc(&scf.eig,   n * sizeof(work_t));
+    cudaMalloc(&scf.work,  nn * sizeof(work_t));
 
     // Zero-initialize P
-    cudaMemsetAsync(scf.P, 0, nn * sizeof(Real), stream);
-    cudaMemsetAsync(scf.P_old, 0, nn * sizeof(Real), stream);
+    cudaMemsetAsync(scf.P, 0, nn * sizeof(work_t), stream);
+    cudaMemsetAsync(scf.P_old, 0, nn * sizeof(work_t), stream);
 
     // Initialize H0
     int threads = cuda::kDefaultBlock;
@@ -80,14 +86,14 @@ void Hamiltonian::launch(const LaunchContext& ctx) {
 
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto handle = static_cast<cublasHandle_t>(cublas_handle_);
-    Int n = scf.n;
-    Int nn = n * n;
+    int n = scf.n;
+    int nn = n * n;
 
     // H = H0 (copy)
-    cudaMemcpyAsync(scf.H, scf.H0, nn * sizeof(Real), cudaMemcpyDeviceToDevice, stream);
+    cudaMemcpyAsync(scf.H, scf.H0, nn * sizeof(work_t), cudaMemcpyDeviceToDevice, stream);
 
     // H += alpha * P
-    Real alpha = alpha_;
+    work_t alpha = alpha_;
     detail::axpy(handle, nn, &alpha, scf.P, 1, scf.H, 1);
 }
 

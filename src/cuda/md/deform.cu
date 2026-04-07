@@ -5,11 +5,17 @@
 #include "atomiverse/cuda/launch.cuh"
 #include "atomiverse/facade/stage.h"
 #include <cuda_runtime.h>
+#include "atomiverse/cuda/types.cuh"
 
 namespace ATV {
+
+using cuda::real_t;
+using cuda::work_t;
+using cuda::prec_t;
+
 namespace md {
 
-Deform::Deform(int axis, Real strain_rate, Real dt)
+Deform::Deform(int axis, work_t strain_rate, work_t dt)
     : axis_(axis), strain_rate_(strain_rate), dt_(dt) {}
 
 std::vector<DefaultBinding> Deform::default_bindings() const {
@@ -19,11 +25,11 @@ std::vector<DefaultBinding> Deform::default_bindings() const {
 namespace {
 
 __global__ void deform_k(
-    Real* __restrict__ pos,       // x, y, or z depending on axis
-    Real* __restrict__ box,       // 3x3 row-major
-    int axis, Real scale_factor, Int n)
+    real_t* __restrict__ pos,       // x, y, or z depending on axis
+    real_t* __restrict__ box,       // 3x3 row-major
+    int axis, work_t scale_factor, int n)
 {
-    Int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= n) return;
 
     // Remap atom position proportionally
@@ -40,11 +46,11 @@ __global__ void deform_k(
 void Deform::launch(const LaunchContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& f = ctx.frame;
-    Int n = f.n_atoms();
+    int n = f.n_atoms();
     int block = cuda::kDefaultBlock;
     int grid = cuda::grid_size(static_cast<int>(n));
 
-    Real scale = Real(1) + strain_rate_ * dt_;
+    work_t scale = work_t(1) + strain_rate_ * dt_;
 
     Real* pos = nullptr;
     switch (axis_) {

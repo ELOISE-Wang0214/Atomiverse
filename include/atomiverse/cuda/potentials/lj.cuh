@@ -32,7 +32,7 @@ public:
     /// @param epsilon Well depth [eV].
     /// @param sigma Collision diameter [Angstrom].
     /// @param cutoff Interaction cutoff [Angstrom].
-    LJ(Real epsilon, Real sigma, Real cutoff);
+    LJ(double epsilon, double sigma, double cutoff);
 
     /// @brief Component name.
     /// @return "lj".
@@ -44,21 +44,21 @@ public:
 
     /// @brief Get well depth.
     /// @return Well depth [eV].
-    Real epsilon() const { return epsilon_; }
+    double epsilon() const { return epsilon_; }
 
     /// @brief Get collision diameter.
     /// @return Collision diameter [Angstrom].
-    Real sigma() const { return sigma_; }
+    double sigma() const { return sigma_; }
 
     /// @brief Get interaction cutoff.
     /// @return Interaction cutoff [Angstrom].
-    Real cutoff() const { return cutoff_; }
+    double cutoff() const { return cutoff_; }
 
 private:
-    Real epsilon_;  ///< Well depth [eV].
-    Real sigma_;    ///< Collision diameter [Angstrom].
-    Real cutoff_;   ///< Interaction cutoff [Angstrom].
-    Real v_shift_;  ///< Potential shift at cutoff [eV].
+    double epsilon_;  ///< Well depth [eV].
+    double sigma_;    ///< Collision diameter [Angstrom].
+    double cutoff_;   ///< Interaction cutoff [Angstrom].
+    double v_shift_;  ///< Potential shift at cutoff [eV].
 };
 
 } // namespace ATV

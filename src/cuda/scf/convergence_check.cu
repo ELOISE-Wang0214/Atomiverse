@@ -5,8 +5,14 @@
 #include "cublas_dispatch.cuh"
 
 #include <cuda_runtime.h>
+#include "atomiverse/cuda/types.cuh"
 
 namespace ATV {
+
+using cuda::real_t;
+using cuda::work_t;
+using cuda::prec_t;
+
 namespace scf {
 
 void ConvergenceCheck::build(const BuildContext& ctx) {
@@ -24,24 +30,24 @@ void ConvergenceCheck::launch(const LaunchContext& ctx) {
 
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto handle = static_cast<cublasHandle_t>(cublas_handle_);
-    Int n = scf.n;
-    Int nn = n * n;
+    int n = scf.n;
+    int nn = n * n;
 
     // work = P - P_old
-    cudaMemcpyAsync(scf.work, scf.P, nn * sizeof(Real),
+    cudaMemcpyAsync(scf.work, scf.P, nn * sizeof(work_t),
                     cudaMemcpyDeviceToDevice, stream);
-    Real neg_one = Real(-1);
+    work_t neg_one = work_t(-1);
     detail::axpy(handle, nn, &neg_one, scf.P_old, 1, scf.work, 1);
 
     // ||P - P_old||_F = nrm2(work)
-    Real norm = 0;
+    work_t norm = 0;
     detail::nrm2(handle, nn, scf.work, 1, &norm);
 
     // Optionally compute energy = dot(H, P) (toy-scf mode)
     if (compute_energy_) {
-        Real energy = 0;
+        work_t energy = 0;
         detail::dot(handle, nn, scf.H, 1, scf.P, 1, &energy);
-        cudaMemcpyAsync(ctx.frame.energy, &energy, sizeof(Real),
+        cudaMemcpyAsync(ctx.frame.energy, &energy, sizeof(work_t),
                         cudaMemcpyHostToDevice, stream);
     }
     cudaStreamSynchronize(stream);

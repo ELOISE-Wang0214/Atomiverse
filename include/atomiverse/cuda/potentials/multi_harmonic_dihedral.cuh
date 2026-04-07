@@ -24,7 +24,7 @@ class MultiHarmonicDihedral : public ComponentBase {
 public:
     /// @brief Construct with per-type coefficients.
     /// @param C Per-type arrays of 5 coefficients {C0..C4} [eV].
-    MultiHarmonicDihedral(std::vector<std::array<Real, 5>> C);
+    MultiHarmonicDihedral(std::vector<std::array<double, 5>> C);
     ~MultiHarmonicDihedral() override;
     MultiHarmonicDihedral(MultiHarmonicDihedral&&) noexcept;
     MultiHarmonicDihedral& operator=(MultiHarmonicDihedral&&) noexcept;
@@ -35,7 +35,7 @@ public:
     void destroy(const DestroyContext& ctx) override;
 
 private:
-    std::vector<std::array<Real, 5>> C_;
+    std::vector<std::array<double, 5>> C_;
     struct State;
     std::unique_ptr<State> state_;
 };

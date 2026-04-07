@@ -13,8 +13,8 @@ namespace ATV {
 namespace cpu {
 
 void rdf_accumulate(std::vector<long long>& histogram,
-                    const Real* h_dist, int n_pairs,
-                    Real bin_width, int n_bins)
+                    const double* h_dist, int n_pairs,
+                    double bin_width, int n_bins)
 {
     for (int k = 0; k < n_pairs; ++k) {
         int bin = static_cast<int>(h_dist[k] / bin_width);
@@ -26,31 +26,31 @@ void rdf_accumulate(std::vector<long long>& histogram,
 void rdf_write(const std::string& filename,
                const std::vector<long long>& histogram,
                int n_samples, int n_atoms,
-               Real box_vol, Real r_max, int n_bins)
+               double box_vol, double r_max, int n_bins)
 {
-    if (n_samples <= 0 || n_atoms <= 0 || box_vol <= Real(0)) return;
+    if (n_samples <= 0 || n_atoms <= 0 || box_vol <= 0.0) return;
 
-    Real bin_width = r_max / Real(n_bins);
-    Real rho = Real(n_atoms) / box_vol;
-    constexpr Real pi = Real(kPI);
+    const double bin_width = r_max / static_cast<double>(n_bins);
+    const double rho = static_cast<double>(n_atoms) / box_vol;
+    constexpr double pi = kPI;
 
     std::ofstream out(filename);
     out << "# r [Angstrom]   g(r)\n";
 
     for (int i = 0; i < n_bins; ++i) {
-        Real r    = (Real(i) + Real(0.5)) * bin_width;
-        Real r_lo = Real(i) * bin_width;
-        Real r_hi = r_lo + bin_width;
-        Real shell_vol = (Real(4) / Real(3)) * pi *
+        const double r = (static_cast<double>(i) + 0.5) * bin_width;
+        const double r_lo = static_cast<double>(i) * bin_width;
+        const double r_hi = r_lo + bin_width;
+        const double shell_vol = (4.0 / 3.0) * pi *
                          (r_hi * r_hi * r_hi - r_lo * r_lo * r_lo);
-        Real ideal = Real(n_atoms) * rho * shell_vol;
+        const double ideal = static_cast<double>(n_atoms) * rho * shell_vol;
 
-        Real gr = (ideal > Real(0))
-            ? Real(2) * Real(histogram[i]) / (Real(n_samples) * ideal)
-            : Real(0);
+        const double gr = (ideal > 0.0)
+            ? 2.0 * static_cast<double>(histogram[i]) /
+                  (static_cast<double>(n_samples) * ideal)
+            : 0.0;
 
-        out << fmt::format("{:.6f}  {:.6f}\n",
-                           static_cast<double>(r), static_cast<double>(gr));
+        out << fmt::format("{:.6f}  {:.6f}\n", r, gr);
     }
 }
 

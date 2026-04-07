@@ -39,11 +39,11 @@ static cpu::Frame make_h2() {
 
 int main() {
     constexpr int n_steps = 10;
-    constexpr Real dt = Real(0.5);  // fs
+    constexpr double dt = double(0.5);  // fs
 
     // ── BOMD benchmark ──────────────────────────────────────────────
     cpu::Frame h2_bomd = make_h2();
-    cpu::scf::RHFForce bomd{Real(1e-8), 100};
+    cpu::scf::RHFForce bomd{double(1e-8), 100};
 
     auto t0_bomd = std::chrono::high_resolution_clock::now();
     bomd.run(h2_bomd, n_steps, dt);
@@ -64,8 +64,8 @@ int main() {
 
     // ── CPMD2 benchmark ─────────────────────────────────────────────
     cpu::Frame h2_cpmd = make_h2();
-    cpu::scf::RHFForce cpmd{Real(1e-8), 100};
-    cpmd.predictor(3, 2, Real(1e-4), true);
+    cpu::scf::RHFForce cpmd{double(1e-8), 100};
+    cpmd.predictor(3, 2, double(1e-4), true);
 
     auto t0_cpmd = std::chrono::high_resolution_clock::now();
     cpmd.run(h2_cpmd, n_steps, dt);

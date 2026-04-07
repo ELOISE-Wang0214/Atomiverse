@@ -7,21 +7,16 @@
 
 #include "atomiverse/torch/frame.cuh"
 
-using ATV::Real;
-using ATV::Int;
 namespace atorch = ATV::torch;
 
 TEST(TorchFrame, PrecisionMapping) {
-    if constexpr (std::is_same_v<Real, float>) {
+    if constexpr (std::is_same_v<ATV::cuda::real_t, float>) {
         EXPECT_EQ(atorch::kRealDtype, ::at::ScalarType::Float);
     } else {
         EXPECT_EQ(atorch::kRealDtype, ::at::ScalarType::Double);
     }
-    if constexpr (std::is_same_v<Int, int>) {
-        EXPECT_EQ(atorch::kIntDtype, ::at::ScalarType::Int);
-    } else {
-        EXPECT_EQ(atorch::kIntDtype, ::at::ScalarType::Long);
-    }
+    // kIntDtype is always Int (int -> ScalarType::Int)
+    EXPECT_EQ(atorch::kIntDtype, ::at::ScalarType::Int);
 }
 
 TEST(TorchFrame, DefaultConstruct) {
@@ -38,7 +33,7 @@ TEST(TorchFrame, ManualConstruct) {
     auto int_opts = ::torch::TensorOptions().dtype(atorch::kIntDtype).device(::torch::kCUDA);
 
     atorch::Frame frame;
-    frame.n_atoms_ = static_cast<Int>(n);
+    frame.n_atoms_ = static_cast<int>(n);
     frame.atoms.x = ::torch::zeros({n}, real_opts);
     frame.atoms.y = ::torch::zeros({n}, real_opts);
     frame.atoms.z = ::torch::zeros({n}, real_opts);
@@ -52,7 +47,7 @@ TEST(TorchFrame, ManualConstruct) {
     frame.stress = ::torch::zeros({6}, real_opts);
     frame.box = ::torch::zeros({9}, real_opts);
 
-    EXPECT_EQ(frame.n_atoms(), static_cast<Int>(n));
+    EXPECT_EQ(frame.n_atoms(), static_cast<int>(n));
     EXPECT_TRUE(frame.atoms.x.is_cuda());
     EXPECT_EQ(frame.atoms.x.scalar_type(), atorch::kRealDtype);
     EXPECT_EQ(frame.atoms.x.numel(), n);

@@ -18,12 +18,12 @@ using namespace ATV;
 
 class UKSSolveTest : public ::testing::Test {
 protected:
-    static constexpr Real kTol = (sizeof(Real) == sizeof(float)) ? Real(1e-4) : Real(1e-7);
+    static constexpr double kTol = (sizeof(double) == sizeof(float)) ? double(1e-4) : double(1e-7);
     static constexpr double kEnergyTol = 5e-3;
 
     static cpu::Frame make_h_atom() {
         cpu::Frame f(1);
-        f.atoms.x[0] = Real(0); f.atoms.y[0] = Real(0); f.atoms.z[0] = Real(0);
+        f.atoms.x[0] = double(0); f.atoms.y[0] = double(0); f.atoms.z[0] = double(0);
         f.atoms.type[0] = 1;
         f.box = Mat3::cubic(100.0);
         return f;
@@ -31,7 +31,7 @@ protected:
 
     static cpu::Frame make_he_atom() {
         cpu::Frame f(1);
-        f.atoms.x[0] = Real(0); f.atoms.y[0] = Real(0); f.atoms.z[0] = Real(0);
+        f.atoms.x[0] = double(0); f.atoms.y[0] = double(0); f.atoms.z[0] = double(0);
         f.atoms.type[0] = 2;
         f.box = Mat3::cubic(100.0);
         return f;
@@ -39,7 +39,7 @@ protected:
 
     static cpu::Frame make_li_atom() {
         cpu::Frame f(1);
-        f.atoms.x[0] = Real(0); f.atoms.y[0] = Real(0); f.atoms.z[0] = Real(0);
+        f.atoms.x[0] = double(0); f.atoms.y[0] = double(0); f.atoms.z[0] = double(0);
         f.atoms.type[0] = 3;
         f.box = Mat3::cubic(100.0);
         return f;
@@ -47,8 +47,8 @@ protected:
 
     static cpu::Frame make_h2(double bond_length_angstrom) {
         cpu::Frame f(2);
-        f.atoms.x[0] = Real(0);                    f.atoms.y[0] = Real(0); f.atoms.z[0] = Real(0);
-        f.atoms.x[1] = Real(bond_length_angstrom); f.atoms.y[1] = Real(0); f.atoms.z[1] = Real(0);
+        f.atoms.x[0] = double(0);                    f.atoms.y[0] = double(0); f.atoms.z[0] = double(0);
+        f.atoms.x[1] = double(bond_length_angstrom); f.atoms.y[1] = double(0); f.atoms.z[1] = double(0);
         f.atoms.type[0] = 1; f.atoms.type[1] = 1;
         f.box = Mat3::cubic(100.0);
         return f;
@@ -80,7 +80,7 @@ TEST_F(UKSSolveTest, DensityMatricesHaveCorrectShape) {
     auto frame = make_he_atom();
     auto ints = cpu::scf::build_integrals_sto3g(frame);
     auto result = cpu::scf::uks_solve(ints, 1, 1, cpu::scf::XCType::LSDA, 35, 110, kTol, 80);
-    Int n = ints.n_basis;
+    int n = ints.n_basis;
     EXPECT_EQ(result.P_alpha.shape(0), (size_t)n);
     EXPECT_EQ(result.P_alpha.shape(1), (size_t)n);
     EXPECT_EQ(result.P_beta.shape(0), (size_t)n);
@@ -125,8 +125,8 @@ TEST_F(UKSSolveTest, HAtomSpinDensity) {
     auto ints = cpu::scf::build_integrals_sto3g(frame);
     auto result = cpu::scf::uks_solve(ints, 1, 0, cpu::scf::XCType::LSDA, 35, 110, kTol, 80);
     EXPECT_TRUE(result.converged);
-    Real tr_alpha = xt::sum(result.P_alpha * ints.S)();
-    Real tr_beta = xt::sum(result.P_beta * ints.S)();
+    double tr_alpha = xt::sum(result.P_alpha * ints.S)();
+    double tr_beta = xt::sum(result.P_beta * ints.S)();
     EXPECT_NEAR(static_cast<double>(tr_alpha), 1.0, 1e-4);
     EXPECT_NEAR(static_cast<double>(tr_beta), 0.0, 1e-10);
 }
@@ -155,7 +155,7 @@ TEST_F(UKSSolveTest, HeClosedShellAlphaBetaSymmetry) {
     auto ints = cpu::scf::build_integrals_sto3g(frame);
     auto result = cpu::scf::uks_solve(ints, 1, 1, cpu::scf::XCType::LSDA, 35, 110, kTol, 80);
     EXPECT_TRUE(result.converged);
-    Real diff = xt::norm_l2(result.P_alpha - result.P_beta)();
+    double diff = xt::norm_l2(result.P_alpha - result.P_beta)();
     EXPECT_NEAR(static_cast<double>(diff), 0.0, 1e-4);
 }
 
@@ -164,8 +164,8 @@ TEST_F(UKSSolveTest, HeAtomElectronCount) {
     auto ints = cpu::scf::build_integrals_sto3g(frame);
     auto result = cpu::scf::uks_solve(ints, 1, 1, cpu::scf::XCType::LSDA, 35, 110, kTol, 80);
     EXPECT_TRUE(result.converged);
-    Real tr_alpha = xt::sum(result.P_alpha * ints.S)();
-    Real tr_beta = xt::sum(result.P_beta * ints.S)();
+    double tr_alpha = xt::sum(result.P_alpha * ints.S)();
+    double tr_beta = xt::sum(result.P_beta * ints.S)();
     EXPECT_NEAR(static_cast<double>(tr_alpha), 1.0, 1e-4);
     EXPECT_NEAR(static_cast<double>(tr_beta), 1.0, 1e-4);
 }

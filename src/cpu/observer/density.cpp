@@ -75,10 +75,10 @@ double eval_shell_s(const ShellInstance& sh,
 // Build the ordered list of shell instances for the given geometry.
 // Returns empty vector if any Z is out of range.
 std::vector<ShellInstance> build_shells(
-    const std::vector<Int>&  type_id,
-    const std::vector<Real>& x,
-    const std::vector<Real>& y,
-    const std::vector<Real>& z)
+    const std::vector<int>& type_id,
+    const std::vector<double>& x,
+    const std::vector<double>& y,
+    const std::vector<double>& z)
 {
     std::vector<ShellInstance> shells;
     for (size_t i = 0; i < type_id.size(); ++i) {
@@ -105,19 +105,19 @@ std::vector<ShellInstance> build_shells(
 // ── eval_density_grid ─────────────────────────────────────────────────────────
 
 DensityGrid eval_density_grid(
-    const std::vector<Int>&  type_id,
-    const std::vector<Real>& x,
-    const std::vector<Real>& y,
-    const std::vector<Real>& z,
-    const Real* P, Int n_basis,
-    int nx, int ny, int nz, Real padding)
+    const std::vector<int>& type_id,
+    const std::vector<double>& x,
+    const std::vector<double>& y,
+    const std::vector<double>& z,
+    const double* P, int n_basis,
+    int nx, int ny, int nz, double padding)
 {
     DensityGrid grid;
     if (nx <= 0 || ny <= 0 || nz <= 0 || n_basis <= 0 || type_id.empty())
         return grid;
 
     const auto shells = build_shells(type_id, x, y, z);
-    if (shells.empty() || static_cast<Int>(shells.size()) != n_basis)
+    if (shells.empty() || static_cast<int>(shells.size()) != n_basis)
         return grid;
 
     // Grid bounds from atom positions + padding

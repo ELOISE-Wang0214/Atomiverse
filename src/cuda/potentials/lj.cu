@@ -4,37 +4,43 @@
 #include "atomiverse/cuda/potentials/lj_kernel.cuh"
 #include "atomiverse/cuda/launch.cuh"
 #include <cuda_runtime.h>
+#include "atomiverse/cuda/types.cuh"
 
 namespace ATV {
+
+using cuda::real_t;
+using cuda::work_t;
+using cuda::prec_t;
+
 
 namespace cuda { namespace kernels {
 
 __global__ void lj_force(
-    Real* __restrict__ fx, Real* __restrict__ fy, Real* __restrict__ fz,
-    Real* __restrict__ energy,
-    const Int* __restrict__ pi, const Int* __restrict__ pj,
-    const Real* __restrict__ pdx, const Real* __restrict__ pdy,
-    const Real* __restrict__ pdz, const Real* __restrict__ pdist,
-    Real epsilon, Real sigma, Real cutoff, Real v_shift,
-    const Int* __restrict__ n_pairs_ptr) {
+    real_t* __restrict__ fx, real_t* __restrict__ fy, real_t* __restrict__ fz,
+    real_t* __restrict__ energy,
+    const int* __restrict__ pi, const int* __restrict__ pj,
+    const real_t* __restrict__ pdx, const real_t* __restrict__ pdy,
+    const real_t* __restrict__ pdz, const real_t* __restrict__ pdist,
+    work_t epsilon, work_t sigma, work_t cutoff, work_t v_shift,
+    const int* __restrict__ n_pairs_ptr) {
 
-    Int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    Int n_pairs = *n_pairs_ptr;
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int n_pairs = *n_pairs_ptr;
 
-    Real my_energy = Real(0);
+    work_t my_energy = work_t(0);
     if (idx < n_pairs) {
-        Real r = pdist[idx];
+        work_t r = pdist[idx];
         if (r < cutoff && r >= kMinPairDist) {
-            Real inv_r = Real(1) / r;
-            Real sr = sigma * inv_r;
-            Real sr2 = sr * sr;
-            Real sr6 = sr2 * sr2 * sr2;
-            Real sr12 = sr6 * sr6;
+            work_t inv_r = work_t(1) / r;
+            work_t sr = sigma * inv_r;
+            work_t sr2 = sr * sr;
+            work_t sr6 = sr2 * sr2 * sr2;
+            work_t sr12 = sr6 * sr6;
 
-            Real f_over_r = Real(24) * epsilon * (Real(2) * sr12 - sr6) * inv_r * inv_r;
-            Real dx = pdx[idx], dy = pdy[idx], dz = pdz[idx];
+            work_t f_over_r = work_t(24) * epsilon * (work_t(2) * sr12 - sr6) * inv_r * inv_r;
+            work_t dx = pdx[idx], dy = pdy[idx], dz = pdz[idx];
 
-            Int i = pi[idx], j = pj[idx];
+            int i = pi[idx], j = pj[idx];
             atomicAdd(&fx[i], -f_over_r * dx);
             atomicAdd(&fy[i], -f_over_r * dy);
             atomicAdd(&fz[i], -f_over_r * dz);
@@ -42,18 +48,18 @@ __global__ void lj_force(
             atomicAdd(&fy[j],  f_over_r * dy);
             atomicAdd(&fz[j],  f_over_r * dz);
 
-            my_energy = Real(4) * epsilon * (sr12 - sr6) - v_shift;
+            my_energy = work_t(4) * epsilon * (sr12 - sr6) - v_shift;
         }
     }
 
-    extern __shared__ Real s_energy[];
+    extern __shared__ work_t s_energy[];
     s_energy[threadIdx.x] = my_energy;
     __syncthreads();
     for (int s = blockDim.x / 2; s > 0; s >>= 1) {
         if (threadIdx.x < s) s_energy[threadIdx.x] += s_energy[threadIdx.x + s];
         __syncthreads();
     }
-    if (threadIdx.x == 0 && s_energy[0] != Real(0))
+    if (threadIdx.x == 0 && s_energy[0] != work_t(0))
         atomicAdd(energy, s_energy[0]);
 }
 
@@ -64,7 +70,7 @@ namespace {
 constexpr int kEstMaxNeighbors = 100;
 } // anonymous namespace
 
-LJ::LJ(Real epsilon, Real sigma, Real cutoff)
+LJ::LJ(work_t epsilon, work_t sigma, work_t cutoff)
     : epsilon_(epsilon), sigma_(sigma), cutoff_(cutoff) {
     v_shift_ = cuda::kernels::lj_shift(epsilon, sigma, cutoff);
 }
@@ -72,11 +78,11 @@ LJ::LJ(Real epsilon, Real sigma, Real cutoff)
 void LJ::launch(const LaunchContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& frame = ctx.frame;
-    Int n = ctx.frame.n_atoms();
+    int n = ctx.frame.n_atoms();
     int max_pairs = static_cast<int>(n) * kEstMaxNeighbors / 2;
     int block = cuda::kDefaultBlock;
     int grid = cuda::grid_size(max_pairs);
-    cuda::kernels::lj_force<<<grid, block, block * sizeof(Real), stream>>>(
+    cuda::kernels::lj_force<<<grid, block, block * sizeof(work_t), stream>>>(
         frame.atoms.fx, frame.atoms.fy, frame.atoms.fz, frame.energy,
         frame.pairs.i, frame.pairs.j, frame.pairs.dx, frame.pairs.dy,
         frame.pairs.dz, frame.pairs.dist,

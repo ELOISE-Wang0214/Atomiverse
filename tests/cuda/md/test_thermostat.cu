@@ -17,7 +17,7 @@
 
 using namespace ATV;
 
-static cpu::Frame make_cubic(int n_side, Real spacing) {
+static cpu::Frame make_cubic(int n_side, double spacing) {
     int n = n_side * n_side * n_side;
     cpu::Frame frame(n);
     int idx = 0;
@@ -38,7 +38,7 @@ TEST(NoseHoover, TemperatureControl) {
     // Minimal: 8 atoms, well-separated, weak LJ, small dt
     auto frame = make_cubic(2, 5.0);  // 8 atoms
 
-    Real dt = 0.001;
+    double dt = 0.001;
     md::MD sim;
     sim.add(md::VelocityVerlet{dt});
     sim.add(md::NoseHoover{100.0, 100.0, dt});
@@ -57,10 +57,10 @@ TEST(NoseHoover, TemperatureControl) {
 
 TEST(Deform, BoxGrows) {
     auto frame = make_cubic(3, 5.0);
-    Real L0 = frame.box(0, 0);
+    double L0 = frame.box(0, 0);
 
-    Real rate = 1e-4;
-    Real dt = 0.01;
+    double rate = 1e-4;
+    double dt = 0.01;
     int n_steps = 100;
 
     md::MD sim;
@@ -72,7 +72,7 @@ TEST(Deform, BoxGrows) {
     sim.build();
     sim.run(frame, n_steps);
 
-    Real expected_L = L0 * pow(1.0 + rate * dt, n_steps);
+    double expected_L = L0 * pow(1.0 + rate * dt, n_steps);
     EXPECT_NEAR(frame.box(0, 0), expected_L, expected_L * 0.01);
     EXPECT_NEAR(frame.box(1, 1), L0, 1e-6);
 }
@@ -100,7 +100,7 @@ TEST(VirialStress, FiniteStress) {
 
 TEST(Barostat, FiniteResults) {
     auto frame = make_cubic(2, 5.0);
-    Real dt = 0.001;
+    double dt = 0.001;
 
     md::MD sim;
     sim.add(md::VelocityVerlet{dt});

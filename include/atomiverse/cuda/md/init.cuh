@@ -88,7 +88,7 @@ public:
     /// @brief Construct velocity initializer.
     /// @param temperature Target temperature [K].
     /// @param seed Random number seed.
-    InitVelocity(Real temperature, unsigned long long seed)
+    InitVelocity(double temperature, unsigned long long seed)
         : temperature_(temperature), seed_(seed) {}
 
     /// @brief Component name.
@@ -111,14 +111,14 @@ public:
 
     /// @brief Target temperature.
     /// @return Temperature [K].
-    Real temperature() const { return temperature_; }
+    double temperature() const { return temperature_; }
 
     /// @brief Random seed.
     /// @return Seed value.
     unsigned long long seed() const { return seed_; }
 
 private:
-    Real temperature_;         ///< Target temperature [K].
+    double temperature_;         ///< Target temperature [K].
     unsigned long long seed_;  ///< RNG seed.
 };
 

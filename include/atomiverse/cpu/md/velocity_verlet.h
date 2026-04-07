@@ -20,7 +20,7 @@ namespace md {
 class VelocityVerlet : public cpu::ComponentBase {
 public:
     /// @param dt Timestep [fs].
-    explicit VelocityVerlet(Real dt);
+    explicit VelocityVerlet(double dt);
 
     std::string name() const override { return "velocity_verlet"; }
     std::vector<DefaultBinding> default_bindings() const override {
@@ -30,7 +30,7 @@ public:
     void launch(const cpu::LaunchContext& ctx) override;
 
 private:
-    Real dt_;
+    double dt_;
 };
 
 } // namespace md

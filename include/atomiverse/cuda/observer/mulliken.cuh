@@ -20,7 +20,7 @@
 #include <cuda_runtime.h>
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/core/real.h"
+
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/observer/mulliken.h"
 #include "atomiverse/cuda/async_bridge.cuh"
@@ -46,8 +46,8 @@ public:
     std::string name() const override { return "mulliken"; }
     int frequency() const override { return every_; }
 
-    const std::vector<Real>& charges() const { return charges_; }
-    Real energy() const { return energy_val_; }
+    const std::vector<double>& charges() const { return charges_; }
+    double energy() const { return energy_val_; }
     int iterations() const { return iterations_; }
     int n_occ() const { return n_occ_; }
 
@@ -59,12 +59,12 @@ protected:
         n_basis_    = frame.scf.n;
 
         // Synchronous D2H of geometry at build time.
-        std::vector<Int>  tid(n);
-        std::vector<Real> xh(n), yh(n), zh(n);
-        cudaMemcpyAsync(tid.data(), frame.atoms.type, n * sizeof(Int),  cudaMemcpyDeviceToHost, stream);
-        cudaMemcpyAsync(xh.data(),  frame.atoms.x,       n * sizeof(Real), cudaMemcpyDeviceToHost, stream);
-        cudaMemcpyAsync(yh.data(),  frame.atoms.y,       n * sizeof(Real), cudaMemcpyDeviceToHost, stream);
-        cudaMemcpyAsync(zh.data(),  frame.atoms.z,       n * sizeof(Real), cudaMemcpyDeviceToHost, stream);
+        std::vector<int>  tid(n);
+        std::vector<double> xh(n), yh(n), zh(n);
+        cudaMemcpyAsync(tid.data(), frame.atoms.type, n * sizeof(int),  cudaMemcpyDeviceToHost, stream);
+        cudaMemcpyAsync(xh.data(),  frame.atoms.x,       n * sizeof(double), cudaMemcpyDeviceToHost, stream);
+        cudaMemcpyAsync(yh.data(),  frame.atoms.y,       n * sizeof(double), cudaMemcpyDeviceToHost, stream);
+        cudaMemcpyAsync(zh.data(),  frame.atoms.z,       n * sizeof(double), cudaMemcpyDeviceToHost, stream);
         cudaStreamSynchronize(stream);
 
         cpu_frame_ = std::make_unique<cpu::Frame>(n);
@@ -74,11 +74,11 @@ protected:
             cpu_frame_->y[i] = yh[i];
             cpu_frame_->z[i] = zh[i];
         }
-        cpu_frame_->box = Mat3::cubic(Real(100));
+        cpu_frame_->box = Mat3::cubic(double(100));
 
-        cudaMallocHost(&h_P_,      n_basis_ * n_basis_ * sizeof(Real));
-        cudaMallocHost(&h_energy_, sizeof(Real));
-        *h_energy_ = Real(0);
+        cudaMallocHost(&h_P_,      n_basis_ * n_basis_ * sizeof(double));
+        cudaMallocHost(&h_energy_, sizeof(double));
+        *h_energy_ = double(0);
     }
 
     bool can_run(const LaunchContext& ctx) const override {
@@ -89,9 +89,9 @@ protected:
         auto ds    = static_cast<cudaStream_t>(ctx.runtime.defer_stream);
         auto& f    = ctx.frame;
         const int n2 = n_basis_ * n_basis_;
-        cudaMemcpyAsync(h_P_, f.scf.P, n2 * sizeof(Real), cudaMemcpyDeviceToHost, ds);
+        cudaMemcpyAsync(h_P_, f.scf.P, n2 * sizeof(double), cudaMemcpyDeviceToHost, ds);
         if (f.energy)
-            cudaMemcpyAsync(h_energy_, f.energy, sizeof(Real), cudaMemcpyDeviceToHost, ds);
+            cudaMemcpyAsync(h_energy_, f.energy, sizeof(double), cudaMemcpyDeviceToHost, ds);
     }
 
     void on_data_ready(const LaunchContext& ctx) override {
@@ -112,14 +112,14 @@ private:
     int every_;
 
     std::unique_ptr<cpu::Frame> cpu_frame_;
-    std::vector<Real> charges_;
-    Real energy_val_ = 0;
+    std::vector<double> charges_;
+    double energy_val_ = 0;
     int iterations_  = 0;
     int n_occ_       = 0;
 
     int   n_basis_  = 0;
-    Real* h_P_      = nullptr;
-    Real* h_energy_ = nullptr;
+    double* h_P_      = nullptr;
+    double* h_energy_ = nullptr;
 };
 
 #endif // ATV_HAS_RHF

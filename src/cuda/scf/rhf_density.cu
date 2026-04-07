@@ -7,20 +7,26 @@
 #include "cublas_dispatch.cuh"
 
 #include <cuda_runtime.h>
+#include "atomiverse/cuda/types.cuh"
 
 namespace ATV {
+
+using cuda::real_t;
+using cuda::work_t;
+using cuda::prec_t;
+
 namespace scf {
 
 void RHFDensity::build(const BuildContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& scf = ctx.frame.scf;
-    Int n = scf.n;
+    int n = scf.n;
 
     // Store n_occ in workspace
     scf.n_occ = n_occ_;
 
     // Allocate Hcore+F temporary
-    cudaMalloc(&d_HplusF_, n * n * sizeof(Real));
+    cudaMalloc(&d_HplusF_, n * n * sizeof(work_t));
 
     cublasHandle_t handle;
     cublasCreate(&handle);
@@ -34,8 +40,8 @@ void RHFDensity::launch(const LaunchContext& ctx) {
 
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto handle = static_cast<cublasHandle_t>(cublas_handle_);
-    Int n = scf.n;
-    Int nn = n * n;
+    int n = scf.n;
+    int nn = n * n;
 
     // After EigenSolver: scf.C contains eigenvectors of F' (in orthogonal basis),
     // scf.eig contains eigenvalues. scf.work contains the real Fock matrix F.
@@ -43,15 +49,15 @@ void RHFDensity::launch(const LaunchContext& ctx) {
     // Step 1: Back-transform C = X * C'
     // C' is in scf.C (from EigenSolver). We need C = X * C'.
     // Use d_HplusF_ as temp to hold C' before overwriting scf.C.
-    cudaMemcpyAsync(d_HplusF_, scf.C, nn * sizeof(Real), cudaMemcpyDeviceToDevice, stream);
-    Real one = Real(1);
-    Real zero = Real(0);
+    cudaMemcpyAsync(d_HplusF_, scf.C, nn * sizeof(work_t), cudaMemcpyDeviceToDevice, stream);
+    work_t one = work_t(1);
+    work_t zero = work_t(0);
     detail::gemm(handle, CUBLAS_OP_N, CUBLAS_OP_N,
                  n, n, n, &one, scf.X, n, d_HplusF_, n, &zero, scf.C, n);
 
     // Step 2: P_old = P; P = 2 * C_occ * C_occ^T
-    cudaMemcpyAsync(scf.P_old, scf.P, nn * sizeof(Real), cudaMemcpyDeviceToDevice, stream);
-    Real two = Real(2);
+    cudaMemcpyAsync(scf.P_old, scf.P, nn * sizeof(work_t), cudaMemcpyDeviceToDevice, stream);
+    work_t two = work_t(2);
     detail::gemm(handle, CUBLAS_OP_N, CUBLAS_OP_T,
                  n, n, n_occ_,
                  &two, scf.C, n, scf.C, n, &zero, scf.P, n);
@@ -59,16 +65,16 @@ void RHFDensity::launch(const LaunchContext& ctx) {
     // Step 3: Energy = 0.5 * Tr[(Hcore + F) * P] + V_nuc
     // scf.work = F (saved by RHFFock). Hcore = scf.Hcore.
     // d_HplusF_ = Hcore + F
-    cudaMemcpyAsync(d_HplusF_, scf.Hcore, nn * sizeof(Real), cudaMemcpyDeviceToDevice, stream);
+    cudaMemcpyAsync(d_HplusF_, scf.Hcore, nn * sizeof(work_t), cudaMemcpyDeviceToDevice, stream);
     detail::axpy(handle, nn, &one, scf.work, 1, d_HplusF_, 1);
 
     // E_elec = 0.5 * dot(HplusF, P)
-    Real dot_val = 0;
+    work_t dot_val = 0;
     detail::dot(handle, nn, d_HplusF_, 1, scf.P, 1, &dot_val);
-    Real energy = Real(0.5) * dot_val + scf.V_nuc;
+    work_t energy = work_t(0.5) * dot_val + scf.V_nuc;
 
     // Write to device energy scalar
-    cudaMemcpyAsync(ctx.frame.energy, &energy, sizeof(Real),
+    cudaMemcpyAsync(ctx.frame.energy, &energy, sizeof(work_t),
                     cudaMemcpyHostToDevice, stream);
     cudaStreamSynchronize(stream);
 }

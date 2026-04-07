@@ -5,15 +5,13 @@
 /// Dispatches to HF (Coulomb + exchange) or KS (Coulomb + XC grid) based on config.
 ///
 /// References:
-///   Pulay, Mol. Phys. 17, 197 (1969) — Pulay forces
-///   Szabo & Ostlund, Appendix C — RHF gradient derivation
-///   Helgaker, Jorgensen, Olsen, Ch. 9 — molecular gradients
+///   Pulay, Mol. Phys. 17, 197 (1969) -- Pulay forces
+///   Szabo & Ostlund, Appendix C -- RHF gradient derivation
+///   Helgaker, Jorgensen, Olsen, Ch. 9 -- molecular gradients
 #pragma once
 
 #include <xtensor/xtensor.hpp>
 
-#include "atomiverse/core/real.h"
-#include "atomiverse/core/int.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/scf_solve.h"
@@ -24,8 +22,8 @@ namespace scf {
 
 /// @brief Result of a gradient computation.
 struct GradientResult {
-    xt::xtensor<Real, 2> forces;  ///< Forces [n_atoms, 3] in eV/Angstrom.
-    Real energy;                   ///< Total energy in eV.
+    xt::xtensor<double, 2> forces;  ///< Forces [n_atoms, 3] in eV/Angstrom.
+    double energy;                   ///< Total energy in eV.
 };
 
 /// @brief Unified analytic nuclear gradient for all mean-field methods.
@@ -63,7 +61,7 @@ GradientResult scf_finite_difference_gradient(
     const Frame& frame,
     const SCFConfig& config,
     int charge = 0,
-    Real h = Real(5e-5)
+    double h = 5e-5
 );
 
 } // namespace scf

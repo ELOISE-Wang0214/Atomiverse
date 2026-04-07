@@ -27,20 +27,20 @@ static constexpr double sto3g_coeff[3] = {0.15432897, 0.53532814, 0.44463454};
 
 TEST(DeviceIntegrals, BoysF0) {
     // Generate test values: 0, small, medium, large
-    std::vector<Real> h_x = {0, Real(1e-15), Real(0.01), Real(0.1), Real(0.5),
-                              Real(1), Real(2), Real(5), Real(10), Real(50), Real(100)};
+    std::vector<double> h_x = {0, double(1e-15), double(0.01), double(0.1), double(0.5),
+                              double(1), double(2), double(5), double(10), double(50), double(100)};
     int n = static_cast<int>(h_x.size());
 
-    Real *d_x, *d_out;
-    cudaMalloc(&d_x, n * sizeof(Real));
-    cudaMalloc(&d_out, n * sizeof(Real));
-    cudaMemcpy(d_x, h_x.data(), n * sizeof(Real), cudaMemcpyHostToDevice);
+    double *d_x, *d_out;
+    cudaMalloc(&d_x, n * sizeof(double));
+    cudaMalloc(&d_out, n * sizeof(double));
+    cudaMemcpy(d_x, h_x.data(), n * sizeof(double), cudaMemcpyHostToDevice);
 
     cuda::scf::launch_boys_f0_test(d_x, d_out, n, nullptr);
     cudaDeviceSynchronize();
 
-    std::vector<Real> h_out(n);
-    cudaMemcpy(h_out.data(), d_out, n * sizeof(Real), cudaMemcpyDeviceToHost);
+    std::vector<double> h_out(n);
+    cudaMemcpy(h_out.data(), d_out, n * sizeof(double), cudaMemcpyDeviceToHost);
 
     for (int i = 0; i < n; ++i) {
         double cpu_val = cpu::scf::native::boys_f0(static_cast<double>(h_x[i]));
@@ -55,11 +55,11 @@ TEST(DeviceIntegrals, BoysF0) {
 // ── Helper: upload basis data to device ───────────────────────────────
 
 struct DeviceBasis {
-    Real* d_alpha = nullptr;
-    Real* d_coeff = nullptr;
-    Real* d_centers = nullptr;
-    Int* d_Z = nullptr;
-    Real* d_pos = nullptr;
+    double* d_alpha = nullptr;
+    double* d_coeff = nullptr;
+    double* d_centers = nullptr;
+    int* d_Z = nullptr;
+    double* d_pos = nullptr;
     int n_shells, n_prim, natm;
 
     // Host-side CPU reference
@@ -68,43 +68,43 @@ struct DeviceBasis {
     DeviceBasis() : n_shells(2), n_prim(3), natm(2) {
         // Compute CPU reference
         cpu::Frame frame(2);
-        frame.atoms.x[0] = Real(0);    frame.atoms.y[0] = Real(0); frame.atoms.z[0] = Real(0);
-        frame.atoms.x[1] = Real(0.74); frame.atoms.y[1] = Real(0); frame.atoms.z[1] = Real(0);
-        frame.atoms.mass[0] = Real(1.008); frame.atoms.mass[1] = Real(1.008);
+        frame.atoms.x[0] = double(0);    frame.atoms.y[0] = double(0); frame.atoms.z[0] = double(0);
+        frame.atoms.x[1] = double(0.74); frame.atoms.y[1] = double(0); frame.atoms.z[1] = double(0);
+        frame.atoms.mass[0] = double(1.008); frame.atoms.mass[1] = double(1.008);
         frame.atoms.type[0] = 1; frame.atoms.type[1] = 1;
         frame.box = Mat3::cubic(100.0);
         ref = cpu::scf::build_integrals_sto3g(frame);
 
         // Build host arrays with PHYSICAL normalization (for GPU kernels)
-        Real h_alpha[6], h_coeff[6], h_centers[6];
-        Int h_Z[2] = {1, 1};
-        Real h_pos[6];
+        double h_alpha[6], h_coeff[6], h_centers[6];
+        int h_Z[2] = {1, 1};
+        double h_pos[6];
 
         double cx[2] = {0, 0.74 * kA2B};
         for (int s = 0; s < 2; ++s) {
             for (int p = 0; p < 3; ++p) {
-                h_alpha[s*3 + p] = Real(sto3g_exp[p]);
-                h_coeff[s*3 + p] = Real(sto3g_coeff[p] * cpu::scf::native::phys_norm(sto3g_exp[p]));
+                h_alpha[s*3 + p] = double(sto3g_exp[p]);
+                h_coeff[s*3 + p] = double(sto3g_coeff[p] * cpu::scf::native::phys_norm(sto3g_exp[p]));
             }
-            h_centers[s*3 + 0] = Real(cx[s]);
-            h_centers[s*3 + 1] = Real(0);
-            h_centers[s*3 + 2] = Real(0);
-            h_pos[s*3 + 0] = Real(cx[s]);
-            h_pos[s*3 + 1] = Real(0);
-            h_pos[s*3 + 2] = Real(0);
+            h_centers[s*3 + 0] = double(cx[s]);
+            h_centers[s*3 + 1] = double(0);
+            h_centers[s*3 + 2] = double(0);
+            h_pos[s*3 + 0] = double(cx[s]);
+            h_pos[s*3 + 1] = double(0);
+            h_pos[s*3 + 2] = double(0);
         }
 
-        cudaMalloc(&d_alpha, 6 * sizeof(Real));
-        cudaMalloc(&d_coeff, 6 * sizeof(Real));
-        cudaMalloc(&d_centers, 6 * sizeof(Real));
-        cudaMalloc(&d_Z, 2 * sizeof(Int));
-        cudaMalloc(&d_pos, 6 * sizeof(Real));
+        cudaMalloc(&d_alpha, 6 * sizeof(double));
+        cudaMalloc(&d_coeff, 6 * sizeof(double));
+        cudaMalloc(&d_centers, 6 * sizeof(double));
+        cudaMalloc(&d_Z, 2 * sizeof(int));
+        cudaMalloc(&d_pos, 6 * sizeof(double));
 
-        cudaMemcpy(d_alpha, h_alpha, 6 * sizeof(Real), cudaMemcpyHostToDevice);
-        cudaMemcpy(d_coeff, h_coeff, 6 * sizeof(Real), cudaMemcpyHostToDevice);
-        cudaMemcpy(d_centers, h_centers, 6 * sizeof(Real), cudaMemcpyHostToDevice);
-        cudaMemcpy(d_Z, h_Z, 2 * sizeof(Int), cudaMemcpyHostToDevice);
-        cudaMemcpy(d_pos, h_pos, 6 * sizeof(Real), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_alpha, h_alpha, 6 * sizeof(double), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_coeff, h_coeff, 6 * sizeof(double), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_centers, h_centers, 6 * sizeof(double), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_Z, h_Z, 2 * sizeof(int), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_pos, h_pos, 6 * sizeof(double), cudaMemcpyHostToDevice);
     }
 
     ~DeviceBasis() {
@@ -119,18 +119,18 @@ TEST(DeviceIntegrals, Overlap) {
     DeviceBasis db;
     int nn = db.n_shells * db.n_shells;
 
-    Real *d_S, *d_T, *d_V;
-    cudaMalloc(&d_S, nn * sizeof(Real));
-    cudaMalloc(&d_T, nn * sizeof(Real));
-    cudaMalloc(&d_V, nn * sizeof(Real));
+    double *d_S, *d_T, *d_V;
+    cudaMalloc(&d_S, nn * sizeof(double));
+    cudaMalloc(&d_T, nn * sizeof(double));
+    cudaMalloc(&d_V, nn * sizeof(double));
 
     cuda::scf::launch_1e_integrals(
         d_S, d_T, d_V, db.d_alpha, db.d_coeff, db.d_centers,
         db.d_Z, db.d_pos, db.n_shells, db.n_prim, db.natm, nullptr);
     cudaDeviceSynchronize();
 
-    std::vector<Real> h_S(nn);
-    cudaMemcpy(h_S.data(), d_S, nn * sizeof(Real), cudaMemcpyDeviceToHost);
+    std::vector<double> h_S(nn);
+    cudaMemcpy(h_S.data(), d_S, nn * sizeof(double), cudaMemcpyDeviceToHost);
 
     for (int i = 0; i < 2; ++i)
         for (int j = 0; j < 2; ++j)
@@ -147,18 +147,18 @@ TEST(DeviceIntegrals, Kinetic) {
     DeviceBasis db;
     int nn = db.n_shells * db.n_shells;
 
-    Real *d_S, *d_T, *d_V;
-    cudaMalloc(&d_S, nn * sizeof(Real));
-    cudaMalloc(&d_T, nn * sizeof(Real));
-    cudaMalloc(&d_V, nn * sizeof(Real));
+    double *d_S, *d_T, *d_V;
+    cudaMalloc(&d_S, nn * sizeof(double));
+    cudaMalloc(&d_T, nn * sizeof(double));
+    cudaMalloc(&d_V, nn * sizeof(double));
 
     cuda::scf::launch_1e_integrals(
         d_S, d_T, d_V, db.d_alpha, db.d_coeff, db.d_centers,
         db.d_Z, db.d_pos, db.n_shells, db.n_prim, db.natm, nullptr);
     cudaDeviceSynchronize();
 
-    std::vector<Real> h_T(nn);
-    cudaMemcpy(h_T.data(), d_T, nn * sizeof(Real), cudaMemcpyDeviceToHost);
+    std::vector<double> h_T(nn);
+    cudaMemcpy(h_T.data(), d_T, nn * sizeof(double), cudaMemcpyDeviceToHost);
 
     for (int i = 0; i < 2; ++i)
         for (int j = 0; j < 2; ++j)
@@ -175,18 +175,18 @@ TEST(DeviceIntegrals, Nuclear) {
     DeviceBasis db;
     int nn = db.n_shells * db.n_shells;
 
-    Real *d_S, *d_T, *d_V;
-    cudaMalloc(&d_S, nn * sizeof(Real));
-    cudaMalloc(&d_T, nn * sizeof(Real));
-    cudaMalloc(&d_V, nn * sizeof(Real));
+    double *d_S, *d_T, *d_V;
+    cudaMalloc(&d_S, nn * sizeof(double));
+    cudaMalloc(&d_T, nn * sizeof(double));
+    cudaMalloc(&d_V, nn * sizeof(double));
 
     cuda::scf::launch_1e_integrals(
         d_S, d_T, d_V, db.d_alpha, db.d_coeff, db.d_centers,
         db.d_Z, db.d_pos, db.n_shells, db.n_prim, db.natm, nullptr);
     cudaDeviceSynchronize();
 
-    std::vector<Real> h_V(nn);
-    cudaMemcpy(h_V.data(), d_V, nn * sizeof(Real), cudaMemcpyDeviceToHost);
+    std::vector<double> h_V(nn);
+    cudaMemcpy(h_V.data(), d_V, nn * sizeof(double), cudaMemcpyDeviceToHost);
 
     for (int i = 0; i < 2; ++i)
         for (int j = 0; j < 2; ++j)
@@ -203,16 +203,16 @@ TEST(DeviceIntegrals, ERI) {
     DeviceBasis db;
     int n4 = 16;
 
-    Real* d_ERI;
-    cudaMalloc(&d_ERI, n4 * sizeof(Real));
+    double* d_ERI;
+    cudaMalloc(&d_ERI, n4 * sizeof(double));
 
     cuda::scf::launch_eri(
         d_ERI, db.d_alpha, db.d_coeff, db.d_centers,
         db.n_shells, db.n_prim, nullptr);
     cudaDeviceSynchronize();
 
-    std::vector<Real> h_ERI(n4);
-    cudaMemcpy(h_ERI.data(), d_ERI, n4 * sizeof(Real), cudaMemcpyDeviceToHost);
+    std::vector<double> h_ERI(n4);
+    cudaMemcpy(h_ERI.data(), d_ERI, n4 * sizeof(double), cudaMemcpyDeviceToHost);
 
     int n = 2;
     for (int i = 0; i < n; ++i)

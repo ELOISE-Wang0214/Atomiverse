@@ -51,7 +51,7 @@ struct SystemResult {
 
 static SystemResult run_system(const char* name, cpu::Frame& frame,
                                const cpu::scf::IntegralPack& integrals) {
-    Real tol = (sizeof(Real) == sizeof(float)) ? Real(1e-5) : Real(1e-10);
+    double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
 
     auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);
 
@@ -189,7 +189,7 @@ int main() {
     {
         cpu::Frame f(1);
         f.x[0] = 0; f.y[0] = 0; f.z[0] = 0;
-        f.mass[0] = Real(4.003); f.type_id[0] = 2;
+        f.mass[0] = double(4.003); f.type_id[0] = 2;
         f.box = Mat3::cubic(100.0);
         auto integrals = cpu::scf::build_integrals_sto3g(f);
         he_result = run_system("He", f, integrals);
@@ -198,9 +198,9 @@ int main() {
     // HeH+
     {
         cpu::Frame f(2);
-        f.x[0] = Real(0);     f.y[0] = 0; f.z[0] = 0;
-        f.x[1] = Real(0.772); f.y[1] = 0; f.z[1] = 0;
-        f.mass[0] = Real(4.003); f.mass[1] = Real(1.008);
+        f.x[0] = double(0);     f.y[0] = 0; f.z[0] = 0;
+        f.x[1] = double(0.772); f.y[1] = 0; f.z[1] = 0;
+        f.mass[0] = double(4.003); f.mass[1] = double(1.008);
         f.type_id[0] = 2; f.type_id[1] = 1;
         f.box = Mat3::cubic(100.0);
         auto integrals = cpu::scf::build_integrals_sto3g(f, 1);
@@ -210,9 +210,9 @@ int main() {
     // LiH
     {
         cpu::Frame f(2);
-        f.x[0] = Real(0);     f.y[0] = 0; f.z[0] = 0;
-        f.x[1] = Real(1.595); f.y[1] = 0; f.z[1] = 0;
-        f.mass[0] = Real(6.941); f.mass[1] = Real(1.008);
+        f.x[0] = double(0);     f.y[0] = 0; f.z[0] = 0;
+        f.x[1] = double(1.595); f.y[1] = 0; f.z[1] = 0;
+        f.mass[0] = double(6.941); f.mass[1] = double(1.008);
         f.type_id[0] = 3; f.type_id[1] = 1;
         f.box = Mat3::cubic(100.0);
         auto integrals = cpu::scf::build_integrals_sto3g(f);
@@ -226,16 +226,16 @@ int main() {
               << std::setw(15) << "E_cuda(Ha)"
               << std::setw(5) << "iter" << "\n";
 
-    Real tol = (sizeof(Real) == sizeof(float)) ? Real(1e-5) : Real(1e-10);
+    double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     std::vector<double> r_vals, e_cpu_vals, e_cuda_vals;
 
     int n_points = 20;
     for (int i = 0; i < n_points; ++i) {
         double r = 0.4 + i * (3.0 - 0.4) / (n_points - 1);
         cpu::Frame f(2);
-        f.x[0] = Real(0); f.y[0] = 0; f.z[0] = 0;
-        f.x[1] = Real(r); f.y[1] = 0; f.z[1] = 0;
-        f.mass[0] = Real(1.008); f.mass[1] = Real(1.008);
+        f.x[0] = double(0); f.y[0] = 0; f.z[0] = 0;
+        f.x[1] = double(r); f.y[1] = 0; f.z[1] = 0;
+        f.mass[0] = double(1.008); f.mass[1] = double(1.008);
         f.type_id[0] = 1; f.type_id[1] = 1;
         f.box = Mat3::cubic(100.0);
 

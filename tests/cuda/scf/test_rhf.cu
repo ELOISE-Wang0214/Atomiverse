@@ -23,9 +23,9 @@ namespace {
 
 cpu::Frame make_h2() {
     cpu::Frame frame(2);
-    frame.atoms.x[0] = Real(0);     frame.atoms.y[0] = Real(0); frame.atoms.z[0] = Real(0);
-    frame.atoms.x[1] = Real(0.74);  frame.atoms.y[1] = Real(0); frame.atoms.z[1] = Real(0);
-    frame.atoms.mass[0] = Real(1.008); frame.atoms.mass[1] = Real(1.008);
+    frame.atoms.x[0] = double(0);     frame.atoms.y[0] = double(0); frame.atoms.z[0] = double(0);
+    frame.atoms.x[1] = double(0.74);  frame.atoms.y[1] = double(0); frame.atoms.z[1] = double(0);
+    frame.atoms.mass[0] = double(1.008); frame.atoms.mass[1] = double(1.008);
     frame.atoms.type[0] = 1; frame.atoms.type[1] = 1;  // H: Z=1
     frame.box = Mat3::cubic(100.0);
     return frame;
@@ -43,20 +43,20 @@ TEST(RHF, IntegralSymmetry) {
     auto frame = make_h2();
     auto integrals = cpu::scf::build_integrals_sto3g(frame);
 
-    Int n = integrals.n_basis;
+    int n = integrals.n_basis;
     EXPECT_EQ(n, 2);
     EXPECT_EQ(integrals.n_electrons, 2);
     EXPECT_EQ(integrals.n_occ(), 1);
 
     // S, Hcore should be symmetric
-    for (Int i = 0; i < n; ++i)
-        for (Int j = 0; j < n; ++j) {
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j) {
             EXPECT_NEAR(integrals.S(i,j), integrals.S(j,i), 1e-12);
             EXPECT_NEAR(integrals.Hcore(i,j), integrals.Hcore(j,i), 1e-12);
         }
 
     // Overlap diagonal should be ~1 for normalized basis
-    for (Int i = 0; i < n; ++i)
+    for (int i = 0; i < n; ++i)
         EXPECT_NEAR(static_cast<double>(integrals.S(i,i)), 1.0, 0.01);
 }
 
@@ -72,22 +72,22 @@ TEST(RHF, NuclearRepulsion) {
 TEST(RHF, Orthogonalization) {
     auto frame = make_h2();
     auto integrals = cpu::scf::build_integrals_sto3g(frame);
-    Int n = integrals.n_basis;
+    int n = integrals.n_basis;
 
     // Compute X = S^{-1/2} the same way rhf_solve does
-    using RealMatrix = xt::xtensor<Real, 2, xt::layout_type::column_major>;
+    using RealMatrix = xt::xtensor<double, 2, xt::layout_type::column_major>;
     RealMatrix S_cm = integrals.S;
     auto [s_eig, U] = xt::linalg::eigh(S_cm);
-    RealMatrix s_inv_sqrt = xt::zeros<Real>({n, n});
-    for (Int i = 0; i < n; ++i)
-        s_inv_sqrt(i, i) = Real(1) / std::sqrt(s_eig(i));
+    RealMatrix s_inv_sqrt = xt::zeros<double>({n, n});
+    for (int i = 0; i < n; ++i)
+        s_inv_sqrt(i, i) = double(1) / std::sqrt(s_eig(i));
     RealMatrix X = xt::linalg::dot(xt::linalg::dot(U, s_inv_sqrt), xt::transpose(U));
 
     // Verify X^T S X = I
-    double ortho_tol = (sizeof(Real) == sizeof(float)) ? 1e-6 : 1e-10;
+    double ortho_tol = (sizeof(double) == sizeof(float)) ? 1e-6 : 1e-10;
     RealMatrix XtSX = xt::linalg::dot(xt::transpose(X), xt::linalg::dot(S_cm, X));
-    for (Int i = 0; i < n; ++i)
-        for (Int j = 0; j < n; ++j) {
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j) {
             double expected = (i == j) ? 1.0 : 0.0;
             EXPECT_NEAR(static_cast<double>(XtSX(i, j)), expected, ortho_tol)
                 << "X^T S X not identity at (" << i << "," << j << ")";
@@ -99,59 +99,59 @@ TEST(RHF, Orthogonalization) {
 TEST(RHF, FockBuild) {
     auto frame = make_h2();
     auto integrals = cpu::scf::build_integrals_sto3g(frame);
-    Int n = integrals.n_basis;
+    int n = integrals.n_basis;
 
     // Use zero density -> G(0) = 0 -> F = Hcore
-    using RealMatrix = xt::xtensor<Real, 2, xt::layout_type::column_major>;
-    RealMatrix P_zero = xt::zeros<Real>({n, n});
+    using RealMatrix = xt::xtensor<double, 2, xt::layout_type::column_major>;
+    RealMatrix P_zero = xt::zeros<double>({n, n});
 
     // G_ij = sum_kl P_kl * [(ij|kl) - 0.5*(ik|jl)]
     // With P=0, G=0, so F = Hcore
-    RealMatrix G = xt::zeros<Real>({n, n});
-    for (Int i = 0; i < n; ++i)
-        for (Int j = 0; j < n; ++j) {
-            Real val = 0;
-            for (Int k = 0; k < n; ++k)
-                for (Int l = 0; l < n; ++l)
+    RealMatrix G = xt::zeros<double>({n, n});
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j) {
+            double val = 0;
+            for (int k = 0; k < n; ++k)
+                for (int l = 0; l < n; ++l)
                     val += P_zero(k, l) *
                            (integrals.ERI(i, j, k, l) -
-                            Real(0.5) * integrals.ERI(i, k, j, l));
+                            double(0.5) * integrals.ERI(i, k, j, l));
             G(i, j) = val;
         }
 
-    for (Int i = 0; i < n; ++i)
-        for (Int j = 0; j < n; ++j)
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j)
             EXPECT_NEAR(static_cast<double>(G(i, j)), 0.0, 1e-15)
                 << "G(P=0) should be zero at (" << i << "," << j << ")";
 
     // Now use converged density and verify G is nonzero and symmetric
-    Real tol = (sizeof(Real) == sizeof(float)) ? Real(1e-5) : Real(1e-10);
+    double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     auto result = cpu::scf::rhf_solve(integrals, tol, 100);
     RealMatrix P_conv = result.P;
 
-    RealMatrix G_conv = xt::zeros<Real>({n, n});
-    for (Int i = 0; i < n; ++i)
-        for (Int j = 0; j < n; ++j) {
-            Real val = 0;
-            for (Int k = 0; k < n; ++k)
-                for (Int l = 0; l < n; ++l)
+    RealMatrix G_conv = xt::zeros<double>({n, n});
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j) {
+            double val = 0;
+            for (int k = 0; k < n; ++k)
+                for (int l = 0; l < n; ++l)
                     val += P_conv(k, l) *
                            (integrals.ERI(i, j, k, l) -
-                            Real(0.5) * integrals.ERI(i, k, j, l));
+                            double(0.5) * integrals.ERI(i, k, j, l));
             G_conv(i, j) = val;
         }
 
     // G must be symmetric
-    for (Int i = 0; i < n; ++i)
-        for (Int j = 0; j < n; ++j)
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j)
             EXPECT_NEAR(static_cast<double>(G_conv(i, j)),
                         static_cast<double>(G_conv(j, i)), 1e-10)
                 << "G not symmetric at (" << i << "," << j << ")";
 
     // F = Hcore + G should give self-consistent energy
     RealMatrix F_conv = integrals.Hcore + G_conv;
-    Real E_elec = Real(0.5) * xt::sum((integrals.Hcore + F_conv) * P_conv)();
-    Real E_total = E_elec + integrals.V_nuc;
+    double E_elec = double(0.5) * xt::sum((integrals.Hcore + F_conv) * P_conv)();
+    double E_total = E_elec + integrals.V_nuc;
     EXPECT_NEAR(static_cast<double>(E_total), kH2Energy, 0.01)
         << "Reconstructed energy from Fock build does not match";
 }
@@ -162,7 +162,7 @@ TEST(RHF, CPUConvergence) {
     auto frame = make_h2();
     auto integrals = cpu::scf::build_integrals_sto3g(frame);
 
-    Real tol = (sizeof(Real) == sizeof(float)) ? Real(1e-5) : Real(1e-10);
+    double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     auto result = cpu::scf::rhf_solve(integrals, tol, 100);
 
     EXPECT_TRUE(result.converged);
@@ -177,11 +177,11 @@ TEST(RHF, CPUDensityTrace) {
     auto frame = make_h2();
     auto integrals = cpu::scf::build_integrals_sto3g(frame);
 
-    Real tol = (sizeof(Real) == sizeof(float)) ? Real(1e-5) : Real(1e-10);
+    double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     auto result = cpu::scf::rhf_solve(integrals, tol, 100);
 
     // Tr(P * S) should equal n_electrons
-    Real trace_PS = xt::sum(result.P * integrals.S)();
+    double trace_PS = xt::sum(result.P * integrals.S)();
     EXPECT_NEAR(static_cast<double>(trace_PS),
                 static_cast<double>(integrals.n_electrons), 0.01);
 }
@@ -192,7 +192,7 @@ TEST(RHF, CUDAConvergence) {
     auto frame = make_h2();
     auto integrals = cpu::scf::build_integrals_sto3g(frame);
 
-    Real tol = (sizeof(Real) == sizeof(float)) ? Real(1e-5) : Real(1e-10);
+    double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
 
     scf::SCF solver;
     solver.add(scf::RHFFock{integrals});
@@ -213,7 +213,7 @@ TEST(RHF, CPUCUDAParity) {
     auto frame = make_h2();
     auto integrals = cpu::scf::build_integrals_sto3g(frame);
 
-    Real tol = (sizeof(Real) == sizeof(float)) ? Real(1e-5) : Real(1e-10);
+    double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
 
     // CPU
     auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);
@@ -229,7 +229,7 @@ TEST(RHF, CPUCUDAParity) {
 
     double cpu_e = static_cast<double>(cpu_result.energy);
     double cuda_e = static_cast<double>(frame.energy);
-    double rel_tol = (sizeof(Real) == sizeof(float)) ? 1e-3 : 1e-8;
+    double rel_tol = (sizeof(double) == sizeof(float)) ? 1e-3 : 1e-8;
 
     EXPECT_NEAR(cpu_e, cuda_e, std::abs(cpu_e) * rel_tol + 1e-6)
         << "CPU energy: " << cpu_e << ", CUDA energy: " << cuda_e;
@@ -248,7 +248,7 @@ TEST(RHF, CUDAOnlyGPUIntegrals) {
     solver.add(scf::RHFFockDevice{3, exp, coeff, 1});  // n_prim=3, n_occ=1
     solver.add(scf::EigenSolver{});
     solver.add(scf::RHFDensity{1});
-    solver.add(scf::ConvergenceCheck{Real(1e-5), false});
+    solver.add(scf::ConvergenceCheck{double(1e-5), false});
     solver.build();
     solver.run(frame, 100);
 
@@ -261,16 +261,16 @@ TEST(RHF, CUDAOnlyGPUIntegrals) {
 static cpu::Frame make_he() {
     cpu::Frame f(1);
     f.atoms.x[0] = 0; f.atoms.y[0] = 0; f.atoms.z[0] = 0;
-    f.atoms.mass[0] = Real(4.003); f.atoms.type[0] = 2;
+    f.atoms.mass[0] = double(4.003); f.atoms.type[0] = 2;
     f.box = Mat3::cubic(100.0);
     return f;
 }
 
 static cpu::Frame make_heh_plus() {
     cpu::Frame f(2);
-    f.atoms.x[0] = Real(0);     f.atoms.y[0] = 0; f.atoms.z[0] = 0;
-    f.atoms.x[1] = Real(0.772); f.atoms.y[1] = 0; f.atoms.z[1] = 0;
-    f.atoms.mass[0] = Real(4.003); f.atoms.mass[1] = Real(1.008);
+    f.atoms.x[0] = double(0);     f.atoms.y[0] = 0; f.atoms.z[0] = 0;
+    f.atoms.x[1] = double(0.772); f.atoms.y[1] = 0; f.atoms.z[1] = 0;
+    f.atoms.mass[0] = double(4.003); f.atoms.mass[1] = double(1.008);
     f.atoms.type[0] = 2; f.atoms.type[1] = 1;  // HeH+ has 2 electrons
     f.box = Mat3::cubic(100.0);
     return f;
@@ -278,9 +278,9 @@ static cpu::Frame make_heh_plus() {
 
 static cpu::Frame make_lih() {
     cpu::Frame f(2);
-    f.atoms.x[0] = Real(0);     f.atoms.y[0] = 0; f.atoms.z[0] = 0;
-    f.atoms.x[1] = Real(1.595); f.atoms.y[1] = 0; f.atoms.z[1] = 0;
-    f.atoms.mass[0] = Real(6.941); f.atoms.mass[1] = Real(1.008);
+    f.atoms.x[0] = double(0);     f.atoms.y[0] = 0; f.atoms.z[0] = 0;
+    f.atoms.x[1] = double(1.595); f.atoms.y[1] = 0; f.atoms.z[1] = 0;
+    f.atoms.mass[0] = double(6.941); f.atoms.mass[1] = double(1.008);
     f.atoms.type[0] = 3; f.atoms.type[1] = 1;
     f.box = Mat3::cubic(100.0);
     return f;
@@ -295,7 +295,7 @@ TEST(RHF, HeAtom) {
     auto integrals = cpu::scf::build_integrals_sto3g(frame);
     EXPECT_EQ(integrals.n_basis, 1);
     EXPECT_EQ(integrals.n_electrons, 2);
-    Real tol = (sizeof(Real) == sizeof(float)) ? Real(1e-5) : Real(1e-10);
+    double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     auto result = cpu::scf::rhf_solve(integrals, tol, 100);
     EXPECT_TRUE(result.converged);
     EXPECT_NEAR(static_cast<double>(result.energy), kHeEnergy, 0.01)
@@ -308,7 +308,7 @@ TEST(RHF, HeHPlus) {
     EXPECT_EQ(integrals.n_basis, 2);
     EXPECT_EQ(integrals.n_electrons, 2);  // He(2) + H(1) - 1 = 2
     EXPECT_EQ(integrals.n_occ(), 1);
-    Real tol = (sizeof(Real) == sizeof(float)) ? Real(1e-5) : Real(1e-10);
+    double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     auto result = cpu::scf::rhf_solve(integrals, tol, 100);
     EXPECT_TRUE(result.converged);
     EXPECT_NEAR(static_cast<double>(result.energy), kHeHEnergy, 0.02)
@@ -320,25 +320,25 @@ TEST(RHF, LiH) {
     auto integrals = cpu::scf::build_integrals_sto3g(frame);
     EXPECT_EQ(integrals.n_basis, 3);  // Li: 1s+2s=2, H: 1s=1 -> total 3
     EXPECT_EQ(integrals.n_electrons, 4);
-    Real tol = (sizeof(Real) == sizeof(float)) ? Real(1e-5) : Real(1e-10);
+    double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     auto result = cpu::scf::rhf_solve(integrals, tol, 100);
     EXPECT_TRUE(result.converged);
-    double lih_tol = (sizeof(Real) == sizeof(float)) ? 0.1 : 0.01;
+    double lih_tol = (sizeof(double) == sizeof(float)) ? 0.1 : 0.01;
     EXPECT_NEAR(static_cast<double>(result.energy), kLiHEnergy, lih_tol)
         << "LiH energy: " << result.energy;
 }
 
 TEST(RHF, H2PESScan) {
-    Real tol = (sizeof(Real) == sizeof(float)) ? Real(1e-5) : Real(1e-10);
+    double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     double prev_energy = 0;
     double min_energy = 1e10;
     double min_r = 0;
     for (int i = 0; i < 8; ++i) {
         double r = 0.5 + i * 0.2;  // 0.5 to 1.9 A
         cpu::Frame f(2);
-        f.atoms.x[0] = Real(0); f.atoms.y[0] = 0; f.atoms.z[0] = 0;
-        f.atoms.x[1] = Real(r); f.atoms.y[1] = 0; f.atoms.z[1] = 0;
-        f.atoms.mass[0] = Real(1.008); f.atoms.mass[1] = Real(1.008);
+        f.atoms.x[0] = double(0); f.atoms.y[0] = 0; f.atoms.z[0] = 0;
+        f.atoms.x[1] = double(r); f.atoms.y[1] = 0; f.atoms.z[1] = 0;
+        f.atoms.mass[0] = double(1.008); f.atoms.mass[1] = double(1.008);
         f.atoms.type[0] = 1; f.atoms.type[1] = 1;
         f.box = Mat3::cubic(100.0);
         auto integrals = cpu::scf::build_integrals_sto3g(f);
@@ -358,7 +358,7 @@ TEST(RHF, H2PESScan) {
 TEST(RHF, CUDAHeAtom) {
     auto frame = make_he();
     auto integrals = cpu::scf::build_integrals_sto3g(frame);
-    Real tol = (sizeof(Real) == sizeof(float)) ? Real(1e-5) : Real(1e-10);
+    double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
 
     auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);
 
@@ -370,7 +370,7 @@ TEST(RHF, CUDAHeAtom) {
     solver.build();
     solver.run(frame, 100);
 
-    double rel_tol = (sizeof(Real) == sizeof(float)) ? 1e-3 : 1e-8;
+    double rel_tol = (sizeof(double) == sizeof(float)) ? 1e-3 : 1e-8;
     EXPECT_NEAR(static_cast<double>(frame.energy),
                 static_cast<double>(cpu_result.energy),
                 std::abs(static_cast<double>(cpu_result.energy)) * rel_tol + 1e-6)
@@ -380,7 +380,7 @@ TEST(RHF, CUDAHeAtom) {
 TEST(RHF, CUDALiH) {
     auto frame = make_lih();
     auto integrals = cpu::scf::build_integrals_sto3g(frame);
-    Real tol = (sizeof(Real) == sizeof(float)) ? Real(1e-5) : Real(1e-10);
+    double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
 
     auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);
 
@@ -392,7 +392,7 @@ TEST(RHF, CUDALiH) {
     solver.build();
     solver.run(frame, 100);
 
-    double rel_tol = (sizeof(Real) == sizeof(float)) ? 1e-2 : 1e-6;
+    double rel_tol = (sizeof(double) == sizeof(float)) ? 1e-2 : 1e-6;
     EXPECT_NEAR(static_cast<double>(frame.energy),
                 static_cast<double>(cpu_result.energy),
                 std::abs(static_cast<double>(cpu_result.energy)) * rel_tol + 1e-4)
@@ -402,7 +402,7 @@ TEST(RHF, CUDALiH) {
 TEST(RHF, CUDAHeHPlus) {
     auto frame = make_heh_plus();
     auto integrals = cpu::scf::build_integrals_sto3g(frame, 1);
-    Real tol = (sizeof(Real) == sizeof(float)) ? Real(1e-5) : Real(1e-10);
+    double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
 
     auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);
 
@@ -414,7 +414,7 @@ TEST(RHF, CUDAHeHPlus) {
     solver.build();
     solver.run(frame, 100);
 
-    double rel_tol = (sizeof(Real) == sizeof(float)) ? 1e-3 : 1e-8;
+    double rel_tol = (sizeof(double) == sizeof(float)) ? 1e-3 : 1e-8;
     EXPECT_NEAR(static_cast<double>(frame.energy),
                 static_cast<double>(cpu_result.energy),
                 std::abs(static_cast<double>(cpu_result.energy)) * rel_tol + 1e-6)
@@ -437,7 +437,7 @@ TEST(RHF, IntegralPackHasNoCUDA) {
     static_assert(
         std::is_same_v<
             decltype(std::declval<cpu::scf::IntegralPack>().S),
-            xt::xtensor<Real, 2>>,
+            xt::xtensor<double, 2>>,
         "IntegralPack.S must be xtensor, not a device pointer");
 }
 
@@ -446,12 +446,12 @@ TEST(RHF, RHFResultHasNoCUDA) {
     static_assert(
         std::is_same_v<
             decltype(std::declval<cpu::scf::RHFResult>().P),
-            xt::xtensor<Real, 2>>,
+            xt::xtensor<double, 2>>,
         "RHFResult.P must be xtensor, not a device pointer");
     static_assert(
         std::is_same_v<
             decltype(std::declval<cpu::scf::RHFResult>().eigenvalues),
-            xt::xtensor<Real, 1>>,
+            xt::xtensor<double, 1>>,
         "RHFResult.eigenvalues must be xtensor, not a device pointer");
 }
 

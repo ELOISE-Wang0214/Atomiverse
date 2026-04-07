@@ -47,7 +47,7 @@ public:
 private:
     cpu::scf::IntegralPack integrals_;
     void* cublas_handle_ = nullptr;
-    Real* d_temp_ = nullptr;
+    double* d_temp_ = nullptr;
 };
 
 /// @brief Build Fock matrix — CUDA-only path (GPU integral kernels).
@@ -88,10 +88,10 @@ private:
     std::vector<double> coefficients_;
     void* cublas_handle_ = nullptr;
     void* cusolver_handle_ = nullptr;
-    Real* d_temp_ = nullptr;
-    Real* d_S_ = nullptr;  ///< Overlap (device, for X computation).
-    Real* d_T_ = nullptr;  ///< Kinetic (device, temp).
-    Real* d_V_ = nullptr;  ///< Nuclear (device, temp).
+    double* d_temp_ = nullptr;
+    double* d_S_ = nullptr;  ///< Overlap (device, for X computation).
+    double* d_T_ = nullptr;  ///< Kinetic (device, temp).
+    double* d_V_ = nullptr;  ///< Nuclear (device, temp).
 };
 
 #endif // ATV_HAS_RHF

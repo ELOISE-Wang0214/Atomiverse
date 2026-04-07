@@ -44,7 +44,7 @@ static cpu::Frame make_h2(double bond_angstrom) {
     return f;
 }
 
-static void print_result(const char* name, const cpu::scf::UKSResult& r, Real V_nuc) {
+static void print_result(const char* name, const cpu::scf::UKSResult& r, double V_nuc) {
     std::cout << std::fixed << std::setprecision(6);
     std::cout << "  " << name << ":\n";
     std::cout << "    converged  = " << (r.converged ? "yes" : "NO") << " (" << r.iterations << " iter)\n";
@@ -106,8 +106,8 @@ int main() {
         for (double r : {0.5, 0.6, 0.74, 1.0, 1.5, 2.0, 2.5, 3.0}) {
             auto frame = make_h2(r);
             auto ints = cpu::scf::build_integrals_sto3g(frame);
-            auto uhf = cpu::scf::uhf_solve(ints, 1, 1, Real(1e-9), 400);
-            auto uks = cpu::scf::uks_solve(ints, 1, 1, cpu::scf::XCType::LSDA, 50, 110, Real(1e-7), 100);
+            auto uhf = cpu::scf::uhf_solve(ints, 1, 1, double(1e-9), 400);
+            auto uks = cpu::scf::uks_solve(ints, 1, 1, cpu::scf::XCType::LSDA, 50, 110, double(1e-7), 100);
 
             std::cout << std::setw(8) << r
                       << std::setw(14) << uhf.energy

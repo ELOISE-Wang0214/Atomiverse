@@ -14,29 +14,29 @@ namespace torch {
 
 namespace {
 
-/// @brief Wrap a device Real* as a non-owning 1D Tensor.
-Tensor wrap_real(Real* ptr, Int n) {
+/// @brief Wrap a device cuda::real_t* as a non-owning 1D Tensor.
+Tensor wrap_real(cuda::real_t* ptr, int n) {
     if (!ptr || n <= 0) return Tensor();
     auto opts = ::torch::TensorOptions().dtype(kRealDtype).device(::torch::kCUDA);
     return ::torch::from_blob(ptr, {static_cast<int64_t>(n)}, opts);
 }
 
-/// @brief Wrap a device Int* as a non-owning 1D Tensor.
-Tensor wrap_int(Int* ptr, Int n) {
+/// @brief Wrap a device int* as a non-owning 1D Tensor.
+Tensor wrap_int(int* ptr, int n) {
     if (!ptr || n <= 0) return Tensor();
     auto opts = ::torch::TensorOptions().dtype(kIntDtype).device(::torch::kCUDA);
     return ::torch::from_blob(ptr, {static_cast<int64_t>(n)}, opts);
 }
 
-/// @brief Wrap a device Real* scalar (1 element) as a non-owning Tensor.
-Tensor wrap_scalar(Real* ptr) {
+/// @brief Wrap a device cuda::prec_t* scalar (1 element) as a non-owning Tensor.
+Tensor wrap_scalar(cuda::prec_t* ptr) {
     if (!ptr) return Tensor();
-    auto opts = ::torch::TensorOptions().dtype(kRealDtype).device(::torch::kCUDA);
+    auto opts = ::torch::TensorOptions().dtype(kPrecDtype).device(::torch::kCUDA);
     return ::torch::from_blob(ptr, {1}, opts);
 }
 
-/// @brief Extract Real* from a Tensor. Validates CUDA, contiguous, correct dtype.
-Real* unwrap_real(const Tensor& t, const char* field_name) {
+/// @brief Extract cuda::real_t* from a Tensor. Validates CUDA, contiguous, correct dtype.
+cuda::real_t* unwrap_real(const Tensor& t, const char* field_name) {
     if (!t.defined() || t.numel() == 0) return nullptr;
     if (!t.is_cuda())
         throw std::invalid_argument(std::string(field_name) + ": expected CUDA tensor");
@@ -44,11 +44,11 @@ Real* unwrap_real(const Tensor& t, const char* field_name) {
         throw std::invalid_argument(std::string(field_name) + ": wrong dtype");
     if (!t.is_contiguous())
         throw std::invalid_argument(std::string(field_name) + ": not contiguous");
-    return t.data_ptr<Real>();
+    return t.data_ptr<cuda::real_t>();
 }
 
-/// @brief Extract Int* from a Tensor.
-Int* unwrap_int(const Tensor& t, const char* field_name) {
+/// @brief Extract int* from a Tensor.
+int* unwrap_int(const Tensor& t, const char* field_name) {
     if (!t.defined() || t.numel() == 0) return nullptr;
     if (!t.is_cuda())
         throw std::invalid_argument(std::string(field_name) + ": expected CUDA tensor");
@@ -56,7 +56,7 @@ Int* unwrap_int(const Tensor& t, const char* field_name) {
         throw std::invalid_argument(std::string(field_name) + ": wrong dtype");
     if (!t.is_contiguous())
         throw std::invalid_argument(std::string(field_name) + ": not contiguous");
-    return t.data_ptr<Int>();
+    return t.data_ptr<int>();
 }
 
 /// @brief Copy a 1D xtensor<T> to a new CUDA Tensor.
@@ -75,7 +75,7 @@ template <typename T>
 void cuda_to_xtensor(const Tensor& t, xt::xtensor<T, 1>& arr) {
     if (!t.defined() || t.numel() == 0) return;
     auto cpu_t = t.to(::torch::kCPU).contiguous();
-    Int n = static_cast<Int>(cpu_t.numel());
+    int n = static_cast<int>(cpu_t.numel());
     std::memcpy(arr.data(), cpu_t.data_ptr<T>(),
                 static_cast<size_t>(n) * sizeof(T));
 }
@@ -84,7 +84,7 @@ void cuda_to_xtensor(const Tensor& t, xt::xtensor<T, 1>& arr) {
 
 Frame to_torch(const cuda::Frame& src) {
     Frame dst;
-    Int na = src.n_atoms();
+    int na = src.n_atoms();
     dst.n_atoms_ = na;
     dst.n_bonds_ = src.n_bonds();
     dst.n_angles_ = src.n_angles();
@@ -107,27 +107,27 @@ Frame to_torch(const cuda::Frame& src) {
     dst.energy = wrap_scalar(src.energy);
     dst.kinetic = wrap_scalar(src.kinetic);
     if (src.stress) {
-        auto opts = ::torch::TensorOptions().dtype(kRealDtype).device(::torch::kCUDA);
+        auto opts = ::torch::TensorOptions().dtype(kPrecDtype).device(::torch::kCUDA);
         dst.stress = ::torch::from_blob(src.stress, {6}, opts);
     }
     if (src.box) {
-        auto opts = ::torch::TensorOptions().dtype(kRealDtype).device(::torch::kCUDA);
+        auto opts = ::torch::TensorOptions().dtype(kPrecDtype).device(::torch::kCUDA);
         dst.box = ::torch::from_blob(src.box, {9}, opts);
     }
 
     // Topology
-    Int nb = src.n_bonds();
+    int nb = src.n_bonds();
     dst.bonds.atomi = wrap_int(src.bonds.atomi, nb);
     dst.bonds.atomj = wrap_int(src.bonds.atomj, nb);
     dst.bonds.type = wrap_int(src.bonds.type, nb);
 
-    Int nang = src.n_angles();
+    int nang = src.n_angles();
     dst.angles.atomi = wrap_int(src.angles.atomi, nang);
     dst.angles.atomj = wrap_int(src.angles.atomj, nang);
     dst.angles.atomk = wrap_int(src.angles.atomk, nang);
     dst.angles.type = wrap_int(src.angles.type, nang);
 
-    Int ndih = src.n_dihedrals();
+    int ndih = src.n_dihedrals();
     dst.dihedrals.atomi = wrap_int(src.dihedrals.atomi, ndih);
     dst.dihedrals.atomj = wrap_int(src.dihedrals.atomj, ndih);
     dst.dihedrals.atomk = wrap_int(src.dihedrals.atomk, ndih);
@@ -187,33 +187,33 @@ void to_cuda(const Frame& src, cuda::Frame& dst) {
 }
 
 void to_cpu(const Frame& src, cpu::Frame& dst) {
-    cuda_to_xtensor<Real>(src.atoms.x, dst.atoms.x);
-    cuda_to_xtensor<Real>(src.atoms.y, dst.atoms.y);
-    cuda_to_xtensor<Real>(src.atoms.z, dst.atoms.z);
-    cuda_to_xtensor<Real>(src.atoms.vx, dst.atoms.vx);
-    cuda_to_xtensor<Real>(src.atoms.vy, dst.atoms.vy);
-    cuda_to_xtensor<Real>(src.atoms.vz, dst.atoms.vz);
-    cuda_to_xtensor<Real>(src.atoms.fx, dst.atoms.fx);
-    cuda_to_xtensor<Real>(src.atoms.fy, dst.atoms.fy);
-    cuda_to_xtensor<Real>(src.atoms.fz, dst.atoms.fz);
-    cuda_to_xtensor<Real>(src.atoms.mass, dst.atoms.mass);
-    cuda_to_xtensor<Int>(src.atoms.type, dst.atoms.type);
+    cuda_to_xtensor<double>(src.atoms.x, dst.atoms.x);
+    cuda_to_xtensor<double>(src.atoms.y, dst.atoms.y);
+    cuda_to_xtensor<double>(src.atoms.z, dst.atoms.z);
+    cuda_to_xtensor<double>(src.atoms.vx, dst.atoms.vx);
+    cuda_to_xtensor<double>(src.atoms.vy, dst.atoms.vy);
+    cuda_to_xtensor<double>(src.atoms.vz, dst.atoms.vz);
+    cuda_to_xtensor<double>(src.atoms.fx, dst.atoms.fx);
+    cuda_to_xtensor<double>(src.atoms.fy, dst.atoms.fy);
+    cuda_to_xtensor<double>(src.atoms.fz, dst.atoms.fz);
+    cuda_to_xtensor<double>(src.atoms.mass, dst.atoms.mass);
+    cuda_to_xtensor<int>(src.atoms.type, dst.atoms.type);
 
     if (src.energy.defined() && src.energy.numel() > 0) {
         auto cpu_e = src.energy.to(::torch::kCPU);
-        dst.energy = cpu_e.item<Real>();
+        dst.energy = cpu_e.item<double>();
     }
     if (src.kinetic.defined() && src.kinetic.numel() > 0) {
         auto cpu_k = src.kinetic.to(::torch::kCPU);
-        dst.kinetic = cpu_k.item<Real>();
+        dst.kinetic = cpu_k.item<double>();
     }
     if (src.stress.defined() && src.stress.numel() == 6) {
         auto cpu_s = src.stress.to(::torch::kCPU).contiguous();
-        std::memcpy(dst.stress, cpu_s.data_ptr<Real>(), 6 * sizeof(Real));
+        std::memcpy(dst.stress, cpu_s.data_ptr<double>(), 6 * sizeof(double));
     }
     if (src.box.defined() && src.box.numel() == 9) {
         auto cpu_b = src.box.to(::torch::kCPU).contiguous();
-        auto* bp = cpu_b.data_ptr<Real>();
+        auto* bp = cpu_b.data_ptr<double>();
         for (int i = 0; i < 3; ++i)
             for (int j = 0; j < 3; ++j)
                 dst.box(i, j) = bp[i * 3 + j];
@@ -222,57 +222,57 @@ void to_cpu(const Frame& src, cpu::Frame& dst) {
 
 Frame from_cpu(const cpu::Frame& src) {
     Frame dst;
-    Int na = src.atoms.size();
+    int na = static_cast<int>(src.atoms.size());
     dst.n_atoms_ = na;
 
-    dst.atoms.x = xtensor_to_cuda<Real, kRealDtype>(src.atoms.x);
-    dst.atoms.y = xtensor_to_cuda<Real, kRealDtype>(src.atoms.y);
-    dst.atoms.z = xtensor_to_cuda<Real, kRealDtype>(src.atoms.z);
-    dst.atoms.vx = xtensor_to_cuda<Real, kRealDtype>(src.atoms.vx);
-    dst.atoms.vy = xtensor_to_cuda<Real, kRealDtype>(src.atoms.vy);
-    dst.atoms.vz = xtensor_to_cuda<Real, kRealDtype>(src.atoms.vz);
-    dst.atoms.fx = xtensor_to_cuda<Real, kRealDtype>(src.atoms.fx);
-    dst.atoms.fy = xtensor_to_cuda<Real, kRealDtype>(src.atoms.fy);
-    dst.atoms.fz = xtensor_to_cuda<Real, kRealDtype>(src.atoms.fz);
-    dst.atoms.mass = xtensor_to_cuda<Real, kRealDtype>(src.atoms.mass);
-    dst.atoms.type = xtensor_to_cuda<Int, kIntDtype>(src.atoms.type);
+    dst.atoms.x = xtensor_to_cuda<double, kRealDtype>(src.atoms.x);
+    dst.atoms.y = xtensor_to_cuda<double, kRealDtype>(src.atoms.y);
+    dst.atoms.z = xtensor_to_cuda<double, kRealDtype>(src.atoms.z);
+    dst.atoms.vx = xtensor_to_cuda<double, kRealDtype>(src.atoms.vx);
+    dst.atoms.vy = xtensor_to_cuda<double, kRealDtype>(src.atoms.vy);
+    dst.atoms.vz = xtensor_to_cuda<double, kRealDtype>(src.atoms.vz);
+    dst.atoms.fx = xtensor_to_cuda<double, kRealDtype>(src.atoms.fx);
+    dst.atoms.fy = xtensor_to_cuda<double, kRealDtype>(src.atoms.fy);
+    dst.atoms.fz = xtensor_to_cuda<double, kRealDtype>(src.atoms.fz);
+    dst.atoms.mass = xtensor_to_cuda<double, kRealDtype>(src.atoms.mass);
+    dst.atoms.type = xtensor_to_cuda<int, kIntDtype>(src.atoms.type);
 
     // System scalars
-    auto real_opts = ::torch::TensorOptions().dtype(kRealDtype).device(::torch::kCUDA);
-    dst.energy = ::torch::zeros({1}, real_opts);
-    dst.kinetic = ::torch::zeros({1}, real_opts);
-    dst.stress = ::torch::zeros({6}, real_opts);
+    auto prec_opts = ::torch::TensorOptions().dtype(kPrecDtype).device(::torch::kCUDA);
+    dst.energy = ::torch::zeros({1}, prec_opts);
+    dst.kinetic = ::torch::zeros({1}, prec_opts);
+    dst.stress = ::torch::zeros({6}, prec_opts);
 
-    // Box: copy Mat3 (9 Reals, row-major)
-    Real box_data[9] = {
+    // Box: copy Mat3 (9 doubles, row-major)
+    double box_data[9] = {
         src.box(0,0), src.box(0,1), src.box(0,2),
         src.box(1,0), src.box(1,1), src.box(1,2),
         src.box(2,0), src.box(2,1), src.box(2,2)
     };
-    auto cpu_opts = ::torch::TensorOptions().dtype(kRealDtype);
+    auto cpu_opts = ::torch::TensorOptions().dtype(kPrecDtype);
     dst.box = ::torch::from_blob(box_data, {9}, cpu_opts).to(::torch::kCUDA);
 
     // Topology
     if (src.bonds.atomi.size() > 0) {
-        dst.n_bonds_ = static_cast<Int>(src.bonds.atomi.size());
-        dst.bonds.atomi = xtensor_to_cuda<Int, kIntDtype>(src.bonds.atomi);
-        dst.bonds.atomj = xtensor_to_cuda<Int, kIntDtype>(src.bonds.atomj);
-        dst.bonds.type = xtensor_to_cuda<Int, kIntDtype>(src.bonds.type);
+        dst.n_bonds_ = static_cast<int>(src.bonds.atomi.size());
+        dst.bonds.atomi = xtensor_to_cuda<int, kIntDtype>(src.bonds.atomi);
+        dst.bonds.atomj = xtensor_to_cuda<int, kIntDtype>(src.bonds.atomj);
+        dst.bonds.type = xtensor_to_cuda<int, kIntDtype>(src.bonds.type);
     }
     if (src.angles.atomi.size() > 0) {
-        dst.n_angles_ = static_cast<Int>(src.angles.atomi.size());
-        dst.angles.atomi = xtensor_to_cuda<Int, kIntDtype>(src.angles.atomi);
-        dst.angles.atomj = xtensor_to_cuda<Int, kIntDtype>(src.angles.atomj);
-        dst.angles.atomk = xtensor_to_cuda<Int, kIntDtype>(src.angles.atomk);
-        dst.angles.type = xtensor_to_cuda<Int, kIntDtype>(src.angles.type);
+        dst.n_angles_ = static_cast<int>(src.angles.atomi.size());
+        dst.angles.atomi = xtensor_to_cuda<int, kIntDtype>(src.angles.atomi);
+        dst.angles.atomj = xtensor_to_cuda<int, kIntDtype>(src.angles.atomj);
+        dst.angles.atomk = xtensor_to_cuda<int, kIntDtype>(src.angles.atomk);
+        dst.angles.type = xtensor_to_cuda<int, kIntDtype>(src.angles.type);
     }
     if (src.dihedrals.atomi.size() > 0) {
-        dst.n_dihedrals_ = static_cast<Int>(src.dihedrals.atomi.size());
-        dst.dihedrals.atomi = xtensor_to_cuda<Int, kIntDtype>(src.dihedrals.atomi);
-        dst.dihedrals.atomj = xtensor_to_cuda<Int, kIntDtype>(src.dihedrals.atomj);
-        dst.dihedrals.atomk = xtensor_to_cuda<Int, kIntDtype>(src.dihedrals.atomk);
-        dst.dihedrals.atoml = xtensor_to_cuda<Int, kIntDtype>(src.dihedrals.atoml);
-        dst.dihedrals.type = xtensor_to_cuda<Int, kIntDtype>(src.dihedrals.type);
+        dst.n_dihedrals_ = static_cast<int>(src.dihedrals.atomi.size());
+        dst.dihedrals.atomi = xtensor_to_cuda<int, kIntDtype>(src.dihedrals.atomi);
+        dst.dihedrals.atomj = xtensor_to_cuda<int, kIntDtype>(src.dihedrals.atomj);
+        dst.dihedrals.atomk = xtensor_to_cuda<int, kIntDtype>(src.dihedrals.atomk);
+        dst.dihedrals.atoml = xtensor_to_cuda<int, kIntDtype>(src.dihedrals.atoml);
+        dst.dihedrals.type = xtensor_to_cuda<int, kIntDtype>(src.dihedrals.type);
     }
 
     return dst;

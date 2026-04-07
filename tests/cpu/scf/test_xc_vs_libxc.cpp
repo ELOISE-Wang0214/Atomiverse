@@ -89,11 +89,11 @@ void compare_xc_gga(const XCOutput& native, const XCOutput& libxc,
 TEST(XCvsLibxc, LSDA_AllPoints) {
     for (const auto& pt : kLDAPoints) {
         auto native = evaluate_xc(XCType::LSDA,
-                                  static_cast<Real>(pt.rho_a),
-                                  static_cast<Real>(pt.rho_b));
+                                  static_cast<double>(pt.rho_a),
+                                  static_cast<double>(pt.rho_b));
         auto libxc  = evaluate_xc_libxc(XCType::LSDA,
-                                        static_cast<Real>(pt.rho_a),
-                                        static_cast<Real>(pt.rho_b));
+                                        static_cast<double>(pt.rho_a),
+                                        static_cast<double>(pt.rho_b));
         compare_xc(native, libxc, pt.label, kTol);
     }
 }
@@ -103,17 +103,17 @@ TEST(XCvsLibxc, LSDA_AllPoints) {
 TEST(XCvsLibxc, PBE_AllPoints) {
     for (const auto& pt : kGGAPoints) {
         auto native = evaluate_xc(XCType::PBE,
-                                  static_cast<Real>(pt.rho_a),
-                                  static_cast<Real>(pt.rho_b),
-                                  static_cast<Real>(pt.sigma_aa),
-                                  static_cast<Real>(pt.sigma_ab),
-                                  static_cast<Real>(pt.sigma_bb));
+                                  static_cast<double>(pt.rho_a),
+                                  static_cast<double>(pt.rho_b),
+                                  static_cast<double>(pt.sigma_aa),
+                                  static_cast<double>(pt.sigma_ab),
+                                  static_cast<double>(pt.sigma_bb));
         auto libxc  = evaluate_xc_libxc(XCType::PBE,
-                                        static_cast<Real>(pt.rho_a),
-                                        static_cast<Real>(pt.rho_b),
-                                        static_cast<Real>(pt.sigma_aa),
-                                        static_cast<Real>(pt.sigma_ab),
-                                        static_cast<Real>(pt.sigma_bb));
+                                        static_cast<double>(pt.rho_a),
+                                        static_cast<double>(pt.rho_b),
+                                        static_cast<double>(pt.sigma_aa),
+                                        static_cast<double>(pt.sigma_ab),
+                                        static_cast<double>(pt.sigma_bb));
         // Use relaxed tolerance at singular boundaries (one spin = 0)
         bool singular = (pt.rho_a < 1e-10 || pt.rho_b < 1e-10);
         double tol = singular ? kTolSingular : kTol;
@@ -124,8 +124,8 @@ TEST(XCvsLibxc, PBE_AllPoints) {
 // ── Density cutoff: both should return zero ──
 
 TEST(XCvsLibxc, DensityCutoff) {
-    auto native = evaluate_xc(XCType::LSDA, Real(1e-14), Real(1e-14));
-    auto libxc  = evaluate_xc_libxc(XCType::LSDA, Real(1e-14), Real(1e-14));
+    auto native = evaluate_xc(XCType::LSDA, double(1e-14), double(1e-14));
+    auto libxc  = evaluate_xc_libxc(XCType::LSDA, double(1e-14), double(1e-14));
     EXPECT_DOUBLE_EQ(static_cast<double>(native.exc), 0.0);
     EXPECT_DOUBLE_EQ(static_cast<double>(libxc.exc), 0.0);
 }
@@ -133,7 +133,7 @@ TEST(XCvsLibxc, DensityCutoff) {
 // ── Symmetry: swapping alpha/beta must swap vrho ──
 
 TEST(XCvsLibxc, SpinSymmetry) {
-    Real ra = 0.7, rb = 0.3;
+    double ra = 0.7, rb = 0.3;
     auto fwd = evaluate_xc_libxc(XCType::LSDA, ra, rb);
     auto rev = evaluate_xc_libxc(XCType::LSDA, rb, ra);
 

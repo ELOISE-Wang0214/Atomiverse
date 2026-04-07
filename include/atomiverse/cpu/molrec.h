@@ -11,9 +11,6 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/core/int.h"
-#include "atomiverse/core/real.h"
-
 namespace ATV {
 namespace cpu {
 
@@ -38,10 +35,10 @@ public:
     void set_geometry(const Frame& frame);
 
     /// @brief Attach a per-atom Real field.
-    void add_field(const std::string& name, std::vector<Real> values);
+    void add_field(const std::string& name, std::vector<double> values);
 
     /// @brief Attach a frame-level scalar (always f64 across FFI).
-    void add_scalar(const std::string& name, Real value);
+    void add_scalar(const std::string& name, double value);
 
     /// @brief Attach a frame-level string.
     void add_string(const std::string& name, std::string value);
@@ -52,7 +49,7 @@ public:
     // ── Access ────────────────────────────────────────────────────────────────
 
     /// @brief Number of committed frames.
-    Int n_frames() const;
+    int n_frames() const;
 
     /// @brief Discard all frames and reset.
     void clear();

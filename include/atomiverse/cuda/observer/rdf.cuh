@@ -26,7 +26,7 @@ namespace ATV {
 /// @endcode
 class RDF : public AsyncBridge {
 public:
-    RDF(Real r_max, int n_bins, std::string filename)
+    RDF(double r_max, int n_bins, std::string filename)
         : r_max_(r_max), n_bins_(n_bins), filename_(std::move(filename)) {}
 
     ~RDF() override = default;
@@ -43,31 +43,31 @@ protected:
         n_samples_  = 0;
 
         // D2H box to compute volume (sync OK at build time).
-        Real box_data[9];
-        cudaMemcpyAsync(box_data, frame.box, 9 * sizeof(Real),
+        double box_data[9];
+        cudaMemcpyAsync(box_data, frame.box, 9 * sizeof(double),
                         cudaMemcpyDeviceToHost, stream);
         cudaStreamSynchronize(stream);
 
-        Real ax = box_data[0], ay = box_data[1], az = box_data[2];
-        Real bx = box_data[3], by = box_data[4], bz = box_data[5];
-        Real cx = box_data[6], cy = box_data[7], cz = box_data[8];
+        double ax = box_data[0], ay = box_data[1], az = box_data[2];
+        double bx = box_data[3], by = box_data[4], bz = box_data[5];
+        double cx = box_data[6], cy = box_data[7], cz = box_data[8];
         box_vol_ = std::abs(ax * (by * cz - bz * cy) -
                             ay * (bx * cz - bz * cx) +
                             az * (bx * cy - by * cx));
 
         // D2H pair capacity to size pinned buffer.
-        Int cap = 0;
+        int cap = 0;
         if (frame.pairs.capacity) {
-            cudaMemcpyAsync(&cap, frame.pairs.capacity, sizeof(Int),
+            cudaMemcpyAsync(&cap, frame.pairs.capacity, sizeof(int),
                             cudaMemcpyDeviceToHost, stream);
             cudaStreamSynchronize(stream);
         }
         pair_capacity_ = static_cast<int>(cap);
 
         if (pair_capacity_ > 0)
-            cudaMallocHost(&h_dist_, pair_capacity_ * sizeof(Real));
-        cudaMallocHost(&h_n_pairs_, sizeof(Int));
-        *h_n_pairs_ = Int(0);
+            cudaMallocHost(&h_dist_, pair_capacity_ * sizeof(double));
+        cudaMallocHost(&h_n_pairs_, sizeof(int));
+        *h_n_pairs_ = int(0);
 
         histogram_.assign(n_bins_, 0);
     }
@@ -78,18 +78,18 @@ protected:
 
     void issue_d2h(const LaunchContext& ctx) override {
         auto ds = static_cast<cudaStream_t>(ctx.runtime.defer_stream);
-        cudaMemcpyAsync(h_n_pairs_, ctx.frame.pairs.n_pairs, sizeof(Int),
+        cudaMemcpyAsync(h_n_pairs_, ctx.frame.pairs.n_pairs, sizeof(int),
                         cudaMemcpyDeviceToHost, ds);
         cudaMemcpyAsync(h_dist_, ctx.frame.pairs.dist,
-                        pair_capacity_ * sizeof(Real), cudaMemcpyDeviceToHost, ds);
+                        pair_capacity_ * sizeof(double), cudaMemcpyDeviceToHost, ds);
     }
 
     void on_data_ready(const LaunchContext&) override {
-        Int n_pairs = *h_n_pairs_;
+        int n_pairs = *h_n_pairs_;
         if (n_pairs <= 0) return;
         int np = static_cast<int>(n_pairs);
         if (np > pair_capacity_) np = pair_capacity_;
-        Real bin_width = r_max_ / Real(n_bins_);
+        double bin_width = r_max_ / double(n_bins_);
         cpu::rdf_accumulate(histogram_, h_dist_, np, bin_width, n_bins_);
         n_samples_++;
     }
@@ -102,17 +102,17 @@ protected:
     }
 
 private:
-    Real r_max_;
+    double r_max_;
     int  n_bins_;
     std::string filename_;
 
     int  n_atoms_       = 0;
-    Real box_vol_       = 0;
+    double box_vol_       = 0;
     int  n_samples_     = 0;
     int  pair_capacity_ = 0;
     std::vector<long long> histogram_;
-    Real* h_dist_    = nullptr;
-    Int*  h_n_pairs_ = nullptr;
+    double* h_dist_    = nullptr;
+    int*  h_n_pairs_ = nullptr;
 };
 
 } // namespace ATV

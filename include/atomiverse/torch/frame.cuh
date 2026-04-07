@@ -16,8 +16,7 @@
 
 #include <torch/torch.h>
 
-#include "atomiverse/core/int.h"
-#include "atomiverse/core/real.h"
+#include "atomiverse/cuda/types.cuh"
 
 namespace ATV {
 namespace torch {
@@ -29,13 +28,16 @@ using ScalarType = ::at::ScalarType;
 using Device = ::torch::Device;
 /// @}
 
-/// @brief Compile-time mapping: ATV Real -> Torch ScalarType.
+/// @brief Compile-time mapping: cuda::real_t -> Torch ScalarType (per-atom storage).
 inline constexpr ScalarType kRealDtype =
-    std::is_same_v<Real, float> ? ScalarType::Float : ScalarType::Double;
+    std::is_same_v<cuda::real_t, float> ? ScalarType::Float : ScalarType::Double;
 
-/// @brief Compile-time mapping: ATV Int -> Torch ScalarType.
-inline constexpr ScalarType kIntDtype =
-    std::is_same_v<Int, int> ? ScalarType::Int : ScalarType::Long;
+/// @brief Compile-time mapping: cuda::prec_t -> Torch ScalarType (accumulators, energy).
+inline constexpr ScalarType kPrecDtype =
+    std::is_same_v<cuda::prec_t, float> ? ScalarType::Float : ScalarType::Double;
+
+/// @brief Compile-time mapping: int -> Torch ScalarType.
+inline constexpr ScalarType kIntDtype = ScalarType::Int;
 
 /// @brief Differentiable system state backed by at::Tensor.
 ///
@@ -100,19 +102,19 @@ struct Frame {
     // ---- Metadata (host-cached) ----
 
     /// @brief Number of atoms in the system.
-    Int n_atoms() const { return n_atoms_; }
+    int n_atoms() const { return n_atoms_; }
 
     /// @brief Number of bonds.
-    Int n_bonds() const { return n_bonds_; }
+    int n_bonds() const { return n_bonds_; }
 
     /// @brief Number of pairs in the pair list.
-    Int n_pairs() const { return n_pairs_; }
+    int n_pairs() const { return n_pairs_; }
 
-    Int n_atoms_ = 0;      ///< Host-cached atom count.
-    Int n_bonds_ = 0;      ///< Host-cached bond count.
-    Int n_angles_ = 0;     ///< Host-cached angle count.
-    Int n_dihedrals_ = 0;  ///< Host-cached dihedral count.
-    Int n_pairs_ = 0;      ///< Host-cached pair count.
+    int n_atoms_ = 0;      ///< Host-cached atom count.
+    int n_bonds_ = 0;      ///< Host-cached bond count.
+    int n_angles_ = 0;     ///< Host-cached angle count.
+    int n_dihedrals_ = 0;  ///< Host-cached dihedral count.
+    int n_pairs_ = 0;      ///< Host-cached pair count.
 };
 
 } // namespace torch

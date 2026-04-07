@@ -15,8 +15,6 @@
 
 #include <xtensor/xtensor.hpp>
 
-#include "atomiverse/core/real.h"
-#include "atomiverse/core/int.h"
 #include "atomiverse/cpu/frame.h"
 
 namespace ATV {
@@ -28,13 +26,13 @@ namespace scf {
 /// Each derivative tensor is indexed as [atom_index, cart_component, mu, nu]
 /// where cart_component = 0,1,2 for x,y,z. All in Hartree/Bohr.
 struct IntegralDerivPack {
-    xt::xtensor<Real, 4> dS;     ///< dS/dR [n_atoms, 3, n_basis, n_basis] [1/Bohr].
-    xt::xtensor<Real, 4> dT;     ///< dT/dR [n_atoms, 3, n_basis, n_basis] [Hartree/Bohr].
-    xt::xtensor<Real, 4> dV;     ///< dV/dR [n_atoms, 3, n_basis, n_basis] [Hartree/Bohr].
-    xt::xtensor<Real, 6> dERI;   ///< d(ERI)/dR [n_atoms, 3, n_basis, n_basis, n_basis, n_basis] [Hartree/Bohr].
-    xt::xtensor<Real, 2> dV_nuc; ///< dV_nuc/dR [n_atoms, 3] [Hartree/Bohr].
-    Int n_atoms = 0;             ///< Number of atoms.
-    Int n_basis = 0;             ///< Number of basis functions.
+    xt::xtensor<double, 4> dS;     ///< dS/dR [n_atoms, 3, n_basis, n_basis] [1/Bohr].
+    xt::xtensor<double, 4> dT;     ///< dT/dR [n_atoms, 3, n_basis, n_basis] [Hartree/Bohr].
+    xt::xtensor<double, 4> dV;     ///< dV/dR [n_atoms, 3, n_basis, n_basis] [Hartree/Bohr].
+    xt::xtensor<double, 6> dERI;   ///< d(ERI)/dR [n_atoms, 3, n_basis, n_basis, n_basis, n_basis] [Hartree/Bohr].
+    xt::xtensor<double, 2> dV_nuc; ///< dV_nuc/dR [n_atoms, 3] [Hartree/Bohr].
+    int n_atoms = 0;               ///< Number of atoms.
+    int n_basis = 0;               ///< Number of basis functions.
 };
 
 /// @brief Compute all integral derivatives for STO-3G at current geometry.

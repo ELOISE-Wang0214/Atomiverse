@@ -5,13 +5,19 @@
 #include "cublas_dispatch.cuh"
 
 #include <cuda_runtime.h>
+#include "atomiverse/cuda/types.cuh"
 
 namespace ATV {
+
+using cuda::real_t;
+using cuda::work_t;
+using cuda::prec_t;
+
 namespace scf {
 
 void EigenSolver::build(const BuildContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
-    Int n = ctx.frame.scf.n;
+    int n = ctx.frame.scf.n;
 
     // Create cuSOLVER handle
     cusolverDnHandle_t handle;
@@ -26,7 +32,7 @@ void EigenSolver::build(const BuildContext& ctx) {
         n, static_cast<Real*>(nullptr), n, static_cast<Real*>(nullptr), &lwork);
 
     work_size_ = lwork;
-    cudaMalloc(&d_work_, lwork * sizeof(Real));
+    cudaMalloc(&d_work_, lwork * sizeof(work_t));
     cudaMalloc(&d_info_, sizeof(int));
 
     cudaStreamSynchronize(stream);
@@ -38,10 +44,10 @@ void EigenSolver::launch(const LaunchContext& ctx) {
 
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto handle = static_cast<cusolverDnHandle_t>(cusolver_handle_);
-    Int n = scf.n;
+    int n = scf.n;
 
     // Copy H -> C (syevd solves in-place, overwrites input with eigenvectors)
-    cudaMemcpyAsync(scf.C, scf.H, n * n * sizeof(Real),
+    cudaMemcpyAsync(scf.C, scf.H, n * n * sizeof(work_t),
                     cudaMemcpyDeviceToDevice, stream);
 
     // Solve: C -> eigenvectors (column-major), eig -> eigenvalues (ascending)

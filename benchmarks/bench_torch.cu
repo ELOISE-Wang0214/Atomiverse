@@ -27,25 +27,23 @@
 #include "atomiverse/cuda/neighbor_list.cuh"
 #include "atomiverse/cuda/md/velocity_verlet.cuh"
 
-using ATV::Real;
-using ATV::Int;
 using ATV::Mat3;
 namespace atorch = ATV::torch;
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 /// @brief Build an FCC lattice of n_cells^3 * 4 atoms in a cubic box.
-static ATV::cpu::Frame make_fcc(int n_cells, Real lattice_const) {
+static ATV::cpu::Frame make_fcc(int n_cells, double lattice_const) {
     int n = n_cells * n_cells * n_cells * 4;
-    Real box_len = lattice_const * Real(n_cells);
+    double box_len = lattice_const * double(n_cells);
 
     ATV::cpu::Frame frame(n);
 
-    const Real basis[4][3] = {
-        {Real(0),   Real(0),   Real(0)},
-        {Real(0.5), Real(0.5), Real(0)},
-        {Real(0.5), Real(0),   Real(0.5)},
-        {Real(0),   Real(0.5), Real(0.5)},
+    const double basis[4][3] = {
+        {double(0),   double(0),   double(0)},
+        {double(0.5), double(0.5), double(0)},
+        {double(0.5), double(0),   double(0.5)},
+        {double(0),   double(0.5), double(0.5)},
     };
 
     int idx = 0;
@@ -53,10 +51,10 @@ static ATV::cpu::Frame make_fcc(int n_cells, Real lattice_const) {
         for (int iy = 0; iy < n_cells; ++iy)
             for (int iz = 0; iz < n_cells; ++iz)
                 for (int b = 0; b < 4; ++b) {
-                    frame.atoms.x[idx] = (Real(ix) + basis[b][0]) * lattice_const;
-                    frame.atoms.y[idx] = (Real(iy) + basis[b][1]) * lattice_const;
-                    frame.atoms.z[idx] = (Real(iz) + basis[b][2]) * lattice_const;
-                    frame.atoms.mass[idx] = Real(39.948); // Argon [amu]
+                    frame.atoms.x[idx] = (double(ix) + basis[b][0]) * lattice_const;
+                    frame.atoms.y[idx] = (double(iy) + basis[b][1]) * lattice_const;
+                    frame.atoms.z[idx] = (double(iz) + basis[b][2]) * lattice_const;
+                    frame.atoms.mass[idx] = double(39.948); // Argon [amu]
                     frame.atoms.type[idx] = 0;
                     idx++;
                 }
@@ -73,10 +71,10 @@ static int ncells_for(int target_atoms) {
 
 // ── LJ parameters ────────────────────────────────────────────────────────
 
-static constexpr Real kEpsilon = Real(0.0104);   // LJ well depth [eV]
-static constexpr Real kSigma   = Real(3.4);      // LJ sigma [Angstrom]
-static constexpr Real kCutoff  = Real(6.8);      // 2.0 * sigma [Angstrom]
-static constexpr Real kLatConst = Real(5.26);    // FCC lattice constant for Ar [Angstrom]
+static constexpr double kEpsilon = double(0.0104);   // LJ well depth [eV]
+static constexpr double kSigma   = double(3.4);      // LJ sigma [Angstrom]
+static constexpr double kCutoff  = double(6.8);      // 2.0 * sigma [Angstrom]
+static constexpr double kLatConst = double(5.26);    // FCC lattice constant for Ar [Angstrom]
 
 // ═════════════════════════════════════════════════════════════════════════
 // 1. LJ Forward: CUDA backend (via MD Driver) vs torch backend
@@ -260,10 +258,10 @@ static void BM_Transfer_FromCpu(benchmark::State& state) {
     state.SetItemsProcessed(state.iterations());
     state.counters["atoms"] = n;
     // Approximate bytes transferred: 3 positions + 3 velocities + 3 forces + mass + type_id
-    // = 10 Real arrays + 1 Int array ~ (10 * sizeof(Real) + sizeof(Int)) * n
+    // = 10 double arrays + 1 int array ~ (10 * sizeof(double) + sizeof(int)) * n
     state.SetBytesProcessed(
         state.iterations() * n *
-        static_cast<int64_t>(10 * sizeof(Real) + sizeof(Int)));
+        static_cast<int64_t>(10 * sizeof(double) + sizeof(int)));
 }
 
 BENCHMARK(BM_Transfer_FromCpu)
@@ -297,7 +295,7 @@ static void BM_Transfer_ToCpu(benchmark::State& state) {
     state.counters["atoms"] = n;
     state.SetBytesProcessed(
         state.iterations() * n *
-        static_cast<int64_t>(10 * sizeof(Real) + sizeof(Int)));
+        static_cast<int64_t>(10 * sizeof(double) + sizeof(int)));
 
     atorch::destroy(tframe);
 }
@@ -336,7 +334,7 @@ static void BM_Transfer_RoundTrip(benchmark::State& state) {
     // Round-trip: both directions
     state.SetBytesProcessed(
         state.iterations() * n * 2 *
-        static_cast<int64_t>(10 * sizeof(Real) + sizeof(Int)));
+        static_cast<int64_t>(10 * sizeof(double) + sizeof(int)));
 }
 
 BENCHMARK(BM_Transfer_RoundTrip)

@@ -21,40 +21,40 @@ namespace {
 /// dE/d(epsilon) = sum_pairs 4 * (sr12 - sr6) - v_shift/epsilon
 /// dE/d(sigma) = sum_pairs 4*epsilon * (-12*sigma^11/r^12 + 6*sigma^5/r^6)
 __global__ void lj_param_grad(
-    Real* __restrict__ grad_eps_out,
-    Real* __restrict__ grad_sig_out,
-    const Real* __restrict__ pdist,
-    const Int* __restrict__ n_pairs_ptr,
-    Real epsilon, Real sigma, Real cutoff, Real v_shift)
+    cuda::real_t* __restrict__ grad_eps_out,
+    cuda::real_t* __restrict__ grad_sig_out,
+    const cuda::real_t* __restrict__ pdist,
+    const int* __restrict__ n_pairs_ptr,
+    cuda::work_t epsilon, cuda::work_t sigma, cuda::work_t cutoff, cuda::work_t v_shift)
 {
-    Int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    Int n_pairs = *n_pairs_ptr;
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int n_pairs = *n_pairs_ptr;
 
-    Real de = Real(0);
-    Real ds = Real(0);
+    cuda::work_t de = cuda::work_t(0);
+    cuda::work_t ds = cuda::work_t(0);
     if (idx < n_pairs) {
-        Real r = pdist[idx];
-        if (r < cutoff && r >= cuda::kernels::kMinPairDist) {
-            Real inv_r = Real(1) / r;
-            Real sr = sigma * inv_r;
-            Real sr2 = sr * sr;
-            Real sr6 = sr2 * sr2 * sr2;
-            Real sr12 = sr6 * sr6;
+        cuda::work_t r = static_cast<cuda::work_t>(pdist[idx]);
+        if (r < cutoff && r >= static_cast<cuda::work_t>(cuda::kernels::kMinPairDist)) {
+            cuda::work_t inv_r = cuda::work_t(1) / r;
+            cuda::work_t sr = sigma * inv_r;
+            cuda::work_t sr2 = sr * sr;
+            cuda::work_t sr6 = sr2 * sr2 * sr2;
+            cuda::work_t sr12 = sr6 * sr6;
 
             // dV/d(epsilon) = 4*(sr12 - sr6) - v_shift/epsilon
-            de = Real(4) * (sr12 - sr6) - v_shift / epsilon;
+            de = cuda::work_t(4) * (sr12 - sr6) - v_shift / epsilon;
 
             // dV/d(sigma): d/dsigma [4*eps*(sigma/r)^12 - 4*eps*(sigma/r)^6]
             //   = 4*eps * (12*sigma^11/r^12 - 6*sigma^5/r^6)
-            Real inv_sig = Real(1) / sigma;
-            ds = Real(4) * epsilon * (Real(12) * sr12 * inv_sig - Real(6) * sr6 * inv_sig);
+            cuda::work_t inv_sig = cuda::work_t(1) / sigma;
+            ds = cuda::work_t(4) * epsilon * (cuda::work_t(12) * sr12 * inv_sig - cuda::work_t(6) * sr6 * inv_sig);
         }
     }
 
     // Block reduction for grad_eps
-    extern __shared__ Real sdata[];
-    Real* s_eps = sdata;
-    Real* s_sig = sdata + blockDim.x;
+    extern __shared__ cuda::work_t sdata[];
+    cuda::work_t* s_eps = sdata;
+    cuda::work_t* s_sig = sdata + blockDim.x;
     s_eps[threadIdx.x] = de;
     s_sig[threadIdx.x] = ds;
     __syncthreads();
@@ -66,8 +66,8 @@ __global__ void lj_param_grad(
         __syncthreads();
     }
     if (threadIdx.x == 0) {
-        if (s_eps[0] != Real(0)) atomicAdd(grad_eps_out, s_eps[0]);
-        if (s_sig[0] != Real(0)) atomicAdd(grad_sig_out, s_sig[0]);
+        if (s_eps[0] != cuda::work_t(0)) atomicAdd(grad_eps_out, static_cast<cuda::real_t>(s_eps[0]));
+        if (s_sig[0] != cuda::work_t(0)) atomicAdd(grad_sig_out, static_cast<cuda::real_t>(s_sig[0]));
     }
 }
 
@@ -84,23 +84,23 @@ struct LJFunction : public ::torch::autograd::Function<LJFunction> {
         Tensor epsilon, Tensor sigma,
         double cutoff, int64_t n_atoms, int64_t max_pairs)
     {
-        Real eps_val = epsilon.item<Real>();
-        Real sig_val = sigma.item<Real>();
-        Real cut_val = static_cast<Real>(cutoff);
-        Real v_shift = cuda::kernels::lj_shift(eps_val, sig_val, cut_val);
+        cuda::real_t eps_val = epsilon.item<cuda::real_t>();
+        cuda::real_t sig_val = sigma.item<cuda::real_t>();
+        cuda::real_t cut_val = static_cast<cuda::real_t>(cutoff);
+        cuda::real_t v_shift = cuda::kernels::lj_shift(eps_val, sig_val, cut_val);
 
         auto stream = ::c10::cuda::getCurrentCUDAStream().stream();
         int block = cuda::kDefaultBlock;
         int grid = cuda::grid_size(static_cast<int>(max_pairs));
 
-        cuda::kernels::lj_force<<<grid, block, block * sizeof(Real), stream>>>(
-            fx.data_ptr<Real>(), fy.data_ptr<Real>(), fz.data_ptr<Real>(),
-            energy.data_ptr<Real>(),
-            pair_i.data_ptr<Int>(), pair_j.data_ptr<Int>(),
-            pair_dx.data_ptr<Real>(), pair_dy.data_ptr<Real>(),
-            pair_dz.data_ptr<Real>(), pair_dist.data_ptr<Real>(),
+        cuda::kernels::lj_force<<<grid, block, block * sizeof(cuda::real_t), stream>>>(
+            fx.data_ptr<cuda::real_t>(), fy.data_ptr<cuda::real_t>(), fz.data_ptr<cuda::real_t>(),
+            energy.data_ptr<cuda::prec_t>(),
+            pair_i.data_ptr<int>(), pair_j.data_ptr<int>(),
+            pair_dx.data_ptr<cuda::real_t>(), pair_dy.data_ptr<cuda::real_t>(),
+            pair_dz.data_ptr<cuda::real_t>(), pair_dist.data_ptr<cuda::real_t>(),
             eps_val, sig_val, cut_val, v_shift,
-            n_pairs_t.data_ptr<Int>());
+            n_pairs_t.data_ptr<int>());
 
         // Save for backward
         ctx->save_for_backward({pair_i, pair_j, pair_dx, pair_dy, pair_dz,
@@ -126,19 +126,19 @@ struct LJFunction : public ::torch::autograd::Function<LJFunction> {
         auto fx = saved[9], fy = saved[10], fz = saved[11];
 
         auto grad_energy = grad_outputs[0]; // scalar
-        Real ge = grad_energy.item<Real>();
+        double ge = grad_energy.item<double>();
 
         double cutoff = ctx->saved_data["cutoff"].toDouble();
         int64_t n_atoms = ctx->saved_data["n_atoms"].toInt();
         int64_t max_pairs = ctx->saved_data["max_pairs"].toInt();
-        Real v_shift = static_cast<Real>(ctx->saved_data["v_shift"].toDouble());
+        cuda::work_t v_shift = static_cast<cuda::work_t>(ctx->saved_data["v_shift"].toDouble());
 
         // dE/dx = -fx (force is negative gradient of energy)
         // These are already computed in forward; scale by grad_energy
         Tensor grad_x = Tensor();
         Tensor grad_y = Tensor();
         Tensor grad_z = Tensor();
-        if (ge != Real(0)) {
+        if (ge != 0.0) {
             grad_x = -fx * ge;
             grad_y = -fy * ge;
             grad_z = -fz * ge;
@@ -148,8 +148,8 @@ struct LJFunction : public ::torch::autograd::Function<LJFunction> {
         Tensor grad_eps = Tensor();
         Tensor grad_sig = Tensor();
 
-        Real eps_val = epsilon.item<Real>();
-        Real sig_val = sigma.item<Real>();
+        cuda::work_t eps_val = static_cast<cuda::work_t>(epsilon.item<double>());
+        cuda::work_t sig_val = static_cast<cuda::work_t>(sigma.item<double>());
 
         if (epsilon.requires_grad() || sigma.requires_grad()) {
             auto opts = ::torch::TensorOptions().dtype(kRealDtype).device(::torch::kCUDA);
@@ -159,12 +159,12 @@ struct LJFunction : public ::torch::autograd::Function<LJFunction> {
             auto stream = ::c10::cuda::getCurrentCUDAStream().stream();
             int block = cuda::kDefaultBlock;
             int grid = cuda::grid_size(static_cast<int>(max_pairs));
-            lj_param_grad<<<grid, block, 2 * block * sizeof(Real), stream>>>(
-                d_grad_eps.data_ptr<Real>(),
-                d_grad_sig.data_ptr<Real>(),
-                pair_dist.data_ptr<Real>(),
-                n_pairs_t.data_ptr<Int>(),
-                eps_val, sig_val, static_cast<Real>(cutoff), v_shift);
+            lj_param_grad<<<grid, block, 2 * block * sizeof(cuda::work_t), stream>>>(
+                d_grad_eps.data_ptr<cuda::real_t>(),
+                d_grad_sig.data_ptr<cuda::real_t>(),
+                pair_dist.data_ptr<cuda::real_t>(),
+                n_pairs_t.data_ptr<int>(),
+                eps_val, sig_val, static_cast<cuda::work_t>(cutoff), v_shift);
 
             if (epsilon.requires_grad())
                 grad_eps = d_grad_eps * ge;
@@ -187,9 +187,9 @@ struct LJFunction : public ::torch::autograd::Function<LJFunction> {
 
 } // anonymous namespace
 
-Tensor lj(Frame& frame, const Tensor& epsilon, const Tensor& sigma, Real cutoff) {
-    Int na = frame.n_atoms();
-    Int np = frame.n_pairs_;
+Tensor lj(Frame& frame, const Tensor& epsilon, const Tensor& sigma, double cutoff) {
+    int na = frame.n_atoms();
+    int np = frame.n_pairs_;
 
     // Estimate max pairs for grid sizing
     int64_t max_pairs = np > 0 ? static_cast<int64_t>(np)

@@ -6,11 +6,9 @@
 /// part of the ATV physical unit system.
 #pragma once
 
-#include "atomiverse/core/real.h"
-
 namespace ATV {
 
-/// @brief Pi (double-precision literal, cast to Real where needed).
+/// @brief Pi (double-precision literal).
 inline constexpr double kPI = 3.14159265358979323846;
 
 /// @brief Degrees-to-radians conversion factor.

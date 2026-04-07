@@ -5,7 +5,7 @@
 ///   H * C = C * diag(eig)
 ///
 /// Uses cusolverDnSsyevd (float) or cusolverDnDsyevd (double) depending
-/// on compile-time Real precision.
+/// on compile-time double precision.
 ///
 /// @see scf::Phase::diagonalize
 /// @see Hamiltonian for the component that builds H
@@ -50,7 +50,7 @@ public:
 
 private:
     void* cusolver_handle_ = nullptr;  ///< cuSOLVER handle.
-    Real* d_work_ = nullptr;           ///< cuSOLVER workspace [device].
+    double* d_work_ = nullptr;           ///< cuSOLVER workspace [device].
     int work_size_ = 0;                ///< Workspace size in elements.
     int* d_info_ = nullptr;            ///< cuSOLVER convergence info [device, 1 element].
 };

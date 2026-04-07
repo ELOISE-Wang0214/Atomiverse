@@ -38,9 +38,9 @@ using namespace ATV;
 int main() {
     // ── 1. Build H2 geometry ──────────────────────────────────────────
     cpu::Frame frame(2);
-    frame.atoms.x[0] = Real(0);     frame.atoms.y[0] = Real(0); frame.atoms.z[0] = Real(0);
-    frame.atoms.x[1] = Real(0.74);  frame.atoms.y[1] = Real(0); frame.atoms.z[1] = Real(0);
-    frame.atoms.mass[0] = Real(1.008); frame.atoms.mass[1] = Real(1.008);
+    frame.atoms.x[0] = double(0);     frame.atoms.y[0] = double(0); frame.atoms.z[0] = double(0);
+    frame.atoms.x[1] = double(0.74);  frame.atoms.y[1] = double(0); frame.atoms.z[1] = double(0);
+    frame.atoms.mass[0] = double(1.008); frame.atoms.mass[1] = double(1.008);
     frame.atoms.type[0] = 1; frame.atoms.type[1] = 1;  // H: Z=1
     frame.box = Mat3::cubic(100.0);
 
@@ -57,21 +57,21 @@ int main() {
 
     // Print overlap and core Hamiltonian
     std::cout << "\nOverlap matrix S:\n" << std::setprecision(8);
-    for (Int i = 0; i < integrals.n_basis; ++i) {
-        for (Int j = 0; j < integrals.n_basis; ++j)
+    for (int i = 0; i < integrals.n_basis; ++i) {
+        for (int j = 0; j < integrals.n_basis; ++j)
             std::cout << "  " << std::setw(12) << static_cast<double>(integrals.S(i, j));
         std::cout << "\n";
     }
     std::cout << "\nCore Hamiltonian Hcore:\n";
-    for (Int i = 0; i < integrals.n_basis; ++i) {
-        for (Int j = 0; j < integrals.n_basis; ++j)
+    for (int i = 0; i < integrals.n_basis; ++i) {
+        for (int j = 0; j < integrals.n_basis; ++j)
             std::cout << "  " << std::setw(12) << static_cast<double>(integrals.Hcore(i, j));
         std::cout << "\n";
     }
 
     // ── 3. CPU reference RHF ──────────────────────────────────────────
     std::cout << "\n=== CPU RHF (xtensor-blas) ===\n";
-    Real tol = (sizeof(Real) == sizeof(float)) ? Real(1e-5) : Real(1e-10);
+    double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);
     std::cout << "Converged:   " << (cpu_result.converged ? "yes" : "no")
               << " (" << cpu_result.iterations << " iterations"
@@ -81,7 +81,7 @@ int main() {
               << "E_elec:      " << static_cast<double>(cpu_result.electronic_energy) << " Hartree\n"
               << "E_total:     " << static_cast<double>(cpu_result.energy) << " Hartree\n"
               << "Eigenvalues:";
-    for (Int i = 0; i < integrals.n_basis; ++i)
+    for (int i = 0; i < integrals.n_basis; ++i)
         std::cout << " " << std::setprecision(6) << static_cast<double>(cpu_result.eigenvalues(i));
     std::cout << "\n";
 
@@ -90,12 +90,12 @@ int main() {
     rec.set_geometry(frame);
     rec.add_string("method", "RHF");
     rec.add_scalar("energy",     cpu_result.energy);
-    rec.add_scalar("iterations", Real(cpu_result.iterations));
-    rec.add_scalar("n_alpha",    Real(integrals.n_occ()));
-    rec.add_scalar("n_beta",     Real(integrals.n_occ()));
-    rec.add_scalar("spin_contamination", Real(0));
+    rec.add_scalar("iterations", double(cpu_result.iterations));
+    rec.add_scalar("n_alpha",    double(integrals.n_occ()));
+    rec.add_scalar("n_beta",     double(integrals.n_occ()));
+    rec.add_scalar("spin_contamination", double(0));
     rec.add_field("charge",       cpu::mulliken_charge(frame, cpu_result.P, integrals.S));
-    rec.add_field("spin_density", std::vector<Real>(frame.atoms.size(), Real(0)));
+    rec.add_field("spin_density", std::vector<double>(frame.atoms.size(), double(0)));
     rec.commit_frame();
     cpu::print_summary(rec);
     cpu::XYZ("h2_rhf.xyz").write_ext(rec);
@@ -127,12 +127,12 @@ int main() {
         cuda_rec.set_geometry(frame);
         cuda_rec.add_string("method", "RHF");
         cuda_rec.add_scalar("energy",             mulliken_obs.energy());
-        cuda_rec.add_scalar("iterations",         Real(mulliken_obs.iterations()));
-        cuda_rec.add_scalar("n_alpha",            Real(mulliken_obs.n_occ()));
-        cuda_rec.add_scalar("n_beta",             Real(mulliken_obs.n_occ()));
-        cuda_rec.add_scalar("spin_contamination", Real(0));
+        cuda_rec.add_scalar("iterations",         double(mulliken_obs.iterations()));
+        cuda_rec.add_scalar("n_alpha",            double(mulliken_obs.n_occ()));
+        cuda_rec.add_scalar("n_beta",             double(mulliken_obs.n_occ()));
+        cuda_rec.add_scalar("spin_contamination", double(0));
         cuda_rec.add_field("charge",              mulliken_obs.charges());
-        cuda_rec.add_field("spin_density",        std::vector<Real>(frame.atoms.size(), Real(0)));
+        cuda_rec.add_field("spin_density",        std::vector<double>(frame.atoms.size(), double(0)));
         cuda_rec.commit_frame();
         cpu::print_summary(cuda_rec);
         cpu::XYZ("h2_rhf_cuda.xyz").write_ext(cuda_rec);

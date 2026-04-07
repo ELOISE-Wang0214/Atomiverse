@@ -16,7 +16,7 @@ inline constexpr int kClusterSize = 8;
 
 /// @brief Per-cluster atom data in SoA layout.
 /// @note Non-owning view; lifetime managed by NListBuffers.
-template <typename Real>
+template <typename work_t>
 struct ClusterData {
     Real* x;                ///< [num_clusters * kClusterSize]
     Real* y;                ///< [num_clusters * kClusterSize]
@@ -39,7 +39,7 @@ struct ClusterData {
 ///       For diagonal pairs (ci == cj), only upper-triangle interactions
 ///       (j > i) are set in the mask to avoid double-counting.
 ///       Force kernels must accumulate both i->j and j->i from each pair.
-template <typename Real>
+template <typename work_t>
 struct ClusterPairList {
     int* row_ptr;               ///< [num_clusters + 1] CSR row pointer
     int* col_idx;               ///< [num_pairs] j-cluster index per pair
@@ -50,15 +50,15 @@ struct ClusterPairList {
 
 /// @brief Spatial grid of clusters for stencil-based pair search.
 /// @note Non-owning view; lifetime managed by NListBuffers.
-template <typename Real>
+template <typename work_t>
 struct ClusterGrid {
     int* cell_start;            ///< [ncells + 1] CSR: cluster start per cell
     int* cell_clusters;         ///< [num_clusters] cluster indices sorted by cell
     int dims_x, dims_y, dims_z; ///< Grid dimensions
-    Real cell_matrix[9];        ///< Cell matrix (row-major)
-    Real inv_cell[9];           ///< Inverse cell matrix
-    const Real* d_cell_matrix;  ///< Device pointer to row-major cell matrix
-    const Real* d_inv_cell;     ///< Device pointer to inverse cell matrix
+    work_t cell_matrix[9];        ///< Cell matrix (row-major)
+    work_t inv_cell[9];           ///< Inverse cell matrix
+    const real_t* d_cell_matrix;  ///< Device pointer to row-major cell matrix
+    const real_t* d_inv_cell;     ///< Device pointer to inverse cell matrix
 };
 
 } // namespace ATV::md::nlist

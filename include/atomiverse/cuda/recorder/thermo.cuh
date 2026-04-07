@@ -33,10 +33,10 @@ protected:
     void on_build(const BuildContext& ctx) override {
         n_atoms_        = ctx.frame.n_atoms();
         header_printed_ = false;
-        cudaMallocHost(&h_pe_, sizeof(Real));
-        cudaMallocHost(&h_ke_, sizeof(Real));
-        *h_pe_ = Real(0);
-        *h_ke_ = Real(0);
+        cudaMallocHost(&h_pe_, sizeof(double));
+        cudaMallocHost(&h_ke_, sizeof(double));
+        *h_pe_ = double(0);
+        *h_ke_ = double(0);
         if (!filename_.empty()) {
             file_.open(filename_);
             if (file_.is_open())
@@ -46,8 +46,8 @@ protected:
 
     void issue_d2h(const LaunchContext& ctx) override {
         auto ds = static_cast<cudaStream_t>(ctx.runtime.defer_stream);
-        cudaMemcpyAsync(h_pe_, ctx.frame.energy,  sizeof(Real), cudaMemcpyDeviceToHost, ds);
-        cudaMemcpyAsync(h_ke_, ctx.frame.kinetic, sizeof(Real), cudaMemcpyDeviceToHost, ds);
+        cudaMemcpyAsync(h_pe_, ctx.frame.energy,  sizeof(double), cudaMemcpyDeviceToHost, ds);
+        cudaMemcpyAsync(h_ke_, ctx.frame.kinetic, sizeof(double), cudaMemcpyDeviceToHost, ds);
     }
 
     void on_data_ready(const LaunchContext& ctx) override {
@@ -66,8 +66,8 @@ private:
     int  n_atoms_         = 0;
     bool header_printed_  = false;
     std::ofstream file_;
-    Real* h_pe_ = nullptr;
-    Real* h_ke_ = nullptr;
+    double* h_pe_ = nullptr;
+    double* h_ke_ = nullptr;
 };
 
 } // namespace ATV

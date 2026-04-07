@@ -35,7 +35,7 @@ class SteepestDescentStep : public ComponentBase {
 public:
     /// @brief Construct steepest descent step.
     /// @param alpha Step size [fs] (pseudo-timestep, same units as VelocityVerlet dt).
-    explicit SteepestDescentStep(Real alpha) : alpha_(alpha) {}
+    explicit SteepestDescentStep(double alpha) : alpha_(alpha) {}
 
     /// @brief Component name.
     /// @return "steepest_descent".
@@ -53,10 +53,10 @@ public:
 
     /// @brief Step size parameter.
     /// @return alpha [fs].
-    Real alpha() const { return alpha_; }
+    double alpha() const { return alpha_; }
 
 private:
-    Real alpha_; ///< Step size (pseudo-timestep) [fs].
+    double alpha_; ///< Step size (pseudo-timestep) [fs].
 };
 
 /// @brief Steepest descent minimizer driver.

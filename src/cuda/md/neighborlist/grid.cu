@@ -5,6 +5,7 @@
 
 #include <cub/cub.cuh>
 #include <cuda_runtime.h>
+#include "atomiverse/cuda/types.cuh"
 
 namespace ATV::md::nlist {
 
@@ -12,16 +13,16 @@ namespace ATV::md::nlist {
 // Kernel: Assign each cluster to a grid cell based on its AABB centroid.
 // ---------------------------------------------------------------------------
 
-template <typename Real>
+template <typename work_t>
 __global__ void assign_clusters_to_cells(
-    const Real* __restrict__ aabb_min_x,
-    const Real* __restrict__ aabb_min_y,
-    const Real* __restrict__ aabb_min_z,
-    const Real* __restrict__ aabb_max_x,
-    const Real* __restrict__ aabb_max_y,
-    const Real* __restrict__ aabb_max_z,
+    const real_t* __restrict__ aabb_min_x,
+    const real_t* __restrict__ aabb_min_y,
+    const real_t* __restrict__ aabb_min_z,
+    const real_t* __restrict__ aabb_max_x,
+    const real_t* __restrict__ aabb_max_y,
+    const real_t* __restrict__ aabb_max_z,
     int num_clusters,
-    const Real* __restrict__ inv_cell,
+    const real_t* __restrict__ inv_cell,
     int dims_x, int dims_y, int dims_z,
     bool periodic,
     int* __restrict__ cluster_cell_idx) {
@@ -29,12 +30,12 @@ __global__ void assign_clusters_to_cells(
     if (ci >= num_clusters) return;
 
     // Centroid in Cartesian
-    Real cx = (aabb_min_x[ci] + aabb_max_x[ci]) * Real(0.5);
-    Real cy = (aabb_min_y[ci] + aabb_max_y[ci]) * Real(0.5);
-    Real cz = (aabb_min_z[ci] + aabb_max_z[ci]) * Real(0.5);
+    work_t cx = (aabb_min_x[ci] + aabb_max_x[ci]) * work_t(0.5);
+    work_t cy = (aabb_min_y[ci] + aabb_max_y[ci]) * work_t(0.5);
+    work_t cz = (aabb_min_z[ci] + aabb_max_z[ci]) * work_t(0.5);
 
     // Cartesian → fractional
-    Vec3<Real> frac = cart_to_frac(cx, cy, cz, inv_cell);
+    Vec3<work_t> frac = cart_to_frac(cx, cy, cz, inv_cell);
 
     // Wrap or clamp fractional coordinates
     if (periodic) {
@@ -55,15 +56,15 @@ __global__ void assign_clusters_to_cells(
     cluster_cell_idx[ci] = ix * dims_y * dims_z + iy * dims_z + iz;
 }
 
-template <typename Real>
-void launch_assign_clusters_to_cells(const Real* aabb_min_x,
-                                     const Real* aabb_min_y,
-                                     const Real* aabb_min_z,
-                                     const Real* aabb_max_x,
-                                     const Real* aabb_max_y,
-                                     const Real* aabb_max_z,
+template <typename work_t>
+void launch_assign_clusters_to_cells(const real_t* aabb_min_x,
+                                     const real_t* aabb_min_y,
+                                     const real_t* aabb_min_z,
+                                     const real_t* aabb_max_x,
+                                     const real_t* aabb_max_y,
+                                     const real_t* aabb_max_z,
                                      int num_clusters,
-                                     const Real* inv_cell,
+                                     const real_t* inv_cell,
                                      int dims_x, int dims_y, int dims_z,
                                      bool periodic,
                                      int* cluster_cell_idx,
@@ -71,7 +72,7 @@ void launch_assign_clusters_to_cells(const Real* aabb_min_x,
     if (num_clusters == 0) return;
     int block = ATV::cuda::kDefaultBlock;
     int grid = (num_clusters + block - 1) / block;
-    assign_clusters_to_cells<Real><<<grid, block, 0, stream>>>(
+    assign_clusters_to_cells<work_t><<<grid, block, 0, stream>>>(
         aabb_min_x, aabb_min_y, aabb_min_z,
         aabb_max_x, aabb_max_y, aabb_max_z,
         num_clusters, inv_cell, dims_x, dims_y, dims_z,

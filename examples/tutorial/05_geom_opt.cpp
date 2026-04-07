@@ -94,10 +94,10 @@ static cpu::Frame make_aspirin() {
 
     for (int i = 0; i < 21; ++i) {
         f.atoms.type[i] = types[i];
-        f.atoms.mass[i] = Real(masses[i]);
-        f.atoms.x[i] = Real(coords[i][0]);
-        f.atoms.y[i] = Real(coords[i][1]);
-        f.atoms.z[i] = Real(coords[i][2]);
+        f.atoms.mass[i] = double(masses[i]);
+        f.atoms.x[i] = double(coords[i][0]);
+        f.atoms.y[i] = double(coords[i][1]);
+        f.atoms.z[i] = double(coords[i][2]);
     }
     f.box = Mat3::cubic(100.0);
     return f;
@@ -118,15 +118,15 @@ int main() {
 
     // Configure RHF
     auto config = cpu::scf::rhf_config(integrals);
-    config.tol = Real(1e-6);
+    config.tol = double(1e-6);
     config.max_iter = 200;
 
     // Set up L-BFGS optimizer
     cpu::minimizer::LBFGS opt;
     opt.add(cpu::minimizer::LBFGSStep{
         5,              // memory
-        Real(0.01),     // alpha0
-        Real(0.05),     // ftol [eV/A]
+        double(0.01),     // alpha0
+        double(0.05),     // ftol [eV/A]
         10              // max_ls
     });
     opt.on(ATV::minimizer::Phase::force).add(
@@ -143,10 +143,10 @@ int main() {
     std::cout << "  Energy: " << frame.energy << " eV\n";
 
     // Compute final max force
-    Real max_f = 0;
-    for (Int i = 0; i < frame.atoms.size(); ++i) {
-        Real fx = frame.atoms.fx(i), fy = frame.atoms.fy(i), fz = frame.atoms.fz(i);
-        Real mag = std::sqrt(fx*fx + fy*fy + fz*fz);
+    double max_f = 0;
+    for (int i = 0; i < frame.atoms.size(); ++i) {
+        double fx = frame.atoms.fx(i), fy = frame.atoms.fy(i), fz = frame.atoms.fz(i);
+        double mag = std::sqrt(fx*fx + fy*fy + fz*fz);
         if (mag > max_f) max_f = mag;
     }
     std::cout << "  Max force: " << max_f << " eV/A\n";
@@ -155,7 +155,7 @@ int main() {
     std::cout << "\n── Final Coordinates [Angstrom] ──\n";
     const char* symbols[] = {"", "H", "He", "Li", "Be", "B", "C", "N", "O"};
     std::cout << std::setprecision(6);
-    for (Int i = 0; i < frame.atoms.size(); ++i) {
+    for (int i = 0; i < frame.atoms.size(); ++i) {
         int Z = static_cast<int>(frame.atoms.type(i));
         std::cout << "  " << std::setw(2) << symbols[Z]
                   << std::setw(12) << frame.atoms.x(i)

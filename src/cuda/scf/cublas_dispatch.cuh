@@ -7,9 +7,14 @@
 #include <cublas_v2.h>
 #include <cusolverDn.h>
 
-#include "atomiverse/core/real.h"
+#include "atomiverse/cuda/types.cuh"
 
 namespace ATV {
+
+using cuda::real_t;
+using cuda::work_t;
+using cuda::prec_t;
+
 namespace scf {
 namespace detail {
 

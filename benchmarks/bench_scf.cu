@@ -15,8 +15,8 @@ using namespace ATV;
 static cpu::Frame make_frame(int n) {
     cpu::Frame frame(n);
     for (int i = 0; i < n; ++i) {
-        frame.atoms.x[i] = Real(i);
-        frame.atoms.mass[i] = Real(1);
+        frame.atoms.x[i] = double(i);
+        frame.atoms.mass[i] = double(1);
     }
     frame.box = Mat3::cubic(100.0);
     return frame;
@@ -29,11 +29,11 @@ static void BM_SCF_CPU(benchmark::State& state) {
     int n_occ = n / 4;
 
     for (auto _ : state) {
-        auto result = cpu::scf::solve(n, n_occ, Real(0.1), Real(1e-5), 50);
+        auto result = cpu::scf::solve(n, n_occ, double(0.1), double(1e-5), 50);
         benchmark::DoNotOptimize(result.energy);
     }
 
-    auto result = cpu::scf::solve(n, n_occ, Real(0.1), Real(1e-5), 50);
+    auto result = cpu::scf::solve(n, n_occ, double(0.1), double(1e-5), 50);
     state.counters["iters"] = result.iterations;
 }
 
@@ -51,10 +51,10 @@ static void BM_SCF_CUDA(benchmark::State& state) {
     {
         auto frame = make_frame(n);
         scf::SCF solver;
-        solver.add(scf::Hamiltonian{n_occ, Real(0.1)});
+        solver.add(scf::Hamiltonian{n_occ, double(0.1)});
         solver.add(scf::EigenSolver{});
         solver.add(scf::DensityBuilder{});
-        solver.add(scf::ConvergenceCheck{Real(1e-5)});
+        solver.add(scf::ConvergenceCheck{double(1e-5)});
         solver.build();
         solver.run(frame, 50);
     }
@@ -62,10 +62,10 @@ static void BM_SCF_CUDA(benchmark::State& state) {
     for (auto _ : state) {
         auto frame = make_frame(n);
         scf::SCF solver;
-        solver.add(scf::Hamiltonian{n_occ, Real(0.1)});
+        solver.add(scf::Hamiltonian{n_occ, double(0.1)});
         solver.add(scf::EigenSolver{});
         solver.add(scf::DensityBuilder{});
-        solver.add(scf::ConvergenceCheck{Real(1e-5)});
+        solver.add(scf::ConvergenceCheck{double(1e-5)});
         solver.build();
         solver.run(frame, 50);
         benchmark::DoNotOptimize(frame.energy);

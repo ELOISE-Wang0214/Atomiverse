@@ -6,6 +6,7 @@
 
 #include <cub/cub.cuh>
 #include <cuda_runtime.h>
+#include "atomiverse/cuda/types.cuh"
 
 #include <cstddef>
 #include <cstdint>
@@ -17,26 +18,26 @@ namespace ATV::md::nlist {
 // Kernel: AoS double* → SoA Real* (x, y, z separate arrays)
 // ---------------------------------------------------------------------------
 
-template <typename Real>
+template <typename work_t>
 __global__ void aos_to_soa(const double* __restrict__ positions,
                                   int num_atoms,
-                                  Real* __restrict__ x,
-                                  Real* __restrict__ y,
-                                  Real* __restrict__ z) {
+                                  real_t* __restrict__ x,
+                                  real_t* __restrict__ y,
+                                  real_t* __restrict__ z) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= num_atoms) return;
-    x[i] = static_cast<Real>(positions[i * 3 + 0]);
-    y[i] = static_cast<Real>(positions[i * 3 + 1]);
-    z[i] = static_cast<Real>(positions[i * 3 + 2]);
+    x[i] = static_cast<work_t>(positions[i * 3 + 0]);
+    y[i] = static_cast<work_t>(positions[i * 3 + 1]);
+    z[i] = static_cast<work_t>(positions[i * 3 + 2]);
 }
 
-template <typename Real>
+template <typename work_t>
 void launch_aos_to_soa(const double* positions_aos, int num_atoms,
                        Real* x, Real* y, Real* z, cudaStream_t stream) {
     if (num_atoms == 0) return;
     int block = ATV::cuda::kDefaultBlock;
     int grid = (num_atoms + block - 1) / block;
-    aos_to_soa<Real><<<grid, block, 0, stream>>>(
+    aos_to_soa<work_t><<<grid, block, 0, stream>>>(
         positions_aos, num_atoms, x, y, z);
     ATV_CUDA_CHECK(cudaGetLastError());
 }
@@ -50,22 +51,22 @@ template void launch_aos_to_soa<double>(const double*, int, double*, double*,
 // Kernel: Compute Morton codes from SoA positions
 // ---------------------------------------------------------------------------
 
-template <typename Real>
-__global__ void compute_morton(const Real* __restrict__ pos_x,
-                                      const Real* __restrict__ pos_y,
-                                      const Real* __restrict__ pos_z,
+template <typename work_t>
+__global__ void compute_morton(const real_t* __restrict__ pos_x,
+                                      const real_t* __restrict__ pos_y,
+                                      const real_t* __restrict__ pos_z,
                                       int num_atoms,
-                                      const Real* __restrict__ inv_cell,
+                                      const real_t* __restrict__ inv_cell,
                                       bool periodic,
                                       uint32_t* __restrict__ morton_codes,
                                       int* __restrict__ atom_indices) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= num_atoms) return;
 
-    Real rx = pos_x[i], ry = pos_y[i], rz = pos_z[i];
+    work_t rx = pos_x[i], ry = pos_y[i], rz = pos_z[i];
 
     // Cartesian → fractional
-    Vec3<Real> frac = cart_to_frac(rx, ry, rz, inv_cell);
+    Vec3<work_t> frac = cart_to_frac(rx, ry, rz, inv_cell);
 
     if (periodic) {
         frac.x = wrap_frac(frac.x);
@@ -82,16 +83,16 @@ __global__ void compute_morton(const Real* __restrict__ pos_x,
     atom_indices[i] = i;
 }
 
-template <typename Real>
-void launch_compute_morton(const Real* pos_x, const Real* pos_y,
-                           const Real* pos_z, int num_atoms,
-                           const Real* inv_cell, bool periodic,
+template <typename work_t>
+void launch_compute_morton(const real_t* pos_x, const real_t* pos_y,
+                           const real_t* pos_z, int num_atoms,
+                           const real_t* inv_cell, bool periodic,
                            uint32_t* morton_codes, int* atom_indices,
                            cudaStream_t stream) {
     if (num_atoms == 0) return;
     int block = ATV::cuda::kDefaultBlock;
     int grid = (num_atoms + block - 1) / block;
-    compute_morton<Real><<<grid, block, 0, stream>>>(
+    compute_morton<work_t><<<grid, block, 0, stream>>>(
         pos_x, pos_y, pos_z, num_atoms, inv_cell, periodic,
         morton_codes, atom_indices);
     ATV_CUDA_CHECK(cudaGetLastError());
@@ -135,15 +136,15 @@ void launch_radix_sort(uint32_t* keys_in, uint32_t* keys_out,
 // Kernel: Scatter sorted atoms into cluster SoA layout
 // ---------------------------------------------------------------------------
 
-template <typename Real>
+template <typename work_t>
 __global__ void scatter_to_soa(const int* __restrict__ sorted_indices,
-                                      const Real* __restrict__ src_x,
-                                      const Real* __restrict__ src_y,
-                                      const Real* __restrict__ src_z,
+                                      const real_t* __restrict__ src_x,
+                                      const real_t* __restrict__ src_y,
+                                      const real_t* __restrict__ src_z,
                                       int num_atoms, int num_clusters,
-                                      Real* __restrict__ dst_x,
-                                      Real* __restrict__ dst_y,
-                                      Real* __restrict__ dst_z,
+                                      real_t* __restrict__ dst_x,
+                                      real_t* __restrict__ dst_y,
+                                      real_t* __restrict__ dst_z,
                                       int* __restrict__ original_index,
                                       int* __restrict__ cluster_count) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -157,7 +158,7 @@ __global__ void scatter_to_soa(const int* __restrict__ sorted_indices,
         original_index[i] = old_idx;
     } else if (i < padded) {
         // Padding: set to huge value so AABB excludes them
-        Real huge = Real(1e30);
+        work_t huge = work_t(1e30);
         dst_x[i] = huge;
         dst_y[i] = huge;
         dst_z[i] = huge;
@@ -174,10 +175,10 @@ __global__ void scatter_to_soa(const int* __restrict__ sorted_indices,
     }
 }
 
-template <typename Real>
+template <typename work_t>
 void launch_scatter_to_soa(const int* sorted_indices,
-                           const Real* pos_x, const Real* pos_y,
-                           const Real* pos_z, int num_atoms,
+                           const real_t* pos_x, const real_t* pos_y,
+                           const real_t* pos_z, int num_atoms,
                            int num_clusters,
                            Real* cluster_x, Real* cluster_y,
                            Real* cluster_z,
@@ -186,7 +187,7 @@ void launch_scatter_to_soa(const int* sorted_indices,
     int padded = num_clusters * kClusterSize;
     int block = ATV::cuda::kDefaultBlock;
     int grid = (padded + block - 1) / block;
-    scatter_to_soa<Real><<<grid, block, 0, stream>>>(
+    scatter_to_soa<work_t><<<grid, block, 0, stream>>>(
         sorted_indices, pos_x, pos_y, pos_z,
         num_atoms, num_clusters,
         cluster_x, cluster_y, cluster_z,
@@ -207,27 +208,27 @@ template void launch_scatter_to_soa<double>(const int*, const double*,
 // Fused kernel: AoS→SoA + Morton code (replaces separate K1+K2)
 // ---------------------------------------------------------------------------
 
-template <typename Real>
+template <typename work_t>
 __global__ void aos_to_soa_morton(
     const double* __restrict__ positions_aos,
     int num_atoms,
-    Real* __restrict__ x, Real* __restrict__ y, Real* __restrict__ z,
-    const Real* __restrict__ inv_cell, bool periodic,
+    real_t* __restrict__ x, real_t* __restrict__ y, real_t* __restrict__ z,
+    const real_t* __restrict__ inv_cell, bool periodic,
     uint32_t* __restrict__ morton_codes,
     int* __restrict__ atom_indices) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= num_atoms) return;
 
-    // AoS double → SoA Real
-    Real rx = static_cast<Real>(positions_aos[i * 3 + 0]);
-    Real ry = static_cast<Real>(positions_aos[i * 3 + 1]);
-    Real rz = static_cast<Real>(positions_aos[i * 3 + 2]);
+    // AoS double → SoA work_t
+    work_t rx = static_cast<work_t>(positions_aos[i * 3 + 0]);
+    work_t ry = static_cast<work_t>(positions_aos[i * 3 + 1]);
+    work_t rz = static_cast<work_t>(positions_aos[i * 3 + 2]);
     x[i] = rx;
     y[i] = ry;
     z[i] = rz;
 
     // Morton code
-    Vec3<Real> frac = cart_to_frac(rx, ry, rz, inv_cell);
+    Vec3<work_t> frac = cart_to_frac(rx, ry, rz, inv_cell);
 
     if (periodic) {
         frac.x = wrap_frac(frac.x);
@@ -243,16 +244,16 @@ __global__ void aos_to_soa_morton(
     atom_indices[i] = i;
 }
 
-template <typename Real>
+template <typename work_t>
 void launch_aos_to_soa_morton(const double* positions_aos, int num_atoms,
                                Real* x, Real* y, Real* z,
-                               const Real* inv_cell, bool periodic,
+                               const real_t* inv_cell, bool periodic,
                                uint32_t* morton_codes, int* atom_indices,
                                cudaStream_t stream) {
     if (num_atoms == 0) return;
     int block = ATV::cuda::kDefaultBlock;
     int grid = (num_atoms + block - 1) / block;
-    aos_to_soa_morton<Real><<<grid, block, 0, stream>>>(
+    aos_to_soa_morton<work_t><<<grid, block, 0, stream>>>(
         positions_aos, num_atoms, x, y, z, inv_cell, periodic,
         morton_codes, atom_indices);
     ATV_CUDA_CHECK(cudaGetLastError());
@@ -269,20 +270,20 @@ template void launch_aos_to_soa_morton<double>(
 // Fused kernel: Scatter to cluster SoA + AABB (replaces separate K4+K5)
 // ---------------------------------------------------------------------------
 
-template <typename Real>
+template <typename work_t>
 __global__ void scatter_and_aabb(
     const int* __restrict__ sorted_indices,
-    const Real* __restrict__ src_x,
-    const Real* __restrict__ src_y,
-    const Real* __restrict__ src_z,
+    const real_t* __restrict__ src_x,
+    const real_t* __restrict__ src_y,
+    const real_t* __restrict__ src_z,
     int num_atoms, int num_clusters,
-    Real* __restrict__ dst_x,
-    Real* __restrict__ dst_y,
-    Real* __restrict__ dst_z,
+    real_t* __restrict__ dst_x,
+    real_t* __restrict__ dst_y,
+    real_t* __restrict__ dst_z,
     int* __restrict__ original_index,
     int* __restrict__ cluster_count,
-    Real* __restrict__ min_x, Real* __restrict__ min_y, Real* __restrict__ min_z,
-    Real* __restrict__ max_x, Real* __restrict__ max_y, Real* __restrict__ max_z) {
+    real_t* __restrict__ min_x, real_t* __restrict__ min_y, real_t* __restrict__ min_z,
+    real_t* __restrict__ max_x, real_t* __restrict__ max_y, real_t* __restrict__ max_z) {
 
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     int lane = tid % kClusterSize;
@@ -294,8 +295,8 @@ __global__ void scatter_and_aabb(
     bool valid = (i < num_atoms);
 
     // Phase 1: Scatter
-    Real vx, vy, vz;
-    Real huge = Real(1e30);
+    work_t vx, vy, vz;
+    work_t huge = work_t(1e30);
 
     if (valid) {
         int old_idx = sorted_indices[i];
@@ -323,16 +324,16 @@ __global__ void scatter_and_aabb(
     }
 
     // Phase 2: AABB via warp-shuffle reduction
-    Real lo_x = valid ? vx :  huge;
-    Real lo_y = valid ? vy :  huge;
-    Real lo_z = valid ? vz :  huge;
-    Real hi_x = valid ? vx : -huge;
-    Real hi_y = valid ? vy : -huge;
-    Real hi_z = valid ? vz : -huge;
+    work_t lo_x = valid ? vx :  huge;
+    work_t lo_y = valid ? vy :  huge;
+    work_t lo_z = valid ? vz :  huge;
+    work_t hi_x = valid ? vx : -huge;
+    work_t hi_y = valid ? vy : -huge;
+    work_t hi_z = valid ? vz : -huge;
 
     unsigned mask = 0xFFu << (((threadIdx.x % 32) / kClusterSize) * kClusterSize);
     for (int offset = kClusterSize / 2; offset >= 1; offset >>= 1) {
-        Real tmp;
+        work_t tmp;
         tmp = __shfl_down_sync(mask, lo_x, offset); lo_x = fmin(lo_x, tmp);
         tmp = __shfl_down_sync(mask, hi_x, offset); hi_x = fmax(hi_x, tmp);
         tmp = __shfl_down_sync(mask, lo_y, offset); lo_y = fmin(lo_y, tmp);
@@ -347,10 +348,10 @@ __global__ void scatter_and_aabb(
     }
 }
 
-template <typename Real>
+template <typename work_t>
 void launch_scatter_and_aabb(const int* sorted_indices,
-                              const Real* pos_x, const Real* pos_y,
-                              const Real* pos_z,
+                              const real_t* pos_x, const real_t* pos_y,
+                              const real_t* pos_z,
                               int num_atoms, int num_clusters,
                               Real* cluster_x, Real* cluster_y, Real* cluster_z,
                               int* original_index, int* cluster_count,
@@ -363,7 +364,7 @@ void launch_scatter_and_aabb(const int* sorted_indices,
     int threads_needed = num_clusters * kClusterSize;
     int block = ATV::cuda::kDefaultBlock;
     int grid = (threads_needed + block - 1) / block;
-    scatter_and_aabb<Real><<<grid, block, 0, stream>>>(
+    scatter_and_aabb<work_t><<<grid, block, 0, stream>>>(
         sorted_indices, pos_x, pos_y, pos_z,
         num_atoms, num_clusters,
         cluster_x, cluster_y, cluster_z,

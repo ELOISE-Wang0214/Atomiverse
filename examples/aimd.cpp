@@ -39,7 +39,7 @@ int main() {
               << std::setw(13) << "Bond"
               << std::setw(9)  << "SCF_it" << "\n";
 
-    cpu::scf::RHFForce bomd{Real(1e-8), 100};
+    cpu::scf::RHFForce bomd{double(1e-8), 100};
     bomd.on_step([&](const cpu::scf::AIMDStepRecord& rec) {
         double bond = static_cast<double>(h2.x(1) - h2.x(0));
         std::cout << std::setw(5) << rec.step
@@ -51,7 +51,7 @@ int main() {
                   << std::setw(9)  << rec.scf_iterations << "\n";
     });
 
-    bomd.run(h2, 10, Real(0.5));  // 10 steps, 0.5 fs
+    bomd.run(h2, 10, double(0.5));  // 10 steps, 0.5 fs
 
     // ── Phase 2: CPMD2 ──────────────────────────────────────────────
     std::cout << "\n=== Second-generation CPMD (ASPC K=3, 2 corrector steps) ===\n"
@@ -70,8 +70,8 @@ int main() {
     h2.energy = 0;
     h2.kinetic = 0;
 
-    cpu::scf::RHFForce cpmd{Real(1e-8), 100};
-    cpmd.predictor(3, 2, Real(1e-4), true);
+    cpu::scf::RHFForce cpmd{double(1e-8), 100};
+    cpmd.predictor(3, 2, double(1e-4), true);
     cpmd.on_step([&](const cpu::scf::AIMDStepRecord& rec) {
         double bond = static_cast<double>(h2.x(1) - h2.x(0));
         std::cout << std::setw(5) << rec.step
@@ -84,7 +84,7 @@ int main() {
                   << std::setw(6)  << (rec.used_predictor ? "yes" : "no") << "\n";
     });
 
-    cpmd.run(h2, 10, Real(0.5));
+    cpmd.run(h2, 10, double(0.5));
 
     std::cout << "\nDone.\n";
     return 0;

@@ -24,7 +24,7 @@ public:
     /// @param T_target Target temperature [K].
     /// @param tau      Coupling time constant [fs].
     /// @param dt       Time step [fs] (must match integrator).
-    NoseHoover(Real T_target, Real tau, Real dt);
+    NoseHoover(double T_target, double tau, double dt);
     ~NoseHoover() override;
     NoseHoover(NoseHoover&&) noexcept;
     NoseHoover& operator=(NoseHoover&&) noexcept;
@@ -36,7 +36,7 @@ public:
     void destroy(const DestroyContext& ctx) override;
 
 private:
-    Real T_target_, tau_, dt_;
+    double T_target_, tau_, dt_;
     struct State;
     std::unique_ptr<State> state_;
 };

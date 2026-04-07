@@ -62,7 +62,7 @@ void Backend::step(int step_idx) {
 }
 
 void Backend::run(int n_steps) {
-    ATV_INFO("running {} steps ({} atoms)", n_steps, frame_->n_atoms());
+    ATV_INFO("running {} steps ({} atoms)", n_steps, frame_->atoms.size());
     for (int s = 0; s < n_steps; ++s) step(s);
     ATV_INFO("run complete");
 }

@@ -12,27 +12,25 @@
 #include <cuda_runtime.h>
 #include <cmath>
 
-using ATV::Real;
-using ATV::Int;
 using ATV::Mat3;
 namespace atorch = ATV::torch;
 
 namespace {
 
 /// @brief Build a simple cubic lattice torch::Frame.
-atorch::Frame make_cubic_frame(int n_side, Real box_len) {
+atorch::Frame make_cubic_frame(int n_side, double box_len) {
     int n = n_side * n_side * n_side;
-    Real spacing = box_len / Real(n_side);
+    double spacing = box_len / double(n_side);
 
     ATV::cpu::Frame cpu_frame(n);
     int idx = 0;
     for (int ix = 0; ix < n_side; ++ix)
         for (int iy = 0; iy < n_side; ++iy)
             for (int iz = 0; iz < n_side; ++iz) {
-                cpu_frame.atoms.x[idx] = (Real(ix) + Real(0.5)) * spacing;
-                cpu_frame.atoms.y[idx] = (Real(iy) + Real(0.5)) * spacing;
-                cpu_frame.atoms.z[idx] = (Real(iz) + Real(0.5)) * spacing;
-                cpu_frame.atoms.mass[idx] = Real(1.0);
+                cpu_frame.atoms.x[idx] = (double(ix) + double(0.5)) * spacing;
+                cpu_frame.atoms.y[idx] = (double(iy) + double(0.5)) * spacing;
+                cpu_frame.atoms.z[idx] = (double(iz) + double(0.5)) * spacing;
+                cpu_frame.atoms.mass[idx] = double(1.0);
                 cpu_frame.atoms.type[idx] = 0;
                 idx++;
             }
@@ -47,11 +45,11 @@ TEST(TorchNeighborList, CubicLatticePairCount) {
     // cutoff = 4.0, skin = 0 -> r_search = 4.0
     // Only nearest neighbors at distance 3.33 are included (6 per atom)
     // Total pairs = 27 * 6 / 2 = 81
-    Real box_len = Real(10.0);
-    Real cutoff = Real(4.0);
+    double box_len = double(10.0);
+    double cutoff = double(4.0);
     auto frame = make_cubic_frame(3, box_len);
 
-    atorch::neighbor_list(frame, cutoff, Real(0));
+    atorch::neighbor_list(frame, cutoff, double(0));
 
     // Exact count depends on cluster algorithm; just check populated
     EXPECT_GT(frame.n_pairs(), 0);
@@ -61,9 +59,9 @@ TEST(TorchNeighborList, CubicLatticePairCount) {
 }
 
 TEST(TorchNeighborList, PairTensorsNoGrad) {
-    auto frame = make_cubic_frame(3, Real(10.0));
+    auto frame = make_cubic_frame(3, double(10.0));
 
-    atorch::neighbor_list(frame, Real(4.0), Real(0));
+    atorch::neighbor_list(frame, double(4.0), double(0));
     ASSERT_GT(frame.n_pairs(), 0);
 
     EXPECT_FALSE(frame.pair_i.requires_grad());
@@ -75,9 +73,9 @@ TEST(TorchNeighborList, PairTensorsNoGrad) {
 }
 
 TEST(TorchNeighborList, PairTensorsAreSelfContained) {
-    auto frame = make_cubic_frame(3, Real(10.0));
+    auto frame = make_cubic_frame(3, double(10.0));
 
-    atorch::neighbor_list(frame, Real(4.0), Real(0));
+    atorch::neighbor_list(frame, double(4.0), double(0));
     ASSERT_GT(frame.n_pairs(), 0);
 
     EXPECT_TRUE(frame.pair_i.is_cuda());
@@ -96,9 +94,9 @@ TEST(TorchNeighborList, PairTensorsAreSelfContained) {
 }
 
 TEST(TorchNeighborList, DistanceConsistency) {
-    auto frame = make_cubic_frame(3, Real(10.0));
+    auto frame = make_cubic_frame(3, double(10.0));
 
-    atorch::neighbor_list(frame, Real(4.0), Real(0));
+    atorch::neighbor_list(frame, double(4.0), double(0));
     ASSERT_GT(frame.n_pairs(), 0);
 
     auto dx = frame.pair_dx.to(::torch::kCPU);
@@ -107,18 +105,18 @@ TEST(TorchNeighborList, DistanceConsistency) {
     auto dist = frame.pair_dist.to(::torch::kCPU);
 
     for (int64_t p = 0; p < frame.n_pairs(); ++p) {
-        Real d = dx[p].item<Real>();
-        Real e = dy[p].item<Real>();
-        Real f = dz[p].item<Real>();
-        Real expected = std::sqrt(d * d + e * e + f * f);
-        Real actual = dist[p].item<Real>();
-        EXPECT_NEAR(actual, expected, Real(1e-4))
+        double d = dx[p].item<double>();
+        double e = dy[p].item<double>();
+        double f = dz[p].item<double>();
+        double expected = std::sqrt(d * d + e * e + f * f);
+        double actual = dist[p].item<double>();
+        EXPECT_NEAR(actual, expected, double(1e-4))
             << "pair " << p << ": dist mismatch";
     }
 }
 
 TEST(TorchNeighborList, PairListFeedsLJ) {
-    auto frame = make_cubic_frame(3, Real(10.0));
+    auto frame = make_cubic_frame(3, double(10.0));
     auto real_opts = ::torch::TensorOptions().dtype(atorch::kRealDtype).device(::torch::kCUDA);
 
     int n = frame.n_atoms();
@@ -127,28 +125,28 @@ TEST(TorchNeighborList, PairListFeedsLJ) {
     frame.atoms.fz = ::torch::zeros({n}, real_opts);
     frame.energy = ::torch::zeros({1}, real_opts);
 
-    atorch::neighbor_list(frame, Real(4.0), Real(0));
+    atorch::neighbor_list(frame, double(4.0), double(0));
     ASSERT_GT(frame.n_pairs(), 0);
 
-    Real eps = Real(1.0), sig = Real(1.0);
+    double eps = double(1.0), sig = double(1.0);
     auto energy = atorch::lj(frame,
         ::torch::tensor({eps}, real_opts),
-        ::torch::tensor({sig}, real_opts), Real(4.0));
+        ::torch::tensor({sig}, real_opts), double(4.0));
     cudaDeviceSynchronize();
 
-    Real E = energy.to(::torch::kCPU).item<Real>();
-    EXPECT_NE(E, Real(0));
+    double E = energy.to(::torch::kCPU).item<double>();
+    EXPECT_NE(E, double(0));
 }
 
 TEST(TorchNeighborList, ClassBasedBuildUpdate) {
     // Test the class-based API: build once, update multiple times
-    auto frame = make_cubic_frame(3, Real(10.0));
+    auto frame = make_cubic_frame(3, double(10.0));
 
-    atorch::NeighborList nl(Real(4.0), Real(0));
+    atorch::NeighborList nl(double(4.0), double(0));
     nl.build(frame);
     nl.update(frame);
 
-    Int first_count = frame.n_pairs();
+    int first_count = frame.n_pairs();
     EXPECT_GT(first_count, 0);
 
     // Update again (same positions -> same result)

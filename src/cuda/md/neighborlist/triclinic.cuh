@@ -12,22 +12,22 @@
 namespace ATV::md::nlist {
 
 /// @brief 3-component vector for device-side math.
-template <typename Real>
+template <typename work_t>
 struct Vec3 {
-    Real x, y, z;
+    work_t x, y, z;
 };
 
 /// @brief Compute the inverse of a 3x3 row-major matrix.
 /// @param m Input 3x3 matrix (row-major)
 /// @param inv Output inverse matrix (row-major)
 /// @return determinant
-template <typename Real>
-__host__ __device__ inline Real invert_3x3(const Real* m, Real* inv) {
-    Real det = m[0] * (m[4] * m[8] - m[5] * m[7])
+template <typename work_t>
+__host__ __device__ inline work_t invert_3x3(const real_t* m, Real* inv) {
+    work_t det = m[0] * (m[4] * m[8] - m[5] * m[7])
              - m[1] * (m[3] * m[8] - m[5] * m[6])
              + m[2] * (m[3] * m[7] - m[4] * m[6]);
 
-    Real inv_det = Real(1) / det;
+    work_t inv_det = work_t(1) / det;
     inv[0] = (m[4] * m[8] - m[5] * m[7]) * inv_det;
     inv[1] = (m[2] * m[7] - m[1] * m[8]) * inv_det;
     inv[2] = (m[1] * m[5] - m[2] * m[4]) * inv_det;
@@ -42,18 +42,18 @@ __host__ __device__ inline Real invert_3x3(const Real* m, Real* inv) {
 
 /// @brief Cartesian to fractional: r_frac = inv_cell * r_cart
 /// where cell is row-major, inv_cell is inverse of cell.
-template <typename Real>
-__host__ __device__ inline Vec3<Real> cart_to_frac(Real rx, Real ry, Real rz,
-                                                    const Real* inv_cell) {
+template <typename work_t>
+__host__ __device__ inline Vec3<work_t> cart_to_frac(work_t rx, work_t ry, work_t rz,
+                                                    const real_t* inv_cell) {
     return {inv_cell[0] * rx + inv_cell[1] * ry + inv_cell[2] * rz,
             inv_cell[3] * rx + inv_cell[4] * ry + inv_cell[5] * rz,
             inv_cell[6] * rx + inv_cell[7] * ry + inv_cell[8] * rz};
 }
 
 /// @brief Fractional to Cartesian: r_cart = cell * r_frac
-template <typename Real>
-__host__ __device__ inline Vec3<Real> frac_to_cart(Real fx, Real fy, Real fz,
-                                                    const Real* cell) {
+template <typename work_t>
+__host__ __device__ inline Vec3<work_t> frac_to_cart(work_t fx, work_t fy, work_t fz,
+                                                    const real_t* cell) {
     return {cell[0] * fx + cell[1] * fy + cell[2] * fz,
             cell[3] * fx + cell[4] * fy + cell[5] * fz,
             cell[6] * fx + cell[7] * fy + cell[8] * fz};
@@ -61,26 +61,26 @@ __host__ __device__ inline Vec3<Real> frac_to_cart(Real fx, Real fy, Real fz,
 
 /// @brief Clamp fractional coordinate to [0, 1).
 /// @brief Boundary epsilon for clamping fractional coordinates to [0,1).
-template <typename Real>
-inline constexpr Real kFracBoundaryEps = Real(1e-6);
+template <typename work_t>
+inline constexpr work_t kFracBoundaryEps = work_t(1e-6);
 
-template <typename Real>
-__device__ inline Real clamp01(Real v) {
-    if (v < Real(0)) return Real(0);
-    if (v >= Real(1)) return Real(1) - kFracBoundaryEps<Real>;
+template <typename work_t>
+__device__ inline work_t clamp01(work_t v) {
+    if (v < work_t(0)) return work_t(0);
+    if (v >= work_t(1)) return work_t(1) - kFracBoundaryEps<work_t>;
     return v;
 }
 
 /// @brief Apply minimum image convention in fractional space.
 /// @param[in,out] dx, dy, dz Cartesian displacement, modified in place
-template <typename Real>
-__host__ __device__ inline void minimum_image(Real& dx, Real& dy, Real& dz,
-                                               const Real* cell,
-                                               const Real* inv_cell) {
+template <typename work_t>
+__host__ __device__ inline void minimum_image(work_t& dx, work_t& dy, work_t& dz,
+                                               const real_t* cell,
+                                               const real_t* inv_cell) {
     // To fractional
-    Real fx = inv_cell[0] * dx + inv_cell[1] * dy + inv_cell[2] * dz;
-    Real fy = inv_cell[3] * dx + inv_cell[4] * dy + inv_cell[5] * dz;
-    Real fz = inv_cell[6] * dx + inv_cell[7] * dy + inv_cell[8] * dz;
+    work_t fx = inv_cell[0] * dx + inv_cell[1] * dy + inv_cell[2] * dz;
+    work_t fy = inv_cell[3] * dx + inv_cell[4] * dy + inv_cell[5] * dz;
+    work_t fz = inv_cell[6] * dx + inv_cell[7] * dy + inv_cell[8] * dz;
 
     // Nearest image
     fx -= nearbyint(fx);
@@ -94,12 +94,12 @@ __host__ __device__ inline void minimum_image(Real& dx, Real& dy, Real& dz,
 }
 
 /// @brief Wrap fractional coordinate to [0, 1).
-template <typename Real>
-__host__ __device__ inline Real wrap_frac(Real f) {
+template <typename work_t>
+__host__ __device__ inline work_t wrap_frac(work_t f) {
     f -= floor(f);
     // Guard against numerical edge case where floor gives exactly 1.0
-    if (f >= Real(1)) f -= Real(1);
-    if (f < Real(0)) f += Real(1);
+    if (f >= work_t(1)) f -= work_t(1);
+    if (f < work_t(0)) f += work_t(1);
     return f;
 }
 

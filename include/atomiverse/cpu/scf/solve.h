@@ -3,7 +3,7 @@
 ///
 /// Standalone reference implementation for correctness verification
 /// and CPU/CUDA parity tests. Uses xt::linalg for eigendecomposition
-/// and matrix operations — no manual linear algebra.
+/// and matrix operations -- no manual linear algebra.
 ///
 /// @see scf::SCF for the CUDA Driver-based implementation
 #pragma once
@@ -12,8 +12,6 @@
 
 #include <xtensor/xtensor.hpp>
 
-#include "atomiverse/core/real.h"
-#include "atomiverse/core/int.h"
 #include "atomiverse/cpu/frame.h"
 
 namespace ATV {
@@ -22,12 +20,12 @@ namespace scf {
 
 /// @brief SCF solver result.
 struct SCFResult {
-    bool converged = false;            ///< Whether SCF converged within max_iter.
-    int iterations = 0;                ///< Number of iterations performed.
-    Real energy = 0;                   ///< Final SCF energy = trace(H * P).
-    Real residual = 0;                 ///< Final ||P_new - P_old||_F.
-    xt::xtensor<Real, 1> eigenvalues;  ///< Final eigenvalues (ascending).
-    xt::xtensor<Real, 2> density;      ///< Final density matrix P.
+    bool converged = false;              ///< Whether SCF converged within max_iter.
+    int iterations = 0;                  ///< Number of iterations performed.
+    double energy = 0;                   ///< Final SCF energy = trace(H * P).
+    double residual = 0;                 ///< Final ||P_new - P_old||_F.
+    xt::xtensor<double, 1> eigenvalues;  ///< Final eigenvalues (ascending).
+    xt::xtensor<double, 2> density;      ///< Final density matrix P.
 };
 
 /// @brief Run the toy SCF loop on CPU using xtensor-blas.
@@ -45,7 +43,7 @@ struct SCFResult {
 /// @param tol Convergence tolerance (Frobenius norm of density change).
 /// @param max_iter Maximum number of SCF iterations.
 /// @return SCFResult with convergence info, energy, eigenvalues, density.
-SCFResult solve(Int n, Int n_occ, Real alpha, Real tol, int max_iter);
+SCFResult solve(int n, int n_occ, double alpha, double tol, int max_iter);
 
 } // namespace scf
 } // namespace cpu

@@ -8,8 +8,6 @@
 #include <vector>
 #include <xtensor/xtensor.hpp>
 
-#include "atomiverse/core/int.h"
-#include "atomiverse/core/real.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/pair_list.h"
 
@@ -28,10 +26,10 @@ class CellList {
 public:
     /// @param cutoff Interaction cutoff [Angstrom].
     /// @param skin Verlet skin width [Angstrom]. Negative = auto (0.3 * cutoff).
-    explicit CellList(Real cutoff, Real skin = Real(-1));
+    explicit CellList(double cutoff, double skin = -1.0);
 
     /// @brief One-time setup: compute grid dimensions, allocate cell arrays.
-    void init(const cpu::Frame& frame, Real cutoff_skin);
+    void init(const cpu::Frame& frame, double cutoff_skin);
 
     /// @brief Full rebuild: bin atoms, build stencil.
     void build(const cpu::Frame& frame);
@@ -49,25 +47,25 @@ public:
     PairList build_full(const cpu::Frame& frame) const;
 
 private:
-    Real cutoff_, skin_, cutoff_skin_;
+    double cutoff_, skin_, cutoff_skin_;
 
     // Grid
-    Int ncx_ = 0, ncy_ = 0, ncz_ = 0;   ///< Cells per axis.
-    Real csx_ = 0, csy_ = 0, csz_ = 0;   ///< Cell dimensions.
-    Int total_cells_ = 0;
+    int ncx_ = 0, ncy_ = 0, ncz_ = 0;   ///< Cells per axis.
+    double csx_ = 0, csy_ = 0, csz_ = 0;   ///< Cell dimensions.
+    int total_cells_ = 0;
 
     // Binning
-    xt::xtensor<Int, 1> atom_cell_;       ///< Atom -> cell index [n_atoms].
-    xt::xtensor<Int, 1> cell_count_;      ///< Atoms per cell [total_cells].
-    xt::xtensor<Int, 1> cell_offset_;     ///< Prefix sum [total_cells].
-    xt::xtensor<Int, 1> binned_atoms_;    ///< Sorted atom indices [n_atoms].
+    xt::xtensor<int, 1> atom_cell_;       ///< Atom -> cell index [n_atoms].
+    xt::xtensor<int, 1> cell_count_;      ///< Atoms per cell [total_cells].
+    xt::xtensor<int, 1> cell_offset_;     ///< Prefix sum [total_cells].
+    xt::xtensor<int, 1> binned_atoms_;    ///< Sorted atom indices [n_atoms].
 
     // Stencil
-    std::vector<Int> half_stencil_;       ///< Cell offsets for half list.
-    std::vector<Int> full_stencil_;       ///< Cell offsets for full list.
+    std::vector<int> half_stencil_;       ///< Cell offsets for half list.
+    std::vector<int> full_stencil_;       ///< Cell offsets for full list.
 
     // Displacement tracking
-    xt::xtensor<Real, 1> x_save_, y_save_, z_save_;
+    xt::xtensor<double, 1> x_save_, y_save_, z_save_;
 
     void compute_grid(const cpu::Frame& frame);
     void bin_atoms(const cpu::Frame& frame);

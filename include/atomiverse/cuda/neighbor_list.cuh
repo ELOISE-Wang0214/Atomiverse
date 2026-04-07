@@ -30,7 +30,7 @@ public:
     /// @brief Construct with cutoff and optional skin width.
     /// @param cutoff Interaction cutoff [Angstrom].
     /// @param skin   Verlet skin width [Angstrom]. Negative = auto (0.3 * cutoff).
-    explicit NeighborList(Real cutoff, Real skin = Real(-1));
+    explicit NeighborList(double cutoff, double skin = -1.0);
 
     ~NeighborList() override;
     NeighborList(NeighborList&&) noexcept;
@@ -61,15 +61,15 @@ public:
 
     /// @brief Get interaction cutoff.
     /// @return Interaction cutoff [Angstrom].
-    Real cutoff() const { return cutoff_; }
+    double cutoff() const { return cutoff_; }
 
     /// @brief Get Verlet skin width.
     /// @return Skin width [Angstrom].
-    Real skin() const { return skin_; }
+    double skin() const { return skin_; }
 
 private:
-    Real cutoff_;  ///< Interaction cutoff [Angstrom].
-    Real skin_;    ///< Verlet skin width [Angstrom].
+    double cutoff_;  ///< Interaction cutoff [Angstrom].
+    double skin_;    ///< Verlet skin width [Angstrom].
     struct State;  ///< Opaque GPU state (pimpl, defined in .cu).
     std::unique_ptr<State> state_;  ///< Internal GPU buffers.
 };

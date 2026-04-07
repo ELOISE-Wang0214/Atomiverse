@@ -24,7 +24,7 @@ public:
     /// @brief Construct with per-type parameters.
     /// @param K      Spring constants per angle type [eV/rad^2].
     /// @param theta0 Equilibrium angles per type [degrees] (converted to radians internally).
-    HarmonicAngle(std::vector<Real> K, std::vector<Real> theta0);
+    HarmonicAngle(std::vector<double> K, std::vector<double> theta0);
     ~HarmonicAngle() override;
     HarmonicAngle(HarmonicAngle&&) noexcept;
     HarmonicAngle& operator=(HarmonicAngle&&) noexcept;
@@ -35,7 +35,7 @@ public:
     void destroy(const DestroyContext& ctx) override;
 
 private:
-    std::vector<Real> K_, theta0_;
+    std::vector<double> K_, theta0_;
     struct State;
     std::unique_ptr<State> state_;
 };

@@ -31,7 +31,7 @@ namespace ATV {
 class DensityRecorder : public AsyncBridge {
 public:
     DensityRecorder(std::string store_path, int nx, int ny, int nz,
-                    Real padding = Real(2.0), int every = 1)
+                    double padding = double(2.0), int every = 1)
         : store_path_(std::move(store_path)),
           nx_(nx), ny_(ny), nz_(nz),
           padding_(padding), every_(every) {}
@@ -54,17 +54,17 @@ protected:
 
         htype_.resize(na); hx_.resize(na); hy_.resize(na); hz_.resize(na);
         cudaMemcpyAsync(htype_.data(), frame.atoms.type,
-                        na * sizeof(Int),  cudaMemcpyDeviceToHost, stream);
+                        na * sizeof(int),  cudaMemcpyDeviceToHost, stream);
         cudaMemcpyAsync(hx_.data(), frame.atoms.x,
-                        na * sizeof(Real), cudaMemcpyDeviceToHost, stream);
+                        na * sizeof(double), cudaMemcpyDeviceToHost, stream);
         cudaMemcpyAsync(hy_.data(), frame.atoms.y,
-                        na * sizeof(Real), cudaMemcpyDeviceToHost, stream);
+                        na * sizeof(double), cudaMemcpyDeviceToHost, stream);
         cudaMemcpyAsync(hz_.data(), frame.atoms.z,
-                        na * sizeof(Real), cudaMemcpyDeviceToHost, stream);
+                        na * sizeof(double), cudaMemcpyDeviceToHost, stream);
         cudaStreamSynchronize(stream);
 
         const auto nb = static_cast<size_t>(n_basis_);
-        cudaMallocHost(&h_P_, nb * nb * sizeof(Real));
+        cudaMallocHost(&h_P_, nb * nb * sizeof(double));
     }
 
     bool can_run(const LaunchContext& ctx) const override {
@@ -75,7 +75,7 @@ protected:
         auto ds = static_cast<cudaStream_t>(ctx.runtime.defer_stream);
         const size_t nb = static_cast<size_t>(n_basis_);
         cudaMemcpyAsync(h_P_, ctx.frame.scf.P,
-                        nb * nb * sizeof(Real), cudaMemcpyDeviceToHost, ds);
+                        nb * nb * sizeof(double), cudaMemcpyDeviceToHost, ds);
     }
 
     void on_data_ready(const LaunchContext& ctx) override {
@@ -96,14 +96,14 @@ protected:
 private:
     std::string store_path_;
     int nx_, ny_, nz_, every_;
-    Real padding_;
+    double padding_;
 
     int n_atoms_ = 0;
     int n_basis_ = 0;
 
-    Real* h_P_ = nullptr;
-    std::vector<Int>  htype_;
-    std::vector<Real> hx_, hy_, hz_;
+    double* h_P_ = nullptr;
+    std::vector<int>  htype_;
+    std::vector<double> hx_, hy_, hz_;
 };
 
 } // namespace ATV

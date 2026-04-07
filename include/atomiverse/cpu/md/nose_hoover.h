@@ -22,7 +22,7 @@ public:
     /// @param T_target Target temperature [K].
     /// @param tau Coupling time constant [fs].
     /// @param dt Timestep [fs].
-    NoseHoover(Real T_target, Real tau, Real dt);
+    NoseHoover(double T_target, double tau, double dt);
 
     std::string name() const override { return "nose_hoover"; }
     std::vector<DefaultBinding> default_bindings() const override {
@@ -33,9 +33,9 @@ public:
     void launch(const cpu::LaunchContext& ctx) override;
 
 private:
-    Real T_target_, tau_, dt_;
-    Real xi_ = 0;    ///< Thermostat variable.
-    Real Q_ = 0;     ///< Thermostat mass.
+    double T_target_, tau_, dt_;
+    double xi_ = 0;    ///< Thermostat variable.
+    double Q_ = 0;     ///< Thermostat mass.
 };
 
 } // namespace md

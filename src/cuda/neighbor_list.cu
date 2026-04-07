@@ -12,31 +12,35 @@
 #include <limits>
 
 #include <cuda_runtime.h>
+#include "atomiverse/cuda/types.cuh"
 
-using Real = ATV::Real;
-using Int = ATV::Int;
 using namespace ATV::md::nlist;
 
 static constexpr int kMaxStencil = 512;
 
 namespace ATV {
 
+using cuda::real_t;
+using cuda::work_t;
+using cuda::prec_t;
+
+
 // ============================================================================
 // State
 // ============================================================================
 
 struct NeighborList::State {
-    NListBuffers<Real> buf;
+    NListBuffers<work_t> buf;
 
-    DeviceVector<Real> d_cell{9};
-    DeviceVector<Real> d_inv_cell{9};
+    DeviceVector<work_t> d_cell{9};
+    DeviceVector<work_t> d_inv_cell{9};
     DeviceVector<int> d_dims{3};
     DeviceVector<int> d_ncells{1};
     DeviceVector<int> stencil_dx{kMaxStencil};
     DeviceVector<int> stencil_dy{kMaxStencil};
     DeviceVector<int> stencil_dz{kMaxStencil};
     DeviceVector<int> d_n_stencil{1};
-    DeviceVector<Int> d_pair_count{1};
+    DeviceVector<int> d_pair_count{1};
 
     int num_atoms = 0;
     int num_clusters = 0;
@@ -54,7 +58,7 @@ void NeighborList::build(const BuildContext& ctx) {
     auto& s = *state_;
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& frame = ctx.frame;
-    Int n_atoms = ctx.frame.n_atoms();
+    int n_atoms = ctx.frame.n_atoms();
 
     s.num_atoms = static_cast<int>(n_atoms);
     int n = s.num_atoms;
@@ -62,7 +66,7 @@ void NeighborList::build(const BuildContext& ctx) {
     s.num_clusters = nc;
     s.periodic = true;
 
-    Real r_search = cutoff_ + skin_;
+    work_t r_search = cutoff_ + skin_;
 
     // GPU setup: compute cell/inv_cell/dims/stencil from device box
     launch_setup_cell_device(
@@ -97,17 +101,17 @@ void NeighborList::build(const BuildContext& ctx) {
 
     // Allocate PairList in cuda::Frame
     int atom_pair_cap = std::max(1, n * 50);
-    cudaMalloc(&frame.pairs.i, atom_pair_cap * sizeof(Int));
-    cudaMalloc(&frame.pairs.j, atom_pair_cap * sizeof(Int));
-    cudaMalloc(&frame.pairs.dx, atom_pair_cap * sizeof(Real));
-    cudaMalloc(&frame.pairs.dy, atom_pair_cap * sizeof(Real));
-    cudaMalloc(&frame.pairs.dz, atom_pair_cap * sizeof(Real));
-    cudaMalloc(&frame.pairs.dist, atom_pair_cap * sizeof(Real));
-    cudaMalloc(&frame.pairs.n_pairs, sizeof(Int));
-    cudaMemset(frame.pairs.n_pairs, 0, sizeof(Int));
-    cudaMalloc(&frame.pairs.capacity, sizeof(Int));
-    Int cap_val = static_cast<Int>(atom_pair_cap);
-    cudaMemcpy(frame.pairs.capacity, &cap_val, sizeof(Int), cudaMemcpyHostToDevice);
+    cudaMalloc(&frame.pairs.i, atom_pair_cap * sizeof(int));
+    cudaMalloc(&frame.pairs.j, atom_pair_cap * sizeof(int));
+    cudaMalloc(&frame.pairs.dx, atom_pair_cap * sizeof(work_t));
+    cudaMalloc(&frame.pairs.dy, atom_pair_cap * sizeof(work_t));
+    cudaMalloc(&frame.pairs.dz, atom_pair_cap * sizeof(work_t));
+    cudaMalloc(&frame.pairs.dist, atom_pair_cap * sizeof(work_t));
+    cudaMalloc(&frame.pairs.n_pairs, sizeof(int));
+    cudaMemset(frame.pairs.n_pairs, 0, sizeof(int));
+    cudaMalloc(&frame.pairs.capacity, sizeof(int));
+    int cap_val = static_cast<int>(atom_pair_cap);
+    cudaMemcpy(frame.pairs.capacity, &cap_val, sizeof(int), cudaMemcpyHostToDevice);
 }
 
 // ============================================================================
@@ -121,7 +125,7 @@ void NeighborList::launch(const LaunchContext& ctx) {
 
     int n = s.num_atoms;
     int nc = s.num_clusters;
-    Real r_search = cutoff_ + skin_;
+    work_t r_search = cutoff_ + skin_;
 
     // Recompute cell setup on GPU (box might change for NPT)
     launch_setup_cell_device(
@@ -131,7 +135,7 @@ void NeighborList::launch(const LaunchContext& ctx) {
         r_search, s.periodic, kMaxStencil, stream);
 
     // K1: Morton codes
-    launch_compute_morton<Real>(
+    launch_compute_morton<work_t>(
         frame.atoms.x, frame.atoms.y, frame.atoms.z, n,
         s.d_inv_cell.data(), s.periodic,
         s.buf.morton_codes.data(), s.buf.atom_indices.data(), stream);
@@ -143,7 +147,7 @@ void NeighborList::launch(const LaunchContext& ctx) {
         n, s.buf.sort_temp, stream);
 
     // K3: Fused scatter + AABB
-    launch_scatter_and_aabb<Real>(
+    launch_scatter_and_aabb<work_t>(
         s.buf.indices_sorted.data(),
         frame.atoms.x, frame.atoms.y, frame.atoms.z, n, nc,
         s.buf.cluster_x.data(), s.buf.cluster_y.data(), s.buf.cluster_z.data(),
@@ -153,7 +157,7 @@ void NeighborList::launch(const LaunchContext& ctx) {
         stream);
 
     // K4: Assign clusters to grid cells
-    launch_assign_clusters_to_cells<Real>(
+    launch_assign_clusters_to_cells<work_t>(
         s.buf.aabb_min_x.data(), s.buf.aabb_min_y.data(), s.buf.aabb_min_z.data(),
         s.buf.aabb_max_x.data(), s.buf.aabb_max_y.data(), s.buf.aabb_max_z.data(),
         nc, s.d_inv_cell.data(), s.dims_x, s.dims_y, s.dims_z,
@@ -166,7 +170,7 @@ void NeighborList::launch(const LaunchContext& ctx) {
         s.buf.cell_start.data(), s.buf.cell_clusters.data(),
         s.buf.histogram.data(), s.buf.scan_temp, stream);
 
-    Real cut_skin_sq = r_search * r_search;
+    work_t cut_skin_sq = r_search * r_search;
 
     // K6: Pair search pipeline
     launch_coarse_count_pairs(
@@ -182,7 +186,7 @@ void NeighborList::launch(const LaunchContext& ctx) {
     launch_write_row_ptr_sentinel(
         s.buf.row_ptr_upper.data(), s.buf.pair_counts.data(), nc, stream);
 
-    launch_fill_cluster_pairs<Real>(
+    launch_fill_cluster_pairs<work_t>(
         s.buf.cell_start.data(), s.buf.cell_clusters.data(),
         s.buf.cluster_cell_idx.data(),
         s.dims_x, s.dims_y, s.dims_z,
@@ -223,11 +227,11 @@ void NeighborList::launch(const LaunchContext& ctx) {
     // Export to atom-level PairList
     int cap = s.pair_capacity;
     if (cap <= 0) {
-        cudaMemsetAsync(frame.pairs.n_pairs, 0, sizeof(Int), stream);
+        cudaMemsetAsync(frame.pairs.n_pairs, 0, sizeof(int), stream);
         return;
     }
 
-    cudaMemsetAsync(s.d_pair_count.data(), 0, sizeof(Int), stream);
+    cudaMemsetAsync(s.d_pair_count.data(), 0, sizeof(int), stream);
     launch_export_atom_pairs(
         s.buf.flat_ci.data(), s.buf.flat_cj.data(), s.buf.flat_mask.data(),
         s.buf.flat_pair_counter.data(), cap, s.buf.original_index.data(),
@@ -238,7 +242,7 @@ void NeighborList::launch(const LaunchContext& ctx) {
         s.d_pair_count.data(), frame.pairs.capacity, stream);
 
     cudaMemcpyAsync(frame.pairs.n_pairs, s.d_pair_count.data(),
-                    sizeof(Int), cudaMemcpyDeviceToDevice, stream);
+                    sizeof(int), cudaMemcpyDeviceToDevice, stream);
 }
 
 // ============================================================================
@@ -263,8 +267,8 @@ void NeighborList::destroy(const DestroyContext& ctx) {
 // Constructor / move
 // ============================================================================
 
-NeighborList::NeighborList(Real cutoff, Real skin)
-    : cutoff_(cutoff), skin_(skin < Real(0) ? Real(0.3) * cutoff : skin) {}
+NeighborList::NeighborList(work_t cutoff, work_t skin)
+    : cutoff_(cutoff), skin_(skin < work_t(0) ? work_t(0.3) * cutoff : skin) {}
 
 NeighborList::~NeighborList() = default;
 NeighborList::NeighborList(NeighborList&&) noexcept = default;

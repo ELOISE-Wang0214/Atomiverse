@@ -35,7 +35,7 @@ public:
     /// @brief Construct Hamiltonian builder.
     /// @param n_occ Number of occupied orbitals.
     /// @param alpha Coupling parameter for H = H0 + alpha*P.
-    Hamiltonian(Int n_occ, Real alpha) : n_occ_(n_occ), alpha_(alpha) {}
+    Hamiltonian(int n_occ, double alpha) : n_occ_(n_occ), alpha_(alpha) {}
 
     /// @brief Component name.
     /// @return "hamiltonian".
@@ -59,8 +59,8 @@ public:
     void destroy(const DestroyContext& ctx) override;
 
 private:
-    Int n_occ_;     ///< Number of occupied orbitals.
-    Real alpha_;    ///< Density coupling parameter.
+    int n_occ_;     ///< Number of occupied orbitals.
+    double alpha_;    ///< Density coupling parameter.
     void* cublas_handle_ = nullptr;  ///< cuBLAS handle (cast to cublasHandle_t in .cu).
 };
 

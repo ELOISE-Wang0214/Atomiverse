@@ -24,11 +24,11 @@ constexpr double sto3g_exp[3] = {3.42525091, 0.62391373, 0.16885540};
 constexpr double sto3g_coeff[3] = {0.15432897, 0.53532814, 0.44463454};
 
 /// @brief Build an H2 frame at a given bond length along x.
-cpu::Frame make_h2(Real bond_length) {
+cpu::Frame make_h2(double bond_length) {
     cpu::Frame frame(2);
-    frame.atoms.x[0] = Real(0);           frame.atoms.y[0] = Real(0); frame.atoms.z[0] = Real(0);
-    frame.atoms.x[1] = bond_length;       frame.atoms.y[1] = Real(0); frame.atoms.z[1] = Real(0);
-    frame.atoms.mass[0] = Real(1.008); frame.atoms.mass[1] = Real(1.008);
+    frame.atoms.x[0] = double(0);           frame.atoms.y[0] = double(0); frame.atoms.z[0] = double(0);
+    frame.atoms.x[1] = bond_length;       frame.atoms.y[1] = double(0); frame.atoms.z[1] = double(0);
+    frame.atoms.mass[0] = double(1.008); frame.atoms.mass[1] = double(1.008);
     frame.atoms.type[0] = 1; frame.atoms.type[1] = 1;
     frame.box = Mat3::cubic(100.0);
     return frame;
@@ -194,7 +194,7 @@ TEST(NativeIntegrals, RegressionValues_H2) {
 // ── IntegralPack sanity ───────────────────────────────────────────────
 
 TEST(NativeIntegrals, IntegralPack_Sanity) {
-    auto frame = make_h2(Real(0.74));
+    auto frame = make_h2(double(0.74));
     auto pack = build_integrals_sto3g(frame);
 
     EXPECT_NEAR(static_cast<double>(pack.S(0, 0)), 1.0, 0.01);
@@ -223,7 +223,7 @@ TEST(NativeIntegrals, MultiGeometry_IntegralPack) {
     // build_integrals_sto3g should work at various geometries
     double bond_lengths[] = {0.5, 0.74, 1.0, 1.5, 2.0};
     for (double bl : bond_lengths) {
-        auto frame = make_h2(Real(bl));
+        auto frame = make_h2(double(bl));
         auto pack = build_integrals_sto3g(frame);
         // S diagonal must be ~1 regardless of geometry
         EXPECT_NEAR(static_cast<double>(pack.S(0, 0)), 1.0, 0.01)
@@ -242,10 +242,10 @@ TEST(NativeIntegrals, MultiGeometry_IntegralPack) {
 cpu::Frame make_h2o() {
     cpu::Frame f(3);
     // Standard geometry: O at origin, H at ~0.96 A, angle 104.5 deg
-    f.atoms.x[0] = Real(0.0);    f.atoms.y[0] = Real(0.0);     f.atoms.z[0] = Real(0.0);
-    f.atoms.x[1] = Real(0.757);  f.atoms.y[1] = Real(0.587);   f.atoms.z[1] = Real(0.0);
-    f.atoms.x[2] = Real(-0.757); f.atoms.y[2] = Real(0.587);   f.atoms.z[2] = Real(0.0);
-    f.atoms.mass[0] = Real(15.999); f.atoms.mass[1] = Real(1.008); f.atoms.mass[2] = Real(1.008);
+    f.atoms.x[0] = double(0.0);    f.atoms.y[0] = double(0.0);     f.atoms.z[0] = double(0.0);
+    f.atoms.x[1] = double(0.757);  f.atoms.y[1] = double(0.587);   f.atoms.z[1] = double(0.0);
+    f.atoms.x[2] = double(-0.757); f.atoms.y[2] = double(0.587);   f.atoms.z[2] = double(0.0);
+    f.atoms.mass[0] = double(15.999); f.atoms.mass[1] = double(1.008); f.atoms.mass[2] = double(1.008);
     f.atoms.type[0] = 8; f.atoms.type[1] = 1; f.atoms.type[2] = 1;
     f.box = Mat3::cubic(100.0);
     return f;
@@ -255,12 +255,12 @@ cpu::Frame make_h2o() {
 cpu::Frame make_ch4() {
     cpu::Frame f(5);
     // Tetrahedral geometry, C at origin, H at ~1.089 A
-    f.atoms.x[0] = Real(0.0);     f.atoms.y[0] = Real(0.0);     f.atoms.z[0] = Real(0.0);
-    f.atoms.x[1] = Real(0.6276);  f.atoms.y[1] = Real(0.6276);  f.atoms.z[1] = Real(0.6276);
-    f.atoms.x[2] = Real(-0.6276); f.atoms.y[2] = Real(-0.6276); f.atoms.z[2] = Real(0.6276);
-    f.atoms.x[3] = Real(-0.6276); f.atoms.y[3] = Real(0.6276);  f.atoms.z[3] = Real(-0.6276);
-    f.atoms.x[4] = Real(0.6276);  f.atoms.y[4] = Real(-0.6276); f.atoms.z[4] = Real(-0.6276);
-    for (int i = 0; i < 5; ++i) f.atoms.mass[i] = (i == 0) ? Real(12.011) : Real(1.008);
+    f.atoms.x[0] = double(0.0);     f.atoms.y[0] = double(0.0);     f.atoms.z[0] = double(0.0);
+    f.atoms.x[1] = double(0.6276);  f.atoms.y[1] = double(0.6276);  f.atoms.z[1] = double(0.6276);
+    f.atoms.x[2] = double(-0.6276); f.atoms.y[2] = double(-0.6276); f.atoms.z[2] = double(0.6276);
+    f.atoms.x[3] = double(-0.6276); f.atoms.y[3] = double(0.6276);  f.atoms.z[3] = double(-0.6276);
+    f.atoms.x[4] = double(0.6276);  f.atoms.y[4] = double(-0.6276); f.atoms.z[4] = double(-0.6276);
+    for (int i = 0; i < 5; ++i) f.atoms.mass[i] = (i == 0) ? double(12.011) : double(1.008);
     f.atoms.type[0] = 6;
     f.atoms.type[1] = 1; f.atoms.type[2] = 1; f.atoms.type[3] = 1; f.atoms.type[4] = 1;
     f.box = Mat3::cubic(100.0);
@@ -274,12 +274,12 @@ TEST(NativeIntegrals, H2O_IntegralPack_Sanity) {
     EXPECT_EQ(pack.n_basis, 7);
     EXPECT_EQ(pack.n_electrons, 10);
     // S diagonal should be ~1 for normalized basis
-    for (Int i = 0; i < pack.n_basis; ++i)
+    for (int i = 0; i < pack.n_basis; ++i)
         EXPECT_NEAR(static_cast<double>(pack.S(i, i)), 1.0, 0.01)
             << "S(" << i << "," << i << ") != 1.0";
     // S must be symmetric
-    for (Int i = 0; i < pack.n_basis; ++i)
-        for (Int j = 0; j < i; ++j)
+    for (int i = 0; i < pack.n_basis; ++i)
+        for (int j = 0; j < i; ++j)
             EXPECT_NEAR(static_cast<double>(pack.S(i,j)),
                         static_cast<double>(pack.S(j,i)), 1e-12)
                 << "S not symmetric at (" << i << "," << j << ")";
@@ -291,7 +291,7 @@ TEST(NativeIntegrals, CH4_IntegralPack_Sanity) {
     // C: 5 bf, 4 H: 1 bf each = 9 total
     EXPECT_EQ(pack.n_basis, 9);
     EXPECT_EQ(pack.n_electrons, 10);
-    for (Int i = 0; i < pack.n_basis; ++i)
+    for (int i = 0; i < pack.n_basis; ++i)
         EXPECT_NEAR(static_cast<double>(pack.S(i, i)), 1.0, 0.01)
             << "S(" << i << "," << i << ") != 1.0 for CH4";
 }
@@ -337,10 +337,10 @@ static void compare_integrals_vs_libcint(const cpu::Frame& frame, const char* la
     auto libcint_pack = test::build_integrals_libcint(frame);
 
     ASSERT_EQ(native_pack.n_basis, libcint_pack.n_basis) << label << " n_basis mismatch";
-    Int n = native_pack.n_basis;
+    int n = native_pack.n_basis;
 
-    for (Int i = 0; i < n; ++i)
-        for (Int j = 0; j < n; ++j) {
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j) {
             EXPECT_NEAR(static_cast<double>(native_pack.S(i,j)),
                         static_cast<double>(libcint_pack.S(i,j)), 1e-7)
                 << label << " S(" << i << "," << j << ")";
@@ -352,10 +352,10 @@ static void compare_integrals_vs_libcint(const cpu::Frame& frame, const char* la
                 << label << " V(" << i << "," << j << ")";
         }
 
-    for (Int i = 0; i < n; ++i)
-      for (Int j = 0; j < n; ++j)
-        for (Int k = 0; k < n; ++k)
-          for (Int l = 0; l < n; ++l)
+    for (int i = 0; i < n; ++i)
+      for (int j = 0; j < n; ++j)
+        for (int k = 0; k < n; ++k)
+          for (int l = 0; l < n; ++l)
             EXPECT_NEAR(static_cast<double>(native_pack.ERI(i,j,k,l)),
                         static_cast<double>(libcint_pack.ERI(i,j,k,l)), 1e-7)
                 << label << " ERI(" << i << "," << j << "," << k << "," << l << ")";
@@ -365,14 +365,14 @@ static void compare_integrals_vs_libcint(const cpu::Frame& frame, const char* la
 }
 
 TEST(NativeVsLibcint, AllIntegrals_H2_074) {
-    compare_integrals_vs_libcint(make_h2(Real(0.74)), "H2@0.74");
+    compare_integrals_vs_libcint(make_h2(double(0.74)), "H2@0.74");
 }
 
 TEST(NativeVsLibcint, MultiGeometry) {
     double bond_lengths[] = {0.5, 0.74, 1.0, 1.5, 2.0};
     for (double bl : bond_lengths) {
         std::string label = "H2@" + std::to_string(bl);
-        compare_integrals_vs_libcint(make_h2(Real(bl)), label.c_str());
+        compare_integrals_vs_libcint(make_h2(double(bl)), label.c_str());
     }
 }
 
@@ -387,9 +387,9 @@ TEST(NativeVsLibcint, CH4) {
 /// @brief Build CO (carbon monoxide) frame.
 static cpu::Frame make_co() {
     cpu::Frame f(2);
-    f.atoms.x[0] = Real(0.0); f.atoms.y[0] = Real(0.0); f.atoms.z[0] = Real(0.0);
-    f.atoms.x[1] = Real(1.128); f.atoms.y[1] = Real(0.0); f.atoms.z[1] = Real(0.0);
-    f.atoms.mass[0] = Real(12.011); f.atoms.mass[1] = Real(15.999);
+    f.atoms.x[0] = double(0.0); f.atoms.y[0] = double(0.0); f.atoms.z[0] = double(0.0);
+    f.atoms.x[1] = double(1.128); f.atoms.y[1] = double(0.0); f.atoms.z[1] = double(0.0);
+    f.atoms.mass[0] = double(12.011); f.atoms.mass[1] = double(15.999);
     f.atoms.type[0] = 6; f.atoms.type[1] = 8;
     f.box = Mat3::cubic(100.0);
     return f;

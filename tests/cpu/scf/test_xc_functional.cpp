@@ -47,7 +47,7 @@ TEST(XCFunctional, SlaterExchangeFullyPolarized) {
     // E_x[ρ, 0] should be 2^{1/3} times E_x[ρ/2, ρ/2] per electron.
     double rho = 0.5;
     auto closed = evaluate_xc(XCType::LSDA, rho / 2, rho / 2);
-    auto polar  = evaluate_xc(XCType::LSDA, rho, Real(1e-13));
+    auto polar  = evaluate_xc(XCType::LSDA, rho, double(1e-13));
 
     // The fully polarized exchange should be more negative (lower energy)
     // than unpolarized, because 2^{1/3} > 1.
@@ -90,7 +90,7 @@ TEST(XCFunctional, VWN5HighDensityCorrelation) {
 
 TEST(XCFunctional, DensityCutoffReturnsZero) {
     // Below ρ_min = 1e-12, all outputs should be zero.
-    auto out = evaluate_xc(XCType::LSDA, Real(1e-14), Real(1e-14));
+    auto out = evaluate_xc(XCType::LSDA, double(1e-14), double(1e-14));
     EXPECT_EQ(static_cast<double>(out.exc), 0.0);
     EXPECT_EQ(static_cast<double>(out.vrho_alpha), 0.0);
     EXPECT_EQ(static_cast<double>(out.vrho_beta), 0.0);
@@ -98,7 +98,7 @@ TEST(XCFunctional, DensityCutoffReturnsZero) {
 
 TEST(XCFunctional, DensityCutoffNoNaN) {
     // Even at very small densities just above cutoff, no NaN.
-    auto out = evaluate_xc(XCType::LSDA, Real(1e-11), Real(1e-11));
+    auto out = evaluate_xc(XCType::LSDA, double(1e-11), double(1e-11));
     EXPECT_FALSE(std::isnan(static_cast<double>(out.exc)));
     EXPECT_FALSE(std::isnan(static_cast<double>(out.vrho_alpha)));
     EXPECT_FALSE(std::isnan(static_cast<double>(out.vrho_beta)));
@@ -164,7 +164,7 @@ TEST(XCFunctional, NoNaNAtVariousDensities) {
 
 TEST(XCFunctional, FullyPolarizedNoNaN) {
     // ρ_β = 0 (within cutoff) should not cause NaN.
-    auto out = evaluate_xc(XCType::LSDA, 0.5, Real(0));
+    auto out = evaluate_xc(XCType::LSDA, 0.5, double(0));
     EXPECT_FALSE(std::isnan(static_cast<double>(out.exc)));
     EXPECT_FALSE(std::isnan(static_cast<double>(out.vrho_alpha)));
     // vrho_beta for zero beta density: should still be finite

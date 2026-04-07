@@ -21,7 +21,7 @@ class NeighborList : public cpu::ComponentBase {
 public:
     /// @param cutoff Interaction cutoff [Angstrom].
     /// @param skin Verlet skin width [Angstrom]. Negative = auto (0.3 * cutoff).
-    explicit NeighborList(Real cutoff, Real skin = Real(-1))
+    explicit NeighborList(double cutoff, double skin = -1.0)
         : strategy_(cutoff, skin), cutoff_(cutoff) {}
 
     std::string name() const override { return "neighbor_list"; }
@@ -48,7 +48,7 @@ public:
 private:
     Strategy strategy_;
     PairList pairs_;
-    Real cutoff_;
+    double cutoff_;
 };
 
 } // namespace md

@@ -18,7 +18,7 @@ class HarmonicBond : public cpu::ComponentBase {
 public:
     /// @param K Force constants per bond type [eV/Angstrom^2].
     /// @param r0 Equilibrium distances per bond type [Angstrom].
-    HarmonicBond(std::vector<Real> K, std::vector<Real> r0);
+    HarmonicBond(std::vector<double> K, std::vector<double> r0);
 
     std::string name() const override { return "harmonic_bond"; }
     void build(const cpu::BuildContext& ctx) override;
@@ -26,10 +26,10 @@ public:
     void destroy(const cpu::DestroyContext& ctx) override;
 
 private:
-    std::vector<Real> K_, r0_;
+    std::vector<double> K_, r0_;
 
     int n_threads_ = 1;
-    std::vector<std::vector<Real>> fx_thr_, fy_thr_, fz_thr_;
+    std::vector<std::vector<double>> fx_thr_, fy_thr_, fz_thr_;
 };
 
 } // namespace bonded

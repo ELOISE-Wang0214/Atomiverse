@@ -2,13 +2,11 @@
 /// @brief CPU-side RDF accumulation and normalization.
 ///
 /// Called by cuda::RDF after async D2H of pair distances.
-/// The CUDA component owns no histogram logic — it is here.
+/// The CUDA component owns no histogram logic -- it is here.
 #pragma once
 
 #include <string>
 #include <vector>
-
-#include "atomiverse/core/real.h"
 
 namespace ATV {
 namespace cpu {
@@ -21,8 +19,8 @@ namespace cpu {
 /// @param bin_width   Width of each histogram bin [Angstrom].
 /// @param n_bins      Number of bins.
 void rdf_accumulate(std::vector<long long>& histogram,
-                    const Real* h_dist, int n_pairs,
-                    Real bin_width, int n_bins);
+                    const double* h_dist, int n_pairs,
+                    double bin_width, int n_bins);
 
 /// @brief Normalize accumulated histogram and write g(r) to file.
 ///
@@ -39,7 +37,7 @@ void rdf_accumulate(std::vector<long long>& histogram,
 void rdf_write(const std::string& filename,
                const std::vector<long long>& histogram,
                int n_samples, int n_atoms,
-               Real box_vol, Real r_max, int n_bins);
+               double box_vol, double r_max, int n_bins);
 
 } // namespace cpu
 } // namespace ATV

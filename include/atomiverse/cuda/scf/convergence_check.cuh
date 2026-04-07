@@ -29,7 +29,7 @@ public:
     /// @brief Construct convergence checker.
     /// @param tol Frobenius norm tolerance for convergence.
     /// @param compute_energy If true, compute E=dot(H,P) and write to frame.energy.
-    explicit ConvergenceCheck(Real tol, bool compute_energy = true)
+    explicit ConvergenceCheck(double tol, bool compute_energy = true)
         : tol_(tol), compute_energy_(compute_energy) {}
 
     /// @brief Component name.
@@ -54,7 +54,7 @@ public:
     void destroy(const DestroyContext& ctx) override;
 
 private:
-    Real tol_;  ///< Convergence tolerance (Frobenius norm).
+    double tol_;  ///< Convergence tolerance (Frobenius norm).
     bool compute_energy_;  ///< Whether to compute and write energy.
     void* cublas_handle_ = nullptr;  ///< cuBLAS handle.
 };

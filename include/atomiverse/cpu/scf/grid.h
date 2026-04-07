@@ -10,7 +10,6 @@
 #pragma once
 
 #include <vector>
-#include "atomiverse/core/real.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 
 namespace ATV {
@@ -19,8 +18,8 @@ namespace scf {
 
 /// @brief Single quadrature grid point with position and weight.
 struct GridPoint {
-    Real x, y, z;   ///< Position in Bohr.
-    Real weight;     ///< Quadrature weight (includes radial, angular, and Becke partition).
+    double x, y, z;   ///< Position in Bohr.
+    double weight;     ///< Quadrature weight (includes radial, angular, and Becke partition).
 };
 
 /// @brief Molecular integration grid.

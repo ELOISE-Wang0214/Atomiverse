@@ -25,7 +25,7 @@ namespace torch {
 /// @param sigma     LJ collision diameter [Angstrom]. Scalar Tensor, may require grad.
 /// @param cutoff    Interaction cutoff [Angstrom]. Not differentiable.
 /// @return Energy Tensor [1] (for .backward() calls).
-Tensor lj(Frame& frame, const Tensor& epsilon, const Tensor& sigma, Real cutoff);
+Tensor lj(Frame& frame, const Tensor& epsilon, const Tensor& sigma, double cutoff);
 
 } // namespace torch
 } // namespace ATV

@@ -230,35 +230,35 @@ BENCHMARK(BM_ERI_Native);
 #include "atomiverse/cuda/scf/device_integrals.cuh"
 
 struct CudaBasisEnv {
-    Real* d_alpha = nullptr;
-    Real* d_coeff = nullptr;
-    Real* d_centers = nullptr;
-    Int* d_Z = nullptr;
-    Real* d_pos = nullptr;
-    Real* d_S = nullptr;
-    Real* d_T = nullptr;
-    Real* d_V = nullptr;
-    Real* d_ERI = nullptr;
+    double* d_alpha = nullptr;
+    double* d_coeff = nullptr;
+    double* d_centers = nullptr;
+    int* d_Z = nullptr;
+    double* d_pos = nullptr;
+    double* d_S = nullptr;
+    double* d_T = nullptr;
+    double* d_V = nullptr;
+    double* d_ERI = nullptr;
 
     CudaBasisEnv() {
-        Real h_alpha[6], h_coeff[6], h_centers[6], h_pos[6];
-        Int h_Z[2] = {1, 1};
+        double h_alpha[6], h_coeff[6], h_centers[6], h_pos[6];
+        int h_Z[2] = {1, 1};
         double cx[2] = {0, 0.74 * kA2B};
         for (int s = 0; s < 2; ++s) {
             for (int p = 0; p < 3; ++p) {
-                h_alpha[s*3+p] = Real(sto3g_exp[p]);
-                h_coeff[s*3+p] = Real(sto3g_coeff[p] * native::phys_norm(sto3g_exp[p]));
+                h_alpha[s*3+p] = double(sto3g_exp[p]);
+                h_coeff[s*3+p] = double(sto3g_coeff[p] * native::phys_norm(sto3g_exp[p]));
             }
-            h_centers[s*3] = Real(cx[s]); h_centers[s*3+1] = 0; h_centers[s*3+2] = 0;
-            h_pos[s*3] = Real(cx[s]); h_pos[s*3+1] = 0; h_pos[s*3+2] = 0;
+            h_centers[s*3] = double(cx[s]); h_centers[s*3+1] = 0; h_centers[s*3+2] = 0;
+            h_pos[s*3] = double(cx[s]); h_pos[s*3+1] = 0; h_pos[s*3+2] = 0;
         }
-        cudaMalloc(&d_alpha, 6*sizeof(Real)); cudaMemcpy(d_alpha, h_alpha, 6*sizeof(Real), cudaMemcpyHostToDevice);
-        cudaMalloc(&d_coeff, 6*sizeof(Real)); cudaMemcpy(d_coeff, h_coeff, 6*sizeof(Real), cudaMemcpyHostToDevice);
-        cudaMalloc(&d_centers, 6*sizeof(Real)); cudaMemcpy(d_centers, h_centers, 6*sizeof(Real), cudaMemcpyHostToDevice);
-        cudaMalloc(&d_Z, 2*sizeof(Int)); cudaMemcpy(d_Z, h_Z, 2*sizeof(Int), cudaMemcpyHostToDevice);
-        cudaMalloc(&d_pos, 6*sizeof(Real)); cudaMemcpy(d_pos, h_pos, 6*sizeof(Real), cudaMemcpyHostToDevice);
-        cudaMalloc(&d_S, 4*sizeof(Real)); cudaMalloc(&d_T, 4*sizeof(Real)); cudaMalloc(&d_V, 4*sizeof(Real));
-        cudaMalloc(&d_ERI, 16*sizeof(Real));
+        cudaMalloc(&d_alpha, 6*sizeof(double)); cudaMemcpy(d_alpha, h_alpha, 6*sizeof(double), cudaMemcpyHostToDevice);
+        cudaMalloc(&d_coeff, 6*sizeof(double)); cudaMemcpy(d_coeff, h_coeff, 6*sizeof(double), cudaMemcpyHostToDevice);
+        cudaMalloc(&d_centers, 6*sizeof(double)); cudaMemcpy(d_centers, h_centers, 6*sizeof(double), cudaMemcpyHostToDevice);
+        cudaMalloc(&d_Z, 2*sizeof(int)); cudaMemcpy(d_Z, h_Z, 2*sizeof(int), cudaMemcpyHostToDevice);
+        cudaMalloc(&d_pos, 6*sizeof(double)); cudaMemcpy(d_pos, h_pos, 6*sizeof(double), cudaMemcpyHostToDevice);
+        cudaMalloc(&d_S, 4*sizeof(double)); cudaMalloc(&d_T, 4*sizeof(double)); cudaMalloc(&d_V, 4*sizeof(double));
+        cudaMalloc(&d_ERI, 16*sizeof(double));
     }
     ~CudaBasisEnv() {
         cudaFree(d_alpha); cudaFree(d_coeff); cudaFree(d_centers);
@@ -296,9 +296,9 @@ BENCHMARK(BM_ERI_CUDA_Kernel);
 
 static cpu::Frame make_h2() {
     cpu::Frame frame(2);
-    frame.atoms.x[0] = Real(0);     frame.atoms.y[0] = Real(0); frame.atoms.z[0] = Real(0);
-    frame.atoms.x[1] = Real(0.74);  frame.atoms.y[1] = Real(0); frame.atoms.z[1] = Real(0);
-    frame.atoms.mass[0] = Real(1.008); frame.atoms.mass[1] = Real(1.008);
+    frame.atoms.x[0] = double(0);     frame.atoms.y[0] = double(0); frame.atoms.z[0] = double(0);
+    frame.atoms.x[1] = double(0.74);  frame.atoms.y[1] = double(0); frame.atoms.z[1] = double(0);
+    frame.atoms.mass[0] = double(1.008); frame.atoms.mass[1] = double(1.008);
     frame.atoms.type[0] = 1; frame.atoms.type[1] = 1;
     frame.box = Mat3::cubic(100.0);
     return frame;
@@ -323,7 +323,7 @@ BENCHMARK(BM_FullBuild_Native)->Unit(benchmark::kMicrosecond);
 static void BM_CPURHFSolve(benchmark::State& state) {
     auto frame = make_h2();
     auto integrals = build_integrals_sto3g(frame);
-    Real tol = (sizeof(Real) == sizeof(float)) ? Real(1e-5) : Real(1e-10);
+    double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     for (auto _ : state) {
         auto result = cpu::scf::rhf_solve(integrals, tol, 100);
         benchmark::DoNotOptimize(result.energy);
@@ -334,7 +334,7 @@ BENCHMARK(BM_CPURHFSolve)->Unit(benchmark::kMicrosecond);
 static void BM_CUDARHFSolve(benchmark::State& state) {
     auto frame = make_h2();
     auto integrals = build_integrals_sto3g(frame);
-    Real tol = (sizeof(Real) == sizeof(float)) ? Real(1e-5) : Real(1e-10);
+    double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     for (auto _ : state) {
         // Includes materialize + solve + retrieve (full Driver lifecycle)
         scf::SCF solver;
@@ -353,9 +353,9 @@ BENCHMARK(BM_CUDARHFSolve)->Unit(benchmark::kMicrosecond);
 
 static cpu::Frame make_lih() {
     cpu::Frame frame(2);
-    frame.atoms.x[0] = Real(0);     frame.atoms.y[0] = Real(0); frame.atoms.z[0] = Real(0);
-    frame.atoms.x[1] = Real(1.595); frame.atoms.y[1] = Real(0); frame.atoms.z[1] = Real(0);
-    frame.atoms.mass[0] = Real(6.941); frame.atoms.mass[1] = Real(1.008);
+    frame.atoms.x[0] = double(0);     frame.atoms.y[0] = double(0); frame.atoms.z[0] = double(0);
+    frame.atoms.x[1] = double(1.595); frame.atoms.y[1] = double(0); frame.atoms.z[1] = double(0);
+    frame.atoms.mass[0] = double(6.941); frame.atoms.mass[1] = double(1.008);
     frame.atoms.type[0] = 3; frame.atoms.type[1] = 1;
     frame.box = Mat3::cubic(100.0);
     return frame;
@@ -364,7 +364,7 @@ static cpu::Frame make_lih() {
 static void BM_CPURHFSolve_LiH(benchmark::State& state) {
     auto frame = make_lih();
     auto integrals = build_integrals_sto3g(frame);
-    Real tol = (sizeof(Real) == sizeof(float)) ? Real(1e-5) : Real(1e-10);
+    double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     for (auto _ : state) {
         auto result = cpu::scf::rhf_solve(integrals, tol, 100);
         benchmark::DoNotOptimize(result.energy);
@@ -375,7 +375,7 @@ BENCHMARK(BM_CPURHFSolve_LiH)->Unit(benchmark::kMicrosecond);
 static void BM_CUDARHFSolve_LiH(benchmark::State& state) {
     auto frame = make_lih();
     auto integrals = build_integrals_sto3g(frame);
-    Real tol = (sizeof(Real) == sizeof(float)) ? Real(1e-5) : Real(1e-10);
+    double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     for (auto _ : state) {
         scf::SCF solver;
         solver.add(scf::RHFFock{integrals});

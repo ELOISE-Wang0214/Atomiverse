@@ -5,8 +5,14 @@
 #include "cublas_dispatch.cuh"
 
 #include <cuda_runtime.h>
+#include "atomiverse/cuda/types.cuh"
 
 namespace ATV {
+
+using cuda::real_t;
+using cuda::work_t;
+using cuda::prec_t;
+
 namespace scf {
 
 void DensityBuilder::build(const BuildContext& ctx) {
@@ -24,17 +30,17 @@ void DensityBuilder::launch(const LaunchContext& ctx) {
 
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto handle = static_cast<cublasHandle_t>(cublas_handle_);
-    Int n = scf.n;
-    Int n_occ = scf.n_occ;
+    int n = scf.n;
+    int n_occ = scf.n_occ;
 
     // Save P -> P_old
-    cudaMemcpyAsync(scf.P_old, scf.P, n * n * sizeof(Real),
+    cudaMemcpyAsync(scf.P_old, scf.P, n * n * sizeof(work_t),
                     cudaMemcpyDeviceToDevice, stream);
 
     // P = C_occ * C_occ^T  (gemm: C * C^T, using first n_occ columns)
     // C is n x n column-major. C_occ = C[:, 0:n_occ] = first n_occ*n elements.
-    Real one = Real(1);
-    Real zero = Real(0);
+    work_t one = work_t(1);
+    work_t zero = work_t(0);
     detail::gemm(handle, CUBLAS_OP_N, CUBLAS_OP_T,
                  n, n, n_occ,
                  &one, scf.C, n, scf.C, n,

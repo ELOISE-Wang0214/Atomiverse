@@ -19,7 +19,7 @@ namespace torch {
 
 // ── NeighborList class ─────────────────────────────────────────────────
 
-NeighborList::NeighborList(Real cutoff, Real skin)
+NeighborList::NeighborList(double cutoff, double skin)
     : cutoff_(cutoff), skin_(skin) {}
 
 NeighborList::~NeighborList() {
@@ -68,15 +68,15 @@ void NeighborList::update(Frame& frame) {
     // (the cuda::Frame owns its own cudaMalloc memory)
     cudaStream_t stream = static_cast<cudaStream_t>(ctx_.stream);
 
-    Int n = frame.n_atoms();
-    cudaMemcpyAsync(cframe_.atoms.x, frame.atoms.x.data_ptr<Real>(), n * sizeof(Real),
+    int n = frame.n_atoms();
+    cudaMemcpyAsync(cframe_.atoms.x, frame.atoms.x.data_ptr<cuda::real_t>(), n * sizeof(cuda::real_t),
                     cudaMemcpyDeviceToDevice, stream);
-    cudaMemcpyAsync(cframe_.atoms.y, frame.atoms.y.data_ptr<Real>(), n * sizeof(Real),
+    cudaMemcpyAsync(cframe_.atoms.y, frame.atoms.y.data_ptr<cuda::real_t>(), n * sizeof(cuda::real_t),
                     cudaMemcpyDeviceToDevice, stream);
-    cudaMemcpyAsync(cframe_.atoms.z, frame.atoms.z.data_ptr<Real>(), n * sizeof(Real),
+    cudaMemcpyAsync(cframe_.atoms.z, frame.atoms.z.data_ptr<cuda::real_t>(), n * sizeof(cuda::real_t),
                     cudaMemcpyDeviceToDevice, stream);
     if (frame.box.defined() && cframe_.box) {
-        cudaMemcpyAsync(cframe_.box, frame.box.data_ptr<Real>(), 9 * sizeof(Real),
+        cudaMemcpyAsync(cframe_.box, frame.box.data_ptr<cuda::prec_t>(), 9 * sizeof(cuda::prec_t),
                         cudaMemcpyDeviceToDevice, stream);
     }
 
@@ -87,10 +87,10 @@ void NeighborList::update(Frame& frame) {
     cudaStreamSynchronize(stream);
 
     // Read n_pairs from device
-    Int h_n_pairs = 0;
+    int h_n_pairs = 0;
     if (cframe_.pairs.n_pairs) {
         cudaMemcpy(&h_n_pairs, cframe_.pairs.n_pairs,
-                   sizeof(Int), cudaMemcpyDeviceToHost);
+                   sizeof(int), cudaMemcpyDeviceToHost);
     }
     frame.n_pairs_ = h_n_pairs;
 
@@ -118,7 +118,7 @@ void NeighborList::update(Frame& frame) {
 
 // ── Convenience free function ──────────────────────────────────────────
 
-void neighbor_list(Frame& frame, Real cutoff, Real skin) {
+void neighbor_list(Frame& frame, double cutoff, double skin) {
     NeighborList nl(cutoff, skin);
     nl.build(frame);
     nl.update(frame);

@@ -2,20 +2,17 @@
 /// @brief Electron density grid evaluation on the CPU (STO-3G basis).
 ///
 /// Called by cuda::DensityRecorder after async D2H of the density matrix P.
-/// The CUDA component owns no computation — it lives here.
+/// The CUDA component owns no computation -- it lives here.
 ///
 /// @see cuda::DensityRecorder (cuda/recorder/density_recorder.cuh)
 #pragma once
 
 #include <vector>
 
-#include "atomiverse/core/int.h"
-#include "atomiverse/core/real.h"
-
 namespace ATV {
 namespace cpu {
 
-// ── Result type ───────────────────────────────────────────────────────────────
+// -- Result type ---------------------------------------------------------------
 
 /// @brief Uniform real-space grid of electron density rho(r).
 ///
@@ -30,7 +27,7 @@ struct DensityGrid {
     bool empty() const { return rho.empty(); }
 };
 
-// ── Free function ─────────────────────────────────────────────────────────────
+// -- Free function -------------------------------------------------------------
 
 /// @brief Evaluate RHF electron density on a uniform grid (STO-3G, H/He/Li only).
 ///
@@ -52,14 +49,14 @@ struct DensityGrid {
 /// @param padding   Extra padding around atom bounds [Angstrom].
 /// @return Populated DensityGrid, or empty on failure.
 DensityGrid eval_density_grid(
-    const std::vector<Int>&  type_id,
-    const std::vector<Real>& x,
-    const std::vector<Real>& y,
-    const std::vector<Real>& z,
-    const Real*  P,
-    Int          n_basis,
+    const std::vector<int>&  type_id,
+    const std::vector<double>& x,
+    const std::vector<double>& y,
+    const std::vector<double>& z,
+    const double*  P,
+    int          n_basis,
     int nx, int ny, int nz,
-    Real padding);
+    double padding);
 
 } // namespace cpu
 } // namespace ATV

@@ -10,12 +10,12 @@ using namespace ATV;
 
 namespace {
 
-__global__ void add_one_k(Real* fx, Real* fy, Real* fz, const Int* n_ptr) {
-    Int idx = blockIdx.x * blockDim.x + threadIdx.x;
+__global__ void add_one_k(double* fx, double* fy, double* fz, const int* n_ptr) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < *n_ptr) {
-        atomicAdd(&fx[idx], Real(1));
-        atomicAdd(&fy[idx], Real(1));
-        atomicAdd(&fz[idx], Real(1));
+        atomicAdd(&fx[idx], double(1));
+        atomicAdd(&fy[idx], double(1));
+        atomicAdd(&fz[idx], double(1));
     }
 }
 
@@ -33,9 +33,9 @@ public:
     }
 };
 
-__global__ void double_vel_k(Real* vx, const Int* n_ptr) {
-    Int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < *n_ptr) vx[idx] *= Real(2);
+__global__ void double_vel_k(double* vx, const int* n_ptr) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < *n_ptr) vx[idx] *= double(2);
 }
 
 class DoubleVel : public ComponentBase {
@@ -70,7 +70,7 @@ public:
 
 TEST(Backend, KernelDispatch) {
     cpu::Frame frame(32);
-    frame.atoms.mass.fill(Real(1.0));
+    frame.atoms.mass.fill(double(1.0));
     frame.box = Mat3::cubic(10.0);
 
     Backend backend;
@@ -101,8 +101,8 @@ TEST(Backend, KernelDispatch) {
 
 TEST(Backend, BlockingDeferrable) {
     cpu::Frame frame(32);
-    frame.atoms.mass.fill(Real(1.0));
-    frame.atoms.vx.fill(Real(1.0));
+    frame.atoms.mass.fill(double(1.0));
+    frame.atoms.vx.fill(double(1.0));
     frame.box = Mat3::cubic(10.0);
 
     Backend backend;
@@ -140,8 +140,8 @@ TEST(Backend, BlockingDeferrable) {
 
 TEST(Backend, ConditionalExecution) {
     cpu::Frame frame(32);
-    frame.atoms.mass.fill(Real(1.0));
-    frame.atoms.vx.fill(Real(1.0));
+    frame.atoms.mass.fill(double(1.0));
+    frame.atoms.vx.fill(double(1.0));
     frame.box = Mat3::cubic(10.0);
 
     Backend backend;

@@ -151,3 +151,11 @@ cython_debug/
 
 # LSP config files
 pyrightconfig.json
+
+# example outputs
+*.cube
+*.png
+*.xyz
+
+# Claude agent
+.claude/worktrees/**

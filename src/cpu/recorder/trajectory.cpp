@@ -9,14 +9,14 @@ namespace ATV {
 namespace cpu {
 
 void trajectory_append(std::ofstream& os,
-                       const Int* type_id,
-                       const Real* x, const Real* y, const Real* z,
-                       Int n_atoms, int step)
+                       const int* type_id,
+                       const double* x, const double* y, const double* z,
+                       int n_atoms, int step)
 {
     os << n_atoms << "\n";
     os << "Step " << step << "\n";
     os << std::fixed << std::setprecision(6);
-    for (Int i = 0; i < n_atoms; ++i) {
+    for (int i = 0; i < n_atoms; ++i) {
         os << type_id[i] << " "
            << x[i] << " " << y[i] << " " << z[i] << "\n";
     }
