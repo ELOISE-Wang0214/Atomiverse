@@ -11,14 +11,16 @@
 #include "atomiverse/cpu/scf/basis_eval.h"
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
+#include "atomiverse/core/log.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/core/constants.h"
 
-#include <xtensor/xview.hpp>
-#include <xtensor/xio.hpp>
+#include <xtensor/views/xview.hpp>
+#include <xtensor/io/xio.hpp>
 #include <xtensor-blas/xlinalg.hpp>
 #include <cmath>
 #include <functional>
+#include <utility>
 
 namespace ATV {
 namespace cpu {
@@ -26,15 +28,33 @@ namespace scf {
 
 // ── Shared helpers ───────────────────────────────────────────────────
 
+static std::pair<double, double> gradient_metrics(const xt::xtensor<double, 2>& grad)
+{
+    const int natm = static_cast<int>(grad.shape()[0]);
+    double max_abs = 0.0;
+    double max_atom_norm = 0.0;
+    for (int A = 0; A < natm; ++A) {
+        double atom_norm2 = 0.0;
+        for (int d = 0; d < 3; ++d) {
+            const double v = grad(A, d);
+            max_abs = std::max(max_abs, std::abs(v));
+            atom_norm2 += v * v;
+        }
+        max_atom_norm = std::max(max_atom_norm, std::sqrt(atom_norm2));
+    }
+    return {max_abs, max_atom_norm};
+}
+
 static void accumulate_W(
     xt::xtensor<double, 2>& W,
     const xt::xtensor<double, 2>& C,
     const xt::xtensor<double, 1>& eigenvalues,
-    int n_occ, int n_basis)
+    int n_occ, int /*n_basis*/)
 {
+    // W += Σ_i ε_i · c_i · c_i^T   (energy-weighted density matrix)
     for (int i = 0; i < n_occ; ++i)
-        for (int mu = 0; mu < n_basis; ++mu)
-            for (int nu = 0; nu < n_basis; ++nu)
+        for (int mu = 0; mu < static_cast<int>(C.shape()[0]); ++mu)
+            for (int nu = 0; nu < static_cast<int>(C.shape()[0]); ++nu)
                 W(mu, nu) += eigenvalues(i) * C(mu, i) * C(nu, i);
 }
 
@@ -43,16 +63,16 @@ static void accumulate_common_gradient(
     const xt::xtensor<double, 2>& P,
     const xt::xtensor<double, 2>& W,
     const IntegralDerivPack& dpack,
-    int n_basis, int natm)
+    int /*n_basis*/, int natm)
 {
+    // grad(A,d) = Tr[P · (dT + dV)] − Tr[W · dS] + dV_nuc
+    // Each (A, d) slice of dpack.dT/dV/dS is an [n×n] matrix.
     for (int A = 0; A < natm; ++A) {
         for (int d = 0; d < 3; ++d) {
-            double val = 0;
-            for (int mu = 0; mu < n_basis; ++mu)
-                for (int nu = 0; nu < n_basis; ++nu) {
-                    val += P(mu, nu) * (dpack.dT(A, d, mu, nu) + dpack.dV(A, d, mu, nu));
-                    val -= W(mu, nu) * dpack.dS(A, d, mu, nu);
-                }
+            auto dH = xt::view(dpack.dT, A, d, xt::all(), xt::all())
+                     + xt::view(dpack.dV, A, d, xt::all(), xt::all());
+            auto dS = xt::view(dpack.dS, A, d, xt::all(), xt::all());
+            double val = xt::sum(P * dH)() - xt::sum(W * dS)();
             val += dpack.dV_nuc(A, d);
             grad(A, d) += val;
         }
@@ -228,32 +248,32 @@ static void accumulate_xc_gradient(
                     double w = w_arr(g);
                     double vsa = vsigma_aa_arr(g), vsab = vsigma_ab_arr(g), vsb = vsigma_bb_arr(g);
 
+                    // grad_rho_a(g,i) = 2*sum_{mu,nu} Phi(g,mu)*Pa(mu,nu)*dPhi(g,nu,i)
+                    // d(grad_rho_a(g,i))/dR_{A,d} has exactly 2 terms:
+                    //   Term1 (dPhi_mu/dR_A): 2*sum_{mu in A, nu} Pa(mu,nu)*(-dPhi(g,mu,d))*dPhi(g,nu,i)
+                    //   Term2 (dHess_nu/dR_A): 2*sum_{nu in A, mu} Pa(mu,nu)*Phi(g,mu)*(-Hess(g,nu,d*i))
                     double dgrad_rho_a[3] = {0,0,0}, dgrad_rho_b[3] = {0,0,0};
 
+                    // Term1: derivative of the Phi(mu) factor when mu is on atom A
                     for (int mu : shells_A) {
-                        double dphi_mu_d = dPhi(g, mu, dd);
+                        double neg_dphi_mu_d = -dPhi(g, mu, dd);
                         for (int nu = 0; nu < N; ++nu) {
                             double pa = Pa(mu, nu), pb = Pb(mu, nu);
                             for (int i = 0; i < 3; ++i) {
-                                double h_mu_di = Hess(g, mu, dd*3 + i);
-                                double contrib = (-h_mu_di) * Phi(g, nu)
-                                               + (-dphi_mu_d) * dPhi(g, nu, i);
-                                dgrad_rho_a[i] += pa * contrib;
-                                dgrad_rho_b[i] += pb * contrib;
+                                dgrad_rho_a[i] += 2.0 * pa * neg_dphi_mu_d * dPhi(g, nu, i);
+                                dgrad_rho_b[i] += 2.0 * pb * neg_dphi_mu_d * dPhi(g, nu, i);
                             }
                         }
                     }
+                    // Term2: derivative of the dPhi(nu)/dr_i factor when nu is on atom A
                     for (int nu : shells_A) {
-                        double dphi_nu_d = dPhi(g, nu, dd);
                         for (int mu = 0; mu < N; ++mu) {
-                            if (shell_to_atom[mu] == A) continue;
                             double pa = Pa(mu, nu), pb = Pb(mu, nu);
+                            double phi_mu = Phi(g, mu);
                             for (int i = 0; i < 3; ++i) {
-                                double h_nu_di = Hess(g, nu, dd*3 + i);
-                                double contrib = Phi(g, mu) * (-h_nu_di)
-                                               + dPhi(g, mu, i) * (-dphi_nu_d);
-                                dgrad_rho_a[i] += pa * contrib;
-                                dgrad_rho_b[i] += pb * contrib;
+                                double neg_h_nu_di = -Hess(g, nu, dd*3 + i);
+                                dgrad_rho_a[i] += 2.0 * pa * phi_mu * neg_h_nu_di;
+                                dgrad_rho_b[i] += 2.0 * pb * phi_mu * neg_h_nu_di;
                             }
                         }
                     }
@@ -268,7 +288,6 @@ static void accumulate_xc_gradient(
                     xc_grad += w * (vsa * dsigma_aa + vsab * dsigma_ab + vsb * dsigma_bb);
                 }
             }
-
             grad_out(A, dd) += static_cast<double>(xc_grad);
         }
     }
@@ -282,12 +301,21 @@ GradientResult scf_gradient(
     const SCFResult& result,
     const SCFConfig& config)
 {
+    const auto t_total = LogClock::now();
     int natm = static_cast<int>(frame.atoms.size());
     int n = integrals.n_basis;
     bool is_ks = (config.method == MeanFieldType::KS);
     bool restricted = (config.spin == SpinType::Restricted);
+    const char* method_label = is_ks ? "KS" : "HF";
+    const char* spin_label = restricted ? "restricted" : "unrestricted";
 
+    ATV_INFO(
+        "[gradient] start method={} spin={} natm={} basis={}",
+        method_label, spin_label, natm, n);
+
+    const auto t_dpack = LogClock::now();
     auto dpack = build_integral_derivatives_sto3g(frame);
+    ATV_DEBUG("[gradient] derivative_pack_ms={:.1f}", elapsed_ms(t_dpack));
 
     // Restricted: P_alpha IS P_total (factor 2 included in scf_solve)
     // Unrestricted: P_total = P_alpha + P_beta (per-spin)
@@ -301,41 +329,34 @@ GradientResult scf_gradient(
 
     xt::xtensor<double, 2> grad = xt::zeros<double>({(int)natm, (int)3});
 
-    accumulate_common_gradient(grad, P, W, dpack, n, natm);
+    const auto t_common = LogClock::now();
+    xt::xtensor<double, 2> grad_common = xt::zeros<double>({(int)natm, (int)3});
+    accumulate_common_gradient(grad_common, P, W, dpack, n, natm);
+    grad += grad_common;
+    const auto [common_max_abs, common_max_atom_norm] = gradient_metrics(grad_common);
+    ATV_DEBUG(
+        "[gradient] common_terms_ms={:.1f}",
+        elapsed_ms(t_common));
+    ATV_INFO(
+        "[gradient] common_terms max_abs_hb={:.6f} max_atom_norm_hb={:.6f}",
+        common_max_abs, common_max_atom_norm);
 
-    // Two-electron term: dispatch based on method + spin
-    // RHF uses a fused Coulomb-exchange formula with matching index patterns;
-    // UHF separates Coulomb and per-spin exchange with different index patterns.
-    // These are NOT equivalent for restricted P_alpha = P_beta = P/2.
-    bool is_restricted_hf = (!is_ks && config.spin == SpinType::Restricted);
-
-    for (int A = 0; A < natm; ++A)
-        for (int d = 0; d < 3; ++d)
-            for (int mu = 0; mu < n; ++mu)
-                for (int nu = 0; nu < n; ++nu)
-                    for (int k = 0; k < n; ++k)
-                        for (int l = 0; l < n; ++l) {
-                            if (is_restricted_hf) {
-                                // RHF fused: 0.5*P*P*[dERI_coulomb - 0.5*dERI_exchange]
-                                grad(A, d) += 0.5 * P(mu, nu) * P(k, l)
-                                     * (dpack.dERI(A, d, mu, nu, k, l)
-                                        - 0.5 * dpack.dERI(A, d, mu, k, nu, l));
-                            } else if (is_ks) {
-                                // KS: Coulomb only
-                                grad(A, d) += 0.5 * P(mu, nu) * P(k, l)
-                                     * dpack.dERI(A, d, mu, nu, k, l);
-                            } else {
-                                // UHF: separate Coulomb + per-spin exchange
-                                grad(A, d) += 0.5 * P(mu, nu) * P(k, l)
-                                     * dpack.dERI(A, d, mu, nu, k, l);
-                                grad(A, d) -= 0.5 * (result.P_alpha(mu, k) * result.P_alpha(nu, l)
-                                            + result.P_beta(mu, k) * result.P_beta(nu, l))
-                                     * dpack.dERI(A, d, mu, k, nu, l);
-                            }
-                        }
+    // Two-electron term: contracted on the fly to avoid materializing dERI.
+    const auto t_two_e = LogClock::now();
+    xt::xtensor<double, 2> grad_two_e = xt::zeros<double>({(int)natm, (int)3});
+    accumulate_two_electron_gradient_sto3g(grad_two_e, frame, integrals, P, result, config);
+    grad += grad_two_e;
+    const auto [two_e_max_abs, two_e_max_atom_norm] = gradient_metrics(grad_two_e);
+    ATV_DEBUG(
+        "[gradient] two_e_ms={:.1f}",
+        elapsed_ms(t_two_e));
+    ATV_INFO(
+        "[gradient] two_e_terms max_abs_hb={:.6f} max_atom_norm_hb={:.6f}",
+        two_e_max_abs, two_e_max_atom_norm);
 
     // XC grid contribution (KS only)
     if (is_ks) {
+        const auto t_xc = LogClock::now();
         std::vector<int> shell_to_atom(n);
         std::vector<std::vector<int>> atom_shells(natm);
         {
@@ -355,11 +376,30 @@ GradientResult scf_gradient(
                 idx += static_cast<int>(atom_shells[a].size());
             }
         }
-        accumulate_xc_gradient(grad, integrals, result, config,
+        xt::xtensor<double, 2> grad_xc = xt::zeros<double>({(int)natm, (int)3});
+        accumulate_xc_gradient(grad_xc, integrals, result, config,
                                shell_to_atom, atom_shells, natm, n);
+        grad += grad_xc;
+        const auto [xc_max_abs, xc_max_atom_norm] = gradient_metrics(grad_xc);
+        ATV_DEBUG(
+            "[gradient] xc_ms={:.1f}",
+            elapsed_ms(t_xc));
+        ATV_INFO(
+            "[gradient] xc_terms max_abs_hb={:.6f} max_atom_norm_hb={:.6f}",
+            xc_max_abs, xc_max_atom_norm);
     }
 
-    return make_result(grad, result.energy, natm);
+    auto out = make_result(grad, result.energy, natm);
+    double max_force = 0.0;
+    for (int A = 0; A < natm; ++A)
+        for (int d = 0; d < 3; ++d)
+            max_force = std::max(max_force, std::abs(out.forces(A, d)));
+
+    ATV_INFO(
+        "[gradient] done total_ms={:.1f} energy_eV={:.6f} max_force_component_eVA={:.6f}",
+        elapsed_ms(t_total), out.energy, max_force);
+
+    return out;
 }
 
 // ── Finite-difference gradient ───────────────────────────────────────

@@ -18,16 +18,18 @@
 #include "atomiverse/cpu/scf/scf_solve.h"
 #include "atomiverse/cpu/scf/scf_utils.h"
 #include "atomiverse/cpu/scf/operators.h"
+#include "atomiverse/cpu/scf/shell_pair.h"
 #include "atomiverse/cpu/scf/diis.h"
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/xc_grid_engine.h"
+#include "atomiverse/core/log.h"
 
 #include <cmath>
 #include <algorithm>
 #include <vector>
 
-#include <xtensor/xnorm.hpp>
-#include <xtensor/xview.hpp>
+#include <xtensor/reducers/xnorm.hpp>
+#include <xtensor/views/xview.hpp>
 #include <xtensor-blas/xlinalg.hpp>
 
 namespace ATV {
@@ -36,7 +38,9 @@ namespace scf {
 
 // ── Unified SCF solver ──────────────────────────────────────────────���───
 
-SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config) {
+SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config,
+                    const SCFInitialGuess* guess) {
+    const auto t_total = LogClock::now();
     int n = integrals.n_basis;
     RealMatrix S_cm     = integrals.S;
     RealMatrix Hcore_cm = integrals.Hcore;
@@ -45,6 +49,22 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config) {
     bool is_hf       = (config.method == MeanFieldType::HF);
     int n_alpha      = config.n_alpha;
     int n_beta       = config.n_beta;
+    const char* method_label = is_hf ? "HF" : "KS";
+    const char* spin_label = restricted ? "restricted" : "unrestricted";
+
+    ATV_INFO(
+        "[scf] start method={} spin={} basis={} n_alpha={} n_beta={} tol={:.1e} max_iter={}",
+        method_label, spin_label, n, n_alpha, n_beta, config.tol, config.max_iter);
+
+    // ── 0. Build shell pair lists for direct SCF (once per call, reused across iters) ──
+    // Shell-block list (libcint/PySCF approach): amortizes Boys+R-table over
+    // all angular combinations per primitive quartet.  Used for RHF G-build.
+    ShellBlockPairList sp_block;
+    ShellPairList sp;  // AO-level list kept for UHF/UKS paths
+    if (!integrals.shells.empty()) {
+        sp_block = build_shell_block_pair_list(integrals);
+        sp = build_shell_pair_list(integrals);
+    }
 
     // ── 1. Orthogonalization ────────────────────────────────────────────
     RealMatrix X = build_orthogonalization_matrix(S_cm);
@@ -52,16 +72,40 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config) {
     // ── 2. Grid for KS methods ──────────────────────────────────────────
     MolecularGrid grid;
     if (!is_hf && !integrals.atoms.empty()) {
+        const auto t_grid = LogClock::now();
+        ATV_INFO(
+            "[scf] grid build start natm={} radial={} angular={}",
+            integrals.atoms.size(), config.n_radial, config.n_angular);
         grid = build_molecular_grid(integrals.atoms.data(),
                                     static_cast<int>(integrals.atoms.size()),
                                     config.n_radial, config.n_angular);
+        ATV_INFO(
+            "[scf] grid build done points={} ms={:.1f}",
+            grid.points.size(), elapsed_ms(t_grid));
     }
 
     // ── 3. Initial guess ────────────────────────────────────────────────
     auto [eig0, C0] = diagonalize_fock(Hcore_cm, X);
 
     RealMatrix P_alpha, P_beta;
-    if (restricted) {
+    const bool valid_guess_alpha = guess && guess->has_alpha
+        && guess->P_alpha.dimension() == 2
+        && static_cast<int>(guess->P_alpha.shape()[0]) == n
+        && static_cast<int>(guess->P_alpha.shape()[1]) == n;
+    const bool valid_guess_beta = guess && guess->has_beta
+        && guess->P_beta.dimension() == 2
+        && static_cast<int>(guess->P_beta.shape()[0]) == n
+        && static_cast<int>(guess->P_beta.shape()[1]) == n;
+
+    if (restricted && valid_guess_alpha) {
+        P_alpha = 0.5 * (guess->P_alpha + xt::transpose(guess->P_alpha));
+        P_beta = P_alpha;
+        ATV_INFO("[scf] initial guess source=density_history restricted=true");
+    } else if (!restricted && valid_guess_alpha && valid_guess_beta) {
+        P_alpha = 0.5 * (guess->P_alpha + xt::transpose(guess->P_alpha));
+        P_beta = 0.5 * (guess->P_beta + xt::transpose(guess->P_beta));
+        ATV_INFO("[scf] initial guess source=density_history restricted=false");
+    } else if (restricted) {
         // RHF: P = 2 * C_occ * C_occ^T
         P_alpha = build_density_matrix(C0, n_alpha, n, double(2));
         P_beta  = P_alpha;  // alias — not used independently
@@ -95,6 +139,7 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config) {
 
     // ── 5. SCF loop ─────────────────────────────────────────────────────
     for (int iter = 0; iter < config.max_iter; ++iter) {
+        const auto t_iter = LogClock::now();
 
         // ── 5a. Build Fock matrices (method-dependent) ──────────────────
         RealMatrix F_alpha, F_beta;
@@ -103,24 +148,30 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config) {
         double int_n_alpha = 0, int_n_beta = 0;
 
         if (restricted && is_hf) {
-            // RHF: fused G = J - 0.5K
+            // RHF: PySCF approach — store ERI once, then BLAS contraction.
+            // For aspirin STO-3G (73 AOs) the ERI tensor is ~28 MB, fits in
+            // L3 cache. Each iteration does one DGEMV instead of 459K shell
+            // quartets.  Falls back to direct SCF when ERI is not stored
+            // (large systems where n^4 doesn't fit in memory).
             RealMatrix G;
-            build_coulomb_exchange_fused(P_alpha, integrals.ERI, n, G);
+            if (integrals.ERI.size() > 0) {
+                build_coulomb_exchange_fused(P_alpha, integrals.ERI, n, G);
+            } else {
+                build_g_rhf_direct_block(sp_block, P_alpha, G);
+            }
             F_alpha = Hcore_cm + G;
-            F_beta  = F_alpha;  // same for restricted
+            F_beta  = F_alpha;
         } else if (!restricted && is_hf) {
-            // UHF: separate J and K per spin
+            // UHF: J, K_alpha, K_beta from one direct-SCF ERI pass
             RealMatrix P_total = P_alpha + P_beta;
             RealMatrix K_alpha, K_beta;
-            build_coulomb(P_total, integrals.ERI, n, J);
-            build_exchange(P_alpha, integrals.ERI, n, K_alpha);
-            build_exchange(P_beta,  integrals.ERI, n, K_beta);
+            build_jk_uhf_direct(sp, P_total, P_alpha, P_beta, J, K_alpha, K_beta);
             F_alpha = Hcore_cm + J - K_alpha;
             F_beta  = Hcore_cm + J - K_beta;
         } else {
-            // UKS: J + V_xc from grid
+            // UKS: Coulomb J via direct SCF; exchange handled by XC functional
             RealMatrix P_total = P_alpha + P_beta;
-            build_coulomb(P_total, integrals.ERI, n, J);
+            build_j_direct(sp, P_total, J);
             auto xc_result = evaluate_xc_batched(grid, integrals.shells, n,
                                                   P_alpha, P_beta, config.xc_type);
             F_alpha = Hcore_cm + J + xc_result.Vxc_alpha;
@@ -242,8 +293,15 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config) {
         result.integrated_n_beta  = int_n_beta;
         result.trace.push_back({iter + 1, E_total, residual, diis_active});
 
+        ATV_DEBUG(
+            "[scf] iter={} energy_ha={:.10f} residual={:.3e} diis={} iter_ms={:.1f}",
+            iter + 1, E_total, residual, diis_active, elapsed_ms(t_iter));
+
         if (iter > 0 && residual < config.tol) {
             result.converged = true;
+            ATV_INFO(
+                "[scf] converged iter={} energy_ha={:.10f} residual={:.3e}",
+                iter + 1, E_total, residual);
             break;
         }
     }
@@ -253,6 +311,17 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config) {
         result.spin_contamination = compute_spin_contamination(
             result.C_alpha, result.C_beta, S_cm, n_alpha, n_beta);
     }
+
+    if (!result.converged) {
+        ATV_WARN(
+            "[scf] not converged method={} spin={} iterations={} energy_ha={:.10f} residual={:.3e}",
+            method_label, spin_label, result.iterations, result.energy, result.residual);
+    }
+
+    ATV_INFO(
+        "[scf] done method={} spin={} converged={} iterations={} energy_ha={:.10f} residual={:.3e} total_ms={:.1f}",
+        method_label, spin_label, result.converged, result.iterations,
+        result.energy, result.residual, elapsed_ms(t_total));
 
     return result;
 }

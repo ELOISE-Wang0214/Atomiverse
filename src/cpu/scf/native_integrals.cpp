@@ -8,9 +8,11 @@
 /// Validated element-by-element against libcint in test_native_integrals.cu.
 
 #include "atomiverse/cpu/scf/native_integrals.h"
+#include "atomiverse/cpu/scf/rys_eri.h"
 #include "atomiverse/core/gto.h"
 
 #include <cmath>
+#include <xsimd/xsimd.hpp>
 
 namespace ATV {
 namespace cpu {
@@ -1166,6 +1168,485 @@ double eri_prim(const int a_ang[3], const int b_ang[3],
     }
 
     return prefactor * eri_val;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Shell-block ERI — shell-type dispatch (libcint/PySCF strategy)
+//
+// Public entry: eri_block() dispatches by (A.l<<3)|(B.l<<2)|(C.l<<1)|D.l.
+// Each specialization has compile-time Ltot → the Boys recurrence and
+// R-table loops are fixed-bound and compiler-unrollable.
+// eri_blk_ss_ss uses xsimd to vectorize the ket primitive loop.
+// ═══════════════════════════════════════════════════════════════════════
+
+/// @brief Cartesian angular momentum exponents for all functions in a shell.
+/// ang_table[l][func][dir]: angular quantum number in direction `dir`
+///   for function index `func` in a shell with angular momentum `l`.
+///   l=0: only func=0 → (0,0,0).
+///   l=1: func=0=px → (1,0,0), func=1=py → (0,1,0), func=2=pz → (0,0,1).
+static const int ang_table[2][3][3] = {
+    {{0,0,0}, {0,0,0}, {0,0,0}},   // l=0 (only func 0 used)
+    {{1,0,0}, {0,1,0}, {0,0,1}}    // l=1: px, py, pz
+};
+
+/// @brief Compute Boys functions F_0 .. F_{n_max} in one call.
+/// Uses upward recurrence from F_0 (one erf + one exp total).
+static inline void boys_fn_vec(double T, int n_max, double Fm[]) {
+    Fm[0] = boys_f0(T);
+    if (n_max == 0) return;
+    if (T < 1e-12) {
+        for (int m = 1; m <= n_max; ++m)
+            Fm[m] = 1.0 / (2 * m + 1);
+    } else {
+        const double ex = std::exp(-T);
+        const double inv2T = 0.5 / T;
+        for (int m = 1; m <= n_max; ++m)
+            Fm[m] = ((2 * m - 1) * Fm[m - 1] - ex) * inv2T;
+    }
+}
+
+// 2 * π^2.5 — precomputed constant shared by all eri_blk_* functions.
+static constexpr double TWO_PI_2_5 = 34.98683665524972497; // 2 * pi^2.5
+
+// ── ss|ss specialization: Ltot=0, 1 ERI, xsimd ket-loop vectorization ──
+
+/// @brief (ss|ss) ERI block. Ltot=0: only F_0, no R-table recurrence.
+/// The r×s ket primitive loop is vectorized with xsimd::batch<double>.
+static void eri_blk_ss_ss(const ShellBlock& A, const ShellBlock& B,
+                           const ShellBlock& C, const ShellBlock& D,
+                           double* out) {
+    using batch_t = xsimd::batch<double>;
+    constexpr int W = static_cast<int>(batch_t::size);
+
+    // ── Precompute ket geometry (invariant across bra primitives) ──────
+    // Max ket primitive pairs: 8×8=64 covers cc-pVTZ; 16×16 for very large basis.
+    // STO-3G: ≤ 3×3=9.  cc-pVDZ: ≤ 6×6=36.
+    constexpr int KMAX = 64;
+    const int nket = C.n_prim * D.n_prim;
+    double gamma2_k[KMAX], Q0_k[KMAX], Q1_k[KMAX], Q2_k[KMAX];
+    double kcd_coeff_k[KMAX]; // K_CD * C.coeff[r] * D.coeff[s]
+
+    int k = 0;
+    for (int r = 0; r < C.n_prim; ++r) {
+        const double ac = C.alpha[r];
+        for (int s = 0; s < D.n_prim; ++s) {
+            const double ad = D.alpha[s];
+            const double g2 = ac + ad;
+            gamma2_k[k] = g2;
+            Q0_k[k] = (ac * C.center[0] + ad * D.center[0]) / g2;
+            Q1_k[k] = (ac * C.center[1] + ad * D.center[1]) / g2;
+            Q2_k[k] = (ac * C.center[2] + ad * D.center[2]) / g2;
+            const double dcd0 = C.center[0] - D.center[0];
+            const double dcd1 = C.center[1] - D.center[1];
+            const double dcd2 = C.center[2] - D.center[2];
+            const double R2_CD = dcd0*dcd0 + dcd1*dcd1 + dcd2*dcd2;
+            kcd_coeff_k[k] = std::exp(-(ac * ad / g2) * R2_CD)
+                             * C.coeff[r] * D.coeff[s];
+            ++k;
+        }
+    }
+
+    // ── Bra primitive loop ─────────────────────────────────────────────
+    for (int p = 0; p < A.n_prim; ++p) {
+        const double aa = A.alpha[p];
+        for (int q = 0; q < B.n_prim; ++q) {
+            const double ab = B.alpha[q];
+            const double gamma1 = aa + ab;
+            const double P0 = (aa * A.center[0] + ab * B.center[0]) / gamma1;
+            const double P1 = (aa * A.center[1] + ab * B.center[1]) / gamma1;
+            const double P2 = (aa * A.center[2] + ab * B.center[2]) / gamma1;
+            const double dab0 = A.center[0] - B.center[0];
+            const double dab1 = A.center[1] - B.center[1];
+            const double dab2 = A.center[2] - B.center[2];
+            const double R2_AB = dab0*dab0 + dab1*dab1 + dab2*dab2;
+            const double K_AB = std::exp(-(aa * ab / gamma1) * R2_AB);
+            const double bra_fac = A.coeff[p] * B.coeff[q] * K_AB
+                                 * TWO_PI_2_5 / gamma1;
+            if (bra_fac == 0.0) continue;
+
+            // Build T_k and pref_k for all ket pairs
+            double T_k[KMAX], pref_k[KMAX];
+            for (int kk = 0; kk < nket; ++kk) {
+                const double g2    = gamma2_k[kk];
+                const double delta = gamma1 + g2;
+                const double rho   = gamma1 * g2 / delta;
+                const double dPQ0  = P0 - Q0_k[kk];
+                const double dPQ1  = P1 - Q1_k[kk];
+                const double dPQ2  = P2 - Q2_k[kk];
+                T_k[kk]    = rho * (dPQ0*dPQ0 + dPQ1*dPQ1 + dPQ2*dPQ2);
+                pref_k[kk] = bra_fac * kcd_coeff_k[kk] / (g2 * std::sqrt(delta));
+            }
+
+            // xsimd-vectorized: acc += pref * boys_f0(T) for each ket pair
+            // boys_f0(T) = 0.5 * sqrt(PI/T) * erf(sqrt(T));  = 1.0 for T < 1e-12
+            batch_t acc_v(0.0);
+            int kk = 0;
+            for (; kk + W <= nket; kk += W) {
+                batch_t T_v    = batch_t::load_unaligned(T_k    + kk);
+                batch_t pref_v = batch_t::load_unaligned(pref_k + kk);
+                auto small  = T_v < batch_t(1e-12);
+                auto safe_T = xsimd::select(small, batch_t(1.0), T_v);
+                auto sqrtT  = xsimd::sqrt(safe_T);
+                auto F0_v   = xsimd::select(small, batch_t(1.0),
+                                  batch_t(0.5) * xsimd::sqrt(batch_t(PI) / safe_T)
+                                              * xsimd::erf(sqrtT));
+                acc_v += pref_v * F0_v;
+            }
+            // Horizontal reduce: store to array and sum (portable across xsimd versions)
+            double acc_arr[16]; // W ≤ 16 (AVX-512 = 8 doubles)
+            acc_v.store_unaligned(acc_arr);
+            double acc = 0.0;
+            for (int i = 0; i < W; ++i) acc += acc_arr[i];
+            // Scalar tail
+            for (; kk < nket; ++kk)
+                acc += pref_k[kk] * boys_f0(T_k[kk]);
+            out[0] += acc;
+        }
+    }
+}
+
+// ── General-Ltot template: compile-time Ltot for Boys and R-table loops ─
+
+/// @brief Shell-block ERI with compile-time maximum Ltot.
+/// Identical algorithm to the generic case but Boys recurrence and R-table
+/// build loops have fixed bounds → the compiler can unroll them.
+template<int LTOT>
+static void eri_blk_ltot(const ShellBlock& A, const ShellBlock& B,
+                          const ShellBlock& C, const ShellBlock& D,
+                          double* out) {
+    constexpr int Ltot_max = LTOT;
+    constexpr int RS = LTOT + 1;         // R-table dimension per axis
+    const int na = A.n_cart, nb = B.n_cart;
+    const int nc = C.n_cart, nd = D.n_cart;
+
+    for (int p = 0; p < A.n_prim; ++p) {
+      for (int q = 0; q < B.n_prim; ++q) {
+        const double aa = A.alpha[p], ab = B.alpha[q];
+        const double gamma1 = aa + ab;
+        const double inv2g1 = 0.5 / gamma1;
+
+        double P[3], PA[3], PB[3];
+        double R2_AB = 0.0;
+        for (int d = 0; d < 3; ++d) {
+            P[d]  = (aa * A.center[d] + ab * B.center[d]) / gamma1;
+            PA[d] = P[d] - A.center[d];
+            PB[d] = P[d] - B.center[d];
+            const double dAB = A.center[d] - B.center[d];
+            R2_AB += dAB * dAB;
+        }
+        const double K_AB = std::exp(-(aa * ab / gamma1) * R2_AB);
+
+        // Bra prefactor: skip entire ket loop when bra contribution is negligible
+        const double bra_fac = A.coeff[p] * B.coeff[q] * K_AB * TWO_PI_2_5 / gamma1;
+        if (std::abs(bra_fac) < 1e-15) continue;
+
+        double E_bra[3][2][2][3];
+        for (int d = 0; d < 3; ++d) {
+            E_bra[d][0][0][0] = 1.0;   E_bra[d][0][0][1] = 0.0;   E_bra[d][0][0][2] = 0.0;
+            E_bra[d][1][0][0] = PA[d]; E_bra[d][1][0][1] = inv2g1; E_bra[d][1][0][2] = 0.0;
+            E_bra[d][0][1][0] = PB[d]; E_bra[d][0][1][1] = inv2g1; E_bra[d][0][1][2] = 0.0;
+            E_bra[d][1][1][0] = PA[d] * PB[d] + inv2g1;
+            E_bra[d][1][1][1] = inv2g1 * (PA[d] + PB[d]);
+            E_bra[d][1][1][2] = inv2g1 * inv2g1;
+        }
+
+        for (int r = 0; r < C.n_prim; ++r) {
+          for (int s = 0; s < D.n_prim; ++s) {
+            const double ac = C.alpha[r], ad = D.alpha[s];
+            const double gamma2 = ac + ad;
+            const double inv2g2 = 0.5 / gamma2;
+            const double delta  = gamma1 + gamma2;
+            const double rho    = gamma1 * gamma2 / delta;
+
+            double Q[3], QC[3], QD[3], PQ[3];
+            double R2_CD = 0.0, PQ2 = 0.0;
+            for (int d = 0; d < 3; ++d) {
+                Q[d]  = (ac * C.center[d] + ad * D.center[d]) / gamma2;
+                QC[d] = Q[d] - C.center[d];
+                QD[d] = Q[d] - D.center[d];
+                PQ[d] = P[d] - Q[d];
+                const double dCD = C.center[d] - D.center[d];
+                R2_CD += dCD * dCD;
+                PQ2   += PQ[d] * PQ[d];
+            }
+            const double K_CD = std::exp(-(ac * ad / gamma2) * R2_CD);
+
+            const double prefactor =
+                bra_fac * C.coeff[r] * D.coeff[s]
+                * K_CD / (gamma2 * std::sqrt(delta));
+            if (std::abs(prefactor) < 1e-15) continue;
+
+            const double T_pq = rho * PQ2;
+
+            // Boys functions F_0..F_LTOT (fixed-size array, loop unrollable)
+            double Fm[LTOT + 1];
+            boys_fn_vec(T_pq, Ltot_max, Fm);
+
+            double E_ket[3][2][2][3];
+            for (int d = 0; d < 3; ++d) {
+                E_ket[d][0][0][0] = 1.0;   E_ket[d][0][0][1] = 0.0;   E_ket[d][0][0][2] = 0.0;
+                E_ket[d][1][0][0] = QC[d]; E_ket[d][1][0][1] = inv2g2; E_ket[d][1][0][2] = 0.0;
+                E_ket[d][0][1][0] = QD[d]; E_ket[d][0][1][1] = inv2g2; E_ket[d][0][1][2] = 0.0;
+                E_ket[d][1][1][0] = QC[d] * QD[d] + inv2g2;
+                E_ket[d][1][1][1] = inv2g2 * (QC[d] + QD[d]);
+                E_ket[d][1][1][2] = inv2g2 * inv2g2;
+            }
+
+            // R-table: sized exactly to [LTOT+1]^4 — avoids wasted zero-init.
+            // LTOT=1: 16 doubles (128 B) vs 625 (5000 B) previously.
+            double R_tab[RS][RS][RS][RS] = {};
+
+            double pow_neg2rho = 1.0;
+            const double neg2rho = -2.0 * rho;
+            for (int m = 0; m <= Ltot_max; ++m) {
+                R_tab[m][0][0][0] = pow_neg2rho * Fm[m];
+                pow_neg2rho *= neg2rho;
+            }
+
+            for (int m = Ltot_max - 1; m >= 0; --m) {
+                const int max_tuv = Ltot_max - m;
+                for (int t = 1; t <= Ltot_max && t <= max_tuv; ++t) {
+                    R_tab[m][t][0][0] = PQ[0] * R_tab[m+1][t-1][0][0];
+                    if (t >= 2) R_tab[m][t][0][0] += (t-1) * R_tab[m+1][t-2][0][0];
+                }
+                for (int t = 0; t <= Ltot_max && t <= max_tuv; ++t)
+                    for (int u = 1; u <= Ltot_max && t+u <= max_tuv; ++u) {
+                        R_tab[m][t][u][0] = PQ[1] * R_tab[m+1][t][u-1][0];
+                        if (u >= 2) R_tab[m][t][u][0] += (u-1) * R_tab[m+1][t][u-2][0];
+                    }
+                for (int t = 0; t <= Ltot_max && t <= max_tuv; ++t)
+                    for (int u = 0; u <= Ltot_max && t+u <= max_tuv; ++u)
+                        for (int v = 1; v <= Ltot_max && t+u+v <= max_tuv; ++v) {
+                            R_tab[m][t][u][v] = PQ[2] * R_tab[m+1][t][u][v-1];
+                            if (v >= 2) R_tab[m][t][u][v] += (v-1) * R_tab[m+1][t][u][v-2];
+                        }
+            }
+
+            for (int ia = 0; ia < na; ++ia) {
+                const int* a_ang = ang_table[A.l][ia];
+                for (int ib = 0; ib < nb; ++ib) {
+                    const int* b_ang = ang_table[B.l][ib];
+                    const int Lx1 = a_ang[0] + b_ang[0];
+                    const int Ly1 = a_ang[1] + b_ang[1];
+                    const int Lz1 = a_ang[2] + b_ang[2];
+                    double* out_ab = out + (ia * nb + ib) * (nc * nd);
+
+                    for (int ic = 0; ic < nc; ++ic) {
+                        const int* c_ang = ang_table[C.l][ic];
+                        for (int id = 0; id < nd; ++id) {
+                            const int* d_ang = ang_table[D.l][id];
+                            const int Lx2 = c_ang[0] + d_ang[0];
+                            const int Ly2 = c_ang[1] + d_ang[1];
+                            const int Lz2 = c_ang[2] + d_ang[2];
+
+                            double val = 0.0;
+                            for (int t = 0; t <= Lx1; ++t) {
+                                const double Ex1 = E_bra[0][a_ang[0]][b_ang[0]][t];
+                                for (int u = 0; u <= Ly1; ++u) {
+                                    const double Exy1 = Ex1 * E_bra[1][a_ang[1]][b_ang[1]][u];
+                                    for (int v = 0; v <= Lz1; ++v) {
+                                        const double e1 = Exy1 * E_bra[2][a_ang[2]][b_ang[2]][v];
+                                        for (int tau = 0; tau <= Lx2; ++tau) {
+                                            const double Ex2 = e1 * E_ket[0][c_ang[0]][d_ang[0]][tau];
+                                            for (int nu = 0; nu <= Ly2; ++nu) {
+                                                const double Exy2 = Ex2 * E_ket[1][c_ang[1]][d_ang[1]][nu];
+                                                for (int phi = 0; phi <= Lz2; ++phi) {
+                                                    const double e2 = Exy2 * E_ket[2][c_ang[2]][d_ang[2]][phi];
+                                                    const int sign = ((tau + nu + phi) & 1) ? -1 : 1;
+                                                    val += e2 * sign * R_tab[0][t+tau][u+nu][v+phi];
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            out_ab[ic * nd + id] += prefactor * val;
+                        }
+                    }
+                }
+            }
+          } // s
+        } // r
+      } // q
+    } // p
+}
+
+// ── Fallback for l ≥ 2 shells ───────────────────────────────────────────
+
+/// @brief Generic shell-block ERI for shells with l ≥ 2 (d, f, …).
+/// Identical to the original eri_block() implementation; runtime Ltot.
+static void eri_blk_general(const ShellBlock& A, const ShellBlock& B,
+                             const ShellBlock& C, const ShellBlock& D,
+                             double* out) {
+    const int Ltot_max = A.l + B.l + C.l + D.l;
+    const int na = A.n_cart, nb = B.n_cart;
+    const int nc = C.n_cart, nd = D.n_cart;
+
+    for (int p = 0; p < A.n_prim; ++p) {
+      for (int q = 0; q < B.n_prim; ++q) {
+        const double aa = A.alpha[p], ab = B.alpha[q];
+        const double gamma1 = aa + ab;
+        const double inv2g1 = 0.5 / gamma1;
+
+        double P[3], PA[3], PB[3];
+        double R2_AB = 0.0;
+        for (int d = 0; d < 3; ++d) {
+            P[d]  = (aa * A.center[d] + ab * B.center[d]) / gamma1;
+            PA[d] = P[d] - A.center[d];
+            PB[d] = P[d] - B.center[d];
+            const double dAB = A.center[d] - B.center[d];
+            R2_AB += dAB * dAB;
+        }
+        const double K_AB = std::exp(-(aa * ab / gamma1) * R2_AB);
+
+        const double bra_fac_gen = A.coeff[p] * B.coeff[q] * K_AB * TWO_PI_2_5 / gamma1;
+        if (std::abs(bra_fac_gen) < 1e-15) continue;
+
+        double E_bra[3][2][2][3];
+        for (int d = 0; d < 3; ++d) {
+            E_bra[d][0][0][0] = 1.0;   E_bra[d][0][0][1] = 0.0;   E_bra[d][0][0][2] = 0.0;
+            E_bra[d][1][0][0] = PA[d]; E_bra[d][1][0][1] = inv2g1; E_bra[d][1][0][2] = 0.0;
+            E_bra[d][0][1][0] = PB[d]; E_bra[d][0][1][1] = inv2g1; E_bra[d][0][1][2] = 0.0;
+            E_bra[d][1][1][0] = PA[d] * PB[d] + inv2g1;
+            E_bra[d][1][1][1] = inv2g1 * (PA[d] + PB[d]);
+            E_bra[d][1][1][2] = inv2g1 * inv2g1;
+        }
+
+        for (int r = 0; r < C.n_prim; ++r) {
+          for (int s = 0; s < D.n_prim; ++s) {
+            const double ac = C.alpha[r], ad = D.alpha[s];
+            const double gamma2 = ac + ad;
+            const double inv2g2 = 0.5 / gamma2;
+            const double delta  = gamma1 + gamma2;
+            const double rho    = gamma1 * gamma2 / delta;
+
+            double Q[3], QC[3], QD[3], PQ[3];
+            double R2_CD = 0.0, PQ2 = 0.0;
+            for (int d = 0; d < 3; ++d) {
+                Q[d]  = (ac * C.center[d] + ad * D.center[d]) / gamma2;
+                QC[d] = Q[d] - C.center[d];
+                QD[d] = Q[d] - D.center[d];
+                PQ[d] = P[d] - Q[d];
+                const double dCD = C.center[d] - D.center[d];
+                R2_CD += dCD * dCD;
+                PQ2   += PQ[d] * PQ[d];
+            }
+            const double K_CD = std::exp(-(ac * ad / gamma2) * R2_CD);
+            const double T_pq = rho * PQ2;
+
+            const double prefactor =
+                bra_fac_gen * C.coeff[r] * D.coeff[s]
+                * K_CD / (gamma2 * std::sqrt(delta));
+            if (std::abs(prefactor) < 1e-15) continue;
+
+            double Fm[9]; // generous upper bound for high-l shells
+            boys_fn_vec(T_pq, Ltot_max, Fm);
+
+            double E_ket[3][2][2][3];
+            for (int d = 0; d < 3; ++d) {
+                E_ket[d][0][0][0] = 1.0;   E_ket[d][0][0][1] = 0.0;   E_ket[d][0][0][2] = 0.0;
+                E_ket[d][1][0][0] = QC[d]; E_ket[d][1][0][1] = inv2g2; E_ket[d][1][0][2] = 0.0;
+                E_ket[d][0][1][0] = QD[d]; E_ket[d][0][1][1] = inv2g2; E_ket[d][0][1][2] = 0.0;
+                E_ket[d][1][1][0] = QC[d] * QD[d] + inv2g2;
+                E_ket[d][1][1][1] = inv2g2 * (QC[d] + QD[d]);
+                E_ket[d][1][1][2] = inv2g2 * inv2g2;
+            }
+
+            const int Rmax = Ltot_max;
+            double R_tab[9][9][9][9] = {};
+            double pow_neg2rho = 1.0;
+            const double neg2rho = -2.0 * rho;
+            for (int m = 0; m <= Ltot_max; ++m) {
+                R_tab[m][0][0][0] = pow_neg2rho * Fm[m];
+                pow_neg2rho *= neg2rho;
+            }
+            for (int m = Ltot_max - 1; m >= 0; --m) {
+                const int max_tuv = Ltot_max - m;
+                for (int t = 1; t <= Rmax && t <= max_tuv; ++t) {
+                    R_tab[m][t][0][0] = PQ[0] * R_tab[m+1][t-1][0][0];
+                    if (t >= 2) R_tab[m][t][0][0] += (t-1) * R_tab[m+1][t-2][0][0];
+                }
+                for (int t = 0; t <= Rmax && t <= max_tuv; ++t)
+                    for (int u = 1; u <= Rmax && t+u <= max_tuv; ++u) {
+                        R_tab[m][t][u][0] = PQ[1] * R_tab[m+1][t][u-1][0];
+                        if (u >= 2) R_tab[m][t][u][0] += (u-1) * R_tab[m+1][t][u-2][0];
+                    }
+                for (int t = 0; t <= Rmax && t <= max_tuv; ++t)
+                    for (int u = 0; u <= Rmax && t+u <= max_tuv; ++u)
+                        for (int v = 1; v <= Rmax && t+u+v <= max_tuv; ++v) {
+                            R_tab[m][t][u][v] = PQ[2] * R_tab[m+1][t][u][v-1];
+                            if (v >= 2) R_tab[m][t][u][v] += (v-1) * R_tab[m+1][t][u][v-2];
+                        }
+            }
+
+            for (int ia = 0; ia < na; ++ia) {
+                const int* a_ang = ang_table[A.l][ia];
+                for (int ib = 0; ib < nb; ++ib) {
+                    const int* b_ang = ang_table[B.l][ib];
+                    const int Lx1 = a_ang[0] + b_ang[0];
+                    const int Ly1 = a_ang[1] + b_ang[1];
+                    const int Lz1 = a_ang[2] + b_ang[2];
+                    double* out_ab = out + (ia * nb + ib) * (nc * nd);
+
+                    for (int ic = 0; ic < nc; ++ic) {
+                        const int* c_ang = ang_table[C.l][ic];
+                        for (int id = 0; id < nd; ++id) {
+                            const int* d_ang = ang_table[D.l][id];
+                            const int Lx2 = c_ang[0] + d_ang[0];
+                            const int Ly2 = c_ang[1] + d_ang[1];
+                            const int Lz2 = c_ang[2] + d_ang[2];
+
+                            double val = 0.0;
+                            for (int t = 0; t <= Lx1; ++t) {
+                                const double Ex1 = E_bra[0][a_ang[0]][b_ang[0]][t];
+                                for (int u = 0; u <= Ly1; ++u) {
+                                    const double Exy1 = Ex1 * E_bra[1][a_ang[1]][b_ang[1]][u];
+                                    for (int v = 0; v <= Lz1; ++v) {
+                                        const double e1 = Exy1 * E_bra[2][a_ang[2]][b_ang[2]][v];
+                                        for (int tau = 0; tau <= Lx2; ++tau) {
+                                            const double Ex2 = e1 * E_ket[0][c_ang[0]][d_ang[0]][tau];
+                                            for (int nu = 0; nu <= Ly2; ++nu) {
+                                                const double Exy2 = Ex2 * E_ket[1][c_ang[1]][d_ang[1]][nu];
+                                                for (int phi = 0; phi <= Lz2; ++phi) {
+                                                    const double e2 = Exy2 * E_ket[2][c_ang[2]][d_ang[2]][phi];
+                                                    const int sign = ((tau + nu + phi) & 1) ? -1 : 1;
+                                                    val += e2 * sign * R_tab[0][t+tau][u+nu][v+phi];
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            out_ab[ic * nd + id] += prefactor * val;
+                        }
+                    }
+                }
+            }
+          } // s
+        } // r
+      } // q
+    } // p
+}
+
+// ── Dispatcher ──────────────────────────────────────────────────────────
+
+/// @brief Compute all ERIs for a shell quartet (A B | C D) into `out`.
+///
+/// Dispatches to the Rys-quadrature engine for all non-ssss cases.
+/// The ssss case (Ltot = 0) stays on the dedicated xsimd-vectorized
+/// `eri_blk_ss_ss`: that kernel precomputes ket geometry, vectorizes
+/// the Boys sum over the ket-primitive loop, and avoids all of Rys's
+/// general infrastructure (heap buffer, 2D-VRR, HRR). In benchmarks
+/// it beats Rys by ~1.5× for pure s-shells because a 1-root Rys
+/// quadrature with allocation overhead is slower than a direct
+/// F_0(T)-sum in that corner of the parameter space.
+void eri_block(const ShellBlock& A, const ShellBlock& B,
+               const ShellBlock& C, const ShellBlock& D,
+               double* out) {
+    if (A.l == 0 && B.l == 0 && C.l == 0 && D.l == 0) {
+        return eri_blk_ss_ss(A, B, C, D, out);
+    }
+    rys_eri_block(A, B, C, D, out);
 }
 
 } // namespace native

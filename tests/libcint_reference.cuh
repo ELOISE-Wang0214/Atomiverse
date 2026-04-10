@@ -32,6 +32,24 @@ inline double libcint_gto_norm(int l, double alpha) {
     return CINTgto_norm(l, alpha);
 }
 
+/// @brief Normalize contracted AO coefficients (PySCF convention).
+/// After primitive normalization (coeff *= gto_norm), divide by the
+/// contracted orbital norm so that <φ|φ> = 1. This matches the
+/// normalization applied by libcint_bridge.cpp and PySCF's make_env.
+inline void normalize_contracted_coeffs(int l, const double* exps,
+                                        double* coeffs, int nprim) {
+    double norm2 = 0.0;
+    for (int p = 0; p < nprim; ++p)
+        for (int q = 0; q < nprim; ++q) {
+            double n1 = 0.5 * (l * 2 + 2 + 1);
+            norm2 += coeffs[p] * coeffs[q]
+                   * 0.5 * std::tgamma(n1) / std::pow(exps[p] + exps[q], n1);
+        }
+    double scale = 1.0 / std::sqrt(norm2);
+    for (int p = 0; p < nprim; ++p)
+        coeffs[p] *= scale;
+}
+
 /// @brief Compute STO-3G integrals via libcint (ground truth).
 ///
 /// Mirrors the logic in build_integrals_sto3g but uses libcint as the
@@ -103,6 +121,7 @@ inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
                 int ptr_coeff = off;
                 for (int p = 0; p < raw.n_prim; ++p)
                     env[off++] = raw.coeff_s[p] * CINTgto_norm(0, raw.alpha[p]);
+                normalize_contracted_coeffs(0, &env[ptr_exp], &env[ptr_coeff], raw.n_prim);
 
                 bas_arr[ATOM_OF   + BAS_SLOTS * shell_idx] = a;
                 bas_arr[ANG_OF    + BAS_SLOTS * shell_idx] = 0;
@@ -122,6 +141,7 @@ inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
                 int ptr_coeff_s = off;
                 for (int p = 0; p < raw.n_prim; ++p)
                     env[off++] = raw.coeff_s[p] * CINTgto_norm(0, raw.alpha[p]);
+                normalize_contracted_coeffs(0, &env[ptr_exp_s], &env[ptr_coeff_s], raw.n_prim);
 
                 bas_arr[ATOM_OF   + BAS_SLOTS * shell_idx] = a;
                 bas_arr[ANG_OF    + BAS_SLOTS * shell_idx] = 0;
@@ -140,6 +160,7 @@ inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
                 int ptr_coeff_p = off;
                 for (int p = 0; p < raw.n_prim; ++p)
                     env[off++] = raw.coeff_p[p] * CINTgto_norm(1, raw.alpha[p]);
+                normalize_contracted_coeffs(1, &env[ptr_exp_p], &env[ptr_coeff_p], raw.n_prim);
 
                 bas_arr[ATOM_OF   + BAS_SLOTS * shell_idx] = a;
                 bas_arr[ANG_OF    + BAS_SLOTS * shell_idx] = 1;

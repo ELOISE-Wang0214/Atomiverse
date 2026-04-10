@@ -18,14 +18,24 @@
 ///   Helgaker, Jorgensen, Olsen, Ch. 9 -- molecular gradients
 
 #include "atomiverse/cpu/scf/integral_derivatives.h"
+#include "atomiverse/cpu/scf/libcint_bridge.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 #include "atomiverse/cpu/scf/sto3g_data.h"
 #include "atomiverse/core/constants.h"
 #include "atomiverse/core/gto.h"
+#include "atomiverse/core/log.h"
+
+#ifdef ATV_HAS_LIBCINT
+extern "C" {
+#include <cint.h>
+#include <cint_funcs.h>
+}
+#endif
 
 #include <cmath>
 #include <vector>
 #include <array>
+#include <algorithm>
 
 namespace ATV {
 namespace cpu {
@@ -328,6 +338,139 @@ static void eri_deriv_prim_general(
     }
 }
 
+struct QuartetDerivTotals {
+    double dA[3] = {0.0, 0.0, 0.0};
+    double dB[3] = {0.0, 0.0, 0.0};
+    double dC[3] = {0.0, 0.0, 0.0};
+    double dD[3] = {0.0, 0.0, 0.0};
+};
+
+static inline int pair_multiplicity(int a, int b) {
+    return (a == b) ? 1 : 2;
+}
+
+static std::vector<int> build_shell_to_atom_from_integrals(const IntegralPack& integrals) {
+    const int n = integrals.n_basis;
+    const int natm = static_cast<int>(integrals.atoms.size());
+    std::vector<int> shell_to_atom(n, -1);
+
+    for (int mu = 0; mu < n; ++mu) {
+        const auto& sh = integrals.shells[mu];
+        for (int a = 0; a < natm; ++a) {
+            const double dx = sh.center[0] - integrals.atoms[a].pos[0];
+            const double dy = sh.center[1] - integrals.atoms[a].pos[1];
+            const double dz = sh.center[2] - integrals.atoms[a].pos[2];
+            if (dx * dx + dy * dy + dz * dz < 1e-20) {
+                shell_to_atom[mu] = a;
+                break;
+            }
+        }
+    }
+
+    return shell_to_atom;
+}
+
+#ifdef ATV_HAS_LIBCINT
+
+static inline int libcint_shell_dim(const LibcintSto3gContext& ctx, int sh) {
+    const int begin = ctx.shell_offsets[sh];
+    const int end = (sh + 1 < ctx.nshells) ? ctx.shell_offsets[sh + 1] : ctx.nao;
+    return end - begin;
+}
+
+static inline std::size_t libcint_ip1_index(
+    int comp,
+    int i, int j, int k, int l,
+    int di, int dj, int dk, int dl)
+{
+    return static_cast<std::size_t>(
+        i + di * (j + dj * (k + dk * (l + dl * comp))));
+}
+
+#endif
+
+static QuartetDerivTotals compute_quartet_derivatives(
+    const native::Shell& shell_a, const int a_ang[3],
+    const native::Shell& shell_b, const int b_ang[3],
+    const native::Shell& shell_c, const int c_ang[3],
+    const native::Shell& shell_d, const int d_ang[3])
+{
+    QuartetDerivTotals totals;
+
+    for (int p = 0; p < shell_a.n_prim; ++p) {
+        for (int q = 0; q < shell_b.n_prim; ++q) {
+            for (int r = 0; r < shell_c.n_prim; ++r) {
+                for (int s = 0; s < shell_d.n_prim; ++s) {
+                    const double coeff = shell_a.coeff[p] * shell_b.coeff[q]
+                                       * shell_c.coeff[r] * shell_d.coeff[s];
+
+                    double dA[3];
+                    eri_deriv_prim_general(
+                        a_ang, b_ang, c_ang, d_ang,
+                        shell_a.alpha[p], shell_a.center,
+                        shell_b.alpha[q], shell_b.center,
+                        shell_c.alpha[r], shell_c.center,
+                        shell_d.alpha[s], shell_d.center,
+                        dA);
+
+                    double dB[3];
+                    eri_deriv_prim_general(
+                        b_ang, a_ang, c_ang, d_ang,
+                        shell_b.alpha[q], shell_b.center,
+                        shell_a.alpha[p], shell_a.center,
+                        shell_c.alpha[r], shell_c.center,
+                        shell_d.alpha[s], shell_d.center,
+                        dB);
+
+                    double dC[3];
+                    eri_deriv_prim_general(
+                        c_ang, d_ang, a_ang, b_ang,
+                        shell_c.alpha[r], shell_c.center,
+                        shell_d.alpha[s], shell_d.center,
+                        shell_a.alpha[p], shell_a.center,
+                        shell_b.alpha[q], shell_b.center,
+                        dC);
+
+                    double dD[3];
+                    eri_deriv_prim_general(
+                        d_ang, c_ang, a_ang, b_ang,
+                        shell_d.alpha[s], shell_d.center,
+                        shell_c.alpha[r], shell_c.center,
+                        shell_a.alpha[p], shell_a.center,
+                        shell_b.alpha[q], shell_b.center,
+                        dD);
+
+                    for (int axis = 0; axis < 3; ++axis) {
+                        totals.dA[axis] += coeff * dA[axis];
+                        totals.dB[axis] += coeff * dB[axis];
+                        totals.dC[axis] += coeff * dC[axis];
+                        totals.dD[axis] += coeff * dD[axis];
+                    }
+                }
+            }
+        }
+    }
+
+    return totals;
+}
+
+static void accumulate_quartet_into_gradient(
+    xt::xtensor<double, 2>& grad,
+    int atom_a, int atom_b, int atom_c, int atom_d,
+    const QuartetDerivTotals& totals,
+    double factor)
+{
+    if (std::abs(factor) < 1e-18)
+        return;
+
+    for (int axis = 0; axis < 3; ++axis) {
+        grad(atom_a, axis) += factor * totals.dA[axis];
+        grad(atom_b, axis) += factor * totals.dB[axis];
+        grad(atom_c, axis) += factor * totals.dC[axis];
+        grad(atom_d, axis) += factor * totals.dD[axis];
+    }
+}
+
 // ── Main entry point ─────────────────────────────────────────────────
 
 IntegralDerivPack build_integral_derivatives_sto3g(const Frame& frame, int charge) {
@@ -346,7 +489,6 @@ IntegralDerivPack build_integral_derivatives_sto3g(const Frame& frame, int charg
     pack.dS     = xt::zeros<double>({(int)natm, (int)3, n_basis, n_basis});
     pack.dT     = xt::zeros<double>({(int)natm, (int)3, n_basis, n_basis});
     pack.dV     = xt::zeros<double>({(int)natm, (int)3, n_basis, n_basis});
-    pack.dERI   = xt::zeros<double>({(int)natm, (int)3, n_basis, n_basis, n_basis, n_basis});
     pack.dV_nuc = xt::zeros<double>({(int)natm, (int)3});
 
     // Build shells and atoms (same structure as integrals.cpp)
@@ -562,90 +704,6 @@ IntegralDerivPack build_integral_derivatives_sto3g(const Frame& frame, int charg
         }
     }
 
-    // ── 2e integral derivatives ──────────────────────────────────────
-
-    for (int i = 0; i < n_basis; ++i) {
-        int ai = shell_to_atom[i];
-        int a_ang[3];
-        cart_exponents(shells[i], a_ang);
-
-        for (int j = 0; j < n_basis; ++j) {
-            int aj = shell_to_atom[j];
-            int b_ang[3];
-            cart_exponents(shells[j], b_ang);
-
-            for (int k = 0; k < n_basis; ++k) {
-                int ak = shell_to_atom[k];
-                int c_ang[3];
-                cart_exponents(shells[k], c_ang);
-
-                for (int l = 0; l < n_basis; ++l) {
-                    int al = shell_to_atom[l];
-                    int d_ang[3];
-                    cart_exponents(shells[l], d_ang);
-
-                    for (int p = 0; p < shells[i].n_prim; ++p) {
-                      for (int q = 0; q < shells[j].n_prim; ++q) {
-                        for (int r = 0; r < shells[k].n_prim; ++r) {
-                          for (int s = 0; s < shells[l].n_prim; ++s) {
-                            double coeff = shells[i].coeff[p] * shells[j].coeff[q]
-                                         * shells[k].coeff[r] * shells[l].coeff[s];
-
-                            // d/dA (center of shell i)
-                            double dA[3];
-                            eri_deriv_prim_general(
-                                a_ang, b_ang, c_ang, d_ang,
-                                shells[i].alpha[p], shells[i].center,
-                                shells[j].alpha[q], shells[j].center,
-                                shells[k].alpha[r], shells[k].center,
-                                shells[l].alpha[s], shells[l].center,
-                                dA);
-
-                            // d/dB (center of shell j): raise angular momentum on B
-                            double dB[3];
-                            eri_deriv_prim_general(
-                                b_ang, a_ang, c_ang, d_ang,
-                                shells[j].alpha[q], shells[j].center,
-                                shells[i].alpha[p], shells[i].center,
-                                shells[k].alpha[r], shells[k].center,
-                                shells[l].alpha[s], shells[l].center,
-                                dB);
-
-                            // d/dC (center of shell k): raise angular momentum on C
-                            double dC[3];
-                            eri_deriv_prim_general(
-                                c_ang, d_ang, a_ang, b_ang,
-                                shells[k].alpha[r], shells[k].center,
-                                shells[l].alpha[s], shells[l].center,
-                                shells[i].alpha[p], shells[i].center,
-                                shells[j].alpha[q], shells[j].center,
-                                dC);
-
-                            // d/dD (center of shell l): raise angular momentum on D
-                            double dD[3];
-                            eri_deriv_prim_general(
-                                d_ang, c_ang, a_ang, b_ang,
-                                shells[l].alpha[s], shells[l].center,
-                                shells[k].alpha[r], shells[k].center,
-                                shells[i].alpha[p], shells[i].center,
-                                shells[j].alpha[q], shells[j].center,
-                                dD);
-
-                            for (int d = 0; d < 3; ++d) {
-                                pack.dERI(ai, d, i, j, k, l) += static_cast<double>(coeff * dA[d]);
-                                pack.dERI(aj, d, i, j, k, l) += static_cast<double>(coeff * dB[d]);
-                                pack.dERI(ak, d, i, j, k, l) += static_cast<double>(coeff * dC[d]);
-                                pack.dERI(al, d, i, j, k, l) += static_cast<double>(coeff * dD[d]);
-                            }
-                          }
-                        }
-                      }
-                    }
-                }
-            }
-        }
-    }
-
     // ── Nuclear repulsion derivative ─────────────────────────────────
     // V_nuc = sum_{A<B} Z_A * Z_B / R_AB
     // dV_nuc/dA_d = sum_{B!=A} Z_A * Z_B * (B_d - A_d) / R_AB^3
@@ -665,6 +723,381 @@ IntegralDerivPack build_integral_derivatives_sto3g(const Frame& frame, int charg
     }
 
     return pack;
+}
+
+void accumulate_two_electron_gradient_sto3g(
+    xt::xtensor<double, 2>& grad,
+    const Frame& frame,
+    const IntegralPack& integrals,
+    const xt::xtensor<double, 2>& P_total,
+    const SCFResult& result,
+    const SCFConfig& config)
+{
+    const auto t_total = LogClock::now();
+    const int natm = static_cast<int>(integrals.atoms.size());
+    const int n = integrals.n_basis;
+    const bool is_ks = (config.method == MeanFieldType::KS);
+    const bool restricted = (config.spin == SpinType::Restricted);
+
+#ifdef ATV_HAS_LIBCINT
+    auto cint_ctx = build_libcint_sto3g_context(frame);
+    if (cint_ctx.nao == n) {
+        const int nshells = cint_ctx.nshells;
+        ATV_INFO(
+            "[gradient] two_e engine=libcint natm={} basis={} shells={}",
+            natm, n, nshells);
+        std::vector<int> shell_to_atom(nshells, -1);
+        for (int sh = 0; sh < nshells; ++sh)
+            shell_to_atom[sh] = cint_ctx.bas[sh * BAS_SLOTS + ATOM_OF];
+
+        std::vector<std::array<int, 2>> shell_pairs;
+        shell_pairs.reserve(static_cast<std::size_t>(nshells * (nshells + 1) / 2));
+        for (int ish = 0; ish < nshells; ++ish)
+            for (int jsh = 0; jsh <= ish; ++jsh)
+                shell_pairs.push_back({ish, jsh});
+
+        const int n_shell_pairs = static_cast<int>(shell_pairs.size());
+        const long long n_unique_shell_quartets =
+            1LL * n_shell_pairs * (n_shell_pairs + 1) / 2;
+        const int progress_stride = (n_shell_pairs >= 10) ? (n_shell_pairs / 10) : 1;
+
+        CINTOpt* ip1_opt = nullptr;
+        int2e_ip1_optimizer(
+            &ip1_opt, cint_ctx.atm.data(), cint_ctx.natm,
+            cint_ctx.bas.data(), cint_ctx.nshells,
+            const_cast<double*>(cint_ctx.env.data()));
+
+        constexpr std::size_t kMaxIP1Block = 3u * 3u * 3u * 3u * 3u;
+        std::array<double, kMaxIP1Block> dA_buf{};
+        std::array<double, kMaxIP1Block> dB_buf{};
+        std::array<double, kMaxIP1Block> dC_buf{};
+        std::array<double, kMaxIP1Block> dD_buf{};
+
+        const auto eval_ip1 = [&](std::array<double, kMaxIP1Block>& buf, const int shls[4]) {
+            std::fill(buf.begin(), buf.end(), 0.0);
+            int2e_ip1_cart(
+                buf.data(), nullptr, const_cast<int*>(shls),
+                cint_ctx.atm.data(), cint_ctx.natm,
+                cint_ctx.bas.data(), cint_ctx.nshells,
+                const_cast<double*>(cint_ctx.env.data()), ip1_opt, nullptr);
+        };
+
+        const auto t_coulomb = LogClock::now();
+        ATV_DEBUG(
+            "[gradient] two_e coulomb start engine=libcint natm={} basis={} shells={} unique_shell_quartets={}",
+            natm, n, nshells, n_unique_shell_quartets);
+
+        for (int left = 0; left < n_shell_pairs; ++left) {
+            const int ish = shell_pairs[left][0];
+            const int jsh = shell_pairs[left][1];
+            const int i0 = cint_ctx.shell_offsets[ish];
+            const int j0 = cint_ctx.shell_offsets[jsh];
+            const int di = libcint_shell_dim(cint_ctx, ish);
+            const int dj = libcint_shell_dim(cint_ctx, jsh);
+            const int ai = shell_to_atom[ish];
+            const int aj = shell_to_atom[jsh];
+            const int mult_left = pair_multiplicity(ish, jsh);
+
+            for (int right = 0; right <= left; ++right) {
+                const int ksh = shell_pairs[right][0];
+                const int lsh = shell_pairs[right][1];
+                const int k0 = cint_ctx.shell_offsets[ksh];
+                const int l0 = cint_ctx.shell_offsets[lsh];
+                const int dk = libcint_shell_dim(cint_ctx, ksh);
+                const int dl = libcint_shell_dim(cint_ctx, lsh);
+                const int ak = shell_to_atom[ksh];
+                const int al = shell_to_atom[lsh];
+                const int mult_right = pair_multiplicity(ksh, lsh);
+                const int bra_ket_mult = (left == right) ? 1 : 2;
+
+                const int shls_a[4] = {ish, jsh, ksh, lsh};
+                const int shls_b[4] = {jsh, ish, ksh, lsh};
+                const int shls_c[4] = {ksh, lsh, ish, jsh};
+                const int shls_d[4] = {lsh, ksh, ish, jsh};
+                eval_ip1(dA_buf, shls_a);
+                eval_ip1(dB_buf, shls_b);
+                eval_ip1(dC_buf, shls_c);
+                eval_ip1(dD_buf, shls_d);
+
+                const double quartet_prefactor =
+                    0.5 * mult_left * mult_right * bra_ket_mult;
+                for (int ii = 0; ii < di; ++ii) {
+                    const int i = i0 + ii;
+                    for (int jj = 0; jj < dj; ++jj) {
+                        const int j = j0 + jj;
+                        const double Pij = P_total(i, j);
+                        if (std::abs(Pij) < 1e-18)
+                            continue;
+                        for (int kk = 0; kk < dk; ++kk) {
+                            const int k = k0 + kk;
+                            for (int ll = 0; ll < dl; ++ll) {
+                                const int l = l0 + ll;
+                                const double factor = quartet_prefactor * Pij * P_total(k, l);
+                                if (std::abs(factor) < 1e-18)
+                                    continue;
+
+                                for (int axis = 0; axis < 3; ++axis) {
+                                    const double dA = -dA_buf[libcint_ip1_index(axis, ii, jj, kk, ll, di, dj, dk, dl)];
+                                    const double dB = -dB_buf[libcint_ip1_index(axis, jj, ii, kk, ll, dj, di, dk, dl)];
+                                    const double dC = -dC_buf[libcint_ip1_index(axis, kk, ll, ii, jj, dk, dl, di, dj)];
+                                    const double dD = -dD_buf[libcint_ip1_index(axis, ll, kk, ii, jj, dl, dk, di, dj)];
+                                    grad(ai, axis) += factor * dA;
+                                    grad(aj, axis) += factor * dB;
+                                    grad(ak, axis) += factor * dC;
+                                    grad(al, axis) += factor * dD;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            const bool should_log =
+                (((left + 1) % progress_stride) == 0) || ((left + 1) == n_shell_pairs);
+            if (should_log) {
+                const long long unique_done = 1LL * (left + 1) * (left + 2) / 2;
+                ATV_DEBUG(
+                    "[gradient] two_e coulomb progress shell_pairs={}/{} unique_done={}/{} ms={:.1f}",
+                    left + 1, n_shell_pairs, unique_done, n_unique_shell_quartets, elapsed_ms(t_coulomb));
+            }
+        }
+
+        ATV_DEBUG("[gradient] two_e coulomb done ms={:.1f}", elapsed_ms(t_coulomb));
+
+        if (!is_ks) {
+            const auto t_exchange = LogClock::now();
+            ATV_DEBUG(
+                "[gradient] two_e exchange start engine=libcint natm={} basis={} shells={} unique_shell_quartets={}",
+                natm, n, nshells, n_unique_shell_quartets);
+
+            // Exchange iterates the SAME canonical (ij)×(kl) pairs as
+            // Coulomb — the ERI (ij|kl) has 8-fold symmetry under
+            // (i↔j), (k↔l), (bra↔ket), none of which match (i↔k) or
+            // (j↔l). A previous version canonicalized (ik)+(jl), which
+            // mis-counted multiplicities (e.g. (11|00) got mult=4 vs
+            // the correct 2; (10|10) got mult=2 vs the correct 4) and
+            // made exchange coincidentally track Coulomb so closely
+            // that the total force over-cancelled by ~225×. The density
+            // contraction factor for exchange remains P(i,k)·P(j,l)
+            // (Szabo 3.184 with the (μλ|νσ) → (ij|kl) relabelling:
+            // i=μ, j=λ, k=ν, l=σ).
+            for (int left = 0; left < n_shell_pairs; ++left) {
+                const int ish = shell_pairs[left][0];
+                const int jsh = shell_pairs[left][1];
+                const int i0 = cint_ctx.shell_offsets[ish];
+                const int j0 = cint_ctx.shell_offsets[jsh];
+                const int di = libcint_shell_dim(cint_ctx, ish);
+                const int dj = libcint_shell_dim(cint_ctx, jsh);
+                const int ai = shell_to_atom[ish];
+                const int aj = shell_to_atom[jsh];
+                const int mult_left = pair_multiplicity(ish, jsh);
+
+                for (int right = 0; right <= left; ++right) {
+                    const int ksh = shell_pairs[right][0];
+                    const int lsh = shell_pairs[right][1];
+                    const int k0 = cint_ctx.shell_offsets[ksh];
+                    const int l0 = cint_ctx.shell_offsets[lsh];
+                    const int dk = libcint_shell_dim(cint_ctx, ksh);
+                    const int dl = libcint_shell_dim(cint_ctx, lsh);
+                    const int ak = shell_to_atom[ksh];
+                    const int al = shell_to_atom[lsh];
+                    const int mult_right = pair_multiplicity(ksh, lsh);
+                    const int bra_ket_mult = (left == right) ? 1 : 2;
+
+                    const int shls_a[4] = {ish, jsh, ksh, lsh};
+                    const int shls_b[4] = {jsh, ish, ksh, lsh};
+                    const int shls_c[4] = {ksh, lsh, ish, jsh};
+                    const int shls_d[4] = {lsh, ksh, ish, jsh};
+                    eval_ip1(dA_buf, shls_a);
+                    eval_ip1(dB_buf, shls_b);
+                    eval_ip1(dC_buf, shls_c);
+                    eval_ip1(dD_buf, shls_d);
+
+                    const double quartet_prefactor =
+                        mult_left * mult_right * bra_ket_mult;
+                    for (int ii = 0; ii < di; ++ii) {
+                        const int i = i0 + ii;
+                        for (int jj = 0; jj < dj; ++jj) {
+                            const int j = j0 + jj;
+                            for (int kk = 0; kk < dk; ++kk) {
+                                const int k = k0 + kk;
+                                for (int ll = 0; ll < dl; ++ll) {
+                                    const int l = l0 + ll;
+
+                                    double density_factor = 0.0;
+                                    if (restricted) {
+                                        density_factor = -0.25 * P_total(i, k) * P_total(j, l);
+                                    } else {
+                                        density_factor = -0.5 * (
+                                            result.P_alpha(i, k) * result.P_alpha(j, l) +
+                                            result.P_beta(i, k) * result.P_beta(j, l));
+                                    }
+
+                                    const double factor = quartet_prefactor * density_factor;
+                                    if (std::abs(factor) < 1e-18)
+                                        continue;
+
+                                    for (int axis = 0; axis < 3; ++axis) {
+                                        const double dA = -dA_buf[libcint_ip1_index(axis, ii, jj, kk, ll, di, dj, dk, dl)];
+                                        const double dB = -dB_buf[libcint_ip1_index(axis, jj, ii, kk, ll, dj, di, dk, dl)];
+                                        const double dC = -dC_buf[libcint_ip1_index(axis, kk, ll, ii, jj, dk, dl, di, dj)];
+                                        const double dD = -dD_buf[libcint_ip1_index(axis, ll, kk, ii, jj, dl, dk, di, dj)];
+                                        grad(ai, axis) += factor * dA;
+                                        grad(aj, axis) += factor * dB;
+                                        grad(ak, axis) += factor * dC;
+                                        grad(al, axis) += factor * dD;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                const bool should_log =
+                    (((left + 1) % progress_stride) == 0) || ((left + 1) == n_shell_pairs);
+                if (should_log) {
+                    const long long unique_done = 1LL * (left + 1) * (left + 2) / 2;
+                    ATV_DEBUG(
+                        "[gradient] two_e exchange progress shell_pairs={}/{} unique_done={}/{} ms={:.1f}",
+                        left + 1, n_shell_pairs, unique_done, n_unique_shell_quartets, elapsed_ms(t_exchange));
+                }
+            }
+
+            ATV_DEBUG("[gradient] two_e exchange done ms={:.1f}", elapsed_ms(t_exchange));
+        }
+
+        CINTdel_2e_optimizer(&ip1_opt);
+        ATV_DEBUG("[gradient] two_e contraction total_ms={:.1f}", elapsed_ms(t_total));
+        return;
+    }
+
+    ATV_WARN(
+        "[gradient] libcint two_e derivative nao mismatch libcint_nao={} basis={}, falling back to native engine",
+        cint_ctx.nao, n);
+#endif
+
+    std::vector<std::array<int, 3>> shell_ang(n);
+    for (int mu = 0; mu < n; ++mu)
+        cart_exponents(integrals.shells[mu], shell_ang[mu].data());
+
+    std::vector<int> shell_to_atom = build_shell_to_atom_from_integrals(integrals);
+    std::vector<std::array<int, 2>> shell_pairs;
+    shell_pairs.reserve(static_cast<std::size_t>(n * (n + 1) / 2));
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j <= i; ++j)
+            shell_pairs.push_back({i, j});
+
+    const int n_pairs = static_cast<int>(shell_pairs.size());
+    const long long n_unique_quartets = 1LL * n_pairs * (n_pairs + 1) / 2;
+    const int progress_stride = (n_pairs >= 10) ? (n_pairs / 10) : 1;
+
+    const auto t_coulomb = LogClock::now();
+    ATV_DEBUG(
+        "[gradient] two_e coulomb start natm={} basis={} unique_quartets={}",
+        natm, n, n_unique_quartets);
+
+    for (int left = 0; left < n_pairs; ++left) {
+        const int i = shell_pairs[left][0];
+        const int j = shell_pairs[left][1];
+        const int ai = shell_to_atom[i];
+        const int aj = shell_to_atom[j];
+        const int mult_left = pair_multiplicity(i, j);
+
+        for (int right = 0; right <= left; ++right) {
+            const int k = shell_pairs[right][0];
+            const int l = shell_pairs[right][1];
+            const int ak = shell_to_atom[k];
+            const int al = shell_to_atom[l];
+            const int mult_right = pair_multiplicity(k, l);
+            const int bra_ket_mult = (left == right) ? 1 : 2;
+            const double factor = 0.5 * mult_left * mult_right * bra_ket_mult
+                                * P_total(i, j) * P_total(k, l);
+
+            if (std::abs(factor) < 1e-18)
+                continue;
+
+            const QuartetDerivTotals totals = compute_quartet_derivatives(
+                integrals.shells[i], shell_ang[i].data(),
+                integrals.shells[j], shell_ang[j].data(),
+                integrals.shells[k], shell_ang[k].data(),
+                integrals.shells[l], shell_ang[l].data());
+            accumulate_quartet_into_gradient(grad, ai, aj, ak, al, totals, factor);
+        }
+
+        const bool should_log =
+            (((left + 1) % progress_stride) == 0) || ((left + 1) == n_pairs);
+        if (should_log) {
+            const long long unique_done = 1LL * (left + 1) * (left + 2) / 2;
+            ATV_DEBUG(
+                "[gradient] two_e coulomb progress shell_pairs={}/{} unique_done={}/{} ms={:.1f}",
+                left + 1, n_pairs, unique_done, n_unique_quartets, elapsed_ms(t_coulomb));
+        }
+    }
+
+    ATV_DEBUG("[gradient] two_e coulomb done ms={:.1f}", elapsed_ms(t_coulomb));
+
+    if (!is_ks) {
+        const auto t_exchange = LogClock::now();
+        ATV_DEBUG(
+            "[gradient] two_e exchange start natm={} basis={} unique_quartets={}",
+            natm, n, n_unique_quartets);
+
+        // Exchange iterates the same canonical (ij)×(kl) pairs as the
+        // Coulomb pass. Using (ik)+(jl) pairs was an 8-fold-symmetry
+        // bookkeeping error — the ERI (ij|kl) has symmetry under
+        // (i↔j), (k↔l), (bra↔ket) only, not (i↔k) or (j↔l). See the
+        // matching note in the libcint branch above for details.
+        for (int left = 0; left < n_pairs; ++left) {
+            const int i = shell_pairs[left][0];
+            const int j = shell_pairs[left][1];
+            const int ai = shell_to_atom[i];
+            const int aj = shell_to_atom[j];
+            const int mult_left = pair_multiplicity(i, j);
+
+            for (int right = 0; right <= left; ++right) {
+                const int k = shell_pairs[right][0];
+                const int l = shell_pairs[right][1];
+                const int ak = shell_to_atom[k];
+                const int al = shell_to_atom[l];
+                const int mult_right = pair_multiplicity(k, l);
+                const int bra_ket_mult = (left == right) ? 1 : 2;
+
+                double density_factor = 0.0;
+                if (restricted) {
+                    density_factor = -0.25 * P_total(i, k) * P_total(j, l);
+                } else {
+                    density_factor = -0.5 * (
+                        result.P_alpha(i, k) * result.P_alpha(j, l) +
+                        result.P_beta(i, k) * result.P_beta(j, l));
+                }
+
+                const double factor =
+                    mult_left * mult_right * bra_ket_mult * density_factor;
+                if (std::abs(factor) < 1e-18)
+                    continue;
+
+                const QuartetDerivTotals totals = compute_quartet_derivatives(
+                    integrals.shells[i], shell_ang[i].data(),
+                    integrals.shells[j], shell_ang[j].data(),
+                    integrals.shells[k], shell_ang[k].data(),
+                    integrals.shells[l], shell_ang[l].data());
+                accumulate_quartet_into_gradient(grad, ai, aj, ak, al, totals, factor);
+            }
+
+            const bool should_log =
+                (((left + 1) % progress_stride) == 0) || ((left + 1) == n_pairs);
+            if (should_log) {
+                const long long unique_done = 1LL * (left + 1) * (left + 2) / 2;
+                ATV_DEBUG(
+                    "[gradient] two_e exchange progress shell_pairs={}/{} unique_done={}/{} ms={:.1f}",
+                    left + 1, n_pairs, unique_done, n_unique_quartets, elapsed_ms(t_exchange));
+            }
+        }
+
+        ATV_DEBUG("[gradient] two_e exchange done ms={:.1f}", elapsed_ms(t_exchange));
+    }
+
+    ATV_DEBUG("[gradient] two_e contraction total_ms={:.1f}", elapsed_ms(t_total));
 }
 
 } // namespace scf

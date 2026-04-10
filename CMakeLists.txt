@@ -51,12 +51,12 @@ if(NOT ATV_DOCS_ONLY)
     FetchContent_Declare(
         xtl
         GIT_REPOSITORY https://github.com/xtensor-stack/xtl.git
-        GIT_TAG 0.7.7
+        GIT_TAG 0.8.1
     )
     FetchContent_Declare(
         xtensor
         GIT_REPOSITORY https://github.com/xtensor-stack/xtensor.git
-        GIT_TAG 0.25.0
+        GIT_TAG 0.27.1
     )
     FetchContent_Declare(
         xtensor-blas
@@ -68,11 +68,65 @@ if(NOT ATV_DOCS_ONLY)
         GIT_REPOSITORY https://github.com/gabime/spdlog.git
         GIT_TAG v1.15.0
     )
-    FetchContent_MakeAvailable(xtl xtensor xtensor-blas spdlog)
+    FetchContent_Declare(
+        xsimd
+        GIT_REPOSITORY https://github.com/xtensor-stack/xsimd.git
+        GIT_TAG 13.2.0
+    )
+    FetchContent_MakeAvailable(xtl xtensor xtensor-blas spdlog xsimd)
+
+    # ── spdlog bundled fmt: Apple Clang 21+ consteval workaround ───────
+    # spdlog 1.15's bundled fmt base.h defines FMT_USE_CONSTEVAL=1 for
+    # Apple Clang >= 14, but Apple Clang 21 has a stricter consteval
+    # enforcement that rejects valid fmt code. Patch the version boundary.
+    if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+        execute_process(COMMAND sed -i ""
+            "s/__apple_build_version__ < 14000029L/__apple_build_version__ < 14000029L || __apple_build_version__ >= 21000000L/"
+            "${spdlog_SOURCE_DIR}/include/spdlog/fmt/bundled/base.h"
+        )
+    endif()
+
+    # ── xtensor 0.27.1 compatibility shim for xtensor-blas 0.21.0 ──────
+    # xtensor 0.27.1 moved flat headers into subdirectories. xtensor-blas
+    # still uses old paths (e.g. <xtensor/xtensor.hpp>). Generate forwarding
+    # headers and prepend the compat dir to atomiverse's BUILD_INTERFACE so
+    # that xtensor-blas transitive includes resolve correctly at compile time.
+    set(_xt_compat "${CMAKE_BINARY_DIR}/xtensor-compat")
+    foreach(_old_new
+        "xtensor.hpp:containers/xtensor.hpp"
+        "xarray.hpp:containers/xarray.hpp"
+        "xstorage.hpp:containers/xstorage.hpp"
+        "xview.hpp:views/xview.hpp"
+        "xstrided_view.hpp:views/xstrided_view.hpp"
+        "xnorm.hpp:reducers/xnorm.hpp"
+        "xio.hpp:io/xio.hpp"
+        "xeval.hpp:core/xeval.hpp"
+        "xnoalias.hpp:core/xnoalias.hpp"
+        "xcomplex.hpp:misc/xcomplex.hpp"
+        "xmanipulation.hpp:misc/xmanipulation.hpp"
+        "xutils.hpp:utils/xutils.hpp"
+        "xmath.hpp:core/xmath.hpp"
+    )
+        string(REPLACE ":" ";" _pair "${_old_new}")
+        list(GET _pair 0 _old)
+        list(GET _pair 1 _new)
+        file(WRITE "${_xt_compat}/xtensor/${_old}"
+             "#pragma once\n#include <xtensor/${_new}>\n")
+    endforeach()
 
     # ── Library ──
 
     # ── OpenMP ──
+    # Apple Clang doesn't ship OpenMP; use Homebrew libomp if available.
+    if(APPLE AND NOT OpenMP_CXX_FOUND)
+        find_library(LIBOMP_LIB omp PATHS /opt/homebrew/opt/libomp/lib NO_DEFAULT_PATH)
+        if(LIBOMP_LIB)
+            set(OpenMP_CXX_FLAGS "-Xpreprocessor -fopenmp" CACHE STRING "" FORCE)
+            set(OpenMP_CXX_LIB_NAMES "omp" CACHE STRING "" FORCE)
+            set(OpenMP_omp_LIBRARY "${LIBOMP_LIB}" CACHE STRING "" FORCE)
+            include_directories(/opt/homebrew/opt/libomp/include)
+        endif()
+    endif()
     find_package(OpenMP)
 
     # ── MPI (optional) ──
@@ -141,6 +195,9 @@ if(NOT ATV_DOCS_ONLY)
         target_sources(atomiverse PRIVATE
             src/cpu/scf/integrals.cpp
             src/cpu/scf/native_integrals.cpp
+            src/cpu/scf/rys_roots.cpp
+            src/cpu/scf/rys_eri.cpp
+            src/cpu/scf/shell_pair.cpp
             src/cpu/scf/operators.cpp
             src/cpu/scf/diis.cpp
             src/cpu/scf/scf_solve.cpp
@@ -151,6 +208,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/uks_solve.cpp
             src/cpu/scf/integral_derivatives.cpp
             src/cpu/scf/gradient.cpp
+            src/cpu/scf/libcint_bridge.cpp
             src/cpu/scf/aspc_predictor.cpp
             src/cpu/scf/scf_evaluator.cpp
             src/cpu/minimizer/init.cpp
@@ -242,7 +300,23 @@ if(NOT ATV_DOCS_ONLY)
         target_include_directories(atomiverse PRIVATE src/cuda/md/neighborlist)
     endif()
     target_include_directories(atomiverse PUBLIC include)
-    target_link_libraries(atomiverse PUBLIC xtensor xtensor-blas spdlog::spdlog ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES})
+    # xtensor-blas 0.21.0 uses old-style flat headers; prepend compat shim.
+    # BUILD_INTERFACE: only applies at build time, not to install paths.
+    target_include_directories(atomiverse PUBLIC
+        $<BUILD_INTERFACE:${_xt_compat}>)
+    target_link_libraries(atomiverse PUBLIC xtensor xtensor-blas xsimd spdlog::spdlog ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES})
+    # xsimd is linked for direct use in native_integrals.cpp ERI hot loops.
+    # XTENSOR_USE_XSIMD is NOT set globally: enabling it triggers SIMD-backed
+    # xtensor storage which breaks reshape_view in xc_grid_engine.h.
+    # Native CPU tuning: unlock NEON on ARM64, AVX2/AVX-512 on x86-64.
+    # Language-guarded to prevent NVCC from seeing -march=native on CUDA files.
+    target_compile_options(atomiverse PRIVATE
+        $<$<COMPILE_LANGUAGE:CXX>:-march=native>)
+    # Apple Clang 21+ enforces consteval strictly; spdlog 1.15 fmt bundled lib
+    # triggers a false consteval-in-non-constexpr-context error. Disable it.
+    if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+        target_compile_definitions(atomiverse PUBLIC FMT_USE_CONSTEVAL=0)
+    endif()
     if(ATV_BUILD_CUDA)
         target_link_libraries(atomiverse PUBLIC CUDA::cuda_driver CUDA::cublas CUDA::cusolver)
         set_target_properties(atomiverse PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
@@ -262,7 +336,7 @@ if(NOT ATV_DOCS_ONLY)
     # ── molrs (hard dependency via CXX FFI) ──
     FetchContent_Declare(Corrosion
         GIT_REPOSITORY https://github.com/corrosion-rs/corrosion
-        GIT_TAG v0.5.1
+        GIT_TAG v0.6.1
     )
     FetchContent_MakeAvailable(Corrosion)
     corrosion_import_crate(
