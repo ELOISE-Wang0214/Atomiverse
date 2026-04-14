@@ -218,7 +218,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/scf_evaluator.cpp
             src/cpu/minimizer/init.cpp
             src/cpu/minimizer/lbfgs.cpp
-            # src/cpu/observer/mulliken.cpp  # TODO: fix molrs FFI mismatch
+            src/cpu/observer/mulliken.cpp
         )
         if(ATV_BUILD_CUDA)
             target_sources(atomiverse PRIVATE
