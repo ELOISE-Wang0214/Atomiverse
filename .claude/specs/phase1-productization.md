@@ -38,24 +38,30 @@ created: 2026-04-14
       the SCF's resolved shell list. STO-3G legacy wrapper preserved
       as a thin shim. Test: `test_cpu_scf_def2svp_gradient.cpp`
       (translational invariance holds on H2O @ def2-SVP RHF).
-- [ ] **Pre-existing 3-atom SCF-gradient bug** (new finding —
-      previously masked). An FD / PySCF-reference audit on H2O shows
-      BOTH the native AND libcint 2e-gradient paths produce the same
-      wrong answer (factor-3 + sign flip on O z-force). Since they
-      agree with each other, `test_gradient_vs_libcint` passes
-      vacuously. The bug is upstream in the shared assembly (common
-      1e + Pulay, or atom dispatch in the 2e loop), NOT in
-      `rys_eri_block_deriv` — and NOT introduced by the recent
-      IntegralPack-based deriv refactor (reverting that refactor gives
-      the same wrong gradient). Two-atom systems (H2, HeH+) work; the
-      H2-vs-PySCF test passes. Surfaced by the DISABLED reproducer
-      `H2O_STO3G_analytic_vs_PySCF_reference` in
-      `test_def2svp_gradient.cpp`. This is the single gating item
-      blocking ANY basis above STO-3G from running opt — fixing it
-      unblocks 6-31G / 6-31G\* / def2-SVP simultaneously.
-- [ ] **libcint bridge generalization** — separate item, but lower
-      priority because even libcint-backed STO-3G gradient is wrong
-      above (see previous bullet).
+- [x] **3-atom SCF gradient: exchange symmetrization bug** —
+      canonical-enumeration exchange factor used `P(i,k)·P(j,l)` alone,
+      but the 8-fold ERI symmetry requires the symmetrized product
+      `½·[P(i,k)·P(j,l) + P(j,k)·P(i,l)]` (the `i↔j` permutation of a
+      canonical `(ij|kl)` keeps the integral value but remaps the
+      density product). Fix applied to BOTH libcint and native 2e
+      branches. H2O STO-3G RHF gradient now matches PySCF to ~5 mHa/Bohr
+      (was off by factor-3 + sign). H2O 6-31G RHF gradient matches FD.
+      Tests: `test_def2svp_gradient.cpp::H2O_STO3G_analytic_vs_PySCF_reference`
+      and `::H2O_631G_analytic_vs_FD_control`.
+- [ ] **d-shell gradient path** — s/p now correct (6-31G passes FD),
+      but 6-31G\* / def2-SVP still disagree with FD by O(60 eV/Å) on
+      H2O. Since energy matches PySCF to 10⁻¹⁰ Ha (SCF is fine) and
+      the exchange-symmetrization fix is algebra that's basis-agnostic,
+      the remaining d-shell issue is in either the 1e integral-
+      derivative code (dS / dT / dV for d-shells, where derivative
+      raising by +1 produces f-shell-like temporary angular momenta)
+      or the native 2e block-scatter for d-blocks. Reproducer:
+      `test_def2svp_gradient.cpp::DISABLED_H2O_631Gs_analytic_vs_FD_minimal_d`.
+      Fixing this unblocks def2-SVP opt.
+- [x] **FD function takes BasisSet parameter** — previously hardcoded
+      to STO-3G, which silently gave wrong FD when an analytic gradient
+      was tested at any other basis (exactly how the pre-existing
+      3-atom bug stayed hidden).
 - [ ] **KS/d-shell XC grid** — `basis_eval.h` only handles l ∈ {0, 1}.
       Blocks PBE/def2-SVP SCF itself (KS grid evaluation). Separate
       from the gradient issue; surfaces as SCF hang before any force

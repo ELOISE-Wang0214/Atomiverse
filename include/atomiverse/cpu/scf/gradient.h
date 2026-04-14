@@ -56,12 +56,14 @@ GradientResult scf_gradient(
 /// @param config SCF configuration (method, spin, XC, grid, electron counts).
 /// @param charge Molecular charge (0 = neutral).
 /// @param h      Displacement step in Angstrom (default 5e-5).
+/// @param basis  Which basis to rebuild integrals in (default STO-3G).
 /// @return Forces on all atoms (eV/Angstrom) and total energy (eV).
 GradientResult scf_finite_difference_gradient(
     const Frame& frame,
     const SCFConfig& config,
     int charge = 0,
-    double h = 5e-5
+    double h = 5e-5,
+    BasisSet basis = BasisSet::STO3G
 );
 
 } // namespace scf

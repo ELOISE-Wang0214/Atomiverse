@@ -876,13 +876,29 @@ void accumulate_two_electron_gradient_sto3g(
                                 for (int ll = 0; ll < dl; ++ll) {
                                     const int l = l0 + ll;
 
+                                    // Exchange density factor. The canonical enumeration
+                                    // of ERI (ij|kl) uses 8-fold symmetry, but the
+                                    // exchange *density* product P(i,k)·P(j,l) is NOT
+                                    // symmetric under i↔j or k↔l — it maps to
+                                    // P(j,k)·P(i,l) and P(i,l)·P(j,k). Symmetrize so
+                                    // canonical-enumeration * mult gives the full-sum
+                                    // exchange energy.
+                                    //
+                                    // Averaged over the 8 ERI permutations:
+                                    //   sum = 4·[P(i,k)·P(j,l) + P(j,k)·P(i,l)]
+                                    //   sym_factor = (1/8) · sum = ½·[P(i,k)·P(j,l) + P(j,k)·P(i,l)]
+                                    // leading to the factor 0.5 inside the bracket.
                                     double density_factor = 0.0;
                                     if (restricted) {
-                                        density_factor = -0.25 * P_total(i, k) * P_total(j, l);
+                                        density_factor = -0.25 * 0.5 * (
+                                            P_total(i, k) * P_total(j, l) +
+                                            P_total(j, k) * P_total(i, l));
                                     } else {
-                                        density_factor = -0.5 * (
+                                        density_factor = -0.5 * 0.5 * (
                                             result.P_alpha(i, k) * result.P_alpha(j, l) +
-                                            result.P_beta(i, k) * result.P_beta(j, l));
+                                            result.P_alpha(j, k) * result.P_alpha(i, l) +
+                                            result.P_beta(i, k) * result.P_beta(j, l) +
+                                            result.P_beta(j, k) * result.P_beta(i, l));
                                     }
 
                                     const double factor = quartet_prefactor * density_factor;
@@ -1070,15 +1086,25 @@ void accumulate_two_electron_gradient_sto3g(
 
                             // Exchange factor (K) — HF only (KS skips K;
                             // grid XC handles it separately).
+                            //
+                            // Canonical enumeration of (ij|kl) uses 8-fold
+                            // ERI symmetry, but the exchange density product
+                            // P(i,k)·P(j,l) is NOT symmetric under i↔j or
+                            // k↔l. Symmetrize (average over the 8 perms):
+                            //   sym_factor = ½·[P(i,k)·P(j,l) + P(j,k)·P(i,l)]
+                            // so canonical + mult recovers the full sum.
                             double factor_K = 0.0;
                             if (!is_ks) {
                                 if (restricted) {
-                                    factor_K = -0.25 * mult
-                                             * P_total(i, k) * P_total(j, l);
+                                    factor_K = -0.25 * mult * 0.5 * (
+                                        P_total(i, k) * P_total(j, l) +
+                                        P_total(j, k) * P_total(i, l));
                                 } else {
-                                    factor_K = -0.5 * mult * (
+                                    factor_K = -0.5 * mult * 0.5 * (
                                         result.P_alpha(i, k) * result.P_alpha(j, l) +
-                                        result.P_beta(i, k)  * result.P_beta(j, l));
+                                        result.P_alpha(j, k) * result.P_alpha(i, l) +
+                                        result.P_beta(i, k)  * result.P_beta(j, l)  +
+                                        result.P_beta(j, k)  * result.P_beta(i, l));
                                 }
                             }
                             const double factor = factor_J + factor_K;

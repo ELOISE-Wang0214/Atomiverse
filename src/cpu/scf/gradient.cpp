@@ -411,12 +411,13 @@ GradientResult scf_finite_difference_gradient(
     const Frame& frame,
     const SCFConfig& config,
     int charge,
-    double h)
+    double h,
+    BasisSet basis)
 {
     int natm = static_cast<int>(frame.atoms.size());
 
     auto energy_fn = [&](const Frame& f) {
-        return scf_solve(build_integrals_sto3g(f, charge), config).energy;
+        return scf_solve(build_integrals(f, basis, charge), config).energy;
     };
     double ref_energy = energy_fn(frame);
 
