@@ -20,6 +20,7 @@
 #include "atomiverse/cuda/context.cuh"
 #include "atomiverse/core/types.h"
 #include "atomiverse/core/binding.h"
+#include "atomiverse/facade/requirements.h"
 
 namespace ATV {
 
@@ -92,6 +93,18 @@ public:
     /// @brief Default stage bindings. Empty = must bind explicitly via on().add().
     /// @return Vector of DefaultBinding (phase index + order pairs).
     virtual std::vector<DefaultBinding> default_bindings() const { return {}; }
+
+    /// @brief Semantic field requirements for one bound phase.
+    ///
+    /// The returned requirements are compiled into `Plan::requirements()` for
+    /// external lowering. The CUDA runtime itself only consumes a materialized
+    /// `cuda::Frame`.
+    ///
+    /// @param phase Bound phase index currently being compiled.
+    virtual RequirementSet requirements(int phase) const {
+        (void)phase;
+        return {};
+    }
 
     /// @brief One-time resource preparation.
     ///

@@ -15,8 +15,8 @@
 #include <cuda_runtime.h>
 #include "atomiverse/cuda/types.cuh"
 #include <cusolverDn.h>
-#include <xtensor/xnorm.hpp>
-#include <xtensor/xview.hpp>
+#include <xtensor/reducers/xnorm.hpp>
+#include <xtensor/views/xview.hpp>
 #include <xtensor-blas/xlinalg.hpp>
 
 namespace ATV {

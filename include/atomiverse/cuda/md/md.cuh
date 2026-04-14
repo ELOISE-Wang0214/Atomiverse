@@ -28,23 +28,34 @@
 namespace ATV {
 namespace md {
 
-/// @brief MD driver with LAMMPS-style phase sequence.
+/// @brief MD specification with LAMMPS-style phase sequence.
 ///
 /// Automatically adds infrastructure components:
 /// - ZeroForces at pre_force (order -1000) -- zeros fx, fy, fz.
 /// - ZeroEnergy at pre_force (order -999) -- zeros potential energy.
 ///
 /// @see minimizer::CG for the energy minimizer driver
-class MD : public Driver<Phase> {
+class Spec : public ATV::DriverSpec<Phase> {
+    using Base = ATV::DriverSpec<Phase>;
 public:
-    /// @brief Construct MD driver with auto-added zeroing infrastructure.
-    MD() {
-        on(Phase::pre_force).add(ZeroForces{}, -1000);
-        on(Phase::pre_force).add(ZeroEnergy{}, -999);
-        on(Phase::end_of_step).add(ZeroKinetic{}, -1000);
-        on(Phase::end_of_step).add(KineticEnergy{}, -100);
+    /// @brief Construct MD spec with auto-added zeroing infrastructure.
+    Spec() {
+        Base::on(Phase::pre_force).add(ZeroForces{}, -1000);
+        Base::on(Phase::pre_force).add(ZeroEnergy{}, -999);
+        Base::on(Phase::end_of_step).add(ZeroKinetic{}, -1000);
+        Base::on(Phase::end_of_step).add(KineticEnergy{}, -100);
     }
 };
+
+/// @brief Pure runtime CUDA MD driver executing a compiled plan.
+class Driver : public ATV::Driver<Phase> {
+    using Base = ATV::Driver<Phase>;
+public:
+    using Base::Base;
+};
+
+/// @brief Transitional legacy CUDA MD facade.
+class MD : public ATV::detail::LegacyDriverFacade<Spec, Driver> {};
 
 } // namespace md
 } // namespace ATV

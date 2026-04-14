@@ -12,29 +12,41 @@ namespace ATV {
 namespace cpu {
 namespace md {
 
-/// @brief CPU MD simulation driver.
+/// @brief CPU MD specification with auto-added infrastructure components.
 ///
-/// Convenience class that auto-adds infrastructure components:
+/// Auto-adds infrastructure components:
 /// ZeroForces (pre_force, -1000), ZeroEnergy (pre_force, -999),
 /// ZeroKinetic (end_of_step, -1000), KineticEnergy (end_of_step, -100).
 ///
 /// Usage:
 /// @code{.cpp}
-/// cpu::md::MD sim;
-/// sim.add(cpu::md::VelocityVerlet{0.001});
-/// sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList{6.8}, -10);
-/// sim.build();
-/// sim.run(frame, 1000);
+/// cpu::md::Spec spec;
+/// spec.add(cpu::md::VelocityVerlet{0.001});
+/// spec.on(ATV::md::Phase::force).add(cpu::md::NeighborList{6.8}, -10);
+/// auto plan = spec.compile();
+/// cpu::md::Driver driver(std::move(plan));
+/// driver.run(frame, 1000);
 /// @endcode
-class MD : public Driver<ATV::md::Phase, cpu::device_tag> {
+class Spec : public ATV::DriverSpec<ATV::md::Phase, cpu::device_tag> {
+    using Base = ATV::DriverSpec<ATV::md::Phase, cpu::device_tag>;
 public:
-    MD() {
-        add(ZeroForces{});
-        add(ZeroEnergy{});
-        add(ZeroKinetic{});
-        add(KineticEnergy{});
+    Spec() {
+        Base::add(ZeroForces{});
+        Base::add(ZeroEnergy{});
+        Base::add(ZeroKinetic{});
+        Base::add(KineticEnergy{});
     }
 };
+
+/// @brief Pure runtime CPU MD driver executing a compiled plan.
+class Driver : public ATV::Driver<ATV::md::Phase, cpu::device_tag> {
+    using Base = ATV::Driver<ATV::md::Phase, cpu::device_tag>;
+public:
+    using Base::Base;
+};
+
+/// @brief Transitional legacy CPU MD facade.
+class MD : public ATV::detail::LegacyDriverFacade<Spec, Driver> {};
 
 } // namespace md
 } // namespace cpu

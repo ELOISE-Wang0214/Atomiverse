@@ -50,16 +50,27 @@ public:
     void launch(const LaunchContext& ctx) override;
 };
 
-/// @brief SCF driver with iterative dense-matrix phases.
+/// @brief SCF specification with iterative dense-matrix phases.
 ///
 /// Auto-adds ZeroDensity at build_hamiltonian (order -1000).
-class SCF : public Driver<Phase> {
+class Spec : public ATV::DriverSpec<Phase> {
+    using Base = ATV::DriverSpec<Phase>;
 public:
-    /// @brief Construct SCF driver with auto-added infrastructure.
-    SCF() {
-        on(Phase::build_hamiltonian).add(ZeroDensity{}, -1000);
+    /// @brief Construct SCF spec with auto-added infrastructure.
+    Spec() {
+        Base::on(Phase::build_hamiltonian).add(ZeroDensity{}, -1000);
     }
 };
+
+/// @brief Pure runtime CUDA SCF driver executing a compiled plan.
+class Driver : public ATV::Driver<Phase> {
+    using Base = ATV::Driver<Phase>;
+public:
+    using Base::Base;
+};
+
+/// @brief Transitional legacy CUDA SCF facade.
+class SCF : public ATV::detail::LegacyDriverFacade<Spec, Driver> {};
 
 } // namespace scf
 } // namespace ATV
