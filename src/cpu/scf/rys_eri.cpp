@@ -366,8 +366,10 @@ static void rys_eri_block_canonical(const ShellBlock& A, const ShellBlock& B,
     const int n_out = env.nfi * nbcd;
 
     // ── Precompute angular index offsets (invariant across primitives) ──
+    // Heap-allocated because d-shell quartets need up to 6^4 = 1296 entries.
+    // The derivative kernel already uses std::vector; we match it here.
     struct AngIdx { int ox, oy, oz, out_idx; };
-    AngIdx ang_idx[256]; // 6^4 = 1296 max for d-shells; 81 for pp|pp
+    std::vector<AngIdx> ang_idx(static_cast<size_t>(n_out));
     {
         int c = 0;
         for (int ia = 0; ia < env.nfi; ++ia)

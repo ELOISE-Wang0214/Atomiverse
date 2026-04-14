@@ -12,7 +12,7 @@
 
 #include <vector>
 #include <array>
-#include <xtensor/xtensor.hpp>
+#include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
@@ -40,8 +40,11 @@ struct IntegralPack {
     std::vector<native::Shell> shells;
 
     /// @brief Backing storage for shell exponents and normalized coefficients.
-    /// Shells point into this storage. Layout: [alpha_0..alpha_{n-1}, coeff_0..coeff_{n-1}] per shell.
-    std::vector<std::array<double, 6>> shell_data;
+    /// One inner vector per shell, length `2 * n_prim`, laid out as
+    /// `[alpha_0 ... alpha_{n_prim-1}, coeff_0 ... coeff_{n_prim-1}]`.
+    /// `pack.shells[i].alpha` / `.coeff` point into this storage; any code
+    /// that copies `shell_data` must also rebind those pointers.
+    std::vector<std::vector<double>> shell_data;
 
     /// @brief Number of doubly-occupied orbitals (RHF closed-shell).
     /// @return `n_electrons / 2`.
@@ -53,10 +56,19 @@ struct IntegralPack {
 /// Reads atom positions from frame.atoms.x/y/z (Angstrom) and nuclear charges
 /// from frame.atoms.type. Converts to Bohr internally.
 ///
-/// @param frame CPU Frame with atom positions and types (atoms.type = Z).
-/// @param charge Molecular charge (0 = neutral, +1 = cation, etc.).
-/// @return IntegralPack with all integrals computed.
-IntegralPack build_integrals_sto3g(const Frame& frame, int charge = 0);
+/// By default the two-electron ERI tensor is NOT computed (compute_eri=false).
+/// The CPU SCF solver uses direct SCF via build_shell_pair_list + build_g_rhf_direct,
+/// so storing the full O(n^4) ERI tensor is unnecessary for CPU calculations.
+/// Pass compute_eri=true when the caller explicitly needs integrals.ERI:
+///   - CUDA RHFFock (uploads ERI to device)
+///   - Tests that verify ERI values directly
+///
+/// @param frame       CPU Frame with atom positions and types (atoms.type = Z).
+/// @param charge      Molecular charge (0 = neutral, +1 = cation, etc.).
+/// @param compute_eri If true, compute and store the full ERI tensor [default false].
+/// @return IntegralPack with S, T, V, Hcore, V_nuc, shells, atoms (ERI only if requested).
+IntegralPack build_integrals_sto3g(const Frame& frame, int charge = 0,
+                                   bool compute_eri = false);
 
 } // namespace scf
 } // namespace cpu

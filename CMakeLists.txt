@@ -193,6 +193,9 @@ if(NOT ATV_DOCS_ONLY)
 
     if(ATV_BUILD_RHF)
         target_sources(atomiverse PRIVATE
+            src/cpu/scf/basis_set.cpp
+            src/cpu/scf/one_electron.cpp
+            src/cpu/scf/two_electron.cpp
             src/cpu/scf/integrals.cpp
             src/cpu/scf/native_integrals.cpp
             src/cpu/scf/rys_roots.cpp

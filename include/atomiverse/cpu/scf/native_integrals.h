@@ -8,6 +8,10 @@
 /// Uses physical normalization: (2*alpha/pi)^{3/4} for s-type.
 /// Shell.l selects angular momentum; Shell.cart selects Cartesian component.
 ///
+/// For direct-SCF Fock building, prefer the shell-block interface:
+///   ShellBlock + eri_block() amortize Boys/R-table computation across all
+///   angular combinations in a shell-block quartet (libcint/PySCF approach).
+///
 /// @see cpu::scf::IntegralPack for the output data structure
 /// @see cpu::scf::build_integrals_sto3g for the entry point
 #pragma once
@@ -17,7 +21,8 @@ namespace cpu {
 namespace scf {
 namespace native {
 
-/// @brief Contracted Gaussian shell (s and p type).
+/// @brief Contracted Gaussian shell (s and p type), single-AO view.
+/// Used for one-electron integrals and legacy direct-SCF.
 struct Shell {
     int n_prim;            ///< Number of primitive Gaussians.
     const double* alpha;   ///< Exponents [n_prim].
@@ -25,6 +30,28 @@ struct Shell {
     double center[3];      ///< Shell center in Bohr [x, y, z].
     int l;                 ///< Angular momentum (0=s, 1=p).
     int cart;              ///< Cartesian component: s->0, p->0=x,1=y,2=z.
+};
+
+/// @brief Shell block for shell-level ERI computation (libcint/PySCF approach).
+///
+/// Represents all Cartesian AOs of a single angular-momentum shell:
+///   l=0 (s): n_cart=1, function 0 = (0,0,0)
+///   l=1 (p): n_cart=3, functions 0=px, 1=py, 2=pz
+///
+/// eri_block() amortizes Boys function + R-table evaluation across all
+/// (na × nb × nc × nd) angular combinations per primitive quartet,
+/// giving an ~81× speedup for (pp|pp) shell-block quartets in STO-3G.
+///
+/// @see eri_block
+/// @see cpu::scf::ShellBlockPairList
+struct ShellBlock {
+    int n_prim;           ///< Number of primitive Gaussians (same for all AOs in this shell).
+    const double* alpha;  ///< Exponents [n_prim].
+    const double* coeff;  ///< Normalized contraction coefficients [n_prim].
+    double center[3];     ///< Shell center in Bohr [x, y, z].
+    int l;                ///< Angular momentum: 0=s, 1=p.
+    int n_cart;           ///< Number of Cartesian AOs: l=0→1, l=1→3.
+    int ao_start;         ///< First global AO index for this shell block.
 };
 
 /// @brief Atom descriptor for nuclear attraction integrals.
@@ -137,6 +164,35 @@ double nuclear(const Shell& a, const Shell& b,
 /// @return ERI in chemist's notation (ab|cd).
 double eri(const Shell& a, const Shell& b,
            const Shell& c, const Shell& d);
+
+// ── Shell-block ERI (libcint/PySCF approach) ─────────────────────────
+
+/// @brief Compute all ERIs for a shell-block quartet into a flat output buffer.
+///
+/// @details Amortizes Boys function and R-table evaluation across all
+///   (A.n_cart × B.n_cart × C.n_cart × D.n_cart) angular combinations
+///   per primitive quartet.  For a (pp|pp) block with 3 primitives/shell
+///   (STO-3G), this reduces Boys evaluations from 81×81 to 81 (one per
+///   primitive quartet instead of one per scalar ERI call).
+///
+///   The E-coefficient tables E_bra[3][2][2][3] and E_ket[3][2][2][3] are
+///   precomputed once per primitive quartet (indexed by angular quantum number
+///   in each direction: 0 or 1), and shared across the inner angular loop.
+///   The R-table (shared for all angular combinations) is built to size
+///   [5][5][5][5] covering Ltot ≤ 4 = A.l+B.l+C.l+D.l for l_max=1.
+///
+///   Supports l ∈ {0, 1} only (s and p shells, STO-3G basis).
+///
+/// @param A,B Shell blocks for the bra (electron 1).
+/// @param C,D Shell blocks for the ket (electron 2).
+/// @param out Flat output buffer of size A.n_cart×B.n_cart×C.n_cart×D.n_cart.
+///   Indexing: out[ia*B.n_cart*C.n_cart*D.n_cart + ib*C.n_cart*D.n_cart
+///             + ic*D.n_cart + id] = (ia_in_A  ib_in_B | ic_in_C  id_in_D).
+///   The buffer is zeroed on entry and accumulated into (supports warm accumulation).
+/// @note out must be pre-zeroed; the function accumulates into it.
+void eri_block(const ShellBlock& A, const ShellBlock& B,
+               const ShellBlock& C, const ShellBlock& D,
+               double* out);
 
 // ── Primitive-level functions (exposed for derivative code) ──────────
 
