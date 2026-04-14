@@ -6,7 +6,7 @@
 #include <gtest/gtest.h>
 #include <cmath>
 
-#include <xtensor/xnorm.hpp>
+#include <xtensor/reducers/xnorm.hpp>
 #include <xtensor-blas/xlinalg.hpp>
 
 #include "atomiverse/cpu/frame.h"

@@ -19,7 +19,7 @@
 #include <cmath>
 #include <vector>
 
-#include <xtensor/xtensor.hpp>
+#include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/core/constants.h"
 #include "atomiverse/cpu/scf/integrals.h"

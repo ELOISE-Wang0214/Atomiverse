@@ -16,9 +16,9 @@
 #include <iostream>
 #include <iomanip>
 
-#include <xtensor/xtensor.hpp>
-#include <xtensor/xnorm.hpp>
-#include <xtensor/xview.hpp>
+#include <xtensor/containers/xtensor.hpp>
+#include <xtensor/reducers/xnorm.hpp>
+#include <xtensor/views/xview.hpp>
 #include <xtensor-blas/xlinalg.hpp>
 
 int main() {

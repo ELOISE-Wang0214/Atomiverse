@@ -10,7 +10,7 @@
 #include <gtest/gtest.h>
 #include <cmath>
 
-#include <xtensor/xtensor.hpp>
+#include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/cpu/scf/diis.h"
 #include "atomiverse/cpu/scf/aspc_predictor.h"

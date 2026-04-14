@@ -40,6 +40,9 @@ endif()
 # Standalone C++ tutorial examples
 add_executable(01_scf tutorial/01_scf.cpp)
 target_link_libraries(01_scf PRIVATE xtensor xtensor-blas ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES})
+# xtensor-blas still uses old flat-header paths; route through the compat shim
+# that atomiverse also uses. 01_scf intentionally does not link atomiverse.
+target_include_directories(01_scf PRIVATE $<BUILD_INTERFACE:${_xt_compat}>)
 set_target_properties(01_scf PROPERTIES CXX_STANDARD 17)
 
 if(ATV_BUILD_RHF)
