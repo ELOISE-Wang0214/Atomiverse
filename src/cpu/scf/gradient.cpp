@@ -82,12 +82,13 @@ static void accumulate_common_gradient(
 static GradientResult make_result(
     const xt::xtensor<double, 2>& grad, double energy_hartree, int natm)
 {
+    // SCF gradient lives in Hartree/Bohr; Frame / MD drivers expect eV/Å.
     GradientResult out;
     out.forces = xt::zeros<double>({(int)natm, (int)3});
     for (int A = 0; A < natm; ++A)
         for (int d = 0; d < 3; ++d)
-            out.forces(A, d) = -grad(A, d) * kForceAU2Metal;
-    out.energy = energy_hartree * kHartree2eV;
+            out.forces(A, d) = -units::force::ev_per_angstrom_from_hartree_per_bohr(grad(A, d));
+    out.energy = units::energy::ev_from_hartree(energy_hartree);
     return out;
 }
 
@@ -433,13 +434,15 @@ GradientResult scf_finite_difference_gradient(
             else bwd.atoms.z(A) -= h;
             double e_bwd = energy_fn(bwd);
 
-            forces(A, d) = -(e_fwd - e_bwd) / (2.0 * h) * kHartree2eV;
+            // FD uses Å step, so dE/dr is already in eV/Å once the Hartree
+            // energy is converted — no extra 1/Bohr factor.
+            forces(A, d) = -units::energy::ev_from_hartree((e_fwd - e_bwd) / (2.0 * h));
         }
     }
 
     GradientResult out;
     out.forces = forces;
-    out.energy = ref_energy * kHartree2eV;
+    out.energy = units::energy::ev_from_hartree(ref_energy);
     return out;
 }
 
