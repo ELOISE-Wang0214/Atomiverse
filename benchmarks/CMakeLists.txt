@@ -21,11 +21,14 @@ function(atv_add_cpp_bench name)
     set_target_properties(${name} PROPERTIES CXX_STANDARD 17)
 endfunction()
 
-atv_add_bench(bench_md_step)
-atv_add_bench(bench_scf)
-atv_add_bench(bench_rhf)
+if(ATV_BUILD_CUDA)
+    atv_add_bench(bench_md_step)
+    atv_add_bench(bench_scf)
+    atv_add_bench(bench_rhf)
+endif()
 
 if(ATV_BUILD_RHF)
+    atv_add_cpp_bench(bench_libcint)
     atv_add_cpp_bench(bench_native)
 endif()
 
