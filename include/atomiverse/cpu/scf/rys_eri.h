@@ -72,6 +72,33 @@ void rys_eri_block(const ShellBlock& A, const ShellBlock& B,
                    const ShellBlock& C, const ShellBlock& D,
                    double* out);
 
+/// @brief Block-level derivative of the ERI w.r.t. one nuclear centre.
+///
+/// Computes ∂(AB|CD)/∂R_X — all three Cartesian components — into an
+/// axis-split output buffer. Uses a single extended 2D Rys grid per
+/// primitive quartet (bra or ket direction extended by +1 angular
+/// momentum on the deriv side) and a nabla recurrence
+///   f[i] = i·g[i-1] - 2α·g[i+1]
+/// to read out the derivative from the already-built grid. All three
+/// Cartesian axes share the same grid; this is the same algorithmic
+/// skeleton used by libcint's `int2e_ip1`.
+///
+/// @param A,B,C,D Shell blocks in the conventional ERI ordering (AB|CD).
+/// @param deriv_center 0 = ∂/∂R_A, 1 = ∂/∂R_B, 2 = ∂/∂R_C, 3 = ∂/∂R_D.
+/// @param out_axes Pre-zeroed flat buffer of size
+///        3 · A.n_cart · B.n_cart · C.n_cart · D.n_cart, interpreted as
+///        `out_axes[axis * (na*nb*nc*nd) + ia*nbcd + ib*ncd + ic*nd + id]`.
+///        Output is accumulated, not overwritten (mirrors
+///        `rys_eri_block`).
+///
+/// @note Only Cartesian Gaussians up to l = 2 (s/p/d) are supported.
+///       STO-3G uses only l ∈ {0, 1}, so a derivative adds at most one
+///       angular step and stays within the `kRysMaxRoots = 5` budget.
+void rys_eri_block_deriv(const ShellBlock& A, const ShellBlock& B,
+                          const ShellBlock& C, const ShellBlock& D,
+                          int deriv_center,
+                          double* out_axes);
+
 } // namespace native
 } // namespace scf
 } // namespace cpu

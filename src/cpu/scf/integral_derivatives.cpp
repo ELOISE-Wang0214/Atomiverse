@@ -20,10 +20,16 @@
 #include "atomiverse/cpu/scf/integral_derivatives.h"
 #include "atomiverse/cpu/scf/libcint_bridge.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
+#include "atomiverse/cpu/scf/rys_eri.h"
+#include "atomiverse/cpu/scf/shell_pair.h"
 #include "atomiverse/cpu/scf/sto3g_data.h"
 #include "atomiverse/core/constants.h"
 #include "atomiverse/core/gto.h"
 #include "atomiverse/core/log.h"
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 #ifdef ATV_HAS_LIBCINT
 extern "C" {
@@ -741,7 +747,7 @@ void accumulate_two_electron_gradient_sto3g(
 
 #ifdef ATV_HAS_LIBCINT
     auto cint_ctx = build_libcint_sto3g_context(frame);
-    if (cint_ctx.nao == n) {
+    if (cint_ctx.nao == n && !config.force_native_two_electron_deriv) {
         const int nshells = cint_ctx.nshells;
         ATV_INFO(
             "[gradient] two_e engine=libcint natm={} basis={} shells={}",
@@ -971,132 +977,190 @@ void accumulate_two_electron_gradient_sto3g(
         return;
     }
 
-    ATV_WARN(
-        "[gradient] libcint two_e derivative nao mismatch libcint_nao={} basis={}, falling back to native engine",
-        cint_ctx.nao, n);
+    if (config.force_native_two_electron_deriv) {
+        ATV_INFO("[gradient] two_e engine=native (force_native_two_electron_deriv=true)");
+    } else {
+        ATV_WARN(
+            "[gradient] libcint two_e derivative nao mismatch libcint_nao={} basis={}, falling back to native engine",
+            cint_ctx.nao, n);
+    }
 #endif
 
-    std::vector<std::array<int, 3>> shell_ang(n);
-    for (int mu = 0; mu < n; ++mu)
-        cart_exponents(integrals.shells[mu], shell_ang[mu].data());
+    // ── Native 2e gradient: block-level + Schwarz + OpenMP + Rys ───────
+    //
+    // Mirrors the SCF Fock build's direct-SCF pattern in operators.cpp:
+    //   1. Iterate canonical shell-BLOCK pairs (bra × ket, canonical).
+    //   2. Cauchy-Schwarz gate each block quartet against Q_ij·Q_kl·|P|max.
+    //   3. For each surviving quartet, compute ∂/∂R_A, ∂/∂R_B, ∂/∂R_C via
+    //      `rys_eri_block_deriv` (3 block-tensor calls) and use
+    //      translational invariance ∂/∂R_D = -(∂A + ∂B + ∂C).
+    //   4. Contract with the density (J + K combined in one pass) and
+    //      accumulate into per-thread [natm, 3] force arrays.
+    //   5. Reduce thread-local arrays into `grad` at the end.
+    //
+    // AO canonical ordering inside the block quartet: global indices
+    // (i, j, k, l) must satisfy i≥j, k≥l, (i,j)≥(k,l). When the outer
+    // block pair has si>sj (distinct blocks), i>j is automatic; the
+    // same holds across bra/ket when the block pairs differ. Only
+    // same-block cases (si==sj, or bp_l==bp_r) need explicit AO-level
+    // canonicalization.
 
-    std::vector<int> shell_to_atom = build_shell_to_atom_from_integrals(integrals);
-    std::vector<std::array<int, 2>> shell_pairs;
-    shell_pairs.reserve(static_cast<std::size_t>(n * (n + 1) / 2));
-    for (int i = 0; i < n; ++i)
-        for (int j = 0; j <= i; ++j)
-            shell_pairs.push_back({i, j});
+    const auto bpl = build_shell_block_pair_list(integrals, /*thr=*/1e-10);
+    const int n_bpairs = static_cast<int>(bpl.pairs.size());
 
-    const int n_pairs = static_cast<int>(shell_pairs.size());
-    const long long n_unique_quartets = 1LL * n_pairs * (n_pairs + 1) / 2;
-    const int progress_stride = (n_pairs >= 10) ? (n_pairs / 10) : 1;
+    // Shell-block → atom mapping (each block is single-centered).
+    std::vector<int> block_to_atom(bpl.blocks.size(), -1);
+    for (std::size_t b = 0; b < bpl.blocks.size(); ++b) {
+        const auto& Bl = bpl.blocks[b];
+        for (int a = 0; a < natm; ++a) {
+            const double dx = Bl.center[0] - integrals.atoms[a].pos[0];
+            const double dy = Bl.center[1] - integrals.atoms[a].pos[1];
+            const double dz = Bl.center[2] - integrals.atoms[a].pos[2];
+            if (dx*dx + dy*dy + dz*dz < 1e-20) { block_to_atom[b] = a; break; }
+        }
+    }
 
-    const auto t_coulomb = LogClock::now();
+    // |P|_max for Schwarz contraction-bound.
+    double D_max = 0.0;
+    {
+        auto max_abs = [](const xt::xtensor<double, 2>& M) {
+            double m = 0.0;
+            for (std::size_t i = 0; i < M.size(); ++i)
+                m = std::max(m, std::abs(M.data()[i]));
+            return m;
+        };
+        if (restricted) D_max = max_abs(P_total);
+        else            D_max = std::max(max_abs(result.P_alpha), max_abs(result.P_beta));
+        if (D_max < 1.0) D_max = 1.0;  // keep Schwarz conservative at startup
+    }
+    const double schwarz_tol = 1e-13;
+
+    // Per-thread gradient accumulators (avoid atomics on `grad`).
+    const int nT =
+#ifdef _OPENMP
+        omp_get_max_threads();
+#else
+        1;
+#endif
+    std::vector<xt::xtensor<double, 2>> grad_local(
+        nT,
+        xt::zeros<double>({static_cast<std::size_t>(natm),
+                            static_cast<std::size_t>(3)}));
+
+    const auto t_two_e = LogClock::now();
     ATV_DEBUG(
-        "[gradient] two_e coulomb start natm={} basis={} unique_quartets={}",
-        natm, n, n_unique_quartets);
+        "[gradient] two_e engine=native block-deriv natm={} basis={} "
+        "blocks={} block_pairs={}",
+        natm, n, bpl.blocks.size(), n_bpairs);
 
-    for (int left = 0; left < n_pairs; ++left) {
-        const int i = shell_pairs[left][0];
-        const int j = shell_pairs[left][1];
-        const int ai = shell_to_atom[i];
-        const int aj = shell_to_atom[j];
-        const int mult_left = pair_multiplicity(i, j);
+#ifdef _OPENMP
+    #pragma omp parallel for schedule(dynamic)
+#endif
+    for (int left = 0; left < n_bpairs; ++left) {
+        const int tid =
+#ifdef _OPENMP
+            omp_get_thread_num();
+#else
+            0;
+#endif
+        auto& Gl = grad_local[tid];
+        const auto& bp_l = bpl.pairs[left];
+        const auto& Bsi  = bpl.blocks[bp_l.si];
+        const auto& Bsj  = bpl.blocks[bp_l.sj];
+        const int na = Bsi.n_cart, nb = Bsj.n_cart;
+        const int i0 = Bsi.ao_start, j0 = Bsj.ao_start;
+        const int atom_i = block_to_atom[bp_l.si];
+        const int atom_j = block_to_atom[bp_l.sj];
+        const bool diag_bra = (bp_l.si == bp_l.sj);
 
         for (int right = 0; right <= left; ++right) {
-            const int k = shell_pairs[right][0];
-            const int l = shell_pairs[right][1];
-            const int ak = shell_to_atom[k];
-            const int al = shell_to_atom[l];
-            const int mult_right = pair_multiplicity(k, l);
-            const int bra_ket_mult = (left == right) ? 1 : 2;
-            const double factor = 0.5 * mult_left * mult_right * bra_ket_mult
-                                * P_total(i, j) * P_total(k, l);
-
-            if (std::abs(factor) < 1e-18)
+            const auto& bp_r = bpl.pairs[right];
+            if (bp_l.schwarz * bp_r.schwarz * D_max < schwarz_tol)
                 continue;
 
-            const QuartetDerivTotals totals = compute_quartet_derivatives(
-                integrals.shells[i], shell_ang[i].data(),
-                integrals.shells[j], shell_ang[j].data(),
-                integrals.shells[k], shell_ang[k].data(),
-                integrals.shells[l], shell_ang[l].data());
-            accumulate_quartet_into_gradient(grad, ai, aj, ak, al, totals, factor);
-        }
+            const auto& Bsk = bpl.blocks[bp_r.si];
+            const auto& Bsl = bpl.blocks[bp_r.sj];
+            const int nc = Bsk.n_cart, nd = Bsl.n_cart;
+            const int k0 = Bsk.ao_start, l0 = Bsl.ao_start;
+            const int atom_k = block_to_atom[bp_r.si];
+            const int atom_l = block_to_atom[bp_r.sj];
+            const bool diag_ket   = (bp_r.si == bp_r.sj);
+            const bool same_pair  = (left == right);
+            const int  bra_ket_m  = same_pair ? 1 : 2;
+            const int  block_n    = na * nb * nc * nd;
 
-        const bool should_log =
-            (((left + 1) % progress_stride) == 0) || ((left + 1) == n_pairs);
-        if (should_log) {
-            const long long unique_done = 1LL * (left + 1) * (left + 2) / 2;
-            ATV_DEBUG(
-                "[gradient] two_e coulomb progress shell_pairs={}/{} unique_done={}/{} ms={:.1f}",
-                left + 1, n_pairs, unique_done, n_unique_quartets, elapsed_ms(t_coulomb));
-        }
-    }
+            std::vector<double> deriv_A(3 * block_n, 0.0);
+            std::vector<double> deriv_B(3 * block_n, 0.0);
+            std::vector<double> deriv_C(3 * block_n, 0.0);
+            native::rys_eri_block_deriv(Bsi, Bsj, Bsk, Bsl, 0, deriv_A.data());
+            native::rys_eri_block_deriv(Bsi, Bsj, Bsk, Bsl, 1, deriv_B.data());
+            native::rys_eri_block_deriv(Bsi, Bsj, Bsk, Bsl, 2, deriv_C.data());
 
-    ATV_DEBUG("[gradient] two_e coulomb done ms={:.1f}", elapsed_ms(t_coulomb));
+            // Multiplicities are BLOCK-level (matching the libcint
+            // branch above and operators.cpp's Fock build): within a
+            // canonical shell-block quartet we iterate every AO tuple
+            // and rely on `mult_left * mult_right * bra_ket_m` — all
+            // three at block-level — to account for the 8-fold ERI
+            // permutation symmetry. An additional AO-level canonical
+            // check would over-restrict and under-count off-diagonal
+            // contributions.
+            const int mult_left  = diag_bra ? 1 : 2;
+            const int mult_right = diag_ket ? 1 : 2;
+            const int mult       = mult_left * mult_right * bra_ket_m;
 
-    if (!is_ks) {
-        const auto t_exchange = LogClock::now();
-        ATV_DEBUG(
-            "[gradient] two_e exchange start natm={} basis={} unique_quartets={}",
-            natm, n, n_unique_quartets);
+            for (int ia = 0; ia < na; ++ia) {
+                const int i = i0 + ia;
+                for (int ib = 0; ib < nb; ++ib) {
+                    const int j = j0 + ib;
 
-        // Exchange iterates the same canonical (ij)×(kl) pairs as the
-        // Coulomb pass. Using (ik)+(jl) pairs was an 8-fold-symmetry
-        // bookkeeping error — the ERI (ij|kl) has symmetry under
-        // (i↔j), (k↔l), (bra↔ket) only, not (i↔k) or (j↔l). See the
-        // matching note in the libcint branch above for details.
-        for (int left = 0; left < n_pairs; ++left) {
-            const int i = shell_pairs[left][0];
-            const int j = shell_pairs[left][1];
-            const int ai = shell_to_atom[i];
-            const int aj = shell_to_atom[j];
-            const int mult_left = pair_multiplicity(i, j);
+                    for (int ic = 0; ic < nc; ++ic) {
+                        const int k = k0 + ic;
+                        for (int id = 0; id < nd; ++id) {
+                            const int l = l0 + id;
 
-            for (int right = 0; right <= left; ++right) {
-                const int k = shell_pairs[right][0];
-                const int l = shell_pairs[right][1];
-                const int ak = shell_to_atom[k];
-                const int al = shell_to_atom[l];
-                const int mult_right = pair_multiplicity(k, l);
-                const int bra_ket_mult = (left == right) ? 1 : 2;
+                            // Coulomb factor (J): +0.5·mult·P_ij·P_kl
+                            const double factor_J =
+                                0.5 * mult * P_total(i, j) * P_total(k, l);
 
-                double density_factor = 0.0;
-                if (restricted) {
-                    density_factor = -0.25 * P_total(i, k) * P_total(j, l);
-                } else {
-                    density_factor = -0.5 * (
-                        result.P_alpha(i, k) * result.P_alpha(j, l) +
-                        result.P_beta(i, k) * result.P_beta(j, l));
+                            // Exchange factor (K) — HF only (KS skips K;
+                            // grid XC handles it separately).
+                            double factor_K = 0.0;
+                            if (!is_ks) {
+                                if (restricted) {
+                                    factor_K = -0.25 * mult
+                                             * P_total(i, k) * P_total(j, l);
+                                } else {
+                                    factor_K = -0.5 * mult * (
+                                        result.P_alpha(i, k) * result.P_alpha(j, l) +
+                                        result.P_beta(i, k)  * result.P_beta(j, l));
+                                }
+                            }
+                            const double factor = factor_J + factor_K;
+                            if (std::abs(factor) < 1e-18) continue;
+
+                            const int ao_idx =
+                                ((ia * nb + ib) * nc + ic) * nd + id;
+                            for (int axis = 0; axis < 3; ++axis) {
+                                const double dA = deriv_A[axis * block_n + ao_idx];
+                                const double dB = deriv_B[axis * block_n + ao_idx];
+                                const double dC = deriv_C[axis * block_n + ao_idx];
+                                const double dD = -(dA + dB + dC);
+                                Gl(atom_i, axis) += factor * dA;
+                                Gl(atom_j, axis) += factor * dB;
+                                Gl(atom_k, axis) += factor * dC;
+                                Gl(atom_l, axis) += factor * dD;
+                            }
+                        }
+                    }
                 }
-
-                const double factor =
-                    mult_left * mult_right * bra_ket_mult * density_factor;
-                if (std::abs(factor) < 1e-18)
-                    continue;
-
-                const QuartetDerivTotals totals = compute_quartet_derivatives(
-                    integrals.shells[i], shell_ang[i].data(),
-                    integrals.shells[j], shell_ang[j].data(),
-                    integrals.shells[k], shell_ang[k].data(),
-                    integrals.shells[l], shell_ang[l].data());
-                accumulate_quartet_into_gradient(grad, ai, aj, ak, al, totals, factor);
-            }
-
-            const bool should_log =
-                (((left + 1) % progress_stride) == 0) || ((left + 1) == n_pairs);
-            if (should_log) {
-                const long long unique_done = 1LL * (left + 1) * (left + 2) / 2;
-                ATV_DEBUG(
-                    "[gradient] two_e exchange progress shell_pairs={}/{} unique_done={}/{} ms={:.1f}",
-                    left + 1, n_pairs, unique_done, n_unique_quartets, elapsed_ms(t_exchange));
             }
         }
-
-        ATV_DEBUG("[gradient] two_e exchange done ms={:.1f}", elapsed_ms(t_exchange));
     }
 
+    // Reduce thread-local force accumulators.
+    for (const auto& Gl : grad_local) grad += Gl;
+
+    ATV_DEBUG("[gradient] two_e block-deriv done ms={:.1f}", elapsed_ms(t_two_e));
     ATV_DEBUG("[gradient] two_e contraction total_ms={:.1f}", elapsed_ms(t_total));
 }
 

@@ -67,6 +67,16 @@ struct SCFConfig {
     // Grid (KS only)
     int n_radial = 50;                       ///< Radial grid points per atom.
     int n_angular = 110;                     ///< Angular grid points per atom.
+
+    /// @brief Force the native 2e gradient engine even when libcint is available.
+    /// @details libcint (when compiled in) is the production path for
+    ///          `accumulate_two_electron_gradient_sto3g`. Setting this to `true`
+    ///          routes through the native Rys-quadrature-based derivative
+    ///          instead. Reserved for tests that compare native-vs-libcint
+    ///          outputs (see `test_gradient_vs_libcint.cpp`) and benchmarks
+    ///          that time the native path. Has no effect on the Fock build,
+    ///          which is always native.
+    bool force_native_two_electron_deriv = false;
 };
 
 /// @brief Optional density-matrix initial guess for SCF iterations.

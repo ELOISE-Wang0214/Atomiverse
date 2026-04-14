@@ -16,10 +16,9 @@
 
 #ifdef ATV_HAS_RHF
 
-#include <iostream>
-#include <iomanip>
 #include <cmath>
 
+#include "atomiverse/core/log.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/scf_solve.h"
@@ -104,44 +103,60 @@ static cpu::Frame make_aspirin() {
 }
 
 int main() {
-    std::cout << "=== Atomiverse: Aspirin Geometry Optimization ===\n";
-    std::cout << "    Molecule: C9H8O4 (acetylsalicylic acid)\n";
-    std::cout << "    Method:   RHF / STO-3G\n";
-    std::cout << "    Optimizer: L-BFGS (memory=5)\n\n";
+    ATV::log_init(spdlog::level::debug);
+    ATV_INFO("=== Atomiverse: Aspirin Geometry Optimization ===");
+    ATV_INFO("    Molecule: C9H8O4 (acetylsalicylic acid)");
+    ATV_INFO("    Method:   RHF / STO-3G");
+    ATV_INFO("    Optimizer: L-BFGS (memory=5)");
 
     auto frame = make_aspirin();
 
     // Build integrals to determine electron count
+    ATV_INFO("[example] initial integrals start");
     auto integrals = cpu::scf::build_integrals_sto3g(frame);
-    std::cout << "Basis functions: " << integrals.n_basis << "\n";
-    std::cout << "Electrons:       " << integrals.n_electrons << "\n\n";
+    ATV_INFO(
+        "[example] initial integrals done basis={} electrons={}",
+        integrals.n_basis, integrals.n_electrons);
 
-    // Configure RHF
+    // Configure RHF. Route the 2e gradient through the native Rys engine
+    // (not libcint, even when available) so this tutorial exercises the
+    // Phase-2 production path.
     auto config = cpu::scf::rhf_config(integrals);
     config.tol = double(1e-6);
     config.max_iter = 200;
+    config.force_native_two_electron_deriv = true;
 
-    // Set up L-BFGS optimizer
+    // Set up L-BFGS optimizer.
+    // Note: line search is not yet implemented, so displacement tolerances must
+    // be loose enough for the fixed-step regime (0.05–0.2 Å per step near min).
+    // Convergence requires ALL criteria simultaneously; set them consistently:
+    //   ftol=0.05 eV/Å  (max force)   — typical quantum-chemistry threshold
+    //   rms_ftol=0.03    (RMS force)
+    //   max_dtol=0.1 Å   (max disp)   — matches fixed-alpha step size
+    //   rms_dtol=0.05 Å  (RMS disp)
+    //   etol=1e-3 eV     (energy diff)
     cpu::minimizer::LBFGS opt;
     opt.add(cpu::minimizer::LBFGSStep{
         5,              // memory
-        double(0.01),     // alpha0
-        double(0.05),     // ftol [eV/A]
-        10              // max_ls
+        double(0.01),   // alpha0 [Å²/eV]
+        double(0.05),   // ftol [eV/Å]
+        10,             // max_ls (reserved; line search not yet active)
+        double(0.03),   // rms_ftol [eV/Å]
+        double(0.1),    // max_dtol [Å]
+        double(0.05),   // rms_dtol [Å]
+        double(1e-3)    // etol [eV]
     });
     opt.on(ATV::minimizer::Phase::force).add(
         cpu::scf::SCFEvaluator{config}
     );
+    ATV_INFO("[example] optimizer build start");
     opt.build();
+    ATV_INFO("[example] optimizer build done");
 
-    std::cout << "Starting optimization (max 50 steps)...\n";
-    std::cout << std::fixed << std::setprecision(6);
-    opt.run(frame, 50);
+    ATV_INFO("[example] optimization start max_steps=100");
+    opt.run(frame, 100);
 
     // Report final state
-    std::cout << "\n── Final State ──\n";
-    std::cout << "  Energy: " << frame.energy << " eV\n";
-
     // Compute final max force
     double max_f = 0;
     for (int i = 0; i < frame.atoms.size(); ++i) {
@@ -149,21 +164,24 @@ int main() {
         double mag = std::sqrt(fx*fx + fy*fy + fz*fz);
         if (mag > max_f) max_f = mag;
     }
-    std::cout << "  Max force: " << max_f << " eV/A\n";
+    ATV_INFO(
+        "[example] final state energy_eV={:.6f} max_force_eVA={:.6f}",
+        frame.energy, max_f);
 
     // Print final coordinates
-    std::cout << "\n── Final Coordinates [Angstrom] ──\n";
+    ATV_INFO("[example] final coordinates [Angstrom]");
     const char* symbols[] = {"", "H", "He", "Li", "Be", "B", "C", "N", "O"};
-    std::cout << std::setprecision(6);
     for (int i = 0; i < frame.atoms.size(); ++i) {
         int Z = static_cast<int>(frame.atoms.type(i));
-        std::cout << "  " << std::setw(2) << symbols[Z]
-                  << std::setw(12) << frame.atoms.x(i)
-                  << std::setw(12) << frame.atoms.y(i)
-                  << std::setw(12) << frame.atoms.z(i) << "\n";
+        ATV_INFO(
+            "  {:>2s} {:12.6f} {:12.6f} {:12.6f}",
+            symbols[Z],
+            frame.atoms.x(i),
+            frame.atoms.y(i),
+            frame.atoms.z(i));
     }
 
-    std::cout << "\nDone.\n";
+    ATV_INFO("[example] done");
     return 0;
 }
 
