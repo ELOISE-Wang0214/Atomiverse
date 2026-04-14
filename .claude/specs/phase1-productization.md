@@ -27,8 +27,10 @@ created: 2026-04-14
       geometric), `--method rhf|rks --basis <name>`, 3 checked-in
       RHF/STO-3G JSON references
 - [x] **C++ `benchmarks/qc/bench_qc_suite.cpp`** — loops H2O/NH3/CH4,
-      runs LBFGS+SCFEvaluator at RHF/STO-3G, prints wall time + energy
-      delta vs. reference. Pipeline green (3/3 within 50 mHa).
+      runs LBFGS+SCFEvaluator at RHF/6-31G, prints wall time + energy
+      delta vs. PySCF reference. All three molecules within 1 mHa of
+      the PySCF optimum (CH4 at 4 μHa). Threshold set at 1 mHa;
+      tightening to spec's 1 μHa requires a line search.
 - [x] `SCFEvaluator` gains a `BasisSet` parameter (was hardcoded
       STO-3G; prevented running the bench at any other basis).
 - [x] **1e integral-derivative path generalized.** The

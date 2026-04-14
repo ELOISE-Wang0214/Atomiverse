@@ -1,17 +1,11 @@
 /// @file benchmarks/qc/bench_qc_suite.cpp
-/// @brief Phase 1.2 QC benchmark suite — LBFGS + SCFEvaluator at
-///        RHF / STO-3G (libcint-backed 2e gradient).
+/// @brief Phase 1.2 QC benchmark suite — LBFGS + SCFEvaluator at RHF
+///        / 6-31G, against PySCF geomeTRIC-optimized references.
 ///
-/// Scoped to STO-3G for now. Running at the spec's PBE/def2-SVP target
-/// needs two follow-up fixes tracked in phase1-productization.md §1.2:
-///   1. Native 2e gradient path (rys_eri_block_deriv integrator) —
-///      disagrees with FD on p-shell-containing molecules, blocks any
-///      basis beyond STO-3G (libcint bridge is STO-3G only).
-///   2. KS/d-shell XC grid — basis_eval.h currently only handles
-///      l ∈ {0, 1}.
-///
-/// The 1e gradient d-shell broadcast_error is already fixed here via
-/// the new IntegralPack-based build_integral_derivatives().
+/// RHF / 6-31G is the largest basis the 2e-gradient path currently
+/// produces physically correct forces at. def2-SVP energy works (SCF
+/// parity to 1e-10 Ha) but the d-shell gradient path still disagrees
+/// with FD; tracked in phase1-productization.md §1.2.
 ///
 /// Build / run:
 ///     cmake --build build --target bench_qc_suite
@@ -19,7 +13,7 @@
 ///
 /// Regenerate references with:
 ///     python benchmarks/qc/reference/generate_references.py \
-///       --method rhf --basis sto-3g
+///       --method rhf --basis 6-31g
 #ifdef ATV_HAS_RHF
 
 #include <chrono>
@@ -53,10 +47,10 @@ struct MolSpec {
     double e_ref_hartree_optimized;  // from reference/<name>.json
 };
 
-// Reference energies: PySCF RHF / STO-3G / cart=True on each
-// molecule's geomeTRIC-optimized geometry. Regenerate via
+// Reference energies: PySCF RHF / 6-31G / cart=True on each molecule's
+// geomeTRIC-optimized geometry. Regenerate via
 // `python benchmarks/qc/reference/generate_references.py --method rhf
-// --basis sto-3g` and sync both files if geometries change.
+// --basis 6-31g` and sync both files if geometries change.
 static std::vector<MolSpec> build_molecule_suite() {
     return {
         {
@@ -66,7 +60,7 @@ static std::vector<MolSpec> build_molecule_suite() {
                 {1,  0.000000,  0.755453, -0.471161},
                 {1,  0.000000, -0.755453, -0.471161},
             },
-            -74.9659011864,
+            -75.9853591763,
         },
         {
             "nh3",
@@ -76,7 +70,7 @@ static std::vector<MolSpec> build_molecule_suite() {
                 {1,  0.812328, -0.469017, -0.265825},
                 {1, -0.812328, -0.469017, -0.265825},
             },
-            -55.4554197788,
+            -56.1655213295,
         },
         {
             "ch4",
@@ -87,7 +81,7 @@ static std::vector<MolSpec> build_molecule_suite() {
                 {1,  0.627640, -0.627640, -0.627640},
                 {1, -0.627640,  0.627640, -0.627640},
             },
-            -39.7268636799,
+            -40.1805541783,
         },
     };
 }
@@ -119,7 +113,7 @@ static RunResult run_molecule(const MolSpec& m) {
     auto frame = to_frame(m);
 
     auto integrals = cpu::scf::build_integrals(
-        frame, cpu::scf::BasisSet::STO3G);
+        frame, cpu::scf::BasisSet::Pople631G);
 
     auto cfg = cpu::scf::rhf_config(integrals, /*tol=*/1e-8);
     cfg.max_iter = 150;
@@ -138,7 +132,7 @@ static RunResult run_molecule(const MolSpec& m) {
         /*etol=*/1e-6,
     });
     opt.on(ATV::minimizer::Phase::force).add(
-        cpu::scf::SCFEvaluator{cfg, cpu::scf::BasisSet::STO3G});
+        cpu::scf::SCFEvaluator{cfg, cpu::scf::BasisSet::Pople631G});
     opt.build();
 
     const auto t0 = std::chrono::steady_clock::now();
@@ -151,7 +145,7 @@ static RunResult run_molecule(const MolSpec& m) {
     // Re-evaluate final energy in Hartree on the converged geometry for
     // direct comparison with the reference (which is in Hartree).
     auto ints_final = cpu::scf::build_integrals(
-        frame, cpu::scf::BasisSet::STO3G);
+        frame, cpu::scf::BasisSet::Pople631G);
     auto cfg_final = cpu::scf::rhf_config(ints_final, /*tol=*/1e-10);
     auto res = cpu::scf::scf_solve(ints_final, cfg_final);
 
@@ -166,17 +160,17 @@ static RunResult run_molecule(const MolSpec& m) {
 }
 
 int main() {
-    std::printf("# Phase 1.2 QC benchmark suite — LBFGS + SCFEvaluator at RHF / STO-3G\n");
+    std::printf("# Phase 1.2 QC benchmark suite — LBFGS + SCFEvaluator at RHF / 6-31G\n");
     std::printf("#\n");
-    std::printf("# NOTE: Current LBFGSStep has no line search, so fixed-step\n");
-    std::printf("# convergence drifts ~10-30 mHa from the true PySCF minimum.\n");
-    std::printf("# Threshold is 50 mHa as a pipeline smoke test; tightening\n");
-    std::printf("# requires a proper line search (tracked as 1.3 follow-up).\n");
+    std::printf("# NOTE: LBFGSStep has no line search yet, so fixed-step\n");
+    std::printf("# convergence can leave a sub-mHa residue vs the true PySCF\n");
+    std::printf("# minimum. Threshold is 1 mHa; tighter agreement needs a\n");
+    std::printf("# proper line search (tracked in phase1-productization.md).\n");
     std::printf("#\n");
     std::printf("# %-6s  %-10s  %-10s  %-16s  %-14s  %-10s\n",
                 "mol", "conv", "wall_ms", "E_final [Ha]", "dE_vs_ref [Ha]", "status");
 
-    const double threshold_ha = 5e-2;
+    const double threshold_ha = 1e-3;
     int n_fail = 0;
 
     for (const auto& mol : build_molecule_suite()) {
