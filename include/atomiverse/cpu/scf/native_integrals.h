@@ -199,6 +199,45 @@ void eri_block(const ShellBlock& A, const ShellBlock& B,
                const ShellBlock& C, const ShellBlock& D,
                double* out);
 
+// ── Shell-block one-electron integrals ────────────────────────────────
+
+/// @brief Compute all overlap integrals for a shell-block pair.
+///
+/// @details For each primitive pair (p, q) the 1D Obara–Saika tables
+///   are built once and reused across all (A.n_cart × B.n_cart) angular
+///   combinations — the same amortization strategy as eri_block for
+///   the 2e path. On d-shells this is ~36× the per-element work on
+///   the shared primitive setup.
+///
+/// @param A,B  Shell blocks (any l ≤ 2).
+/// @param out  Pre-zeroed buffer of size A.n_cart * B.n_cart, flat
+///             layout `out[ia * B.n_cart + ib] = <A_ia|B_ib>`.
+///             Accumulated into (ss! caller must pre-zero).
+void overlap_block(const ShellBlock& A, const ShellBlock& B,
+                   double* out);
+
+/// @brief Compute all kinetic-energy integrals for a shell-block pair.
+///
+/// Same batching strategy as overlap_block. Requires 1D overlap tables
+/// up to (imax, jmax+2) per axis; builds them once per primitive pair.
+void kinetic_block(const ShellBlock& A, const ShellBlock& B,
+                   double* out);
+
+/// @brief Compute all nuclear-attraction integrals for a shell-block pair.
+///
+/// Per primitive pair, builds the full Hermite E table and the
+/// McMurchie–Davidson R^0_{tuv} table once, then contracts across all
+/// angular combinations. For d-shells this amortizes the R-table build
+/// over 36 (ia, ib) pairs.
+///
+/// @param A,B    Shell blocks.
+/// @param atoms  Nuclei (charges + positions in Bohr).
+/// @param natm   Number of nuclei.
+/// @param out    Pre-zeroed buffer of size A.n_cart * B.n_cart.
+void nuclear_block(const ShellBlock& A, const ShellBlock& B,
+                   const Atom* atoms, int natm,
+                   double* out);
+
 // ── Primitive-level functions (exposed for derivative code) ──────────
 
 /// @brief Primitive overlap integral for arbitrary Cartesian angular momenta.

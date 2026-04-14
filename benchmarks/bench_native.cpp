@@ -556,6 +556,24 @@ static void BM_RHFIntegrals_Aspirin(benchmark::State& state) {
 }
 BENCHMARK(BM_RHFIntegrals_Aspirin)->Unit(benchmark::kMillisecond);
 
+static void BM_RHFIntegrals_Aspirin_631Gs(benchmark::State& state) {
+    auto frame = make_aspirin();
+    for (auto _ : state) {
+        auto integrals = build_integrals(frame, BasisSet::Pople631Gs);
+        benchmark::DoNotOptimize(integrals.Hcore(0, 0));
+    }
+}
+BENCHMARK(BM_RHFIntegrals_Aspirin_631Gs)->Unit(benchmark::kMillisecond);
+
+static void BM_RHFIntegrals_Aspirin_def2svp(benchmark::State& state) {
+    auto frame = make_aspirin();
+    for (auto _ : state) {
+        auto integrals = build_integrals(frame, BasisSet::Def2SVP);
+        benchmark::DoNotOptimize(integrals.Hcore(0, 0));
+    }
+}
+BENCHMARK(BM_RHFIntegrals_Aspirin_def2svp)->Unit(benchmark::kMillisecond);
+
 // ── G-matrix builder: AO-level vs shell-block ──────────────────────────────
 
 /// @brief Direct RHF G = J - 0.5*K using AO-level shell pairs (baseline).

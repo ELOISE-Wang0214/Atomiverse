@@ -1145,6 +1145,270 @@ static const int ang_table[2][3][3] = {
     {{1,0,0}, {0,1,0}, {0,0,1}}    // l=1: px, py, pz
 };
 
+// Forward declaration — defined later in this translation unit.
+static inline void boys_fn_vec(double T, int n_max, double Fm[]);
+
+// ── Shell-block one-electron integrals ───────────────────────────────
+//
+// Each block function amortizes the per-primitive-pair setup (Gaussian
+// product center, 1D tables, Hermite coefficients, R-table ...) across
+// all A.n_cart × B.n_cart angular combinations in the block. For d-d
+// that factor is 36; for p-p it's 9. The output layout is
+//   out[ia * B.n_cart + ib] += <A_ia|op|B_ib>
+// Caller must pre-zero the output buffer.
+//
+// Cartesian enumeration matches Rys' fill_cart_comps(l):
+//   l=0: (0,0,0)
+//   l=1: (1,0,0), (0,1,0), (0,0,1)
+//   l=2: (2,0,0), (1,1,0), (1,0,1), (0,2,0), (0,1,1), (0,0,2)
+
+namespace {
+
+constexpr int kMaxCart1e = 6;  // l=2 → 6 cartesian components
+
+// Fill cart exponent table for l ∈ {0, 1, 2}. out[cart_idx][d] = angular
+// momentum on direction d for cartesian component cart_idx.
+inline void fill_cart_block_1e(int l, int out[kMaxCart1e][3]) {
+    int c = 0;
+    for (int nx = l; nx >= 0; --nx) {
+        for (int ny = l - nx; ny >= 0; --ny) {
+            out[c][0] = nx;
+            out[c][1] = ny;
+            out[c][2] = l - nx - ny;
+            ++c;
+        }
+    }
+}
+
+} // anonymous namespace
+
+void overlap_block(const ShellBlock& A, const ShellBlock& B, double* out) {
+    int a_ang[kMaxCart1e][3], b_ang[kMaxCart1e][3];
+    fill_cart_block_1e(A.l, a_ang);
+    fill_cart_block_1e(B.l, b_ang);
+
+    const int imax = A.l;
+    const int jmax = B.l;
+    const int jstride = jmax + 1;
+
+    for (int p = 0; p < A.n_prim; ++p) {
+        for (int q = 0; q < B.n_prim; ++q) {
+            const double aa = A.alpha[p];
+            const double ab = B.alpha[q];
+            const double gamma = aa + ab;
+            const double mu = aa * ab / gamma;
+            const double inv2g = 0.5 / gamma;
+            const double sqrt_pi_g = std::sqrt(PI / gamma);
+            const double cpq = A.coeff[p] * B.coeff[q];
+
+            // Build 1D overlap tables once per primitive pair, per axis.
+            double S1d[3][(2 + 1) * (2 + 1)];  // max (imax+1)(jmax+1) = 9
+            for (int d = 0; d < 3; ++d) {
+                const double dd = A.center[d] - B.center[d];
+                const double Pd = (aa * A.center[d] + ab * B.center[d]) / gamma;
+                const double PA = Pd - A.center[d];
+                const double PB = Pd - B.center[d];
+                const double S00 = sqrt_pi_g * std::exp(-mu * dd * dd);
+                os_overlap_1d(PA, PB, inv2g, S00, imax, jmax, S1d[d]);
+            }
+
+            // Scatter across angular combinations — shared 1D tables.
+            for (int ia = 0; ia < A.n_cart; ++ia) {
+                const int ax = a_ang[ia][0], ay = a_ang[ia][1], az = a_ang[ia][2];
+                for (int ib = 0; ib < B.n_cart; ++ib) {
+                    const int bx = b_ang[ib][0], by = b_ang[ib][1], bz = b_ang[ib][2];
+                    const double v = S1d[0][ax * jstride + bx]
+                                   * S1d[1][ay * jstride + by]
+                                   * S1d[2][az * jstride + bz];
+                    out[ia * B.n_cart + ib] += cpq * v;
+                }
+            }
+        }
+    }
+}
+
+void kinetic_block(const ShellBlock& A, const ShellBlock& B, double* out) {
+    int a_ang[kMaxCart1e][3], b_ang[kMaxCart1e][3];
+    fill_cart_block_1e(A.l, a_ang);
+    fill_cart_block_1e(B.l, b_ang);
+
+    const int imax = A.l;
+    const int jmax_k = B.l + 2;      // kinetic needs S(i, j+2)
+    const int jstride = jmax_k + 1;  // table column stride
+
+    for (int p = 0; p < A.n_prim; ++p) {
+        for (int q = 0; q < B.n_prim; ++q) {
+            const double aa = A.alpha[p];
+            const double ab = B.alpha[q];
+            const double gamma = aa + ab;
+            const double mu = aa * ab / gamma;
+            const double inv2g = 0.5 / gamma;
+            const double sqrt_pi_g = std::sqrt(PI / gamma);
+            const double cpq = A.coeff[p] * B.coeff[q];
+
+            // 1D overlap tables with the (jmax+2) extension needed for T.
+            double S1d[3][(2 + 1) * (2 + 2 + 1)];  // (imax+1)(jmax_k+1), max 3x5 = 15
+            for (int d = 0; d < 3; ++d) {
+                const double dd = A.center[d] - B.center[d];
+                const double Pd = (aa * A.center[d] + ab * B.center[d]) / gamma;
+                const double PA = Pd - A.center[d];
+                const double PB = Pd - B.center[d];
+                const double S00 = sqrt_pi_g * std::exp(-mu * dd * dd);
+                os_overlap_1d(PA, PB, inv2g, S00, imax, jmax_k, S1d[d]);
+            }
+
+            for (int ia = 0; ia < A.n_cart; ++ia) {
+                const int* aa_ang = a_ang[ia];
+                for (int ib = 0; ib < B.n_cart; ++ib) {
+                    const int* bb_ang = b_ang[ib];
+                    // T_3D = Σ_d T_1d(a_d, b_d) Π_{e≠d} S_1d(a_e, b_e)
+                    double s_prod[3];
+                    for (int d = 0; d < 3; ++d)
+                        s_prod[d] = S1d[d][aa_ang[d] * jstride + bb_ang[d]];
+
+                    double t_sum = 0.0;
+                    for (int d = 0; d < 3; ++d) {
+                        const int i = aa_ang[d];
+                        const int j = bb_ang[d];
+                        // T_1d(i,j) = -(1/2) [j(j-1) S(i,j-2) - 2β(2j+1) S(i,j) + 4β² S(i,j+2)]
+                        const double s_ij   = S1d[d][i * jstride + j];
+                        const double s_ijp2 = S1d[d][i * jstride + j + 2];
+                        const double s_ijm2 = (j >= 2) ? S1d[d][i * jstride + j - 2] : 0.0;
+                        const double t1d = -0.5 * (j * (j - 1) * s_ijm2
+                                                   - 2.0 * ab * (2 * j + 1) * s_ij
+                                                   + 4.0 * ab * ab * s_ijp2);
+                        double other = 1.0;
+                        for (int e = 0; e < 3; ++e) if (e != d) other *= s_prod[e];
+                        t_sum += t1d * other;
+                    }
+                    out[ia * B.n_cart + ib] += cpq * t_sum;
+                }
+            }
+        }
+    }
+}
+
+void nuclear_block(const ShellBlock& A, const ShellBlock& B,
+                   const Atom* atoms, int natm, double* out)
+{
+    int a_ang[kMaxCart1e][3], b_ang[kMaxCart1e][3];
+    fill_cart_block_1e(A.l, a_ang);
+    fill_cart_block_1e(B.l, b_ang);
+
+    const int imax = A.l;
+    const int jmax = B.l;
+    const int Lmax_dir = imax + jmax;  // max Hermite index per axis
+
+    for (int p = 0; p < A.n_prim; ++p) {
+        for (int q = 0; q < B.n_prim; ++q) {
+            const double aa = A.alpha[p];
+            const double ab = B.alpha[q];
+            const double gamma = aa + ab;
+            const double mu = aa * ab / gamma;
+            const double inv2g = 0.5 / gamma;
+            const double cpq = A.coeff[p] * B.coeff[q];
+            const double R2_AB = dist2(A.center, B.center);
+            const double K_AB = std::exp(-mu * R2_AB);
+            const double prefactor_pq = 2.0 * PI / gamma * K_AB;
+
+            double P_c[3], PA[3], PB[3];
+            for (int d = 0; d < 3; ++d) {
+                P_c[d] = (aa * A.center[d] + ab * B.center[d]) / gamma;
+                PA[d]  = P_c[d] - A.center[d];
+                PB[d]  = P_c[d] - B.center[d];
+            }
+
+            // E_full[d][ai][bj][t] — Hermite expansion of xA^ai * xB^bj.
+            // Dimensions: 3 axes × (imax+1) × (jmax+1) × (Lmax_dir+1).
+            // No zero-init: every entry read is explicitly written below.
+            constexpr int kL = 2 + 2 + 1;  // 5
+            double E_full[3][3][3][kL];
+            for (int d = 0; d < 3; ++d) {
+                for (int ai = 0; ai <= imax; ++ai) {
+                    for (int bj = 0; bj <= jmax; ++bj) {
+                        double Ev[kL];
+                        md_e_coeffs(ai, bj, PA[d], PB[d], inv2g, Ev);
+                        for (int t = 0; t <= ai + bj; ++t)
+                            E_full[d][ai][bj][t] = Ev[t];
+                    }
+                }
+            }
+
+            for (int c = 0; c < natm; ++c) {
+                double PC[3];
+                for (int d = 0; d < 3; ++d)
+                    PC[d] = P_c[d] - atoms[c].pos[d];
+                const double PC2 = PC[0] * PC[0] + PC[1] * PC[1] + PC[2] * PC[2];
+                const double T = gamma * PC2;
+
+                // Boys functions F_0..F_{Ltot_max} — Ltot_max = 3 * Lmax_dir.
+                const int Ltot_max = 3 * Lmax_dir;
+                double Fm[13];  // covers Ltot up to 12 (l=d case)
+                boys_fn_vec(T, Ltot_max, Fm);
+
+                // R_tab[m][t][u][v] — McMurchie–Davidson recurrence.
+                // m ∈ [0, Ltot_max] ≤ 12; t, u, v ∈ [0, Lmax_dir] ≤ 4.
+                // 13 × 5 × 5 × 5 = 1625 doubles. No zero-init needed: the
+                // recurrence only reads entries it has already written.
+                constexpr int kRm = 13;
+                constexpr int kRd = 5;
+                double R_tab[kRm][kRd][kRd][kRd];
+                double pow_neg2g = 1.0;
+                const double neg2g = -2.0 * gamma;
+                for (int m = 0; m <= Ltot_max; ++m) {
+                    R_tab[m][0][0][0] = pow_neg2g * Fm[m];
+                    pow_neg2g *= neg2g;
+                }
+                for (int m = Ltot_max - 1; m >= 0; --m) {
+                    const int max_tuv = Ltot_max - m;
+                    for (int t = 1; t <= Lmax_dir && t <= max_tuv; ++t) {
+                        R_tab[m][t][0][0] = PC[0] * R_tab[m + 1][t - 1][0][0];
+                        if (t >= 2)
+                            R_tab[m][t][0][0] += (t - 1) * R_tab[m + 1][t - 2][0][0];
+                    }
+                    for (int t = 0; t <= Lmax_dir && t <= max_tuv; ++t) {
+                        for (int u = 1; u <= Lmax_dir && t + u <= max_tuv; ++u) {
+                            R_tab[m][t][u][0] = PC[1] * R_tab[m + 1][t][u - 1][0];
+                            if (u >= 2)
+                                R_tab[m][t][u][0] += (u - 1) * R_tab[m + 1][t][u - 2][0];
+                        }
+                    }
+                    for (int t = 0; t <= Lmax_dir && t <= max_tuv; ++t) {
+                        for (int u = 0; u <= Lmax_dir && t + u <= max_tuv; ++u) {
+                            for (int v = 1; v <= Lmax_dir && t + u + v <= max_tuv; ++v) {
+                                R_tab[m][t][u][v] = PC[2] * R_tab[m + 1][t][u][v - 1];
+                                if (v >= 2)
+                                    R_tab[m][t][u][v] += (v - 1) * R_tab[m + 1][t][u][v - 2];
+                            }
+                        }
+                    }
+                }
+
+                // Scatter across angular combinations.
+                const double prefactor_c = prefactor_pq * (-static_cast<double>(atoms[c].Z));
+                for (int ia = 0; ia < A.n_cart; ++ia) {
+                    const int ax = a_ang[ia][0], ay = a_ang[ia][1], az = a_ang[ia][2];
+                    for (int ib = 0; ib < B.n_cart; ++ib) {
+                        const int bx = b_ang[ib][0], by = b_ang[ib][1], bz = b_ang[ib][2];
+                        const int Lx = ax + bx, Ly = ay + by, Lz = az + bz;
+                        double V = 0.0;
+                        for (int t = 0; t <= Lx; ++t) {
+                            const double Ex = E_full[0][ax][bx][t];
+                            for (int u = 0; u <= Ly; ++u) {
+                                const double Ey = E_full[1][ay][by][u];
+                                for (int v = 0; v <= Lz; ++v) {
+                                    V += Ex * Ey * E_full[2][az][bz][v] * R_tab[0][t][u][v];
+                                }
+                            }
+                        }
+                        out[ia * B.n_cart + ib] += cpq * prefactor_c * V;
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// @brief Compute Boys functions F_0 .. F_{n_max} in one call.
 /// Uses upward recurrence from F_0 (one erf + one exp total).
 static inline void boys_fn_vec(double T, int n_max, double Fm[]) {
