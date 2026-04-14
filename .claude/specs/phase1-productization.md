@@ -1,10 +1,57 @@
 ---
 title: Phase 1 — Productize the CPU SCF + gradient + opt stack
-status: draft
+status: in progress
 created: 2026-04-14
 ---
 
 # Phase 1 — Productization
+
+## TODO (session-to-session marker)
+
+### 1.1 Basis-set foundation
+- [x] `BasisSet` enum + `AtomList` / `ShellList` layer-1 types (basis_set.h)
+- [x] `build_integrals(frame, BasisSet, charge, compute_eri)` unified entry
+- [x] STO-3G via legacy `build_shell_list_sto3g`
+- [x] **Stage B2a**: `tools/gen_basis_data.py`, generic
+  `build_shell_list_from_table`, `basis_data/pople_631g.h`
+- [x] **Stage B2b**: d-shell (Cartesian l=2) end-to-end, `basis_data/`
+  pople_631gs + def2_svp, 6.6× perf win from shell-block batching
+- [x] d-shell Rys FD self-consistency test (`test_rys_eri_deriv.cpp`)
+- [x] PySCF parity test on H2O @ 6-31G, 6-31G*, def2-SVP (1e-7 Ha)
+- [ ] **Stage B2c** f-shell (extend Rys `kRysMaxL=3`) → def2-TZVP and
+      heavier-element bases
+
+### 1.2 Benchmark suite
+- [x] `benchmarks/qc/molecules/{h2o,nh3,ch4}.xyz` starting geometries
+- [x] `benchmarks/qc/reference/generate_references.py` (PySCF +
+      geometric) + 3 checked-in JSON references
+- [ ] **C++ `benchmarks/qc/bench_qc_suite.cpp`** — loop molecules,
+      run LBFGS+SCFEvaluator at PBE/def2-SVP, record timings and
+      compare against reference JSON. **Next concrete step.**
+- [ ] Expand geometry set to 12 (benzene, naphthalene, ethanol,
+      glycine, aspirin, caffeine, O2 triplet, NO doublet, CH3•)
+- [ ] Regenerate references for the full set
+- [ ] CI label `benchmark-qc-fast` (H2O+NH3+CH4 per push) + nightly
+      full suite
+
+### 1.3 Standard outputs (components, no workflow classes)
+- [ ] `cpu::minimizer::TrajectoryWriter` — append .xyz per step
+- [ ] `cpu::minimizer::OptLog` — TSV of step/E/max_F/rms_F/step_norm
+- [ ] `cpu::minimizer::FinalGeometry` — write on converged flag
+- [ ] `cpu::scf::OrbitalInfoObserver` — HOMO/LUMO/gap from `SCFResult`
+- [ ] `cpu::scf::DensityCubeWriter` — Gaussian `.cube` density
+- [ ] `cpu::scf::OrbitalCubeWriter` — `.cube` for a chosen MO index
+- [ ] Tests for each
+
+### 1.4 Locked default level of theory
+- [ ] `cpu::scf::default_config(integrals)` — PBE/def2-SVP production
+- [ ] `cpu::scf::baseline_config(integrals)` — RHF/STO-3G speed path
+- [ ] Remove `build_integrals_sto3g` from all non-deprecation call
+      sites (migrate `integral_derivatives.cpp`, tutorials, tests)
+- [ ] Migrate STO-3G itself to the generic `basis_data::` path, drop
+      `sto3g_data.h`
+- [ ] All `examples/tutorial/0*.cpp` use `default_config` unless
+      demonstrating another level
 
 ## Summary
 

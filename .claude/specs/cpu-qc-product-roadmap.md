@@ -20,13 +20,38 @@ Strategic order for productizing the CPU electronic-structure stack after Phase 
 
 ## Phase index
 
-| # | Spec | Scope | Depends on |
-|---|---|---|---|
-| 1 | [phase1-productization](phase1-productization.md) | Multi-basis + d-shell Rys + 10-molecule benchmark + recorder/observer components + locked defaults | — |
-| 2 | [phase2-singlepoint-driver](phase2-singlepoint-driver.md) | `cpu::scf::SinglePoint` driver type as first-class citizen; mixed-level workflows via sequential driver invocation at call-site | Phase 1 |
-| 3 | [phase3-hybrid-dft](phase3-hybrid-dft.md) | B3LYP/PBE0 SCF + gradient — reuses existing Fock/gradient components with new `alpha_hf` parameter | Phase 2 |
-| 4 | [phase4-vibrations](phase4-vibrations.md) | New `vibration::Phase` enum + `cpu::vib::Hessian` driver + numerical-Hessian components + thermochemistry observer | Phase 3 |
-| 5 | [phase5-aimd](phase5-aimd.md) | Gated placeholder; NVE/NVT AIMD workflow verification | Phases 1–4 |
+| # | Spec | Status | Scope | Depends on |
+|---|---|---|---|---|
+| 1 | [phase1-productization](phase1-productization.md) | in progress | Multi-basis + d-shell Rys + 10-molecule benchmark + recorder/observer components + locked defaults | — |
+| 2 | [phase2-singlepoint-driver](phase2-singlepoint-driver.md) | pending | `cpu::scf::SinglePoint` driver type as first-class citizen; mixed-level workflows via sequential driver invocation at call-site | Phase 1 |
+| 3 | [phase3-hybrid-dft](phase3-hybrid-dft.md) | pending | B3LYP/PBE0 SCF + gradient — reuses existing Fock/gradient components with new `alpha_hf` parameter | Phase 2 |
+| 4 | [phase4-vibrations](phase4-vibrations.md) | pending | New `vibration::Phase` enum + `cpu::vib::Hessian` driver + numerical-Hessian components + thermochemistry observer | Phase 3 |
+| 5 | [phase5-aimd](phase5-aimd.md) | pending | Gated placeholder; NVE/NVT AIMD workflow verification | Phases 1–4 |
+
+## Progress snapshot
+
+Session-to-session continuation marker. Update when an item flips from
+TODO to done.
+
+- **Phase 1.1 Basis-set foundation** — ✅ STO-3G via legacy path; ✅
+  Stage B2a 6-31G; ✅ Stage B2b 6-31G* / def2-SVP with Cartesian d;
+  ⏸ Stage B2c def2-TZVP (needs Rys f-shell, `kRysMaxL=3`).
+- **Phase 1.2 Benchmark suite** — ✅ data layer (3 rigid-small xyz +
+  PySCF reference JSON generator); ⏳ **C++ bench binary** (next);
+  ⏸ expand to all 12 molecules; ⏸ CI labels.
+- **Phase 1.3 Standard outputs** — ⏸ not started. `TrajectoryWriter`,
+  `OptLog`, `FinalGeometry`, `OrbitalInfoObserver`,
+  `DensityCubeWriter`, `OrbitalCubeWriter`.
+- **Phase 1.4 Locked default level of theory** — ⏸ not started.
+  `default_config` + `baseline_config`; remove `build_integrals_sto3g`
+  call sites; migrate tutorials.
+
+**Cross-cutting refactors landed in parallel** (not in phase
+acceptance but improve the foundation):
+- Pin `kAngstromToBohr` to PySCF CODATA 2006 value.
+- Shell-block batched 1-electron integrals (6.6-6.8× faster).
+- Consolidated Cartesian enumeration (`cart.h`) + dead code removal.
+- Units registry (`core/units.h`) with enum + `convert(x, from, to)` API.
 
 ## Out of scope for entire roadmap
 
