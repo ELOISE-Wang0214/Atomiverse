@@ -1,137 +1,133 @@
 /// @file core/units.h
 /// @brief Central unit / physical-constant registry — the single source
-///        of truth for every conversion factor used anywhere in ATV.
+///        of truth for every conversion factor used in ATV.
 ///
-/// Organization mirrors `pint`'s mental model: each physical dimension
-/// owns a small namespace, inside which live (a) named conversion
-/// factors and (b) `X_from_Y(value)` helpers. New call sites prefer
-/// the helper to an ad-hoc multiplication so intent is visible at the
-/// call site:
+/// Each physical dimension is an enum with one value per supported unit.
+/// One `convert(x, from, to)` overload per dimension performs the
+/// actual conversion. Internally each unit stores a single factor "how
+/// much of this unit equals one of the dimension's base unit"; any
+/// `A → B` is then `x * (A_in_base / B_in_base)` — a single multiply
+/// and divide. Adding a new unit is one line in the factor table; the
+/// number of round-trip constants stays linear, not quadratic.
 ///
 /// @code
 ///   using namespace ATV::units;
-///   double r_bohr   = length::bohr_from_angstrom(1.0);
-///   double f_metal  = force::ev_per_angstrom_from_hartree_per_bohr(f_au);
-///   double kT       = energy::ev_from_kelvin(298.15);
+///   double r_bohr = convert(r_ang, Length::Angstrom, Length::Bohr);
+///   double e_ev   = convert(e_ha,  Energy::Hartree,  Energy::eV);
+///   double f_ev_A = convert(f_au,  Force::HartreePerBohr, Force::eVPerAngstrom);
 /// @endcode
 ///
 /// ATV's two internal unit systems:
 ///   * MD / thermo / minimizer — Å, eV, fs, amu, eV/Å, K  (LAMMPS "metal")
 ///   * SCF core                — Bohr, Hartree, atomic-unit forces
 ///
-/// Conversion between the two systems happens only at the Frame ↔
-/// IntegralPack boundary and at the SCF-force → MD-force handoff.
+/// Conversion between the two happens only at the Frame ↔ IntegralPack
+/// boundary and at the SCF-force → MD-force handoff.
 ///
-/// Every round-trip to PySCF is pinned to PySCF's `pyscf/data/nist.py`
-/// CODATA-2006 values (BOHR = 0.52917721092 Å,
-/// HARTREE2EV = 27.211386245988) so that integrals agree bit-for-bit.
-///
-/// Back-compat: historical `ATV::k*` flat aliases remain at the bottom
-/// of this file for call sites that haven't been migrated.
+/// CODATA 2006 round-trip values (BOHR = 0.52917721092 Å,
+/// HARTREE2EV = 27.211386245988) are pinned to PySCF's
+/// `pyscf/data/nist.py` so integrals match the ground-truth path
+/// bit-for-bit.
 #pragma once
 
 namespace ATV {
 namespace units {
 
-// ── Math ─────────────────────────────────────────────────────────────
+// ── Dimension enums ──────────────────────────────────────────────────
+
+enum class Length { Bohr, Angstrom };
+enum class Energy { Hartree, eV };
+enum class Angle  { Rad, Degree };
+enum class Force  { HartreePerBohr, eVPerAngstrom };
+
+// ── Factor-to-base tables (internal) ────────────────────────────────
+//
+// Base unit per dimension: the first enumerator (Bohr / Hartree / Rad
+// / HartreePerBohr). `in_base(X)` returns how many base-units equal
+// one X, so `convert` reduces to `x * in_base(from) / in_base(to)`.
+
+namespace detail {
+
+[[nodiscard]] inline constexpr double in_base(Length u) {
+    switch (u) {
+        case Length::Bohr:     return 1.0;
+        case Length::Angstrom: return 1.8897261245650618;  // PySCF CODATA 2006
+    }
+    return 0.0;  // unreachable
+}
+
+[[nodiscard]] inline constexpr double in_base(Energy u) {
+    switch (u) {
+        case Energy::Hartree: return 1.0;
+        case Energy::eV:      return 1.0 / 27.211386245988;  // Ha per eV
+    }
+    return 0.0;
+}
+
+[[nodiscard]] inline constexpr double in_base(Angle u) {
+    switch (u) {
+        case Angle::Rad:    return 1.0;
+        case Angle::Degree: return 3.14159265358979323846 / 180.0;
+    }
+    return 0.0;
+}
+
+[[nodiscard]] inline constexpr double in_base(Force u) {
+    // Base = Hartree/Bohr. 1 eV/Å in Hartree/Bohr:
+    //    (1/27.211…) Hartree / (1/0.52917…) Bohr
+    //  = 0.52917… / 27.211…
+    switch (u) {
+        case Force::HartreePerBohr:  return 1.0;
+        case Force::eVPerAngstrom:   return 0.52917721092 / 27.211386245988;
+    }
+    return 0.0;
+}
+
+} // namespace detail
+
+// ── Single convert per dimension ─────────────────────────────────────
+
+template <typename Dim>
+[[nodiscard]] inline constexpr double convert(double x, Dim from, Dim to) {
+    return x * detail::in_base(from) / detail::in_base(to);
+}
+
+// ── Named physical constants (not unit conversions) ─────────────────
+
+/// π.
 inline constexpr double pi = 3.14159265358979323846;
 
-// ── Base reference values (CODATA 2006, pinned to PySCF) ────────────
-inline constexpr double bohr_per_angstrom_factor    = 1.8897261245650618; // Bohr = Å × this
-inline constexpr double angstrom_per_bohr_factor    = 0.52917721092;      // Å    = Bohr × this
-inline constexpr double ev_per_hartree_factor       = 27.211386245988;
-inline constexpr double hartree_per_ev_factor       = 1.0 / 27.211386245988;
-inline constexpr double boltzmann_ev_per_kelvin     = 8.617333262e-5;     // CODATA 2018
+/// Boltzmann constant in MD-internal units: eV per kelvin (CODATA 2018).
+/// Thermal energy: `kT [eV] = kB_ev_per_k * T [K]`.
+inline constexpr double kB_ev_per_k = 8.617333262e-5;
 
-// ── Length ───────────────────────────────────────────────────────────
-namespace length {
-    /// Bohr ← Angstrom.
-    [[nodiscard]] inline constexpr double bohr_from_angstrom(double x) {
-        return x * bohr_per_angstrom_factor;
-    }
-    /// Angstrom ← Bohr.
-    [[nodiscard]] inline constexpr double angstrom_from_bohr(double x) {
-        return x * angstrom_per_bohr_factor;
-    }
-}
-
-// ── Energy ───────────────────────────────────────────────────────────
-namespace energy {
-    /// eV ← Hartree.
-    [[nodiscard]] inline constexpr double ev_from_hartree(double x) {
-        return x * ev_per_hartree_factor;
-    }
-    /// Hartree ← eV.
-    [[nodiscard]] inline constexpr double hartree_from_ev(double x) {
-        return x * hartree_per_ev_factor;
-    }
-    /// eV ← kelvin (thermal energy k_B·T).
-    [[nodiscard]] inline constexpr double ev_from_kelvin(double T_kelvin) {
-        return boltzmann_ev_per_kelvin * T_kelvin;
-    }
-}
-
-// ── Force ────────────────────────────────────────────────────────────
-// The SCF gradient returns forces in Hartree/Bohr; the MD driver
-// expects eV/Å. This sub-namespace owns that boundary conversion.
-namespace force {
-    /// 1 Hartree/Bohr in eV/Å.
-    inline constexpr double ev_per_angstrom_per_hartree_per_bohr =
-        ev_per_hartree_factor / angstrom_per_bohr_factor;
-
-    /// eV/Å ← Hartree/Bohr.
-    [[nodiscard]] inline constexpr double ev_per_angstrom_from_hartree_per_bohr(double f_au) {
-        return f_au * ev_per_angstrom_per_hartree_per_bohr;
-    }
-    /// Hartree/Bohr ← eV/Å.
-    [[nodiscard]] inline constexpr double hartree_per_bohr_from_ev_per_angstrom(double f_metal) {
-        return f_metal / ev_per_angstrom_per_hartree_per_bohr;
-    }
-}
-
-// ── Angle ────────────────────────────────────────────────────────────
-namespace angle {
-    inline constexpr double rad_per_degree = pi / 180.0;
-    inline constexpr double degree_per_rad = 180.0 / pi;
-
-    [[nodiscard]] inline constexpr double rad_from_degree(double x) {
-        return x * rad_per_degree;
-    }
-    [[nodiscard]] inline constexpr double degree_from_rad(double x) {
-        return x * degree_per_rad;
-    }
-}
-
-// ── MD "metal" internal unit coupling ────────────────────────────────
+// ── MD "metal" internal coupling (LAMMPS convention) ────────────────
 //
-// Every atomistic step lives in Å / eV / fs / amu / K. Two conversion
-// factors make `F/m → a` and `½ m v² → KE` work in that system without
-// any reference to SI:
+// Å / eV / fs / amu / K is not SI-consistent; these two factors make
+// Newton's second law and kinetic-energy formula work without any SI
+// intermediate:
 //
-//   force_to_accel             [F/m × this → a, units Å/fs²]
-//   mass_velocity2_to_energy   [m × v² × this → E, units eV]
-//
-// These are the same numbers LAMMPS uses for `metal` units, derived by
-// requiring Newton's second law and kinetic-energy formula to be
-// dimensionally consistent under the chosen base units.
-inline constexpr double force_to_accel             = 1.0 / 103.6427;
-inline constexpr double mass_velocity2_to_energy   = 103.6427;
+//   acceleration [Å/fs²] = force_to_accel  * (force[eV/Å] / mass[amu])
+//   KE [eV]              = 0.5 * mass_v2_to_energy * mass[amu] * v² [Å²/fs²]
+inline constexpr double force_to_accel    = 1.0 / 103.6427;
+inline constexpr double mass_v2_to_energy = 103.6427;
 
 } // namespace units
 
 // ─────────────────────────────────────────────────────────────────────
 // Back-compat: flat `ATV::k*` names for call sites that predate the
-// `units::` namespace. Prefer the namespaced helpers in new code.
+// enum-based `units::convert()` API. New code uses the namespaced
+// form above; these aliases keep ~95 legacy call sites compiling.
 // ─────────────────────────────────────────────────────────────────────
 
-inline constexpr double kPI              = units::pi;
-inline constexpr double kDegToRad        = units::angle::rad_per_degree;
-inline constexpr double kAngstromToBohr  = units::bohr_per_angstrom_factor;
-inline constexpr double kBohr2Ang        = units::angstrom_per_bohr_factor;
-inline constexpr double kHartree2eV      = units::ev_per_hartree_factor;
-inline constexpr double kForceAU2Metal   = units::force::ev_per_angstrom_per_hartree_per_bohr;
-inline constexpr double kBoltzmann       = units::boltzmann_ev_per_kelvin;
-inline constexpr double kFtm2v           = units::force_to_accel;
-inline constexpr double kMvv2e           = units::mass_velocity2_to_energy;
+inline constexpr double kPI             = units::pi;
+inline constexpr double kDegToRad       = units::detail::in_base(units::Angle::Degree);
+inline constexpr double kAngstromToBohr = units::detail::in_base(units::Length::Angstrom);
+inline constexpr double kBohr2Ang       = 1.0 / kAngstromToBohr;
+inline constexpr double kHartree2eV     = 1.0 / units::detail::in_base(units::Energy::eV);
+inline constexpr double kForceAU2Metal  = 1.0 / units::detail::in_base(units::Force::eVPerAngstrom);
+inline constexpr double kBoltzmann      = units::kB_ev_per_k;
+inline constexpr double kFtm2v          = units::force_to_accel;
+inline constexpr double kMvv2e          = units::mass_v2_to_energy;
 
 } // namespace ATV

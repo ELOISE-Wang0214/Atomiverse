@@ -69,9 +69,11 @@ AtomList make_atom_list(const Frame& frame, int charge) {
         const int Z = static_cast<int>(frame.atoms.type[i]);
         out.atoms[i].Z = Z;
         // Frame positions are in Angstrom; SCF integrals live in Bohr.
-        out.atoms[i].pos[0] = units::length::bohr_from_angstrom(frame.atoms.x[i]);
-        out.atoms[i].pos[1] = units::length::bohr_from_angstrom(frame.atoms.y[i]);
-        out.atoms[i].pos[2] = units::length::bohr_from_angstrom(frame.atoms.z[i]);
+        using units::convert;
+        using units::Length;
+        out.atoms[i].pos[0] = convert(frame.atoms.x[i], Length::Angstrom, Length::Bohr);
+        out.atoms[i].pos[1] = convert(frame.atoms.y[i], Length::Angstrom, Length::Bohr);
+        out.atoms[i].pos[2] = convert(frame.atoms.z[i], Length::Angstrom, Length::Bohr);
         n_electrons += Z;
     }
     out.n_electrons = n_electrons;

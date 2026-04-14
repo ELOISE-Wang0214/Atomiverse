@@ -83,12 +83,14 @@ static GradientResult make_result(
     const xt::xtensor<double, 2>& grad, double energy_hartree, int natm)
 {
     // SCF gradient lives in Hartree/Bohr; Frame / MD drivers expect eV/Å.
+    using units::convert;
     GradientResult out;
     out.forces = xt::zeros<double>({(int)natm, (int)3});
     for (int A = 0; A < natm; ++A)
         for (int d = 0; d < 3; ++d)
-            out.forces(A, d) = -units::force::ev_per_angstrom_from_hartree_per_bohr(grad(A, d));
-    out.energy = units::energy::ev_from_hartree(energy_hartree);
+            out.forces(A, d) =
+                -convert(grad(A, d), units::Force::HartreePerBohr, units::Force::eVPerAngstrom);
+    out.energy = convert(energy_hartree, units::Energy::Hartree, units::Energy::eV);
     return out;
 }
 
@@ -436,13 +438,15 @@ GradientResult scf_finite_difference_gradient(
 
             // FD uses Å step, so dE/dr is already in eV/Å once the Hartree
             // energy is converted — no extra 1/Bohr factor.
-            forces(A, d) = -units::energy::ev_from_hartree((e_fwd - e_bwd) / (2.0 * h));
+            forces(A, d) =
+                -units::convert((e_fwd - e_bwd) / (2.0 * h),
+                                units::Energy::Hartree, units::Energy::eV);
         }
     }
 
     GradientResult out;
     out.forces = forces;
-    out.energy = units::energy::ev_from_hartree(ref_energy);
+    out.energy = units::convert(ref_energy, units::Energy::Hartree, units::Energy::eV);
     return out;
 }
 
