@@ -317,7 +317,7 @@ GradientResult scf_gradient(
         method_label, spin_label, natm, n);
 
     const auto t_dpack = LogClock::now();
-    auto dpack = build_integral_derivatives_sto3g(frame);
+    auto dpack = build_integral_derivatives(integrals);
     ATV_DEBUG("[gradient] derivative_pack_ms={:.1f}", elapsed_ms(t_dpack));
 
     // Restricted: P_alpha IS P_total (factor 2 included in scf_solve)

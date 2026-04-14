@@ -59,6 +59,6 @@
   "energy_hartree_starting": -55.45401065755019,
   "energy_hartree_optimized": -55.45541977880506,
   "scf_iterations_starting": 7,
-  "opt_wall_seconds": 0.04367433400329901,
+  "opt_wall_seconds": 0.045280416001332924,
   "pyscf_version": "2.12.1"
 }

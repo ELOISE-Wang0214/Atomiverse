@@ -36,14 +36,20 @@ struct IntegralDerivPack {
     int n_basis = 0;               ///< Number of basis functions.
 };
 
-/// @brief Compute all integral derivatives for STO-3G at current geometry.
+/// @brief Compute one-electron integral derivatives using the shells
+///        already resolved inside `pack`.
 ///
-/// Reads atom positions from frame.atoms.x/y/z (Angstrom) and nuclear charges
-/// from frame.atoms.type. Converts to Bohr internally. Output in Hartree/Bohr.
+/// The returned dS / dT / dV tensors have the same n_basis dimension as
+/// `pack.S`, so gradient contractions align regardless of basis.
+/// Supports any l ≤ kMaxL — the primitive helpers delegate to
+/// `native::overlap_prim_3d` / `kinetic_prim_3d` / `nuclear_prim`,
+/// which handle s, p, and d shells identically.
 ///
-/// @param frame CPU Frame with atom positions and types (atoms.type = Z).
-/// @param charge Molecular charge (0 = neutral).
-/// @return IntegralDerivPack with all derivative tensors.
+/// @param pack Integral pack (provides atoms in Bohr + resolved shells).
+/// @return IntegralDerivPack with dS / dT / dV / dV_nuc.
+IntegralDerivPack build_integral_derivatives(const IntegralPack& pack);
+
+/// @brief Back-compat STO-3G wrapper. Forwards to the generic builder.
 IntegralDerivPack build_integral_derivatives_sto3g(const Frame& frame, int charge = 0);
 
 /// @brief Contract two-electron derivative integrals directly into the gradient.

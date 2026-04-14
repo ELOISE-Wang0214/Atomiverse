@@ -31,11 +31,27 @@ created: 2026-04-14
       delta vs. reference. Pipeline green (3/3 within 50 mHa).
 - [x] `SCFEvaluator` gains a `BasisSet` parameter (was hardcoded
       STO-3G; prevented running the bench at any other basis).
-- [ ] **SCF analytic gradient through d-shells** — def2-SVP energy is
-      bit-exact vs. PySCF but the gradient path hits an
-      `xt::broadcast_error` in `integral_derivatives.cpp` at d-shells.
-      Blocks moving this bench off STO-3G. Stage B2b-gradient
-      follow-up.
+- [x] **1e integral-derivative path generalized.** The
+      `xt::broadcast_error` in `build_integral_derivatives_sto3g` came
+      from hardcoded `sto3g_data` sizing; replaced with
+      `build_integral_derivatives(const IntegralPack&)` that reuses
+      the SCF's resolved shell list. STO-3G legacy wrapper preserved
+      as a thin shim. Test: `test_cpu_scf_def2svp_gradient.cpp`
+      (translational invariance holds on H2O @ def2-SVP RHF).
+- [ ] **Native 2e gradient path (`rys_eri_block_deriv` integrator)**
+      disagrees with FD on p-shell-containing molecules — existing
+      H2/HeH+ tests were too small (s-only) to catch. Libcint-backed
+      STO-3G gradient is correct (`test_gradient_vs_libcint` confirms),
+      so production SCF opt still works on STO-3G. Needed to unblock
+      any basis larger than STO-3G. Surfaced by the two DISABLED
+      tests in `test_def2svp_gradient.cpp`.
+- [ ] **libcint bridge generalization** — current
+      `build_libcint_sto3g_context` hardcodes STO-3G. Either fix the
+      native 2e gradient above or generalize the libcint bridge.
+- [ ] **KS/d-shell XC grid** — `basis_eval.h` only handles l ∈ {0, 1}.
+      Blocks PBE/def2-SVP SCF itself (KS grid evaluation). Separate
+      from the gradient issue; surfaces as SCF hang before any force
+      is computed.
 - [ ] **LBFGS line search** — current fixed-step LBFGSStep converges
       to ~10–30 mHa drift from the PySCF minimum because dtol triggers
       on small-step iterations that haven't actually minimized. Full

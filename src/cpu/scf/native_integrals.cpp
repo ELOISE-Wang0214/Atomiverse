@@ -601,11 +601,13 @@ double overlap_prim_3d(const int a_ang[3], const int b_ang[3],
         const double PB = Pd - B[d];
         const double S00 = sqrt_pi_g * std::exp(-mu * dd * dd);
 
-        // Build 1D overlap table up to (imax, jmax)
+        // Build 1D overlap table up to (imax, jmax). Sized for
+        // derivative callers that pass a_ang or b_ang bumped by 1:
+        // max entry is (kMaxL+1)*(kMaxL+1) = 4*4 = 16 for kMaxL=2.
         const int imax = a_ang[d];
         const int jmax = b_ang[d];
-        // Need table of size (imax+1)*(jmax+1), max 3x3=9
-        double S[9]; // up to 3x3
+        constexpr int kMaxOverlapCells = (kMaxL + 2) * (kMaxL + 2);
+        double S[kMaxOverlapCells];
         os_overlap_1d(PA, PB, inv2g, S00, imax, jmax, S);
 
         result *= S[imax * (jmax + 1) + jmax];
@@ -630,13 +632,14 @@ double kinetic_prim_3d(const int a_ang[3], const int b_ang[3],
         if (a_ang[d] > imax_all) imax_all = a_ang[d];
         if (b_ang[d] > jmax_base) jmax_base = b_ang[d];
     }
-    const int im = imax_all;       // max 2
-    const int jm = jmax_base + 2;  // max 4
-    const int jstride = jm + 1;    // max 5
+    const int im = imax_all;       // max kMaxL+1 = 3 (derivative bump)
+    const int jm = jmax_base + 2;  // max kMaxL+1+2 = 5
+    const int jstride = jm + 1;    // max 6
 
     // Build 1D overlap tables in each direction with uniform size.
-    // Table size: (im+1)*(jm+1) = max 3*5 = 15 per direction.
-    double Sd[3][15];
+    // Max table cells: (kMaxL+2) * (kMaxL+4) = 4 * 6 = 24 per direction.
+    constexpr int kMaxKineticCells = (kMaxL + 2) * (kMaxL + 4);
+    double Sd[3][kMaxKineticCells];
     double S1d[3];
 
     for (int d = 0; d < 3; ++d) {

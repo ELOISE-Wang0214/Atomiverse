@@ -479,15 +479,9 @@ static void accumulate_quartet_into_gradient(
 
 // ── Main entry point ─────────────────────────────────────────────────
 
-IntegralDerivPack build_integral_derivatives_sto3g(const Frame& frame, int charge) {
-    const int natm = static_cast<int>(frame.atoms.size());
-
-    // Count total expanded basis functions using sto3g_data.h
-    int n_basis = 0;
-    for (int i = 0; i < natm; ++i) {
-        int Z = static_cast<int>(frame.atoms.type[i]);
-        n_basis += sto3g_n_basis(Z);
-    }
+IntegralDerivPack build_integral_derivatives(const IntegralPack& ipack) {
+    const int natm    = static_cast<int>(ipack.atoms.size());
+    const int n_basis = ipack.n_basis;
 
     IntegralDerivPack pack;
     pack.n_atoms = natm;
@@ -497,81 +491,28 @@ IntegralDerivPack build_integral_derivatives_sto3g(const Frame& frame, int charg
     pack.dV     = xt::zeros<double>({(int)natm, (int)3, n_basis, n_basis});
     pack.dV_nuc = xt::zeros<double>({(int)natm, (int)3});
 
-    // Build shells and atoms (same structure as integrals.cpp)
-    std::vector<native::Shell> shells(n_basis);
-    std::vector<native::Atom> atoms(natm);
-    std::vector<int> shell_to_atom(n_basis);
-    std::vector<std::array<double, 6>> norm_store(n_basis); // alpha[3] + norm_coeff[3]
+    // Reuse the shell list already resolved in the IntegralPack — same
+    // normalization, same ordering as the SCF path, works for any l.
+    const auto& shells = ipack.shells;
+    const auto& atoms  = ipack.atoms;
 
-    int shell_idx = 0;
-    for (int a = 0; a < natm; ++a) {
-        int Z = static_cast<int>(frame.atoms.type[a]);
-        double cx = static_cast<double>(frame.atoms.x[a]) * kAngstromToBohr;
-        double cy = static_cast<double>(frame.atoms.y[a]) * kAngstromToBohr;
-        double cz = static_cast<double>(frame.atoms.z[a]) * kAngstromToBohr;
-
-        atoms[a].Z = Z;
-        atoms[a].pos[0] = cx;
-        atoms[a].pos[1] = cy;
-        atoms[a].pos[2] = cz;
-
-        const auto& basis = sto3g_data[Z];
-        for (int s = 0; s < basis.n_raw_shells; ++s) {
-            const auto& raw = basis.raw[s];
-
-            if (raw.type == 0) {
-                // Pure s shell: 1 basis function
-                for (int p = 0; p < 3; ++p) {
-                    norm_store[shell_idx][p] = raw.alpha[p];
-                    norm_store[shell_idx][p + 3] = raw.coeff_s[p] * native::phys_norm(raw.alpha[p]);
-                }
-                shells[shell_idx].n_prim = 3;
-                shells[shell_idx].alpha = &norm_store[shell_idx][0];
-                shells[shell_idx].coeff = &norm_store[shell_idx][3];
-                shells[shell_idx].center[0] = cx;
-                shells[shell_idx].center[1] = cy;
-                shells[shell_idx].center[2] = cz;
-                shells[shell_idx].l = 0;
-                shells[shell_idx].cart = 0;
-                shell_to_atom[shell_idx] = a;
-                ++shell_idx;
-            } else {
-                // SP shell: expand to 4 basis functions (2s + 2px + 2py + 2pz)
-
-                // s-component
-                for (int p = 0; p < 3; ++p) {
-                    norm_store[shell_idx][p] = raw.alpha[p];
-                    norm_store[shell_idx][p + 3] = raw.coeff_s[p] * native::phys_norm(raw.alpha[p]);
-                }
-                shells[shell_idx].n_prim = 3;
-                shells[shell_idx].alpha = &norm_store[shell_idx][0];
-                shells[shell_idx].coeff = &norm_store[shell_idx][3];
-                shells[shell_idx].center[0] = cx;
-                shells[shell_idx].center[1] = cy;
-                shells[shell_idx].center[2] = cz;
-                shells[shell_idx].l = 0;
-                shells[shell_idx].cart = 0;
-                shell_to_atom[shell_idx] = a;
-                ++shell_idx;
-
-                // p-components: px (cart=0), py (cart=1), pz (cart=2)
-                for (int c = 0; c < 3; ++c) {
-                    for (int p = 0; p < 3; ++p) {
-                        norm_store[shell_idx][p] = raw.alpha[p];
-                        norm_store[shell_idx][p + 3] = raw.coeff_p[p] * native::phys_norm_p(raw.alpha[p]);
-                    }
-                    shells[shell_idx].n_prim = 3;
-                    shells[shell_idx].alpha = &norm_store[shell_idx][0];
-                    shells[shell_idx].coeff = &norm_store[shell_idx][3];
-                    shells[shell_idx].center[0] = cx;
-                    shells[shell_idx].center[1] = cy;
-                    shells[shell_idx].center[2] = cz;
-                    shells[shell_idx].l = 1;
-                    shells[shell_idx].cart = c;
-                    shell_to_atom[shell_idx] = a;
-                    ++shell_idx;
-                }
+    // Shell → atom mapping via shell-center vs atom-position match.
+    // Both are in Bohr and constructed from the same Frame positions,
+    // so bit-exact equality holds.
+    std::vector<int> shell_to_atom(n_basis, -1);
+    for (int i = 0; i < n_basis; ++i) {
+        const double* c = shells[i].center;
+        for (int a = 0; a < natm; ++a) {
+            const double* p = atoms[a].pos;
+            if (c[0] == p[0] && c[1] == p[1] && c[2] == p[2]) {
+                shell_to_atom[i] = a;
+                break;
             }
+        }
+        if (shell_to_atom[i] < 0) {
+            throw std::runtime_error(
+                "cpu::scf::build_integral_derivatives: shell " +
+                std::to_string(i) + " center has no matching atom");
         }
     }
 
@@ -729,6 +670,11 @@ IntegralDerivPack build_integral_derivatives_sto3g(const Frame& frame, int charg
     }
 
     return pack;
+}
+
+IntegralDerivPack build_integral_derivatives_sto3g(const Frame& frame, int charge) {
+    const auto ipack = build_integrals(frame, BasisSet::STO3G, charge);
+    return build_integral_derivatives(ipack);
 }
 
 void accumulate_two_electron_gradient_sto3g(
