@@ -73,7 +73,4 @@ if(ATV_BUILD_RHF)
     add_executable(05_geom_opt tutorial/05_geom_opt.cpp)
     target_link_libraries(05_geom_opt PRIVATE atomiverse)
     set_target_properties(05_geom_opt PROPERTIES CXX_STANDARD 17)
-
-    atv_add_cpp_example(aimd)
-    atv_add_cpp_example(bench_aimd)
 endif()
