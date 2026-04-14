@@ -217,8 +217,8 @@ int main() {
         rec.add_scalar("n_beta",            double(result.n_beta));
         rec.add_scalar("spin_contamination", result.spin_contamination);
         xt::xtensor<double,2> P_total = result.P_alpha + result.P_beta;
-        rec.add_field("charge",       cpu::mulliken_charge(frame, P_total, ints.S));
-        rec.add_field("spin_density", cpu::mulliken_spin(frame, result.P_alpha, result.P_beta, ints.S));
+        rec.add_field("charge",       cpu::mulliken_charge(ints, P_total));
+        rec.add_field("spin_density", cpu::mulliken_spin(ints, result.P_alpha, result.P_beta));
         rec.commit_frame();
         cpu::print_summary(rec);
         cpu::XYZ("h_atom.xyz").write_ext(rec);
@@ -253,7 +253,7 @@ int main() {
             rhf_rec.add_scalar("n_alpha",    double(ints.n_occ()));
             rhf_rec.add_scalar("n_beta",     double(ints.n_occ()));
             rhf_rec.add_scalar("spin_contamination", double(0));
-            rhf_rec.add_field("charge",       cpu::mulliken_charge(frame, rhf.P, ints.S));
+            rhf_rec.add_field("charge",       cpu::mulliken_charge(ints, rhf.P));
             rhf_rec.add_field("spin_density", std::vector<double>(frame.atoms.size(), double(0)));
             rhf_rec.commit_frame();
             cpu::print_summary(rhf_rec);
@@ -269,8 +269,8 @@ int main() {
             uhf_rec.add_scalar("n_beta",     double(uhf.n_beta));
             uhf_rec.add_scalar("spin_contamination", uhf.spin_contamination);
             xt::xtensor<double,2> P_total = uhf.P_alpha + uhf.P_beta;
-            uhf_rec.add_field("charge",       cpu::mulliken_charge(frame, P_total, ints.S));
-            uhf_rec.add_field("spin_density", cpu::mulliken_spin(frame, uhf.P_alpha, uhf.P_beta, ints.S));
+            uhf_rec.add_field("charge",       cpu::mulliken_charge(ints, P_total));
+            uhf_rec.add_field("spin_density", cpu::mulliken_spin(ints, uhf.P_alpha, uhf.P_beta));
             uhf_rec.commit_frame();
             cpu::print_summary(uhf_rec);
             cpu::XYZ("h2_eq_uhf.xyz").write_ext(uhf_rec);
@@ -318,7 +318,7 @@ int main() {
         rhf_scan.add_scalar("n_alpha",    double(ints.n_occ()));
         rhf_scan.add_scalar("n_beta",     double(ints.n_occ()));
         rhf_scan.add_scalar("spin_contamination", double(0));
-        auto rhf_charge = cpu::mulliken_charge(frame, rhf.P, ints.S);
+        auto rhf_charge = cpu::mulliken_charge(ints, rhf.P);
         rhf_scan.add_field("charge",       rhf_charge);
         rhf_scan.add_field("spin_density", std::vector<double>(frame.atoms.size(), double(0)));
         rhf_scan.commit_frame();
@@ -326,8 +326,8 @@ int main() {
 
         // Build UHF frame and stream to XYZ
         xt::xtensor<double,2> P_total = uhf.P_alpha + uhf.P_beta;
-        auto uhf_charge = cpu::mulliken_charge(frame, P_total, ints.S);
-        auto uhf_spin   = cpu::mulliken_spin(frame, uhf.P_alpha, uhf.P_beta, ints.S);
+        auto uhf_charge = cpu::mulliken_charge(ints, P_total);
+        auto uhf_spin   = cpu::mulliken_spin(ints, uhf.P_alpha, uhf.P_beta);
         uhf_scan.set_geometry(frame);
         uhf_scan.add_string("method", "UHF");
         uhf_scan.add_scalar("energy",     uhf.energy);

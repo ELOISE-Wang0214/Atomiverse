@@ -94,7 +94,7 @@ int main() {
     rec.add_scalar("n_alpha",    double(integrals.n_occ()));
     rec.add_scalar("n_beta",     double(integrals.n_occ()));
     rec.add_scalar("spin_contamination", double(0));
-    rec.add_field("charge",       cpu::mulliken_charge(frame, cpu_result.P, integrals.S));
+    rec.add_field("charge",       cpu::mulliken_charge(integrals, cpu_result.P));
     rec.add_field("spin_density", std::vector<double>(frame.atoms.size(), double(0)));
     rec.commit_frame();
     cpu::print_summary(rec);
