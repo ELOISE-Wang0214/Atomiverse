@@ -53,6 +53,8 @@ Driver<PhaseEnum, DeviceTag>::run(frame, n_steps)
         component->launch(ctx)
 ```
 
+**Canonical facade.** `ATV::Driver<PhaseEnum, DeviceTag>` (in `facade/driver.h`) is the **single** user-facing class. It owns the component set, compiles the `Plan` in `build()`, and drives the per-step/per-phase dispatch in `run()`. Concrete subclasses (`cpu::md::MD`, `cuda::scf::SCF`, `cpu::minimizer::LBFGS`, …) only exist to inject infrastructure components via their constructor — they add no runtime behaviour beyond the template. There is **no** `Spec` / `Plan` / `Driver` three-way split in the current tree; proposals in `.claude/specs/rust-frame-lowering.md` are forward-looking and not in force.
+
 **Rules:**
 - **Driver owns the loop.** Force evaluators, integrators, thermostats are Components — never standalone classes with their own loops.
 - **No duplication across methods.** Shared algorithmic skeletons (gradient assembly, FD validation, AIMD integration) are single parameterized functions. Method-specific logic is injected via config/enum dispatch.
@@ -60,6 +62,7 @@ Driver<PhaseEnum, DeviceTag>::run(frame, n_steps)
 - **Two registration paths:** `driver.add(comp)` uses `default_bindings()`; `driver.on(phase).add(comp, order)` for explicit binding.
 - **Infrastructure components** (ZeroForces, ZeroEnergy) are driver-specific — each driver type (MD, minimizer, SCF) has its own set with `default_bindings()` pointing to the correct phase.
 - **Observer vs Recorder:** single responsibility. Observer computes derived quantities. Recorder writes I/O. Never both.
+- **Hot-path data structures carry only fundamental physical quantities.** `cpu::Frame`, `cpu::scf::IntegralPack`, `cpu::scf::ShellList`, etc. store positions, velocities, integrals, shell descriptors — never precomputed indices, caches, or derived maps (e.g. `basis_to_atom`). Consumers that need a derived view (an observer computing a per-atom summary, a Fock builder that wants pair-list bounds) compute it themselves from the fundamentals. Keeps data layout auditable and prevents silent staleness.
 
 ### Data residency
 
