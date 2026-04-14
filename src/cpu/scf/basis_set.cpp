@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "atomiverse/core/constants.h"
+#include "atomiverse/cpu/scf/basis_data/pople_631g.h"
 #include "atomiverse/cpu/scf/sto3g_data.h"
 
 namespace ATV {
@@ -140,6 +141,92 @@ ShellList build_shell_list_sto3g(const AtomList& atoms) {
     return out;
 }
 
+// ── Generic builder driven by a checked-in basis_data table ──────────
+//
+// Walks a `std::vector<basis_data::AtomBasis>` indexed by Z and emits
+// one native::Shell per Cartesian AO, applying the physical GTO
+// normalization (phys_norm_s / phys_norm_p) to the stored contraction
+// coefficients. Supports l ∈ {0, 1}; d-shells (l = 2) will land in
+// Stage B2b alongside the per-Cartesian-component normalization
+// plumbing.
+
+ShellList build_shell_list_from_table(
+    const AtomList& atoms,
+    const std::vector<basis_data::AtomBasis>& table,
+    BasisSet basis_id)
+{
+    const int natm = static_cast<int>(atoms.atoms.size());
+
+    // First pass: count AOs and validate element coverage.
+    int n_basis = 0;
+    for (int a = 0; a < natm; ++a) {
+        const int Z = atoms.atoms[a].Z;
+        if (Z < 1 || Z >= static_cast<int>(table.size()) ||
+            table[static_cast<std::size_t>(Z)].shells.empty()) {
+            throw std::runtime_error(
+                std::string("cpu::scf::build_shell_list: '") +
+                basis_set_name(basis_id) + "' has no data for Z=" +
+                std::to_string(Z));
+        }
+        for (const auto& sh : table[static_cast<std::size_t>(Z)].shells) {
+            if (sh.l == 0)      n_basis += 1;
+            else if (sh.l == 1) n_basis += 3;
+            else {
+                throw std::runtime_error(
+                    "cpu::scf::build_shell_list: l=" + std::to_string(sh.l) +
+                    " not yet supported (Stage B2b adds d-shells).");
+            }
+        }
+    }
+
+    ShellList out;
+    out.n_basis = n_basis;
+    out.basis = basis_id;
+    out.shells.resize(static_cast<std::size_t>(n_basis));
+    out.shell_storage.resize(static_cast<std::size_t>(n_basis));
+
+    int shell_idx = 0;
+    for (int a = 0; a < natm; ++a) {
+        const int Z = atoms.atoms[a].Z;
+        const double cx = atoms.atoms[a].pos[0];
+        const double cy = atoms.atoms[a].pos[1];
+        const double cz = atoms.atoms[a].pos[2];
+
+        for (const auto& sh : table[static_cast<std::size_t>(Z)].shells) {
+            const int np = static_cast<int>(sh.alpha.size());
+
+            auto emit_shell = [&](int l, int cart, double norm_at(double)) {
+                auto& store = out.shell_storage[static_cast<std::size_t>(shell_idx)];
+                store.resize(static_cast<std::size_t>(2 * np));
+                for (int p = 0; p < np; ++p) {
+                    store[static_cast<std::size_t>(p)] = sh.alpha[static_cast<std::size_t>(p)];
+                    store[static_cast<std::size_t>(np + p)] =
+                        sh.coeff[static_cast<std::size_t>(p)] * norm_at(sh.alpha[static_cast<std::size_t>(p)]);
+                }
+                auto& s = out.shells[static_cast<std::size_t>(shell_idx)];
+                s.n_prim = np;
+                s.alpha = store.data();
+                s.coeff = store.data() + np;
+                s.center[0] = cx;
+                s.center[1] = cy;
+                s.center[2] = cz;
+                s.l = l;
+                s.cart = cart;
+                ++shell_idx;
+            };
+
+            if (sh.l == 0) {
+                emit_shell(0, 0, native::phys_norm);
+            } else {
+                emit_shell(1, 0, native::phys_norm_p);
+                emit_shell(1, 1, native::phys_norm_p);
+                emit_shell(1, 2, native::phys_norm_p);
+            }
+        }
+    }
+    return out;
+}
+
 } // namespace
 
 ShellList build_shell_list(const AtomList& atoms, BasisSet basis) {
@@ -147,13 +234,15 @@ ShellList build_shell_list(const AtomList& atoms, BasisSet basis) {
         case BasisSet::STO3G:
             return build_shell_list_sto3g(atoms);
         case BasisSet::Pople631G:
+            return build_shell_list_from_table(
+                atoms, basis_data::pople_631g(), basis);
         case BasisSet::Pople631Gs:
         case BasisSet::Def2SVP:
         case BasisSet::Def2TZVP:
             throw std::runtime_error(
                 std::string("cpu::scf::build_shell_list: basis '") +
                 basis_set_name(basis) +
-                "' is not yet implemented (Stage B2 will add it).");
+                "' is not yet implemented (Stage B2b will add it).");
     }
     throw std::runtime_error("cpu::scf::build_shell_list: unknown BasisSet");
 }

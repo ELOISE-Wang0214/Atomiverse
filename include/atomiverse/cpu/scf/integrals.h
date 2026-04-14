@@ -15,6 +15,7 @@
 #include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 
 namespace ATV {
@@ -64,11 +65,21 @@ struct IntegralPack {
 ///   - Tests that verify ERI values directly
 ///
 /// @param frame       CPU Frame with atom positions and types (atoms.type = Z).
+/// @param basis       Which basis set to resolve (STO3G, 6-31G, ...).
 /// @param charge      Molecular charge (0 = neutral, +1 = cation, etc.).
 /// @param compute_eri If true, compute and store the full ERI tensor [default false].
 /// @return IntegralPack with S, T, V, Hcore, V_nuc, shells, atoms (ERI only if requested).
-IntegralPack build_integrals_sto3g(const Frame& frame, int charge = 0,
-                                   bool compute_eri = false);
+IntegralPack build_integrals(const Frame& frame, BasisSet basis,
+                             int charge = 0, bool compute_eri = false);
+
+/// @brief Backwards-compatible wrapper; forwards to build_integrals(..., STO3G, ...).
+///
+/// Retained until Phase 1.4; new code should call `build_integrals`
+/// directly with an explicit `BasisSet`.
+inline IntegralPack build_integrals_sto3g(const Frame& frame, int charge = 0,
+                                          bool compute_eri = false) {
+    return build_integrals(frame, BasisSet::STO3G, charge, compute_eri);
+}
 
 } // namespace scf
 } // namespace cpu

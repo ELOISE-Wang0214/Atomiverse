@@ -27,15 +27,17 @@ namespace ATV {
 namespace cpu {
 namespace scf {
 
-IntegralPack build_integrals_sto3g(const Frame& frame, int charge, bool compute_eri) {
+IntegralPack build_integrals(const Frame& frame, BasisSet basis,
+                             int charge, bool compute_eri) {
     const auto t_total = LogClock::now();
 
     auto atom_list  = make_atom_list(frame, charge);
-    auto shell_list = build_shell_list(atom_list, BasisSet::STO3G);
+    auto shell_list = build_shell_list(atom_list, basis);
 
     ATV_INFO(
-        "[integrals] start natm={} basis={} electrons={} charge={}",
+        "[integrals] start natm={} basis={} n_basis={} electrons={} charge={}",
         static_cast<int>(atom_list.atoms.size()),
+        basis_set_name(basis),
         shell_list.n_basis,
         atom_list.n_electrons,
         charge);
