@@ -13,9 +13,6 @@
 ///
 /// Run:
 ///   ./build/examples/05_geom_opt
-
-#ifdef ATV_HAS_RHF
-
 #include <cmath>
 
 #include "atomiverse/core/log.h"
@@ -184,8 +181,3 @@ int main() {
     ATV_INFO("[example] done");
     return 0;
 }
-
-#else
-#include <iostream>
-int main() { std::cout << "Requires -DATV_BUILD_RHF=ON\n"; return 1; }
-#endif

@@ -2,6 +2,7 @@
 /// @brief L-BFGS step implementation: two-loop recursion + multi-criteria convergence.
 
 #include "atomiverse/cpu/minimizer/lbfgs.h"
+#include "atomiverse/core/log.h"
 #include "atomiverse/core/units.h"
 
 #include <cmath>
@@ -40,6 +41,10 @@ void LBFGSStep::build(const cpu::BuildContext& ctx) {
     energy_prev_ = 0;
     step_ = 0;
     trace_.clear();
+
+    ATV_INFO(
+        "[lbfgs] build memory={} alpha0={:.6f} ftol={:.6f} rms_ftol={:.6f} max_dtol={:.4f} rms_dtol={:.4f} etol={:.6e} (line_search: not implemented, use loose dtol)",
+        memory_, alpha0_, ftol_, rms_ftol_, max_dtol_, rms_dtol_, etol_);
 }
 
 void LBFGSStep::launch(const cpu::LaunchContext& ctx) {
@@ -62,29 +67,17 @@ void LBFGSStep::launch(const cpu::LaunchContext& ctx) {
         }
         double rms_force = std::sqrt(sum_f2 / (3 * n));
 
-        // Compute displacement metrics (relative to previous step)
+        // Compute displacement metrics relative to pre-step positions (x_prev_
+        // is saved in search_direction phase before the step is applied).
         double max_disp = 0;
         double sum_d2 = 0;
-        if (has_prev_) {
-            for (int i = 0; i < n; ++i) {
-                double dx = f.atoms.x(i) - x_prev_[i*3+0] / 1.0; // x_prev_ stored as flat array... wait
-                // Actually x_prev_ stores positions from the search_direction phase.
-                // But positions may have changed. Need to store the pre-step positions.
-                // For now, compute from direction_ * alpha (the step taken).
-            }
-        }
-
-        // Use displacement from direction_ (the actual step taken)
         if (step_ > 0) {
             for (int i = 0; i < n; ++i) {
-                for (int d = 0; d < 3; ++d) {
-                    double disp = f.atoms.x(i) - x_prev_[i*3+0]; // compare current to pre-step
-                    if (d == 1) disp = f.atoms.y(i) - x_prev_[i*3+1];
-                    if (d == 2) disp = f.atoms.z(i) - x_prev_[i*3+2];
-                    sum_d2 += disp * disp;
-                    double abs_disp = std::abs(disp);
-                    if (abs_disp > max_disp) max_disp = abs_disp;
-                }
+                double dx = f.atoms.x(i) - x_prev_[i*3+0];
+                double dy = f.atoms.y(i) - x_prev_[i*3+1];
+                double dz = f.atoms.z(i) - x_prev_[i*3+2];
+                sum_d2 += dx*dx + dy*dy + dz*dz;
+                max_disp = std::max(max_disp, std::max({std::abs(dx), std::abs(dy), std::abs(dz)}));
             }
         }
         double rms_disp = (step_ > 0) ? std::sqrt(sum_d2 / (3 * n)) : double(0);
@@ -108,6 +101,11 @@ void LBFGSStep::launch(const cpu::LaunchContext& ctx) {
                    && (step_ == 0 || rms_disp < rms_dtol_)
                    && (step_ == 0 || energy_change < etol_);
 
+        ATV_INFO(
+            "[lbfgs] step={} energy_eV={:.6f} max_force_eVA={:.6f} rms_force_eVA={:.6f} max_disp_A={:.6e} rms_disp_A={:.6e} dE_eV={:.6e} converged={}",
+            step_, f.energy, max_force_, rms_force, max_disp, rms_disp,
+            energy_change, converged_);
+
         energy_prev_ = f.energy;
         return;
     }
@@ -125,6 +123,10 @@ void LBFGSStep::launch(const cpu::LaunchContext& ctx) {
         g[i*3+1] = -f.atoms.fy(i);
         g[i*3+2] = -f.atoms.fz(i);
     }
+
+    ATV_DEBUG(
+        "[lbfgs] search_direction step={} stored_history={}",
+        step_, n_stored_);
 
     // Update L-BFGS history with previous step's data
     if (has_prev_) {
@@ -214,6 +216,10 @@ void LBFGSStep::launch(const cpu::LaunchContext& ctx) {
         f.atoms.y(i) += alpha * direction_[i*3+1];
         f.atoms.z(i) += alpha * direction_[i*3+2];
     }
+
+    ATV_DEBUG(
+        "[lbfgs] applied step={} alpha={:.6e} dir_max={:.6e}",
+        step_, alpha, dir_max);
 
     ++step_;
 }
