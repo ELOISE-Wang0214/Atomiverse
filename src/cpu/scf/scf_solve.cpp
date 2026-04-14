@@ -22,14 +22,18 @@
 #include "atomiverse/cpu/scf/diis.h"
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/xc_grid_engine.h"
+#include "atomiverse/cpu/scf/minao.h"
 #include "atomiverse/core/log.h"
 
 #include <cmath>
 #include <algorithm>
+#include <limits>
 #include <vector>
 
 #include <xtensor/reducers/xnorm.hpp>
 #include <xtensor/views/xview.hpp>
+#include <xtensor/core/xmath.hpp>
+#include <xtensor/reducers/xreducer.hpp>
 #include <xtensor-blas/xlinalg.hpp>
 
 namespace ATV {
@@ -85,7 +89,7 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config,
     }
 
     // ── 3. Initial guess ────────────────────────────────────────────────
-    auto [eig0, C0] = diagonalize_fock(Hcore_cm, X);
+    auto [eig0, C0] = diagonalize_fock_generalized(Hcore_cm, S_cm);
 
     RealMatrix P_alpha, P_beta;
     const bool valid_guess_alpha = guess && guess->has_alpha
@@ -97,6 +101,21 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config,
         && static_cast<int>(guess->P_beta.shape()[0]) == n
         && static_cast<int>(guess->P_beta.shape()[1]) == n;
 
+    // MINAO guess (PySCF default). Falls back to Hcore when:
+    //   - user supplied an explicit density (valid_guess_*)
+    //   - config explicitly requests Hcore
+    //   - molecule contains an element without a MINAO entry
+    const bool want_minao = (config.init_guess == InitGuess::MINAO)
+                           && !valid_guess_alpha
+                           && minao_supported(integrals);
+    RealMatrix P_minao;
+    if (want_minao) {
+        const auto t_guess = LogClock::now();
+        P_minao = build_minao_density(integrals);
+        ATV_INFO("[scf] initial guess source=minao trace_ne={:.4f} ms={:.2f}",
+                 xt::sum(P_minao * S_cm)(), elapsed_ms(t_guess));
+    }
+
     if (restricted && valid_guess_alpha) {
         P_alpha = 0.5 * (guess->P_alpha + xt::transpose(guess->P_alpha));
         P_beta = P_alpha;
@@ -105,16 +124,32 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config,
         P_alpha = 0.5 * (guess->P_alpha + xt::transpose(guess->P_alpha));
         P_beta = 0.5 * (guess->P_beta + xt::transpose(guess->P_beta));
         ATV_INFO("[scf] initial guess source=density_history restricted=false");
+    } else if (want_minao && restricted) {
+        // RHF: MINAO density already has spin-averaged total occupation.
+        P_alpha = P_minao;
+        P_beta  = P_alpha;
+    } else if (want_minao) {
+        // UHF/UKS: split MINAO equally, then apply HOMO-LUMO mixing for UHF.
+        P_alpha = 0.5 * P_minao;
+        P_beta  = 0.5 * P_minao;
+        bool is_ks = (config.method == MeanFieldType::KS);
+        bool skip_mixing = is_ks && (n_alpha == n_beta);
+        if (config.method == MeanFieldType::HF && n_alpha > 0 && n_beta > 0
+            && !skip_mixing && n_alpha != n_beta) {
+            // Note: HOMO-LUMO mixing on the Hcore MOs is still needed for
+            // broken-symmetry initial conditions when n_alpha != n_beta.
+            RealMatrix C_alpha_init = C0;
+            apply_homo_lumo_mixing(C_alpha_init, n_alpha, n);
+            P_alpha = build_density_matrix(C_alpha_init, n_alpha, n);
+            P_beta  = build_density_matrix(C0, n_beta, n);
+        }
     } else if (restricted) {
-        // RHF: P = 2 * C_occ * C_occ^T
+        // Hcore fallback, RHF: P = 2 * C_occ * C_occ^T
         P_alpha = build_density_matrix(C0, n_alpha, n, double(2));
         P_beta  = P_alpha;  // alias — not used independently
+        ATV_INFO("[scf] initial guess source=hcore");
     } else {
-        // UHF: always apply HOMO-LUMO mixing to break spin symmetry
-        // (needed to find broken-symmetry solutions at stretched geometries).
-        // UKS: skip mixing for closed-shell singlets — LSDA has no
-        // Coulson-Fischer point for H2/STO-3G, so the symmetric solution
-        // is correct. Mixing creates a pathological initial guess.
+        // Hcore fallback, UHF/UKS
         RealMatrix C_alpha_init = C0;
         bool is_ks = (config.method == MeanFieldType::KS);
         bool skip_mixing = is_ks && (n_alpha == n_beta);
@@ -122,12 +157,17 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config,
             apply_homo_lumo_mixing(C_alpha_init, n_alpha, n);
         P_alpha = build_density_matrix(C_alpha_init, n_alpha, n);
         P_beta  = build_density_matrix(C0, n_beta, n);
+        ATV_INFO("[scf] initial guess source=hcore");
     }
 
     // ── 4. Convergence infrastructure ───────────────────────────────────
     DIIS diis(config.diis_max_vectors);
     double damping = config.damping_factor;
-    double prev_residual = double(1);  // track residual from previous iteration
+    double prev_residual = double(1);  // density-norm residual (diagnostics only)
+    double prev_energy = double(0);     // for |dE| convergence check
+    const double conv_tol_grad = (config.conv_tol_grad > 0)
+                                 ? config.conv_tol_grad
+                                 : std::sqrt(config.tol);
 
     RealMatrix C_alpha = C0, C_beta = C0;
     RealVector eig_alpha = eig0, eig_beta = eig0;
@@ -181,28 +221,33 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config,
             int_n_beta  = xc_result.n_beta_integrated;
         }
 
-        // ── 5b. DIIS extrapolation ──────────────────────────────────────
+        // ── 5b. DIIS extrapolation + error norm ─────────────────────────
+        // Always compute the orthonormal-basis error so we can use ||e||_inf
+        // in the convergence check, matching PySCF's `conv_tol_grad`.
+        RealMatrix err_alpha = diis_error(F_alpha, P_alpha, S_cm, X);
+        RealMatrix err_beta;
+        if (!restricted)
+            err_beta = diis_error(F_beta, P_beta, S_cm, X);
+
         bool diis_active = false;
         if (config.use_diis && iter >= config.diis_start_iter) {
             if (restricted) {
-                RealMatrix e = diis_error(F_alpha, P_alpha, S_cm);
-                F_alpha = diis.extrapolate(F_alpha, e);
+                F_alpha = diis.extrapolate(F_alpha, err_alpha);
                 F_beta = F_alpha;
             } else {
-                RealMatrix ea = diis_error(F_alpha, P_alpha, S_cm);
-                RealMatrix eb = diis_error(F_beta,  P_beta,  S_cm);
-                auto [Fa_diis, Fb_diis] = diis.extrapolate(F_alpha, ea, F_beta, eb);
+                auto [Fa_diis, Fb_diis] = diis.extrapolate(F_alpha, err_alpha,
+                                                            F_beta, err_beta);
                 F_alpha = Fa_diis;
                 F_beta  = Fb_diis;
             }
             diis_active = (diis.size() >= 2);
         }
 
-        // ── 5c. Diagonalize ─────────────────────────────────────────────
-        auto [ea_new, Ca_new] = diagonalize_fock(F_alpha, X);
+        // ── 5c. Diagonalize (generalized: F C = S C ε, LAPACK dsygvd) ───
+        auto [ea_new, Ca_new] = diagonalize_fock_generalized(F_alpha, S_cm);
         C_alpha = Ca_new; eig_alpha = ea_new;
         if (!restricted) {
-            auto [eb_new, Cb_new] = diagonalize_fock(F_beta, X);
+            auto [eb_new, Cb_new] = diagonalize_fock_generalized(F_beta, S_cm);
             C_beta = Cb_new; eig_beta = eb_new;
         } else {
             C_beta = C_alpha; eig_beta = eig_alpha;
@@ -218,16 +263,15 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config,
             P_beta_new  = build_density_matrix(C_beta,  n_beta,  n);
         }
 
-        // ── 5e. Apply damping ────────────────────────────────────────────
-        // Pre-DIIS: linear mixing to stabilize the first few iterations.
-        // Post-DIIS: no density damping. DIIS on the Fock matrix handles
-        // convergence. Density damping with DIIS creates spurious fixed
-        // points (Pulay, J. Comp. Chem. 3, 556, 1982).
+        // ── 5e. Apply damping (PySCF convention: damping = fraction of OLD
+        // density retained). damping=0 → no damping (pure new density);
+        // damping=0.5 → 50/50 blend; damping=1 → pure old (no progress).
+        // Post-DIIS: no density damping (Pulay 1982: spurious fixed points).
         RealMatrix P_alpha_next, P_beta_next;
         if (!diis_active) {
-            P_alpha_next = damping * P_alpha_new + (double(1) - damping) * P_alpha;
+            P_alpha_next = (double(1) - damping) * P_alpha_new + damping * P_alpha;
             if (!restricted)
-                P_beta_next = damping * P_beta_new + (double(1) - damping) * P_beta;
+                P_beta_next = (double(1) - damping) * P_beta_new + damping * P_beta;
             else
                 P_beta_next = P_alpha_next;
         } else {
@@ -242,21 +286,20 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config,
         double E_one = 0, E_J = 0, E_K = 0;
 
         if (restricted) {
-            // RHF: E = 0.5 * Tr[(Hcore + F) * P] + V_nuc
-            E_total = double(0.5) * xt::sum((Hcore_cm + F_alpha) * P_alpha_new)()
+            // RHF: self-consistent energy at P_old (the density that produced
+            // F_alpha). PySCF equivalent: E(P_in) = 0.5*Tr[(H+F(P_in))*P_in]+Vnn.
+            // Evaluating at P_old rather than P_new avoids double-counting:
+            // F was built from P_old, so reporting E(P_old) matches exactly.
+            E_total = double(0.5) * xt::sum((Hcore_cm + F_alpha) * P_alpha)()
                     + integrals.V_nuc;
-            // Decompose: E_one = Tr[Hcore * P], E_J = 0.5*Tr[J*P], E_K via difference
-            E_one = xt::sum(Hcore_cm * P_alpha_new)();
-            // For restricted HF, G = J - 0.5K and E_elec = Tr[H*P] + 0.5*Tr[G*P]
-            // = E_one + 0.5*Tr[G*P]. E_J and E_K need separate J,K builds (expensive).
-            // Approximate via: E_elec = E_total - V_nuc, E_J+E_K = E_elec - E_one
+            E_one = xt::sum(Hcore_cm * P_alpha)();
         } else if (is_hf) {
-            // UHF: E = 0.5 * [Tr((H+F^α)*P^α) + Tr((H+F^β)*P^β)] + V_nuc
+            // UHF: E = 0.5 * [Tr((H+F^α)*P^α_old) + Tr((H+F^β)*P^β_old)] + V_nuc
             E_total = double(0.5) * (
-                xt::sum((Hcore_cm + F_alpha) * P_alpha_new)() +
-                xt::sum((Hcore_cm + F_beta)  * P_beta_new)()
+                xt::sum((Hcore_cm + F_alpha) * P_alpha)() +
+                xt::sum((Hcore_cm + F_beta)  * P_beta)()
             ) + integrals.V_nuc;
-            E_one = xt::sum(Hcore_cm * P_alpha_new)() + xt::sum(Hcore_cm * P_beta_new)();
+            E_one = xt::sum(Hcore_cm * P_alpha)() + xt::sum(Hcore_cm * P_beta)();
         } else {
             // UKS: E = Σ_σ Tr[Hcore·P^σ] + 0.5*Tr[J·P_total] + E_xc + V_nuc
             RealMatrix P_total_new = P_alpha_new + P_beta_new;
@@ -266,11 +309,23 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config,
         }
 
         // ── 5g. Convergence check ───────────────────────────────────────
+        // Diagnostic: density-norm residual kept in SCFResult.residual.
         double res_a = xt::norm_l2(P_alpha_next - P_alpha)();
         double res_b = restricted ? double(0) :
                      (n_beta > 0 ? xt::norm_l2(P_beta_next - P_beta)() : double(0));
         double residual = std::max(res_a, res_b);
         prev_residual = residual;
+
+        // PySCF-aligned convergence: |dE| < tol AND ||err||_F < conv_tol_grad
+        // (PySCF uses numpy.linalg.norm → Frobenius for matrices).
+        double dE = (iter == 0) ? std::numeric_limits<double>::infinity()
+                                 : E_total - prev_energy;
+        double err_norm = xt::norm_l2(err_alpha)();
+        if (!restricted && n_beta > 0) {
+            double eb = xt::norm_l2(err_beta)();
+            err_norm = std::sqrt(err_norm * err_norm + eb * eb);
+        }
+        prev_energy = E_total;
 
         P_alpha = P_alpha_next;
         P_beta  = P_beta_next;
@@ -294,14 +349,15 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config,
         result.trace.push_back({iter + 1, E_total, residual, diis_active});
 
         ATV_DEBUG(
-            "[scf] iter={} energy_ha={:.10f} residual={:.3e} diis={} iter_ms={:.1f}",
-            iter + 1, E_total, residual, diis_active, elapsed_ms(t_iter));
+            "[scf] iter={} energy_ha={:.10f} dE={:.3e} err={:.3e} residual={:.3e} diis={} iter_ms={:.1f}",
+            iter + 1, E_total, dE, err_norm, residual, diis_active, elapsed_ms(t_iter));
 
-        if (iter > 0 && residual < config.tol) {
+        // PySCF convergence: both energy change AND DIIS error gradient small.
+        if (iter > 0 && std::abs(dE) < config.tol && err_norm < conv_tol_grad) {
             result.converged = true;
             ATV_INFO(
-                "[scf] converged iter={} energy_ha={:.10f} residual={:.3e}",
-                iter + 1, E_total, residual);
+                "[scf] converged iter={} energy_ha={:.10f} dE={:.3e} err={:.3e}",
+                iter + 1, E_total, dE, err_norm);
             break;
         }
     }

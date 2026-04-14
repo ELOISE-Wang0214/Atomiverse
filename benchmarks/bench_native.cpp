@@ -675,11 +675,14 @@ static void BM_RHFSolve_Aspirin(benchmark::State& state) {
     // PySCF approach: store ERI once, BLAS contraction per iteration.
     auto integrals = build_integrals_sto3g(frame, 0, /*compute_eri=*/true);
     auto cfg = rhf_config(integrals);
-    cfg.tol = 1e-6;
-    cfg.max_iter = 200;
+    cfg.tol = 1e-9;   // match PySCF conv_tol (|dE|<tol + ||err||<sqrt(tol))
+    cfg.max_iter = 50;
     for (auto _ : state) {
         auto result = scf_solve(integrals, cfg);
         benchmark::DoNotOptimize(result.energy);
+        state.counters["iters"] = result.iterations;
+        state.counters["energy_ha"] = result.energy;
+        state.counters["converged"] = result.converged ? 1.0 : 0.0;
     }
 }
 BENCHMARK(BM_RHFSolve_Aspirin)->Unit(benchmark::kMillisecond);

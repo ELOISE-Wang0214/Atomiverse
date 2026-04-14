@@ -200,6 +200,8 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/shell_pair.cpp
             src/cpu/scf/operators.cpp
             src/cpu/scf/diis.cpp
+            src/cpu/scf/minao_data.cpp
+            src/cpu/scf/minao.cpp
             src/cpu/scf/scf_solve.cpp
             src/cpu/scf/rhf_solve.cpp
             src/cpu/scf/uhf_solve.cpp

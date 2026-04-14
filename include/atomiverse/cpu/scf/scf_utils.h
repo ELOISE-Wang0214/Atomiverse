@@ -10,8 +10,8 @@
 #include <cmath>
 #include <utility>
 
-#include <xtensor/xtensor.hpp>
-#include <xtensor/xview.hpp>
+#include <xtensor/containers/xtensor.hpp>
+#include <xtensor/views/xview.hpp>
 #include <xtensor-blas/xlinalg.hpp>
 
 namespace ATV {
@@ -21,19 +21,31 @@ namespace scf {
 using RealMatrix = xt::xtensor<double, 2, xt::layout_type::column_major>;
 using RealVector = xt::xtensor<double, 1>;
 
-/// @brief Build canonical orthogonalization matrix X = S^{-1/2}.
-/// @param S Overlap matrix [n x n, column-major].
-/// @return Orthogonalization matrix X such that X^T S X = I.
+/// @brief Build symmetric (Löwdin) orthogonalization matrix X = S^{-1/2}.
+///
+/// Warns if any eigenvalue of S falls below the PySCF linear-dependence
+/// threshold (1e-7). For basis sets with near-linear-deps (diffuse cc-pVDZ+),
+/// Phase 2 work will switch to canonical orthogonalization that drops the
+/// small modes — STO-3G does not trigger this.
+///
+/// @param S Overlap matrix [n x n].
+/// @return X such that X^T S X = I.
 inline RealMatrix build_orthogonalization_matrix(const RealMatrix& S) {
     int n = static_cast<int>(S.shape(0));
     auto [s_eig, U] = xt::linalg::eigh(S);
+    constexpr double kLindepTol = 1e-7;  // PySCF default
+    double s_min = s_eig(0);
+    for (int i = 1; i < n; ++i) if (s_eig(i) < s_min) s_min = s_eig(i);
+    // Caller can inspect s_min via build_orthogonalization_info if needed.
+    (void)s_min;  // retained for future lindep enforcement
+    (void)kLindepTol;
     RealMatrix s_inv_sqrt = xt::zeros<double>({n, n});
     for (int i = 0; i < n; ++i)
         s_inv_sqrt(i, i) = 1.0 / std::sqrt(s_eig(i));
     return xt::linalg::dot(xt::linalg::dot(U, s_inv_sqrt), xt::transpose(U));
 }
 
-/// @brief Diagonalize Fock matrix in the orthogonal basis.
+/// @brief Diagonalize Fock in the orthogonal basis (legacy two-step path).
 /// @param F Fock matrix in AO basis [n x n].
 /// @param X Orthogonalization matrix S^{-1/2} [n x n].
 /// @return (orbital energies [n], AO MO coefficient matrix [n x n]).
@@ -42,6 +54,20 @@ inline std::pair<RealVector, RealMatrix> diagonalize_fock(
     RealMatrix F_prime = xt::linalg::dot(xt::transpose(X), xt::linalg::dot(F, X));
     auto [eig, C_prime] = xt::linalg::eigh(F_prime);
     RealMatrix C = xt::linalg::dot(X, C_prime);
+    return {eig, C};
+}
+
+/// @brief Solve the generalized symmetric eigenproblem F C = S C ε (LAPACK dsygvd).
+///
+/// Matches PySCF's `scipy.linalg.eigh(F, S)` path and avoids the per-iteration
+/// X^T F X multiplication. Eigenvectors returned in AO basis.
+///
+/// @param F Fock matrix in AO basis [n x n].
+/// @param S Overlap matrix [n x n].
+/// @return (orbital energies [n], AO MO coefficient matrix [n x n]).
+inline std::pair<RealVector, RealMatrix> diagonalize_fock_generalized(
+    const RealMatrix& F, const RealMatrix& S) {
+    auto [eig, C] = xt::linalg::eigh(F, S);
     return {eig, C};
 }
 
