@@ -86,6 +86,7 @@ molrs (Rust) is a hard dependency for I/O. `cpu::MolRec` uses PIMPL — no `rust
 - **Units:** eV, Å, fs, amu, eV/Å, K. Conversion constants in `core/units.h`.
 - **Precision:** compile-time `Real` (`-DATV_REAL=float|double`), `Int` (`-DATV_INT=int|int64_t`)
 - **libxc:** when enabled, native XC must match libxc to 1e-12
+- **ERI performance:** `-march=native` is required for CPU SCF. xsimd 11.2.0 is linked directly to `atomiverse` for use in `native_integrals.cpp`. Do NOT set `XTENSOR_USE_XSIMD` as a compile definition globally — it activates SIMD-backed xtensor storage which breaks `reshape_view` in `xc_grid_engine.h`. `eri_block()` dispatches by **Ltot** (A.l+B.l+C.l+D.l) to a compile-time-Ltot template; ss|ss case uses xsimd ket-loop vectorization. See `.claude/specs/eri-hpc-opt.md`.
 - **Doxygen:** every public symbol needs `@brief`, `@param` with units, `@return`
 
 ## Implemented components

@@ -21,6 +21,7 @@ The agent will:
 2. Look for cache-unfriendly access patterns in SoA data
 3. Identify vectorization blockers and missing SIMD-friendly idioms
 4. Check for unnecessary allocations in hot loops
+5. **ERI performance baseline:** benchmark `BM_GBuild_Block_Aspirin` (shell-block) vs `BM_GBuild_AO_Aspirin` (AO-level) in `bench_native`. Target: Fock build wall time ≤ PySCF direct SCF (~950 ms for aspirin STO-3G). Check that `-march=native` and `XTENSOR_USE_XSIMD` are set.
 
 ## Cross-cutting
 1. Review transfer functions (`to_cuda`, `to_cpu`) for redundant copies or missing async overlap

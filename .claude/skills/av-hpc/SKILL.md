@@ -21,6 +21,9 @@ The agent operates in two modes:
 
 ## Implementation mode (when asked to optimize or implement)
 1. Profile before optimizing
-2. Add OpenMP / SIMD / MPI as appropriate
+2. Add OpenMP / SIMD / MPI as appropriate:
+   - Always use `-march=native` + `XTENSOR_USE_XSIMD` for CPU SCF code
+   - For ERI `eri_block()`: follow shell-type dispatch + xsimd ket-loop pattern per `.claude/specs/eri-hpc-opt.md`
+   - Use `xsimd::batch<double>` for primitive loop vectorization; `xsimd::select` for branch-free logic
 3. Validate numerical correctness against serial baseline
 4. Report speedup measurements

@@ -22,12 +22,36 @@ You are a high-performance computing engineer specializing in CPU parallelism. Y
 - **Critical sections:** avoid in hot loops. Prefer reduction clauses or thread-local accumulation
 
 ### SIMD / vectorization
-- **xtensor + xsimd:** xtensor can auto-vectorize through xsimd backend. Prefer xtensor vectorized ops over manual loops
-- **SoA layout is SIMD-friendly:** `cpu::Frame` already uses SoA (x[], y[], z[] separate arrays) — contiguous access enables auto-vectorization
-- **Compiler hints:** `#pragma omp simd` for loops the compiler fails to vectorize; `__restrict__` on pointer parameters to enable aliasing optimization
-- **Alignment:** ensure xtensor arrays are aligned to 32/64 bytes for AVX/AVX-512. Use `xt::aligned_allocator`
-- **Avoid scalar conditionals in SIMD loops:** use blending/masking (`xt::where`) instead of `if` inside vectorized loops
-- **Intrinsics as last resort:** prefer xtensor ops > `#pragma omp simd` > compiler builtins > raw intrinsics
+- **xsimd 11.2.0** is linked directly to `atomiverse`. Use `#include <xsimd/xsimd.hpp>` in hot .cpp files.
+  - **Do NOT** set `XTENSOR_USE_XSIMD` as a compile definition globally: enabling it activates SIMD-backed xtensor storage that breaks `reshape_view` on expression types (error in `xc_grid_engine.h`). Use xsimd only directly.
+  - **Incompatibility**: xsimd 13.x breaks xtensor 0.25.0. Use xsimd 11.2.0 (the version xtensor 0.25.0 was tested with).
+- **xsimd batch API:** `xsimd::batch<double>` (W=2 NEON on ARM64, 4 on AVX2, 8 on AVX-512).
+  - Load: `batch_t::load_unaligned(ptr)` / `batch_t::load_aligned(ptr)`
+  - **Horizontal reduce** (portable): store to array, then scalar sum:
+    ```cpp
+    double arr[16]; acc_v.store_unaligned(arr); double s = 0; for(int i=0;i<W;i++) s += arr[i];
+    ```
+    (`xsimd::hadd` is not present in xsimd 11.2.0 as a free function)
+  - Math: `xsimd::erf(v)`, `xsimd::sqrt(v)`, `xsimd::exp(v)`
+  - Branch-free select: `xsimd::select(mask, a, b)` — never use scalar `if` inside SIMD loops
+- **Boys function SIMD:** `boys_f0(T) = 0.5*sqrt(pi/T)*erf(sqrt(T))`. Vectorize as:
+  ```cpp
+  auto small  = T_v < batch_t(1e-12);
+  auto safe_T = xsimd::select(small, batch_t(1.0), T_v);
+  auto F0_v   = xsimd::select(small, batch_t(1.0),
+                    batch_t(0.5)*xsimd::sqrt(batch_t(PI)/safe_T)*xsimd::erf(xsimd::sqrt(safe_T)));
+  ```
+- **CMake native tuning (required for CPU SCF):**
+  ```cmake
+  target_compile_options(atomiverse PRIVATE
+      $<$<COMPILE_LANGUAGE:CXX>:-march=native>)  # language guard prevents NVCC poisoning
+  # xsimd linked directly; NOT as XTENSOR_USE_XSIMD global define
+  target_link_libraries(atomiverse PUBLIC xsimd)
+  ```
+- **ERI Ltot-based dispatch:** `eri_block()` dispatches by `Ltot = A.l+B.l+C.l+D.l` (NOT by bit-pattern of individual l values — that misses permutations like sp|ss). `eri_blk_ss_ss` uses xsimd ket-loop. `eri_blk_ltot<LTOT>` is a template giving compile-time loop bounds. `eri_blk_general` handles l≥2 fallback. See spec `.claude/specs/eri-hpc-opt.md`.
+- **SoA layout is SIMD-friendly:** `cpu::Frame` SoA (x[], y[], z[] separate) enables contiguous vectorization.
+- **Compiler hints:** `#pragma omp simd` for loops the compiler fails to vectorize; `__restrict__` on pointer params.
+- **Intrinsics hierarchy:** xtensor ops > xsimd batch > `#pragma omp simd` > compiler builtins > raw intrinsics.
 
 ### MPI patterns for molecular simulation
 - **Domain decomposition:** partition simulation box into MPI ranks, each rank owns a spatial region
@@ -88,9 +112,12 @@ When asked to implement or optimize CPU backend code:
    - Use thread-local buffers for accumulation, reduce at the end
    - Test with `OMP_NUM_THREADS=1` (correctness) and `OMP_NUM_THREADS=N` (scaling)
 4. **Vectorize:**
-   - Prefer xtensor vectorized expressions
-   - Add `#pragma omp simd` where auto-vectorization fails
-   - Verify with compiler vectorization report
+   - Prefer xtensor vectorized expressions (XTENSOR_USE_XSIMD must be defined)
+   - Use `xsimd::batch<double>` for manual SIMD on primitive loops (see xsimd batch API above)
+   - For ERI `eri_block()`: use shell-type dispatch + xsimd ket-loop pattern per `eri-hpc-opt.md` spec
+   - Always add `-march=native` per-target when writing new CPU SCF code
+   - Add `#pragma omp simd` where xsimd is not applied
+   - Verify with `-fopt-info-vec-missed` compiler report
 5. **Validate:**
    - Numerical results must match serial version within floating-point tolerance
    - Run existing tests: `ctest --test-dir build --output-on-failure`
