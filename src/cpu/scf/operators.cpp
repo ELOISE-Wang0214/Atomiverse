@@ -376,7 +376,8 @@ void build_g_rhf_direct_block(const ShellBlockPairList& sp,
             const native::ShellBlock& Bsl = sp.blocks[bp_r.sj];
             const int nc = Bsk.n_cart, nd = Bsl.n_cart;
 
-            double blk[81] = {};
+            // Max block size is (d_dd_dd) = 6^4 = 1296 doubles.
+            double blk[1296] = {};
             native::eri_block(Bsi, Bsj, Bsk, Bsl, blk);
 
             if (left != right) {
@@ -425,7 +426,9 @@ void build_g_rhf_direct_block(const ShellBlockPairList& sp,
             } else {
                 const bool diag_block = (bp_l.si == bp_l.sj);
                 struct AOpair { int ia, ib; };
-                AOpair ao_pairs[9];
+                // Max AO pair count per block pair: d-d non-diag = 6*6 = 36;
+                // d-d diag = 6*7/2 = 21. Size generously for s/p/d mix.
+                AOpair ao_pairs[36];
                 int n_ao_pairs = 0;
                 for (int ia = 0; ia < na; ++ia)
                     for (int ib = 0; ib < nb; ++ib) {

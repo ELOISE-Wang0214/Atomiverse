@@ -34,6 +34,7 @@ static inline double dist2(const double a[3], const double b[3]) {
 double gto_norm(int l, double alpha) { return ATV::gto_norm(l, alpha); }
 double phys_norm(double alpha) { return ATV::phys_norm_s(alpha); }
 double phys_norm_p(double alpha) { return ATV::phys_norm_p(alpha); }
+double phys_norm_d(double alpha) { return ATV::phys_norm_d(alpha); }
 
 // ── Phase 4 prerequisite: Boys function ───────────────────────────────
 
@@ -175,12 +176,25 @@ double eri_ssss(const Shell& a, const Shell& b,
 
 /// @brief Get Cartesian angular momentum exponents for a shell.
 /// @details s-type (l=0): (0,0,0). p-type (l=1, cart=c): unit vector along c.
-///   Returns the angular momentum in each Cartesian direction via output array.
+///   d-type (l=2, cart=0..5): six Cartesian components in libcint/Rys order
+///   (xx, xy, xz, yy, yz, zz) — the same enumeration produced by
+///   fill_cart_comps() in rys_eri.cpp (nx from l down, ny from l-nx down).
 /// @param sh    Shell descriptor.
 /// @param a_out Output array [3] with (a_x, a_y, a_z).
 static inline void cart_exponents(const Shell& sh, int a_out[3]) {
     a_out[0] = a_out[1] = a_out[2] = 0;
-    if (sh.l == 1) a_out[sh.cart] = 1;
+    if (sh.l == 1) {
+        a_out[sh.cart] = 1;
+    } else if (sh.l == 2) {
+        // libcint/Rys cart order: xx(0), xy(1), xz(2), yy(3), yz(4), zz(5).
+        static constexpr int kCartD[6][3] = {
+            {2, 0, 0}, {1, 1, 0}, {1, 0, 1},
+            {0, 2, 0}, {0, 1, 1}, {0, 0, 2},
+        };
+        a_out[0] = kCartD[sh.cart][0];
+        a_out[1] = kCartD[sh.cart][1];
+        a_out[2] = kCartD[sh.cart][2];
+    }
 }
 
 // ── 1D Obara-Saika overlap table ────────────────────────────────────
@@ -235,34 +249,11 @@ double overlap(const Shell& a, const Shell& b) {
     cart_exponents(b, b_ang);
 
     double result = 0.0;
-
     for (int p = 0; p < a.n_prim; ++p) {
         for (int q = 0; q < b.n_prim; ++q) {
-            const double aa = a.alpha[p];
-            const double ab = b.alpha[q];
-            const double gamma = aa + ab;
-            const double mu = aa * ab / gamma;
-            const double inv2g = 0.5 / gamma;
-            const double sqrt_pi_g = std::sqrt(PI / gamma);
-
-            // Compute 3D overlap as product of 1D overlaps
-            double prim_ovlp = 1.0;
-            for (int d = 0; d < 3; ++d) {
-                const double dd = a.center[d] - b.center[d];
-                const double Pd = (aa * a.center[d] + ab * b.center[d]) / gamma;
-                const double PA = Pd - a.center[d];
-                const double PB = Pd - b.center[d];
-                const double S00 = sqrt_pi_g * std::exp(-mu * dd * dd);
-
-                // Only need S[0..1][0..1] for overlap
-                double S[4]; // 2x2 table
-                os_overlap_1d(PA, PB, inv2g, S00, 1, 1, S);
-
-                // Look up S[a_d][b_d]
-                prim_ovlp *= S[a_ang[d] * 2 + b_ang[d]];
-            }
-
-            result += a.coeff[p] * b.coeff[q] * prim_ovlp;
+            const double prim = overlap_prim_3d(
+                a_ang, b_ang, a.alpha[p], a.center, b.alpha[q], b.center);
+            result += a.coeff[p] * b.coeff[q] * prim;
         }
     }
     return result;
@@ -304,48 +295,11 @@ double kinetic(const Shell& a, const Shell& b) {
     cart_exponents(b, b_ang);
 
     double result = 0.0;
-
     for (int p = 0; p < a.n_prim; ++p) {
         for (int q = 0; q < b.n_prim; ++q) {
-            const double aa = a.alpha[p];
-            const double ab = b.alpha[q];
-            const double gamma = aa + ab;
-            const double mu = aa * ab / gamma;
-            const double inv2g = 0.5 / gamma;
-            const double sqrt_pi_g = std::sqrt(PI / gamma);
-
-            // Pre-compute 1D overlap tables in each direction.
-            // For kinetic we need S(i, j+2), so jmax = max(b_ang[d]) + 2 = 3.
-            // imax = max(a_ang[d]) = 1.
-            double Sx[8], Sy[8], Sz[8]; // 2x4 tables
-            double* Sd[3] = {Sx, Sy, Sz};
-
-            // Also store the 1D S_{a_d, b_d} overlaps for the product
-            double S1d[3]; // S_{a_d, b_d} for each direction
-
-            for (int d = 0; d < 3; ++d) {
-                const double dd = a.center[d] - b.center[d];
-                const double Pd = (aa * a.center[d] + ab * b.center[d]) / gamma;
-                const double PA = Pd - a.center[d];
-                const double PB = Pd - b.center[d];
-                const double S00 = sqrt_pi_g * std::exp(-mu * dd * dd);
-
-                os_overlap_1d(PA, PB, inv2g, S00, 1, 3, Sd[d]);
-                S1d[d] = Sd[d][a_ang[d] * 4 + b_ang[d]];
-            }
-
-            // T_3D = sum_d { T_1d(a_d, b_d) * product_{e!=d} S_1d(a_e, b_e) }
-            double prim_kin = 0.0;
-            for (int d = 0; d < 3; ++d) {
-                double T1d_val = kinetic_1d(a_ang[d], b_ang[d], ab, Sd[d]);
-                double other = 1.0;
-                for (int e = 0; e < 3; ++e) {
-                    if (e != d) other *= S1d[e];
-                }
-                prim_kin += T1d_val * other;
-            }
-
-            result += a.coeff[p] * b.coeff[q] * prim_kin;
+            const double prim = kinetic_prim_3d(
+                a_ang, b_ang, a.alpha[p], a.center, b.alpha[q], b.center);
+            result += a.coeff[p] * b.coeff[q] * prim;
         }
     }
     return result;
@@ -504,7 +458,9 @@ double nuclear(const Shell& a, const Shell& b,
                     PC[d] = P[d] - atoms[c].pos[d];
                 }
 
-                double V_prim = nuclear_prim_3d(a_ang, b_ang, gamma, PA, PB, PC, K_AB);
+                // Use the public nuclear_prim (supports Ltot up to 6);
+                // the internal nuclear_prim_3d is hardcoded for l_max=1.
+                double V_prim = nuclear_prim(a_ang, b_ang, gamma, PA, PB, PC, K_AB);
                 V_total += a.coeff[p] * b.coeff[q] * (-atoms[c].Z) * V_prim;
             }
         }

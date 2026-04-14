@@ -73,6 +73,11 @@ double gto_norm(int l, double alpha);
 /// @return Normalization factor (2*alpha/pi)^{3/4}.
 double phys_norm(double alpha);
 
+/// @brief Physical normalization for d-type (l=2) Gaussians (libcint convention).
+/// @param alpha Exponent.
+/// @return Shared normalization factor for all six Cartesian d AOs.
+double phys_norm_d(double alpha);
+
 /// @brief Physical normalization for p-type (l=1) Gaussians.
 /// @param alpha Gaussian exponent.
 /// @return Normalization factor.

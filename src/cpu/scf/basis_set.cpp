@@ -8,7 +8,10 @@
 #include <utility>
 
 #include "atomiverse/core/constants.h"
+#include "atomiverse/cpu/scf/basis_data/def2_svp.h"
+#include "atomiverse/cpu/scf/basis_data/def2_tzvp.h"
 #include "atomiverse/cpu/scf/basis_data/pople_631g.h"
+#include "atomiverse/cpu/scf/basis_data/pople_631gs.h"
 #include "atomiverse/cpu/scf/sto3g_data.h"
 
 namespace ATV {
@@ -171,10 +174,11 @@ ShellList build_shell_list_from_table(
         for (const auto& sh : table[static_cast<std::size_t>(Z)].shells) {
             if (sh.l == 0)      n_basis += 1;
             else if (sh.l == 1) n_basis += 3;
+            else if (sh.l == 2) n_basis += 6;
             else {
                 throw std::runtime_error(
                     "cpu::scf::build_shell_list: l=" + std::to_string(sh.l) +
-                    " not yet supported (Stage B2b adds d-shells).");
+                    " not yet supported.");
             }
         }
     }
@@ -217,10 +221,17 @@ ShellList build_shell_list_from_table(
 
             if (sh.l == 0) {
                 emit_shell(0, 0, native::phys_norm);
-            } else {
+            } else if (sh.l == 1) {
                 emit_shell(1, 0, native::phys_norm_p);
                 emit_shell(1, 1, native::phys_norm_p);
                 emit_shell(1, 2, native::phys_norm_p);
+            } else {
+                // d-shell: six Cartesian components in libcint order
+                // (xx, xy, xz, yy, yz, zz). All six share the same
+                // orientation-independent norm (libcint / PySCF cart
+                // convention); <d_xy|d_xy> = 1 but <d_xx|d_xx> = 3.
+                for (int cart = 0; cart < 6; ++cart)
+                    emit_shell(2, cart, native::phys_norm_d);
             }
         }
     }
@@ -237,12 +248,14 @@ ShellList build_shell_list(const AtomList& atoms, BasisSet basis) {
             return build_shell_list_from_table(
                 atoms, basis_data::pople_631g(), basis);
         case BasisSet::Pople631Gs:
+            return build_shell_list_from_table(
+                atoms, basis_data::pople_631gs(), basis);
         case BasisSet::Def2SVP:
+            return build_shell_list_from_table(
+                atoms, basis_data::def2_svp(), basis);
         case BasisSet::Def2TZVP:
-            throw std::runtime_error(
-                std::string("cpu::scf::build_shell_list: basis '") +
-                basis_set_name(basis) +
-                "' is not yet implemented (Stage B2b will add it).");
+            return build_shell_list_from_table(
+                atoms, basis_data::def2_tzvp(), basis);
     }
     throw std::runtime_error("cpu::scf::build_shell_list: unknown BasisSet");
 }

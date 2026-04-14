@@ -5,8 +5,9 @@
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/core/log.h"
 
-#include <cmath>
 #include <algorithm>
+#include <cmath>
+#include <limits>
 
 namespace ATV {
 namespace cpu {
@@ -33,14 +34,26 @@ ShellPairList build_shell_pair_list(const IntegralPack& pack, double thr) {
     }
 
     // Compute Schwarz bounds Q_ij = sqrt((ij|ij)) and collect screened pairs.
+    //
+    // The scalar native::eri path uses McMurchie-Davidson with R_tab sized
+    // for l_max=1 (Ltot <= 4), so d-shells (Ltot up to 8) would read past
+    // the buffer. Any pair containing an l>=2 shell bypasses screening —
+    // we keep the pair unconditionally with schwarz=+inf. Downstream
+    // direct-SCF paths using this AO-level list (UHF/UKS today) lose some
+    // screening efficiency for d-containing systems; restricted-HF uses
+    // the Rys-backed ShellBlockPairList and is unaffected.
     spl.pairs.reserve(static_cast<std::size_t>(n * (n + 1) / 2));
     int n_screened = 0;
     for (int i = 0; i < n; ++i) {
         for (int j = 0; j <= i; ++j) {
-            // (ij|ij) is non-negative by positive semi-definiteness of ERIs.
-            const double diag = native::eri(spl.shells[i], spl.shells[j],
-                                            spl.shells[i], spl.shells[j]);
-            const double schwarz = std::sqrt(std::max(0.0, diag));
+            double schwarz;
+            if (spl.shells[i].l >= 2 || spl.shells[j].l >= 2) {
+                schwarz = std::numeric_limits<double>::infinity();
+            } else {
+                const double diag = native::eri(spl.shells[i], spl.shells[j],
+                                                spl.shells[i], spl.shells[j]);
+                schwarz = std::sqrt(std::max(0.0, diag));
+            }
             if (schwarz > thr) {
                 spl.pairs.push_back({i, j, schwarz});
             } else {
@@ -66,28 +79,24 @@ ShellBlockPairList build_shell_block_pair_list(const IntegralPack& pack,
     sbl.threshold = thr;
 
     // ── Step 1: Collect raw block descriptors (two-pass to avoid realloc bugs)
-    // Rules (matching integrals.cpp shell layout):
-    //   l=0 shell → one s-block (n_cart=1).
-    //   l=1 shell (px) followed by py, pz → one p-block (n_cart=3).
-    //     All three share the same alpha/coeff; use the px shell's storage.
+    // Rules (matching build_shell_list layout):
+    //   l=0 shell → one s-block  (n_cart=1, 1 AO).
+    //   l=1 px followed by py, pz → one p-block (n_cart=3, 3 AOs).
+    //   l=2 xx, xy, xz, yy, yz, zz → one d-block (n_cart=6, 6 AOs).
+    // Shells inside a block share the same alpha/coeff; the first
+    // shell's storage represents the block.
     struct RawBlock { int shell_data_idx, l, n_cart, ao_start; };
     std::vector<RawBlock> raw_blocks;
-    raw_blocks.reserve(n_raw_shells); // upper bound
+    raw_blocks.reserve(n_raw_shells);  // upper bound
 
     {
         int shell_idx = 0, ao_idx = 0;
         while (shell_idx < n_raw_shells && ao_idx < n) {
             const native::Shell& sh = pack.shells[shell_idx];
-            if (sh.l == 0) {
-                raw_blocks.push_back({shell_idx, 0, 1, ao_idx});
-                ++shell_idx;
-                ao_idx += 1;
-            } else {
-                // l=1: consume px, py, pz (same exponents/coefficients)
-                raw_blocks.push_back({shell_idx, 1, 3, ao_idx});
-                shell_idx += 3;
-                ao_idx    += 3;
-            }
+            const int n_cart = (sh.l == 0) ? 1 : (sh.l == 1) ? 3 : 6;
+            raw_blocks.push_back({shell_idx, sh.l, n_cart, ao_idx});
+            shell_idx += n_cart;
+            ao_idx    += n_cart;
         }
     }
 
@@ -124,8 +133,9 @@ ShellBlockPairList build_shell_block_pair_list(const IntegralPack& pack,
     sbl.pairs.reserve(static_cast<std::size_t>(n_blocks * (n_blocks + 1) / 2));
     int n_screened = 0;
 
-    // Temporary buffer for the self-ERI block: max (3*3*3*3)=81 doubles
-    double blk_buf[81];
+    // Temporary buffer for the self-ERI block. Max across all shell
+    // types is (d_dd_dd) = 6^4 = 1296 doubles.
+    double blk_buf[1296];
 
     for (int si = 0; si < n_blocks; ++si) {
         for (int sj = 0; sj <= si; ++sj) {

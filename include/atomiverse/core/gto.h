@@ -26,6 +26,21 @@ inline double phys_norm_p(double alpha) {
     return std::pow(128.0 * std::pow(alpha, 5) / (M_PI * M_PI * M_PI), 0.25);
 }
 
+/// @brief GTO normalization factor for Cartesian d shells (l=2).
+/// @details Shared across all six Cartesian components (d_xx .. d_zz)
+///   using libcint / PySCF convention — the "off-diagonal" norm where
+///   <d_xy|d_xy> = 1 but <d_xx|d_xx> = 3 (extra factor (2*2-1)!! = 3).
+///   SCF handles the non-identity overlap naturally via the generalized
+///   eigenproblem, so the convention does not need to be "fixed" at
+///   integral time; it does need to MATCH libcint/PySCF bit-for-bit.
+///   N = (2*alpha/pi)^{3/4} * 4*alpha, i.e. the l_x=l_y=1 Cartesian
+///   primitive normalization.
+/// @param alpha Gaussian exponent.
+/// @return Normalization factor.
+inline double phys_norm_d(double alpha) {
+    return std::pow(2.0 * alpha / M_PI, 0.75) * 4.0 * alpha;
+}
+
 /// @brief GTO normalization factor (libcint convention, matches CINTgto_norm).
 /// @details Includes the 2*sqrt(pi) spherical harmonic factor on top of phys_norm.
 ///   For validation against libcint only.
