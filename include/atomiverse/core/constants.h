@@ -14,7 +14,12 @@ inline constexpr double kPI = 3.14159265358979323846;
 /// @brief Degrees-to-radians conversion factor.
 inline constexpr double kDegToRad = kPI / 180.0;
 
-/// @brief Angstrom-to-Bohr-radius conversion factor (CODATA 2018).
-inline constexpr double kAngstromToBohr = 1.8897259886;
+/// @brief Angstrom-to-Bohr-radius conversion factor.
+///
+/// Pinned to PySCF's value `1 / BOHR` with `BOHR = 0.52917721092` Å
+/// (CODATA 2006; see `pyscf/data/nist.py`). PySCF is our ground-truth
+/// reference for every integral / SCF number, so the Angstrom→Bohr
+/// constant that feeds geometry conversion must agree bit-for-bit.
+inline constexpr double kAngstromToBohr = 1.8897261245650618;
 
 } // namespace ATV

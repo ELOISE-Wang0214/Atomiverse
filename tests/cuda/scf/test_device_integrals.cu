@@ -19,7 +19,7 @@
 
 using namespace ATV;
 
-static constexpr double kA2B = 1.8897259886;
+static constexpr double kA2B = ATV::kAngstromToBohr;
 static constexpr double sto3g_exp[3] = {3.42525091, 0.62391373, 0.16885540};
 static constexpr double sto3g_coeff[3] = {0.15432897, 0.53532814, 0.44463454};
 

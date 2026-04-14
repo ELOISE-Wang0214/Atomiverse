@@ -47,10 +47,10 @@ TEST(BasisVsPySCF, H2O_631G_RHF) {
     // Structural sanity: basis size is deterministic from geometry + basis.
     EXPECT_EQ(integrals.n_basis, 13);
 
-    // V_nuc agreement is limited by the Angstrom→Bohr constant; PySCF
-    // uses 1.8897261245..., we use 1.8897259886. The ~1e-7 relative
-    // shift cancels downstream in the total RHF energy.
-    EXPECT_NEAR(integrals.V_nuc, 9.189193229310, 1e-5);
+    // With kAngstromToBohr pinned to PySCF's 1/0.52917721092, V_nuc
+    // should match the reference to the precision of the checked-in
+    // literal (~1e-12).
+    EXPECT_NEAR(integrals.V_nuc, 9.189193229310, 1e-11);
 
     auto config = scf::rhf_config(integrals, /*tol=*/1e-10);
     auto result = scf::scf_solve(integrals, config);

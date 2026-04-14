@@ -57,7 +57,7 @@ static double bragg_slater_radius(int Z) {
     // Period 6:  Cs   Ba   La   Ce   Pr   Nd   Pm   Sm   Eu   Gd   Tb   Dy
     //            Ho   Er   Tm   Yb   Lu   Hf   Ta   W    Re   Os   Ir   Pt
     //            Au   Hg   Tl   Pb   Bi   Po   At   Rn
-    static constexpr double kA2B = kAngstromToBohr;  // 1.8897259886
+    static constexpr double kA2B = kAngstromToBohr;
     static constexpr int kMaxZ = 86;
     // clang-format off
     static constexpr double radii[kMaxZ + 1] = {
