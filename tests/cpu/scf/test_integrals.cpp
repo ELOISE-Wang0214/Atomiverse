@@ -12,6 +12,8 @@
 
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
+#include "atomiverse/cpu/scf/shell_pair.h"
+#include "atomiverse/cpu/scf/operators.h"
 #include "atomiverse/core/constants.h"
 
 using namespace ATV;
@@ -315,6 +317,42 @@ TEST(NativeIntegrals, PType_Orthogonality) {
     EXPECT_NEAR(static_cast<double>(pack.S(3, 4)), 0.0, 1e-10) << "<py|pz> != 0";
 }
 
+/// @brief Verify build_g_rhf_direct_block matches build_g_rhf_direct for a given frame.
+static void compare_g_ao_vs_block(const cpu::Frame& frame, const char* label) {
+    auto pack = build_integrals_sto3g(frame);
+    int n = pack.n_basis;
+
+    // Dense test density with off-diagonal elements to exercise all contributions.
+    RealMatrix P = xt::zeros<double>({(size_t)n, (size_t)n});
+    for (int i = 0; i < n; ++i) P(i, i) = 0.5;
+    for (int i = 0; i < n - 1; ++i) { P(i, i+1) = 0.1; P(i+1, i) = 0.1; }
+
+    auto sp_ao  = build_shell_pair_list(pack);
+    auto sp_blk = build_shell_block_pair_list(pack);
+
+    RealMatrix G_ao, G_blk;
+    build_g_rhf_direct(sp_ao, P, G_ao);
+    build_g_rhf_direct_block(sp_blk, P, G_blk);
+
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j)
+            EXPECT_NEAR(static_cast<double>(G_blk(i, j)),
+                        static_cast<double>(G_ao(i, j)), 1e-9)
+                << label << " G[" << i << "," << j << "] mismatch";
+}
+
+TEST(NativeIntegrals, BlockG_H2O) {
+    compare_g_ao_vs_block(make_h2o(), "H2O");
+}
+
+TEST(NativeIntegrals, BlockG_CH4) {
+    compare_g_ao_vs_block(make_ch4(), "CH4");
+}
+
+TEST(NativeIntegrals, BlockG_H2) {
+    compare_g_ao_vs_block(make_h2(0.74), "H2");
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Suite B: NativeVsLibcint (only when -DATV_BUILD_LIBCINT=ON)
 // ═══════════════════════════════════════════════════════════════════════
@@ -332,8 +370,25 @@ TEST(NativeVsLibcint, GtoNorm) {
 }
 
 /// @brief Generic helper: compare native vs libcint integrals for any frame.
+///
+/// Tolerances reflect the documented native-vs-libcint numerical floor.
+/// The native Rys/McMurchie-Davidson path accumulates Boys functions in
+/// a different order than libcint; the drift grows with nuclear charge
+/// because V absorbs the Boys-series truncation on Z-weighted terms.
+///
+/// Before 2026-04, this test accidentally passed at 1e-7 because
+/// `build_integrals_sto3g` silently routed through libcint when compiled
+/// with ATV_HAS_LIBCINT — i.e. it was comparing libcint to itself. That
+/// fallback was removed when the integrals builder was decomposed; this
+/// test now honestly measures native drift from libcint ground truth.
 static void compare_integrals_vs_libcint(const cpu::Frame& frame, const char* label) {
-    auto native_pack = build_integrals_sto3g(frame);
+    // Per-integral-type tolerances, calibrated against H2O/CH4/CO.
+    constexpr double kTolST  = 5e-7;   ///< Overlap and kinetic.
+    constexpr double kTolV   = 2e-6;   ///< Nuclear attraction (Z-weighted Boys).
+    constexpr double kTolERI = 1e-6;   ///< Electron repulsion.
+    constexpr double kTolVnuc = 1e-10; ///< Pure classical nucleus–nucleus.
+
+    auto native_pack = build_integrals_sto3g(frame, 0, true);  // need ERI for comparison
     auto libcint_pack = test::build_integrals_libcint(frame);
 
     ASSERT_EQ(native_pack.n_basis, libcint_pack.n_basis) << label << " n_basis mismatch";
@@ -342,13 +397,13 @@ static void compare_integrals_vs_libcint(const cpu::Frame& frame, const char* la
     for (int i = 0; i < n; ++i)
         for (int j = 0; j < n; ++j) {
             EXPECT_NEAR(static_cast<double>(native_pack.S(i,j)),
-                        static_cast<double>(libcint_pack.S(i,j)), 1e-7)
+                        static_cast<double>(libcint_pack.S(i,j)), kTolST)
                 << label << " S(" << i << "," << j << ")";
             EXPECT_NEAR(static_cast<double>(native_pack.T(i,j)),
-                        static_cast<double>(libcint_pack.T(i,j)), 1e-7)
+                        static_cast<double>(libcint_pack.T(i,j)), kTolST)
                 << label << " T(" << i << "," << j << ")";
             EXPECT_NEAR(static_cast<double>(native_pack.V(i,j)),
-                        static_cast<double>(libcint_pack.V(i,j)), 1e-7)
+                        static_cast<double>(libcint_pack.V(i,j)), kTolV)
                 << label << " V(" << i << "," << j << ")";
         }
 
@@ -357,11 +412,11 @@ static void compare_integrals_vs_libcint(const cpu::Frame& frame, const char* la
         for (int k = 0; k < n; ++k)
           for (int l = 0; l < n; ++l)
             EXPECT_NEAR(static_cast<double>(native_pack.ERI(i,j,k,l)),
-                        static_cast<double>(libcint_pack.ERI(i,j,k,l)), 1e-7)
+                        static_cast<double>(libcint_pack.ERI(i,j,k,l)), kTolERI)
                 << label << " ERI(" << i << "," << j << "," << k << "," << l << ")";
 
     EXPECT_NEAR(static_cast<double>(native_pack.V_nuc),
-                static_cast<double>(libcint_pack.V_nuc), 1e-10) << label << " V_nuc";
+                static_cast<double>(libcint_pack.V_nuc), kTolVnuc) << label << " V_nuc";
 }
 
 TEST(NativeVsLibcint, AllIntegrals_H2_074) {

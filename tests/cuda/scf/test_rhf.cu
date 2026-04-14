@@ -98,7 +98,7 @@ TEST(RHF, Orthogonalization) {
 
 TEST(RHF, FockBuild) {
     auto frame = make_h2();
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals_sto3g(frame, 0, true);
     int n = integrals.n_basis;
 
     // Use zero density -> G(0) = 0 -> F = Hcore
@@ -190,7 +190,7 @@ TEST(RHF, CPUDensityTrace) {
 
 TEST(RHF, CUDAConvergence) {
     auto frame = make_h2();
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals_sto3g(frame, 0, true);
 
     double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
 
@@ -211,7 +211,7 @@ TEST(RHF, CUDAConvergence) {
 
 TEST(RHF, CPUCUDAParity) {
     auto frame = make_h2();
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals_sto3g(frame, 0, true);
 
     double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
 
@@ -357,7 +357,7 @@ TEST(RHF, H2PESScan) {
 
 TEST(RHF, CUDAHeAtom) {
     auto frame = make_he();
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals_sto3g(frame, 0, true);
     double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
 
     auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);
@@ -379,7 +379,7 @@ TEST(RHF, CUDAHeAtom) {
 
 TEST(RHF, CUDALiH) {
     auto frame = make_lih();
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals_sto3g(frame, 0, true);
     double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
 
     auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);
@@ -401,7 +401,7 @@ TEST(RHF, CUDALiH) {
 
 TEST(RHF, CUDAHeHPlus) {
     auto frame = make_heh_plus();
-    auto integrals = cpu::scf::build_integrals_sto3g(frame, 1);
+    auto integrals = cpu::scf::build_integrals_sto3g(frame, 1, true);
     double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
 
     auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);

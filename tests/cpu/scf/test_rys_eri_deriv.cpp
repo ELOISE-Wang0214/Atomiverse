@@ -236,6 +236,84 @@ TEST(RysEriDeriv, SPPS_BothSwaps) {
     for (int dc = 0; dc < 4; ++dc) check_deriv_vs_fd(A, B, C, D, dc);
 }
 
+// ── d-shell coverage (Phase 1 Stage A) ───────────────────────────────
+// Prerequisite for def2-SVP / 6-31G* basis sets. Rys engine advertises
+// d support (kRysMaxL = 2); these tests prove it end-to-end — both the
+// plain ERI path (exercised inside the ±h finite difference) and the
+// analytic derivative on d-containing quartets.
+//
+// DDDD has Ltot = 8 for plain ERI → 5 Rys roots; DDDD-deriv raises one
+// bra or ket axis to 3, Ltot = 9 → still 5 roots under the canonical
+// ceil((L+1)/2) formula. kRysMaxRoots = 5 is therefore exactly at the
+// budget ceiling — a DDDD failure here would mean the root table
+// accuracy at nroots = 5 is insufficient on derivative grids.
+
+TEST(RysEriDeriv, DSSS_DerivOnD) {
+    const auto A = make_shell(2, RA);
+    const auto B = make_shell(0, RB);
+    const auto C = make_shell(0, RC);
+    const auto D = make_shell(0, RD);
+    check_deriv_vs_fd(A, B, C, D, 0);
+}
+
+TEST(RysEriDeriv, SDSS_DerivOnD_nonCanonicalBra) {
+    // A=s, B=d: requires the swap_ab path at Ltot=2 on bra.
+    const auto A = make_shell(0, RA);
+    const auto B = make_shell(2, RB);
+    const auto C = make_shell(0, RC);
+    const auto D = make_shell(0, RD);
+    check_deriv_vs_fd(A, B, C, D, 0);
+    check_deriv_vs_fd(A, B, C, D, 1);
+}
+
+TEST(RysEriDeriv, DPSS_DerivOnBra) {
+    const auto A = make_shell(2, RA);
+    const auto B = make_shell(1, RB);
+    const auto C = make_shell(0, RC);
+    const auto D = make_shell(0, RD);
+    check_deriv_vs_fd(A, B, C, D, 0);
+    check_deriv_vs_fd(A, B, C, D, 1);
+}
+
+TEST(RysEriDeriv, DDSS_DerivOnBra) {
+    const auto A = make_shell(2, RA);
+    const auto B = make_shell(2, RB);
+    const auto C = make_shell(0, RC);
+    const auto D = make_shell(0, RD);
+    check_deriv_vs_fd(A, B, C, D, 0);
+    check_deriv_vs_fd(A, B, C, D, 1);
+}
+
+TEST(RysEriDeriv, DDPP_DerivOnBra) {
+    const auto A = make_shell(2, RA);
+    const auto B = make_shell(2, RB);
+    const auto C = make_shell(1, RC);
+    const auto D = make_shell(1, RD);
+    check_deriv_vs_fd(A, B, C, D, 0);
+    check_deriv_vs_fd(A, B, C, D, 1);
+}
+
+TEST(RysEriDeriv, DDPP_DerivOnKet) {
+    const auto A = make_shell(2, RA);
+    const auto B = make_shell(2, RB);
+    const auto C = make_shell(1, RC);
+    const auto D = make_shell(1, RD);
+    check_deriv_vs_fd(A, B, C, D, 2);
+    check_deriv_vs_fd(A, B, C, D, 3);
+}
+
+TEST(RysEriDeriv, DDDD_All4Centers) {
+    // Maximum-angular-momentum coverage reachable from def2-SVP-sized
+    // bases. Plain ERI Ltot=8 (5 roots); derivative enlarges to Ltot=9
+    // (still 5 roots under ceil rule). This is the tightest budget
+    // check in the suite.
+    const auto A = make_shell(2, RA);
+    const auto B = make_shell(2, RB);
+    const auto C = make_shell(2, RC);
+    const auto D = make_shell(2, RD);
+    for (int dc = 0; dc < 4; ++dc) check_deriv_vs_fd(A, B, C, D, dc);
+}
+
 } // namespace
 
 #endif // ATV_HAS_RHF
