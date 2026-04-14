@@ -18,7 +18,7 @@
 #include <vector>
 
 #include "atomiverse/cuda/component.cuh"
-#include "atomiverse/cuda/minimizer/driver.cuh"
+#include "atomiverse/facade/driver.h"
 #include "atomiverse/cuda/md/init.cuh"
 #include "atomiverse/facade/stage.h"
 
@@ -59,7 +59,11 @@ private:
     double alpha_; ///< Step size (pseudo-timestep) [fs].
 };
 
-/// @brief Transitional steepest descent minimizer facade.
+/// @brief Steepest descent minimizer driver.
+///
+/// Automatically adds infrastructure components:
+/// - ZeroForces at force phase (order -1000).
+/// - ZeroEnergy at force phase (order -999).
 ///
 /// Usage:
 /// @code{.cpp}
@@ -73,7 +77,14 @@ private:
 /// @endcode
 ///
 /// @see minimizer::CG for the conjugate gradient driver
-class SD : public ATV::detail::LegacyDriverFacade<Spec, Driver> {};
+class SD : public Driver<Phase> {
+public:
+    /// @brief Construct SD driver with auto-added zeroing infrastructure.
+    SD() {
+        on(Phase::force).add(md::ZeroForces{}, -1000);
+        on(Phase::force).add(md::ZeroEnergy{}, -999);
+    }
+};
 
 } // namespace minimizer
 } // namespace ATV
