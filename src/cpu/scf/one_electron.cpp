@@ -4,9 +4,10 @@
 #include "atomiverse/cpu/scf/one_electron.h"
 
 #include <cmath>
-#include <vector>
 
+#include "atomiverse/cpu/scf/cart.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
+#include "atomiverse/cpu/scf/shell_pair.h"
 
 namespace ATV {
 namespace cpu {
@@ -14,46 +15,15 @@ namespace scf {
 
 namespace {
 
-constexpr int kMaxCart1eSq = 36;  // (dd) block = 6 * 6
+/// Max buffer needed for a Cartesian (AB) block of 1e integrals: the
+/// largest case is d×d = 6×6 = 36 doubles.
+constexpr int kBlockBuf1e = kMaxNCart * kMaxNCart;
 
-/// @brief Group shells in a ShellList into libcint-style l-blocks.
+/// @brief Scatter a block's result into a symmetric matrix.
 ///
-/// Consecutive native::Shells sharing the same l (and same primitive data,
-/// by construction of build_shell_list) collapse into one ShellBlock with
-/// n_cart = 2l+1-for-spherical ... no, we use Cartesian: 1/3/6 for s/p/d.
-/// Each block carries its global `ao_start` so callers can scatter.
-std::vector<native::ShellBlock> blocks_from_shells(const ShellList& list) {
-    std::vector<native::ShellBlock> blocks;
-    blocks.reserve(static_cast<std::size_t>(list.n_basis));
-
-    int shell_idx = 0, ao_idx = 0;
-    while (shell_idx < list.n_basis) {
-        const auto& sh = list.shells[static_cast<std::size_t>(shell_idx)];
-        const int n_cart = (sh.l == 0) ? 1 : (sh.l == 1) ? 3 : 6;
-
-        native::ShellBlock blk;
-        blk.n_prim    = sh.n_prim;
-        blk.alpha     = sh.alpha;
-        blk.coeff     = sh.coeff;
-        blk.center[0] = sh.center[0];
-        blk.center[1] = sh.center[1];
-        blk.center[2] = sh.center[2];
-        blk.l         = sh.l;
-        blk.n_cart    = n_cart;
-        blk.ao_start  = ao_idx;
-        blocks.push_back(blk);
-
-        shell_idx += n_cart;
-        ao_idx    += n_cart;
-    }
-    return blocks;
-}
-
-/// @brief Scatter a block's upper-triangular result into a symmetric matrix.
-///
-/// For A != B (block-off-diagonal): fill both M[A,B] and M[B,A] from `buf`.
-/// For A == B (block-diagonal): fill all n_cart×n_cart entries; the native
-/// kernel produces a symmetric block directly, so copying both halves is safe.
+/// `buf` is the dense A.n_cart × B.n_cart output from a block kernel.
+/// For i != j block pairs we also populate the transposed entries; for
+/// diagonal block pairs the kernel already produces the whole block.
 inline void scatter_block(
     xt::xtensor<double, 2>& M,
     const native::ShellBlock& A, const native::ShellBlock& B,
@@ -79,49 +49,49 @@ inline void scatter_block(
     }
 }
 
-} // anonymous namespace
-
-xt::xtensor<double, 2> build_overlap(const ShellList& shells) {
-    const int n = shells.n_basis;
-    xt::xtensor<double, 2> S = xt::zeros<double>({n, n});
-
-    const auto blocks = blocks_from_shells(shells);
+/// @brief Canonical block-pair loop: apply `kernel(A, B, buf)` to every
+///        lower-triangular (i ≥ j) block pair and scatter into `M`.
+template <typename Kernel>
+void for_each_canonical_block_pair(
+    xt::xtensor<double, 2>& M,
+    const std::vector<native::ShellBlock>& blocks,
+    Kernel&& kernel)
+{
     const int nb = static_cast<int>(blocks.size());
-
-    double buf[kMaxCart1eSq];  // max 6*6 = 36 for (dd) block
-
+    double buf[kBlockBuf1e];
     for (int i = 0; i < nb; ++i) {
         for (int j = 0; j <= i; ++j) {
             const auto& A = blocks[static_cast<std::size_t>(i)];
             const auto& B = blocks[static_cast<std::size_t>(j)];
             const int nab = A.n_cart * B.n_cart;
             for (int k = 0; k < nab; ++k) buf[k] = 0.0;
-            native::overlap_block(A, B, buf);
-            scatter_block(S, A, B, buf, /*diag=*/(i == j));
+            kernel(A, B, buf);
+            scatter_block(M, A, B, buf, /*diag=*/(i == j));
         }
     }
+}
+
+} // anonymous namespace
+
+xt::xtensor<double, 2> build_overlap(const ShellList& shells) {
+    const int n = shells.n_basis;
+    xt::xtensor<double, 2> S = xt::zeros<double>({n, n});
+    const auto blocks = blocks_from_shells(shells.shells);
+    for_each_canonical_block_pair(S, blocks,
+        [](const native::ShellBlock& A, const native::ShellBlock& B, double* buf) {
+            native::overlap_block(A, B, buf);
+        });
     return S;
 }
 
 xt::xtensor<double, 2> build_kinetic(const ShellList& shells) {
     const int n = shells.n_basis;
     xt::xtensor<double, 2> T = xt::zeros<double>({n, n});
-
-    const auto blocks = blocks_from_shells(shells);
-    const int nb = static_cast<int>(blocks.size());
-
-    double buf[kMaxCart1eSq];
-
-    for (int i = 0; i < nb; ++i) {
-        for (int j = 0; j <= i; ++j) {
-            const auto& A = blocks[static_cast<std::size_t>(i)];
-            const auto& B = blocks[static_cast<std::size_t>(j)];
-            const int nab = A.n_cart * B.n_cart;
-            for (int k = 0; k < nab; ++k) buf[k] = 0.0;
+    const auto blocks = blocks_from_shells(shells.shells);
+    for_each_canonical_block_pair(T, blocks,
+        [](const native::ShellBlock& A, const native::ShellBlock& B, double* buf) {
             native::kinetic_block(A, B, buf);
-            scatter_block(T, A, B, buf, /*diag=*/(i == j));
-        }
-    }
+        });
     return T;
 }
 
@@ -131,22 +101,11 @@ xt::xtensor<double, 2> build_nuclear_attraction(
     const int n = shells.n_basis;
     const int natm = static_cast<int>(atoms.atoms.size());
     xt::xtensor<double, 2> V = xt::zeros<double>({n, n});
-
-    const auto blocks = blocks_from_shells(shells);
-    const int nb = static_cast<int>(blocks.size());
-
-    double buf[kMaxCart1eSq];
-
-    for (int i = 0; i < nb; ++i) {
-        for (int j = 0; j <= i; ++j) {
-            const auto& A = blocks[static_cast<std::size_t>(i)];
-            const auto& B = blocks[static_cast<std::size_t>(j)];
-            const int nab = A.n_cart * B.n_cart;
-            for (int k = 0; k < nab; ++k) buf[k] = 0.0;
+    const auto blocks = blocks_from_shells(shells.shells);
+    for_each_canonical_block_pair(V, blocks,
+        [&](const native::ShellBlock& A, const native::ShellBlock& B, double* buf) {
             native::nuclear_block(A, B, atoms.atoms.data(), natm, buf);
-            scatter_block(V, A, B, buf, /*diag=*/(i == j));
-        }
-    }
+        });
     return V;
 }
 

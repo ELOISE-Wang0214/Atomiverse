@@ -8,6 +8,7 @@
 /// Validated element-by-element against libcint in test_native_integrals.cu.
 
 #include "atomiverse/cpu/scf/native_integrals.h"
+#include "atomiverse/cpu/scf/cart.h"
 #include "atomiverse/cpu/scf/rys_eri.h"
 #include "atomiverse/core/gto.h"
 
@@ -174,27 +175,16 @@ double eri_ssss(const Shell& a, const Shell& b,
 
 // ── Angular momentum helpers ─────────────────────────────────────────
 
-/// @brief Get Cartesian angular momentum exponents for a shell.
-/// @details s-type (l=0): (0,0,0). p-type (l=1, cart=c): unit vector along c.
-///   d-type (l=2, cart=0..5): six Cartesian components in libcint/Rys order
-///   (xx, xy, xz, yy, yz, zz) — the same enumeration produced by
-///   fill_cart_comps() in rys_eri.cpp (nx from l down, ny from l-nx down).
-/// @param sh    Shell descriptor.
-/// @param a_out Output array [3] with (a_x, a_y, a_z).
+/// @brief Get the Cartesian `(l_x, l_y, l_z)` tuple for one AO in a shell.
+///
+/// Looks up the `sh.cart`-th tuple produced by `fill_cart_comps(sh.l, …)`.
+/// Cheaper than filling the whole table when only one AO is needed.
 static inline void cart_exponents(const Shell& sh, int a_out[3]) {
-    a_out[0] = a_out[1] = a_out[2] = 0;
-    if (sh.l == 1) {
-        a_out[sh.cart] = 1;
-    } else if (sh.l == 2) {
-        // libcint/Rys cart order: xx(0), xy(1), xz(2), yy(3), yz(4), zz(5).
-        static constexpr int kCartD[6][3] = {
-            {2, 0, 0}, {1, 1, 0}, {1, 0, 1},
-            {0, 2, 0}, {0, 1, 1}, {0, 0, 2},
-        };
-        a_out[0] = kCartD[sh.cart][0];
-        a_out[1] = kCartD[sh.cart][1];
-        a_out[2] = kCartD[sh.cart][2];
-    }
+    int table[kMaxNCart][3];
+    fill_cart_comps(sh.l, table);
+    a_out[0] = table[sh.cart][0];
+    a_out[1] = table[sh.cart][1];
+    a_out[2] = table[sh.cart][2];
 }
 
 // ── 1D Obara-Saika overlap table ────────────────────────────────────
@@ -315,117 +305,6 @@ double kinetic(const Shell& a, const Shell& b) {
 ///   E coefficients: E^{i,j}_t from Obara-Saika Hermite expansion.
 ///   R integrals:    R^m_{t+1,u,v} = t*R^{m+1}_{t-1,u,v} + PC_x*R^{m+1}_{t,u,v}
 ///                   R^m_{0,0,0}   = (-2*gamma)^m * F_m(gamma*|PC|^2)
-///
-///   For l_max=1: Ltot <= 2, requiring F_0..F_2.
-/// @param a_ang Angular momenta on center A (each 0 or 1).
-/// @param b_ang Angular momenta on center B (each 0 or 1).
-/// @param gamma Sum of exponents.
-/// @param PA    P - A (3D vector).
-/// @param PB    P - B (3D vector).
-/// @param PC    P - C (3D vector, C = nucleus position).
-/// @param K_AB  exp(-mu * |A-B|^2).
-/// @return The primitive nuclear attraction integral (without -Z prefactor).
-static double nuclear_prim_3d(const int a_ang[3], const int b_ang[3],
-                              double gamma, const double PA[3],
-                              const double PB[3], const double PC[3],
-                              double K_AB) {
-    const double inv2g = 0.5 / gamma;
-    const double prefactor = 2.0 * PI / gamma * K_AB;
-    const double PC2 = PC[0]*PC[0] + PC[1]*PC[1] + PC[2]*PC[2];
-    const double T = gamma * PC2;
-
-    // Compute Boys functions F_m for m = 0..2
-    double Fm[3];
-    for (int m = 0; m <= 2; ++m) {
-        Fm[m] = boys_fn(m, T);
-    }
-
-    // Step 1: McMurchie-Davidson E coefficients for each Cartesian direction.
-    // E^{i,j}_t: Hermite expansion coefficient, t = 0..i+j.
-    // Pre-computed analytically for all (i,j) combinations with i,j in {0,1}.
-    double E[3][3]; // E[d][t]
-    for (int d = 0; d < 3; ++d) {
-        const int ai = a_ang[d];
-        const int bj = b_ang[d];
-
-        if (ai == 0 && bj == 0) {
-            E[d][0] = 1.0;
-            E[d][1] = 0.0;
-            E[d][2] = 0.0;
-        } else if (ai == 1 && bj == 0) {
-            E[d][0] = PA[d];
-            E[d][1] = inv2g;
-            E[d][2] = 0.0;
-        } else if (ai == 0 && bj == 1) {
-            E[d][0] = PB[d];
-            E[d][1] = inv2g;
-            E[d][2] = 0.0;
-        } else { // ai == 1, bj == 1
-            E[d][0] = PA[d] * PB[d] + inv2g;
-            E[d][1] = inv2g * (PA[d] + PB[d]);
-            E[d][2] = inv2g * inv2g;
-        }
-    }
-
-    // Step 2: Hermite Coulomb integrals R^0_{t,u,v}.
-    // R^m_{0,0,0} = (-2*gamma)^m * F_m(T), then build up via recurrence.
-    // For l_max=1, Ltot <= 2, so we enumerate entries directly.
-    const int Lx = a_ang[0] + b_ang[0];
-    const int Ly = a_ang[1] + b_ang[1];
-    const int Lz = a_ang[2] + b_ang[2];
-    const int Ltot = Lx + Ly + Lz;
-
-    // R^m_{0,0,0} = (-2*gamma)^m * F_m(T)
-    double R000[3]; // R^m_{0,0,0} for m = 0..2
-    double neg2g = -2.0 * gamma;
-    double neg2g_pow = 1.0;
-    for (int m = 0; m <= Ltot; ++m) {
-        R000[m] = neg2g_pow * Fm[m];
-        neg2g_pow *= neg2g;
-    }
-
-    // Build R^0_{t,u,v} by direct enumeration (Ltot <= 2).
-    double R[3][3][3]; // R^0_{t,u,v}, t,u,v in {0..2}
-    // Initialize to zero
-    for (int t = 0; t < 3; ++t)
-        for (int u = 0; u < 3; ++u)
-            for (int v = 0; v < 3; ++v)
-                R[t][u][v] = 0.0;
-
-    R[0][0][0] = R000[0];
-
-    if (Ltot >= 1) {
-        // R^0_{1,0,0} = PC_x * R^1_{0,0,0}
-        R[1][0][0] = PC[0] * R000[1];
-        R[0][1][0] = PC[1] * R000[1];
-        R[0][0][1] = PC[2] * R000[1];
-    }
-
-    if (Ltot >= 2) {
-        // R^0_{2,0,0} = R000[1] + PC_x^2 * R000[2]
-        R[2][0][0] = R000[1] + PC[0] * PC[0] * R000[2];
-        R[0][2][0] = R000[1] + PC[1] * PC[1] * R000[2];
-        R[0][0][2] = R000[1] + PC[2] * PC[2] * R000[2];
-
-        // Cross terms: R^0_{1,1,0} = PC_x * PC_y * R000[2]
-        R[1][1][0] = PC[0] * PC[1] * R000[2];
-        R[1][0][1] = PC[0] * PC[2] * R000[2];
-        R[0][1][1] = PC[1] * PC[2] * R000[2];
-    }
-
-    // Step 3: Compute V = prefactor * sum_{t,u,v} E_x[t] * E_y[u] * E_z[v] * R[t][u][v]
-    double V = 0.0;
-    for (int t = 0; t <= Lx; ++t) {
-        for (int u = 0; u <= Ly; ++u) {
-            for (int v = 0; v <= Lz; ++v) {
-                V += E[0][t] * E[1][u] * E[2][v] * R[t][u][v];
-            }
-        }
-    }
-
-    return prefactor * V;
-}
-
 double nuclear(const Shell& a, const Shell& b,
                const Atom* atoms, int natm) {
     int a_ang[3], b_ang[3];
@@ -458,8 +337,6 @@ double nuclear(const Shell& a, const Shell& b,
                     PC[d] = P[d] - atoms[c].pos[d];
                 }
 
-                // Use the public nuclear_prim (supports Ltot up to 6);
-                // the internal nuclear_prim_3d is hardcoded for l_max=1.
                 double V_prim = nuclear_prim(a_ang, b_ang, gamma, PA, PB, PC, K_AB);
                 V_total += a.coeff[p] * b.coeff[q] * (-atoms[c].Z) * V_prim;
             }
@@ -1135,16 +1012,6 @@ double eri_prim(const int a_ang[3], const int b_ang[3],
 // eri_blk_ss_ss uses xsimd to vectorize the ket primitive loop.
 // ═══════════════════════════════════════════════════════════════════════
 
-/// @brief Cartesian angular momentum exponents for all functions in a shell.
-/// ang_table[l][func][dir]: angular quantum number in direction `dir`
-///   for function index `func` in a shell with angular momentum `l`.
-///   l=0: only func=0 → (0,0,0).
-///   l=1: func=0=px → (1,0,0), func=1=py → (0,1,0), func=2=pz → (0,0,1).
-static const int ang_table[2][3][3] = {
-    {{0,0,0}, {0,0,0}, {0,0,0}},   // l=0 (only func 0 used)
-    {{1,0,0}, {0,1,0}, {0,0,1}}    // l=1: px, py, pz
-};
-
 // Forward declaration — defined later in this translation unit.
 static inline void boys_fn_vec(double T, int n_max, double Fm[]);
 
@@ -1156,36 +1023,11 @@ static inline void boys_fn_vec(double T, int n_max, double Fm[]);
 // that factor is 36; for p-p it's 9. The output layout is
 //   out[ia * B.n_cart + ib] += <A_ia|op|B_ib>
 // Caller must pre-zero the output buffer.
-//
-// Cartesian enumeration matches Rys' fill_cart_comps(l):
-//   l=0: (0,0,0)
-//   l=1: (1,0,0), (0,1,0), (0,0,1)
-//   l=2: (2,0,0), (1,1,0), (1,0,1), (0,2,0), (0,1,1), (0,0,2)
-
-namespace {
-
-constexpr int kMaxCart1e = 6;  // l=2 → 6 cartesian components
-
-// Fill cart exponent table for l ∈ {0, 1, 2}. out[cart_idx][d] = angular
-// momentum on direction d for cartesian component cart_idx.
-inline void fill_cart_block_1e(int l, int out[kMaxCart1e][3]) {
-    int c = 0;
-    for (int nx = l; nx >= 0; --nx) {
-        for (int ny = l - nx; ny >= 0; --ny) {
-            out[c][0] = nx;
-            out[c][1] = ny;
-            out[c][2] = l - nx - ny;
-            ++c;
-        }
-    }
-}
-
-} // anonymous namespace
 
 void overlap_block(const ShellBlock& A, const ShellBlock& B, double* out) {
-    int a_ang[kMaxCart1e][3], b_ang[kMaxCart1e][3];
-    fill_cart_block_1e(A.l, a_ang);
-    fill_cart_block_1e(B.l, b_ang);
+    int a_ang[kMaxNCart][3], b_ang[kMaxNCart][3];
+    fill_cart_comps(A.l, a_ang);
+    fill_cart_comps(B.l, b_ang);
 
     const int imax = A.l;
     const int jmax = B.l;
@@ -1228,9 +1070,9 @@ void overlap_block(const ShellBlock& A, const ShellBlock& B, double* out) {
 }
 
 void kinetic_block(const ShellBlock& A, const ShellBlock& B, double* out) {
-    int a_ang[kMaxCart1e][3], b_ang[kMaxCart1e][3];
-    fill_cart_block_1e(A.l, a_ang);
-    fill_cart_block_1e(B.l, b_ang);
+    int a_ang[kMaxNCart][3], b_ang[kMaxNCart][3];
+    fill_cart_comps(A.l, a_ang);
+    fill_cart_comps(B.l, b_ang);
 
     const int imax = A.l;
     const int jmax_k = B.l + 2;      // kinetic needs S(i, j+2)
@@ -1291,9 +1133,9 @@ void kinetic_block(const ShellBlock& A, const ShellBlock& B, double* out) {
 void nuclear_block(const ShellBlock& A, const ShellBlock& B,
                    const Atom* atoms, int natm, double* out)
 {
-    int a_ang[kMaxCart1e][3], b_ang[kMaxCart1e][3];
-    fill_cart_block_1e(A.l, a_ang);
-    fill_cart_block_1e(B.l, b_ang);
+    int a_ang[kMaxNCart][3], b_ang[kMaxNCart][3];
+    fill_cart_comps(A.l, a_ang);
+    fill_cart_comps(B.l, b_ang);
 
     const int imax = A.l;
     const int jmax = B.l;
@@ -1539,6 +1381,13 @@ static void eri_blk_ltot(const ShellBlock& A, const ShellBlock& B,
     const int na = A.n_cart, nb = B.n_cart;
     const int nc = C.n_cart, nd = D.n_cart;
 
+    int a_ang_tbl[kMaxNCart][3], b_ang_tbl[kMaxNCart][3];
+    int c_ang_tbl[kMaxNCart][3], d_ang_tbl[kMaxNCart][3];
+    fill_cart_comps(A.l, a_ang_tbl);
+    fill_cart_comps(B.l, b_ang_tbl);
+    fill_cart_comps(C.l, c_ang_tbl);
+    fill_cart_comps(D.l, d_ang_tbl);
+
     for (int p = 0; p < A.n_prim; ++p) {
       for (int q = 0; q < B.n_prim; ++q) {
         const double aa = A.alpha[p], ab = B.alpha[q];
@@ -1643,18 +1492,18 @@ static void eri_blk_ltot(const ShellBlock& A, const ShellBlock& B,
             }
 
             for (int ia = 0; ia < na; ++ia) {
-                const int* a_ang = ang_table[A.l][ia];
+                const int* a_ang = a_ang_tbl[ia];
                 for (int ib = 0; ib < nb; ++ib) {
-                    const int* b_ang = ang_table[B.l][ib];
+                    const int* b_ang = b_ang_tbl[ib];
                     const int Lx1 = a_ang[0] + b_ang[0];
                     const int Ly1 = a_ang[1] + b_ang[1];
                     const int Lz1 = a_ang[2] + b_ang[2];
                     double* out_ab = out + (ia * nb + ib) * (nc * nd);
 
                     for (int ic = 0; ic < nc; ++ic) {
-                        const int* c_ang = ang_table[C.l][ic];
+                        const int* c_ang = c_ang_tbl[ic];
                         for (int id = 0; id < nd; ++id) {
-                            const int* d_ang = ang_table[D.l][id];
+                            const int* d_ang = d_ang_tbl[id];
                             const int Lx2 = c_ang[0] + d_ang[0];
                             const int Ly2 = c_ang[1] + d_ang[1];
                             const int Lz2 = c_ang[2] + d_ang[2];
@@ -1701,6 +1550,13 @@ static void eri_blk_general(const ShellBlock& A, const ShellBlock& B,
     const int Ltot_max = A.l + B.l + C.l + D.l;
     const int na = A.n_cart, nb = B.n_cart;
     const int nc = C.n_cart, nd = D.n_cart;
+
+    int a_ang_tbl[kMaxNCart][3], b_ang_tbl[kMaxNCart][3];
+    int c_ang_tbl[kMaxNCart][3], d_ang_tbl[kMaxNCart][3];
+    fill_cart_comps(A.l, a_ang_tbl);
+    fill_cart_comps(B.l, b_ang_tbl);
+    fill_cart_comps(C.l, c_ang_tbl);
+    fill_cart_comps(D.l, d_ang_tbl);
 
     for (int p = 0; p < A.n_prim; ++p) {
       for (int q = 0; q < B.n_prim; ++q) {
@@ -1800,18 +1656,18 @@ static void eri_blk_general(const ShellBlock& A, const ShellBlock& B,
             }
 
             for (int ia = 0; ia < na; ++ia) {
-                const int* a_ang = ang_table[A.l][ia];
+                const int* a_ang = a_ang_tbl[ia];
                 for (int ib = 0; ib < nb; ++ib) {
-                    const int* b_ang = ang_table[B.l][ib];
+                    const int* b_ang = b_ang_tbl[ib];
                     const int Lx1 = a_ang[0] + b_ang[0];
                     const int Ly1 = a_ang[1] + b_ang[1];
                     const int Lz1 = a_ang[2] + b_ang[2];
                     double* out_ab = out + (ia * nb + ib) * (nc * nd);
 
                     for (int ic = 0; ic < nc; ++ic) {
-                        const int* c_ang = ang_table[C.l][ic];
+                        const int* c_ang = c_ang_tbl[ic];
                         for (int id = 0; id < nd; ++id) {
-                            const int* d_ang = ang_table[D.l][id];
+                            const int* d_ang = d_ang_tbl[id];
                             const int Lx2 = c_ang[0] + d_ang[0];
                             const int Ly2 = c_ang[1] + d_ang[1];
                             const int Lz2 = c_ang[2] + d_ang[2];

@@ -2,6 +2,8 @@
 /// @brief Build canonical shell pair list with Cauchy-Schwarz screening.
 
 #include "atomiverse/cpu/scf/shell_pair.h"
+#include "atomiverse/cpu/scf/basis_set.h"
+#include "atomiverse/cpu/scf/cart.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/core/log.h"
 
@@ -12,6 +14,35 @@
 namespace ATV {
 namespace cpu {
 namespace scf {
+
+std::vector<native::ShellBlock>
+blocks_from_shells(const std::vector<native::Shell>& shells) {
+    const int n_shells = static_cast<int>(shells.size());
+    std::vector<native::ShellBlock> blocks;
+    blocks.reserve(shells.size());
+
+    int shell_idx = 0, ao_idx = 0;
+    while (shell_idx < n_shells) {
+        const auto& sh = shells[static_cast<std::size_t>(shell_idx)];
+        const int n_cart = n_cart_of(sh.l);
+
+        native::ShellBlock blk;
+        blk.n_prim    = sh.n_prim;
+        blk.alpha     = sh.alpha;
+        blk.coeff     = sh.coeff;
+        blk.center[0] = sh.center[0];
+        blk.center[1] = sh.center[1];
+        blk.center[2] = sh.center[2];
+        blk.l         = sh.l;
+        blk.n_cart    = n_cart;
+        blk.ao_start  = ao_idx;
+        blocks.push_back(blk);
+
+        shell_idx += n_cart;
+        ao_idx    += n_cart;
+    }
+    return blocks;
+}
 
 ShellPairList build_shell_pair_list(const IntegralPack& pack, double thr) {
     const int n = pack.n_basis;
@@ -78,52 +109,25 @@ ShellBlockPairList build_shell_block_pair_list(const IntegralPack& pack,
     sbl.n_basis   = n;
     sbl.threshold = thr;
 
-    // ── Step 1: Collect raw block descriptors (two-pass to avoid realloc bugs)
-    // Rules (matching build_shell_list layout):
-    //   l=0 shell → one s-block  (n_cart=1, 1 AO).
-    //   l=1 px followed by py, pz → one p-block (n_cart=3, 3 AOs).
-    //   l=2 xx, xy, xz, yy, yz, zz → one d-block (n_cart=6, 6 AOs).
-    // Shells inside a block share the same alpha/coeff; the first
-    // shell's storage represents the block.
-    struct RawBlock { int shell_data_idx, l, n_cart, ao_start; };
-    std::vector<RawBlock> raw_blocks;
-    raw_blocks.reserve(n_raw_shells);  // upper bound
+    // ── Step 1: Group shells into blocks (shared helper).
+    sbl.blocks = blocks_from_shells(pack.shells);
+    const int n_blocks = static_cast<int>(sbl.blocks.size());
 
-    {
-        int shell_idx = 0, ao_idx = 0;
-        while (shell_idx < n_raw_shells && ao_idx < n) {
-            const native::Shell& sh = pack.shells[shell_idx];
-            const int n_cart = (sh.l == 0) ? 1 : (sh.l == 1) ? 3 : 6;
-            raw_blocks.push_back({shell_idx, sh.l, n_cart, ao_idx});
-            shell_idx += n_cart;
-            ao_idx    += n_cart;
-        }
-    }
-
-    const int n_blocks = static_cast<int>(raw_blocks.size());
-
-    // ── Step 2: Allocate block_data all at once, then set up ShellBlock pointers.
-    // block_data must be stable (no further push_back after this point) before
-    // the ShellBlock alpha/coeff pointers into it are stored.
+    // ── Step 2: Copy the primitive data into owned storage so the
+    // block pair list can outlive `pack`, then redirect ShellBlock
+    // alpha/coeff pointers into it.
     sbl.block_data.resize(n_blocks);
-    for (int i = 0; i < n_blocks; ++i)
-        sbl.block_data[i] = pack.shell_data[raw_blocks[i].shell_data_idx];
-
-    sbl.blocks.resize(n_blocks);
+    int ao_idx = 0;
     for (int i = 0; i < n_blocks; ++i) {
-        const RawBlock& rb = raw_blocks[i];
-        const native::Shell& sh = pack.shells[rb.shell_data_idx];
-        native::ShellBlock& blk = sbl.blocks[i];
-        blk.n_prim    = sh.n_prim;
-        blk.center[0] = sh.center[0];
-        blk.center[1] = sh.center[1];
-        blk.center[2] = sh.center[2];
-        blk.l         = rb.l;
-        blk.n_cart    = rb.n_cart;
-        blk.ao_start  = rb.ao_start;
-        blk.alpha     = sbl.block_data[i].data();
-        blk.coeff     = sbl.block_data[i].data() + sh.n_prim;
+        // ao_idx marches with the block; pack.shell_data is indexed by
+        // AO-level shell idx, and consecutive AOs in one block share
+        // the same shell_data entry, so taking the first one suffices.
+        sbl.block_data[i] = pack.shell_data[static_cast<std::size_t>(ao_idx)];
+        sbl.blocks[i].alpha = sbl.block_data[i].data();
+        sbl.blocks[i].coeff = sbl.block_data[i].data() + sbl.blocks[i].n_prim;
+        ao_idx += sbl.blocks[i].n_cart;
     }
+    (void)n_raw_shells;
 
     ATV_DEBUG("[shell_pair] block grouping done n_basis={} n_blocks={}", n, n_blocks);
 

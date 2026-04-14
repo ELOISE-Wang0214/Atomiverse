@@ -22,6 +22,7 @@
 ///    layered on top without changing the public API.
 
 #include "atomiverse/cpu/scf/rys_eri.h"
+#include "atomiverse/cpu/scf/cart.h"
 #include "atomiverse/cpu/scf/rys_roots.h"
 
 #include <cmath>
@@ -39,23 +40,18 @@ namespace {
 constexpr double kPi         = 3.14159265358979323846;
 constexpr double kTwoPi25    = 2.0 * 17.493418327624863; // 2 * π^(5/2)
 
-// ── Cartesian component enumeration ──────────────────────────────────
-//
-// Angular component order: for a shell with angular momentum l, the
-// n_cart = (l+1)*(l+2)/2 cartesian functions are enumerated by looping
-// nx from l down to 0, then ny from l-nx down to 0, with nz = l-nx-ny.
-// This is the ordering used by libcint and PySCF.
-
+// Struct wrapper around the generic int[3] layout from cart.h — gives
+// `.nx / .ny / .nz` field access inside the hot inner loop.
 struct CartComp { int nx, ny, nz; };
 
-inline int n_cart_of(int l) { return (l + 1) * (l + 2) / 2; }
-
-static void fill_cart_comps(int l, CartComp* out) {
-    int c = 0;
-    for (int nx = l; nx >= 0; --nx) {
-        for (int ny = l - nx; ny >= 0; --ny) {
-            out[c++] = {nx, ny, l - nx - ny};
-        }
+static void fill_cart_comps_struct(int l, CartComp* out) {
+    int tmp[kMaxNCart][3];
+    fill_cart_comps(l, tmp);
+    const int n = n_cart_of(l);
+    for (int c = 0; c < n; ++c) {
+        out[c].nx = tmp[c][0];
+        out[c].ny = tmp[c][1];
+        out[c].nz = tmp[c][2];
     }
 }
 
@@ -353,10 +349,10 @@ static void rys_eri_block_canonical(const ShellBlock& A, const ShellBlock& B,
     double* g = tls_g_buf.data();
 
     CartComp ci[10], cj[10], ck[10], cl[10];
-    fill_cart_comps(env.li, ci);
-    fill_cart_comps(env.lj, cj);
-    fill_cart_comps(env.lk, ck);
-    fill_cart_comps(env.ll, cl);
+    fill_cart_comps_struct(env.li, ci);
+    fill_cart_comps_struct(env.lj, cj);
+    fill_cart_comps_struct(env.lk, ck);
+    fill_cart_comps_struct(env.ll, cl);
 
     const int nb = env.nfj;
     const int nc = env.nfk;
@@ -655,10 +651,10 @@ static void rys_eri_block_deriv_canonical(const ShellBlock& A, const ShellBlock&
     double* g = tls_g_buf.data();
 
     CartComp ci[10], cj[10], ck[10], cl[10];
-    fill_cart_comps(env.li, ci);
-    fill_cart_comps(env.lj, cj);
-    fill_cart_comps(env.lk, ck);
-    fill_cart_comps(env.ll, cl);
+    fill_cart_comps_struct(env.li, ci);
+    fill_cart_comps_struct(env.lj, cj);
+    fill_cart_comps_struct(env.lk, ck);
+    fill_cart_comps_struct(env.ll, cl);
 
     const int nb = env.nfj;
     const int nc = env.nfk;

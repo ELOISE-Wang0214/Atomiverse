@@ -18,6 +18,7 @@ namespace cpu {
 namespace scf {
 
 struct IntegralPack;  // forward declare
+struct ShellList;     // forward declare
 
 /// @brief Single canonical shell pair with Cauchy-Schwarz bound.
 struct ShellPair {
@@ -88,6 +89,20 @@ struct ShellBlockPairList {
 /// @return ShellBlockPairList with owned data.
 ShellBlockPairList build_shell_block_pair_list(const IntegralPack& pack,
                                                double thr = 1e-10);
+
+/// @brief Group a flat vector of AO-level `native::Shell` entries into
+///        libcint-style l-blocks without materializing Schwarz bounds.
+///
+/// Consecutive shells sharing an angular momentum (same `l`) collapse
+/// into one `native::ShellBlock` with `n_cart = n_cart_of(l)`. Callers
+/// feed this with `ShellList::shells` (one-electron integral path) or
+/// `IntegralPack::shells` (Fock-build Schwarz path) — both use the same
+/// flat layout.
+///
+/// Returned blocks alias the input's `alpha` / `coeff` pointers, so the
+/// source storage must outlive the returned vector.
+[[nodiscard]] std::vector<native::ShellBlock>
+blocks_from_shells(const std::vector<native::Shell>& shells);
 
 } // namespace scf
 } // namespace cpu

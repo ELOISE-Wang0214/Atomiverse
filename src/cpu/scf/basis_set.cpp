@@ -12,6 +12,7 @@
 #include "atomiverse/cpu/scf/basis_data/def2_tzvp.h"
 #include "atomiverse/cpu/scf/basis_data/pople_631g.h"
 #include "atomiverse/cpu/scf/basis_data/pople_631gs.h"
+#include "atomiverse/cpu/scf/cart.h"
 #include "atomiverse/cpu/scf/sto3g_data.h"
 
 namespace ATV {
@@ -172,14 +173,12 @@ ShellList build_shell_list_from_table(
                 std::to_string(Z));
         }
         for (const auto& sh : table[static_cast<std::size_t>(Z)].shells) {
-            if (sh.l == 0)      n_basis += 1;
-            else if (sh.l == 1) n_basis += 3;
-            else if (sh.l == 2) n_basis += 6;
-            else {
+            if (sh.l < 0 || sh.l > kMaxL) {
                 throw std::runtime_error(
                     "cpu::scf::build_shell_list: l=" + std::to_string(sh.l) +
                     " not yet supported.");
             }
+            n_basis += n_cart_of(sh.l);
         }
     }
 
@@ -219,20 +218,16 @@ ShellList build_shell_list_from_table(
                 ++shell_idx;
             };
 
-            if (sh.l == 0) {
-                emit_shell(0, 0, native::phys_norm);
-            } else if (sh.l == 1) {
-                emit_shell(1, 0, native::phys_norm_p);
-                emit_shell(1, 1, native::phys_norm_p);
-                emit_shell(1, 2, native::phys_norm_p);
-            } else {
-                // d-shell: six Cartesian components in libcint order
-                // (xx, xy, xz, yy, yz, zz). All six share the same
-                // orientation-independent norm (libcint / PySCF cart
-                // convention); <d_xy|d_xy> = 1 but <d_xx|d_xx> = 3.
-                for (int cart = 0; cart < 6; ++cart)
-                    emit_shell(2, cart, native::phys_norm_d);
-            }
+            // Emit one native::Shell per Cartesian component. All
+            // components of a given l share the same orientation-independent
+            // normalization (libcint / PySCF cart convention).
+            const int n_cart = n_cart_of(sh.l);
+            double (*norm_at)(double) =
+                (sh.l == 0) ? native::phys_norm
+              : (sh.l == 1) ? native::phys_norm_p
+              :               native::phys_norm_d;
+            for (int cart = 0; cart < n_cart; ++cart)
+                emit_shell(sh.l, cart, norm_at);
         }
     }
     return out;
