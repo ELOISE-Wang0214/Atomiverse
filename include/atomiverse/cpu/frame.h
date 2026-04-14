@@ -13,7 +13,7 @@
 /// @see cuda::to_cpu() for CUDA -> CPU transfer
 #pragma once
 
-#include <xtensor/xtensor.hpp>
+#include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/core/mat3.h"
 

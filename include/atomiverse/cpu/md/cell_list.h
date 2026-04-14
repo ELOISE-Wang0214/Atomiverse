@@ -6,7 +6,7 @@
 #pragma once
 
 #include <vector>
-#include <xtensor/xtensor.hpp>
+#include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/pair_list.h"

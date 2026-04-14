@@ -2,7 +2,7 @@
 /// @brief PairList -- LAMMPS-style CSR neighbor list format for CPU backend.
 #pragma once
 
-#include <xtensor/xtensor.hpp>
+#include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/cpu/frame.h"
 

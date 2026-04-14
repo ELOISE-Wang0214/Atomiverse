@@ -17,12 +17,27 @@
 /// @endcode
 #pragma once
 
+#ifndef SPDLOG_ACTIVE_LEVEL
+#define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_DEBUG
+#endif
+
+#include <chrono>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 
 #include <memory>
 
 namespace ATV {
+
+using LogClock = std::chrono::steady_clock;
+
+/// @brief Elapsed wall time in milliseconds.
+inline double elapsed_ms(
+    LogClock::time_point start,
+    LogClock::time_point end = LogClock::now())
+{
+    return std::chrono::duration<double, std::milli>(end - start).count();
+}
 
 /// @brief Get the project-wide logger instance.
 /// @return Reference to the "atv" named spdlog logger (created on first call).
@@ -36,6 +51,7 @@ inline spdlog::logger& logger() {
 inline void log_init(spdlog::level::level_enum level = spdlog::level::info) {
     logger().set_level(level);
     logger().set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] %v");
+    logger().flush_on(spdlog::level::info);
 }
 
 } // namespace ATV
