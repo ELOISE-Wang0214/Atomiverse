@@ -30,6 +30,11 @@ endif()
 if(ATV_BUILD_RHF)
     atv_add_cpp_bench(bench_libcint)
     atv_add_cpp_bench(bench_native)
+
+    # Phase 1.2 QC suite — doesn't link google-benchmark (plain main())
+    add_executable(bench_qc_suite qc/bench_qc_suite.cpp)
+    target_link_libraries(bench_qc_suite PRIVATE atomiverse)
+    set_target_properties(bench_qc_suite PROPERTIES CXX_STANDARD 17)
 endif()
 
 if(ATV_BUILD_TORCH)

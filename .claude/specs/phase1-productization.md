@@ -24,13 +24,26 @@ created: 2026-04-14
 ### 1.2 Benchmark suite
 - [x] `benchmarks/qc/molecules/{h2o,nh3,ch4}.xyz` starting geometries
 - [x] `benchmarks/qc/reference/generate_references.py` (PySCF +
-      geometric) + 3 checked-in JSON references
-- [ ] **C++ `benchmarks/qc/bench_qc_suite.cpp`** — loop molecules,
-      run LBFGS+SCFEvaluator at PBE/def2-SVP, record timings and
-      compare against reference JSON. **Next concrete step.**
+      geometric), `--method rhf|rks --basis <name>`, 3 checked-in
+      RHF/STO-3G JSON references
+- [x] **C++ `benchmarks/qc/bench_qc_suite.cpp`** — loops H2O/NH3/CH4,
+      runs LBFGS+SCFEvaluator at RHF/STO-3G, prints wall time + energy
+      delta vs. reference. Pipeline green (3/3 within 50 mHa).
+- [x] `SCFEvaluator` gains a `BasisSet` parameter (was hardcoded
+      STO-3G; prevented running the bench at any other basis).
+- [ ] **SCF analytic gradient through d-shells** — def2-SVP energy is
+      bit-exact vs. PySCF but the gradient path hits an
+      `xt::broadcast_error` in `integral_derivatives.cpp` at d-shells.
+      Blocks moving this bench off STO-3G. Stage B2b-gradient
+      follow-up.
+- [ ] **LBFGS line search** — current fixed-step LBFGSStep converges
+      to ~10–30 mHa drift from the PySCF minimum because dtol triggers
+      on small-step iterations that haven't actually minimized. Full
+      1.2 acceptance (1e-6 Ha energy parity) needs a line search.
 - [ ] Expand geometry set to 12 (benzene, naphthalene, ethanol,
       glycine, aspirin, caffeine, O2 triplet, NO doublet, CH3•)
-- [ ] Regenerate references for the full set
+- [ ] Regenerate references for the full set at PBE/def2-SVP (needs
+      the d-shell gradient fix above)
 - [ ] CI label `benchmark-qc-fast` (H2O+NH3+CH4 per push) + nightly
       full suite
 

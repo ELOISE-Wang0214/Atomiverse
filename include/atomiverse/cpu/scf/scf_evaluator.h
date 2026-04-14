@@ -20,6 +20,7 @@
 #include <functional>
 
 #include "atomiverse/cpu/component.h"
+#include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/scf_solve.h"
 #include "atomiverse/cpu/scf/gradient.h"
 #include "atomiverse/cpu/scf/aspc_predictor.h"
@@ -37,8 +38,11 @@ class SCFEvaluator : public cpu::ComponentBase {
 public:
     /// @brief Construct from SCF configuration.
     /// @param config  SCF parameters (method, spin, XC, convergence, grid).
+    /// @param basis   Basis set to resolve at each step from frame positions.
     /// @param charge  Molecular charge (0 = neutral).
-    SCFEvaluator(SCFConfig config, int charge = 0);
+    SCFEvaluator(SCFConfig config,
+                 BasisSet basis = BasisSet::STO3G,
+                 int charge = 0);
 
     /// @brief Enable ASPC predictor-corrector for density warm-start.
     /// @param order           Extrapolation order K (default 3).
@@ -60,6 +64,7 @@ public:
 
 private:
     SCFConfig config_;
+    BasisSet basis_;
     int charge_;
 
     bool use_predictor_ = false;

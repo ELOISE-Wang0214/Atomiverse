@@ -10,8 +10,8 @@ namespace ATV {
 namespace cpu {
 namespace scf {
 
-SCFEvaluator::SCFEvaluator(SCFConfig config, int charge)
-    : config_(std::move(config)), charge_(charge) {}
+SCFEvaluator::SCFEvaluator(SCFConfig config, BasisSet basis, int charge)
+    : config_(std::move(config)), basis_(basis), charge_(charge) {}
 
 SCFEvaluator& SCFEvaluator::predictor(int order, int corrector_steps,
                                        double corrector_tol, bool fallback) {
@@ -46,10 +46,11 @@ void SCFEvaluator::launch(const cpu::LaunchContext& ctx) {
         ctx.step, natm, charge_);
 
     const auto t_integrals = LogClock::now();
-    auto integrals = build_integrals_sto3g(frame, charge_);
+    auto integrals = build_integrals(frame, basis_, charge_);
     ATV_DEBUG(
-        "[scf_eval] step={} integrals_ms={:.1f} basis={} electrons={}",
-        ctx.step, elapsed_ms(t_integrals), integrals.n_basis, integrals.n_electrons);
+        "[scf_eval] step={} integrals_ms={:.1f} basis={} n_basis={} electrons={}",
+        ctx.step, elapsed_ms(t_integrals),
+        basis_set_name(basis_), integrals.n_basis, integrals.n_electrons);
 
     SCFResult result;
 

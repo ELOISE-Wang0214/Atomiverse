@@ -69,7 +69,19 @@ def pyscf_atoms(mol) -> list[tuple[str, float, float, float]]:
     return out
 
 
-def run_reference(stem: str, basis: str = "def2-svp", xc: str = "pbe",
+def _make_mf(mol, method: str, xc: str, tol: float):
+    if method.lower() == "rhf":
+        mf = scf.RHF(mol)
+    elif method.lower() == "rks":
+        mf = dft.RKS(mol)
+        mf.xc = xc
+    else:
+        raise ValueError(f"unknown method {method!r} (expected rhf / rks)")
+    mf.conv_tol = tol
+    return mf
+
+
+def run_reference(stem: str, basis: str, method: str, xc: str,
                   scf_tol: float = 1e-10) -> dict:
     atoms = read_xyz(MOL_DIR / f"{stem}.xyz")
     mol = gto.M(
@@ -79,9 +91,7 @@ def run_reference(stem: str, basis: str = "def2-svp", xc: str = "pbe",
         verbose=0,
     )
 
-    mf = dft.RKS(mol)
-    mf.xc = xc
-    mf.conv_tol = scf_tol
+    mf = _make_mf(mol, method, xc, scf_tol)
     e_start = mf.kernel()
     scf_iters_start = mf.cycles
 
@@ -90,15 +100,14 @@ def run_reference(stem: str, basis: str = "def2-svp", xc: str = "pbe",
                             convergence_grms=3e-4, convergence_gmax=4.5e-4)
     opt_wall = time.perf_counter() - t0
 
-    mf_opt = dft.RKS(mol_opt)
-    mf_opt.xc = xc
-    mf_opt.conv_tol = scf_tol
+    mf_opt = _make_mf(mol_opt, method, xc, scf_tol)
     e_opt = mf_opt.kernel()
 
     return {
         "stem": stem,
         "basis": basis,
-        "xc": xc,
+        "method": method,
+        "xc": xc if method.lower() == "rks" else None,
         "cart": True,
         "starting_geometry_angstrom": [
             {"symbol": s, "x": x, "y": y, "z": z} for s, x, y, z in atoms
@@ -118,18 +127,24 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("stems", nargs="*",
                         help="Molecule stems to regenerate (default: all xyz files)")
-    parser.add_argument("--basis", default="def2-svp")
-    parser.add_argument("--xc", default="pbe")
+    parser.add_argument("--basis", default="sto-3g",
+                        help="PySCF basis name (default: sto-3g)")
+    parser.add_argument("--method", default="rhf", choices=["rhf", "rks"],
+                        help="rhf or rks (default rhf — matches the atomiverse "
+                             "gradient path that exists today)")
+    parser.add_argument("--xc", default="pbe",
+                        help="XC functional when method=rks (ignored otherwise)")
     args = parser.parse_args()
 
     if not args.stems:
         args.stems = sorted(p.stem for p in MOL_DIR.glob("*.xyz"))
 
     REF_DIR.mkdir(parents=True, exist_ok=True)
+    label = args.method if args.method == "rhf" else f"{args.method}/{args.xc}"
     for stem in args.stems:
-        print(f"[{stem}] generating {args.xc}/{args.basis} reference...")
+        print(f"[{stem}] generating {label}/{args.basis} reference...")
         t0 = time.perf_counter()
-        ref = run_reference(stem, basis=args.basis, xc=args.xc)
+        ref = run_reference(stem, basis=args.basis, method=args.method, xc=args.xc)
         out = REF_DIR / f"{stem}.json"
         out.write_text(json.dumps(ref, indent=2) + "\n")
         print(f"[{stem}] wrote {out.relative_to(REPO_ROOT)}  "
