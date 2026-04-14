@@ -68,6 +68,9 @@ private:
     bool fallback_full_scf_ = true;
     std::unique_ptr<ASPCPredictor> aspc_alpha_;
     std::unique_ptr<ASPCPredictor> aspc_beta_;
+    bool has_last_density_ = false;
+    xt::xtensor<double, 2> last_P_alpha_;
+    xt::xtensor<double, 2> last_P_beta_;
 
     std::function<void(const SCFResult&)> on_evaluate_;
 };
