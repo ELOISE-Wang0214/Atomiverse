@@ -38,16 +38,24 @@ created: 2026-04-14
       the SCF's resolved shell list. STO-3G legacy wrapper preserved
       as a thin shim. Test: `test_cpu_scf_def2svp_gradient.cpp`
       (translational invariance holds on H2O @ def2-SVP RHF).
-- [ ] **Native 2e gradient path (`rys_eri_block_deriv` integrator)**
-      disagrees with FD on p-shell-containing molecules — existing
-      H2/HeH+ tests were too small (s-only) to catch. Libcint-backed
-      STO-3G gradient is correct (`test_gradient_vs_libcint` confirms),
-      so production SCF opt still works on STO-3G. Needed to unblock
-      any basis larger than STO-3G. Surfaced by the two DISABLED
-      tests in `test_def2svp_gradient.cpp`.
-- [ ] **libcint bridge generalization** — current
-      `build_libcint_sto3g_context` hardcodes STO-3G. Either fix the
-      native 2e gradient above or generalize the libcint bridge.
+- [ ] **Pre-existing 3-atom SCF-gradient bug** (new finding —
+      previously masked). An FD / PySCF-reference audit on H2O shows
+      BOTH the native AND libcint 2e-gradient paths produce the same
+      wrong answer (factor-3 + sign flip on O z-force). Since they
+      agree with each other, `test_gradient_vs_libcint` passes
+      vacuously. The bug is upstream in the shared assembly (common
+      1e + Pulay, or atom dispatch in the 2e loop), NOT in
+      `rys_eri_block_deriv` — and NOT introduced by the recent
+      IntegralPack-based deriv refactor (reverting that refactor gives
+      the same wrong gradient). Two-atom systems (H2, HeH+) work; the
+      H2-vs-PySCF test passes. Surfaced by the DISABLED reproducer
+      `H2O_STO3G_analytic_vs_PySCF_reference` in
+      `test_def2svp_gradient.cpp`. This is the single gating item
+      blocking ANY basis above STO-3G from running opt — fixing it
+      unblocks 6-31G / 6-31G\* / def2-SVP simultaneously.
+- [ ] **libcint bridge generalization** — separate item, but lower
+      priority because even libcint-backed STO-3G gradient is wrong
+      above (see previous bullet).
 - [ ] **KS/d-shell XC grid** — `basis_eval.h` only handles l ∈ {0, 1}.
       Blocks PBE/def2-SVP SCF itself (KS grid evaluation). Separate
       from the gradient issue; surfaces as SCF hang before any force

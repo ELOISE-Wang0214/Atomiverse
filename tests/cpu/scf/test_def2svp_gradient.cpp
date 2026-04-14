@@ -69,18 +69,71 @@ TEST(Def2SVPGradient, H2O_RHF_no_broadcast_error) {
 // Disabled here, with explicit skip messages, until the native 2e
 // gradient path is audited. Tracked in phase1-productization.md.
 
-TEST(Def2SVPGradient, DISABLED_H2O_STO3G_analytic_vs_FD_pshell) {
-    GTEST_SKIP() << "Known: native 2e gradient path disagrees with FD on "
-                    "p-shell-containing molecules. Libcint path is the "
-                    "production default for STO-3G; native path needs audit.";
+// Two-atom systems pass — pure H2 is the smallest useful case and has
+// no "third atom" in the gradient assembly. Keeps the regression bar.
+TEST(Def2SVPGradient, H2_STO3G_analytic_vs_PySCF_reference) {
+    // PySCF RHF STO-3G on H2 @ r=0.74Å:
+    //   atom 0: (0, 0, +1.4233423) eV/Å
+    //   atom 1: (0, 0, -1.4233423) eV/Å
+    ATV::cpu::Frame f(2);
+    f.atoms.type[0] = 1; f.atoms.type[1] = 1;
+    f.atoms.z[1] = 0.74;
+    f.box = ATV::Mat3::cubic(100.0);
+    auto ints = cpu::scf::build_integrals(f, cpu::scf::BasisSet::STO3G);
+    auto cfg = cpu::scf::rhf_config(ints, 1e-11);
+    auto res = cpu::scf::scf_solve(ints, cfg);
+    ASSERT_TRUE(res.converged);
+    auto g = cpu::scf::scf_gradient(f, ints, res, cfg);
+
+    EXPECT_NEAR(g.forces(0, 2), +1.4233423, 1e-4);
+    EXPECT_NEAR(g.forces(1, 2), -1.4233423, 1e-4);
+    EXPECT_NEAR(g.forces(0, 0),  0.0,       1e-6);
+    EXPECT_NEAR(g.forces(0, 1),  0.0,       1e-6);
 }
 
+// ── Pre-existing bug reproducer ──────────────────────────────────────
+//
+// Three-atom systems produce wildly wrong gradients. This is NOT
+// d-shell-specific and NOT introduced by the recent IntegralPack-based
+// `build_integral_derivatives` refactor — reverting that refactor and
+// forcing libcint / native 2e paths all give the same wrong answer.
+// The existing H2 / HeH+ tests in test_gradient.cpp are too small to
+// expose it; `test_gradient_vs_libcint` only verifies the two paths
+// agree with EACH OTHER (they do), not vs physics.
+//
+// Comparison on H2O STO-3G (RHF, cart):
+//   PySCF / FD:   atom 0 (O) z = +3.088,  atom 1 (H) z = -1.544
+//   Atomiverse:   atom 0 (O) z = -8.367,  atom 1 (H) z = +4.661
+//
+// Ratio / sign does not match any obvious factor-of-2 symmetry slip.
+// Likely places to audit (both native and libcint branches share them):
+//   * `accumulate_common_gradient` — Tr[P·dH] − Tr[W·dS] + dV_nuc
+//     (the Pulay / 1e assembly in gradient.cpp)
+//   * `accumulate_two_electron_gradient_sto3g` atom dispatch — atom_i
+//     from shell_to_atom vs block_to_atom indexing
+//   * Nuclear-repulsion derivative — contributes only at the atoms it
+//     actually involves; cancellation across atoms could go wrong
+//
+// Tracked in phase1-productization.md §1.2.
+TEST(Def2SVPGradient, DISABLED_H2O_STO3G_analytic_vs_PySCF_reference) {
+    const auto frame = make_h2o();
+    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto cfg = cpu::scf::rhf_config(ints, 1e-11);
+    auto res = cpu::scf::scf_solve(ints, cfg);
+    ASSERT_TRUE(res.converged);
+    auto g = cpu::scf::scf_gradient(frame, ints, res, cfg);
+
+    EXPECT_NEAR(g.forces(0, 2), +3.08792686, 1e-4) << "O z";
+    EXPECT_NEAR(g.forces(1, 1), +1.24073248, 1e-4) << "H1 y";
+    EXPECT_NEAR(g.forces(1, 2), -1.54396343, 1e-4) << "H1 z";
+    EXPECT_NEAR(g.forces(2, 1), -1.24073248, 1e-4) << "H2 y";
+    EXPECT_NEAR(g.forces(2, 2), -1.54396343, 1e-4) << "H2 z";
+}
+
+// Skipped until the 3-atom bug above is fixed.
 TEST(Def2SVPGradient, DISABLED_H2O_RHF_def2svp_analytic_vs_FD) {
-    GTEST_SKIP() << "Blocked on the STO-3G p-shell gradient issue above. "
-                    "1e broadcast_error (sto3g_data-hardcoded deriv builder) "
-                    "is fixed by the companion IntegralPack-based "
-                    "build_integral_derivatives; this end-to-end FD match "
-                    "still requires fixing the native 2e gradient path.";
+    GTEST_SKIP() << "Blocked on H2O_STO3G_analytic_vs_PySCF_reference "
+                    "(same gradient-assembly bug, not d-shell specific).";
 }
 
 #endif // ATV_HAS_RHF
