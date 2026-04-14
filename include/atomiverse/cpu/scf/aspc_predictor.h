@@ -12,7 +12,7 @@
 
 #include <deque>
 #include <vector>
-#include <xtensor/xtensor.hpp>
+#include <xtensor/containers/xtensor.hpp>
 
 namespace ATV {
 namespace cpu {

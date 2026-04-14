@@ -10,7 +10,7 @@
 
 #include <vector>
 
-#include <xtensor/xtensor.hpp>
+#include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/cpu/frame.h"
 

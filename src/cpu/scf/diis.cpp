@@ -3,7 +3,7 @@
 
 #include "atomiverse/cpu/scf/diis.h"
 
-#include <xtensor/xnorm.hpp>
+#include <xtensor/reducers/xnorm.hpp>
 
 namespace ATV {
 namespace cpu {

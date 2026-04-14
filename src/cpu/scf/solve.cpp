@@ -5,8 +5,8 @@
 
 #include <cmath>
 
-#include <xtensor/xnorm.hpp>
-#include <xtensor/xview.hpp>
+#include <xtensor/reducers/xnorm.hpp>
+#include <xtensor/views/xview.hpp>
 #include <xtensor-blas/xlinalg.hpp>
 
 namespace ATV {

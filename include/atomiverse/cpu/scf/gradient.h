@@ -10,7 +10,7 @@
 ///   Helgaker, Jorgensen, Olsen, Ch. 9 -- molecular gradients
 #pragma once
 
-#include <xtensor/xtensor.hpp>
+#include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/scf/integrals.h"
