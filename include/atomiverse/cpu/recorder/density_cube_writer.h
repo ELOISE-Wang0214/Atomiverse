@@ -6,10 +6,9 @@
 ///   rho(r) = sum_{mu,nu} [P_alpha + P_beta]_{mu,nu} * phi_mu(r) * phi_nu(r)
 /// on a uniform Cartesian grid and writes a Gaussian ".cube" file.
 ///
-/// @note Current basis-evaluation kernel supports s- and p-shells only
-///       (l in {0,1}). Calling launch() on a higher-angular basis raises
-///       `std::runtime_error`; d/f support ships with the XC-grid work
-///       tracked in Phase 1.2.
+/// @note Current basis-evaluation kernel supports l <= 2 (s/p/d). Bases
+///       with f or higher angular momentum throw from `basis_eval.h` at
+///       the first grid point.
 ///
 /// Usage:
 /// @code

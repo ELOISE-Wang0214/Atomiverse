@@ -6,7 +6,7 @@
 ///   psi_i(r) = sum_mu C_alpha(mu, i) * phi_mu(r)
 /// on a uniform Cartesian grid and writes a Gaussian ".cube" file.
 ///
-/// @note Basis-evaluation kernel currently supports s- and p-shells only.
+/// @note Basis-evaluation kernel supports l <= 2 (s/p/d).
 #pragma once
 
 #include <string>

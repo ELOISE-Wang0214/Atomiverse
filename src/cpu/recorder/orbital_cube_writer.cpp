@@ -56,13 +56,6 @@ void OrbitalCubeWriter::launch(const cpu::LaunchContext& ctx) {
     const auto& shells = integrals.shells;
     const int n_basis = static_cast<int>(shells.size());
 
-    for (const auto& sh : shells) {
-        if (sh.l > 1)
-            throw std::runtime_error(
-                "OrbitalCubeWriter: basis contains l=" + std::to_string(sh.l) +
-                " shells; MO evaluation currently supports only s,p");
-    }
-
     const auto& C = (spin_ == OrbitalSpin::Alpha) ? result.C_alpha : result.C_beta;
     if (C.size() == 0)
         throw std::runtime_error("OrbitalCubeWriter: empty MO matrix for requested spin");

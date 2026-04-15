@@ -76,54 +76,27 @@ inline XCGridResult evaluate_xc_batched(
     std::vector<bool> active(G, false);
 
     // Loop: outer over shells (cache-friendly for exp), inner over grid points.
+    // Delegate the per-point polynomial logic to basis_eval.h so d-shells
+    // (and higher l) inherit the same code path as the cube writers.
     for (int mu = 0; mu < N; ++mu) {
         const auto& sh = shells[mu];
-        // Precompute min_alpha for this shell (once, not per grid point).
-        double min_alpha = sh.alpha[0];
-        for (int k = 1; k < sh.n_prim; ++k)
-            if (sh.alpha[k] < min_alpha) min_alpha = sh.alpha[k];
-
         for (int g = 0; g < G; ++g) {
-            double rx = static_cast<double>(grid.points[g].x);
-            double ry = static_cast<double>(grid.points[g].y);
-            double rz = static_cast<double>(grid.points[g].z);
-            double dx = rx - sh.center[0];
-            double dy = ry - sh.center[1];
-            double dz = rz - sh.center[2];
-            double r2 = dx*dx + dy*dy + dz*dz;
-
-            if (min_alpha * r2 > 36.0) continue;
-
-            // Radial part: sum of contracted Gaussians
-            double f = 0, dfx = 0, dfy = 0, dfz = 0;
-            for (int k = 0; k < sh.n_prim; ++k) {
-                double e = sh.coeff[k] * std::exp(-sh.alpha[k] * r2);
-                f += e;
-                if (is_gga) {
-                    double fac = -2.0 * sh.alpha[k] * e;
-                    dfx += fac * dx; dfy += fac * dy; dfz += fac * dz;
-                }
-            }
-
-            if (sh.l == 0) {
-                Phi(g, mu) = f;
-                if (is_gga) {
-                    dPhi_x(g, mu) = dfx;
-                    dPhi_y(g, mu) = dfy;
-                    dPhi_z(g, mu) = dfz;
-                }
+            const double rx = static_cast<double>(grid.points[g].x);
+            const double ry = static_cast<double>(grid.points[g].y);
+            const double rz = static_cast<double>(grid.points[g].z);
+            if (is_gga) {
+                double v, gx, gy, gz;
+                eval_basis_val_grad(sh, rx, ry, rz, v, gx, gy, gz);
+                Phi(g, mu) = v;
+                dPhi_x(g, mu) = gx;
+                dPhi_y(g, mu) = gy;
+                dPhi_z(g, mu) = gz;
+                if (std::abs(v) > 1e-20) active[g] = true;
             } else {
-                // p-type: phi = d_c * f
-                const double d[3] = {dx, dy, dz};
-                const int c = sh.cart;
-                Phi(g, mu) = d[c] * f;
-                if (is_gga) {
-                    dPhi_x(g, mu) = d[c] * dfx + (c == 0 ? f : 0.0);
-                    dPhi_y(g, mu) = d[c] * dfy + (c == 1 ? f : 0.0);
-                    dPhi_z(g, mu) = d[c] * dfz + (c == 2 ? f : 0.0);
-                }
+                const double v = eval_basis(sh, rx, ry, rz);
+                Phi(g, mu) = v;
+                if (std::abs(v) > 1e-20) active[g] = true;
             }
-            if (std::abs(Phi(g, mu)) > 1e-20) active[g] = true;
         }
     }
 

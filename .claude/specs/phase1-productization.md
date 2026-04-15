@@ -68,10 +68,21 @@ created: 2026-04-14
       to STO-3G, which silently gave wrong FD when an analytic gradient
       was tested at any other basis (exactly how the pre-existing
       3-atom bug stayed hidden).
-- [ ] **KS/d-shell XC grid** — `basis_eval.h` only handles l ∈ {0, 1}.
-      Blocks PBE/def2-SVP SCF itself (KS grid evaluation). Separate
-      from the gradient issue; surfaces as SCF hang before any force
-      is computed.
+- [x] **basis_eval d-shell (l=2) extension** — generalized value,
+      gradient, Hessian, and fused variants in `basis_eval.h` via the
+      polynomial prefactor `dx^nx dy^ny dz^nz` decoded from `sh.cart`
+      through `fill_cart_comps`. `xc_grid_engine.h` now delegates to
+      `eval_basis_val_grad` so the XC Phi/dPhi tables inherit l>=2
+      automatically. Cube writers drop their `l>1` guards.
+      Tests: `test_cpu_scf_basis_eval_dshell` — FD check of grad+hess
+      for every d-cart AO, plus RHF/6-31G* water density integral
+      recovering n_electrons on a 0.25-Bohr Cartesian grid.
+- [ ] **KS/d-shell direct SCF** — `scf_solve` on 6-31G*/def2-SVP with
+      LSDA or PBE aborts inside the UKS Fock build (`build_j_direct` +
+      `evaluate_xc_batched`) when d-shells enter the AO set. FD tests
+      and grid-density integration confirm the polynomial machinery
+      itself is correct; the blocker is in the direct-ERI J builder /
+      XC engine interaction for l=2. Separate follow-up.
 - [ ] **LBFGS line search** — current fixed-step LBFGSStep converges
       to ~10–30 mHa drift from the PySCF minimum because dtol triggers
       on small-step iterations that haven't actually minimized. Full

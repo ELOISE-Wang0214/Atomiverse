@@ -1,20 +1,102 @@
 /// @file cpu/scf/basis_eval.h
-/// @brief Inline basis function evaluation on grid points (s+p type Gaussians).
+/// @brief Inline basis function evaluation on grid points (s/p/d type Gaussians).
 ///
-/// Shared by scf_solve.cpp (V_xc construction) and gradient.cpp (XC gradient).
-/// All coordinates in Bohr.
+/// Shared by scf_solve.cpp (V_xc construction), gradient.cpp (XC gradient),
+/// and the cube-file writers. All coordinates in Bohr.
 ///
-/// For s-type (l=0): phi = sum c_k exp(-alpha_k r^2)
-/// For p-type (l=1): phi = d_c * sum c_k exp(-alpha_k r^2)
-///   where d_c is the Cartesian displacement along sh.cart (0=x,1=y,2=z).
+/// General Cartesian Gaussian:
+///   phi_{nx,ny,nz}(r) = dx^nx dy^ny dz^nz * sum_k c_k exp(-alpha_k r^2)
+///
+/// with dx = rx - sh.center[0], etc., and (nx, ny, nz) decoded from
+/// sh.cart via `fill_cart_comps(sh.l)` (matches libcint / PySCF order):
+///
+///   l=0: (0,0,0)                                   -- s
+///   l=1: (1,0,0) (0,1,0) (0,0,1)                   -- px, py, pz
+///   l=2: (2,0,0) (1,1,0) (1,0,1) (0,2,0) (0,1,1) (0,0,2)  -- xx xy xz yy yz zz
 #pragma once
 
+#include "atomiverse/cpu/scf/cart.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
+
 #include <cmath>
 
 namespace ATV {
 namespace cpu {
 namespace scf {
+
+namespace detail {
+
+/// @brief `value^k` via simple loop (k <= kMaxL so the loop body is tiny).
+[[nodiscard]] inline double pow_int(double v, int k) {
+    double r = 1.0;
+    for (int i = 0; i < k; ++i) r *= v;
+    return r;
+}
+
+/// @brief Polynomial value P = dx^nx dy^ny dz^nz.
+[[nodiscard]] inline double poly_val(int nx, int ny, int nz,
+                                     double dx, double dy, double dz) {
+    return pow_int(dx, nx) * pow_int(dy, ny) * pow_int(dz, nz);
+}
+
+/// @brief First-derivative polynomial:
+///        dP/dr_i for P = dx^nx dy^ny dz^nz, with exponents (nx,ny,nz).
+///
+/// The axis parameter selects: 0 = d/dx, 1 = d/dy, 2 = d/dz.
+[[nodiscard]] inline double poly_grad(int axis,
+                                      int nx, int ny, int nz,
+                                      double dx, double dy, double dz) {
+    switch (axis) {
+        case 0: return (nx == 0) ? 0.0
+                                 : nx * pow_int(dx, nx - 1)
+                                       * pow_int(dy, ny)
+                                       * pow_int(dz, nz);
+        case 1: return (ny == 0) ? 0.0
+                                 : ny * pow_int(dx, nx)
+                                       * pow_int(dy, ny - 1)
+                                       * pow_int(dz, nz);
+        default: return (nz == 0) ? 0.0
+                                  : nz * pow_int(dx, nx)
+                                        * pow_int(dy, ny)
+                                        * pow_int(dz, nz - 1);
+    }
+}
+
+/// @brief Second-derivative polynomial d²P / (dr_i dr_j).
+[[nodiscard]] inline double poly_hess(int i, int j,
+                                      int nx, int ny, int nz,
+                                      double dx, double dy, double dz) {
+    int n[3] = {nx, ny, nz};
+    double d[3] = {dx, dy, dz};
+    if (i == j) {
+        if (n[i] < 2) return 0.0;
+        int nn[3] = {nx, ny, nz};
+        nn[i] -= 2;
+        return static_cast<double>(n[i]) * (n[i] - 1)
+             * pow_int(d[0], nn[0])
+             * pow_int(d[1], nn[1])
+             * pow_int(d[2], nn[2]);
+    } else {
+        if (n[i] == 0 || n[j] == 0) return 0.0;
+        int nn[3] = {nx, ny, nz};
+        nn[i] -= 1; nn[j] -= 1;
+        return static_cast<double>(n[i]) * n[j]
+             * pow_int(d[0], nn[0])
+             * pow_int(d[1], nn[1])
+             * pow_int(d[2], nn[2]);
+    }
+}
+
+/// @brief Decode sh.cart -> (nx, ny, nz) via the canonical libcint order.
+inline void cart_exponents(const native::Shell& sh, int n[3]) {
+    int table[kMaxNCart][3];
+    fill_cart_comps(sh.l, table);
+    n[0] = table[sh.cart][0];
+    n[1] = table[sh.cart][1];
+    n[2] = table[sh.cart][2];
+}
+
+} // namespace detail
 
 /// @brief Evaluate contracted basis function at a grid point.
 /// @param sh Shell descriptor (exponents, normalized coefficients, center, l, cart).
@@ -22,7 +104,8 @@ namespace scf {
 /// @param ry Grid point y [Bohr].
 /// @param rz Grid point z [Bohr].
 /// @return Basis function value phi(r).
-inline double eval_basis(const native::Shell& sh, double rx, double ry, double rz) {
+inline double eval_basis(const native::Shell& sh,
+                         double rx, double ry, double rz) {
     double dx = rx - sh.center[0];
     double dy = ry - sh.center[1];
     double dz = rz - sh.center[2];
@@ -35,25 +118,18 @@ inline double eval_basis(const native::Shell& sh, double rx, double ry, double r
     for (int k = 0; k < sh.n_prim; ++k)
         radial += sh.coeff[k] * std::exp(-sh.alpha[k] * r2);
     if (sh.l == 0) return radial;
-    // p-type: phi = d_c * radial
-    const double d[3] = {dx, dy, dz};
-    return d[sh.cart] * radial;
+    int n[3];
+    detail::cart_exponents(sh, n);
+    return detail::poly_val(n[0], n[1], n[2], dx, dy, dz) * radial;
 }
 
 /// @brief Evaluate spatial gradient of contracted basis function.
 ///
-/// s-type: dphi/dr_i = sum_k c_k * (-2 alpha_k) * d_i * exp(...)
-/// p-type: dphi/dr_i = delta(i,c)*f + d_c * df/dr_i
-///   where f = radial part, df/dr_i = s-type gradient
-///
-/// @param sh Shell descriptor.
-/// @param rx Grid point x [Bohr].
-/// @param ry Grid point y [Bohr].
-/// @param rz Grid point z [Bohr].
-/// @param[out] gx dphi/dx.
-/// @param[out] gy dphi/dy.
-/// @param[out] gz dphi/dz.
-inline void eval_basis_grad(const native::Shell& sh, double rx, double ry, double rz,
+/// d/dr_i [P(r) * f(r)] = (dP/dr_i) * f + P * (df/dr_i)
+///   where P = dx^nx dy^ny dz^nz and f = radial part.
+///   df/dr_i = s-type radial gradient = sum_k c_k * (-2 alpha_k d_i) exp(-alpha_k r²).
+inline void eval_basis_grad(const native::Shell& sh,
+                            double rx, double ry, double rz,
                             double& gx, double& gy, double& gz) {
     double dx = rx - sh.center[0];
     double dy = ry - sh.center[1];
@@ -64,7 +140,7 @@ inline void eval_basis_grad(const native::Shell& sh, double rx, double ry, doubl
     for (int k = 0; k < sh.n_prim; ++k)
         if (sh.alpha[k] < min_alpha) min_alpha = sh.alpha[k];
     if (min_alpha * r2 > 36.0) return;
-    // Compute radial part f and its gradient df/dr_i (= s-type gradient)
+    // Radial f and df/dr_i.
     double f = 0, dfx = 0, dfy = 0, dfz = 0;
     for (int k = 0; k < sh.n_prim; ++k) {
         double e = sh.coeff[k] * std::exp(-sh.alpha[k] * r2);
@@ -74,37 +150,25 @@ inline void eval_basis_grad(const native::Shell& sh, double rx, double ry, doubl
     }
     if (sh.l == 0) {
         gx = dfx; gy = dfy; gz = dfz;
-    } else {
-        // p-type: d/dr_i [d_c * f] = delta(i,c)*f + d_c*df/dr_i
-        const double d[3] = {dx, dy, dz};
-        const double df[3] = {dfx, dfy, dfz};
-        gx = d[sh.cart] * dfx;
-        gy = d[sh.cart] * dfy;
-        gz = d[sh.cart] * dfz;
-        // Add delta(i,c)*f contribution
-        double* g_arr[3] = {&gx, &gy, &gz};
-        *g_arr[sh.cart] += f;
+        return;
     }
+    int n[3];
+    detail::cart_exponents(sh, n);
+    const double P = detail::poly_val(n[0], n[1], n[2], dx, dy, dz);
+    const double dPx = detail::poly_grad(0, n[0], n[1], n[2], dx, dy, dz);
+    const double dPy = detail::poly_grad(1, n[0], n[1], n[2], dx, dy, dz);
+    const double dPz = detail::poly_grad(2, n[0], n[1], n[2], dx, dy, dz);
+    gx = dPx * f + P * dfx;
+    gy = dPy * f + P * dfy;
+    gz = dPz * f + P * dfz;
 }
 
 /// @brief Evaluate spatial Hessian of contracted basis function.
 ///
-/// s-type Hessian: d^2f/(dr_i dr_j) = sum_k c_k exp(...)
-///       * [-2 alpha_k delta_{ij} + 4 alpha_k^2 d_i d_j]
-/// p-type Hessian: d^2phi/(dr_i dr_j) = delta(i,c)*df/dr_j + delta(j,c)*df/dr_i
-///       + d_c * d^2f/(dr_i dr_j)
-///
-/// @param sh  Shell descriptor.
-/// @param rx  Grid point x [Bohr].
-/// @param ry  Grid point y [Bohr].
-/// @param rz  Grid point z [Bohr].
-/// @param[out] hxx d^2 phi / dx^2.
-/// @param[out] hxy d^2 phi / (dx dy).
-/// @param[out] hxz d^2 phi / (dx dz).
-/// @param[out] hyy d^2 phi / dy^2.
-/// @param[out] hyz d^2 phi / (dy dz).
-/// @param[out] hzz d^2 phi / dz^2.
-inline void eval_basis_hessian(const native::Shell& sh, double rx, double ry, double rz,
+/// d²/(dr_i dr_j) [P * f] = d²P/(dr_i dr_j) * f + dP/dr_i * df/dr_j
+///                        + dP/dr_j * df/dr_i + P * d²f/(dr_i dr_j).
+inline void eval_basis_hessian(const native::Shell& sh,
+                               double rx, double ry, double rz,
                                double& hxx, double& hxy, double& hxz,
                                double& hyy, double& hyz, double& hzz) {
     double dx = rx - sh.center[0];
@@ -116,11 +180,10 @@ inline void eval_basis_hessian(const native::Shell& sh, double rx, double ry, do
     for (int k = 0; k < sh.n_prim; ++k)
         if (sh.alpha[k] < min_alpha) min_alpha = sh.alpha[k];
     if (min_alpha * r2 > 36.0) return;
-    // Compute s-type radial quantities: f, df[3], d2f[6]
+    // s-type radial: f, df[3], d2f[3][3].
     double f = 0;
     double df[3] = {0, 0, 0};
-    double d2f_xx = 0, d2f_xy = 0, d2f_xz = 0;
-    double d2f_yy = 0, d2f_yz = 0, d2f_zz = 0;
+    double d2f[3][3] = {{0,0,0},{0,0,0},{0,0,0}};
     for (int k = 0; k < sh.n_prim; ++k) {
         double a = sh.alpha[k];
         double e = sh.coeff[k] * std::exp(-a * r2);
@@ -128,57 +191,41 @@ inline void eval_basis_hessian(const native::Shell& sh, double rx, double ry, do
         f += e;
         double fac = -2.0 * a * e;
         df[0] += fac * dx; df[1] += fac * dy; df[2] += fac * dz;
-        d2f_xx += e * (-2.0*a + 4.0*a2*dx*dx);
-        d2f_yy += e * (-2.0*a + 4.0*a2*dy*dy);
-        d2f_zz += e * (-2.0*a + 4.0*a2*dz*dz);
-        d2f_xy += e * 4.0*a2*dx*dy;
-        d2f_xz += e * 4.0*a2*dx*dz;
-        d2f_yz += e * 4.0*a2*dy*dz;
+        d2f[0][0] += e * (-2.0*a + 4.0*a2*dx*dx);
+        d2f[1][1] += e * (-2.0*a + 4.0*a2*dy*dy);
+        d2f[2][2] += e * (-2.0*a + 4.0*a2*dz*dz);
+        d2f[0][1] += e * 4.0*a2*dx*dy;
+        d2f[0][2] += e * 4.0*a2*dx*dz;
+        d2f[1][2] += e * 4.0*a2*dy*dz;
     }
+    d2f[1][0] = d2f[0][1];
+    d2f[2][0] = d2f[0][2];
+    d2f[2][1] = d2f[1][2];
+
     if (sh.l == 0) {
-        hxx = d2f_xx; hxy = d2f_xy; hxz = d2f_xz;
-        hyy = d2f_yy; hyz = d2f_yz; hzz = d2f_zz;
-    } else {
-        // p-type: d^2/(dr_i dr_j)[d_c*f] = delta(i,c)*df_j + delta(j,c)*df_i + d_c*d2f_ij
-        const double d[3] = {dx, dy, dz};
-        const int c = sh.cart;
-        double d2f[3][3] = {
-            {d2f_xx, d2f_xy, d2f_xz},
-            {d2f_xy, d2f_yy, d2f_yz},
-            {d2f_xz, d2f_yz, d2f_zz}
-        };
-        // h[i][j] = delta(i,c)*df[j] + delta(j,c)*df[i] + d[c]*d2f[i][j]
-        double h[3][3];
-        for (int i = 0; i < 3; ++i)
-            for (int j = 0; j < 3; ++j)
-                h[i][j] = d[c] * d2f[i][j]
-                         + (i == c ? df[j] : 0.0)
-                         + (j == c ? df[i] : 0.0);
-        hxx = h[0][0]; hxy = h[0][1]; hxz = h[0][2];
-        hyy = h[1][1]; hyz = h[1][2]; hzz = h[2][2];
+        hxx = d2f[0][0]; hxy = d2f[0][1]; hxz = d2f[0][2];
+        hyy = d2f[1][1]; hyz = d2f[1][2]; hzz = d2f[2][2];
+        return;
     }
+    int n[3];
+    detail::cart_exponents(sh, n);
+    const double P = detail::poly_val(n[0], n[1], n[2], dx, dy, dz);
+    double dP[3] = {
+        detail::poly_grad(0, n[0], n[1], n[2], dx, dy, dz),
+        detail::poly_grad(1, n[0], n[1], n[2], dx, dy, dz),
+        detail::poly_grad(2, n[0], n[1], n[2], dx, dy, dz),
+    };
+    auto h = [&](int i, int j) {
+        double d2P = detail::poly_hess(i, j, n[0], n[1], n[2], dx, dy, dz);
+        return d2P * f + dP[i] * df[j] + dP[j] * df[i] + P * d2f[i][j];
+    };
+    hxx = h(0,0); hxy = h(0,1); hxz = h(0,2);
+    hyy = h(1,1); hyz = h(1,2); hzz = h(2,2);
 }
 
 /// @brief Fused evaluation of basis function value, gradient, and Hessian.
-///
-/// Computes all three in a single pass over primitives, sharing the exp() call.
-/// Handles both s-type (l=0) and p-type (l=1) basis functions.
-///
-/// @param sh  Shell descriptor.
-/// @param rx  Grid point x [Bohr].
-/// @param ry  Grid point y [Bohr].
-/// @param rz  Grid point z [Bohr].
-/// @param[out] val Basis function value phi(r).
-/// @param[out] gx dphi/dx.
-/// @param[out] gy dphi/dy.
-/// @param[out] gz dphi/dz.
-/// @param[out] hxx d^2 phi / dx^2.
-/// @param[out] hxy d^2 phi / (dx dy).
-/// @param[out] hxz d^2 phi / (dx dz).
-/// @param[out] hyy d^2 phi / dy^2.
-/// @param[out] hyz d^2 phi / (dy dz).
-/// @param[out] hzz d^2 phi / dz^2.
-inline void eval_basis_all(const native::Shell& sh, double rx, double ry, double rz,
+inline void eval_basis_all(const native::Shell& sh,
+                           double rx, double ry, double rz,
                            double& val,
                            double& gx, double& gy, double& gz,
                            double& hxx, double& hxy, double& hxz,
@@ -193,70 +240,57 @@ inline void eval_basis_all(const native::Shell& sh, double rx, double ry, double
     for (int k = 0; k < sh.n_prim; ++k)
         if (sh.alpha[k] < min_alpha) min_alpha = sh.alpha[k];
     if (min_alpha * r2 > 36.0) return;
-    // Compute s-type radial quantities
+    // Radial part and derivatives.
     double f = 0;
-    double df_arr[3] = {0, 0, 0};
-    double d2f_arr[6] = {0, 0, 0, 0, 0, 0}; // xx,xy,xz,yy,yz,zz
+    double df[3] = {0, 0, 0};
+    double d2f[3][3] = {{0,0,0},{0,0,0},{0,0,0}};
     for (int k = 0; k < sh.n_prim; ++k) {
         double a = sh.alpha[k];
         double e = sh.coeff[k] * std::exp(-a * r2);
         double a2 = a * a;
         f += e;
         double fac = -2.0 * a * e;
-        df_arr[0] += fac * dx; df_arr[1] += fac * dy; df_arr[2] += fac * dz;
-        d2f_arr[0] += e * (-2.0*a + 4.0*a2*dx*dx); // xx
-        d2f_arr[1] += e * 4.0*a2*dx*dy;             // xy
-        d2f_arr[2] += e * 4.0*a2*dx*dz;             // xz
-        d2f_arr[3] += e * (-2.0*a + 4.0*a2*dy*dy); // yy
-        d2f_arr[4] += e * 4.0*a2*dy*dz;             // yz
-        d2f_arr[5] += e * (-2.0*a + 4.0*a2*dz*dz); // zz
+        df[0] += fac * dx; df[1] += fac * dy; df[2] += fac * dz;
+        d2f[0][0] += e * (-2.0*a + 4.0*a2*dx*dx);
+        d2f[1][1] += e * (-2.0*a + 4.0*a2*dy*dy);
+        d2f[2][2] += e * (-2.0*a + 4.0*a2*dz*dz);
+        d2f[0][1] += e * 4.0*a2*dx*dy;
+        d2f[0][2] += e * 4.0*a2*dx*dz;
+        d2f[1][2] += e * 4.0*a2*dy*dz;
     }
+    d2f[1][0] = d2f[0][1];
+    d2f[2][0] = d2f[0][2];
+    d2f[2][1] = d2f[1][2];
     if (sh.l == 0) {
         val = f;
-        gx = df_arr[0]; gy = df_arr[1]; gz = df_arr[2];
-        hxx = d2f_arr[0]; hxy = d2f_arr[1]; hxz = d2f_arr[2];
-        hyy = d2f_arr[3]; hyz = d2f_arr[4]; hzz = d2f_arr[5];
-    } else {
-        const double d[3] = {dx, dy, dz};
-        const int c = sh.cart;
-        val = d[c] * f;
-        // Gradient: delta(i,c)*f + d_c*df_i
-        double g[3];
-        for (int i = 0; i < 3; ++i)
-            g[i] = d[c] * df_arr[i] + (i == c ? f : 0.0);
-        gx = g[0]; gy = g[1]; gz = g[2];
-        // Hessian: delta(i,c)*df_j + delta(j,c)*df_i + d_c*d2f_ij
-        // d2f indexed as: [0]=xx [1]=xy [2]=xz [3]=yy [4]=yz [5]=zz
-        double d2f[3][3] = {
-            {d2f_arr[0], d2f_arr[1], d2f_arr[2]},
-            {d2f_arr[1], d2f_arr[3], d2f_arr[4]},
-            {d2f_arr[2], d2f_arr[4], d2f_arr[5]}
-        };
-        double h[3][3];
-        for (int i = 0; i < 3; ++i)
-            for (int j = 0; j < 3; ++j)
-                h[i][j] = d[c] * d2f[i][j]
-                         + (i == c ? df_arr[j] : 0.0)
-                         + (j == c ? df_arr[i] : 0.0);
-        hxx = h[0][0]; hxy = h[0][1]; hxz = h[0][2];
-        hyy = h[1][1]; hyz = h[1][2]; hzz = h[2][2];
+        gx = df[0]; gy = df[1]; gz = df[2];
+        hxx = d2f[0][0]; hxy = d2f[0][1]; hxz = d2f[0][2];
+        hyy = d2f[1][1]; hyz = d2f[1][2]; hzz = d2f[2][2];
+        return;
     }
+    int n[3];
+    detail::cart_exponents(sh, n);
+    const double P = detail::poly_val(n[0], n[1], n[2], dx, dy, dz);
+    double dP[3] = {
+        detail::poly_grad(0, n[0], n[1], n[2], dx, dy, dz),
+        detail::poly_grad(1, n[0], n[1], n[2], dx, dy, dz),
+        detail::poly_grad(2, n[0], n[1], n[2], dx, dy, dz),
+    };
+    val = P * f;
+    gx = dP[0] * f + P * df[0];
+    gy = dP[1] * f + P * df[1];
+    gz = dP[2] * f + P * df[2];
+    auto h = [&](int i, int j) {
+        double d2P = detail::poly_hess(i, j, n[0], n[1], n[2], dx, dy, dz);
+        return d2P * f + dP[i] * df[j] + dP[j] * df[i] + P * d2f[i][j];
+    };
+    hxx = h(0,0); hxy = h(0,1); hxz = h(0,2);
+    hyy = h(1,1); hyz = h(1,2); hzz = h(2,2);
 }
 
 /// @brief Fused evaluation of basis function value and gradient.
-///
-/// Single pass over primitives, sharing the exp() call.
-/// Handles both s-type (l=0) and p-type (l=1) basis functions.
-///
-/// @param sh  Shell descriptor.
-/// @param rx  Grid point x [Bohr].
-/// @param ry  Grid point y [Bohr].
-/// @param rz  Grid point z [Bohr].
-/// @param[out] val Basis function value phi(r).
-/// @param[out] gx dphi/dx.
-/// @param[out] gy dphi/dy.
-/// @param[out] gz dphi/dz.
-inline void eval_basis_val_grad(const native::Shell& sh, double rx, double ry, double rz,
+inline void eval_basis_val_grad(const native::Shell& sh,
+                                double rx, double ry, double rz,
                                 double& val, double& gx, double& gy, double& gz) {
     double dx = rx - sh.center[0];
     double dy = ry - sh.center[1];
@@ -278,14 +312,18 @@ inline void eval_basis_val_grad(const native::Shell& sh, double rx, double ry, d
     if (sh.l == 0) {
         val = f;
         gx = dfx; gy = dfy; gz = dfz;
-    } else {
-        const double d[3] = {dx, dy, dz};
-        const int c = sh.cart;
-        val = d[c] * f;
-        gx = d[c] * dfx + (c == 0 ? f : 0.0);
-        gy = d[c] * dfy + (c == 1 ? f : 0.0);
-        gz = d[c] * dfz + (c == 2 ? f : 0.0);
+        return;
     }
+    int n[3];
+    detail::cart_exponents(sh, n);
+    const double P = detail::poly_val(n[0], n[1], n[2], dx, dy, dz);
+    const double dPx = detail::poly_grad(0, n[0], n[1], n[2], dx, dy, dz);
+    const double dPy = detail::poly_grad(1, n[0], n[1], n[2], dx, dy, dz);
+    const double dPz = detail::poly_grad(2, n[0], n[1], n[2], dx, dy, dz);
+    val = P * f;
+    gx = dPx * f + P * dfx;
+    gy = dPy * f + P * dfy;
+    gz = dPz * f + P * dfz;
 }
 
 } // namespace scf

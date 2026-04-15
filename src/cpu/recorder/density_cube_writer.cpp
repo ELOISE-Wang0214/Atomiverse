@@ -52,14 +52,6 @@ void DensityCubeWriter::launch(const cpu::LaunchContext& ctx) {
     const auto& shells = integrals.shells;
     const int n_basis = static_cast<int>(shells.size());
 
-    for (const auto& sh : shells) {
-        if (sh.l > 1)
-            throw std::runtime_error(
-                "DensityCubeWriter: basis contains l=" + std::to_string(sh.l) +
-                " shells; density evaluation currently supports only s,p "
-                "(XC grid / cube engine extended in Phase 1.2)");
-    }
-
     // P_total convention (see src/cpu/scf/scf_solve.cpp):
     //   Restricted: `P_alpha` already holds the full double-occupied density
     //               (built with factor 2); `P_beta` aliases the same matrix.
