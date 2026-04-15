@@ -216,8 +216,15 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/libcint_bridge.cpp
             src/cpu/scf/aspc_predictor.cpp
             src/cpu/scf/scf_evaluator.cpp
+            src/cpu/scf/orbital_info_observer.cpp
             src/cpu/minimizer/init.cpp
             src/cpu/minimizer/lbfgs.cpp
+            src/cpu/minimizer/trajectory_writer.cpp
+            src/cpu/minimizer/opt_log.cpp
+            src/cpu/minimizer/final_geometry.cpp
+            src/cpu/recorder/cube.cpp
+            src/cpu/recorder/density_cube_writer.cpp
+            src/cpu/recorder/orbital_cube_writer.cpp
             src/cpu/observer/mulliken.cpp
         )
         if(ATV_BUILD_CUDA)

@@ -84,13 +84,27 @@ created: 2026-04-14
       full suite
 
 ### 1.3 Standard outputs (components, no workflow classes)
-- [ ] `cpu::minimizer::TrajectoryWriter` — append .xyz per step
-- [ ] `cpu::minimizer::OptLog` — TSV of step/E/max_F/rms_F/step_norm
-- [ ] `cpu::minimizer::FinalGeometry` — write on converged flag
-- [ ] `cpu::scf::OrbitalInfoObserver` — HOMO/LUMO/gap from `SCFResult`
-- [ ] `cpu::scf::DensityCubeWriter` — Gaussian `.cube` density
-- [ ] `cpu::scf::OrbitalCubeWriter` — `.cube` for a chosen MO index
-- [ ] Tests for each
+- [x] `cpu::minimizer::TrajectoryWriter` — molrs XYZ appender, stride support
+- [x] `cpu::minimizer::OptLog` — TSV: step, energy_eV, max_force, rms_force,
+      step_norm (tracks previous positions internally)
+- [x] `cpu::minimizer::FinalGeometry` — single-frame XYZ, overwritten each
+      end_of_step; after `run()` the file holds the last geometry visited.
+      (Cross-component reference to `LBFGSStep::converged()` is impractical
+      because the driver owns components by value; the overwrite model
+      delivers the same observable outcome without the coupling.)
+- [x] `cpu::scf::OrbitalInfoObserver` — HOMO/LUMO/gap TSV from `SCFResult`
+- [x] `cpu::scf::DensityCubeWriter` — Gaussian `.cube`, respects RHF vs
+      UHF/UKS density convention (`P_alpha` is already double-occupied in
+      restricted, summed with `P_beta` only for unrestricted). s/p only.
+- [x] `cpu::scf::OrbitalCubeWriter` — MO `.cube` by index + spin channel
+- [x] **SCFEvaluator state exposure**: evaluator now caches the latest
+      `SCFResult`/`IntegralPack`/`SCFConfig` in `shared_ptr` members and
+      publishes a `SCFResultHandle` bundle. Observer components capture the
+      bundle once and keep reading from it across the driver's value-copy
+      of the evaluator.
+- [x] Tests: `test_cpu_minimizer_recorders`,
+      `test_cpu_scf_orbital_info_observer`, `test_cpu_recorder_density_cube`
+      (all 22 suite tests green).
 
 ### 1.4 Locked default level of theory
 - [ ] `cpu::scf::default_config(integrals)` — PBE/def2-SVP production

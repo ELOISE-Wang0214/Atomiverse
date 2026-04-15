@@ -22,12 +22,26 @@
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/gradient.h"
 #include "atomiverse/cpu/scf/aspc_predictor.h"
 
 namespace ATV {
 namespace cpu {
 namespace scf {
+
+/// @brief Shared view into the latest SCFEvaluator state.
+///
+/// Bundles the three shared-pointer handles published by `SCFEvaluator`.
+/// Observer components capture one of these during construction and then
+/// read from it each step; the pointers stay valid across the driver's
+/// value-copy of the evaluator.
+struct SCFResultHandle {
+    std::shared_ptr<const SCFResult> result;       ///< Latest SCF result.
+    std::shared_ptr<const IntegralPack> integrals; ///< Latest integrals (shells + atoms).
+    std::shared_ptr<const bool> ready;             ///< True once a launch has completed.
+    std::shared_ptr<const SCFConfig> config;       ///< SCF configuration (spin, method, grid).
+};
 
 /// @brief Ab initio force evaluator component for MD drivers.
 ///
@@ -62,6 +76,42 @@ public:
     void build(const cpu::BuildContext& ctx) override;
     void launch(const cpu::LaunchContext& ctx) override;
 
+    /// @brief Whether a full SCF result is available from a completed step.
+    bool has_last_result() const { return *has_last_result_; }
+
+    /// @brief Most recent SCFResult produced by launch().
+    /// @pre has_last_result() == true.
+    const SCFResult& last_result() const { return *last_result_; }
+
+    /// @brief Most recent IntegralPack rebuilt for the current geometry.
+    /// @pre has_last_result() == true.
+    const IntegralPack& last_integrals() const { return *last_integrals_; }
+
+    /// @brief SCF configuration (method, spin, grid, etc.).
+    const SCFConfig& config() const { return config_; }
+
+    /// @brief Shared handle to the latest SCFResult.
+    ///
+    /// Returns a shared_ptr that stays valid across driver ownership moves
+    /// (the driver copies the SCFEvaluator by value when adding components).
+    /// Observers such as `OrbitalInfoObserver` use this to read state written
+    /// by the driver-owned evaluator.
+    ///
+    /// @note `*has_last_result_handle()` is initially false; check it before
+    ///       dereferencing `last_result_handle()`.
+    std::shared_ptr<const SCFResult> last_result_handle() const { return last_result_; }
+
+    /// @brief Shared handle to the latest IntegralPack. @see last_result_handle.
+    std::shared_ptr<const IntegralPack> last_integrals_handle() const { return last_integrals_; }
+
+    /// @brief Shared readiness flag (true after the first converged launch()).
+    std::shared_ptr<const bool> has_last_result_handle() const { return has_last_result_; }
+
+    /// @brief Bundled handle for observer components.
+    SCFResultHandle result_handle() const {
+        return {last_result_, last_integrals_, has_last_result_, config_shared_};
+    }
+
 private:
     SCFConfig config_;
     BasisSet basis_;
@@ -76,6 +126,13 @@ private:
     bool has_last_density_ = false;
     xt::xtensor<double, 2> last_P_alpha_;
     xt::xtensor<double, 2> last_P_beta_;
+
+    // Shared-pointer storage so observers can capture handles that stay valid
+    // after the driver copies this evaluator into its owned-component list.
+    std::shared_ptr<bool> has_last_result_{std::make_shared<bool>(false)};
+    std::shared_ptr<SCFResult> last_result_{std::make_shared<SCFResult>()};
+    std::shared_ptr<IntegralPack> last_integrals_{std::make_shared<IntegralPack>()};
+    std::shared_ptr<SCFConfig> config_shared_;  // initialized in ctor
 
     std::function<void(const SCFResult&)> on_evaluate_;
 };

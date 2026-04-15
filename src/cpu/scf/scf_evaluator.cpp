@@ -11,7 +11,8 @@ namespace cpu {
 namespace scf {
 
 SCFEvaluator::SCFEvaluator(SCFConfig config, BasisSet basis, int charge)
-    : config_(std::move(config)), basis_(basis), charge_(charge) {}
+    : config_(std::move(config)), basis_(basis), charge_(charge),
+      config_shared_(std::make_shared<SCFConfig>(config_)) {}
 
 SCFEvaluator& SCFEvaluator::predictor(int order, int corrector_steps,
                                        double corrector_tol, bool fallback) {
@@ -146,6 +147,14 @@ void SCFEvaluator::launch(const cpu::LaunchContext& ctx) {
 
     if (on_evaluate_)
         on_evaluate_(result);
+
+    // Cache SCF state for downstream observers (OrbitalInfoObserver, cube
+    // writers). Shell pointers inside `integrals.shells` index into
+    // `integrals.shell_data`; moving both together keeps those pointers valid
+    // because std::vector move preserves the underlying buffer addresses.
+    *last_integrals_ = std::move(integrals);
+    *last_result_ = std::move(result);
+    *has_last_result_ = true;
 }
 
 } // namespace scf
