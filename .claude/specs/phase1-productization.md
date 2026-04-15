@@ -88,10 +88,18 @@ created: 2026-04-14
       converges in 12 iters to -76.327 Ha; grid-integrated n_electrons
       recovers 5.0 ± 0.003 per spin on the SG-0-ish grid. Test:
       `test_cpu_scf_basis_eval_dshell::PBE_631Gs_WaterConvergesAndIntegratesNElectrons`.
-- [ ] **LBFGS line search** — current fixed-step LBFGSStep converges
-      to ~10–30 mHa drift from the PySCF minimum because dtol triggers
-      on small-step iterations that haven't actually minimized. Full
-      1.2 acceptance (1e-6 Ha energy parity) needs a line search.
+- [x] **LBFGS line search** — `LBFGSStep::line_search(c1, contract,
+      min_alpha)` enables Armijo backtracking across successive driver
+      steps: on step k the search_direction phase compares
+      `E_k - E_{k-1} <= c1 * alpha * g_{k-1}.d_{k-1}`, rolling back to
+      `x_{k-1}` and shrinking `alpha` by `contract` on failure without
+      advancing the L-BFGS history. Integrates cleanly with the
+      "one-force-per-step" driver loop — no new component or phase
+      binding. Off by default; tutorials and benchmarks opt in via
+      `step.line_search()`. Test:
+      `test_cpu_minimizer_lbfgs::H2RHFArmijoLineSearchReachesTightForce`
+      drives H2/STO-3G to the PySCF bond length within 0.01 Å at a
+      1 mHa/Bohr force tolerance.
 - [ ] Expand geometry set to 12 (benzene, naphthalene, ethanol,
       glycine, aspirin, caffeine, O2 triplet, NO doublet, CH3•)
 - [ ] Regenerate references for the full set at PBE/def2-SVP (d-shell

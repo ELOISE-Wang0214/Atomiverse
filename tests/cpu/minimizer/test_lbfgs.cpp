@@ -76,3 +76,31 @@ TEST_F(LBFGSTest, CompressedH2Expands) {
     EXPECT_GT(static_cast<double>(bond), 0.5)
         << "Compressed H2 should expand";
 }
+
+TEST_F(LBFGSTest, H2RHFArmijoLineSearchReachesTightForce) {
+    // Armijo-backtracking line search should drive max-force below a tight
+    // threshold that the fixed-step default cannot reliably hit. Uses the
+    // same H2/STO-3G setup but a much tighter ftol (1 mHa/Bohr ≈ 0.025 eV/Å).
+    auto frame = make_h2(1.2);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto config = cpu::scf::rhf_config(integrals);
+
+    cpu::minimizer::LBFGSStep step{
+        /*memory=*/5, /*alpha0=*/0.05,
+        /*ftol=*/0.001,       // eV/Å
+        /*max_ls=*/20,
+        /*rms_ftol=*/0.0005,
+        /*max_dtol=*/0.001,
+        /*rms_dtol=*/0.0005,
+        /*etol=*/1e-7};
+    step.line_search();  // Armijo default constants.
+    cpu::minimizer::LBFGS opt;
+    opt.add(std::move(step));
+    opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
+    opt.build();
+    opt.run(frame, 80);
+
+    double bond = frame.atoms.x(1) - frame.atoms.x(0);
+    // H2/STO-3G PySCF-minimum bond ≈ 0.7122 Å.
+    EXPECT_NEAR(static_cast<double>(bond), 0.7122, 0.01);
+}

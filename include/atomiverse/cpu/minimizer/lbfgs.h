@@ -64,7 +64,7 @@ public:
     /// @param memory    Number of correction pairs to store (default 5).
     /// @param alpha0    Initial step size [Angstrom^2/eV] (default 0.01).
     /// @param ftol      Max force convergence tolerance [eV/Angstrom] (default 0.05).
-    /// @param max_ls    Maximum line search iterations (default 10).
+    /// @param max_ls    Maximum backtracking attempts per step (default 10).
     /// @param rms_ftol  RMS force tolerance [eV/Angstrom] (default 0.03).
     /// @param max_dtol  Max displacement tolerance [Angstrom] (default 0.002).
     /// @param rms_dtol  RMS displacement tolerance [Angstrom] (default 0.001).
@@ -73,6 +73,24 @@ public:
               double ftol = 0.05, int max_ls = 10,
               double rms_ftol = 0.03, double max_dtol = 0.002,
               double rms_dtol = 0.001, double etol = 1e-5);
+
+    /// @brief Enable the backtracking line search (Armijo condition).
+    ///
+    /// When enabled, each driver step that fails `E_{k+1} - E_k <= c1 * alpha_k
+    /// * g_k.d_k` is *rolled back*: the positions return to `x_k`, alpha is
+    /// scaled by `contract`, and the trial is re-taken from `x_k` along the
+    /// same direction. History (s, y pairs) is only updated on accepted
+    /// trials. `min_alpha` caps the shrink to avoid infinite loops.
+    ///
+    /// Must be called before `opt.build()` for the setting to take effect.
+    /// @param c1         Armijo constant in (0, 1) (default 1e-4).
+    /// @param contract   Backtracking contraction factor (default 0.5).
+    /// @param min_alpha  Minimum alpha before accepting the trial even on
+    ///                   Armijo failure (default 1e-6).
+    /// @return Reference to self for chaining.
+    LBFGSStep& line_search(double c1 = 1e-4,
+                           double contract = 0.5,
+                           double min_alpha = 1e-6);
 
     std::string name() const override { return "lbfgs_step"; }
 
@@ -121,6 +139,16 @@ private:
     double max_force_ = 0;
     double energy_prev_ = 0;
     int step_ = 0;
+
+    // Line search (optional; off by default to preserve legacy behaviour).
+    bool line_search_enabled_ = false;
+    double ls_c1_ = 1e-4;        // Armijo constant.
+    double ls_contract_ = 0.5;   // Backtracking factor.
+    double ls_min_alpha_ = 1e-6; // Floor on alpha.
+    double ls_alpha_ = 0;        // Alpha chosen for the most recent trial.
+    double ls_gd_ = 0;           // g_k · d_k at the trial's origin point.
+    double ls_origin_energy_ = 0;// E at the trial's origin (x_prev_).
+    bool   ls_had_trial_ = false;
 
     // Optimization trace
     std::vector<OptRecord> trace_;

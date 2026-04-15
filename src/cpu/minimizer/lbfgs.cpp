@@ -18,6 +18,14 @@ LBFGSStep::LBFGSStep(int memory, double alpha0, double ftol, int max_ls,
     : memory_(memory), alpha0_(alpha0), ftol_(ftol), max_ls_(max_ls),
       rms_ftol_(rms_ftol), max_dtol_(max_dtol), rms_dtol_(rms_dtol), etol_(etol) {}
 
+LBFGSStep& LBFGSStep::line_search(double c1, double contract, double min_alpha) {
+    line_search_enabled_ = true;
+    ls_c1_ = c1;
+    ls_contract_ = contract;
+    ls_min_alpha_ = min_alpha;
+    return *this;
+}
+
 void LBFGSStep::build(const cpu::BuildContext& ctx) {
     int n = ctx.frame.atoms.size();
     int dim = n * 3;
@@ -40,11 +48,15 @@ void LBFGSStep::build(const cpu::BuildContext& ctx) {
     converged_ = false;
     energy_prev_ = 0;
     step_ = 0;
+    ls_had_trial_ = false;
+    ls_alpha_ = 0;
+    ls_gd_ = 0;
     trace_.clear();
 
     ATV_INFO(
-        "[lbfgs] build memory={} alpha0={:.6f} ftol={:.6f} rms_ftol={:.6f} max_dtol={:.4f} rms_dtol={:.4f} etol={:.6e} (line_search: not implemented, use loose dtol)",
-        memory_, alpha0_, ftol_, rms_ftol_, max_dtol_, rms_dtol_, etol_);
+        "[lbfgs] build memory={} alpha0={:.6f} ftol={:.6f} rms_ftol={:.6f} max_dtol={:.4f} rms_dtol={:.4f} etol={:.6e} line_search={}",
+        memory_, alpha0_, ftol_, rms_ftol_, max_dtol_, rms_dtol_, etol_,
+        line_search_enabled_ ? "armijo_backtrack" : "off");
 }
 
 void LBFGSStep::launch(const cpu::LaunchContext& ctx) {
@@ -122,6 +134,34 @@ void LBFGSStep::launch(const cpu::LaunchContext& ctx) {
         g[i*3+0] = -f.atoms.fx(i);
         g[i*3+1] = -f.atoms.fy(i);
         g[i*3+2] = -f.atoms.fz(i);
+    }
+
+    // ── Armijo line-search rejection & rollback ──────────────────────
+    //
+    // On step k > 0 we evaluate the trial taken during step k-1's
+    // search_direction: x_k = x_{k-1} + alpha * d_{k-1}, E_k is now in
+    // f.energy. Armijo requires E_k - E_{k-1} <= c1 * alpha * (g_{k-1} . d_{k-1}).
+    //
+    // On rejection we roll back to x_{k-1}, scale alpha by `contract`,
+    // re-take the step, and return without updating L-BFGS history. The
+    // driver's next force phase will evaluate the shrunk trial, so the
+    // full backtracking loop plays out over successive driver steps.
+    if (line_search_enabled_ && ls_had_trial_) {
+        const double armijo_rhs = ls_c1_ * ls_alpha_ * ls_gd_;  // < 0 on descent
+        const double dE = f.energy - ls_origin_energy_;
+        const bool armijo_ok = (dE <= armijo_rhs);
+        if (!armijo_ok && ls_alpha_ > ls_min_alpha_) {
+            ls_alpha_ *= ls_contract_;
+            for (int i = 0; i < n; ++i) {
+                f.atoms.x(i) = x_prev_[i*3+0] + ls_alpha_ * direction_[i*3+0];
+                f.atoms.y(i) = x_prev_[i*3+1] + ls_alpha_ * direction_[i*3+1];
+                f.atoms.z(i) = x_prev_[i*3+2] + ls_alpha_ * direction_[i*3+2];
+            }
+            ATV_DEBUG(
+                "[lbfgs] armijo reject step={} dE={:.3e} rhs={:.3e} new_alpha={:.3e}",
+                step_, dE, armijo_rhs, ls_alpha_);
+            return;  // history update + new direction happen on the next accepted trial
+        }
     }
 
     ATV_DEBUG(
@@ -210,6 +250,15 @@ void LBFGSStep::launch(const cpu::LaunchContext& ctx) {
         dir_max = std::max(dir_max, std::abs(direction_[j]));
     if (dir_max > double(1e-20))
         alpha = std::min(alpha, double(0.1) / dir_max);  // cap step at 0.1 Angstrom
+
+    // Remember the trial so the next step's search_direction can test Armijo.
+    if (line_search_enabled_) {
+        ls_alpha_ = alpha;
+        ls_gd_ = 0;
+        for (int j = 0; j < dim; ++j) ls_gd_ += g[j] * direction_[j];
+        ls_origin_energy_ = f.energy;  // energy at x_prev_ (pre-step)
+        ls_had_trial_ = true;
+    }
 
     for (int i = 0; i < n; ++i) {
         f.atoms.x(i) += alpha * direction_[i*3+0];
