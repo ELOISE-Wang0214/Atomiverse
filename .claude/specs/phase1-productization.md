@@ -107,14 +107,26 @@ created: 2026-04-14
       (all 22 suite tests green).
 
 ### 1.4 Locked default level of theory
-- [ ] `cpu::scf::default_config(integrals)` — PBE/def2-SVP production
-- [ ] `cpu::scf::baseline_config(integrals)` — RHF/STO-3G speed path
-- [ ] Remove `build_integrals_sto3g` from all non-deprecation call
-      sites (migrate `integral_derivatives.cpp`, tutorials, tests)
-- [ ] Migrate STO-3G itself to the generic `basis_data::` path, drop
-      `sto3g_data.h`
-- [ ] All `examples/tutorial/0*.cpp` use `default_config` unless
-      demonstrating another level
+- [x] `cpu::scf::default_config(integrals)` — restricted KS / PBE with
+      MINAO guess + SG-0-ish grid (n_radial=50, n_angular=110).
+      PBE/def2-SVP SCF itself still blocked on the d-shell XC-grid
+      basis_eval extension tracked in 1.2; default_config runs today
+      on STO-3G and 6-31G.
+- [x] `cpu::scf::baseline_config(integrals)` — restricted HF / MINAO,
+      tighter iteration budget, zero damping. Speed-focused regression
+      preset for STO-3G fixtures.
+- [x] `build_integrals_sto3g` wrapper + call sites removed across
+      src/, tests/, examples/, benchmarks/. All consumers now call
+      `build_integrals(frame, cpu::scf::BasisSet::STO3G, ...)` directly.
+- [x] STO-3G migrated to the generic `basis_data::sto3g()` path (emitted
+      by `tools/gen_basis_data.py`); `sto3g_data.h` and the STO-3G-only
+      `build_shell_list_sto3g` branch are both deleted. libcint bridge,
+      libcint reference header, and bench_libcint all re-plumbed onto
+      the generic table.
+- [x] `examples/tutorial/05_geom_opt.cpp` switched to `default_config`.
+      Method-specific demos (02/03/04) keep their `rhf_solve`/`uhf_config`/
+      `uks_config` plumbing — those tutorials *are* demonstrating the
+      non-default level.
 
 ## Summary
 

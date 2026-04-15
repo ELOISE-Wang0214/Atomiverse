@@ -191,7 +191,7 @@ int main() {
         f.x[0] = 0; f.y[0] = 0; f.z[0] = 0;
         f.mass[0] = double(4.003); f.type_id[0] = 2;
         f.box = Mat3::cubic(100.0);
-        auto integrals = cpu::scf::build_integrals_sto3g(f);
+        auto integrals = cpu::scf::build_integrals(f, cpu::scf::BasisSet::STO3G);
         he_result = run_system("He", f, integrals);
     }
 
@@ -203,7 +203,7 @@ int main() {
         f.mass[0] = double(4.003); f.mass[1] = double(1.008);
         f.type_id[0] = 2; f.type_id[1] = 1;
         f.box = Mat3::cubic(100.0);
-        auto integrals = cpu::scf::build_integrals_sto3g(f, 1);
+        auto integrals = cpu::scf::build_integrals(f, cpu::scf::BasisSet::STO3G, 1);
         heh_result = run_system("HeH+", f, integrals);
     }
 
@@ -215,7 +215,7 @@ int main() {
         f.mass[0] = double(6.941); f.mass[1] = double(1.008);
         f.type_id[0] = 3; f.type_id[1] = 1;
         f.box = Mat3::cubic(100.0);
-        auto integrals = cpu::scf::build_integrals_sto3g(f);
+        auto integrals = cpu::scf::build_integrals(f, cpu::scf::BasisSet::STO3G);
         lih_result = run_system("LiH", f, integrals);
     }
 
@@ -239,7 +239,7 @@ int main() {
         f.type_id[0] = 1; f.type_id[1] = 1;
         f.box = Mat3::cubic(100.0);
 
-        auto integrals = cpu::scf::build_integrals_sto3g(f);
+        auto integrals = cpu::scf::build_integrals(f, cpu::scf::BasisSet::STO3G);
         auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);
 
         scf::SCF solver;

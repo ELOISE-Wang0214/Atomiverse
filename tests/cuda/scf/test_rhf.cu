@@ -41,7 +41,7 @@ constexpr double kH2Vnuc   =  0.7151;   // approx nuclear repulsion [Hartree]
 
 TEST(RHF, IntegralSymmetry) {
     auto frame = make_h2();
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
 
     int n = integrals.n_basis;
     EXPECT_EQ(n, 2);
@@ -62,7 +62,7 @@ TEST(RHF, IntegralSymmetry) {
 
 TEST(RHF, NuclearRepulsion) {
     auto frame = make_h2();
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     // V_nuc = Z_A * Z_B / R_AB (in Bohr) = 1*1 / (0.74 * 1.8897) ~ 0.7151
     EXPECT_NEAR(static_cast<double>(integrals.V_nuc), kH2Vnuc, 0.01);
 }
@@ -71,7 +71,7 @@ TEST(RHF, NuclearRepulsion) {
 
 TEST(RHF, Orthogonalization) {
     auto frame = make_h2();
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     int n = integrals.n_basis;
 
     // Compute X = S^{-1/2} the same way rhf_solve does
@@ -98,7 +98,7 @@ TEST(RHF, Orthogonalization) {
 
 TEST(RHF, FockBuild) {
     auto frame = make_h2();
-    auto integrals = cpu::scf::build_integrals_sto3g(frame, 0, true);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, true);
     int n = integrals.n_basis;
 
     // Use zero density -> G(0) = 0 -> F = Hcore
@@ -160,7 +160,7 @@ TEST(RHF, FockBuild) {
 
 TEST(RHF, CPUConvergence) {
     auto frame = make_h2();
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
 
     double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     auto result = cpu::scf::rhf_solve(integrals, tol, 100);
@@ -175,7 +175,7 @@ TEST(RHF, CPUConvergence) {
 
 TEST(RHF, CPUDensityTrace) {
     auto frame = make_h2();
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
 
     double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     auto result = cpu::scf::rhf_solve(integrals, tol, 100);
@@ -190,7 +190,7 @@ TEST(RHF, CPUDensityTrace) {
 
 TEST(RHF, CUDAConvergence) {
     auto frame = make_h2();
-    auto integrals = cpu::scf::build_integrals_sto3g(frame, 0, true);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, true);
 
     double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
 
@@ -211,7 +211,7 @@ TEST(RHF, CUDAConvergence) {
 
 TEST(RHF, CPUCUDAParity) {
     auto frame = make_h2();
-    auto integrals = cpu::scf::build_integrals_sto3g(frame, 0, true);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, true);
 
     double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
 
@@ -292,7 +292,7 @@ constexpr double kLiHEnergy = -7.8634;   // LiH/STO-3G/RHF [Hartree]
 
 TEST(RHF, HeAtom) {
     auto frame = make_he();
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     EXPECT_EQ(integrals.n_basis, 1);
     EXPECT_EQ(integrals.n_electrons, 2);
     double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
@@ -304,7 +304,7 @@ TEST(RHF, HeAtom) {
 
 TEST(RHF, HeHPlus) {
     auto frame = make_heh_plus();
-    auto integrals = cpu::scf::build_integrals_sto3g(frame, 1);  // charge = +1
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G, 1);  // charge = +1
     EXPECT_EQ(integrals.n_basis, 2);
     EXPECT_EQ(integrals.n_electrons, 2);  // He(2) + H(1) - 1 = 2
     EXPECT_EQ(integrals.n_occ(), 1);
@@ -317,7 +317,7 @@ TEST(RHF, HeHPlus) {
 
 TEST(RHF, LiH) {
     auto frame = make_lih();
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     EXPECT_EQ(integrals.n_basis, 3);  // Li: 1s+2s=2, H: 1s=1 -> total 3
     EXPECT_EQ(integrals.n_electrons, 4);
     double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
@@ -341,7 +341,7 @@ TEST(RHF, H2PESScan) {
         f.atoms.mass[0] = double(1.008); f.atoms.mass[1] = double(1.008);
         f.atoms.type[0] = 1; f.atoms.type[1] = 1;
         f.box = Mat3::cubic(100.0);
-        auto integrals = cpu::scf::build_integrals_sto3g(f);
+        auto integrals = cpu::scf::build_integrals(f, cpu::scf::BasisSet::STO3G);
         auto result = cpu::scf::rhf_solve(integrals, tol, 100);
         EXPECT_TRUE(result.converged) << "H2 scan failed at R=" << r;
         double e = static_cast<double>(result.energy);
@@ -357,7 +357,7 @@ TEST(RHF, H2PESScan) {
 
 TEST(RHF, CUDAHeAtom) {
     auto frame = make_he();
-    auto integrals = cpu::scf::build_integrals_sto3g(frame, 0, true);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, true);
     double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
 
     auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);
@@ -379,7 +379,7 @@ TEST(RHF, CUDAHeAtom) {
 
 TEST(RHF, CUDALiH) {
     auto frame = make_lih();
-    auto integrals = cpu::scf::build_integrals_sto3g(frame, 0, true);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, true);
     double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
 
     auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);
@@ -401,7 +401,7 @@ TEST(RHF, CUDALiH) {
 
 TEST(RHF, CUDAHeHPlus) {
     auto frame = make_heh_plus();
-    auto integrals = cpu::scf::build_integrals_sto3g(frame, 1, true);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G, 1, true);
     double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
 
     auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);

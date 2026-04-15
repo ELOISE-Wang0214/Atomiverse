@@ -9,7 +9,7 @@ extern "C" {
 #include <cint.h>
 }
 
-#include "atomiverse/cpu/scf/sto3g_data.h"
+#include "atomiverse/cpu/scf/basis_data/sto3g.h"
 #include "atomiverse/core/constants.h"
 #include "atomiverse/core/gto.h"
 
@@ -116,25 +116,25 @@ LibcintSto3gContext build_libcint_sto3g_context(const Frame& frame) {
         ctx.atm[a * ATM_SLOTS + PTR_COORD] = coord_ptr;
         ctx.atm[a * ATM_SLOTS + NUC_MOD_OF] = POINT_NUC;
 
-        const auto& basis = sto3g_data[Z];
-        for (int s = 0; s < basis.n_raw_shells; ++s) {
-            const auto& raw = basis.raw[s];
+        // Iterate the checked-in STO-3G table from basis_data (generic path).
+        // Each shell carries its own l / alpha / coeff; there is no sp
+        // fusion at this layer -- the libcint bridge emits one libcint bas
+        // entry per shell (s, then s, then p for 2nd-row atoms).
+        const auto& table = basis_data::sto3g();
+        if (Z < 0 || static_cast<std::size_t>(Z) >= table.size() ||
+            table[Z].shells.empty())
+            continue;
+        for (const auto& sh : table[Z].shells) {
+            if (sh.alpha.size() != 3 || sh.coeff.size() != 3)
+                throw std::runtime_error(
+                    "libcint_bridge: expected 3 primitives per STO-3G shell");
             const std::array<double, 3> exps = {
-                raw.alpha[0], raw.alpha[1], raw.alpha[2]
+                sh.alpha[0], sh.alpha[1], sh.alpha[2]
             };
-
-            if (raw.type == 0) {
-                append_shell(ctx, a, 0, exps, {
-                    raw.coeff_s[0], raw.coeff_s[1], raw.coeff_s[2]
-                });
-            } else {
-                append_shell(ctx, a, 0, exps, {
-                    raw.coeff_s[0], raw.coeff_s[1], raw.coeff_s[2]
-                });
-                append_shell(ctx, a, 1, exps, {
-                    raw.coeff_p[0], raw.coeff_p[1], raw.coeff_p[2]
-                });
-            }
+            const std::array<double, 3> coeffs = {
+                sh.coeff[0], sh.coeff[1], sh.coeff[2]
+            };
+            append_shell(ctx, a, sh.l, exps, coeffs);
         }
     }
 

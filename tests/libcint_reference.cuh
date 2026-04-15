@@ -16,8 +16,8 @@ extern "C" {
 #undef atm
 #undef bas
 
+#include "atomiverse/cpu/scf/basis_data/sto3g.h"
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/sto3g_data.h"
 #include "atomiverse/core/constants.h"
 
 #include <cmath>
@@ -52,7 +52,7 @@ inline void normalize_contracted_coeffs(int l, const double* exps,
 
 /// @brief Compute STO-3G integrals via libcint (ground truth).
 ///
-/// Mirrors the logic in build_integrals_sto3g but uses libcint as the
+/// Mirrors the logic in build_integrals but uses libcint as the
 /// integral engine. Supports elements Z=1..8 with s and p type shells.
 /// Used exclusively for validation — never in production code.
 inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
@@ -61,18 +61,18 @@ inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
     for (int i = 0; i < natm; ++i)
         n_electrons += frame.atoms.type[i];
 
-    // Count basis functions and shells using shared STO-3G data
+    // Count basis functions and shells from the checked-in basis_data table.
+    // Generic table already separates s and p shells (no sp fusion) so shell
+    // count is simply the number of shells per atom; n_basis sums
+    // cart-dims over shells.
+    const auto& sto3g_table = cpu::scf::basis_data::sto3g();
     int n_basis = 0;
     int n_shells = 0;
     for (int i = 0; i < natm; ++i) {
         int Z = static_cast<int>(frame.atoms.type[i]);
-        n_basis += cpu::scf::sto3g_n_basis(Z);
-        const auto& basis = cpu::scf::sto3g_data[Z];
-        for (int s = 0; s < basis.n_raw_shells; ++s) {
-            if (basis.raw[s].type == 0)
-                n_shells += 1; // pure s -> 1 shell
-            else
-                n_shells += 2; // sp -> 1 s-shell + 1 p-shell (libcint treats p as one shell with 3 components)
+        for (const auto& sh : sto3g_table[Z].shells) {
+            n_shells += 1;
+            n_basis += (sh.l + 1) * (sh.l + 2) / 2;  // Cartesian dim
         }
     }
 
@@ -110,69 +110,27 @@ inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
     int bf_idx = 0;
     for (int a = 0; a < natm; ++a) {
         int Z = static_cast<int>(frame.atoms.type[a]);
-        const auto& basis = cpu::scf::sto3g_data[Z];
-        for (int s = 0; s < basis.n_raw_shells; ++s) {
-            const auto& raw = basis.raw[s];
+        for (const auto& sh : sto3g_table[Z].shells) {
+            const int l = sh.l;
+            const int nprim = static_cast<int>(sh.alpha.size());
+            int ptr_exp = off;
+            for (int p = 0; p < nprim; ++p) env[off++] = sh.alpha[p];
+            int ptr_coeff = off;
+            for (int p = 0; p < nprim; ++p)
+                env[off++] = sh.coeff[p] * CINTgto_norm(l, sh.alpha[p]);
+            normalize_contracted_coeffs(l, &env[ptr_exp], &env[ptr_coeff], nprim);
 
-            if (raw.type == 0) {
-                // Pure s shell
-                int ptr_exp = off;
-                for (int p = 0; p < raw.n_prim; ++p) env[off++] = raw.alpha[p];
-                int ptr_coeff = off;
-                for (int p = 0; p < raw.n_prim; ++p)
-                    env[off++] = raw.coeff_s[p] * CINTgto_norm(0, raw.alpha[p]);
-                normalize_contracted_coeffs(0, &env[ptr_exp], &env[ptr_coeff], raw.n_prim);
-
-                bas_arr[ATOM_OF   + BAS_SLOTS * shell_idx] = a;
-                bas_arr[ANG_OF    + BAS_SLOTS * shell_idx] = 0;
-                bas_arr[NPRIM_OF  + BAS_SLOTS * shell_idx] = raw.n_prim;
-                bas_arr[NCTR_OF   + BAS_SLOTS * shell_idx] = 1;
-                bas_arr[PTR_EXP   + BAS_SLOTS * shell_idx] = ptr_exp;
-                bas_arr[PTR_COEFF + BAS_SLOTS * shell_idx] = ptr_coeff;
-                shell_bf_offset[shell_idx] = bf_idx;
-                shell_bf_count[shell_idx] = 1;
-                ++shell_idx;
-                bf_idx += 1;
-            } else {
-                // SP shell: split into s-part and p-part for libcint
-                // s-part
-                int ptr_exp_s = off;
-                for (int p = 0; p < raw.n_prim; ++p) env[off++] = raw.alpha[p];
-                int ptr_coeff_s = off;
-                for (int p = 0; p < raw.n_prim; ++p)
-                    env[off++] = raw.coeff_s[p] * CINTgto_norm(0, raw.alpha[p]);
-                normalize_contracted_coeffs(0, &env[ptr_exp_s], &env[ptr_coeff_s], raw.n_prim);
-
-                bas_arr[ATOM_OF   + BAS_SLOTS * shell_idx] = a;
-                bas_arr[ANG_OF    + BAS_SLOTS * shell_idx] = 0;
-                bas_arr[NPRIM_OF  + BAS_SLOTS * shell_idx] = raw.n_prim;
-                bas_arr[NCTR_OF   + BAS_SLOTS * shell_idx] = 1;
-                bas_arr[PTR_EXP   + BAS_SLOTS * shell_idx] = ptr_exp_s;
-                bas_arr[PTR_COEFF + BAS_SLOTS * shell_idx] = ptr_coeff_s;
-                shell_bf_offset[shell_idx] = bf_idx;
-                shell_bf_count[shell_idx] = 1;
-                ++shell_idx;
-                bf_idx += 1;
-
-                // p-part (3 components: px, py, pz)
-                int ptr_exp_p = off;
-                for (int p = 0; p < raw.n_prim; ++p) env[off++] = raw.alpha[p];
-                int ptr_coeff_p = off;
-                for (int p = 0; p < raw.n_prim; ++p)
-                    env[off++] = raw.coeff_p[p] * CINTgto_norm(1, raw.alpha[p]);
-                normalize_contracted_coeffs(1, &env[ptr_exp_p], &env[ptr_coeff_p], raw.n_prim);
-
-                bas_arr[ATOM_OF   + BAS_SLOTS * shell_idx] = a;
-                bas_arr[ANG_OF    + BAS_SLOTS * shell_idx] = 1;
-                bas_arr[NPRIM_OF  + BAS_SLOTS * shell_idx] = raw.n_prim;
-                bas_arr[NCTR_OF   + BAS_SLOTS * shell_idx] = 1;
-                bas_arr[PTR_EXP   + BAS_SLOTS * shell_idx] = ptr_exp_p;
-                bas_arr[PTR_COEFF + BAS_SLOTS * shell_idx] = ptr_coeff_p;
-                shell_bf_offset[shell_idx] = bf_idx;
-                shell_bf_count[shell_idx] = 3; // px, py, pz
-                ++shell_idx;
-                bf_idx += 3;
-            }
+            bas_arr[ATOM_OF   + BAS_SLOTS * shell_idx] = a;
+            bas_arr[ANG_OF    + BAS_SLOTS * shell_idx] = l;
+            bas_arr[NPRIM_OF  + BAS_SLOTS * shell_idx] = nprim;
+            bas_arr[NCTR_OF   + BAS_SLOTS * shell_idx] = 1;
+            bas_arr[PTR_EXP   + BAS_SLOTS * shell_idx] = ptr_exp;
+            bas_arr[PTR_COEFF + BAS_SLOTS * shell_idx] = ptr_coeff;
+            const int n_cart = (l + 1) * (l + 2) / 2;
+            shell_bf_offset[shell_idx] = bf_idx;
+            shell_bf_count[shell_idx] = n_cart;
+            ++shell_idx;
+            bf_idx += n_cart;
         }
     }
     env.resize(off);

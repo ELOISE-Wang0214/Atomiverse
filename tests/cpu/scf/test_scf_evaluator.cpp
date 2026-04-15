@@ -41,7 +41,7 @@ protected:
 
 TEST_F(SCFEvaluatorTest, SinglePointRHF) {
     auto frame = make_h2(0.74);
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals);
 
     cpu::md::MD sim;
@@ -58,7 +58,7 @@ TEST_F(SCFEvaluatorTest, SinglePointRHF) {
 
 TEST_F(SCFEvaluatorTest, SinglePointUHF) {
     auto frame = make_h2(0.74);
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::uhf_config(integrals, 1, 1);
 
     cpu::md::MD sim;
@@ -73,7 +73,7 @@ TEST_F(SCFEvaluatorTest, SinglePointUHF) {
 
 TEST_F(SCFEvaluatorTest, SinglePointKSLSDA) {
     auto frame = make_h2(0.74);
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::uks_config(integrals, 1, 1, cpu::scf::XCType::LSDA);
 
     cpu::md::MD sim;
@@ -90,7 +90,7 @@ TEST_F(SCFEvaluatorTest, SinglePointKSLSDA) {
 
 TEST_F(SCFEvaluatorTest, SinglePointKSPBE) {
     auto frame = make_h2(0.74);
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::uks_config(integrals, 1, 1, cpu::scf::XCType::PBE);
 
     cpu::md::MD sim;
@@ -109,7 +109,7 @@ class BOMDTest : public SCFEvaluatorTest {};
 
 TEST_F(BOMDTest, RHFEnergyConservation) {
     auto frame = make_h2(0.74, 0.001);
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals);
 
     cpu::md::MD sim;
@@ -124,7 +124,7 @@ TEST_F(BOMDTest, RHFEnergyConservation) {
 
 TEST_F(BOMDTest, RHFBondOscillation) {
     auto frame = make_h2(0.80, 0.0);
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals);
 
     cpu::md::MD sim;
@@ -141,7 +141,7 @@ TEST_F(BOMDTest, RHFBondOscillation) {
 
 TEST_F(BOMDTest, MomentumConservation) {
     auto frame = make_h2(0.74, 0.001);
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals);
 
     double px0 = frame.atoms.mass(0) * frame.atoms.vx(0) + frame.atoms.mass(1) * frame.atoms.vx(1);
@@ -158,7 +158,7 @@ TEST_F(BOMDTest, MomentumConservation) {
 
 TEST_F(BOMDTest, RHFWithASPC) {
     auto frame = make_h2(0.74, 0.001);
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals);
 
     cpu::scf::SCFEvaluator evaluator{config};

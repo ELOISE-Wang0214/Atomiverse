@@ -28,7 +28,7 @@ protected:
 
 TEST_F(LBFGSTest, H2RHFGeometryOptimization) {
     auto frame = make_h2(1.2);
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals);
 
     cpu::minimizer::LBFGS opt;
@@ -46,7 +46,7 @@ TEST_F(LBFGSTest, H2RHFGeometryOptimization) {
 
 TEST_F(LBFGSTest, H2LSDAGeometryOptimization) {
     auto frame = make_h2(1.2);
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::uks_config(integrals, 1, 1, cpu::scf::XCType::LSDA);
 
     cpu::minimizer::LBFGS opt;
@@ -63,7 +63,7 @@ TEST_F(LBFGSTest, H2LSDAGeometryOptimization) {
 
 TEST_F(LBFGSTest, CompressedH2Expands) {
     auto frame = make_h2(0.5);
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals);
 
     cpu::minimizer::LBFGS opt;

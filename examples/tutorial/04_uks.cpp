@@ -66,7 +66,7 @@ int main() {
     {
         std::cout << "--- Example 1: He atom (LSDA, singlet) ---\n";
         auto frame = make_atom(2);
-        auto ints = cpu::scf::build_integrals_sto3g(frame);
+        auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
         auto uks = cpu::scf::uks_solve(ints, 1, 1, cpu::scf::XCType::LSDA, 50, 110);
         auto uhf = cpu::scf::uhf_solve(ints, 1, 1);
         print_result("UKS-LSDA", uks, ints.V_nuc);
@@ -78,7 +78,7 @@ int main() {
     {
         std::cout << "--- Example 2: H atom (LSDA, doublet) ---\n";
         auto frame = make_atom(1);
-        auto ints = cpu::scf::build_integrals_sto3g(frame);
+        auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
         auto uks = cpu::scf::uks_solve(ints, 1, 0, cpu::scf::XCType::LSDA, 50, 110);
         print_result("UKS-LSDA", uks, ints.V_nuc);
         std::cout << "\n";
@@ -88,7 +88,7 @@ int main() {
     {
         std::cout << "--- Example 3: Li atom (LSDA, doublet) ---\n";
         auto frame = make_atom(3);
-        auto ints = cpu::scf::build_integrals_sto3g(frame);
+        auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
         auto uks = cpu::scf::uks_solve(ints, 2, 1, cpu::scf::XCType::LSDA, 50, 110);
         print_result("UKS-LSDA", uks, ints.V_nuc);
         std::cout << "    eigenvalues alpha: ";
@@ -105,7 +105,7 @@ int main() {
                   << std::setw(14) << "E_UKS" << std::setw(14) << "diff" << "\n";
         for (double r : {0.5, 0.6, 0.74, 1.0, 1.5, 2.0, 2.5, 3.0}) {
             auto frame = make_h2(r);
-            auto ints = cpu::scf::build_integrals_sto3g(frame);
+            auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
             auto uhf = cpu::scf::uhf_solve(ints, 1, 1, double(1e-9), 400);
             auto uks = cpu::scf::uks_solve(ints, 1, 1, cpu::scf::XCType::LSDA, 50, 110, double(1e-7), 100);
 

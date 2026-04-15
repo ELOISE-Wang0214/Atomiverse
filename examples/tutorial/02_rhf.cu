@@ -48,7 +48,7 @@ int main() {
               << "Geometry: H-H at 0.74 Angstrom\n\n";
 
     // ── 2. Compute integrals on CPU (libcint) ─────────────────────────
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     std::cout << "Basis functions: " << integrals.n_basis << "\n"
               << "Electrons:       " << integrals.n_electrons << "\n"
               << "Occupied MOs:    " << integrals.n_occ() << "\n"

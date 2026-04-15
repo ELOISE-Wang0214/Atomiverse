@@ -193,6 +193,63 @@ inline SCFConfig uks_config(const IntegralPack& ints, int n_alpha, int n_beta,
     return c;
 }
 
+/// @brief Locked production default: closed-shell RKS / PBE.
+///
+/// Intended for the full benchmark / tutorial stack. Basis-set choice is
+/// independent: the caller builds `IntegralPack` at whatever basis they
+/// want (recommended `BasisSet::Def2SVP` for production; `BasisSet::Pople631G`
+/// for quick tests until the d-shell XC-grid basis_eval ships).
+///
+/// Defaults:
+///   - spin: Restricted (closed-shell). Throws-via-solver if n_electrons is odd.
+///   - method: KS (Kohn-Sham)
+///   - xc_type: PBE
+///   - init_guess: MINAO (PySCF-matching, zero damping)
+///   - grid: n_radial=50, n_angular=110 (SG-0-ish)
+///   - convergence: tol = 1e-9 Ha
+///
+/// @param ints Integral pack supplying the electron count (assumed even).
+/// @return SCFConfig ready to feed `scf_solve`.
+inline SCFConfig default_config(const IntegralPack& ints) {
+    SCFConfig c;
+    c.spin = SpinType::Restricted;
+    c.method = MeanFieldType::KS;
+    c.xc_type = XCType::PBE;
+    c.n_alpha = ints.n_occ();
+    c.n_beta  = ints.n_occ();
+    c.tol = 1e-9;
+    c.use_diis = true;
+    c.diis_max_vectors = 8;
+    c.diis_start_iter = 1;
+    c.damping_factor = 0.0;
+    c.init_guess = InitGuess::MINAO;
+    c.n_radial = 50;
+    c.n_angular = 110;
+    return c;
+}
+
+/// @brief Regression baseline: RHF / fast convergence, for STO-3G.
+///
+/// Intended for smoke tests and gradient-self-consistency regressions
+/// where turnaround time beats fidelity. Same MINAO+no-damping pattern
+/// as `rhf_config` but with a looser iteration budget.
+///
+/// @param ints Integral pack supplying the electron count.
+/// @return SCFConfig for restricted Hartree-Fock.
+inline SCFConfig baseline_config(const IntegralPack& ints) {
+    SCFConfig c;
+    c.spin = SpinType::Restricted;
+    c.method = MeanFieldType::HF;
+    c.n_alpha = ints.n_occ();
+    c.n_beta  = ints.n_occ();
+    c.tol = 1e-9;
+    c.use_diis = true;
+    c.damping_factor = 0.0;
+    c.init_guess = InitGuess::MINAO;
+    c.max_iter = 50;
+    return c;
+}
+
 /// @brief Run unified SCF solver.
 ///
 /// Dispatches internally based on SCFConfig:

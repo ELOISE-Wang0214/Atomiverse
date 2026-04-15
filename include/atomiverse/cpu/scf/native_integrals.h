@@ -13,7 +13,7 @@
 ///   angular combinations in a shell-block quartet (libcint/PySCF approach).
 ///
 /// @see cpu::scf::IntegralPack for the output data structure
-/// @see cpu::scf::build_integrals_sto3g for the entry point
+/// @see cpu::scf::build_integrals for the entry point
 #pragma once
 
 namespace ATV {

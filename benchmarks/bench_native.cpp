@@ -461,7 +461,7 @@ BENCHMARK(BM_IntegralDeriv_Aspirin)->Unit(benchmark::kMillisecond);
 
 static void BM_UHFSolve_H2(benchmark::State& state) {
     auto frame = make_h2();
-    auto integrals = build_integrals_sto3g(frame);
+    auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
     constexpr double tol = 1e-10;
     auto cfg = uhf_config(integrals, 1, 1, tol);
     cfg.max_iter = 100;
@@ -474,7 +474,7 @@ BENCHMARK(BM_UHFSolve_H2)->Unit(benchmark::kMicrosecond);
 
 static void BM_UHFSolve_LiH(benchmark::State& state) {
     auto frame = make_lih();
-    auto integrals = build_integrals_sto3g(frame);
+    auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
     constexpr double tol = 1e-10;
     auto cfg = uhf_config(integrals, 2, 2, tol);
     cfg.max_iter = 100;
@@ -491,7 +491,7 @@ BENCHMARK(BM_UHFSolve_LiH)->Unit(benchmark::kMicrosecond);
 
 static void BM_UKSSolve_H2_LSDA(benchmark::State& state) {
     auto frame = make_h2();
-    auto integrals = build_integrals_sto3g(frame);
+    auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
     constexpr double tol = 1e-8;
     auto cfg = uks_config(integrals, 1, 1, XCType::LSDA, tol);
     cfg.max_iter = 100;
@@ -504,7 +504,7 @@ BENCHMARK(BM_UKSSolve_H2_LSDA)->Unit(benchmark::kMillisecond);
 
 static void BM_UKSSolve_H2_PBE(benchmark::State& state) {
     auto frame = make_h2();
-    auto integrals = build_integrals_sto3g(frame);
+    auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
     constexpr double tol = 1e-8;
     auto cfg = uks_config(integrals, 1, 1, XCType::PBE, tol);
     cfg.max_iter = 100;
@@ -521,7 +521,7 @@ BENCHMARK(BM_UKSSolve_H2_PBE)->Unit(benchmark::kMillisecond);
 
 static void BM_RHFGradient_H2(benchmark::State& state) {
     auto frame = make_h2();
-    auto integrals = build_integrals_sto3g(frame);
+    auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
     constexpr double tol = 1e-10;
     auto cfg = rhf_config(integrals, tol);
     cfg.max_iter = 200;
@@ -535,7 +535,7 @@ BENCHMARK(BM_RHFGradient_H2)->Unit(benchmark::kMicrosecond);
 
 static void BM_UHFGradient_H2(benchmark::State& state) {
     auto frame = make_h2();
-    auto integrals = build_integrals_sto3g(frame);
+    auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
     constexpr double tol = 1e-10;
     auto cfg = uhf_config(integrals, 1, 1, tol);
     cfg.max_iter = 200;
@@ -550,7 +550,7 @@ BENCHMARK(BM_UHFGradient_H2)->Unit(benchmark::kMicrosecond);
 static void BM_RHFIntegrals_Aspirin(benchmark::State& state) {
     auto frame = make_aspirin();
     for (auto _ : state) {
-        auto integrals = build_integrals_sto3g(frame);
+        auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
         benchmark::DoNotOptimize(integrals.Hcore(0, 0));
     }
 }
@@ -559,7 +559,7 @@ BENCHMARK(BM_RHFIntegrals_Aspirin)->Unit(benchmark::kMillisecond);
 static void BM_RHFIntegrals_Aspirin_631Gs(benchmark::State& state) {
     auto frame = make_aspirin();
     for (auto _ : state) {
-        auto integrals = build_integrals(frame, BasisSet::Pople631Gs);
+        auto integrals = build_integrals(frame, cpu::scf::BasisSet::Pople631Gs);
         benchmark::DoNotOptimize(integrals.Hcore(0, 0));
     }
 }
@@ -568,7 +568,7 @@ BENCHMARK(BM_RHFIntegrals_Aspirin_631Gs)->Unit(benchmark::kMillisecond);
 static void BM_RHFIntegrals_Aspirin_def2svp(benchmark::State& state) {
     auto frame = make_aspirin();
     for (auto _ : state) {
-        auto integrals = build_integrals(frame, BasisSet::Def2SVP);
+        auto integrals = build_integrals(frame, cpu::scf::BasisSet::Def2SVP);
         benchmark::DoNotOptimize(integrals.Hcore(0, 0));
     }
 }
@@ -579,7 +579,7 @@ BENCHMARK(BM_RHFIntegrals_Aspirin_def2svp)->Unit(benchmark::kMillisecond);
 /// @brief Direct RHF G = J - 0.5*K using AO-level shell pairs (baseline).
 static void BM_GBuild_AO_Aspirin(benchmark::State& state) {
     auto frame = make_aspirin();
-    auto integrals = build_integrals_sto3g(frame);
+    auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto sp = build_shell_pair_list(integrals);
     int n = integrals.n_basis;
     RealMatrix P = xt::zeros<double>({(size_t)n, (size_t)n});
@@ -595,7 +595,7 @@ BENCHMARK(BM_GBuild_AO_Aspirin)->Unit(benchmark::kMillisecond);
 /// @brief Direct RHF G = J - 0.5*K using shell-block pairs (libcint/PySCF approach).
 static void BM_GBuild_Block_Aspirin(benchmark::State& state) {
     auto frame = make_aspirin();
-    auto integrals = build_integrals_sto3g(frame);
+    auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto sp_blk = build_shell_block_pair_list(integrals);
     int n = integrals.n_basis;
     RealMatrix P = xt::zeros<double>({(size_t)n, (size_t)n});
@@ -612,7 +612,7 @@ BENCHMARK(BM_GBuild_Block_Aspirin)->Unit(benchmark::kMillisecond);
 
 static void BM_GBuild_Block_Water(benchmark::State& state) {
     auto frame = make_water();
-    auto integrals = build_integrals_sto3g(frame);
+    auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto sp_blk = build_shell_block_pair_list(integrals);
     int n = integrals.n_basis;
     RealMatrix P = xt::zeros<double>({(size_t)n, (size_t)n});
@@ -628,7 +628,7 @@ BENCHMARK(BM_GBuild_Block_Water)->Unit(benchmark::kMicrosecond);
 
 static void BM_GBuild_Block_Methane(benchmark::State& state) {
     auto frame = make_methane();
-    auto integrals = build_integrals_sto3g(frame);
+    auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto sp_blk = build_shell_block_pair_list(integrals);
     int n = integrals.n_basis;
     RealMatrix P = xt::zeros<double>({(size_t)n, (size_t)n});
@@ -644,7 +644,7 @@ BENCHMARK(BM_GBuild_Block_Methane)->Unit(benchmark::kMicrosecond);
 
 static void BM_GBuild_Block_Ethanol(benchmark::State& state) {
     auto frame = make_ethanol();
-    auto integrals = build_integrals_sto3g(frame);
+    auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto sp_blk = build_shell_block_pair_list(integrals);
     int n = integrals.n_basis;
     RealMatrix P = xt::zeros<double>({(size_t)n, (size_t)n});
@@ -662,7 +662,7 @@ BENCHMARK(BM_GBuild_Block_Ethanol)->Unit(benchmark::kMillisecond);
 
 static void BM_RHFSolve_Water(benchmark::State& state) {
     auto frame = make_water();
-    auto integrals = build_integrals_sto3g(frame);
+    auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto cfg = rhf_config(integrals);
     cfg.tol = 1e-6;
     cfg.max_iter = 200;
@@ -676,7 +676,7 @@ BENCHMARK(BM_RHFSolve_Water)->Unit(benchmark::kMillisecond);
 
 static void BM_RHFSolve_Ethanol(benchmark::State& state) {
     auto frame = make_ethanol();
-    auto integrals = build_integrals_sto3g(frame);
+    auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto cfg = rhf_config(integrals);
     cfg.tol = 1e-6;
     cfg.max_iter = 200;
@@ -691,7 +691,7 @@ BENCHMARK(BM_RHFSolve_Ethanol)->Unit(benchmark::kMillisecond);
 static void BM_RHFSolve_Aspirin(benchmark::State& state) {
     auto frame = make_aspirin();
     // PySCF approach: store ERI once, BLAS contraction per iteration.
-    auto integrals = build_integrals_sto3g(frame, 0, /*compute_eri=*/true);
+    auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, /*compute_eri=*/true);
     auto cfg = rhf_config(integrals);
     cfg.tol = 1e-9;   // match PySCF conv_tol (|dE|<tol + ||err||<sqrt(tol))
     cfg.max_iter = 50;
@@ -707,7 +707,7 @@ BENCHMARK(BM_RHFSolve_Aspirin)->Unit(benchmark::kMillisecond);
 
 static void BM_RHFGradient_Aspirin(benchmark::State& state) {
     auto frame = make_aspirin();
-    auto integrals = build_integrals_sto3g(frame);
+    auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto cfg = rhf_config(integrals);
     cfg.tol = 1e-6;
     cfg.max_iter = 200;
@@ -728,7 +728,7 @@ static void BM_RHF_IntegralsToGradient_H2(benchmark::State& state) {
     auto frame = make_h2();
     constexpr double tol = 1e-10;
     for (auto _ : state) {
-        auto integrals = build_integrals_sto3g(frame);
+        auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
         auto cfg = rhf_config(integrals, tol);
         cfg.max_iter = 200;
         auto result = scf_solve(integrals, cfg);
@@ -742,7 +742,7 @@ static void BM_RHF_IntegralsToGradient_LiH(benchmark::State& state) {
     auto frame = make_lih();
     constexpr double tol = 1e-10;
     for (auto _ : state) {
-        auto integrals = build_integrals_sto3g(frame);
+        auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
         auto cfg = rhf_config(integrals, tol);
         cfg.max_iter = 200;
         auto result = scf_solve(integrals, cfg);
@@ -755,7 +755,7 @@ BENCHMARK(BM_RHF_IntegralsToGradient_LiH)->Unit(benchmark::kMicrosecond);
 static void BM_RHF_IntegralsToGradient_Aspirin(benchmark::State& state) {
     auto frame = make_aspirin();
     for (auto _ : state) {
-        auto integrals = build_integrals_sto3g(frame);
+        auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
         auto cfg = rhf_config(integrals);
         cfg.tol = 1e-6;
         cfg.max_iter = 200;

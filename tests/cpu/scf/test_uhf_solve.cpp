@@ -59,7 +59,7 @@ protected:
 
 TEST_F(UHFSolveTest, HAtomConverges) {
     auto frame = make_h_atom();
-    auto ints = cpu::scf::build_integrals_sto3g(frame);
+    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto result = cpu::scf::uhf_solve(ints, 1, 0, kTol, 50);
     EXPECT_TRUE(result.converged);
     EXPECT_EQ(result.n_alpha, 1);
@@ -68,7 +68,7 @@ TEST_F(UHFSolveTest, HAtomConverges) {
 
 TEST_F(UHFSolveTest, HAtomEnergy) {
     auto frame = make_h_atom();
-    auto ints = cpu::scf::build_integrals_sto3g(frame);
+    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto result = cpu::scf::uhf_solve(ints, 1, 0, kTol, 50);
     EXPECT_TRUE(result.converged);
     EXPECT_NEAR(static_cast<double>(result.energy), -0.4666, 5e-3);
@@ -76,7 +76,7 @@ TEST_F(UHFSolveTest, HAtomEnergy) {
 
 TEST_F(UHFSolveTest, HAtomElectronCount) {
     auto frame = make_h_atom();
-    auto ints = cpu::scf::build_integrals_sto3g(frame);
+    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto result = cpu::scf::uhf_solve(ints, 1, 0, kTol, 50);
     double tr_alpha = xt::sum(result.P_alpha * ints.S)();
     double tr_beta = xt::sum(result.P_beta * ints.S)();
@@ -86,7 +86,7 @@ TEST_F(UHFSolveTest, HAtomElectronCount) {
 
 TEST_F(UHFSolveTest, HAtomSpinContamination) {
     auto frame = make_h_atom();
-    auto ints = cpu::scf::build_integrals_sto3g(frame);
+    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto result = cpu::scf::uhf_solve(ints, 1, 0, kTol, 50);
     EXPECT_NEAR(static_cast<double>(result.spin_contamination), 0.0, 1e-6);
 }
@@ -95,7 +95,7 @@ TEST_F(UHFSolveTest, HAtomSpinContamination) {
 
 TEST_F(UHFSolveTest, HeAtomEqualsRHF) {
     auto frame = make_he_atom();
-    auto ints = cpu::scf::build_integrals_sto3g(frame);
+    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto rhf = cpu::scf::rhf_solve(ints, kTol, 50);
     auto uhf = cpu::scf::uhf_solve(ints, 1, 1, kTol, 50);
     EXPECT_TRUE(uhf.converged);
@@ -105,7 +105,7 @@ TEST_F(UHFSolveTest, HeAtomEqualsRHF) {
 
 TEST_F(UHFSolveTest, HeAtomSpinContamination) {
     auto frame = make_he_atom();
-    auto ints = cpu::scf::build_integrals_sto3g(frame);
+    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto uhf = cpu::scf::uhf_solve(ints, 1, 1, kTol, 50);
     EXPECT_NEAR(static_cast<double>(uhf.spin_contamination), 0.0, 1e-4);
 }
@@ -114,7 +114,7 @@ TEST_F(UHFSolveTest, HeAtomSpinContamination) {
 
 TEST_F(UHFSolveTest, LiAtomConverges) {
     auto frame = make_li_atom();
-    auto ints = cpu::scf::build_integrals_sto3g(frame);
+    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto result = cpu::scf::uhf_solve(ints, 2, 1, kTol, 100);
     EXPECT_TRUE(result.converged);
     EXPECT_EQ(result.n_alpha, 2);
@@ -123,7 +123,7 @@ TEST_F(UHFSolveTest, LiAtomConverges) {
 
 TEST_F(UHFSolveTest, LiAtomElectronCount) {
     auto frame = make_li_atom();
-    auto ints = cpu::scf::build_integrals_sto3g(frame);
+    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto result = cpu::scf::uhf_solve(ints, 2, 1, kTol, 100);
     double tr_alpha = xt::sum(result.P_alpha * ints.S)();
     double tr_beta = xt::sum(result.P_beta * ints.S)();
@@ -133,7 +133,7 @@ TEST_F(UHFSolveTest, LiAtomElectronCount) {
 
 TEST_F(UHFSolveTest, LiAtomEnergyRange) {
     auto frame = make_li_atom();
-    auto ints = cpu::scf::build_integrals_sto3g(frame);
+    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto result = cpu::scf::uhf_solve(ints, 2, 1, kTol, 100);
     EXPECT_TRUE(result.converged);
     EXPECT_LT(static_cast<double>(result.energy), -7.0);
@@ -144,7 +144,7 @@ TEST_F(UHFSolveTest, LiAtomEnergyRange) {
 
 TEST_F(UHFSolveTest, H2EquilibriumAgreesWithRHF) {
     auto frame = make_h2(0.74);
-    auto ints = cpu::scf::build_integrals_sto3g(frame);
+    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto rhf = cpu::scf::rhf_solve(ints, kTol, 200);
     auto uhf = cpu::scf::uhf_solve(ints, 1, 1, kTol, 200);
     EXPECT_TRUE(uhf.converged);
@@ -154,7 +154,7 @@ TEST_F(UHFSolveTest, H2EquilibriumAgreesWithRHF) {
 
 TEST_F(UHFSolveTest, H2EquilibriumSpinContamination) {
     auto frame = make_h2(0.74);
-    auto ints = cpu::scf::build_integrals_sto3g(frame);
+    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto uhf = cpu::scf::uhf_solve(ints, 1, 1, kTol, 200);
     EXPECT_NEAR(static_cast<double>(uhf.spin_contamination), 0.0, 1e-3);
 }
@@ -163,7 +163,7 @@ TEST_F(UHFSolveTest, H2EquilibriumSpinContamination) {
 
 TEST_F(UHFSolveTest, H2StretchedUHFLowerThanRHF) {
     auto frame = make_h2(2.0);
-    auto ints = cpu::scf::build_integrals_sto3g(frame);
+    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto rhf = cpu::scf::rhf_solve(ints, kTol, 50);
     auto uhf = cpu::scf::uhf_solve(ints, 1, 1, kTol, 100);
     EXPECT_TRUE(uhf.converged);
@@ -173,7 +173,7 @@ TEST_F(UHFSolveTest, H2StretchedUHFLowerThanRHF) {
 
 TEST_F(UHFSolveTest, H2StretchedSpinContaminationNonzero) {
     auto frame = make_h2(2.0);
-    auto ints = cpu::scf::build_integrals_sto3g(frame);
+    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto uhf = cpu::scf::uhf_solve(ints, 1, 1, kTol, 100);
     EXPECT_TRUE(uhf.converged);
     EXPECT_GT(static_cast<double>(uhf.spin_contamination), 0.0);
@@ -184,7 +184,7 @@ TEST_F(UHFSolveTest, H2StretchedSpinContaminationNonzero) {
 TEST_F(UHFSolveTest, H2PESScanUHFVariational) {
     for (double r : {0.6, 0.74, 1.0, 1.5, 2.0, 2.5, 3.0}) {
         auto frame = make_h2(r);
-        auto ints = cpu::scf::build_integrals_sto3g(frame);
+        auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
         auto rhf = cpu::scf::rhf_solve(ints, kTol, 200);
         auto uhf = cpu::scf::uhf_solve(ints, 1, 1, kTol, 400);
         EXPECT_TRUE(uhf.converged) << "UHF failed to converge at R=" << r;
@@ -198,7 +198,7 @@ TEST_F(UHFSolveTest, H2PESScanUHFVariational) {
 
 TEST_F(UHFSolveTest, ResultContainsAlphaBetaEigenvalues) {
     auto frame = make_li_atom();
-    auto ints = cpu::scf::build_integrals_sto3g(frame);
+    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto result = cpu::scf::uhf_solve(ints, 2, 1, kTol, 100);
     EXPECT_EQ(result.eigenvalues_alpha.size(), (size_t)ints.n_basis);
     EXPECT_EQ(result.eigenvalues_beta.size(), (size_t)ints.n_basis);
@@ -206,7 +206,7 @@ TEST_F(UHFSolveTest, ResultContainsAlphaBetaEigenvalues) {
 
 TEST_F(UHFSolveTest, ResultHasConvergenceTrace) {
     auto frame = make_h2(0.74);
-    auto ints = cpu::scf::build_integrals_sto3g(frame);
+    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto result = cpu::scf::uhf_solve(ints, 1, 1, kTol, 50);
     EXPECT_GT(result.trace.size(), 0u);
     EXPECT_EQ((int)result.trace.back().iter, result.iterations);
@@ -214,7 +214,7 @@ TEST_F(UHFSolveTest, ResultHasConvergenceTrace) {
 
 TEST_F(UHFSolveTest, DensityMatricesHaveCorrectShape) {
     auto frame = make_li_atom();
-    auto ints = cpu::scf::build_integrals_sto3g(frame);
+    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto result = cpu::scf::uhf_solve(ints, 2, 1, kTol, 100);
     int n = ints.n_basis;
     EXPECT_EQ(result.P_alpha.shape(0), (size_t)n);

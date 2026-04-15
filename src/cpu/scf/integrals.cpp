@@ -1,5 +1,5 @@
 /// @file cpu/scf/integrals.cpp
-/// @brief `build_integrals_sto3g` — thin compositor over the decomposed
+/// @brief `build_integrals` — thin compositor over the decomposed
 ///        builders (basis_set.h + one_electron.h + two_electron.h).
 ///
 /// This file exists only for backward compatibility. New code should call
@@ -7,7 +7,7 @@
 ///
 /// @code
 ///   auto atoms  = make_atom_list(frame, charge);
-///   auto shells = build_shell_list(atoms, BasisSet::STO3G);
+///   auto shells = build_shell_list(atoms, cpu::scf::BasisSet::STO3G);
 ///   auto S = build_overlap(shells);
 ///   auto T = build_kinetic(shells);
 ///   auto V = build_nuclear_attraction(shells, atoms);

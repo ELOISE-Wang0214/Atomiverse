@@ -123,7 +123,7 @@ RealMatrix build_minao_density(const IntegralPack& integrals) {
     const int n_target = integrals.n_basis;
     const int n_minao  = static_cast<int>(minao_aos.size());
 
-    // ── 2. Target-basis shells already normalized by build_integrals_sto3g
+    // ── 2. Target-basis shells already normalized by build_integrals
     //        — just borrow the pointers.
     //        Reconstruct native::Shell views from the IntegralPack to avoid
     //        depending on its internal shell_data layout past its lifetime.

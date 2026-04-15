@@ -73,7 +73,7 @@ struct DeviceBasis {
         frame.atoms.mass[0] = double(1.008); frame.atoms.mass[1] = double(1.008);
         frame.atoms.type[0] = 1; frame.atoms.type[1] = 1;
         frame.box = Mat3::cubic(100.0);
-        ref = cpu::scf::build_integrals_sto3g(frame);
+        ref = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
 
         // Build host arrays with PHYSICAL normalization (for GPU kernels)
         double h_alpha[6], h_coeff[6], h_centers[6];

@@ -158,7 +158,7 @@ void compare_tensors(const xt::xtensor<double, 4>& a,
 // catches gross algebraic errors in rys_eri_block.
 TEST(RysEri, MatchesMcMurchieDavidson_H2O) {
     auto frame = make_water();
-    auto pack = build_integrals_sto3g(frame, 0, /*need_eri=*/true);
+    auto pack = build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, /*need_eri=*/true);
     auto sp = build_shell_block_pair_list(pack, 1e-14);
 
     auto eri_rys = build_eri_via_rys(sp);
@@ -167,7 +167,7 @@ TEST(RysEri, MatchesMcMurchieDavidson_H2O) {
 
 TEST(RysEri, MatchesMcMurchieDavidson_CO) {
     auto frame = make_co();
-    auto pack = build_integrals_sto3g(frame, 0, /*need_eri=*/true);
+    auto pack = build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, /*need_eri=*/true);
     auto sp = build_shell_block_pair_list(pack, 1e-14);
 
     auto eri_rys = build_eri_via_rys(sp);
@@ -180,7 +180,7 @@ TEST(RysEri, MatchesMcMurchieDavidson_CO) {
 
 TEST(RysEri, MatchesLibcint_H2O) {
     auto frame = make_water();
-    auto pack = build_integrals_sto3g(frame, 0, /*need_eri=*/true);
+    auto pack = build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, /*need_eri=*/true);
     auto sp = build_shell_block_pair_list(pack, 1e-14);
 
     auto eri_rys = build_eri_via_rys(sp);
@@ -190,7 +190,7 @@ TEST(RysEri, MatchesLibcint_H2O) {
 
 TEST(RysEri, MatchesLibcint_CO) {
     auto frame = make_co();
-    auto pack = build_integrals_sto3g(frame, 0, /*need_eri=*/true);
+    auto pack = build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, /*need_eri=*/true);
     auto sp = build_shell_block_pair_list(pack, 1e-14);
 
     auto eri_rys = build_eri_via_rys(sp);

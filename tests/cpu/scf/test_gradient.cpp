@@ -132,8 +132,8 @@ TEST_F(IntegralDerivativesTest, OverlapDerivVsNumerical) {
             if (d == 0) { fwd.atoms.x(A) += h; bwd.atoms.x(A) -= h; }
             else if (d == 1) { fwd.atoms.y(A) += h; bwd.atoms.y(A) -= h; }
             else { fwd.atoms.z(A) += h; bwd.atoms.z(A) -= h; }
-            auto dp_fwd = cpu::scf::build_integrals_sto3g(fwd);
-            auto dp_bwd = cpu::scf::build_integrals_sto3g(bwd);
+            auto dp_fwd = cpu::scf::build_integrals(fwd, cpu::scf::BasisSet::STO3G);
+            auto dp_bwd = cpu::scf::build_integrals(bwd, cpu::scf::BasisSet::STO3G);
             for (int mu = 0; mu < dpack.n_basis; ++mu)
                 for (int nu = 0; nu < dpack.n_basis; ++nu) {
                     double num = (dp_fwd.S(mu, nu) - dp_bwd.S(mu, nu)) / (2.0 * h * kAngstromToBohr);
@@ -154,8 +154,8 @@ TEST_F(IntegralDerivativesTest, HcoreDerivVsNumerical) {
             if (d == 0) { fwd.atoms.x(A) += h; bwd.atoms.x(A) -= h; }
             else if (d == 1) { fwd.atoms.y(A) += h; bwd.atoms.y(A) -= h; }
             else { fwd.atoms.z(A) += h; bwd.atoms.z(A) -= h; }
-            auto dp_fwd = cpu::scf::build_integrals_sto3g(fwd);
-            auto dp_bwd = cpu::scf::build_integrals_sto3g(bwd);
+            auto dp_fwd = cpu::scf::build_integrals(fwd, cpu::scf::BasisSet::STO3G);
+            auto dp_bwd = cpu::scf::build_integrals(bwd, cpu::scf::BasisSet::STO3G);
             for (int mu = 0; mu < dpack.n_basis; ++mu)
                 for (int nu = 0; nu < dpack.n_basis; ++nu) {
                     double num = (dp_fwd.Hcore(mu, nu) - dp_bwd.Hcore(mu, nu)) / (2.0 * h * kAngstromToBohr);
@@ -182,8 +182,8 @@ TEST_F(IntegralDerivativesTest, VnucDerivVsNumerical) {
             if (d == 0) { fwd.atoms.x(A) += h; bwd.atoms.x(A) -= h; }
             else if (d == 1) { fwd.atoms.y(A) += h; bwd.atoms.y(A) -= h; }
             else { fwd.atoms.z(A) += h; bwd.atoms.z(A) -= h; }
-            auto dp_fwd = cpu::scf::build_integrals_sto3g(fwd);
-            auto dp_bwd = cpu::scf::build_integrals_sto3g(bwd);
+            auto dp_fwd = cpu::scf::build_integrals(fwd, cpu::scf::BasisSet::STO3G);
+            auto dp_bwd = cpu::scf::build_integrals(bwd, cpu::scf::BasisSet::STO3G);
             double num = (dp_fwd.V_nuc - dp_bwd.V_nuc) / (2.0 * h * kAngstromToBohr);
             EXPECT_NEAR(static_cast<double>(dpack.dV_nuc(A, d)), static_cast<double>(num), 0.01);
         }
@@ -221,8 +221,8 @@ TEST_F(IntegralDerivativesTest, LiHOverlapDerivVsNumerical) {
             if (d == 0) { fwd.atoms.x(A) += h; bwd.atoms.x(A) -= h; }
             else if (d == 1) { fwd.atoms.y(A) += h; bwd.atoms.y(A) -= h; }
             else { fwd.atoms.z(A) += h; bwd.atoms.z(A) -= h; }
-            auto dp_fwd = cpu::scf::build_integrals_sto3g(fwd);
-            auto dp_bwd = cpu::scf::build_integrals_sto3g(bwd);
+            auto dp_fwd = cpu::scf::build_integrals(fwd, cpu::scf::BasisSet::STO3G);
+            auto dp_bwd = cpu::scf::build_integrals(bwd, cpu::scf::BasisSet::STO3G);
             for (int mu = 0; mu < dpack.n_basis; ++mu)
                 for (int nu = 0; nu < dpack.n_basis; ++nu) {
                     double num = (dp_fwd.S(mu, nu) - dp_bwd.S(mu, nu)) / (2.0 * h * kAngstromToBohr);
@@ -245,8 +245,8 @@ TEST_F(IntegralDerivativesTest, LiHHcoreDerivVsNumerical) {
             if (d == 0) { fwd.atoms.x(A) += h; bwd.atoms.x(A) -= h; }
             else if (d == 1) { fwd.atoms.y(A) += h; bwd.atoms.y(A) -= h; }
             else { fwd.atoms.z(A) += h; bwd.atoms.z(A) -= h; }
-            auto dp_fwd = cpu::scf::build_integrals_sto3g(fwd);
-            auto dp_bwd = cpu::scf::build_integrals_sto3g(bwd);
+            auto dp_fwd = cpu::scf::build_integrals(fwd, cpu::scf::BasisSet::STO3G);
+            auto dp_bwd = cpu::scf::build_integrals(bwd, cpu::scf::BasisSet::STO3G);
             for (int mu = 0; mu < dpack.n_basis; ++mu)
                 for (int nu = 0; nu < dpack.n_basis; ++nu) {
                     double num = (dp_fwd.Hcore(mu, nu) - dp_bwd.Hcore(mu, nu)) / (2.0 * h * kAngstromToBohr);
@@ -295,8 +295,8 @@ TEST_F(IntegralDerivativesTest, H2OOverlapDerivVsNumerical) {
             if (d == 0) { fwd.atoms.x(A) += h; bwd.atoms.x(A) -= h; }
             else if (d == 1) { fwd.atoms.y(A) += h; bwd.atoms.y(A) -= h; }
             else { fwd.atoms.z(A) += h; bwd.atoms.z(A) -= h; }
-            auto dp_fwd = cpu::scf::build_integrals_sto3g(fwd);
-            auto dp_bwd = cpu::scf::build_integrals_sto3g(bwd);
+            auto dp_fwd = cpu::scf::build_integrals(fwd, cpu::scf::BasisSet::STO3G);
+            auto dp_bwd = cpu::scf::build_integrals(bwd, cpu::scf::BasisSet::STO3G);
             for (int mu = 0; mu < dpack.n_basis; ++mu)
                 for (int nu = 0; nu < dpack.n_basis; ++nu) {
                     double num = (dp_fwd.S(mu, nu) - dp_bwd.S(mu, nu)) / (2.0 * h * kAngstromToBohr);
@@ -319,8 +319,8 @@ TEST_F(IntegralDerivativesTest, H2OHcoreDerivVsNumerical) {
             if (d == 0) { fwd.atoms.x(A) += h; bwd.atoms.x(A) -= h; }
             else if (d == 1) { fwd.atoms.y(A) += h; bwd.atoms.y(A) -= h; }
             else { fwd.atoms.z(A) += h; bwd.atoms.z(A) -= h; }
-            auto dp_fwd = cpu::scf::build_integrals_sto3g(fwd);
-            auto dp_bwd = cpu::scf::build_integrals_sto3g(bwd);
+            auto dp_fwd = cpu::scf::build_integrals(fwd, cpu::scf::BasisSet::STO3G);
+            auto dp_bwd = cpu::scf::build_integrals(bwd, cpu::scf::BasisSet::STO3G);
             for (int mu = 0; mu < dpack.n_basis; ++mu)
                 for (int nu = 0; nu < dpack.n_basis; ++nu) {
                     double num = (dp_fwd.Hcore(mu, nu) - dp_bwd.Hcore(mu, nu)) / (2.0 * h * kAngstromToBohr);
@@ -338,7 +338,7 @@ class RHFGradientTest : public SCFGradientFixture {};
 
 TEST_F(RHFGradientTest, H2AnalyticVsFiniteDifference) {
     auto frame = make_h2(0.74);
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals, double(1e-10));
     auto result = cpu::scf::scf_solve(integrals, config);
     ASSERT_TRUE(result.converged);
@@ -354,7 +354,7 @@ TEST_F(RHFGradientTest, H2AnalyticVsFiniteDifference) {
 
 TEST_F(RHFGradientTest, HeHPlusAnalyticVsFiniteDifference) {
     auto frame = make_heh_plus();
-    auto integrals = cpu::scf::build_integrals_sto3g(frame, +1);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G, +1);
     auto config = cpu::scf::rhf_config(integrals, double(1e-10));
     auto result = cpu::scf::scf_solve(integrals, config);
     ASSERT_TRUE(result.converged);
@@ -370,7 +370,7 @@ TEST_F(RHFGradientTest, HeHPlusAnalyticVsFiniteDifference) {
 
 TEST_F(RHFGradientTest, ZeroNetForce) {
     auto frame = make_h2(0.74);
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals, double(1e-10));
     auto result = cpu::scf::scf_solve(integrals, config);
     auto grad = cpu::scf::scf_gradient(frame, integrals, result, config);
@@ -385,7 +385,7 @@ TEST_F(RHFGradientTest, ZeroNetForce) {
 
 TEST_F(RHFGradientTest, HeHPlusZeroNetForce) {
     auto frame = make_heh_plus();
-    auto integrals = cpu::scf::build_integrals_sto3g(frame, +1);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G, +1);
     auto config = cpu::scf::rhf_config(integrals, double(1e-10));
     auto result = cpu::scf::scf_solve(integrals, config);
     auto grad = cpu::scf::scf_gradient(frame, integrals, result, config);
@@ -396,7 +396,7 @@ TEST_F(RHFGradientTest, HeHPlusZeroNetForce) {
 
 TEST_F(RHFGradientTest, H2ForceDirection) {
     auto frame = make_h2(1.5);
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals, double(1e-10));
     auto result = cpu::scf::scf_solve(integrals, config);
     auto grad = cpu::scf::scf_gradient(frame, integrals, result, config);
@@ -410,13 +410,13 @@ TEST_F(RHFGradientTest, EnergyForceConsistency) {
     double delta = 0.001;
 
     auto frame0 = make_h2(R0);
-    auto int0 = cpu::scf::build_integrals_sto3g(frame0);
+    auto int0 = cpu::scf::build_integrals(frame0, cpu::scf::BasisSet::STO3G);
     auto cfg = cpu::scf::rhf_config(int0, double(1e-10));
     auto res0 = cpu::scf::scf_solve(int0, cfg);
     auto grad0 = cpu::scf::scf_gradient(frame0, int0, res0, cfg);
 
     auto frame1 = make_h2(R0 + delta);
-    auto int1 = cpu::scf::build_integrals_sto3g(frame1);
+    auto int1 = cpu::scf::build_integrals(frame1, cpu::scf::BasisSet::STO3G);
     auto res1 = cpu::scf::scf_solve(int1, cfg);
 
     double dE_actual = res1.energy * kHartree2eV - res0.energy * kHartree2eV;
@@ -436,7 +436,7 @@ class UHFGradientTest : public SCFGradientFixture {};
 
 TEST_F(UHFGradientTest, H2ZeroNetForce) {
     auto frame = make_h2(0.74);
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::uhf_config(integrals, 1, 1, double(1e-10));
     auto result = cpu::scf::scf_solve(integrals, config);
     ASSERT_TRUE(result.converged);
@@ -448,7 +448,7 @@ TEST_F(UHFGradientTest, H2ZeroNetForce) {
 
 TEST_F(UHFGradientTest, H2AnalyticVsFiniteDifference) {
     auto frame = make_h2(0.74);
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::uhf_config(integrals, 1, 1, double(1e-10));
     auto result = cpu::scf::scf_solve(integrals, config);
     ASSERT_TRUE(result.converged);
@@ -464,7 +464,7 @@ TEST_F(UHFGradientTest, H2AnalyticVsFiniteDifference) {
 
 TEST_F(UHFGradientTest, H2ForceDirection) {
     auto frame = make_h2(1.5);
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::uhf_config(integrals, 1, 1, double(1e-10));
     auto result = cpu::scf::scf_solve(integrals, config);
     auto grad = cpu::scf::scf_gradient(frame, integrals, result, config);
@@ -479,7 +479,7 @@ class KSGradientTest : public SCFGradientFixture {};
 
 TEST_F(KSGradientTest, H2LSDAZeroNetForce) {
     auto frame = make_h2(0.74);
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::uks_config(integrals, 1, 1, cpu::scf::XCType::LSDA);
     auto result = cpu::scf::scf_solve(integrals, config);
     ASSERT_TRUE(result.converged);
@@ -491,7 +491,7 @@ TEST_F(KSGradientTest, H2LSDAZeroNetForce) {
 
 TEST_F(KSGradientTest, H2LSDAForceDirection) {
     auto frame = make_h2(1.5);
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::uks_config(integrals, 1, 1, cpu::scf::XCType::LSDA);
     auto result = cpu::scf::scf_solve(integrals, config);
     ASSERT_TRUE(result.converged);
@@ -503,7 +503,7 @@ TEST_F(KSGradientTest, H2LSDAForceDirection) {
 
 TEST_F(KSGradientTest, H2LSDAAnalyticVsFD) {
     auto frame = make_h2(0.74);
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::uks_config(integrals, 1, 1, cpu::scf::XCType::LSDA);
     config.tol = double(1e-10);
     auto result = cpu::scf::scf_solve(integrals, config);
@@ -520,7 +520,7 @@ TEST_F(KSGradientTest, H2LSDAAnalyticVsFD) {
 
 TEST_F(KSGradientTest, HeHPlusLSDAZeroNetForce) {
     auto frame = make_heh_plus();
-    auto integrals = cpu::scf::build_integrals_sto3g(frame, 1);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G, 1);
     auto config = cpu::scf::uks_config(integrals, 1, 1, cpu::scf::XCType::LSDA);
     auto result = cpu::scf::scf_solve(integrals, config);
     ASSERT_TRUE(result.converged);
@@ -532,7 +532,7 @@ TEST_F(KSGradientTest, HeHPlusLSDAZeroNetForce) {
 
 TEST_F(KSGradientTest, H2PBEZeroNetForce) {
     auto frame = make_h2(0.74);
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::uks_config(integrals, 1, 1, cpu::scf::XCType::PBE);
     auto result = cpu::scf::scf_solve(integrals, config);
     ASSERT_TRUE(result.converged);
@@ -544,7 +544,7 @@ TEST_F(KSGradientTest, H2PBEZeroNetForce) {
 
 TEST_F(KSGradientTest, H2PBEForceDirection) {
     auto frame = make_h2(1.5);
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::uks_config(integrals, 1, 1, cpu::scf::XCType::PBE);
     auto result = cpu::scf::scf_solve(integrals, config);
     ASSERT_TRUE(result.converged);

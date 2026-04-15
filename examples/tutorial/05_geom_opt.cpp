@@ -103,22 +103,24 @@ int main() {
     ATV::log_init(spdlog::level::debug);
     ATV_INFO("=== Atomiverse: Aspirin Geometry Optimization ===");
     ATV_INFO("    Molecule: C9H8O4 (acetylsalicylic acid)");
-    ATV_INFO("    Method:   RHF / STO-3G");
+    ATV_INFO("    Method:   PBE / STO-3G (default_config)");
     ATV_INFO("    Optimizer: L-BFGS (memory=5)");
 
     auto frame = make_aspirin();
 
-    // Build integrals to determine electron count
+    // Build integrals at the default baseline basis. STO-3G lets this
+    // tutorial complete quickly on a laptop; switch `BasisSet::Def2SVP` in
+    // production once the d-shell XC-grid extension ships (tracked in
+    // Phase 1.2).
     ATV_INFO("[example] initial integrals start");
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     ATV_INFO(
         "[example] initial integrals done basis={} electrons={}",
         integrals.n_basis, integrals.n_electrons);
 
-    // Configure RHF. Route the 2e gradient through the native Rys engine
-    // (not libcint, even when available) so this tutorial exercises the
-    // Phase-2 production path.
-    auto config = cpu::scf::rhf_config(integrals);
+    // Locked production defaults: restricted Kohn–Sham / PBE with MINAO
+    // initial guess. Override select fields for the tutorial's turnaround.
+    auto config = cpu::scf::default_config(integrals);
     config.tol = double(1e-6);
     config.max_iter = 200;
     config.force_native_two_electron_deriv = true;

@@ -4,7 +4,7 @@
 /// Regression test for the `xt::broadcast_error` that blocked running
 /// bench_qc_suite at the spec's PBE/def2-SVP level of theory. The
 /// integral-derivative path in `integral_derivatives.cpp` hardcoded
-/// `sto3g_data`; this test feeds it def2-SVP and verifies the gradient
+/// STO-3G sizing; this test feeds it def2-SVP and verifies the gradient
 /// comes out finite and has the translational-invariance property
 /// Σ_A ∂E/∂R_A = 0.
 

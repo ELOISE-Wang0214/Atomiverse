@@ -197,7 +197,7 @@ int main() {
     std::cout << "=== Case 1: H atom / STO-3G / UHF ===\n";
     {
         auto frame  = single_atom(1);
-        auto ints   = cpu::scf::build_integrals_sto3g(frame);
+        auto ints   = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
         auto result = cpu::scf::uhf_solve(ints, 1, 0, tol, max_iter_atoms);
 
         std::cout << "  Converged:       " << (result.converged ? "yes" : "no")
@@ -229,7 +229,7 @@ int main() {
     std::cout << "=== Case 2: H2 (0.74 Ang) / STO-3G / RHF vs UHF ===\n";
     {
         auto frame = diatomic_h2(0.74);
-        auto ints  = cpu::scf::build_integrals_sto3g(frame);
+        auto ints  = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
         auto rhf   = cpu::scf::rhf_solve(ints, tol, 50);
         auto uhf   = cpu::scf::uhf_solve(ints, 1, 1, tol, max_iter_h2);
 
@@ -306,7 +306,7 @@ int main() {
 
     for (double r = 0.5; r <= 4.01; r += 0.25) {
         auto frame = diatomic_h2(r);
-        auto ints  = cpu::scf::build_integrals_sto3g(frame);
+        auto ints  = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
         auto rhf   = cpu::scf::rhf_solve(ints, tol, 100);
         auto uhf   = cpu::scf::uhf_solve(ints, 1, 1, tol, max_iter_scan);
 

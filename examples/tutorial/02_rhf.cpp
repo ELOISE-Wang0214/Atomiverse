@@ -45,13 +45,13 @@ int main() {
 
     // ── 2. Compute molecular integrals ────────────────────────────────
     //
-    // build_integrals_sto3g() calls libcint internally:
+    // build_integrals() calls libcint internally:
     //   - Overlap S, kinetic T, nuclear attraction V -> Hcore = T + V
     //   - Two-electron repulsion integrals ERI (chemist's notation)
     //   - Nuclear repulsion V_nuc = Z_A * Z_B / R_AB
     //
     // All matrices are xtensor arrays. No CUDA involved.
-    auto integrals = cpu::scf::build_integrals_sto3g(frame);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
 
     std::cout << "Basis functions: " << integrals.n_basis << "\n"
               << "Electrons:       " << integrals.n_electrons << "\n"

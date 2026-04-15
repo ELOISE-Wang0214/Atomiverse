@@ -307,7 +307,7 @@ static cpu::Frame make_h2() {
 static void BM_FullBuild_Native(benchmark::State& state) {
     auto frame = make_h2();
     for (auto _ : state) {
-        auto pack = build_integrals_sto3g(frame);
+        auto pack = build_integrals(frame, cpu::scf::BasisSet::STO3G);
         benchmark::DoNotOptimize(pack.V_nuc);
     }
 }
@@ -322,7 +322,7 @@ BENCHMARK(BM_FullBuild_Native)->Unit(benchmark::kMicrosecond);
 
 static void BM_CPURHFSolve(benchmark::State& state) {
     auto frame = make_h2();
-    auto integrals = build_integrals_sto3g(frame);
+    auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
     double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     for (auto _ : state) {
         auto result = cpu::scf::rhf_solve(integrals, tol, 100);
@@ -333,7 +333,7 @@ BENCHMARK(BM_CPURHFSolve)->Unit(benchmark::kMicrosecond);
 
 static void BM_CUDARHFSolve(benchmark::State& state) {
     auto frame = make_h2();
-    auto integrals = build_integrals_sto3g(frame);
+    auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
     double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     for (auto _ : state) {
         // Includes materialize + solve + retrieve (full Driver lifecycle)
@@ -363,7 +363,7 @@ static cpu::Frame make_lih() {
 
 static void BM_CPURHFSolve_LiH(benchmark::State& state) {
     auto frame = make_lih();
-    auto integrals = build_integrals_sto3g(frame);
+    auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
     double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     for (auto _ : state) {
         auto result = cpu::scf::rhf_solve(integrals, tol, 100);
@@ -374,7 +374,7 @@ BENCHMARK(BM_CPURHFSolve_LiH)->Unit(benchmark::kMicrosecond);
 
 static void BM_CUDARHFSolve_LiH(benchmark::State& state) {
     auto frame = make_lih();
-    auto integrals = build_integrals_sto3g(frame);
+    auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
     double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     for (auto _ : state) {
         scf::SCF solver;

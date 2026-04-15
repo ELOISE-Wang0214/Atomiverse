@@ -7,8 +7,8 @@
 
 #include "atomiverse/core/constants.h"
 #include "atomiverse/core/log.h"
+#include "atomiverse/cpu/scf/basis_data/sto3g.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
-#include "atomiverse/cpu/scf/sto3g_data.h"
 
 #ifdef ATV_HAS_LIBCINT
 extern "C" {
@@ -45,18 +45,31 @@ struct ShellHolder {
     native::Shell shell{};
 };
 
+// Map the legacy (raw_shell, l) selector onto the generic STO-3G basis_data
+// table. The old sto3g_data layout fused s + sp shells; basis_data::sto3g()
+// emits each l separately, so the ordering is [1s, 2s, 2p, ...].
+inline int sto3g_basis_data_index(int raw_shell, int l) {
+    if (raw_shell == 0 && l == 0) return 0;  // pure-s / 1s
+    if (raw_shell == 1 && l == 0) return 1;  // 2s from sp
+    if (raw_shell == 1 && l == 1) return 2;  // 2p from sp
+    return -1;
+}
+
 ShellHolder make_native_shell(const AtomSpec& atom, const ShellSpec& spec) {
-    const auto& raw = sto3g_data[spec.Z].raw[spec.raw_shell];
+    const auto& atom_shells = basis_data::sto3g()[spec.Z].shells;
+    const int idx = sto3g_basis_data_index(spec.raw_shell, spec.l);
+    const auto& sh = atom_shells[idx];
 
     ShellHolder holder;
-    for (int p = 0; p < raw.n_prim; ++p) {
-        holder.alpha[p] = raw.alpha[p];
-        holder.coeff[p] = (spec.l == 0)
-            ? raw.coeff_s[p] * native::phys_norm(raw.alpha[p])
-            : raw.coeff_p[p] * native::phys_norm_p(raw.alpha[p]);
+    const int np = static_cast<int>(sh.alpha.size());
+    double (*norm_at)(double) =
+        (spec.l == 0) ? native::phys_norm : native::phys_norm_p;
+    for (int p = 0; p < np; ++p) {
+        holder.alpha[p] = sh.alpha[p];
+        holder.coeff[p] = sh.coeff[p] * norm_at(sh.alpha[p]);
     }
 
-    holder.shell.n_prim = raw.n_prim;
+    holder.shell.n_prim = np;
     holder.shell.alpha = holder.alpha.data();
     holder.shell.coeff = holder.coeff.data();
     holder.shell.center[0] = atom.center_bohr[0];
@@ -260,17 +273,19 @@ LibcintEnv make_libcint_env(const std::vector<AtomSpec>& atoms, const std::vecto
 
     for (int i = 0; i < out.nbas; ++i) {
         const auto& spec = shells[i];
-        const auto& raw = sto3g_data[spec.Z].raw[spec.raw_shell];
+        const auto& atom_shells = basis_data::sto3g()[spec.Z].shells;
+        const auto& bsh = atom_shells[sto3g_basis_data_index(spec.raw_shell, spec.l)];
+        const int np = static_cast<int>(bsh.alpha.size());
         const int ptr_exp = off;
-        for (int p = 0; p < raw.n_prim; ++p)
-            out.env[off++] = raw.alpha[p];
+        for (int p = 0; p < np; ++p)
+            out.env[off++] = bsh.alpha[p];
         const int ptr_coeff = off;
-        for (int p = 0; p < raw.n_prim; ++p)
-            out.env[off++] = ((spec.l == 0) ? raw.coeff_s[p] : raw.coeff_p[p]) * CINTgto_norm(spec.l, raw.alpha[p]);
+        for (int p = 0; p < np; ++p)
+            out.env[off++] = bsh.coeff[p] * CINTgto_norm(spec.l, bsh.alpha[p]);
 
         out.bas[ATOM_OF + BAS_SLOTS * i] = spec.atom_of;
         out.bas[ANG_OF + BAS_SLOTS * i] = spec.l;
-        out.bas[NPRIM_OF + BAS_SLOTS * i] = raw.n_prim;
+        out.bas[NPRIM_OF + BAS_SLOTS * i] = np;
         out.bas[NCTR_OF + BAS_SLOTS * i] = 1;
         out.bas[PTR_EXP + BAS_SLOTS * i] = ptr_exp;
         out.bas[PTR_COEFF + BAS_SLOTS * i] = ptr_coeff;
@@ -470,17 +485,19 @@ struct ShellBlockHolder {
 };
 
 ShellBlockHolder make_native_shell_block(const AtomSpec& atom, const ShellSpec& spec) {
-    const auto& raw = sto3g_data[spec.Z].raw[spec.raw_shell];
+    const auto& atom_shells = basis_data::sto3g()[spec.Z].shells;
+    const auto& bsh = atom_shells[sto3g_basis_data_index(spec.raw_shell, spec.l)];
+    const int np = static_cast<int>(bsh.alpha.size());
 
     ShellBlockHolder holder;
-    for (int p = 0; p < raw.n_prim; ++p) {
-        holder.alpha[p] = raw.alpha[p];
-        holder.coeff[p] = (spec.l == 0)
-            ? raw.coeff_s[p] * native::phys_norm(raw.alpha[p])
-            : raw.coeff_p[p] * native::phys_norm_p(raw.alpha[p]);
+    double (*norm_at)(double) =
+        (spec.l == 0) ? native::phys_norm : native::phys_norm_p;
+    for (int p = 0; p < np; ++p) {
+        holder.alpha[p] = bsh.alpha[p];
+        holder.coeff[p] = bsh.coeff[p] * norm_at(bsh.alpha[p]);
     }
 
-    holder.block.n_prim  = raw.n_prim;
+    holder.block.n_prim  = np;
     holder.block.alpha   = holder.alpha.data();
     holder.block.coeff   = holder.coeff.data();
     holder.block.center[0] = atom.center_bohr[0];

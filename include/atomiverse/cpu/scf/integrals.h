@@ -1,5 +1,5 @@
 /// @file cpu/scf/integrals.h
-/// @brief IntegralPack + build_integrals_sto3g() -- molecular integrals via native C++.
+/// @brief IntegralPack + build_integrals() -- molecular integrals via native C++.
 ///
 /// All arrays are xtensor. Computes overlap (S), kinetic (T), nuclear attraction (V),
 /// core Hamiltonian (Hcore = T + V), two-electron repulsion integrals (ERI),
@@ -33,7 +33,7 @@ struct IntegralPack {
     int n_basis = 0;                ///< Number of basis functions.
     int n_electrons = 0;            ///< Total number of electrons.
 
-    /// @brief Atom descriptors (Z, position in Bohr). Populated by build_integrals_sto3g.
+    /// @brief Atom descriptors (Z, position in Bohr). Populated by build_integrals.
     std::vector<native::Atom> atoms;
 
     /// @brief Shell descriptors with owned coefficient storage.
@@ -71,15 +71,6 @@ struct IntegralPack {
 /// @return IntegralPack with S, T, V, Hcore, V_nuc, shells, atoms (ERI only if requested).
 IntegralPack build_integrals(const Frame& frame, BasisSet basis,
                              int charge = 0, bool compute_eri = false);
-
-/// @brief Backwards-compatible wrapper; forwards to build_integrals(..., STO3G, ...).
-///
-/// Retained until Phase 1.4; new code should call `build_integrals`
-/// directly with an explicit `BasisSet`.
-inline IntegralPack build_integrals_sto3g(const Frame& frame, int charge = 0,
-                                          bool compute_eri = false) {
-    return build_integrals(frame, BasisSet::STO3G, charge, compute_eri);
-}
 
 } // namespace scf
 } // namespace cpu

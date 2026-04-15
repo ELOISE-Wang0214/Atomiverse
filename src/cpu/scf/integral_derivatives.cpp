@@ -23,7 +23,6 @@
 #include "atomiverse/cpu/scf/native_integrals.h"
 #include "atomiverse/cpu/scf/rys_eri.h"
 #include "atomiverse/cpu/scf/shell_pair.h"
-#include "atomiverse/cpu/scf/sto3g_data.h"
 #include "atomiverse/core/constants.h"
 #include "atomiverse/core/gto.h"
 #include "atomiverse/core/log.h"
@@ -679,7 +678,7 @@ IntegralDerivPack build_integral_derivatives(const IntegralPack& ipack) {
 }
 
 IntegralDerivPack build_integral_derivatives_sto3g(const Frame& frame, int charge) {
-    const auto ipack = build_integrals(frame, BasisSet::STO3G, charge);
+    const auto ipack = build_integrals(frame, cpu::scf::BasisSet::STO3G, charge);
     return build_integral_derivatives(ipack);
 }
 

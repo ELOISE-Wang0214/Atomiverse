@@ -12,8 +12,8 @@
 #include "atomiverse/cpu/scf/basis_data/def2_tzvp.h"
 #include "atomiverse/cpu/scf/basis_data/pople_631g.h"
 #include "atomiverse/cpu/scf/basis_data/pople_631gs.h"
+#include "atomiverse/cpu/scf/basis_data/sto3g.h"
 #include "atomiverse/cpu/scf/cart.h"
-#include "atomiverse/cpu/scf/sto3g_data.h"
 
 namespace ATV {
 namespace cpu {
@@ -80,75 +80,8 @@ AtomList make_atom_list(const Frame& frame, int charge) {
     return out;
 }
 
-// ── ShellList builder: STO-3G branch ─────────────────────────────────
-
-namespace {
-
-ShellList build_shell_list_sto3g(const AtomList& atoms) {
-    const int natm = static_cast<int>(atoms.atoms.size());
-
-    int n_basis = 0;
-    for (int a = 0; a < natm; ++a)
-        n_basis += sto3g_n_basis(atoms.atoms[a].Z);
-
-    ShellList out;
-    out.n_basis = n_basis;
-    out.basis = BasisSet::STO3G;
-    out.shells.resize(n_basis);
-    out.shell_storage.resize(n_basis);
-
-    int shell_idx = 0;
-    for (int a = 0; a < natm; ++a) {
-        const int Z = atoms.atoms[a].Z;
-        if (Z < 1 || Z > kMaxZ) {
-            throw std::runtime_error(
-                "cpu::scf::build_shell_list: STO-3G has no data for Z=" +
-                std::to_string(Z));
-        }
-        const double cx = atoms.atoms[a].pos[0];
-        const double cy = atoms.atoms[a].pos[1];
-        const double cz = atoms.atoms[a].pos[2];
-
-        const auto& basis = sto3g_data[Z];
-        for (int s = 0; s < basis.n_raw_shells; ++s) {
-            const auto& raw = basis.raw[s];
-
-            auto emit_shell = [&](int l, int cart, const double coeffs[3], double norm_factor_at(double)) {
-                const int np = 3;  // STO-3G always 3 primitives per contraction.
-                auto& store = out.shell_storage[shell_idx];
-                store.resize(static_cast<std::size_t>(2 * np));
-                for (int p = 0; p < np; ++p) {
-                    store[p] = raw.alpha[p];
-                    store[np + p] = coeffs[p] * norm_factor_at(raw.alpha[p]);
-                }
-                auto& sh = out.shells[shell_idx];
-                sh.n_prim = np;
-                sh.alpha = store.data();
-                sh.coeff = store.data() + np;
-                sh.center[0] = cx;
-                sh.center[1] = cy;
-                sh.center[2] = cz;
-                sh.l = l;
-                sh.cart = cart;
-                ++shell_idx;
-            };
-
-            if (raw.type == 0) {
-                // Pure s shell → 1 AO.
-                emit_shell(/*l=*/0, /*cart=*/0, raw.coeff_s, native::phys_norm);
-            } else {
-                // SP shell → 1 s AO + 3 p AOs (px, py, pz), shared exponents.
-                emit_shell(/*l=*/0, /*cart=*/0, raw.coeff_s, native::phys_norm);
-                emit_shell(/*l=*/1, /*cart=*/0, raw.coeff_p, native::phys_norm_p);
-                emit_shell(/*l=*/1, /*cart=*/1, raw.coeff_p, native::phys_norm_p);
-                emit_shell(/*l=*/1, /*cart=*/2, raw.coeff_p, native::phys_norm_p);
-            }
-        }
-    }
-    return out;
-}
-
 // ── Generic builder driven by a checked-in basis_data table ──────────
+namespace {
 //
 // Walks a `std::vector<basis_data::AtomBasis>` indexed by Z and emits
 // one native::Shell per Cartesian AO, applying the physical GTO
@@ -241,7 +174,8 @@ ShellList build_shell_list_from_table(
 ShellList build_shell_list(const AtomList& atoms, BasisSet basis) {
     switch (basis) {
         case BasisSet::STO3G:
-            return build_shell_list_sto3g(atoms);
+            return build_shell_list_from_table(
+                atoms, basis_data::sto3g(), basis);
         case BasisSet::Pople631G:
             return build_shell_list_from_table(
                 atoms, basis_data::pople_631g(), basis);

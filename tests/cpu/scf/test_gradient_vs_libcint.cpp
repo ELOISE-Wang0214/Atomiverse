@@ -156,7 +156,7 @@ GradCompare diff_forces(const xt::xtensor<double, 2>& ref,
 /// even if libcint is compiled in.
 xt::xtensor<double, 2>
 compute_gradient(const cpu::Frame& frame, bool force_native) {
-    auto integrals = cpu::scf::build_integrals_sto3g(frame, /*charge=*/0);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G, /*charge=*/0);
     auto config = cpu::scf::rhf_config(integrals);
     config.tol = 1e-10;          // tight SCF so the gradient has no SCF noise
     config.max_iter = 200;
