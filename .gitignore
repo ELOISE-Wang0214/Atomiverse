@@ -156,6 +156,8 @@ pyrightconfig.json
 *.cube
 *.png
 *.xyz
+# …except the checked-in benchmark starting geometries
+!benchmarks/qc/molecules/*.xyz
 
 # Claude agent
 .claude/worktrees/**

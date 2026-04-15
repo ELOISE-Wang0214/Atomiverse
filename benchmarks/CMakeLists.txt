@@ -35,6 +35,10 @@ if(ATV_BUILD_RHF)
     add_executable(bench_qc_suite qc/bench_qc_suite.cpp)
     target_link_libraries(bench_qc_suite PRIVATE atomiverse)
     set_target_properties(bench_qc_suite PROPERTIES CXX_STANDARD 17)
+    # Absolute path to benchmarks/qc so the binary can locate the
+    # checked-in xyz geometries and JSON references regardless of cwd.
+    target_compile_definitions(bench_qc_suite PRIVATE
+        ATV_QC_DATA_DIR="${CMAKE_SOURCE_DIR}/benchmarks/qc")
 endif()
 
 if(ATV_BUILD_TORCH)

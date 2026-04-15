@@ -34,6 +34,15 @@ except ImportError:
     sys.stderr.write("pyscf + geometric required to regenerate references\n")
     raise
 
+# Multiplicity overrides for the radical benchmark entries. Closed-shell
+# molecules (spin=0) are handled by the default path; the keys here carry
+# 2S for PySCF's `gto.M(spin=...)` convention.
+OPEN_SHELL = {
+    "o2_triplet":  {"spin": 2},  # triplet  -> S=1
+    "no_doublet":  {"spin": 1},  # doublet  -> S=1/2
+    "ch3_radical": {"spin": 1},  # doublet
+}
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MOL_DIR = REPO_ROOT / "benchmarks" / "qc" / "molecules"
 REF_DIR = REPO_ROOT / "benchmarks" / "qc" / "reference"
@@ -70,13 +79,20 @@ def pyscf_atoms(mol) -> list[tuple[str, float, float, float]]:
 
 
 def _make_mf(mol, method: str, xc: str, tol: float):
-    if method.lower() == "rhf":
-        mf = scf.RHF(mol)
-    elif method.lower() == "rks":
-        mf = dft.RKS(mol)
+    m = method.lower()
+    open_shell = mol.spin > 0
+    if m == "rhf":
+        mf = scf.UHF(mol) if open_shell else scf.RHF(mol)
+    elif m == "rks":
+        mf = dft.UKS(mol) if open_shell else dft.RKS(mol)
+        mf.xc = xc
+    elif m == "uhf":
+        mf = scf.UHF(mol)
+    elif m == "uks":
+        mf = dft.UKS(mol)
         mf.xc = xc
     else:
-        raise ValueError(f"unknown method {method!r} (expected rhf / rks)")
+        raise ValueError(f"unknown method {method!r} (expected rhf/rks/uhf/uks)")
     mf.conv_tol = tol
     return mf
 
@@ -84,11 +100,13 @@ def _make_mf(mol, method: str, xc: str, tol: float):
 def run_reference(stem: str, basis: str, method: str, xc: str,
                   scf_tol: float = 1e-10) -> dict:
     atoms = read_xyz(MOL_DIR / f"{stem}.xyz")
+    extras = OPEN_SHELL.get(stem, {})
     mol = gto.M(
         atom=atoms_to_pyscf_str(atoms),
         basis=basis,
         cart=True,  # match atomiverse Cartesian-d convention
         verbose=0,
+        **extras,
     )
 
     mf = _make_mf(mol, method, xc, scf_tol)
@@ -107,7 +125,8 @@ def run_reference(stem: str, basis: str, method: str, xc: str,
         "stem": stem,
         "basis": basis,
         "method": method,
-        "xc": xc if method.lower() == "rks" else None,
+        "xc": xc if method.lower() in {"rks", "uks"} else None,
+        "spin": int(mol.spin),
         "cart": True,
         "starting_geometry_angstrom": [
             {"symbol": s, "x": x, "y": y, "z": z} for s, x, y, z in atoms

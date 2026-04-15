@@ -1,8 +1,9 @@
 {
   "stem": "h2o",
-  "basis": "6-31g",
-  "method": "rhf",
-  "xc": null,
+  "basis": "def2-svp",
+  "method": "rks",
+  "xc": "pbe",
+  "spin": 0,
   "cart": true,
   "starting_geometry_angstrom": [
     {
@@ -27,26 +28,26 @@
   "optimized_geometry_angstrom": [
     {
       "symbol": "O",
-      "x": 3.1943114224307434e-17,
-      "y": 2.6138948748385525e-14,
-      "z": 0.08124301405998526
+      "x": -5.609414775053048e-14,
+      "y": 3.398740768145322e-14,
+      "z": 0.1343356945266877
     },
     {
       "symbol": "H",
-      "x": -8.665777041108273e-15,
-      "y": 0.7851733570457659,
-      "z": -0.4528875070299162
+      "x": -1.6700782291951027e-14,
+      "y": 0.7574997042732289,
+      "z": -0.4798383009798963
     },
     {
       "symbol": "H",
-      "x": 1.009459678235539e-14,
-      "y": -0.785173357045723,
-      "z": -0.4528875070299016
+      "x": -5.137175496326042e-14,
+      "y": -0.7574997042730772,
+      "z": -0.4798383009799983
     }
   ],
-  "energy_hartree_starting": -75.98383112063223,
-  "energy_hartree_optimized": -75.98535917627022,
-  "scf_iterations_starting": 9,
-  "opt_wall_seconds": 0.099279750000278,
+  "energy_hartree_starting": -76.27374826780702,
+  "energy_hartree_optimized": -76.27433405146765,
+  "scf_iterations_starting": 8,
+  "opt_wall_seconds": 0.5233722499979194,
   "pyscf_version": "2.12.1"
 }

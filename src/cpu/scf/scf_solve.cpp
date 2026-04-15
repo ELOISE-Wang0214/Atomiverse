@@ -209,11 +209,28 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config,
             F_alpha = Hcore_cm + J - K_alpha;
             F_beta  = Hcore_cm + J - K_beta;
         } else {
-            // UKS: Coulomb J via direct SCF; exchange handled by XC functional
-            RealMatrix P_total = P_alpha + P_beta;
-            build_j_direct(sp, P_total, J);
+            // KS branch (both UKS and RKS).
+            //
+            // ATV's restricted convention stores `P_alpha` as the *full*
+            // double-occupied density with `P_beta` aliased, matching the
+            // RHF path at line ~148. The unrestricted convention stores
+            // `P_alpha` / `P_beta` as spin-resolved (each half in the
+            // high-symmetry limit). We reconcile those here:
+            //   P_total_J       — goes into J (full density)
+            //   P_alpha_xc / P_beta_xc — go into XC (spin-resolved)
+            RealMatrix P_total_J, P_alpha_xc, P_beta_xc;
+            if (restricted) {
+                P_total_J  = P_alpha;                 // = full density
+                P_alpha_xc = double(0.5) * P_alpha;   // half each for XC grid
+                P_beta_xc  = P_alpha_xc;
+            } else {
+                P_total_J  = P_alpha + P_beta;
+                P_alpha_xc = P_alpha;
+                P_beta_xc  = P_beta;
+            }
+            build_j_direct(sp, P_total_J, J);
             auto xc_result = evaluate_xc_batched(grid, integrals.shells, n,
-                                                  P_alpha, P_beta, config.xc_type);
+                                                  P_alpha_xc, P_beta_xc, config.xc_type);
             F_alpha = Hcore_cm + J + xc_result.Vxc_alpha;
             F_beta  = Hcore_cm + J + xc_result.Vxc_beta;
             E_xc_grid = xc_result.E_xc;
@@ -285,7 +302,7 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config,
         double E_total;
         double E_one = 0, E_J = 0, E_K = 0;
 
-        if (restricted) {
+        if (restricted && is_hf) {
             // RHF: self-consistent energy at P_old (the density that produced
             // F_alpha). PySCF equivalent: E(P_in) = 0.5*Tr[(H+F(P_in))*P_in]+Vnn.
             // Evaluating at P_old rather than P_new avoids double-counting:
@@ -293,6 +310,15 @@ SCFResult scf_solve(const IntegralPack& integrals, const SCFConfig& config,
             E_total = double(0.5) * xt::sum((Hcore_cm + F_alpha) * P_alpha)()
                     + integrals.V_nuc;
             E_one = xt::sum(Hcore_cm * P_alpha)();
+        } else if (restricted) {
+            // RKS: P_alpha carries the full double-occupied density; reuse
+            // that directly instead of summing with the P_beta alias to
+            // avoid the 2x double-counting that the UKS `P_total` shortcut
+            // would introduce. Energy from the grid path is the correct
+            // E_xc — the HF trace formula would silently mix Vxc into E.
+            E_one = xt::sum(Hcore_cm * P_alpha_new)();
+            E_J = double(0.5) * xt::sum(J * P_alpha_new)();
+            E_total = E_one + E_J + E_xc_grid + integrals.V_nuc;
         } else if (is_hf) {
             // UHF: E = 0.5 * [Tr((H+F^α)*P^α_old) + Tr((H+F^β)*P^β_old)] + V_nuc
             E_total = double(0.5) * (

@@ -1,0 +1,41 @@
+{
+  "stem": "o2_triplet",
+  "basis": "def2-svp",
+  "method": "rks",
+  "xc": "pbe",
+  "spin": 2,
+  "cart": true,
+  "starting_geometry_angstrom": [
+    {
+      "symbol": "O",
+      "x": 0.575465,
+      "y": 0.0,
+      "z": 0.0
+    },
+    {
+      "symbol": "O",
+      "x": -0.575465,
+      "y": 0.0,
+      "z": 0.0
+    }
+  ],
+  "optimized_geometry_angstrom": [
+    {
+      "symbol": "O",
+      "x": 0.6074744986743515,
+      "y": -4.745994955427386e-14,
+      "z": -9.552044905677257e-14
+    },
+    {
+      "symbol": "O",
+      "x": -0.607474498710798,
+      "y": 6.441910999113074e-14,
+      "z": 1.5638640098040882e-13
+    }
+  ],
+  "energy_hartree_starting": -150.06382300357262,
+  "energy_hartree_optimized": -150.07055415197766,
+  "scf_iterations_starting": 7,
+  "opt_wall_seconds": 1.3817281249939697,
+  "pyscf_version": "2.12.1"
+}

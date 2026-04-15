@@ -174,6 +174,26 @@ TEST(BasisEvalDShell, DensityIntegralRecoversElectronCountOn631GsWater) {
 
 // ── 3) KS smoke test on a d-shell basis. ─────────────────────────────
 
+TEST(BasisEvalDShell, PBE_def2SVP_RKS_Water_MatchesPyscf) {
+    auto frame = make_water();
+    auto integrals = cpu::scf::build_integrals(
+        frame, cpu::scf::BasisSet::Def2SVP);
+
+    // Restricted-KS path via default_config.
+    auto config = cpu::scf::default_config(integrals);
+    config.max_iter = 100;
+    config.tol = 1e-9;
+
+    auto result = cpu::scf::scf_solve(integrals, config);
+    ASSERT_TRUE(result.converged) << "PBE/def2-SVP RKS on water should converge";
+
+    // PySCF RKS/PBE/def2-SVP on this same geometry: -76.2743 Ha.  The
+    // SG-0-ish (50, 110) grid ATV ships converges ~6 mHa looser than
+    // PySCF's default dense grid; tighten once we upgrade the radial
+    // scheme (tracked as a separate perf/grid line item).
+    EXPECT_NEAR(result.energy, -76.2743, 1e-2);
+}
+
 TEST(BasisEvalDShell, PBE_631Gs_WaterConvergesAndIntegratesNElectrons) {
     auto frame = make_water();
     auto integrals = cpu::scf::build_integrals(

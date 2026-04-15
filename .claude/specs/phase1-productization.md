@@ -100,12 +100,48 @@ created: 2026-04-14
       `test_cpu_minimizer_lbfgs::H2RHFArmijoLineSearchReachesTightForce`
       drives H2/STO-3G to the PySCF bond length within 0.01 Å at a
       1 mHa/Bohr force tolerance.
-- [ ] Expand geometry set to 12 (benzene, naphthalene, ethanol,
-      glycine, aspirin, caffeine, O2 triplet, NO doublet, CH3•)
-- [ ] Regenerate references for the full set at PBE/def2-SVP (d-shell
-      gradient unblocked; still needs KS/d-shell XC grid below)
-- [ ] CI label `benchmark-qc-fast` (H2O+NH3+CH4 per push) + nightly
-      full suite
+- [x] Expanded geometry set to 12: `benchmarks/qc/molecules/` now ships
+      h2o, nh3, ch4, ethanol, glycine, benzene, naphthalene, aspirin,
+      caffeine (RDKit / UFF-embedded) plus the open-shell trio
+      (o2_triplet, no_doublet, ch3_radical). Regenerate via
+      `python benchmarks/qc/molecules/_generate.py`.
+- [x] Regenerated references at PBE/def2-SVP / cart=True for ten
+      molecules (h2o, nh3, ch4, ethanol, glycine, benzene, naphthalene,
+      o2_triplet, no_doublet, ch3_radical). Aspirin and caffeine have
+      checked-in xyz but are deferred to the nightly CI path because the
+      geomeTRIC optimization takes ~10+ min per molecule on a laptop.
+      `generate_references.py` now supports open-shell systems
+      (`spin` key in the JSON) and routes automatically to UHF/UKS.
+- [x] CI label `benchmark-qc-fast` —
+      `.github/workflows/benchmark-qc-fast.yml` runs the H2O/NH3/CH4
+      triplet on push and the full-refs set on the nightly schedule.
+      `bench_qc_suite` itself was rewritten to parse the JSON references
+      at runtime (no embedded geometry lists) and hands off to
+      `SCFEvaluator` + `LBFGSStep::line_search()` at the level of
+      theory encoded in each reference.
+- [x] **RKS energy/density convention bug in `scf_solve`** — discovered
+      while driving the bench: the restricted-KS branch reused the HF
+      trace formula `0.5·Tr[(H+F)P]` (which silently mixes Vxc into the
+      energy for KS) and the UKS-style `P_total = P_alpha + P_beta` for
+      J/XC feeding (which double-counts when the restricted convention
+      stores `P_alpha` as the full density with `P_beta` aliased). Split
+      the branch so RKS uses `Tr[H·P_α] + 0.5·Tr[J·P_α] + E_xc + V_nuc`
+      and the Fock builder receives `P_total_J = P_α` plus spin-halved
+      `(P_α/2, P_α/2)` for the XC engine. Verified by new test
+      `BasisEvalDShell::PBE_def2SVP_RKS_Water_MatchesPyscf`.
+- [ ] **KS/d-shell analytic-gradient accuracy** — the bench surfaces
+      max-force ~1 eV/Bohr at the PySCF-optimized water geometry, where
+      PySCF reports ~1e-4 Ha/Bohr. SCF energy matches PySCF start to
+      ~80 μHa on the same geometry, so the issue is in the KS gradient
+      assembly for d-shells (not SCF). Armijo line search rescues
+      convergence but takes many backtracking iterations. Follow-up:
+      validate `gradient.cpp` XC piece against FD at 6-31G* / def2-SVP
+      and add a d-shell KS FD test alongside `test_def2svp_gradient`.
+- [ ] **Denser SG-1/SG-2 grid** — the bench leaves a ~5 mHa residue
+      between ATV and PySCF on def2-SVP because the SG-0-ish (50, 110)
+      grid is coarser than PySCF's default. Tightening the radial/
+      angular scheme is the prerequisite for the spec's 1 μHa
+      acceptance; `bench_qc_suite` threshold is 1e-2 Ha until then.
 
 ### 1.3 Standard outputs (components, no workflow classes)
 - [x] `cpu::minimizer::TrajectoryWriter` — molrs XYZ appender, stride support
