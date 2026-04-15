@@ -564,16 +564,23 @@ double eri(const Shell& a, const Shell& b,
     cart_exponents(c, c_ang);
     cart_exponents(d, d_ang);
 
-    double result = 0.0;
+    // `eri_prim_md` has hand-unrolled E-coefficient tables for l ≤ 1
+    // (Lx1/Lx2 ≤ 2, Ltot ≤ 4). For any d-shell in the quartet (Ltot up
+    // to 8) the unrolled path would write past its E / F_m buffers; fall
+    // through to the general-l `eri_prim` instead, which uses the same
+    // `md_e_coeffs` recursion the derivative path already relies on.
+    const int Lmax = std::max({a.l, b.l, c.l, d.l});
+    auto prim = (Lmax <= 1) ? eri_prim_md : eri_prim;
 
+    double result = 0.0;
     for (int p = 0; p < a.n_prim; ++p) {
       for (int q = 0; q < b.n_prim; ++q) {
         for (int r = 0; r < c.n_prim; ++r) {
           for (int s = 0; s < d.n_prim; ++s) {
             result += a.coeff[p] * b.coeff[q] * c.coeff[r] * d.coeff[s]
-                    * eri_prim_md(a_ang, b_ang, c_ang, d_ang,
-                                  a.alpha[p], a.center, b.alpha[q], b.center,
-                                  c.alpha[r], c.center, d.alpha[s], d.center);
+                    * prim(a_ang, b_ang, c_ang, d_ang,
+                           a.alpha[p], a.center, b.alpha[q], b.center,
+                           c.alpha[r], c.center, d.alpha[s], d.center);
           }
         }
       }

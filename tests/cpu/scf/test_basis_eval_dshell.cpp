@@ -172,10 +172,29 @@ TEST(BasisEvalDShell, DensityIntegralRecoversElectronCountOn631GsWater) {
         << "grid-integrated RHF/6-31G* density should recover 10 electrons";
 }
 
-// KS/d-shell end-to-end SCF on 6-31G* still surfaces an abort in the
-// UHF/UKS direct-ERI path (`build_j_direct`) when shells of l=2 enter.
-// That blocker is independent of basis_eval itself — the FD and density
-// integration tests above confirm the d-shell polynomial machinery is
-// correct — and is tracked as a follow-up pass in spec 1.2.
+// ── 3) KS smoke test on a d-shell basis. ─────────────────────────────
+
+TEST(BasisEvalDShell, PBE_631Gs_WaterConvergesAndIntegratesNElectrons) {
+    auto frame = make_water();
+    auto integrals = cpu::scf::build_integrals(
+        frame, cpu::scf::BasisSet::Pople631Gs);
+
+    // Unrestricted KS / PBE on water — exercises both the d-shell basis_eval
+    // path (through xc_grid_engine + GGA gradient) and the native::eri
+    // general-l dispatch inside build_j_direct.
+    auto config = cpu::scf::uks_config(
+        integrals, integrals.n_occ(), integrals.n_occ(), cpu::scf::XCType::PBE);
+    config.max_iter = 100;
+    config.tol = 1e-8;
+
+    auto result = cpu::scf::scf_solve(integrals, config);
+    ASSERT_TRUE(result.converged) << "PBE/6-31G* on water should converge";
+
+    // n_radial=50, n_angular=110 is SG-0-ish; alpha/beta electron count
+    // recovery is limited to a few 1e-3.
+    EXPECT_NEAR(result.integrated_n_alpha, static_cast<double>(config.n_alpha), 5e-3);
+    EXPECT_NEAR(result.integrated_n_beta,  static_cast<double>(config.n_beta),  5e-3);
+    EXPECT_LT(result.xc_energy, 0.0);
+}
 
 #endif // ATV_HAS_RHF

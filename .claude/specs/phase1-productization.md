@@ -77,12 +77,17 @@ created: 2026-04-14
       Tests: `test_cpu_scf_basis_eval_dshell` — FD check of grad+hess
       for every d-cart AO, plus RHF/6-31G* water density integral
       recovering n_electrons on a 0.25-Bohr Cartesian grid.
-- [ ] **KS/d-shell direct SCF** — `scf_solve` on 6-31G*/def2-SVP with
-      LSDA or PBE aborts inside the UKS Fock build (`build_j_direct` +
-      `evaluate_xc_batched`) when d-shells enter the AO set. FD tests
-      and grid-density integration confirm the polynomial machinery
-      itself is correct; the blocker is in the direct-ERI J builder /
-      XC engine interaction for l=2. Separate follow-up.
+- [x] **KS/d-shell direct SCF** — root cause: `native::eri` always
+      dispatched to `eri_prim_md`, whose hand-unrolled E-coefficient
+      tables and Boys-function buffer are sized for l ≤ 1 only (Ltot ≤
+      4). Any (dd|..) or (..|dd) call overflowed the F_m stack array
+      and aborted via the stack canary. Fix: `native::eri` now routes
+      quartets with max-l ≥ 2 through `eri_prim` (the general-l path
+      already used by the derivative-raising code), which sizes its F_m
+      and E tables from `kMaxL` / `kMDEDim`. PBE/6-31G* on water now
+      converges in 12 iters to -76.327 Ha; grid-integrated n_electrons
+      recovers 5.0 ± 0.003 per spin on the SG-0-ish grid. Test:
+      `test_cpu_scf_basis_eval_dshell::PBE_631Gs_WaterConvergesAndIntegratesNElectrons`.
 - [ ] **LBFGS line search** — current fixed-step LBFGSStep converges
       to ~10–30 mHa drift from the PySCF minimum because dtol triggers
       on small-step iterations that haven't actually minimized. Full
