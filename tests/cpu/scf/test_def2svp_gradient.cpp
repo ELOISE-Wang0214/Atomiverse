@@ -17,6 +17,8 @@
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/gradient.h"
 #include "atomiverse/cpu/scf/integrals.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/scf/integral_derivatives.h"
 #include "atomiverse/cpu/scf/scf_solve.h"
 
 using namespace ATV;
@@ -145,7 +147,59 @@ TEST(Def2SVPGradient, H2O_631G_analytic_vs_FD_control) {
 // s/p (STO-3G and 6-31G match FD), but d-shell paths still disagree
 // with FD by O(60 eV/Å). Separate bug in either 1e (dS/dT/dV for d)
 // or native 2e block-scatter for d-blocks. DISABLED until audited.
-TEST(Def2SVPGradient, DISABLED_H2O_631Gs_analytic_vs_FD_minimal_d) {
+// Directly audits dS/dT/dV for H2O 6-31G* — FD each nuclear coordinate
+// and compare to the analytic pack. Pinpoints whether the d-shell
+// gradient bug is in 1e derivs or the 2e path.
+TEST(Def2SVPGradient, H2O_631Gs_dS_dT_dV_vs_FD) {
+    const auto frame = make_h2o();
+    const auto ints_ref = cpu::scf::build_integrals(
+        frame, cpu::scf::BasisSet::Pople631Gs);
+    auto dpack = cpu::scf::build_integral_derivatives(ints_ref);
+
+    const int n = ints_ref.n_basis;
+    const double h = 1e-4;
+    const double inv2h = 1.0 / (2.0 * h);
+    const double ang2bohr = ATV::units::kAngstromInBohr;
+
+    double max_dS_err = 0.0, max_dT_err = 0.0, max_dV_err = 0.0;
+    for (int A = 0; A < 3; ++A) {
+        for (int d = 0; d < 3; ++d) {
+            cpu::Frame fwd = frame;
+            cpu::Frame bwd = frame;
+            if (d == 0)      { fwd.atoms.x[A] += h; bwd.atoms.x[A] -= h; }
+            else if (d == 1) { fwd.atoms.y[A] += h; bwd.atoms.y[A] -= h; }
+            else             { fwd.atoms.z[A] += h; bwd.atoms.z[A] -= h; }
+            const auto ifwd = cpu::scf::build_integrals(
+                fwd, cpu::scf::BasisSet::Pople631Gs);
+            const auto ibwd = cpu::scf::build_integrals(
+                bwd, cpu::scf::BasisSet::Pople631Gs);
+
+            // FD in Angstrom step; derivatives are stored as ∂/∂R in Bohr.
+            // Divide by ang2bohr to convert the FD from [d/dAng] to [d/dBohr].
+            for (int mu = 0; mu < n; ++mu) {
+                for (int nu = 0; nu < n; ++nu) {
+                    const double dS_fd = (ifwd.S(mu, nu) - ibwd.S(mu, nu)) * inv2h / ang2bohr;
+                    const double dT_fd = (ifwd.T(mu, nu) - ibwd.T(mu, nu)) * inv2h / ang2bohr;
+                    const double dV_fd = (ifwd.V(mu, nu) - ibwd.V(mu, nu)) * inv2h / ang2bohr;
+                    max_dS_err = std::max(max_dS_err,
+                        std::abs(dpack.dS(A, d, mu, nu) - dS_fd));
+                    max_dT_err = std::max(max_dT_err,
+                        std::abs(dpack.dT(A, d, mu, nu) - dT_fd));
+                    max_dV_err = std::max(max_dV_err,
+                        std::abs(dpack.dV(A, d, mu, nu) - dV_fd));
+                }
+            }
+        }
+    }
+
+    // 1e deriv tables should match FD to better than 1e-6 Ha/Bohr on
+    // the overlap (no Boys involved) and 1e-5 on V (Boys rounding).
+    EXPECT_LT(max_dS_err, 1e-6) << "max |dS - FD|";
+    EXPECT_LT(max_dT_err, 1e-5) << "max |dT - FD|";
+    EXPECT_LT(max_dV_err, 1e-5) << "max |dV - FD|";
+}
+
+TEST(Def2SVPGradient, H2O_631Gs_analytic_vs_FD_minimal_d) {
     const auto frame = make_h2o();
     auto integrals = cpu::scf::build_integrals(
         frame, cpu::scf::BasisSet::Pople631Gs);
@@ -165,9 +219,24 @@ TEST(Def2SVPGradient, DISABLED_H2O_631Gs_analytic_vs_FD_minimal_d) {
     }
 }
 
-TEST(Def2SVPGradient, DISABLED_H2O_def2svp_analytic_vs_FD) {
-    GTEST_SKIP() << "d-shell gradient path needs audit (same symptom as "
-                    "DISABLED_H2O_631Gs_analytic_vs_FD_minimal_d).";
+TEST(Def2SVPGradient, H2O_def2svp_analytic_vs_FD) {
+    const auto frame = make_h2o();
+    auto integrals = cpu::scf::build_integrals(
+        frame, cpu::scf::BasisSet::Def2SVP);
+    auto cfg = cpu::scf::rhf_config(integrals, /*tol=*/1e-11);
+    auto result = cpu::scf::scf_solve(integrals, cfg);
+    ASSERT_TRUE(result.converged);
+
+    auto analytic = cpu::scf::scf_gradient(frame, integrals, result, cfg);
+    auto fd = cpu::scf::scf_finite_difference_gradient(
+        frame, cfg, /*charge=*/0, /*h=*/5e-5, cpu::scf::BasisSet::Def2SVP);
+
+    for (int A = 0; A < 3; ++A) {
+        for (int d = 0; d < 3; ++d) {
+            EXPECT_NEAR(analytic.forces(A, d), fd.forces(A, d), 1e-2)
+                << "atom=" << A << " axis=" << d;
+        }
+    }
 }
 
 #endif // ATV_HAS_RHF

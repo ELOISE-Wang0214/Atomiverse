@@ -346,10 +346,12 @@ if(NOT ATV_DOCS_ONLY)
     FetchContent_MakeAvailable(Corrosion)
     corrosion_import_crate(
         MANIFEST_PATH "${ATV_MOLRS_PATH}/Cargo.toml"
-        CRATES molrs-cxxapi
+        CRATES molcrafts-molrs-cxxapi
     )
     # molrs-core hardcodes F = f64.  Bridge always uses double.
     # CPU backend uses double; zero-copy across the FFI boundary.
+    # Package is `molcrafts-molrs-cxxapi` in Cargo.toml, but `[lib] name` is
+    # `molrs_cxxapi` -- corrosion exposes the target under the lib name.
     corrosion_add_cxxbridge(molrs_cxx
         CRATE molrs_cxxapi
         FILES bridge.rs

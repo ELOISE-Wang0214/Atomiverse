@@ -18,6 +18,7 @@
 ///   Helgaker, Jorgensen, Olsen, Ch. 9 -- molecular gradients
 
 #include "atomiverse/cpu/scf/integral_derivatives.h"
+#include "atomiverse/cpu/scf/cart.h"
 #include "atomiverse/cpu/scf/libcint_bridge.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 #include "atomiverse/cpu/scf/rys_eri.h"
@@ -48,10 +49,15 @@ namespace cpu {
 namespace scf {
 
 /// @brief Get Cartesian angular momentum exponents for a shell.
-/// @details s-type (l=0): (0,0,0). p-type (l=1, cart=c): unit vector along c.
+/// @details Decodes `sh.cart` (the per-shell-block index 0..n_cart_of(l)-1)
+///   into `(l_x, l_y, l_z)` using the canonical libcint/PySCF enumeration
+///   in `fill_cart_comps`. Supports any l ≤ kMaxL.
 static inline void cart_exponents(const native::Shell& sh, int a_out[3]) {
-    a_out[0] = a_out[1] = a_out[2] = 0;
-    if (sh.l == 1) a_out[sh.cart] = 1;
+    int comps[kMaxNCart][3];
+    fill_cart_comps(sh.l, comps);
+    a_out[0] = comps[sh.cart][0];
+    a_out[1] = comps[sh.cart][1];
+    a_out[2] = comps[sh.cart][2];
 }
 
 // ── Primitive-level derivative helpers ───────────────────────────────

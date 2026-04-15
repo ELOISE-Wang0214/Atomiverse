@@ -677,90 +677,64 @@ double kinetic_prim_3d(const int a_ang[3], const int b_ang[3],
     return prim_kin;
 }
 
-/// @brief Compute McMurchie-Davidson E coefficients for angular momentum up to 2.
-/// @details E^{i,j}_t for the Hermite expansion of a Cartesian Gaussian pair.
-///   Supports i, j in {0, 1, 2}. Output stored in E[0..i+j].
-/// @param ai Angular momentum on center A for this direction (0, 1, or 2).
-/// @param bj Angular momentum on center B for this direction (0, 1, or 2).
-/// @param PA P_d - A_d for this direction.
-/// @param PB P_d - B_d for this direction.
-/// @param inv2g 0.5 / gamma.
-/// @param E Output array [5] (max t = ai + bj = 4).
+// ── MD-recurrence buffer sizing ──────────────────────────────────────
+//
+// Nuclear- and ERI-integral paths reuse the same McMurchie-Davidson
+// Hermite coefficients E^{i,j}_t. Gradient paths raise one Gaussian
+// center's angular momentum by +1 on the fly (ai+1 or bj+1), so every
+// table must be sized for ai or bj reaching kMaxL+1 — not just kMaxL.
+
+/// Per-center i/j upper bound after a +1 derivative raise.
+inline constexpr int kDerivL = kMaxL + 1;
+/// t-index dim in E^{i,j}_t (t ∈ [0, ai+bj]; +1 slack lets the recurrence
+/// read E[t+1] without a bounds branch when t hits the real max).
+inline constexpr int kMDEDim = 2 * kDerivL + 1;  // 7 for d-shells
+/// i-index dim in the E_buf[i][t] intermediate.
+inline constexpr int kMDEIDim = kDerivL + 1;     // 4 for d-shells
+
+/// @brief McMurchie-Davidson E coefficients E^{ai,bj}_t.
+/// @details Supports ai, bj up to kDerivL = kMaxL + 1 to accommodate the
+///   gradient path which raises one center's angular by +1. Output is
+///   populated for t = 0..ai+bj; entries past that are zero.
 static void md_e_coeffs(int ai, int bj, double PA, double PB, double inv2g,
-                         double E[5]) {
-    E[0] = E[1] = E[2] = E[3] = E[4] = 0.0;
+                         double E[kMDEDim]) {
+    for (int t = 0; t < kMDEDim; ++t) E[t] = 0.0;
 
-    // Build E^{i,0}_t first (increment first index only):
-    // E^{0,0}_0 = 1
-    // E^{1,0}_0 = PA,         E^{1,0}_1 = inv2g
-    // E^{2,0}_0 = PA^2+inv2g, E^{2,0}_1 = 2*PA*inv2g, E^{2,0}_2 = inv2g^2
-    //
-    // Recurrence: E^{i+1,j}_t = (1/(2*(i+j+1))) * ... actually use the
-    // explicit Obara-Saika Hermite expansion recurrence:
-    //   E^{i+1,j}_t = inv2g * E^{i,j}_{t-1} + PA * E^{i,j}_t + (t+1) * E^{i,j}_{t+1}
-    //   (But this is the wrong direction.)
-    //
-    // Standard McMurchie-Davidson E recurrence:
-    //   E^{i+1,j}_t = (1/(2p)) * E^{i,j}_{t-1} + X_PA * E^{i,j}_t + (t+1)*E^{i,j}_{t+1}
-    // where p = gamma, X_PA = PA.
-    //
-    // Build by incrementing i from 0, then j from 0.
-
-    // Step 1: Build E^{i,0}_t for i = 0..ai
-    // Use temporary buffer E_i0[i][t], max i=2, max t=2
-    double E_buf[3][5]; // [i][t], support up to i=2, t=4
-    for (int ii = 0; ii < 3; ++ii)
-        for (int tt = 0; tt < 5; ++tt)
-            E_buf[ii][tt] = 0.0;
-
+    // Step 1: build E^{i,0}_t for i = 0..ai via the upward recurrence
+    //   E^{i+1,0}_t = inv2g * E^{i,0}_{t-1} + PA * E^{i,0}_t + (t+1)*E^{i,0}_{t+1}
+    double E_buf[kMDEIDim][kMDEDim] = {};
     E_buf[0][0] = 1.0;
 
-    if (ai >= 1) {
-        // E^{1,0}_t = inv2g * E^{0,0}_{t-1} + PA * E^{0,0}_t + (t+1)*E^{0,0}_{t+1}
-        for (int t = 0; t <= 1; ++t) {
-            double etm1 = (t > 0) ? E_buf[0][t - 1] : 0.0;
-            double et   = E_buf[0][t];
-            double etp1 = E_buf[0][t + 1];
-            E_buf[1][t] = inv2g * etm1 + PA * et + (t + 1) * etp1;
+    for (int i = 0; i < ai; ++i) {
+        const int tmax = i + 1;  // max t reachable at level i+1
+        for (int t = 0; t <= tmax; ++t) {
+            const double etm1 = (t > 0)          ? E_buf[i][t - 1] : 0.0;
+            const double et   =                     E_buf[i][t];
+            const double etp1 = (t + 1 < kMDEDim) ? E_buf[i][t + 1] : 0.0;
+            E_buf[i + 1][t] = inv2g * etm1 + PA * et + (t + 1) * etp1;
         }
     }
 
-    if (ai >= 2) {
-        for (int t = 0; t <= 2; ++t) {
-            double etm1 = (t > 0) ? E_buf[1][t - 1] : 0.0;
-            double et   = E_buf[1][t];
-            double etp1 = E_buf[1][t + 1];
-            E_buf[2][t] = inv2g * etm1 + PA * et + (t + 1) * etp1;
-        }
-    }
-
-    // Step 2: From E^{ai,0}_t, build E^{ai,j}_t for j = 1..bj
-    // Recurrence for incrementing j:
+    // Step 2: increment j from 0 to bj via
     //   E^{i,j+1}_t = inv2g * E^{i,j}_{t-1} + PB * E^{i,j}_t + (t+1)*E^{i,j}_{t+1}
-    //
-    // Copy E^{ai,0} into working buffer, then increment j.
-    double W[2][5]; // double-buffer for j-recurrence
+    double W[2][kMDEDim] = {};
     int cur = 0;
-    for (int t = 0; t < 5; ++t)
-        W[cur][t] = E_buf[ai][t];
+    for (int t = 0; t < kMDEDim; ++t) W[cur][t] = E_buf[ai][t];
 
     for (int jj = 0; jj < bj; ++jj) {
-        int nxt = 1 - cur;
-        for (int t = 0; t < 5; ++t)
-            W[nxt][t] = 0.0;
-        int tmax = ai + jj + 1; // max t after incrementing j
-        for (int t = 0; t <= tmax && t < 5; ++t) {
-            double etm1 = (t > 0) ? W[cur][t - 1] : 0.0;
-            double et   = W[cur][t];
-            double etp1 = (t + 1 < 5) ? W[cur][t + 1] : 0.0;
+        const int nxt = 1 - cur;
+        for (int t = 0; t < kMDEDim; ++t) W[nxt][t] = 0.0;
+        const int tmax = ai + jj + 1;
+        for (int t = 0; t <= tmax && t < kMDEDim; ++t) {
+            const double etm1 = (t > 0)          ? W[cur][t - 1] : 0.0;
+            const double et   =                     W[cur][t];
+            const double etp1 = (t + 1 < kMDEDim) ? W[cur][t + 1] : 0.0;
             W[nxt][t] = inv2g * etm1 + PB * et + (t + 1) * etp1;
         }
         cur = nxt;
     }
 
-    // Copy result
-    for (int t = 0; t <= ai + bj && t < 5; ++t)
-        E[t] = W[cur][t];
+    for (int t = 0; t <= ai + bj && t < kMDEDim; ++t) E[t] = W[cur][t];
 }
 
 double nuclear_prim(const int a_ang[3], const int b_ang[3],
@@ -772,26 +746,31 @@ double nuclear_prim(const int a_ang[3], const int b_ang[3],
     const double PC2 = PC[0]*PC[0] + PC[1]*PC[1] + PC[2]*PC[2];
     const double T = gamma * PC2;
 
-    // Angular momentum totals per direction
+    // Angular momentum totals per direction. Derivative raising bumps
+    // one component by +1, so sum(a_ang) ≤ kDerivL and sum(b_ang) ≤ kDerivL.
+    // Per-axis Lx = a+b ≤ 2*kDerivL, Ltot ≤ 2*kDerivL (only one side raised
+    // at a time in 1st derivatives, but size conservatively for safety).
     const int Lx = a_ang[0] + b_ang[0];
     const int Ly = a_ang[1] + b_ang[1];
     const int Lz = a_ang[2] + b_ang[2];
-    const int Ltot = Lx + Ly + Lz; // max 6 for derivative of p-type
+    const int Ltot = Lx + Ly + Lz;
+
+    constexpr int kRDim = 2 * kDerivL + 1;  // 7 for d-shells; m and per-axis dim
 
     // Boys functions F_m for m = 0..Ltot
-    double Fm[7]; // max Ltot = 6
+    double Fm[kRDim];
     for (int m = 0; m <= Ltot; ++m) {
         Fm[m] = boys_fn(m, T);
     }
 
-    // E coefficients for each direction (support i,j up to 2)
-    double E[3][5]; // E[d][t], max t = 4
+    // E coefficients for each direction
+    double E[3][kMDEDim];
     for (int d = 0; d < 3; ++d) {
         md_e_coeffs(a_ang[d], b_ang[d], PA[d], PB[d], inv2g, E[d]);
     }
 
     // R^m_{0,0,0} = (-2*gamma)^m * F_m(T)
-    double R000[7]; // m = 0..Ltot
+    double R000[kRDim];
     double neg2g = -2.0 * gamma;
     double neg2g_pow = 1.0;
     for (int m = 0; m <= Ltot; ++m) {
@@ -800,17 +779,8 @@ double nuclear_prim(const int a_ang[3], const int b_ang[3],
     }
 
     // Build R^0_{t,u,v} by recurrence. Table up to (Lx, Ly, Lz).
-    // R^m_{t+1,u,v} = t*R^{m+1}_{t-1,u,v} + PC_x*R^{m+1}_{t,u,v}
-    // We need R_tab[m][t][u][v] for m = 0..Ltot.
-    // Max indices: Lx=4, Ly=4, Lz=4 (unlikely but safe), Ltot=6.
-    // Use 7^4 table.
-    const int RMAX = 7;
-    double R_tab[RMAX][5][5][5]; // [m][t][u][v]
-    for (int m = 0; m < RMAX; ++m)
-        for (int t = 0; t < 5; ++t)
-            for (int u = 0; u < 5; ++u)
-                for (int v = 0; v < 5; ++v)
-                    R_tab[m][t][u][v] = 0.0;
+    //   R^m_{t+1,u,v} = t*R^{m+1}_{t-1,u,v} + PC_x*R^{m+1}_{t,u,v}
+    double R_tab[kRDim][kRDim][kRDim][kRDim] = {};
 
     // Initialize: R^m_{0,0,0}
     for (int m = 0; m <= Ltot; ++m)
@@ -902,47 +872,46 @@ double eri_prim(const int a_ang[3], const int b_ang[3],
     const double prefactor = 2.0 * std::pow(PI, 2.5) / (gamma1 * gamma2 * std::sqrt(delta))
                            * K_AB * K_CD;
 
-    // Angular momentum totals per direction
+    // Angular momentum totals per direction. Derivative path raises one
+    // of a/b/c/d on one axis by +1, so per-pair Lxi may reach kDerivL+kMaxL
+    // and the grand Ltot may reach 4*kMaxL+1 (all angular on one axis).
     const int Lx1 = a_ang[0] + b_ang[0];
     const int Ly1 = a_ang[1] + b_ang[1];
     const int Lz1 = a_ang[2] + b_ang[2];
     const int Lx2 = c_ang[0] + d_ang[0];
     const int Ly2 = c_ang[1] + d_ang[1];
     const int Lz2 = c_ang[2] + d_ang[2];
-    const int Ltot = Lx1 + Ly1 + Lz1 + Lx2 + Ly2 + Lz2; // max 8 for derivative
+    const int Ltot = Lx1 + Ly1 + Lz1 + Lx2 + Ly2 + Lz2;
+
+    // R-table sizing: m ∈ [0, Ltot] and per-axis index ∈ [0, Lxi+Lx2_i].
+    // Max = 4*kMaxL+1 for 1st derivatives of a (dd|dd) quartet.
+    constexpr int kERIRDim = 4 * kMaxL + 2;  // 10 for d-shells
 
     // Boys functions F_m(T) for m = 0..Ltot
-    double Fm[9]; // max Ltot = 8
+    double Fm[kERIRDim];
     for (int m = 0; m <= Ltot; ++m) {
         Fm[m] = boys_fn(m, T);
     }
 
-    // E coefficients for bra pair (a,b) using general routine
-    double E1[3][5]; // max t = 4
+    // E coefficients for bra pair (a,b)
+    double E1[3][kMDEDim];
     for (int d = 0; d < 3; ++d) {
         md_e_coeffs(a_ang[d], b_ang[d], PA[d], PB[d], inv2g1, E1[d]);
     }
 
     // E coefficients for ket pair (c,d)
-    double E2[3][5]; // max t = 4
+    double E2[3][kMDEDim];
     for (int d = 0; d < 3; ++d) {
         md_e_coeffs(c_ang[d], d_ang[d], QC[d], QD[d], inv2g2, E2[d]);
     }
 
-    // R table
+    // R table — max Ltot = 4*kMaxL+1, max per-dir = 4*kMaxL+1 (all ang on
+    // one axis in the derivative limit). Stack footprint: 10^4 doubles
+    // ≈ 80 KB per call; only used in gradient paths, not hot SCF loop.
     const int Rx_max = Lx1 + Lx2;
     const int Ry_max = Ly1 + Ly2;
     const int Rz_max = Lz1 + Lz2;
-
-    // R_tab[m][t][u][v], max Ltot=8, max per-dir=4
-    const int RMAX = 9;
-    const int DMAX = 5;
-    double R_tab[RMAX][DMAX][DMAX][DMAX];
-    for (int m = 0; m < RMAX; ++m)
-        for (int t = 0; t < DMAX; ++t)
-            for (int u = 0; u < DMAX; ++u)
-                for (int v = 0; v < DMAX; ++v)
-                    R_tab[m][t][u][v] = 0.0;
+    double R_tab[kERIRDim][kERIRDim][kERIRDim][kERIRDim] = {};
 
     // Initialize: R^m_{0,0,0}
     double neg2rho = -2.0 * rho;

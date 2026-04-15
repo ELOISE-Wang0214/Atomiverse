@@ -50,16 +50,20 @@ created: 2026-04-14
       (was off by factor-3 + sign). H2O 6-31G RHF gradient matches FD.
       Tests: `test_def2svp_gradient.cpp::H2O_STO3G_analytic_vs_PySCF_reference`
       and `::H2O_631G_analytic_vs_FD_control`.
-- [ ] **d-shell gradient path** — s/p now correct (6-31G passes FD),
-      but 6-31G\* / def2-SVP still disagree with FD by O(60 eV/Å) on
-      H2O. Since energy matches PySCF to 10⁻¹⁰ Ha (SCF is fine) and
-      the exchange-symmetrization fix is algebra that's basis-agnostic,
-      the remaining d-shell issue is in either the 1e integral-
-      derivative code (dS / dT / dV for d-shells, where derivative
-      raising by +1 produces f-shell-like temporary angular momenta)
-      or the native 2e block-scatter for d-blocks. Reproducer:
-      `test_def2svp_gradient.cpp::DISABLED_H2O_631Gs_analytic_vs_FD_minimal_d`.
-      Fixing this unblocks def2-SVP opt.
+- [x] **d-shell gradient path** — two root causes fixed in sequence:
+      (a) `cart_exponents` in `integral_derivatives.cpp` silently
+      returned (0,0,0) for every d-shell component (only s/p were
+      handled), so dS/dT/dV for d-shells were all computed at the
+      wrong angular momentum; replaced with `fill_cart_comps` decode;
+      (b) `native::md_e_coeffs` / `nuclear_prim` / `eri_prim` sized
+      their Hermite/Boys tables for ai,bj ≤ 2 only, overflowing in
+      the derivative path that raises ai by +1 (d → f-like temp).
+      Buffers now sized from `kMaxL` (cart.h) to support the +1
+      raise. H2O / 6-31G* and H2O / def2-SVP analytic gradients now
+      match FD to 1e-2 eV/Å tolerance. Tests:
+      `test_def2svp_gradient.cpp::H2O_631Gs_dS_dT_dV_vs_FD`,
+      `::H2O_631Gs_analytic_vs_FD_minimal_d`,
+      `::H2O_def2svp_analytic_vs_FD`.
 - [x] **FD function takes BasisSet parameter** — previously hardcoded
       to STO-3G, which silently gave wrong FD when an analytic gradient
       was tested at any other basis (exactly how the pre-existing
@@ -74,8 +78,8 @@ created: 2026-04-14
       1.2 acceptance (1e-6 Ha energy parity) needs a line search.
 - [ ] Expand geometry set to 12 (benzene, naphthalene, ethanol,
       glycine, aspirin, caffeine, O2 triplet, NO doublet, CH3•)
-- [ ] Regenerate references for the full set at PBE/def2-SVP (needs
-      the d-shell gradient fix above)
+- [ ] Regenerate references for the full set at PBE/def2-SVP (d-shell
+      gradient unblocked; still needs KS/d-shell XC grid below)
 - [ ] CI label `benchmark-qc-fast` (H2O+NH3+CH4 per push) + nightly
       full suite
 
