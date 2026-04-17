@@ -19,6 +19,9 @@
 #endif
 
 namespace ATV {
+
+struct Mat3;
+
 namespace cpu {
 
 class Frame;
@@ -90,6 +93,54 @@ struct DomainDecomposition {
     ///
     /// @param frame Host-side frame whose atoms this DD describes.
     void bind(const Frame& frame);
+
+    /// @brief Compute and store this rank's spatial slab from the box.
+    ///
+    /// Phase 2 (orthorhombic): `sublo[d] = (L_d / dims[d]) * coords[d]`,
+    /// `subhi[d] = sublo[d] + L_d / dims[d]`. Idempotent. Single-rank
+    /// (`dims == {1,1,1}`): the slab is the full box. Not MPI-gated: the
+    /// slab record is useful for any spatial component, e.g. the neighbor
+    /// list and future observer shell analysis.
+    /// @param box Simulation box (orthorhombic in Phase 2).
+    void compute_sublo_subhi(const ATV::Mat3& box);
+
+#ifdef ATV_HAS_MPI
+    /// @brief Build the 3D Cartesian topology for `world` and discover the
+    /// 6 face neighbors.
+    ///
+    /// `MPI_Dims_create` chooses a balanced `dims` factorization of the
+    /// world size; `MPI_Cart_create` produces `cart_comm` with periodic
+    /// boundaries on all axes; `MPI_Cart_coords` populates `coords`;
+    /// `MPI_Cart_shift` populates `face_neighbors` in the order
+    /// `{-x, +x, -y, +y, -z, +z}`.
+    ///
+    /// Single-rank world (`world_size == 1`): the call is a no-op and
+    /// `dims` stays `{1,1,1}`.
+    ///
+    /// Calling this twice is allowed; the existing `cart_comm` (if any)
+    /// is freed before the new one is created.
+    /// @param world Parent communicator (typically `MPI_COMM_WORLD`).
+    void init_topology(MPI_Comm world);
+
+    /// @brief Partition atoms across ranks by spatial position.
+    ///
+    /// Each rank inspects all atoms in `frame.atoms[0..size())`, picks the
+    /// subset whose (PBC-wrapped) positions fall in this rank's slab,
+    /// compacts those atoms to the front of every per-atom array, and
+    /// updates `n_local`, `n_ghost = 0`, `capacity = atoms.size()`. Stale
+    /// rows in `[n_local, capacity)` are reused later by `HaloExchangeForward`
+    /// as ghost slots.
+    ///
+    /// **Phase 2 contract:** every rank starts with the same `frame`.
+    /// Migration after integration is **not** performed (Phase 3). Setups
+    /// where atoms drift beyond their initial slab within the run produce
+    /// wrong physics under Phase 2; the spec mandates short runs at low
+    /// temperature for the exit-gate test.
+    ///
+    /// Single-rank: behaves like `bind(frame)`.
+    /// @param frame Frame whose atoms this rank's slab claims a subset of.
+    void partition_atoms(ATV::cpu::Frame& frame);
+#endif
 };
 
 } // namespace mpi

@@ -25,6 +25,27 @@ function(atv_add_cpp_test name)
     add_test(NAME ${name} COMMAND ${name})
 endfunction()
 
+# MPI test executable: one build target, can be launched at multiple rank
+# counts via `atv_add_mpi_run`. The test source provides its own `main`
+# that wraps MPI init/finalize.
+function(atv_add_mpi_exec target_name)
+    add_executable(${target_name} ${ARGN})
+    target_link_libraries(${target_name} PRIVATE atomiverse GTest::gtest MPI::MPI_CXX)
+    set_target_properties(${target_name} PROPERTIES CXX_STANDARD 17)
+    target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+endfunction()
+
+# Register one CTest invocation at a given rank count for an MPI executable.
+# Tagged with the "mpi" CTest label so CI can skip them on MPI-less environments.
+function(atv_add_mpi_run test_name target_name n)
+    add_test(
+        NAME ${test_name}
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${n}
+                ${MPIEXEC_PREFLAGS} $<TARGET_FILE:${target_name}> ${MPIEXEC_POSTFLAGS}
+    )
+    set_tests_properties(${test_name} PROPERTIES LABELS "mpi")
+endfunction()
+
 # ── CPU backend tests (always available, no CUDA required) ──────────
 
 atv_add_cpp_test(test_cpu_md cpu/md/test_md.cpp)
@@ -35,6 +56,16 @@ atv_add_cpp_test(test_cpu_analysis_executor       cpu/test_analysis_executor.cpp
 atv_add_cpp_test(test_cpu_snapshot_publisher      cpu/test_snapshot_publisher.cpp)
 atv_add_cpp_test(test_cpu_async_component_base    cpu/test_async_component_base.cpp)
 atv_add_cpp_test(test_cpu_observer_rdf_async      cpu/observer/test_rdf_observer.cpp)
+
+# ── MPI tests (launched under `mpirun`) ─────────────────────────────────
+
+if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
+    atv_add_mpi_exec(test_mpi_topology mpi/test_topology.cpp)
+    atv_add_mpi_run(test_mpi_topology_n1 test_mpi_topology 1)
+    atv_add_mpi_run(test_mpi_topology_n2 test_mpi_topology 2)
+    atv_add_mpi_run(test_mpi_topology_n4 test_mpi_topology 4)
+    atv_add_mpi_run(test_mpi_topology_n8 test_mpi_topology 8)
+endif()
 
 if(ATV_BUILD_RHF)
     atv_add_cpp_test(test_cpu_scf_uhf_solve    cpu/scf/test_uhf_solve.cpp)

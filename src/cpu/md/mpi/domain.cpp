@@ -1,9 +1,15 @@
 /// @file src/cpu/md/mpi/domain.cpp
-/// @brief `DomainDecomposition::bind` -- single-rank population from a Frame.
+/// @brief `DomainDecomposition` implementation: single-rank `bind`, plus
+/// multi-rank `init_topology`, `compute_sublo_subhi`, and `partition_atoms`
+/// (Phase 2).
 
 #include "atomiverse/cpu/md/mpi/domain.h"
 
+#include <algorithm>
+#include <cmath>
+
 #include "atomiverse/cpu/frame.h"
+#include "atomiverse/core/mat3.h"
 
 namespace ATV {
 namespace cpu {
@@ -22,6 +28,164 @@ void DomainDecomposition::bind(const Frame& frame) {
         tag_to_local.emplace(frame.atoms.tag(i), i);
     }
 }
+
+void DomainDecomposition::compute_sublo_subhi(const ATV::Mat3& box) {
+    for (int d = 0; d < 3; ++d) {
+        const double L = box(d, d);
+        const double slab = L / static_cast<double>(dims[d]);
+        sublo[d] = slab * static_cast<double>(coords[d]);
+        subhi[d] = sublo[d] + slab;
+    }
+}
+
+#ifdef ATV_HAS_MPI
+
+void DomainDecomposition::init_topology(MPI_Comm world) {
+    int world_size = 0;
+    MPI_Comm_size(world, &world_size);
+
+    if (world_size <= 1) {
+        // Single rank: keep defaults (dims={1,1,1}, no cart_comm).
+        return;
+    }
+
+    if (cart_comm != MPI_COMM_NULL) {
+        MPI_Comm_free(&cart_comm);
+        cart_comm = MPI_COMM_NULL;
+    }
+
+    // `MPI_Dims_create` requires the "suggested" dims to be zero for axes
+    // the user wants it to choose. All three are free for a balanced brick.
+    dims[0] = dims[1] = dims[2] = 0;
+    MPI_Dims_create(world_size, 3, dims);
+
+    int periodic[3] = {periods[0], periods[1], periods[2]};
+    MPI_Cart_create(world, 3, dims, periodic, /*reorder=*/1, &cart_comm);
+
+    int my_rank = 0;
+    MPI_Comm_rank(cart_comm, &my_rank);
+    MPI_Cart_coords(cart_comm, my_rank, 3, coords);
+
+    // `MPI_Cart_shift(dim, 1, src, dst)`:
+    //   src = rank whose +dim move lands here (i.e. our -dim neighbor)
+    //   dst = rank whose -dim move lands here (i.e. our +dim neighbor)
+    for (int d = 0; d < 3; ++d) {
+        int src = MPI_PROC_NULL, dst = MPI_PROC_NULL;
+        MPI_Cart_shift(cart_comm, d, 1, &src, &dst);
+        face_neighbors[static_cast<std::size_t>(d * 2 + 0)] = src;
+        face_neighbors[static_cast<std::size_t>(d * 2 + 1)] = dst;
+    }
+}
+
+namespace {
+
+// Orthorhombic PBC wrap: bring `p` into [0, L).
+inline double wrap_to_cell(double p, double L) {
+    if (L <= 0.0) return p;
+    double q = p - std::floor(p / L) * L;
+    if (q < 0.0) q += L;
+    if (q >= L) q -= L;
+    return q;
+}
+
+// Rank index (along one dim) that owns wrapped position `q` with `dims_d`
+// equal-width slabs over `[0, L)`. Clamps to [0, dims_d - 1] against FP
+// rounding at the upper edge.
+inline int rank_along_dim(double q, double L, int dims_d) {
+    if (dims_d <= 1) return 0;
+    const int r = static_cast<int>(q * static_cast<double>(dims_d) / L);
+    return std::max(0, std::min(dims_d - 1, r));
+}
+
+} // namespace
+
+void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
+    const int world_size = dims[0] * dims[1] * dims[2];
+    if (world_size <= 1 || cart_comm == MPI_COMM_NULL) {
+        // Single-rank fallback: identical to `bind`.
+        bind(frame);
+        return;
+    }
+
+    compute_sublo_subhi(frame.box);
+
+    const double Lx = frame.box(0, 0);
+    const double Ly = frame.box(1, 1);
+    const double Lz = frame.box(2, 2);
+
+    const int n_total = frame.atoms.size();
+    std::vector<int> owned_indices;
+    owned_indices.reserve(static_cast<std::size_t>(n_total));
+
+    for (int i = 0; i < n_total; ++i) {
+        const double xw = wrap_to_cell(frame.atoms.x(i), Lx);
+        const double yw = wrap_to_cell(frame.atoms.y(i), Ly);
+        const double zw = wrap_to_cell(frame.atoms.z(i), Lz);
+        const int cx = rank_along_dim(xw, Lx, dims[0]);
+        const int cy = rank_along_dim(yw, Ly, dims[1]);
+        const int cz = rank_along_dim(zw, Lz, dims[2]);
+        if (cx == coords[0] && cy == coords[1] && cz == coords[2]) {
+            owned_indices.push_back(i);
+        }
+    }
+
+    n_local  = static_cast<int>(owned_indices.size());
+    n_ghost  = 0;
+    capacity = n_total;  // keep the whole allocation as slack for ghosts
+
+    // Compact owned atoms to the front of every per-atom array. Iterating
+    // in increasing `new_i` guarantees we read `old_i >= new_i` so the
+    // destination has not yet been overwritten.
+    auto compact_1d_d = [&](xt::xtensor<double, 1>& arr) {
+        for (int ni = 0; ni < n_local; ++ni) {
+            const int oi = owned_indices[static_cast<std::size_t>(ni)];
+            if (oi != ni) arr(ni) = arr(oi);
+        }
+    };
+    auto compact_1d_i = [&](xt::xtensor<int, 1>& arr) {
+        for (int ni = 0; ni < n_local; ++ni) {
+            const int oi = owned_indices[static_cast<std::size_t>(ni)];
+            if (oi != ni) arr(ni) = arr(oi);
+        }
+    };
+    auto compact_1d_i64 = [&](xt::xtensor<std::int64_t, 1>& arr) {
+        for (int ni = 0; ni < n_local; ++ni) {
+            const int oi = owned_indices[static_cast<std::size_t>(ni)];
+            if (oi != ni) arr(ni) = arr(oi);
+        }
+    };
+
+    compact_1d_d(frame.atoms.x);
+    compact_1d_d(frame.atoms.y);
+    compact_1d_d(frame.atoms.z);
+    compact_1d_d(frame.atoms.vx);
+    compact_1d_d(frame.atoms.vy);
+    compact_1d_d(frame.atoms.vz);
+    compact_1d_d(frame.atoms.fx);
+    compact_1d_d(frame.atoms.fy);
+    compact_1d_d(frame.atoms.fz);
+    compact_1d_d(frame.atoms.mass);
+    compact_1d_i(frame.atoms.type);
+    compact_1d_i64(frame.atoms.tag);
+    for (int ni = 0; ni < n_local; ++ni) {
+        const int oi = owned_indices[static_cast<std::size_t>(ni)];
+        if (oi != ni) {
+            frame.atoms.image(ni, 0) = frame.atoms.image(oi, 0);
+            frame.atoms.image(ni, 1) = frame.atoms.image(oi, 1);
+            frame.atoms.image(ni, 2) = frame.atoms.image(oi, 2);
+        }
+    }
+
+    tag_to_local.clear();
+    tag_to_local.reserve(static_cast<std::size_t>(n_local));
+    for (int i = 0; i < n_local; ++i) {
+        tag_to_local.emplace(frame.atoms.tag(i), i);
+    }
+
+    ++neighbor_generation;
+}
+
+#endif // ATV_HAS_MPI
 
 } // namespace mpi
 } // namespace md

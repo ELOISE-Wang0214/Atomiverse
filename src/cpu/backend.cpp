@@ -49,6 +49,12 @@ void Backend::init() {
         dd_ = std::make_unique<md::mpi::DomainDecomposition>();
     context_.dd = dd_.get();
 
+#ifdef ATV_HAS_MPI
+    if (context_.mpi_size > 1) {
+        dd_->init_topology(MPI_COMM_WORLD);
+    }
+#endif
+
     if (!executor_) {
         executor_ = std::make_unique<AnalysisExecutor>();
         AnalysisExecutor::Config cfg;
@@ -61,8 +67,16 @@ void Backend::init() {
 
 void Backend::set_frame(cpu::Frame& frame) {
     frame_ = &frame;
-    if (dd_)
-        dd_->bind(frame);
+    if (!dd_) return;
+
+#ifdef ATV_HAS_MPI
+    if (context_.mpi_size > 1 && dd_->cart_comm != MPI_COMM_NULL) {
+        dd_->partition_atoms(frame);
+        return;
+    }
+#endif
+    dd_->bind(frame);
+    dd_->compute_sublo_subhi(frame.box);
 }
 
 void Backend::build_components() {
