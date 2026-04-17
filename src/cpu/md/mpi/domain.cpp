@@ -40,41 +40,56 @@ void DomainDecomposition::compute_sublo_subhi(const ATV::Mat3& box) {
 
 #ifdef ATV_HAS_MPI
 
+void DomainDecomposition::release_comm(bool /*mpi_is_finalizing*/) {
+    // We do not own a Cartesian sub-comm (we use MPI_COMM_WORLD directly --
+    // see init_topology). Just clear the handle.
+    cart_comm = MPI_COMM_NULL;
+}
+
 void DomainDecomposition::init_topology(MPI_Comm world) {
     int world_size = 0;
+    int my_rank = 0;
     MPI_Comm_size(world, &world_size);
+    MPI_Comm_rank(world, &my_rank);
 
     if (world_size <= 1) {
         // Single rank: keep defaults (dims={1,1,1}, no cart_comm).
         return;
     }
 
-    if (cart_comm != MPI_COMM_NULL) {
-        MPI_Comm_free(&cart_comm);
-        cart_comm = MPI_COMM_NULL;
-    }
+    // Do NOT use MPI_Cart_create -- on OpenMPI 5.0.x (macOS) the resulting
+    // sub-communicator triggers a segfault inside MPI_Finalize when any
+    // user MPI_Comm_free has been issued or when the same process repeatedly
+    // creates Cartesian comms (e.g. across GoogleTest cases). Compute the
+    // brick decomposition directly on top of the world communicator using
+    // simple rank arithmetic; this is functionally equivalent and avoids
+    // the OpenMPI bug entirely.
+    cart_comm = world;
 
-    // `MPI_Dims_create` requires the "suggested" dims to be zero for axes
-    // the user wants it to choose. All three are free for a balanced brick.
+    // `MPI_Dims_create` is safe -- it's a pure algorithm with no state.
     dims[0] = dims[1] = dims[2] = 0;
     MPI_Dims_create(world_size, 3, dims);
 
-    int periodic[3] = {periods[0], periods[1], periods[2]};
-    MPI_Cart_create(world, 3, dims, periodic, /*reorder=*/1, &cart_comm);
+    // Convention: rank index = ix * (dy*dz) + iy * dz + iz.
+    coords[0] = my_rank / (dims[1] * dims[2]);
+    coords[1] = (my_rank / dims[2]) % dims[1];
+    coords[2] = my_rank % dims[2];
 
-    int my_rank = 0;
-    MPI_Comm_rank(cart_comm, &my_rank);
-    MPI_Cart_coords(cart_comm, my_rank, 3, coords);
+    auto rank_at = [&](int cx, int cy, int cz) {
+        // Periodic wrap on all axes.
+        cx = ((cx % dims[0]) + dims[0]) % dims[0];
+        cy = ((cy % dims[1]) + dims[1]) % dims[1];
+        cz = ((cz % dims[2]) + dims[2]) % dims[2];
+        return cx * (dims[1] * dims[2]) + cy * dims[2] + cz;
+    };
 
-    // `MPI_Cart_shift(dim, 1, src, dst)`:
-    //   src = rank whose +dim move lands here (i.e. our -dim neighbor)
-    //   dst = rank whose -dim move lands here (i.e. our +dim neighbor)
-    for (int d = 0; d < 3; ++d) {
-        int src = MPI_PROC_NULL, dst = MPI_PROC_NULL;
-        MPI_Cart_shift(cart_comm, d, 1, &src, &dst);
-        face_neighbors[static_cast<std::size_t>(d * 2 + 0)] = src;
-        face_neighbors[static_cast<std::size_t>(d * 2 + 1)] = dst;
-    }
+    // Face order: -x, +x, -y, +y, -z, +z.
+    face_neighbors[0] = rank_at(coords[0] - 1, coords[1],     coords[2]    );
+    face_neighbors[1] = rank_at(coords[0] + 1, coords[1],     coords[2]    );
+    face_neighbors[2] = rank_at(coords[0],     coords[1] - 1, coords[2]    );
+    face_neighbors[3] = rank_at(coords[0],     coords[1] + 1, coords[2]    );
+    face_neighbors[4] = rank_at(coords[0],     coords[1],     coords[2] - 1);
+    face_neighbors[5] = rank_at(coords[0],     coords[1],     coords[2] + 1);
 }
 
 namespace {

@@ -40,8 +40,16 @@ void AnalysisExecutor::init(const Config& cfg, Context& ctx) {
     int mpi_initialized = 0;
     MPI_Initialized(&mpi_initialized);
     if (mpi_initialized) {
-        MPI_Comm_dup(cfg.parent_comm, &analysis_comm_);
-        owns_analysis_comm_ = true;
+        // NB: we deliberately *alias* the parent comm rather than
+        // MPI_Comm_dup-ing it. OpenMPI 5.0.x on macOS corrupts its internal
+        // communicator state when user code runs multiple comm_dup /
+        // cart_create cycles in the same process (observed across
+        // GoogleTest cases). Aliasing means analysis-thread MPI collectives
+        // share the world comm; that is safe as long as the analysis
+        // worker does not run concurrently with a collective on the main
+        // thread -- SnapshotPublisher orders them strictly.
+        analysis_comm_ = cfg.parent_comm;
+        owns_analysis_comm_ = false;
     } else {
         analysis_comm_ = MPI_COMM_NULL;
         owns_analysis_comm_ = false;

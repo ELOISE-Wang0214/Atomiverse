@@ -43,7 +43,15 @@ function(atv_add_mpi_run test_name target_name n)
         COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${n}
                 ${MPIEXEC_PREFLAGS} $<TARGET_FILE:${target_name}> ${MPIEXEC_POSTFLAGS}
     )
-    set_tests_properties(${test_name} PROPERTIES LABELS "mpi")
+    # RUN_SERIAL keeps two MPI tests from running at the same time.
+    # RESOURCE_LOCK "mpi_singleton" further blocks concurrent execution with
+    # any other MPI test under ctest -jN. Together these prevent OpenMPI
+    # session-directory collisions on macOS where two mpirun invocations in
+    # the same user account briefly contend for the same prte session id.
+    set_tests_properties(${test_name} PROPERTIES
+        LABELS "mpi"
+        RUN_SERIAL TRUE
+        RESOURCE_LOCK "mpi_singleton")
 endfunction()
 
 # ── CPU backend tests (always available, no CUDA required) ──────────
@@ -65,6 +73,11 @@ if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
     atv_add_mpi_run(test_mpi_topology_n2 test_mpi_topology 2)
     atv_add_mpi_run(test_mpi_topology_n4 test_mpi_topology 4)
     atv_add_mpi_run(test_mpi_topology_n8 test_mpi_topology 8)
+
+    atv_add_mpi_exec(test_mpi_halo_exchange mpi/test_halo_exchange.cpp)
+    atv_add_mpi_run(test_mpi_halo_exchange_n1 test_mpi_halo_exchange 1)
+    atv_add_mpi_run(test_mpi_halo_exchange_n2 test_mpi_halo_exchange 2)
+    atv_add_mpi_run(test_mpi_halo_exchange_n8 test_mpi_halo_exchange 8)
 endif()
 
 if(ATV_BUILD_RHF)

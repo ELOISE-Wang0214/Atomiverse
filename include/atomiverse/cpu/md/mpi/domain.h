@@ -79,8 +79,18 @@ struct DomainDecomposition {
     std::uint64_t neighbor_generation = 0;
 
     /// @brief Per-face send lists: owned-atom indices shadowed to each face neighbor.
-    /// Order matches `face_neighbors`. Empty in single-rank mode.
+    /// Order matches `face_neighbors`. Empty in single-rank mode. Rebuilt by
+    /// `HaloExchangeForward::launch()` each step; consumed by both
+    /// `HaloExchangeForward` (to pack outgoing positions) and
+    /// `HaloExchangeReverse` (to add incoming ghost forces back to owners).
     std::array<std::vector<int>, 6> send_lists{};
+
+    /// @brief Per-face ghost counts received in the most recent forward halo.
+    /// `recv_counts[f]` ghosts from face `f` occupy frame slots
+    /// `[n_local + sum(recv_counts[0..f]), n_local + sum(recv_counts[0..f+1]))`.
+    /// Used by `HaloExchangeReverse` to know how many ghost forces to ship
+    /// back per face. Reset to zero on partition; set by Forward.
+    std::array<int, 6> recv_counts{};
 
     /// @brief Map from global atom tag to local row index. Rebuilt on migration.
     std::unordered_map<std::int64_t, int> tag_to_local;
@@ -93,6 +103,18 @@ struct DomainDecomposition {
     ///
     /// @param frame Host-side frame whose atoms this DD describes.
     void bind(const Frame& frame);
+
+#ifdef ATV_HAS_MPI
+    /// @brief Release the Cartesian sub-communicator if still alive.
+    ///
+    /// Called by `Backend::shutdown()` before `MPI_Finalize` so OpenMPI
+    /// does not segfault trying to clean up a user comm that outlived the
+    /// runtime. Safe to call when `cart_comm == MPI_COMM_NULL`.
+    /// @param mpi_is_finalizing If true, the MPI runtime is shutting
+    ///        down and we skip the `MPI_Comm_free` (avoid double-free
+    ///        against an already-dead runtime).
+    void release_comm(bool mpi_is_finalizing = false);
+#endif
 
     /// @brief Compute and store this rank's spatial slab from the box.
     ///

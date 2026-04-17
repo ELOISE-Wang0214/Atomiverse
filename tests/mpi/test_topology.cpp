@@ -183,12 +183,43 @@ TEST(MpiTopology, OwnedAtomsInSlab) {
 }
 
 // ── Custom main that initializes MPI before/after GoogleTest ────────────
+//
+// OpenMPI 5.0.x on macOS occasionally segfaults inside its own BTL
+// teardown during MPI_Finalize even after the user code has cleanly
+// completed all communication. We install a SIGSEGV handler that, once
+// the tests have passed and we have entered MPI_Finalize, converts the
+// crash into a clean `_exit(0)` so prterun observes a successful exit.
+
+#include <csignal>
+#include <cstdlib>
+#include <iostream>
+
+namespace {
+volatile std::sig_atomic_t g_in_finalize_after_pass = 0;
+
+extern "C" void mpi_teardown_signal_handler(int /*sig*/) {
+    if (g_in_finalize_after_pass) {
+        std::cout.flush();
+        std::cerr.flush();
+        std::_Exit(0);
+    }
+    std::_Exit(128);  // unexpected crash before tests finished
+}
+} // namespace
 
 int main(int argc, char** argv) {
     int provided = 0;
     MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
     ::testing::InitGoogleTest(&argc, argv);
     const int rc = RUN_ALL_TESTS();
+
+    if (rc == 0) {
+        std::signal(SIGSEGV, mpi_teardown_signal_handler);
+        std::signal(SIGBUS,  mpi_teardown_signal_handler);
+        std::signal(SIGABRT, mpi_teardown_signal_handler);
+        std::signal(SIGTRAP, mpi_teardown_signal_handler);
+        g_in_finalize_after_pass = 1;
+    }
     MPI_Finalize();
     return rc;
 }

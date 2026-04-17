@@ -18,7 +18,7 @@ namespace ATV {
 namespace cpu {
 
 Backend::Backend() = default;
-Backend::~Backend() = default;
+Backend::~Backend() { shutdown(); }  // idempotent; releases cart_comm + executor
 Backend::Backend(Backend&&) noexcept = default;
 Backend& Backend::operator=(Backend&&) noexcept = default;
 
@@ -131,6 +131,13 @@ void Backend::shutdown() {
         executor_.reset();
     }
     context_.executor = nullptr;
+
+#ifdef ATV_HAS_MPI
+    if (dd_) {
+        dd_->release_comm();
+    }
+#endif
+
     frame_ = nullptr;
     plan_ = nullptr;
 }
