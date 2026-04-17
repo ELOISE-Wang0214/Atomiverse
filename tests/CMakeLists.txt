@@ -85,6 +85,10 @@ if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
     atv_add_mpi_run(test_mpi_halo_exchange_n1 test_mpi_halo_exchange 1)
     atv_add_mpi_run(test_mpi_halo_exchange_n2 test_mpi_halo_exchange 2)
     atv_add_mpi_run(test_mpi_halo_exchange_n8 test_mpi_halo_exchange 8)
+
+    atv_add_mpi_exec(test_mpi_lj_nve mpi/test_lj_nve.cpp)
+    atv_add_mpi_run(test_mpi_lj_nve_n1 test_mpi_lj_nve 1)
+    atv_add_mpi_run(test_mpi_lj_nve_n8 test_mpi_lj_nve 8)
 endif()
 
 if(ATV_BUILD_RHF)

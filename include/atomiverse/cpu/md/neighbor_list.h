@@ -9,6 +9,7 @@
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/md/pair_list.h"
 #include "atomiverse/cpu/md/cell_list.h"
+#include "atomiverse/cpu/md/mpi/domain.h"
 
 namespace ATV {
 namespace cpu {
@@ -30,12 +31,14 @@ public:
         strategy_.init(ctx.frame, cutoff_);
         strategy_.build(ctx.frame);
         pairs_ = strategy_.build_half(ctx.frame);
+        trim_inum_to_local(ctx.runtime, pairs_);
         ctx.frame.pair_list = &pairs_;
     }
 
     void launch(const cpu::LaunchContext& ctx) override {
         strategy_.update(ctx.frame);
         pairs_ = strategy_.build_half(ctx.frame);
+        trim_inum_to_local(ctx.runtime, pairs_);
         ctx.frame.pair_list = &pairs_;
     }
 
@@ -46,6 +49,15 @@ public:
     const Strategy& strategy() const { return strategy_; }
 
 private:
+    /// @brief Multi-rank trim: `inum = dd->n_local` so force kernels only
+    /// iterate owned atoms as `i`, while `neighbors[]` may still point to
+    /// ghost rows. Single-rank: no-op.
+    static void trim_inum_to_local(const cpu::Context& rt, PairList& pl) {
+        if (rt.dd && rt.mpi_size > 1) {
+            pl.inum = rt.dd->n_local;
+        }
+    }
+
     Strategy strategy_;
     PairList pairs_;
     double cutoff_;
