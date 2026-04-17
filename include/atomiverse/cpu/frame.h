@@ -13,7 +13,11 @@
 /// @see cuda::to_cpu() for CUDA -> CPU transfer
 #pragma once
 
+#include <cstdint>
+
 #include <xtensor/containers/xtensor.hpp>
+#include <xtensor/generators/xbuilder.hpp>
+#include <xtensor/views/xview.hpp>
 
 #include "atomiverse/core/mat3.h"
 
@@ -62,6 +66,8 @@ public:
               fz(xt::zeros<double>({n})),
               mass(xt::zeros<double>({n})),
               type(xt::zeros<int>({n})),
+              tag(xt::arange<std::int64_t>(0, n)),
+              image(xt::zeros<std::int8_t>({n, 3})),
               n_(n) {}
 
         xt::xtensor<double, 1> x;      ///< x positions [Angstrom].
@@ -75,6 +81,21 @@ public:
         xt::xtensor<double, 1> fz;     ///< z forces [eV/Angstrom].
         xt::xtensor<double, 1> mass;   ///< Masses [amu].
         xt::xtensor<int, 1>  type;     ///< Atom type indices.
+
+        /// @brief Global atom identity, persistent across MPI migration and restart.
+        ///
+        /// Default-initialized to identity: `tag(i) == i` after `Frame(n)`. Required
+        /// for bonded topology to survive `AtomMigration`. Treated as a fundamental
+        /// physical property (analogue of LAMMPS atom->tag).
+        xt::xtensor<std::int64_t, 1> tag;
+
+        /// @brief Per-atom PBC crossing counts, shape [n, 3].
+        ///
+        /// `image(i, d)` increments by ±1 when atom i crosses the box face along
+        /// dimension d. Zero-initialized. Used to reconstruct unwrapped trajectories
+        /// (diffusion, MSD). Treated as a fundamental physical property
+        /// (analogue of LAMMPS atom->image).
+        xt::xtensor<std::int8_t, 2> image;
 
         /// @brief Number of atoms.
         /// @return Atom count.

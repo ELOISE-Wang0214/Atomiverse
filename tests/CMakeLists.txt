@@ -28,6 +28,13 @@ endfunction()
 # ── CPU backend tests (always available, no CUDA required) ──────────
 
 atv_add_cpp_test(test_cpu_md cpu/md/test_md.cpp)
+atv_add_cpp_test(test_cpu_md_frame_tag_image      cpu/md/test_frame_tag_image.cpp)
+atv_add_cpp_test(test_cpu_md_domain_decomposition cpu/md/test_domain_decomposition.cpp)
+atv_add_cpp_test(test_cpu_md_mpi_stubs            cpu/md/test_mpi_stubs.cpp)
+atv_add_cpp_test(test_cpu_analysis_executor       cpu/test_analysis_executor.cpp)
+atv_add_cpp_test(test_cpu_snapshot_publisher      cpu/test_snapshot_publisher.cpp)
+atv_add_cpp_test(test_cpu_async_component_base    cpu/test_async_component_base.cpp)
+atv_add_cpp_test(test_cpu_observer_rdf_async      cpu/observer/test_rdf_observer.cpp)
 
 if(ATV_BUILD_RHF)
     atv_add_cpp_test(test_cpu_scf_uhf_solve    cpu/scf/test_uhf_solve.cpp)

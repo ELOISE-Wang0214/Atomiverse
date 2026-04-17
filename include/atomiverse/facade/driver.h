@@ -52,16 +52,25 @@ class PhaseBuilder {
     using Component = typename backend_traits<DeviceTag>::component_type;
 public:
     /// @brief Register a component explicitly on the current phase.
+    ///
+    /// Ownership follows the value category of the argument (symmetric with
+    /// `Driver::add`): rvalue → moved into the driver; lvalue → stored as a
+    /// non-owning pointer, caller retains lifetime.
     /// @tparam Comp Concrete component type.
-    /// @param comp Component instance to own and bind.
+    /// @param comp Component instance.
     /// @param order Ordering within the phase (lower runs earlier).
     /// @return `*this` for fluent chaining.
     template <typename Comp>
-    PhaseBuilder& add(Comp comp, int order = 0) {
-        auto ptr = std::make_unique<Comp>(std::move(comp));
-        auto* raw = ptr.get();
-        owned_->push_back(std::move(ptr));
-        bindings_->push_back({static_cast<int>(phase_), order, raw});
+    PhaseBuilder& add(Comp&& comp, int order = 0) {
+        using C = std::remove_reference_t<Comp>;
+        if constexpr (std::is_lvalue_reference_v<Comp>) {
+            bindings_->push_back({static_cast<int>(phase_), order, &comp});
+        } else {
+            auto ptr = std::make_unique<C>(std::forward<Comp>(comp));
+            auto* raw = ptr.get();
+            owned_->push_back(std::move(ptr));
+            bindings_->push_back({static_cast<int>(phase_), order, raw});
+        }
         return *this;
     }
 
@@ -109,20 +118,41 @@ public:
         return *this;
     }
 
-    /// @brief Add a component using its default_bindings().
-    /// @tparam Comp Concrete component type.
-    /// @param comp Component instance to register and transfer into driver ownership.
+    /// @brief Add a component using its `default_bindings()`.
+    ///
+    /// Two ownership modes selected by the value category of the argument:
+    ///   - **rvalue** (e.g. `sim.add(VelocityVerlet{0.001})`): driver takes
+    ///     ownership by moving the component into a `unique_ptr`.
+    ///   - **lvalue** (e.g. `MyObserver obs; sim.add(obs)`): driver stores
+    ///     a non-owning pointer; caller retains lifetime, allowing post-run
+    ///     state introspection. This is the preferred form for components
+    ///     that are non-copyable / non-movable (e.g. `std::mutex` members)
+    ///     or whose state the caller wants to read after `run()` returns.
+    ///
+    /// @tparam Comp Concrete component type (deduced).
+    /// @param comp Component instance.
     template <typename Comp>
-    void add(Comp comp) {
-        auto ptr = std::make_unique<Comp>(std::move(comp));
-        auto bindings = ptr->default_bindings();
-        if (bindings.empty())
-            throw std::runtime_error("Component '" + ptr->name() +
-                "' has no default bindings. Use .on(phase).add().");
-        auto* raw = ptr.get();
-        owned_components_.push_back(std::move(ptr));
-        for (auto& db : bindings)
-            pending_.push_back({db.phase, db.order, raw});
+    void add(Comp&& comp) {
+        using C = std::remove_reference_t<Comp>;
+        if constexpr (std::is_lvalue_reference_v<Comp>) {
+            // Non-owning: caller retains lifetime.
+            auto bindings = comp.default_bindings();
+            if (bindings.empty())
+                throw std::runtime_error("Component '" + comp.name() +
+                    "' has no default bindings. Use .on(phase).add().");
+            for (auto& db : bindings)
+                pending_.push_back({db.phase, db.order, &comp});
+        } else {
+            auto ptr = std::make_unique<C>(std::forward<Comp>(comp));
+            auto bindings = ptr->default_bindings();
+            if (bindings.empty())
+                throw std::runtime_error("Component '" + ptr->name() +
+                    "' has no default bindings. Use .on(phase).add().");
+            auto* raw = ptr.get();
+            owned_components_.push_back(std::move(ptr));
+            for (auto& db : bindings)
+                pending_.push_back({db.phase, db.order, raw});
+        }
     }
 
     /// @brief Begin explicit phase binding.

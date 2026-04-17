@@ -131,6 +131,13 @@ if(NOT ATV_DOCS_ONLY)
 
     # ── MPI (optional) ──
     find_package(MPI QUIET)
+    option(ATV_USE_MPI "Enable MPI domain decomposition for CPU MD" ${MPI_CXX_FOUND})
+    if(ATV_USE_MPI AND NOT MPI_CXX_FOUND)
+        message(FATAL_ERROR
+            "ATV_USE_MPI=ON but no MPI installation was found. "
+            "Install an MPI implementation (OpenMPI, MPICH, MVAPICH) or "
+            "configure with -DATV_USE_MPI=OFF.")
+    endif()
 
     set(ATOMIVERSE_SRCS
         src/cpu/scf/solve.cpp
@@ -143,12 +150,20 @@ if(NOT ATV_DOCS_ONLY)
         # CPU backend infrastructure
         src/cpu/backend.cpp
         src/cpu/driver.cpp
+        src/cpu/analysis_executor.cpp
+        src/cpu/async_component_base.cpp
+        src/cpu/snapshot_publisher.cpp
         # CPU MD components
         src/cpu/md/cell_list.cpp
         src/cpu/md/init.cpp
         src/cpu/md/velocity_verlet.cpp
         src/cpu/md/lj.cpp
         src/cpu/md/nose_hoover.cpp
+        # CPU MD MPI infrastructure (single-rank stubs in Phase 1)
+        src/cpu/md/mpi/domain.cpp
+        src/cpu/md/mpi/halo_exchange.cpp
+        src/cpu/md/mpi/atom_migration.cpp
+        src/cpu/md/mpi/reduce.cpp
         src/cpu/observer/thermo_component.cpp
         # CPU bonded components
         src/cpu/bonded/harmonic_bond.cpp
@@ -340,7 +355,7 @@ if(NOT ATV_DOCS_ONLY)
         target_link_libraries(atomiverse PUBLIC OpenMP::OpenMP_CXX)
     endif()
 
-    if(MPI_CXX_FOUND)
+    if(ATV_USE_MPI)
         target_link_libraries(atomiverse PUBLIC MPI::MPI_CXX)
         target_compile_definitions(atomiverse PUBLIC ATV_HAS_MPI)
     endif()

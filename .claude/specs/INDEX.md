@@ -11,3 +11,4 @@
 - [phase3-hybrid-dft](phase3-hybrid-dft.md) — B3LYP/PBE0 via `alpha_hf` parameter extension — zero new drivers, zero wrappers [draft]
 - [phase4-vibrations](phase4-vibrations.md) — New `vib::Phase` enum + numerical Hessian driver + thermochemistry [draft]
 - [phase5-aimd](phase5-aimd.md) — Gated placeholder; reuses existing `cpu::md::MD` + `SCFEvaluator` composition [draft]
+- [parallel-md-engine](parallel-md-engine.md) — MPI + OpenMP + xsimd multi-node CPU MD; hot-path vs. analysis separation via `std::thread` pool; 4-phase roadmap [draft]

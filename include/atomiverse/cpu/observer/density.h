@@ -4,7 +4,19 @@
 /// Called by cuda::DensityRecorder after async D2H of the density matrix P.
 /// The CUDA component owns no computation -- it lives here.
 ///
+/// **Phase 1 note:** unlike `cpu::observer::RDF`, this is **not** wrapped as
+/// a `cpu::AsyncComponentBase` subclass. The evaluation requires a
+/// density matrix P from SCF, which is not a `cpu::Frame` field and is not
+/// carried in the default `FrameSnapshot`. The natural async-observer
+/// integration point is an SCF-driver observer wrapper that uses
+/// `FrameSnapshot::custom_payload` to shuttle P from the SCF solver to the
+/// analysis thread. That hook depends on `cpu::scf::SCFEvaluator` being
+/// extended to publish P into custom_payload, plus a concrete SCF driver
+/// class to auto-add the matching `SnapshotPublisher`. Deferred to Phase 1b
+/// or to the AIMD density-observation workstream.
+///
 /// @see cuda::DensityRecorder (cuda/recorder/density_recorder.cuh)
+/// @see .claude/specs/parallel-md-engine.md  § B.1 custom_payload
 #pragma once
 
 #include <vector>

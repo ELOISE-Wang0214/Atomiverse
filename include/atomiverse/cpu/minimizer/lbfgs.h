@@ -26,6 +26,7 @@
 #include "atomiverse/cpu/backend_traits.h"
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/minimizer/init.h"
+#include "atomiverse/cpu/snapshot_publisher.h"
 #include "atomiverse/facade/driver.h"
 #include "atomiverse/facade/stage.h"
 
@@ -156,12 +157,17 @@ private:
 
 /// @brief L-BFGS minimizer driver.
 ///
-/// Auto-adds ZeroForces and ZeroEnergy at force phase.
+/// Auto-adds ZeroForces and ZeroEnergy at force phase. Also wires the
+/// shared async-analysis `SnapshotPublisher` into this driver's
+/// `end_of_step @ +10` so observers inheriting `cpu::minimizer::AsyncObserver`
+/// (or explicit `on(end_of_step).add(obs, 20)`) receive snapshots.
 class LBFGS : public Driver<ATV::minimizer::Phase, cpu::device_tag> {
 public:
     LBFGS() {
         this->add(ZeroForces{});
         this->add(ZeroEnergy{});
+        this->on(ATV::minimizer::Phase::end_of_step)
+             .add(cpu::SnapshotPublisher{}, 10);
     }
 };
 

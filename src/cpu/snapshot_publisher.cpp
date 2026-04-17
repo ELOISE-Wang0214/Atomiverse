@@ -1,0 +1,145 @@
+/// @file src/cpu/snapshot_publisher.cpp
+/// @brief `cpu::SnapshotPublisher` implementation: collects subscriber
+/// `CaptureMask`s, fills a ring slot. Each `AsyncComponentBase` dispatches
+/// itself at `end_of_step @ +20` against the slot most recently published.
+
+#include "atomiverse/cpu/snapshot_publisher.h"
+
+#include "atomiverse/cpu/analysis_executor.h"
+#include "atomiverse/cpu/async_component_base.h"
+
+#include <algorithm>
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
+namespace ATV {
+namespace cpu {
+
+namespace {
+
+bool subscriber_fires(const AsyncComponentBase* sub, int step) {
+    const int f = sub->frequency();
+    if (f <= 0) return step > 0;            // freq 0 = every step (after step 0)
+    return step > 0 && (step % f) == 0;
+}
+
+CaptureMask mask_union_all(const std::vector<AsyncComponentBase*>& subs) {
+    CaptureMask u;
+    u.positions = u.velocities = u.forces = u.types = u.tags = false;
+    for (const auto* sub : subs) {
+        if (!sub) continue;
+        const CaptureMask m = sub->capture_mask();
+        u.positions  = u.positions  || m.positions;
+        u.velocities = u.velocities || m.velocities;
+        u.forces     = u.forces     || m.forces;
+        u.types      = u.types      || m.types;
+        u.tags       = u.tags       || m.tags;
+    }
+    return u;
+}
+
+CaptureMask mask_union_firing(const std::vector<AsyncComponentBase*>& subs, int step) {
+    CaptureMask u;
+    u.positions = u.velocities = u.forces = u.types = u.tags = false;
+    for (const auto* sub : subs) {
+        if (!sub) continue;
+        if (!subscriber_fires(sub, step)) continue;
+        const CaptureMask m = sub->capture_mask();
+        u.positions  = u.positions  || m.positions;
+        u.velocities = u.velocities || m.velocities;
+        u.forces     = u.forces     || m.forces;
+        u.types      = u.types      || m.types;
+        u.tags       = u.tags       || m.tags;
+    }
+    return u;
+}
+
+// Copy src[0..n) into out[0..n); vectors already sized by prealloc_slots().
+void copy_range(std::vector<double>& out, const double* src, int n, bool capture) {
+    if (!capture) return;  // leave pre-sized buffer untouched (consumer reads n_owned)
+#pragma omp parallel for schedule(static)
+    for (int i = 0; i < n; ++i) out[static_cast<std::size_t>(i)] = src[i];
+}
+
+void copy_range_int(std::vector<int>& out, const int* src, int n, bool capture) {
+    if (!capture) return;
+#pragma omp parallel for schedule(static)
+    for (int i = 0; i < n; ++i) out[static_cast<std::size_t>(i)] = src[i];
+}
+
+void copy_range_i64(std::vector<std::int64_t>& out, const std::int64_t* src, int n, bool capture) {
+    if (!capture) return;
+#pragma omp parallel for schedule(static)
+    for (int i = 0; i < n; ++i) out[static_cast<std::size_t>(i)] = src[i];
+}
+
+// Clear vectors for unmasked fields so downstream tests / consumers see an
+// empty buffer (not pre-allocated garbage). Runs once in build(); not in launch.
+void clear_unmasked(FrameSnapshot& snap, CaptureMask m) {
+    if (!m.positions)  { snap.x.clear();  snap.y.clear();  snap.z.clear();  }
+    if (!m.velocities) { snap.vx.clear(); snap.vy.clear(); snap.vz.clear(); }
+    if (!m.forces)     { snap.fx.clear(); snap.fy.clear(); snap.fz.clear(); }
+    if (!m.types)      { snap.type.clear(); }
+    if (!m.tags)       { snap.tag.clear(); }
+}
+
+} // namespace
+
+void SnapshotPublisher::build(const BuildContext& ctx) {
+    exec_ = ctx.runtime.executor;
+    // Pre-sizing per mask happens inside `AsyncComponentBase::build()` for
+    // each registered subscriber -- the publisher runs first in plan order
+    // (lower order = earlier build), so `subscribers()` is still empty here.
+    (void)ctx;
+}
+
+void SnapshotPublisher::launch(const LaunchContext& ctx) {
+    if (!exec_) return;
+
+    const auto& subs = exec_->subscribers();
+    if (subs.empty()) return;  // zero-subscriber fast path (≤ 100 ns)
+
+    const int step = ctx.step;
+
+    bool any_firing = false;
+    for (const auto* s : subs) {
+        if (s && subscriber_fires(s, step)) { any_firing = true; break; }
+    }
+    if (!any_firing) return;
+
+    // Only firing subscribers' masks matter at this step. Downstream
+    // AsyncComponentBase::launch picks up the published slot and dispatches
+    // itself; the publisher writes, never dispatches.
+    const CaptureMask mask = mask_union_firing(subs, step);
+
+    const int slot_idx = exec_->acquire_slot();
+    FrameSnapshot& snap = exec_->slot(slot_idx);
+
+    const int n = ctx.frame.atoms.size();
+    snap.step = step;
+    snap.n_owned = n;
+    snap.box = ctx.frame.box;
+
+    copy_range(snap.x,  ctx.frame.atoms.x.data(),  n, mask.positions);
+    copy_range(snap.y,  ctx.frame.atoms.y.data(),  n, mask.positions);
+    copy_range(snap.z,  ctx.frame.atoms.z.data(),  n, mask.positions);
+    copy_range(snap.vx, ctx.frame.atoms.vx.data(), n, mask.velocities);
+    copy_range(snap.vy, ctx.frame.atoms.vy.data(), n, mask.velocities);
+    copy_range(snap.vz, ctx.frame.atoms.vz.data(), n, mask.velocities);
+    copy_range(snap.fx, ctx.frame.atoms.fx.data(), n, mask.forces);
+    copy_range(snap.fy, ctx.frame.atoms.fy.data(), n, mask.forces);
+    copy_range(snap.fz, ctx.frame.atoms.fz.data(), n, mask.forces);
+    copy_range_int(snap.type, ctx.frame.atoms.type.data(), n, mask.types);
+    copy_range_i64(snap.tag,  ctx.frame.atoms.tag.data(),  n, mask.tags);
+
+    exec_->publish(slot_idx, step);
+    // Dispatch happens per-subscriber inside `AsyncComponentBase::launch()`
+    // at end_of_step @ +20.
+}
+
+void SnapshotPublisher::destroy(const DestroyContext& /*ctx*/) {}
+
+} // namespace cpu
+} // namespace ATV

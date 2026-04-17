@@ -2,6 +2,8 @@
 /// @brief cpu::Backend implementation.
 
 #include "atomiverse/cpu/backend.h"
+#include "atomiverse/cpu/analysis_executor.h"
+#include "atomiverse/cpu/md/mpi/domain.h"
 #include "atomiverse/core/log.h"
 
 #ifdef _OPENMP
@@ -14,6 +16,11 @@
 
 namespace ATV {
 namespace cpu {
+
+Backend::Backend() = default;
+Backend::~Backend() = default;
+Backend::Backend(Backend&&) noexcept = default;
+Backend& Backend::operator=(Backend&&) noexcept = default;
 
 void Backend::init() {
 #ifdef _OPENMP
@@ -37,6 +44,25 @@ void Backend::init() {
 #else
     ATV_INFO("CPU backend initialized: {} threads", context_.n_threads);
 #endif
+
+    if (!dd_)
+        dd_ = std::make_unique<md::mpi::DomainDecomposition>();
+    context_.dd = dd_.get();
+
+    if (!executor_) {
+        executor_ = std::make_unique<AnalysisExecutor>();
+        AnalysisExecutor::Config cfg;
+        cfg.n_threads = 1;
+        cfg.ring_size = 3;
+        cfg.policy = BackpressurePolicy::drop_oldest;
+        executor_->init(cfg, context_);
+    }
+}
+
+void Backend::set_frame(cpu::Frame& frame) {
+    frame_ = &frame;
+    if (dd_)
+        dd_->bind(frame);
 }
 
 void Backend::build_components() {
@@ -68,6 +94,11 @@ void Backend::run(int n_steps) {
 }
 
 void Backend::destroy_components() {
+    // Drain and join analysis workers first so any in-flight `on_snapshot`
+    // completes against live subscribers, and `finalize()` runs on the main
+    // thread before any component enters its `destroy()` path.
+    if (executor_) executor_->shutdown();
+
     DestroyContext ctx{context_, *frame_};
     for (int s = static_cast<int>(plan_->slots.size()) - 1; s >= 0; --s) {
         auto& slot = plan_->slots[s];
@@ -81,6 +112,11 @@ void Backend::destroy_components() {
 
 void Backend::shutdown() {
     ATV_DEBUG("CPU backend shutting down");
+    if (executor_) {
+        executor_->shutdown();  // idempotent
+        executor_.reset();
+    }
+    context_.executor = nullptr;
     frame_ = nullptr;
     plan_ = nullptr;
 }

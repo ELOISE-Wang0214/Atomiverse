@@ -1,0 +1,52 @@
+/// @file cpu/snapshot_publisher.h
+/// @brief `SnapshotPublisher` -- driver-agnostic infrastructure that fills a
+/// ring slot from `cpu::Frame` when at least one async subscriber fires.
+///
+/// Intended to run at `end_of_step @ +10` **after** per-step reductions
+/// (`ZeroKinetic(-1000)`, `KineticEnergy(-100)`, `ReduceEnergy(-50)`) and
+/// **before** async subscribers (default +20), so captured scalars reflect
+/// the globally-reduced end-of-step state.
+///
+/// The phase enum differs across drivers (`md::Phase::end_of_step` vs
+/// `minimizer::Phase::end_of_step` vs `scf::Phase::end_of_step`), so the
+/// class declares **no default bindings**. Each driver wires it explicitly
+/// in its constructor via `on(<its_phase>::end_of_step).add(SnapshotPublisher{}, 10)`.
+///
+/// Zero async subscribers → 5 ns early return (hot-path throughput budget).
+/// With at least one firing subscriber, cost is dominated by the OMP
+/// parallel copy over the union of firing subscribers' `capture_mask()` flags.
+///
+/// @see .claude/specs/parallel-md-engine.md  § B.3
+#pragma once
+
+#include <string>
+#include <vector>
+
+#include "atomiverse/cpu/component.h"
+#include "atomiverse/core/binding.h"
+
+namespace ATV {
+namespace cpu {
+
+class AnalysisExecutor;
+
+/// @brief Copies frame fields into a ring slot for async consumption.
+class SnapshotPublisher : public cpu::ComponentBase {
+public:
+    std::string name() const override { return "snapshot_publisher"; }
+
+    /// @brief No default binding -- drivers wire explicitly at their own
+    /// `end_of_step @ +10` (order +10 keeps the publisher after per-step
+    /// reductions and before subscribers at +20).
+    std::vector<DefaultBinding> default_bindings() const override { return {}; }
+
+    void build(const BuildContext& ctx) override;
+    void launch(const LaunchContext& ctx) override;
+    void destroy(const DestroyContext& ctx) override;
+
+private:
+    AnalysisExecutor* exec_ = nullptr;
+};
+
+} // namespace cpu
+} // namespace ATV
