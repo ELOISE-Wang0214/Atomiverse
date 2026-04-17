@@ -2,8 +2,10 @@
 /// @brief CPU VelocityVerlet implementation with OpenMP.
 
 #include "atomiverse/cpu/md/velocity_verlet.h"
+
 #include "atomiverse/core/units.h"
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/cpu/md/mpi/domain.h"
 #include "atomiverse/facade/stage.h"
 
 #include <cmath>
@@ -12,14 +14,24 @@ namespace ATV {
 namespace cpu {
 namespace md {
 
-// ── PBC wrapping (orthorhombic) ──────────────────────────────────
+namespace {
 
-static void wrap_pbc(cpu::Frame& f) {
-    int n = f.atoms.size();
-    double lx = f.box(0, 0), ly = f.box(1, 1), lz = f.box(2, 2);
+// Owned-atom count: dd->n_local under multi-rank, atoms.size() otherwise.
+inline int owned_count(const cpu::LaunchContext& ctx) {
+    const auto* dd = ctx.runtime.dd;
+    if (dd && ctx.runtime.mpi_size > 1) return dd->n_local;
+    return ctx.frame.atoms.size();
+}
+
+} // namespace
+
+// ── PBC wrapping (orthorhombic, owners only) ─────────────────────
+
+static void wrap_pbc(cpu::Frame& f, int n_owned) {
+    const double lx = f.box(0, 0), ly = f.box(1, 1), lz = f.box(2, 2);
 
     #pragma omp parallel for schedule(static)
-    for (int i = 0; i < n; ++i) {
+    for (int i = 0; i < n_owned; ++i) {
         f.atoms.x[i] -= lx * std::floor(f.atoms.x[i] / lx);
         f.atoms.y[i] -= ly * std::floor(f.atoms.y[i] / ly);
         f.atoms.z[i] -= lz * std::floor(f.atoms.z[i] / lz);
@@ -32,7 +44,7 @@ VelocityVerlet::VelocityVerlet(double dt) : dt_(dt) {}
 
 void VelocityVerlet::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
-    int n = f.atoms.size();
+    const int n = owned_count(ctx);
 
     if (ctx.stage == static_cast<int>(ATV::md::Phase::initial_integrate)) {
         const double dtf = double(0.5) * dt_ * kFtm2v;
@@ -48,7 +60,7 @@ void VelocityVerlet::launch(const cpu::LaunchContext& ctx) {
             f.atoms.z[i] += dt_ * f.atoms.vz[i];
         }
 
-        wrap_pbc(f);
+        wrap_pbc(f, n);
 
     } else if (ctx.stage == static_cast<int>(ATV::md::Phase::final_integrate)) {
         const double dtf = double(0.5) * dt_ * kFtm2v;

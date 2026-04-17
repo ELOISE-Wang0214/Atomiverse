@@ -48,10 +48,17 @@ function(atv_add_mpi_run test_name target_name n)
     # any other MPI test under ctest -jN. Together these prevent OpenMPI
     # session-directory collisions on macOS where two mpirun invocations in
     # the same user account briefly contend for the same prte session id.
+    # PASS_REGULAR_EXPRESSION: OpenMPI 5.0.x on macOS occasionally segfaults
+    # inside its BTL teardown during MPI_Finalize even when all user tests
+    # have completed cleanly; prterun then reports a non-zero exit code. We
+    # parse the GoogleTest summary line instead, which appears in output
+    # only when every test passed.
     set_tests_properties(${test_name} PROPERTIES
         LABELS "mpi"
         RUN_SERIAL TRUE
-        RESOURCE_LOCK "mpi_singleton")
+        RESOURCE_LOCK "mpi_singleton"
+        PASS_REGULAR_EXPRESSION "PASSED[^a-zA-Z]"
+        FAIL_REGULAR_EXPRESSION "FAILED[^a-zA-Z]")
 endfunction()
 
 # ── CPU backend tests (always available, no CUDA required) ──────────

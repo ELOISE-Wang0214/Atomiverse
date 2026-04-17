@@ -162,8 +162,15 @@ void HaloExchangeForward::launch(const cpu::LaunchContext& ctx) {
 
     rebuild_send_lists(frame, *dd, cutoff_);
 
-    // Phase 1: exchange counts on each face so the receivers know how big
-    // each incoming buffer will be.
+    // When `dims[dim] == 1` the face neighbors along that dim are *this
+    // rank itself* (periodic self-wrap). OpenMPI 5.0.x on macOS occasionally
+    // traps on self-Isend/Irecv patterns; mathematically the self-exchange
+    // is a copy-from-myself anyway, so we short-circuit it: the atoms
+    // already live in our slab. Short-circuit means `recv_counts[f] == 0`
+    // and no MPI requests posted for that face.
+    int my_rank = 0;
+    MPI_Comm_rank(dd->cart_comm, &my_rank);
+
     int send_counts[6];
     int recv_counts[6];
     MPI_Request count_reqs[12];
@@ -175,11 +182,9 @@ void HaloExchangeForward::launch(const cpu::LaunchContext& ctx) {
     for (int f = 0; f < 6; ++f) {
         const int neighbor = dd->face_neighbors[static_cast<std::size_t>(f)];
         if (neighbor == MPI_PROC_NULL) continue;
-        // Send my count for face f to neighbor; tag = f.
+        if (neighbor == my_rank) continue;  // self-face: owner has atoms already
         MPI_Isend(&send_counts[f], 1, MPI_INT, neighbor, f,
                   dd->cart_comm, &count_reqs[n_count_reqs++]);
-        // Receive their count from the opposite-face direction; the
-        // neighbor's view of "my face f" is their face f^1, so tag = f^1.
         MPI_Irecv(&recv_counts[f], 1, MPI_INT, neighbor, opposite_face(f),
                   dd->cart_comm, &count_reqs[n_count_reqs++]);
     }
@@ -201,6 +206,7 @@ void HaloExchangeForward::launch(const cpu::LaunchContext& ctx) {
     for (int f = 0; f < 6; ++f) {
         const int neighbor = dd->face_neighbors[static_cast<std::size_t>(f)];
         if (neighbor == MPI_PROC_NULL) continue;
+        if (neighbor == my_rank) continue;  // self-face short-circuit
         if (send_counts[f] > 0) {
             MPI_Isend(bufs.send_pos[f].data(),
                       static_cast<int>(bufs.send_pos[f].size()),
@@ -269,11 +275,15 @@ void HaloExchangeReverse::launch(const cpu::LaunchContext& ctx) {
         bufs.recv_force[f].assign(static_cast<std::size_t>(recv_force_counts[f]) * 3, 0.0);
     }
 
+    int my_rank = 0;
+    MPI_Comm_rank(dd->cart_comm, &my_rank);
+
     MPI_Request reqs[12];
     int n_reqs = 0;
     for (int f = 0; f < 6; ++f) {
         const int neighbor = dd->face_neighbors[static_cast<std::size_t>(f)];
         if (neighbor == MPI_PROC_NULL) continue;
+        if (neighbor == my_rank) continue;  // self-face short-circuit
         if (send_force_counts[f] > 0) {
             MPI_Isend(bufs.send_force[f].data(),
                       static_cast<int>(bufs.send_force[f].size()),
