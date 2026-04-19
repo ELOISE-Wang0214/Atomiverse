@@ -37,6 +37,13 @@ LJ::LJ(double epsilon, double sigma, double cutoff)
     v_shift_ = double(4) * epsilon_ * (r6inv * r6inv - r6inv);
 }
 
+LJ& LJ::set_special_bonds(double s12, double s13, double s14) {
+    s12_ = s12;
+    s13_ = s13;
+    s14_ = s14;
+    return *this;
+}
+
 void LJ::build(const cpu::BuildContext& ctx) {
     n_threads_ = 1;
 #ifdef _OPENMP
@@ -50,6 +57,49 @@ void LJ::build(const cpu::BuildContext& ctx) {
         fx_thr_[t].resize(n, double(0));
         fy_thr_[t].resize(n, double(0));
         fz_thr_[t].resize(n, double(0));
+    }
+
+    // Build per-atom exclusion list when at least one special-bonds scale
+    // is zero. (Non-zero, non-one fractional scalings are not yet
+    // implemented -- see header.)
+    const bool has_excl_12 = (s12_ == 0.0);
+    const bool has_excl_13 = (s13_ == 0.0);
+    const bool has_excl_14 = (s14_ == 0.0);
+    const bool any_excl = has_excl_12 || has_excl_13 || has_excl_14;
+
+    exclusions_.clear();
+    if (!any_excl) return;
+
+    exclusions_.assign(static_cast<std::size_t>(n), {});
+    auto add_pair = [&](int a, int b) {
+        if (a == b) return;
+        exclusions_[static_cast<std::size_t>(a)].push_back(b);
+        exclusions_[static_cast<std::size_t>(b)].push_back(a);
+    };
+
+    const auto& f = ctx.frame;
+    if (has_excl_12) {
+        const int nb = f.bonds.size();
+        for (int b = 0; b < nb; ++b) {
+            add_pair(f.bonds.atomi[b], f.bonds.atomj[b]);
+        }
+    }
+    if (has_excl_13) {
+        const int na = f.angles.size();
+        for (int a = 0; a < na; ++a) {
+            add_pair(f.angles.atomi[a], f.angles.atomk[a]);
+        }
+    }
+    if (has_excl_14) {
+        const int nd = f.dihedrals.size();
+        for (int d = 0; d < nd; ++d) {
+            add_pair(f.dihedrals.atomi[d], f.dihedrals.atoml[d]);
+        }
+    }
+
+    for (auto& list : exclusions_) {
+        std::sort(list.begin(), list.end());
+        list.erase(std::unique(list.begin(), list.end()), list.end());
     }
 }
 
@@ -73,13 +123,19 @@ void LJ::launch(const cpu::LaunchContext& ctx) {
         std::fill(fyt.begin(), fyt.end(), double(0));
         std::fill(fzt.begin(), fzt.end(), double(0));
 
+        const bool has_exclusions = !exclusions_.empty();
+
         #pragma omp for schedule(static)
         for (int ii = 0; ii < pairs.inum; ++ii) {
             int i = pairs.ilist[ii];
             int jnum = pairs.numneigh[i];
             int off = pairs.firstneigh[i];
+            const std::vector<int>* my_excl =
+                has_exclusions ? &exclusions_[static_cast<std::size_t>(i)] : nullptr;
             for (int jj = 0; jj < jnum; ++jj) {
                 int j = pairs.neighbors[off + jj];
+                if (my_excl && std::binary_search(my_excl->begin(), my_excl->end(), j))
+                    continue;
                 double dx = f.atoms.x[i] - f.atoms.x[j];
                 double dy = f.atoms.y[i] - f.atoms.y[j];
                 double dz = f.atoms.z[i] - f.atoms.z[j];
@@ -117,6 +173,7 @@ void LJ::destroy(const cpu::DestroyContext& ctx) {
     fx_thr_.clear();
     fy_thr_.clear();
     fz_thr_.clear();
+    exclusions_.clear();
 }
 
 } // namespace md
