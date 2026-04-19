@@ -106,25 +106,38 @@ void MultiHarmonicDihedral::launch(const cpu::LaunchContext& ctx) {
             cos_phi = std::max(double(-1), std::min(double(1), cos_phi));
 
             // V = sum(Cn * cos^n(phi))
+            // dV/dcos(phi) = sum(n * Cn * cos^(n-1)) -- accumulated via a
+            // running cos_pow_minus1 to avoid the /cos_phi singularity at
+            // phi = 90°.
             const auto& coeffs = Cn_[type];
             double energy = 0;
             double dV_dcos = 0;
-            double cos_n = 1;  // cos^0 = 1
+            double cos_pow = 1;          // cos^n at start of iteration
+            double cos_pow_minus1 = 0;   // cos^(n-1); 0 for n=0 (term has factor n)
             for (size_t n = 0; n < coeffs.size(); ++n) {
-                energy += coeffs[n] * cos_n;
+                energy += coeffs[n] * cos_pow;
                 if (n > 0)
-                    dV_dcos += static_cast<double>(n) * coeffs[n] * cos_n / cos_phi;
-                cos_n *= cos_phi;
+                    dV_dcos += static_cast<double>(n) * coeffs[n] * cos_pow_minus1;
+                cos_pow_minus1 = cos_pow;
+                cos_pow *= cos_phi;
             }
             energy_total += energy;
 
-            // Force computation via chain rule (simplified)
+            // sin(phi) via the identity (b1 · (b2 × b3)) * |b2| / (|n1||n2|).
+            // b2 × b3 == n2, so b1 · n2 supplies the numerator.
             double b2_len = std::sqrt(b2x * b2x + b2y * b2y + b2z * b2z);
+            double sin_phi = (b1x * n2x + b1y * n2y + b1z * n2z) * b2_len
+                              * n1_inv * n2_inv;
 
-            // F1 = -(dV/dphi) * b2_len / n1_sq * n1
-            double f1_scale = -dV_dcos * b2_len / n1_sq;
-            // F4 = (dV/dphi) * b2_len / n2_sq * n2
-            double f4_scale = dV_dcos * b2_len / n2_sq;
+            // dV/dphi = -sin(phi) * dV/dcos(phi)
+            double dV_dphi = -sin_phi * dV_dcos;
+
+            // Force computation via chain rule:
+            //   F1 = (dV/dphi) * b2_len / n1_sq * n1
+            //   F4 = -(dV/dphi) * b2_len / n2_sq * n2
+            // (sign convention chosen so F1 + F2 + F3 + F4 = 0).
+            double f1_scale = dV_dphi * b2_len / n1_sq;
+            double f4_scale = -dV_dphi * b2_len / n2_sq;
 
             double f1x = f1_scale * n1x, f1y = f1_scale * n1y, f1z = f1_scale * n1z;
             double f4x = f4_scale * n2x, f4y = f4_scale * n2y, f4z = f4_scale * n2z;
