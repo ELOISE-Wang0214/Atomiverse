@@ -12,6 +12,9 @@
 #ifdef _OPENMP
 #include <omp.h>
 #endif
+#ifdef ATV_HAS_MPI
+#include <mpi.h>
+#endif
 
 namespace ATV {
 namespace cpu {
@@ -51,19 +54,28 @@ void NoseHoover::launch(const cpu::LaunchContext& ctx) {
     if (ctx.stage == static_cast<int>(ATV::md::Phase::initial_integrate) ||
         ctx.stage == static_cast<int>(ATV::md::Phase::final_integrate)) {
 
-        // Phase 2 limitation: local KE only. The thermostat is exact in
-        // single-rank; under multi-rank it uses per-rank KE which diverges
-        // from the true global bath -- a proper NVT multi-rank run requires
-        // MPI_Allreduce of `ke` before the xi_ update. Tracked in Phase 3.
-        // The Phase 2.7 exit-gate test uses NVE (no NoseHoover) so this
-        // limitation is not on the critical path.
-        double ke = 0;
-        #pragma omp parallel for schedule(static) reduction(+:ke)
+        // Per-rank kinetic over owned atoms only.
+        double ke_local = 0;
+        #pragma omp parallel for schedule(static) reduction(+:ke_local)
         for (int i = 0; i < n; ++i) {
             double v2 = f.atoms.vx[i] * f.atoms.vx[i] + f.atoms.vy[i] * f.atoms.vy[i] + f.atoms.vz[i] * f.atoms.vz[i];
-            ke += f.atoms.mass[i] * v2;
+            ke_local += f.atoms.mass[i] * v2;
         }
-        ke *= double(0.5) * kMvv2e;
+        ke_local *= double(0.5) * kMvv2e;
+
+        // Phase 0.5: under multi-rank reduce KE across the Cartesian comm so
+        // the thermostat couples to the *global* bath rather than this
+        // rank's slab. Adds two MPI_Allreduces per integration step (one in
+        // initial_integrate, one in final_integrate); the cost is a single
+        // double per call.
+        double ke = ke_local;
+#ifdef ATV_HAS_MPI
+        if (ctx.runtime.mpi_size > 1 && ctx.runtime.dd
+            && ctx.runtime.dd->cart_comm != MPI_COMM_NULL) {
+            MPI_Allreduce(&ke_local, &ke, 1, MPI_DOUBLE, MPI_SUM,
+                          ctx.runtime.dd->cart_comm);
+        }
+#endif
 
         // Update thermostat variable
         xi_ += (dt_ * double(0.5)) * (double(2) * ke - static_cast<double>(n_dof) * kBoltzmann * T_target_) / Q_;
