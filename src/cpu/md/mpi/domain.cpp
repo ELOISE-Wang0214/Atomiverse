@@ -209,114 +209,19 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
         tag_to_local.emplace(frame.atoms.tag(i), i);
     }
 
-    // Topology filter (Phase 0.3 final): on the first partition, keep the
-    // tuples whose OWNER atom (per LAMMPS-style rule) is owned by this
-    // rank. The other atoms in the tuple may live on neighbour ranks --
-    // the bonded force kernels resolve those via `tag_to_local` after
-    // `HaloExchangeForward` has populated ghost slots and added their
-    // tags to the map.
+    // No topology filter at partition. Each rank keeps the FULL frame.bonds
+    // / angles / dihedrals so that:
+    //   * bonded force kernels can iterate all tuples and filter by their
+    //     owner-tag (LAMMPS-style ownership rule) at force-eval time;
+    //   * LJ::set_special_bonds() can build a complete tag-indexed
+    //     exclusion map without missing bonds whose owner lives on another
+    //     rank -- otherwise an owner-ghost LJ pair that is bonded but
+    //     ownership-routed away would not be excluded and would blow up.
     //
-    //   bond  (i,j):    owner = rank holding atom with min(tag[i], tag[j])
-    //   angle (i,j,k):  owner = rank holding atom j (centre)
-    //   dihedral i-j-k-l: owner = rank holding atom j (2nd atom)
-    //
-    // Atom indices stored in `Frame::bonds/angles/dihedrals` carry GLOBAL
-    // TAGS, never local row indices. The pre-partition Frame has
-    // `tag(i) == i` (default), so the user's existing `atomi = i` setup
-    // is correct as-is. Force kernels resolve through `tag_to_local`.
-    if (first_partition) {
-        auto owns_tag = [&](std::int64_t tag) {
-            return tag_to_local.find(tag) != tag_to_local.end();
-        };
-
-        // Bonds: owner = rank of lower-tag atom.
-        {
-            const int n_b = frame.bonds.size();
-            std::vector<int> ki, kj, kt;
-            ki.reserve(static_cast<std::size_t>(n_b));
-            kj.reserve(static_cast<std::size_t>(n_b));
-            kt.reserve(static_cast<std::size_t>(n_b));
-            for (int b = 0; b < n_b; ++b) {
-                const std::int64_t ti = frame.bonds.atomi(b);
-                const std::int64_t tj = frame.bonds.atomj(b);
-                const std::int64_t owner_tag = (ti < tj) ? ti : tj;
-                if (!owns_tag(owner_tag)) continue;
-                ki.push_back(static_cast<int>(ti));
-                kj.push_back(static_cast<int>(tj));
-                kt.push_back(frame.bonds.type(b));
-            }
-            const int new_n = static_cast<int>(ki.size());
-            frame.bonds.atomi = xt::zeros<int>({new_n});
-            frame.bonds.atomj = xt::zeros<int>({new_n});
-            frame.bonds.type  = xt::zeros<int>({new_n});
-            for (int b = 0; b < new_n; ++b) {
-                frame.bonds.atomi[b] = ki[static_cast<std::size_t>(b)];
-                frame.bonds.atomj[b] = kj[static_cast<std::size_t>(b)];
-                frame.bonds.type[b]  = kt[static_cast<std::size_t>(b)];
-            }
-        }
-
-        // Angles: owner = rank of centre atom (atomj).
-        {
-            const int n_a = frame.angles.size();
-            std::vector<int> ki, kj, kk, kt;
-            ki.reserve(static_cast<std::size_t>(n_a));
-            kj.reserve(static_cast<std::size_t>(n_a));
-            kk.reserve(static_cast<std::size_t>(n_a));
-            kt.reserve(static_cast<std::size_t>(n_a));
-            for (int a = 0; a < n_a; ++a) {
-                if (!owns_tag(frame.angles.atomj(a))) continue;
-                ki.push_back(frame.angles.atomi(a));
-                kj.push_back(frame.angles.atomj(a));
-                kk.push_back(frame.angles.atomk(a));
-                kt.push_back(frame.angles.type(a));
-            }
-            const int new_n = static_cast<int>(ki.size());
-            frame.angles.atomi = xt::zeros<int>({new_n});
-            frame.angles.atomj = xt::zeros<int>({new_n});
-            frame.angles.atomk = xt::zeros<int>({new_n});
-            frame.angles.type  = xt::zeros<int>({new_n});
-            for (int a = 0; a < new_n; ++a) {
-                frame.angles.atomi[a] = ki[static_cast<std::size_t>(a)];
-                frame.angles.atomj[a] = kj[static_cast<std::size_t>(a)];
-                frame.angles.atomk[a] = kk[static_cast<std::size_t>(a)];
-                frame.angles.type[a]  = kt[static_cast<std::size_t>(a)];
-            }
-        }
-
-        // Dihedrals: owner = rank of 2nd atom (atomj).
-        {
-            const int n_d = frame.dihedrals.size();
-            std::vector<int> ki, kj, kk, kl, kt;
-            ki.reserve(static_cast<std::size_t>(n_d));
-            kj.reserve(static_cast<std::size_t>(n_d));
-            kk.reserve(static_cast<std::size_t>(n_d));
-            kl.reserve(static_cast<std::size_t>(n_d));
-            kt.reserve(static_cast<std::size_t>(n_d));
-            for (int d = 0; d < n_d; ++d) {
-                if (!owns_tag(frame.dihedrals.atomj(d))) continue;
-                ki.push_back(frame.dihedrals.atomi(d));
-                kj.push_back(frame.dihedrals.atomj(d));
-                kk.push_back(frame.dihedrals.atomk(d));
-                kl.push_back(frame.dihedrals.atoml(d));
-                kt.push_back(frame.dihedrals.type(d));
-            }
-            const int new_n = static_cast<int>(ki.size());
-            frame.dihedrals.atomi = xt::zeros<int>({new_n});
-            frame.dihedrals.atomj = xt::zeros<int>({new_n});
-            frame.dihedrals.atomk = xt::zeros<int>({new_n});
-            frame.dihedrals.atoml = xt::zeros<int>({new_n});
-            frame.dihedrals.type  = xt::zeros<int>({new_n});
-            for (int d = 0; d < new_n; ++d) {
-                frame.dihedrals.atomi[d] = ki[static_cast<std::size_t>(d)];
-                frame.dihedrals.atomj[d] = kj[static_cast<std::size_t>(d)];
-                frame.dihedrals.atomk[d] = kk[static_cast<std::size_t>(d)];
-                frame.dihedrals.atoml[d] = kl[static_cast<std::size_t>(d)];
-                frame.dihedrals.type[d]  = kt[static_cast<std::size_t>(d)];
-            }
-        }
-    }
-
+    // Trade-off: each rank scans all O(N) tuples per force call instead
+    // of just its O(N/ranks) owned subset. For < 1M-atom systems this is
+    // a ~1 ms tax per step. A future optimisation can split: keep full
+    // topology for the LJ exclusion build, filter for the force pass.
     ++neighbor_generation;
 }
 

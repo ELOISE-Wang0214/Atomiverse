@@ -2,7 +2,9 @@
 /// @brief CPU Lennard-Jones 12-6 (shifted) force component.
 #pragma once
 
+#include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "atomiverse/cpu/component.h"
@@ -57,10 +59,14 @@ private:
     // pair list is built at build() time and consulted at launch() time.
     double s12_ = 1.0, s13_ = 1.0, s14_ = 1.0;
 
-    // Per-atom sorted exclusion lists (only populated when at least one of
-    // s12_/s13_/s14_ is < 1 -- otherwise empty and the launch loop skips
-    // the lookup entirely).
-    std::vector<std::vector<int>> exclusions_;
+    // Tag-indexed exclusion lists. Key = atom global tag (read from
+    // frame.atoms.tag); value = sorted vector of partner tags to exclude.
+    // Tag-based addressing makes the exclusion correct under any MPI
+    // partition: ghost atoms get pulled in via halo with their global
+    // tag attached, so the LJ pair loop can resolve both the owner i's
+    // and the partner j's tags and decide via a single hash + binary
+    // search whether the pair is bonded. Empty when s12==s13==s14==1.
+    std::unordered_map<std::int64_t, std::vector<std::int64_t>> excluded_by_tag_;
 
     // Per-thread force reduction buffers
     int n_threads_ = 1;

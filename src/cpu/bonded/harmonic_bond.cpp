@@ -75,13 +75,19 @@ void HarmonicBond::launch(const cpu::LaunchContext& ctx) {
             int j = f.bonds.atomj[b];
             int type = f.bonds.type[b];
 
-            // Multi-rank: bonds.atomi/atomj store global tags; resolve to
-            // local rows (owners or current-step ghosts) via tag_to_local.
-            // A tag missing from the map means the cross-rank partner is
-            // outside this rank's halo skin -- skip the bond.
+            // Multi-rank: bonds.atomi/atomj store global tags. Bond owner =
+            // rank holding min(tag) atom (LAMMPS convention). Skip bonds we
+            // don't own, and skip bonds whose other atom is not within
+            // halo skin (its tag won't be in tag_to_local).
             if (multi_rank) {
-                auto it_i = dd->tag_to_local.find(static_cast<std::int64_t>(i));
-                auto it_j = dd->tag_to_local.find(static_cast<std::int64_t>(j));
+                const std::int64_t ti = static_cast<std::int64_t>(i);
+                const std::int64_t tj = static_cast<std::int64_t>(j);
+                const std::int64_t owner_tag = (ti < tj) ? ti : tj;
+                auto it_owner = dd->tag_to_local.find(owner_tag);
+                if (it_owner == dd->tag_to_local.end() ||
+                    it_owner->second >= dd->n_local) continue;
+                auto it_i = dd->tag_to_local.find(ti);
+                auto it_j = dd->tag_to_local.find(tj);
                 if (it_i == dd->tag_to_local.end() ||
                     it_j == dd->tag_to_local.end()) continue;
                 i = it_i->second;

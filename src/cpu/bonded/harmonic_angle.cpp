@@ -76,13 +76,16 @@ void HarmonicAngle::launch(const cpu::LaunchContext& ctx) {
             int k = f.angles.atomk[a];
             int type = f.angles.type[a];
 
-            // Multi-rank: angles.atom{i,j,k} store global tags. Resolve.
+            // Multi-rank: angles.atom{i,j,k} store global tags. Owner =
+            // rank holding centre atom (j). Skip if not owned, or if any
+            // of the three atoms is beyond this rank's halo skin.
             if (multi_rank) {
-                auto it_i = dd->tag_to_local.find(static_cast<std::int64_t>(i));
                 auto it_j = dd->tag_to_local.find(static_cast<std::int64_t>(j));
+                if (it_j == dd->tag_to_local.end() ||
+                    it_j->second >= dd->n_local) continue;
+                auto it_i = dd->tag_to_local.find(static_cast<std::int64_t>(i));
                 auto it_k = dd->tag_to_local.find(static_cast<std::int64_t>(k));
                 if (it_i == dd->tag_to_local.end() ||
-                    it_j == dd->tag_to_local.end() ||
                     it_k == dd->tag_to_local.end()) continue;
                 i = it_i->second;
                 j = it_j->second;

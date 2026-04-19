@@ -59,45 +59,51 @@ void LJ::build(const cpu::BuildContext& ctx) {
         fz_thr_[t].resize(n, double(0));
     }
 
-    // Build per-atom exclusion list when at least one special-bonds scale
-    // is zero. (Non-zero, non-one fractional scalings are not yet
-    // implemented -- see header.)
+    // Build tag-indexed exclusion map when any special-bonds scale is 0.
+    // Frame topology stores GLOBAL TAGS (tag == local index in single-rank
+    // by default; differs once partition compacts atoms in multi-rank).
+    // Per-tag exclusion is correct under any partition: at launch time we
+    // read the partner's tag from frame.atoms.tag[j] and look it up in
+    // the owner's excluded set.
     const bool has_excl_12 = (s12_ == 0.0);
     const bool has_excl_13 = (s13_ == 0.0);
     const bool has_excl_14 = (s14_ == 0.0);
     const bool any_excl = has_excl_12 || has_excl_13 || has_excl_14;
 
-    exclusions_.clear();
+    excluded_by_tag_.clear();
     if (!any_excl) return;
 
-    exclusions_.assign(static_cast<std::size_t>(n), {});
-    auto add_pair = [&](int a, int b) {
+    auto add_pair = [&](std::int64_t a, std::int64_t b) {
         if (a == b) return;
-        exclusions_[static_cast<std::size_t>(a)].push_back(b);
-        exclusions_[static_cast<std::size_t>(b)].push_back(a);
+        excluded_by_tag_[a].push_back(b);
+        excluded_by_tag_[b].push_back(a);
     };
 
     const auto& f = ctx.frame;
     if (has_excl_12) {
         const int nb = f.bonds.size();
         for (int b = 0; b < nb; ++b) {
-            add_pair(f.bonds.atomi[b], f.bonds.atomj[b]);
+            add_pair(static_cast<std::int64_t>(f.bonds.atomi[b]),
+                     static_cast<std::int64_t>(f.bonds.atomj[b]));
         }
     }
     if (has_excl_13) {
         const int na = f.angles.size();
         for (int a = 0; a < na; ++a) {
-            add_pair(f.angles.atomi[a], f.angles.atomk[a]);
+            add_pair(static_cast<std::int64_t>(f.angles.atomi[a]),
+                     static_cast<std::int64_t>(f.angles.atomk[a]));
         }
     }
     if (has_excl_14) {
         const int nd = f.dihedrals.size();
         for (int d = 0; d < nd; ++d) {
-            add_pair(f.dihedrals.atomi[d], f.dihedrals.atoml[d]);
+            add_pair(static_cast<std::int64_t>(f.dihedrals.atomi[d]),
+                     static_cast<std::int64_t>(f.dihedrals.atoml[d]));
         }
     }
 
-    for (auto& list : exclusions_) {
+    for (auto& kv : excluded_by_tag_) {
+        auto& list = kv.second;
         std::sort(list.begin(), list.end());
         list.erase(std::unique(list.begin(), list.end()), list.end());
     }
@@ -123,19 +129,27 @@ void LJ::launch(const cpu::LaunchContext& ctx) {
         std::fill(fyt.begin(), fyt.end(), double(0));
         std::fill(fzt.begin(), fzt.end(), double(0));
 
-        const bool has_exclusions = !exclusions_.empty();
+        const bool has_exclusions = !excluded_by_tag_.empty();
 
         #pragma omp for schedule(static)
         for (int ii = 0; ii < pairs.inum; ++ii) {
             int i = pairs.ilist[ii];
             int jnum = pairs.numneigh[i];
             int off = pairs.firstneigh[i];
-            const std::vector<int>* my_excl =
-                has_exclusions ? &exclusions_[static_cast<std::size_t>(i)] : nullptr;
+            // Resolve owner i's tag once; lookup its excluded-tag set.
+            const std::vector<std::int64_t>* my_excl = nullptr;
+            if (has_exclusions) {
+                const std::int64_t i_tag = f.atoms.tag[i];
+                auto it = excluded_by_tag_.find(i_tag);
+                my_excl = (it != excluded_by_tag_.end()) ? &it->second : nullptr;
+            }
             for (int jj = 0; jj < jnum; ++jj) {
                 int j = pairs.neighbors[off + jj];
-                if (my_excl && std::binary_search(my_excl->begin(), my_excl->end(), j))
-                    continue;
+                if (my_excl) {
+                    const std::int64_t j_tag = f.atoms.tag[j];
+                    if (std::binary_search(my_excl->begin(), my_excl->end(), j_tag))
+                        continue;
+                }
                 double dx = f.atoms.x[i] - f.atoms.x[j];
                 double dy = f.atoms.y[i] - f.atoms.y[j];
                 double dz = f.atoms.z[i] - f.atoms.z[j];
@@ -173,7 +187,7 @@ void LJ::destroy(const cpu::DestroyContext& ctx) {
     fx_thr_.clear();
     fy_thr_.clear();
     fz_thr_.clear();
-    exclusions_.clear();
+    excluded_by_tag_.clear();
 }
 
 } // namespace md

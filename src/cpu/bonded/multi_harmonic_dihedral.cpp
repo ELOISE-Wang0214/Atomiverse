@@ -86,14 +86,17 @@ void MultiHarmonicDihedral::launch(const cpu::LaunchContext& ctx) {
             int i4 = f.dihedrals.atoml[d];
             int type = f.dihedrals.type[d];
 
-            // Multi-rank: dihedrals.atom{i,j,k,l} store global tags. Resolve.
+            // Multi-rank: dihedrals.atom{i,j,k,l} store global tags. Owner
+            // = rank holding the 2nd atom (j). Skip if not owned, or if
+            // any of the four atoms is beyond this rank's halo skin.
             if (multi_rank) {
-                auto it1 = dd->tag_to_local.find(static_cast<std::int64_t>(i1));
                 auto it2 = dd->tag_to_local.find(static_cast<std::int64_t>(i2));
+                if (it2 == dd->tag_to_local.end() ||
+                    it2->second >= dd->n_local) continue;
+                auto it1 = dd->tag_to_local.find(static_cast<std::int64_t>(i1));
                 auto it3 = dd->tag_to_local.find(static_cast<std::int64_t>(i3));
                 auto it4 = dd->tag_to_local.find(static_cast<std::int64_t>(i4));
                 if (it1 == dd->tag_to_local.end() ||
-                    it2 == dd->tag_to_local.end() ||
                     it3 == dd->tag_to_local.end() ||
                     it4 == dd->tag_to_local.end()) continue;
                 i1 = it1->second;
