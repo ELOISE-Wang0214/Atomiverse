@@ -73,16 +73,12 @@ cpu::Frame make_fcc_argon(int n_cells, double a_lat) {
     return frame;
 }
 
-double total_energy_allreduced(const cpu::Frame& frame) {
-    // frame.energy holds this rank's partial potential energy (LJ
-    // summed over owned + ghost pairs, each pair counted once under the
-    // half-list convention so no double-count after reverse halo adds
-    // ghost contributions back to owners).
-    // frame.kinetic holds this rank's owned-only kinetic.
-    double local = frame.energy + frame.kinetic;
-    double global = 0.0;
-    MPI_Allreduce(&local, &global, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-    return global;
+double total_energy_global(const cpu::Frame& frame) {
+    // ReduceEnergy (Phase 0.4) runs at end_of_step @ -50 and writes the
+    // globally-reduced sum back into frame.energy / frame.kinetic, so
+    // every rank sees the same global value here. Pre-Phase-0.4 callers
+    // had to MPI_Allreduce manually -- doing so now would double-reduce.
+    return frame.energy + frame.kinetic;
 }
 
 } // namespace
@@ -143,11 +139,11 @@ TEST(LjNve, EnergyConservationMultiRank) {
     sim.build();
 
     sim.run(frame, 1);
-    const double e0 = total_energy_allreduced(frame);
+    const double e0 = total_energy_global(frame);
     ASSERT_GT(std::abs(e0), 1e-12);
 
     sim.run(frame, 20);
-    const double e1 = total_energy_allreduced(frame);
+    const double e1 = total_energy_global(frame);
     const double drift = std::abs(e1 - e0) / std::abs(e0);
     EXPECT_LT(drift, 1e-2)
         << "multi-rank NVE energy drift " << drift

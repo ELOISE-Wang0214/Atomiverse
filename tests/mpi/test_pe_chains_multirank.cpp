@@ -145,11 +145,10 @@ cpu::Frame make_two_chain_box(double box_x, double box_yz) {
     return frame;
 }
 
-double total_energy_allreduced(const cpu::Frame& frame) {
-    double local = frame.energy + frame.kinetic;
-    double global = 0.0;
-    MPI_Allreduce(&local, &global, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-    return global;
+double total_energy_global(const cpu::Frame& frame) {
+    // ReduceEnergy already wrote the global PE/KE back into frame, so
+    // every rank has the same value here.
+    return frame.energy + frame.kinetic;
 }
 
 } // namespace
@@ -173,7 +172,7 @@ TEST(PeChainsMultiRank, BondedOnlyNveStable) {
 
     sim.run(frame, 200);
 
-    const double e_global = total_energy_allreduced(frame);
+    const double e_global = total_energy_global(frame);
     EXPECT_FALSE(std::isnan(e_global)) << "global energy went NaN";
     EXPECT_LT(std::abs(e_global), 1e6)
         << "global energy " << e_global

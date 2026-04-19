@@ -160,11 +160,10 @@ cpu::Frame make_8chain_box(double box_len, int n_carbons, double y_margin) {
     return frame;
 }
 
-double total_energy_allreduced(const cpu::Frame& frame) {
-    double local = frame.energy + frame.kinetic;
-    double global = 0.0;
-    MPI_Allreduce(&local, &global, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-    return global;
+double total_energy_global(const cpu::Frame& frame) {
+    // ReduceEnergy already wrote the global PE/KE back into frame, so
+    // every rank has the same value here.
+    return frame.energy + frame.kinetic;
 }
 
 } // namespace
@@ -189,12 +188,12 @@ TEST(PeChains8Rank, BondedNveConservation) {
     sim.build();
 
     sim.run(frame, 1);
-    const double e0 = total_energy_allreduced(frame);
+    const double e0 = total_energy_global(frame);
     ASSERT_GT(std::abs(e0), 0.0);
     ASSERT_FALSE(std::isnan(e0));
 
     sim.run(frame, 999);
-    const double e1 = total_energy_allreduced(frame);
+    const double e1 = total_energy_global(frame);
     const double drift = std::abs(e1 - e0) / std::abs(e0);
     EXPECT_LT(drift, 1e-3)
         << "8-rank bonded NVE drift " << drift
