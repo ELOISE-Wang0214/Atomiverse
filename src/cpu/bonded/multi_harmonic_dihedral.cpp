@@ -105,15 +105,14 @@ void MultiHarmonicDihedral::launch(const cpu::LaunchContext& ctx) {
             double cos_phi = (n1x * n2x + n1y * n2y + n1z * n2z) * n1_inv * n2_inv;
             cos_phi = std::max(double(-1), std::min(double(1), cos_phi));
 
-            // V = sum(Cn * cos^n(phi))
-            // dV/dcos(phi) = sum(n * Cn * cos^(n-1)) -- accumulated via a
-            // running cos_pow_minus1 to avoid the /cos_phi singularity at
-            // phi = 90°.
+            // V = sum Cn cos^n(phi); dV/dcos = sum n·Cn·cos^(n-1).
+            // Use a running cos_pow_minus1 to avoid dividing by cos(phi)
+            // (which vanishes at phi = ±90°).
             const auto& coeffs = Cn_[type];
             double energy = 0;
             double dV_dcos = 0;
-            double cos_pow = 1;          // cos^n at start of iteration
-            double cos_pow_minus1 = 0;   // cos^(n-1); 0 for n=0 (term has factor n)
+            double cos_pow = 1;          // cos^n
+            double cos_pow_minus1 = 0;   // cos^(n-1); 0 for n=0
             for (size_t n = 0; n < coeffs.size(); ++n) {
                 energy += coeffs[n] * cos_pow;
                 if (n > 0)
@@ -123,39 +122,67 @@ void MultiHarmonicDihedral::launch(const cpu::LaunchContext& ctx) {
             }
             energy_total += energy;
 
-            // sin(phi) via the identity (b1 · (b2 × b3)) * |b2| / (|n1||n2|).
-            // b2 × b3 == n2, so b1 · n2 supplies the numerator.
-            double b2_len = std::sqrt(b2x * b2x + b2y * b2y + b2z * b2z);
-            double sin_phi = (b1x * n2x + b1y * n2y + b1z * n2z) * b2_len
-                              * n1_inv * n2_inv;
+            // Force via direct chain rule: F_i = -dV/dcos · ∂cos_phi/∂r_i.
+            //
+            // Let f_hat_1 = ∂(cos_phi)/∂n1, f_hat_2 = ∂(cos_phi)/∂n2 as 3-vectors:
+            //   f_hat_1 = (n2/|n2| - cos_phi·n1/|n1|) / |n1|
+            //   f_hat_2 = (n1/|n1| - cos_phi·n2/|n2|) / |n2|
+            // Then
+            //   ∂cos_phi/∂b1 = b2 × f_hat_1
+            //   ∂cos_phi/∂b3 = f_hat_2 × b2
+            //   ∂cos_phi/∂b2 = (f_hat_1 × b1) + (b3 × f_hat_2)
+            // and finally
+            //   F_1 =  dV/dcos · ∂cos/∂b1
+            //   F_4 = -dV/dcos · ∂cos/∂b3
+            //   F_2 = -F_1 + dV/dcos · ∂cos/∂b2
+            //   F_3 = -dV/dcos · ∂cos/∂b2 - F_4
+            // (checked against a central-difference gradient -- see
+            //  tests/cpu/md/test_pe_fd_force.cpp).
+            const double n1h_x = n1x * n1_inv, n1h_y = n1y * n1_inv, n1h_z = n1z * n1_inv;
+            const double n2h_x = n2x * n2_inv, n2h_y = n2y * n2_inv, n2h_z = n2z * n2_inv;
 
-            // dV/dphi = -sin(phi) * dV/dcos(phi)
-            double dV_dphi = -sin_phi * dV_dcos;
+            const double fh1_x = (n2h_x - cos_phi * n1h_x) * n1_inv;
+            const double fh1_y = (n2h_y - cos_phi * n1h_y) * n1_inv;
+            const double fh1_z = (n2h_z - cos_phi * n1h_z) * n1_inv;
 
-            // Force computation via chain rule:
-            //   F1 = (dV/dphi) * b2_len / n1_sq * n1
-            //   F4 = -(dV/dphi) * b2_len / n2_sq * n2
-            // (sign convention chosen so F1 + F2 + F3 + F4 = 0).
-            double f1_scale = dV_dphi * b2_len / n1_sq;
-            double f4_scale = -dV_dphi * b2_len / n2_sq;
+            const double fh2_x = (n1h_x - cos_phi * n2h_x) * n2_inv;
+            const double fh2_y = (n1h_y - cos_phi * n2h_y) * n2_inv;
+            const double fh2_z = (n1h_z - cos_phi * n2h_z) * n2_inv;
 
-            double f1x = f1_scale * n1x, f1y = f1_scale * n1y, f1z = f1_scale * n1z;
-            double f4x = f4_scale * n2x, f4y = f4_scale * n2y, f4z = f4_scale * n2z;
+            // ∂cos/∂b1 = b2 × fh1
+            const double db1_x = b2y * fh1_z - b2z * fh1_y;
+            const double db1_y = b2z * fh1_x - b2x * fh1_z;
+            const double db1_z = b2x * fh1_y - b2y * fh1_x;
 
-            // Intermediate forces (approximate for i2, i3)
-            double b1_dot_b2 = b1x * b2x + b1y * b2y + b1z * b2z;
-            double b3_dot_b2 = b3x * b2x + b3y * b2y + b3z * b2z;
-            double b2_sq = b2x * b2x + b2y * b2y + b2z * b2z;
+            // ∂cos/∂b3 = fh2 × b2
+            const double db3_x = fh2_y * b2z - fh2_z * b2y;
+            const double db3_y = fh2_z * b2x - fh2_x * b2z;
+            const double db3_z = fh2_x * b2y - fh2_y * b2x;
 
-            double s1 = b1_dot_b2 / b2_sq;
-            double s2 = b3_dot_b2 / b2_sq;
+            // ∂cos/∂b2 = (fh1 × b1) + (b3 × fh2)
+            const double db2_x = (fh1_y * b1z - fh1_z * b1y) + (b3y * fh2_z - b3z * fh2_y);
+            const double db2_y = (fh1_z * b1x - fh1_x * b1z) + (b3z * fh2_x - b3x * fh2_z);
+            const double db2_z = (fh1_x * b1y - fh1_y * b1x) + (b3x * fh2_y - b3y * fh2_x);
 
-            double f2x = -f1x + s1 * f1x - s2 * f4x;
-            double f2y = -f1y + s1 * f1y - s2 * f4y;
-            double f2z = -f1z + s1 * f1z - s2 * f4z;
-            double f3x = -f4x - s1 * f1x + s2 * f4x;
-            double f3y = -f4y - s1 * f1y + s2 * f4y;
-            double f3z = -f4z - s1 * f1z + s2 * f4z;
+            const double f1x =  dV_dcos * db1_x;
+            const double f1y =  dV_dcos * db1_y;
+            const double f1z =  dV_dcos * db1_z;
+
+            const double f4x = -dV_dcos * db3_x;
+            const double f4y = -dV_dcos * db3_y;
+            const double f4z = -dV_dcos * db3_z;
+
+            const double gx = dV_dcos * db2_x;
+            const double gy = dV_dcos * db2_y;
+            const double gz = dV_dcos * db2_z;
+
+            const double f2x = -f1x + gx;
+            const double f2y = -f1y + gy;
+            const double f2z = -f1z + gz;
+
+            const double f3x = -gx - f4x;
+            const double f3y = -gy - f4y;
+            const double f3z = -gz - f4z;
 
             fxt[i1] += f1x; fyt[i1] += f1y; fzt[i1] += f1z;
             fxt[i2] += f2x; fyt[i2] += f2y; fzt[i2] += f2z;

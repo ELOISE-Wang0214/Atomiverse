@@ -101,15 +101,16 @@ void HarmonicAngle::launch(const cpu::LaunchContext& ctx) {
             double sin_theta = std::sqrt(double(1) - cos_theta * cos_theta);
             if (sin_theta < double(1e-10)) continue;
 
-            double a_coeff = -dV / (r_ji * sin_theta);
-            double c_coeff = -dV / (r_jk * sin_theta);
+            // F_i = -dV/dr_i = +(dV/dθ)/(r_ji·sin θ) · (r_jk_hat - cos θ·r_ji_hat)
+            // (the - in d(cos θ)/dr_i and the - in dθ/d(cos θ) = -1/sin θ
+            //  combine into a + here -- the previous version dropped one sign).
+            double a_coeff = dV / (r_ji * sin_theta);
+            double c_coeff = dV / (r_jk * sin_theta);
 
-            // Force on i: a * (r_jk/r_jk - cos*r_ji/r_ji)
             double fi_x = a_coeff * (dx_jk / r_jk - cos_theta * dx_ji / r_ji);
             double fi_y = a_coeff * (dy_jk / r_jk - cos_theta * dy_ji / r_ji);
             double fi_z = a_coeff * (dz_jk / r_jk - cos_theta * dz_ji / r_ji);
 
-            // Force on k: c * (r_ji/r_ji - cos*r_jk/r_jk)
             double fk_x = c_coeff * (dx_ji / r_ji - cos_theta * dx_jk / r_jk);
             double fk_y = c_coeff * (dy_ji / r_ji - cos_theta * dy_jk / r_jk);
             double fk_z = c_coeff * (dz_ji / r_ji - cos_theta * dz_jk / r_jk);
