@@ -128,11 +128,22 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
     const double Ly = frame.box(1, 1);
     const double Lz = frame.box(2, 2);
 
-    const int n_total = frame.atoms.size();
+    // First-run vs subsequent-run scoping. On the first call (n_local == 0)
+    // we scan the entire user-supplied atom array because we don't yet know
+    // which atoms belong to this rank. On subsequent calls -- e.g. when a
+    // user invokes `Driver::run()` twice in a row -- the array's tail rows
+    // hold stale ghost positions and old owner copies left over by halo and
+    // by the previous compaction. Re-scanning those would let the same
+    // physical atom be picked again as an extra owner (its stale FCC
+    // position is unchanged, its post-step compacted copy is at a different
+    // slot), and the resulting two near-identical "owner" rows blow up LJ.
+    // Phase 2 has no atom migration, so previously-owned atoms still belong
+    // to this rank; we only need to re-scan that range.
+    const int n_to_iterate = (n_local > 0) ? n_local : frame.atoms.size();
     std::vector<int> owned_indices;
-    owned_indices.reserve(static_cast<std::size_t>(n_total));
+    owned_indices.reserve(static_cast<std::size_t>(n_to_iterate));
 
-    for (int i = 0; i < n_total; ++i) {
+    for (int i = 0; i < n_to_iterate; ++i) {
         const double xw = wrap_to_cell(frame.atoms.x(i), Lx);
         const double yw = wrap_to_cell(frame.atoms.y(i), Ly);
         const double zw = wrap_to_cell(frame.atoms.z(i), Lz);
@@ -146,7 +157,7 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
 
     n_local  = static_cast<int>(owned_indices.size());
     n_ghost  = 0;
-    capacity = n_total;  // keep the whole allocation as slack for ghosts
+    capacity = frame.atoms.size();  // keep the whole allocation as slack for ghosts
 
     // Compact owned atoms to the front of every per-atom array. Iterating
     // in increasing `new_i` guarantees we read `old_i >= new_i` so the

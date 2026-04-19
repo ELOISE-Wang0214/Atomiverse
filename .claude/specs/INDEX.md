@@ -12,3 +12,5 @@
 - [phase4-vibrations](phase4-vibrations.md) — New `vib::Phase` enum + numerical Hessian driver + thermochemistry [draft]
 - [phase5-aimd](phase5-aimd.md) — Gated placeholder; reuses existing `cpu::md::MD` + `SCFEvaluator` composition [draft]
 - [parallel-md-engine](parallel-md-engine.md) — MPI + OpenMP + xsimd multi-node CPU MD; hot-path vs. analysis separation via `std::thread` pool; 4-phase roadmap [draft]
+- [msu-pe-validation](msu-pe-validation.md) — MSU amorphous-PE tension validation vs LAMMPS; correctness + multi-core scaling final acceptance [draft]
+- [skill-agent-design](skill-agent-design.md) — Reference model for skill/agent split + design rules + cross-project re-exam checklist [approved]

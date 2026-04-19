@@ -46,12 +46,15 @@ inline int owned_count(const cpu::BuildContext& ctx) {
 
 void ZeroForces::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
-    // Zero both owned AND ghost force rows: force kernels accumulate into
-    // ghosts and HaloExchangeReverse needs a clean baseline on those rows.
-    // Single-rank: there are no ghosts so this is just the full array.
-    const auto* dd = ctx.runtime.dd;
-    const int n = (dd && ctx.runtime.mpi_size > 1) ? dd->n_local + dd->n_ghost
-                                                   : f.atoms.size();
+    // Zero the full array (owners + every possible ghost slot up to capacity).
+    // ZeroForces sits at order -1000 in pre_force, BEFORE HaloExchangeForward
+    // populates ghosts for the current step, so we cannot rely on
+    // `dd->n_ghost` here -- it still holds the previous step's count.
+    // Zeroing [0, atoms.size()) is the cheapest correct option: it covers
+    // every slot the next halo could write into, leaves owner forces clean
+    // for force kernels, and gives `HaloExchangeReverse` a known-zero
+    // baseline on ghost rows.
+    const int n = f.atoms.size();
     #pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
         f.atoms.fx[i] = 0;

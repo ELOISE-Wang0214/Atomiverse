@@ -28,16 +28,23 @@ public:
     std::string name() const override { return "neighbor_list"; }
 
     void build(const cpu::BuildContext& ctx) override {
-        strategy_.init(ctx.frame, cutoff_);
-        strategy_.build(ctx.frame);
-        pairs_ = strategy_.build_half(ctx.frame);
+        if (is_multi_rank(ctx.runtime)) {
+            strategy_.init_extended(ctx.frame, cutoff_, ctx.runtime.dd->dims,
+                                     ctx.runtime.dd->capacity);
+        } else {
+            strategy_.init(ctx.frame, cutoff_);
+        }
+        const int n_active = active_count(ctx.runtime, ctx.frame);
+        strategy_.build(ctx.frame, n_active);
+        pairs_ = strategy_.build_half(ctx.frame, n_active);
         trim_inum_to_local(ctx.runtime, pairs_);
         ctx.frame.pair_list = &pairs_;
     }
 
     void launch(const cpu::LaunchContext& ctx) override {
-        strategy_.update(ctx.frame);
-        pairs_ = strategy_.build_half(ctx.frame);
+        const int n_active = active_count(ctx.runtime, ctx.frame);
+        strategy_.update(ctx.frame, n_active);
+        pairs_ = strategy_.build_half(ctx.frame, n_active);
         trim_inum_to_local(ctx.runtime, pairs_);
         ctx.frame.pair_list = &pairs_;
     }
@@ -49,11 +56,24 @@ public:
     const Strategy& strategy() const { return strategy_; }
 
 private:
+    /// @brief True when running with multiple MPI ranks (and the DD struct
+    /// is available). Single-rank or null-`dd` returns false.
+    static bool is_multi_rank(const cpu::Context& rt) {
+        return rt.dd != nullptr && rt.mpi_size > 1;
+    }
+
+    /// @brief Active atom count: owners + current ghosts under multi-rank,
+    /// otherwise the full atom array (single-rank legacy).
+    static int active_count(const cpu::Context& rt, const cpu::Frame& frame) {
+        if (is_multi_rank(rt)) return rt.dd->n_local + rt.dd->n_ghost;
+        return frame.atoms.size();
+    }
+
     /// @brief Multi-rank trim: `inum = dd->n_local` so force kernels only
     /// iterate owned atoms as `i`, while `neighbors[]` may still point to
     /// ghost rows. Single-rank: no-op.
     static void trim_inum_to_local(const cpu::Context& rt, PairList& pl) {
-        if (rt.dd && rt.mpi_size > 1) {
+        if (is_multi_rank(rt)) {
             pl.inum = rt.dd->n_local;
         }
     }

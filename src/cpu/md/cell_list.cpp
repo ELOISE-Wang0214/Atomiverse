@@ -29,14 +29,6 @@ static inline void minimum_image(double& dx, double& dy, double& dz, const Mat3&
     if (dz < -lz * double(0.5)) dz += lz;
 }
 
-// ── PBC wrapping for cell index ──────────────────────────────────
-
-static inline int wrap_cell(int c, int nc) {
-    if (c < 0) return c + nc;
-    if (c >= nc) return c - nc;
-    return c;
-}
-
 // ── CellList ─────────────────────────────────────────────────────
 
 CellList::CellList(double cutoff, double skin)
@@ -44,31 +36,57 @@ CellList::CellList(double cutoff, double skin)
       skin_(skin < 0 ? double(0.3) * cutoff : skin),
       cutoff_skin_(cutoff + (skin < 0 ? double(0.3) * cutoff : skin)) {}
 
-void CellList::init(const cpu::Frame& frame, double cutoff_skin) {
+void CellList::init(const cpu::Frame& frame, double /*cutoff_skin*/) {
     cutoff_skin_ = cutoff_ + skin_;
+    // Single-rank: no axis extension; whole-box grid; ghosts wrap into [0, L).
+    for (int d = 0; d < 3; ++d) {
+        axis_extended_[d] = false;
+        origin_[d] = 0.0;
+    }
+    capacity_ = frame.atoms.size();
     compute_grid(frame);
     build_stencil();
 
-    int n = frame.atoms.size();
-    atom_cell_ = xt::zeros<int>({n});
-    binned_atoms_ = xt::zeros<int>({n});
-    x_save_ = xt::zeros<double>({n});
-    y_save_ = xt::zeros<double>({n});
-    z_save_ = xt::zeros<double>({n});
+    atom_cell_ = xt::zeros<int>({capacity_});
+    binned_atoms_ = xt::zeros<int>({capacity_});
+    x_save_ = xt::zeros<double>({capacity_});
+    y_save_ = xt::zeros<double>({capacity_});
+    z_save_ = xt::zeros<double>({capacity_});
+}
+
+void CellList::init_extended(const cpu::Frame& frame, double /*cutoff_skin*/,
+                              const int dims[3], int capacity) {
+    cutoff_skin_ = cutoff_ + skin_;
+    // Multi-rank: extend each axis with dims>1 to cover ghost halo.
+    for (int d = 0; d < 3; ++d) {
+        axis_extended_[d] = (dims[d] > 1);
+        origin_[d] = axis_extended_[d] ? -cutoff_skin_ : 0.0;
+    }
+    capacity_ = capacity;
+    compute_grid(frame);
+    build_stencil();
+
+    atom_cell_ = xt::zeros<int>({capacity_});
+    binned_atoms_ = xt::zeros<int>({capacity_});
+    x_save_ = xt::zeros<double>({capacity_});
+    y_save_ = xt::zeros<double>({capacity_});
+    z_save_ = xt::zeros<double>({capacity_});
 }
 
 void CellList::compute_grid(const cpu::Frame& frame) {
-    double lx = frame.box(0, 0);
-    double ly = frame.box(1, 1);
-    double lz = frame.box(2, 2);
+    // Per-axis effective grid length: box edge plus halo skin on each
+    // extended side. Single-rank axes use the box edge as-is.
+    double lx_eff = frame.box(0, 0) + (axis_extended_[0] ? double(2) * cutoff_skin_ : double(0));
+    double ly_eff = frame.box(1, 1) + (axis_extended_[1] ? double(2) * cutoff_skin_ : double(0));
+    double lz_eff = frame.box(2, 2) + (axis_extended_[2] ? double(2) * cutoff_skin_ : double(0));
 
-    ncx_ = std::max(int(1), static_cast<int>(std::floor(lx / cutoff_skin_)));
-    ncy_ = std::max(int(1), static_cast<int>(std::floor(ly / cutoff_skin_)));
-    ncz_ = std::max(int(1), static_cast<int>(std::floor(lz / cutoff_skin_)));
+    ncx_ = std::max(int(1), static_cast<int>(std::floor(lx_eff / cutoff_skin_)));
+    ncy_ = std::max(int(1), static_cast<int>(std::floor(ly_eff / cutoff_skin_)));
+    ncz_ = std::max(int(1), static_cast<int>(std::floor(lz_eff / cutoff_skin_)));
 
-    csx_ = lx / ncx_;
-    csy_ = ly / ncy_;
-    csz_ = lz / ncz_;
+    csx_ = lx_eff / ncx_;
+    csy_ = ly_eff / ncy_;
+    csz_ = lz_eff / ncz_;
 
     total_cells_ = ncx_ * ncy_ * ncz_;
     cell_count_ = xt::zeros<int>({total_cells_});
@@ -92,8 +110,8 @@ void CellList::build_stencil() {
     }
 }
 
-void CellList::bin_atoms(const cpu::Frame& frame) {
-    int n = frame.atoms.size();
+void CellList::bin_atoms(const cpu::Frame& frame, int n_active) {
+    int n = (n_active < 0) ? frame.atoms.size() : n_active;
     double lx = frame.box(0, 0);
     double ly = frame.box(1, 1);
     double lz = frame.box(2, 2);
@@ -101,17 +119,30 @@ void CellList::bin_atoms(const cpu::Frame& frame) {
     // Clear cell counts
     std::fill(cell_count_.begin(), cell_count_.end(), int(0));
 
-    // Assign atoms to cells
+    // Assign atoms to cells. Single-rank axes wrap into [0, L); extended
+    // axes leave the position alone so PBC-shifted ghost coordinates land
+    // in the dedicated halo cells around the slab.
     #pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
-        // Wrap position into [0, L)
-        double xi = frame.atoms.x[i] - lx * std::floor(frame.atoms.x[i] / lx);
-        double yi = frame.atoms.y[i] - ly * std::floor(frame.atoms.y[i] / ly);
-        double zi = frame.atoms.z[i] - lz * std::floor(frame.atoms.z[i] / lz);
+        double xi = frame.atoms.x[i];
+        double yi = frame.atoms.y[i];
+        double zi = frame.atoms.z[i];
+        if (!axis_extended_[0]) {
+            xi -= lx * std::floor(xi / lx);
+        }
+        if (!axis_extended_[1]) {
+            yi -= ly * std::floor(yi / ly);
+        }
+        if (!axis_extended_[2]) {
+            zi -= lz * std::floor(zi / lz);
+        }
 
-        int cx = std::min(static_cast<int>(xi / csx_), ncx_ - 1);
-        int cy = std::min(static_cast<int>(yi / csy_), ncy_ - 1);
-        int cz = std::min(static_cast<int>(zi / csz_), ncz_ - 1);
+        int cx = static_cast<int>(std::floor((xi - origin_[0]) / csx_));
+        int cy = static_cast<int>(std::floor((yi - origin_[1]) / csy_));
+        int cz = static_cast<int>(std::floor((zi - origin_[2]) / csz_));
+        cx = std::max(0, std::min(cx, ncx_ - 1));
+        cy = std::max(0, std::min(cy, ncy_ - 1));
+        cz = std::max(0, std::min(cz, ncz_ - 1));
 
         atom_cell_[i] = cx * ncy_ * ncz_ + cy * ncz_ + cz;
     }
@@ -134,8 +165,8 @@ void CellList::bin_atoms(const cpu::Frame& frame) {
     }
 }
 
-void CellList::save_positions(const cpu::Frame& frame) {
-    int n = frame.atoms.size();
+void CellList::save_positions(const cpu::Frame& frame, int n_active) {
+    int n = (n_active < 0) ? frame.atoms.size() : n_active;
     for (int i = 0; i < n; ++i) {
         x_save_[i] = frame.atoms.x[i];
         y_save_[i] = frame.atoms.y[i];
@@ -143,16 +174,14 @@ void CellList::save_positions(const cpu::Frame& frame) {
     }
 }
 
-void CellList::build(const cpu::Frame& frame) {
-    bin_atoms(frame);
-    save_positions(frame);
+void CellList::build(const cpu::Frame& frame, int n_active) {
+    bin_atoms(frame, n_active);
+    save_positions(frame, n_active);
 }
 
-bool CellList::needs_rebuild(const cpu::Frame& frame) const {
-    int n = frame.atoms.size();
+bool CellList::needs_rebuild(const cpu::Frame& frame, int n_active) const {
+    int n = (n_active < 0) ? frame.atoms.size() : n_active;
     double max_disp_sq = 0;
-    double threshold = skin_ * double(0.5);
-    double threshold_sq = threshold * threshold;
 
     for (int i = 0; i < n; ++i) {
         double dx = frame.atoms.x[i] - x_save_[i];
@@ -166,13 +195,13 @@ bool CellList::needs_rebuild(const cpu::Frame& frame) const {
     return max_disp_sq * double(4) > skin_ * skin_;
 }
 
-void CellList::update(const cpu::Frame& frame) {
-    if (needs_rebuild(frame))
-        build(frame);
+void CellList::update(const cpu::Frame& frame, int n_active) {
+    if (needs_rebuild(frame, n_active))
+        build(frame, n_active);
 }
 
-PairList CellList::build_half(const cpu::Frame& frame) const {
-    int n = frame.atoms.size();
+PairList CellList::build_half(const cpu::Frame& frame, int n_active) const {
+    int n = (n_active < 0) ? frame.atoms.size() : n_active;
     double rc_sq = cutoff_skin_ * cutoff_skin_;
 
     PairList result;
@@ -200,36 +229,9 @@ PairList CellList::build_half(const cpu::Frame& frame) const {
         #pragma omp for schedule(dynamic)
         for (int i = 0; i < n; ++i) {
             int ci = atom_cell_[i];
-            int cx = ci / (ncy_ * ncz_);
-            int rem = ci % (ncy_ * ncz_);
-            int cy = rem / ncz_;
-            int cz = rem % ncz_;
 
             for (auto s : half_stencil_) {
                 int cj = ci + s;
-
-                // PBC wrapping for cell index
-                int jx = cx, jy = cy, jz = cz;
-                if (s != 0) {
-                    // Decode stencil offset
-                    int ds = s;
-                    int dz_s = ds % ncz_;
-                    if (dz_s < -1) dz_s += ncz_;
-                    ds /= ncz_;
-                    int dy_s = ds % ncy_;
-                    if (dy_s < -1) dy_s += ncy_;
-                    int dx_s = ds / ncy_;
-
-                    // Recompute from original di/dj/dk encoding
-                    // Simpler: directly iterate stencil with PBC
-                }
-
-                // Use wrapped cell computation instead
-                // Recompute neighbor cell with PBC
-                // For stencil offset s, decode back to (di, dj, dk) shifts
-                // Then apply PBC wrapping
-
-                // Iterate atoms in cell cj
                 if (cj < 0 || cj >= total_cells_) continue;
                 int start = cell_offset_[cj];
                 int end = start + cell_count_[cj];
@@ -263,7 +265,7 @@ PairList CellList::build_half(const cpu::Frame& frame) const {
     for (int i = 1; i < n; ++i)
         result.firstneigh[i] = result.firstneigh[i - 1] + result.numneigh[i - 1];
 
-    result.total_pairs = result.firstneigh[n - 1] + result.numneigh[n - 1];
+    result.total_pairs = (n > 0) ? result.firstneigh[n - 1] + result.numneigh[n - 1] : 0;
     result.neighbors = xt::zeros<int>({result.total_pairs});
 
     // Write pointers (copy of firstneigh)
@@ -278,8 +280,8 @@ PairList CellList::build_half(const cpu::Frame& frame) const {
     return result;
 }
 
-PairList CellList::build_full(const cpu::Frame& frame) const {
-    int n = frame.atoms.size();
+PairList CellList::build_full(const cpu::Frame& frame, int n_active) const {
+    int n = (n_active < 0) ? frame.atoms.size() : n_active;
     double rc_sq = cutoff_skin_ * cutoff_skin_;
 
     PairList result;
@@ -339,7 +341,7 @@ PairList CellList::build_full(const cpu::Frame& frame) const {
     for (int i = 1; i < n; ++i)
         result.firstneigh[i] = result.firstneigh[i - 1] + result.numneigh[i - 1];
 
-    result.total_pairs = result.firstneigh[n - 1] + result.numneigh[n - 1];
+    result.total_pairs = (n > 0) ? result.firstneigh[n - 1] + result.numneigh[n - 1] : 0;
     result.neighbors = xt::zeros<int>({result.total_pairs});
 
     auto write_ptr = result.firstneigh;

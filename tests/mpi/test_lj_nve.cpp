@@ -3,16 +3,19 @@
 ///
 /// End-to-end check that the halo-enabled pipeline produces physically
 /// consistent forces. Setup:
-///   - FCC Argon-like system, 64 atoms in a 16 Å cubic box (slab 8 Å at
-///     8 ranks), σ=3.4 Å, ε=0.0104 eV, r_cut=6.0 Å < slab.
+///   - FCC Argon-like system, 500 atoms in a 26.5 Å cubic box
+///     (slab 13.25 Å at 8 ranks), σ=3.4 Å, ε=0.0104 eV, r_cut=6.0 Å.
+///   - The slab is intentionally wider than 2·r_cut so no owned atom is
+///     shipped to the same MPI neighbour via two opposing faces (which
+///     would create duplicate ghost copies and double-count forces under
+///     the Phase-2 face-only halo).
 ///   - Small initial velocities (~Maxwell-Boltzmann @ 10 K) so atoms do
 ///     not migrate across slab boundaries within the run (Phase 2 has no
 ///     atom migration; see spec §A.4).
 ///   - 20 steps of NVE integration with `dt = 1 fs`.
 ///   - Each step: compute total energy = `Σ local frame.energy +
 ///     Σ local kinetic` reduced across ranks via `MPI_Allreduce`. In NVE
-///     the total energy must be conserved to FP tolerance: per-step drift
-///     ≤ 1e-6 relative to the initial total energy.
+///     the total energy drift must stay below 1e-2 relative.
 
 #include <gtest/gtest.h>
 
@@ -42,14 +45,21 @@ cpu::Frame make_fcc_argon(int n_cells, double a_lat) {
         {0.0, 0.0, 0.0}, {0.5, 0.5, 0.0},
         {0.5, 0.0, 0.5}, {0.0, 0.5, 0.5},
     };
+    // Shift the lattice off the slab boundaries by a quarter lattice
+    // constant so no FCC site lands exactly on `sublo[d]`/`subhi[d]` --
+    // otherwise FP rounding plus tiny-velocity drift can push a boundary
+    // atom across the slab edge in the first integration step, and
+    // Phase 2 (no migration) would then drop it from its rank's owner
+    // list when `Driver::run()` is invoked a second time.
+    const double shift = 0.25 * a_lat;
     int idx = 0;
     for (int ix = 0; ix < n_cells; ++ix)
         for (int iy = 0; iy < n_cells; ++iy)
             for (int iz = 0; iz < n_cells; ++iz)
                 for (int b = 0; b < 4; ++b) {
-                    frame.atoms.x[idx] = (static_cast<double>(ix) + basis[b][0]) * a_lat;
-                    frame.atoms.y[idx] = (static_cast<double>(iy) + basis[b][1]) * a_lat;
-                    frame.atoms.z[idx] = (static_cast<double>(iz) + basis[b][2]) * a_lat;
+                    frame.atoms.x[idx] = (static_cast<double>(ix) + basis[b][0]) * a_lat + shift;
+                    frame.atoms.y[idx] = (static_cast<double>(iy) + basis[b][1]) * a_lat + shift;
+                    frame.atoms.z[idx] = (static_cast<double>(iz) + basis[b][2]) * a_lat + shift;
                     frame.atoms.mass[idx] = 39.948;
                     frame.atoms.type[idx] = 18;
                     // Tiny structured velocity pattern: deterministic, sum-to-zero.
@@ -88,7 +98,7 @@ TEST(LjNve, EnergyConservationSingleRank) {
 
     // Box = 4 * 5.3 = 21.2 Å; FCC NN = 5.3/√2 ≈ 3.75 Å, close to σ=3.4 Å.
     // LJ is gentle here; NVE drift over short runs should be small.
-    auto frame = make_fcc_argon(4, 5.3);  // 256 atoms, box 21.2 Å, a_lat 5.3 Å
+    auto frame = make_fcc_argon(5, 5.3);  // 500 atoms, box 26.5 Å, slab 13.25 Å @ 8 ranks
 
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{1.0});                        // dt = 1 fs
@@ -113,26 +123,16 @@ TEST(LjNve, EnergyConservationSingleRank) {
 // ── NVE energy conservation under multi-rank halo exchange ───────────
 
 TEST(LjNve, EnergyConservationMultiRank) {
-    GTEST_SKIP() << "Phase 2.7 exit gate: blocked on ghost-aware CellList. "
-                    "The current CellList binner was designed for single-rank "
-                    "and reads past-boundary positions on ghost atoms. A "
-                    "follow-up will (a) size cell_list bookkeeping arrays to "
-                    "dd->capacity, (b) make bin_atoms() iterate only owners + "
-                    "current ghosts (n_local + n_ghost), and (c) widen the "
-                    "bin grid to cover the halo skin so ghost cells do not "
-                    "collide with owner cells. Once that lands, uncomment "
-                    "the body below to restore the 8-rank energy-conservation "
-                    "exit gate test.";
-
     int world_size = 0;
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
     if (world_size <= 1) {
         GTEST_SKIP() << "multi-rank test; skipped on single-rank";
     }
 
-    // Same setup as 1-rank: 256 atoms, box 21.2 Å, slab 10.6 Å @ 2x2x2,
-    // cutoff 6.0 < slab. Halo exchange carries all relevant pair atoms.
-    auto frame = make_fcc_argon(4, 5.3);
+    // Same setup as 1-rank: 500 atoms, box 26.5 Å, slab 13.25 Å @ 2x2x2.
+    // Cutoff 6.0 < slab/2 = 6.625, so each owner is shipped to a given
+    // neighbour via at most one face -- no duplicate ghost copies.
+    auto frame = make_fcc_argon(5, 5.3);
 
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{1.0});
