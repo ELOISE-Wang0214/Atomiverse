@@ -123,6 +123,9 @@ if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
 
     atv_add_mpi_exec(test_mpi_deform_multirank mpi/test_deform_multirank.cpp)
     atv_add_mpi_run(test_mpi_deform_multirank_n8 test_mpi_deform_multirank 8)
+
+    atv_add_mpi_exec(test_mpi_pe_msu_pipeline mpi/test_pe_msu_pipeline.cpp)
+    atv_add_mpi_run(test_mpi_pe_msu_pipeline_n8 test_mpi_pe_msu_pipeline 8)
 endif()
 
 if(ATV_BUILD_RHF)
