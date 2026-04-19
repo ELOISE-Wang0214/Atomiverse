@@ -88,16 +88,19 @@ void rebuild_send_lists(const Frame& frame, DomainDecomposition& dd, double cuto
     }
 }
 
-/// @brief Pack packed positions for face `f` into a contiguous buffer.
+/// @brief Pack packed positions + tag for face `f` into a contiguous buffer.
 ///
-/// Layout: `[x0, y0, z0, x1, y1, z1, ...]`. Applies the per-face PBC shift
-/// to the packed coordinate for atoms whose owner sits on the periodic
-/// edge along the send direction.
+/// Layout: `[x0, y0, z0, tag0, x1, y1, z1, tag1, ...]` -- 4 doubles per
+/// atom. Tag is cast to double; atom counts up to 2^53 are exact. Applies
+/// the per-face PBC shift to the packed coordinate for atoms whose owner
+/// sits on the periodic edge along the send direction.
+constexpr int kPosTagDoublesPerAtom = 4;
+
 void pack_positions_for_face(const Frame& frame, const DomainDecomposition& dd,
                               int f, std::vector<double>& buf) {
     const auto& list = dd.send_lists[f];
     const int n = static_cast<int>(list.size());
-    buf.resize(static_cast<std::size_t>(n) * 3);
+    buf.resize(static_cast<std::size_t>(n) * kPosTagDoublesPerAtom);
 
     const int dim = face_dim(f);
     const double shift = pbc_shift_for_face(dd, f, frame.box(dim, dim));
@@ -105,6 +108,7 @@ void pack_positions_for_face(const Frame& frame, const DomainDecomposition& dd,
     const double* x = frame.atoms.x.data();
     const double* y = frame.atoms.y.data();
     const double* z = frame.atoms.z.data();
+    const std::int64_t* tag = frame.atoms.tag.data();
 
     for (int k = 0; k < n; ++k) {
         const int i = list[static_cast<std::size_t>(k)];
@@ -112,9 +116,11 @@ void pack_positions_for_face(const Frame& frame, const DomainDecomposition& dd,
         if (dim == 0) xi += shift;
         else if (dim == 1) yi += shift;
         else if (dim == 2) zi += shift;
-        buf[static_cast<std::size_t>(3 * k + 0)] = xi;
-        buf[static_cast<std::size_t>(3 * k + 1)] = yi;
-        buf[static_cast<std::size_t>(3 * k + 2)] = zi;
+        const std::size_t off = static_cast<std::size_t>(k) * kPosTagDoublesPerAtom;
+        buf[off + 0] = xi;
+        buf[off + 1] = yi;
+        buf[off + 2] = zi;
+        buf[off + 3] = static_cast<double>(tag[i]);
     }
 }
 
@@ -131,12 +137,11 @@ FaceBufs& bufs_for(HaloExchangeReverse* /*comp*/) {
 
 void prealloc_bufs(FaceBufs& b, int initial_cap) {
     for (int f = 0; f < 6; ++f) {
-        // Conservative: each face could ship up to `initial_cap` atoms, each
-        // 3 doubles for positions, 3 doubles for forces. Bounded by
-        // 6 * initial_cap * 6 * 8 B = ~288 B per atom of capacity, i.e.
-        // ~290 KB at 1000 atoms -- trivial.
-        b.send_pos[f].reserve(static_cast<std::size_t>(initial_cap) * 3);
-        b.recv_pos[f].reserve(static_cast<std::size_t>(initial_cap) * 3);
+        // Conservative: each face could ship up to `initial_cap` atoms.
+        // Forward sends 4 doubles per atom (xyz + tag). Reverse sends 3
+        // doubles per atom (force). ~0.3 KB per ghost slot -- trivial.
+        b.send_pos[f].reserve(static_cast<std::size_t>(initial_cap) * kPosTagDoublesPerAtom);
+        b.recv_pos[f].reserve(static_cast<std::size_t>(initial_cap) * kPosTagDoublesPerAtom);
         b.send_force[f].reserve(static_cast<std::size_t>(initial_cap) * 3);
         b.recv_force[f].reserve(static_cast<std::size_t>(initial_cap) * 3);
     }
@@ -159,6 +164,13 @@ void HaloExchangeForward::launch(const cpu::LaunchContext& ctx) {
 
     Frame& frame = ctx.frame;
     FaceBufs& bufs = bufs_for(this);
+
+    // Roll back the previous step's ghost tag→slot entries before we
+    // overwrite the ghost rows. Owners are not touched here.
+    for (auto t : dd->ghost_tags) {
+        dd->tag_to_local.erase(t);
+    }
+    dd->ghost_tags.clear();
 
     rebuild_send_lists(frame, *dd, cutoff_);
 
@@ -191,14 +203,17 @@ void HaloExchangeForward::launch(const cpu::LaunchContext& ctx) {
     if (n_count_reqs > 0)
         MPI_Waitall(n_count_reqs, count_reqs, MPI_STATUSES_IGNORE);
 
-    // Phase 2: pack positions on each face, then exchange them.
+    // Phase 2: pack positions+tag on each face, then exchange them. Each
+    // packed atom is 4 doubles (x, y, z, tag-as-double). Send/recv counts
+    // are inflated accordingly when posting MPI Isend/Irecv.
     for (int f = 0; f < 6; ++f) {
         if (dd->face_neighbors[static_cast<std::size_t>(f)] == MPI_PROC_NULL) {
             bufs.send_pos[f].clear();
         } else {
             pack_positions_for_face(frame, *dd, f, bufs.send_pos[f]);
         }
-        bufs.recv_pos[f].assign(static_cast<std::size_t>(recv_counts[f]) * 3, 0.0);
+        bufs.recv_pos[f].assign(static_cast<std::size_t>(recv_counts[f])
+                                * kPosTagDoublesPerAtom, 0.0);
     }
 
     MPI_Request pos_reqs[12];
@@ -223,14 +238,23 @@ void HaloExchangeForward::launch(const cpu::LaunchContext& ctx) {
     if (n_pos_reqs > 0)
         MPI_Waitall(n_pos_reqs, pos_reqs, MPI_STATUSES_IGNORE);
 
-    // Phase 3: unpack received positions into ghost slots, in face order.
+    // Phase 3: unpack received positions+tag into ghost slots, in face
+    // order. Each ghost's tag is also pushed into `dd->tag_to_local` so
+    // bonded force kernels on this rank can resolve cross-rank tuple
+    // partners as ghost rows.
     int slot = dd->n_local;
     for (int f = 0; f < 6; ++f) {
         const int n = recv_counts[f];
         for (int k = 0; k < n; ++k) {
-            frame.atoms.x[slot] = bufs.recv_pos[f][static_cast<std::size_t>(3 * k + 0)];
-            frame.atoms.y[slot] = bufs.recv_pos[f][static_cast<std::size_t>(3 * k + 1)];
-            frame.atoms.z[slot] = bufs.recv_pos[f][static_cast<std::size_t>(3 * k + 2)];
+            const std::size_t off = static_cast<std::size_t>(k) * kPosTagDoublesPerAtom;
+            frame.atoms.x[slot] = bufs.recv_pos[f][off + 0];
+            frame.atoms.y[slot] = bufs.recv_pos[f][off + 1];
+            frame.atoms.z[slot] = bufs.recv_pos[f][off + 2];
+            const std::int64_t tag =
+                static_cast<std::int64_t>(bufs.recv_pos[f][off + 3]);
+            frame.atoms.tag[slot] = tag;
+            dd->tag_to_local[tag] = slot;
+            dd->ghost_tags.push_back(tag);
             ++slot;
         }
         dd->recv_counts[static_cast<std::size_t>(f)] = n;

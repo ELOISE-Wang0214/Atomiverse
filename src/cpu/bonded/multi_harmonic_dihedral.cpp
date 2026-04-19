@@ -3,6 +3,7 @@
 
 #include "atomiverse/cpu/bonded/multi_harmonic_dihedral.h"
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/cpu/md/mpi/domain.h"
 
 #include <algorithm>
 #include <cmath>
@@ -74,6 +75,9 @@ void MultiHarmonicDihedral::launch(const cpu::LaunchContext& ctx) {
         std::fill(fyt.begin(), fyt.end(), double(0));
         std::fill(fzt.begin(), fzt.end(), double(0));
 
+        const auto* dd = ctx.runtime.dd;
+        const bool multi_rank = (dd != nullptr) && (ctx.runtime.mpi_size > 1);
+
         #pragma omp for schedule(static)
         for (int d = 0; d < n_dihedrals; ++d) {
             int i1 = f.dihedrals.atomi[d];
@@ -81,6 +85,22 @@ void MultiHarmonicDihedral::launch(const cpu::LaunchContext& ctx) {
             int i3 = f.dihedrals.atomk[d];
             int i4 = f.dihedrals.atoml[d];
             int type = f.dihedrals.type[d];
+
+            // Multi-rank: dihedrals.atom{i,j,k,l} store global tags. Resolve.
+            if (multi_rank) {
+                auto it1 = dd->tag_to_local.find(static_cast<std::int64_t>(i1));
+                auto it2 = dd->tag_to_local.find(static_cast<std::int64_t>(i2));
+                auto it3 = dd->tag_to_local.find(static_cast<std::int64_t>(i3));
+                auto it4 = dd->tag_to_local.find(static_cast<std::int64_t>(i4));
+                if (it1 == dd->tag_to_local.end() ||
+                    it2 == dd->tag_to_local.end() ||
+                    it3 == dd->tag_to_local.end() ||
+                    it4 == dd->tag_to_local.end()) continue;
+                i1 = it1->second;
+                i2 = it2->second;
+                i3 = it3->second;
+                i4 = it4->second;
+            }
 
             // Vectors: b1 = r2-r1, b2 = r3-r2, b3 = r4-r3
             double b1x = f.atoms.x[i2] - f.atoms.x[i1], b1y = f.atoms.y[i2] - f.atoms.y[i1], b1z = f.atoms.z[i2] - f.atoms.z[i1];

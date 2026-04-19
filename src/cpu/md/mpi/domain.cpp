@@ -209,28 +209,27 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
         tag_to_local.emplace(frame.atoms.tag(i), i);
     }
 
-    // Topology filter (Phase 0.3 MVP): on the first partition, replace
-    // each topology block with the subset whose atoms are all owned by
-    // this rank, with their per-atom indices remapped from the
-    // pre-partition local index to the post-compaction local index.
+    // Topology filter (Phase 0.3 final): on the first partition, keep the
+    // tuples whose OWNER atom (per LAMMPS-style rule) is owned by this
+    // rank. The other atoms in the tuple may live on neighbour ranks --
+    // the bonded force kernels resolve those via `tag_to_local` after
+    // `HaloExchangeForward` has populated ghost slots and added their
+    // tags to the map.
     //
-    // The pre-partition Frame has tag(i) == i (default) so a tuple's
-    // stored atom-index is also its global tag, which lets us look it
-    // up in `tag_to_local` to get the new local row.
+    //   bond  (i,j):    owner = rank holding atom with min(tag[i], tag[j])
+    //   angle (i,j,k):  owner = rank holding atom j (centre)
+    //   dihedral i-j-k-l: owner = rank holding atom j (2nd atom)
     //
-    // Tuples that span this rank's owned set and a neighbour are
-    // dropped here -- they'll be re-introduced once Phase 0.3-extended
-    // adds bonded ghost handling (cross-rank bonds owned by the rank
-    // holding the lower-tag atom, with the other atom shipped as a
-    // bonded ghost). The current MVP test config keeps every chain
-    // entirely inside one rank's slab so no bonds are dropped.
+    // Atom indices stored in `Frame::bonds/angles/dihedrals` carry GLOBAL
+    // TAGS, never local row indices. The pre-partition Frame has
+    // `tag(i) == i` (default), so the user's existing `atomi = i` setup
+    // is correct as-is. Force kernels resolve through `tag_to_local`.
     if (first_partition) {
-        auto remap_or_skip = [&](int old_idx) -> int {
-            auto it = tag_to_local.find(static_cast<std::int64_t>(old_idx));
-            return (it != tag_to_local.end()) ? it->second : -1;
+        auto owns_tag = [&](std::int64_t tag) {
+            return tag_to_local.find(tag) != tag_to_local.end();
         };
 
-        // Bonds.
+        // Bonds: owner = rank of lower-tag atom.
         {
             const int n_b = frame.bonds.size();
             std::vector<int> ki, kj, kt;
@@ -238,11 +237,12 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
             kj.reserve(static_cast<std::size_t>(n_b));
             kt.reserve(static_cast<std::size_t>(n_b));
             for (int b = 0; b < n_b; ++b) {
-                const int li = remap_or_skip(frame.bonds.atomi(b));
-                const int lj = remap_or_skip(frame.bonds.atomj(b));
-                if (li < 0 || lj < 0) continue;
-                ki.push_back(li);
-                kj.push_back(lj);
+                const std::int64_t ti = frame.bonds.atomi(b);
+                const std::int64_t tj = frame.bonds.atomj(b);
+                const std::int64_t owner_tag = (ti < tj) ? ti : tj;
+                if (!owns_tag(owner_tag)) continue;
+                ki.push_back(static_cast<int>(ti));
+                kj.push_back(static_cast<int>(tj));
                 kt.push_back(frame.bonds.type(b));
             }
             const int new_n = static_cast<int>(ki.size());
@@ -256,7 +256,7 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
             }
         }
 
-        // Angles.
+        // Angles: owner = rank of centre atom (atomj).
         {
             const int n_a = frame.angles.size();
             std::vector<int> ki, kj, kk, kt;
@@ -265,13 +265,10 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
             kk.reserve(static_cast<std::size_t>(n_a));
             kt.reserve(static_cast<std::size_t>(n_a));
             for (int a = 0; a < n_a; ++a) {
-                const int li = remap_or_skip(frame.angles.atomi(a));
-                const int lj = remap_or_skip(frame.angles.atomj(a));
-                const int lk = remap_or_skip(frame.angles.atomk(a));
-                if (li < 0 || lj < 0 || lk < 0) continue;
-                ki.push_back(li);
-                kj.push_back(lj);
-                kk.push_back(lk);
+                if (!owns_tag(frame.angles.atomj(a))) continue;
+                ki.push_back(frame.angles.atomi(a));
+                kj.push_back(frame.angles.atomj(a));
+                kk.push_back(frame.angles.atomk(a));
                 kt.push_back(frame.angles.type(a));
             }
             const int new_n = static_cast<int>(ki.size());
@@ -287,7 +284,7 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
             }
         }
 
-        // Dihedrals.
+        // Dihedrals: owner = rank of 2nd atom (atomj).
         {
             const int n_d = frame.dihedrals.size();
             std::vector<int> ki, kj, kk, kl, kt;
@@ -297,15 +294,11 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
             kl.reserve(static_cast<std::size_t>(n_d));
             kt.reserve(static_cast<std::size_t>(n_d));
             for (int d = 0; d < n_d; ++d) {
-                const int li = remap_or_skip(frame.dihedrals.atomi(d));
-                const int lj = remap_or_skip(frame.dihedrals.atomj(d));
-                const int lk = remap_or_skip(frame.dihedrals.atomk(d));
-                const int ll = remap_or_skip(frame.dihedrals.atoml(d));
-                if (li < 0 || lj < 0 || lk < 0 || ll < 0) continue;
-                ki.push_back(li);
-                kj.push_back(lj);
-                kk.push_back(lk);
-                kl.push_back(ll);
+                if (!owns_tag(frame.dihedrals.atomj(d))) continue;
+                ki.push_back(frame.dihedrals.atomi(d));
+                kj.push_back(frame.dihedrals.atomj(d));
+                kk.push_back(frame.dihedrals.atomk(d));
+                kl.push_back(frame.dihedrals.atoml(d));
                 kt.push_back(frame.dihedrals.type(d));
             }
             const int new_n = static_cast<int>(ki.size());

@@ -92,8 +92,24 @@ struct DomainDecomposition {
     /// back per face. Reset to zero on partition; set by Forward.
     std::array<int, 6> recv_counts{};
 
-    /// @brief Map from global atom tag to local row index. Rebuilt on migration.
+    /// @brief Map from global atom tag to local row index.
+    ///
+    /// Includes both owned atoms (slots `[0, n_local)`) and current-step
+    /// ghost atoms (slots `[n_local, n_local + n_ghost)`), so bonded force
+    /// kernels can resolve a tuple's atom-tags to local rows regardless of
+    /// whether the atom is an owner or a halo ghost.
+    ///
+    /// Owner entries are rebuilt on every `partition_atoms()` /
+    /// `AtomMigration`. Ghost entries are appended by `HaloExchangeForward`
+    /// and erased back out at the start of the next halo via the
+    /// companion `ghost_tags` log.
     std::unordered_map<std::int64_t, int> tag_to_local;
+
+    /// @brief Tags of the ghost atoms that `HaloExchangeForward` last
+    /// inserted into `tag_to_local`, in slot order. Used to roll back
+    /// ghost entries before the next halo write so a different ghost set
+    /// does not leave stale tag→slot bindings behind.
+    std::vector<std::int64_t> ghost_tags;
 
     /// @brief Bind to a frame: populate `n_local`, `capacity`, `tag_to_local`.
     ///

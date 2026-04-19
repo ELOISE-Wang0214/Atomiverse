@@ -3,6 +3,7 @@
 
 #include "atomiverse/cpu/bonded/harmonic_bond.h"
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/cpu/md/mpi/domain.h"
 
 #include <algorithm>
 #include <cmath>
@@ -65,11 +66,27 @@ void HarmonicBond::launch(const cpu::LaunchContext& ctx) {
         std::fill(fyt.begin(), fyt.end(), double(0));
         std::fill(fzt.begin(), fzt.end(), double(0));
 
+        const auto* dd = ctx.runtime.dd;
+        const bool multi_rank = (dd != nullptr) && (ctx.runtime.mpi_size > 1);
+
         #pragma omp for schedule(static)
         for (int b = 0; b < n_bonds; ++b) {
             int i = f.bonds.atomi[b];
             int j = f.bonds.atomj[b];
             int type = f.bonds.type[b];
+
+            // Multi-rank: bonds.atomi/atomj store global tags; resolve to
+            // local rows (owners or current-step ghosts) via tag_to_local.
+            // A tag missing from the map means the cross-rank partner is
+            // outside this rank's halo skin -- skip the bond.
+            if (multi_rank) {
+                auto it_i = dd->tag_to_local.find(static_cast<std::int64_t>(i));
+                auto it_j = dd->tag_to_local.find(static_cast<std::int64_t>(j));
+                if (it_i == dd->tag_to_local.end() ||
+                    it_j == dd->tag_to_local.end()) continue;
+                i = it_i->second;
+                j = it_j->second;
+            }
 
             double dx = f.atoms.x[i] - f.atoms.x[j];
             double dy = f.atoms.y[i] - f.atoms.y[j];

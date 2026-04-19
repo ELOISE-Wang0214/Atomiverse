@@ -108,6 +108,9 @@ if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
 
     atv_add_mpi_exec(test_mpi_pe_nvt_multirank mpi/test_pe_nvt_multirank.cpp)
     atv_add_mpi_run(test_mpi_pe_nvt_multirank_n8 test_mpi_pe_nvt_multirank 8)
+
+    atv_add_mpi_exec(test_mpi_pe_chain_crossing mpi/test_pe_chain_crossing.cpp)
+    atv_add_mpi_run(test_mpi_pe_chain_crossing_n2 test_mpi_pe_chain_crossing 2)
 endif()
 
 if(ATV_BUILD_RHF)

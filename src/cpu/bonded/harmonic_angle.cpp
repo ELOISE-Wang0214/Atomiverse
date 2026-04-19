@@ -3,6 +3,7 @@
 
 #include "atomiverse/cpu/bonded/harmonic_angle.h"
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/cpu/md/mpi/domain.h"
 
 #include <algorithm>
 #include <cmath>
@@ -65,12 +66,28 @@ void HarmonicAngle::launch(const cpu::LaunchContext& ctx) {
         std::fill(fyt.begin(), fyt.end(), double(0));
         std::fill(fzt.begin(), fzt.end(), double(0));
 
+        const auto* dd = ctx.runtime.dd;
+        const bool multi_rank = (dd != nullptr) && (ctx.runtime.mpi_size > 1);
+
         #pragma omp for schedule(static)
         for (int a = 0; a < n_angles; ++a) {
             int i = f.angles.atomi[a];
             int j = f.angles.atomj[a]; // center atom
             int k = f.angles.atomk[a];
             int type = f.angles.type[a];
+
+            // Multi-rank: angles.atom{i,j,k} store global tags. Resolve.
+            if (multi_rank) {
+                auto it_i = dd->tag_to_local.find(static_cast<std::int64_t>(i));
+                auto it_j = dd->tag_to_local.find(static_cast<std::int64_t>(j));
+                auto it_k = dd->tag_to_local.find(static_cast<std::int64_t>(k));
+                if (it_i == dd->tag_to_local.end() ||
+                    it_j == dd->tag_to_local.end() ||
+                    it_k == dd->tag_to_local.end()) continue;
+                i = it_i->second;
+                j = it_j->second;
+                k = it_k->second;
+            }
 
             // r_ji = r_i - r_j
             double dx_ji = f.atoms.x[i] - f.atoms.x[j];
