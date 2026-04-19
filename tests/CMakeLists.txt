@@ -99,6 +99,9 @@ if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
     atv_add_mpi_exec(test_mpi_atom_migration mpi/test_atom_migration.cpp)
     atv_add_mpi_run(test_mpi_atom_migration_n1 test_mpi_atom_migration 1)
     atv_add_mpi_run(test_mpi_atom_migration_n2 test_mpi_atom_migration 2)
+
+    atv_add_mpi_exec(test_mpi_pe_chains_multirank mpi/test_pe_chains_multirank.cpp)
+    atv_add_mpi_run(test_mpi_pe_chains_multirank_n2 test_mpi_pe_chains_multirank 2)
 endif()
 
 if(ATV_BUILD_RHF)

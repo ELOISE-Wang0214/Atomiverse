@@ -139,7 +139,8 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
     // slot), and the resulting two near-identical "owner" rows blow up LJ.
     // Phase 2 has no atom migration, so previously-owned atoms still belong
     // to this rank; we only need to re-scan that range.
-    const int n_to_iterate = (n_local > 0) ? n_local : frame.atoms.size();
+    const bool first_partition = (n_local == 0);
+    const int n_to_iterate = first_partition ? frame.atoms.size() : n_local;
     std::vector<int> owned_indices;
     owned_indices.reserve(static_cast<std::size_t>(n_to_iterate));
 
@@ -206,6 +207,121 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
     tag_to_local.reserve(static_cast<std::size_t>(n_local));
     for (int i = 0; i < n_local; ++i) {
         tag_to_local.emplace(frame.atoms.tag(i), i);
+    }
+
+    // Topology filter (Phase 0.3 MVP): on the first partition, replace
+    // each topology block with the subset whose atoms are all owned by
+    // this rank, with their per-atom indices remapped from the
+    // pre-partition local index to the post-compaction local index.
+    //
+    // The pre-partition Frame has tag(i) == i (default) so a tuple's
+    // stored atom-index is also its global tag, which lets us look it
+    // up in `tag_to_local` to get the new local row.
+    //
+    // Tuples that span this rank's owned set and a neighbour are
+    // dropped here -- they'll be re-introduced once Phase 0.3-extended
+    // adds bonded ghost handling (cross-rank bonds owned by the rank
+    // holding the lower-tag atom, with the other atom shipped as a
+    // bonded ghost). The current MVP test config keeps every chain
+    // entirely inside one rank's slab so no bonds are dropped.
+    if (first_partition) {
+        auto remap_or_skip = [&](int old_idx) -> int {
+            auto it = tag_to_local.find(static_cast<std::int64_t>(old_idx));
+            return (it != tag_to_local.end()) ? it->second : -1;
+        };
+
+        // Bonds.
+        {
+            const int n_b = frame.bonds.size();
+            std::vector<int> ki, kj, kt;
+            ki.reserve(static_cast<std::size_t>(n_b));
+            kj.reserve(static_cast<std::size_t>(n_b));
+            kt.reserve(static_cast<std::size_t>(n_b));
+            for (int b = 0; b < n_b; ++b) {
+                const int li = remap_or_skip(frame.bonds.atomi(b));
+                const int lj = remap_or_skip(frame.bonds.atomj(b));
+                if (li < 0 || lj < 0) continue;
+                ki.push_back(li);
+                kj.push_back(lj);
+                kt.push_back(frame.bonds.type(b));
+            }
+            const int new_n = static_cast<int>(ki.size());
+            frame.bonds.atomi = xt::zeros<int>({new_n});
+            frame.bonds.atomj = xt::zeros<int>({new_n});
+            frame.bonds.type  = xt::zeros<int>({new_n});
+            for (int b = 0; b < new_n; ++b) {
+                frame.bonds.atomi[b] = ki[static_cast<std::size_t>(b)];
+                frame.bonds.atomj[b] = kj[static_cast<std::size_t>(b)];
+                frame.bonds.type[b]  = kt[static_cast<std::size_t>(b)];
+            }
+        }
+
+        // Angles.
+        {
+            const int n_a = frame.angles.size();
+            std::vector<int> ki, kj, kk, kt;
+            ki.reserve(static_cast<std::size_t>(n_a));
+            kj.reserve(static_cast<std::size_t>(n_a));
+            kk.reserve(static_cast<std::size_t>(n_a));
+            kt.reserve(static_cast<std::size_t>(n_a));
+            for (int a = 0; a < n_a; ++a) {
+                const int li = remap_or_skip(frame.angles.atomi(a));
+                const int lj = remap_or_skip(frame.angles.atomj(a));
+                const int lk = remap_or_skip(frame.angles.atomk(a));
+                if (li < 0 || lj < 0 || lk < 0) continue;
+                ki.push_back(li);
+                kj.push_back(lj);
+                kk.push_back(lk);
+                kt.push_back(frame.angles.type(a));
+            }
+            const int new_n = static_cast<int>(ki.size());
+            frame.angles.atomi = xt::zeros<int>({new_n});
+            frame.angles.atomj = xt::zeros<int>({new_n});
+            frame.angles.atomk = xt::zeros<int>({new_n});
+            frame.angles.type  = xt::zeros<int>({new_n});
+            for (int a = 0; a < new_n; ++a) {
+                frame.angles.atomi[a] = ki[static_cast<std::size_t>(a)];
+                frame.angles.atomj[a] = kj[static_cast<std::size_t>(a)];
+                frame.angles.atomk[a] = kk[static_cast<std::size_t>(a)];
+                frame.angles.type[a]  = kt[static_cast<std::size_t>(a)];
+            }
+        }
+
+        // Dihedrals.
+        {
+            const int n_d = frame.dihedrals.size();
+            std::vector<int> ki, kj, kk, kl, kt;
+            ki.reserve(static_cast<std::size_t>(n_d));
+            kj.reserve(static_cast<std::size_t>(n_d));
+            kk.reserve(static_cast<std::size_t>(n_d));
+            kl.reserve(static_cast<std::size_t>(n_d));
+            kt.reserve(static_cast<std::size_t>(n_d));
+            for (int d = 0; d < n_d; ++d) {
+                const int li = remap_or_skip(frame.dihedrals.atomi(d));
+                const int lj = remap_or_skip(frame.dihedrals.atomj(d));
+                const int lk = remap_or_skip(frame.dihedrals.atomk(d));
+                const int ll = remap_or_skip(frame.dihedrals.atoml(d));
+                if (li < 0 || lj < 0 || lk < 0 || ll < 0) continue;
+                ki.push_back(li);
+                kj.push_back(lj);
+                kk.push_back(lk);
+                kl.push_back(ll);
+                kt.push_back(frame.dihedrals.type(d));
+            }
+            const int new_n = static_cast<int>(ki.size());
+            frame.dihedrals.atomi = xt::zeros<int>({new_n});
+            frame.dihedrals.atomj = xt::zeros<int>({new_n});
+            frame.dihedrals.atomk = xt::zeros<int>({new_n});
+            frame.dihedrals.atoml = xt::zeros<int>({new_n});
+            frame.dihedrals.type  = xt::zeros<int>({new_n});
+            for (int d = 0; d < new_n; ++d) {
+                frame.dihedrals.atomi[d] = ki[static_cast<std::size_t>(d)];
+                frame.dihedrals.atomj[d] = kj[static_cast<std::size_t>(d)];
+                frame.dihedrals.atomk[d] = kk[static_cast<std::size_t>(d)];
+                frame.dihedrals.atoml[d] = kl[static_cast<std::size_t>(d)];
+                frame.dihedrals.type[d]  = kt[static_cast<std::size_t>(d)];
+            }
+        }
     }
 
     ++neighbor_generation;
