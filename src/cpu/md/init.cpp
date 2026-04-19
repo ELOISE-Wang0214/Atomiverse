@@ -69,6 +69,13 @@ void ZeroEnergy::launch(const cpu::LaunchContext& ctx) {
     ctx.frame.energy = 0;
 }
 
+// ── ZeroStress ───────────────────────────────────────────────────
+
+void ZeroStress::launch(const cpu::LaunchContext& ctx) {
+    auto& f = ctx.frame;
+    for (int k = 0; k < 6; ++k) f.stress[k] = 0;
+}
+
 // ── ZeroKinetic ──────────────────────────────────────────────────
 
 void ZeroKinetic::launch(const cpu::LaunchContext& ctx) {

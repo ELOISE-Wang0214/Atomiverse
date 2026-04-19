@@ -117,6 +117,12 @@ if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
 
     atv_add_mpi_exec(test_mpi_pe_chain_drifting mpi/test_pe_chain_drifting.cpp)
     atv_add_mpi_run(test_mpi_pe_chain_drifting_n2 test_mpi_pe_chain_drifting 2)
+
+    atv_add_mpi_exec(test_mpi_npt_multirank mpi/test_npt_multirank.cpp)
+    atv_add_mpi_run(test_mpi_npt_multirank_n8 test_mpi_npt_multirank 8)
+
+    atv_add_mpi_exec(test_mpi_deform_multirank mpi/test_deform_multirank.cpp)
+    atv_add_mpi_run(test_mpi_deform_multirank_n8 test_mpi_deform_multirank 8)
 endif()
 
 if(ATV_BUILD_RHF)

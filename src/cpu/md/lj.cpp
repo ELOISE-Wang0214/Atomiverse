@@ -116,7 +116,14 @@ void LJ::launch(const cpu::LaunchContext& ctx) {
     int n = f.atoms.size();
     double energy_total = 0;
 
-    #pragma omp parallel reduction(+:energy_total)
+    // Pair virial accumulators (Voigt order: xx yy zz xy xz yz). Reduced
+    // across OpenMP threads via OMP reduction; cross-rank reduction is
+    // handled by ReduceEnergy at end_of_step.
+    double v_xx = 0, v_yy = 0, v_zz = 0, v_xy = 0, v_xz = 0, v_yz = 0;
+
+    #pragma omp parallel reduction(+:energy_total) \
+        reduction(+:v_xx) reduction(+:v_yy) reduction(+:v_zz) \
+        reduction(+:v_xy) reduction(+:v_xz) reduction(+:v_yz)
     {
         int tid = 0;
 #ifdef _OPENMP
@@ -161,9 +168,23 @@ void LJ::launch(const cpu::LaunchContext& ctx) {
                 double r6inv = r2inv * r2inv * r2inv * sigma6_;
                 double fpair = double(24) * epsilon_ * r2inv * (double(2) * r6inv * r6inv - r6inv);
 
-                fxt[i] += fpair * dx;  fxt[j] -= fpair * dx;
-                fyt[i] += fpair * dy;  fyt[j] -= fpair * dy;
-                fzt[i] += fpair * dz;  fzt[j] -= fpair * dz;
+                const double fxp = fpair * dx;
+                const double fyp = fpair * dy;
+                const double fzp = fpair * dz;
+                fxt[i] += fxp;  fxt[j] -= fxp;
+                fyt[i] += fyp;  fyt[j] -= fyp;
+                fzt[i] += fzp;  fzt[j] -= fzp;
+
+                // Pair virial contribution: σ_αβ += r_α · F_β. Half-list
+                // counts each pair once with the local owner as i, so this
+                // captures the full pairwise virial when summed across
+                // ranks (same convention as energy).
+                v_xx += dx * fxp;
+                v_yy += dy * fyp;
+                v_zz += dz * fzp;
+                v_xy += dx * fyp;
+                v_xz += dx * fzp;
+                v_yz += dy * fzp;
 
                 energy_total += double(4) * epsilon_ * (r6inv * r6inv - r6inv) - v_shift_;
             }
@@ -181,6 +202,12 @@ void LJ::launch(const cpu::LaunchContext& ctx) {
     }
 
     f.energy += energy_total;
+    f.stress[0] += v_xx;
+    f.stress[1] += v_yy;
+    f.stress[2] += v_zz;
+    f.stress[3] += v_xy;
+    f.stress[4] += v_xz;
+    f.stress[5] += v_yz;
 }
 
 void LJ::destroy(const cpu::DestroyContext& ctx) {

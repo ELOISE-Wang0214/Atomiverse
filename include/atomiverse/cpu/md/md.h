@@ -42,6 +42,7 @@ public:
         // Pre-existing zero/kinetic infrastructure.
         add(ZeroForces{});
         add(ZeroEnergy{});
+        add(ZeroStress{});   // pair-virial accumulator must start at 0
         add(ZeroKinetic{});
         add(KineticEnergy{});
 

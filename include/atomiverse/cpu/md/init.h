@@ -34,6 +34,20 @@ public:
     void launch(const cpu::LaunchContext& ctx) override;
 };
 
+/// @brief Zero stress tensor at pre_force phase.
+///
+/// Stress accumulation by force kernels (LJ pair virial, future bonded
+/// virials) requires a clean baseline at the start of each step.
+/// Bound at `pre_force @ -998`, after ZeroForces / ZeroEnergy.
+class ZeroStress : public cpu::ComponentBase {
+public:
+    std::string name() const override { return "zero_stress"; }
+    std::vector<DefaultBinding> default_bindings() const override {
+        return {{static_cast<int>(ATV::md::Phase::pre_force), -998}};
+    }
+    void launch(const cpu::LaunchContext& ctx) override;
+};
+
 /// @brief Zero kinetic energy at end_of_step phase.
 class ZeroKinetic : public cpu::ComponentBase {
 public:

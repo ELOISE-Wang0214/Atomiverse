@@ -159,6 +159,9 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/md/velocity_verlet.cpp
         src/cpu/md/lj.cpp
         src/cpu/md/nose_hoover.cpp
+        src/cpu/md/virial_stress.cpp
+        src/cpu/md/barostat.cpp
+        src/cpu/md/deform.cpp
         # CPU MD MPI infrastructure (single-rank stubs in Phase 1)
         src/cpu/md/mpi/domain.cpp
         src/cpu/md/mpi/halo_exchange.cpp
