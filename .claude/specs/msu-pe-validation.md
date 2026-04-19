@@ -1,11 +1,52 @@
 ---
 title: MSU amorphous-PE tension — correctness and multi-core performance validation vs LAMMPS
-status: draft
+status: in-progress
 created: 2026-04-19
+last-updated: 2026-04-19
 parent: parallel-md-engine.md
 ---
 
 # MSU amorphous-PE validation
+
+## Status snapshot
+
+| Phase | Sub-item | Status |
+|---|---|---|
+| 0.1 | Ghost-aware CellList | ✅ landed |
+| 0.2 | AtomMigration (atom data via MPI_Alltoallv) | ✅ landed |
+| 0.3 | Tag-based bonded topology + cross-rank bonds + LJ exclusions | ✅ landed |
+| 0.4 | ReduceEnergy 8-double allreduce | ✅ landed |
+| 0.5 | NoseHoover global-KE allreduce | ✅ landed |
+| 0.6 | VirialStress + Berendsen Barostat (multi-rank-correct) | ✅ landed |
+| 0.7 | Deform uniaxial affine box update | ✅ landed |
+| A.2 | C20H42 single-chain force-field check | ✅ landed |
+| A.3 | LJ special-bonds exclusions + multi-chain box | ✅ landed |
+| A.4 | Single-chain NVE conservation 1000 steps | ✅ landed |
+| A.5 | Single-chain NoseHoover NVT stability | ✅ landed |
+| B.2 | 8-rank PE bonded NVE conservation | ✅ landed |
+| B.3 | 8-rank NoseHoover NVT, real chain crossing rank boundary | ✅ landed |
+| End-to-end | 8-rank pipeline (bonded + LJ + halo + NVT + NPT + tension) | ✅ landed |
+| C | MSU 50k-atom system construction (data file) | ⏳ external -- needs LAMMPS data file or PSP/moltemplate generation |
+| D | LAMMPS reference run + comparison script | ⏳ external -- needs LAMMPS install + scripted run |
+| E.2/E.3 | Strong / weak scaling at 1, 2, 4, 8, 16, 32 ranks | ⏳ external -- needs cluster access |
+| E.4 | vs LAMMPS head-to-head | ⏳ depends on D |
+
+What can be done **right now** without external tooling:
+* Any multi-rank PE simulation (NVE / NVT / NPT / tension) on systems
+  the user constructs in code.
+* Any qualitative check (energy conservation, no-NaN, rank-consistent
+  state, box growth direction).
+
+What needs **external setup**:
+* Reading MSU's exact data file (a LAMMPS-format file -- requires the
+  `molrs` LAMMPS data reader and a copy of the file).
+* Quantitative match against LAMMPS (requires LAMMPS install + a
+  scripted run + `tools/validate_polyethylene.py`).
+* Multi-rank performance benchmarks at scale (single-machine 8 ranks
+  works today; cluster 32-128 ranks needs MPI on a multi-node host).
+
+---
+
 
 Final acceptance deliverable for the parallel CPU MD engine: run the MSU amorphous-polyethylene uniaxial-tension protocol (<https://icme.hpc.msstate.edu/mediawiki/index.php/Deformation_of_Amorphous_Polyethylene.html>) on Atomiverse, cross-validate every observable against a LAMMPS reference run of the same system, and publish a multi-core performance report (strong + weak scaling, hybrid MPI×OpenMP, profile breakdown) that closes the parallel-md-engine roadmap.
 
