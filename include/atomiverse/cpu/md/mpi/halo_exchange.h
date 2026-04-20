@@ -22,13 +22,23 @@
 /// `sim.on(pre_force).add(..., -20)`; the no-op auto-instance is harmless
 /// (same order, no atoms to send when cutoff is zero).
 ///
-/// @see .claude/specs/parallel-md-engine.md  § A.4
+/// **Bonded skin auto-extension** (spec A.5): `build()` scans
+/// `frame.bonds/angles/dihedrals` (tag-aware: multi-rank scans resolve
+/// atom tags through `dd->tag_to_local` and `MPI_Allreduce(MAX)` across
+/// ranks) to find the widest intra-tuple span. `launch()` uses
+/// `max(cutoff, bonded_extension)` as the effective halo width -- the
+/// bonded extension only *raises* the halo when the user-supplied pair
+/// cutoff is smaller than a bonded tuple's reach. Callers no longer have
+/// to hand-roll the bonded skin width on top of the pair cutoff.
+///
+/// @see .claude/specs/parallel-md-engine.md  § A.4, A.5
 #pragma once
 
 #include <string>
 #include <vector>
 
 #include "atomiverse/cpu/component.h"
+#include "atomiverse/cpu/frame.h"
 #include "atomiverse/core/binding.h"
 #include "atomiverse/facade/stage.h"
 
@@ -54,9 +64,15 @@ public:
     /// @brief No-op default constructor (cutoff = 0).
     HaloExchangeForward() = default;
 
-    /// @brief Real-comm constructor with the ghost cutoff.
-    /// @param cutoff Halo cutoff [Angstrom]. Typically `r_cut + skin` where
-    ///        `r_cut` matches the neighbor list / pair potential cutoff.
+    /// @brief Real-comm constructor with the pair cutoff.
+    /// @param cutoff Pair-interaction cutoff [Angstrom]. Typically
+    ///        `r_cut + skin` where `r_cut` matches the neighbor list /
+    ///        pair potential cutoff. The effective halo width used at
+    ///        `launch()` is `max(cutoff, bonded_extension)`, where
+    ///        `bonded_extension` is the widest intra-tuple span in
+    ///        `frame.bonds/angles/dihedrals` computed once at `build()`.
+    ///        When `cutoff >= bonded_extension` the bonded scan has no
+    ///        effect (pair cutoff already dominates).
     explicit HaloExchangeForward(double cutoff) : cutoff_(cutoff) {}
 
     std::string name() const override { return "halo_forward"; }
@@ -67,11 +83,40 @@ public:
     void build(const cpu::BuildContext& ctx) override;
     void launch(const cpu::LaunchContext& ctx) override;
 
-    /// @brief Cutoff this exchange was constructed with (for diagnostics).
+    /// @brief Pair cutoff this exchange was constructed with (no bonded skin).
     double cutoff() const { return cutoff_; }
+
+    /// @brief Bonded-skin extension computed by `build()` from the frame's
+    /// bonds / angles / dihedrals. Zero before `build()` or when the frame
+    /// has no topology.
+    double bonded_extension() const { return bonded_extension_; }
+
+    /// @brief Effective halo cutoff: the larger of the pair cutoff and the
+    /// bonded skin extension. An atom near the boundary needs its farthest
+    /// pair OR bonded partner ghosted, not both summed. `launch()` uses
+    /// this value to decide which owned atoms to ship as ghosts. Returns 0
+    /// before `build()`.
+    double halo_cutoff() const {
+        return (cutoff_ > bonded_extension_) ? cutoff_ : bonded_extension_;
+    }
+
+    /// @brief Compute the bonded-skin extension from a frame's topology.
+    ///
+    /// Scans `frame.bonds`, `frame.angles`, `frame.dihedrals` and returns
+    /// the largest pairwise atom-to-atom distance found across any tuple.
+    /// For an empty topology the result is `0.0`.
+    ///
+    /// Intended for unit testing and for callers that want the same number
+    /// the component will use internally. The component invokes this
+    /// helper once, inside `build()`, and caches the result.
+    ///
+    /// @param frame Frame whose positions and topology to scan.
+    /// @return Maximum intra-tuple pairwise distance in Angstroms.
+    static double compute_bonded_extension(const cpu::Frame& frame);
 
 private:
     double cutoff_ = 0.0;
+    double bonded_extension_ = 0.0;
 };
 
 /// @brief Reverse pass: ghost-row forces → owner's force arrays.

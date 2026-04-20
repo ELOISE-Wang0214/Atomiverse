@@ -157,8 +157,11 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/md/cell_list.cpp
         src/cpu/md/init.cpp
         src/cpu/md/velocity_verlet.cpp
+        src/cpu/md/nve_limit.cpp
         src/cpu/md/lj.cpp
         src/cpu/md/nose_hoover.cpp
+        src/cpu/md/nose_hoover_npt.cpp
+        src/cpu/md/fix_langevin.cpp
         src/cpu/md/virial_stress.cpp
         src/cpu/md/barostat.cpp
         src/cpu/md/deform.cpp
@@ -437,6 +440,12 @@ if(NOT ATV_DOCS_ONLY)
 
     if(ATV_BUILD_EXAMPLES)
         add_subdirectory(examples)
+    endif()
+
+    option(ATV_BUILD_DEBUG_AMORPHOUS
+        "Build debug_amorphous LAMMPS-comparison runner" OFF)
+    if(ATV_BUILD_DEBUG_AMORPHOUS)
+        add_subdirectory(debug_amorphous)
     endif()
 endif()
 

@@ -100,11 +100,15 @@ void CellList::build_stencil() {
     for (int di = -1; di <= 1; ++di) {
         for (int dj = -1; dj <= 1; ++dj) {
             for (int dk = -1; dk <= 1; ++dk) {
-                int flat = di * ncy_ * ncz_ + dj * ncz_ + dk;
-                full_stencil_.push_back(flat);
-                // Half stencil: positive offsets + self (flat >= 0)
-                if (flat > 0 || (flat == 0 && di == 0 && dj == 0 && dk == 0))
-                    half_stencil_.push_back(flat);
+                full_stencil_.push_back({di, dj, dk});
+                // Half stencil: include self (0,0,0), and any neighbor
+                // whose flat offset > 0 in the original integer ordering
+                // (lexicographic on (di, dj, dk)). The full-list filter
+                // catches every pair twice; the half-list filter is the
+                // same pair pruned to one direction.
+                const int flat = di * ncy_ * ncz_ + dj * ncz_ + dk;
+                if (flat > 0 || (di == 0 && dj == 0 && dk == 0))
+                    half_stencil_.push_back({di, dj, dk});
             }
         }
     }
@@ -177,10 +181,21 @@ void CellList::save_positions(const cpu::Frame& frame, int n_active) {
 void CellList::build(const cpu::Frame& frame, int n_active) {
     bin_atoms(frame, n_active);
     save_positions(frame, n_active);
+    n_at_last_build_ = (n_active < 0) ? frame.atoms.size() : n_active;
+    box_at_last_build_ = frame.box(0, 0);
 }
 
 bool CellList::needs_rebuild(const cpu::Frame& frame, int n_active) const {
     int n = (n_active < 0) ? frame.atoms.size() : n_active;
+
+    // Multi-rank: AtomMigration / HaloExchange may change n_local + n_ghost
+    // between launches.  When that happens, `binned_atoms_` from the
+    // previous build still references the OLD atom indices, including ones
+    // beyond the current `n_active`. Reading those produces an out-of-
+    // bounds access in `build_half`.  Force a rebuild whenever the active
+    // count moves.
+    if (n != n_at_last_build_) return true;
+
     double max_disp_sq = 0;
 
     for (int i = 0; i < n; ++i) {
@@ -226,15 +241,67 @@ PairList CellList::build_half(const cpu::Frame& frame, int n_active) const {
 #endif
         auto& my_pairs = thread_pairs[tid];
 
+        // Per-thread deduplication buffer for visited neighbor cells.
+        // When a small grid (ncx <= 2 etc.) has the FULL stencil wrap
+        // multiple distinct offsets onto the same cj, we'd visit that
+        // cell more than once; dedup ensures each (i, cj) lookup is
+        // unique so pair counts stay correct.
+        std::vector<int> visited;
+        visited.reserve(27);
+
         #pragma omp for schedule(dynamic)
         for (int i = 0; i < n; ++i) {
-            int ci = atom_cell_[i];
+            const int ci = atom_cell_[i];
+            const int cz0 = ci % ncz_;
+            const int cy0 = (ci / ncz_) % ncy_;
+            const int cx0 = ci / (ncy_ * ncz_);
 
-            for (auto s : half_stencil_) {
-                int cj = ci + s;
-                if (cj < 0 || cj >= total_cells_) continue;
-                int start = cell_offset_[cj];
-                int end = start + cell_count_[cj];
+            visited.clear();
+
+            // Iterate the FULL stencil (27 cells incl. self) and filter
+            // each candidate by `j > i`. Using the half-stencil instead
+            // would skip cells reachable only via PBC wrap (e.g. cell
+            // ncx-1 from cell 0 -- offset di=-1 wraps to the same cell
+            // di=+(ncx-1) but the half-stencil only stores small flat
+            // offsets), causing missed pairs at every box edge.
+            for (auto s : full_stencil_) {
+                int cx = cx0 + s.di;
+                int cy = cy0 + s.dj;
+                int cz = cz0 + s.dk;
+
+                if (axis_extended_[0]) {
+                    if (cx < 0 || cx >= ncx_) continue;
+                } else {
+                    if (cx <  0)    cx += ncx_;
+                    if (cx >= ncx_) cx -= ncx_;
+                }
+                if (axis_extended_[1]) {
+                    if (cy < 0 || cy >= ncy_) continue;
+                } else {
+                    if (cy <  0)    cy += ncy_;
+                    if (cy >= ncy_) cy -= ncy_;
+                }
+                if (axis_extended_[2]) {
+                    if (cz < 0 || cz >= ncz_) continue;
+                } else {
+                    if (cz <  0)    cz += ncz_;
+                    if (cz >= ncz_) cz -= ncz_;
+                }
+
+                const int cj = cx * ncy_ * ncz_ + cy * ncz_ + cz;
+
+                // Skip if we already processed this neighbor cell (only
+                // happens when ncN <= 2 and PBC wraps stencil offsets
+                // onto the same cell; for typical large grids this loop
+                // does at most one O(visited.size()) check per stencil
+                // entry, which dwarfs the O(atoms-per-cell) work below).
+                bool seen = false;
+                for (int v : visited) if (v == cj) { seen = true; break; }
+                if (seen) continue;
+                visited.push_back(cj);
+
+                const int start = cell_offset_[cj];
+                const int end   = start + cell_count_[cj];
 
                 for (int idx = start; idx < end; ++idx) {
                     int j = binned_atoms_[idx];
@@ -305,15 +372,51 @@ PairList CellList::build_full(const cpu::Frame& frame, int n_active) const {
 #endif
         auto& my_pairs = thread_pairs[tid];
 
+        std::vector<int> visited;
+        visited.reserve(27);
+
         #pragma omp for schedule(dynamic)
         for (int i = 0; i < n; ++i) {
-            int ci = atom_cell_[i];
+            const int ci = atom_cell_[i];
+            const int cz0 = ci % ncz_;
+            const int cy0 = (ci / ncz_) % ncy_;
+            const int cx0 = ci / (ncy_ * ncz_);
+
+            visited.clear();
 
             for (auto s : full_stencil_) {
-                int cj = ci + s;
-                if (cj < 0 || cj >= total_cells_) continue;
-                int start = cell_offset_[cj];
-                int end = start + cell_count_[cj];
+                int cx = cx0 + s.di;
+                int cy = cy0 + s.dj;
+                int cz = cz0 + s.dk;
+
+                if (axis_extended_[0]) {
+                    if (cx < 0 || cx >= ncx_) continue;
+                } else {
+                    if (cx <  0)    cx += ncx_;
+                    if (cx >= ncx_) cx -= ncx_;
+                }
+                if (axis_extended_[1]) {
+                    if (cy < 0 || cy >= ncy_) continue;
+                } else {
+                    if (cy <  0)    cy += ncy_;
+                    if (cy >= ncy_) cy -= ncy_;
+                }
+                if (axis_extended_[2]) {
+                    if (cz < 0 || cz >= ncz_) continue;
+                } else {
+                    if (cz <  0)    cz += ncz_;
+                    if (cz >= ncz_) cz -= ncz_;
+                }
+
+                const int cj = cx * ncy_ * ncz_ + cy * ncz_ + cz;
+
+                bool seen = false;
+                for (int v : visited) if (v == cj) { seen = true; break; }
+                if (seen) continue;
+                visited.push_back(cj);
+
+                const int start = cell_offset_[cj];
+                const int end   = start + cell_count_[cj];
 
                 for (int idx = start; idx < end; ++idx) {
                     int j = binned_atoms_[idx];

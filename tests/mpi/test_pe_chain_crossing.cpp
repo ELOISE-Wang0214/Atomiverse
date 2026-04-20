@@ -136,8 +136,11 @@ TEST(PeChainCrossing, BondedNveHandlesChainAcrossBoundary) {
 
     auto frame = make_chain_along_x(20, 30.0, 30.0);
 
-    // Halo cutoff = 5 Å covers the dihedral span (3 × 1.529 ≈ 4.6 Å) so
-    // every cross-rank tuple's atoms reach the owner rank as ghosts.
+    // Pair cutoff = 5 Å on its own covers the dihedral span (3 × 1.529 ≈
+    // 4.6 Å). The spec-A.5 auto-extension added in `build()` makes this
+    // redundant here; the explicit 5.0 preserves the historical baseline
+    // so a future regression in the auto-extension cannot silently mask a
+    // cross-rank bonded miss through this test.
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{0.5});
     sim.on(ATV::md::Phase::pre_force)
@@ -162,6 +165,49 @@ TEST(PeChainCrossing, BondedNveHandlesChainAcrossBoundary) {
         << "bonded resolve / halo skin probably wrong (E0=" << e0 << ")";
 
     // No NaN in any owner position.
+    int my_rank = 0;
+    MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
+    for (int i = 0; i < frame.atoms.size(); ++i) {
+        ASSERT_FALSE(std::isnan(frame.atoms.x[i]))
+            << "rank " << my_rank << " atom " << i << " x went NaN";
+    }
+}
+
+// Same chain + same bonded FF, but the user passes a PAIR cutoff well
+// below the dihedral span (0.1 Å). The auto-extension in build() scans
+// bonds / angles / dihedrals and must add enough ghost skin on top so
+// every cross-rank tuple still resolves. Without the refactor this run
+// would drop bonded tuples at the boundary and blow up within a handful
+// of steps.
+TEST(PeChainCrossing, BondedSkinAutoExtendsWithSmallPairCutoff) {
+    int world_size = 0;
+    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+    if (world_size != 2) {
+        GTEST_SKIP() << "2-rank specific test; got world_size=" << world_size;
+    }
+
+    auto frame = make_chain_along_x(20, 30.0, 30.0);
+
+    const double tiny_pair_cutoff = 0.1;  // << bond length 1.529 Å
+    cpu::md::MD sim;
+    sim.add(cpu::md::VelocityVerlet{0.5});
+    sim.on(ATV::md::Phase::pre_force)
+        .add(cpu::md::mpi::HaloExchangeForward{tiny_pair_cutoff}, -20);
+    sim.on(ATV::md::Phase::post_force)
+        .add(cpu::md::mpi::HaloExchangeReverse{}, -1000);
+    sim.on(ATV::md::Phase::force)
+        .add(cpu::bonded::HarmonicBond{{bond_K_eV()}, {kBondR0}})
+        .add(cpu::bonded::HarmonicAngle{{angle_K_eV()}, {kAngleTheta0}})
+        .add(cpu::bonded::MultiHarmonicDihedral{{dihedral_Cn_eV()}});
+    sim.build();
+
+    sim.run(frame, 50);
+    const double e = frame.energy + frame.kinetic;
+    EXPECT_FALSE(std::isnan(e)) << "global energy went NaN";
+    EXPECT_LT(std::abs(e), 1e3)
+        << "global energy " << e << " blew up -- auto-extension failed "
+        << "to cover the cross-rank dihedral span";
+
     int my_rank = 0;
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
     for (int i = 0; i < frame.atoms.size(); ++i) {

@@ -7,7 +7,9 @@
 
 #include "atomiverse/cpu/md/mpi/halo_exchange.h"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <numeric>
 #include <vector>
@@ -23,6 +25,88 @@ namespace ATV {
 namespace cpu {
 namespace md {
 namespace mpi {
+
+// ── Topology-scan helpers (available with or without MPI) ────────────
+
+namespace {
+
+inline double pair_dist_sq(const Frame& f, int i, int j) {
+    const double dx = f.atoms.x[i] - f.atoms.x[j];
+    const double dy = f.atoms.y[i] - f.atoms.y[j];
+    const double dz = f.atoms.z[i] - f.atoms.z[j];
+    return dx * dx + dy * dy + dz * dz;
+}
+
+/// @brief Try to resolve a global atom tag to a local row. Returns -1 if
+/// the atom is not present on this rank (either as owner or ghost). When
+/// `dd == nullptr` (pre-partition / single-rank path) the tag is assumed
+/// to equal the row index, matching the default `tag[i] = i` layout set
+/// up by `Frame::Atoms`'s constructor.
+inline int resolve_tag(const DomainDecomposition* dd, int atom_tag) {
+    if (dd == nullptr) return atom_tag;
+    auto it = dd->tag_to_local.find(static_cast<std::int64_t>(atom_tag));
+    return (it == dd->tag_to_local.end()) ? -1 : it->second;
+}
+
+/// @brief Max intra-tuple span across every tuple whose atoms all resolve
+/// (locally) on this rank. Each rank's local max is post-combined with an
+/// `MPI_Allreduce(MAX)` in `compute_bonded_extension_mpi` so the global
+/// bonded span is visible to every caller even when every cross-rank
+/// tuple is partial on every rank.
+double compute_bonded_extension_local(const Frame& frame,
+                                       const DomainDecomposition* dd) {
+    double max_sq = 0.0;
+
+    const int nb = frame.bonds.size();
+    for (int k = 0; k < nb; ++k) {
+        const int i = resolve_tag(dd, frame.bonds.atomi[k]);
+        const int j = resolve_tag(dd, frame.bonds.atomj[k]);
+        if (i < 0 || j < 0) continue;
+        max_sq = std::max(max_sq, pair_dist_sq(frame, i, j));
+    }
+
+    const int na = frame.angles.size();
+    for (int k = 0; k < na; ++k) {
+        const int i = resolve_tag(dd, frame.angles.atomi[k]);
+        const int j = resolve_tag(dd, frame.angles.atomj[k]);
+        const int m = resolve_tag(dd, frame.angles.atomk[k]);
+        if (i < 0 || j < 0 || m < 0) continue;
+        max_sq = std::max(max_sq, pair_dist_sq(frame, i, j));
+        max_sq = std::max(max_sq, pair_dist_sq(frame, j, m));
+        max_sq = std::max(max_sq, pair_dist_sq(frame, i, m));
+    }
+
+    const int nd = frame.dihedrals.size();
+    for (int k = 0; k < nd; ++k) {
+        const int i = resolve_tag(dd, frame.dihedrals.atomi[k]);
+        const int j = resolve_tag(dd, frame.dihedrals.atomj[k]);
+        const int m = resolve_tag(dd, frame.dihedrals.atomk[k]);
+        const int l = resolve_tag(dd, frame.dihedrals.atoml[k]);
+        if (i < 0 || j < 0 || m < 0 || l < 0) continue;
+        max_sq = std::max(max_sq, pair_dist_sq(frame, i, j));
+        max_sq = std::max(max_sq, pair_dist_sq(frame, i, m));
+        max_sq = std::max(max_sq, pair_dist_sq(frame, i, l));
+        max_sq = std::max(max_sq, pair_dist_sq(frame, j, m));
+        max_sq = std::max(max_sq, pair_dist_sq(frame, j, l));
+        max_sq = std::max(max_sq, pair_dist_sq(frame, m, l));
+    }
+
+    return (max_sq > 0.0) ? std::sqrt(max_sq) : 0.0;
+}
+
+} // namespace
+
+double HaloExchangeForward::compute_bonded_extension(const cpu::Frame& frame) {
+    // Public, no-DD-provided variant: assumes `frame.atoms.tag(i) == i`
+    // (the default layout produced by `Frame::Atoms`) so that tag values
+    // in `frame.bonds/angles/dihedrals` can be used as direct row indices
+    // into `frame.atoms.x/y/z`. This holds for single-rank callers, for
+    // pre-partition callers, and for all current unit tests. Rank-local
+    // multi-rank scans must go through `compute_bonded_extension_local`
+    // with the rank's `DomainDecomposition` to avoid reading wrong rows
+    // in a post-`partition_atoms` compacted frame.
+    return compute_bonded_extension_local(frame, /*dd=*/nullptr);
+}
 
 #ifdef ATV_HAS_MPI
 
@@ -150,9 +234,27 @@ void prealloc_bufs(FaceBufs& b, int initial_cap) {
 } // namespace
 
 void HaloExchangeForward::build(const cpu::BuildContext& ctx) {
-    if (cutoff_ <= 0.0) return;
+    // Compute the bonded skin extension from the rank-local topology.
+    // Multi-rank: scan uses `dd->tag_to_local` to map topology atom-tags
+    // to the post-partition row indices; tuples whose atoms are not all
+    // resolvable locally contribute nothing on this rank, and the global
+    // max is reconciled with an `MPI_Allreduce(MAX)` below. Single-rank:
+    // skip the allreduce; the local scan alone is the global answer.
     auto* dd = ctx.runtime.dd;
+    bonded_extension_ = compute_bonded_extension_local(ctx.frame, dd);
+
+    if (cutoff_ <= 0.0) return;
     if (!dd || ctx.runtime.mpi_size <= 1) return;
+
+#ifdef ATV_HAS_MPI
+    if (dd->cart_comm != MPI_COMM_NULL) {
+        double local = bonded_extension_;
+        double global = 0.0;
+        MPI_Allreduce(&local, &global, 1, MPI_DOUBLE, MPI_MAX, dd->cart_comm);
+        bonded_extension_ = global;
+    }
+#endif
+
     prealloc_bufs(bufs_for(this), dd->capacity);
     for (int f = 0; f < 6; ++f) dd->send_lists[f].reserve(static_cast<std::size_t>(dd->capacity));
 }
@@ -172,7 +274,12 @@ void HaloExchangeForward::launch(const cpu::LaunchContext& ctx) {
     }
     dd->ghost_tags.clear();
 
-    rebuild_send_lists(frame, *dd, cutoff_);
+    // Effective halo = max(pair cutoff, bonded skin): the wider of the
+    // two is sufficient for both pair partners and bonded-tuple members
+    // near the boundary.
+    const double halo_cut = (cutoff_ > bonded_extension_)
+                                ? cutoff_ : bonded_extension_;
+    rebuild_send_lists(frame, *dd, halo_cut);
 
     // When `dims[dim] == 1` the face neighbors along that dim are *this
     // rank itself* (periodic self-wrap). OpenMPI 5.0.x on macOS occasionally

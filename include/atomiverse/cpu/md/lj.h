@@ -40,11 +40,19 @@ public:
     /// LJ on them. Other scalings are not yet implemented and trigger an
     /// assertion -- production force fields with 1-4 scaling (e.g. OPLS-AA
     /// `s14 = 0.5`) are tracked under msu-pe-validation Phase A.5.
+    ///
+    /// Two ref-qualified overloads keep the fluent
+    /// `cpu::md::LJ{..}.set_special_bonds(0, 0, 0)` chain safe. The
+    /// rvalue overload returns by value (move-out), so when registered
+    /// via `Driver::add(...)` perfect forwarding still sees an rvalue and
+    /// the driver takes ownership. The lvalue overload preserves the
+    /// existing `lj.set_special_bonds(...)` style for named locals.
     /// @param s12 Scale for 1-2 (bond) pairs. 0 or 1.
     /// @param s13 Scale for 1-3 (angle) pairs. 0 or 1.
     /// @param s14 Scale for 1-4 (dihedral) pairs. 0 or 1.
-    /// @return `*this` for fluent setup.
-    LJ& set_special_bonds(double s12, double s13, double s14);
+    /// @return Self (lvalue ref or moved value, depending on overload).
+    LJ& set_special_bonds(double s12, double s13, double s14) &;
+    LJ  set_special_bonds(double s12, double s13, double s14) &&;
 
     std::string name() const override { return "lj"; }
     void build(const cpu::BuildContext& ctx) override;

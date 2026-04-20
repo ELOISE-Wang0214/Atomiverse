@@ -37,11 +37,18 @@ LJ::LJ(double epsilon, double sigma, double cutoff)
     v_shift_ = double(4) * epsilon_ * (r6inv * r6inv - r6inv);
 }
 
-LJ& LJ::set_special_bonds(double s12, double s13, double s14) {
+LJ& LJ::set_special_bonds(double s12, double s13, double s14) & {
     s12_ = s12;
     s13_ = s13;
     s14_ = s14;
     return *this;
+}
+
+LJ LJ::set_special_bonds(double s12, double s13, double s14) && {
+    s12_ = s12;
+    s13_ = s13;
+    s14_ = s14;
+    return std::move(*this);
 }
 
 void LJ::build(const cpu::BuildContext& ctx) {

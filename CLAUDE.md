@@ -104,7 +104,7 @@ molrs (Rust) is a hard dependency for I/O. `cpu::MolRec` uses PIMPL — no `rust
 | `scf::SCF` | CUDA | `scf::Phase` | ZeroDensity |
 
 ### MD components
-VelocityVerlet, InitVelocity, NoseHoover, Barostat, Deform, NeighborList, LJ, HarmonicBond, HarmonicAngle, MultiHarmonicDihedral, VirialStress
+VelocityVerlet, NVELimit (LAMMPS `fix nve/limit`), InitVelocity, NoseHoover, NoseHooverNPT (single-chain MTK isotropic, LAMMPS `fix npt iso`), FixLangevin (BBK form, LAMMPS `fix langevin`), Barostat (Berendsen), Deform, NeighborList, LJ, HarmonicBond, HarmonicAngle, MultiHarmonicDihedral, VirialStress
 
 ### SCF components (CUDA)
 RHFFock, RHFFockDevice, EigenSolver, RHFDensity, DensityBuilder, ConvergenceCheck, Hamiltonian

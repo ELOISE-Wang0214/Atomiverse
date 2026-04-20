@@ -106,12 +106,31 @@ private:
     xt::xtensor<int, 1> cell_offset_;     ///< Prefix sum [total_cells].
     xt::xtensor<int, 1> binned_atoms_;    ///< Sorted atom indices [capacity].
 
-    // Stencil
-    std::vector<int> half_stencil_;       ///< Cell offsets for half list.
-    std::vector<int> full_stencil_;       ///< Cell offsets for full list.
+    // Stencil. Stored as (di, dj, dk) triples so that opposite-edge
+    // wraps under PBC can be applied per-axis at lookup time. The flat
+    // index is recomposed in `build_half` as `cx*ncy*ncz + cy*ncz + cz`,
+    // wrapping each axis into `[0, ncN)` when the axis is *not* extended
+    // (i.e. single-rank or single-rank-along-this-axis under MPI).
+    /// @brief Stencil offset triple. Used by `build_half`/`build_full`
+    /// together with each cell's (cx,cy,cz) decomposition + PBC wrap.
+    struct StencilOffset { int di; int dj; int dk; };
+    std::vector<StencilOffset> half_stencil_;
+    std::vector<StencilOffset> full_stencil_;
 
     // Displacement tracking
     xt::xtensor<double, 1> x_save_, y_save_, z_save_;
+
+    /// @brief Number of active atoms at last build. `needs_rebuild` forces
+    /// a rebuild when `n_active` changes (e.g. after AtomMigration), since
+    /// `binned_atoms_` would otherwise reference indices beyond the new
+    /// `n_active` and produce out-of-bounds reads in `build_half`.
+    int n_at_last_build_ = -1;
+
+    /// @brief `frame.box(0,0)` at last build. `needs_rebuild` triggers a
+    /// rebuild when the box edge changes (e.g. NPT barostat scaled it),
+    /// because the cell grid (`csx_/csy_/csz_`) was sized for the old box
+    /// and would otherwise miss pair candidates after the box grows.
+    double box_at_last_build_ = 0.0;
 
     void compute_grid(const cpu::Frame& frame);
     void bin_atoms(const cpu::Frame& frame, int n_active);

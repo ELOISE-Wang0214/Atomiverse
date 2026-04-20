@@ -28,12 +28,7 @@ public:
     std::string name() const override { return "neighbor_list"; }
 
     void build(const cpu::BuildContext& ctx) override {
-        if (is_multi_rank(ctx.runtime)) {
-            strategy_.init_extended(ctx.frame, cutoff_, ctx.runtime.dd->dims,
-                                     ctx.runtime.dd->capacity);
-        } else {
-            strategy_.init(ctx.frame, cutoff_);
-        }
+        reinit_strategy(ctx.runtime, ctx.frame);
         const int n_active = active_count(ctx.runtime, ctx.frame);
         strategy_.build(ctx.frame, n_active);
         pairs_ = strategy_.build_half(ctx.frame, n_active);
@@ -75,6 +70,18 @@ private:
     static void trim_inum_to_local(const cpu::Context& rt, PairList& pl) {
         if (is_multi_rank(rt)) {
             pl.inum = rt.dd->n_local;
+        }
+    }
+
+    /// @brief (Re-)initialise the underlying spatial-index strategy from
+    /// the current frame.box.  Called from `build()` (one-time setup)
+    /// and from `launch()` whenever `frame.box` has drifted enough that
+    /// the cell-grid sizing is stale.
+    void reinit_strategy(const cpu::Context& rt, cpu::Frame& f) {
+        if (is_multi_rank(rt)) {
+            strategy_.init_extended(f, cutoff_, rt.dd->dims, rt.dd->capacity);
+        } else {
+            strategy_.init(f, cutoff_);
         }
     }
 
