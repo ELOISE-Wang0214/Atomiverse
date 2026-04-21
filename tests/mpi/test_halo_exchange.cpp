@@ -262,6 +262,61 @@ TEST(HaloReverse, ReverseAddsGhostForcesBackToOwners) {
     backend.shutdown();
 }
 
+// ── Regression: per-instance FaceBufs (PIMPL, not a shared static) ─────
+
+// Catches a re-introduction of `static thread_local FaceBufs s` (or any
+// other cross-instance shared storage) behind the Forward / Reverse
+// facades. The test builds two HaloExchangeForward instances in sequence
+// against DIFFERENT `dd->capacity` values and verifies that the first
+// instance's per-face buffer capacity is unchanged by the second's
+// `build()`. With the old shared static, the vector's `reserve()`
+// monotonically grew, so the first instance would see its capacity bumped
+// up to the second's after B.build() ran.
+TEST(HaloForward, FaceBufsAreInstanceOwned) {
+    int world_size = 0;
+    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+    if (world_size <= 1) {
+        GTEST_SKIP() << "multi-rank required (need non-null dd)";
+    }
+
+    auto frame_small = make_uniform_grid(2, 10.0);   // 8 atoms
+    auto frame_big   = make_uniform_grid(6, 10.0);   // 216 atoms
+
+    cpu::Backend backend;
+    backend.init();
+    backend.set_frame(frame_small);
+
+    cpu::md::mpi::HaloExchangeForward fwd_a{2.0};
+    cpu::BuildContext bctx_small{backend.context(), frame_small};
+    fwd_a.build(bctx_small);
+    const std::size_t cap_a_before = fwd_a.send_buf_capacity_for_test();
+
+    // Rebind the same backend to a larger frame; dd->capacity now reflects
+    // the bigger slab.
+    backend.set_frame(frame_big);
+    cpu::md::mpi::HaloExchangeForward fwd_b{2.0};
+    cpu::BuildContext bctx_big{backend.context(), frame_big};
+    fwd_b.build(bctx_big);
+    const std::size_t cap_b       = fwd_b.send_buf_capacity_for_test();
+    const std::size_t cap_a_after = fwd_a.send_buf_capacity_for_test();
+
+    // Per-instance invariant: A's bufs are untouched by B's build.
+    EXPECT_EQ(cap_a_before, cap_a_after)
+        << "HaloExchangeForward #A's FaceBufs capacity changed from "
+        << cap_a_before << " to " << cap_a_after
+        << " after instance #B was built -- bufs must be per-instance, "
+        << "not a shared static.";
+
+    // Different capacity inputs must land in different storage: if A and B
+    // shared a static vector, they'd see the same (max) capacity.
+    EXPECT_NE(cap_a_after, cap_b)
+        << "Instances A and B built against different dd->capacity values "
+        << "produced identical send-buf capacities (A=" << cap_a_after
+        << " B=" << cap_b << "); likely sharing a single storage object.";
+
+    backend.shutdown();
+}
+
 // See test_topology.cpp for the OpenMPI 5.0.x macOS teardown rationale.
 // CTest reads the GoogleTest "[  PASSED  ]" summary line to determine
 // pass/fail, bypassing any prterun exit-code wobble.

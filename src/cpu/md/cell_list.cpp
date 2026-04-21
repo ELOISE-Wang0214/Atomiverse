@@ -215,15 +215,34 @@ void CellList::update(const cpu::Frame& frame, int n_active) {
         build(frame, n_active);
 }
 
-PairList CellList::build_half(const cpu::Frame& frame, int n_active) const {
-    int n = (n_active < 0) ? frame.atoms.size() : n_active;
-    double rc_sq = cutoff_skin_ * cutoff_skin_;
+namespace {
 
-    PairList result;
-    result.ilist = xt::arange<int>(n);
+/// @brief Grow-never-shrink resize of a 1-D int xtensor. When `n <= current
+/// size` this is an `assert`-like no-op; when `n > current size` it hands
+/// off to xtensor's `resize`, which grows the backing uvector (amortised
+/// allocator behaviour, like `std::vector::resize`). Used by `refresh_*`
+/// so the per-atom CSR arrays keep a monotonically-non-decreasing capacity
+/// across steady-state launches.
+inline void ensure_at_least(xt::xtensor<int, 1>& arr, std::size_t n) {
+    if (arr.size() < n) arr.resize({n});
+}
+
+} // namespace
+
+void CellList::refresh_half(const cpu::Frame& frame, int n_active,
+                            PairList& result) const {
+    const int n = (n_active < 0) ? static_cast<int>(frame.atoms.size())
+                                 : n_active;
+    const double rc_sq = cutoff_skin_ * cutoff_skin_;
+
+    ensure_at_least(result.ilist, static_cast<std::size_t>(n));
+    ensure_at_least(result.numneigh, static_cast<std::size_t>(n));
+    ensure_at_least(result.firstneigh, static_cast<std::size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        result.ilist[i] = i;
+        result.numneigh[i] = 0;
+    }
     result.inum = n;
-    result.numneigh = xt::zeros<int>({n});
-    result.firstneigh = xt::zeros<int>({n});
 
     // Per-thread pair buffers
     int n_threads = 1;
@@ -333,7 +352,10 @@ PairList CellList::build_half(const cpu::Frame& frame, int n_active) const {
         result.firstneigh[i] = result.firstneigh[i - 1] + result.numneigh[i - 1];
 
     result.total_pairs = (n > 0) ? result.firstneigh[n - 1] + result.numneigh[n - 1] : 0;
-    result.neighbors = xt::zeros<int>({result.total_pairs});
+    // std::vector::resize preserves capacity when the new size is smaller
+    // than the old — steady-state rebuilds at a stable neighbor count do
+    // not re-enter the allocator. Growth is amortised O(1) per element.
+    result.neighbors.resize(static_cast<std::size_t>(result.total_pairs));
 
     // Write pointers (copy of firstneigh)
     auto write_ptr = result.firstneigh;
@@ -343,19 +365,28 @@ PairList CellList::build_half(const cpu::Frame& frame, int n_active) const {
             write_ptr[i]++;
         }
     }
-
-    return result;
 }
 
-PairList CellList::build_full(const cpu::Frame& frame, int n_active) const {
-    int n = (n_active < 0) ? frame.atoms.size() : n_active;
-    double rc_sq = cutoff_skin_ * cutoff_skin_;
+PairList CellList::build_half(const cpu::Frame& frame, int n_active) const {
+    PairList out;
+    refresh_half(frame, n_active, out);
+    return out;
+}
 
-    PairList result;
-    result.ilist = xt::arange<int>(n);
+void CellList::refresh_full(const cpu::Frame& frame, int n_active,
+                            PairList& result) const {
+    const int n = (n_active < 0) ? static_cast<int>(frame.atoms.size())
+                                 : n_active;
+    const double rc_sq = cutoff_skin_ * cutoff_skin_;
+
+    ensure_at_least(result.ilist, static_cast<std::size_t>(n));
+    ensure_at_least(result.numneigh, static_cast<std::size_t>(n));
+    ensure_at_least(result.firstneigh, static_cast<std::size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        result.ilist[i] = i;
+        result.numneigh[i] = 0;
+    }
     result.inum = n;
-    result.numneigh = xt::zeros<int>({n});
-    result.firstneigh = xt::zeros<int>({n});
 
     int n_threads = 1;
 #ifdef _OPENMP
@@ -445,7 +476,7 @@ PairList CellList::build_full(const cpu::Frame& frame, int n_active) const {
         result.firstneigh[i] = result.firstneigh[i - 1] + result.numneigh[i - 1];
 
     result.total_pairs = (n > 0) ? result.firstneigh[n - 1] + result.numneigh[n - 1] : 0;
-    result.neighbors = xt::zeros<int>({result.total_pairs});
+    result.neighbors.resize(static_cast<std::size_t>(result.total_pairs));
 
     auto write_ptr = result.firstneigh;
     for (auto& tp : thread_pairs) {
@@ -454,8 +485,12 @@ PairList CellList::build_full(const cpu::Frame& frame, int n_active) const {
             write_ptr[i]++;
         }
     }
+}
 
-    return result;
+PairList CellList::build_full(const cpu::Frame& frame, int n_active) const {
+    PairList out;
+    refresh_full(frame, n_active, out);
+    return out;
 }
 
 } // namespace md

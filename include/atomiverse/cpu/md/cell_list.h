@@ -72,16 +72,41 @@ public:
     /// @param n_active Number of active atoms; `-1` = `frame.atoms.size()`.
     void update(const cpu::Frame& frame, int n_active = -1);
 
-    /// @brief Produce LAMMPS-style half-neighbor list (CSR). Newton on.
+    /// @brief Produce LAMMPS-style half-neighbor list (CSR) into a fresh
+    /// `PairList`. Newton on. Thin wrapper around `refresh_half` for
+    /// one-shot callers; steady-state rebuilds should use `refresh_half`
+    /// directly so their `PairList`'s amortized buffer capacity is
+    /// preserved across calls.
     /// @param frame Frame for distance evaluation.
     /// @param n_active Outer-loop / array-size bound; `-1` = `frame.atoms.size()`.
     ///        Caller (e.g. `NeighborList`) typically trims `inum = n_local` after.
     PairList build_half(const cpu::Frame& frame, int n_active = -1) const;
 
-    /// @brief Produce full-neighbor list (CSR). Newton off.
+    /// @brief Produce full-neighbor list (CSR) into a fresh `PairList`. See
+    /// `build_half` for the capacity-preservation rationale.
     /// @param frame Frame for distance evaluation.
     /// @param n_active Outer-loop / array-size bound; `-1` = `frame.atoms.size()`.
     PairList build_full(const cpu::Frame& frame, int n_active = -1) const;
+
+    /// @brief Rebuild the half-neighbor list **in place** into an existing
+    /// `PairList`. Reuses `out.ilist / numneigh / firstneigh / neighbors`
+    /// allocations: the xtensor arrays are sized to `max(n_active, prior
+    /// capacity)` via xtensor's resize semantics (never shrinks); the
+    /// `std::vector<int>` neighbors arena grows via `resize()` with the
+    /// standard amortized-O(1) reallocation policy, so steady-state calls
+    /// are allocation-free once a typical neighbor count has been reached.
+    /// @param frame Frame for distance evaluation.
+    /// @param n_active Number of i-atoms this rebuild should cover.
+    /// @param out PairList whose buffers are overwritten in place.
+    void refresh_half(const cpu::Frame& frame, int n_active, PairList& out) const;
+
+    /// @brief Rebuild the full-neighbor list **in place** into an existing
+    /// `PairList`. See `refresh_half` for the capacity-preservation
+    /// rationale.
+    /// @param frame Frame for distance evaluation.
+    /// @param n_active Number of i-atoms this rebuild should cover.
+    /// @param out PairList whose buffers are overwritten in place.
+    void refresh_full(const cpu::Frame& frame, int n_active, PairList& out) const;
 
 private:
     double cutoff_, skin_, cutoff_skin_;

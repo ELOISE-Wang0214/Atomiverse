@@ -2,6 +2,8 @@
 /// @brief PairList -- LAMMPS-style CSR neighbor list format for CPU backend.
 #pragma once
 
+#include <vector>
+
 #include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/cpu/frame.h"
@@ -24,12 +26,21 @@ namespace md {
 ///     }
 /// }
 /// @endcode
+///
+/// **Storage discipline (Phase 2 cleanup).** `neighbors` is a
+/// `std::vector<int>` specifically so `NeighborList::launch` can grow it
+/// via `resize()` without dropping the allocation between steps — steady-
+/// state rebuilds reuse the amortized capacity and do not call into the
+/// allocator. The xtensor arrays (`ilist`, `numneigh`, `firstneigh`) are
+/// pre-sized once in `NeighborList::build` to `dd->capacity` (or
+/// `frame.atoms.size()` in the single-rank path); `refresh_half` then
+/// overwrites their first `inum` entries in place.
 struct PairList {
     int inum = 0;                          ///< Number of I atoms with neighbor lists.
-    xt::xtensor<int, 1> ilist;             ///< I atom indices [inum].
-    xt::xtensor<int, 1> numneigh;          ///< Number of neighbors per atom [n_atoms].
-    xt::xtensor<int, 1> firstneigh;        ///< Offset into neighbors[] per atom [n_atoms].
-    xt::xtensor<int, 1> neighbors;         ///< Flat neighbor indices [total_pairs].
+    xt::xtensor<int, 1> ilist;             ///< I atom indices [capacity].
+    xt::xtensor<int, 1> numneigh;          ///< Number of neighbors per atom [capacity].
+    xt::xtensor<int, 1> firstneigh;        ///< Offset into neighbors[] per atom [capacity].
+    std::vector<int> neighbors;            ///< Flat neighbor indices [total_pairs].
     int total_pairs = 0;                   ///< Total entries in neighbors[].
 
     /// @brief Zero-overhead pair iteration (half list).

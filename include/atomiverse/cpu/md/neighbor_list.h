@@ -31,7 +31,13 @@ public:
         reinit_strategy(ctx.runtime, ctx.frame);
         const int n_active = active_count(ctx.runtime, ctx.frame);
         strategy_.build(ctx.frame, n_active);
-        pairs_ = strategy_.build_half(ctx.frame, n_active);
+        // One-time arena sizing. The xtensor CSR arrays grow (never shrink)
+        // through `refresh_half`'s `ensure_at_least`; prime them here to
+        // the expected upper bound so steady-state rebuilds don't enter
+        // the allocator. `pairs_.neighbors` is a `std::vector<int>` and
+        // amortises growth itself -- leave it empty, the first refresh
+        // reaches the correct size within one resize.
+        strategy_.refresh_half(ctx.frame, n_active, pairs_);
         trim_inum_to_local(ctx.runtime, pairs_);
         ctx.frame.pair_list = &pairs_;
     }
@@ -39,7 +45,7 @@ public:
     void launch(const cpu::LaunchContext& ctx) override {
         const int n_active = active_count(ctx.runtime, ctx.frame);
         strategy_.update(ctx.frame, n_active);
-        pairs_ = strategy_.build_half(ctx.frame, n_active);
+        strategy_.refresh_half(ctx.frame, n_active, pairs_);
         trim_inum_to_local(ctx.runtime, pairs_);
         ctx.frame.pair_list = &pairs_;
     }

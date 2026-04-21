@@ -34,6 +34,7 @@
 /// @see .claude/specs/parallel-md-engine.md  § A.4, A.5
 #pragma once
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -46,6 +47,15 @@ namespace ATV {
 namespace cpu {
 namespace md {
 namespace mpi {
+
+namespace detail {
+/// @brief Per-face MPI buffer storage (PIMPL). Definition lives in
+/// `halo_exchange.cpp` so the header stays free of MPI-adjacent state.
+/// Held per-instance by `HaloExchangeForward` / `HaloExchangeReverse` so
+/// multiple components in the same process do not clobber each other's
+/// send/recv buffers.
+struct FaceBufs;
+} // namespace detail
 
 /// @brief Forward pass: owned positions → ghost rows on face neighbors.
 ///
@@ -62,7 +72,7 @@ namespace mpi {
 class HaloExchangeForward : public cpu::ComponentBase {
 public:
     /// @brief No-op default constructor (cutoff = 0).
-    HaloExchangeForward() = default;
+    HaloExchangeForward();
 
     /// @brief Real-comm constructor with the pair cutoff.
     /// @param cutoff Pair-interaction cutoff [Angstrom]. Typically
@@ -73,7 +83,15 @@ public:
     ///        `frame.bonds/angles/dihedrals` computed once at `build()`.
     ///        When `cutoff >= bonded_extension` the bonded scan has no
     ///        effect (pair cutoff already dominates).
-    explicit HaloExchangeForward(double cutoff) : cutoff_(cutoff) {}
+    explicit HaloExchangeForward(double cutoff);
+
+    // unique_ptr<incomplete type> needs user-defined special members,
+    // defined in the .cpp where detail::FaceBufs is complete.
+    ~HaloExchangeForward() override;
+    HaloExchangeForward(HaloExchangeForward&&) noexcept;
+    HaloExchangeForward& operator=(HaloExchangeForward&&) noexcept;
+    HaloExchangeForward(const HaloExchangeForward&) = delete;
+    HaloExchangeForward& operator=(const HaloExchangeForward&) = delete;
 
     std::string name() const override { return "halo_forward"; }
     std::vector<DefaultBinding> default_bindings() const override {
@@ -114,9 +132,18 @@ public:
     /// @return Maximum intra-tuple pairwise distance in Angstroms.
     static double compute_bonded_extension(const cpu::Frame& frame);
 
+    /// @brief Test-only: per-face send-buffer capacity (doubles) after
+    /// `build()` has preallocated the instance's own `FaceBufs`. Returns 0
+    /// before `build()` or when MPI is not compiled in. Two instances
+    /// built from different `dd->capacity` values are expected to report
+    /// different capacities; used as a regression check that the PIMPL
+    /// buffers are per-instance rather than a process-global static.
+    std::size_t send_buf_capacity_for_test() const;
+
 private:
     double cutoff_ = 0.0;
     double bonded_extension_ = 0.0;
+    std::unique_ptr<detail::FaceBufs> bufs_;
 };
 
 /// @brief Reverse pass: ghost-row forces → owner's force arrays.
@@ -128,6 +155,13 @@ private:
 /// local force arrays at the indices in their own `send_lists`.
 class HaloExchangeReverse : public cpu::ComponentBase {
 public:
+    HaloExchangeReverse();
+    ~HaloExchangeReverse() override;
+    HaloExchangeReverse(HaloExchangeReverse&&) noexcept;
+    HaloExchangeReverse& operator=(HaloExchangeReverse&&) noexcept;
+    HaloExchangeReverse(const HaloExchangeReverse&) = delete;
+    HaloExchangeReverse& operator=(const HaloExchangeReverse&) = delete;
+
     std::string name() const override { return "halo_reverse"; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {{static_cast<int>(ATV::md::Phase::post_force), -1000}};
@@ -135,6 +169,9 @@ public:
 
     void build(const cpu::BuildContext& ctx) override;
     void launch(const cpu::LaunchContext& ctx) override;
+
+private:
+    std::unique_ptr<detail::FaceBufs> bufs_;
 };
 
 } // namespace mpi

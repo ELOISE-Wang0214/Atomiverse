@@ -11,6 +11,7 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <memory>
 #include <numeric>
 #include <vector>
 
@@ -25,6 +26,42 @@ namespace ATV {
 namespace cpu {
 namespace md {
 namespace mpi {
+
+// ── Per-instance buffer storage (PIMPL) ──────────────────────────────
+//
+// `FaceBufs` holds only `std::vector<double>` arrays, so the type is
+// usable regardless of whether MPI is linked in; the send-/recv-force
+// arrays simply stay empty on the !MPI path. Keeping the full definition
+// here (rather than under `#ifdef ATV_HAS_MPI`) lets the non-MPI stubs
+// and the destructors in both classes see a complete type.
+
+namespace detail {
+
+struct FaceBufs {
+    std::array<std::vector<double>, 6> send_pos;   // packed positions per face
+    std::array<std::vector<double>, 6> recv_pos;   // received positions per face
+    std::array<std::vector<double>, 6> send_force; // packed forces (Reverse)
+    std::array<std::vector<double>, 6> recv_force; // received forces (Reverse)
+};
+
+} // namespace detail
+
+// ── Special members (defined here so the PIMPL dtor sees complete FaceBufs) ──
+
+HaloExchangeForward::HaloExchangeForward() = default;
+HaloExchangeForward::HaloExchangeForward(double cutoff) : cutoff_(cutoff) {}
+HaloExchangeForward::~HaloExchangeForward() = default;
+HaloExchangeForward::HaloExchangeForward(HaloExchangeForward&&) noexcept = default;
+HaloExchangeForward& HaloExchangeForward::operator=(HaloExchangeForward&&) noexcept = default;
+
+HaloExchangeReverse::HaloExchangeReverse() = default;
+HaloExchangeReverse::~HaloExchangeReverse() = default;
+HaloExchangeReverse::HaloExchangeReverse(HaloExchangeReverse&&) noexcept = default;
+HaloExchangeReverse& HaloExchangeReverse::operator=(HaloExchangeReverse&&) noexcept = default;
+
+std::size_t HaloExchangeForward::send_buf_capacity_for_test() const {
+    return bufs_ ? bufs_->send_pos[0].capacity() : 0;
+}
 
 // ── Topology-scan helpers (available with or without MPI) ────────────
 
@@ -112,15 +149,7 @@ double HaloExchangeForward::compute_bonded_extension(const cpu::Frame& frame) {
 
 namespace {
 
-/// @brief Per-face MPI buffers. Owned per `HaloExchangeForward` /
-/// `HaloExchangeReverse` instance; allocated in `build()`, sized to the
-/// initial `dd->capacity`.
-struct FaceBufs {
-    std::array<std::vector<double>, 6> send_pos;   // packed positions per face
-    std::array<std::vector<double>, 6> recv_pos;   // received positions per face
-    std::array<std::vector<double>, 6> send_force; // packed forces (Reverse)
-    std::array<std::vector<double>, 6> recv_force; // received forces (Reverse)
-};
+using detail::FaceBufs;
 
 /// @brief Helper: opposite face index (toggle low bit of {-x, +x, -y, +y, -z, +z}).
 inline int opposite_face(int f) { return f ^ 1; }
@@ -208,17 +237,6 @@ void pack_positions_for_face(const Frame& frame, const DomainDecomposition& dd,
     }
 }
 
-/// @brief Per-face buffer storage owned by the calling component.
-/// Static thread-local? No -- we use a per-component instance via a small
-/// helper handle so that Forward and Reverse do not share buffer state
-/// (they share only `dd->send_lists` and `dd->recv_counts`).
-FaceBufs& bufs_for(HaloExchangeForward* /*comp*/) {
-    static thread_local FaceBufs s; return s;
-}
-FaceBufs& bufs_for(HaloExchangeReverse* /*comp*/) {
-    static thread_local FaceBufs s; return s;
-}
-
 void prealloc_bufs(FaceBufs& b, int initial_cap) {
     for (int f = 0; f < 6; ++f) {
         // Conservative: each face could ship up to `initial_cap` atoms.
@@ -255,7 +273,8 @@ void HaloExchangeForward::build(const cpu::BuildContext& ctx) {
     }
 #endif
 
-    prealloc_bufs(bufs_for(this), dd->capacity);
+    if (!bufs_) bufs_ = std::make_unique<detail::FaceBufs>();
+    prealloc_bufs(*bufs_, dd->capacity);
     for (int f = 0; f < 6; ++f) dd->send_lists[f].reserve(static_cast<std::size_t>(dd->capacity));
 }
 
@@ -265,7 +284,7 @@ void HaloExchangeForward::launch(const cpu::LaunchContext& ctx) {
     if (!dd || dd->cart_comm == MPI_COMM_NULL) return;
 
     Frame& frame = ctx.frame;
-    FaceBufs& bufs = bufs_for(this);
+    FaceBufs& bufs = *bufs_;
 
     // Roll back the previous step's ghost tag→slot entries before we
     // overwrite the ghost rows. Owners are not touched here.
@@ -372,7 +391,8 @@ void HaloExchangeForward::launch(const cpu::LaunchContext& ctx) {
 void HaloExchangeReverse::build(const cpu::BuildContext& ctx) {
     auto* dd = ctx.runtime.dd;
     if (!dd || ctx.runtime.mpi_size <= 1) return;
-    prealloc_bufs(bufs_for(this), dd->capacity);
+    if (!bufs_) bufs_ = std::make_unique<detail::FaceBufs>();
+    prealloc_bufs(*bufs_, dd->capacity);
 }
 
 void HaloExchangeReverse::launch(const cpu::LaunchContext& ctx) {
@@ -382,7 +402,7 @@ void HaloExchangeReverse::launch(const cpu::LaunchContext& ctx) {
     if (dd->n_ghost == 0) return;
 
     Frame& frame = ctx.frame;
-    FaceBufs& bufs = bufs_for(this);
+    FaceBufs& bufs = *bufs_;
 
     // Pack ghost forces by face (reverse direction sends ghost forces back
     // to their owners). Layout mirrors the recv layout established by Forward.
