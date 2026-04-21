@@ -161,3 +161,18 @@ pyrightconfig.json
 
 # Claude agent
 .claude/worktrees/**
+.claude/projects/
+.claude/scheduled_tasks.lock
+
+# Extra build trees (build/ already listed above)
+build_*/
+
+# Debug / run artifacts for debug_amorphous LAMMPS-comparison harness
+debug_amorphous/*.data
+debug_amorphous/*.dat
+debug_amorphous/restart.*
+debug_amorphous/log.*
+
+# Ad-hoc SCF debug dumps
+tools/*.npy
+tools/dump_*.txt
