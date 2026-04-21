@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -118,7 +119,12 @@ void LJ::build(const cpu::BuildContext& ctx) {
 
 void LJ::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
-    auto& pairs = *static_cast<const PairList*>(f.pair_list);
+    if (!ctx.runtime.pair_list) {
+        throw std::runtime_error(
+            "LJ::launch: runtime.pair_list is null. Did you add a "
+            "NeighborList component to the force phase ahead of LJ?");
+    }
+    const auto& pairs = *ctx.runtime.pair_list;
     const auto& box = f.box;
     int n = f.atoms.size();
     double energy_total = 0;

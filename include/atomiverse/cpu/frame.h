@@ -154,10 +154,6 @@ public:
     double stress[6] = {}; ///< Stress tensor [eV/Angstrom^3], Voigt: xx yy zz xy xz yz.
 
     Mat3 box{};  ///< Simulation cell [Angstrom], 3x3 row-major.
-
-    // ── Component communication ──
-
-    const void* pair_list = nullptr; ///< Non-owning pointer to active PairList (set by NeighborList).
 };
 
 } // namespace cpu

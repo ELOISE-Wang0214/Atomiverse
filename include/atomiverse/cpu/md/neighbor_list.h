@@ -39,7 +39,7 @@ public:
         // reaches the correct size within one resize.
         strategy_.refresh_half(ctx.frame, n_active, pairs_);
         trim_inum_to_local(ctx.runtime, pairs_);
-        ctx.frame.pair_list = &pairs_;
+        ctx.runtime.pair_list = &pairs_;
     }
 
     void launch(const cpu::LaunchContext& ctx) override {
@@ -47,7 +47,10 @@ public:
         strategy_.update(ctx.frame, n_active);
         strategy_.refresh_half(ctx.frame, n_active, pairs_);
         trim_inum_to_local(ctx.runtime, pairs_);
-        ctx.frame.pair_list = &pairs_;
+        // Re-publish defensively: the component that owns pairs_ is stable
+        // across launches, but a subsequent Backend::build_components() cycle
+        // (e.g. after a frame-resize) would reset the runtime pointer.
+        ctx.runtime.pair_list = &pairs_;
     }
 
     /// @brief Access the current pair list (read-only).

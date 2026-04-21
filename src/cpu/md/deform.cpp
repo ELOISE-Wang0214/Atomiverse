@@ -5,6 +5,7 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/md/mpi/domain.h"
+#include "atomiverse/cpu/md/owned_range.h"
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -13,16 +14,6 @@
 namespace ATV {
 namespace cpu {
 namespace md {
-
-namespace {
-
-inline int owned_count(const cpu::LaunchContext& ctx) {
-    const auto* dd = ctx.runtime.dd;
-    if (dd && ctx.runtime.mpi_size > 1) return dd->n_local;
-    return ctx.frame.atoms.size();
-}
-
-} // namespace
 
 Deform::Deform(double strain_rate, double dt, int axis)
     : strain_rate_(strain_rate), dt_(dt), axis_(axis) {}

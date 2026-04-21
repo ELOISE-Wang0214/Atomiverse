@@ -64,15 +64,21 @@ namespace md {
 /// output bound at `end_of_step @ > -40` reads the post-NPT value.
 class NoseHooverNPT : public cpu::ComponentBase {
 public:
-    /// @param T_target Target temperature [K].
-    /// @param tau_T    Thermostat coupling time [fs] (LAMMPS `Tdamp`).
-    /// @param P_target Target pressure in `frame.stress` convention
-    ///                 (`-trace/(3V)`); pass 0 for "atmospheric".
-    /// @param tau_P    Barostat coupling time [fs] (LAMMPS `Pdamp`).
-    /// @param dt       Timestep [fs].
-    NoseHooverNPT(double T_target, double tau_T,
-                  double P_target, double tau_P,
-                  double dt);
+    /// @brief All NPT parameters, grouped so each field is named at the
+    /// call site and the order of `tau_T` vs `tau_P` can't be swapped
+    /// silently. Built as an aggregate (no defaulted fields) so the
+    /// compiler flags any omission via `-Wmissing-field-initializers`.
+    struct Config {
+        double T_target;  ///< Target temperature [K].
+        double tau_T;     ///< Thermostat coupling time [fs] (LAMMPS `Tdamp`).
+        double P_target;  ///< Target pressure [eV/Å³] in `frame.stress` convention
+                          ///  (`-trace/(3V)`); pass 0 for "atmospheric".
+        double tau_P;     ///< Barostat coupling time [fs] (LAMMPS `Pdamp`).
+        double dt;        ///< Timestep [fs].
+    };
+
+    /// @param cfg Aggregate NPT configuration. See `Config` for units.
+    explicit NoseHooverNPT(Config cfg);
 
     std::string name() const override { return "nose_hoover_npt"; }
     std::vector<DefaultBinding> default_bindings() const override {

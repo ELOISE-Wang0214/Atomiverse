@@ -304,7 +304,7 @@ int main(int argc, char** argv) {
         const double tau_P = 1000.0;    // matches LAMMPS Pdamp
 
         cpu::md::MD sim;
-        sim.add(cpu::md::NoseHooverNPT{T_tgt, tau_T, P_tgt, tau_P, dt});
+        sim.add(cpu::md::NoseHooverNPT{{T_tgt, tau_T, P_tgt, tau_P, dt}});
         sim.on(ATV::md::Phase::pre_force)
             .add(cpu::md::mpi::HaloExchangeForward{lj_cut + 0.4}, -20);
         sim.on(ATV::md::Phase::post_force)

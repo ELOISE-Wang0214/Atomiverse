@@ -153,6 +153,10 @@ private:
 /// `frame.atoms.fx/fy/fz[n_local : n_local + n_ghost)` are packed by face,
 /// `MPI_Isend/Irecv` to the originating ranks, and added into the owners'
 /// local force arrays at the indices in their own `send_lists`.
+///
+/// @see HaloExchangeForward for the matching producer of `dd->send_lists` /
+///      `dd->recv_counts`; Reverse consumes those counts to decide how
+///      many ghost forces to pack and where to add them on the owner side.
 class HaloExchangeReverse : public cpu::ComponentBase {
 public:
     HaloExchangeReverse();
@@ -167,7 +171,13 @@ public:
         return {{static_cast<int>(ATV::md::Phase::post_force), -1000}};
     }
 
+    /// @brief Preallocate per-face buffers from `dd->capacity`.
+    /// @param ctx Build context.
     void build(const cpu::BuildContext& ctx) override;
+
+    /// @brief Pack ghost-row forces, `MPI_Isend/Irecv` back to owners,
+    /// accumulate into owner force arrays.
+    /// @param ctx Launch context.
     void launch(const cpu::LaunchContext& ctx) override;
 
 private:

@@ -1,0 +1,45 @@
+/// @file cpu/md/owned_range.h
+/// @brief `owned_count()` helpers — the authoritative "how many locally
+///        owned atoms are on this rank?" answer used by every MD
+///        integrator, thermostat, and observer component.
+///
+/// Under multi-rank (`dd` non-null and `mpi_size > 1`) the owned atoms
+/// live in rows `[0, dd->n_local)`; rows `[n_local, n_local + n_ghost)`
+/// hold halo ghosts that must not be touched by integrators or by the
+/// local zeroing pass (HaloExchangeReverse ships ghost force contributions
+/// back to their owners). Single-rank / DD-less contexts simply return
+/// the full atom count.
+#pragma once
+
+#include "atomiverse/cpu/component.h"
+#include "atomiverse/cpu/context.h"
+#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/md/mpi/domain.h"
+
+namespace ATV {
+namespace cpu {
+namespace md {
+
+/// @brief Owned-atom count at `launch()` time.
+/// @param ctx Current launch context.
+/// @return `dd->n_local` under multi-rank, `ctx.frame.atoms.size()` otherwise.
+inline int owned_count(const cpu::LaunchContext& ctx) {
+    const auto* dd = ctx.runtime.dd;
+    if (dd && ctx.runtime.mpi_size > 1) return dd->n_local;
+    return ctx.frame.atoms.size();
+}
+
+/// @brief Owned-atom count at `build()` time. Identical semantics to the
+/// `LaunchContext` overload; separate because `BuildContext` and
+/// `LaunchContext` do not share a common base.
+/// @param ctx Current build context.
+/// @return `dd->n_local` under multi-rank, `ctx.frame.atoms.size()` otherwise.
+inline int owned_count(const cpu::BuildContext& ctx) {
+    const auto* dd = ctx.runtime.dd;
+    if (dd && ctx.runtime.mpi_size > 1) return dd->n_local;
+    return ctx.frame.atoms.size();
+}
+
+} // namespace md
+} // namespace cpu
+} // namespace ATV

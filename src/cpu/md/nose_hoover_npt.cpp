@@ -6,6 +6,8 @@
 #include "atomiverse/core/units.h"
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/md/mpi/domain.h"
+#include "atomiverse/cpu/md/owned_range.h"
+#include "atomiverse/cpu/md/pbc.h"
 
 #include <algorithm>
 #include <cmath>
@@ -23,22 +25,17 @@ namespace md {
 
 namespace {
 
-inline int owned_count(const cpu::LaunchContext& ctx) {
-    const auto* dd = ctx.runtime.dd;
-    if (dd && ctx.runtime.mpi_size > 1) return dd->n_local;
-    return ctx.frame.atoms.size();
-}
-
-inline int n_global(const cpu::LaunchContext& ctx) {
-    // build() snapshots atoms.size() before partitioning, but launch()
-    // sees the partitioned size. Use mpi_size > 1 as the indicator and
-    // still rely on atoms.size() being the global count (true after
-    // halo / capacity considerations -- frame.atoms storage is global).
-    if (ctx.runtime.dd && ctx.runtime.mpi_size > 1) {
-        return ctx.frame.atoms.size();
-    }
-    return ctx.frame.atoms.size();
-}
+/// @brief Hard clamp on `|ε̇·dt|` used by the box-scaling update.
+///
+/// `ε̇` is the strain-rate log-volume velocity; the exact update scales
+/// the box by `exp(ε̇·dt)` each half-step. A transient large `ε̇`
+/// (early equilibration, large pressure error, user-chosen small
+/// `τ_P`) can blow the box up or collapse it to zero in a single
+/// step. Clamping the stride before `exp` matches the LAMMPS `fix
+/// npt iso` guard and keeps the integrator stable without materially
+/// affecting the converged NPT ensemble (the clamp only bites during
+/// the first few steps of a poorly-initialised run).
+constexpr double kEpsDtMaxFraction = 0.1;
 
 // sinh(x)/x with stable Taylor branch near 0.
 inline double sinhc(double x) {
@@ -51,10 +48,9 @@ inline double sinhc(double x) {
 
 } // namespace
 
-NoseHooverNPT::NoseHooverNPT(double T_target, double tau_T,
-                             double P_target, double tau_P, double dt)
-    : T_target_(T_target), tau_T_(tau_T),
-      P_target_(P_target), tau_P_(tau_P), dt_(dt) {}
+NoseHooverNPT::NoseHooverNPT(Config cfg)
+    : T_target_(cfg.T_target), tau_T_(cfg.tau_T),
+      P_target_(cfg.P_target), tau_P_(cfg.tau_P), dt_(cfg.dt) {}
 
 void NoseHooverNPT::build(const cpu::BuildContext& ctx) {
     // atoms.size() at build time = global N (set by user before
@@ -199,8 +195,8 @@ void NoseHooverNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
     // grid sizing if eps_dot diverges (NaN/inf) from a transient stress
     // spike. Once clamped, the bound forces the NHC-baro thermostat to take
     // over within a few steps and bring eps_dot back to physical values.
-    const double eps_dt_max = 0.1;
-    const double eps_dt = std::clamp(eps_dot_ * dt_, -eps_dt_max, eps_dt_max);
+    const double eps_dt = std::clamp(eps_dot_ * dt_,
+                                     -kEpsDtMaxFraction, kEpsDtMaxFraction);
     const double a       = std::exp(eps_dt);
     const double sinhc_h = sinhc(eps_dt * 0.5);
 
@@ -216,14 +212,8 @@ void NoseHooverNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
     f.box(1, 1) *= a;
     f.box(2, 2) *= a;
 
-    // Wrap (orthorhombic).
-    const double lx = f.box(0,0), ly = f.box(1,1), lz = f.box(2,2);
-    #pragma omp parallel for schedule(static)
-    for (int i = 0; i < n; ++i) {
-        f.atoms.x[i] -= lx * std::floor(f.atoms.x[i] / lx);
-        f.atoms.y[i] -= ly * std::floor(f.atoms.y[i] / ly);
-        f.atoms.z[i] -= lz * std::floor(f.atoms.z[i] / lz);
-    }
+    // Wrap (orthorhombic) owned atoms into the freshly-scaled box.
+    wrap_orthorhombic(f, n);
 
     // The per-rank slab bounds (sublo/subhi) were set by Backend::set_frame
     // from the box at that point. NPT just changed the box -- if we don't

@@ -5,6 +5,7 @@
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/md/mpi/domain.h"
+#include "atomiverse/cpu/md/owned_range.h"
 
 #include <algorithm>
 #include <cmath>
@@ -17,30 +18,6 @@
 namespace ATV {
 namespace cpu {
 namespace md {
-
-namespace {
-
-/// @brief Outer-loop bound for integrators and force-zeroers.
-///
-/// Multi-rank (`dd` non-null and `mpi_size > 1`): the authoritative count
-/// of locally-owned atoms. Slots `[n_local, n_local + n_ghost)` hold ghost
-/// copies that must not be touched by integrators or by the local
-/// zeroing pass (`ZeroForces` must leave force contributions written
-/// into ghost rows undisturbed so `HaloExchangeReverse` can ship them
-/// back). Single-rank or DD-less contexts: fall back to `atoms.size()`.
-inline int owned_count(const cpu::LaunchContext& ctx) {
-    const auto* dd = ctx.runtime.dd;
-    if (dd && ctx.runtime.mpi_size > 1) return dd->n_local;
-    return ctx.frame.atoms.size();
-}
-
-inline int owned_count(const cpu::BuildContext& ctx) {
-    const auto* dd = ctx.runtime.dd;
-    if (dd && ctx.runtime.mpi_size > 1) return dd->n_local;
-    return ctx.frame.atoms.size();
-}
-
-} // namespace
 
 // ── ZeroForces ───────────────────────────────────────────────────
 

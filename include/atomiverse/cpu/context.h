@@ -9,6 +9,7 @@ namespace cpu {
 class AnalysisExecutor;
 
 namespace md {
+struct PairList;
 namespace mpi {
 struct DomainDecomposition;
 } // namespace mpi
@@ -23,6 +24,12 @@ struct DomainDecomposition;
 /// ignore this field. The full `DomainDecomposition` type is deliberately
 /// not included here to keep `cpu::Context` free of MD-specific includes
 /// (SCF / minimizer do not need MPI headers transitively).
+/// `pair_list`: non-owning pointer to the active MD neighbor list,
+/// published by `NeighborList` during `build()` and consumed by downstream
+/// force components (LJ, etc.). Kept here -- rather than on `cpu::Frame`
+/// -- so that the frame stays confined to fundamental physical quantities
+/// and non-MD drivers (minimizer, SCF) that never see a neighbor list
+/// simply ignore the field.
 /// `executor`: non-owning pointer to the analysis executor (if any) used
 /// by async observers/recorders. May be null on drivers that do not host
 /// an executor.
@@ -34,6 +41,12 @@ struct Context {
     /// @brief Non-owning handle to the MD spatial decomposition.
     /// Allocated by `Backend::init()`, populated by `Backend::set_frame()`.
     md::mpi::DomainDecomposition* dd = nullptr;
+
+    /// @brief Non-owning handle to the active MD neighbor list.
+    /// Published by `NeighborList::build()` (and re-published on each
+    /// `launch()` as a no-op refresh -- address is stable across the run).
+    /// Null on drivers / configurations that don't carry a neighbor list.
+    const md::PairList* pair_list = nullptr;
 
     /// @brief Non-owning handle to the per-rank analysis executor.
     /// Allocated by `Backend::init()`; published so components can reach

@@ -5,20 +5,11 @@
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/md/mpi/domain.h"
+#include "atomiverse/cpu/md/owned_range.h"
 
 namespace ATV {
 namespace cpu {
 namespace md {
-
-namespace {
-
-inline int owned_count(const cpu::LaunchContext& ctx) {
-    const auto* dd = ctx.runtime.dd;
-    if (dd && ctx.runtime.mpi_size > 1) return dd->n_local;
-    return ctx.frame.atoms.size();
-}
-
-} // namespace
 
 void VirialStress::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
