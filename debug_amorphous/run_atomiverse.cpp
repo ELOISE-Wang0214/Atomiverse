@@ -1,0 +1,351 @@
+/// @file debug_amorphous/run_atomiverse.cpp
+/// @brief Reproduces the LAMMPS `amourphous.in` Stage 1 + Stage 2 runs on
+///        the Atomiverse CPU + MPI backend, with thermo output in the
+///        same cadence as LAMMPS so the two logs can be diffed line by line.
+///
+/// LAMMPS protocol (see debug_amorphous/amourphous.in):
+///   Stage 1: NVE/limit 0.05 + Langevin (T=500K), dt=1 fs, 10 000 steps.
+///   Stage 2: NPT       (T=500K, P=0, drag=2),    dt=0.5 fs, 50 000 steps.
+///
+/// Atomiverse mapping (LAMMPS-equivalent algorithms in the source tree):
+///   Stage 1: cpu::md::NVELimit     (dt=1 fs, xmax=0.05 Å)    // == fix nve/limit
+///            cpu::md::FixLangevin  (T=500K, damp=10 fs)      // == fix langevin
+///   Stage 2: cpu::md::NoseHooverNPT(T=500K, τ_T=100 fs,      // == fix npt iso
+///                                   P=0,    τ_P=1000 fs,
+///                                   dt=0.5 fs)
+///
+/// The point is to compare temperature / pressure trajectories on
+/// **identical input atoms, force field, box, cutoff, integrator, and
+/// thermostat/barostat algorithm** — only the random number stream
+/// differs (Atomiverse uses a per-(seed,step,tag) splitmix; LAMMPS uses
+/// RanMars). Ensemble statistics ⟨P⟩, ⟨T⟩ should match.
+
+#include <mpi.h>
+
+#include <chrono>
+#include <cmath>
+#include <cstdio>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <sstream>
+#include <string>
+
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/md/barostat.h"
+#include "atomiverse/cpu/md/fix_langevin.h"
+#include "atomiverse/cpu/md/init.h"
+#include "atomiverse/cpu/md/lj.h"
+#include "atomiverse/cpu/md/md.h"
+#include "atomiverse/cpu/md/mpi/halo_exchange.h"
+#include "atomiverse/cpu/md/neighbor_list.h"
+#include "atomiverse/cpu/md/nose_hoover.h"
+#include "atomiverse/cpu/md/nose_hoover_npt.h"
+#include "atomiverse/cpu/md/nve_limit.h"
+#include "atomiverse/cpu/md/velocity_verlet.h"
+#include "atomiverse/cpu/md/virial_stress.h"
+#include "atomiverse/cpu/bonded/harmonic_angle.h"
+#include "atomiverse/cpu/bonded/harmonic_bond.h"
+#include "atomiverse/cpu/bonded/multi_harmonic_dihedral.h"
+
+#include "gather_frame.h"
+#include "lammps_loader.h"
+
+using namespace ATV;
+
+namespace {
+
+// ── Unit conversions: LAMMPS "real" → Atomiverse internal ──────────────
+//
+// kcal/mol → eV:
+inline constexpr double kKcalPerMolToEv = 1.0 / 23.060547830619026;
+// degrees → rad:
+inline double deg2rad(double d) { return d * kPI / 180.0; }
+// LAMMPS pressure unit is atmosphere; Atomiverse internal stress is
+// eV / Å³ . 1 atm ≈ 1.013 25e5 Pa = 1.013 25e5 J / m³ → 6.324209e-7
+// eV / Å³  (Pa × m³/eV·Å³).  For pressure printing we go the other way:
+// Atomiverse pressure [eV/Å³] → LAMMPS "atm" so the log is comparable.
+inline constexpr double kEvPerA3ToAtm = 1.0 / 6.32420911905e-7;
+
+// ── Async observer: read globally-reduced energy/stress/KE on rank 0
+//    every `period` steps and print a LAMMPS-style thermo line. -----
+//
+// Bound at end_of_step at order >= +20 so it runs after ReduceEnergy (-50)
+// and after Barostat (-45). Reads frame.energy, frame.kinetic, frame.stress
+// — all already globally reduced.
+class ThermoPrinter : public cpu::ComponentBase {
+public:
+    ThermoPrinter(int period, std::ostream& out, int n_atoms_global)
+        : period_(period), out_(&out), n_global_(n_atoms_global) {}
+
+    std::string name() const override { return "thermo_printer"; }
+    std::vector<DefaultBinding> default_bindings() const override {
+        return {{static_cast<int>(ATV::md::Phase::end_of_step), +20}};
+    }
+
+    void launch(const cpu::LaunchContext& ctx) override {
+        if (ctx.runtime.mpi_rank != 0) { ++step_; return; }
+        const auto& f = ctx.frame;
+
+        if (step_ % period_ == 0) {
+            const double V = f.box(0,0) * f.box(1,1) * f.box(2,2);
+            const double T = (n_global_ > 1)
+                ? (2.0 * f.kinetic) /
+                  (3.0 * (n_global_ - 1) * kBoltzmann)
+                : 0.0;
+            const double P_evA3 =
+                -(f.stress[0] + f.stress[1] + f.stress[2]) / (3.0 * V);
+            const double P_atm = P_evA3 * kEvPerA3ToAtm;
+
+            const double Lx = f.box(0,0);
+            const double Ly = f.box(1,1);
+            const double Lz = f.box(2,2);
+
+            (*out_) << std::setw(10) << step_
+                    << ' ' << std::setw(13) << std::setprecision(8) << T
+                    << ' ' << std::setw(13) << std::setprecision(8) << P_atm
+                    << ' ' << std::setw(13) << std::setprecision(8) << f.energy
+                    << ' ' << std::setw(13) << std::setprecision(8) << f.kinetic
+                    << ' ' << std::setw(10) << std::setprecision(7) << Lx
+                    << ' ' << std::setw(10) << std::setprecision(7) << Ly
+                    << ' ' << std::setw(10) << std::setprecision(7) << Lz
+                    << '\n';
+            out_->flush();
+        }
+        ++step_;
+    }
+
+    void reset_step() { step_ = 0; }
+
+private:
+    int period_;
+    std::ostream* out_;
+    int n_global_;
+    long long step_ = 0;
+};
+
+void print_thermo_header(std::ostream& out, const std::string& tag) {
+    out << "# " << tag << '\n';
+    out << "#       Step          Temp        Press[atm]      "
+           "PotE[eV]      KinE[eV]        Lx        Ly        Lz\n";
+}
+
+} // namespace
+
+// ── main ───────────────────────────────────────────────────────────────
+
+int main(int argc, char** argv) {
+    int provided = 0;
+    MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
+
+    int rank = 0, world_size = 0;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+
+    std::string data_path =
+        "/Users/roykid/work/molcrafts/Atomiverse/debug_amorphous/PE_nc10_cl1000.dat";
+    std::string log_path  =
+        "/Users/roykid/work/molcrafts/Atomiverse/debug_amorphous/log.atomiverse.txt";
+    int n_steps_stage1 = 10000;
+    int n_steps_stage2 = 50000;
+    bool short_run = false;
+    bool run_stage1 = true;
+    bool run_stage2 = true;
+
+    for (int i = 1; i < argc; ++i) {
+        const std::string a = argv[i];
+        if      (a == "--data" && i + 1 < argc) data_path = argv[++i];
+        else if (a == "--log"  && i + 1 < argc) log_path  = argv[++i];
+        else if (a == "--steps-stage1" && i + 1 < argc) n_steps_stage1 = std::stoi(argv[++i]);
+        else if (a == "--steps-stage2" && i + 1 < argc) n_steps_stage2 = std::stoi(argv[++i]);
+        else if (a == "--stage1-only") run_stage2 = false;
+        else if (a == "--stage2-only") run_stage1 = false;
+        else if (a == "--short") {
+            short_run = true;
+            n_steps_stage1 = 1000;
+            n_steps_stage2 = 2000;
+        }
+    }
+
+    if (rank == 0) {
+        std::cerr << "[atomiverse] world_size = " << world_size << '\n';
+        std::cerr << "[atomiverse] data_path  = " << data_path << '\n';
+        std::cerr << "[atomiverse] log_path   = " << log_path << '\n';
+        std::cerr << "[atomiverse] stage 1    = " << n_steps_stage1
+                  << " steps × 1.0 fs\n";
+        std::cerr << "[atomiverse] stage 2    = " << n_steps_stage2
+                  << " steps × 0.5 fs\n";
+        if (short_run) std::cerr << "[atomiverse] (--short)\n";
+    }
+
+    // ── Force field (LAMMPS amorphous.in, kcal/mol → eV) ────────────
+    const double bond_K_kcal   = 350.0;
+    const double bond_r0       = 1.53;
+    const double angle_K_kcal  = 60.0;
+    const double angle_theta0  = deg2rad(109.5);
+    const std::vector<double> dihedral_kcal = {1.73, -4.49, 0.776, 6.99, 0.0};
+
+    const double bond_K_ev  = bond_K_kcal  * kKcalPerMolToEv;
+    const double angle_K_ev = angle_K_kcal * kKcalPerMolToEv;
+    std::vector<double> dihedral_ev;
+    dihedral_ev.reserve(dihedral_kcal.size());
+    for (double v : dihedral_kcal) dihedral_ev.push_back(v * kKcalPerMolToEv);
+
+    const double lj_eps_kcal = 0.112;
+    const double lj_sig      = 4.01;
+    const double lj_cut      = 10.5;
+    const double lj_eps_ev   = lj_eps_kcal * kKcalPerMolToEv;
+
+    // ── Load the LAMMPS data file (every rank reads the full file
+    //    — DomainDecomposition partitions atoms in Backend::setup) ───
+    cpu::Frame frame = debug_amorphous::load_lammps_data(data_path);
+
+    if (rank == 0) {
+        std::cerr << "[atomiverse] n_atoms     = " << frame.atoms.size()
+                  << '\n';
+        std::cerr << "[atomiverse] n_bonds     = " << frame.bonds.size()
+                  << '\n';
+        std::cerr << "[atomiverse] n_angles    = " << frame.angles.size()
+                  << '\n';
+        std::cerr << "[atomiverse] n_dihedrals = " << frame.dihedrals.size()
+                  << '\n';
+        std::cerr << "[atomiverse] box (Å)     = "
+                  << frame.box(0,0) << ' ' << frame.box(1,1) << ' '
+                  << frame.box(2,2) << '\n';
+    }
+
+    const int n_atoms_global = frame.atoms.size();
+
+    int stage1_n_local = frame.atoms.size();  // assume all-on-rank-0 default
+
+    std::ofstream log_stream;
+    if (rank == 0) {
+        log_stream.open(log_path);
+        if (!log_stream)
+            std::cerr << "[atomiverse] WARNING: cannot open " << log_path
+                      << " for writing\n";
+    }
+
+    // ── Stage 1: nve/limit + Langevin at 500 K, dt = 1 fs ──────────
+    if (run_stage1 && n_steps_stage1 > 0) {
+        const double dt    = 1.0;
+        const double T_tgt = 500.0;
+        const double tau_lang = 10.0;          // LAMMPS-equivalent damp
+        const double xmax     = 0.05;          // LAMMPS-equivalent cap
+
+        cpu::md::MD sim;
+        sim.add(cpu::md::NVELimit{dt, xmax});
+        sim.add(cpu::md::InitVelocity{T_tgt, /*seed=*/1231});
+        sim.add(cpu::md::FixLangevin{T_tgt, tau_lang, dt, /*seed=*/904297});
+        sim.on(ATV::md::Phase::pre_force)
+            .add(cpu::md::mpi::HaloExchangeForward{lj_cut + 0.4}, -20);
+        sim.on(ATV::md::Phase::post_force)
+            .add(cpu::md::mpi::HaloExchangeReverse{}, -1000);
+        sim.on(ATV::md::Phase::force)
+            .add(cpu::md::NeighborList<>{lj_cut + 0.4}, -10)
+            .add(cpu::md::LJ{lj_eps_ev, lj_sig, lj_cut}
+                 .set_special_bonds(0.0, 0.0, 0.0))
+            .add(cpu::bonded::HarmonicBond{{bond_K_ev}, {bond_r0}})
+            .add(cpu::bonded::HarmonicAngle{{angle_K_ev}, {angle_theta0}})
+            .add(cpu::bonded::MultiHarmonicDihedral{{dihedral_ev}});
+        sim.add(cpu::md::VirialStress{});
+
+        ThermoPrinter thermo{100, rank == 0 ? log_stream : std::cout,
+                             n_atoms_global};
+        sim.add(thermo);
+
+        // Stash this rank's final n_local so we can gather the frame
+        // back to every rank between stages (Stage 2's driver scans the
+        // whole array on first partition; without a gather it'd see
+        // stale ghost rows).
+        debug_amorphous::CaptureNLocal capture{&stage1_n_local};
+        sim.add(capture);
+
+        sim.build();
+
+        if (rank == 0) {
+            print_thermo_header(log_stream,
+                "Stage 1: NVE/limit + Langevin (T=500 K, damp=10 fs), dt=1 fs, "
+                + std::to_string(n_steps_stage1) + " steps");
+        }
+
+        const auto t0 = std::chrono::steady_clock::now();
+        sim.run(frame, n_steps_stage1);
+        const auto t1 = std::chrono::steady_clock::now();
+
+        if (rank == 0) {
+            const double secs =
+                std::chrono::duration<double>(t1 - t0).count();
+            std::cerr << "[atomiverse] stage 1 wall time : "
+                      << secs << " s ("
+                      << (n_steps_stage1 / secs) << " steps/s)\n";
+            log_stream << "# stage1 wall_seconds = " << secs << '\n';
+        }
+    }
+
+    // ── Inter-stage gather: replicate the full frame on every rank ──
+    if (run_stage1 && n_steps_stage1 > 0 && run_stage2 && world_size > 1) {
+        debug_amorphous::gather_full_frame_inplace(
+            frame, stage1_n_local, world_size, MPI_COMM_WORLD);
+        if (rank == 0) {
+            std::cerr << "[atomiverse] inter-stage gather complete "
+                      << "(n_local on rank 0 was " << stage1_n_local
+                      << ")\n";
+        }
+    }
+
+    // ── Stage 2: NoseHooverNPT (single-chain MTK), dt = 0.5 fs ───────
+    if (run_stage2) {
+        const double dt    = 0.5;
+        const double T_tgt = 500.0;
+        const double tau_T = 100.0;
+        const double P_tgt = 0.0;       // P in `frame.stress` convention
+        const double tau_P = 1000.0;    // matches LAMMPS Pdamp
+
+        cpu::md::MD sim;
+        sim.add(cpu::md::NoseHooverNPT{T_tgt, tau_T, P_tgt, tau_P, dt});
+        sim.on(ATV::md::Phase::pre_force)
+            .add(cpu::md::mpi::HaloExchangeForward{lj_cut + 0.4}, -20);
+        sim.on(ATV::md::Phase::post_force)
+            .add(cpu::md::mpi::HaloExchangeReverse{}, -1000);
+        sim.on(ATV::md::Phase::force)
+            .add(cpu::md::NeighborList<>{lj_cut + 0.4}, -10)
+            .add(cpu::md::LJ{lj_eps_ev, lj_sig, lj_cut}
+                 .set_special_bonds(0.0, 0.0, 0.0))
+            .add(cpu::bonded::HarmonicBond{{bond_K_ev}, {bond_r0}})
+            .add(cpu::bonded::HarmonicAngle{{angle_K_ev}, {angle_theta0}})
+            .add(cpu::bonded::MultiHarmonicDihedral{{dihedral_ev}});
+        sim.add(cpu::md::VirialStress{});
+
+        ThermoPrinter thermo{100, rank == 0 ? log_stream : std::cout,
+                             n_atoms_global};
+        thermo.reset_step();
+        sim.add(thermo);
+
+        sim.build();
+
+        if (rank == 0) {
+            print_thermo_header(log_stream,
+                "Stage 2: NPT (NoseHooverNPT @ 500 K, P=0, MTK), "
+                "dt=0.5 fs, " + std::to_string(n_steps_stage2) + " steps");
+        }
+
+        const auto t0 = std::chrono::steady_clock::now();
+        sim.run(frame, n_steps_stage2);
+        const auto t1 = std::chrono::steady_clock::now();
+
+        if (rank == 0) {
+            const double secs =
+                std::chrono::duration<double>(t1 - t0).count();
+            std::cerr << "[atomiverse] stage 2 wall time : "
+                      << secs << " s ("
+                      << (n_steps_stage2 / secs) << " steps/s)\n";
+            log_stream << "# stage2 wall_seconds = " << secs << '\n';
+        }
+    }
+
+    if (rank == 0) log_stream.close();
+    MPI_Finalize();
+    return 0;
+}
