@@ -70,6 +70,32 @@ public:
     void launch(const cpu::LaunchContext& ctx) override;
 };
 
+/// @brief Remove net linear COM momentum every `freq` steps.
+///
+/// LAMMPS `fix momentum N linear 1 1 1` equivalent. Prevents flying-ice-cube
+/// drift that accumulates under Langevin + NPT coupling (the stochastic
+/// Langevin kicks plus barostat scaling slowly bias the COM away from 0,
+/// and fix_npt alone doesn't zero it).  Bound late in `end_of_step` so
+/// the freshly-integrated velocities are zeroed before the next step.
+class ZeroLinearMomentum : public cpu::ComponentBase {
+public:
+    /// @param freq Remove momentum every `freq` steps (LAMMPS default 1).
+    explicit ZeroLinearMomentum(int freq = 1) : freq_(freq) {}
+
+    std::string name() const override { return "zero_linear_momentum"; }
+    std::vector<DefaultBinding> default_bindings() const override {
+        // +25 = after KineticEnergy (@-100) / ReduceEnergy (@-50) /
+        // NoseHooverNPT (@-40) so we only touch post-integration
+        // velocities.  ThermoPrinter sits at +20, also behind us.
+        return {{static_cast<int>(ATV::md::Phase::end_of_step), +25}};
+    }
+    void launch(const cpu::LaunchContext& ctx) override;
+
+private:
+    int freq_;
+    long long step_ = 0;
+};
+
 /// @brief Maxwell-Boltzmann velocity initialization (build-time only).
 ///
 /// Generates velocities from Gaussian distribution scaled by sqrt(kB*T/m),

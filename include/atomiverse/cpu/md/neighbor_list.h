@@ -17,13 +17,24 @@ namespace md {
 
 /// @brief Neighbor list component -- builds and maintains spatial index.
 /// @tparam Strategy Spatial indexing strategy (CellList by default).
+///
+/// Rebuild cadence mirrors LAMMPS `neigh_modify every N delay 0 check yes`:
+/// the Verlet list is re-enumerated only when `ago >= every` *and* the
+/// max-displacement skin check fires. Between rebuilds the stored CSR is
+/// reused verbatim — force kernels continue reading the same `pair_list`.
+/// Cost of `launch()` on non-rebuild steps collapses to a single O(n) skin
+/// scan (or zero when `ago < every`). Default `every = 1` preserves the
+/// LAMMPS default.
 template <typename Strategy = CellList>
 class NeighborList : public cpu::ComponentBase {
 public:
     /// @param cutoff Interaction cutoff [Angstrom].
     /// @param skin Verlet skin width [Angstrom]. Negative = auto (0.3 * cutoff).
-    explicit NeighborList(double cutoff, double skin = -1.0)
-        : strategy_(cutoff, skin), cutoff_(cutoff) {}
+    /// @param every Attempt rebuild at most every N steps (LAMMPS `neigh_modify
+    ///        every`; default 1 reproduces LAMMPS's built-in default).
+    explicit NeighborList(double cutoff, double skin = -1.0, int every = 1)
+        : strategy_(cutoff, skin), cutoff_(cutoff),
+          every_(every < 1 ? 1 : every) {}
 
     std::string name() const override { return "neighbor_list"; }
 
@@ -38,14 +49,28 @@ public:
         // amortises growth itself -- leave it empty, the first refresh
         // reaches the correct size within one resize.
         strategy_.refresh_half(ctx.frame, n_active, pairs_);
+        ++pairs_.version;
         trim_inum_to_local(ctx.runtime, pairs_);
         ctx.runtime.pair_list = &pairs_;
+        ago_ = 0;
     }
 
     void launch(const cpu::LaunchContext& ctx) override {
         const int n_active = active_count(ctx.runtime, ctx.frame);
-        strategy_.update(ctx.frame, n_active);
-        strategy_.refresh_half(ctx.frame, n_active, pairs_);
+        ++ago_;
+
+        // `ago < every`: reuse the list verbatim, no skin scan, no rebuild.
+        // `ago >= every`: ask the strategy whether any atom drifted past
+        // skin/2; if yes, rebin + re-enumerate, else leave the list intact.
+        // Mirrors LAMMPS Verlet::run: `lastcall` is advanced only on the
+        // steps when `build()` actually fires.
+        if (ago_ >= every_ && strategy_.needs_rebuild(ctx.frame, n_active)) {
+            strategy_.build(ctx.frame, n_active);
+            strategy_.refresh_half(ctx.frame, n_active, pairs_);
+            ++pairs_.version;
+            ago_ = 0;
+        }
+
         trim_inum_to_local(ctx.runtime, pairs_);
         // Re-publish defensively: the component that owns pairs_ is stable
         // across launches, but a subsequent Backend::build_components() cycle
@@ -97,6 +122,10 @@ private:
     Strategy strategy_;
     PairList pairs_;
     double cutoff_;
+    int every_ = 1;
+    /// @brief Steps since the last actual rebuild. Starts at 0 after `build()`
+    /// (the initial enumeration), incremented once per `launch()`.
+    int ago_ = 0;
 };
 
 } // namespace md

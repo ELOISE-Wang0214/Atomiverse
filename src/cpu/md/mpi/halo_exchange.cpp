@@ -68,9 +68,22 @@ std::size_t HaloExchangeForward::send_buf_capacity_for_test() const {
 namespace {
 
 inline double pair_dist_sq(const Frame& f, int i, int j) {
-    const double dx = f.atoms.x[i] - f.atoms.x[j];
-    const double dy = f.atoms.y[i] - f.atoms.y[j];
-    const double dz = f.atoms.z[i] - f.atoms.z[j];
+    double dx = f.atoms.x[i] - f.atoms.x[j];
+    double dy = f.atoms.y[i] - f.atoms.y[j];
+    double dz = f.atoms.z[i] - f.atoms.z[j];
+    // Orthorhombic minimum-image. LAMMPS-format data files wrap atoms into
+    // `[0, L)`, so a bond that crosses the periodic boundary appears as a
+    // raw span of ~L instead of its physical length. Without the wrap the
+    // scanned bonded extension can exceed the box (e.g. 110 Å in an 80 Å
+    // PE cell), which in turn inflates the halo cutoff past every slab
+    // width and causes HaloExchangeForward to tag every owned atom as a
+    // ghost on every face — blowing n_ghost past `dd->capacity`.
+    const double lx = f.box(0, 0);
+    const double ly = f.box(1, 1);
+    const double lz = f.box(2, 2);
+    if (lx > 0.0) dx -= lx * std::round(dx / lx);
+    if (ly > 0.0) dy -= ly * std::round(dy / ly);
+    if (lz > 0.0) dz -= lz * std::round(dz / lz);
     return dx * dx + dy * dy + dz * dz;
 }
 

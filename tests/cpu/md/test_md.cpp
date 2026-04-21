@@ -738,3 +738,25 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionMaxAcrossTupleKinds) {
     EXPECT_NEAR(ext, 4.0, 1e-12)
         << "expected max(bond=1, angle=4, dihedral=2.5) = 4, got " << ext;
 }
+
+TEST_F(CpuMdTest, HaloForwardBondedExtensionPeriodicBondWrap) {
+    // Two atoms bonded across the periodic boundary: x=0.5 and x=L-0.5
+    // look 79 Å apart without PBC, but the real bond is 1.0 Å. Without the
+    // minimum-image fix in pair_dist_sq the bonded extension picks up the
+    // unwrapped span and inflates the halo cutoff until every owned atom
+    // ships as a ghost on every face (n_ghost explodes past capacity).
+    // Regression guard for the debug_amorphous 2/4-rank crash.
+    cpu::Frame frame(2);
+    frame.box = Mat3::cubic(80.0);
+    frame.atoms.x[0] = 0.5;  frame.atoms.y[0] = 0.0; frame.atoms.z[0] = 0.0;
+    frame.atoms.x[1] = 79.5; frame.atoms.y[1] = 0.0; frame.atoms.z[1] = 0.0;
+    frame.bonds.atomi = xt::zeros<int>({1});
+    frame.bonds.atomj = xt::zeros<int>({1});
+    frame.bonds.type  = xt::zeros<int>({1});
+    frame.bonds.atomi[0] = 0;
+    frame.bonds.atomj[0] = 1;
+    const double ext =
+        cpu::md::mpi::HaloExchangeForward::compute_bonded_extension(frame);
+    EXPECT_NEAR(ext, 1.0, 1e-12)
+        << "periodic bond picked up unwrapped span " << ext << " (box=80)";
+}

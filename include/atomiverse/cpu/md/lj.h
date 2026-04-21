@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "atomiverse/cpu/component.h"
+#include "atomiverse/cpu/md/pair_list.h"
 
 namespace ATV {
 namespace cpu {
@@ -60,6 +61,14 @@ public:
     void destroy(const cpu::DestroyContext& ctx) override;
 
 private:
+    /// @brief Rebuild `filtered_{numneigh,firstneigh,neighbors}` from
+    /// `pairs` by walking each owner i's neighbors, resolving partner tags,
+    /// and dropping any pair (i,j) whose j_tag appears in i's excluded set.
+    /// Called from `launch()` only when `pairs.version` has advanced past
+    /// the last snapshot we filtered.
+    void rebuild_filtered_list(const cpu::Frame& frame, const PairList& pairs);
+
+private:
     double epsilon_, sigma_, cutoff_;
     double sigma6_, cutoff_sq_, v_shift_;
 
@@ -79,6 +88,18 @@ private:
     // Per-thread force reduction buffers
     int n_threads_ = 1;
     std::vector<std::vector<double>> fx_thr_, fy_thr_, fz_thr_;
+
+    // Exclusion-filtered neighbor CSR. Rebuilt lazily whenever the upstream
+    // NeighborList bumps `pair_list.version` (every ~`every` steps under
+    // LAMMPS-matched semantics), then reused verbatim by the hot kernel on
+    // the 9 intervening launches. Stores only non-excluded pairs so the
+    // inner loop loses its per-pair `tag_ptr[j]` gather + `binary_search`
+    // branch. Empty while `excluded_by_tag_` is empty (no filtering needed).
+    std::vector<int> filtered_neighbors_;
+    std::vector<int> filtered_numneigh_;
+    std::vector<int> filtered_firstneigh_;
+    int filtered_inum_ = 0;
+    unsigned long long filtered_version_ = 0;
 };
 
 } // namespace md

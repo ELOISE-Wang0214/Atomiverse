@@ -48,12 +48,22 @@ void HarmonicBond::build(const cpu::BuildContext& ctx) {
 void HarmonicBond::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
     int n_bonds = static_cast<int>(f.bonds.atomi.size());
+    // Bond virial accumulators (Voigt xx yy zz xy xz yz). Bonds
+    // contribute significantly to the stress tensor for stiff-bond
+    // systems (e.g. PE chains, K ≈ 15 eV/Å²): without this term
+    // the NPT barostat sees a much-too-high isotropic pressure and
+    // over-expands the box monotonically. Matches LAMMPS
+    // `bond_harmonic::compute` which accumulates the same
+    // `fpair * Δ_α * Δ_β` terms into its virial array.
+    double v_xx = 0, v_yy = 0, v_zz = 0, v_xy = 0, v_xz = 0, v_yz = 0;
     if (n_bonds == 0) return;
 
     int n_atoms = f.atoms.size();
     double energy_total = 0;
 
-    #pragma omp parallel reduction(+:energy_total)
+    #pragma omp parallel reduction(+:energy_total) \
+        reduction(+:v_xx) reduction(+:v_yy) reduction(+:v_zz) \
+        reduction(+:v_xy) reduction(+:v_xz) reduction(+:v_yz)
     {
         int tid = 0;
 #ifdef _OPENMP
@@ -113,6 +123,18 @@ void HarmonicBond::launch(const cpu::LaunchContext& ctx) {
             fxt[i] += fx_val;  fxt[j] -= fx_val;
             fyt[i] += fy_val;  fyt[j] -= fy_val;
             fzt[i] += fz_val;  fzt[j] -= fz_val;
+
+            // Virial: σ_αβ += Δ_α · F_β. Per-bond contribution,
+            // counted once by the owner rank (matches the LAMMPS
+            // convention of accumulating in the rank whose `atomi`
+            // or `atomj` is locally owned — the bond-ownership
+            // filter above guarantees each bond is counted once).
+            v_xx += dx * fx_val;
+            v_yy += dy * fy_val;
+            v_zz += dz * fz_val;
+            v_xy += dx * fy_val;
+            v_xz += dx * fz_val;
+            v_yz += dy * fz_val;
         }
 
         #pragma omp for schedule(static)
@@ -126,6 +148,12 @@ void HarmonicBond::launch(const cpu::LaunchContext& ctx) {
     }
 
     f.energy += energy_total;
+    f.stress[0] += v_xx;
+    f.stress[1] += v_yy;
+    f.stress[2] += v_zz;
+    f.stress[3] += v_xy;
+    f.stress[4] += v_xz;
+    f.stress[5] += v_yz;
 }
 
 void HarmonicBond::destroy(const cpu::DestroyContext& ctx) {

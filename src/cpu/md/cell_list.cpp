@@ -238,51 +238,59 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
     ensure_at_least(result.ilist, static_cast<std::size_t>(n));
     ensure_at_least(result.numneigh, static_cast<std::size_t>(n));
     ensure_at_least(result.firstneigh, static_cast<std::size_t>(n));
-    for (int i = 0; i < n; ++i) {
-        result.ilist[i] = i;
-        result.numneigh[i] = 0;
-    }
+
+    for (int i = 0; i < n; ++i) result.ilist[i] = i;
     result.inum = n;
 
-    // Per-thread pair buffers
     int n_threads = 1;
 #ifdef _OPENMP
     n_threads = omp_get_max_threads();
 #endif
 
-    std::vector<std::vector<std::pair<int, int>>> thread_pairs(n_threads);
+    // ── Serial fast path ────────────────────────────────────────────
+    // Single-thread builds write the CSR directly in one pass: for each
+    // atom i we reserve its slot in `neighbors[]`, iterate the stencil,
+    // append each surviving j to a running write cursor, then commit
+    // `numneigh[i]`. No per-thread pair buffers, no pair-count pass, no
+    // prefix-sum pass, no scatter pass — the old path made 3 trips over
+    // ~250k pairs plus an `std::vector<std::vector<pair<int,int>>>`
+    // allocation every call. `neighbors` grows amortized O(1) the first
+    // few times and then stays at capacity (~250k ints = 1 MB for 10k
+    // atoms). `firstneigh[i]` is the live cursor at function entry, so
+    // consumers that later index `neighbors[firstneigh[i] + k]` see the
+    // exact slot we wrote. Matches LAMMPS `NPairHalfBin::build`.
+    if (n_threads == 1) {
+        result.neighbors.clear();
 
-    #pragma omp parallel
-    {
-        int tid = 0;
-#ifdef _OPENMP
-        tid = omp_get_thread_num();
-#endif
-        auto& my_pairs = thread_pairs[tid];
+        const double* __restrict x_ptr = frame.atoms.x.data();
+        const double* __restrict y_ptr = frame.atoms.y.data();
+        const double* __restrict z_ptr = frame.atoms.z.data();
+        const double lx = frame.box(0, 0);
+        const double ly = frame.box(1, 1);
+        const double lz = frame.box(2, 2);
+        const double half_lx = 0.5 * lx;
+        const double half_ly = 0.5 * ly;
+        const double half_lz = 0.5 * lz;
+        const int* __restrict atom_cell_ptr = atom_cell_.data();
+        const int* __restrict cell_count_ptr = cell_count_.data();
+        const int* __restrict cell_offset_ptr = cell_offset_.data();
+        const int* __restrict binned_ptr = binned_atoms_.data();
 
-        // Per-thread deduplication buffer for visited neighbor cells.
-        // When a small grid (ncx <= 2 etc.) has the FULL stencil wrap
-        // multiple distinct offsets onto the same cj, we'd visit that
-        // cell more than once; dedup ensures each (i, cj) lookup is
-        // unique so pair counts stay correct.
-        std::vector<int> visited;
-        visited.reserve(27);
+        int visited[27];
+        int cursor = 0;
 
-        #pragma omp for schedule(dynamic)
         for (int i = 0; i < n; ++i) {
-            const int ci = atom_cell_[i];
+            result.firstneigh[i] = cursor;
+            const int ci = atom_cell_ptr[i];
             const int cz0 = ci % ncz_;
             const int cy0 = (ci / ncz_) % ncy_;
             const int cx0 = ci / (ncy_ * ncz_);
+            const double xi = x_ptr[i];
+            const double yi = y_ptr[i];
+            const double zi = z_ptr[i];
 
-            visited.clear();
+            int visited_n = 0;
 
-            // Iterate the FULL stencil (27 cells incl. self) and filter
-            // each candidate by `j > i`. Using the half-stencil instead
-            // would skip cells reachable only via PBC wrap (e.g. cell
-            // ncx-1 from cell 0 -- offset di=-1 wraps to the same cell
-            // di=+(ncx-1) but the half-stencil only stores small flat
-            // offsets), causing missed pairs at every box edge.
             for (auto s : full_stencil_) {
                 int cx = cx0 + s.di;
                 int cy = cy0 + s.dj;
@@ -309,11 +317,104 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
 
                 const int cj = cx * ncy_ * ncz_ + cy * ncz_ + cz;
 
-                // Skip if we already processed this neighbor cell (only
-                // happens when ncN <= 2 and PBC wraps stencil offsets
-                // onto the same cell; for typical large grids this loop
-                // does at most one O(visited.size()) check per stencil
-                // entry, which dwarfs the O(atoms-per-cell) work below).
+                // Small-grid PBC-wrap dedup. Stored as a fixed-size
+                // int[27] so the compiler keeps it in a register file.
+                bool seen = false;
+                for (int v = 0; v < visited_n; ++v) {
+                    if (visited[v] == cj) { seen = true; break; }
+                }
+                if (seen) continue;
+                visited[visited_n++] = cj;
+
+                const int start = cell_offset_ptr[cj];
+                const int end   = start + cell_count_ptr[cj];
+
+                for (int idx = start; idx < end; ++idx) {
+                    int j = binned_ptr[idx];
+                    if (j <= i) continue;
+
+                    double dx = xi - x_ptr[j];
+                    double dy = yi - y_ptr[j];
+                    double dz = zi - z_ptr[j];
+                    if (dx >  half_lx) dx -= lx;
+                    if (dx < -half_lx) dx += lx;
+                    if (dy >  half_ly) dy -= ly;
+                    if (dy < -half_ly) dy += ly;
+                    if (dz >  half_lz) dz -= lz;
+                    if (dz < -half_lz) dz += lz;
+
+                    double r2 = dx * dx + dy * dy + dz * dz;
+                    if (r2 < rc_sq) {
+                        // push_back on an empty-then-growing vector
+                        // amortizes to O(1); after a few rebuilds
+                        // capacity saturates and push_back is a
+                        // pointer-bump store.
+                        result.neighbors.push_back(j);
+                        ++cursor;
+                    }
+                }
+            }
+            result.numneigh[i] = cursor - result.firstneigh[i];
+        }
+        result.total_pairs = cursor;
+        return;
+    }
+
+    // ── Multi-thread path ───────────────────────────────────────────
+    // Thread-private pair buffers feed a pair-count + prefix-sum +
+    // scatter finalizer. Slightly more work per pair than the serial
+    // fast path but keeps scaling on OMP ≥ 2. The old single-path
+    // implementation paid this overhead even with OMP=1 — that cost is
+    // what the serial branch above reclaims.
+    std::vector<std::vector<std::pair<int, int>>> thread_pairs(n_threads);
+    for (int i = 0; i < n; ++i) result.numneigh[i] = 0;
+
+    #pragma omp parallel
+    {
+        int tid = 0;
+#ifdef _OPENMP
+        tid = omp_get_thread_num();
+#endif
+        auto& my_pairs = thread_pairs[tid];
+
+        std::vector<int> visited;
+        visited.reserve(27);
+
+        #pragma omp for schedule(dynamic)
+        for (int i = 0; i < n; ++i) {
+            const int ci = atom_cell_[i];
+            const int cz0 = ci % ncz_;
+            const int cy0 = (ci / ncz_) % ncy_;
+            const int cx0 = ci / (ncy_ * ncz_);
+
+            visited.clear();
+
+            for (auto s : full_stencil_) {
+                int cx = cx0 + s.di;
+                int cy = cy0 + s.dj;
+                int cz = cz0 + s.dk;
+
+                if (axis_extended_[0]) {
+                    if (cx < 0 || cx >= ncx_) continue;
+                } else {
+                    if (cx <  0)    cx += ncx_;
+                    if (cx >= ncx_) cx -= ncx_;
+                }
+                if (axis_extended_[1]) {
+                    if (cy < 0 || cy >= ncy_) continue;
+                } else {
+                    if (cy <  0)    cy += ncy_;
+                    if (cy >= ncy_) cy -= ncy_;
+                }
+                if (axis_extended_[2]) {
+                    if (cz < 0 || cz >= ncz_) continue;
+                } else {
+                    if (cz <  0)    cz += ncz_;
+                    if (cz >= ncz_) cz -= ncz_;
+                }
+
+                const int cj = cx * ncy_ * ncz_ + cy * ncz_ + cz;
+
                 bool seen = false;
                 for (int v : visited) if (v == cj) { seen = true; break; }
                 if (seen) continue;
@@ -324,7 +425,7 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
 
                 for (int idx = start; idx < end; ++idx) {
                     int j = binned_atoms_[idx];
-                    if (j <= i) continue;  // Half list: i < j
+                    if (j <= i) continue;
 
                     double dx = frame.atoms.x[i] - frame.atoms.x[j];
                     double dy = frame.atoms.y[i] - frame.atoms.y[j];
@@ -340,24 +441,17 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
         }
     }
 
-    // Merge per-thread pairs into CSR
-    // First count per atom
     for (auto& tp : thread_pairs)
         for (auto& [i, j] : tp)
             result.numneigh[i]++;
 
-    // Prefix sum for firstneigh
     result.firstneigh[0] = 0;
     for (int i = 1; i < n; ++i)
         result.firstneigh[i] = result.firstneigh[i - 1] + result.numneigh[i - 1];
 
     result.total_pairs = (n > 0) ? result.firstneigh[n - 1] + result.numneigh[n - 1] : 0;
-    // std::vector::resize preserves capacity when the new size is smaller
-    // than the old — steady-state rebuilds at a stable neighbor count do
-    // not re-enter the allocator. Growth is amortised O(1) per element.
     result.neighbors.resize(static_cast<std::size_t>(result.total_pairs));
 
-    // Write pointers (copy of firstneigh)
     auto write_ptr = result.firstneigh;
     for (auto& tp : thread_pairs) {
         for (auto& [i, j] : tp) {

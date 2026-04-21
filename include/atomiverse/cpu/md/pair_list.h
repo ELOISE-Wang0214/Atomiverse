@@ -43,6 +43,13 @@ struct PairList {
     std::vector<int> neighbors;            ///< Flat neighbor indices [total_pairs].
     int total_pairs = 0;                   ///< Total entries in neighbors[].
 
+    /// @brief Monotonic rebuild counter. `NeighborList::launch` bumps this by
+    /// 1 every time it actually re-enumerates the list. Consumers that cache
+    /// derived views (e.g. LJ's exclusion-filtered neighbor list) compare
+    /// against their last-seen value to decide whether their cache is stale.
+    /// Zero at `NeighborList::build`; never reset.
+    unsigned long long version = 0;
+
     /// @brief Zero-overhead pair iteration (half list).
     /// @tparam F Callable with signature void(int i, int j).
     template <typename F>

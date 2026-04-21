@@ -52,8 +52,13 @@ void HarmonicAngle::launch(const cpu::LaunchContext& ctx) {
 
     int n_atoms = f.atoms.size();
     double energy_total = 0;
+    // Angle virial: Σ_atoms r_α · F_β = d_ji_α · F_i_β + d_jk_α · F_k_β
+    // (centre-atom force F_j = -(F_i + F_k) drops out by Newton's 3rd).
+    double v_xx = 0, v_yy = 0, v_zz = 0, v_xy = 0, v_xz = 0, v_yz = 0;
 
-    #pragma omp parallel reduction(+:energy_total)
+    #pragma omp parallel reduction(+:energy_total) \
+        reduction(+:v_xx) reduction(+:v_yy) reduction(+:v_zz) \
+        reduction(+:v_xy) reduction(+:v_xz) reduction(+:v_yz)
     {
         int tid = 0;
 #ifdef _OPENMP
@@ -141,6 +146,16 @@ void HarmonicAngle::launch(const cpu::LaunchContext& ctx) {
             fxt[j] -= fi_x + fk_x;
             fyt[j] -= fi_y + fk_y;
             fzt[j] -= fi_z + fk_z;
+
+            // Virial contribution (d_ji · F_i + d_jk · F_k). Equivalent to
+            // Σ_atoms r · F once the centre-atom contribution cancels, so
+            // this is translation-invariant and safe under PBC.
+            v_xx += dx_ji * fi_x + dx_jk * fk_x;
+            v_yy += dy_ji * fi_y + dy_jk * fk_y;
+            v_zz += dz_ji * fi_z + dz_jk * fk_z;
+            v_xy += dx_ji * fi_y + dx_jk * fk_y;
+            v_xz += dx_ji * fi_z + dx_jk * fk_z;
+            v_yz += dy_ji * fi_z + dy_jk * fk_z;
         }
 
         #pragma omp for schedule(static)
@@ -154,6 +169,12 @@ void HarmonicAngle::launch(const cpu::LaunchContext& ctx) {
     }
 
     f.energy += energy_total;
+    f.stress[0] += v_xx;
+    f.stress[1] += v_yy;
+    f.stress[2] += v_zz;
+    f.stress[3] += v_xy;
+    f.stress[4] += v_xz;
+    f.stress[5] += v_yz;
 }
 
 void HarmonicAngle::destroy(const cpu::DestroyContext& ctx) {

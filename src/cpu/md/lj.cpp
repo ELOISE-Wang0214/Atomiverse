@@ -117,6 +117,47 @@ void LJ::build(const cpu::BuildContext& ctx) {
     }
 }
 
+void LJ::rebuild_filtered_list(const cpu::Frame& f, const PairList& pairs) {
+    // Walk the upstream CSR once, drop excluded pairs, write a dense CSR
+    // into `filtered_*`. Runs once per NL rebuild (~every `every` steps)
+    // amortizing the `tag_ptr[j]` gather + `binary_search` that the old
+    // in-kernel path paid on every launch × every pair.
+    const int n = pairs.inum;
+    filtered_inum_ = n;
+    filtered_numneigh_.assign(n, 0);
+    filtered_firstneigh_.assign(n, 0);
+    filtered_neighbors_.clear();
+    filtered_neighbors_.reserve(pairs.total_pairs);
+
+    const int* numneigh = pairs.numneigh.data();
+    const int* firstneigh = pairs.firstneigh.data();
+    const int* neighbors = pairs.neighbors.data();
+    const std::int64_t* tag = f.atoms.tag.data();
+
+    for (int i = 0; i < n; ++i) {
+        const std::int64_t i_tag = tag[i];
+        auto it = excluded_by_tag_.find(i_tag);
+        const std::vector<std::int64_t>* my_excl =
+            (it != excluded_by_tag_.end()) ? &it->second : nullptr;
+
+        const int off = firstneigh[i];
+        const int jn  = numneigh[i];
+        filtered_firstneigh_[i] = static_cast<int>(filtered_neighbors_.size());
+        int kept = 0;
+        for (int jj = 0; jj < jn; ++jj) {
+            const int j = neighbors[off + jj];
+            if (my_excl) {
+                const std::int64_t j_tag = tag[j];
+                if (std::binary_search(my_excl->begin(), my_excl->end(), j_tag))
+                    continue;
+            }
+            filtered_neighbors_.push_back(j);
+            ++kept;
+        }
+        filtered_numneigh_[i] = kept;
+    }
+}
+
 void LJ::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
     if (!ctx.runtime.pair_list) {
@@ -128,6 +169,30 @@ void LJ::launch(const cpu::LaunchContext& ctx) {
     const auto& box = f.box;
     int n = f.atoms.size();
     double energy_total = 0;
+
+    // Exclusion-filtered CSR (built once per NL rebuild). See
+    // `rebuild_filtered_list` for the invariant. When no exclusions are
+    // configured we iterate the upstream CSR directly — no copy, no
+    // allocation, no per-pair branch.
+    const bool use_filtered = !excluded_by_tag_.empty();
+    if (use_filtered && pairs.version != filtered_version_) {
+        rebuild_filtered_list(f, pairs);
+        filtered_version_ = pairs.version;
+    }
+    const int  k_inum       = use_filtered ? filtered_inum_
+                                           : pairs.inum;
+    const int* __restrict k_ilist     = use_filtered
+                                           ? nullptr  // contiguous 0..n-1
+                                           : pairs.ilist.data();
+    const int* __restrict k_numneigh  = use_filtered
+                                           ? filtered_numneigh_.data()
+                                           : pairs.numneigh.data();
+    const int* __restrict k_firstneigh= use_filtered
+                                           ? filtered_firstneigh_.data()
+                                           : pairs.firstneigh.data();
+    const int* __restrict k_neighbors = use_filtered
+                                           ? filtered_neighbors_.data()
+                                           : pairs.neighbors.data();
 
     // Pair virial accumulators (Voigt order: xx yy zz xy xz yz). Reduced
     // across OpenMP threads via OMP reduction; cross-rank reduction is
@@ -149,44 +214,74 @@ void LJ::launch(const cpu::LaunchContext& ctx) {
         std::fill(fyt.begin(), fyt.end(), double(0));
         std::fill(fzt.begin(), fzt.end(), double(0));
 
-        const bool has_exclusions = !excluded_by_tag_.empty();
+        // Hoist box edges + LJ constants to locals so the inner loop keeps
+        // them in registers instead of reloading the Mat3 / member fields
+        // on every pair.
+        const double lx = box(0, 0), ly = box(1, 1), lz = box(2, 2);
+        const double half_lx = double(0.5) * lx;
+        const double half_ly = double(0.5) * ly;
+        const double half_lz = double(0.5) * lz;
+        const double rc_sq = cutoff_sq_;
+        const double sig6 = sigma6_;
+        const double eps4 = double(4) * epsilon_;
+        const double eps24 = double(24) * epsilon_;
+        const double vshift = v_shift_;
+
+        // Raw pointers to the per-thread force arenas; indexing via
+        // `operator[]` on xtensor goes through a strided stride check on
+        // every access even for contiguous 1-D storage. `.data()` drops to
+        // a plain `double*` the compiler keeps in a register.
+        const double* __restrict x_ptr = f.atoms.x.data();
+        const double* __restrict y_ptr = f.atoms.y.data();
+        const double* __restrict z_ptr = f.atoms.z.data();
+        double* __restrict fxt_ptr = fxt.data();
+        double* __restrict fyt_ptr = fyt.data();
+        double* __restrict fzt_ptr = fzt.data();
 
         #pragma omp for schedule(static)
-        for (int ii = 0; ii < pairs.inum; ++ii) {
-            int i = pairs.ilist[ii];
-            int jnum = pairs.numneigh[i];
-            int off = pairs.firstneigh[i];
-            // Resolve owner i's tag once; lookup its excluded-tag set.
-            const std::vector<std::int64_t>* my_excl = nullptr;
-            if (has_exclusions) {
-                const std::int64_t i_tag = f.atoms.tag[i];
-                auto it = excluded_by_tag_.find(i_tag);
-                my_excl = (it != excluded_by_tag_.end()) ? &it->second : nullptr;
-            }
-            for (int jj = 0; jj < jnum; ++jj) {
-                int j = pairs.neighbors[off + jj];
-                if (my_excl) {
-                    const std::int64_t j_tag = f.atoms.tag[j];
-                    if (std::binary_search(my_excl->begin(), my_excl->end(), j_tag))
-                        continue;
-                }
-                double dx = f.atoms.x[i] - f.atoms.x[j];
-                double dy = f.atoms.y[i] - f.atoms.y[j];
-                double dz = f.atoms.z[i] - f.atoms.z[j];
-                minimum_image(dx, dy, dz, box);
-                double r2 = dx * dx + dy * dy + dz * dz;
-                if (r2 >= cutoff_sq_) continue;
+        for (int ii = 0; ii < k_inum; ++ii) {
+            // Filtered path: i == ii (neighbors are already pruned of
+            // excluded partners). Upstream path: `k_ilist[ii]` gives the
+            // owner atom index when NL builds a sparse subset.
+            const int i = use_filtered ? ii : k_ilist[ii];
+            const int jnum = k_numneigh[i];
+            const int off = k_firstneigh[i];
+            // Atom-i state hoisted into registers for the inner loop.
+            // `fi_*` accumulates Σ_j F_ij once; we store back to `fxt_ptr[i]`
+            // a single time at the end -- removes an `fxt[i] += ...` memory
+            // RMW per pair (~50 ns bubble per iter on Apple Silicon).
+            const double xi = x_ptr[i];
+            const double yi = y_ptr[i];
+            const double zi = z_ptr[i];
+            double fi_x = 0, fi_y = 0, fi_z = 0;
 
-                double r2inv = double(1) / r2;
-                double r6inv = r2inv * r2inv * r2inv * sigma6_;
-                double fpair = double(24) * epsilon_ * r2inv * (double(2) * r6inv * r6inv - r6inv);
+            for (int jj = 0; jj < jnum; ++jj) {
+                const int j = k_neighbors[off + jj];
+                double dx = xi - x_ptr[j];
+                double dy = yi - y_ptr[j];
+                double dz = zi - z_ptr[j];
+                if (dx >  half_lx) dx -= lx;
+                if (dx < -half_lx) dx += lx;
+                if (dy >  half_ly) dy -= ly;
+                if (dy < -half_ly) dy += ly;
+                if (dz >  half_lz) dz -= lz;
+                if (dz < -half_lz) dz += lz;
+                const double r2 = dx * dx + dy * dy + dz * dz;
+                if (r2 >= rc_sq) continue;
+
+                const double r2inv = double(1) / r2;
+                const double r6inv = r2inv * r2inv * r2inv * sig6;
+                const double fpair = eps24 * r2inv * (double(2) * r6inv * r6inv - r6inv);
 
                 const double fxp = fpair * dx;
                 const double fyp = fpair * dy;
                 const double fzp = fpair * dz;
-                fxt[i] += fxp;  fxt[j] -= fxp;
-                fyt[i] += fyp;  fyt[j] -= fyp;
-                fzt[i] += fzp;  fzt[j] -= fzp;
+                fi_x += fxp;
+                fi_y += fyp;
+                fi_z += fzp;
+                fxt_ptr[j] -= fxp;
+                fyt_ptr[j] -= fyp;
+                fzt_ptr[j] -= fzp;
 
                 // Pair virial contribution: σ_αβ += r_α · F_β. Half-list
                 // counts each pair once with the local owner as i, so this
@@ -199,8 +294,11 @@ void LJ::launch(const cpu::LaunchContext& ctx) {
                 v_xz += dx * fzp;
                 v_yz += dy * fzp;
 
-                energy_total += double(4) * epsilon_ * (r6inv * r6inv - r6inv) - v_shift_;
+                energy_total += eps4 * (r6inv * r6inv - r6inv) - vshift;
             }
+            fxt_ptr[i] += fi_x;
+            fyt_ptr[i] += fi_y;
+            fzt_ptr[i] += fi_z;
         }
 
         // Reduce per-thread forces into frame
@@ -228,6 +326,11 @@ void LJ::destroy(const cpu::DestroyContext& ctx) {
     fy_thr_.clear();
     fz_thr_.clear();
     excluded_by_tag_.clear();
+    filtered_neighbors_.clear();
+    filtered_numneigh_.clear();
+    filtered_firstneigh_.clear();
+    filtered_inum_ = 0;
+    filtered_version_ = 0;
 }
 
 } // namespace md

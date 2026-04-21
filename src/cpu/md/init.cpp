@@ -14,6 +14,9 @@
 #ifdef _OPENMP
 #include <omp.h>
 #endif
+#ifdef ATV_HAS_MPI
+#include <mpi.h>
+#endif
 
 namespace ATV {
 namespace cpu {
@@ -73,6 +76,49 @@ void KineticEnergy::launch(const cpu::LaunchContext& ctx) {
     }
 
     f.kinetic = double(0.5) * kMvv2e * ke;
+}
+
+// ── ZeroLinearMomentum ───────────────────────────────────────────
+
+void ZeroLinearMomentum::launch(const cpu::LaunchContext& ctx) {
+    if (step_++ % freq_ != 0) return;
+
+    auto& f = ctx.frame;
+    const int n = owned_count(ctx);
+
+    double p[3] = {0.0, 0.0, 0.0};
+    double mtot = 0.0;
+    for (int i = 0; i < n; ++i) {
+        const double m = f.atoms.mass[i];
+        p[0] += m * f.atoms.vx[i];
+        p[1] += m * f.atoms.vy[i];
+        p[2] += m * f.atoms.vz[i];
+        mtot += m;
+    }
+
+#ifdef ATV_HAS_MPI
+    if (ctx.runtime.mpi_size > 1 && ctx.runtime.dd
+        && ctx.runtime.dd->cart_comm != MPI_COMM_NULL) {
+        double local[4] = {p[0], p[1], p[2], mtot};
+        double global[4];
+        MPI_Allreduce(local, global, 4, MPI_DOUBLE, MPI_SUM,
+                      ctx.runtime.dd->cart_comm);
+        p[0] = global[0]; p[1] = global[1]; p[2] = global[2];
+        mtot = global[3];
+    }
+#endif
+    if (mtot <= 0.0) return;
+
+    const double vx = p[0] / mtot;
+    const double vy = p[1] / mtot;
+    const double vz = p[2] / mtot;
+
+    #pragma omp parallel for schedule(static)
+    for (int i = 0; i < n; ++i) {
+        f.atoms.vx[i] -= vx;
+        f.atoms.vy[i] -= vy;
+        f.atoms.vz[i] -= vz;
+    }
 }
 
 // ── InitVelocity ─────────────────────────────────────────────────

@@ -35,7 +35,12 @@ namespace {
 /// npt iso` guard and keeps the integrator stable without materially
 /// affecting the converged NPT ensemble (the clamp only bites during
 /// the first few steps of a poorly-initialised run).
-constexpr double kEpsDtMaxFraction = 0.1;
+// 0.5% per half-step ≈ 1% per step.  The clamp is only meant to fence
+// off the first few ill-conditioned equilibration steps of an
+// over-compressed start state; a well-initialised run sees `eps_dot·dt`
+// bounded by the barostat natural frequency `2π/tau_P ≈ 2×10⁻³` at
+// `tau_P=1000 fs`, comfortably below this fence.
+constexpr double kEpsDtMaxFraction = 0.005;
 
 // sinh(x)/x with stable Taylor branch near 0.
 inline double sinhc(double x) {
@@ -50,7 +55,8 @@ inline double sinhc(double x) {
 
 NoseHooverNPT::NoseHooverNPT(Config cfg)
     : T_target_(cfg.T_target), tau_T_(cfg.tau_T),
-      P_target_(cfg.P_target), tau_P_(cfg.tau_P), dt_(cfg.dt) {}
+      P_target_(cfg.P_target), tau_P_(cfg.tau_P), dt_(cfg.dt),
+      drag_(cfg.drag), mtchain_(cfg.mtchain), mpchain_(cfg.mpchain) {}
 
 void NoseHooverNPT::build(const cpu::BuildContext& ctx) {
     // atoms.size() at build time = global N (set by user before
@@ -60,9 +66,43 @@ void NoseHooverNPT::build(const cpu::BuildContext& ctx) {
     kT_    = kBoltzmann * T_target_;
 
     // Standard MTK masses (Tuckerman 2006 §III).
-    Q_t_ = static_cast<double>(n_dof_) * kT_ * tau_T_ * tau_T_;
-    Q_b_ = kT_ * tau_T_ * tau_T_;
-    W_   = (static_cast<double>(n_dof_) + 3.0) * kT_ * tau_P_ * tau_P_;
+    //   Q_t[0] = N_f kT tau_T^2 drives the full KE reservoir;
+    //   Q_t[k] = kT tau_T^2  for k >= 1  thermostats the previous link.
+    Q_t_.assign(static_cast<std::size_t>(mtchain_), 0.0);
+    Q_b_.assign(static_cast<std::size_t>(mpchain_), 0.0);
+    eta_t_.assign(static_cast<std::size_t>(mtchain_), 0.0);
+    eta_t_dot_.assign(static_cast<std::size_t>(mtchain_), 0.0);
+    eta_b_.assign(static_cast<std::size_t>(mpchain_), 0.0);
+    eta_b_dot_.assign(static_cast<std::size_t>(mpchain_), 0.0);
+
+    const double tau_T2 = tau_T_ * tau_T_;
+    const double tau_P2 = tau_P_ * tau_P_;
+    Q_t_[0] = static_cast<double>(n_dof_) * kT_ * tau_T2;
+    for (int k = 1; k < mtchain_; ++k) Q_t_[static_cast<std::size_t>(k)] = kT_ * tau_T2;
+    Q_b_[0] = kT_ * tau_P2;                    // baro-NHC driven by eps_dot KE
+    for (int k = 1; k < mpchain_; ++k) Q_b_[static_cast<std::size_t>(k)] = kT_ * tau_P2;
+
+    // Barostat mass: MTK-consistent `(N_f + d) kT τ_P²` (Tuckerman 2006
+    // Eq. 5.6.22). Numerically equivalent to LAMMPS `(N+1) kT τ_P²`
+    // once our `3V` G_ε factor is balanced against LAMMPS's `V` factor
+    // (both give `d ε̇ /dt ≈ V P / (N kT τ_P²)` in the large-N limit).
+    W_ = (static_cast<double>(n_dof_) + 3.0) * kT_ * tau_P2;
+
+    // LAMMPS-style empirical drag on *every* chain link of the backward
+    // sweep. Matches `fix_nh.cpp::nhc_temp_integrate` (line ~2063–2076):
+    //
+    //     tdrag_factor = 1 - drag * update->dt * t_freq / nc_tchain
+    //                  = 1 - drag * dt / tau_T   (with nc_tchain=1)
+    //
+    // and is multiplied into each `eta_dot[ich]` for `ich = mtchain-1 .. 0`
+    // after the accelerated-then-exp-scaled update. An early Atomiverse
+    // version applied `tdrag_factor` only to the innermost link with
+    // `half_dt`, which was ~6x weaker damping (fewer links × half the
+    // magnitude) and let chain oscillations ring on stiff-bond systems
+    // (amorphous PE Stage 2) until atoms overlapped. LAMMPS's per-link
+    // drag kills that mode.
+    tdrag_factor_ = 1.0 - drag_ * dt_ / tau_T_;
+    pdrag_factor_ = 1.0 - drag_ * dt_ / tau_P_;
 
     // Initial KE at equipartition — used in step 0's first NHC update
     // before any velocity update has produced a real KE_global_.
@@ -94,17 +134,47 @@ double NoseHooverNPT::compute_global_KE(const cpu::LaunchContext& ctx) const {
 }
 
 void NoseHooverNPT::nhc_atoms_half(const cpu::LaunchContext& ctx, double half_dt) {
-    // Tuckerman 2006 single-chain step.
+    // M-chain NHC half-step, mirroring LAMMPS `fix_nh.cpp::nhc_temp_integrate`
+    // (release branch). Per-link structure inside the backward sweep:
+    //
+    //     eta_dot[k] *= expfac           // pre-scale by outer link
+    //     eta_dot[k] += G_k * dt/4       // accelerate
+    //     eta_dot[k] *= tdrag_factor     // *** drag at every link ***
+    //     eta_dot[k] *= expfac           // post-scale by outer link
+    //
+    // with `expfac = exp(-dt/8 * eta_dot[k+1])`; for the outermost link
+    // (k = M-1) the "next" link `eta_dot[M]` is a zero sentinel, so
+    // `expfac = 1` and the two scalings are no-ops — drag and G still
+    // apply. The forward sweep re-runs the same structure with the
+    // post-scale KE, minus drag (LAMMPS does not damp on the way out).
     const double quarter_dt = 0.5 * half_dt;
+    const double eighth_dt  = 0.5 * quarter_dt;
     auto& f = ctx.frame;
     const int n = owned_count(ctx);
+    const int M = mtchain_;
 
-    // --- update eta_t_dot using current KE ---
-    double G = (2.0 * KE_global_ - n_dof_ * kT_) / Q_t_;
-    eta_t_dot_ += G * quarter_dt;
+    auto G_t = [&](int k) -> double {
+        if (k == 0)
+            return (2.0 * KE_global_ - n_dof_ * kT_) / Q_t_[0];
+        return (Q_t_[static_cast<std::size_t>(k - 1)]
+                  * eta_t_dot_[static_cast<std::size_t>(k - 1)]
+                  * eta_t_dot_[static_cast<std::size_t>(k - 1)] - kT_)
+                / Q_t_[static_cast<std::size_t>(k)];
+    };
 
-    // --- scale velocities ---
-    const double scale = std::exp(-eta_t_dot_ * half_dt);
+    // Backward pass: M-1 → 0. Drag applied at every link.
+    for (int k = M - 1; k >= 0; --k) {
+        const double expfac = (k < M - 1)
+            ? std::exp(-eta_t_dot_[static_cast<std::size_t>(k + 1)] * eighth_dt)
+            : 1.0;
+        eta_t_dot_[static_cast<std::size_t>(k)] *= expfac;
+        eta_t_dot_[static_cast<std::size_t>(k)] += G_t(k) * quarter_dt;
+        eta_t_dot_[static_cast<std::size_t>(k)] *= tdrag_factor_;
+        eta_t_dot_[static_cast<std::size_t>(k)] *= expfac;
+    }
+
+    // Scale atom velocities by the innermost thermostat momentum.
+    const double scale = std::exp(-eta_t_dot_[0] * half_dt);
     #pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
         f.atoms.vx[i] *= scale;
@@ -113,27 +183,67 @@ void NoseHooverNPT::nhc_atoms_half(const cpu::LaunchContext& ctx, double half_dt
     }
     KE_global_ *= scale * scale;
 
-    // --- propagate eta_t (informational, no force on it) ---
-    eta_t_ += eta_t_dot_ * half_dt;
+    // Propagate the chain positions.
+    for (int k = 0; k < M; ++k)
+        eta_t_[static_cast<std::size_t>(k)] +=
+            eta_t_dot_[static_cast<std::size_t>(k)] * half_dt;
 
-    // --- recompute G with new KE, update eta_t_dot again ---
-    G = (2.0 * KE_global_ - n_dof_ * kT_) / Q_t_;
-    eta_t_dot_ += G * quarter_dt;
+    // Forward pass: 0 → M-1. No drag (LAMMPS pattern).
+    for (int k = 0; k < M; ++k) {
+        const double expfac = (k < M - 1)
+            ? std::exp(-eta_t_dot_[static_cast<std::size_t>(k + 1)] * eighth_dt)
+            : 1.0;
+        eta_t_dot_[static_cast<std::size_t>(k)] *= expfac;
+        eta_t_dot_[static_cast<std::size_t>(k)] += G_t(k) * quarter_dt;
+        eta_t_dot_[static_cast<std::size_t>(k)] *= expfac;
+    }
 }
 
 void NoseHooverNPT::nhc_baro_half(double half_dt) {
+    // Same M-chain pattern as `nhc_atoms_half`, but the innermost link
+    // thermostats the barostat momentum `eps_dot` instead of atom KE.
+    // Drag (`pdrag_factor`) is applied at every link in the backward
+    // sweep and dropped in the forward sweep, matching LAMMPS
+    // `fix_nh.cpp::nhc_press_integrate`.
     const double quarter_dt = 0.5 * half_dt;
+    const double eighth_dt  = 0.5 * quarter_dt;
+    const int M = mpchain_;
 
-    double G = (W_ * eps_dot_ * eps_dot_ - kT_) / Q_b_;
-    eta_b_dot_ += G * quarter_dt;
+    auto G_b = [&](int k) -> double {
+        if (k == 0) return (W_ * eps_dot_ * eps_dot_ - kT_) / Q_b_[0];
+        return (Q_b_[static_cast<std::size_t>(k - 1)]
+                  * eta_b_dot_[static_cast<std::size_t>(k - 1)]
+                  * eta_b_dot_[static_cast<std::size_t>(k - 1)] - kT_)
+                / Q_b_[static_cast<std::size_t>(k)];
+    };
 
-    const double scale = std::exp(-eta_b_dot_ * half_dt);
-    eps_dot_ *= scale;
+    // Backward pass with per-link drag.
+    for (int k = M - 1; k >= 0; --k) {
+        const double expfac = (k < M - 1)
+            ? std::exp(-eta_b_dot_[static_cast<std::size_t>(k + 1)] * eighth_dt)
+            : 1.0;
+        eta_b_dot_[static_cast<std::size_t>(k)] *= expfac;
+        eta_b_dot_[static_cast<std::size_t>(k)] += G_b(k) * quarter_dt;
+        eta_b_dot_[static_cast<std::size_t>(k)] *= pdrag_factor_;
+        eta_b_dot_[static_cast<std::size_t>(k)] *= expfac;
+    }
 
-    eta_b_ += eta_b_dot_ * half_dt;
+    // Scale the box-volume momentum by the innermost baro-thermostat.
+    eps_dot_ *= std::exp(-eta_b_dot_[0] * half_dt);
 
-    G = (W_ * eps_dot_ * eps_dot_ - kT_) / Q_b_;
-    eta_b_dot_ += G * quarter_dt;
+    for (int k = 0; k < M; ++k)
+        eta_b_[static_cast<std::size_t>(k)] +=
+            eta_b_dot_[static_cast<std::size_t>(k)] * half_dt;
+
+    // Forward pass, no drag.
+    for (int k = 0; k < M; ++k) {
+        const double expfac = (k < M - 1)
+            ? std::exp(-eta_b_dot_[static_cast<std::size_t>(k + 1)] * eighth_dt)
+            : 1.0;
+        eta_b_dot_[static_cast<std::size_t>(k)] *= expfac;
+        eta_b_dot_[static_cast<std::size_t>(k)] += G_b(k) * quarter_dt;
+        eta_b_dot_[static_cast<std::size_t>(k)] *= expfac;
+    }
 }
 
 void NoseHooverNPT::update_eps_dot(const cpu::LaunchContext& ctx, double half_dt) {

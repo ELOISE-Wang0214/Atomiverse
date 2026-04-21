@@ -52,4 +52,4 @@ fi
 
 echo "[run.sh] launching $NP ranks"
 exec mpiexec -n "$NP" --oversubscribe "$BIN" \
-    --data "$DATA" --log "$LOG" "${EXTRA[@]}"
+    --data "$DATA" --log "$LOG" ${EXTRA[@]+"${EXTRA[@]}"}

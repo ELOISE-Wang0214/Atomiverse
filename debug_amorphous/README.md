@@ -40,7 +40,14 @@ verbatim.
 | Stage | LAMMPS | Atomiverse mapping |
 |---|---|---|
 | 1 | `fix nve/limit 0.05` + `fix langevin T=500 τ=10 fs`, dt=1 fs, 10 000 steps | `cpu::md::NVELimit{1, 0.05}` + `cpu::md::FixLangevin{500, 10, 1, 904297}` |
-| 2 | `fix npt T=500 P=0 τ_T=50 τ_P=1000`, dt=0.5 fs, 50 000 steps | `cpu::md::NoseHooverNPT{500, 100, 0, 1000, 0.5}` (single-chain MTK isotropic) |
+| 2 | `fix npt T=500 τ_T=50 iso P=0 τ_P=1000 drag 2` (mtchain=mpchain=3) + `fix momentum 1 linear 1 1 1`, dt=0.5 fs, 50 000 steps | `cpu::md::NoseHooverNPT{.T=500, .tau_T=50, .P=0, .tau_P=1000, .drag=2, .mtchain=3, .mpchain=3, .dt=0.5}` + `cpu::md::ZeroLinearMomentum{1}` |
+
+**Algorithm match rule.** Both stages use the exact same thermostat /
+barostat family on both sides — Stage 1 Langevin vs Langevin, Stage 2
+MTK-iso NHC vs MTK-iso NHC. No Langevin-vs-NHC or Berendsen-vs-NHC
+mixing. `NoseHooverNPT` supports the LAMMPS `drag` flag and chain
+lengths (`mtchain`, `mpchain`) so every tunable in `fix npt iso` maps
+1:1.
 
 ## Build
 
@@ -69,11 +76,16 @@ The runner writes thermo every 100 steps to `log.atomiverse.txt` in a
 LAMMPS-comparable format:
 
 ```
-#       Step          Temp        Press[atm]      PotE[eV]      KinE[eV]        Lx        Ly        Lz
-         0     8590.97  -1.7663e+08    14311222   11103.59    80.0586    80.0586    80.0586
-       100      972.96  -1.7250e+11  1.3995e+10   1257.52    80.0586    80.0586    80.0586
+#       Step           Temp     Press[atm]       PotE[eV]       KinE[eV]     EtotE[eV]    Dens[g/cc]      Vol[A^3]        Lx        Ly        Lz
+         0      10658.80  1.9296393e+08       15632920      13776.189       15646697     0.453705      513125.94    80.0586    80.0586    80.0586
+       100        836.45      58125.806      6589.9213      1081.0836      7671.0048     0.453705      513125.94    80.0586    80.0586    80.0586
        ...
 ```
+
+Columns mirror LAMMPS `thermo_style custom step temp press pe ke etotal
+density vol lx ly lz`. The only unit difference is energy: LAMMPS
+logs kcal/mol ('real' units); we log eV (`kKcalPerMolToEv = 1 /
+23.060547830619026` is the conversion `compare.py` applies on read).
 
 ## Compare
 
@@ -81,28 +93,34 @@ LAMMPS-comparable format:
 python3 debug_amorphous/compare.py
 ```
 
-Output: side-by-side LAMMPS vs Atomiverse T(step), P(step), Lx(step) plots
-in `compare.png` plus a text summary table on stdout.
+Output: `compare.png` with one row per observable, one column per
+stage (T, P, PE, KE, E_total, ρ, v_rms), plus a text summary table
+on stdout. `v_rms = sqrt(2·KE / (M_total·kMvv2e))` is derived identically
+on both sides from the KE column, so it visualises the same data as
+the KE panel but in Å/fs.
 
 ## Known caveats
 
-- **Stage 1 transients**: LAMMPS step 0 is reported BEFORE any
-  integration; Atomiverse step 0 is reported AFTER the first step and
-  reflects the strong relaxation kick from the over-compressed initial
-  state. The two engines agree closely from step ≳ 200 onward.
-- **Stage 2 transients**: Atomiverse's `NoseHooverNPT` is a
-  single-chain MTK NHC; LAMMPS uses 3-chain by default. Single-chain
-  oscillates more visibly during equilibration (T spikes of a few
-  thousand K early on, plateau-and-overshoot pattern around the
-  thermostat half-period of `tau_T`). Equilibrium ⟨T⟩ and ⟨P⟩ should
-  match the LAMMPS canonical values within statistical error after
-  ~5 × tau_T integration time.
-- **Pressure sign**: Atomiverse stores stress as
-  σ_phys×(−1) internally; the runner inverts on output so the printed
-  number is in the LAMMPS sign convention (positive = compression).
-- **Dynamics divergence**: LAMMPS Langevin and Atomiverse's custom
-  Langevin use independent random streams, so individual trajectories
-  differ; only ensemble averages are expected to match.
+- **Stage 1 step-0 offset**: LAMMPS reports step 0 BEFORE any integration
+  (so T == the `velocity create` target, P == the raw initial virial);
+  Atomiverse reports step 0 AFTER the first NVE/limit step, which clamps
+  the displacement-per-atom to ≤ 0.05 Å and absorbs most of the initial
+  LJ blow-up. The two engines agree closely from step ≳ 200 onward.
+- **Pressure sign convention**: `frame.stress[0..2]` stores the
+  compression-positive virial directly (Atomiverse matches LAMMPS).
+  The runner's `ThermoPrinter` prints that sum as a positive pressure
+  (compression > 0) so the output is line-comparable to LAMMPS's
+  `thermo_style custom ... press`. The `Barostat` and `NoseHooverNPT`
+  components apply their own sign-flipped formula internally — they
+  see the same virial but subtract instead of add in the pressure
+  expression; both outcomes (physical expansion under compression,
+  physical compression under tension) match LAMMPS.
+- **Dynamics divergence**: LAMMPS Langevin (RanMars stream, seed 904297)
+  and Atomiverse's splitmix-per-(seed,step,tag) Langevin use independent
+  random streams, so individual Stage 1 trajectories differ pointwise;
+  ⟨T⟩ and ⟨P⟩ match within statistical noise. Stage 2's NHC NPT is
+  deterministic on both sides, so Stage 2 should match pointwise once
+  the Stage-1 RNG-induced divergence has been absorbed.
 - **Inter-stage handoff**: each driver creates its own
   `DomainDecomposition`, so we explicitly `MPI_Allgatherv` the per-rank
   owners back to every rank between stages (`gather_frame.h`).

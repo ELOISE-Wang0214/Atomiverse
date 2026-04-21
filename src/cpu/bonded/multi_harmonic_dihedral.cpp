@@ -61,8 +61,15 @@ void MultiHarmonicDihedral::launch(const cpu::LaunchContext& ctx) {
 
     int n_atoms = f.atoms.size();
     double energy_total = 0;
+    // Dihedral virial: rewriting Σ_atoms r_α·F_β with r_i2 as reference
+    // (and Newton's 3rd F_i2 = -(F_i1+F_i3+F_i4)) gives
+    //   virial = -b1·F1 + b2·(F3+F4) + b3·F4
+    // which is translation/PBC-invariant.
+    double v_xx = 0, v_yy = 0, v_zz = 0, v_xy = 0, v_xz = 0, v_yz = 0;
 
-    #pragma omp parallel reduction(+:energy_total)
+    #pragma omp parallel reduction(+:energy_total) \
+        reduction(+:v_xx) reduction(+:v_yy) reduction(+:v_zz) \
+        reduction(+:v_xy) reduction(+:v_xz) reduction(+:v_yz)
     {
         int tid = 0;
 #ifdef _OPENMP
@@ -211,6 +218,14 @@ void MultiHarmonicDihedral::launch(const cpu::LaunchContext& ctx) {
             fxt[i2] += f2x; fyt[i2] += f2y; fzt[i2] += f2z;
             fxt[i3] += f3x; fyt[i3] += f3y; fzt[i3] += f3z;
             fxt[i4] += f4x; fyt[i4] += f4y; fzt[i4] += f4z;
+
+            // Virial per dihedral (see comment above loop).
+            v_xx += -b1x*f1x + b2x*(f3x+f4x) + b3x*f4x;
+            v_yy += -b1y*f1y + b2y*(f3y+f4y) + b3y*f4y;
+            v_zz += -b1z*f1z + b2z*(f3z+f4z) + b3z*f4z;
+            v_xy += -b1x*f1y + b2x*(f3y+f4y) + b3x*f4y;
+            v_xz += -b1x*f1z + b2x*(f3z+f4z) + b3x*f4z;
+            v_yz += -b1y*f1z + b2y*(f3z+f4z) + b3y*f4z;
         }
 
         #pragma omp for schedule(static)
@@ -224,6 +239,12 @@ void MultiHarmonicDihedral::launch(const cpu::LaunchContext& ctx) {
     }
 
     f.energy += energy_total;
+    f.stress[0] += v_xx;
+    f.stress[1] += v_yy;
+    f.stress[2] += v_zz;
+    f.stress[3] += v_xy;
+    f.stress[4] += v_xz;
+    f.stress[5] += v_yz;
 }
 
 void MultiHarmonicDihedral::destroy(const cpu::DestroyContext& ctx) {

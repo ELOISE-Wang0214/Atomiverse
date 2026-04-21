@@ -14,14 +14,17 @@ namespace ATV {
 namespace cpu {
 namespace md {
 
-/// @brief Single-chain Martyna-Tobias-Klein isotropic NPT integrator.
+/// @brief Martyna-Tobias-Klein isotropic NPT integrator with M-chain NHC.
 ///
 /// Mirrors LAMMPS `fix npt temp T_target T_target tau_T iso P_target
-/// P_target tau_P` (the isotropic-cell variant of `fix_nh.cpp`) but with
-/// **single thermostat chains** rather than the LAMMPS default of length 3.
-/// For systems large enough that the chain length is statistically
-/// irrelevant (which is the regime where one would compare the two
-/// codes), the ensemble averages match those of LAMMPS.
+/// P_target tau_P mtk`. Each of the two NHC objects (one for the atom
+/// KE, one for the barostat KE) is a **Nosé-Hoover chain of length M**
+/// (default `M = 3`, matching LAMMPS `mtchain`/`mpchain`). The chain
+/// provides natural damping of the innermost thermostat-momentum
+/// oscillation that a single-chain integrator cannot absorb, which is
+/// what keeps an over-compressed start-state (large `P_target − P_int`)
+/// from producing the 8000 K-then-freeze ringing the debug_amorphous
+/// harness exhibited under length-1 chains.
 ///
 /// Algorithm (Tuckerman 2006, *J. Phys. A* 39, 5629; Shinoda 2004,
 /// *Phys. Rev. B* 69, 134103):
@@ -75,6 +78,13 @@ public:
                           ///  (`-trace/(3V)`); pass 0 for "atmospheric".
         double tau_P;     ///< Barostat coupling time [fs] (LAMMPS `Pdamp`).
         double dt;        ///< Timestep [fs].
+        double drag = 0.0;  ///< LAMMPS-style empirical drag on the
+                            ///  innermost thermostat and barostat NHC
+                            ///  momenta (applied at each chain update as
+                            ///  `eta_dot[0] *= 1 - drag*half_dt/tau`).
+                            ///  Zero disables. `fix npt ... drag 2`.
+        int mtchain = 3;    ///< Atom-NHC chain length. LAMMPS default 3.
+        int mpchain = 3;    ///< Baro-NHC chain length. LAMMPS default 3.
     };
 
     /// @param cfg Aggregate NPT configuration. See `Config` for units.
@@ -96,20 +106,27 @@ private:
     double P_target_;
     double tau_P_;
     double dt_;
+    double drag_;
+    int    mtchain_;
+    int    mpchain_;
+
+    // Derived in build(): (1 - drag * half_dt / tau). `1.0` = no drag.
+    double tdrag_factor_ = 1.0;
+    double pdrag_factor_ = 1.0;
 
     // Derived in build()
     int    n_dof_   = 0;     ///< 3N - 3 (COM removed)
     double kT_      = 0.0;   ///< kB · T_target [eV]
-    double Q_t_     = 0.0;   ///< Atom-thermostat mass [eV·fs²]
-    double Q_b_     = 0.0;   ///< Baro-thermostat mass [eV·fs²]
+    std::vector<double> Q_t_; ///< Atom-NHC masses per chain link [eV·fs²]
+    std::vector<double> Q_b_; ///< Baro-NHC masses per chain link [eV·fs²]
     double W_       = 0.0;   ///< Barostat mass [eV·fs²]
 
     // Extended-Lagrangian state (per-step)
-    double eta_t_dot_ = 0.0; ///< Atom-thermostat momentum [1/fs]
-    double eta_t_     = 0.0; ///< Atom-thermostat position
-    double eta_b_dot_ = 0.0; ///< Baro-thermostat momentum [1/fs]
-    double eta_b_     = 0.0; ///< Baro-thermostat position
-    double eps_dot_   = 0.0; ///< Box log-volume momentum [1/fs]
+    std::vector<double> eta_t_dot_; ///< Atom-NHC momenta [1/fs]
+    std::vector<double> eta_t_;     ///< Atom-NHC positions
+    std::vector<double> eta_b_dot_; ///< Baro-NHC momenta [1/fs]
+    std::vector<double> eta_b_;     ///< Baro-NHC positions
+    double eps_dot_   = 0.0;        ///< Box log-volume momentum [1/fs]
 
     // Cached global kinetic energy carried between phases
     double KE_global_ = 0.0; ///< 0.5 · Σ m·v² (global, eV)
