@@ -108,6 +108,13 @@ public:
     /// @param out PairList whose buffers are overwritten in place.
     void refresh_full(const cpu::Frame& frame, int n_active, PairList& out) const;
 
+    /// @brief Number of active atoms at the last `build()` / `refresh_*`
+    /// call, or `-1` before the first build. `NeighborList::launch` uses
+    /// this to detect whether an upstream `AtomMigration` has changed the
+    /// owner count and force a rebuild even when the displacement skin
+    /// check would have skipped it.
+    int n_at_last_build() const { return n_at_last_build_; }
+
 private:
     double cutoff_, skin_, cutoff_skin_;
 

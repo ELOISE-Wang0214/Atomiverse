@@ -4,18 +4,14 @@
 ///
 /// Prior to the arena refactor, `NeighborList::launch` ran
 /// `pairs_ = strategy_.build_half(...)` every step, which re-created the
-/// `xt::xtensor` arrays and the flat `neighbors` buffer fresh each call.
-/// That violated the "no allocation in `launch()`" component-lifecycle
-/// rule.
+/// CSR arrays and the flat `neighbors` buffer fresh each call. That
+/// violated the "no allocation in `launch()`" component-lifecycle rule.
 ///
 /// This test drives `CellList::refresh_half` directly against a stable
 /// frame and asserts that, after one warmup rebuild, **no subsequent call
-/// moves** the backing storage of any PairList array:
-///   - `ilist`, `numneigh`, `firstneigh` report the same `.data()`
-///     pointer on every subsequent rebuild (xtensor uvector did not
-///     reallocate).
-///   - `neighbors.data()` and `neighbors.capacity()` are unchanged
-///     (std::vector did not reallocate under its amortised-growth policy).
+/// moves** the backing storage of any PairList array. All four arrays
+/// (`ilist`, `numneigh`, `firstneigh`, `neighbors`) are `std::vector<int>`
+/// and should stay at their amortised capacity without reallocation.
 
 #include <gtest/gtest.h>
 
@@ -89,8 +85,7 @@ TEST(NeighborListArena, RefreshHalfReusesBuffersInSteadyState) {
             << " despite identical frame";
 
         EXPECT_EQ(pairs.ilist.data(), ilist_ptr)
-            << "ilist backing storage moved on step " << step
-            << " (xtensor reallocated)";
+            << "ilist backing storage moved on step " << step;
         EXPECT_EQ(pairs.numneigh.data(), numneigh_ptr)
             << "numneigh backing storage moved on step " << step;
         EXPECT_EQ(pairs.firstneigh.data(), firstneigh_ptr)

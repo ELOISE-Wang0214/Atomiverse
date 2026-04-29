@@ -34,6 +34,7 @@
 /// @see .claude/specs/parallel-md-engine.md  § A.4, A.5
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -83,7 +84,14 @@ public:
     ///        `frame.bonds/angles/dihedrals` computed once at `build()`.
     ///        When `cutoff >= bonded_extension` the bonded scan has no
     ///        effect (pair cutoff already dominates).
-    explicit HaloExchangeForward(double cutoff);
+    /// @param every Interval (in steps) between **full** rebuilds of
+    ///        per-face send lists and ghost-slot assignments. On steps
+    ///        between rebuilds the halo only refreshes ghost positions
+    ///        for the existing send lists -- slot indices stay stable
+    ///        so the downstream neighbor list remains reusable. Matches
+    ///        LAMMPS's reneighboring cadence. Default 10 lines up with
+    ///        `NeighborList`'s default `every=10`.
+    explicit HaloExchangeForward(double cutoff, int every = 10);
 
     // unique_ptr<incomplete type> needs user-defined special members,
     // defined in the .cpp where detail::FaceBufs is complete.
@@ -144,6 +152,14 @@ private:
     double cutoff_ = 0.0;
     double bonded_extension_ = 0.0;
     std::unique_ptr<detail::FaceBufs> bufs_;
+
+    // Reneighboring cadence. On `ago_ >= every_` or when migration bumps
+    // `dd->neighbor_generation`, the next `launch()` does a full rebuild
+    // of per-face send lists and ghost-slot assignments. Otherwise the
+    // launch reuses existing send lists and only refreshes ghost x/y/z.
+    int every_ = 10;
+    int ago_ = 0;
+    std::uint64_t last_rebuild_generation_ = 0;
 };
 
 /// @brief Reverse pass: ghost-row forces → owner's force arrays.

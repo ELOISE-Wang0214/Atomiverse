@@ -15,6 +15,7 @@
 #include <numeric>
 #include <vector>
 
+#include "atomiverse/core/log.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/mpi/domain.h"
 
@@ -49,7 +50,8 @@ struct FaceBufs {
 // ── Special members (defined here so the PIMPL dtor sees complete FaceBufs) ──
 
 HaloExchangeForward::HaloExchangeForward() = default;
-HaloExchangeForward::HaloExchangeForward(double cutoff) : cutoff_(cutoff) {}
+HaloExchangeForward::HaloExchangeForward(double cutoff, int every)
+    : cutoff_(cutoff), every_(every < 1 ? 1 : every) {}
 HaloExchangeForward::~HaloExchangeForward() = default;
 HaloExchangeForward::HaloExchangeForward(HaloExchangeForward&&) noexcept = default;
 HaloExchangeForward& HaloExchangeForward::operator=(HaloExchangeForward&&) noexcept = default;
@@ -221,6 +223,7 @@ void rebuild_send_lists(const Frame& frame, DomainDecomposition& dd, double cuto
 /// the per-face PBC shift to the packed coordinate for atoms whose owner
 /// sits on the periodic edge along the send direction.
 constexpr int kPosTagDoublesPerAtom = 4;
+constexpr int kPosOnlyDoublesPerAtom = 3;
 
 void pack_positions_for_face(const Frame& frame, const DomainDecomposition& dd,
                               int f, std::vector<double>& buf) {
@@ -247,6 +250,35 @@ void pack_positions_for_face(const Frame& frame, const DomainDecomposition& dd,
         buf[off + 1] = yi;
         buf[off + 2] = zi;
         buf[off + 3] = static_cast<double>(tag[i]);
+    }
+}
+
+/// @brief Pack only `(x,y,z)` for face `f` (position-only refresh between
+/// reneighbor events). Ghost slot indices on the receiver stay fixed, so
+/// we do not re-send tags.
+void pack_positions_only_for_face(const Frame& frame, const DomainDecomposition& dd,
+                                    int f, std::vector<double>& buf) {
+    const auto& list = dd.send_lists[f];
+    const int n = static_cast<int>(list.size());
+    buf.resize(static_cast<std::size_t>(n) * kPosOnlyDoublesPerAtom);
+
+    const int dim = face_dim(f);
+    const double shift = pbc_shift_for_face(dd, f, frame.box(dim, dim));
+
+    const double* x = frame.atoms.x.data();
+    const double* y = frame.atoms.y.data();
+    const double* z = frame.atoms.z.data();
+
+    for (int k = 0; k < n; ++k) {
+        const int i = list[static_cast<std::size_t>(k)];
+        double xi = x[i], yi = y[i], zi = z[i];
+        if (dim == 0) xi += shift;
+        else if (dim == 1) yi += shift;
+        else if (dim == 2) zi += shift;
+        const std::size_t off = static_cast<std::size_t>(k) * kPosOnlyDoublesPerAtom;
+        buf[off + 0] = xi;
+        buf[off + 1] = yi;
+        buf[off + 2] = zi;
     }
 }
 
@@ -299,60 +331,166 @@ void HaloExchangeForward::launch(const cpu::LaunchContext& ctx) {
     Frame& frame = ctx.frame;
     FaceBufs& bufs = *bufs_;
 
-    // Roll back the previous step's ghost tag→slot entries before we
-    // overwrite the ghost rows. Owners are not touched here.
-    for (auto t : dd->ghost_tags) {
-        dd->tag_to_local.erase(t);
-    }
-    dd->ghost_tags.clear();
+    // Decide whether this step needs a full rebuild of per-face send lists
+    // and ghost-slot assignments. LAMMPS-style cadence: rebuild every
+    // `every_` steps, plus any step where migration has bumped the
+    // neighbor generation (owner indices changed → any saved send_list is
+    // stale). In between, only ghost positions are refreshed; slot indices
+    // and the tag→slot map carry through unchanged, which lets downstream
+    // `NeighborList` reuse its CSR from the last reneighbor step.
+    ++ago_;
+    const bool generation_changed =
+        dd->neighbor_generation != last_rebuild_generation_;
+    const bool full_rebuild = generation_changed || (ago_ >= every_);
 
-    // Effective halo = max(pair cutoff, bonded skin): the wider of the
-    // two is sufficient for both pair partners and bonded-tuple members
-    // near the boundary.
-    const double halo_cut = (cutoff_ > bonded_extension_)
-                                ? cutoff_ : bonded_extension_;
-    rebuild_send_lists(frame, *dd, halo_cut);
-
-    // When `dims[dim] == 1` the face neighbors along that dim are *this
-    // rank itself* (periodic self-wrap). OpenMPI 5.0.x on macOS occasionally
-    // traps on self-Isend/Irecv patterns; mathematically the self-exchange
-    // is a copy-from-myself anyway, so we short-circuit it: the atoms
-    // already live in our slab. Short-circuit means `recv_counts[f] == 0`
-    // and no MPI requests posted for that face.
     int my_rank = 0;
     MPI_Comm_rank(dd->cart_comm, &my_rank);
 
+    const double halo_cut = (cutoff_ > bonded_extension_)
+                                ? cutoff_ : bonded_extension_;
+
+    if (full_rebuild) {
+        // ── Full rebuild path ─────────────────────────────────────────
+        // Effective halo = max(pair cutoff, bonded skin): the wider of the
+        // two is sufficient for both pair partners and bonded-tuple members
+        // near the boundary.
+
+        // Roll back the previous reneighbor's ghost tag→slot entries before
+        // we overwrite the ghost rows.
+        for (auto t : dd->ghost_tags) dd->tag_to_local.erase(t);
+        dd->ghost_tags.clear();
+
+        rebuild_send_lists(frame, *dd, halo_cut);
+
+        int send_counts[6];
+        int recv_counts[6];
+        MPI_Request count_reqs[12];
+        int n_count_reqs = 0;
+        for (int f = 0; f < 6; ++f) {
+            send_counts[f] = static_cast<int>(dd->send_lists[f].size());
+            recv_counts[f] = 0;
+        }
+        for (int f = 0; f < 6; ++f) {
+            const int neighbor = dd->face_neighbors[static_cast<std::size_t>(f)];
+            if (neighbor == MPI_PROC_NULL) continue;
+            if (neighbor == my_rank) continue;
+            MPI_Isend(&send_counts[f], 1, MPI_INT, neighbor, f,
+                      dd->cart_comm, &count_reqs[n_count_reqs++]);
+            MPI_Irecv(&recv_counts[f], 1, MPI_INT, neighbor, opposite_face(f),
+                      dd->cart_comm, &count_reqs[n_count_reqs++]);
+        }
+        if (n_count_reqs > 0)
+            MPI_Waitall(n_count_reqs, count_reqs, MPI_STATUSES_IGNORE);
+
+        // Pack + exchange positions+tag (4 doubles per atom).
+        for (int f = 0; f < 6; ++f) {
+            if (dd->face_neighbors[static_cast<std::size_t>(f)] == MPI_PROC_NULL) {
+                bufs.send_pos[f].clear();
+            } else {
+                pack_positions_for_face(frame, *dd, f, bufs.send_pos[f]);
+            }
+            bufs.recv_pos[f].assign(static_cast<std::size_t>(recv_counts[f])
+                                    * kPosTagDoublesPerAtom, 0.0);
+        }
+
+        MPI_Request pos_reqs[12];
+        int n_pos_reqs = 0;
+        for (int f = 0; f < 6; ++f) {
+            const int neighbor = dd->face_neighbors[static_cast<std::size_t>(f)];
+            if (neighbor == MPI_PROC_NULL) continue;
+            if (neighbor == my_rank) continue;
+            if (send_counts[f] > 0) {
+                MPI_Isend(bufs.send_pos[f].data(),
+                          static_cast<int>(bufs.send_pos[f].size()),
+                          MPI_DOUBLE, neighbor, 100 + f,
+                          dd->cart_comm, &pos_reqs[n_pos_reqs++]);
+            }
+            if (recv_counts[f] > 0) {
+                MPI_Irecv(bufs.recv_pos[f].data(),
+                          static_cast<int>(bufs.recv_pos[f].size()),
+                          MPI_DOUBLE, neighbor, 100 + opposite_face(f),
+                          dd->cart_comm, &pos_reqs[n_pos_reqs++]);
+            }
+        }
+        if (n_pos_reqs > 0)
+            MPI_Waitall(n_pos_reqs, pos_reqs, MPI_STATUSES_IGNORE);
+
+        // Capacity check before writing ghost rows into the frame. The
+        // per-atom xtensor arrays are sized to `frame.atoms.size()`
+        // (== original global atom count). Writing past that silently
+        // corrupts memory and eventually trips LJ / bonded kernels.
+        int total_recv = 0;
+        for (int f = 0; f < 6; ++f) total_recv += recv_counts[f];
+        const int frame_cap = static_cast<int>(frame.atoms.tag.size());
+        const int needed = dd->n_local + total_recv;
+        if (needed > frame_cap) {
+            ATV_CRITICAL(
+                "halo_exchange: rank {} ghost capacity overflow: n_local={} + "
+                "n_ghost={} > frame.atoms.size()={}. "
+                "send_counts=[{},{},{},{},{},{}] recv_counts=[{},{},{},{},{},{}] "
+                "halo_cut={} bonded_ext={} cutoff={}",
+                my_rank, dd->n_local, total_recv, frame_cap,
+                send_counts[0], send_counts[1], send_counts[2],
+                send_counts[3], send_counts[4], send_counts[5],
+                recv_counts[0], recv_counts[1], recv_counts[2],
+                recv_counts[3], recv_counts[4], recv_counts[5],
+                halo_cut, bonded_extension_, cutoff_);
+            MPI_Abort(dd->cart_comm, 1);
+        }
+
+        // Unpack positions+tag into ghost slots. Each ghost's tag is
+        // inserted into `tag_to_local` so bonded force kernels can
+        // resolve cross-rank tuple partners as ghost rows. These slot
+        // assignments are stable until the next reneighbor rebuild.
+        int slot = dd->n_local;
+        for (int f = 0; f < 6; ++f) {
+            const int n = recv_counts[f];
+            for (int k = 0; k < n; ++k) {
+                const std::size_t off =
+                    static_cast<std::size_t>(k) * kPosTagDoublesPerAtom;
+                frame.atoms.x[slot] = bufs.recv_pos[f][off + 0];
+                frame.atoms.y[slot] = bufs.recv_pos[f][off + 1];
+                frame.atoms.z[slot] = bufs.recv_pos[f][off + 2];
+                const std::int64_t tag =
+                    static_cast<std::int64_t>(bufs.recv_pos[f][off + 3]);
+                frame.atoms.tag[slot] = tag;
+                dd->tag_to_local[tag] = slot;
+                dd->ghost_tags.push_back(tag);
+                ++slot;
+            }
+            dd->recv_counts[static_cast<std::size_t>(f)] = n;
+        }
+        dd->n_ghost = slot - dd->n_local;
+
+        ago_ = 0;
+        last_rebuild_generation_ = dd->neighbor_generation;
+        return;
+    }
+
+    // ── Position-only refresh path (no reneighbor) ───────────────────
+    // Send/recv counts are unchanged from the last rebuild, carried on
+    // `dd->send_lists` (send side) and `dd->recv_counts` (recv side).
+    // Ghost slot assignments are preserved: slots `[n_local, n_local +
+    // n_ghost)` continue to refer to the same atoms, so we only refresh
+    // their x/y/z positions. No tag exchange, no `tag_to_local` edit.
+
     int send_counts[6];
-    int recv_counts[6];
-    MPI_Request count_reqs[12];
-    int n_count_reqs = 0;
     for (int f = 0; f < 6; ++f) {
         send_counts[f] = static_cast<int>(dd->send_lists[f].size());
-        recv_counts[f] = 0;
     }
+    int recv_counts[6];
     for (int f = 0; f < 6; ++f) {
-        const int neighbor = dd->face_neighbors[static_cast<std::size_t>(f)];
-        if (neighbor == MPI_PROC_NULL) continue;
-        if (neighbor == my_rank) continue;  // self-face: owner has atoms already
-        MPI_Isend(&send_counts[f], 1, MPI_INT, neighbor, f,
-                  dd->cart_comm, &count_reqs[n_count_reqs++]);
-        MPI_Irecv(&recv_counts[f], 1, MPI_INT, neighbor, opposite_face(f),
-                  dd->cart_comm, &count_reqs[n_count_reqs++]);
+        recv_counts[f] = dd->recv_counts[static_cast<std::size_t>(f)];
     }
-    if (n_count_reqs > 0)
-        MPI_Waitall(n_count_reqs, count_reqs, MPI_STATUSES_IGNORE);
 
-    // Phase 2: pack positions+tag on each face, then exchange them. Each
-    // packed atom is 4 doubles (x, y, z, tag-as-double). Send/recv counts
-    // are inflated accordingly when posting MPI Isend/Irecv.
     for (int f = 0; f < 6; ++f) {
         if (dd->face_neighbors[static_cast<std::size_t>(f)] == MPI_PROC_NULL) {
             bufs.send_pos[f].clear();
         } else {
-            pack_positions_for_face(frame, *dd, f, bufs.send_pos[f]);
+            pack_positions_only_for_face(frame, *dd, f, bufs.send_pos[f]);
         }
         bufs.recv_pos[f].assign(static_cast<std::size_t>(recv_counts[f])
-                                * kPosTagDoublesPerAtom, 0.0);
+                                * kPosOnlyDoublesPerAtom, 0.0);
     }
 
     MPI_Request pos_reqs[12];
@@ -360,7 +498,7 @@ void HaloExchangeForward::launch(const cpu::LaunchContext& ctx) {
     for (int f = 0; f < 6; ++f) {
         const int neighbor = dd->face_neighbors[static_cast<std::size_t>(f)];
         if (neighbor == MPI_PROC_NULL) continue;
-        if (neighbor == my_rank) continue;  // self-face short-circuit
+        if (neighbor == my_rank) continue;
         if (send_counts[f] > 0) {
             MPI_Isend(bufs.send_pos[f].data(),
                       static_cast<int>(bufs.send_pos[f].size()),
@@ -377,28 +515,20 @@ void HaloExchangeForward::launch(const cpu::LaunchContext& ctx) {
     if (n_pos_reqs > 0)
         MPI_Waitall(n_pos_reqs, pos_reqs, MPI_STATUSES_IGNORE);
 
-    // Phase 3: unpack received positions+tag into ghost slots, in face
-    // order. Each ghost's tag is also pushed into `dd->tag_to_local` so
-    // bonded force kernels on this rank can resolve cross-rank tuple
-    // partners as ghost rows.
+    // Write refreshed positions into the existing ghost slots, in the
+    // same face order used by the last full rebuild.
     int slot = dd->n_local;
     for (int f = 0; f < 6; ++f) {
         const int n = recv_counts[f];
         for (int k = 0; k < n; ++k) {
-            const std::size_t off = static_cast<std::size_t>(k) * kPosTagDoublesPerAtom;
+            const std::size_t off =
+                static_cast<std::size_t>(k) * kPosOnlyDoublesPerAtom;
             frame.atoms.x[slot] = bufs.recv_pos[f][off + 0];
             frame.atoms.y[slot] = bufs.recv_pos[f][off + 1];
             frame.atoms.z[slot] = bufs.recv_pos[f][off + 2];
-            const std::int64_t tag =
-                static_cast<std::int64_t>(bufs.recv_pos[f][off + 3]);
-            frame.atoms.tag[slot] = tag;
-            dd->tag_to_local[tag] = slot;
-            dd->ghost_tags.push_back(tag);
             ++slot;
         }
-        dd->recv_counts[static_cast<std::size_t>(f)] = n;
     }
-    dd->n_ghost = slot - dd->n_local;
 }
 
 void HaloExchangeReverse::build(const cpu::BuildContext& ctx) {

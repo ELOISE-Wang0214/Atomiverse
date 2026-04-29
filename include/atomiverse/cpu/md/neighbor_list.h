@@ -59,12 +59,17 @@ public:
         const int n_active = active_count(ctx.runtime, ctx.frame);
         ++ago_;
 
-        // `ago < every`: reuse the list verbatim, no skin scan, no rebuild.
-        // `ago >= every`: ask the strategy whether any atom drifted past
-        // skin/2; if yes, rebin + re-enumerate, else leave the list intact.
-        // Mirrors LAMMPS Verlet::run: `lastcall` is advanced only on the
-        // steps when `build()` actually fires.
-        if (ago_ >= every_ && strategy_.needs_rebuild(ctx.frame, n_active)) {
+        // `ago < every`: reuse the list verbatim when the atom count is
+        // stable. An upstream `AtomMigration` or halo-size change, however,
+        // makes the current CSR size-incompatible with the trimmed `inum`
+        // that force kernels will walk — so we must rebuild as soon as the
+        // CSR size is stale, regardless of `ago`. The `every` cadence still
+        // gates the displacement-driven rebuild path.
+        const bool size_stale =
+            n_active != strategy_.n_at_last_build();
+        const bool disp_rebuild =
+            ago_ >= every_ && strategy_.needs_rebuild(ctx.frame, n_active);
+        if (size_stale || disp_rebuild) {
             strategy_.build(ctx.frame, n_active);
             strategy_.refresh_half(ctx.frame, n_active, pairs_);
             ++pairs_.version;

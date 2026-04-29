@@ -2,10 +2,12 @@
 /// @brief CellList implementation -- LAMMPS-style linked-cell neighbor list.
 
 #include "atomiverse/cpu/md/cell_list.h"
+#include "atomiverse/core/log.h"
 #include "atomiverse/core/mat3.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <numeric>
 
 #ifdef _OPENMP
@@ -217,14 +219,14 @@ void CellList::update(const cpu::Frame& frame, int n_active) {
 
 namespace {
 
-/// @brief Grow-never-shrink resize of a 1-D int xtensor. When `n <= current
-/// size` this is an `assert`-like no-op; when `n > current size` it hands
-/// off to xtensor's `resize`, which grows the backing uvector (amortised
-/// allocator behaviour, like `std::vector::resize`). Used by `refresh_*`
-/// so the per-atom CSR arrays keep a monotonically-non-decreasing capacity
-/// across steady-state launches.
-inline void ensure_at_least(xt::xtensor<int, 1>& arr, std::size_t n) {
-    if (arr.size() < n) arr.resize({n});
+/// @brief Grow-never-shrink resize of a std::vector<int>. When
+/// `n <= current size` this is a no-op; when `n > current size` it
+/// hands off to `std::vector::resize`, which amortises allocation and
+/// preserves existing contents. Used by `refresh_*` so the per-atom
+/// CSR arrays keep a monotonically-non-decreasing capacity across
+/// steady-state launches.
+inline void ensure_at_least(std::vector<int>& arr, std::size_t n) {
+    if (arr.size() < n) arr.resize(n);
 }
 
 } // namespace
@@ -459,6 +461,7 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
             write_ptr[i]++;
         }
     }
+
 }
 
 PairList CellList::build_half(const cpu::Frame& frame, int n_active) const {
