@@ -14,4 +14,3 @@
 - [parallel-md-engine](parallel-md-engine.md) — MPI + OpenMP + xsimd multi-node CPU MD; hot-path vs. analysis separation via `std::thread` pool; 4-phase roadmap [draft]
 - [msu-pe-validation](msu-pe-validation.md) — MSU amorphous-PE tension validation vs LAMMPS; correctness + multi-core scaling final acceptance [draft]
 - [skill-agent-design](skill-agent-design.md) — Reference model for skill/agent split + design rules + cross-project re-exam checklist [approved]
-- [md-phase2-cleanup](md-phase2-cleanup.md) — CPU MD Phase 2 architecture drift fixes: halo buffer per-instance, PairList arena, Frame depollution, helper dedup [draft]
