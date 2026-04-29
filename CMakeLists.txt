@@ -170,6 +170,8 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/md/mpi/halo_exchange.cpp
         src/cpu/md/mpi/atom_migration.cpp
         src/cpu/md/mpi/reduce.cpp
+        src/cpu/md/mpi/gather.cpp
+        src/cpu/md/mpi/rcb.cpp
         src/cpu/observer/thermo_component.cpp
         # CPU bonded components
         src/cpu/bonded/harmonic_bond.cpp

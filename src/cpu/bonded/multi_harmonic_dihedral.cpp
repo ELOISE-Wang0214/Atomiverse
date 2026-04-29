@@ -56,10 +56,33 @@ void MultiHarmonicDihedral::build(const cpu::BuildContext& ctx) {
 
 void MultiHarmonicDihedral::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
-    int n_dihedrals = static_cast<int>(f.dihedrals.atomi.size());
+    const int n_dihedrals = static_cast<int>(f.dihedrals.atomi.size());
     if (n_dihedrals == 0) return;
 
+    const auto* dd = ctx.runtime.dd;
+    const bool multi_rank = (dd != nullptr) && (ctx.runtime.mpi_size > 1);
     int n_atoms = f.atoms.size();
+    if (multi_rank) {
+        n_atoms = dd->n_local + dd->n_ghost;
+        if (local_dihedrals_generation_ != dd->neighbor_generation) {
+            local_dihedrals_.clear();
+            local_dihedrals_.reserve(static_cast<std::size_t>(n_dihedrals));
+            for (int d = 0; d < n_dihedrals; ++d) {
+                const std::int64_t owner_tag =
+                    static_cast<std::int64_t>(f.dihedrals.atomj[d]);
+                auto it_owner = dd->tag_to_local.find(owner_tag);
+                if (it_owner != dd->tag_to_local.end() &&
+                    it_owner->second < dd->n_local) {
+                    local_dihedrals_.push_back(d);
+                }
+            }
+            local_dihedrals_generation_ = dd->neighbor_generation;
+        }
+    }
+    const int n_work = multi_rank ? static_cast<int>(local_dihedrals_.size())
+                                  : n_dihedrals;
+    if (n_work == 0) return;
+
     double energy_total = 0;
     // Dihedral virial: rewriting Σ_atoms r_α·F_β with r_i2 as reference
     // (and Newton's 3rd F_i2 = -(F_i1+F_i3+F_i4)) gives
@@ -78,15 +101,14 @@ void MultiHarmonicDihedral::launch(const cpu::LaunchContext& ctx) {
         auto& fxt = fx_thr_[tid];
         auto& fyt = fy_thr_[tid];
         auto& fzt = fz_thr_[tid];
-        std::fill(fxt.begin(), fxt.end(), double(0));
-        std::fill(fyt.begin(), fyt.end(), double(0));
-        std::fill(fzt.begin(), fzt.end(), double(0));
-
-        const auto* dd = ctx.runtime.dd;
-        const bool multi_rank = (dd != nullptr) && (ctx.runtime.mpi_size > 1);
+        std::fill(fxt.begin(), fxt.begin() + n_atoms, double(0));
+        std::fill(fyt.begin(), fyt.begin() + n_atoms, double(0));
+        std::fill(fzt.begin(), fzt.begin() + n_atoms, double(0));
 
         #pragma omp for schedule(static)
-        for (int d = 0; d < n_dihedrals; ++d) {
+        for (int id = 0; id < n_work; ++id) {
+            const int d = multi_rank ? local_dihedrals_[static_cast<std::size_t>(id)]
+                                     : id;
             int i1 = f.dihedrals.atomi[d];
             int i2 = f.dihedrals.atomj[d];
             int i3 = f.dihedrals.atomk[d];
@@ -98,8 +120,7 @@ void MultiHarmonicDihedral::launch(const cpu::LaunchContext& ctx) {
             // any of the four atoms is beyond this rank's halo skin.
             if (multi_rank) {
                 auto it2 = dd->tag_to_local.find(static_cast<std::int64_t>(i2));
-                if (it2 == dd->tag_to_local.end() ||
-                    it2->second >= dd->n_local) continue;
+                if (it2 == dd->tag_to_local.end()) continue;
                 auto it1 = dd->tag_to_local.find(static_cast<std::int64_t>(i1));
                 auto it3 = dd->tag_to_local.find(static_cast<std::int64_t>(i3));
                 auto it4 = dd->tag_to_local.find(static_cast<std::int64_t>(i4));
@@ -251,6 +272,8 @@ void MultiHarmonicDihedral::destroy(const cpu::DestroyContext& ctx) {
     fx_thr_.clear();
     fy_thr_.clear();
     fz_thr_.clear();
+    local_dihedrals_.clear();
+    local_dihedrals_generation_ = ~std::uint64_t{0};
 }
 
 } // namespace bonded

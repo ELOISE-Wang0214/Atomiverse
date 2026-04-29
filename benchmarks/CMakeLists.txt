@@ -44,3 +44,19 @@ endif()
 if(ATV_BUILD_TORCH)
     atv_add_bench(bench_torch)
 endif()
+
+# ── CPU MD parallel-scaling benchmarks (run under mpirun) ──────────
+# These are plain executables (not google-benchmark) so they can be
+# launched at varying rank counts and emit CSV one-liners that an
+# external driver (tools/run_msu_*.sh, scaling-report scripts) collects.
+function(atv_add_cpp_md_bench name)
+    add_executable(${name} md/${name}.cpp)
+    target_link_libraries(${name} PRIVATE atomiverse)
+    set_target_properties(${name} PROPERTIES CXX_STANDARD 17)
+    if(ATV_USE_MPI AND TARGET MPI::MPI_CXX)
+        target_link_libraries(${name} PRIVATE MPI::MPI_CXX)
+    endif()
+endfunction()
+
+atv_add_cpp_md_bench(scaling)
+atv_add_cpp_md_bench(polyethylene_tension)

@@ -47,7 +47,7 @@ void HarmonicBond::build(const cpu::BuildContext& ctx) {
 
 void HarmonicBond::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
-    int n_bonds = static_cast<int>(f.bonds.atomi.size());
+    const int n_bonds = static_cast<int>(f.bonds.atomi.size());
     // Bond virial accumulators (Voigt xx yy zz xy xz yz). Bonds
     // contribute significantly to the stress tensor for stiff-bond
     // systems (e.g. PE chains, K ≈ 15 eV/Å²): without this term
@@ -58,7 +58,31 @@ void HarmonicBond::launch(const cpu::LaunchContext& ctx) {
     double v_xx = 0, v_yy = 0, v_zz = 0, v_xy = 0, v_xz = 0, v_yz = 0;
     if (n_bonds == 0) return;
 
+    const auto* dd = ctx.runtime.dd;
+    const bool multi_rank = (dd != nullptr) && (ctx.runtime.mpi_size > 1);
     int n_atoms = f.atoms.size();
+    if (multi_rank) {
+        n_atoms = dd->n_local + dd->n_ghost;
+        if (local_bonds_generation_ != dd->neighbor_generation) {
+            local_bonds_.clear();
+            local_bonds_.reserve(static_cast<std::size_t>(n_bonds));
+            for (int b = 0; b < n_bonds; ++b) {
+                const std::int64_t ti = static_cast<std::int64_t>(f.bonds.atomi[b]);
+                const std::int64_t tj = static_cast<std::int64_t>(f.bonds.atomj[b]);
+                const std::int64_t owner_tag = (ti < tj) ? ti : tj;
+                auto it_owner = dd->tag_to_local.find(owner_tag);
+                if (it_owner != dd->tag_to_local.end() &&
+                    it_owner->second < dd->n_local) {
+                    local_bonds_.push_back(b);
+                }
+            }
+            local_bonds_generation_ = dd->neighbor_generation;
+        }
+    }
+    const int n_work = multi_rank ? static_cast<int>(local_bonds_.size())
+                                  : n_bonds;
+    if (n_work == 0) return;
+
     double energy_total = 0;
 
     #pragma omp parallel reduction(+:energy_total) \
@@ -72,15 +96,14 @@ void HarmonicBond::launch(const cpu::LaunchContext& ctx) {
         auto& fxt = fx_thr_[tid];
         auto& fyt = fy_thr_[tid];
         auto& fzt = fz_thr_[tid];
-        std::fill(fxt.begin(), fxt.end(), double(0));
-        std::fill(fyt.begin(), fyt.end(), double(0));
-        std::fill(fzt.begin(), fzt.end(), double(0));
-
-        const auto* dd = ctx.runtime.dd;
-        const bool multi_rank = (dd != nullptr) && (ctx.runtime.mpi_size > 1);
+        std::fill(fxt.begin(), fxt.begin() + n_atoms, double(0));
+        std::fill(fyt.begin(), fyt.begin() + n_atoms, double(0));
+        std::fill(fzt.begin(), fzt.begin() + n_atoms, double(0));
 
         #pragma omp for schedule(static)
-        for (int b = 0; b < n_bonds; ++b) {
+        for (int ib = 0; ib < n_work; ++ib) {
+            const int b = multi_rank ? local_bonds_[static_cast<std::size_t>(ib)]
+                                     : ib;
             int i = f.bonds.atomi[b];
             int j = f.bonds.atomj[b];
             int type = f.bonds.type[b];
@@ -92,10 +115,6 @@ void HarmonicBond::launch(const cpu::LaunchContext& ctx) {
             if (multi_rank) {
                 const std::int64_t ti = static_cast<std::int64_t>(i);
                 const std::int64_t tj = static_cast<std::int64_t>(j);
-                const std::int64_t owner_tag = (ti < tj) ? ti : tj;
-                auto it_owner = dd->tag_to_local.find(owner_tag);
-                if (it_owner == dd->tag_to_local.end() ||
-                    it_owner->second >= dd->n_local) continue;
                 auto it_i = dd->tag_to_local.find(ti);
                 auto it_j = dd->tag_to_local.find(tj);
                 if (it_i == dd->tag_to_local.end() ||
@@ -160,6 +179,8 @@ void HarmonicBond::destroy(const cpu::DestroyContext& ctx) {
     fx_thr_.clear();
     fy_thr_.clear();
     fz_thr_.clear();
+    local_bonds_.clear();
+    local_bonds_generation_ = ~std::uint64_t{0};
 }
 
 } // namespace bonded

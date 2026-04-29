@@ -14,6 +14,7 @@
 /// @see .claude/specs/parallel-md-engine.md  § A.4, § A.5
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -32,11 +33,20 @@ namespace mpi {
 /// graph has the correct slot reserved from the start.
 class AtomMigration : public cpu::ComponentBase {
 public:
+    /// @param every Attempt owner migration every N steps. The component also
+    ///        runs immediately when an external partition update bumps
+    ///        `DomainDecomposition::neighbor_generation`.
+    explicit AtomMigration(int every = 1) : every_(every < 1 ? 1 : every) {}
+
     std::string name() const override { return "atom_migration"; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {{static_cast<int>(ATV::md::Phase::pre_force), -30}};
     }
     void launch(const cpu::LaunchContext& ctx) override;
+
+private:
+    int every_ = 1;
+    std::uint64_t last_observed_generation_ = ~std::uint64_t{0};
 };
 
 } // namespace mpi

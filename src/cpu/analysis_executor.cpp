@@ -10,6 +10,12 @@
 #include <cassert>
 #include <chrono>
 
+#ifdef __linux__
+#include <pthread.h>
+#include <sched.h>
+#include <unistd.h>
+#endif
+
 namespace ATV {
 namespace cpu {
 
@@ -23,6 +29,7 @@ void AnalysisExecutor::init(const Config& cfg, Context& ctx) {
     if (initialized_) return;
 
     policy_ = cfg.policy;
+    affinity_hint_ = cfg.affinity_hint;
 
     const int ring_size = std::max(1, cfg.ring_size);
     ring_.assign(static_cast<std::size_t>(ring_size), FrameSnapshot{});
@@ -59,7 +66,7 @@ void AnalysisExecutor::init(const Config& cfg, Context& ctx) {
     const int n_workers = std::max(0, cfg.n_threads);
     workers_.reserve(static_cast<std::size_t>(n_workers));
     for (int i = 0; i < n_workers; ++i) {
-        workers_.emplace_back([this] { this->worker_loop(); });
+        workers_.emplace_back([this, i] { this->worker_loop(i); });
     }
 
     ctx.executor = this;
@@ -239,7 +246,28 @@ void AnalysisExecutor::submit(AsyncComponentBase* sub, int slot_idx) {
     cv_work_.notify_one();
 }
 
-void AnalysisExecutor::worker_loop() {
+void AnalysisExecutor::apply_worker_affinity(int worker_idx) {
+    if (!affinity_hint_) return;
+#ifdef __linux__
+    const long n_cpus = sysconf(_SC_NPROCESSORS_ONLN);
+    if (n_cpus <= 0) return;
+    // Pin worker N to the highest-numbered cores first, on the assumption
+    // that the OMP team driving the hot path has the lower cores. Modular
+    // wrap so configurations with more workers than cores still succeed
+    // (multiple workers share a core but stay off the OMP team's range).
+    const int target = static_cast<int>(n_cpus - 1 - (worker_idx % n_cpus));
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    if (target >= 0) CPU_SET(target, &cpuset);
+    pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+    ATV_DEBUG("analysis_executor: worker {} pinned to CPU {}", worker_idx, target);
+#else
+    (void)worker_idx;  // hint is a no-op outside Linux
+#endif
+}
+
+void AnalysisExecutor::worker_loop(int worker_idx) {
+    apply_worker_affinity(worker_idx);
     for (;;) {
         Job job{};
         {

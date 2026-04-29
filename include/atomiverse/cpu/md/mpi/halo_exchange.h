@@ -16,11 +16,10 @@
 /// is the consumer (uses the same per-face counts to know how many ghost
 /// forces to pack and where they go on the owner's side).
 ///
-/// Default constructor: `cutoff = 0` makes both classes structural no-ops
-/// (auto-added in `cpu::md::MD`'s ctor). For real multi-rank runs the user
-/// adds an explicit `HaloExchangeForward{cutoff_with_skin}` via
-/// `sim.on(pre_force).add(..., -20)`; the no-op auto-instance is harmless
-/// (same order, no atoms to send when cutoff is zero).
+/// `HaloExchangeForward{}` is a structural no-op (`cutoff = 0`). Real
+/// multi-rank runs add `HaloExchangeForward{cutoff_with_skin}` and a matching
+/// `HaloExchangeReverse{}` explicitly; `cpu::md::MD` does not auto-register
+/// halo components because reverse exchange must run exactly once.
 ///
 /// **Bonded skin auto-extension** (spec A.5): `build()` scans
 /// `frame.bonds/angles/dihedrals` (tag-aware: multi-rank scans resolve

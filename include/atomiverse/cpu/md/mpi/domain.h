@@ -111,6 +111,24 @@ struct DomainDecomposition {
     /// does not leave stale tag→slot bindings behind.
     std::vector<std::int64_t> ghost_tags;
 
+    /// @brief Per-axis cut planes as **fractions** of the box length, in `[0, 1]`.
+    ///
+    /// `cuts[d]` has either size `0` (uniform partition along axis `d`, default)
+    /// or size `dims[d] + 1` with `cuts[d].front() == 0.0` and `cuts[d].back() == 1.0`.
+    /// When non-empty, `compute_sublo_subhi()` reads from these instead of the
+    /// uniform `coord[d] / dims[d]` formula, and `AtomMigration::dest_rank_for`
+    /// binary-searches the cuts to decide each owner's destination rank.
+    ///
+    /// Stored as fractions so the partition survives NPT box rescaling without
+    /// needing to be recomputed every step. Populated by `RCBBalancer` (Phase 4)
+    /// or any future load-balance component; left empty in default Phase 1–3
+    /// runs (uniform-brick decomposition).
+    ///
+    /// All ranks must agree on these values for migration to be consistent.
+    /// `RCBBalancer` derives them from a global atom histogram via
+    /// `MPI_Allreduce`, which guarantees consistency by construction.
+    std::array<std::vector<double>, 3> cuts{};
+
     /// @brief Bind to a frame: populate `n_local`, `capacity`, `tag_to_local`.
     ///
     /// Single-rank initialization. Sets `n_local = capacity = frame.atoms.size()`,

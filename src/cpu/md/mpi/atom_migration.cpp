@@ -66,12 +66,44 @@ inline int rank_along_dim(double q, double L, int dims_d) {
     return std::max(0, std::min(dims_d - 1, r));
 }
 
+// Locate the slab index `k` (in [0, dims_d)) whose [cuts[k], cuts[k+1])
+// contains the box-length fraction `frac` (already wrapped into [0, 1)).
+// `cuts` has size `dims_d + 1` with `cuts.front() == 0` and `cuts.back() == 1`.
+inline int slab_along_dim_from_cuts(double frac,
+                                    const std::vector<double>& cuts,
+                                    int dims_d) {
+    if (dims_d <= 1) return 0;
+    // upper_bound gives the first cuts[i] strictly greater than frac;
+    // its predecessor is the slab index. Clamp against FP rounding at the
+    // top edge.
+    auto it = std::upper_bound(cuts.begin(), cuts.end(), frac);
+    int k = static_cast<int>(std::distance(cuts.begin(), it)) - 1;
+    if (k < 0) k = 0;
+    if (k > dims_d - 1) k = dims_d - 1;
+    return k;
+}
+
 // Compute the rank that owns position (x, y, z) under the current DD.
+//
+// When `dd.cuts[d]` is empty along axis d, the uniform `coord = floor(q*dims/L)`
+// formula applies. When non-empty (set by `RCBBalancer`), the destination is
+// derived from the box-length fraction via binary search through the cut
+// planes -- which guarantees the same rank assignment that
+// `DomainDecomposition::compute_sublo_subhi` would produce on the destination
+// side.
 inline int dest_rank_for(const DomainDecomposition& dd, double x, double y, double z,
                           double Lx, double Ly, double Lz) {
-    const int cx = rank_along_dim(wrap_to_box(x, Lx), Lx, dd.dims[0]);
-    const int cy = rank_along_dim(wrap_to_box(y, Ly), Ly, dd.dims[1]);
-    const int cz = rank_along_dim(wrap_to_box(z, Lz), Lz, dd.dims[2]);
+    auto axis_coord = [&](int d, double q, double L) {
+        const double wrapped = wrap_to_box(q, L);
+        if (static_cast<int>(dd.cuts[d].size()) == dd.dims[d] + 1) {
+            const double frac = (L > 0.0) ? (wrapped / L) : 0.0;
+            return slab_along_dim_from_cuts(frac, dd.cuts[d], dd.dims[d]);
+        }
+        return rank_along_dim(wrapped, L, dd.dims[d]);
+    };
+    const int cx = axis_coord(0, x, Lx);
+    const int cy = axis_coord(1, y, Ly);
+    const int cz = axis_coord(2, z, Lz);
     return cx * (dd.dims[1] * dd.dims[2]) + cy * dd.dims[2] + cz;
 }
 
@@ -171,6 +203,14 @@ void AtomMigration::launch(const cpu::LaunchContext& ctx) {
     MPI_Comm_rank(dd->cart_comm, &my_rank);
     const int world_size = dd->dims[0] * dd->dims[1] * dd->dims[2];
 
+    const bool first_launch =
+        last_observed_generation_ == ~std::uint64_t{0};
+    const bool generation_changed =
+        !first_launch && dd->neighbor_generation != last_observed_generation_;
+    if ((ctx.step % every_) != 0 && !generation_changed) {
+        return;
+    }
+
     // Classify each owner. `keep_indices` holds the local rows to compact
     // down; `migrate_indices_by_rank[r]` holds rows we'll ship to rank `r`.
     std::vector<int> keep_indices;
@@ -196,7 +236,10 @@ void AtomMigration::launch(const cpu::LaunchContext& ctx) {
     int any_global = 0;
     MPI_Allreduce(&any_local, &any_global, 1, MPI_INT, MPI_LOR,
                   dd->cart_comm);
-    if (any_global == 0) return;
+    if (any_global == 0) {
+        last_observed_generation_ = dd->neighbor_generation;
+        return;
+    }
 
     // Pack per-rank send buffers into a single contiguous byte buffer for
     // MPI_Alltoallv (which needs flat arrays + per-rank counts/displs).
@@ -274,6 +317,8 @@ void AtomMigration::launch(const cpu::LaunchContext& ctx) {
     for (int i = 0; i < dd->n_local; ++i) {
         dd->tag_to_local.emplace(frame.atoms.tag[i], i);
     }
+
+    last_observed_generation_ = dd->neighbor_generation;
 }
 
 #else // !ATV_HAS_MPI

@@ -2,6 +2,7 @@
 /// @brief CPU LJ 12-6 (shifted) with OpenMP per-thread force reduction.
 
 #include "atomiverse/cpu/md/lj.h"
+#include "atomiverse/cpu/md/mpi/domain.h"
 #include "atomiverse/cpu/md/pair_list.h"
 #include "atomiverse/core/mat3.h"
 
@@ -167,7 +168,11 @@ void LJ::launch(const cpu::LaunchContext& ctx) {
     }
     const auto& pairs = *ctx.runtime.pair_list;
     const auto& box = f.box;
-    int n = f.atoms.size();
+    int n_force = f.atoms.size();
+    const auto* dd = ctx.runtime.dd;
+    if (dd && ctx.runtime.mpi_size > 1) {
+        n_force = dd->n_local + dd->n_ghost;
+    }
     double energy_total = 0;
 
     // Exclusion-filtered CSR (built once per NL rebuild). See
@@ -210,9 +215,9 @@ void LJ::launch(const cpu::LaunchContext& ctx) {
         auto& fxt = fx_thr_[tid];
         auto& fyt = fy_thr_[tid];
         auto& fzt = fz_thr_[tid];
-        std::fill(fxt.begin(), fxt.end(), double(0));
-        std::fill(fyt.begin(), fyt.end(), double(0));
-        std::fill(fzt.begin(), fzt.end(), double(0));
+        std::fill(fxt.begin(), fxt.begin() + n_force, double(0));
+        std::fill(fyt.begin(), fyt.begin() + n_force, double(0));
+        std::fill(fzt.begin(), fzt.begin() + n_force, double(0));
 
         // Hoist box edges + LJ constants to locals so the inner loop keeps
         // them in registers instead of reloading the Mat3 / member fields
@@ -303,7 +308,7 @@ void LJ::launch(const cpu::LaunchContext& ctx) {
 
         // Reduce per-thread forces into frame
         #pragma omp for schedule(static)
-        for (int i = 0; i < n; ++i) {
+        for (int i = 0; i < n_force; ++i) {
             for (int t = 0; t < n_threads_; ++t) {
                 f.atoms.fx[i] += fx_thr_[t][i];
                 f.atoms.fy[i] += fy_thr_[t][i];

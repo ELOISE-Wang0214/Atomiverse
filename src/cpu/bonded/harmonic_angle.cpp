@@ -47,10 +47,33 @@ void HarmonicAngle::build(const cpu::BuildContext& ctx) {
 
 void HarmonicAngle::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
-    int n_angles = static_cast<int>(f.angles.atomi.size());
+    const int n_angles = static_cast<int>(f.angles.atomi.size());
     if (n_angles == 0) return;
 
+    const auto* dd = ctx.runtime.dd;
+    const bool multi_rank = (dd != nullptr) && (ctx.runtime.mpi_size > 1);
     int n_atoms = f.atoms.size();
+    if (multi_rank) {
+        n_atoms = dd->n_local + dd->n_ghost;
+        if (local_angles_generation_ != dd->neighbor_generation) {
+            local_angles_.clear();
+            local_angles_.reserve(static_cast<std::size_t>(n_angles));
+            for (int a = 0; a < n_angles; ++a) {
+                const std::int64_t owner_tag =
+                    static_cast<std::int64_t>(f.angles.atomj[a]);
+                auto it_owner = dd->tag_to_local.find(owner_tag);
+                if (it_owner != dd->tag_to_local.end() &&
+                    it_owner->second < dd->n_local) {
+                    local_angles_.push_back(a);
+                }
+            }
+            local_angles_generation_ = dd->neighbor_generation;
+        }
+    }
+    const int n_work = multi_rank ? static_cast<int>(local_angles_.size())
+                                  : n_angles;
+    if (n_work == 0) return;
+
     double energy_total = 0;
     // Angle virial: Σ_atoms r_α · F_β = d_ji_α · F_i_β + d_jk_α · F_k_β
     // (centre-atom force F_j = -(F_i + F_k) drops out by Newton's 3rd).
@@ -67,15 +90,14 @@ void HarmonicAngle::launch(const cpu::LaunchContext& ctx) {
         auto& fxt = fx_thr_[tid];
         auto& fyt = fy_thr_[tid];
         auto& fzt = fz_thr_[tid];
-        std::fill(fxt.begin(), fxt.end(), double(0));
-        std::fill(fyt.begin(), fyt.end(), double(0));
-        std::fill(fzt.begin(), fzt.end(), double(0));
-
-        const auto* dd = ctx.runtime.dd;
-        const bool multi_rank = (dd != nullptr) && (ctx.runtime.mpi_size > 1);
+        std::fill(fxt.begin(), fxt.begin() + n_atoms, double(0));
+        std::fill(fyt.begin(), fyt.begin() + n_atoms, double(0));
+        std::fill(fzt.begin(), fzt.begin() + n_atoms, double(0));
 
         #pragma omp for schedule(static)
-        for (int a = 0; a < n_angles; ++a) {
+        for (int ia = 0; ia < n_work; ++ia) {
+            const int a = multi_rank ? local_angles_[static_cast<std::size_t>(ia)]
+                                     : ia;
             int i = f.angles.atomi[a];
             int j = f.angles.atomj[a]; // center atom
             int k = f.angles.atomk[a];
@@ -86,8 +108,7 @@ void HarmonicAngle::launch(const cpu::LaunchContext& ctx) {
             // of the three atoms is beyond this rank's halo skin.
             if (multi_rank) {
                 auto it_j = dd->tag_to_local.find(static_cast<std::int64_t>(j));
-                if (it_j == dd->tag_to_local.end() ||
-                    it_j->second >= dd->n_local) continue;
+                if (it_j == dd->tag_to_local.end()) continue;
                 auto it_i = dd->tag_to_local.find(static_cast<std::int64_t>(i));
                 auto it_k = dd->tag_to_local.find(static_cast<std::int64_t>(k));
                 if (it_i == dd->tag_to_local.end() ||
@@ -181,6 +202,8 @@ void HarmonicAngle::destroy(const cpu::DestroyContext& ctx) {
     fx_thr_.clear();
     fy_thr_.clear();
     fz_thr_.clear();
+    local_angles_.clear();
+    local_angles_generation_ = ~std::uint64_t{0};
 }
 
 } // namespace bonded

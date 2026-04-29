@@ -46,6 +46,16 @@ public:
         int n_threads = 1;                     ///< Worker thread count (0 = ring-only, no dispatch).
         int ring_size = 3;                     ///< Initial ring capacity.
         BackpressurePolicy policy = BackpressurePolicy::drop_oldest;
+        /// @brief Pin each worker thread to a distinct logical CPU.
+        ///
+        /// Linux-only via `pthread_setaffinity_np`; macOS / other platforms
+        /// silently ignore the hint. Worker N pins to logical CPU
+        /// `n_cpus - 1 - (N mod n_cpus)`, i.e. the highest-numbered cores
+        /// first, on the assumption that the OMP team (driving the hot
+        /// path) occupies the lower-numbered cores. Off by default --
+        /// without an explicit hint the analysis worker runs unpinned and
+        /// the kernel scheduler decides placement.
+        bool affinity_hint = false;
 #ifdef ATV_HAS_MPI
         MPI_Comm parent_comm = MPI_COMM_WORLD; ///< Dupped into `analysis_comm()`.
 #endif
@@ -157,12 +167,14 @@ private:
         int slot_idx;
     };
 
-    void worker_loop();
+    void worker_loop(int worker_idx);
     int  acquire_slot_locked();           ///< implementation helper
     void grow_ring_locked();              ///< grow path for `grow` policy
     void wait_for_free_slot_locked(std::unique_lock<std::mutex>& lk);
+    void apply_worker_affinity(int worker_idx);  ///< Linux-only; no-op elsewhere
 
     bool initialized_ = false;
+    bool affinity_hint_ = false;
     BackpressurePolicy policy_ = BackpressurePolicy::drop_oldest;
 
     // Ring storage -- contiguous vector, resized only by grow_ring_locked().

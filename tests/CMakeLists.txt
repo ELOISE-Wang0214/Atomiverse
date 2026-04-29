@@ -127,6 +127,15 @@ if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
 
     atv_add_mpi_exec(test_mpi_pe_msu_pipeline mpi/test_pe_msu_pipeline.cpp)
     atv_add_mpi_run(test_mpi_pe_msu_pipeline_n8 test_mpi_pe_msu_pipeline 8)
+
+    atv_add_mpi_exec(test_mpi_gather mpi/test_gather.cpp)
+    atv_add_mpi_run(test_mpi_gather_n1 test_mpi_gather 1)
+    atv_add_mpi_run(test_mpi_gather_n2 test_mpi_gather 2)
+    atv_add_mpi_run(test_mpi_gather_n8 test_mpi_gather 8)
+
+    atv_add_mpi_exec(test_mpi_rcb mpi/test_rcb.cpp)
+    atv_add_mpi_run(test_mpi_rcb_n1 test_mpi_rcb 1)
+    atv_add_mpi_run(test_mpi_rcb_n8 test_mpi_rcb 8)
 endif()
 
 if(ATV_BUILD_RHF)

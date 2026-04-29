@@ -22,8 +22,10 @@ namespace md {
 ///
 /// End-of-step ordering: `ZeroKinetic(-1000) → KineticEnergy(-100) →
 /// ReduceEnergy(-50) → SnapshotPublisher(+10) → user observers (default 0+)`.
-/// pre_force ordering: `AtomMigration(-30) → HaloExchangeForward(-20) →
-/// NeighborList(-10) → ZeroForces(-1000)/ZeroEnergy(-999)`.
+/// pre_force ordering includes `AtomMigration(-30)`, which follows the
+/// LAMMPS reneighbor cadence by attempting exchange every 10 steps.
+/// Multi-rank pair simulations must explicitly add `HaloExchangeForward{cutoff}`
+/// at `pre_force @ -20` and `HaloExchangeReverse{}` at `post_force @ -1000`.
 /// (Negative-order infrastructure runs before user-positive components in each phase.)
 /// In single-rank mode every MPI stub is a no-op and `SnapshotPublisher`
 /// takes its 5 ns zero-subscriber early return path.
@@ -47,9 +49,7 @@ public:
         add(KineticEnergy{});
 
         // MPI infrastructure (single-rank no-ops in Phase 1).
-        add(mpi::AtomMigration{});
-        add(mpi::HaloExchangeForward{});
-        add(mpi::HaloExchangeReverse{});
+        add(mpi::AtomMigration{10});
         add(mpi::ReduceEnergy{});
 
         // Async-analysis publisher -- shared infrastructure, explicitly

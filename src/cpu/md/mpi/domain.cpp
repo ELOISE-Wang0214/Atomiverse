@@ -32,9 +32,17 @@ void DomainDecomposition::bind(const Frame& frame) {
 void DomainDecomposition::compute_sublo_subhi(const ATV::Mat3& box) {
     for (int d = 0; d < 3; ++d) {
         const double L = box(d, d);
-        const double slab = L / static_cast<double>(dims[d]);
-        sublo[d] = slab * static_cast<double>(coords[d]);
-        subhi[d] = sublo[d] + slab;
+        if (static_cast<int>(cuts[d].size()) == dims[d] + 1) {
+            // Non-uniform cut planes (set by `RCBBalancer`). cuts[d] is in
+            // box-length fractions, so the partition survives NPT/Deform box
+            // rescaling without recomputation.
+            sublo[d] = cuts[d][static_cast<std::size_t>(coords[d])] * L;
+            subhi[d] = cuts[d][static_cast<std::size_t>(coords[d] + 1)] * L;
+        } else {
+            const double slab = L / static_cast<double>(dims[d]);
+            sublo[d] = slab * static_cast<double>(coords[d]);
+            subhi[d] = sublo[d] + slab;
+        }
     }
 }
 

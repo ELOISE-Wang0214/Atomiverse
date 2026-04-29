@@ -2,6 +2,7 @@
 /// @brief CPU multi-harmonic dihedral component.
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -29,6 +30,9 @@ private:
 
     int n_threads_ = 1;
     std::vector<std::vector<double>> fx_thr_, fy_thr_, fz_thr_;
+
+    std::vector<int> local_dihedrals_;
+    std::uint64_t local_dihedrals_generation_ = ~std::uint64_t{0};
 };
 
 } // namespace bonded

@@ -2,7 +2,7 @@
 title: Parallel CPU MD engine — MPI + OpenMP + xsimd with hot-path/analysis separation
 status: in-progress
 created: 2026-04-16
-last-updated: 2026-04-29
+last-updated: 2026-04-29 (Phase 4 scaffolding: RCB + gather + scaling/PE benchmarks landed)
 ---
 
 # Parallel CPU MD engine
@@ -34,13 +34,16 @@ LAMMPS-class multi-node CPU MD: MPI spatial domain decomposition, OpenMP within 
 | 3 | Tag-based LJ exclusions + bonded ownership at force time | ✅ done | `13e1e5c`, `efcab00` |
 | 3 | Phase-2 hardening (LAMMPS fixes, auto bonded skin, multi-rank cell-list correctness) | ✅ done | `a9f9230` |
 | 3 | LAMMPS parity on amorphous-PE single-core (1.4× of LAMMPS) | ✅ done | `d372126` |
-| 4 | `RCBBalancer` (in-house RCB, ~300 LOC) | ❌ not started | — |
-| 4 | `gather_to_root` helper (`mpi/gather.h/cpp`) | ❌ not started | — |
-| 4 | `benchmarks/md/scaling.cpp` (strong / weak scaling 1–128 ranks) | ❌ not started | — |
-| 4 | `benchmarks/md/polyethylene_tension.cpp` + `tools/validate_polyethylene.py` | ❌ not started | — |
-| 4 | Per-rank analysis thread affinity hinting (`sched_setaffinity`) | ❌ not started | optional in spec |
+| 4 | `RCBBalancer` (in-house non-uniform brick, ~250 LOC) | ✅ done | _phase4_ |
+| 4 | `DomainDecomposition::cuts[3]` (non-uniform partition fractions) | ✅ done | _phase4_ |
+| 4 | `gather_to_root` helper (`mpi/gather.h/cpp`) | ✅ done | _phase4_ |
+| 4 | `benchmarks/md/scaling.cpp` (strong / weak scaling 1–128 ranks) | ✅ done | _phase4_ |
+| 4 | `benchmarks/md/polyethylene_tension.cpp` (tension/NPT/NVT modes, CSV recorder) | ✅ done | _phase4_ |
+| 4 | `tools/validate_polyethylene.py` (modulus / yield / hardening fits) | ✅ done | _phase4_ |
+| 4 | Per-rank analysis thread affinity hinting (`sched_setaffinity` on Linux) | ✅ done | _phase4_ |
 | 4 | 80% strong-scaling at 32 ranks / ≥85% weak scaling at 128 ranks | ⏸ external | needs cluster access |
 | 4 | MSU amorphous-PE end-to-end acceptance | ↪ tracked separately | `msu-pe-validation.md` |
+| 4 | Multi-stage protocol composition (heat → cool → tension via persistent backend) | ⏸ followup | needs `NoseHoover::set_T_target` or persistent driver — present benchmark runs single stage |
 | 5 | Triclinic / parallel Zarr / SENSEI hook | ⏸ deferred | future addendum |
 
 **Test inventory in tree (2026-04-29):**
@@ -433,14 +436,14 @@ Legend: ✅ created · ❌ not yet · ⏸ deferred · ↪ relocated
 ✅ include/atomiverse/cpu/md/mpi/halo_exchange.h         # Forward + Reverse + PIMPL FaceBufs
 ✅ include/atomiverse/cpu/md/mpi/atom_migration.h
 ✅ include/atomiverse/cpu/md/mpi/reduce.h
-❌ include/atomiverse/cpu/md/mpi/rcb.h                   # Phase 4
-❌ include/atomiverse/cpu/md/mpi/gather.h                # Phase 4
-✅ src/cpu/md/mpi/domain.cpp
+✅ include/atomiverse/cpu/md/mpi/rcb.h                   # Phase 4: non-uniform brick balancer
+✅ include/atomiverse/cpu/md/mpi/gather.h                # Phase 4: gather_to_root helper
+✅ src/cpu/md/mpi/domain.cpp                             # extended with cuts[3] support
 ✅ src/cpu/md/mpi/halo_exchange.cpp
-✅ src/cpu/md/mpi/atom_migration.cpp
+✅ src/cpu/md/mpi/atom_migration.cpp                     # cuts-aware dest_rank_for
 ✅ src/cpu/md/mpi/reduce.cpp
-❌ src/cpu/md/mpi/rcb.cpp                                # Phase 4
-❌ src/cpu/md/mpi/gather.cpp                             # Phase 4
+✅ src/cpu/md/mpi/rcb.cpp                                # Phase 4
+✅ src/cpu/md/mpi/gather.cpp                             # Phase 4
 ```
 
 ### Async-analysis infrastructure (Phase 1)
@@ -472,6 +475,8 @@ Legend: ✅ created · ❌ not yet · ⏸ deferred · ↪ relocated
 ✅ tests/mpi/test_pe_chains_multirank.cpp                # 2-rank PE bonded NVE
 ✅ tests/mpi/test_pe_full_multirank.cpp                  # full pipeline 2-rank
 ✅ tests/mpi/test_topology.cpp                           # MPI Cartesian + partition
+✅ tests/mpi/test_gather.cpp                             # Phase 4: gather_to_root single + multi rank
+✅ tests/mpi/test_rcb.cpp                                # Phase 4: RCB rebalance + atom redistribution
 ↪ tests/mpi/test_reduce_energy.cpp                       # subsumed by test_pe_msu_pipeline + test_pe_nvt
 ↪ tests/mpi/test_vs_single_rank.cpp                      # subsumed per-feature
 ✅ tests/cpu/test_analysis_executor.cpp                  # at tests/cpu/, not tests/observer/
@@ -483,12 +488,12 @@ Legend: ✅ created · ❌ not yet · ⏸ deferred · ↪ relocated
 ### Benchmarks + reference data (Phase 4)
 
 ```
-❌ benchmarks/md/scaling.cpp
-❌ benchmarks/md/polyethylene_tension.cpp
-❌ benchmarks/md/reference/polyethylene/lammps.in
-❌ benchmarks/md/reference/polyethylene/thermo_reference.csv
+✅ benchmarks/md/scaling.cpp                              # strong/weak scaling, --csv-header
+✅ benchmarks/md/polyethylene_tension.cpp                 # NVT/NPT/tension modes, CSV recorder
+✅ tools/validate_polyethylene.py                         # modulus/yield/hardening pass-fail
+❌ benchmarks/md/reference/polyethylene/lammps.in         # LAMMPS reference run
+❌ benchmarks/md/reference/polyethylene/thermo_reference.csv     # populated by ref run
 ❌ benchmarks/md/reference/polyethylene/stress_strain_reference.csv
-❌ tools/validate_polyethylene.py
 ```
 
 The MSU amorphous-PE acceptance is exercised today as a CTest (`test_pe_msu_pipeline_n8`) rather than a benchmark. The benchmark + LAMMPS-reference comparison form is tracked in `msu-pe-validation.md`.
