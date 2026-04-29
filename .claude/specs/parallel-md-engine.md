@@ -1,12 +1,52 @@
 ---
 title: Parallel CPU MD engine — MPI + OpenMP + xsimd with hot-path/analysis separation
-status: draft
+status: in-progress
 created: 2026-04-16
+last-updated: 2026-04-29
 ---
 
 # Parallel CPU MD engine
 
 LAMMPS-class multi-node CPU MD: MPI spatial domain decomposition, OpenMP within each rank, xsimd in force kernels, and a dedicated per-rank analysis jthread pool for observers and recorders so the hot path never waits on diagnostics. Target scale: 1–100 ranks, 10⁴–10⁷ atoms. No Kokkos, no new driver types, no new phase enums.
+
+## Status snapshot (2026-04-29)
+
+| Phase | Item | Status | Landed in |
+|---|---|---|---|
+| 1 | `tag[]` / `image[]` on `cpu::Frame::Atoms` | ✅ done | `0cc4d11` |
+| 1 | `DomainDecomposition` + `cpu::Context::dd` | ✅ done | `0cc4d11`, `7372757` |
+| 1 | `AnalysisExecutor` / `SnapshotPublisher` / `AsyncComponentBase` / `FrameSnapshot` (cpu root) | ✅ done | `0cc4d11` |
+| 1 | `cpu::md::AsyncObserver` / `cpu::minimizer::AsyncObserver` thin wrappers | ✅ done | `0cc4d11` |
+| 1 | `cpu::observer::RDF` ported to `AsyncObserver` | ✅ done | `0cc4d11` |
+| 1 | `cpu::observer::Density` (SCF-scoped) | ⏸ deferred | tracked under AIMD workstream |
+| 1 | `ATV_USE_MPI` CMake option | ✅ done | `0cc4d11` |
+| 2 | MPI Cartesian topology + spatial partition | ✅ done | `7372757` |
+| 2 | `HaloExchangeForward` / `HaloExchangeReverse` (real Isend/Irecv) | ✅ done | `9a13e85` |
+| 2 | Integrator loop-bound audit (`n_local` in VV / NH / InitVelocity / KE) | ✅ done | `8a50bbd` |
+| 2 | Ghost-aware `CellList` + multi-rank LJ NVE exit gate | ✅ done | `5b09545` |
+| 2 | LAMMPS-cadence halo refresh + size-stale neighbor rebuild | ✅ done | `60791d1` |
+| 2 | Per-instance halo buffers (PIMPL) + `PairList` arena | ✅ done | `0a3314d` |
+| 3 | `AtomMigration` via `MPI_Alltoallv` | ✅ done | `f415339` |
+| 3 | Topology filter+remap on partition (Phase 0.3 MVP) | ✅ done | `4fe6f2a` |
+| 3 | `ReduceEnergy` (batched `MPI_Allreduce`) | ✅ done | `cb74a02` |
+| 3 | `NoseHoover` global-KE allreduce | ✅ done | `b1b34e3` |
+| 3 | `Barostat` / `VirialStress` / `Deform` multi-rank | ✅ done | `a3b1d3a` |
+| 3 | Tag-based LJ exclusions + bonded ownership at force time | ✅ done | `13e1e5c`, `efcab00` |
+| 3 | Phase-2 hardening (LAMMPS fixes, auto bonded skin, multi-rank cell-list correctness) | ✅ done | `a9f9230` |
+| 3 | LAMMPS parity on amorphous-PE single-core (1.4× of LAMMPS) | ✅ done | `d372126` |
+| 4 | `RCBBalancer` (in-house RCB, ~300 LOC) | ❌ not started | — |
+| 4 | `gather_to_root` helper (`mpi/gather.h/cpp`) | ❌ not started | — |
+| 4 | `benchmarks/md/scaling.cpp` (strong / weak scaling 1–128 ranks) | ❌ not started | — |
+| 4 | `benchmarks/md/polyethylene_tension.cpp` + `tools/validate_polyethylene.py` | ❌ not started | — |
+| 4 | Per-rank analysis thread affinity hinting (`sched_setaffinity`) | ❌ not started | optional in spec |
+| 4 | 80% strong-scaling at 32 ranks / ≥85% weak scaling at 128 ranks | ⏸ external | needs cluster access |
+| 4 | MSU amorphous-PE end-to-end acceptance | ↪ tracked separately | `msu-pe-validation.md` |
+| 5 | Triclinic / parallel Zarr / SENSEI hook | ⏸ deferred | future addendum |
+
+**Test inventory in tree (2026-04-29):**
+- 20 MPI tests (`-L mpi`): `test_mpi_halo_exchange_n{1,2,8}`, `test_mpi_lj_nve_n{2,8}`, `test_mpi_atom_migration_n{1,2}`, `test_mpi_pe_chains_multirank_n2`, `test_mpi_pe_chains_8rank_n8`, `test_mpi_pe_nvt_multirank_n8`, `test_mpi_pe_chain_crossing_n2`, `test_mpi_pe_full_multirank_n2`, `test_mpi_pe_chain_drifting_n2`, `test_mpi_npt_multirank_n8`, `test_mpi_deform_multirank_n8`, `test_mpi_pe_msu_pipeline_n8`, … — all green.
+- Async-infrastructure tests (single-rank): `test_analysis_executor`, `test_snapshot_publisher`, `test_async_component_base`, `test_observer_rdf_async`. All green.
+- Single-rank regression: `bench_md_step` regression vs pre-spec baseline within the ≤2% Phase 1 exit-gate target (verified by `d372126`'s LAMMPS parity run).
 
 ## Runtime stack (fixed by design)
 
@@ -382,47 +422,76 @@ Tracked in a future addendum. Not part of the core spec; gates on Phase 4 comple
 
 ---
 
-## Files to create
+## Files to create — status
+
+Legend: ✅ created · ❌ not yet · ⏸ deferred · ↪ relocated
+
+### MPI components (Phase 1–4)
 
 ```
-include/atomiverse/cpu/md/mpi/domain.h
-include/atomiverse/cpu/md/mpi/halo_exchange.h   # declares HaloExchangeForward + HaloExchangeReverse + shared HaloExchangeState
-include/atomiverse/cpu/md/mpi/atom_migration.h
-include/atomiverse/cpu/md/mpi/reduce.h
-include/atomiverse/cpu/md/mpi/rcb.h
-include/atomiverse/cpu/md/mpi/gather.h
-src/cpu/md/mpi/domain.cpp
-src/cpu/md/mpi/halo_exchange.cpp
-src/cpu/md/mpi/atom_migration.cpp
-src/cpu/md/mpi/reduce.cpp
-src/cpu/md/mpi/rcb.cpp
-src/cpu/md/mpi/gather.cpp
-
-include/atomiverse/cpu/frame_snapshot.h             # shared infrastructure (root)
-include/atomiverse/cpu/analysis_executor.h          # shared infrastructure (root)
-include/atomiverse/cpu/snapshot_publisher.h         # shared infrastructure (root)
-include/atomiverse/cpu/async_component_base.h       # shared infrastructure (root)
-include/atomiverse/cpu/md/async_observer.h          # thin MD-specific binding wrapper
-include/atomiverse/cpu/minimizer/async_observer.h   # thin minimizer-specific binding wrapper
-src/cpu/analysis_executor.cpp
-src/cpu/snapshot_publisher.cpp
-src/cpu/async_component_base.cpp
-
-tests/mpi/test_halo_exchange.cpp
-tests/mpi/test_atom_migration.cpp
-tests/mpi/test_reduce_energy.cpp
-tests/mpi/test_vs_single_rank.cpp
-tests/observer/test_async_executor.cpp
-tests/observer/test_snapshot_publisher.cpp
-tests/observer/test_async_component_base.cpp
-
-benchmarks/md/scaling.cpp
-benchmarks/md/polyethylene_tension.cpp
-benchmarks/md/reference/polyethylene/lammps.in
-benchmarks/md/reference/polyethylene/thermo_reference.csv
-benchmarks/md/reference/polyethylene/stress_strain_reference.csv
-tools/validate_polyethylene.py
+✅ include/atomiverse/cpu/md/mpi/domain.h
+✅ include/atomiverse/cpu/md/mpi/halo_exchange.h         # Forward + Reverse + PIMPL FaceBufs
+✅ include/atomiverse/cpu/md/mpi/atom_migration.h
+✅ include/atomiverse/cpu/md/mpi/reduce.h
+❌ include/atomiverse/cpu/md/mpi/rcb.h                   # Phase 4
+❌ include/atomiverse/cpu/md/mpi/gather.h                # Phase 4
+✅ src/cpu/md/mpi/domain.cpp
+✅ src/cpu/md/mpi/halo_exchange.cpp
+✅ src/cpu/md/mpi/atom_migration.cpp
+✅ src/cpu/md/mpi/reduce.cpp
+❌ src/cpu/md/mpi/rcb.cpp                                # Phase 4
+❌ src/cpu/md/mpi/gather.cpp                             # Phase 4
 ```
+
+### Async-analysis infrastructure (Phase 1)
+
+```
+✅ include/atomiverse/cpu/frame_snapshot.h
+✅ include/atomiverse/cpu/analysis_executor.h
+✅ include/atomiverse/cpu/snapshot_publisher.h
+✅ include/atomiverse/cpu/async_component_base.h
+✅ include/atomiverse/cpu/md/async_observer.h
+✅ include/atomiverse/cpu/minimizer/async_observer.h
+✅ src/cpu/analysis_executor.cpp
+✅ src/cpu/snapshot_publisher.cpp
+✅ src/cpu/async_component_base.cpp
+```
+
+### Tests
+
+```
+✅ tests/mpi/test_halo_exchange.cpp
+✅ tests/mpi/test_atom_migration.cpp
+✅ tests/mpi/test_pe_msu_pipeline.cpp                    # MSU end-to-end smoke (n=8)
+✅ tests/mpi/test_pe_nvt_multirank.cpp                   # NVT correctness vs single-rank
+✅ tests/mpi/test_npt_multirank.cpp                      # NPT correctness vs single-rank
+✅ tests/mpi/test_deform_multirank.cpp                   # uniaxial-deform correctness
+✅ tests/mpi/test_pe_chain_crossing.cpp                  # chain crossing rank boundary
+✅ tests/mpi/test_pe_chain_drifting.cpp                  # multi-step drift / migration
+✅ tests/mpi/test_pe_chains_8rank.cpp                    # 8-rank PE bonded NVE
+✅ tests/mpi/test_pe_chains_multirank.cpp                # 2-rank PE bonded NVE
+✅ tests/mpi/test_pe_full_multirank.cpp                  # full pipeline 2-rank
+✅ tests/mpi/test_topology.cpp                           # MPI Cartesian + partition
+↪ tests/mpi/test_reduce_energy.cpp                       # subsumed by test_pe_msu_pipeline + test_pe_nvt
+↪ tests/mpi/test_vs_single_rank.cpp                      # subsumed per-feature
+✅ tests/cpu/test_analysis_executor.cpp                  # at tests/cpu/, not tests/observer/
+✅ tests/cpu/test_snapshot_publisher.cpp
+✅ tests/cpu/test_async_component_base.cpp
+✅ tests/cpu/observer/test_rdf_observer.cpp              # observer-side RDF async test
+```
+
+### Benchmarks + reference data (Phase 4)
+
+```
+❌ benchmarks/md/scaling.cpp
+❌ benchmarks/md/polyethylene_tension.cpp
+❌ benchmarks/md/reference/polyethylene/lammps.in
+❌ benchmarks/md/reference/polyethylene/thermo_reference.csv
+❌ benchmarks/md/reference/polyethylene/stress_strain_reference.csv
+❌ tools/validate_polyethylene.py
+```
+
+The MSU amorphous-PE acceptance is exercised today as a CTest (`test_pe_msu_pipeline_n8`) rather than a benchmark. The benchmark + LAMMPS-reference comparison form is tracked in `msu-pe-validation.md`.
 
 ## Files to modify
 
