@@ -20,11 +20,12 @@
 #include <functional>
 
 #include "atomiverse/cpu/component.h"
-#include "atomiverse/cpu/scf/basis_set.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
-#include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/gradient.h"
 #include "atomiverse/cpu/scf/aspc_predictor.h"
+#include "atomiverse/cpu/scf/basis_set.h"
+#include "atomiverse/cpu/scf/gradient.h"
+#include "atomiverse/cpu/scf/integrals.h"
+#include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/cpu/scf/scf_solver.h"
 
 namespace ATV {
 namespace cpu {
@@ -71,16 +72,38 @@ public:
     /// @param cb Callback invoked after each force evaluation.
     SCFEvaluator& on_evaluate(std::function<void(const SCFResult&)> cb);
 
+    /// @brief Toggle gradient computation.
+    ///
+    /// `with_gradient(true)`  (default) — `launch()` runs SCF + analytic
+    ///                                    nuclear gradient and writes
+    ///                                    forces into `frame.atoms.f*`.
+    ///                                    `capabilities()` includes
+    ///                                    `Capability::Force`.
+    /// `with_gradient(false)` — `launch()` runs SCF only; forces are not
+    ///                          touched. `capabilities()` drops
+    ///                          `Capability::Force`. Use for energy-only
+    ///                          single-point work in `cpu::Evaluate`.
+    ///
+    /// Must be called before `driver.build()` (capabilities are inspected
+    /// during validation).
+    /// @return Reference to self for chaining.
+    SCFEvaluator& with_gradient(bool enabled) noexcept {
+        compute_force_ = enabled;
+        return *this;
+    }
+
     std::string name() const override { return "scf_evaluator"; }
     ComponentRole role() const override { return ComponentRole::Evaluator; }
-    /// @brief Capabilities reflect what SCFEvaluator writes each launch.
-    ///        Always Energy + DensityMatrix + Orbitals; Force is included
-    ///        because gradient computation is currently unconditional.
-    ///        Phase 4 introduces a `with_gradient(false)` mode that drops
-    ///        the Force bit for energy-only single points.
+    /// @brief Capabilities reflect what `launch()` writes to the frame.
+    ///        Always: Energy, DensityMatrix, Orbitals.
+    ///        Force is added when gradient computation is enabled (the
+    ///        default; toggle via `with_gradient(false)`).
     Capability capabilities() const override {
-        return Capability::Energy | Capability::Force |
-               Capability::DensityMatrix | Capability::Orbitals;
+        Capability caps = Capability::Energy
+                        | Capability::DensityMatrix
+                        | Capability::Orbitals;
+        if (compute_force_) caps = caps | Capability::Force;
+        return caps;
     }
 
     void build(const cpu::BuildContext& ctx) override;
@@ -127,6 +150,8 @@ private:
     BasisSet basis_;
     int charge_;
 
+    bool compute_force_ = true;
+
     bool use_predictor_ = false;
     int corrector_steps_ = 2;
     double corrector_tol_ = 1e-4;
@@ -136,6 +161,12 @@ private:
     bool has_last_density_ = false;
     xt::xtensor<double, 2> last_P_alpha_;
     xt::xtensor<double, 2> last_P_beta_;
+
+    /// Pre-built inner SCF solver. Constructed in build() with a
+    /// representative IntegralPack so all per-iteration workspaces
+    /// (X, sp_block, sp, grid) are allocated once and reused across
+    /// every launch().
+    std::unique_ptr<SCFSolver> solver_;
 
     // Shared-pointer storage so observers can capture handles that stay valid
     // after the driver copies this evaluator into its owned-component list.
