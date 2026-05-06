@@ -32,13 +32,25 @@ public:
     Barostat(double P_target, double tau_p, double dt);
 
     std::string name() const override { return "barostat"; }
+    ComponentRole role() const override { return ComponentRole::Barostat; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {{static_cast<int>(ATV::md::Phase::end_of_step), -45}};
     }
     void launch(const cpu::LaunchContext& ctx) override;
 
+    /// @brief Toggle pressure coupling at runtime (default: enabled).
+    /// When disabled `launch()` is a no-op — useful for multi-stage
+    /// protocols that mix NVT and NPT segments under one driver.
+    void set_enabled(bool enabled) noexcept { enabled_ = enabled; }
+    bool enabled() const noexcept { return enabled_; }
+
+    /// @brief Retune the pressure setpoint between `Driver::run()` segments.
+    void set_P_target(double P_target) noexcept { P_target_ = P_target; }
+    double P_target() const noexcept { return P_target_; }
+
 private:
     double P_target_, tau_p_, dt_;
+    bool   enabled_ = true;
 };
 
 } // namespace md

@@ -28,9 +28,18 @@ void NoseHoover::build(const cpu::BuildContext& ctx) {
     // `atoms.size()` at build time is the *global* pre-partition atom count
     // (the storage is allocated once by the user before Backend::set_frame
     // partitions). This gives the correct global `n_dof` for `Q_`.
-    int n_global = ctx.frame.atoms.size();
-    int n_dof = 3 * n_global - 3;  // 3N - 3 (COM removal)
-    Q_ = static_cast<double>(n_dof) * kBoltzmann * T_target_ * tau_ * tau_;
+    const int n_global = ctx.frame.atoms.size();
+    n_dof_global_ = 3 * n_global - 3;  // 3N - 3 (COM removal)
+    Q_ = static_cast<double>(n_dof_global_) * kBoltzmann * T_target_ * tau_ * tau_;
+}
+
+void NoseHoover::set_T_target(double T_target, bool reset_chain) {
+    T_target_ = T_target;
+    // Rescale `Q_` to the new setpoint using the cached global DOF count.
+    // Skipping this would leave the chain mass tuned to the old bath
+    // temperature, producing the wrong response time after the transition.
+    Q_ = static_cast<double>(n_dof_global_) * kBoltzmann * T_target_ * tau_ * tau_;
+    if (reset_chain) xi_ = 0.0;
 }
 
 void NoseHoover::launch(const cpu::LaunchContext& ctx) {

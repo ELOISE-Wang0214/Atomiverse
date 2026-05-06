@@ -22,6 +22,7 @@ Barostat::Barostat(double P_target, double tau_p, double dt)
     : P_target_(P_target), tau_p_(tau_p), dt_(dt) {}
 
 void Barostat::launch(const cpu::LaunchContext& ctx) {
+    if (!enabled_) return;
     auto& f = ctx.frame;
 
     // Volume from box (orthorhombic). For multi-rank the box is

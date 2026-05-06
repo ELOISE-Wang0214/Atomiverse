@@ -39,6 +39,15 @@ public:
     }
     void launch(const cpu::LaunchContext& ctx) override;
 
+    /// @brief Retune the engineering-strain rate between `Driver::run()`
+    /// segments. Setting `strain_rate` to 0 disables deformation while
+    /// keeping the component registered (no driver rebuild required).
+    /// @param strain_rate New ε̇ [1/fs].
+    void set_strain_rate(double strain_rate) noexcept { strain_rate_ = strain_rate; }
+
+    /// @return Current ε̇ [1/fs].
+    double strain_rate() const noexcept { return strain_rate_; }
+
 private:
     double strain_rate_;   // ε̇ [1/fs]
     double dt_;            // [fs]
