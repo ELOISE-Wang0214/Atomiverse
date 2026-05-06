@@ -96,6 +96,11 @@ public:
     /// only one structural role is exposed; the integrator role is the
     /// load-bearing one for `DynamicsDriver` validation.
     ComponentRole role() const override { return ComponentRole::Integrator; }
+    /// @brief Reads the kinetic-stress component of `frame.stress` to
+    /// compute the internal pressure feedback. Triggers auto-injection
+    /// of `VirialStress` in `MD::install_infra()` when no canonical
+    /// stress provider is otherwise registered.
+    Capability reads() const override { return Capability::Stress; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {{static_cast<int>(ATV::md::Phase::initial_integrate), 0},
                 {static_cast<int>(ATV::md::Phase::final_integrate),   0},

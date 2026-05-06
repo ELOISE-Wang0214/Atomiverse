@@ -36,12 +36,18 @@
 /// `OptimizeDriver`) do.
 #pragma once
 
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
+#include <utility>
 
 #include "atomiverse/core/device.h"
+#include "atomiverse/core/real.h"
 #include "atomiverse/cpu/backend_traits.h"
 #include "atomiverse/cpu/component.h"
+#include "atomiverse/cpu/pair_evaluator.h"
+#include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/driver.h"
 #include "atomiverse/facade/iteration_status.h"
 
@@ -54,16 +60,34 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
 public:
     using Base = Driver<PhaseEnum, cpu::device_tag>;
 
-    /// @brief Compile the Plan after validating required role + capability set.
+    /// @brief Compile the Plan after installing infrastructure and
+    /// validating the required role + capability set.
+    ///
+    /// Order: `install_infra()` first (so auto-injected components are
+    /// visible to validation and the compiled Plan), `validate_components()`
+    /// second (so the auto-injected set counts toward role/capability
+    /// requirements), `Base::build()` last.
     void build() {
+        install_infra();
         validate_components();
         Base::build();
     }
 
 protected:
+    /// @brief Subclass hook — install opt-in infrastructure components
+    /// derived from declared user state (e.g. `NoseHooverNPT::reads()
+    /// == Stress` → inject `VirialStress`; pair evaluator + multi-rank
+    /// build → inject MPI halo exchange). Default no-op. Subclasses
+    /// override to apply category-specific rules. Called from `build()`
+    /// before `validate_components()` so the auto-injected set counts
+    /// toward validation.
+    /// @see .claude/specs/driver-infra-auto-injection.md
+    virtual void install_infra() {}
+
     /// @brief Subclass hook — validate the component set and throw on
     /// missing roles / capabilities. Called *before* the Plan is built,
-    /// so `this->pending_` still carries the registered components.
+    /// so `this->pending_` still carries the registered components
+    /// (including any auto-injected by `install_infra()`).
     virtual void validate_components() const = 0;
 
     /// @brief Walk every (component, phase, order) pending binding.
@@ -115,6 +139,90 @@ protected:
     /// capability is absent at `validate_components()` time.
     [[noreturn]] static void throw_missing(const char* what) {
         throw std::runtime_error(std::string("driver build: missing required ") + what);
+    }
+
+    // ─── Categorical-setter helpers (shared across MD / Minimize / Evaluate) ───
+
+    /// @brief Singular setter using the component's `default_bindings()`.
+    /// Idempotent on same-name re-call; throws on different-name re-call.
+    template <typename C>
+    void set_singular_default_(C&& comp,
+                               std::optional<std::string>& slot,
+                               const char* setter_name) {
+        const std::string n = comp.name();
+        if (slot) {
+            if (*slot == n) return;
+            throw std::invalid_argument(
+                std::string(setter_name) + " already configured with '" +
+                *slot + "', rejected re-call with '" + n + "'");
+        }
+        slot = n;
+        this->add(std::forward<C>(comp));
+    }
+
+    /// @brief Singular setter at an explicit phase / order. Used for
+    /// components without `default_bindings()` (NeighborList) or where
+    /// the categorical API pins a specific slot (`set_pair` at force@0,
+    /// `set_thermo` at end_of_step@+20, etc.).
+    template <typename C>
+    void set_singular_at_(C&& comp,
+                          std::optional<std::string>& slot,
+                          const char* setter_name,
+                          PhaseEnum phase, int order) {
+        const std::string n = comp.name();
+        if (slot) {
+            if (*slot == n) return;
+            throw std::invalid_argument(
+                std::string(setter_name) + " already configured with '" +
+                *slot + "', rejected re-call with '" + n + "'");
+        }
+        slot = n;
+        this->on(phase).add(std::forward<C>(comp), order);
+    }
+
+    /// @brief Aggregate of pending-component facts that `install_infra()`
+    /// uses to decide what to auto-inject and what to throw about. Single
+    /// pass over `pending_` populates everything.
+    struct InfraScan {
+        bool needs_stress      = false;  ///< Some pending component reads Stress.
+        bool has_virial_stress = false;  ///< Canonical Stress provider already there.
+        bool has_neighbor_list = false;  ///< NeighborList already there.
+        std::string pair_evaluator_name; ///< First component reporting `needs_neighbor_list()`.
+        std::optional<Real> pair_evaluator_cutoff;  ///< Set when the above is a `PairEvaluator`.
+    };
+
+    /// @brief Walk the pending list once, collect everything install_infra
+    /// rules might need.
+    InfraScan scan_pending_infra_() const {
+        InfraScan s;
+        for_each_pending([&](const cpu::ComponentBase& c) {
+            if (has_capability(c.reads(), Capability::Stress))
+                s.needs_stress = true;
+            const std::string n = c.name();
+            if (n == "virial_stress") s.has_virial_stress = true;
+            if (n == "neighbor_list") s.has_neighbor_list = true;
+            if (c.needs_neighbor_list() && s.pair_evaluator_name.empty()) {
+                s.pair_evaluator_name = n;
+                if (auto* pe = dynamic_cast<const cpu::PairEvaluator*>(&c))
+                    s.pair_evaluator_cutoff = pe->pair_cutoff();
+            }
+        });
+        return s;
+    }
+
+    /// @brief Shared missing-NL check. `setter_help` is the
+    /// driver-specific instruction printed in the throw message
+    /// (`set_pair` is the same, but the variable name differs:
+    /// `sim` / `opt` / `eval`).
+    void throw_if_missing_neighbor_list_(const InfraScan& s,
+                                         const char* driver_name,
+                                         const char* setter_help) const {
+        if (!s.pair_evaluator_name.empty() && !s.has_neighbor_list) {
+            throw std::runtime_error(
+                std::string(driver_name) + "::build(): component '" +
+                s.pair_evaluator_name + "' reports needs_neighbor_list()==true "
+                "but no neighbor list was registered. " + setter_help);
+        }
     }
 };
 

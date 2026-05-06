@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "atomiverse/cpu/component.h"
+#include "atomiverse/cpu/pair_evaluator.h"
 #include "atomiverse/cpu/md/pair_list.h"
 
 namespace ATV {
@@ -28,12 +29,16 @@ namespace md {
 /// behaviour for plain non-bonded fluids).
 ///
 /// Thread-parallel with per-thread force reduction buffers (Newton's 3rd law).
-class LJ : public cpu::ComponentBase {
+class LJ : public cpu::PairEvaluator {
 public:
     /// @param epsilon Well depth [eV].
     /// @param sigma Size parameter [Angstrom].
     /// @param cutoff Cutoff distance [Angstrom].
     LJ(double epsilon, double sigma, double cutoff);
+
+    /// @brief Pair-cutoff in Å. Used by category drivers to size MPI
+    /// halo exchange when `set_pair(LJ{...})` is called.
+    Real pair_cutoff() const override { return static_cast<Real>(cutoff_); }
 
     /// @brief Enable/disable LAMMPS-style "special bonds" exclusions.
     ///

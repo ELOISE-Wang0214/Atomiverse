@@ -33,6 +33,11 @@ public:
 
     std::string name() const override { return "barostat"; }
     ComponentRole role() const override { return ComponentRole::Barostat; }
+    /// @brief Reads `frame.stress` to derive internal pressure for
+    /// the rescaling factor `μ`. Triggers auto-injection of
+    /// `VirialStress` in `MD::install_infra()` when no canonical
+    /// stress provider is otherwise registered.
+    Capability reads() const override { return Capability::Stress; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {{static_cast<int>(ATV::md::Phase::end_of_step), -45}};
     }

@@ -217,6 +217,17 @@ Thermo, Recorder (XYZ), RDF
 
 ## Example
 
+User-facing CPU drivers expose a LAMMPS-shaped categorical setter API
+(`set_pair`, `set_bond`, `set_neighbor`, `set_integrator`,
+`set_thermostat`, `set_barostat`, `set_observer`, `set_record`,
+`set_thermo`, `set_optimizer`). NeighborList is user-set (LAMMPS
+`neighbor`); halo exchange auto-injects under `#ifdef ATV_BUILD_MPI`
+when `set_pair` is called; `VirialStress` auto-injects when an
+NPT / Berendsen barostat declares `reads()==Stress`. The
+underlying `add()` and `on(phase).add()` are still public — use
+them to register user-defined hooks the categorical API does not
+yet have a slot for. See `.claude/specs/driver-infra-auto-injection.md`.
+
 ```cpp
 // Single-point SCF energy + density (no forces)
 cpu::scf::SCFEvaluator scf{cfg};
@@ -225,24 +236,36 @@ cpu::single_point(frame, scf);
 double E_eV = frame.energy;
 double E_Ha = scf.last_result().energy;
 
-// Classical MD (Dynamics)
+// Classical MD (Dynamics) — categorical setters
 cpu::md::MD sim;
-sim.add(cpu::md::VelocityVerlet{0.01});
-sim.on(md::Phase::force).add(cpu::md::LJ{0.0104, 3.4, 6.8});
+sim.set_pair(cpu::md::LJ{0.0104, 3.4, 6.8});
+sim.set_neighbor(cpu::md::NeighborList<>{6.8, /*skin=*/0.3});
+sim.set_integrator(cpu::md::VelocityVerlet{0.01});
+sim.set_thermo(100);
 sim.build();
 sim.run(frame, 1000);
 
+// NPT MD — VirialStress auto-injected via reads()==Stress
+cpu::md::MD npt;
+npt.set_pair(cpu::md::LJ{0.0104, 3.4, 6.8});
+npt.set_neighbor(cpu::md::NeighborList<>{6.8, 0.3});
+npt.set_integrator(cpu::md::NoseHooverNPT{
+    {.T_target=300.0, .tau_T=100.0, .P_target=0.0, .tau_P=1000.0, .dt=0.5}});
+npt.build();        // VirialStress injected at post_force @ -50 automatically
+npt.run(frame, 1000);
+
 // AIMD (Dynamics + SCFEvaluator as ForceProvider)
+// SCFEvaluator does not yet have a categorical setter; use add().
 cpu::md::MD aimd;
-aimd.add(cpu::md::VelocityVerlet{0.5});
-aimd.on(md::Phase::force).add(cpu::scf::SCFEvaluator{rhf_config});
+aimd.set_integrator(cpu::md::VelocityVerlet{0.5});
+aimd.add(cpu::scf::SCFEvaluator{rhf_config});
 aimd.build();
 aimd.run(frame, 100);
 
-// Geometry optimization (Optimize + LBFGS or CG as Optimizer component)
+// Geometry optimization
 cpu::minimizer::Minimize opt;
-opt.add(cpu::minimizer::LBFGS{5, 0.01, 0.05});
-opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
+opt.set_optimizer(cpu::minimizer::LBFGS{5, 0.01, 0.05});
+opt.add(cpu::scf::SCFEvaluator{config});
 opt.build();
 opt.run(frame, /*max_iter=*/100);
 ```

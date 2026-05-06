@@ -84,6 +84,10 @@ atv_add_cpp_test(test_cpu_driver_role_validation cpu/test_cpu_driver_role_valida
 atv_add_cpp_test(test_cpu_evaluate_driver_capabilities    cpu/test_evaluate_driver_capabilities.cpp)
 atv_add_cpp_test(test_cpu_optimize_driver_early_stop      cpu/test_optimize_driver_early_stop.cpp)
 atv_add_cpp_test(test_cpu_dynamics_full_budget            cpu/test_dynamics_full_budget.cpp)
+atv_add_cpp_test(test_cpu_install_infra_hook              cpu/test_install_infra_hook.cpp)
+atv_add_cpp_test(test_cpu_md_set_api                      cpu/md/test_md_set_api.cpp)
+atv_add_cpp_test(test_cpu_md_plan_equivalence             cpu/md/test_md_plan_equivalence.cpp)
+atv_add_cpp_test(test_cpu_minimize_evaluate_set_api       cpu/test_minimize_evaluate_set_api.cpp)
 
 # ── MPI tests (launched under `mpirun`) ─────────────────────────────────
 

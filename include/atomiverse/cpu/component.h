@@ -72,6 +72,30 @@ public:
     /// `Capability::Force`. Defaults to `None`.
     virtual Capability capabilities() const { return Capability::None; }
 
+    /// @brief Bitset of frame fields this component READS each launch.
+    ///
+    /// Mirrors `capabilities()` (which is "what I write") on the
+    /// consumer side. The CPU category drivers use this in
+    /// `install_infra()` to auto-provide canonical providers for
+    /// otherwise-unmet read requirements (e.g. `NoseHooverNPT::reads()
+    /// == Stress` triggers auto-injection of `VirialStress`). Defaults
+    /// to `None` — most components read implicit frame fields
+    /// (positions / forces) that no provider needs to be matched
+    /// against.
+    /// @see facade/component_role.h
+    virtual Capability reads() const { return Capability::None; }
+
+    /// @brief Whether this component requires a `NeighborList` upstream
+    /// in the same step.
+    ///
+    /// Pair-cutoff evaluators (LJ, future Coulomb-real-space) override
+    /// to `true`. The category drivers throw at `build()` time if any
+    /// registered component reports `true` and no `NeighborList` was
+    /// set via `set_neighbor()` / `add()`. LAMMPS analogue: needing
+    /// `pair_style lj/cut` to be paired with a `neighbor` command.
+    /// Defaults to `false`.
+    virtual bool needs_neighbor_list() const { return false; }
+
     /// @brief Scheduling trait (blocking or deferrable).
     /// @return `Scheduling::blocking` for CPU components unless overridden.
     virtual Scheduling scheduling() const { return Scheduling::blocking; }

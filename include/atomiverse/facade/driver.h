@@ -163,6 +163,12 @@ public:
         return PhaseBuilder<PhaseEnum, DeviceTag>(&pending_, &owned_components_, phase);
     }
 
+    /// @brief Read-only access to the compiled Plan (after `build()`).
+    /// Useful for tests that need to compare Plans built two ways
+    /// (e.g. Plan-equivalence between the categorical setter API and
+    /// the raw `add()`/`on()` path).
+    const Plan<Component>& plan() const { return plan_; }
+
     /// @brief Compile the execution Plan.
     void build() {
         PlanBuilder<Component> builder;

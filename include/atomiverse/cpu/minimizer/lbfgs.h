@@ -29,6 +29,7 @@
 #include "atomiverse/cpu/backend_traits.h"
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/minimizer/init.h"
+#include "atomiverse/cpu/minimizer/minimize.h"
 #include "atomiverse/cpu/optimize_driver.h"
 #include "atomiverse/cpu/snapshot_publisher.h"
 #include "atomiverse/facade/stage.h"
@@ -157,26 +158,6 @@ private:
 
     // Optimization trace
     std::vector<OptRecord> trace_;
-};
-
-/// @brief Energy minimization driver — convergence-aware Optimize loop.
-///
-/// Auto-adds `ZeroForces` and `ZeroEnergy` at force phase. Also wires the
-/// shared async-analysis `SnapshotPublisher` into this driver's
-/// `end_of_step @ +10` so observers inheriting `cpu::minimizer::AsyncObserver`
-/// (or explicit `on(end_of_step).add(obs, 20)`) receive snapshots.
-///
-/// Validation rules inherited from `OptimizeDriver`: requires ≥ 1
-/// `Optimizer` component (e.g. `LBFGS`, `CG`) and ≥ 1 `Evaluator` with
-/// `Capability::Energy` or `Capability::Force` (e.g. `SCFEvaluator`).
-class Minimize : public OptimizeDriver {
-public:
-    Minimize() {
-        this->add(ZeroForces{});
-        this->add(ZeroEnergy{});
-        this->on(ATV::minimizer::Phase::end_of_step)
-             .add(cpu::SnapshotPublisher{}, 10);
-    }
 };
 
 } // namespace minimizer
