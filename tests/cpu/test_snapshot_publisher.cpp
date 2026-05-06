@@ -28,7 +28,10 @@
 #include "atomiverse/cpu/snapshot_publisher.h"
 #include "atomiverse/core/mat3.h"
 
+#include "cpu/driver_test_helpers.h"
+
 using namespace ATV;
+using atv_test::NoOpForce;
 
 namespace {
 
@@ -46,21 +49,6 @@ cpu::Frame make_small_frame(int n) {
     frame.box = Mat3::cubic(10.0);
     return frame;
 }
-
-/// @brief No-op force evaluator — just satisfies DynamicsDriver's
-/// "≥ 1 component with Capability::Force" contract for tests that
-/// exercise infrastructure (snapshot/async/observer pipelines) and
-/// don't need real physics.
-class NoOpForce : public cpu::ComponentBase {
-public:
-    std::string name() const override { return "noop_force"; }
-    ComponentRole role() const override { return ComponentRole::Evaluator; }
-    Capability capabilities() const override { return Capability::Force; }
-    std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::force), 0}};
-    }
-    void launch(const cpu::LaunchContext&) override {}
-};
 
 /// @brief Capture target — records the last snapshot received.
 ///

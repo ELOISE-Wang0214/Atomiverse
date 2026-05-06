@@ -9,16 +9,21 @@
 
 #include <string>
 
-#include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/dynamics_driver.h"
 #include "atomiverse/cpu/evaluate_driver.h"
-#include "atomiverse/cpu/frame.h"
-#include "atomiverse/core/mat3.h"
-#include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
+
+#include "cpu/driver_test_helpers.h"
+
+using atv_test::make_trivial_frame;
+using atv_test::StubIntegrator;
 
 namespace {
 
+/// Energy-only evaluator with launch counter — used to assert that
+/// Evaluate::run() actually invoked the evaluator. Differs from the
+/// shared `StubEnergyEvaluator` only in carrying the counter; the
+/// counter is what makes this test specific.
 struct EnergyOnlyEvaluator : ATV::cpu::ComponentBase {
     int launch_count = 0;
     std::string name() const override { return "energy_only"; }
@@ -26,23 +31,6 @@ struct EnergyOnlyEvaluator : ATV::cpu::ComponentBase {
     ATV::Capability   capabilities() const override { return ATV::Capability::Energy; }
     void launch(const ATV::cpu::LaunchContext&) override { ++launch_count; }
 };
-
-struct StubIntegrator : ATV::cpu::ComponentBase {
-    std::string name() const override { return "stub_integrator"; }
-    ATV::ComponentRole role() const override { return ATV::ComponentRole::Integrator; }
-    void launch(const ATV::cpu::LaunchContext&) override {}
-};
-
-ATV::cpu::Frame make_trivial_frame() {
-    ATV::cpu::Frame f(1);
-    f.atoms.x[0] = 0.0;
-    f.atoms.y[0] = 0.0;
-    f.atoms.z[0] = 0.0;
-    f.atoms.mass[0] = 1.0;
-    f.atoms.type[0] = 0;
-    f.box = ATV::Mat3::cubic(10.0);
-    return f;
-}
 
 } // namespace
 

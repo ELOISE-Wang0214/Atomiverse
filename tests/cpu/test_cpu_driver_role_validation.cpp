@@ -10,51 +10,20 @@
 
 #include <string>
 
-#include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/dynamics_driver.h"
 #include "atomiverse/cpu/evaluate_driver.h"
-#include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/optimize_driver.h"
-#include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
 
+#include "cpu/driver_test_helpers.h"
+
+using atv_test::StubBareInfra;
+using atv_test::StubEnergyEvaluator;
+using atv_test::StubForceEvaluator;
+using atv_test::StubIntegrator;
+using atv_test::StubOptimizer;
+
 namespace {
-
-// ─── Stubs ──────────────────────────────────────────────────────────
-
-struct StubIntegrator : ATV::cpu::ComponentBase {
-    std::string name() const override { return "stub_integrator"; }
-    ATV::ComponentRole role() const override { return ATV::ComponentRole::Integrator; }
-    void launch(const ATV::cpu::LaunchContext&) override {}
-};
-
-struct StubForceEvaluator : ATV::cpu::ComponentBase {
-    std::string name() const override { return "stub_force"; }
-    ATV::ComponentRole role() const override { return ATV::ComponentRole::Evaluator; }
-    ATV::Capability   capabilities() const override {
-        return ATV::Capability::Energy | ATV::Capability::Force;
-    }
-    void launch(const ATV::cpu::LaunchContext&) override {}
-};
-
-struct StubEnergyEvaluator : ATV::cpu::ComponentBase {
-    std::string name() const override { return "stub_energy"; }
-    ATV::ComponentRole role() const override { return ATV::ComponentRole::Evaluator; }
-    ATV::Capability   capabilities() const override { return ATV::Capability::Energy; }
-    void launch(const ATV::cpu::LaunchContext&) override {}
-};
-
-struct StubOptimizer : ATV::cpu::ComponentBase {
-    std::string name() const override { return "stub_optimizer"; }
-    ATV::ComponentRole role() const override { return ATV::ComponentRole::Optimizer; }
-    void launch(const ATV::cpu::LaunchContext&) override {}
-};
-
-struct StubBareInfra : ATV::cpu::ComponentBase {
-    std::string name() const override { return "stub_bare"; }
-    // role() defaults to None. Should not satisfy any required slot.
-    void launch(const ATV::cpu::LaunchContext&) override {}
-};
 
 bool message_mentions(const std::runtime_error& e, const std::string& needle) {
     return std::string(e.what()).find(needle) != std::string::npos;

@@ -9,28 +9,16 @@
 
 #include <gtest/gtest.h>
 
-#include "atomiverse/cpu/component.h"
-#include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/optimize_driver.h"
-#include "atomiverse/core/mat3.h"
-#include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
 
+#include "cpu/driver_test_helpers.h"
+
+using atv_test::make_trivial_frame;
+using atv_test::StubEnergyEvaluator;
+using atv_test::StubOptimizer;
+
 namespace {
-
-struct StubOptimizer : ATV::cpu::ComponentBase {
-    int step_count = 0;
-    std::string name() const override { return "stub_optimizer"; }
-    ATV::ComponentRole role() const override { return ATV::ComponentRole::Optimizer; }
-    void launch(const ATV::cpu::LaunchContext&) override { ++step_count; }
-};
-
-struct StubEnergyEvaluator : ATV::cpu::ComponentBase {
-    std::string name() const override { return "stub_energy"; }
-    ATV::ComponentRole role() const override { return ATV::ComponentRole::Evaluator; }
-    ATV::Capability   capabilities() const override { return ATV::Capability::Energy; }
-    void launch(const ATV::cpu::LaunchContext&) override {}
-};
 
 /// Flips outer_status.converged to true on the iteration whose 0-based
 /// step index equals `converge_at_step`. Uses `LaunchContext::step` so
@@ -51,17 +39,6 @@ struct ConvergeAtStep : ATV::cpu::ComponentBase {
         }
     }
 };
-
-ATV::cpu::Frame make_trivial_frame() {
-    ATV::cpu::Frame f(1);
-    f.atoms.x[0] = 0.0;
-    f.atoms.y[0] = 0.0;
-    f.atoms.z[0] = 0.0;
-    f.atoms.mass[0] = 1.0;
-    f.atoms.type[0] = 0;
-    f.box = ATV::Mat3::cubic(10.0);
-    return f;
-}
 
 } // namespace
 

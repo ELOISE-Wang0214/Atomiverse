@@ -16,32 +16,18 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/observer/rdf.h"
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/facade/component_role.h"
-#include "atomiverse/facade/stage.h"
+
+#include "cpu/driver_test_helpers.h"
 
 using namespace ATV;
+using atv_test::NoOpForce;
 
 namespace {
-
-/// @brief No-op force evaluator for harness tests — satisfies
-/// DynamicsDriver's "≥ 1 component with Capability::Force" contract
-/// without doing any physics.
-class NoOpForce : public cpu::ComponentBase {
-public:
-    std::string name() const override { return "noop_force"; }
-    ComponentRole role() const override { return ComponentRole::Evaluator; }
-    Capability capabilities() const override { return Capability::Force; }
-    std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::force), 0}};
-    }
-    void launch(const cpu::LaunchContext&) override {}
-};
 
 cpu::Frame make_fcc_argon(int n_cells, double a) {
     int n = n_cells * n_cells * n_cells * 4;
