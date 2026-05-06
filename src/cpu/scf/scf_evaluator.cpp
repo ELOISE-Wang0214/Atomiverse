@@ -14,6 +14,72 @@
 #include "atomiverse/core/units.h"
 
 #include <cmath>
+#include <utility>
+
+namespace {
+
+/// @brief In-place minimum-image unwrap of an isolated molecule.
+///
+/// Atom 0 is the anchor; every other atom i is shifted by a multiple
+/// of the (orthorhombic) box edges so that |x_i - x_0| ≤ L_d / 2 along
+/// each axis d. After this call, the atoms reassemble into a single
+/// physically connected fragment regardless of how the MD integrator
+/// wrapped each atom independently across the box.
+///
+/// This is the fix for the wrap × non-minimum-image SCF bug: the SCF
+/// integral builder is not minimum-image aware, so an atom that
+/// `VelocityVerlet::wrap_orthorhombic` placed on the opposite face of
+/// the box from its molecular partners will look ~one box length away
+/// in raw coordinates, and the SCF collapses onto an unphysical
+/// fragmented limit.
+///
+/// @pre  The system is a single isolated fragment (one molecule per
+///       SCF call). For multi-fragment SCF (e.g. periodic boundary
+///       Ewald or multiple non-bonded molecules in one cell), this
+///       anchor-on-atom-0 scheme will need generalisation.
+/// @return Snapshot of the wrapped positions so the caller can restore
+///         them before launch returns (downstream observers expect
+///         wrapped positions in `frame.atoms.x/y/z`).
+struct WrappedPositionsSnapshot {
+    xt::xtensor<double, 1> x, y, z;
+};
+
+WrappedPositionsSnapshot unwrap_for_scf(ATV::cpu::Frame& frame) {
+    using namespace ATV;
+    const int n = static_cast<int>(frame.atoms.size());
+    WrappedPositionsSnapshot snap{frame.atoms.x, frame.atoms.y, frame.atoms.z};
+
+    if (n <= 1) return snap;
+
+    const double lx = frame.box.length(0);
+    const double ly = frame.box.length(1);
+    const double lz = frame.box.length(2);
+    const double x0 = frame.atoms.x(0);
+    const double y0 = frame.atoms.y(0);
+    const double z0 = frame.atoms.z(0);
+
+    auto min_image_shift = [](double delta, double L) {
+        return (L > 0.0) ? (delta - L * std::round(delta / L)) : delta;
+    };
+
+    for (int i = 1; i < n; ++i) {
+        const double dx = min_image_shift(frame.atoms.x(i) - x0, lx);
+        const double dy = min_image_shift(frame.atoms.y(i) - y0, ly);
+        const double dz = min_image_shift(frame.atoms.z(i) - z0, lz);
+        frame.atoms.x(i) = x0 + dx;
+        frame.atoms.y(i) = y0 + dy;
+        frame.atoms.z(i) = z0 + dz;
+    }
+    return snap;
+}
+
+void restore_wrapped(ATV::cpu::Frame& frame, WrappedPositionsSnapshot&& snap) {
+    frame.atoms.x = std::move(snap.x);
+    frame.atoms.y = std::move(snap.y);
+    frame.atoms.z = std::move(snap.z);
+}
+
+} // namespace
 
 namespace ATV {
 namespace cpu {
@@ -23,20 +89,53 @@ SCFEvaluator::SCFEvaluator(SCFConfig config, BasisSet basis, int charge)
     : config_(std::move(config)), basis_(basis), charge_(charge),
       config_shared_(std::make_shared<SCFConfig>(config_)) {}
 
-SCFEvaluator& SCFEvaluator::predictor(int order, int corrector_steps,
-                                       double corrector_tol, bool fallback) {
+// ── Builder methods ─────────────────────────────────────────────────
+//
+// `predictor()`, `on_evaluate()`, and (in the header) `with_gradient()`
+// are ref-qualified so the chain preserves the value category of the
+// invocation. When called on an rvalue temporary (e.g.
+// `sim.add(SCFEvaluator{cfg}.predictor(3))`), the rvalue overload
+// returns `SCFEvaluator&&`, which makes `Driver::add(Comp&& comp)`
+// deduce `Comp` as `SCFEvaluator` (rvalue) and move the temporary into
+// `unique_ptr` ownership rather than storing a non-owning pointer that
+// dangles when the temporary dies. The lvalue overload preserves the
+// existing `evaluator.predictor(3); driver.add(std::move(evaluator));`
+// pattern.
+
+void SCFEvaluator::set_predictor_(int order, int corrector_steps,
+                                  double corrector_tol, bool fallback) {
     use_predictor_ = true;
     corrector_steps_ = corrector_steps;
     corrector_tol_ = corrector_tol;
     fallback_full_scf_ = fallback;
     aspc_alpha_ = std::make_unique<ASPCPredictor>(order);
     aspc_beta_ = std::make_unique<ASPCPredictor>(order);
+}
+
+SCFEvaluator& SCFEvaluator::predictor(int order, int corrector_steps,
+                                       double corrector_tol, bool fallback) & {
+    set_predictor_(order, corrector_steps, corrector_tol, fallback);
     return *this;
 }
 
-SCFEvaluator& SCFEvaluator::on_evaluate(std::function<void(const SCFResult&)> cb) {
+SCFEvaluator&& SCFEvaluator::predictor(int order, int corrector_steps,
+                                        double corrector_tol, bool fallback) && {
+    set_predictor_(order, corrector_steps, corrector_tol, fallback);
+    return std::move(*this);
+}
+
+void SCFEvaluator::set_on_evaluate_(std::function<void(const SCFResult&)> cb) {
     on_evaluate_ = std::move(cb);
+}
+
+SCFEvaluator& SCFEvaluator::on_evaluate(std::function<void(const SCFResult&)> cb) & {
+    set_on_evaluate_(std::move(cb));
     return *this;
+}
+
+SCFEvaluator&& SCFEvaluator::on_evaluate(std::function<void(const SCFResult&)> cb) && {
+    set_on_evaluate_(std::move(cb));
+    return std::move(*this);
 }
 
 void SCFEvaluator::build(const cpu::BuildContext& ctx) {
@@ -62,6 +161,15 @@ void SCFEvaluator::launch(const cpu::LaunchContext& ctx) {
     ATV_INFO(
         "[scf_eval] step={} start natm={} charge={}",
         ctx.step, natm, charge_);
+
+    // Unwrap the molecule before SCF: build_integrals + scf_gradient are
+    // not minimum-image aware, so an atom that the MD integrator wrapped
+    // to the opposite face of the box would otherwise look ~box-length
+    // away from its partners and collapse the SCF. We anchor atom 0 and
+    // map every other atom into its minimum-image position, then restore
+    // the wrapped positions before the function returns so downstream
+    // observers (recorders, RDF, etc.) see the conventional wrapped form.
+    auto snap = unwrap_for_scf(frame);
 
     const auto t_integrals = LogClock::now();
     *last_integrals_ = build_integrals(frame, basis_, charge_);
@@ -186,6 +294,10 @@ void SCFEvaluator::launch(const cpu::LaunchContext& ctx) {
 
     *last_result_ = std::move(result);
     *has_last_result_ = true;
+
+    // Restore the wrapped atomic positions so the rest of the MD loop
+    // and external observers see the conventional in-box representation.
+    restore_wrapped(frame, std::move(snap));
 }
 
 } // namespace scf

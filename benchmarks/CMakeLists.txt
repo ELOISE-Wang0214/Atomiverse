@@ -32,6 +32,7 @@ endif()
 if(ATV_BUILD_RHF)
     atv_add_cpp_bench(bench_libcint)
     atv_add_cpp_bench(bench_native)
+    atv_add_cpp_bench(bench_aimd_step)
 
     # Phase 1.2 QC suite — doesn't link google-benchmark (plain main())
     add_executable(bench_qc_suite qc/bench_qc_suite.cpp)

@@ -16,6 +16,7 @@
 #pragma once
 
 #include <memory>
+#include <utility>
 #include <vector>
 #include <functional>
 
@@ -64,13 +65,20 @@ public:
     /// @param corrector_steps Max SCF corrector iterations (default 2).
     /// @param corrector_tol   Corrector convergence tolerance (default 1e-4).
     /// @param fallback        Fall back to full SCF if corrector fails.
-    /// @return Reference to this for chaining.
+    /// @return Reference to this for chaining (preserves value category:
+    ///         lvalue chain → `SCFEvaluator&`, rvalue chain →
+    ///         `SCFEvaluator&&` so `driver.add(...)` deduces an rvalue
+    ///         and moves the temporary into ownership).
     SCFEvaluator& predictor(int order = 3, int corrector_steps = 2,
-                            double corrector_tol = 1e-4, bool fallback = true);
+                            double corrector_tol = 1e-4, bool fallback = true) &;
+    SCFEvaluator&& predictor(int order = 3, int corrector_steps = 2,
+                             double corrector_tol = 1e-4, bool fallback = true) &&;
 
     /// @brief Set a per-step callback for diagnostics.
     /// @param cb Callback invoked after each force evaluation.
-    SCFEvaluator& on_evaluate(std::function<void(const SCFResult&)> cb);
+    /// @return Reference to this for chaining (value-category preserving).
+    SCFEvaluator& on_evaluate(std::function<void(const SCFResult&)> cb) &;
+    SCFEvaluator&& on_evaluate(std::function<void(const SCFResult&)> cb) &&;
 
     /// @brief Toggle gradient computation.
     ///
@@ -86,10 +94,14 @@ public:
     ///
     /// Must be called before `driver.build()` (capabilities are inspected
     /// during validation).
-    /// @return Reference to self for chaining.
-    SCFEvaluator& with_gradient(bool enabled) noexcept {
+    /// @return Reference to self for chaining (value-category preserving).
+    SCFEvaluator& with_gradient(bool enabled) & noexcept {
         compute_force_ = enabled;
         return *this;
+    }
+    SCFEvaluator&& with_gradient(bool enabled) && noexcept {
+        compute_force_ = enabled;
+        return std::move(*this);
     }
 
     std::string name() const override { return "scf_evaluator"; }
@@ -146,6 +158,15 @@ public:
     }
 
 private:
+    /// @brief Install the ASPC predictor — shared body for the two
+    ///        ref-qualified `predictor()` overloads.
+    void set_predictor_(int order, int corrector_steps,
+                        double corrector_tol, bool fallback);
+
+    /// @brief Install the per-step callback — shared body for the two
+    ///        ref-qualified `on_evaluate()` overloads.
+    void set_on_evaluate_(std::function<void(const SCFResult&)> cb);
+
     SCFConfig config_;
     BasisSet basis_;
     int charge_;
