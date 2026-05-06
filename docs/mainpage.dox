@@ -37,10 +37,14 @@ different kind of question.
 If you are new to Atomiverse, read these pages first:
 
 1. [Getting Started](user-guide/getting-started.md)
-2. [SCF Deep-Dive Tutorials](tutorial/index.md)
+2. [Tutorial 0: A Tour of the CPU Backend](tutorial/00-cpu-overview.md)
+3. [Tutorials Index](tutorial/index.md)
 
-The tutorial track is deliberately progressive. It starts with the toy SCF loop,
-then adds RHF, UHF, and UKS one layer at a time.
+The tutorial track is organised in two arcs. The SCF arc (Chapters 1-4,
+6, 8) starts with the toy SCF loop and adds RHF, UHF, UKS, AIMD, and
+geometry optimization one layer at a time. The classical-MD arc
+(Chapter 7) walks through pair potentials, bonded force fields,
+neighbor lists, and ensemble thermostats on the CPU.
 
 @section arch Architecture At A Glance
 
@@ -65,6 +69,9 @@ Two design rules matter more than anything else:
 
 For the full explanation, read [Architecture](developer/architecture.md).
 For contribution guidance, read [Extending Components](developer/extending-components.md).
+The CPU-specific deep-dive is in [CPU Backend Internals](developer/cpu-internals.md),
+and worked extension recipes for MD, the minimizer, and SCF inner-step
+helpers are in [Extending CPU Subsystems](developer/extending-cpu-subsystems.md).
 
 @section workflows Workflow Families
 
@@ -77,8 +84,13 @@ Atomiverse currently exposes three workflow families.
 
 @subsection workflows_min Minimization
 
-`minimizer::SD` and related minimizer drivers reuse the staged execution model
-with a phase order centered on force evaluation and convergence checks.
+The CPU side uses `cpu::minimizer::Minimize`, an `OptimizeDriver`
+subclass that takes any `Optimizer`-role component (`LBFGS`, `CG`,
+…) plus an `Evaluator` at the force phase. The same wiring drives
+classical relaxation (`LJ` at force) and *ab initio* geometry
+optimization (`SCFEvaluator` at force). The CUDA side keeps the
+older `minimizer::SD` / `minimizer::CG` per-algorithm drivers pending
+migration to the same three-category taxonomy.
 
 @subsection workflows_scf Electronic Structure
 
@@ -100,6 +112,8 @@ Representative entry points:
 - `examples/tutorial/02_rhf.cu` -- CUDA translation of the same RHF lesson
 - `examples/tutorial/03_uhf.cpp` -- UHF bond breaking and spin contamination
 - `examples/tutorial/04_uks.cpp` -- UKS / LSDA examples
+- `examples/tutorial/05_geom_opt.cpp` -- L-BFGS aspirin geometry optimization
+- `examples/tutorial/06_aimd.cpp` -- ab initio molecular dynamics on H2 (NVT)
 - `examples/lj.cu` -- minimization + MD + thermo + trajectory + RDF
 
 @section docsbuild Building The Docs

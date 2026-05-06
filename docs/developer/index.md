@@ -20,6 +20,17 @@ Then read [Extending Components](extending-components.md). That page explains
 how to add a new component, how the lifecycle rules work, and where tests and
 examples should go.
 
+For CPU-specific work, two further pages drill into the details:
+[CPU Backend Internals](cpu-internals.md) explains *why* the CPU side
+is split into three driver categories, why role and capability are
+orthogonal axes, why SCF is an inner solver rather than a driver
+subclass, and how the iteration-status channel signals convergence.
+[Extending CPU Subsystems](extending-cpu-subsystems.md) is the
+companion handbook with three case studies — adding an MD integrator,
+adding a minimizer, and adding an SCF inner-step helper — at the level
+of "what file do I create, what do I inherit, what does the test look
+like?"
+
 ## Codebase Map
 
 The repository is easier to navigate if you group it by responsibility instead
