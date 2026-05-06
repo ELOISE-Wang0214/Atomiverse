@@ -58,22 +58,6 @@ void rdf_write(const std::string& filename,
 
 namespace observer {
 
-namespace {
-
-// Orthorhombic minimum-image -- same convention as
-// src/cpu/md/cell_list.cpp:21. Phase 1 is orthorhombic-only per spec § A.6.
-inline void minimum_image(double& dx, double& dy, double& dz, const Mat3& box) {
-    const double lx = box(0, 0), ly = box(1, 1), lz = box(2, 2);
-    if (dx >  lx * 0.5) dx -= lx;
-    if (dx < -lx * 0.5) dx += lx;
-    if (dy >  ly * 0.5) dy -= ly;
-    if (dy < -ly * 0.5) dy += ly;
-    if (dz >  lz * 0.5) dz -= lz;
-    if (dz < -lz * 0.5) dz += lz;
-}
-
-} // namespace
-
 RDF::RDF(double r_max, int n_bins, int freq, std::string output_file)
     : r_max_(r_max),
       n_bins_(n_bins),
@@ -106,7 +90,7 @@ void RDF::on_snapshot(const cpu::FrameSnapshot& snap) {
             double dx = xi - snap.x[static_cast<std::size_t>(j)];
             double dy = yi - snap.y[static_cast<std::size_t>(j)];
             double dz = zi - snap.z[static_cast<std::size_t>(j)];
-            minimum_image(dx, dy, dz, snap.box);
+            snap.box.min_image(dx, dy, dz);
             const double r2 = dx * dx + dy * dy + dz * dz;
             if (r2 < r_max_sq) {
                 dist_scratch_[static_cast<std::size_t>(n_pairs++)] = std::sqrt(r2);
@@ -121,7 +105,7 @@ void RDF::on_snapshot(const cpu::FrameSnapshot& snap) {
 
     // Box volume for orthorhombic cell. Track running average across
     // snapshots so NPT runs get a self-consistent normalization.
-    const double vol = snap.box(0, 0) * snap.box(1, 1) * snap.box(2, 2);
+    const double vol = snap.box.volume();
     box_vol_sum_ += vol;
     box_vol_last_ = box_vol_sum_ / static_cast<double>(n_samples_);
 }

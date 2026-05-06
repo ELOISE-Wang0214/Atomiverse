@@ -23,19 +23,11 @@
 // overhead.
 #include <xsimd/xsimd.hpp>
 
+#include "atomiverse/cpu/box_simd.h"
+
 namespace ATV {
 namespace cpu {
 namespace md {
-
-static inline void minimum_image(double& dx, double& dy, double& dz, const Mat3& box) {
-    double lx = box(0, 0), ly = box(1, 1), lz = box(2, 2);
-    if (dx >  lx * double(0.5)) dx -= lx;
-    if (dx < -lx * double(0.5)) dx += lx;
-    if (dy >  ly * double(0.5)) dy -= ly;
-    if (dy < -ly * double(0.5)) dy += ly;
-    if (dz >  lz * double(0.5)) dz -= lz;
-    if (dz < -lz * double(0.5)) dz += lz;
-}
 
 LJ::LJ(double epsilon, double sigma, double cutoff)
     : epsilon_(epsilon), sigma_(sigma), cutoff_(cutoff) {
@@ -338,9 +330,11 @@ void LJ::launch(const cpu::LaunchContext& ctx) {
                 batch_t v_dy = v_yi - v_yj;
                 batch_t v_dz = v_zi - v_zj;
                 // Branch-free minimum image: select(dx > +L/2, dx-L, dx);
-                // then select(dx < -L/2, dx+L, dx). Two passes match the
-                // sequential `if` ladder of the scalar code: lane k ends up
-                // with the same dx_k value the scalar branch would compute.
+                // then select(dx < -L/2, dx+L, dx). Hoisted constants
+                // (v_lx, v_half_lx, ...) keep the compiler from reloading
+                // box members across the inner loop -- swapping this for
+                // box.min_image_batch costs ~7% per-step (member loads
+                // through `this` are not hoisted under aliasing analysis).
                 v_dx = xsimd::select(v_dx >  v_half_lx,    v_dx - v_lx, v_dx);
                 v_dx = xsimd::select(v_dx <  v_neg_half_lx, v_dx + v_lx, v_dx);
                 v_dy = xsimd::select(v_dy >  v_half_ly,    v_dy - v_ly, v_dy);
@@ -432,6 +426,10 @@ void LJ::launch(const cpu::LaunchContext& ctx) {
                 double dx = xi - x_ptr[j];
                 double dy = yi - y_ptr[j];
                 double dz = zi - z_ptr[j];
+                // Inlined branchy min-image: matches the SIMD ket-loop form
+                // above and keeps the hoisted half_lx / lx locals in
+                // registers across the entire scalar tail. (Substituting
+                // box.min_image here costs the same ~7% as the SIMD path.)
                 if (dx >  half_lx) dx -= lx;
                 if (dx < -half_lx) dx += lx;
                 if (dy >  half_ly) dy -= ly;

@@ -16,16 +16,6 @@ namespace ATV {
 namespace cpu {
 namespace bonded {
 
-static inline void minimum_image(double& dx, double& dy, double& dz, const Mat3& box) {
-    double lx = box(0, 0), ly = box(1, 1), lz = box(2, 2);
-    if (dx >  lx * double(0.5)) dx -= lx;
-    if (dx < -lx * double(0.5)) dx += lx;
-    if (dy >  ly * double(0.5)) dy -= ly;
-    if (dy < -ly * double(0.5)) dy += ly;
-    if (dz >  lz * double(0.5)) dz -= lz;
-    if (dz < -lz * double(0.5)) dz += lz;
-}
-
 HarmonicBond::HarmonicBond(std::vector<double> K, std::vector<double> r0)
     : K_(std::move(K)), r0_(std::move(r0)) {}
 
@@ -139,7 +129,7 @@ void HarmonicBond::launch(const cpu::LaunchContext& ctx) {
             double dx = ri[0] - rj[0];
             double dy = ri[1] - rj[1];
             double dz = ri[2] - rj[2];
-            minimum_image(dx, dy, dz, f.box);
+            f.box.min_image(dx, dy, dz);
 
             double r = std::sqrt(dx * dx + dy * dy + dz * dz);
             double dr = r - r0_[type];

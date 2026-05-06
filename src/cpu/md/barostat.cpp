@@ -27,7 +27,7 @@ void Barostat::launch(const cpu::LaunchContext& ctx) {
 
     // Volume from box (orthorhombic). For multi-rank the box is
     // identical across ranks, so V is the global volume.
-    const double V = f.box(0, 0) * f.box(1, 1) * f.box(2, 2);
+    const double V = f.box.volume();
     if (V <= 0.0) return;
 
     // Pressure from the trace of the unnormalised virial sum:
@@ -44,9 +44,7 @@ void Barostat::launch(const cpu::LaunchContext& ctx) {
     // Scale box edges. Single-rank or multi-rank: deterministic, identical
     // computation on every rank (P, V, μ are all global) so the box stays
     // consistent across ranks without any explicit broadcast.
-    f.box(0, 0) *= mu;
-    f.box(1, 1) *= mu;
-    f.box(2, 2) *= mu;
+    f.box.scale_isotropic(mu);
 
     // Affine-rescale owned atom positions only. Ghost slots are
     // overwritten by the next step's HaloExchangeForward.

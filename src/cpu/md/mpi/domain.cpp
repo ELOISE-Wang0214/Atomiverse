@@ -29,9 +29,9 @@ void DomainDecomposition::bind(const Frame& frame) {
     }
 }
 
-void DomainDecomposition::compute_sublo_subhi(const ATV::Mat3& box) {
+void DomainDecomposition::compute_sublo_subhi(const ATV::cpu::Box& box) {
     for (int d = 0; d < 3; ++d) {
-        const double L = box(d, d);
+        const double L = box.length(d);
         if (static_cast<int>(cuts[d].size()) == dims[d] + 1) {
             // Non-uniform cut planes (set by `RCBBalancer`). cuts[d] is in
             // box-length fractions, so the partition survives NPT/Deform box
@@ -132,9 +132,9 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
 
     compute_sublo_subhi(frame.box);
 
-    const double Lx = frame.box(0, 0);
-    const double Ly = frame.box(1, 1);
-    const double Lz = frame.box(2, 2);
+    const double Lx = frame.box.length(0);
+    const double Ly = frame.box.length(1);
+    const double Lz = frame.box.length(2);
 
     // First-run vs subsequent-run scoping. On the first call (n_local == 0)
     // we scan the entire user-supplied atom array because we don't yet know

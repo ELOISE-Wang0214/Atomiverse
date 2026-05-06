@@ -20,6 +20,7 @@
 #include <xtensor/views/xview.hpp>
 
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/cpu/box.h"
 
 namespace ATV {
 namespace cpu {
@@ -153,7 +154,7 @@ public:
     double kinetic = 0;    ///< Kinetic energy [eV].
     double stress[6] = {}; ///< Stress tensor [eV/Angstrom^3], Voigt: xx yy zz xy xz yz.
 
-    Mat3 box{};  ///< Simulation cell [Angstrom], 3x3 row-major.
+    cpu::Box box{};  ///< Simulation cell [Angstrom]; canonical Box at backend root (see cpu/box.h).
 };
 
 } // namespace cpu

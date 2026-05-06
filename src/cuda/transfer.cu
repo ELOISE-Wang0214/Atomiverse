@@ -220,9 +220,11 @@ void to_cpu(const Frame& d, cpu::Frame& frame) {
     if (d.box) {
         prec_t box_data[9];
         cudaMemcpy(box_data, d.box, 9 * sizeof(prec_t), cudaMemcpyDeviceToHost);
+        Mat3 m;
         for (int i = 0; i < 3; ++i)
             for (int j = 0; j < 3; ++j)
-                frame.box(i, j) = static_cast<Real>(box_data[i * 3 + j]);
+                m(i, j) = static_cast<Real>(box_data[i * 3 + j]);
+        frame.box.set_cell(m);
     }
 }
 

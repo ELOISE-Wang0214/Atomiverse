@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/cpu/box.h"
 
 namespace ATV {
 namespace cpu {
@@ -40,7 +41,7 @@ struct CaptureMask {
 struct FrameSnapshot {
     int step = 0;          ///< Simulation step at which this snapshot was published.
     int n_owned = 0;       ///< Number of owned atoms captured.
-    Mat3 box{};            ///< Simulation cell at the time of capture [Angstrom].
+    cpu::Box box{};        ///< Simulation cell at the time of capture [Angstrom].
 
     std::vector<double> x, y, z;     ///< Positions [Angstrom].
     std::vector<double> vx, vy, vz;  ///< Velocities [Angstrom/fs].

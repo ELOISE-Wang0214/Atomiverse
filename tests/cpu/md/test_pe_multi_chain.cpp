@@ -152,10 +152,7 @@ cpu::Frame make_multi_chain_box(const MultiChainConfig& cfg) {
         d_off += n_dihedrals_per;
     }
 
-    frame.box = Mat3{};
-    frame.box(0, 0) = Lx;
-    frame.box(1, 1) = Ly;
-    frame.box(2, 2) = Lz;
+    frame.box = Mat3::diagonal(Lx, Ly, Lz);
     return frame;
 }
 

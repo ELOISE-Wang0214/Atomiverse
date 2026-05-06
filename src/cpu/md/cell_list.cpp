@@ -18,19 +18,6 @@ namespace ATV {
 namespace cpu {
 namespace md {
 
-// ── Minimum image helper ─────────────────────────────────────────
-
-static inline void minimum_image(double& dx, double& dy, double& dz, const Mat3& box) {
-    // Orthorhombic only: box(0,0), box(1,1), box(2,2) are edge lengths
-    double lx = box(0, 0), ly = box(1, 1), lz = box(2, 2);
-    if (dx >  lx * double(0.5)) dx -= lx;
-    if (dx < -lx * double(0.5)) dx += lx;
-    if (dy >  ly * double(0.5)) dy -= ly;
-    if (dy < -ly * double(0.5)) dy += ly;
-    if (dz >  lz * double(0.5)) dz -= lz;
-    if (dz < -lz * double(0.5)) dz += lz;
-}
-
 // ── CellList ─────────────────────────────────────────────────────
 
 CellList::CellList(double cutoff, double skin)
@@ -78,9 +65,9 @@ void CellList::init_extended(const cpu::Frame& frame, double /*cutoff_skin*/,
 void CellList::compute_grid(const cpu::Frame& frame) {
     // Per-axis effective grid length: box edge plus halo skin on each
     // extended side. Single-rank axes use the box edge as-is.
-    double lx_eff = frame.box(0, 0) + (axis_extended_[0] ? double(2) * cutoff_skin_ : double(0));
-    double ly_eff = frame.box(1, 1) + (axis_extended_[1] ? double(2) * cutoff_skin_ : double(0));
-    double lz_eff = frame.box(2, 2) + (axis_extended_[2] ? double(2) * cutoff_skin_ : double(0));
+    double lx_eff = frame.box.length(0) + (axis_extended_[0] ? double(2) * cutoff_skin_ : double(0));
+    double ly_eff = frame.box.length(1) + (axis_extended_[1] ? double(2) * cutoff_skin_ : double(0));
+    double lz_eff = frame.box.length(2) + (axis_extended_[2] ? double(2) * cutoff_skin_ : double(0));
 
     ncx_ = std::max(int(1), static_cast<int>(std::floor(lx_eff / cutoff_skin_)));
     ncy_ = std::max(int(1), static_cast<int>(std::floor(ly_eff / cutoff_skin_)));
@@ -118,9 +105,9 @@ void CellList::build_stencil() {
 
 void CellList::bin_atoms(const cpu::Frame& frame, int n_active) {
     int n = (n_active < 0) ? frame.atoms.size() : n_active;
-    double lx = frame.box(0, 0);
-    double ly = frame.box(1, 1);
-    double lz = frame.box(2, 2);
+    double lx = frame.box.length(0);
+    double ly = frame.box.length(1);
+    double lz = frame.box.length(2);
 
     // Clear cell counts
     std::fill(cell_count_.begin(), cell_count_.end(), int(0));
@@ -184,7 +171,7 @@ void CellList::build(const cpu::Frame& frame, int n_active) {
     bin_atoms(frame, n_active);
     save_positions(frame, n_active);
     n_at_last_build_ = (n_active < 0) ? frame.atoms.size() : n_active;
-    box_at_last_build_ = frame.box(0, 0);
+    box_at_last_build_ = frame.box.length(0);
 }
 
 bool CellList::needs_rebuild(const cpu::Frame& frame, int n_active) const {
@@ -267,9 +254,9 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
         const double* __restrict x_ptr = frame.atoms.x.data();
         const double* __restrict y_ptr = frame.atoms.y.data();
         const double* __restrict z_ptr = frame.atoms.z.data();
-        const double lx = frame.box(0, 0);
-        const double ly = frame.box(1, 1);
-        const double lz = frame.box(2, 2);
+        const double lx = frame.box.length(0);
+        const double ly = frame.box.length(1);
+        const double lz = frame.box.length(2);
         const double half_lx = 0.5 * lx;
         const double half_ly = 0.5 * ly;
         const double half_lz = 0.5 * lz;
@@ -432,7 +419,7 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
                     double dx = frame.atoms.x[i] - frame.atoms.x[j];
                     double dy = frame.atoms.y[i] - frame.atoms.y[j];
                     double dz = frame.atoms.z[i] - frame.atoms.z[j];
-                    minimum_image(dx, dy, dz, frame.box);
+                    frame.box.min_image(dx, dy, dz);
 
                     double r2 = dx * dx + dy * dy + dz * dz;
                     if (r2 < rc_sq) {
@@ -553,7 +540,7 @@ void CellList::refresh_full(const cpu::Frame& frame, int n_active,
                     double dx = frame.atoms.x[i] - frame.atoms.x[j];
                     double dy = frame.atoms.y[i] - frame.atoms.y[j];
                     double dz = frame.atoms.z[i] - frame.atoms.z[j];
-                    minimum_image(dx, dy, dz, frame.box);
+                    frame.box.min_image(dx, dy, dz);
 
                     double r2 = dx * dx + dy * dy + dz * dz;
                     if (r2 < rc_sq) {

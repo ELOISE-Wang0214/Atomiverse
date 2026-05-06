@@ -30,7 +30,7 @@ namespace {
 
 void copy_owners_into(GatheredFrame& out, const Frame& frame, int n_local) {
     out.n_total = n_local;
-    out.box = frame.box;
+    out.box = frame.box.cell();
     out.x.assign(frame.atoms.x.data(), frame.atoms.x.data() + n_local);
     out.y.assign(frame.atoms.y.data(), frame.atoms.y.data() + n_local);
     out.z.assign(frame.atoms.z.data(), frame.atoms.z.data() + n_local);
@@ -105,7 +105,7 @@ GatheredFrame gather_to_root(const cpu::Frame& frame,
                              int root) {
     GatheredFrame out;
     out.root_rank = root;
-    out.box = frame.box;
+    out.box = frame.box.cell();
 
     if (dd.cart_comm == MPI_COMM_NULL) {
         // Single-rank fallback: direct copy of owners.

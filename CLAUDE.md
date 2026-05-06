@@ -35,6 +35,8 @@ Each backend (`cpu/`, `cuda/`, `torch/`) follows the same two-tier layout:
 
 **Rule:** Files at the backend root are **shared infrastructure** used by multiple domains. Domain subdirectories hold domain-specific code. When adding new shared code (data models, utilities, base classes), place it at the root — never inside a domain subdirectory.
 
+**Box** (`cpu::Box` in `cpu/box.h`, `cuda::Box` in `cuda/box.cuh`) is the canonical simulation-cell type at each backend root. It owns the cell matrix plus a per-step-immutable cache (`inv_cell`, per-axis `inv_L`, `half_L`, `bool ortho`) and exposes `length(d)`, `volume()`, `min_image(dx, dy, dz)`, `wrap_axis(q, d)`, `scale_diagonal/isotropic/axis`, `set_cell`. The CPU side adds an xsimd `min_image_batch<B>` overload in `cpu/box_simd.h` for SIMD callers. All scattered `Mat3 box(d, d)` reads and the duplicated `static inline minimum_image` / `wrap_to_box` helpers from bonded/, md/, observer/, scf/, and mpi/ have been folded into Box; LJ keeps an inlined branchy min-image in its xsimd ket-loop because member-load-through-`this` defeats compiler hoisting in that hot path (~7% per-step cost).
+
 ### Facade (CUDA-free)
 
 ```

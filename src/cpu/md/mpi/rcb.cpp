@@ -48,19 +48,12 @@ RCBBalancer::RCBBalancer(int every, int n_bins)
 
 namespace {
 
-inline double wrap_to_box(double q, double L) {
-    if (L <= 0.0) return q;
-    double w = q - std::floor(q / L) * L;
-    if (w < 0.0)  w += L;
-    if (w >= L)   w -= L;
-    return w;
-}
-
 // Build a `n_bins`-bin histogram of wrapped positions along a given axis.
 void build_local_histogram(const Frame& frame, int n_local, int axis,
-                            double L, int n_bins,
+                            const cpu::Box& box, int n_bins,
                             std::vector<std::int64_t>& hist) {
     std::fill(hist.begin(), hist.end(), 0);
+    const double L = box.length(axis);
     if (L <= 0.0 || n_local <= 0) return;
     const double inv_bin = static_cast<double>(n_bins) / L;
     for (int i = 0; i < n_local; ++i) {
@@ -71,7 +64,7 @@ void build_local_histogram(const Frame& frame, int n_local, int axis,
             case 2: q = frame.atoms.z[i]; break;
             default: break;
         }
-        const double wrapped = wrap_to_box(q, L);
+        const double wrapped = box.wrap_axis(q, axis);
         int bin = static_cast<int>(wrapped * inv_bin);
         if (bin < 0) bin = 0;
         if (bin >= n_bins) bin = n_bins - 1;
@@ -153,9 +146,9 @@ void RCBBalancer::launch(const cpu::LaunchContext& ctx) {
     if (dd->dims[0] <= 1 && dd->dims[1] <= 1 && dd->dims[2] <= 1) return;
 
     const Frame& frame = ctx.frame;
-    const double Lx = frame.box(0, 0);
-    const double Ly = frame.box(1, 1);
-    const double Lz = frame.box(2, 2);
+    const double Lx = frame.box.length(0);
+    const double Ly = frame.box.length(1);
+    const double Lz = frame.box.length(2);
     if (Lx <= 0.0 || Ly <= 0.0 || Lz <= 0.0) return;
 
     const int n_local = dd->n_local;
@@ -167,11 +160,11 @@ void RCBBalancer::launch(const cpu::LaunchContext& ctx) {
 
     {
         std::vector<std::int64_t> tmp(static_cast<std::size_t>(n_bins_), 0);
-        build_local_histogram(frame, n_local, 0, Lx, n_bins_, tmp);
+        build_local_histogram(frame, n_local, 0, frame.box, n_bins_, tmp);
         std::copy(tmp.begin(), tmp.end(), hist_local.begin());
-        build_local_histogram(frame, n_local, 1, Ly, n_bins_, tmp);
+        build_local_histogram(frame, n_local, 1, frame.box, n_bins_, tmp);
         std::copy(tmp.begin(), tmp.end(), hist_local.begin() + n_bins_);
-        build_local_histogram(frame, n_local, 2, Lz, n_bins_, tmp);
+        build_local_histogram(frame, n_local, 2, frame.box, n_bins_, tmp);
         std::copy(tmp.begin(), tmp.end(), hist_local.begin() + 2 * n_bins_);
     }
 

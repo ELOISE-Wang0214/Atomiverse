@@ -278,9 +278,7 @@ TEST_F(CpuMdTest, CellListExtendedGridBoxChange) {
 
     // NPT-like: expand the box by 2% and displace atoms affinely.
     const double scale = 1.02;
-    frame.box(0, 0) *= scale;
-    frame.box(1, 1) *= scale;
-    frame.box(2, 2) *= scale;
+    frame.box.scale_isotropic(scale);
     for (int i = 0; i < n_total; ++i) {
         frame.atoms.x[i] *= scale;
         frame.atoms.y[i] *= scale;

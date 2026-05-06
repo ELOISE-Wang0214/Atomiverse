@@ -50,16 +50,6 @@ constexpr int kAtomPayloadBytes =
   + sizeof(std::int64_t) * kPayloadInt64
   + sizeof(std::int8_t)  * kPayloadInt8;
 
-// Wrap `q` into the half-open interval `[0, L)`. Identical to the helper
-// in `domain.cpp`; duplicated here to keep the migration pack self-contained.
-inline double wrap_to_box(double q, double L) {
-    if (L <= 0.0) return q;
-    double w = q - std::floor(q / L) * L;
-    if (w < 0.0)  w += L;
-    if (w >= L)   w -= L;
-    return w;
-}
-
 inline int rank_along_dim(double q, double L, int dims_d) {
     if (dims_d <= 1) return 0;
     const int r = static_cast<int>(q * static_cast<double>(dims_d) / L);
@@ -92,18 +82,19 @@ inline int slab_along_dim_from_cuts(double frac,
 // `DomainDecomposition::compute_sublo_subhi` would produce on the destination
 // side.
 inline int dest_rank_for(const DomainDecomposition& dd, double x, double y, double z,
-                          double Lx, double Ly, double Lz) {
-    auto axis_coord = [&](int d, double q, double L) {
-        const double wrapped = wrap_to_box(q, L);
+                          const cpu::Box& box) {
+    auto axis_coord = [&](int d, double q) {
+        const double L = box.length(d);
+        const double wrapped = box.wrap_axis(q, d);
         if (static_cast<int>(dd.cuts[d].size()) == dd.dims[d] + 1) {
             const double frac = (L > 0.0) ? (wrapped / L) : 0.0;
             return slab_along_dim_from_cuts(frac, dd.cuts[d], dd.dims[d]);
         }
         return rank_along_dim(wrapped, L, dd.dims[d]);
     };
-    const int cx = axis_coord(0, x, Lx);
-    const int cy = axis_coord(1, y, Ly);
-    const int cz = axis_coord(2, z, Lz);
+    const int cx = axis_coord(0, x);
+    const int cy = axis_coord(1, y);
+    const int cz = axis_coord(2, z);
     return cx * (dd.dims[1] * dd.dims[2]) + cy * dd.dims[2] + cz;
 }
 
@@ -195,9 +186,6 @@ void AtomMigration::launch(const cpu::LaunchContext& ctx) {
     if (!dd || dd->cart_comm == MPI_COMM_NULL) return;
 
     Frame& frame = ctx.frame;
-    const double Lx = frame.box(0, 0);
-    const double Ly = frame.box(1, 1);
-    const double Lz = frame.box(2, 2);
 
     int my_rank = 0;
     MPI_Comm_rank(dd->cart_comm, &my_rank);
@@ -220,7 +208,7 @@ void AtomMigration::launch(const cpu::LaunchContext& ctx) {
     int n_to_migrate = 0;
     for (int i = 0; i < dd->n_local; ++i) {
         const int dest = dest_rank_for(*dd, frame.atoms.x[i], frame.atoms.y[i],
-                                       frame.atoms.z[i], Lx, Ly, Lz);
+                                       frame.atoms.z[i], frame.box);
         if (dest == my_rank) {
             keep_indices.push_back(i);
         } else {

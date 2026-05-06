@@ -80,9 +80,9 @@ inline double pair_dist_sq(const Frame& f, int i, int j) {
     // PE cell), which in turn inflates the halo cutoff past every slab
     // width and causes HaloExchangeForward to tag every owned atom as a
     // ghost on every face — blowing n_ghost past `dd->capacity`.
-    const double lx = f.box(0, 0);
-    const double ly = f.box(1, 1);
-    const double lz = f.box(2, 2);
+    const double lx = f.box.length(0);
+    const double ly = f.box.length(1);
+    const double lz = f.box.length(2);
     if (lx > 0.0) dx -= lx * std::round(dx / lx);
     if (ly > 0.0) dy -= ly * std::round(dy / ly);
     if (lz > 0.0) dz -= lz * std::round(dz / lz);
@@ -232,7 +232,7 @@ void pack_positions_for_face(const Frame& frame, const DomainDecomposition& dd,
     buf.resize(static_cast<std::size_t>(n) * kPosTagDoublesPerAtom);
 
     const int dim = face_dim(f);
-    const double shift = pbc_shift_for_face(dd, f, frame.box(dim, dim));
+    const double shift = pbc_shift_for_face(dd, f, frame.box.length(dim));
 
     const double* x = frame.atoms.x.data();
     const double* y = frame.atoms.y.data();
@@ -263,7 +263,7 @@ void pack_positions_only_for_face(const Frame& frame, const DomainDecomposition&
     buf.resize(static_cast<std::size_t>(n) * kPosOnlyDoublesPerAtom);
 
     const int dim = face_dim(f);
-    const double shift = pbc_shift_for_face(dd, f, frame.box(dim, dim));
+    const double shift = pbc_shift_for_face(dd, f, frame.box.length(dim));
 
     const double* x = frame.atoms.x.data();
     const double* y = frame.atoms.y.data();

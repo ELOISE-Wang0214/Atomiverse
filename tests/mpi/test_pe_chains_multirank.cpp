@@ -138,10 +138,7 @@ cpu::Frame make_two_chain_box(double box_x, double box_yz) {
         }
     }
 
-    frame.box = Mat3{};
-    frame.box(0, 0) = box_x;
-    frame.box(1, 1) = box_yz;
-    frame.box(2, 2) = box_yz;
+    frame.box = Mat3::diagonal(box_x, box_yz, box_yz);
     return frame;
 }
 

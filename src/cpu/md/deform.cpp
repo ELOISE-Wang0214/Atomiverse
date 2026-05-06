@@ -21,7 +21,7 @@ Deform::Deform(double strain_rate, double dt, int axis)
 void Deform::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
     const double scale = 1.0 + strain_rate_ * dt_;
-    f.box(axis_, axis_) *= scale;
+    f.box.scale_axis(axis_, scale);
 
     const int n = owned_count(ctx);
     auto& coord = (axis_ == 0) ? f.atoms.x

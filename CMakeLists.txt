@@ -149,6 +149,7 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/recorder/xyz.cpp
         # CPU backend infrastructure
         src/cpu/backend.cpp
+        src/cpu/box.cpp
         src/cpu/driver.cpp
         src/cpu/analysis_executor.cpp
         src/cpu/async_component_base.cpp

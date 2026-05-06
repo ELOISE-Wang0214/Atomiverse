@@ -25,6 +25,7 @@ struct Mat3;
 namespace cpu {
 
 class Frame;
+class Box;
 
 namespace md {
 namespace mpi {
@@ -158,7 +159,7 @@ struct DomainDecomposition {
     /// slab record is useful for any spatial component, e.g. the neighbor
     /// list and future observer shell analysis.
     /// @param box Simulation box (orthorhombic in Phase 2).
-    void compute_sublo_subhi(const ATV::Mat3& box);
+    void compute_sublo_subhi(const ATV::cpu::Box& box);
 
 #ifdef ATV_HAS_MPI
     /// @brief Build the 3D Cartesian topology for `world` and discover the

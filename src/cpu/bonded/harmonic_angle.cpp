@@ -16,16 +16,6 @@ namespace ATV {
 namespace cpu {
 namespace bonded {
 
-static inline void minimum_image(double& dx, double& dy, double& dz, const Mat3& box) {
-    double lx = box(0, 0), ly = box(1, 1), lz = box(2, 2);
-    if (dx >  lx * double(0.5)) dx -= lx;
-    if (dx < -lx * double(0.5)) dx += lx;
-    if (dy >  ly * double(0.5)) dy -= ly;
-    if (dy < -ly * double(0.5)) dy += ly;
-    if (dz >  lz * double(0.5)) dz -= lz;
-    if (dz < -lz * double(0.5)) dz += lz;
-}
-
 HarmonicAngle::HarmonicAngle(std::vector<double> K, std::vector<double> theta0)
     : K_(std::move(K)), theta0_(std::move(theta0)) {}
 
@@ -136,13 +126,13 @@ void HarmonicAngle::launch(const cpu::LaunchContext& ctx) {
             double dx_ji = ri[0] - rj[0];
             double dy_ji = ri[1] - rj[1];
             double dz_ji = ri[2] - rj[2];
-            minimum_image(dx_ji, dy_ji, dz_ji, f.box);
+            f.box.min_image(dx_ji, dy_ji, dz_ji);
 
             // r_jk = r_k - r_j
             double dx_jk = rk[0] - rj[0];
             double dy_jk = rk[1] - rj[1];
             double dz_jk = rk[2] - rj[2];
-            minimum_image(dx_jk, dy_jk, dz_jk, f.box);
+            f.box.min_image(dx_jk, dy_jk, dz_jk);
 
             double r_ji = std::sqrt(dx_ji * dx_ji + dy_ji * dy_ji + dz_ji * dz_ji);
             double r_jk = std::sqrt(dx_jk * dx_jk + dy_jk * dy_jk + dz_jk * dz_jk);

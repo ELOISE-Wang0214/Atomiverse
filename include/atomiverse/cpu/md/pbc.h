@@ -24,9 +24,9 @@ namespace md {
 /// @param frame Frame whose `atoms.x/y/z` are shifted in place.
 /// @param n_owned Number of owned atoms to wrap (typically `owned_count(ctx)`).
 inline void wrap_orthorhombic(cpu::Frame& frame, int n_owned) {
-    const double lx = frame.box(0, 0);
-    const double ly = frame.box(1, 1);
-    const double lz = frame.box(2, 2);
+    const double lx = frame.box.length(0);
+    const double ly = frame.box.length(1);
+    const double lz = frame.box.length(2);
     #pragma omp parallel for schedule(static)
     for (int i = 0; i < n_owned; ++i) {
         frame.atoms.x[i] -= lx * std::floor(frame.atoms.x[i] / lx);

@@ -16,16 +16,6 @@ namespace ATV {
 namespace cpu {
 namespace bonded {
 
-static inline void minimum_image(double& dx, double& dy, double& dz, const Mat3& box) {
-    double lx = box(0, 0), ly = box(1, 1), lz = box(2, 2);
-    if (dx >  lx * double(0.5)) dx -= lx;
-    if (dx < -lx * double(0.5)) dx += lx;
-    if (dy >  ly * double(0.5)) dy -= ly;
-    if (dy < -ly * double(0.5)) dy += ly;
-    if (dz >  lz * double(0.5)) dz -= lz;
-    if (dz < -lz * double(0.5)) dz += lz;
-}
-
 // Cross product
 static inline void cross(double ax, double ay, double az,
                           double bx, double by, double bz,
@@ -152,9 +142,9 @@ void MultiHarmonicDihedral::launch(const cpu::LaunchContext& ctx) {
             double b1x = r2[0] - r1[0], b1y = r2[1] - r1[1], b1z = r2[2] - r1[2];
             double b2x = r3[0] - r2[0], b2y = r3[1] - r2[1], b2z = r3[2] - r2[2];
             double b3x = r4[0] - r3[0], b3y = r4[1] - r3[1], b3z = r4[2] - r3[2];
-            minimum_image(b1x, b1y, b1z, f.box);
-            minimum_image(b2x, b2y, b2z, f.box);
-            minimum_image(b3x, b3y, b3z, f.box);
+            f.box.min_image(b1x, b1y, b1z);
+            f.box.min_image(b2x, b2y, b2z);
+            f.box.min_image(b3x, b3y, b3z);
 
             // Normal vectors: n1 = b1 x b2, n2 = b2 x b3
             double n1x, n1y, n1z, n2x, n2y, n2z;

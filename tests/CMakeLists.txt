@@ -63,6 +63,7 @@ endfunction()
 
 # ── CPU backend tests (always available, no CUDA required) ──────────
 
+atv_add_cpp_test(test_cpu_box cpu/test_box.cpp)
 atv_add_cpp_test(test_cpu_md cpu/md/test_md.cpp)
 atv_add_cpp_test(test_cpu_md_pe_single_chain cpu/md/test_pe_single_chain.cpp)
 atv_add_cpp_test(test_cpu_md_pe_nve               cpu/md/test_pe_nve.cpp)

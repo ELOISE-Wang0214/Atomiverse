@@ -5,11 +5,34 @@
 ///
 /// Cell convention: row-major 3x3 matrix, r_cart = cell * r_frac.
 /// Rows of cell are lattice vectors a, b, c.
+///
+/// **Migration note.** `ATV::cuda::Box` (in
+/// `include/atomiverse/cuda/box.cuh`) is the canonical Box at the CUDA
+/// backend root. New callers should use `ATV::cuda::min_image(dx, dy,
+/// dz, box)` directly instead of the raw-pointer overloads here.
+/// The pointer overloads stay so existing kernel signatures
+/// (`(cell, inv_cell)` pairs) compile unchanged during the staged
+/// migration.
 
 #include <cmath>
 #include <cstdint>
 
+#include "atomiverse/cuda/box.cuh"
+
 namespace ATV::md::nlist {
+
+/// @brief Forward to `ATV::cuda::min_image(dx, dy, dz, box)`.
+///
+/// Box-aware overload of the older pointer-based `minimum_image`. New
+/// code should call this; the pointer-based templated overload below
+/// remains for compatibility with kernel signatures that still pass
+/// `(cell, inv_cell)` directly.
+template <typename work_t>
+__host__ __device__ inline void
+minimum_image(work_t& dx, work_t& dy, work_t& dz,
+              const ATV::cuda::Box& box) {
+    ATV::cuda::min_image(dx, dy, dz, box);
+}
 
 /// @brief 3-component vector for device-side math.
 template <typename work_t>

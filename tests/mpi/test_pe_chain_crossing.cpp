@@ -118,10 +118,7 @@ cpu::Frame make_chain_along_x(int n_carbons, double box_x, double box_yz) {
         frame.dihedrals.atoml[k] = k + 3;
     }
 
-    frame.box = Mat3{};
-    frame.box(0, 0) = box_x;
-    frame.box(1, 1) = box_yz;
-    frame.box(2, 2) = box_yz;
+    frame.box = Mat3::diagonal(box_x, box_yz, box_yz);
     return frame;
 }
 

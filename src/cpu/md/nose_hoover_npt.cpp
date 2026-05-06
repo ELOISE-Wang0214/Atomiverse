@@ -248,7 +248,7 @@ void NoseHooverNPT::nhc_baro_half(double half_dt) {
 
 void NoseHooverNPT::update_eps_dot(const cpu::LaunchContext& ctx, double half_dt) {
     const auto& f = ctx.frame;
-    const double V = f.box(0,0) * f.box(1,1) * f.box(2,2);
+    const double V = f.box.volume();
     if (V <= 0.0) return;
 
     // P_internal in `frame.stress` convention (matches Berendsen barostat
@@ -318,9 +318,7 @@ void NoseHooverNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
     }
 
     // Update box edges: V_new = V * exp(3 eps_dot dt) ⇒ each edge *= exp(eps_dot dt).
-    f.box(0, 0) *= a;
-    f.box(1, 1) *= a;
-    f.box(2, 2) *= a;
+    f.box.scale_isotropic(a);
 
     // Wrap (orthorhombic) owned atoms into the freshly-scaled box.
     wrap_orthorhombic(f, n);
