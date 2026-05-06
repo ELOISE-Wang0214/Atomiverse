@@ -172,6 +172,32 @@ private:
 /// @see HaloExchangeForward for the matching producer of `dd->send_lists` /
 ///      `dd->recv_counts`; Reverse consumes those counts to decide how
 ///      many ghost forces to pack and where to add them on the owner side.
+///
+/// ## Reverse-comm payload audit (Phase 5 Track B.5, 2026-05-06)
+///
+/// The reverse exchange transports **exactly three doubles per ghost
+/// row**: `fx, fy, fz`. No other per-atom field is mutated by force
+/// kernels in their owner-or-ghost loop, so no ghost-row state is
+/// silently discarded by this pass:
+///
+///   * Pair forces (`LJ`, future Coulomb) write to `fx/fy/fz`. ✓ shipped.
+///   * Bonded forces (`HarmonicBond`, `HarmonicAngle`,
+///     `MultiHarmonicDihedral`) write to `fx/fy/fz`. ✓ shipped.
+///   * Per-atom virial / stress contributions are *accumulated globally*
+///     via `frame.stress[6]` (a per-rank scalar tally) and reduced by
+///     `ReduceEnergy` at `end_of_step @ -50`. They are not stored per
+///     ghost row, so there is nothing for the halo reverse to ship.
+///   * Per-atom kinetic energy is computed from owner velocities only
+///     (loop bound `n_local`). Ghost velocities are never read.
+///   * Per-atom potential energy similarly accumulates into the global
+///     `frame.energy` scalar.
+///
+/// **Audit conclusion: no silent loss.** Any future kernel that writes
+/// to additional ghost-row fields (e.g. per-atom electrostatic
+/// potential for QM/MM, per-atom virial tensor for stress profiles)
+/// must either (a) extend this payload list and update `pack_face`/
+/// `unpack_face` in `halo_exchange.cpp`, or (b) operate on owners only
+/// and reduce the per-rank totals globally via `ReduceEnergy`.
 class HaloExchangeReverse : public cpu::ComponentBase {
 public:
     HaloExchangeReverse();
