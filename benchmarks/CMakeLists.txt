@@ -60,3 +60,4 @@ endfunction()
 
 atv_add_cpp_md_bench(scaling)
 atv_add_cpp_md_bench(polyethylene_tension)
+atv_add_cpp_md_bench(pe_profile_single)
