@@ -100,6 +100,11 @@ void HarmonicBond::launch(const cpu::LaunchContext& ctx) {
         std::fill(fyt.begin(), fyt.begin() + n_atoms, double(0));
         std::fill(fzt.begin(), fzt.begin() + n_atoms, double(0));
 
+        // Pointer hoist: drop xtensor's strided indexing on every access.
+        const double* __restrict x_ptr = f.atoms.x.data();
+        const double* __restrict y_ptr = f.atoms.y.data();
+        const double* __restrict z_ptr = f.atoms.z.data();
+
         #pragma omp for schedule(static)
         for (int ib = 0; ib < n_work; ++ib) {
             const int b = multi_rank ? local_bonds_[static_cast<std::size_t>(ib)]
@@ -123,9 +128,17 @@ void HarmonicBond::launch(const cpu::LaunchContext& ctx) {
                 j = it_j->second;
             }
 
-            double dx = f.atoms.x[i] - f.atoms.x[j];
-            double dy = f.atoms.y[i] - f.atoms.y[j];
-            double dz = f.atoms.z[i] - f.atoms.z[j];
+            // Pack the bond tuple's positions into stack-resident triples.
+            // Three contiguous loads per atom let the compiler keep them in
+            // registers and removes the strided indirection through xtensor's
+            // `operator[]` from the math below — speeds up auto-vectorization
+            // of the per-bond arithmetic. Bit-identical to the inlined form
+            // (same loads, same order of FP operations).
+            const double ri[3] = { x_ptr[i], y_ptr[i], z_ptr[i] };
+            const double rj[3] = { x_ptr[j], y_ptr[j], z_ptr[j] };
+            double dx = ri[0] - rj[0];
+            double dy = ri[1] - rj[1];
+            double dz = ri[2] - rj[2];
             minimum_image(dx, dy, dz, f.box);
 
             double r = std::sqrt(dx * dx + dy * dy + dz * dz);

@@ -94,6 +94,11 @@ void HarmonicAngle::launch(const cpu::LaunchContext& ctx) {
         std::fill(fyt.begin(), fyt.begin() + n_atoms, double(0));
         std::fill(fzt.begin(), fzt.begin() + n_atoms, double(0));
 
+        // Pointer hoist: drop xtensor's strided indexing on every access.
+        const double* __restrict x_ptr = f.atoms.x.data();
+        const double* __restrict y_ptr = f.atoms.y.data();
+        const double* __restrict z_ptr = f.atoms.z.data();
+
         #pragma omp for schedule(static)
         for (int ia = 0; ia < n_work; ++ia) {
             const int a = multi_rank ? local_angles_[static_cast<std::size_t>(ia)]
@@ -118,16 +123,25 @@ void HarmonicAngle::launch(const cpu::LaunchContext& ctx) {
                 k = it_k->second;
             }
 
+            // Pack the angle tuple's positions into stack-resident triples
+            // (B.3): three contiguous loads per atom feed the math below
+            // from registers, removing the per-component xtensor strided
+            // indirection. Bit-identical: the FP operations and order are
+            // unchanged, only the address computation moves outward.
+            const double ri[3] = { x_ptr[i], y_ptr[i], z_ptr[i] };
+            const double rj[3] = { x_ptr[j], y_ptr[j], z_ptr[j] };
+            const double rk[3] = { x_ptr[k], y_ptr[k], z_ptr[k] };
+
             // r_ji = r_i - r_j
-            double dx_ji = f.atoms.x[i] - f.atoms.x[j];
-            double dy_ji = f.atoms.y[i] - f.atoms.y[j];
-            double dz_ji = f.atoms.z[i] - f.atoms.z[j];
+            double dx_ji = ri[0] - rj[0];
+            double dy_ji = ri[1] - rj[1];
+            double dz_ji = ri[2] - rj[2];
             minimum_image(dx_ji, dy_ji, dz_ji, f.box);
 
             // r_jk = r_k - r_j
-            double dx_jk = f.atoms.x[k] - f.atoms.x[j];
-            double dy_jk = f.atoms.y[k] - f.atoms.y[j];
-            double dz_jk = f.atoms.z[k] - f.atoms.z[j];
+            double dx_jk = rk[0] - rj[0];
+            double dy_jk = rk[1] - rj[1];
+            double dz_jk = rk[2] - rj[2];
             minimum_image(dx_jk, dy_jk, dz_jk, f.box);
 
             double r_ji = std::sqrt(dx_ji * dx_ji + dy_ji * dy_ji + dz_ji * dz_ji);

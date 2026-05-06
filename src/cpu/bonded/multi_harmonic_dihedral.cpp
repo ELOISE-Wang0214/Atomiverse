@@ -105,6 +105,11 @@ void MultiHarmonicDihedral::launch(const cpu::LaunchContext& ctx) {
         std::fill(fyt.begin(), fyt.begin() + n_atoms, double(0));
         std::fill(fzt.begin(), fzt.begin() + n_atoms, double(0));
 
+        // Pointer hoist: drop xtensor's strided indexing on every access.
+        const double* __restrict x_ptr = f.atoms.x.data();
+        const double* __restrict y_ptr = f.atoms.y.data();
+        const double* __restrict z_ptr = f.atoms.z.data();
+
         #pragma omp for schedule(static)
         for (int id = 0; id < n_work; ++id) {
             const int d = multi_rank ? local_dihedrals_[static_cast<std::size_t>(id)]
@@ -133,10 +138,20 @@ void MultiHarmonicDihedral::launch(const cpu::LaunchContext& ctx) {
                 i4 = it4->second;
             }
 
+            // Pack the dihedral tuple's positions into stack-resident triples
+            // (B.3): four contiguous loads per atom let the compiler keep all
+            // 12 components in registers across the cross-product math below,
+            // removing the strided indirection through xtensor's `operator[]`.
+            // Bit-identical to the inlined form (same loads, same FP order).
+            const double r1[3] = { x_ptr[i1], y_ptr[i1], z_ptr[i1] };
+            const double r2[3] = { x_ptr[i2], y_ptr[i2], z_ptr[i2] };
+            const double r3[3] = { x_ptr[i3], y_ptr[i3], z_ptr[i3] };
+            const double r4[3] = { x_ptr[i4], y_ptr[i4], z_ptr[i4] };
+
             // Vectors: b1 = r2-r1, b2 = r3-r2, b3 = r4-r3
-            double b1x = f.atoms.x[i2] - f.atoms.x[i1], b1y = f.atoms.y[i2] - f.atoms.y[i1], b1z = f.atoms.z[i2] - f.atoms.z[i1];
-            double b2x = f.atoms.x[i3] - f.atoms.x[i2], b2y = f.atoms.y[i3] - f.atoms.y[i2], b2z = f.atoms.z[i3] - f.atoms.z[i2];
-            double b3x = f.atoms.x[i4] - f.atoms.x[i3], b3y = f.atoms.y[i4] - f.atoms.y[i3], b3z = f.atoms.z[i4] - f.atoms.z[i3];
+            double b1x = r2[0] - r1[0], b1y = r2[1] - r1[1], b1z = r2[2] - r1[2];
+            double b2x = r3[0] - r2[0], b2y = r3[1] - r2[1], b2z = r3[2] - r2[2];
+            double b3x = r4[0] - r3[0], b3y = r4[1] - r3[1], b3z = r4[2] - r3[2];
             minimum_image(b1x, b1y, b1z, f.box);
             minimum_image(b2x, b2y, b2z, f.box);
             minimum_image(b3x, b3y, b3z, f.box);
