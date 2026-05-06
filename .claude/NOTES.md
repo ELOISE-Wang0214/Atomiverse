@@ -5,6 +5,86 @@ Agents read this alongside CLAUDE.md. When a note stabilizes, promote it into CL
 
 ---
 
+## [2026-05-06] CPU driver taxonomy redesign — three categories + SCFSolver inner solver
+
+Landed `.claude/specs/cpu-driver-taxonomy.md` (phases 1-6). Replaces the
+single `Driver<PhaseEnum, DeviceTag>` template-with-algorithm-subclasses
+scheme with a category-driven layer.
+
+**Three CPU outer driver categories** (decided by termination semantic,
+not by algorithm):
+
+  - `cpu::EvaluateDriver` — one pass; concrete: `cpu::Evaluate`
+  - `cpu::DynamicsDriver` — full step budget; concrete: `cpu::md::MD`
+  - `cpu::OptimizeDriver` — early stop on convergence; concrete:
+    `cpu::minimizer::Minimize` (renamed from `cpu::minimizer::LBFGS`)
+
+The underlying `Driver<PhaseEnum, DeviceTag>` template is now a private
+plan/dispatch primitive — user code subclasses one of the three
+category bases via `CategoryDriverBase<PhaseEnum>`. Subclassing
+`Driver<>` directly is forbidden in CPU code.
+
+**SCF is not an outer category.** `cpu::scf::SCFSolver` is a public
+low-level inner-solver class (NOT a Driver subclass), used internally
+by `cpu::scf::SCFEvaluator`. Its 5 step helpers
+(`HamiltonianBuilder`, `EigenSolver`, `DensityBuilder`, `DIISMixer`,
+`DualConvergenceCheck`) live in `cpu::scf::internal::` and never
+inherit `cpu::ComponentBase`. Tests may include the internal headers
+directly; production facade headers must not. There is no
+`SinglePoint` class — single-point energy is `cpu::Evaluate +
+cpu::scf::SCFEvaluator(.with_gradient(false))`, plus the optional
+`cpu::single_point(frame, evaluator)` helper.
+
+**Algorithm-as-component.** LBFGS / CG / FIRE are Optimizer
+components plugged into `Minimize`. NoseHoover / Langevin /
+Berendsen are Thermostat / Barostat components plugged into `MD`.
+The new `cpu::minimizer::CG` (Polak-Ribière+) is hot-swappable with
+`cpu::minimizer::LBFGS` inside the same `Minimize` driver.
+
+**Component tagging — two orthogonal axes**:
+  - `role()` — structural slot (`Integrator`, `Optimizer`,
+    `Evaluator`, `Thermostat`, `Barostat`, `ConvergenceCheck`,
+    `Recorder`, `Observer`, `None`)
+  - `capabilities()` — bitset of frame fields written
+    (`Energy | Force | Stress | Charge | Dipole | DensityMatrix |
+    Orbitals`)
+
+`DynamicsDriver` validates "≥ 1 component with `Capability::Force`"
+regardless of role — `FixLangevin` (Thermostat role, Force-capable)
+satisfies a pure-Langevin run.
+
+**Outer iteration status channel**:
+`cpu::Context::outer_status` is a `{converged, stop_requested,
+reason}` struct, owned by the category driver, reset before each
+iteration. ConvergenceCheck-tagged components write it; SCF
+internals never touch it.
+
+**Refactor was full no-backwards-compat**: `cpu::scf::DIIS` →
+`cpu::scf::internal::DIISMixer` (renamed in place; one test caller
+migrated). `cpu::minimizer::LBFGSStep` → `cpu::minimizer::LBFGS`.
+`cpu::minimizer::LBFGS` driver → `cpu::minimizer::Minimize`. All 6
+in-tree call sites updated in one commit per phase. No
+`[[deprecated]]` shims.
+
+**CUDA migration deferred**: `cuda::md::MD`, `cuda::minimizer::CG`/
+`SD`, `cuda::scf::SCF` keep the per-algorithm shape until
+`.claude/specs/cuda-driver-taxonomy.md` lands.
+
+**`scf_solve()`** survives as a ≤30-line shim that constructs a
+transient `SCFSolver` and runs it. Decision (vs deletion): retained
+because `rhf_solve` / `uhf_solve` / `uks_solve` and the gradient
+finite-difference path still call it; revisit during CUDA SCF
+migration.
+
+**Phase 5b deferred**: IntegralPack/ShellList split (drop `shells` +
+`shell_data` from `IntegralPack` into a separate `ShellList` view)
+and the 5 large file splits (`native_integrals.cpp` 1710 lines etc.)
+remain TODO. Mechanical work; better as dedicated commits.
+
+**Rule promoted to CLAUDE.md**: the three-category taxonomy, the
+`role()`/`capabilities()` axes, and the "SCF is an inner solver, not
+an outer category" decision.
+
 ## [2026-03-25] DeviceSystem removed — metadata lives in cuda::Frame
 
 DeviceSystem class was deleted. Host-cached metadata (n_atoms, n_bonds, n_angles, n_dihedrals) now lives directly in `cuda::Frame` as plain Int fields with accessor methods. The device-side atom count pointer is `d_n_atoms` (not `n_atoms`). (Note: `DeviceFrame` was later renamed to `cuda::Frame`.)

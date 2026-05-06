@@ -43,26 +43,84 @@ facade/      ← Driver<PhaseEnum, DeviceTag>, Plan, Stage (phase enums)
 molrs.hpp    ← stable CXX FFI header
 ```
 
-### Driver / Component model
+### Driver taxonomy
+
+CPU has three **outer task category** drivers, each subclassing
+`CategoryDriverBase<PhaseEnum>` which itself wraps the underlying
+`Driver<PhaseEnum, DeviceTag>` template. The category is decided by
+**termination semantics**, not by algorithm:
+
+| Category base | Phase enum | Termination | Concrete CPU driver |
+|---|---|---|---|
+| `cpu::EvaluateDriver` | `evaluate::Phase` | exactly one pass | `cpu::Evaluate` |
+| `cpu::DynamicsDriver` | `md::Phase` | full step budget; honours `outer_status.stop_requested` | `cpu::md::MD` |
+| `cpu::OptimizeDriver` | `minimizer::Phase` | early stop on `outer_status.converged` | `cpu::minimizer::Minimize` |
+
+Adding a fourth user-facing category requires a genuinely distinct
+outer-loop semantic (e.g. Sampling for MC/HMC/REMD, Path for NEB,
+Response for finite-difference Hessian). Never to wrap an algorithm
+under a new class name.
+
+**SCF is *not* an outer category.** It is an inner solver represented
+by `cpu::scf::SCFSolver` (a public low-level class, *not* a Driver
+subclass), used internally by force-providing evaluator components
+like `cpu::scf::SCFEvaluator`. Single-point energy in user code is
+`cpu::Evaluate + cpu::scf::SCFEvaluator`. There is no `SinglePoint`
+class.
+
+CUDA still uses the per-algorithm shape (`cuda::md::MD`,
+`cuda::minimizer::CG`/`SD`, `cuda::scf::SCF`) — migration tracked in
+`.claude/specs/cuda-driver-taxonomy.md`.
 
 ```
-Driver<PhaseEnum, DeviceTag>::run(frame, n_steps)
-  for each step:
-    for each phase in PhaseEnum:
-      for each Component bound to this phase (sorted by order):
-        component->launch(ctx)
+CategoryDriverBase<PhaseEnum>::run(frame, ...)
+  setup_pass(frame)
+  for each iteration (semantic depends on category):
+    reset outer_status
+    backend.step(idx)
+    consult outer_status (Optimize: break on converged; Dynamics: break on stop_requested)
+  teardown_pass()
 ```
 
-**Canonical facade.** `ATV::Driver<PhaseEnum, DeviceTag>` (in `facade/driver.h`) is the **single** user-facing class. It owns the component set, compiles the `Plan` in `build()`, and drives the per-step/per-phase dispatch in `run()`. Concrete subclasses (`cpu::md::MD`, `cuda::scf::SCF`, `cpu::minimizer::LBFGS`, …) only exist to inject infrastructure components via their constructor — they add no runtime behaviour beyond the template. There is **no** `Spec` / `Plan` / `Driver` three-way split in the current tree; proposals in `.claude/specs/rust-frame-lowering.md` are forward-looking and not in force.
+**Canonical facade.** `ATV::Driver<PhaseEnum, DeviceTag>` (in
+`facade/driver.h`) is the underlying plan/dispatch primitive. User
+code does not subclass it directly — use one of the three category
+bases. Concrete drivers add only infrastructure components in their
+constructor; they add no runtime behaviour beyond the base.
+
+**Component tagging.** Two orthogonal axes (`facade/component_role.h`):
+- `ComponentRole role()` — structural slot in the loop:
+  `Evaluator`, `Integrator`, `Optimizer`, `Thermostat`, `Barostat`,
+  `ConvergenceCheck`, `Recorder`, `Observer`, `None` (structural).
+- `Capability capabilities()` — bitset of frame fields that
+  `launch()` may write: `Energy`, `Force`, `Stress`, `Charge`,
+  `Dipole`, `DensityMatrix`, `Orbitals`. Bitwise `|` / `&` /
+  `has_capability(set, bit)` provided.
+
+Algorithm classes are **components**, not driver subclasses:
+`cpu::minimizer::LBFGS` / `CG` / future `FIRE` are Optimizer
+components plugged into `Minimize`. `cpu::md::VelocityVerlet` /
+`NoseHoover` / `FixLangevin` / `Barostat` are Integrator /
+Thermostat / Barostat components plugged into `MD`.
+
+**Iteration status channel** (`facade/iteration_status.h`).
+`cpu::Context::outer_status` is a `{converged, stop_requested,
+reason}` struct, owned by the category driver, reset before each
+iteration. `ConvergenceCheck`-tagged components write it; SCF
+internals never touch it (they manage their own internal convergence
+inside `SCFSolver`).
 
 **Rules:**
 - **Driver owns the loop.** Force evaluators, integrators, thermostats are Components — never standalone classes with their own loops.
-- **No duplication across methods.** Shared algorithmic skeletons (gradient assembly, FD validation, AIMD integration) are single parameterized functions. Method-specific logic is injected via config/enum dispatch.
+- **Three current outer driver categories.** Adding a fourth requires a distinct outer-loop semantic, never an algorithm wrapper.
+- **Algorithm = component.** LBFGS/CG/FIRE are Optimizer components, never driver subclasses. Same for Thermostat / Barostat policies.
+- **Capability over role for evaluator validation.** `EvaluateDriver` accepts any component with `role()==Evaluator` and non-empty `capabilities()`. `DynamicsDriver` requires any component (any role) with `Capability::Force`. `OptimizeDriver` requires any Energy/Force-capable evaluator + an Optimizer component.
+- **No duplication across methods.** Shared algorithmic skeletons (gradient assembly, FD validation) are single parameterized functions.
 - **Component lifecycle:** `build()` (one-time alloc) → `launch()` × N (per-step compute) → `destroy()` (cleanup). No allocation in `launch()`.
 - **Two registration paths:** `driver.add(comp)` uses `default_bindings()`; `driver.on(phase).add(comp, order)` for explicit binding.
-- **Infrastructure components** (ZeroForces, ZeroEnergy) are driver-specific — each driver type (MD, minimizer, SCF) has its own set with `default_bindings()` pointing to the correct phase.
 - **Observer vs Recorder:** single responsibility. Observer computes derived quantities. Recorder writes I/O. Never both.
-- **Hot-path data structures carry only fundamental physical quantities.** `cpu::Frame`, `cpu::scf::IntegralPack`, `cpu::scf::ShellList`, etc. store positions, velocities, integrals, shell descriptors — never precomputed indices, caches, or derived maps (e.g. `basis_to_atom`). Consumers that need a derived view (an observer computing a per-atom summary, a Fock builder that wants pair-list bounds) compute it themselves from the fundamentals. Keeps data layout auditable and prevents silent staleness.
+- **Hot-path data structures carry only fundamental physical quantities.** `cpu::Frame`, `cpu::scf::IntegralPack`, `cpu::scf::ShellList`, etc. store positions, velocities, integrals, shell descriptors — never precomputed indices, caches, or derived maps. Consumers that need a derived view compute it themselves from the fundamentals.
+- **SCF internals are not Plan components.** `cpu::scf::internal::*` (HamiltonianBuilder / EigenSolver / DensityBuilder / DIISMixer / DualConvergenceCheck) are owned by `SCFSolver` and never inherit `cpu::ComponentBase`. They live in `include/atomiverse/cpu/scf/internal/` and are not included from any facade-public header (tests may include them).
 
 ### Data residency
 
@@ -80,12 +138,13 @@ molrs (Rust) is a hard dependency for I/O. `cpu::MolRec` uses PIMPL — no `rust
 
 ## Conventions
 
-- **Namespace:** `ATV`. Sub: `ATV::cpu`, `ATV::cuda`, `ATV::md`, `ATV::minimizer`, `ATV::scf`
+- **Namespace:** `ATV`. Sub: `ATV::cpu`, `ATV::cuda`, `ATV::md`, `ATV::minimizer`, `ATV::scf`, `ATV::evaluate`. SCF internals: `ATV::cpu::scf::internal`.
 - **File extensions:** CPU `.h`/`.cpp`, CUDA `.cuh`/`.cu`, facade/core `.h`
-- **Driver template:** `Driver<PhaseEnum, DeviceTag>` — always 2 explicit template args. CPU driver subclass headers must include `cpu/backend_traits.h`.
+- **Driver template:** `Driver<PhaseEnum, DeviceTag>` is the underlying primitive. User-facing CPU code subclasses one of `cpu::EvaluateDriver` / `DynamicsDriver` / `OptimizeDriver`, not `Driver<>` directly. CPU driver subclass headers must include `cpu/backend_traits.h`.
+- **Component tagging:** `role()` returns `ComponentRole` (structural slot); `capabilities()` returns `Capability` bitset (frame fields written). Both default to `None`.
 - **No factory functions** — components are classes with constructors
 - **No fallback values** — lookup tables throw on unsupported input
-- **Phase naming:** MD: LAMMPS-style. Minimizer: `search_direction, line_search, force, convergence_check, end_of_step`. SCF: `build_hamiltonian, diagonalize, build_density, convergence_check, end_of_step`.
+- **Phase naming:** Evaluate: `prepare, evaluate, finalize`. MD: LAMMPS-style. Minimizer: `search_direction, line_search, force, convergence_check, end_of_step`. SCF: `build_hamiltonian, diagonalize, build_density, convergence_check, end_of_step` (CUDA-only legacy; CPU SCF is an inner solver and uses no outer phase enum).
 - **Units:** eV, Å, fs, amu, eV/Å, K. Conversion constants in `core/units.h`.
 - **Precision:** compile-time `Real` (`-DATV_REAL=float|double`), `Int` (`-DATV_INT=int|int64_t`)
 - **libxc:** when enabled, native XC must match libxc to 1e-12
@@ -96,24 +155,59 @@ molrs (Rust) is a hard dependency for I/O. `cpu::MolRec` uses PIMPL — no `rust
 
 ### Drivers
 
-| Driver | Backend | Phase enum | Auto-adds |
-|--------|---------|------------|-----------|
-| `md::MD` / `cpu::md::MD` | CUDA / CPU | `md::Phase` | ZeroForces, ZeroEnergy, ZeroKinetic, KineticEnergy |
-| `minimizer::SD`, `minimizer::CG` | CUDA | `minimizer::Phase` | ZeroForces, ZeroEnergy |
-| `cpu::minimizer::LBFGS` | CPU | `minimizer::Phase` | ZeroForces, ZeroEnergy |
-| `scf::SCF` | CUDA | `scf::Phase` | ZeroDensity |
+| Driver | Backend | Category | Phase enum |
+|--------|---------|----------|------------|
+| `cpu::Evaluate` | CPU | `EvaluateDriver` | `evaluate::Phase` |
+| `cpu::md::MD` | CPU | `DynamicsDriver` | `md::Phase` |
+| `cpu::minimizer::Minimize` | CPU | `OptimizeDriver` | `minimizer::Phase` |
+| `md::MD` (CUDA) | CUDA | (legacy — pending migration) | `md::Phase` |
+| `cuda::minimizer::SD` / `CG` | CUDA | (legacy — algorithm-as-driver) | `minimizer::Phase` |
+| `cuda::scf::SCF` | CUDA | (legacy — pending migration) | `scf::Phase` |
+
+CUDA migration to the same three-category taxonomy is tracked in
+`.claude/specs/cuda-driver-taxonomy.md`.
+
+Single-point energy in user code:
+```cpp
+cpu::scf::SCFEvaluator scf{cfg};
+scf.with_gradient(false);  // energy-only
+cpu::single_point(frame, scf);
+// frame.energy populated; scf.last_result().energy in Hartree.
+```
 
 ### MD components
-VelocityVerlet, NVELimit (LAMMPS `fix nve/limit`), InitVelocity, NoseHoover, NoseHooverNPT (single-chain MTK isotropic, LAMMPS `fix npt iso`), FixLangevin (BBK form, LAMMPS `fix langevin`), Barostat (Berendsen), Deform, NeighborList, LJ, HarmonicBond, HarmonicAngle, MultiHarmonicDihedral, VirialStress
+VelocityVerlet (Integrator), NVELimit (Integrator), InitVelocity, NoseHoover (Thermostat), NoseHooverNPT (Integrator — also acts as thermostat + barostat), FixLangevin (Thermostat, also Force-capable), Barostat (Barostat — Berendsen), Deform, NeighborList, LJ (Evaluator: Energy|Force|Stress), HarmonicBond / HarmonicAngle / MultiHarmonicDihedral (Evaluator: Energy|Force), VirialStress
+
+### Minimizer components
+LBFGS (Optimizer — was `LBFGSStep`), CG (Optimizer — Polak-Ribière+).
+Optimizer choice is hot-swappable: the same `cpu::minimizer::Minimize`
+driver accepts either by adding the component.
 
 ### SCF components (CUDA)
 RHFFock, RHFFockDevice, EigenSolver, RHFDensity, DensityBuilder, ConvergenceCheck, Hamiltonian
 
 ### CPU SCF (requires `-DATV_BUILD_RHF=ON`)
-- **Solvers:** `scf_solve(integrals, config)` — unified RHF/UHF/UKS engine
+- **Inner solver:** `cpu::scf::SCFSolver` — public low-level class.
+  Owns the SCF cycle (Hamiltonian build → diagonalize → density →
+  DIIS → convergence check). NOT a `Driver<>` subclass. Used by
+  `SCFEvaluator` and available directly for low-level / debugging
+  workflows.
+- **Internal step helpers** (`cpu::scf::internal::`,
+  `include/atomiverse/cpu/scf/internal/`): `HamiltonianBuilder`,
+  `EigenSolver`, `DensityBuilder`, `DIISMixer`, `DualConvergenceCheck`.
+  Owned by `SCFSolver`, NOT registered into any Plan, NOT
+  ComponentBase subclasses. Tests may include the headers directly;
+  facade-public production headers must not.
+- **Force evaluator:** `cpu::scf::SCFEvaluator` — `cpu::ComponentBase`
+  with `role()==Evaluator` and `capabilities()=Energy|DensityMatrix|
+  Orbitals` (plus `Force` when `with_gradient(true)`). Holds an
+  `SCFSolver` member built once. Plugs into `cpu::Evaluate`,
+  `cpu::md::MD` (AIMD), and `cpu::minimizer::Minimize` (geometry
+  optimization).
+- **`scf_solve(integrals, config)`** — kept as a ≤30-line shim that
+  constructs a transient `SCFSolver` and runs it. Used internally
+  by `rhf_solve` / `uhf_solve` / `uks_solve`.
 - **Gradients:** `scf_gradient(frame, integrals, result, config)` — unified analytic gradient (HF + KS)
-- **SCFEvaluator** — `cpu::ComponentBase` at `md::Phase::force` for AIMD. Single component for all methods. Optional ASPC predictor.
-- **LBFGSStep** — `cpu::ComponentBase` for geometry optimization. Two-loop L-BFGS with step capping.
 - **Utilities:** `basis_eval.h`, `grid.h`, `xc_functional.h`, `aspc_predictor.h`
 
 ### Output (cross-driver)
@@ -122,26 +216,33 @@ Thermo, Recorder (XYZ), RDF
 ## Example
 
 ```cpp
-// Classical MD
+// Single-point SCF energy + density (no forces)
+cpu::scf::SCFEvaluator scf{cfg};
+scf.with_gradient(false);
+cpu::single_point(frame, scf);
+double E_eV = frame.energy;
+double E_Ha = scf.last_result().energy;
+
+// Classical MD (Dynamics)
 cpu::md::MD sim;
 sim.add(cpu::md::VelocityVerlet{0.01});
 sim.on(md::Phase::force).add(cpu::md::LJ{0.0104, 3.4, 6.8});
 sim.build();
 sim.run(frame, 1000);
 
-// AIMD (ab initio MD)
+// AIMD (Dynamics + SCFEvaluator as ForceProvider)
 cpu::md::MD aimd;
 aimd.add(cpu::md::VelocityVerlet{0.5});
 aimd.on(md::Phase::force).add(cpu::scf::SCFEvaluator{rhf_config});
 aimd.build();
 aimd.run(frame, 100);
 
-// Geometry optimization
-cpu::minimizer::LBFGS opt;
-opt.add(cpu::minimizer::LBFGSStep{5, 0.01, 0.05});
+// Geometry optimization (Optimize + LBFGS or CG as Optimizer component)
+cpu::minimizer::Minimize opt;
+opt.add(cpu::minimizer::LBFGS{5, 0.01, 0.05});
 opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
 opt.build();
-opt.run(frame, 100);
+opt.run(frame, /*max_iter=*/100);
 ```
 
 ## Skills & agents

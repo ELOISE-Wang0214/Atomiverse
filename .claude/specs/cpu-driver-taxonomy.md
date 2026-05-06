@@ -1,9 +1,11 @@
 ---
 title: CPU Driver taxonomy — Evaluate / Dynamics / Optimize (+ SCF inner solver)
-status: draft
+status: done
 created: 2026-05-06
 revised: 2026-05-06
+landed: 2026-05-06
 supersedes: cpu-scf-driver-alignment, phase2-singlepoint-driver
+followups: cuda-driver-taxonomy (planned), phase 5b (IntegralPack/ShellList split + 5 monolith file splits — deferred)
 ---
 
 # CPU Driver Taxonomy
