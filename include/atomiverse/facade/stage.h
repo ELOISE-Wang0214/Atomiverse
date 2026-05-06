@@ -57,7 +57,39 @@ inline std::vector<std::string> phase_names(Phase phase_tag) {
 
 } // namespace minimizer
 
+/// @brief One-shot evaluation phases.
+///
+/// Used by `cpu::EvaluateDriver`. There is no `end_of_step` — Evaluate
+/// does not have a step concept. The three phases give callers slots to
+/// place pre-evaluation setup (zeroing forces / preparing buffers),
+/// the evaluator components themselves, and post-evaluation
+/// finalization (recorders, observers).
+namespace evaluate {
+
+/// @brief Phase order for one Evaluate pass.
+enum class Phase {
+    prepare,  ///< Pre-evaluation setup (Zero*, buffer prep)
+    evaluate, ///< Evaluator components run here
+    finalize, ///< Post-evaluation finalization (recorders, observers)
+    COUNT     ///< Sentinel -- total number of phases
+};
+
+/// @brief Human-readable names for the Evaluate phases.
+/// @param phase_tag Tag value used only for overload selection.
+/// @return Phase names in the same order as the enum values, excluding `COUNT`.
+inline std::vector<std::string> phase_names(Phase phase_tag) {
+    (void)phase_tag;
+    return {"prepare", "evaluate", "finalize"};
+}
+
+} // namespace evaluate
+
 /// @brief Self-consistent field phases.
+///
+/// @note Legacy CUDA-only enum. CPU SCF is encapsulated by
+///       `cpu::scf::SCFSolver` (an inner solver, not a Driver subclass)
+///       and does not use this enum. This namespace will retire once
+///       the CUDA SCF migration ships.
 namespace scf {
 
 /// @brief Phase order for one SCF iteration.

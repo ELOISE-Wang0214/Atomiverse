@@ -78,6 +78,11 @@ atv_add_cpp_test(test_cpu_analysis_executor       cpu/test_analysis_executor.cpp
 atv_add_cpp_test(test_cpu_snapshot_publisher      cpu/test_snapshot_publisher.cpp)
 atv_add_cpp_test(test_cpu_async_component_base    cpu/test_async_component_base.cpp)
 atv_add_cpp_test(test_cpu_observer_rdf_async      cpu/observer/test_rdf_observer.cpp)
+atv_add_cpp_test(test_cpu_md_no_alloc              cpu/test_md_no_alloc.cpp)
+atv_add_cpp_test(test_cpu_category_driver_role_validation cpu/test_category_driver_role_validation.cpp)
+atv_add_cpp_test(test_cpu_evaluate_driver_capabilities    cpu/test_evaluate_driver_capabilities.cpp)
+atv_add_cpp_test(test_cpu_optimize_driver_early_stop      cpu/test_optimize_driver_early_stop.cpp)
+atv_add_cpp_test(test_cpu_dynamics_full_budget            cpu/test_dynamics_full_budget.cpp)
 
 # ── MPI tests (launched under `mpirun`) ─────────────────────────────────
 
@@ -109,6 +114,9 @@ if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
 
     atv_add_mpi_exec(test_mpi_pe_nvt_multirank mpi/test_pe_nvt_multirank.cpp)
     atv_add_mpi_run(test_mpi_pe_nvt_multirank_n8 test_mpi_pe_nvt_multirank 8)
+
+    atv_add_mpi_exec(test_mpi_nose_hoover_t_ramp mpi/test_nose_hoover_t_ramp.cpp)
+    atv_add_mpi_run(test_mpi_nose_hoover_t_ramp_n2 test_mpi_nose_hoover_t_ramp 2)
 
     atv_add_mpi_exec(test_mpi_pe_chain_crossing mpi/test_pe_chain_crossing.cpp)
     atv_add_mpi_run(test_mpi_pe_chain_crossing_n2 test_mpi_pe_chain_crossing 2)

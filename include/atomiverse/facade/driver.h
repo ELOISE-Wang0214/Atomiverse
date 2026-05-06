@@ -90,6 +90,7 @@ private:
 /// @tparam DeviceTag Device tag (cpu::device_tag or cuda::device_tag).
 template <typename PhaseEnum, typename DeviceTag>
 class Driver {
+protected:
     using traits    = backend_traits<DeviceTag>;
     using Component = typename traits::component_type;
     using BackendT  = typename traits::backend_type;
@@ -186,7 +187,12 @@ public:
     /// @brief Shut down Backend and release all resources.
     void shutdown();
 
-private:
+protected:
+    // Internals are protected (not private) so category-driver bases
+    // (cpu::EvaluateDriver / DynamicsDriver / OptimizeDriver) can drive
+    // the per-iteration loop themselves with category-correct termination
+    // semantics. User code should not subclass `Driver<>` directly — use
+    // one of the category bases.
     std::vector<detail::PendingBinding<Component>> pending_;
     std::vector<std::unique_ptr<Component>> owned_components_;
     Plan<Component> plan_;

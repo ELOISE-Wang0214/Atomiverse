@@ -15,6 +15,7 @@
 #include "atomiverse/cpu/context.h"
 #include "atomiverse/core/types.h"
 #include "atomiverse/core/binding.h"
+#include "atomiverse/facade/component_role.h"
 
 namespace ATV {
 namespace cpu {
@@ -53,6 +54,23 @@ public:
     /// @brief Human-readable component name.
     /// @return Stable identifier used in summaries and diagnostics.
     virtual std::string name() const = 0;
+
+    /// @brief Structural role within an outer driver loop.
+    ///
+    /// Drives validation in `cpu::EvaluateDriver` / `DynamicsDriver` /
+    /// `OptimizeDriver` at `build()` time. Defaults to `None` for
+    /// "structural infrastructure" components (Zero*, KineticEnergy, ...).
+    /// Concrete components override to declare their loop position
+    /// (Integrator / Optimizer / Evaluator / Thermostat / ...).
+    /// @see facade/component_role.h
+    virtual ComponentRole role() const { return ComponentRole::None; }
+
+    /// @brief Bitset of frame fields this component may write.
+    ///
+    /// Used by the category drivers to validate that, e.g., a
+    /// `DynamicsDriver` carries at least one evaluator with
+    /// `Capability::Force`. Defaults to `None`.
+    virtual Capability capabilities() const { return Capability::None; }
 
     /// @brief Scheduling trait (blocking or deferrable).
     /// @return `Scheduling::blocking` for CPU components unless overridden.

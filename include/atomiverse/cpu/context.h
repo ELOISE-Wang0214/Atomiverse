@@ -3,6 +3,8 @@
 /// (MD-only) spatial-decomposition awareness.
 #pragma once
 
+#include "atomiverse/facade/iteration_status.h"
+
 namespace ATV {
 namespace cpu {
 
@@ -52,6 +54,15 @@ struct Context {
     /// Allocated by `Backend::init()`; published so components can reach
     /// the executor from any `BuildContext` / `LaunchContext`.
     AnalysisExecutor* executor = nullptr;
+
+    /// @brief Outer-driver-loop status — owned by the category driver
+    ///        (Evaluate / Dynamics / Optimize), reset before each iteration,
+    ///        consulted at the end of each iteration to decide early stop.
+    ///
+    /// Only `ConvergenceCheck`-tagged components write to this. SCF
+    /// internals manage their own internal convergence and never touch
+    /// the outer status. See facade/iteration_status.h for the contract.
+    IterationStatus outer_status{};
 };
 
 } // namespace cpu

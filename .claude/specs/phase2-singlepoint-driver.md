@@ -1,8 +1,15 @@
 ---
 title: Phase 2 — SinglePoint driver as first-class citizen
-status: draft
+status: superseded
+superseded_by: cpu-driver-taxonomy
 created: 2026-04-14
+superseded_at: 2026-05-06
 ---
+
+> **Superseded by [`cpu-driver-taxonomy.md`](cpu-driver-taxonomy.md).** The
+> SinglePoint driver design here is preserved verbatim, but lifted into a
+> broader four-class taxonomy (Evaluate / Dynamics / Optimize / SCF). See
+> Phase 3 of the successor spec for the SinglePoint scope.
 
 # Phase 2 — SinglePoint Driver
 
