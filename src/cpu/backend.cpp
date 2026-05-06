@@ -6,6 +6,10 @@
 #include "atomiverse/cpu/md/mpi/domain.h"
 #include "atomiverse/core/log.h"
 
+#include <cstdio>
+#include <cstdlib>
+#include <string>
+
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -31,6 +35,41 @@ void Backend::init() {
 #else
     context_.n_threads = 1;
 #endif
+
+    // Phase 5 Track B.6 — warn the user if they will pay NUMA / cache
+    // penalties for letting the OS migrate threads. We check once per
+    // process via a function-local static (the cpu::Backend may be
+    // re-instantiated when Driver::shutdown() destroys it between
+    // run() calls; the warning should fire once per process, not
+    // once per backend init). Harmless on single-socket machines,
+    // load-bearing on 2-socket / NUMA boxes.
+    static bool s_omp_bind_warned = false;
+    if (!s_omp_bind_warned && context_.n_threads > 1) {
+        const char* bind = std::getenv("OMP_PROC_BIND");
+        const bool unset = (bind == nullptr) || std::string(bind).empty();
+        // Treat "false" as "unset" too — that's the OMP value users
+        // explicitly opt out with, but it's still bad for NUMA.
+        const bool unbinding = unset ||
+            std::string(bind) == "false" || std::string(bind) == "FALSE";
+        if (unbinding) {
+            int my_rank = 0;
+#ifdef ATV_HAS_MPI
+            int mpi_init_check = 0;
+            MPI_Initialized(&mpi_init_check);
+            if (mpi_init_check) MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
+#endif
+            if (my_rank == 0) {
+                std::fprintf(stderr,
+                    "[atv] warning: OMP_PROC_BIND is unset and "
+                    "n_threads=%d > 1; consider 'export OMP_PROC_BIND=close "
+                    "OMP_PLACES=cores' for stable hot-path throughput "
+                    "(see benchmarks/md/reference/polyethylene/README.md "
+                    "'Thread binding').\n", context_.n_threads);
+                std::fflush(stderr);
+            }
+            s_omp_bind_warned = true;
+        }
+    }
 
 #ifdef ATV_HAS_MPI
     int mpi_initialized = 0;
