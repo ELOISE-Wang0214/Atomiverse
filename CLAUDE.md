@@ -1,3 +1,26 @@
+---
+mol_project:
+  name: atomiverse
+  language: cpp
+  build:
+    install: "cmake -B build -DATV_BUILD_TESTS=ON -DATV_BUILD_RHF=ON"
+    check: "cmake --build build -j$(nproc)"
+    test: "ctest --test-dir build --output-on-failure"
+    test_single: "ctest --test-dir build -R {path} --output-on-failure"
+    coverage: "ctest --test-dir build --output-on-failure"
+  arch:
+    style: backend-pillars
+    rules_section: "## Architecture"
+  doc:
+    style: doxygen
+  science:
+    required: true
+  ci:
+    config: .github/workflows/ci.yml
+  notes_path: .claude/NOTES.md
+  specs_path: .claude/specs/
+---
+
 # CLAUDE.md
 
 ## Build & Test
@@ -272,9 +295,13 @@ opt.run(frame, /*max_iter=*/100);
 
 ## Skills & agents
 
-Skills delegate to expert agents. All reference CLAUDE.md as single source of truth.
+General workflow skills (impl / fix / debug / refactor / review / docs / test / spec / litrev / note) come from the **molcrafts `mol` plugin** (`/mol:impl`, `/mol:fix`, …). They auto-adapt to this project via the `mol_project:` frontmatter at the top of this file.
 
-`/av-impl`, `/av-fix`, `/av-debug`, `/av-refactor`, `/av-review`, `/av-arch`, `/av-perf`, `/av-docs`, `/av-test`, `/av-cuda`, `/av-hpc`, `/av-spec`, `/av-litrev`, `/av-note`
+**Atomiverse-specific** skills layer on top for domain audits the generic mol skills can't perform:
+
+`/av-arch`, `/av-cuda`, `/av-hpc`, `/av-perf`
+
+Each delegates to a paired Atomiverse-specific agent (`av-architect`, `av-cuda`, `av-hpc`, `av-optimizer`) that encodes Atomiverse-only knowledge: CUDA execution-model classification, xsimd 11.2.0 / xtensor 0.25.0 compatibility constraints, ERI shell-block dispatch + `-march=native` requirement, Frame purity rules, and hot-path anti-patterns specific to the dual-backend layout.
 
 Knowledge flow: `.claude/NOTES.md` (evolving) → CLAUDE.md (stable) ← agents (read-only).
 Specs: `.claude/specs/INDEX.md` with lifecycle tracking.
