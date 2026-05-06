@@ -16,13 +16,13 @@
 
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/facade/category_driver.h"
+#include "atomiverse/cpu/cpu_driver.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
 namespace cpu {
 
-class EvaluateDriver : public CategoryDriverBase<ATV::evaluate::Phase> {
+class EvaluateDriver : public CPUDriver<ATV::evaluate::Phase> {
 public:
     /// @brief Run a single evaluation pass through the compiled Plan.
     /// @param frame Host-resident system state, updated in place.

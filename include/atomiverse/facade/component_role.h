@@ -23,7 +23,7 @@
 ///   - `OptimizeDriver` requires ≥ 1 Optimizer AND ≥ 1 Evaluator that
 ///     advertises `Capability::Energy` or `Capability::Force`.
 ///
-/// @see facade/category_driver.h
+/// @see cpu/cpu_driver.h (and the per-category bases under cpu/*_driver.h)
 #pragma once
 
 #include <cstdint>

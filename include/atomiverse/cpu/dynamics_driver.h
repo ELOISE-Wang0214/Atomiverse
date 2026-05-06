@@ -18,13 +18,13 @@
 
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/facade/category_driver.h"
+#include "atomiverse/cpu/cpu_driver.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
 namespace cpu {
 
-class DynamicsDriver : public CategoryDriverBase<ATV::md::Phase> {
+class DynamicsDriver : public CPUDriver<ATV::md::Phase> {
 public:
     /// @brief Advance the system for `n_steps` MD steps.
     /// Honours `outer_status.stop_requested` (early break); ignores

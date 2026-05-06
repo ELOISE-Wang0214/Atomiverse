@@ -35,8 +35,10 @@ SCFSolver::SCFSolver(SCFConfig config)
                        : std::sqrt(config_.tol)) {}
 
 void SCFSolver::build(const IntegralPack& reference) {
-    X_ = build_orthogonalization_matrix(reference.S);
-    hamiltonian_.prepare(reference, config_);
+    // Geometry-invariant pre-allocation only. Everything else (X = S^{-1/2},
+    // shell-pair lists, KS grid) is geometry-dependent — atoms move during
+    // geometry optimization / AIMD, so those structures are rebuilt per
+    // run() to stay consistent with the legacy scf_solve() contract.
     eigen_.prepare(reference.n_basis);
     density_.prepare(reference.n_basis);
     built_ = true;
@@ -62,6 +64,13 @@ SCFResult& SCFSolver::run(const IntegralPack& integrals,
 
     // Lazy build — convenience for callers that skip explicit build().
     if (!built_) build(integrals);
+
+    // Geometry-dependent setup: orthogonalization matrix, shell-pair
+    // lists, KS grid. All depend on current atom positions and so are
+    // rebuilt each run(). (See build() — only n_basis-sized workspaces
+    // are pre-allocated there.)
+    X_ = build_orthogonalization_matrix(S_cm);
+    hamiltonian_.prepare(integrals, config_);
 
     // Reset stateful helpers for this run.
     diis_.reset();

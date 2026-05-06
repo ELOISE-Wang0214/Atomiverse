@@ -19,13 +19,13 @@
 
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/facade/category_driver.h"
+#include "atomiverse/cpu/cpu_driver.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
 namespace cpu {
 
-class OptimizeDriver : public CategoryDriverBase<ATV::minimizer::Phase> {
+class OptimizeDriver : public CPUDriver<ATV::minimizer::Phase> {
 public:
     /// @brief Iterate to convergence or up to `max_iter` iterations.
     /// @param frame Host-resident system state, updated in place.
