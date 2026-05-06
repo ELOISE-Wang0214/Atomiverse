@@ -225,7 +225,9 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/rys_eri.cpp
             src/cpu/scf/shell_pair.cpp
             src/cpu/scf/operators.cpp
-            src/cpu/scf/diis.cpp
+            src/cpu/scf/internal/diis_mixer.cpp
+            src/cpu/scf/internal/hamiltonian_builder.cpp
+            src/cpu/scf/scf_solver.cpp
             src/cpu/scf/minao_data.cpp
             src/cpu/scf/minao.cpp
             src/cpu/scf/scf_solve.cpp

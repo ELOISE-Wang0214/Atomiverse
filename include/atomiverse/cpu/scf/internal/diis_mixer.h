@@ -1,5 +1,9 @@
-/// @file cpu/scf/diis.h
-/// @brief Combined DIIS accelerator for spin-resolved SCF.
+/// @file cpu/scf/internal/diis_mixer.h
+/// @brief internal::DIISMixer — combined DIIS accelerator for spin-resolved SCF.
+///
+/// **Internal SCF helper.** Does NOT inherit `cpu::ComponentBase` and is
+/// not registered into any outer Driver Plan. Owned by `cpu::scf::SCFSolver`
+/// (and by tests, via direct include of this header).
 ///
 /// Pulay's Direct Inversion of the Iterative Subspace (DIIS) with combined
 /// error metric across alpha/beta spin channels. Shared extrapolation
@@ -21,19 +25,12 @@
 namespace ATV {
 namespace cpu {
 namespace scf {
+namespace internal {
 
 /// @brief Compute DIIS error vector in the orthonormal basis.
 ///
 /// Matches PySCF: e = X^T (F P S - S P F) X, where X is the canonical
 /// orthogonalization matrix (X^T S X = I). At self-consistency, e -> 0.
-/// The orthonormal basis transform removes the S-scaling of the AO-basis
-/// commutator and is what PySCF uses for CDIIS.
-///
-/// @param F Fock matrix in AO basis [n x n].
-/// @param P Density matrix in AO basis [n x n].
-/// @param S Overlap matrix [n x n].
-/// @param X Orthogonalization matrix [n x n_keep].
-/// @return DIIS error matrix [n_keep x n_keep].
 inline RealMatrix diis_error(const RealMatrix& F, const RealMatrix& P,
                              const RealMatrix& S, const RealMatrix& X) {
     RealMatrix commutator = xt::linalg::dot(F, xt::linalg::dot(P, S))
@@ -43,31 +40,25 @@ inline RealMatrix diis_error(const RealMatrix& F, const RealMatrix& P,
 
 /// @brief Combined DIIS accelerator for spin-resolved Fock matrices.
 ///
-/// Stores history of Fock matrices and DIIS error vectors for both spin channels.
-/// Solves the Pulay B-matrix equations with combined error metric:
-///   B_ij = Tr(e^alpha_i * e^alpha_j) + Tr(e^beta_i * e^beta_j)
+/// Stores history of Fock matrices and DIIS error vectors for both spin
+/// channels. Solves the Pulay B-matrix equations with combined error
+/// metric: `B_ij = Tr(e^α_i · e^α_j) + Tr(e^β_i · e^β_j)`.
 ///
-/// For restricted (single-spin), pass the same F/e for both channels or use
-/// the single-channel overload. The combined B matrix naturally reduces to
-/// standard single-channel DIIS when e_alpha == e_beta.
-class DIIS {
+/// For restricted (single-spin), pass the same F/e for both channels or
+/// use the single-channel overload. The combined B matrix naturally
+/// reduces to standard single-channel DIIS when e_alpha == e_beta.
+class DIISMixer {
 public:
     /// @param max_vectors Maximum number of stored (F, e) pairs.
-    explicit DIIS(int max_vectors = 6) : max_vectors_(max_vectors) {}
+    explicit DIISMixer(int max_vectors = 6) : max_vectors_(max_vectors) {}
 
     /// @brief Store a new Fock/error pair and return extrapolated Fock matrices.
-    ///
-    /// @param F_alpha Alpha Fock matrix.
-    /// @param e_alpha Alpha DIIS error (from diis_error()).
-    /// @param F_beta  Beta Fock matrix.
-    /// @param e_beta  Beta DIIS error.
-    /// @return (F_alpha_extrapolated, F_beta_extrapolated).
-    std::pair<RealMatrix, RealMatrix> extrapolate(
+    std::pair<RealMatrix, RealMatrix> step(
         const RealMatrix& F_alpha, const RealMatrix& e_alpha,
         const RealMatrix& F_beta,  const RealMatrix& e_beta);
 
     /// @brief Single-channel convenience (for restricted SCF).
-    RealMatrix extrapolate(const RealMatrix& F, const RealMatrix& e);
+    RealMatrix step(const RealMatrix& F, const RealMatrix& e);
 
     /// @brief Number of stored Fock/error pairs.
     int size() const { return static_cast<int>(Fa_hist_.size()); }
@@ -84,6 +75,7 @@ private:
     std::deque<RealMatrix> ea_hist_, eb_hist_;
 };
 
+} // namespace internal
 } // namespace scf
 } // namespace cpu
 } // namespace ATV
