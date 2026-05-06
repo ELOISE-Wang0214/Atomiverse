@@ -139,7 +139,6 @@ SCFResult& SCFSolver::run(const IntegralPack& integrals,
     }
 
     double damping = config_.damping_factor;
-    double prev_residual = double(1);
 
     RealMatrix C_alpha = C0, C_beta = C0;
     RealVector eig_alpha = eig0, eig_beta = eig0;
@@ -240,7 +239,6 @@ SCFResult& SCFSolver::run(const IntegralPack& integrals,
         double res_b = restricted ? double(0)
                      : (n_beta > 0 ? xt::norm_l2(P_beta_next - P_beta)() : double(0));
         double residual = std::max(res_a, res_b);
-        prev_residual = residual;
 
         const RealMatrix* err_beta_ptr = restricted ? nullptr : &err_beta;
         auto verdict = convergence_.step(E_total, err_alpha, err_beta_ptr);

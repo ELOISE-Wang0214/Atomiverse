@@ -23,7 +23,7 @@ public:
     std::string name() const override { return "multi_harmonic_dihedral"; }
     ComponentRole role() const override { return ComponentRole::Evaluator; }
     Capability capabilities() const override {
-        return Capability::Energy | Capability::Force;
+        return Capability::Energy | Capability::Force | Capability::Stress;
     }
     void build(const cpu::BuildContext& ctx) override;
     void launch(const cpu::LaunchContext& ctx) override;

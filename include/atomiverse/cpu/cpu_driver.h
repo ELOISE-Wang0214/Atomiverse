@@ -120,6 +120,3 @@ protected:
 
 } // namespace cpu
 } // namespace ATV
-
-// Explicit Driver<> instantiations live in src/cpu/driver.cpp alongside
-// the underlying Driver<> template instantiations.

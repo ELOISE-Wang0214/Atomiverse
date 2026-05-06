@@ -32,8 +32,6 @@ void HamiltonianBuilder::prepare(const IntegralPack& integrals,
             "[scf] grid build done points={} ms={:.1f}",
             grid_.points.size(), elapsed_ms(t_grid));
     }
-
-    prepared_ = true;
 }
 
 FockResult HamiltonianBuilder::step(const IntegralPack& integrals,

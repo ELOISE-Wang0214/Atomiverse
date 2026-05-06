@@ -150,13 +150,12 @@ TEST(SCFEvaluatorNoAlloc, ConstantAllocCountAcrossSteadyStateLaunches) {
     EXPECT_EQ(c, b)
         << "launch alloc count drifted: launch[N+1]=" << b
         << " vs launch[N+2]=" << c;
-    // Sanity log — the actual per-launch count is bookkeeping, not a
-    // hard bound (yet — Phase 4.5 drives this toward zero).
-    if (a > 0) {
-        std::cout << "[scf_evaluator_no_alloc] steady-state alloc count "
-                  << "per launch: " << a << " (constant across 3 launches)"
-                  << std::endl;
-    }
+    // The actual per-launch count is bookkeeping, not a hard bound (yet
+    // — Phase 4.5 drives this toward zero). Surface it via gtest's
+    // RecordProperty so xUnit reporters can plot drift over time without
+    // cluttering stdout.
+    RecordProperty("steady_state_alloc_count_per_launch",
+                   std::to_string(a).c_str());
 #endif
 }
 

@@ -6,10 +6,10 @@ criteria:
     type: code
     pass_when: |
       The following three classes exist with the indicated parents:
-        - cpu::EvaluateDriver  : public CategoryDriverBase<evaluate::Phase>
-        - cpu::DynamicsDriver  : public CategoryDriverBase<md::Phase>
-        - cpu::OptimizeDriver  : public CategoryDriverBase<minimizer::Phase>
-      `cpu::CategoryDriverBase<P>` itself inherits `Driver<P, cpu::device_tag>`.
+        - cpu::EvaluateDriver  : public CPUDriver<evaluate::Phase>
+        - cpu::DynamicsDriver  : public CPUDriver<md::Phase>
+        - cpu::OptimizeDriver  : public CPUDriver<minimizer::Phase>
+      `cpu::CPUDriver<P>` itself inherits `Driver<P, cpu::device_tag>`.
       No `SCFDriver` class exists. No `cpu::scf::SinglePoint` class exists.
       (Future SamplingDriver / PathDriver / ResponseDriver are explicitly
       permitted by the binding rules but not introduced here.)
@@ -35,7 +35,7 @@ criteria:
     summary: Category bases enforce required role + capability sets at build()
     type: code
     pass_when: |
-      tests/cpu/test_category_driver_role_validation.cpp asserts:
+      tests/cpu/test_cpu_driver_role_validation.cpp asserts:
         - DynamicsDriver without an Integrator → throws naming "Integrator".
         - DynamicsDriver without any evaluator carrying Capability::Force → throws naming "Force".
         - OptimizeDriver without an Optimizer → throws naming "Optimizer".
@@ -256,7 +256,7 @@ criteria:
       `grep -rn "class[[:space:]]\+[A-Za-z_]\+[[:space:]]*:[[:space:]]*public[[:space:]]\+Driver<" include/atomiverse/cpu/ src/cpu/`
       returns matches ONLY in the three category-base files
       (evaluate_driver.h, dynamics_driver.h, optimize_driver.h)
-      and the CategoryDriverBase definition.
+      and the CPUDriver definition.
       `grep -rwn "SCFDriver\|SinglePoint\|LangevinDriver\|NPTDriver\|REMDDriver\|WorkflowRunner\|PipelineDriver\|OptimizeThenSinglePoint" include/atomiverse/cpu/ src/cpu/`
       returns no matches.
       Note: a free function `cpu::single_point(...)` is permitted (helper

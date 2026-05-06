@@ -1,4 +1,4 @@
-/// @file tests/cpu/test_category_driver_role_validation.cpp
+/// @file tests/cpu/test_cpu_driver_role_validation.cpp
 /// @brief Phase 1.5 — assert that EvaluateDriver / DynamicsDriver /
 ///        OptimizeDriver throw at build() time when their required role +
 ///        capability set is not satisfied, and build successfully when it
@@ -64,7 +64,7 @@ bool message_mentions(const std::runtime_error& e, const std::string& needle) {
 
 // ─── DynamicsDriver ─────────────────────────────────────────────────
 
-TEST(CategoryDriverRoleValidation, DynamicsThrowsWithoutIntegrator) {
+TEST(CPUDriverRoleValidation, DynamicsThrowsWithoutIntegrator) {
     using namespace ATV;
     cpu::DynamicsDriver d;
     StubForceEvaluator force;
@@ -77,7 +77,7 @@ TEST(CategoryDriverRoleValidation, DynamicsThrowsWithoutIntegrator) {
     }
 }
 
-TEST(CategoryDriverRoleValidation, DynamicsThrowsWithoutForceEvaluator) {
+TEST(CPUDriverRoleValidation, DynamicsThrowsWithoutForceEvaluator) {
     using namespace ATV;
     cpu::DynamicsDriver d;
     StubIntegrator integ;
@@ -92,7 +92,7 @@ TEST(CategoryDriverRoleValidation, DynamicsThrowsWithoutForceEvaluator) {
     }
 }
 
-TEST(CategoryDriverRoleValidation, DynamicsBuildsWithIntegratorAndForce) {
+TEST(CPUDriverRoleValidation, DynamicsBuildsWithIntegratorAndForce) {
     using namespace ATV;
     cpu::DynamicsDriver d;
     StubIntegrator integ;
@@ -104,7 +104,7 @@ TEST(CategoryDriverRoleValidation, DynamicsBuildsWithIntegratorAndForce) {
 
 // ─── OptimizeDriver ─────────────────────────────────────────────────
 
-TEST(CategoryDriverRoleValidation, OptimizeThrowsWithoutOptimizer) {
+TEST(CPUDriverRoleValidation, OptimizeThrowsWithoutOptimizer) {
     using namespace ATV;
     cpu::OptimizeDriver o;
     StubForceEvaluator force;
@@ -117,7 +117,7 @@ TEST(CategoryDriverRoleValidation, OptimizeThrowsWithoutOptimizer) {
     }
 }
 
-TEST(CategoryDriverRoleValidation, OptimizeThrowsWithoutEnergyOrForceEvaluator) {
+TEST(CPUDriverRoleValidation, OptimizeThrowsWithoutEnergyOrForceEvaluator) {
     using namespace ATV;
     cpu::OptimizeDriver o;
     StubOptimizer opt;
@@ -134,7 +134,7 @@ TEST(CategoryDriverRoleValidation, OptimizeThrowsWithoutEnergyOrForceEvaluator) 
     }
 }
 
-TEST(CategoryDriverRoleValidation, OptimizeBuildsWithOptimizerAndEnergy) {
+TEST(CPUDriverRoleValidation, OptimizeBuildsWithOptimizerAndEnergy) {
     using namespace ATV;
     cpu::OptimizeDriver o;
     StubOptimizer opt;
@@ -146,7 +146,7 @@ TEST(CategoryDriverRoleValidation, OptimizeBuildsWithOptimizerAndEnergy) {
 
 // ─── EvaluateDriver ─────────────────────────────────────────────────
 
-TEST(CategoryDriverRoleValidation, EvaluateThrowsWithoutEvaluator) {
+TEST(CPUDriverRoleValidation, EvaluateThrowsWithoutEvaluator) {
     using namespace ATV;
     cpu::EvaluateDriver e;
     StubBareInfra infra;
@@ -159,7 +159,7 @@ TEST(CategoryDriverRoleValidation, EvaluateThrowsWithoutEvaluator) {
     }
 }
 
-TEST(CategoryDriverRoleValidation, EvaluateBuildsWithEnergyEvaluator) {
+TEST(CPUDriverRoleValidation, EvaluateBuildsWithEnergyEvaluator) {
     using namespace ATV;
     cpu::EvaluateDriver e;
     StubEnergyEvaluator energy;

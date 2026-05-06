@@ -304,23 +304,23 @@ Sketches (final API at implementation time):
 namespace ATV::cpu {
 
 template <typename PhaseEnum>
-class CategoryDriverBase : public Driver<PhaseEnum, cpu::device_tag> {
+class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
 protected:
     void run_one_iteration(cpu::Frame& frame, int iter_index);
     IterationStatus& outer_status();         // resets per-iter
 };
 
-class EvaluateDriver : public CategoryDriverBase<evaluate::Phase> {
+class EvaluateDriver : public CPUDriver<evaluate::Phase> {
 public:
     void run(cpu::Frame& frame);             // exactly one pass
 };
 
-class DynamicsDriver : public CategoryDriverBase<md::Phase> {
+class DynamicsDriver : public CPUDriver<md::Phase> {
 public:
     void run(cpu::Frame& frame, int n_steps); // full budget unless stop_requested
 };
 
-class OptimizeDriver : public CategoryDriverBase<minimizer::Phase> {
+class OptimizeDriver : public CPUDriver<minimizer::Phase> {
 public:
     int run(cpu::Frame& frame, int max_iter); // returns iters actually run
 };
@@ -465,7 +465,7 @@ No glue class, no `SinglePoint`, no `OptimizeThenSinglePoint`.
 ### Created
 
 ```
-include/atomiverse/facade/category_driver.h        (CategoryDriverBase)
+include/atomiverse/cpu/cpu_driver.h        (CPUDriver)
 include/atomiverse/facade/component_role.h         (ComponentRole + Capability + role()/capabilities())
 include/atomiverse/facade/iteration_status.h       (IterationStatus struct)
 include/atomiverse/cpu/evaluate_driver.h
@@ -487,7 +487,7 @@ src/cpu/scf/internal/{hamiltonian_builder,eigen_solver,density_builder,
                       diis_mixer,dual_convergence_check}.cpp
 src/cpu/scf/shell_list.cpp
 src/cpu/minimizer/cg.cpp
-tests/cpu/test_category_driver_role_validation.cpp
+tests/cpu/test_cpu_driver_role_validation.cpp
 tests/cpu/test_evaluate_driver_capabilities.cpp
 tests/cpu/test_optimize_driver_early_stop.cpp
 tests/cpu/test_dynamics_full_budget.cpp
@@ -543,11 +543,11 @@ CLAUDE.md
 - [ ] **1.3** Add `evaluate::Phase = {prepare, evaluate, finalize, COUNT}`
       in `facade/stage.h`. Add `// CUDA-only legacy` comment on
       `scf::Phase`.
-- [ ] **1.4** Add `cpu::CategoryDriverBase<P>` template + the three
+- [ ] **1.4** Add `cpu::CPUDriver<P>` template + the three
       concrete bases (`EvaluateDriver`, `DynamicsDriver`,
       `OptimizeDriver`). Each implements category-correct termination
       and validates required role + capability sets at `build()`.
-- [ ] **1.5** Test: `tests/cpu/test_category_driver_role_validation.cpp`
+- [ ] **1.5** Test: `tests/cpu/test_cpu_driver_role_validation.cpp`
       asserts:
       - `DynamicsDriver` without an Integrator → throw at build().
       - `DynamicsDriver` without any `Force`-capable evaluator → throw.
@@ -696,7 +696,7 @@ CLAUDE.md
 ## Testing strategy
 
 - **Role + capability validation**
-  (`test_category_driver_role_validation.cpp`,
+  (`test_cpu_driver_role_validation.cpp`,
   `test_evaluate_driver_capabilities.cpp`).
 - **Termination semantics** (`test_optimize_driver_early_stop.cpp`,
   `test_dynamics_full_budget.cpp`).

@@ -56,7 +56,6 @@ private:
     ShellBlockPairList sp_block_;  ///< RHF/RKS shell-block list (libcint-style).
     ShellPairList      sp_;        ///< AO-level list for UHF/UKS J/K paths.
     MolecularGrid      grid_;      ///< KS XC grid (empty for HF).
-    bool               prepared_ = false;
 };
 
 } // namespace internal
