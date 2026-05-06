@@ -14,6 +14,15 @@
 #include <omp.h>
 #endif
 
+// xsimd vector batch<double> for the LJ inner kernel (Track B.2).
+// Linked directly to atomiverse via target_link_libraries; -march=native is
+// already gated to CXX in the top-level CMakeLists. We use the *default*
+// architecture (NEON64 on Apple silicon, AVX2/AVX-512 on x86-64); on
+// architectures without xsimd support the batch_t::size collapses to 1 and
+// the loop degenerates into the scalar code path with no measurable
+// overhead.
+#include <xsimd/xsimd.hpp>
+
 namespace ATV {
 namespace cpu {
 namespace md {
@@ -243,6 +252,51 @@ void LJ::launch(const cpu::LaunchContext& ctx) {
         double* __restrict fyt_ptr = fyt.data();
         double* __restrict fzt_ptr = fzt.data();
 
+        // Track B.2 — xsimd ket-loop vectorization of the inner pair loop.
+        //
+        // Strategy: pack W=batch_t::size neighbors into vector registers,
+        // run all distance / cutoff / polynomial / force math through
+        // SIMD (NEON64 W=2 on Apple silicon, AVX2 W=4, AVX-512 W=8).
+        // Excluded / out-of-cutoff lanes are masked to zero contributions
+        // via xsimd::select — branch-free.
+        //
+        // Bit-identicality: per-lane SIMD ops on NEON / AVX use plain
+        // (non-FMA) multiplies and adds (xsimd 11.2.0 routes operator*/+
+        // to vmulq/vaddq, not vfmaq), and division uses vdivq_f64 (full
+        // IEEE divide). The horizontal accumulation into per-atom force
+        // (`fi_x`), per-thread force buffers (`fxt_ptr[j]`), energy and
+        // virial is performed by extracting lanes one at a time and
+        // adding them in the *same* linear order as the original scalar
+        // loop. This preserves the exact summation tree, so per-pair
+        // contributions are bit-identical iff the per-lane intermediates
+        // (`r2`, `fpair`, `fxp`, etc.) are bit-identical to scalar.
+        //
+        // The one residual ULP risk is `-ffp-contract=on` (clang default):
+        // the *scalar* baseline may emit a fused multiply-add for
+        // `dx*dx + dy*dy + dz*dz` written in a single statement, while
+        // xsimd's batch operator+ stays unfused. We measure and report
+        // the actual delta; if it exceeds 1e-12 the spec acceptance gate
+        // (ac-012) will need a tolerance refinement (caller's call).
+        using batch_t = xsimd::batch<double>;
+        constexpr std::size_t W = batch_t::size;
+
+        const batch_t v_lx(lx), v_ly(ly), v_lz(lz);
+        const batch_t v_half_lx(half_lx), v_half_ly(half_ly), v_half_lz(half_lz);
+        const batch_t v_neg_half_lx(-half_lx), v_neg_half_ly(-half_ly), v_neg_half_lz(-half_lz);
+        const batch_t v_rc_sq(rc_sq);
+        const batch_t v_sig6(sig6);
+        const batch_t v_eps4(eps4), v_eps24(eps24), v_vshift(vshift);
+        const batch_t v_one(1.0), v_two(2.0), v_zero(0.0);
+
+        // Stack-resident packing buffers reused per ket iteration.
+        // alignas(64) keeps store_aligned legal on AVX-512 boxes; on NEON
+        // 16-byte alignment suffices but 64 is cheap and harmless.
+        alignas(64) double xj_buf[16], yj_buf[16], zj_buf[16];
+        alignas(64) double dx_buf[16], dy_buf[16], dz_buf[16];
+        alignas(64) double fxp_buf[16], fyp_buf[16], fzp_buf[16];
+        alignas(64) double r2_buf[16], r6inv_buf[16];
+        alignas(64) std::int32_t mask_buf[16];
+
         #pragma omp for schedule(static)
         for (int ii = 0; ii < k_inum; ++ii) {
             // Filtered path: i == ii (neighbors are already pruned of
@@ -258,9 +312,122 @@ void LJ::launch(const cpu::LaunchContext& ctx) {
             const double xi = x_ptr[i];
             const double yi = y_ptr[i];
             const double zi = z_ptr[i];
+            const batch_t v_xi(xi), v_yi(yi), v_zi(zi);
             double fi_x = 0, fi_y = 0, fi_z = 0;
 
-            for (int jj = 0; jj < jnum; ++jj) {
+            int jj = 0;
+            // ── SIMD ket loop: W neighbors per iteration ────────────
+            for (; jj + static_cast<int>(W) <= jnum; jj += static_cast<int>(W)) {
+                // Manual gather: pack the next W neighbor coords into the
+                // aligned stack buffers. j-indices are non-contiguous (NL
+                // is a permutation), so a true SIMD gather instruction
+                // would be needed for 1-cycle load -- on NEON64 there is
+                // no double-precision gather, so the scalar-load loop is
+                // the right thing here.
+                for (std::size_t lane = 0; lane < W; ++lane) {
+                    const int j = k_neighbors[off + jj + static_cast<int>(lane)];
+                    xj_buf[lane] = x_ptr[j];
+                    yj_buf[lane] = y_ptr[j];
+                    zj_buf[lane] = z_ptr[j];
+                }
+                batch_t v_xj = batch_t::load_aligned(xj_buf);
+                batch_t v_yj = batch_t::load_aligned(yj_buf);
+                batch_t v_zj = batch_t::load_aligned(zj_buf);
+
+                batch_t v_dx = v_xi - v_xj;
+                batch_t v_dy = v_yi - v_yj;
+                batch_t v_dz = v_zi - v_zj;
+                // Branch-free minimum image: select(dx > +L/2, dx-L, dx);
+                // then select(dx < -L/2, dx+L, dx). Two passes match the
+                // sequential `if` ladder of the scalar code: lane k ends up
+                // with the same dx_k value the scalar branch would compute.
+                v_dx = xsimd::select(v_dx >  v_half_lx,    v_dx - v_lx, v_dx);
+                v_dx = xsimd::select(v_dx <  v_neg_half_lx, v_dx + v_lx, v_dx);
+                v_dy = xsimd::select(v_dy >  v_half_ly,    v_dy - v_ly, v_dy);
+                v_dy = xsimd::select(v_dy <  v_neg_half_ly, v_dy + v_ly, v_dy);
+                v_dz = xsimd::select(v_dz >  v_half_lz,    v_dz - v_lz, v_dz);
+                v_dz = xsimd::select(v_dz <  v_neg_half_lz, v_dz + v_lz, v_dz);
+
+                // r2 with parenthesized addition tree to keep order
+                // matching scalar `(dx*dx + dy*dy) + dz*dz`.
+                batch_t v_dxsq = v_dx * v_dx;
+                batch_t v_dysq = v_dy * v_dy;
+                batch_t v_dzsq = v_dz * v_dz;
+                batch_t v_r2   = (v_dxsq + v_dysq) + v_dzsq;
+
+                // Cutoff mask. Lanes outside the cutoff get fpair=0 so
+                // they contribute nothing to forces / energy / virial; the
+                // scalar code reaches those lanes via its `continue`.
+                auto mask = v_r2 < v_rc_sq;
+                // Guard against r2 == 0 (would-be NaN from 1/r2). All
+                // lanes inside the cutoff are guaranteed > 0 (no atom
+                // self-pair in the half list); padding lanes outside
+                // cutoff are masked anyway. We replace masked-out r2 with
+                // 1.0 to keep the divide finite.
+                batch_t v_r2_safe = xsimd::select(mask, v_r2, v_one);
+
+                batch_t v_r2inv = v_one / v_r2_safe;
+                batch_t v_r6inv = ((v_r2inv * v_r2inv) * v_r2inv) * v_sig6;
+                batch_t v_fpair = v_eps24 * v_r2inv *
+                                  (v_two * v_r6inv * v_r6inv - v_r6inv);
+                v_fpair = xsimd::select(mask, v_fpair, v_zero);
+
+                batch_t v_fxp = v_fpair * v_dx;
+                batch_t v_fyp = v_fpair * v_dy;
+                batch_t v_fzp = v_fpair * v_dz;
+
+                v_dx.store_aligned(dx_buf);
+                v_dy.store_aligned(dy_buf);
+                v_dz.store_aligned(dz_buf);
+                v_fxp.store_aligned(fxp_buf);
+                v_fyp.store_aligned(fyp_buf);
+                v_fzp.store_aligned(fzp_buf);
+                v_r6inv.store_aligned(r6inv_buf);
+                // Mask: store as integer (1 inside cutoff, 0 outside) so
+                // the scalar accumulation loop below can branch on it.
+                // batch_bool stores as the underlying SIMD compare result;
+                // we materialize via a select-to-int.
+                batch_t v_mask_d = xsimd::select(mask, v_one, v_zero);
+                alignas(64) double mask_d_buf[16];
+                v_mask_d.store_aligned(mask_d_buf);
+
+                // ── Scalar accumulation in original linear order ──
+                // Lane-by-lane add into fi_*, fxt[j], v_xx..v_yz, energy.
+                // This is identical FP order to the scalar loop: each
+                // surviving pair contributes the same per-pair triple
+                // (fxp, fyp, fzp) the scalar code would have computed.
+                for (std::size_t lane = 0; lane < W; ++lane) {
+                    if (mask_d_buf[lane] == 0.0) continue;
+                    const int j = k_neighbors[off + jj + static_cast<int>(lane)];
+                    const double dx_l  = dx_buf[lane];
+                    const double dy_l  = dy_buf[lane];
+                    const double dz_l  = dz_buf[lane];
+                    const double fxp_l = fxp_buf[lane];
+                    const double fyp_l = fyp_buf[lane];
+                    const double fzp_l = fzp_buf[lane];
+                    const double r6inv_l = r6inv_buf[lane];
+
+                    fi_x += fxp_l;
+                    fi_y += fyp_l;
+                    fi_z += fzp_l;
+                    fxt_ptr[j] -= fxp_l;
+                    fyt_ptr[j] -= fyp_l;
+                    fzt_ptr[j] -= fzp_l;
+
+                    v_xx += dx_l * fxp_l;
+                    v_yy += dy_l * fyp_l;
+                    v_zz += dz_l * fzp_l;
+                    v_xy += dx_l * fyp_l;
+                    v_xz += dx_l * fzp_l;
+                    v_yz += dy_l * fzp_l;
+
+                    energy_total += eps4 * (r6inv_l * r6inv_l - r6inv_l) - vshift;
+                }
+                (void)mask_buf;
+            }
+
+            // ── Scalar tail (last jnum % W neighbors) ──────────────
+            for (; jj < jnum; ++jj) {
                 const int j = k_neighbors[off + jj];
                 double dx = xi - x_ptr[j];
                 double dy = yi - y_ptr[j];
@@ -288,10 +455,6 @@ void LJ::launch(const cpu::LaunchContext& ctx) {
                 fyt_ptr[j] -= fyp;
                 fzt_ptr[j] -= fzp;
 
-                // Pair virial contribution: σ_αβ += r_α · F_β. Half-list
-                // counts each pair once with the local owner as i, so this
-                // captures the full pairwise virial when summed across
-                // ranks (same convention as energy).
                 v_xx += dx * fxp;
                 v_yy += dy * fyp;
                 v_zz += dz * fzp;
