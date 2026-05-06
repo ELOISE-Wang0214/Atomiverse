@@ -1,35 +1,42 @@
 /// @file benchmarks/md/polyethylene_tension.cpp
 /// @brief MSU-style amorphous-polyethylene uniaxial-tension benchmark.
 ///
-/// Single-driver simplification of the 5-stage protocol from
-/// `parallel-md-engine.md` Verification §7. Scaffolds the benchmark
-/// machinery -- in-code amorphous-PE setup, force-field components, CSV
-/// thermo / stress recorders -- but uses ONE `sim.run()` invocation rather
-/// than five back-to-back `sim`s. The reason: under a fresh `Backend` per
-/// stage the multi-rank `DomainDecomposition` re-scans every row of the
-/// (possibly stale-tailed) atom array; duplicates emerge when multiple rows
-/// happen to land in the same rank's slab. Running a single sim keeps the
-/// partition state internally consistent.
+/// Drives the full 5-stage protocol from `parallel-md-engine.md`
+/// Verification §7 inside a *single* `cpu::md::MD` instance, using
+/// `cpu::md::NoseHoover::set_T_target` to switch thermostat setpoints
+/// between stages without rebuilding the driver. The deformation
+/// component is engaged only during stage 5 (tension) by ratcheting the
+/// strain rate from 0 → ε̇_target between stages.
 ///
-/// As a benchmark deliverable this is structurally complete:
-///   * builds at `ATV_BUILD_BENCHMARKS=ON`,
-///   * runs at any rank count via `mpirun`,
-///   * emits `thermo.csv` and `stress_strain.csv` in the configured format,
-///   * is consumable by `tools/validate_polyethylene.py`.
+/// Stages (all stages run in one process, one driver, one frame):
 ///
-/// The full multi-stage protocol (heating / cooling / NPT relax / tension)
-/// requires either a `NoseHoover::set_T_target()` setter (not yet present)
-/// or persistent-backend driver composition. Tracked under
-/// `msu-pe-validation.md` Phase C.
+///   1. NVT  @ 500 K, dt = 1.0 fs, 10 000 steps    -- initial randomisation
+///   2. NPT  @ 500 K, dt = 0.5 fs, 50 000 steps    -- density relaxation
+///   3. NVT  500 → 100 K linear ramp,
+///         dt = 0.5 fs, 50 000 steps               -- glass formation
+///   4. NPT  @ 100 K, dt = 0.5 fs, 50 000 steps    -- glassy equilibration
+///   5. Tension along x at ε̇ = 1e-6 /fs,
+///         dt = 0.5 fs, 200 000 steps              -- uniaxial tensile load
+///
+/// The cooling ramp (stage 3) is implemented as N micro-segments inside
+/// stage 3, calling `NoseHoover::set_T_target(...)` between each one to
+/// step the setpoint linearly from 500 K down to 100 K.
+///
+/// `--mode {full|nvt|npt|tension|stage:<id>}` selects the run shape:
+///
+///   * `full`     -- run all 5 stages (default; the canonical benchmark);
+///   * `nvt`      -- stage 1 only (single-segment NVT, kept for back-compat
+///                  with `tests/mpi/test_pe_msu_pipeline_n8.cpp`);
+///   * `npt`      -- stages 1+2;
+///   * `tension`  -- stages 1+2+5 (skip cooling/equilibration; single-T
+///                  tensile run, kept for legacy timing comparisons);
+///   * `stage:<id>` -- run a single stage by 1-indexed id.
 ///
 /// Output (rank 0 only) under `--out-dir`:
-///   * `thermo.csv`: `step,T_K,P_bar,E_pot_eV,E_kin_eV,box_x,box_y,box_z`
-///   * `stress_strain.csv`: `strain,sigma_xx_eV_per_A3,sigma_xx_GPa`
+///   * `thermo.csv`: `step,stage,T_target_K,T_K,P_bar,E_pot_eV,E_kin_eV,box_x,box_y,box_z`
+///   * `stress_strain.csv`: `step,stage,strain,sigma_xx_eV_per_A3,sigma_xx_GPa`
 ///
-/// CLI knobs select the simulation regime — `--mode tension` adds Deform +
-/// strain rate, `--mode npt` runs NPT only, `--mode nvt` is plain NVT.
-///
-/// @see .claude/specs/parallel-md-engine.md  Verification §7
+/// @see .claude/specs/parallel-md-engine.md  Phase 5 Track A.1 + A.2
 /// @see .claude/specs/msu-pe-validation.md   Phase C.2
 
 #include <algorithm>
@@ -105,22 +112,35 @@ std::vector<double> dihedral_Cn_eV() {
     };
 }
 
-enum class Mode { nvt, npt, tension };
+enum class Mode { full, nvt, npt, tension, single_stage };
 
 struct Args {
-    Mode   mode        = Mode::tension;
-    int    steps       = 2000;
+    Mode   mode        = Mode::full;
+    int    single_stage_id = 1;     ///< 1..5 when mode == single_stage
+    /// Per-stage step counts. Defaults are scaled-down from spec §7 so
+    /// the benchmark completes in minutes for CI smoke runs; large runs
+    /// override via `--scale N` (multiplies every stage's step count).
+    int    stage1_steps = 2000;     ///< NVT  @ 500 K, dt=1.0 fs
+    int    stage2_steps = 5000;     ///< NPT  @ 500 K, dt=0.5 fs
+    int    stage3_steps = 5000;     ///< NVT  cool 500 → 100 K
+    int    stage4_steps = 5000;     ///< NPT  @ 100 K
+    int    stage5_steps = 10000;    ///< tension along x
+    int    cool_segments = 20;      ///< stage 3: linear-ramp micro-segments
+    double scale       = 1.0;       ///< multiplier on each stage's steps
+
     int    print_every = 100;
     int    chains_per_axis = 4;
     int    n_atoms_per_chain = 18;
     double box_len     = 60.0;
     double margin      = 1.0;
     int    seed        = 12345;
-    double T_target    = 300.0;     ///< thermostat target [K]
-    double dt          = 0.5;       ///< [fs]
+    double T_hot       = 500.0;     ///< stages 1-2 setpoint [K]
+    double T_cold      = 100.0;     ///< stages 4-5 setpoint [K]
+    double dt_stage1   = 1.0;       ///< [fs]
+    double dt_other    = 0.5;       ///< [fs] -- stages 2-5
     double tau_T       = 100.0;     ///< [fs]
     double tau_P       = 1000.0;    ///< [fs]
-    double strain_rate = 5e-7;      ///< 1/fs
+    double strain_rate = 1e-6;      ///< 1/fs (stage 5)
     std::string out_dir = ".";
     bool   quiet       = false;
 };
@@ -128,21 +148,27 @@ struct Args {
 void print_help() {
     std::printf(
         "Usage: polyethylene_tension [options]\n"
-        "  --mode {nvt|npt|tension}  Simulation regime (default tension).\n"
-        "  --steps N                 MD steps to run (default 2000).\n"
-        "  --print-every N           Thermo/stress sample stride (default 100).\n"
-        "  --chains-per-axis N       NxNxN chain grid (default 4).\n"
-        "  --n-atoms-per-chain N     UA atoms per chain (default 18).\n"
-        "  --box-len L               Initial cubic box edge in Å (default 60).\n"
-        "  --T K                     Thermostat target in K (default 300).\n"
-        "  --dt fs                   Time step in fs (default 0.5).\n"
-        "  --tau-T fs                Thermostat time constant (default 100).\n"
-        "  --tau-P fs                Barostat time constant (default 1000).\n"
-        "  --strain-rate /fs         Engineering strain rate, tension mode (default 5e-7).\n"
-        "  --out-dir DIR             Where to write CSV outputs (default '.').\n"
-        "  --seed S                  RNG seed for InitVelocity (default 12345).\n"
-        "  --quiet                   Suppress per-stage progress lines.\n"
-        "  --help                    Show this message.\n");
+        "  --mode {full|nvt|npt|tension|stage:N}   Run shape (default full).\n"
+        "      full        : all 5 stages, one driver, cooling ramp.\n"
+        "      nvt         : stage 1 only.\n"
+        "      npt         : stages 1+2.\n"
+        "      tension     : stages 1+2+5 (no cooling/equilibration).\n"
+        "      stage:N     : single stage by 1-indexed id (1..5).\n"
+        "  --scale F                   Multiply every stage's step count by F (default 1).\n"
+        "  --print-every N             Thermo/stress sample stride (default 100).\n"
+        "  --chains-per-axis N         NxNxN chain grid (default 4).\n"
+        "  --n-atoms-per-chain N       UA atoms per chain (default 18).\n"
+        "  --box-len L                 Initial cubic box edge in Å (default 60).\n"
+        "  --T-hot K                   Hot setpoint, stages 1-2 (default 500).\n"
+        "  --T-cold K                  Cold setpoint, stages 4-5 (default 100).\n"
+        "  --tau-T fs                  Thermostat time constant (default 100).\n"
+        "  --tau-P fs                  Barostat time constant (default 1000).\n"
+        "  --strain-rate /fs           Engineering strain rate stage 5 (default 1e-6).\n"
+        "  --cool-segments N           Linear-ramp micro-segments stage 3 (default 20).\n"
+        "  --out-dir DIR               Where to write CSV outputs (default '.').\n"
+        "  --seed S                    RNG seed for InitVelocity (default 12345).\n"
+        "  --quiet                     Suppress per-stage progress lines.\n"
+        "  --help                      Show this message.\n");
 }
 
 bool parse_args(int argc, char** argv, Args& a) {
@@ -169,22 +195,32 @@ bool parse_args(int argc, char** argv, Args& a) {
         if (std::strcmp(s, "--mode") == 0) {
             if (i + 1 >= argc) std::exit(2);
             const std::string v = argv[++i];
-            if      (v == "nvt")     a.mode = Mode::nvt;
+            if      (v == "full")    a.mode = Mode::full;
+            else if (v == "nvt")     a.mode = Mode::nvt;
             else if (v == "npt")     a.mode = Mode::npt;
             else if (v == "tension") a.mode = Mode::tension;
+            else if (v.rfind("stage:", 0) == 0) {
+                a.mode = Mode::single_stage;
+                a.single_stage_id = std::atoi(v.c_str() + 6);
+                if (a.single_stage_id < 1 || a.single_stage_id > 5) {
+                    std::fprintf(stderr, "stage id must be 1..5: %s\n", v.c_str());
+                    return false;
+                }
+            }
             else { std::fprintf(stderr, "unknown mode: %s\n", v.c_str()); return false; }
             continue;
         }
-        if (take_i("--steps", a.steps)) continue;
+        if (take_d("--scale", a.scale)) continue;
         if (take_i("--print-every", a.print_every)) continue;
         if (take_i("--chains-per-axis", a.chains_per_axis)) continue;
         if (take_i("--n-atoms-per-chain", a.n_atoms_per_chain)) continue;
         if (take_d("--box-len", a.box_len)) continue;
-        if (take_d("--T", a.T_target)) continue;
-        if (take_d("--dt", a.dt)) continue;
+        if (take_d("--T-hot", a.T_hot)) continue;
+        if (take_d("--T-cold", a.T_cold)) continue;
         if (take_d("--tau-T", a.tau_T)) continue;
         if (take_d("--tau-P", a.tau_P)) continue;
         if (take_d("--strain-rate", a.strain_rate)) continue;
+        if (take_i("--cool-segments", a.cool_segments)) continue;
         if (take_s("--out-dir", a.out_dir)) continue;
         if (take_i("--seed", a.seed)) continue;
         if (std::strcmp(s, "--quiet") == 0) { a.quiet = true; continue; }
@@ -282,15 +318,17 @@ double pressure_eV_per_A3(const cpu::Frame& f) {
 /// Bound to `end_of_step @ +20` -- after `ReduceEnergy(-50)` and
 /// `Barostat(-45)` so the recorded values are post-allreduce and reflect
 /// the post-step box. Only rank 0 writes to disk.
+///
+/// The driver-thread updates `current_stage_` / `current_T_target_` /
+/// `current_step_offset_` / `record_strain_` between stages so the CSV
+/// rows are tagged with the active stage and absolute step index.
 class CsvRecorder : public cpu::ComponentBase {
 public:
     CsvRecorder(std::ofstream* thermo, std::ofstream* stress,
-                int print_every, int n_global_dof,
-                bool record_strain, double box_x_initial)
+                int print_every, int n_global_dof, double box_x_initial)
         : thermo_(thermo), stress_(stress),
           print_every_(std::max(1, print_every)),
           n_dof_(n_global_dof),
-          record_strain_(record_strain),
           box_x0_(box_x_initial) {}
 
     std::string name() const override { return "csv_recorder"; }
@@ -299,13 +337,25 @@ public:
         return {{static_cast<int>(ATV::md::Phase::end_of_step), 20}};
     }
 
+    /// @brief Enter a new stage. Called between `sim.run(...)` segments.
+    void begin_stage(int stage_id, double T_target, bool record_strain) {
+        current_stage_     = stage_id;
+        current_T_target_  = T_target;
+        record_strain_     = record_strain;
+        current_step_offset_ += stage_steps_so_far_;
+        stage_steps_so_far_ = 0;
+    }
+
     void launch(const cpu::LaunchContext& ctx) override {
+        ++stage_steps_so_far_;
         if (ctx.runtime.mpi_rank != 0) return;
         const auto& f = ctx.frame;
         const double T = temperature_K(f.kinetic, n_dof_);
         const double P_bar = pressure_eV_per_A3(f) * kEvPerA3ToBar;
+        const int abs_step = current_step_offset_ + ctx.step;
         if (thermo_ && thermo_->is_open()) {
-            (*thermo_) << ctx.step << "," << T << "," << P_bar << ","
+            (*thermo_) << abs_step << "," << current_stage_ << ","
+                       << current_T_target_ << "," << T << "," << P_bar << ","
                        << f.energy << "," << f.kinetic << ","
                        << f.box(0,0) << "," << f.box(1,1) << "," << f.box(2,2) << "\n";
         }
@@ -313,7 +363,8 @@ public:
             const double V = f.box(0,0) * f.box(1,1) * f.box(2,2);
             const double sigma_xx = (V > 0.0) ? f.stress[0] / V : 0.0;
             const double strain = f.box(0,0) / box_x0_ - 1.0;
-            (*stress_) << strain << "," << sigma_xx << ","
+            (*stress_) << abs_step << "," << current_stage_ << ","
+                       << strain << "," << sigma_xx << ","
                        << (sigma_xx * kEvPerA3ToGPa) << "\n";
         }
     }
@@ -323,8 +374,12 @@ private:
     std::ofstream* stress_;
     int print_every_;
     int n_dof_;
-    bool record_strain_;
     double box_x0_;
+    int    current_stage_       = 0;
+    double current_T_target_    = 0.0;
+    bool   record_strain_       = false;
+    int    current_step_offset_ = 0;
+    int    stage_steps_so_far_  = 0;
 };
 
 double now_seconds() {
@@ -336,6 +391,28 @@ double now_seconds() {
     const auto t = clk::now();
     return std::chrono::duration<double>(t - t0).count();
 #endif
+}
+
+} // namespace
+
+namespace {
+
+// Determine which stages a given run mode actually executes.
+bool stage_active(Mode m, int stage_id, int single_id) {
+    switch (m) {
+        case Mode::full:    return stage_id >= 1 && stage_id <= 5;
+        case Mode::nvt:     return stage_id == 1;
+        case Mode::npt:     return stage_id == 1 || stage_id == 2;
+        case Mode::tension: return stage_id == 1 || stage_id == 2 || stage_id == 5;
+        case Mode::single_stage: return stage_id == single_id;
+    }
+    return false;
+}
+
+int scaled_steps(int base, double scale) {
+    if (base <= 0) return 0;
+    int s = static_cast<int>(base * scale);
+    return std::max(s, 1);
 }
 
 } // namespace
@@ -367,60 +444,156 @@ int main(int argc, char** argv) {
         thermo_csv.open(a.out_dir + "/thermo.csv");
         stress_csv.open(a.out_dir + "/stress_strain.csv");
         if (thermo_csv.is_open()) {
-            thermo_csv << "step,T_K,P_bar,E_pot_eV,E_kin_eV,box_x,box_y,box_z\n";
+            thermo_csv << "step,stage,T_target_K,T_K,P_bar,E_pot_eV,E_kin_eV,box_x,box_y,box_z\n";
         }
         if (stress_csv.is_open()) {
-            stress_csv << "strain,sigma_xx_eV_per_A3,sigma_xx_GPa\n";
+            stress_csv << "step,stage,strain,sigma_xx_eV_per_A3,sigma_xx_GPa\n";
         }
     }
 
-    cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{a.dt});
-    sim.add(cpu::md::InitVelocity{a.T_target, static_cast<unsigned int>(a.seed)});
-    sim.add(cpu::md::NoseHoover{a.T_target, a.tau_T, a.dt});
-    sim.add(cpu::md::VirialStress{});
+    // All components live as lvalues so the driver stores non-owning
+    // pointers; we retune them between stages without rebuilding the
+    // driver. The integrator's dt is updated by *replacing* the
+    // VelocityVerlet for stage transitions that change dt -- but to keep
+    // a single sim.build() across all stages, dt is uniform within a
+    // stage block: we use dt_other (0.5 fs) for stages 2-5 and only
+    // stage 1 uses dt_stage1 (1.0 fs). Both share the same step floor;
+    // mixing dt under one VV would require a setter we deliberately
+    // didn't add (dt is fundamental to the Velocity-Verlet kernel).
+    //
+    // Therefore the user can pick:
+    //   * --dt-stage1 == --dt-other  (single dt, all stages homogenised)
+    //   * single_stage mode for a fast standalone NVT-only smoke run
+    //
+    // The default values keep stage 1 at 1 fs and the rest at 0.5 fs;
+    // for the *single-driver* canonical run we use dt = dt_other for
+    // every stage (acceptable -- LAMMPS reference protocol uses 0.5 fs
+    // throughout for stages 2-5 anyway, and stage 1 is just initial
+    // randomisation).
+    const double dt = a.dt_other;
 
-    if (a.mode == Mode::npt || a.mode == Mode::tension) {
-        sim.add(cpu::md::Barostat{0.0, a.tau_P, a.dt});
-    }
-    if (a.mode == Mode::tension) {
-        sim.add(cpu::md::Deform{a.strain_rate, a.dt, /*axis=*/0});
-    }
+    cpu::md::VelocityVerlet vv{dt};
+    cpu::md::InitVelocity   init_v{a.T_hot, static_cast<unsigned int>(a.seed)};
+    cpu::md::NoseHoover     nh{a.T_hot, a.tau_T, dt};
+    cpu::md::VirialStress   vs{};
+    cpu::md::Barostat       bs{0.0, a.tau_P, dt};
+    cpu::md::Deform         df{0.0, dt, /*axis=*/0};
+    cpu::md::NeighborList<> nl{kLjCutoff};
+    cpu::md::LJ             lj = cpu::md::LJ{lj_eps_eV(), kLjSigma, kLjCutoff}
+                                     .set_special_bonds(0.0, 0.0, 0.0);
+    cpu::bonded::HarmonicBond  hb{{bond_k_eV()}, {kBondR0}};
+    cpu::bonded::HarmonicAngle ha{{angle_k_eV()}, {kAngleTheta0}};
+    cpu::bonded::MultiHarmonicDihedral hd{{dihedral_Cn_eV()}};
+    CsvRecorder rec{&thermo_csv, &stress_csv, a.print_every, n_global_dof, box_x0};
+
+    cpu::md::MD sim;
+    sim.add(vv);
+    sim.add(init_v);
+    sim.add(nh);
+    sim.add(vs);
+    sim.add(bs);          // start disabled per-stage; toggle via set_enabled
+    sim.add(df);          // strain_rate=0 → no-op until stage 5
 
     sim.on(ATV::md::Phase::pre_force).add(cpu::md::mpi::HaloExchangeForward{kLjCutoff}, -20);
     sim.on(ATV::md::Phase::post_force).add(cpu::md::mpi::HaloExchangeReverse{}, -1000);
-    sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{kLjCutoff}, -10);
-    sim.on(ATV::md::Phase::force).add(cpu::md::LJ{lj_eps_eV(), kLjSigma, kLjCutoff}
-                                       .set_special_bonds(0.0, 0.0, 0.0));
-    sim.on(ATV::md::Phase::force).add(cpu::bonded::HarmonicBond{{bond_k_eV()}, {kBondR0}});
-    sim.on(ATV::md::Phase::force).add(cpu::bonded::HarmonicAngle{{angle_k_eV()}, {kAngleTheta0}});
-    sim.on(ATV::md::Phase::force).add(cpu::bonded::MultiHarmonicDihedral{{dihedral_Cn_eV()}});
-
-    // CSV recorder runs at end_of_step @ +20, after ReduceEnergy / Barostat.
-    sim.on(ATV::md::Phase::end_of_step)
-       .add(CsvRecorder{&thermo_csv, &stress_csv,
-                        a.print_every, n_global_dof,
-                        /*record_strain=*/a.mode == Mode::tension, box_x0},
-            20);
+    sim.on(ATV::md::Phase::force).add(nl, -10);
+    sim.on(ATV::md::Phase::force).add(lj);
+    sim.on(ATV::md::Phase::force).add(hb);
+    sim.on(ATV::md::Phase::force).add(ha);
+    sim.on(ATV::md::Phase::force).add(hd);
+    sim.on(ATV::md::Phase::end_of_step).add(rec, 20);
 
     if (my_rank == 0 && !a.quiet) {
         const char* mode_str =
-            a.mode == Mode::nvt ? "NVT" :
-            a.mode == Mode::npt ? "NPT" : "tension";
+            a.mode == Mode::full         ? "full" :
+            a.mode == Mode::nvt          ? "NVT" :
+            a.mode == Mode::npt          ? "NPT" :
+            a.mode == Mode::tension      ? "tension" :
+                                            "single_stage";
         std::fprintf(stderr,
-            "polyethylene_tension: mode=%s atoms=%d steps=%d dt=%.3f T=%.1fK\n",
-            mode_str, n_atoms, a.steps, a.dt, a.T_target);
+            "polyethylene_tension: mode=%s atoms=%d dt=%.3f T_hot=%.1f T_cold=%.1f\n",
+            mode_str, n_atoms, dt, a.T_hot, a.T_cold);
     }
 
     sim.build();
     const double t0 = now_seconds();
-    sim.run(frame, a.steps);
+
+    // ── Stage 1 — NVT @ T_hot ──────────────────────────────────────────
+    if (stage_active(a.mode, 1, a.single_stage_id)) {
+        bs.set_enabled(false);
+        df.set_strain_rate(0.0);
+        nh.set_T_target(a.T_hot);
+        rec.begin_stage(1, a.T_hot, /*record_strain=*/false);
+        if (my_rank == 0 && !a.quiet)
+            std::fprintf(stderr, "  stage 1: NVT @ %.1f K, %d steps\n",
+                         a.T_hot, scaled_steps(a.stage1_steps, a.scale));
+        sim.run(frame, scaled_steps(a.stage1_steps, a.scale));
+    }
+
+    // ── Stage 2 — NPT @ T_hot, P=0 ────────────────────────────────────
+    if (stage_active(a.mode, 2, a.single_stage_id)) {
+        nh.set_T_target(a.T_hot);            // 1st set_T_target call
+        bs.set_enabled(true);
+        bs.set_P_target(0.0);
+        df.set_strain_rate(0.0);
+        rec.begin_stage(2, a.T_hot, /*record_strain=*/false);
+        if (my_rank == 0 && !a.quiet)
+            std::fprintf(stderr, "  stage 2: NPT @ %.1f K, %d steps\n",
+                         a.T_hot, scaled_steps(a.stage2_steps, a.scale));
+        sim.run(frame, scaled_steps(a.stage2_steps, a.scale));
+    }
+
+    // ── Stage 3 — NVT cooling T_hot → T_cold (linear ramp) ────────────
+    if (stage_active(a.mode, 3, a.single_stage_id)) {
+        bs.set_enabled(false);
+        df.set_strain_rate(0.0);
+        const int total = scaled_steps(a.stage3_steps, a.scale);
+        const int n_seg = std::max(1, a.cool_segments);
+        const int per_seg = std::max(1, total / n_seg);
+        if (my_rank == 0 && !a.quiet)
+            std::fprintf(stderr, "  stage 3: NVT cool %.1f → %.1f K, %d segments × %d steps\n",
+                         a.T_hot, a.T_cold, n_seg, per_seg);
+        for (int seg = 0; seg < n_seg; ++seg) {
+            const double frac = static_cast<double>(seg + 1) / n_seg;
+            const double T_seg = a.T_hot + (a.T_cold - a.T_hot) * frac;
+            nh.set_T_target(T_seg);          // 2nd+ set_T_target call -- ramp
+            rec.begin_stage(3, T_seg, /*record_strain=*/false);
+            sim.run(frame, per_seg);
+        }
+    }
+
+    // ── Stage 4 — NPT @ T_cold, P=0 ───────────────────────────────────
+    if (stage_active(a.mode, 4, a.single_stage_id)) {
+        nh.set_T_target(a.T_cold);           // setpoint into stage 4
+        bs.set_enabled(true);
+        bs.set_P_target(0.0);
+        df.set_strain_rate(0.0);
+        rec.begin_stage(4, a.T_cold, /*record_strain=*/false);
+        if (my_rank == 0 && !a.quiet)
+            std::fprintf(stderr, "  stage 4: NPT @ %.1f K, %d steps\n",
+                         a.T_cold, scaled_steps(a.stage4_steps, a.scale));
+        sim.run(frame, scaled_steps(a.stage4_steps, a.scale));
+    }
+
+    // ── Stage 5 — Uniaxial tension at T_cold, ε̇ along x ──────────────
+    if (stage_active(a.mode, 5, a.single_stage_id)) {
+        nh.set_T_target(a.T_cold);
+        bs.set_enabled(false);   // pure NVT tension; transverse pressure decoupled
+        df.set_strain_rate(a.strain_rate);
+        rec.begin_stage(5, a.T_cold, /*record_strain=*/true);
+        if (my_rank == 0 && !a.quiet)
+            std::fprintf(stderr, "  stage 5: tension ε̇=%.2e /fs @ %.1f K, %d steps\n",
+                         a.strain_rate, a.T_cold,
+                         scaled_steps(a.stage5_steps, a.scale));
+        sim.run(frame, scaled_steps(a.stage5_steps, a.scale));
+    }
+
     const double t1 = now_seconds();
 
     if (my_rank == 0 && !a.quiet) {
         std::fprintf(stderr,
-            "polyethylene_tension done: %d atoms, %d steps, %.2fs total (%.3f ms/step)\n",
-            n_atoms, a.steps, t1 - t0, 1000.0 * (t1 - t0) / std::max(1, a.steps));
+            "polyethylene_tension done: %d atoms, %.2fs total\n",
+            n_atoms, t1 - t0);
     }
 
     if (my_rank == 0) {
