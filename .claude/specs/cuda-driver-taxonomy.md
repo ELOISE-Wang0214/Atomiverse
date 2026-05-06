@@ -79,10 +79,11 @@ Both should be addressed as part of this migration, not separately.
 
 ## High-level phases (sketch — full task list deferred to in-progress)
 
-1. **Foundations.** Add `cuda::CategoryDriverBase<PhaseEnum>` and the
-   three CUDA category bases (`cuda::EvaluateDriver` /
-   `DynamicsDriver` / `OptimizeDriver`). Tag CUDA components with
-   `role()` / `capabilities()` (mirrors CPU Phase 2).
+1. **Foundations.** Add `cuda::CUDADriver<PhaseEnum>` (sibling of
+   `cpu::CPUDriver<PhaseEnum>`) and the three CUDA category bases
+   (`cuda::EvaluateDriver` / `DynamicsDriver` / `OptimizeDriver`).
+   Tag CUDA components with `role()` / `capabilities()` (mirrors CPU
+   Phase 2).
 2. **MD migration.** `cuda::md::MD` parent → `DynamicsDriver`. Fix
    the latent `Driver<Phase>` template-arg issue above.
 3. **Minimizer migration.** Rename `cuda::minimizer::SD` and

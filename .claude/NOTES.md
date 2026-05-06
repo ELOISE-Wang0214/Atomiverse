@@ -21,8 +21,10 @@ not by algorithm):
 
 The underlying `Driver<PhaseEnum, DeviceTag>` template is now a private
 plan/dispatch primitive — user code subclasses one of the three
-category bases via `CategoryDriverBase<PhaseEnum>`. Subclassing
-`Driver<>` directly is forbidden in CPU code.
+category bases via `cpu::CPUDriver<PhaseEnum>` (the CPU backend
+layer, in `include/atomiverse/cpu/cpu_driver.h`). Subclassing
+`Driver<>` directly is forbidden in CPU code. CUDA migration will
+add a parallel `cuda::CUDADriver<PhaseEnum>` sibling.
 
 **SCF is not an outer category.** `cpu::scf::SCFSolver` is a public
 low-level inner-solver class (NOT a Driver subclass), used internally

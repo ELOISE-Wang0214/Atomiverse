@@ -46,7 +46,7 @@ molrs.hpp    ← stable CXX FFI header
 ### Driver taxonomy
 
 CPU has three **outer task category** drivers, each subclassing
-`CategoryDriverBase<PhaseEnum>` which itself wraps the underlying
+`CPUDriver<PhaseEnum>` which itself wraps the underlying
 `Driver<PhaseEnum, DeviceTag>` template. The category is decided by
 **termination semantics**, not by algorithm:
 
@@ -73,7 +73,7 @@ CUDA still uses the per-algorithm shape (`cuda::md::MD`,
 `.claude/specs/cuda-driver-taxonomy.md`.
 
 ```
-CategoryDriverBase<PhaseEnum>::run(frame, ...)
+CPUDriver<PhaseEnum>::run(frame, ...)
   setup_pass(frame)
   for each iteration (semantic depends on category):
     reset outer_status
