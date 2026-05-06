@@ -134,8 +134,8 @@ int main() {
     //   max_dtol=0.1 Å   (max disp)   — matches fixed-alpha step size
     //   rms_dtol=0.05 Å  (RMS disp)
     //   etol=1e-3 eV     (energy diff)
-    cpu::minimizer::LBFGS opt;
-    opt.add(cpu::minimizer::LBFGSStep{
+    cpu::minimizer::Minimize opt;
+    opt.add(cpu::minimizer::LBFGS{
         5,              // memory
         double(0.01),   // alpha0 [Å²/eV]
         double(0.05),   // ftol [eV/Å]

@@ -53,6 +53,13 @@ public:
     FixLangevin(double T_target, double damp, double dt, std::uint32_t seed);
 
     std::string name() const override { return "fix_langevin"; }
+    ComponentRole role() const override { return ComponentRole::Thermostat; }
+    /// @brief Langevin's role is Thermostat, but it functionally writes
+    /// drag + random forces into fx/fy/fz — so it advertises
+    /// Capability::Force. This lets a pure Langevin run (no LJ / bonded
+    /// evaluator) satisfy `DynamicsDriver`'s "something writes forces"
+    /// contract.
+    Capability capabilities() const override { return Capability::Force; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {{static_cast<int>(ATV::md::Phase::post_force), +500}};
     }

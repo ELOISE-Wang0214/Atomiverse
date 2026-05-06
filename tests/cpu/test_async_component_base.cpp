@@ -32,6 +32,20 @@ using namespace ATV;
 
 namespace {
 
+/// @brief No-op force evaluator for harness tests — satisfies
+/// DynamicsDriver's "≥ 1 component with Capability::Force" contract
+/// without doing any physics.
+class NoOpForce : public cpu::ComponentBase {
+public:
+    std::string name() const override { return "noop_force"; }
+    ComponentRole role() const override { return ComponentRole::Evaluator; }
+    Capability capabilities() const override { return Capability::Force; }
+    std::vector<DefaultBinding> default_bindings() const override {
+        return {{static_cast<int>(ATV::md::Phase::force), 0}};
+    }
+    void launch(const cpu::LaunchContext&) override {}
+};
+
 cpu::Frame make_tiny(int n) {
     cpu::Frame frame(n);
     for (int i = 0; i < n; ++i) {
@@ -90,6 +104,7 @@ TEST(AsyncComponentBase, OnSnapshotRunsOnAnalysisThread) {
 
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{1e-6});
+        sim.add(NoOpForce{});
     sim.add(rec);
     sim.build();
     sim.run(frame, 5);  // step >= 1 needed for publisher to fire
@@ -109,6 +124,7 @@ TEST(AsyncComponentBase, FrequencyRespected) {
 
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{1e-6});
+        sim.add(NoOpForce{});
     sim.add(rec);
     sim.build();
     sim.run(frame, 20);
@@ -127,6 +143,7 @@ TEST(AsyncComponentBase, FinalizeCalledOnce) {
     {
         cpu::md::MD sim;
         sim.add(cpu::md::VelocityVerlet{1e-6});
+        sim.add(NoOpForce{});
         sim.add(rec);
         sim.build();
         sim.run(frame, 5);
@@ -178,6 +195,7 @@ TEST(AsyncComponentBase, MpiAllreduceInOnSnapshotWorks) {
 
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{1e-6});
+        sim.add(NoOpForce{});
     sim.add(sub);
     sim.build();
     sim.run(frame, 5);

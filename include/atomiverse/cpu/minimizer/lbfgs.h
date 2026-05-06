@@ -1,13 +1,16 @@
 /// @file cpu/minimizer/lbfgs.h
-/// @brief minimizer::LBFGS -- L-BFGS geometry optimizer (CPU).
+/// @brief minimizer::LBFGS Optimizer component + minimizer::Minimize driver.
 ///
-/// Two-loop recursion L-BFGS with optional line search.
-/// Compose with SCFEvaluator at force phase for ab initio geometry optimization.
+/// Two-loop L-BFGS recursion with optional Armijo line search.
+/// `Minimize` is the OptimizeDriver subclass; `LBFGS` is the Optimizer
+/// component plugged into it. (Prior to Phase 2 of the driver-taxonomy
+/// rewrite, the names were swapped — `LBFGS` was the driver class and
+/// `LBFGSStep` was the algorithm component.)
 ///
 /// Usage:
 /// @code
-///   cpu::minimizer::LBFGS opt;
-///   opt.add(cpu::minimizer::LBFGSStep{memory, alpha, ftol, max_ls});
+///   cpu::minimizer::Minimize opt;
+///   opt.add(cpu::minimizer::LBFGS{memory, alpha, ftol, max_ls});
 ///   opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
 ///   opt.on(ATV::minimizer::Phase::end_of_step).add(Thermo{1});
 ///   opt.build();
@@ -26,8 +29,8 @@
 #include "atomiverse/cpu/backend_traits.h"
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/minimizer/init.h"
+#include "atomiverse/cpu/optimize_driver.h"
 #include "atomiverse/cpu/snapshot_publisher.h"
-#include "atomiverse/facade/driver.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -45,7 +48,7 @@ struct OptRecord {
     double energy_change = 0;    ///< Energy change from previous step [eV].
 };
 
-/// @brief L-BFGS step component.
+/// @brief L-BFGS Optimizer component.
 ///
 /// Implements the two-loop recursion to compute search direction, then
 /// performs a backtracking line search with Armijo condition.
@@ -59,7 +62,7 @@ struct OptRecord {
 ///   - |energy change| < etol
 ///
 /// At step 0: steepest descent (no history). From step 1: L-BFGS direction.
-class LBFGSStep : public cpu::ComponentBase {
+class LBFGS : public cpu::ComponentBase {
 public:
     /// @brief Construct L-BFGS step.
     /// @param memory    Number of correction pairs to store (default 5).
@@ -70,10 +73,10 @@ public:
     /// @param max_dtol  Max displacement tolerance [Angstrom] (default 0.002).
     /// @param rms_dtol  RMS displacement tolerance [Angstrom] (default 0.001).
     /// @param etol      Energy change tolerance [eV] (default 1e-5).
-    LBFGSStep(int memory = 5, double alpha0 = 0.01,
-              double ftol = 0.05, int max_ls = 10,
-              double rms_ftol = 0.03, double max_dtol = 0.002,
-              double rms_dtol = 0.001, double etol = 1e-5);
+    LBFGS(int memory = 5, double alpha0 = 0.01,
+          double ftol = 0.05, int max_ls = 10,
+          double rms_ftol = 0.03, double max_dtol = 0.002,
+          double rms_dtol = 0.001, double etol = 1e-5);
 
     /// @brief Enable the backtracking line search (Armijo condition).
     ///
@@ -89,11 +92,12 @@ public:
     /// @param min_alpha  Minimum alpha before accepting the trial even on
     ///                   Armijo failure (default 1e-6).
     /// @return Reference to self for chaining.
-    LBFGSStep& line_search(double c1 = 1e-4,
-                           double contract = 0.5,
-                           double min_alpha = 1e-6);
+    LBFGS& line_search(double c1 = 1e-4,
+                       double contract = 0.5,
+                       double min_alpha = 1e-6);
 
-    std::string name() const override { return "lbfgs_step"; }
+    std::string name() const override { return "lbfgs"; }
+    ComponentRole role() const override { return ComponentRole::Optimizer; }
 
     std::vector<DefaultBinding> default_bindings() const override {
         return {
@@ -155,15 +159,19 @@ private:
     std::vector<OptRecord> trace_;
 };
 
-/// @brief L-BFGS minimizer driver.
+/// @brief Energy minimization driver — convergence-aware Optimize loop.
 ///
-/// Auto-adds ZeroForces and ZeroEnergy at force phase. Also wires the
+/// Auto-adds `ZeroForces` and `ZeroEnergy` at force phase. Also wires the
 /// shared async-analysis `SnapshotPublisher` into this driver's
 /// `end_of_step @ +10` so observers inheriting `cpu::minimizer::AsyncObserver`
 /// (or explicit `on(end_of_step).add(obs, 20)`) receive snapshots.
-class LBFGS : public Driver<ATV::minimizer::Phase, cpu::device_tag> {
+///
+/// Validation rules inherited from `OptimizeDriver`: requires ≥ 1
+/// `Optimizer` component (e.g. `LBFGS`, `CG`) and ≥ 1 `Evaluator` with
+/// `Capability::Energy` or `Capability::Force` (e.g. `SCFEvaluator`).
+class Minimize : public OptimizeDriver {
 public:
-    LBFGS() {
+    Minimize() {
         this->add(ZeroForces{});
         this->add(ZeroEnergy{});
         this->on(ATV::minimizer::Phase::end_of_step)

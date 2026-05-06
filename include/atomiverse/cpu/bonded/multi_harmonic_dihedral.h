@@ -21,6 +21,10 @@ public:
     explicit MultiHarmonicDihedral(std::vector<std::vector<double>> Cn);
 
     std::string name() const override { return "multi_harmonic_dihedral"; }
+    ComponentRole role() const override { return ComponentRole::Evaluator; }
+    Capability capabilities() const override {
+        return Capability::Energy | Capability::Force;
+    }
     void build(const cpu::BuildContext& ctx) override;
     void launch(const cpu::LaunchContext& ctx) override;
     void destroy(const cpu::DestroyContext& ctx) override;

@@ -45,18 +45,22 @@ public:
 protected:
     void validate_components() const override {
         bool has_integrator = false;
-        bool has_force_evaluator = false;
+        bool has_force_writer = false;
         for_each_pending([&](const cpu::ComponentBase& c) {
             if (c.role() == ComponentRole::Integrator)
                 has_integrator = true;
-            if (c.role() == ComponentRole::Evaluator &&
-                has_capability(c.capabilities(), Capability::Force))
-                has_force_evaluator = true;
+            // Force capability is the load-bearing predicate — *any* component
+            // (Evaluator-role LJ, Thermostat-role Langevin) that writes
+            // forces satisfies Dynamics's "the integrator has something to
+            // integrate" contract. Role is structural; capability is what
+            // the integrator actually needs.
+            if (has_capability(c.capabilities(), Capability::Force))
+                has_force_writer = true;
         });
         if (!has_integrator)
             throw_missing("Integrator");
-        if (!has_force_evaluator)
-            throw_missing("Evaluator with Capability::Force");
+        if (!has_force_writer)
+            throw_missing("Component with Capability::Force");
     }
 };
 

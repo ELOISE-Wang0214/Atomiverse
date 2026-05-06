@@ -1,15 +1,15 @@
 /// @file cpu/md/md.h
-/// @brief cpu::md::MD driver alias with auto-added infrastructure components.
+/// @brief cpu::md::MD — concrete time-advance driver under DynamicsDriver.
 #pragma once
 
 #include "atomiverse/core/device.h"
 #include "atomiverse/cpu/backend_traits.h"
+#include "atomiverse/cpu/dynamics_driver.h"
 #include "atomiverse/cpu/snapshot_publisher.h"
 #include "atomiverse/cpu/md/init.h"
 #include "atomiverse/cpu/md/mpi/atom_migration.h"
 #include "atomiverse/cpu/md/mpi/halo_exchange.h"
 #include "atomiverse/cpu/md/mpi/reduce.h"
-#include "atomiverse/facade/driver.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -38,7 +38,7 @@ namespace md {
 /// sim.build();
 /// sim.run(frame, 1000);
 /// @endcode
-class MD : public Driver<ATV::md::Phase, cpu::device_tag> {
+class MD : public DynamicsDriver {
 public:
     MD() {
         // Pre-existing zero/kinetic infrastructure.

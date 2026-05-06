@@ -91,6 +91,11 @@ public:
     explicit NoseHooverNPT(Config cfg);
 
     std::string name() const override { return "nose_hoover_npt"; }
+    /// @brief Role tag — Integrator. Although this component subsumes
+    /// VelocityVerlet + NoseHoover + Barostat in one Trotter splitting,
+    /// only one structural role is exposed; the integrator role is the
+    /// load-bearing one for `DynamicsDriver` validation.
+    ComponentRole role() const override { return ComponentRole::Integrator; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {{static_cast<int>(ATV::md::Phase::initial_integrate), 0},
                 {static_cast<int>(ATV::md::Phase::final_integrate),   0},

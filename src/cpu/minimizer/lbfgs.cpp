@@ -13,12 +13,12 @@ namespace ATV {
 namespace cpu {
 namespace minimizer {
 
-LBFGSStep::LBFGSStep(int memory, double alpha0, double ftol, int max_ls,
+LBFGS::LBFGS(int memory, double alpha0, double ftol, int max_ls,
                       double rms_ftol, double max_dtol, double rms_dtol, double etol)
     : memory_(memory), alpha0_(alpha0), ftol_(ftol), max_ls_(max_ls),
       rms_ftol_(rms_ftol), max_dtol_(max_dtol), rms_dtol_(rms_dtol), etol_(etol) {}
 
-LBFGSStep& LBFGSStep::line_search(double c1, double contract, double min_alpha) {
+LBFGS& LBFGS::line_search(double c1, double contract, double min_alpha) {
     line_search_enabled_ = true;
     ls_c1_ = c1;
     ls_contract_ = contract;
@@ -26,7 +26,7 @@ LBFGSStep& LBFGSStep::line_search(double c1, double contract, double min_alpha) 
     return *this;
 }
 
-void LBFGSStep::build(const cpu::BuildContext& ctx) {
+void LBFGS::build(const cpu::BuildContext& ctx) {
     int n = ctx.frame.atoms.size();
     int dim = n * 3;
 
@@ -59,7 +59,7 @@ void LBFGSStep::build(const cpu::BuildContext& ctx) {
         line_search_enabled_ ? "armijo_backtrack" : "off");
 }
 
-void LBFGSStep::launch(const cpu::LaunchContext& ctx) {
+void LBFGS::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
     int n = f.atoms.size();
     int dim = n * 3;
@@ -117,6 +117,14 @@ void LBFGSStep::launch(const cpu::LaunchContext& ctx) {
             "[lbfgs] step={} energy_eV={:.6f} max_force_eVA={:.6f} rms_force_eVA={:.6f} max_disp_A={:.6e} rms_disp_A={:.6e} dE_eV={:.6e} converged={}",
             step_, f.energy, max_force_, rms_force, max_disp, rms_disp,
             energy_change, converged_);
+
+        // Report convergence to the outer OptimizeDriver loop so it can
+        // break early. Driver-level early-stop is the contract introduced
+        // with `cpu::OptimizeDriver` in the driver-taxonomy redesign.
+        if (converged_) {
+            ctx.runtime.outer_status.converged = true;
+            ctx.runtime.outer_status.reason = "lbfgs multi-criteria convergence";
+        }
 
         energy_prev_ = f.energy;
         return;

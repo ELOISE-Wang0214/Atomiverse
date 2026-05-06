@@ -31,8 +31,8 @@ TEST_F(LBFGSTest, H2RHFGeometryOptimization) {
     auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals);
 
-    cpu::minimizer::LBFGS opt;
-    opt.add(cpu::minimizer::LBFGSStep{5, double(0.01), double(0.5), 10});
+    cpu::minimizer::Minimize opt;
+    opt.add(cpu::minimizer::LBFGS{5, double(0.01), double(0.5), 10});
     opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
     opt.build();
     opt.run(frame, 50);
@@ -49,8 +49,8 @@ TEST_F(LBFGSTest, H2LSDAGeometryOptimization) {
     auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::uks_config(integrals, 1, 1, cpu::scf::XCType::LSDA);
 
-    cpu::minimizer::LBFGS opt;
-    opt.add(cpu::minimizer::LBFGSStep{5, double(0.01), double(0.5), 10});
+    cpu::minimizer::Minimize opt;
+    opt.add(cpu::minimizer::LBFGS{5, double(0.01), double(0.5), 10});
     opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
     opt.build();
     opt.run(frame, 50);
@@ -66,8 +66,8 @@ TEST_F(LBFGSTest, CompressedH2Expands) {
     auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals);
 
-    cpu::minimizer::LBFGS opt;
-    opt.add(cpu::minimizer::LBFGSStep{5, double(0.01), double(0.5), 10});
+    cpu::minimizer::Minimize opt;
+    opt.add(cpu::minimizer::LBFGS{5, double(0.01), double(0.5), 10});
     opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
     opt.build();
     opt.run(frame, 30);
@@ -85,7 +85,7 @@ TEST_F(LBFGSTest, H2RHFArmijoLineSearchReachesTightForce) {
     auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals);
 
-    cpu::minimizer::LBFGSStep step{
+    cpu::minimizer::LBFGS step{
         /*memory=*/5, /*alpha0=*/0.05,
         /*ftol=*/0.001,       // eV/Å
         /*max_ls=*/20,
@@ -94,7 +94,7 @@ TEST_F(LBFGSTest, H2RHFArmijoLineSearchReachesTightForce) {
         /*rms_dtol=*/0.0005,
         /*etol=*/1e-7};
     step.line_search();  // Armijo default constants.
-    cpu::minimizer::LBFGS opt;
+    cpu::minimizer::Minimize opt;
     opt.add(std::move(step));
     opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
     opt.build();

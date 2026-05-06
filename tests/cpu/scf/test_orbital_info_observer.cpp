@@ -42,8 +42,8 @@ TEST(OrbitalInfoObserverTest, WritesHeaderAndRowsForH2) {
     cpu::scf::SCFEvaluator scf{config};
     auto handle = scf.result_handle();
 
-    cpu::minimizer::LBFGS opt;
-    opt.add(cpu::minimizer::LBFGSStep{5, 0.01, 0.5, 10});
+    cpu::minimizer::Minimize opt;
+    opt.add(cpu::minimizer::LBFGS{5, 0.01, 0.5, 10});
     opt.on(minimizer::Phase::force).add(std::move(scf));
     opt.on(minimizer::Phase::end_of_step)
         .add(cpu::scf::OrbitalInfoObserver{handle, tmp.string()});

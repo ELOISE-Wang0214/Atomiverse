@@ -67,8 +67,8 @@ TEST_F(MinimizerRecordersTest, TrajectoryFileIsAppendedEveryStep) {
     auto config = cpu::scf::rhf_config(integrals);
 
     const auto traj_path = tmpdir_ / "traj.xyz";
-    cpu::minimizer::LBFGS opt;
-    opt.add(cpu::minimizer::LBFGSStep{5, 0.01, 0.5, 10});
+    cpu::minimizer::Minimize opt;
+    opt.add(cpu::minimizer::LBFGS{5, 0.01, 0.5, 10});
     opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
     opt.on(minimizer::Phase::end_of_step)
         .add(cpu::minimizer::TrajectoryWriter{traj_path.string(), /*stride=*/1});
@@ -89,8 +89,8 @@ TEST_F(MinimizerRecordersTest, TrajectoryRespectsStride) {
     auto config = cpu::scf::rhf_config(integrals);
 
     const auto traj_path = tmpdir_ / "traj_stride.xyz";
-    cpu::minimizer::LBFGS opt;
-    opt.add(cpu::minimizer::LBFGSStep{5, 0.01, 0.5, 10});
+    cpu::minimizer::Minimize opt;
+    opt.add(cpu::minimizer::LBFGS{5, 0.01, 0.5, 10});
     opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
     opt.on(minimizer::Phase::end_of_step)
         .add(cpu::minimizer::TrajectoryWriter{traj_path.string(), /*stride=*/2});
@@ -110,8 +110,8 @@ TEST_F(MinimizerRecordersTest, OptLogTSVHasOneRowPerStep) {
     auto config = cpu::scf::rhf_config(integrals);
 
     const auto log_path = tmpdir_ / "opt.tsv";
-    cpu::minimizer::LBFGS opt;
-    opt.add(cpu::minimizer::LBFGSStep{5, 0.01, 0.5, 10});
+    cpu::minimizer::Minimize opt;
+    opt.add(cpu::minimizer::LBFGS{5, 0.01, 0.5, 10});
     opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
     opt.on(minimizer::Phase::end_of_step)
         .add(cpu::minimizer::OptLog{log_path.string()});
@@ -137,8 +137,8 @@ TEST_F(MinimizerRecordersTest, FinalGeometryContainsOneFrame) {
     auto config = cpu::scf::rhf_config(integrals);
 
     const auto final_path = tmpdir_ / "final.xyz";
-    cpu::minimizer::LBFGS opt;
-    opt.add(cpu::minimizer::LBFGSStep{5, 0.01, 0.5, 10});
+    cpu::minimizer::Minimize opt;
+    opt.add(cpu::minimizer::LBFGS{5, 0.01, 0.5, 10});
     opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
     opt.on(minimizer::Phase::end_of_step)
         .add(cpu::minimizer::FinalGeometry{final_path.string()});

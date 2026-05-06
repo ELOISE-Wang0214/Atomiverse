@@ -242,6 +242,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/orbital_info_observer.cpp
             src/cpu/minimizer/init.cpp
             src/cpu/minimizer/lbfgs.cpp
+            src/cpu/minimizer/cg.cpp
             src/cpu/minimizer/trajectory_writer.cpp
             src/cpu/minimizer/opt_log.cpp
             src/cpu/minimizer/final_geometry.cpp
@@ -347,6 +348,49 @@ if(NOT ATV_DOCS_ONLY)
     # Language-guarded to prevent NVCC from seeing -march=native on CUDA files.
     target_compile_options(atomiverse PRIVATE
         $<$<COMPILE_LANGUAGE:CXX>:-march=native>)
+
+    # ── Phase 5 Track B.8 — `-ffast-math` policy ─────────────────────
+    #
+    # `-ffast-math` (and its weaker cousin `-funsafe-math-optimizations`)
+    # reorder floating-point additions and break IEEE-strict semantics.
+    # That is acceptable in pure force-evaluator translation units (LJ,
+    # bonded kernels, ERI inner loops) where reductions over many pair
+    # interactions hide reorderings inside accumulator noise, but it
+    # **must not be applied** to integrators or thermostats (Velocity
+    # Verlet, Nose-Hoover) because:
+    #
+    #   * Velocity Verlet is **time-reversible** by construction — the
+    #     update sequence v(t+dt/2) = v(t) + a(t)·dt/2 ; r(t+dt) = r(t)
+    #     + v(t+dt/2)·dt ; v(t+dt) = v(t+dt/2) + a(t+dt)·dt/2 must
+    #     produce, after FP rounding, the *exact* state when run forward
+    #     and then backward. `-ffast-math` reorders the multiply-add
+    #     into a fused-multiply-add or a different summation tree,
+    #     destroying that property.
+    #   * Nose-Hoover thermostat updates `xi += dt/2 · (2·KE -
+    #     n_dof·k_B·T_target)/Q` and then rescales velocities by
+    #     `exp(-dt/2 · xi)`. Reordering moves the `exp(...)` argument
+    #     and silently changes the conserved Hamiltonian.
+    #
+    # **Policy** (keep this block in sync with
+    # `.claude/specs/parallel-md-engine.md` Architectural rules and
+    # `.claude/specs/parallel-md-engine.acceptance.md` ac-021):
+    #
+    #   - `atomiverse` library default = strict FP (no `-ffast-math`).
+    #   - Per-file opt-in for FF kernels via
+    #     `set_source_files_properties(<src> PROPERTIES COMPILE_FLAGS
+    #     "-ffast-math")` after measuring a real benefit AND verifying
+    #     bit-identical NVE energy (≤1e-12 relative) on the targeted
+    #     test_lj_nve / test_pe_small_box test.
+    #   - Integrator translation units (`src/cpu/md/velocity_verlet.cpp`,
+    #     `src/cpu/md/nose_hoover.cpp`, `src/cpu/md/init.cpp`) MUST NOT
+    #     be in any per-file opt-in list. Document any opt-in here and
+    #     in `benchmarks/md/reference/polyethylene/scaling_report.md`
+    #     with the exact compiler + flag string used to produce the
+    #     reported `bench_md_step` numbers (ac-022).
+    #
+    # No file currently opts in. When the first FF kernel does, add
+    # `set_source_files_properties(... PROPERTIES COMPILE_FLAGS ...)`
+    # immediately below this comment block.
     # Apple Clang 21+ enforces consteval strictly; spdlog 1.15 fmt bundled lib
     # triggers a false consteval-in-non-constexpr-context error. Disable it.
     if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")

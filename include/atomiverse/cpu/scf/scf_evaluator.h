@@ -72,6 +72,16 @@ public:
     SCFEvaluator& on_evaluate(std::function<void(const SCFResult&)> cb);
 
     std::string name() const override { return "scf_evaluator"; }
+    ComponentRole role() const override { return ComponentRole::Evaluator; }
+    /// @brief Capabilities reflect what SCFEvaluator writes each launch.
+    ///        Always Energy + DensityMatrix + Orbitals; Force is included
+    ///        because gradient computation is currently unconditional.
+    ///        Phase 4 introduces a `with_gradient(false)` mode that drops
+    ///        the Force bit for energy-only single points.
+    Capability capabilities() const override {
+        return Capability::Energy | Capability::Force |
+               Capability::DensityMatrix | Capability::Orbitals;
+    }
 
     void build(const cpu::BuildContext& ctx) override;
     void launch(const cpu::LaunchContext& ctx) override;

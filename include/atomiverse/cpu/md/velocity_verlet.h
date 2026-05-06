@@ -23,6 +23,7 @@ public:
     explicit VelocityVerlet(double dt);
 
     std::string name() const override { return "velocity_verlet"; }
+    ComponentRole role() const override { return ComponentRole::Integrator; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {{static_cast<int>(ATV::md::Phase::initial_integrate), 0},
                 {static_cast<int>(ATV::md::Phase::final_integrate), 0}};

@@ -6,8 +6,8 @@
 ///
 /// Usage:
 /// @code
-///   cpu::minimizer::LBFGS opt;
-///   opt.add(cpu::minimizer::LBFGSStep{/*...*/});
+///   cpu::minimizer::Minimize opt;
+///   opt.add(cpu::minimizer::LBFGS{/*...*/});
 ///   opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
 ///   opt.on(minimizer::Phase::end_of_step)
 ///      .add(cpu::minimizer::TrajectoryWriter{"aspirin_traj.xyz", /*stride=*/1});

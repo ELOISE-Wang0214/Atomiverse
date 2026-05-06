@@ -1,5 +1,5 @@
 /// @file benchmarks/qc/bench_qc_suite.cpp
-/// @brief Phase 1.2 QC benchmark suite — LBFGS + SCFEvaluator at PBE /
+/// @brief Phase 1.2 QC benchmark suite — Minimize + SCFEvaluator at PBE /
 ///        def2-SVP, Armijo backtracking on. Compared against
 ///        geomeTRIC-optimized PySCF references.
 ///
@@ -197,7 +197,7 @@ RunResult run_molecule(const std::string& stem,
     auto ints = cpu::scf::build_integrals(frame, basis_id);
     auto cfg  = make_config(ints, ref);
 
-    cpu::minimizer::LBFGSStep step{
+    cpu::minimizer::LBFGS step{
         /*memory=*/5, /*alpha0=*/0.01,
         /*ftol=*/5e-4, /*max_ls=*/20,
         /*rms_ftol=*/3e-4,
@@ -207,7 +207,7 @@ RunResult run_molecule(const std::string& stem,
     };
     step.line_search();
 
-    cpu::minimizer::LBFGS opt;
+    cpu::minimizer::Minimize opt;
     opt.add(std::move(step));
     opt.on(ATV::minimizer::Phase::force).add(
         cpu::scf::SCFEvaluator{cfg, basis_id});

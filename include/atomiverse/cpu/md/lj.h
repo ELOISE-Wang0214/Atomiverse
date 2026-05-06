@@ -56,6 +56,10 @@ public:
     LJ  set_special_bonds(double s12, double s13, double s14) &&;
 
     std::string name() const override { return "lj"; }
+    ComponentRole role() const override { return ComponentRole::Evaluator; }
+    Capability capabilities() const override {
+        return Capability::Energy | Capability::Force | Capability::Stress;
+    }
     void build(const cpu::BuildContext& ctx) override;
     void launch(const cpu::LaunchContext& ctx) override;
     void destroy(const cpu::DestroyContext& ctx) override;

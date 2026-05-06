@@ -86,8 +86,8 @@ TEST(DensityCubeTest, H2DensityIntegratesToTwoElectrons) {
     auto tmp = std::filesystem::temp_directory_path() / "atv_rho_h2.cube";
     std::error_code ec; std::filesystem::remove(tmp, ec);
 
-    cpu::minimizer::LBFGS opt;
-    opt.add(cpu::minimizer::LBFGSStep{5, 0.01, 0.5, 10});
+    cpu::minimizer::Minimize opt;
+    opt.add(cpu::minimizer::LBFGS{5, 0.01, 0.5, 10});
     opt.on(minimizer::Phase::force).add(std::move(scf));
     opt.on(minimizer::Phase::end_of_step)
         .add(cpu::recorder::DensityCubeWriter{
@@ -120,8 +120,8 @@ TEST(OrbitalCubeTest, WritesOrbitalFileForHomoH2) {
     std::error_code ec; std::filesystem::remove(tmp, ec);
 
     int homo_idx = config.n_alpha - 1;
-    cpu::minimizer::LBFGS opt;
-    opt.add(cpu::minimizer::LBFGSStep{5, 0.01, 0.5, 10});
+    cpu::minimizer::Minimize opt;
+    opt.add(cpu::minimizer::LBFGS{5, 0.01, 0.5, 10});
     opt.on(minimizer::Phase::force).add(std::move(scf));
     opt.on(minimizer::Phase::end_of_step)
         .add(cpu::recorder::OrbitalCubeWriter{
