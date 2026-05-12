@@ -27,7 +27,7 @@ static cpu::Frame make_h2(Real bond_length) {
     f.z = {0.0, 0.0};
     f.mass = {1.008, 1.008};
     f.type_id = {1, 1};
-    f.box = Mat3::cubic(100.0);
+    f.box = Mat3::diagonal(100.0, 100.0, 100.0);
     return f;
 }
 
@@ -39,7 +39,7 @@ static cpu::Frame make_heh_plus() {
     f.z = {0.0, 0.0};
     f.mass = {4.003, 1.008};
     f.type_id = {2, 1};  // He, H
-    f.box = Mat3::cubic(100.0);
+    f.box = Mat3::diagonal(100.0, 100.0, 100.0);
     return f;
 }
 

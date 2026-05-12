@@ -35,7 +35,7 @@ int main() {
     frame.x[1] = Real(0.74);  frame.y[1] = Real(0); frame.z[1] = Real(0);
     frame.mass[0] = Real(1.008); frame.mass[1] = Real(1.008);
     frame.type_id[0] = 1; frame.type_id[1] = 1;  // H: Z=1
-    frame.box = Mat3::cubic(100.0);
+    frame.box = Mat3::diagonal(100.0, 100.0, 100.0);
 
     std::cout << "=== H2 / STO-3G / RHF (CPU) ===\n"
               << "Geometry: H-H at 0.74 Angstrom\n\n";

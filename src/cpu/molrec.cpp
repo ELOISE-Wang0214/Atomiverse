@@ -60,7 +60,7 @@ void MolRec::set_geometry(const Frame& frame) {
     double box_mat[9];
     for (int i = 0; i < 3; ++i)
         for (int j = 0; j < 3; ++j)
-            box_mat[i * 3 + j] = static_cast<double>(frame.box.data[i][j]);
+            box_mat[i * 3 + j] = static_cast<double>(frame.box(i, j));
 
     std::vector<double> xb, yb, zb; // unused when Real == double
     molrs::molrec_set_geometry(

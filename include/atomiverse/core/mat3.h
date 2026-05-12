@@ -1,48 +1,119 @@
 /// @file core/mat3.h
-/// @brief Mat3 -- 3x3 matrix for simulation box representation.
-///
-/// Stores cell vectors in row-major order. Used for both orthorhombic
-/// (diagonal) and triclinic simulation boxes.
+/// @brief Mat3 — 3x3 matrix OOP class with xtensor_fixed storage.
 #pragma once
 
+#include <xtensor/xfixed.hpp>
+#include <cmath>
+#include <stdexcept>
 #include "atomiverse/core/real.h"
+#include "atomiverse/core/vec3.h"
 
 namespace ATV {
 
-/// @brief 3x3 matrix -- simulation box cell vectors [Angstrom].
-///
-/// Row-major storage: row i is the i-th cell vector.
-/// For orthorhombic boxes, use Mat3::diagonal() or Mat3::cubic().
-struct Mat3 {
-    Real data[3][3] = {}; ///< Row-major 3x3 storage [Angstrom].
+class Mat3 {
+    xt::xtensor_fixed<Real, xt::xshape<3, 3>> m_{};
+public:
+    Mat3() = default;
 
-    /// @brief Element access.
-    /// @param i Row index in `[0, 2]`.
-    /// @param j Column index in `[0, 2]`.
-    /// @return Mutable reference to `data[i][j]`.
-    Real& operator()(int i, int j) { return data[i][j]; }
+    Real& operator()(int i, int j) { return m_(i, j); }
+    const Real& operator()(int i, int j) const { return m_(i, j); }
 
-    /// @brief Const element access.
-    /// @param i Row index in `[0, 2]`.
-    /// @param j Column index in `[0, 2]`.
-    /// @return Read-only reference to `data[i][j]`.
-    const Real& operator()(int i, int j) const { return data[i][j]; }
-
-    /// @brief Construct a diagonal matrix (orthorhombic box).
-    /// @param a Box length along x [Angstrom].
-    /// @param b Box length along y [Angstrom].
-    /// @param c Box length along z [Angstrom].
-    /// @return Diagonal `Mat3` with those axis lengths.
-    static Mat3 diagonal(Real a, Real b, Real c) {
-        Mat3 m{};
-        m.data[0][0] = a; m.data[1][1] = b; m.data[2][2] = c;
-        return m;
+    Mat3 operator+(const Mat3& o) const {
+        Mat3 r;
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                r(i, j) = m_(i, j) + o(i, j);
+        return r;
+    }
+    Mat3 operator-(const Mat3& o) const {
+        Mat3 r;
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                r(i, j) = m_(i, j) - o(i, j);
+        return r;
+    }
+    Mat3 operator*(Real s) const {
+        Mat3 r;
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                r(i, j) = m_(i, j) * s;
+        return r;
+    }
+    friend Mat3 operator*(Real s, const Mat3& m) { return m * s; }
+    Mat3 operator/(Real s) const {
+        Mat3 r;
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                r(i, j) = m_(i, j) / s;
+        return r;
+    }
+    Mat3 operator*(const Mat3& o) const {
+        Mat3 r;
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j) {
+                r(i, j) = 0;
+                for (int k = 0; k < 3; ++k)
+                    r(i, j) += m_(i, k) * o(k, j);
+            }
+        return r;
+    }
+    Vec3 operator*(const Vec3& v) const {
+        return {
+            m_(0,0)*v[0] + m_(0,1)*v[1] + m_(0,2)*v[2],
+            m_(1,0)*v[0] + m_(1,1)*v[1] + m_(1,2)*v[2],
+            m_(2,0)*v[0] + m_(2,1)*v[1] + m_(2,2)*v[2]
+        };
     }
 
-    /// @brief Construct a cubic box.
-    /// @param l Edge length [Angstrom].
-    /// @return Cubic `Mat3` with edge length `l`.
-    static Mat3 cubic(Real l) { return diagonal(l, l, l); }
+    Mat3 transpose() const {
+        Mat3 r;
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                r(i, j) = m_(j, i);
+        return r;
+    }
+    Real trace() const { return m_(0, 0) + m_(1, 1) + m_(2, 2); }
+    Real norm() const {
+        Real s = 0;
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                s += m_(i, j) * m_(i, j);
+        return std::sqrt(s);
+    }
+    Real det() const {
+        return m_(0,0)*(m_(1,1)*m_(2,2) - m_(1,2)*m_(2,1))
+             - m_(0,1)*(m_(1,0)*m_(2,2) - m_(1,2)*m_(2,0))
+             + m_(0,2)*(m_(1,0)*m_(2,1) - m_(1,1)*m_(2,0));
+    }
+    Mat3 inverse() const {
+        Real d = det();
+        if (std::abs(d) < Real(1e-30))
+            throw std::runtime_error("Mat3::inverse: singular matrix");
+        Real inv = Real(1) / d;
+        Mat3 r;
+        r(0,0) = (m_(1,1)*m_(2,2) - m_(1,2)*m_(2,1)) * inv;
+        r(0,1) = (m_(0,2)*m_(2,1) - m_(0,1)*m_(2,2)) * inv;
+        r(0,2) = (m_(0,1)*m_(1,2) - m_(0,2)*m_(1,1)) * inv;
+        r(1,0) = (m_(1,2)*m_(2,0) - m_(1,0)*m_(2,2)) * inv;
+        r(1,1) = (m_(0,0)*m_(2,2) - m_(0,2)*m_(2,0)) * inv;
+        r(1,2) = (m_(0,2)*m_(1,0) - m_(0,0)*m_(1,2)) * inv;
+        r(2,0) = (m_(1,0)*m_(2,1) - m_(1,1)*m_(2,0)) * inv;
+        r(2,1) = (m_(0,1)*m_(2,0) - m_(0,0)*m_(2,1)) * inv;
+        r(2,2) = (m_(0,0)*m_(1,1) - m_(0,1)*m_(1,0)) * inv;
+        return r;
+    }
+
+    static Mat3 zeros() { return Mat3{}; }
+    static Mat3 identity() {
+        Mat3 m;
+        m(0,0) = m(1,1) = m(2,2) = 1;
+        return m;
+    }
+    static Mat3 diagonal(Real a, Real b, Real c) {
+        Mat3 m;
+        m(0,0) = a; m(1,1) = b; m(2,2) = c;
+        return m;
+    }
 };
 
 } // namespace ATV

@@ -37,6 +37,23 @@ if(ATV_BUILD_CUDA)
     atv_add_test(test_device_integrals)
 endif()
 
+# Core type tests (always available, no CUDA required)
+add_executable(test_mat3 core/test_mat3.cpp)
+target_link_libraries(test_mat3 PRIVATE atomiverse GTest::gtest_main)
+add_test(NAME test_mat3 COMMAND test_mat3)
+
+add_executable(test_vec3 core/test_vec3.cpp)
+target_link_libraries(test_vec3 PRIVATE atomiverse GTest::gtest_main)
+add_test(NAME test_vec3 COMMAND test_vec3)
+
+add_executable(test_box core/test_box.cpp)
+target_link_libraries(test_box PRIVATE atomiverse GTest::gtest_main)
+add_test(NAME test_box COMMAND test_box)
+
+add_executable(test_units core/test_units.cpp)
+target_link_libraries(test_units PRIVATE atomiverse GTest::gtest_main)
+add_test(NAME test_units COMMAND test_units)
+
 # CPU backend tests (always available, no CUDA required)
 atv_add_cpp_test(test_cpu_md)
 

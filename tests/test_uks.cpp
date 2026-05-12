@@ -34,7 +34,7 @@ cpu::Frame make_h_atom() {
     cpu::Frame f(1);
     f.x[0] = Real(0); f.y[0] = Real(0); f.z[0] = Real(0);
     f.type_id[0] = 1;
-    f.box = Mat3::cubic(100.0);
+    f.box = Mat3::diagonal(100.0, 100.0, 100.0);
     return f;
 }
 
@@ -42,7 +42,7 @@ cpu::Frame make_he_atom() {
     cpu::Frame f(1);
     f.x[0] = Real(0); f.y[0] = Real(0); f.z[0] = Real(0);
     f.type_id[0] = 2;
-    f.box = Mat3::cubic(100.0);
+    f.box = Mat3::diagonal(100.0, 100.0, 100.0);
     return f;
 }
 
@@ -50,7 +50,7 @@ cpu::Frame make_li_atom() {
     cpu::Frame f(1);
     f.x[0] = Real(0); f.y[0] = Real(0); f.z[0] = Real(0);
     f.type_id[0] = 3;
-    f.box = Mat3::cubic(100.0);
+    f.box = Mat3::diagonal(100.0, 100.0, 100.0);
     return f;
 }
 
@@ -59,7 +59,7 @@ cpu::Frame make_h2(double bond_length_angstrom) {
     f.x[0] = Real(0);                    f.y[0] = Real(0); f.z[0] = Real(0);
     f.x[1] = Real(bond_length_angstrom); f.y[1] = Real(0); f.z[1] = Real(0);
     f.type_id[0] = 1; f.type_id[1] = 1;
-    f.box = Mat3::cubic(100.0);
+    f.box = Mat3::diagonal(100.0, 100.0, 100.0);
     return f;
 }
 

@@ -55,7 +55,7 @@ static cpu::Frame single_atom(int z) {
     cpu::Frame f(1);
     f.x[0] = Real(0); f.y[0] = Real(0); f.z[0] = Real(0);
     f.type_id[0] = z;
-    f.box = Mat3::cubic(100.0);
+    f.box = Mat3::diagonal(100.0, 100.0, 100.0);
     return f;
 }
 
@@ -64,7 +64,7 @@ static cpu::Frame diatomic_h2(double r_angstrom) {
     f.x[0] = Real(0);           f.y[0] = Real(0); f.z[0] = Real(0);
     f.x[1] = Real(r_angstrom);  f.y[1] = Real(0); f.z[1] = Real(0);
     f.type_id[0] = 1; f.type_id[1] = 1;
-    f.box = Mat3::cubic(100.0);
+    f.box = Mat3::diagonal(100.0, 100.0, 100.0);
     return f;
 }
 

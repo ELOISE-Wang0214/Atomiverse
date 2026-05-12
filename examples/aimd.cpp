@@ -28,7 +28,7 @@ int main() {
     h2.type_id = {1, 1};
     h2.energy = 0;
     h2.kinetic = 0;
-    h2.box = Mat3::cubic(100.0);
+    h2.box = Mat3::diagonal(100.0, 100.0, 100.0);
 
     // ── Phase 1: BOMD ────────────────────────────────────────────────
     std::cout << "=== Born-Oppenheimer MD (full SCF each step) ===\n"

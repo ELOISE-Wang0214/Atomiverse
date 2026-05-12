@@ -29,7 +29,7 @@ static cpu::Frame make_h2_with_velocity(Real bond_length, Real v_stretch = 0) {
     f.type_id = {1, 1};
     f.energy = 0;
     f.kinetic = 0;
-    f.box = Mat3::cubic(100.0);
+    f.box = Mat3::diagonal(100.0, 100.0, 100.0);
     return f;
 }
 

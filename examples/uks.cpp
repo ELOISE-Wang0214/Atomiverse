@@ -24,7 +24,7 @@ static cpu::Frame make_atom(int Z) {
     cpu::Frame f(1);
     f.x[0] = 0; f.y[0] = 0; f.z[0] = 0;
     f.type_id[0] = Z;
-    f.box = Mat3::cubic(100.0);
+    f.box = Mat3::diagonal(100.0, 100.0, 100.0);
     return f;
 }
 
@@ -33,7 +33,7 @@ static cpu::Frame make_h2(double bond_angstrom) {
     f.x[0] = 0;                 f.y[0] = 0; f.z[0] = 0;
     f.x[1] = bond_angstrom;     f.y[1] = 0; f.z[1] = 0;
     f.type_id[0] = 1; f.type_id[1] = 1;
-    f.box = Mat3::cubic(100.0);
+    f.box = Mat3::diagonal(100.0, 100.0, 100.0);
     return f;
 }
 

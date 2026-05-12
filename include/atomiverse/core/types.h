@@ -15,4 +15,10 @@ enum class Scheduling {
     deferrable  ///< Execute on secondary stream (may overlap).
 };
 
+// Forward type aliases (actual types defined in their respective headers)
+class Mat3;
+class Vec3;
+
+using Mat33 = Mat3;
+
 } // namespace ATV

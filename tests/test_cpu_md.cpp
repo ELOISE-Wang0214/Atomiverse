@@ -52,7 +52,7 @@ static cpu::Frame make_fcc_argon(Int n_cells, Real lattice_const) {
     }
 
     Real box_len = n_cells * lattice_const;
-    frame.box = Mat3::cubic(box_len);
+    frame.box = Mat3::diagonal(box_len, box_len, box_len);
     return frame;
 }
 
@@ -66,7 +66,7 @@ TEST(CpuMd, ZeroForces) {
         frame.fz[i] = Real(3);
     }
     frame.mass = xt::ones<Real>({Int(10)});
-    frame.box = Mat3::cubic(10.0);
+    frame.box = Mat3::diagonal(10.0, 10.0, 10.0);
 
     cpu::Context ctx;
     cpu::BuildContext bctx{ctx, frame};
@@ -87,7 +87,7 @@ TEST(CpuMd, KineticEnergy) {
     frame.mass[0] = Real(1);  frame.mass[1] = Real(1);
     frame.vx[0] = Real(1);   frame.vy[0] = Real(0); frame.vz[0] = Real(0);
     frame.vx[1] = Real(0);   frame.vy[1] = Real(1); frame.vz[1] = Real(0);
-    frame.box = Mat3::cubic(10.0);
+    frame.box = Mat3::diagonal(10.0, 10.0, 10.0);
     frame.kinetic = 0;
 
     cpu::Context ctx;
@@ -112,7 +112,7 @@ TEST(CpuMd, LjAnalyticForce) {
     frame.x[0] = Real(0); frame.y[0] = Real(0); frame.z[0] = Real(0);
     frame.x[1] = r;       frame.y[1] = Real(0); frame.z[1] = Real(0);
     frame.mass[0] = Real(39.948); frame.mass[1] = Real(39.948);
-    frame.box = Mat3::cubic(20.0);
+    frame.box = Mat3::diagonal(20.0, 20.0, 20.0);
     frame.energy = 0;
 
     // Build neighbor list manually via CellList strategy
@@ -275,7 +275,7 @@ TEST(CpuMd, BondedForce) {
     frame.x[0] = Real(0); frame.y[0] = Real(0); frame.z[0] = Real(0);
     frame.x[1] = Real(1.5); frame.y[1] = Real(0); frame.z[1] = Real(0);
     frame.mass[0] = Real(12); frame.mass[1] = Real(12);
-    frame.box = Mat3::cubic(20.0);
+    frame.box = Mat3::diagonal(20.0, 20.0, 20.0);
 
     // Bond topology
     frame.bond_i = xt::xtensor<Int, 1>({Int(1)});

@@ -1,6 +1,48 @@
+---
+name: Atomiverse
+stage: experimental
+arch:
+  style: backend-pillars
+doc:
+  style: doxygen
+science:
+  required: true
+specs_path: .claude/specs/
+notes_path: .claude/notes/
+---
+
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+<!-- mol-agent:bootstrap:managed begin -->
+## What this repo is
+
+Atomiverse — a C++/CUDA molecular simulation platform with dual-backend architecture (CPU/xtensor + CUDA native). MD, DFT (SCF), and future MLIP modules share a common data model and component lifecycle (build/launch/destroy).
+
+## Where things live
+
+- Source: `include/atomiverse/` + `src/` (CPU .h/.cpp, CUDA .cuh/.cu)
+- Tests: `tests/`
+- Public docs: `docs/` (api/, developer/, tutorial/, user-guide/)
+- Passive project knowledge: `.claude/notes/` (architecture blueprint, decisions, debt)
+- Active runtime specs: `.claude/specs/` (alive, deleted on completion)
+- Claude Code runtime: `.claude/agents/`, `.claude/skills/`, `.claude/settings.local.json`
+
+## Default workflow
+
+1. plan — `/mol:spec` or `/av-spec` (structured spec) or `/mol:discuss` (exploratory)
+2. implement — `/mol:impl` or `/av-impl` (TDD → GREEN → verify)
+3. review — `/mol:review` or `/av-review` (multi-axis)
+4. capture — `/mol:note` or `/av-note` (architectural decisions)
+
+## What must never change casually
+
+- `cuda::Frame` and `cpu::Frame` are independent types — no shared base, no template
+- Data residency is a type-level property, not a runtime flag
+- CUDA backend has zero dependency on xtensor; CPU backend has zero dependency on CUDA
+- `.cu` files handle CUDA only; `.cpp` files handle CPU logic
+- molrs is a hard dependency for I/O
+
+<!-- mol-agent:bootstrap:managed end -->
 
 ## Build & Test
 

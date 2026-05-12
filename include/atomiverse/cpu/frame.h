@@ -28,7 +28,7 @@ namespace cpu {
 /// cpu::Frame frame(1000);
 /// frame.x(0) = 0.0;
 /// frame.mass(0) = 12.011;
-/// frame.box = Mat3::cubic(10.0);
+/// frame.box = Mat3::diagonal(10.0, 10.0, 10.0);
 /// @endcode
 class Frame {
 public:

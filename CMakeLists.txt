@@ -221,7 +221,7 @@ if(NOT ATV_DOCS_ONLY)
     FetchContent_MakeAvailable(Corrosion)
     corrosion_import_crate(
         MANIFEST_PATH "${ATV_MOLRS_PATH}/Cargo.toml"
-        CRATES molrs-cxxapi
+        CRATES molcrafts-molrs-cxxapi
     )
     # molrs-core hardcodes F = f64.  Bridge always uses double.
     # Zero-copy when ATV_REAL=double; promotion when ATV_REAL=float.
