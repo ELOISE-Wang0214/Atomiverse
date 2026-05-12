@@ -174,6 +174,13 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/pw/internal/kpoint.cpp
             src/cpu/pw/internal/crystal.cpp
             src/cpu/pw/internal/ewald.cpp
+            src/cpu/pw/pw_poisson.cpp
+            src/cpu/pw/pw_lda.cpp
+            src/cpu/pw/pw_hamiltonian.cpp
+            src/cpu/pw/pw_veff.cpp
+            src/cpu/pw/pw_davidson.cpp
+            src/cpu/pw/pw_density.cpp
+            src/cpu/pw/pw_convergence.cpp
         )
         target_link_libraries(atomiverse PUBLIC fftw3_stub)
         target_compile_definitions(atomiverse PUBLIC ATV_HAS_PW)
