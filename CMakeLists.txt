@@ -181,7 +181,13 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/pw/pw_davidson.cpp
             src/cpu/pw/pw_density.cpp
             src/cpu/pw/pw_convergence.cpp
+            src/cpu/pw/solve_si.cpp
         )
+        if(NOT ATV_BUILD_RHF)
+            target_sources(atomiverse PRIVATE
+                src/cpu/scf/xc_functional.cpp
+            )
+        endif()
         target_link_libraries(atomiverse PUBLIC fftw3_stub)
         target_compile_definitions(atomiverse PUBLIC ATV_HAS_PW)
     endif()

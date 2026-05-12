@@ -86,6 +86,10 @@ if(ATV_BUILD_PW)
     add_executable(test_pw_components cpu/pw/test_pw_components.cpp)
     target_link_libraries(test_pw_components PRIVATE atomiverse GTest::gtest_main)
     add_test(NAME test_pw_components COMMAND test_pw_components)
+
+    add_executable(test_pw_si cpu/pw/test_pw_si.cpp)
+    target_link_libraries(test_pw_si PRIVATE atomiverse GTest::gtest_main)
+    add_test(NAME test_pw_si COMMAND test_pw_si)
 endif()
 
 if(ATV_BUILD_RHF)
