@@ -19,7 +19,9 @@
 
 #include "atomiverse/cpu/context.h"
 #include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/md/lj.h"
 #include "atomiverse/cpu/md/md.h"
+#include "atomiverse/cpu/md/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/md/mpi/atom_migration.h"
 #include "atomiverse/cpu/md/mpi/halo_exchange.h"
@@ -107,9 +109,18 @@ TEST(MpiStubBindings, SingleRankLaunchNoOp) {
     // Wire a bare MD driver with the four stubs only (plus auto infra + a cheap
     // integrator to have a full step). Drive 10 steps, verify positions unchanged
     // *by the stubs* — since VelocityVerlet only moves if velocities are nonzero.
+    //
+    // The MD category requires a Capability::Force component; supply LJ with a
+    // cutoff (3.0 Å) below the FCC nearest-neighbor distance (~3.72 Å at a=5.26)
+    // so the pair force evaluates to exactly zero — matched NeighborList ditto.
+    // This isolates the test to "do MPI stubs perturb positions?" without
+    // pulling in a real interaction.
     {
         cpu::md::MD sim;
-        sim.add(cpu::md::VelocityVerlet{1e-6});  // negligible dt
+        const double zero_force_cut = 3.0;
+        sim.set_integrator(cpu::md::VelocityVerlet{1e-6});  // negligible dt
+        sim.set_pair(cpu::md::LJ{1e-12, 3.4, zero_force_cut});
+        sim.set_neighbor(cpu::md::NeighborList<>{zero_force_cut, /*skin=*/0.1});
         sim.add(cpu::md::mpi::HaloExchangeForward{});
         sim.add(cpu::md::mpi::HaloExchangeReverse{});
         sim.add(cpu::md::mpi::AtomMigration{});

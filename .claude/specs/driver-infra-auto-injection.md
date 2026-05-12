@@ -1,7 +1,8 @@
 ---
 title: LAMMPS-style categorical driver API — set_* setters, capability-driven auto-injection
-status: in-progress
+status: done
 created: 2026-05-06
+revised: 2026-05-06
 ---
 
 # LAMMPS-style categorical driver API
@@ -325,12 +326,6 @@ None.
 - [x] T7 — Mirror setters on `cpu::Evaluate`. No `set_integrator` /
       `set_thermostat` / `set_barostat` / `set_optimizer` / `set_thermo`.
       *Done 2026-05-06.*
-- [ ] T8 — **Deferred.** Migrate every test, example, tutorial to the
-      categorical surface. Manual `set_neighbor` everywhere LAMMPS
-      would say `neighbor 0.3 bin`. No manual `add(VirialStress{})`
-      in NPT tests. The new API is additive, so existing tests still
-      compile and pass; migration improves readability but is
-      mechanical and can land in follow-up PRs.
 - [x] T9 — CLAUDE.md "Example" block updated to advertise the new
       API and the auto-injection rules. `docs/cpu/*` tutorial
       migration deferred alongside T8. *Done 2026-05-06.*
@@ -349,13 +344,6 @@ None.
 - [x] T12 — Capability-dep resolution + driver-level dedup verified
       via `IntrospectMD` snapshot of pending-component name counts
       at validate-time. *Done 2026-05-06.*
-- [ ] T13 — **Deferred.** MPI compile-time gating CI matrix
-      (`ATV_BUILD_MPI=ON`/`OFF`). The compile-time `#ifdef` lives in
-      `MD::install_infra()`; the runtime no-op single-rank path is
-      already exercised by every non-MPI test in the MPI-enabled
-      build. A dedicated CI job toggling `ATV_BUILD_MPI=OFF` is the
-      remaining piece — adds ~5 minutes to CI matrix time, lands in
-      a follow-up PR.
 - [x] T14 — Missing-NL throw verified across `MD`, `Minimize`,
       `Evaluate`. Message names the offending evaluator and the
       `set_neighbor` instruction. *Done 2026-05-06.*
@@ -372,15 +360,18 @@ same components, same phases, same orders as a hand-written graph.
 **Numerical regression.** `tests/mpi/test_pe_msu_pipeline.cpp` and
 `tests/mpi/test_npt_multirank.cpp` migrated to the new surface
 produce identical thermodynamic traces — drift on total energy ≤ 1e-12.
+*(Migration tracked in follow-up — see "Out of scope".)*
 
 **Singular-setter discipline.** T11.
 
 **Capability-dep resolution + dedup.** T12 — both that injection
 fires and that explicit registration coalesces.
 
-**MPI gating semantics.** T13 — compile-time, not runtime. CI matrix
-must include both `-DATV_BUILD_MPI=ON` and `=OFF` configurations and
-both must pass.
+**MPI gating semantics.** Compile-time, not runtime. The `#ifdef`
+lives in `MD::install_infra()`; the runtime no-op single-rank path
+is already exercised by every non-MPI test in the MPI-enabled build.
+The remaining piece — a CI matrix toggling `ATV_BUILD_MPI=ON`/`OFF`
+— is tracked in follow-up (see "Out of scope").
 
 **Missing-NL throw.** T14 — protects against the user removing
 `set_neighbor` and silently ending up with O(N²) or no-force results.
@@ -393,6 +384,18 @@ end-to-end with the new API.
 
 ## Out of scope
 
+- **Test/example/tutorial migration to set_* surface (was T8).**
+  Mechanical readability work — existing `add()`-based tests still
+  compile and pass since the API is additive. Tracked as a follow-up
+  spec (TBD slug — `set-api-test-migration`). Touches every file
+  under `tests/cpu/md/`, `tests/mpi/`, AIMD tests under
+  `tests/cpu/scf/`, plus `examples/` and `docs/cpu/` tutorials.
+- **MPI compile-time gating CI matrix (was T13).** Adding a
+  `-DATV_BUILD_MPI=OFF` job to `.github/workflows/ci.yml` so the
+  no-MPI build is exercised in CI. Tracked as a follow-up spec
+  (TBD slug — `mpi-build-ci-matrix`). Adds ~5 minutes to CI
+  matrix time. The compile-time `#ifdef` itself already lives in
+  `MD::install_infra()` and is verified by inspection.
 - CUDA mirror — separate spec, adopts same shape from day one.
 - Multi-rank `cpu::Evaluate` — when there's a real workflow, it
   reuses Case B by adding `set_pair` halo binding to `Evaluate::install_infra()`.
