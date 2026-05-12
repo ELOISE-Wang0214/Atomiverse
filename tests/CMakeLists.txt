@@ -57,6 +57,33 @@ add_test(NAME test_units COMMAND test_units)
 # CPU backend tests (always available, no CUDA required)
 atv_add_cpp_test(test_cpu_md)
 
+# PW infrastructure tests (require ATV_BUILD_PW)
+if(ATV_BUILD_PW)
+    add_executable(test_g_vector cpu/pw/test_g_vector.cpp)
+    target_link_libraries(test_g_vector PRIVATE atomiverse GTest::gtest_main)
+    add_test(NAME test_g_vector COMMAND test_g_vector)
+
+    add_executable(test_fft cpu/pw/test_fft.cpp)
+    target_link_libraries(test_fft PRIVATE atomiverse GTest::gtest_main fftw3_stub)
+    add_test(NAME test_fft COMMAND test_fft)
+
+    add_executable(test_upf cpu/pw/test_upf.cpp)
+    target_link_libraries(test_upf PRIVATE atomiverse GTest::gtest_main)
+    add_test(NAME test_upf COMMAND test_upf)
+
+    add_executable(test_kpoint cpu/pw/test_kpoint.cpp)
+    target_link_libraries(test_kpoint PRIVATE atomiverse GTest::gtest_main)
+    add_test(NAME test_kpoint COMMAND test_kpoint)
+
+    add_executable(test_crystal cpu/pw/test_crystal.cpp)
+    target_link_libraries(test_crystal PRIVATE atomiverse GTest::gtest_main)
+    add_test(NAME test_crystal COMMAND test_crystal)
+
+    add_executable(test_ewald cpu/pw/test_ewald.cpp)
+    target_link_libraries(test_ewald PRIVATE atomiverse GTest::gtest_main)
+    add_test(NAME test_ewald COMMAND test_ewald)
+endif()
+
 if(ATV_BUILD_RHF)
     atv_add_cpp_test(test_uhf)
     atv_add_cpp_test(test_xc_functional)

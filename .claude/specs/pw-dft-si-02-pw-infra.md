@@ -61,20 +61,20 @@ RAII 封装 FFTW3 plan。构造(Nx,Ny,Nz, direction)。禁止拷贝。析构释�
 
 ## Tasks
 
-- [ ] Write failing tests for G-vector enumeration — count in [250,300] for Si at 30Ry
-- [ ] Implement GVectorList
-- [ ] Write failing tests for FFTW3 — roundtrip error < 1e-12
-- [ ] Implement FFTPlan3D RAII wrapper
-- [ ] Write failing tests for UPF parser — Z_val==4, l_max>=1, arrays non-empty
-- [ ] Implement UPFReader
-- [ ] Write failing tests for k-point mesh — weights sum to 1, 4x4x4=64 points
-- [ ] Implement KPointGrid generator
-- [ ] Write failing tests for Si crystal — 2 atoms, correct positions
-- [ ] Implement build_si_diamond()
-- [ ] Write failing tests for Ewald — energy converges on cutoff doubling
-- [ ] Implement EwaldSummation
-- [ ] Add FFTW3 find_package + PW infra sources to CMake; add test targets
-- [ ] Run full check + test suite
+- [x] Write failing tests for G-vector enumeration — count in [250,300] for Si at 30Ry
+- [x] Implement GVectorList
+- [x] Write failing tests for FFTW3 — roundtrip error < 1e-12
+- [x] Implement FFTPlan3D RAII wrapper
+- [x] Write failing tests for UPF parser — Z_val==4, l_max>=1, arrays non-empty
+- [x] Implement UPFReader
+- [x] Write failing tests for k-point mesh — weights sum to 1, 4x4x4=64 points
+- [x] Implement KPointGrid generator
+- [x] Write failing tests for Si crystal — 2 atoms, correct positions
+- [x] Implement build_si_diamond()
+- [x] Write failing tests for Ewald — energy converges on cutoff doubling
+- [x] Implement EwaldSummation
+- [x] Add FFTW3 find_package + PW infra sources to CMake; add test targets
+- [x] Run full check + test suite
 
 ## Testing strategy
 
