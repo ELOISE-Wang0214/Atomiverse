@@ -18,13 +18,13 @@ namespace md {
 /// @brief Neighbor list component -- builds and maintains spatial index.
 /// @tparam Strategy Spatial indexing strategy (CellList by default).
 ///
-/// Rebuild cadence mirrors LAMMPS `neigh_modify every N delay 0 check yes`:
-/// the Verlet list is re-enumerated only when `ago >= every` *and* the
-/// max-displacement skin check fires. Between rebuilds the stored CSR is
-/// reused verbatim — force kernels continue reading the same `pair_list`.
-/// Cost of `launch()` on non-rebuild steps collapses to a single O(n) skin
-/// scan (or zero when `ago < every`). Default `every = 1` preserves the
-/// LAMMPS default.
+/// Rebuild cadence mirrors LAMMPS `neigh_modify every N delay M check yes`:
+/// the Verlet list is re-enumerated only when `ago >= delay` *and*
+/// `ago % every == 0` *and* the max-displacement skin check fires. Between
+/// rebuilds the stored CSR is reused verbatim — force kernels continue
+/// reading the same `pair_list`. Cost of `launch()` on non-rebuild steps
+/// collapses to a single O(n) skin scan (or zero when `ago < every` or
+/// `ago < delay`). Defaults match LAMMPS: `every=1`, `delay=10`.
 template <typename Strategy = CellList>
 class NeighborList : public cpu::ComponentBase {
 public:
@@ -32,9 +32,12 @@ public:
     /// @param skin Verlet skin width [Angstrom]. Negative = auto (0.3 * cutoff).
     /// @param every Attempt rebuild at most every N steps (LAMMPS `neigh_modify
     ///        every`; default 1 reproduces LAMMPS's built-in default).
-    explicit NeighborList(double cutoff, double skin = -1.0, int every = 1)
+    /// @param delay Skip displacement check for this many steps after a rebuild
+    ///        (LAMMPS `neigh_modify delay`; default 10 reproduces LAMMPS).
+    explicit NeighborList(double cutoff, double skin = -1.0, int every = 1,
+                          int delay = 10)
         : strategy_(cutoff, skin), cutoff_(cutoff),
-          every_(every < 1 ? 1 : every) {}
+          every_(every < 1 ? 1 : every), delay_(delay < 0 ? 0 : delay) {}
 
     std::string name() const override { return "neighbor_list"; }
 
@@ -53,27 +56,30 @@ public:
         trim_inum_to_local(ctx.runtime, pairs_);
         ctx.runtime.pair_list = &pairs_;
         ago_ = 0;
+        n_rebuilds_ = 1;  // initial enumeration counts as rebuild #1
     }
 
     void launch(const cpu::LaunchContext& ctx) override {
         const int n_active = active_count(ctx.runtime, ctx.frame);
         ++ago_;
 
-        // `ago < every`: reuse the list verbatim when the atom count is
-        // stable. An upstream `AtomMigration` or halo-size change, however,
-        // makes the current CSR size-incompatible with the trimmed `inum`
-        // that force kernels will walk — so we must rebuild as soon as the
-        // CSR size is stale, regardless of `ago`. The `every` cadence still
-        // gates the displacement-driven rebuild path.
+        // Rebuild decision mirrors LAMMPS `neigh_modify delay M every N check yes`:
+        //   size_stale: atom count changed (migration / halo resize) → force rebuild
+        //   delay gate:  ago < delay → skip displacement check (LAMMPS `delay`)
+        //   every gate:  ago % every != 0 → skip displacement check (LAMMPS `every`)
+        //   disp check:  max_disp * 2 > skin → rebuild
         const bool size_stale =
             n_active != strategy_.n_at_last_build();
+        const bool delay_ok = ago_ >= delay_;
+        const bool every_ok = (ago_ % every_) == 0;
         const bool disp_rebuild =
-            ago_ >= every_ && strategy_.needs_rebuild(ctx.frame, n_active);
+            delay_ok && every_ok && strategy_.needs_rebuild(ctx.frame, n_active);
         if (size_stale || disp_rebuild) {
             strategy_.build(ctx.frame, n_active);
             strategy_.refresh_half(ctx.frame, n_active, pairs_);
             ++pairs_.version;
             ago_ = 0;
+            ++n_rebuilds_;
         }
 
         trim_inum_to_local(ctx.runtime, pairs_);
@@ -82,6 +88,9 @@ public:
         // (e.g. after a frame-resize) would reset the runtime pointer.
         ctx.runtime.pair_list = &pairs_;
     }
+
+    /// @brief Total rebuild count since construction (includes initial build()).
+    int n_rebuilds() const { return n_rebuilds_; }
 
     /// @brief Access the current pair list (read-only).
     const PairList& pairs() const { return pairs_; }
@@ -128,9 +137,12 @@ private:
     PairList pairs_;
     double cutoff_;
     int every_ = 1;
+    int delay_ = 10;
     /// @brief Steps since the last actual rebuild. Starts at 0 after `build()`
     /// (the initial enumeration), incremented once per `launch()`.
     int ago_ = 0;
+    /// @brief Total rebuild count (includes the initial `build()` enumeration).
+    int n_rebuilds_ = 0;
 };
 
 } // namespace md

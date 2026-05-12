@@ -2,7 +2,7 @@
 title: Parallel CPU MD engine — MPI + OpenMP + xsimd with hot-path/analysis separation
 status: in-progress
 created: 2026-04-16
-last-updated: 2026-05-06 (Phase 5 partial: 6/14 tracks landed, 4 partial pending reference-machine, B.2/B.3/B.4/B.9 pending kernel-level work)
+last-updated: 2026-05-12 (B.4 cadence audit + min-image fix + delay gate landed; 16/27 tasks done, 6 partial, 5 pending)
 revised: 2026-05-06
 ---
 
@@ -55,7 +55,7 @@ LAMMPS-class multi-node CPU MD: MPI spatial domain decomposition, OpenMP within 
 | **5** | **`pe_profile_single.cpp` + per-component profile CSVs at 1/8/32 ranks** | 🟡 partial | Track B.1 — benchmark + `plot_profile.py` done; CSV runs need reference machine |
 | **5** | **LJ pair kernel xsimd vectorization** | ✅ done (kernel) / 🟡 partial (correctness) | Track B.2 — xsimd ket-loop landed (1.21× NEON / W=2 dev box); energy bit-identical; per-component forces 5e-12 (FMA reorder). ac-012 needs spec refine. |
 | **5** | **Bonded force-kernel cache + ILP** | ✅ done | Track B.3 — stack-pack + `__restrict` in all 3 kernels; HB 1.13×, HA/HD register-bound; bit-identical at every digit |
-| **5** | **Neighbor-list rebuild cadence audit (LAMMPS parity)** | ❌ pending | Track B.4 — needs profile run + LAMMPS comparison |
+| **5** | **Neighbor-list rebuild cadence audit (LAMMPS parity)** | ✅ done | Track B.4 — delay=10 added (LAMMPS default); min-image fix in `needs_rebuild` (PBC-wrap false-rebuild bug); box-change check added (NPT safety); rebuild counter + 4 cadence tests landed. Profile CSV pending reference machine. |
 | **5** | **HaloExchangeReverse payload audit** | ✅ done | Track B.5 (audit doc-comment in `halo_exchange.h`) |
 | **5** | **OpenMP team binding + first-touch documentation** | 🟡 partial | Track B.6 — stderr warning + README block done; numerical NUMA measurement needs reference machine |
 | **5** | **Allocation audit (`test_md_no_alloc.cpp`)** | 🟡 partial | Track B.7 — test scaffolded; Linux glibc malloc-hook used; macOS GTEST_SKIPs |
@@ -686,8 +686,8 @@ CLAUDE.md                                   # update Observer/Recorder section; 
 - [~] Write failing benchmark guard for bonded ILP speedup target (`bench_md_step --force-only=bonded` baseline frozen) (B.3) — same infeasibility as B.2; same alternative recommended (pin baseline in `scaling_report.md` from `pe_profile_single` rows)
 - [x] Implement stack-pack tuple positions in `src/cpu/bonded/harmonic_bond.cpp`, `harmonic_angle.cpp`, `multi_harmonic_dihedral.cpp` (B.3) — `__restrict` ptr hoist + stack-resident `ri[3]/rj[3]/rk[3]/r1..r4[3]`; HarmonicBond 1.13×, HA/HD register-bound (no measurable speedup on dev box); 42/42 tests green
 - [x] Verify per-term bonded energies bit-identical at 1e-12 on `test_pe_single_chain.cpp` + `test_pe_small_box.cpp` (B.3) — bit-identical at every digit (pure load hoist preserves FP semantics); verified via `/tmp/bonded_probe.cpp` 8-atom chain
-- [ ] Audit `src/cpu/md/cell_list.cpp` rebuild count vs LAMMPS over 1000 PE-tension steps; tune `delta_skin` if needed; record in `profile_1.csv` (B.4)
-- [ ] Verify NVE drift on `test_pe_small_box.cpp` ≤ 1e-4 after B.4 cadence change (B.4)
+- [x] Audit `src/cpu/md/cell_list.cpp` rebuild cadence vs LAMMPS: added `delay` (default 10, LAMMPS parity), fixed min-image PBC-wrap false-rebuild bug, added box-change check, rebuild counter, 4 cadence tests (B.4) — profile CSV pending reference machine
+- [x] Verify NVE drift ≤ 1e-4 after B.4 cadence change: `NveDriftWithinTolerance` test passes with default delay=10 (B.4)
 - [x] Audit `HaloExchangeReverse` payload field set; add explicit doc comment in `include/atomiverse/cpu/md/mpi/halo_exchange.h` (B.5)
 - [x] Add stderr warning in `cpu::Backend::build_components()` (or `cpu::md::MD` constructor) when `OMP_PROC_BIND` unset and `n_threads > 1` (B.6)
 - [~] Document recommended OMP env + measured NUMA effect in `benchmarks/md/reference/polyethylene/README.md` (B.6) — env documented; numerical NUMA measurement needs reference machine

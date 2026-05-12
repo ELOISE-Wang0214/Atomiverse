@@ -185,12 +185,19 @@ bool CellList::needs_rebuild(const cpu::Frame& frame, int n_active) const {
     // count moves.
     if (n != n_at_last_build_) return true;
 
+    // NPT: barostat may have scaled the box, invalidating the cell grid
+    // (`csx_/csy_/csz_` were sized for the old box edge). Force a rebuild.
+    if (frame.box.length(0) != box_at_last_build_) return true;
+
     double max_disp_sq = 0;
 
     for (int i = 0; i < n; ++i) {
         double dx = frame.atoms.x[i] - x_save_[i];
         double dy = frame.atoms.y[i] - y_save_[i];
         double dz = frame.atoms.z[i] - z_save_[i];
+        // Use minimum-image convention so atom wrapping across PBC
+        // boundaries doesn't falsely signal a ~box-length displacement.
+        frame.box.min_image(dx, dy, dz);
         double dsq = dx * dx + dy * dy + dz * dz;
         if (dsq > max_disp_sq) max_disp_sq = dsq;
     }
