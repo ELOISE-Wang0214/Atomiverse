@@ -24,6 +24,7 @@ Read these chapters in order:
 2. [Tutorial 2: Restricted Hartree-Fock (RHF)](../tutorial/02-rhf.md)
 3. [Tutorial 3: Unrestricted Hartree-Fock (UHF)](../tutorial/03-uhf.md)
 4. [Tutorial 4: Unrestricted Kohn-Sham DFT (UKS)](../tutorial/04-uks.md)
+5. [Tutorial 5: Plane-Wave DFT for Periodic Systems](../tutorial/05-pw.md)
 
 Each chapter adds exactly one new idea.
 
@@ -39,6 +40,10 @@ shows how open-shell systems require separate alpha and beta channels.
 Tutorial 4 keeps the spin-resolved structure of UHF but replaces explicit
 Hartree-Fock exchange with exchange-correlation functionals evaluated on a grid.
 
+Tutorial 5 moves from molecules to periodic solids, replacing atom-centered
+Gaussian basis sets with plane waves and introducing pseudopotentials, FFT
+acceleration, k-point sampling, and Ewald summation.
+
 ## Which Example Matches Which Tutorial?
 
 | Tutorial | Primary example or API | Why it matters |
@@ -47,6 +52,7 @@ Hartree-Fock exchange with exchange-correlation functionals evaluated on a grid.
 | RHF | `examples/h2-rhf.cpp`, `examples/h2_rhf.cu`, `cpu::scf::rhf_solve` | First physically meaningful calculation |
 | UHF | `cpu::scf::uhf_solve` | Open-shell systems and spin contamination |
 | UKS | `cpu::scf::uks_solve` | DFT, grids, and exchange-correlation potentials |
+| Plane-Wave DFT | `cpu::pw::solve_si` | Periodic systems, pseudopotentials, FFT acceleration |
 
 The examples and solver APIs are intentionally paired. The example shows how to
 assemble a complete calculation. The solver header shows the exact input and
@@ -72,6 +78,7 @@ Pair each tutorial with one code-reading target:
 - after Tutorial 2, read [`IntegralPack`](../../include/atomiverse/cpu/scf/integrals.h) and [`rhf_solve`](../../include/atomiverse/cpu/scf/rhf_solve.h)
 - after Tutorial 3, read [`uhf_solve`](../../include/atomiverse/cpu/scf/uhf_solve.h)
 - after Tutorial 4, read [`uks_solve`](../../include/atomiverse/cpu/scf/uks_solve.h) and [`xc_functional.h`](../../include/atomiverse/cpu/scf/xc_functional.h)
+- after Tutorial 5, read [`solve_si.h`](../../include/atomiverse/cpu/pw/solve_si.h) and [`pw_workspace.h`](../../include/atomiverse/cpu/pw/pw_workspace.h)
 
 If you want to understand how the same ideas map onto the runtime system, then
 read the [Developer Manual](../developer/index.md) after finishing Tutorial 2.
