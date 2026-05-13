@@ -33,4 +33,10 @@ enum class BackpressurePolicy {
     grow
 };
 
+// Forward type declarations (actual types defined in their respective headers)
+class Mat3;
+class Vec3;
+
+using Mat33 = Mat3;
+
 } // namespace ATV

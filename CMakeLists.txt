@@ -33,6 +33,7 @@ if(NOT ATV_DOCS_ONLY)
     set_property(CACHE ATV_CUDA_PREC PROPERTY STRINGS float double)
 
     option(ATV_BUILD_RHF "Build RHF electronic structure code" OFF)
+    option(ATV_BUILD_PW "Build plane-wave DFT module (requires FFTW3)" OFF)
     option(ATV_BUILD_TORCH "Build LibTorch backend (requires LibTorch)" OFF)
     option(ATV_BUILD_LIBCINT "Fetch libcint for integral validation tests" OFF)
     option(ATV_USE_LIBXC "Use libxc for XC ground-truth validation" OFF)
@@ -262,6 +263,42 @@ if(NOT ATV_DOCS_ONLY)
             )
         endif()
         target_compile_definitions(atomiverse PUBLIC ATV_HAS_RHF)
+    endif()
+
+    if(ATV_BUILD_PW)
+        find_library(FFTW3_LIB fftw3 HINTS /opt/homebrew/opt/fftw/lib /usr/local/lib)
+        find_path(FFTW3_INC fftw3.h HINTS /opt/homebrew/opt/fftw/include /usr/local/include)
+        if(NOT FFTW3_LIB OR NOT FFTW3_INC)
+            message(FATAL_ERROR "FFTW3 required for ATV_BUILD_PW but not found. "
+                               "Install via: brew install fftw")
+        endif()
+        add_library(fftw3_stub INTERFACE)
+        target_link_libraries(fftw3_stub INTERFACE ${FFTW3_LIB})
+        target_include_directories(fftw3_stub INTERFACE ${FFTW3_INC})
+
+        target_sources(atomiverse PRIVATE
+            src/cpu/pw/internal/g_vector.cpp
+            src/cpu/pw/internal/fft.cpp
+            src/cpu/pw/internal/upf_reader.cpp
+            src/cpu/pw/internal/kpoint.cpp
+            src/cpu/pw/internal/crystal.cpp
+            src/cpu/pw/internal/ewald.cpp
+            src/cpu/pw/pw_poisson.cpp
+            src/cpu/pw/pw_lda.cpp
+            src/cpu/pw/pw_hamiltonian.cpp
+            src/cpu/pw/pw_veff.cpp
+            src/cpu/pw/pw_davidson.cpp
+            src/cpu/pw/pw_density.cpp
+            src/cpu/pw/pw_convergence.cpp
+            src/cpu/pw/solve_si.cpp
+        )
+        if(NOT ATV_BUILD_RHF)
+            target_sources(atomiverse PRIVATE
+                src/cpu/scf/xc_functional.cpp
+            )
+        endif()
+        target_link_libraries(atomiverse PUBLIC fftw3_stub)
+        target_compile_definitions(atomiverse PUBLIC ATV_HAS_PW)
     endif()
 
     if(ATV_BUILD_TORCH)

@@ -1,0 +1,33 @@
+/// @file test_fft.cpp
+#include <gtest/gtest.h>
+#include "atomiverse/cpu/pw/internal/fft.h"
+#include "atomiverse/core/real.h"
+#include <random>
+#include <vector>
+
+using namespace ATV;
+using namespace ATV::cpu::pw::internal;
+
+TEST(FFT, RoundTrip) {
+    int nx = 12, ny = 12, nz = 12;
+    FFTPlan3D plan(nx, ny, nz);
+    int nr = nx * ny * nz;
+    int nc = (nx/2+1) * ny * nz;
+
+    std::vector<Real> orig(nr);
+    std::mt19937 rng(42);
+    std::uniform_real_distribution<Real> dist(-1, 1);
+    for (int i = 0; i < nr; ++i) orig[i] = dist(rng);
+
+    auto* cbuf = fftw_alloc_complex(static_cast<size_t>(nc));
+    std::vector<Real> back(nr);
+
+    plan.r2c(orig.data(), cbuf);
+    plan.c2r(cbuf, back.data());
+
+    Real max_err = 0;
+    for (int i = 0; i < nr; ++i)
+        max_err = std::max(max_err, std::abs(back[i] - orig[i]));
+    fftw_free(cbuf);
+    EXPECT_LT(static_cast<double>(max_err), 1e-10);
+}

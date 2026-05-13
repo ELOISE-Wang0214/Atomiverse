@@ -43,16 +43,6 @@ function(atv_add_mpi_run test_name target_name n)
         COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${n}
                 ${MPIEXEC_PREFLAGS} $<TARGET_FILE:${target_name}> ${MPIEXEC_POSTFLAGS}
     )
-    # RUN_SERIAL keeps two MPI tests from running at the same time.
-    # RESOURCE_LOCK "mpi_singleton" further blocks concurrent execution with
-    # any other MPI test under ctest -jN. Together these prevent OpenMPI
-    # session-directory collisions on macOS where two mpirun invocations in
-    # the same user account briefly contend for the same prte session id.
-    # PASS_REGULAR_EXPRESSION: OpenMPI 5.0.x on macOS occasionally segfaults
-    # inside its BTL teardown during MPI_Finalize even when all user tests
-    # have completed cleanly; prterun then reports a non-zero exit code. We
-    # parse the GoogleTest summary line instead, which appears in output
-    # only when every test passed.
     set_tests_properties(${test_name} PROPERTIES
         LABELS "mpi"
         RUN_SERIAL TRUE
@@ -60,6 +50,13 @@ function(atv_add_mpi_run test_name target_name n)
         PASS_REGULAR_EXPRESSION "PASSED[^a-zA-Z]"
         FAIL_REGULAR_EXPRESSION "FAILED[^a-zA-Z]")
 endfunction()
+
+# ── Core type tests (always available, no CUDA required) ──────────────
+
+atv_add_cpp_test(test_mat3  core/test_mat3.cpp)
+atv_add_cpp_test(test_vec3  core/test_vec3.cpp)
+atv_add_cpp_test(test_box   core/test_box.cpp)
+atv_add_cpp_test(test_units core/test_units.cpp)
 
 # ── CPU backend tests (always available, no CUDA required) ──────────
 
@@ -151,6 +148,27 @@ if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
     atv_add_mpi_run(test_mpi_rcb_n1 test_mpi_rcb 1)
     atv_add_mpi_run(test_mpi_rcb_n8 test_mpi_rcb 8)
 endif()
+
+# ── PW infrastructure tests (require ATV_BUILD_PW) ─────────────────────
+
+if(ATV_BUILD_PW)
+    atv_add_cpp_test(test_g_vector   cpu/pw/test_g_vector.cpp)
+    atv_add_cpp_test(test_upf        cpu/pw/test_upf.cpp)
+    atv_add_cpp_test(test_kpoint     cpu/pw/test_kpoint.cpp)
+    atv_add_cpp_test(test_crystal    cpu/pw/test_crystal.cpp)
+    atv_add_cpp_test(test_ewald      cpu/pw/test_ewald.cpp)
+    atv_add_cpp_test(test_pw_components cpu/pw/test_pw_components.cpp)
+    atv_add_cpp_test(test_pw_si      cpu/pw/test_pw_si.cpp)
+
+    # FFT test needs FFTW3 linkage
+    add_executable(test_fft cpu/pw/test_fft.cpp)
+    target_link_libraries(test_fft PRIVATE atomiverse GTest::gtest_main fftw3_stub)
+    set_target_properties(test_fft PROPERTIES CXX_STANDARD 17)
+    target_include_directories(test_fft PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    add_test(NAME test_fft COMMAND test_fft)
+endif()
+
+# ── RHF/SCF tests ─────────────────────────────────────────────────────
 
 if(ATV_BUILD_RHF)
     atv_add_cpp_test(test_cpu_scf_uhf_solve    cpu/scf/test_uhf_solve.cpp)

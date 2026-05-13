@@ -23,6 +23,7 @@ Read these chapters in order:
 2. [Tutorial 2: Restricted Hartree-Fock (RHF)](../tutorial/02-rhf.md)
 3. [Tutorial 3: Unrestricted Hartree-Fock (UHF)](../tutorial/03-uhf.md)
 4. [Tutorial 4: Unrestricted Kohn-Sham DFT (UKS)](../tutorial/04-uks.md)
+5. [Tutorial 5: Plane-Wave DFT for Periodic Systems](../tutorial/05-pw.md)
 
 Each chapter adds exactly one new idea.
 
@@ -32,11 +33,15 @@ no chemistry in it.
 Tutorial 2 replaces the toy matrix with real molecular integrals and introduces
 the RHF closed-shell approximation.
 
-Tutorial 3 removes the “same spatial orbital for both spins” restriction and
+Tutorial 3 removes the "same spatial orbital for both spins" restriction and
 shows how open-shell systems require separate alpha and beta channels.
 
 Tutorial 4 keeps the spin-resolved structure of UHF but replaces explicit
 Hartree-Fock exchange with exchange-correlation functionals evaluated on a grid.
+
+Tutorial 5 moves from molecules to periodic solids, replacing atom-centered
+Gaussian basis sets with plane waves and introducing pseudopotentials, FFT
+acceleration, k-point sampling, and Ewald summation.
 
 ## Which Example Matches Which Tutorial?
 
@@ -46,6 +51,7 @@ Hartree-Fock exchange with exchange-correlation functionals evaluated on a grid.
 | RHF | `examples/tutorial/02_rhf.cpp` | First physically meaningful calculation |
 | UHF | `examples/tutorial/03_uhf.cpp` | Open-shell systems and spin contamination |
 | UKS | `examples/tutorial/04_uks.cpp` | DFT, grids, and exchange-correlation potentials |
+| Plane-Wave DFT | `cpu::pw::solve_si` | Periodic systems, pseudopotentials, FFT acceleration |
 
 The examples are intentionally numbered to match the chapters. Read the theory
 and the matching code side by side.
@@ -64,7 +70,15 @@ by one or more components.
 
 ## What To Read Alongside The Tutorials
 
-Keep the matching tutorial example open while you read each chapter. If you
-want to understand the runtime system after that, then read the
-[Developer Manual](../developer/index.md). The tutorials themselves should be
-enough to learn the chemistry without dropping straight into architecture.
+Pair each tutorial with one code-reading target:
+
+- after Tutorial 1, read [`cpu::scf::solve`](../../include/atomiverse/cpu/scf/solve.h)
+- after Tutorial 2, read [`IntegralPack`](../../include/atomiverse/cpu/scf/integrals.h) and [`rhf_solve`](../../include/atomiverse/cpu/scf/rhf_solve.h)
+- after Tutorial 3, read [`uhf_solve`](../../include/atomiverse/cpu/scf/uhf_solve.h)
+- after Tutorial 4, read [`uks_solve`](../../include/atomiverse/cpu/scf/uks_solve.h) and [`xc_functional.h`](../../include/atomiverse/cpu/scf/xc_functional.h)
+- after Tutorial 5, read [`solve_si.h`](../../include/atomiverse/cpu/pw/solve_si.h) and [`pw_workspace.h`](../../include/atomiverse/cpu/pw/pw_workspace.h)
+
+If you want to understand how the same ideas map onto the runtime system, then
+read the [Developer Manual](../developer/index.md) after finishing Tutorial 2.
+That is usually the point where `Driver`, `Plan`, and `Component` start to make
+sense instead of feeling abstract.

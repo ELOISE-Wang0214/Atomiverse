@@ -1,4 +1,7 @@
-# Architecture Notes
+> **Moved to `.claude/notes/notes.md`.** This file kept for backward reference.
+> New content is written to `.claude/notes/notes.md` via `/mol:note` or `/av-note`.
+
+# Architecture Notes (legacy copy)
 
 Accumulated architectural decisions and corrections from development iterations.
 Agents read this alongside CLAUDE.md. When a note stabilizes, promote it into CLAUDE.md.

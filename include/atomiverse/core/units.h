@@ -130,4 +130,13 @@ inline constexpr double kBoltzmann      = units::kB_ev_per_k;
 inline constexpr double kFtm2v          = units::force_to_accel;
 inline constexpr double kMvv2e          = units::mass_v2_to_energy;
 
+/// @brief Angstrom to Bohr (QE convention: 1 Bohr = 0.5291772083 A).
+constexpr Real kAngstrom2Bohr = Real(1.8897259886);
+
+/// @brief Rydberg to Hartree (exact: 1 Ry = 1/2 Hartree).
+constexpr Real kRy2Hartree = Real(0.5);
+
+/// @brief Rydberg to eV (QE convention).
+constexpr Real kRy2eV = Real(13.605693);
+
 } // namespace ATV
