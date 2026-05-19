@@ -1,7 +1,7 @@
 ---
 title: Pair / Bond / Angle / Dihedral base classes — LAMMPS-style potential hierarchy on CPU and CUDA
 slug: pe-potential-abstraction
-status: approved
+status: in-progress
 created: 2026-05-19
 last-updated: 2026-05-19
 parent: pe-ff-migrate-dreiding-ua.md
