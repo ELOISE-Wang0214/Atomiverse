@@ -12,6 +12,7 @@ criteria:
       `gcc-` depending on host) AND `-O3` AND `-march=native`.
       (Closes parent ac-022.)
     status: pending
+    observed_2026-05-19: "## Build configuration" subsection present with `clang++ -O3 -march=native -std=gnu++20`. Per /mol:impl rule, docs criteria not auto-flipped.
 
   - id: ac-002
     summary: LJ kernel speedup row recorded with current and baseline numbers
@@ -29,6 +30,7 @@ criteria:
       refined: uses profile_1.csv LJ::launch row in lieu
       of the never-built CPU `bench_md_step --force-only=lj`.)
     status: pending
+    observed_2026-05-19: LJ::launch row in Table 1 — baseline (historical 1.21× from parent §5 status table) + current 154.79 ms (profile_1.csv) + ratio ≥ 1.21× annotated. Per /mol:impl rule, performance criteria not auto-flipped; promote via /mol:bench or manual review.
 
   - id: ac-003
     summary: Bonded kernel speedup row recorded
@@ -41,6 +43,7 @@ criteria:
       regression callout. (Closes parent ac-013, refined
       to use profile_1.csv row.)
     status: pending
+    observed_2026-05-19: HarmonicBond::launch row in Table 1 — baseline (historical 1.13× from parent §5 status table) + current 117.36 ms (profile_1.csv) + ratio ≥ 1.13× annotated.
 
   - id: ac-004
     summary: Neighbor-list rebuild cadence comparison present
@@ -56,6 +59,7 @@ criteria:
       either ≤ LAMMPS count (target met) or with a one-line
       analysis. (Closes parent ac-015.)
     status: pending
+    observed_2026-05-19: Table 3 includes NeighborList::build_half row with Atomiverse "1000 launches over 1000 steps" (timer reports per-step launch() not internal rebuilds) and LAMMPS n=1=205 / n=8=198 builds. Methodology note explains that internal cell_list::rebuild() cadence is bounded by B.4 gates (commit 60791d1) — closes ac-015 by methodology, not by literal-count comparison.
 
   - id: ac-005
     summary: Single-core LAMMPS ratio row + structural-gap escape hatch
@@ -71,6 +75,7 @@ criteria:
       prose naming the remaining bottleneck and citing
       its `profile_1.csv` row. (Closes parent ac-023.)
     status: pending
+    observed_2026-05-19: Table 2 row "single-core PE-tension, Δt = 0.5 fs, 21000 steps" — Atomiverse 2.85s / LAMMPS 2.46s / ratio **1.16×** ≤ 1.20× target. Escape hatch not exercised; the "No structural-gap analysis needed" subsection documents this explicitly.
 
   - id: ac-006
     summary: 8-rank LAMMPS ratio row ≤ 2.0× OR documented analysis
@@ -87,6 +92,7 @@ criteria:
       ac-024: strict pass when ≤ 2.0×, soft-pass when user
       has signed off on deferring.)
     status: pending
+    observed_2026-05-19: Table 2 row "8-rank PE-tension" — Atomiverse 2.93s / LAMMPS 1.91s / ratio **1.53×** ≤ 2.00× target. Strict pass; no deferral needed.
 
   - id: ac-007
     summary: Hotspot summary lists top-3 components at 1 and 8 ranks
@@ -97,6 +103,7 @@ criteria:
       by `pct_of_step` at each of 1 rank and 8 ranks,
       sourced from `profile_1.csv` / `profile_8.csv`.
     status: pending
+    observed_2026-05-19: "## Hotspot summary" subsection has "1 rank" sub-table (LJ 19.84%, MultiHarmonicDihedral 15.34%, HarmonicAngle 15.33%) and "8 ranks" sub-table (LJ 15.98%, HaloExchangeReverse 14.16%, HarmonicBond 11.08%) — both sourced from the committed CSVs.
 ---
 
 # Acceptance criteria
