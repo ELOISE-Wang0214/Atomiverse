@@ -2,49 +2,58 @@
 slug: libxc-xc-fix-02-libxc-wrapper
 criteria:
   - id: ac-001
-    summary: Build succeeds with ATV_USE_LIBXC=ON and links libxc symbols
+    summary: xc_libxc_oracle static library builds and references xc_func_init
     type: code
     pass_when: |
       `cmake -B build -DATV_BUILD_TESTS=ON -DATV_BUILD_RHF=ON
-      -DATV_USE_LIBXC=ON && cmake --build build -j` completes with exit
-      code 0, the resulting `libatomiverse` exports
-      `ATV::cpu::scf::evaluate_xc_libxc`, and `xc_libxc.cpp` references
-      `xc_func_init` (verified via `nm`/`objdump` on the object file).
+      -DATV_BUILD_XC_ORACLE=ON` configures without error and
+      `cmake --build build --target xc_libxc_oracle -j` exits 0.
+      Running `nm $(find build -name 'libxc_libxc_oracle.a' -o -name
+      'xc_libxc_oracle.cpp.o' | head -1)` shows at least one reference
+      to a symbol matching `xc_func_init`, confirming the oracle
+      actually calls libxc.
     status: pending
 
   - id: ac-002
-    summary: Build with ATV_USE_LIBXC=OFF still succeeds and emits no libxc symbols
+    summary: libatomiverse contains zero libxc symbols regardless of oracle option
     type: code
     pass_when: |
-      `cmake -B build_off -DATV_BUILD_TESTS=ON -DATV_BUILD_RHF=ON
-      -DATV_USE_LIBXC=OFF && cmake --build build_off -j` succeeds, and
-      `nm build_off/.../xc_libxc.cpp.o` shows no `xc_func_init` or
-      `evaluate_xc_libxc` symbol (the TU is empty without ATV_HAS_LIBXC).
+      For both configurations
+      `ATV_BUILD_XC_ORACLE=OFF` and `ATV_BUILD_XC_ORACLE=ON`, the command
+      `nm $(find build -name 'libatomiverse.*' | head -1) 2>/dev/null
+      | grep -c 'xc_func\|xc_oracle::evaluate_lsda\|xc_oracle::evaluate_pbe'`
+      returns `0`. The oracle never leaks into the production library.
     status: pending
 
   - id: ac-003
-    summary: test_xc_libxc passes — finite XCOutput for LSDA and PBE at ρ=1
-    type: runtime
+    summary: Oracle reproduces Slater exchange textbook value to 1e-10 Ha
+    type: scientific
     pass_when: |
-      `ctest --test-dir build -R test_xc_libxc --output-on-failure`
-      passes (exit 0), including the happy-path LSDA, happy-path PBE,
-      spin-polarized smoke, and density-cutoff sub-tests defined in
-      *Testing strategy*.
+      In the `test_xc_libxc_oracle` binary, the LDA-exchange-only
+      sub-test evaluates libxc `XC_LDA_X` alone at
+      `rho_alpha = rho_beta = 0.5` (zeta = 0) in `XC_POLARIZED` mode
+      and asserts `std::abs(exc - (-0.7385587663820224)) < 1e-10`
+      Hartree, matching the closed form `-(3/4)(3/pi)^(1/3)`. The
+      full `ctest -R test_xc_libxc_oracle` exit code is 0.
     status: pending
 
   - id: ac-004
-    summary: libxc XC_LDA_X reproduces textbook Slater exchange at ρ=1 to 1e-10 Ha
-    type: scientific
+    summary: Default-OFF build produces no oracle artifacts
+    type: code
     pass_when: |
-      In `test_xc_libxc`, the LDA-exchange-only sub-test evaluates libxc
-      `XC_LDA_X` at ρ_α = ρ_β = 0.5 (ζ = 0) in `XC_POLARIZED` mode and
-      asserts `|exc - (-0.7385587663820224)| < 1e-10` Hartree, matching
-      the closed-form `-(3/4)(3/π)^{1/3}` independent of VWN.
+      With `cmake -B build_off -DATV_BUILD_TESTS=ON -DATV_BUILD_RHF=ON`
+      (i.e. `ATV_BUILD_XC_ORACLE` unset, default OFF) followed by
+      `cmake --build build_off -j`,
+      `find . -path ./build_off -prune -o -name 'xc_libxc_oracle*' -print`
+      finds the source files under `tests/cpu/scf/oracle/`, while
+      `find build_off -name 'xc_libxc_oracle*'` returns nothing — no
+      object file, no static library, no test binary is emitted.
     status: pending
 ---
 
 # Acceptance criteria
 
-- **ac-001 / ac-002** establish the build contract: the wrapper compiles and links with libxc when requested, and disappears cleanly when not.
-- **ac-003** is the runtime smoke contract: every code path in `evaluate_xc_libxc` (LSDA branch, PBE branch including `vsigma_*`, spin-polarized init, cutoff) is exercised at least once.
-- **ac-004** is the only numerical anchor this sub-spec verifies without depending on the native side. The Slater-exchange value `−(3/4)(3/π)^{1/3}` is the canonical cross-library reference for LDA exchange and confirms libxc is driven with the correct convention (`XC_POLARIZED`, density indices, `exc`-per-electron units).
+- **ac-001** asserts the oracle actually links against libxc when its build option is enabled; the `nm` check prevents a silent-empty-TU regression.
+- **ac-002** is the load-bearing architectural invariant: `libatomiverse` never contains libxc symbols. This is what makes the oracle deletable later.
+- **ac-003** is the numerical anchor: `−(3/4)(3/π)^{1/3}` is the canonical cross-library reference for LDA exchange.
+- **ac-004** enforces the default-OFF lifecycle property. Together with ac-002, retirement is `rm -rf tests/cpu/scf/oracle/` plus one CMake-option removal — no production surgery.

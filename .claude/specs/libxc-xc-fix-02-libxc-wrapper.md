@@ -1,105 +1,126 @@
 ---
-title: libxc XC wrapper (LSDA + PBE)
+title: libxc oracle for native XC parity (test-only scaffolding)
 slug: libxc-xc-fix-02-libxc-wrapper
 status: approved
 created: 2026-05-19
+revised: 2026-05-19
+depends_on:
+  - libxc-xc-fix-01-cmake-integration
 ---
 
-# libxc XC wrapper (LSDA + PBE)
+# libxc oracle for native XC parity (test-only scaffolding)
 
 ## Summary
 
-Stand up `evaluate_xc_libxc()` — a libxc-backed evaluator that mirrors the signature of the existing native `evaluate_xc()` in `include/atomiverse/cpu/scf/xc_functional.h`. The wrapper supports LSDA (Slater + VWN5) and PBE (PBE exchange + PBE correlation) in spin-polarized mode, returning Atomiverse's `XCOutput` struct unchanged so callers do not need to know whether the backend is native or libxc. All libxc-touching code lives behind `#ifdef ATV_HAS_LIBXC` (defined by sub-spec 01); when libxc is disabled, the translation unit compiles to an empty object. This sub-spec does **not** validate libxc output against the native implementation — that comparison is sub-spec 03's job.
+Stand up a libxc-backed oracle that lives entirely under `tests/cpu/scf/oracle/` and is linked **only** into test targets — never into `libatomiverse`. The oracle exposes two free functions in the test-only namespace `ATV::test::xc_oracle` — `evaluate_lsda(rho_a, rho_b)` and `evaluate_pbe(rho_a, rho_b, sigma_aa, sigma_ab, sigma_bb)` — both returning Atomiverse's existing production `ATV::cpu::scf::XCOutput` struct so the parity test in sub-spec 03 can compare native and oracle field-by-field without translation. A new CMake option `ATV_BUILD_XC_ORACLE` (introduced in sub-spec 01) gates the entire `oracle/` directory: when OFF, no oracle source, header, or test target is configured. **This oracle is temporary scaffolding; a follow-up spec will delete it after sub-spec 03's primitive parity gate stays green.**
 
 ## Domain basis
 
-XC functional identifiers (libxc 6.x):
+XC functional identifiers (libxc 6.x) used by the oracle:
 
-- `XC_LDA_X` — Dirac–Slater exchange. Dirac, *Proc. Cambridge Phil. Soc.* **26**, 376 (1930); Slater, *Phys. Rev.* **81**, 385 (1951). Energy density per electron: ε_x = −C_x ρ^{1/3} with C_x = (3/4)(3/π)^{1/3}.
-- `XC_LDA_C_VWN` (functional id **7**, VWN5 — **not** id 5 which is VWN3 RPA). Vosko, Wilk, Nusair, *Can. J. Phys.* **58**, 1200 (1980), parameterization V.
-- `XC_GGA_X_PBE` + `XC_GGA_C_PBE`. Perdew, Burke, Ernzerhof, *Phys. Rev. Lett.* **77**, 3865 (1996), DOI: 10.1103/PhysRevLett.77.3865.
+- `XC_LDA_X` — Dirac–Slater exchange. Dirac, *Proc. Cambridge Phil. Soc.* **26**, 376 (1930); Slater, *Phys. Rev.* **81**, 385 (1951). `ε_x = −C_x ρ^{1/3}`, `C_x = (3/4)(3/π)^{1/3} ≈ 0.7385587663820224 Hartree`.
+- `XC_LDA_C_VWN` — id **7**, VWN parameterization V ("VWN5"). **Not** `XC_LDA_C_VWN_3` (id 5). Vosko, Wilk, Nusair, *Can. J. Phys.* **58**, 1200 (1980), DOI 10.1139/p80-159.
+- `XC_GGA_X_PBE` (id 101) + `XC_GGA_C_PBE` (id 130). Perdew, Burke, Ernzerhof, *Phys. Rev. Lett.* **77**, 3865 (1996), DOI 10.1103/PhysRevLett.77.3865.
+- libxc reference: Lehtola et al., *SoftwareX* **7**, 1 (2018), DOI 10.1016/j.softx.2017.11.002.
 
-libxc output conventions (must be translated to Atomiverse's `XCOutput`):
+libxc output convention (the oracle preserves this exactly; sub-spec 03 fixes native to match):
 
-| libxc array      | meaning                                  | Atomiverse field        |
-| ---------------- | ---------------------------------------- | ----------------------- |
-| `exc`            | energy per electron (Hartree)            | `XCOutput.exc`          |
-| `vrho[0]`        | ∂(ρ·exc)/∂ρ_α                            | `XCOutput.vrho_alpha`   |
-| `vrho[1]`        | ∂(ρ·exc)/∂ρ_β                            | `XCOutput.vrho_beta`    |
-| `vsigma[0]`      | ∂(ρ·exc)/∂σ_αα  (GGA only)               | `XCOutput.vsigma_aa`    |
-| `vsigma[1]`      | ∂(ρ·exc)/∂σ_αβ  (GGA only)               | `XCOutput.vsigma_ab`    |
-| `vsigma[2]`      | ∂(ρ·exc)/∂σ_ββ  (GGA only)               | `XCOutput.vsigma_bb`    |
+| libxc array | meaning                          | XCOutput field        |
+| ----------- | -------------------------------- | --------------------- |
+| `exc`       | energy per electron (Hartree)    | `XCOutput.exc`        |
+| `vrho[0]`   | `∂(ρ·exc)/∂ρ_α`                  | `XCOutput.vrho_alpha` |
+| `vrho[1]`   | `∂(ρ·exc)/∂ρ_β`                  | `XCOutput.vrho_beta`  |
+| `vsigma[0]` | `∂(ρ·exc)/∂σ_αα` (GGA)           | `XCOutput.vsigma_aa`  |
+| `vsigma[1]` | `∂(ρ·exc)/∂σ_αβ` (GGA)           | `XCOutput.vsigma_ab`  |
+| `vsigma[2]` | `∂(ρ·exc)/∂σ_ββ` (GGA)           | `XCOutput.vsigma_bb`  |
 
-Units: densities in electrons/Bohr³, σ in (electrons/Bohr³)²/Bohr², energies in Hartree — identical between libxc and Atomiverse, no scale conversion required.
+All calls use `XC_POLARIZED` mode. Same `kRhoMin = 1e-12` cutoff as native.
 
-Spin-polarized initialization (libxc C API):
-
-```c
-xc_func_type func;
-xc_func_init(&func, XC_LDA_X, XC_POLARIZED);
-/* ... xc_lda_exc_vxc(&func, 1, rho, exc, vrho); ... */
-xc_func_end(&func);
-```
-
-Atomiverse always calls libxc in `XC_POLARIZED` mode so the wrapper can serve both closed-shell and open-shell paths uniformly.
+Units: densities in electrons/Bohr³, σ in (electrons/Bohr³)²/Bohr², energies in Hartree.
 
 ## Design
 
-New namespace-level free function in `ATV::cpu::scf`:
+**Lifetime statement.** This oracle is test-only scaffolding. The `tests/cpu/scf/oracle/` directory, the `xc_libxc_oracle` static library, the `ATV_BUILD_XC_ORACLE` CMake option, and any libxc dependency it introduces are slated for removal by a follow-up "retire libxc oracle" spec once sub-spec 03's primitive parity gate has stayed green for an agreed soak period. Nothing in `include/atomiverse/`, `src/`, or any production-linked target may include the oracle header. The oracle never appears in `libatomiverse`.
+
+**Namespace.** All oracle symbols live in `ATV::test::xc_oracle`. The production namespace `ATV::cpu::scf` is *not* extended. Reusing `XCOutput` from `include/atomiverse/cpu/scf/xc_functional.h` is intentional: the oracle populates that production struct from libxc's output buffers so the parity test compares apples to apples without translation. The oracle header includes the production header; the production header has no awareness of the oracle.
+
+**Public surface** (header `tests/cpu/scf/oracle/xc_libxc_oracle.h`):
 
 ```cpp
-#ifdef ATV_HAS_LIBXC
-XCOutput evaluate_xc_libxc(XCType type,
-                           double rho_a, double rho_b,
-                           double sigma_aa = 0, double sigma_ab = 0,
-                           double sigma_bb = 0);
-#endif
+#pragma once
+#include "atomiverse/cpu/scf/xc_functional.h"  // for ATV::cpu::scf::XCOutput
+
+namespace ATV { namespace test { namespace xc_oracle {
+
+ATV::cpu::scf::XCOutput evaluate_lsda(double rho_a, double rho_b);
+ATV::cpu::scf::XCOutput evaluate_pbe(double rho_a, double rho_b,
+                                     double sigma_aa, double sigma_ab,
+                                     double sigma_bb);
+
+}}}  // namespace ATV::test::xc_oracle
 ```
 
-The header `xc_libxc.h` already exists with this prototype; this sub-spec fleshes out the implementation in `xc_libxc.cpp`. No new public types are introduced — `XCOutput` and `XCType` continue to live in `xc_functional.h`, and the libxc header is included only from the `.cpp`.
+The header is unconditional (no `#ifdef ATV_HAS_LIBXC`); the entire `oracle/` directory is added to the build only when `ATV_BUILD_XC_ORACLE=ON`, so this header is only ever compiled in that configuration.
 
-Lifecycle. Each call performs a local `xc_func_init` / `xc_func_end` pair. Simplest correct lifetime; keeps the wrapper thread-safe and stateless. A batched / cached-handle variant is deferred until the production XC loop adopts libxc (out of scope).
+**Per-call flow.**
 
-Internal flow per call:
-
-1. Apply `kRhoMin = 1e-12` total-density cutoff (return zero-initialized `XCOutput` below cutoff) so the two backends agree on the floor before libxc is consulted.
-2. `XCType::LSDA`: initialize `XC_LDA_X`, `XC_LDA_C_VWN`, evaluate each, **sum** `exc` and `vrho`. `vsigma_*` zero (LDA has no σ dependence).
-3. `XCType::PBE`: initialize `XC_GGA_X_PBE`, `XC_GGA_C_PBE`, evaluate each, sum `exc`, `vrho`, `vsigma`.
+1. If `rho_a + rho_b < kRhoMin = 1e-12`, return zero-initialized `XCOutput`.
+2. `evaluate_lsda`: local `xc_func_init(&fx, XC_LDA_X, XC_POLARIZED)` and `xc_func_init(&fc, XC_LDA_C_VWN, XC_POLARIZED)`, evaluate via `xc_lda_exc_vxc`, **sum** `exc` and `vrho[σ]` across the two functionals, leave `vsigma_*` zero, `xc_func_end` on both.
+3. `evaluate_pbe`: local `xc_func_init(&fx, XC_GGA_X_PBE, XC_POLARIZED)` and `xc_func_init(&fc, XC_GGA_C_PBE, XC_POLARIZED)`, evaluate via `xc_gga_exc_vxc`, sum `exc`, `vrho[σ]`, `vsigma[k]`, `xc_func_end` on both.
 4. Pack libxc's interleaved arrays into the named fields of `XCOutput`.
 
-When `ATV_HAS_LIBXC` is undefined the TU reduces to no symbols — no fallback, no stub returning zeros.
+Each call performs its own init/teardown; this is test scaffolding, not a hot path.
+
+**Build wiring.** A new `tests/cpu/scf/oracle/CMakeLists.txt` declares:
+
+```cmake
+# Entire file body is gated by sub-spec 01's add_subdirectory(),
+# which only runs when ATV_BUILD_XC_ORACLE=ON.
+add_library(xc_libxc_oracle STATIC xc_libxc_oracle.cpp)
+target_include_directories(xc_libxc_oracle PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/include)
+target_link_libraries(xc_libxc_oracle PUBLIC Libxc::xc)
+
+# Smoke test for the oracle itself
+atv_add_cpp_test(test_xc_libxc_oracle test_xc_libxc_oracle.cpp)
+target_link_libraries(test_xc_libxc_oracle PRIVATE xc_libxc_oracle)
+```
+
+`libatomiverse` is not modified.
+
+**Production purity invariant.** `libatomiverse.{a,so}` contains zero references to `xc_func_init`, `xc_lda_exc_vxc`, `xc_gga_exc_vxc`, or `xc_oracle::*` regardless of `ATV_BUILD_XC_ORACLE`. Asserted by ac-002.
 
 ## Files to create or modify
 
-- `include/atomiverse/cpu/scf/xc_libxc.h` — header already exists; verify Doxygen mentions `XC_POLARIZED` and VWN5 id=7.
-- `src/cpu/scf/xc_libxc.cpp` — implementation: replace any placeholder body with LSDA/PBE branches.
-- `tests/cpu/scf/test_xc_libxc.cpp` (new) — gated by `#ifdef ATV_HAS_LIBXC`; covers init/teardown, finiteness of `exc`, Slater-exchange textbook value.
-- `tests/CMakeLists.txt` — register `test_xc_libxc` only when `ATV_HAS_LIBXC` is defined.
+- `tests/cpu/scf/oracle/xc_libxc_oracle.h` (new) — declares `ATV::test::xc_oracle::evaluate_lsda` and `evaluate_pbe`.
+- `tests/cpu/scf/oracle/xc_libxc_oracle.cpp` (new) — implementation; `<xc.h>` included only here.
+- `tests/cpu/scf/oracle/test_xc_libxc_oracle.cpp` (new) — GoogleTest binary: smoke, spin polarization, density cutoff, Slater textbook value.
+- `tests/cpu/scf/oracle/CMakeLists.txt` (new) — declares `xc_libxc_oracle` STATIC target + oracle test registration.
 
 ## Tasks
 
-- [ ] Write failing tests for `evaluate_xc_libxc` LSDA + PBE sanity and Slater textbook value (`tests/cpu/scf/test_xc_libxc.cpp`)
-- [ ] Register `test_xc_libxc` in the test build, gated on `ATV_HAS_LIBXC` (`tests/CMakeLists.txt`)
-- [ ] Implement `evaluate_xc_libxc` LSDA branch (`XC_LDA_X` + `XC_LDA_C_VWN`, id=7) with `XC_POLARIZED` init/end and convention mapping (`src/cpu/scf/xc_libxc.cpp`)
-- [ ] Implement `evaluate_xc_libxc` PBE branch (`XC_GGA_X_PBE` + `XC_GGA_C_PBE`) including `vsigma_{aa,ab,bb}` packing (`src/cpu/scf/xc_libxc.cpp`)
-- [ ] Confirm `xc_libxc.h` Doxygen documents libxc id=7 (VWN5, not VWN3) and that the TU is empty without `ATV_HAS_LIBXC`
-- [ ] Run full check + test suite (`ctest --test-dir build --output-on-failure`)
+- [ ] Write failing oracle tests covering LSDA/PBE smoke, spin polarization, density cutoff, and the Slater textbook value (`tests/cpu/scf/oracle/test_xc_libxc_oracle.cpp`)
+- [ ] Add `tests/cpu/scf/oracle/CMakeLists.txt` declaring the `xc_libxc_oracle` STATIC target linking `Libxc::xc` and the oracle test registration
+- [ ] Implement `ATV::test::xc_oracle::evaluate_lsda` summing `XC_LDA_X + XC_LDA_C_VWN` (id 7, VWN5) in `XC_POLARIZED` mode with `kRhoMin = 1e-12` cutoff (`tests/cpu/scf/oracle/xc_libxc_oracle.{h,cpp}`)
+- [ ] Implement `ATV::test::xc_oracle::evaluate_pbe` summing `XC_GGA_X_PBE + XC_GGA_C_PBE` with `vsigma_{aa,ab,bb}` packing (`tests/cpu/scf/oracle/xc_libxc_oracle.cpp`)
+- [ ] Verify production purity — `nm` on `libatomiverse.{a,so}` reports zero `xc_func` / `xc_oracle::*` symbols regardless of `ATV_BUILD_XC_ORACLE` setting
+- [ ] Run full check + test suite (`cmake -B build -DATV_BUILD_TESTS=ON -DATV_BUILD_RHF=ON -DATV_BUILD_XC_ORACLE=ON && cmake --build build -j && ctest --test-dir build --output-on-failure`)
 
 ## Testing strategy
 
-All tests guarded by `#ifdef ATV_HAS_LIBXC` and skip when libxc is unavailable.
-
-- **Happy-path LSDA.** `evaluate_xc_libxc(XCType::LSDA, 0.5, 0.5)` returns finite `exc`, `vrho_alpha`, `vrho_beta`; `exc < 0`; `vsigma_*` exactly zero.
-- **Happy-path PBE.** `evaluate_xc_libxc(XCType::PBE, 0.5, 0.5, 0.1, 0.1, 0.1)` returns finite values everywhere; `exc < 0`; all three `vsigma_*` finite.
-- **Spin-polarized smoke.** `(0.8, 0.2)` produces `vrho_alpha != vrho_beta`.
-- **Density cutoff.** `(1e-20, 1e-20)` returns zero-initialized `XCOutput`.
-- **Domain validation — Slater exchange textbook value.** At ρ_α = ρ_β = 0.5 (total ρ = 1, ζ = 0), evaluating libxc `XC_LDA_X` alone in a focused sub-test must yield `|exc − (−0.7385587663820224)| < 1e-10 Ha`, matching the closed form `−(3/4)(3/π)^{1/3}`.
-- **Build matrix.** A test build with `-DATV_USE_LIBXC=OFF` must still link cleanly: `xc_libxc.cpp` produces no symbols.
+- **Happy-path LSDA**: `xc_oracle::evaluate_lsda(0.5, 0.5)` returns finite `exc`, `vrho_alpha`, `vrho_beta`; `exc < 0`; `vsigma_*` exactly zero.
+- **Happy-path PBE**: `xc_oracle::evaluate_pbe(0.5, 0.5, 0.1, 0.1, 0.1)` returns finite values on all six channels; `exc < 0`.
+- **Spin polarization**: `xc_oracle::evaluate_lsda(0.8, 0.2)` yields `vrho_alpha != vrho_beta`.
+- **Density cutoff**: `xc_oracle::evaluate_lsda(1e-20, 1e-20)` returns zero-initialized `XCOutput`.
+- **Domain validation — Slater textbook**: at ρ_α=ρ_β=0.5 (ζ=0), an LDA-exchange-only sub-test calling `XC_LDA_X` alone asserts `|exc − (−0.7385587663820224)| < 1e-10 Ha`, matching `−(3/4)(3/π)^{1/3}` independent of VWN.
+- **Production purity build matrix**: with `ATV_BUILD_XC_ORACLE=OFF` (default), `nm libatomiverse.a` shows zero `xc_func` symbols. With `ATV_BUILD_XC_ORACLE=ON`, count remains zero (oracle is its own static library, never linked into `atomiverse`).
 
 ## Out of scope
 
-- Comparing libxc output against native `evaluate_xc()` to 1e-12 — sub-spec 03.
-- Batched evaluation, cached libxc handles, thread-local functional pools — re-init per call is acceptable until profiling shows otherwise.
-- Meta-GGA, hybrid, range-separated, anything outside {LSDA, PBE}.
-- CUDA backend XC — out of scope for the whole chain.
-- The runtime `use_libxc` switch in `uks_solve` — handled, if at all, by a later sub-spec.
+- Comparing oracle output against native `evaluate_xc()` — sub-spec 03's parity gate.
+- Any libxc-touching code under `include/atomiverse/`, `src/`, or `python/` — forbidden by the test-only invariant.
+- Cached `xc_func_type` handles, batched evaluators, thread-local pools.
+- Meta-GGA, hybrid, range-separated, anything beyond {LSDA, PBE}.
+- Deletion of the oracle directory and the `ATV_BUILD_XC_ORACLE` option — a separate "retire libxc oracle" spec performs this.
+- CUDA backend XC.
