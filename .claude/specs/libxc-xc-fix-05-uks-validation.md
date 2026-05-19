@@ -1,7 +1,7 @@
 ---
 title: libxc XC Fix 05 — End-to-end UKS Validation
 slug: libxc-xc-fix-05-uks-validation
-status: in-progress
+status: code-complete
 created: 2026-05-19
 revised: 2026-05-19
 depends_on:

@@ -1,7 +1,7 @@
 # Spec Index
 
 - [python-bindings](python-bindings.md) — nanobind + DLPack Python bindings; mp.Frame as sole interface, CUDA as compute backend [in-progress: MD/SCF/optimizer/PW bindings landed; RDF observer binding still TODO]
-- [libxc-xc-fix-05-uks-validation](libxc-xc-fix-05-uks-validation.md) — End-to-end UKS vs PySCF constexpr references [code-complete: framework in place at 1e-2 Ha; tightening to spec's 1e-6..1e-4 Ha pending grid-implementation follow-up]
+- [libxc-xc-fix-05-uks-validation](libxc-xc-fix-05-uks-validation.md) — End-to-end UKS vs PySCF constexpr references [code-complete: all 3 criteria numerically verified at spec target; scientific gate ac-001 awaits external review]
 - [eri-hpc-opt](eri-hpc-opt.md) — Shell-block ERI optimization: -march=native, xsimd, shell-type dispatch to match/exceed PySCF direct SCF [in-progress: 5/10 tasks (phases 1-3); phase 4-5 pending]
 - [rust-frame-lowering](rust-frame-lowering.md) — Rust-first canonical frame, typed requirement system, Spec/Plan/Driver split, and staged migration roadmap [draft]
 - [cpu-qc-product-roadmap](cpu-qc-product-roadmap.md) — **Roadmap index** linking the QC phase sub-specs [in-progress: phase 1 active, phase 2 satisfied via cpu-driver-taxonomy, phases 3-4 draft, phase 5 unscoped]
