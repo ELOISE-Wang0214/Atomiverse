@@ -3,6 +3,7 @@ title: libxc Integration & Native XC Fix
 slug: libxc-xc-fix
 status: draft
 created: 2026-04-14
+revised: 2026-05-19
 ---
 
 # libxc Integration & Native XC Fix
@@ -236,3 +237,30 @@ This allows users to choose libxc for production accuracy or native for educatio
 3. `test_uks`: He atom energy matches PySCF to 1e-5 Ha
 4. `03_uks.py`: all examples PASS with 1% threshold
 5. Native XC without libxc gives same results as with libxc (within 1e-12)
+
+## Tasks
+
+- [ ] Integrate libxc into CMake under `ATV_USE_LIBXC`; define `ATV_HAS_LIBXC` and link `Libxc::xc` (`CMakeLists.txt`)
+- [ ] Write failing point-level parity tests for native vs libxc XC (`tests/cpu/scf/test_xc_vs_libxc.cpp`)
+- [ ] Implement libxc wrapper `evaluate_xc_libxc` for LSDA + PBE (`include/atomiverse/cpu/scf/xc_libxc.h`, `src/cpu/scf/xc_libxc.cpp`)
+- [ ] Fix native `evaluate_xc` (Slater constant, VWN5, spin-interp, vrho convention) until libxc parity ≤ 1e-12 (`src/cpu/scf/xc_functional.cpp`, `tests/cpu/scf/test_xc_functional.cpp`)
+- [ ] Write failing spherical-harmonic + radial-quadrature accuracy tests (`tests/cpu/scf/test_grid.cpp`)
+- [ ] Replace product grid with tabulated Lebedev (6, 50, 110, 194, 302, 590) and Mura-Knowles radial mapping (`include/atomiverse/cpu/scf/lebedev_data.h`, `src/cpu/scf/grid.cpp`)
+- [ ] Replace partial Bragg-Slater table with full Z=1..36 set; throw on unsupported Z (`src/cpu/scf/grid.cpp`)
+- [ ] Update end-to-end UKS validation against PySCF targets and flip `03_uks.py` to PASS/FAIL (`tests/cpu/scf/test_uks_solve.cpp`, `python/examples/03_uks.py`)
+- [ ] Run full check + test suite (`ctest --test-dir build --output-on-failure`)
+
+## Testing strategy
+
+- **Point-level XC parity** (`test_xc_vs_libxc`): native and libxc agree to 1e-12 in `exc`, `vrho_{α,β}`, `vsigma_*` across unpolarized / polarized / fully-polarized / low-/high-density / GGA-σ regimes for both LSDA and PBE.
+- **Grid accuracy** (`test_grid`): Lebedev integrates spherical harmonics to 1e-14 within stated degree; Mura-Knowles integrates `r^n exp(-αr²)` to 1e-10 relative error.
+- **Element-table strictness**: `bragg_slater_radius(Z)` throws `std::invalid_argument` for unsupported Z; no silent fallback path remains.
+- **End-to-end UKS-LSDA** (`test_uks_solve`): H 1e-6 Ha, He 1e-5 Ha, Li 1e-4 Ha, H₂ eq 1e-5 Ha, H₂ PES 1e-4 Ha vs PySCF reference; same test run with and without `ATV_HAS_LIBXC` must agree to 1e-12.
+- **Build matrix**: full ctest passes with `ATV_USE_LIBXC=ON` and `ATV_USE_LIBXC=OFF`.
+
+## Out of scope
+
+- meta-GGA / hybrid / range-separated functionals (only LSDA + PBE here).
+- Grid pruning schemes (NWChem / SG-1); fixed Lebedev order per shell is sufficient.
+- CUDA backend XC fixes (CPU only — CUDA SCF is legacy, tracked separately).
+- Runtime libxc fallback switch (Phase 8) is optional and may slip without blocking acceptance.

@@ -3,6 +3,7 @@ title: ERI Shell-Block HPC Optimization
 slug: eri-hpc-opt
 status: in-progress
 created: 2026-04-14
+revised: 2026-05-19
 ---
 
 # ERI Shell-Block HPC Optimization
@@ -198,3 +199,16 @@ Expected benchmark progression (wall time, Fock build, aspirin STO-3G):
 | `.claude/skills/av-hpc/SKILL.md` | ERI pattern in Implementation mode |
 | `.claude/skills/av-perf/SKILL.md` | ERI profiling guidance |
 | `benchmarks/bench_native.cpp` | Already has `BM_GBuild_Block_Aspirin` (added in this session) |
+
+## Tasks
+
+- [x] Add xsimd 11.2.0 FetchContent and `-march=native` language-guarded flag in `CMakeLists.txt`
+- [x] Implement Ltot-based dispatcher and `eri_blk_ltot<LTOT>` template in `src/cpu/scf/native_integrals.cpp`
+- [x] Implement xsimd-vectorized `eri_blk_ss_ss` ket loop with safe-T guard in `src/cpu/scf/native_integrals.cpp`
+- [x] Verify `BlockG|NativeIntegrals` ctest filters pass to 1e-9 / 1e-7 tolerance
+- [x] Benchmark `BM_GBuild_Block_Aspirin` reaches Phase 3 target (~500 ms, faster than PySCF)
+- [ ] Phase 4: Implement BLAS angular contraction path for `l ≥ 2` via `xt::linalg::dot` in `src/cpu/scf/native_integrals.cpp` (cc-pVDZ enablement)
+- [ ] Phase 4: Add cc-pVDZ correctness test against libcint to 1e-7 in `tests/scf/test_native_integrals.cpp`
+- [ ] Phase 4: Add `BM_GBuild_Block_Aspirin_ccPVDZ` benchmark in `benchmarks/bench_native.cpp` and record PySCF baseline
+- [ ] Phase 5: Update `.claude/agents/av-hpc.md`, `.claude/skills/av-hpc/SKILL.md`, `.claude/skills/av-perf/SKILL.md` with xsimd / Ltot-dispatch / Boys-SIMD patterns
+- [ ] Run full check + test suite (`ctest --test-dir build --output-on-failure`)
