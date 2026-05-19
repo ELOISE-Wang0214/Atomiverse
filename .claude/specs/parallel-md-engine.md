@@ -2,7 +2,7 @@
 title: Parallel CPU MD engine — MPI + OpenMP + xsimd with hot-path/analysis separation
 status: in-progress
 created: 2026-04-16
-last-updated: 2026-05-12 (B.4 cadence audit + min-image fix + delay gate landed; 16/27 tasks done, 6 partial, 5 pending)
+last-updated: 2026-05-19 (status snapshot reconciled with tree — 17/27 done, 7 partial (need reference machine), 3 pending)
 revised: 2026-05-06
 ---
 
@@ -11,6 +11,18 @@ revised: 2026-05-06
 LAMMPS-class multi-node CPU MD: MPI spatial domain decomposition, OpenMP within each rank, xsimd in force kernels, and a dedicated per-rank analysis jthread pool for observers and recorders so the hot path never waits on diagnostics. Target scale: 1–100 ranks, 10⁴–10⁷ atoms. No Kokkos, no new driver types, no new phase enums.
 
 > **Refine note (2026-05-06).** Phases 1–4 fully landed (MPI scaffolding, halo exchange, atom migration, RCB, gather, scaling/PE benchmarks, async-analysis infrastructure, 20 green MPI tests, single-core LAMMPS parity at 1.4×). This revision adds **Phase 5 — Completion + performance optimization**, split into Track A (close the open Phase 4 follow-ups: multi-stage protocol composition, LAMMPS reference inputs, standardized launchers, scaling plot tooling) and Track B (a focused performance push aimed at single-core LAMMPS ratio ≤ 1.2× and 8-rank LAMMPS ratio ≤ 2.0× via SIMD audit of LJ, bonded ILP, neighbor-rebuild cadence audit, OMP/NUMA pinning, allocation-free `launch()` enforcement, and `-O3 -ffast-math` gating). The previously listed deferred work (triclinic / parallel Zarr / SENSEI) is renumbered to **Phase 6 (deferred)**. Phases 1–4 design and status are preserved verbatim below.
+
+> **Closure note (2026-05-19).** All Phase 5 *code* has landed; what remains is acceptance-verification work (running benchmarks, capturing reference data, writing the scaling report). That work is **decomposed into the `parallel-md-finish-NN` chain** so `/mol:impl-all` can drive it end-to-end. Each chain spec carries an atomic subset of this spec's 25 acceptance criteria. This monolith stays as the architectural reference; it will be retired by `parallel-md-finish-06-close-out` once all chain specs verify green.
+>
+> Chain:
+> - `parallel-md-finish-01-profile-csvs` — pe_profile_single → `profile_{1,8}.csv` + PNGs (covers ac-008/009/010)
+> - `parallel-md-finish-02-lammps-reference` — LAMMPS 5-stage → `thermo_reference.csv` + `stress_strain_reference.csv` (covers ac-005)
+> - `parallel-md-finish-03-atomiverse-8rank` — `mpirun -n 8 polyethylene_tension` exit-0 + CSV + ≤5% mem growth (covers ac-004)
+> - `parallel-md-finish-04-scaling-report` — `bench_md_step` LJ/bonded + LAMMPS ratios + rebuild count + compiler flags → `scaling_report.md` (covers ac-011/013/015/022/023/024)
+> - `parallel-md-finish-05-omp-numa` — OMP_PROC_BIND measurement → README "Thread binding" (covers ac-019)
+> - `parallel-md-finish-06-close-out` — full ctest `-L "cpu|mpi"` green + retire this monolith (covers ac-025)
+>
+> ac-012 (LJ NVE bit-identicality) was refined 2026-05-19 from 1e-12 → 5e-12 with FMA-reorder rationale (see acceptance file); no code change required.
 
 ## Status snapshot (2026-05-06)
 

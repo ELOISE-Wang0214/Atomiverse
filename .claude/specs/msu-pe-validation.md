@@ -2,7 +2,7 @@
 title: MSU amorphous-PE tension — correctness and multi-core performance validation vs LAMMPS
 status: in-progress
 created: 2026-04-19
-last-updated: 2026-04-19
+last-updated: 2026-05-19 (status snapshot still current; 18/25 landed, 7 external — INDEX entry refreshed)
 parent: parallel-md-engine.md
 ---
 

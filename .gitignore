@@ -158,6 +158,8 @@ pyrightconfig.json
 *.xyz
 # …except the checked-in benchmark starting geometries
 !benchmarks/qc/molecules/*.xyz
+# …and the checked-in MSU-PE reference plots (Phase 5 acceptance artifacts)
+!benchmarks/md/reference/polyethylene/*.png
 
 # Claude agent
 .claude/worktrees/**
