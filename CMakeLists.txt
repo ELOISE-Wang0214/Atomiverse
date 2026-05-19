@@ -176,11 +176,15 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/md/mpi/reduce.cpp
         src/cpu/md/mpi/gather.cpp
         src/cpu/md/mpi/rcb.cpp
-        # CPU potentials components (bonded interactions)
-        src/cpu/potentials/harmonic_bond.cpp
-        src/cpu/potentials/harmonic_angle.cpp
-        src/cpu/potentials/multi_harmonic_dihedral.cpp
     )
+    # CPU potentials sources — globbed so new pair/bond/angle/dihedral
+    # styles (e.g. PairMorse, BondFENE) drop in with no CMake edit.
+    # CONFIGURE_DEPENDS makes the generator re-glob when files change,
+    # at the cost of one extra stat per source per configure.
+    file(GLOB CPU_POTENTIALS_SRCS CONFIGURE_DEPENDS
+        "${CMAKE_SOURCE_DIR}/src/cpu/potentials/*.cpp"
+    )
+    list(APPEND ATOMIVERSE_SRCS ${CPU_POTENTIALS_SRCS})
 
     if(ATV_BUILD_CUDA)
         list(APPEND ATOMIVERSE_SRCS
@@ -199,10 +203,6 @@ if(NOT ATV_DOCS_ONLY)
             src/cuda/md/neighborlist/setup.cu
             src/cuda/md/neighborlist/export_pairs.cu
             src/cuda/minimizer/sd.cu
-            src/cuda/potentials/lj.cu
-            src/cuda/potentials/harmonic_bond.cu
-            src/cuda/potentials/harmonic_angle.cu
-            src/cuda/potentials/multi_harmonic_dihedral.cu
             src/cuda/md/nose_hoover.cu
             src/cuda/md/deform.cu
             src/cuda/md/barostat.cu
@@ -213,6 +213,11 @@ if(NOT ATV_DOCS_ONLY)
             src/cuda/scf/convergence_check.cu
             src/cuda/scf/driver.cu
         )
+        # CUDA potentials sources — globbed; same rationale as CPU.
+        file(GLOB CUDA_POTENTIALS_SRCS CONFIGURE_DEPENDS
+            "${CMAKE_SOURCE_DIR}/src/cuda/potentials/*.cu"
+        )
+        list(APPEND ATOMIVERSE_SRCS ${CUDA_POTENTIALS_SRCS})
     endif()
 
     add_library(atomiverse ${ATOMIVERSE_SRCS})
