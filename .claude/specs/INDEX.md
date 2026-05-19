@@ -1,7 +1,6 @@
 # Spec Index
 
-- [frame-block-refactor](frame-block-refactor.md) — Restructure cpu/cuda Frame to sub-structs matching molpy block model; prerequisite for Python bindings [draft]
-- [python-bindings](python-bindings.md) — nanobind + DLPack Python bindings; mp.Frame as sole interface, CUDA as compute backend [draft]
+- [python-bindings](python-bindings.md) — nanobind + DLPack Python bindings; mp.Frame as sole interface, CUDA as compute backend [in-progress]
 - [libxc-xc-fix](libxc-xc-fix.md) — Integrate libxc as ground truth, fix native XC functional + grid to match within 1e-12 [draft]
 - [eri-hpc-opt](eri-hpc-opt.md) — Shell-block ERI optimization: -march=native, xsimd, shell-type dispatch to match/exceed PySCF direct SCF [draft]
 - [rust-frame-lowering](rust-frame-lowering.md) — Rust-first canonical frame, typed requirement system, Spec/Plan/Driver split, and staged migration roadmap [draft]
