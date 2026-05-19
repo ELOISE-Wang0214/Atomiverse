@@ -62,9 +62,11 @@ struct CpuFrame {
 
     void set_box(nb::ndarray<double, nb::shape<3, 3>, nb::device::cpu, nb::c_contig> box) {
         const double* bp = box.data();
+        Mat3 cell;
         for (int i = 0; i < 3; ++i)
             for (int j = 0; j < 3; ++j)
-                frame.box(i, j) = bp[i * 3 + j];
+                cell(i, j) = bp[i * 3 + j];
+        frame.box = cell;
     }
 
     // ── Topology ──

@@ -22,9 +22,9 @@
 #include "atomiverse/cpu/md/pair_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/md/virial_stress.h"
-#include "atomiverse/cpu/bonded/harmonic_angle.h"
-#include "atomiverse/cpu/bonded/harmonic_bond.h"
-#include "atomiverse/cpu/bonded/multi_harmonic_dihedral.h"
+#include "atomiverse/cpu/potentials/harmonic_angle.h"
+#include "atomiverse/cpu/potentials/harmonic_bond.h"
+#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
 
 #include "lammps_loader.h"
 
@@ -215,13 +215,13 @@ void run_scenario(const std::string& data_path, int n_steps, Mode mode,
                        .set_special_bonds(0.0, 0.0, 0.0),
                     "lj_pair", ph_force, 0);
     sim.add(*lj);
-    auto hb = timed(cpu::bonded::HarmonicBond{{bond_K_ev}, {params::bond_r0}},
+    auto hb = timed(HarmonicBond{{bond_K_ev}, {params::bond_r0}},
                     "harm_bond", ph_force, 1);
     sim.add(*hb);
-    auto ha = timed(cpu::bonded::HarmonicAngle{{angle_K_ev}, {angle_theta0}},
+    auto ha = timed(HarmonicAngle{{angle_K_ev}, {angle_theta0}},
                     "harm_angle", ph_force, 2);
     sim.add(*ha);
-    auto hd = timed(cpu::bonded::MultiHarmonicDihedral{{dihedral_ev}},
+    auto hd = timed(MultiHarmonicDihedral{{dihedral_ev}},
                     "dihedral", ph_force, 3);
     sim.add(*hd);
 

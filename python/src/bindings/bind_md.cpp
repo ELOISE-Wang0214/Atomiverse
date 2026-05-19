@@ -12,10 +12,10 @@
 #include "atomiverse/cpu/md/nose_hoover.h"
 #include "atomiverse/cpu/md/lj.h"
 #include "atomiverse/cpu/md/neighbor_list.h"
-#include "atomiverse/cpu/bonded/harmonic_bond.h"
-#include "atomiverse/cpu/bonded/harmonic_angle.h"
-#include "atomiverse/cpu/bonded/multi_harmonic_dihedral.h"
-#include "atomiverse/cpu/observer/thermo_component.h"
+#include "atomiverse/cpu/potentials/harmonic_bond.h"
+#include "atomiverse/cpu/potentials/harmonic_angle.h"
+#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
+#include "atomiverse/cpu/recorder/thermo.h"
 #include "atomiverse/facade/stage.h"
 
 void bind_md(nb::module_& m) {
@@ -72,13 +72,13 @@ void bind_md(nb::module_& m) {
         .def("add_neighbor_list", [](PhaseBuilder& self, cpu::md::NeighborList<> comp, int order) -> PhaseBuilder& {
             return self.add(std::move(comp), order);
         }, nb::arg("comp"), nb::arg("order") = 0, nb::rv_policy::reference)
-        .def("add_harmonic_bond", [](PhaseBuilder& self, cpu::bonded::HarmonicBond comp, int order) -> PhaseBuilder& {
+        .def("add_harmonic_bond", [](PhaseBuilder& self, HarmonicBond comp, int order) -> PhaseBuilder& {
             return self.add(std::move(comp), order);
         }, nb::arg("comp"), nb::arg("order") = 0, nb::rv_policy::reference)
-        .def("add_harmonic_angle", [](PhaseBuilder& self, cpu::bonded::HarmonicAngle comp, int order) -> PhaseBuilder& {
+        .def("add_harmonic_angle", [](PhaseBuilder& self, HarmonicAngle comp, int order) -> PhaseBuilder& {
             return self.add(std::move(comp), order);
         }, nb::arg("comp"), nb::arg("order") = 0, nb::rv_policy::reference)
-        .def("add_multi_harmonic_dihedral", [](PhaseBuilder& self, cpu::bonded::MultiHarmonicDihedral comp, int order) -> PhaseBuilder& {
+        .def("add_multi_harmonic_dihedral", [](PhaseBuilder& self, MultiHarmonicDihedral comp, int order) -> PhaseBuilder& {
             return self.add(std::move(comp), order);
         }, nb::arg("comp"), nb::arg("order") = 0, nb::rv_policy::reference)
         .def("add_thermo", [](PhaseBuilder& self, cpu::Thermo comp, int order) -> PhaseBuilder& {
@@ -124,21 +124,21 @@ void bind_md(nb::module_& m) {
              "Construct with cutoff [A] and optional skin distance [A].")
     ;
 
-    nb::class_<cpu::bonded::HarmonicBond>(m, "HarmonicBond",
+    nb::class_<HarmonicBond>(m, "HarmonicBond",
         "Harmonic bond potential V = K(r - r0)^2.")
         .def(nb::init<std::vector<double>, std::vector<double>>(),
              nb::arg("K"), nb::arg("r0"),
              "Construct with force constants K and equilibrium distances r0 per bond type.")
     ;
 
-    nb::class_<cpu::bonded::HarmonicAngle>(m, "HarmonicAngle",
+    nb::class_<HarmonicAngle>(m, "HarmonicAngle",
         "Harmonic angle potential V = K(theta - theta0)^2.")
         .def(nb::init<std::vector<double>, std::vector<double>>(),
              nb::arg("K"), nb::arg("theta0"),
              "Construct with force constants K and equilibrium angles theta0 per angle type.")
     ;
 
-    nb::class_<cpu::bonded::MultiHarmonicDihedral>(m, "MultiHarmonicDihedral",
+    nb::class_<MultiHarmonicDihedral>(m, "MultiHarmonicDihedral",
         "Multi-harmonic dihedral potential.")
         .def(nb::init<std::vector<std::vector<double>>>(),
              nb::arg("Cn"),

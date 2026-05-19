@@ -28,6 +28,7 @@ namespace md {
 class VirialStress : public cpu::ComponentBase {
 public:
     std::string name() const override { return "virial_stress"; }
+    ComponentRole role() const override { return ComponentRole::Observer; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {{static_cast<int>(ATV::md::Phase::post_force), -50}};
     }

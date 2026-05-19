@@ -16,8 +16,8 @@
 #include "atomiverse/cpu/md/neighbor_list.h"
 #include "atomiverse/cpu/md/pair_list.h"
 #include "atomiverse/cpu/md/virial_stress.h"
-#include "atomiverse/cpu/observer/thermo_component.h"
-#include "atomiverse/cpu/bonded/harmonic_bond.h"
+#include "atomiverse/cpu/recorder/thermo.h"
+#include "atomiverse/cpu/potentials/harmonic_bond.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/core/mat3.h"
@@ -470,7 +470,7 @@ TEST_F(CpuMdTest, BondedForce) {
     double K = double(100.0);
     double r0 = double(1.0);
 
-    cpu::bonded::HarmonicBond bond({K}, {r0});
+    HarmonicBond bond({K}, {r0});
     cpu::Context ctx;
     cpu::BuildContext bctx{ctx, frame};
     bond.build(bctx);

@@ -3,6 +3,7 @@
 
 #include <gtest/gtest.h>
 
+#include "atomiverse/core/real.h"
 #include "atomiverse/core/units.h"
 
 using namespace ATV;

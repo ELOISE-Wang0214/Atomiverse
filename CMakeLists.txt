@@ -174,11 +174,10 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/md/mpi/reduce.cpp
         src/cpu/md/mpi/gather.cpp
         src/cpu/md/mpi/rcb.cpp
-        src/cpu/observer/thermo_component.cpp
-        # CPU bonded components
-        src/cpu/bonded/harmonic_bond.cpp
-        src/cpu/bonded/harmonic_angle.cpp
-        src/cpu/bonded/multi_harmonic_dihedral.cpp
+        # CPU potentials components (bonded interactions)
+        src/cpu/potentials/harmonic_bond.cpp
+        src/cpu/potentials/harmonic_angle.cpp
+        src/cpu/potentials/multi_harmonic_dihedral.cpp
     )
 
     if(ATV_BUILD_CUDA)
@@ -244,7 +243,6 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/aspc_predictor.cpp
             src/cpu/scf/scf_evaluator.cpp
             src/cpu/scf/orbital_info_observer.cpp
-            src/cpu/minimizer/init.cpp
             src/cpu/minimizer/lbfgs.cpp
             src/cpu/minimizer/cg.cpp
             src/cpu/minimizer/trajectory_writer.cpp
@@ -281,7 +279,6 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/pw/internal/fft.cpp
             src/cpu/pw/internal/upf_reader.cpp
             src/cpu/pw/internal/kpoint.cpp
-            src/cpu/pw/internal/crystal.cpp
             src/cpu/pw/internal/ewald.cpp
             src/cpu/pw/pw_poisson.cpp
             src/cpu/pw/pw_lda.cpp
@@ -290,7 +287,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/pw/pw_davidson.cpp
             src/cpu/pw/pw_density.cpp
             src/cpu/pw/pw_convergence.cpp
-            src/cpu/pw/solve_si.cpp
+            src/cpu/pw/pw_scf.cpp
         )
         if(NOT ATV_BUILD_RHF)
             target_sources(atomiverse PRIVATE
@@ -506,12 +503,13 @@ if(NOT ATV_DOCS_ONLY)
         nanobind_add_module(_atomiverse
             python/src/bindings/bind.cpp
             python/src/bindings/bind_frame.cpp
-            python/src/bindings/bind_md.cpp
-            python/src/bindings/bind_scf.cpp
-            python/src/bindings/bind_optimizer.cpp
+            python/src/bindings/bind_pw.cpp
         )
         target_link_libraries(_atomiverse PRIVATE atomiverse)
         target_include_directories(_atomiverse PRIVATE include python/src/bindings)
+        if(ATV_BUILD_PW)
+            target_link_libraries(_atomiverse PRIVATE ${FFTW3_LIB})
+        endif()
         install(TARGETS _atomiverse LIBRARY DESTINATION atomiverse)
     endif()
 

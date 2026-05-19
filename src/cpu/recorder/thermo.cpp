@@ -1,5 +1,5 @@
 /// @file cpu/recorder/thermo.cpp
-/// @brief CPU thermodynamic output: temperature calculation + formatted printing.
+/// @brief CPU thermodynamic output: Thermo component + thermo_print helper.
 
 #include "atomiverse/cpu/recorder/thermo.h"
 #include "atomiverse/core/log.h"
@@ -9,6 +9,35 @@
 
 namespace ATV {
 namespace cpu {
+
+// ── Thermo component ───────────────────────────────────────────────
+
+Thermo::Thermo(int freq) : freq_(freq) {}
+
+void Thermo::launch(const cpu::LaunchContext& ctx) {
+    if (ctx.runtime.mpi_rank != 0) return;
+
+    auto& f = ctx.frame;
+    int n = f.atoms.size();
+    int n_dof = 3 * n - 3;
+
+    double temperature = 0;
+    if (n_dof > 0)
+        temperature = double(2) * f.kinetic / (static_cast<double>(n_dof) * kBoltzmann);
+
+    double total_energy = f.energy + f.kinetic;
+
+    if (ctx.step == 0) {
+        ATV_INFO("  Step          PE              KE           Temp         TotalE");
+        ATV_INFO("  ----  --------------- --------------- --------------- ---------------");
+    }
+
+    ATV_INFO("  {:4d}  {:15.8e} {:15.8e} {:15.8e} {:15.8e}",
+             ctx.step, static_cast<double>(f.energy), static_cast<double>(f.kinetic),
+             static_cast<double>(temperature), static_cast<double>(total_energy));
+}
+
+// ── thermo_print free function ─────────────────────────────────────
 
 void thermo_print(int step, double pe, double ke, int n_atoms,
                   bool& header_printed, std::ofstream& file)

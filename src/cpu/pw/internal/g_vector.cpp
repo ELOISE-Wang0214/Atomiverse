@@ -10,7 +10,7 @@ namespace cpu {
 namespace pw {
 namespace internal {
 
-GVectorList enumerate_g_vectors(const Box& cell_bohr, Real ecut, const Vec3& k) {
+GVectorList enumerate_g_vectors(const ::ATV::Box& cell_bohr, Real ecut, const Vec3& k) {
     auto recip = cell_bohr.recip_cell();
     Vec3 b0{recip(0,0), recip(0,1), recip(0,2)};
     Vec3 b1{recip(1,0), recip(1,1), recip(1,2)};
@@ -22,7 +22,7 @@ GVectorList enumerate_g_vectors(const Box& cell_bohr, Real ecut, const Vec3& k) 
     int kmax = static_cast<int>(gmax / b1n) + 1;
     int lmax = static_cast<int>(gmax / b2n) + 1;
 
-    struct GV { Vec3 v; Real e; };
+    struct GV { Vec3 v; Real e; int hi, ki, li; };
     std::vector<GV> tmp;
 
     for (int h = -hmax; h <= hmax; ++h) {
@@ -32,7 +32,7 @@ GVectorList enumerate_g_vectors(const Box& cell_bohr, Real ecut, const Vec3& k) 
                 Vec3 kpg = {g[0] + k[0], g[1] + k[1], g[2] + k[2]};
                 Real e = Real(0.5) * kpg.norm_squared();
                 if (e <= ecut + Real(1e-12)) {
-                    tmp.push_back({g, e});
+                    tmp.push_back({g, e, h, kk, l});
                 }
             }
         }
@@ -44,23 +44,25 @@ GVectorList enumerate_g_vectors(const Box& cell_bohr, Real ecut, const Vec3& k) 
     GVectorList result;
     result.g.reserve(tmp.size());
     result.ekin.reserve(tmp.size());
-    for (auto& t : tmp) { result.g.push_back(t.v); result.ekin.push_back(t.e); }
-
-    // FFT grid: find max |h|,|k|,|l|
-    int max_h = 0, max_k = 0, max_l = 0;
-    Real ib0 = Real(1) / b0n, ib1 = Real(1) / b1n, ib2 = Real(1) / b2n;
-    for (auto& gv : result.g) {
-        Real hh = gv.dot(b0) * ib0 / (b0.norm() * ib0); // project onto b0
-        int hi = static_cast<int>(std::abs(gv[0]) / b0n) + 1;
-        int ki = static_cast<int>(std::abs(gv[1]) / b1n) + 1;
-        int li = static_cast<int>(std::abs(gv[2]) / b2n) + 1;
-        if (hi > max_h) max_h = hi;
-        if (ki > max_k) max_k = ki;
-        if (li > max_l) max_l = li;
+    result.h.reserve(tmp.size());
+    result.k.reserve(tmp.size());
+    result.l.reserve(tmp.size());
+    for (auto& t : tmp) {
+        result.g.push_back(t.v);
+        result.ekin.push_back(t.e);
+        result.h.push_back(t.hi);
+        result.k.push_back(t.ki);
+        result.l.push_back(t.li);
     }
-    result.nx = 2 * (max_h + 1);
-    result.ny = 2 * (max_k + 1);
-    result.nz = 2 * (max_l + 1);
+
+    // FFT grid dimensions: must be even (FFTW requirement)
+    int nx = 2 * (hmax + 1);
+    int ny = 2 * (kmax + 1);
+    int nz = 2 * (lmax + 1);
+    if (nx % 2) ++nx; if (ny % 2) ++ny; if (nz % 2) ++nz;
+    result.nx = nx;
+    result.ny = ny;
+    result.nz = nz;
 
     return result;
 }

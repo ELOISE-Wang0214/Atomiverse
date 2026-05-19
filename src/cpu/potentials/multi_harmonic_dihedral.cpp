@@ -1,7 +1,7 @@
-/// @file cpu/bonded/multi_harmonic_dihedral.cpp
+/// @file cpu/potentials/multi_harmonic_dihedral.cpp
 /// @brief CPU multi-harmonic dihedral implementation.
 
-#include "atomiverse/cpu/bonded/multi_harmonic_dihedral.h"
+#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/md/mpi/domain.h"
 
@@ -13,9 +13,6 @@
 #endif
 
 namespace ATV {
-namespace cpu {
-namespace bonded {
-
 // Cross product
 static inline void cross(double ax, double ay, double az,
                           double bx, double by, double bz,
@@ -281,6 +278,4 @@ void MultiHarmonicDihedral::destroy(const cpu::DestroyContext& ctx) {
     local_dihedrals_generation_ = ~std::uint64_t{0};
 }
 
-} // namespace bonded
-} // namespace cpu
 } // namespace ATV

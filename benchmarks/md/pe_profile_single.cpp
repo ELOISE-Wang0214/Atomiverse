@@ -37,9 +37,9 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/bonded/harmonic_angle.h"
-#include "atomiverse/cpu/bonded/harmonic_bond.h"
-#include "atomiverse/cpu/bonded/multi_harmonic_dihedral.h"
+#include "atomiverse/cpu/potentials/harmonic_angle.h"
+#include "atomiverse/cpu/potentials/harmonic_bond.h"
+#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/init.h"
@@ -411,14 +411,14 @@ int main(int argc, char** argv) {
                               .set_special_bonds(0.0, 0.0, 0.0),
                           "LJ", p_force, 0), 0);
     sim.on(Phase::force)
-        .add(*make_timed(cpu::bonded::HarmonicBond{{bond_k_eV()}, {kBondR0}},
+        .add(*make_timed(HarmonicBond{{bond_k_eV()}, {kBondR0}},
                           "HarmonicBond", p_force, 1), 1);
     sim.on(Phase::force)
-        .add(*make_timed(cpu::bonded::HarmonicAngle{{angle_k_eV()},
+        .add(*make_timed(HarmonicAngle{{angle_k_eV()},
                                                      {kAngleTheta0}},
                           "HarmonicAngle", p_force, 2), 2);
     sim.on(Phase::force)
-        .add(*make_timed(cpu::bonded::MultiHarmonicDihedral{{dihedral_Cn_eV()}},
+        .add(*make_timed(MultiHarmonicDihedral{{dihedral_Cn_eV()}},
                           "MultiHarmonicDihedral", p_force, 3), 3);
 
     sim.on(Phase::post_force)

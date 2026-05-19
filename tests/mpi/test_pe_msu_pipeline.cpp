@@ -20,9 +20,9 @@
 #include <cmath>
 #include <vector>
 
-#include "atomiverse/cpu/bonded/harmonic_angle.h"
-#include "atomiverse/cpu/bonded/harmonic_bond.h"
-#include "atomiverse/cpu/bonded/multi_harmonic_dihedral.h"
+#include "atomiverse/cpu/potentials/harmonic_angle.h"
+#include "atomiverse/cpu/potentials/harmonic_bond.h"
+#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/barostat.h"
 #include "atomiverse/cpu/md/deform.h"
@@ -174,9 +174,9 @@ TEST(PeMsuPipeline, NvtPlusNptPlusDeform) {
     sim.on(ATV::md::Phase::force)
         .add(cpu::md::NeighborList<>{lj_cut}, -10)
         .add(cpu::md::LJ{lj_eps, lj_sig, lj_cut}.set_special_bonds(0.0, 0.0, 0.0))
-        .add(cpu::bonded::HarmonicBond{{bond_K_eV()}, {kBondR0}})
-        .add(cpu::bonded::HarmonicAngle{{angle_K_eV()}, {kAngleTheta0}})
-        .add(cpu::bonded::MultiHarmonicDihedral{{dihedral_Cn_eV()}});
+        .add(HarmonicBond{{bond_K_eV()}, {kBondR0}})
+        .add(HarmonicAngle{{angle_K_eV()}, {kAngleTheta0}})
+        .add(MultiHarmonicDihedral{{dihedral_Cn_eV()}});
     sim.add(cpu::md::VirialStress{});
     sim.add(cpu::md::Barostat{P_target, tau_P, dt});
     sim.add(cpu::md::Deform{strain_rate, dt, /*axis=*/0});

@@ -28,7 +28,6 @@
 #include "atomiverse/core/device.h"
 #include "atomiverse/cpu/backend_traits.h"
 #include "atomiverse/cpu/component.h"
-#include "atomiverse/cpu/minimizer/init.h"
 #include "atomiverse/cpu/minimizer/minimize.h"
 #include "atomiverse/cpu/optimize_driver.h"
 #include "atomiverse/cpu/snapshot_publisher.h"

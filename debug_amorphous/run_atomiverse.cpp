@@ -47,9 +47,9 @@
 #include "atomiverse/cpu/md/nve_limit.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/md/virial_stress.h"
-#include "atomiverse/cpu/bonded/harmonic_angle.h"
-#include "atomiverse/cpu/bonded/harmonic_bond.h"
-#include "atomiverse/cpu/bonded/multi_harmonic_dihedral.h"
+#include "atomiverse/cpu/potentials/harmonic_angle.h"
+#include "atomiverse/cpu/potentials/harmonic_bond.h"
+#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
 
 #include "gather_frame.h"
 #include "lammps_loader.h"
@@ -286,9 +286,9 @@ int main(int argc, char** argv) {
             .add(cpu::md::NeighborList<>{lj_cut, /*skin=*/0.4, /*every=*/10}, -10)
             .add(cpu::md::LJ{lj_eps_ev, lj_sig, lj_cut}
                  .set_special_bonds(0.0, 0.0, 0.0))
-            .add(cpu::bonded::HarmonicBond{{bond_K_ev}, {bond_r0}})
-            .add(cpu::bonded::HarmonicAngle{{angle_K_ev}, {angle_theta0}})
-            .add(cpu::bonded::MultiHarmonicDihedral{{dihedral_ev}});
+            .add(HarmonicBond{{bond_K_ev}, {bond_r0}})
+            .add(HarmonicAngle{{angle_K_ev}, {angle_theta0}})
+            .add(MultiHarmonicDihedral{{dihedral_ev}});
         sim.add(cpu::md::VirialStress{});
 
         ThermoPrinter thermo{100, rank == 0 ? log_stream : std::cout,
@@ -376,9 +376,9 @@ int main(int argc, char** argv) {
             .add(cpu::md::NeighborList<>{lj_cut, /*skin=*/0.4, /*every=*/10}, -10)
             .add(cpu::md::LJ{lj_eps_ev, lj_sig, lj_cut}
                  .set_special_bonds(0.0, 0.0, 0.0))
-            .add(cpu::bonded::HarmonicBond{{bond_K_ev}, {bond_r0}})
-            .add(cpu::bonded::HarmonicAngle{{angle_K_ev}, {angle_theta0}})
-            .add(cpu::bonded::MultiHarmonicDihedral{{dihedral_ev}});
+            .add(HarmonicBond{{bond_K_ev}, {bond_r0}})
+            .add(HarmonicAngle{{angle_K_ev}, {angle_theta0}})
+            .add(MultiHarmonicDihedral{{dihedral_ev}});
         sim.add(cpu::md::VirialStress{});
 
         ThermoPrinter thermo{100, rank == 0 ? log_stream : std::cout,

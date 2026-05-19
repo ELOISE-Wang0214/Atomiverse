@@ -30,6 +30,9 @@
 ///      (`cpu::Context::outer_status`), which `OptimizeDriver` polls
 ///      for `converged` and `DynamicsDriver` polls for
 ///      `stop_requested`.
+///   4. Unified categorical setter API (set_pair, set_bond, set_angle,
+///      set_dihedral, set_neighbor, set_observer, set_record, set_thermo)
+///      shared across MD / Minimize / Evaluate via `CategoryTraits`.
 ///
 /// User code does not subclass this directly — the three concrete CPU
 /// category bases (`cpu::EvaluateDriver` / `DynamicsDriver` /
@@ -50,15 +53,44 @@
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/driver.h"
 #include "atomiverse/facade/iteration_status.h"
+#include "atomiverse/facade/stage.h"
+#include "atomiverse/cpu/recorder/thermo.h"
 
 namespace ATV {
 namespace cpu {
+
+/// @brief Phase traits for each driver category.
+///
+/// Maps PhaseEnum → the eval phase (where pair/bonded forces run) and
+/// the end-of-step phase (where thermo output runs). Specializations
+/// below for md, minimizer, and evaluate drivers.
+template <typename PhaseEnum>
+struct CategoryTraits;
+
+template <>
+struct CategoryTraits<ATV::md::Phase> {
+    static constexpr auto eval_phase = ATV::md::Phase::force;
+    static constexpr auto end_phase  = ATV::md::Phase::end_of_step;
+};
+
+template <>
+struct CategoryTraits<ATV::minimizer::Phase> {
+    static constexpr auto eval_phase = ATV::minimizer::Phase::force;
+    static constexpr auto end_phase  = ATV::minimizer::Phase::end_of_step;
+};
+
+template <>
+struct CategoryTraits<ATV::evaluate::Phase> {
+    static constexpr auto eval_phase = ATV::evaluate::Phase::evaluate;
+    static constexpr auto end_phase  = ATV::evaluate::Phase::finalize;
+};
 
 /// @brief CPU-backend driver layer — shared by all three CPU category bases.
 template <typename PhaseEnum>
 class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
 public:
     using Base = Driver<PhaseEnum, cpu::device_tag>;
+    using Traits = CategoryTraits<PhaseEnum>;
 
     /// @brief Compile the Plan after installing infrastructure and
     /// validating the required role + capability set.
@@ -99,6 +131,8 @@ protected:
             fn(*pb.component);
         }
     }
+
+    // ── Driver loop helpers (protected — subclasses only) ──────────
 
     /// @brief One-time setup — backend init, plan load, set frame, build components.
     /// Resets outer_status before the run so a stale flag from a prior
@@ -141,7 +175,83 @@ protected:
         throw std::runtime_error(std::string("driver build: missing required ") + what);
     }
 
-    // ─── Categorical-setter helpers (shared across MD / Minimize / Evaluate) ───
+public:
+    // ─── Categorical setter API ─────────────────────────────────────
+    //
+    // These are the LAMMPS-shaped setters shared across MD, Minimize,
+    // and Evaluate. Each concrete driver inherits them; driver-specific
+    // additions (set_integrator, set_optimizer, etc.) are declared in
+    // the concrete class.
+
+    /// @brief Configure the pair-cutoff force evaluator (LAMMPS `pair_style`).
+    /// Singular: re-call with same class idempotent, different class throws.
+    template <typename P>
+    void set_pair(P&& p) {
+        using D = std::decay_t<P>;
+        static_assert(std::is_base_of_v<ATV::cpu::PairEvaluator, D>,
+                      "set_pair requires a cpu::PairEvaluator subclass");
+        set_singular_at_(std::forward<P>(p), pair_set_, "set_pair",
+                         Traits::eval_phase, 0);
+    }
+
+    /// @brief Configure the bond force evaluator (LAMMPS `bond_style`).
+    template <typename B>
+    void set_bond(B&& b) {
+        set_singular_at_(std::forward<B>(b), bond_set_, "set_bond",
+                         Traits::eval_phase, 0);
+    }
+
+    /// @brief Configure the angle force evaluator (LAMMPS `angle_style`).
+    template <typename A>
+    void set_angle(A&& a) {
+        set_singular_at_(std::forward<A>(a), angle_set_, "set_angle",
+                         Traits::eval_phase, 0);
+    }
+
+    /// @brief Configure the dihedral force evaluator (LAMMPS `dihedral_style`).
+    template <typename D>
+    void set_dihedral(D&& d) {
+        set_singular_at_(std::forward<D>(d), dihedral_set_, "set_dihedral",
+                         Traits::eval_phase, 0);
+    }
+
+    /// @brief Configure the neighbor list (LAMMPS `neighbor` + `neigh_modify`).
+    /// Bound at eval_phase @ -10, before pair/bonded force evaluators.
+    template <typename N>
+    void set_neighbor(N&& n_comp) {
+        set_singular_at_(std::forward<N>(n_comp), neighbor_set_, "set_neighbor",
+                         Traits::eval_phase, -10);
+    }
+
+    /// @brief Add a derived-quantity observer (LAMMPS `compute`). Plural.
+    template <typename Obs>
+    void set_observer(Obs&& obs) {
+        this->add(std::forward<Obs>(obs));
+    }
+
+    /// @brief Add a recorder / I/O sink (LAMMPS `dump`). Plural.
+    template <typename R>
+    void set_record(R&& r) {
+        this->add(std::forward<R>(r));
+    }
+
+    /// @brief Configure the thermo print cadence (LAMMPS `thermo N`).
+    /// Singular: re-call with a different cadence throws.
+    /// Binds `cpu::Thermo{every}` at the driver's end-of-step phase @ +20.
+    void set_thermo(int every) {
+        if (thermo_every_) {
+            if (*thermo_every_ == every) return;
+            throw std::invalid_argument(
+                "set_thermo already configured with " +
+                std::to_string(*thermo_every_) +
+                ", rejected re-call with " + std::to_string(every));
+        }
+        thermo_every_ = every;
+        this->on(Traits::end_phase)
+             .add(ATV::cpu::Thermo{every}, +20);
+    }
+
+    // ─── Singular-setter helpers (used by the categorical setters above) ──
 
     /// @brief Singular setter using the component's `default_bindings()`.
     /// Idempotent on same-name re-call; throws on different-name re-call.
@@ -162,8 +272,7 @@ protected:
 
     /// @brief Singular setter at an explicit phase / order. Used for
     /// components without `default_bindings()` (NeighborList) or where
-    /// the categorical API pins a specific slot (`set_pair` at force@0,
-    /// `set_thermo` at end_of_step@+20, etc.).
+    /// the categorical API pins a specific slot.
     template <typename C>
     void set_singular_at_(C&& comp,
                           std::optional<std::string>& slot,
@@ -179,6 +288,9 @@ protected:
         slot = n;
         this->on(phase).add(std::forward<C>(comp), order);
     }
+
+protected:
+    // ── Infrastructure scan (subclass install_infra() only) ──────────
 
     /// @brief Aggregate of pending-component facts that `install_infra()`
     /// uses to decide what to auto-inject and what to throw about. Single
@@ -224,6 +336,16 @@ protected:
                 "but no neighbor list was registered. " + setter_help);
         }
     }
+
+private:
+    // ── Categorical setter slots ────────────────────────────────────
+
+    std::optional<std::string> pair_set_;
+    std::optional<std::string> bond_set_;
+    std::optional<std::string> angle_set_;
+    std::optional<std::string> dihedral_set_;
+    std::optional<std::string> neighbor_set_;
+    std::optional<int>         thermo_every_;
 };
 
 } // namespace cpu

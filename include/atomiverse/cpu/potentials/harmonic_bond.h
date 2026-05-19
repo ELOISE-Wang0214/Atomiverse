@@ -1,4 +1,4 @@
-/// @file cpu/bonded/harmonic_bond.h
+/// @file cpu/potentials/harmonic_bond.h
 /// @brief CPU harmonic bond stretching component.
 #pragma once
 
@@ -9,9 +9,6 @@
 #include "atomiverse/cpu/component.h"
 
 namespace ATV {
-namespace cpu {
-namespace bonded {
-
 /// @brief Harmonic bond stretching: V = K(r - r0)^2.
 ///
 /// Thread-parallel with per-thread force reduction buffers (Newton's 3rd law).
@@ -40,6 +37,4 @@ private:
     std::uint64_t local_bonds_generation_ = ~std::uint64_t{0};
 };
 
-} // namespace bonded
-} // namespace cpu
 } // namespace ATV

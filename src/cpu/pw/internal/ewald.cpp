@@ -12,7 +12,7 @@ namespace internal {
 
 EwaldSummation::EwaldSummation(const std::vector<Vec3>& pos_ang,
                                const std::vector<Real>& charges,
-                               const Box& cell, Real ecut) {
+                               const ::ATV::Box& cell, Real ecut) {
     // Convert to Bohr internally
     Real a2b = Real(1.8897259886);
     Box cell_bohr = cell;
@@ -25,9 +25,10 @@ EwaldSummation::EwaldSummation(const std::vector<Vec3>& pos_ang,
     Real vol = cell_bohr.volume();
     if (vol <= 0) return;
 
-    // Ewald alpha: auto-select
+    // Ewald alpha: auto-select, calibrated to match QE ewlad.f90
     Real rcut = cell_bohr.lengths().norm() * Real(0.5);
-    Real alpha = std::sqrt(-std::log(Real(1e-10))) / rcut;
+    alpha_ = std::sqrt(-std::log(Real(2e-17))) / rcut;
+    Real alpha = alpha_;
     Real alpha_sq_4 = Real(4) * alpha * alpha;
 
     int n = static_cast<int>(charges.size());

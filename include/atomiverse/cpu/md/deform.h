@@ -34,6 +34,7 @@ public:
     Deform(double strain_rate, double dt, int axis = 0);
 
     std::string name() const override { return "deform"; }
+    ComponentRole role() const override { return ComponentRole::Integrator; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {{static_cast<int>(ATV::md::Phase::initial_integrate), 200}};
     }

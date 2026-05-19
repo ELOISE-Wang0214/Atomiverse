@@ -24,7 +24,7 @@
 #include <cstdlib>
 #include <vector>
 
-#include "atomiverse/cpu/bonded/harmonic_bond.h"
+#include "atomiverse/cpu/potentials/harmonic_bond.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/init.h"
 #include "atomiverse/cpu/md/lj.h"
@@ -134,7 +134,7 @@ TEST(MdNoAlloc, InnerLoopAfterWarmupAllocatesNothing) {
     sim.on(ATV::md::Phase::force)
         .add(cpu::md::NeighborList<>{5.0}, -10);
     sim.on(ATV::md::Phase::force)
-        .add(cpu::bonded::HarmonicBond{{kBondK_kcal * kKcalPerMolToEv},
+        .add(HarmonicBond{{kBondK_kcal * kKcalPerMolToEv},
                                         {kBondR0}});
     sim.build();
 

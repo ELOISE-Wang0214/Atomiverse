@@ -2,7 +2,7 @@
 /// @brief Mat3 — 3x3 matrix OOP class with xtensor_fixed storage.
 #pragma once
 
-#include <xtensor/xfixed.hpp>
+#include <xtensor/containers/xfixed.hpp>
 #include <cmath>
 #include <stdexcept>
 #include "atomiverse/core/real.h"
@@ -114,6 +114,7 @@ public:
         m(0,0) = a; m(1,1) = b; m(2,2) = c;
         return m;
     }
+    static Mat3 cubic(Real l) { return diagonal(l, l, l); }
 };
 
 } // namespace ATV

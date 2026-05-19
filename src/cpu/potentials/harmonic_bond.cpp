@@ -1,7 +1,7 @@
-/// @file cpu/bonded/harmonic_bond.cpp
+/// @file cpu/potentials/harmonic_bond.cpp
 /// @brief CPU harmonic bond stretching implementation.
 
-#include "atomiverse/cpu/bonded/harmonic_bond.h"
+#include "atomiverse/cpu/potentials/harmonic_bond.h"
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/md/mpi/domain.h"
 
@@ -13,9 +13,6 @@
 #endif
 
 namespace ATV {
-namespace cpu {
-namespace bonded {
-
 HarmonicBond::HarmonicBond(std::vector<double> K, std::vector<double> r0)
     : K_(std::move(K)), r0_(std::move(r0)) {}
 
@@ -186,6 +183,4 @@ void HarmonicBond::destroy(const cpu::DestroyContext& ctx) {
     local_bonds_generation_ = ~std::uint64_t{0};
 }
 
-} // namespace bonded
-} // namespace cpu
 } // namespace ATV

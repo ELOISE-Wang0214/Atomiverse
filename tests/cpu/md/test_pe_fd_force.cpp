@@ -12,9 +12,9 @@
 #include <functional>
 #include <vector>
 
-#include "atomiverse/cpu/bonded/harmonic_angle.h"
-#include "atomiverse/cpu/bonded/harmonic_bond.h"
-#include "atomiverse/cpu/bonded/multi_harmonic_dihedral.h"
+#include "atomiverse/cpu/potentials/harmonic_angle.h"
+#include "atomiverse/cpu/potentials/harmonic_bond.h"
+#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/context.h"
 #include "atomiverse/cpu/frame.h"
@@ -124,7 +124,7 @@ TEST(PeFdForce, HarmonicBond) {
         cpu::Context ctx;
         cpu::BuildContext bctx{ctx, f};
         cpu::LaunchContext lctx{ctx, f, 0, 0};
-        cpu::bonded::HarmonicBond c({1.0}, {1.5});
+        HarmonicBond c({1.0}, {1.5});
         c.build(bctx);
         c.launch(lctx);
         c.destroy({ctx, f});
@@ -136,7 +136,7 @@ TEST(PeFdForce, HarmonicAngle) {
         cpu::Context ctx;
         cpu::BuildContext bctx{ctx, f};
         cpu::LaunchContext lctx{ctx, f, 0, 0};
-        cpu::bonded::HarmonicAngle c({1.0}, {2.0});  // K=1, theta0=2 rad
+        HarmonicAngle c({1.0}, {2.0});  // K=1, theta0=2 rad
         c.build(bctx);
         c.launch(lctx);
         c.destroy({ctx, f});
@@ -148,7 +148,7 @@ TEST(PeFdForce, MultiHarmonicDihedral) {
         cpu::Context ctx;
         cpu::BuildContext bctx{ctx, f};
         cpu::LaunchContext lctx{ctx, f, 0, 0};
-        cpu::bonded::MultiHarmonicDihedral c({{0.1, -0.2, 0.05, 0.3, -0.1}});
+        MultiHarmonicDihedral c({{0.1, -0.2, 0.05, 0.3, -0.1}});
         c.build(bctx);
         c.launch(lctx);
         c.destroy({ctx, f});

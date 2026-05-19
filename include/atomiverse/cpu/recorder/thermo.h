@@ -1,14 +1,34 @@
 /// @file cpu/recorder/thermo.h
-/// @brief CPU-side thermodynamic output (LAMMPS thermo_style one).
+/// @brief CPU thermodynamic output: Thermo component + thermo_print free function.
 ///
-/// Called by cuda::Thermo after async D2H of pe/ke scalars.
-/// The CUDA component owns no formatting or temperature logic -- it is here.
+/// `Thermo` is the per-step recorder component; `thermo_print` is the
+/// low-level formatted-print helper called by `cuda::Thermo` after async D2H.
 #pragma once
 
 #include <fstream>
+#include <string>
+
+#include "atomiverse/cpu/component.h"
 
 namespace ATV {
 namespace cpu {
+
+/// @brief Thermodynamic output recorder component (CPU backend).
+///
+/// Prints step, PE, KE, temperature at the given frequency.
+/// MPI-aware: only rank 0 prints.
+class Thermo : public cpu::ComponentBase {
+public:
+    explicit Thermo(int freq);
+
+    std::string name() const override { return "thermo"; }
+    ComponentRole role() const override { return ComponentRole::Recorder; }
+    int frequency() const override { return freq_; }
+    void launch(const cpu::LaunchContext& ctx) override;
+
+private:
+    int freq_;
+};
 
 /// @brief Print one thermodynamic output line.
 ///

@@ -23,6 +23,10 @@ if(ATV_BUILD_CUDA)
     atv_add_example(lj)
 endif()
 
+if(ATV_BUILD_PW)
+    atv_add_cpp_example(pw_bench)
+endif()
+
 if(ATV_BUILD_RHF)
     if(ATV_BUILD_CUDA)
         add_executable(02_rhf_cuda tutorial/02_rhf.cu)

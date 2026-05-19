@@ -25,9 +25,11 @@ TEST(FFT, RoundTrip) {
     plan.r2c(orig.data(), cbuf);
     plan.c2r(cbuf, back.data());
 
+    // FFTW c2r is unnormalized: back[i] = nr * orig[i]. Normalize for round-trip check.
+    const Real norm = Real(1) / static_cast<Real>(nr);
     Real max_err = 0;
     for (int i = 0; i < nr; ++i)
-        max_err = std::max(max_err, std::abs(back[i] - orig[i]));
+        max_err = std::max(max_err, std::abs(back[i] * norm - orig[i]));
     fftw_free(cbuf);
     EXPECT_LT(static_cast<double>(max_err), 1e-10);
 }

@@ -188,7 +188,7 @@ void bind_scf(nb::module_& m) {
             auto& cf = nb::cast<CpuFrame&>(frame_obj);
             IntegralPack ip;
             { nb::gil_scoped_release release;
-              ip = build_integrals_sto3g(cf.frame, charge); }
+              ip = build_integrals(cf.frame, BasisSet::STO3G, charge, false); }
             return ip;
         },
         nb::arg("frame"), nb::arg("charge") = 0,

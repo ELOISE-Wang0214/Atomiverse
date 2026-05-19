@@ -2,7 +2,7 @@
 /// @brief Vec3 — 3D vector value type.
 #pragma once
 
-#include <xtensor/xfixed.hpp>
+#include <xtensor/containers/xfixed.hpp>
 #include <cmath>
 #include "atomiverse/core/real.h"
 

@@ -2,6 +2,7 @@
 /// @brief UPF v1 XML-like format parser.
 
 #include "atomiverse/cpu/pw/internal/upf_reader.h"
+#include <cstdio>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -15,17 +16,30 @@ namespace internal {
 namespace {
 
 std::string extract_attr(const std::string& line, const std::string& attr) {
-    auto p = line.find(attr + "=\"");
+    // Match " attr=\"" (space-prefixed) to avoid matching substrings
+    // like "l=\"" inside "label=\"3S\""
+    std::string pat = " " + attr + "=\"";
+    auto p = line.find(pat);
     if (p == std::string::npos) return "";
-    p += attr.size() + 2; // skip past attr="
+    p += pat.size(); // skip past ' attr="'
     auto q = line.find("\"", p);
     if (q == std::string::npos) return "";
     return line.substr(p, q - p);
 }
 
 bool tag_open(const std::string& line, const std::string& tag) {
-    return line.find("<" + tag) != std::string::npos && line.find("/>") == std::string::npos;
+    auto p = line.find("<" + tag);
+    if (p == std::string::npos) return false;
+    // Ensure exact tag match: next char must be '>', ' ', '\t', '.', or digit
+    auto end = p + 1 + tag.size();
+    if (end < line.size()) {
+        char c = line[end];
+        if (c != '>' && c != ' ' && c != '\t' && c != '\r' && c != '\n'
+            && c != '.' && !std::isdigit(static_cast<unsigned char>(c))) return false;
+    }
+    return line.find("/>") == std::string::npos;
 }
+
 bool tag_close(const std::string& line, const std::string& tag) {
     return line.find("</" + tag) != std::string::npos;
 }
@@ -82,34 +96,58 @@ UPFData read_upf_v1(const std::string& path) {
         if (tag_open(line, "PP_NLCC")) {
             upf.rho_atom = parse_values(f, "PP_NLCC");
         }
+        // PP_RHOATOM (atomic pseudocharge — used as initial density guess)
+        if (tag_open(line, "PP_RHOATOM")) {
+            upf.rho_atom = parse_values(f, "PP_RHOATOM");
+        }
         // PP_NONLOCAL
         if (tag_open(line, "PP_NONLOCAL")) {
             while (std::getline(f, line)) {
                 if (tag_close(line, "PP_NONLOCAL")) break;
+                // Read PP_BETA sections
                 if (tag_open(line, "PP_BETA")) {
                     int l = 0;
                     auto lang = extract_attr(line, "angular_momentum");
                     if (!lang.empty()) l = std::stoi(lang);
                     auto beta_vals = parse_values(f, "PP_BETA");
-                    // Read PP_DIJ for this l
-                    Real d = 0;
-                    auto pos = f.tellg();
-                    std::string next_line;
-                    if (std::getline(f, next_line)) {
-                        if (tag_open(next_line, "PP_DIJ")) {
-                            auto dij_vals = parse_values(f, "PP_DIJ");
-                            if (!dij_vals.empty()) d = dij_vals[0];
-                        } else {
-                            f.seekg(pos);
-                        }
-                    }
                     UPFData::KBProjector kb;
                     kb.l = l;
                     kb.beta = std::move(beta_vals);
-                    kb.d = d;
+                    kb.d = 0; // will be set from PP_DIJ
                     upf.kb.push_back(std::move(kb));
                 }
+                // Read PP_DIJ (after all betas) — full matrix
+                if (tag_open(line, "PP_DIJ")) {
+                    upf.d_ij = parse_values(f, "PP_DIJ");
+                    int n = static_cast<int>(upf.kb.size());
+                    // Also set diagonal for backward compatibility
+                    for (int i = 0; i < n && i * n + i < static_cast<int>(upf.d_ij.size()); ++i)
+                        upf.kb[i].d = upf.d_ij[i * n + i];
+                }
+                // Read PP_Q (augmentation charges, inside PP_AUGMENTATION)
+                if (tag_open(line, "PP_Q")) {
+                    upf.q_ij = parse_values(f, "PP_Q");
+                }
+                // Read PP_RHOATOM (may appear inside or outside PP_NONLOCAL)
+                if (tag_open(line, "PP_RHOATOM")) {
+                    upf.rho_atom = parse_values(f, "PP_RHOATOM");
+                }
             }
+        }
+
+        // PP_CHI (atomic wavefunctions, top-level outside PP_NONLOCAL)
+        if (tag_open(line, "PP_CHI")) {
+            int l_chi = 0;
+            Real occ = 0;
+            auto lang = extract_attr(line, "l");
+            auto oattr = extract_attr(line, "occupation");
+            if (!lang.empty()) l_chi = std::stoi(lang);
+            if (!oattr.empty()) occ = static_cast<Real>(std::stod(oattr));
+            auto chi_vals = parse_values(f, "PP_CHI");
+            upf.chi.push_back(std::move(chi_vals));
+            upf.lchi.push_back(l_chi);
+            upf.oc.push_back(occ);
+            ++upf.nwfc;
         }
     }
 

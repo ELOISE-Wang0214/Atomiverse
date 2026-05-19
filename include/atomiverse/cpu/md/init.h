@@ -14,47 +14,38 @@ namespace ATV {
 namespace cpu {
 namespace md {
 
-/// @brief Zero all forces at pre_force phase.
+/// @brief Zero all forces. Phase-agnostic — driver binds to its own phase.
 class ZeroForces : public cpu::ComponentBase {
 public:
     std::string name() const override { return "zero_forces"; }
-    std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::pre_force), -1000}};
-    }
+    ComponentRole role() const override { return ComponentRole::None; }
     void launch(const cpu::LaunchContext& ctx) override;
 };
 
-/// @brief Zero potential energy at pre_force phase.
+/// @brief Zero potential energy. Phase-agnostic — driver binds to its own phase.
 class ZeroEnergy : public cpu::ComponentBase {
 public:
     std::string name() const override { return "zero_energy"; }
-    std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::pre_force), -999}};
-    }
+    ComponentRole role() const override { return ComponentRole::None; }
     void launch(const cpu::LaunchContext& ctx) override;
 };
 
-/// @brief Zero stress tensor at pre_force phase.
+/// @brief Zero stress tensor. Phase-agnostic — driver binds to its own phase.
 ///
 /// Stress accumulation by force kernels (LJ pair virial, future bonded
 /// virials) requires a clean baseline at the start of each step.
-/// Bound at `pre_force @ -998`, after ZeroForces / ZeroEnergy.
 class ZeroStress : public cpu::ComponentBase {
 public:
     std::string name() const override { return "zero_stress"; }
-    std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::pre_force), -998}};
-    }
+    ComponentRole role() const override { return ComponentRole::None; }
     void launch(const cpu::LaunchContext& ctx) override;
 };
 
-/// @brief Zero kinetic energy at end_of_step phase.
+/// @brief Zero kinetic energy. Phase-agnostic — driver binds to its own phase.
 class ZeroKinetic : public cpu::ComponentBase {
 public:
     std::string name() const override { return "zero_kinetic"; }
-    std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::end_of_step), -1000}};
-    }
+    ComponentRole role() const override { return ComponentRole::None; }
     void launch(const cpu::LaunchContext& ctx) override;
 };
 

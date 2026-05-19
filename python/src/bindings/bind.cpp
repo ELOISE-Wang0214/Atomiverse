@@ -10,12 +10,13 @@ void bind_frame(nb::module_& m);
 void bind_md(nb::module_& m);
 void bind_scf(nb::module_& m);
 void bind_optimizer(nb::module_& m);
+void bind_pw(nb::module_& m);
 
 NB_MODULE(_atomiverse, m) {
     m.doc() = "Atomiverse: molecular simulation compute backend";
 
     bind_frame(m);
-    bind_md(m);
-    bind_scf(m);
-    bind_optimizer(m);
+    bind_pw(m);
+    // bind_md, bind_scf, bind_optimizer temporarily disabled
+    // pending API migration to new component interfaces
 }

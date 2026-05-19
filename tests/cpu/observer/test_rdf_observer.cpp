@@ -1,5 +1,5 @@
 /// @file tests/cpu/observer/test_rdf_observer.cpp
-/// @brief Tests for `cpu::observer::RDF` async observer (Phase 1.9 port).
+/// @brief Tests for `RDF` async observer (Phase 1.9 port).
 ///
 /// Verifies:
 ///   - registration via `sim.add(rdf)` (uses cpu::md::AsyncObserver default binding)
@@ -66,7 +66,7 @@ TEST(RDFObserverAsync, AccumulatesAcrossSnapshots) {
     auto frame = make_fcc_argon(3, 5.26);  // 108 atoms, lattice 5.26 Å (Argon-ish)
     ScopedFile out("test_rdf_out_accum.dat");
 
-    cpu::observer::RDF rdf{6.0, 200, /*freq=*/0, out.path};
+    RDF rdf{6.0, 200, /*freq=*/0, out.path};
     {
         cpu::md::MD sim;
         sim.add(cpu::md::VelocityVerlet{1e-6});
@@ -89,7 +89,7 @@ TEST(RDFObserverAsync, FinalizeWritesOutputFile) {
     auto frame = make_fcc_argon(3, 5.26);
     ScopedFile out("test_rdf_out_finalize.dat");
 
-    cpu::observer::RDF rdf{6.0, 100, /*freq=*/0, out.path};
+    RDF rdf{6.0, 100, /*freq=*/0, out.path};
     {
         cpu::md::MD sim;
         sim.add(cpu::md::VelocityVerlet{1e-6});
@@ -126,7 +126,7 @@ TEST(RDFObserverAsync, FirstPeakNearFCCNearestNeighbor) {
     const double r_max = 6.0;
     const double bin_width = r_max / n_bins;
 
-    cpu::observer::RDF rdf{r_max, n_bins, /*freq=*/0, out.path};
+    RDF rdf{r_max, n_bins, /*freq=*/0, out.path};
     {
         cpu::md::MD sim;
         sim.add(cpu::md::VelocityVerlet{1e-6});
@@ -162,7 +162,7 @@ TEST(RDFObserverAsync, FrequencyRespected) {
     auto frame = make_fcc_argon(3, 5.26);
     ScopedFile out("test_rdf_out_freq.dat");
 
-    cpu::observer::RDF rdf{6.0, 100, /*freq=*/3, out.path};
+    RDF rdf{6.0, 100, /*freq=*/3, out.path};
     {
         cpu::md::MD sim;
         sim.add(cpu::md::VelocityVerlet{1e-6});

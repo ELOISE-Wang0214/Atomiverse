@@ -1,7 +1,7 @@
-/// @file cpu/bonded/harmonic_angle.cpp
+/// @file cpu/potentials/harmonic_angle.cpp
 /// @brief CPU harmonic angle bending implementation.
 
-#include "atomiverse/cpu/bonded/harmonic_angle.h"
+#include "atomiverse/cpu/potentials/harmonic_angle.h"
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/md/mpi/domain.h"
 
@@ -13,9 +13,6 @@
 #endif
 
 namespace ATV {
-namespace cpu {
-namespace bonded {
-
 HarmonicAngle::HarmonicAngle(std::vector<double> K, std::vector<double> theta0)
     : K_(std::move(K)), theta0_(std::move(theta0)) {}
 
@@ -210,6 +207,4 @@ void HarmonicAngle::destroy(const cpu::DestroyContext& ctx) {
     local_angles_generation_ = ~std::uint64_t{0};
 }
 
-} // namespace bonded
-} // namespace cpu
 } // namespace ATV

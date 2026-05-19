@@ -12,12 +12,15 @@ namespace pw {
 namespace internal {
 
 class FFTPlan3D {
-    fftw_plan fwd_ = nullptr;
-    fftw_plan bwd_ = nullptr;
+    fftw_plan fwd_ = nullptr;   // r2c: real → complex (Hermitian)
+    fftw_plan bwd_ = nullptr;   // c2r: complex (Hermitian) → real
+    fftw_plan fwd_cc_ = nullptr; // c2c forward: complex → complex
+    fftw_plan bwd_cc_ = nullptr; // c2c backward: complex → complex
     int nx_, ny_, nz_;
-    int nr_, nc_; // real size, complex size (nx/2+1)*ny*nz
+    int nr_, nc_; // real size, complex (half) size
     Real* rbuf_ = nullptr;
     fftw_complex* cbuf_ = nullptr;
+    fftw_complex* cbuf2_ = nullptr; // for c2c
 public:
     FFTPlan3D(int nx, int ny, int nz);
     ~FFTPlan3D();
@@ -26,6 +29,8 @@ public:
 
     void r2c(const Real* in, fftw_complex* out);
     void c2r(const fftw_complex* in, Real* out);
+    void c2c_fwd(fftw_complex* inout);   // in-place c2c forward
+    void c2c_bwd(fftw_complex* inout);   // in-place c2c backward
     int nx() const { return nx_; }
     int ny() const { return ny_; }
     int nz() const { return nz_; }

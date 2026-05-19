@@ -8,7 +8,7 @@
 #include "atomiverse/cpu/minimizer/lbfgs.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
 #include "atomiverse/cpu/scf/scf_solve.h"
-#include "atomiverse/cpu/observer/thermo_component.h"
+#include "atomiverse/cpu/recorder/thermo.h"
 #include "atomiverse/facade/stage.h"
 
 using namespace ATV;

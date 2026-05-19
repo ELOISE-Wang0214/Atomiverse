@@ -49,9 +49,9 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/bonded/harmonic_angle.h"
-#include "atomiverse/cpu/bonded/harmonic_bond.h"
-#include "atomiverse/cpu/bonded/multi_harmonic_dihedral.h"
+#include "atomiverse/cpu/potentials/harmonic_angle.h"
+#include "atomiverse/cpu/potentials/harmonic_bond.h"
+#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/barostat.h"
@@ -481,9 +481,9 @@ int main(int argc, char** argv) {
     cpu::md::NeighborList<> nl{kLjCutoff};
     cpu::md::LJ             lj = cpu::md::LJ{lj_eps_eV(), kLjSigma, kLjCutoff}
                                      .set_special_bonds(0.0, 0.0, 0.0);
-    cpu::bonded::HarmonicBond  hb{{bond_k_eV()}, {kBondR0}};
-    cpu::bonded::HarmonicAngle ha{{angle_k_eV()}, {kAngleTheta0}};
-    cpu::bonded::MultiHarmonicDihedral hd{{dihedral_Cn_eV()}};
+    HarmonicBond  hb{{bond_k_eV()}, {kBondR0}};
+    HarmonicAngle ha{{angle_k_eV()}, {kAngleTheta0}};
+    MultiHarmonicDihedral hd{{dihedral_Cn_eV()}};
     CsvRecorder rec{&thermo_csv, &stress_csv, a.print_every, n_global_dof, box_x0};
 
     cpu::md::MD sim;

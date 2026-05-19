@@ -23,9 +23,9 @@
 #include <cmath>
 #include <vector>
 
-#include "atomiverse/cpu/bonded/harmonic_angle.h"
-#include "atomiverse/cpu/bonded/harmonic_bond.h"
-#include "atomiverse/cpu/bonded/multi_harmonic_dihedral.h"
+#include "atomiverse/cpu/potentials/harmonic_angle.h"
+#include "atomiverse/cpu/potentials/harmonic_bond.h"
+#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/init.h"
 #include "atomiverse/cpu/md/md.h"
@@ -166,9 +166,9 @@ TEST(NoseHooverTRamp, SetTargetTracksAcrossSegmentsAtTwoRanks) {
     sim.add(cpu::md::InitVelocity{T0, /*seed=*/4242});
     sim.add(nh);   // lvalue → non-owning storage; `nh` lifetime is local
     sim.on(ATV::md::Phase::force)
-        .add(cpu::bonded::HarmonicBond{{bond_K_eV()}, {kBondR0}})
-        .add(cpu::bonded::HarmonicAngle{{angle_K_eV()}, {kAngleTheta0}})
-        .add(cpu::bonded::MultiHarmonicDihedral{{dihedral_Cn_eV()}});
+        .add(HarmonicBond{{bond_K_eV()}, {kBondR0}})
+        .add(HarmonicAngle{{angle_K_eV()}, {kAngleTheta0}})
+        .add(MultiHarmonicDihedral{{dihedral_Cn_eV()}});
     sim.build();   // built ONCE — no rebuild allowed below
 
     // 6 segments × 500 steps each = 3 000 steps, with 5 setpoint changes.

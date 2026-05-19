@@ -17,9 +17,9 @@
 #include <cmath>
 #include <vector>
 
-#include "atomiverse/cpu/bonded/harmonic_angle.h"
-#include "atomiverse/cpu/bonded/harmonic_bond.h"
-#include "atomiverse/cpu/bonded/multi_harmonic_dihedral.h"
+#include "atomiverse/cpu/potentials/harmonic_angle.h"
+#include "atomiverse/cpu/potentials/harmonic_bond.h"
+#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/context.h"
 #include "atomiverse/cpu/frame.h"
@@ -148,9 +148,9 @@ cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
 // Run a single force-evaluation pass with each bonded component, accumulating
 // V into frame.energy. Caller is responsible for resetting frame.energy first.
 void evaluate_bonded(cpu::Frame& frame,
-                      cpu::bonded::HarmonicBond& bond,
-                      cpu::bonded::HarmonicAngle& angle,
-                      cpu::bonded::MultiHarmonicDihedral& dih) {
+                      HarmonicBond& bond,
+                      HarmonicAngle& angle,
+                      MultiHarmonicDihedral& dih) {
     cpu::Context ctx;
     cpu::BuildContext bctx{ctx, frame};
     cpu::LaunchContext lctx{ctx, frame, 0, 0};
@@ -185,9 +185,9 @@ void evaluate_bonded(cpu::Frame& frame,
 TEST(PeSingleChain, AllTransGeometryEnergyIsZero) {
     auto frame = make_all_trans_alkane(20, 50.0);
 
-    cpu::bonded::HarmonicBond bond({bond_K_eV()}, {kBondR0});
-    cpu::bonded::HarmonicAngle angle({angle_K_eV()}, {kAngleTheta0});
-    cpu::bonded::MultiHarmonicDihedral dih({dihedral_Cn_eV()});
+    HarmonicBond bond({bond_K_eV()}, {kBondR0});
+    HarmonicAngle angle({angle_K_eV()}, {kAngleTheta0});
+    MultiHarmonicDihedral dih({dihedral_Cn_eV()});
 
     evaluate_bonded(frame, bond, angle, dih);
 
@@ -227,7 +227,7 @@ TEST(PeSingleChain, StretchOneBondMatchesAnalytic) {
     cpu::Context ctx;
     cpu::BuildContext bctx{ctx, fresh};
     cpu::LaunchContext lctx{ctx, fresh, 0, 0};
-    cpu::bonded::HarmonicBond bond_only({bond_K_eV()}, {kBondR0});
+    HarmonicBond bond_only({bond_K_eV()}, {kBondR0});
     bond_only.build(bctx);
     fresh.energy = 0;
     bond_only.launch(lctx);
@@ -286,7 +286,7 @@ TEST(PeSingleChain, BendOneAngleMatchesAnalytic) {
     cpu::Context ctx;
     cpu::BuildContext bctx{ctx, fresh};
     cpu::LaunchContext lctx{ctx, fresh, 0, 0};
-    cpu::bonded::HarmonicAngle angle_only({angle_K_eV()}, {kAngleTheta0});
+    HarmonicAngle angle_only({angle_K_eV()}, {kAngleTheta0});
     angle_only.build(bctx);
 
     // Single-angle frame: keep only the (0,1,2) angle so we isolate its V.
@@ -317,7 +317,7 @@ TEST(PeSingleChain, AllTransDihedralEnergyIsZero) {
     cpu::Context ctx;
     cpu::BuildContext bctx{ctx, fresh};
     cpu::LaunchContext lctx{ctx, fresh, 0, 0};
-    cpu::bonded::MultiHarmonicDihedral dih({dihedral_Cn_eV()});
+    MultiHarmonicDihedral dih({dihedral_Cn_eV()});
     dih.build(bctx);
 
     fresh.energy = 0;

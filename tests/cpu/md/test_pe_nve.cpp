@@ -13,9 +13,9 @@
 #include <cmath>
 #include <vector>
 
-#include "atomiverse/cpu/bonded/harmonic_angle.h"
-#include "atomiverse/cpu/bonded/harmonic_bond.h"
-#include "atomiverse/cpu/bonded/multi_harmonic_dihedral.h"
+#include "atomiverse/cpu/potentials/harmonic_angle.h"
+#include "atomiverse/cpu/potentials/harmonic_bond.h"
+#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
@@ -130,9 +130,9 @@ TEST(PeNve, EnergyConserves1000Steps) {
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{0.5});   // Δt = 0.5 fs
     sim.on(ATV::md::Phase::force)
-        .add(cpu::bonded::HarmonicBond{{bond_K_eV()}, {kBondR0}})
-        .add(cpu::bonded::HarmonicAngle{{angle_K_eV()}, {kAngleTheta0}})
-        .add(cpu::bonded::MultiHarmonicDihedral{{dihedral_Cn_eV()}});
+        .add(HarmonicBond{{bond_K_eV()}, {kBondR0}})
+        .add(HarmonicAngle{{angle_K_eV()}, {kAngleTheta0}})
+        .add(MultiHarmonicDihedral{{dihedral_Cn_eV()}});
     sim.build();
 
     sim.run(frame, 1);
