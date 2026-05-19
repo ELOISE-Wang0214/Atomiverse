@@ -1,7 +1,7 @@
-/// @file cpu/md/lj.cpp
-/// @brief CPU LJ 12-6 (shifted) with OpenMP per-thread force reduction.
+/// @file cpu/potentials/pair_lj_cut.cpp
+/// @brief CPU PairLJCut — LJ 12-6 shifted, xsimd ket-loop, OMP force reduction.
 
-#include "atomiverse/cpu/md/lj.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/mpi/domain.h"
 #include "atomiverse/cpu/md/pair_list.h"
 #include "atomiverse/core/mat3.h"
@@ -27,34 +27,35 @@
 
 namespace ATV {
 namespace cpu {
-namespace md {
 
-LJ::LJ(double epsilon, double sigma, double cutoff)
-    : epsilon_(epsilon), sigma_(sigma), cutoff_(cutoff) {
+PairLJCut::PairLJCut(double epsilon, double sigma, double cutoff)
+    : Pair(static_cast<Real>(cutoff)), epsilon_(epsilon), sigma_(sigma) {
     sigma6_ = sigma * sigma * sigma * sigma * sigma * sigma;
     cutoff_sq_ = cutoff * cutoff;
 
-    // Compute V_shift = V(r_cutoff)
+    // Compute V_shift = V(r_cutoff). The base's cutoff_ holds the
+    // canonical Å value; the derived caches (cutoff_sq_, v_shift_,
+    // sigma6_) are computed once from it.
     double r2inv = double(1) / cutoff_sq_;
     double r6inv = r2inv * r2inv * r2inv * sigma6_;
     v_shift_ = double(4) * epsilon_ * (r6inv * r6inv - r6inv);
 }
 
-LJ& LJ::set_special_bonds(double s12, double s13, double s14) & {
+PairLJCut& PairLJCut::set_special_bonds(double s12, double s13, double s14) & {
     s12_ = s12;
     s13_ = s13;
     s14_ = s14;
     return *this;
 }
 
-LJ LJ::set_special_bonds(double s12, double s13, double s14) && {
+PairLJCut PairLJCut::set_special_bonds(double s12, double s13, double s14) && {
     s12_ = s12;
     s13_ = s13;
     s14_ = s14;
     return std::move(*this);
 }
 
-void LJ::build(const cpu::BuildContext& ctx) {
+void PairLJCut::build(const BuildContext& ctx) {
     n_threads_ = 1;
 #ifdef _OPENMP
     n_threads_ = omp_get_max_threads();
@@ -119,7 +120,7 @@ void LJ::build(const cpu::BuildContext& ctx) {
     }
 }
 
-void LJ::rebuild_filtered_list(const cpu::Frame& f, const PairList& pairs) {
+void PairLJCut::rebuild_filtered_list(const Frame& f, const md::PairList& pairs) {
     // Walk the upstream CSR once, drop excluded pairs, write a dense CSR
     // into `filtered_*`. Runs once per NL rebuild (~every `every` steps)
     // amortizing the `tag_ptr[j]` gather + `binary_search` that the old
@@ -160,11 +161,11 @@ void LJ::rebuild_filtered_list(const cpu::Frame& f, const PairList& pairs) {
     }
 }
 
-void LJ::launch(const cpu::LaunchContext& ctx) {
+void PairLJCut::compute(const LaunchContext& ctx) {
     auto& f = ctx.frame;
     if (!ctx.runtime.pair_list) {
         throw std::runtime_error(
-            "LJ::launch: runtime.pair_list is null. Did you add a "
+            "PairLJCut::compute: runtime.pair_list is null. Did you add a "
             "NeighborList component to the force phase ahead of LJ?");
     }
     const auto& pairs = *ctx.runtime.pair_list;
@@ -487,7 +488,7 @@ void LJ::launch(const cpu::LaunchContext& ctx) {
     f.stress[5] += v_yz;
 }
 
-void LJ::destroy(const cpu::DestroyContext& ctx) {
+void PairLJCut::destroy(const DestroyContext& ctx) {
     fx_thr_.clear();
     fy_thr_.clear();
     fz_thr_.clear();
@@ -499,6 +500,5 @@ void LJ::destroy(const cpu::DestroyContext& ctx) {
     filtered_version_ = 0;
 }
 
-} // namespace md
 } // namespace cpu
 } // namespace ATV

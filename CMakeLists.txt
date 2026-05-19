@@ -162,7 +162,6 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/md/init.cpp
         src/cpu/md/velocity_verlet.cpp
         src/cpu/md/nve_limit.cpp
-        src/cpu/md/lj.cpp
         src/cpu/md/nose_hoover.cpp
         src/cpu/md/nose_hoover_npt.cpp
         src/cpu/md/fix_langevin.cpp
