@@ -1,12 +1,13 @@
 ---
-title: CPU Quantum-Chemistry Product Roadmap (post-Phase-2)
-status: draft
+title: CPU Quantum-Chemistry Product Roadmap
+status: in-progress
 created: 2026-04-14
+last-updated: 2026-05-19
 ---
 
 # CPU QC Product Roadmap (index)
 
-Strategic order for productizing the CPU electronic-structure stack after Phase 2 gradient parity. **This file is the index; each phase has a standalone sub-spec.** Phases are strictly sequential — the next phase's spec does not begin until the previous phase's `status: done`.
+Strategic order for productizing the CPU electronic-structure stack after gradient parity. **This file is the index; each active phase has a standalone sub-spec.** Phases are strictly sequential — the next phase's spec does not begin until the previous phase's `status: done`.
 
 ## Binding constraints (apply to every sub-spec)
 
@@ -22,11 +23,11 @@ Strategic order for productizing the CPU electronic-structure stack after Phase 
 
 | # | Spec | Status | Scope | Depends on |
 |---|---|---|---|---|
-| 1 | [phase1-productization](phase1-productization.md) | in progress | Multi-basis + d-shell Rys + 10-molecule benchmark + recorder/observer components + locked defaults | — |
-| 2 | [phase2-singlepoint-driver](phase2-singlepoint-driver.md) | pending | `cpu::scf::SinglePoint` driver type as first-class citizen; mixed-level workflows via sequential driver invocation at call-site | Phase 1 |
-| 3 | [phase3-hybrid-dft](phase3-hybrid-dft.md) | pending | B3LYP/PBE0 SCF + gradient — reuses existing Fock/gradient components with new `alpha_hf` parameter | Phase 2 |
-| 4 | [phase4-vibrations](phase4-vibrations.md) | pending | New `vibration::Phase` enum + `cpu::vib::Hessian` driver + numerical-Hessian components + thermochemistry observer | Phase 3 |
-| 5 | [phase5-aimd](phase5-aimd.md) | pending | Gated placeholder; NVE/NVT AIMD workflow verification | Phases 1–4 |
+| 1 | [phase1-productization](phase1-productization.md) | in-progress (35/38) | Multi-basis + d-shell Rys + 10-molecule benchmark + recorder/observer components + locked defaults | — |
+| 2 | *single-point driver* — **satisfied without a separate spec** | ✅ done via `cpu-driver-taxonomy` | `cpu::EvaluateDriver` (the `cpu::Evaluate` concrete driver + `SCFEvaluator` component) is the first-class single-point path. There is no `SinglePoint` class — CLAUDE.md *Driver taxonomy* documents the composition. | Phase 1 |
+| 3 | [phase3-hybrid-dft](phase3-hybrid-dft.md) | draft | B3LYP/PBE0 SCF + gradient — reuses existing Fock/gradient components with new `alpha_hf` parameter | Phase 2 ✓ |
+| 4 | [phase4-vibrations](phase4-vibrations.md) | draft | New `vib::Phase` enum + `cpu::vib::Hessian` driver + numerical-Hessian components + thermochemistry observer | Phase 3 |
+| 5 | *AIMD* — **no spec yet** | future | NVE/NVT AIMD via `cpu::md::MD` composed with `cpu::scf::SCFEvaluator` as Force-capable component (already supported by the dynamics taxonomy; the deliverable is documented recipes + benchmark, not new classes). | Phases 1, 3 |
 
 ## Progress snapshot
 
@@ -59,7 +60,7 @@ MP2/CC/CI/TDDFT, periodic boundaries, k-points, GPU SCF, new optimizer algorithm
 
 ## Exit criteria (roadmap done when ALL hold)
 
-1. Sub-specs 1–5 all `status: done`
+1. Active sub-specs (phase 1, 3, 4) all `status: done`
 2. Benchmark suite green on nightly CI for 30+ consecutive days
 3. Every public component has Doxygen + one example driver composition in `examples/tutorial/`
 4. Documented composition recipes cover: single-point, geom-opt, opt→SP, hybrid opt, opt+frequencies, AIMD

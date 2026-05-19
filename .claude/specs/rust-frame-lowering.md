@@ -3,8 +3,9 @@ title: Rust-First Frame Lowering and Typed Requirement Refactor
 status: draft
 created: 2026-04-10
 depends_on:
-  - frame-block-refactor.md
   - python-bindings.md
+# frame-block-refactor: satisfied (spec retired 2026-05-19; cpu::Frame block
+# model + atoms/bonds/etc. naming already ships).
 ---
 
 ## Summary

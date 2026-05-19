@@ -2,11 +2,27 @@
 title: Python Binding Layer (nanobind + DLPack)
 status: in-progress
 created: 2026-04-04
+last-updated: 2026-05-19
 ---
 
 ## Summary
 
 Python bindings for Atomiverse via nanobind. `mp.Frame` (molpy) is the sole user-facing Frame type. Atomiverse is a compute backend that borrows data from `mp.Frame`, runs on CPU or CUDA, and writes results back. DLPack is the zero-copy exchange protocol: numpy for CPU, `torch.from_dlpack()` for GPU tensors. No Atomiverse-specific FFI to molrs::Frame — numpy is the lingua franca.
+
+## Status snapshot (2026-05-19)
+
+| Surface | Landed | Files |
+|---|---|---|
+| Module top-level + Frame transfer | ✅ | `bind.cpp`, `bind_frame.cpp`, `cpu_frame_wrapper.h` |
+| MD driver + components + Thermo observer | ✅ | `bind_md.cpp`, `atomiverse/md.py` |
+| SCF driver + components | ✅ | `bind_scf.cpp`, `atomiverse/scf.py` |
+| Minimizer driver + Thermo | ✅ | `bind_optimizer.cpp`, `atomiverse/optimizer.py` |
+| Plane-wave DFT (added post-spec) | ✅ | `bind_pw.cpp`, `atomiverse/pw.py`, `examples/pw_qe_compare.py` |
+| Public package layout (`atomiverse/__init__.py`, `_device.py`, `_convert.py`, `_binding.py`) | ✅ | `python/src/atomiverse/` |
+| Build (scikit-build-core + nanobind + `ATV_BUILD_PYTHON`) | ✅ | `pyproject.toml`, `CMakeLists.txt` |
+| RDF observer binding | ❌ | not bound (the only originally-promised surface still missing) |
+
+**Note on file layout drift vs §Files to create**: `bind_potentials.cpp` and `bind_observers.cpp` were *not* created as standalone files — potentials are bound inline in `bind_md.cpp` and observers ride with their owning driver (Thermo in MD/Optimizer). Net architecture: one bind module per driver category, not one per role. RDF binding is the only residual.
 
 ## mp.Frame data model
 
