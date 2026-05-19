@@ -1,0 +1,48 @@
+# LAMMPS NPT parity reference for Atomiverse.
+#
+# Same 256-atom LJ-argon system as in.langevin_nvt, but with `fix npt iso`
+# at T = 300 K, P = 0 bar. Used by test_lammps_npt_parity.cpp to compare
+# against Atomiverse's NoseHooverNPT integrator.
+#
+# `fix npt` uses MTK Nose-Hoover chains (matching Atomiverse's
+# NoseHooverNPT with mtchain=mpchain=3, drag=0).
+
+units           metal
+atom_style      atomic
+boundary        p p p
+
+lattice         fcc 5.79
+region          box block 0 4 0 4 0 4
+create_box      1 box
+create_atoms    1 box
+mass            1 39.948
+
+pair_style      lj/cut 8.5
+pair_coeff      1 1 0.010339 3.405
+
+velocity        all create 100.0 12345 mom yes rot yes dist gaussian
+
+# tau_T = 100 fs = 0.1 ps, tau_P = 1000 fs = 1.0 ps.
+fix             1 all npt temp 100.0 100.0 0.1 iso 0.0 0.0 1.0
+timestep        0.001                  # 1 fs
+
+thermo_style    custom step temp press lx ly lz pe ke
+thermo          1000
+
+# Burn in ~10× tau_T at min — barostat needs longer (~5× tau_P).
+run             5000
+
+reset_timestep  0
+compute         ctemp all temp
+compute         cke   all ke
+compute         cpe   all pe
+compute         cpress all pressure ctemp
+variable        vol_v equal vol
+variable        lx_v  equal lx
+
+fix             avgs all ave/time 1 50000 50000 c_ctemp c_cke c_cpe c_cpress v_vol_v v_lx_v &
+                file lammps_npt_avgs.txt mode scalar
+
+run             50000
+
+print "All done"
