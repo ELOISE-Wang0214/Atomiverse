@@ -1,7 +1,7 @@
-/// @file cpu/potentials/harmonic_angle.cpp
-/// @brief CPU harmonic angle bending implementation.
+/// @file cpu/potentials/angle_harmonic.cpp
+/// @brief CPU AngleHarmonic — V = K(θ − θ₀)² implementation.
 
-#include "atomiverse/cpu/potentials/harmonic_angle.h"
+#include "atomiverse/cpu/potentials/angle_harmonic.h"
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/md/mpi/domain.h"
 
@@ -13,10 +13,12 @@
 #endif
 
 namespace ATV {
-HarmonicAngle::HarmonicAngle(std::vector<double> K, std::vector<double> theta0)
+namespace cpu {
+
+AngleHarmonic::AngleHarmonic(std::vector<double> K, std::vector<double> theta0)
     : K_(std::move(K)), theta0_(std::move(theta0)) {}
 
-void HarmonicAngle::build(const cpu::BuildContext& ctx) {
+void AngleHarmonic::build(const BuildContext& ctx) {
     n_threads_ = 1;
 #ifdef _OPENMP
     n_threads_ = omp_get_max_threads();
@@ -32,33 +34,22 @@ void HarmonicAngle::build(const cpu::BuildContext& ctx) {
     }
 }
 
-void HarmonicAngle::launch(const cpu::LaunchContext& ctx) {
+void AngleHarmonic::compute(const LaunchContext& ctx) {
     auto& f = ctx.frame;
     const int n_angles = static_cast<int>(f.angles.atomi.size());
     if (n_angles == 0) return;
 
     const auto* dd = ctx.runtime.dd;
     const bool multi_rank = (dd != nullptr) && (ctx.runtime.mpi_size > 1);
-    int n_atoms = f.atoms.size();
-    if (multi_rank) {
-        n_atoms = dd->n_local + dd->n_ghost;
-        if (local_angles_generation_ != dd->neighbor_generation) {
-            local_angles_.clear();
-            local_angles_.reserve(static_cast<std::size_t>(n_angles));
-            for (int a = 0; a < n_angles; ++a) {
-                const std::int64_t owner_tag =
-                    static_cast<std::int64_t>(f.angles.atomj[a]);
-                auto it_owner = dd->tag_to_local.find(owner_tag);
-                if (it_owner != dd->tag_to_local.end() &&
-                    it_owner->second < dd->n_local) {
-                    local_angles_.push_back(a);
-                }
-            }
-            local_angles_generation_ = dd->neighbor_generation;
-        }
-    }
-    const int n_work = multi_rank ? static_cast<int>(local_angles_.size())
-                                  : n_angles;
+    int n_atoms = multi_rank ? (dd->n_local + dd->n_ghost) : f.atoms.size();
+
+    // Owner-tag rule for angle (i,j,k): centre atom j. LAMMPS convention.
+    const auto& owned = select_owned_tuples(
+        ctx, n_angles,
+        [&](int a) -> std::int64_t {
+            return static_cast<std::int64_t>(f.angles.atomj[a]);
+        });
+    const int n_work = static_cast<int>(owned.size());
     if (n_work == 0) return;
 
     double energy_total = 0;
@@ -88,8 +79,7 @@ void HarmonicAngle::launch(const cpu::LaunchContext& ctx) {
 
         #pragma omp for schedule(static)
         for (int ia = 0; ia < n_work; ++ia) {
-            const int a = multi_rank ? local_angles_[static_cast<std::size_t>(ia)]
-                                     : ia;
+            const int a = owned[static_cast<std::size_t>(ia)];
             int i = f.angles.atomi[a];
             int j = f.angles.atomj[a]; // center atom
             int k = f.angles.atomk[a];
@@ -199,12 +189,12 @@ void HarmonicAngle::launch(const cpu::LaunchContext& ctx) {
     f.stress[5] += v_yz;
 }
 
-void HarmonicAngle::destroy(const cpu::DestroyContext& ctx) {
+void AngleHarmonic::destroy(const DestroyContext& /*ctx*/) {
     fx_thr_.clear();
     fy_thr_.clear();
     fz_thr_.clear();
-    local_angles_.clear();
-    local_angles_generation_ = ~std::uint64_t{0};
+    // Owned-tuple cache is owned by the cpu::Angle base.
 }
 
+} // namespace cpu
 } // namespace ATV

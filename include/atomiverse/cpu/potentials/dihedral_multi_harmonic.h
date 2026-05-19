@@ -1,0 +1,41 @@
+/// @file cpu/potentials/dihedral_multi_harmonic.h
+/// @brief LAMMPS-style DihedralMultiHarmonic — V = Σₙ Cₙ cosⁿ(φ) (CPU).
+///
+/// Was `ATV::MultiHarmonicDihedral` before the LAMMPS-naming refactor.
+#pragma once
+
+#include <string>
+#include <vector>
+
+#include "atomiverse/cpu/potentials/dihedral.h"
+
+namespace ATV {
+namespace cpu {
+
+class DihedralMultiHarmonic : public Dihedral {
+public:
+    /// @param Cn Coefficients per dihedral type. Cn[type] = {C0, C1, C2, ...}.
+    explicit DihedralMultiHarmonic(std::vector<std::vector<double>> Cn);
+
+    std::string name() const override { return "multi_harmonic_dihedral"; }
+    Capability capabilities() const override {
+        // Dihedrals contribute to the virial tensor — narrow the base's
+        // default (Energy|Force) to include Stress.
+        return Capability::Energy | Capability::Force | Capability::Stress;
+    }
+
+    void build(const BuildContext& ctx) override;
+    void destroy(const DestroyContext& ctx) override;
+
+protected:
+    void compute(const LaunchContext& ctx) override;
+
+private:
+    std::vector<std::vector<double>> Cn_;
+
+    int n_threads_ = 1;
+    std::vector<std::vector<double>> fx_thr_, fy_thr_, fz_thr_;
+};
+
+} // namespace cpu
+} // namespace ATV

@@ -1,7 +1,7 @@
-/// @file cpu/potentials/harmonic_bond.cpp
-/// @brief CPU harmonic bond stretching implementation.
+/// @file cpu/potentials/bond_harmonic.cpp
+/// @brief CPU BondHarmonic — V = K(r − r₀)² implementation.
 
-#include "atomiverse/cpu/potentials/harmonic_bond.h"
+#include "atomiverse/cpu/potentials/bond_harmonic.h"
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/md/mpi/domain.h"
 
@@ -13,10 +13,12 @@
 #endif
 
 namespace ATV {
-HarmonicBond::HarmonicBond(std::vector<double> K, std::vector<double> r0)
+namespace cpu {
+
+BondHarmonic::BondHarmonic(std::vector<double> K, std::vector<double> r0)
     : K_(std::move(K)), r0_(std::move(r0)) {}
 
-void HarmonicBond::build(const cpu::BuildContext& ctx) {
+void BondHarmonic::build(const BuildContext& ctx) {
     n_threads_ = 1;
 #ifdef _OPENMP
     n_threads_ = omp_get_max_threads();
@@ -32,7 +34,7 @@ void HarmonicBond::build(const cpu::BuildContext& ctx) {
     }
 }
 
-void HarmonicBond::launch(const cpu::LaunchContext& ctx) {
+void BondHarmonic::compute(const LaunchContext& ctx) {
     auto& f = ctx.frame;
     const int n_bonds = static_cast<int>(f.bonds.atomi.size());
     // Bond virial accumulators (Voigt xx yy zz xy xz yz). Bonds
@@ -47,27 +49,19 @@ void HarmonicBond::launch(const cpu::LaunchContext& ctx) {
 
     const auto* dd = ctx.runtime.dd;
     const bool multi_rank = (dd != nullptr) && (ctx.runtime.mpi_size > 1);
-    int n_atoms = f.atoms.size();
-    if (multi_rank) {
-        n_atoms = dd->n_local + dd->n_ghost;
-        if (local_bonds_generation_ != dd->neighbor_generation) {
-            local_bonds_.clear();
-            local_bonds_.reserve(static_cast<std::size_t>(n_bonds));
-            for (int b = 0; b < n_bonds; ++b) {
-                const std::int64_t ti = static_cast<std::int64_t>(f.bonds.atomi[b]);
-                const std::int64_t tj = static_cast<std::int64_t>(f.bonds.atomj[b]);
-                const std::int64_t owner_tag = (ti < tj) ? ti : tj;
-                auto it_owner = dd->tag_to_local.find(owner_tag);
-                if (it_owner != dd->tag_to_local.end() &&
-                    it_owner->second < dd->n_local) {
-                    local_bonds_.push_back(b);
-                }
-            }
-            local_bonds_generation_ = dd->neighbor_generation;
-        }
-    }
-    const int n_work = multi_rank ? static_cast<int>(local_bonds_.size())
-                                  : n_bonds;
+    int n_atoms = multi_rank ? (dd->n_local + dd->n_ghost) : f.atoms.size();
+
+    // Owner-tag rule for bond (i,j): min(tag[i], tag[j]). LAMMPS convention.
+    // Helper caches the result against dd->neighbor_generation; in
+    // single-rank it returns 0..n_bonds-1.
+    const auto& owned = select_owned_tuples(
+        ctx, n_bonds,
+        [&](int b) -> std::int64_t {
+            const std::int64_t ti = static_cast<std::int64_t>(f.bonds.atomi[b]);
+            const std::int64_t tj = static_cast<std::int64_t>(f.bonds.atomj[b]);
+            return (ti < tj) ? ti : tj;
+        });
+    const int n_work = static_cast<int>(owned.size());
     if (n_work == 0) return;
 
     double energy_total = 0;
@@ -94,8 +88,7 @@ void HarmonicBond::launch(const cpu::LaunchContext& ctx) {
 
         #pragma omp for schedule(static)
         for (int ib = 0; ib < n_work; ++ib) {
-            const int b = multi_rank ? local_bonds_[static_cast<std::size_t>(ib)]
-                                     : ib;
+            const int b = owned[static_cast<std::size_t>(ib)];
             int i = f.bonds.atomi[b];
             int j = f.bonds.atomj[b];
             int type = f.bonds.type[b];
@@ -175,12 +168,12 @@ void HarmonicBond::launch(const cpu::LaunchContext& ctx) {
     f.stress[5] += v_yz;
 }
 
-void HarmonicBond::destroy(const cpu::DestroyContext& ctx) {
+void BondHarmonic::destroy(const DestroyContext& /*ctx*/) {
     fx_thr_.clear();
     fy_thr_.clear();
     fz_thr_.clear();
-    local_bonds_.clear();
-    local_bonds_generation_ = ~std::uint64_t{0};
+    // Owned-tuple cache is owned by the cpu::Bond base; nothing to clear here.
 }
 
+} // namespace cpu
 } // namespace ATV

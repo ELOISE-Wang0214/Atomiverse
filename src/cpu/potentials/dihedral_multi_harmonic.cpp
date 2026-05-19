@@ -1,7 +1,7 @@
-/// @file cpu/potentials/multi_harmonic_dihedral.cpp
-/// @brief CPU multi-harmonic dihedral implementation.
+/// @file cpu/potentials/dihedral_multi_harmonic.cpp
+/// @brief CPU DihedralMultiHarmonic — V = Σₙ Cₙ cosⁿ(φ) implementation.
 
-#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
+#include "atomiverse/cpu/potentials/dihedral_multi_harmonic.h"
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/md/mpi/domain.h"
 
@@ -13,6 +13,8 @@
 #endif
 
 namespace ATV {
+namespace cpu {
+
 // Cross product
 static inline void cross(double ax, double ay, double az,
                           double bx, double by, double bz,
@@ -22,10 +24,10 @@ static inline void cross(double ax, double ay, double az,
     cz = ax * by - ay * bx;
 }
 
-MultiHarmonicDihedral::MultiHarmonicDihedral(std::vector<std::vector<double>> Cn)
+DihedralMultiHarmonic::DihedralMultiHarmonic(std::vector<std::vector<double>> Cn)
     : Cn_(std::move(Cn)) {}
 
-void MultiHarmonicDihedral::build(const cpu::BuildContext& ctx) {
+void DihedralMultiHarmonic::build(const BuildContext& ctx) {
     n_threads_ = 1;
 #ifdef _OPENMP
     n_threads_ = omp_get_max_threads();
@@ -41,33 +43,22 @@ void MultiHarmonicDihedral::build(const cpu::BuildContext& ctx) {
     }
 }
 
-void MultiHarmonicDihedral::launch(const cpu::LaunchContext& ctx) {
+void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
     auto& f = ctx.frame;
     const int n_dihedrals = static_cast<int>(f.dihedrals.atomi.size());
     if (n_dihedrals == 0) return;
 
     const auto* dd = ctx.runtime.dd;
     const bool multi_rank = (dd != nullptr) && (ctx.runtime.mpi_size > 1);
-    int n_atoms = f.atoms.size();
-    if (multi_rank) {
-        n_atoms = dd->n_local + dd->n_ghost;
-        if (local_dihedrals_generation_ != dd->neighbor_generation) {
-            local_dihedrals_.clear();
-            local_dihedrals_.reserve(static_cast<std::size_t>(n_dihedrals));
-            for (int d = 0; d < n_dihedrals; ++d) {
-                const std::int64_t owner_tag =
-                    static_cast<std::int64_t>(f.dihedrals.atomj[d]);
-                auto it_owner = dd->tag_to_local.find(owner_tag);
-                if (it_owner != dd->tag_to_local.end() &&
-                    it_owner->second < dd->n_local) {
-                    local_dihedrals_.push_back(d);
-                }
-            }
-            local_dihedrals_generation_ = dd->neighbor_generation;
-        }
-    }
-    const int n_work = multi_rank ? static_cast<int>(local_dihedrals_.size())
-                                  : n_dihedrals;
+    int n_atoms = multi_rank ? (dd->n_local + dd->n_ghost) : f.atoms.size();
+
+    // Owner-tag rule for dihedral (i,j,k,l): 2nd atom (j). LAMMPS convention.
+    const auto& owned = select_owned_tuples(
+        ctx, n_dihedrals,
+        [&](int d) -> std::int64_t {
+            return static_cast<std::int64_t>(f.dihedrals.atomj[d]);
+        });
+    const int n_work = static_cast<int>(owned.size());
     if (n_work == 0) return;
 
     double energy_total = 0;
@@ -99,8 +90,7 @@ void MultiHarmonicDihedral::launch(const cpu::LaunchContext& ctx) {
 
         #pragma omp for schedule(static)
         for (int id = 0; id < n_work; ++id) {
-            const int d = multi_rank ? local_dihedrals_[static_cast<std::size_t>(id)]
-                                     : id;
+            const int d = owned[static_cast<std::size_t>(id)];
             int i1 = f.dihedrals.atomi[d];
             int i2 = f.dihedrals.atomj[d];
             int i3 = f.dihedrals.atomk[d];
@@ -270,12 +260,12 @@ void MultiHarmonicDihedral::launch(const cpu::LaunchContext& ctx) {
     f.stress[5] += v_yz;
 }
 
-void MultiHarmonicDihedral::destroy(const cpu::DestroyContext& ctx) {
+void DihedralMultiHarmonic::destroy(const DestroyContext& /*ctx*/) {
     fx_thr_.clear();
     fy_thr_.clear();
     fz_thr_.clear();
-    local_dihedrals_.clear();
-    local_dihedrals_generation_ = ~std::uint64_t{0};
+    // Owned-tuple cache is owned by the cpu::Dihedral base.
 }
 
+} // namespace cpu
 } // namespace ATV
