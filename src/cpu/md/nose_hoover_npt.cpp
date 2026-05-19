@@ -251,17 +251,27 @@ void NoseHooverNPT::update_eps_dot(const cpu::LaunchContext& ctx, double half_dt
     const double V = f.box.volume();
     if (V <= 0.0) return;
 
-    // P_internal in `frame.stress` convention (matches Berendsen barostat
-    // and tests/mpi/test_npt_multirank.cpp).  At end_of_step time
-    // `frame.stress` is reduced; at initial_integrate time it carries
-    // the previous step's reduced value (a "reasonable stale" estimate).
-    const double P_int = -(f.stress[0] + f.stress[1] + f.stress[2]) / (3.0 * V);
+    // Standard MTK sign convention (Tuckerman 2006, LAMMPS `fix_nh.cpp`):
+    //
+    //     P_int = trace(σ) / (3V)        ; positive ⇔ compressive
+    //     G_ε   = [3V (P_int − P_ext) + (6/N_f) KE_atoms] / W
+    //
+    // `frame.stress[0..2]` holds the LAMMPS-style pressure-tensor sum
+    // (kinetic Σ m·v² plus pair virial Σ r·F), so trace/(3V) is the
+    // standard internal pressure, no negation. Both the pressure term
+    // and the KE coupling term then live in the same sign convention,
+    // so a system at equilibrium has G_ε ≈ small and the box settles.
+    //
+    // Historical pitfall (fixed 2026-05-19): the previous formula used
+    // `P_int = -trace/(3V)` plus `+(P_target - P_int)` to match the
+    // Berendsen barostat's internal convention — but the KE coupling
+    // was still in standard convention, so the two terms didn't cancel
+    // at equilibrium and the box monotonically inflated even after T
+    // equilibrated (caught by tests/cpu/md/test_lammps_npt_parity.cpp).
+    const double P_int =
+        (f.stress[0] + f.stress[1] + f.stress[2]) / (3.0 * V);
 
-    // G_eps drives box growth when P_target > P_int (need to expand to
-    // hit lower target) AND when KE is high (kinetic-stress contribution).
-    // The (P_target - P_int) sign matches the existing Berendsen
-    // convention because both compute pressure as `-trace/(3V)`.
-    const double G_eps = (3.0 * V * (P_target_ - P_int)
+    const double G_eps = (3.0 * V * (P_int - P_target_)
                           + (6.0 / static_cast<double>(n_dof_)) * KE_global_)
                          / W_;
     eps_dot_ += G_eps * half_dt;

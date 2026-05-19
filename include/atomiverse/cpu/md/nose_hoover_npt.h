@@ -47,11 +47,15 @@ namespace md {
 ///
 /// where the driving force is
 ///
-///     G_ε = [3·V·(P_target - P_internal) + (6/N_dof)·KE] / W
+///     G_ε = [3·V·(P_internal - P_target) + (6/N_dof)·KE] / W
 ///
-/// `P_internal = -(σ_xx + σ_yy + σ_zz) / (3V)` matches the convention
-/// used by `Barostat` (Berendsen), so `P_target = 0` means "atmospheric"
-/// in both components.
+/// with `P_internal = (σ_xx + σ_yy + σ_zz) / (3V)` — the LAMMPS-standard
+/// pressure-tensor convention (positive trace ⇔ compressive). `P_target`
+/// uses the same sign convention as LAMMPS `fix npt iso`, so passing
+/// `P_target = 0` matches LAMMPS at the same setpoint. Note: this is
+/// the OPPOSITE sign convention from `Barostat` (Berendsen), which still
+/// uses `P = -trace/(3V)`; the Berendsen formula is self-consistent
+/// under that sign so it does not need to change.
 ///
 /// Phase distribution:
 ///
