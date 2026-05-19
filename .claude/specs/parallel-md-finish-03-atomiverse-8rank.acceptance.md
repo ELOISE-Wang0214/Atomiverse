@@ -11,7 +11,8 @@ criteria:
       `exit_code: 0` line in
       `benchmarks/md/reference/polyethylene/runs/atomiverse_n8/RUN.md`).
       (Closes parent ac-004 exit-code portion.)
-    status: pending
+    status: verified
+    last_checked: 2026-05-19
 
   - id: ac-002
     summary: thermo.csv + stress_strain.csv land non-empty
@@ -26,7 +27,8 @@ criteria:
       of `stress_strain.csv` matches
       (`step,stage,strain,sigma_xx_eV_per_A3,sigma_xx_GPa`).
       (Closes parent ac-004 CSV portion.)
-    status: pending
+    status: verified
+    last_checked: 2026-05-19
 
   - id: ac-003
     summary: Resident memory growth ≤ 5% across two consecutive runs
@@ -38,6 +40,7 @@ criteria:
       rule (parent §B.2) holds in steady state.
       (Closes parent ac-004 memory portion.)
     status: pending
+    observed_2026-05-19: run 1 = 19,333,120 B; run 2 = 19,611,648 B; growth = 1.44% (≤ 5% gate). (Left at pending per /mol:impl rule that only code|runtime auto-flip.)
 
   - id: ac-004
     summary: RUN.md fully populated with host fingerprint and run metadata
@@ -49,6 +52,7 @@ criteria:
       RSS (× 2 runs), exit code, and final per-step
       wall time printed by the binary.
     status: pending
+    observed_2026-05-19: RUN.md contains exact mpirun command, git SHA ee80e0e, uname output, Apple M4 brand string, OMP env state (unset, with binary's warning), both runs' wall + RSS, exit code 0, and a "Known anomaly" note on the suspicious T_K/E_kin_eV columns. (Left at pending per /mol:impl rule that only code|runtime auto-flip.)
 ---
 
 # Acceptance criteria

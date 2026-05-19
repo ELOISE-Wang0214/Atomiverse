@@ -1,8 +1,9 @@
 ---
 title: Atomiverse 8-rank polyethylene_tension end-to-end run
 slug: parallel-md-finish-03-atomiverse-8rank
-status: approved
+status: code-complete
 created: 2026-05-19
+last-updated: 2026-05-19
 parent: parallel-md-engine.md
 ---
 
@@ -34,13 +35,13 @@ No source code changes. The `runs/atomiverse_n8/` directory is fixed (not timest
 
 ## Tasks
 
-- [ ] Ensure release build with MPI is current: `cmake -B build -DCMAKE_BUILD_TYPE=Release -DATV_BUILD_BENCHMARKS=ON -DATV_USE_MPI=ON` and `cmake --build build -j --target polyethylene_tension`.
-- [ ] Run with explicit fixed-path output, capturing exit code, wall time, peak RSS: `mkdir -p benchmarks/md/reference/polyethylene/runs/atomiverse_n8 && /usr/bin/time -l mpirun -n 8 ./build/benchmarks/md/polyethylene_tension --mode full --out-dir benchmarks/md/reference/polyethylene/runs/atomiverse_n8 2> benchmarks/md/reference/polyethylene/runs/atomiverse_n8/time.log` and confirm exit 0.
-- [ ] Verify both CSVs exist and are non-empty under `runs/atomiverse_n8/`; each ≥ 11 lines (header + ≥ 10 data rows).
-- [ ] Compute peak RSS from `time.log` (look for `maximum resident set size`) and the wall time (look for `real`).
-- [ ] Author `RUN.md` with: the exact command, `git rev-parse HEAD`, `uname -mrs`, `sysctl -n machdep.cpu.brand_string`, `OMP_NUM_THREADS`/`OMP_PROC_BIND` settings used, wall time, peak RSS, exit code (0), and the binary's printed final per-step wall time.
-- [ ] Re-run the same command a second time and confirm peak RSS does not exceed 5% of the first run's number (steady-state inner-loop allocation gate from parent ac-004). Record both numbers in `RUN.md`.
-- [ ] Commit the three files in one commit: `bench(parallel-md-finish-03): Atomiverse 8-rank end-to-end PE-tension run`.
+- [x] Ensure release build with MPI is current: built `polyethylene_tension` against the build tree configured by spec 01.
+- [x] Run with `/usr/bin/time -l` + `--oversubscribe` (8 ranks on 10-core M4): exited cleanly in 170.68 s; `thermo.csv` (281 lines) + `stress_strain.csv` (101 lines) + `time.log` (994 B) landed under `runs/atomiverse_n8/`. Used `--box-len 90` to match the LAMMPS reference box (sub-spec 02) so sub-spec 04 can do apples-to-apples comparison.
+- [x] CSV headers verified: `thermo.csv` = `step,stage,T_target_K,T_K,P_bar,E_pot_eV,E_kin_eV,box_x,box_y,box_z`; `stress_strain.csv` = `step,stage,strain,sigma_xx_eV_per_A3,sigma_xx_GPa`. Both ≥ 11 lines.
+- [x] Peak RSS extracted from `time.log`: run 1 = 19,333,120 B (18.44 MiB); wall time = 170.68 s.
+- [x] Authored `RUN.md` with command, git SHA `ee80e0e`, host `Apple M4 / Darwin 25.4.0`, OMP env (unset; binary emits the documented warning), both runs' wall + RSS, exit code 0, and a "Known anomaly" note on the misleading `T_K` / `E_kin_eV` column values (tracked as follow-up; CSV structure is acceptable per ac-002, so this is not a blocker).
+- [x] Re-ran end-to-end; peak RSS = 19,611,648 B. Growth = (19611648 - 19333120) / 19333120 = **1.44%**, well below the 5% gate. Both numbers committed in `RUN.md`.
+- [x] Commit the four files (RUN.md, thermo.csv, stress_strain.csv, time.log) in one commit.
 
 ## Testing strategy
 
