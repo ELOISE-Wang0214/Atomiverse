@@ -1,7 +1,6 @@
 # Spec Index
 
 - [python-bindings](python-bindings.md) — nanobind + DLPack Python bindings; mp.Frame as sole interface, CUDA as compute backend [in-progress: MD/SCF/optimizer/PW bindings landed; RDF observer binding still TODO]
-- [libxc-xc-fix-04-grid](libxc-xc-fix-04-grid.md) — Tabulated Lebedev (6 orders) + Mura-Knowles radial + Bragg-Slater Z=1..36 [approved]
 - [libxc-xc-fix-05-uks-validation](libxc-xc-fix-05-uks-validation.md) — End-to-end UKS vs PySCF constexpr references (no runtime libxc) [approved]
 - [eri-hpc-opt](eri-hpc-opt.md) — Shell-block ERI optimization: -march=native, xsimd, shell-type dispatch to match/exceed PySCF direct SCF [in-progress: 5/10 tasks (phases 1-3); phase 4-5 pending]
 - [rust-frame-lowering](rust-frame-lowering.md) — Rust-first canonical frame, typed requirement system, Spec/Plan/Driver split, and staged migration roadmap [draft]
