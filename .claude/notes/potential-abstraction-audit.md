@@ -81,6 +81,14 @@ string dispatch does not exist. Spec defers
 (`pe-potential-abstraction.md:262`).
 **Severity: LOW** (intentional). **Refactor:** revisit only if
 Python bindings need runtime selection.
+**Resolution 2026-05-19**: confirmed not needed and stays closed by
+non-action. Direct C++ instantiation (`sim.set_pair(PairLJCut{...})`)
+is the C++ API; LAMMPS's `Force::new_pair` is an input-deck dispatcher
+(string → factory via auto-generated `style_pair.h` macros), not a
+library-API feature. Atomiverse has no input-deck parser today; when
+one lands, that's the right place to add string dispatch — not at the
+potential layer. The `pe-potential-abstraction` spec closes with gap 5
+documented as the cleanest possible state of "no registry needed".
 
 ## 6. File count to add a new FF (Morse bond, today)
 
