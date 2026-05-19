@@ -62,27 +62,28 @@ Cite when reporting results derived from this data:
 CAVS ICME source page (with method writeup and figures):
 <https://www.cavs.msstate.edu/icme/code/lammps/atomistic_research/polymers/amorphous.php>
 
-### Known discrepancies vs. current Atomiverse code (2026-05-19)
+### Atomiverse FF discrepancy (Atomiverse-side bug, fix tracked under `pe-ff-migrate-dreiding-ua`)
 
-`benchmarks/md/polyethylene_tension.cpp` and the smaller
-`lammps.in` self-contained reference (committed by
-`parallel-md-finish-02`) use **different angle and dihedral
-parameters** than the MSU paper:
+`benchmarks/md/polyethylene_tension.cpp` and 13 PE-related tests
+currently use **wrong** angle and dihedral parameters that do not
+match this directory's MSU reference. **MSU is the ground truth;
+Atomiverse code is wrong**.
 
-| Term | Atomiverse current | MSU paper (this dir) |
+| Term | Atomiverse code (WRONG, to be fixed) | MSU paper (THIS DIRECTORY, ground truth) |
 |---|---|---|
-| `bond r0` | 1.529 Å | 1.53 Å (sub-Å rounding; effectively same) |
-| `angle k` | 58.35 kcal/mol/rad² | 60 kcal/mol/rad² |
-| `angle θ0` | **112.7°** | **109.5°** (sp³ tetrahedral) |
+| `bond r0` | 1.529 Å | 1.53 Å |
+| `angle k` | 58.35 kcal/mol/rad² | **60 kcal/mol/rad²** |
+| `angle θ0` | 112.7° (OPLS-AA-like) | **109.5°** (sp³ tetrahedral Dreiding-UA) |
 | `dihedral K1..K4` | 2.0058, -2.5128, 0.2710, 6.2900 (OPLS) | **1.73, -4.49, 0.776, 6.99** (Dreiding-UA) |
-| `LJ ε, σ` | 0.112, 4.01 | 0.112, 4.01 (match) |
+| `LJ ε, σ` | 0.112, 4.01 | 0.112, 4.01 ✓ |
 
-The 112.7° / OPLS dihedral set is what `make_pe_box()` and the
-existing CPU PE tests in `tests/cpu/md/` use; it produces
-self-consistent NVE / NVT trajectories but does **not** match the
-Dreiding-UA potential the MSU paper validates against. Reproducing the
-MSU stress-strain curve within the ±5% tolerance required by
-`msu-pe-validation.md` Phase D will require **migrating
-`polyethylene_tension.cpp` to the Dreiding-UA constants above** and
-retuning the embedded tests' tolerances on the new reference numbers.
-Tracked as a follow-up; not closed by simply staging these files.
+The wrong constants entered the codebase pre-2026-05-19; we caught the
+discrepancy when we downloaded the MSU files. The fix is mechanical:
+swap the three constant values in 15 source / test files. Tracked under
+`.claude/specs/pe-ff-migrate-dreiding-ua.md`. After that lands, Atomiverse
+PE matches the MSU paper and `msu-pe-validation.md` Phase D
+(quantitative ±5% LAMMPS comparison) becomes runnable using
+`lammps_msu_paper.in` here as the reference.
+
+**Do not edit the MSU files in this directory to "match" Atomiverse**.
+Ground truth flows MSU → Atomiverse, never the other way.
