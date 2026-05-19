@@ -200,8 +200,18 @@ if(ATV_BUILD_RHF)
     atv_add_cpp_test(test_cpu_scf_orbital_info_observer cpu/scf/test_orbital_info_observer.cpp)
     atv_add_cpp_test(test_cpu_recorder_density_cube cpu/recorder/test_density_cube.cpp)
     atv_add_cpp_test(test_xc_reference         test_xc_reference.cpp)
-    if(ATV_USE_LIBXC)
-        atv_add_cpp_test(test_cpu_scf_xc_vs_libxc cpu/scf/test_xc_vs_libxc.cpp)
+    # libxc test oracle (sub-spec 02 of libxc-xc-fix creates the oracle/
+    # subdirectory; this block lands ahead of it so the option flips on
+    # cleanly the moment the directory exists).
+    if(ATV_BUILD_XC_ORACLE)
+        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cpu/scf/oracle/CMakeLists.txt")
+            add_subdirectory(cpu/scf/oracle)
+        else()
+            message(STATUS
+                "ATV_BUILD_XC_ORACLE=ON but tests/cpu/scf/oracle/ does "
+                "not exist yet (sub-spec 02 of libxc-xc-fix will create it). "
+                "Skipping oracle build.")
+        endif()
     endif()
 endif()
 

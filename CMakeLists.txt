@@ -36,7 +36,9 @@ if(NOT ATV_DOCS_ONLY)
     option(ATV_BUILD_PW "Build plane-wave DFT module (requires FFTW3)" OFF)
     option(ATV_BUILD_TORCH "Build LibTorch backend (requires LibTorch)" OFF)
     option(ATV_BUILD_LIBCINT "Fetch libcint for integral validation tests" OFF)
-    option(ATV_USE_LIBXC "Use libxc for XC ground-truth validation" OFF)
+    option(ATV_BUILD_XC_ORACLE
+           "Build libxc-backed XC oracle (test-only scaffolding; deletable after native parity is locked in)"
+           OFF)
     set(ATV_MOLRS_PATH "${CMAKE_SOURCE_DIR}/../molrs" CACHE PATH "Path to molrs source tree")
     option(ATV_BUILD_PYTHON "Build Python bindings (nanobind)" OFF)
     option(ATV_BUILD_TESTS "Build tests" OFF)
@@ -329,38 +331,27 @@ if(NOT ATV_DOCS_ONLY)
         target_compile_definitions(atomiverse PUBLIC ATV_HAS_LIBCINT)
     endif()
 
-    # Optional: fetch libxc for XC ground-truth validation
-    if(ATV_USE_LIBXC)
+    # Optional: libxc as test-only oracle (NOT a runtime dependency).
+    # libxc is found here and consumed only by test targets under
+    # tests/cpu/scf/oracle/ (see sub-spec 02). libatomiverse never
+    # links against libxc and exposes no libxc-related compile macro.
+    # After native XC parity is locked in (sub-spec 03 of the
+    # libxc-xc-fix chain), this option and the oracle directory are
+    # deletable in a single commit without touching libatomiverse.
+    if(ATV_BUILD_XC_ORACLE)
         find_package(Libxc 6 CONFIG QUIET)
-        if(Libxc_FOUND)
-            message(STATUS "Found system libxc: ${Libxc_DIR}")
-            target_link_libraries(atomiverse PUBLIC Libxc::xc)
-        else()
-            message(STATUS "System libxc not found; fetching from source (tag 6.2.2)")
-            set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
-            set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-            set(ENABLE_FORTRAN OFF CACHE BOOL "" FORCE)
-            set(ENABLE_PYTHON OFF CACHE BOOL "" FORCE)
-            set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
-            FetchContent_Declare(
-                libxc
-                GIT_REPOSITORY https://gitlab.com/libxc/libxc.git
-                GIT_TAG 6.2.2
-            )
-            FetchContent_MakeAvailable(libxc)
-            unset(CMAKE_POLICY_VERSION_MINIMUM CACHE)
-            target_link_libraries(atomiverse PUBLIC xc)
-            # libxc only sets INSTALL_INTERFACE includes; add BUILD_INTERFACE manually
-            target_include_directories(atomiverse PUBLIC
-                "${libxc_SOURCE_DIR}/src"
-                "${libxc_BINARY_DIR}/src"
-                "${libxc_BINARY_DIR}"
+        if(NOT Libxc_FOUND)
+            message(FATAL_ERROR
+                "\nATV_BUILD_XC_ORACLE=ON but libxc was not found.\n"
+                "Install libxc 6+ on the build host:\n"
+                "  macOS:  brew install libxc\n"
+                "  Linux:  apt install libxc-dev\n"
+                "No FetchContent fallback is provided -- libxc is a test-only "
+                "oracle and must be installed system-wide to exercise the XC "
+                "parity tests.\n"
             )
         endif()
-        target_sources(atomiverse PRIVATE
-            src/cpu/scf/xc_libxc.cpp
-        )
-        target_compile_definitions(atomiverse PUBLIC ATV_HAS_LIBXC)
+        message(STATUS "libxc test oracle enabled: ${Libxc_DIR}")
     endif()
 
     if(ATV_BUILD_CUDA)
