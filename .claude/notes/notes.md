@@ -88,6 +88,25 @@ produced a uniform ~0.4 mHa bias on every PBE energy until the spec
 `vwn5_correlation()`. Cross-check by reading the corresponding
 libxc Maple source in `libxc/maple/`.
 
+## [2026-05-19] Default radial grid is Treutler-Ahlrichs (M4), not Mura-Knowles
+
+`build_molecular_grid` calls `radial_grid_treutler_ahlrichs(n, Z)` by
+default. This is PySCF's `dft.gen_grid.Grids.radi_method` default and
+the reason our UKS-LSDA total energies agree with PySCF references
+to numerical precision (~1e-10 Ha at default grid, well within the
+spec's 1e-6..1e-4 Ha targets). The earlier Mura-Knowles + Bragg-Slater
+radii combination differed from PySCF's grid by O(mHa) per atomic
+center and was a constant systematic bias against PySCF references.
+
+Treutler-Ahlrichs uses atom-specific xi scaling
+(`treutler_ahlrichs_xi(Z)` in grid.cpp, matches PySCF
+`dft.radi._treutler_ahlrichs_xi` for Z=1..36).
+
+**Rule**: when validating any grid-based DFT quantity against PySCF,
+default to `radial_grid_treutler_ahlrichs`. Mura-Knowles is retained
+in the public API for other DFT codes that use it (NWChem, ORCA), but
+it is NOT the right default for PySCF parity work.
+
 ## [2026-05-19] Grid radii match PySCF's BRAGG_RADII for Z=1..36
 
 `bragg_slater_radius(Z)` for Z=1..36 reproduces
