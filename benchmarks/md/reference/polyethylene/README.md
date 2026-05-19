@@ -90,9 +90,37 @@ srun --cpu-bind=cores --hint=memory_bound -n 8 ...
 
 ### Measured NUMA effect
 
-`<TBD: record before/after wall-time numbers from the reference machine here.
-On a single-socket dev box this entry should read "single-socket — no NUMA
-effect observed", with the measurement command preserved for later replay.>`
+Captured 2026-05-19 on this host (Apple M4, 10 physical cores, unified memory
+— single-socket — no NUMA effect observed at the chip level).
+
+Reproduce:
+
+```bash
+# A — unset (driver-default, emits the stderr warning):
+unset OMP_PROC_BIND OMP_PLACES
+OMP_NUM_THREADS=4 /usr/bin/time -p ./build/benchmarks/pe_profile_single \
+  --steps 5000 --warmup 200 --out /tmp/profile_unset.csv
+
+# B — bound:
+OMP_PROC_BIND=close OMP_PLACES=cores OMP_NUM_THREADS=4 /usr/bin/time -p \
+  ./build/benchmarks/pe_profile_single \
+  --steps 5000 --warmup 200 --out /tmp/profile_bound.csv
+```
+
+| Configuration | per-step wall (ms) | wall-clock real (s) |
+|---|---|---|
+| `OMP_PROC_BIND` unset (default) | **0.273** | 1.47 |
+| `OMP_PROC_BIND=close OMP_PLACES=cores` | **0.267** | 1.49 |
+| Relative delta (`unset → bound`) | **−2.2%** | within wall-time noise |
+
+Interpretation: on Apple M4's single-die unified-memory architecture, OS-level
+thread placement has only a marginal (~2%) effect on Atomiverse's MD hot path
+at OMP_NUM_THREADS=4. The C++ stderr warning emitted by `cpu::Backend` (parent
+ac-018) remains the right default — it nudges the user toward `close` binding,
+which costs nothing and avoids unpredictable scheduling on busier hosts. On a
+2-socket Linux NUMA box the delta is expected to be larger (5–15% per LAMMPS
+docs); the `--bind-to numa` MPI options + `numactl --membind=<node>` recipe
+above is the recommended starting point there.
 
 ## Post-processing
 

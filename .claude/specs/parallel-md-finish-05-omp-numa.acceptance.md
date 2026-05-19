@@ -15,6 +15,7 @@ criteria:
       observed" with the host CPU brand string and the
       reasoning. (Closes parent ac-019.)
     status: pending
+    observed_2026-05-19: "## Thread binding" + "### Measured NUMA effect" subsections present with: unset wall=0.273 ms/step (real 1.47s), bound wall=0.267 ms/step (real 1.49s), delta −2.2%, "single-socket — no NUMA effect observed" phrase, Apple M4 brand, reasoning. Reproducible commands committed. Per /mol:impl rule, docs criteria not auto-flipped.
 
   - id: ac-002
     summary: Measurement commands are reproducible
@@ -26,6 +27,7 @@ criteria:
       can re-measure on a different host. The command lines
       reference `./build/benchmarks/md/pe_profile_single`.
     status: pending
+    observed_2026-05-19: "## Thread binding" + "### Measured NUMA effect" subsections present with: unset wall=0.273 ms/step (real 1.47s), bound wall=0.267 ms/step (real 1.49s), delta −2.2%, "single-socket — no NUMA effect observed" phrase, Apple M4 brand, reasoning. Reproducible commands committed. Per /mol:impl rule, docs criteria not auto-flipped.
 ---
 
 # Acceptance criteria
