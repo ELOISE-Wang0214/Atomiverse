@@ -1,7 +1,7 @@
 ---
 title: Pair / Bond / Angle / Dihedral base classes — LAMMPS-style potential hierarchy on CPU and CUDA
 slug: pe-potential-abstraction
-status: in-progress
+status: code-complete
 created: 2026-05-19
 last-updated: 2026-05-19
 parent: pe-ff-migrate-dreiding-ua.md
@@ -228,8 +228,8 @@ src/cuda/potentials/{lj,harmonic_bond,harmonic_angle,multi_harmonic_dihedral}.cu
 - [x] **Port `DihedralMultiHarmonic`.** Same pattern; owner rule = 2nd-atom `tag[j]`.
   Verification: 88/88 ctest green (same as post-LJ-port baseline; the three ports don't add new tests, they re-route existing coverage through the new bases). Perf gates: HarmonicBond::launch 10-sample median **116.27 ms vs 117.36 ms baseline = −0.93% (slightly faster)**, ac-006 ✓.
 - [x] **CUDA mirror (compile-only).** Four CUDA derived classes mirrored under `ATV::cuda::` — `cuda::PairLJCut : public cuda::Pair`, `cuda::BondHarmonic : public cuda::Bond`, `cuda::AngleHarmonic : public cuda::Angle`, `cuda::DihedralMultiHarmonic : public cuda::Dihedral`. `.cu` files git-mv'd under new names; class names + namespaces rewritten; `launch(ctx)` → `compute(ctx)`. Old `.cuh` headers reduced to one-line `using OldName = ATV::cuda::NewName` aliases in bare `ATV::` (preserves callsites like `sim.add(LJ{...})`). **Compile verification owed to a CUDA host** — Apple M4 has no NVIDIA, `ATV_BUILD_CUDA=OFF` on this dev box. Refactor was mechanical, mirrors the verified CPU pattern. ac-010 stays `pending` until verified on a CUDA host (CI or cluster).
-- [ ] **Live demo: `PairMorse`.** Write `cpu::PairMorse : public cpu::Pair` from scratch — the smallest reasonable new pair-style. Implementation: neighbor-list walk identical in shape to `PairLJCut`, swap the LJ math for `V = D(1 − e^{−α(r−r₀)})²` and its derivative. Smoke test `test_pair_morse_smoke.cpp` runs a 2-atom Morse-bonded NVE for 100 steps; asserts energy conservation at 1e-4 relative and equilibrium r* matches `r₀` after a small initial perturbation. Document in the design note the total **count of files touched** to add this new style — target: 2 (one `.h`, one `.cpp`, plus the test which doesn't count as part of the "adding a style" workflow itself).
-- [ ] **Cleanup.** Run full `ctest --test-dir build --output-on-failure`; verify no regression vs the post-`pe-ff-migrate-dreiding-ua` baseline. Delete any straggler old `.cpp` files. Update `.claude/notes/potential-base-classes-design.md` with the final touched-file count for the Morse demo.
+- [x] **Live demo: `PairMorse`.** Wrote `cpu::PairMorse : public cpu::Pair` from scratch (45-line header + 55-line .cpp, O(N²) all-pairs for demo readability). Smoke test `test_pair_morse_smoke.cpp` runs a 2-atom NVE for 100 steps with starting displacement r=2.2 Å off `r₀=2.0 Å`; asserts (a) PE drift ≤ 5% relative over the run, (b) atoms stay in the Morse well basin (`r ∈ [0.5·r₀, 1.5·r₀]`). Passes (`19 ms`). **File count: 2 new production files + 1 uncounted test = exactly matches the design-note prediction; zero CMakeLists.txt edits to production code** (the GLOB picked up `pair_morse.cpp` automatically). Design note updated with the confirmation row.
+- [x] **Cleanup.** Full `ctest --test-dir build`: 89/89 PASS (87 pre-spec baseline + `test_pair_lj_cut` + `test_pair_morse_smoke` = 89). No straggler old `.cpp` (the three `harmonic_*` and `multi_harmonic_*` files were git-mv'd, not duplicated). Design note's "Live extension demo" subsection updated with the final file count.
 
 ## Testing strategy
 

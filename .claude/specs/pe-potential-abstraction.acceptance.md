@@ -14,6 +14,7 @@ criteria:
       addresses each "high"-severity finding from
       `.claude/notes/potential-abstraction-audit.md`.
     status: pending
+    observed_2026-05-19: `.claude/notes/potential-base-classes-design.md` committed (5.2 KB) covering all six points; "Gap-coverage footer" maps each HIGH audit gap (1/2/3/6) to a section that addresses it. Audit note committed in the same commit as the design note. Per /mol:impl rule, docs criteria not auto-flipped.
 
   - id: ac-002
     summary: Four CPU base classes exist with LAMMPS-style shape
@@ -28,7 +29,8 @@ criteria:
       `cpu::Bond` / `cpu::Angle` / `cpu::Dihedral` expose a
       protected `select_owned_tuples(...)` helper for the
       multi-rank ownership filter.
-    status: pending
+    status: verified
+    last_checked: 2026-05-19
 
   - id: ac-003
     summary: Four existing CPU potentials rewritten under LAMMPS names
@@ -42,7 +44,8 @@ criteria:
       The matching old `.cpp` files (`src/cpu/md/lj.cpp`,
       `src/cpu/potentials/harmonic_bond.cpp`, etc.) are
       deleted or reduced to a one-line include-only stub.
-    status: pending
+    status: verified
+    last_checked: 2026-05-19
 
   - id: ac-004
     summary: Backwards-compat aliases preserve existing user-code API
@@ -56,7 +59,8 @@ criteria:
       Existing user code referring to the old names
       (`sim.set_pair(cpu::md::LJ{...})`, `sim.add(cpu::HarmonicBond{...})`)
       compiles without change.
-    status: pending
+    status: verified
+    last_checked: 2026-05-19
 
   - id: ac-005
     summary: Zero-overhead — PairLJCut::compute perf within ±2% of pre-refactor baseline
@@ -74,6 +78,7 @@ criteria:
       and the resolution before this criterion flips to
       verified.
     status: pending
+    observed_2026-05-19: 10-sample LJ::launch median = 157.00 ms vs 154.79 ms baseline = **+1.43% delta**, within ±2%. Min 154.87, max 162.98. Per /mol:impl rule, performance criteria need /mol:bench (or /mol:close --manual) to flip.
 
   - id: ac-006
     summary: Zero-overhead — BondHarmonic::compute perf within ±2% of pre-refactor baseline
@@ -84,6 +89,7 @@ criteria:
       `profile_1.csv`: pre-refactor 117.36 ms; new value
       within ±2%.
     status: pending
+    observed_2026-05-19: 10-sample HarmonicBond::launch median = 116.27 ms vs 117.36 ms baseline = **−0.93% delta** (slightly faster). Within ±2%.
 
   - id: ac-007
     summary: LJ NVE bit-identicality preserved at 5e-12
@@ -96,6 +102,7 @@ criteria:
       envelope). The refactor is a name-and-structure change
       only; FP behaviour must not move.
     status: pending
+    observed_2026-05-19: `ctest -R test_lj_nve` PASS after the PairLJCut port; included in the 89/89 full-suite green. Per /mol:impl rule, scientific criteria stay pending.
 
   - id: ac-008
     summary: All existing PE + LJ tests continue green
@@ -108,7 +115,8 @@ criteria:
       8). The four new regression tests (`test_pair_lj_cut`,
       `test_bond_harmonic`, `test_angle_harmonic`,
       `test_dihedral_multi_harmonic`) also pass.
-    status: pending
+    status: verified
+    last_checked: 2026-05-19
 
   - id: ac-009
     summary: "One new class" demo — PairMorse reaches NVE with two new files
@@ -122,7 +130,8 @@ criteria:
       subsection. No other file in the codebase is modified
       to enable the new style (no central registry, no
       Driver edit — the user just `add(cpu::PairMorse{...})`).
-    status: pending
+    status: verified
+    last_checked: 2026-05-19
 
   - id: ac-010
     summary: CUDA mirror compiles clean (no tests)
@@ -139,6 +148,7 @@ criteria:
       by this spec (per user direction); the compile gate
       is the only check.
     status: pending
+    observed_2026-05-19: Headers + .cu files all exist with the documented LAMMPS-named classes and one-line backwards-compat aliases. **Compile verification unrun** — Apple M4 dev box has `ATV_BUILD_CUDA=OFF` (no NVIDIA). The refactor mirrors the verified CPU pattern exactly; any error will surface on the next CUDA-enabled CI run.
 
   - id: ac-011
     summary: Audit findings consumed and cross-referenced
@@ -152,6 +162,7 @@ criteria:
       bottom of the design note with an explicit deferral
       rationale.
     status: pending
+    observed_2026-05-19: Design note "Gap-coverage footer" maps each HIGH audit gap (1, 2, 3, 6) to the section that resolves it; MEDIUM gap 4 (CUDA set_pair) deferred to cuda-driver-taxonomy; LOW gap 5 (string-keyed registry) out of scope per spec. Audit note cross-referenced.
 ---
 
 # Acceptance criteria

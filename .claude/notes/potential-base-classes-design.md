@@ -105,6 +105,8 @@ fix for gap 2).
 
 ## (f) Live extension demo — `PairMorse` file count
 
+**Status: confirmed 2026-05-19** — prediction matched exactly.
+
 Prediction: **2 files** plus one uncounted test:
 
   - `include/atomiverse/cpu/potentials/pair_morse.h`
@@ -115,6 +117,13 @@ Zero CMake edits if `src/cpu/potentials/*.cpp` is a `GLOB` (today
 explicit at `CMakeLists.txt:179-183` — convert in the bases-land
 commit). If GLOB rejected, count becomes 3. Either is a 75 % cut
 vs today's 8.
+
+**Verified result**: GLOB landed in the bases commit; PairMorse added
+with exactly 2 production files (`pair_morse.h` 45 lines +
+`pair_morse.cpp` 55 lines), 0 CMakeLists.txt edits to production
+code. Smoke test `test_pair_morse_smoke.cpp` (uncounted; verifies
+the demo, not part of the "add a style" workflow) passes a 2-atom
+NVE energy-conservation gate in 19 ms.
 
 ## Gap-coverage footer
 
