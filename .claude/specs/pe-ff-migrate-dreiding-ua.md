@@ -97,8 +97,8 @@ tests/mpi/test_pe_nvt_multirank.cpp
 
 The mechanical part of this spec (constant value replacement across 15 files) is itself a signal: if the codebase had a LAMMPS-style abstraction (`bond_style harmonic` + a single parameter registration site), this migration would touch **one** file, not fifteen. Use this opportunity to audit the gap.
 
-- [ ] **Audit potential abstraction across CPU + CUDA + torch backends.** Delegate to the `av-architect` agent (read-only). Compare:
-  1. **Class hierarchy**: does either `cpu::potentials::HarmonicBond` or `cuda::HarmonicBond` (or `torch::*`) inherit from a common `Potential` / `PairStyle` / `BondStyle` base class? If not, what's the closest common interface (currently `ComponentBase`)?
+- [ ] **Audit potential abstraction across CPU + CUDA backends** (torch out of scope). Delegate to the `av-architect` agent (read-only). Compare:
+  1. **Class hierarchy**: does either `cpu::potentials::HarmonicBond` or `cuda::HarmonicBond` inherit from a common `Potential` / `PairStyle` / `BondStyle` base class? If not, what's the closest common interface (currently `ComponentBase`)?
   2. **Cross-backend naming**: is `HarmonicBond` namespaced consistently (`ATV::cpu::HarmonicBond` vs `ATV::cuda::HarmonicBond`) or is there a name collision in the bare `ATV` namespace?
   3. **Capability/role coverage**: does the CUDA-side class declare `role()` and `capabilities()` like the CPU one (Phase 5 added these to CPU only)?
   4. **Parameter registration**: does a user `set_pair`-style helper exist that dispatches to the right backend, or must the user instantiate the backend-specific class manually?
@@ -107,7 +107,7 @@ The mechanical part of this spec (constant value replacement across 15 files) is
   
   Deliverable: `.claude/notes/potential-abstraction-audit.md` (passive note, project-scope) with a per-question table of findings, gap severity (low/medium/high), and one concrete proposal per gap. Read-only audit — no source changes in this task.
 
-- [ ] **Promote the audit findings into a follow-up spec proposal** at the bottom of the audit note: name the next spec (e.g. `pe-ff-constants-extract` or `potential-base-class-refactor`), list the smallest concrete refactor that would close the most severe gap, and reference this spec's commit SHA.
+- [ ] **Promote the audit findings into a follow-up design spec** at the bottom of the audit note. The proposed spec is **`pe-potential-abstraction`** (separately drafted in this commit), which takes the audit findings as input and designs a zero-overhead `Potential` base class shared by CPU and CUDA (CUDA mirror compile-only, no tests). Cross-reference: link from the audit note to that spec's slug.
 
 ## Testing strategy
 
