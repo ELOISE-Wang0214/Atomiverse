@@ -62,14 +62,17 @@ Cite when reporting results derived from this data:
 CAVS ICME source page (with method writeup and figures):
 <https://www.cavs.msstate.edu/icme/code/lammps/atomistic_research/polymers/amorphous.php>
 
-### Atomiverse FF discrepancy (Atomiverse-side bug, fix tracked under `pe-ff-migrate-dreiding-ua`)
+### Atomiverse FF discrepancy — resolved 2026-05-19
 
-`benchmarks/md/polyethylene_tension.cpp` and 13 PE-related tests
-currently use **wrong** angle and dihedral parameters that do not
-match this directory's MSU reference. **MSU is the ground truth;
-Atomiverse code is wrong**.
+`benchmarks/md/polyethylene_tension.cpp` and 14 PE-related tests
+previously used wrong (OPLS-AA-like) angle and dihedral parameters
+that did not match this directory's MSU reference. Resolved in commit
+`pe-ff-migrate-dreiding-ua`: the 15 source / test files now use the
+Dreiding-UA constants verbatim from `lammps_msu_paper.in`.
 
-| Term | Atomiverse code (WRONG, to be fixed) | MSU paper (THIS DIRECTORY, ground truth) |
+#### Historical mismatch (pre-2026-05-19, kept for context)
+
+| Term | Atomiverse code (before fix) | MSU paper (ground truth) |
 |---|---|---|
 | `bond r0` | 1.529 Å | 1.53 Å |
 | `angle k` | 58.35 kcal/mol/rad² | **60 kcal/mol/rad²** |
@@ -77,13 +80,15 @@ Atomiverse code is wrong**.
 | `dihedral K1..K4` | 2.0058, -2.5128, 0.2710, 6.2900 (OPLS) | **1.73, -4.49, 0.776, 6.99** (Dreiding-UA) |
 | `LJ ε, σ` | 0.112, 4.01 | 0.112, 4.01 ✓ |
 
-The wrong constants entered the codebase pre-2026-05-19; we caught the
-discrepancy when we downloaded the MSU files. The fix is mechanical:
-swap the three constant values in 15 source / test files. Tracked under
-`.claude/specs/pe-ff-migrate-dreiding-ua.md`. After that lands, Atomiverse
-PE matches the MSU paper and `msu-pe-validation.md` Phase D
-(quantitative ±5% LAMMPS comparison) becomes runnable using
-`lammps_msu_paper.in` here as the reference.
+After the fix:
+- Atomiverse FF and `lammps_msu_paper.in` exercise the same physics.
+- `msu-pe-validation.md` Phase D (quantitative ±5% LAMMPS comparison)
+  is unblocked.
+- One test (`test_pe_single_chain.cpp::AllTransGeometryEnergyIsZero`)
+  had its V≈0 assertion adjusted to the Dreiding-UA constant offset at
+  trans (~4.4e-3 eV for 17 dihedrals; was an OPLS-only artifact).
+- New pin test `tests/cpu/md/test_pe_ff_constants.cpp` guards against
+  future drift.
 
 **Do not edit the MSU files in this directory to "match" Atomiverse**.
 Ground truth flows MSU → Atomiverse, never the other way.

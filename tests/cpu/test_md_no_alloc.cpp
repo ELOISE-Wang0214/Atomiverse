@@ -90,7 +90,7 @@ extern "C" void free(void* p) {
 namespace {
 
 constexpr double kKcalPerMolToEv = 1.0 / 23.060547830619026;
-constexpr double kBondR0         = 1.529;
+constexpr double kBondR0         = 1.53;
 constexpr double kBondK_kcal     = 350.0;
 
 ATV::cpu::Frame make_small_chain(int n_carbons, double box_len) {

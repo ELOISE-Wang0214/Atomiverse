@@ -164,12 +164,9 @@ TimedComponent* make_timed(C&& comp, std::string label, int phase, int order) {
 // ───────────────────────────── Force-field constants ────────────────
 constexpr double kKcalPerMolToEv = 1.0 / 23.060547830619026;
 constexpr double kBondK_kcal     = 350.0;
-constexpr double kBondR0         = 1.529;
-constexpr double kAngleK_kcal    = 58.35;
-constexpr double kAngleTheta0    = 112.7 * kPI / 180.0;
-constexpr double kV1_kcal        = 1.411;
-constexpr double kV2_kcal        = -0.271;
-constexpr double kV3_kcal        = 3.145;
+constexpr double kBondR0         = 1.53;
+constexpr double kAngleK_kcal    = 60.0;
+constexpr double kAngleTheta0    = 109.5 * kPI / 180.0;
 constexpr double kLjEps_kcal     = 0.112;
 constexpr double kLjSigma        = 4.01;
 constexpr double kLjCutoff       = 10.5;
@@ -179,15 +176,12 @@ double angle_k_eV() { return kAngleK_kcal * kKcalPerMolToEv; }
 double lj_eps_eV()  { return kLjEps_kcal  * kKcalPerMolToEv; }
 
 std::vector<double> dihedral_Cn_eV() {
-    const double v1 = kV1_kcal * kKcalPerMolToEv;
-    const double v2 = kV2_kcal * kKcalPerMolToEv;
-    const double v3 = kV3_kcal * kKcalPerMolToEv;
     return {
-        v1 / 2.0 + v2 + v3 / 2.0,
-        v1 / 2.0 - 1.5 * v3,
-        -v2,
-         2.0 * v3,
-         0.0,
+        1.73    * kKcalPerMolToEv,   // C0  (MSU paper, Tschopp 2010)
+        -4.49   * kKcalPerMolToEv,   // C1
+        0.776   * kKcalPerMolToEv,   // C2
+        6.99    * kKcalPerMolToEv,   // C3
+        0.0,                          // C4
     };
 }
 

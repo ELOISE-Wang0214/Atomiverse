@@ -50,30 +50,24 @@ inline constexpr double kKcalPerMolToEv = 1.0 / 23.060547830619026;
 
 // CT-CT bond (alkane sp3-sp3 single bond).
 inline constexpr double kBondK_kcal  = 268.0;       // kcal/mol/Å^2 (LAMMPS K)
-inline constexpr double kBondR0      = 1.529;       // Å
+inline constexpr double kBondR0      = 1.53;       // Å
 
 // CT-CT-CT angle.
-inline constexpr double kAngleK_kcal = 58.35;       // kcal/mol/rad^2 (LAMMPS K)
-inline constexpr double kAngleTheta0 = 112.7 * kPI / 180.0;  // rad
+inline constexpr double kAngleK_kcal = 60.0;       // kcal/mol/rad^2 (LAMMPS K)
+inline constexpr double kAngleTheta0 = 109.5 * kPI / 180.0;  // rad
 
 // CT-CT-CT-CT dihedral (n-alkane backbone OPLS).
-inline constexpr double kV1_kcal = 1.411;
-inline constexpr double kV2_kcal = -0.271;
-inline constexpr double kV3_kcal = 3.145;
 
 inline double bond_K_eV()      { return kBondK_kcal  * kKcalPerMolToEv; }
 inline double angle_K_eV()     { return kAngleK_kcal * kKcalPerMolToEv; }
 
 inline std::vector<double> dihedral_Cn_eV() {
-    const double v1 = kV1_kcal * kKcalPerMolToEv;
-    const double v2 = kV2_kcal * kKcalPerMolToEv;
-    const double v3 = kV3_kcal * kKcalPerMolToEv;
     return {
-        v1 / 2.0 + v2 + v3 / 2.0,   // C0
-        v1 / 2.0 - 1.5 * v3,         // C1
-        -v2,                         // C2
-         2.0 * v3,                   // C3
-         0.0,                        // C4
+        1.73    * kKcalPerMolToEv,   // C0  (MSU paper, Tschopp 2010)
+        -4.49   * kKcalPerMolToEv,   // C1
+        0.776   * kKcalPerMolToEv,   // C2
+        6.99    * kKcalPerMolToEv,   // C3
+        0.0,                          // C4
     };
 }
 
@@ -182,7 +176,7 @@ void evaluate_bonded(cpu::Frame& frame,
 
 // ── At equilibrium: every bonded term sits at its minimum ─────────────
 
-TEST(PeSingleChain, AllTransGeometryEnergyIsZero) {
+TEST(PeSingleChain, AllTransGeometryIsStationaryPoint) {
     auto frame = make_all_trans_alkane(20, 50.0);
 
     HarmonicBond bond({bond_K_eV()}, {kBondR0});
@@ -191,8 +185,23 @@ TEST(PeSingleChain, AllTransGeometryEnergyIsZero) {
 
     evaluate_bonded(frame, bond, angle, dih);
 
-    EXPECT_NEAR(frame.energy, 0.0, 1e-6)
-        << "all-trans C20H42 should sit at the bonded-FF minimum (V≈0)";
+    // All-trans is a stationary point of the Dreiding-UA bonded FF:
+    // - bond at r0 → V_bond = 0, dV_bond/dr = 0
+    // - angle at θ0 → V_angle = 0, dV_angle/dθ = 0
+    // - dihedral at φ=180° → sin(φ)=0 so dV_dih/dφ = 0,
+    //   but V_dih(180°) = 1.73 + 4.49 + 0.776 − 6.99 = 0.006 kcal/mol
+    //   per dihedral (constant offset baked into the Tschopp 2010
+    //   multi-harmonic coefficients). For 17 dihedrals in C₂₀H₄₂:
+    //   17 × 0.006 / 23.06 ≈ 4.4 × 10⁻³ eV total.
+    // (Pre-FF-migration the OPLS-style Fourier series happened to give
+    // V_dih(180°) = 0 exactly, which made this test assert V_total = 0.
+    // The Dreiding-UA constants from the MSU paper carry a nonzero
+    // offset at trans; the physical claim "all-trans is the minimum"
+    // is unchanged — see the max_f gate below.)
+    const double expected_dih_offset = 17.0 * 0.006 / 23.060547830619026;
+    EXPECT_NEAR(frame.energy, expected_dih_offset, 1e-4)
+        << "all-trans C20H42 PE has only the Dreiding-UA dihedral "
+        << "constant offset (~4.4e-3 eV) above zero";
 
     // Forces also vanish to FP tolerance at the minimum.
     double max_f = 0.0;
@@ -308,10 +317,13 @@ TEST(PeSingleChain, BendOneAngleMatchesAnalytic) {
         << "one angle bent by " << dtheta << " rad should give K*Δθ² = " << v_expected;
 }
 
-// ── All-trans dihedral: V_OPLS at φ = 180° is ≈ 0 by OPLS construction ─
+// ── All-trans dihedral: V_Dreiding-UA at φ = 180° is a constant offset ─
 
-TEST(PeSingleChain, AllTransDihedralEnergyIsZero) {
-    // OPLS V(180°) = 1/2 [V1(1-1) + V2(1-1) + V3(1-1)] = 0 exactly.
+TEST(PeSingleChain, AllTransDihedralIsStationaryPoint) {
+    // Dreiding-UA multi-harmonic V(180°) = C0 - C1 + C2 - C3 + C4
+    //                                    = 1.73 + 4.49 + 0.776 − 6.99 + 0
+    //                                    = 0.006 kcal/mol per dihedral
+    // (a baked-in offset of the Tschopp 2010 fit; nonzero unlike OPLS).
     cpu::Frame fresh = make_all_trans_alkane(20, 50.0);
 
     cpu::Context ctx;
@@ -324,7 +336,9 @@ TEST(PeSingleChain, AllTransDihedralEnergyIsZero) {
     dih.launch(lctx);
     dih.destroy({ctx, fresh});
 
-    // 17 dihedrals, each V=0 at trans → total V_dihedral ≈ 0 (FP roundoff).
-    EXPECT_NEAR(fresh.energy, 0.0, 1e-9)
-        << "all-trans dihedral energy should be 0 by OPLS construction";
+    const double expected = 17.0 * 0.006 / 23.060547830619026;
+    EXPECT_NEAR(fresh.energy, expected, 1e-6)
+        << "17 dihedrals at trans should give the Dreiding-UA constant "
+        << "offset ~4.4e-3 eV (not 0 — OPLS used to set this to 0 by "
+        << "construction; Dreiding-UA does not).";
 }

@@ -25,8 +25,8 @@ using namespace ATV;
 
 namespace {
 
-inline constexpr double kBondR0      = 1.529;
-inline constexpr double kAngleTheta0 = 112.7 * kPI / 180.0;
+inline constexpr double kBondR0      = 1.53;
+inline constexpr double kAngleTheta0 = 109.5 * kPI / 180.0;
 
 cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
     cpu::Frame frame(n_carbons);

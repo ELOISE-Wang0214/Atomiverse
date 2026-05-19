@@ -12,7 +12,8 @@ criteria:
       `grep -RnE "kAngleTheta0\s*=\s*109\.5|kAngleK_kcal\s*=\s*60|1\.73|-4\.49|0\.776|6\.99"
       benchmarks/ tests/` returns ≥ 30 matches (each of the 15
       affected files contributes the three updated constants).
-    status: pending
+    status: verified
+    last_checked: 2026-05-19
 
   - id: ac-002
     summary: New pin test asserts Dreiding-UA values
@@ -23,7 +24,8 @@ criteria:
       test_pe_ff_constants` reports 1/1 passing. Its assertions
       cover all three migrated constants by direct comparison
       against the literal Dreiding-UA values.
-    status: pending
+    status: verified
+    last_checked: 2026-05-19
 
   - id: ac-003
     summary: Full ctest suite stays green with no PE-test regression
@@ -35,7 +37,8 @@ criteria:
       `test_pe_ff_constants` pin). No PE test regresses
       (`test_pe_*`, `test_mpi_pe_*`, `test_lj_exclusions`,
       `test_nose_hoover_t_ramp_n2` all PASS).
-    status: pending
+    status: verified
+    last_checked: 2026-05-19
 
   - id: ac-004
     summary: SOURCES.md FF discrepancy marked resolved
@@ -47,6 +50,7 @@ criteria:
       commit SHA that closed this spec. The original mismatch
       table is preserved as a historical footnote.
     status: pending
+    observed_2026-05-19: SOURCES.md "Atomiverse FF discrepancy" subsection now opens with "resolved 2026-05-19" and preserves the historical mismatch table. Per /mol:impl rule, docs criteria stay pending.
 
   - id: ac-005
     summary: msu-pe-validation Phase D status flipped to ready
@@ -58,6 +62,7 @@ criteria:
       and reads `🟡 ready to run` (or equivalent wording
       indicating the FF blocker is cleared).
     status: pending
+    observed_2026-05-19: msu-pe-validation.md Phase D row now reads "🟡 ready to run — pe-ff-migrate-dreiding-ua landed 2026-05-19, Atomiverse PE now uses MSU Dreiding-UA constants". Per /mol:impl rule, docs criteria stay pending.
 
   - id: ac-006
     summary: Single-chain Atomiverse-vs-LAMMPS energy decomposition agrees to 1e-6 eV per term

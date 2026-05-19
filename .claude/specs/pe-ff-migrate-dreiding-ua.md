@@ -1,7 +1,7 @@
 ---
 title: Fix Atomiverse PE force-field constants to match the MSU reference
 slug: pe-ff-migrate-dreiding-ua
-status: approved
+status: code-complete
 created: 2026-05-19
 last-updated: 2026-05-19
 parent: msu-pe-validation.md
@@ -119,23 +119,23 @@ benchmarks/md/reference/polyethylene/SOURCES.md        (resolved annotation)
 
 ## Tasks
 
-- [ ] Write a tiny RED test `tests/cpu/md/test_pe_ff_constants.cpp`
+- [x] Write a tiny RED test `tests/cpu/md/test_pe_ff_constants.cpp`
       that pin-points the Dreiding-UA values (asserts `kAngleK_kcal == 60.0`,
       `kAngleTheta0 ≈ 109.5° in radians`, `kDihedralC[0..3] == {1.73,
       −4.49, 0.776, 6.99}`). Confirm RED.
-- [ ] Replace the three constant values in `benchmarks/md/polyethylene_tension.cpp`.
-- [ ] Replace the three constant values in `benchmarks/md/pe_profile_single.cpp`.
-- [ ] Replace the three constant values in each of the 13
+- [x] Replace the three constant values in `benchmarks/md/polyethylene_tension.cpp`.
+- [x] Replace the three constant values in `benchmarks/md/pe_profile_single.cpp`.
+- [x] Replace the three constant values in each of the 13
       `tests/{cpu,mpi}/test_pe_*.cpp` + `test_nose_hoover_t_ramp.cpp`
       + `test_lj_exclusions.cpp` files. Confirm the new pin test is GREEN.
-- [ ] Run full `ctest --test-dir build --output-on-failure` and verify
+- [x] Run full `ctest --test-dir build --output-on-failure` and verify
       no regression in the 89-test baseline (87 pre-spec + the post-
       pe-potential-abstraction `test_pair_lj_cut` + `test_pair_morse_smoke`).
       Total after this spec: **90 tests**.
-- [ ] Update `benchmarks/md/reference/polyethylene/SOURCES.md`
+- [x] Update `benchmarks/md/reference/polyethylene/SOURCES.md`
       "Atomiverse FF discrepancy" subsection to "resolved" with the
       commit SHA.
-- [ ] Update `.claude/specs/msu-pe-validation.md` status snapshot:
+- [x] Update `.claude/specs/msu-pe-validation.md` status snapshot:
       flip Phase D from `🟡 blocked on FF migration` to `🟡 ready to run`.
 
 ## Testing strategy

@@ -33,25 +33,19 @@ namespace {
 
 inline constexpr double kKcalPerMolToEv = 1.0 / 23.060547830619026;
 inline constexpr double kBondK_kcal  = 268.0;
-inline constexpr double kBondR0      = 1.529;
-inline constexpr double kAngleK_kcal = 58.35;
-inline constexpr double kAngleTheta0 = 112.7 * kPI / 180.0;
-inline constexpr double kV1_kcal = 1.411;
-inline constexpr double kV2_kcal = -0.271;
-inline constexpr double kV3_kcal = 3.145;
+inline constexpr double kBondR0      = 1.53;
+inline constexpr double kAngleK_kcal = 60.0;
+inline constexpr double kAngleTheta0 = 109.5 * kPI / 180.0;
 
 inline double bond_K_eV()  { return kBondK_kcal  * kKcalPerMolToEv; }
 inline double angle_K_eV() { return kAngleK_kcal * kKcalPerMolToEv; }
 inline std::vector<double> dihedral_Cn_eV() {
-    const double v1 = kV1_kcal * kKcalPerMolToEv;
-    const double v2 = kV2_kcal * kKcalPerMolToEv;
-    const double v3 = kV3_kcal * kKcalPerMolToEv;
     return {
-        v1 / 2.0 + v2 + v3 / 2.0,
-        v1 / 2.0 - 1.5 * v3,
-        -v2,
-         2.0 * v3,
-         0.0,
+        1.73    * kKcalPerMolToEv,   // C0  (MSU paper, Tschopp 2010)
+        -4.49   * kKcalPerMolToEv,   // C1
+        0.776   * kKcalPerMolToEv,   // C2
+        6.99    * kKcalPerMolToEv,   // C3
+        0.0,                          // C4
     };
 }
 
