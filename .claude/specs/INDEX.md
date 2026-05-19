@@ -1,7 +1,11 @@
 # Spec Index
 
 - [python-bindings](python-bindings.md) — nanobind + DLPack Python bindings; mp.Frame as sole interface, CUDA as compute backend [in-progress: MD/SCF/optimizer/PW bindings landed; RDF observer binding still TODO]
-- [libxc-xc-fix](libxc-xc-fix.md) — Integrate libxc as ground truth, fix native XC functional + grid to match within 1e-12 [draft: 9 tasks, 8 acceptance criteria]
+- [libxc-xc-fix-01-cmake-integration](libxc-xc-fix-01-cmake-integration.md) — find_package(Libxc 6) gate behind ATV_USE_LIBXC; macro ATV_HAS_LIBXC [approved]
+- [libxc-xc-fix-02-libxc-wrapper](libxc-xc-fix-02-libxc-wrapper.md) — evaluate_xc_libxc() for LSDA + PBE in XC_POLARIZED mode [approved]
+- [libxc-xc-fix-03-native-parity](libxc-xc-fix-03-native-parity.md) — Fix native evaluate_xc until 1e-12 vs libxc on a battery of points [approved]
+- [libxc-xc-fix-04-grid](libxc-xc-fix-04-grid.md) — Tabulated Lebedev (6 orders) + Mura-Knowles radial + Bragg-Slater Z=1..36 [approved]
+- [libxc-xc-fix-05-uks-validation](libxc-xc-fix-05-uks-validation.md) — End-to-end UKS vs PySCF (H/He/Li/H2/H2-PES) + native↔libxc agreement [approved]
 - [eri-hpc-opt](eri-hpc-opt.md) — Shell-block ERI optimization: -march=native, xsimd, shell-type dispatch to match/exceed PySCF direct SCF [in-progress: 5/10 tasks (phases 1-3); phase 4-5 pending]
 - [rust-frame-lowering](rust-frame-lowering.md) — Rust-first canonical frame, typed requirement system, Spec/Plan/Driver split, and staged migration roadmap [draft]
 - [cpu-qc-product-roadmap](cpu-qc-product-roadmap.md) — **Roadmap index** linking the QC phase sub-specs [in-progress: phase 1 active, phase 2 satisfied via cpu-driver-taxonomy, phases 3-4 draft, phase 5 unscoped]
