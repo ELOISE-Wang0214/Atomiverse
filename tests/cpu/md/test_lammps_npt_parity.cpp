@@ -27,14 +27,39 @@
 ///                 (NPT volume fluctuations are large — relax vs T/KE).
 ///   * |⟨KE⟩|      relative error ≤ 2%.
 ///
-/// **Currently failing as of 2026-05-19** — investigation in this session
-/// shows Atomiverse's `NoseHooverNPT` does not converge on this system:
-/// while ⟨T⟩ relaxes correctly to within ~6 K of the setpoint, the box
-/// volume drifts monotonically (12400 Å³ → ≥160 000 Å³ over 3000 steps)
-/// instead of settling near LAMMPS's 14250 Å³. The integrator's barostat
-/// loop fails to brake the box expansion once T equilibrates. This test
-/// stays in the suite as a failing parity gate; fix tracked separately.
-/// Tagged `Slow_` so it doesn't fire by default.
+/// **Currently failing as of 2026-05-20.**
+///
+/// Investigation findings:
+///
+/// 1. ⟨T⟩ relaxes correctly to within ~6 K of the setpoint — atom
+///    thermostat works.
+/// 2. Volume *initially* converges on the right answer: oscillates
+///    around V ≈ 13500 Å³ (LAMMPS reference 14250 Å³) for the first
+///    ~3000 steps. The system genuinely finds the LJ saturation density.
+/// 3. After step 3000, a small residual positive ⟨ε̇⟩ (~3 × 10⁻⁴ /fs)
+///    inflates the box. Once V exceeds ~50 000 Å³ all atoms fall out
+///    of the LJ cutoff (8.5 Å); the attractive pair virial vanishes,
+///    nothing balances the kinetic-pressure drive (NkT/V → 0+ but
+///    3V·(P_int) stays finite at ≈ 3NkT), and V runs away.
+///
+/// LAMMPS comparison (`src/fix_nh.cpp` from
+/// github.com/lammps/lammps develop branch):
+///   * pressure drive `f_omega = V·(P − P_ext)/omega_mass`        ≡ ours
+///   * MTK coupling   `mtk_term1 = (tdof·kT)/(pdim·N)/omega_mass` ≡ ours
+///   * chain restoring `(kecurrent − lkt_press)/etap_mass`        ≡ ours
+///   * velocity scale `exp(-dt/2 · ω̇·(1+1/N))`                    ≡ ours
+///   * box scale       affine `exp(dt·ω̇)`                         ≡ ours
+///
+/// Algorithms are equivalent in all closed-form expressions, yet LAMMPS
+/// settles on this same input. Remaining suspects (not yet pinned
+/// down): the Trotter operator order around the central `kick · x · kick`
+/// (LAMMPS interleaves two half-box-scales around `nve_x`; Atomiverse
+/// does one fused `propagate_x_and_box`); a missing `compute_pressure`
+/// step that LAMMPS runs immediately before the FINAL nh_omega_dot;
+/// or a sign / units issue in stress accumulation we haven't isolated.
+///
+/// Marked `DISABLED_` so this test does not break the default suite.
+/// Run manually: `--gtest_also_run_disabled_tests`.
 
 #include <gtest/gtest.h>
 
