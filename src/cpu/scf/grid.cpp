@@ -183,6 +183,109 @@ double bragg_slater_radius(int Z) {
 // match PySCF's reference grid and contributed to the ~mHa UKS-vs-PySCF
 // offset documented in the libxc-xc-fix spec.
 
+// ── Treutler-Ahlrichs xi scaling table (PySCF parity) ─────────────────
+//
+// Atom-specific xi multiplier used by the Treutler-Ahlrichs radial
+// transform (JCP 102, 346 (1995)). Matches pyscf.dft.radi._treutler_
+// ahlrichs_xi exactly for Z=1..36; default to xi=1.0 outside that range.
+static double treutler_ahlrichs_xi(int Z) {
+    // Z indexed; entry 0 unused.
+    static constexpr double xi[37] = {
+        0.0,  // 0  (unused)
+        0.8,  // 1  H
+        0.9,  // 2  He
+        1.8,  // 3  Li
+        1.4,  // 4  Be
+        1.3,  // 5  B
+        1.1,  // 6  C
+        0.9,  // 7  N
+        0.9,  // 8  O
+        0.9,  // 9  F
+        0.9,  // 10 Ne
+        1.4,  // 11 Na
+        1.3,  // 12 Mg
+        1.3,  // 13 Al
+        1.2,  // 14 Si
+        1.1,  // 15 P
+        1.0,  // 16 S
+        1.0,  // 17 Cl
+        1.0,  // 18 Ar
+        1.5,  // 19 K
+        1.4,  // 20 Ca
+        1.3,  // 21 Sc
+        1.2,  // 22 Ti
+        1.2,  // 23 V
+        1.2,  // 24 Cr
+        1.2,  // 25 Mn
+        1.2,  // 26 Fe
+        1.2,  // 27 Co
+        1.1,  // 28 Ni
+        1.1,  // 29 Cu
+        1.1,  // 30 Zn
+        1.1,  // 31 Ga
+        1.0,  // 32 Ge
+        0.9,  // 33 As
+        0.9,  // 34 Se
+        0.9,  // 35 Br
+        0.9,  // 36 Kr
+    };
+    if (Z < 1 || Z > 36) return 1.0;
+    return xi[Z];
+}
+
+// ── Treutler-Ahlrichs (M4) radial quadrature ──────────────────────────
+//
+// Reference: O. Treutler and R. Ahlrichs, "Efficient molecular
+// numerical integration schemes", J. Chem. Phys. 102, 346 (1995),
+// DOI 10.1063/1.469408 -- specifically the "M4" mapping in eq. (10).
+//
+// PySCF's default radial scheme. Uses Gauss-Chebyshev points on
+// (-1, 1) mapped to r ∈ (0, ∞) via:
+//   r = -xi/ln(2) * (1+x)^0.6 * ln((1-x)/2)
+// where xi is an atom-specific scaling factor (see treutler_ahlrichs_xi).
+//
+// The returned RadialPoint.w already includes the r² Jacobian, so the
+// 3D-space integral of f(r) over the radial axis is sum_i w_i * f(r_i)
+// after multiplication by the angular weight times 4*pi (as in
+// build_molecular_grid below).
+static std::vector<RadialPoint> radial_grid_treutler_ahlrichs(int n, int Z) {
+    std::vector<RadialPoint> pts(n);
+    double xi = treutler_ahlrichs_xi(Z);
+    double ln2 = xi / std::log(2.0);
+    double step = kPi / (n + 1);
+
+    // PySCF loops i=0..n-1 with x=cos((i+1)*step), then reverses
+    // so the returned r is ascending. We do the same so r[0] is the
+    // smallest radius.
+    std::vector<double> r_tmp(n), dr_tmp(n);
+    for (int i = 0; i < n; ++i) {
+        double angle = (i + 1) * step;
+        double x = std::cos(angle);
+        double sin_angle = std::sin(angle);
+        double one_plus_x = 1.0 + x;
+        double one_minus_x = 1.0 - x;
+        double pow_term = std::pow(one_plus_x, 0.6);
+        double log_term = std::log(one_minus_x / 2.0);
+
+        r_tmp[i] = -ln2 * pow_term * log_term;
+        // dr/di including the Chebyshev quadrature weight sin(angle)*step:
+        // d/dx [-ln2 (1+x)^0.6 ln((1-x)/2)]
+        //     = -ln2 [0.6 (1+x)^(-0.4) ln((1-x)/2) + (1+x)^0.6 / (1-x) * (-1)]
+        //     = ln2 (1+x)^0.6 [-0.6/(1+x) ln((1-x)/2) + 1/(1-x)]
+        dr_tmp[i] = step * sin_angle * ln2 * pow_term
+                  * (-0.6 / one_plus_x * log_term + 1.0 / one_minus_x);
+    }
+    // Reverse so r is ascending (PySCF returns r[::-1], dr[::-1]).
+    for (int i = 0; i < n; ++i) {
+        int j = n - 1 - i;
+        pts[i].r = r_tmp[j];
+        // dr is the radial differential -- multiply by r² to get the
+        // full weight (Jacobian for 4*pi r^2 dr volume element).
+        pts[i].w = r_tmp[j] * r_tmp[j] * dr_tmp[j];
+    }
+    return pts;
+}
+
 // ── Mura-Knowles radial quadrature ─────────────────────────────────────
 // Reference: Mura & Knowles, JCP 104, 9848 (1996), equation (5).
 // Uses the log3 mapping: r = -R * ln(1 - x^3), x = (i+0.5)/n.
@@ -313,8 +416,11 @@ MolecularGrid build_molecular_grid(const native::Atom* atoms, int natm,
     std::vector<double> becke_w(natm);
 
     for (int a = 0; a < natm; ++a) {
-        double R_bragg = bragg_slater_radius(atoms[a].Z);
-        auto rad_pts = radial_grid_mura_knowles(n_radial, R_bragg);
+        // Treutler-Ahlrichs radial grid (PySCF default). Element-specific
+        // xi scaling is embedded in the function via atoms[a].Z. The
+        // earlier Mura-Knowles + Bragg-Slater path is kept as
+        // `radial_grid_mura_knowles` for callers that want it.
+        auto rad_pts = radial_grid_treutler_ahlrichs(n_radial, atoms[a].Z);
 
         for (int ir = 0; ir < n_radial; ++ir) {
             double r = rad_pts[ir].r;

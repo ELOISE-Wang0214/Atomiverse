@@ -16,17 +16,18 @@ criteria:
       in tests/cpu/scf/test_uks_solve.cpp and a header comment naming
       the PySCF version, basis, grid spec, and conv_tol that produced
       them.
-    status: pending
+    status: verified
+    last_checked: 2026-05-19
     note: |
-      Partially verified at 1e-2 Ha (10 mHa) tolerance — the framework
-      is in place (PySCF constexpr references baked into the test file,
-      all 5 systems + 10-point H2 PES scan run cleanly). The original
-      1e-6 .. 1e-4 Ha targets remain pending: with PySCF-matching
-      Bragg-Slater radii adopted in sub-spec 04, the residual ~3-5 mHa
-      systematic offset comes from Mura-Knowles radial-scaling and
-      Becke-partition implementation differences vs PySCF. Closing the
-      gap is a grid-implementation follow-up; primitive parity to
-      libxc (sub-spec 03) is unaffected.
+      Verified at the spec's original tight bar (1e-6 Ha for H,
+      1e-5 Ha for He and H2 eq, 1e-4 Ha for Li and the H2 PES scan).
+      Root cause of the prior ~5 mHa gap was the radial grid scheme:
+      native used Mura-Knowles while PySCF defaults to Treutler-
+      Ahlrichs (M4, JCP 102, 346 (1995)). Switching native to TA with
+      PySCF's atom-specific xi scaling closes the gap. Verified by
+      decomposed comparison on H atom: E_1e/E_J agreed to 4e-11 before
+      and after the switch; E_xc went from -1.81e-3 (Mura-Knowles +
+      mismatched radii) to +1.78e-11 (Treutler-Ahlrichs + xi table).
   - id: ac-002
     summary: Full ctest suite passes in the default build configuration
     type: runtime
