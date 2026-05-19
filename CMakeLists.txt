@@ -145,6 +145,7 @@ if(NOT ATV_DOCS_ONLY)
     set(ATOMIVERSE_SRCS
         src/cpu/scf/solve.cpp
         src/cpu/molrec.cpp
+        src/cpu/lammps_data.cpp
         src/cpu/observer/rdf.cpp
         src/cpu/observer/density.cpp
         src/cpu/recorder/trajectory.cpp

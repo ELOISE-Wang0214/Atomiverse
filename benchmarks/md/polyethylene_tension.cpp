@@ -54,6 +54,7 @@
 #include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/lammps_data.h"
 #include "atomiverse/cpu/md/barostat.h"
 #include "atomiverse/cpu/md/deform.h"
 #include "atomiverse/cpu/md/init.h"
@@ -128,6 +129,8 @@ struct Args {
     double box_len     = 60.0;
     double margin      = 1.0;
     int    seed        = 12345;
+    std::string data_path;       ///< If non-empty, load this LAMMPS data file
+                                 ///< instead of generating the chain grid.
     double T_hot       = 500.0;     ///< stages 1-2 setpoint [K]
     double T_cold      = 100.0;     ///< stages 4-5 setpoint [K]
     double dt_stage1   = 1.0;       ///< [fs]
@@ -160,6 +163,9 @@ void print_help() {
         "  --strain-rate /fs           Engineering strain rate stage 5 (default 1e-6).\n"
         "  --cool-segments N           Linear-ramp micro-segments stage 3 (default 20).\n"
         "  --out-dir DIR               Where to write CSV outputs (default '.').\n"
+        "  --data PATH                 Load this LAMMPS data file as the\n"
+        "                              initial system instead of generating a\n"
+        "                              chain grid (e.g. the MSU PE deck).\n"
         "  --seed S                    RNG seed for InitVelocity (default 12345).\n"
         "  --quiet                     Suppress per-stage progress lines.\n"
         "  --help                      Show this message.\n");
@@ -216,6 +222,7 @@ bool parse_args(int argc, char** argv, Args& a) {
         if (take_d("--strain-rate", a.strain_rate)) continue;
         if (take_i("--cool-segments", a.cool_segments)) continue;
         if (take_s("--out-dir", a.out_dir)) continue;
+        if (take_s("--data", a.data_path)) continue;
         if (take_i("--seed", a.seed)) continue;
         if (std::strcmp(s, "--quiet") == 0) { a.quiet = true; continue; }
         if (std::strcmp(s, "--help")  == 0) { print_help(); std::exit(0); }
@@ -427,8 +434,9 @@ int main(int argc, char** argv) {
     int my_rank = 0;
 #endif
 
-    cpu::Frame frame = make_pe_box(a.chains_per_axis, a.n_atoms_per_chain,
-                                    a.box_len, a.margin);
+    cpu::Frame frame = a.data_path.empty()
+        ? make_pe_box(a.chains_per_axis, a.n_atoms_per_chain, a.box_len, a.margin)
+        : cpu::load_lammps_data(a.data_path);
     const int n_atoms = frame.atoms.size();
     const int n_global_dof = 3 * n_atoms - 3;
     const double box_x0 = frame.box(0, 0);
