@@ -55,6 +55,55 @@ auto-registered components in the observer/minimizer roots — they
 either go through the categorical setter API or through
 `driver.add()` / `driver.on(phase).add()`.
 
+## [2026-05-19] libxc is test-only scaffolding, never a runtime dependency
+
+libxc lives entirely under `tests/cpu/scf/oracle/` in namespace
+`ATV::test::xc_oracle`. `libatomiverse.{a,so}` contains **zero** libxc
+symbols regardless of build flags — verified by `nm` in the parity
+test's acceptance criterion. CMake gate: `ATV_BUILD_XC_ORACLE`
+(default OFF), enabling only test targets. The oracle is intentional
+scaffolding: once the native XC primitive-parity gate (1e-12 vs
+libxc) has stayed green long enough in CI, a "retire libxc oracle"
+spec can delete `tests/cpu/scf/oracle/` and the CMake option in a
+single commit, leaving production unchanged.
+
+**Rule**: never link libxc into `libatomiverse`, never add a public
+`ATV_HAS_LIBXC` macro on the production target, never put a
+libxc-using function in `ATV::cpu::scf` (or any namespace under
+`ATV::cpu::*`). libxc is an *oracle*, not a backend.
+
+## [2026-05-19] PBE uses PW92 (not VWN5) as its LSDA correlation base
+
+Native `cpu::scf::evaluate_xc(XCType::PBE, …)` calls
+`pw92_correlation()` for its LDA correlation contribution. The PBE
+paper (Perdew-Burke-Ernzerhof, PRL 77, 3865 (1996)) specifies PW92
+(Perdew-Wang 1992), and libxc's `XC_GGA_C_PBE` follows that.
+VWN5 and PW92 differ by ~mHa at typical densities; mixing them
+produced a uniform ~0.4 mHa bias on every PBE energy until the spec
+3 fix. **LSDA mode** continues to use VWN5 (matches libxc's
+`XC_LDA_C_VWN` id 7).
+
+**Rule**: any GGA functional that names PW92 as its LDA base
+(PBE, BLYP, PW91, BP86) must call `pw92_correlation()`, not
+`vwn5_correlation()`. Cross-check by reading the corresponding
+libxc Maple source in `libxc/maple/`.
+
+## [2026-05-19] Grid radii match PySCF's BRAGG_RADII for Z=1..36
+
+`bragg_slater_radius(Z)` for Z=1..36 reproduces
+`pyscf.dft.radi.BRAGG_RADII` exactly. Notably H uses 0.35 Å
+(Slater's non-bonded radius, not the 0.25 Å covalent value), and
+noble gases (He, Ne, Ar, Kr) use PySCF's Bondi-style values
+(1.40, 1.50, 1.80, 1.90 Å). Z=37..86 still uses the original
+Slater 1964 table. Matching PySCF radii is what makes our UKS
+total energies comparable to PySCF references at the few-mHa level;
+using the bare Slater 1964 values produces an extra ~3 mHa
+systematic offset.
+
+**Rule**: when validating any grid-based quantity against PySCF,
+make sure the `BRAGG_RADII` table matches. Source of truth:
+`pyscf/dft/radi.py`.
+
 ## [2026-04-04] molrs integration complete
 
 molrs CXX FFI integration is done. Key decisions that diverged from original spec:
