@@ -339,10 +339,14 @@ if(NOT ATV_DOCS_ONLY)
     # libxc-xc-fix chain), this option and the oracle directory are
     # deletable in a single commit without touching libatomiverse.
     if(ATV_BUILD_XC_ORACLE)
-        find_package(Libxc 6 CONFIG QUIET)
-        if(NOT Libxc_FOUND)
+        # No version pinned in find_package -- libxc's ConfigVersion uses
+        # SameMajorVersion compat, so requesting "6" rejects 7+ and vice
+        # versa. Accept any installed major; verify minimum below.
+        find_package(Libxc CONFIG QUIET)
+        if(NOT Libxc_FOUND OR Libxc_VERSION VERSION_LESS 6.0)
             message(FATAL_ERROR
-                "\nATV_BUILD_XC_ORACLE=ON but libxc was not found.\n"
+                "\nATV_BUILD_XC_ORACLE=ON but libxc >= 6 was not found "
+                "(found: ${Libxc_VERSION}).\n"
                 "Install libxc 6+ on the build host:\n"
                 "  macOS:  brew install libxc\n"
                 "  Linux:  apt install libxc-dev\n"
@@ -351,7 +355,7 @@ if(NOT ATV_DOCS_ONLY)
                 "parity tests.\n"
             )
         endif()
-        message(STATUS "libxc test oracle enabled: ${Libxc_DIR}")
+        message(STATUS "libxc test oracle enabled: ${Libxc_VERSION} (${Libxc_DIR})")
     endif()
 
     if(ATV_BUILD_CUDA)
