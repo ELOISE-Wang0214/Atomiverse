@@ -145,6 +145,108 @@ static void slater_exchange(double rho_a, double rho_b,
     vx_b = -(4.0/3.0) * Cx_spin * std::pow(rho_b, 1.0/3.0);
 }
 
+// ── PW92 correlation (LSDA base for PBE) ────────────────────────────────
+//
+// Perdew & Wang, Phys. Rev. B 45, 13244 (1992).
+// Used by libxc as the LDA correlation base for PBE (XC_GGA_C_PBE) per
+// the PBE paper (Perdew-Burke-Ernzerhof, PRL 77, 3865 (1996)). VWN5 is
+// NOT correct for PBE -- VWN5 and PW92 disagree by ~1e-4 Ha at typical
+// densities, which propagates into a uniform PBE bias if mixed.
+//
+// PW92 form (same spin interpolation as VWN5 but with G(r_s) from the
+// PW92 paper Table I, replacing VWN5's Pade ansatz):
+//   ε_c(r_s, ζ) = ε_c^P(r_s)
+//               + α_c(r_s) f(ζ)/f''(0) (1 - ζ^4)
+//               + [ε_c^F(r_s) - ε_c^P(r_s)] f(ζ) ζ^4
+//
+//   G(r_s; A, α1, β1, β2, β3, β4, p) =
+//       -2A(1 + α1 r_s) ln{1 + 1/[2A(β1 √r_s + β2 r_s + β3 r_s^{3/2} + β4 r_s^{p+1})]}
+//
+// libxc source studied: libxc/maple/lda_c_pw.mpl and libxc/src/work_lda.c.
+
+struct PW92Params {
+    double A, alpha1, beta1, beta2, beta3, beta4, p;
+};
+
+// Paramagnetic (Table I, ζ = 0)
+static constexpr PW92Params kPW92_P = {
+    0.0310907, 0.21370, 7.5957, 3.5876, 1.6382, 0.49294, 1.0};
+// Ferromagnetic (Table I, ζ = 1)
+static constexpr PW92Params kPW92_F = {
+    0.01554535, 0.20548, 14.1189, 6.1977, 3.3662, 0.62517, 1.0};
+// Spin-stiffness -α_c (Table I, "α_c" row, stored as positive G; negated when used)
+static constexpr PW92Params kPW92_A = {
+    0.0168869, 0.11125, 10.357, 3.6231, 0.88026, 0.49671, 1.0};
+
+// Returns G(r_s) and dG/dr_s for PW92 parameter set p.
+static void pw92_G(double rs, const PW92Params& p, double& G, double& dG_drs) {
+    double sqrt_rs = std::sqrt(rs);
+    double rs_3_2 = rs * sqrt_rs;
+    double rs_p1 = std::pow(rs, p.p + 1.0);
+    double rs_p  = std::pow(rs, p.p);
+
+    // q1 = 2A(β1 √rs + β2 rs + β3 rs^{3/2} + β4 rs^{p+1})
+    double q1 = 2.0 * p.A * (
+        p.beta1 * sqrt_rs + p.beta2 * rs + p.beta3 * rs_3_2 + p.beta4 * rs_p1
+    );
+    double dq1_drs = 2.0 * p.A * (
+        0.5 * p.beta1 / sqrt_rs
+        + p.beta2
+        + 1.5 * p.beta3 * sqrt_rs
+        + (p.p + 1.0) * p.beta4 * rs_p
+    );
+
+    // q2 = ln(1 + 1/q1)
+    double q2 = std::log(1.0 + 1.0 / q1);
+    // dq2/drs = -1/q1² * dq1/drs / (1 + 1/q1) = -dq1/drs / (q1 * (q1 + 1))
+    double dq2_drs = -dq1_drs / (q1 * (q1 + 1.0));
+
+    // G = -2A(1 + α1 rs) q2
+    double prefactor = 1.0 + p.alpha1 * rs;
+    G = -2.0 * p.A * prefactor * q2;
+    dG_drs = -2.0 * p.A * (p.alpha1 * q2 + prefactor * dq2_drs);
+}
+
+static void pw92_correlation(double rho_a, double rho_b,
+                             double& ec, double& vc_a, double& vc_b) {
+    rho_a = std::max(rho_a, kSpinDensMin);
+    rho_b = std::max(rho_b, kSpinDensMin);
+    double rho = rho_a + rho_b;
+    double rs = std::pow(3.0 / (4.0 * kPi * rho), 1.0/3.0);
+    double zeta = (rho_a - rho_b) / rho;
+
+    double ecP, ecF, ac, decP_drs, decF_drs, dac_drs;
+    pw92_G(rs, kPW92_P, ecP, decP_drs);
+    pw92_G(rs, kPW92_F, ecF, decF_drs);
+    pw92_G(rs, kPW92_A, ac,  dac_drs);
+    // The stiffness row's G function gives -α_c; negate to get α_c.
+    ac      = -ac;
+    dac_drs = -dac_drs;
+
+    double fz = spin_f(zeta);
+    double z4 = zeta * zeta * zeta * zeta;
+
+    // ε_c
+    ec = ecP + ac * fz / kFppZero * (1.0 - z4) + (ecF - ecP) * fz * z4;
+
+    // dε_c/drs
+    double dec_drs = decP_drs
+                   + dac_drs * fz / kFppZero * (1.0 - z4)
+                   + (decF_drs - decP_drs) * fz * z4;
+
+    // dε_c/dζ
+    double dfz = spin_df(zeta);
+    double dz4 = 4.0 * zeta * zeta * zeta;
+    double dec_dz = ac / kFppZero * (dfz * (1.0 - z4) - fz * dz4)
+                  + (ecF - ecP) * (dfz * z4 + fz * dz4);
+
+    // v_c^σ = ε_c - (rs/3) dε_c/drs - (ζ ∓ 1) dε_c/dζ
+    // (using -(ζ-1) for α, -(ζ+1) for β -- canonical sign convention)
+    double rs3_dec = (rs / 3.0) * dec_drs;
+    vc_a = ec - rs3_dec - (zeta - 1.0) * dec_dz;
+    vc_b = ec - rs3_dec - (zeta + 1.0) * dec_dz;
+}
+
 // ── VWN5 correlation ────────────────────────────────────────────────────
 
 // ε_c(r_s, ζ) = ε_c^P(r_s) + α_c(r_s) f(ζ)/f''(0) (1 - ζ⁴)
@@ -511,29 +613,43 @@ XCOutput evaluate_xc(XCType type, double rho_a, double rho_b,
         out.vrho_alpha = static_cast<double>(vx_a + vc_a);
         out.vrho_beta  = static_cast<double>(vx_b + vc_b);
     } else if (type == XCType::PBE) {
-        // PBE = LSDA + gradient corrections.
-        // Clamp per-spin densities to kRhoMin (matching libxc dens_threshold).
-        // All subroutines use clamped values for self-consistent derivatives.
-        double ra_pbe = std::max(ra, kRhoMin);
-        double rb_pbe = std::max(rb, kRhoMin);
+        // PBE = LSDA + gradient corrections. Do NOT clamp per-spin densities
+        // to kRhoMin here -- inflating rho_s = 0 to 1e-12 makes
+        // ds2_dsigma ~ 1/rho_s^{8/3} explode by O(1e30) and produces
+        // nonsense for the empty spin channel. The exchange branch
+        // (pbe_exchange_spin) has its own rho_s < kRhoMin/2 early-return
+        // that yields exactly zero contribution for empty spins (matching
+        // libxc). The correlation branch (pw92_correlation) clamps
+        // internally to kSpinDensMin = 1e-15 for the VWN-style Pade
+        // evaluator, which keeps things finite without inflating the
+        // sigma derivative.
+        double ra_pbe = ra;
+        double rb_pbe = rb;
         double rho_pbe = ra_pbe + rb_pbe;
 
         // LSDA part (Slater + VWN5) at clamped densities
         double ex_lda, vx_lda_a, vx_lda_b;
         slater_exchange(ra_pbe, rb_pbe, ex_lda, vx_lda_a, vx_lda_b);
 
+        // PBE uses PW92 (not VWN5) as the LSDA correlation base; this is
+        // what libxc's XC_GGA_C_PBE does internally per the PBE paper.
         double ec_lda, vc_lda_a, vc_lda_b;
-        vwn5_correlation(ra_pbe, rb_pbe, ec_lda, vc_lda_a, vc_lda_b);
+        pw92_correlation(ra_pbe, rb_pbe, ec_lda, vc_lda_a, vc_lda_b);
 
         // PBE exchange (per-spin)
         double sa = static_cast<double>(sigma_aa);
         double sab = static_cast<double>(sigma_ab);
         double sb = static_cast<double>(sigma_bb);
 
-        // Clamp sigma (matching libxc sigma_threshold = dens_threshold^{4/3})
-        double sigma_min = std::pow(kRhoMin, 4.0/3.0);
-        sa = std::max(sa, sigma_min);
-        sb = std::max(sb, sigma_min);
+        // sigma is a squared gradient magnitude -- never negative; let it
+        // through as-is. libxc applies a threshold to *skip* tiny-sigma
+        // grid points (it does not bump them up to a floor); since native
+        // is already gated by kRhoMin on the density side, no further
+        // sigma clamping is needed. Inflating sigma from 0 -> sigma_min
+        // would inject a phantom gradient at every zero-gradient grid
+        // point, diverging from libxc.
+        sa = std::max(sa, 0.0);
+        sb = std::max(sb, 0.0);
         double s_ave = 0.5 * (sa + sb);
         sab = std::max(sab, -s_ave);
         sab = std::min(sab, +s_ave);
@@ -594,19 +710,21 @@ void evaluate_xc_batch(XCType type, int n,
             vrho_a_arr[g] = vx_a + vc_a;
             vrho_b_arr[g] = vx_b + vc_b;
         } else if (type == XCType::PBE) {
-            double ra_pbe = std::max(ra, kRhoMin);
-            double rb_pbe = std::max(rb, kRhoMin);
+            // See scalar branch for rationale: no per-spin clamping here.
+            double ra_pbe = ra;
+            double rb_pbe = rb;
             double rho_pbe = ra_pbe + rb_pbe;
 
             double ex_lda, vx_lda_a, vx_lda_b;
             slater_exchange(ra_pbe, rb_pbe, ex_lda, vx_lda_a, vx_lda_b);
             double ec_lda, vc_lda_a, vc_lda_b;
-            vwn5_correlation(ra_pbe, rb_pbe, ec_lda, vc_lda_a, vc_lda_b);
+            // PBE uses PW92 (not VWN5) as the LSDA correlation base.
+            pw92_correlation(ra_pbe, rb_pbe, ec_lda, vc_lda_a, vc_lda_b);
 
             double sa = sigma_aa_arr[g], sab = sigma_ab_arr[g], sb = sigma_bb_arr[g];
-            double sigma_min = std::pow(kRhoMin, 4.0/3.0);
-            sa = std::max(sa, sigma_min);
-            sb = std::max(sb, sigma_min);
+            // No sigma floor -- see scalar branch for rationale.
+            sa = std::max(sa, 0.0);
+            sb = std::max(sb, 0.0);
             double s_ave = 0.5 * (sa + sb);
             sab = std::max(sab, -s_ave);
             sab = std::min(sab, +s_ave);

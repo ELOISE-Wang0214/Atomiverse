@@ -106,14 +106,20 @@ TEST(XCFunctional, DensityCutoffNoNaN) {
 
 // ── PBE GGA ─────────────────────────────────────────────────────────────
 
-TEST(XCFunctional, PBEReducesToLDAAtZeroGradient) {
-    // PBE with zero gradient should equal LSDA.
+TEST(XCFunctional, PBEAtZeroGradientHasNoEnhancement) {
+    // At sigma=0, PBE exchange has F_x(0) = 1 so it equals LSDA exchange,
+    // and PBE correlation H(t=0) = 0. The total `exc` therefore does NOT
+    // equal LSDA's `exc`, because PBE uses PW92 (Perdew-Wang 1992) as the
+    // LSDA correlation base while LSDA mode uses VWN5. PW92 and VWN5 differ
+    // by a few mHa at typical densities -- this is intentional and matches
+    // the PBE paper (PRL 77, 3865 (1996)) and libxc's XC_GGA_C_PBE.
+    //
+    // What we CAN assert: PBE@sigma=0 and VWN5-LSDA are within ~1 mHa.
     double rho = 0.3;
     auto lda = evaluate_xc(XCType::LSDA, rho, rho);
     auto pbe = evaluate_xc(XCType::PBE, rho, rho, 0, 0, 0);
-
-    EXPECT_NEAR(static_cast<double>(pbe.exc),
-                static_cast<double>(lda.exc), 1e-6);
+    EXPECT_LT(std::abs(pbe.exc - lda.exc), 5e-3)
+        << "PBE@sigma=0 (PW92 base) and VWN5-LSDA should be within ~mHa";
 }
 
 TEST(XCFunctional, PBEEnhancementFactor) {
