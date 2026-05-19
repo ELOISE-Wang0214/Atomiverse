@@ -1,326 +1,269 @@
 ---
-title: Zero-overhead Potential abstraction shared by CPU and CUDA
+title: Pair / Bond / Angle / Dihedral base classes — LAMMPS-style potential hierarchy on CPU and CUDA
 slug: pe-potential-abstraction
 status: approved
 created: 2026-05-19
+last-updated: 2026-05-19
 parent: pe-ff-migrate-dreiding-ua.md
 ---
 
-# Zero-overhead Potential abstraction (CPU + CUDA)
+# Pair / Bond / Angle / Dihedral base classes (LAMMPS-style)
 
 ## Summary
 
-Introduce a two-layer `Potential` abstraction shared by `cpu::` and `cuda::` backends so adding a new force-field form (e.g. Morse bond, FENE bond, Buckingham pair) becomes a **single new header** with one functor instead of the current 8-file copy-edit ritual. Layer 1 is a header-only inline **Form** functor capturing the per-pair / per-tuple energy + derivative math — `static constexpr inline std::pair<double,double> eval(...)`. Layer 2 is a templated **Walker** component (`PairWalker<Form>`, `BondWalker<Form>`, `AngleWalker<Form>`, `DihedralWalker<Form>`) that owns the iteration infrastructure: neighbor-list walk for pairs, topology iteration for bonded terms, OpenMP per-thread force buffers, xsimd ket-loop for pair styles, multi-rank halo / ownership filtering, virial accumulation. Existing `LJ`, `HarmonicBond`, `HarmonicAngle`, `MultiHarmonicDihedral` collapse to single-line type aliases (`using LJ = PairWalker<LJForm>`). CUDA mirrors the same shape (one Form + one templated kernel) but does **not** ship tests (per user direction). Zero virtual-call overhead in the inner loop is the hard constraint — `Form::eval` is `static inline` so the compiler can fully inline it into the SIMD batch loop and into the CUDA per-thread kernel.
-
-This spec consumes the audit findings produced by `pe-ff-migrate-dreiding-ua`'s architecture-audit task (delivered at `.claude/notes/potential-abstraction-audit.md`). It does **not** depend on the FF-constants migration landing first; the two specs are independent and can run in either order.
+Regularise the Atomiverse potential layer with four LAMMPS-named base classes on each backend: `cpu::Pair`, `cpu::Bond`, `cpu::Angle`, `cpu::Dihedral` (deriving from `cpu::ComponentBase`), and `cuda::Pair` / `cuda::Bond` / `cuda::Angle` / `cuda::Dihedral` (deriving from `cuda::ComponentBase`). The CPU and CUDA hierarchies are **independent** — different base classes — but use the **same names** and provide the **same shape** so user code and reviewers see one mental model. Rewrite the existing potentials bottom-up, renaming to LAMMPS terminology: `LJ` → `PairLJCut`, `HarmonicBond` → `BondHarmonic`, `HarmonicAngle` → `AngleHarmonic`, `MultiHarmonicDihedral` → `DihedralMultiHarmonic`. Each derived class owns its own inner loop (LAMMPS pattern, same as today) — there is no template / functor / "walker" machinery. The one virtual call per `compute()` per step is unchanged from the current cost; zero new overhead. Adding a new potential form (e.g. `PairMorse`, `BondFENE`) becomes "write one new derived class in the matching directory, register it in the user API." CUDA mirrors the rewrite (same base class shape, same derived class names) but ships **compile-only**, no tests, per user direction.
 
 ## Domain basis
 
-No new physics. The abstraction wraps the same Dreiding-UA force field already implemented (harmonic bond/angle, multi-harmonic dihedral, LJ 12-6 with cutoff) plus opens the door for canonical alternates (Morse, FENE, Buckingham, Stillinger-Weber) without re-implementing the iteration machinery. The Form/Walker split mirrors LAMMPS-Kokkos's pair/bond style hierarchy, which has been validated for performance portability across CPU+GPU on production polymer simulations.
+No physics change in this spec. The naming hierarchy and the rewrite are organisational — every potential currently shipping in Atomiverse continues to compute the same energies and forces it does today (Dreiding-UA after `pe-ff-migrate-dreiding-ua` lands, OPLS-like before; either way unchanged by this spec). The win is in **architectural regularity**: a future contributor adding a new pair style writes `class PairMorse : public cpu::Pair` in `include/atomiverse/cpu/potentials/pair_morse.h` and the system knows how to compose it because every existing pair style follows the same shape.
 
-The zero-overhead constraint is critical because the inner loops are called O(N · ⟨n_neigh⟩) ≈ 10⁵–10⁷ times per step on a 10k–10⁶-atom system; any virtual call inside the ket loop would add tens of nanoseconds per pair × millions of pairs × thousands of steps and dominate the runtime. CRTP and template policy patterns achieve compile-time dispatch with no indirection.
+LAMMPS has lived with exactly this hierarchy since 2003 and remains performance-competitive on modern hardware; the pattern is sufficient. We adopt the names verbatim so the mental cost of switching between LAMMPS and Atomiverse for a developer is near-zero.
 
 ## Design
 
-### Layer 1 — Form (header-only inline functor)
+### Naming and layering
 
-A `Form` is a `struct` exposing one or two `static constexpr inline` member functions and a parameter type. Two flavours:
+Backend-rooted base classes (per backend, separate hierarchies):
 
-**Pair forms** (called per atom-pair inside the neighbor-list walk):
-
-```cpp
-// include/atomiverse/potentials/forms/lj.h  (backend-neutral, header-only)
-namespace ATV::potentials {
-struct LJForm {
-    struct Params { double eps, sigma, rcut_sq, sig6, eps4, eps24, vshift; };
-    // returns {E, dE_over_r2}  so the caller computes Fx_ij = dE_over_r2 * dx, etc.
-    // Branchless cutoff: caller passes a mask; this returns 0 contributions when outside.
-    static constexpr inline std::pair<double,double> eval(double r2, const Params& p) noexcept {
-        double inv_r2 = 1.0 / r2;
-        double s2 = p.sigma * p.sigma * inv_r2;
-        double s6 = s2 * s2 * s2;
-        double E  = p.eps4 * (s6 * s6 - s6) - p.vshift;
-        double dE_over_r2 = p.eps24 * (2.0 * s6 * s6 - s6) * inv_r2;
-        return {E, dE_over_r2};
-    }
-};
-} // namespace ATV::potentials
+```
+cpu::ComponentBase                          (existing — `cpu::Pair` derives from this)
+  ├── cpu::Pair                             (new — non-bonded pair styles)
+  │     └── cpu::PairLJCut                  (new — was `cpu::md::LJ`)
+  │     └── cpu::PairMorse                  (new, smoke-test only — demonstrates extension)
+  ├── cpu::Bond                             (new — bonded 2-body styles)
+  │     └── cpu::BondHarmonic               (new — was `cpu::HarmonicBond`)
+  ├── cpu::Angle                            (new — bonded 3-body styles)
+  │     └── cpu::AngleHarmonic              (new — was `cpu::HarmonicAngle`)
+  └── cpu::Dihedral                         (new — bonded 4-body styles)
+        └── cpu::DihedralMultiHarmonic      (new — was `cpu::MultiHarmonicDihedral`)
 ```
 
-**Bonded forms** (called per topology tuple — bond/angle/dihedral):
+Mirror on the GPU side:
 
-```cpp
-struct HarmonicBondForm {
-    struct Params { double K, r0; };
-    // V(r) = K · (r − r0)²,  dV/dr = 2K(r − r0)
-    static constexpr inline std::pair<double,double> eval(double r, const Params& p) noexcept {
-        double dr = r - p.r0;
-        return {p.K * dr * dr, 2.0 * p.K * dr};
-    }
-};
-struct HarmonicAngleForm {
-    struct Params { double K, theta0; };
-    static constexpr inline std::pair<double,double> eval(double theta, const Params& p) noexcept {
-        double dt = theta - p.theta0;
-        return {p.K * dt * dt, 2.0 * p.K * dt};
-    }
-};
-struct MultiHarmonicDihedralForm {
-    struct Params { double C[5]; };
-    static constexpr inline std::pair<double,double> eval(double phi, const Params& p) noexcept {
-        // Σ_n C[n] · cos(φ)^n, with explicit dE/dφ in terms of cos(φ), sin(φ).
-        // [implementation detail; see existing src/cpu/potentials/multi_harmonic_dihedral.cpp]
-    }
-};
+```
+cuda::ComponentBase                         (existing)
+  ├── cuda::Pair
+  │     └── cuda::PairLJCut                 (was `cuda::LJ`)
+  ├── cuda::Bond
+  │     └── cuda::BondHarmonic              (was `cuda::HarmonicBond`)
+  ├── cuda::Angle
+  │     └── cuda::AngleHarmonic             (was `cuda::HarmonicAngle`)
+  └── cuda::Dihedral
+        └── cuda::DihedralMultiHarmonic     (was `cuda::MultiHarmonicDihedral`)
 ```
 
-`Form::eval` must:
-- be `static`, `constexpr`, `noexcept`, and `inline`-friendly (no virtual, no heap, no exceptions).
-- take a `const Params&` (not separate scalars) so users can extend the parameter set without changing the signature.
-- be **header-only** so the compiler can inline it into both the CPU xsimd ket-loop and the CUDA `__device__` kernel.
-- accept and return only `double` (or vectorized form — see SIMD section below); no allocation, no callbacks.
+The two backends share no common ancestor for potentials — they share **shape** (same four base names, same derived names, same role/capability semantics) but not types. This is the regularity the user asked for: a developer reading either side immediately recognises the other.
 
-A `static_assert` in each Walker template enforces that `Form::eval` is invocable with `(double, const Params&)` and returns `std::pair<double,double>` (or the SIMD-batch equivalent).
+### Base-class shape
 
-### Layer 2 — Walker (templated component)
-
-Four Walker templates, one per topology shape:
+All four bases follow the same skeleton. Example for `cpu::Pair`:
 
 ```cpp
-// include/atomiverse/cpu/potentials/pair_walker.h
+// include/atomiverse/cpu/potentials/pair.h
 namespace ATV::cpu {
-template <class Form>
-class PairWalker : public ComponentBase {
-public:
-    explicit PairWalker(std::vector<typename Form::Params> params_by_type);
 
-    std::string name() const override { return Form::name; }   // each Form exposes a static name
-    ComponentRole role() const override { return ComponentRole::Evaluator; }
+/// @brief LAMMPS-style abstract base for non-bonded pair styles.
+///
+/// Every concrete pair style (PairLJCut, PairMorse, ...) derives from
+/// this class, overrides compute(), and provides its own neighbor-list
+/// inner loop. The base class itself adds NO virtual call inside the
+/// per-pair loop — the only virtual dispatch is the one call to
+/// compute() per launch(), which the Driver invokes once per step.
+class Pair : public ComponentBase {
+public:
+    ~Pair() override = default;
+
+    /// Pair styles are Evaluators that write Energy, Force, and Stress.
+    ComponentRole role() const final { return ComponentRole::Evaluator; }
     Capability capabilities() const override {
         return Capability::Energy | Capability::Force | Capability::Stress;
     }
-    void build(const BuildContext& ctx) override;     // alloc per-thread force buffers, NL handles
-    void launch(const LaunchContext& ctx) override;   // OMP-parallel neighbor walk; xsimd ket loop calls Form::eval
-    void destroy(const DestroyContext& ctx) override;
 
-private:
-    std::vector<typename Form::Params> params_;
-    // ...per-thread fxt/fyt/fzt buffers, neighbor-list handles, etc.
+    /// The framework calls launch() once per step; derived classes
+    /// override compute() to do the actual neighbor walk + energy/
+    /// force math.
+    void launch(const LaunchContext& ctx) final { compute(ctx); }
+
+    /// Per-type pair cutoff (Angstrom). Used by the NeighborList
+    /// component to size the skin and bins. Derived classes report
+    /// their cutoff via the constructor; the base stores it.
+    double cutoff() const { return cutoff_; }
+
+protected:
+    explicit Pair(double cutoff) : cutoff_(cutoff) {}
+
+    /// The hot-path override. Derived classes implement this — the
+    /// neighbor-list walk, the SIMD ket loop, the per-thread force
+    /// accumulation are all here. No virtual call inside the inner
+    /// loop because `compute` is non-virtual at the call site
+    /// (final dispatch via launch).
+    virtual void compute(const LaunchContext& ctx) = 0;
+
+    double cutoff_ = 0.0;
 };
+
 } // namespace ATV::cpu
 ```
 
-Inner-loop hot path inside `PairWalker<Form>::launch()`:
+`cpu::Bond` / `cpu::Angle` / `cpu::Dihedral` follow the same shape, with a few differences:
 
-```cpp
-for (int jj = 0; jj + W <= jnum; jj += W) {
-    // gather W neighbors -> xsimd::batch<double>
-    // compute r²_batch, mask = (r²_batch < rcut²)
-    // call Form::eval lane-by-lane OR Form::eval_batch if Form exposes one
-    for (std::size_t lane = 0; lane < W; ++lane) {
-        if (mask[lane]) {
-            auto [E, dE_over_r2] = Form::eval(r2_lane[lane], params_[type_ij]);
-            // accumulate forces, virial, energy — same scalar pattern as today
-        }
-    }
-}
-```
+- They do not declare `cutoff()` (cutoff is implicit in the topology block — atoms with no bond, no force).
+- They default `capabilities()` to `Energy | Force` (no Stress for bonded by default; derived class may extend if it writes virial — `BondHarmonic` does, so it overrides).
+- They expose a protected helper `select_owned_tuples(const LaunchContext&, std::vector<int>& out)` that runs the multi-rank ownership filter (the `local_bonds_` cache currently duplicated in each bonded `launch()`). Derived classes call this once per step before iterating their topology block.
 
-The `Form::eval` call is `static constexpr inline`, so the compiler inlines it into the lane-by-lane unroll — **zero virtual dispatch, zero indirection**. The xsimd ket-loop survives unchanged (the existing 1.21× speedup is preserved).
+The CUDA base classes have the same shape but their `compute()` launches a CUDA kernel rather than running an OpenMP loop.
 
-If a Form additionally exposes `static inline void eval_batch(xsimd::batch<double>&, const xsimd::batch<...>&, ...) noexcept`, the Walker dispatches the full SIMD batch through it (no lane-by-lane fan-out). This is the **opt-in fast path**; absent it, the lane-by-lane scalar fallback above is used. The `static_assert` checks for both shapes via a SFINAE / concept.
+### Bottom-up rewrite plan
 
-Bonded Walkers (`BondWalker<Form>`, `AngleWalker<Form>`, `DihedralWalker<Form>`) follow the same pattern: topology iteration is in the Walker, energy/force math is in the Form. They reuse the multi-rank ownership filter (`tag_to_local`) the current `HarmonicBond::launch()` already uses, the OMP per-thread force buffers, and the virial accumulation.
+The migration runs **bottom-up** — bases first, then port one potential end-to-end as the canary, then port the remaining three. Each port is a single commit that the test suite gates on:
 
-### Existing-class collapse
+1. **Bases.** Land `cpu::Pair`, `cpu::Bond`, `cpu::Angle`, `cpu::Dihedral` headers + the multi-rank ownership helper. No derived class yet — only the suite of existing tests builds against the new code (they don't use the bases yet).
 
-After the Walker templates land, the existing CPU classes become type aliases:
+2. **First port: `PairLJCut`.** Move the body of `src/cpu/md/lj.cpp` into `src/cpu/potentials/pair_lj_cut.cpp` with `class PairLJCut : public cpu::Pair`. Constructor signature `PairLJCut(double eps, double sigma, double cutoff)` matches today's `LJ(double, double, double)`. Add a one-line backwards-compat alias `using LJ = PairLJCut` in the **old header** `include/atomiverse/cpu/md/lj.h` so existing user code (`sim.set_pair(cpu::md::LJ{...})`) keeps working unchanged. Run the full PE + LJ test suite — must remain green.
 
-```cpp
-// include/atomiverse/cpu/potentials/lj.h
-namespace ATV::cpu {
-using LJ = PairWalker<potentials::LJForm>;
-} // namespace ATV::cpu
-```
+3. **`BondHarmonic`.** Same shape — move `harmonic_bond.cpp` body into `pair_bond_harmonic.cpp` with `class BondHarmonic : public cpu::Bond`. Use the `select_owned_tuples()` helper instead of the inlined `local_bonds_` cache. Add `using HarmonicBond = BondHarmonic` alias. Run suite.
 
-```cpp
-// include/atomiverse/cpu/potentials/harmonic_bond.h
-namespace ATV::cpu {
-using HarmonicBond = BondWalker<potentials::HarmonicBondForm>;
-} // namespace ATV::cpu
-```
+4. **`AngleHarmonic`** and **`DihedralMultiHarmonic`** — same pattern. Each is one commit with the move + alias + suite re-run.
 
-Same for `HarmonicAngle` and `MultiHarmonicDihedral`. The user-facing API (`sim.add(cpu::md::LJ{eps, sigma, cutoff})`) is preserved by giving each Walker a constructor that forwards to `Form::Params`. The `.cpp` files in `src/cpu/{md,potentials}/` collapse to a few hundred lines of Walker boilerplate (one .cpp per Walker shape, not per Form) plus the inline Form headers under `include/atomiverse/potentials/forms/`.
+5. **CUDA mirror.** Land `cuda::Pair` / `cuda::Bond` / `cuda::Angle` / `cuda::Dihedral` bases and the four derived classes (`cuda::PairLJCut`, etc.) on the CUDA side. **Compile-only check** — `cmake --build build --target atomiverse_cuda` must succeed. No CUDA tests added (per user direction).
 
-### CUDA mirror (compile-only per user direction)
+6. **Live demo: `PairMorse`.** Write `cpu::PairMorse : public cpu::Pair` from scratch as the proof that "add a new potential = one new class". The implementation reuses the same `neighbor-list walk → r² → energy/force` skeleton as `PairLJCut`, swapping the LJ math for Morse (`V = D(1 − e^{−α(r−r₀)})²`). One smoke test `test_pair_morse_smoke.cpp` runs a 2-atom Morse-bonded NVE for 100 steps, asserts E conservation at 1e-4 and equilibrium r* ≈ r₀.
 
-A mirror set of Walker templates lives in `include/atomiverse/cuda/potentials/`:
+7. **Cleanup.** After all four potentials are ported and tests are green, delete the empty old `.cpp` files (their bodies now live in `pair_*.cpp` / `bond_*.cpp` / `angle_*.cpp` / `dihedral_*.cpp`). Leave the old header aliases in place for backwards compatibility — they cost nothing.
 
-```cpp
-template <class Form>
-class PairWalker : public ComponentBase {
-    // build() allocates device buffers
-    // launch() launches a __global__ kernel that calls Form::eval inside the per-thread loop
-};
-```
+### Zero-overhead argument
 
-The `Form` structs are reused as-is — they're `static constexpr inline`, callable from both host and device. `Form::eval` gets a `__host__ __device__` annotation either inline at the Form declaration site, or via a macro `ATV_HOST_DEVICE` that expands to `__host__ __device__` under CUDA and to nothing on the CPU-only path.
+There is **no template machinery and no new virtual call** introduced by this spec. The cost profile is identical to today:
 
-CUDA Walkers are not unit-tested in this spec — per user direction, the CUDA backend ships a compile-only mirror. The smoke gate is: `cmake --build build --target atomiverse_cuda` succeeds. Future work (`cuda-driver-taxonomy` follow-up) will land CUDA tests.
+- `Driver::run()` calls `Pair::launch(ctx)` once per step (one virtual call, already there).
+- `Pair::launch` is `final` and inlines a single direct call to `compute(ctx)` (also virtual, but pinned to the derived class — modern compilers de-virtualise this through devirtualisation of the `launch → compute` two-step when the static type is known at instantiation; even when they don't, that's still one indirect call per step, not per pair).
+- Inside `compute()`, the derived class runs its own neighbor walk / SIMD ket loop, exactly as today. No new code in the inner loop.
 
-### What changes for users
+The "same as LAMMPS" pattern is sufficient for performance; LAMMPS itself runs at near-peak with this hierarchy on production polymer simulations.
 
-The user-visible API is **unchanged**:
-
-```cpp
-// Before and after — identical:
-cpu::md::MD sim;
-sim.set_pair(cpu::md::LJ{eps, sigma, cutoff});
-sim.add(cpu::potentials::HarmonicBond{{K_eV}, {r0}});
-```
-
-Adding a new force-field form is **one new file**:
-
-```cpp
-// include/atomiverse/potentials/forms/morse.h
-namespace ATV::potentials {
-struct MorseForm {
-    struct Params { double D, alpha, r0; };
-    static constexpr inline std::pair<double,double> eval(double r, const Params& p) noexcept {
-        double e = std::exp(-p.alpha * (r - p.r0));
-        double v = p.D * (1.0 - e) * (1.0 - e);
-        double dv = 2.0 * p.D * p.alpha * (1.0 - e) * e;
-        return {v, dv};
-    }
-};
-} // namespace ATV::potentials
-
-// And one type alias in include/atomiverse/cpu/potentials/morse_bond.h:
-namespace ATV::cpu {
-using MorseBond = BondWalker<potentials::MorseForm>;
-} // namespace ATV::cpu
-```
-
-Done. No new `.cpp`, no test-file copy-paste, no CUDA kernel to write by hand.
+The performance gate (ac-005, ac-006 below) measures LJ::launch and HarmonicBond::launch ms-per-1000-steps against the pre-refactor `profile_1.csv` numbers. Target ±2%. Any larger regression indicates the refactor introduced a real cost (most likely a missed `final` annotation or a copy that wasn't elided), and the spec halts until it's resolved.
 
 ## Files to create or modify
 
-### New (CPU + backend-neutral)
+### New (CPU)
 
 ```
-include/atomiverse/potentials/forms/lj.h
-include/atomiverse/potentials/forms/harmonic_bond.h
-include/atomiverse/potentials/forms/harmonic_angle.h
-include/atomiverse/potentials/forms/multi_harmonic_dihedral.h
-include/atomiverse/cpu/potentials/pair_walker.h
-include/atomiverse/cpu/potentials/bond_walker.h
-include/atomiverse/cpu/potentials/angle_walker.h
-include/atomiverse/cpu/potentials/dihedral_walker.h
-src/cpu/potentials/pair_walker.cpp
-src/cpu/potentials/bond_walker.cpp
-src/cpu/potentials/angle_walker.cpp
-src/cpu/potentials/dihedral_walker.cpp
-tests/cpu/md/test_potential_walker_lj.cpp           (LJ regression vs pre-refactor)
-tests/cpu/md/test_potential_walker_harmonic.cpp     (bond + angle regression)
-tests/cpu/md/test_potential_walker_dihedral.cpp     (dihedral regression)
-tests/cpu/md/test_potential_walker_morse_smoke.cpp  (demonstrates the "one new file" workflow)
+include/atomiverse/cpu/potentials/pair.h
+include/atomiverse/cpu/potentials/bond.h
+include/atomiverse/cpu/potentials/angle.h
+include/atomiverse/cpu/potentials/dihedral.h
+include/atomiverse/cpu/potentials/pair_lj_cut.h
+include/atomiverse/cpu/potentials/bond_harmonic.h
+include/atomiverse/cpu/potentials/angle_harmonic.h
+include/atomiverse/cpu/potentials/dihedral_multi_harmonic.h
+include/atomiverse/cpu/potentials/pair_morse.h            (live extension demo)
+src/cpu/potentials/pair.cpp                                (base — ownership helper, defaults)
+src/cpu/potentials/bond.cpp                                (base — select_owned_tuples helper)
+src/cpu/potentials/angle.cpp
+src/cpu/potentials/dihedral.cpp
+src/cpu/potentials/pair_lj_cut.cpp                         (body moved from src/cpu/md/lj.cpp)
+src/cpu/potentials/bond_harmonic.cpp                       (body moved from harmonic_bond.cpp)
+src/cpu/potentials/angle_harmonic.cpp
+src/cpu/potentials/dihedral_multi_harmonic.cpp
+src/cpu/potentials/pair_morse.cpp                          (live extension demo)
+tests/cpu/md/test_pair_lj_cut.cpp                          (regression vs pre-refactor LJ)
+tests/cpu/md/test_bond_harmonic.cpp                        (regression vs pre-refactor HarmonicBond)
+tests/cpu/md/test_angle_harmonic.cpp
+tests/cpu/md/test_dihedral_multi_harmonic.cpp
+tests/cpu/md/test_pair_morse_smoke.cpp                     (demonstrates "one new class" workflow)
 ```
 
-### Modified (CPU)
+### Modified (CPU — backwards-compat aliases)
 
 ```
-include/atomiverse/cpu/md/lj.h                          → type alias to PairWalker<LJForm>
-include/atomiverse/cpu/potentials/harmonic_bond.h       → type alias to BondWalker<HarmonicBondForm>
-include/atomiverse/cpu/potentials/harmonic_angle.h      → type alias to AngleWalker<HarmonicAngleForm>
-include/atomiverse/cpu/potentials/multi_harmonic_dihedral.h → type alias
-src/cpu/md/lj.cpp                                       → collapse / delete (logic moves to pair_walker.cpp)
-src/cpu/potentials/harmonic_bond.cpp                    → collapse / delete
-src/cpu/potentials/harmonic_angle.cpp                   → collapse / delete
-src/cpu/potentials/multi_harmonic_dihedral.cpp          → collapse / delete
+include/atomiverse/cpu/md/lj.h                             → `using LJ = PairLJCut;` + include redirect
+include/atomiverse/cpu/potentials/harmonic_bond.h          → `using HarmonicBond = BondHarmonic;`
+include/atomiverse/cpu/potentials/harmonic_angle.h         → `using HarmonicAngle = AngleHarmonic;`
+include/atomiverse/cpu/potentials/multi_harmonic_dihedral.h → `using MultiHarmonicDihedral = DihedralMultiHarmonic;`
+src/cpu/md/lj.cpp                                          → delete (body moved)
+src/cpu/potentials/harmonic_bond.cpp                       → delete
+src/cpu/potentials/harmonic_angle.cpp                      → delete
+src/cpu/potentials/multi_harmonic_dihedral.cpp             → delete
 ```
 
 ### New (CUDA mirror, compile-only)
 
 ```
-include/atomiverse/cuda/potentials/pair_walker.cuh
-include/atomiverse/cuda/potentials/bond_walker.cuh
-include/atomiverse/cuda/potentials/angle_walker.cuh
-include/atomiverse/cuda/potentials/dihedral_walker.cuh
-src/cuda/potentials/pair_walker.cu     (templated CUDA Walker .cu, ETI per Form)
-src/cuda/potentials/bond_walker.cu
-src/cuda/potentials/angle_walker.cu
-src/cuda/potentials/dihedral_walker.cu
+include/atomiverse/cuda/potentials/pair.cuh
+include/atomiverse/cuda/potentials/bond.cuh
+include/atomiverse/cuda/potentials/angle.cuh
+include/atomiverse/cuda/potentials/dihedral.cuh
+include/atomiverse/cuda/potentials/pair_lj_cut.cuh
+include/atomiverse/cuda/potentials/bond_harmonic.cuh
+include/atomiverse/cuda/potentials/angle_harmonic.cuh
+include/atomiverse/cuda/potentials/dihedral_multi_harmonic.cuh
+src/cuda/potentials/pair_lj_cut.cu                         (body moved from src/cuda/potentials/lj.cu)
+src/cuda/potentials/bond_harmonic.cu
+src/cuda/potentials/angle_harmonic.cu
+src/cuda/potentials/dihedral_multi_harmonic.cu
 ```
 
-### Modified (CUDA mirror)
+### Modified (CUDA — backwards-compat aliases)
 
 ```
-include/atomiverse/cuda/potentials/{harmonic_bond,harmonic_angle,multi_harmonic_dihedral,lj}.cuh
-                                                        → type aliases on the same Walker<Form>
-src/cuda/potentials/{harmonic_bond,harmonic_angle,multi_harmonic_dihedral,lj}.cu  → collapse
+include/atomiverse/cuda/potentials/lj.cuh                   → `using LJ = PairLJCut;`
+include/atomiverse/cuda/potentials/harmonic_bond.cuh        → `using HarmonicBond = BondHarmonic;`
+include/atomiverse/cuda/potentials/harmonic_angle.cuh       → `using HarmonicAngle = AngleHarmonic;`
+include/atomiverse/cuda/potentials/multi_harmonic_dihedral.cuh → `using MultiHarmonicDihedral = DihedralMultiHarmonic;`
+src/cuda/potentials/{lj,harmonic_bond,harmonic_angle,multi_harmonic_dihedral}.cu → delete
 ```
 
-### Macros / common utilities
+### Notes
 
-```
-include/atomiverse/potentials/host_device.h   → ATV_HOST_DEVICE macro (expands to __host__ __device__ under NVCC, empty otherwise)
-```
-
-### Other
-
-- `.claude/notes/potential-abstraction-audit.md` — written by `pe-ff-migrate-dreiding-ua`'s audit task; this spec consumes it.
-- `.claude/notes/potential-abstraction-design.md` — written by this spec's first task; captures the design decisions (CRTP vs template-policy, what `Form::eval` shape, SIMD opt-in, CUDA host/device annotation strategy). One pass; signed off before code lands.
+- `.claude/notes/potential-abstraction-audit.md` — consumed (produced by `pe-ff-migrate-dreiding-ua`'s audit task).
+- `.claude/notes/potential-base-classes-design.md` — written by this spec's first task; one-pass design pass before code lands.
 
 ## Tasks
 
-- [ ] **Design pass.** Read `.claude/notes/potential-abstraction-audit.md` (produced by `pe-ff-migrate-dreiding-ua`). Author `.claude/notes/potential-abstraction-design.md` covering: (a) Form contract (`static constexpr inline`, Params struct, eval signature, optional `eval_batch`); (b) Walker class skeletons (CPU and CUDA); (c) `ATV_HOST_DEVICE` macro strategy; (d) SIMD opt-in fast path via SFINAE or C++20 concepts; (e) how multi-rank halo / ghost filtering survives the refactor (it lives in the Walker, the Form is unaware); (f) name-resolution: where the Form headers live (`include/atomiverse/potentials/forms/`) and how user code finds them.
-- [ ] Write failing test `tests/cpu/md/test_potential_walker_lj.cpp` — exercises the not-yet-existing `cpu::PairWalker<LJForm>` on a known geometry, compares against the pre-refactor LJ output bit-for-bit (or at the documented 5e-12 FMA-reorder tolerance per parent ac-012 refinement). Confirm RED.
-- [ ] Implement `include/atomiverse/potentials/forms/lj.h` (the LJForm functor with Params, eval, optional eval_batch).
-- [ ] Implement `include/atomiverse/cpu/potentials/pair_walker.h` + `src/cpu/potentials/pair_walker.cpp` (neighbor-list walk, OpenMP per-thread buffers, xsimd ket-loop with `Form::eval` lane fan-out, multi-rank halo). The existing `src/cpu/md/lj.cpp` body becomes the seed implementation, generalised to call `Form::eval` instead of inlined `s12 - s6` math.
-- [ ] Collapse `cpu::md::LJ` to `using LJ = PairWalker<LJForm>` in `include/atomiverse/cpu/md/lj.h`; delete `src/cpu/md/lj.cpp`. Confirm `test_potential_walker_lj.cpp` GREEN; confirm existing `test_lj_*` tests still pass (LJ NVE bit-identical, multi-rank LJ correctness, etc.).
-- [ ] Write failing test `tests/cpu/md/test_potential_walker_harmonic.cpp` (bond + angle); implement `HarmonicBondForm` / `HarmonicAngleForm`; implement `BondWalker<>` + `AngleWalker<>` (templated component, topology iteration + multi-rank ownership filter); collapse the existing `cpu::HarmonicBond` / `cpu::HarmonicAngle`; verify all `test_pe_*` tests still pass.
-- [ ] Write failing test for dihedral; implement `MultiHarmonicDihedralForm`; implement `DihedralWalker<>`; collapse `cpu::MultiHarmonicDihedral`; verify all PE tests still pass.
-- [ ] **Demonstrate "one new file" for adding Morse bond.** Write `include/atomiverse/potentials/forms/morse.h` + one-line `using MorseBond = BondWalker<MorseForm>` in a test-only header `tests/cpu/md/test_potential_walker_morse_smoke.h`. Test `test_potential_walker_morse_smoke.cpp` builds a 2-atom Morse-bonded system, runs 100 NVE steps, asserts (a) energy conservation at 1e-4 relative, (b) the equilibrium r* matches `r0`. **Count and document the total touched files for this addition** in the design note — should be exactly 2 (one form header + one test). This is the live proof of zero-paint-cost extension.
-- [ ] CUDA mirror: implement `cuda::PairWalker<Form>` + `cuda::BondWalker<Form>` + `cuda::AngleWalker<Form>` + `cuda::DihedralWalker<Form>` against `__device__`-callable Form::eval (annotate with `ATV_HOST_DEVICE`). Collapse the existing CUDA potential classes to type aliases. **No CUDA tests required** (per user direction); the smoke gate is `cmake --build build --target atomiverse_cuda` compiles clean.
-- [ ] Performance gate: re-run `pe_profile_single --steps 1000 --warmup 100` on the new code; compare `LJ::launch` total_ms to the pre-refactor profile_1.csv value (154.79 ms). The new value must be within ±2% (no perf regression from the templated abstraction). If it regresses, find the inlining failure and fix before merging.
-- [ ] Run full `ctest --test-dir build --output-on-failure`; verify no regression vs the 88-test baseline after `pe-ff-migrate-dreiding-ua` (or 87 if that spec hasn't landed yet). New tests above bring the count to 91+.
+- [ ] **Design pass.** Read `.claude/notes/potential-abstraction-audit.md`. Author `.claude/notes/potential-base-classes-design.md` covering: (a) the four base-class headers as drafted in this spec, (b) the bottom-up port sequence (PairLJCut canary first), (c) the multi-rank ownership helper signature on `Bond` / `Angle` / `Dihedral` and how it replaces the current `local_bonds_` cache in each derived class, (d) the `final` annotation strategy on `launch()` for de-virtualisation, (e) backwards-compat alias policy in the old headers so user code does not break, (f) CUDA mirror layout. Get explicit sign-off in the note before any source file lands.
+- [ ] **Land bases.** Create the four `cpu::Pair` / `cpu::Bond` / `cpu::Angle` / `cpu::Dihedral` headers + their `.cpp` files containing only the protected helpers (`select_owned_tuples` etc.) and trivial constructors. Build green; no existing tests should break (they don't use the bases yet).
+- [ ] **Port `PairLJCut` (canary).** Write `tests/cpu/md/test_pair_lj_cut.cpp` first — a RED test asserting `cpu::PairLJCut` exists and matches the pre-refactor `cpu::md::LJ` output bit-for-bit (or at 5e-12 FMA-tolerance). Move the body of `src/cpu/md/lj.cpp` into `src/cpu/potentials/pair_lj_cut.cpp` with the new class. Add the `using LJ = PairLJCut` alias in `include/atomiverse/cpu/md/lj.h`. Delete `src/cpu/md/lj.cpp`. Verify the new test is GREEN, all existing `test_lj_*` tests are still green, and `pe_profile_single` reports LJ::launch within ±2% of the 154.79 ms baseline.
+- [ ] **Port `BondHarmonic`.** RED test → move body into `src/cpu/potentials/bond_harmonic.cpp` → alias the old name → delete the old `.cpp` → verify `test_pe_*` tests still pass and `pe_profile_single` HarmonicBond::launch within ±2% of 117.36 ms.
+- [ ] **Port `AngleHarmonic`.** Same pattern.
+- [ ] **Port `DihedralMultiHarmonic`.** Same pattern.
+- [ ] **CUDA mirror (compile-only).** Add the four CUDA bases + four CUDA derived classes mirroring the CPU layout. Add backwards-compat aliases on the old CUDA headers. Delete old `.cu` files after moves. `cmake --build build --target atomiverse_cuda` must succeed with no new warnings. **No CUDA tests added.**
+- [ ] **Live demo: `PairMorse`.** Write `cpu::PairMorse : public cpu::Pair` from scratch — the smallest reasonable new pair-style. Implementation: neighbor-list walk identical in shape to `PairLJCut`, swap the LJ math for `V = D(1 − e^{−α(r−r₀)})²` and its derivative. Smoke test `test_pair_morse_smoke.cpp` runs a 2-atom Morse-bonded NVE for 100 steps; asserts energy conservation at 1e-4 relative and equilibrium r* matches `r₀` after a small initial perturbation. Document in the design note the total **count of files touched** to add this new style — target: 2 (one `.h`, one `.cpp`, plus the test which doesn't count as part of the "adding a style" workflow itself).
+- [ ] **Cleanup.** Run full `ctest --test-dir build --output-on-failure`; verify no regression vs the post-`pe-ff-migrate-dreiding-ua` baseline. Delete any straggler old `.cpp` files. Update `.claude/notes/potential-base-classes-design.md` with the final touched-file count for the Morse demo.
 
 ## Testing strategy
 
-**Zero-overhead validation** (the critical correctness gate):
+**Zero-overhead validation:**
 
-- `pe_profile_single` LJ::launch total_ms before vs after refactor: within ±2% (if larger, the Form::eval inlining failed). This is the load-bearing performance gate — a templated abstraction whose runtime cost dominates the savings is a failure.
-- Per-pair bit-identicality: `test_lj_nve` (the parent ac-012 5e-12 FMA-tolerance test) continues to pass — the refactor moves code around but should not change FP behaviour.
-- Bonded per-term energies: `test_pe_single_chain` continues to pass at 1e-9 absolute (this verifies BondWalker / AngleWalker / DihedralWalker compute the same energies as the old classes).
+- `pe_profile_single` LJ::launch total_ms within ±2% of `profile_1.csv` pre-refactor baseline (154.79 ms).
+- `pe_profile_single` HarmonicBond::launch total_ms within ±2% of pre-refactor baseline (117.36 ms).
+- `test_lj_nve` (parent ac-012, 5e-12 FMA tolerance) still passes after the LJ port.
 
 **Happy path:**
 
-- Single-rank: every existing `test_pe_*`, `test_lj_*`, `test_*_multi_chain` continues green.
-- Multi-rank: every existing `test_mpi_*pe*`, `test_mpi_*lj*` continues green at 1, 2, 8 ranks.
-- Build: `cmake --build build` clean on Release + Debug.
+- All existing `test_pe_*`, `test_lj_*`, `test_*multi_chain`, `test_mpi_pe_*`, `test_mpi_lj_*` continue green.
+- Full ctest count after this spec lands: pre-baseline + 4 regression tests (one per port) + 1 Morse smoke = +5 tests.
 
 **Edge cases:**
 
-- Form with **no** `eval_batch` falls back to lane-by-lane scalar fan-out from the xsimd batch — verify this path still SIMDs (the lane loop unrolls to W copies of the scalar formula, which clang vectorises).
-- Form with **both** `eval` and `eval_batch`: SFINAE picks `eval_batch` automatically; assert via `static_assert` and a small "dispatch trace" test that flags which path was taken.
-- Multi-rank ghost ownership: BondWalker / AngleWalker / DihedralWalker must reuse the existing `dd->tag_to_local` filter; verify by re-running `test_mpi_pe_chains_8rank_n8` and `test_mpi_pe_chain_drifting_n2`.
+- A user who today writes `cpu::md::LJ{eps, sigma, cutoff}` must still compile and link without any change. The alias `using LJ = PairLJCut` carries this.
+- Multi-rank bonded tests: `BondHarmonic` must continue to use the multi-rank ownership filter. The `select_owned_tuples` helper in the `Bond` base replaces the inline `local_bonds_` cache; verify by re-running `test_mpi_pe_chains_8rank_n8` and `test_mpi_pe_chain_drifting_n2`.
 
 **Domain validation** (`$META.science.required: true`):
 
-- The Morse-bond smoke test (`test_potential_walker_morse_smoke`) demonstrates a never-before-implemented FF form working end-to-end in <2 hours of editing. This is the live demonstration that "add a new FF = one file" — the very claim the abstraction makes.
+- `PairMorse` reaches its analytical equilibrium r* = r₀ in NVE within a few oscillation periods — verifies the new derived class actually implements Morse correctly (not just compiles).
 
 **Performance:**
 
-- Pre/post LJ::launch ms/1000-step: ±2% target.
-- Pre/post HarmonicBond::launch ms/1000-step: ±2% target.
-- xsimd ket-loop assembly inspection (one-off, written into the design note): verify the inlined `Form::eval` body appears inside the SIMD unroll, not behind a call instruction.
+- LJ::launch and HarmonicBond::launch profile_1.csv numbers within ±2%.
+- xsimd ket-loop assembly inspection (one-off, documented in the design note): verify the inner pair-distance / energy / force math still appears inside the SIMD unroll, not behind a `call` instruction.
 
 ## Out of scope
 
-- **Runtime FF selection via string keys** (LAMMPS-style `pair_style lj/cut`). The abstraction makes future addition of a `Registry<std::string, PotentialFactory>` cheap, but this spec only enables compile-time form dispatch. A string-keyed registry is the natural follow-up if Python-bindings users need it.
-- **torch backend.** Per user direction, this spec covers CPU and CUDA only.
-- **CUDA test coverage.** Compile-only smoke; CUDA functional tests land separately under the `cuda-driver-taxonomy` umbrella.
-- **Hybrid CPU/CUDA Forms.** Each Form is one struct usable from either backend's Walker; this spec doesn't introduce a "this Form runs on the GPU half and the CPU half" mixed-mode kernel.
-- **Long-range / k-space potentials (Ewald, PPPM).** The Walker contract assumes short-range cutoff; long-range methods need a different iteration shape and are out of scope.
-- **SCF / QC potentials.** The Hartree-Fock / DFT machinery in `cpu::scf` is owned by `cpu::scf::SCFEvaluator` (an Evaluator component, but not a "potential" in the pair/topology sense). No change here.
-- **`pe-ff-migrate-dreiding-ua` FF constant migration.** This spec doesn't touch the OPLS-like vs Dreiding-UA value debate; whichever values live in the existing classes will continue to live in `Form::Params` defaults after the refactor. The two specs are orthogonal.
+- **Runtime style selection via string keys.** LAMMPS exposes `pair_style lj/cut` at the input-script level. Atomiverse stays compile-time selected; a string-keyed registry can land later if Python-bindings users need it. Pure follow-up.
+- **torch backend.** Out of scope per user direction.
+- **CUDA functional tests.** Compile-only mirror per user direction.
+- **Improper, KSpace, Fix base classes.** LAMMPS has more base classes than these four. We only port what Atomiverse already has analogues for — Improper (out-of-plane bonded) and KSpace (long-range) don't exist in tree, so no base for them in this spec.
+- **Refactoring `cpu::md::NeighborList`** to belong under the Pair hierarchy. Today `NeighborList` is a standalone component and pair styles consume its output. That stays the same; making `Pair` own a neighbor-list reference is a separate ergonomic refactor.
+- **Sharing a base class across CPU and CUDA.** Explicitly rejected by the user — the two backends have different `ComponentBase` ancestors and there is no value in forcing a common ancestor on the potentials.
+- **Performance optimisation beyond preserving today's numbers.** The xsimd ket loop, OMP per-thread buffers, etc. all carry over verbatim. Further perf work is downstream.
+- **`pe-ff-migrate-dreiding-ua` FF constant migration.** Orthogonal — that spec changes values, this one changes structure. They can run in either order.
