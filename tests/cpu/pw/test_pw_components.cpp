@@ -50,21 +50,37 @@ struct PWFixture {
 
         ws.n_g = gv.count();
         ws.gvec = &gv;
+        ws.fft_nx = gv.nx;
+        ws.fft_ny = gv.ny;
+        ws.fft_nz = gv.nz;
+        ws.nr = gv.nx * gv.ny * gv.nz;
+        ws.nc = (gv.nx / 2 + 1) * gv.ny * gv.nz;
+        ws.omega = box.volume();
+        ws.fft = std::make_unique<FFTPlan3D>(gv.nx, gv.ny, gv.nz);
+
         auto ng = static_cast<std::size_t>(ws.n_g);
+        auto nr_sz = static_cast<std::size_t>(ws.nr);
         ws.rho_G.resize({ng});
         ws.rho_G_old.resize({ng});
         ws.V_H_G.resize({ng});
         ws.V_xc_G.resize({ng});
         ws.V_eff_G.resize({ng});
         ws.V_loc_G_real.resize({ng});
-        ws.rho_r.resize({ng});
-        ws.V_xc_r.resize({ng});
+        ws.rho_r.resize({nr_sz});
+        ws.V_xc_r.resize({nr_sz});
+        ws.V_eff_r.resize({nr_sz});
         ws.T_G.resize({ng});
 
         for (int i = 0; i < ws.n_g; ++i) {
             ws.rho_G[i] = (i == 0) ? std::complex<Real>(Real(4)/box.volume(), 0) : std::complex<Real>(0, 0);
             ws.V_loc_G_real[i] = (i == 0) ? Real(-0.5) : Real(0);
         }
+        for (int i = 0; i < ws.nr; ++i)
+            ws.V_eff_r[i] = Real(0);
+
+        // kb_proj left empty -- exercising local Hamiltonian only; nonlocal
+        // KB path is covered by the integration tests in test_pw_si.
+        ws.atom_pos_bohr.clear();
 
         bctx.pw_workspace = &ws;
     }
@@ -103,12 +119,21 @@ TEST(PWComponents, HamiltonianKinetic) {
 }
 
 TEST(PWComponents, DavidsonEigenvalues) {
-    // TODO: refactored Davidson now requires ws.fft, ws.fft_nx/ny/nz, ws.nr,
-    // ws.V_eff_r, ws.omega, ws.kb_proj, ws.atom_pos_bohr in the workspace
-    // (FFT-driven H·ψ + KB nonlocal); the minimal PWFixture predates that
-    // and segfaults on the c2c FFT call. Rebuild the fixture against the
-    // full pw_scf init pipeline before re-enabling.
-    GTEST_SKIP() << "fixture incomplete after Davidson refactor — see TODO";
+    PWFixture f;
+    PW_Hamiltonian h;
+    h.build(f.bctx);
+    PW_Veff v;
+    v.build(f.bctx);
+    v.launch(f.lctx);
+    h.launch(f.lctx);
+
+    PW_Davidson d(4, Real(1e-8), 20);
+    d.build(f.bctx);
+    d.launch(f.lctx);
+    EXPECT_EQ(f.ws.eigenvalues.size(), 4u);
+    for (size_t i = 1; i < f.ws.eigenvalues.size(); ++i)
+        EXPECT_LE(static_cast<double>(f.ws.eigenvalues[i-1]),
+                  static_cast<double>(f.ws.eigenvalues[i]) + 1e-10);
 }
 
 TEST(PWComponents, ConvergenceCheck) {
