@@ -1,7 +1,7 @@
 ---
 title: Per-component profile CSVs at 1 and 8 ranks
 slug: parallel-md-finish-01-profile-csvs
-status: code-complete
+status: retired
 created: 2026-05-19
 last-updated: 2026-05-19
 parent: parallel-md-engine.md

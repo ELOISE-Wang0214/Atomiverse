@@ -1,7 +1,7 @@
 ---
 title: OMP_PROC_BIND measurement + README Thread binding section
 slug: parallel-md-finish-05-omp-numa
-status: code-complete
+status: retired
 created: 2026-05-19
 last-updated: 2026-05-19
 parent: parallel-md-engine.md

@@ -1,8 +1,8 @@
 ---
 title: Parallel CPU MD engine — MPI + OpenMP + xsimd with hot-path/analysis separation
-status: in-progress
+status: retired
 created: 2026-04-16
-last-updated: 2026-05-19 (status snapshot reconciled with tree — 17/27 done, 7 partial (need reference machine), 3 pending)
+last-updated: 2026-05-19 (retired — Phase 5 closure verified via parallel-md-finish-NN chain; 87/87 ctest green incl. test_mpi_nose_hoover_t_ramp_n2 + test_cpu_md_no_alloc; both LAMMPS-ratio gates met without escape hatch)
 revised: 2026-05-06
 ---
 

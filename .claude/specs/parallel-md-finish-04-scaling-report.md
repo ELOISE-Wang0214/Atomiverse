@@ -1,7 +1,7 @@
 ---
 title: scaling_report.md — single-source-of-truth for Phase 5 perf numbers
 slug: parallel-md-finish-04-scaling-report
-status: code-complete
+status: retired
 created: 2026-05-19
 last-updated: 2026-05-19
 parent: parallel-md-engine.md

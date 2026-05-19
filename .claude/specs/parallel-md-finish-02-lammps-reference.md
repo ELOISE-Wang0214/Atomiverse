@@ -1,7 +1,7 @@
 ---
 title: LAMMPS reference run with self-contained geometry
 slug: parallel-md-finish-02-lammps-reference
-status: code-complete
+status: retired
 created: 2026-05-19
 last-updated: 2026-05-19
 parent: parallel-md-engine.md

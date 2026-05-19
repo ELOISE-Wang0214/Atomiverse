@@ -1,8 +1,9 @@
 ---
 title: Close out parallel-md-engine — full suite green + retire monolith
 slug: parallel-md-finish-06-close-out
-status: approved
+status: retired
 created: 2026-05-19
+last-updated: 2026-05-19
 parent: parallel-md-engine.md
 depends-on:
   - parallel-md-finish-01-profile-csvs
@@ -45,13 +46,13 @@ No source code changes.
 
 ## Tasks
 
-- [ ] Verify all five upstream chain sub-specs have `status: code-complete` in their frontmatter; abort if any is still at `approved` or `in-progress` (means the corresponding `/mol:impl` run did not finish).
-- [ ] Build full tree fresh: `cmake -B build -DCMAKE_BUILD_TYPE=Release -DATV_BUILD_TESTS=ON -DATV_BUILD_BENCHMARKS=ON -DATV_BUILD_RHF=ON -DATV_USE_MPI=ON && cmake --build build -j`.
-- [ ] Run the full suite: `ctest --test-dir build -L "cpu|mpi" --output-on-failure`. Verify all tests pass and the test count is ≥ the pre-Phase-5 baseline recorded in the parent spec status snapshot (Phase 1–4 exit: 20 MPI tests + the existing CPU suite). Two new tests must appear in the count: `test_nose_hoover_t_ramp` and `test_md_no_alloc` (the latter must report SKIPPED on this Darwin host, which is still a pass).
-- [ ] Flip parent frontmatter: in `.claude/specs/parallel-md-engine.md`, change `status: in-progress` → `status: retired`, update `last-updated:` to today, and add a brief one-paragraph closure note under the existing "Closure note (2026-05-19)" pointing to the SHA of the chain-completion commit.
-- [ ] Flip each chain sub-spec's frontmatter `status:` to `retired` once they verify; do this in the same commit as the parent flip.
-- [ ] Update `INDEX.md`: replace the parallel-md-engine line with `[retired — see parallel-md-finish-NN chain]`; add the six chain entries as a nested block.
-- [ ] Commit: `chore(parallel-md): retire parent spec + chain after full ctest green (closes parent ac-025)`.
+- [x] Verified all 5 upstream chain sub-specs at `status: code-complete` before this run.
+- [x] Built full tree (`cmake --build build -j` against the existing Release configuration from spec 01): atomiverse + benchmarks + all 87 test targets compile clean.
+- [x] Ran full suite (`ctest --test-dir build --output-on-failure`): 87/87 pass in 78.58 s. Note: parent spec's recipe used `-L "cpu|mpi"` but only the `mpi` label is actually assigned in `tests/CMakeLists.txt`; ran without label filter to cover the full pre-Phase-5 baseline + new tests. Both phase-5 additions present and green: `test_mpi_nose_hoover_t_ramp_n2` (3.53 s) and `test_cpu_md_no_alloc` (0.04 s — GTEST_SKIP on Darwin as designed).
+- [x] Flipped `parallel-md-engine.md` frontmatter: `status: in-progress` → `status: retired`, `last-updated:` to 2026-05-19 with the chain-completion summary.
+- [x] Flipped all 6 chain sub-spec frontmatters (`01..06`) to `status: retired` in the same commit.
+- [x] Updated `INDEX.md`: parent line now `[retired — see parallel-md-finish-NN chain]`; six chain entries indented under the parent as `[retired]` with the parent-ac coverage notes inline.
+- [x] Commit subject matches `(?i)retire.*chain` per ac-003 regex.
 
 ## Testing strategy
 

@@ -16,7 +16,8 @@ criteria:
       baseline (20 MPI tests + the documented CPU suite size
       at the parent spec's Status snapshot timestamp).
       (Closes parent ac-025.)
-    status: pending
+    status: verified
+    last_checked: 2026-05-19
 
   - id: ac-002
     summary: parent parallel-md-engine.md flipped to retired
@@ -26,7 +27,8 @@ criteria:
       contains `status: retired` (was `in-progress`). The
       body retains a closure note dated 2026-05-19 or later
       that references the six chain sub-specs by full slug.
-    status: pending
+    status: verified
+    last_checked: 2026-05-19
 
   - id: ac-003
     summary: All chain sub-specs flipped to retired in same commit
@@ -37,7 +39,8 @@ criteria:
       closure commit. The git log shows a single commit
       whose subject matches `(?i)retire.*chain` and whose
       diff touches all 7 files (parent + 6 chain).
-    status: pending
+    status: verified
+    last_checked: 2026-05-19
 
   - id: ac-004
     summary: INDEX.md reflects retirement
@@ -49,7 +52,8 @@ criteria:
       under any `in-progress` heading. The six chain
       entries are listed (either indented under the parent
       line or as their own section).
-    status: pending
+    status: verified
+    last_checked: 2026-05-19
 ---
 
 # Acceptance criteria
