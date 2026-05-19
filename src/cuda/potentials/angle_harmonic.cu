@@ -1,7 +1,7 @@
-/// @file bonded/harmonic_angle.cu
-/// @brief HarmonicAngle implementation -- V(θ) = K(θ - θ0)^2.
+/// @file cuda/potentials/angle_harmonic.cu
+/// @brief CUDA AngleHarmonic — V = K(θ − θ₀)² (kernel + class).
 
-#include "atomiverse/cuda/potentials/harmonic_angle.cuh"
+#include "atomiverse/cuda/potentials/angle_harmonic.cuh"
 #include "atomiverse/cuda/launch.cuh"
 #include "atomiverse/core/constants.h"
 #include <cuda_runtime.h>
@@ -9,25 +9,21 @@
 #include <cmath>
 
 namespace ATV {
+namespace cuda {
 
-using cuda::real_t;
-using cuda::work_t;
-using cuda::prec_t;
-
-
-struct HarmonicAngle::State {
+struct AngleHarmonic::State {
     work_t* d_K = nullptr;
     work_t* d_theta0 = nullptr;  // in radians
     int n_types = 0;
 };
 
-HarmonicAngle::HarmonicAngle(std::vector<double> K, std::vector<double> theta0)
+AngleHarmonic::AngleHarmonic(std::vector<double> K, std::vector<double> theta0)
     : K_(std::move(K)), theta0_(std::move(theta0)),
       state_(std::make_unique<State>()) {}
 
-HarmonicAngle::~HarmonicAngle() = default;
-HarmonicAngle::HarmonicAngle(HarmonicAngle&&) noexcept = default;
-HarmonicAngle& HarmonicAngle::operator=(HarmonicAngle&&) noexcept = default;
+AngleHarmonic::~AngleHarmonic() = default;
+AngleHarmonic::AngleHarmonic(AngleHarmonic&&) noexcept = default;
+AngleHarmonic& AngleHarmonic::operator=(AngleHarmonic&&) noexcept = default;
 
 namespace {
 
@@ -110,7 +106,7 @@ __global__ void harmonic_angle_k(
 
 } // anonymous namespace
 
-void HarmonicAngle::build(const BuildContext& ctx) {
+void AngleHarmonic::build(const BuildContext& /*ctx*/) {
     int nt = static_cast<int>(K_.size());
     state_->n_types = nt;
 
@@ -125,24 +121,25 @@ void HarmonicAngle::build(const BuildContext& ctx) {
     cudaMemcpy(state_->d_theta0, theta0_rad.data(), nt * sizeof(work_t), cudaMemcpyHostToDevice);
 }
 
-void HarmonicAngle::launch(const LaunchContext& ctx) {
+void AngleHarmonic::compute(const LaunchContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& f = ctx.frame;
     int na = f.n_angles();
     if (na == 0) return;
 
-    int block = cuda::kDefaultBlock;
-    int grid = cuda::grid_size(static_cast<int>(na));
+    int block = kDefaultBlock;
+    int grid = grid_size(static_cast<int>(na));
     harmonic_angle_k<<<grid, block, block * sizeof(work_t), stream>>>(
         f.atoms.x, f.atoms.y, f.atoms.z, f.atoms.fx, f.atoms.fy, f.atoms.fz, f.energy,
         f.angles.atomi, f.angles.atomj, f.angles.atomk, f.angles.type,
         state_->d_K, state_->d_theta0, f.box, na);
 }
 
-void HarmonicAngle::destroy(const DestroyContext& ctx) {
+void AngleHarmonic::destroy(const DestroyContext& /*ctx*/) {
     cudaFree(state_->d_K);
     cudaFree(state_->d_theta0);
     *state_ = {};
 }
 
+} // namespace cuda
 } // namespace ATV

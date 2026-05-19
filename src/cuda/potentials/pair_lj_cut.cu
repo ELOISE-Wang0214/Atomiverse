@@ -1,6 +1,7 @@
-/// @file md/lj.cu
+/// @file cuda/potentials/pair_lj_cut.cu
+/// @brief CUDA PairLJCut — Lennard-Jones 12-6 shifted (kernel + class).
 
-#include "atomiverse/cuda/potentials/lj.cuh"
+#include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 #include "atomiverse/cuda/potentials/lj_kernel.cuh"
 #include "atomiverse/cuda/launch.cuh"
 #include <cuda_runtime.h>
@@ -70,23 +71,26 @@ namespace {
 constexpr int kEstMaxNeighbors = 100;
 } // anonymous namespace
 
-LJ::LJ(double epsilon, double sigma, double cutoff)
-    : epsilon_(epsilon), sigma_(sigma), cutoff_(cutoff) {
-    v_shift_ = cuda::kernels::lj_shift(epsilon, sigma, cutoff);
+namespace cuda {
+
+PairLJCut::PairLJCut(double epsilon, double sigma, double cutoff)
+    : Pair(cutoff), epsilon_(epsilon), sigma_(sigma) {
+    v_shift_ = kernels::lj_shift(epsilon, sigma, cutoff);
 }
 
-void LJ::launch(const LaunchContext& ctx) {
+void PairLJCut::compute(const LaunchContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& frame = ctx.frame;
     int n = ctx.frame.n_atoms();
     int max_pairs = static_cast<int>(n) * kEstMaxNeighbors / 2;
-    int block = cuda::kDefaultBlock;
-    int grid = cuda::grid_size(max_pairs);
-    cuda::kernels::lj_force<<<grid, block, block * sizeof(work_t), stream>>>(
+    int block = kDefaultBlock;
+    int grid = grid_size(max_pairs);
+    kernels::lj_force<<<grid, block, block * sizeof(work_t), stream>>>(
         frame.atoms.fx, frame.atoms.fy, frame.atoms.fz, frame.energy,
         frame.pairs.i, frame.pairs.j, frame.pairs.dx, frame.pairs.dy,
         frame.pairs.dz, frame.pairs.dist,
         epsilon_, sigma_, cutoff_, v_shift_, frame.pairs.n_pairs);
 }
 
+} // namespace cuda
 } // namespace ATV

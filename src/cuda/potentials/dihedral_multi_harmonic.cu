@@ -1,30 +1,26 @@
-/// @file bonded/multi_harmonic_dihedral.cu
-/// @brief MultiHarmonicDihedral -- V(φ) = Σ C_n cos^n(φ).
+/// @file cuda/potentials/dihedral_multi_harmonic.cu
+/// @brief CUDA DihedralMultiHarmonic — V = Σₙ Cₙ cosⁿ(φ).
 
-#include "atomiverse/cuda/potentials/multi_harmonic_dihedral.cuh"
+#include "atomiverse/cuda/potentials/dihedral_multi_harmonic.cuh"
 #include "atomiverse/cuda/launch.cuh"
 #include <cuda_runtime.h>
 #include "atomiverse/cuda/types.cuh"
 #include <cmath>
 
 namespace ATV {
+namespace cuda {
 
-using cuda::real_t;
-using cuda::work_t;
-using cuda::prec_t;
-
-
-struct MultiHarmonicDihedral::State {
+struct DihedralMultiHarmonic::State {
     work_t* d_C = nullptr;  // n_types * 5 coefficients, flat
     int n_types = 0;
 };
 
-MultiHarmonicDihedral::MultiHarmonicDihedral(std::vector<std::array<double, 5>> C)
+DihedralMultiHarmonic::DihedralMultiHarmonic(std::vector<std::array<double, 5>> C)
     : C_(std::move(C)), state_(std::make_unique<State>()) {}
 
-MultiHarmonicDihedral::~MultiHarmonicDihedral() = default;
-MultiHarmonicDihedral::MultiHarmonicDihedral(MultiHarmonicDihedral&&) noexcept = default;
-MultiHarmonicDihedral& MultiHarmonicDihedral::operator=(MultiHarmonicDihedral&&) noexcept = default;
+DihedralMultiHarmonic::~DihedralMultiHarmonic() = default;
+DihedralMultiHarmonic::DihedralMultiHarmonic(DihedralMultiHarmonic&&) noexcept = default;
+DihedralMultiHarmonic& DihedralMultiHarmonic::operator=(DihedralMultiHarmonic&&) noexcept = default;
 
 namespace {
 
@@ -154,7 +150,7 @@ __global__ void multi_harmonic_dihedral_k(
 
 } // anonymous namespace
 
-void MultiHarmonicDihedral::build(const BuildContext& ctx) {
+void DihedralMultiHarmonic::build(const BuildContext& /*ctx*/) {
     int nt = static_cast<int>(C_.size());
     state_->n_types = nt;
     // Flatten coefficients: [C0_0, C1_0, ..., C4_0, C0_1, ...]
@@ -166,23 +162,24 @@ void MultiHarmonicDihedral::build(const BuildContext& ctx) {
     cudaMemcpy(state_->d_C, flat.data(), nt * 5 * sizeof(work_t), cudaMemcpyHostToDevice);
 }
 
-void MultiHarmonicDihedral::launch(const LaunchContext& ctx) {
+void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& f = ctx.frame;
     int nd = f.n_dihedrals();
     if (nd == 0) return;
 
-    int block = cuda::kDefaultBlock;
-    int grid = cuda::grid_size(static_cast<int>(nd));
+    int block = kDefaultBlock;
+    int grid = grid_size(static_cast<int>(nd));
     multi_harmonic_dihedral_k<<<grid, block, block * sizeof(work_t), stream>>>(
         f.atoms.x, f.atoms.y, f.atoms.z, f.atoms.fx, f.atoms.fy, f.atoms.fz, f.energy,
         f.dihedrals.atomi, f.dihedrals.atomj, f.dihedrals.atomk, f.dihedrals.atoml,
         f.dihedrals.type, state_->d_C, f.box, nd);
 }
 
-void MultiHarmonicDihedral::destroy(const DestroyContext& ctx) {
+void DihedralMultiHarmonic::destroy(const DestroyContext& /*ctx*/) {
     cudaFree(state_->d_C);
     *state_ = {};
 }
 
+} // namespace cuda
 } // namespace ATV

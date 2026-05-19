@@ -1,7 +1,7 @@
-/// @file bonded/harmonic_bond.cu
-/// @brief HarmonicBond implementation -- V(r) = K(r - r0)^2.
+/// @file cuda/potentials/bond_harmonic.cu
+/// @brief CUDA BondHarmonic — V = K(r − r₀)² (kernel + class).
 
-#include "atomiverse/cuda/potentials/harmonic_bond.cuh"
+#include "atomiverse/cuda/potentials/bond_harmonic.cuh"
 #include "atomiverse/cuda/potentials/harmonic_bond_kernel.cuh"
 #include "atomiverse/cuda/launch.cuh"
 #include <cuda_runtime.h>
@@ -72,20 +72,22 @@ __global__ void harmonic_bond_k(
 
 }} // namespace cuda::kernels
 
-struct HarmonicBond::State {
+namespace cuda {
+
+struct BondHarmonic::State {
     work_t* d_K = nullptr;
     work_t* d_r0 = nullptr;
     int n_types = 0;
 };
 
-HarmonicBond::HarmonicBond(std::vector<double> K, std::vector<double> r0)
+BondHarmonic::BondHarmonic(std::vector<double> K, std::vector<double> r0)
     : K_(std::move(K)), r0_(std::move(r0)), state_(std::make_unique<State>()) {}
 
-HarmonicBond::~HarmonicBond() = default;
-HarmonicBond::HarmonicBond(HarmonicBond&&) noexcept = default;
-HarmonicBond& HarmonicBond::operator=(HarmonicBond&&) noexcept = default;
+BondHarmonic::~BondHarmonic() = default;
+BondHarmonic::BondHarmonic(BondHarmonic&&) noexcept = default;
+BondHarmonic& BondHarmonic::operator=(BondHarmonic&&) noexcept = default;
 
-void HarmonicBond::build(const BuildContext& ctx) {
+void BondHarmonic::build(const BuildContext& /*ctx*/) {
     int nt = static_cast<int>(K_.size());
     state_->n_types = nt;
     cudaMalloc(&state_->d_K, nt * sizeof(work_t));
@@ -94,24 +96,25 @@ void HarmonicBond::build(const BuildContext& ctx) {
     cudaMemcpy(state_->d_r0, r0_.data(), nt * sizeof(work_t), cudaMemcpyHostToDevice);
 }
 
-void HarmonicBond::launch(const LaunchContext& ctx) {
+void BondHarmonic::compute(const LaunchContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& f = ctx.frame;
     int nb = f.n_bonds();
     if (nb == 0) return;
 
-    int block = cuda::kDefaultBlock;
-    int grid = cuda::grid_size(static_cast<int>(nb));
-    cuda::kernels::harmonic_bond_k<<<grid, block, block * sizeof(work_t), stream>>>(
+    int block = kDefaultBlock;
+    int grid = grid_size(static_cast<int>(nb));
+    kernels::harmonic_bond_k<<<grid, block, block * sizeof(work_t), stream>>>(
         f.atoms.x, f.atoms.y, f.atoms.z, f.atoms.fx, f.atoms.fy, f.atoms.fz, f.energy,
         f.bonds.atomi, f.bonds.atomj, f.bonds.type,
         state_->d_K, state_->d_r0, f.box, nb);
 }
 
-void HarmonicBond::destroy(const DestroyContext& ctx) {
+void BondHarmonic::destroy(const DestroyContext& /*ctx*/) {
     cudaFree(state_->d_K);
     cudaFree(state_->d_r0);
     *state_ = {};
 }
 
+} // namespace cuda
 } // namespace ATV
