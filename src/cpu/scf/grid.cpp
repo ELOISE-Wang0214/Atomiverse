@@ -27,81 +27,66 @@ static constexpr double kPi = 3.14159265358979323846;
 
 /// @brief Bragg-Slater atomic radius for element Z, returned in Bohr.
 ///
-/// Radii for Z = 1..86 (H through Rn).  Most values are the empirical
-/// crystal radii of Slater:
-///   J.C. Slater, "Atomic Radii in Crystals", JCP 41, 3199 (1964).
-///   DOI: 10.1063/1.1725697
+/// Radii for Z = 1..86 (H through Rn). Values for Z = 1..36 match PySCF's
+/// `pyscf.dft.radi.BRAGG_RADII` table (used by PySCF's default Mura-Knowles
+/// radial grid). For Z = 37..86 we fall back to Slater (1964) crystal radii
+/// converted from Angstrom.
 ///
-/// Noble gases (He, Ne, Ar, Kr, Xe, Rn) use calculated radii from:
-///   E. Clementi, D.L. Raimondi, W.P. Reinhardt, JCP 47, 1300 (1967).
+/// PySCF's BRAGG_RADII is itself based on:
+///   J.C. Slater, "Atomic Radii in Crystals", JCP 41, 3199 (1964),
+///   DOI 10.1063/1.1725697.
+/// But uses 0.35 A for H (Slater's non-bonded radius, not the 0.25 A covalent)
+/// and Bondi-style radii for noble gases. Matching the PySCF table exactly
+/// avoids systematic mHa-scale offsets in UKS/RKS total energies when
+/// validating against PySCF references.
 ///
-/// Astatine (At, Z = 85) uses the covalent radius from:
-///   B. Cordero et al., Dalton Trans. 2008, 2832.
-///   DOI: 10.1039/b801115j
-///
-/// The table is stored in Bohr (Angstrom values * kAngstromToBohr).
 /// Throws std::invalid_argument for Z < 1 or Z > 86.
 ///
 /// @param Z Atomic number (1 <= Z <= 86).
 /// @return Bragg-Slater radius in Bohr.
 double bragg_slater_radius(int Z) {
-    // Angstrom values -- index 0 is unused (Z starts at 1).
-    //
-    // Period 1:  H    He
-    // Period 2:  Li   Be   B    C    N    O    F    Ne
-    // Period 3:  Na   Mg   Al   Si   P    S    Cl   Ar
-    // Period 4:  K    Ca   Sc   Ti   V    Cr   Mn   Fe   Co   Ni   Cu   Zn
-    //            Ga   Ge   As   Se   Br   Kr
-    // Period 5:  Rb   Sr   Y    Zr   Nb   Mo   Tc   Ru   Rh   Pd   Ag   Cd
-    //            In   Sn   Sb   Te   I    Xe
-    // Period 6:  Cs   Ba   La   Ce   Pr   Nd   Pm   Sm   Eu   Gd   Tb   Dy
-    //            Ho   Er   Tm   Yb   Lu   Hf   Ta   W    Re   Os   Ir   Pt
-    //            Au   Hg   Tl   Pb   Bi   Po   At   Rn
     static constexpr double kA2B = kAngstromToBohr;
     static constexpr int kMaxZ = 86;
     // clang-format off
     static constexpr double radii[kMaxZ + 1] = {
         0.00 * kA2B,  //  0  placeholder (unused)
-        // ── Period 1 ─────────────────────────────────────────────
-        0.25 * kA2B,  //  1  H                 [Slater 1964]
-        0.31 * kA2B,  //  2  He                [Clementi 1967]
-        // ── Period 2 ─────────────────────────────────────────────
-        1.45 * kA2B,  //  3  Li                [Slater 1964]
-        1.05 * kA2B,  //  4  Be                [Slater 1964]
-        0.85 * kA2B,  //  5  B                 [Slater 1964]
-        0.70 * kA2B,  //  6  C                 [Slater 1964]
-        0.65 * kA2B,  //  7  N                 [Slater 1964]
-        0.60 * kA2B,  //  8  O                 [Slater 1964]
-        0.50 * kA2B,  //  9  F                 [Slater 1964]
-        0.38 * kA2B,  // 10  Ne                [Clementi 1967]
-        // ── Period 3 ─────────────────────────────────────────────
-        1.80 * kA2B,  // 11  Na                [Slater 1964]
-        1.50 * kA2B,  // 12  Mg                [Slater 1964]
-        1.25 * kA2B,  // 13  Al                [Slater 1964]
-        1.10 * kA2B,  // 14  Si                [Slater 1964]
-        1.00 * kA2B,  // 15  P                 [Slater 1964]
-        1.00 * kA2B,  // 16  S                 [Slater 1964]
-        1.00 * kA2B,  // 17  Cl                [Slater 1964]
-        0.71 * kA2B,  // 18  Ar                [Clementi 1967]
-        // ── Period 4 ─────────────────────────────────────────────
-        2.20 * kA2B,  // 19  K                 [Slater 1964]
-        1.80 * kA2B,  // 20  Ca                [Slater 1964]
-        1.60 * kA2B,  // 21  Sc                [Slater 1964]
-        1.40 * kA2B,  // 22  Ti                [Slater 1964]
-        1.35 * kA2B,  // 23  V                 [Slater 1964]
-        1.40 * kA2B,  // 24  Cr                [Slater 1964]
-        1.40 * kA2B,  // 25  Mn                [Slater 1964]
-        1.40 * kA2B,  // 26  Fe                [Slater 1964]
-        1.35 * kA2B,  // 27  Co                [Slater 1964]
-        1.35 * kA2B,  // 28  Ni                [Slater 1964]
-        1.35 * kA2B,  // 29  Cu                [Slater 1964]
-        1.35 * kA2B,  // 30  Zn                [Slater 1964]
-        1.30 * kA2B,  // 31  Ga                [Slater 1964]
-        1.25 * kA2B,  // 32  Ge                [Slater 1964]
-        1.15 * kA2B,  // 33  As                [Slater 1964]
-        1.15 * kA2B,  // 34  Se                [Slater 1964]
-        1.15 * kA2B,  // 35  Br                [Slater 1964]
-        0.88 * kA2B,  // 36  Kr                [Clementi 1967]
+        // ── Z = 1..36: match PySCF dft.radi.BRAGG_RADII exactly ─────────
+        0.35 * kA2B,  //  1  H   [PySCF 0.35 A non-bonded; was Slater 0.25 A]
+        1.40 * kA2B,  //  2  He  [PySCF noble-gas value]
+        1.45 * kA2B,  //  3  Li
+        1.05 * kA2B,  //  4  Be
+        0.85 * kA2B,  //  5  B
+        0.70 * kA2B,  //  6  C
+        0.65 * kA2B,  //  7  N
+        0.60 * kA2B,  //  8  O
+        0.50 * kA2B,  //  9  F
+        1.50 * kA2B,  // 10  Ne  [PySCF noble-gas value]
+        1.80 * kA2B,  // 11  Na
+        1.50 * kA2B,  // 12  Mg
+        1.25 * kA2B,  // 13  Al
+        1.10 * kA2B,  // 14  Si
+        1.00 * kA2B,  // 15  P
+        1.00 * kA2B,  // 16  S
+        1.00 * kA2B,  // 17  Cl
+        1.80 * kA2B,  // 18  Ar  [PySCF noble-gas value]
+        2.20 * kA2B,  // 19  K
+        1.80 * kA2B,  // 20  Ca
+        1.60 * kA2B,  // 21  Sc
+        1.40 * kA2B,  // 22  Ti
+        1.35 * kA2B,  // 23  V
+        1.40 * kA2B,  // 24  Cr
+        1.40 * kA2B,  // 25  Mn
+        1.40 * kA2B,  // 26  Fe
+        1.35 * kA2B,  // 27  Co
+        1.35 * kA2B,  // 28  Ni
+        1.35 * kA2B,  // 29  Cu
+        1.35 * kA2B,  // 30  Zn
+        1.30 * kA2B,  // 31  Ga
+        1.25 * kA2B,  // 32  Ge
+        1.15 * kA2B,  // 33  As
+        1.15 * kA2B,  // 34  Se
+        1.15 * kA2B,  // 35  Br
+        1.90 * kA2B,  // 36  Kr  [PySCF noble-gas value]
         // ── Period 5 ─────────────────────────────────────────────
         2.35 * kA2B,  // 37  Rb                [Slater 1964]
         2.00 * kA2B,  // 38  Sr                [Slater 1964]

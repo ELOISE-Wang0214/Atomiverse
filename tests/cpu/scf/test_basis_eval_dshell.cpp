@@ -211,9 +211,11 @@ TEST(BasisEvalDShell, PBE_631Gs_WaterConvergesAndIntegratesNElectrons) {
     ASSERT_TRUE(result.converged) << "PBE/6-31G* on water should converge";
 
     // n_radial=50, n_angular=110 is SG-0-ish; alpha/beta electron count
-    // recovery is limited to a few 1e-3.
-    EXPECT_NEAR(result.integrated_n_alpha, static_cast<double>(config.n_alpha), 5e-3);
-    EXPECT_NEAR(result.integrated_n_beta,  static_cast<double>(config.n_beta),  5e-3);
+    // recovery is limited to ~1e-2 with PySCF-matching Bragg-Slater radii
+    // (the H radius is 40% larger than Slater 1964, spreading the radial
+    // grid over a wider range and reducing near-O accuracy).
+    EXPECT_NEAR(result.integrated_n_alpha, static_cast<double>(config.n_alpha), 1e-2);
+    EXPECT_NEAR(result.integrated_n_beta,  static_cast<double>(config.n_beta),  1e-2);
     EXPECT_LT(result.xc_energy, 0.0);
 }
 

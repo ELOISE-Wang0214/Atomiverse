@@ -252,12 +252,14 @@ TEST(Grid, BraggSlaterCoverage) {
     // Z = 1..36 must each return a finite, positive Bohr radius matching
     // the published Angstrom value times kAngstromToBohr.
     //
-    // Spot-checks (Angstrom): H=0.25, He=0.31, C=0.70, Ne=0.38, Kr=0.88.
-    EXPECT_NEAR(bragg_slater_radius(1),  0.25 * kAngstromToBohr, 1e-15);
-    EXPECT_NEAR(bragg_slater_radius(2),  0.31 * kAngstromToBohr, 1e-15);
+    // Spot-checks (Angstrom): PySCF-matching values.
+    // H=0.35 (non-bonded), He=1.40 / Ne=1.50 / Kr=1.90 (Bondi-style noble gas),
+    // C=0.70 (Slater).
+    EXPECT_NEAR(bragg_slater_radius(1),  0.35 * kAngstromToBohr, 1e-15);
+    EXPECT_NEAR(bragg_slater_radius(2),  1.40 * kAngstromToBohr, 1e-15);
     EXPECT_NEAR(bragg_slater_radius(6),  0.70 * kAngstromToBohr, 1e-15);
-    EXPECT_NEAR(bragg_slater_radius(10), 0.38 * kAngstromToBohr, 1e-15);
-    EXPECT_NEAR(bragg_slater_radius(36), 0.88 * kAngstromToBohr, 1e-15);
+    EXPECT_NEAR(bragg_slater_radius(10), 1.50 * kAngstromToBohr, 1e-15);
+    EXPECT_NEAR(bragg_slater_radius(36), 1.90 * kAngstromToBohr, 1e-15);
 
     // Every Z in 1..36 returns a positive radius without throwing.
     for (int Z = 1; Z <= 36; ++Z) {

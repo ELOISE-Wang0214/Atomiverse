@@ -208,7 +208,8 @@ def plot(
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
-def main() -> None:
+def main() -> bool:
+    """Run UKS-LSDA vs PySCF validation; return True on PASS."""
     atoms_data: dict[str, dict] = {}
 
     # =====================================================================
@@ -398,7 +399,8 @@ def main() -> None:
     print(f"\n{'='*60}")
     print("Done")
     print("=" * 60)
+    return passed
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(0 if main() else 1)
