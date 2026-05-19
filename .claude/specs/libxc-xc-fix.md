@@ -1,6 +1,12 @@
+---
+title: libxc Integration & Native XC Fix
+slug: libxc-xc-fix
+status: draft
+created: 2026-04-14
+---
+
 # libxc Integration & Native XC Fix
 
-**Status:** draft
 **Priority:** high
 **Depends on:** none
 

@@ -1,6 +1,6 @@
 ---
 title: Phase 1 — Productize the CPU SCF + gradient + opt stack
-status: in progress
+status: in-progress
 created: 2026-04-14
 ---
 

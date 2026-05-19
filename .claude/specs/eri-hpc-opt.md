@@ -1,7 +1,14 @@
+---
+title: ERI Shell-Block HPC Optimization
+slug: eri-hpc-opt
+status: in-progress
+created: 2026-04-14
+---
+
 # ERI Shell-Block HPC Optimization
 
-**Status:** phases 1-3 implemented
 **Priority:** high
+**Progress:** phases 1-3 implemented; phase 4+ pending
 **Depends on:** none (shell-block `eri_block()` already merged)
 
 ## Problem
