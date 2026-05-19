@@ -2,7 +2,7 @@
 title: MSU amorphous-PE tension — correctness and multi-core performance validation vs LAMMPS
 status: in-progress
 created: 2026-04-19
-last-updated: 2026-05-19 (status snapshot still current; 18/25 landed, 7 external — INDEX entry refreshed)
+last-updated: 2026-05-19 (Phase C data file + input deck downloaded from CAVS ICME wiki — `msu_pe.data` + `lammps_msu_paper.in` + `SOURCES.md` in tree. Surfaces a Dreiding-UA vs OPLS angle/dihedral discrepancy in `polyethylene_tension.cpp` that blocks Phase D.)
 parent: parallel-md-engine.md
 ---
 
@@ -26,10 +26,11 @@ parent: parallel-md-engine.md
 | B.2 | 8-rank PE bonded NVE conservation | ✅ landed |
 | B.3 | 8-rank NoseHoover NVT, real chain crossing rank boundary | ✅ landed |
 | End-to-end | 8-rank pipeline (bonded + LJ + halo + NVT + NPT + tension) | ✅ landed |
-| C | MSU 50k-atom system construction (data file) | ⏳ external -- needs LAMMPS data file or PSP/moltemplate generation |
-| D | LAMMPS reference run + comparison script | ⏳ external -- needs LAMMPS install + scripted run |
-| E.2/E.3 | Strong / weak scaling at 1, 2, 4, 8, 16, 32 ranks | ⏳ external -- needs cluster access |
-| E.4 | vs LAMMPS head-to-head | ⏳ depends on D |
+| C | MSU **10**k-atom system construction (data file) | ✅ downloaded 2026-05-19 — `benchmarks/md/reference/polyethylene/msu_pe.data` (original `PE_nc10_cl1000.dat` from CAVS ICME wiki; HTML wrapper stripped, payload byte-identical). Note: MSU's canonical example is 10 chains × 1000 monomers = 10 000 atoms, not the 20 000 the spec body originally targeted. See `benchmarks/md/reference/polyethylene/SOURCES.md`. |
+| C.input | MSU paper-scale LAMMPS input deck | ✅ downloaded 2026-05-19 — `benchmarks/md/reference/polyethylene/lammps_msu_paper.in` (original `in.deform_dreiding.txt`, Tschopp 2010 attribution). |
+| D | LAMMPS reference run + comparison script | 🟡 unblocked by Phase C download + Homebrew `lmp_mpi` install; **blocked on the Dreiding-UA FF parameter migration in `benchmarks/md/polyethylene_tension.cpp`** — Atomiverse currently uses OPLS-AA-style angle θ0 = 112.7° and OPLS dihedral coefficients, MSU paper requires Dreiding-UA θ0 = 109.5° and the Tschopp-2010 multi-harmonic dihedral coefficients (see `SOURCES.md` discrepancy table). Without that migration, no D.2/D.3/D.4 comparison can hit the ±5% tolerance. |
+| E.2/E.3 | Strong / weak scaling at 1, 2, 4, 8, 16, 32 ranks | ⏳ external -- needs cluster access for ranks > 8 (M4 dev box maxes at 10 cores) |
+| E.4 | vs LAMMPS head-to-head | ⏳ depends on D (FF migration first) |
 
 What can be done **right now** without external tooling:
 * Any multi-rank PE simulation (NVE / NVT / NPT / tension) on systems
@@ -48,7 +49,7 @@ What needs **external setup**:
 ---
 
 
-Final acceptance deliverable for the parallel CPU MD engine: run the MSU amorphous-polyethylene uniaxial-tension protocol (<https://icme.hpc.msstate.edu/mediawiki/index.php/Deformation_of_Amorphous_Polyethylene.html>) on Atomiverse, cross-validate every observable against a LAMMPS reference run of the same system, and publish a multi-core performance report (strong + weak scaling, hybrid MPI×OpenMP, profile breakdown) that closes the parallel-md-engine roadmap.
+Final acceptance deliverable for the parallel CPU MD engine: run the MSU amorphous-polyethylene uniaxial-tension protocol (<https://www.cavs.msstate.edu/icme/code/lammps/atomistic_research/polymers/amorphous.php>) on Atomiverse, cross-validate every observable against a LAMMPS reference run of the same system, and publish a multi-core performance report (strong + weak scaling, hybrid MPI×OpenMP, profile breakdown) that closes the parallel-md-engine roadmap.
 
 **Primary success criterion**: at 8 MPI ranks on one node, Atomiverse produces a stress-strain curve σ_xx(ε) whose elastic modulus, yield stress, and hardening slope agree with LAMMPS within ±5% relative error, while wall-clock time per MD step is within 2× of LAMMPS at the same rank count.
 
