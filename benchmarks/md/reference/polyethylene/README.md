@@ -8,18 +8,14 @@ the parallel-md-engine Phase 5 acceptance gates (see
 
 | File | Status | Description |
 |---|---|---|
-| `lammps.in` | committed | LAMMPS input mirroring `benchmarks/md/polyethylene_tension.cpp` 5-stage protocol. |
-| `msu_pe.data` | **TBD** | Initial geometry. 20 chains × 1000 united-atom CH₂ on FCC seed. Generate via moltemplate / PSP — instructions below. |
-| `thermo_reference.csv` | **TBD** | Populated by running `lammps.in`. Columns: `step T P E_pot E_kin Pxx Pyy Pzz`. |
-| `stress_strain_reference.csv` | **TBD** | Populated by `lammps.in` stage 5. Columns: `strain sigma_xx`. |
-| `profile_1.csv` / `profile_8.csv` / `profile_32.csv` | **TBD** | Atomiverse per-component profile. `benchmarks/md/pe_profile_single.cpp` writes these. |
-| `scaling_strong.png` / `scaling_weak.png` | **TBD** | `tools/plot_scaling.py` writes these from `scaling.cpp` CSV. |
-| `profile_8.png` | **TBD** | `tools/plot_profile.py` writes this from `profile_8.csv`. |
-| `scaling_report.md` | **TBD** | Human-readable scaling/profile writeup; populated by Phase 5 Track B.1, B.6, B.8, B.9. |
-
-The `**TBD**` rows require external tooling (LAMMPS install, geometry generation)
-or actual benchmark runs on the recorded reference machine. They are not generated
-by `make` — see the reproduction recipe below.
+| `lammps.in` | committed | LAMMPS input mirroring `benchmarks/md/polyethylene_tension.cpp` 5-stage protocol. Self-contained — no external `msu_pe.data` needed; chain geometry comes from `pe_chain.mol` (molecule template) instantiated on a 4×4×4 lattice. |
+| `pe_chain.mol` | committed | LAMMPS molecule template — 18 UA carbons, 17 bonds, 16 angles, 15 dihedrals. Geometry mirrors `make_pe_box()` in `polyethylene_tension.cpp` (zig-zag along +y, dy = 1.272798 Å, dz = 0.847247 Å). |
+| `thermo_reference.csv` | committed | Populated by running `lammps.in`. Columns: `step,T,P,E_pot,E_kin,Pxx,Pyy,Pzz`. 230 rows spanning the full 5-stage run. |
+| `stress_strain_reference.csv` | committed | Populated by `lammps.in` stage 5. Columns: `strain,sigma_xx`. 50 rows from the tension stage covering ε ∈ [0, ~0.37]. |
+| `profile_1.csv` / `profile_8.csv` | committed | Atomiverse per-component profile from `benchmarks/md/pe_profile_single.cpp` at 1 / 8 ranks on this host. |
+| `profile_1.png` / `profile_8.png` | committed | `tools/plot_profile.py` stacked-bar PNGs. |
+| `profile_32.csv` / `scaling_strong.png` / `scaling_weak.png` | **TBD** | Multi-node 32-rank profile + strong/weak scaling — needs cluster access. |
+| `scaling_report.md` | **TBD (chain spec 04)** | Human-readable scaling/profile writeup; populated by `parallel-md-finish-04-scaling-report`. |
 
 ## Reproducing the LAMMPS reference run
 
@@ -28,34 +24,35 @@ by `make` — see the reproduction recipe below.
 The reference numbers in `thermo_reference.csv` and `stress_strain_reference.csv`
 were produced with:
 
-- **LAMMPS git tag**: `<TBD: e.g. stable_29Aug2024>` (record exact tag here when
-  the reference run is generated).
-- **Compiler**: `<TBD: e.g. gcc 13.2.0>`.
-- **Build flags**: `cmake -DBUILD_MPI=on -DPKG_MOLECULE=on -DPKG_RIGID=on
-  -DCMAKE_CXX_FLAGS="-O3 -march=native"`.
-- **Hardware fingerprint**: `<TBD: CPU model, # sockets, # cores, RAM>`.
+- **LAMMPS version**: *Large-scale Atomic/Molecular Massively Parallel Simulator — 22 Jul 2025 - Update 4* (`lammps-stable_22Jul2025_update4`), packaged in Homebrew Cellar at `/opt/homebrew/Cellar/lammps/20250722-update4`.
+- **MPI**: Homebrew Open-MPI (`/opt/homebrew/bin/mpirun`).
+- **Compiler / build flags**: as packaged by Homebrew (`PKG_MOLECULE` + `PKG_RIGID` + `PKG_KSPACE` enabled; AppleClang `-O3 -march=native`).
+
+#### Hardware fingerprint
+
+- CPU: Apple **M4** (`sysctl -n machdep.cpu.brand_string` output).
+- Cores: 10 physical / 10 logical.
+- OS: macOS 26.4.1.
+
+### Step-count deviation from MSU paper
+
+For acceptance-verification purposes, stage step counts are reduced from the
+paper-scale schedule {10 000, 50 000, 50 000, 50 000, 200 000} to {1 000, 5 000,
+5 000, 5 000, 5 000} (≈ 1 s wall-time on this host). The stage-5 strain rate is
+bumped 150× from the paper rate (1 × 10⁻⁶/fs → 1.5 × 10⁻⁴/fs) so the shortened
+run still covers ε ∈ [0, ~0.37]. Paper-scale runs are owned by
+`.claude/specs/msu-pe-validation.md`, not this directory.
 
 ### Steps
 
 ```bash
-# 1. Generate msu_pe.data (one-off; commit the result).
-#    Two options:
-#    (a) Direct download from MSU ICME wiki supplementary material:
-#        https://icme.hpc.msstate.edu/mediawiki/index.php/Deformation_of_Amorphous_Polyethylene
-#    (b) Regenerate via moltemplate (preferred for reproducibility):
-#        molc=20  monomers=1000  rho=0.94 g/cm^3
-#        FCC seed at 1.53 A, random-coil relaxation, NVT @ 500 K.
-#    Place result here as msu_pe.data.
+cd benchmarks/md/reference/polyethylene
+/opt/homebrew/bin/lmp_mpi -in lammps.in -log log.lammps
 
-# 2. Run LAMMPS reference.
-mpirun -n 8 lmp -in lammps.in -log log.lammps
-
-# 3. The lammps.in script writes thermo_reference.csv and
-#    stress_strain_reference.csv directly into this directory.
-
-# 4. Annotate the version block at the top of this README with the exact
-#    LAMMPS tag, compiler version, build flags, and hardware fingerprint
-#    used. Commit the resulting CSVs alongside this README.
+# Writes (into this directory):
+#   thermo_reference.csv         (230 rows, schema in the table above)
+#   stress_strain_reference.csv  (50 rows)
+#   log.lammps                   (full LAMMPS log; not committed)
 ```
 
 ## Reproducing the Atomiverse run

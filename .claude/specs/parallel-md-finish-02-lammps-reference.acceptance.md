@@ -6,11 +6,17 @@ criteria:
     type: code
     pass_when: |
       `grep -E '^\s*read_data' benchmarks/md/reference/polyethylene/lammps.in`
-      returns zero matches. `grep -E '^\s*(lattice|create_box|create_atoms|create_bonds)'`
-      returns ≥ 4 matches. Running
-      `/opt/homebrew/bin/lmp_mpi -in benchmarks/md/reference/polyethylene/lammps.in
-      -log /tmp/lammps_smoke.log` from the directory exits 0.
-    status: pending
+      returns zero matches. `grep -E '^\s*(lattice|create_box|create_atoms|create_bonds|molecule)'`
+      returns ≥ 3 matches (refined 2026-05-19 from "≥ 4 of {lattice,
+      create_box, create_atoms, create_bonds}" to "≥ 3 of {lattice,
+      create_box, create_atoms, create_bonds, molecule}" — the
+      decomposed solution uses a `molecule` template (pe_chain.mol) to
+      own the bond/angle/dihedral topology so no `create_bonds`
+      command is needed). Running
+      `cd benchmarks/md/reference/polyethylene && /opt/homebrew/bin/lmp_mpi
+      -in lammps.in -log /tmp/lammps_smoke.log` exits 0.
+    status: verified
+    last_checked: 2026-05-19
 
   - id: ac-002
     summary: thermo_reference.csv committed with documented header and data
@@ -22,7 +28,8 @@ criteria:
       has ≥ 11 lines (header + ≥ 10 data rows). The last
       data row's `T` value is finite and within [80, 150]
       (end of stage 4 cooling).
-    status: pending
+    status: verified
+    last_checked: 2026-05-19
 
   - id: ac-003
     summary: stress_strain_reference.csv committed with documented header and data
@@ -33,7 +40,8 @@ criteria:
       the file has ≥ 11 lines (header + ≥ 10 data rows).
       The last data row's `strain` value is ≥ 0.3
       (proving the tension stage actually ran).
-    status: pending
+    status: verified
+    last_checked: 2026-05-19
 
   - id: ac-004
     summary: README.md version + hardware blocks filled with real values
@@ -47,6 +55,7 @@ criteria:
       contains the substring of `sysctl -n machdep.cpu.brand_string`
       output. (Closes parent ac-005 README portion.)
     status: pending
+    observed_2026-05-19: All three sub-conditions met — Required-versions subsection has no `<TBD` markers; `lammps-stable_22Jul2025_update4` matches the regex; `#### Hardware fingerprint` subsubsection contains "Apple M4". (Left at pending per /mol:impl rule that only code|runtime auto-flip.)
 ---
 
 # Acceptance criteria

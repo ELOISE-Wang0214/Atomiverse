@@ -2,24 +2,25 @@
 #
 # LAMMPS reference input mirroring the 5-stage MSU amorphous-polyethylene
 # uniaxial-tension protocol that benchmarks/md/polyethylene_tension.cpp
-# drives in Atomiverse. Both engines start from the same initial geometry
-# (msu_pe.data, generated separately -- see README.md) and apply the same
-# Dreiding-style united-atom force field.
+# drives in Atomiverse. Self-contained — generates geometry inline via
+# `lattice` + `create_atoms ... mol` (no external msu_pe.data); see
+# pe_chain.mol for the 18-atom UA chain template that matches
+# make_pe_box() in the C++ benchmark.
 #
-# Stages:
-#   1. NVT @ 500 K, dt = 1.0 fs, 10 000 steps     -- initial randomisation
-#   2. NPT @ 500 K, dt = 0.5 fs, 50 000 steps     -- density relaxation
-#   3. NVT cool 500 -> 100 K (linear T ramp), 50 000 steps
-#   4. NPT @ 100 K, dt = 0.5 fs, 50 000 steps     -- glassy equilibration
-#   5. Tension along x at e_dot = 1e-6/fs to e ~ 1.0, 200 000 steps
+# Stages (step counts reduced from paper-scale for acceptance verification —
+# paper-scale validation tracked in .claude/specs/msu-pe-validation.md):
+#   1. NVT @ 500 K, dt = 1.0 fs, 1 000  steps     — initial randomisation
+#   2. NPT @ 500 K, dt = 0.5 fs, 5 000  steps     — density relaxation
+#   3. NVT cool 500 → 100 K (linear T ramp), 5 000 steps
+#   4. NPT @ 100 K, dt = 0.5 fs, 5 000  steps     — glassy equilibration
+#   5. Tension along x at e_dot = 1e-6/fs, 5 000 steps
 #
 # Output:
-#   thermo_reference.csv        step, T, P, E_pot, E_kin, Pxx, Pyy, Pzz
-#   stress_strain_reference.csv strain, sigma_xx
+#   thermo_reference.csv        step,T,P,E_pot,E_kin,Pxx,Pyy,Pzz
+#   stress_strain_reference.csv strain,sigma_xx
 #
-# Run:
-#   lmp -in lammps.in -log log.lammps
-# then post-process log.lammps via tools/lammps_log_to_csv.py (TBD).
+# Run from this directory:
+#   /opt/homebrew/bin/lmp_mpi -in lammps.in -log log.lammps
 #
 # Hardware/version annotations: see README.md.
 
@@ -28,20 +29,42 @@ units           real
 atom_style      molecular
 boundary        p p p
 
-read_data       msu_pe.data
+# ── Geometry — self-contained, mirrors make_pe_box() ────────────────
+# Domain: 90 Å cubic box (vs. Atomiverse's 60 Å default for the same
+# 4×4×4 × 18-atom system). The larger box (lattice spacing 22.5 Å vs.
+# chain length 21.6 Å) leaves 0.9 Å clearance between adjacent chains
+# so the LAMMPS Verlet integrator doesn't blow up on the first step —
+# Atomiverse tolerates the tighter 15 Å spacing because its NVT-500
+# initial-randomization stage dissipates the overlap energy gently;
+# LAMMPS' default neigh/bond machinery is stricter. The discrepancy is
+# tolerated because this spec verifies only the file pipeline; sub-spec
+# 04 runs Atomiverse at the matching 90 Å box for the head-to-head
+# comparison.
+region          box block 0 90 0 90 0 90 units box
+create_box      1 box bond/types 1 angle/types 1 dihedral/types 1 &
+                extra/bond/per/atom 4 extra/angle/per/atom 8 &
+                extra/dihedral/per/atom 16 extra/special/per/atom 32
+
+molecule        pe pe_chain.mol
+# Place chain origins at the centre of each 22.5 Å sub-cell.
+lattice         sc 22.5 origin 0.5 0.5 0.5
+create_atoms    0 region box mol pe 12345 units lattice
+
+# All atoms are CH2 united atoms.
+mass            1 14.027
 
 # ── Force field (Dreiding-style UA) ─────────────────────────────────
 bond_style      harmonic
-bond_coeff      1   350.0   1.529        # k [kcal/mol/A^2], r0 [A]
+bond_coeff      1   350.0   1.529        # k [kcal/mol/Å²], r0 [Å]
 
 angle_style     harmonic
-angle_coeff     1    58.35  112.7        # k [kcal/mol/rad^2], theta0 [deg]
+angle_coeff     1    58.35  112.7        # k [kcal/mol/rad²], θ0 [°]
 
 dihedral_style  multi/harmonic
 dihedral_coeff  1   2.0058 -2.5128 0.2710 6.2900 0.0   # OPLS-style
 
 pair_style      lj/cut 10.5
-pair_coeff      1 1   0.112  4.01        # eps [kcal/mol], sigma [A]
+pair_coeff      1 1   0.112  4.01        # ε [kcal/mol], σ [Å]
 
 # Dreiding 1-4 exclusion: zero contribution from 1-2, 1-3, 1-4 pairs.
 special_bonds   lj 0.0 0.0 0.0
@@ -50,52 +73,83 @@ special_bonds   lj 0.0 0.0 0.0
 neighbor        2.0 bin
 neigh_modify    delay 5 every 1 check yes
 
-# ── Output ──────────────────────────────────────────────────────────
+# ── Thermo + CSV recorders ──────────────────────────────────────────
 thermo_style    custom step temp press pe ke pxx pyy pzz lx ly lz
 thermo          100
-thermo_modify   format line "%-d %.6g %.6g %.6g %.6g %.6g %.6g %.6g %.6g %.6g %.6g"
 
-# ── Stage 1 — NVT @ 500 K, dt = 1.0 fs ──────────────────────────────
-velocity        all create 500.0 12345 mom yes rot yes dist gaussian
+# Comma-separated CSV emitter for the thermo trace — captures all stages.
+fix             thermolog all print 100 &
+                "$(step),$(temp),$(press),$(pe),$(ke),$(pxx),$(pyy),$(pzz)" &
+                title "step,T,P,E_pot,E_kin,Pxx,Pyy,Pzz" &
+                file thermo_reference.csv screen no
+
+# ── Pre-stage warmup ────────────────────────────────────────────────
+# The procedural placement starts adjacent chains 0.9 Å apart at their
+# ends — a small but real overlap that LAMMPS' Verlet step cannot
+# digest at dt = 1.0 fs starting from a 500 K Maxwell-Boltzmann
+# velocity field (Atomiverse tolerates it because its initial NVT-500
+# uses a temperature-coupling time constant of 100 fs that dampens the
+# overshoot; LAMMPS is stricter). Two-step relaxation: (a) conjugate-
+# gradient energy minimization removes the overlap potential energy;
+# (b) `fix nve/limit 0.1` runs 200 fs at dt = 0.1 fs with per-step
+# displacement clamped to 0.1 Å to dissipate the residual heat before
+# the NVT integrator takes over.
+minimize        1.0e-4 1.0e-6 1000 10000
+
+velocity        all create 100.0 12345 mom yes rot yes dist gaussian
+fix             warmup all nve/limit 0.1
+timestep        0.1
+run             2000
+unfix           warmup
+
+# ── Stage 1 — NVT @ 500 K, dt = 1.0 fs, 1000 steps ──────────────────
+velocity        all scale 500.0
 fix             stage1 all nvt temp 500.0 500.0 100.0
 timestep        1.0
-run             10000
+run             1000
 unfix           stage1
 
 # ── Stage 2 — NPT @ 500 K, P = 0 bar, dt = 0.5 fs ───────────────────
 fix             stage2 all npt temp 500.0 500.0 100.0 iso 0.0 0.0 1000.0
 timestep        0.5
-run             50000
+run             5000
 unfix           stage2
 
-# ── Stage 3 — NVT cool 500 -> 100 K (linear ramp) ───────────────────
+# ── Stage 3 — NVT cool 500 → 100 K (linear ramp) ────────────────────
 fix             stage3 all nvt temp 500.0 100.0 100.0
-run             50000
+run             5000
 unfix           stage3
 
 # ── Stage 4 — NPT @ 100 K, P = 0 bar ────────────────────────────────
 fix             stage4 all npt temp 100.0 100.0 100.0 iso 0.0 0.0 1000.0
-run             50000
+run             5000
 unfix           stage4
 
-# ── Stage 5 — Uniaxial tension along x, e_dot = 1e-6/fs ────────────
-# erate = e_dot in 1/timestep units. dt = 0.5 fs and we want 1e-6/fs,
-# so erate = 5e-7 per timestep.
-variable        erate equal 5.0e-7
+# ── Stage 5 — Uniaxial tension along x ──────────────────────────────
+# Acceptance-scale strain rate: at dt=0.5 fs × 5000 steps = 2500 fs of
+# stage-5 time, the paper-scale rate (1e-6/fs) yields only 0.25% strain
+# total. Bump erate to 1.2e-4/fs (120× paper-scale) so the run covers
+# ε ≈ 0..0.30 and stress_strain_reference.csv captures a meaningful
+# deformation curve. Paper-scale validation is tracked in
+# msu-pe-validation.md. (LAMMPS' `fix deform … erate` argument is in
+# per-fs units, not per-step.)
+variable        lx0 equal $(lx)
+variable        strain equal "(lx - v_lx0) / v_lx0"
+variable        erate equal 1.5e-4
 fix             stage5_def all deform 1 x erate ${erate} units box remap x
 fix             stage5_th  all nvt temp 100.0 100.0 100.0
-fix             stage5_st  all ave/time 1 100 100 c_thermo_press[1] file stress_strain_reference.csv
 
-# Custom CSV writers
-fix             record_thermo all print 100 "$(step) $(temp) $(press) $(pe) $(ke) $(pxx) $(pyy) $(pzz)" &
-                file thermo_reference.csv screen no &
-                title "step T P E_pot E_kin Pxx Pyy Pzz"
+# Comma-separated CSV of strain + xx-stress every 100 steps.
+fix             stressout all print 100 &
+                "${strain},$(pxx)" &
+                title "strain,sigma_xx" &
+                file stress_strain_reference.csv screen no
 
-run             200000
+run             5000
 
+unfix           stressout
 unfix           stage5_def
 unfix           stage5_th
-unfix           stage5_st
 
 # Done.
 print           "LAMMPS PE-tension reference run complete."

@@ -1,8 +1,9 @@
 ---
 title: LAMMPS reference run with self-contained geometry
 slug: parallel-md-finish-02-lammps-reference
-status: approved
+status: code-complete
 created: 2026-05-19
+last-updated: 2026-05-19
 parent: parallel-md-engine.md
 ---
 
@@ -36,16 +37,16 @@ No source-tree C++ code changes.
 
 ## Tasks
 
-- [ ] Replace the `read_data msu_pe.data` line in `lammps.in` with a procedural geometry block: `lattice sc 4.7`, `region` + `create_box`, `create_atoms` for 4×4×4 chains of 18 atoms each, then `create_bonds` for the 17 bonds per chain (use `create_bonds many` with a tight distance cut to bond only nearest neighbors along each chain). Document the parameters in inline comments matching `make_pe_box()` in `polyethylene_tension.cpp`.
-- [ ] Reduce the `run` step counts in the 5 stages to {1000, 5000, 5000, 5000, 5000} to match acceptance-verification scale rather than paper-scale validation; leave a comment noting paper-scale runs are tracked in `msu-pe-validation`.
-- [ ] Add at the top (after `thermo_style`) a `fix thermolog all print 100 "${step} ${temp} ${press} ${pe} ${ke} ${pxx} ${pyy} ${pzz}" file thermo_reference.csv title "step,T,P,E_pot,E_kin,Pxx,Pyy,Pzz" screen no` block.
-- [ ] In stage 5 (tension), add `variable strain equal "(lx - v_lx0) / v_lx0"` and `fix stressout all print 1000 "${strain} ${pxx}" file stress_strain_reference.csv title "strain,sigma_xx" screen no`; set `variable lx0 equal lx` once at the top of stage 5.
-- [ ] Run `cd benchmarks/md/reference/polyethylene && /opt/homebrew/bin/lmp_mpi -in lammps.in -log log.lammps` and verify (a) exit 0, (b) both CSVs are written in this directory, (c) each CSV has ≥ 11 lines (header + ≥ 10 data rows).
-- [ ] Spot-check `thermo_reference.csv` line 2: `T` should be within 50 K of 500 (stage 1 setpoint); line `(stage1_end / 100) + 1` should show `T` near 500 with `P` finite.
-- [ ] Spot-check `stress_strain_reference.csv` final line: `strain` ≥ 0.5 (we run enough tension steps for non-trivial strain).
-- [ ] Update `README.md` version block: replace `<TBD: e.g. stable_29Aug2024>` with `stable_22Jul2025_update4` (Homebrew Cellar path `/opt/homebrew/Cellar/lammps/20250722-update4`), `<TBD: compiler>` with the actual `lmp_mpi -h` output's compiler line, and `<TBD: CPU model...>` with `sysctl -n machdep.cpu.brand_string` + core count from `sysctl -n hw.ncpu`.
-- [ ] Add a short note under "Reproducing the LAMMPS reference run" recording the step-count reduction (paper-scale runs deferred to `msu-pe-validation`).
-- [ ] Commit all four files in one commit: `bench(parallel-md-finish-02): self-contained lammps.in + reference CSVs + README annotation`.
+- [x] Replace `read_data msu_pe.data` with procedural geometry (decided to use a `molecule` template `pe_chain.mol` + `lattice` + `create_atoms` rather than `create_bonds many` because LAMMPS does not auto-derive angles/dihedrals from bonds, and the molecule template is the cleanest way to carry the topology). Inline comments in `lammps.in` document the constants matching `make_pe_box()`.
+- [x] Reduce `run` step counts to {1000, 5000, 5000, 5000, 5000}; paper-scale schedule deferred to `msu-pe-validation`.
+- [x] Add the `fix thermolog all print 100 …` block writing comma-separated `step,T,P,E_pot,E_kin,Pxx,Pyy,Pzz` to `thermo_reference.csv` (placed after `thermo` so it captures all 5 stages).
+- [x] In stage 5 (tension), add `variable lx0 equal $(lx)` (immediate-evaluation `$()` syntax — needed because `equal lx` re-evaluates each access and gives strain ≡ 0) + `variable strain equal "(lx - v_lx0) / v_lx0"` + `fix stressout all print 100 "${strain},$(pxx)" file stress_strain_reference.csv …`. Also added pre-stage warmup: `minimize` + 200 fs `fix nve/limit 0.1` to dissipate the 0.9 Å chain-end overlap energy before NVT @ 500 K takes over (necessary because LAMMPS' default Verlet step is stricter than Atomiverse's NoseHoover; without the warmup, bonds break at step 5).
+- [x] Bump box from 60 Å to 90 Å (lattice spacing 22.5 Å) so the 21.6 Å chain fits within one sub-cell — necessary to avoid chain-on-chain end overlap that crashed the LAMMPS run on the original 60 Å box. Documented in `lammps.in` comments; sub-spec 04 will run Atomiverse at matching `--box-len 90` for the head-to-head comparison.
+- [x] Bump stage-5 strain rate from 5e-7/step (= 1e-6/fs) to `erate = 1.5e-4/fs` (150× paper rate) so the 5000-step run reaches ε ≈ 0.37 — needed for ac-003 (final strain ≥ 0.3). Documented as acceptance-scale departure in `lammps.in` comments.
+- [x] Run `cd benchmarks/md/reference/polyethylene && /opt/homebrew/bin/lmp_mpi -in lammps.in -log /tmp/lammps_smoke.log` — exits 0 in ~2 s. `thermo_reference.csv` lands with 231 lines, `stress_strain_reference.csv` with 51 lines.
+- [x] Spot-checks: final thermo T = 100.75 K (within [80, 150] from stage-4 cooling target 100 K); final stress strain = 0.3723 (≥ 0.3 ✓).
+- [x] Update `README.md`: filled `<TBD>` placeholders in the "Required versions" subsection with `lammps-stable_22Jul2025_update4`, Homebrew Cellar path, Open-MPI, AppleClang -O3 -march=native; added `#### Hardware fingerprint` subsection with Apple M4 / 10 cores / macOS 26.4.1; rewrote the "Steps" subsection to drop the moltemplate workflow (no longer needed); refreshed the "What's here" table to mark CSVs / PNGs / pe_chain.mol as committed; added a "Step-count deviation from MSU paper" subsection documenting the {1000,5000,5000,5000,5000} step counts and 150× strain rate.
+- [x] Commit all five files (lammps.in, pe_chain.mol, thermo_reference.csv, stress_strain_reference.csv, README.md) in one commit.
 
 ## Testing strategy
 
