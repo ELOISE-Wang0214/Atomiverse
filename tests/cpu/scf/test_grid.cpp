@@ -14,11 +14,17 @@
 #include <gtest/gtest.h>
 #include <cmath>
 #include <stdexcept>
+#include <vector>
 
+#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/grid.h"
+#include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/lebedev_data.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
+#include "atomiverse/cpu/scf/scf_solve.h"
 #include "atomiverse/core/constants.h"
+#include "atomiverse/core/mat3.h"
 
 using namespace ATV;
 using namespace ATV::cpu::scf;
@@ -116,12 +122,16 @@ struct GridSpec {
 };
 
 GridSpec lebedev_grids[] = {
-    {lebedev::grid_6,   lebedev::n_6,    3, "Lebedev-6"},
-    {lebedev::grid_50,  lebedev::n_50,  11, "Lebedev-50"},
-    {lebedev::grid_110, lebedev::n_110, 17, "Lebedev-110"},
-    {lebedev::grid_194, lebedev::n_194, 23, "Lebedev-194"},
-    {lebedev::grid_302, lebedev::n_302, 29, "Lebedev-302"},
-    {lebedev::grid_590, lebedev::n_590, 41, "Lebedev-590"},
+    {lebedev::grid_6,   lebedev::n_6,     3, "Lebedev-6"},
+    {lebedev::grid_38,  lebedev::n_38,    9, "Lebedev-38"},
+    {lebedev::grid_50,  lebedev::n_50,   11, "Lebedev-50"},
+    {lebedev::grid_86,  lebedev::n_86,   15, "Lebedev-86"},
+    {lebedev::grid_110, lebedev::n_110,  17, "Lebedev-110"},
+    {lebedev::grid_194, lebedev::n_194,  23, "Lebedev-194"},
+    {lebedev::grid_266, lebedev::n_266,  27, "Lebedev-266"},
+    {lebedev::grid_302, lebedev::n_302,  29, "Lebedev-302"},
+    {lebedev::grid_590, lebedev::n_590,  41, "Lebedev-590"},
+    {lebedev::grid_770, lebedev::n_770,  47, "Lebedev-770"},
 };
 
 // Integrate f over the grid: sum_i w_i * f(p_i).
@@ -340,6 +350,222 @@ TEST(Grid, GridPointsFinite) {
         EXPECT_FALSE(std::isnan(gp.weight));
         EXPECT_FALSE(std::isinf(gp.weight));
     }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// phase1-productization-03-denser-grid acceptance tests
+// ════════════════════════════════════════════════════════════════════════
+
+namespace {
+
+// Analytic unit-sphere average of the monomial x^a y^b z^c, i.e.
+//   (1 / 4*pi) * integral_S x^a y^b z^c dOmega.
+// Zero for any odd exponent; otherwise a ratio of half-integer Gammas.
+double monomial_sphere_average(int a, int b, int c) {
+    if ((a & 1) || (b & 1) || (c & 1)) return 0.0;
+    auto half_gamma = [](int k) { return std::tgamma(0.5 * (k + 1)); };
+    double num = half_gamma(a) * half_gamma(b) * half_gamma(c);
+    double den = std::tgamma(0.5 * (a + b + c + 3));
+    // integral over full unit sphere is 2 * num / den; divide by 4*pi.
+    return (2.0 * num / den) / (4.0 * kPi);
+}
+
+// Maximum quadrature error over every monomial x^a y^b z^c with
+// a+b+c <= design_degree for a Lebedev grid (weights normalized to 1).
+double lebedev_monomial_maxerr(const GridSpec& g) {
+    double maxerr = 0.0;
+    for (int a = 0; a <= g.degree; ++a) {
+        for (int b = 0; b <= g.degree - a; ++b) {
+            for (int c = 0; c <= g.degree - a - b; ++c) {
+                double q = 0.0;
+                for (int i = 0; i < g.n; ++i) {
+                    const auto& p = g.points[i];
+                    q += p.w * std::pow(p.x, a) * std::pow(p.y, b)
+                             * std::pow(p.z, c);
+                }
+                double err = std::abs(q - monomial_sphere_average(a, b, c));
+                maxerr = std::max(maxerr, err);
+            }
+        }
+    }
+    return maxerr;
+}
+
+// Build a cpu::Frame from (Z, x, y, z) tuples given in Angstrom.
+struct AtomXYZ { int Z; double x, y, z; };
+
+cpu::Frame make_frame(const std::vector<AtomXYZ>& atoms) {
+    cpu::Frame f(static_cast<int>(atoms.size()));
+    for (size_t i = 0; i < atoms.size(); ++i) {
+        f.atoms.type[i] = atoms[i].Z;
+        f.atoms.x[i]    = atoms[i].x;
+        f.atoms.y[i]    = atoms[i].y;
+        f.atoms.z[i]    = atoms[i].z;
+    }
+    f.box = Mat3::cubic(100.0);
+    return f;
+}
+
+// H2O / NH3 / CH4 starting geometries (Angstrom) — verbatim from the PySCF
+// def2-SVP references in benchmarks/qc/reference/{h2o,nh3,ch4}.json.
+const std::vector<AtomXYZ> kH2O = {
+    {8, 0.0, 0.0, 0.11779},
+    {1, 0.0, 0.755453, -0.471161},
+    {1, 0.0, -0.755453, -0.471161},
+};
+const std::vector<AtomXYZ> kNH3 = {
+    {7, 0.0, 0.0, 0.11388},
+    {1, 0.0, 0.938035, -0.265825},
+    {1, 0.812328, -0.469017, -0.265825},
+    {1, -0.812328, -0.469017, -0.265825},
+};
+const std::vector<AtomXYZ> kCH4 = {
+    {6, 0.0, 0.0, 0.0},
+    {1, 0.62764, 0.62764, 0.62764},
+    {1, -0.62764, -0.62764, 0.62764},
+    {1, 0.62764, -0.62764, -0.62764},
+    {1, -0.62764, 0.62764, -0.62764},
+};
+// PySCF def2-SVP RKS/PBE single-point energies on the *starting* geometry
+// (energy_hartree_starting in the reference JSONs).
+constexpr double kE_H2O = -76.27374826780702;
+constexpr double kE_NH3 = -56.43334157583261;
+constexpr double kE_CH4 = -40.415486061884764;
+
+// Run an ATV RKS/PBE single point at def2-SVP with the given grid level.
+double atv_rks_pbe_energy(const std::vector<AtomXYZ>& atoms, GridLevel level) {
+    auto frame = make_frame(atoms);
+    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Def2SVP);
+    cpu::scf::SCFConfig c;
+    c.spin = cpu::scf::SpinType::Restricted;
+    c.method = cpu::scf::MeanFieldType::KS;
+    c.xc_type = cpu::scf::XCType::PBE;
+    c.n_alpha = ints.n_occ();
+    c.n_beta  = ints.n_occ();
+    c.tol = 1e-10;
+    c.use_diis = true;
+    c.diis_max_vectors = 8;
+    c.diis_start_iter = 1;
+    c.damping_factor = 0.0;
+    c.init_guess = cpu::scf::InitGuess::MINAO;
+    c.grid_level = level;
+    return cpu::scf::scf_solve(ints, c).energy;
+}
+
+} // namespace
+
+// ── ac-001: new Lebedev orders 38, 86, 770 integrate exactly ────────────
+
+TEST(Grid, LebedevNewOrdersMonomialExactness) {
+    // Every monomial up to each grid's design algebraic degree must be
+    // integrated to machine precision (1e-12). This is the correctness
+    // guard for the newly tabulated orders 38, 86 and 770.
+    for (const auto& g : lebedev_grids) {
+        double err = lebedev_monomial_maxerr(g);
+        EXPECT_LT(err, 1e-12)
+            << g.name << ": monomial exactness failed, maxerr=" << err;
+    }
+}
+
+// ── ac-009: GridLevel::SG0 reproduces the legacy (50,110) grid ──────────
+
+TEST(Grid, SG0ReproducesLegacyGrid) {
+    // The pre-change call build_molecular_grid(atoms, natm, 50, 110) and
+    // the new level-aware path with GridLevel::SG0 must produce a
+    // bit-for-bit identical MolecularGrid.
+    native::Atom atoms[] = {
+        {8, {0.0, 0.0, 0.2}}, {1, {0.0, 1.4, -0.9}}, {1, {0.0, -1.4, -0.9}}};
+    auto legacy = build_molecular_grid(atoms, 3, 50, 110);
+    auto sg0    = build_molecular_grid(atoms, 3, GridLevel::SG0, 50, 110);
+
+    ASSERT_EQ(legacy.points.size(), sg0.points.size());
+    for (size_t i = 0; i < legacy.points.size(); ++i) {
+        EXPECT_EQ(legacy.points[i].x, sg0.points[i].x) << "point " << i;
+        EXPECT_EQ(legacy.points[i].y, sg0.points[i].y) << "point " << i;
+        EXPECT_EQ(legacy.points[i].z, sg0.points[i].z) << "point " << i;
+        EXPECT_EQ(legacy.points[i].weight, sg0.points[i].weight)
+            << "point " << i;
+    }
+}
+
+// ── ac-006: Becke partition weights sum to unity at every grid point ────
+
+TEST(Grid, BeckePartitionSumsToUnity) {
+    // For a multi-atom molecule, the per-atom Becke cell weights at any
+    // grid point must sum to exactly 1 (within 1e-12). We probe this with
+    // a regular lattice of test points around the H2O nuclei.
+    native::Atom atoms[] = {
+        {8, {0.0, 0.0, 0.22}}, {1, {0.0, 1.43, -0.89}},
+        {1, {0.0, -1.43, -0.89}}};
+    const int natm = 3;
+    std::vector<double> w(natm);
+    for (double x = -3.0; x <= 3.0; x += 0.5) {
+        for (double y = -3.0; y <= 3.0; y += 0.5) {
+            for (double z = -3.0; z <= 3.0; z += 0.5) {
+                becke_partition_weights_for_test(atoms, natm, x, y, z,
+                                                 w.data());
+                double s = 0.0;
+                for (int a = 0; a < natm; ++a) s += w[a];
+                EXPECT_NEAR(s, 1.0, 1e-12)
+                    << "Becke weights do not sum to 1 at ("
+                    << x << "," << y << "," << z << ")";
+            }
+        }
+    }
+}
+
+// ── ac-002 / ac-003: SG-1 and match-PySCF recover the electron count ────
+
+TEST(Grid, SG1RecoversWaterElectronCount) {
+    auto frame = make_frame(kH2O);
+    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Def2SVP);
+    cpu::scf::SCFConfig c;
+    c.spin = cpu::scf::SpinType::Restricted;
+    c.method = cpu::scf::MeanFieldType::KS;
+    c.xc_type = cpu::scf::XCType::PBE;
+    c.n_alpha = ints.n_occ();
+    c.n_beta  = ints.n_occ();
+    c.tol = 1e-10;
+    c.init_guess = cpu::scf::InitGuess::MINAO;
+    c.grid_level = GridLevel::SG1;
+    auto r = cpu::scf::scf_solve(ints, c);
+    double n_e = r.integrated_n_alpha + r.integrated_n_beta;
+    EXPECT_NEAR(n_e, 10.0, 1e-4)
+        << "SG-1 grid electron count = " << n_e;
+}
+
+TEST(Grid, MatchPySCFRecoversWaterElectronCount) {
+    auto frame = make_frame(kH2O);
+    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Def2SVP);
+    cpu::scf::SCFConfig c;
+    c.spin = cpu::scf::SpinType::Restricted;
+    c.method = cpu::scf::MeanFieldType::KS;
+    c.xc_type = cpu::scf::XCType::PBE;
+    c.n_alpha = ints.n_occ();
+    c.n_beta  = ints.n_occ();
+    c.tol = 1e-10;
+    c.init_guess = cpu::scf::InitGuess::MINAO;
+    c.grid_level = GridLevel::MatchPySCF;
+    auto r = cpu::scf::scf_solve(ints, c);
+    double n_e = r.integrated_n_alpha + r.integrated_n_beta;
+    EXPECT_NEAR(n_e, 10.0, 1e-4)
+        << "match-PySCF grid electron count = " << n_e;
+}
+
+// ── ac-004: SG-1 brings the def2-SVP energy residue to <= 5e-4 Ha ───────
+
+TEST(Grid, SG1EnergyResidue) {
+    EXPECT_NEAR(atv_rks_pbe_energy(kH2O, GridLevel::SG1), kE_H2O, 5e-4);
+    EXPECT_NEAR(atv_rks_pbe_energy(kNH3, GridLevel::SG1), kE_NH3, 5e-4);
+    EXPECT_NEAR(atv_rks_pbe_energy(kCH4, GridLevel::SG1), kE_CH4, 5e-4);
+}
+
+// ── ac-005: match-PySCF brings the residue to <= 1e-6 Ha ────────────────
+
+TEST(Grid, MatchPySCFEnergyResidue) {
+    EXPECT_NEAR(atv_rks_pbe_energy(kH2O, GridLevel::MatchPySCF), kE_H2O, 1e-6);
+    EXPECT_NEAR(atv_rks_pbe_energy(kNH3, GridLevel::MatchPySCF), kE_NH3, 1e-6);
+    EXPECT_NEAR(atv_rks_pbe_energy(kCH4, GridLevel::MatchPySCF), kE_CH4, 1e-6);
 }
 
 #else

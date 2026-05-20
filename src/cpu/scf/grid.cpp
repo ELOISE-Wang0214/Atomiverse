@@ -310,19 +310,78 @@ std::vector<RadialPoint> radial_grid_mura_knowles(int n, double R_bragg) {
     return pts;
 }
 
-// ── Becke partitioning ──────────────────────────────────────────────────
+// ── Euler-Maclaurin radial quadrature (SG-1 parent grid) ────────────────
+// Reference: Gill, Johnson & Pople, Chem. Phys. Lett. 209, 506 (1993),
+// using the Murray-Handy-Laming Euler-Maclaurin mapping that the SG-1
+// EML-(50,194) parent grid is built on (Mol. Phys. 78, 997 (1993)):
+//   r_i = R * i^2 / (n + 1 - i)^2,        i = 1..n
+//   dr/di = R * 2 i (n+1) / (n + 1 - i)^3
+// The integration node weight is uniform (1) on the i-grid; the returned
+// RadialPoint.w already folds in the r^2 Jacobian so the 3-space integral
+// of f(r) is sum_i w_i * f(r_i) after the 4*pi * angular-weight factor.
 
-// Becke step function: k(μ) = 1.5μ - 0.5μ³
+std::vector<RadialPoint> radial_grid_euler_maclaurin(int n, double R) {
+    std::vector<RadialPoint> pts(n);
+    const double np1 = static_cast<double>(n + 1);
+    for (int idx = 0; idx < n; ++idx) {
+        const double i = static_cast<double>(idx + 1);  // i = 1..n
+        const double denom = np1 - i;
+        const double r = R * i * i / (denom * denom);
+        // dr/di = R * 2 i (n+1) / (n+1-i)^3
+        const double dr_di = R * 2.0 * i * np1 / (denom * denom * denom);
+        pts[idx].r = r;
+        pts[idx].w = r * r * dr_di;  // uniform node weight = 1
+    }
+    return pts;
+}
+
+// ── Becke partitioning ──────────────────────────────────────────────────
+//
+// Audited against Becke, JCP 88, 2547 (1988). The switching function
+//   s(mu) = 1/2 [1 - f(f(f(mu)))],  f(mu) = (3/2) mu - (1/2) mu^3
+// iterated exactly k = 3 times is correct and unchanged.
+//
+// The atomic-size adjustment is grid-level dependent:
+//   - GridLevel::SG0 / SG1 use the *original Becke 1988* heteronuclear
+//     adjustment of the Domain basis: chi = R_A/R_B, u = (chi-1)/(chi+1),
+//     a = u/(u^2-1), clamped to |a| <= 1/2. (Audited against the spec
+//     formula -- no discrepancy; SG0 stays bit-for-bit identical.)
+//   - GridLevel::MatchPySCF uses PySCF's default `treutler_atomic_radii_
+//     adjust` (JCP 102, 346 (1995)): with rad = sqrt(BRAGG_RADII[Z]),
+//     a_ij = (1/4)(rad_j/rad_i - rad_i/rad_j), clamped to |a| <= 1/2.
+//     This is what PySCF's level=3 grid actually applies, so MatchPySCF
+//     reproduces it exactly.
+// In all cases the adjustment is nu = mu + a (1 - mu^2).
+
+// Becke step function: f(μ) = 1.5μ - 0.5μ³ (one iteration).
 static double becke_step(double mu) {
     return 1.5 * mu - 0.5 * mu * mu * mu;
 }
 
+// Original-Becke 1988 heteronuclear size-adjustment parameter a_AB.
+static double becke_size_adjust_original(int Z_a, int Z_b) {
+    const double chi = bragg_slater_radius(Z_a) / bragg_slater_radius(Z_b);
+    const double u   = (chi - 1.0) / (chi + 1.0);
+    double a = u / (u * u - 1.0);
+    return std::max(-0.5, std::min(0.5, a));
+}
+
+// PySCF treutler_atomic_radii_adjust size-adjustment parameter a_AB.
+static double becke_size_adjust_treutler(int Z_a, int Z_b) {
+    const double rad_a = std::sqrt(bragg_slater_radius(Z_a));
+    const double rad_b = std::sqrt(bragg_slater_radius(Z_b));
+    double a = 0.25 * (rad_b / rad_a - rad_a / rad_b);
+    return std::max(-0.5, std::min(0.5, a));
+}
+
 // Becke partition weight for atom A at point r.
 // Uses Becke's fuzzy-cell scheme with 3 iterations of the step function.
-// With Bragg-Slater heteronuclear adjustment.
+// The heteronuclear size adjustment depends on `level` (see the audit
+// note above).
 static void becke_partition_weights(const native::Atom* atoms, int natm,
                                     double rx, double ry, double rz,
-                                    double* weights) {
+                                    double* weights,
+                                    GridLevel level = GridLevel::SG0) {
     if (natm == 1) {
         weights[0] = 1.0;
         return;
@@ -355,12 +414,10 @@ static void becke_partition_weights(const native::Atom* atoms, int natm,
 
             double mu = (dist[a] - dist[b]) / R_AB;
 
-            // Heteronuclear adjustment (Becke, eq. 21)
-            double chi = bragg_slater_radius(atoms[a].Z) / bragg_slater_radius(atoms[b].Z);
-            double u_AB = (chi - 1.0) / (chi + 1.0);
-            double a_AB = u_AB / (u_AB * u_AB - 1.0);
-            // Clamp a_AB to [-0.5, 0.5]
-            a_AB = std::max(-0.5, std::min(0.5, a_AB));
+            // Heteronuclear size adjustment, nu = mu + a_AB (1 - mu^2).
+            double a_AB = (level == GridLevel::MatchPySCF)
+                ? becke_size_adjust_treutler(atoms[a].Z, atoms[b].Z)
+                : becke_size_adjust_original(atoms[a].Z, atoms[b].Z);
             mu += a_AB * (1.0 - mu * mu);
 
             // Apply step function 3 times
@@ -384,72 +441,221 @@ static void becke_partition_weights(const native::Atom* atoms, int natm,
     }
 }
 
-// ── Public API ──────────────────────────────────────────────────────────
-
-MolecularGrid build_molecular_grid(const native::Atom* atoms, int natm,
-                                   int n_radial, int n_angular) {
-    MolecularGrid grid;
-    grid.n_radial = n_radial;
-    grid.n_angular = n_angular;
-
-    // Get angular grid from tabulated Lebedev-Laikov data.
-    // Select the largest available grid that does not exceed n_angular.
-    const lebedev::Point* leb_pts = nullptr;
-    int actual_n_angular = 0;
-    if (n_angular >= 590) {
-        leb_pts = lebedev::grid_590; actual_n_angular = lebedev::n_590;
-    } else if (n_angular >= 302) {
-        leb_pts = lebedev::grid_302; actual_n_angular = lebedev::n_302;
-    } else if (n_angular >= 194) {
-        leb_pts = lebedev::grid_194; actual_n_angular = lebedev::n_194;
-    } else if (n_angular >= 110) {
-        leb_pts = lebedev::grid_110; actual_n_angular = lebedev::n_110;
-    } else if (n_angular >= 50) {
-        leb_pts = lebedev::grid_50;  actual_n_angular = lebedev::n_50;
+// ── Angular-order dispatch ──────────────────────────────────────────────
+//
+// Resolve a requested Lebedev order to the tabulated grid pointer and its
+// point count. Recognizes {6, 38, 50, 86, 110, 194, 266, 302, 590, 770};
+// non-tabulated values round DOWN to the next supported order.
+static void resolve_lebedev_grid(int order, const lebedev::Point*& pts,
+                                 int& n_pts) {
+    if (order >= 770) {
+        pts = lebedev::grid_770; n_pts = lebedev::n_770;
+    } else if (order >= 590) {
+        pts = lebedev::grid_590; n_pts = lebedev::n_590;
+    } else if (order >= 302) {
+        pts = lebedev::grid_302; n_pts = lebedev::n_302;
+    } else if (order >= 266) {
+        pts = lebedev::grid_266; n_pts = lebedev::n_266;
+    } else if (order >= 194) {
+        pts = lebedev::grid_194; n_pts = lebedev::n_194;
+    } else if (order >= 110) {
+        pts = lebedev::grid_110; n_pts = lebedev::n_110;
+    } else if (order >= 86) {
+        pts = lebedev::grid_86;  n_pts = lebedev::n_86;
+    } else if (order >= 50) {
+        pts = lebedev::grid_50;  n_pts = lebedev::n_50;
+    } else if (order >= 38) {
+        pts = lebedev::grid_38;  n_pts = lebedev::n_38;
     } else {
-        leb_pts = lebedev::grid_6;   actual_n_angular = lebedev::n_6;
+        pts = lebedev::grid_6;   n_pts = lebedev::n_6;
+    }
+}
+
+// SG-1 pruning alpha-quadruple (Gill-Johnson-Pople 1993). The four entries
+// are alpha_1..alpha_4: the radial fractions r/R that delimit the 5
+// Lebedev regions {6, 38, 86, 194, 86}.
+struct SG1Alpha { double a1, a2, a3, a4; };
+
+static SG1Alpha sg1_alpha(int Z) {
+    if (Z <= 2)  return {0.25,   0.5, 1.0, 4.5};   // H, He
+    if (Z <= 10) return {0.1667, 0.5, 0.9, 3.5};   // Li-Ne
+    return {0.1, 0.4, 0.8, 2.5};                    // Na-Ar (and heavier)
+}
+
+// SG-1 atom-size radius: R = 1/2 * Bragg-Slater radius, EXCEPT hydrogen,
+// which keeps the full Bragg-Slater radius (no 1/2 factor).
+static double sg1_atom_radius(int Z) {
+    double R = bragg_slater_radius(Z);
+    return (Z == 1) ? R : 0.5 * R;
+}
+
+// ── lebedev_order_for_shell ─────────────────────────────────────────────
+
+int lebedev_order_for_shell(GridLevel level, int Z, double r, double R,
+                            int radial_index, int n_radial,
+                            int uniform_order) {
+    if (level == GridLevel::SG0) {
+        return uniform_order;
     }
 
-    // Pre-allocate
-    grid.points.reserve(natm * n_radial * actual_n_angular);
+    (void)radial_index;
+    (void)n_radial;
+
+    if (level == GridLevel::SG1) {
+        // 5-region pruning: orders {6, 38, 86, 194, 86} delimited by
+        // alpha_1*R .. alpha_4*R, with R the SG-1 atom-size radius.
+        const SG1Alpha a = sg1_alpha(Z);
+        const double t = r / R;
+        if (t < a.a1) return 6;
+        if (t < a.a2) return 38;
+        if (t < a.a3) return 86;
+        if (t < a.a4) return 194;
+        return 86;
+    }
+
+    // MatchPySCF: faithful port of PySCF's nwchem_prune for the level=3
+    // grid (pyscf/dft/gen_grid.py).
+    //
+    //   leb_ngrid = LEBEDEV_NGRID[4:] = {38,50,74,86,110,146,170,194,
+    //                                    230,266,302,350,434,590,770,...}
+    //   leb_l     = [1, 3, idx-1, idx, idx-1]   (idx = index of n_ang)
+    //   region    = sum(rads/r_atom > alphas[period])   in 0..4
+    //   angs      = leb_ngrid[leb_l[region]]
+    // with r_atom = BRAGG_RADII[Z] (full radius, no 1/2 factor, no
+    // hydrogen exception), and the same SG-1 alpha quadruples.
+    //
+    // The level-3 maximum angular order n_ang comes from PySCF's
+    // ANG_ORDER table (_default_ang): periods 1-2 (Z<=10) -> order 29 ->
+    // 302 points; period 3 (Na-Ar) -> order 35 -> 434 points.
+    //
+    //   Z<=10, n_ang=302: idx=10 -> leb_l=[1,3,9,10,9]
+    //                     -> leb_ngrid -> {50, 86, 266, 302, 266}
+    //   Z=11..18, n_ang=434: idx=12 -> leb_l=[1,3,11,12,11]
+    //                        -> {50, 86, 350, 434, 350}
+    //
+    // Orders 350 and 434 are not yet tabulated in lebedev_data.h, so the
+    // Na-Ar path would require new Lebedev tables. Rather than silently
+    // substitute a different order (no-fallback policy), MatchPySCF
+    // throws for Z>10 until those tables are added.
+    const SG1Alpha a = sg1_alpha(Z);
+    const double t = r / R;
+    int region = 0;                 // 0..4, = sum(t > alpha_i)
+    if (t > a.a1) ++region;
+    if (t > a.a2) ++region;
+    if (t > a.a3) ++region;
+    if (t > a.a4) ++region;
+
+    if (Z > 10) {
+        throw std::runtime_error(
+            "lebedev_order_for_shell: GridLevel::MatchPySCF for Z>10 "
+            "needs Lebedev orders 350/434 (PySCF level-3 nwchem_prune for "
+            "Na-Ar), not yet tabulated in lebedev_data.h");
+    }
+    static constexpr int light_orders[5] = {50, 86, 266, 302, 266};
+    return light_orders[region];
+}
+
+// ── Grid assembly core ──────────────────────────────────────────────────
+//
+// Shared assembly for both build_molecular_grid overloads. `level` selects
+// the radial scheme and the per-shell angular order; for GridLevel::SG0
+// the legacy uniform-order Treutler-Ahlrichs path is reproduced verbatim.
+static MolecularGrid assemble_grid(const native::Atom* atoms, int natm,
+                                   GridLevel level,
+                                   int n_radial, int n_angular) {
+    MolecularGrid grid;
+
+    // Per-level radial point count. SG0 honours the caller's n_radial;
+    // SG1 uses the EML-50 parent; MatchPySCF uses PySCF's per-element
+    // level-3 counts: 50 for H/He, 75 for Li-Ne, 80 for Na-Ar, 90 for
+    // Z >= 19 (matches pyscf.dft.gen_grid._default_rad at level 3).
+    auto radial_count = [&](int Z) -> int {
+        if (level == GridLevel::SG0) return n_radial;
+        if (level == GridLevel::SG1) return 50;
+        if (Z <= 2)  return 50;
+        if (Z <= 10) return 75;
+        if (Z <= 18) return 80;
+        return 90;
+    };
+
+    grid.n_radial  = radial_count(natm > 0 ? atoms[0].Z : 1);
+    grid.n_angular = n_angular;
 
     std::vector<double> becke_w(natm);
 
     for (int a = 0; a < natm; ++a) {
-        // Treutler-Ahlrichs radial grid (PySCF default). Element-specific
-        // xi scaling is embedded in the function via atoms[a].Z. The
-        // earlier Mura-Knowles + Bragg-Slater path is kept as
-        // `radial_grid_mura_knowles` for callers that want it.
-        auto rad_pts = radial_grid_treutler_ahlrichs(n_radial, atoms[a].Z);
+        const int Z = atoms[a].Z;
+        const int nr = radial_count(Z);
 
-        for (int ir = 0; ir < n_radial; ++ir) {
-            double r = rad_pts[ir].r;
-            double w_rad = rad_pts[ir].w;
+        // Radial grid: Euler-Maclaurin for SG-1, Treutler-Ahlrichs (PySCF
+        // default) for SG0 and MatchPySCF.
+        std::vector<RadialPoint> rad_pts;
+        double R_size = 0.0;
+        if (level == GridLevel::SG1) {
+            R_size  = sg1_atom_radius(Z);
+            rad_pts = radial_grid_euler_maclaurin(nr, R_size);
+        } else {
+            rad_pts = radial_grid_treutler_ahlrichs(nr, Z);
+            R_size  = bragg_slater_radius(Z);
+        }
+
+        for (int ir = 0; ir < nr; ++ir) {
+            const double r     = rad_pts[ir].r;
+            const double w_rad = rad_pts[ir].w;
+
+            const int order = lebedev_order_for_shell(
+                level, Z, r, R_size, ir, nr, n_angular);
+            const lebedev::Point* leb_pts = nullptr;
+            int actual_n_angular = 0;
+            resolve_lebedev_grid(order, leb_pts, actual_n_angular);
 
             for (int ia = 0; ia < actual_n_angular; ++ia) {
                 double px = atoms[a].pos[0] + r * leb_pts[ia].x;
                 double py = atoms[a].pos[1] + r * leb_pts[ia].y;
                 double pz = atoms[a].pos[2] + r * leb_pts[ia].z;
 
-                // Becke partition weight
-                becke_partition_weights(atoms, natm, px, py, pz, becke_w.data());
+                // Becke partition weight (size adjustment depends on
+                // the grid level -- see becke_partition_weights).
+                becke_partition_weights(atoms, natm, px, py, pz,
+                                        becke_w.data(), level);
 
-                // Lebedev weights sum to 1.0, multiply by 4π for spherical integral
+                // Lebedev weights sum to 1.0; multiply by 4*pi for the
+                // spherical integral.
                 double w = 4.0 * kPi * w_rad * leb_pts[ia].w * becke_w[a];
 
-                if (w > 1e-30) {
-                    grid.points.push_back({
-                        static_cast<double>(px),
-                        static_cast<double>(py),
-                        static_cast<double>(pz),
-                        static_cast<double>(w)
-                    });
+                // Drop only genuinely negligible points. The MAGNITUDE is
+                // tested, not the sign: the 266-point Lebedev rule (used
+                // by the MatchPySCF level-3 prune) legitimately carries 18
+                // negative weights ~1e-3, and discarding them would break
+                // the angular quadrature. Becke-killed near-zero points
+                // are still pruned.
+                if (std::abs(w) > 1e-30) {
+                    grid.points.push_back({px, py, pz, w});
                 }
             }
         }
     }
 
     return grid;
+}
+
+// ── Public API ──────────────────────────────────────────────────────────
+
+MolecularGrid build_molecular_grid(const native::Atom* atoms, int natm,
+                                   int n_radial, int n_angular) {
+    return assemble_grid(atoms, natm, GridLevel::SG0, n_radial, n_angular);
+}
+
+MolecularGrid build_molecular_grid(const native::Atom* atoms, int natm,
+                                   GridLevel level,
+                                   int n_radial, int n_angular) {
+    return assemble_grid(atoms, natm, level, n_radial, n_angular);
+}
+
+void becke_partition_weights_for_test(const native::Atom* atoms, int natm,
+                                      double rx, double ry, double rz,
+                                      double* weights) {
+    becke_partition_weights(atoms, natm, rx, ry, rz, weights);
 }
 
 } // namespace scf

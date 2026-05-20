@@ -175,8 +175,9 @@ cpu::scf::SCFConfig make_config(const cpu::scf::IntegralPack& ints,
     c.damping_factor = open_shell ? 0.5 : 0.0;
     c.init_guess = open_shell ? cpu::scf::InitGuess::Hcore
                               : cpu::scf::InitGuess::MINAO;
-    c.n_radial = 50;
-    c.n_angular = 110;
+    // High-accuracy grid: reproduces PySCF's default level=3 grid so the
+    // ATV-vs-PySCF energy residue drops into the sub-microHartree regime.
+    c.grid_level = cpu::scf::GridLevel::MatchPySCF;
     return c;
 }
 
@@ -270,12 +271,14 @@ int main(int argc, char** argv) {
                 "mol", "conv", "wall_ms", "E_final [Ha]",
                 "dE_vs_ref [Ha]", "status");
 
-    // SG-0-ish (50 radial, 110 angular) grid leaves a ~5 mHa residue
-    // between ATV and PySCF's default dense grid on def2-SVP d-shell
-    // systems. 1e-2 Ha is the honest acceptance at this grid level;
-    // tightening the grid (tracked as a separate line item) is the
-    // prerequisite for sub-mHa parity.
-    const double threshold_ha = 1e-2;
+    // The GridLevel::MatchPySCF grid (Treutler-Ahlrichs M4 radial +
+    // nwchem-style angular pruning bounded by the level-3 maximum Lebedev
+    // order) reproduces PySCF's default level=3 grid. The ATV-vs-PySCF
+    // def2-SVP energy residue on the H2O/NH3/CH4 triplet is sub-1e-5 Ha;
+    // 5e-4 Ha is a conservative whole-suite acceptance bar that still
+    // catches genuine integral / SCF regressions across the larger
+    // benchmark molecules.
+    const double threshold_ha = 5e-4;
     int n_fail = 0;
     int n_run = 0;
 

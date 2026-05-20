@@ -155,6 +155,7 @@ static void accumulate_xc_gradient(
     const size_t Ns = static_cast<size_t>(N);
 
     auto grid = build_molecular_grid(integrals.atoms.data(), natm,
+                                     config.grid_level,
                                      config.n_radial, config.n_angular);
     const int G = static_cast<int>(grid.points.size());
     const size_t Gs = static_cast<size_t>(G);
@@ -518,6 +519,7 @@ GradientResult scf_finite_difference_gradient(
             fixed_grid = build_molecular_grid(
                 ref_integrals.atoms.data(),
                 static_cast<int>(ref_integrals.atoms.size()),
+                config.grid_level,
                 config.n_radial, config.n_angular);
             fd_config.fixed_grid = &fixed_grid;
         }

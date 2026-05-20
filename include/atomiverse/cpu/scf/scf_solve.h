@@ -19,6 +19,7 @@
 #include <vector>
 #include <xtensor/containers/xtensor.hpp>
 
+#include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/rhf_solve.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
@@ -26,8 +27,6 @@
 namespace ATV {
 namespace cpu {
 namespace scf {
-
-struct MolecularGrid;  // fwd-decl: cpu/scf/grid.h
 
 /// @brief Mean-field method type.
 enum class MeanFieldType { HF, KS };
@@ -68,8 +67,17 @@ struct SCFConfig {
     InitGuess init_guess = InitGuess::MINAO;  ///< Initial-density guess type.
 
     // Grid (KS only)
-    int n_radial = 50;                       ///< Radial grid points per atom.
-    int n_angular = 110;                     ///< Angular grid points per atom.
+    /// @brief Named DFT integration-grid quality level.
+    /// @details Selects the radial scheme + angular pruning. `SG0` (the
+    ///          struct default) is the legacy uniform-order path that
+    ///          honours `n_radial` / `n_angular` verbatim. `SG1` is the
+    ///          Gill-Johnson-Pople standard grid; `MatchPySCF` reproduces
+    ///          PySCF's `level=3` grid and is the production default set
+    ///          by `default_config`. When `grid_level` is not `SG0`,
+    ///          `n_radial` / `n_angular` are ignored.
+    GridLevel grid_level = GridLevel::SG0;
+    int n_radial = 50;                       ///< Radial grid points per atom (SG0 only).
+    int n_angular = 110;                     ///< Angular grid points per atom (SG0 only).
 
     /// @brief Force the native 2e gradient engine even when libcint is available.
     /// @details libcint (when compiled in) is the STO-3G path for
@@ -218,7 +226,15 @@ inline SCFConfig uks_config(const IntegralPack& ints, int n_alpha, int n_beta,
 ///   - method: KS (Kohn-Sham)
 ///   - xc_type: PBE
 ///   - init_guess: MINAO (PySCF-matching, zero damping)
-///   - grid: n_radial=50, n_angular=110 (SG-0-ish)
+///   - grid: GridLevel::MatchPySCF -- the high-accuracy grid that
+///     reproduces PySCF's default `level=3` (Treutler-Ahlrichs M4 radial
+///     with per-element point counts, nwchem-style angular pruning). The
+///     level-3 maximum Lebedev order is 302 for Z<=10 (pruned to
+///     {50,86,266,302,266}); Z>10 needs orders 350/434 not yet tabulated
+///     and currently throws. This brings the ATV-vs-PySCF def2-SVP energy
+///     residue into the sub-microHartree regime; the lighter `SG1`
+///     standard grid and the legacy uniform `SG0` grid remain selectable
+///     via SCFConfig::grid_level.
 ///   - convergence: tol = 1e-9 Ha
 ///
 /// @param ints Integral pack supplying the electron count (assumed even).
@@ -236,8 +252,7 @@ inline SCFConfig default_config(const IntegralPack& ints) {
     c.diis_start_iter = 1;
     c.damping_factor = 0.0;
     c.init_guess = InitGuess::MINAO;
-    c.n_radial = 50;
-    c.n_angular = 110;
+    c.grid_level = GridLevel::MatchPySCF;
     return c;
 }
 

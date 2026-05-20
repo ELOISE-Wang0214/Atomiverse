@@ -187,10 +187,10 @@ TEST(BasisEvalDShell, PBE_def2SVP_RKS_Water_MatchesPyscf) {
     auto result = cpu::scf::scf_solve(integrals, config);
     ASSERT_TRUE(result.converged) << "PBE/def2-SVP RKS on water should converge";
 
-    // PySCF RKS/PBE/def2-SVP on this same geometry: -76.2743 Ha.  The
-    // SG-0-ish (50, 110) grid ATV ships converges ~6 mHa looser than
-    // PySCF's default dense grid; tighten once we upgrade the radial
-    // scheme (tracked as a separate perf/grid line item).
+    // PySCF RKS/PBE/def2-SVP on this same geometry: -76.2743 Ha.
+    // default_config now ships the GridLevel::MatchPySCF grid, which
+    // reproduces PySCF's level=3 grid to the sub-microHartree regime;
+    // the 1e-2 Ha tolerance is comfortably met.
     EXPECT_NEAR(result.energy, -76.2743, 1e-2);
 }
 

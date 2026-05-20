@@ -22,6 +22,13 @@ struct GridPoint {
     double weight;     ///< Quadrature weight (includes radial, angular, and Becke partition).
 };
 
+/// @brief A single radial quadrature point.
+struct RadialPoint {
+    double r;  ///< Radius in Bohr.
+    double w;  ///< Quadrature weight, includes r^2 Jacobian (so integrals
+               ///< of f(r) over 3-space are sum_i w_i * f(r_i) * 4*pi).
+};
+
 /// @brief Molecular integration grid.
 struct MolecularGrid {
     std::vector<GridPoint> points;  ///< All grid points.
@@ -29,22 +36,115 @@ struct MolecularGrid {
     int n_angular;                  ///< Lebedev angular points per atom.
 };
 
-/// @brief Build atom-centered molecular grid with Becke partitioning.
+/// @brief Named DFT integration-grid quality level.
 ///
-/// Constructs atom-centered grids using Mura-Knowles radial quadrature
-/// (JCP 104, 9848 (1996)) and tabulated Lebedev-Laikov angular quadrature
-/// (Doklady Math. 59, 477 (1999)), combined with Becke fuzzy-cell
-/// partitioning (JCP 88, 2547 (1988)) for molecular integration.
+/// Selects the radial scheme, the angular Lebedev order set, and the
+/// pruning policy for atom-centered DFT quadrature grids.
+///   - `SG0`:        legacy uniform-order grid (`n_radial`, `n_angular`
+///                   honoured verbatim, Treutler-Ahlrichs radial, no
+///                   per-shell angular pruning). Kept bit-for-bit
+///                   compatible with the pre-pruning default (50, 110).
+///   - `SG1`:        Gill-Johnson-Pople SG-1 standard grid
+///                   (Chem. Phys. Lett. 209, 506 (1993)) -- Euler-Maclaurin
+///                   radial (50 points), 5-region Lebedev pruning with
+///                   orders {6, 38, 86, 194, 86}, Becke size-adjusted
+///                   atomic radii. Design accuracy ~0.2 kcal/mol.
+///   - `MatchPySCF`: high-accuracy grid that reproduces PySCF's default
+///                   `level=3` -- Treutler-Ahlrichs M4 radial with
+///                   per-element (n_rad) counts and nwchem-style angular
+///                   pruning bounded by the level-3 maximum order
+///                   (590 for Z <= 10, 770 for Z > 10).
+enum class GridLevel { SG0, SG1, MatchPySCF };
+
+/// @brief Build atom-centered molecular grid with Becke partitioning (legacy).
+///
+/// Constructs atom-centered grids using Treutler-Ahlrichs M4 radial
+/// quadrature (JCP 102, 346 (1995)) and tabulated Lebedev-Laikov angular
+/// quadrature (Doklady Math. 59, 477 (1999)), combined with Becke
+/// fuzzy-cell partitioning (JCP 88, 2547 (1988)). Uniform angular order at
+/// every radial shell -- this is the `GridLevel::SG0` behaviour and is
+/// kept for explicit-override / legacy callers.
 ///
 /// @param atoms Array of atom descriptors (Z, position in Bohr).
 /// @param natm  Number of atoms.
 /// @param n_radial Number of radial quadrature points per atom.
 /// @param n_angular Number of Lebedev angular points per atom; one of
-///        {6, 50, 110, 194, 302, 590}. Other values round down to the
-///        next supported order.
+///        {6, 38, 50, 86, 110, 194, 302, 590, 770}. Other values round
+///        down to the next supported order.
 /// @return MolecularGrid with all weighted grid points.
 MolecularGrid build_molecular_grid(const native::Atom* atoms, int natm,
                                    int n_radial = 50, int n_angular = 110);
+
+/// @brief Build atom-centered molecular grid at a named quality level.
+///
+/// Level-aware grid builder: selects the radial scheme and the per-radial-
+/// shell angular Lebedev order from `level` (see ::GridLevel). For
+/// `GridLevel::SG0` this is identical to the legacy overload with the
+/// supplied `n_radial` / `n_angular`. For `SG1` / `MatchPySCF` the
+/// `n_radial` / `n_angular` arguments are ignored in favour of the level's
+/// own constants.
+///
+/// @param atoms Array of atom descriptors (Z, position in Bohr).
+/// @param natm  Number of atoms.
+/// @param level Named grid quality level.
+/// @param n_radial Radial point count (only used for `GridLevel::SG0`).
+/// @param n_angular Angular point count (only used for `GridLevel::SG0`).
+/// @return MolecularGrid with all weighted grid points.
+MolecularGrid build_molecular_grid(const native::Atom* atoms, int natm,
+                                   GridLevel level,
+                                   int n_radial = 50, int n_angular = 110);
+
+/// @brief Lebedev angular order to use at a single radial shell.
+///
+/// Implements the per-shell angular pruning for ::GridLevel::SG1 (the
+/// 5-region alpha-quadruple table of Gill-Johnson-Pople) and
+/// ::GridLevel::MatchPySCF (nwchem-style pruning bounded by the per-element
+/// level-3 maximum order). For ::GridLevel::SG0 it always returns the
+/// uniform order requested by the caller.
+///
+/// @param level        Named grid quality level.
+/// @param Z            Atomic number of the shell's parent atom.
+/// @param r            Radius of the current radial shell in Bohr.
+/// @param R            Atom-size-adjusted radius in Bohr (Becke convention).
+/// @param radial_index Zero-based index of the radial shell.
+/// @param n_radial     Total number of radial shells for this atom.
+/// @param uniform_order Angular order to return for ::GridLevel::SG0.
+/// @return Lebedev angular order; one of
+///         {6, 38, 50, 86, 110, 194, 302, 590, 770}.
+int lebedev_order_for_shell(GridLevel level, int Z, double r, double R,
+                            int radial_index, int n_radial,
+                            int uniform_order);
+
+/// @brief Euler-Maclaurin radial quadrature for the SG-1 parent grid.
+///
+/// Implements the Euler-Maclaurin radial mapping used by the SG-1 standard
+/// grid (Gill, Johnson, Pople, Chem. Phys. Lett. 209, 506 (1993)):
+///   r_i = R * i^2 / (n + 1 - i)^2,   i = 1..n
+/// with the matching quadrature weight including the r^2 Jacobian, so the
+/// 3-space integral of f(r) is sum_i w_i * f(r_i) after multiplication by
+/// the angular weight times 4*pi.
+///
+/// @param n Number of radial points.
+/// @param R Atom-size-adjusted radius in Bohr.
+/// @return Vector of n radial points and weights.
+std::vector<RadialPoint> radial_grid_euler_maclaurin(int n, double R);
+
+/// @brief Test-only accessor for the internal Becke partition weights.
+///
+/// Exposes `becke_partition_weights` (otherwise file-static in grid.cpp)
+/// so the partition-of-unity acceptance test can probe it directly. Not
+/// intended for production callers -- `build_molecular_grid` applies the
+/// partition internally.
+///
+/// @param atoms   Array of atom descriptors (Z, position in Bohr).
+/// @param natm    Number of atoms.
+/// @param rx      Grid-point x-coordinate in Bohr.
+/// @param ry      Grid-point y-coordinate in Bohr.
+/// @param rz      Grid-point z-coordinate in Bohr.
+/// @param weights Output buffer [natm]; receives normalized cell weights.
+void becke_partition_weights_for_test(const native::Atom* atoms, int natm,
+                                      double rx, double ry, double rz,
+                                      double* weights);
 
 /// @brief Bragg-Slater atomic radius for element Z, in Bohr.
 ///
@@ -55,13 +155,6 @@ MolecularGrid build_molecular_grid(const native::Atom* atoms, int natm,
 /// @param Z Atomic number (1 <= Z <= 86).
 /// @return Bragg-Slater radius in Bohr.
 double bragg_slater_radius(int Z);
-
-/// @brief A single radial quadrature point.
-struct RadialPoint {
-    double r;  ///< Radius in Bohr.
-    double w;  ///< Quadrature weight, includes r^2 Jacobian (so integrals
-               ///< of f(r) over 3-space are sum_i w_i * f(r_i) * 4*pi).
-};
 
 /// @brief Mura-Knowles radial quadrature on (0, infinity).
 ///

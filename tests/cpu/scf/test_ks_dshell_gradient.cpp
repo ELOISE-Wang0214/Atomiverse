@@ -95,11 +95,18 @@ cpu::Frame make_h2o_pbe_optimized() {
 }
 
 /// @brief PBE RKS config with a tight SCF tolerance.
+///
+/// This gradient test pins the integration grid to an explicit
+/// (n_radial, n_angular) SG-0 grid so the analytic and finite-difference
+/// gradients share one deterministic grid. default_config now ships the
+/// GridLevel::MatchPySCF grid (which ignores n_radial / n_angular), so we
+/// force grid_level back to SG0 here to honour the explicit counts.
 cpu::scf::SCFConfig pbe_config(const cpu::scf::IntegralPack& ints,
                                int n_radial = 50, int n_angular = 110) {
     auto c = cpu::scf::default_config(ints);  // KS / PBE / MINAO
     c.tol = 1e-9;
     c.max_iter = 200;
+    c.grid_level = cpu::scf::GridLevel::SG0;
     c.n_radial = n_radial;
     c.n_angular = n_angular;
     return c;

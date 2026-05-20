@@ -15,6 +15,10 @@ UKSResult uks_solve(const IntegralPack& integrals,
                     double tol, int max_iter) {
     auto config = uks_config(integrals, n_alpha, n_beta, xc_type, tol);
     config.max_iter = max_iter;
+    // uks_solve exposes explicit (n_radial, n_angular) counts, so honour
+    // them via the legacy SG0 grid — a named GridLevel (SG1/MatchPySCF)
+    // would override and ignore the caller's counts.
+    config.grid_level = GridLevel::SG0;
     config.n_radial = n_radial;
     config.n_angular = n_angular;
     auto r = scf_solve(integrals, config);

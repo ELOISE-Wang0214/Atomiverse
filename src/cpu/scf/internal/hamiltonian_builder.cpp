@@ -31,10 +31,13 @@ void HamiltonianBuilder::prepare(const IntegralPack& integrals,
         } else {
             const auto t_grid = LogClock::now();
             ATV_INFO(
-                "[scf] grid build start natm={} radial={} angular={}",
-                integrals.atoms.size(), config.n_radial, config.n_angular);
+                "[scf] grid build start natm={} level={} radial={} angular={}",
+                integrals.atoms.size(),
+                static_cast<int>(config.grid_level),
+                config.n_radial, config.n_angular);
             grid_ = build_molecular_grid(integrals.atoms.data(),
                                          static_cast<int>(integrals.atoms.size()),
+                                         config.grid_level,
                                          config.n_radial, config.n_angular);
             ATV_INFO(
                 "[scf] grid build done points={} ms={:.1f}",
