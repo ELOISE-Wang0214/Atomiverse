@@ -81,6 +81,14 @@ public:
     /// @brief Destroy all components in reverse Plan order.
     void destroy_components();
 
+    /// @brief Block until the async-analysis executor has drained every
+    /// queued and in-flight job, leaving its workers alive.
+    ///
+    /// A continuable driver calls this at the end of each `run()` so all
+    /// snapshots from that segment reach their subscribers before
+    /// control returns. No-op when no executor exists.
+    void drain_analysis();
+
     /// @brief Release all resources.
     void shutdown();
 

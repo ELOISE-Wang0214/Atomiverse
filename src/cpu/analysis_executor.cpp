@@ -76,6 +76,16 @@ void AnalysisExecutor::init(const Config& cfg, Context& ctx) {
               n_workers, ring_size);
 }
 
+void AnalysisExecutor::quiesce() {
+    if (!initialized_) return;
+    // Wait for the queue to empty and all in-flight jobs to finish.
+    // Workers stay alive — this is the mid-run barrier, not teardown.
+    std::unique_lock<std::mutex> lk(mtx_);
+    cv_work_.wait(lk, [this] {
+        return queue_.empty() && in_flight_.load(std::memory_order_relaxed) == 0;
+    });
+}
+
 void AnalysisExecutor::shutdown() {
     if (!initialized_) return;
 

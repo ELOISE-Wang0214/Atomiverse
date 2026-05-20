@@ -42,13 +42,32 @@ namespace {
 // `tau_P=1000 fs`, comfortably below this fence.
 constexpr double kEpsDtMaxFraction = 0.005;
 
-// sinh(x)/x with stable Taylor branch near 0.
-inline double sinhc(double x) {
+/// @brief Velocity-drift factor `(e^{2x} − 1) / (2x)` for the MTK
+///        position propagator, with a stable Taylor branch near 0.
+///
+/// The MTK position-update operator integrates `dx/dt = ε̇·x + v` over
+/// one step holding `v` constant. The exact solution is
+///
+///     x(dt) = x(0)·e^{ε̇·dt} + v·dt·(e^{ε̇·dt} − 1)/(ε̇·dt)
+///
+/// so the velocity term carries the factor `(e^{ε̇·dt} − 1)/(ε̇·dt)`,
+/// which equals `e^{ε̇·dt/2}·sinhc(ε̇·dt/2)`. Calling the argument
+/// `x = ε̇·dt/2`, this helper returns `(e^{2x} − 1)/(2x)`.
+///
+/// A previous implementation used the bare `sinhc(ε̇·dt/2)` and so
+/// dropped the `e^{ε̇·dt/2}` factor — a **first-order** error in
+/// `ε̇·dt` (the Taylor series of `e^x·sinhc(x)` is `1 + x + 2x²/3 + …`
+/// whereas `sinhc(x)` is `1 + x²/6 + …`, i.e. the linear term is
+/// missing). That broke time-reversal symmetry of the integrator and
+/// pumped a slow box drift over long runs (see spec
+/// nose-hoover-npt-trotter-fix.md / test_lammps_npt_parity.cpp).
+inline double expm1c(double x) {
+    // (e^{2x} - 1) / (2x); equivalently e^x * sinh(x)/x.
     if (std::abs(x) < 1e-6) {
-        const double x2 = x * x;
-        return 1.0 + x2 / 6.0 + x2 * x2 / 120.0;
+        // Taylor of (e^{2x}-1)/(2x) = 1 + x + 2x²/3 + x³/3 + ...
+        return 1.0 + x + (2.0 / 3.0) * x * x;
     }
-    return std::sinh(x) / x;
+    return std::expm1(2.0 * x) / (2.0 * x);
 }
 
 } // namespace
@@ -58,6 +77,10 @@ NoseHooverNPT::NoseHooverNPT(Config cfg)
       P_target_(cfg.P_target), tau_P_(cfg.tau_P), dt_(cfg.dt),
       drag_(cfg.drag), mtchain_(cfg.mtchain), mpchain_(cfg.mpchain) {}
 
+/// @see LAMMPS `FixNH::setup()` (`src/fix_nh.cpp`) — the barostat /
+///      thermostat mass initialisation (`eta_mass`, `omega_mass`,
+///      `etap_mass`). Atomiverse folds `omega_mass` (LAMMPS per-axis)
+///      into the single isotropic `W_ = 3·omega_mass`.
 void NoseHooverNPT::build(const cpu::BuildContext& ctx) {
     // atoms.size() at build time = global N (set by user before
     // Backend::set_frame partitions).
@@ -89,7 +112,7 @@ void NoseHooverNPT::build(const cpu::BuildContext& ctx) {
     W_ = (static_cast<double>(n_dof_) + 3.0) * kT_ * tau_P2;
 
     // LAMMPS-style empirical drag on *every* chain link of the backward
-    // sweep. Matches `fix_nh.cpp::nhc_temp_integrate` (line ~2063–2076):
+    // sweep. Matches `FixNH::nhc_temp_integrate` (`src/fix_nh.cpp`):
     //
     //     tdrag_factor = 1 - drag * update->dt * t_freq / nc_tchain
     //                  = 1 - drag * dt / tau_T   (with nc_tchain=1)
@@ -133,6 +156,7 @@ double NoseHooverNPT::compute_global_KE(const cpu::LaunchContext& ctx) const {
     return ke;
 }
 
+/// @see LAMMPS `FixNH::nhc_temp_integrate()` (`src/fix_nh.cpp`).
 void NoseHooverNPT::nhc_atoms_half(const cpu::LaunchContext& ctx, double half_dt) {
     // M-chain NHC half-step, mirroring LAMMPS `fix_nh.cpp::nhc_temp_integrate`
     // (release branch). Per-link structure inside the backward sweep:
@@ -199,6 +223,10 @@ void NoseHooverNPT::nhc_atoms_half(const cpu::LaunchContext& ctx, double half_dt
     }
 }
 
+/// @see LAMMPS `FixNH::nhc_press_integrate()` (`src/fix_nh.cpp`). The
+///      innermost-link force `(W·ε̇² - kT)/Q_b[0]` matches LAMMPS's
+///      `(kecurrent - lkt_press)/etap_mass[0]` with `lkt_press = kt`
+///      for `pstyle == ISO`.
 void NoseHooverNPT::nhc_baro_half(double half_dt) {
     // Same M-chain pattern as `nhc_atoms_half`, but the innermost link
     // thermostats the barostat momentum `eps_dot` instead of atom KE.
@@ -246,6 +274,10 @@ void NoseHooverNPT::nhc_baro_half(double half_dt) {
     }
 }
 
+/// @see LAMMPS `FixNH::nh_omega_dot()` (`src/fix_nh.cpp`). Atomiverse's
+///      `G_eps·W = 3V·(P_int−P_target) + (6/N_f)·KE` equals 3× LAMMPS's
+///      per-axis `f_omega·omega_mass` (pressure term + `mtk_term1`)
+///      once `W = 3·omega_mass` is substituted.
 void NoseHooverNPT::update_eps_dot(const cpu::LaunchContext& ctx, double half_dt) {
     const auto& f = ctx.frame;
     const double V = f.box.volume();
@@ -256,11 +288,17 @@ void NoseHooverNPT::update_eps_dot(const cpu::LaunchContext& ctx, double half_dt
     //     P_int = trace(σ) / (3V)        ; positive ⇔ compressive
     //     G_ε   = [3V (P_int − P_ext) + (6/N_f) KE_atoms] / W
     //
-    // `frame.stress[0..2]` holds the LAMMPS-style pressure-tensor sum
-    // (kinetic Σ m·v² plus pair virial Σ r·F), so trace/(3V) is the
-    // standard internal pressure, no negation. Both the pressure term
-    // and the KE coupling term then live in the same sign convention,
-    // so a system at equilibrium has G_ε ≈ small and the box settles.
+    // `frame.stress[0..2]` now holds the pair-virial trace only;
+    // `frame.stress_kinetic` carries the kinetic stress snapshot from
+    // `post_force` time. That snapshot is stale here: velocities have
+    // since been kicked by `kick_v_by_force` (P7) and rescaled by
+    // `scale_v_by_baro` (P8). We therefore reconstruct the kinetic
+    // contribution from `KE_global_`, which is freshly tracked through
+    // P8 — the trace of Σ m·v_α·v_β equals `2·KE`. Using the stale
+    // stored kinetic component is what produced the runaway box
+    // expansion in `tests/cpu/md/test_lammps_npt_parity.cpp` (the
+    // ~6 % per-step mismatch with the freshly tracked `KE_global_`
+    // pumped a sustained positive drift into `ε̇`).
     //
     // Historical pitfall (fixed 2026-05-19): the previous formula used
     // `P_int = -trace/(3V)` plus `+(P_target - P_int)` to match the
@@ -268,8 +306,9 @@ void NoseHooverNPT::update_eps_dot(const cpu::LaunchContext& ctx, double half_dt
     // was still in standard convention, so the two terms didn't cancel
     // at equilibrium and the box monotonically inflated even after T
     // equilibrated (caught by tests/cpu/md/test_lammps_npt_parity.cpp).
-    const double P_int =
-        (f.stress[0] + f.stress[1] + f.stress[2]) / (3.0 * V);
+    const double trace_virial      = f.stress[0] + f.stress[1] + f.stress[2];
+    const double trace_kinetic_now = 2.0 * KE_global_;
+    const double P_int             = (trace_virial + trace_kinetic_now) / (3.0 * V);
 
     const double G_eps = (3.0 * V * (P_int - P_target_)
                           + (6.0 / static_cast<double>(n_dof_)) * KE_global_)
@@ -277,6 +316,10 @@ void NoseHooverNPT::update_eps_dot(const cpu::LaunchContext& ctx, double half_dt
     eps_dot_ += G_eps * half_dt;
 }
 
+/// @see LAMMPS `FixNH::nh_v_press()` (`src/fix_nh.cpp`). LAMMPS applies
+///      `exp(-dt/4·(ω̇+mtk_term2))` twice (net `exp(-dt/2·…)`); the
+///      `mtk_term2 = Σω̇/(pdim·N)` coupling equals our `(3/N_dof)·ε̇`
+///      for the isotropic single-`ε̇` representation.
 void NoseHooverNPT::scale_v_by_baro(const cpu::LaunchContext& ctx, double half_dt) {
     auto& f = ctx.frame;
     const int n = owned_count(ctx);
@@ -292,6 +335,8 @@ void NoseHooverNPT::scale_v_by_baro(const cpu::LaunchContext& ctx, double half_d
     KE_global_ *= scale * scale;
 }
 
+/// @see LAMMPS `FixNH::nve_v()` (`src/fix_nh.cpp`) — the half-step
+///      velocity kick `v += dtf·f/m` with `dtf = 0.5·dt·ftm2v`.
 void NoseHooverNPT::kick_v_by_force(const cpu::LaunchContext& ctx, double half_dt) {
     auto& f = ctx.frame;
     const int n = owned_count(ctx);
@@ -307,6 +352,11 @@ void NoseHooverNPT::kick_v_by_force(const cpu::LaunchContext& ctx, double half_d
     // KE invalidated; will be recomputed at end_of_step.
 }
 
+/// @see LAMMPS `FixNH::nve_x()` + `FixNH::remap()` (`src/fix_nh.cpp`).
+///      LAMMPS brackets the plain `x += dt·v` drift between two
+///      half-step `remap()` box rescalings; Atomiverse fuses both into
+///      the closed-form `x·e^{ε̇dt} + v·dt·(e^{ε̇dt}−1)/(ε̇dt)` plus a
+///      single `box.scale_isotropic(e^{ε̇dt})`.
 void NoseHooverNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
     const int n = owned_count(ctx);
@@ -317,14 +367,17 @@ void NoseHooverNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
     // over within a few steps and bring eps_dot back to physical values.
     const double eps_dt = std::clamp(eps_dot_ * dt_,
                                      -kEpsDtMaxFraction, kEpsDtMaxFraction);
-    const double a       = std::exp(eps_dt);
-    const double sinhc_h = sinhc(eps_dt * 0.5);
+    const double a      = std::exp(eps_dt);
+    // Velocity-drift factor `(e^{ε̇·dt} − 1)/(ε̇·dt)` — the exact MTK
+    // position propagator. NOT the bare `sinhc(ε̇·dt/2)`: that omits the
+    // `e^{ε̇·dt/2}` half and is a first-order error in `ε̇·dt`.
+    const double drift  = expm1c(eps_dt * 0.5);
 
     #pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
-        f.atoms.x[i] = f.atoms.x[i] * a + f.atoms.vx[i] * dt_ * sinhc_h;
-        f.atoms.y[i] = f.atoms.y[i] * a + f.atoms.vy[i] * dt_ * sinhc_h;
-        f.atoms.z[i] = f.atoms.z[i] * a + f.atoms.vz[i] * dt_ * sinhc_h;
+        f.atoms.x[i] = f.atoms.x[i] * a + f.atoms.vx[i] * dt_ * drift;
+        f.atoms.y[i] = f.atoms.y[i] * a + f.atoms.vy[i] * dt_ * drift;
+        f.atoms.z[i] = f.atoms.z[i] * a + f.atoms.vz[i] * dt_ * drift;
     }
 
     // Update box edges: V_new = V * exp(3 eps_dot dt) ⇒ each edge *= exp(eps_dot dt).
@@ -345,13 +398,26 @@ void NoseHooverNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
     }
 }
 
+/// @see LAMMPS `FixNH::initial_integrate()` (front-half P1-P6) and
+///      `FixNH::final_integrate()` (back-half P7-P11), `src/fix_nh.cpp`.
+///      Atomiverse splits LAMMPS's `final_integrate()` across the MD
+///      `final_integrate` phase (P7) and `end_of_step` (P8-P11) so the
+///      `ReduceEnergy` MPI all-reduce can run in between.
 void NoseHooverNPT::launch(const cpu::LaunchContext& ctx) {
     const double half_dt = 0.5 * dt_;
 
     if (ctx.stage == static_cast<int>(ATV::md::Phase::initial_integrate)) {
-        // First half of Trotter (P1 -- P6).
-        nhc_atoms_half(ctx, half_dt);
-        nhc_baro_half(half_dt);
+        // First half of Trotter (P1 -- P6). Outer-NHC order matches
+        // LAMMPS `FixNH::initial_integrate` — `nhc_press_integrate()`
+        // is called before `nhc_temp_integrate()`: the baro chain
+        // is integrated *before* the atom chain so the velocity scaling
+        // applied by `nhc_atoms_half` sees an `eps_dot` that already
+        // reflects the baro-NHC update. Swapping these two breaks
+        // Trotter symmetry with `end_of_step` and pumps a sustained
+        // positive drift into `eps_dot` (~3e-4 /fs) that inflates the
+        // box without bound (see spec nose-hoover-npt-trotter-fix.md).
+        nhc_baro_half(half_dt);          // P1
+        nhc_atoms_half(ctx, half_dt);    // P2
         update_eps_dot(ctx, half_dt);   // uses prev step's reduced stress
         scale_v_by_baro(ctx, half_dt);
         kick_v_by_force(ctx, half_dt);
@@ -368,8 +434,12 @@ void NoseHooverNPT::launch(const cpu::LaunchContext& ctx) {
 
         scale_v_by_baro(ctx, half_dt);   // P8
         update_eps_dot(ctx, half_dt);    // P9 -- new pressure
-        nhc_baro_half(half_dt);          // P10
-        nhc_atoms_half(ctx, half_dt);    // P11
+        // Outer-NHC order reverses to atoms-then-baro on the back-half
+        // to keep the full step symmetric Trotter. Matches LAMMPS
+        // `FixNH::final_integrate` — `nhc_temp_integrate()` then
+        // `nhc_press_integrate()`.
+        nhc_atoms_half(ctx, half_dt);    // P10
+        nhc_baro_half(half_dt);          // P11
 
         // Rewrite frame.kinetic so observers bound at end_of_step @ > -40
         // see the post-NPT kinetic energy.

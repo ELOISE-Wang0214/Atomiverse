@@ -152,7 +152,29 @@ public:
 
     double energy = 0;     ///< Potential energy [eV].
     double kinetic = 0;    ///< Kinetic energy [eV].
-    double stress[6] = {}; ///< Stress tensor [eV/Angstrom^3], Voigt: xx yy zz xy xz yz.
+    /// @brief Pair / bonded virial tensor Σ r·F [eV], Voigt order xx yy zz xy xz yz.
+    ///
+    /// Written by pair potentials (LJ, Coulomb, ...) and bonded
+    /// evaluators at `post_force`. **Does not** include the kinetic
+    /// contribution Σ m·v·v -- that lives in `stress_kinetic` so each
+    /// piece is consistent with its own time slice (virial is fixed
+    /// once forces are computed, kinetic varies as velocities are
+    /// updated through the Trotter step). The full pressure-tensor
+    /// sum is `stress[i] + stress_kinetic[i]`, and dividing the trace
+    /// by `3·V` gives the internal pressure under the LAMMPS sign
+    /// convention (positive ⇔ compressive).
+    double stress[6] = {};
+    /// @brief Kinetic stress tensor Σ m·v·v [eV], Voigt order xx yy zz xy xz yz.
+    ///
+    /// Written by `VirialStress` at `post_force` using the velocities
+    /// at that point. Time-dependent: integrators like
+    /// `NoseHooverNPT` that update velocities between `post_force`
+    /// and pressure evaluation recompute the kinetic stress fresh
+    /// from the post-update velocities rather than reusing this
+    /// stored value, so this field is *informational* for any
+    /// downstream observer/recorder that wants the post-force
+    /// pressure snapshot.
+    double stress_kinetic[6] = {};
 
     cpu::Box box{};  ///< Simulation cell [Angstrom]; canonical Box at backend root (see cpu/box.h).
 };

@@ -29,21 +29,24 @@ namespace md {
 /// Algorithm (Tuckerman 2006, *J. Phys. A* 39, 5629; Shinoda 2004,
 /// *Phys. Rev. B* 69, 134103):
 ///
-/// Trotter splitting per timestep `dt`:
+/// Trotter splitting per timestep `dt`. The outer-NHC pair runs
+/// baro-then-atoms on the front half and atoms-then-baro on the back
+/// half — required for symmetric Trotter and matches LAMMPS
+/// `fix_nh.cpp::initial_integrate` / `final_integrate` ordering:
 ///
-///     [P1] NHC-atom step       (dt/2)   updates η_t, η̇_t; scales v
-///     [P2] NHC-baro step       (dt/2)   updates η_b, η̇_b; scales ε̇
+///     [P1] NHC-baro step       (dt/2)   updates η_b, η̇_b; scales ε̇
+///     [P2] NHC-atom step       (dt/2)   updates η_t, η̇_t; scales v
 ///     [P3] barostat-momentum   (dt/2)   ε̇ += G_ε · dt/2
 ///     [P4] barostat-velocity   (dt/2)   v *= exp(-(1+3/N) · ε̇ · dt/2)
 ///     [P5] velocity half-kick  (dt/2)   v += (dt/2) · F/m
-///     [P6] position+box update (dt)     x = x · e^{ε̇dt} + v · dt · sinhc(ε̇dt/2);
+///     [P6] position+box update (dt)     x = x · e^{ε̇dt} + v · dt · (e^{ε̇dt}-1)/(ε̇dt);
 ///                                       box *= e^{ε̇dt}
 ///                                  ↓ (force evaluation; pair virial)
 ///     [P7] velocity half-kick  (dt/2)   v += (dt/2) · F/m
 ///     [P8] barostat-velocity   (dt/2)
 ///     [P9] barostat-momentum   (dt/2)   ε̇ += G_ε(P_new, KE_new) · dt/2
-///     [P10] NHC-baro step      (dt/2)
-///     [P11] NHC-atom step      (dt/2)
+///     [P10] NHC-atom step      (dt/2)
+///     [P11] NHC-baro step      (dt/2)
 ///
 /// where the driving force is
 ///
@@ -65,6 +68,30 @@ namespace md {
 ///                                 (after `ReduceEnergy @ -50` so
 ///                                  pressure & KE are global)
 ///
+/// ── LAMMPS correspondence ───────────────────────────────────────────
+///
+/// Reference: LAMMPS `src/fix_nh.cpp` (github.com/lammps/lammps,
+/// release 22 Jul 2025). Atomiverse implements the same MTK scheme;
+/// each helper maps to a `FixNH` method:
+///
+///   | Atomiverse (this class)        | LAMMPS `FixNH` (`src/fix_nh.cpp`) |
+///   |--------------------------------|-----------------------------------|
+///   | `build()` (Q/W mass init)      | `FixNH::setup()`                  |
+///   | `launch()` initial_integrate   | `FixNH::initial_integrate()`      |
+///   | `launch()` final + end_of_step | `FixNH::final_integrate()`        |
+///   | `nhc_atoms_half()`             | `FixNH::nhc_temp_integrate()`     |
+///   | `nhc_baro_half()`              | `FixNH::nhc_press_integrate()`    |
+///   | `update_eps_dot()`             | `FixNH::nh_omega_dot()`           |
+///   | `scale_v_by_baro()`            | `FixNH::nh_v_press()`             |
+///   | `kick_v_by_force()`            | `FixNH::nve_v()`                  |
+///   | `propagate_x_and_box()`        | `FixNH::nve_x()` + `FixNH::remap()`|
+///
+/// One deliberate divergence: LAMMPS splits the central box operator
+/// as `remap(dt/2) → nve_x(dt) → remap(dt/2)`; Atomiverse fuses it
+/// into one `propagate_x_and_box()` using the exact analytic drift
+/// factor `(e^{ε̇dt}-1)/(ε̇dt)` — equal to LAMMPS's two-remap result
+/// to O((ε̇dt)²).
+///
 /// **Replaces (do not add alongside)** `VelocityVerlet`, `NoseHoover`,
 /// and `Barostat`. Compatible with `KineticEnergy` -- this component
 /// rewrites `frame.kinetic` after the second NHC update so any thermo
@@ -78,8 +105,10 @@ public:
     struct Config {
         double T_target;  ///< Target temperature [K].
         double tau_T;     ///< Thermostat coupling time [fs] (LAMMPS `Tdamp`).
-        double P_target;  ///< Target pressure [eV/Å³] in `frame.stress` convention
-                          ///  (`-trace/(3V)`); pass 0 for "atmospheric".
+        double P_target;  ///< Target pressure [eV/Å³], LAMMPS-standard
+                          ///  sign (`+trace(σ)/(3V)`, positive ⇔
+                          ///  compressive) — same convention as LAMMPS
+                          ///  `fix npt iso`. 1 bar = 6.2415e-7 eV/Å³.
         double tau_P;     ///< Barostat coupling time [fs] (LAMMPS `Pdamp`).
         double dt;        ///< Timestep [fs].
         double drag = 0.0;  ///< LAMMPS-style empirical drag on the

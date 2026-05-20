@@ -85,6 +85,17 @@ public:
     /// and can be re-initialized. Idempotent.
     void shutdown();
 
+    /// @brief Block until every queued and in-flight job has completed,
+    /// leaving the worker threads alive and the executor ready for more
+    /// work.
+    ///
+    /// Unlike `shutdown()` this does NOT stop workers or call subscriber
+    /// `finalize()`. A continuable driver calls it at the end of each
+    /// `run()` so observers see every snapshot from that segment
+    /// delivered before control returns to the caller. Idempotent;
+    /// no-op when uninitialised.
+    void quiesce();
+
     /// @brief Reserve a ring slot for the next snapshot.
     ///
     /// Returns a slot index in `[0, ring_capacity())`. Policy determines

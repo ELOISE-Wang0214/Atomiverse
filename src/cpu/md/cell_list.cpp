@@ -168,6 +168,22 @@ void CellList::save_positions(const cpu::Frame& frame, int n_active) {
 }
 
 void CellList::build(const cpu::Frame& frame, int n_active) {
+    // The NPT barostat (or Deform) may have rescaled the box since the
+    // cell grid was last sized. `compute_grid()` derives the per-axis
+    // cell counts (`ncx_/ncy_/ncz_`) and cell sizes (`csx_/csy_/csz_`)
+    // from the current box edge; the stencil depends on the cell
+    // counts. If we re-bin into a grid sized for the *old* box, atoms
+    // past the stale grid extent get their cell index clamped into the
+    // boundary row (`bin_atoms` clamps to `[0, ncx_-1]`), so real
+    // neighbour pairs land in cells the stale stencil never visits and
+    // are silently dropped — the pair virial then decays toward zero
+    // and an NPT run inflates without bound (see
+    // tests/cpu/md/test_lammps_npt_parity.cpp). Resize the grid
+    // whenever the box edge has moved since the last build.
+    if (frame.box.length(0) != box_at_last_build_) {
+        compute_grid(frame);
+        build_stencil();
+    }
     bin_atoms(frame, n_active);
     save_positions(frame, n_active);
     n_at_last_build_ = (n_active < 0) ? frame.atoms.size() : n_active;

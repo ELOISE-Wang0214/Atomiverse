@@ -13,18 +13,21 @@ namespace ATV {
 namespace cpu {
 namespace md {
 
-/// @brief Adds the kinetic-stress contribution `Σ m·v_α·v_β` to
-/// `frame.stress` (Voigt order: xx, yy, zz, xy, xz, yz).
+/// @brief Computes the kinetic-stress contribution `Σ m·v_α·v_β` and
+/// writes it to `frame.stress_kinetic` (Voigt order: xx, yy, zz, xy,
+/// xz, yz).
 ///
 /// Pair virial is accumulated separately by the pair potentials (LJ
-/// writes `r_ij · F_ij` into `frame.stress` in its launch). When this
-/// component runs at `post_force @ -50`, both contributions are summed
-/// in `frame.stress` -- still in **unnormalised virial units**: callers
-/// (Barostat, observers) divide by box volume V to obtain pressure.
-///
-/// The reduce across MPI ranks happens separately at `end_of_step @
-/// -50` (see `ReduceEnergy`), so a Barostat scheduled after that point
-/// reads the global virial and computes the global pressure.
+/// writes `r_ij · F_ij` into `frame.stress`). The split lets each
+/// piece carry its own time slice -- the virial is fixed once forces
+/// are computed at `post_force`, but the kinetic stress changes
+/// every time velocities are updated. Integrators like
+/// `NoseHooverNPT` that need the pressure *after* a velocity-rescale
+/// step recompute the kinetic part fresh from current velocities
+/// (the trace equals `2·KE`); they read only `frame.stress` (virial)
+/// from this component's output. The reduce across MPI ranks happens
+/// separately at `end_of_step @ -50` (see `ReduceEnergy`), so any
+/// component scheduled after that point reads the global values.
 class VirialStress : public cpu::ComponentBase {
 public:
     std::string name() const override { return "virial_stress"; }

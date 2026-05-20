@@ -146,6 +146,10 @@ void Backend::run(int n_steps) {
     ATV_INFO("run complete");
 }
 
+void Backend::drain_analysis() {
+    if (executor_) executor_->quiesce();
+}
+
 void Backend::destroy_components() {
     // Drain and join analysis workers first so any in-flight `on_snapshot`
     // completes against live subscribers, and `finalize()` runs on the main

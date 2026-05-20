@@ -1,7 +1,7 @@
 ---
 title: Fix NoseHooverNPT runaway box expansion (Trotter-order investigation)
 slug: nose-hoover-npt-trotter-fix
-status: approved
+status: code-complete
 created: 2026-05-20
 last-updated: 2026-05-20
 parent: msu-pe-validation.md
@@ -98,6 +98,8 @@ that block. The next-tier suspects, in priority order:
    steps the integrated trajectories differ; whether this could pump
    energy into ε̇ is unclear without a Hamiltonian-conservation check.
 
+4. use LAMMPS execution order exactly for whole MD loop: https://docs.lammps.org/Developer_flow.html
+
 The session also ruled out (with controlled experiments) the following
 non-causes: sign-convention flip (mathematically equivalent), zeroing the
 `(6/N_dof)·KE` coupling (no change), `drag = 2`/`drag = 20` (no
@@ -183,30 +185,60 @@ src/cpu/md/nose_hoover_npt.cpp             (recompute kinetic fresh)
 + ~5 observer/recorder files               (combine stress fields)
 ```
 
+## Resolution (2026-05-20)
+
+The spec's premise — *"LAMMPS converges on the same input, find the
+missing Trotter ingredient"* — was **false**. Two findings reframed it:
+
+1. **The benchmark was physically ill-posed.** At T=100 K the LJ-argon
+   liquid is unstable at P=0 (below liquid–vapour coexistence) — it
+   evaporates, and a LAMMPS run of the original input shows LAMMPS
+   itself running away. A P(V) probe found the V≈1.1–1.2×10⁴ Å³ range
+   is also anomalous (dP/dV>0, mechanically unstable). The benchmark
+   was moved to FCC a=5.3 Å / P=2731 bar — a stiff, dP/dV<0 state where
+   NPT is well conditioned; `in.npt` and `lammps_npt_avgs.txt`
+   regenerated (`lammps.log` is gitignored).
+
+2. **The load-bearing bug was driver-level, not Trotter ordering.**
+   `DynamicsDriver::run()` called `setup_pass()` (component `build()`)
+   on every invocation, so a chunked `run(burn_in); run(sample)…` wiped
+   `NoseHooverNPT`'s NHC-chain state and re-randomised `InitVelocity`
+   between chunks. `run()` is now continuable (build once; destroy at
+   driver teardown; async-analysis drained per call via a new
+   `AnalysisExecutor::quiesce()` barrier).
+
+Final parity: Δ(T)=0.08 %, Δ(KE)=0.08 %, Δ(V)=0.04 % — all far inside
+the 5 % gate. Phases A and B were implemented and are correct, but were
+not the load-bearing fix; the `propagate_x_and_box` drift factor (spec
+wrongly "ruled out" — its Taylor expansion was miscomputed) and a stale
+`CellList` grid on box change were also fixed.
+
 ## Tasks
 
-- [ ] **Phase A**: swap the outer-NHC Trotter ordering in
-      `nose_hoover_npt.cpp::launch()` to match LAMMPS (baro–atoms in
-      `initial_integrate`; atoms–baro in `end_of_step`). Rebuild & rerun
-      `test_cpu_md_lammps_npt_parity` (gtest filter
-      `--gtest_also_run_disabled_tests`); record observed ⟨T⟩, ⟨V⟩.
-- [ ] If Phase A closes the gap (Δ(V) ≤ 5 %), tighten the parity test
-      gates: rename `DISABLED_NptMatches...` → `Slow_NptMatches...`,
-      gates ≤ 5 % on ⟨T⟩, ⟨V⟩, ⟨KE⟩, update docstring with the resolved
-      finding + LAMMPS line refs. STOP.
-- [ ] If Phase A leaves Δ(V) > 5 %, escalate to **Phase B**: add
-      `frame.stress_kinetic` field; route `VirialStress` to it;
-      update `update_eps_dot` to recompute kinetic stress trace fresh
-      from `KE_global_`; update `Barostat` + observer reads to combine
-      the two fields. Re-run parity.
-- [ ] After parity passes, run the full ctest suite — all 91 tests must
-      stay green. The pre-existing `NoseHooverNptRelaxesPressure` smoke
-      test must continue to pass (it does not gate convergence; just
-      no-NaN).
-- [ ] Update `tests/cpu/md/test_lammps_npt_parity.cpp` docstring to
-      record which phase was needed and what the final residual gap was.
-- [ ] Update `msu-pe-validation.md` Phase D row: unblock the MSU
-      paper-scale stress-strain run.
+- [x] **Phase A**: outer-NHC Trotter ordering swapped to match LAMMPS
+      (baro–atoms in `initial_integrate`; atoms–baro in `end_of_step`).
+- [x] **Phase B**: `frame.stress_kinetic` field added; `VirialStress`
+      routed to it; `update_eps_dot` uses fresh `2·KE_global_`;
+      `Barostat` / MPI-reduce / `ZeroStress` / multirank test updated.
+- [x] **Drift factor**: `propagate_x_and_box` now uses the exact MTK
+      factor `(e^{ε̇dt}−1)/(ε̇dt)` (`expm1c`) instead of bare `sinhc`.
+- [x] **CellList grid**: `CellList::build()` re-runs `compute_grid()` /
+      `build_stencil()` when the box edge changed (NPT box scaling).
+- [x] **DynamicsDriver continuable**: `run()` builds components once,
+      keeps a cumulative step counter, defers `destroy()` to the
+      destructor, and drains async analysis per call.
+- [x] **Benchmark regenerated**: `in.npt` / `lammps_npt_avgs.txt` /
+      `lammps.log` for the stable a=5.3 Å, P=2731 bar state point.
+- [x] Parity test enabled (`DISABLED_` → `Slow_`), 5 % gates, docstring
+      rewritten with the resolution history.
+- [x] Full ctest suite green — 93/93, including the enabled parity test
+      and the `NoseHooverNptRelaxesPressure` smoke test.
+- [x] `msu-pe-validation.md` — no explicit NPT-parity blocker row
+      exists; its NPT-dependent items (C.2/C.3, Phase D) are implicitly
+      unblocked now that `NoseHooverNPT` is validated.
+- [ ] **ac-006** (scientific): `H_NPT_extended` conservation diagnostic
+      — manual attestation, deferred to the `npt-conservation-gate`
+      follow-up spec.
 
 ## Testing strategy
 

@@ -30,10 +30,17 @@ void Barostat::launch(const cpu::LaunchContext& ctx) {
     const double V = f.box.volume();
     if (V <= 0.0) return;
 
-    // Pressure from the trace of the unnormalised virial sum:
+    // Pressure from the trace of the unnormalised virial sum.
+    // `frame.stress` holds the pair-virial part Σ r·F; the kinetic
+    // part Σ m·v² lives in `frame.stress_kinetic`. Berendsen runs at
+    // `end_of_step`, so both fields are at the same post-force
+    // velocity snapshot — combining them gives the standard
+    // pressure-tensor sum:
     //   P = -(σ_xx + σ_yy + σ_zz) / (3·V)
-    const double P =
-        -(f.stress[0] + f.stress[1] + f.stress[2]) / (3.0 * V);
+    const double trace_total = (f.stress[0] + f.stress[1] + f.stress[2])
+                             + (f.stress_kinetic[0] + f.stress_kinetic[1]
+                                + f.stress_kinetic[2]);
+    const double P = -trace_total / (3.0 * V);
 
     // Berendsen scaling factor μ = (1 - dt/τ_p · (P - P_target))^(1/3).
     // Clamped to [0.5, 2.0] so a single step cannot collapse or explode

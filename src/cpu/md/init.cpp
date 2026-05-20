@@ -54,6 +54,11 @@ void ZeroEnergy::launch(const cpu::LaunchContext& ctx) {
 void ZeroStress::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
     for (int k = 0; k < 6; ++k) f.stress[k] = 0;
+    // `stress_kinetic` is overwritten (not accumulated) by VirialStress
+    // each step, so it does not strictly need zeroing -- but zero it
+    // here for symmetry and so observers that read it before VirialStress
+    // ever ran see a deterministic zero rather than uninitialised data.
+    for (int k = 0; k < 6; ++k) f.stress_kinetic[k] = 0;
 }
 
 // ── ZeroKinetic ──────────────────────────────────────────────────
