@@ -2,6 +2,42 @@
 /// @brief NeighborList -- component wrapper for spatial index strategies.
 ///
 /// @tparam Strategy Spatial indexing strategy (CellList, NSQ, etc.).
+///
+/// ## LAMMPS correspondence (`neighbor` + `neigh_modify`)
+///
+/// `NeighborList` mirrors the LAMMPS `neighbor` command (Verlet skin) and
+/// the `neigh_modify` keywords. Audited against `lammps/src/neighbor.cpp`
+/// (`stable` branch) — the rebuild gate replicates `Neighbor::decide()`
+/// (neighbor.cpp:2360) and the displacement test replicates
+/// `Neighbor::check_distance()` (neighbor.cpp:2390).
+///
+/// | LAMMPS keyword            | `NeighborList`            | Default        | Verdict |
+/// |---------------------------|---------------------------|----------------|---------|
+/// | `neighbor skin style`     | `skin` ctor arg [Å]       | `0.3·cutoff`   | aligned (semantic); LAMMPS has no auto-skin — the auto default is a documented divergence (convenience, opt-out by passing skin explicitly) |
+/// | `neigh_modify every N`    | `every` ctor arg          | `1`            | aligned |
+/// | `neigh_modify delay M`    | `delay` ctor arg          | `10`           | aligned |
+/// | `neigh_modify check yes/no` | `check` ctor arg (bool) | `true` (= `yes`) | aligned — see below |
+/// | `neigh_modify one N`      | (not exposed)             | —              | **documented divergence**: Atomiverse's neighbor storage is a growable CSR arena (`PairList::neighbors` is a `std::vector<int>`, the xtensor CSR rows grow via `ensure_at_least`). `one` is purely a LAMMPS allocation bound; with a growable arena it has no semantic effect, so no false parameter is introduced. |
+/// | `neigh_modify binsize`    | (not exposed)             | —              | **documented divergence**: the `CellList` strategy derives its cell size internally from `cutoff + skin`. LAMMPS exposes `binsize` to tune the binned-neighboring bin; Atomiverse's internal sizing makes it unnecessary, so the `bin` style is not exposed. |
+///
+/// **Rebuild gate** — `Neighbor::decide()` is, verbatim:
+/// ```
+///   ago++;
+///   if (ago >= delay && ago % every == 0) {
+///     if (build_once) return 0;
+///     if (dist_check == 0) return 1;   // check no  → unconditional rebuild
+///     return check_distance();          // check yes → displacement-gated
+///   } else return 0;
+/// ```
+/// `NeighborList::launch()` reproduces this exactly: `ago_` is incremented,
+/// then `delay_ok = ago_ >= delay_` AND `every_ok = ago_ % every_ == 0`
+/// gate the rebuild; when both hold, `check no` (`check_ == false`) rebuilds
+/// unconditionally and `check yes` consults the skin displacement test
+/// (`max_disp·2 > skin`, the half-skin trigger of `check_distance()`).
+/// Atomiverse's `size_stale` short-circuit (atom-count change from MPI
+/// migration / halo resize) is an Atomiverse-only addition with no LAMMPS
+/// keyword — it is always-on and correct (a changed atom set always
+/// invalidates the stored CSR).
 #pragma once
 
 #include <string>
@@ -18,13 +54,15 @@ namespace md {
 /// @brief Neighbor list component -- builds and maintains spatial index.
 /// @tparam Strategy Spatial indexing strategy (CellList by default).
 ///
-/// Rebuild cadence mirrors LAMMPS `neigh_modify every N delay M check yes`:
-/// the Verlet list is re-enumerated only when `ago >= delay` *and*
-/// `ago % every == 0` *and* the max-displacement skin check fires. Between
-/// rebuilds the stored CSR is reused verbatim — force kernels continue
-/// reading the same `pair_list`. Cost of `launch()` on non-rebuild steps
-/// collapses to a single O(n) skin scan (or zero when `ago < every` or
-/// `ago < delay`). Defaults match LAMMPS: `every=1`, `delay=10`.
+/// Rebuild cadence mirrors LAMMPS `neigh_modify every N delay M check yes/no`:
+/// with `check yes` (default) the Verlet list is re-enumerated only when
+/// `ago >= delay` *and* `ago % every == 0` *and* the max-displacement skin
+/// check fires; with `check no` the displacement test is skipped and the
+/// list rebuilds on *every* `every`/`delay`-eligible step. Between rebuilds
+/// the stored CSR is reused verbatim — force kernels continue reading the
+/// same `pair_list`. Cost of `launch()` on non-rebuild steps collapses to a
+/// single O(n) skin scan (or zero when `ago < every` or `ago < delay`).
+/// Defaults match LAMMPS: `every=1`, `delay=10`, `check=true` (`check yes`).
 template <typename Strategy = CellList>
 class NeighborList : public cpu::ComponentBase {
 public:
@@ -34,10 +72,16 @@ public:
     ///        every`; default 1 reproduces LAMMPS's built-in default).
     /// @param delay Skip displacement check for this many steps after a rebuild
     ///        (LAMMPS `neigh_modify delay`; default 10 reproduces LAMMPS).
+    /// @param check Displacement-gated rebuild (LAMMPS `neigh_modify check`;
+    ///        default `true` = `check yes`). `false` (= `check no`) skips the
+    ///        skin displacement test, so the list rebuilds on every
+    ///        `every`/`delay`-eligible step — matching `dist_check == 0` in
+    ///        `Neighbor::decide()` (neighbor.cpp:2373, `return 1`).
     explicit NeighborList(double cutoff, double skin = -1.0, int every = 1,
-                          int delay = 10)
+                          int delay = 10, bool check = true)
         : strategy_(cutoff, skin), cutoff_(cutoff),
-          every_(every < 1 ? 1 : every), delay_(delay < 0 ? 0 : delay) {}
+          every_(every < 1 ? 1 : every), delay_(delay < 0 ? 0 : delay),
+          check_(check) {}
 
     std::string name() const override { return "neighbor_list"; }
 
@@ -63,17 +107,28 @@ public:
         const int n_active = active_count(ctx.runtime, ctx.frame);
         ++ago_;
 
-        // Rebuild decision mirrors LAMMPS `neigh_modify delay M every N check yes`:
-        //   size_stale: atom count changed (migration / halo resize) → force rebuild
-        //   delay gate:  ago < delay → skip displacement check (LAMMPS `delay`)
-        //   every gate:  ago % every != 0 → skip displacement check (LAMMPS `every`)
-        //   disp check:  max_disp * 2 > skin → rebuild
+        // Rebuild decision mirrors LAMMPS `Neighbor::decide()` (neighbor.cpp:2360):
+        //     ago++;
+        //     if (ago >= delay && ago % every == 0) {
+        //       if (dist_check == 0) return 1;   // check no
+        //       return check_distance();          // check yes
+        //     } else return 0;
+        //   size_stale: atom count changed (migration / halo resize) → force
+        //               rebuild. Atomiverse-only short-circuit, no LAMMPS keyword.
+        //   delay gate:  ago < delay → no rebuild attempt (LAMMPS `delay`)
+        //   every gate:  ago % every != 0 → no rebuild attempt (LAMMPS `every`)
+        //   check yes:   max_disp * 2 > skin → rebuild (half-skin trigger)
+        //   check no:    rebuild unconditionally once the every/delay gate opens
         const bool size_stale =
             n_active != strategy_.n_at_last_build();
         const bool delay_ok = ago_ >= delay_;
         const bool every_ok = (ago_ % every_) == 0;
+        // When the gate is open: check no → always rebuild; check yes →
+        // consult the displacement skin test. `needs_rebuild` is only
+        // evaluated for `check yes` so `check no` runs pay no O(n) skin scan.
         const bool disp_rebuild =
-            delay_ok && every_ok && strategy_.needs_rebuild(ctx.frame, n_active);
+            delay_ok && every_ok
+            && (!check_ || strategy_.needs_rebuild(ctx.frame, n_active));
         if (size_stale || disp_rebuild) {
             strategy_.build(ctx.frame, n_active);
             strategy_.refresh_half(ctx.frame, n_active, pairs_);
@@ -91,6 +146,9 @@ public:
 
     /// @brief Total rebuild count since construction (includes initial build()).
     int n_rebuilds() const { return n_rebuilds_; }
+
+    /// @brief LAMMPS `neigh_modify check` flag (`true` = `check yes`).
+    bool check() const { return check_; }
 
     /// @brief Access the current pair list (read-only).
     const PairList& pairs() const { return pairs_; }
@@ -138,6 +196,10 @@ private:
     double cutoff_;
     int every_ = 1;
     int delay_ = 10;
+    /// @brief LAMMPS `neigh_modify check` flag. `true` (= `check yes`):
+    /// displacement-gated rebuild. `false` (= `check no`): rebuild on every
+    /// `every`/`delay`-eligible step regardless of displacement.
+    bool check_ = true;
     /// @brief Steps since the last actual rebuild. Starts at 0 after `build()`
     /// (the initial enumeration), incremented once per `launch()`.
     int ago_ = 0;
