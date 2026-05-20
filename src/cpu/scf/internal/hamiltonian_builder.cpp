@@ -21,16 +21,25 @@ void HamiltonianBuilder::prepare(const IntegralPack& integrals,
 
     const bool is_hf = (config.method == MeanFieldType::HF);
     if (!is_hf && !integrals.atoms.empty()) {
-        const auto t_grid = LogClock::now();
-        ATV_INFO(
-            "[scf] grid build start natm={} radial={} angular={}",
-            integrals.atoms.size(), config.n_radial, config.n_angular);
-        grid_ = build_molecular_grid(integrals.atoms.data(),
-                                     static_cast<int>(integrals.atoms.size()),
-                                     config.n_radial, config.n_angular);
-        ATV_INFO(
-            "[scf] grid build done points={} ms={:.1f}",
-            grid_.points.size(), elapsed_ms(t_grid));
+        if (config.fixed_grid != nullptr) {
+            // Externally supplied grid: used by the fixed-grid FD KS
+            // gradient oracle so the +/- displacements share one grid.
+            grid_ = *config.fixed_grid;
+            ATV_INFO(
+                "[scf] grid build skipped: using supplied fixed grid points={}",
+                grid_.points.size());
+        } else {
+            const auto t_grid = LogClock::now();
+            ATV_INFO(
+                "[scf] grid build start natm={} radial={} angular={}",
+                integrals.atoms.size(), config.n_radial, config.n_angular);
+            grid_ = build_molecular_grid(integrals.atoms.data(),
+                                         static_cast<int>(integrals.atoms.size()),
+                                         config.n_radial, config.n_angular);
+            ATV_INFO(
+                "[scf] grid build done points={} ms={:.1f}",
+                grid_.points.size(), elapsed_ms(t_grid));
+        }
     }
 }
 

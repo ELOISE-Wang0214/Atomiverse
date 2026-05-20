@@ -199,8 +199,23 @@ inline XCGridResult evaluate_xc_batched(
     auto Vxc_b_d = xt::linalg::dot(xt::transpose(Phi_wb), Phi);
 
     if (is_gga) {
-        // ga_d = 2*(2*vsigma_aa*grad_rho_a_d + vsigma_ab*grad_rho_b_d)
-        // gb_d = 2*(2*vsigma_bb*grad_rho_b_d + vsigma_ab*grad_rho_a_d)
+        // GGA contribution to the XC potential matrix.
+        //
+        //   Vxc_a^sigma(mu,nu) = sum_g sum_d ga_d(g)
+        //                            * [Phi(mu)dPhi(nu,d) + dPhi(mu,d)Phi(nu)]
+        //   ga_d = w * (2*vsigma_aa*grad_rho_a_d + vsigma_ab*grad_rho_b_d)
+        //   gb_d = w * (2*vsigma_bb*grad_rho_b_d + vsigma_ab*grad_rho_a_d)
+        //
+        // E_xc = sum_g w f(sigma), sigma_aa = grad_rho_a . grad_rho_a, with the
+        // P-symmetric form grad_rho_a_d = sum_kl P_a(kl)[dPhi(k,d)Phi(l) +
+        // Phi(k)dPhi(l,d)]. Then dE/dP_a(mu,nu) = sum_g w [2*vsigma_aa*gra_d
+        // + vsigma_ab*grb_d] * [dPhi(mu,d)Phi(nu)+Phi(mu)dPhi(nu,d)]. The
+        // symmetric [Phi*dPhi + dPhi*Phi] pair is already supplied by the two
+        // GEMMs below, so ga_d carries NO extra factor of 2. An earlier
+        // spurious `* 2.0` here doubled the GGA potential, leaving the SCF
+        // converged at a density where Vxc != dE_xc/dP; that broke the
+        // density-relaxation cancellation in the analytic KS nuclear gradient
+        // (spec phase1-productization-02-ks-dshell-gradient).
         auto vsa = xt::reshape_view(vsigma_aa_out, {Gs, size_t(1)});
         auto vsab = xt::reshape_view(vsigma_ab_out, {Gs, size_t(1)});
         auto vsb = xt::reshape_view(vsigma_bb_out, {Gs, size_t(1)});
@@ -220,8 +235,8 @@ inline XCGridResult evaluate_xc_batched(
         const xt::xtensor<double, 2>* dPhi_arr[3] = {&dPhi_x, &dPhi_y, &dPhi_z};
 
         for (int d = 0; d < 3; ++d) {
-            auto ga_d = w_col * 2.0 * (2.0 * vsa * (*grad_rho_a[d]) + vsab * (*grad_rho_b[d]));
-            auto gb_d = w_col * 2.0 * (2.0 * vsb * (*grad_rho_b[d]) + vsab * (*grad_rho_a[d]));
+            auto ga_d = w_col * (2.0 * vsa * (*grad_rho_a[d]) + vsab * (*grad_rho_b[d]));
+            auto gb_d = w_col * (2.0 * vsb * (*grad_rho_b[d]) + vsab * (*grad_rho_a[d]));
             const auto& dPhi_d = *dPhi_arr[d];
 
             // Vxc_a += (Phi * ga_d)^T @ dPhi_d + dPhi_d^T @ (Phi * ga_d)

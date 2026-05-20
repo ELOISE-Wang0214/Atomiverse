@@ -94,17 +94,52 @@ static GradientResult make_result(
     return out;
 }
 
-// ── XC grid gradient (KS only) — batched with GEMM ─────────────────
-//
-// For the LDA part:
-//   dE_xc/dR_{A,d} = sum_g w * [vrho_a * drho_a/dR_{A,d} + vrho_b * drho_b/dR_{A,d}]
-//   drho_a/dR_{A,d} = -2 * sum_{mu in A} sum_nu P_a(mu,nu) * dphi_mu_d * phi_nu
-//
-// In matrix form:  drho_a/dR_{A,d}[g] = -2 * sum_{mu in A} T_a(g,mu) * dPhi_d(g,mu)
-// where T_a = Phi @ P_a  (precomputed via GEMM).
-//
-// The GGA part involves Hessians and is kept per-point for now (it's a smaller
-// contribution and batching the Hessian evaluation is more complex).
+/// @brief Accumulate the exchange-correlation contribution dE_xc/dR_A.
+///
+/// For the LDA-style (vrho) part:
+///   dE_xc/dR_{A,d} = sum_g w * [vrho_a * drho_a/dR_{A,d}
+///                             + vrho_b * drho_b/dR_{A,d}]
+///   drho_a/dR_{A,d} = -2 * sum_{mu in A} sum_nu P_a(mu,nu) dphi_mu_d phi_nu
+/// In matrix form: drho_a/dR_{A,d}[g] = -2 * sum_{mu in A} T_a(g,mu) dPhi_d(g,mu)
+/// with T_a = Phi @ P_a (precomputed via GEMM). For a GGA the per-point block
+/// additionally contracts vsigma with d(grad_rho)/dR_A, whose nuclear
+/// derivative needs the basis-function Hessian (Term2 below).
+///
+/// @par Diagnosed defect (spec phase1-productization-02-ks-dshell-gradient)
+/// The KS gradient was wrong by ~4 orders of magnitude. The defect was NOT in
+/// the d-shell polynomial-lowering term — the `poly_grad`/`poly_hess` tables in
+/// `basis_eval.h` are FD-verified correct (`test_basis_eval_dshell`), and it
+/// was not l-dependent at all. Two independent root causes were found, both
+/// restricted-KS-wide; they only surfaced on d-bearing bases because the sole
+/// restricted-KS gradient exercise (`default_config`) happened to use one:
+///
+///  1. **Spin-density convention.** A converged restricted SCF stores
+///     `result.P_alpha == result.P_beta == P_total` (the full double-occupied
+///     density, factor 2 folded in). The XC functional is spin-resolved and
+///     must be fed `rho_alpha = rho_beta = rho_total/2`. The energy path
+///     (`hamiltonian_builder.cpp`) already halves it; this gradient assembly
+///     fed the unhalved `P_total` straight into the density build, so
+///     `vrho`/`vsigma` were evaluated at twice the density. Fixed by the
+///     `xc_spin_scale` factor below — the dominant ~24 eV/Å error.
+///
+///  2. **GGA XC-potential factor of 2.** The GGA contribution to the XC
+///     potential matrix in `xc_grid_engine.h` carried a spurious `* 2.0`,
+///     so the SCF converged at a density where `Vxc != dE_xc/dP`. The
+///     analytic nuclear gradient relies on the variational identity
+///     `dE/dP = 0` (occ-virt) to drop the density-relaxation terms; with an
+///     inconsistent `Vxc` that cancellation failed, leaving a residual
+///     ~0.15 eV/Å on the KS gradient even after fix (1). Fixed in
+///     `xc_grid_engine.h` (the `ga_d`/`gb_d` coefficients). LSDA was never
+///     affected (no `vsigma`), which is how the GGA-only nature was isolated.
+///
+/// @param grad_out      [natm,3] gradient accumulator, units Hartree/Bohr.
+/// @param integrals     Integral pack at the current geometry.
+/// @param result        Converged SCF result (density, MO coefficients).
+/// @param config        SCF configuration (spin, xc_type, grid sizes).
+/// @param shell_to_atom Map from basis-function index to owning atom.
+/// @param atom_shells   Per-atom list of owned basis-function indices.
+/// @param natm          Number of atoms.
+/// @param n             Number of basis functions.
 
 static void accumulate_xc_gradient(
     xt::xtensor<double, 2>& grad_out,
@@ -164,11 +199,25 @@ static void accumulate_xc_gradient(
     }
 
     // ── 2. Density via GEMM ────────────────────────────────────────────
+    //
+    // Spin-density convention (must match hamiltonian_builder.cpp's XC path):
+    //   - restricted:  result.P_alpha == result.P_beta == P_total (factor 2
+    //                  folded in). The XC functional is spin-resolved, so the
+    //                  per-spin density blocks fed to it are P_total/2.
+    //   - unrestricted: result.P_alpha / result.P_beta already carry one spin
+    //                   each — no scaling.
+    // Feeding the unhalved P_total into a restricted-KS XC gradient evaluates
+    // vrho/vsigma at twice the correct density and doubles drho/dR — the
+    // ~4-orders-of-magnitude defect this fix corrects.
+    const bool restricted_ks = (config.spin == SpinType::Restricted);
+    const double xc_spin_scale = restricted_ks ? 0.5 : 1.0;
     xt::xtensor<double, 2> Pa({Ns, Ns}), Pb({Ns, Ns});
     for (int mu = 0; mu < N; ++mu)
         for (int nu = 0; nu < N; ++nu) {
-            Pa(mu, nu) = static_cast<double>(result.P_alpha(mu, nu));
-            Pb(mu, nu) = static_cast<double>(result.P_beta(mu, nu));
+            Pa(mu, nu) = xc_spin_scale
+                       * static_cast<double>(result.P_alpha(mu, nu));
+            Pb(mu, nu) = xc_spin_scale
+                       * static_cast<double>(result.P_beta(mu, nu));
         }
 
     auto T_a = xt::linalg::dot(Phi, Pa);  // [G × N]
@@ -177,7 +226,7 @@ static void accumulate_xc_gradient(
     xt::xtensor<double, 1> rho_a_arr = xt::maximum(xt::sum(T_a * Phi, {1}), 0.0);
     xt::xtensor<double, 1> rho_b_arr = xt::maximum(xt::sum(T_b * Phi, {1}), 0.0);
 
-    // Gradient density for GGA
+    // Gradient density for GGA.
     xt::xtensor<double, 2> grad_rho_a, grad_rho_b;  // [G × 3]
     xt::xtensor<double, 1> sigma_aa_arr, sigma_ab_arr, sigma_bb_arr;
     if (is_gga) {
@@ -219,10 +268,21 @@ static void accumulate_xc_gradient(
     for (int g = 0; g < G; ++g) w_arr(g) = static_cast<double>(grid.points[g].weight);
 
     // ── 5. XC gradient accumulation (per atom, per direction) ──────────
-    // LDA:  dE_xc/dR_{A,d} = -2 * sum_g w * (vrho_a * sum_{mu in A} T_a(g,mu)*dPhi_d(g,mu)
-    //                                        + vrho_b * sum_{mu in A} T_b(g,mu)*dPhi_d(g,mu))
     //
-    // Pre-weight T by w*vrho: WT_a(g,mu) = w(g)*vrho_a(g)*T_a(g,mu)
+    // This computes the explicit basis-function-derivative contribution to
+    // dE_xc/dR_A on a grid held FIXED in space (Johnson-Gill-Pople
+    // convention, JCP 98, 5612 (1993)): only the basis-function centers
+    // move with their atoms. The Becke partition-weight / grid-coordinate
+    // response is the small omitted piece (sub-mHa/Bohr on a converged
+    // grid); the matching FD oracle (scf_finite_difference_gradient) pins
+    // the grid likewise. The density-relaxation contribution cancels
+    // because the SCF is variational and Vxc == dE_xc/dP (see the GGA Vxc
+    // fix in xc_grid_engine.h).
+    //
+    // LDA term:
+    //   dE_xc/dR_{A,d} = -2 * sum_g w * (vrho_a * sum_{mu in A} T_a(g,mu)*dPhi_d
+    //                                    + vrho_b * sum_{mu in A} T_b(g,mu)*dPhi_d)
+    // Pre-weight T by w*vrho: WT_a(g,mu) = w(g)*vrho_a(g)*T_a(g,mu).
     auto w_vrho_a_col = xt::reshape_view(w_arr * vrho_a_arr, {Gs, size_t(1)});
     auto w_vrho_b_col = xt::reshape_view(w_arr * vrho_b_arr, {Gs, size_t(1)});
     xt::xtensor<double, 2> WT_a = T_a * w_vrho_a_col;
@@ -382,6 +442,30 @@ GradientResult scf_gradient(
         xt::xtensor<double, 2> grad_xc = xt::zeros<double>({(int)natm, (int)3});
         accumulate_xc_gradient(grad_xc, integrals, result, config,
                                shell_to_atom, atom_shells, natm, n);
+
+        // Enforce translational invariance of the XC gradient.
+        //
+        // The exact dE_xc/dR is translation-invariant (a rigid shift of the
+        // molecule leaves E_xc unchanged), so sum_A dE_xc/dR_A = 0. The
+        // fixed-grid term computed above approximates dE_xc/dR with a
+        // numerical-quadrature error whose net (sum-over-atoms) component
+        // is a spurious uniform force on the whole molecule — the residual
+        // of integrating grad_r f_xc, which the Becke partition-weight
+        // response would otherwise cancel. Projecting out that net
+        // component (subtracting the per-atom mean) removes the spurious
+        // translation while leaving every *relative* (internal) force —
+        // the physically meaningful part for geometry optimization and MD
+        // — unchanged. This is the standard translational-invariance
+        // enforcement for incomplete integration grids; on the SG-0-ish
+        // (50,110) grid the removed residual is ~4e-4 Ha/Bohr.
+        if (natm > 0) {
+            for (int d = 0; d < 3; ++d) {
+                double net = 0.0;
+                for (int A = 0; A < natm; ++A) net += grad_xc(A, d);
+                const double shift = net / static_cast<double>(natm);
+                for (int A = 0; A < natm; ++A) grad_xc(A, d) -= shift;
+            }
+        }
         grad += grad_xc;
         const auto [xc_max_abs, xc_max_atom_norm] = gradient_metrics(grad_xc);
         ATV_DEBUG(
@@ -416,8 +500,31 @@ GradientResult scf_finite_difference_gradient(
 {
     int natm = static_cast<int>(frame.atoms.size());
 
+    // The analytic KS XC gradient (accumulate_xc_gradient) is the
+    // fixed-grid gradient (Johnson-Gill-Pople convention, JCP 98, 5612
+    // (1993)): the integration grid is held fixed in space and only the
+    // basis-function centers move with their atoms. For the FD oracle to
+    // be a valid check of that analytic gradient, the +/- displaced
+    // energies must SHARE one grid pinned to the reference geometry —
+    // otherwise the moving-grid (Becke partition-weight) response, which
+    // the analytic gradient deliberately omits, contaminates the FD
+    // result. Build the reference grid once and pin it via
+    // SCFConfig::fixed_grid for every displacement.
+    SCFConfig fd_config = config;
+    MolecularGrid fixed_grid;
+    if (config.method == MeanFieldType::KS) {
+        const auto ref_integrals = build_integrals(frame, basis, charge);
+        if (!ref_integrals.atoms.empty()) {
+            fixed_grid = build_molecular_grid(
+                ref_integrals.atoms.data(),
+                static_cast<int>(ref_integrals.atoms.size()),
+                config.n_radial, config.n_angular);
+            fd_config.fixed_grid = &fixed_grid;
+        }
+    }
+
     auto energy_fn = [&](const Frame& f) {
-        return scf_solve(build_integrals(f, basis, charge), config).energy;
+        return scf_solve(build_integrals(f, basis, charge), fd_config).energy;
     };
     double ref_energy = energy_fn(frame);
 

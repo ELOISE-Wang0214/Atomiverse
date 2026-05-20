@@ -27,6 +27,8 @@ namespace ATV {
 namespace cpu {
 namespace scf {
 
+struct MolecularGrid;  // fwd-decl: cpu/scf/grid.h
+
 /// @brief Mean-field method type.
 enum class MeanFieldType { HF, KS };
 
@@ -78,6 +80,16 @@ struct SCFConfig {
     ///          that time the native path. Has no effect on the Fock build,
     ///          which is always native.
     bool force_native_two_electron_deriv = false;
+
+    /// @brief Optional externally supplied XC integration grid (KS only).
+    /// @details When non-null, the KS Fock build uses this grid verbatim
+    ///          instead of regenerating one from the current atom
+    ///          positions. The finite-difference KS gradient oracle uses
+    ///          it to hold the grid FIXED across the +/- displacements so
+    ///          the FD result matches the fixed-grid analytic XC gradient
+    ///          (Johnson-Gill-Pople convention; see gradient.cpp). The
+    ///          pointee must outlive the scf_solve call. Not owned.
+    const MolecularGrid* fixed_grid = nullptr;
 };
 
 /// @brief Optional density-matrix initial guess for SCF iterations.
