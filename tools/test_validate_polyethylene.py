@@ -18,8 +18,16 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from validate_polyethylene import (  # noqa: E402
+    EquilibriumStats,
+    Report,
     ThermoTolerances,
+    Tolerances,
+    _check_equilibrium,
+    _end_to_end_r2,
+    _rdf_first_peak,
+    _read_xyz,
     compare_thermo_per_step,
+    compute_equilibrium_stats,
     main,
 )
 
@@ -114,3 +122,121 @@ def test_main_thermo_exits_one_on_breaching_fixtures():
 
 def test_main_thermo_exits_two_on_missing_reference(tmp_path):
     assert main(["--check", "thermo", "--reference-dir", str(tmp_path)]) == 2
+
+
+# ── Phase D.3 — equilibrium helpers ──────────────────────────────────────────
+
+
+def test_rdf_first_peak_finds_first_interior_maximum():
+    r = [0.5, 1.5, 2.5, 3.5, 4.5]
+    g = [0.0, 1.0, 3.0, 1.0, 0.8]
+    assert _rdf_first_peak(r, g) == (2.5, 3.0)
+
+
+def test_rdf_first_peak_returns_zero_when_no_interior_peak():
+    assert _rdf_first_peak([0.5, 1.5, 2.5], [0.0, 0.0, 0.0]) == (0.0, 0.0)
+
+
+def test_end_to_end_r2_matches_hand_computation():
+    frame = [(0.0, 0.0, 0.0), (3.0, 4.0, 0.0)]  # |dr|^2 = 25
+    assert _end_to_end_r2([frame], [(0, 1)]) == pytest.approx(25.0)
+
+
+def test_end_to_end_r2_rejects_out_of_range_chain():
+    with pytest.raises(ValueError):
+        _end_to_end_r2([[(0.0, 0.0, 0.0)]], [(0, 5)])
+
+
+def test_read_xyz_parses_multiframe_trajectory(tmp_path):
+    path = tmp_path / "traj.xyz"
+    path.write_text(
+        "2\nStep 0\n0 0.0 0.0 0.0\n0 1.0 0.0 0.0\n"
+        "2\nStep 100\n0 0.0 2.0 0.0\n0 0.0 3.0 0.0\n"
+    )
+    frames = _read_xyz(str(path))
+    assert len(frames) == 2
+    assert frames[0][1] == (1.0, 0.0, 0.0)
+    assert frames[1][0] == (0.0, 2.0, 0.0)
+
+
+def test_read_xyz_raises_on_truncated_frame(tmp_path):
+    path = tmp_path / "bad.xyz"
+    path.write_text("3\nStep 0\n0 0.0 0.0 0.0\n")  # declares 3 atoms, has 1
+    with pytest.raises(ValueError):
+        _read_xyz(str(path))
+
+
+def _eq_stats(density=0.95, epot=-500.0, rdf_pos=4.0, rdf_h=2.5, r2=400.0):
+    return EquilibriumStats(density, epot, rdf_pos, rdf_h, r2)
+
+
+def test_check_equilibrium_passes_within_tolerance():
+    rep = Report()
+    _check_equilibrium(_eq_stats(), _eq_stats(), Tolerances(), rep)
+    assert rep.passed()
+
+
+def test_check_equilibrium_flags_density_breach():
+    rep = Report()
+    av = _eq_stats(density=0.95 * 1.015)  # +1.5% > 1% tol
+    _check_equilibrium(av, _eq_stats(), Tolerances(), rep)
+    assert [f.name for f in rep.failures] == ["equilibrium:density"]
+
+
+def test_check_equilibrium_rdf_peak_position_uses_absolute_band():
+    rep = Report()
+    av = _eq_stats(rdf_pos=4.0 + 0.06)  # +0.06 A > 0.05 A absolute tol
+    _check_equilibrium(av, _eq_stats(), Tolerances(), rep)
+    assert any(f.name == "equilibrium:rdf_peak_pos" for f in rep.failures)
+
+
+def test_compute_equilibrium_stats_assembles_observables():
+    thermo = [{"volume": "1000.0", "E_pot": "-500.0"},
+              {"volume": "1000.0", "E_pot": "-500.0"}]
+    rdf = ([0.5, 1.5, 2.5, 3.5], [0.0, 1.0, 3.0, 1.0])
+    frame = [(0.0, 0.0, 0.0), (0.0, 0.0, 0.0), (2.0, 0.0, 0.0)]
+    stats = compute_equilibrium_stats(thermo, rdf, [frame], [(0, 2)],
+                                      total_mass_amu=600.0)
+    assert stats.epot_mean_eV == pytest.approx(-500.0)
+    assert stats.rdf_peak_pos_A == 2.5
+    assert stats.r2_mean_A2 == pytest.approx(4.0)
+    assert stats.density_g_cm3 == pytest.approx(600.0 / 1000.0 * 1.66053906660)
+
+
+# ── main --check equilibrium — integration ───────────────────────────────────
+
+
+def _seed_equilibrium_dir(path, volume=1000.0):
+    """Write the three equilibrium input files for a 2-chain x 3-bead system."""
+    os.makedirs(path, exist_ok=True)
+    with open(os.path.join(path, "equilibrium_thermo.csv"), "w") as f:
+        f.write("volume,E_pot\n")
+        f.write(f"{volume},-500.0\n{volume},-500.0\n")
+    with open(os.path.join(path, "rdf.csv"), "w") as f:
+        f.write("r,g\n0.5,0.0\n1.5,0.5\n2.5,2.0\n3.5,1.0\n4.5,1.0\n")
+    with open(os.path.join(path, "trajectory.xyz"), "w") as f:
+        frame = ("6\nStep {s}\n"
+                 "0 0.0 0.0 0.0\n0 1.0 0.0 0.0\n0 2.0 0.0 0.0\n"
+                 "0 0.0 5.0 0.0\n0 0.0 6.0 0.0\n0 0.0 7.0 0.0\n")
+        f.write(frame.format(s=0))
+        f.write(frame.format(s=100))
+
+
+def test_main_equilibrium_exits_zero_on_matching(tmp_path):
+    av, ref = tmp_path / "av", tmp_path / "ref"
+    _seed_equilibrium_dir(str(av))
+    _seed_equilibrium_dir(str(ref))
+    rc = main(["--check", "equilibrium", "--atomiverse-dir", str(av),
+               "--reference-dir", str(ref),
+               "--n-chains", "2", "--chain-length", "3"])
+    assert rc == 0
+
+
+def test_main_equilibrium_exits_one_on_seeded_density_breach(tmp_path):
+    av, ref = tmp_path / "av", tmp_path / "ref"
+    _seed_equilibrium_dir(str(av), volume=1000.0)
+    _seed_equilibrium_dir(str(ref), volume=900.0)  # ~10% density gap
+    rc = main(["--check", "equilibrium", "--atomiverse-dir", str(av),
+               "--reference-dir", str(ref),
+               "--n-chains", "2", "--chain-length", "3"])
+    assert rc == 1

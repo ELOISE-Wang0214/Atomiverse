@@ -1,6 +1,6 @@
 ---
 title: MSU-PE Phase D.3 — equilibrium-state observable comparison vs LAMMPS
-status: approved
+status: in-progress
 created: 2026-05-20
 parent: msu-pe-validation.md
 ---
@@ -53,14 +53,14 @@ Ownership: all new code lives in `validate_polyethylene.py`; no module split is 
 
 ## Tasks
 
-- [ ] Write failing tests for RDF first-peak and end-to-end-R² helpers (tools/test_validate_polyethylene.py)
-- [ ] Implement _read_xyz, _rdf_first_peak, and _end_to_end_r2 in tools/validate_polyethylene.py
-- [ ] Implement EquilibriumStats and compute_equilibrium_stats in tools/validate_polyethylene.py
-- [ ] Write failing tests for _check_equilibrium tolerance gating (tools/test_validate_polyethylene.py)
-- [ ] Implement equilibrium Tolerances fields and _check_equilibrium in tools/validate_polyethylene.py
-- [ ] Implement --check {all,thermo,stress-strain,equilibrium} dispatch in main()
-- [ ] Write integration test asserting non-zero exit on a seeded equilibrium breach (tools/test_validate_polyethylene.py)
-- [ ] Run full check + test suite
+- [x] Write failing tests for RDF first-peak and end-to-end-R² helpers (tools/test_validate_polyethylene.py)
+- [x] Implement _read_xyz, _rdf_first_peak, and _end_to_end_r2 in tools/validate_polyethylene.py
+- [x] Implement EquilibriumStats and compute_equilibrium_stats in tools/validate_polyethylene.py
+- [x] Write failing tests for _check_equilibrium tolerance gating (tools/test_validate_polyethylene.py)
+- [x] Implement equilibrium Tolerances fields and _check_equilibrium in tools/validate_polyethylene.py
+- [x] Implement --check {all,thermo,stress-strain,equilibrium} dispatch in main()
+- [x] Write integration test asserting non-zero exit on a seeded equilibrium breach (tools/test_validate_polyethylene.py)
+- [x] Run full check + test suite
 
 ## Testing strategy
 
