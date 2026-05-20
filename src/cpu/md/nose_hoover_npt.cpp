@@ -73,9 +73,24 @@ inline double expm1c(double x) {
 } // namespace
 
 NoseHooverNPT::NoseHooverNPT(Config cfg)
-    : T_target_(cfg.T_target), tau_T_(cfg.tau_T),
+    : T_target_(cfg.T_target),
+      // `T_stop` defaults to the -1 sentinel meaning "no ramp" — fold it
+      // to `T_target` so `compute_temp_target` sees `T_start == T_stop`
+      // and the linear interpolation degenerates to the constant
+      // setpoint. This mirrors LAMMPS `fix_nh.cpp` ctor line
+      // `t_target = t_start` when only one temperature is given.
+      T_stop_(cfg.T_stop < 0.0 ? cfg.T_target : cfg.T_stop),
+      tau_T_(cfg.tau_T),
       P_target_(cfg.P_target), tau_P_(cfg.tau_P), dt_(cfg.dt),
-      drag_(cfg.drag), mtchain_(cfg.mtchain), mpchain_(cfg.mpchain) {}
+      drag_(cfg.drag), mtchain_(cfg.mtchain), mpchain_(cfg.mpchain),
+      couple_axis_(cfg.couple_axis) {
+    // `pdim` = number of barostatted axes (LAMMPS `fix_nh.cpp`
+    // `pdim = p_flag[0] + p_flag[1] + p_flag[2]`).
+    pdim_ = (couple_axis_[0] ? 1 : 0)
+          + (couple_axis_[1] ? 1 : 0)
+          + (couple_axis_[2] ? 1 : 0);
+    T_live_ = T_target_;
+}
 
 /// @see LAMMPS `FixNH::setup()` (`src/fix_nh.cpp`) — the barostat /
 ///      thermostat mass initialisation (`eta_mass`, `omega_mass`,
@@ -132,6 +147,31 @@ void NoseHooverNPT::build(const cpu::BuildContext& ctx) {
     KE_global_ = 0.5 * static_cast<double>(n_dof_) * kT_;
 }
 
+/// @see LAMMPS `FixNH::compute_temp_target()` (`src/fix_nh.cpp`):
+///
+///     double delta = update->ntimestep - update->beginstep;
+///     if (delta != 0.0) delta /= update->endstep - update->beginstep;
+///     t_target = t_start + delta * (t_stop - t_start);
+///
+/// Atomiverse uses the cumulative MD step index (`LaunchContext::step`,
+/// continuous across chunked `run()` calls) for `ntimestep`, and the
+/// `[nfirst_, nlast_]` span supplied by `set_run_span()` for
+/// `beginstep`/`endstep`. `delta` is clamped to `[0,1]` so stepping
+/// past `nlast_` (e.g. an over-long final `run()` chunk) holds the
+/// setpoint at `T_stop_` instead of extrapolating. With the default
+/// span (`nlast_ <= nfirst_`) or `T_stop_ == T_target_`, the live
+/// setpoint stays at `T_target_` — the no-ramp default.
+void NoseHooverNPT::compute_temp_target(int step) {
+    double delta = 0.0;
+    if (nlast_ > nfirst_) {
+        delta = static_cast<double>(step - nfirst_)
+              / static_cast<double>(nlast_ - nfirst_);
+        delta = std::clamp(delta, 0.0, 1.0);
+    }
+    T_live_ = T_target_ + delta * (T_stop_ - T_target_);
+    kT_     = kBoltzmann * T_live_;
+}
+
 double NoseHooverNPT::compute_global_KE(const cpu::LaunchContext& ctx) const {
     const auto& f = ctx.frame;
     const int n   = owned_count(ctx);
@@ -154,6 +194,32 @@ double NoseHooverNPT::compute_global_KE(const cpu::LaunchContext& ctx) const {
     }
 #endif
     return ke;
+}
+
+/// @see The per-axis analogue of `compute_global_KE` — `KE_α = ½Σ m·v_α²`
+///      for the anisotropic barostat's per-axis driving pressure.
+std::array<double, 3>
+NoseHooverNPT::compute_axis_KE(const cpu::LaunchContext& ctx) const {
+    const auto& f = ctx.frame;
+    const int n   = owned_count(ctx);
+    double kx = 0.0, ky = 0.0, kz = 0.0;
+    #pragma omp parallel for schedule(static) reduction(+:kx,ky,kz)
+    for (int i = 0; i < n; ++i) {
+        const double m = f.atoms.mass[i];
+        kx += m * f.atoms.vx[i] * f.atoms.vx[i];
+        ky += m * f.atoms.vy[i] * f.atoms.vy[i];
+        kz += m * f.atoms.vz[i] * f.atoms.vz[i];
+    }
+    double ke[3] = {0.5 * kMvv2e * kx, 0.5 * kMvv2e * ky, 0.5 * kMvv2e * kz};
+#ifdef ATV_HAS_MPI
+    if (ctx.runtime.mpi_size > 1 && ctx.runtime.dd
+        && ctx.runtime.dd->cart_comm != MPI_COMM_NULL) {
+        double local[3] = {ke[0], ke[1], ke[2]};
+        MPI_Allreduce(local, ke, 3, MPI_DOUBLE, MPI_SUM,
+                      ctx.runtime.dd->cart_comm);
+    }
+#endif
+    return {ke[0], ke[1], ke[2]};
 }
 
 /// @see LAMMPS `FixNH::nhc_temp_integrate()` (`src/fix_nh.cpp`).
@@ -229,16 +295,36 @@ void NoseHooverNPT::nhc_atoms_half(const cpu::LaunchContext& ctx, double half_dt
 ///      for `pstyle == ISO`.
 void NoseHooverNPT::nhc_baro_half(double half_dt) {
     // Same M-chain pattern as `nhc_atoms_half`, but the innermost link
-    // thermostats the barostat momentum `eps_dot` instead of atom KE.
+    // thermostats the barostat momenta `ε̇_α` instead of atom KE.
     // Drag (`pdrag_factor`) is applied at every link in the backward
     // sweep and dropped in the forward sweep, matching LAMMPS
     // `fix_nh.cpp::nhc_press_integrate`.
+    //
+    // The barostat NHC is a single chain over the *active* `ε̇_α` set —
+    // a single collective barostat DOF (LAMMPS keeps `lkt_press = kt`
+    // for `pstyle == ISO`; Atomiverse keeps the single-DOF target for
+    // every coupling so the all-axes case stays bit-compatible with the
+    // pre-change isotropic integrator). The innermost-link force uses
+    // the summed barostat KE `2·KE_baro = Σ_{α active} W_axis·ε̇_α²`
+    // with `W_axis = W_/3` the per-axis barostat mass (LAMMPS
+    // `omega_mass`; the isotropic total `W_ = 3·W_axis`). For the
+    // all-coupled, all-equal case `Σ_α W_axis·ε̇_α² = W_·ε̇²`, exactly
+    // the legacy scalar form.
     const double quarter_dt = 0.5 * half_dt;
     const double eighth_dt  = 0.5 * quarter_dt;
     const int M = mpchain_;
+    const double W_axis = W_ / 3.0;
+
+    // Summed barostat kinetic-energy term `2·KE_baro` over active axes.
+    auto baro_2ke = [&]() -> double {
+        double s = 0.0;
+        for (int a = 0; a < 3; ++a)
+            if (couple_axis_[a]) s += W_axis * eps_dot_[a] * eps_dot_[a];
+        return s;
+    };
 
     auto G_b = [&](int k) -> double {
-        if (k == 0) return (W_ * eps_dot_ * eps_dot_ - kT_) / Q_b_[0];
+        if (k == 0) return (baro_2ke() - kT_) / Q_b_[0];
         return (Q_b_[static_cast<std::size_t>(k - 1)]
                   * eta_b_dot_[static_cast<std::size_t>(k - 1)]
                   * eta_b_dot_[static_cast<std::size_t>(k - 1)] - kT_)
@@ -256,8 +342,11 @@ void NoseHooverNPT::nhc_baro_half(double half_dt) {
         eta_b_dot_[static_cast<std::size_t>(k)] *= expfac;
     }
 
-    // Scale the box-volume momentum by the innermost baro-thermostat.
-    eps_dot_ *= std::exp(-eta_b_dot_[0] * half_dt);
+    // Scale each active box-length momentum by the innermost
+    // baro-thermostat (LAMMPS `factor_etap` over the active `omega_dot`).
+    const double baro_scale = std::exp(-eta_b_dot_[0] * half_dt);
+    for (int a = 0; a < 3; ++a)
+        if (couple_axis_[a]) eps_dot_[a] *= baro_scale;
 
     for (int k = 0; k < M; ++k)
         eta_b_[static_cast<std::size_t>(k)] +=
@@ -274,65 +363,152 @@ void NoseHooverNPT::nhc_baro_half(double half_dt) {
     }
 }
 
-/// @see LAMMPS `FixNH::nh_omega_dot()` (`src/fix_nh.cpp`). Atomiverse's
-///      `G_eps·W = 3V·(P_int−P_target) + (6/N_f)·KE` equals 3× LAMMPS's
-///      per-axis `f_omega·omega_mass` (pressure term + `mtk_term1`)
-///      once `W = 3·omega_mass` is substituted.
+/// @see LAMMPS `FixNH::nh_omega_dot()` + `FixNH::couple()` (`src/fix_nh.cpp`).
+///      Atomiverse integrates a per-axis `ε̇_α` for each barostatted
+///      axis, mirroring LAMMPS's per-axis `omega_dot[i]` loop guarded by
+///      `p_flag[i]`, and applies LAMMPS's `couple()` pressure-averaging
+///      rule.
+///
+/// **Pressure coupling (mirrors `FixNH::couple()`).** When all three
+/// axes are barostatted (`pdim_ == 3` — LAMMPS `pstyle == ISO` /
+/// `pcouple == XYZ`), `couple()` sets every `p_current[i]` to the
+/// *averaged* pressure `trace(σ)/(3V)`; the three `omega_dot` are then
+/// driven by the identical force and stay equal — a single isotropic
+/// volume DOF. When only some axes are active, each uses its own
+/// diagonal stress `σ_αα/V`. Honouring this averaging is what makes the
+/// all-axes case reduce **bit-for-bit** to the legacy isotropic scalar
+/// `G_ε` (msu-pe-align-01 ac-004 regression guard) — driving the three
+/// axes from the slightly-unequal instantaneous per-axis stress would
+/// be a different (still valid) trajectory.
+///
+/// **Driving force.** LAMMPS per-axis `f_omega = (p_current[i]−p_hydro)·
+/// V/omega_mass[i] + mtk_term1/omega_mass[i]`. Atomiverse uses
+/// `W = 3·omega_mass` and the historical `G_ε = 3·f_omega`, so
+///
+///     G_{ε,α}·W = 3V·(P_α − P_target) + mtk_term
+///
+/// with `P_α` the (possibly averaged) axis pressure.
+///
+/// **MTK kinetic coupling.** LAMMPS `mtk_term1 = (Σ_{α active} 2·KE_α)
+/// / (pdim·N)` — the per-axis kinetic energies summed over the active
+/// axes. Atomiverse splits the global KE isotropically (`KE_α = KE/3`,
+/// the same split used for the pressure term's kinetic diagonal), so
+/// `Σ_{α active} 2·KE_α = pdim·(2·KE/3)` and the `pdim` cancels:
+/// `mtk_term1 = 2·KE/(3·N)` independent of `pdim`. The Atomiverse term
+/// `mtk_term = 3·mtk_term1` is therefore the legacy `(6/N_dof)·KE` for
+/// **every** coupling — no `pdim` scaling — which keeps the all-coupled
+/// path bit-identical to the pre-change isotropic integrator and keeps
+/// the partial-coupling Trotter split symplectic (an earlier `3/pdim`
+/// scaling over-drove the barostat and broke MTK-Hamiltonian
+/// conservation for `pdim < 3`).
 void NoseHooverNPT::update_eps_dot(const cpu::LaunchContext& ctx, double half_dt) {
     const auto& f = ctx.frame;
     const double V = f.box.volume();
     if (V <= 0.0) return;
 
     // Standard MTK sign convention (Tuckerman 2006, LAMMPS `fix_nh.cpp`):
+    // pressure positive ⇔ compressive. `frame.stress[0..2]` holds the
+    // per-axis pair-virial diagonal; the kinetic diagonal `2·KE_α` is
+    // computed fresh from the current velocities (NOT the stale
+    // `frame.stress_kinetic` snapshot taken at `post_force` time, before
+    // `kick_v_by_force` / `scale_v_by_baro` — using it pumped a runaway
+    // box drift; see tests/cpu/md/test_lammps_npt_parity.cpp).
     //
-    //     P_int = trace(σ) / (3V)        ; positive ⇔ compressive
-    //     G_ε   = [3V (P_int − P_ext) + (6/N_f) KE_atoms] / W
-    //
-    // `frame.stress[0..2]` now holds the pair-virial trace only;
-    // `frame.stress_kinetic` carries the kinetic stress snapshot from
-    // `post_force` time. That snapshot is stale here: velocities have
-    // since been kicked by `kick_v_by_force` (P7) and rescaled by
-    // `scale_v_by_baro` (P8). We therefore reconstruct the kinetic
-    // contribution from `KE_global_`, which is freshly tracked through
-    // P8 — the trace of Σ m·v_α·v_β equals `2·KE`. Using the stale
-    // stored kinetic component is what produced the runaway box
-    // expansion in `tests/cpu/md/test_lammps_npt_parity.cpp` (the
-    // ~6 % per-step mismatch with the freshly tracked `KE_global_`
-    // pumped a sustained positive drift into `ε̇`).
-    //
-    // Historical pitfall (fixed 2026-05-19): the previous formula used
-    // `P_int = -trace/(3V)` plus `+(P_target - P_int)` to match the
-    // Berendsen barostat's internal convention — but the KE coupling
-    // was still in standard convention, so the two terms didn't cancel
-    // at equilibrium and the box monotonically inflated even after T
-    // equilibrated (caught by tests/cpu/md/test_lammps_npt_parity.cpp).
-    const double trace_virial      = f.stress[0] + f.stress[1] + f.stress[2];
-    const double trace_kinetic_now = 2.0 * KE_global_;
-    const double P_int             = (trace_virial + trace_kinetic_now) / (3.0 * V);
+    // Why a *fresh per-axis* kinetic diagonal: `scale_v_by_baro` scales
+    // velocity component α by `exp(-ε̇_α·dt/2)`, removing `2·ε̇_α·KE_α`
+    // from the atom KE. For the per-axis Trotter split to be symplectic,
+    // the barostat must absorb exactly that — i.e. axis α's driving
+    // pressure must carry its OWN `2·KE_α`, not a `2·KE/3` isotropic
+    // estimate. Driving a genuinely-anisotropic barostat from the
+    // isotropic KE split leaves a residual that drifts the MTK
+    // Hamiltonian secularly (caught by Slow_AnisoNptConserves…).
+    const std::array<double, 3> ke_axis = compute_axis_KE(ctx);
 
-    const double G_eps = (3.0 * V * (P_int - P_target_)
-                          + (6.0 / static_cast<double>(n_dof_)) * KE_global_)
-                         / W_;
-    eps_dot_ += G_eps * half_dt;
+    // Per-axis virial + kinetic diagonal, with LAMMPS `couple()`
+    // averaging applied when all three axes are coupled (the isotropic /
+    // `pcouple==XYZ` case): every `p_current[i]` is set to the averaged
+    // pressure, collapsing the three forces to one shared value so the
+    // all-coupled path is bit-identical to the legacy scalar `G_ε`.
+    double diag[3] = {f.stress[0] + 2.0 * ke_axis[0],
+                      f.stress[1] + 2.0 * ke_axis[1],
+                      f.stress[2] + 2.0 * ke_axis[2]};
+    if (pdim_ == 3) {
+        const double ave = (1.0 / 3.0) * (diag[0] + diag[1] + diag[2]);
+        diag[0] = diag[1] = diag[2] = ave;
+    }
+
+    // MTK kinetic coupling. With the per-axis KE summed over active axes
+    // the `pdim` cancels (see the function-doc derivation), so this is
+    // the legacy `(6/N_dof)·KE` for every coupling.
+    const double mtk_term = (pdim_ > 0)
+        ? (6.0 / static_cast<double>(n_dof_)) * KE_global_
+        : 0.0;
+
+    for (int a = 0; a < 3; ++a) {
+        if (!couple_axis_[a]) continue;  // rigid axis: ε̇_α stays 0.
+        const double P_axis  = diag[a] / V;  // = (virial_α + 2·KE_α)/V
+        const double G_eps_a = (3.0 * V * (P_axis - P_target_) + mtk_term)
+                               / W_;
+        eps_dot_[a] += G_eps_a * half_dt;
+    }
 }
 
-/// @see LAMMPS `FixNH::nh_v_press()` (`src/fix_nh.cpp`). LAMMPS applies
-///      `exp(-dt/4·(ω̇+mtk_term2))` twice (net `exp(-dt/2·…)`); the
-///      `mtk_term2 = Σω̇/(pdim·N)` coupling equals our `(3/N_dof)·ε̇`
-///      for the isotropic single-`ε̇` representation.
+/// @see LAMMPS `FixNH::nh_v_press()` (`src/fix_nh.cpp`). LAMMPS scales
+///      velocity component α by `exp(-dt/2·(ω̇_α + mtk_term2))` (two
+///      `dt/4` applications); `mtk_term2 = Σ_active ω̇/(pdim·N)`.
+///
+/// Atomiverse generalises the legacy isotropic `exp(-(1+3/N_dof)·ε̇·dt/2)`
+/// to a per-axis factor: velocity component α scales by
+/// `exp(-(ε̇_α + mtk_term2)·dt/2)`. A rigid axis (`couple_axis_[α]==false`,
+/// `ε̇_α == 0`) still receives the global `mtk_term2` coupling — exactly
+/// LAMMPS, where `mtk_term2` is added to every component's factor.
+///
+/// `mtk_term2 = (Σ_active ε̇)/N_dof`. For the all-coupled case
+/// `Σ_active ε̇ = 3·ε̇`, so `mtk_term2 = (3/N_dof)·ε̇` and the per-axis
+/// factor collapses to the legacy `exp(-(1+3/N_dof)·ε̇·dt/2)`
+/// bit-for-bit (ac-004).
+///
+/// The `1/N_dof` (no `1/pdim`) is what keeps the per-axis split
+/// symplectic: `scale_v_by_baro` removes `2·mtk_term2·KE` from the atom
+/// KE, which must equal the MTK term the barostat absorbs across its
+/// `pdim` active axes (`pdim·mtk/3`); that balance fixes
+/// `mtk_term2 = (Σ_active ε̇)/N_dof`. An earlier `(3/N_dof)/pdim` form
+/// over-removed atom KE for `pdim < 3` and drifted the MTK Hamiltonian.
 void NoseHooverNPT::scale_v_by_baro(const cpu::LaunchContext& ctx, double half_dt) {
     auto& f = ctx.frame;
     const int n = owned_count(ctx);
-    const double factor = -(1.0 + 3.0 / static_cast<double>(n_dof_)) * eps_dot_;
-    const double scale  = std::exp(factor * half_dt);
+
+    // MTK velocity-coupling term — global, applied to all 3 components.
+    double sum_eps_dot = 0.0;
+    for (int a = 0; a < 3; ++a)
+        if (couple_axis_[a]) sum_eps_dot += eps_dot_[a];
+    const double mtk_term2 = sum_eps_dot / static_cast<double>(n_dof_);
+
+    const double sx = std::exp(-(eps_dot_[0] + mtk_term2) * half_dt);
+    const double sy = std::exp(-(eps_dot_[1] + mtk_term2) * half_dt);
+    const double sz = std::exp(-(eps_dot_[2] + mtk_term2) * half_dt);
 
     #pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
-        f.atoms.vx[i] *= scale;
-        f.atoms.vy[i] *= scale;
-        f.atoms.vz[i] *= scale;
+        f.atoms.vx[i] *= sx;
+        f.atoms.vy[i] *= sy;
+        f.atoms.vz[i] *= sz;
     }
-    KE_global_ *= scale * scale;
+
+    // KE bookkeeping. Isotropic fast-path: when all three scale factors
+    // are identical (the all-axes-coupled case, or any case where the
+    // active `ε̇_α` happen to coincide) the cached `KE_global_` scales
+    // multiplicatively — algebraically identical to the legacy
+    // `KE_global_ *= scale*scale` and MPI-safe without a reduction
+    // (ac-004 bit-stability). Otherwise the per-axis scaling does not
+    // factor through a single scalar, so `KE_global_` is recomputed
+    // from the post-scale velocities (`compute_global_KE` is itself
+    // MPI-aware, summing across ranks).
+    if (sx == sy && sy == sz) {
+        KE_global_ *= sx * sx;
+    } else {
+        KE_global_ = compute_global_KE(ctx);
+    }
 }
 
 /// @see LAMMPS `FixNH::nve_v()` (`src/fix_nh.cpp`) — the half-step
@@ -354,34 +530,48 @@ void NoseHooverNPT::kick_v_by_force(const cpu::LaunchContext& ctx, double half_d
 
 /// @see LAMMPS `FixNH::nve_x()` + `FixNH::remap()` (`src/fix_nh.cpp`).
 ///      LAMMPS brackets the plain `x += dt·v` drift between two
-///      half-step `remap()` box rescalings; Atomiverse fuses both into
-///      the closed-form `x·e^{ε̇dt} + v·dt·(e^{ε̇dt}−1)/(ε̇dt)` plus a
-///      single `box.scale_isotropic(e^{ε̇dt})`.
+///      half-step `remap()` box rescalings, scaling each axis edge by
+///      `exp(dt·omega_dot[i])` only when `p_flag[i]` is set. Atomiverse
+///      fuses both into the closed-form per-axis
+///      `x_α·e^{ε̇_α·dt} + v_α·dt·(e^{ε̇_α·dt}−1)/(ε̇_α·dt)` plus a
+///      single `box.scale_diagonal(...)`.
+///
+/// A rigid axis (`couple_axis_[α]==false`) has `ε̇_α == 0`, so its scale
+/// factor is `exp(0)=1` and its drift factor is `expm1c(0)=1`: the
+/// position update on that axis degenerates to the plain `x += v·dt`
+/// drift and the box edge is left untouched — exactly LAMMPS skipping
+/// `remap()` for an axis absent from `p_flag`.
 void NoseHooverNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
     const int n = owned_count(ctx);
 
-    // Cap per-step box scaling to ~10% to avoid integer overflow in cell-list
-    // grid sizing if eps_dot diverges (NaN/inf) from a transient stress
-    // spike. Once clamped, the bound forces the NHC-baro thermostat to take
-    // over within a few steps and bring eps_dot back to physical values.
-    const double eps_dt = std::clamp(eps_dot_ * dt_,
-                                     -kEpsDtMaxFraction, kEpsDtMaxFraction);
-    const double a      = std::exp(eps_dt);
-    // Velocity-drift factor `(e^{ε̇·dt} − 1)/(ε̇·dt)` — the exact MTK
-    // position propagator. NOT the bare `sinhc(ε̇·dt/2)`: that omits the
-    // `e^{ε̇·dt/2}` half and is a first-order error in `ε̇·dt`.
-    const double drift  = expm1c(eps_dt * 0.5);
+    // Per-axis `ε̇_α·dt`, clamped to ~±0.5%/step to fence off a
+    // transient diverging `ε̇` (NaN/inf) from blowing up cell-list grid
+    // sizing. A rigid axis has `ε̇_α == 0` ⇒ `eps_dt[α] == 0`.
+    double eps_dt[3], a[3], drift[3];
+    for (int d = 0; d < 3; ++d) {
+        eps_dt[d] = std::clamp(eps_dot_[d] * dt_,
+                               -kEpsDtMaxFraction, kEpsDtMaxFraction);
+        a[d]      = std::exp(eps_dt[d]);
+        // Velocity-drift factor `(e^{ε̇·dt} − 1)/(ε̇·dt)` — the exact MTK
+        // position propagator. `expm1c(0) == 1` for a rigid axis.
+        drift[d]  = expm1c(eps_dt[d] * 0.5);
+    }
+    const double ax = a[0], ay = a[1], az = a[2];
+    const double dx = drift[0], dy = drift[1], dz = drift[2];
 
     #pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
-        f.atoms.x[i] = f.atoms.x[i] * a + f.atoms.vx[i] * dt_ * drift;
-        f.atoms.y[i] = f.atoms.y[i] * a + f.atoms.vy[i] * dt_ * drift;
-        f.atoms.z[i] = f.atoms.z[i] * a + f.atoms.vz[i] * dt_ * drift;
+        f.atoms.x[i] = f.atoms.x[i] * ax + f.atoms.vx[i] * dt_ * dx;
+        f.atoms.y[i] = f.atoms.y[i] * ay + f.atoms.vy[i] * dt_ * dy;
+        f.atoms.z[i] = f.atoms.z[i] * az + f.atoms.vz[i] * dt_ * dz;
     }
 
-    // Update box edges: V_new = V * exp(3 eps_dot dt) ⇒ each edge *= exp(eps_dot dt).
-    f.box.scale_isotropic(a);
+    // Update box edges per axis: edge_α *= exp(ε̇_α·dt). A rigid axis
+    // multiplies by exp(0)=1, i.e. is left unchanged. For the all-coupled
+    // case all three factors are equal so this is identical to the
+    // legacy `box.scale_isotropic(a)`.
+    f.box.scale_diagonal(ax, ay, az);
 
     // Wrap (orthorhombic) owned atoms into the freshly-scaled box.
     wrap_orthorhombic(f, n);
@@ -408,8 +598,13 @@ double NoseHooverNPT::extended_hamiltonian(const cpu::LaunchContext& ctx) const 
     const auto& f = ctx.frame;
     // Atom kinetic + potential energy.
     double H = f.kinetic + f.energy;
-    // Barostat kinetic energy ½·W·ε̇².
-    H += 0.5 * W_ * eps_dot_ * eps_dot_;
+    // Barostat kinetic energy Σ_α ½·W_axis·ε̇_α² over active axes, with
+    // `W_axis = W_/3` the per-axis barostat mass. For the all-coupled,
+    // all-equal case this sums to the legacy `½·W_·ε̇²`.
+    const double W_axis = W_ / 3.0;
+    for (int a = 0; a < 3; ++a)
+        if (couple_axis_[a])
+            H += 0.5 * W_axis * eps_dot_[a] * eps_dot_[a];
     // Nosé-Hoover chain kinetic energies Σ ½·Q·η̇².
     for (int k = 0; k < mtchain_; ++k) {
         const auto i = static_cast<std::size_t>(k);
@@ -443,6 +638,21 @@ void NoseHooverNPT::launch(const cpu::LaunchContext& ctx) {
     const double half_dt = 0.5 * dt_;
 
     if (ctx.stage == static_cast<int>(ATV::md::Phase::initial_integrate)) {
+        // Interpolate the live thermostat setpoint for this step before
+        // the chain integrates, mirroring LAMMPS `FixNH::initial_integrate`
+        // calling `compute_temp_target()` ahead of `nhc_temp_integrate()`.
+        // `compute_temp_target` updates `kT_`; recompute the atom-NHC
+        // chain masses from it so the ramp preserves the chain
+        // frequency, exactly as LAMMPS recomputes `eta_mass` each step
+        // (`eta_mass_flag` is always set). With `T_stop == T_target`
+        // (no ramp) `kT_` is constant ⇒ `Q_t_` is recomputed to
+        // identical values, so the no-ramp path stays bit-stable.
+        compute_temp_target(ctx.step);
+        const double tau_T2 = tau_T_ * tau_T_;
+        Q_t_[0] = static_cast<double>(n_dof_) * kT_ * tau_T2;
+        for (int k = 1; k < mtchain_; ++k)
+            Q_t_[static_cast<std::size_t>(k)] = kT_ * tau_T2;
+
         // First half of Trotter (P1 -- P6). Outer-NHC order matches
         // LAMMPS `FixNH::initial_integrate` — `nhc_press_integrate()`
         // is called before `nhc_temp_integrate()`: the baro chain

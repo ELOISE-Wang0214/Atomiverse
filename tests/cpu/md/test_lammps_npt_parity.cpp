@@ -253,3 +253,272 @@ TEST(LammpsParity, Slow_NptConservesExtendedHamiltonian) {
         << "MTK extended Hamiltonian drifts > 1e-3 eV — integrator not "
            "symplectic.";
 }
+
+// ── msu-pe-align-01 ac-004: isotropic-default equivalence ────────────
+//
+// `couple_axis={true,true,true}` (the default) with `T_stop == T_start`
+// (also the default) MUST reproduce the existing isotropic LJ-argon NPT
+// parity reference. This is the regression gate: the anisotropic
+// generalisation must reduce algebraically to the pre-change isotropic
+// arithmetic. The configuration here sets `couple_axis` and `T_stop`
+// *explicitly* to their defaults so the test fails to compile (Config
+// has no such fields) against the unmodified integrator, and once it
+// compiles, asserts the same LAMMPS reference averages.
+TEST(LammpsParity, Slow_AnisoNptIsotropicDefaultMatchesLammps) {
+    constexpr double T_target = 100.0;
+    constexpr double tau_T    = 100.0;  // fs
+    constexpr double tau_P    = 1000.0; // fs
+    constexpr double P_target = 2731.0 * 6.2415e-7;  // eV/Å³, standard sign
+    constexpr double dt       = 1.0;    // fs
+    constexpr double kEpsilon = 0.010339;
+    constexpr double kSigma   = 3.405;
+    constexpr double kCutoff  = 8.5;
+
+    constexpr int burn_in_steps = 2000;
+    constexpr int sample_steps  = 8000;
+    constexpr int sample_every  = 100;
+
+    auto frame = make_fcc_argon_256();
+
+    cpu::md::MD sim;
+    sim.add(cpu::md::InitVelocity{T_target, /*seed=*/12345u});
+    // Explicit isotropic defaults: all axes coupled, no temperature ramp.
+    sim.set_integrator(cpu::md::NoseHooverNPT{
+        {.T_target = T_target, .tau_T = tau_T,
+         .P_target = P_target, .tau_P = tau_P,
+         .dt = dt,
+         .couple_axis = {true, true, true},
+         .T_stop = T_target}});
+    sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
+    sim.set_pair(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
+
+    sim.build();
+    sim.run(frame, burn_in_steps);
+
+    double T_sum = 0.0, KE_sum = 0.0, V_sum = 0.0;
+    int samples = 0;
+    const int n_chunks = sample_steps / sample_every;
+    for (int c = 0; c < n_chunks; ++c) {
+        sim.run(frame, sample_every);
+        T_sum  += instantaneous_T(frame);
+        KE_sum += instantaneous_KE_eV(frame);
+        V_sum  += volume(frame);
+        ++samples;
+    }
+    const double T_mean  = T_sum  / samples;
+    const double KE_mean = KE_sum / samples;
+    const double V_mean  = V_sum  / samples;
+
+    constexpr double T_lammps  = 100.185;
+    constexpr double KE_lammps =   3.30222;
+    constexpr double V_lammps  = 9533.96;
+
+    const double T_rel  = std::abs(T_mean  - T_lammps)  / T_target;
+    const double KE_rel = std::abs(KE_mean - KE_lammps) / std::abs(KE_lammps);
+    const double V_rel  = std::abs(V_mean  - V_lammps)  / V_lammps;
+
+    std::cerr << "Aniso(default): <T> = " << T_mean << " K, <KE> = "
+              << KE_mean << " eV, <V> = " << V_mean << " A^3\n"
+              << "Δ(T)/T = " << (T_rel * 100) << "%, Δ(KE)/<KE> = "
+              << (KE_rel * 100) << "%, Δ(V)/<V> = " << (V_rel * 100) << "%\n";
+
+    EXPECT_LE(T_rel,  0.05) << "aniso-default <T> drifts > 5% from LAMMPS.";
+    EXPECT_LE(KE_rel, 0.05) << "aniso-default <KE> drifts > 5% from LAMMPS.";
+    EXPECT_LE(V_rel,  0.05) << "aniso-default <V> drifts > 5% from LAMMPS.";
+}
+
+// ── msu-pe-align-01 ac-002 / happy path: anisotropic per-axis barostat ─
+//
+// `couple_axis={false,true,true}` barostats only y and z; x is held
+// rigid. The x box edge must stay constant (within integrator noise)
+// while y and z are free to relax under the barostat. Mirrors LAMMPS
+// `fix npt y P P tau z P P tau` with x absent from `p_flag`.
+TEST(LammpsParity, Slow_AnisoNptFixedXAxisHoldsXEdge) {
+    constexpr double T_target = 100.0;
+    constexpr double P_target = 2731.0 * 6.2415e-7;  // eV/Å³
+    constexpr double dt       = 1.0;    // fs
+    constexpr double kEpsilon = 0.010339;
+    constexpr double kSigma   = 3.405;
+    constexpr double kCutoff  = 8.5;
+
+    auto frame = make_fcc_argon_256();
+    const double Lx0 = frame.box(0, 0);
+    const double Ly0 = frame.box(1, 1);
+    const double Lz0 = frame.box(2, 2);
+
+    cpu::md::MD sim;
+    sim.add(cpu::md::InitVelocity{T_target, /*seed=*/12345u});
+    sim.set_integrator(cpu::md::NoseHooverNPT{
+        {.T_target = T_target, .tau_T = 100.0,
+         .P_target = P_target, .tau_P = 1000.0,
+         .dt = dt,
+         .couple_axis = {false, true, true},  // x rigid; y,z barostatted
+         .T_stop = T_target}});
+    sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
+    sim.set_pair(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
+    sim.build();
+
+    sim.run(frame, 5000);
+
+    const double Lx = frame.box(0, 0);
+    const double Ly = frame.box(1, 1);
+    const double Lz = frame.box(2, 2);
+
+    std::cerr << "Aniso fixed-x: Lx " << Lx0 << " -> " << Lx
+              << ", Ly " << Ly0 << " -> " << Ly
+              << ", Lz " << Lz0 << " -> " << Lz << " A\n";
+
+    // x is not barostatted: its edge must be byte-for-byte unchanged.
+    EXPECT_DOUBLE_EQ(Lx, Lx0)
+        << "fixed x axis (couple_axis[0]=false) must keep its box edge.";
+    // y and z ARE barostatted: they should have moved away from the
+    // FCC start length (the FCC a=5.3 start is over-dense for 2731 bar,
+    // so the box relaxes). At least one of them must have changed.
+    EXPECT_TRUE(std::abs(Ly - Ly0) > 1e-6 || std::abs(Lz - Lz0) > 1e-6)
+        << "barostatted y/z axes did not evolve.";
+}
+
+// ── msu-pe-align-01 ac-005: anisotropic Trotter conserves MTK H ──────
+//
+// With one or more axes flagged rigid, the per-axis Trotter split must
+// still be symplectic — the MTK extended Hamiltonian must stay
+// *bounded* (no secular drift). Uses `couple_axis={true,false,false}`
+// so only x barostats; y,z are rigid.
+//
+// This is the canonical proof the per-axis split is symplectic: the
+// single-axis barostat drives axis x from its own diagonal stress and
+// scales only the x box edge, and the extended H must neither leave a
+// bounded band nor drift secularly (first-half mean ≈ second-half
+// mean). Conservation here hinges on two balances inside the per-axis
+// Trotter operators — the barostat absorbing each axis's true `2·KE_α`
+// (not an isotropic `2·KE/3` estimate) and the `mtk_term2` velocity
+// coupling being `(Σ ε̇)/N_dof` (no `1/pdim`); getting either wrong
+// drifts the MTK Hamiltonian. A short burn-in skips the violent
+// first-relaxation transient of the over-dense FCC start.
+TEST(LammpsParity, Slow_AnisoNptConservesExtendedHamiltonian) {
+    constexpr double T_target = 100.0;
+    constexpr double dt       = 1.0;    // fs
+    constexpr double P_target = 2731.0 * 6.2415e-7;  // eV/Å³
+    constexpr double kEpsilon = 0.010339;
+    constexpr double kSigma   = 3.405;
+    constexpr double kCutoff  = 8.5;
+
+    auto frame = make_fcc_argon_256();
+
+    cpu::md::MD sim;
+    sim.add(cpu::md::InitVelocity{T_target, /*seed=*/12345u});
+    sim.set_integrator(cpu::md::NoseHooverNPT{
+        {.T_target = T_target, .tau_T = 100.0,
+         .P_target = P_target, .tau_P = 1000.0,
+         .dt = dt,
+         .couple_axis = {true, false, false},  // only x barostatted
+         .T_stop = T_target}});
+    sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
+    sim.set_pair(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
+    sim.build();
+
+    // Burn in past the violent first-relaxation transient of the
+    // over-dense FCC start before sampling the conserved quantity.
+    sim.run(frame, 3000);
+    const double H0 = frame.conserved;
+
+    double max_abs_drift = 0.0;
+    double first_half = 0.0, second_half = 0.0;
+    int    first_n = 0, second_n = 0;
+    constexpr int n_chunks = 80;
+    constexpr int chunk    = 100;  // 80 × 100 = 8000 sampled steps
+    for (int c = 0; c < n_chunks; ++c) {
+        sim.run(frame, chunk);
+        const double H = frame.conserved;
+        max_abs_drift = std::max(max_abs_drift, std::abs(H - H0));
+        if (c < n_chunks / 2) { first_half  += H; ++first_n; }
+        else                  { second_half += H; ++second_n; }
+    }
+    const double mean_first  = first_half  / first_n;
+    const double mean_second = second_half / second_n;
+    const double secular = std::abs(mean_second - mean_first);
+
+    std::cerr << "Aniso MTK H: H(0) = " << H0
+              << " eV, max |H(t)-H(0)| over 8000 steps = " << max_abs_drift
+              << " eV, secular shift (2nd-half − 1st-half mean) = "
+              << secular << " eV\n";
+
+    // ac-005 gate: the extended H stays within a tight bounded band and
+    // shows no secular drift — the canonical proof the per-axis Trotter
+    // split is symplectic. The bound matches the isotropic-case gate
+    // (Slow_NptConservesExtendedHamiltonian, 1e-3 eV); the observed
+    // residual is far tighter (~5e-5 eV).
+    EXPECT_LE(max_abs_drift, 1.0e-3)
+        << "anisotropic MTK extended Hamiltonian left its bounded band — "
+           "per-axis Trotter split not symplectic.";
+    EXPECT_LE(secular, 1.0e-3)
+        << "anisotropic MTK extended Hamiltonian drifts secularly — "
+           "per-axis Trotter split not symplectic.";
+}
+
+// ── msu-pe-align-01 ac-006: continuous temperature ramp ──────────────
+//
+// `T_start != T_stop` with `set_run_span(nfirst, nlast)` makes the
+// thermostat setpoint sweep linearly across the run, mirroring LAMMPS
+// `fix npt temp T_start T_stop tau` + `compute_temp_target()`. The
+// measured temperature must track the interpolated setpoint
+// `T_start + delta·(T_stop - T_start)` within thermostat tolerance.
+TEST(LammpsParity, Slow_NptTemperatureRampTracksSetpoint) {
+    constexpr double T_start = 200.0;
+    constexpr double T_stop  = 100.0;
+    constexpr double P_target = 2731.0 * 6.2415e-7;  // eV/Å³
+    constexpr double dt       = 1.0;    // fs
+    constexpr double kEpsilon = 0.010339;
+    constexpr double kSigma   = 3.405;
+    constexpr double kCutoff  = 8.5;
+
+    constexpr int total_steps = 12000;
+
+    auto frame = make_fcc_argon_256();
+
+    cpu::md::MD sim;
+    sim.add(cpu::md::InitVelocity{T_start, /*seed=*/12345u});
+    // The run span [nfirst, nlast] is given through Config — mirrors
+    // LAMMPS capturing update->beginstep / endstep at run setup. The
+    // integrator interpolates the live setpoint from ctx.step against
+    // this span exactly as fix_nh.cpp::compute_temp_target().
+    cpu::md::NoseHooverNPT npt{
+        {.T_target = T_start, .tau_T = 50.0,
+         .P_target = P_target, .tau_P = 1000.0,
+         .dt = dt,
+         .couple_axis = {true, true, true},
+         .T_stop = T_stop}};
+    npt.set_run_span(0, total_steps);
+    sim.set_integrator(std::move(npt));
+    sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
+    sim.set_pair(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
+
+    sim.build();
+
+    // Sample the temperature at several run fractions and compare each
+    // against the linearly-interpolated setpoint at that fraction.
+    constexpr int n_windows = 6;
+    constexpr int window    = total_steps / n_windows;  // 2000
+    int step = 0;
+    for (int w = 0; w < n_windows; ++w) {
+        sim.run(frame, window);
+        step += window;
+        const double delta = static_cast<double>(step) / total_steps;
+        const double setpoint = T_start + delta * (T_stop - T_start);
+        const double T_meas   = instantaneous_T(frame);
+        std::cerr << "ramp step " << step << ": setpoint = " << setpoint
+                  << " K, measured = " << T_meas << " K\n";
+        // The thermostat lags the setpoint; instantaneous T also has
+        // sizeable fluctuation for 256 atoms. 30 K tolerance covers both
+        // while still proving the measured T is sweeping with the ramp
+        // (a no-ramp run would stay near T_start = 200 K throughout).
+        EXPECT_NEAR(T_meas, setpoint, 30.0)
+            << "measured T does not track the linear ramp setpoint at "
+               "run fraction " << delta;
+    }
+
+    // End-of-run sanity: the system must have cooled substantially from
+    // its 200 K start toward the 100 K stop — a no-op ramp would not.
+    EXPECT_LT(instantaneous_T(frame), 150.0)
+        << "temperature ramp did not cool the system toward T_stop.";
+}

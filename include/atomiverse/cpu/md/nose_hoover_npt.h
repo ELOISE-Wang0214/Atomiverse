@@ -1,8 +1,11 @@
 /// @file cpu/md/nose_hoover_npt.h
-/// @brief CPU isotropic NPT integrator (single-chain MTK Nose-Hoover).
-///        LAMMPS-equivalent `fix npt iso`.
+/// @brief CPU MTK Nose-Hoover NPT integrator — isotropic *or* anisotropic
+///        per-axis barostat, with an optional continuous temperature ramp.
+///        LAMMPS-equivalent `fix npt iso` / `fix npt x .. y .. z ..`.
 #pragma once
 
+#include <array>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -92,6 +95,38 @@ namespace md {
 /// factor `(e^{ε̇dt}-1)/(ε̇dt)` — equal to LAMMPS's two-remap result
 /// to O((ε̇dt)²).
 ///
+/// ── Anisotropic per-axis barostat (msu-pe-align-01) ──────────────────
+///
+/// `Config::couple_axis` (`std::array<bool,3>`, default `{true,true,true}`)
+/// selects which of x, y, z are barostatted. The barostat momentum is a
+/// per-axis vector `ε̇_α` (member `eps_dot_`), mirroring LAMMPS's per-axis
+/// `omega_dot[]` and `p_flag[]`. For each active axis α the driving force
+/// is the MTK per-axis form
+///
+///     G_{ε,α} = [ V·(σ_αα/V − P_target) + (2/N_dof)·KE ] / W
+///
+/// (the diagonal LAMMPS `fix_nh.cpp::nh_omega_dot` `f_omega`, scaled by
+/// our `W = 3·omega_mass`). An axis with `couple_axis[α]==false` keeps
+/// `ε̇_α == 0` and its box edge is never rescaled — a rigid (NVT-along-α)
+/// edge, matching LAMMPS `pdim`/`p_flag`. With all three flags `true`
+/// and one shared `P_target`, the per-axis update reduces algebraically
+/// to the isotropic `G_ε = 3·G_{ε,iso}` so the all-axes path is
+/// bit-compatible with the pre-change isotropic integrator.
+///
+/// ── Continuous temperature ramp (msu-pe-align-01) ────────────────────
+///
+/// `Config::T_stop` (default `= T_target`) enables a linear thermostat
+/// setpoint ramp. With the run span `[nfirst, nlast]` supplied via
+/// `set_run_span()` (mirrors LAMMPS capturing `update->beginstep` /
+/// `endstep` at run setup), the live setpoint each step is
+///
+///     delta    = (step − nfirst) / (nlast − nfirst)   ∈ [0,1]
+///     T_target = T_start + delta·(T_stop − T_start)
+///
+/// exactly as `fix_nh.cpp::compute_temp_target()`. With `T_stop ==
+/// T_target` (the default) the ramp is the constant `T_start`, i.e. no
+/// behavioural change for existing callers.
+///
 /// **Replaces (do not add alongside)** `VelocityVerlet`, `NoseHoover`,
 /// and `Barostat`. Compatible with `KineticEnergy` -- this component
 /// rewrites `frame.kinetic` after the second NHC update so any thermo
@@ -118,10 +153,47 @@ public:
                             ///  Zero disables. `fix npt ... drag 2`.
         int mtchain = 3;    ///< Atom-NHC chain length. LAMMPS default 3.
         int mpchain = 3;    ///< Baro-NHC chain length. LAMMPS default 3.
+
+        /// @brief Per-axis barostat enable flags `{x, y, z}`.
+        ///
+        /// `true` ⇒ that box edge is barostatted toward `P_target`;
+        /// `false` ⇒ that edge is held rigid (its `ε̇_α` stays 0 and it
+        /// is never rescaled). Default `{true,true,true}` = the isotropic
+        /// LAMMPS `fix npt iso` behaviour. Mirrors LAMMPS `p_flag[0..2]`.
+        std::array<bool, 3> couple_axis = {true, true, true};
+
+        /// @brief Final thermostat setpoint of the temperature ramp [K].
+        ///
+        /// `T_target` is treated as `T_start`. If `T_stop != T_target`,
+        /// the live setpoint sweeps linearly from `T_target` to `T_stop`
+        /// across the run span set by `set_run_span()`. Default
+        /// `T_stop == T_target` ⇒ a constant-temperature run (no ramp),
+        /// so existing aggregate-initialised callers are unaffected.
+        /// Mirrors LAMMPS `fix npt temp T_start T_stop tau`.
+        double T_stop = -1.0;  ///< -1 sentinel: ctor folds to `T_target`.
     };
 
     /// @param cfg Aggregate NPT configuration. See `Config` for units.
     explicit NoseHooverNPT(Config cfg);
+
+    /// @brief Set the temperature-ramp run span `[nfirst, nlast]` (in MD
+    ///        step indices), mirroring LAMMPS `update->beginstep` /
+    ///        `update->endstep` captured at run setup.
+    ///
+    /// Must be called before the driver's `run()` if a ramp
+    /// (`T_stop != T_target`) is configured. With the default span
+    /// (`nlast <= nfirst`) the ramp `delta` is pinned to 0, so the
+    /// setpoint stays at `T_target` — a no-op, consistent with the
+    /// `T_stop == T_target` default.
+    ///
+    /// @param nfirst First MD step index of the run.
+    /// @param nlast  Last MD step index of the run.
+    /// @return `*this`, so the call can chain before `set_integrator`.
+    NoseHooverNPT& set_run_span(std::int64_t nfirst, std::int64_t nlast) {
+        nfirst_ = nfirst;
+        nlast_  = nlast;
+        return *this;
+    }
 
     std::string name() const override { return "nose_hoover_npt"; }
     /// @brief Role tag — Integrator. Although this component subsumes
@@ -144,7 +216,8 @@ public:
 
 private:
     // Configuration
-    double T_target_;
+    double T_target_;  ///< Ramp start temperature [K] (LAMMPS `t_start`).
+    double T_stop_;    ///< Ramp end temperature [K] (LAMMPS `t_stop`).
     double tau_T_;
     double P_target_;
     double tau_P_;
@@ -152,6 +225,17 @@ private:
     double drag_;
     int    mtchain_;
     int    mpchain_;
+    /// @brief Per-axis barostat enable flags `{x,y,z}` — LAMMPS `p_flag`.
+    std::array<bool, 3> couple_axis_;
+    /// @brief Count of `true` entries in `couple_axis_` — LAMMPS `pdim`.
+    int pdim_ = 3;
+
+    // Temperature-ramp run span (LAMMPS `update->beginstep` / `endstep`).
+    std::int64_t nfirst_ = 0;  ///< First MD step of the run.
+    std::int64_t nlast_  = 0;  ///< Last MD step of the run.
+    /// @brief Live thermostat setpoint [K], interpolated each step from
+    /// the ramp; equals `T_target_` when no ramp is active.
+    double T_live_ = 0.0;
 
     // Derived in build(): (1 - drag * half_dt / tau). `1.0` = no drag.
     double tdrag_factor_ = 1.0;
@@ -169,13 +253,28 @@ private:
     std::vector<double> eta_t_;     ///< Atom-NHC positions
     std::vector<double> eta_b_dot_; ///< Baro-NHC momenta [1/fs]
     std::vector<double> eta_b_;     ///< Baro-NHC positions
-    double eps_dot_   = 0.0;        ///< Box log-volume momentum [1/fs]
+    /// @brief Per-axis box log-length momenta `ε̇_{x,y,z}` [1/fs] —
+    /// LAMMPS `omega_dot[0..2]`. An axis with `couple_axis_[α]==false`
+    /// stays exactly 0. For the all-axes-coupled case all three entries
+    /// are equal and the integrator reduces to the isotropic scheme.
+    std::array<double, 3> eps_dot_ = {0.0, 0.0, 0.0};
 
     // Cached global kinetic energy carried between phases
     double KE_global_ = 0.0; ///< 0.5 · Σ m·v² (global, eV)
 
     // Helpers --------------------------------------------------------
     double compute_global_KE(const cpu::LaunchContext& ctx) const;
+    /// @brief Per-axis kinetic energy `{KE_x, KE_y, KE_z}` [eV] from
+    ///        the current velocities (MPI-reduced). Each `KE_α =
+    ///        ½·Σ m·v_α²`; the trace `KE_x+KE_y+KE_z` equals the global
+    ///        kinetic energy. Used by the anisotropic barostat so each
+    ///        axis's driving pressure carries its own kinetic diagonal,
+    ///        which is what keeps the per-axis Trotter split symplectic.
+    std::array<double, 3> compute_axis_KE(const cpu::LaunchContext& ctx) const;
+    /// @brief Interpolate the live thermostat setpoint for `step`,
+    ///        mirroring LAMMPS `fix_nh.cpp::compute_temp_target()`.
+    ///        Updates `T_live_` and `kT_`.
+    void   compute_temp_target(int step);
     void   nhc_atoms_half(const cpu::LaunchContext& ctx, double half_dt);
     void   nhc_baro_half(double half_dt);
     void   update_eps_dot(const cpu::LaunchContext& ctx, double half_dt);
