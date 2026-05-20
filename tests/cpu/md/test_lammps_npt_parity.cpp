@@ -200,3 +200,56 @@ TEST(LammpsParity, Slow_NptMatchesLammpsEnsembleAverages) {
     EXPECT_LE(KE_rel, 0.05) << "NPT <KE> drifts > 5% from LAMMPS reference.";
     EXPECT_LE(V_rel,  0.05) << "NPT <V> drifts > 5% from LAMMPS reference.";
 }
+
+// ── ac-006: MTK extended-Hamiltonian conservation ────────────────────
+//
+// A correct symplectic NPT integrator conserves the *extended* MTK
+// Hamiltonian (atom KE+PE + barostat KE + both NHC chains' KE/PE +
+// p·V) — NOT the plain KE+PE, which exchanges energy with the
+// thermostat/barostat. `NoseHooverNPT` publishes it to
+// `frame.conserved` every step (the `Conserved` column of `Thermo`).
+// This test runs the parity system 10 000 steps and asserts the
+// extended H neither drifts nor blows up — the canonical proof the
+// integrator's Trotter splitting is symplectic.
+TEST(LammpsParity, Slow_NptConservesExtendedHamiltonian) {
+    constexpr double T_target = 100.0;
+    constexpr double dt       = 1.0;    // fs
+    constexpr double P_target = 2731.0 * 6.2415e-7;  // eV/Å³
+    constexpr double kEpsilon = 0.010339;
+    constexpr double kSigma   = 3.405;
+    constexpr double kCutoff  = 8.5;
+
+    auto frame = make_fcc_argon_256();
+
+    cpu::md::MD sim;
+    sim.add(cpu::md::InitVelocity{T_target, /*seed=*/12345u});
+    sim.set_integrator(cpu::md::NoseHooverNPT{
+        {.T_target = T_target, .tau_T = 100.0,
+         .P_target = P_target, .tau_P = 1000.0,
+         .dt = dt}});
+    sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
+    sim.set_pair(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
+    sim.build();
+
+    // One step to populate frame.conserved, then take that as H(0).
+    sim.run(frame, 1);
+    const double H0 = frame.conserved;
+
+    double max_abs_drift = 0.0;
+    constexpr int n_chunks = 100;
+    constexpr int chunk    = 100;  // 100 × 100 = 10 000 steps
+    for (int c = 0; c < n_chunks; ++c) {
+        sim.run(frame, chunk);
+        max_abs_drift = std::max(max_abs_drift,
+                                 std::abs(frame.conserved - H0));
+    }
+
+    std::cerr << "MTK extended H: H(0) = " << H0 << " eV, "
+              << "max |H(t) - H(0)| over 10000 steps = " << max_abs_drift
+              << " eV\n";
+
+    // ac-006 gate: the extended Hamiltonian is conserved to 1e-3 eV.
+    EXPECT_LE(max_abs_drift, 1.0e-3)
+        << "MTK extended Hamiltonian drifts > 1e-3 eV — integrator not "
+           "symplectic.";
+}

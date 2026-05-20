@@ -182,6 +182,10 @@ private:
     void   scale_v_by_baro(const cpu::LaunchContext& ctx, double half_dt);
     void   kick_v_by_force(const cpu::LaunchContext& ctx, double half_dt);
     void   propagate_x_and_box(const cpu::LaunchContext& ctx);
+    /// @brief The conserved MTK extended Hamiltonian — written to
+    /// `frame.conserved` each step so `Thermo` can log it and a flat
+    /// trace can confirm the integrator is symplectic.
+    double extended_hamiltonian(const cpu::LaunchContext& ctx) const;
 };
 
 } // namespace md

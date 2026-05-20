@@ -15,7 +15,9 @@ namespace cpu {
 
 /// @brief Thermodynamic output recorder component (CPU backend).
 ///
-/// Prints step, PE, KE, temperature at the given frequency.
+/// Prints step, PE, KE, temperature, total energy, and the
+/// integrator's conserved quantity (`frame.conserved` — the extended
+/// Hamiltonian for Nosé-Hoover NVT/NPT) at the given frequency.
 /// MPI-aware: only rank 0 prints.
 class Thermo : public cpu::ComponentBase {
 public:

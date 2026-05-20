@@ -27,14 +27,22 @@ void Thermo::launch(const cpu::LaunchContext& ctx) {
 
     double total_energy = f.energy + f.kinetic;
 
+    // `Conserved` is the integrator's conserved quantity (extended
+    // Hamiltonian for Nosé-Hoover NVT/NPT); `0` when no integrator
+    // populates `frame.conserved`. A flat column confirms the
+    // integrator is symplectic — for NVT/NPT, `TotalE` itself is *not*
+    // conserved (energy flows to the thermostat / barostat).
     if (ctx.step == 0) {
-        ATV_INFO("  Step          PE              KE           Temp         TotalE");
-        ATV_INFO("  ----  --------------- --------------- --------------- ---------------");
+        ATV_INFO("  Step          PE              KE           Temp         "
+                 "TotalE         Conserved");
+        ATV_INFO("  ----  --------------- --------------- --------------- "
+                 "--------------- ---------------");
     }
 
-    ATV_INFO("  {:4d}  {:15.8e} {:15.8e} {:15.8e} {:15.8e}",
+    ATV_INFO("  {:4d}  {:15.8e} {:15.8e} {:15.8e} {:15.8e} {:15.8e}",
              ctx.step, static_cast<double>(f.energy), static_cast<double>(f.kinetic),
-             static_cast<double>(temperature), static_cast<double>(total_energy));
+             static_cast<double>(temperature), static_cast<double>(total_energy),
+             static_cast<double>(f.conserved));
 }
 
 // ── thermo_print free function ─────────────────────────────────────

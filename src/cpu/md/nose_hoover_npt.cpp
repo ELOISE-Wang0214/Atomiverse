@@ -398,6 +398,42 @@ void NoseHooverNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
     }
 }
 
+/// @brief MTK extended (conserved) Hamiltonian — the quantity an exact
+///        symplectic NPT integrator holds constant. Atom KE + PE +
+///        barostat KE + both NHC chains' KE/PE + p·V.
+/// @see LAMMPS `FixNH::compute_scalar()` (`src/fix_nh.cpp`) — the same
+///      thermostat+barostat energy LAMMPS adds to PE+KE for its
+///      `econserve` thermo keyword.
+double NoseHooverNPT::extended_hamiltonian(const cpu::LaunchContext& ctx) const {
+    const auto& f = ctx.frame;
+    // Atom kinetic + potential energy.
+    double H = f.kinetic + f.energy;
+    // Barostat kinetic energy ½·W·ε̇².
+    H += 0.5 * W_ * eps_dot_ * eps_dot_;
+    // Nosé-Hoover chain kinetic energies Σ ½·Q·η̇².
+    for (int k = 0; k < mtchain_; ++k) {
+        const auto i = static_cast<std::size_t>(k);
+        H += 0.5 * Q_t_[i] * eta_t_dot_[i] * eta_t_dot_[i];
+    }
+    for (int k = 0; k < mpchain_; ++k) {
+        const auto i = static_cast<std::size_t>(k);
+        H += 0.5 * Q_b_[i] * eta_b_dot_[i] * eta_b_dot_[i];
+    }
+    // Chain potential energies. The atom chain's innermost link
+    // thermostats all N_dof atomic DOFs (potential N_dof·kT·η_t[0]);
+    // every other link thermostats one DOF (kT·η). The isotropic
+    // barostat is a single DOF, so each baro-chain link contributes
+    // kT·η_b.
+    H += static_cast<double>(n_dof_) * kT_ * eta_t_[0];
+    for (int k = 1; k < mtchain_; ++k)
+        H += kT_ * eta_t_[static_cast<std::size_t>(k)];
+    for (int k = 0; k < mpchain_; ++k)
+        H += kT_ * eta_b_[static_cast<std::size_t>(k)];
+    // Pressure-volume term.
+    H += P_target_ * f.box.volume();
+    return H;
+}
+
 /// @see LAMMPS `FixNH::initial_integrate()` (front-half P1-P6) and
 ///      `FixNH::final_integrate()` (back-half P7-P11), `src/fix_nh.cpp`.
 ///      Atomiverse splits LAMMPS's `final_integrate()` across the MD
@@ -444,6 +480,11 @@ void NoseHooverNPT::launch(const cpu::LaunchContext& ctx) {
         // Rewrite frame.kinetic so observers bound at end_of_step @ > -40
         // see the post-NPT kinetic energy.
         ctx.frame.kinetic = KE_global_;
+
+        // Publish the conserved MTK extended Hamiltonian for `Thermo`
+        // and the conservation regression gate. Computed last, once the
+        // atoms, box, ε̇ and both chains hold their end-of-step values.
+        ctx.frame.conserved = extended_hamiltonian(ctx);
     }
 }
 

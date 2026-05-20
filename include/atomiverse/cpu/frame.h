@@ -152,6 +152,17 @@ public:
 
     double energy = 0;     ///< Potential energy [eV].
     double kinetic = 0;    ///< Kinetic energy [eV].
+    /// @brief Integrator's conserved quantity [eV].
+    ///
+    /// For an extended-Lagrangian integrator this is the conserved
+    /// *extended* Hamiltonian — e.g. `NoseHooverNPT` writes the full
+    /// MTK Hamiltonian (atom KE+PE + barostat KE + Nosé-Hoover chain
+    /// KE/PE + p·V). For a plain symplectic integrator it is just
+    /// `KE+PE`. The integrator writes it once per step; it stays `0`
+    /// when no integrator populates it. A flat `conserved` trace is the
+    /// canonical correctness check that an integrator is symplectic;
+    /// `Thermo` logs it as a column.
+    double conserved = 0;
     /// @brief Pair / bonded virial tensor Σ r·F [eV], Voigt order xx yy zz xy xz yz.
     ///
     /// Written by pair potentials (LJ, Coulomb, ...) and bonded
