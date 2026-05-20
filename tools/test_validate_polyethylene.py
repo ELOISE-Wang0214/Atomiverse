@@ -1,12 +1,16 @@
-"""Tests for tools/validate_polyethylene.py — Phase D.2 per-step thermo parity.
+"""Tests for tools/validate_polyethylene.py — statistical block-average thermo.
 
 Covers:
-* compare_thermo_per_step — matching pass, single-step breach localisation,
-  per-column threshold separation, step-misalignment detection, n_steps window.
+* block_average — known constant series (mean + zero SEM), partial-block drop
+  (trailing block shorter than block_size discarded, n_blocks == floor).
+* compare_thermo_statistical — same-distribution pass, shifted-mean breach
+  naming the breaching column, per-column threshold independence.
 * main(["--check","thermo", ...]) — exit-code contract (0 / 1 / 2) against the
-  synthetic fixtures under tools/testdata/pe_thermo/.
+  synthetic statistical fixtures under tools/testdata/pe_thermo/.
 
-@see .claude/specs/msu-pe-phase-d-02-thermo-parity.md
+The D.3 equilibrium and D.4 stress-strain tests below are unchanged.
+
+@see .claude/specs/msu-pe-align-03-statistical-thermo.md
 """
 
 import os
@@ -18,15 +22,17 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from validate_polyethylene import (  # noqa: E402
+    BlockStat,
     EquilibriumStats,
     Report,
-    ThermoTolerances,
+    StatTolerances,
     Tolerances,
     _check_equilibrium,
     _end_to_end_r2,
     _rdf_first_peak,
     _read_xyz,
-    compare_thermo_per_step,
+    block_average,
+    compare_thermo_statistical,
     compute_equilibrium_stats,
     main,
     run_checks,
@@ -46,67 +52,74 @@ def _row(step, T=500.0, P=1.0, E_pot=-1000.0, E_kin=300.0,
             "Pzz": str(Pzz)}
 
 
-# ── compare_thermo_per_step — happy path ─────────────────────────────────────
+# ── block_average — known mean / SEM ─────────────────────────────────────────
 
 
-def test_matching_series_has_no_deviations():
-    av = [_row(s) for s in (0, 100, 200)]
-    ref = [_row(s) for s in (0, 100, 200)]
-    assert compare_thermo_per_step(av, ref, ThermoTolerances(), 1000) == []
+def test_block_average_constant_series_gives_mean_and_zero_sem():
+    stat = block_average([7.0] * 20, block_size=5)
+    assert isinstance(stat, BlockStat)
+    assert stat.mean == pytest.approx(7.0)
+    assert stat.sem == pytest.approx(0.0)
+    assert stat.n_blocks == 4
 
 
-# ── compare_thermo_per_step — breach localisation ────────────────────────────
+def test_block_average_mean_is_mean_of_block_means():
+    # Two blocks of 3: block means 2.0 and 5.0 -> overall mean 3.5.
+    stat = block_average([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], block_size=3)
+    assert stat.n_blocks == 2
+    assert stat.mean == pytest.approx(3.5)
+    assert stat.sem > 0.0  # block means differ
 
 
-def test_single_step_breach_names_step_and_rel_err():
-    av = [_row(0), _row(100, T=500.5), _row(200)]
-    ref = [_row(0), _row(100, T=500.0), _row(200)]
-    devs = compare_thermo_per_step(av, ref, ThermoTolerances(), 1000)
-    assert len(devs) == 1
-    dev = devs[0]
-    assert dev.column == "T"
-    assert dev.step == 100
-    assert dev.rel_err == pytest.approx(0.5 / 500.0, rel=1e-9)
+# ── block_average — partial-block drop ───────────────────────────────────────
 
 
-def test_worst_step_is_reported_per_column():
-    av = [_row(0), _row(100, T=500.2), _row(200, T=502.0)]
-    ref = [_row(0), _row(100, T=500.0), _row(200, T=500.0)]
-    devs = compare_thermo_per_step(av, ref, ThermoTolerances(), 1000)
-    assert [d.column for d in devs] == ["T"]
-    assert devs[0].step == 200  # the larger deviation wins
+def test_block_average_drops_trailing_partial_block():
+    # 13 values, block_size 5 -> floor(13/5) == 2 full blocks, 3 dropped.
+    stat = block_average([float(i) for i in range(13)], block_size=5)
+    assert stat.n_blocks == 2  # floor(13 / 5)
+    # Block 0 mean = mean(0..4) = 2.0; block 1 mean = mean(5..9) = 7.0.
+    assert stat.mean == pytest.approx(4.5)
 
 
-# ── compare_thermo_per_step — per-column threshold bands ─────────────────────
+def test_block_average_too_short_series_has_zero_blocks():
+    stat = block_average([1.0, 2.0, 3.0], block_size=5)
+    assert stat.n_blocks == 0
 
 
-def test_threshold_bands_applied_per_column():
-    # ~5e-4 relative deviation: fails the 1e-4 T band ...
-    av_t = [_row(0), _row(100, T=500.25)]
-    ref_t = [_row(0), _row(100, T=500.0)]
-    devs_t = compare_thermo_per_step(av_t, ref_t, ThermoTolerances(), 1000)
-    assert any(d.column == "T" for d in devs_t)
-    # ... but passes the looser 1e-3 Pxx band.
-    av_p = [_row(0), _row(100, Pxx=1.0005)]
-    ref_p = [_row(0), _row(100, Pxx=1.0)]
-    assert compare_thermo_per_step(av_p, ref_p, ThermoTolerances(), 1000) == []
+# ── compare_thermo_statistical — same distribution passes ────────────────────
 
 
-# ── compare_thermo_per_step — step alignment ─────────────────────────────────
+def test_compare_statistical_same_series_has_no_breaches():
+    rows = [_row(s, T=500.0 + (s % 3), E_pot=-1000.0 - (s % 3))
+            for s in range(40)]
+    breaches = compare_thermo_statistical(
+        rows, rows, StatTolerances(), block_size=10)
+    assert breaches == []
 
 
-def test_step_misalignment_is_reported_as_failure():
-    av = [_row(0), _row(100), _row(200)]
-    ref = [_row(0), _row(100)]  # step 200 missing on the reference side
-    devs = compare_thermo_per_step(av, ref, ThermoTolerances(), 1000)
-    assert any(d.column == "step_misalignment" and d.step == 200 for d in devs)
+# ── compare_thermo_statistical — mean-gap breach naming the column ───────────
 
 
-def test_steps_beyond_window_are_excluded():
-    av = [_row(0), _row(100), _row(5000, T=999.0)]
-    ref = [_row(0), _row(100)]
-    # step 5000 is outside the 1000-step window — no misalignment failure.
-    assert compare_thermo_per_step(av, ref, ThermoTolerances(), 1000) == []
+def test_compare_statistical_shifted_T_mean_breaches_T():
+    ref = [_row(s, T=500.0) for s in range(40)]
+    av = [_row(s, T=500.0 * 1.05) for s in range(40)]  # +5% > 2% tol
+    breaches = compare_thermo_statistical(
+        av, ref, StatTolerances(), block_size=10)
+    assert [b.column for b in breaches] == ["T"]
+    assert breaches[0].rel_gap == pytest.approx(0.05, rel=1e-6)
+
+
+# ── compare_thermo_statistical — per-column threshold independence ───────────
+
+
+def test_compare_statistical_per_column_thresholds_independent():
+    # T gap ~3% (breaches 2% T band); E_pot gap ~1% (under 2% E_pot band).
+    ref = [_row(s, T=500.0, E_pot=-1000.0) for s in range(40)]
+    av = [_row(s, T=515.0, E_pot=-1010.0) for s in range(40)]
+    breaches = compare_thermo_statistical(
+        av, ref, StatTolerances(), block_size=10)
+    assert [b.column for b in breaches] == ["T"]
 
 
 # ── main --check thermo — exit-code contract ─────────────────────────────────

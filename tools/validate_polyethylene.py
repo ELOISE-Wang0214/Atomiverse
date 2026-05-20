@@ -7,10 +7,13 @@ It is pure stdlib Python (no numpy / pandas) so it runs on a fresh install.
 Checks (selected by ``--check``)
 --------------------------------
 
-* ``thermo`` — Phase D.2 per-step thermo parity. Over the first ``--thermo-rows``
-  steps of the deterministic regime, compare the Atomiverse and LAMMPS canonical
-  thermo CSVs step-by-step: relative agreement of 1e-4 on ``T``/``E_pot``/``E_kin``
-  and 1e-3 on ``Pxx``/``Pyy``/``Pzz``. Runs for both the 1-rank and 8-rank pairs.
+* ``thermo`` — statistical block-average thermo parity (supersedes the old
+  per-step D.2 check). The MSU protocol's stage 1 is a stochastic Langevin
+  thermostat, so the two engines run independent RNG streams and never share a
+  trajectory — only an *ensemble*. Each thermo column is therefore reduced to
+  contiguous block averages (Flyvbjerg & Petersen 1989) and the two engines are
+  required to agree on the ensemble means of ``T`` (K) and ``E_pot`` (eV) to
+  within ~2% relative. Runs for both the 1-rank and 8-rank pairs.
 * ``equilibrium`` — Phase D.3 equilibrium-state observables of the stage-4
   (100 K NPT) glass: density ρ (1%), ⟨E_pot⟩ (0.5%), RDF first-peak position
   (1 bin / 0.05 Å), RDF first-peak height (3%), and end-to-end ⟨R²⟩ (10%).
@@ -34,11 +37,11 @@ Exit codes
 * ``2`` — a required input file was missing.
 
 References:
-* msu-pe-validation.md             Phase D
-* msu-pe-phase-d-01-reference-runs  (produces the reference CSVs)
-* msu-pe-phase-d-02-thermo-parity   (per-step thermo check)
-* msu-pe-phase-d-03-equilibrium     (equilibrium-observables check)
-* msu-pe-phase-d-04-stress-strain   (stress-strain check + run_checks dispatch)
+* msu-pe-validation.md                 Phase D
+* msu-pe-phase-d-01-reference-runs       (produces the reference CSVs)
+* msu-pe-align-03-statistical-thermo     (statistical block-average thermo check)
+* msu-pe-phase-d-03-equilibrium          (equilibrium-observables check)
+* msu-pe-phase-d-04-stress-strain        (stress-strain check + run_checks dispatch)
 """
 
 from __future__ import annotations
@@ -46,6 +49,7 @@ from __future__ import annotations
 import argparse
 import csv
 import os
+import statistics
 import sys
 from dataclasses import dataclass, field
 from typing import Sequence
@@ -78,8 +82,8 @@ def _to_float(rows: list[dict[str, str]], col: str) -> list[float]:
 class Tolerances:
     """Pass/fail thresholds for the stress-strain and equilibrium checks.
 
-    Per-step thermo tolerances live in the separate frozen
-    :class:`ThermoTolerances`; defaults track ``msu-pe-validation.md`` Phase D.
+    Statistical thermo tolerances live in the separate frozen
+    :class:`StatTolerances`; defaults track ``msu-pe-validation.md`` Phase D.
     """
 
     # stress-strain descriptors (Phase D.4) — relative
@@ -95,45 +99,65 @@ class Tolerances:
 
 
 @dataclass(frozen=True)
-class ThermoTolerances:
-    """Per-column relative thresholds for the Phase D.2 per-step thermo check.
+class StatTolerances:
+    """Per-column relative thresholds for the statistical block-average check.
 
-    Defaults are the Phase D.2 contract: 1e-4 on the smoothly-varying state
-    quantities ``T``/``E_pot``/``E_kin`` and the looser 1e-3 on the
-    virial-derived pressure components ``Pxx``/``Pyy``/``Pzz``. All values are
+    The MSU stage-1 protocol is a stochastic Langevin thermostat, so the two
+    engines run uncorrelated RNG streams — only their *ensemble means* can be
+    compared. Defaults are the contract bar: a ~2% relative-error bound on the
+    block-averaged ensemble means of ``T`` (K) and ``E_pot`` (eV), loose enough
+    to absorb finite-sample block-mean scatter, tight enough that a genuine
+    force-field or thermostat-setpoint discrepancy fails. Both values are
     dimensionless relative-error bounds.
     """
 
-    T: float = 1e-4
-    E_pot: float = 1e-4
-    E_kin: float = 1e-4
-    Pxx: float = 1e-3
-    Pyy: float = 1e-3
-    Pzz: float = 1e-3
+    T: float = 2e-2
+    E_pot: float = 2e-2
 
     def threshold(self, column: str) -> float:
-        """Relative-error threshold for one canonical thermo column."""
+        """Relative-error threshold for one compared thermo column."""
         return getattr(self, column)
 
 
-#: Canonical thermo columns compared per step, in report order.
-THERMO_COLUMNS: tuple[str, ...] = ("T", "E_pot", "E_kin", "Pxx", "Pyy", "Pzz")
+#: Thermo columns whose ensemble mean is physically fixed and thus compared.
+THERMO_COLUMNS: tuple[str, ...] = ("T", "E_pot")
 
 #: (amu / Å³) → (g / cm³); numerator and denominator both carry a 1e-24 factor.
 AMU_PER_A3_TO_G_PER_CM3 = 1.66053906660
 
 
 @dataclass(frozen=True)
-class StepDeviation:
-    """The single worst per-step breach for one thermo column.
+class BlockStat:
+    """Block-averaged statistics for one thermo column.
 
-    ``column`` is a canonical thermo column, or ``"step_misalignment"`` when a
-    step is present in only one of the two CSVs (``rel_err`` is then infinite).
+    @field column    Canonical thermo column name (e.g. ``"T"``, ``"E_pot"``).
+    @field mean      Mean of the per-block means — the ensemble-mean estimate
+                     (K for ``T``, eV for ``E_pot``).
+    @field sem       Standard error of the block means: ``stdev / sqrt(n)``,
+                     the statistical uncertainty on ``mean`` (same unit).
+    @field n_blocks  Number of full blocks; a trailing partial block is dropped.
     """
 
     column: str
-    step: int
-    rel_err: float
+    mean: float
+    sem: float
+    n_blocks: int
+
+
+@dataclass(frozen=True)
+class MeanGap:
+    """Cross-engine block-averaged mean gap for one thermo column.
+
+    @field column    Canonical thermo column name.
+    @field av_mean   Atomiverse block-averaged ensemble mean.
+    @field ref_mean  LAMMPS block-averaged ensemble mean.
+    @field rel_gap   Relative gap ``|av - ref| / |ref|`` between the two means.
+    """
+
+    column: str
+    av_mean: float
+    ref_mean: float
+    rel_gap: float
 
 
 # ── Report plumbing ──────────────────────────────────────────────────────────
@@ -206,107 +230,121 @@ def _linear_fit(xs: Sequence[float], ys: Sequence[float]) -> tuple[float, float]
     return slope, intercept
 
 
-# ── Phase D.2 — per-step thermo parity ───────────────────────────────────────
+# ── Statistical block-average thermo parity ──────────────────────────────────
 
 
-def _rows_by_step(rows: list[dict[str, str]], n_steps: int) -> dict[int, dict[str, str]]:
-    """Index thermo rows by integer ``step``, keeping only ``step <= n_steps``."""
-    indexed: dict[int, dict[str, str]] = {}
-    for r in rows:
-        if "step" not in r or r["step"] == "":
-            continue
-        step = int(float(r["step"]))
-        if step <= n_steps:
-            indexed[step] = r
-    return indexed
+def block_average(values: Sequence[float], block_size: int) -> BlockStat:
+    """Reduce a thermo series to block-averaged statistics.
+
+    Block averaging (Flyvbjerg & Petersen 1989, *J. Chem. Phys.* 91, 461)
+    partitions a time series into contiguous, equal-length blocks, takes each
+    block's mean, and treats the block means as the sampling units. The mean of
+    the block means estimates the ensemble mean; their standard error gives a
+    variance estimate that accounts for serial correlation in the raw series.
+
+    A trailing partial block shorter than ``block_size`` is dropped so every
+    block carries equal weight — hence ``n_blocks == len(values) // block_size``.
+
+    @param values      Numeric thermo series for one column (units per column:
+                       K for ``T``, eV for ``E_pot``).
+    @param block_size  Number of consecutive samples per block (>= 1).
+    @return  A :class:`BlockStat` whose ``column`` is left empty (the caller
+             tags it). ``sem`` is ``0.0`` when fewer than two full blocks exist
+             (a single block has no spread to estimate).
+    @raises ValueError  When ``block_size < 1``.
+    """
+    if block_size < 1:
+        raise ValueError(f"block_size must be >= 1, got {block_size}")
+    n_blocks = len(values) // block_size
+    if n_blocks == 0:
+        return BlockStat(column="", mean=0.0, sem=0.0, n_blocks=0)
+    block_means = [
+        statistics.fmean(values[b * block_size:(b + 1) * block_size])
+        for b in range(n_blocks)
+    ]
+    mean = statistics.fmean(block_means)
+    if n_blocks < 2:
+        sem = 0.0
+    else:
+        sem = statistics.stdev(block_means) / (n_blocks ** 0.5)
+    return BlockStat(column="", mean=mean, sem=sem, n_blocks=n_blocks)
 
 
-def compare_thermo_per_step(
+def compare_thermo_statistical(
     av_rows: list[dict[str, str]],
     ref_rows: list[dict[str, str]],
-    tol: ThermoTolerances,
-    n_steps: int,
-) -> list[StepDeviation]:
-    """Compare two canonical thermo CSVs step-by-step over the first ``n_steps``.
+    tol: StatTolerances,
+    block_size: int,
+) -> list[MeanGap]:
+    """Compare two thermo CSVs by block-averaged ensemble means.
 
-    The two CSVs are aligned by the explicit ``step`` column, not by row index,
-    so a mismatched logging cadence (a step present in one CSV only) is itself
-    reported as a breach rather than silently skewing the comparison.
+    The two engines run independent RNG streams under the same stochastic
+    thermostat, so they sample the *same ensemble* but never the same
+    trajectory. The physically meaningful parity statement is therefore
+    agreement of the ensemble means, not of instantaneous per-step values.
+    Each compared column (``T``, ``E_pot``) is block-averaged for both engines
+    and the relative gap between the two means is gated at its
+    :class:`StatTolerances` threshold. The comparison does not align engines
+    step-by-step, so a differing logging cadence is tolerated provided each
+    series has enough samples to form at least one block.
 
-    @param av_rows   Atomiverse thermo rows (``{column: str}`` dicts).
-    @param ref_rows  LAMMPS reference thermo rows.
-    @param tol       Per-column relative-error thresholds.
-    @param n_steps   Inclusive upper bound on the ``step`` window to compare.
-    @return  One :class:`StepDeviation` per breached column (its worst step),
-             plus one per misaligned step. Empty list ⇒ per-step parity holds.
+    @param av_rows     Atomiverse thermo rows (``{column: str}`` dicts).
+    @param ref_rows    LAMMPS reference thermo rows.
+    @param tol         Per-column relative-error thresholds on the means.
+    @param block_size  Samples per block, passed to :func:`block_average`.
+    @return  One :class:`MeanGap` per column whose relative mean gap exceeds
+             its threshold. Empty list ⇒ statistical parity holds.
     """
-    av_by_step = _rows_by_step(av_rows, n_steps)
-    ref_by_step = _rows_by_step(ref_rows, n_steps)
-
-    deviations: list[StepDeviation] = []
-
-    # Step misalignment — a step in one CSV but not the other is a failure.
-    for step in sorted(set(av_by_step) ^ set(ref_by_step)):
-        deviations.append(StepDeviation("step_misalignment", step, float("inf")))
-
-    # Per-column worst breach over the common steps.
-    common = sorted(set(av_by_step) & set(ref_by_step))
+    breaches: list[MeanGap] = []
     for col in THERMO_COLUMNS:
-        threshold = tol.threshold(col)
-        worst: StepDeviation | None = None
-        for step in common:
-            av_cell = av_by_step[step].get(col, "")
-            ref_cell = ref_by_step[step].get(col, "")
-            if av_cell == "" or ref_cell == "":
-                continue
-            rel = _abs_rel(float(av_cell), float(ref_cell))
-            if rel > threshold and (worst is None or rel > worst.rel_err):
-                worst = StepDeviation(col, step, rel)
-        if worst is not None:
-            deviations.append(worst)
-
-    return deviations
+        av_stat = block_average(_to_float(av_rows, col), block_size)
+        ref_stat = block_average(_to_float(ref_rows, col), block_size)
+        rel_gap = _abs_rel(av_stat.mean, ref_stat.mean)
+        if rel_gap > tol.threshold(col):
+            breaches.append(MeanGap(
+                column=col,
+                av_mean=av_stat.mean,
+                ref_mean=ref_stat.mean,
+                rel_gap=rel_gap,
+            ))
+    return breaches
 
 
 def run_thermo_check(
     pairs: Sequence[tuple[str, str, str]],
-    tol: ThermoTolerances,
-    n_steps: int,
+    tol: StatTolerances,
+    block_size: int,
 ) -> Report:
-    """Run the per-step thermo comparison over a set of labelled CSV pairs.
+    """Run the statistical block-average thermo comparison over labelled pairs.
 
-    @param pairs    Sequence of ``(label, av_csv_path, ref_csv_path)`` — the
-                    label is a rank tag such as ``"1rank"`` / ``"8rank"``.
-    @param tol      Per-column relative-error thresholds.
-    @param n_steps  Inclusive ``step`` window passed to
-                    :func:`compare_thermo_per_step`.
-    @return  A :class:`Report`; ``passed()`` is true when every pair agrees.
+    @param pairs       Sequence of ``(label, av_csv_path, ref_csv_path)`` — the
+                       label is a rank tag such as ``"1rank"`` / ``"8rank"``.
+    @param tol         Per-column relative-error thresholds on the means.
+    @param block_size  Samples per block, passed to
+                       :func:`compare_thermo_statistical`.
+    @return  A :class:`Report`; ``passed()`` is true when every pair agrees on
+             the block-averaged ensemble means of ``T`` and ``E_pot``.
     """
     rep = Report()
     for label, av_csv, ref_csv in pairs:
         av_rows = _read_csv(av_csv)
         ref_rows = _read_csv(ref_csv)
-        deviations = compare_thermo_per_step(av_rows, ref_rows, tol, n_steps)
-        if not deviations:
+        breaches = compare_thermo_statistical(av_rows, ref_rows, tol, block_size)
+        if not breaches:
             rep.notes.append(
-                f"thermo[{label}]: per-step parity OK over first {n_steps} steps"
+                f"thermo[{label}]: block-averaged <T>/<E_pot> agree within "
+                f"tolerance (block_size={block_size})"
             )
             continue
-        for dev in deviations:
-            if dev.column == "step_misalignment":
-                rep.failures.append(Failure(
-                    name=f"thermo:{label}:step_misalignment",
-                    detail=f"step {dev.step} present in only one CSV",
-                    severity=float("inf"),
-                ))
-            else:
-                threshold = tol.threshold(dev.column)
-                rep.failures.append(Failure(
-                    name=f"thermo:{label}:{dev.column}",
-                    detail=(f"worst step {dev.step}: rel_err={dev.rel_err:.3e} "
-                            f"> {threshold:.1e}"),
-                    severity=dev.rel_err / threshold,
-                ))
+        for gap in breaches:
+            threshold = tol.threshold(gap.column)
+            rep.failures.append(Failure(
+                name=f"thermo:{label}:{gap.column}",
+                detail=(f"<{gap.column}> av={gap.av_mean:.4g} "
+                        f"ref={gap.ref_mean:.4g} rel_gap={gap.rel_gap:.2%} "
+                        f"> {threshold:.2%}"),
+                severity=gap.rel_gap / threshold,
+            ))
     return rep
 
 
@@ -702,13 +740,14 @@ def run_checks(
     check: str,
     args: argparse.Namespace,
     tol: Tolerances,
-    tol_thermo: ThermoTolerances,
+    tol_thermo: StatTolerances,
     rep: Report,
 ) -> int | None:
     """Dispatch the selected ``--check`` value(s) to their check functions.
 
-    Routes ``thermo`` → D.2, ``equilibrium`` → D.3, ``stress-strain`` → D.4,
-    and ``all`` → every check, accumulating failures into ``rep``.
+    Routes ``thermo`` → statistical block-average parity, ``equilibrium`` →
+    D.3, ``stress-strain`` → D.4, and ``all`` → every check, accumulating
+    failures into ``rep``.
 
     @return  Exit code ``2`` when a required input file is missing; otherwise
              ``None`` (``rep`` then carries any tolerance failures).
@@ -721,7 +760,7 @@ def run_checks(
                       f"for {label} under {args.reference_dir!r}",
                       file=sys.stderr)
                 return 2
-        thermo_rep = run_thermo_check(pairs, tol_thermo, args.thermo_rows)
+        thermo_rep = run_thermo_check(pairs, tol_thermo, args.thermo_block_size)
         rep.failures.extend(thermo_rep.failures)
         rep.notes.extend(thermo_rep.notes)
 
@@ -765,9 +804,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     p.add_argument("--atomiverse-dir", default=None,
                    help="Directory with atomiverse equilibrium inputs. "
                         "Required for --check {equilibrium,all}.")
-    p.add_argument("--thermo-rows", type=int, default=1000,
-                   help="Inclusive step window for the per-step thermo compare "
-                        "(default 1000 -- the deterministic regime).")
+    p.add_argument("--thermo-block-size", type=int, default=10,
+                   help="Samples per block for the statistical thermo compare "
+                        "(default 10). Each thermo column is reduced to "
+                        "contiguous block averages and the engines' ensemble "
+                        "means are compared. Raise it for longer reference "
+                        "series to better average out serial correlation.")
     p.add_argument("--ranks", type=int, choices=[1, 8], default=None,
                    help="Rank count this run covers; recorded in the report "
                         "and selects the stress-strain CSV suffix (default 1).")
@@ -783,7 +825,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.ranks is not None:
         rep.notes.append(f"rank count: {args.ranks}")
 
-    rc = run_checks(args.check, args, Tolerances(), ThermoTolerances(), rep)
+    rc = run_checks(args.check, args, Tolerances(), StatTolerances(), rep)
     if rc is not None:
         return rc
 
