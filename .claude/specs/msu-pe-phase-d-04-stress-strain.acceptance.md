@@ -9,7 +9,8 @@ criteria:
       choices include "stress-strain" and "all", and defines a
       run_checks dispatch function routing each value to its check;
       `python tools/validate_polyethylene.py --help` lists both choices.
-    status: pending
+    status: verified
+    last_checked: 2026-05-20
   - id: ac-002
     summary: three-descriptor stress-strain agreement gates within plus/minus 5%
     type: runtime
@@ -21,7 +22,8 @@ criteria:
       within +/-5% relative, and exits non-zero (1) when any one
       descriptor breaches +/-5%; verified on a synthetic +6% breach
       fixture and a synthetic +4% pass fixture.
-    status: pending
+    status: verified
+    last_checked: 2026-05-20
   - id: ac-003
     summary: missing stress-strain reference yields required-input exit code 2
     type: runtime
@@ -29,7 +31,8 @@ criteria:
       `python tools/validate_polyethylene.py --check stress-strain`
       run against a reference directory with no stress_strain_reference.csv
       exits with code 2 (not 0, not 1).
-    status: pending
+    status: verified
+    last_checked: 2026-05-20
   - id: ac-004
     summary: combined Phase D gate runs D.2, D.3, D.4 in one invocation
     type: runtime

@@ -29,6 +29,8 @@ from validate_polyethylene import (  # noqa: E402
     compare_thermo_per_step,
     compute_equilibrium_stats,
     main,
+    run_checks,
+    run_stress_strain_check,
 )
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -240,3 +242,54 @@ def test_main_equilibrium_exits_one_on_seeded_density_breach(tmp_path):
                "--reference-dir", str(ref),
                "--n-chains", "2", "--chain-length", "3"])
     assert rc == 1
+
+
+# ── Phase D.4 — stress-strain + run_checks dispatch ──────────────────────────
+
+
+def _stress_curve(scale=1.0):
+    """Canonical (strain, sigma_xx) curve; sigma scaled by ``scale``."""
+    base = [(0.0, 0.0), (0.01, 0.02), (0.02, 0.04), (0.05, 0.10),
+            (0.10, 0.15), (0.5, 0.20), (0.75, 0.30), (1.0, 0.40)]
+    return [(e, s * scale) for e, s in base]
+
+
+def _write_stress(path, rows):
+    with open(path, "w") as f:
+        f.write("strain,sigma_xx\n")
+        for e, s in rows:
+            f.write(f"{e},{s}\n")
+
+
+def _seed_stress_dir(path, ranks=1, av_scale=1.0, write_reference=True):
+    os.makedirs(path, exist_ok=True)
+    _write_stress(os.path.join(path, f"stress_strain_atomiverse_{ranks}r.csv"),
+                  _stress_curve(av_scale))
+    if write_reference:
+        _write_stress(os.path.join(path, f"stress_strain_lammps_{ranks}r.csv"),
+                      _stress_curve(1.0))
+
+
+def test_run_checks_is_a_callable_dispatch():
+    assert callable(run_checks) and callable(run_stress_strain_check)
+
+
+def test_main_stress_strain_exits_zero_within_5pct(tmp_path):
+    _seed_stress_dir(str(tmp_path), av_scale=1.04)  # +4% < 5%
+    rc = main(["--check", "stress-strain",
+               "--reference-dir", str(tmp_path), "--ranks", "1"])
+    assert rc == 0
+
+
+def test_main_stress_strain_exits_one_on_6pct_breach(tmp_path):
+    _seed_stress_dir(str(tmp_path), av_scale=1.06)  # +6% > 5%
+    rc = main(["--check", "stress-strain",
+               "--reference-dir", str(tmp_path), "--ranks", "1"])
+    assert rc == 1
+
+
+def test_main_stress_strain_exits_two_on_missing_reference(tmp_path):
+    _seed_stress_dir(str(tmp_path), av_scale=1.0, write_reference=False)
+    rc = main(["--check", "stress-strain",
+               "--reference-dir", str(tmp_path), "--ranks", "1"])
+    assert rc == 2

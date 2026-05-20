@@ -38,6 +38,7 @@ References:
 * msu-pe-phase-d-01-reference-runs  (produces the reference CSVs)
 * msu-pe-phase-d-02-thermo-parity   (per-step thermo check)
 * msu-pe-phase-d-03-equilibrium     (equilibrium-observables check)
+* msu-pe-phase-d-04-stress-strain   (stress-strain check + run_checks dispatch)
 """
 
 from __future__ import annotations
@@ -530,6 +531,19 @@ def _compute_stress_strain_stats(
     )
 
 
+def _stress_sigma(rows: list[dict[str, str]]) -> list[float]:
+    """Stress column from a stress-strain CSV (GPa).
+
+    Accepts the canonical reference schema (``sigma_xx``) and the benchmark's
+    native schema (``sigma_xx_GPa``).
+    """
+    for col in ("sigma_xx", "sigma_xx_GPa"):
+        values = _to_float(rows, col)
+        if values:
+            return values
+    return []
+
+
 def _check_stress_strain(
     av_rows: list[dict[str, str]],
     ref_rows: list[dict[str, str]],
@@ -545,7 +559,7 @@ def _check_stress_strain(
         return
 
     av_strain = _to_float(av_rows, "strain")
-    av_sigma = _to_float(av_rows, "sigma_xx_GPa")
+    av_sigma = _stress_sigma(av_rows)
     if not av_strain or not av_sigma or len(av_strain) != len(av_sigma):
         rep.failures.append(Failure(
             name="stress_strain:atomiverse_malformed",
@@ -564,9 +578,9 @@ def _check_stress_strain(
         return
 
     ref_strain = _to_float(ref_rows, "strain")
-    ref_sigma = _to_float(ref_rows, "sigma_xx_GPa")
+    ref_sigma = _stress_sigma(ref_rows)
     if not ref_strain or not ref_sigma:
-        rep.notes.append("stress_strain: reference missing strain / sigma_xx_GPa.")
+        rep.notes.append("stress_strain: reference missing strain / sigma_xx.")
         return
     ref_stats = _compute_stress_strain_stats(ref_strain, ref_sigma)
     rep.notes.append(
@@ -658,6 +672,82 @@ def _load_equilibrium(
         return None
 
 
+def run_stress_strain_check(
+    ref_dir: str,
+    ranks: int,
+    tol: Tolerances,
+    rep: Report,
+) -> int | None:
+    """Phase D.4 stress-strain comparison for one rank count.
+
+    Reads the canonical ``stress_strain_<engine>_<N>r.csv`` curves from
+    ``ref_dir`` and gates the three mechanical descriptors (elastic modulus,
+    yield stress, hardening slope) at ±5%.
+
+    @return  Exit code ``2`` when the LAMMPS reference CSV is absent (an
+             operator error for this gate); otherwise ``None`` with any
+             tolerance failures accumulated into ``rep``.
+    """
+    av_csv = os.path.join(ref_dir, f"stress_strain_atomiverse_{ranks}r.csv")
+    ref_csv = os.path.join(ref_dir, f"stress_strain_lammps_{ranks}r.csv")
+    if not os.path.isfile(ref_csv):
+        print(f"validate_polyethylene: missing stress-strain reference "
+              f"{os.path.basename(ref_csv)} under {ref_dir!r}", file=sys.stderr)
+        return 2
+    _check_stress_strain(_read_csv(av_csv), _read_csv(ref_csv), tol, rep)
+    return None
+
+
+def run_checks(
+    check: str,
+    args: argparse.Namespace,
+    tol: Tolerances,
+    tol_thermo: ThermoTolerances,
+    rep: Report,
+) -> int | None:
+    """Dispatch the selected ``--check`` value(s) to their check functions.
+
+    Routes ``thermo`` → D.2, ``equilibrium`` → D.3, ``stress-strain`` → D.4,
+    and ``all`` → every check, accumulating failures into ``rep``.
+
+    @return  Exit code ``2`` when a required input file is missing; otherwise
+             ``None`` (``rep`` then carries any tolerance failures).
+    """
+    if check in ("thermo", "all"):
+        pairs = _thermo_pairs(args.reference_dir)
+        for label, av_csv, ref_csv in pairs:
+            if not os.path.isfile(av_csv) or not os.path.isfile(ref_csv):
+                print(f"validate_polyethylene: missing thermo reference CSV "
+                      f"for {label} under {args.reference_dir!r}",
+                      file=sys.stderr)
+                return 2
+        thermo_rep = run_thermo_check(pairs, tol_thermo, args.thermo_rows)
+        rep.failures.extend(thermo_rep.failures)
+        rep.notes.extend(thermo_rep.notes)
+
+    if check in ("stress-strain", "all"):
+        rc = run_stress_strain_check(args.reference_dir, args.ranks or 1,
+                                     tol, rep)
+        if rc is not None:
+            return rc
+
+    if check in ("equilibrium", "all"):
+        if not args.atomiverse_dir:
+            print("validate_polyethylene: --check {equilibrium,all} requires "
+                  "--atomiverse-dir", file=sys.stderr)
+            return 2
+        av_eq = _load_equilibrium(args.atomiverse_dir, "atomiverse",
+                                  args.n_chains, args.chain_length,
+                                  args.bead_mass, rep)
+        ref_eq = _load_equilibrium(args.reference_dir, "reference",
+                                   args.n_chains, args.chain_length,
+                                   args.bead_mass, rep)
+        if av_eq is not None and ref_eq is not None:
+            _check_equilibrium(av_eq, ref_eq, tol, rep)
+
+    return None
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """CLI entry point. See the module docstring for the exit-code contract."""
     p = argparse.ArgumentParser(
@@ -673,12 +763,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                    help="Directory holding the canonical reference CSVs / "
                         "equilibrium inputs.")
     p.add_argument("--atomiverse-dir", default=None,
-                   help="Directory with atomiverse stress_strain.csv and "
-                        "equilibrium inputs. Required for --check "
-                        "{stress-strain,equilibrium,all}.")
+                   help="Directory with atomiverse equilibrium inputs. "
+                        "Required for --check {equilibrium,all}.")
     p.add_argument("--thermo-rows", type=int, default=1000,
                    help="Inclusive step window for the per-step thermo compare "
                         "(default 1000 -- the deterministic regime).")
+    p.add_argument("--ranks", type=int, choices=[1, 8], default=None,
+                   help="Rank count this run covers; recorded in the report "
+                        "and selects the stress-strain CSV suffix (default 1).")
     p.add_argument("--n-chains", type=int, default=10,
                    help="Chains in the system, for end-to-end R^2 (default 10).")
     p.add_argument("--chain-length", type=int, default=1000,
@@ -687,49 +779,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                    help="Per-bead mass in amu (default 14.027 -- CH2).")
     args = p.parse_args(argv)
 
-    tol_thermo = ThermoTolerances()
-    tol = Tolerances()
     rep = Report()
-    check = args.check
+    if args.ranks is not None:
+        rep.notes.append(f"rank count: {args.ranks}")
 
-    # ── Phase D.2 per-step thermo parity ──
-    if check in ("thermo", "all"):
-        pairs = _thermo_pairs(args.reference_dir)
-        for label, av_csv, ref_csv in pairs:
-            if not os.path.isfile(av_csv) or not os.path.isfile(ref_csv):
-                print(f"validate_polyethylene: missing thermo reference CSV for "
-                      f"{label} under {args.reference_dir!r}", file=sys.stderr)
-                return 2
-        thermo_rep = run_thermo_check(pairs, tol_thermo, args.thermo_rows)
-        rep.failures.extend(thermo_rep.failures)
-        rep.notes.extend(thermo_rep.notes)
-
-    # ── legacy stress-strain ──
-    if check in ("stress-strain", "all"):
-        if not args.atomiverse_dir:
-            print("validate_polyethylene: --check {stress-strain,all} requires "
-                  "--atomiverse-dir", file=sys.stderr)
-            return 2
-        stress_av = _read_csv(os.path.join(args.atomiverse_dir,
-                                           "stress_strain.csv"))
-        stress_ref = _read_csv(os.path.join(args.reference_dir,
-                                            "stress_strain_lammps_1r.csv"))
-        _check_stress_strain(stress_av, stress_ref, tol, rep)
-
-    # ── Phase D.3 equilibrium observables ──
-    if check in ("equilibrium", "all"):
-        if not args.atomiverse_dir:
-            print("validate_polyethylene: --check {equilibrium,all} requires "
-                  "--atomiverse-dir", file=sys.stderr)
-            return 2
-        av_eq = _load_equilibrium(args.atomiverse_dir, "atomiverse",
-                                  args.n_chains, args.chain_length,
-                                  args.bead_mass, rep)
-        ref_eq = _load_equilibrium(args.reference_dir, "reference",
-                                   args.n_chains, args.chain_length,
-                                   args.bead_mass, rep)
-        if av_eq is not None and ref_eq is not None:
-            _check_equilibrium(av_eq, ref_eq, tol, rep)
+    rc = run_checks(args.check, args, Tolerances(), ThermoTolerances(), rep)
+    if rc is not None:
+        return rc
 
     print(rep.render())
     return 0 if rep.passed() else 1

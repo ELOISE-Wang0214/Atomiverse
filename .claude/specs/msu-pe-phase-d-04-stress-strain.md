@@ -1,6 +1,6 @@
 ---
 title: MSU-PE Phase D.4 — stress-strain curve comparison and Phase D exit gate
-status: approved
+status: in-progress
 created: 2026-05-20
 parent: msu-pe-validation.md
 ---
@@ -46,14 +46,14 @@ Chain dependency (stated plainly): this link depends on chain links `msu-pe-phas
 
 ## Tasks
 
-- [ ] Write failing tests for stress-strain descriptor extraction and `--check` dispatch (tools/test_validate_polyethylene.py)
-- [ ] Implement `--check {thermo,equilibrium,stress-strain,all}` and `--ranks` arguments in tools/validate_polyethylene.py
-- [ ] Implement `run_checks` dispatch routing each `--check` value to its D.2/D.3/D.4 check function in tools/validate_polyethylene.py
-- [ ] Implement stress-strain-specific exit code 2 when `stress_strain_reference.csv` is absent in tools/validate_polyethylene.py
-- [ ] Add docstrings with units for the new `--check`/`--ranks` surface and `run_checks` per project doc style
-- [ ] Verify `--check stress-strain` flags a >5% modulus/yield/hardening deviation on a synthetic breach fixture and exits non-zero
-- [ ] Update .claude/specs/msu-pe-validation.md Phase D status row to "Phase D complete" reflecting D.2/D.3/D.4 pass at 1 and 8 ranks
-- [ ] Run full check + test suite
+- [x] Write failing tests for stress-strain descriptor extraction and `--check` dispatch (tools/test_validate_polyethylene.py)
+- [x] Implement `--check {thermo,equilibrium,stress-strain,all}` and `--ranks` arguments in tools/validate_polyethylene.py
+- [x] Implement `run_checks` dispatch routing each `--check` value to its D.2/D.3/D.4 check function in tools/validate_polyethylene.py
+- [x] Implement stress-strain-specific exit code 2 when the LAMMPS reference CSV is absent in tools/validate_polyethylene.py
+- [x] Add docstrings with units for the new `--check`/`--ranks` surface and `run_checks` per project doc style
+- [x] Verify `--check stress-strain` flags a >5% modulus/yield/hardening deviation on a synthetic breach fixture and exits non-zero
+- [ ] Update .claude/specs/msu-pe-validation.md Phase D status row to "Phase D complete" reflecting D.2/D.3/D.4 pass at 1 and 8 ranks  (DEFERRED: Phase D is not complete until the operator reference run lands — would be a false claim)
+- [x] Run full check + test suite
 
 ## Testing strategy
 
