@@ -1,10 +1,11 @@
 /// @file tests/mpi/test_deform_multirank.cpp
 /// @brief Phase 0.7 -- multi-rank uniaxial deformation (LJ + Deform).
 ///
-/// 8-rank Argon-LJ box with a Deform component pulling along x at
-/// ε̇ = 1e-4 / fs. Over 200 steps × dt = 0.5 fs the box should grow by
-/// `ε̇·n_steps·dt = 1 %` along x, with every owned atom's x coordinate
-/// scaled identically on all ranks. Asserts:
+/// 8-rank Argon-LJ box with a Deform component (`Mode::erate`) pulling
+/// along x at ε̇ = 1e-4 / fs. Over 200 steps × dt = 0.5 fs the box should
+/// grow by the LAMMPS `fix deform` engineering-strain law
+/// `L = L0·(1 + ε̇·n_steps·dt)` = 1 % along x, with every owned atom's x
+/// coordinate scaled identically on all ranks. Asserts:
 ///   * the simulation does not blow up (no NaN positions),
 ///   * box_x grew by ~1 % (within 1e-6 tolerance),
 ///   * stress σ_xx changes during the deformation (force pipeline alive).
@@ -74,7 +75,8 @@ TEST(DeformMultiRank, UniaxialPullStretchesBoxOnAllRanks) {
 
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{dt});
-    sim.add(cpu::md::Deform{strain_rate, dt, /*axis=*/0});
+    sim.add(cpu::md::Deform{cpu::md::Deform::Mode::erate, strain_rate, dt,
+                            /*axis=*/0});
     sim.on(ATV::md::Phase::pre_force)
         .add(cpu::md::mpi::HaloExchangeForward{lj_cut}, -20);
     sim.on(ATV::md::Phase::post_force)
@@ -87,11 +89,10 @@ TEST(DeformMultiRank, UniaxialPullStretchesBoxOnAllRanks) {
 
     sim.run(frame, n_steps);
 
-    // Expected box_x = box_x_initial * (1 + ε̇·dt)^n_steps
-    const double per_step_factor = 1.0 + strain_rate * dt;
-    double expected_factor = 1.0;
-    for (int s = 0; s < n_steps; ++s) expected_factor *= per_step_factor;
-    const double expected_box_x = box_x_initial * expected_factor;
+    // LAMMPS fix deform ERATE: L = L0·(1 + ε̇·n_steps·dt), L0 = box edge
+    // at Deform activation (= box_x_initial here, never pre-deformed).
+    const double expected_box_x =
+        box_x_initial * (1.0 + strain_rate * n_steps * dt);
 
     EXPECT_NEAR(frame.box(0, 0), expected_box_x, 1e-6)
         << "box_x deformation diverged from analytic expectation";

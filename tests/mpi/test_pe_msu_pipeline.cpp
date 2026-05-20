@@ -173,7 +173,8 @@ TEST(PeMsuPipeline, NvtPlusNptPlusDeform) {
         .add(MultiHarmonicDihedral{{dihedral_Cn_eV()}});
     sim.add(cpu::md::VirialStress{});
     sim.add(cpu::md::Barostat{P_target, tau_P, dt});
-    sim.add(cpu::md::Deform{strain_rate, dt, /*axis=*/0});
+    sim.add(cpu::md::Deform{cpu::md::Deform::Mode::erate, strain_rate, dt,
+                            /*axis=*/0});
     sim.build();
 
     const double box_x_initial = frame.box(0, 0);

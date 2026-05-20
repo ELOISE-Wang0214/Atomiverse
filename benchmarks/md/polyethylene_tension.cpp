@@ -173,7 +173,7 @@ struct Args {
     double tau_T       = 100.0;     ///< [fs]
     double tau_P       = 1000.0;    ///< [fs]
     double langevin_damp = 100.0;   ///< [fs] stage-1 Langevin damp
-    double strain_rate = 1e-6;      ///< 1/fs (stage 5)
+    double strain_rate = 1e-5;      ///< 1/fs (stage 5) -- lammps.in `fix deform x erate 1e-5`
     std::string out_dir = ".";
     bool   quiet       = false;
     int    traj_every  = 0;         ///< trajectory XYZ stride (0 = off)
@@ -199,7 +199,7 @@ void print_help() {
         "  --tau-T fs                  Thermostat time constant (default 100).\n"
         "  --tau-P fs                  Barostat time constant (default 1000).\n"
         "  --langevin-damp fs          Stage-1 Langevin damp (default 100).\n"
-        "  --strain-rate /fs           Engineering strain rate stage 5 (default 1e-6).\n"
+        "  --strain-rate /fs           Engineering strain rate stage 5 (default 1e-5).\n"
         "  --out-dir DIR               Where to write CSV outputs (default '.').\n"
         "  --data PATH                 Load this LAMMPS data file as the\n"
         "                              initial system instead of generating a\n"
@@ -765,7 +765,8 @@ int main(int argc, char** argv) {
                                     .dt          = a.dt_stage5,
                                     .drag        = 2.0,
                                     .couple_axis = {false, true, true}}};
-        cpu::md::Deform deform{a.strain_rate, a.dt_stage5, /*axis=*/0};
+        cpu::md::Deform deform{cpu::md::Deform::Mode::erate, a.strain_rate,
+                               a.dt_stage5, /*axis=*/0};
         cpu::md::MD sim;
         sim.set_integrator(npt);
         sim.add(deform);
