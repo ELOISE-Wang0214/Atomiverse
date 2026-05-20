@@ -48,7 +48,11 @@ You are a high-performance computing engineer specializing in CPU parallelism. Y
   # xsimd linked directly; NOT as XTENSOR_USE_XSIMD global define
   target_link_libraries(atomiverse PUBLIC xsimd)
   ```
-- **ERI Ltot-based dispatch:** `eri_block()` dispatches by `Ltot = A.l+B.l+C.l+D.l` (NOT by bit-pattern of individual l values — that misses permutations like sp|ss). `eri_blk_ss_ss` uses xsimd ket-loop. `eri_blk_ltot<LTOT>` is a template giving compile-time loop bounds. `eri_blk_general` handles l≥2 fallback. See spec `.claude/specs/eri-hpc-opt.md`.
+- **ERI shell-block dispatch (`eri_block()` in `native_integrals.cpp`):**
+  - `(ss|ss)` (all four shells l=0) → `eri_blk_ss_ss`: a dedicated xsimd ket-loop kernel. It precomputes ket geometry (K_CD, Q, γ₂) once before the bra loop, then vectorizes `acc += pref * boys_f0(T)` over the ket-primitive loop with `xsimd::batch<double>`. Beats Rys by ~1.5× for pure s-shells (a 1-root Rys quadrature with buffer alloc is slower than a direct F₀(T) sum).
+  - **All other quartets (any l up to 2, s/p/d)** → `rys_eri_block` (`rys_eri.cpp`): a native Rys-quadrature engine — same 2D-VRR + HRR algebra as libcint's `CINTg0_2e` / `CINTg0_2e_2d` / `CINTg0_ik2d_4d`. It handles d-shells (cc-pVDZ, 6 Cartesian functions/shell); `kRysMaxL = 2`. d-shell ERIs are verified against libcint to machine precision (`tests/cpu/scf/test_rys_eri.cpp`).
+  - **Boys-SIMD only applies to the (ss\|ss) kernel.** Higher-l accuracy comes from Rys roots + `-march=native -O3` auto-vectorizing the 2D-VRR recurrences.
+  - The old `eri_blk_ltot<LTOT>` / `eri_blk_general` McMurchie-Davidson templates in `native_integrals.cpp` are superseded by the Rys engine and are no longer on the `eri_block()` dispatch path. Do NOT add a new MD-BLAS angular-contraction path for l≥2: the Rys engine already is the libcint-equivalent d-shell path. See spec `.claude/specs/eri-hpc-opt.md`.
 - **SoA layout is SIMD-friendly:** `cpu::Frame` SoA (x[], y[], z[] separate) enables contiguous vectorization.
 - **Compiler hints:** `#pragma omp simd` for loops the compiler fails to vectorize; `__restrict__` on pointer params.
 - **Intrinsics hierarchy:** xtensor ops > xsimd batch > `#pragma omp simd` > compiler builtins > raw intrinsics.

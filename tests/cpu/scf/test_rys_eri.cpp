@@ -198,6 +198,43 @@ TEST(RysEri, MatchesLibcint_CO) {
     compare_tensors(libcint_pack.ERI, eri_rys, 5e-7, "CO rys vs libcint");
 }
 
+// ── Phase 4 gate: d-shell (cc-pVDZ-class) ERIs vs libcint ────────────
+//
+// The eri-hpc-opt spec's Phase 4 targets cc-pVDZ enablement: d-shells,
+// 6 Cartesian functions per shell. The native ERI engine reaches l = 2
+// through the Rys-quadrature kernel (`native::rys_eri_block`, the same
+// 2D-VRR + HRR algebra as libcint), to which `eri_block()` dispatches
+// every non-(ss|ss) quartet. The d-polarized 6-31G* table exercises the
+// full set of d-shell quartet classes that cc-pVDZ needs — (dd|dd),
+// (dp|dd), (dd|pp), (dd|ss), (ds|ss), … — on a real molecule.
+//
+// This is the binding regression gate (acceptance ac-004): the native
+// d-shell ERI tensor must agree with libcint's `cint2e_cart` to 1e-7.
+TEST(RysEri, MatchesLibcint_DShell_631Gs_H2O) {
+    auto frame = make_water();
+    // 6-31G* puts a d-shell on oxygen → d quartets appear in the tensor.
+    auto pack = build_integrals(frame, cpu::scf::BasisSet::Pople631Gs,
+                                0, /*need_eri=*/true);
+    auto sp = build_shell_block_pair_list(pack, 1e-14);
+    ASSERT_GT(sp.n_basis, 7) << "6-31G* H2O must have > 7 AOs (d-shell present)";
+
+    auto eri_rys = build_eri_via_rys(sp);
+    auto eri_ref = test::build_eri_libcint_from_pack(frame, pack);
+    compare_tensors(eri_ref, eri_rys, 1e-7, "H2O 6-31G* d-shell rys vs libcint");
+}
+
+TEST(RysEri, MatchesLibcint_DShell_631Gs_CO) {
+    auto frame = make_co();
+    // 6-31G* puts a d-shell on both C and O → (dd|dd) quartets present.
+    auto pack = build_integrals(frame, cpu::scf::BasisSet::Pople631Gs,
+                                0, /*need_eri=*/true);
+    auto sp = build_shell_block_pair_list(pack, 1e-14);
+
+    auto eri_rys = build_eri_via_rys(sp);
+    auto eri_ref = test::build_eri_libcint_from_pack(frame, pack);
+    compare_tensors(eri_ref, eri_rys, 1e-7, "CO 6-31G* d-shell rys vs libcint");
+}
+
 #endif // ATV_HAS_LIBCINT
 
 #endif // ATV_HAS_RHF

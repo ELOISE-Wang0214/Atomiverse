@@ -4,7 +4,9 @@
 /// Isolates ALL libcint C-API interaction into a single test-only header.
 /// Gated by ATV_HAS_LIBCINT — only available when -DATV_BUILD_LIBCINT=ON.
 ///
-/// Supports s+p type shells for elements Z=1..8 (STO-3G basis).
+/// Supports s+p type shells for elements Z=1..8 (STO-3G basis) via
+/// `build_integrals_libcint`, and any resolved IntegralPack including
+/// d-polarized sets (6-31G*, def2-SVP) via `build_eri_libcint_from_pack`.
 #pragma once
 
 #ifdef ATV_HAS_LIBCINT
@@ -19,6 +21,7 @@ extern "C" {
 #include "atomiverse/cpu/scf/basis_data/sto3g.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/core/constants.h"
+#include "atomiverse/core/gto.h"
 
 #include <cmath>
 #include <vector>
@@ -219,6 +222,172 @@ inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
         }
 
     return pack;
+}
+
+// ── Generic d-shell-capable ERI reference ────────────────────────────
+//
+// `build_integrals_libcint` is hardwired to the STO-3G (s/p only)
+// table. The Phase-4 cc-pVDZ correctness gate needs a libcint ERI
+// reference that handles d shells.
+//
+// `build_eri_libcint_from_pack` builds the libcint atm/bas/env arrays
+// from an already-resolved `IntegralPack` (output of `build_integrals`
+// for any basis, including the d-polarized 6-31G* / def2-SVP sets) and
+// returns the dense Cartesian (ij|kl) tensor.
+//
+// CRITICAL — normalization (the d-shell subtlety):
+//   The native engine normalizes every primitive coefficient with
+//   `phys_norm_{s,p,d}(alpha)` and does NOT renormalize the contracted
+//   shell.  `build_integrals_libcint` instead applies `CINTgto_norm`
+//   plus a contracted renorm; for s/p those two schemes are equivalent,
+//   but for l = 2 they differ by a constant per-d-AO factor (~1.092),
+//   i.e. ~1.42 on a (dd|dd) integral.
+//
+//   `cint2e_cart` carries an internal per-shell Cartesian-vs-spherical
+//   factor: feeding it the native `phys_norm`-coefficients verbatim
+//   yields  libcint = g_la^-1·g_lb^-1·g_lc^-1·g_ld^-1 · native, with a
+//   per-l constant g_l (verified empirically and α-independent because
+//   CINTgto_norm and phys_norm share the same α-power (2l+3)/4):
+//       g_0 = CINTgto_norm(0,α) / phys_norm_s(α)   ( = 2 sqrt pi )
+//       g_1 = CINTgto_norm(1,α) / phys_norm_p(α)
+//       g_2 = 1                                    (phys_norm_d already
+//             matches libcint's Cartesian d convention, <d_xx|d_xx>=3)
+//   To make the reference reproduce the native engine bit-for-bit we
+//   multiply every primitive coefficient by g_l; libcint's internal
+//   factor then cancels and only the quadrature algebra is exercised.
+//   No CINTgto_norm path, no contracted renorm.
+//
+// AO-level `IntegralPack.shells` carries one `native::Shell` per
+// Cartesian component (all components of a shell share alpha/coeff and
+// center); consecutive entries with the same center and l are regrouped
+// here into one libcint basis function.
+//
+// Cartesian component order from `cint2e_cart` for l = 2 is
+//   xx, xy, xz, yy, yz, zz
+// identical to `fill_cart_comps` (cart.h) — no reordering needed.
+
+/// @brief Compute the full Cartesian (ij|kl) ERI tensor via libcint,
+///        reusing the exact normalized shell data of an IntegralPack.
+///
+/// @param frame Molecular geometry (positions in Angstrom, type = Z).
+/// @param pack  IntegralPack from `build_integrals(frame, basis, ...)`.
+/// @return Dense 4-index ERI tensor [n_basis^4], Cartesian, chemist's notation.
+inline xt::xtensor<double, 4> build_eri_libcint_from_pack(
+    const cpu::Frame& frame,
+    const cpu::scf::IntegralPack& pack)
+{
+    const int natm = static_cast<int>(frame.atoms.size());
+
+    // Regroup AO-level shells (one per Cartesian component) into shells:
+    // a new shell starts whenever (center, l) changes.
+    struct ShellGroup { int l, ao_start, first_ao_shell; };
+    std::vector<ShellGroup> groups;
+    {
+        int ao = 0;
+        const int n = static_cast<int>(pack.shells.size());
+        while (ao < n) {
+            const auto& s = pack.shells[ao];
+            const int n_cart = (s.l + 1) * (s.l + 2) / 2;
+            groups.push_back({s.l, ao, ao});
+            ao += n_cart;
+        }
+    }
+    const int n_shells = static_cast<int>(groups.size());
+
+    int off = PTR_ENV_START;
+    std::vector<FINT> atm_arr(natm * ATM_SLOTS, 0);
+    std::vector<double> env(off + natm * 3 + n_shells * 64, 0.0);
+
+    for (int i = 0; i < natm; ++i) {
+        atm_arr[CHARGE_OF + ATM_SLOTS * i] = static_cast<FINT>(frame.atoms.type[i]);
+        atm_arr[PTR_COORD + ATM_SLOTS * i] = off;
+        env[off + 0] = static_cast<double>(frame.atoms.x[i]) * kAngstromToBohr;
+        env[off + 1] = static_cast<double>(frame.atoms.y[i]) * kAngstromToBohr;
+        env[off + 2] = static_cast<double>(frame.atoms.z[i]) * kAngstromToBohr;
+        off += 3;
+    }
+
+    std::vector<FINT> bas_arr(n_shells * BAS_SLOTS, 0);
+    std::vector<int> shell_bf_offset(n_shells);
+    std::vector<int> shell_bf_count(n_shells);
+
+    for (int s = 0; s < n_shells; ++s) {
+        const auto& g = groups[s];
+        const auto& sh = pack.shells[g.first_ao_shell];
+        const int l = g.l;
+        const int nprim = sh.n_prim;
+
+        // Map this shell's center (Bohr) onto its owning atom.
+        int atom_index = 0;
+        double best = 1e30;
+        for (int a = 0; a < natm; ++a) {
+            const double ax = static_cast<double>(frame.atoms.x[a]) * kAngstromToBohr;
+            const double ay = static_cast<double>(frame.atoms.y[a]) * kAngstromToBohr;
+            const double az = static_cast<double>(frame.atoms.z[a]) * kAngstromToBohr;
+            const double d2 = (ax - sh.center[0]) * (ax - sh.center[0])
+                            + (ay - sh.center[1]) * (ay - sh.center[1])
+                            + (az - sh.center[2]) * (az - sh.center[2]);
+            if (d2 < best) { best = d2; atom_index = a; }
+        }
+
+        const int ptr_exp = off;
+        for (int p = 0; p < nprim; ++p) env[off++] = sh.alpha[p];
+        const int ptr_coeff = off;
+        // Feed native phys_norm coefficients scaled by the per-l factor
+        // g_l so libcint's internal Cartesian factor cancels exactly.
+        // g_l is α-independent — evaluate at the shell's first exponent.
+        const double a0 = sh.alpha[0];
+        double g_l = 1.0;  // l == 2: phys_norm_d already matches libcint
+        if (l == 0) g_l = CINTgto_norm(0, a0) / ATV::phys_norm_s(a0);
+        else if (l == 1) g_l = CINTgto_norm(1, a0) / ATV::phys_norm_p(a0);
+        for (int p = 0; p < nprim; ++p) env[off++] = sh.coeff[p] * g_l;
+
+        bas_arr[ATOM_OF   + BAS_SLOTS * s] = atom_index;
+        bas_arr[ANG_OF    + BAS_SLOTS * s] = l;
+        bas_arr[NPRIM_OF  + BAS_SLOTS * s] = nprim;
+        bas_arr[NCTR_OF   + BAS_SLOTS * s] = 1;
+        bas_arr[PTR_EXP   + BAS_SLOTS * s] = ptr_exp;
+        bas_arr[PTR_COEFF + BAS_SLOTS * s] = ptr_coeff;
+        shell_bf_offset[s] = g.ao_start;
+        shell_bf_count[s]  = (l + 1) * (l + 2) / 2;
+    }
+    env.resize(off);
+
+    FINT* atm_p = atm_arr.data();
+    FINT* bas_p = bas_arr.data();
+    double* env_p = env.data();
+
+    const int n_basis = pack.n_basis;
+    xt::xtensor<double, 4> ERI = xt::zeros<double>(
+        {static_cast<std::size_t>(n_basis), static_cast<std::size_t>(n_basis),
+         static_cast<std::size_t>(n_basis), static_cast<std::size_t>(n_basis)});
+
+    for (int i = 0; i < n_shells; ++i) {
+        const int ni = shell_bf_count[i], oi = shell_bf_offset[i];
+        for (int j = 0; j < n_shells; ++j) {
+            const int nj = shell_bf_count[j], oj = shell_bf_offset[j];
+            for (int k = 0; k < n_shells; ++k) {
+                const int nk = shell_bf_count[k], ok = shell_bf_offset[k];
+                for (int l = 0; l < n_shells; ++l) {
+                    const int nl = shell_bf_count[l], ol = shell_bf_offset[l];
+                    std::vector<double> buf(
+                        static_cast<std::size_t>(ni) * nj * nk * nl, 0.0);
+                    FINT shls4[4] = {static_cast<FINT>(i), static_cast<FINT>(j),
+                                     static_cast<FINT>(k), static_cast<FINT>(l)};
+                    cint2e_cart(buf.data(), shls4, atm_p, natm,
+                                bas_p, n_shells, env_p, nullptr);
+                    // Column-major: i fastest.
+                    for (int ii = 0; ii < ni; ++ii)
+                      for (int jj = 0; jj < nj; ++jj)
+                        for (int kk = 0; kk < nk; ++kk)
+                          for (int ll = 0; ll < nl; ++ll)
+                            ERI(oi+ii, oj+jj, ok+kk, ol+ll) =
+                                buf[ii + ni * (jj + nj * (kk + nk * ll))];
+                }
+            }
+        }
+    }
+    return ERI;
 }
 
 } // namespace test

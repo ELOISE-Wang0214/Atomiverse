@@ -608,6 +608,42 @@ static void BM_GBuild_Block_Aspirin(benchmark::State& state) {
 }
 BENCHMARK(BM_GBuild_Block_Aspirin)->Unit(benchmark::kMillisecond);
 
+/// @brief Direct RHF G = J - 0.5*K for aspirin in a d-polarized basis.
+///
+/// Phase 4 (eri-hpc-opt) benchmark: exercises the d-shell ERI path
+/// (`native::eri_block` → `rys_eri_block`, the Rys-quadrature engine
+/// algorithmically identical to libcint) inside the shell-block direct
+/// Fock builder. 6-31G* puts a d-shell on every heavy atom, so the bulk
+/// of the quartet work is (d..|d..) — the cc-pVDZ-class regime the spec
+/// targets.
+///
+/// Baseline reference: the eri-hpc-opt spec records PySCF direct-Fock
+/// baselines only for STO-3G aspirin (~952 ms). No PySCF cc-pVDZ /
+/// 6-31G* direct-Fock baseline is documented in the spec, and PySCF is
+/// not installed in this build environment — so this benchmark records
+/// the native median wall time without a fabricated PySCF number.
+/// For scale: STO-3G aspirin (73 AOs) is Phase-3 ~500 ms; 6-31G*
+/// aspirin has ~280 AOs, an ~4x AO-count increase, and d-shell quartets
+/// cost far more per block than s/p, so a multi-second build is
+/// expected.
+static void BM_GBuild_Block_Aspirin_ccPVDZ(benchmark::State& state) {
+    auto frame = make_aspirin();
+    // 6-31G* — d-polarized; the d-shell ERI path is the Phase-4 target.
+    auto integrals = build_integrals(frame, cpu::scf::BasisSet::Pople631Gs);
+    auto sp_blk = build_shell_block_pair_list(integrals);
+    int n = integrals.n_basis;
+    RealMatrix P = xt::zeros<double>({(size_t)n, (size_t)n});
+    for (int i = 0; i < n; ++i) P(i, i) = 1.0;
+    RealMatrix G;
+    for (auto _ : state) {
+        build_g_rhf_direct_block(sp_blk, P, G);
+        benchmark::DoNotOptimize(G(0, 0));
+    }
+    state.counters["n_AOs"] = n;
+    state.SetLabel("aspirin 6-31G* (d-polarized)");
+}
+BENCHMARK(BM_GBuild_Block_Aspirin_ccPVDZ)->Unit(benchmark::kMillisecond);
+
 // ── Multi-size G-build (block): water → methane → ethanol → aspirin ───
 
 static void BM_GBuild_Block_Water(benchmark::State& state) {
