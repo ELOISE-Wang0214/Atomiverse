@@ -1,5 +1,14 @@
 /// @file cpu/md/nve_limit.cpp
-/// @brief CPU velocity-Verlet with per-atom velocity cap.
+/// @brief CPU velocity-Verlet with a per-step displacement (distance)
+///        cap. LAMMPS `fix nve/limit` (`lammps/src/fix_nve_limit.cpp`).
+///
+/// Audit verdict (spec lammps-api-align-02-nve): ALIGNED. The cap below
+/// reproduces `fix_nve_limit.cpp` exactly — `vmax = xmax/dt` mirrors
+/// `vlimitsq = (xlimit/dtv)^2` (L66), the Euclidean `vsq = v·v` test
+/// matches L105/L168, the rescale `s = vmax/sqrt(vsq)` is algebraically
+/// identical to LAMMPS `scale = sqrt(vlimitsq/vsq)`, and the cap is
+/// applied in BOTH the `initial_integrate` and `final_integrate`
+/// branches (matching `FixNVELimit::initial_integrate`/`final_integrate`).
 
 #include "atomiverse/cpu/md/nve_limit.h"
 
