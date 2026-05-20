@@ -102,10 +102,11 @@ void bind_md(nb::module_& m) {
     ;
 
     nb::class_<cpu::md::NoseHoover>(m, "NoseHoover",
-        "Nose-Hoover thermostat.")
+        "Nose-Hoover thermostat (LAMMPS `fix nvt`).")
         .def(nb::init<double, double, double>(),
-             nb::arg("T_target"), nb::arg("tau"), nb::arg("dt"),
-             "Construct with target temperature [K], coupling time [fs], and timestep [fs].")
+             nb::arg("T_target"), nb::arg("tau_T"), nb::arg("dt"),
+             "Construct with target temperature [K], coupling time "
+             "tau_T [fs] (LAMMPS `Tdamp`), and timestep [fs].")
     ;
 
     // ── Potentials ──

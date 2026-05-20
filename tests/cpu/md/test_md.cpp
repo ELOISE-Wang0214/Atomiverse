@@ -545,7 +545,8 @@ TEST_F(CpuMdTest, FixLangevinReachesEquipartition) {
 
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{dt});
-    sim.add(cpu::md::FixLangevin{T_target, damp, dt, /*seed=*/12345});
+    sim.add(cpu::md::FixLangevin{T_target, /*T_stop=*/T_target, damp, dt,
+                                 /*seed=*/12345});
     sim.build();
 
     sim.run(frame, 4000);  // ~80 damping times -- well-equilibrated

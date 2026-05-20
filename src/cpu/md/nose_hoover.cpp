@@ -1,5 +1,5 @@
 /// @file cpu/md/nose_hoover.cpp
-/// @brief CPU Nose-Hoover thermostat implementation.
+/// @brief CPU Nose-Hoover thermostat implementation (LAMMPS `fix nvt`).
 
 #include "atomiverse/cpu/md/nose_hoover.h"
 
@@ -8,6 +8,7 @@
 #include "atomiverse/cpu/md/owned_range.h"
 #include "atomiverse/facade/stage.h"
 
+#include <algorithm>
 #include <cmath>
 
 #ifdef _OPENMP
@@ -21,8 +22,10 @@ namespace ATV {
 namespace cpu {
 namespace md {
 
-NoseHoover::NoseHoover(double T_target, double tau, double dt)
-    : T_target_(T_target), tau_(tau), dt_(dt) {}
+NoseHoover::NoseHoover(double T_start, double tau_T, double dt)
+    : T_start_(T_start), T_stop_(T_start), tau_T_(tau_T), dt_(dt) {
+    T_live_ = T_start_;
+}
 
 void NoseHoover::build(const cpu::BuildContext& ctx) {
     // `atoms.size()` at build time is the *global* pre-partition atom count
@@ -30,16 +33,50 @@ void NoseHoover::build(const cpu::BuildContext& ctx) {
     // partitions). This gives the correct global `n_dof` for `Q_`.
     const int n_global = ctx.frame.atoms.size();
     n_dof_global_ = 3 * n_global - 3;  // 3N - 3 (COM removal)
-    Q_ = static_cast<double>(n_dof_global_) * kBoltzmann * T_target_ * tau_ * tau_;
+    // Initial chain mass at the ramp anchor `T_start_`; `launch()`
+    // retunes it each step to the live setpoint (LAMMPS recomputes
+    // `eta_mass[0] = tdof·boltz·t_target/t_freq²` in nhc_temp_integrate).
+    Q_ = static_cast<double>(n_dof_global_) * kBoltzmann * T_start_
+       * tau_T_ * tau_T_;
 }
 
 void NoseHoover::set_T_target(double T_target, bool reset_chain) {
-    T_target_ = T_target;
+    T_start_ = T_target;
+    // Moving the anchor also collapses any configured continuous ramp —
+    // a `set_T_target` call is the segmented-run idiom, distinct from
+    // the `set_T_stop` + `set_run_span` continuous ramp.
+    T_stop_  = T_target;
+    T_live_  = T_target;
     // Rescale `Q_` to the new setpoint using the cached global DOF count.
     // Skipping this would leave the chain mass tuned to the old bath
     // temperature, producing the wrong response time after the transition.
-    Q_ = static_cast<double>(n_dof_global_) * kBoltzmann * T_target_ * tau_ * tau_;
+    Q_ = static_cast<double>(n_dof_global_) * kBoltzmann * T_target
+       * tau_T_ * tau_T_;
     if (reset_chain) xi_ = 0.0;
+}
+
+/// @see LAMMPS `FixNH::compute_temp_target()` (`src/fix_nh.cpp:2204`):
+///
+///     double delta = update->ntimestep - update->beginstep;
+///     if (delta != 0.0) delta /= update->endstep - update->beginstep;
+///     t_target = t_start + delta * (t_stop - t_start);
+///
+/// Atomiverse uses the cumulative MD step index (`LaunchContext::step`,
+/// continuous across chunked `run()` calls) for `ntimestep`, and the
+/// `[nfirst_, nlast_]` span supplied by `set_run_span()` for
+/// `beginstep`/`endstep`. `delta` is clamped to `[0,1]` so stepping
+/// past `nlast_` holds the setpoint at `T_stop_` instead of
+/// extrapolating. With the default span (`nlast_ <= nfirst_`) or
+/// `T_stop_ == T_start_`, the result is the constant `T_start_` — the
+/// no-ramp default.
+double NoseHoover::compute_temp_target(std::int64_t step) const {
+    double delta = 0.0;
+    if (nlast_ > nfirst_) {
+        delta = static_cast<double>(step - nfirst_)
+              / static_cast<double>(nlast_ - nfirst_);
+        delta = std::clamp(delta, 0.0, 1.0);
+    }
+    return T_start_ + delta * (T_stop_ - T_start_);
 }
 
 void NoseHoover::launch(const cpu::LaunchContext& ctx) {
@@ -53,6 +90,14 @@ void NoseHoover::launch(const cpu::LaunchContext& ctx) {
 
     if (ctx.stage == static_cast<int>(ATV::md::Phase::initial_integrate) ||
         ctx.stage == static_cast<int>(ATV::md::Phase::final_integrate)) {
+
+        // Live thermostat setpoint for this step (Tstart→Tstop ramp).
+        // `Q_` is retuned to the live temperature so the coupling
+        // frequency `ω = 1/tau_T` stays constant across the ramp,
+        // matching LAMMPS recomputing `eta_mass[0]` each NHC update.
+        T_live_ = compute_temp_target(ctx.step);
+        Q_ = static_cast<double>(n_dof_global_) * kBoltzmann * T_live_
+           * tau_T_ * tau_T_;
 
         // Per-rank kinetic over owned atoms only.
         double ke_local = 0;
@@ -77,8 +122,8 @@ void NoseHoover::launch(const cpu::LaunchContext& ctx) {
         }
 #endif
 
-        // Update thermostat variable
-        xi_ += (dt_ * double(0.5)) * (double(2) * ke - static_cast<double>(n_dof) * kBoltzmann * T_target_) / Q_;
+        // Update thermostat variable against the live target.
+        xi_ += (dt_ * double(0.5)) * (double(2) * ke - static_cast<double>(n_dof) * kBoltzmann * T_live_) / Q_;
 
         // Rescale velocities (owners only).
         double scale = std::exp(-dt_ * double(0.5) * xi_);

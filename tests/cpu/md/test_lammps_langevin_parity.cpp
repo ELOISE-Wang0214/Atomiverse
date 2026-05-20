@@ -128,7 +128,8 @@ TEST(LammpsParity, Slow_LangevinNvtMatchesLammpsEnsembleAverages) {
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
     sim.add(cpu::md::InitVelocity{T_target, /*seed=*/12345u});
-    sim.add(cpu::md::FixLangevin{T_target, damp, dt, /*seed=*/904297u});
+    sim.add(cpu::md::FixLangevin{T_target, /*T_stop=*/T_target, damp, dt,
+                                 /*seed=*/904297u});
     sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
     sim.set_pair(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
 

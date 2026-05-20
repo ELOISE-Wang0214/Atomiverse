@@ -7,6 +7,7 @@
 #include "atomiverse/cpu/md/mpi/domain.h"
 #include "atomiverse/cpu/md/owned_range.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace ATV {
@@ -61,13 +62,46 @@ struct GaussStream {
 
 } // namespace
 
-FixLangevin::FixLangevin(double T_target, double damp,
+FixLangevin::FixLangevin(double T_start, double T_stop, double damp,
                          double dt, std::uint32_t seed)
-    : T_target_(T_target), damp_(damp), dt_(dt), seed_(seed) {}
+    : T_start_(T_start),
+      // A negative `T_stop` is the "no ramp" sentinel — fold it to
+      // `T_start` so `compute_target()` sees `T_start == T_stop` and the
+      // linear interpolation degenerates to the constant setpoint. This
+      // mirrors LAMMPS `fix_langevin.cpp` ctor line `t_target = t_start`
+      // (`fix_langevin.cpp:72`) when only one temperature is given.
+      T_stop_(T_stop < 0.0 ? T_start : T_stop),
+      damp_(damp), dt_(dt), seed_(seed) {
+    T_live_ = T_start_;
+}
 
 void FixLangevin::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
     const int n = owned_count(ctx);
+
+    // ── Live setpoint: linear Tstart→Tstop ramp ─────────────────────
+    //
+    // Mirrors LAMMPS `fix_langevin.cpp::compute_target()`:
+    //
+    //     double delta = update->ntimestep - update->beginstep;
+    //     if (delta != 0.0) delta /= update->endstep - update->beginstep;
+    //     t_target = t_start + delta * (t_stop - t_start);
+    //     tsqrt    = sqrt(t_target);
+    //
+    // `ctx.step` is the cumulative MD step index (continuous across
+    // chunked `run()` calls); `[nfirst_, nlast_]` is the run span set
+    // via `set_run_span()`. `delta` is clamped to `[0,1]` so stepping
+    // past `nlast_` holds the setpoint at `T_stop_` rather than
+    // extrapolating. With the default span (`nlast_ <= nfirst_`) or
+    // `T_stop_ == T_start_`, `T_live_` stays at `T_start_` — the
+    // no-ramp default.
+    double delta = 0.0;
+    if (nlast_ > nfirst_) {
+        delta = static_cast<double>(ctx.step - nfirst_)
+              / static_cast<double>(nlast_ - nfirst_);
+        delta = std::clamp(delta, 0.0, 1.0);
+    }
+    T_live_ = T_start_ + delta * (T_stop_ - T_start_);
 
     // Per-step seed mixed in. Atom identity = global tag, so the same
     // atom on different rank counts gets the same kick (modulo
@@ -76,11 +110,14 @@ void FixLangevin::launch(const cpu::LaunchContext& ctx) {
         static_cast<std::uint64_t>(seed_) * 0x9E3779B97F4A7C15ULL
         + static_cast<std::uint64_t>(ctx.step) * 0xBF58476D1CE4E5B9ULL;
 
-    // gfactor1 multiplies v -> drag force.
-    // gfactor2_per_sqrt_mass * sqrt(m) * gauss -> random force.
+    // gfactor1 multiplies v -> drag force (temperature-independent, as
+    // LAMMPS `gfactor1`).
+    // gfactor2_pre * sqrt(m) * gauss -> random force. The temperature
+    // enters as `sqrt(T_live_)`, recomputed every step so the ramp is
+    // honoured exactly like LAMMPS scaling `gfactor2` by `tsqrt`.
     const double inv_damp_ftm2v = 1.0 / (damp_ * kFtm2v);
     const double gfactor2_pre =
-        std::sqrt(2.0 * kBoltzmann * T_target_
+        std::sqrt(2.0 * kBoltzmann * T_live_
                   / (damp_ * dt_ * kMvv2e)) / kFtm2v;
 
     #pragma omp parallel for schedule(static)

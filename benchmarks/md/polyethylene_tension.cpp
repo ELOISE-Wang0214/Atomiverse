@@ -659,7 +659,8 @@ int main(int argc, char** argv) {
                 a.T_hot, a.dt_stage1, steps);
         cpu::md::NVELimit    nve{a.dt_stage1, /*xmax=*/0.05};
         cpu::md::InitVelocity init_v{a.T_hot, static_cast<unsigned int>(a.seed)};
-        cpu::md::FixLangevin  langevin{a.T_hot, a.langevin_damp, a.dt_stage1,
+        cpu::md::FixLangevin  langevin{a.T_hot, /*T_stop=*/a.T_hot,
+                                       a.langevin_damp, a.dt_stage1,
                                        static_cast<std::uint32_t>(a.seed + 1)};
         cpu::md::MD sim;
         sim.set_integrator(nve);

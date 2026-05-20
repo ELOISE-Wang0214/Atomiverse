@@ -17,8 +17,7 @@ namespace md {
 /// @brief Schneider-Stoll Langevin thermostat applied as an additive force.
 ///
 /// Mirrors LAMMPS `fix langevin Tstart Tstop damp seed`
-/// (`lammps/src/fix_langevin.cpp`) in the constant-temperature limit
-/// (`Tstart == Tstop == T_target`). At every step, before the velocity
+/// (`lammps/src/fix_langevin.cpp`). At every step, before the velocity
 /// update, two forces are added per atom:
 ///
 /// 1. Friction (Stokes drag):  F_drag = - m / (damp · ftm2v) · v
@@ -28,14 +27,48 @@ namespace md {
 /// `ftm2v = kFtm2v` and `mvv2e = kMvv2e` (the metal-unit conversion
 /// constants). The combined force satisfies the fluctuation-dissipation
 /// theorem so velocity-Verlet integration of `f_total = f_phys + F_drag
-/// + F_rand` produces the canonical NVT ensemble at `T_target`.
+/// + F_rand` produces the canonical NVT ensemble at the live setpoint.
 ///
-/// LAMMPS uses uniform random samples drawn from the Marsaglia-Tsang
-/// `RanMars` generator. We use Gaussian samples drawn from a per-(seed,
-/// step, atom-tag) splitmix stream. The two are statistically
-/// equivalent in the limit of many particles -- ⟨T⟩ and the velocity
-/// distribution match -- but individual trajectories will differ
-/// (different RNGs).
+/// ── LAMMPS correspondence ───────────────────────────────────────────
+///
+/// Reference: LAMMPS `src/fix_langevin.cpp`
+/// (github.com/lammps/lammps, branch `stable`, fetched 2026-05-20).
+/// Audit verdict per parameter (spec lammps-api-align-03-thermostats):
+///
+///   | Aspect            | LAMMPS `fix langevin`              | This class                          | Verdict |
+///   |-------------------|-----------------------------------|-------------------------------------|---------|
+///   | Argument order    | `Tstart Tstop damp seed`          | ctor `(T_start, T_stop, damp, dt, seed)` | aligned (fixed) |
+///   | Temperature spec  | `Tstart`/`Tstop` linear ramp      | `T_start`/`T_stop` + `set_run_span` ramp | aligned (fixed) |
+///   | `damp` meaning    | friction *time constant* [time]; γ = 1/damp; `gfactor1 = -m/t_period/ftm2v` (`fix_langevin.cpp:306`) | `damp` [fs], `gfactor1 = -m/(damp·ftm2v)` | aligned |
+///   | Ramp formula      | `compute_target()`: `delta = (ntimestep-beginstep)/(endstep-beginstep)`, `t_target = t_start + delta·(t_stop-t_start)`, random force ∝ `sqrt(t_target)` (`fix_langevin.cpp:794-802,661`) | identical; `delta` clamped to `[0,1]`; random force ∝ `sqrt(T_live)` | aligned |
+///   | `seed`            | seeds Marsaglia `RanMars`; positive int (`fix_langevin.cpp:78,84`) | `std::uint32_t` splitmix stream | divergence (RNG by design — see below) |
+///   | Force formula     | drag + FDT-consistent random kick | Schneider-Stoll drag + random, FDT-consistent | aligned |
+///   | `scale` keyword   | optional per-type friction scaling | not supported | deferred (spec out-of-scope) |
+///   | `tally` keyword   | reservoir energy tally             | not supported | deferred (spec out-of-scope) |
+///   | `zero` keyword    | COM-drift removal                  | not supported | deferred — overlaps `ZeroLinearMomentum` |
+///   | `angmom`/`omega`  | rotational-DOF thermostatting      | not supported | deferred (spec out-of-scope) |
+///
+/// **RNG divergence (deliberate).** LAMMPS draws uniform samples from
+/// the Marsaglia-Tsang `RanMars` generator; Atomiverse draws Gaussian
+/// samples from a per-`(seed, step, atom-tag)` splitmix stream. The two
+/// are statistically equivalent in the many-particle limit -- ⟨T⟩ and
+/// the velocity distribution match -- but individual trajectories
+/// differ. Only ensemble averages are contracted to match LAMMPS.
+///
+/// ── Temperature ramp ────────────────────────────────────────────────
+///
+/// `T_stop` (ctor arg 2, default sentinel `< 0` ⇒ folds to `T_start`)
+/// enables a linear thermostat-setpoint ramp. With the run span
+/// `[nfirst, nlast]` supplied via `set_run_span()` (mirrors LAMMPS
+/// capturing `update->beginstep` / `endstep` at run setup), the live
+/// setpoint each step is
+///
+///     delta    = clamp((step − nfirst) / (nlast − nfirst), 0, 1)
+///     T_live   = T_start + delta·(T_stop − T_start)
+///
+/// exactly as `fix_langevin.cpp::compute_target()`. With `T_stop ==
+/// T_start` (the default) the ramp is the constant `T_start`, i.e. no
+/// behavioural change for existing callers.
 ///
 /// Bound at `post_force @ +500` so the thermostat forces are added
 /// after every physical-force evaluator has accumulated, but before
@@ -45,12 +78,39 @@ namespace md {
 /// modified forces in the next velocity half-kick.
 class FixLangevin : public cpu::ComponentBase {
 public:
-    /// @param T_target Target temperature [K].
-    /// @param damp     Damping time constant [fs] (LAMMPS `damp`).
-    ///                 Effective friction γ = 1 / damp.
-    /// @param dt       Timestep [fs].
-    /// @param seed     RNG seed; reproducible across rank counts.
-    FixLangevin(double T_target, double damp, double dt, std::uint32_t seed);
+    /// @param T_start Ramp start temperature [K] (LAMMPS `Tstart`).
+    /// @param T_stop  Ramp end temperature [K] (LAMMPS `Tstop`). A
+    ///                negative value (the default) means "no ramp" —
+    ///                it folds to `T_start`, a constant-T thermostat.
+    /// @param damp    Damping time constant [fs] (LAMMPS `damp`).
+    ///                Effective friction γ = 1 / damp.
+    /// @param dt      Timestep [fs].
+    /// @param seed    RNG seed; reproducible across rank counts.
+    FixLangevin(double T_start, double T_stop, double damp,
+                double dt, std::uint32_t seed);
+
+    /// @brief Set the temperature-ramp run span `[nfirst, nlast]` (in MD
+    ///        step indices), mirroring LAMMPS `update->beginstep` /
+    ///        `update->endstep` captured at run setup.
+    ///
+    /// Must be called before the driver's `run()` if a ramp
+    /// (`T_stop != T_start`) is configured. With the default span
+    /// (`nlast <= nfirst`) the ramp `delta` is pinned to 0, so the
+    /// setpoint stays at `T_start` — a no-op, consistent with the
+    /// `T_stop == T_start` default.
+    ///
+    /// @param nfirst First MD step index of the run.
+    /// @param nlast  Last MD step index of the run.
+    /// @return `*this`, so the call can chain before registration.
+    FixLangevin& set_run_span(std::int64_t nfirst, std::int64_t nlast) {
+        nfirst_ = nfirst;
+        nlast_  = nlast;
+        return *this;
+    }
+
+    /// @return Live thermostat setpoint [K] — for diagnostics / observers.
+    ///         Equals `T_start` until the first `launch()` of a ramped run.
+    double T_target() const noexcept { return T_live_; }
 
     std::string name() const override { return "fix_langevin"; }
     ComponentRole role() const override { return ComponentRole::Thermostat; }
@@ -66,10 +126,18 @@ public:
     void launch(const cpu::LaunchContext& ctx) override;
 
 private:
-    double T_target_;
+    double T_start_;  ///< Ramp start temperature [K] (LAMMPS `t_start`).
+    double T_stop_;   ///< Ramp end temperature [K] (LAMMPS `t_stop`).
     double damp_;
     double dt_;
     std::uint32_t seed_;
+
+    // Temperature-ramp run span (LAMMPS `update->beginstep` / `endstep`).
+    std::int64_t nfirst_ = 0;  ///< First MD step of the run.
+    std::int64_t nlast_  = 0;  ///< Last MD step of the run.
+    /// @brief Live thermostat setpoint [K], interpolated each step from
+    /// the ramp; equals `T_start_` when no ramp is active.
+    double T_live_ = 0.0;
 };
 
 } // namespace md

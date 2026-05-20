@@ -222,7 +222,8 @@ TEST_F(BOMDTest, RHFLangevinNVT) {
     cpu::md::MD sim;
     sim.add(cpu::md::InitVelocity{T_target, /*seed=*/7u});
     sim.add(cpu::md::VelocityVerlet{dt});
-    sim.add(cpu::md::FixLangevin{T_target, damp, dt, /*seed=*/13u});
+    sim.add(cpu::md::FixLangevin{T_target, /*T_stop=*/T_target, damp, dt,
+                                 /*seed=*/13u});
     sim.on(md::Phase::force).add(cpu::scf::SCFEvaluator{config});
     sim.build();
     sim.run(frame, 30);

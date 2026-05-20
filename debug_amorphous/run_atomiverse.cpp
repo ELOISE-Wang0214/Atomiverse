@@ -277,7 +277,8 @@ int main(int argc, char** argv) {
         cpu::md::MD sim;
         sim.add(cpu::md::NVELimit{dt, xmax});
         sim.add(cpu::md::InitVelocity{T_tgt, /*seed=*/1231});
-        sim.add(cpu::md::FixLangevin{T_tgt, tau_lang, dt, /*seed=*/904297});
+        sim.add(cpu::md::FixLangevin{T_tgt, /*T_stop=*/T_tgt, tau_lang, dt,
+                                     /*seed=*/904297});
         sim.on(ATV::md::Phase::pre_force)
             .add(cpu::md::mpi::HaloExchangeForward{lj_cut + 0.4}, -20);
         sim.on(ATV::md::Phase::post_force)

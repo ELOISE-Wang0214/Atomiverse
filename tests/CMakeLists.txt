@@ -81,6 +81,7 @@ atv_add_cpp_test(test_cpu_md_lammps_langevin_parity cpu/md/test_lammps_langevin_
 atv_add_cpp_test(test_cpu_md_lammps_npt_parity      cpu/md/test_lammps_npt_parity.cpp)
 atv_add_cpp_test(test_deform_lammps_align           cpu/md/test_deform_lammps_align.cpp)
 atv_add_cpp_test(test_nve_limit_lammps_align        cpu/md/test_nve_limit_lammps_align.cpp)
+atv_add_cpp_test(test_thermostat_lammps_align       cpu/md/test_thermostat_lammps_align.cpp)
 atv_add_cpp_test(test_cpu_md_neighbor_list_arena  cpu/md/test_neighbor_list_arena.cpp)
 atv_add_cpp_test(test_cpu_md_neighbor_list_rebuild  cpu/md/test_neighbor_list_rebuild.cpp)
 atv_add_cpp_test(test_cpu_md_pe_nvt               cpu/md/test_pe_nvt.cpp)
