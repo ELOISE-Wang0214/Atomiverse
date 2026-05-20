@@ -178,3 +178,6 @@ debug_amorphous/log.*
 # Ad-hoc SCF debug dumps
 tools/*.npy
 tools/dump_*.txt
+# LAMMPS run artifacts (regenerable — see benchmarks/.../SOURCES.md)
+log.lammps
+**/log.lammps

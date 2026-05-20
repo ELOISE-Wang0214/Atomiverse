@@ -70,6 +70,7 @@ atv_add_cpp_test(test_cpu_md_lj_exclusions        cpu/md/test_lj_exclusions.cpp)
 atv_add_cpp_test(test_cpu_md_pair_lj_cut          cpu/md/test_pair_lj_cut.cpp)
 atv_add_cpp_test(test_cpu_md_pair_morse_smoke     cpu/md/test_pair_morse_smoke.cpp)
 atv_add_cpp_test(test_cpu_md_pe_ff_constants      cpu/md/test_pe_ff_constants.cpp)
+atv_add_cpp_test(test_cpu_md_pe_energy_xcheck     cpu/md/test_pe_energy_xcheck.cpp)
 atv_add_cpp_test(test_cpu_lammps_data_loader      cpu/test_lammps_data_loader.cpp)
 target_compile_definitions(test_cpu_lammps_data_loader PRIVATE
     ATV_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
