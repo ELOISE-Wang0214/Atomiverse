@@ -3,7 +3,6 @@ title: MSU amorphous-PE tension — correctness and multi-core performance valid
 status: in-progress
 created: 2026-04-19
 last-updated: 2026-05-19 (Phase C data file + input deck downloaded from CAVS ICME wiki — `msu_pe.data` + `lammps_msu_paper.in` + `SOURCES.md` in tree. Surfaces a Dreiding-UA vs OPLS angle/dihedral discrepancy in `polyethylene_tension.cpp` that blocks Phase D.)
-parent: parallel-md-engine.md
 ---
 
 # MSU amorphous-PE validation
