@@ -396,6 +396,10 @@ public:
         record_strain_     = record_strain;
         current_step_offset_ += stage_steps_so_far_;
         stage_steps_so_far_ = 0;
+        // Re-arm the strain reference: it is snapshotted at the first
+        // stress-recorded step so engineering strain is referenced to
+        // the box edge at deformation onset, not the sim-initial box.
+        if (record_strain) strain_ref_set_ = false;
     }
 
     void launch(const cpu::LaunchContext& ctx) override {
@@ -412,8 +416,19 @@ public:
                        << f.box(0,0) << "," << f.box(1,1) << "," << f.box(2,2) << "\n";
         }
         if (record_strain_ && stress_ && stress_->is_open()) {
+            // Snapshot the engineering-strain reference at the first
+            // stress-recorded step (deformation onset), mirroring LAMMPS
+            // fix deform's L0-at-fix-issue rule. The sim-initial box is
+            // wrong here: NPT stages 2-4 compress the box beforehand.
+            if (!strain_ref_set_) {
+                box_x0_ = f.box(0,0);
+                strain_ref_set_ = true;
+            }
             const double V = f.box(0,0) * f.box(1,1) * f.box(2,2);
-            const double sigma_xx = (V > 0.0) ? f.stress[0] / V : 0.0;
+            // Tensile stress sigma_xx = -P_xx: f.stress carries the
+            // LAMMPS-standard +trace=compressive pressure convention, so
+            // negate for tensile-positive stress (LAMMPS deck reports -pxx).
+            const double sigma_xx = (V > 0.0) ? -f.stress[0] / V : 0.0;
             const double strain = f.box(0,0) / box_x0_ - 1.0;
             (*stress_) << abs_step << "," << current_stage_ << ","
                        << strain << "," << sigma_xx << ","
@@ -430,6 +445,7 @@ private:
     int    current_stage_       = 0;
     double current_T_target_    = 0.0;
     bool   record_strain_       = false;
+    bool   strain_ref_set_      = false;
     int    current_step_offset_ = 0;
     int    stage_steps_so_far_  = 0;
 };
