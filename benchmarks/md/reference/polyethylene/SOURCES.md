@@ -124,3 +124,65 @@ single-chain bonded-energy cross-check test
 - **Unit conversion** — LAMMPS `units real` is kcal/mol; Atomiverse
   energy is eV. The test converts with
   `1 kcal/mol = 1 / 23.060547830619026 eV` (≈ 0.0433641043 eV).
+
+---
+
+## Phase D.1 — Atomiverse-vs-LAMMPS comparison inputs (spec `msu-pe-phase-d-01-reference-runs`)
+
+`lammps.in` is a clean, protocol-faithful LAMMPS deck added for the
+Phase D quantitative comparison. It is **distinct from
+`lammps_msu_paper.in`** — that file is the verbatim upstream Tschopp 2010
+script kept as immutable ground truth. `lammps.in` reproduces the same
+five stages with:
+
+- a uniform `thermo_style custom step temp press pe ke pxx pyy pzz`;
+- a persistent `fix print` that streams a canonical-schema per-step CSV
+  `thermo.lammps.csv`, header `step,T,P,E_pot,E_kin,Pxx,Pyy,Pzz`;
+- a stage-5 `fix print` streaming `stress_strain.lammps.csv`, header
+  `strain,sigma_xx`;
+- an XYZ trajectory dump every 10000 steps and an accumulated RDF.
+
+### Protocol (`lammps.in`)
+
+| Stage | Ensemble | T | P | Steps | dt |
+|---|---|---|---|---|---|
+| 1 | NVT | 500 K | — | 10000 | 1.0 fs |
+| 2 | NPT | 500 K | 0 bar | 50000 | 0.5 fs |
+| 3 | NVT cool | 500 → 100 K | — | 50000 | 0.5 fs |
+| 4 | NPT | 100 K | 0 bar | 50000 | 0.5 fs |
+| 5 | uniaxial tension x | 100 K | — | 200000 | 0.5 fs |
+
+Force-field coefficients are identical to `lammps_msu_paper.in` and the
+FF table above.
+
+### Canonical reference artifacts (filename scheme)
+
+`tools/run_msu_lammps.sh` and `tools/run_msu_atomiverse.sh` publish their
+output as engine- and rank-suffixed CSVs directly under this directory:
+
+| File | Producer |
+|---|---|
+| `thermo_lammps_<N>r.csv` | LAMMPS, N ranks |
+| `thermo_atomiverse_<N>r.csv` | Atomiverse, N ranks |
+| `stress_strain_lammps_<N>r.csv` | LAMMPS, N ranks |
+| `stress_strain_atomiverse_<N>r.csv` | Atomiverse, N ranks |
+
+The Atomiverse benchmark currently logs an isotropic pressure only; the
+`Pxx/Pyy/Pzz` columns of `thermo_atomiverse_*.csv` are filled with that
+isotropic value as a stand-in until Phase D.2 wires per-axis pressure
+into `benchmarks/md/polyethylene_tension.cpp`.
+
+### Operator run procedure (NOT a CI step)
+
+The full ~360000-step protocol is ~24h-class wall time — an **operator
+action, never a CI step**:
+
+```bash
+./tools/run_msu_lammps.sh 1       # LAMMPS reference, 1 rank
+./tools/run_msu_lammps.sh 8       # LAMMPS reference, 8 ranks
+./tools/run_msu_atomiverse.sh 1   # Atomiverse reference, 1 rank
+./tools/run_msu_atomiverse.sh 8   # Atomiverse reference, 8 ranks
+```
+
+Each run also leaves a timestamped audit copy under `runs/`. Commit the
+eight canonical CSVs once all four runs complete.

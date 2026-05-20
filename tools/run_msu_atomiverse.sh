@@ -50,6 +50,7 @@ fi
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${ATV_BUILD_DIR:-$REPO_ROOT/build}"
 BIN="$BUILD_DIR/benchmarks/polyethylene_tension"
+REF_DIR="$REPO_ROOT/benchmarks/md/reference/polyethylene"
 
 if [[ ! -x "$BIN" ]]; then
   echo "error: $BIN not found or not executable." >&2
@@ -91,7 +92,11 @@ else
 fi
 
 START="$(date +%s.%N)"
-"${LAUNCH[@]}" "$BIN" --out-dir "$RUN_DIR" "${EXTRA_ARGS[@]}"
+# Paper-scale defaults: emit a trajectory frame every 10000 steps and a
+# strided RDF. Anything in EXTRA_ARGS comes last and overrides these
+# (the benchmark parser takes the final occurrence of a repeated flag).
+"${LAUNCH[@]}" "$BIN" --out-dir "$RUN_DIR" \
+  --traj-every 10000 --rdf 10.5,200,1000 "${EXTRA_ARGS[@]}"
 END="$(date +%s.%N)"
 
 WALL="$(awk -v s="$START" -v e="$END" 'BEGIN { printf "%.3f", e - s }')"
@@ -112,6 +117,26 @@ if [[ -s "$THERMO" ]]; then
   fi
 fi
 
+# Publish canonical-schema reference artifacts (engine + rank suffixed)
+# under the reference directory so Phase D.2/D.3/D.4 reference them by a
+# stable path. The benchmark's thermo.csv carries an isotropic pressure
+# column only; the canonical schema's Pxx/Pyy/Pzz are filled with that
+# isotropic value as a stand-in until Phase D.2 wires per-axis pressure
+# into the benchmark.
+THERMO_REF="$REF_DIR/thermo_atomiverse_${RANKS}r.csv"
+STRESS_REF="$REF_DIR/stress_strain_atomiverse_${RANKS}r.csv"
+if [[ -s "$THERMO" ]]; then
+  awk -F, 'NR==1 { print "step,T,P,E_pot,E_kin,Pxx,Pyy,Pzz"; next }
+           NF>=7 { print $1","$4","$5","$6","$7","$5","$5","$5 }' \
+      "$THERMO" > "$THERMO_REF"
+fi
+STRESS="$RUN_DIR/stress_strain.csv"
+if [[ -s "$STRESS" ]]; then
+  awk -F, 'NR==1 { print "strain,sigma_xx"; next }
+           NF>=5 { print $3","$5 }' \
+      "$STRESS" > "$STRESS_REF"
+fi
+
 echo
 echo "[run_msu_atomiverse] complete"
 echo "  ranks       : $RANKS"
@@ -121,3 +146,5 @@ echo "  run dir     : $RUN_DIR"
 echo "  env         : $RUN_DIR/run_env.txt"
 echo "  thermo      : $RUN_DIR/thermo.csv"
 echo "  stress/strain: $RUN_DIR/stress_strain.csv"
+echo "  thermo ref  : $THERMO_REF"
+echo "  stress ref  : $STRESS_REF"

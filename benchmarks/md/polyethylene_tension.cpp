@@ -35,6 +35,11 @@
 /// Output (rank 0 only) under `--out-dir`:
 ///   * `thermo.csv`: `step,stage,T_target_K,T_K,P_bar,E_pot_eV,E_kin_eV,box_x,box_y,box_z`
 ///   * `stress_strain.csv`: `step,stage,strain,sigma_xx_eV_per_A3,sigma_xx_GPa`
+///   * `trajectory.xyz` (only with `--traj-every N`): plain-XYZ frames.
+///   * `rdf.dat` (only with `--rdf RMAX,BINS[,STRIDE]`): radial g(r).
+///
+/// Both optional outputs default off, so a plain run is byte-identical
+/// to the pre-flag CSV-only behaviour.
 ///
 /// @see .claude/specs/parallel-md-engine.md  Phase 5 Track A.1 + A.2
 /// @see .claude/specs/msu-pe-validation.md   Phase C.2
@@ -46,6 +51,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -65,6 +71,8 @@
 #include "atomiverse/cpu/md/nose_hoover.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/md/virial_stress.h"
+#include "atomiverse/cpu/observer/rdf.h"
+#include "atomiverse/cpu/recorder/trajectory.h"
 #include "atomiverse/core/binding.h"
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/units.h"
@@ -140,6 +148,8 @@ struct Args {
     double strain_rate = 1e-6;      ///< 1/fs (stage 5)
     std::string out_dir = ".";
     bool   quiet       = false;
+    int    traj_every  = 0;         ///< trajectory XYZ stride (0 = off)
+    std::string rdf_spec;           ///< "RMAX,BINS[,STRIDE]" (empty = off)
 };
 
 void print_help() {
@@ -166,6 +176,12 @@ void print_help() {
         "  --data PATH                 Load this LAMMPS data file as the\n"
         "                              initial system instead of generating a\n"
         "                              chain grid (e.g. the MSU PE deck).\n"
+        "  --traj-every N              Append a plain-XYZ trajectory frame to\n"
+        "                              <out-dir>/trajectory.xyz every N steps\n"
+        "                              (and always the first frame). 0 = off.\n"
+        "  --rdf RMAX,BINS[,STRIDE]    Accumulate a radial distribution\n"
+        "                              function into <out-dir>/rdf.dat. STRIDE\n"
+        "                              omitted = sample every step. Empty = off.\n"
         "  --seed S                    RNG seed for InitVelocity (default 12345).\n"
         "  --quiet                     Suppress per-stage progress lines.\n"
         "  --help                      Show this message.\n");
@@ -223,6 +239,8 @@ bool parse_args(int argc, char** argv, Args& a) {
         if (take_i("--cool-segments", a.cool_segments)) continue;
         if (take_s("--out-dir", a.out_dir)) continue;
         if (take_s("--data", a.data_path)) continue;
+        if (take_i("--traj-every", a.traj_every)) continue;
+        if (take_s("--rdf", a.rdf_spec)) continue;
         if (take_i("--seed", a.seed)) continue;
         if (std::strcmp(s, "--quiet") == 0) { a.quiet = true; continue; }
         if (std::strcmp(s, "--help")  == 0) { print_help(); std::exit(0); }
@@ -383,6 +401,40 @@ private:
     int    stage_steps_so_far_  = 0;
 };
 
+/// @brief Inline observer: appends a plain-XYZ trajectory frame.
+///
+/// Writes the very first frame and then one frame every `traj_every`
+/// steps, so a run of *any* length yields at least one frame. Bound to
+/// `end_of_step @ +25` -- after `CsvRecorder(+20)` so the recorded
+/// geometry reflects the post-step box. Only rank 0 writes.
+class TrajectoryRecorder : public cpu::ComponentBase {
+public:
+    TrajectoryRecorder(std::ofstream* xyz, int traj_every)
+        : xyz_(xyz), traj_every_(std::max(1, traj_every)) {}
+
+    std::string name() const override { return "trajectory_recorder"; }
+    int frequency() const override { return 1; }
+    std::vector<DefaultBinding> default_bindings() const override {
+        return {{static_cast<int>(ATV::md::Phase::end_of_step), 25}};
+    }
+
+    void launch(const cpu::LaunchContext& ctx) override {
+        ++abs_step_;
+        if (ctx.runtime.mpi_rank != 0) return;
+        if (!xyz_ || !xyz_->is_open()) return;
+        if (abs_step_ != 1 && abs_step_ % traj_every_ != 0) return;
+        const auto& f = ctx.frame;
+        cpu::trajectory_append(*xyz_, f.atoms.type.data(),
+                               f.atoms.x.data(), f.atoms.y.data(),
+                               f.atoms.z.data(), f.atoms.size(), abs_step_);
+    }
+
+private:
+    std::ofstream* xyz_;
+    int traj_every_;
+    int abs_step_ = 0;
+};
+
 double now_seconds() {
 #ifdef ATV_HAS_MPI
     return MPI_Wtime();
@@ -416,6 +468,27 @@ int scaled_steps(int base, double scale) {
     return std::max(s, 1);
 }
 
+/// @brief Parse a `--rdf` spec "RMAX,BINS[,STRIDE]" into RDF parameters.
+///
+/// STRIDE omitted (2 fields) yields freq 0 = sample every step. Returns
+/// false on a malformed spec (wrong field count, non-positive RMAX/BINS,
+/// negative STRIDE).
+bool parse_rdf_spec(const std::string& spec, double& r_max, int& bins,
+                    int& freq) {
+    std::vector<std::string> parts;
+    std::string cur;
+    for (char c : spec) {
+        if (c == ',') { parts.push_back(cur); cur.clear(); }
+        else          { cur.push_back(c); }
+    }
+    parts.push_back(cur);
+    if (parts.size() != 2 && parts.size() != 3) return false;
+    r_max = std::atof(parts[0].c_str());
+    bins  = std::atoi(parts[1].c_str());
+    freq  = (parts.size() == 3) ? std::atoi(parts[2].c_str()) : 0;
+    return r_max > 0.0 && bins > 0 && freq >= 0;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -441,7 +514,9 @@ int main(int argc, char** argv) {
     const int n_global_dof = 3 * n_atoms - 3;
     const double box_x0 = frame.box(0, 0);
 
-    std::ofstream thermo_csv, stress_csv;
+    // `traj_xyz` is opened only when --traj-every is set, so a default
+    // run leaves CSV-only output byte-identical to the pre-flag behaviour.
+    std::ofstream thermo_csv, stress_csv, traj_xyz;
     if (my_rank == 0) {
         thermo_csv.open(a.out_dir + "/thermo.csv");
         stress_csv.open(a.out_dir + "/stress_strain.csv");
@@ -450,6 +525,9 @@ int main(int argc, char** argv) {
         }
         if (stress_csv.is_open()) {
             stress_csv << "step,stage,strain,sigma_xx_eV_per_A3,sigma_xx_GPa\n";
+        }
+        if (a.traj_every > 0) {
+            traj_xyz.open(a.out_dir + "/trajectory.xyz");
         }
     }
 
@@ -487,6 +565,23 @@ int main(int argc, char** argv) {
     HarmonicAngle ha{{angle_k_eV()}, {kAngleTheta0}};
     MultiHarmonicDihedral hd{{dihedral_Cn_eV()}};
     CsvRecorder rec{&thermo_csv, &stress_csv, a.print_every, n_global_dof, box_x0};
+    TrajectoryRecorder trec{&traj_xyz, std::max(1, a.traj_every)};
+
+    // RDF observer (optional). Heap-allocated so it is conditionally
+    // created yet still outlives `sim`, which stores a non-owning
+    // pointer; finalize() writes <out-dir>/rdf.dat at end of run.
+    std::unique_ptr<RDF> rdf;
+    if (!a.rdf_spec.empty()) {
+        double r_max = 0.0;
+        int    bins = 0, freq = 0;
+        if (!parse_rdf_spec(a.rdf_spec, r_max, bins, freq)) {
+            std::fprintf(stderr,
+                "invalid --rdf spec '%s' (expected RMAX,BINS[,STRIDE])\n",
+                a.rdf_spec.c_str());
+            return 2;
+        }
+        rdf = std::make_unique<RDF>(r_max, bins, freq, a.out_dir + "/rdf.dat");
+    }
 
     cpu::md::MD sim;
     sim.add(vv);
@@ -504,6 +599,12 @@ int main(int argc, char** argv) {
     sim.on(ATV::md::Phase::force).add(ha);
     sim.on(ATV::md::Phase::force).add(hd);
     sim.on(ATV::md::Phase::end_of_step).add(rec, 20);
+    if (a.traj_every > 0) {
+        sim.on(ATV::md::Phase::end_of_step).add(trec, 25);
+    }
+    if (rdf) {
+        sim.add(*rdf);
+    }
 
     if (my_rank == 0 && !a.quiet) {
         const char* mode_str =
@@ -596,11 +697,18 @@ int main(int argc, char** argv) {
         std::fprintf(stderr,
             "polyethylene_tension done: %d atoms, %.2fs total\n",
             n_atoms, t1 - t0);
+        if (a.traj_every > 0)
+            std::fprintf(stderr, "  trajectory : %s/trajectory.xyz\n",
+                         a.out_dir.c_str());
+        if (rdf)
+            std::fprintf(stderr, "  rdf        : %s/rdf.dat\n",
+                         a.out_dir.c_str());
     }
 
     if (my_rank == 0) {
         if (thermo_csv.is_open()) thermo_csv.close();
         if (stress_csv.is_open()) stress_csv.close();
+        if (traj_xyz.is_open())   traj_xyz.close();
     }
 
 #ifdef ATV_HAS_MPI

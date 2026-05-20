@@ -101,6 +101,18 @@ END="$(date +%s.%N)"
 
 WALL="$(awk -v s="$START" -v e="$END" 'BEGIN { printf "%.3f", e - s }')"
 
+# Publish the deck's canonical-schema CSVs as committed reference
+# artifacts, suffixed by engine and rank count, directly under the
+# reference directory so Phase D.2/D.3/D.4 reference them by stable path.
+THERMO_REF="$REF_DIR/thermo_lammps_${RANKS}r.csv"
+STRESS_REF="$REF_DIR/stress_strain_lammps_${RANKS}r.csv"
+if [[ -s "$RUN_DIR/thermo.lammps.csv" ]]; then
+  cp "$RUN_DIR/thermo.lammps.csv" "$THERMO_REF"
+fi
+if [[ -s "$RUN_DIR/stress_strain.lammps.csv" ]]; then
+  cp "$RUN_DIR/stress_strain.lammps.csv" "$STRESS_REF"
+fi
+
 echo
 echo "[run_msu_lammps] complete"
 echo "  ranks      : $RANKS"
@@ -108,5 +120,5 @@ echo "  wall time  : ${WALL}s"
 echo "  run dir    : $RUN_DIR"
 echo "  env        : $RUN_DIR/run_env.txt"
 echo "  log        : $RUN_DIR/log.lammps"
-echo "  thermo     : $RUN_DIR/thermo_reference.csv"
-echo "  stress/str : $RUN_DIR/stress_strain_reference.csv"
+echo "  thermo ref : $THERMO_REF"
+echo "  stress ref : $STRESS_REF"
