@@ -1,5 +1,5 @@
 /// @file cpu/scf/libcint_bridge.cpp
-/// @brief STO-3G -> libcint atm/bas/env bridge matching PySCF normalization.
+/// @brief libcint atm/bas/env bridge matching PySCF normalization.
 
 #include "atomiverse/cpu/scf/libcint_bridge.h"
 
@@ -54,7 +54,7 @@ std::array<double, 3> normalize_contracted_ao(
 }
 
 void append_shell(
-    LibcintSto3gContext& ctx,
+    LibcintContext& ctx,
     int atom_index,
     int l,
     const std::array<double, 3>& alpha_in,
@@ -99,8 +99,8 @@ void append_shell(
 
 } // namespace
 
-LibcintSto3gContext build_libcint_sto3g_context(const Frame& frame) {
-    LibcintSto3gContext ctx;
+LibcintContext build_libcint_context(const Frame& frame) {
+    LibcintContext ctx;
     ctx.natm = static_cast<int>(frame.atoms.size());
     ctx.atm.resize(ctx.natm * ATM_SLOTS, 0);
     ctx.env.resize(PTR_ENV_START, 0.0);

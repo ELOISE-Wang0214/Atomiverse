@@ -2,8 +2,8 @@
 /// @brief SCFSolver implementation — orchestrates the 5 internal helpers
 ///        through the SCF self-consistency cycle.
 ///
-/// Mirrors the legacy `scf_solve()` body byte-for-byte semantically;
-/// callers (including the `scf_solve()` shim) get bit-identical results.
+/// `scf_solve()` is a thin functional wrapper that constructs a transient
+/// `SCFSolver` and runs it; both produce bit-identical results.
 
 #include "atomiverse/cpu/scf/scf_solver.h"
 
@@ -38,7 +38,7 @@ void SCFSolver::build(const IntegralPack& reference) {
     // Geometry-invariant pre-allocation only. Everything else (X = S^{-1/2},
     // shell-pair lists, KS grid) is geometry-dependent — atoms move during
     // geometry optimization / AIMD, so those structures are rebuilt per
-    // run() to stay consistent with the legacy scf_solve() contract.
+    // run() to stay consistent with the scf_solve() functional contract.
     eigen_.prepare(reference.n_basis);
     density_.prepare(reference.n_basis);
     built_ = true;

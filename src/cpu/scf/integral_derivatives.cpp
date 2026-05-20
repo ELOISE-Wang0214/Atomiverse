@@ -1,5 +1,5 @@
 /// @file cpu/scf/integral_derivatives.cpp
-/// @brief Analytic derivatives of STO-3G molecular integrals w.r.t. nuclear positions.
+/// @brief Analytic derivatives of molecular integrals w.r.t. nuclear positions.
 ///
 /// Uses the angular momentum raising formula for derivatives:
 ///   d/dA_d <a|O|b> = 2*alpha_a * <a+1_d|O|b> - a_d * <a-1_d|O|b>
@@ -10,7 +10,8 @@
 /// For two-center integrals, translational invariance gives d/dB = -d/dA.
 /// Nuclear attraction has an additional term from the nuclear position.
 ///
-/// Supports s-type (l=0) and p-type (l=1) basis functions.
+/// Supports any l <= kMaxL (s, p, d shells) through the generic
+/// primitive helpers in `native::`.
 ///
 /// References:
 ///   Obara & Saika, JCP 84, 3963 (1986) -- recurrence relations
@@ -383,7 +384,7 @@ static std::vector<int> build_shell_to_atom_from_integrals(const IntegralPack& i
 
 #ifdef ATV_HAS_LIBCINT
 
-static inline int libcint_shell_dim(const LibcintSto3gContext& ctx, int sh) {
+static inline int libcint_shell_dim(const LibcintContext& ctx, int sh) {
     const int begin = ctx.shell_offsets[sh];
     const int end = (sh + 1 < ctx.nshells) ? ctx.shell_offsets[sh + 1] : ctx.nao;
     return end - begin;
@@ -677,12 +678,7 @@ IntegralDerivPack build_integral_derivatives(const IntegralPack& ipack) {
     return pack;
 }
 
-IntegralDerivPack build_integral_derivatives_sto3g(const Frame& frame, int charge) {
-    const auto ipack = build_integrals(frame, cpu::scf::BasisSet::STO3G, charge);
-    return build_integral_derivatives(ipack);
-}
-
-void accumulate_two_electron_gradient_sto3g(
+void accumulate_two_electron_gradient(
     xt::xtensor<double, 2>& grad,
     const Frame& frame,
     const IntegralPack& integrals,
@@ -697,7 +693,7 @@ void accumulate_two_electron_gradient_sto3g(
     const bool restricted = (config.spin == SpinType::Restricted);
 
 #ifdef ATV_HAS_LIBCINT
-    auto cint_ctx = build_libcint_sto3g_context(frame);
+    auto cint_ctx = build_libcint_context(frame);
     if (cint_ctx.nao == n && !config.force_native_two_electron_deriv) {
         const int nshells = cint_ctx.nshells;
         ATV_INFO(

@@ -7,8 +7,9 @@
 ///   - SCFConfig: all parameters in one struct
 ///   - SCFResult: full energy decomposition, spin-resolved orbitals, diagnostics
 ///
-/// The three existing solvers (rhf_solve, uhf_solve, uks_solve) become thin
-/// wrappers around scf_solve() for backward compatibility.
+/// The method-specific convenience solvers (rhf_solve, uhf_solve, uks_solve)
+/// are thin wrappers around scf_solve() that preset the matching SCFConfig
+/// and repack into the method-specific result struct.
 ///
 /// @see cpu::scf::scf_utils.h for shared SCF utilities
 /// @see cpu::scf::operators.h for J/K operator builders
@@ -69,8 +70,8 @@ struct SCFConfig {
     int n_angular = 110;                     ///< Angular grid points per atom.
 
     /// @brief Force the native 2e gradient engine even when libcint is available.
-    /// @details libcint (when compiled in) is the production path for
-    ///          `accumulate_two_electron_gradient_sto3g`. Setting this to `true`
+    /// @details libcint (when compiled in) is the STO-3G path for
+    ///          `accumulate_two_electron_gradient`. Setting this to `true`
     ///          routes through the native Rys-quadrature-based derivative
     ///          instead. Reserved for tests that compare native-vs-libcint
     ///          outputs (see `test_gradient_vs_libcint.cpp`) and benchmarks

@@ -1,8 +1,9 @@
 /// @file cpu/scf/integral_derivatives.h
-/// @brief Analytic derivatives of STO-3G molecular integrals w.r.t. nuclear positions.
+/// @brief Analytic derivatives of molecular integrals w.r.t. nuclear positions.
 ///
-/// Computes dS/dR, dT/dR, dV/dR, d(ERI)/dR, and dV_nuc/dR for s+p type Gaussians.
-/// Supports elements H through O (Z=1..8) with STO-3G basis (s and sp shells).
+/// Computes dS/dR, dT/dR, dV/dR, d(ERI)/dR, and dV_nuc/dR for contracted
+/// Gaussians of any l <= kMaxL (s, p, d shells). Works with any basis the
+/// SCF path resolves into an `IntegralPack`.
 /// Uses the angular momentum raising formula for derivatives:
 ///   d/dA_d <a|O|b> = 2*alpha_a * <a+1_d|O|b> - a_d * <a-1_d|O|b>
 ///
@@ -49,21 +50,21 @@ struct IntegralDerivPack {
 /// @return IntegralDerivPack with dS / dT / dV / dV_nuc.
 IntegralDerivPack build_integral_derivatives(const IntegralPack& pack);
 
-/// @brief Back-compat STO-3G wrapper. Forwards to the generic builder.
-IntegralDerivPack build_integral_derivatives_sto3g(const Frame& frame, int charge = 0);
-
 /// @brief Contract two-electron derivative integrals directly into the gradient.
 ///
 /// Avoids materializing the full dERI tensor, which scales as O(n_atoms * n_basis^4)
 /// in memory. The contraction is performed on the fly using the same analytic
-/// primitive derivative formulas as build_integral_derivatives_sto3g().
+/// primitive derivative formulas as build_integral_derivatives().
+///
+/// Works for any basis: the libcint engine handles STO-3G (when compiled in)
+/// and the native Rys-quadrature block-derivative engine handles all l ≤ kMaxL.
 ///
 /// @param[out] grad      Gradient accumulator [n_atoms, 3] in Hartree/Bohr.
 /// @param integrals      Integral pack for the current geometry.
 /// @param P_total        Total density matrix (restricted: P_alpha, unrestricted: Pa+Pb).
 /// @param result         Converged SCF result with spin densities.
 /// @param config         SCF configuration selecting HF/KS and spin treatment.
-void accumulate_two_electron_gradient_sto3g(
+void accumulate_two_electron_gradient(
     xt::xtensor<double, 2>& grad,
     const Frame& frame,
     const IntegralPack& integrals,

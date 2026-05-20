@@ -1,5 +1,5 @@
 /// @file cpu/scf/operators.cpp
-/// @brief Two-electron operator builders: stored-ERI (legacy) and direct-SCF.
+/// @brief Two-electron operator builders: stored-ERI and direct-SCF.
 
 #include "atomiverse/cpu/scf/operators.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
@@ -17,42 +17,13 @@ namespace ATV {
 namespace cpu {
 namespace scf {
 
-// ── Stored-ERI operators (BLAS via xtensor-blas) ────────────────────────
+// ── Stored-ERI operator (BLAS via xtensor-blas) ─────────────────────────
 //
-// All three contractions exploit the observation that the 4-index ERI
-// tensor can be reshaped into an [n²×n²] matrix, turning the double-sum
-// contraction into a single DGEMV call. For Exchange, the ERI must first
-// be transposed to (i,k,j,l) order.
-//
-// These are legacy functions; the production direct-SCF path
-// (`build_g_rhf_direct_block`) never materializes the full ERI tensor.
-
-void build_coulomb(const RealMatrix& P_total,
-                   const xt::xtensor<double, 4>& ERI, int n,
-                   RealMatrix& J) {
-    // J(i,j) = Σ_kl P(k,l) · ERI(i,j,k,l)
-    //        = ERI_mat[ij, kl] @ P_flat[kl]
-    const auto nn = static_cast<std::size_t>(n * n);
-    auto P_flat = xt::reshape_view(P_total, {nn});
-    auto ERI_mat = xt::reshape_view(ERI, {nn, nn});
-    auto J_flat = xt::linalg::dot(ERI_mat, P_flat);
-    J = xt::reshape_view(J_flat, {static_cast<std::size_t>(n),
-                                   static_cast<std::size_t>(n)});
-}
-
-void build_exchange(const RealMatrix& P_spin,
-                    const xt::xtensor<double, 4>& ERI, int n,
-                    RealMatrix& K) {
-    // K(i,j) = Σ_kl P(k,l) · ERI(i,k,j,l)
-    //        = ERI_ikjl_mat[ij, kl] @ P_flat[kl]
-    const auto nn = static_cast<std::size_t>(n * n);
-    auto ERI_ikjl = xt::eval(xt::transpose(ERI, {0, 2, 1, 3}));
-    auto P_flat = xt::reshape_view(P_spin, {nn});
-    auto ERI_mat = xt::reshape_view(ERI_ikjl, {nn, nn});
-    auto K_flat = xt::linalg::dot(ERI_mat, P_flat);
-    K = xt::reshape_view(K_flat, {static_cast<std::size_t>(n),
-                                   static_cast<std::size_t>(n)});
-}
+// `build_coulomb_exchange_fused` reshapes the 4-index ERI tensor into an
+// [n²×n²] matrix, turning the Coulomb double-sum into a single DGEMV call.
+// `HamiltonianBuilder` selects this path whenever `IntegralPack::ERI` is a
+// materialized dense tensor; otherwise the direct-SCF
+// `build_g_rhf_direct_block` path runs without ever materializing ERI.
 
 void build_coulomb_exchange_fused(const RealMatrix& P_total,
                                   const xt::xtensor<double, 4>& ERI, int n,

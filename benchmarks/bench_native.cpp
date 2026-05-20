@@ -431,7 +431,8 @@ BENCHMARK(BM_Grid_H2)
 static void BM_IntegralDeriv_H2(benchmark::State& state) {
     auto frame = make_h2();
     for (auto _ : state) {
-        auto dpack = build_integral_derivatives_sto3g(frame);
+        auto dpack = build_integral_derivatives(
+            build_integrals(frame, BasisSet::STO3G));
         benchmark::DoNotOptimize(dpack.dV_nuc(0, 0));
     }
 }
@@ -440,7 +441,8 @@ BENCHMARK(BM_IntegralDeriv_H2)->Unit(benchmark::kMicrosecond);
 static void BM_IntegralDeriv_LiH(benchmark::State& state) {
     auto frame = make_lih();
     for (auto _ : state) {
-        auto dpack = build_integral_derivatives_sto3g(frame);
+        auto dpack = build_integral_derivatives(
+            build_integrals(frame, BasisSet::STO3G));
         benchmark::DoNotOptimize(dpack.dV_nuc(0, 0));
     }
 }
@@ -449,7 +451,8 @@ BENCHMARK(BM_IntegralDeriv_LiH)->Unit(benchmark::kMicrosecond);
 static void BM_IntegralDeriv_Aspirin(benchmark::State& state) {
     auto frame = make_aspirin();
     for (auto _ : state) {
-        auto dpack = build_integral_derivatives_sto3g(frame);
+        auto dpack = build_integral_derivatives(
+            build_integrals(frame, BasisSet::STO3G));
         benchmark::DoNotOptimize(dpack.dV_nuc(0, 0));
     }
 }

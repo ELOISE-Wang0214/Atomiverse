@@ -104,7 +104,8 @@ class IntegralDerivativesTest : public SCFGradientFixture {};
 
 TEST_F(IntegralDerivativesTest, TranslationalInvariance) {
     auto frame = make_h2(0.74);
-    auto dpack = cpu::scf::build_integral_derivatives_sto3g(frame);
+    auto dpack = cpu::scf::build_integral_derivatives(
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G));
     for (int mu = 0; mu < dpack.n_basis; ++mu)
         for (int nu = 0; nu < dpack.n_basis; ++nu)
             for (int d = 0; d < 3; ++d) {
@@ -124,7 +125,8 @@ TEST_F(IntegralDerivativesTest, ERITranslationalInvariance) {
 TEST_F(IntegralDerivativesTest, OverlapDerivVsNumerical) {
     double h = double(1e-3);
     auto frame = make_h2(0.74);
-    auto dpack = cpu::scf::build_integral_derivatives_sto3g(frame);
+    auto dpack = cpu::scf::build_integral_derivatives(
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G));
 
     for (int A = 0; A < 2; ++A)
         for (int d = 0; d < 3; ++d) {
@@ -146,7 +148,8 @@ TEST_F(IntegralDerivativesTest, OverlapDerivVsNumerical) {
 TEST_F(IntegralDerivativesTest, HcoreDerivVsNumerical) {
     double h = double(1e-3);
     auto frame = make_h2(0.74);
-    auto dpack = cpu::scf::build_integral_derivatives_sto3g(frame);
+    auto dpack = cpu::scf::build_integral_derivatives(
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G));
 
     for (int A = 0; A < 2; ++A)
         for (int d = 0; d < 3; ++d) {
@@ -174,7 +177,8 @@ TEST_F(IntegralDerivativesTest, ERIDerivVsNumerical) {
 TEST_F(IntegralDerivativesTest, VnucDerivVsNumerical) {
     double h = double(1e-3);
     auto frame = make_h2(0.74);
-    auto dpack = cpu::scf::build_integral_derivatives_sto3g(frame);
+    auto dpack = cpu::scf::build_integral_derivatives(
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G));
 
     for (int A = 0; A < 2; ++A)
         for (int d = 0; d < 3; ++d) {
@@ -196,7 +200,8 @@ TEST_F(IntegralDerivativesTest, VnucDerivVsNumerical) {
 
 TEST_F(IntegralDerivativesTest, LiHTranslationalInvariance) {
     auto frame = make_lih();
-    auto dpack = cpu::scf::build_integral_derivatives_sto3g(frame);
+    auto dpack = cpu::scf::build_integral_derivatives(
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G));
     EXPECT_EQ(dpack.n_basis, 6);  // Li: 1s + 2s + 2px + 2py + 2pz = 5, H: 1s = 1
     for (int mu = 0; mu < dpack.n_basis; ++mu)
         for (int nu = 0; nu < dpack.n_basis; ++nu)
@@ -213,7 +218,8 @@ TEST_F(IntegralDerivativesTest, LiHTranslationalInvariance) {
 TEST_F(IntegralDerivativesTest, LiHOverlapDerivVsNumerical) {
     double h = double(1e-4);
     auto frame = make_lih();
-    auto dpack = cpu::scf::build_integral_derivatives_sto3g(frame);
+    auto dpack = cpu::scf::build_integral_derivatives(
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G));
 
     for (int A = 0; A < 2; ++A)
         for (int d = 0; d < 3; ++d) {
@@ -237,7 +243,8 @@ TEST_F(IntegralDerivativesTest, LiHOverlapDerivVsNumerical) {
 TEST_F(IntegralDerivativesTest, LiHHcoreDerivVsNumerical) {
     double h = double(1e-4);
     auto frame = make_lih();
-    auto dpack = cpu::scf::build_integral_derivatives_sto3g(frame);
+    auto dpack = cpu::scf::build_integral_derivatives(
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G));
 
     for (int A = 0; A < 2; ++A)
         for (int d = 0; d < 3; ++d) {
@@ -270,7 +277,8 @@ TEST_F(IntegralDerivativesTest, LiHERITranslationalInvariance) {
 
 TEST_F(IntegralDerivativesTest, H2OTranslationalInvariance) {
     auto frame = make_h2o();
-    auto dpack = cpu::scf::build_integral_derivatives_sto3g(frame);
+    auto dpack = cpu::scf::build_integral_derivatives(
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G));
     EXPECT_EQ(dpack.n_basis, 7);  // O: 1s + 2s + 2px + 2py + 2pz = 5, 2 H: 1s each = 2
     for (int mu = 0; mu < dpack.n_basis; ++mu)
         for (int nu = 0; nu < dpack.n_basis; ++nu)
@@ -287,7 +295,8 @@ TEST_F(IntegralDerivativesTest, H2OTranslationalInvariance) {
 TEST_F(IntegralDerivativesTest, H2OOverlapDerivVsNumerical) {
     double h = double(1e-4);
     auto frame = make_h2o();
-    auto dpack = cpu::scf::build_integral_derivatives_sto3g(frame);
+    auto dpack = cpu::scf::build_integral_derivatives(
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G));
 
     for (int A = 0; A < 3; ++A)
         for (int d = 0; d < 3; ++d) {
@@ -311,7 +320,8 @@ TEST_F(IntegralDerivativesTest, H2OOverlapDerivVsNumerical) {
 TEST_F(IntegralDerivativesTest, H2OHcoreDerivVsNumerical) {
     double h = double(1e-4);
     auto frame = make_h2o();
-    auto dpack = cpu::scf::build_integral_derivatives_sto3g(frame);
+    auto dpack = cpu::scf::build_integral_derivatives(
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G));
 
     for (int A = 0; A < 3; ++A)
         for (int d = 0; d < 3; ++d) {

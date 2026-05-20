@@ -347,7 +347,7 @@ GradientResult scf_gradient(
     // Two-electron term: contracted on the fly to avoid materializing dERI.
     const auto t_two_e = LogClock::now();
     xt::xtensor<double, 2> grad_two_e = xt::zeros<double>({(int)natm, (int)3});
-    accumulate_two_electron_gradient_sto3g(grad_two_e, frame, integrals, P, result, config);
+    accumulate_two_electron_gradient(grad_two_e, frame, integrals, P, result, config);
     grad += grad_two_e;
     const auto [two_e_max_abs, two_e_max_atom_norm] = gradient_metrics(grad_two_e);
     ATV_DEBUG(

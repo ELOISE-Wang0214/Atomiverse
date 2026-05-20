@@ -1,13 +1,15 @@
 /// @file cpu/scf/operators.h
-/// @brief Two-electron operator builders: stored-ERI (legacy) and direct-SCF variants.
+/// @brief Two-electron operator builders: stored-ERI and direct-SCF variants.
 ///
-/// **Direct-SCF functions** (preferred for CPU):
+/// **Direct-SCF functions** (default for CPU — no stored ERI tensor):
 ///   build_g_rhf_direct   — RHF G = J - 0.5*K, one ERI pass, 8-fold symmetry + Schwarz screening
 ///   build_jk_uhf_direct  — UHF J, K_alpha, K_beta in one ERI pass
 ///   build_j_direct       — UKS Coulomb J only
+///   build_g_rhf_direct_block — shell-block RHF G (production RHF/RKS path)
 ///
-/// **Stored-ERI functions** (legacy, kept for CUDA/test parity):
-///   build_coulomb, build_exchange, build_coulomb_exchange_fused
+/// **Stored-ERI function** (used when `IntegralPack::ERI` is materialized):
+///   build_coulomb_exchange_fused — RHF Fock build, selected at runtime by
+///   `HamiltonianBuilder` whenever a dense ERI tensor is available.
 ///
 /// @see cpu::scf::scf_solve which uses the direct-SCF path internally
 /// @see cpu::scf::ShellPairList for the precomputed pair list input
@@ -22,29 +24,12 @@ namespace ATV {
 namespace cpu {
 namespace scf {
 
-/// @brief Build Coulomb matrix J from ERI and total density.
-/// @details J_ij = sum_kl P_kl (ij|kl). Exploits (i,j) symmetry.
-/// @param P_total Total density matrix P_alpha + P_beta [n x n].
-/// @param ERI Two-electron integrals in chemist's notation [n^4].
-/// @param n Basis dimension.
-/// @param[out] J Coulomb matrix [n x n].
-void build_coulomb(const RealMatrix& P_total,
-                   const xt::xtensor<double, 4>& ERI, int n,
-                   RealMatrix& J);
-
-/// @brief Build exchange matrix K from ERI and per-spin density.
-/// @details K_ij = sum_kl P_kl (ik|jl). Exploits (i,j) symmetry.
-/// @param P_spin Per-spin density matrix [n x n].
-/// @param ERI Two-electron integrals in chemist's notation [n^4].
-/// @param n Basis dimension.
-/// @param[out] K Exchange matrix [n x n].
-void build_exchange(const RealMatrix& P_spin,
-                    const xt::xtensor<double, 4>& ERI, int n,
-                    RealMatrix& K);
-
-/// @brief Build fused Coulomb + exchange G = J - 0.5*K (RHF shortcut).
+/// @brief Build fused Coulomb + exchange G = J - 0.5*K (RHF stored-ERI path).
 /// @details G_ij = sum_kl P_kl [(ij|kl) - 0.5*(ik|jl)].
 ///          P is the total RHF density (includes factor of 2).
+///          Selected by `HamiltonianBuilder` when `IntegralPack::ERI` holds
+///          a materialized dense tensor; otherwise the direct-SCF
+///          `build_g_rhf_direct_block` path runs.
 /// @param P_total Total RHF density matrix [n x n].
 /// @param ERI Two-electron integrals in chemist's notation [n^4].
 /// @param n Basis dimension.

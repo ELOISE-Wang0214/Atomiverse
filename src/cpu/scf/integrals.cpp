@@ -1,9 +1,11 @@
 /// @file cpu/scf/integrals.cpp
-/// @brief `build_integrals` — thin compositor over the decomposed
-///        builders (basis_set.h + one_electron.h + two_electron.h).
+/// @brief `build_integrals` — production compositor over the decomposed
+///        single-responsibility builders (basis_set.h + one_electron.h +
+///        two_electron.h).
 ///
-/// This file exists only for backward compatibility. New code should call
-/// the single-responsibility builders directly:
+/// This is the canonical entry point for assembling an `IntegralPack` from a
+/// `Frame` and a `BasisSet`. Low-level callers that need a single integral
+/// can call the underlying builders directly:
 ///
 /// @code
 ///   auto atoms  = make_atom_list(frame, charge);
