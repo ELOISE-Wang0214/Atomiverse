@@ -6,7 +6,8 @@
 ///
 /// Supports s+p type shells for elements Z=1..8 (STO-3G basis) via
 /// `build_integrals_libcint`, and any resolved IntegralPack including
-/// d-polarized sets (6-31G*, def2-SVP) via `build_eri_libcint_from_pack`.
+/// d- and f-polarized sets (6-31G*, def2-SVP, def2-TZVP) via
+/// `build_eri_libcint_from_pack`.
 #pragma once
 
 #ifdef ATV_HAS_LIBCINT
@@ -252,6 +253,9 @@ inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
 //       g_1 = CINTgto_norm(1,α) / phys_norm_p(α)
 //       g_2 = 1                                    (phys_norm_d already
 //             matches libcint's Cartesian d convention, <d_xx|d_xx>=3)
+//       g_3 = 1                                    (phys_norm_f already
+//             matches libcint's Cartesian f convention — same
+//             off-diagonal-component norm, α-power (2l+3)/4)
 //   To make the reference reproduce the native engine bit-for-bit we
 //   multiply every primitive coefficient by g_l; libcint's internal
 //   factor then cancels and only the quadrature algebra is exercised.
@@ -337,7 +341,10 @@ inline xt::xtensor<double, 4> build_eri_libcint_from_pack(
         // g_l so libcint's internal Cartesian factor cancels exactly.
         // g_l is α-independent — evaluate at the shell's first exponent.
         const double a0 = sh.alpha[0];
-        double g_l = 1.0;  // l == 2: phys_norm_d already matches libcint
+        // g_l == 1 for l >= 2: phys_norm_{d,f} already match libcint's
+        // Cartesian d/f convention (the off-diagonal-component norm with
+        // alpha-power (2l+3)/4 shared with CINTgto_norm).
+        double g_l = 1.0;
         if (l == 0) g_l = CINTgto_norm(0, a0) / ATV::phys_norm_s(a0);
         else if (l == 1) g_l = CINTgto_norm(1, a0) / ATV::phys_norm_p(a0);
         for (int p = 0; p < nprim; ++p) env[off++] = sh.coeff[p] * g_l;

@@ -3,12 +3,12 @@
 ///        Rys-quadrature ERI engine.
 ///
 /// Implementation is a namespaced copy of libcint's rys_roots.c (BSD-2,
-/// Copyright (c) 2012 Qiming Sun). Only the closed-form rys_root1..5
-/// branches are retained; d-shells (Ltot ≤ 8) need nroots ≤ 5.
-/// Higher angular momenta would require the iterative Jacobi/Laguerre
-/// fallbacks (not ported).
+/// Copyright (c) 2012 Qiming Sun). nroots 1..5 use the closed-form
+/// rys_root1..5 branches (d-shells, Ltot ≤ 8); nroots 6 and 7 use the
+/// iterative modified-Gram-Schmidt finder (f-shells, Ltot up to 13).
 ///
-/// @see rys_roots.cpp for the ported implementation.
+/// @see rys_roots.cpp for the closed-form 1..5 dispatcher.
+/// @see rys_roots_iterative.h for the iterative nroots-6/7 finder.
 /// @see rys_eri.cpp   for the caller (2D-VRR + HRR + primitive loop).
 #pragma once
 
@@ -29,8 +29,8 @@ namespace native {
 ///   Output `u[i]` stores t_i^2 / (1 - t_i^2) (libcint convention), not the
 ///   raw Rys root t_i.
 ///
-/// @param nroots Number of roots (1..5 supported; sufficient for Ltot ≤ 8,
-///        i.e. integral class (dd|dd) and below).
+/// @param nroots Number of roots (1..7 supported; sufficient for Ltot ≤ 13,
+///        i.e. the (ff|ff) integral class and its first derivative).
 /// @param x      Boys parameter T = ρ·|P-Q|² (non-negative).
 /// @param u      Output array [nroots] — transformed roots t_i²/(1-t_i²).
 /// @param w      Output array [nroots] — quadrature weights.

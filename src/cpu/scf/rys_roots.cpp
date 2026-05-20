@@ -2,13 +2,15 @@
 /// @brief Rys quadrature roots and weights for 2-electron integrals.
 ///
 /// This file is a namespaced copy of libcint's src/rys_roots.c (BSD-2,
-/// Copyright (c) 2012 Qiming Sun). Only the closed-form rys_root1..5
+/// Copyright (c) 2012 Qiming Sun). The closed-form rys_root1..5
 /// branches, small-x/large-x polyfit dispatchers, and the public
-/// CINTrys_roots dispatcher are retained; the short-range / STG /
-/// long-double / quadmath variants and the Jacobi/Laguerre iterative
-/// fallbacks are stripped. We only need nroots <= 5 for d-shells
-/// (Ltot <= 8 → rys_order <= 5). Higher-l support can add the
-/// iterative fallbacks later.
+/// dispatcher are retained; the short-range / STG / long-double /
+/// quadmath variants are stripped. nroots 1..5 (d-shells, Ltot <= 8)
+/// use the closed-form fits here; nroots 6 and 7 (f-shells, Ltot up to
+/// 13) route to the iterative modified-Gram-Schmidt root finder in
+/// rys_roots_iterative.{h,cpp} — libcint deliberately does NOT extend
+/// its Chebyshev fits past nroots 5, as high-order fits degrade in the
+/// intermediate-T regime.
 ///
 /// Used by cpu::scf::native::rys_eri — see rys_eri.cpp.
 ///
@@ -18,6 +20,7 @@
 ///   Chebyshev coefficients from Toru Shiozaki's libslater project
 
 #include "atomiverse/cpu/scf/rys_roots.h"
+#include "rys_roots_iterative.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -71,9 +74,16 @@ void rys_roots(int nroots, double x, double *u, double *w)
         case 3: err = rys_root3(x, u, w); break;
         case 4: err = rys_root4(x, u, w); break;
         case 5: err = rys_root5(x, u, w); break;
+        case 6:
+        case 7:
+                // f-shell ERIs (Ltot up to 13) need a 6- or 7-point Rys
+                // quadrature. The closed-form fits stop at nroots 5;
+                // route to the iterative modified-Gram-Schmidt finder.
+                err = rys_roots_iterative(nroots, x, u, w);
+                break;
         default:
                 std::fprintf(stderr,
-                    "ATV::rys_roots: nroots=%d not supported (max 5)\n",
+                    "ATV::rys_roots: nroots=%d not supported (max 7)\n",
                     nroots);
                 std::abort();
         }

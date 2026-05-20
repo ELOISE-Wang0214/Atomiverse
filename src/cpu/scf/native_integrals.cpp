@@ -36,6 +36,7 @@ double gto_norm(int l, double alpha) { return ATV::gto_norm(l, alpha); }
 double phys_norm(double alpha) { return ATV::phys_norm_s(alpha); }
 double phys_norm_p(double alpha) { return ATV::phys_norm_p(alpha); }
 double phys_norm_d(double alpha) { return ATV::phys_norm_d(alpha); }
+double phys_norm_f(double alpha) { return ATV::phys_norm_f(alpha); }
 
 // ── Phase 4 prerequisite: Boys function ───────────────────────────────
 
@@ -1023,7 +1024,9 @@ void overlap_block(const ShellBlock& A, const ShellBlock& B, double* out) {
             const double cpq = A.coeff[p] * B.coeff[q];
 
             // Build 1D overlap tables once per primitive pair, per axis.
-            double S1d[3][(2 + 1) * (2 + 1)];  // max (imax+1)(jmax+1) = 9
+            // Sized for the largest shell pair: (imax+1)(jmax+1) with
+            // imax, jmax <= kMaxL — 16 for f-shells.
+            double S1d[3][(kMaxL + 1) * (kMaxL + 1)];
             for (int d = 0; d < 3; ++d) {
                 const double dd = A.center[d] - B.center[d];
                 const double Pd = (aa * A.center[d] + ab * B.center[d]) / gamma;
@@ -1068,7 +1071,9 @@ void kinetic_block(const ShellBlock& A, const ShellBlock& B, double* out) {
             const double cpq = A.coeff[p] * B.coeff[q];
 
             // 1D overlap tables with the (jmax+2) extension needed for T.
-            double S1d[3][(2 + 1) * (2 + 2 + 1)];  // (imax+1)(jmax_k+1), max 3x5 = 15
+            // (imax+1)(jmax_k+1) with imax <= kMaxL, jmax_k = B.l+2 <=
+            // kMaxL+2 — 4*6 = 24 for f-shells.
+            double S1d[3][(kMaxL + 1) * (kMaxL + 2 + 1)];
             for (int d = 0; d < 3; ++d) {
                 const double dd = A.center[d] - B.center[d];
                 const double Pd = (aa * A.center[d] + ab * B.center[d]) / gamma;
@@ -1140,14 +1145,20 @@ void nuclear_block(const ShellBlock& A, const ShellBlock& B,
             }
 
             // E_full[d][ai][bj][t] — Hermite expansion of xA^ai * xB^bj.
-            // Dimensions: 3 axes × (imax+1) × (jmax+1) × (Lmax_dir+1).
+            // Dimensions: 3 axes × (imax+1) × (jmax+1) × (Lmax_dir+1)
+            // with imax, jmax <= kMaxL. t runs to ai+bj <= 2*kMaxL, so
+            // the Hermite-index dimension is 2*kMaxL+1 (7 for f-shells).
             // No zero-init: every entry read is explicitly written below.
-            constexpr int kL = 2 + 2 + 1;  // 5
-            double E_full[3][3][3][kL];
+            constexpr int kAng = kMaxL + 1;        // 4 for f
+            constexpr int kL = 2 * kMaxL + 1;      // 7 for f
+            double E_full[3][kAng][kAng][kL];
             for (int d = 0; d < 3; ++d) {
                 for (int ai = 0; ai <= imax; ++ai) {
                     for (int bj = 0; bj <= jmax; ++bj) {
-                        double Ev[kL];
+                        // md_e_coeffs always writes kMDEDim entries
+                        // (it zero-fills the whole buffer first), so Ev
+                        // must be sized kMDEDim, not just ai+bj+1.
+                        double Ev[kMDEDim];
                         md_e_coeffs(ai, bj, PA[d], PB[d], inv2g, Ev);
                         for (int t = 0; t <= ai + bj; ++t)
                             E_full[d][ai][bj][t] = Ev[t];
@@ -1163,16 +1174,19 @@ void nuclear_block(const ShellBlock& A, const ShellBlock& B,
                 const double T = gamma * PC2;
 
                 // Boys functions F_0..F_{Ltot_max} — Ltot_max = 3 * Lmax_dir.
+                // Lmax_dir = imax+jmax <= 2*kMaxL, so Ltot_max <= 6*kMaxL
+                // (18 for f-shells) and Fm needs 6*kMaxL+1 = 19 entries.
                 const int Ltot_max = 3 * Lmax_dir;
-                double Fm[13];  // covers Ltot up to 12 (l=d case)
+                constexpr int kBoysN = 6 * kMaxL + 1;  // 19 for f
+                double Fm[kBoysN];
                 boys_fn_vec(T, Ltot_max, Fm);
 
                 // R_tab[m][t][u][v] — McMurchie–Davidson recurrence.
-                // m ∈ [0, Ltot_max] ≤ 12; t, u, v ∈ [0, Lmax_dir] ≤ 4.
-                // 13 × 5 × 5 × 5 = 1625 doubles. No zero-init needed: the
-                // recurrence only reads entries it has already written.
-                constexpr int kRm = 13;
-                constexpr int kRd = 5;
+                // m ∈ [0, Ltot_max] ≤ 6*kMaxL; t, u, v ∈ [0, Lmax_dir]
+                // ≤ 2*kMaxL. No zero-init needed: the recurrence only
+                // reads entries it has already written.
+                constexpr int kRm = 6 * kMaxL + 1;  // 19 for f
+                constexpr int kRd = 2 * kMaxL + 1;  // 7 for f
                 double R_tab[kRm][kRd][kRd][kRd];
                 double pow_neg2g = 1.0;
                 const double neg2g = -2.0 * gamma;

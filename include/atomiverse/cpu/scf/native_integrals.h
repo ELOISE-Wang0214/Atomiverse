@@ -83,6 +83,12 @@ double phys_norm_d(double alpha);
 /// @return Normalization factor.
 double phys_norm_p(double alpha);
 
+/// @brief Physical normalization for f-type (l=3) Gaussians (libcint
+///        convention). Delegates to ATV::phys_norm_f.
+/// @param alpha Gaussian exponent.
+/// @return Shared normalization factor for all ten Cartesian f AOs.
+double phys_norm_f(double alpha);
+
 /// @brief Boys function F_0(x) = integral_0^1 exp(-x*t^2) dt.
 /// @details F_0(0) = 1. For x > 0: F_0(x) = 0.5 * sqrt(pi/x) * erf(sqrt(x)).
 /// @param x Non-negative argument.

@@ -230,6 +230,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/integrals.cpp
             src/cpu/scf/native_integrals.cpp
             src/cpu/scf/rys_roots.cpp
+            src/cpu/scf/rys_roots_iterative.cpp
             src/cpu/scf/rys_eri.cpp
             src/cpu/scf/shell_pair.cpp
             src/cpu/scf/operators.cpp

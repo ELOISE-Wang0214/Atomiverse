@@ -4,8 +4,8 @@
 /// This engine replicates the algorithm used by libcint / PySCF for
 /// evaluating two-electron integrals (ab|cd) over contracted Cartesian
 /// Gaussians. It is algorithmically equivalent to libcint (same Rys
-/// roots, same 2D-VRR, same HRR) and is intended to supersede the
-/// McMurchie-Davidson path in native_integrals.cpp for all s/p/d shells.
+/// roots, same 2D-VRR, same HRR) and is the production ERI path in
+/// native_integrals.cpp for all s/p/d/f shells (l <= 3).
 ///
 /// Data flow per shell quartet (A B | C D):
 ///   1. For each primitive-pair quartet (p,q,r,s):
@@ -44,13 +44,16 @@ namespace scf {
 namespace native {
 
 /// @brief Maximum supported angular momentum per shell (inclusive).
-/// l = 0 (s), 1 (p), 2 (d). Shell quartets with higher angular momentum
-/// need nroots > 5 and the iterative Jacobi / Laguerre fallback paths,
-/// which are not currently ported.
-constexpr int kRysMaxL = 2;
+/// l = 0 (s), 1 (p), 2 (d), 3 (f). f-shell quartets push the total
+/// angular momentum to Ltot = 12 ((ff|ff)) and Ltot = 13 for the first
+/// derivative of an (ff|ff) quartet, both of which need a 7-point Rys
+/// quadrature served by the iterative root finder (rys_roots_iterative).
+constexpr int kRysMaxL = 3;
 
-/// @brief Maximum Rys roots supported (d-d-d-d has Ltot=8 → nroots=5).
-constexpr int kRysMaxRoots = 5;
+/// @brief Maximum Rys roots supported. nroots = floor(Ltot/2) + 1; the
+/// largest case is the +1-derivative of an (ff|ff) quartet — Ltot = 13,
+/// nroots = 7.
+constexpr int kRysMaxRoots = 7;
 
 /// @brief Compute the full Cartesian ERI block (AB|CD) using Rys
 ///        quadrature.
@@ -91,9 +94,11 @@ void rys_eri_block(const ShellBlock& A, const ShellBlock& B,
 ///        Output is accumulated, not overwritten (mirrors
 ///        `rys_eri_block`).
 ///
-/// @note Only Cartesian Gaussians up to l = 2 (s/p/d) are supported.
-///       STO-3G uses only l ∈ {0, 1}, so a derivative adds at most one
-///       angular step and stays within the `kRysMaxRoots = 5` budget.
+/// @note Cartesian Gaussians up to l = 3 (s/p/d/f) are supported. The
+///       derivative raises one shell's angular momentum by +1, so the
+///       worst case — the +1-derivative of an (ff|ff) quartet — reaches
+///       Ltot = 13 and stays within the `kRysMaxRoots = 7` budget served
+///       by the iterative root finder.
 void rys_eri_block_deriv(const ShellBlock& A, const ShellBlock& B,
                           const ShellBlock& C, const ShellBlock& D,
                           int deriv_center,

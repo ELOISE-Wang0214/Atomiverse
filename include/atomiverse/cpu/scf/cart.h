@@ -18,13 +18,14 @@ namespace cpu {
 namespace scf {
 
 /// @brief Maximum angular momentum currently supported by the CPU
-///        integral engines (Rys ERI, MD 1e/2e). l = 2 → d.
-inline constexpr int kMaxL = 2;
+///        integral engines (Rys ERI, MD 1e/2e). l = 3 → f.
+inline constexpr int kMaxL = 3;
 
 /// @brief Number of Cartesian AOs carried by a shell of angular
 ///        momentum `l`: `(l+1)(l+2)/2`.
 ///
-/// `n_cart_of(0) = 1`, `n_cart_of(1) = 3`, `n_cart_of(2) = 6`.
+/// `n_cart_of(0) = 1`, `n_cart_of(1) = 3`, `n_cart_of(2) = 6`,
+/// `n_cart_of(3) = 10`.
 [[nodiscard]] inline constexpr int n_cart_of(int l) {
     return (l + 1) * (l + 2) / 2;
 }
@@ -41,6 +42,8 @@ inline constexpr int kMaxNCart = n_cart_of(kMaxL);
 ///
 /// For `l = 2`: xx (2,0,0), xy (1,1,0), xz (1,0,1), yy (0,2,0),
 ///              yz (0,1,1), zz (0,0,2).
+/// For `l = 3` the same rule gives the 10 f components in order
+///              xxx, xxy, xxz, xyy, xyz, xzz, yyy, yyz, yzz, zzz.
 ///
 /// The caller must supply `out` with at least `n_cart_of(l)` rows.
 inline void fill_cart_comps(int l, int out[][3]) {

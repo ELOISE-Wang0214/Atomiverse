@@ -13,6 +13,8 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
+
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/scf/basis_set.h"
@@ -118,15 +120,37 @@ TEST(BasisVsPySCF, H2O_def2SVP_cart_RHF) {
     EXPECT_NEAR(result.energy, -75.962206378613, 1e-7);
 }
 
-TEST(BasisVsPySCF, H2O_def2TZVP_raises_for_f_shell) {
-    // def2-TZVP on O includes an f-shell (l=3). The Rys engine caps at
-    // kRysMaxL=2, so build_shell_list is expected to reject the basis
-    // cleanly. f-shell support is tracked in phase1-productization.md
-    // Stage B2c.
+TEST(BasisVsPySCF, H2O_def2TZVP_f_shell_build_integrals) {
+    // def2-TZVP on O includes an f-shell (l=3). Since the f-shell Rys
+    // support landed (kRysMaxL=3, kRysMaxRoots=7, iterative 6/7-root
+    // finder), build_integrals must run to completion on a real f-shell
+    // basis and yield a fully finite, non-zero integral pack. Energy
+    // parity vs PySCF for def2-TZVP is deferred to a later sub-spec; this
+    // test guards the integral-engine end-to-end path only.
     const auto frame = make_h2o();
-    EXPECT_THROW(
-        scf::build_integrals(frame, BasisSet::Def2TZVP),
-        std::runtime_error);
+    auto integrals = scf::build_integrals(frame, BasisSet::Def2TZVP,
+                                          /*charge=*/0,
+                                          /*compute_eri=*/true);
+    ASSERT_GT(integrals.n_basis, 0);
+
+    const int n = integrals.n_basis;
+    bool eri_nonzero = false;
+    for (int i = 0; i < n; ++i)
+    for (int j = 0; j < n; ++j)
+    for (int k = 0; k < n; ++k)
+    for (int l = 0; l < n; ++l) {
+        const double v = integrals.ERI(i, j, k, l);
+        ASSERT_TRUE(std::isfinite(v))
+            << "non-finite def2-TZVP ERI at (" << i << "," << j << ","
+            << k << "," << l << ")";
+        if (std::abs(v) > 1e-12) eri_nonzero = true;
+    }
+    EXPECT_TRUE(eri_nonzero) << "def2-TZVP ERI tensor is all-zero";
+
+    // Self-repulsion integrals (ii|ii) are strictly positive.
+    for (int i = 0; i < n; ++i)
+        EXPECT_GT(integrals.ERI(i, i, i, i), 0.0)
+            << "(ii|ii) must be positive at i=" << i;
 }
 
 #endif // ATV_HAS_RHF

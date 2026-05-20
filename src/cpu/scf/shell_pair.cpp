@@ -138,8 +138,9 @@ ShellBlockPairList build_shell_block_pair_list(const IntegralPack& pack,
     int n_screened = 0;
 
     // Temporary buffer for the self-ERI block. Max across all shell
-    // types is (d_dd_dd) = 6^4 = 1296 doubles.
-    double blk_buf[1296];
+    // types is (ff|ff) = n_cart_of(kMaxL)^4 — 10^4 = 10000 doubles for
+    // f-shells.
+    double blk_buf[kMaxNCart * kMaxNCart * kMaxNCart * kMaxNCart];
 
     for (int si = 0; si < n_blocks; ++si) {
         for (int sj = 0; sj <= si; ++sj) {

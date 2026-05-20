@@ -3,6 +3,7 @@
 
 #include "atomiverse/cpu/scf/operators.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
+#include "atomiverse/cpu/scf/cart.h"
 
 #include <cmath>
 #include <vector>
@@ -347,8 +348,9 @@ void build_g_rhf_direct_block(const ShellBlockPairList& sp,
             const native::ShellBlock& Bsl = sp.blocks[bp_r.sj];
             const int nc = Bsk.n_cart, nd = Bsl.n_cart;
 
-            // Max block size is (d_dd_dd) = 6^4 = 1296 doubles.
-            double blk[1296] = {};
+            // Max block size is (ff|ff) = n_cart_of(kMaxL)^4 — 10^4 =
+            // 10000 doubles for f-shells.
+            double blk[kMaxNCart * kMaxNCart * kMaxNCart * kMaxNCart] = {};
             native::eri_block(Bsi, Bsj, Bsk, Bsl, blk);
 
             if (left != right) {

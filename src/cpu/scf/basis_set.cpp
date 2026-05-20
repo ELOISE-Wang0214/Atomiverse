@@ -161,7 +161,8 @@ ShellList build_shell_list_from_table(
             double (*norm_at)(double) =
                 (sh.l == 0) ? native::phys_norm
               : (sh.l == 1) ? native::phys_norm_p
-              :               native::phys_norm_d;
+              : (sh.l == 2) ? native::phys_norm_d
+              :               native::phys_norm_f;
             for (int cart = 0; cart < n_cart; ++cart)
                 emit_shell(sh.l, cart, norm_at);
         }
