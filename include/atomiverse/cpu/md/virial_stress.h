@@ -28,6 +28,30 @@ namespace md {
 /// from this component's output. The reduce across MPI ranks happens
 /// separately at `end_of_step @ -50` (see `ReduceEnergy`), so any
 /// component scheduled after that point reads the global values.
+///
+/// ── LAMMPS `compute pressure` correspondence (`lammps-api-align-04`) ──
+///
+/// Reference: LAMMPS `src/compute_pressure.cpp::compute_scalar()`
+/// (branch `stable`). The canonical scalar pressure is
+///
+///     P = (2·KE + Σ virial) / (d·V)        [d = 3 in 3-D]
+///
+/// — `compute_pressure.cpp:257`:
+/// `scalar = (dof·boltz·T + virial[0]+virial[1]+virial[2])/3·(1/V)·nktv2p`,
+/// where `dof·boltz·T = Σ m·v²` is exactly `2·KE`. Per-parameter audit:
+///
+///   | Aspect       | LAMMPS `compute pressure`           | Atomiverse                              | Verdict |
+///   |--------------|-------------------------------------|-----------------------------------------|---------|
+///   | Kinetic term | `Σ m·vα·vβ`, trace = `2·KE`          | this component → `frame.stress_kinetic` | aligned |
+///   | Voigt order  | xx, yy, zz, xy, xz, yz              | same                                    | aligned |
+///   | Virial sign  | `Σ r·F`; repulsion ⇒ positive trace | `PairLJCut` accumulates `Σ dx·(dx·fpair)` with `fpair > 0` for repulsion ⇒ positive trace | aligned |
+///   | Pressure sign| `P = +trace/(dV)`, positive ⇔ compressive | `NoseHooverNPT` and `Barostat` both compute `+trace/(3V)` | aligned |
+///
+/// Virial-sign verdict: a repulsive (over-compressed) state yields a
+/// positive `frame.stress` trace, so `P = +trace(σ)/(3V)` is positive
+/// (compressive) — matching `compute pressure` and both barostats. No
+/// sign correction needed; `frame.stress` is already LAMMPS-consistent.
+/// **Audit confirmed aligned — no code change to this component.**
 class VirialStress : public cpu::ComponentBase {
 public:
     std::string name() const override { return "virial_stress"; }

@@ -57,12 +57,15 @@ cpu::Frame make_fcc_argon(int n_cells, double a_lat) {
     return frame;
 }
 
+// LAMMPS-standard scalar pressure P = +trace(σ)/(3V), positive ⇔
+// compressive — matches `compute pressure`, `NoseHooverNPT` and the
+// post-`lammps-api-align-04` `Barostat`.
 double pressure_from_frame(const cpu::Frame& frame) {
     const double V = frame.box(0,0) * frame.box(1,1) * frame.box(2,2);
     const double trace = (frame.stress[0] + frame.stress[1] + frame.stress[2])
                        + (frame.stress_kinetic[0] + frame.stress_kinetic[1]
                           + frame.stress_kinetic[2]);
-    return -trace / (3.0 * V);
+    return +trace / (3.0 * V);
 }
 
 } // namespace
@@ -93,7 +96,7 @@ TEST(NptMultiRank, BarostatRelaxesOverPressure) {
         .add(cpu::md::NeighborList<>{lj_cut}, -10)
         .add(cpu::md::LJ{lj_eps, lj_sig, lj_cut});
     sim.add(cpu::md::VirialStress{});
-    sim.add(cpu::md::Barostat{0.0, /*tau_p=*/200.0, dt});  // P_target = 0
+    sim.add(cpu::md::Barostat{0.0, /*tau_P=*/200.0, dt});  // P_target = 0
     sim.build();
 
     sim.run(frame, 1);

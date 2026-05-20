@@ -18,8 +18,10 @@ namespace ATV {
 namespace cpu {
 namespace md {
 
-Barostat::Barostat(double P_target, double tau_p, double dt)
-    : P_target_(P_target), tau_p_(tau_p), dt_(dt) {}
+Barostat::Barostat(double P_target, double tau_P, double dt,
+                   double bulk_modulus)
+    : P_target_(P_target), tau_P_(tau_P), dt_(dt),
+      bulk_modulus_(bulk_modulus) {}
 
 void Barostat::launch(const cpu::LaunchContext& ctx) {
     if (!enabled_) return;
@@ -30,22 +32,31 @@ void Barostat::launch(const cpu::LaunchContext& ctx) {
     const double V = f.box.volume();
     if (V <= 0.0) return;
 
-    // Pressure from the trace of the unnormalised virial sum.
+    // LAMMPS-standard scalar pressure P = +trace(σ)/(3V), positive ⇔
+    // compressive — `compute pressure::compute_scalar()`:
+    //   P = (2·KE + Σ virial) / (3·V).
     // `frame.stress` holds the pair-virial part Σ r·F; the kinetic
-    // part Σ m·v² lives in `frame.stress_kinetic`. Berendsen runs at
-    // `end_of_step`, so both fields are at the same post-force
-    // velocity snapshot — combining them gives the standard
-    // pressure-tensor sum:
-    //   P = -(σ_xx + σ_yy + σ_zz) / (3·V)
+    // part Σ m·v² (trace = 2·KE) lives in `frame.stress_kinetic`.
+    // Berendsen runs at `end_of_step`, so both fields are at the same
+    // post-force velocity snapshot. This `+trace/(3V)` convention is
+    // identical to `NoseHooverNPT` and LAMMPS — the link
+    // `lammps-api-align-04` flipped the previous `−trace/(3V)`.
     const double trace_total = (f.stress[0] + f.stress[1] + f.stress[2])
                              + (f.stress_kinetic[0] + f.stress_kinetic[1]
                                 + f.stress_kinetic[2]);
-    const double P = -trace_total / (3.0 * V);
+    const double P = +trace_total / (3.0 * V);
 
-    // Berendsen scaling factor μ = (1 - dt/τ_p · (P - P_target))^(1/3).
+    // Berendsen dilation factor — `fix_press_berendsen.cpp::end_of_step`:
+    //   μ = (1 − dt/(Pdamp·β) · (P_target − P))^(1/3)
+    // with β = bulk_modulus (LAMMPS `bulkmodulus`). Because the sign of
+    // P flipped together with the `(P_target − P)` ordering (was
+    // `(P − P_target)` under `P = −trace/(3V)`), the μ³ argument is
+    // numerically unchanged for the same physical state — a
+    // representation change, not a behaviour change.
     // Clamped to [0.5, 2.0] so a single step cannot collapse or explode
     // the box if P diverges (e.g. transient force spike on step 0).
-    const double mu_cubed = 1.0 - (dt_ / tau_p_) * (P - P_target_);
+    const double mu_cubed =
+        1.0 - (dt_ / (tau_P_ * bulk_modulus_)) * (P_target_ - P);
     const double mu = std::cbrt(std::max(0.5, std::min(2.0, mu_cubed)));
 
     // Scale box edges. Single-rank or multi-rank: deterministic, identical

@@ -58,10 +58,11 @@ namespace md {
 /// with `P_internal = (σ_xx + σ_yy + σ_zz) / (3V)` — the LAMMPS-standard
 /// pressure-tensor convention (positive trace ⇔ compressive). `P_target`
 /// uses the same sign convention as LAMMPS `fix npt iso`, so passing
-/// `P_target = 0` matches LAMMPS at the same setpoint. Note: this is
-/// the OPPOSITE sign convention from `Barostat` (Berendsen), which still
-/// uses `P = -trace/(3V)`; the Berendsen formula is self-consistent
-/// under that sign so it does not need to change.
+/// `P_target = 0` matches LAMMPS at the same setpoint. Since
+/// `lammps-api-align-04` this is the SAME sign convention used by
+/// `cpu::md::Barostat` (Berendsen) and `cpu::md::VirialStress` /
+/// `compute pressure`: a single positive-trace-is-compressive
+/// convention holds across every Atomiverse pressure component.
 ///
 /// Phase distribution:
 ///
@@ -94,6 +95,30 @@ namespace md {
 /// into one `propagate_x_and_box()` using the exact analytic drift
 /// factor `(e^{ε̇dt}-1)/(ε̇dt)` — equal to LAMMPS's two-remap result
 /// to O((ε̇dt)²).
+///
+/// ── Per-parameter audit (`lammps-api-align-04`) ──────────────────────
+///
+/// Every `Config` field maps to a `fix npt` keyword. Audit verdict —
+/// each row checked against `src/fix_nh.cpp` (branch `stable`):
+///
+///   | `Config` field   | LAMMPS `fix npt` keyword            | Verdict |
+///   |------------------|-------------------------------------|---------|
+///   | `T_target`       | `temp Tstart ...` (ramp start)      | aligned |
+///   | `T_stop`         | `temp ... Tstop ...` (ramp end)     | aligned |
+///   | `tau_T`          | `temp ... ... Tdamp`                | aligned |
+///   | `P_target`       | `iso Pstart Pstop` (here Pstart==Pstop) | aligned |
+///   | `tau_P`          | `iso ... ... Pdamp`                 | aligned |
+///   | `dt`             | `timestep` (global, not a fix arg)  | aligned |
+///   | `drag`           | `drag Df`                           | aligned |
+///   | `mtchain`        | `mtchain N` (thermostat NHC length) | aligned |
+///   | `mpchain`        | `mpchain N` (barostat NHC length)   | aligned |
+///   | `couple_axis`    | `x`/`y`/`z` per-axis `p_flag[]`     | aligned |
+///
+/// Pressure-sign verdict: `NoseHooverNPT` already uses the LAMMPS
+/// `compute pressure` convention `P = +trace(σ)/(3V)`, positive ⇔
+/// compressive — no change. This is the reference sign for the whole
+/// `lammps-api-align-04` link. **Audit only — no code change here;**
+/// the MTK algorithm itself was aligned in `msu-pe-align-01-aniso-npt`.
 ///
 /// ── Anisotropic per-axis barostat (msu-pe-align-01) ──────────────────
 ///
