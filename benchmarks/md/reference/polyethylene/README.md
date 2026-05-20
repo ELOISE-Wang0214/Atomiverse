@@ -53,9 +53,40 @@ Provenance, citation, and the FF-parameter table are in `SOURCES.md`.
 
 `lammps.in` (this directory) and the Atomiverse benchmark
 `benchmarks/md/polyethylene_tension.cpp` run the **same** 5-stage
-protocol on `msu_pe.data`. The full ~360000-step run is ~24h-class wall
-time — an **operator action, not a CI step**. Reproduce the reference
-artifacts at 1 and 8 ranks with:
+protocol on `msu_pe.data`, stage-for-stage. The benchmark mirrors the
+LAMMPS deck exactly — each stage uses the integrator, ensemble and
+timestep of the matching `lammps.in` stage:
+
+| Stage | lammps.in                        | Atomiverse components                          | dt     |
+|-------|----------------------------------|------------------------------------------------|--------|
+| 1     | `nve/limit 0.05` + `langevin 500`| `NVELimit` + `FixLangevin` + `InitVelocity`    | 1.0 fs |
+| 2     | `npt temp 500 500 iso 0`         | isotropic `NoseHooverNPT` (`T_stop==T_start`)  | 0.5 fs |
+| 3     | `npt temp 500 100 iso 0`         | `NoseHooverNPT`, continuous 500→100 K ramp     | 0.5 fs |
+| 4     | `npt temp 100 100 iso 0`         | isotropic `NoseHooverNPT` (`T_stop==T_start`)  | 0.5 fs |
+| 5     | `npt temp 100 100 y/z 0` + `deform x` | anisotropic `NoseHooverNPT` (`couple_axis={false,true,true}`) + `Deform` x | 1.0 fs |
+
+Because `dt` is fundamental to each integrator kernel (no `dt` setter)
+and the per-stage timesteps differ (1.0/0.5/0.5/0.5/1.0 fs), the
+benchmark **builds a fresh `cpu::md::MD` driver per stage**, runs that
+stage, then discards the driver. The `cpu::Frame` (positions,
+velocities, box) carries state across stages; the shared
+`CsvRecorder` / `TrajectoryRecorder` / optional `RDF` are re-registered
+into every per-stage driver so the canonical CSV step column stays
+globally monotonic across the stage boundaries.
+
+Stage 1 uses `NVELimit` (per-step displacement cap) rather than plain
+Velocity-Verlet so the unrelaxed-configuration atom overlap
+(E_pair ~3.4e8 at step 0) is tamed instead of blowing the integrator
+up. Stage 3 is a **single** `NoseHooverNPT` with `T_start=500,
+T_stop=100` and a run span covering the stage — the integrator
+interpolates the setpoint internally; there is no cooling micro-segment
+loop. Stage 5 holds the x box edge rigid under the NPT barostat
+(`couple_axis={false,true,true}`) while `Deform` drives the x edge at
+the engineering strain rate and y/z barostat to P=0.
+
+The full ~360000-step run is ~24h-class wall time — an **operator
+action, not a CI step**. Reproduce the reference artifacts at 1 and 8
+ranks with:
 
 ```bash
 ./tools/run_msu_lammps.sh 1
