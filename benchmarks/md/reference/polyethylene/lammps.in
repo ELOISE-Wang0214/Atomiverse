@@ -1,35 +1,35 @@
 # lammps.in — MSU amorphous-polyethylene 5-stage equilibration + uniaxial
-# tension protocol, Dreiding-UA force field.
+# tension protocol for the Atomiverse-vs-LAMMPS Phase D comparison.
 #
-# Clean, protocol-faithful deck for the Atomiverse-vs-LAMMPS Phase D
-# comparison (.claude/specs/msu-pe-phase-d-01-reference-runs). It is
-# DISTINCT from lammps_msu_paper.in — that file is the verbatim upstream
-# Tschopp 2010 script kept as ground truth and must not be edited. This
-# deck reproduces the SAME five stages with a uniform thermo column set
-# and fix-print hooks so the operator post-process into canonical CSVs
-# is trivial.
+# The PHYSICS — every fix, integrator, ensemble, timestep, force-field
+# coefficient and neighbor setting — is byte-for-byte identical to the
+# upstream canonical deck lammps_msu_paper.in (Tschopp 2010). The ONLY
+# additions are non-physics output hooks: a persistent `fix print` for
+# the canonical per-step CSV, a stage-5 stress-strain CSV, an XYZ dump,
+# and an RDF — so tools/validate_polyethylene.py can consume the run.
+# Nothing about the dynamics differs from the reference.
 #
 # Run:   lmp -in lammps.in -log log.lammps        (see tools/run_msu_lammps.sh)
-# Data:  msu_pe.data  (10 chains x 1000 united-atom CH2 = 10000 atoms)
+# Data:  msu_pe.data  (= upstream PE_nc10_cl1000.dat, 10 chains x 1000 CH2)
 #
-# Protocol (see SOURCES.md; Tschopp 2010 / Hossain-Tschopp et al. 2010,
-# Polymer). The full run is ~360000 steps and is a ~24h operator action,
-# NOT a CI step.
+# Protocol — identical to lammps_msu_paper.in:
+#   stage 1   nve/limit 0.05 + langevin 500 K     10000 steps  dt 1.0 fs
+#   stage 2   npt 500 K, iso 0 bar                50000 steps  dt 0.5 fs
+#   stage 3   npt cool 500 -> 100 K, iso 0 bar    50000 steps  dt 0.5 fs
+#   stage 4   npt 100 K, iso 0 bar                50000 steps  dt 0.5 fs
+#   stage 5   npt 100 K (y,z) + deform x         171800 steps  dt 1.0 fs
 #
-#   stage 1   NVT   500 K                10000 steps   dt 1.0 fs
-#   stage 2   NPT   500 K, 0 bar         50000 steps   dt 0.5 fs
-#   stage 3   NVT   cool 500 -> 100 K    50000 steps   dt 0.5 fs
-#   stage 4   NPT   100 K, 0 bar         50000 steps   dt 0.5 fs
-#   stage 5   uniaxial tension along x  200000 steps   dt 0.5 fs
+# The ~330000-step run is a ~24h operator action, NOT a CI step. Only the
+# `run` step counts may be shortened for a quick check; nothing else.
 
 units           real
 boundary        p p p
 atom_style      molecular
 read_data       msu_pe.data
 
-# ---- Dreiding-UA force field (verbatim from SOURCES.md) ----
-neighbor        2.0 bin
-neigh_modify    delay 5 every 1 check yes
+# ---- Dreiding-UA force field (verbatim from lammps_msu_paper.in) ----
+neighbor        0.4 bin
+neigh_modify    every 10 one 10000
 bond_style      harmonic
 bond_coeff      1 350 1.53
 angle_style     harmonic
@@ -38,19 +38,14 @@ dihedral_style  multi/harmonic
 dihedral_coeff  1 1.73 -4.49 0.776 6.99 0.0
 pair_style      lj/cut 10.5
 pair_coeff      1 1 0.112 4.01 10.5
-special_bonds   lj 0.0 0.0 0.0
 
-# ---- canonical thermo line: step T P E_pot E_kin Pxx Pyy Pzz ----
-# Post-process the log.lammps thermo block into the canonical CSV column
-# set  step,T,P,E_pot,E_kin,Pxx,Pyy,Pzz  consumed by Phase D.2/D.3.
+# ---- non-physics output hook: persistent canonical per-step CSV ----
+# Declared once, never unfixed, so it logs every stage continuously into
+# one canonical-schema CSV consumed by Phase D.2/D.3. No reset_timestep
+# is issued, so the step column stays globally monotonic.
 thermo_style    custom step temp press pe ke pxx pyy pzz
 thermo          100
 thermo_modify   norm no
-
-# ---- persistent per-step thermo CSV (canonical column set) ----
-# One fix print, declared once and never unfixed, logs every stage
-# continuously into one canonical-schema CSV that Phase D.2/D.3 consume
-# directly -- no log.lammps post-processing needed.
 variable        pstep equal step
 variable        ptemp equal temp
 variable        ppres equal press
@@ -64,50 +59,57 @@ fix             thermolog all print 100 &
                 file thermo.lammps.csv screen no &
                 title "step,T,P,E_pot,E_kin,Pxx,Pyy,Pzz"
 
-# ================= stage 1 : NVT 500 K =================
-velocity        all create 500.0 12345 dist gaussian
-fix             nvt1 all nvt temp 500.0 500.0 100.0
-timestep        1.0
+# ================= stage 1 : nve/limit + Langevin, 500 K =================
+velocity        all create 500.0 1231
+fix             1 all nve/limit 0.05
+fix             2 all langevin 500.0 500.0 10.0 904297
+timestep        1
 run             10000
-unfix           nvt1
+unfix           1
+unfix           2
 
-# ================= stage 2 : NPT 500 K, 0 bar =================
-fix             npt2 all npt temp 500.0 500.0 100.0 iso 0.0 0.0 1000.0
+# ================= stage 2 : NPT 500 K, iso 0 bar =================
+fix             1 all npt temp 500.0 500.0 50 iso 0 0 1000 drag 2
+fix             2 all momentum 1 linear 1 1 1
 timestep        0.5
 run             50000
-unfix           npt2
+unfix           1
+unfix           2
 
-# ================= stage 3 : NVT cooling 500 -> 100 K =================
-fix             nvt3 all nvt temp 500 100 100.0
+# ================= stage 3 : NPT cooling 500 -> 100 K =================
+fix             1 all npt temp 500 100 50 iso 0 0 1000 drag 2
+fix             2 all momentum 1 linear 1 1 1
 timestep        0.5
 run             50000
-unfix           nvt3
+unfix           1
+unfix           2
 
-# ================= stage 4 : NPT 100 K, 0 bar =================
-fix             npt4 all npt temp 100.0 100.0 100.0 iso 0.0 0.0 1000.0
+# ================= stage 4 : NPT 100 K, iso 0 bar =================
+fix             1 all npt temp 100 100 50 iso 0 0 1000 drag 2
+fix             2 all momentum 1 linear 1 1 1
 timestep        0.5
 run             50000
-unfix           npt4
+unfix           1
+unfix           2
 
 # ================= stage 5 : uniaxial tension along x =================
-variable        lx0    equal lx
+variable        lx0    equal $(lx)
 variable        strain equal "(lx - v_lx0)/v_lx0"
-variable        sigxx  equal "-pxx*1.01325e-4"     # bar -> GPa, tension +ve
-fix             nvt5 all nvt temp 100.0 100.0 100.0
-fix             def5 all deform 1 x erate 1e-5 units box remap x
-fix             ss5  all print 100 "${strain},${sigxx}" &
+variable        sigxx  equal "-pxx*1.01325e-4"     # atm -> GPa, tension +ve
+fix             1 all npt temp 100 100 50 y 0 0 1000 z 0 0 1000 drag 2
+fix             2 all deform 1 x erate 1e-5 units box remap x
+# ---- non-physics output hooks ----
+fix             ss5 all print 100 "${strain},${sigxx}" &
                 file stress_strain.lammps.csv screen no &
                 title "strain,sigma_xx"
-# trajectory snapshot every 10000 steps
 dump            traj all xyz 10000 traj.xyz
-# final radial distribution function (accumulated over stage 5)
 compute         myrdf all rdf 200 1 1 cutoff 10.5
-fix             rdfavg all ave/time 100 1000 200000 c_myrdf[*] &
+fix             rdfavg all ave/time 100 1000 171800 c_myrdf[*] &
                 file rdf.lammps.txt mode vector
-timestep        0.5
-run             200000
-unfix           nvt5
-unfix           def5
+timestep        1
+run             171800
+unfix           1
+unfix           2
 unfix           ss5
 undump          traj
 

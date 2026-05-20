@@ -129,28 +129,38 @@ single-chain bonded-energy cross-check test
 
 ## Phase D.1 — Atomiverse-vs-LAMMPS comparison inputs (spec `msu-pe-phase-d-01-reference-runs`)
 
-`lammps.in` is a clean, protocol-faithful LAMMPS deck added for the
-Phase D quantitative comparison. It is **distinct from
-`lammps_msu_paper.in`** — that file is the verbatim upstream Tschopp 2010
-script kept as immutable ground truth. `lammps.in` reproduces the same
-five stages with:
+`lammps.in` is the LAMMPS deck used for the Phase D quantitative
+comparison. Its **physics — every fix, integrator, ensemble, timestep,
+force-field coefficient and neighbor setting — is byte-for-byte the
+canonical upstream deck `lammps_msu_paper.in`** (Tschopp 2010, kept as
+immutable ground truth). `lammps.in` differs from it ONLY in non-physics
+output hooks:
 
-- a uniform `thermo_style custom step temp press pe ke pxx pyy pzz`;
 - a persistent `fix print` that streams a canonical-schema per-step CSV
   `thermo.lammps.csv`, header `step,T,P,E_pot,E_kin,Pxx,Pyy,Pzz`;
 - a stage-5 `fix print` streaming `stress_strain.lammps.csv`, header
   `strain,sigma_xx`;
 - an XYZ trajectory dump every 10000 steps and an accumulated RDF.
 
-### Protocol (`lammps.in`)
+Nothing about the dynamics differs from the reference. Only the `run`
+step counts may be shortened for a quick check; the stages and
+simulation parameters must never change.
 
-| Stage | Ensemble | T | P | Steps | dt |
+### Protocol (`lammps.in` ≡ `lammps_msu_paper.in`)
+
+| Stage | Fix / ensemble | T | P | Steps | dt |
 |---|---|---|---|---|---|
-| 1 | NVT | 500 K | — | 10000 | 1.0 fs |
-| 2 | NPT | 500 K | 0 bar | 50000 | 0.5 fs |
-| 3 | NVT cool | 500 → 100 K | — | 50000 | 0.5 fs |
-| 4 | NPT | 100 K | 0 bar | 50000 | 0.5 fs |
-| 5 | uniaxial tension x | 100 K | — | 200000 | 0.5 fs |
+| 1 | `nve/limit 0.05` + `langevin` (overlap relaxation) | 500 K | — | 10000 | 1.0 fs |
+| 2 | `npt ... iso` | 500 K | 0 bar | 50000 | 0.5 fs |
+| 3 | `npt temp 500 100 ... iso` (cooling ramp) | 500 → 100 K | 0 bar | 50000 | 0.5 fs |
+| 4 | `npt ... iso` | 100 K | 0 bar | 50000 | 0.5 fs |
+| 5 | `npt ... y ... z` + `deform 1 x erate` | 100 K | 0 bar (y,z) | 171800 | 1.0 fs |
+
+Stage 1 uses `nve/limit` because `msu_pe.data` is a built-but-unrelaxed
+configuration with non-bonded overlaps (initial `E_pair ≈ 3.4e8
+kcal/mol`); the displacement-capped integrator squeezes them out
+gently. A plain `nvt`/Velocity-Verlet integrator blows the system up —
+the stage-1 integrator choice is load-bearing, not cosmetic.
 
 Force-field coefficients are identical to `lammps_msu_paper.in` and the
 FF table above.

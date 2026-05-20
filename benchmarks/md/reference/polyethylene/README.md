@@ -10,7 +10,7 @@ Tschopp 2010 / Hossain–Tschopp et al. 2010 *Polymer* paper. Used by
 | File | Description |
 |---|---|
 | `lammps_msu_paper.in` | Original `in.deform_dreiding.txt` from MSU CAVS ICME — the canonical 5-stage Dreiding-UA uniaxial-tension protocol. Author: Mark Tschopp 2010. Do not modify. |
-| `lammps.in` | Clean protocol-faithful deck for the Phase D Atomiverse-vs-LAMMPS comparison — same five stages, canonical-schema CSV outputs. See `SOURCES.md` § Phase D.1. |
+| `lammps.in` | Phase D comparison deck — physics byte-for-byte identical to `lammps_msu_paper.in`, plus non-physics canonical-CSV / dump / RDF output hooks. See `SOURCES.md` § Phase D.1. |
 | `msu_pe.data` | Original `PE_nc10_cl1000.dat` — 10 chains × 1000 united atoms = 10 000 atoms, 80.0586 Å cubic box. Initial geometry. Do not modify. |
 | `SOURCES.md` | Provenance + attribution + the FF discrepancy table that triggered `pe-ff-migrate-dreiding-ua`. |
 

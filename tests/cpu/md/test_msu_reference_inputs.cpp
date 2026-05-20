@@ -83,7 +83,8 @@ TEST(MsuLammpsDeck, HasFiveRunsWithCorrectStepCounts) {
             runs.push_back(std::stol(toks[1]));
         }
     }
-    const std::vector<long> expect{10000, 50000, 50000, 50000, 200000};
+    // Step counts are byte-for-byte the canonical lammps_msu_paper.in.
+    const std::vector<long> expect{10000, 50000, 50000, 50000, 171800};
     EXPECT_EQ(runs, expect)
         << "deck must run exactly the five MSU stages in order";
 }
@@ -107,14 +108,22 @@ TEST(MsuLammpsDeck, PinsDreidingUaCoefficients) {
         << "LJ cutoff must be 10.5";
 }
 
-TEST(MsuLammpsDeck, Stage3IsNvtCoolingStages2to5UseHalfFsTimestep) {
+TEST(MsuLammpsDeck, MatchesCanonicalProtocolEnsembles) {
+    // The deck's physics must be byte-for-byte the canonical upstream
+    // protocol (lammps_msu_paper.in): stage 1 is the overlap-relaxation
+    // stage (nve/limit + Langevin), stages 2-4 are NPT, stage 3 carries
+    // the 500 -> 100 K cooling ramp, stage 5 is NPT(y,z) + deform(x).
     const std::string deck = slurp(kRefDir + "/lammps.in");
     ASSERT_FALSE(deck.empty());
-    // stage 3 is NVT with a 500 -> 100 K ramp, not NPT.
-    EXPECT_NE(deck.find("nvt temp 500 100"), std::string::npos)
-        << "stage 3 must be fix nvt with a temp 500 100 cooling ramp";
-    // timestep budget: exactly one 1.0 fs line (stage 1) and at least
-    // four 0.5 fs lines (stages 2-5).
+    EXPECT_NE(deck.find("nve/limit"), std::string::npos)
+        << "stage 1 must use fix nve/limit (overlap relaxation)";
+    EXPECT_NE(deck.find("langevin"), std::string::npos)
+        << "stage 1 must use a Langevin thermostat";
+    EXPECT_NE(deck.find("npt temp 500 100"), std::string::npos)
+        << "stage 3 must be fix npt with a temp 500 100 cooling ramp";
+    EXPECT_NE(deck.find("deform 1 x erate"), std::string::npos)
+        << "stage 5 must drive the box with fix deform along x";
+    // dt budget: stages 1 and 5 use 1.0 fs, stages 2-4 use 0.5 fs.
     int n_half = 0, n_full = 0;
     for (const auto& raw : lines_of(deck)) {
         const auto toks = tokens_of(ltrim(raw));
@@ -124,8 +133,8 @@ TEST(MsuLammpsDeck, Stage3IsNvtCoolingStages2to5UseHalfFsTimestep) {
             else if (dt == 1.0) ++n_full;
         }
     }
-    EXPECT_GE(n_half, 4) << "stages 2-5 must each use timestep 0.5";
-    EXPECT_EQ(n_full, 1) << "only stage 1 uses timestep 1.0";
+    EXPECT_EQ(n_half, 3) << "stages 2-4 use timestep 0.5";
+    EXPECT_EQ(n_full, 2) << "stages 1 and 5 use timestep 1.0";
 }
 
 // ─────────────────────────────────────────────────────────────────────
