@@ -130,6 +130,8 @@ GridSpec lebedev_grids[] = {
     {lebedev::grid_194, lebedev::n_194,  23, "Lebedev-194"},
     {lebedev::grid_266, lebedev::n_266,  27, "Lebedev-266"},
     {lebedev::grid_302, lebedev::n_302,  29, "Lebedev-302"},
+    {lebedev::grid_350, lebedev::n_350,  31, "Lebedev-350"},
+    {lebedev::grid_434, lebedev::n_434,  35, "Lebedev-434"},
     {lebedev::grid_590, lebedev::n_590,  41, "Lebedev-590"},
     {lebedev::grid_770, lebedev::n_770,  47, "Lebedev-770"},
 };
@@ -566,6 +568,30 @@ TEST(Grid, MatchPySCFEnergyResidue) {
     EXPECT_NEAR(atv_rks_pbe_energy(kH2O, GridLevel::MatchPySCF), kE_H2O, 1e-6);
     EXPECT_NEAR(atv_rks_pbe_energy(kNH3, GridLevel::MatchPySCF), kE_NH3, 1e-6);
     EXPECT_NEAR(atv_rks_pbe_energy(kCH4, GridLevel::MatchPySCF), kE_CH4, 1e-6);
+}
+
+// ── MatchPySCF heavy-element (Z>10) nwchem_prune branch ─────────────────
+
+TEST(Grid, MatchPySCFHeavyElementBuildsAndIntegrates) {
+    // Silicon (Z=14) exercises the period-3+ nwchem_prune branch:
+    // n_ang=434, pruned orders {50, 86, 350, 434, 350}. This path
+    // previously threw (Lebedev 350/434 were not tabulated); it must now
+    // build and yield a valid quadrature. A single atom has Becke weight
+    // 1 everywhere, so this isolates the radial x angular grid: the
+    // integral of a normalized Gaussian exp(-a r^2) must recover the
+    // analytic (pi/a)^1.5.
+    native::Atom si = {14, {0.0, 0.0, 0.0}};
+    auto grid = build_molecular_grid(&si, 1, GridLevel::MatchPySCF, 0, 0);
+    ASSERT_FALSE(grid.points.empty());
+
+    const double a = 0.8;
+    double q = 0.0;
+    for (const auto& p : grid.points) {
+        double r2 = p.x * p.x + p.y * p.y + p.z * p.z;
+        q += p.weight * std::exp(-a * r2);
+    }
+    EXPECT_NEAR(q, std::pow(kPi / a, 1.5), 1e-8)
+        << "MatchPySCF Z=14 grid Gaussian quadrature";
 }
 
 #else

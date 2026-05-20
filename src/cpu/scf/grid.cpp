@@ -444,14 +444,18 @@ static void becke_partition_weights(const native::Atom* atoms, int natm,
 // ── Angular-order dispatch ──────────────────────────────────────────────
 //
 // Resolve a requested Lebedev order to the tabulated grid pointer and its
-// point count. Recognizes {6, 38, 50, 86, 110, 194, 266, 302, 590, 770};
-// non-tabulated values round DOWN to the next supported order.
+// point count. Recognizes {6, 38, 50, 86, 110, 194, 266, 302, 350, 434,
+// 590, 770}; non-tabulated values round DOWN to the next supported order.
 static void resolve_lebedev_grid(int order, const lebedev::Point*& pts,
                                  int& n_pts) {
     if (order >= 770) {
         pts = lebedev::grid_770; n_pts = lebedev::n_770;
     } else if (order >= 590) {
         pts = lebedev::grid_590; n_pts = lebedev::n_590;
+    } else if (order >= 434) {
+        pts = lebedev::grid_434; n_pts = lebedev::n_434;
+    } else if (order >= 350) {
+        pts = lebedev::grid_350; n_pts = lebedev::n_350;
     } else if (order >= 302) {
         pts = lebedev::grid_302; n_pts = lebedev::n_302;
     } else if (order >= 266) {
@@ -528,15 +532,14 @@ int lebedev_order_for_shell(GridLevel level, int Z, double r, double R,
     // ANG_ORDER table (_default_ang): periods 1-2 (Z<=10) -> order 29 ->
     // 302 points; period 3 (Na-Ar) -> order 35 -> 434 points.
     //
-    //   Z<=10, n_ang=302: idx=10 -> leb_l=[1,3,9,10,9]
-    //                     -> leb_ngrid -> {50, 86, 266, 302, 266}
-    //   Z=11..18, n_ang=434: idx=12 -> leb_l=[1,3,11,12,11]
-    //                        -> {50, 86, 350, 434, 350}
+    //   Z<=10  (periods 1-2): _default_ang lvl-3 -> order 29 -> n_ang=302
+    //          idx=10 -> leb_l=[1,3,9,10,9]  -> {50, 86, 266, 302, 266}
+    //   Z=11.. (periods 3+):  _default_ang lvl-3 -> order 35 -> n_ang=434
+    //          idx=12 -> leb_l=[1,3,11,12,11] -> {50, 86, 350, 434, 350}
     //
-    // Orders 350 and 434 are not yet tabulated in lebedev_data.h, so the
-    // Na-Ar path would require new Lebedev tables. Rather than silently
-    // substitute a different order (no-fallback policy), MatchPySCF
-    // throws for Z>10 until those tables are added.
+    // ANG_ORDER row 3 = {29,29,35,35,35,35,35}, so every period >= 3
+    // uses order 35 -> 434; Z>36 is already rejected upstream by
+    // bragg_slater_radius / treutler_ahlrichs_xi.
     const SG1Alpha a = sg1_alpha(Z);
     const double t = r / R;
     int region = 0;                 // 0..4, = sum(t > alpha_i)
@@ -545,14 +548,9 @@ int lebedev_order_for_shell(GridLevel level, int Z, double r, double R,
     if (t > a.a3) ++region;
     if (t > a.a4) ++region;
 
-    if (Z > 10) {
-        throw std::runtime_error(
-            "lebedev_order_for_shell: GridLevel::MatchPySCF for Z>10 "
-            "needs Lebedev orders 350/434 (PySCF level-3 nwchem_prune for "
-            "Na-Ar), not yet tabulated in lebedev_data.h");
-    }
     static constexpr int light_orders[5] = {50, 86, 266, 302, 266};
-    return light_orders[region];
+    static constexpr int heavy_orders[5] = {50, 86, 350, 434, 350};
+    return (Z > 10) ? heavy_orders[region] : light_orders[region];
 }
 
 // ── Grid assembly core ──────────────────────────────────────────────────

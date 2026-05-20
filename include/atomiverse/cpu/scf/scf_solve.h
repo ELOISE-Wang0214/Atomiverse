@@ -230,8 +230,8 @@ inline SCFConfig uks_config(const IntegralPack& ints, int n_alpha, int n_beta,
 ///     reproduces PySCF's default `level=3` (Treutler-Ahlrichs M4 radial
 ///     with per-element point counts, nwchem-style angular pruning). The
 ///     level-3 maximum Lebedev order is 302 for Z<=10 (pruned to
-///     {50,86,266,302,266}); Z>10 needs orders 350/434 not yet tabulated
-///     and currently throws. This brings the ATV-vs-PySCF def2-SVP energy
+///     {50,86,266,302,266}) and 434 for Z=11..36 (pruned to
+///     {50,86,350,434,350}). This brings the ATV-vs-PySCF def2-SVP energy
 ///     residue into the sub-microHartree regime; the lighter `SG1`
 ///     standard grid and the legacy uniform `SG0` grid remain selectable
 ///     via SCFConfig::grid_level.
