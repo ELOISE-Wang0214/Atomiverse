@@ -73,5 +73,21 @@
   "energy_hartree_optimized": -40.41642401096556,
   "scf_iterations_starting": 7,
   "opt_wall_seconds": 0.7255152910074685,
-  "pyscf_version": "2.12.1"
+  "pyscf_version": "2.12.1",
+  "b3lyp": {
+    "basis": "6-31g*",
+    "xc": "b3lyp",
+    "energy_hartree": -40.51828953277595,
+    "homo_hartree": -0.3900973622610059,
+    "lumo_hartree": 0.11941206703485374,
+    "pyscf_version": "2.13.0"
+  },
+  "pbe0": {
+    "basis": "6-31g*",
+    "xc": "pbe0",
+    "energy_hartree": -40.456801280801656,
+    "homo_hartree": -0.4002969005781582,
+    "lumo_hartree": 0.1345889399590705,
+    "pyscf_version": "2.13.0"
+  }
 }

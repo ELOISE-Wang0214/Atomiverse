@@ -87,6 +87,25 @@ void build_j_direct(const ShellPairList& sp,
 
 // ── Shell-block direct-SCF operators (libcint/PySCF approach) ────────────
 
+/// @brief Shell-block direct exchange-only matrix K (KS-hybrid path).
+///
+/// Builds the full exchange matrix `K_ij = sum_kl P_kl (ik|jl)` (NO 0.5
+/// factor, no Coulomb) using the same shell-block ERI amortization as
+/// `build_g_rhf_direct_block`. `K` is normalized so that the pure RHF Fock
+/// is `F = Hcore + J - 0.5*K`; a KS global hybrid uses
+/// `F = Hcore + J - 0.5*alpha_hf*K + Vxc`.
+///
+/// Used by `HamiltonianBuilder` for the B3LYP / PBE0 restricted hybrid
+/// Fock build. Far faster than the AO-level `build_jk_uhf_direct` exchange
+/// path on benzene-scale systems (shell-block Boys/R-table amortization).
+///
+/// @param sp Shell block pair list (from build_shell_block_pair_list).
+/// @param P  Total RHF density matrix P = 2*P_occ [n x n].
+/// @param[out] K Exchange matrix [n x n], symmetric, no 0.5 factor.
+void build_k_direct_block(const ShellBlockPairList& sp,
+                          const RealMatrix& P,
+                          RealMatrix& K);
+
 /// @brief Shell-block direct RHF G = J - 0.5*K (libcint/PySCF approach).
 ///
 /// Iterates canonical shell-block pair quartets (block_left >= block_right)

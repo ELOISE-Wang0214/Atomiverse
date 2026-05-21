@@ -29,10 +29,13 @@ from pathlib import Path
 
 try:
     from pyscf import gto, scf, dft
-    from pyscf.geomopt.geometric_solver import optimize as geom_optimize
 except ImportError:
-    sys.stderr.write("pyscf + geometric required to regenerate references\n")
+    sys.stderr.write("pyscf required to regenerate references\n")
     raise
+
+# geometric is only needed by the geometry-optimization (non-hybrid) path;
+# imported lazily there so the hybrid single-point mode runs without it.
+geom_optimize = None
 
 # Multiplicity overrides for the radical benchmark entries. Closed-shell
 # molecules (spin=0) are handled by the default path; the keys here carry
@@ -97,6 +100,54 @@ def _make_mf(mol, method: str, xc: str, tol: float):
     return mf
 
 
+def run_hybrid_singlepoint(stem: str, xc: str, basis: str = "6-31g*",
+                           scf_tol: float = 1e-10) -> dict:
+    """Run a single-point hybrid RKS SCF and return an energy/orbital block.
+
+    Runs ``pyscf.dft.RKS(mol, xc=...)`` at the requested global-hybrid
+    functional (``b3lyp`` or ``pbe0``) on the STARTING geometry of
+    ``<stem>.xyz``. Records the converged total energy and the HOMO /
+    LUMO orbital energies. No geometry optimization is performed -- the
+    hybrid single-point references pin the C++ KS SCF at a fixed
+    geometry (spec phase3-hybrid-dft-02-hybrid-singlepoint).
+
+    Args:
+        stem: Molecule stem (xyz file name without extension).
+        xc: Hybrid functional name passed to PySCF ('b3lyp' or 'pbe0').
+        basis: PySCF basis name (default '6-31g*').
+        scf_tol: PySCF SCF energy convergence tolerance.
+
+    Returns:
+        A dict with the total energy [Hartree], HOMO/LUMO orbital
+        energies [Hartree], basis, functional and pyscf_version.
+    """
+    atoms = read_xyz(MOL_DIR / f"{stem}.xyz")
+    mol = gto.M(
+        atom=atoms_to_pyscf_str(atoms),
+        basis=basis,
+        cart=True,  # match atomiverse Cartesian-d convention
+        verbose=0,
+    )
+    mf = dft.RKS(mol)
+    mf.xc = xc
+    mf.conv_tol = scf_tol
+    e_tot = mf.kernel()
+
+    n_occ = mol.nelectron // 2
+    mo_e = mf.mo_energy
+    homo = float(mo_e[n_occ - 1])
+    lumo = float(mo_e[n_occ])
+
+    return {
+        "basis": basis,
+        "xc": xc,
+        "energy_hartree": float(e_tot),
+        "homo_hartree": homo,
+        "lumo_hartree": lumo,
+        "pyscf_version": __import__("pyscf").__version__,
+    }
+
+
 def run_reference(stem: str, basis: str, method: str, xc: str,
                   scf_tol: float = 1e-10) -> dict:
     atoms = read_xyz(MOL_DIR / f"{stem}.xyz")
@@ -112,6 +163,8 @@ def run_reference(stem: str, basis: str, method: str, xc: str,
     mf = _make_mf(mol, method, xc, scf_tol)
     e_start = mf.kernel()
     scf_iters_start = mf.cycles
+
+    from pyscf.geomopt.geometric_solver import optimize as geom_optimize
 
     t0 = time.perf_counter()
     mol_opt = geom_optimize(mf, maxsteps=200, convergence_energy=1e-6,
@@ -142,6 +195,34 @@ def run_reference(stem: str, basis: str, method: str, xc: str,
     }
 
 
+def run_hybrid_mode(stems: list[str], basis: str) -> None:
+    """Generate b3lyp + pbe0 single-point blocks and merge into the JSONs.
+
+    For each stem, runs the hybrid single-point reference for both
+    b3lyp and pbe0 and writes the results into ``<stem>.json`` under
+    keyed slots ``b3lyp`` / ``pbe0``. The existing top-level PBE
+    reference data is preserved untouched -- only the two hybrid keys
+    are added or replaced.
+    """
+    REF_DIR.mkdir(parents=True, exist_ok=True)
+    for stem in stems:
+        out = REF_DIR / f"{stem}.json"
+        if out.exists():
+            doc = json.loads(out.read_text())
+        else:
+            doc = {"stem": stem}
+        for xc in ("b3lyp", "pbe0"):
+            print(f"[{stem}] generating {xc}/{basis} single-point reference...")
+            t0 = time.perf_counter()
+            block = run_hybrid_singlepoint(stem, xc=xc, basis=basis)
+            doc[xc] = block
+            print(f"[{stem}]   {xc}: E={block['energy_hartree']:.10f} Ha "
+                  f"HOMO={block['homo_hartree']:.6f} LUMO={block['lumo_hartree']:.6f} "
+                  f"({time.perf_counter() - t0:.1f} s)")
+        out.write_text(json.dumps(doc, indent=2) + "\n")
+        print(f"[{stem}] wrote {out.relative_to(REPO_ROOT)}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("stems", nargs="*",
@@ -153,10 +234,18 @@ def main():
                              "gradient path that exists today)")
     parser.add_argument("--xc", default="pbe",
                         help="XC functional when method=rks (ignored otherwise)")
+    parser.add_argument("--hybrid", action="store_true",
+                        help="Hybrid single-point mode: emit b3lyp/pbe0 blocks "
+                             "into the per-molecule JSONs (default basis 6-31g*).")
     args = parser.parse_args()
 
     if not args.stems:
         args.stems = sorted(p.stem for p in MOL_DIR.glob("*.xyz"))
+
+    if args.hybrid:
+        basis = args.basis if args.basis != "sto-3g" else "6-31g*"
+        run_hybrid_mode(args.stems, basis=basis)
+        return
 
     REF_DIR.mkdir(parents=True, exist_ok=True)
     label = args.method if args.method == "rhf" else f"{args.method}/{args.xc}"

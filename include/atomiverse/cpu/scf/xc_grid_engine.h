@@ -36,6 +36,68 @@ struct XCGridResult {
     double n_beta_integrated;            ///< Grid-integrated beta electron count.
 };
 
+/// @brief Parallel grid-contraction GEMM: C = A^T @ B.
+///
+/// Computes `C(mu,nu) = sum_g A(g,mu) * B(g,nu)` for two `[G x N]` row-major
+/// grid matrices, the contraction pattern of every XC potential-matrix
+/// assembly. OpenMP-parallel over the output column `nu`; the reduction
+/// over grid points `g` runs serially per output element in ascending
+/// order. Because each output element owns its full reduction, the result
+/// is bitwise identical for any thread count and equal to the serial
+/// ascending-`g` sum. This replaces the single-threaded `xt::linalg::dot`
+/// fallback that dominated benzene-scale GGA Fock builds; the existing
+/// LSDA/PBE grid and KS-gradient regression tests confirm the non-hybrid
+/// KS results are unchanged within SCF tolerance.
+///
+/// @param A `[G x N]` row-major grid matrix (the left, transposed operand).
+/// @param B `[G x N]` row-major grid matrix (the right operand).
+/// @return `[N x N]` matrix C = A^T @ B.
+inline xt::xtensor<double, 2> grid_contract_tn(const xt::xtensor<double, 2>& A,
+                                               const xt::xtensor<double, 2>& B) {
+    const std::size_t G = A.shape()[0];
+    const std::size_t N = A.shape()[1];
+    const auto Ni = static_cast<long>(N);
+    const auto Gi = static_cast<long>(G);
+
+    // Transpose A and B to [N x G] (column = grid point) so the per-output
+    // reduction over g walks contiguous memory. A naive [G x N] access
+    // strides by N doubles per g-step and thrashes the cache on a
+    // benzene-scale grid; the O(N*G) transpose copy is negligible against
+    // the O(N^2*G) contraction it accelerates.
+    std::vector<double> At(static_cast<std::size_t>(N) * G);
+    std::vector<double> Bt(static_cast<std::size_t>(N) * G);
+    const double* Ap = A.data();
+    const double* Bp = B.data();
+#ifdef _OPENMP
+    #pragma omp parallel for schedule(static)
+#endif
+    for (long g = 0; g < Gi; ++g)
+        for (long mu = 0; mu < Ni; ++mu) {
+            At[static_cast<std::size_t>(mu) * G + g] = Ap[g * Ni + mu];
+            Bt[static_cast<std::size_t>(mu) * G + g] = Bp[g * Ni + mu];
+        }
+
+    xt::xtensor<double, 2> C = xt::zeros<double>({N, N});
+    double* Cp = C.data();
+    // Parallel over the output column nu; the g-reduction for each output
+    // element runs serially in ascending order, so the result is bitwise
+    // identical for any thread count (and matches a serial g-order sum).
+#ifdef _OPENMP
+    #pragma omp parallel for schedule(static)
+#endif
+    for (long nu = 0; nu < Ni; ++nu) {
+        const double* Brow = Bt.data() + static_cast<std::size_t>(nu) * G;
+        for (long mu = 0; mu < Ni; ++mu) {
+            const double* Arow = At.data() + static_cast<std::size_t>(mu) * G;
+            double acc = 0.0;
+            for (long g = 0; g < Gi; ++g)
+                acc += Arow[g] * Brow[g];
+            Cp[mu * Ni + nu] = acc;
+        }
+    }
+    return C;
+}
+
 /// @brief Batched XC grid integration engine.
 ///
 /// Builds AO value matrix Phi and gradient matrices dPhi once per call,
@@ -58,7 +120,9 @@ inline XCGridResult evaluate_xc_batched(
 {
     const int G = static_cast<int>(grid.points.size());
     const int N = static_cast<int>(n_basis);
-    const bool is_gga = (xc_type == XCType::PBE);
+    // GGA path is needed for PBE and for the B3LYP / PBE0 hybrids, whose
+    // semi-local part carries a gradient-dependent term.
+    const bool is_gga = ATV::cpu::scf::is_gga(xc_type);
     const size_t Gs = static_cast<size_t>(G);
     const size_t Ns = static_cast<size_t>(N);
 
@@ -73,17 +137,26 @@ inline XCGridResult evaluate_xc_batched(
     }
 
     // Screen: track which grid points have nonzero basis functions.
-    std::vector<bool> active(G, false);
+    // `char` (not `std::vector<bool>`) so the parallel loop below can write
+    // distinct elements without the bit-packed-proxy data race.
+    std::vector<char> active(G, 0);
 
-    // Loop: outer over shells (cache-friendly for exp), inner over grid points.
-    // Delegate the per-point polynomial logic to basis_eval.h so d-shells
-    // (and higher l) inherit the same code path as the cube writers.
-    for (int mu = 0; mu < N; ++mu) {
-        const auto& sh = shells[mu];
-        for (int g = 0; g < G; ++g) {
-            const double rx = static_cast<double>(grid.points[g].x);
-            const double ry = static_cast<double>(grid.points[g].y);
-            const double rz = static_cast<double>(grid.points[g].z);
+    // Loop: outer over grid points so each OpenMP thread owns a disjoint
+    // set of grid rows -- Phi(g,:), dPhi_*(g,:) and active[g] are then
+    // written by exactly one thread, race-free. The result is bitwise
+    // identical to the former serial mu-outer loop (each Phi(g,mu) is the
+    // same single eval); only the iteration order changes. Delegates the
+    // per-point polynomial logic to basis_eval.h so d-shells (and higher
+    // l) inherit the same code path as the cube writers.
+#ifdef _OPENMP
+    #pragma omp parallel for schedule(static)
+#endif
+    for (int g = 0; g < G; ++g) {
+        const double rx = static_cast<double>(grid.points[g].x);
+        const double ry = static_cast<double>(grid.points[g].y);
+        const double rz = static_cast<double>(grid.points[g].z);
+        for (int mu = 0; mu < N; ++mu) {
+            const auto& sh = shells[mu];
             if (is_gga) {
                 double v, gx, gy, gz;
                 eval_basis_val_grad(sh, rx, ry, rz, v, gx, gy, gz);
@@ -91,11 +164,11 @@ inline XCGridResult evaluate_xc_batched(
                 dPhi_x(g, mu) = gx;
                 dPhi_y(g, mu) = gy;
                 dPhi_z(g, mu) = gz;
-                if (std::abs(v) > 1e-20) active[g] = true;
+                if (std::abs(v) > 1e-20) active[g] = 1;
             } else {
                 const double v = eval_basis(sh, rx, ry, rz);
                 Phi(g, mu) = v;
-                if (std::abs(v) > 1e-20) active[g] = true;
+                if (std::abs(v) > 1e-20) active[g] = 1;
             }
         }
     }
@@ -194,9 +267,11 @@ inline XCGridResult evaluate_xc_batched(
     xt::xtensor<double, 2> Phi_wa = Phi * w_vrho_a;
     xt::xtensor<double, 2> Phi_wb = Phi * w_vrho_b;
 
-    // Vxc_alpha = Phi_wa^T @ Phi  [N × N]
-    auto Vxc_a_d = xt::linalg::dot(xt::transpose(Phi_wa), Phi);
-    auto Vxc_b_d = xt::linalg::dot(xt::transpose(Phi_wb), Phi);
+    // Vxc_alpha = Phi_wa^T @ Phi  [N × N]. grid_contract_tn replaces the
+    // single-threaded xt::linalg::dot fallback with an OpenMP-parallel,
+    // bitwise-identical (same g-order reduction) contraction.
+    xt::xtensor<double, 2> Vxc_a_d = grid_contract_tn(Phi_wa, Phi);
+    xt::xtensor<double, 2> Vxc_b_d = grid_contract_tn(Phi_wb, Phi);
 
     if (is_gga) {
         // GGA contribution to the XC potential matrix.
@@ -239,14 +314,16 @@ inline XCGridResult evaluate_xc_batched(
             auto gb_d = w_col * (2.0 * vsb * (*grad_rho_b[d]) + vsab * (*grad_rho_a[d]));
             const auto& dPhi_d = *dPhi_arr[d];
 
-            // Vxc_a += (Phi * ga_d)^T @ dPhi_d + dPhi_d^T @ (Phi * ga_d)
-            auto Phi_ga = Phi * ga_d;
-            Vxc_a_d += xt::linalg::dot(xt::transpose(Phi_ga), dPhi_d);
-            Vxc_a_d += xt::linalg::dot(xt::transpose(dPhi_d), Phi_ga);
+            // Vxc_a += (Phi * ga_d)^T @ dPhi_d + dPhi_d^T @ (Phi * ga_d).
+            // Phi*ga_d is materialized into a container so grid_contract_tn
+            // sees a contiguous operand.
+            xt::xtensor<double, 2> Phi_ga = Phi * ga_d;
+            Vxc_a_d += grid_contract_tn(Phi_ga, dPhi_d);
+            Vxc_a_d += grid_contract_tn(dPhi_d, Phi_ga);
 
-            auto Phi_gb = Phi * gb_d;
-            Vxc_b_d += xt::linalg::dot(xt::transpose(Phi_gb), dPhi_d);
-            Vxc_b_d += xt::linalg::dot(xt::transpose(dPhi_d), Phi_gb);
+            xt::xtensor<double, 2> Phi_gb = Phi * gb_d;
+            Vxc_b_d += grid_contract_tn(Phi_gb, dPhi_d);
+            Vxc_b_d += grid_contract_tn(dPhi_d, Phi_gb);
         }
     }
 

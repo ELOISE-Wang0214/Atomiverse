@@ -202,6 +202,13 @@ if(ATV_BUILD_RHF)
     atv_add_cpp_test(test_cpu_scf_primitives    cpu/scf/test_primitives.cpp)
     atv_add_cpp_test(test_cpu_scf_accelerators  cpu/scf/test_accelerators.cpp)
     atv_add_cpp_test(test_cpu_scf_solver        cpu/scf/test_scf_solver.cpp)
+    atv_add_cpp_test(test_cpu_scf_hybrid_singlepoint cpu/scf/test_hybrid_singlepoint.cpp)
+    target_compile_definitions(test_cpu_scf_hybrid_singlepoint PRIVATE
+        ATV_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    # Hybrid SCF runs B3LYP/PBE0 single points on five molecules up to
+    # benzene/glycine at 6-31G*; K-heavy and grid-heavy. Allow a generous
+    # ceiling so a cold run does not trip the default CTest timeout.
+    set_tests_properties(test_cpu_scf_hybrid_singlepoint PROPERTIES TIMEOUT 3600)
     atv_add_cpp_test(test_cpu_scf_solver_internals cpu/scf/test_scf_solver_internals.cpp)
     atv_add_cpp_test(test_cpu_scf_solver_internal_isolation cpu/scf/test_scf_solver_internal_isolation.cpp)
     atv_add_cpp_test(test_cpu_scf_evaluator_no_alloc cpu/scf/test_scf_evaluator_no_alloc.cpp)

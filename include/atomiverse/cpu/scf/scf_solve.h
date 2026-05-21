@@ -101,6 +101,16 @@ struct SCFConfig {
     ///          / comparison aid; production code leaves it `false`.
     bool xc_grad_project_translation = false;
 
+    /// @brief Regression override for the exact-exchange fraction (KS hybrids).
+    /// @details When non-negative, this value replaces
+    ///          `hybrid_exchange_fraction(xc_type)` as the effective
+    ///          `alpha_hf` AND forces the hybrid Fock branch (K build) to
+    ///          run even for a pure functional. Default `-1` means "use the
+    ///          functional's own alpha_hf". Reserved for the ac-004
+    ///          regression test (`alpha_hf=0` hybrid path must reproduce the
+    ///          pure-DFT result bit-for-bit); production code leaves it `-1`.
+    double hybrid_alpha_override = -1.0;
+
     /// @brief Optional externally supplied XC integration grid (KS only).
     /// @details When non-null, the KS Fock build uses this grid verbatim
     ///          instead of regenerating one from the current atom
@@ -265,6 +275,38 @@ inline SCFConfig default_config(const IntegralPack& ints) {
     c.damping_factor = 0.0;
     c.init_guess = InitGuess::MINAO;
     c.grid_level = GridLevel::MatchPySCF;
+    return c;
+}
+
+/// @brief Convenience: closed-shell B3LYP global-hybrid KS configuration.
+///
+/// Clones `default_config` (Restricted, KS, MINAO guess,
+/// `GridLevel::MatchPySCF`, `tol = 1e-9`, DIIS on) but selects the B3LYP
+/// hybrid functional. B3LYP mixes `alpha_hf = 0.20` exact HF exchange with
+/// the semi-local mix `0.08*Slater-X + 0.72*B88-X + 0.19*VWN_RPA-C +
+/// 0.81*LYP-C` (libxc `XC_HYB_GGA_XC_B3LYP`).
+///
+/// @param ints Integral pack supplying the electron count (assumed even).
+/// @return SCFConfig ready to feed `scf_solve` / `SCFSolver`.
+inline SCFConfig b3lyp_config(const IntegralPack& ints) {
+    SCFConfig c = default_config(ints);
+    c.xc_type = XCType::B3LYP;
+    return c;
+}
+
+/// @brief Convenience: closed-shell PBE0 global-hybrid KS configuration.
+///
+/// Clones `default_config` (Restricted, KS, MINAO guess,
+/// `GridLevel::MatchPySCF`, `tol = 1e-9`, DIIS on) but selects the PBE0
+/// hybrid functional. PBE0 mixes `alpha_hf = 0.25` exact HF exchange with
+/// the semi-local mix `0.75*PBE-X + 1.00*PBE-C` (libxc
+/// `XC_HYB_GGA_XC_PBEH`).
+///
+/// @param ints Integral pack supplying the electron count (assumed even).
+/// @return SCFConfig ready to feed `scf_solve` / `SCFSolver`.
+inline SCFConfig pbe0_config(const IntegralPack& ints) {
+    SCFConfig c = default_config(ints);
+    c.xc_type = XCType::PBE0;
     return c;
 }
 

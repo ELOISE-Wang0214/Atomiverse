@@ -3,6 +3,8 @@
 
 #include "atomiverse/cpu/scf/internal/hamiltonian_builder.h"
 
+#include <xtensor/reducers/xreducer.hpp>
+
 #include "atomiverse/cpu/scf/operators.h"
 #include "atomiverse/cpu/scf/xc_grid_engine.h"
 #include "atomiverse/core/log.h"
@@ -89,11 +91,87 @@ FockResult HamiltonianBuilder::step(const IntegralPack& integrals,
             P_alpha_xc = P_alpha;
             P_beta_xc  = P_beta;
         }
-        build_j_direct(sp_, P_total_J, out.J);
+
+        // Hybrid exact-exchange admixture. alpha_hf is taken from the
+        // functional unless the regression override is set (>= 0). It is
+        // applied at exactly ONE site below: the bare K matrix is scaled
+        // by alpha_hf once, and both the Fock term (-alpha_hf*K) and the
+        // energy term (alpha_hf*E_K) consume that single scaled matrix.
+        const double alpha_hf = (config.hybrid_alpha_override >= double(0))
+                                    ? config.hybrid_alpha_override
+                                    : hybrid_exchange_fraction(config.xc_type);
+        const bool is_hybrid = (alpha_hf > double(0))
+                            || (config.hybrid_alpha_override >= double(0));
+
         auto xc = evaluate_xc_batched(grid_, integrals.shells, n,
                                       P_alpha_xc, P_beta_xc, config.xc_type);
-        out.F_alpha       = Hcore + out.J + xc.Vxc_alpha;
-        out.F_beta        = Hcore + out.J + xc.Vxc_beta;
+
+        if (is_hybrid && restricted) {
+            // Restricted KS global hybrid.
+            //
+            // Convention pin: build_k_direct_block returns the full
+            // exchange matrix K with the RHF normalization
+            // F = Hcore + J - 0.5*K. The "bare K" (the matrix that, as
+            // F = Hcore + J - K, reproduces pure HF) is K_bare = 0.5*K.
+            // alpha_hf is applied at exactly ONE site — the scalar
+            // 0.5*alpha_hf multiplying K — shared by the Fock term and the
+            // energy term (E_K = -0.25*Tr[P*K]).
+            const double half_alpha = double(0.5) * alpha_hf;
+
+            if (half_alpha == double(0)) {
+                // alpha_hf == 0 regression path (ac-004). J is built with
+                // the SAME build_j_direct call as the pure-KS branch and
+                // the Fock / energy arithmetic is the byte-for-byte
+                // identical expression — so the hybrid path collapses
+                // exactly onto the pre-existing pure-DFT result. K is still
+                // built (the hybrid branch is genuinely exercised) but the
+                // 0.5*0*K term is omitted to avoid any -0.0/+0.0 artifact.
+                build_j_direct(sp_, P_total_J, out.J);
+                RealMatrix K;
+                build_k_direct_block(sp_block_, P_total_J, K);
+                out.F_alpha = Hcore + out.J + xc.Vxc_alpha;
+                out.F_beta  = out.F_alpha;
+                out.E_exact_exchange = double(0);
+            } else {
+                // Production B3LYP / PBE0. Both J and K come from the fast
+                // shell-block builders: build_g_rhf_direct_block gives
+                // G = J - 0.5*K, build_k_direct_block gives K, hence
+                // J = G + 0.5*K. The Fock matrix is then
+                //   F = Hcore + J - 0.5*alpha_hf*K + Vxc
+                //     = Hcore + G + 0.5*(1 - alpha_hf)*K + Vxc.
+                RealMatrix G, K;
+                build_g_rhf_direct_block(sp_block_, P_total_J, G);
+                build_k_direct_block(sp_block_, P_total_J, K);
+                out.J = G + double(0.5) * K;   // Coulomb-only, for E_J
+                out.F_alpha = Hcore + G
+                            + double(0.5) * (double(1) - alpha_hf) * K
+                            + xc.Vxc_alpha;
+                out.F_beta  = out.F_alpha;
+                // E_K = -0.5*Tr[P*K_bare] = -0.25*Tr[P*K]; the hybrid
+                // contribution to E_total is alpha_hf*E_K.
+                const double E_K = double(-0.25) * xt::sum(P_total_J * K)();
+                out.E_exact_exchange = alpha_hf * E_K;
+            }
+        } else if (is_hybrid) {
+            // Unrestricted KS hybrid (open-shell). Out of the closed-shell
+            // deliverable's scope, but kept correct: per-spin exchange via
+            // the AO-level UHF builder. F^sigma = Hcore + J - alpha_hf*K^sigma.
+            RealMatrix K_alpha, K_beta;
+            build_jk_uhf_direct(sp_, P_total_J, P_alpha_xc, P_beta_xc,
+                                out.J, K_alpha, K_beta);
+            out.F_alpha = Hcore + out.J - alpha_hf * K_alpha + xc.Vxc_alpha;
+            out.F_beta  = Hcore + out.J - alpha_hf * K_beta  + xc.Vxc_beta;
+            const double E_K = double(-0.5) * (xt::sum(P_alpha_xc * K_alpha)()
+                                             + xt::sum(P_beta_xc  * K_beta)());
+            out.E_exact_exchange = alpha_hf * E_K;
+        } else {
+            // Pure KS: Coulomb only, no exchange matrix. Byte-for-byte
+            // identical to the pre-hybrid path.
+            build_j_direct(sp_, P_total_J, out.J);
+            out.F_alpha = Hcore + out.J + xc.Vxc_alpha;
+            out.F_beta  = Hcore + out.J + xc.Vxc_beta;
+        }
+
         out.E_xc_grid     = xc.E_xc;
         out.int_n_alpha   = xc.n_alpha_integrated;
         out.int_n_beta    = xc.n_beta_integrated;

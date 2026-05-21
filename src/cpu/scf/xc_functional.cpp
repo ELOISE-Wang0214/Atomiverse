@@ -632,6 +632,132 @@ static void pbe_correlation(double rho_a, double rho_b,
 
 }
 
+// ── Hybrid metadata ─────────────────────────────────────────────────────
+
+double hybrid_exchange_fraction(XCType type) {
+    switch (type) {
+        case XCType::LSDA: return 0.0;
+        case XCType::PBE:  return 0.0;
+        case XCType::B3LYP: return 0.20;  // libxc XC_HYB_GGA_XC_B3LYP
+        case XCType::PBE0:  return 0.25;  // libxc XC_HYB_GGA_XC_PBEH
+    }
+    return 0.0;
+}
+
+bool is_gga(XCType type) {
+    switch (type) {
+        case XCType::LSDA:  return false;
+        case XCType::PBE:   return true;
+        case XCType::B3LYP: return true;
+        case XCType::PBE0:  return true;
+    }
+    return false;
+}
+
+// ── Semi-local hybrid component evaluators ──────────────────────────────
+//
+// B3LYP semi-local mix (absolute coefficients, libxc id 402):
+//   0.08*Slater-X + 0.72*B88-X + 0.19*VWN_RPA-C + 0.81*LYP-C
+// The 0.20 exact-HF-exchange admixture is applied by the Fock builder, not
+// here. The semi-local coefficients are absolute -- there is no
+// (1-alpha_hf) rescaling.
+//
+// B88-X is the FULL Becke-88 GGA exchange (it includes its own LDA Slater
+// base plus the gradient enhancement); the 0.08*Slater term is the extra
+// pure-LDA exchange of the B3LYP recipe, not a double count.
+
+namespace {
+
+constexpr double kB3LYP_cSlater = 0.08;  ///< absolute Slater-X coefficient.
+constexpr double kB3LYP_cB88    = 0.72;  ///< absolute B88-X coefficient.
+constexpr double kB3LYP_cVWN    = 0.19;  ///< absolute VWN_RPA-C coefficient.
+constexpr double kB3LYP_cLYP    = 0.81;  ///< absolute LYP-C coefficient.
+constexpr double kPBE0_cX       = 0.75;  ///< PBE0 semi-local PBE exchange scale.
+
+// Evaluate the B3LYP semi-local energy density / potential at one grid point.
+// Outputs follow the XCOutput convention: exc is the semi-local energy
+// density per electron; vrho_* and vsigma_* are df/d(rho|sigma).
+void b3lyp_semilocal(double ra, double rb,
+                     double sigma_aa, double sigma_ab, double sigma_bb,
+                     XCOutput& out) {
+    const double rho = ra + rb;
+
+    // 0.08 * Slater exchange (per-electron exc, per-electron potentials).
+    double ex_s, vx_s_a, vx_s_b;
+    slater_exchange(ra, rb, ex_s, vx_s_a, vx_s_b);
+
+    // 0.72 * B88 exchange (per-spin, per-volume energy + potentials).
+    double sa = std::max(sigma_aa, 0.0);
+    double sb = std::max(sigma_bb, 0.0);
+    double exb_a, vrho_b_a, vsig_b_aa;
+    double exb_b, vrho_b_b, vsig_b_bb;
+    b88_exchange_spin(ra, sa, exb_a, vrho_b_a, vsig_b_aa);
+    b88_exchange_spin(rb, sb, exb_b, vrho_b_b, vsig_b_bb);
+    const double ex_b88 = (exb_a + exb_b) / rho;  // per-electron
+
+    // 0.19 * VWN-RPA LDA correlation (per-electron exc, per-electron pot).
+    double ec_vwn, vc_vwn_a, vc_vwn_b;
+    vwn_rpa_correlation(ra, rb, ec_vwn, vc_vwn_a, vc_vwn_b);
+
+    // 0.81 * LYP GGA correlation (per-electron exc, per-electron pot).
+    double s_ave = 0.5 * (sa + sb);
+    double sab = std::min(std::max(sigma_ab, -s_ave), +s_ave);
+    double ec_lyp, vc_lyp_a, vc_lyp_b, vsig_l_aa, vsig_l_ab, vsig_l_bb;
+    lyp_correlation(ra, rb, sa, sab, sb,
+                    ec_lyp, vc_lyp_a, vc_lyp_b,
+                    vsig_l_aa, vsig_l_ab, vsig_l_bb);
+
+    out.exc = kB3LYP_cSlater * ex_s + kB3LYP_cB88 * ex_b88
+            + kB3LYP_cVWN * ec_vwn + kB3LYP_cLYP * ec_lyp;
+    out.vrho_alpha = kB3LYP_cSlater * vx_s_a + kB3LYP_cB88 * vrho_b_a
+                   + kB3LYP_cVWN * vc_vwn_a + kB3LYP_cLYP * vc_lyp_a;
+    out.vrho_beta  = kB3LYP_cSlater * vx_s_b + kB3LYP_cB88 * vrho_b_b
+                   + kB3LYP_cVWN * vc_vwn_b + kB3LYP_cLYP * vc_lyp_b;
+    out.vsigma_aa  = kB3LYP_cB88 * vsig_b_aa + kB3LYP_cLYP * vsig_l_aa;
+    out.vsigma_ab  = kB3LYP_cLYP * vsig_l_ab;
+    out.vsigma_bb  = kB3LYP_cB88 * vsig_b_bb + kB3LYP_cLYP * vsig_l_bb;
+}
+
+// Evaluate the PBE0 semi-local energy density / potential at one grid point.
+// PBE0 reuses the native PBE engine: the PBE exchange contribution is scaled
+// by 0.75; PBE correlation stays at 1.0.
+void pbe0_semilocal(double ra, double rb,
+                    double sigma_aa, double sigma_ab, double sigma_bb,
+                    XCOutput& out) {
+    const double rho = ra + rb;
+
+    double sa = std::max(sigma_aa, 0.0);
+    double sb = std::max(sigma_bb, 0.0);
+    double s_ave = 0.5 * (sa + sb);
+    double sab = std::min(std::max(sigma_ab, -s_ave), +s_ave);
+
+    // PBE exchange (per-spin, per-volume).
+    double ex_pbe_a, vrho_x_a, vsig_x_aa;
+    double ex_pbe_b, vrho_x_b, vsig_x_bb;
+    pbe_exchange_spin(ra, sa, ex_pbe_a, vrho_x_a, vsig_x_aa);
+    pbe_exchange_spin(rb, sb, ex_pbe_b, vrho_x_b, vsig_x_bb);
+    const double ex_pbe = (ex_pbe_a + ex_pbe_b) / rho;  // per-electron
+
+    // PBE correlation: PW92 LDA base + gradient correction.
+    double ec_lda, vc_lda_a, vc_lda_b;
+    pw92_correlation(ra, rb, ec_lda, vc_lda_a, vc_lda_b);
+    double ec_pbe, vc_pbe_a, vc_pbe_b, vsig_c_aa, vsig_c_ab, vsig_c_bb;
+    pbe_correlation(ra, rb, ec_lda, vc_lda_a, vc_lda_b,
+                    sa, sab, sb,
+                    ec_pbe, vc_pbe_a, vc_pbe_b,
+                    vsig_c_aa, vsig_c_ab, vsig_c_bb);
+
+    // 0.75 * PBE-X + 1.00 * PBE-C.
+    out.exc = kPBE0_cX * ex_pbe + ec_pbe;
+    out.vrho_alpha = kPBE0_cX * vrho_x_a + vc_pbe_a;
+    out.vrho_beta  = kPBE0_cX * vrho_x_b + vc_pbe_b;
+    out.vsigma_aa  = kPBE0_cX * vsig_x_aa + vsig_c_aa;
+    out.vsigma_ab  = vsig_c_ab;
+    out.vsigma_bb  = kPBE0_cX * vsig_x_bb + vsig_c_bb;
+}
+
+} // namespace
+
 // ── Public API ──────────────────────────────────────────────────────────
 
 XCOutput evaluate_xc(XCType type, double rho_a, double rho_b,
@@ -717,6 +843,14 @@ XCOutput evaluate_xc(XCType type, double rho_a, double rho_b,
         out.vsigma_aa = static_cast<double>(vsig_x_aa + vsig_c_aa);
         out.vsigma_ab = static_cast<double>(vsig_c_ab);
         out.vsigma_bb = static_cast<double>(vsig_x_bb + vsig_c_bb);
+    } else if (type == XCType::B3LYP) {
+        // B3LYP semi-local part only; HF-exchange admixture (alpha=0.20)
+        // is added by the Fock builder.
+        b3lyp_semilocal(ra, rb, sigma_aa, sigma_ab, sigma_bb, out);
+    } else if (type == XCType::PBE0) {
+        // PBE0 semi-local part only; HF-exchange admixture (alpha=0.25)
+        // is added by the Fock builder.
+        pbe0_semilocal(ra, rb, sigma_aa, sigma_ab, sigma_bb, out);
     }
 
     return out;
@@ -789,6 +923,23 @@ void evaluate_xc_batch(XCType type, int n,
             vsigma_aa_arr[g] = vsig_x_aa + vsig_c_aa;
             vsigma_ab_arr[g] = vsig_c_ab;
             vsigma_bb_arr[g] = vsig_x_bb + vsig_c_bb;
+        } else if (type == XCType::B3LYP || type == XCType::PBE0) {
+            // Global hybrids: GGA semi-local part. The HF-exchange
+            // admixture is applied by the Fock builder, not here.
+            double sa = sigma_aa_arr ? sigma_aa_arr[g] : 0.0;
+            double sab = sigma_ab_arr ? sigma_ab_arr[g] : 0.0;
+            double sb = sigma_bb_arr ? sigma_bb_arr[g] : 0.0;
+            XCOutput out{};
+            if (type == XCType::B3LYP)
+                b3lyp_semilocal(ra, rb, sa, sab, sb, out);
+            else
+                pbe0_semilocal(ra, rb, sa, sab, sb, out);
+            exc_arr[g] = out.exc;
+            vrho_a_arr[g] = out.vrho_alpha;
+            vrho_b_arr[g] = out.vrho_beta;
+            vsigma_aa_arr[g] = out.vsigma_aa;
+            vsigma_ab_arr[g] = out.vsigma_ab;
+            vsigma_bb_arr[g] = out.vsigma_bb;
         }
     }
 }

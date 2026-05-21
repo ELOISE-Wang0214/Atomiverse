@@ -25,9 +25,15 @@ struct FockResult {
     RealMatrix F_alpha;          ///< α-channel Fock matrix [n × n].
     RealMatrix F_beta;           ///< β-channel Fock matrix [n × n].
     RealMatrix J;                ///< Coulomb J built from the total density.
-    double     E_xc_grid     = 0;///< Grid-integrated E_xc (KS only).
+    double     E_xc_grid     = 0;///< Grid-integrated E_xc (KS only) [Hartree].
     double     int_n_alpha   = 0;///< Grid-integrated α electron count (KS only).
     double     int_n_beta    = 0;///< Grid-integrated β electron count (KS only).
+    /// @brief Exact (Hartree-Fock) exchange energy admixture for a KS
+    ///        global hybrid: `alpha_hf * E_K` [Hartree]. Zero for pure
+    ///        KS and for HF (HF carries its exchange inside F directly).
+    ///        The Fock builder applies `alpha_hf` at a single site so this
+    ///        term and the `-alpha_hf*K` Fock term use the same scaled K.
+    double     E_exact_exchange = 0;
 };
 
 class HamiltonianBuilder {

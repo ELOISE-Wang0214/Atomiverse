@@ -316,6 +316,134 @@ inline void raw_sym_add(double* g, const int n, int p, int q, double v) {
 }
 } // namespace
 
+void build_k_direct_block(const ShellBlockPairList& sp,
+                          const RealMatrix& P, RealMatrix& K) {
+    // Exchange-only twin of build_g_rhf_direct_block: same shell-block ERI
+    // amortization and 8-fold symmetry scatter, but accumulates only the
+    // exchange contribution with NO 0.5 factor and no Coulomb term. The
+    // result K satisfies the RHF convention F = Hcore + J - 0.5*K.
+    const int n      = sp.n_basis;
+    const int nT     = n_threads();
+    const double thr = sp.threshold;
+    const int npairs = static_cast<int>(sp.pairs.size());
+
+    std::vector<std::vector<double>> Kraw(nT, std::vector<double>(n * n, 0.0));
+    const double* Pp = P.data();
+
+#ifdef _OPENMP
+    #pragma omp parallel for schedule(dynamic)
+#endif
+    for (int left = 0; left < npairs; ++left) {
+        double* Kp = Kraw[thread_id()].data();
+        const ShellBlockPair& bp_l  = sp.pairs[left];
+        const native::ShellBlock& Bsi = sp.blocks[bp_l.si];
+        const native::ShellBlock& Bsj = sp.blocks[bp_l.sj];
+        const int na = Bsi.n_cart, nb = Bsj.n_cart;
+
+        for (int right = 0; right <= left; ++right) {
+            const ShellBlockPair& bp_r  = sp.pairs[right];
+
+            if (bp_l.schwarz * bp_r.schwarz < thr) continue;
+
+            const native::ShellBlock& Bsk = sp.blocks[bp_r.si];
+            const native::ShellBlock& Bsl = sp.blocks[bp_r.sj];
+            const int nc = Bsk.n_cart, nd = Bsl.n_cart;
+
+            double blk[kMaxNCart * kMaxNCart * kMaxNCart * kMaxNCart] = {};
+            native::eri_block(Bsi, Bsj, Bsk, Bsl, blk);
+
+            if (left != right) {
+                const bool diag_bra = (bp_l.si == bp_l.sj);
+                const bool diag_ket = (bp_r.si == bp_r.sj);
+
+                for (int ia = 0; ia < na; ++ia) {
+                  const int a = Bsi.ao_start + ia;
+                  for (int ib = 0; ib < nb; ++ib) {
+                    if (diag_bra && ib > ia) continue;
+                    const int b  = Bsj.ao_start + ib;
+                    const double* blk_ab = blk + (ia * nb + ib) * (nc * nd);
+
+                    for (int ic = 0; ic < nc; ++ic) {
+                      const int c = Bsk.ao_start + ic;
+                      for (int id = 0; id < nd; ++id) {
+                        if (diag_ket && id > ic) continue;
+                        const int d   = Bsl.ao_start + id;
+                        const double val = blk_ab[ic * nd + id];
+                        if (std::abs(val) < thr) continue;
+
+                        // Exchange only — no 0.5 factor.
+                        const double Pbd = Pp[b + d * n], Pad = Pp[a + d * n];
+                        const double Pbc = Pp[b + c * n], Pac = Pp[a + c * n];
+                        Kp[a + c*n] += val * Pbd; Kp[c + a*n] += val * Pbd;
+                        if (a != b) {
+                            Kp[b + c*n] += val * Pad; Kp[c + b*n] += val * Pad;
+                        }
+                        if (c != d) {
+                            Kp[a + d*n] += val * Pbc; Kp[d + a*n] += val * Pbc;
+                            if (a != b) {
+                                Kp[b + d*n] += val * Pac; Kp[d + b*n] += val * Pac;
+                            }
+                        }
+                      }
+                    }
+                  }
+                }
+            } else {
+                const bool diag_block = (bp_l.si == bp_l.sj);
+                struct AOpair { int ia, ib; };
+                AOpair ao_pairs[36];
+                int n_ao_pairs = 0;
+                for (int ia = 0; ia < na; ++ia)
+                    for (int ib = 0; ib < nb; ++ib) {
+                        if (diag_block && ib > ia) continue;
+                        ao_pairs[n_ao_pairs++] = {ia, ib};
+                    }
+
+                for (int left_ao = 0; left_ao < n_ao_pairs; ++left_ao) {
+                    const int ia = ao_pairs[left_ao].ia;
+                    const int ib = ao_pairs[left_ao].ib;
+                    const int a  = Bsi.ao_start + ia;
+                    const int b  = Bsj.ao_start + ib;
+                    const double* blk_ab = blk + (ia * nb + ib) * (nc * nd);
+
+                    for (int right_ao = 0; right_ao <= left_ao; ++right_ao) {
+                        const int ic = ao_pairs[right_ao].ia;
+                        const int id = ao_pairs[right_ao].ib;
+                        const int c  = Bsk.ao_start + ic;
+                        const int d  = Bsl.ao_start + id;
+                        const double val = blk_ab[ic * nd + id];
+                        if (std::abs(val) < thr) continue;
+
+                        if (left_ao != right_ao) {
+                            const double Pbd = Pp[b+d*n], Pad = Pp[a+d*n];
+                            const double Pbc = Pp[b+c*n], Pac = Pp[a+c*n];
+                            Kp[a+c*n] += val*Pbd; Kp[c+a*n] += val*Pbd;
+                            if (a != b) { Kp[b+c*n] += val*Pad; Kp[c+b*n] += val*Pad; }
+                            if (c != d) {
+                                Kp[a+d*n] += val*Pbc; Kp[d+a*n] += val*Pbc;
+                                if (a != b) { Kp[b+d*n] += val*Pac; Kp[d+b*n] += val*Pac; }
+                            }
+                        } else {
+                            raw_sym_add(Kp, n, a, c, val * Pp[b+d*n]);
+                            if (a != b)
+                                raw_sym_add(Kp, n, b, c, val * Pp[a+d*n]);
+                            if (c != d && a != b)
+                                raw_sym_add(Kp, n, b, d, val * Pp[a+c*n]);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    K = xt::zeros<double>({static_cast<std::size_t>(n),
+                           static_cast<std::size_t>(n)});
+    double* Kout = K.data();
+    for (auto& kraw : Kraw)
+        for (int i = 0; i < n * n; ++i)
+            Kout[i] += kraw[i];
+}
+
 void build_g_rhf_direct_block(const ShellBlockPairList& sp,
                                const RealMatrix& P, RealMatrix& G) {
     const int n      = sp.n_basis;

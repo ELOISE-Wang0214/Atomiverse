@@ -220,7 +220,10 @@ SCFResult& SCFSolver::run(const IntegralPack& integrals,
         } else if (restricted) {
             E_one = xt::sum(Hcore_cm * P_alpha_new)();
             E_J   = double(0.5) * xt::sum(fock.J * P_alpha_new)();
-            E_total = E_one + E_J + fock.E_xc_grid + integrals.V_nuc;
+            // fock.E_exact_exchange = alpha_hf * E_K, nonzero only for a
+            // KS global hybrid (B3LYP / PBE0); zero for pure KS.
+            E_total = E_one + E_J + fock.E_exact_exchange
+                    + fock.E_xc_grid + integrals.V_nuc;
         } else if (is_hf) {
             E_total = double(0.5) * (
                 xt::sum((Hcore_cm + F_alpha) * P_alpha)() +
@@ -231,7 +234,9 @@ SCFResult& SCFSolver::run(const IntegralPack& integrals,
             RealMatrix P_total_new = P_alpha_new + P_beta_new;
             E_one   = xt::sum(Hcore_cm * P_alpha_new)() + xt::sum(Hcore_cm * P_beta_new)();
             E_J     = double(0.5) * xt::sum(fock.J * P_total_new)();
-            E_total = E_one + E_J + fock.E_xc_grid + integrals.V_nuc;
+            // fock.E_exact_exchange nonzero only for a UKS global hybrid.
+            E_total = E_one + E_J + fock.E_exact_exchange
+                    + fock.E_xc_grid + integrals.V_nuc;
         }
 
         // 7. Diagnostics + convergence check.
@@ -251,7 +256,13 @@ SCFResult& SCFSolver::run(const IntegralPack& integrals,
         result_.one_electron_energy = E_one;
         result_.coulomb_energy = E_J;
         result_.xc_energy = fock.E_xc_grid;
-        result_.exchange_energy = (E_total - integrals.V_nuc) - E_one - E_J - fock.E_xc_grid;
+        // HF carries exchange inside F (recovered by subtraction). KS sets
+        // exchange_energy directly from the hybrid term so the decomposition
+        // closes exactly and the alpha_hf=0 regression stays bit-identical
+        // (zero for pure KS).
+        result_.exchange_energy =
+            is_hf ? ((E_total - integrals.V_nuc) - E_one - E_J - fock.E_xc_grid)
+                  : fock.E_exact_exchange;
         result_.residual = residual;
         result_.iterations = iter + 1;
         result_.eigenvalues_alpha = eig_alpha;
