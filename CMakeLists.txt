@@ -477,6 +477,25 @@ if(NOT ATV_DOCS_ONLY)
         CRATE molrs_cxxapi
         FILES bridge.rs
     )
+
+    # corrosion v0.6.1's cxxbridge target carries the generated cxx runtime
+    # header `rust/cxx.h` as a source without the GENERATED property. On a
+    # fresh configure (no cached build tree) the file does not exist yet, so
+    # CMake's generate step aborts in every directory that links `molrs_cxx`
+    # transitively (e.g. tests/). Mark the generated cxxbridge outputs
+    # GENERATED so CMake trusts the build step to produce them. CMP0118 (NEW)
+    # makes the GENERATED property visible across directories.
+    if(POLICY CMP0118)
+        cmake_policy(SET CMP0118 NEW)
+    endif()
+    set(_molrs_cxx_gen_dir
+        "${CMAKE_BINARY_DIR}/corrosion_generated/cxxbridge/molrs_cxx")
+    set_source_files_properties(
+        "${_molrs_cxx_gen_dir}/include/rust/cxx.h"
+        "${_molrs_cxx_gen_dir}/include/molrs_cxx/src/bridge.rs.h"
+        "${_molrs_cxx_gen_dir}/src/bridge.rs.cc"
+        PROPERTIES GENERATED TRUE)
+
     target_link_libraries(atomiverse PUBLIC molrs_cxx)
 
     if(ATV_USE_MATPLOT)
