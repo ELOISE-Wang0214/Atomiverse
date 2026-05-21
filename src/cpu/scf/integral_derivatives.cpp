@@ -24,6 +24,7 @@
 #include "atomiverse/cpu/scf/native_integrals.h"
 #include "atomiverse/cpu/scf/rys_eri.h"
 #include "atomiverse/cpu/scf/shell_pair.h"
+#include "atomiverse/cpu/scf/xc_functional.h"
 #include "atomiverse/core/constants.h"
 #include "atomiverse/core/gto.h"
 #include "atomiverse/core/log.h"
@@ -692,6 +693,20 @@ void accumulate_two_electron_gradient(
     const bool is_ks = (config.method == MeanFieldType::KS);
     const bool restricted = (config.spin == SpinType::Restricted);
 
+    // Exact-exchange (K-channel) fraction.
+    //
+    //   dE_2e/dR = dJ/dR - alpha_hf * dK/dR  (PySCF grad/rks.py: vk *= hyb).
+    //
+    // alpha_hf is 1.0 for pure HF, 0.0 for a pure (semi-local) functional —
+    // in which case the exchange-matrix derivative is skipped entirely — and
+    // the functional's global-hybrid admixture (0.20 for B3LYP, 0.25 for
+    // PBE0) for a KS hybrid. It enters as a pure scalar multiplier on top of
+    // the existing closed-shell exchange prefactors and the
+    // 0.5*[P(i,k)P(j,l)+P(j,k)P(i,l)] symmetrization, which are unchanged.
+    const double alpha_hf =
+        is_ks ? hybrid_exchange_fraction(config.xc_type) : 1.0;
+    const bool do_exchange = (alpha_hf > 0.0);
+
 #ifdef ATV_HAS_LIBCINT
     auto cint_ctx = build_libcint_context(frame);
     if (cint_ctx.nao == n && !config.force_native_two_electron_deriv) {
@@ -817,11 +832,11 @@ void accumulate_two_electron_gradient(
 
         ATV_DEBUG("[gradient] two_e coulomb done ms={:.1f}", elapsed_ms(t_coulomb));
 
-        if (!is_ks) {
+        if (do_exchange) {
             const auto t_exchange = LogClock::now();
             ATV_DEBUG(
-                "[gradient] two_e exchange start engine=libcint natm={} basis={} shells={} unique_shell_quartets={}",
-                natm, n, nshells, n_unique_shell_quartets);
+                "[gradient] two_e exchange start engine=libcint natm={} basis={} shells={} unique_shell_quartets={} alpha_hf={:.3f}",
+                natm, n, nshells, n_unique_shell_quartets, alpha_hf);
 
             // Exchange iterates the SAME canonical (ij)×(kl) pairs as
             // Coulomb — the ERI (ij|kl) has 8-fold symmetry under
@@ -889,13 +904,17 @@ void accumulate_two_electron_gradient(
                                     //   sum = 4·[P(i,k)·P(j,l) + P(j,k)·P(i,l)]
                                     //   sym_factor = (1/8) · sum = ½·[P(i,k)·P(j,l) + P(j,k)·P(i,l)]
                                     // leading to the factor 0.5 inside the bracket.
+                                    //
+                                    // The global-hybrid admixture alpha_hf
+                                    // (1.0 for HF) is a pure scalar
+                                    // multiplier on top of the prefactors.
                                     double density_factor = 0.0;
                                     if (restricted) {
-                                        density_factor = -0.25 * 0.5 * (
+                                        density_factor = -0.25 * alpha_hf * 0.5 * (
                                             P_total(i, k) * P_total(j, l) +
                                             P_total(j, k) * P_total(i, l));
                                     } else {
-                                        density_factor = -0.5 * 0.5 * (
+                                        density_factor = -0.5 * alpha_hf * 0.5 * (
                                             result.P_alpha(i, k) * result.P_alpha(j, l) +
                                             result.P_alpha(j, k) * result.P_alpha(i, l) +
                                             result.P_beta(i, k) * result.P_beta(j, l) +
@@ -1085,8 +1104,12 @@ void accumulate_two_electron_gradient(
                             const double factor_J =
                                 0.5 * mult * P_total(i, j) * P_total(k, l);
 
-                            // Exchange factor (K) — HF only (KS skips K;
-                            // grid XC handles it separately).
+                            // Exchange factor (K) — scaled by the exact-
+                            // exchange fraction alpha_hf: 1.0 for HF, 0.0 for
+                            // a pure functional (K skipped), and the
+                            // global-hybrid admixture for B3LYP / PBE0. The
+                            // grid XC handles the semi-local exchange
+                            // separately.
                             //
                             // Canonical enumeration of (ij|kl) uses 8-fold
                             // ERI symmetry, but the exchange density product
@@ -1094,14 +1117,15 @@ void accumulate_two_electron_gradient(
                             // k↔l. Symmetrize (average over the 8 perms):
                             //   sym_factor = ½·[P(i,k)·P(j,l) + P(j,k)·P(i,l)]
                             // so canonical + mult recovers the full sum.
+                            // alpha_hf multiplies that whole expression.
                             double factor_K = 0.0;
-                            if (!is_ks) {
+                            if (do_exchange) {
                                 if (restricted) {
-                                    factor_K = -0.25 * mult * 0.5 * (
+                                    factor_K = -0.25 * mult * alpha_hf * 0.5 * (
                                         P_total(i, k) * P_total(j, l) +
                                         P_total(j, k) * P_total(i, l));
                                 } else {
-                                    factor_K = -0.5 * mult * 0.5 * (
+                                    factor_K = -0.5 * mult * alpha_hf * 0.5 * (
                                         result.P_alpha(i, k) * result.P_alpha(j, l) +
                                         result.P_alpha(j, k) * result.P_alpha(i, l) +
                                         result.P_beta(i, k)  * result.P_beta(j, l)  +

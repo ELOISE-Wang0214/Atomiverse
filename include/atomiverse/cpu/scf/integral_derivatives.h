@@ -59,11 +59,21 @@ IntegralDerivPack build_integral_derivatives(const IntegralPack& pack);
 /// Works for any basis: the libcint engine handles STO-3G (when compiled in)
 /// and the native Rys-quadrature block-derivative engine handles all l ≤ kMaxL.
 ///
+/// Both engines assemble the Coulomb (J) channel always and the exchange (K)
+/// channel scaled by the exact-exchange fraction `alpha_hf`: `1.0` for pure
+/// HF, `0.0` for a pure (semi-local) functional — in which case the K loop
+/// is skipped entirely — and the global-hybrid admixture
+/// (`hybrid_exchange_fraction(config.xc_type)`, 0.20 for B3LYP, 0.25 for
+/// PBE0) for a KS hybrid. `alpha_hf` multiplies the existing closed-shell
+/// exchange prefactors and density symmetrization as a pure scalar.
+///
 /// @param[out] grad      Gradient accumulator [n_atoms, 3] in Hartree/Bohr.
+/// @param frame          Frame supplying nuclear positions for libcint setup.
 /// @param integrals      Integral pack for the current geometry.
 /// @param P_total        Total density matrix (restricted: P_alpha, unrestricted: Pa+Pb).
 /// @param result         Converged SCF result with spin densities.
-/// @param config         SCF configuration selecting HF/KS and spin treatment.
+/// @param config         SCF configuration selecting HF/KS, hybrid functional,
+///                       and spin treatment.
 void accumulate_two_electron_gradient(
     xt::xtensor<double, 2>& grad,
     const Frame& frame,

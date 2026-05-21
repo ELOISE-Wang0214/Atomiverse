@@ -105,6 +105,13 @@ static GradientResult make_result(
 /// additionally contracts vsigma with d(grad_rho)/dR_A, whose nuclear
 /// derivative needs the basis-function Hessian (Term2 below).
 ///
+/// The GGA route is selected by `is_gga(config.xc_type)`, true for `PBE`,
+/// `B3LYP` and `PBE0`. The vsigma chain rule is functional-agnostic given the
+/// `vsigma_*` arrays returned by `evaluate_xc_batch`, so the B3LYP B88 / LYP
+/// and PBE0 0.75*PBE-X semi-local exchange-correlation pieces flow through
+/// unchanged — only the exact-exchange admixture (handled in the two-electron
+/// gradient, not here) distinguishes a hybrid from the pure GGA.
+///
 /// @par Diagnosed defect (spec phase1-productization-02-ks-dshell-gradient)
 /// The KS gradient was wrong by ~4 orders of magnitude. The defect was NOT in
 /// the d-shell polynomial-lowering term — the `poly_grad`/`poly_hess` tables in
@@ -150,7 +157,13 @@ static void accumulate_xc_gradient(
     const std::vector<std::vector<int>>& atom_shells,
     int natm, int n)
 {
-    bool is_gga = (config.xc_type == XCType::PBE);
+    // GGA semi-local XC gradient route. True for PBE and the B3LYP / PBE0
+    // global hybrids — all carry a gradient-dependent (vsigma) semi-local
+    // term whose nuclear-derivative chain rule is functional-agnostic given
+    // the vsigma_* arrays from evaluate_xc_batch. Note: the local name
+    // `is_gga` deliberately shadows the free function below; the
+    // ATV::cpu::scf:: qualifier disambiguates the one call site.
+    const bool is_gga = ATV::cpu::scf::is_gga(config.xc_type);
     const int N = static_cast<int>(n);
     const size_t Ns = static_cast<size_t>(N);
 

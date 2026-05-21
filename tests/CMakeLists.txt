@@ -221,6 +221,11 @@ if(ATV_BUILD_RHF)
     atv_add_cpp_test(test_cpu_scf_basis_eval_dshell cpu/scf/test_basis_eval_dshell.cpp)
     atv_add_cpp_test(test_cpu_scf_ks_dshell_gradient cpu/scf/test_ks_dshell_gradient.cpp)
     atv_add_cpp_test(test_cpu_scf_ks_grid_response_gradient cpu/scf/test_ks_grid_response_gradient.cpp)
+    atv_add_cpp_test(test_cpu_scf_hybrid_gradient cpu/scf/test_hybrid_gradient.cpp)
+    # B3LYP/PBE0 analytic gradient + geometry optimization at 6-31G*. The
+    # hybrid K-derivative re-walks every shell quartet and the moving-grid
+    # FD oracle runs many displaced SCFs, so allow a generous CTest ceiling.
+    set_tests_properties(test_cpu_scf_hybrid_gradient PROPERTIES TIMEOUT 5400)
     atv_add_cpp_test(test_cpu_minimizer_lbfgs   cpu/minimizer/test_lbfgs.cpp)
     atv_add_cpp_test(test_cpu_minimizer_recorders cpu/minimizer/test_trajectory_writer.cpp)
     atv_add_cpp_test(test_cpu_minimize_driver_swap_optimizer cpu/test_minimize_driver_swap_optimizer.cpp)
