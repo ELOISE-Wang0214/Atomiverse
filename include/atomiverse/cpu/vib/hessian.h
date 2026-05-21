@@ -31,6 +31,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/response_driver.h"
@@ -40,6 +41,7 @@
 #include "atomiverse/cpu/vib/hessian_workspace.h"
 #include "atomiverse/cpu/vib/reference_geometry.h"
 #include "atomiverse/cpu/vib/symmetrize.h"
+#include "atomiverse/cpu/vib/thermochem.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -56,13 +58,48 @@ public:
     /// code uses the default constructor.
     struct WithoutAccumulator {};
 
+    /// @brief Output paths for the two auto-injected Recorder components.
+    ///
+    /// `frequency_tsv` is the `FrequencyReport` TSV path;
+    /// `mode_xyz_prefix` is the `NormalModeWriter` file-name prefix
+    /// (mode `k` is written to `"<prefix>_mode<k>.xyz"`).
+    struct OutputConfig {
+        std::string frequency_tsv   = "frequencies.tsv"; ///< TSV path.
+        std::string mode_xyz_prefix = "mode";            ///< XYZ prefix.
+    };
+
     /// @brief Construct a fully-wired numerical-Hessian driver.
     ///
     /// Auto-registers `ReferenceGeometry`, `DisplaceStep`,
-    /// `HessianAccumulator`, and `Symmetrize`, all bound to a
+    /// `HessianAccumulator`, `Symmetrize`, `MassWeighting`,
+    /// `EigenSolver`, plus the thermochemistry chain (`Thermochem`,
+    /// `FrequencyReport`, `NormalModeWriter`), all bound to a
     /// driver-owned shared `HessianWorkspace`. The caller must still
     /// register a `Capability::Force` evaluator on `vib::Phase::force`.
+    ///
+    /// Thermochemistry uses standard conditions (298.15 K, 1 atm,
+    /// closed-shell singlet, symmetry number 1). Use the
+    /// `Thermochem::Config` overload to override.
     Hessian();
+
+    /// @brief Construct a numerical-Hessian driver with custom
+    ///        thermochemistry inputs.
+    ///
+    /// Identical wiring to the default constructor, but the auto-injected
+    /// `Thermochem` component uses `tc` (temperature / pressure /
+    /// multiplicity / symmetry number) instead of standard conditions.
+    /// @param tc Thermochemistry inputs forwarded to `cpu::vib::Thermochem`.
+    explicit Hessian(const Thermochem::Config& tc);
+
+    /// @brief Construct with custom thermochemistry inputs and custom
+    ///        Recorder output paths.
+    ///
+    /// Identical wiring to the default constructor; the auto-injected
+    /// `Thermochem` uses `tc` and the `FrequencyReport` /
+    /// `NormalModeWriter` Recorders use the paths in `out`.
+    /// @param tc  Thermochemistry inputs forwarded to `cpu::vib::Thermochem`.
+    /// @param out Output paths for the FrequencyReport / NormalModeWriter.
+    Hessian(const Thermochem::Config& tc, const OutputConfig& out);
 
     /// @brief Construct a driver WITHOUT the HessianAccumulator (test-only).
     ///

@@ -173,6 +173,9 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/vib/hessian.cpp
         src/cpu/vib/mass_weighting.cpp
         src/cpu/vib/eigen_solver.cpp
+        src/cpu/vib/thermochem.cpp
+        src/cpu/vib/frequency_report.cpp
+        src/cpu/vib/normal_mode_writer.cpp
         # CPU MD MPI infrastructure (single-rank stubs in Phase 1)
         src/cpu/md/mpi/domain.cpp
         src/cpu/md/mpi/halo_exchange.cpp

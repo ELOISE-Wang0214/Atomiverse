@@ -56,6 +56,45 @@ inline double mass_amu(int Z) {
     }
 }
 
+/// @brief IUPAC element symbol of element `Z`.
+///
+/// Covers `Z = 1..18` (H..Ar) — the range required by the vibrational
+/// test molecules. Used by `cpu::vib::NormalModeWriter` to format atom
+/// symbols in the per-mode XYZ animations. Throws on an unsupported
+/// element rather than returning a fallback, per the project's
+/// no-fallback convention.
+///
+/// @param Z Atomic number (1 = H, 6 = C, ...).
+/// @return IUPAC element symbol (e.g. `"C"`).
+/// @throws std::out_of_range if `Z` is outside the supported range.
+inline std::string element_symbol(int Z) {
+    switch (Z) {
+        case 1:  return "H";
+        case 2:  return "He";
+        case 3:  return "Li";
+        case 4:  return "Be";
+        case 5:  return "B";
+        case 6:  return "C";
+        case 7:  return "N";
+        case 8:  return "O";
+        case 9:  return "F";
+        case 10: return "Ne";
+        case 11: return "Na";
+        case 12: return "Mg";
+        case 13: return "Al";
+        case 14: return "Si";
+        case 15: return "P";
+        case 16: return "S";
+        case 17: return "Cl";
+        case 18: return "Ar";
+        default:
+            throw std::out_of_range(
+                "cpu::vib::element_symbol: unsupported atomic number Z=" +
+                std::to_string(Z) +
+                " (table covers Z=1..18)");
+    }
+}
+
 } // namespace vib
 } // namespace cpu
 } // namespace ATV

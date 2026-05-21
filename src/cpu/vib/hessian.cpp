@@ -4,24 +4,60 @@
 #include "atomiverse/cpu/vib/hessian.h"
 
 #include "atomiverse/cpu/vib/eigen_solver.h"
+#include "atomiverse/cpu/vib/frequency_report.h"
 #include "atomiverse/cpu/vib/mass_weighting.h"
+#include "atomiverse/cpu/vib/normal_mode_writer.h"
+#include "atomiverse/cpu/vib/thermochem.h"
 
 namespace ATV {
 namespace cpu {
 namespace vib {
 
+namespace {
+
+/// @brief Register the full vibrational-analysis component chain.
+///
+/// Auto-registers the four numerical-Hessian structural components, the
+/// two frequency components, and the three thermochemistry-link
+/// components, all bound to the driver-owned shared workspace. On
+/// `vib::Phase::diagonalize` the ordering is Symmetrize (-1) ->
+/// MassWeighting (0) -> EigenSolver (+1); on `vib::Phase::thermochem`
+/// the Thermochem Observer runs; on `vib::Phase::end_of_step` the
+/// FrequencyReport (0) and NormalModeWriter (+1) Recorders run.
+///
+/// @param driver Driver to register the components into.
+/// @param ws     Driver-owned shared workspace.
+/// @param tc     Thermochemistry inputs for the Thermochem component.
+/// @param out    Output paths for the FrequencyReport / NormalModeWriter.
+template <class Driver>
+void wire_full_chain(Driver& driver, HessianWorkspace* ws,
+                     const Thermochem::Config& tc,
+                     const Hessian::OutputConfig& out) {
+    driver.add(ReferenceGeometry{ws});
+    driver.add(DisplaceStep{ws});
+    driver.add(HessianAccumulator{ws});
+    driver.add(Symmetrize{ws});
+    driver.add(MassWeighting{ws});
+    driver.add(EigenSolver{ws});
+    driver.add(Thermochem{ws, tc});
+    driver.add(FrequencyReport{ws, out.frequency_tsv});
+    driver.add(NormalModeWriter{ws, out.mode_xyz_prefix});
+}
+
+} // namespace
+
 Hessian::Hessian() {
-    // Auto-register the structural components, each bound to the
-    // driver-owned shared workspace. Each carries a default binding
-    // (setup / displace / accumulate / diagonalize), so plain add()
-    // resolves the phase. On vib::Phase::diagonalize the ordering is
-    // Symmetrize (-1) -> MassWeighting (0) -> EigenSolver (+1).
-    add(ReferenceGeometry{workspace_.get()});
-    add(DisplaceStep{workspace_.get()});
-    add(HessianAccumulator{workspace_.get()});
-    add(Symmetrize{workspace_.get()});
-    add(MassWeighting{workspace_.get()});
-    add(EigenSolver{workspace_.get()});
+    // Default thermochemistry: standard conditions, closed-shell singlet.
+    wire_full_chain(*this, workspace_.get(), Thermochem::Config{},
+                    OutputConfig{});
+}
+
+Hessian::Hessian(const Thermochem::Config& tc) {
+    wire_full_chain(*this, workspace_.get(), tc, OutputConfig{});
+}
+
+Hessian::Hessian(const Thermochem::Config& tc, const OutputConfig& out) {
+    wire_full_chain(*this, workspace_.get(), tc, out);
 }
 
 Hessian::Hessian(WithoutAccumulator /*tag*/) {
@@ -42,8 +78,9 @@ HessianResult Hessian::run(cpu::Frame& frame) {
     // Drive the 6N-displacement Response-category loop.
     ResponseDriver::run(frame);
 
-    // Publish the assembled, symmetrized Hessian plus the vibrational
-    // frequencies produced by MassWeighting + EigenSolver.
+    // Publish the assembled, symmetrized Hessian, the vibrational
+    // frequencies (MassWeighting + EigenSolver), and the harmonic
+    // thermochemistry (Thermochem).
     last_result_.hessian      = workspace_->hessian;
     last_result_.n_atoms      = n_atoms;
     last_result_.units        = "eV/Angstrom^2";
@@ -51,6 +88,16 @@ HessianResult Hessian::run(cpu::Frame& frame) {
     last_result_.normal_modes = workspace_->normal_modes;
     last_result_.n_imaginary  = workspace_->n_imaginary;
     last_result_.is_linear    = workspace_->is_linear;
+    last_result_.zpe          = workspace_->zpe;
+    last_result_.u_tot        = workspace_->u_tot;
+    last_result_.h_tot        = workspace_->h_tot;
+    last_result_.s_tot        = workspace_->s_tot;
+    last_result_.s_elec       = workspace_->s_elec;
+    last_result_.s_trans      = workspace_->s_trans;
+    last_result_.s_rot        = workspace_->s_rot;
+    last_result_.s_vib        = workspace_->s_vib;
+    last_result_.g_tot        = workspace_->g_tot;
+    last_result_.g_thermal    = workspace_->g_thermal;
     return last_result_;
 }
 

@@ -61,6 +61,50 @@ struct HessianResult {
     ///        linear (`3N-5` vibrational modes), false for a regular
     ///        nonlinear rotor (`3N-6` modes).
     bool is_linear = false;
+
+    // ── Thermochemistry link (phase4-vibrations-03) ────────────────────
+    //
+    // Populated by `cpu::vib::Thermochem` during the `thermochem` pass,
+    // a faithful port of PySCF `pyscf/hessian/thermo.py::thermo()`. All
+    // quantities are reported in Hartree (Eh) / Eh/K, exactly as PySCF
+    // `thermo()` does. Zero until the thermochemistry link runs.
+
+    /// @brief Harmonic zero-point energy `ZPE = 0.5 R_Eh sum_i theta_i`
+    ///        [Hartree]. Imaginary modes are excluded from the sum.
+    double zpe = 0.0;
+
+    /// @brief Total internal energy `U = E0 + ZPE + (E_vib-ZPE) + E_trans
+    ///        + E_rot` at the configured temperature [Hartree].
+    double u_tot = 0.0;
+
+    /// @brief Total enthalpy `H = H_elec + H_vib + H_trans + H_rot`
+    ///        [Hartree]. The `+kB*T` PV term lives in `H_trans`.
+    double h_tot = 0.0;
+
+    /// @brief Total entropy `S = S_elec + S_trans + S_rot + S_vib`
+    ///        [Hartree/K].
+    double s_tot = 0.0;
+
+    /// @brief Electronic entropy `S_elec = R_Eh ln(multiplicity)`
+    ///        [Hartree/K]. Zero for a closed-shell singlet.
+    double s_elec = 0.0;
+
+    /// @brief Translational entropy (Sackur-Tetrode) [Hartree/K].
+    double s_trans = 0.0;
+
+    /// @brief Rotational entropy (rigid-rotor) [Hartree/K].
+    double s_rot = 0.0;
+
+    /// @brief Vibrational entropy (harmonic-oscillator) [Hartree/K].
+    double s_vib = 0.0;
+
+    /// @brief Total Gibbs free energy `G = H_tot - T*S_tot` [Hartree].
+    double g_tot = 0.0;
+
+    /// @brief Thermal correction to the Gibbs free energy `G_tot - E0`
+    ///        [Hartree]. Independent of the electronic energy — this is
+    ///        the quantity the acceptance test compares against PySCF.
+    double g_thermal = 0.0;
 };
 
 } // namespace vib

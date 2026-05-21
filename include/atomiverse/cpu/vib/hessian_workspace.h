@@ -84,6 +84,45 @@ struct HessianWorkspace {
     /// @brief Linear-vs-nonlinear classification produced by `EigenSolver`.
     bool is_linear = false;
 
+    // ── Thermochemistry link (phase4-vibrations-03) ────────────────────
+    //
+    // Written by `cpu::vib::Thermochem` during the `thermochem` pass;
+    // `cpu::vib::Hessian::run()` copies them into `HessianResult`. All in
+    // Hartree / Hartree-per-Kelvin, matching PySCF `thermo()`.
+
+    /// @brief Harmonic zero-point energy [Hartree].
+    double zpe = 0.0;
+
+    /// @brief Total internal energy `U` [Hartree].
+    double u_tot = 0.0;
+
+    /// @brief Total enthalpy `H` [Hartree].
+    double h_tot = 0.0;
+
+    /// @brief Total entropy `S` [Hartree/K].
+    double s_tot = 0.0;
+
+    /// @brief Electronic entropy component [Hartree/K].
+    double s_elec = 0.0;
+
+    /// @brief Translational entropy component (Sackur-Tetrode) [Hartree/K].
+    double s_trans = 0.0;
+
+    /// @brief Rotational entropy component (rigid-rotor) [Hartree/K].
+    double s_rot = 0.0;
+
+    /// @brief Vibrational entropy component (harmonic) [Hartree/K].
+    double s_vib = 0.0;
+
+    /// @brief Total Gibbs free energy `G` [Hartree].
+    double g_tot = 0.0;
+
+    /// @brief Thermal Gibbs correction `G_tot - E0` [Hartree].
+    double g_thermal = 0.0;
+
+    /// @brief True once `Thermochem` has populated the thermochem fields.
+    bool thermo_ready = false;
+
     /// @brief Allocate all buffers for an `N`-atom system. Called once
     ///        from the driver's `build()`; no allocation occurs in any
     ///        component `launch()`.
@@ -102,6 +141,17 @@ struct HessianWorkspace {
         normal_modes = xt::zeros<double>({dim, 0});
         n_imaginary = 0;
         is_linear = false;
+        zpe = 0.0;
+        u_tot = 0.0;
+        h_tot = 0.0;
+        s_tot = 0.0;
+        s_elec = 0.0;
+        s_trans = 0.0;
+        s_rot = 0.0;
+        s_vib = 0.0;
+        g_tot = 0.0;
+        g_thermal = 0.0;
+        thermo_ready = false;
     }
 };
 

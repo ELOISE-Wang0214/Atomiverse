@@ -237,7 +237,20 @@ def main():
     parser.add_argument("--hybrid", action="store_true",
                         help="Hybrid single-point mode: emit b3lyp/pbe0 blocks "
                              "into the per-molecule JSONs (default basis 6-31g*).")
+    parser.add_argument("--thermo", action="store_true",
+                        help="Thermochemistry mode: emit PySCF thermo() "
+                             "references for the vibrational-analysis link "
+                             "(spec phase4-vibrations-03). Delegates to "
+                             "thermo/generate_thermo_references.py.")
     args = parser.parse_args()
+
+    if args.thermo:
+        # Harmonic-thermochemistry references run on fixed geometries
+        # (matching the link-2 frequency parity test), so they live in a
+        # dedicated generator rather than the xyz-iterating path above.
+        from thermo import generate_thermo_references
+        generate_thermo_references.main()
+        return
 
     if not args.stems:
         args.stems = sorted(p.stem for p in MOL_DIR.glob("*.xyz"))
