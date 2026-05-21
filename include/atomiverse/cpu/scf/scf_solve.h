@@ -89,6 +89,18 @@ struct SCFConfig {
     ///          which is always native.
     bool force_native_two_electron_deriv = false;
 
+    /// @brief Debug flag: project out the net translational XC gradient.
+    /// @details Historically the KS XC nuclear gradient was computed on a
+    ///          grid held fixed in space, then the residual net-translational
+    ///          quadrature error (~4e-4 Ha/Bohr) was projected out to restore
+    ///          `sum_A dE_xc/dR_A = 0`. With the genuine Becke grid-response
+    ///          term (weight-derivative + grid-coordinate) now assembled in
+    ///          `accumulate_xc_gradient`, the net translational force vanishes
+    ///          from first principles and the projection is unnecessary. It
+    ///          is kept behind this flag (default `false`) purely as a debug
+    ///          / comparison aid; production code leaves it `false`.
+    bool xc_grad_project_translation = false;
+
     /// @brief Optional externally supplied XC integration grid (KS only).
     /// @details When non-null, the KS Fock build uses this grid verbatim
     ///          instead of regenerating one from the current atom

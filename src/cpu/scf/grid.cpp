@@ -11,11 +11,13 @@
 #include "atomiverse/cpu/scf/lebedev_data.h"
 #include "atomiverse/core/constants.h"
 
+#include <array>
 #include <cmath>
 #include <algorithm>
 #include <cassert>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace ATV {
 namespace cpu {
@@ -374,6 +376,17 @@ static double becke_size_adjust_treutler(int Z_a, int Z_b) {
     return std::max(-0.5, std::min(0.5, a));
 }
 
+// Level-aware heteronuclear size-adjustment parameter a_AB. SG0/SG1 use the
+// original Becke-1988 adjustment; MatchPySCF uses PySCF's treutler
+// adjustment. Both are antisymmetric in (A,B). The weight-derivative port
+// must use the exact same selection so it stays consistent with the
+// production becke_partition_weights.
+static double becke_size_adjust(int Z_a, int Z_b, GridLevel level) {
+    return (level == GridLevel::MatchPySCF)
+        ? becke_size_adjust_treutler(Z_a, Z_b)
+        : becke_size_adjust_original(Z_a, Z_b);
+}
+
 // Becke partition weight for atom A at point r.
 // Uses Becke's fuzzy-cell scheme with 3 iterations of the step function.
 // The heteronuclear size adjustment depends on `level` (see the audit
@@ -628,7 +641,7 @@ static MolecularGrid assemble_grid(const native::Atom* atoms, int natm,
                 // the angular quadrature. Becke-killed near-zero points
                 // are still pruned.
                 if (std::abs(w) > 1e-30) {
-                    grid.points.push_back({px, py, pz, w});
+                    grid.points.push_back({px, py, pz, w, a});
                 }
             }
         }
@@ -654,6 +667,168 @@ void becke_partition_weights_for_test(const native::Atom* atoms, int natm,
                                       double rx, double ry, double rz,
                                       double* weights) {
     becke_partition_weights(atoms, natm, rx, ry, rz, weights);
+}
+
+// ── Becke weight derivative (grid-response) ─────────────────────────────
+//
+// Verbatim port of PySCF's grids_response_becke / gen_grid_partition
+// (pyscf/grad/rks.py) and get_smooth_function_derivative, restricted to the
+// original_becke switching scheme.
+
+// get_smooth_function_derivative for the original_becke scheme: iterated
+// polynomial f(x) = (3 - x^2) x / 2 applied three times. Returns p3 (the
+// smoothed value) and t_uab = 27/8 (1-p2^2)(1-p1^2)(1-p0^2), i.e. dp3/dmu.
+static void get_smooth_function_derivative(double mu, double& p3,
+                                           double& t_uab) {
+    const double p0 = mu;
+    const double p1 = (3.0 - p0 * p0) * p0 * 0.5;
+    const double p2 = (3.0 - p1 * p1) * p1 * 0.5;
+    p3 = (3.0 - p2 * p2) * p2 * 0.5;
+    t_uab = 27.0 / 8.0 * (1.0 - p2 * p2) * (1.0 - p1 * p1) * (1.0 - p0 * p0);
+}
+
+double becke_weight_derivative(const native::Atom* atoms, int natm,
+                               double rx, double ry, double rz, int parent,
+                               GridLevel level, double* dw_out) {
+    // Single-atom: weight is identically 1, derivative vanishes.
+    for (int i = 0; i < natm * 3; ++i) dw_out[i] = 0.0;
+    if (natm <= 1) return 1.0;
+
+    const int atom_id = parent;
+
+    // grid_dist[ia]      = |R_ia - r_g|
+    // grid_norm_vec[ia]  = (R_ia - r_g) / |R_ia - r_g|  (unit vec atom<-grid)
+    std::vector<double> grid_dist(natm);
+    std::vector<std::array<double, 3>> grid_norm_vec(natm);
+    for (int ia = 0; ia < natm; ++ia) {
+        const double vx = atoms[ia].pos[0] - rx;
+        const double vy = atoms[ia].pos[1] - ry;
+        const double vz = atoms[ia].pos[2] - rz;
+        const double n = std::sqrt(vx * vx + vy * vy + vz * vz) + 1e-200;
+        grid_dist[ia] = n;
+        grid_norm_vec[ia] = {vx / n, vy / n, vz / n};
+    }
+
+    // Inter-atomic distance matrix.
+    std::vector<double> atm_dist(static_cast<size_t>(natm) * natm, 0.0);
+    for (int ia = 0; ia < natm; ++ia) {
+        for (int ib = 0; ib < natm; ++ib) {
+            if (ia == ib) continue;
+            const double dx = atoms[ia].pos[0] - atoms[ib].pos[0];
+            const double dy = atoms[ia].pos[1] - atoms[ib].pos[1];
+            const double dz = atoms[ia].pos[2] - atoms[ib].pos[2];
+            atm_dist[ia * natm + ib] = std::sqrt(dx * dx + dy * dy + dz * dz);
+        }
+    }
+
+    // get_du(ia, ib): dg/dR_ia for g = (grid_dist[ia]-grid_dist[ib])/R_ab.
+    //   duab = (1/R_ab) * grid_norm_vec[ia]
+    //        - (R_ia - R_ib)/R_ab^3 * (grid_dist[ia] - grid_dist[ib])
+    auto get_du = [&](int ia, int ib, double out[3]) {
+        const double Rab = atm_dist[ia * natm + ib];
+        const double inv = 1.0 / Rab;
+        const double inv3 = inv * inv * inv;
+        const double dr = grid_dist[ia] - grid_dist[ib];
+        for (int d = 0; d < 3; ++d) {
+            const double uab_d = atoms[ia].pos[d] - atoms[ib].pos[d];
+            out[d] = inv * grid_norm_vec[ia][d] - uab_d * inv3 * dr;
+        }
+    };
+
+    // pbecke[ia]              -- raw (unnormalized) cell weight of atom ia
+    // dpbecke[A][B][d]        -- before finalization holds d(ln pbecke[B])/dR_A
+    std::vector<double> pbecke(natm, 1.0);
+    std::vector<double> dpbecke(
+        static_cast<size_t>(natm) * natm * 3, 0.0);
+    auto DP = [&](int A, int B, int d) -> double& {
+        return dpbecke[(static_cast<size_t>(A) * natm + B) * 3 + d];
+    };
+
+    for (int ia = 0; ia < natm; ++ia) {
+        for (int ib = 0; ib < ia; ++ib) {
+            const double Rab = atm_dist[ia * natm + ib];
+            if (Rab < 1e-14) continue;
+
+            const double g = (grid_dist[ia] - grid_dist[ib]) / Rab;
+            const double a_ij = becke_size_adjust(atoms[ia].Z, atoms[ib].Z,
+                                                  level);
+            // fadjust(i,j,g) = g + a*(1-g^2);  gadjust(i,j,g) = 1 - 2*a*g
+            const double g_adj = g + a_ij * (1.0 - g * g);
+            const double gadj = 1.0 - 2.0 * a_ij * g;
+
+            double smoothed, t_uab;
+            get_smooth_function_derivative(g_adj, smoothed, t_uab);
+            t_uab *= 0.5 * gadj;
+
+            const double s_uab = 0.5 * (1.0 - smoothed + 1e-200);
+            const double s_uba = 0.5 * (1.0 + smoothed + 1e-200);
+            pbecke[ia] *= s_uab;
+            pbecke[ib] *= s_uba;
+            const double pt_uab = -t_uab / s_uab;
+            const double pt_uba = t_uab / s_uba;
+
+            double duab[3], duba[3];
+            get_du(ia, ib, duab);
+            get_du(ib, ia, duba);
+
+            if (ia == atom_id) {
+                for (int d = 0; d < 3; ++d) {
+                    DP(ia, ia, d) += pt_uab * duba[d];
+                    DP(ia, ib, d) += pt_uba * duba[d];
+                }
+            } else {
+                for (int d = 0; d < 3; ++d) {
+                    DP(ia, ia, d) += pt_uab * duab[d];
+                    DP(ia, ib, d) += pt_uba * duab[d];
+                }
+            }
+
+            if (ib == atom_id) {
+                for (int d = 0; d < 3; ++d) {
+                    DP(ib, ib, d) -= pt_uba * duab[d];
+                    DP(ib, ia, d) -= pt_uab * duab[d];
+                }
+            } else {
+                for (int d = 0; d < 3; ++d) {
+                    DP(ib, ib, d) -= pt_uba * duba[d];
+                    DP(ib, ia, d) -= pt_uab * duba[d];
+                }
+            }
+
+            // JCP 98, 5612 (1993) (B8)(B10) miss these terms (PySCF note).
+            if (ia != atom_id && ib != atom_id) {
+                for (int d = 0; d < 3; ++d) {
+                    const double ua_ub =
+                        (grid_norm_vec[ia][d] - grid_norm_vec[ib][d]) / Rab;
+                    DP(atom_id, ia, d) -= pt_uab * ua_ub;
+                    DP(atom_id, ib, d) -= pt_uba * ua_ub;
+                }
+            }
+        }
+    }
+
+    // Finalize: dpbecke[:,ia] *= pbecke[ia]  (convert d(ln p)/dR -> dp/dR).
+    for (int ia = 0; ia < natm; ++ia)
+        for (int A = 0; A < natm; ++A)
+            for (int d = 0; d < 3; ++d)
+                DP(A, ia, d) *= pbecke[ia];
+
+    // Normalized-weight derivative for the parent atom:
+    //   z  = 1 / sum_B pbecke[B]
+    //   w1[A] = dpbecke[A,parent] * z - pbecke[parent] * z^2 * sum_B dpbecke[A,B]
+    double psum = 0.0;
+    for (int B = 0; B < natm; ++B) psum += pbecke[B];
+    const double z = 1.0 / psum;
+    for (int A = 0; A < natm; ++A) {
+        for (int d = 0; d < 3; ++d) {
+            double dsum = 0.0;
+            for (int B = 0; B < natm; ++B) dsum += DP(A, B, d);
+            dw_out[A * 3 + d] =
+                DP(A, atom_id, d) * z - pbecke[atom_id] * z * z * dsum;
+        }
+    }
+    // Normalized partition weight of the parent atom at this grid point.
+    return pbecke[atom_id] * z;
 }
 
 } // namespace scf

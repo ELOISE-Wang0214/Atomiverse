@@ -21,10 +21,10 @@
 ///
 /// FD protocol (Domain basis of the spec): central differences
 /// F_FD = -[E(R+h) - E(R-h)] / (2h), step h = 1e-3 Bohr (5.29e-4 Ang),
-/// SCF converged to <= 1e-9 Ha, the same fixed grid for + and -
-/// displacements (the molecular grid is atom-centered so a fixed grid is
-/// only achievable by holding the grid generation geometry constant —
-/// see fixed_grid_fd_gradient below).
+/// SCF converged to <= 1e-9 Ha. Since spec ks-xc-grid-response-gradient
+/// the analytic KS gradient carries the genuine Becke grid-response term,
+/// so the FD oracle is a MOVING-grid central difference: the atom-centered
+/// integration grid is regenerated at each displaced geometry.
 
 #ifdef ATV_HAS_RHF
 
@@ -96,11 +96,18 @@ cpu::Frame make_h2o_pbe_optimized() {
 
 /// @brief PBE RKS config with a tight SCF tolerance.
 ///
-/// This gradient test pins the integration grid to an explicit
-/// (n_radial, n_angular) SG-0 grid so the analytic and finite-difference
-/// gradients share one deterministic grid. default_config now ships the
-/// GridLevel::MatchPySCF grid (which ignores n_radial / n_angular), so we
-/// force grid_level back to SG0 here to honour the explicit counts.
+/// This gradient test uses an explicit (n_radial, n_angular) SG-0 grid so
+/// the analytic and finite-difference gradients share one deterministic
+/// grid construction. default_config now ships the GridLevel::MatchPySCF
+/// grid (which ignores n_radial / n_angular), so we force grid_level back
+/// to SG0 here to honour the explicit counts.
+///
+/// Since spec ks-xc-grid-response-gradient the analytic KS gradient
+/// includes the genuine Becke grid-response term (weight-derivative +
+/// grid-coordinate), so the matching FD oracle is a MOVING-grid central
+/// difference -- the grid is regenerated at each displaced geometry.
+/// `xc_grad_project_translation` is left at its `false` default: the net
+/// translational XC force vanishes from first principles, no projection.
 cpu::scf::SCFConfig pbe_config(const cpu::scf::IntegralPack& ints,
                                int n_radial = 50, int n_angular = 110) {
     auto c = cpu::scf::default_config(ints);  // KS / PBE / MINAO

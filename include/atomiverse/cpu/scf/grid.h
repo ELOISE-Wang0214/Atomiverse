@@ -20,6 +20,10 @@ namespace scf {
 struct GridPoint {
     double x, y, z;   ///< Position in Bohr.
     double weight;     ///< Quadrature weight (includes radial, angular, and Becke partition).
+    int parent_atom;   ///< Index of the atom this point is centered on (the
+                       ///< atom whose atomic quadrature generated it). The
+                       ///< point rides rigidly with this atom; needed by the
+                       ///< XC grid-response nuclear gradient.
 };
 
 /// @brief A single radial quadrature point.
@@ -145,6 +149,51 @@ std::vector<RadialPoint> radial_grid_euler_maclaurin(int n, double R);
 void becke_partition_weights_for_test(const native::Atom* atoms, int natm,
                                       double rx, double ry, double rz,
                                       double* weights);
+
+/// @brief Nuclear-coordinate derivative of the Becke fuzzy-cell quadrature weight.
+///
+/// Verbatim port of PySCF's `grids_response_becke` / `gen_grid_partition`
+/// (`pyscf/grad/rks.py`) and `get_smooth_function_derivative`, restricted to
+/// the `original_becke` switching scheme (iterated `f(x) = (3x - x^3)/2`
+/// applied three times). For one grid point `r_g` whose parent (owning) atom
+/// is `parent`, it returns `dw_g/dR_A` -- the derivative of the *normalized*
+/// Becke partition weight of `parent` with respect to every nuclear
+/// coordinate `R_{A,d}`.
+///
+/// The returned quantity is the normalized cell-weight derivative WITHOUT the
+/// radial/angular `vol` factor; the full grid-weight derivative is recovered
+/// by `dW_g/dR_A = (W_g / w_parent) * dw_g/dR_A`, where `W_g` is the stored
+/// grid weight and `w_parent` the normalized partition weight of `parent`
+/// (the value `becke_partition_weights_for_test` returns for `parent`).
+///
+/// The self term `dw_A/dR_A` is obtained from translational invariance,
+/// `dw_A/dR_A = -sum_{B != A} dw_A/dR_B`, exactly as PySCF does -- a grid
+/// point sitting on an atom drives `mu -> 0` and a direct differentiation
+/// there is numerically unstable. The result therefore satisfies the
+/// rigid-shift identity `sum_A dw_g/dR_A = 0` per axis by construction.
+///
+/// The size-adjustment `a_ij` uses the same atomic-radii table and clamping
+/// as the production `becke_partition_weights`, selected by `level`:
+/// `GridLevel::SG0` / `SG1` use the original Becke-1988 heteronuclear
+/// adjustment, `GridLevel::MatchPySCF` uses PySCF's treutler adjustment.
+///
+/// @param atoms   Array of atom descriptors (Z, position in Bohr).
+/// @param natm    Number of atoms.
+/// @param rx      Grid-point x-coordinate in Bohr.
+/// @param ry      Grid-point y-coordinate in Bohr.
+/// @param rz      Grid-point z-coordinate in Bohr.
+/// @param parent  Index of the grid point's parent (owning) atom, in [0,natm).
+/// @param level   Grid quality level; selects the size-adjustment scheme so
+///                the derivative stays consistent with `becke_partition_weights`.
+/// @param[out] dw_out Output buffer [natm*3]; `dw_out[A*3 + d]` receives
+///                `d(w_parent)/dR_{A,d}` in units of 1/Bohr.
+/// @return The normalized Becke partition weight of `parent` at this grid
+///         point (dimensionless, in [0,1]) -- the conversion factor needed
+///         to lift `dw_out` to the full grid-weight derivative
+///         `dW_g/dR_A = (W_g / w_parent) * dw_out`.
+double becke_weight_derivative(const native::Atom* atoms, int natm,
+                               double rx, double ry, double rz, int parent,
+                               GridLevel level, double* dw_out);
 
 /// @brief Bragg-Slater atomic radius for element Z, in Bohr.
 ///

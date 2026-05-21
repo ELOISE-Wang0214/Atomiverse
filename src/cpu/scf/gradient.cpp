@@ -270,17 +270,27 @@ static void accumulate_xc_gradient(
 
     // ── 5. XC gradient accumulation (per atom, per direction) ──────────
     //
-    // This computes the explicit basis-function-derivative contribution to
-    // dE_xc/dR_A on a grid held FIXED in space (Johnson-Gill-Pople
-    // convention, JCP 98, 5612 (1993)): only the basis-function centers
-    // move with their atoms. The Becke partition-weight / grid-coordinate
-    // response is the small omitted piece (sub-mHa/Bohr on a converged
-    // grid); the matching FD oracle (scf_finite_difference_gradient) pins
-    // the grid likewise. The density-relaxation contribution cancels
-    // because the SCF is variational and Vxc == dE_xc/dP (see the GGA Vxc
-    // fix in xc_grid_engine.h).
+    // The KS XC nuclear gradient is the sum of three additive pieces:
     //
-    // LDA term:
+    //   (a) AO-derivative term  -- the basis-function centers move with
+    //       their atoms (grid held fixed). Johnson-Gill-Pople convention,
+    //       JCP 98, 5612 (1993).
+    //   (b) grid-coordinate term -- every grid point rides rigidly with its
+    //       parent atom; dr_g/dR_parent = I. Reuses the AO-gradient
+    //       contraction but sums over ALL basis functions and attributes
+    //       the result to each grid point's parent atom. PySCF's
+    //       `excsum[atm_id] += einsum('xij,ji->x', vtmp, dms) * 2`.
+    //   (c) weight-derivative term -- the Becke fuzzy-cell partition weight
+    //       w_n(R) depends on the nuclear positions.
+    //       dE_xc/dR_A|weight = sum_g (dW_g/dR_A) * exc(g) * rho(g).
+    //
+    // The density-relaxation contribution cancels because the SCF is
+    // variational and Vxc == dE_xc/dP. With (a)+(b)+(c) the absolute
+    // per-atom XC gradient is correct from first principles and
+    // sum_A dE_xc/dR_A vanishes without any translational-invariance
+    // projection.
+    //
+    // LDA AO-derivative term:
     //   dE_xc/dR_{A,d} = -2 * sum_g w * (vrho_a * sum_{mu in A} T_a(g,mu)*dPhi_d
     //                                    + vrho_b * sum_{mu in A} T_b(g,mu)*dPhi_d)
     // Pre-weight T by w*vrho: WT_a(g,mu) = w(g)*vrho_a(g)*T_a(g,mu).
@@ -289,6 +299,62 @@ static void accumulate_xc_gradient(
     xt::xtensor<double, 2> WT_a = T_a * w_vrho_a_col;
     xt::xtensor<double, 2> WT_b = T_b * w_vrho_b_col;
 
+    // Per-(g,d) full GGA sigma-response contraction. `sign` is +1 when the
+    // active basis functions move with the grid point (grid-coordinate
+    // term) and -1 when they move with their own atom (AO-derivative term);
+    // `restrict_to_A` selects the AO-derivative term (only basis functions
+    // on atom A move) versus the grid-coordinate term (all basis functions
+    // move because the grid point itself moves).
+    auto gga_contraction = [&](int g, int dd, double sign,
+                               const std::vector<int>* restrict_to_A) -> double {
+        const double w = w_arr(g);
+        const double vsa = vsigma_aa_arr(g);
+        const double vsab = vsigma_ab_arr(g);
+        const double vsb = vsigma_bb_arr(g);
+        double dgrad_rho_a[3] = {0, 0, 0}, dgrad_rho_b[3] = {0, 0, 0};
+
+        // Term1: derivative of the Phi(mu) factor.
+        auto term1 = [&](int mu) {
+            const double dphi_mu_d = sign * dPhi(g, mu, dd);
+            for (int nu = 0; nu < N; ++nu) {
+                const double pa = Pa(mu, nu), pb = Pb(mu, nu);
+                for (int i = 0; i < 3; ++i) {
+                    dgrad_rho_a[i] += 2.0 * pa * dphi_mu_d * dPhi(g, nu, i);
+                    dgrad_rho_b[i] += 2.0 * pb * dphi_mu_d * dPhi(g, nu, i);
+                }
+            }
+        };
+        // Term2: derivative of the dPhi(nu)/dr_i factor.
+        auto term2 = [&](int nu) {
+            for (int mu = 0; mu < N; ++mu) {
+                const double pa = Pa(mu, nu), pb = Pb(mu, nu);
+                const double phi_mu = Phi(g, mu);
+                for (int i = 0; i < 3; ++i) {
+                    const double h_nu_di = sign * Hess(g, nu, dd * 3 + i);
+                    dgrad_rho_a[i] += 2.0 * pa * phi_mu * h_nu_di;
+                    dgrad_rho_b[i] += 2.0 * pb * phi_mu * h_nu_di;
+                }
+            }
+        };
+        if (restrict_to_A) {
+            for (int mu : *restrict_to_A) term1(mu);
+            for (int nu : *restrict_to_A) term2(nu);
+        } else {
+            for (int mu = 0; mu < N; ++mu) term1(mu);
+            for (int nu = 0; nu < N; ++nu) term2(nu);
+        }
+
+        double dsigma_aa = 0, dsigma_ab = 0, dsigma_bb = 0;
+        for (int i = 0; i < 3; ++i) {
+            dsigma_aa += 2.0 * grad_rho_a(g, i) * dgrad_rho_a[i];
+            dsigma_bb += 2.0 * grad_rho_b(g, i) * dgrad_rho_b[i];
+            dsigma_ab += grad_rho_a(g, i) * dgrad_rho_b[i]
+                       + grad_rho_b(g, i) * dgrad_rho_a[i];
+        }
+        return w * (vsa * dsigma_aa + vsab * dsigma_ab + vsb * dsigma_bb);
+    };
+
+    // ── 5a. AO-derivative term (basis centers move with their atoms) ───
     for (int A = 0; A < natm; ++A) {
         const auto& shells_A = atom_shells[A];
         if (shells_A.empty()) continue;
@@ -296,7 +362,8 @@ static void accumulate_xc_gradient(
         for (int dd = 0; dd < 3; ++dd) {
             double xc_grad = 0;
 
-            // LDA contribution via pre-weighted T
+            // LDA contribution via pre-weighted T; basis on atom A moving
+            // contributes -dPhi (nabla_R = -nabla_r).
             for (int mu : shells_A) {
                 for (int g = 0; g < G; ++g) {
                     double dphi_d = dPhi(g, mu, dd);
@@ -304,55 +371,69 @@ static void accumulate_xc_gradient(
                 }
             }
 
-            // GGA contribution (per-point for correctness)
+            // GGA contribution (per-point for correctness).
             if (is_gga) {
                 for (int g = 0; g < G; ++g) {
                     double rho = rho_a_arr(g) + rho_b_arr(g);
                     if (rho < 1e-20) continue;
-                    double w = w_arr(g);
-                    double vsa = vsigma_aa_arr(g), vsab = vsigma_ab_arr(g), vsb = vsigma_bb_arr(g);
-
-                    // grad_rho_a(g,i) = 2*sum_{mu,nu} Phi(g,mu)*Pa(mu,nu)*dPhi(g,nu,i)
-                    // d(grad_rho_a(g,i))/dR_{A,d} has exactly 2 terms:
-                    //   Term1 (dPhi_mu/dR_A): 2*sum_{mu in A, nu} Pa(mu,nu)*(-dPhi(g,mu,d))*dPhi(g,nu,i)
-                    //   Term2 (dHess_nu/dR_A): 2*sum_{nu in A, mu} Pa(mu,nu)*Phi(g,mu)*(-Hess(g,nu,d*i))
-                    double dgrad_rho_a[3] = {0,0,0}, dgrad_rho_b[3] = {0,0,0};
-
-                    // Term1: derivative of the Phi(mu) factor when mu is on atom A
-                    for (int mu : shells_A) {
-                        double neg_dphi_mu_d = -dPhi(g, mu, dd);
-                        for (int nu = 0; nu < N; ++nu) {
-                            double pa = Pa(mu, nu), pb = Pb(mu, nu);
-                            for (int i = 0; i < 3; ++i) {
-                                dgrad_rho_a[i] += 2.0 * pa * neg_dphi_mu_d * dPhi(g, nu, i);
-                                dgrad_rho_b[i] += 2.0 * pb * neg_dphi_mu_d * dPhi(g, nu, i);
-                            }
-                        }
-                    }
-                    // Term2: derivative of the dPhi(nu)/dr_i factor when nu is on atom A
-                    for (int nu : shells_A) {
-                        for (int mu = 0; mu < N; ++mu) {
-                            double pa = Pa(mu, nu), pb = Pb(mu, nu);
-                            double phi_mu = Phi(g, mu);
-                            for (int i = 0; i < 3; ++i) {
-                                double neg_h_nu_di = -Hess(g, nu, dd*3 + i);
-                                dgrad_rho_a[i] += 2.0 * pa * phi_mu * neg_h_nu_di;
-                                dgrad_rho_b[i] += 2.0 * pb * phi_mu * neg_h_nu_di;
-                            }
-                        }
-                    }
-
-                    double dsigma_aa = 0, dsigma_ab = 0, dsigma_bb = 0;
-                    for (int i = 0; i < 3; ++i) {
-                        dsigma_aa += 2.0 * grad_rho_a(g, i) * dgrad_rho_a[i];
-                        dsigma_bb += 2.0 * grad_rho_b(g, i) * dgrad_rho_b[i];
-                        dsigma_ab += grad_rho_a(g, i) * dgrad_rho_b[i]
-                                   + grad_rho_b(g, i) * dgrad_rho_a[i];
-                    }
-                    xc_grad += w * (vsa * dsigma_aa + vsab * dsigma_ab + vsb * dsigma_bb);
+                    // sign = -1: basis on atom A moves, nabla_R = -nabla_r.
+                    xc_grad += gga_contraction(g, dd, -1.0, &shells_A);
                 }
             }
             grad_out(A, dd) += static_cast<double>(xc_grad);
+        }
+    }
+
+    // ── 5b. Grid-coordinate term (grid points ride with parent atom) ───
+    //
+    // Each grid point's electron-coordinate r_g rides rigidly with its
+    // parent atom P (dr_g/dR_P = I). The XC integrand's r_g-dependence
+    // therefore contributes a force on P. This reuses the AO-gradient
+    // contraction with ALL basis functions active (every phi_mu(r_g) moves
+    // because r_g moves) and sign = +1 (nabla_{R_P} = +nabla_{r_g}).
+    for (int g = 0; g < G; ++g) {
+        const int P = grid.points[g].parent_atom;
+        if (P < 0 || P >= natm) continue;
+        for (int dd = 0; dd < 3; ++dd) {
+            // LDA part: +2 * sum_{mu ALL} (WT_a + WT_b) * dPhi.
+            double gc = 0;
+            for (int mu = 0; mu < N; ++mu) {
+                gc += 2.0 * (WT_a(g, mu) + WT_b(g, mu)) * dPhi(g, mu, dd);
+            }
+            if (is_gga) {
+                double rho = rho_a_arr(g) + rho_b_arr(g);
+                if (rho >= 1e-20)
+                    gc += gga_contraction(g, dd, +1.0, nullptr);
+            }
+            grad_out(P, dd) += static_cast<double>(gc);
+        }
+    }
+
+    // ── 5c. Becke weight-derivative term ───────────────────────────────
+    //
+    // dE_xc/dR_A|weight = sum_g (dW_g/dR_A) * exc(g) * rho(g),  where
+    // dW_g/dR_A = (W_g / w_parent) * d(w_parent_normalized)/dR_A and the
+    // `* rho` factor is mandatory: Atomiverse stores exc PER ELECTRON
+    // (xc_functional.h), so the weight-response carries the density (matches
+    // PySCF's einsum('r,r,nxr->nx', exc, rho, weight1)).
+    {
+        std::vector<double> dw(static_cast<size_t>(natm) * 3);
+        for (int g = 0; g < G; ++g) {
+            const int P = grid.points[g].parent_atom;
+            if (P < 0 || P >= natm) continue;
+            const double rho = rho_a_arr(g) + rho_b_arr(g);
+            if (rho < 1e-20) continue;
+            const double w_parent = becke_weight_derivative(
+                integrals.atoms.data(), natm,
+                grid.points[g].x, grid.points[g].y, grid.points[g].z,
+                P, config.grid_level, dw.data());
+            if (w_parent < 1e-300) continue;
+            // dW_g/dR_A = (W_g / w_parent) * d(w_parent_normalized)/dR_A.
+            const double scale = w_arr(g) / w_parent;
+            const double exc_rho = exc_arr(g) * rho;
+            for (int A = 0; A < natm; ++A)
+                for (int d = 0; d < 3; ++d)
+                    grad_out(A, d) += scale * dw[A * 3 + d] * exc_rho;
         }
     }
 }
@@ -444,22 +525,20 @@ GradientResult scf_gradient(
         accumulate_xc_gradient(grad_xc, integrals, result, config,
                                shell_to_atom, atom_shells, natm, n);
 
-        // Enforce translational invariance of the XC gradient.
+        // Optional debug: enforce translational invariance of the XC
+        // gradient by projecting out the net (sum-over-atoms) component.
         //
         // The exact dE_xc/dR is translation-invariant (a rigid shift of the
-        // molecule leaves E_xc unchanged), so sum_A dE_xc/dR_A = 0. The
-        // fixed-grid term computed above approximates dE_xc/dR with a
-        // numerical-quadrature error whose net (sum-over-atoms) component
-        // is a spurious uniform force on the whole molecule — the residual
-        // of integrating grad_r f_xc, which the Becke partition-weight
-        // response would otherwise cancel. Projecting out that net
-        // component (subtracting the per-atom mean) removes the spurious
-        // translation while leaving every *relative* (internal) force —
-        // the physically meaningful part for geometry optimization and MD
-        // — unchanged. This is the standard translational-invariance
-        // enforcement for incomplete integration grids; on the SG-0-ish
-        // (50,110) grid the removed residual is ~4e-4 Ha/Bohr.
-        if (natm > 0) {
+        // molecule leaves E_xc unchanged), so sum_A dE_xc/dR_A = 0. With the
+        // genuine Becke grid-response term now assembled in
+        // accumulate_xc_gradient (weight-derivative + grid-coordinate), the
+        // net translational force already vanishes from first principles
+        // (<= 1e-8 Ha/Bohr), so this projection is a no-op and is OFF by
+        // default. It is retained behind SCFConfig::xc_grad_project_translation
+        // purely as a debug / fixed-grid-comparison aid: with a grid held
+        // fixed in space the AO-derivative term alone leaves a ~4e-4 Ha/Bohr
+        // net residual that this projection removes.
+        if (config.xc_grad_project_translation && natm > 0) {
             for (int d = 0; d < 3; ++d) {
                 double net = 0.0;
                 for (int A = 0; A < natm; ++A) net += grad_xc(A, d);
@@ -501,19 +580,25 @@ GradientResult scf_finite_difference_gradient(
 {
     int natm = static_cast<int>(frame.atoms.size());
 
-    // The analytic KS XC gradient (accumulate_xc_gradient) is the
-    // fixed-grid gradient (Johnson-Gill-Pople convention, JCP 98, 5612
-    // (1993)): the integration grid is held fixed in space and only the
-    // basis-function centers move with their atoms. For the FD oracle to
-    // be a valid check of that analytic gradient, the +/- displaced
-    // energies must SHARE one grid pinned to the reference geometry —
-    // otherwise the moving-grid (Becke partition-weight) response, which
-    // the analytic gradient deliberately omits, contaminates the FD
-    // result. Build the reference grid once and pin it via
-    // SCFConfig::fixed_grid for every displacement.
+    // FD-oracle grid policy.
+    //
+    // The analytic KS XC gradient (accumulate_xc_gradient) now assembles
+    // the genuine Becke grid-response term (weight-derivative +
+    // grid-coordinate), so the correct FD oracle is a MOVING-grid central
+    // difference: the integration grid is regenerated at each displaced
+    // geometry (atom-centered grids ride with their atoms). This is the
+    // default path (config.xc_grad_project_translation == false).
+    //
+    // The legacy fixed-grid convention (Johnson-Gill-Pople, JCP 98, 5612
+    // (1993)) -- grid pinned to the reference geometry, only basis-function
+    // centers move -- is still reachable for regression tests that compare
+    // against the fixed-grid analytic gradient: when
+    // config.xc_grad_project_translation == true the projection is active
+    // and the FD oracle pins the grid to match.
     SCFConfig fd_config = config;
     MolecularGrid fixed_grid;
-    if (config.method == MeanFieldType::KS) {
+    if (config.method == MeanFieldType::KS &&
+        config.xc_grad_project_translation) {
         const auto ref_integrals = build_integrals(frame, basis, charge);
         if (!ref_integrals.atoms.empty()) {
             fixed_grid = build_molecular_grid(
