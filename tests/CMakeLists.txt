@@ -230,6 +230,11 @@ if(ATV_BUILD_RHF)
     atv_add_cpp_test(test_cpu_minimizer_recorders cpu/minimizer/test_trajectory_writer.cpp)
     atv_add_cpp_test(test_cpu_minimize_driver_swap_optimizer cpu/test_minimize_driver_swap_optimizer.cpp)
     atv_add_cpp_test(test_cpu_scf_orbital_info_observer cpu/scf/test_orbital_info_observer.cpp)
+    # Numerical Hessian — Response driver category + finite-difference
+    # Hessian (spec phase4-vibrations-01). The ac-004 oracle runs many
+    # displaced SCFs, so allow a generous CTest ceiling.
+    atv_add_cpp_test(test_cpu_vib_numerical_hessian cpu/vib/test_numerical_hessian.cpp)
+    set_tests_properties(test_cpu_vib_numerical_hessian PROPERTIES TIMEOUT 1800)
     atv_add_cpp_test(test_cpu_recorder_density_cube cpu/recorder/test_density_cube.cpp)
     atv_add_cpp_test(test_xc_reference         test_xc_reference.cpp)
     # libxc test oracle (sub-spec 02 of libxc-xc-fix creates the oracle/

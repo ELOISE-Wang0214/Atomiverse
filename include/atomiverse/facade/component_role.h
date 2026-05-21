@@ -61,6 +61,7 @@ enum class Capability : uint32_t {
     Dipole        = 1u << 4,
     DensityMatrix = 1u << 5,
     Orbitals      = 1u << 6,
+    Hessian       = 1u << 7,  ///< Second-derivative matrix d2E/dRdR (Response category).
 };
 
 constexpr Capability operator|(Capability a, Capability b) noexcept {

@@ -112,4 +112,42 @@ inline std::vector<std::string> phase_names(Phase phase_tag) {
 }
 
 } // namespace scf
+
+/// @brief Vibrational-analysis (Response category) phases.
+///
+/// Used by `cpu::ResponseDriver` / `cpu::vib::Hessian`. The Response
+/// category runs a fixed `6N` displacement budget (no convergence /
+/// stop-request polling) followed by one finalize pass. The phase
+/// ordering reflects what runs within a single displacement pass
+/// (`setup` → `displace` → `force` → `accumulate`) plus the
+/// finalize-only phases (`diagonalize`, `thermochem`, `end_of_step`).
+///
+/// @note `force` is the slot where the user-registered force evaluator
+///       runs — exactly as AIMD registers an evaluator into `md::Phase::force`.
+///       `thermochem` is reserved for the thermochemistry link and
+///       carries no component in the numerical-Hessian link.
+namespace vib {
+
+/// @brief Phase order for one Response-category pass.
+enum class Phase {
+    setup,        ///< Cache the equilibrium geometry (ReferenceGeometry).
+    displace,     ///< Apply +/-h displacement for the current coordinate (DisplaceStep).
+    force,        ///< Force evaluation (user-registered evaluator runs here).
+    accumulate,   ///< Central-difference Hessian-row assembly (HessianAccumulator).
+    diagonalize,  ///< Symmetrization / future diagonalization (Symmetrize).
+    thermochem,   ///< Reserved — thermochemistry link; no component here.
+    end_of_step,  ///< Per-pass observers / recorders.
+    COUNT         ///< Sentinel -- total number of phases.
+};
+
+/// @brief Human-readable names for the vibrational-analysis phases.
+/// @param phase_tag Tag value used only for overload selection.
+/// @return Phase names in the same order as the enum values, excluding `COUNT`.
+inline std::vector<std::string> phase_names(Phase phase_tag) {
+    (void)phase_tag;
+    return {"setup", "displace", "force", "accumulate",
+            "diagonalize", "thermochem", "end_of_step"};
+}
+
+} // namespace vib
 } // namespace ATV

@@ -85,6 +85,12 @@ struct CategoryTraits<ATV::evaluate::Phase> {
     static constexpr auto end_phase  = ATV::evaluate::Phase::finalize;
 };
 
+template <>
+struct CategoryTraits<ATV::vib::Phase> {
+    static constexpr auto eval_phase = ATV::vib::Phase::force;
+    static constexpr auto end_phase  = ATV::vib::Phase::end_of_step;
+};
+
 /// @brief CPU-backend driver layer — shared by all three CPU category bases.
 template <typename PhaseEnum>
 class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {

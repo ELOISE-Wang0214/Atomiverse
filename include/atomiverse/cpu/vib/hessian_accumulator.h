@@ -1,0 +1,95 @@
+/// @file cpu/vib/hessian_accumulator.h
+/// @brief cpu::vib::HessianAccumulator — central-difference Hessian-row build.
+///
+/// Bound at `vib::Phase::accumulate`, after the user-registered force
+/// evaluator has written `frame.atoms.f*` for displacement `s = ctx.step`.
+///
+/// Displacement `s` is even for the `+h` evaluation and odd for the `-h`
+/// evaluation of Cartesian coordinate `c = s/2`:
+///   - even `s`: store the `+h` force vector in `HessianWorkspace::f_plus`.
+///   - odd  `s`: pair with the just-evaluated `-h` forces and write the
+///     central-difference Hessian row
+///     `H[c,:] = -(f_plus - f_minus) / (2h)` (eV/Angstrom^2).
+///
+/// `f = -g`, so `-(f+ - f-)/(2h) = (g+ - g-)/(2h)` is the second
+/// derivative `d2E/dR dR`.
+#pragma once
+
+#include <string>
+#include <vector>
+
+#include "atomiverse/cpu/component.h"
+#include "atomiverse/cpu/vib/hessian_workspace.h"
+#include "atomiverse/facade/component_role.h"
+#include "atomiverse/facade/stage.h"
+
+namespace ATV {
+namespace cpu {
+namespace vib {
+
+/// @brief Structural component that assembles Hessian rows by central
+///        differencing the evaluator-produced forces.
+///
+/// `role() == None`; `capabilities() == Capability::Hessian` — it is the
+/// canonical Hessian-producing component that `ResponseDriver`'s
+/// build-time validation requires.
+class HessianAccumulator : public cpu::ComponentBase {
+public:
+    /// @brief Construct bound to a driver-owned workspace.
+    /// @param ws Non-owning pointer to the shared Hessian workspace.
+    explicit HessianAccumulator(HessianWorkspace* ws) : ws_(ws) {}
+
+    std::string name() const override { return "vib_hessian_accumulator"; }
+    ComponentRole role() const override { return ComponentRole::None; }
+
+    /// @brief Advertises `Capability::Hessian` — the bit `ResponseDriver`
+    ///        requires exactly one component to carry.
+    /// @return `Capability::Hessian`.
+    Capability capabilities() const override { return Capability::Hessian; }
+
+    /// @brief Default binding: `vib::Phase::accumulate` @ 0.
+    /// @return Single binding placing this at the accumulate phase.
+    std::vector<DefaultBinding> default_bindings() const override {
+        return {{static_cast<int>(ATV::vib::Phase::accumulate), 0}};
+    }
+
+    /// @brief Store `+h` forces or write a central-difference Hessian row.
+    /// @param ctx Launch context; `ctx.step` is the displacement index `s`.
+    void launch(const cpu::LaunchContext& ctx) override {
+        const int n   = ws_->n_atoms;
+        const int dim = 3 * n;
+        const int s   = ctx.step;
+        if (s >= 2 * dim) return; // finalize pass carries no force data.
+
+        if (s % 2 == 0) {
+            // +h evaluation: snapshot the force vector for later pairing.
+            for (int i = 0; i < n; ++i) {
+                ws_->f_plus[3 * i + 0] = ctx.frame.atoms.fx(i);
+                ws_->f_plus[3 * i + 1] = ctx.frame.atoms.fy(i);
+                ws_->f_plus[3 * i + 2] = ctx.frame.atoms.fz(i);
+            }
+        } else {
+            // -h evaluation: write Hessian row for coordinate c = s/2.
+            const int coord = s / 2;
+            const double inv_2h = 1.0 / (2.0 * kHessianStepAngstrom);
+            for (int j = 0; j < n; ++j) {
+                const double fmx = ctx.frame.atoms.fx(j);
+                const double fmy = ctx.frame.atoms.fy(j);
+                const double fmz = ctx.frame.atoms.fz(j);
+                ws_->hessian(coord, 3 * j + 0) =
+                    -(ws_->f_plus[3 * j + 0] - fmx) * inv_2h;
+                ws_->hessian(coord, 3 * j + 1) =
+                    -(ws_->f_plus[3 * j + 1] - fmy) * inv_2h;
+                ws_->hessian(coord, 3 * j + 2) =
+                    -(ws_->f_plus[3 * j + 2] - fmz) * inv_2h;
+            }
+        }
+    }
+
+private:
+    HessianWorkspace* ws_; ///< Non-owning; driver-owned.
+};
+
+} // namespace vib
+} // namespace cpu
+} // namespace ATV

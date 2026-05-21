@@ -11,5 +11,6 @@ template class Driver<md::Phase, cpu::device_tag>;
 template class Driver<minimizer::Phase, cpu::device_tag>;
 template class Driver<scf::Phase, cpu::device_tag>;
 template class Driver<evaluate::Phase, cpu::device_tag>;
+template class Driver<vib::Phase, cpu::device_tag>;
 
 } // namespace ATV
