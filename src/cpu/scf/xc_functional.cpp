@@ -1,16 +1,15 @@
 /// @file cpu/scf/xc_functional.cpp
-/// @brief LSDA (Slater + VWN5) and PBE GGA exchange-correlation functionals.
+/// @brief LSDA (Slater + VWN5), PBE GGA, and VWN-RPA exchange-correlation
+///        functionals. All formulas use atomic units (Hartree, Bohr).
 ///
-/// All formulas use atomic units (Hartree, Bohr).
-///
-/// LSDA exchange: Dirac-Slater, exact for uniform electron gas.
-/// LSDA correlation: VWN5 (Vosko, Wilk, Nusair, 1980, parameterization V).
-///   Must use VWN5 (not VWN3). VWN3 uses RPA data with known pathologies.
-///
-/// PBE exchange: Perdew-Burke-Ernzerhof enhancement over LSDA.
-/// PBE correlation: gradient correction H(r_s, zeta, t) to LSDA correlation.
+/// LSDA: Dirac-Slater exchange + VWN5 correlation (Vosko-Wilk-Nusair
+/// 1980, parameterization V). PBE: Perdew-Burke-Ernzerhof GGA. VWN-RPA:
+/// RPA-parametrized VWN LDA correlation (libxc id 8), the LDA correlation
+/// component of B3LYP. The B88 / LYP GGA building blocks live in the
+/// sibling translation unit xc_gga.cpp.
 
 #include "atomiverse/cpu/scf/xc_functional.h"
+#include "atomiverse/cpu/scf/xc_internal.h"
 
 #include <cmath>
 #include <algorithm>
@@ -30,14 +29,8 @@ static constexpr double kSigmaMin = 1e-20; // gradient cutoff for GGA
 static constexpr double kCx = 0.7385587663820224; // (3.0/4.0) * std::cbrt(3.0/kPi)
 
 // ── VWN5 parameters (Hartree convention, matching libxc) ─────────────────
-//
-// VWN paper (Can. J. Phys. 58, 1200, 1980) Table 4.4 lists A in Rydberg.
-// Following libxc (maple/vwn.mpl), we store A_Ha = A_Ry / 2 so the Pade
-// form is  eps(x) = A * {...}  without an extra 1/2 factor.
-
-struct VWN5Params {
-    double A, x0, b, c;
-};
+// A stored as A_Ha = A_Ry/2 (libxc maple/vwn.mpl). VWN5Params is declared
+// in xc_internal.h (shared with vwn_rpa_correlation).
 
 // Paramagnetic: A_Ry = 0.0621814 -> A_Ha = 0.0310907
 static constexpr VWN5Params kVWN5_P = {0.0310907, -0.10498, 3.72744, 12.9352};
@@ -48,12 +41,17 @@ static constexpr VWN5Params kVWN5_A = {
     -1.0 / (6.0 * kPi * kPi), -0.0047584, 1.13107, 13.0045
 };
 
+// ── VWN-RPA parameters (libxc maple/vwn.mpl, RPA columns) ────────────────
+// XC_LDA_C_VWN_RPA (id 8): same Pade form as VWN5, RPA (A, x0, b, c).
+static constexpr VWN5Params kVWN_RPA_P = {0.0310907, -0.409286, 13.0720, 42.7198};
+static constexpr VWN5Params kVWN_RPA_F = {0.01554535, -0.743294, 20.1231, 101.578};
+
 // ── VWN5 Pade approximant F(x) ──────────────────────────────────────────
 
 // F(x) = A { ln(x²/X(x)) + 2b/Q arctan(Q/(2x+b))
 //          - bx₀/X(x₀) [ln((x-x₀)²/X(x)) + 2(b+2x₀)/Q arctan(Q/(2x+b))] }
 // where X(x) = x² + bx + c,  Q = √(4c - b²)
-static double vwn5_F(double x, const VWN5Params& p) {
+double vwn5_F(double x, const VWN5Params& p) {
     double X = x * x + p.b * x + p.c;
     double X0 = p.x0 * p.x0 + p.b * p.x0 + p.c;
     double Q = std::sqrt(4.0 * p.c - p.b * p.b);
@@ -70,7 +68,7 @@ static double vwn5_F(double x, const VWN5Params& p) {
 }
 
 // Derivative dF/dx for VWN5
-static double vwn5_dFdx(double x, const VWN5Params& p) {
+double vwn5_dFdx(double x, const VWN5Params& p) {
     double X = x * x + p.b * x + p.c;
     double X0 = p.x0 * p.x0 + p.b * p.x0 + p.c;
     double Q = std::sqrt(4.0 * p.c - p.b * p.b);
@@ -302,6 +300,49 @@ static void vwn5_correlation(double rho_a, double rho_b,
 
     double dec_dz = ac / kFppZero * (dfz * (1.0 - z4) - fz * dz4)
                   + (ecF - ecP) * (dfz * z4 + fz * dz4);
+
+    vc_a = ec - rs3_dec - (zeta - 1.0) * dec_dz;
+    vc_b = ec - rs3_dec - (zeta + 1.0) * dec_dz;
+}
+
+// ── VWN-RPA correlation ─────────────────────────────────────────────────
+
+/// @brief RPA-parametrized VWN LDA correlation (libxc XC_LDA_C_VWN_RPA,
+///        id 8), spin-polarized.
+///
+/// Reuses the VWN5 Pade machinery (`vwn5_F` / `vwn5_dFdx`) with the RPA
+/// parameter columns and a two-channel spin blend
+/// eps_c = F_P(1 - f(zeta)) + F_F f(zeta); unlike VWN5 the RPA energy
+/// uses no spin-stiffness channel.
+///
+/// @param rho_a Alpha spin density [electrons/Bohr^3].
+/// @param rho_b Beta spin density [electrons/Bohr^3].
+/// @param[out] ec   Correlation energy density per electron [Hartree].
+/// @param[out] vc_a d(rho*ec)/drho_alpha, alpha potential [Hartree].
+/// @param[out] vc_b d(rho*ec)/drho_beta, beta potential [Hartree].
+void vwn_rpa_correlation(double rho_a, double rho_b,
+                         double& ec, double& vc_a, double& vc_b) {
+    // Per-spin density floor matching libxc work_lda clamping.
+    rho_a = std::max(rho_a, kSpinDensMin);
+    rho_b = std::max(rho_b, kSpinDensMin);
+
+    double rho = rho_a + rho_b;
+    double x = std::sqrt(std::pow(3.0 / (4.0 * kPi * rho), 1.0 / 3.0));
+    double zeta = (rho_a - rho_b) / rho;
+
+    // RPA paramagnetic / ferromagnetic Pade channels.
+    double F_P = vwn5_F(x, kVWN_RPA_P);
+    double F_F = vwn5_F(x, kVWN_RPA_F);
+    double fz = spin_f(zeta);
+    ec = F_P * (1.0 - fz) + F_F * fz;  // eps_c = F_P(1-f) + F_F f
+
+    // d eps_c / dx, then (rs/3) d eps_c/drs = (x/6) d eps_c/dx.
+    double dec_dx = vwn5_dFdx(x, kVWN_RPA_P) * (1.0 - fz)
+                  + vwn5_dFdx(x, kVWN_RPA_F) * fz;
+    double rs3_dec = x / 6.0 * dec_dx;
+
+    // d eps_c / d zeta = (F_F - F_P) f'(zeta).
+    double dec_dz = (F_F - F_P) * spin_df(zeta);
 
     vc_a = ec - rs3_dec - (zeta - 1.0) * dec_dz;
     vc_b = ec - rs3_dec - (zeta + 1.0) * dec_dz;

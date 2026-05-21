@@ -243,6 +243,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/rhf_solve.cpp
             src/cpu/scf/uhf_solve.cpp
             src/cpu/scf/xc_functional.cpp
+            src/cpu/scf/xc_gga.cpp
             src/cpu/scf/grid.cpp
             src/cpu/scf/uks_solve.cpp
             src/cpu/scf/integral_derivatives.cpp
@@ -300,6 +301,7 @@ if(NOT ATV_DOCS_ONLY)
         if(NOT ATV_BUILD_RHF)
             target_sources(atomiverse PRIVATE
                 src/cpu/scf/xc_functional.cpp
+                src/cpu/scf/xc_gga.cpp
             )
         endif()
         target_link_libraries(atomiverse PUBLIC fftw3_stub)

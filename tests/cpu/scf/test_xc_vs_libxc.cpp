@@ -13,11 +13,18 @@
 #include <cmath>
 
 #include "atomiverse/cpu/scf/xc_functional.h"
+#include "atomiverse/cpu/scf/xc_internal.h"
 #include "oracle/xc_libxc_oracle.h"
 
+using ATV::cpu::scf::b88_exchange_spin;
 using ATV::cpu::scf::evaluate_xc;
+using ATV::cpu::scf::lyp_correlation;
+using ATV::cpu::scf::vwn_rpa_correlation;
 using ATV::cpu::scf::XCOutput;
 using ATV::cpu::scf::XCType;
+using ATV::test::xc_oracle::evaluate_gga_c_lyp;
+using ATV::test::xc_oracle::evaluate_gga_x_b88;
+using ATV::test::xc_oracle::evaluate_lda_c_vwn_rpa;
 using ATV::test::xc_oracle::evaluate_lsda;
 using ATV::test::xc_oracle::evaluate_pbe;
 
@@ -116,6 +123,104 @@ TEST(XCvsLibxc, PbeBattery) {
                                           sigma_aa, sigma_ab, sigma_bb);
             XCOutput oracle = evaluate_pbe(pt.rho_a, pt.rho_b,
                                            sigma_aa, sigma_ab, sigma_bb);
+            compare_pbe(native, oracle, label);
+        }
+    }
+}
+
+// ── VWN-RPA: libxc XC_LDA_C_VWN_RPA (id 8) ──
+//
+// vwn_rpa_correlation returns ec (energy per electron) and the per-spin
+// LDA potential vc_a, vc_b == d(rho*ec)/drho_sigma. libxc id 8 returns
+// exc and vrho in exactly that convention.
+
+TEST(XCvsLibxc, VwnRpaBattery) {
+    for (const auto& pt : kPoints) {
+        double ec, vc_a, vc_b;
+        vwn_rpa_correlation(pt.rho_a, pt.rho_b, ec, vc_a, vc_b);
+
+        XCOutput native{};
+        native.exc = ec;
+        native.vrho_alpha = vc_a;
+        native.vrho_beta = vc_b;
+
+        XCOutput oracle = evaluate_lda_c_vwn_rpa(pt.rho_a, pt.rho_b);
+        compare_lsda(native, oracle, pt.label);
+    }
+}
+
+// ── B88 exchange: libxc XC_GGA_X_B88 (id 106) ──
+//
+// b88_exchange_spin is per-spin: returns ex_s (energy per volume),
+// vrho_s == d(rho_s*eps_x)/drho_s, vsigma_ss == d(rho_s*eps_x)/dsigma_ss.
+// libxc's spin-polarized B88 reports exc = (ex_a + ex_b)/rho_total, the
+// per-spin vrho/vsigma directly, and vsigma_ab == 0 (B88 has no
+// cross-spin gradient term).
+
+TEST(XCvsLibxc, B88Battery) {
+    for (const auto& pt : kPoints) {
+        for (double sigma_diag : kSigmaValues) {
+            const double sigma_aa = sigma_diag;
+            const double sigma_bb = sigma_diag;
+            const double sigma_ab = sigma_diag;
+
+            char label[256];
+            std::snprintf(label, sizeof(label),
+                          "%s, sigma=%.2f", pt.label, sigma_diag);
+
+            double ex_a, vrho_a, vsigma_aa;
+            double ex_b, vrho_b, vsigma_bb;
+            b88_exchange_spin(pt.rho_a, sigma_aa, ex_a, vrho_a, vsigma_aa);
+            b88_exchange_spin(pt.rho_b, sigma_bb, ex_b, vrho_b, vsigma_bb);
+
+            const double rho = pt.rho_a + pt.rho_b;
+            XCOutput native{};
+            native.exc = (ex_a + ex_b) / rho;
+            native.vrho_alpha = vrho_a;
+            native.vrho_beta = vrho_b;
+            native.vsigma_aa = vsigma_aa;
+            native.vsigma_ab = 0.0;
+            native.vsigma_bb = vsigma_bb;
+
+            XCOutput oracle = evaluate_gga_x_b88(pt.rho_a, pt.rho_b,
+                                                 sigma_aa, sigma_ab, sigma_bb);
+            compare_pbe(native, oracle, label);
+        }
+    }
+}
+
+// ── LYP correlation: libxc XC_GGA_C_LYP (id 131) ──
+//
+// lyp_correlation is the full spin-polarized GGA correlation: returns ec
+// (energy per electron) and all six potential channels in the libxc
+// d(rho*ec)/d{rho,sigma} convention.
+
+TEST(XCvsLibxc, LypBattery) {
+    for (const auto& pt : kPoints) {
+        for (double sigma_diag : kSigmaValues) {
+            const double sigma_aa = sigma_diag;
+            const double sigma_bb = sigma_diag;
+            const double sigma_ab = sigma_diag;
+
+            char label[256];
+            std::snprintf(label, sizeof(label),
+                          "%s, sigma=%.2f", pt.label, sigma_diag);
+
+            double ec, vc_a, vc_b, vsigma_aa, vsigma_ab, vsigma_bb;
+            lyp_correlation(pt.rho_a, pt.rho_b, sigma_aa, sigma_ab, sigma_bb,
+                            ec, vc_a, vc_b,
+                            vsigma_aa, vsigma_ab, vsigma_bb);
+
+            XCOutput native{};
+            native.exc = ec;
+            native.vrho_alpha = vc_a;
+            native.vrho_beta = vc_b;
+            native.vsigma_aa = vsigma_aa;
+            native.vsigma_ab = vsigma_ab;
+            native.vsigma_bb = vsigma_bb;
+
+            XCOutput oracle = evaluate_gga_c_lyp(pt.rho_a, pt.rho_b,
+                                                 sigma_aa, sigma_ab, sigma_bb);
             compare_pbe(native, oracle, label);
         }
     }
