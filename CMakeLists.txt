@@ -171,6 +171,8 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/md/deform.cpp
         # CPU vibrational-analysis (Response category) driver
         src/cpu/vib/hessian.cpp
+        src/cpu/vib/mass_weighting.cpp
+        src/cpu/vib/eigen_solver.cpp
         # CPU MD MPI infrastructure (single-rank stubs in Phase 1)
         src/cpu/md/mpi/domain.cpp
         src/cpu/md/mpi/halo_exchange.cpp

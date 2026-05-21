@@ -50,6 +50,40 @@ struct HessianWorkspace {
     ///        them with the next `-h` forces to write one Hessian row.
     std::vector<double> f_plus;
 
+    // ── Vibrational-frequency link (phase4-vibrations-02) ──────────────
+    //
+    // The `MassWeighting` and `EigenSolver` components cooperate on the
+    // fields below during the finalize pass, after `Symmetrize`.
+
+    /// @brief Mass-weighted Hessian `H^mw` in atomic units
+    ///        (Hartree/Bohr^2/amu), shape `[3N,3N]`. `MassWeighting`
+    ///        derives it from `hessian` without mutating `hessian` — so
+    ///        `HessianResult.hessian` keeps the raw link-1 eV/Angstrom^2
+    ///        matrix. `EigenSolver` consumes this buffer.
+    xt::xtensor<double, 2> hessian_mw;
+
+    /// @brief True once `MassWeighting` has populated `hessian_mw`.
+    ///        Guards `EigenSolver` against running on an empty buffer.
+    bool mass_weighted = false;
+
+    /// @brief Per-atom masses [amu] used for mass-weighting, length `N`.
+    ///        Populated by `MassWeighting` from `mass_amu(frame type)`.
+    std::vector<double> mass_amu;
+
+    /// @brief Vibrational wavenumbers [cm^-1] produced by `EigenSolver`,
+    ///        length `3N-6` / `3N-5`. Negative for imaginary modes.
+    xt::xtensor<double, 1> frequencies;
+
+    /// @brief Normal-mode eigenvectors `[3N, n_modes]` produced by
+    ///        `EigenSolver` (columns lifted to the full Cartesian basis).
+    xt::xtensor<double, 2> normal_modes;
+
+    /// @brief Imaginary-mode count produced by `EigenSolver`.
+    int n_imaginary = 0;
+
+    /// @brief Linear-vs-nonlinear classification produced by `EigenSolver`.
+    bool is_linear = false;
+
     /// @brief Allocate all buffers for an `N`-atom system. Called once
     ///        from the driver's `build()`; no allocation occurs in any
     ///        component `launch()`.
@@ -61,6 +95,13 @@ struct HessianWorkspace {
         r0_ready = false;
         hessian = xt::zeros<double>({dim, dim});
         f_plus.assign(dim, 0.0);
+        hessian_mw = xt::zeros<double>({dim, dim});
+        mass_weighted = false;
+        mass_amu.assign(n, 0.0);
+        frequencies = xt::zeros<double>({0});
+        normal_modes = xt::zeros<double>({dim, 0});
+        n_imaginary = 0;
+        is_linear = false;
     }
 };
 
