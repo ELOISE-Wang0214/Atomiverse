@@ -19,14 +19,15 @@
 
 namespace {
 
-constexpr int kNumDisp = 1 << 16;  // 64k displacements per iteration
+constexpr int kNumDisp = 1 << 16; // 64k displacements per iteration
 
 std::vector<double> random_disps(std::size_t n, double L, std::uint32_t seed) {
     std::mt19937 rng(seed);
     std::uniform_real_distribution<double> dist(-1.4 * L, 1.4 * L);
     std::vector<double> v;
     v.reserve(n);
-    for (std::size_t i = 0; i < n; ++i) v.push_back(dist(rng));
+    for (std::size_t i = 0; i < n; ++i)
+        v.push_back(dist(rng));
     return v;
 }
 
@@ -87,12 +88,18 @@ static void BM_BranchyReference(benchmark::State& state) {
     for (auto _ : state) {
         for (int i = 0; i < kNumDisp; ++i) {
             double x = dx[i], y = dy[i], z = dz[i];
-            if (x >  half_L) x -= L;
-            if (x < -half_L) x += L;
-            if (y >  half_L) y -= L;
-            if (y < -half_L) y += L;
-            if (z >  half_L) z -= L;
-            if (z < -half_L) z += L;
+            if (x > half_L)
+                x -= L;
+            if (x < -half_L)
+                x += L;
+            if (y > half_L)
+                y -= L;
+            if (y < -half_L)
+                y += L;
+            if (z > half_L)
+                z -= L;
+            if (z < -half_L)
+                z += L;
             benchmark::DoNotOptimize(x);
             benchmark::DoNotOptimize(y);
             benchmark::DoNotOptimize(z);

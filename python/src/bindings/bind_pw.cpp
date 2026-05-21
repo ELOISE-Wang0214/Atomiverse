@@ -15,38 +15,38 @@ void bind_pw(nb::module_& m) {
     using namespace ATV::cpu::pw;
 
     nb::class_<PWResult>(m, "PWResult",
-        "Result of a plane-wave DFT calculation.")
-        .def_prop_ro("energy",     [](const PWResult& r) { return r.energy; },
-                     "Total energy [Ry].")
-        .def_prop_ro("converged",  [](const PWResult& r) { return r.converged; },
-                     "Whether SCF converged within max_iter.")
-        .def_prop_ro("iterations", [](const PWResult& r) { return r.iterations; },
-                     "Number of SCF iterations taken.")
+                         "Result of a plane-wave DFT calculation.")
+        .def_prop_ro(
+            "energy", [](const PWResult& r) { return r.energy; },
+            "Total energy [Ry].")
+        .def_prop_ro(
+            "converged", [](const PWResult& r) { return r.converged; },
+            "Whether SCF converged within max_iter.")
+        .def_prop_ro(
+            "iterations", [](const PWResult& r) { return r.iterations; },
+            "Number of SCF iterations taken.")
         .def("__repr__", [](const PWResult& r) {
             std::string conv = r.converged ? "converged" : "NOT converged";
-            return "PWResult(" + conv +
-                   ", E=" + std::to_string(r.energy) +
-                   " Ry, iters=" + std::to_string(r.iterations) + ")";
-        })
-    ;
+            return "PWResult(" + conv + ", E=" + std::to_string(r.energy)
+                   + " Ry, iters=" + std::to_string(r.iterations) + ")";
+        });
 
-    m.def("pw_scf",
-        [](nb::object frame_obj,
-           const std::string& upf_path, double ecut_ry,
+    m.def(
+        "pw_scf",
+        [](nb::object frame_obj, const std::string& upf_path, double ecut_ry,
            int k_mesh, double tol, int max_iter) {
             auto& cf = nb::cast<CpuFrame&>(frame_obj);
             PWResult result;
-            { nb::gil_scoped_release release;
-              result = pw_scf(cf.frame, upf_path, ecut_ry, k_mesh, tol, max_iter);
+            {
+                nb::gil_scoped_release release;
+                result =
+                    pw_scf(cf.frame, upf_path, ecut_ry, k_mesh, tol, max_iter);
             }
             return result;
         },
-        nb::arg("frame"),
-        nb::arg("upf_path") = "",
-        nb::arg("ecut_ry") = double(30.0),
-        nb::arg("k_mesh") = 4,
-        nb::arg("tol") = double(1e-6),
-        nb::arg("max_iter") = 50,
+        nb::arg("frame"), nb::arg("upf_path") = "",
+        nb::arg("ecut_ry") = double(30.0), nb::arg("k_mesh") = 4,
+        nb::arg("tol") = double(1e-6), nb::arg("max_iter") = 50,
         "Run plane-wave DFT total energy calculation for a periodic system.\n\n"
         "The Frame provides atom positions, types (Z), and simulation cell.\n"
         "Returns total energy in Rydberg.\n\n"
@@ -68,8 +68,7 @@ void bind_pw(nb::module_& m) {
         "Returns\n"
         "-------\n"
         "PWResult\n"
-        "    Result with ``.energy`` (Ry), ``.converged``, and ``.iterations``."
-    );
+        "    Result with ``.energy`` (Ry), ``.converged``, and "
+        "``.iterations``.");
 #endif
-
 }

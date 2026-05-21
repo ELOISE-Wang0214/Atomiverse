@@ -22,16 +22,16 @@ namespace ATV {
 /// sim.on(md::Phase::end_of_step).add(Thermo{100, "thermo.dat"}); // stdout + file
 /// @endcode
 class Thermo : public AsyncBridge {
-public:
+  public:
     explicit Thermo(int every = 1, std::string filename = "")
         : every_(every), filename_(std::move(filename)) {}
 
     std::string name() const override { return "thermo"; }
     int frequency() const override { return every_; }
 
-protected:
+  protected:
     void on_build(const BuildContext& ctx) override {
-        n_atoms_        = ctx.frame.n_atoms();
+        n_atoms_ = ctx.frame.n_atoms();
         header_printed_ = false;
         cudaMallocHost(&h_pe_, sizeof(double));
         cudaMallocHost(&h_ke_, sizeof(double));
@@ -46,25 +46,35 @@ protected:
 
     void issue_d2h(const LaunchContext& ctx) override {
         auto ds = static_cast<cudaStream_t>(ctx.runtime.defer_stream);
-        cudaMemcpyAsync(h_pe_, ctx.frame.energy,  sizeof(double), cudaMemcpyDeviceToHost, ds);
-        cudaMemcpyAsync(h_ke_, ctx.frame.kinetic, sizeof(double), cudaMemcpyDeviceToHost, ds);
+        cudaMemcpyAsync(h_pe_, ctx.frame.energy, sizeof(double),
+                        cudaMemcpyDeviceToHost, ds);
+        cudaMemcpyAsync(h_ke_, ctx.frame.kinetic, sizeof(double),
+                        cudaMemcpyDeviceToHost, ds);
     }
 
     void on_data_ready(const LaunchContext& ctx) override {
-        cpu::thermo_print(ctx.step, *h_pe_, *h_ke_, n_atoms_, header_printed_, file_);
+        cpu::thermo_print(ctx.step, *h_pe_, *h_ke_, n_atoms_, header_printed_,
+                          file_);
     }
 
     void on_destroy(const DestroyContext&) override {
-        if (file_.is_open()) file_.close();
-        if (h_pe_) { cudaFreeHost(h_pe_); h_pe_ = nullptr; }
-        if (h_ke_) { cudaFreeHost(h_ke_); h_ke_ = nullptr; }
+        if (file_.is_open())
+            file_.close();
+        if (h_pe_) {
+            cudaFreeHost(h_pe_);
+            h_pe_ = nullptr;
+        }
+        if (h_ke_) {
+            cudaFreeHost(h_ke_);
+            h_ke_ = nullptr;
+        }
     }
 
-private:
+  private:
     int every_;
     std::string filename_;
-    int  n_atoms_         = 0;
-    bool header_printed_  = false;
+    int n_atoms_ = 0;
+    bool header_printed_ = false;
     std::ofstream file_;
     double* h_pe_ = nullptr;
     double* h_ke_ = nullptr;

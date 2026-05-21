@@ -1,22 +1,21 @@
 /// @file driver.cu
 /// @brief CUDA Backend implementation + Driver explicit instantiations.
 
+#include "atomiverse/cpu/transfer.h"
 #include "atomiverse/cuda/backend.cuh"
 #include "atomiverse/cuda/backend_traits.cuh"
 #include "atomiverse/cuda/error.cuh"
 #include "atomiverse/cuda/log_callback.h"
-#include "atomiverse/cpu/transfer.h"
+#include "atomiverse/cuda/timer.cuh"
 #include "atomiverse/cuda/transfer.cuh"
 #include "atomiverse/facade/driver_impl.h"
 #include "atomiverse/facade/stage.h"
-#include "atomiverse/cuda/timer.cuh"
 
 namespace ATV {
 
+using cuda::prec_t;
 using cuda::real_t;
 using cuda::work_t;
-using cuda::prec_t;
-
 
 // ── Backend ────────────────────────────────────────────────────────
 
@@ -37,7 +36,8 @@ void Backend::build_components() {
     BuildContext ctx{context_, frame_};
     for (auto& slot : plan_->slots)
         for (auto& op : slot.ops) {
-            if (timer_) timer_->begin(static_cast<cudaStream_t>(context_.stream));
+            if (timer_)
+                timer_->begin(static_cast<cudaStream_t>(context_.stream));
             op.component->build(ctx);
             if (timer_) {
                 timer_->end(static_cast<cudaStream_t>(context_.stream),
@@ -45,32 +45,40 @@ void Backend::build_components() {
             }
         }
     cudaStreamSynchronize(static_cast<cudaStream_t>(context_.stream));
-    if (timer_) timer_->flush();
+    if (timer_)
+        timer_->flush();
 }
 
 void Backend::step(int step_idx) {
     for (auto& slot : plan_->slots) {
-        if (slot.ops.empty()) continue;
+        if (slot.ops.empty())
+            continue;
         for (auto& op : slot.ops) {
             if (op.frequency > 0 && step_idx % op.frequency != 0)
                 continue;
             auto stream = static_cast<cudaStream_t>(
                 (op.scheduling == Scheduling::deferrable)
-                    ? context_.defer_stream : context_.stream);
+                    ? context_.defer_stream
+                    : context_.stream);
             LaunchContext ctx{context_, frame_, slot.phase, step_idx};
-            if (timer_) timer_->begin(stream);
+            if (timer_)
+                timer_->begin(stream);
             op.component->launch(ctx);
-            if (timer_) timer_->end(stream, slot.phase, op.component->name());
+            if (timer_)
+                timer_->end(stream, slot.phase, op.component->name());
         }
         cudaStreamSynchronize(static_cast<cudaStream_t>(context_.stream));
         cudaStreamSynchronize(static_cast<cudaStream_t>(context_.defer_stream));
-        if (timer_) timer_->flush();
+        if (timer_)
+            timer_->flush();
     }
-    if (timer_) timer_->step_done();
+    if (timer_)
+        timer_->step_done();
 }
 
 void Backend::run(int n_steps) {
-    for (int s = 0; s < n_steps; ++s) step(s);
+    for (int s = 0; s < n_steps; ++s)
+        step(s);
 }
 
 void Backend::destroy_components() {
@@ -82,9 +90,7 @@ void Backend::destroy_components() {
     }
 }
 
-void Backend::retrieve(cpu::Frame& frame) {
-    cuda::to_cpu(frame_, frame);
-}
+void Backend::retrieve(cpu::Frame& frame) { cuda::to_cpu(frame_, frame); }
 
 void Backend::sync() {
     cudaStreamSynchronize(static_cast<cudaStream_t>(context_.stream));
@@ -96,8 +102,10 @@ void Backend::shutdown() {
     frame_ = {};
     auto main = static_cast<cudaStream_t>(context_.stream);
     auto defer = static_cast<cudaStream_t>(context_.defer_stream);
-    if (main) cudaStreamDestroy(main);
-    if (defer) cudaStreamDestroy(defer);
+    if (main)
+        cudaStreamDestroy(main);
+    if (defer)
+        cudaStreamDestroy(defer);
     context_ = {};
     plan_ = nullptr;
     cuda::unregister_log_callback();

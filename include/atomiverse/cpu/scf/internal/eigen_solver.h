@@ -19,7 +19,7 @@ namespace scf {
 namespace internal {
 
 class EigenSolver {
-public:
+  public:
     EigenSolver() = default;
 
     /// @brief Pre-allocate workspaces sized for `n_basis`. Currently a

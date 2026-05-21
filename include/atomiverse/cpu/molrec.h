@@ -21,7 +21,7 @@ class Frame; // forward decl, defined in cpu/frame.h
 /// All frame data lives in molrs::MolRec on the Rust side.
 /// C++ only stages data and commits — no local frame storage.
 class MolRec {
-public:
+  public:
     MolRec();
     ~MolRec();
     MolRec(MolRec&&) noexcept;
@@ -58,7 +58,7 @@ public:
     void* ffi_handle();
     const void* ffi_handle() const;
 
-private:
+  private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };

@@ -21,11 +21,16 @@ namespace scf {
 
 const char* basis_set_name(BasisSet basis) {
     switch (basis) {
-        case BasisSet::STO3G:      return "STO-3G";
-        case BasisSet::Pople631G:  return "6-31G";
-        case BasisSet::Pople631Gs: return "6-31G*";
-        case BasisSet::Def2SVP:    return "def2-SVP";
-        case BasisSet::Def2TZVP:   return "def2-TZVP";
+    case BasisSet::STO3G:
+        return "STO-3G";
+    case BasisSet::Pople631G:
+        return "6-31G";
+    case BasisSet::Pople631Gs:
+        return "6-31G*";
+    case BasisSet::Def2SVP:
+        return "def2-SVP";
+    case BasisSet::Def2TZVP:
+        return "def2-TZVP";
     }
     return "unknown";
 }
@@ -71,9 +76,12 @@ AtomList make_atom_list(const Frame& frame, int charge) {
         // Frame positions are in Angstrom; SCF integrals live in Bohr.
         using units::convert;
         using units::Length;
-        out.atoms[i].pos[0] = convert(frame.atoms.x[i], Length::Angstrom, Length::Bohr);
-        out.atoms[i].pos[1] = convert(frame.atoms.y[i], Length::Angstrom, Length::Bohr);
-        out.atoms[i].pos[2] = convert(frame.atoms.z[i], Length::Angstrom, Length::Bohr);
+        out.atoms[i].pos[0] =
+            convert(frame.atoms.x[i], Length::Angstrom, Length::Bohr);
+        out.atoms[i].pos[1] =
+            convert(frame.atoms.y[i], Length::Angstrom, Length::Bohr);
+        out.atoms[i].pos[2] =
+            convert(frame.atoms.z[i], Length::Angstrom, Length::Bohr);
         n_electrons += Z;
     }
     out.n_electrons = n_electrons;
@@ -90,29 +98,28 @@ namespace {
 // Stage B2b alongside the per-Cartesian-component normalization
 // plumbing.
 
-ShellList build_shell_list_from_table(
-    const AtomList& atoms,
-    const std::vector<basis_data::AtomBasis>& table,
-    BasisSet basis_id)
-{
+ShellList
+build_shell_list_from_table(const AtomList& atoms,
+                            const std::vector<basis_data::AtomBasis>& table,
+                            BasisSet basis_id) {
     const int natm = static_cast<int>(atoms.atoms.size());
 
     // First pass: count AOs and validate element coverage.
     int n_basis = 0;
     for (int a = 0; a < natm; ++a) {
         const int Z = atoms.atoms[a].Z;
-        if (Z < 1 || Z >= static_cast<int>(table.size()) ||
-            table[static_cast<std::size_t>(Z)].shells.empty()) {
+        if (Z < 1 || Z >= static_cast<int>(table.size())
+            || table[static_cast<std::size_t>(Z)].shells.empty()) {
             throw std::runtime_error(
-                std::string("cpu::scf::build_shell_list: '") +
-                basis_set_name(basis_id) + "' has no data for Z=" +
-                std::to_string(Z));
+                std::string("cpu::scf::build_shell_list: '")
+                + basis_set_name(basis_id)
+                + "' has no data for Z=" + std::to_string(Z));
         }
         for (const auto& sh : table[static_cast<std::size_t>(Z)].shells) {
             if (sh.l < 0 || sh.l > kMaxL) {
-                throw std::runtime_error(
-                    "cpu::scf::build_shell_list: l=" + std::to_string(sh.l) +
-                    " not yet supported.");
+                throw std::runtime_error("cpu::scf::build_shell_list: l="
+                                         + std::to_string(sh.l)
+                                         + " not yet supported.");
             }
             n_basis += n_cart_of(sh.l);
         }
@@ -135,12 +142,15 @@ ShellList build_shell_list_from_table(
             const int np = static_cast<int>(sh.alpha.size());
 
             auto emit_shell = [&](int l, int cart, double norm_at(double)) {
-                auto& store = out.shell_storage[static_cast<std::size_t>(shell_idx)];
+                auto& store =
+                    out.shell_storage[static_cast<std::size_t>(shell_idx)];
                 store.resize(static_cast<std::size_t>(2 * np));
                 for (int p = 0; p < np; ++p) {
-                    store[static_cast<std::size_t>(p)] = sh.alpha[static_cast<std::size_t>(p)];
+                    store[static_cast<std::size_t>(p)] =
+                        sh.alpha[static_cast<std::size_t>(p)];
                     store[static_cast<std::size_t>(np + p)] =
-                        sh.coeff[static_cast<std::size_t>(p)] * norm_at(sh.alpha[static_cast<std::size_t>(p)]);
+                        sh.coeff[static_cast<std::size_t>(p)]
+                        * norm_at(sh.alpha[static_cast<std::size_t>(p)]);
                 }
                 auto& s = out.shells[static_cast<std::size_t>(shell_idx)];
                 s.n_prim = np;
@@ -158,11 +168,10 @@ ShellList build_shell_list_from_table(
             // components of a given l share the same orientation-independent
             // normalization (libcint / PySCF cart convention).
             const int n_cart = n_cart_of(sh.l);
-            double (*norm_at)(double) =
-                (sh.l == 0) ? native::phys_norm
-              : (sh.l == 1) ? native::phys_norm_p
-              : (sh.l == 2) ? native::phys_norm_d
-              :               native::phys_norm_f;
+            double (*norm_at)(double) = (sh.l == 0)   ? native::phys_norm
+                                        : (sh.l == 1) ? native::phys_norm_p
+                                        : (sh.l == 2) ? native::phys_norm_d
+                                                      : native::phys_norm_f;
             for (int cart = 0; cart < n_cart; ++cart)
                 emit_shell(sh.l, cart, norm_at);
         }
@@ -174,21 +183,20 @@ ShellList build_shell_list_from_table(
 
 ShellList build_shell_list(const AtomList& atoms, BasisSet basis) {
     switch (basis) {
-        case BasisSet::STO3G:
-            return build_shell_list_from_table(
-                atoms, basis_data::sto3g(), basis);
-        case BasisSet::Pople631G:
-            return build_shell_list_from_table(
-                atoms, basis_data::pople_631g(), basis);
-        case BasisSet::Pople631Gs:
-            return build_shell_list_from_table(
-                atoms, basis_data::pople_631gs(), basis);
-        case BasisSet::Def2SVP:
-            return build_shell_list_from_table(
-                atoms, basis_data::def2_svp(), basis);
-        case BasisSet::Def2TZVP:
-            return build_shell_list_from_table(
-                atoms, basis_data::def2_tzvp(), basis);
+    case BasisSet::STO3G:
+        return build_shell_list_from_table(atoms, basis_data::sto3g(), basis);
+    case BasisSet::Pople631G:
+        return build_shell_list_from_table(atoms, basis_data::pople_631g(),
+                                           basis);
+    case BasisSet::Pople631Gs:
+        return build_shell_list_from_table(atoms, basis_data::pople_631gs(),
+                                           basis);
+    case BasisSet::Def2SVP:
+        return build_shell_list_from_table(atoms, basis_data::def2_svp(),
+                                           basis);
+    case BasisSet::Def2TZVP:
+        return build_shell_list_from_table(atoms, basis_data::def2_tzvp(),
+                                           basis);
     }
     throw std::runtime_error("cpu::scf::build_shell_list: unknown BasisSet");
 }

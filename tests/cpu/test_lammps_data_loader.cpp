@@ -25,8 +25,9 @@ namespace {
 #define ATV_SOURCE_DIR "."
 #endif
 
-const std::string kDataPath = std::string(ATV_SOURCE_DIR) +
-    "/benchmarks/md/reference/polyethylene/msu_pe.data";
+const std::string kDataPath =
+    std::string(ATV_SOURCE_DIR)
+    + "/benchmarks/md/reference/polyethylene/msu_pe.data";
 
 TEST(LammpsDataLoader, MsuPolyethyleneCountsAndBox) {
     ATV::cpu::Frame frame = ATV::cpu::load_lammps_data(kDataPath);

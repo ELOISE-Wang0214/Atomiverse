@@ -10,9 +10,10 @@ namespace cpu {
 namespace scf {
 namespace internal {
 
-std::pair<RealMatrix, RealMatrix> DIISMixer::step(
-    const RealMatrix& F_alpha, const RealMatrix& e_alpha,
-    const RealMatrix& F_beta,  const RealMatrix& e_beta) {
+std::pair<RealMatrix, RealMatrix> DIISMixer::step(const RealMatrix& F_alpha,
+                                                  const RealMatrix& e_alpha,
+                                                  const RealMatrix& F_beta,
+                                                  const RealMatrix& e_beta) {
 
     Fa_hist_.push_back(F_alpha);
     Fb_hist_.push_back(F_beta);
@@ -20,12 +21,15 @@ std::pair<RealMatrix, RealMatrix> DIISMixer::step(
     eb_hist_.push_back(e_beta);
 
     while (static_cast<int>(Fa_hist_.size()) > max_vectors_) {
-        Fa_hist_.pop_front(); Fb_hist_.pop_front();
-        ea_hist_.pop_front(); eb_hist_.pop_front();
+        Fa_hist_.pop_front();
+        Fb_hist_.pop_front();
+        ea_hist_.pop_front();
+        eb_hist_.pop_front();
     }
 
     int m = static_cast<int>(Fa_hist_.size());
-    if (m < 2) return {Fa_hist_.back(), Fb_hist_.back()};
+    if (m < 2)
+        return {Fa_hist_.back(), Fb_hist_.back()};
 
     int n = static_cast<int>(F_alpha.shape(0));
 
@@ -35,7 +39,7 @@ std::pair<RealMatrix, RealMatrix> DIISMixer::step(
     for (int i = 0; i < m; ++i)
         for (int j = 0; j <= i; ++j) {
             double val = xt::sum(ea_hist_[i] * ea_hist_[j])()
-                     + xt::sum(eb_hist_[i] * eb_hist_[j])();
+                         + xt::sum(eb_hist_[i] * eb_hist_[j])();
             B(i, j) = val;
             B(j, i) = val;
         }

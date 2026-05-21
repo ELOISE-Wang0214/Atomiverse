@@ -18,15 +18,15 @@
 #pragma once
 
 #include "atomiverse/cpu/component.h"
-#include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/cpu_driver.h"
+#include "atomiverse/cpu/frame.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
 namespace cpu {
 
 class OptimizeDriver : public CPUDriver<ATV::minimizer::Phase> {
-public:
+  public:
     /// @brief Iterate to convergence or up to `max_iter` iterations.
     /// @param frame Host-resident system state, updated in place.
     /// @param max_iter Iteration budget.
@@ -38,29 +38,31 @@ public:
             mutable_outer_status().reset();
             step_once(s);
             ++iters;
-            if (outer_status().converged || outer_status().stop_requested) break;
+            if (outer_status().converged || outer_status().stop_requested)
+                break;
         }
         teardown_pass();
         return iters;
     }
 
-protected:
+  protected:
     void validate_components() const override {
         bool has_optimizer = false;
         bool has_energy_or_force_evaluator = false;
         for_each_pending([&](const cpu::ComponentBase& c) {
             if (c.role() == ComponentRole::Optimizer)
                 has_optimizer = true;
-            if (c.role() == ComponentRole::Evaluator &&
-                (has_capability(c.capabilities(), Capability::Energy) ||
-                 has_capability(c.capabilities(), Capability::Force))) {
+            if (c.role() == ComponentRole::Evaluator
+                && (has_capability(c.capabilities(), Capability::Energy)
+                    || has_capability(c.capabilities(), Capability::Force))) {
                 has_energy_or_force_evaluator = true;
             }
         });
         if (!has_optimizer)
             throw_missing("Optimizer");
         if (!has_energy_or_force_evaluator)
-            throw_missing("Evaluator with Capability::Energy or Capability::Force");
+            throw_missing(
+                "Evaluator with Capability::Energy or Capability::Force");
     }
 };
 

@@ -19,8 +19,8 @@
 
 #include <cuda_runtime.h>
 
-#include <xtensor/containers/xtensor.hpp>
 #include <xtensor/containers/xadapt.hpp>
+#include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/cpu/observer/mulliken.h"
 #include "atomiverse/cuda/async_bridge.cuh"
@@ -40,7 +40,7 @@ namespace ATV {
 /// only CUDA-specific responsibility is bringing the device density
 /// matrix back to host via the async D2H bridge.
 class MullikenObs : public AsyncBridge {
-public:
+  public:
     explicit MullikenObs(const cpu::scf::IntegralPack& ints, int every = 1)
         : integrals_(ints), every_(every) {}
 
@@ -54,10 +54,10 @@ public:
     int iterations() const { return iterations_; }
     int n_occ() const { return n_occ_; }
 
-protected:
+  protected:
     void on_build(const BuildContext& ctx) override {
         n_basis_ = ctx.frame.scf.n;
-        cudaMallocHost(&h_P_,      n_basis_ * n_basis_ * sizeof(double));
+        cudaMallocHost(&h_P_, n_basis_ * n_basis_ * sizeof(double));
         cudaMallocHost(&h_energy_, sizeof(double));
         *h_energy_ = 0.0;
     }
@@ -67,12 +67,14 @@ protected:
     }
 
     void issue_d2h(const LaunchContext& ctx) override {
-        auto ds    = static_cast<cudaStream_t>(ctx.runtime.defer_stream);
-        auto& f    = ctx.frame;
+        auto ds = static_cast<cudaStream_t>(ctx.runtime.defer_stream);
+        auto& f = ctx.frame;
         const int n2 = n_basis_ * n_basis_;
-        cudaMemcpyAsync(h_P_, f.scf.P, n2 * sizeof(double), cudaMemcpyDeviceToHost, ds);
+        cudaMemcpyAsync(h_P_, f.scf.P, n2 * sizeof(double),
+                        cudaMemcpyDeviceToHost, ds);
         if (f.energy)
-            cudaMemcpyAsync(h_energy_, f.energy, sizeof(double), cudaMemcpyDeviceToHost, ds);
+            cudaMemcpyAsync(h_energy_, f.energy, sizeof(double),
+                            cudaMemcpyDeviceToHost, ds);
     }
 
     void on_data_ready(const LaunchContext& ctx) override {
@@ -82,28 +84,34 @@ protected:
                                 std::vector<std::size_t>{nb, nb});
         const xt::xtensor<double, 2> P = P_view;
 
-        charges_    = cpu::mulliken_charge(integrals_, P);
+        charges_ = cpu::mulliken_charge(integrals_, P);
         energy_val_ = *h_energy_;
         iterations_ = ctx.frame.scf.iteration;
-        n_occ_      = static_cast<int>(ctx.frame.scf.n_occ);
+        n_occ_ = static_cast<int>(ctx.frame.scf.n_occ);
     }
 
     void on_destroy(const DestroyContext&) override {
-        if (h_P_)      { cudaFreeHost(h_P_);      h_P_      = nullptr; }
-        if (h_energy_) { cudaFreeHost(h_energy_); h_energy_ = nullptr; }
+        if (h_P_) {
+            cudaFreeHost(h_P_);
+            h_P_ = nullptr;
+        }
+        if (h_energy_) {
+            cudaFreeHost(h_energy_);
+            h_energy_ = nullptr;
+        }
     }
 
-private:
+  private:
     cpu::scf::IntegralPack integrals_;
     int every_;
 
     std::vector<double> charges_;
     double energy_val_ = 0;
-    int iterations_  = 0;
-    int n_occ_       = 0;
+    int iterations_ = 0;
+    int n_occ_ = 0;
 
-    int     n_basis_  = 0;
-    double* h_P_      = nullptr;
+    int n_basis_ = 0;
+    double* h_P_ = nullptr;
     double* h_energy_ = nullptr;
 };
 

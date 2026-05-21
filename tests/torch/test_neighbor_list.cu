@@ -6,11 +6,11 @@
 #ifdef ATV_HAS_TORCH
 
 #include "atomiverse/torch/neighbor_list.cuh"
-#include "atomiverse/torch/transfer.cuh"
 #include "atomiverse/torch/potentials/lj.cuh"
+#include "atomiverse/torch/transfer.cuh"
 
-#include <cuda_runtime.h>
 #include <cmath>
+#include <cuda_runtime.h>
 
 using ATV::Mat3;
 namespace atorch = ATV::torch;
@@ -117,7 +117,9 @@ TEST(TorchNeighborList, DistanceConsistency) {
 
 TEST(TorchNeighborList, PairListFeedsLJ) {
     auto frame = make_cubic_frame(3, double(10.0));
-    auto real_opts = ::torch::TensorOptions().dtype(atorch::kRealDtype).device(::torch::kCUDA);
+    auto real_opts = ::torch::TensorOptions()
+                         .dtype(atorch::kRealDtype)
+                         .device(::torch::kCUDA);
 
     int n = frame.n_atoms();
     frame.atoms.fx = ::torch::zeros({n}, real_opts);
@@ -129,9 +131,8 @@ TEST(TorchNeighborList, PairListFeedsLJ) {
     ASSERT_GT(frame.n_pairs(), 0);
 
     double eps = double(1.0), sig = double(1.0);
-    auto energy = atorch::lj(frame,
-        ::torch::tensor({eps}, real_opts),
-        ::torch::tensor({sig}, real_opts), double(4.0));
+    auto energy = atorch::lj(frame, ::torch::tensor({eps}, real_opts),
+                             ::torch::tensor({sig}, real_opts), double(4.0));
     cudaDeviceSynchronize();
 
     double E = energy.to(::torch::kCPU).item<double>();

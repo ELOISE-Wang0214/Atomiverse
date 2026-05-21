@@ -13,9 +13,9 @@
 
 #include <memory>
 
-#include "atomiverse/torch/frame.cuh"
 #include "atomiverse/cuda/context.cuh"
 #include "atomiverse/cuda/frame.cuh"
+#include "atomiverse/torch/frame.cuh"
 
 namespace ATV {
 
@@ -36,7 +36,7 @@ namespace torch {
 /// // frame.pair_* are now populated Tensors
 /// @endcode
 class NeighborList {
-public:
+  public:
     /// @brief Construct with cutoff and optional skin width.
     /// @param cutoff Interaction cutoff [Angstrom].
     /// @param skin   Verlet skin width [Angstrom]. Negative = auto (0.3 * cutoff).
@@ -54,7 +54,7 @@ public:
     /// @param frame torch::Frame with up-to-date positions.
     void update(Frame& frame);
 
-private:
+  private:
     double cutoff_;
     double skin_;
     std::unique_ptr<ATV::NeighborList> nl_;

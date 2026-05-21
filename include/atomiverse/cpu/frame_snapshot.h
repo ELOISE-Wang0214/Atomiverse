@@ -26,11 +26,11 @@ namespace cpu {
 /// (i.e. resizes to zero) the rest. Consumers reading unflagged fields see
 /// an empty vector — a simple invariant easy to assert in tests.
 struct CaptureMask {
-    bool positions   = true;   ///< x, y, z.
-    bool velocities  = false;  ///< vx, vy, vz.
-    bool forces      = false;  ///< fx, fy, fz.
-    bool types       = false;  ///< atom type.
-    bool tags        = false;  ///< global tag.
+    bool positions = true;   ///< x, y, z.
+    bool velocities = false; ///< vx, vy, vz.
+    bool forces = false;     ///< fx, fy, fz.
+    bool types = false;      ///< atom type.
+    bool tags = false;       ///< global tag.
 };
 
 /// @brief Contiguous host-side copy of the locally-owned portion of a `cpu::Frame`.
@@ -39,15 +39,15 @@ struct CaptureMask {
 /// bounded heap growth. All vectors are sized at `build()` time to the
 /// frame's initial capacity; `SnapshotPublisher` only writes, never reallocates.
 struct FrameSnapshot {
-    int step = 0;          ///< Simulation step at which this snapshot was published.
-    int n_owned = 0;       ///< Number of owned atoms captured.
-    cpu::Box box{};        ///< Simulation cell at the time of capture [Angstrom].
+    int step = 0;    ///< Simulation step at which this snapshot was published.
+    int n_owned = 0; ///< Number of owned atoms captured.
+    cpu::Box box{};  ///< Simulation cell at the time of capture [Angstrom].
 
-    std::vector<double> x, y, z;     ///< Positions [Angstrom].
-    std::vector<double> vx, vy, vz;  ///< Velocities [Angstrom/fs].
-    std::vector<double> fx, fy, fz;  ///< Forces [eV/Angstrom].
-    std::vector<int>          type;  ///< Atom type indices.
-    std::vector<std::int64_t> tag;   ///< Global atom tags.
+    std::vector<double> x, y, z;    ///< Positions [Angstrom].
+    std::vector<double> vx, vy, vz; ///< Velocities [Angstrom/fs].
+    std::vector<double> fx, fy, fz; ///< Forces [eV/Angstrom].
+    std::vector<int> type;          ///< Atom type indices.
+    std::vector<std::int64_t> tag;  ///< Global atom tags.
 
     /// @brief Optional opaque payload for domain-specific captures (e.g.
     /// density matrix for Mulliken, orbital coefficients for cube writes).

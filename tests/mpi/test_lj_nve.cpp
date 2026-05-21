@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/backend.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/lj.h"
@@ -32,7 +33,6 @@
 #include "atomiverse/cpu/md/mpi/halo_exchange.h"
 #include "atomiverse/cpu/md/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/core/mat3.h"
 
 using namespace ATV;
 
@@ -42,8 +42,10 @@ cpu::Frame make_fcc_argon(int n_cells, double a_lat) {
     const int n = n_cells * n_cells * n_cells * 4;
     cpu::Frame frame(n);
     double basis[4][3] = {
-        {0.0, 0.0, 0.0}, {0.5, 0.5, 0.0},
-        {0.5, 0.0, 0.5}, {0.0, 0.5, 0.5},
+        {0.0, 0.0, 0.0},
+        {0.5, 0.5, 0.0},
+        {0.5, 0.0, 0.5},
+        {0.0, 0.5, 0.5},
     };
     // Shift the lattice off the slab boundaries by a quarter lattice
     // constant so no FCC site lands exactly on `sublo[d]`/`subhi[d]` --
@@ -57,9 +59,12 @@ cpu::Frame make_fcc_argon(int n_cells, double a_lat) {
         for (int iy = 0; iy < n_cells; ++iy)
             for (int iz = 0; iz < n_cells; ++iz)
                 for (int b = 0; b < 4; ++b) {
-                    frame.atoms.x[idx] = (static_cast<double>(ix) + basis[b][0]) * a_lat + shift;
-                    frame.atoms.y[idx] = (static_cast<double>(iy) + basis[b][1]) * a_lat + shift;
-                    frame.atoms.z[idx] = (static_cast<double>(iz) + basis[b][2]) * a_lat + shift;
+                    frame.atoms.x[idx] =
+                        (static_cast<double>(ix) + basis[b][0]) * a_lat + shift;
+                    frame.atoms.y[idx] =
+                        (static_cast<double>(iy) + basis[b][1]) * a_lat + shift;
+                    frame.atoms.z[idx] =
+                        (static_cast<double>(iz) + basis[b][2]) * a_lat + shift;
                     frame.atoms.mass[idx] = 39.948;
                     frame.atoms.type[idx] = 18;
                     // Tiny structured velocity pattern: deterministic, sum-to-zero.
@@ -94,14 +99,17 @@ TEST(LjNve, EnergyConservationSingleRank) {
 
     // Box = 4 * 5.3 = 21.2 Å; FCC NN = 5.3/√2 ≈ 3.75 Å, close to σ=3.4 Å.
     // LJ is gentle here; NVE drift over short runs should be small.
-    auto frame = make_fcc_argon(5, 5.3);  // 500 atoms, box 26.5 Å, slab 13.25 Å @ 8 ranks
+    auto frame =
+        make_fcc_argon(5, 5.3); // 500 atoms, box 26.5 Å, slab 13.25 Å @ 8 ranks
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{1.0});                        // dt = 1 fs
+    sim.add(cpu::md::VelocityVerlet{1.0}); // dt = 1 fs
     sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{6.0}, -10);
     sim.on(ATV::md::Phase::force).add(cpu::md::LJ{0.0104, 3.4, 6.0});
-    sim.on(ATV::md::Phase::pre_force).add(cpu::md::mpi::HaloExchangeForward{6.0}, -20);
-    sim.on(ATV::md::Phase::post_force).add(cpu::md::mpi::HaloExchangeReverse{}, -1000);
+    sim.on(ATV::md::Phase::pre_force)
+        .add(cpu::md::mpi::HaloExchangeForward{6.0}, -20);
+    sim.on(ATV::md::Phase::post_force)
+        .add(cpu::md::mpi::HaloExchangeReverse{}, -1000);
     sim.build();
 
     sim.run(frame, 1);
@@ -111,9 +119,9 @@ TEST(LjNve, EnergyConservationSingleRank) {
     sim.run(frame, 20);
     const double e1 = frame.energy + frame.kinetic;
     const double drift = std::abs(e1 - e0) / std::abs(e0);
-    EXPECT_LT(drift, 1e-2)
-        << "single-rank NVE energy drift " << drift
-        << " exceeds 1e-2 over 20 steps (E0=" << e0 << ", E1=" << e1 << ")";
+    EXPECT_LT(drift, 1e-2) << "single-rank NVE energy drift " << drift
+                           << " exceeds 1e-2 over 20 steps (E0=" << e0
+                           << ", E1=" << e1 << ")";
 }
 
 // ── NVE energy conservation under multi-rank halo exchange ───────────
@@ -134,8 +142,10 @@ TEST(LjNve, EnergyConservationMultiRank) {
     sim.add(cpu::md::VelocityVerlet{1.0});
     sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{6.0}, -10);
     sim.on(ATV::md::Phase::force).add(cpu::md::LJ{0.0104, 3.4, 6.0});
-    sim.on(ATV::md::Phase::pre_force).add(cpu::md::mpi::HaloExchangeForward{6.0}, -20);
-    sim.on(ATV::md::Phase::post_force).add(cpu::md::mpi::HaloExchangeReverse{}, -1000);
+    sim.on(ATV::md::Phase::pre_force)
+        .add(cpu::md::mpi::HaloExchangeForward{6.0}, -20);
+    sim.on(ATV::md::Phase::post_force)
+        .add(cpu::md::mpi::HaloExchangeReverse{}, -1000);
     sim.build();
 
     sim.run(frame, 1);
@@ -145,9 +155,9 @@ TEST(LjNve, EnergyConservationMultiRank) {
     sim.run(frame, 20);
     const double e1 = total_energy_global(frame);
     const double drift = std::abs(e1 - e0) / std::abs(e0);
-    EXPECT_LT(drift, 1e-2)
-        << "multi-rank NVE energy drift " << drift
-        << " exceeds 1e-2 over 20 steps (E0=" << e0 << ", E1=" << e1 << ")";
+    EXPECT_LT(drift, 1e-2) << "multi-rank NVE energy drift " << drift
+                           << " exceeds 1e-2 over 20 steps (E0=" << e0
+                           << ", E1=" << e1 << ")";
 }
 
 int main(int argc, char** argv) {

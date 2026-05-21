@@ -5,9 +5,9 @@
 
 #include "atomiverse/torch/transfer.cuh"
 
+#include <c10/cuda/CUDAStream.h>
 #include <stdexcept>
 #include <torch/torch.h>
-#include <c10/cuda/CUDAStream.h>
 
 namespace ATV {
 namespace torch {
@@ -16,46 +16,58 @@ namespace {
 
 /// @brief Wrap a device cuda::real_t* as a non-owning 1D Tensor.
 Tensor wrap_real(cuda::real_t* ptr, int n) {
-    if (!ptr || n <= 0) return Tensor();
-    auto opts = ::torch::TensorOptions().dtype(kRealDtype).device(::torch::kCUDA);
+    if (!ptr || n <= 0)
+        return Tensor();
+    auto opts =
+        ::torch::TensorOptions().dtype(kRealDtype).device(::torch::kCUDA);
     return ::torch::from_blob(ptr, {static_cast<int64_t>(n)}, opts);
 }
 
 /// @brief Wrap a device int* as a non-owning 1D Tensor.
 Tensor wrap_int(int* ptr, int n) {
-    if (!ptr || n <= 0) return Tensor();
-    auto opts = ::torch::TensorOptions().dtype(kIntDtype).device(::torch::kCUDA);
+    if (!ptr || n <= 0)
+        return Tensor();
+    auto opts =
+        ::torch::TensorOptions().dtype(kIntDtype).device(::torch::kCUDA);
     return ::torch::from_blob(ptr, {static_cast<int64_t>(n)}, opts);
 }
 
 /// @brief Wrap a device cuda::prec_t* scalar (1 element) as a non-owning Tensor.
 Tensor wrap_scalar(cuda::prec_t* ptr) {
-    if (!ptr) return Tensor();
-    auto opts = ::torch::TensorOptions().dtype(kPrecDtype).device(::torch::kCUDA);
+    if (!ptr)
+        return Tensor();
+    auto opts =
+        ::torch::TensorOptions().dtype(kPrecDtype).device(::torch::kCUDA);
     return ::torch::from_blob(ptr, {1}, opts);
 }
 
 /// @brief Extract cuda::real_t* from a Tensor. Validates CUDA, contiguous, correct dtype.
 cuda::real_t* unwrap_real(const Tensor& t, const char* field_name) {
-    if (!t.defined() || t.numel() == 0) return nullptr;
+    if (!t.defined() || t.numel() == 0)
+        return nullptr;
     if (!t.is_cuda())
-        throw std::invalid_argument(std::string(field_name) + ": expected CUDA tensor");
+        throw std::invalid_argument(std::string(field_name)
+                                    + ": expected CUDA tensor");
     if (t.scalar_type() != kRealDtype)
         throw std::invalid_argument(std::string(field_name) + ": wrong dtype");
     if (!t.is_contiguous())
-        throw std::invalid_argument(std::string(field_name) + ": not contiguous");
+        throw std::invalid_argument(std::string(field_name)
+                                    + ": not contiguous");
     return t.data_ptr<cuda::real_t>();
 }
 
 /// @brief Extract int* from a Tensor.
 int* unwrap_int(const Tensor& t, const char* field_name) {
-    if (!t.defined() || t.numel() == 0) return nullptr;
+    if (!t.defined() || t.numel() == 0)
+        return nullptr;
     if (!t.is_cuda())
-        throw std::invalid_argument(std::string(field_name) + ": expected CUDA tensor");
+        throw std::invalid_argument(std::string(field_name)
+                                    + ": expected CUDA tensor");
     if (t.scalar_type() != kIntDtype)
         throw std::invalid_argument(std::string(field_name) + ": wrong dtype");
     if (!t.is_contiguous())
-        throw std::invalid_argument(std::string(field_name) + ": not contiguous");
+        throw std::invalid_argument(std::string(field_name)
+                                    + ": not contiguous");
     return t.data_ptr<int>();
 }
 
@@ -63,17 +75,18 @@ int* unwrap_int(const Tensor& t, const char* field_name) {
 template <typename T, ScalarType dtype>
 Tensor xtensor_to_cuda(const xt::xtensor<T, 1>& arr) {
     int64_t n = static_cast<int64_t>(arr.size());
-    if (n == 0) return Tensor();
+    if (n == 0)
+        return Tensor();
     auto opts = ::torch::TensorOptions().dtype(dtype);
-    auto cpu_t = ::torch::from_blob(
-        const_cast<T*>(arr.data()), {n}, opts);
+    auto cpu_t = ::torch::from_blob(const_cast<T*>(arr.data()), {n}, opts);
     return cpu_t.to(::torch::kCUDA);
 }
 
 /// @brief Copy a CUDA Tensor to an xtensor<T>.
 template <typename T>
 void cuda_to_xtensor(const Tensor& t, xt::xtensor<T, 1>& arr) {
-    if (!t.defined() || t.numel() == 0) return;
+    if (!t.defined() || t.numel() == 0)
+        return;
     auto cpu_t = t.to(::torch::kCPU).contiguous();
     int n = static_cast<int>(cpu_t.numel());
     std::memcpy(arr.data(), cpu_t.data_ptr<T>(),
@@ -107,11 +120,13 @@ Frame to_torch(const cuda::Frame& src) {
     dst.energy = wrap_scalar(src.energy);
     dst.kinetic = wrap_scalar(src.kinetic);
     if (src.stress) {
-        auto opts = ::torch::TensorOptions().dtype(kPrecDtype).device(::torch::kCUDA);
+        auto opts =
+            ::torch::TensorOptions().dtype(kPrecDtype).device(::torch::kCUDA);
         dst.stress = ::torch::from_blob(src.stress, {6}, opts);
     }
     if (src.box) {
-        auto opts = ::torch::TensorOptions().dtype(kPrecDtype).device(::torch::kCUDA);
+        auto opts =
+            ::torch::TensorOptions().dtype(kPrecDtype).device(::torch::kCUDA);
         dst.box = ::torch::from_blob(src.box, {9}, opts);
     }
 
@@ -238,17 +253,16 @@ Frame from_cpu(const cpu::Frame& src) {
     dst.atoms.type = xtensor_to_cuda<int, kIntDtype>(src.atoms.type);
 
     // System scalars
-    auto prec_opts = ::torch::TensorOptions().dtype(kPrecDtype).device(::torch::kCUDA);
+    auto prec_opts =
+        ::torch::TensorOptions().dtype(kPrecDtype).device(::torch::kCUDA);
     dst.energy = ::torch::zeros({1}, prec_opts);
     dst.kinetic = ::torch::zeros({1}, prec_opts);
     dst.stress = ::torch::zeros({6}, prec_opts);
 
     // Box: copy Mat3 (9 doubles, row-major)
-    double box_data[9] = {
-        src.box(0,0), src.box(0,1), src.box(0,2),
-        src.box(1,0), src.box(1,1), src.box(1,2),
-        src.box(2,0), src.box(2,1), src.box(2,2)
-    };
+    double box_data[9] = {src.box(0, 0), src.box(0, 1), src.box(0, 2),
+                          src.box(1, 0), src.box(1, 1), src.box(1, 2),
+                          src.box(2, 0), src.box(2, 1), src.box(2, 2)};
     auto cpu_opts = ::torch::TensorOptions().dtype(kPrecDtype);
     dst.box = ::torch::from_blob(box_data, {9}, cpu_opts).to(::torch::kCUDA);
 
@@ -268,19 +282,22 @@ Frame from_cpu(const cpu::Frame& src) {
     }
     if (src.dihedrals.atomi.size() > 0) {
         dst.n_dihedrals_ = static_cast<int>(src.dihedrals.atomi.size());
-        dst.dihedrals.atomi = xtensor_to_cuda<int, kIntDtype>(src.dihedrals.atomi);
-        dst.dihedrals.atomj = xtensor_to_cuda<int, kIntDtype>(src.dihedrals.atomj);
-        dst.dihedrals.atomk = xtensor_to_cuda<int, kIntDtype>(src.dihedrals.atomk);
-        dst.dihedrals.atoml = xtensor_to_cuda<int, kIntDtype>(src.dihedrals.atoml);
-        dst.dihedrals.type = xtensor_to_cuda<int, kIntDtype>(src.dihedrals.type);
+        dst.dihedrals.atomi =
+            xtensor_to_cuda<int, kIntDtype>(src.dihedrals.atomi);
+        dst.dihedrals.atomj =
+            xtensor_to_cuda<int, kIntDtype>(src.dihedrals.atomj);
+        dst.dihedrals.atomk =
+            xtensor_to_cuda<int, kIntDtype>(src.dihedrals.atomk);
+        dst.dihedrals.atoml =
+            xtensor_to_cuda<int, kIntDtype>(src.dihedrals.atoml);
+        dst.dihedrals.type =
+            xtensor_to_cuda<int, kIntDtype>(src.dihedrals.type);
     }
 
     return dst;
 }
 
-void destroy(Frame& frame) {
-    frame = Frame{};
-}
+void destroy(Frame& frame) { frame = Frame{}; }
 
 } // namespace torch
 } // namespace ATV

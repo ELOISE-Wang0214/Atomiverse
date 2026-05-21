@@ -25,16 +25,18 @@ namespace ATV {
 template <typename Component>
 struct Operation {
     Component* component; ///< Non-owning pointer to the component.
-    Scheduling scheduling; ///< Cached scheduling trait (blocking or deferrable).
-    int frequency;         ///< Cached execution frequency (0 = every step).
+    Scheduling
+        scheduling; ///< Cached scheduling trait (blocking or deferrable).
+    int frequency;  ///< Cached execution frequency (0 = every step).
 };
 
 /// @brief All operations for one phase, sorted by order.
 /// @tparam Component Component base type.
 template <typename Component>
 struct StageSlot {
-    int phase;                              ///< Phase index within the driver's Phase enum.
-    std::vector<Operation<Component>> ops;  ///< Operations sorted by registration order.
+    int phase; ///< Phase index within the driver's Phase enum.
+    std::vector<Operation<Component>>
+        ops; ///< Operations sorted by registration order.
 };
 
 /// @brief Compiled execution plan -- the schedule between Facade and Backend.
@@ -57,12 +59,12 @@ struct Plan {
 /// @see Driver::build() which uses PlanBuilder internally
 template <typename Component>
 class PlanBuilder {
-public:
+  public:
     /// @brief Binding entry: associates a component with a phase and order.
     struct Entry {
-        int phase;              ///< Target phase index.
-        int order;              ///< Ordering within phase (lower = earlier).
-        Component* component;   ///< Non-owning pointer to the component.
+        int phase;            ///< Target phase index.
+        int order;            ///< Ordering within phase (lower = earlier).
+        Component* component; ///< Non-owning pointer to the component.
     };
 
     /// @brief Register a binding entry.
@@ -79,20 +81,25 @@ public:
         for (int p = 0; p < phase_count; ++p)
             plan.slots[p].phase = p;
 
-        struct SE { int order; Operation<Component> op; };
+        struct SE {
+            int order;
+            Operation<Component> op;
+        };
         std::vector<std::vector<SE>> slot_entries(phase_count);
 
         for (auto& e : entries_) {
             if (e.phase < 0 || e.phase >= phase_count)
-                throw std::runtime_error("Component '" + e.component->name() +
-                    "' binds to invalid phase " + std::to_string(e.phase));
+                throw std::runtime_error("Component '" + e.component->name()
+                                         + "' binds to invalid phase "
+                                         + std::to_string(e.phase));
             Operation<Component> op{e.component, e.component->scheduling(),
-                         e.component->frequency()};
+                                    e.component->frequency()};
             slot_entries[e.phase].push_back({e.order, op});
         }
 
         for (int p = 0; p < phase_count; ++p) {
-            std::stable_sort(slot_entries[p].begin(), slot_entries[p].end(),
+            std::stable_sort(
+                slot_entries[p].begin(), slot_entries[p].end(),
                 [](const SE& a, const SE& b) { return a.order < b.order; });
             for (auto& se : slot_entries[p])
                 plan.slots[p].ops.push_back(se.op);
@@ -101,8 +108,8 @@ public:
         return plan;
     }
 
-private:
-    std::vector<Entry> entries_;  ///< Accumulated binding entries.
+  private:
+    std::vector<Entry> entries_; ///< Accumulated binding entries.
 };
 
 } // namespace ATV

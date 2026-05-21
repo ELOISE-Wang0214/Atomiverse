@@ -15,10 +15,8 @@
 
 static CUlogsCallbackHandle g_log_handle = nullptr;
 
-static void cuda_log_callback(void* /*userData*/,
-                               CUlogLevel level,
-                               char* message,
-                               size_t /*length*/) {
+static void cuda_log_callback(void* /*userData*/, CUlogLevel level,
+                              char* message, size_t /*length*/) {
     // CUlogLevel values are not yet publicly documented; treat everything
     // at warn-or-above so CUDA internal errors surface visibly.
     (void)level;
@@ -29,9 +27,10 @@ namespace ATV {
 namespace cuda {
 
 void register_log_callback() {
-    if (g_log_handle) return;
-    CUresult res = cuLogsRegisterCallback(cuda_log_callback, nullptr,
-                                          &g_log_handle);
+    if (g_log_handle)
+        return;
+    CUresult res =
+        cuLogsRegisterCallback(cuda_log_callback, nullptr, &g_log_handle);
     if (res != CUDA_SUCCESS) {
         ATV_WARN("cuLogsRegisterCallback failed (CUresult={})",
                  static_cast<int>(res));
@@ -41,7 +40,8 @@ void register_log_callback() {
 }
 
 void unregister_log_callback() {
-    if (!g_log_handle) return;
+    if (!g_log_handle)
+        return;
     cuLogsUnregisterCallback(g_log_handle);
     g_log_handle = nullptr;
 }

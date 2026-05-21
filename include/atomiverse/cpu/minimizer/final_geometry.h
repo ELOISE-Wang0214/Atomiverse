@@ -29,7 +29,7 @@ namespace minimizer {
 
 /// @brief Writer that keeps a single-frame XYZ reflecting the latest geometry.
 class FinalGeometry : public cpu::ComponentBase {
-public:
+  public:
     /// @brief Construct.
     /// @param filename Output XYZ path (overwritten each step).
     explicit FinalGeometry(std::string filename);
@@ -47,7 +47,7 @@ public:
     /// @brief Number of times the file has been rewritten.
     int n_writes() const { return n_writes_; }
 
-private:
+  private:
     std::string filename_;
     int n_writes_ = 0;
 };

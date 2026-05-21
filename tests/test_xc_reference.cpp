@@ -12,13 +12,13 @@
 
 #ifdef ATV_HAS_RHF
 
-#include <gtest/gtest.h>
 #include <cmath>
+#include <gtest/gtest.h>
 #include <vector>
 
-#include "atomiverse/cpu/scf/xc_functional.h"
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
+#include "atomiverse/cpu/scf/xc_functional.h"
 
 using namespace ATV;
 using namespace ATV::cpu::scf;
@@ -33,8 +33,8 @@ constexpr double kPi = 3.14159265358979323846;
 // E_x = -C_x_spin ∫ [ρ_α^{4/3} + ρ_β^{4/3}] dτ
 // where C_x_spin = 2^{1/3} * (3/4)(3/π)^{1/3}
 struct SlaterRef {
-    double exc;       // energy per electron
-    double vrho_a;    // ∂(ε_x * ρ)/∂ρ_α = -(4/3) C_x_spin ρ_α^{1/3}
+    double exc;    // energy per electron
+    double vrho_a; // ∂(ε_x * ρ)/∂ρ_α = -(4/3) C_x_spin ρ_α^{1/3}
     double vrho_b;
 
     static SlaterRef compute(double rho_a, double rho_b) {
@@ -55,12 +55,15 @@ struct SlaterRef {
 
 // ── Independent VWN5 correlation implementation ─────────────────────────
 
-struct VWN5Params { double A, x0, b, c; };
+struct VWN5Params {
+    double A, x0, b, c;
+};
 
 // VWN5 params: A converted from Rydberg to Hartree (÷2)
 constexpr VWN5Params kP = {0.0310907, -0.10498, 3.72744, 12.9352};
 constexpr VWN5Params kF = {0.01554535, -0.32500, 7.06042, 18.0578};
-constexpr VWN5Params kA = {-1.0 / (6.0 * kPi * kPi), -0.0047584, 1.13107, 13.0045};
+constexpr VWN5Params kA = {-1.0 / (6.0 * kPi * kPi), -0.0047584, 1.13107,
+                           13.0045};
 
 // VWN5 Pade approximant F(x), Eq. 4.4 in Vosko et al. 1980
 double vwn5_F(double x, const VWN5Params& p) {
@@ -71,10 +74,9 @@ double vwn5_F(double x, const VWN5Params& p) {
 
     double t1 = std::log(x * x / X);
     double t2 = 2.0 * p.b / Q * atanQ;
-    double t3 = -p.b * p.x0 / X0 * (
-        std::log((x - p.x0) * (x - p.x0) / X) +
-        2.0 * (p.b + 2.0 * p.x0) / Q * atanQ
-    );
+    double t3 = -p.b * p.x0 / X0
+                * (std::log((x - p.x0) * (x - p.x0) / X)
+                   + 2.0 * (p.b + 2.0 * p.x0) / Q * atanQ);
     return p.A * (t1 + t2 + t3);
 }
 
@@ -84,10 +86,10 @@ double vwn5_dFdx(double x, const VWN5Params& p) {
     double X0 = p.x0 * p.x0 + p.b * p.x0 + p.c;
 
     double dt1 = 2.0 / x - (2.0 * x + p.b) / X;
-    double dt2 = -p.b / X;  // simplified from full arctan derivative
+    double dt2 = -p.b / X; // simplified from full arctan derivative
     double fac = -p.b * p.x0 / X0;
     double dlog = 2.0 / (x - p.x0) - (2.0 * x + p.b) / X;
-    double datan = -(p.b + 2.0 * p.x0) / X;  // simplified
+    double datan = -(p.b + 2.0 * p.x0) / X; // simplified
     double dt3 = fac * (dlog + datan);
 
     return p.A * (dt1 + dt2 + dt3);
@@ -96,7 +98,9 @@ double vwn5_dFdx(double x, const VWN5Params& p) {
 // Spin interpolation f(ζ) = [(1+ζ)^{4/3} + (1-ζ)^{4/3} - 2] / [2(2^{1/3}-1)]
 double spin_f(double zeta) {
     double denom = 2.0 * (std::cbrt(2.0) - 1.0);
-    return (std::pow(1.0 + zeta, 4.0 / 3.0) + std::pow(1.0 - zeta, 4.0 / 3.0) - 2.0) / denom;
+    return (std::pow(1.0 + zeta, 4.0 / 3.0) + std::pow(1.0 - zeta, 4.0 / 3.0)
+            - 2.0)
+           / denom;
 }
 
 // ε_c(r_s, ζ) for VWN5 (unpolarized: ζ=0 → ε_c = ε_c^P)
@@ -143,11 +147,13 @@ TEST(XCReference, SlaterExchange_Unpolarized_Rho1) {
     // Total LSDA = Slater + VWN5. Exchange part should match exactly.
     // Correlation adds a negative contribution, so exc < ref.exc.
     double exc = static_cast<double>(out.exc);
-    EXPECT_LT(exc, ref.exc) << "LSDA exc must be more negative than pure Slater (correlation lowers energy)";
+    EXPECT_LT(exc, ref.exc) << "LSDA exc must be more negative than pure "
+                               "Slater (correlation lowers energy)";
     double correlation = exc - ref.exc;
     EXPECT_LT(correlation, 0.0) << "VWN5 correlation must be negative";
     // At ρ=1 (r_s≈0.62), VWN5 |ε_c| can be ~0.14 Ha (logarithmic growth at high density)
-    EXPECT_GT(correlation, -0.3) << "VWN5 correlation should not dominate exchange";
+    EXPECT_GT(correlation, -0.3)
+        << "VWN5 correlation should not dominate exchange";
 }
 
 TEST(XCReference, SlaterExchange_MultiDensity) {
@@ -217,19 +223,21 @@ TEST(XCReference, VWN5_Unpolarized_MatchesIndependent) {
         double exc = static_cast<double>(out.exc);
 
         EXPECT_NEAR(exc, exc_ref, 1e-6)
-            << "LSDA exc mismatch at rho=" << rho
-            << " (got " << exc << ", ref " << exc_ref << ")";
+            << "LSDA exc mismatch at rho=" << rho << " (got " << exc << ", ref "
+            << exc_ref << ")";
     }
 }
 
 TEST(XCReference, VWN5_SpinPolarized_MatchesIndependent) {
     // Test at non-zero magnetization ζ = (ρ_α - ρ_β) / ρ
-    struct TestPoint { double rho_a, rho_b; };
+    struct TestPoint {
+        double rho_a, rho_b;
+    };
     TestPoint points[] = {
-        {0.3, 0.2},    // ζ = 0.2
-        {0.4, 0.1},    // ζ = 0.6
-        {0.49, 0.01},  // ζ = 0.96 (nearly fully polarized)
-        {1.0, 0.5},    // larger density, ζ = 1/3
+        {0.3, 0.2},   // ζ = 0.2
+        {0.4, 0.1},   // ζ = 0.6
+        {0.49, 0.01}, // ζ = 0.96 (nearly fully polarized)
+        {1.0, 0.5},   // larger density, ζ = 1/3
     };
     for (auto [ra, rb] : points) {
         auto slater = SlaterRef::compute(ra, rb);
@@ -240,7 +248,8 @@ TEST(XCReference, VWN5_SpinPolarized_MatchesIndependent) {
         double exc = static_cast<double>(out.exc);
 
         EXPECT_NEAR(exc, exc_ref, 1e-6)
-            << "LSDA spin-polarized mismatch at rho_a=" << ra << " rho_b=" << rb;
+            << "LSDA spin-polarized mismatch at rho_a=" << ra
+            << " rho_b=" << rb;
     }
 }
 
@@ -249,7 +258,8 @@ TEST(XCReference, VWN5_CorrelationIsNegative) {
     double densities[] = {0.001, 0.01, 0.1, 1.0, 10.0, 100.0};
     for (double rho : densities) {
         double ec = vwn5_ec(rho / 2, rho / 2);
-        EXPECT_LT(ec, 0.0) << "VWN5 correlation must be negative at rho=" << rho;
+        EXPECT_LT(ec, 0.0) << "VWN5 correlation must be negative at rho="
+                           << rho;
     }
 }
 
@@ -257,7 +267,7 @@ TEST(XCReference, VWN5_LowDensityLimit) {
     // At low density (r_s → ∞), correlation → 0.
     // At high density (r_s → 0), ε_c has logarithmic divergence.
     // So |ε_c| should decrease as density decreases (r_s increases).
-    double ec_rho001 = vwn5_ec(0.005, 0.005);   // ρ=0.01, r_s≈2.87
+    double ec_rho001 = vwn5_ec(0.005, 0.005);    // ρ=0.01, r_s≈2.87
     double ec_rho0001 = vwn5_ec(0.0005, 0.0005); // ρ=0.001, r_s≈6.20
     EXPECT_LT(std::abs(ec_rho0001), std::abs(ec_rho001))
         << "VWN5 |ε_c| should decrease at low density (large r_s)";
@@ -280,7 +290,8 @@ TEST(XCReference, PBE_ZeroGradient_CloseToButNotEqualLSDA) {
     double densities[] = {0.01, 0.1, 0.5, 1.0, 5.0};
     for (double rho : densities) {
         auto lda = evaluate_xc(XCType::LSDA, double(rho / 2), double(rho / 2));
-        auto pbe = evaluate_xc(XCType::PBE, double(rho / 2), double(rho / 2), 0, 0, 0);
+        auto pbe =
+            evaluate_xc(XCType::PBE, double(rho / 2), double(rho / 2), 0, 0, 0);
 
         // Both should be negative (XC lowers energy).
         EXPECT_LT(static_cast<double>(pbe.exc), 0.0)
@@ -289,7 +300,8 @@ TEST(XCReference, PBE_ZeroGradient_CloseToButNotEqualLSDA) {
             << "LSDA exc should be negative at rho=" << rho;
         // They differ but by no more than ~mHa (PW92 vs VWN5 systematic gap).
         EXPECT_LT(std::abs(pbe.exc - lda.exc), 5e-3)
-            << "PBE(PW92) vs LSDA(VWN5) should differ by < 5 mHa at rho=" << rho;
+            << "PBE(PW92) vs LSDA(VWN5) should differ by < 5 mHa at rho="
+            << rho;
     }
 }
 
@@ -313,9 +325,10 @@ TEST(XCReference, PBE_ExchangeMoreNegativeThanLDA) {
     // With gradient present, PBE exc should be more negative (due to exchange).
     // Note: correlation correction may partially offset this.
     double rho = 0.3;
-    double sigma = 0.1;  // nonzero gradient
+    double sigma = 0.1; // nonzero gradient
     auto lda = evaluate_xc(XCType::LSDA, double(rho), double(rho));
-    auto pbe = evaluate_xc(XCType::PBE, double(rho), double(rho), sigma, 0, sigma);
+    auto pbe =
+        evaluate_xc(XCType::PBE, double(rho), double(rho), sigma, 0, sigma);
 
     // PBE total might not always be more negative due to correlation GGA correction,
     // but the difference should be nonzero.
@@ -327,7 +340,8 @@ TEST(XCReference, PBE_VsigmaSign) {
     // For exchange: ∂ε_x/∂σ_αα should be negative (increasing gradient
     // makes exchange more negative). The vsigma should thus be negative.
     double rho = 0.3;
-    auto pbe = evaluate_xc(XCType::PBE, double(rho), double(rho), double(0.1), double(0.05), double(0.1));
+    auto pbe = evaluate_xc(XCType::PBE, double(rho), double(rho), double(0.1),
+                           double(0.05), double(0.1));
     EXPECT_LT(static_cast<double>(pbe.vsigma_aa), 0.0)
         << "PBE exchange vsigma should be negative";
 }
@@ -336,7 +350,8 @@ TEST(XCReference, PBE_SpinSymmetry) {
     // For ρ_α = ρ_β, σ_αα = σ_ββ: must have symmetric potentials
     double rho = 0.5;
     double sigma = 0.2;
-    auto pbe = evaluate_xc(XCType::PBE, double(rho), double(rho), sigma, double(0.1), sigma);
+    auto pbe = evaluate_xc(XCType::PBE, double(rho), double(rho), sigma,
+                           double(0.1), sigma);
 
     EXPECT_NEAR(static_cast<double>(pbe.vrho_alpha),
                 static_cast<double>(pbe.vrho_beta), 1e-12)
@@ -405,10 +420,12 @@ TEST(XCReference, PBE_Potential_FiniteDifference) {
     double sigma_aa = 0.1, sigma_ab = 0.05, sigma_bb = 0.1;
     double h = 1e-3;
 
-    auto out_fwd = evaluate_xc(XCType::PBE, double(rho_a + h), double(rho_b),
-                               double(sigma_aa), double(sigma_ab), double(sigma_bb));
-    auto out_bwd = evaluate_xc(XCType::PBE, double(rho_a - h), double(rho_b),
-                               double(sigma_aa), double(sigma_ab), double(sigma_bb));
+    auto out_fwd =
+        evaluate_xc(XCType::PBE, double(rho_a + h), double(rho_b),
+                    double(sigma_aa), double(sigma_ab), double(sigma_bb));
+    auto out_bwd =
+        evaluate_xc(XCType::PBE, double(rho_a - h), double(rho_b),
+                    double(sigma_aa), double(sigma_ab), double(sigma_bb));
 
     double rho_fwd = (rho_a + h) + rho_b;
     double rho_bwd = (rho_a - h) + rho_b;
@@ -416,8 +433,9 @@ TEST(XCReference, PBE_Potential_FiniteDifference) {
     double e_bwd = static_cast<double>(out_bwd.exc) * rho_bwd;
     double vrho_fd = (e_fwd - e_bwd) / (2.0 * h);
 
-    auto out = evaluate_xc(XCType::PBE, double(rho_a), double(rho_b),
-                           double(sigma_aa), double(sigma_ab), double(sigma_bb));
+    auto out =
+        evaluate_xc(XCType::PBE, double(rho_a), double(rho_b), double(sigma_aa),
+                    double(sigma_ab), double(sigma_bb));
     double vrho = static_cast<double>(out.vrho_alpha);
 
     EXPECT_NEAR(vrho, vrho_fd, 0.02)
@@ -430,18 +448,21 @@ TEST(XCReference, PBE_Vsigma_FiniteDifference) {
     double sigma_aa = 0.1, sigma_ab = 0.05, sigma_bb = 0.1;
     double h = 1e-3;
 
-    auto out_fwd = evaluate_xc(XCType::PBE, double(rho_a), double(rho_b),
-                               double(sigma_aa + h), double(sigma_ab), double(sigma_bb));
-    auto out_bwd = evaluate_xc(XCType::PBE, double(rho_a), double(rho_b),
-                               double(sigma_aa - h), double(sigma_ab), double(sigma_bb));
+    auto out_fwd =
+        evaluate_xc(XCType::PBE, double(rho_a), double(rho_b),
+                    double(sigma_aa + h), double(sigma_ab), double(sigma_bb));
+    auto out_bwd =
+        evaluate_xc(XCType::PBE, double(rho_a), double(rho_b),
+                    double(sigma_aa - h), double(sigma_ab), double(sigma_bb));
 
     double rho = rho_a + rho_b;
     double e_fwd = static_cast<double>(out_fwd.exc) * rho;
     double e_bwd = static_cast<double>(out_bwd.exc) * rho;
     double vsigma_fd = (e_fwd - e_bwd) / (2.0 * h);
 
-    auto out = evaluate_xc(XCType::PBE, double(rho_a), double(rho_b),
-                           double(sigma_aa), double(sigma_ab), double(sigma_bb));
+    auto out =
+        evaluate_xc(XCType::PBE, double(rho_a), double(rho_b), double(sigma_aa),
+                    double(sigma_ab), double(sigma_bb));
     double vsigma = static_cast<double>(out.vsigma_aa);
 
     EXPECT_NEAR(vsigma, vsigma_fd, 0.02)
@@ -471,7 +492,8 @@ TEST(XCReference, GridIntegration_GaussianNormalization) {
     // Tolerance depends on grid quality — 302-point Lebedev is exact for
     // spherical harmonics up to l=29 but Gaussian tail extends to infinity.
     EXPECT_NEAR(integral, exact, 0.5)
-        << "Grid integration of Gaussian failed: got " << integral << " expected " << exact;
+        << "Grid integration of Gaussian failed: got " << integral
+        << " expected " << exact;
 }
 
 TEST(XCReference, GridIntegration_STO1sNormalization) {
@@ -489,15 +511,15 @@ TEST(XCReference, GridIntegration_STO1sNormalization) {
         double r = std::sqrt(x * x + y * y + z * z);
         integral += static_cast<double>(gp.weight) * std::exp(-2.0 * r);
     }
-    EXPECT_NEAR(integral, kPi, 0.5)
-        << "Grid integration of exp(-2r): got " << integral << " expected " << kPi;
+    EXPECT_NEAR(integral, kPi, 0.5) << "Grid integration of exp(-2r): got "
+                                    << integral << " expected " << kPi;
 }
 
 TEST(XCReference, GridIntegration_TwoAtomPartition) {
     // For two identical atoms, ∫ f dτ should be the same regardless of
     // whether we use 1 grid on 1 atom or Becke-partitioned grid on 2 atoms
     // (for symmetric f centered at midpoint).
-    double d = 1.4;  // Bohr
+    double d = 1.4; // Bohr
     native::Atom atoms[] = {{1, {-d / 2, 0, 0}}, {1, {d / 2, 0, 0}}};
     auto grid = build_molecular_grid(atoms, 2, 50, 110);
 
@@ -523,8 +545,7 @@ TEST(XCReference, BoysF0_AnalyticalFormula) {
     for (double x : test_x) {
         double ref = 0.5 * std::sqrt(kPi / x) * std::erf(std::sqrt(x));
         double val = native::boys_f0(x);
-        EXPECT_NEAR(val, ref, 1e-12)
-            << "Boys F_0 mismatch at x=" << x;
+        EXPECT_NEAR(val, ref, 1e-12) << "Boys F_0 mismatch at x=" << x;
     }
 }
 
@@ -539,7 +560,8 @@ TEST(XCReference, BoysFn_DownwardRecurrence) {
         double Fn_recurrence[5];
         Fn_recurrence[0] = F0;
         for (int n = 0; n < 4; ++n)
-            Fn_recurrence[n + 1] = ((2 * n + 1) * Fn_recurrence[n] - ex) / (2.0 * x);
+            Fn_recurrence[n + 1] =
+                ((2 * n + 1) * Fn_recurrence[n] - ex) / (2.0 * x);
 
         // Compare against boys_fn
         for (int n = 0; n <= 4; ++n) {
@@ -562,7 +584,8 @@ TEST(XCReference, BoysFn_ZeroArgLimits) {
 
 #include <gtest/gtest.h>
 TEST(XCReference, SkippedNoBuildRHF) {
-    GTEST_SKIP() << "ATV_BUILD_RHF=OFF — XC reference tests require -DATV_BUILD_RHF=ON";
+    GTEST_SKIP()
+        << "ATV_BUILD_RHF=OFF — XC reference tests require -DATV_BUILD_RHF=ON";
 }
 
 #endif // ATV_HAS_RHF

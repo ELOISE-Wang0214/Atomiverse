@@ -30,29 +30,46 @@ namespace vib {
 /// @throws std::out_of_range if `Z` is outside the supported range.
 inline double mass_amu(int Z) {
     switch (Z) {
-        case 1:  return 1.008;        // H
-        case 2:  return 4.002602;     // He
-        case 3:  return 6.94;         // Li
-        case 4:  return 9.0121831;    // Be
-        case 5:  return 10.81;        // B
-        case 6:  return 12.011;       // C
-        case 7:  return 14.007;       // N
-        case 8:  return 15.999;       // O
-        case 9:  return 18.998403163; // F
-        case 10: return 20.1797;      // Ne
-        case 11: return 22.98976928;  // Na
-        case 12: return 24.305;       // Mg
-        case 13: return 26.9815385;   // Al
-        case 14: return 28.085;       // Si
-        case 15: return 30.973761998; // P
-        case 16: return 32.06;        // S
-        case 17: return 35.45;        // Cl
-        case 18: return 39.948;       // Ar
-        default:
-            throw std::out_of_range(
-                "cpu::vib::mass_amu: unsupported atomic number Z=" +
-                std::to_string(Z) +
-                " (IUPAC-2013 table covers Z=1..18)");
+    case 1:
+        return 1.008; // H
+    case 2:
+        return 4.002602; // He
+    case 3:
+        return 6.94; // Li
+    case 4:
+        return 9.0121831; // Be
+    case 5:
+        return 10.81; // B
+    case 6:
+        return 12.011; // C
+    case 7:
+        return 14.007; // N
+    case 8:
+        return 15.999; // O
+    case 9:
+        return 18.998403163; // F
+    case 10:
+        return 20.1797; // Ne
+    case 11:
+        return 22.98976928; // Na
+    case 12:
+        return 24.305; // Mg
+    case 13:
+        return 26.9815385; // Al
+    case 14:
+        return 28.085; // Si
+    case 15:
+        return 30.973761998; // P
+    case 16:
+        return 32.06; // S
+    case 17:
+        return 35.45; // Cl
+    case 18:
+        return 39.948; // Ar
+    default:
+        throw std::out_of_range(
+            "cpu::vib::mass_amu: unsupported atomic number Z="
+            + std::to_string(Z) + " (IUPAC-2013 table covers Z=1..18)");
     }
 }
 
@@ -69,29 +86,46 @@ inline double mass_amu(int Z) {
 /// @throws std::out_of_range if `Z` is outside the supported range.
 inline std::string element_symbol(int Z) {
     switch (Z) {
-        case 1:  return "H";
-        case 2:  return "He";
-        case 3:  return "Li";
-        case 4:  return "Be";
-        case 5:  return "B";
-        case 6:  return "C";
-        case 7:  return "N";
-        case 8:  return "O";
-        case 9:  return "F";
-        case 10: return "Ne";
-        case 11: return "Na";
-        case 12: return "Mg";
-        case 13: return "Al";
-        case 14: return "Si";
-        case 15: return "P";
-        case 16: return "S";
-        case 17: return "Cl";
-        case 18: return "Ar";
-        default:
-            throw std::out_of_range(
-                "cpu::vib::element_symbol: unsupported atomic number Z=" +
-                std::to_string(Z) +
-                " (table covers Z=1..18)");
+    case 1:
+        return "H";
+    case 2:
+        return "He";
+    case 3:
+        return "Li";
+    case 4:
+        return "Be";
+    case 5:
+        return "B";
+    case 6:
+        return "C";
+    case 7:
+        return "N";
+    case 8:
+        return "O";
+    case 9:
+        return "F";
+    case 10:
+        return "Ne";
+    case 11:
+        return "Na";
+    case 12:
+        return "Mg";
+    case 13:
+        return "Al";
+    case 14:
+        return "Si";
+    case 15:
+        return "P";
+    case 16:
+        return "S";
+    case 17:
+        return "Cl";
+    case 18:
+        return "Ar";
+    default:
+        throw std::out_of_range(
+            "cpu::vib::element_symbol: unsupported atomic number Z="
+            + std::to_string(Z) + " (table covers Z=1..18)");
     }
 }
 

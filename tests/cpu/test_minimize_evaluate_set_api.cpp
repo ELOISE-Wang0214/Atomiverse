@@ -21,9 +21,9 @@ using atv_test::StubEnergyEvaluator;
 namespace {
 
 constexpr double kCutoff = 6.0;
-constexpr double kEps    = 0.0104;
-constexpr double kSigma  = 3.4;
-constexpr double kSkin   = 0.3;
+constexpr double kEps = 0.0104;
+constexpr double kSigma = 3.4;
+constexpr double kSkin = 0.3;
 
 // ─── Minimize setters ───────────────────────────────────────────────
 
@@ -58,7 +58,7 @@ TEST(MinimizeSetApi, PairWithoutNeighborListThrowsAtBuild) {
     } catch (const std::runtime_error& e) {
         const std::string msg = e.what();
         EXPECT_NE(msg.find("neighbor"), std::string::npos) << msg;
-        EXPECT_NE(msg.find("lj"),       std::string::npos) << msg;
+        EXPECT_NE(msg.find("lj"), std::string::npos) << msg;
     }
 }
 

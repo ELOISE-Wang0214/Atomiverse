@@ -29,7 +29,7 @@ namespace cpu {
 /// `r₀` — equilibrium distance [Å].
 /// Cutoff is shifted (potential goes to zero at `cutoff`, no force tail).
 class PairMorse : public Pair {
-public:
+  public:
     /// @param D       Well depth [eV].
     /// @param alpha   Width parameter [Å⁻¹].
     /// @param r0      Equilibrium bond length [Å].
@@ -41,10 +41,10 @@ public:
     /// @brief Demo uses O(N²) all-pairs; opt out of the neighbor-list gate.
     bool needs_neighbor_list() const final { return false; }
 
-protected:
+  protected:
     void compute(const LaunchContext& ctx) override;
 
-private:
+  private:
     double D_, alpha_, r0_;
     double cutoff_sq_, v_shift_;
 };

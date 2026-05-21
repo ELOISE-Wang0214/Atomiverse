@@ -19,14 +19,14 @@ extern "C" {
 #undef atm
 #undef bas
 
-#include "atomiverse/cpu/scf/basis_data/sto3g.h"
-#include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/core/constants.h"
 #include "atomiverse/core/gto.h"
+#include "atomiverse/cpu/scf/basis_data/sto3g.h"
+#include "atomiverse/cpu/scf/integrals.h"
 
 #include <cmath>
-#include <vector>
 #include <numeric>
+#include <vector>
 
 namespace ATV {
 namespace test {
@@ -46,8 +46,8 @@ inline void normalize_contracted_coeffs(int l, const double* exps,
     for (int p = 0; p < nprim; ++p)
         for (int q = 0; q < nprim; ++q) {
             double n1 = 0.5 * (l * 2 + 2 + 1);
-            norm2 += coeffs[p] * coeffs[q]
-                   * 0.5 * std::tgamma(n1) / std::pow(exps[p] + exps[q], n1);
+            norm2 += coeffs[p] * coeffs[q] * 0.5 * std::tgamma(n1)
+                     / std::pow(exps[p] + exps[q], n1);
         }
     double scale = 1.0 / std::sqrt(norm2);
     for (int p = 0; p < nprim; ++p)
@@ -76,18 +76,22 @@ inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
         int Z = static_cast<int>(frame.atoms.type[i]);
         for (const auto& sh : sto3g_table[Z].shells) {
             n_shells += 1;
-            n_basis += (sh.l + 1) * (sh.l + 2) / 2;  // Cartesian dim
+            n_basis += (sh.l + 1) * (sh.l + 2) / 2; // Cartesian dim
         }
     }
 
     cpu::scf::IntegralPack pack;
     pack.n_basis = n_basis;
     pack.n_electrons = n_electrons;
-    pack.S = xt::zeros<double>({static_cast<int>(n_basis), static_cast<int>(n_basis)});
-    pack.T = xt::zeros<double>({static_cast<int>(n_basis), static_cast<int>(n_basis)});
-    pack.V = xt::zeros<double>({static_cast<int>(n_basis), static_cast<int>(n_basis)});
-    pack.ERI = xt::zeros<double>({static_cast<int>(n_basis), static_cast<int>(n_basis),
-                                static_cast<int>(n_basis), static_cast<int>(n_basis)});
+    pack.S = xt::zeros<double>(
+        {static_cast<int>(n_basis), static_cast<int>(n_basis)});
+    pack.T = xt::zeros<double>(
+        {static_cast<int>(n_basis), static_cast<int>(n_basis)});
+    pack.V = xt::zeros<double>(
+        {static_cast<int>(n_basis), static_cast<int>(n_basis)});
+    pack.ERI = xt::zeros<double>(
+        {static_cast<int>(n_basis), static_cast<int>(n_basis),
+         static_cast<int>(n_basis), static_cast<int>(n_basis)});
 
     // Build libcint atm/bas/env arrays
     int off = PTR_ENV_START;
@@ -96,7 +100,8 @@ inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
     std::vector<double> env(off + natm * 3 + n_shells * 10, 0.0);
 
     for (int i = 0; i < natm; ++i) {
-        atm_arr[CHARGE_OF + ATM_SLOTS * i] = static_cast<FINT>(frame.atoms.type[i]);
+        atm_arr[CHARGE_OF + ATM_SLOTS * i] =
+            static_cast<FINT>(frame.atoms.type[i]);
         atm_arr[PTR_COORD + ATM_SLOTS * i] = off;
         env[off + 0] = static_cast<double>(frame.atoms.x[i]) * kAngstromToBohr;
         env[off + 1] = static_cast<double>(frame.atoms.y[i]) * kAngstromToBohr;
@@ -118,17 +123,19 @@ inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
             const int l = sh.l;
             const int nprim = static_cast<int>(sh.alpha.size());
             int ptr_exp = off;
-            for (int p = 0; p < nprim; ++p) env[off++] = sh.alpha[p];
+            for (int p = 0; p < nprim; ++p)
+                env[off++] = sh.alpha[p];
             int ptr_coeff = off;
             for (int p = 0; p < nprim; ++p)
                 env[off++] = sh.coeff[p] * CINTgto_norm(l, sh.alpha[p]);
-            normalize_contracted_coeffs(l, &env[ptr_exp], &env[ptr_coeff], nprim);
+            normalize_contracted_coeffs(l, &env[ptr_exp], &env[ptr_coeff],
+                                        nprim);
 
-            bas_arr[ATOM_OF   + BAS_SLOTS * shell_idx] = a;
-            bas_arr[ANG_OF    + BAS_SLOTS * shell_idx] = l;
-            bas_arr[NPRIM_OF  + BAS_SLOTS * shell_idx] = nprim;
-            bas_arr[NCTR_OF   + BAS_SLOTS * shell_idx] = 1;
-            bas_arr[PTR_EXP   + BAS_SLOTS * shell_idx] = ptr_exp;
+            bas_arr[ATOM_OF + BAS_SLOTS * shell_idx] = a;
+            bas_arr[ANG_OF + BAS_SLOTS * shell_idx] = l;
+            bas_arr[NPRIM_OF + BAS_SLOTS * shell_idx] = nprim;
+            bas_arr[NCTR_OF + BAS_SLOTS * shell_idx] = 1;
+            bas_arr[PTR_EXP + BAS_SLOTS * shell_idx] = ptr_exp;
             bas_arr[PTR_COEFF + BAS_SLOTS * shell_idx] = ptr_coeff;
             const int n_cart = (l + 1) * (l + 2) / 2;
             shell_bf_offset[shell_idx] = bf_idx;
@@ -158,52 +165,71 @@ inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
             FINT shls[2] = {static_cast<FINT>(i), static_cast<FINT>(j)};
 
             // libcint Cartesian output: column-major buf[i + di * j]
-            int1e_ovlp_cart(buf.data(), nullptr, shls, atm_p, natm, bas_p, n_shells, env_p, nullptr, nullptr);
+            int1e_ovlp_cart(buf.data(), nullptr, shls, atm_p, natm, bas_p,
+                            n_shells, env_p, nullptr, nullptr);
             for (int ii = 0; ii < ni; ++ii)
                 for (int jj = 0; jj < nj; ++jj) {
-                    pack.S(oi+ii, oj+jj) = static_cast<double>(buf[ii + ni * jj]);
-                    pack.S(oj+jj, oi+ii) = pack.S(oi+ii, oj+jj);
+                    pack.S(oi + ii, oj + jj) =
+                        static_cast<double>(buf[ii + ni * jj]);
+                    pack.S(oj + jj, oi + ii) = pack.S(oi + ii, oj + jj);
                 }
 
             std::fill(buf.begin(), buf.end(), 0.0);
-            int1e_kin_cart(buf.data(), nullptr, shls, atm_p, natm, bas_p, n_shells, env_p, nullptr, nullptr);
+            int1e_kin_cart(buf.data(), nullptr, shls, atm_p, natm, bas_p,
+                           n_shells, env_p, nullptr, nullptr);
             for (int ii = 0; ii < ni; ++ii)
                 for (int jj = 0; jj < nj; ++jj) {
-                    pack.T(oi+ii, oj+jj) = static_cast<double>(buf[ii + ni * jj]);
-                    pack.T(oj+jj, oi+ii) = pack.T(oi+ii, oj+jj);
+                    pack.T(oi + ii, oj + jj) =
+                        static_cast<double>(buf[ii + ni * jj]);
+                    pack.T(oj + jj, oi + ii) = pack.T(oi + ii, oj + jj);
                 }
 
             std::fill(buf.begin(), buf.end(), 0.0);
-            int1e_nuc_cart(buf.data(), nullptr, shls, atm_p, natm, bas_p, n_shells, env_p, nullptr, nullptr);
+            int1e_nuc_cart(buf.data(), nullptr, shls, atm_p, natm, bas_p,
+                           n_shells, env_p, nullptr, nullptr);
             for (int ii = 0; ii < ni; ++ii)
                 for (int jj = 0; jj < nj; ++jj) {
-                    pack.V(oi+ii, oj+jj) = static_cast<double>(buf[ii + ni * jj]);
-                    pack.V(oj+jj, oi+ii) = pack.V(oi+ii, oj+jj);
+                    pack.V(oi + ii, oj + jj) =
+                        static_cast<double>(buf[ii + ni * jj]);
+                    pack.V(oj + jj, oi + ii) = pack.V(oi + ii, oj + jj);
                 }
         }
     }
 
     // 2e integrals
     for (int i = 0; i < n_shells; ++i) {
-        int ni = shell_bf_count[i]; int oi = shell_bf_offset[i];
+        int ni = shell_bf_count[i];
+        int oi = shell_bf_offset[i];
         for (int j = 0; j < n_shells; ++j) {
-            int nj = shell_bf_count[j]; int oj = shell_bf_offset[j];
+            int nj = shell_bf_count[j];
+            int oj = shell_bf_offset[j];
             for (int k = 0; k < n_shells; ++k) {
-                int nk = shell_bf_count[k]; int ok = shell_bf_offset[k];
+                int nk = shell_bf_count[k];
+                int ok = shell_bf_offset[k];
                 for (int l = 0; l < n_shells; ++l) {
-                    int nl = shell_bf_count[l]; int ol = shell_bf_offset[l];
+                    int nl = shell_bf_count[l];
+                    int ol = shell_bf_offset[l];
                     int buf_size = ni * nj * nk * nl;
                     std::vector<double> buf(buf_size, 0.0);
                     FINT shls4[4] = {static_cast<FINT>(i), static_cast<FINT>(j),
-                                     static_cast<FINT>(k), static_cast<FINT>(l)};
-                    cint2e_cart(buf.data(), shls4, atm_p, natm, bas_p, n_shells, env_p, nullptr);
+                                     static_cast<FINT>(k),
+                                     static_cast<FINT>(l)};
+                    cint2e_cart(buf.data(), shls4, atm_p, natm, bas_p, n_shells,
+                                env_p, nullptr);
                     // Column-major: i fastest
                     for (int ii = 0; ii < ni; ++ii)
-                      for (int jj = 0; jj < nj; ++jj)
-                        for (int kk = 0; kk < nk; ++kk)
-                          for (int ll = 0; ll < nl; ++ll)
-                            pack.ERI(oi+ii, oj+jj, ok+kk, ol+ll) = static_cast<double>(
-                                buf[ii + ni * (jj + nj * (kk + nk * ll))]);
+                        for (int jj = 0; jj < nj; ++jj)
+                            for (int kk = 0; kk < nk; ++kk)
+                                for (int ll = 0; ll < nl; ++ll)
+                                    pack.ERI(oi + ii, oj + jj, ok + kk,
+                                             ol + ll) =
+                                        static_cast<double>(
+                                            buf[ii
+                                                + ni
+                                                      * (jj
+                                                         + nj
+                                                               * (kk
+                                                                  + nk * ll))]);
                 }
             }
         }
@@ -215,11 +241,18 @@ inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
     pack.V_nuc = 0;
     for (int a = 0; a < natm; ++a)
         for (int b = a + 1; b < natm; ++b) {
-            double dx = (static_cast<double>(frame.atoms.x[a]) - static_cast<double>(frame.atoms.x[b])) * kAngstromToBohr;
-            double dy = (static_cast<double>(frame.atoms.y[a]) - static_cast<double>(frame.atoms.y[b])) * kAngstromToBohr;
-            double dz = (static_cast<double>(frame.atoms.z[a]) - static_cast<double>(frame.atoms.z[b])) * kAngstromToBohr;
-            double r = std::sqrt(dx*dx + dy*dy + dz*dz);
-            pack.V_nuc += static_cast<double>(frame.atoms.type[a] * frame.atoms.type[b] / r);
+            double dx = (static_cast<double>(frame.atoms.x[a])
+                         - static_cast<double>(frame.atoms.x[b]))
+                        * kAngstromToBohr;
+            double dy = (static_cast<double>(frame.atoms.y[a])
+                         - static_cast<double>(frame.atoms.y[b]))
+                        * kAngstromToBohr;
+            double dz = (static_cast<double>(frame.atoms.z[a])
+                         - static_cast<double>(frame.atoms.z[b]))
+                        * kAngstromToBohr;
+            double r = std::sqrt(dx * dx + dy * dy + dz * dz);
+            pack.V_nuc += static_cast<double>(frame.atoms.type[a]
+                                              * frame.atoms.type[b] / r);
         }
 
     return pack;
@@ -276,15 +309,16 @@ inline cpu::scf::IntegralPack build_integrals_libcint(const cpu::Frame& frame) {
 /// @param frame Molecular geometry (positions in Angstrom, type = Z).
 /// @param pack  IntegralPack from `build_integrals(frame, basis, ...)`.
 /// @return Dense 4-index ERI tensor [n_basis^4], Cartesian, chemist's notation.
-inline xt::xtensor<double, 4> build_eri_libcint_from_pack(
-    const cpu::Frame& frame,
-    const cpu::scf::IntegralPack& pack)
-{
+inline xt::xtensor<double, 4>
+build_eri_libcint_from_pack(const cpu::Frame& frame,
+                            const cpu::scf::IntegralPack& pack) {
     const int natm = static_cast<int>(frame.atoms.size());
 
     // Regroup AO-level shells (one per Cartesian component) into shells:
     // a new shell starts whenever (center, l) changes.
-    struct ShellGroup { int l, ao_start, first_ao_shell; };
+    struct ShellGroup {
+        int l, ao_start, first_ao_shell;
+    };
     std::vector<ShellGroup> groups;
     {
         int ao = 0;
@@ -303,7 +337,8 @@ inline xt::xtensor<double, 4> build_eri_libcint_from_pack(
     std::vector<double> env(off + natm * 3 + n_shells * 64, 0.0);
 
     for (int i = 0; i < natm; ++i) {
-        atm_arr[CHARGE_OF + ATM_SLOTS * i] = static_cast<FINT>(frame.atoms.type[i]);
+        atm_arr[CHARGE_OF + ATM_SLOTS * i] =
+            static_cast<FINT>(frame.atoms.type[i]);
         atm_arr[PTR_COORD + ATM_SLOTS * i] = off;
         env[off + 0] = static_cast<double>(frame.atoms.x[i]) * kAngstromToBohr;
         env[off + 1] = static_cast<double>(frame.atoms.y[i]) * kAngstromToBohr;
@@ -325,17 +360,24 @@ inline xt::xtensor<double, 4> build_eri_libcint_from_pack(
         int atom_index = 0;
         double best = 1e30;
         for (int a = 0; a < natm; ++a) {
-            const double ax = static_cast<double>(frame.atoms.x[a]) * kAngstromToBohr;
-            const double ay = static_cast<double>(frame.atoms.y[a]) * kAngstromToBohr;
-            const double az = static_cast<double>(frame.atoms.z[a]) * kAngstromToBohr;
+            const double ax =
+                static_cast<double>(frame.atoms.x[a]) * kAngstromToBohr;
+            const double ay =
+                static_cast<double>(frame.atoms.y[a]) * kAngstromToBohr;
+            const double az =
+                static_cast<double>(frame.atoms.z[a]) * kAngstromToBohr;
             const double d2 = (ax - sh.center[0]) * (ax - sh.center[0])
-                            + (ay - sh.center[1]) * (ay - sh.center[1])
-                            + (az - sh.center[2]) * (az - sh.center[2]);
-            if (d2 < best) { best = d2; atom_index = a; }
+                              + (ay - sh.center[1]) * (ay - sh.center[1])
+                              + (az - sh.center[2]) * (az - sh.center[2]);
+            if (d2 < best) {
+                best = d2;
+                atom_index = a;
+            }
         }
 
         const int ptr_exp = off;
-        for (int p = 0; p < nprim; ++p) env[off++] = sh.alpha[p];
+        for (int p = 0; p < nprim; ++p)
+            env[off++] = sh.alpha[p];
         const int ptr_coeff = off;
         // Feed native phys_norm coefficients scaled by the per-l factor
         // g_l so libcint's internal Cartesian factor cancels exactly.
@@ -345,18 +387,21 @@ inline xt::xtensor<double, 4> build_eri_libcint_from_pack(
         // Cartesian d/f convention (the off-diagonal-component norm with
         // alpha-power (2l+3)/4 shared with CINTgto_norm).
         double g_l = 1.0;
-        if (l == 0) g_l = CINTgto_norm(0, a0) / ATV::phys_norm_s(a0);
-        else if (l == 1) g_l = CINTgto_norm(1, a0) / ATV::phys_norm_p(a0);
-        for (int p = 0; p < nprim; ++p) env[off++] = sh.coeff[p] * g_l;
+        if (l == 0)
+            g_l = CINTgto_norm(0, a0) / ATV::phys_norm_s(a0);
+        else if (l == 1)
+            g_l = CINTgto_norm(1, a0) / ATV::phys_norm_p(a0);
+        for (int p = 0; p < nprim; ++p)
+            env[off++] = sh.coeff[p] * g_l;
 
-        bas_arr[ATOM_OF   + BAS_SLOTS * s] = atom_index;
-        bas_arr[ANG_OF    + BAS_SLOTS * s] = l;
-        bas_arr[NPRIM_OF  + BAS_SLOTS * s] = nprim;
-        bas_arr[NCTR_OF   + BAS_SLOTS * s] = 1;
-        bas_arr[PTR_EXP   + BAS_SLOTS * s] = ptr_exp;
+        bas_arr[ATOM_OF + BAS_SLOTS * s] = atom_index;
+        bas_arr[ANG_OF + BAS_SLOTS * s] = l;
+        bas_arr[NPRIM_OF + BAS_SLOTS * s] = nprim;
+        bas_arr[NCTR_OF + BAS_SLOTS * s] = 1;
+        bas_arr[PTR_EXP + BAS_SLOTS * s] = ptr_exp;
         bas_arr[PTR_COEFF + BAS_SLOTS * s] = ptr_coeff;
         shell_bf_offset[s] = g.ao_start;
-        shell_bf_count[s]  = (l + 1) * (l + 2) / 2;
+        shell_bf_count[s] = (l + 1) * (l + 2) / 2;
     }
     env.resize(off);
 
@@ -380,16 +425,18 @@ inline xt::xtensor<double, 4> build_eri_libcint_from_pack(
                     std::vector<double> buf(
                         static_cast<std::size_t>(ni) * nj * nk * nl, 0.0);
                     FINT shls4[4] = {static_cast<FINT>(i), static_cast<FINT>(j),
-                                     static_cast<FINT>(k), static_cast<FINT>(l)};
-                    cint2e_cart(buf.data(), shls4, atm_p, natm,
-                                bas_p, n_shells, env_p, nullptr);
+                                     static_cast<FINT>(k),
+                                     static_cast<FINT>(l)};
+                    cint2e_cart(buf.data(), shls4, atm_p, natm, bas_p, n_shells,
+                                env_p, nullptr);
                     // Column-major: i fastest.
                     for (int ii = 0; ii < ni; ++ii)
-                      for (int jj = 0; jj < nj; ++jj)
-                        for (int kk = 0; kk < nk; ++kk)
-                          for (int ll = 0; ll < nl; ++ll)
-                            ERI(oi+ii, oj+jj, ok+kk, ol+ll) =
-                                buf[ii + ni * (jj + nj * (kk + nk * ll))];
+                        for (int jj = 0; jj < nj; ++jj)
+                            for (int kk = 0; kk < nk; ++kk)
+                                for (int ll = 0; ll < nl; ++ll)
+                                    ERI(oi + ii, oj + jj, ok + kk, ol + ll) =
+                                        buf[ii
+                                            + ni * (jj + nj * (kk + nk * ll))];
                 }
             }
         }

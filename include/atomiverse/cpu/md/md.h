@@ -65,17 +65,17 @@ namespace md {
 /// sim.run(frame, 1000);
 /// @endcode
 class MD : public DynamicsDriver {
-public:
+  public:
     MD() {
         // Always-on zero / kinetic infrastructure. Phase-agnostic
         // Zero* classes are bound explicitly to MD phases.
         this->on(ATV::md::Phase::pre_force)
             .add(ZeroForces{}, -1000)
-            .add(ZeroEnergy{},  -999)
-            .add(ZeroStress{},  -998);
+            .add(ZeroEnergy{}, -999)
+            .add(ZeroStress{}, -998);
         this->on(ATV::md::Phase::end_of_step)
-            .add(ZeroKinetic{},    -1000)
-            .add(KineticEnergy{},   -100);
+            .add(ZeroKinetic{}, -1000)
+            .add(KineticEnergy{}, -100);
 
         // MPI infrastructure (single-rank no-ops in Phase 1).
         add(mpi::AtomMigration{10});
@@ -85,8 +85,7 @@ public:
         // bound to *this driver's* end_of_step @ +10. Subscribers
         // inheriting `cpu::md::AsyncObserver` default to +20 on the same
         // phase and see this publisher's slot.
-        this->on(ATV::md::Phase::end_of_step)
-            .add(cpu::SnapshotPublisher{}, 10);
+        this->on(ATV::md::Phase::end_of_step).add(cpu::SnapshotPublisher{}, 10);
     }
 
     // ─── MD-specific categorical setters ────────────────────────────
@@ -117,7 +116,7 @@ public:
         return *this;
     }
 
-protected:
+  protected:
     void install_infra() override {
         const auto s = this->scan_pending_infra_();
 
@@ -126,7 +125,8 @@ protected:
 
 #ifdef ATV_BUILD_MPI
         if (s.pair_evaluator_cutoff) {
-            this->add(mpi::HaloExchangeForward{static_cast<double>(*s.pair_evaluator_cutoff)});
+            this->add(mpi::HaloExchangeForward{
+                static_cast<double>(*s.pair_evaluator_cutoff)});
             this->add(mpi::HaloExchangeReverse{});
         }
 #endif
@@ -136,7 +136,7 @@ protected:
             "Add `sim.set_neighbor(cpu::md::NeighborList<>{cutoff, skin})`.");
     }
 
-private:
+  private:
     std::optional<std::string> integrator_set_;
 };
 

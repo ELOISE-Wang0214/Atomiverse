@@ -30,7 +30,7 @@ namespace vib {
 ///
 /// `role() == None`; reads/writes only the shared workspace, no frame field.
 class Symmetrize : public cpu::ComponentBase {
-public:
+  public:
     /// @brief Construct bound to a driver-owned workspace.
     /// @param ws Non-owning pointer to the shared Hessian workspace.
     explicit Symmetrize(HessianWorkspace* ws) : ws_(ws) {}
@@ -56,7 +56,8 @@ public:
     /// @param ctx Launch context; `ctx.step` is the displacement index.
     void launch(const cpu::LaunchContext& ctx) override {
         const int dim = 3 * ws_->n_atoms;
-        if (ctx.step < 2 * dim) return; // not the finalize pass yet.
+        if (ctx.step < 2 * dim)
+            return; // not the finalize pass yet.
         for (int i = 0; i < dim; ++i)
             for (int j = i + 1; j < dim; ++j) {
                 const double avg =
@@ -66,7 +67,7 @@ public:
             }
     }
 
-private:
+  private:
     HessianWorkspace* ws_; ///< Non-owning; driver-owned.
 };
 

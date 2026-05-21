@@ -5,16 +5,16 @@
 ///
 /// Acceptance: ac-007 in `.claude/specs/cpu-driver-taxonomy.acceptance.md`.
 
-#include <gtest/gtest.h>
 #include <cmath>
+#include <gtest/gtest.h>
 
+#include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/minimizer/cg.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
 #include "atomiverse/cpu/scf/scf_solve.h"
-#include "atomiverse/core/mat3.h"
-#include "atomiverse/core/units.h"
 
 using namespace ATV;
 
@@ -39,8 +39,8 @@ double bond_length(const cpu::Frame& f) {
 }
 
 double energy_at(const cpu::Frame& frame_template) {
-    auto integrals = cpu::scf::build_integrals(
-        frame_template, cpu::scf::BasisSet::STO3G);
+    auto integrals =
+        cpu::scf::build_integrals(frame_template, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals);
     auto result = cpu::scf::scf_solve(integrals, config);
     return result.energy;
@@ -51,14 +51,14 @@ double energy_at(const cpu::Frame& frame_template) {
 TEST(MinimizeOptimizerSwap, LBFGSAndCGReachSameH2Minimum) {
     // Optimize twice from the same starting geometry, identical configs,
     // identical max_iter — once with LBFGS, once with CG.
-    constexpr double start_bond = 1.2;          // Å (compressed/stretched)
-    constexpr int    max_iter   = 200;
+    constexpr double start_bond = 1.2; // Å (compressed/stretched)
+    constexpr int max_iter = 200;
 
     // ── Run 1: LBFGS ───────────────────────────────────────────────
     auto frame_lbfgs = make_h2(start_bond);
     {
-        auto integrals = cpu::scf::build_integrals(
-            frame_lbfgs, cpu::scf::BasisSet::STO3G);
+        auto integrals =
+            cpu::scf::build_integrals(frame_lbfgs, cpu::scf::BasisSet::STO3G);
         auto cfg = cpu::scf::rhf_config(integrals);
 
         cpu::minimizer::Minimize opt;
@@ -73,8 +73,8 @@ TEST(MinimizeOptimizerSwap, LBFGSAndCGReachSameH2Minimum) {
     // ── Run 2: CG ──────────────────────────────────────────────────
     auto frame_cg = make_h2(start_bond);
     {
-        auto integrals = cpu::scf::build_integrals(
-            frame_cg, cpu::scf::BasisSet::STO3G);
+        auto integrals =
+            cpu::scf::build_integrals(frame_cg, cpu::scf::BasisSet::STO3G);
         auto cfg = cpu::scf::rhf_config(integrals);
 
         cpu::minimizer::Minimize opt;
@@ -88,9 +88,9 @@ TEST(MinimizeOptimizerSwap, LBFGSAndCGReachSameH2Minimum) {
 
     // ── Sanity: both contracted from the start. ────────────────────
     EXPECT_LT(bond_lbfgs, start_bond) << "LBFGS should contract from 1.2 Å";
-    EXPECT_LT(bond_cg, start_bond)    << "CG should contract from 1.2 Å";
+    EXPECT_LT(bond_cg, start_bond) << "CG should contract from 1.2 Å";
     EXPECT_GT(bond_lbfgs, 0.5);
-    EXPECT_GT(bond_cg,    0.5);
+    EXPECT_GT(bond_cg, 0.5);
 
     // ── Headline: same minimum within a structurally loose tolerance.
     // The 0.05 Å bond gap and 1e-3 Ha (~ 0.027 eV) energy gap are sloppy

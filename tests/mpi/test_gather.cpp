@@ -14,11 +14,11 @@
 #include <cstdint>
 #include <vector>
 
+#include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/backend.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/mpi/domain.h"
 #include "atomiverse/cpu/md/mpi/gather.h"
-#include "atomiverse/core/mat3.h"
 
 using namespace ATV;
 
@@ -55,9 +55,10 @@ cpu::Frame make_grid_frame(double box_len, int per_axis) {
 TEST(Gather, SingleRankCopiesOwners) {
     int world_size = 0;
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-    if (world_size != 1) GTEST_SKIP() << "single-rank guard";
+    if (world_size != 1)
+        GTEST_SKIP() << "single-rank guard";
 
-    auto frame = make_grid_frame(30.0, 3);  // 27 atoms
+    auto frame = make_grid_frame(30.0, 3); // 27 atoms
     cpu::Backend backend;
     backend.init();
     backend.set_frame(frame);
@@ -69,10 +70,10 @@ TEST(Gather, SingleRankCopiesOwners) {
     EXPECT_EQ(g.n_total, 27);
     ASSERT_EQ(static_cast<int>(g.x.size()), 27);
     for (int i = 0; i < 27; ++i) {
-        EXPECT_DOUBLE_EQ(g.x[i],   frame.atoms.x[i]);
-        EXPECT_DOUBLE_EQ(g.vx[i],  frame.atoms.vx[i]);
-        EXPECT_EQ(g.tag[i],        frame.atoms.tag[i]);
-        EXPECT_EQ(g.type[i],       frame.atoms.type[i]);
+        EXPECT_DOUBLE_EQ(g.x[i], frame.atoms.x[i]);
+        EXPECT_DOUBLE_EQ(g.vx[i], frame.atoms.vx[i]);
+        EXPECT_EQ(g.tag[i], frame.atoms.tag[i]);
+        EXPECT_EQ(g.type[i], frame.atoms.type[i]);
     }
 
     backend.shutdown();
@@ -81,9 +82,10 @@ TEST(Gather, SingleRankCopiesOwners) {
 TEST(Gather, MultiRankSortsByTag) {
     int world_size = 0;
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-    if (world_size <= 1) GTEST_SKIP() << "multi-rank test";
+    if (world_size <= 1)
+        GTEST_SKIP() << "multi-rank test";
 
-    auto frame = make_grid_frame(30.0, 3);  // 27 atoms
+    auto frame = make_grid_frame(30.0, 3); // 27 atoms
     cpu::Backend backend;
     backend.init();
     backend.set_frame(frame);

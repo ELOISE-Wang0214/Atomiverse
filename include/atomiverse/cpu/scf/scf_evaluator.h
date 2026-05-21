@@ -15,10 +15,10 @@
 /// @endcode
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <utility>
 #include <vector>
-#include <functional>
 
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/scf/aspc_predictor.h"
@@ -39,10 +39,12 @@ namespace scf {
 /// read from it each step; the pointers stay valid across the driver's
 /// value-copy of the evaluator.
 struct SCFResultHandle {
-    std::shared_ptr<const SCFResult> result;       ///< Latest SCF result.
-    std::shared_ptr<const IntegralPack> integrals; ///< Latest integrals (shells + atoms).
-    std::shared_ptr<const bool> ready;             ///< True once a launch has completed.
-    std::shared_ptr<const SCFConfig> config;       ///< SCF configuration (spin, method, grid).
+    std::shared_ptr<const SCFResult> result; ///< Latest SCF result.
+    std::shared_ptr<const IntegralPack>
+        integrals;                     ///< Latest integrals (shells + atoms).
+    std::shared_ptr<const bool> ready; ///< True once a launch has completed.
+    std::shared_ptr<const SCFConfig>
+        config; ///< SCF configuration (spin, method, grid).
 };
 
 /// @brief Ab initio force evaluator component for MD drivers.
@@ -51,13 +53,12 @@ struct SCFResultHandle {
 /// Writes forces to frame.atoms.fx/fy/fz and energy to frame.energy.
 /// Optionally uses ASPC predictor-corrector for density matrix warm-start.
 class SCFEvaluator : public cpu::ComponentBase {
-public:
+  public:
     /// @brief Construct from SCF configuration.
     /// @param config  SCF parameters (method, spin, XC, convergence, grid).
     /// @param basis   Basis set to resolve at each step from frame positions.
     /// @param charge  Molecular charge (0 = neutral).
-    SCFEvaluator(SCFConfig config,
-                 BasisSet basis = BasisSet::STO3G,
+    SCFEvaluator(SCFConfig config, BasisSet basis = BasisSet::STO3G,
                  int charge = 0);
 
     /// @brief Enable ASPC predictor-corrector for density warm-start.
@@ -70,9 +71,11 @@ public:
     ///         `SCFEvaluator&&` so `driver.add(...)` deduces an rvalue
     ///         and moves the temporary into ownership).
     SCFEvaluator& predictor(int order = 3, int corrector_steps = 2,
-                            double corrector_tol = 1e-4, bool fallback = true) &;
+                            double corrector_tol = 1e-4,
+                            bool fallback = true) &;
     SCFEvaluator&& predictor(int order = 3, int corrector_steps = 2,
-                             double corrector_tol = 1e-4, bool fallback = true) &&;
+                             double corrector_tol = 1e-4,
+                             bool fallback = true) &&;
 
     /// @brief Set a per-step callback for diagnostics.
     /// @param cb Callback invoked after each force evaluation.
@@ -111,10 +114,10 @@ public:
     ///        Force is added when gradient computation is enabled (the
     ///        default; toggle via `with_gradient(false)`).
     Capability capabilities() const override {
-        Capability caps = Capability::Energy
-                        | Capability::DensityMatrix
-                        | Capability::Orbitals;
-        if (compute_force_) caps = caps | Capability::Force;
+        Capability caps = Capability::Energy | Capability::DensityMatrix
+                          | Capability::Orbitals;
+        if (compute_force_)
+            caps = caps | Capability::Force;
         return caps;
     }
 
@@ -144,24 +147,31 @@ public:
     ///
     /// @note `*has_last_result_handle()` is initially false; check it before
     ///       dereferencing `last_result_handle()`.
-    std::shared_ptr<const SCFResult> last_result_handle() const { return last_result_; }
+    std::shared_ptr<const SCFResult> last_result_handle() const {
+        return last_result_;
+    }
 
     /// @brief Shared handle to the latest IntegralPack. @see last_result_handle.
-    std::shared_ptr<const IntegralPack> last_integrals_handle() const { return last_integrals_; }
+    std::shared_ptr<const IntegralPack> last_integrals_handle() const {
+        return last_integrals_;
+    }
 
     /// @brief Shared readiness flag (true after the first converged launch()).
-    std::shared_ptr<const bool> has_last_result_handle() const { return has_last_result_; }
+    std::shared_ptr<const bool> has_last_result_handle() const {
+        return has_last_result_;
+    }
 
     /// @brief Bundled handle for observer components.
     SCFResultHandle result_handle() const {
-        return {last_result_, last_integrals_, has_last_result_, config_shared_};
+        return {last_result_, last_integrals_, has_last_result_,
+                config_shared_};
     }
 
-private:
+  private:
     /// @brief Install the ASPC predictor — shared body for the two
     ///        ref-qualified `predictor()` overloads.
-    void set_predictor_(int order, int corrector_steps,
-                        double corrector_tol, bool fallback);
+    void set_predictor_(int order, int corrector_steps, double corrector_tol,
+                        bool fallback);
 
     /// @brief Install the per-step callback — shared body for the two
     ///        ref-qualified `on_evaluate()` overloads.
@@ -193,8 +203,9 @@ private:
     // after the driver copies this evaluator into its owned-component list.
     std::shared_ptr<bool> has_last_result_{std::make_shared<bool>(false)};
     std::shared_ptr<SCFResult> last_result_{std::make_shared<SCFResult>()};
-    std::shared_ptr<IntegralPack> last_integrals_{std::make_shared<IntegralPack>()};
-    std::shared_ptr<SCFConfig> config_shared_;  // initialized in ctor
+    std::shared_ptr<IntegralPack> last_integrals_{
+        std::make_shared<IntegralPack>()};
+    std::shared_ptr<SCFConfig> config_shared_; // initialized in ctor
 
     std::function<void(const SCFResult&)> on_evaluate_;
 };

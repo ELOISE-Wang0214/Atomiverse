@@ -2,17 +2,18 @@
 /// @brief Mat3 — 3x3 matrix OOP class with xtensor_fixed storage.
 #pragma once
 
-#include <xtensor/containers/xfixed.hpp>
-#include <cmath>
-#include <stdexcept>
 #include "atomiverse/core/real.h"
 #include "atomiverse/core/vec3.h"
+#include <cmath>
+#include <stdexcept>
+#include <xtensor/containers/xfixed.hpp>
 
 namespace ATV {
 
 class Mat3 {
     xt::xtensor_fixed<Real, xt::xshape<3, 3>> m_{};
-public:
+
+  public:
     Mat3() = default;
 
     Real& operator()(int i, int j) { return m_(i, j); }
@@ -58,11 +59,9 @@ public:
         return r;
     }
     Vec3 operator*(const Vec3& v) const {
-        return {
-            m_(0,0)*v[0] + m_(0,1)*v[1] + m_(0,2)*v[2],
-            m_(1,0)*v[0] + m_(1,1)*v[1] + m_(1,2)*v[2],
-            m_(2,0)*v[0] + m_(2,1)*v[1] + m_(2,2)*v[2]
-        };
+        return {m_(0, 0) * v[0] + m_(0, 1) * v[1] + m_(0, 2) * v[2],
+                m_(1, 0) * v[0] + m_(1, 1) * v[1] + m_(1, 2) * v[2],
+                m_(2, 0) * v[0] + m_(2, 1) * v[1] + m_(2, 2) * v[2]};
     }
 
     Mat3 transpose() const {
@@ -81,9 +80,9 @@ public:
         return std::sqrt(s);
     }
     Real det() const {
-        return m_(0,0)*(m_(1,1)*m_(2,2) - m_(1,2)*m_(2,1))
-             - m_(0,1)*(m_(1,0)*m_(2,2) - m_(1,2)*m_(2,0))
-             + m_(0,2)*(m_(1,0)*m_(2,1) - m_(1,1)*m_(2,0));
+        return m_(0, 0) * (m_(1, 1) * m_(2, 2) - m_(1, 2) * m_(2, 1))
+               - m_(0, 1) * (m_(1, 0) * m_(2, 2) - m_(1, 2) * m_(2, 0))
+               + m_(0, 2) * (m_(1, 0) * m_(2, 1) - m_(1, 1) * m_(2, 0));
     }
     Mat3 inverse() const {
         Real d = det();
@@ -91,27 +90,29 @@ public:
             throw std::runtime_error("Mat3::inverse: singular matrix");
         Real inv = Real(1) / d;
         Mat3 r;
-        r(0,0) = (m_(1,1)*m_(2,2) - m_(1,2)*m_(2,1)) * inv;
-        r(0,1) = (m_(0,2)*m_(2,1) - m_(0,1)*m_(2,2)) * inv;
-        r(0,2) = (m_(0,1)*m_(1,2) - m_(0,2)*m_(1,1)) * inv;
-        r(1,0) = (m_(1,2)*m_(2,0) - m_(1,0)*m_(2,2)) * inv;
-        r(1,1) = (m_(0,0)*m_(2,2) - m_(0,2)*m_(2,0)) * inv;
-        r(1,2) = (m_(0,2)*m_(1,0) - m_(0,0)*m_(1,2)) * inv;
-        r(2,0) = (m_(1,0)*m_(2,1) - m_(1,1)*m_(2,0)) * inv;
-        r(2,1) = (m_(0,1)*m_(2,0) - m_(0,0)*m_(2,1)) * inv;
-        r(2,2) = (m_(0,0)*m_(1,1) - m_(0,1)*m_(1,0)) * inv;
+        r(0, 0) = (m_(1, 1) * m_(2, 2) - m_(1, 2) * m_(2, 1)) * inv;
+        r(0, 1) = (m_(0, 2) * m_(2, 1) - m_(0, 1) * m_(2, 2)) * inv;
+        r(0, 2) = (m_(0, 1) * m_(1, 2) - m_(0, 2) * m_(1, 1)) * inv;
+        r(1, 0) = (m_(1, 2) * m_(2, 0) - m_(1, 0) * m_(2, 2)) * inv;
+        r(1, 1) = (m_(0, 0) * m_(2, 2) - m_(0, 2) * m_(2, 0)) * inv;
+        r(1, 2) = (m_(0, 2) * m_(1, 0) - m_(0, 0) * m_(1, 2)) * inv;
+        r(2, 0) = (m_(1, 0) * m_(2, 1) - m_(1, 1) * m_(2, 0)) * inv;
+        r(2, 1) = (m_(0, 1) * m_(2, 0) - m_(0, 0) * m_(2, 1)) * inv;
+        r(2, 2) = (m_(0, 0) * m_(1, 1) - m_(0, 1) * m_(1, 0)) * inv;
         return r;
     }
 
     static Mat3 zeros() { return Mat3{}; }
     static Mat3 identity() {
         Mat3 m;
-        m(0,0) = m(1,1) = m(2,2) = 1;
+        m(0, 0) = m(1, 1) = m(2, 2) = 1;
         return m;
     }
     static Mat3 diagonal(Real a, Real b, Real c) {
         Mat3 m;
-        m(0,0) = a; m(1,1) = b; m(2,2) = c;
+        m(0, 0) = a;
+        m(1, 1) = b;
+        m(2, 2) = c;
         return m;
     }
     static Mat3 cubic(Real l) { return diagonal(l, l, l); }

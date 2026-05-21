@@ -23,7 +23,7 @@ namespace scf {
 ///
 /// Before rebuilding, copies P -> P_old for convergence checking.
 class DensityBuilder : public ComponentBase {
-public:
+  public:
     /// @brief Component name.
     /// @return "density_builder".
     std::string name() const override { return "density_builder"; }
@@ -45,8 +45,8 @@ public:
     /// @param ctx Destroy context.
     void destroy(const DestroyContext& ctx) override;
 
-private:
-    void* cublas_handle_ = nullptr;  ///< cuBLAS handle.
+  private:
+    void* cublas_handle_ = nullptr; ///< cuBLAS handle.
 };
 
 } // namespace scf

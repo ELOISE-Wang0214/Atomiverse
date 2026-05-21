@@ -11,11 +11,13 @@
 
 #ifdef ATV_HAS_RHF
 
-#include <gtest/gtest.h>
 #include <cmath>
+#include <gtest/gtest.h>
 #include <stdexcept>
 #include <vector>
 
+#include "atomiverse/core/constants.h"
+#include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/grid.h"
@@ -23,8 +25,6 @@
 #include "atomiverse/cpu/scf/lebedev_data.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 #include "atomiverse/cpu/scf/scf_solve.h"
-#include "atomiverse/core/constants.h"
-#include "atomiverse/core/mat3.h"
 
 using namespace ATV;
 using namespace ATV::cpu::scf;
@@ -117,23 +117,23 @@ inline double Y33(double x, double y, double) {
 struct GridSpec {
     const lebedev::Point* points;
     int n;
-    int degree;          // stated algebraic degree (e.g. 6->3, 110->17)
+    int degree; // stated algebraic degree (e.g. 6->3, 110->17)
     const char* name;
 };
 
 GridSpec lebedev_grids[] = {
-    {lebedev::grid_6,   lebedev::n_6,     3, "Lebedev-6"},
-    {lebedev::grid_38,  lebedev::n_38,    9, "Lebedev-38"},
-    {lebedev::grid_50,  lebedev::n_50,   11, "Lebedev-50"},
-    {lebedev::grid_86,  lebedev::n_86,   15, "Lebedev-86"},
-    {lebedev::grid_110, lebedev::n_110,  17, "Lebedev-110"},
-    {lebedev::grid_194, lebedev::n_194,  23, "Lebedev-194"},
-    {lebedev::grid_266, lebedev::n_266,  27, "Lebedev-266"},
-    {lebedev::grid_302, lebedev::n_302,  29, "Lebedev-302"},
-    {lebedev::grid_350, lebedev::n_350,  31, "Lebedev-350"},
-    {lebedev::grid_434, lebedev::n_434,  35, "Lebedev-434"},
-    {lebedev::grid_590, lebedev::n_590,  41, "Lebedev-590"},
-    {lebedev::grid_770, lebedev::n_770,  47, "Lebedev-770"},
+    {lebedev::grid_6, lebedev::n_6, 3, "Lebedev-6"},
+    {lebedev::grid_38, lebedev::n_38, 9, "Lebedev-38"},
+    {lebedev::grid_50, lebedev::n_50, 11, "Lebedev-50"},
+    {lebedev::grid_86, lebedev::n_86, 15, "Lebedev-86"},
+    {lebedev::grid_110, lebedev::n_110, 17, "Lebedev-110"},
+    {lebedev::grid_194, lebedev::n_194, 23, "Lebedev-194"},
+    {lebedev::grid_266, lebedev::n_266, 27, "Lebedev-266"},
+    {lebedev::grid_302, lebedev::n_302, 29, "Lebedev-302"},
+    {lebedev::grid_350, lebedev::n_350, 31, "Lebedev-350"},
+    {lebedev::grid_434, lebedev::n_434, 35, "Lebedev-434"},
+    {lebedev::grid_590, lebedev::n_590, 41, "Lebedev-590"},
+    {lebedev::grid_770, lebedev::n_770, 47, "Lebedev-770"},
 };
 
 // Integrate f over the grid: sum_i w_i * f(p_i).
@@ -167,16 +167,16 @@ TEST(Grid, LebedevSphericalHarmonicOrthogonality) {
 
         // l = 0
         if (g.degree >= 0)
-            EXPECT_NEAR(quadrature_squared(g, Y00),  1.0 / (4.0 * kPi), 1e-14)
+            EXPECT_NEAR(quadrature_squared(g, Y00), 1.0 / (4.0 * kPi), 1e-14)
                 << g.name << " Y_00";
 
         // l = 1: 2l = 2 <= degree
         if (g.degree >= 2) {
             EXPECT_NEAR(quadrature_squared(g, Y1m1), 1.0 / (4.0 * kPi), 1e-14)
                 << g.name << " Y_{1,-1}";
-            EXPECT_NEAR(quadrature_squared(g, Y10),  1.0 / (4.0 * kPi), 1e-14)
+            EXPECT_NEAR(quadrature_squared(g, Y10), 1.0 / (4.0 * kPi), 1e-14)
                 << g.name << " Y_{1,0}";
-            EXPECT_NEAR(quadrature_squared(g, Y11),  1.0 / (4.0 * kPi), 1e-14)
+            EXPECT_NEAR(quadrature_squared(g, Y11), 1.0 / (4.0 * kPi), 1e-14)
                 << g.name << " Y_{1,1}";
         }
 
@@ -186,11 +186,11 @@ TEST(Grid, LebedevSphericalHarmonicOrthogonality) {
                 << g.name << " Y_{2,-2}";
             EXPECT_NEAR(quadrature_squared(g, Y2m1), 1.0 / (4.0 * kPi), 1e-14)
                 << g.name << " Y_{2,-1}";
-            EXPECT_NEAR(quadrature_squared(g, Y20),  1.0 / (4.0 * kPi), 1e-14)
+            EXPECT_NEAR(quadrature_squared(g, Y20), 1.0 / (4.0 * kPi), 1e-14)
                 << g.name << " Y_{2,0}";
-            EXPECT_NEAR(quadrature_squared(g, Y21),  1.0 / (4.0 * kPi), 1e-14)
+            EXPECT_NEAR(quadrature_squared(g, Y21), 1.0 / (4.0 * kPi), 1e-14)
                 << g.name << " Y_{2,1}";
-            EXPECT_NEAR(quadrature_squared(g, Y22),  1.0 / (4.0 * kPi), 1e-14)
+            EXPECT_NEAR(quadrature_squared(g, Y22), 1.0 / (4.0 * kPi), 1e-14)
                 << g.name << " Y_{2,2}";
         }
 
@@ -198,9 +198,9 @@ TEST(Grid, LebedevSphericalHarmonicOrthogonality) {
         if (g.degree >= 6) {
             EXPECT_NEAR(quadrature_squared(g, Y3m3), 1.0 / (4.0 * kPi), 1e-14)
                 << g.name << " Y_{3,-3}";
-            EXPECT_NEAR(quadrature_squared(g, Y30),  1.0 / (4.0 * kPi), 1e-14)
+            EXPECT_NEAR(quadrature_squared(g, Y30), 1.0 / (4.0 * kPi), 1e-14)
                 << g.name << " Y_{3,0}";
-            EXPECT_NEAR(quadrature_squared(g, Y33),  1.0 / (4.0 * kPi), 1e-14)
+            EXPECT_NEAR(quadrature_squared(g, Y33), 1.0 / (4.0 * kPi), 1e-14)
                 << g.name << " Y_{3,3}";
         }
     }
@@ -234,12 +234,13 @@ TEST(Grid, MuraKnowlesGaussianMoments) {
         return std::tgamma(0.5 * (k + 1.0));
     };
 
-    struct MomentCase { double alpha; int n; };
+    struct MomentCase {
+        double alpha;
+        int n;
+    };
     MomentCase cases[] = {
-        {1.0, 0}, {1.0, 2},
-        {2.0, 0}, {2.0, 2},
-        {4.0, 0}, {4.0, 2},
-        {8.0, 0}, {8.0, 2},  // tight orbital
+        {1.0, 0}, {1.0, 2}, {2.0, 0}, {2.0, 2},
+        {4.0, 0}, {4.0, 2}, {8.0, 0}, {8.0, 2}, // tight orbital
     };
 
     for (const auto& c : cases) {
@@ -247,8 +248,8 @@ TEST(Grid, MuraKnowlesGaussianMoments) {
         for (const auto& p : pts) {
             Q += p.w * std::pow(p.r, c.n) * std::exp(-c.alpha * p.r * p.r);
         }
-        double exact = gamma_half(c.n + 2)
-                     / (2.0 * std::pow(c.alpha, 0.5 * (c.n + 3.0)));
+        double exact =
+            gamma_half(c.n + 2) / (2.0 * std::pow(c.alpha, 0.5 * (c.n + 3.0)));
 
         double rel = std::abs(Q - exact) / std::abs(exact);
         EXPECT_LT(rel, 1e-7)
@@ -267,9 +268,9 @@ TEST(Grid, BraggSlaterCoverage) {
     // Spot-checks (Angstrom): PySCF-matching values.
     // H=0.35 (non-bonded), He=1.40 / Ne=1.50 / Kr=1.90 (Bondi-style noble gas),
     // C=0.70 (Slater).
-    EXPECT_NEAR(bragg_slater_radius(1),  0.35 * kAngstromToBohr, 1e-15);
-    EXPECT_NEAR(bragg_slater_radius(2),  1.40 * kAngstromToBohr, 1e-15);
-    EXPECT_NEAR(bragg_slater_radius(6),  0.70 * kAngstromToBohr, 1e-15);
+    EXPECT_NEAR(bragg_slater_radius(1), 0.35 * kAngstromToBohr, 1e-15);
+    EXPECT_NEAR(bragg_slater_radius(2), 1.40 * kAngstromToBohr, 1e-15);
+    EXPECT_NEAR(bragg_slater_radius(6), 0.70 * kAngstromToBohr, 1e-15);
     EXPECT_NEAR(bragg_slater_radius(10), 1.50 * kAngstromToBohr, 1e-15);
     EXPECT_NEAR(bragg_slater_radius(36), 1.90 * kAngstromToBohr, 1e-15);
 
@@ -283,9 +284,9 @@ TEST(Grid, BraggSlaterCoverage) {
 
 TEST(Grid, BraggSlaterRejectsOutOfRange) {
     // Out-of-range Z must throw std::invalid_argument; no silent fallback.
-    EXPECT_THROW(bragg_slater_radius(0),   std::invalid_argument);
-    EXPECT_THROW(bragg_slater_radius(-1),  std::invalid_argument);
-    EXPECT_THROW(bragg_slater_radius(87),  std::invalid_argument);
+    EXPECT_THROW(bragg_slater_radius(0), std::invalid_argument);
+    EXPECT_THROW(bragg_slater_radius(-1), std::invalid_argument);
+    EXPECT_THROW(bragg_slater_radius(87), std::invalid_argument);
     EXPECT_THROW(bragg_slater_radius(100), std::invalid_argument);
     EXPECT_THROW(bragg_slater_radius(118), std::invalid_argument);
 }
@@ -324,7 +325,7 @@ TEST(Grid, SingleAtomSlaterIntegral) {
     auto grid = build_molecular_grid(&h, 1, 50, 110);
     double integral = 0;
     for (const auto& gp : grid.points) {
-        double r = std::sqrt(gp.x*gp.x + gp.y*gp.y + gp.z*gp.z);
+        double r = std::sqrt(gp.x * gp.x + gp.y * gp.y + gp.z * gp.z);
         integral += gp.weight * std::exp(-2.0 * r);
     }
     EXPECT_NEAR(integral, kPi, 0.5);
@@ -332,14 +333,18 @@ TEST(Grid, SingleAtomSlaterIntegral) {
 
 TEST(Grid, TwoAtomPartitionSymmetry) {
     double d = 1.4;
-    native::Atom atoms[] = {{1, {-d/2, 0, 0}}, {1, {d/2, 0, 0}}};
+    native::Atom atoms[] = {{1, {-d / 2, 0, 0}}, {1, {d / 2, 0, 0}}};
     auto grid = build_molecular_grid(atoms, 2, 30, 6);
     double w_left = 0, w_right = 0;
     for (const auto& gp : grid.points) {
-        if (gp.x < 0) w_left += gp.weight; else w_right += gp.weight;
+        if (gp.x < 0)
+            w_left += gp.weight;
+        else
+            w_right += gp.weight;
     }
     double total = w_left + w_right;
-    if (total > 0) EXPECT_NEAR(w_left / total, 0.5, 0.1);
+    if (total > 0)
+        EXPECT_NEAR(w_left / total, 0.5, 0.1);
 }
 
 TEST(Grid, GridPointsFinite) {
@@ -364,7 +369,8 @@ namespace {
 //   (1 / 4*pi) * integral_S x^a y^b z^c dOmega.
 // Zero for any odd exponent; otherwise a ratio of half-integer Gammas.
 double monomial_sphere_average(int a, int b, int c) {
-    if ((a & 1) || (b & 1) || (c & 1)) return 0.0;
+    if ((a & 1) || (b & 1) || (c & 1))
+        return 0.0;
     auto half_gamma = [](int k) { return std::tgamma(0.5 * (k + 1)); };
     double num = half_gamma(a) * half_gamma(b) * half_gamma(c);
     double den = std::tgamma(0.5 * (a + b + c + 3));
@@ -383,7 +389,7 @@ double lebedev_monomial_maxerr(const GridSpec& g) {
                 for (int i = 0; i < g.n; ++i) {
                     const auto& p = g.points[i];
                     q += p.w * std::pow(p.x, a) * std::pow(p.y, b)
-                             * std::pow(p.z, c);
+                         * std::pow(p.z, c);
                 }
                 double err = std::abs(q - monomial_sphere_average(a, b, c));
                 maxerr = std::max(maxerr, err);
@@ -394,15 +400,18 @@ double lebedev_monomial_maxerr(const GridSpec& g) {
 }
 
 // Build a cpu::Frame from (Z, x, y, z) tuples given in Angstrom.
-struct AtomXYZ { int Z; double x, y, z; };
+struct AtomXYZ {
+    int Z;
+    double x, y, z;
+};
 
 cpu::Frame make_frame(const std::vector<AtomXYZ>& atoms) {
     cpu::Frame f(static_cast<int>(atoms.size()));
     for (size_t i = 0; i < atoms.size(); ++i) {
         f.atoms.type[i] = atoms[i].Z;
-        f.atoms.x[i]    = atoms[i].x;
-        f.atoms.y[i]    = atoms[i].y;
-        f.atoms.z[i]    = atoms[i].z;
+        f.atoms.x[i] = atoms[i].x;
+        f.atoms.y[i] = atoms[i].y;
+        f.atoms.z[i] = atoms[i].z;
     }
     f.box = Mat3::cubic(100.0);
     return f;
@@ -443,7 +452,7 @@ double atv_rks_pbe_energy(const std::vector<AtomXYZ>& atoms, GridLevel level) {
     c.method = cpu::scf::MeanFieldType::KS;
     c.xc_type = cpu::scf::XCType::PBE;
     c.n_alpha = ints.n_occ();
-    c.n_beta  = ints.n_occ();
+    c.n_beta = ints.n_occ();
     c.tol = 1e-10;
     c.use_diis = true;
     c.diis_max_vectors = 8;
@@ -478,7 +487,7 @@ TEST(Grid, SG0ReproducesLegacyGrid) {
     native::Atom atoms[] = {
         {8, {0.0, 0.0, 0.2}}, {1, {0.0, 1.4, -0.9}}, {1, {0.0, -1.4, -0.9}}};
     auto legacy = build_molecular_grid(atoms, 3, 50, 110);
-    auto sg0    = build_molecular_grid(atoms, 3, GridLevel::SG0, 50, 110);
+    auto sg0 = build_molecular_grid(atoms, 3, GridLevel::SG0, 50, 110);
 
     ASSERT_EQ(legacy.points.size(), sg0.points.size());
     for (size_t i = 0; i < legacy.points.size(); ++i) {
@@ -496,9 +505,9 @@ TEST(Grid, BeckePartitionSumsToUnity) {
     // For a multi-atom molecule, the per-atom Becke cell weights at any
     // grid point must sum to exactly 1 (within 1e-12). We probe this with
     // a regular lattice of test points around the H2O nuclei.
-    native::Atom atoms[] = {
-        {8, {0.0, 0.0, 0.22}}, {1, {0.0, 1.43, -0.89}},
-        {1, {0.0, -1.43, -0.89}}};
+    native::Atom atoms[] = {{8, {0.0, 0.0, 0.22}},
+                            {1, {0.0, 1.43, -0.89}},
+                            {1, {0.0, -1.43, -0.89}}};
     const int natm = 3;
     std::vector<double> w(natm);
     for (double x = -3.0; x <= 3.0; x += 0.5) {
@@ -507,10 +516,11 @@ TEST(Grid, BeckePartitionSumsToUnity) {
                 becke_partition_weights_for_test(atoms, natm, x, y, z,
                                                  w.data());
                 double s = 0.0;
-                for (int a = 0; a < natm; ++a) s += w[a];
+                for (int a = 0; a < natm; ++a)
+                    s += w[a];
                 EXPECT_NEAR(s, 1.0, 1e-12)
-                    << "Becke weights do not sum to 1 at ("
-                    << x << "," << y << "," << z << ")";
+                    << "Becke weights do not sum to 1 at (" << x << "," << y
+                    << "," << z << ")";
             }
         }
     }
@@ -526,14 +536,13 @@ TEST(Grid, SG1RecoversWaterElectronCount) {
     c.method = cpu::scf::MeanFieldType::KS;
     c.xc_type = cpu::scf::XCType::PBE;
     c.n_alpha = ints.n_occ();
-    c.n_beta  = ints.n_occ();
+    c.n_beta = ints.n_occ();
     c.tol = 1e-10;
     c.init_guess = cpu::scf::InitGuess::MINAO;
     c.grid_level = GridLevel::SG1;
     auto r = cpu::scf::scf_solve(ints, c);
     double n_e = r.integrated_n_alpha + r.integrated_n_beta;
-    EXPECT_NEAR(n_e, 10.0, 1e-4)
-        << "SG-1 grid electron count = " << n_e;
+    EXPECT_NEAR(n_e, 10.0, 1e-4) << "SG-1 grid electron count = " << n_e;
 }
 
 TEST(Grid, MatchPySCFRecoversWaterElectronCount) {
@@ -544,14 +553,13 @@ TEST(Grid, MatchPySCFRecoversWaterElectronCount) {
     c.method = cpu::scf::MeanFieldType::KS;
     c.xc_type = cpu::scf::XCType::PBE;
     c.n_alpha = ints.n_occ();
-    c.n_beta  = ints.n_occ();
+    c.n_beta = ints.n_occ();
     c.tol = 1e-10;
     c.init_guess = cpu::scf::InitGuess::MINAO;
     c.grid_level = GridLevel::MatchPySCF;
     auto r = cpu::scf::scf_solve(ints, c);
     double n_e = r.integrated_n_alpha + r.integrated_n_beta;
-    EXPECT_NEAR(n_e, 10.0, 1e-4)
-        << "match-PySCF grid electron count = " << n_e;
+    EXPECT_NEAR(n_e, 10.0, 1e-4) << "match-PySCF grid electron count = " << n_e;
 }
 
 // ── ac-004: SG-1 brings the def2-SVP energy residue to <= 5e-4 Ha ───────

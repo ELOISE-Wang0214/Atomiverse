@@ -19,11 +19,11 @@
 #include <cstdint>
 #include <vector>
 
+#include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/backend.h"
 #include "atomiverse/cpu/context.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/mpi/domain.h"
-#include "atomiverse/core/mat3.h"
 
 using namespace ATV;
 
@@ -101,12 +101,12 @@ TEST(MpiTopology, FaceNeighborsValidUnderPBC) {
 // ── Partition: n_local sums to n_total, no double-count, no drop ────────
 
 TEST(MpiTopology, PartitionConservesTotalAtomCount) {
-    auto frame = make_uniform_grid(4, 10.0);  // 64 atoms, box 10x10x10
+    auto frame = make_uniform_grid(4, 10.0); // 64 atoms, box 10x10x10
     const int n_total = frame.atoms.size();
 
     cpu::Backend backend;
     backend.init();
-    backend.set_frame(frame);  // runs partition_atoms on multi-rank
+    backend.set_frame(frame); // runs partition_atoms on multi-rank
 
     auto* dd = backend.context().dd;
     const int n_local = dd->n_local;
@@ -142,13 +142,14 @@ TEST(MpiTopology, PartitionAssignsEveryTagOnce) {
         }
     }
     std::vector<int> global_counts(static_cast<std::size_t>(n_total), 0);
-    MPI_Allreduce(tag_counts.data(), global_counts.data(), n_total,
-                  MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+    MPI_Allreduce(tag_counts.data(), global_counts.data(), n_total, MPI_INT,
+                  MPI_SUM, MPI_COMM_WORLD);
 
     for (int t = 0; t < n_total; ++t) {
         EXPECT_EQ(global_counts[static_cast<std::size_t>(t)], 1)
             << "tag " << t << " is owned by "
-            << global_counts[static_cast<std::size_t>(t)] << " ranks (expected 1)";
+            << global_counts[static_cast<std::size_t>(t)]
+            << " ranks (expected 1)";
     }
 
     backend.shutdown();

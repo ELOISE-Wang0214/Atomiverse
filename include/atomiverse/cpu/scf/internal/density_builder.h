@@ -16,7 +16,7 @@ namespace scf {
 namespace internal {
 
 class DensityBuilder {
-public:
+  public:
     DensityBuilder() = default;
 
     /// @brief Pre-allocate workspaces sized for `n_basis`. No-op today.

@@ -46,25 +46,29 @@ enum class InitGuess { Hcore, MINAO };
 
 /// @brief SCF configuration -- all method/convergence/grid parameters.
 struct SCFConfig {
-    SpinType spin = SpinType::Unrestricted;   ///< Restricted or unrestricted spin treatment.
-    MeanFieldType method = MeanFieldType::HF; ///< Hartree-Fock or Kohn-Sham mean field.
-    XCType xc_type = XCType::LSDA;          ///< Only used when method == KS.
-    int n_alpha = 0;                         ///< Alpha electrons.
-    int n_beta = 0;                          ///< Beta electrons.
+    SpinType spin =
+        SpinType::Unrestricted; ///< Restricted or unrestricted spin treatment.
+    MeanFieldType method =
+        MeanFieldType::HF;         ///< Hartree-Fock or Kohn-Sham mean field.
+    XCType xc_type = XCType::LSDA; ///< Only used when method == KS.
+    int n_alpha = 0;               ///< Alpha electrons.
+    int n_beta = 0;                ///< Beta electrons.
 
     // Convergence (PySCF-aligned defaults for parameter values;
     // damping retained at 0.5 until MINAO lands — Hcore guess + damping=0
     // + DIIS-from-iter-1 diverges on aspirin-scale systems. Drop to 0.0
     // once MINAO is available.)
-    double tol = 1e-9;                       ///< Energy convergence tolerance |dE| (Hartree).
-    double conv_tol_grad = -1;               ///< DIIS-error tolerance. If <0, uses sqrt(tol).
-    int max_iter = 100;                      ///< Maximum SCF iterations.
-    bool use_diis = true;                    ///< Enable DIIS acceleration.
-    int diis_max_vectors = 8;                ///< DIIS history size (PySCF default = 8).
-    int diis_start_iter = 1;                 ///< Start DIIS at this iteration (PySCF default = 1).
-    double damping_factor = 0.5;             ///< Linear mixing for pre-DIIS iterations. Auto-dropped
-                                             ///< to 0 when MINAO guess is available (matches PySCF).
-    InitGuess init_guess = InitGuess::MINAO;  ///< Initial-density guess type.
+    double tol = 1e-9;         ///< Energy convergence tolerance |dE| (Hartree).
+    double conv_tol_grad = -1; ///< DIIS-error tolerance. If <0, uses sqrt(tol).
+    int max_iter = 100;        ///< Maximum SCF iterations.
+    bool use_diis = true;      ///< Enable DIIS acceleration.
+    int diis_max_vectors = 8;  ///< DIIS history size (PySCF default = 8).
+    int diis_start_iter =
+        1; ///< Start DIIS at this iteration (PySCF default = 1).
+    double damping_factor =
+        0.5; ///< Linear mixing for pre-DIIS iterations. Auto-dropped
+             ///< to 0 when MINAO guess is available (matches PySCF).
+    InitGuess init_guess = InitGuess::MINAO; ///< Initial-density guess type.
 
     // Grid (KS only)
     /// @brief Named DFT integration-grid quality level.
@@ -76,8 +80,8 @@ struct SCFConfig {
     ///          by `default_config`. When `grid_level` is not `SG0`,
     ///          `n_radial` / `n_angular` are ignored.
     GridLevel grid_level = GridLevel::SG0;
-    int n_radial = 50;                       ///< Radial grid points per atom (SG0 only).
-    int n_angular = 110;                     ///< Angular grid points per atom (SG0 only).
+    int n_radial = 50;   ///< Radial grid points per atom (SG0 only).
+    int n_angular = 110; ///< Angular grid points per atom (SG0 only).
 
     /// @brief Force the native 2e gradient engine even when libcint is available.
     /// @details libcint (when compiled in) is the STO-3G path for
@@ -124,46 +128,49 @@ struct SCFConfig {
 
 /// @brief Optional density-matrix initial guess for SCF iterations.
 struct SCFInitialGuess {
-    xt::xtensor<double, 2> P_alpha;          ///< Alpha or total density guess.
-    xt::xtensor<double, 2> P_beta;           ///< Beta density guess for unrestricted runs.
-    bool has_alpha = false;                  ///< Whether P_alpha should be used.
-    bool has_beta = false;                   ///< Whether P_beta should be used.
+    xt::xtensor<double, 2> P_alpha; ///< Alpha or total density guess.
+    xt::xtensor<double, 2>
+        P_beta;             ///< Beta density guess for unrestricted runs.
+    bool has_alpha = false; ///< Whether P_alpha should be used.
+    bool has_beta = false;  ///< Whether P_beta should be used.
 };
 
 /// @brief Unified SCF result -- full energy decomposition and spin-resolved quantities.
 struct SCFResult {
     // Core
-    bool converged = false;           ///< Whether SCF converged within `max_iter`.
-    int iterations = 0;               ///< Number of iterations performed.
-    double energy = 0;               ///< Total energy [Hartree].
-    double residual = 0;             ///< Final convergence metric.
+    bool converged = false; ///< Whether SCF converged within `max_iter`.
+    int iterations = 0;     ///< Number of iterations performed.
+    double energy = 0;      ///< Total energy [Hartree].
+    double residual = 0;    ///< Final convergence metric.
 
     // Energy decomposition (always populated)
-    double one_electron_energy = 0;  ///< sum_sigma Tr[Hcore * P^sigma].
-    double coulomb_energy = 0;       ///< 0.5 * Tr[J * P_total].
-    double exchange_energy = 0;      ///< HF exchange. Zero for pure KS.
+    double one_electron_energy = 0; ///< sum_sigma Tr[Hcore * P^sigma].
+    double coulomb_energy = 0;      ///< 0.5 * Tr[J * P_total].
+    double exchange_energy = 0;     ///< HF exchange. Zero for pure KS.
     double xc_energy = 0;           ///< E_xc from grid. Zero for pure HF.
-    double nuclear_repulsion = 0;    ///< V_nuc.
+    double nuclear_repulsion = 0;   ///< V_nuc.
 
     // Spin info
-    int n_alpha = 0;                  ///< Number of alpha electrons.
-    int n_beta = 0;                   ///< Number of beta electrons.
-    double spin_contamination = 0;   ///< <S^2> - S(S+1). Zero for restricted.
+    int n_alpha = 0;               ///< Number of alpha electrons.
+    int n_beta = 0;                ///< Number of beta electrons.
+    double spin_contamination = 0; ///< <S^2> - S(S+1). Zero for restricted.
 
     // Orbitals and densities (always spin-resolved)
-    xt::xtensor<double, 1> eigenvalues_alpha; ///< Alpha orbital energies [Hartree].
-    xt::xtensor<double, 1> eigenvalues_beta;  ///< Beta orbital energies [Hartree].
-    xt::xtensor<double, 2> P_alpha;           ///< Final alpha density matrix.
-    xt::xtensor<double, 2> P_beta;            ///< Final beta density matrix.
-    xt::xtensor<double, 2> C_alpha;           ///< Final alpha MO coefficients.
-    xt::xtensor<double, 2> C_beta;            ///< Final beta MO coefficients.
+    xt::xtensor<double, 1>
+        eigenvalues_alpha; ///< Alpha orbital energies [Hartree].
+    xt::xtensor<double, 1>
+        eigenvalues_beta;           ///< Beta orbital energies [Hartree].
+    xt::xtensor<double, 2> P_alpha; ///< Final alpha density matrix.
+    xt::xtensor<double, 2> P_beta;  ///< Final beta density matrix.
+    xt::xtensor<double, 2> C_alpha; ///< Final alpha MO coefficients.
+    xt::xtensor<double, 2> C_beta;  ///< Final beta MO coefficients.
 
     // Diagnostics
-    std::vector<IterationRecord> trace;     ///< Per-iteration convergence trace.
+    std::vector<IterationRecord> trace; ///< Per-iteration convergence trace.
 
     // Grid quality (KS only)
-    double integrated_n_alpha = 0;          ///< Grid-integrated alpha electron count.
-    double integrated_n_beta = 0;           ///< Grid-integrated beta electron count.
+    double integrated_n_alpha = 0; ///< Grid-integrated alpha electron count.
+    double integrated_n_beta = 0;  ///< Grid-integrated beta electron count.
 };
 
 /// @brief Convenience: RHF configuration.
@@ -177,7 +184,7 @@ inline SCFConfig rhf_config(const IntegralPack& ints, double tol = 1e-9) {
     c.n_alpha = ints.n_occ();
     c.n_beta = ints.n_occ();
     c.tol = tol;
-    c.damping_factor = 0.0;       // MINAO guess lets us drop damping (PySCF default).
+    c.damping_factor = 0.0; // MINAO guess lets us drop damping (PySCF default).
     c.init_guess = InitGuess::MINAO;
     return c;
 }
@@ -204,9 +211,10 @@ inline SCFConfig uhf_config(const IntegralPack& ints, int n_alpha, int n_beta,
     // UHF-specific: preserve legacy behaviour (unchanged in Phase 1 PySCF alignment).
     // NOTE: damping convention was flipped in 2026-04; legacy 0.3 (30% new) becomes 0.7 here.
     c.diis_max_vectors = 6;
-    c.diis_start_iter = 5;  // allow HOMO-LUMO mixing to settle before DIIS
-    c.damping_factor = 0.7;  // heavy pre-DIIS damping (matches legacy 0.3 in old convention)
-    c.init_guess = InitGuess::Hcore;  // keep legacy UHF guess
+    c.diis_start_iter = 5; // allow HOMO-LUMO mixing to settle before DIIS
+    c.damping_factor =
+        0.7; // heavy pre-DIIS damping (matches legacy 0.3 in old convention)
+    c.init_guess = InitGuess::Hcore; // keep legacy UHF guess
     return c;
 }
 
@@ -231,8 +239,8 @@ inline SCFConfig uks_config(const IntegralPack& ints, int n_alpha, int n_beta,
     // UKS-specific: preserve legacy behaviour (unchanged in Phase 1 PySCF alignment).
     c.diis_max_vectors = 6;
     c.diis_start_iter = 1;
-    c.damping_factor = 0.5;  // symmetric mix — invariant under convention flip
-    c.init_guess = InitGuess::Hcore;  // keep legacy UKS guess
+    c.damping_factor = 0.5; // symmetric mix — invariant under convention flip
+    c.init_guess = InitGuess::Hcore; // keep legacy UKS guess
     return c;
 }
 
@@ -267,7 +275,7 @@ inline SCFConfig default_config(const IntegralPack& ints) {
     c.method = MeanFieldType::KS;
     c.xc_type = XCType::PBE;
     c.n_alpha = ints.n_occ();
-    c.n_beta  = ints.n_occ();
+    c.n_beta = ints.n_occ();
     c.tol = 1e-9;
     c.use_diis = true;
     c.diis_max_vectors = 8;
@@ -323,7 +331,7 @@ inline SCFConfig baseline_config(const IntegralPack& ints) {
     c.spin = SpinType::Restricted;
     c.method = MeanFieldType::HF;
     c.n_alpha = ints.n_occ();
-    c.n_beta  = ints.n_occ();
+    c.n_beta = ints.n_occ();
     c.tol = 1e-9;
     c.use_diis = true;
     c.damping_factor = 0.0;

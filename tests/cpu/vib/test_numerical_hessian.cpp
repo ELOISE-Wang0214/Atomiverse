@@ -21,14 +21,14 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/response_driver.h"
+#include "atomiverse/cpu/scf/gradient.h"
+#include "atomiverse/cpu/scf/integrals.h"
+#include "atomiverse/cpu/scf/scf_evaluator.h"
+#include "atomiverse/cpu/scf/scf_solve.h"
 #include "atomiverse/cpu/vib/hessian.h"
 #include "atomiverse/cpu/vib/hessian_result.h"
-#include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
-#include "atomiverse/cpu/scf/gradient.h"
-#include "atomiverse/cpu/scf/scf_evaluator.h"
-#include "atomiverse/facade/stage.h"
 #include "atomiverse/facade/component_role.h"
+#include "atomiverse/facade/stage.h"
 
 using namespace ATV;
 
@@ -41,8 +41,8 @@ constexpr double kHessianStepAngstrom = 1.0e-3;
 cpu::Frame make_h2o() {
     cpu::Frame f(3);
     f.atoms.x = {0.0, 0.7572, -0.7572};
-    f.atoms.y = {0.0, 0.5865,  0.5865};
-    f.atoms.z = {0.0, 0.0,     0.0};
+    f.atoms.y = {0.0, 0.5865, 0.5865};
+    f.atoms.z = {0.0, 0.0, 0.0};
     f.atoms.mass = {15.999, 1.008, 1.008};
     f.atoms.type = {8, 1, 1};
     f.box = Mat3::cubic(100.0);
@@ -101,9 +101,10 @@ xt::xtensor<double, 2> gradient_difference_oracle(const cpu::Frame& frame,
 
     auto force_at = [&](const cpu::Frame& geom) {
         auto ints = cpu::scf::build_integrals(geom, cpu::scf::BasisSet::STO3G);
-        auto cfg  = tight_rhf_config(ints);
-        auto res  = cpu::scf::scf_solve(ints, cfg);
-        return cpu::scf::scf_gradient(geom, ints, res, cfg).forces; // [n,3] eV/A
+        auto cfg = tight_rhf_config(ints);
+        auto res = cpu::scf::scf_solve(ints, cfg);
+        return cpu::scf::scf_gradient(geom, ints, res, cfg)
+            .forces; // [n,3] eV/A
     };
 
     for (int c = 0; c < dim; ++c) {
@@ -113,20 +114,22 @@ xt::xtensor<double, 2> gradient_difference_oracle(const cpu::Frame& frame,
         cpu::Frame fwd = frame;
         cpu::Frame bwd = frame;
         auto disp = [&](cpu::Frame& g, double s) {
-            if (axis == 0)      g.atoms.x(atom) += s;
-            else if (axis == 1) g.atoms.y(atom) += s;
-            else                g.atoms.z(atom) += s;
+            if (axis == 0)
+                g.atoms.x(atom) += s;
+            else if (axis == 1)
+                g.atoms.y(atom) += s;
+            else
+                g.atoms.z(atom) += s;
         };
         disp(fwd, +h);
         disp(bwd, -h);
 
-        auto f_plus  = force_at(fwd);
+        auto f_plus = force_at(fwd);
         auto f_minus = force_at(bwd);
 
         for (int j = 0; j < n; ++j)
             for (int b = 0; b < 3; ++b)
-                H(c, 3 * j + b) =
-                    -(f_plus(j, b) - f_minus(j, b)) / (2.0 * h);
+                H(c, 3 * j + b) = -(f_plus(j, b) - f_minus(j, b)) / (2.0 * h);
     }
 
     // Symmetrize (same projection the driver's Symmetrize component applies).
@@ -145,11 +148,10 @@ TEST(NumericalHessian, BuildsAndProducesHessian) {
     auto frame = make_h2o();
 
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto cfg  = tight_rhf_config(ints);
+    auto cfg = tight_rhf_config(ints);
 
     cpu::vib::Hessian driver;
-    driver.on(ATV::vib::Phase::force)
-          .add(cpu::scf::SCFEvaluator{cfg});
+    driver.on(ATV::vib::Phase::force).add(cpu::scf::SCFEvaluator{cfg});
     driver.build();
     auto result = driver.run(frame);
 
@@ -168,11 +170,10 @@ TEST(NumericalHessian, MatchesGradientDifferenceOracle) {
     auto frame = make_h2o();
 
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto cfg  = tight_rhf_config(ints);
+    auto cfg = tight_rhf_config(ints);
 
     cpu::vib::Hessian driver;
-    driver.on(ATV::vib::Phase::force)
-          .add(cpu::scf::SCFEvaluator{cfg});
+    driver.on(ATV::vib::Phase::force).add(cpu::scf::SCFEvaluator{cfg});
     driver.build();
     auto result = driver.run(frame);
 
@@ -183,7 +184,7 @@ TEST(NumericalHessian, MatchesGradientDifferenceOracle) {
     for (int i = 0; i < 9; ++i)
         for (int j = 0; j < 9; ++j)
             max_err = std::max(max_err,
-                std::abs(result.hessian(i, j) - oracle(i, j)));
+                               std::abs(result.hessian(i, j) - oracle(i, j)));
     EXPECT_LE(max_err, 1e-6)
         << "driver Hessian deviates from gradient-difference oracle by "
         << max_err << " eV/Angstrom^2";
@@ -195,19 +196,18 @@ TEST(NumericalHessian, ReturnedHessianIsSymmetric) {
     auto frame = make_h2o();
 
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto cfg  = tight_rhf_config(ints);
+    auto cfg = tight_rhf_config(ints);
 
     cpu::vib::Hessian driver;
-    driver.on(ATV::vib::Phase::force)
-          .add(cpu::scf::SCFEvaluator{cfg});
+    driver.on(ATV::vib::Phase::force).add(cpu::scf::SCFEvaluator{cfg});
     driver.build();
     auto result = driver.run(frame);
 
     double max_asym = 0.0;
     for (int i = 0; i < 9; ++i)
         for (int j = 0; j < 9; ++j)
-            max_asym = std::max(max_asym,
-                std::abs(result.hessian(i, j) - result.hessian(j, i)));
+            max_asym = std::max(max_asym, std::abs(result.hessian(i, j)
+                                                   - result.hessian(j, i)));
     EXPECT_LE(max_asym, 1e-12);
 }
 
@@ -217,11 +217,10 @@ TEST(NumericalHessian, TranslationalSumRule) {
     auto frame = make_h2o();
 
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto cfg  = tight_rhf_config(ints);
+    auto cfg = tight_rhf_config(ints);
 
     cpu::vib::Hessian driver;
-    driver.on(ATV::vib::Phase::force)
-          .add(cpu::scf::SCFEvaluator{cfg});
+    driver.on(ATV::vib::Phase::force).add(cpu::scf::SCFEvaluator{cfg});
     driver.build();
     auto result = driver.run(frame);
 
@@ -233,8 +232,8 @@ TEST(NumericalHessian, TranslationalSumRule) {
             for (int j = 0; j < n; ++j)
                 row_sum += result.hessian(3 * i + axis, 3 * j + axis);
             EXPECT_LE(std::abs(row_sum), 1e-4)
-                << "translational sum rule violated for atom " << i
-                << " axis " << axis << ": " << row_sum;
+                << "translational sum rule violated for atom " << i << " axis "
+                << axis << ": " << row_sum;
         }
 }
 
@@ -250,22 +249,20 @@ TEST(NumericalHessian, ValidateThrowsWithoutHessianAccumulator) {
     // Hessian accumulator removed → no Capability::Hessian component → throw.
     auto frame = make_h2o();
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto cfg  = tight_rhf_config(ints);
+    auto cfg = tight_rhf_config(ints);
 
     cpu::vib::Hessian driver{cpu::vib::Hessian::WithoutAccumulator{}};
-    driver.on(ATV::vib::Phase::force)
-          .add(cpu::scf::SCFEvaluator{cfg});
+    driver.on(ATV::vib::Phase::force).add(cpu::scf::SCFEvaluator{cfg});
     EXPECT_THROW(driver.build(), std::runtime_error);
 }
 
 TEST(NumericalHessian, ValidateAcceptsCorrectlyConfiguredDriver) {
     auto frame = make_h2o();
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto cfg  = tight_rhf_config(ints);
+    auto cfg = tight_rhf_config(ints);
 
     cpu::vib::Hessian driver;
-    driver.on(ATV::vib::Phase::force)
-          .add(cpu::scf::SCFEvaluator{cfg});
+    driver.on(ATV::vib::Phase::force).add(cpu::scf::SCFEvaluator{cfg});
     EXPECT_NO_THROW(driver.build());
 }
 
@@ -275,11 +272,10 @@ TEST(NumericalHessian, SingleAtomFrame) {
     auto frame = make_single_atom();
 
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    auto cfg  = cpu::scf::uhf_config(ints, 1, 0); // single H: one alpha electron
+    auto cfg = cpu::scf::uhf_config(ints, 1, 0); // single H: one alpha electron
 
     cpu::vib::Hessian driver;
-    driver.on(ATV::vib::Phase::force)
-          .add(cpu::scf::SCFEvaluator{cfg});
+    driver.on(ATV::vib::Phase::force).add(cpu::scf::SCFEvaluator{cfg});
     driver.build();
     auto result = driver.run(frame);
 

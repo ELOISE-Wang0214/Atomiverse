@@ -77,9 +77,9 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/potentials/harmonic_angle.h"
-#include "atomiverse/cpu/potentials/harmonic_bond.h"
-#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
+#include "atomiverse/core/binding.h"
+#include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/lammps_data.h"
@@ -92,10 +92,10 @@
 #include "atomiverse/cpu/md/nose_hoover_npt.h"
 #include "atomiverse/cpu/md/nve_limit.h"
 #include "atomiverse/cpu/observer/rdf.h"
+#include "atomiverse/cpu/potentials/harmonic_angle.h"
+#include "atomiverse/cpu/potentials/harmonic_bond.h"
+#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
 #include "atomiverse/cpu/recorder/trajectory.h"
-#include "atomiverse/core/binding.h"
-#include "atomiverse/core/mat3.h"
-#include "atomiverse/core/units.h"
 #include "atomiverse/facade/stage.h"
 
 #ifdef ATV_HAS_MPI
@@ -110,74 +110,75 @@ namespace {
 
 // ── Force-field constants (Dreiding-style UA polyethylene) ──────────
 constexpr double kKcalPerMolToEv = 1.0 / 23.060547830619026;
-constexpr double kBondK_kcal     = 350.0;
-constexpr double kBondR0         = 1.53;
-constexpr double kAngleK_kcal    = 60.0;
-constexpr double kAngleTheta0    = 109.5 * kPI / 180.0;
-constexpr double kLjEps_kcal     = 0.112;
-constexpr double kLjSigma        = 4.01;
-constexpr double kLjCutoff       = 10.5;
+constexpr double kBondK_kcal = 350.0;
+constexpr double kBondR0 = 1.53;
+constexpr double kAngleK_kcal = 60.0;
+constexpr double kAngleTheta0 = 109.5 * kPI / 180.0;
+constexpr double kLjEps_kcal = 0.112;
+constexpr double kLjSigma = 4.01;
+constexpr double kLjCutoff = 10.5;
 
 constexpr double kEvPerA3ToGPa = 160.21766;
 constexpr double kEvPerA3ToBar = 1.602176634e6;
 
-double bond_k_eV()  { return kBondK_kcal  * kKcalPerMolToEv; }
+double bond_k_eV() { return kBondK_kcal * kKcalPerMolToEv; }
 double angle_k_eV() { return kAngleK_kcal * kKcalPerMolToEv; }
-double lj_eps_eV()  { return kLjEps_kcal  * kKcalPerMolToEv; }
+double lj_eps_eV() { return kLjEps_kcal * kKcalPerMolToEv; }
 
 std::vector<double> dihedral_Cn_eV() {
     return {
-        1.73    * kKcalPerMolToEv,   // C0  (MSU paper, Tschopp 2010)
-        -4.49   * kKcalPerMolToEv,   // C1
-        0.776   * kKcalPerMolToEv,   // C2
-        6.99    * kKcalPerMolToEv,   // C3
-        0.0,                          // C4
+        1.73 * kKcalPerMolToEv,  // C0  (MSU paper, Tschopp 2010)
+        -4.49 * kKcalPerMolToEv, // C1
+        0.776 * kKcalPerMolToEv, // C2
+        6.99 * kKcalPerMolToEv,  // C3
+        0.0,                     // C4
     };
 }
 
 enum class Mode { full, nvt, npt, tension, single_stage };
 
 struct Args {
-    Mode   mode        = Mode::full;
-    int    single_stage_id = 1;     ///< 1..5 when mode == single_stage
+    Mode mode = Mode::full;
+    int single_stage_id = 1; ///< 1..5 when mode == single_stage
     /// Per-stage step counts. Defaults are scaled-down from `lammps.in`
     /// so the benchmark completes in minutes for CI smoke runs; large
     /// runs override via `--scale N` (multiplies every stage's step
     /// count).
-    int    stage1_steps = 2000;     ///< NVELimit+Langevin @ 500 K
-    int    stage2_steps = 5000;     ///< NPT @ 500 K
-    int    stage3_steps = 5000;     ///< NPT cool 500 → 100 K
-    int    stage4_steps = 5000;     ///< NPT @ 100 K
-    int    stage5_steps = 10000;    ///< tension along x
-    double scale       = 1.0;       ///< multiplier on each stage's steps
+    int stage1_steps = 2000;  ///< NVELimit+Langevin @ 500 K
+    int stage2_steps = 5000;  ///< NPT @ 500 K
+    int stage3_steps = 5000;  ///< NPT cool 500 → 100 K
+    int stage4_steps = 5000;  ///< NPT @ 100 K
+    int stage5_steps = 10000; ///< tension along x
+    double scale = 1.0;       ///< multiplier on each stage's steps
 
-    int    print_every = 100;
-    int    chains_per_axis = 4;
-    int    n_atoms_per_chain = 18;
-    double box_len     = 60.0;
-    double margin      = 1.0;
-    int    seed        = 12345;
-    std::string data_path;       ///< If non-empty, load this LAMMPS data file
-                                 ///< instead of generating the chain grid.
-    double T_hot       = 500.0;     ///< stages 1-3 start setpoint [K]
-    double T_cold      = 100.0;     ///< stages 3-5 final setpoint [K]
+    int print_every = 100;
+    int chains_per_axis = 4;
+    int n_atoms_per_chain = 18;
+    double box_len = 60.0;
+    double margin = 1.0;
+    int seed = 12345;
+    std::string data_path; ///< If non-empty, load this LAMMPS data file
+                           ///< instead of generating the chain grid.
+    double T_hot = 500.0;  ///< stages 1-3 start setpoint [K]
+    double T_cold = 100.0; ///< stages 3-5 final setpoint [K]
     /// Per-stage timesteps [fs], byte-aligned with the `lammps.in`
     /// `timestep` budget: stages 1 and 5 at 1.0 fs, stages 2-4 at
     /// 0.5 fs. `dt` is fundamental to each integrator kernel (no
     /// setter), which is why every stage builds its own driver.
-    double dt_stage1   = 1.0;       ///< [fs] -- lammps.in `timestep 1`
-    double dt_stage2   = 0.5;       ///< [fs] -- lammps.in `timestep 0.5`
-    double dt_stage3   = 0.5;       ///< [fs] -- lammps.in `timestep 0.5`
-    double dt_stage4   = 0.5;       ///< [fs] -- lammps.in `timestep 0.5`
-    double dt_stage5   = 1.0;       ///< [fs] -- lammps.in `timestep 1`
-    double tau_T       = 100.0;     ///< [fs]
-    double tau_P       = 1000.0;    ///< [fs]
-    double langevin_damp = 100.0;   ///< [fs] stage-1 Langevin damp
-    double strain_rate = 1e-5;      ///< 1/fs (stage 5) -- lammps.in `fix deform x erate 1e-5`
+    double dt_stage1 = 1.0;       ///< [fs] -- lammps.in `timestep 1`
+    double dt_stage2 = 0.5;       ///< [fs] -- lammps.in `timestep 0.5`
+    double dt_stage3 = 0.5;       ///< [fs] -- lammps.in `timestep 0.5`
+    double dt_stage4 = 0.5;       ///< [fs] -- lammps.in `timestep 0.5`
+    double dt_stage5 = 1.0;       ///< [fs] -- lammps.in `timestep 1`
+    double tau_T = 100.0;         ///< [fs]
+    double tau_P = 1000.0;        ///< [fs]
+    double langevin_damp = 100.0; ///< [fs] stage-1 Langevin damp
+    double strain_rate =
+        1e-5; ///< 1/fs (stage 5) -- lammps.in `fix deform x erate 1e-5`
     std::string out_dir = ".";
-    bool   quiet       = false;
-    int    traj_every  = 0;         ///< trajectory XYZ stride (0 = off)
-    std::string rdf_spec;           ///< "RMAX,BINS[,STRIDE]" (empty = off)
+    bool quiet = false;
+    int traj_every = 0;   ///< trajectory XYZ stride (0 = off)
+    std::string rdf_spec; ///< "RMAX,BINS[,STRIDE]" (empty = off)
 };
 
 void print_help() {
@@ -189,18 +190,26 @@ void print_help() {
         "      npt         : stages 1+2.\n"
         "      tension     : stages 1+2+5 (no cooling/equilibration).\n"
         "      stage:N     : single stage by 1-indexed id (1..5).\n"
-        "  --scale F                   Multiply every stage's step count by F (default 1).\n"
-        "  --print-every N             Thermo/stress sample stride (default 100).\n"
+        "  --scale F                   Multiply every stage's step count by F "
+        "(default 1).\n"
+        "  --print-every N             Thermo/stress sample stride (default "
+        "100).\n"
         "  --chains-per-axis N         NxNxN chain grid (default 4).\n"
         "  --n-atoms-per-chain N       UA atoms per chain (default 18).\n"
-        "  --box-len L                 Initial cubic box edge in Å (default 60).\n"
-        "  --T-hot K                   Hot setpoint, stages 1-3 (default 500).\n"
-        "  --T-cold K                  Cold setpoint, stages 3-5 (default 100).\n"
-        "  --tau-T fs                  Thermostat time constant (default 100).\n"
+        "  --box-len L                 Initial cubic box edge in Å (default "
+        "60).\n"
+        "  --T-hot K                   Hot setpoint, stages 1-3 (default "
+        "500).\n"
+        "  --T-cold K                  Cold setpoint, stages 3-5 (default "
+        "100).\n"
+        "  --tau-T fs                  Thermostat time constant (default "
+        "100).\n"
         "  --tau-P fs                  Barostat time constant (default 1000).\n"
         "  --langevin-damp fs          Stage-1 Langevin damp (default 100).\n"
-        "  --strain-rate /fs           Engineering strain rate stage 5 (default 1e-5).\n"
-        "  --out-dir DIR               Where to write CSV outputs (default '.').\n"
+        "  --strain-rate /fs           Engineering strain rate stage 5 "
+        "(default 1e-5).\n"
+        "  --out-dir DIR               Where to write CSV outputs (default "
+        "'.').\n"
         "  --data PATH                 Load this LAMMPS data file as the\n"
         "                              initial system instead of generating a\n"
         "                              chain grid (e.g. the MSU PE deck).\n"
@@ -208,9 +217,12 @@ void print_help() {
         "                              <out-dir>/trajectory.xyz every N steps\n"
         "                              (and always the first frame). 0 = off.\n"
         "  --rdf RMAX,BINS[,STRIDE]    Accumulate a radial distribution\n"
-        "                              function into <out-dir>/rdf.dat. STRIDE\n"
-        "                              omitted = sample every step. Empty = off.\n"
-        "  --seed S                    RNG seed for InitVelocity (default 12345).\n"
+        "                              function into <out-dir>/rdf.dat. "
+        "STRIDE\n"
+        "                              omitted = sample every step. Empty = "
+        "off.\n"
+        "  --seed S                    RNG seed for InitVelocity (default "
+        "12345).\n"
         "  --quiet                     Suppress per-stage progress lines.\n"
         "  --help                      Show this message.\n");
 }
@@ -219,66 +231,103 @@ bool parse_args(int argc, char** argv, Args& a) {
     for (int i = 1; i < argc; ++i) {
         const char* s = argv[i];
         auto take_d = [&](const char* name, double& dst) {
-            if (std::strcmp(s, name) != 0) return false;
-            if (i + 1 >= argc) std::exit(2);
+            if (std::strcmp(s, name) != 0)
+                return false;
+            if (i + 1 >= argc)
+                std::exit(2);
             dst = std::atof(argv[++i]);
             return true;
         };
         auto take_i = [&](const char* name, int& dst) {
-            if (std::strcmp(s, name) != 0) return false;
-            if (i + 1 >= argc) std::exit(2);
+            if (std::strcmp(s, name) != 0)
+                return false;
+            if (i + 1 >= argc)
+                std::exit(2);
             dst = std::atoi(argv[++i]);
             return true;
         };
         auto take_s = [&](const char* name, std::string& dst) {
-            if (std::strcmp(s, name) != 0) return false;
-            if (i + 1 >= argc) std::exit(2);
+            if (std::strcmp(s, name) != 0)
+                return false;
+            if (i + 1 >= argc)
+                std::exit(2);
             dst = argv[++i];
             return true;
         };
         if (std::strcmp(s, "--mode") == 0) {
-            if (i + 1 >= argc) std::exit(2);
+            if (i + 1 >= argc)
+                std::exit(2);
             const std::string v = argv[++i];
-            if      (v == "full")    a.mode = Mode::full;
-            else if (v == "nvt")     a.mode = Mode::nvt;
-            else if (v == "npt")     a.mode = Mode::npt;
-            else if (v == "tension") a.mode = Mode::tension;
+            if (v == "full")
+                a.mode = Mode::full;
+            else if (v == "nvt")
+                a.mode = Mode::nvt;
+            else if (v == "npt")
+                a.mode = Mode::npt;
+            else if (v == "tension")
+                a.mode = Mode::tension;
             else if (v.rfind("stage:", 0) == 0) {
                 a.mode = Mode::single_stage;
                 a.single_stage_id = std::atoi(v.c_str() + 6);
                 if (a.single_stage_id < 1 || a.single_stage_id > 5) {
-                    std::fprintf(stderr, "stage id must be 1..5: %s\n", v.c_str());
+                    std::fprintf(stderr, "stage id must be 1..5: %s\n",
+                                 v.c_str());
                     return false;
                 }
+            } else {
+                std::fprintf(stderr, "unknown mode: %s\n", v.c_str());
+                return false;
             }
-            else { std::fprintf(stderr, "unknown mode: %s\n", v.c_str()); return false; }
             continue;
         }
-        if (take_d("--scale", a.scale)) continue;
-        if (take_i("--print-every", a.print_every)) continue;
-        if (take_i("--chains-per-axis", a.chains_per_axis)) continue;
-        if (take_i("--n-atoms-per-chain", a.n_atoms_per_chain)) continue;
-        if (take_d("--box-len", a.box_len)) continue;
-        if (take_d("--T-hot", a.T_hot)) continue;
-        if (take_d("--T-cold", a.T_cold)) continue;
-        if (take_d("--tau-T", a.tau_T)) continue;
-        if (take_d("--tau-P", a.tau_P)) continue;
-        if (take_d("--langevin-damp", a.langevin_damp)) continue;
-        if (take_d("--strain-rate", a.strain_rate)) continue;
-        if (take_s("--out-dir", a.out_dir)) continue;
-        if (take_s("--data", a.data_path)) continue;
-        if (take_i("--traj-every", a.traj_every)) continue;
-        if (take_s("--rdf", a.rdf_spec)) continue;
-        if (take_i("--seed", a.seed)) continue;
-        if (std::strcmp(s, "--quiet") == 0) { a.quiet = true; continue; }
-        if (std::strcmp(s, "--help")  == 0) { print_help(); std::exit(0); }
+        if (take_d("--scale", a.scale))
+            continue;
+        if (take_i("--print-every", a.print_every))
+            continue;
+        if (take_i("--chains-per-axis", a.chains_per_axis))
+            continue;
+        if (take_i("--n-atoms-per-chain", a.n_atoms_per_chain))
+            continue;
+        if (take_d("--box-len", a.box_len))
+            continue;
+        if (take_d("--T-hot", a.T_hot))
+            continue;
+        if (take_d("--T-cold", a.T_cold))
+            continue;
+        if (take_d("--tau-T", a.tau_T))
+            continue;
+        if (take_d("--tau-P", a.tau_P))
+            continue;
+        if (take_d("--langevin-damp", a.langevin_damp))
+            continue;
+        if (take_d("--strain-rate", a.strain_rate))
+            continue;
+        if (take_s("--out-dir", a.out_dir))
+            continue;
+        if (take_s("--data", a.data_path))
+            continue;
+        if (take_i("--traj-every", a.traj_every))
+            continue;
+        if (take_s("--rdf", a.rdf_spec))
+            continue;
+        if (take_i("--seed", a.seed))
+            continue;
+        if (std::strcmp(s, "--quiet") == 0) {
+            a.quiet = true;
+            continue;
+        }
+        if (std::strcmp(s, "--help") == 0) {
+            print_help();
+            std::exit(0);
+        }
         std::fprintf(stderr, "unknown argument: %s\n", s);
         return false;
     }
     return true;
 }
 
-cpu::Frame make_pe_box(int chains_per_axis, int n_carbons, double box_len, double margin) {
+cpu::Frame make_pe_box(int chains_per_axis, int n_carbons, double box_len,
+                       double margin) {
     const int n_chains = chains_per_axis * chains_per_axis * chains_per_axis;
     const int n_atoms = n_chains * n_carbons;
     cpu::Frame frame(n_atoms);
@@ -294,7 +343,7 @@ cpu::Frame make_pe_box(int chains_per_axis, int n_carbons, double box_len, doubl
             for (int cz = 0; cz < chains_per_axis; ++cz) {
                 const double cx0 = cx * cell + cell / 2.0;
                 const double cz0 = cz * cell + cell / 2.0;
-                const double y0  = cy * cell + margin;
+                const double y0 = cy * cell + margin;
                 for (int i = 0; i < n_carbons; ++i) {
                     frame.atoms.x[idx] = cx0;
                     frame.atoms.y[idx] = y0 + i * dy_step;
@@ -310,18 +359,18 @@ cpu::Frame make_pe_box(int chains_per_axis, int n_carbons, double box_len, doubl
     const int nb_per = n_carbons - 1;
     const int na_per = n_carbons - 2;
     const int nd_per = n_carbons - 3;
-    frame.bonds.atomi  = xt::zeros<int>({n_chains * nb_per});
-    frame.bonds.atomj  = xt::zeros<int>({n_chains * nb_per});
-    frame.bonds.type   = xt::zeros<int>({n_chains * nb_per});
+    frame.bonds.atomi = xt::zeros<int>({n_chains * nb_per});
+    frame.bonds.atomj = xt::zeros<int>({n_chains * nb_per});
+    frame.bonds.type = xt::zeros<int>({n_chains * nb_per});
     frame.angles.atomi = xt::zeros<int>({n_chains * na_per});
     frame.angles.atomj = xt::zeros<int>({n_chains * na_per});
     frame.angles.atomk = xt::zeros<int>({n_chains * na_per});
-    frame.angles.type  = xt::zeros<int>({n_chains * na_per});
+    frame.angles.type = xt::zeros<int>({n_chains * na_per});
     frame.dihedrals.atomi = xt::zeros<int>({n_chains * nd_per});
     frame.dihedrals.atomj = xt::zeros<int>({n_chains * nd_per});
     frame.dihedrals.atomk = xt::zeros<int>({n_chains * nd_per});
     frame.dihedrals.atoml = xt::zeros<int>({n_chains * nd_per});
-    frame.dihedrals.type  = xt::zeros<int>({n_chains * nd_per});
+    frame.dihedrals.type = xt::zeros<int>({n_chains * nd_per});
 
     for (int c = 0; c < n_chains; ++c) {
         const int base = c * n_carbons;
@@ -349,13 +398,15 @@ cpu::Frame make_pe_box(int chains_per_axis, int n_carbons, double box_len, doubl
 }
 
 double temperature_K(double ke_eV, int n_dof) {
-    if (n_dof <= 0) return 0.0;
+    if (n_dof <= 0)
+        return 0.0;
     return 2.0 * ke_eV / (static_cast<double>(n_dof) * kBoltzmann);
 }
 
 double pressure_eV_per_A3(const cpu::Frame& f) {
-    const double V = f.box(0,0) * f.box(1,1) * f.box(2,2);
-    if (V <= 0.0) return 0.0;
+    const double V = f.box(0, 0) * f.box(1, 1) * f.box(2, 2);
+    if (V <= 0.0)
+        return 0.0;
     const double trace = f.stress[0] + f.stress[1] + f.stress[2];
     return trace / (3.0 * V);
 }
@@ -372,12 +423,11 @@ double pressure_eV_per_A3(const cpu::Frame& f) {
 /// with the active stage and keep the absolute step index globally
 /// monotonic across the per-stage driver rebuilds.
 class CsvRecorder : public cpu::ComponentBase {
-public:
-    CsvRecorder(std::ofstream* thermo, std::ofstream* stress,
-                int print_every, int n_global_dof, double box_x_initial)
+  public:
+    CsvRecorder(std::ofstream* thermo, std::ofstream* stress, int print_every,
+                int n_global_dof, double box_x_initial)
         : thermo_(thermo), stress_(stress),
-          print_every_(std::max(1, print_every)),
-          n_dof_(n_global_dof),
+          print_every_(std::max(1, print_every)), n_dof_(n_global_dof),
           box_x0_(box_x_initial) {}
 
     std::string name() const override { return "csv_recorder"; }
@@ -391,20 +441,22 @@ public:
     /// the CSV step column stays monotonic across the per-stage driver
     /// rebuilds (each fresh driver restarts its own step counter at 0).
     void begin_stage(int stage_id, double T_target, bool record_strain) {
-        current_stage_     = stage_id;
-        current_T_target_  = T_target;
-        record_strain_     = record_strain;
+        current_stage_ = stage_id;
+        current_T_target_ = T_target;
+        record_strain_ = record_strain;
         current_step_offset_ += stage_steps_so_far_;
         stage_steps_so_far_ = 0;
         // Re-arm the strain reference: it is snapshotted at the first
         // stress-recorded step so engineering strain is referenced to
         // the box edge at deformation onset, not the sim-initial box.
-        if (record_strain) strain_ref_set_ = false;
+        if (record_strain)
+            strain_ref_set_ = false;
     }
 
     void launch(const cpu::LaunchContext& ctx) override {
         ++stage_steps_so_far_;
-        if (ctx.runtime.mpi_rank != 0) return;
+        if (ctx.runtime.mpi_rank != 0)
+            return;
         const auto& f = ctx.frame;
         const double T = temperature_K(f.kinetic, n_dof_);
         const double P_bar = pressure_eV_per_A3(f) * kEvPerA3ToBar;
@@ -412,8 +464,8 @@ public:
         if (thermo_ && thermo_->is_open()) {
             (*thermo_) << abs_step << "," << current_stage_ << ","
                        << current_T_target_ << "," << T << "," << P_bar << ","
-                       << f.energy << "," << f.kinetic << ","
-                       << f.box(0,0) << "," << f.box(1,1) << "," << f.box(2,2) << "\n";
+                       << f.energy << "," << f.kinetic << "," << f.box(0, 0)
+                       << "," << f.box(1, 1) << "," << f.box(2, 2) << "\n";
         }
         if (record_strain_ && stress_ && stress_->is_open()) {
             // Snapshot the engineering-strain reference at the first
@@ -421,33 +473,33 @@ public:
             // fix deform's L0-at-fix-issue rule. The sim-initial box is
             // wrong here: NPT stages 2-4 compress the box beforehand.
             if (!strain_ref_set_) {
-                box_x0_ = f.box(0,0);
+                box_x0_ = f.box(0, 0);
                 strain_ref_set_ = true;
             }
-            const double V = f.box(0,0) * f.box(1,1) * f.box(2,2);
+            const double V = f.box(0, 0) * f.box(1, 1) * f.box(2, 2);
             // Tensile stress sigma_xx = -P_xx: f.stress carries the
             // LAMMPS-standard +trace=compressive pressure convention, so
             // negate for tensile-positive stress (LAMMPS deck reports -pxx).
             const double sigma_xx = (V > 0.0) ? -f.stress[0] / V : 0.0;
-            const double strain = f.box(0,0) / box_x0_ - 1.0;
-            (*stress_) << abs_step << "," << current_stage_ << ","
-                       << strain << "," << sigma_xx << ","
-                       << (sigma_xx * kEvPerA3ToGPa) << "\n";
+            const double strain = f.box(0, 0) / box_x0_ - 1.0;
+            (*stress_) << abs_step << "," << current_stage_ << "," << strain
+                       << "," << sigma_xx << "," << (sigma_xx * kEvPerA3ToGPa)
+                       << "\n";
         }
     }
 
-private:
+  private:
     std::ofstream* thermo_;
     std::ofstream* stress_;
     int print_every_;
     int n_dof_;
     double box_x0_;
-    int    current_stage_       = 0;
-    double current_T_target_    = 0.0;
-    bool   record_strain_       = false;
-    bool   strain_ref_set_      = false;
-    int    current_step_offset_ = 0;
-    int    stage_steps_so_far_  = 0;
+    int current_stage_ = 0;
+    double current_T_target_ = 0.0;
+    bool record_strain_ = false;
+    bool strain_ref_set_ = false;
+    int current_step_offset_ = 0;
+    int stage_steps_so_far_ = 0;
 };
 
 /// @brief Inline observer: appends a plain-XYZ trajectory frame.
@@ -459,7 +511,7 @@ private:
 /// `CsvRecorder`, this is a shared lvalue re-registered into every
 /// per-stage driver so the frame index is continuous.
 class TrajectoryRecorder : public cpu::ComponentBase {
-public:
+  public:
     TrajectoryRecorder(std::ofstream* xyz, int traj_every)
         : xyz_(xyz), traj_every_(std::max(1, traj_every)) {}
 
@@ -471,16 +523,19 @@ public:
 
     void launch(const cpu::LaunchContext& ctx) override {
         ++abs_step_;
-        if (ctx.runtime.mpi_rank != 0) return;
-        if (!xyz_ || !xyz_->is_open()) return;
-        if (abs_step_ != 1 && abs_step_ % traj_every_ != 0) return;
+        if (ctx.runtime.mpi_rank != 0)
+            return;
+        if (!xyz_ || !xyz_->is_open())
+            return;
+        if (abs_step_ != 1 && abs_step_ % traj_every_ != 0)
+            return;
         const auto& f = ctx.frame;
-        cpu::trajectory_append(*xyz_, f.atoms.type.data(),
-                               f.atoms.x.data(), f.atoms.y.data(),
-                               f.atoms.z.data(), f.atoms.size(), abs_step_);
+        cpu::trajectory_append(*xyz_, f.atoms.type.data(), f.atoms.x.data(),
+                               f.atoms.y.data(), f.atoms.z.data(),
+                               f.atoms.size(), abs_step_);
     }
 
-private:
+  private:
     std::ofstream* xyz_;
     int traj_every_;
     int abs_step_ = 0;
@@ -500,17 +555,23 @@ double now_seconds() {
 // Determine which stages a given run mode actually executes.
 bool stage_active(Mode m, int stage_id, int single_id) {
     switch (m) {
-        case Mode::full:    return stage_id >= 1 && stage_id <= 5;
-        case Mode::nvt:     return stage_id == 1;
-        case Mode::npt:     return stage_id == 1 || stage_id == 2;
-        case Mode::tension: return stage_id == 1 || stage_id == 2 || stage_id == 5;
-        case Mode::single_stage: return stage_id == single_id;
+    case Mode::full:
+        return stage_id >= 1 && stage_id <= 5;
+    case Mode::nvt:
+        return stage_id == 1;
+    case Mode::npt:
+        return stage_id == 1 || stage_id == 2;
+    case Mode::tension:
+        return stage_id == 1 || stage_id == 2 || stage_id == 5;
+    case Mode::single_stage:
+        return stage_id == single_id;
     }
     return false;
 }
 
 int scaled_steps(int base, double scale) {
-    if (base <= 0) return 0;
+    if (base <= 0)
+        return 0;
     int s = static_cast<int>(base * scale);
     return std::max(s, 1);
 }
@@ -525,14 +586,19 @@ bool parse_rdf_spec(const std::string& spec, double& r_max, int& bins,
     std::vector<std::string> parts;
     std::string cur;
     for (char c : spec) {
-        if (c == ',') { parts.push_back(cur); cur.clear(); }
-        else          { cur.push_back(c); }
+        if (c == ',') {
+            parts.push_back(cur);
+            cur.clear();
+        } else {
+            cur.push_back(c);
+        }
     }
     parts.push_back(cur);
-    if (parts.size() != 2 && parts.size() != 3) return false;
+    if (parts.size() != 2 && parts.size() != 3)
+        return false;
     r_max = std::atof(parts[0].c_str());
-    bins  = std::atoi(parts[1].c_str());
-    freq  = (parts.size() == 3) ? std::atoi(parts[2].c_str()) : 0;
+    bins = std::atoi(parts[1].c_str());
+    freq = (parts.size() == 3) ? std::atoi(parts[2].c_str()) : 0;
     return r_max > 0.0 && bins > 0 && freq >= 0;
 }
 
@@ -545,14 +611,14 @@ bool parse_rdf_spec(const std::string& spec, double& r_max, int& bins,
 /// driver rebuilds.
 struct SharedComponents {
     cpu::md::NeighborList<> nl;
-    cpu::md::LJ             lj;
-    HarmonicBond           hb;
-    HarmonicAngle          ha;
-    MultiHarmonicDihedral  hd;
-    CsvRecorder*           rec;
-    TrajectoryRecorder*    trec;
-    RDF*                   rdf;        ///< nullptr when --rdf is off
-    bool                   traj_on;
+    cpu::md::LJ lj;
+    HarmonicBond hb;
+    HarmonicAngle ha;
+    MultiHarmonicDihedral hd;
+    CsvRecorder* rec;
+    TrajectoryRecorder* trec;
+    RDF* rdf; ///< nullptr when --rdf is off
+    bool traj_on;
 };
 
 /// @brief Register the force-field evaluators, neighbor list and shared
@@ -576,7 +642,8 @@ void wire_shared(cpu::md::MD& sim, SharedComponents& sc) {
 
 int main(int argc, char** argv) {
     Args a;
-    if (!parse_args(argc, argv, a)) return 2;
+    if (!parse_args(argc, argv, a))
+        return 2;
 
 #ifdef ATV_HAS_MPI
     int provided = 0;
@@ -593,8 +660,9 @@ int main(int argc, char** argv) {
     // The cpu::Frame is the carry-over state — it persists across every
     // per-stage driver rebuild, holding positions, velocities and the box.
     cpu::Frame frame = a.data_path.empty()
-        ? make_pe_box(a.chains_per_axis, a.n_atoms_per_chain, a.box_len, a.margin)
-        : cpu::load_lammps_data(a.data_path);
+                           ? make_pe_box(a.chains_per_axis, a.n_atoms_per_chain,
+                                         a.box_len, a.margin)
+                           : cpu::load_lammps_data(a.data_path);
     const int n_atoms = frame.atoms.size();
     const int n_global_dof = 3 * n_atoms - 3;
     const double box_x0 = frame.box(0, 0);
@@ -606,7 +674,8 @@ int main(int argc, char** argv) {
         thermo_csv.open(a.out_dir + "/thermo.csv");
         stress_csv.open(a.out_dir + "/stress_strain.csv");
         if (thermo_csv.is_open()) {
-            thermo_csv << "step,stage,T_target_K,T_K,P_bar,E_pot_eV,E_kin_eV,box_x,box_y,box_z\n";
+            thermo_csv << "step,stage,T_target_K,T_K,P_bar,E_pot_eV,E_kin_eV,"
+                          "box_x,box_y,box_z\n";
         }
         if (stress_csv.is_open()) {
             stress_csv << "step,stage,strain,sigma_xx_eV_per_A3,sigma_xx_GPa\n";
@@ -618,12 +687,14 @@ int main(int argc, char** argv) {
 
     // ── Shared evaluators + recorders (lvalues; outlive every driver) ──
     cpu::md::NeighborList<> nl{kLjCutoff};
-    cpu::md::LJ             lj = cpu::md::LJ{lj_eps_eV(), kLjSigma, kLjCutoff}
-                                     .set_special_bonds(0.0, 0.0, 0.0);
-    HarmonicBond  hb{{bond_k_eV()}, {kBondR0}};
+    cpu::md::LJ lj =
+        cpu::md::LJ{lj_eps_eV(), kLjSigma, kLjCutoff}.set_special_bonds(
+            0.0, 0.0, 0.0);
+    HarmonicBond hb{{bond_k_eV()}, {kBondR0}};
     HarmonicAngle ha{{angle_k_eV()}, {kAngleTheta0}};
     MultiHarmonicDihedral hd{{dihedral_Cn_eV()}};
-    CsvRecorder rec{&thermo_csv, &stress_csv, a.print_every, n_global_dof, box_x0};
+    CsvRecorder rec{&thermo_csv, &stress_csv, a.print_every, n_global_dof,
+                    box_x0};
     TrajectoryRecorder trec{&traj_xyz, std::max(1, a.traj_every)};
 
     // RDF observer (optional). Heap-allocated so it is conditionally
@@ -633,9 +704,10 @@ int main(int argc, char** argv) {
     std::unique_ptr<RDF> rdf;
     if (!a.rdf_spec.empty()) {
         double r_max = 0.0;
-        int    bins = 0, freq = 0;
+        int bins = 0, freq = 0;
         if (!parse_rdf_spec(a.rdf_spec, r_max, bins, freq)) {
-            std::fprintf(stderr,
+            std::fprintf(
+                stderr,
                 "invalid --rdf spec '%s' (expected RMAX,BINS[,STRIDE])\n",
                 a.rdf_spec.c_str());
             return 2;
@@ -643,21 +715,22 @@ int main(int argc, char** argv) {
         rdf = std::make_unique<RDF>(r_max, bins, freq, a.out_dir + "/rdf.dat");
     }
 
-    SharedComponents shared{nl, lj, hb, ha, hd, &rec, &trec, rdf.get(),
-                            a.traj_every > 0};
+    SharedComponents shared{
+        nl, lj, hb, ha, hd, &rec, &trec, rdf.get(), a.traj_every > 0};
 
     if (my_rank == 0 && !a.quiet) {
-        const char* mode_str =
-            a.mode == Mode::full         ? "full" :
-            a.mode == Mode::nvt          ? "NVT" :
-            a.mode == Mode::npt          ? "NPT" :
-            a.mode == Mode::tension      ? "tension" :
-                                            "single_stage";
-        std::fprintf(stderr,
+        const char* mode_str = a.mode == Mode::full      ? "full"
+                               : a.mode == Mode::nvt     ? "NVT"
+                               : a.mode == Mode::npt     ? "NPT"
+                               : a.mode == Mode::tension ? "tension"
+                                                         : "single_stage";
+        std::fprintf(
+            stderr,
             "polyethylene_tension: mode=%s atoms=%d T_hot=%.1f T_cold=%.1f\n"
-            "  per-stage dt[fs] = {%.2f, %.2f, %.2f, %.2f, %.2f}  (mirrors lammps.in)\n",
-            mode_str, n_atoms, a.T_hot, a.T_cold,
-            a.dt_stage1, a.dt_stage2, a.dt_stage3, a.dt_stage4, a.dt_stage5);
+            "  per-stage dt[fs] = {%.2f, %.2f, %.2f, %.2f, %.2f}  (mirrors "
+            "lammps.in)\n",
+            mode_str, n_atoms, a.T_hot, a.T_cold, a.dt_stage1, a.dt_stage2,
+            a.dt_stage3, a.dt_stage4, a.dt_stage5);
     }
 
     const double t0 = now_seconds();
@@ -671,13 +744,15 @@ int main(int argc, char** argv) {
         const int steps = scaled_steps(a.stage1_steps, a.scale);
         if (my_rank == 0 && !a.quiet)
             std::fprintf(stderr,
-                "  stage 1: NVE/limit + Langevin @ %.1f K, dt=%.2f fs, %d steps\n",
-                a.T_hot, a.dt_stage1, steps);
-        cpu::md::NVELimit    nve{a.dt_stage1, /*xmax=*/0.05};
-        cpu::md::InitVelocity init_v{a.T_hot, static_cast<unsigned int>(a.seed)};
-        cpu::md::FixLangevin  langevin{a.T_hot, /*T_stop=*/a.T_hot,
-                                       a.langevin_damp, a.dt_stage1,
-                                       static_cast<std::uint32_t>(a.seed + 1)};
+                         "  stage 1: NVE/limit + Langevin @ %.1f K, dt=%.2f "
+                         "fs, %d steps\n",
+                         a.T_hot, a.dt_stage1, steps);
+        cpu::md::NVELimit nve{a.dt_stage1, /*xmax=*/0.05};
+        cpu::md::InitVelocity init_v{a.T_hot,
+                                     static_cast<unsigned int>(a.seed)};
+        cpu::md::FixLangevin langevin{a.T_hot, /*T_stop=*/a.T_hot,
+                                      a.langevin_damp, a.dt_stage1,
+                                      static_cast<std::uint32_t>(a.seed + 1)};
         cpu::md::MD sim;
         sim.set_integrator(nve);
         sim.add(init_v);
@@ -693,15 +768,15 @@ int main(int argc, char** argv) {
     if (stage_active(a.mode, 2, a.single_stage_id)) {
         const int steps = scaled_steps(a.stage2_steps, a.scale);
         if (my_rank == 0 && !a.quiet)
-            std::fprintf(stderr,
-                "  stage 2: NPT (iso) @ %.1f K, dt=%.2f fs, %d steps\n",
+            std::fprintf(
+                stderr, "  stage 2: NPT (iso) @ %.1f K, dt=%.2f fs, %d steps\n",
                 a.T_hot, a.dt_stage2, steps);
         cpu::md::NoseHooverNPT npt{{.T_target = a.T_hot,
-                                    .tau_T    = a.tau_T,
+                                    .tau_T = a.tau_T,
                                     .P_target = 0.0,
-                                    .tau_P    = a.tau_P,
-                                    .dt       = a.dt_stage2,
-                                    .drag     = 2.0}};
+                                    .tau_P = a.tau_P,
+                                    .dt = a.dt_stage2,
+                                    .drag = 2.0}};
         cpu::md::MD sim;
         sim.set_integrator(npt);
         wire_shared(sim, shared);
@@ -718,17 +793,18 @@ int main(int argc, char** argv) {
     if (stage_active(a.mode, 3, a.single_stage_id)) {
         const int steps = scaled_steps(a.stage3_steps, a.scale);
         if (my_rank == 0 && !a.quiet)
-            std::fprintf(stderr,
+            std::fprintf(
+                stderr,
                 "  stage 3: NPT cool %.1f -> %.1f K (continuous ramp), "
                 "dt=%.2f fs, %d steps\n",
                 a.T_hot, a.T_cold, a.dt_stage3, steps);
         cpu::md::NoseHooverNPT npt{{.T_target = a.T_hot,
-                                    .tau_T    = a.tau_T,
+                                    .tau_T = a.tau_T,
                                     .P_target = 0.0,
-                                    .tau_P    = a.tau_P,
-                                    .dt       = a.dt_stage3,
-                                    .drag     = 2.0,
-                                    .T_stop   = a.T_cold}};
+                                    .tau_P = a.tau_P,
+                                    .dt = a.dt_stage3,
+                                    .drag = 2.0,
+                                    .T_stop = a.T_cold}};
         // Run span [0, steps-1]: a fresh per-stage driver restarts its
         // step counter at 0, so the ramp delta sweeps 0 -> 1 over the
         // stage exactly as LAMMPS `update->beginstep / endstep`.
@@ -746,15 +822,15 @@ int main(int argc, char** argv) {
     if (stage_active(a.mode, 4, a.single_stage_id)) {
         const int steps = scaled_steps(a.stage4_steps, a.scale);
         if (my_rank == 0 && !a.quiet)
-            std::fprintf(stderr,
-                "  stage 4: NPT (iso) @ %.1f K, dt=%.2f fs, %d steps\n",
+            std::fprintf(
+                stderr, "  stage 4: NPT (iso) @ %.1f K, dt=%.2f fs, %d steps\n",
                 a.T_cold, a.dt_stage4, steps);
         cpu::md::NoseHooverNPT npt{{.T_target = a.T_cold,
-                                    .tau_T    = a.tau_T,
+                                    .tau_T = a.tau_T,
                                     .P_target = 0.0,
-                                    .tau_P    = a.tau_P,
-                                    .dt       = a.dt_stage4,
-                                    .drag     = 2.0}};
+                                    .tau_P = a.tau_P,
+                                    .dt = a.dt_stage4,
+                                    .drag = 2.0}};
         cpu::md::MD sim;
         sim.set_integrator(npt);
         wire_shared(sim, shared);
@@ -771,16 +847,17 @@ int main(int argc, char** argv) {
     if (stage_active(a.mode, 5, a.single_stage_id)) {
         const int steps = scaled_steps(a.stage5_steps, a.scale);
         if (my_rank == 0 && !a.quiet)
-            std::fprintf(stderr,
+            std::fprintf(
+                stderr,
                 "  stage 5: tension epsdot=%.2e /fs @ %.1f K, dt=%.2f fs, "
                 "%d steps\n",
                 a.strain_rate, a.T_cold, a.dt_stage5, steps);
-        cpu::md::NoseHooverNPT npt{{.T_target    = a.T_cold,
-                                    .tau_T       = a.tau_T,
-                                    .P_target    = 0.0,
-                                    .tau_P       = a.tau_P,
-                                    .dt          = a.dt_stage5,
-                                    .drag        = 2.0,
+        cpu::md::NoseHooverNPT npt{{.T_target = a.T_cold,
+                                    .tau_T = a.tau_T,
+                                    .P_target = 0.0,
+                                    .tau_P = a.tau_P,
+                                    .dt = a.dt_stage5,
+                                    .drag = 2.0,
                                     .couple_axis = {false, true, true}}};
         cpu::md::Deform deform{cpu::md::Deform::Mode::erate, a.strain_rate,
                                a.dt_stage5, /*axis=*/0};
@@ -797,8 +874,8 @@ int main(int argc, char** argv) {
 
     if (my_rank == 0 && !a.quiet) {
         std::fprintf(stderr,
-            "polyethylene_tension done: %d atoms, %.2fs total\n",
-            n_atoms, t1 - t0);
+                     "polyethylene_tension done: %d atoms, %.2fs total\n",
+                     n_atoms, t1 - t0);
         if (a.traj_every > 0)
             std::fprintf(stderr, "  trajectory : %s/trajectory.xyz\n",
                          a.out_dir.c_str());
@@ -808,9 +885,12 @@ int main(int argc, char** argv) {
     }
 
     if (my_rank == 0) {
-        if (thermo_csv.is_open()) thermo_csv.close();
-        if (stress_csv.is_open()) stress_csv.close();
-        if (traj_xyz.is_open())   traj_xyz.close();
+        if (thermo_csv.is_open())
+            thermo_csv.close();
+        if (stress_csv.is_open())
+            stress_csv.close();
+        if (traj_xyz.is_open())
+            traj_xyz.close();
     }
 
 #ifdef ATV_HAS_MPI

@@ -29,8 +29,12 @@ TEST(TorchFrame, DefaultConstruct) {
 
 TEST(TorchFrame, ManualConstruct) {
     int64_t n = 10;
-    auto real_opts = ::torch::TensorOptions().dtype(atorch::kRealDtype).device(::torch::kCUDA);
-    auto int_opts = ::torch::TensorOptions().dtype(atorch::kIntDtype).device(::torch::kCUDA);
+    auto real_opts = ::torch::TensorOptions()
+                         .dtype(atorch::kRealDtype)
+                         .device(::torch::kCUDA);
+    auto int_opts = ::torch::TensorOptions()
+                        .dtype(atorch::kIntDtype)
+                        .device(::torch::kCUDA);
 
     atorch::Frame frame;
     frame.n_atoms_ = static_cast<int>(n);
@@ -55,19 +59,21 @@ TEST(TorchFrame, ManualConstruct) {
 }
 
 TEST(TorchFrame, RequiresGrad) {
-    auto opts = ::torch::TensorOptions().dtype(atorch::kRealDtype).device(::torch::kCUDA);
+    auto opts = ::torch::TensorOptions()
+                    .dtype(atorch::kRealDtype)
+                    .device(::torch::kCUDA);
     auto x = ::torch::randn({5}, opts).requires_grad_(true);
     EXPECT_TRUE(x.requires_grad());
 
-    auto int_opts = ::torch::TensorOptions().dtype(atorch::kIntDtype).device(::torch::kCUDA);
+    auto int_opts = ::torch::TensorOptions()
+                        .dtype(atorch::kIntDtype)
+                        .device(::torch::kCUDA);
     auto type_id = ::torch::zeros({5}, int_opts);
     EXPECT_FALSE(type_id.requires_grad());
 }
 
 #else
 
-TEST(TorchFrame, Disabled) {
-    GTEST_SKIP() << "ATV_HAS_TORCH not defined";
-}
+TEST(TorchFrame, Disabled) { GTEST_SKIP() << "ATV_HAS_TORCH not defined"; }
 
 #endif // ATV_HAS_TORCH

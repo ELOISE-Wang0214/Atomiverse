@@ -15,9 +15,9 @@
 #include <limits>
 #include <vector>
 
+#include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/containers/xtensor.hpp>
 #include <xtensor/views/xview.hpp>
-#include <xtensor-blas/xlinalg.hpp>
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/vib/nist_constants.h"
@@ -44,11 +44,13 @@ using Mat3x3 = std::array<double, 9>;
 void eigh3(const Mat3x3& m, std::array<double, 3>& w, Mat3x3& v) {
     xt::xtensor<double, 2> M = xt::zeros<double>({3, 3});
     for (int i = 0; i < 3; ++i)
-        for (int j = 0; j < 3; ++j) M(i, j) = m[3 * i + j];
+        for (int j = 0; j < 3; ++j)
+            M(i, j) = m[3 * i + j];
     auto [eig, vec] = xt::linalg::eigh(M);
     for (int i = 0; i < 3; ++i) {
         w[i] = eig(i);
-        for (int j = 0; j < 3; ++j) v[3 * j + i] = vec(j, i);
+        for (int j = 0; j < 3; ++j)
+            v[3 * j + i] = vec(j, i);
     }
 }
 
@@ -67,7 +69,8 @@ std::array<double, 3> rotation_const(const std::vector<double>& mass,
     for (int z = 0; z < n; ++z)
         for (int r = 0; r < 3; ++r)
             for (int s = 0; s < 3; ++s)
-                im[3 * r + s] += mass[z] * coords[3 * z + r] * coords[3 * z + s];
+                im[3 * r + s] +=
+                    mass[z] * coords[3 * z + r] * coords[3 * z + s];
     // im = eye(3) * im.trace() - im
     const double tr = im[0] + im[4] + im[8];
     for (int r = 0; r < 3; ++r)
@@ -95,9 +98,10 @@ std::array<double, 3> rotation_const(const std::vector<double>& mass,
 /// @param rot_const Rotational constants [GHz].
 /// @return 0 = ATOM, 1 = LINEAR, 2 = REGULAR.
 int get_rotor_type(const std::array<double, 3>& rot_const) {
-    const bool all_huge = rot_const[0] > 1e8 && rot_const[1] > 1e8 &&
-                          rot_const[2] > 1e8;
-    if (all_huge) return 0; // ATOM
+    const bool all_huge =
+        rot_const[0] > 1e8 && rot_const[1] > 1e8 && rot_const[2] > 1e8;
+    if (all_huge)
+        return 0; // ATOM
     if (rot_const[0] > 1e8 && (rot_const[1] - rot_const[2] < 1e-3))
         return 1; // LINEAR
     return 2;     // REGULAR
@@ -111,13 +115,15 @@ int get_rotor_type(const std::array<double, 3>& rot_const) {
 /// @return 6 vectors of length 3N: Tx,Ty,Tz,Rx,Ry,Rz.
 std::array<std::vector<double>, 6> get_TR(const std::vector<double>& mass,
                                           const std::vector<double>& coords) {
-    const int n   = static_cast<int>(mass.size());
+    const int n = static_cast<int>(mass.size());
     const int dim = 3 * n;
     std::vector<double> massp(n);
-    for (int i = 0; i < n; ++i) massp[i] = std::sqrt(mass[i]);
+    for (int i = 0; i < n; ++i)
+        massp[i] = std::sqrt(mass[i]);
 
     std::array<std::vector<double>, 6> TR;
-    for (auto& v : TR) v.assign(dim, 0.0);
+    for (auto& v : TR)
+        v.assign(dim, 0.0);
 
     // Translational modes: Tx,Ty,Tz = massp ⊗ unit axis.
     for (int i = 0; i < n; ++i) {
@@ -131,7 +137,8 @@ std::array<std::vector<double>, 6> get_TR(const std::vector<double>& mass,
     for (int m = 0; m < n; ++m)
         for (int x = 0; x < 3; ++x)
             for (int y = 0; y < 3; ++y)
-                im[3 * x + y] += mass[m] * coords[3 * m + x] * coords[3 * m + y];
+                im[3 * x + y] +=
+                    mass[m] * coords[3 * m + x] * coords[3 * m + y];
     const double tr = im[0] + im[4] + im[8];
     for (int x = 0; x < 3; ++x)
         for (int y = 0; y < 3; ++y)
@@ -144,7 +151,8 @@ std::array<std::vector<double>, 6> get_TR(const std::vector<double>& mass,
     // Reverse column order: paxes[:, ::-1].
     Mat3x3 paxes_rev{};
     for (int r = 0; r < 3; ++r)
-        for (int c = 0; c < 3; ++c) paxes_rev[3 * r + c] = paxes[3 * r + (2 - c)];
+        for (int c = 0; c < 3; ++c)
+            paxes_rev[3 * r + c] = paxes[3 * r + (2 - c)];
 
     // ex,ey,ez = paxes.T  (rows of paxes^T == columns of paxes_rev).
     const double ex[3] = {paxes_rev[0], paxes_rev[3], paxes_rev[6]};
@@ -172,17 +180,19 @@ std::array<std::vector<double>, 6> get_TR(const std::vector<double>& mass,
 } // namespace
 
 void EigenSolver::launch(const cpu::LaunchContext& ctx) {
-    const int n   = ws_->n_atoms;
+    const int n = ws_->n_atoms;
     const int dim = 3 * n;
-    if (ctx.step < 2 * dim) return;          // not the finalize pass yet.
-    if (!ws_->mass_weighted) return;         // MassWeighting must run first.
+    if (ctx.step < 2 * dim)
+        return; // not the finalize pass yet.
+    if (!ws_->mass_weighted)
+        return; // MassWeighting must run first.
 
     if (n < 2) {
         // No genuine vibrational modes for a single atom.
-        ws_->frequencies  = xt::zeros<double>({0});
+        ws_->frequencies = xt::zeros<double>({0});
         ws_->normal_modes = xt::zeros<double>({dim, 0});
-        ws_->n_imaginary  = 0;
-        ws_->is_linear    = false;
+        ws_->n_imaginary = 0;
+        ws_->is_linear = false;
         return;
     }
 
@@ -191,12 +201,14 @@ void EigenSolver::launch(const cpu::LaunchContext& ctx) {
     // Mass-centered atomic coordinates in Bohr (PySCF works in Bohr).
     // r0 is the equilibrium geometry in Angstrom (link 1).
     double mass_sum = 0.0;
-    for (int i = 0; i < n; ++i) mass_sum += mass[i];
+    for (int i = 0; i < n; ++i)
+        mass_sum += mass[i];
     double center[3] = {0.0, 0.0, 0.0};
     for (int i = 0; i < n; ++i)
         for (int d = 0; d < 3; ++d)
             center[d] += mass[i] * ws_->r0[3 * i + d];
-    for (int d = 0; d < 3; ++d) center[d] /= mass_sum;
+    for (int d = 0; d < 3; ++d)
+        center[d] /= mass_sum;
 
     std::vector<double> coords(dim); // mass-centered, Bohr.
     for (int i = 0; i < n; ++i)
@@ -213,10 +225,10 @@ void EigenSolver::launch(const cpu::LaunchContext& ctx) {
     // Assemble the TR-space rows: always 3 translations; rotations depend
     // on rotor type (ATOM: none, LINEAR: 2, REGULAR: 3).
     std::vector<int> tr_rows = {0, 1, 2};
-    if (rotor == 1) {            // LINEAR -> TR[3:5]
+    if (rotor == 1) { // LINEAR -> TR[3:5]
         tr_rows.push_back(3);
         tr_rows.push_back(4);
-    } else if (rotor == 2) {     // REGULAR -> TR[3:]
+    } else if (rotor == 2) { // REGULAR -> TR[3:]
         tr_rows.push_back(3);
         tr_rows.push_back(4);
         tr_rows.push_back(5);
@@ -226,7 +238,8 @@ void EigenSolver::launch(const cpu::LaunchContext& ctx) {
     // ── Mass-weighted Hessian (produced by MassWeighting) ──────────────
     xt::xtensor<double, 2> h = xt::zeros<double>({dim, dim});
     for (int i = 0; i < dim; ++i)
-        for (int j = 0; j < dim; ++j) h(i, j) = ws_->hessian_mw(i, j);
+        for (int j = 0; j < dim; ++j)
+            h(i, j) = ws_->hessian_mw(i, j);
 
     xt::xtensor<double, 1> force_const_au;
     xt::xtensor<double, 2> mode; // columns are eigenvectors in the full basis.
@@ -236,14 +249,16 @@ void EigenSolver::launch(const cpu::LaunchContext& ctx) {
         xt::xtensor<double, 2> TRspaceT = xt::zeros<double>({dim, n_tr});
         for (int c = 0; c < n_tr; ++c) {
             const std::vector<double>& v = TR[tr_rows[c]];
-            for (int r = 0; r < dim; ++r) TRspaceT(r, c) = v[r];
+            for (int r = 0; r < dim; ++r)
+                TRspaceT(r, c) = v[r];
         }
         auto qr = xt::linalg::qr(TRspaceT);
         const xt::xtensor<double, 2>& q = std::get<0>(qr); // [3N, n_tr]
 
         // P = I - q q^T
         xt::xtensor<double, 2> P = xt::zeros<double>({dim, dim});
-        for (int i = 0; i < dim; ++i) P(i, i) = 1.0;
+        for (int i = 0; i < dim; ++i)
+            P(i, i) = 1.0;
         xt::xtensor<double, 2> qqt = xt::linalg::dot(q, xt::transpose(q));
         P = P - qqt;
 
@@ -251,12 +266,14 @@ void EigenSolver::launch(const cpu::LaunchContext& ctx) {
         auto [w, v] = xt::linalg::eigh(P);
         std::vector<int> keep;
         for (int i = 0; i < dim; ++i)
-            if (w(i) > kLindepThreshold) keep.push_back(i);
+            if (w(i) > kLindepThreshold)
+                keep.push_back(i);
         const int nb = static_cast<int>(keep.size());
 
         xt::xtensor<double, 2> bvec = xt::zeros<double>({dim, nb});
         for (int c = 0; c < nb; ++c)
-            for (int r = 0; r < dim; ++r) bvec(r, c) = v(r, keep[c]);
+            for (int r = 0; r < dim; ++r)
+                bvec(r, c) = v(r, keep[c]);
 
         // h_proj = bvec^T h bvec  -> [nb, nb]
         xt::xtensor<double, 2> h_proj =

@@ -27,10 +27,8 @@ namespace cpu {
 /// @param z        z positions [n_atoms, Angstrom].
 /// @param n_atoms  Number of atoms.
 /// @param step     Current step number (written in comment line).
-void trajectory_append(std::ofstream& os,
-                       const int* type_id,
-                       const double* x, const double* y, const double* z,
-                       int n_atoms, int step);
+void trajectory_append(std::ofstream& os, const int* type_id, const double* x,
+                       const double* y, const double* z, int n_atoms, int step);
 
 } // namespace cpu
 } // namespace ATV

@@ -7,9 +7,9 @@
 #include <cmath>
 #include <vector>
 
+#include "atomiverse/core/constants.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
-#include "atomiverse/core/constants.h"
 
 #ifdef ATV_HAS_LIBCINT
 extern "C" {
@@ -43,23 +43,33 @@ struct LibcintEnv {
         bas.resize(nbas * BAS_SLOTS, 0);
         env.resize(off + 12, 0.0);
 
-        atm[CHARGE_OF] = 1; atm[PTR_COORD] = off;
-        env[off] = 0; env[off+1] = 0; env[off+2] = 0; off += 3;
-        atm[CHARGE_OF + ATM_SLOTS] = 1; atm[PTR_COORD + ATM_SLOTS] = off;
-        env[off] = 0.74 * kA2B; env[off+1] = 0; env[off+2] = 0; off += 3;
+        atm[CHARGE_OF] = 1;
+        atm[PTR_COORD] = off;
+        env[off] = 0;
+        env[off + 1] = 0;
+        env[off + 2] = 0;
+        off += 3;
+        atm[CHARGE_OF + ATM_SLOTS] = 1;
+        atm[PTR_COORD + ATM_SLOTS] = off;
+        env[off] = 0.74 * kA2B;
+        env[off + 1] = 0;
+        env[off + 2] = 0;
+        off += 3;
 
         int pe = off;
-        for (int p = 0; p < 3; ++p) env[off++] = sto3g_exp[p];
+        for (int p = 0; p < 3; ++p)
+            env[off++] = sto3g_exp[p];
         int pc = off;
-        for (int p = 0; p < 3; ++p) env[off++] = sto3g_coeff[p] * CINTgto_norm(0, sto3g_exp[p]);
+        for (int p = 0; p < 3; ++p)
+            env[off++] = sto3g_coeff[p] * CINTgto_norm(0, sto3g_exp[p]);
 
         for (int s = 0; s < nbas; ++s) {
-            bas[ATOM_OF + BAS_SLOTS*s] = s;
-            bas[ANG_OF + BAS_SLOTS*s] = 0;
-            bas[NPRIM_OF + BAS_SLOTS*s] = 3;
-            bas[NCTR_OF + BAS_SLOTS*s] = 1;
-            bas[PTR_EXP + BAS_SLOTS*s] = pe;
-            bas[PTR_COEFF + BAS_SLOTS*s] = pc;
+            bas[ATOM_OF + BAS_SLOTS * s] = s;
+            bas[ANG_OF + BAS_SLOTS * s] = 0;
+            bas[NPRIM_OF + BAS_SLOTS * s] = 3;
+            bas[NCTR_OF + BAS_SLOTS * s] = 1;
+            bas[PTR_EXP + BAS_SLOTS * s] = pe;
+            bas[PTR_COEFF + BAS_SLOTS * s] = pc;
         }
     }
 };
@@ -76,10 +86,17 @@ struct NativeEnv {
     NativeEnv() {
         for (int p = 0; p < 3; ++p)
             norm_coeff[p] = sto3g_coeff[p] * native::phys_norm(sto3g_exp[p]);
-        centers[0][0] = 0; centers[0][1] = 0; centers[0][2] = 0;
-        centers[1][0] = 0.74 * kA2B; centers[1][1] = 0; centers[1][2] = 0;
+        centers[0][0] = 0;
+        centers[0][1] = 0;
+        centers[0][2] = 0;
+        centers[1][0] = 0.74 * kA2B;
+        centers[1][1] = 0;
+        centers[1][2] = 0;
         for (int s = 0; s < 2; ++s) {
-            shells[s] = {3, sto3g_exp, norm_coeff, {centers[s][0], centers[s][1], centers[s][2]}};
+            shells[s] = {3,
+                         sto3g_exp,
+                         norm_coeff,
+                         {centers[s][0], centers[s][1], centers[s][2]}};
             atoms[s] = {1, {centers[s][0], centers[s][1], centers[s][2]}};
         }
     }
@@ -113,9 +130,11 @@ static void BM_Overlap_Libcint(benchmark::State& state) {
         double buf[1];
         for (int i = 0; i < 2; ++i)
             for (int j = 0; j < 2; ++j) {
-                shls[0] = i; shls[1] = j;
+                shls[0] = i;
+                shls[1] = j;
                 int1e_ovlp_sph(buf, nullptr, shls, lc.atm.data(), lc.natm,
-                               lc.bas.data(), lc.nbas, lc.env.data(), nullptr, nullptr);
+                               lc.bas.data(), lc.nbas, lc.env.data(), nullptr,
+                               nullptr);
                 benchmark::DoNotOptimize(buf[0]);
             }
     }
@@ -128,7 +147,8 @@ static void BM_Overlap_Native(benchmark::State& state) {
     for (auto _ : state) {
         for (int i = 0; i < 2; ++i)
             for (int j = 0; j < 2; ++j)
-                benchmark::DoNotOptimize(native::overlap_ss(ne.shells[i], ne.shells[j]));
+                benchmark::DoNotOptimize(
+                    native::overlap_ss(ne.shells[i], ne.shells[j]));
     }
 }
 BENCHMARK(BM_Overlap_Native);
@@ -139,12 +159,15 @@ BENCHMARK(BM_Overlap_Native);
 static void BM_Kinetic_Libcint(benchmark::State& state) {
     LibcintEnv lc;
     for (auto _ : state) {
-        FINT shls[2]; double buf[1];
+        FINT shls[2];
+        double buf[1];
         for (int i = 0; i < 2; ++i)
             for (int j = 0; j < 2; ++j) {
-                shls[0] = i; shls[1] = j;
+                shls[0] = i;
+                shls[1] = j;
                 int1e_kin_sph(buf, nullptr, shls, lc.atm.data(), lc.natm,
-                             lc.bas.data(), lc.nbas, lc.env.data(), nullptr, nullptr);
+                              lc.bas.data(), lc.nbas, lc.env.data(), nullptr,
+                              nullptr);
                 benchmark::DoNotOptimize(buf[0]);
             }
     }
@@ -157,7 +180,8 @@ static void BM_Kinetic_Native(benchmark::State& state) {
     for (auto _ : state) {
         for (int i = 0; i < 2; ++i)
             for (int j = 0; j < 2; ++j)
-                benchmark::DoNotOptimize(native::kinetic_ss(ne.shells[i], ne.shells[j]));
+                benchmark::DoNotOptimize(
+                    native::kinetic_ss(ne.shells[i], ne.shells[j]));
     }
 }
 BENCHMARK(BM_Kinetic_Native);
@@ -168,12 +192,15 @@ BENCHMARK(BM_Kinetic_Native);
 static void BM_Nuclear_Libcint(benchmark::State& state) {
     LibcintEnv lc;
     for (auto _ : state) {
-        FINT shls[2]; double buf[1];
+        FINT shls[2];
+        double buf[1];
         for (int i = 0; i < 2; ++i)
             for (int j = 0; j < 2; ++j) {
-                shls[0] = i; shls[1] = j;
+                shls[0] = i;
+                shls[1] = j;
                 int1e_nuc_sph(buf, nullptr, shls, lc.atm.data(), lc.natm,
-                             lc.bas.data(), lc.nbas, lc.env.data(), nullptr, nullptr);
+                              lc.bas.data(), lc.nbas, lc.env.data(), nullptr,
+                              nullptr);
                 benchmark::DoNotOptimize(buf[0]);
             }
     }
@@ -186,7 +213,8 @@ static void BM_Nuclear_Native(benchmark::State& state) {
     for (auto _ : state) {
         for (int i = 0; i < 2; ++i)
             for (int j = 0; j < 2; ++j)
-                benchmark::DoNotOptimize(native::nuclear_ss(ne.shells[i], ne.shells[j], ne.atoms, 2));
+                benchmark::DoNotOptimize(native::nuclear_ss(
+                    ne.shells[i], ne.shells[j], ne.atoms, 2));
     }
 }
 BENCHMARK(BM_Nuclear_Native);
@@ -197,16 +225,21 @@ BENCHMARK(BM_Nuclear_Native);
 static void BM_ERI_Libcint(benchmark::State& state) {
     LibcintEnv lc;
     for (auto _ : state) {
-        FINT shls[4]; double buf[1];
+        FINT shls[4];
+        double buf[1];
         for (int i = 0; i < 2; ++i)
-          for (int j = 0; j < 2; ++j)
-            for (int k = 0; k < 2; ++k)
-              for (int l = 0; l < 2; ++l) {
-                shls[0]=i; shls[1]=j; shls[2]=k; shls[3]=l;
-                cint2e_sph(buf, shls, lc.atm.data(), lc.natm,
-                          lc.bas.data(), lc.nbas, lc.env.data(), nullptr);
-                benchmark::DoNotOptimize(buf[0]);
-              }
+            for (int j = 0; j < 2; ++j)
+                for (int k = 0; k < 2; ++k)
+                    for (int l = 0; l < 2; ++l) {
+                        shls[0] = i;
+                        shls[1] = j;
+                        shls[2] = k;
+                        shls[3] = l;
+                        cint2e_sph(buf, shls, lc.atm.data(), lc.natm,
+                                   lc.bas.data(), lc.nbas, lc.env.data(),
+                                   nullptr);
+                        benchmark::DoNotOptimize(buf[0]);
+                    }
     }
 }
 BENCHMARK(BM_ERI_Libcint);
@@ -216,11 +249,12 @@ static void BM_ERI_Native(benchmark::State& state) {
     NativeEnv ne;
     for (auto _ : state) {
         for (int i = 0; i < 2; ++i)
-          for (int j = 0; j < 2; ++j)
-            for (int k = 0; k < 2; ++k)
-              for (int l = 0; l < 2; ++l)
-                benchmark::DoNotOptimize(
-                    native::eri_ssss(ne.shells[i], ne.shells[j], ne.shells[k], ne.shells[l]));
+            for (int j = 0; j < 2; ++j)
+                for (int k = 0; k < 2; ++k)
+                    for (int l = 0; l < 2; ++l)
+                        benchmark::DoNotOptimize(
+                            native::eri_ssss(ne.shells[i], ne.shells[j],
+                                             ne.shells[k], ne.shells[l]));
     }
 }
 BENCHMARK(BM_ERI_Native);
@@ -246,36 +280,59 @@ struct CudaBasisEnv {
         double cx[2] = {0, 0.74 * kA2B};
         for (int s = 0; s < 2; ++s) {
             for (int p = 0; p < 3; ++p) {
-                h_alpha[s*3+p] = double(sto3g_exp[p]);
-                h_coeff[s*3+p] = double(sto3g_coeff[p] * native::phys_norm(sto3g_exp[p]));
+                h_alpha[s * 3 + p] = double(sto3g_exp[p]);
+                h_coeff[s * 3 + p] =
+                    double(sto3g_coeff[p] * native::phys_norm(sto3g_exp[p]));
             }
-            h_centers[s*3] = double(cx[s]); h_centers[s*3+1] = 0; h_centers[s*3+2] = 0;
-            h_pos[s*3] = double(cx[s]); h_pos[s*3+1] = 0; h_pos[s*3+2] = 0;
+            h_centers[s * 3] = double(cx[s]);
+            h_centers[s * 3 + 1] = 0;
+            h_centers[s * 3 + 2] = 0;
+            h_pos[s * 3] = double(cx[s]);
+            h_pos[s * 3 + 1] = 0;
+            h_pos[s * 3 + 2] = 0;
         }
-        cudaMalloc(&d_alpha, 6*sizeof(double)); cudaMemcpy(d_alpha, h_alpha, 6*sizeof(double), cudaMemcpyHostToDevice);
-        cudaMalloc(&d_coeff, 6*sizeof(double)); cudaMemcpy(d_coeff, h_coeff, 6*sizeof(double), cudaMemcpyHostToDevice);
-        cudaMalloc(&d_centers, 6*sizeof(double)); cudaMemcpy(d_centers, h_centers, 6*sizeof(double), cudaMemcpyHostToDevice);
-        cudaMalloc(&d_Z, 2*sizeof(int)); cudaMemcpy(d_Z, h_Z, 2*sizeof(int), cudaMemcpyHostToDevice);
-        cudaMalloc(&d_pos, 6*sizeof(double)); cudaMemcpy(d_pos, h_pos, 6*sizeof(double), cudaMemcpyHostToDevice);
-        cudaMalloc(&d_S, 4*sizeof(double)); cudaMalloc(&d_T, 4*sizeof(double)); cudaMalloc(&d_V, 4*sizeof(double));
-        cudaMalloc(&d_ERI, 16*sizeof(double));
+        cudaMalloc(&d_alpha, 6 * sizeof(double));
+        cudaMemcpy(d_alpha, h_alpha, 6 * sizeof(double),
+                   cudaMemcpyHostToDevice);
+        cudaMalloc(&d_coeff, 6 * sizeof(double));
+        cudaMemcpy(d_coeff, h_coeff, 6 * sizeof(double),
+                   cudaMemcpyHostToDevice);
+        cudaMalloc(&d_centers, 6 * sizeof(double));
+        cudaMemcpy(d_centers, h_centers, 6 * sizeof(double),
+                   cudaMemcpyHostToDevice);
+        cudaMalloc(&d_Z, 2 * sizeof(int));
+        cudaMemcpy(d_Z, h_Z, 2 * sizeof(int), cudaMemcpyHostToDevice);
+        cudaMalloc(&d_pos, 6 * sizeof(double));
+        cudaMemcpy(d_pos, h_pos, 6 * sizeof(double), cudaMemcpyHostToDevice);
+        cudaMalloc(&d_S, 4 * sizeof(double));
+        cudaMalloc(&d_T, 4 * sizeof(double));
+        cudaMalloc(&d_V, 4 * sizeof(double));
+        cudaMalloc(&d_ERI, 16 * sizeof(double));
     }
     ~CudaBasisEnv() {
-        cudaFree(d_alpha); cudaFree(d_coeff); cudaFree(d_centers);
-        cudaFree(d_Z); cudaFree(d_pos);
-        cudaFree(d_S); cudaFree(d_T); cudaFree(d_V); cudaFree(d_ERI);
+        cudaFree(d_alpha);
+        cudaFree(d_coeff);
+        cudaFree(d_centers);
+        cudaFree(d_Z);
+        cudaFree(d_pos);
+        cudaFree(d_S);
+        cudaFree(d_T);
+        cudaFree(d_V);
+        cudaFree(d_ERI);
     }
 };
 
 static void BM_1e_CUDA_Kernel(benchmark::State& state) {
     CudaBasisEnv ce;
     // warmup
-    cuda::scf::launch_1e_integrals(ce.d_S, ce.d_T, ce.d_V, ce.d_alpha, ce.d_coeff, ce.d_centers,
-                                   ce.d_Z, ce.d_pos, 2, 3, 2, nullptr);
+    cuda::scf::launch_1e_integrals(ce.d_S, ce.d_T, ce.d_V, ce.d_alpha,
+                                   ce.d_coeff, ce.d_centers, ce.d_Z, ce.d_pos,
+                                   2, 3, 2, nullptr);
     cudaDeviceSynchronize();
     for (auto _ : state) {
-        cuda::scf::launch_1e_integrals(ce.d_S, ce.d_T, ce.d_V, ce.d_alpha, ce.d_coeff, ce.d_centers,
-                                       ce.d_Z, ce.d_pos, 2, 3, 2, nullptr);
+        cuda::scf::launch_1e_integrals(ce.d_S, ce.d_T, ce.d_V, ce.d_alpha,
+                                       ce.d_coeff, ce.d_centers, ce.d_Z,
+                                       ce.d_pos, 2, 3, 2, nullptr);
         cudaDeviceSynchronize();
     }
 }
@@ -283,10 +340,12 @@ BENCHMARK(BM_1e_CUDA_Kernel);
 
 static void BM_ERI_CUDA_Kernel(benchmark::State& state) {
     CudaBasisEnv ce;
-    cuda::scf::launch_eri(ce.d_ERI, ce.d_alpha, ce.d_coeff, ce.d_centers, 2, 3, nullptr);
+    cuda::scf::launch_eri(ce.d_ERI, ce.d_alpha, ce.d_coeff, ce.d_centers, 2, 3,
+                          nullptr);
     cudaDeviceSynchronize();
     for (auto _ : state) {
-        cuda::scf::launch_eri(ce.d_ERI, ce.d_alpha, ce.d_coeff, ce.d_centers, 2, 3, nullptr);
+        cuda::scf::launch_eri(ce.d_ERI, ce.d_alpha, ce.d_coeff, ce.d_centers, 2,
+                              3, nullptr);
         cudaDeviceSynchronize();
     }
 }
@@ -296,10 +355,16 @@ BENCHMARK(BM_ERI_CUDA_Kernel);
 
 static cpu::Frame make_h2() {
     cpu::Frame frame(2);
-    frame.atoms.x[0] = double(0);     frame.atoms.y[0] = double(0); frame.atoms.z[0] = double(0);
-    frame.atoms.x[1] = double(0.74);  frame.atoms.y[1] = double(0); frame.atoms.z[1] = double(0);
-    frame.atoms.mass[0] = double(1.008); frame.atoms.mass[1] = double(1.008);
-    frame.atoms.type[0] = 1; frame.atoms.type[1] = 1;
+    frame.atoms.x[0] = double(0);
+    frame.atoms.y[0] = double(0);
+    frame.atoms.z[0] = double(0);
+    frame.atoms.x[1] = double(0.74);
+    frame.atoms.y[1] = double(0);
+    frame.atoms.z[1] = double(0);
+    frame.atoms.mass[0] = double(1.008);
+    frame.atoms.mass[1] = double(1.008);
+    frame.atoms.type[0] = 1;
+    frame.atoms.type[1] = 1;
     frame.box = Mat3::cubic(100.0);
     return frame;
 }
@@ -316,14 +381,15 @@ BENCHMARK(BM_FullBuild_Native)->Unit(benchmark::kMicrosecond);
 // ── Stage-separated end-to-end benchmarks ────────────────────────────
 
 #include "atomiverse/cpu/scf/rhf_solve.h"
-#include "atomiverse/cuda/scf/scf.cuh"
-#include "atomiverse/cuda/scf/rhf_fock.cuh"
 #include "atomiverse/cuda/scf/rhf_density.cuh"
+#include "atomiverse/cuda/scf/rhf_fock.cuh"
+#include "atomiverse/cuda/scf/scf.cuh"
 
 static void BM_CPURHFSolve(benchmark::State& state) {
     auto frame = make_h2();
     auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
+    double tol =
+        (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     for (auto _ : state) {
         auto result = cpu::scf::rhf_solve(integrals, tol, 100);
         benchmark::DoNotOptimize(result.energy);
@@ -334,7 +400,8 @@ BENCHMARK(BM_CPURHFSolve)->Unit(benchmark::kMicrosecond);
 static void BM_CUDARHFSolve(benchmark::State& state) {
     auto frame = make_h2();
     auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
+    double tol =
+        (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     for (auto _ : state) {
         // Includes materialize + solve + retrieve (full Driver lifecycle)
         scf::SCF solver;
@@ -353,10 +420,16 @@ BENCHMARK(BM_CUDARHFSolve)->Unit(benchmark::kMicrosecond);
 
 static cpu::Frame make_lih() {
     cpu::Frame frame(2);
-    frame.atoms.x[0] = double(0);     frame.atoms.y[0] = double(0); frame.atoms.z[0] = double(0);
-    frame.atoms.x[1] = double(1.595); frame.atoms.y[1] = double(0); frame.atoms.z[1] = double(0);
-    frame.atoms.mass[0] = double(6.941); frame.atoms.mass[1] = double(1.008);
-    frame.atoms.type[0] = 3; frame.atoms.type[1] = 1;
+    frame.atoms.x[0] = double(0);
+    frame.atoms.y[0] = double(0);
+    frame.atoms.z[0] = double(0);
+    frame.atoms.x[1] = double(1.595);
+    frame.atoms.y[1] = double(0);
+    frame.atoms.z[1] = double(0);
+    frame.atoms.mass[0] = double(6.941);
+    frame.atoms.mass[1] = double(1.008);
+    frame.atoms.type[0] = 3;
+    frame.atoms.type[1] = 1;
     frame.box = Mat3::cubic(100.0);
     return frame;
 }
@@ -364,7 +437,8 @@ static cpu::Frame make_lih() {
 static void BM_CPURHFSolve_LiH(benchmark::State& state) {
     auto frame = make_lih();
     auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
+    double tol =
+        (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     for (auto _ : state) {
         auto result = cpu::scf::rhf_solve(integrals, tol, 100);
         benchmark::DoNotOptimize(result.energy);
@@ -375,7 +449,8 @@ BENCHMARK(BM_CPURHFSolve_LiH)->Unit(benchmark::kMicrosecond);
 static void BM_CUDARHFSolve_LiH(benchmark::State& state) {
     auto frame = make_lih();
     auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
+    double tol =
+        (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     for (auto _ : state) {
         scf::SCF solver;
         solver.add(scf::RHFFock{integrals});

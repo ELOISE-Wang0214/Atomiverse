@@ -35,7 +35,7 @@ void ZeroForces::launch(const cpu::LaunchContext& ctx) {
     // for force kernels, and gives `HaloExchangeReverse` a known-zero
     // baseline on ghost rows.
     const int n = f.atoms.size();
-    #pragma omp parallel for schedule(static)
+#pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
         f.atoms.fx[i] = 0;
         f.atoms.fy[i] = 0;
@@ -45,20 +45,20 @@ void ZeroForces::launch(const cpu::LaunchContext& ctx) {
 
 // ── ZeroEnergy ───────────────────────────────────────────────────
 
-void ZeroEnergy::launch(const cpu::LaunchContext& ctx) {
-    ctx.frame.energy = 0;
-}
+void ZeroEnergy::launch(const cpu::LaunchContext& ctx) { ctx.frame.energy = 0; }
 
 // ── ZeroStress ───────────────────────────────────────────────────
 
 void ZeroStress::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
-    for (int k = 0; k < 6; ++k) f.stress[k] = 0;
+    for (int k = 0; k < 6; ++k)
+        f.stress[k] = 0;
     // `stress_kinetic` is overwritten (not accumulated) by VirialStress
     // each step, so it does not strictly need zeroing -- but zero it
     // here for symmetry and so observers that read it before VirialStress
     // ever ran see a deterministic zero rather than uninitialised data.
-    for (int k = 0; k < 6; ++k) f.stress_kinetic[k] = 0;
+    for (int k = 0; k < 6; ++k)
+        f.stress_kinetic[k] = 0;
 }
 
 // ── ZeroKinetic ──────────────────────────────────────────────────
@@ -71,12 +71,14 @@ void ZeroKinetic::launch(const cpu::LaunchContext& ctx) {
 
 void KineticEnergy::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
-    const int n = owned_count(ctx);  // owned only -- ghosts duplicate owners' KE
+    const int n = owned_count(ctx); // owned only -- ghosts duplicate owners' KE
     double ke = 0;
 
-    #pragma omp parallel for schedule(static) reduction(+:ke)
+#pragma omp parallel for schedule(static) reduction(+ : ke)
     for (int i = 0; i < n; ++i) {
-        double v2 = f.atoms.vx[i] * f.atoms.vx[i] + f.atoms.vy[i] * f.atoms.vy[i] + f.atoms.vz[i] * f.atoms.vz[i];
+        double v2 = f.atoms.vx[i] * f.atoms.vx[i]
+                    + f.atoms.vy[i] * f.atoms.vy[i]
+                    + f.atoms.vz[i] * f.atoms.vz[i];
         ke += f.atoms.mass[i] * v2;
     }
 
@@ -86,7 +88,8 @@ void KineticEnergy::launch(const cpu::LaunchContext& ctx) {
 // ── ZeroLinearMomentum ───────────────────────────────────────────
 
 void ZeroLinearMomentum::launch(const cpu::LaunchContext& ctx) {
-    if (step_++ % freq_ != 0) return;
+    if (step_++ % freq_ != 0)
+        return;
 
     auto& f = ctx.frame;
     const int n = owned_count(ctx);
@@ -108,17 +111,20 @@ void ZeroLinearMomentum::launch(const cpu::LaunchContext& ctx) {
         double global[4];
         MPI_Allreduce(local, global, 4, MPI_DOUBLE, MPI_SUM,
                       ctx.runtime.dd->cart_comm);
-        p[0] = global[0]; p[1] = global[1]; p[2] = global[2];
+        p[0] = global[0];
+        p[1] = global[1];
+        p[2] = global[2];
         mtot = global[3];
     }
 #endif
-    if (mtot <= 0.0) return;
+    if (mtot <= 0.0)
+        return;
 
     const double vx = p[0] / mtot;
     const double vy = p[1] / mtot;
     const double vz = p[2] / mtot;
 
-    #pragma omp parallel for schedule(static)
+#pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
         f.atoms.vx[i] -= vx;
         f.atoms.vy[i] -= vy;
@@ -128,8 +134,7 @@ void ZeroLinearMomentum::launch(const cpu::LaunchContext& ctx) {
 
 // ── InitVelocity ─────────────────────────────────────────────────
 
-InitVelocity::InitVelocity(double temperature, unsigned seed,
-                           VelocityDist dist)
+InitVelocity::InitVelocity(double temperature, unsigned seed, VelocityDist dist)
     : temperature_(temperature), seed_(seed), dist_(dist) {}
 
 void InitVelocity::build(const cpu::BuildContext& ctx) {
@@ -157,14 +162,14 @@ void InitVelocity::build(const cpu::BuildContext& ctx) {
     // step 3, so the per-component prefactor only needs to be consistent.
     std::mt19937 rng(seed_);
     if (dist_ == VelocityDist::gaussian) {
-        std::normal_distribution<double> draw(0.0, 1.0);  // N(0,1)
+        std::normal_distribution<double> draw(0.0, 1.0); // N(0,1)
         for (int i = 0; i < n; ++i) {
             const double s = 1.0 / std::sqrt(f.atoms.mass[i]);
             f.atoms.vx[i] = draw(rng) * s;
             f.atoms.vy[i] = draw(rng) * s;
             f.atoms.vz[i] = draw(rng) * s;
         }
-    } else {  // VelocityDist::uniform
+    } else { // VelocityDist::uniform
         // LAMMPS draws `random->uniform() - 0.5` → U(-0.5, 0.5).
         std::uniform_real_distribution<double> draw(-0.5, 0.5);
         for (int i = 0; i < n; ++i) {
@@ -201,8 +206,8 @@ void InitVelocity::build(const cpu::BuildContext& ctx) {
     double sum_mv2 = 0.0;
     for (int i = 0; i < n; ++i) {
         const double v2 = f.atoms.vx[i] * f.atoms.vx[i]
-                        + f.atoms.vy[i] * f.atoms.vy[i]
-                        + f.atoms.vz[i] * f.atoms.vz[i];
+                          + f.atoms.vy[i] * f.atoms.vy[i]
+                          + f.atoms.vz[i] * f.atoms.vz[i];
         sum_mv2 += f.atoms.mass[i] * v2;
     }
     long long n_global = n;

@@ -1,21 +1,21 @@
 /// @file test_pw_components.cpp
 /// @brief Unit tests for PW SCF components.
-#include <gtest/gtest.h>
 #include "atomiverse/core/box.h"
-#include "atomiverse/core/vec3.h"
-#include "atomiverse/cpu/context.h"
-#include "atomiverse/cpu/component.h"
-#include "atomiverse/cpu/pw/internal/g_vector.h"
-#include "atomiverse/cpu/frame.h"
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/pw/pw_workspace.h"
-#include "atomiverse/cpu/pw/pw_poisson.h"
-#include "atomiverse/cpu/pw/pw_lda.h"
-#include "atomiverse/cpu/pw/pw_hamiltonian.h"
-#include "atomiverse/cpu/pw/pw_veff.h"
+#include "atomiverse/core/vec3.h"
+#include "atomiverse/cpu/component.h"
+#include "atomiverse/cpu/context.h"
+#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/pw/internal/g_vector.h"
+#include "atomiverse/cpu/pw/pw_convergence.h"
 #include "atomiverse/cpu/pw/pw_davidson.h"
 #include "atomiverse/cpu/pw/pw_density.h"
-#include "atomiverse/cpu/pw/pw_convergence.h"
+#include "atomiverse/cpu/pw/pw_hamiltonian.h"
+#include "atomiverse/cpu/pw/pw_lda.h"
+#include "atomiverse/cpu/pw/pw_poisson.h"
+#include "atomiverse/cpu/pw/pw_veff.h"
+#include "atomiverse/cpu/pw/pw_workspace.h"
+#include <gtest/gtest.h>
 
 using namespace ATV;
 using namespace ATV::cpu;
@@ -34,15 +34,27 @@ struct PWFixture {
     PWFixture() {
         // Manual Si diamond construction
         frame = cpu::Frame(2);
-        frame.atoms.type[0] = 14; frame.atoms.type[1] = 14;
-        frame.atoms.mass[0] = 28.0855; frame.atoms.mass[1] = 28.0855;
-        frame.atoms.x[0] = 0; frame.atoms.y[0] = 0; frame.atoms.z[0] = 0;
-        frame.atoms.x[1] = 1.3575; frame.atoms.y[1] = 1.3575; frame.atoms.z[1] = 1.3575;
+        frame.atoms.type[0] = 14;
+        frame.atoms.type[1] = 14;
+        frame.atoms.mass[0] = 28.0855;
+        frame.atoms.mass[1] = 28.0855;
+        frame.atoms.x[0] = 0;
+        frame.atoms.y[0] = 0;
+        frame.atoms.z[0] = 0;
+        frame.atoms.x[1] = 1.3575;
+        frame.atoms.y[1] = 1.3575;
+        frame.atoms.z[1] = 1.3575;
         double h = 5.43 / 2.0;
         Mat3 cell;
-        cell(0,0) = 0; cell(0,1) = h; cell(0,2) = h;
-        cell(1,0) = h; cell(1,1) = 0; cell(1,2) = h;
-        cell(2,0) = h; cell(2,1) = h; cell(2,2) = 0;
+        cell(0, 0) = 0;
+        cell(0, 1) = h;
+        cell(0, 2) = h;
+        cell(1, 0) = h;
+        cell(1, 1) = 0;
+        cell(1, 2) = h;
+        cell(2, 0) = h;
+        cell(2, 1) = h;
+        cell(2, 2) = 0;
         frame.box = cell;
         ::ATV::Box box;
         box.cell = frame.box.cell();
@@ -72,7 +84,9 @@ struct PWFixture {
         ws.T_G.resize({ng});
 
         for (int i = 0; i < ws.n_g; ++i) {
-            ws.rho_G[i] = (i == 0) ? std::complex<Real>(Real(4)/box.volume(), 0) : std::complex<Real>(0, 0);
+            ws.rho_G[i] = (i == 0)
+                              ? std::complex<Real>(Real(4) / box.volume(), 0)
+                              : std::complex<Real>(0, 0);
             ws.V_loc_G_real[i] = (i == 0) ? Real(-0.5) : Real(0);
         }
         for (int i = 0; i < ws.nr; ++i)
@@ -132,7 +146,7 @@ TEST(PWComponents, DavidsonEigenvalues) {
     d.launch(f.lctx);
     EXPECT_EQ(f.ws.eigenvalues.size(), 4u);
     for (size_t i = 1; i < f.ws.eigenvalues.size(); ++i)
-        EXPECT_LE(static_cast<double>(f.ws.eigenvalues[i-1]),
+        EXPECT_LE(static_cast<double>(f.ws.eigenvalues[i - 1]),
                   static_cast<double>(f.ws.eigenvalues[i]) + 1e-10);
 }
 
@@ -142,7 +156,7 @@ TEST(PWComponents, ConvergenceCheck) {
     c.build(f.bctx);
 
     for (int i = 0; i < f.ws.n_g; ++i) {
-        f.ws.rho_G[i] = std::complex<Real>(Real(1e-7) * Real(i+1), 0);
+        f.ws.rho_G[i] = std::complex<Real>(Real(1e-7) * Real(i + 1), 0);
         f.ws.rho_G_old[i] = std::complex<Real>(0, 0);
     }
     c.launch(f.lctx);

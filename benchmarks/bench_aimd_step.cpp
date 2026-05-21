@@ -23,8 +23,8 @@
 #include <benchmark/benchmark.h>
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/evaluate.h"
+#include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/scf/integrals.h"
@@ -52,7 +52,8 @@ cpu::Frame make_h2() {
 }
 
 cpu::scf::SCFConfig make_config(const cpu::Frame& frame) {
-    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto integrals =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     return cpu::scf::rhf_config(integrals);
 }
 

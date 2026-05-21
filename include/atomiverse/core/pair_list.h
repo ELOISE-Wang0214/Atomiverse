@@ -28,6 +28,6 @@
 namespace ATV {
 
 /// @brief Number of SoA array fields in the canonical PairList layout.
-inline constexpr int kPairListFieldCount = 6;  // i, j, dx, dy, dz, dist
+inline constexpr int kPairListFieldCount = 6; // i, j, dx, dy, dz, dist
 
 } // namespace ATV

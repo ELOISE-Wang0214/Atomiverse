@@ -28,7 +28,7 @@ namespace md {
 /// Auto-binds to end_of_step at order -100 (after ZeroKinetic at -1000,
 /// before user observers at order >= 0).
 class KineticEnergy : public ComponentBase {
-public:
+  public:
     /// @brief Component name.
     /// @return "kinetic_energy".
     std::string name() const override { return "kinetic_energy"; }

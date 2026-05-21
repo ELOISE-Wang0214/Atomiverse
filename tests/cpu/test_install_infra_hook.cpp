@@ -19,9 +19,9 @@
 
 #include "cpu/driver_test_helpers.h"
 
+using atv_test::make_trivial_frame;
 using atv_test::StubForceEvaluator;
 using atv_test::StubIntegrator;
-using atv_test::make_trivial_frame;
 
 namespace {
 
@@ -41,11 +41,11 @@ TEST(InstallInfraHook, NeedsNeighborListDefaultsToFalse) {
 
 /// @brief Counts how often `install_infra()` is called per `build()`.
 class HookCounterDynamics : public ATV::cpu::DynamicsDriver {
-public:
+  public:
     int install_calls = 0;
     StubIntegrator integ;
 
-protected:
+  protected:
     void install_infra() override {
         ++install_calls;
         // Inject the integrator from inside the hook — driver's

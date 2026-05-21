@@ -19,7 +19,7 @@ namespace md {
 /// Composes with VelocityVerlet (runs after it at same phases via order +100).
 /// Maintains thermostat variable ξ on device. Rescales velocities to target temperature.
 class NoseHoover : public ComponentBase {
-public:
+  public:
     /// @brief Construct thermostat.
     /// @param T_target Target temperature [K].
     /// @param tau      Coupling time constant [fs].
@@ -35,7 +35,7 @@ public:
     void launch(const LaunchContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;
 
-private:
+  private:
     double T_target_, tau_, dt_;
     struct State;
     std::unique_ptr<State> state_;

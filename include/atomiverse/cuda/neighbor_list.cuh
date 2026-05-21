@@ -26,7 +26,7 @@ namespace ATV {
 ///
 /// @see PairList for the output data structure
 class NeighborList : public ComponentBase {
-public:
+  public:
     /// @brief Construct with cutoff and optional skin width.
     /// @param cutoff Interaction cutoff [Angstrom].
     /// @param skin   Verlet skin width [Angstrom]. Negative = auto (0.3 * cutoff).
@@ -67,11 +67,11 @@ public:
     /// @return Skin width [Angstrom].
     double skin() const { return skin_; }
 
-private:
-    double cutoff_;  ///< Interaction cutoff [Angstrom].
-    double skin_;    ///< Verlet skin width [Angstrom].
-    struct State;  ///< Opaque GPU state (pimpl, defined in .cu).
-    std::unique_ptr<State> state_;  ///< Internal GPU buffers.
+  private:
+    double cutoff_; ///< Interaction cutoff [Angstrom].
+    double skin_;   ///< Verlet skin width [Angstrom].
+    struct State;   ///< Opaque GPU state (pimpl, defined in .cu).
+    std::unique_ptr<State> state_; ///< Internal GPU buffers.
 };
 
 } // namespace ATV

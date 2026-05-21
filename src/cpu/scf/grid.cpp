@@ -8,13 +8,13 @@
 /// Becke partitioning uses the k(μ) = 1.5μ - 0.5μ³ step function applied 3 times.
 
 #include "atomiverse/cpu/scf/grid.h"
-#include "atomiverse/cpu/scf/lebedev_data.h"
 #include "atomiverse/core/constants.h"
+#include "atomiverse/cpu/scf/lebedev_data.h"
 
-#include <array>
-#include <cmath>
 #include <algorithm>
+#include <array>
 #include <cassert>
+#include <cmath>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -145,8 +145,8 @@ double bragg_slater_radius(int Z) {
     // clang-format on
     if (Z < 1 || Z > kMaxZ) {
         throw std::invalid_argument(
-            "bragg_slater_radius: unsupported element Z="
-            + std::to_string(Z) + ". Supported range: Z=1..86");
+            "bragg_slater_radius: unsupported element Z=" + std::to_string(Z)
+            + ". Supported range: Z=1..86");
     }
     return radii[Z];
 }
@@ -193,45 +193,46 @@ double bragg_slater_radius(int Z) {
 static double treutler_ahlrichs_xi(int Z) {
     // Z indexed; entry 0 unused.
     static constexpr double xi[37] = {
-        0.0,  // 0  (unused)
-        0.8,  // 1  H
-        0.9,  // 2  He
-        1.8,  // 3  Li
-        1.4,  // 4  Be
-        1.3,  // 5  B
-        1.1,  // 6  C
-        0.9,  // 7  N
-        0.9,  // 8  O
-        0.9,  // 9  F
-        0.9,  // 10 Ne
-        1.4,  // 11 Na
-        1.3,  // 12 Mg
-        1.3,  // 13 Al
-        1.2,  // 14 Si
-        1.1,  // 15 P
-        1.0,  // 16 S
-        1.0,  // 17 Cl
-        1.0,  // 18 Ar
-        1.5,  // 19 K
-        1.4,  // 20 Ca
-        1.3,  // 21 Sc
-        1.2,  // 22 Ti
-        1.2,  // 23 V
-        1.2,  // 24 Cr
-        1.2,  // 25 Mn
-        1.2,  // 26 Fe
-        1.2,  // 27 Co
-        1.1,  // 28 Ni
-        1.1,  // 29 Cu
-        1.1,  // 30 Zn
-        1.1,  // 31 Ga
-        1.0,  // 32 Ge
-        0.9,  // 33 As
-        0.9,  // 34 Se
-        0.9,  // 35 Br
-        0.9,  // 36 Kr
+        0.0, // 0  (unused)
+        0.8, // 1  H
+        0.9, // 2  He
+        1.8, // 3  Li
+        1.4, // 4  Be
+        1.3, // 5  B
+        1.1, // 6  C
+        0.9, // 7  N
+        0.9, // 8  O
+        0.9, // 9  F
+        0.9, // 10 Ne
+        1.4, // 11 Na
+        1.3, // 12 Mg
+        1.3, // 13 Al
+        1.2, // 14 Si
+        1.1, // 15 P
+        1.0, // 16 S
+        1.0, // 17 Cl
+        1.0, // 18 Ar
+        1.5, // 19 K
+        1.4, // 20 Ca
+        1.3, // 21 Sc
+        1.2, // 22 Ti
+        1.2, // 23 V
+        1.2, // 24 Cr
+        1.2, // 25 Mn
+        1.2, // 26 Fe
+        1.2, // 27 Co
+        1.1, // 28 Ni
+        1.1, // 29 Cu
+        1.1, // 30 Zn
+        1.1, // 31 Ga
+        1.0, // 32 Ge
+        0.9, // 33 As
+        0.9, // 34 Se
+        0.9, // 35 Br
+        0.9, // 36 Kr
     };
-    if (Z < 1 || Z > 36) return 1.0;
+    if (Z < 1 || Z > 36)
+        return 1.0;
     return xi[Z];
 }
 
@@ -275,7 +276,7 @@ static std::vector<RadialPoint> radial_grid_treutler_ahlrichs(int n, int Z) {
         //     = -ln2 [0.6 (1+x)^(-0.4) ln((1-x)/2) + (1+x)^0.6 / (1-x) * (-1)]
         //     = ln2 (1+x)^0.6 [-0.6/(1+x) ln((1-x)/2) + 1/(1-x)]
         dr_tmp[i] = step * sin_angle * ln2 * pow_term
-                  * (-0.6 / one_plus_x * log_term + 1.0 / one_minus_x);
+                    * (-0.6 / one_plus_x * log_term + 1.0 / one_minus_x);
     }
     // Reverse so r is ascending (PySCF returns r[::-1], dr[::-1]).
     for (int i = 0; i < n; ++i) {
@@ -326,13 +327,13 @@ std::vector<RadialPoint> radial_grid_euler_maclaurin(int n, double R) {
     std::vector<RadialPoint> pts(n);
     const double np1 = static_cast<double>(n + 1);
     for (int idx = 0; idx < n; ++idx) {
-        const double i = static_cast<double>(idx + 1);  // i = 1..n
+        const double i = static_cast<double>(idx + 1); // i = 1..n
         const double denom = np1 - i;
         const double r = R * i * i / (denom * denom);
         // dr/di = R * 2 i (n+1) / (n+1-i)^3
         const double dr_di = R * 2.0 * i * np1 / (denom * denom * denom);
         pts[idx].r = r;
-        pts[idx].w = r * r * dr_di;  // uniform node weight = 1
+        pts[idx].w = r * r * dr_di; // uniform node weight = 1
     }
     return pts;
 }
@@ -356,14 +357,12 @@ std::vector<RadialPoint> radial_grid_euler_maclaurin(int n, double R) {
 // In all cases the adjustment is nu = mu + a (1 - mu^2).
 
 // Becke step function: f(μ) = 1.5μ - 0.5μ³ (one iteration).
-static double becke_step(double mu) {
-    return 1.5 * mu - 0.5 * mu * mu * mu;
-}
+static double becke_step(double mu) { return 1.5 * mu - 0.5 * mu * mu * mu; }
 
 // Original-Becke 1988 heteronuclear size-adjustment parameter a_AB.
 static double becke_size_adjust_original(int Z_a, int Z_b) {
     const double chi = bragg_slater_radius(Z_a) / bragg_slater_radius(Z_b);
-    const double u   = (chi - 1.0) / (chi + 1.0);
+    const double u = (chi - 1.0) / (chi + 1.0);
     double a = u / (u * u - 1.0);
     return std::max(-0.5, std::min(0.5, a));
 }
@@ -383,8 +382,8 @@ static double becke_size_adjust_treutler(int Z_a, int Z_b) {
 // production becke_partition_weights.
 static double becke_size_adjust(int Z_a, int Z_b, GridLevel level) {
     return (level == GridLevel::MatchPySCF)
-        ? becke_size_adjust_treutler(Z_a, Z_b)
-        : becke_size_adjust_original(Z_a, Z_b);
+               ? becke_size_adjust_treutler(Z_a, Z_b)
+               : becke_size_adjust_original(Z_a, Z_b);
 }
 
 // Becke partition weight for atom A at point r.
@@ -406,7 +405,7 @@ static void becke_partition_weights(const native::Atom* atoms, int natm,
         double dx = rx - atoms[a].pos[0];
         double dy = ry - atoms[a].pos[1];
         double dz = rz - atoms[a].pos[2];
-        dist[a] = std::sqrt(dx*dx + dy*dy + dz*dz);
+        dist[a] = std::sqrt(dx * dx + dy * dy + dz * dz);
     }
 
     // Compute inter-atomic distances
@@ -414,23 +413,26 @@ static void becke_partition_weights(const native::Atom* atoms, int natm,
     // μ_AB = (r_A - r_B) / R_AB  (elliptical coordinate)
 
     // Initialize raw Becke weights to 1
-    for (int a = 0; a < natm; ++a) weights[a] = 1.0;
+    for (int a = 0; a < natm; ++a)
+        weights[a] = 1.0;
 
     for (int a = 0; a < natm; ++a) {
         for (int b = a + 1; b < natm; ++b) {
             double dx = atoms[a].pos[0] - atoms[b].pos[0];
             double dy = atoms[a].pos[1] - atoms[b].pos[1];
             double dz = atoms[a].pos[2] - atoms[b].pos[2];
-            double R_AB = std::sqrt(dx*dx + dy*dy + dz*dz);
+            double R_AB = std::sqrt(dx * dx + dy * dy + dz * dz);
 
-            if (R_AB < 1e-14) continue;
+            if (R_AB < 1e-14)
+                continue;
 
             double mu = (dist[a] - dist[b]) / R_AB;
 
             // Heteronuclear size adjustment, nu = mu + a_AB (1 - mu^2).
-            double a_AB = (level == GridLevel::MatchPySCF)
-                ? becke_size_adjust_treutler(atoms[a].Z, atoms[b].Z)
-                : becke_size_adjust_original(atoms[a].Z, atoms[b].Z);
+            double a_AB =
+                (level == GridLevel::MatchPySCF)
+                    ? becke_size_adjust_treutler(atoms[a].Z, atoms[b].Z)
+                    : becke_size_adjust_original(atoms[a].Z, atoms[b].Z);
             mu += a_AB * (1.0 - mu * mu);
 
             // Apply step function 3 times
@@ -448,9 +450,11 @@ static void becke_partition_weights(const native::Atom* atoms, int natm,
 
     // Normalize
     double total = 0;
-    for (int a = 0; a < natm; ++a) total += weights[a];
+    for (int a = 0; a < natm; ++a)
+        total += weights[a];
     if (total > 1e-30) {
-        for (int a = 0; a < natm; ++a) weights[a] /= total;
+        for (int a = 0; a < natm; ++a)
+            weights[a] /= total;
     }
 }
 
@@ -462,41 +466,57 @@ static void becke_partition_weights(const native::Atom* atoms, int natm,
 static void resolve_lebedev_grid(int order, const lebedev::Point*& pts,
                                  int& n_pts) {
     if (order >= 770) {
-        pts = lebedev::grid_770; n_pts = lebedev::n_770;
+        pts = lebedev::grid_770;
+        n_pts = lebedev::n_770;
     } else if (order >= 590) {
-        pts = lebedev::grid_590; n_pts = lebedev::n_590;
+        pts = lebedev::grid_590;
+        n_pts = lebedev::n_590;
     } else if (order >= 434) {
-        pts = lebedev::grid_434; n_pts = lebedev::n_434;
+        pts = lebedev::grid_434;
+        n_pts = lebedev::n_434;
     } else if (order >= 350) {
-        pts = lebedev::grid_350; n_pts = lebedev::n_350;
+        pts = lebedev::grid_350;
+        n_pts = lebedev::n_350;
     } else if (order >= 302) {
-        pts = lebedev::grid_302; n_pts = lebedev::n_302;
+        pts = lebedev::grid_302;
+        n_pts = lebedev::n_302;
     } else if (order >= 266) {
-        pts = lebedev::grid_266; n_pts = lebedev::n_266;
+        pts = lebedev::grid_266;
+        n_pts = lebedev::n_266;
     } else if (order >= 194) {
-        pts = lebedev::grid_194; n_pts = lebedev::n_194;
+        pts = lebedev::grid_194;
+        n_pts = lebedev::n_194;
     } else if (order >= 110) {
-        pts = lebedev::grid_110; n_pts = lebedev::n_110;
+        pts = lebedev::grid_110;
+        n_pts = lebedev::n_110;
     } else if (order >= 86) {
-        pts = lebedev::grid_86;  n_pts = lebedev::n_86;
+        pts = lebedev::grid_86;
+        n_pts = lebedev::n_86;
     } else if (order >= 50) {
-        pts = lebedev::grid_50;  n_pts = lebedev::n_50;
+        pts = lebedev::grid_50;
+        n_pts = lebedev::n_50;
     } else if (order >= 38) {
-        pts = lebedev::grid_38;  n_pts = lebedev::n_38;
+        pts = lebedev::grid_38;
+        n_pts = lebedev::n_38;
     } else {
-        pts = lebedev::grid_6;   n_pts = lebedev::n_6;
+        pts = lebedev::grid_6;
+        n_pts = lebedev::n_6;
     }
 }
 
 // SG-1 pruning alpha-quadruple (Gill-Johnson-Pople 1993). The four entries
 // are alpha_1..alpha_4: the radial fractions r/R that delimit the 5
 // Lebedev regions {6, 38, 86, 194, 86}.
-struct SG1Alpha { double a1, a2, a3, a4; };
+struct SG1Alpha {
+    double a1, a2, a3, a4;
+};
 
 static SG1Alpha sg1_alpha(int Z) {
-    if (Z <= 2)  return {0.25,   0.5, 1.0, 4.5};   // H, He
-    if (Z <= 10) return {0.1667, 0.5, 0.9, 3.5};   // Li-Ne
-    return {0.1, 0.4, 0.8, 2.5};                    // Na-Ar (and heavier)
+    if (Z <= 2)
+        return {0.25, 0.5, 1.0, 4.5}; // H, He
+    if (Z <= 10)
+        return {0.1667, 0.5, 0.9, 3.5}; // Li-Ne
+    return {0.1, 0.4, 0.8, 2.5};        // Na-Ar (and heavier)
 }
 
 // SG-1 atom-size radius: R = 1/2 * Bragg-Slater radius, EXCEPT hydrogen,
@@ -509,8 +529,7 @@ static double sg1_atom_radius(int Z) {
 // ── lebedev_order_for_shell ─────────────────────────────────────────────
 
 int lebedev_order_for_shell(GridLevel level, int Z, double r, double R,
-                            int radial_index, int n_radial,
-                            int uniform_order) {
+                            int radial_index, int n_radial, int uniform_order) {
     if (level == GridLevel::SG0) {
         return uniform_order;
     }
@@ -523,10 +542,14 @@ int lebedev_order_for_shell(GridLevel level, int Z, double r, double R,
         // alpha_1*R .. alpha_4*R, with R the SG-1 atom-size radius.
         const SG1Alpha a = sg1_alpha(Z);
         const double t = r / R;
-        if (t < a.a1) return 6;
-        if (t < a.a2) return 38;
-        if (t < a.a3) return 86;
-        if (t < a.a4) return 194;
+        if (t < a.a1)
+            return 6;
+        if (t < a.a2)
+            return 38;
+        if (t < a.a3)
+            return 86;
+        if (t < a.a4)
+            return 194;
         return 86;
     }
 
@@ -555,11 +578,15 @@ int lebedev_order_for_shell(GridLevel level, int Z, double r, double R,
     // bragg_slater_radius / treutler_ahlrichs_xi.
     const SG1Alpha a = sg1_alpha(Z);
     const double t = r / R;
-    int region = 0;                 // 0..4, = sum(t > alpha_i)
-    if (t > a.a1) ++region;
-    if (t > a.a2) ++region;
-    if (t > a.a3) ++region;
-    if (t > a.a4) ++region;
+    int region = 0; // 0..4, = sum(t > alpha_i)
+    if (t > a.a1)
+        ++region;
+    if (t > a.a2)
+        ++region;
+    if (t > a.a3)
+        ++region;
+    if (t > a.a4)
+        ++region;
 
     static constexpr int light_orders[5] = {50, 86, 266, 302, 266};
     static constexpr int heavy_orders[5] = {50, 86, 350, 434, 350};
@@ -572,8 +599,8 @@ int lebedev_order_for_shell(GridLevel level, int Z, double r, double R,
 // the radial scheme and the per-shell angular order; for GridLevel::SG0
 // the legacy uniform-order Treutler-Ahlrichs path is reproduced verbatim.
 static MolecularGrid assemble_grid(const native::Atom* atoms, int natm,
-                                   GridLevel level,
-                                   int n_radial, int n_angular) {
+                                   GridLevel level, int n_radial,
+                                   int n_angular) {
     MolecularGrid grid;
 
     // Per-level radial point count. SG0 honours the caller's n_radial;
@@ -581,15 +608,20 @@ static MolecularGrid assemble_grid(const native::Atom* atoms, int natm,
     // level-3 counts: 50 for H/He, 75 for Li-Ne, 80 for Na-Ar, 90 for
     // Z >= 19 (matches pyscf.dft.gen_grid._default_rad at level 3).
     auto radial_count = [&](int Z) -> int {
-        if (level == GridLevel::SG0) return n_radial;
-        if (level == GridLevel::SG1) return 50;
-        if (Z <= 2)  return 50;
-        if (Z <= 10) return 75;
-        if (Z <= 18) return 80;
+        if (level == GridLevel::SG0)
+            return n_radial;
+        if (level == GridLevel::SG1)
+            return 50;
+        if (Z <= 2)
+            return 50;
+        if (Z <= 10)
+            return 75;
+        if (Z <= 18)
+            return 80;
         return 90;
     };
 
-    grid.n_radial  = radial_count(natm > 0 ? atoms[0].Z : 1);
+    grid.n_radial = radial_count(natm > 0 ? atoms[0].Z : 1);
     grid.n_angular = n_angular;
 
     std::vector<double> becke_w(natm);
@@ -603,19 +635,19 @@ static MolecularGrid assemble_grid(const native::Atom* atoms, int natm,
         std::vector<RadialPoint> rad_pts;
         double R_size = 0.0;
         if (level == GridLevel::SG1) {
-            R_size  = sg1_atom_radius(Z);
+            R_size = sg1_atom_radius(Z);
             rad_pts = radial_grid_euler_maclaurin(nr, R_size);
         } else {
             rad_pts = radial_grid_treutler_ahlrichs(nr, Z);
-            R_size  = bragg_slater_radius(Z);
+            R_size = bragg_slater_radius(Z);
         }
 
         for (int ir = 0; ir < nr; ++ir) {
-            const double r     = rad_pts[ir].r;
+            const double r = rad_pts[ir].r;
             const double w_rad = rad_pts[ir].w;
 
-            const int order = lebedev_order_for_shell(
-                level, Z, r, R_size, ir, nr, n_angular);
+            const int order =
+                lebedev_order_for_shell(level, Z, r, R_size, ir, nr, n_angular);
             const lebedev::Point* leb_pts = nullptr;
             int actual_n_angular = 0;
             resolve_lebedev_grid(order, leb_pts, actual_n_angular);
@@ -627,8 +659,8 @@ static MolecularGrid assemble_grid(const native::Atom* atoms, int natm,
 
                 // Becke partition weight (size adjustment depends on
                 // the grid level -- see becke_partition_weights).
-                becke_partition_weights(atoms, natm, px, py, pz,
-                                        becke_w.data(), level);
+                becke_partition_weights(atoms, natm, px, py, pz, becke_w.data(),
+                                        level);
 
                 // Lebedev weights sum to 1.0; multiply by 4*pi for the
                 // spherical integral.
@@ -658,8 +690,8 @@ MolecularGrid build_molecular_grid(const native::Atom* atoms, int natm,
 }
 
 MolecularGrid build_molecular_grid(const native::Atom* atoms, int natm,
-                                   GridLevel level,
-                                   int n_radial, int n_angular) {
+                                   GridLevel level, int n_radial,
+                                   int n_angular) {
     return assemble_grid(atoms, natm, level, n_radial, n_angular);
 }
 
@@ -687,12 +719,14 @@ static void get_smooth_function_derivative(double mu, double& p3,
     t_uab = 27.0 / 8.0 * (1.0 - p2 * p2) * (1.0 - p1 * p1) * (1.0 - p0 * p0);
 }
 
-double becke_weight_derivative(const native::Atom* atoms, int natm,
-                               double rx, double ry, double rz, int parent,
+double becke_weight_derivative(const native::Atom* atoms, int natm, double rx,
+                               double ry, double rz, int parent,
                                GridLevel level, double* dw_out) {
     // Single-atom: weight is identically 1, derivative vanishes.
-    for (int i = 0; i < natm * 3; ++i) dw_out[i] = 0.0;
-    if (natm <= 1) return 1.0;
+    for (int i = 0; i < natm * 3; ++i)
+        dw_out[i] = 0.0;
+    if (natm <= 1)
+        return 1.0;
 
     const int atom_id = parent;
 
@@ -713,7 +747,8 @@ double becke_weight_derivative(const native::Atom* atoms, int natm,
     std::vector<double> atm_dist(static_cast<size_t>(natm) * natm, 0.0);
     for (int ia = 0; ia < natm; ++ia) {
         for (int ib = 0; ib < natm; ++ib) {
-            if (ia == ib) continue;
+            if (ia == ib)
+                continue;
             const double dx = atoms[ia].pos[0] - atoms[ib].pos[0];
             const double dy = atoms[ia].pos[1] - atoms[ib].pos[1];
             const double dz = atoms[ia].pos[2] - atoms[ib].pos[2];
@@ -738,8 +773,7 @@ double becke_weight_derivative(const native::Atom* atoms, int natm,
     // pbecke[ia]              -- raw (unnormalized) cell weight of atom ia
     // dpbecke[A][B][d]        -- before finalization holds d(ln pbecke[B])/dR_A
     std::vector<double> pbecke(natm, 1.0);
-    std::vector<double> dpbecke(
-        static_cast<size_t>(natm) * natm * 3, 0.0);
+    std::vector<double> dpbecke(static_cast<size_t>(natm) * natm * 3, 0.0);
     auto DP = [&](int A, int B, int d) -> double& {
         return dpbecke[(static_cast<size_t>(A) * natm + B) * 3 + d];
     };
@@ -747,11 +781,12 @@ double becke_weight_derivative(const native::Atom* atoms, int natm,
     for (int ia = 0; ia < natm; ++ia) {
         for (int ib = 0; ib < ia; ++ib) {
             const double Rab = atm_dist[ia * natm + ib];
-            if (Rab < 1e-14) continue;
+            if (Rab < 1e-14)
+                continue;
 
             const double g = (grid_dist[ia] - grid_dist[ib]) / Rab;
-            const double a_ij = becke_size_adjust(atoms[ia].Z, atoms[ib].Z,
-                                                  level);
+            const double a_ij =
+                becke_size_adjust(atoms[ia].Z, atoms[ib].Z, level);
             // fadjust(i,j,g) = g + a*(1-g^2);  gadjust(i,j,g) = 1 - 2*a*g
             const double g_adj = g + a_ij * (1.0 - g * g);
             const double gadj = 1.0 - 2.0 * a_ij * g;
@@ -817,12 +852,14 @@ double becke_weight_derivative(const native::Atom* atoms, int natm,
     //   z  = 1 / sum_B pbecke[B]
     //   w1[A] = dpbecke[A,parent] * z - pbecke[parent] * z^2 * sum_B dpbecke[A,B]
     double psum = 0.0;
-    for (int B = 0; B < natm; ++B) psum += pbecke[B];
+    for (int B = 0; B < natm; ++B)
+        psum += pbecke[B];
     const double z = 1.0 / psum;
     for (int A = 0; A < natm; ++A) {
         for (int d = 0; d < 3; ++d) {
             double dsum = 0.0;
-            for (int B = 0; B < natm; ++B) dsum += DP(A, B, d);
+            for (int B = 0; B < natm; ++B)
+                dsum += DP(A, B, d);
             dw_out[A * 3 + d] =
                 DP(A, atom_id, d) * z - pbecke[atom_id] * z * z * dsum;
         }

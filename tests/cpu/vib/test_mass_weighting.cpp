@@ -11,13 +11,13 @@
 #include <cmath>
 #include <stdexcept>
 
+#include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/context.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/vib/atomic_masses.h"
 #include "atomiverse/cpu/vib/hessian_workspace.h"
 #include "atomiverse/cpu/vib/mass_weighting.h"
 #include "atomiverse/cpu/vib/nist_constants.h"
-#include "atomiverse/core/mat3.h"
 
 using namespace ATV;
 
@@ -46,10 +46,10 @@ TEST(VibConstants, ConstantsIntegrity) {
 // ── ac-001: IUPAC-2013 atomic masses for the test elements ─────────────
 
 TEST(VibConstants, MassTableValues) {
-    EXPECT_DOUBLE_EQ(cpu::vib::mass_amu(1), 1.008);   // H
-    EXPECT_DOUBLE_EQ(cpu::vib::mass_amu(6), 12.011);  // C
-    EXPECT_DOUBLE_EQ(cpu::vib::mass_amu(7), 14.007);  // N
-    EXPECT_DOUBLE_EQ(cpu::vib::mass_amu(8), 15.999);  // O
+    EXPECT_DOUBLE_EQ(cpu::vib::mass_amu(1), 1.008);  // H
+    EXPECT_DOUBLE_EQ(cpu::vib::mass_amu(6), 12.011); // C
+    EXPECT_DOUBLE_EQ(cpu::vib::mass_amu(7), 14.007); // N
+    EXPECT_DOUBLE_EQ(cpu::vib::mass_amu(8), 15.999); // O
 }
 
 // ── ac-002: mass_amu throws on an unsupported atomic number ────────────
@@ -71,7 +71,7 @@ TEST(VibMassWeighting, MassWeightingTransform) {
     frame.atoms.type = {8, 1};
     frame.box = Mat3::cubic(50.0);
 
-    const int n   = 2;
+    const int n = 2;
     const int dim = 6;
 
     cpu::vib::HessianWorkspace ws;
@@ -103,8 +103,7 @@ TEST(VibMassWeighting, MassWeightingTransform) {
     for (int ic = 0; ic < dim; ++ic) {
         for (int jc = 0; jc < dim; ++jc) {
             const double expected =
-                raw(ic, jc) * conv /
-                std::sqrt(mass[ic / 3] * mass[jc / 3]);
+                raw(ic, jc) * conv / std::sqrt(mass[ic / 3] * mass[jc / 3]);
             EXPECT_NEAR(ws.hessian_mw(ic, jc), expected, 1e-14)
                 << "mass-weighted entry (" << ic << "," << jc << ")";
         }

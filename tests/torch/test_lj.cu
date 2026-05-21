@@ -8,8 +8,8 @@
 #include "atomiverse/torch/potentials/lj.cuh"
 #include "atomiverse/torch/transfer.cuh"
 
-#include <cuda_runtime.h>
 #include <cmath>
+#include <cuda_runtime.h>
 
 namespace atorch = ATV::torch;
 
@@ -30,8 +30,12 @@ double analytical_lj_energy(double r, double eps, double sig, double cutoff) {
 
 /// @brief Build a 2-atom torch::Frame with one pair at distance r along x.
 atorch::Frame make_lj_frame(double r) {
-    auto real_opts = ::torch::TensorOptions().dtype(atorch::kRealDtype).device(::torch::kCUDA);
-    auto int_opts = ::torch::TensorOptions().dtype(atorch::kIntDtype).device(::torch::kCUDA);
+    auto real_opts = ::torch::TensorOptions()
+                         .dtype(atorch::kRealDtype)
+                         .device(::torch::kCUDA);
+    auto int_opts = ::torch::TensorOptions()
+                        .dtype(atorch::kIntDtype)
+                        .device(::torch::kCUDA);
 
     atorch::Frame frame;
     frame.n_atoms_ = 2;
@@ -55,13 +59,15 @@ atorch::Frame make_lj_frame(double r) {
 } // anonymous namespace
 
 TEST(TorchLJ, TwoAtomAnalytical) {
-    double eps = double(1.0), sig = double(1.0), cutoff = double(3.0), r = double(1.5);
+    double eps = double(1.0), sig = double(1.0), cutoff = double(3.0),
+           r = double(1.5);
     auto frame = make_lj_frame(r);
-    auto real_opts = ::torch::TensorOptions().dtype(atorch::kRealDtype).device(::torch::kCUDA);
+    auto real_opts = ::torch::TensorOptions()
+                         .dtype(atorch::kRealDtype)
+                         .device(::torch::kCUDA);
 
-    auto energy = atorch::lj(frame,
-        ::torch::tensor({eps}, real_opts),
-        ::torch::tensor({sig}, real_opts), cutoff);
+    auto energy = atorch::lj(frame, ::torch::tensor({eps}, real_opts),
+                             ::torch::tensor({sig}, real_opts), cutoff);
     cudaDeviceSynchronize();
 
     double computed = energy.to(::torch::kCPU).item<double>();
@@ -70,12 +76,16 @@ TEST(TorchLJ, TwoAtomAnalytical) {
 }
 
 TEST(TorchLJ, GradcheckEpsilon) {
-    double eps_val = double(0.5), sig_val = double(1.0), cutoff = double(3.0), r = double(1.5);
-    auto real_opts = ::torch::TensorOptions().dtype(atorch::kRealDtype).device(::torch::kCUDA);
+    double eps_val = double(0.5), sig_val = double(1.0), cutoff = double(3.0),
+           r = double(1.5);
+    auto real_opts = ::torch::TensorOptions()
+                         .dtype(atorch::kRealDtype)
+                         .device(::torch::kCUDA);
 
     double h = double(1e-4);
     double numerical = (analytical_lj_energy(r, eps_val + h, sig_val, cutoff)
-                    - analytical_lj_energy(r, eps_val - h, sig_val, cutoff)) / (double(2) * h);
+                        - analytical_lj_energy(r, eps_val - h, sig_val, cutoff))
+                       / (double(2) * h);
 
     auto frame = make_lj_frame(r);
     auto t_eps = ::torch::tensor({eps_val}, real_opts).requires_grad_(true);
@@ -90,12 +100,16 @@ TEST(TorchLJ, GradcheckEpsilon) {
 }
 
 TEST(TorchLJ, GradcheckSigma) {
-    double eps_val = double(0.5), sig_val = double(1.0), cutoff = double(3.0), r = double(1.5);
-    auto real_opts = ::torch::TensorOptions().dtype(atorch::kRealDtype).device(::torch::kCUDA);
+    double eps_val = double(0.5), sig_val = double(1.0), cutoff = double(3.0),
+           r = double(1.5);
+    auto real_opts = ::torch::TensorOptions()
+                         .dtype(atorch::kRealDtype)
+                         .device(::torch::kCUDA);
 
     double h = double(1e-4);
     double numerical = (analytical_lj_energy(r, eps_val, sig_val + h, cutoff)
-                    - analytical_lj_energy(r, eps_val, sig_val - h, cutoff)) / (double(2) * h);
+                        - analytical_lj_energy(r, eps_val, sig_val - h, cutoff))
+                       / (double(2) * h);
 
     auto frame = make_lj_frame(r);
     auto t_eps = ::torch::tensor({eps_val}, real_opts);
@@ -110,8 +124,12 @@ TEST(TorchLJ, GradcheckSigma) {
 }
 
 TEST(TorchLJ, ZeroPairs) {
-    auto real_opts = ::torch::TensorOptions().dtype(atorch::kRealDtype).device(::torch::kCUDA);
-    auto int_opts = ::torch::TensorOptions().dtype(atorch::kIntDtype).device(::torch::kCUDA);
+    auto real_opts = ::torch::TensorOptions()
+                         .dtype(atorch::kRealDtype)
+                         .device(::torch::kCUDA);
+    auto int_opts = ::torch::TensorOptions()
+                        .dtype(atorch::kIntDtype)
+                        .device(::torch::kCUDA);
 
     atorch::Frame frame;
     frame.n_atoms_ = 2;
@@ -130,18 +148,24 @@ TEST(TorchLJ, ZeroPairs) {
     frame.pair_dz = ::torch::zeros({0}, real_opts);
     frame.pair_dist = ::torch::zeros({0}, real_opts);
 
-    auto energy = atorch::lj(frame,
-        ::torch::tensor({double(1.0)}, real_opts),
-        ::torch::tensor({double(1.0)}, real_opts), double(3.0));
+    auto energy =
+        atorch::lj(frame, ::torch::tensor({double(1.0)}, real_opts),
+                   ::torch::tensor({double(1.0)}, real_opts), double(3.0));
     cudaDeviceSynchronize();
 
-    EXPECT_NEAR(energy.to(::torch::kCPU).item<double>(), double(0), double(1e-6));
+    EXPECT_NEAR(energy.to(::torch::kCPU).item<double>(), double(0),
+                double(1e-6));
 }
 
 TEST(TorchLJ, ForceIsNegativeGradient) {
-    double eps = double(1.0), sig = double(1.0), cutoff = double(3.0), r = double(1.5);
-    auto real_opts = ::torch::TensorOptions().dtype(atorch::kRealDtype).device(::torch::kCUDA);
-    auto int_opts = ::torch::TensorOptions().dtype(atorch::kIntDtype).device(::torch::kCUDA);
+    double eps = double(1.0), sig = double(1.0), cutoff = double(3.0),
+           r = double(1.5);
+    auto real_opts = ::torch::TensorOptions()
+                         .dtype(atorch::kRealDtype)
+                         .device(::torch::kCUDA);
+    auto int_opts = ::torch::TensorOptions()
+                        .dtype(atorch::kIntDtype)
+                        .device(::torch::kCUDA);
 
     // Build frame with positions that require grad
     atorch::Frame frame;
@@ -161,9 +185,8 @@ TEST(TorchLJ, ForceIsNegativeGradient) {
     frame.pair_dz = ::torch::zeros({1}, real_opts);
     frame.pair_dist = ::torch::tensor({r}, real_opts);
 
-    auto energy = atorch::lj(frame,
-        ::torch::tensor({eps}, real_opts),
-        ::torch::tensor({sig}, real_opts), cutoff);
+    auto energy = atorch::lj(frame, ::torch::tensor({eps}, real_opts),
+                             ::torch::tensor({sig}, real_opts), cutoff);
     energy.backward();
     cudaDeviceSynchronize();
 
@@ -172,7 +195,8 @@ TEST(TorchLJ, ForceIsNegativeGradient) {
     auto neg_grad_x = (-frame.x.grad()).to(::torch::kCPU);
 
     for (int i = 0; i < 2; ++i) {
-        EXPECT_NEAR(fx_cpu[i].item<double>(), neg_grad_x[i].item<double>(), double(1e-4))
+        EXPECT_NEAR(fx_cpu[i].item<double>(), neg_grad_x[i].item<double>(),
+                    double(1e-4))
             << "fx[" << i << "] does not match -dE/dx[" << i << "]";
     }
 }
@@ -187,13 +211,18 @@ TEST(TorchLJ, MultiAtomConsistency) {
     double eps = double(1.0), sig = double(1.0), cutoff = double(3.0);
     double r12 = double(1.5), r23 = double(1.5), r34 = double(1.5);
 
-    auto real_opts = ::torch::TensorOptions().dtype(atorch::kRealDtype).device(::torch::kCUDA);
-    auto int_opts = ::torch::TensorOptions().dtype(atorch::kIntDtype).device(::torch::kCUDA);
+    auto real_opts = ::torch::TensorOptions()
+                         .dtype(atorch::kRealDtype)
+                         .device(::torch::kCUDA);
+    auto int_opts = ::torch::TensorOptions()
+                        .dtype(atorch::kIntDtype)
+                        .device(::torch::kCUDA);
 
     // Build a 4-atom frame with 3 pairs
     atorch::Frame frame;
     frame.n_atoms_ = 4;
-    frame.x = ::torch::tensor({double(0), double(1.5), double(3.0), double(4.5)}, real_opts);
+    frame.x = ::torch::tensor(
+        {double(0), double(1.5), double(3.0), double(4.5)}, real_opts);
     frame.y = ::torch::zeros({4}, real_opts);
     frame.z = ::torch::zeros({4}, real_opts);
     frame.fx = ::torch::zeros({4}, real_opts);
@@ -208,13 +237,13 @@ TEST(TorchLJ, MultiAtomConsistency) {
     frame.pair_dz = ::torch::zeros({3}, real_opts);
     frame.pair_dist = ::torch::tensor({r12, r23, r34}, real_opts);
 
-    auto energy = atorch::lj(frame,
-        ::torch::tensor({eps}, real_opts),
-        ::torch::tensor({sig}, real_opts), cutoff);
+    auto energy = atorch::lj(frame, ::torch::tensor({eps}, real_opts),
+                             ::torch::tensor({sig}, real_opts), cutoff);
     cudaDeviceSynchronize();
 
     // Total energy should be the sum of 3 identical pair energies
-    double single_pair_energy = analytical_lj_energy(double(1.5), eps, sig, cutoff);
+    double single_pair_energy =
+        analytical_lj_energy(double(1.5), eps, sig, cutoff);
     double expected_total = double(3) * single_pair_energy;
     double computed = energy.to(::torch::kCPU).item<double>();
 
@@ -223,8 +252,6 @@ TEST(TorchLJ, MultiAtomConsistency) {
 
 #else
 
-TEST(TorchLJ, Disabled) {
-    GTEST_SKIP() << "ATV_HAS_TORCH not defined";
-}
+TEST(TorchLJ, Disabled) { GTEST_SKIP() << "ATV_HAS_TORCH not defined"; }
 
 #endif // ATV_HAS_TORCH

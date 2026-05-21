@@ -16,8 +16,8 @@
 #include <limits>
 #include <vector>
 
-#include <xtensor/containers/xtensor.hpp>
 #include <xtensor-blas/xlinalg.hpp>
+#include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/vib/atomic_masses.h"
@@ -40,7 +40,8 @@ using Mat3x3 = std::array<double, 9>;
 std::array<double, 3> eigvalsh3(const Mat3x3& m) {
     xt::xtensor<double, 2> M = xt::zeros<double>({3, 3});
     for (int i = 0; i < 3; ++i)
-        for (int j = 0; j < 3; ++j) M(i, j) = m[3 * i + j];
+        for (int j = 0; j < 3; ++j)
+            M(i, j) = m[3 * i + j];
     auto eig = xt::linalg::eigvalsh(M);
     return {eig(0), eig(1), eig(2)};
 }
@@ -72,8 +73,7 @@ std::array<double, 3> rotation_const(const std::vector<double>& mass,
     const std::array<double, 3> e = eigvalsh3(im);
 
     // unit_im = ATOMIC_MASS * BOHR_SI^2 ; unit_hz = HBAR / (4*pi*unit_im)
-    const double unit_im =
-        nist::ATOMIC_MASS * nist::BOHR_SI * nist::BOHR_SI;
+    const double unit_im = nist::ATOMIC_MASS * nist::BOHR_SI * nist::BOHR_SI;
     const double unit_hz = nist::HBAR / (4.0 * nist::PI * unit_im);
     std::array<double, 3> rc{};
     for (int i = 0; i < 3; ++i) {
@@ -90,9 +90,9 @@ std::array<double, 3> rotation_const(const std::vector<double>& mass,
 /// @param rc Rotational constants [GHz], ascending.
 /// @return 0 = ATOM, 1 = LINEAR, 2 = REGULAR.
 int get_rotor_type(const std::array<double, 3>& rc) {
-    const bool all_huge =
-        rc[0] > 1e8 && rc[1] > 1e8 && rc[2] > 1e8;
-    if (all_huge) return 0; // ATOM
+    const bool all_huge = rc[0] > 1e8 && rc[1] > 1e8 && rc[2] > 1e8;
+    if (all_huge)
+        return 0; // ATOM
     if (rc[0] > 1e8 && (rc[1] - rc[2] < 1e-3))
         return 1; // LINEAR
     return 2;     // REGULAR
@@ -101,17 +101,19 @@ int get_rotor_type(const std::array<double, 3>& rc) {
 } // namespace
 
 void Thermochem::launch(const cpu::LaunchContext& ctx) {
-    if (ws_ == nullptr) return;          // test-only role-check ctor.
-    const int n   = ws_->n_atoms;
+    if (ws_ == nullptr)
+        return; // test-only role-check ctor.
+    const int n = ws_->n_atoms;
     const int dim = 3 * n;
-    if (ctx.step < 2 * dim) return;       // not the finalize pass yet.
+    if (ctx.step < 2 * dim)
+        return; // not the finalize pass yet.
 
     // ── Constants (PySCF `thermo()` literal forms) ──────────────────────
-    const double kB = nist::BOLTZMANN;    // J/K
-    const double h  = nist::PLANCK;       // J*s
-    const double T  = cfg_.temperature;   // K
-    const double P  = cfg_.pressure;      // Pa
-    const int    sigma = cfg_.symmetry_number;
+    const double kB = nist::BOLTZMANN; // J/K
+    const double h = nist::PLANCK;     // J*s
+    const double T = cfg_.temperature; // K
+    const double P = cfg_.pressure;    // Pa
+    const int sigma = cfg_.symmetry_number;
     // R_Eh = kB * N_A / (HARTREE2J * N_A) = kB / HARTREE2J  [Eh/K].
     const double R_Eh =
         kB * nist::AVOGADRO / (nist::HARTREE2J * nist::AVOGADRO);
@@ -120,58 +122,57 @@ void Thermochem::launch(const cpu::LaunchContext& ctx) {
 
     // Mass-centered atomic coordinates in Bohr (PySCF works in Bohr).
     // r0 is the equilibrium geometry in Angstrom (link 1).
-    double mass_sum = 0.0;                 // amu
-    for (int i = 0; i < n; ++i) mass_sum += mass[i];
+    double mass_sum = 0.0; // amu
+    for (int i = 0; i < n; ++i)
+        mass_sum += mass[i];
     double center[3] = {0.0, 0.0, 0.0};
     for (int i = 0; i < n; ++i)
         for (int d = 0; d < 3; ++d)
             center[d] += mass[i] * ws_->r0[3 * i + d];
-    for (int d = 0; d < 3; ++d) center[d] /= mass_sum;
+    for (int d = 0; d < 3; ++d)
+        center[d] /= mass_sum;
 
-    std::vector<double> coords(dim);       // mass-centered, Bohr.
+    std::vector<double> coords(dim); // mass-centered, Bohr.
     for (int i = 0; i < n; ++i)
         for (int d = 0; d < 3; ++d)
             coords[3 * i + d] =
-                (ws_->r0[3 * i + d] - center[d]) *
-                units::kAngstromInBohr;
+                (ws_->r0[3 * i + d] - center[d]) * units::kAngstromInBohr;
 
     // ── Electronic part ─────────────────────────────────────────────────
     // E0 (the SCF total energy) cancels in the thermal Gibbs correction
     // G_tot - E0, so it is carried as zero — `g_thermal` is exactly that
     // correction. S_elec = R_Eh * ln(multiplicity); 0 for a singlet.
-    const double E0      = 0.0;
-    const double S_elec  = R_Eh * std::log(static_cast<double>(
-                               cfg_.multiplicity));
-    const double E_elec  = E0;
-    const double H_elec  = E0;
+    const double E0 = 0.0;
+    const double S_elec =
+        R_Eh * std::log(static_cast<double>(cfg_.multiplicity));
+    const double E_elec = E0;
+    const double H_elec = E0;
 
     // ── Translational part (Sackur-Tetrode) ─────────────────────────────
-    const double mass_tot = mass_sum * nist::ATOMIC_MASS;       // kg
-    const double q_trans  =
-        std::pow(2.0 * nist::PI * mass_tot * kB * T / (h * h), 1.5) *
-        kB * T / P;
+    const double mass_tot = mass_sum * nist::ATOMIC_MASS; // kg
+    const double q_trans =
+        std::pow(2.0 * nist::PI * mass_tot * kB * T / (h * h), 1.5) * kB * T
+        / P;
     const double S_trans = R_Eh * (2.5 + std::log(q_trans));
     const double E_trans = 1.5 * R_Eh * T;
-    const double H_trans = 2.5 * R_Eh * T;    // includes the +kB*T term.
+    const double H_trans = 2.5 * R_Eh * T; // includes the +kB*T term.
 
     // ── Rotational part ─────────────────────────────────────────────────
-    const auto rot_const = rotation_const(mass, coords);  // GHz
-    const int  rotor     = get_rotor_type(rot_const);
+    const auto rot_const = rotation_const(mass, coords); // GHz
+    const int rotor = get_rotor_type(rot_const);
     double S_rot = 0.0, E_rot = 0.0, H_rot = 0.0;
-    if (rotor == 0) {              // ATOM — no rotational DOF.
+    if (rotor == 0) { // ATOM — no rotational DOF.
         S_rot = E_rot = H_rot = 0.0;
-    } else if (rotor == 1) {       // LINEAR — 2 rotational DOF.
-        const double B = rot_const[1] * 1e9;  // Hz
+    } else if (rotor == 1) {                 // LINEAR — 2 rotational DOF.
+        const double B = rot_const[1] * 1e9; // Hz
         const double q_rot = kB * T / (sigma * h * B);
         S_rot = R_Eh * (1.0 + std::log(q_rot));
         E_rot = H_rot = R_Eh * T;
-    } else {                       // REGULAR — 3 rotational DOF.
-        const double ABC =
-            (rot_const[0] * 1e9) * (rot_const[1] * 1e9) *
-            (rot_const[2] * 1e9);                  // Hz^3
-        const double q_rot =
-            std::pow(kB * T / h, 1.5) * std::sqrt(nist::PI) /
-            (sigma * std::sqrt(ABC));
+    } else { // REGULAR — 3 rotational DOF.
+        const double ABC = (rot_const[0] * 1e9) * (rot_const[1] * 1e9)
+                           * (rot_const[2] * 1e9); // Hz^3
+        const double q_rot = std::pow(kB * T / h, 1.5) * std::sqrt(nist::PI)
+                             / (sigma * std::sqrt(ABC));
         S_rot = R_Eh * (1.5 + std::log(q_rot));
         E_rot = H_rot = 1.5 * R_Eh * T;
     }
@@ -184,25 +185,28 @@ void Thermochem::launch(const cpu::LaunchContext& ctx) {
     // positive modes enter the vibrational sums (`idx = freq.real > 0`).
     const double au2cm = nist::au2wavenumber();
     const double au2hz = nist::au2hz();
-    const int n_modes  = static_cast<int>(ws_->frequencies.size());
+    const int n_modes = static_cast<int>(ws_->frequencies.size());
 
-    double zpe = 0.0;       // R_Eh * 0.5 * sum theta_i
-    double s_vib_acc = 0.0; // R_Eh * sum (rt*e/(1-e) - ln(1-e))
+    double zpe = 0.0;         // R_Eh * 0.5 * sum theta_i
+    double s_vib_acc = 0.0;   // R_Eh * sum (rt*e/(1-e) - ln(1-e))
     double e_vib_extra = 0.0; // R_Eh * T * sum rt*e/(1-e)
     int n_imag = 0;
     for (int i = 0; i < n_modes; ++i) {
         const double freq_cm1 = ws_->frequencies(i);
-        if (freq_cm1 <= 0.0) { ++n_imag; continue; } // drop imaginary.
+        if (freq_cm1 <= 0.0) {
+            ++n_imag;
+            continue;
+        } // drop imaginary.
         const double freq_au = freq_cm1 / au2cm;
         // theta = freq_au * au2hz * h / kB  (vibrational temperature).
         const double theta = freq_au * au2hz * h / kB;
-        const double rt    = theta / std::max(1e-14, T);
-        const double e     = std::exp(-rt);
-        zpe         += theta;
-        s_vib_acc   += rt * e / (1.0 - e) - std::log(1.0 - e);
+        const double rt = theta / std::max(1e-14, T);
+        const double e = std::exp(-rt);
+        zpe += theta;
+        s_vib_acc += rt * e / (1.0 - e) - std::log(1.0 - e);
         e_vib_extra += rt * e / (1.0 - e);
     }
-    const double ZPE   = R_Eh * 0.5 * zpe;
+    const double ZPE = R_Eh * 0.5 * zpe;
     const double S_vib = R_Eh * s_vib_acc;
     const double E_vib = ZPE + R_Eh * T * e_vib_extra; // == H_vib.
     const double H_vib = E_vib;
@@ -214,16 +218,16 @@ void Thermochem::launch(const cpu::LaunchContext& ctx) {
     const double G_tot = H_tot - T * S_tot;
 
     // ── Publish into the shared workspace ───────────────────────────────
-    ws_->zpe         = ZPE;
-    ws_->u_tot       = E_tot;
-    ws_->h_tot       = H_tot;
-    ws_->s_tot       = S_tot;
-    ws_->s_elec      = S_elec;
-    ws_->s_trans     = S_trans;
-    ws_->s_rot       = S_rot;
-    ws_->s_vib       = S_vib;
-    ws_->g_tot       = G_tot;
-    ws_->g_thermal   = G_tot - E0;   // E0 carried as zero.
+    ws_->zpe = ZPE;
+    ws_->u_tot = E_tot;
+    ws_->h_tot = H_tot;
+    ws_->s_tot = S_tot;
+    ws_->s_elec = S_elec;
+    ws_->s_trans = S_trans;
+    ws_->s_rot = S_rot;
+    ws_->s_vib = S_vib;
+    ws_->g_tot = G_tot;
+    ws_->g_thermal = G_tot - E0; // E0 carried as zero.
     ws_->n_imaginary = n_imag;
     ws_->thermo_ready = true;
 }

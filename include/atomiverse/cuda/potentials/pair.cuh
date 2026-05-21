@@ -12,7 +12,7 @@ namespace cuda {
 
 /// @brief Abstract base for non-bonded pair styles (CUDA backend).
 class Pair : public ComponentBase {
-public:
+  public:
     ~Pair() override = default;
 
     ComponentRole role() const final { return ComponentRole::Evaluator; }
@@ -28,7 +28,7 @@ public:
     /// per-type tables.
     double pair_cutoff() const { return cutoff_; }
 
-protected:
+  protected:
     explicit Pair(double cutoff) : cutoff_(cutoff) {}
 
     /// @brief Hot-path override — derived class launches its CUDA kernel.

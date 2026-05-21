@@ -36,7 +36,7 @@ namespace ATV {
 /// All observers and recorders that follow the defer-stream sidecar pattern
 /// must extend this class instead of ComponentBase.
 class AsyncBridge : public ComponentBase {
-public:
+  public:
     /// @brief All AsyncBridge subclasses are deferrable by definition.
     Scheduling scheduling() const override { return Scheduling::deferrable; }
 
@@ -54,7 +54,7 @@ public:
     /// @param ctx Destroy context.
     void destroy(const DestroyContext& ctx) final;
 
-protected:
+  protected:
     /// @brief Allocate pinned host buffers; D2H build-time data; open files.
     ///
     /// The CUDA event is already created before this is called.
@@ -93,7 +93,8 @@ protected:
     /// @return true if launch should proceed.
     virtual bool can_run(const LaunchContext& ctx) const { return true; }
 
-    void* event_ = nullptr;  ///< CUDA event (cudaEvent_t, as void*) owned by this base.
+    void* event_ =
+        nullptr; ///< CUDA event (cudaEvent_t, as void*) owned by this base.
 };
 
 } // namespace ATV

@@ -32,9 +32,8 @@ xt::xtensor<double, 4> build_eri_dense(const ShellList& shells) {
         for (int pair_kl = 0; pair_kl <= pair_ij; ++pair_kl) {
             const int k = shell_pairs[pair_kl][0];
             const int l = shell_pairs[pair_kl][1];
-            const double v = native::eri(
-                shells.shells[i], shells.shells[j],
-                shells.shells[k], shells.shells[l]);
+            const double v = native::eri(shells.shells[i], shells.shells[j],
+                                         shells.shells[k], shells.shells[l]);
 
             // 8-fold symmetry scatter.
             ERI(i, j, k, l) = v;

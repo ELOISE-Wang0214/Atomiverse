@@ -11,8 +11,8 @@
 #include <algorithm>
 #include <limits>
 
-#include <cuda_runtime.h>
 #include "atomiverse/cuda/types.cuh"
+#include <cuda_runtime.h>
 
 using namespace ATV::md::nlist;
 
@@ -20,10 +20,9 @@ static constexpr int kMaxStencil = 512;
 
 namespace ATV {
 
+using cuda::prec_t;
 using cuda::real_t;
 using cuda::work_t;
-using cuda::prec_t;
-
 
 // ============================================================================
 // State
@@ -69,23 +68,25 @@ void NeighborList::build(const BuildContext& ctx) {
     work_t r_search = cutoff_ + skin_;
 
     // GPU setup: compute cell/inv_cell/dims/stencil from device box
-    launch_setup_cell_device(
-        frame.box, s.d_cell.data(), s.d_inv_cell.data(),
-        s.d_dims.data(), s.stencil_dx.data(), s.stencil_dy.data(),
-        s.stencil_dz.data(), s.d_n_stencil.data(), s.d_ncells.data(),
-        r_search, s.periodic, kMaxStencil, stream);
+    launch_setup_cell_device(frame.box, s.d_cell.data(), s.d_inv_cell.data(),
+                             s.d_dims.data(), s.stencil_dx.data(),
+                             s.stencil_dy.data(), s.stencil_dz.data(),
+                             s.d_n_stencil.data(), s.d_ncells.data(), r_search,
+                             s.periodic, kMaxStencil, stream);
 
     // Read dims from device (build-time, allowed)
     cudaStreamSynchronize(stream);
     cudaMemcpy(&s.dims_x, s.d_dims.data(), sizeof(int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&s.dims_y, s.d_dims.data() + 1, sizeof(int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&s.dims_z, s.d_dims.data() + 2, sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&s.dims_y, s.d_dims.data() + 1, sizeof(int),
+               cudaMemcpyDeviceToHost);
+    cudaMemcpy(&s.dims_z, s.d_dims.data() + 2, sizeof(int),
+               cudaMemcpyDeviceToHost);
     int ncells = s.dims_x * s.dims_y * s.dims_z;
 
     // Pair capacity (upper bound)
     long long pair_cap_ll = static_cast<long long>(nc) * (nc + 1) / 2;
-    s.pair_capacity = static_cast<int>(
-        std::min(pair_cap_ll, static_cast<long long>(std::numeric_limits<int>::max())));
+    s.pair_capacity = static_cast<int>(std::min(
+        pair_cap_ll, static_cast<long long>(std::numeric_limits<int>::max())));
 
     // Allocate ALL internal buffers
     s.buf.resize_atoms(n, nc);
@@ -111,7 +112,8 @@ void NeighborList::build(const BuildContext& ctx) {
     cudaMemset(frame.pairs.n_pairs, 0, sizeof(int));
     cudaMalloc(&frame.pairs.capacity, sizeof(int));
     int cap_val = static_cast<int>(atom_pair_cap);
-    cudaMemcpy(frame.pairs.capacity, &cap_val, sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(frame.pairs.capacity, &cap_val, sizeof(int),
+               cudaMemcpyHostToDevice);
 }
 
 // ============================================================================
@@ -128,101 +130,92 @@ void NeighborList::launch(const LaunchContext& ctx) {
     work_t r_search = cutoff_ + skin_;
 
     // Recompute cell setup on GPU (box might change for NPT)
-    launch_setup_cell_device(
-        frame.box, s.d_cell.data(), s.d_inv_cell.data(),
-        s.d_dims.data(), s.stencil_dx.data(), s.stencil_dy.data(),
-        s.stencil_dz.data(), s.d_n_stencil.data(), s.d_ncells.data(),
-        r_search, s.periodic, kMaxStencil, stream);
+    launch_setup_cell_device(frame.box, s.d_cell.data(), s.d_inv_cell.data(),
+                             s.d_dims.data(), s.stencil_dx.data(),
+                             s.stencil_dy.data(), s.stencil_dz.data(),
+                             s.d_n_stencil.data(), s.d_ncells.data(), r_search,
+                             s.periodic, kMaxStencil, stream);
 
     // K1: Morton codes
-    launch_compute_morton<work_t>(
-        frame.atoms.x, frame.atoms.y, frame.atoms.z, n,
-        s.d_inv_cell.data(), s.periodic,
-        s.buf.morton_codes.data(), s.buf.atom_indices.data(), stream);
+    launch_compute_morton<work_t>(frame.atoms.x, frame.atoms.y, frame.atoms.z,
+                                  n, s.d_inv_cell.data(), s.periodic,
+                                  s.buf.morton_codes.data(),
+                                  s.buf.atom_indices.data(), stream);
 
     // K2: Radix sort
-    launch_radix_sort(
-        s.buf.morton_codes.data(), s.buf.morton_sorted.data(),
-        s.buf.atom_indices.data(), s.buf.indices_sorted.data(),
-        n, s.buf.sort_temp, stream);
+    launch_radix_sort(s.buf.morton_codes.data(), s.buf.morton_sorted.data(),
+                      s.buf.atom_indices.data(), s.buf.indices_sorted.data(), n,
+                      s.buf.sort_temp, stream);
 
     // K3: Fused scatter + AABB
     launch_scatter_and_aabb<work_t>(
-        s.buf.indices_sorted.data(),
-        frame.atoms.x, frame.atoms.y, frame.atoms.z, n, nc,
-        s.buf.cluster_x.data(), s.buf.cluster_y.data(), s.buf.cluster_z.data(),
-        s.buf.original_index.data(), s.buf.cluster_count.data(),
-        s.buf.aabb_min_x.data(), s.buf.aabb_min_y.data(), s.buf.aabb_min_z.data(),
-        s.buf.aabb_max_x.data(), s.buf.aabb_max_y.data(), s.buf.aabb_max_z.data(),
-        stream);
+        s.buf.indices_sorted.data(), frame.atoms.x, frame.atoms.y,
+        frame.atoms.z, n, nc, s.buf.cluster_x.data(), s.buf.cluster_y.data(),
+        s.buf.cluster_z.data(), s.buf.original_index.data(),
+        s.buf.cluster_count.data(), s.buf.aabb_min_x.data(),
+        s.buf.aabb_min_y.data(), s.buf.aabb_min_z.data(),
+        s.buf.aabb_max_x.data(), s.buf.aabb_max_y.data(),
+        s.buf.aabb_max_z.data(), stream);
 
     // K4: Assign clusters to grid cells
     launch_assign_clusters_to_cells<work_t>(
-        s.buf.aabb_min_x.data(), s.buf.aabb_min_y.data(), s.buf.aabb_min_z.data(),
-        s.buf.aabb_max_x.data(), s.buf.aabb_max_y.data(), s.buf.aabb_max_z.data(),
-        nc, s.d_inv_cell.data(), s.dims_x, s.dims_y, s.dims_z,
-        s.periodic, s.buf.cluster_cell_idx.data(), stream);
+        s.buf.aabb_min_x.data(), s.buf.aabb_min_y.data(),
+        s.buf.aabb_min_z.data(), s.buf.aabb_max_x.data(),
+        s.buf.aabb_max_y.data(), s.buf.aabb_max_z.data(), nc,
+        s.d_inv_cell.data(), s.dims_x, s.dims_y, s.dims_z, s.periodic,
+        s.buf.cluster_cell_idx.data(), stream);
 
     // K5: Build grid CSR
     int ncells = s.dims_x * s.dims_y * s.dims_z;
-    launch_build_grid_csr(
-        s.buf.cluster_cell_idx.data(), nc, ncells,
-        s.buf.cell_start.data(), s.buf.cell_clusters.data(),
-        s.buf.histogram.data(), s.buf.scan_temp, stream);
+    launch_build_grid_csr(s.buf.cluster_cell_idx.data(), nc, ncells,
+                          s.buf.cell_start.data(), s.buf.cell_clusters.data(),
+                          s.buf.histogram.data(), s.buf.scan_temp, stream);
 
     work_t cut_skin_sq = r_search * r_search;
 
     // K6: Pair search pipeline
     launch_coarse_count_pairs(
-        s.buf.cell_start.data(), s.buf.cluster_cell_idx.data(),
-        s.dims_x, s.dims_y, s.dims_z,
-        s.stencil_dx.data(), s.stencil_dy.data(), s.stencil_dz.data(),
-        s.d_n_stencil.data(), nc, s.periodic,
+        s.buf.cell_start.data(), s.buf.cluster_cell_idx.data(), s.dims_x,
+        s.dims_y, s.dims_z, s.stencil_dx.data(), s.stencil_dy.data(),
+        s.stencil_dz.data(), s.d_n_stencil.data(), nc, s.periodic,
         s.buf.pair_counts.data(), stream);
 
-    launch_exclusive_sum(
-        s.buf.pair_counts.data(), s.buf.row_ptr_upper.data(),
-        nc, s.buf.prefix_temp, stream);
-    launch_write_row_ptr_sentinel(
-        s.buf.row_ptr_upper.data(), s.buf.pair_counts.data(), nc, stream);
+    launch_exclusive_sum(s.buf.pair_counts.data(), s.buf.row_ptr_upper.data(),
+                         nc, s.buf.prefix_temp, stream);
+    launch_write_row_ptr_sentinel(s.buf.row_ptr_upper.data(),
+                                  s.buf.pair_counts.data(), nc, stream);
 
     launch_fill_cluster_pairs<work_t>(
         s.buf.cell_start.data(), s.buf.cell_clusters.data(),
-        s.buf.cluster_cell_idx.data(),
-        s.dims_x, s.dims_y, s.dims_z,
+        s.buf.cluster_cell_idx.data(), s.dims_x, s.dims_y, s.dims_z,
         s.stencil_dx.data(), s.stencil_dy.data(), s.stencil_dz.data(),
-        s.d_n_stencil.data(),
-        s.buf.aabb_min_x.data(), s.buf.aabb_min_y.data(), s.buf.aabb_min_z.data(),
-        s.buf.aabb_max_x.data(), s.buf.aabb_max_y.data(), s.buf.aabb_max_z.data(),
-        nc, s.periodic, cut_skin_sq,
-        s.d_cell.data(), s.d_inv_cell.data(),
+        s.d_n_stencil.data(), s.buf.aabb_min_x.data(), s.buf.aabb_min_y.data(),
+        s.buf.aabb_min_z.data(), s.buf.aabb_max_x.data(),
+        s.buf.aabb_max_y.data(), s.buf.aabb_max_z.data(), nc, s.periodic,
+        cut_skin_sq, s.d_cell.data(), s.d_inv_cell.data(),
         s.buf.row_ptr_upper.data(), s.buf.col_idx.data(),
         s.buf.pair_counts.data(), stream);
 
-    launch_exclusive_sum(
-        s.buf.pair_counts.data(), s.buf.row_ptr.data(),
-        nc, s.buf.prefix_temp, stream);
-    launch_write_row_ptr_sentinel(
-        s.buf.row_ptr.data(), s.buf.pair_counts.data(), nc, stream);
+    launch_exclusive_sum(s.buf.pair_counts.data(), s.buf.row_ptr.data(), nc,
+                         s.buf.prefix_temp, stream);
+    launch_write_row_ptr_sentinel(s.buf.row_ptr.data(),
+                                  s.buf.pair_counts.data(), nc, stream);
 
-    launch_compact_pairs(
-        s.buf.col_idx.data(), s.buf.row_ptr_upper.data(),
-        s.buf.row_ptr.data(), s.buf.pair_counts.data(), nc, stream);
+    launch_compact_pairs(s.buf.col_idx.data(), s.buf.row_ptr_upper.data(),
+                         s.buf.row_ptr.data(), s.buf.pair_counts.data(), nc,
+                         stream);
 
     // Masks + flatten
     int pc = s.pair_capacity;
     int ms2 = pc > 0 ? pc : 1;
-    cudaMemsetAsync(s.buf.interaction_mask.data(), 0xFF,
-                    ms2 * sizeof(uint64_t), stream);
+    cudaMemsetAsync(s.buf.interaction_mask.data(), 0xFF, ms2 * sizeof(uint64_t),
+                    stream);
 
-    cudaMemcpyAsync(s.buf.flat_pair_counter.data(),
-                    s.buf.row_ptr.data() + nc,
+    cudaMemcpyAsync(s.buf.flat_pair_counter.data(), s.buf.row_ptr.data() + nc,
                     sizeof(int), cudaMemcpyDeviceToDevice, stream);
-    launch_csr_to_flat(
-        s.buf.row_ptr.data(), s.buf.col_idx.data(),
-        s.buf.interaction_mask.data(), nc,
-        s.buf.flat_ci.data(), s.buf.flat_cj.data(),
-        s.buf.flat_mask.data(), stream);
+    launch_csr_to_flat(s.buf.row_ptr.data(), s.buf.col_idx.data(),
+                       s.buf.interaction_mask.data(), nc, s.buf.flat_ci.data(),
+                       s.buf.flat_cj.data(), s.buf.flat_mask.data(), stream);
 
     // Export to atom-level PairList
     int cap = s.pair_capacity;
@@ -235,14 +228,13 @@ void NeighborList::launch(const LaunchContext& ctx) {
     launch_export_atom_pairs(
         s.buf.flat_ci.data(), s.buf.flat_cj.data(), s.buf.flat_mask.data(),
         s.buf.flat_pair_counter.data(), cap, s.buf.original_index.data(),
-        frame.atoms.x, frame.atoms.y, frame.atoms.z,
-        s.periodic, s.d_cell.data(), s.d_inv_cell.data(),
-        frame.pairs.i, frame.pairs.j,
+        frame.atoms.x, frame.atoms.y, frame.atoms.z, s.periodic,
+        s.d_cell.data(), s.d_inv_cell.data(), frame.pairs.i, frame.pairs.j,
         frame.pairs.dx, frame.pairs.dy, frame.pairs.dz, frame.pairs.dist,
         s.d_pair_count.data(), frame.pairs.capacity, stream);
 
-    cudaMemcpyAsync(frame.pairs.n_pairs, s.d_pair_count.data(),
-                    sizeof(int), cudaMemcpyDeviceToDevice, stream);
+    cudaMemcpyAsync(frame.pairs.n_pairs, s.d_pair_count.data(), sizeof(int),
+                    cudaMemcpyDeviceToDevice, stream);
 }
 
 // ============================================================================
@@ -253,10 +245,14 @@ void NeighborList::destroy(const DestroyContext& ctx) {
     auto& frame = ctx.frame;
 
     // Free PairList (allocated in build)
-    cudaFree(frame.pairs.i); cudaFree(frame.pairs.j);
-    cudaFree(frame.pairs.dx); cudaFree(frame.pairs.dy);
-    cudaFree(frame.pairs.dz); cudaFree(frame.pairs.dist);
-    cudaFree(frame.pairs.n_pairs); cudaFree(frame.pairs.capacity);
+    cudaFree(frame.pairs.i);
+    cudaFree(frame.pairs.j);
+    cudaFree(frame.pairs.dx);
+    cudaFree(frame.pairs.dy);
+    cudaFree(frame.pairs.dz);
+    cudaFree(frame.pairs.dist);
+    cudaFree(frame.pairs.n_pairs);
+    cudaFree(frame.pairs.capacity);
     frame.pairs = {};
 
     // Free internal state (DeviceVectors auto-free in State destructor)

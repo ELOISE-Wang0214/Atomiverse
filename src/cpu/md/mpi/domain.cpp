@@ -8,8 +8,8 @@
 #include <algorithm>
 #include <cmath>
 
-#include "atomiverse/cpu/frame.h"
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/cpu/frame.h"
 
 namespace ATV {
 namespace cpu {
@@ -92,22 +92,25 @@ void DomainDecomposition::init_topology(MPI_Comm world) {
     };
 
     // Face order: -x, +x, -y, +y, -z, +z.
-    face_neighbors[0] = rank_at(coords[0] - 1, coords[1],     coords[2]    );
-    face_neighbors[1] = rank_at(coords[0] + 1, coords[1],     coords[2]    );
-    face_neighbors[2] = rank_at(coords[0],     coords[1] - 1, coords[2]    );
-    face_neighbors[3] = rank_at(coords[0],     coords[1] + 1, coords[2]    );
-    face_neighbors[4] = rank_at(coords[0],     coords[1],     coords[2] - 1);
-    face_neighbors[5] = rank_at(coords[0],     coords[1],     coords[2] + 1);
+    face_neighbors[0] = rank_at(coords[0] - 1, coords[1], coords[2]);
+    face_neighbors[1] = rank_at(coords[0] + 1, coords[1], coords[2]);
+    face_neighbors[2] = rank_at(coords[0], coords[1] - 1, coords[2]);
+    face_neighbors[3] = rank_at(coords[0], coords[1] + 1, coords[2]);
+    face_neighbors[4] = rank_at(coords[0], coords[1], coords[2] - 1);
+    face_neighbors[5] = rank_at(coords[0], coords[1], coords[2] + 1);
 }
 
 namespace {
 
 // Orthorhombic PBC wrap: bring `p` into [0, L).
 inline double wrap_to_cell(double p, double L) {
-    if (L <= 0.0) return p;
+    if (L <= 0.0)
+        return p;
     double q = p - std::floor(p / L) * L;
-    if (q < 0.0) q += L;
-    if (q >= L) q -= L;
+    if (q < 0.0)
+        q += L;
+    if (q >= L)
+        q -= L;
     return q;
 }
 
@@ -115,7 +118,8 @@ inline double wrap_to_cell(double p, double L) {
 // equal-width slabs over `[0, L)`. Clamps to [0, dims_d - 1] against FP
 // rounding at the upper edge.
 inline int rank_along_dim(double q, double L, int dims_d) {
-    if (dims_d <= 1) return 0;
+    if (dims_d <= 1)
+        return 0;
     const int r = static_cast<int>(q * static_cast<double>(dims_d) / L);
     return std::max(0, std::min(dims_d - 1, r));
 }
@@ -164,9 +168,10 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
         }
     }
 
-    n_local  = static_cast<int>(owned_indices.size());
-    n_ghost  = 0;
-    capacity = frame.atoms.size();  // keep the whole allocation as slack for ghosts
+    n_local = static_cast<int>(owned_indices.size());
+    n_ghost = 0;
+    capacity =
+        frame.atoms.size(); // keep the whole allocation as slack for ghosts
 
     // Compact owned atoms to the front of every per-atom array. Iterating
     // in increasing `new_i` guarantees we read `old_i >= new_i` so the
@@ -174,19 +179,22 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
     auto compact_1d_d = [&](xt::xtensor<double, 1>& arr) {
         for (int ni = 0; ni < n_local; ++ni) {
             const int oi = owned_indices[static_cast<std::size_t>(ni)];
-            if (oi != ni) arr(ni) = arr(oi);
+            if (oi != ni)
+                arr(ni) = arr(oi);
         }
     };
     auto compact_1d_i = [&](xt::xtensor<int, 1>& arr) {
         for (int ni = 0; ni < n_local; ++ni) {
             const int oi = owned_indices[static_cast<std::size_t>(ni)];
-            if (oi != ni) arr(ni) = arr(oi);
+            if (oi != ni)
+                arr(ni) = arr(oi);
         }
     };
     auto compact_1d_i64 = [&](xt::xtensor<std::int64_t, 1>& arr) {
         for (int ni = 0; ni < n_local; ++ni) {
             const int oi = owned_indices[static_cast<std::size_t>(ni)];
-            if (oi != ni) arr(ni) = arr(oi);
+            if (oi != ni)
+                arr(ni) = arr(oi);
         }
     };
 

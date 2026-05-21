@@ -29,20 +29,17 @@ namespace ATV {
 namespace cpu {
 namespace scf {
 
-IntegralPack build_integrals(const Frame& frame, BasisSet basis,
-                             int charge, bool compute_eri) {
+IntegralPack build_integrals(const Frame& frame, BasisSet basis, int charge,
+                             bool compute_eri) {
     const auto t_total = LogClock::now();
 
-    auto atom_list  = make_atom_list(frame, charge);
+    auto atom_list = make_atom_list(frame, charge);
     auto shell_list = build_shell_list(atom_list, basis);
 
     ATV_INFO(
         "[integrals] start natm={} basis={} n_basis={} electrons={} charge={}",
-        static_cast<int>(atom_list.atoms.size()),
-        basis_set_name(basis),
-        shell_list.n_basis,
-        atom_list.n_electrons,
-        charge);
+        static_cast<int>(atom_list.atoms.size()), basis_set_name(basis),
+        shell_list.n_basis, atom_list.n_electrons, charge);
 
     IntegralPack pack;
     pack.n_basis = shell_list.n_basis;
@@ -75,9 +72,8 @@ IntegralPack build_integrals(const Frame& frame, BasisSet basis,
         pack.shells[i].coeff = pack.shell_data[i].data() + np;
     }
 
-    ATV_INFO(
-        "[integrals] done total_ms={:.1f} v_nuc={:.6f}",
-        elapsed_ms(t_total), pack.V_nuc);
+    ATV_INFO("[integrals] done total_ms={:.1f} v_nuc={:.6f}",
+             elapsed_ms(t_total), pack.V_nuc);
 
     return pack;
 }

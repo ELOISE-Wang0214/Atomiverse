@@ -39,7 +39,7 @@ namespace ATV {
 /// sim.run(frame, 1'000'000);
 /// @endcode
 class RDF : public cpu::md::AsyncObserver {
-public:
+  public:
     RDF(double r_max, int n_bins, int freq = 0,
         std::string output_file = "rdf.dat");
 
@@ -60,7 +60,7 @@ public:
     int n_samples() const { return n_samples_; }
     const std::string& output_file() const { return output_file_; }
 
-private:
+  private:
     double r_max_;
     int n_bins_;
     int freq_;
@@ -68,9 +68,9 @@ private:
     double bin_width_;
 
     std::vector<long long> histogram_;
-    std::vector<double>    dist_scratch_;
-    int    n_samples_ = 0;
-    int    n_atoms_last_ = 0;
+    std::vector<double> dist_scratch_;
+    int n_samples_ = 0;
+    int n_atoms_last_ = 0;
     double box_vol_last_ = 0.0;
     double box_vol_sum_ = 0.0;
 };
@@ -78,15 +78,13 @@ private:
 namespace cpu {
 
 /// @brief Bin one snapshot of pair distances into a histogram.
-void rdf_accumulate(std::vector<long long>& histogram,
-                    const double* h_dist, int n_pairs,
-                    double bin_width, int n_bins);
+void rdf_accumulate(std::vector<long long>& histogram, const double* h_dist,
+                    int n_pairs, double bin_width, int n_bins);
 
 /// @brief Normalize accumulated histogram and write g(r) to file.
 void rdf_write(const std::string& filename,
-               const std::vector<long long>& histogram,
-               int n_samples, int n_atoms,
-               double box_vol, double r_max, int n_bins);
+               const std::vector<long long>& histogram, int n_samples,
+               int n_atoms, double box_vol, double r_max, int n_bins);
 
 } // namespace cpu
 } // namespace ATV

@@ -17,9 +17,9 @@ namespace cuda {
 /// @param line  Source line (__LINE__).
 inline void check(cudaError_t err, const char* file, int line) {
     if (err != cudaSuccess) {
-        throw std::runtime_error(
-            std::string("CUDA error: ") + cudaGetErrorString(err) +
-            " at " + file + ":" + std::to_string(line));
+        throw std::runtime_error(std::string("CUDA error: ")
+                                 + cudaGetErrorString(err) + " at " + file + ":"
+                                 + std::to_string(line));
     }
 }
 

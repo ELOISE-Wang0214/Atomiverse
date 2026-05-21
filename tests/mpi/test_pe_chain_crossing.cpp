@@ -25,35 +25,35 @@
 #include <cmath>
 #include <vector>
 
-#include "atomiverse/cpu/potentials/harmonic_angle.h"
-#include "atomiverse/cpu/potentials/harmonic_bond.h"
-#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
+#include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/mpi/halo_exchange.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/core/mat3.h"
-#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/potentials/harmonic_angle.h"
+#include "atomiverse/cpu/potentials/harmonic_bond.h"
+#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
 
 using namespace ATV;
 
 namespace {
 
 inline constexpr double kKcalPerMolToEv = 1.0 / 23.060547830619026;
-inline constexpr double kBondK_kcal  = 268.0;
-inline constexpr double kBondR0      = 1.53;
+inline constexpr double kBondK_kcal = 268.0;
+inline constexpr double kBondR0 = 1.53;
 inline constexpr double kAngleK_kcal = 60.0;
 inline constexpr double kAngleTheta0 = 109.5 * kPI / 180.0;
 
-inline double bond_K_eV()  { return kBondK_kcal  * kKcalPerMolToEv; }
+inline double bond_K_eV() { return kBondK_kcal * kKcalPerMolToEv; }
 inline double angle_K_eV() { return kAngleK_kcal * kKcalPerMolToEv; }
 inline std::vector<double> dihedral_Cn_eV() {
     return {
-        1.73    * kKcalPerMolToEv,   // C0  (MSU paper, Tschopp 2010)
-        -4.49   * kKcalPerMolToEv,   // C1
-        0.776   * kKcalPerMolToEv,   // C2
-        6.99    * kKcalPerMolToEv,   // C3
-        0.0,                          // C4
+        1.73 * kKcalPerMolToEv,  // C0  (MSU paper, Tschopp 2010)
+        -4.49 * kKcalPerMolToEv, // C1
+        0.776 * kKcalPerMolToEv, // C2
+        6.99 * kKcalPerMolToEv,  // C3
+        0.0,                     // C4
     };
 }
 
@@ -84,7 +84,7 @@ cpu::Frame make_chain_along_x(int n_carbons, double box_x, double box_yz) {
     const int n_b = n_carbons - 1;
     frame.bonds.atomi = xt::zeros<int>({n_b});
     frame.bonds.atomj = xt::zeros<int>({n_b});
-    frame.bonds.type  = xt::zeros<int>({n_b});
+    frame.bonds.type = xt::zeros<int>({n_b});
     for (int k = 0; k < n_b; ++k) {
         frame.bonds.atomi[k] = k;
         frame.bonds.atomj[k] = k + 1;
@@ -93,7 +93,7 @@ cpu::Frame make_chain_along_x(int n_carbons, double box_x, double box_yz) {
     frame.angles.atomi = xt::zeros<int>({n_a});
     frame.angles.atomj = xt::zeros<int>({n_a});
     frame.angles.atomk = xt::zeros<int>({n_a});
-    frame.angles.type  = xt::zeros<int>({n_a});
+    frame.angles.type = xt::zeros<int>({n_a});
     for (int k = 0; k < n_a; ++k) {
         frame.angles.atomi[k] = k;
         frame.angles.atomj[k] = k + 1;
@@ -104,7 +104,7 @@ cpu::Frame make_chain_along_x(int n_carbons, double box_x, double box_yz) {
     frame.dihedrals.atomj = xt::zeros<int>({n_d});
     frame.dihedrals.atomk = xt::zeros<int>({n_d});
     frame.dihedrals.atoml = xt::zeros<int>({n_d});
-    frame.dihedrals.type  = xt::zeros<int>({n_d});
+    frame.dihedrals.type = xt::zeros<int>({n_d});
     for (int k = 0; k < n_d; ++k) {
         frame.dihedrals.atomi[k] = k;
         frame.dihedrals.atomj[k] = k + 1;
@@ -145,7 +145,8 @@ TEST(PeChainCrossing, BondedNveHandlesChainAcrossBoundary) {
     sim.build();
 
     sim.run(frame, 1);
-    const double e0 = frame.energy + frame.kinetic;   // already global via ReduceEnergy
+    const double e0 =
+        frame.energy + frame.kinetic; // already global via ReduceEnergy
     ASSERT_FALSE(std::isnan(e0)) << "step-1 global energy is NaN";
 
     sim.run(frame, 199);
@@ -179,7 +180,7 @@ TEST(PeChainCrossing, BondedSkinAutoExtendsWithSmallPairCutoff) {
 
     auto frame = make_chain_along_x(20, 30.0, 30.0);
 
-    const double tiny_pair_cutoff = 0.1;  // << bond length 1.529 Å
+    const double tiny_pair_cutoff = 0.1; // << bond length 1.529 Å
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{0.5});
     sim.on(ATV::md::Phase::pre_force)

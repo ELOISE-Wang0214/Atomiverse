@@ -12,7 +12,7 @@ namespace ATV {
 namespace cuda {
 
 class BondHarmonic : public Bond {
-public:
+  public:
     /// @param K  Spring constants per bond type [eV/Å²].
     /// @param r0 Equilibrium distances per bond type [Å].
     BondHarmonic(std::vector<double> K, std::vector<double> r0);
@@ -25,10 +25,10 @@ public:
     void build(const BuildContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;
 
-protected:
+  protected:
     void compute(const LaunchContext& ctx) override;
 
-private:
+  private:
     std::vector<double> K_, r0_;
     struct State;
     std::unique_ptr<State> state_;

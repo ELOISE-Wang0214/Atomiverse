@@ -1,8 +1,8 @@
 /// @file test_upf.cpp
-#include <gtest/gtest.h>
 #include "atomiverse/cpu/pw/internal/upf_reader.h"
-#include <fstream>
 #include <cstdio>
+#include <fstream>
+#include <gtest/gtest.h>
 
 using namespace ATV;
 using namespace ATV::cpu::pw::internal;

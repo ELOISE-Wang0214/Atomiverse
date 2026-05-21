@@ -27,12 +27,12 @@
 #include <iostream>
 #include <vector>
 
+#include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/backend.h"
 #include "atomiverse/cpu/context.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/mpi/domain.h"
 #include "atomiverse/cpu/md/mpi/halo_exchange.h"
-#include "atomiverse/core/mat3.h"
 
 using namespace ATV;
 
@@ -93,8 +93,13 @@ ForwardResult run_forward(double box_len, int n_per_side, double cutoff) {
         r.send_counts[f] = static_cast<int>(dd->send_lists[f].size());
         r.face_neighbors[f] = dd->face_neighbors[f];
     }
-    for (int d = 0; d < 3; ++d) { r.dims[d] = dd->dims[d]; r.coords[d] = dd->coords[d]; }
-    r.Lx = frame.box(0, 0); r.Ly = frame.box(1, 1); r.Lz = frame.box(2, 2);
+    for (int d = 0; d < 3; ++d) {
+        r.dims[d] = dd->dims[d];
+        r.coords[d] = dd->coords[d];
+    }
+    r.Lx = frame.box(0, 0);
+    r.Ly = frame.box(1, 1);
+    r.Lz = frame.box(2, 2);
 
     r.ghost_x.assign(static_cast<std::size_t>(dd->n_ghost), 0.0);
     r.ghost_y.assign(static_cast<std::size_t>(dd->n_ghost), 0.0);
@@ -152,7 +157,8 @@ TEST(HaloForward, RecvCountsConsistentWithSendLists) {
 
     // Local sanity: total ghost atoms = sum of recv_counts[] across faces.
     int total_ghosts = 0;
-    for (int f = 0; f < 6; ++f) total_ghosts += dd->recv_counts[f];
+    for (int f = 0; f < 6; ++f)
+        total_ghosts += dd->recv_counts[f];
     EXPECT_EQ(total_ghosts, dd->n_ghost);
 
     // Faces that self-wrap (dims[dim] == 1) contribute 0 because we
@@ -174,20 +180,23 @@ TEST(HaloForward, RecvCountsConsistentWithSendLists) {
 TEST(HaloForward, GhostPositionsResolveToOwnersAfterWrap) {
     int world_size = 0;
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-    if (world_size <= 1) GTEST_SKIP();
+    if (world_size <= 1)
+        GTEST_SKIP();
 
     const auto r = run_forward(10.0, 4, 2.0);
 
     auto wrap = [](double q, double L) {
         double w = q - std::floor(q / L) * L;
-        if (w < 0) w += L;
-        if (w >= L) w -= L;
+        if (w < 0)
+            w += L;
+        if (w >= L)
+            w -= L;
         return w;
     };
 
-    const int step = static_cast<int>(10.0 / 4);  // grid step is 2.5
+    const int step = static_cast<int>(10.0 / 4); // grid step is 2.5
     (void)step;
-    const double dx = 10.0 / 4;  // 2.5
+    const double dx = 10.0 / 4; // 2.5
 
     // Every ghost, after wrapping back to [0, L), must coincide with one
     // of the original 64 grid points (positions are k * 2.5 + 1.25).
@@ -198,9 +207,12 @@ TEST(HaloForward, GhostPositionsResolveToOwnersAfterWrap) {
         const double rx = std::round((xw - 0.5 * dx) / dx);
         const double ry = std::round((yw - 0.5 * dx) / dx);
         const double rz = std::round((zw - 0.5 * dx) / dx);
-        EXPECT_NEAR(xw, rx * dx + 0.5 * dx, 1e-9) << "ghost " << g << " x mismatch";
-        EXPECT_NEAR(yw, ry * dx + 0.5 * dx, 1e-9) << "ghost " << g << " y mismatch";
-        EXPECT_NEAR(zw, rz * dx + 0.5 * dx, 1e-9) << "ghost " << g << " z mismatch";
+        EXPECT_NEAR(xw, rx * dx + 0.5 * dx, 1e-9)
+            << "ghost " << g << " x mismatch";
+        EXPECT_NEAR(yw, ry * dx + 0.5 * dx, 1e-9)
+            << "ghost " << g << " y mismatch";
+        EXPECT_NEAR(zw, rz * dx + 0.5 * dx, 1e-9)
+            << "ghost " << g << " z mismatch";
     }
 }
 
@@ -209,7 +221,8 @@ TEST(HaloForward, GhostPositionsResolveToOwnersAfterWrap) {
 TEST(HaloReverse, ReverseAddsGhostForcesBackToOwners) {
     int world_size = 0;
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-    if (world_size <= 1) GTEST_SKIP();
+    if (world_size <= 1)
+        GTEST_SKIP();
 
     auto frame = make_uniform_grid(4, 10.0);
     cpu::Backend backend;
@@ -246,17 +259,21 @@ TEST(HaloReverse, ReverseAddsGhostForcesBackToOwners) {
     // halo implementation, so they contribute zero.
     int my_rank = 0;
     MPI_Comm_rank(dd->cart_comm, &my_rank);
-    std::vector<int> ghost_appearances(static_cast<std::size_t>(dd->n_local), 0);
+    std::vector<int> ghost_appearances(static_cast<std::size_t>(dd->n_local),
+                                       0);
     for (int f = 0; f < 6; ++f) {
-        if (dd->face_neighbors[f] == my_rank) continue;  // self-face: no comm
+        if (dd->face_neighbors[f] == my_rank)
+            continue; // self-face: no comm
         for (int idx : dd->send_lists[f])
             ghost_appearances[static_cast<std::size_t>(idx)] += 1;
     }
 
     for (int i = 0; i < dd->n_local; ++i) {
-        const double expected = 1.0 + 10.0 * ghost_appearances[static_cast<std::size_t>(i)];
+        const double expected =
+            1.0 + 10.0 * ghost_appearances[static_cast<std::size_t>(i)];
         EXPECT_NEAR(frame.atoms.fx[i], expected, 1e-12)
-            << "owner " << i << " fx not equal to base + 10 * (ghost appearances)";
+            << "owner " << i
+            << " fx not equal to base + 10 * (ghost appearances)";
     }
 
     backend.shutdown();
@@ -279,8 +296,8 @@ TEST(HaloForward, FaceBufsAreInstanceOwned) {
         GTEST_SKIP() << "multi-rank required (need non-null dd)";
     }
 
-    auto frame_small = make_uniform_grid(2, 10.0);   // 8 atoms
-    auto frame_big   = make_uniform_grid(6, 10.0);   // 216 atoms
+    auto frame_small = make_uniform_grid(2, 10.0); // 8 atoms
+    auto frame_big = make_uniform_grid(6, 10.0);   // 216 atoms
 
     cpu::Backend backend;
     backend.init();
@@ -297,7 +314,7 @@ TEST(HaloForward, FaceBufsAreInstanceOwned) {
     cpu::md::mpi::HaloExchangeForward fwd_b{2.0};
     cpu::BuildContext bctx_big{backend.context(), frame_big};
     fwd_b.build(bctx_big);
-    const std::size_t cap_b       = fwd_b.send_buf_capacity_for_test();
+    const std::size_t cap_b = fwd_b.send_buf_capacity_for_test();
     const std::size_t cap_a_after = fwd_a.send_buf_capacity_for_test();
 
     // Per-instance invariant: A's bufs are untouched by B's build.

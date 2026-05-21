@@ -26,7 +26,7 @@ namespace scf {
 /// In launch(), copies H -> C then solves in-place.
 /// Eigenvalues written to frame.scf.eig, eigenvectors to frame.scf.C.
 class EigenSolver : public ComponentBase {
-public:
+  public:
     /// @brief Component name.
     /// @return "eigen_solver".
     std::string name() const override { return "eigen_solver"; }
@@ -48,11 +48,11 @@ public:
     /// @param ctx Destroy context.
     void destroy(const DestroyContext& ctx) override;
 
-private:
-    void* cusolver_handle_ = nullptr;  ///< cuSOLVER handle.
-    double* d_work_ = nullptr;           ///< cuSOLVER workspace [device].
-    int work_size_ = 0;                ///< Workspace size in elements.
-    int* d_info_ = nullptr;            ///< cuSOLVER convergence info [device, 1 element].
+  private:
+    void* cusolver_handle_ = nullptr; ///< cuSOLVER handle.
+    double* d_work_ = nullptr;        ///< cuSOLVER workspace [device].
+    int work_size_ = 0;               ///< Workspace size in elements.
+    int* d_info_ = nullptr; ///< cuSOLVER convergence info [device, 1 element].
 };
 
 } // namespace scf

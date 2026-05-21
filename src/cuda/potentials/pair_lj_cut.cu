@@ -1,29 +1,30 @@
 /// @file cuda/potentials/pair_lj_cut.cu
 /// @brief CUDA PairLJCut — Lennard-Jones 12-6 shifted (kernel + class).
 
-#include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
-#include "atomiverse/cuda/potentials/lj_kernel.cuh"
 #include "atomiverse/cuda/launch.cuh"
-#include <cuda_runtime.h>
+#include "atomiverse/cuda/potentials/lj_kernel.cuh"
+#include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 #include "atomiverse/cuda/types.cuh"
+#include <cuda_runtime.h>
 
 namespace ATV {
 
+using cuda::prec_t;
 using cuda::real_t;
 using cuda::work_t;
-using cuda::prec_t;
 
+namespace cuda {
+namespace kernels {
 
-namespace cuda { namespace kernels {
-
-__global__ void lj_force(
-    real_t* __restrict__ fx, real_t* __restrict__ fy, real_t* __restrict__ fz,
-    prec_t* __restrict__ energy,
-    const int* __restrict__ pi, const int* __restrict__ pj,
-    const real_t* __restrict__ pdx, const real_t* __restrict__ pdy,
-    const real_t* __restrict__ pdz, const real_t* __restrict__ pdist,
-    work_t epsilon, work_t sigma, work_t cutoff, work_t v_shift,
-    const int* __restrict__ n_pairs_ptr) {
+__global__ void lj_force(real_t* __restrict__ fx, real_t* __restrict__ fy,
+                         real_t* __restrict__ fz, prec_t* __restrict__ energy,
+                         const int* __restrict__ pi, const int* __restrict__ pj,
+                         const real_t* __restrict__ pdx,
+                         const real_t* __restrict__ pdy,
+                         const real_t* __restrict__ pdz,
+                         const real_t* __restrict__ pdist, work_t epsilon,
+                         work_t sigma, work_t cutoff, work_t v_shift,
+                         const int* __restrict__ n_pairs_ptr) {
 
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int n_pairs = *n_pairs_ptr;
@@ -38,7 +39,8 @@ __global__ void lj_force(
             work_t sr6 = sr2 * sr2 * sr2;
             work_t sr12 = sr6 * sr6;
 
-            work_t f_over_r = work_t(24) * epsilon * (work_t(2) * sr12 - sr6) * inv_r * inv_r;
+            work_t f_over_r =
+                work_t(24) * epsilon * (work_t(2) * sr12 - sr6) * inv_r * inv_r;
             work_t dx = pdx[idx], dy = pdy[idx], dz = pdz[idx];
 
             int i = pi[idx], j = pj[idx];
@@ -57,14 +59,16 @@ __global__ void lj_force(
     s_energy[threadIdx.x] = my_energy;
     __syncthreads();
     for (int s = blockDim.x / 2; s > 0; s >>= 1) {
-        if (threadIdx.x < s) s_energy[threadIdx.x] += s_energy[threadIdx.x + s];
+        if (threadIdx.x < s)
+            s_energy[threadIdx.x] += s_energy[threadIdx.x + s];
         __syncthreads();
     }
     if (threadIdx.x == 0 && s_energy[0] != work_t(0))
         atomicAdd(energy, static_cast<prec_t>(s_energy[0]));
 }
 
-}} // namespace cuda::kernels
+} // namespace kernels
+} // namespace cuda
 
 namespace {
 /// @brief Estimated max neighbors per atom for grid-sizing heuristic.
@@ -88,8 +92,8 @@ void PairLJCut::compute(const LaunchContext& ctx) {
     kernels::lj_force<<<grid, block, block * sizeof(work_t), stream>>>(
         frame.atoms.fx, frame.atoms.fy, frame.atoms.fz, frame.energy,
         frame.pairs.i, frame.pairs.j, frame.pairs.dx, frame.pairs.dy,
-        frame.pairs.dz, frame.pairs.dist,
-        epsilon_, sigma_, cutoff_, v_shift_, frame.pairs.n_pairs);
+        frame.pairs.dz, frame.pairs.dist, epsilon_, sigma_, cutoff_, v_shift_,
+        frame.pairs.n_pairs);
 }
 
 } // namespace cuda

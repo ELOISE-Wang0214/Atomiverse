@@ -11,8 +11,8 @@
 
 #ifdef ATV_HAS_RHF
 
-#include <gtest/gtest.h>
 #include <cmath>
+#include <gtest/gtest.h>
 
 #include "atomiverse/cpu/scf/internal/density_builder.h"
 #include "atomiverse/cpu/scf/internal/dual_convergence_check.h"
@@ -65,7 +65,7 @@ TEST(SCFSolverInternals, EigenSolverGeneralizedEig) {
 
 TEST(SCFSolverInternals, DualConvergenceFirstIterAlwaysFalse) {
     DualConvergenceCheck cc{1e-9, 1e-4};
-    RealMatrix err = xt::zeros<double>({2, 2});  // tiny error
+    RealMatrix err = xt::zeros<double>({2, 2}); // tiny error
     auto v = cc.step(/*E=*/-1.0, err);
     EXPECT_FALSE(v.converged) << "no prior energy on iter 0 → never converged";
     EXPECT_TRUE(std::isinf(v.dE));
@@ -73,8 +73,8 @@ TEST(SCFSolverInternals, DualConvergenceFirstIterAlwaysFalse) {
 
 TEST(SCFSolverInternals, DualConvergenceTriggersWhenBothCriteriaMet) {
     DualConvergenceCheck cc{1e-9, 1e-4};
-    RealMatrix big_err   = xt::ones<double>({2, 2});  // ‖err‖ = 2 ≥ 1e-4
-    RealMatrix tiny_err  = xt::zeros<double>({2, 2}); // ‖err‖ = 0 < 1e-4
+    RealMatrix big_err = xt::ones<double>({2, 2});   // ‖err‖ = 2 ≥ 1e-4
+    RealMatrix tiny_err = xt::zeros<double>({2, 2}); // ‖err‖ = 0 < 1e-4
 
     // Iter 0: prime prev_energy, no convergence reported.
     cc.step(-1.0, big_err);
@@ -90,7 +90,7 @@ TEST(SCFSolverInternals, DualConvergenceTriggersWhenBothCriteriaMet) {
 TEST(SCFSolverInternals, DualConvergenceResetClearsHistory) {
     DualConvergenceCheck cc{1e-9, 1e-4};
     RealMatrix err = xt::zeros<double>({2, 2});
-    cc.step(-1.0, err);  // primes prev_energy
+    cc.step(-1.0, err); // primes prev_energy
     cc.reset();
     // After reset, iter 0 must again return ∞ dE.
     auto v = cc.step(-1.0, err);

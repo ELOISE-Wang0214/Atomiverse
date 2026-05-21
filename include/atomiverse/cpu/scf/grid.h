@@ -9,8 +9,8 @@
 ///   - Becke partitioning: JCP 88, 2547 (1988)
 #pragma once
 
-#include <vector>
 #include "atomiverse/cpu/scf/native_integrals.h"
+#include <vector>
 
 namespace ATV {
 namespace cpu {
@@ -18,26 +18,27 @@ namespace scf {
 
 /// @brief Single quadrature grid point with position and weight.
 struct GridPoint {
-    double x, y, z;   ///< Position in Bohr.
-    double weight;     ///< Quadrature weight (includes radial, angular, and Becke partition).
-    int parent_atom;   ///< Index of the atom this point is centered on (the
-                       ///< atom whose atomic quadrature generated it). The
-                       ///< point rides rigidly with this atom; needed by the
-                       ///< XC grid-response nuclear gradient.
+    double x, y, z; ///< Position in Bohr.
+    double
+        weight; ///< Quadrature weight (includes radial, angular, and Becke partition).
+    int parent_atom; ///< Index of the atom this point is centered on (the
+                     ///< atom whose atomic quadrature generated it). The
+                     ///< point rides rigidly with this atom; needed by the
+                     ///< XC grid-response nuclear gradient.
 };
 
 /// @brief A single radial quadrature point.
 struct RadialPoint {
-    double r;  ///< Radius in Bohr.
-    double w;  ///< Quadrature weight, includes r^2 Jacobian (so integrals
-               ///< of f(r) over 3-space are sum_i w_i * f(r_i) * 4*pi).
+    double r; ///< Radius in Bohr.
+    double w; ///< Quadrature weight, includes r^2 Jacobian (so integrals
+              ///< of f(r) over 3-space are sum_i w_i * f(r_i) * 4*pi).
 };
 
 /// @brief Molecular integration grid.
 struct MolecularGrid {
-    std::vector<GridPoint> points;  ///< All grid points.
-    int n_radial;                   ///< Radial points per atom.
-    int n_angular;                  ///< Lebedev angular points per atom.
+    std::vector<GridPoint> points; ///< All grid points.
+    int n_radial;                  ///< Radial points per atom.
+    int n_angular;                 ///< Lebedev angular points per atom.
 };
 
 /// @brief Named DFT integration-grid quality level.
@@ -95,8 +96,8 @@ MolecularGrid build_molecular_grid(const native::Atom* atoms, int natm,
 /// @param n_angular Angular point count (only used for `GridLevel::SG0`).
 /// @return MolecularGrid with all weighted grid points.
 MolecularGrid build_molecular_grid(const native::Atom* atoms, int natm,
-                                   GridLevel level,
-                                   int n_radial = 50, int n_angular = 110);
+                                   GridLevel level, int n_radial = 50,
+                                   int n_angular = 110);
 
 /// @brief Lebedev angular order to use at a single radial shell.
 ///
@@ -116,8 +117,7 @@ MolecularGrid build_molecular_grid(const native::Atom* atoms, int natm,
 /// @return Lebedev angular order; one of
 ///         {6, 38, 50, 86, 110, 194, 302, 590, 770}.
 int lebedev_order_for_shell(GridLevel level, int Z, double r, double R,
-                            int radial_index, int n_radial,
-                            int uniform_order);
+                            int radial_index, int n_radial, int uniform_order);
 
 /// @brief Euler-Maclaurin radial quadrature for the SG-1 parent grid.
 ///
@@ -191,8 +191,8 @@ void becke_partition_weights_for_test(const native::Atom* atoms, int natm,
 ///         point (dimensionless, in [0,1]) -- the conversion factor needed
 ///         to lift `dw_out` to the full grid-weight derivative
 ///         `dW_g/dR_A = (W_g / w_parent) * dw_out`.
-double becke_weight_derivative(const native::Atom* atoms, int natm,
-                               double rx, double ry, double rz, int parent,
+double becke_weight_derivative(const native::Atom* atoms, int natm, double rx,
+                               double ry, double rz, int parent,
                                GridLevel level, double* dw_out);
 
 /// @brief Bragg-Slater atomic radius for element Z, in Bohr.

@@ -25,12 +25,12 @@ inline void Box::min_image_batch(B& bdx, B& bdy, B& bdz) const noexcept {
     const B v_hlx(half_lx_), v_hly(half_ly_), v_hlz(half_lz_);
     const B v_nhlx(-half_lx_), v_nhly(-half_ly_), v_nhlz(-half_lz_);
 
-    bdx = xsimd::select(bdx >  v_hlx,  bdx - v_lx, bdx);
-    bdx = xsimd::select(bdx <  v_nhlx, bdx + v_lx, bdx);
-    bdy = xsimd::select(bdy >  v_hly,  bdy - v_ly, bdy);
-    bdy = xsimd::select(bdy <  v_nhly, bdy + v_ly, bdy);
-    bdz = xsimd::select(bdz >  v_hlz,  bdz - v_lz, bdz);
-    bdz = xsimd::select(bdz <  v_nhlz, bdz + v_lz, bdz);
+    bdx = xsimd::select(bdx > v_hlx, bdx - v_lx, bdx);
+    bdx = xsimd::select(bdx < v_nhlx, bdx + v_lx, bdx);
+    bdy = xsimd::select(bdy > v_hly, bdy - v_ly, bdy);
+    bdy = xsimd::select(bdy < v_nhly, bdy + v_ly, bdy);
+    bdz = xsimd::select(bdz > v_hlz, bdz - v_lz, bdz);
+    bdz = xsimd::select(bdz < v_nhlz, bdz + v_lz, bdz);
 }
 
 } // namespace cpu

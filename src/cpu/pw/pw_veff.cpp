@@ -22,25 +22,32 @@ void PW_Veff::launch(const cpu::LaunchContext&) {
     // FFT V_eff(G) → V_eff(r) for use in FFT-based H·ψ
     if (ws_->fft && ws_->nr > 0) {
         int nr = ws_->nr, nc = ws_->nc;
-        int nx=ws_->fft_nx, ny=ws_->fft_ny, nz=ws_->fft_nz;
-        int nxc = nx/2 + 1;
+        int nx = ws_->fft_nx, ny = ws_->fft_ny, nz = ws_->fft_nz;
+        int nxc = nx / 2 + 1;
         auto& gv = *ws_->gvec;
 
         // Pad V_eff(G) to half-complex FFT grid
         auto* vg = static_cast<fftw_complex*>(
             fftw_malloc(sizeof(fftw_complex) * static_cast<size_t>(nc)));
-        for (int i=0; i<nc; ++i) vg[i][0]=vg[i][1]=0;
+        for (int i = 0; i < nc; ++i)
+            vg[i][0] = vg[i][1] = 0;
 
-        for (int ig=0; ig<ng; ++ig) {
-            int h=gv.h[ig], k=gv.k[ig], l=gv.l[ig];
-            int kx=((h%nx)+nx)%nx, ky=((k%ny)+ny)%ny, kz=((l%nz)+nz)%nz;
-            bool conj=false;
-            if (kx > nx/2) { kx=nx-kx; ky=(ny-ky)%ny; kz=(nz-kz)%nz; conj=true; }
-            int idx = kx + nxc*(ky + ny*kz);
-            if (idx>=0 && idx<nc) {
+        for (int ig = 0; ig < ng; ++ig) {
+            int h = gv.h[ig], k = gv.k[ig], l = gv.l[ig];
+            int kx = ((h % nx) + nx) % nx, ky = ((k % ny) + ny) % ny,
+                kz = ((l % nz) + nz) % nz;
+            bool conj = false;
+            if (kx > nx / 2) {
+                kx = nx - kx;
+                ky = (ny - ky) % ny;
+                kz = (nz - kz) % nz;
+                conj = true;
+            }
+            int idx = kx + nxc * (ky + ny * kz);
+            if (idx >= 0 && idx < nc) {
                 vg[idx][0] = static_cast<double>(ws_->V_eff_G[ig].real());
-                vg[idx][1] = static_cast<double>(conj ? -ws_->V_eff_G[ig].imag()
-                                                      : ws_->V_eff_G[ig].imag());
+                vg[idx][1] = static_cast<double>(
+                    conj ? -ws_->V_eff_G[ig].imag() : ws_->V_eff_G[ig].imag());
             }
         }
 

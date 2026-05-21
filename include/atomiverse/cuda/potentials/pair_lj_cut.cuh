@@ -18,7 +18,7 @@ namespace cuda {
 /// Must be explicitly bound to a force phase (cross-driver component).
 /// Requires a populated PairList in DeviceFrame (from NeighborList).
 class PairLJCut : public Pair {
-public:
+  public:
     /// @brief Construct with LJ parameters.
     /// @param epsilon Well depth [eV].
     /// @param sigma   Collision diameter [Å].
@@ -29,15 +29,17 @@ public:
 
     double epsilon() const { return epsilon_; }
     double sigma() const { return sigma_; }
-    double cutoff() const { return cutoff_; }  // shadows base for ergonomic access
+    double cutoff() const {
+        return cutoff_;
+    } // shadows base for ergonomic access
 
-protected:
+  protected:
     void compute(const LaunchContext& ctx) override;
 
-private:
-    double epsilon_;  ///< Well depth [eV].
-    double sigma_;    ///< Collision diameter [Å].
-    double v_shift_;  ///< Potential shift at cutoff [eV].
+  private:
+    double epsilon_; ///< Well depth [eV].
+    double sigma_;   ///< Collision diameter [Å].
+    double v_shift_; ///< Potential shift at cutoff [eV].
 };
 
 } // namespace cuda

@@ -27,28 +27,37 @@ namespace {
 ///        Valid for `|d_*| <= 1.5 * L_*`.
 void min_image_reference(double& dx, double& dy, double& dz, const Mat3& cell) {
     const double lx = cell(0, 0), ly = cell(1, 1), lz = cell(2, 2);
-    if (dx >  0.5 * lx) dx -= lx;
-    if (dx < -0.5 * lx) dx += lx;
-    if (dy >  0.5 * ly) dy -= ly;
-    if (dy < -0.5 * ly) dy += ly;
-    if (dz >  0.5 * lz) dz -= lz;
-    if (dz < -0.5 * lz) dz += lz;
+    if (dx > 0.5 * lx)
+        dx -= lx;
+    if (dx < -0.5 * lx)
+        dx += lx;
+    if (dy > 0.5 * ly)
+        dy -= ly;
+    if (dy < -0.5 * ly)
+        dy += ly;
+    if (dz > 0.5 * lz)
+        dz -= lz;
+    if (dz < -0.5 * lz)
+        dz += lz;
 }
 
 /// @brief Reference: floor-based axis wrap (matches the pre-refactor
 ///        `wrap_to_box` static-inline copies).
 double wrap_axis_reference(double q, double L) {
-    if (L <= 0.0) return q;
+    if (L <= 0.0)
+        return q;
     double w = q - std::floor(q / L) * L;
-    if (w < 0.0)  w += L;
-    if (w >= L)   w -= L;
+    if (w < 0.0)
+        w += L;
+    if (w >= L)
+        w -= L;
     return w;
 }
 
 /// @brief Reference: triclinic min-image via inv_cell roundtrip.
 ///        Independent of `Box::min_image`'s implementation.
 void min_image_triclinic_reference(double& dx, double& dy, double& dz,
-                                    const Mat3& cell, const Mat3& inv) {
+                                   const Mat3& cell, const Mat3& inv) {
     const double fx = inv(0, 0) * dx + inv(0, 1) * dy + inv(0, 2) * dz;
     const double fy = inv(1, 0) * dx + inv(1, 1) * dy + inv(1, 2) * dz;
     const double fz = inv(2, 0) * dx + inv(2, 1) * dy + inv(2, 2) * dz;
@@ -63,7 +72,8 @@ void min_image_triclinic_reference(double& dx, double& dy, double& dz,
 double frob_norm(const Mat3& m) {
     double s = 0.0;
     for (int i = 0; i < 3; ++i)
-        for (int j = 0; j < 3; ++j) s += m(i, j) * m(i, j);
+        for (int j = 0; j < 3; ++j)
+            s += m(i, j) * m(i, j);
     return std::sqrt(s);
 }
 
@@ -72,7 +82,8 @@ Mat3 mat_mul(const Mat3& a, const Mat3& b) {
     for (int i = 0; i < 3; ++i)
         for (int j = 0; j < 3; ++j) {
             double s = 0.0;
-            for (int k = 0; k < 3; ++k) s += a(i, k) * b(k, j);
+            for (int k = 0; k < 3; ++k)
+                s += a(i, k) * b(k, j);
             c(i, j) = s;
         }
     return c;
@@ -81,13 +92,12 @@ Mat3 mat_mul(const Mat3& a, const Mat3& b) {
 Mat3 mat_sub(const Mat3& a, const Mat3& b) {
     Mat3 c{};
     for (int i = 0; i < 3; ++i)
-        for (int j = 0; j < 3; ++j) c(i, j) = a(i, j) - b(i, j);
+        for (int j = 0; j < 3; ++j)
+            c(i, j) = a(i, j) - b(i, j);
     return c;
 }
 
-Mat3 identity_3x3() {
-    return Mat3::cubic(1.0);
-}
+Mat3 identity_3x3() { return Mat3::cubic(1.0); }
 
 } // namespace
 
@@ -97,7 +107,7 @@ TEST(BoxApi, FactoriesAndQueries) {
     auto bx = Box::orthorhombic(10.0, 12.0, 8.0);
     EXPECT_DOUBLE_EQ(bx.length(0), 10.0);
     EXPECT_DOUBLE_EQ(bx.length(1), 12.0);
-    EXPECT_DOUBLE_EQ(bx.length(2),  8.0);
+    EXPECT_DOUBLE_EQ(bx.length(2), 8.0);
     EXPECT_TRUE(bx.is_orthorhombic());
     EXPECT_DOUBLE_EQ(bx.volume(), 10.0 * 12.0 * 8.0);
 
@@ -117,7 +127,7 @@ TEST(BoxApi, DefaultConstructIsZero) {
 
 TEST(BoxApi, ConstructFromMat3Triclinic) {
     Mat3 cell = Mat3::diagonal(10.0, 10.0, 10.0);
-    cell(0, 1) = 0.5;  // small shear
+    cell(0, 1) = 0.5; // small shear
     Box bx(cell);
     EXPECT_FALSE(bx.is_orthorhombic());
     EXPECT_NEAR(bx.volume(), 10.0 * 10.0 * 10.0, 1e-12);
@@ -130,7 +140,7 @@ TEST(BoxApi, Mat3AssignmentShim) {
     Box bx;
     bx = Mat3::cubic(5.0);
     EXPECT_DOUBLE_EQ(bx.length(0), 5.0);
-    EXPECT_DOUBLE_EQ(bx(0, 0), 5.0);  // operator() read shim
+    EXPECT_DOUBLE_EQ(bx(0, 0), 5.0); // operator() read shim
     EXPECT_DOUBLE_EQ(bx(1, 2), 0.0);
 }
 
@@ -139,7 +149,7 @@ TEST(BoxApi, Mat3AssignmentShim) {
 TEST(BoxMinImage, OrthoParity10kRandom) {
     std::mt19937 rng(0xA70125u);
     std::uniform_real_distribution<double> Ldist(5.0, 50.0);
-    std::uniform_real_distribution<double> dxdist(-2.0, 2.0);  // multiplied by L
+    std::uniform_real_distribution<double> dxdist(-2.0, 2.0); // multiplied by L
 
     for (int trial = 0; trial < 10000; ++trial) {
         const double Lx = Ldist(rng), Ly = Ldist(rng), Lz = Ldist(rng);
@@ -149,9 +159,12 @@ TEST(BoxMinImage, OrthoParity10kRandom) {
         double dy0 = dxdist(rng) * Ly;
         double dz0 = dxdist(rng) * Lz;
         // Reference is single-period valid for |d| <= 1.5L; clamp.
-        if (std::abs(dx0) > 1.5 * Lx) dx0 = std::copysign(1.5 * Lx - 1e-9, dx0);
-        if (std::abs(dy0) > 1.5 * Ly) dy0 = std::copysign(1.5 * Ly - 1e-9, dy0);
-        if (std::abs(dz0) > 1.5 * Lz) dz0 = std::copysign(1.5 * Lz - 1e-9, dz0);
+        if (std::abs(dx0) > 1.5 * Lx)
+            dx0 = std::copysign(1.5 * Lx - 1e-9, dx0);
+        if (std::abs(dy0) > 1.5 * Ly)
+            dy0 = std::copysign(1.5 * Ly - 1e-9, dy0);
+        if (std::abs(dz0) > 1.5 * Lz)
+            dz0 = std::copysign(1.5 * Lz - 1e-9, dz0);
 
         double dx = dx0, dy = dy0, dz = dz0;
         bx.min_image(dx, dy, dz);
@@ -174,7 +187,7 @@ TEST(BoxMinImage, OrthoParity10kRandom) {
 
 TEST(BoxMinImage, TriclinicSingleShear) {
     Mat3 cell = Mat3::diagonal(10.0, 10.0, 10.0);
-    cell(0, 1) = 1.5;  // xy shear
+    cell(0, 1) = 1.5; // xy shear
     Box bx(cell);
 
     std::mt19937 rng(0x7E1C0u);
@@ -195,9 +208,9 @@ TEST(BoxMinImage, TriclinicSingleShear) {
 
         // Fractional components within [-0.5, 0.5].
         const Mat3& iv = bx.inv_cell();
-        const double fx = iv(0,0)*dx + iv(0,1)*dy + iv(0,2)*dz;
-        const double fy = iv(1,0)*dx + iv(1,1)*dy + iv(1,2)*dz;
-        const double fz = iv(2,0)*dx + iv(2,1)*dy + iv(2,2)*dz;
+        const double fx = iv(0, 0) * dx + iv(0, 1) * dy + iv(0, 2) * dz;
+        const double fy = iv(1, 0) * dx + iv(1, 1) * dy + iv(1, 2) * dz;
+        const double fz = iv(2, 0) * dx + iv(2, 1) * dy + iv(2, 2) * dz;
         EXPECT_LE(std::abs(fx), 0.5 + 1e-12);
         EXPECT_LE(std::abs(fy), 0.5 + 1e-12);
         EXPECT_LE(std::abs(fz), 0.5 + 1e-12);
@@ -221,9 +234,9 @@ TEST(BoxMinImage, TriclinicTwoShears) {
     double dx = 9.0, dy = 11.0, dz = 7.0;
     bx.min_image(dx, dy, dz);
     const Mat3& iv = bx.inv_cell();
-    const double fx = iv(0,0)*dx + iv(0,1)*dy + iv(0,2)*dz;
-    const double fy = iv(1,0)*dx + iv(1,1)*dy + iv(1,2)*dz;
-    const double fz = iv(2,0)*dx + iv(2,1)*dy + iv(2,2)*dz;
+    const double fx = iv(0, 0) * dx + iv(0, 1) * dy + iv(0, 2) * dz;
+    const double fy = iv(1, 0) * dx + iv(1, 1) * dy + iv(1, 2) * dz;
+    const double fz = iv(2, 0) * dx + iv(2, 1) * dy + iv(2, 2) * dz;
     EXPECT_LE(std::abs(fx), 0.5 + 1e-12);
     EXPECT_LE(std::abs(fy), 0.5 + 1e-12);
     EXPECT_LE(std::abs(fz), 0.5 + 1e-12);
@@ -287,12 +300,12 @@ TEST(BoxMutation, ScaleIsotropicRefreshesCache) {
 
 TEST(BoxMutation, ScaleIsotropicShiftsMinImageBoundary) {
     auto bx = Box::orthorhombic(10.0, 10.0, 10.0);
-    bx.scale_isotropic(1.5);  // L = 15 → half_L = 7.5
+    bx.scale_isotropic(1.5); // L = 15 → half_L = 7.5
     double dx = 9.0;
     double dy = 0.0;
     double dz = 0.0;
     bx.min_image(dx, dy, dz);
-    EXPECT_NEAR(dx, 9.0 - 15.0, 1e-12);  // -6.0
+    EXPECT_NEAR(dx, 9.0 - 15.0, 1e-12); // -6.0
 }
 
 TEST(BoxMutation, ScaleDiagonalAniso) {
@@ -309,7 +322,7 @@ TEST(BoxMutation, ScaleAxis) {
     auto bx = Box::orthorhombic(10.0, 10.0, 10.0);
     bx.scale_axis(1, 0.5);
     EXPECT_DOUBLE_EQ(bx.length(0), 10.0);
-    EXPECT_DOUBLE_EQ(bx.length(1),  5.0);
+    EXPECT_DOUBLE_EQ(bx.length(1), 5.0);
     EXPECT_DOUBLE_EQ(bx.length(2), 10.0);
     EXPECT_NEAR(bx.cell()(1, 1) * bx.inv_cell()(1, 1), 1.0, 1e-12);
 }

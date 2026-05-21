@@ -2,10 +2,10 @@
 /// @brief Box — simulation cell value type with periodic boundary operations.
 #pragma once
 
-#include <cmath>
+#include "atomiverse/core/constants.h"
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/vec3.h"
-#include "atomiverse/core/constants.h"
+#include <cmath>
 
 namespace ATV {
 
@@ -28,16 +28,18 @@ struct Box {
     }
 
     Vec3 lengths() const {
-        return {
-            std::sqrt(cell(0,0)*cell(0,0) + cell(0,1)*cell(0,1) + cell(0,2)*cell(0,2)),
-            std::sqrt(cell(1,0)*cell(1,0) + cell(1,1)*cell(1,1) + cell(1,2)*cell(1,2)),
-            std::sqrt(cell(2,0)*cell(2,0) + cell(2,1)*cell(2,1) + cell(2,2)*cell(2,2))
-        };
+        return {std::sqrt(cell(0, 0) * cell(0, 0) + cell(0, 1) * cell(0, 1)
+                          + cell(0, 2) * cell(0, 2)),
+                std::sqrt(cell(1, 0) * cell(1, 0) + cell(1, 1) * cell(1, 1)
+                          + cell(1, 2) * cell(1, 2)),
+                std::sqrt(cell(2, 0) * cell(2, 0) + cell(2, 1) * cell(2, 1)
+                          + cell(2, 2) * cell(2, 2))};
     }
 
     Vec3 to_frac(const Vec3& cart) const {
         auto inv = cell.inverse();
-        auto d = Vec3{cart[0] - origin[0], cart[1] - origin[1], cart[2] - origin[2]};
+        auto d =
+            Vec3{cart[0] - origin[0], cart[1] - origin[1], cart[2] - origin[2]};
         return inv * d;
     }
 
@@ -51,7 +53,8 @@ struct Box {
         for (int i = 0; i < 3; ++i) {
             if (pbc[i]) {
                 f[i] -= std::floor(f[i]);
-                if (f[i] < 0) f[i] += Real(1);
+                if (f[i] < 0)
+                    f[i] += Real(1);
             }
         }
         return to_cart(f);
@@ -59,8 +62,10 @@ struct Box {
 
     void wrap_batch(Real* xyz, int n) const {
         for (int i = 0; i < n; ++i) {
-            auto w = wrap(Vec3{xyz[i*3], xyz[i*3+1], xyz[i*3+2]});
-            xyz[i*3] = w[0]; xyz[i*3+1] = w[1]; xyz[i*3+2] = w[2];
+            auto w = wrap(Vec3{xyz[i * 3], xyz[i * 3 + 1], xyz[i * 3 + 2]});
+            xyz[i * 3] = w[0];
+            xyz[i * 3 + 1] = w[1];
+            xyz[i * 3 + 2] = w[2];
         }
     }
 

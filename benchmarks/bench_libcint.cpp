@@ -49,9 +49,12 @@ struct ShellHolder {
 // table. The old sto3g_data layout fused s + sp shells; basis_data::sto3g()
 // emits each l separately, so the ordering is [1s, 2s, 2p, ...].
 inline int sto3g_basis_data_index(int raw_shell, int l) {
-    if (raw_shell == 0 && l == 0) return 0;  // pure-s / 1s
-    if (raw_shell == 1 && l == 0) return 1;  // 2s from sp
-    if (raw_shell == 1 && l == 1) return 2;  // 2p from sp
+    if (raw_shell == 0 && l == 0)
+        return 0; // pure-s / 1s
+    if (raw_shell == 1 && l == 0)
+        return 1; // 2s from sp
+    if (raw_shell == 1 && l == 1)
+        return 2; // 2p from sp
     return -1;
 }
 
@@ -91,20 +94,29 @@ native::Atom make_native_atom(const AtomSpec& atom) {
 
 const char* one_e_case_label(int case_id) {
     switch (case_id) {
-    case 0: return "ss_hh";
-    case 1: return "ps_oh";
-    case 2: return "pp_oo";
-    default: return "unknown";
+    case 0:
+        return "ss_hh";
+    case 1:
+        return "ps_oh";
+    case 2:
+        return "pp_oo";
+    default:
+        return "unknown";
     }
 }
 
 const char* eri_case_label(int case_id) {
     switch (case_id) {
-    case 0: return "ssss";
-    case 1: return "psss";
-    case 2: return "ppss";
-    case 3: return "pppp";
-    default: return "unknown";
+    case 0:
+        return "ssss";
+    case 1:
+        return "psss";
+    case 2:
+        return "ppss";
+    case 3:
+        return "pppp";
+    default:
+        return "unknown";
     }
 }
 
@@ -217,7 +229,8 @@ NativeOneEEnv make_native_one_e_env(int case_id) {
     const auto spec = make_one_e_case(case_id);
     NativeOneEEnv env{};
     for (int i = 0; i < 2; ++i) {
-        env.shells[i] = make_native_shell(spec.atoms[spec.shells[i].atom_of], spec.shells[i]);
+        env.shells[i] = make_native_shell(spec.atoms[spec.shells[i].atom_of],
+                                          spec.shells[i]);
         env.atoms[i] = make_native_atom(spec.atoms[i]);
     }
     return env;
@@ -231,7 +244,8 @@ NativeERIEnv make_native_eri_env(int case_id) {
     const auto spec = make_eri_case(case_id);
     NativeERIEnv env{};
     for (int i = 0; i < 4; ++i)
-        env.shells[i] = make_native_shell(spec.atoms[spec.shells[i].atom_of], spec.shells[i]);
+        env.shells[i] = make_native_shell(spec.atoms[spec.shells[i].atom_of],
+                                          spec.shells[i]);
     return env;
 }
 
@@ -252,7 +266,8 @@ struct LibcintEnv {
     int nbas = 0;
 };
 
-LibcintEnv make_libcint_env(const std::vector<AtomSpec>& atoms, const std::vector<ShellSpec>& shells) {
+LibcintEnv make_libcint_env(const std::vector<AtomSpec>& atoms,
+                            const std::vector<ShellSpec>& shells) {
     LibcintEnv out{};
     out.natm = static_cast<int>(atoms.size());
     out.nbas = static_cast<int>(shells.size());
@@ -274,7 +289,8 @@ LibcintEnv make_libcint_env(const std::vector<AtomSpec>& atoms, const std::vecto
     for (int i = 0; i < out.nbas; ++i) {
         const auto& spec = shells[i];
         const auto& atom_shells = basis_data::sto3g()[spec.Z].shells;
-        const auto& bsh = atom_shells[sto3g_basis_data_index(spec.raw_shell, spec.l)];
+        const auto& bsh =
+            atom_shells[sto3g_basis_data_index(spec.raw_shell, spec.l)];
         const int np = static_cast<int>(bsh.alpha.size());
         const int ptr_exp = off;
         for (int p = 0; p < np; ++p)
@@ -309,12 +325,9 @@ struct GtoNormCase {
 
 GtoNormCase make_gto_norm_case(int case_id) {
     static constexpr GtoNormCase kCases[] = {
-        {"s_small", 0, 0.16885540},
-        {"s_medium", 0, 3.42525091},
-        {"s_large", 0, 130.7093200},
-        {"p_small", 1, 0.3803890},
-        {"p_medium", 1, 1.1695961},
-        {"p_large", 1, 5.0331513},
+        {"s_small", 0, 0.16885540},  {"s_medium", 0, 3.42525091},
+        {"s_large", 0, 130.7093200}, {"p_small", 1, 0.3803890},
+        {"p_medium", 1, 1.1695961},  {"p_large", 1, 5.0331513},
     };
     return kCases[case_id];
 }
@@ -354,7 +367,8 @@ static void BM_Overlap_Libcint(benchmark::State& state) {
 
     for (auto _ : state) {
         int1e_ovlp_cart(buf.data(), nullptr, shls, env.atm.data(), env.natm,
-                        env.bas.data(), env.nbas, env.env.data(), nullptr, nullptr);
+                        env.bas.data(), env.nbas, env.env.data(), nullptr,
+                        nullptr);
         benchmark::DoNotOptimize(buf[out_idx]);
     }
 }
@@ -366,7 +380,8 @@ static void BM_Overlap_Native(benchmark::State& state) {
     state.SetLabel(one_e_case_label(case_id));
     const auto env = make_native_one_e_env(case_id);
     for (auto _ : state)
-        benchmark::DoNotOptimize(native::overlap(env.shells[0].shell, env.shells[1].shell));
+        benchmark::DoNotOptimize(
+            native::overlap(env.shells[0].shell, env.shells[1].shell));
 }
 BENCHMARK(BM_Overlap_Native)->DenseRange(0, 2);
 
@@ -385,7 +400,8 @@ static void BM_Kinetic_Libcint(benchmark::State& state) {
 
     for (auto _ : state) {
         int1e_kin_cart(buf.data(), nullptr, shls, env.atm.data(), env.natm,
-                       env.bas.data(), env.nbas, env.env.data(), nullptr, nullptr);
+                       env.bas.data(), env.nbas, env.env.data(), nullptr,
+                       nullptr);
         benchmark::DoNotOptimize(buf[out_idx]);
     }
 }
@@ -397,7 +413,8 @@ static void BM_Kinetic_Native(benchmark::State& state) {
     state.SetLabel(one_e_case_label(case_id));
     const auto env = make_native_one_e_env(case_id);
     for (auto _ : state)
-        benchmark::DoNotOptimize(native::kinetic(env.shells[0].shell, env.shells[1].shell));
+        benchmark::DoNotOptimize(
+            native::kinetic(env.shells[0].shell, env.shells[1].shell));
 }
 BENCHMARK(BM_Kinetic_Native)->DenseRange(0, 2);
 
@@ -416,7 +433,8 @@ static void BM_Nuclear_Libcint(benchmark::State& state) {
 
     for (auto _ : state) {
         int1e_nuc_cart(buf.data(), nullptr, shls, env.atm.data(), env.natm,
-                       env.bas.data(), env.nbas, env.env.data(), nullptr, nullptr);
+                       env.bas.data(), env.nbas, env.env.data(), nullptr,
+                       nullptr);
         benchmark::DoNotOptimize(buf[out_idx]);
     }
 }
@@ -428,7 +446,8 @@ static void BM_Nuclear_Native(benchmark::State& state) {
     state.SetLabel(one_e_case_label(case_id));
     const auto env = make_native_one_e_env(case_id);
     for (auto _ : state)
-        benchmark::DoNotOptimize(native::nuclear(env.shells[0].shell, env.shells[1].shell, env.atoms.data(), 2));
+        benchmark::DoNotOptimize(native::nuclear(
+            env.shells[0].shell, env.shells[1].shell, env.atoms.data(), 2));
 }
 BENCHMARK(BM_Nuclear_Native)->DenseRange(0, 2);
 
@@ -445,14 +464,15 @@ static void BM_ERI_Libcint(benchmark::State& state) {
     const int n0 = env.shell_info[0].ncart;
     const int n1 = env.shell_info[1].ncart;
     const int n2 = env.shell_info[2].ncart;
-    const int out_idx = env.shell_info[0].cart +
-        n0 * (env.shell_info[1].cart +
-        n1 * (env.shell_info[2].cart +
-        n2 * env.shell_info[3].cart));
+    const int out_idx =
+        env.shell_info[0].cart
+        + n0
+              * (env.shell_info[1].cart
+                 + n1 * (env.shell_info[2].cart + n2 * env.shell_info[3].cart));
 
     for (auto _ : state) {
-        cint2e_cart(buf.data(), shls, env.atm.data(), env.natm,
-                    env.bas.data(), env.nbas, env.env.data(), nullptr);
+        cint2e_cart(buf.data(), shls, env.atm.data(), env.natm, env.bas.data(),
+                    env.nbas, env.env.data(), nullptr);
         benchmark::DoNotOptimize(buf[out_idx]);
     }
 }
@@ -464,9 +484,9 @@ static void BM_ERI_Native(benchmark::State& state) {
     state.SetLabel(eri_case_label(case_id));
     const auto env = make_native_eri_env(case_id);
     for (auto _ : state)
-        benchmark::DoNotOptimize(native::eri(
-            env.shells[0].shell, env.shells[1].shell,
-            env.shells[2].shell, env.shells[3].shell));
+        benchmark::DoNotOptimize(
+            native::eri(env.shells[0].shell, env.shells[1].shell,
+                        env.shells[2].shell, env.shells[3].shell));
 }
 BENCHMARK(BM_ERI_Native)->DenseRange(0, 3);
 
@@ -484,9 +504,11 @@ struct ShellBlockHolder {
     native::ShellBlock block{};
 };
 
-ShellBlockHolder make_native_shell_block(const AtomSpec& atom, const ShellSpec& spec) {
+ShellBlockHolder make_native_shell_block(const AtomSpec& atom,
+                                         const ShellSpec& spec) {
     const auto& atom_shells = basis_data::sto3g()[spec.Z].shells;
-    const auto& bsh = atom_shells[sto3g_basis_data_index(spec.raw_shell, spec.l)];
+    const auto& bsh =
+        atom_shells[sto3g_basis_data_index(spec.raw_shell, spec.l)];
     const int np = static_cast<int>(bsh.alpha.size());
 
     ShellBlockHolder holder;
@@ -497,14 +519,14 @@ ShellBlockHolder make_native_shell_block(const AtomSpec& atom, const ShellSpec& 
         holder.coeff[p] = bsh.coeff[p] * norm_at(bsh.alpha[p]);
     }
 
-    holder.block.n_prim  = np;
-    holder.block.alpha   = holder.alpha.data();
-    holder.block.coeff   = holder.coeff.data();
+    holder.block.n_prim = np;
+    holder.block.alpha = holder.alpha.data();
+    holder.block.coeff = holder.coeff.data();
     holder.block.center[0] = atom.center_bohr[0];
     holder.block.center[1] = atom.center_bohr[1];
     holder.block.center[2] = atom.center_bohr[2];
-    holder.block.l       = spec.l;
-    holder.block.n_cart  = (spec.l == 0) ? 1 : 3;
+    holder.block.l = spec.l;
+    holder.block.n_cart = (spec.l == 0) ? 1 : 3;
     holder.block.ao_start = 0;
     return holder;
 }
@@ -517,7 +539,8 @@ NativeERIBlockEnv make_native_eri_block_env(int case_id) {
     const auto spec = make_eri_case(case_id);
     NativeERIBlockEnv env{};
     for (int i = 0; i < 4; ++i)
-        env.blocks[i] = make_native_shell_block(spec.atoms[spec.shells[i].atom_of], spec.shells[i]);
+        env.blocks[i] = make_native_shell_block(
+            spec.atoms[spec.shells[i].atom_of], spec.shells[i]);
     return env;
 }
 
@@ -552,8 +575,8 @@ static void BM_ERIBlock_Libcint(benchmark::State& state) {
     FINT shls[4] = {0, 1, 2, 3};
 
     for (auto _ : state) {
-        cint2e_cart(buf, shls, env.atm.data(), env.natm,
-                    env.bas.data(), env.nbas, env.env.data(), nullptr);
+        cint2e_cart(buf, shls, env.atm.data(), env.natm, env.bas.data(),
+                    env.nbas, env.env.data(), nullptr);
         benchmark::DoNotOptimize(buf[0]);
     }
 }

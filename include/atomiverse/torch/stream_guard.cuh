@@ -27,7 +27,7 @@ using Stream = ::c10::cuda::CUDAStream;
 /// }
 /// @endcode
 class StreamGuard {
-public:
+  public:
     /// @brief Set the current Torch CUDA stream.
     /// @param atv_stream ATV stream handle (void*, cast to cudaStream_t internally).
     explicit StreamGuard(void* atv_stream);
@@ -38,7 +38,7 @@ public:
     StreamGuard(const StreamGuard&) = delete;
     StreamGuard& operator=(const StreamGuard&) = delete;
 
-private:
+  private:
     Stream prev_stream_; ///< Previous stream to restore on destruction.
 };
 

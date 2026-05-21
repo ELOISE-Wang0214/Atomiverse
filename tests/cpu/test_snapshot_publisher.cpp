@@ -16,6 +16,7 @@
 #include <mutex>
 #include <string>
 
+#include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/async_component_base.h"
 #include "atomiverse/cpu/backend.h"
 #include "atomiverse/cpu/component.h"
@@ -26,7 +27,6 @@
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/snapshot_publisher.h"
-#include "atomiverse/core/mat3.h"
 
 #include "cpu/driver_test_helpers.h"
 
@@ -56,7 +56,7 @@ cpu::Frame make_small_frame(int n) {
 /// binding (`md::Phase::end_of_step @ +20`), so `sim.add(cap)` works
 /// without explicit `on()` wiring.
 class PositionCapture : public cpu::md::AsyncObserver {
-public:
+  public:
     std::string name() const override { return "position_capture"; }
     cpu::CaptureMask capture_mask() const override {
         cpu::CaptureMask m;
@@ -66,7 +66,7 @@ public:
     }
     void on_snapshot(const cpu::FrameSnapshot& snap) override {
         std::lock_guard<std::mutex> g(mtx_);
-        last_ = snap;        // copy
+        last_ = snap; // copy
         ++n_handled_;
     }
     int handled() const { return n_handled_.load(std::memory_order_relaxed); }
@@ -74,7 +74,8 @@ public:
         std::lock_guard<std::mutex> g(mtx_);
         return last_;
     }
-private:
+
+  private:
     mutable std::mutex mtx_;
     cpu::FrameSnapshot last_;
     std::atomic<int> n_handled_{0};
@@ -100,10 +101,10 @@ TEST(SnapshotPublisher, ZeroSubscribersEarlyReturn) {
     auto t1 = std::chrono::high_resolution_clock::now();
 
     auto mean_ns =
-        std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count() / iters;
-    EXPECT_LT(mean_ns, 100)
-        << "zero-subscriber mean launch() cost " << mean_ns
-        << " ns exceeds 100 ns budget";
+        std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count()
+        / iters;
+    EXPECT_LT(mean_ns, 100) << "zero-subscriber mean launch() cost " << mean_ns
+                            << " ns exceeds 100 ns budget";
 }
 
 // ── positions propagate end-to-end ───────────────────────────────────
@@ -121,7 +122,8 @@ TEST(SnapshotPublisher, SnapshotCopiesPositions) {
     sim.add(NoOpForce{});
     sim.add(cap);
     sim.build();
-    sim.run(frame, 5);  // give the publisher a step where async fires (step >= 1)
+    sim.run(frame,
+            5); // give the publisher a step where async fires (step >= 1)
 
     const int n = frame.atoms.size();
     ASSERT_GE(cap.handled(), 1) << "no snapshot was delivered";
@@ -153,7 +155,8 @@ TEST(SnapshotPublisher, SnapshotCopiesBoxAndStep) {
     for (int i = 0; i < 3; ++i)
         for (int j = 0; j < 3; ++j)
             EXPECT_NEAR(snap.box(i, j), frame.box(i, j), 1e-12);
-    EXPECT_GE(snap.step, 1) << "publisher fires after step 0; first capture must be step >= 1";
+    EXPECT_GE(snap.step, 1)
+        << "publisher fires after step 0; first capture must be step >= 1";
 }
 
 // ── CaptureMask respected ────────────────────────────────────────────
@@ -173,8 +176,11 @@ TEST(SnapshotPublisher, CaptureMaskRespected) {
     ASSERT_GE(cap.handled(), 1);
     auto snap = cap.copy_last();
     EXPECT_EQ(static_cast<int>(snap.x.size()), frame.atoms.size());
-    EXPECT_EQ(static_cast<std::size_t>(snap.vx.size()), static_cast<std::size_t>(0))
+    EXPECT_EQ(static_cast<std::size_t>(snap.vx.size()),
+              static_cast<std::size_t>(0))
         << "velocities must remain empty when CaptureMask.velocities=false";
-    EXPECT_EQ(static_cast<std::size_t>(snap.vy.size()), static_cast<std::size_t>(0));
-    EXPECT_EQ(static_cast<std::size_t>(snap.vz.size()), static_cast<std::size_t>(0));
+    EXPECT_EQ(static_cast<std::size_t>(snap.vy.size()),
+              static_cast<std::size_t>(0));
+    EXPECT_EQ(static_cast<std::size_t>(snap.vz.size()),
+              static_cast<std::size_t>(0));
 }

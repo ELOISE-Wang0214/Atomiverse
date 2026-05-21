@@ -51,9 +51,9 @@ cpu::Frame make_frame(const pyscf_thermo_ref::RefThermo& ref) {
     const int n = ref.natoms;
     cpu::Frame f(n);
     for (int i = 0; i < n; ++i) {
-        f.atoms.x(i)    = ref.geom[i].x;
-        f.atoms.y(i)    = ref.geom[i].y;
-        f.atoms.z(i)    = ref.geom[i].z;
+        f.atoms.x(i) = ref.geom[i].x;
+        f.atoms.y(i) = ref.geom[i].y;
+        f.atoms.z(i) = ref.geom[i].z;
         f.atoms.type(i) = ref.geom[i].Z;
     }
     f.box = Mat3::cubic(100.0);
@@ -74,19 +74,18 @@ cpu::scf::SCFConfig tight_rhf_config(const cpu::scf::IntegralPack& ints) {
 /// @return HessianResult with frequencies + thermochemistry populated.
 cpu::vib::HessianResult run_thermo(const pyscf_thermo_ref::RefThermo& ref) {
     cpu::Frame frame = make_frame(ref);
-    auto ints = cpu::scf::build_integrals(frame,
-                                          cpu::scf::BasisSet::Pople631G);
-    auto cfg  = tight_rhf_config(ints);
+    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Pople631G);
+    auto cfg = tight_rhf_config(ints);
 
     cpu::vib::Thermochem::Config tc;
-    tc.temperature      = ref.temperature_K;
-    tc.pressure         = ref.pressure_Pa;
-    tc.multiplicity     = ref.multiplicity;
-    tc.symmetry_number  = ref.symmetry_number;
+    tc.temperature = ref.temperature_K;
+    tc.pressure = ref.pressure_Pa;
+    tc.multiplicity = ref.multiplicity;
+    tc.symmetry_number = ref.symmetry_number;
 
     cpu::vib::Hessian driver{tc};
     driver.on(ATV::vib::Phase::force)
-          .add(cpu::scf::SCFEvaluator{cfg, cpu::scf::BasisSet::Pople631G});
+        .add(cpu::scf::SCFEvaluator{cfg, cpu::scf::BasisSet::Pople631G});
     driver.build();
     return driver.run(frame);
 }
@@ -94,7 +93,8 @@ cpu::vib::HessianResult run_thermo(const pyscf_thermo_ref::RefThermo& ref) {
 /// @brief Look up a reference molecule by name.
 const pyscf_thermo_ref::RefThermo& ref(const char* name) {
     for (const auto& m : pyscf_thermo_ref::reference())
-        if (std::string(m.name) == name) return m;
+        if (std::string(m.name) == name)
+            return m;
     throw std::runtime_error(std::string("no thermo reference for ") + name);
 }
 
@@ -109,9 +109,9 @@ TEST(VibThermochemVsPyscf, ZeroPointEnergy) {
 
         const double dev_eV =
             std::abs(result.zpe - r.zpe_hartree) * kHartree2eV;
-        std::cout << "[ zpe ] " << name << " atomiverse="
-                  << result.zpe << " Ha  pyscf=" << r.zpe_hartree
-                  << " Ha  dev=" << dev_eV << " eV\n";
+        std::cout << "[ zpe ] " << name << " atomiverse=" << result.zpe
+                  << " Ha  pyscf=" << r.zpe_hartree << " Ha  dev=" << dev_eV
+                  << " eV\n";
         EXPECT_LE(dev_eV, 0.001)
             << name << ": ZPE deviation vs PySCF = " << dev_eV
             << " eV (tolerance 0.001 eV)";
@@ -130,12 +130,10 @@ TEST(VibThermochemVsPyscf, GibbsThermalCorrection) {
         const auto result = run_thermo(r);
 
         const double dev_kJ =
-            std::abs(result.g_thermal - r.g_thermal_hartree) *
-            kHartree2kJmol;
-        std::cout << "[ gibbs ] " << name << " atomiverse="
-                  << result.g_thermal << " Ha  pyscf="
-                  << r.g_thermal_hartree << " Ha  dev=" << dev_kJ
-                  << " kJ/mol\n";
+            std::abs(result.g_thermal - r.g_thermal_hartree) * kHartree2kJmol;
+        std::cout << "[ gibbs ] " << name << " atomiverse=" << result.g_thermal
+                  << " Ha  pyscf=" << r.g_thermal_hartree
+                  << " Ha  dev=" << dev_kJ << " kJ/mol\n";
         EXPECT_LE(dev_kJ, 0.5)
             << name << ": G_tot - E0 deviation vs PySCF = " << dev_kJ
             << " kJ/mol (tolerance 0.5 kJ/mol)";
@@ -163,8 +161,8 @@ TEST(VibThermochemVsPyscf, PerComponentEntropiesWater) {
         << "S_tot aggregation mismatch vs PySCF";
 
     std::cout << "[ S_components ] h2o  S_trans=" << result.s_trans
-              << "  S_rot=" << result.s_rot
-              << "  S_vib=" << result.s_vib << " Eh/K\n";
+              << "  S_rot=" << result.s_rot << "  S_vib=" << result.s_vib
+              << " Eh/K\n";
 }
 
 // ── Provenance: reference data is from a genuine PySCF run ───────────────

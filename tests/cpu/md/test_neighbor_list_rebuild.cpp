@@ -10,12 +10,12 @@
 
 #include <cmath>
 
+#include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/lj.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/core/mat3.h"
 
 using namespace ATV;
 
@@ -25,14 +25,14 @@ namespace {
 
 /// 108-atom FCC argon crystal at a=5.26 Å, 4×4×4 unit cells → 256 atoms.
 cpu::Frame make_fcc_argon() {
-    constexpr double a = 5.26;          // FCC lattice constant [Å]
-    constexpr int n_cell = 3;           // 3×3×3 unit cells
+    constexpr double a = 5.26; // FCC lattice constant [Å]
+    constexpr int n_cell = 3;  // 3×3×3 unit cells
     constexpr double box_len = n_cell * a;
 
     const double basis[4][3] = {
-        {0.0,     0.0,     0.0},
-        {0.0,     0.5 * a, 0.5 * a},
-        {0.5 * a, 0.0,     0.5 * a},
+        {0.0, 0.0, 0.0},
+        {0.0, 0.5 * a, 0.5 * a},
+        {0.5 * a, 0.0, 0.5 * a},
         {0.5 * a, 0.5 * a, 0.0},
     };
 
@@ -55,7 +55,7 @@ cpu::Frame make_fcc_argon() {
         frame.atoms.x[i] = x[i];
         frame.atoms.y[i] = y[i];
         frame.atoms.z[i] = z[i];
-        frame.atoms.mass[i] = 39.948;   // Ar amu
+        frame.atoms.mass[i] = 39.948; // Ar amu
         frame.atoms.type[i] = 0;
     }
     frame.box = Mat3::cubic(box_len);
@@ -71,14 +71,15 @@ TEST(NeighborListRebuild, DelayGateHonoured) {
     // only rebuild — no displacement can trigger within the delay window.
     auto frame = make_fcc_argon();
     constexpr double cutoff = 6.8;
-    constexpr double skin = 2.0;  // large enough that atoms won't move past skin/2
+    constexpr double skin =
+        2.0; // large enough that atoms won't move past skin/2
 
     cpu::md::NeighborList<> nl{cutoff, skin, /*every=*/1, /*delay=*/100};
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{0.5});
     sim.set_pair(cpu::md::LJ{0.0104, 3.4, cutoff});
-    sim.set_neighbor(nl);  // lvalue → non-owning pointer
+    sim.set_neighbor(nl); // lvalue → non-owning pointer
     sim.build();
 
     sim.run(frame, 200);
@@ -107,7 +108,7 @@ TEST(NeighborListRebuild, EveryGateReducesChecks) {
     }
 
     constexpr double cutoff = 6.8;
-    constexpr double skin = 0.02;  // tiny: displacement rapidly exceeds skin/2
+    constexpr double skin = 0.02; // tiny: displacement rapidly exceeds skin/2
 
     cpu::md::NeighborList<> nl{cutoff, skin, /*every=*/50, /*delay=*/0};
 
@@ -139,7 +140,8 @@ TEST(NeighborListRebuild, DelayZeroAllowsImmediateRebuild) {
     // should be the initial one.
     auto frame = make_fcc_argon();
     constexpr double cutoff = 6.8;
-    constexpr double skin = 10.0;  // enormous: skin/2 = 5 Å, atoms can't move that far
+    constexpr double skin =
+        10.0; // enormous: skin/2 = 5 Å, atoms can't move that far
 
     cpu::md::NeighborList<> nl{cutoff, skin, /*every=*/1, /*delay=*/0};
 
@@ -174,7 +176,7 @@ TEST(NeighborListRebuild, NveDriftWithinTolerance) {
     }
 
     constexpr double cutoff = 6.8;
-    constexpr double skin = 0.3 * cutoff;  // auto-skin
+    constexpr double skin = 0.3 * cutoff; // auto-skin
 
     cpu::md::NeighborList<> nl{cutoff, skin, /*every=*/1, /*delay=*/10};
 

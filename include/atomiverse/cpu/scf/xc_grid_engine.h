@@ -14,14 +14,14 @@
 
 #include <vector>
 
+#include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/containers/xtensor.hpp>
 #include <xtensor/views/xview.hpp>
-#include <xtensor-blas/xlinalg.hpp>
 
+#include "atomiverse/cpu/scf/basis_eval.h"
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
-#include "atomiverse/cpu/scf/basis_eval.h"
 
 namespace ATV {
 namespace cpu {
@@ -29,11 +29,13 @@ namespace scf {
 
 /// @brief Result of batched XC grid integration.
 struct XCGridResult {
-    xt::xtensor<double, 2> Vxc_alpha;   ///< XC potential matrix (alpha) [n_basis × n_basis].
-    xt::xtensor<double, 2> Vxc_beta;    ///< XC potential matrix (beta) [n_basis × n_basis].
-    double E_xc;                         ///< Total XC energy [Hartree].
-    double n_alpha_integrated;           ///< Grid-integrated alpha electron count.
-    double n_beta_integrated;            ///< Grid-integrated beta electron count.
+    xt::xtensor<double, 2>
+        Vxc_alpha; ///< XC potential matrix (alpha) [n_basis × n_basis].
+    xt::xtensor<double, 2>
+        Vxc_beta; ///< XC potential matrix (beta) [n_basis × n_basis].
+    double E_xc;  ///< Total XC energy [Hartree].
+    double n_alpha_integrated; ///< Grid-integrated alpha electron count.
+    double n_beta_integrated;  ///< Grid-integrated beta electron count.
 };
 
 /// @brief Parallel grid-contraction GEMM: C = A^T @ B.
@@ -52,8 +54,9 @@ struct XCGridResult {
 /// @param A `[G x N]` row-major grid matrix (the left, transposed operand).
 /// @param B `[G x N]` row-major grid matrix (the right operand).
 /// @return `[N x N]` matrix C = A^T @ B.
-inline xt::xtensor<double, 2> grid_contract_tn(const xt::xtensor<double, 2>& A,
-                                               const xt::xtensor<double, 2>& B) {
+inline xt::xtensor<double, 2>
+grid_contract_tn(const xt::xtensor<double, 2>& A,
+                 const xt::xtensor<double, 2>& B) {
     const std::size_t G = A.shape()[0];
     const std::size_t N = A.shape()[1];
     const auto Ni = static_cast<long>(N);
@@ -69,7 +72,7 @@ inline xt::xtensor<double, 2> grid_contract_tn(const xt::xtensor<double, 2>& A,
     const double* Ap = A.data();
     const double* Bp = B.data();
 #ifdef _OPENMP
-    #pragma omp parallel for schedule(static)
+#pragma omp parallel for schedule(static)
 #endif
     for (long g = 0; g < Gi; ++g)
         for (long mu = 0; mu < Ni; ++mu) {
@@ -83,7 +86,7 @@ inline xt::xtensor<double, 2> grid_contract_tn(const xt::xtensor<double, 2>& A,
     // element runs serially in ascending order, so the result is bitwise
     // identical for any thread count (and matches a serial g-order sum).
 #ifdef _OPENMP
-    #pragma omp parallel for schedule(static)
+#pragma omp parallel for schedule(static)
 #endif
     for (long nu = 0; nu < Ni; ++nu) {
         const double* Brow = Bt.data() + static_cast<std::size_t>(nu) * G;
@@ -110,14 +113,11 @@ inline xt::xtensor<double, 2> grid_contract_tn(const xt::xtensor<double, 2>& A,
 /// @param P_beta  Beta density matrix [n_basis × n_basis].
 /// @param xc_type XC functional type (LSDA or PBE).
 /// @return XCGridResult with Vxc matrices, E_xc, and integration diagnostics.
-inline XCGridResult evaluate_xc_batched(
-    const MolecularGrid& grid,
-    const std::vector<native::Shell>& shells,
-    int n_basis,
-    const xt::xtensor<double, 2>& P_alpha,
-    const xt::xtensor<double, 2>& P_beta,
-    XCType xc_type)
-{
+inline XCGridResult
+evaluate_xc_batched(const MolecularGrid& grid,
+                    const std::vector<native::Shell>& shells, int n_basis,
+                    const xt::xtensor<double, 2>& P_alpha,
+                    const xt::xtensor<double, 2>& P_beta, XCType xc_type) {
     const int G = static_cast<int>(grid.points.size());
     const int N = static_cast<int>(n_basis);
     // GGA path is needed for PBE and for the B3LYP / PBE0 hybrids, whose
@@ -149,7 +149,7 @@ inline XCGridResult evaluate_xc_batched(
     // per-point polynomial logic to basis_eval.h so d-shells (and higher
     // l) inherit the same code path as the cube writers.
 #ifdef _OPENMP
-    #pragma omp parallel for schedule(static)
+#pragma omp parallel for schedule(static)
 #endif
     for (int g = 0; g < G; ++g) {
         const double rx = static_cast<double>(grid.points[g].x);
@@ -164,11 +164,13 @@ inline XCGridResult evaluate_xc_batched(
                 dPhi_x(g, mu) = gx;
                 dPhi_y(g, mu) = gy;
                 dPhi_z(g, mu) = gz;
-                if (std::abs(v) > 1e-20) active[g] = 1;
+                if (std::abs(v) > 1e-20)
+                    active[g] = 1;
             } else {
                 const double v = eval_basis(sh, rx, ry, rz);
                 Phi(g, mu) = v;
-                if (std::abs(v) > 1e-20) active[g] = 1;
+                if (std::abs(v) > 1e-20)
+                    active[g] = 1;
             }
         }
     }
@@ -208,17 +210,23 @@ inline XCGridResult evaluate_xc_batched(
         auto gby = 2.0 * xt::sum(T_b * dPhi_y, {1});
         auto gbz = 2.0 * xt::sum(T_b * dPhi_z, {1});
 
-        sigma_aa_arr = gax*gax + gay*gay + gaz*gaz;
-        sigma_ab_arr = gax*gbx + gay*gby + gaz*gbz;
-        sigma_bb_arr = gbx*gbx + gby*gby + gbz*gbz;
+        sigma_aa_arr = gax * gax + gay * gay + gaz * gaz;
+        sigma_ab_arr = gax * gbx + gay * gby + gaz * gbz;
+        sigma_bb_arr = gbx * gbx + gby * gby + gbz * gbz;
 
         // Store for GGA Vxc assembly
-        grad_rho_ax = xt::xtensor<double, 2>(xt::reshape_view(gax, {Gs, size_t(1)}));
-        grad_rho_ay = xt::xtensor<double, 2>(xt::reshape_view(gay, {Gs, size_t(1)}));
-        grad_rho_az = xt::xtensor<double, 2>(xt::reshape_view(gaz, {Gs, size_t(1)}));
-        grad_rho_bx = xt::xtensor<double, 2>(xt::reshape_view(gbx, {Gs, size_t(1)}));
-        grad_rho_by = xt::xtensor<double, 2>(xt::reshape_view(gby, {Gs, size_t(1)}));
-        grad_rho_bz = xt::xtensor<double, 2>(xt::reshape_view(gbz, {Gs, size_t(1)}));
+        grad_rho_ax =
+            xt::xtensor<double, 2>(xt::reshape_view(gax, {Gs, size_t(1)}));
+        grad_rho_ay =
+            xt::xtensor<double, 2>(xt::reshape_view(gay, {Gs, size_t(1)}));
+        grad_rho_az =
+            xt::xtensor<double, 2>(xt::reshape_view(gaz, {Gs, size_t(1)}));
+        grad_rho_bx =
+            xt::xtensor<double, 2>(xt::reshape_view(gbx, {Gs, size_t(1)}));
+        grad_rho_by =
+            xt::xtensor<double, 2>(xt::reshape_view(gby, {Gs, size_t(1)}));
+        grad_rho_bz =
+            xt::xtensor<double, 2>(xt::reshape_view(gbz, {Gs, size_t(1)}));
     }
 
     // ── 3. Batch XC evaluation ─────────────────────────────────────────
@@ -232,12 +240,11 @@ inline XCGridResult evaluate_xc_batched(
         vsigma_bb_out = xt::zeros<double>({Gs});
     }
 
-    evaluate_xc_batch(xc_type, G,
-                      rho_a_arr.data(), rho_b_arr.data(),
+    evaluate_xc_batch(xc_type, G, rho_a_arr.data(), rho_b_arr.data(),
                       is_gga ? sigma_aa_arr.data() : nullptr,
                       is_gga ? sigma_ab_arr.data() : nullptr,
-                      is_gga ? sigma_bb_arr.data() : nullptr,
-                      exc_arr.data(), vrho_a_arr.data(), vrho_b_arr.data(),
+                      is_gga ? sigma_bb_arr.data() : nullptr, exc_arr.data(),
+                      vrho_a_arr.data(), vrho_b_arr.data(),
                       is_gga ? vsigma_aa_out.data() : nullptr,
                       is_gga ? vsigma_ab_out.data() : nullptr,
                       is_gga ? vsigma_bb_out.data() : nullptr);
@@ -249,7 +256,7 @@ inline XCGridResult evaluate_xc_batched(
 
     double E_xc = xt::sum(w_arr * exc_arr * (rho_a_arr + rho_b_arr))();
     double n_alpha_int = xt::sum(w_arr * rho_a_arr)();
-    double n_beta_int  = xt::sum(w_arr * rho_b_arr)();
+    double n_beta_int = xt::sum(w_arr * rho_b_arr)();
 
     // ── 5. Vxc via GEMM ───────────────────────────────────────────────
     // LDA: Vxc = Phi_w^T @ Phi  where Phi_w(g,mu) = w(g)*vrho(g)*Phi(g,mu)
@@ -305,13 +312,19 @@ inline XCGridResult evaluate_xc_batched(
         //   [vrho * phi_mu * phi_nu + sum_d ga_d * (phi_mu * dphi_d_nu + dphi_d_mu * phi_nu)]
         // = LDA part + sum_d [ga_d * Phi]^T @ dPhi_d + sum_d [ga_d * dPhi_d]^T @ Phi
 
-        const xt::xtensor<double, 2>* grad_rho_a[3] = {&grad_rho_ax, &grad_rho_ay, &grad_rho_az};
-        const xt::xtensor<double, 2>* grad_rho_b[3] = {&grad_rho_bx, &grad_rho_by, &grad_rho_bz};
+        const xt::xtensor<double, 2>* grad_rho_a[3] = {
+            &grad_rho_ax, &grad_rho_ay, &grad_rho_az};
+        const xt::xtensor<double, 2>* grad_rho_b[3] = {
+            &grad_rho_bx, &grad_rho_by, &grad_rho_bz};
         const xt::xtensor<double, 2>* dPhi_arr[3] = {&dPhi_x, &dPhi_y, &dPhi_z};
 
         for (int d = 0; d < 3; ++d) {
-            auto ga_d = w_col * (2.0 * vsa * (*grad_rho_a[d]) + vsab * (*grad_rho_b[d]));
-            auto gb_d = w_col * (2.0 * vsb * (*grad_rho_b[d]) + vsab * (*grad_rho_a[d]));
+            auto ga_d =
+                w_col
+                * (2.0 * vsa * (*grad_rho_a[d]) + vsab * (*grad_rho_b[d]));
+            auto gb_d =
+                w_col
+                * (2.0 * vsb * (*grad_rho_b[d]) + vsab * (*grad_rho_a[d]));
             const auto& dPhi_d = *dPhi_arr[d];
 
             // Vxc_a += (Phi * ga_d)^T @ dPhi_d + dPhi_d^T @ (Phi * ga_d).
@@ -334,15 +347,15 @@ inline XCGridResult evaluate_xc_batched(
     // Convert to double
     XCGridResult result;
     result.Vxc_alpha = xt::xtensor<double, 2>::from_shape({Ns, Ns});
-    result.Vxc_beta  = xt::xtensor<double, 2>::from_shape({Ns, Ns});
+    result.Vxc_beta = xt::xtensor<double, 2>::from_shape({Ns, Ns});
     for (int mu = 0; mu < N; ++mu)
         for (int nu = 0; nu < N; ++nu) {
             result.Vxc_alpha(mu, nu) = static_cast<double>(Vxc_a_d(mu, nu));
-            result.Vxc_beta(mu, nu)  = static_cast<double>(Vxc_b_d(mu, nu));
+            result.Vxc_beta(mu, nu) = static_cast<double>(Vxc_b_d(mu, nu));
         }
     result.E_xc = static_cast<double>(E_xc);
     result.n_alpha_integrated = static_cast<double>(n_alpha_int);
-    result.n_beta_integrated  = static_cast<double>(n_beta_int);
+    result.n_beta_integrated = static_cast<double>(n_beta_int);
     return result;
 }
 

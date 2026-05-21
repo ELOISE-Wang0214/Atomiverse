@@ -35,14 +35,14 @@ namespace {
 /// the 12 existing Langevin tests.
 struct GaussStream {
     std::uint64_t s;
-    bool  has_cached = false;
+    bool has_cached = false;
     double cached = 0.0;
     double next_u01() {
         s += 0x9E3779B97F4A7C15ULL;
         std::uint64_t z = s;
         z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
         z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
-        z =  z ^ (z >> 31);
+        z = z ^ (z >> 31);
         return static_cast<double>(z >> 11) * (1.0 / 9007199254740992.0);
     }
     double next() {
@@ -62,16 +62,16 @@ struct GaussStream {
 
 } // namespace
 
-FixLangevin::FixLangevin(double T_start, double T_stop, double damp,
-                         double dt, std::uint32_t seed)
+FixLangevin::FixLangevin(double T_start, double T_stop, double damp, double dt,
+                         std::uint32_t seed)
     : T_start_(T_start),
       // A negative `T_stop` is the "no ramp" sentinel — fold it to
       // `T_start` so `compute_target()` sees `T_start == T_stop` and the
       // linear interpolation degenerates to the constant setpoint. This
       // mirrors LAMMPS `fix_langevin.cpp` ctor line `t_target = t_start`
       // (`fix_langevin.cpp:72`) when only one temperature is given.
-      T_stop_(T_stop < 0.0 ? T_start : T_stop),
-      damp_(damp), dt_(dt), seed_(seed) {
+      T_stop_(T_stop < 0.0 ? T_start : T_stop), damp_(damp), dt_(dt),
+      seed_(seed) {
     T_live_ = T_start_;
 }
 
@@ -98,7 +98,7 @@ void FixLangevin::launch(const cpu::LaunchContext& ctx) {
     double delta = 0.0;
     if (nlast_ > nfirst_) {
         delta = static_cast<double>(ctx.step - nfirst_)
-              / static_cast<double>(nlast_ - nfirst_);
+                / static_cast<double>(nlast_ - nfirst_);
         delta = std::clamp(delta, 0.0, 1.0);
     }
     T_live_ = T_start_ + delta * (T_stop_ - T_start_);
@@ -117,13 +117,13 @@ void FixLangevin::launch(const cpu::LaunchContext& ctx) {
     // honoured exactly like LAMMPS scaling `gfactor2` by `tsqrt`.
     const double inv_damp_ftm2v = 1.0 / (damp_ * kFtm2v);
     const double gfactor2_pre =
-        std::sqrt(2.0 * kBoltzmann * T_live_
-                  / (damp_ * dt_ * kMvv2e)) / kFtm2v;
+        std::sqrt(2.0 * kBoltzmann * T_live_ / (damp_ * dt_ * kMvv2e)) / kFtm2v;
 
-    #pragma omp parallel for schedule(static)
+#pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
-        GaussStream g{base + static_cast<std::uint64_t>(f.atoms.tag[i])
-                              * 0xD6E8FEB86659FD93ULL};
+        GaussStream g{base
+                      + static_cast<std::uint64_t>(f.atoms.tag[i])
+                            * 0xD6E8FEB86659FD93ULL};
 
         const double m = f.atoms.mass[i];
         const double gfactor1 = -m * inv_damp_ftm2v;

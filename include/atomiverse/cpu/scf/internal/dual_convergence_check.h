@@ -27,13 +27,13 @@ namespace scf {
 namespace internal {
 
 struct ConvergenceVerdict {
-    bool converged = false;     ///< True iff dual criteria both satisfied.
-    double dE = 0.0;            ///< E_total − E_prev (∞ on iter 0).
-    double err_norm = 0.0;      ///< ‖err‖_F (combined α + β, Frobenius).
+    bool converged = false; ///< True iff dual criteria both satisfied.
+    double dE = 0.0;        ///< E_total − E_prev (∞ on iter 0).
+    double err_norm = 0.0;  ///< ‖err‖_F (combined α + β, Frobenius).
 };
 
 class DualConvergenceCheck {
-public:
+  public:
     /// @param tol_energy  Energy tolerance (Hartree).
     /// @param tol_grad    DIIS-error gradient tolerance (Frobenius norm).
     DualConvergenceCheck(double tol_energy, double tol_grad)
@@ -51,13 +51,11 @@ public:
     /// @param err_beta   β-channel DIIS error matrix; pass `nullptr` (or the
     ///                   same as err_alpha) for restricted SCF.
     /// @return Verdict (converged flag + diagnostics).
-    ConvergenceVerdict step(double E_total,
-                            const RealMatrix& err_alpha,
+    ConvergenceVerdict step(double E_total, const RealMatrix& err_alpha,
                             const RealMatrix* err_beta = nullptr) {
         ConvergenceVerdict v;
-        v.dE = has_prev_
-             ? E_total - prev_energy_
-             : std::numeric_limits<double>::infinity();
+        v.dE = has_prev_ ? E_total - prev_energy_
+                         : std::numeric_limits<double>::infinity();
 
         const double ea = xt::norm_l2(err_alpha)();
         if (err_beta != nullptr) {
@@ -67,20 +65,19 @@ public:
             v.err_norm = ea;
         }
 
-        v.converged = has_prev_
-                    && (std::abs(v.dE) < tol_energy_)
-                    && (v.err_norm < tol_grad_);
+        v.converged = has_prev_ && (std::abs(v.dE) < tol_energy_)
+                      && (v.err_norm < tol_grad_);
 
         prev_energy_ = E_total;
         has_prev_ = true;
         return v;
     }
 
-private:
+  private:
     double tol_energy_;
     double tol_grad_;
     double prev_energy_ = 0.0;
-    bool   has_prev_ = false;
+    bool has_prev_ = false;
 };
 
 } // namespace internal

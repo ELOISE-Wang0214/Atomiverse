@@ -2,9 +2,9 @@
 /// @brief cpu::Backend implementation.
 
 #include "atomiverse/cpu/backend.h"
+#include "atomiverse/core/log.h"
 #include "atomiverse/cpu/analysis_executor.h"
 #include "atomiverse/cpu/md/mpi/domain.h"
-#include "atomiverse/core/log.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -22,7 +22,7 @@ namespace ATV {
 namespace cpu {
 
 Backend::Backend() = default;
-Backend::~Backend() { shutdown(); }  // idempotent; releases cart_comm + executor
+Backend::~Backend() { shutdown(); } // idempotent; releases cart_comm + executor
 Backend::Backend(Backend&&) noexcept = default;
 Backend& Backend::operator=(Backend&&) noexcept = default;
 
@@ -49,22 +49,25 @@ void Backend::init() {
         const bool unset = (bind == nullptr) || std::string(bind).empty();
         // Treat "false" as "unset" too — that's the OMP value users
         // explicitly opt out with, but it's still bad for NUMA.
-        const bool unbinding = unset ||
-            std::string(bind) == "false" || std::string(bind) == "FALSE";
+        const bool unbinding = unset || std::string(bind) == "false"
+                               || std::string(bind) == "FALSE";
         if (unbinding) {
             int my_rank = 0;
 #ifdef ATV_HAS_MPI
             int mpi_init_check = 0;
             MPI_Initialized(&mpi_init_check);
-            if (mpi_init_check) MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
+            if (mpi_init_check)
+                MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
 #endif
             if (my_rank == 0) {
-                std::fprintf(stderr,
+                std::fprintf(
+                    stderr,
                     "[atv] warning: OMP_PROC_BIND is unset and "
                     "n_threads=%d > 1; consider 'export OMP_PROC_BIND=close "
                     "OMP_PLACES=cores' for stable hot-path throughput "
                     "(see benchmarks/md/reference/polyethylene/README.md "
-                    "'Thread binding').\n", context_.n_threads);
+                    "'Thread binding').\n",
+                    context_.n_threads);
                 std::fflush(stderr);
             }
             s_omp_bind_warned = true;
@@ -106,7 +109,8 @@ void Backend::init() {
 
 void Backend::set_frame(cpu::Frame& frame) {
     frame_ = &frame;
-    if (!dd_) return;
+    if (!dd_)
+        return;
 
 #ifdef ATV_HAS_MPI
     if (context_.mpi_size > 1 && dd_->cart_comm != MPI_COMM_NULL) {
@@ -130,7 +134,8 @@ void Backend::build_components() {
 
 void Backend::step(int step_idx) {
     for (auto& slot : plan_->slots) {
-        if (slot.ops.empty()) continue;
+        if (slot.ops.empty())
+            continue;
         for (auto& op : slot.ops) {
             if (op.frequency > 0 && step_idx % op.frequency != 0)
                 continue;
@@ -142,19 +147,22 @@ void Backend::step(int step_idx) {
 
 void Backend::run(int n_steps) {
     ATV_INFO("running {} steps ({} atoms)", n_steps, frame_->atoms.size());
-    for (int s = 0; s < n_steps; ++s) step(s);
+    for (int s = 0; s < n_steps; ++s)
+        step(s);
     ATV_INFO("run complete");
 }
 
 void Backend::drain_analysis() {
-    if (executor_) executor_->quiesce();
+    if (executor_)
+        executor_->quiesce();
 }
 
 void Backend::destroy_components() {
     // Drain and join analysis workers first so any in-flight `on_snapshot`
     // completes against live subscribers, and `finalize()` runs on the main
     // thread before any component enters its `destroy()` path.
-    if (executor_) executor_->shutdown();
+    if (executor_)
+        executor_->shutdown();
 
     DestroyContext ctx{context_, *frame_};
     for (int s = static_cast<int>(plan_->slots.size()) - 1; s >= 0; --s) {
@@ -170,7 +178,7 @@ void Backend::destroy_components() {
 void Backend::shutdown() {
     ATV_DEBUG("CPU backend shutting down");
     if (executor_) {
-        executor_->shutdown();  // idempotent
+        executor_->shutdown(); // idempotent
         executor_.reset();
     }
     context_.executor = nullptr;

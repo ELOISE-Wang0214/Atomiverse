@@ -3,10 +3,10 @@
 
 #include "atomiverse/cpu/pw/internal/upf_reader.h"
 #include <cstdio>
+#include <cstring>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
-#include <cstring>
 
 namespace ATV {
 namespace cpu {
@@ -20,22 +20,26 @@ std::string extract_attr(const std::string& line, const std::string& attr) {
     // like "l=\"" inside "label=\"3S\""
     std::string pat = " " + attr + "=\"";
     auto p = line.find(pat);
-    if (p == std::string::npos) return "";
+    if (p == std::string::npos)
+        return "";
     p += pat.size(); // skip past ' attr="'
     auto q = line.find("\"", p);
-    if (q == std::string::npos) return "";
+    if (q == std::string::npos)
+        return "";
     return line.substr(p, q - p);
 }
 
 bool tag_open(const std::string& line, const std::string& tag) {
     auto p = line.find("<" + tag);
-    if (p == std::string::npos) return false;
+    if (p == std::string::npos)
+        return false;
     // Ensure exact tag match: next char must be '>', ' ', '\t', '.', or digit
     auto end = p + 1 + tag.size();
     if (end < line.size()) {
         char c = line[end];
         if (c != '>' && c != ' ' && c != '\t' && c != '\r' && c != '\n'
-            && c != '.' && !std::isdigit(static_cast<unsigned char>(c))) return false;
+            && c != '.' && !std::isdigit(static_cast<unsigned char>(c)))
+            return false;
     }
     return line.find("/>") == std::string::npos;
 }
@@ -48,23 +52,28 @@ std::vector<Real> parse_values(std::istream& in, const std::string& end_tag) {
     std::vector<Real> vals;
     std::string line;
     while (std::getline(in, line)) {
-        if (line.find(end_tag) != std::string::npos) break;
+        if (line.find(end_tag) != std::string::npos)
+            break;
         // trim
         auto s = line;
-        while (!s.empty() && (s[0]==' '||s[0]=='\t')) s.erase(0,1);
-        if (s.empty()) continue;
+        while (!s.empty() && (s[0] == ' ' || s[0] == '\t'))
+            s.erase(0, 1);
+        if (s.empty())
+            continue;
         std::istringstream ss(s);
         double d;
-        while (ss >> d) vals.push_back(static_cast<Real>(d));
+        while (ss >> d)
+            vals.push_back(static_cast<Real>(d));
     }
     return vals;
 }
 
-} // anonymous
+} // namespace
 
 UPFData read_upf_v1(const std::string& path) {
     std::ifstream f(path);
-    if (!f) throw std::runtime_error("UPF: cannot open " + path);
+    if (!f)
+        throw std::runtime_error("UPF: cannot open " + path);
 
     UPFData upf;
     std::string line;
@@ -74,8 +83,10 @@ UPFData read_upf_v1(const std::string& path) {
         if (line.find("<PP_HEADER") != std::string::npos) {
             auto zv = extract_attr(line, "z_valence");
             auto lm = extract_attr(line, "l_max");
-            if (!zv.empty()) upf.z_val = std::stoi(zv);
-            if (!lm.empty()) upf.l_max = std::stoi(lm);
+            if (!zv.empty())
+                upf.z_val = std::stoi(zv);
+            if (!lm.empty())
+                upf.l_max = std::stoi(lm);
         }
         // PP_MESH
         if (tag_open(line, "PP_MESH")) {
@@ -85,7 +96,8 @@ UPFData read_upf_v1(const std::string& path) {
                     upf.r = parse_values(f, "PP_R");
                     break;
                 }
-                if (tag_close(line, "PP_MESH")) break;
+                if (tag_close(line, "PP_MESH"))
+                    break;
             }
         }
         // PP_LOCAL
@@ -103,12 +115,14 @@ UPFData read_upf_v1(const std::string& path) {
         // PP_NONLOCAL
         if (tag_open(line, "PP_NONLOCAL")) {
             while (std::getline(f, line)) {
-                if (tag_close(line, "PP_NONLOCAL")) break;
+                if (tag_close(line, "PP_NONLOCAL"))
+                    break;
                 // Read PP_BETA sections
                 if (tag_open(line, "PP_BETA")) {
                     int l = 0;
                     auto lang = extract_attr(line, "angular_momentum");
-                    if (!lang.empty()) l = std::stoi(lang);
+                    if (!lang.empty())
+                        l = std::stoi(lang);
                     auto beta_vals = parse_values(f, "PP_BETA");
                     UPFData::KBProjector kb;
                     kb.l = l;
@@ -121,7 +135,9 @@ UPFData read_upf_v1(const std::string& path) {
                     upf.d_ij = parse_values(f, "PP_DIJ");
                     int n = static_cast<int>(upf.kb.size());
                     // Also set diagonal for backward compatibility
-                    for (int i = 0; i < n && i * n + i < static_cast<int>(upf.d_ij.size()); ++i)
+                    for (int i = 0;
+                         i < n && i * n + i < static_cast<int>(upf.d_ij.size());
+                         ++i)
                         upf.kb[i].d = upf.d_ij[i * n + i];
                 }
                 // Read PP_Q (augmentation charges, inside PP_AUGMENTATION)
@@ -141,8 +157,10 @@ UPFData read_upf_v1(const std::string& path) {
             Real occ = 0;
             auto lang = extract_attr(line, "l");
             auto oattr = extract_attr(line, "occupation");
-            if (!lang.empty()) l_chi = std::stoi(lang);
-            if (!oattr.empty()) occ = static_cast<Real>(std::stod(oattr));
+            if (!lang.empty())
+                l_chi = std::stoi(lang);
+            if (!oattr.empty())
+                occ = static_cast<Real>(std::stod(oattr));
             auto chi_vals = parse_values(f, "PP_CHI");
             upf.chi.push_back(std::move(chi_vals));
             upf.lchi.push_back(l_chi);

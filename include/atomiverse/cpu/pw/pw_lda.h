@@ -3,8 +3,8 @@
 #pragma once
 
 #include "atomiverse/cpu/component.h"
-#include "atomiverse/facade/stage.h"
 #include "atomiverse/cpu/pw/pw_workspace.h"
+#include "atomiverse/facade/stage.h"
 
 namespace ATV {
 namespace cpu {
@@ -12,10 +12,12 @@ namespace pw {
 
 class PW_LDA : public cpu::ComponentBase {
     PWWorkspace* ws_ = nullptr;
-public:
+
+  public:
     std::string name() const override { return "PW_LDA"; }
     std::vector<DefaultBinding> default_bindings() const override {
-        return {DefaultBinding{static_cast<int>(ATV::scf::Phase::build_hamiltonian), -50}};
+        return {DefaultBinding{
+            static_cast<int>(ATV::scf::Phase::build_hamiltonian), -50}};
     }
     void build(const cpu::BuildContext& ctx) override;
     void launch(const cpu::LaunchContext& ctx) override;

@@ -41,17 +41,16 @@ namespace {
 //   int64:   tag                                           (1)
 //   int8:    image[3]                                      (3)
 constexpr int kPayloadDoubles = 10;
-constexpr int kPayloadInt32   = 1;
-constexpr int kPayloadInt64   = 1;
-constexpr int kPayloadInt8    = 3;
+constexpr int kPayloadInt32 = 1;
+constexpr int kPayloadInt64 = 1;
+constexpr int kPayloadInt8 = 3;
 constexpr int kAtomPayloadBytes =
-    sizeof(double)  * kPayloadDoubles
-  + sizeof(std::int32_t) * kPayloadInt32
-  + sizeof(std::int64_t) * kPayloadInt64
-  + sizeof(std::int8_t)  * kPayloadInt8;
+    sizeof(double) * kPayloadDoubles + sizeof(std::int32_t) * kPayloadInt32
+    + sizeof(std::int64_t) * kPayloadInt64 + sizeof(std::int8_t) * kPayloadInt8;
 
 inline int rank_along_dim(double q, double L, int dims_d) {
-    if (dims_d <= 1) return 0;
+    if (dims_d <= 1)
+        return 0;
     const int r = static_cast<int>(q * static_cast<double>(dims_d) / L);
     return std::max(0, std::min(dims_d - 1, r));
 }
@@ -62,14 +61,17 @@ inline int rank_along_dim(double q, double L, int dims_d) {
 inline int slab_along_dim_from_cuts(double frac,
                                     const std::vector<double>& cuts,
                                     int dims_d) {
-    if (dims_d <= 1) return 0;
+    if (dims_d <= 1)
+        return 0;
     // upper_bound gives the first cuts[i] strictly greater than frac;
     // its predecessor is the slab index. Clamp against FP rounding at the
     // top edge.
     auto it = std::upper_bound(cuts.begin(), cuts.end(), frac);
     int k = static_cast<int>(std::distance(cuts.begin(), it)) - 1;
-    if (k < 0) k = 0;
-    if (k > dims_d - 1) k = dims_d - 1;
+    if (k < 0)
+        k = 0;
+    if (k > dims_d - 1)
+        k = dims_d - 1;
     return k;
 }
 
@@ -81,8 +83,8 @@ inline int slab_along_dim_from_cuts(double frac,
 // planes -- which guarantees the same rank assignment that
 // `DomainDecomposition::compute_sublo_subhi` would produce on the destination
 // side.
-inline int dest_rank_for(const DomainDecomposition& dd, double x, double y, double z,
-                          const cpu::Box& box) {
+inline int dest_rank_for(const DomainDecomposition& dd, double x, double y,
+                         double z, const cpu::Box& box) {
     auto axis_coord = [&](int d, double q) {
         const double L = box.length(d);
         const double wrapped = box.wrap_axis(q, d);
@@ -101,12 +103,12 @@ inline int dest_rank_for(const DomainDecomposition& dd, double x, double y, doub
 // Pack one atom's per-atom fields into `buf` at `offset`. Returns the new
 // offset after writing `kAtomPayloadBytes` bytes.
 std::size_t pack_atom(std::vector<char>& buf, std::size_t offset,
-                       const Frame& frame, int i) {
+                      const Frame& frame, int i) {
     char* p = buf.data() + offset;
     const double dvals[kPayloadDoubles] = {
-        frame.atoms.x[i],  frame.atoms.y[i],  frame.atoms.z[i],
-        frame.atoms.vx[i], frame.atoms.vy[i], frame.atoms.vz[i],
-        frame.atoms.fx[i], frame.atoms.fy[i], frame.atoms.fz[i],
+        frame.atoms.x[i],    frame.atoms.y[i],  frame.atoms.z[i],
+        frame.atoms.vx[i],   frame.atoms.vy[i], frame.atoms.vz[i],
+        frame.atoms.fx[i],   frame.atoms.fy[i], frame.atoms.fz[i],
         frame.atoms.mass[i],
     };
     std::memcpy(p, dvals, sizeof(dvals));
@@ -118,7 +120,9 @@ std::size_t pack_atom(std::vector<char>& buf, std::size_t offset,
     std::memcpy(p, &tag, sizeof(tag));
     p += sizeof(tag);
     const std::int8_t img[3] = {
-        frame.atoms.image(i, 0), frame.atoms.image(i, 1), frame.atoms.image(i, 2),
+        frame.atoms.image(i, 0),
+        frame.atoms.image(i, 1),
+        frame.atoms.image(i, 2),
     };
     std::memcpy(p, img, sizeof(img));
     return offset + kAtomPayloadBytes;
@@ -127,20 +131,20 @@ std::size_t pack_atom(std::vector<char>& buf, std::size_t offset,
 // Unpack one atom's per-atom fields into local frame slot `slot`. Returns
 // the source offset after reading `kAtomPayloadBytes` bytes.
 std::size_t unpack_atom(const std::vector<char>& buf, std::size_t offset,
-                         Frame& frame, int slot) {
+                        Frame& frame, int slot) {
     const char* p = buf.data() + offset;
     double dvals[kPayloadDoubles];
     std::memcpy(dvals, p, sizeof(dvals));
     p += sizeof(dvals);
-    frame.atoms.x[slot]    = dvals[0];
-    frame.atoms.y[slot]    = dvals[1];
-    frame.atoms.z[slot]    = dvals[2];
-    frame.atoms.vx[slot]   = dvals[3];
-    frame.atoms.vy[slot]   = dvals[4];
-    frame.atoms.vz[slot]   = dvals[5];
-    frame.atoms.fx[slot]   = dvals[6];
-    frame.atoms.fy[slot]   = dvals[7];
-    frame.atoms.fz[slot]   = dvals[8];
+    frame.atoms.x[slot] = dvals[0];
+    frame.atoms.y[slot] = dvals[1];
+    frame.atoms.z[slot] = dvals[2];
+    frame.atoms.vx[slot] = dvals[3];
+    frame.atoms.vy[slot] = dvals[4];
+    frame.atoms.vz[slot] = dvals[5];
+    frame.atoms.fx[slot] = dvals[6];
+    frame.atoms.fy[slot] = dvals[7];
+    frame.atoms.fz[slot] = dvals[8];
     frame.atoms.mass[slot] = dvals[9];
     std::int32_t typ;
     std::memcpy(&typ, p, sizeof(typ));
@@ -160,19 +164,20 @@ std::size_t unpack_atom(const std::vector<char>& buf, std::size_t offset,
 
 // Move owner row `oi` into slot `ni` (no-op when `oi == ni`).
 void move_row(Frame& frame, int ni, int oi) {
-    if (ni == oi) return;
-    frame.atoms.x[ni]    = frame.atoms.x[oi];
-    frame.atoms.y[ni]    = frame.atoms.y[oi];
-    frame.atoms.z[ni]    = frame.atoms.z[oi];
-    frame.atoms.vx[ni]   = frame.atoms.vx[oi];
-    frame.atoms.vy[ni]   = frame.atoms.vy[oi];
-    frame.atoms.vz[ni]   = frame.atoms.vz[oi];
-    frame.atoms.fx[ni]   = frame.atoms.fx[oi];
-    frame.atoms.fy[ni]   = frame.atoms.fy[oi];
-    frame.atoms.fz[ni]   = frame.atoms.fz[oi];
+    if (ni == oi)
+        return;
+    frame.atoms.x[ni] = frame.atoms.x[oi];
+    frame.atoms.y[ni] = frame.atoms.y[oi];
+    frame.atoms.z[ni] = frame.atoms.z[oi];
+    frame.atoms.vx[ni] = frame.atoms.vx[oi];
+    frame.atoms.vy[ni] = frame.atoms.vy[oi];
+    frame.atoms.vz[ni] = frame.atoms.vz[oi];
+    frame.atoms.fx[ni] = frame.atoms.fx[oi];
+    frame.atoms.fy[ni] = frame.atoms.fy[oi];
+    frame.atoms.fz[ni] = frame.atoms.fz[oi];
     frame.atoms.mass[ni] = frame.atoms.mass[oi];
     frame.atoms.type[ni] = frame.atoms.type[oi];
-    frame.atoms.tag[ni]  = frame.atoms.tag[oi];
+    frame.atoms.tag[ni] = frame.atoms.tag[oi];
     frame.atoms.image(ni, 0) = frame.atoms.image(oi, 0);
     frame.atoms.image(ni, 1) = frame.atoms.image(oi, 1);
     frame.atoms.image(ni, 2) = frame.atoms.image(oi, 2);
@@ -181,9 +186,11 @@ void move_row(Frame& frame, int ni, int oi) {
 } // namespace
 
 void AtomMigration::launch(const cpu::LaunchContext& ctx) {
-    if (ctx.runtime.mpi_size <= 1) return;
+    if (ctx.runtime.mpi_size <= 1)
+        return;
     auto* dd = ctx.runtime.dd;
-    if (!dd || dd->cart_comm == MPI_COMM_NULL) return;
+    if (!dd || dd->cart_comm == MPI_COMM_NULL)
+        return;
 
     Frame& frame = ctx.frame;
 
@@ -191,8 +198,7 @@ void AtomMigration::launch(const cpu::LaunchContext& ctx) {
     MPI_Comm_rank(dd->cart_comm, &my_rank);
     const int world_size = dd->dims[0] * dd->dims[1] * dd->dims[2];
 
-    const bool first_launch =
-        last_observed_generation_ == ~std::uint64_t{0};
+    const bool first_launch = last_observed_generation_ == ~std::uint64_t{0};
     const bool generation_changed =
         !first_launch && dd->neighbor_generation != last_observed_generation_;
     if ((ctx.step % every_) != 0 && !generation_changed) {
@@ -203,7 +209,8 @@ void AtomMigration::launch(const cpu::LaunchContext& ctx) {
     // down; `migrate_indices_by_rank[r]` holds rows we'll ship to rank `r`.
     std::vector<int> keep_indices;
     keep_indices.reserve(static_cast<std::size_t>(dd->n_local));
-    std::vector<std::vector<int>> migrate_indices_by_rank(static_cast<std::size_t>(world_size));
+    std::vector<std::vector<int>> migrate_indices_by_rank(
+        static_cast<std::size_t>(world_size));
 
     int n_to_migrate = 0;
     for (int i = 0; i < dd->n_local; ++i) {
@@ -212,7 +219,8 @@ void AtomMigration::launch(const cpu::LaunchContext& ctx) {
         if (dest == my_rank) {
             keep_indices.push_back(i);
         } else {
-            migrate_indices_by_rank[static_cast<std::size_t>(dest)].push_back(i);
+            migrate_indices_by_rank[static_cast<std::size_t>(dest)].push_back(
+                i);
             ++n_to_migrate;
         }
     }
@@ -222,8 +230,7 @@ void AtomMigration::launch(const cpu::LaunchContext& ctx) {
     // a migration would deadlock everyone if others bailed out early.
     int any_local = (n_to_migrate > 0) ? 1 : 0;
     int any_global = 0;
-    MPI_Allreduce(&any_local, &any_global, 1, MPI_INT, MPI_LOR,
-                  dd->cart_comm);
+    MPI_Allreduce(&any_local, &any_global, 1, MPI_INT, MPI_LOR, dd->cart_comm);
     if (any_global == 0) {
         last_observed_generation_ = dd->neighbor_generation;
         return;
@@ -238,9 +245,12 @@ void AtomMigration::launch(const cpu::LaunchContext& ctx) {
 
     std::size_t total_send_bytes = 0;
     for (int r = 0; r < world_size; ++r) {
-        const std::size_t n = migrate_indices_by_rank[static_cast<std::size_t>(r)].size();
-        send_displs[static_cast<std::size_t>(r)] = static_cast<int>(total_send_bytes);
-        send_counts[static_cast<std::size_t>(r)] = static_cast<int>(n * kAtomPayloadBytes);
+        const std::size_t n =
+            migrate_indices_by_rank[static_cast<std::size_t>(r)].size();
+        send_displs[static_cast<std::size_t>(r)] =
+            static_cast<int>(total_send_bytes);
+        send_counts[static_cast<std::size_t>(r)] =
+            static_cast<int>(n * kAtomPayloadBytes);
         total_send_bytes += n * kAtomPayloadBytes;
     }
 
@@ -254,31 +264,35 @@ void AtomMigration::launch(const cpu::LaunchContext& ctx) {
 
     // Exchange counts (in bytes) so every rank knows how much to receive
     // from every other rank.
-    MPI_Alltoall(send_counts.data(), 1, MPI_INT,
-                 recv_counts.data(), 1, MPI_INT, dd->cart_comm);
+    MPI_Alltoall(send_counts.data(), 1, MPI_INT, recv_counts.data(), 1, MPI_INT,
+                 dd->cart_comm);
 
     std::size_t total_recv_bytes = 0;
     for (int r = 0; r < world_size; ++r) {
-        recv_displs[static_cast<std::size_t>(r)] = static_cast<int>(total_recv_bytes);
-        total_recv_bytes += static_cast<std::size_t>(recv_counts[static_cast<std::size_t>(r)]);
+        recv_displs[static_cast<std::size_t>(r)] =
+            static_cast<int>(total_recv_bytes);
+        total_recv_bytes +=
+            static_cast<std::size_t>(recv_counts[static_cast<std::size_t>(r)]);
     }
 
     std::vector<char> recv_buf(total_recv_bytes);
 
-    MPI_Alltoallv(send_buf.data(), send_counts.data(), send_displs.data(), MPI_BYTE,
-                  recv_buf.data(), recv_counts.data(), recv_displs.data(), MPI_BYTE,
-                  dd->cart_comm);
+    MPI_Alltoallv(send_buf.data(), send_counts.data(), send_displs.data(),
+                  MPI_BYTE, recv_buf.data(), recv_counts.data(),
+                  recv_displs.data(), MPI_BYTE, dd->cart_comm);
 
     // Compact kept owners to the front of every per-atom array.
     const int new_n_kept = static_cast<int>(keep_indices.size());
     for (int ni = 0; ni < new_n_kept; ++ni) {
         const int oi = keep_indices[static_cast<std::size_t>(ni)];
-        if (oi != ni) move_row(frame, ni, oi);
+        if (oi != ni)
+            move_row(frame, ni, oi);
     }
 
     // Append received atoms to the local owner range.
-    const int n_received = static_cast<int>(total_recv_bytes / kAtomPayloadBytes);
-    const int new_total  = new_n_kept + n_received;
+    const int n_received =
+        static_cast<int>(total_recv_bytes / kAtomPayloadBytes);
+    const int new_total = new_n_kept + n_received;
     if (new_total > dd->capacity) {
         // Phase 0.2: never grow allocation in launch(). Capacity is fixed at
         // partition time. If a real workload trips this, the user must
@@ -294,8 +308,8 @@ void AtomMigration::launch(const cpu::LaunchContext& ctx) {
     }
 
     dd->n_local = new_n_kept + n_appendable;
-    dd->n_ghost = 0;  // any ghost slots from the previous step are now stale;
-                      // HaloExchangeForward will rewrite them this step.
+    dd->n_ghost = 0; // any ghost slots from the previous step are now stale;
+                     // HaloExchangeForward will rewrite them this step.
     ++dd->neighbor_generation;
 
     // Rebuild tag → local index map. Bonded indices that key off `tag_to_local`

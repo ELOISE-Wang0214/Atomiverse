@@ -26,7 +26,7 @@ enum class OrbitalSpin { Alpha, Beta };
 
 /// @brief Molecular-orbital cube writer.
 class OrbitalCubeWriter : public cpu::ComponentBase {
-public:
+  public:
     /// @brief Construct with automatic bounding-box grid.
     /// @param handle     Shared view of the SCFEvaluator's state.
     /// @param filename   Output cube path.
@@ -35,20 +35,14 @@ public:
     /// @param padding    Bounding-box padding [Bohr].
     /// @param spacing    Isotropic grid spacing [Bohr].
     /// @param stride     Write every N steps.
-    OrbitalCubeWriter(scf::SCFResultHandle handle,
-                      std::string filename,
-                      int mo_index,
-                      OrbitalSpin spin = OrbitalSpin::Alpha,
-                      double padding = 4.0,
-                      double spacing = 0.25,
+    OrbitalCubeWriter(scf::SCFResultHandle handle, std::string filename,
+                      int mo_index, OrbitalSpin spin = OrbitalSpin::Alpha,
+                      double padding = 4.0, double spacing = 0.25,
                       int stride = 1);
 
     /// @brief Construct with an explicit grid.
-    OrbitalCubeWriter(scf::SCFResultHandle handle,
-                      std::string filename,
-                      int mo_index,
-                      OrbitalSpin spin,
-                      CubeGrid grid,
+    OrbitalCubeWriter(scf::SCFResultHandle handle, std::string filename,
+                      int mo_index, OrbitalSpin spin, CubeGrid grid,
                       int stride = 1);
 
     std::string name() const override { return "orbital_cube_writer"; }
@@ -58,7 +52,7 @@ public:
     /// @brief Number of cube files written.
     int n_writes() const { return n_writes_; }
 
-private:
+  private:
     scf::SCFResultHandle handle_;
     std::string filename_;
     int mo_index_;

@@ -39,15 +39,14 @@ namespace cpu {
 /// frame.box = Mat3::cubic(10.0);
 /// @endcode
 class Frame {
-public:
+  public:
     /// @brief Construct a Frame for the given number of atoms.
     ///
     /// All per-atom arrays are allocated and zero-initialized.
     /// Topology blocks (bonds, angles, dihedrals) default to empty.
     ///
     /// @param n_atoms Number of atoms in the system.
-    explicit Frame(int n_atoms)
-        : atoms(n_atoms) {}
+    explicit Frame(int n_atoms) : atoms(n_atoms) {}
 
     // ── Per-atom block (molcrafts: "atoms" namespace) ──
 
@@ -56,32 +55,25 @@ public:
         /// @brief Construct Atoms block for the given number of atoms.
         /// @param n Number of atoms.
         explicit Atoms(int n)
-            : x(xt::zeros<double>({n})),
-              y(xt::zeros<double>({n})),
-              z(xt::zeros<double>({n})),
-              vx(xt::zeros<double>({n})),
-              vy(xt::zeros<double>({n})),
-              vz(xt::zeros<double>({n})),
-              fx(xt::zeros<double>({n})),
-              fy(xt::zeros<double>({n})),
-              fz(xt::zeros<double>({n})),
-              mass(xt::zeros<double>({n})),
-              type(xt::zeros<int>({n})),
-              tag(xt::arange<std::int64_t>(0, n)),
-              image(xt::zeros<std::int8_t>({n, 3})),
-              n_(n) {}
+            : x(xt::zeros<double>({n})), y(xt::zeros<double>({n})),
+              z(xt::zeros<double>({n})), vx(xt::zeros<double>({n})),
+              vy(xt::zeros<double>({n})), vz(xt::zeros<double>({n})),
+              fx(xt::zeros<double>({n})), fy(xt::zeros<double>({n})),
+              fz(xt::zeros<double>({n})), mass(xt::zeros<double>({n})),
+              type(xt::zeros<int>({n})), tag(xt::arange<std::int64_t>(0, n)),
+              image(xt::zeros<std::int8_t>({n, 3})), n_(n) {}
 
-        xt::xtensor<double, 1> x;      ///< x positions [Angstrom].
-        xt::xtensor<double, 1> y;      ///< y positions [Angstrom].
-        xt::xtensor<double, 1> z;      ///< z positions [Angstrom].
-        xt::xtensor<double, 1> vx;     ///< x velocities [Angstrom/fs].
-        xt::xtensor<double, 1> vy;     ///< y velocities [Angstrom/fs].
-        xt::xtensor<double, 1> vz;     ///< z velocities [Angstrom/fs].
-        xt::xtensor<double, 1> fx;     ///< x forces [eV/Angstrom].
-        xt::xtensor<double, 1> fy;     ///< y forces [eV/Angstrom].
-        xt::xtensor<double, 1> fz;     ///< z forces [eV/Angstrom].
-        xt::xtensor<double, 1> mass;   ///< Masses [amu].
-        xt::xtensor<int, 1>  type;     ///< Atom type indices.
+        xt::xtensor<double, 1> x;    ///< x positions [Angstrom].
+        xt::xtensor<double, 1> y;    ///< y positions [Angstrom].
+        xt::xtensor<double, 1> z;    ///< z positions [Angstrom].
+        xt::xtensor<double, 1> vx;   ///< x velocities [Angstrom/fs].
+        xt::xtensor<double, 1> vy;   ///< y velocities [Angstrom/fs].
+        xt::xtensor<double, 1> vz;   ///< z velocities [Angstrom/fs].
+        xt::xtensor<double, 1> fx;   ///< x forces [eV/Angstrom].
+        xt::xtensor<double, 1> fy;   ///< y forces [eV/Angstrom].
+        xt::xtensor<double, 1> fz;   ///< z forces [eV/Angstrom].
+        xt::xtensor<double, 1> mass; ///< Masses [amu].
+        xt::xtensor<int, 1> type;    ///< Atom type indices.
 
         /// @brief Global atom identity, persistent across MPI migration and restart.
         ///
@@ -102,7 +94,7 @@ public:
         /// @return Atom count.
         int size() const { return n_; }
 
-    private:
+      private:
         int n_;
     } atoms;
 
@@ -110,9 +102,9 @@ public:
 
     /// @brief Bond topology block matching molpy bonds namespace.
     struct Bonds {
-        xt::xtensor<int, 1> atomi;   ///< First atom index for each bond.
-        xt::xtensor<int, 1> atomj;   ///< Second atom index for each bond.
-        xt::xtensor<int, 1> type;    ///< Bond type index.
+        xt::xtensor<int, 1> atomi; ///< First atom index for each bond.
+        xt::xtensor<int, 1> atomj; ///< Second atom index for each bond.
+        xt::xtensor<int, 1> type;  ///< Bond type index.
 
         /// @brief Number of bonds.
         /// @return Bond count.
@@ -123,10 +115,10 @@ public:
 
     /// @brief Angle topology block matching molpy angles namespace.
     struct Angles {
-        xt::xtensor<int, 1> atomi;   ///< First atom index for each angle.
-        xt::xtensor<int, 1> atomj;   ///< Center atom index for each angle.
-        xt::xtensor<int, 1> atomk;   ///< Third atom index for each angle.
-        xt::xtensor<int, 1> type;    ///< Angle type index.
+        xt::xtensor<int, 1> atomi; ///< First atom index for each angle.
+        xt::xtensor<int, 1> atomj; ///< Center atom index for each angle.
+        xt::xtensor<int, 1> atomk; ///< Third atom index for each angle.
+        xt::xtensor<int, 1> type;  ///< Angle type index.
 
         /// @brief Number of angles.
         /// @return Angle count.
@@ -137,11 +129,11 @@ public:
 
     /// @brief Dihedral topology block matching molpy dihedrals namespace.
     struct Dihedrals {
-        xt::xtensor<int, 1> atomi;   ///< First atom index for each dihedral.
-        xt::xtensor<int, 1> atomj;   ///< Second atom index for each dihedral.
-        xt::xtensor<int, 1> atomk;   ///< Third atom index for each dihedral.
-        xt::xtensor<int, 1> atoml;   ///< Fourth atom index for each dihedral.
-        xt::xtensor<int, 1> type;    ///< Dihedral type index.
+        xt::xtensor<int, 1> atomi; ///< First atom index for each dihedral.
+        xt::xtensor<int, 1> atomj; ///< Second atom index for each dihedral.
+        xt::xtensor<int, 1> atomk; ///< Third atom index for each dihedral.
+        xt::xtensor<int, 1> atoml; ///< Fourth atom index for each dihedral.
+        xt::xtensor<int, 1> type;  ///< Dihedral type index.
 
         /// @brief Number of dihedrals.
         /// @return Dihedral count.
@@ -150,8 +142,8 @@ public:
 
     // ── System scalars ──
 
-    double energy = 0;     ///< Potential energy [eV].
-    double kinetic = 0;    ///< Kinetic energy [eV].
+    double energy = 0;  ///< Potential energy [eV].
+    double kinetic = 0; ///< Kinetic energy [eV].
     /// @brief Integrator's conserved quantity [eV].
     ///
     /// For an extended-Lagrangian integrator this is the conserved
@@ -187,7 +179,8 @@ public:
     /// pressure snapshot.
     double stress_kinetic[6] = {};
 
-    cpu::Box box{};  ///< Simulation cell [Angstrom]; canonical Box at backend root (see cpu/box.h).
+    cpu::Box
+        box{}; ///< Simulation cell [Angstrom]; canonical Box at backend root (see cpu/box.h).
 };
 
 } // namespace cpu

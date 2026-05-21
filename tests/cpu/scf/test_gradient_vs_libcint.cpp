@@ -29,8 +29,8 @@
 /// backend is unavailable so there is nothing to compare against.
 #if defined(ATV_HAS_RHF) && defined(ATV_HAS_LIBCINT)
 
-#include <gtest/gtest.h>
 #include <cmath>
+#include <gtest/gtest.h>
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame.h"
@@ -47,12 +47,21 @@ using namespace ATV;
 cpu::Frame make_h2o() {
     cpu::Frame f(3);
     // Near-equilibrium geometry (Angstrom)
-    f.atoms.x[0] = 0.0;     f.atoms.y[0] = 0.0;     f.atoms.z[0] = 0.117;
-    f.atoms.x[1] = 0.0;     f.atoms.y[1] = 0.757;   f.atoms.z[1] = -0.468;
-    f.atoms.x[2] = 0.0;     f.atoms.y[2] = -0.757;  f.atoms.z[2] = -0.468;
-    f.atoms.type[0] = 8; f.atoms.mass[0] = 15.999;
-    f.atoms.type[1] = 1; f.atoms.mass[1] = 1.008;
-    f.atoms.type[2] = 1; f.atoms.mass[2] = 1.008;
+    f.atoms.x[0] = 0.0;
+    f.atoms.y[0] = 0.0;
+    f.atoms.z[0] = 0.117;
+    f.atoms.x[1] = 0.0;
+    f.atoms.y[1] = 0.757;
+    f.atoms.z[1] = -0.468;
+    f.atoms.x[2] = 0.0;
+    f.atoms.y[2] = -0.757;
+    f.atoms.z[2] = -0.468;
+    f.atoms.type[0] = 8;
+    f.atoms.mass[0] = 15.999;
+    f.atoms.type[1] = 1;
+    f.atoms.mass[1] = 1.008;
+    f.atoms.type[2] = 1;
+    f.atoms.mass[2] = 1.008;
     f.box = Mat3::cubic(100.0);
     return f;
 }
@@ -60,13 +69,27 @@ cpu::Frame make_h2o() {
 cpu::Frame make_ch4() {
     cpu::Frame f(5);
     // Tetrahedral CH4 (Angstrom)
-    f.atoms.x[0] =  0.0;    f.atoms.y[0] =  0.0;    f.atoms.z[0] =  0.0;
-    f.atoms.x[1] =  0.629;  f.atoms.y[1] =  0.629;  f.atoms.z[1] =  0.629;
-    f.atoms.x[2] = -0.629;  f.atoms.y[2] = -0.629;  f.atoms.z[2] =  0.629;
-    f.atoms.x[3] = -0.629;  f.atoms.y[3] =  0.629;  f.atoms.z[3] = -0.629;
-    f.atoms.x[4] =  0.629;  f.atoms.y[4] = -0.629;  f.atoms.z[4] = -0.629;
-    f.atoms.type[0] = 6; f.atoms.mass[0] = 12.011;
-    for (int i = 1; i < 5; ++i) { f.atoms.type[i] = 1; f.atoms.mass[i] = 1.008; }
+    f.atoms.x[0] = 0.0;
+    f.atoms.y[0] = 0.0;
+    f.atoms.z[0] = 0.0;
+    f.atoms.x[1] = 0.629;
+    f.atoms.y[1] = 0.629;
+    f.atoms.z[1] = 0.629;
+    f.atoms.x[2] = -0.629;
+    f.atoms.y[2] = -0.629;
+    f.atoms.z[2] = 0.629;
+    f.atoms.x[3] = -0.629;
+    f.atoms.y[3] = 0.629;
+    f.atoms.z[3] = -0.629;
+    f.atoms.x[4] = 0.629;
+    f.atoms.y[4] = -0.629;
+    f.atoms.z[4] = -0.629;
+    f.atoms.type[0] = 6;
+    f.atoms.mass[0] = 12.011;
+    for (int i = 1; i < 5; ++i) {
+        f.atoms.type[i] = 1;
+        f.atoms.mass[i] = 1.008;
+    }
     f.box = Mat3::cubic(100.0);
     return f;
 }
@@ -77,37 +100,26 @@ cpu::Frame make_ch4() {
 cpu::Frame make_aspirin() {
     cpu::Frame f(21);
     const int types[21] = {
-        6, 6, 6, 6, 6, 6, 6, 8, 8, 8, 6, 8, 6,
-        1, 1, 1, 1, 1, 1, 1, 1,
+        6, 6, 6, 6, 6, 6, 6, 8, 8, 8, 6, 8, 6, 1, 1, 1, 1, 1, 1, 1, 1,
     };
     const double coords[21][3] = {
-        { 1.2879,  0.1068,  0.0000},
-        { 0.1768,  1.0827,  0.0000},
-        { 0.5171,  2.4290,  0.0000},
-        { 1.8519,  2.7993,  0.0000},
-        { 2.9293,  1.8524,  0.0000},
-        { 2.6191,  0.4890,  0.0000},
-        {-1.2076,  0.6698,  0.0000},
-        {-1.5541, -0.4994,  0.0000},
-        {-2.0632,  1.6805,  0.0000},
-        { 0.9973, -1.2285,  0.0000},
-        {-0.2830, -1.7447,  0.0000},
-        {-0.3696, -2.9537,  0.0000},
-        {-1.3593, -0.7411,  0.3000},
-        {-0.2980,  3.1365,  0.0000},
-        { 2.0791,  3.8586,  0.0000},
-        { 3.9560,  2.1939,  0.0000},
-        { 3.4546, -0.2019,  0.0000},
-        {-2.9828,  1.3621,  0.0000},
-        {-1.0697, -0.1755,  1.1920},
-        {-2.3482, -1.1583,  0.5001},
+        {1.2879, 0.1068, 0.0000},    {0.1768, 1.0827, 0.0000},
+        {0.5171, 2.4290, 0.0000},    {1.8519, 2.7993, 0.0000},
+        {2.9293, 1.8524, 0.0000},    {2.6191, 0.4890, 0.0000},
+        {-1.2076, 0.6698, 0.0000},   {-1.5541, -0.4994, 0.0000},
+        {-2.0632, 1.6805, 0.0000},   {0.9973, -1.2285, 0.0000},
+        {-0.2830, -1.7447, 0.0000},  {-0.3696, -2.9537, 0.0000},
+        {-1.3593, -0.7411, 0.3000},  {-0.2980, 3.1365, 0.0000},
+        {2.0791, 3.8586, 0.0000},    {3.9560, 2.1939, 0.0000},
+        {3.4546, -0.2019, 0.0000},   {-2.9828, 1.3621, 0.0000},
+        {-1.0697, -0.1755, 1.1920},  {-2.3482, -1.1583, 0.5001},
         {-1.4267, -0.2091, -0.6502},
     };
     for (int i = 0; i < 21; ++i) {
         f.atoms.type[i] = types[i];
-        f.atoms.mass[i] = (types[i] == 6) ? 12.011
-                         : (types[i] == 8) ? 15.999
-                         : 1.008;
+        f.atoms.mass[i] = (types[i] == 6)   ? 12.011
+                          : (types[i] == 8) ? 15.999
+                                            : 1.008;
         f.atoms.x[i] = coords[i][0];
         f.atoms.y[i] = coords[i][1];
         f.atoms.z[i] = coords[i][2];
@@ -121,8 +133,8 @@ cpu::Frame make_aspirin() {
 struct GradCompare {
     double max_abs_diff = 0.0;
     double max_rel_diff = 0.0;
-    int    worst_atom = -1;
-    int    worst_axis = -1;
+    int worst_atom = -1;
+    int worst_axis = -1;
     double ref_value_at_worst = 0.0;
     double test_value_at_worst = 0.0;
 };
@@ -154,11 +166,12 @@ GradCompare diff_forces(const xt::xtensor<double, 2>& ref,
 /// Run `scf_solve` + `scf_gradient` on `frame`, returning the force field.
 /// When `force_native` is true, routes through the native 2e-derivative path
 /// even if libcint is compiled in.
-xt::xtensor<double, 2>
-compute_gradient(const cpu::Frame& frame, bool force_native) {
-    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G, /*charge=*/0);
+xt::xtensor<double, 2> compute_gradient(const cpu::Frame& frame,
+                                        bool force_native) {
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G,
+                                               /*charge=*/0);
     auto config = cpu::scf::rhf_config(integrals);
-    config.tol = 1e-10;          // tight SCF so the gradient has no SCF noise
+    config.tol = 1e-10; // tight SCF so the gradient has no SCF noise
     config.max_iter = 200;
     config.force_native_two_electron_deriv = force_native;
 
@@ -173,25 +186,23 @@ compute_gradient(const cpu::Frame& frame, bool force_native) {
 
 TEST(GradientNativeVsLibcint, H2O_ToTenMicroHartree) {
     auto frame = make_h2o();
-    auto f_ref  = compute_gradient(frame, /*force_native=*/false);
+    auto f_ref = compute_gradient(frame, /*force_native=*/false);
     auto f_test = compute_gradient(frame, /*force_native=*/true);
     auto cmp = diff_forces(f_ref, f_test);
     EXPECT_LT(cmp.max_abs_diff, 1e-5)
-        << "native vs libcint diverge at atom " << cmp.worst_atom
-        << " axis " << cmp.worst_axis
-        << " ref=" << cmp.ref_value_at_worst
+        << "native vs libcint diverge at atom " << cmp.worst_atom << " axis "
+        << cmp.worst_axis << " ref=" << cmp.ref_value_at_worst
         << " test=" << cmp.test_value_at_worst;
 }
 
 TEST(GradientNativeVsLibcint, CH4_ToTenMicroHartree) {
     auto frame = make_ch4();
-    auto f_ref  = compute_gradient(frame, /*force_native=*/false);
+    auto f_ref = compute_gradient(frame, /*force_native=*/false);
     auto f_test = compute_gradient(frame, /*force_native=*/true);
     auto cmp = diff_forces(f_ref, f_test);
     EXPECT_LT(cmp.max_abs_diff, 1e-5)
-        << "native vs libcint diverge at atom " << cmp.worst_atom
-        << " axis " << cmp.worst_axis
-        << " ref=" << cmp.ref_value_at_worst
+        << "native vs libcint diverge at atom " << cmp.worst_atom << " axis "
+        << cmp.worst_axis << " ref=" << cmp.ref_value_at_worst
         << " test=" << cmp.test_value_at_worst;
 }
 
@@ -201,13 +212,12 @@ TEST(GradientNativeVsLibcint, CH4_ToTenMicroHartree) {
 // propagated through the gradient contraction.
 TEST(GradientNativeVsLibcint, Aspirin_ToHundredMicroHartree) {
     auto frame = make_aspirin();
-    auto f_ref  = compute_gradient(frame, /*force_native=*/false);
+    auto f_ref = compute_gradient(frame, /*force_native=*/false);
     auto f_test = compute_gradient(frame, /*force_native=*/true);
     auto cmp = diff_forces(f_ref, f_test);
     EXPECT_LT(cmp.max_abs_diff, 1e-4)
-        << "native vs libcint diverge at atom " << cmp.worst_atom
-        << " axis " << cmp.worst_axis
-        << " ref=" << cmp.ref_value_at_worst
+        << "native vs libcint diverge at atom " << cmp.worst_atom << " axis "
+        << cmp.worst_axis << " ref=" << cmp.ref_value_at_worst
         << " test=" << cmp.test_value_at_worst;
 }
 

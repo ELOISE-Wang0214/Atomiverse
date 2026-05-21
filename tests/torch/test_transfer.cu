@@ -5,10 +5,10 @@
 
 #ifdef ATV_HAS_TORCH
 
-#include "atomiverse/torch/transfer.cuh"
 #include "atomiverse/cpu/transfer.h"
 #include "atomiverse/cuda/transfer.cuh"
 #include "atomiverse/torch/stream_guard.cuh"
+#include "atomiverse/torch/transfer.cuh"
 
 #include <cuda_runtime.h>
 
@@ -16,13 +16,14 @@ using ATV::Mat3;
 namespace atorch = ATV::torch;
 
 class TorchTransferTest : public ::testing::Test {
-protected:
+  protected:
     void SetUp() override {
         cpu_frame_ = std::make_unique<ATV::cpu::Frame>(4);
         cpu_frame_->atoms.x = xt::xtensor<double, 1>({1.0, 2.0, 3.0, 4.0});
         cpu_frame_->atoms.y = xt::xtensor<double, 1>({0.1, 0.2, 0.3, 0.4});
         cpu_frame_->atoms.z = xt::xtensor<double, 1>({0.0, 0.0, 0.0, 0.0});
-        cpu_frame_->atoms.mass = xt::xtensor<double, 1>({12.0, 12.0, 12.0, 12.0});
+        cpu_frame_->atoms.mass =
+            xt::xtensor<double, 1>({12.0, 12.0, 12.0, 12.0});
         cpu_frame_->atoms.type = xt::xtensor<int, 1>({0, 0, 1, 1});
         cpu_frame_->box = Mat3::cubic(10.0);
         cpu_frame_->energy = double(1.5);
@@ -136,7 +137,7 @@ TEST_F(TorchTransferTest, TopologyRoundTrip) {
 TEST_F(TorchTransferTest, ToCudaRejectsWrongDevice) {
     // Create a CPU tensor and try to extract via to_cuda
     auto tframe = atorch::from_cpu(*cpu_frame_);
-    tframe.atoms.x = tframe.atoms.x.to(::torch::kCPU);  // Move x to CPU
+    tframe.atoms.x = tframe.atoms.x.to(::torch::kCPU); // Move x to CPU
 
     ATV::cuda::Frame cframe;
     EXPECT_THROW(atorch::to_cuda(tframe, cframe), std::invalid_argument);
@@ -145,7 +146,9 @@ TEST_F(TorchTransferTest, ToCudaRejectsWrongDevice) {
 TEST_F(TorchTransferTest, ToCudaRejectsWrongDtype) {
     auto tframe = atorch::from_cpu(*cpu_frame_);
     // Replace x with wrong dtype (int instead of double)
-    auto int_opts = ::torch::TensorOptions().dtype(atorch::kIntDtype).device(::torch::kCUDA);
+    auto int_opts = ::torch::TensorOptions()
+                        .dtype(atorch::kIntDtype)
+                        .device(::torch::kCUDA);
     tframe.atoms.x = ::torch::zeros({4}, int_opts);
 
     ATV::cuda::Frame cframe;
@@ -156,8 +159,10 @@ TEST_F(TorchTransferTest, ToCudaRejectsNonContiguous) {
     auto tframe = atorch::from_cpu(*cpu_frame_);
     // Create a non-contiguous tensor via stride manipulation
     auto big = ::torch::zeros({8}, ::torch::TensorOptions()
-        .dtype(atorch::kRealDtype).device(::torch::kCUDA));
-    tframe.atoms.x = big.slice(0, 0, 8, 2);  // stride=2, non-contiguous, 4 elements
+                                       .dtype(atorch::kRealDtype)
+                                       .device(::torch::kCUDA));
+    tframe.atoms.x =
+        big.slice(0, 0, 8, 2); // stride=2, non-contiguous, 4 elements
     EXPECT_FALSE(tframe.atoms.x.is_contiguous());
 
     ATV::cuda::Frame cframe;
@@ -178,8 +183,8 @@ TEST_F(TorchTransferTest, BoxRoundTrip) {
     EXPECT_NEAR(box_cpu[4].item<double>(), double(13.0), double(1e-6)); // [1,1]
     EXPECT_NEAR(box_cpu[8].item<double>(), double(14.5), double(1e-6)); // [2,2]
     // Off-diagonal should be zero for diagonal box
-    EXPECT_NEAR(box_cpu[1].item<double>(), double(0), double(1e-6));    // [0,1]
-    EXPECT_NEAR(box_cpu[3].item<double>(), double(0), double(1e-6));    // [1,0]
+    EXPECT_NEAR(box_cpu[1].item<double>(), double(0), double(1e-6)); // [0,1]
+    EXPECT_NEAR(box_cpu[3].item<double>(), double(0), double(1e-6)); // [1,0]
 
     // Round-trip: transfer back to cpu::Frame
     ATV::cpu::Frame dst(4);
@@ -188,15 +193,13 @@ TEST_F(TorchTransferTest, BoxRoundTrip) {
     EXPECT_NEAR(dst.box(0, 0), double(12.5), double(1e-6));
     EXPECT_NEAR(dst.box(1, 1), double(13.0), double(1e-6));
     EXPECT_NEAR(dst.box(2, 2), double(14.5), double(1e-6));
-    EXPECT_NEAR(dst.box(0, 1), double(0),    double(1e-6));
-    EXPECT_NEAR(dst.box(1, 0), double(0),    double(1e-6));
-    EXPECT_NEAR(dst.box(2, 0), double(0),    double(1e-6));
+    EXPECT_NEAR(dst.box(0, 1), double(0), double(1e-6));
+    EXPECT_NEAR(dst.box(1, 0), double(0), double(1e-6));
+    EXPECT_NEAR(dst.box(2, 0), double(0), double(1e-6));
 }
 
 #else
 
-TEST(TorchTransfer, Disabled) {
-    GTEST_SKIP() << "ATV_HAS_TORCH not defined";
-}
+TEST(TorchTransfer, Disabled) { GTEST_SKIP() << "ATV_HAS_TORCH not defined"; }
 
 #endif // ATV_HAS_TORCH

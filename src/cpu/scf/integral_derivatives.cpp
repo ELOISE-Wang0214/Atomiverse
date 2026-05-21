@@ -19,15 +19,15 @@
 ///   Helgaker, Jorgensen, Olsen, Ch. 9 -- molecular gradients
 
 #include "atomiverse/cpu/scf/integral_derivatives.h"
+#include "atomiverse/core/constants.h"
+#include "atomiverse/core/gto.h"
+#include "atomiverse/core/log.h"
 #include "atomiverse/cpu/scf/cart.h"
 #include "atomiverse/cpu/scf/libcint_bridge.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 #include "atomiverse/cpu/scf/rys_eri.h"
 #include "atomiverse/cpu/scf/shell_pair.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
-#include "atomiverse/core/constants.h"
-#include "atomiverse/core/gto.h"
-#include "atomiverse/core/log.h"
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -40,10 +40,10 @@ extern "C" {
 }
 #endif
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <vector>
-#include <array>
-#include <algorithm>
 
 namespace ATV {
 namespace cpu {
@@ -74,17 +74,16 @@ static inline void cart_exponents(const native::Shell& sh, int a_out[3]) {
 /// @param alpha_b Exponent on center B.
 /// @param B Center B position [3].
 /// @param dS_dA Output: dS/dA in each direction [3].
-static void overlap_deriv_prim_general(
-    const int a_ang[3], const int b_ang[3],
-    double alpha_a, const double A[3],
-    double alpha_b, const double B[3],
-    double dS_dA[3])
-{
+static void overlap_deriv_prim_general(const int a_ang[3], const int b_ang[3],
+                                       double alpha_a, const double A[3],
+                                       double alpha_b, const double B[3],
+                                       double dS_dA[3]) {
     for (int d = 0; d < 3; ++d) {
         // Raising term: 2*alpha_a * S(a+1_d, b)
         int a_plus[3] = {a_ang[0], a_ang[1], a_ang[2]};
         a_plus[d] += 1;
-        double S_plus = native::overlap_prim_3d(a_plus, b_ang, alpha_a, A, alpha_b, B);
+        double S_plus =
+            native::overlap_prim_3d(a_plus, b_ang, alpha_a, A, alpha_b, B);
 
         double result = 2.0 * alpha_a * S_plus;
 
@@ -92,7 +91,8 @@ static void overlap_deriv_prim_general(
         if (a_ang[d] > 0) {
             int a_minus[3] = {a_ang[0], a_ang[1], a_ang[2]};
             a_minus[d] -= 1;
-            double S_minus = native::overlap_prim_3d(a_minus, b_ang, alpha_a, A, alpha_b, B);
+            double S_minus =
+                native::overlap_prim_3d(a_minus, b_ang, alpha_a, A, alpha_b, B);
             result -= a_ang[d] * S_minus;
         }
 
@@ -111,23 +111,23 @@ static void overlap_deriv_prim_general(
 /// @param alpha_b Exponent on center B.
 /// @param B Center B position [3].
 /// @param dT_dA Output: dT/dA in each direction [3].
-static void kinetic_deriv_prim_general(
-    const int a_ang[3], const int b_ang[3],
-    double alpha_a, const double A[3],
-    double alpha_b, const double B[3],
-    double dT_dA[3])
-{
+static void kinetic_deriv_prim_general(const int a_ang[3], const int b_ang[3],
+                                       double alpha_a, const double A[3],
+                                       double alpha_b, const double B[3],
+                                       double dT_dA[3]) {
     for (int d = 0; d < 3; ++d) {
         int a_plus[3] = {a_ang[0], a_ang[1], a_ang[2]};
         a_plus[d] += 1;
-        double T_plus = native::kinetic_prim_3d(a_plus, b_ang, alpha_a, A, alpha_b, B);
+        double T_plus =
+            native::kinetic_prim_3d(a_plus, b_ang, alpha_a, A, alpha_b, B);
 
         double result = 2.0 * alpha_a * T_plus;
 
         if (a_ang[d] > 0) {
             int a_minus[3] = {a_ang[0], a_ang[1], a_ang[2]};
             a_minus[d] -= 1;
-            double T_minus = native::kinetic_prim_3d(a_minus, b_ang, alpha_a, A, alpha_b, B);
+            double T_minus =
+                native::kinetic_prim_3d(a_minus, b_ang, alpha_a, A, alpha_b, B);
             result -= a_ang[d] * T_minus;
         }
 
@@ -152,15 +152,13 @@ static void kinetic_deriv_prim_general(
 /// @param C Nuclear position [3].
 /// @param dV_dA Output: dV/dA in each direction [3].
 static void nuclear_deriv_prim_center_general(
-    const int a_ang[3], const int b_ang[3],
-    double alpha_a, const double A[3],
-    double alpha_b, const double B[3],
-    const double C[3],
-    double dV_dA[3])
-{
+    const int a_ang[3], const int b_ang[3], double alpha_a, const double A[3],
+    double alpha_b, const double B[3], const double C[3], double dV_dA[3]) {
     const double gamma = alpha_a + alpha_b;
     const double mu = alpha_a * alpha_b / gamma;
-    const double R2_AB = (A[0]-B[0])*(A[0]-B[0]) + (A[1]-B[1])*(A[1]-B[1]) + (A[2]-B[2])*(A[2]-B[2]);
+    const double R2_AB = (A[0] - B[0]) * (A[0] - B[0])
+                         + (A[1] - B[1]) * (A[1] - B[1])
+                         + (A[2] - B[2]) * (A[2] - B[2]);
     const double K_AB = std::exp(-mu * R2_AB);
 
     double P[3], PA[3], PB[3], PC[3];
@@ -174,14 +172,16 @@ static void nuclear_deriv_prim_center_general(
     for (int d = 0; d < 3; ++d) {
         int a_plus[3] = {a_ang[0], a_ang[1], a_ang[2]};
         a_plus[d] += 1;
-        double V_plus = native::nuclear_prim(a_plus, b_ang, gamma, PA, PB, PC, K_AB);
+        double V_plus =
+            native::nuclear_prim(a_plus, b_ang, gamma, PA, PB, PC, K_AB);
 
         double result = 2.0 * alpha_a * V_plus;
 
         if (a_ang[d] > 0) {
             int a_minus[3] = {a_ang[0], a_ang[1], a_ang[2]};
             a_minus[d] -= 1;
-            double V_minus = native::nuclear_prim(a_minus, b_ang, gamma, PA, PB, PC, K_AB);
+            double V_minus =
+                native::nuclear_prim(a_minus, b_ang, gamma, PA, PB, PC, K_AB);
             result -= a_ang[d] * V_minus;
         }
 
@@ -225,16 +225,16 @@ static void nuclear_deriv_prim_center_general(
 ///
 /// The nuclear contribution dV_pq^C/dC_d has already been derived. We compute it
 /// via a direct formula using Boys functions.
-static void nuclear_deriv_prim_nuc_general(
-    const int a_ang[3], const int b_ang[3],
-    double alpha_a, const double A[3],
-    double alpha_b, const double B[3],
-    const double C[3],
-    double dV_dC[3])
-{
+static void nuclear_deriv_prim_nuc_general(const int a_ang[3],
+                                           const int b_ang[3], double alpha_a,
+                                           const double A[3], double alpha_b,
+                                           const double B[3], const double C[3],
+                                           double dV_dC[3]) {
     const double gamma = alpha_a + alpha_b;
     const double mu = alpha_a * alpha_b / gamma;
-    const double R2_AB = (A[0]-B[0])*(A[0]-B[0]) + (A[1]-B[1])*(A[1]-B[1]) + (A[2]-B[2])*(A[2]-B[2]);
+    const double R2_AB = (A[0] - B[0]) * (A[0] - B[0])
+                         + (A[1] - B[1]) * (A[1] - B[1])
+                         + (A[2] - B[2]) * (A[2] - B[2]);
     const double K_AB = std::exp(-mu * R2_AB);
 
     double P[3], PA[3], PB[3], PC[3];
@@ -279,12 +279,14 @@ static void nuclear_deriv_prim_nuc_general(
     for (int d = 0; d < 3; ++d) {
         int a_plus[3] = {a_ang[0], a_ang[1], a_ang[2]};
         a_plus[d] += 1;
-        double V_plus = native::nuclear_prim(a_plus, b_ang, gamma, PA, PB, PC, K_AB);
+        double V_plus =
+            native::nuclear_prim(a_plus, b_ang, gamma, PA, PB, PC, K_AB);
         double result = 2.0 * alpha_a * V_plus;
         if (a_ang[d] > 0) {
             int a_minus[3] = {a_ang[0], a_ang[1], a_ang[2]};
             a_minus[d] -= 1;
-            double V_minus = native::nuclear_prim(a_minus, b_ang, gamma, PA, PB, PC, K_AB);
+            double V_minus =
+                native::nuclear_prim(a_minus, b_ang, gamma, PA, PB, PC, K_AB);
             result -= a_ang[d] * V_minus;
         }
         dV_dA[d] = result;
@@ -295,12 +297,14 @@ static void nuclear_deriv_prim_nuc_general(
     for (int d = 0; d < 3; ++d) {
         int b_plus[3] = {b_ang[0], b_ang[1], b_ang[2]};
         b_plus[d] += 1;
-        double V_plus = native::nuclear_prim(a_ang, b_plus, gamma, PA, PB, PC, K_AB);
+        double V_plus =
+            native::nuclear_prim(a_ang, b_plus, gamma, PA, PB, PC, K_AB);
         double result = 2.0 * alpha_b * V_plus;
         if (b_ang[d] > 0) {
             int b_minus[3] = {b_ang[0], b_ang[1], b_ang[2]};
             b_minus[d] -= 1;
-            double V_minus = native::nuclear_prim(a_ang, b_minus, gamma, PA, PB, PC, K_AB);
+            double V_minus =
+                native::nuclear_prim(a_ang, b_minus, gamma, PA, PB, PC, K_AB);
             result -= b_ang[d] * V_minus;
         }
         dV_dB[d] = result;
@@ -320,30 +324,28 @@ static void nuclear_deriv_prim_nuc_general(
 /// @param alpha_a..alpha_d  Primitive exponents.
 /// @param A..D  Center positions [3] each.
 /// @param dERI_dA  Output: d(ERI)/dA in each direction [3].
-static void eri_deriv_prim_general(
-    const int a_ang[3], const int b_ang[3],
-    const int c_ang[3], const int d_ang[3],
-    double alpha_a, const double A[3],
-    double alpha_b, const double B[3],
-    double alpha_c, const double C[3],
-    double alpha_d, const double D[3],
-    double dERI_dA[3])
-{
+static void eri_deriv_prim_general(const int a_ang[3], const int b_ang[3],
+                                   const int c_ang[3], const int d_ang[3],
+                                   double alpha_a, const double A[3],
+                                   double alpha_b, const double B[3],
+                                   double alpha_c, const double C[3],
+                                   double alpha_d, const double D[3],
+                                   double dERI_dA[3]) {
     for (int d = 0; d < 3; ++d) {
         int a_plus[3] = {a_ang[0], a_ang[1], a_ang[2]};
         a_plus[d] += 1;
-        double ERI_plus = native::eri_prim(
-            a_plus, b_ang, c_ang, d_ang,
-            alpha_a, A, alpha_b, B, alpha_c, C, alpha_d, D);
+        double ERI_plus =
+            native::eri_prim(a_plus, b_ang, c_ang, d_ang, alpha_a, A, alpha_b,
+                             B, alpha_c, C, alpha_d, D);
 
         double result = 2.0 * alpha_a * ERI_plus;
 
         if (a_ang[d] > 0) {
             int a_minus[3] = {a_ang[0], a_ang[1], a_ang[2]};
             a_minus[d] -= 1;
-            double ERI_minus = native::eri_prim(
-                a_minus, b_ang, c_ang, d_ang,
-                alpha_a, A, alpha_b, B, alpha_c, C, alpha_d, D);
+            double ERI_minus =
+                native::eri_prim(a_minus, b_ang, c_ang, d_ang, alpha_a, A,
+                                 alpha_b, B, alpha_c, C, alpha_d, D);
             result -= a_ang[d] * ERI_minus;
         }
 
@@ -358,11 +360,10 @@ struct QuartetDerivTotals {
     double dD[3] = {0.0, 0.0, 0.0};
 };
 
-static inline int pair_multiplicity(int a, int b) {
-    return (a == b) ? 1 : 2;
-}
+static inline int pair_multiplicity(int a, int b) { return (a == b) ? 1 : 2; }
 
-static std::vector<int> build_shell_to_atom_from_integrals(const IntegralPack& integrals) {
+static std::vector<int>
+build_shell_to_atom_from_integrals(const IntegralPack& integrals) {
     const int n = integrals.n_basis;
     const int natm = static_cast<int>(integrals.atoms.size());
     std::vector<int> shell_to_atom(n, -1);
@@ -387,27 +388,25 @@ static std::vector<int> build_shell_to_atom_from_integrals(const IntegralPack& i
 
 static inline int libcint_shell_dim(const LibcintContext& ctx, int sh) {
     const int begin = ctx.shell_offsets[sh];
-    const int end = (sh + 1 < ctx.nshells) ? ctx.shell_offsets[sh + 1] : ctx.nao;
+    const int end =
+        (sh + 1 < ctx.nshells) ? ctx.shell_offsets[sh + 1] : ctx.nao;
     return end - begin;
 }
 
-static inline std::size_t libcint_ip1_index(
-    int comp,
-    int i, int j, int k, int l,
-    int di, int dj, int dk, int dl)
-{
+static inline std::size_t libcint_ip1_index(int comp, int i, int j, int k,
+                                            int l, int di, int dj, int dk,
+                                            int dl) {
     return static_cast<std::size_t>(
         i + di * (j + dj * (k + dk * (l + dl * comp))));
 }
 
 #endif
 
-static QuartetDerivTotals compute_quartet_derivatives(
-    const native::Shell& shell_a, const int a_ang[3],
-    const native::Shell& shell_b, const int b_ang[3],
-    const native::Shell& shell_c, const int c_ang[3],
-    const native::Shell& shell_d, const int d_ang[3])
-{
+static QuartetDerivTotals
+compute_quartet_derivatives(const native::Shell& shell_a, const int a_ang[3],
+                            const native::Shell& shell_b, const int b_ang[3],
+                            const native::Shell& shell_c, const int c_ang[3],
+                            const native::Shell& shell_d, const int d_ang[3]) {
     QuartetDerivTotals totals;
 
     for (int p = 0; p < shell_a.n_prim; ++p) {
@@ -415,43 +414,35 @@ static QuartetDerivTotals compute_quartet_derivatives(
             for (int r = 0; r < shell_c.n_prim; ++r) {
                 for (int s = 0; s < shell_d.n_prim; ++s) {
                     const double coeff = shell_a.coeff[p] * shell_b.coeff[q]
-                                       * shell_c.coeff[r] * shell_d.coeff[s];
+                                         * shell_c.coeff[r] * shell_d.coeff[s];
 
                     double dA[3];
                     eri_deriv_prim_general(
-                        a_ang, b_ang, c_ang, d_ang,
-                        shell_a.alpha[p], shell_a.center,
-                        shell_b.alpha[q], shell_b.center,
-                        shell_c.alpha[r], shell_c.center,
-                        shell_d.alpha[s], shell_d.center,
-                        dA);
+                        a_ang, b_ang, c_ang, d_ang, shell_a.alpha[p],
+                        shell_a.center, shell_b.alpha[q], shell_b.center,
+                        shell_c.alpha[r], shell_c.center, shell_d.alpha[s],
+                        shell_d.center, dA);
 
                     double dB[3];
                     eri_deriv_prim_general(
-                        b_ang, a_ang, c_ang, d_ang,
-                        shell_b.alpha[q], shell_b.center,
-                        shell_a.alpha[p], shell_a.center,
-                        shell_c.alpha[r], shell_c.center,
-                        shell_d.alpha[s], shell_d.center,
-                        dB);
+                        b_ang, a_ang, c_ang, d_ang, shell_b.alpha[q],
+                        shell_b.center, shell_a.alpha[p], shell_a.center,
+                        shell_c.alpha[r], shell_c.center, shell_d.alpha[s],
+                        shell_d.center, dB);
 
                     double dC[3];
                     eri_deriv_prim_general(
-                        c_ang, d_ang, a_ang, b_ang,
-                        shell_c.alpha[r], shell_c.center,
-                        shell_d.alpha[s], shell_d.center,
-                        shell_a.alpha[p], shell_a.center,
-                        shell_b.alpha[q], shell_b.center,
-                        dC);
+                        c_ang, d_ang, a_ang, b_ang, shell_c.alpha[r],
+                        shell_c.center, shell_d.alpha[s], shell_d.center,
+                        shell_a.alpha[p], shell_a.center, shell_b.alpha[q],
+                        shell_b.center, dC);
 
                     double dD[3];
                     eri_deriv_prim_general(
-                        d_ang, c_ang, a_ang, b_ang,
-                        shell_d.alpha[s], shell_d.center,
-                        shell_c.alpha[r], shell_c.center,
-                        shell_a.alpha[p], shell_a.center,
-                        shell_b.alpha[q], shell_b.center,
-                        dD);
+                        d_ang, c_ang, a_ang, b_ang, shell_d.alpha[s],
+                        shell_d.center, shell_c.alpha[r], shell_c.center,
+                        shell_a.alpha[p], shell_a.center, shell_b.alpha[q],
+                        shell_b.center, dD);
 
                     for (int axis = 0; axis < 3; ++axis) {
                         totals.dA[axis] += coeff * dA[axis];
@@ -467,12 +458,11 @@ static QuartetDerivTotals compute_quartet_derivatives(
     return totals;
 }
 
-static void accumulate_quartet_into_gradient(
-    xt::xtensor<double, 2>& grad,
-    int atom_a, int atom_b, int atom_c, int atom_d,
-    const QuartetDerivTotals& totals,
-    double factor)
-{
+static void accumulate_quartet_into_gradient(xt::xtensor<double, 2>& grad,
+                                             int atom_a, int atom_b, int atom_c,
+                                             int atom_d,
+                                             const QuartetDerivTotals& totals,
+                                             double factor) {
     if (std::abs(factor) < 1e-18)
         return;
 
@@ -487,21 +477,21 @@ static void accumulate_quartet_into_gradient(
 // ── Main entry point ─────────────────────────────────────────────────
 
 IntegralDerivPack build_integral_derivatives(const IntegralPack& ipack) {
-    const int natm    = static_cast<int>(ipack.atoms.size());
+    const int natm = static_cast<int>(ipack.atoms.size());
     const int n_basis = ipack.n_basis;
 
     IntegralDerivPack pack;
     pack.n_atoms = natm;
     pack.n_basis = n_basis;
-    pack.dS     = xt::zeros<double>({(int)natm, (int)3, n_basis, n_basis});
-    pack.dT     = xt::zeros<double>({(int)natm, (int)3, n_basis, n_basis});
-    pack.dV     = xt::zeros<double>({(int)natm, (int)3, n_basis, n_basis});
+    pack.dS = xt::zeros<double>({(int)natm, (int)3, n_basis, n_basis});
+    pack.dT = xt::zeros<double>({(int)natm, (int)3, n_basis, n_basis});
+    pack.dV = xt::zeros<double>({(int)natm, (int)3, n_basis, n_basis});
     pack.dV_nuc = xt::zeros<double>({(int)natm, (int)3});
 
     // Reuse the shell list already resolved in the IntegralPack — same
     // normalization, same ordering as the SCF path, works for any l.
     const auto& shells = ipack.shells;
-    const auto& atoms  = ipack.atoms;
+    const auto& atoms = ipack.atoms;
 
     // Shell → atom mapping via shell-center vs atom-position match.
     // Both are in Bohr and constructed from the same Frame positions,
@@ -518,8 +508,8 @@ IntegralDerivPack build_integral_derivatives(const IntegralPack& ipack) {
         }
         if (shell_to_atom[i] < 0) {
             throw std::runtime_error(
-                "cpu::scf::build_integral_derivatives: shell " +
-                std::to_string(i) + " center has no matching atom");
+                "cpu::scf::build_integral_derivatives: shell "
+                + std::to_string(i) + " center has no matching atom");
         }
     }
 
@@ -546,15 +536,11 @@ IntegralDerivPack build_integral_derivatives(const IntegralPack& ipack) {
 
                     double dS_dA[3], dT_dA[3];
                     overlap_deriv_prim_general(
-                        a_ang, b_ang,
-                        shells[i].alpha[p], shells[i].center,
-                        shells[j].alpha[q], shells[j].center,
-                        dS_dA);
+                        a_ang, b_ang, shells[i].alpha[p], shells[i].center,
+                        shells[j].alpha[q], shells[j].center, dS_dA);
                     kinetic_deriv_prim_general(
-                        a_ang, b_ang,
-                        shells[i].alpha[p], shells[i].center,
-                        shells[j].alpha[q], shells[j].center,
-                        dT_dA);
+                        a_ang, b_ang, shells[i].alpha[p], shells[i].center,
+                        shells[j].alpha[q], shells[j].center, dT_dA);
 
                     for (int d = 0; d < 3; ++d) {
                         dS_total[d] += ci * cj * dS_dA[d];
@@ -572,10 +558,14 @@ IntegralDerivPack build_integral_derivatives(const IntegralPack& ipack) {
                 pack.dT(atom_j, d, i, j) += static_cast<double>(-dT_total[d]);
                 // Symmetry: S(i,j) = S(j,i)
                 if (i != j) {
-                    pack.dS(atom_i, d, j, i) += static_cast<double>(dS_total[d]);
-                    pack.dT(atom_i, d, j, i) += static_cast<double>(dT_total[d]);
-                    pack.dS(atom_j, d, j, i) += static_cast<double>(-dS_total[d]);
-                    pack.dT(atom_j, d, j, i) += static_cast<double>(-dT_total[d]);
+                    pack.dS(atom_i, d, j, i) +=
+                        static_cast<double>(dS_total[d]);
+                    pack.dT(atom_i, d, j, i) +=
+                        static_cast<double>(dT_total[d]);
+                    pack.dS(atom_j, d, j, i) +=
+                        static_cast<double>(-dS_total[d]);
+                    pack.dT(atom_j, d, j, i) +=
+                        static_cast<double>(-dT_total[d]);
                 }
             }
 
@@ -592,24 +582,21 @@ IntegralDerivPack build_integral_derivatives(const IntegralPack& ipack) {
                         // d/dA (center of shell i) -- angular momentum raising on A
                         double dV_dA[3];
                         nuclear_deriv_prim_center_general(
-                            a_ang, b_ang,
-                            shells[i].alpha[p], shells[i].center,
-                            shells[j].alpha[q], shells[j].center,
-                            atoms[c].pos,
+                            a_ang, b_ang, shells[i].alpha[p], shells[i].center,
+                            shells[j].alpha[q], shells[j].center, atoms[c].pos,
                             dV_dA);
 
                         // d/dC (nuclear position) -- via translational invariance
                         double dV_dC[3];
                         nuclear_deriv_prim_nuc_general(
-                            a_ang, b_ang,
-                            shells[i].alpha[p], shells[i].center,
-                            shells[j].alpha[q], shells[j].center,
-                            atoms[c].pos,
+                            a_ang, b_ang, shells[i].alpha[p], shells[i].center,
+                            shells[j].alpha[q], shells[j].center, atoms[c].pos,
                             dV_dC);
 
                         for (int d = 0; d < 3; ++d) {
-                            dV_center_i[d] += ci * cj * (-atoms[c].Z) * dV_dA[d];
-                            dV_nuc_c[d]    += ci * cj * (-atoms[c].Z) * dV_dC[d];
+                            dV_center_i[d] +=
+                                ci * cj * (-atoms[c].Z) * dV_dA[d];
+                            dV_nuc_c[d] += ci * cj * (-atoms[c].Z) * dV_dC[d];
                         }
                     }
                 }
@@ -632,26 +619,29 @@ IntegralDerivPack build_integral_derivatives(const IntegralPack& ipack) {
                         // d/dB uses raising on center B -- swap roles of A and B
                         double dV_dB[3];
                         nuclear_deriv_prim_center_general(
-                            b_ang, a_ang,
-                            shells[j].alpha[q], shells[j].center,
-                            shells[i].alpha[p], shells[i].center,
-                            atoms[c].pos,
+                            b_ang, a_ang, shells[j].alpha[q], shells[j].center,
+                            shells[i].alpha[p], shells[i].center, atoms[c].pos,
                             dV_dB);
 
                         for (int d = 0; d < 3; ++d) {
-                            dV_center_j[d] += ci * cj * (-atoms[c].Z) * dV_dB[d];
+                            dV_center_j[d] +=
+                                ci * cj * (-atoms[c].Z) * dV_dB[d];
                         }
                     }
                 }
 
                 for (int d = 0; d < 3; ++d) {
-                    pack.dV(atom_i, d, i, j) += static_cast<double>(dV_center_i[d]);
-                    pack.dV(atom_j, d, i, j) += static_cast<double>(dV_center_j[d]);
-                    pack.dV(c,      d, i, j) += static_cast<double>(dV_nuc_c[d]);
+                    pack.dV(atom_i, d, i, j) +=
+                        static_cast<double>(dV_center_i[d]);
+                    pack.dV(atom_j, d, i, j) +=
+                        static_cast<double>(dV_center_j[d]);
+                    pack.dV(c, d, i, j) += static_cast<double>(dV_nuc_c[d]);
                     if (i != j) {
-                        pack.dV(atom_i, d, j, i) += static_cast<double>(dV_center_i[d]);
-                        pack.dV(atom_j, d, j, i) += static_cast<double>(dV_center_j[d]);
-                        pack.dV(c,      d, j, i) += static_cast<double>(dV_nuc_c[d]);
+                        pack.dV(atom_i, d, j, i) +=
+                            static_cast<double>(dV_center_i[d]);
+                        pack.dV(atom_j, d, j, i) +=
+                            static_cast<double>(dV_center_j[d]);
+                        pack.dV(c, d, j, i) += static_cast<double>(dV_nuc_c[d]);
                     }
                 }
             }
@@ -663,11 +653,12 @@ IntegralDerivPack build_integral_derivatives(const IntegralPack& ipack) {
     // dV_nuc/dA_d = sum_{B!=A} Z_A * Z_B * (B_d - A_d) / R_AB^3
     for (int a = 0; a < natm; ++a) {
         for (int b = 0; b < natm; ++b) {
-            if (a == b) continue;
+            if (a == b)
+                continue;
             double dx = atoms[b].pos[0] - atoms[a].pos[0];
             double dy = atoms[b].pos[1] - atoms[a].pos[1];
             double dz = atoms[b].pos[2] - atoms[a].pos[2];
-            double r = std::sqrt(dx*dx + dy*dy + dz*dz);
+            double r = std::sqrt(dx * dx + dy * dy + dz * dz);
             double r3_inv = 1.0 / (r * r * r);
             double ZZ = atoms[a].Z * atoms[b].Z;
             pack.dV_nuc(a, 0) += static_cast<double>(ZZ * dx * r3_inv);
@@ -679,14 +670,12 @@ IntegralDerivPack build_integral_derivatives(const IntegralPack& ipack) {
     return pack;
 }
 
-void accumulate_two_electron_gradient(
-    xt::xtensor<double, 2>& grad,
-    const Frame& frame,
-    const IntegralPack& integrals,
-    const xt::xtensor<double, 2>& P_total,
-    const SCFResult& result,
-    const SCFConfig& config)
-{
+void accumulate_two_electron_gradient(xt::xtensor<double, 2>& grad,
+                                      const Frame& frame,
+                                      const IntegralPack& integrals,
+                                      const xt::xtensor<double, 2>& P_total,
+                                      const SCFResult& result,
+                                      const SCFConfig& config) {
     const auto t_total = LogClock::now();
     const int natm = static_cast<int>(integrals.atoms.size());
     const int n = integrals.n_basis;
@@ -711,15 +700,15 @@ void accumulate_two_electron_gradient(
     auto cint_ctx = build_libcint_context(frame);
     if (cint_ctx.nao == n && !config.force_native_two_electron_deriv) {
         const int nshells = cint_ctx.nshells;
-        ATV_INFO(
-            "[gradient] two_e engine=libcint natm={} basis={} shells={}",
-            natm, n, nshells);
+        ATV_INFO("[gradient] two_e engine=libcint natm={} basis={} shells={}",
+                 natm, n, nshells);
         std::vector<int> shell_to_atom(nshells, -1);
         for (int sh = 0; sh < nshells; ++sh)
             shell_to_atom[sh] = cint_ctx.bas[sh * BAS_SLOTS + ATOM_OF];
 
         std::vector<std::array<int, 2>> shell_pairs;
-        shell_pairs.reserve(static_cast<std::size_t>(nshells * (nshells + 1) / 2));
+        shell_pairs.reserve(
+            static_cast<std::size_t>(nshells * (nshells + 1) / 2));
         for (int ish = 0; ish < nshells; ++ish)
             for (int jsh = 0; jsh <= ish; ++jsh)
                 shell_pairs.push_back({ish, jsh});
@@ -727,13 +716,13 @@ void accumulate_two_electron_gradient(
         const int n_shell_pairs = static_cast<int>(shell_pairs.size());
         const long long n_unique_shell_quartets =
             1LL * n_shell_pairs * (n_shell_pairs + 1) / 2;
-        const int progress_stride = (n_shell_pairs >= 10) ? (n_shell_pairs / 10) : 1;
+        const int progress_stride =
+            (n_shell_pairs >= 10) ? (n_shell_pairs / 10) : 1;
 
         CINTOpt* ip1_opt = nullptr;
-        int2e_ip1_optimizer(
-            &ip1_opt, cint_ctx.atm.data(), cint_ctx.natm,
-            cint_ctx.bas.data(), cint_ctx.nshells,
-            const_cast<double*>(cint_ctx.env.data()));
+        int2e_ip1_optimizer(&ip1_opt, cint_ctx.atm.data(), cint_ctx.natm,
+                            cint_ctx.bas.data(), cint_ctx.nshells,
+                            const_cast<double*>(cint_ctx.env.data()));
 
         constexpr std::size_t kMaxIP1Block = 3u * 3u * 3u * 3u * 3u;
         std::array<double, kMaxIP1Block> dA_buf{};
@@ -741,19 +730,20 @@ void accumulate_two_electron_gradient(
         std::array<double, kMaxIP1Block> dC_buf{};
         std::array<double, kMaxIP1Block> dD_buf{};
 
-        const auto eval_ip1 = [&](std::array<double, kMaxIP1Block>& buf, const int shls[4]) {
+        const auto eval_ip1 = [&](std::array<double, kMaxIP1Block>& buf,
+                                  const int shls[4]) {
             std::fill(buf.begin(), buf.end(), 0.0);
-            int2e_ip1_cart(
-                buf.data(), nullptr, const_cast<int*>(shls),
-                cint_ctx.atm.data(), cint_ctx.natm,
-                cint_ctx.bas.data(), cint_ctx.nshells,
-                const_cast<double*>(cint_ctx.env.data()), ip1_opt, nullptr);
+            int2e_ip1_cart(buf.data(), nullptr, const_cast<int*>(shls),
+                           cint_ctx.atm.data(), cint_ctx.natm,
+                           cint_ctx.bas.data(), cint_ctx.nshells,
+                           const_cast<double*>(cint_ctx.env.data()), ip1_opt,
+                           nullptr);
         };
 
         const auto t_coulomb = LogClock::now();
-        ATV_DEBUG(
-            "[gradient] two_e coulomb start engine=libcint natm={} basis={} shells={} unique_shell_quartets={}",
-            natm, n, nshells, n_unique_shell_quartets);
+        ATV_DEBUG("[gradient] two_e coulomb start engine=libcint natm={} "
+                  "basis={} shells={} unique_shell_quartets={}",
+                  natm, n, nshells, n_unique_shell_quartets);
 
         for (int left = 0; left < n_shell_pairs; ++left) {
             const int ish = shell_pairs[left][0];
@@ -800,15 +790,20 @@ void accumulate_two_electron_gradient(
                             const int k = k0 + kk;
                             for (int ll = 0; ll < dl; ++ll) {
                                 const int l = l0 + ll;
-                                const double factor = quartet_prefactor * Pij * P_total(k, l);
+                                const double factor =
+                                    quartet_prefactor * Pij * P_total(k, l);
                                 if (std::abs(factor) < 1e-18)
                                     continue;
 
                                 for (int axis = 0; axis < 3; ++axis) {
-                                    const double dA = -dA_buf[libcint_ip1_index(axis, ii, jj, kk, ll, di, dj, dk, dl)];
-                                    const double dB = -dB_buf[libcint_ip1_index(axis, jj, ii, kk, ll, dj, di, dk, dl)];
-                                    const double dC = -dC_buf[libcint_ip1_index(axis, kk, ll, ii, jj, dk, dl, di, dj)];
-                                    const double dD = -dD_buf[libcint_ip1_index(axis, ll, kk, ii, jj, dl, dk, di, dj)];
+                                    const double dA = -dA_buf[libcint_ip1_index(
+                                        axis, ii, jj, kk, ll, di, dj, dk, dl)];
+                                    const double dB = -dB_buf[libcint_ip1_index(
+                                        axis, jj, ii, kk, ll, dj, di, dk, dl)];
+                                    const double dC = -dC_buf[libcint_ip1_index(
+                                        axis, kk, ll, ii, jj, dk, dl, di, dj)];
+                                    const double dD = -dD_buf[libcint_ip1_index(
+                                        axis, ll, kk, ii, jj, dl, dk, di, dj)];
                                     grad(ai, axis) += factor * dA;
                                     grad(aj, axis) += factor * dB;
                                     grad(ak, axis) += factor * dC;
@@ -820,22 +815,25 @@ void accumulate_two_electron_gradient(
                 }
             }
 
-            const bool should_log =
-                (((left + 1) % progress_stride) == 0) || ((left + 1) == n_shell_pairs);
+            const bool should_log = (((left + 1) % progress_stride) == 0)
+                                    || ((left + 1) == n_shell_pairs);
             if (should_log) {
                 const long long unique_done = 1LL * (left + 1) * (left + 2) / 2;
-                ATV_DEBUG(
-                    "[gradient] two_e coulomb progress shell_pairs={}/{} unique_done={}/{} ms={:.1f}",
-                    left + 1, n_shell_pairs, unique_done, n_unique_shell_quartets, elapsed_ms(t_coulomb));
+                ATV_DEBUG("[gradient] two_e coulomb progress shell_pairs={}/{} "
+                          "unique_done={}/{} ms={:.1f}",
+                          left + 1, n_shell_pairs, unique_done,
+                          n_unique_shell_quartets, elapsed_ms(t_coulomb));
             }
         }
 
-        ATV_DEBUG("[gradient] two_e coulomb done ms={:.1f}", elapsed_ms(t_coulomb));
+        ATV_DEBUG("[gradient] two_e coulomb done ms={:.1f}",
+                  elapsed_ms(t_coulomb));
 
         if (do_exchange) {
             const auto t_exchange = LogClock::now();
             ATV_DEBUG(
-                "[gradient] two_e exchange start engine=libcint natm={} basis={} shells={} unique_shell_quartets={} alpha_hf={:.3f}",
+                "[gradient] two_e exchange start engine=libcint natm={} "
+                "basis={} shells={} unique_shell_quartets={} alpha_hf={:.3f}",
                 natm, n, nshells, n_unique_shell_quartets, alpha_hf);
 
             // Exchange iterates the SAME canonical (ij)×(kl) pairs as
@@ -910,26 +908,45 @@ void accumulate_two_electron_gradient(
                                     // multiplier on top of the prefactors.
                                     double density_factor = 0.0;
                                     if (restricted) {
-                                        density_factor = -0.25 * alpha_hf * 0.5 * (
-                                            P_total(i, k) * P_total(j, l) +
-                                            P_total(j, k) * P_total(i, l));
+                                        density_factor =
+                                            -0.25 * alpha_hf * 0.5
+                                            * (P_total(i, k) * P_total(j, l)
+                                               + P_total(j, k) * P_total(i, l));
                                     } else {
-                                        density_factor = -0.5 * alpha_hf * 0.5 * (
-                                            result.P_alpha(i, k) * result.P_alpha(j, l) +
-                                            result.P_alpha(j, k) * result.P_alpha(i, l) +
-                                            result.P_beta(i, k) * result.P_beta(j, l) +
-                                            result.P_beta(j, k) * result.P_beta(i, l));
+                                        density_factor =
+                                            -0.5 * alpha_hf * 0.5
+                                            * (result.P_alpha(i, k)
+                                                   * result.P_alpha(j, l)
+                                               + result.P_alpha(j, k)
+                                                     * result.P_alpha(i, l)
+                                               + result.P_beta(i, k)
+                                                     * result.P_beta(j, l)
+                                               + result.P_beta(j, k)
+                                                     * result.P_beta(i, l));
                                     }
 
-                                    const double factor = quartet_prefactor * density_factor;
+                                    const double factor =
+                                        quartet_prefactor * density_factor;
                                     if (std::abs(factor) < 1e-18)
                                         continue;
 
                                     for (int axis = 0; axis < 3; ++axis) {
-                                        const double dA = -dA_buf[libcint_ip1_index(axis, ii, jj, kk, ll, di, dj, dk, dl)];
-                                        const double dB = -dB_buf[libcint_ip1_index(axis, jj, ii, kk, ll, dj, di, dk, dl)];
-                                        const double dC = -dC_buf[libcint_ip1_index(axis, kk, ll, ii, jj, dk, dl, di, dj)];
-                                        const double dD = -dD_buf[libcint_ip1_index(axis, ll, kk, ii, jj, dl, dk, di, dj)];
+                                        const double dA =
+                                            -dA_buf[libcint_ip1_index(
+                                                axis, ii, jj, kk, ll, di, dj,
+                                                dk, dl)];
+                                        const double dB =
+                                            -dB_buf[libcint_ip1_index(
+                                                axis, jj, ii, kk, ll, dj, di,
+                                                dk, dl)];
+                                        const double dC =
+                                            -dC_buf[libcint_ip1_index(
+                                                axis, kk, ll, ii, jj, dk, dl,
+                                                di, dj)];
+                                        const double dD =
+                                            -dD_buf[libcint_ip1_index(
+                                                axis, ll, kk, ii, jj, dl, dk,
+                                                di, dj)];
                                         grad(ai, axis) += factor * dA;
                                         grad(aj, axis) += factor * dB;
                                         grad(ak, axis) += factor * dC;
@@ -941,30 +958,35 @@ void accumulate_two_electron_gradient(
                     }
                 }
 
-                const bool should_log =
-                    (((left + 1) % progress_stride) == 0) || ((left + 1) == n_shell_pairs);
+                const bool should_log = (((left + 1) % progress_stride) == 0)
+                                        || ((left + 1) == n_shell_pairs);
                 if (should_log) {
-                    const long long unique_done = 1LL * (left + 1) * (left + 2) / 2;
-                    ATV_DEBUG(
-                        "[gradient] two_e exchange progress shell_pairs={}/{} unique_done={}/{} ms={:.1f}",
-                        left + 1, n_shell_pairs, unique_done, n_unique_shell_quartets, elapsed_ms(t_exchange));
+                    const long long unique_done =
+                        1LL * (left + 1) * (left + 2) / 2;
+                    ATV_DEBUG("[gradient] two_e exchange progress "
+                              "shell_pairs={}/{} unique_done={}/{} ms={:.1f}",
+                              left + 1, n_shell_pairs, unique_done,
+                              n_unique_shell_quartets, elapsed_ms(t_exchange));
                 }
             }
 
-            ATV_DEBUG("[gradient] two_e exchange done ms={:.1f}", elapsed_ms(t_exchange));
+            ATV_DEBUG("[gradient] two_e exchange done ms={:.1f}",
+                      elapsed_ms(t_exchange));
         }
 
         CINTdel_2e_optimizer(&ip1_opt);
-        ATV_DEBUG("[gradient] two_e contraction total_ms={:.1f}", elapsed_ms(t_total));
+        ATV_DEBUG("[gradient] two_e contraction total_ms={:.1f}",
+                  elapsed_ms(t_total));
         return;
     }
 
     if (config.force_native_two_electron_deriv) {
-        ATV_INFO("[gradient] two_e engine=native (force_native_two_electron_deriv=true)");
+        ATV_INFO("[gradient] two_e engine=native "
+                 "(force_native_two_electron_deriv=true)");
     } else {
-        ATV_WARN(
-            "[gradient] libcint two_e derivative nao mismatch libcint_nao={} basis={}, falling back to native engine",
-            cint_ctx.nao, n);
+        ATV_WARN("[gradient] libcint two_e derivative nao mismatch "
+                 "libcint_nao={} basis={}, falling back to native engine",
+                 cint_ctx.nao, n);
     }
 #endif
 
@@ -998,7 +1020,10 @@ void accumulate_two_electron_gradient(
             const double dx = Bl.center[0] - integrals.atoms[a].pos[0];
             const double dy = Bl.center[1] - integrals.atoms[a].pos[1];
             const double dz = Bl.center[2] - integrals.atoms[a].pos[2];
-            if (dx*dx + dy*dy + dz*dz < 1e-20) { block_to_atom[b] = a; break; }
+            if (dx * dx + dy * dy + dz * dz < 1e-20) {
+                block_to_atom[b] = a;
+                break;
+            }
         }
     }
 
@@ -1011,9 +1036,12 @@ void accumulate_two_electron_gradient(
                 m = std::max(m, std::abs(M.data()[i]));
             return m;
         };
-        if (restricted) D_max = max_abs(P_total);
-        else            D_max = std::max(max_abs(result.P_alpha), max_abs(result.P_beta));
-        if (D_max < 1.0) D_max = 1.0;  // keep Schwarz conservative at startup
+        if (restricted)
+            D_max = max_abs(P_total);
+        else
+            D_max = std::max(max_abs(result.P_alpha), max_abs(result.P_beta));
+        if (D_max < 1.0)
+            D_max = 1.0; // keep Schwarz conservative at startup
     }
     const double schwarz_tol = 1e-13;
 
@@ -1025,18 +1053,16 @@ void accumulate_two_electron_gradient(
         1;
 #endif
     std::vector<xt::xtensor<double, 2>> grad_local(
-        nT,
-        xt::zeros<double>({static_cast<std::size_t>(natm),
-                            static_cast<std::size_t>(3)}));
+        nT, xt::zeros<double>(
+                {static_cast<std::size_t>(natm), static_cast<std::size_t>(3)}));
 
     const auto t_two_e = LogClock::now();
-    ATV_DEBUG(
-        "[gradient] two_e engine=native block-deriv natm={} basis={} "
-        "blocks={} block_pairs={}",
-        natm, n, bpl.blocks.size(), n_bpairs);
+    ATV_DEBUG("[gradient] two_e engine=native block-deriv natm={} basis={} "
+              "blocks={} block_pairs={}",
+              natm, n, bpl.blocks.size(), n_bpairs);
 
 #ifdef _OPENMP
-    #pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for schedule(dynamic)
 #endif
     for (int left = 0; left < n_bpairs; ++left) {
         const int tid =
@@ -1047,8 +1073,8 @@ void accumulate_two_electron_gradient(
 #endif
         auto& Gl = grad_local[tid];
         const auto& bp_l = bpl.pairs[left];
-        const auto& Bsi  = bpl.blocks[bp_l.si];
-        const auto& Bsj  = bpl.blocks[bp_l.sj];
+        const auto& Bsi = bpl.blocks[bp_l.si];
+        const auto& Bsj = bpl.blocks[bp_l.sj];
         const int na = Bsi.n_cart, nb = Bsj.n_cart;
         const int i0 = Bsi.ao_start, j0 = Bsj.ao_start;
         const int atom_i = block_to_atom[bp_l.si];
@@ -1066,10 +1092,10 @@ void accumulate_two_electron_gradient(
             const int k0 = Bsk.ao_start, l0 = Bsl.ao_start;
             const int atom_k = block_to_atom[bp_r.si];
             const int atom_l = block_to_atom[bp_r.sj];
-            const bool diag_ket   = (bp_r.si == bp_r.sj);
-            const bool same_pair  = (left == right);
-            const int  bra_ket_m  = same_pair ? 1 : 2;
-            const int  block_n    = na * nb * nc * nd;
+            const bool diag_ket = (bp_r.si == bp_r.sj);
+            const bool same_pair = (left == right);
+            const int bra_ket_m = same_pair ? 1 : 2;
+            const int block_n = na * nb * nc * nd;
 
             std::vector<double> deriv_A(3 * block_n, 0.0);
             std::vector<double> deriv_B(3 * block_n, 0.0);
@@ -1086,9 +1112,9 @@ void accumulate_two_electron_gradient(
             // permutation symmetry. An additional AO-level canonical
             // check would over-restrict and under-count off-diagonal
             // contributions.
-            const int mult_left  = diag_bra ? 1 : 2;
+            const int mult_left = diag_bra ? 1 : 2;
             const int mult_right = diag_ket ? 1 : 2;
-            const int mult       = mult_left * mult_right * bra_ket_m;
+            const int mult = mult_left * mult_right * bra_ket_m;
 
             for (int ia = 0; ia < na; ++ia) {
                 const int i = i0 + ia;
@@ -1121,26 +1147,35 @@ void accumulate_two_electron_gradient(
                             double factor_K = 0.0;
                             if (do_exchange) {
                                 if (restricted) {
-                                    factor_K = -0.25 * mult * alpha_hf * 0.5 * (
-                                        P_total(i, k) * P_total(j, l) +
-                                        P_total(j, k) * P_total(i, l));
+                                    factor_K =
+                                        -0.25 * mult * alpha_hf * 0.5
+                                        * (P_total(i, k) * P_total(j, l)
+                                           + P_total(j, k) * P_total(i, l));
                                 } else {
-                                    factor_K = -0.5 * mult * alpha_hf * 0.5 * (
-                                        result.P_alpha(i, k) * result.P_alpha(j, l) +
-                                        result.P_alpha(j, k) * result.P_alpha(i, l) +
-                                        result.P_beta(i, k)  * result.P_beta(j, l)  +
-                                        result.P_beta(j, k)  * result.P_beta(i, l));
+                                    factor_K = -0.5 * mult * alpha_hf * 0.5
+                                               * (result.P_alpha(i, k)
+                                                      * result.P_alpha(j, l)
+                                                  + result.P_alpha(j, k)
+                                                        * result.P_alpha(i, l)
+                                                  + result.P_beta(i, k)
+                                                        * result.P_beta(j, l)
+                                                  + result.P_beta(j, k)
+                                                        * result.P_beta(i, l));
                                 }
                             }
                             const double factor = factor_J + factor_K;
-                            if (std::abs(factor) < 1e-18) continue;
+                            if (std::abs(factor) < 1e-18)
+                                continue;
 
                             const int ao_idx =
                                 ((ia * nb + ib) * nc + ic) * nd + id;
                             for (int axis = 0; axis < 3; ++axis) {
-                                const double dA = deriv_A[axis * block_n + ao_idx];
-                                const double dB = deriv_B[axis * block_n + ao_idx];
-                                const double dC = deriv_C[axis * block_n + ao_idx];
+                                const double dA =
+                                    deriv_A[axis * block_n + ao_idx];
+                                const double dB =
+                                    deriv_B[axis * block_n + ao_idx];
+                                const double dC =
+                                    deriv_C[axis * block_n + ao_idx];
                                 const double dD = -(dA + dB + dC);
                                 Gl(atom_i, axis) += factor * dA;
                                 Gl(atom_j, axis) += factor * dB;
@@ -1155,10 +1190,13 @@ void accumulate_two_electron_gradient(
     }
 
     // Reduce thread-local force accumulators.
-    for (const auto& Gl : grad_local) grad += Gl;
+    for (const auto& Gl : grad_local)
+        grad += Gl;
 
-    ATV_DEBUG("[gradient] two_e block-deriv done ms={:.1f}", elapsed_ms(t_two_e));
-    ATV_DEBUG("[gradient] two_e contraction total_ms={:.1f}", elapsed_ms(t_total));
+    ATV_DEBUG("[gradient] two_e block-deriv done ms={:.1f}",
+              elapsed_ms(t_two_e));
+    ATV_DEBUG("[gradient] two_e contraction total_ms={:.1f}",
+              elapsed_ms(t_total));
 }
 
 } // namespace scf

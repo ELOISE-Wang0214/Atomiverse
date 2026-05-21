@@ -96,9 +96,12 @@ cpu::Frame make_nh3() {
 }
 
 cpu::Frame make_molecule(const std::string& stem) {
-    if (stem == "h2o") return make_h2o();
-    if (stem == "ch4") return make_ch4();
-    if (stem == "nh3") return make_nh3();
+    if (stem == "h2o")
+        return make_h2o();
+    if (stem == "ch4")
+        return make_ch4();
+    if (stem == "nh3")
+        return make_nh3();
     throw std::runtime_error("unknown molecule: " + stem);
 }
 
@@ -111,29 +114,32 @@ cpu::Frame make_molecule(const std::string& stem) {
 // B3LYP/6-31G*/cart, grids.level = 3, conv_tol = 1e-12.
 struct RefForces {
     const char* stem;
-    std::vector<std::array<double, 3>> grad;  // dE/dR, Ha/Bohr
+    std::vector<std::array<double, 3>> grad; // dE/dR, Ha/Bohr
 };
 
 const std::vector<RefForces>& b3lyp_reference() {
     static const std::vector<RefForces> ref = {
-        {"h2o", {
-            {-1.612833381966e-15, -1.705742921477e-15, -1.310086217001e-02},
-            {-2.213629307622e-16, -8.249004083599e-03,  6.554047210348e-03},
-            { 4.765752619961e-17,  8.249004083600e-03,  6.554047210347e-03},
-        }},
-        {"ch4", {
-            {-3.195908022222e-15,  1.773291293473e-15,  1.313315824143e-15},
-            {-2.431483947497e-03, -2.431483947495e-03, -2.431483947496e-03},
-            { 2.431483947497e-03,  2.431483947495e-03, -2.431483947496e-03},
-            {-2.431483947497e-03,  2.431483947495e-03,  2.431483947495e-03},
-            { 2.431483947498e-03, -2.431483947495e-03,  2.431483947496e-03},
-        }},
-        {"nh3", {
-            {-3.981440475394e-14, -1.742668852297e-05, -8.209616933049e-03},
-            { 9.831397196930e-16, -4.527993911985e-03,  2.730620284688e-03},
-            {-3.944416598231e-03,  2.273199951145e-03,  2.737743167405e-03},
-            { 3.944416598234e-03,  2.273199951144e-03,  2.737743167405e-03},
-        }},
+        {"h2o",
+         {
+             {-1.612833381966e-15, -1.705742921477e-15, -1.310086217001e-02},
+             {-2.213629307622e-16, -8.249004083599e-03, 6.554047210348e-03},
+             {4.765752619961e-17, 8.249004083600e-03, 6.554047210347e-03},
+         }},
+        {"ch4",
+         {
+             {-3.195908022222e-15, 1.773291293473e-15, 1.313315824143e-15},
+             {-2.431483947497e-03, -2.431483947495e-03, -2.431483947496e-03},
+             {2.431483947497e-03, 2.431483947495e-03, -2.431483947496e-03},
+             {-2.431483947497e-03, 2.431483947495e-03, 2.431483947495e-03},
+             {2.431483947498e-03, -2.431483947495e-03, 2.431483947496e-03},
+         }},
+        {"nh3",
+         {
+             {-3.981440475394e-14, -1.742668852297e-05, -8.209616933049e-03},
+             {9.831397196930e-16, -4.527993911985e-03, 2.730620284688e-03},
+             {-3.944416598231e-03, 2.273199951145e-03, 2.737743167405e-03},
+             {3.944416598234e-03, 2.273199951144e-03, 2.737743167405e-03},
+         }},
     };
     return ref;
 }
@@ -141,24 +147,27 @@ const std::vector<RefForces>& b3lyp_reference() {
 // PBE0/6-31G*/cart, grids.level = 3, conv_tol = 1e-12.
 const std::vector<RefForces>& pbe0_reference() {
     static const std::vector<RefForces> ref = {
-        {"h2o", {
-            {-1.338316571841e-15, -8.456672528774e-16, -8.415435826656e-03},
-            { 2.356922883545e-16, -5.231182081665e-03,  4.209926730038e-03},
-            {-2.289012244022e-16,  5.231182081664e-03,  4.209926730037e-03},
-        }},
-        {"ch4", {
-            { 7.002495363078e-16, -2.078354458644e-15, -1.989664157781e-15},
-            {-2.176037678373e-03, -2.176037678373e-03, -2.176037678372e-03},
-            { 2.176037678373e-03,  2.176037678375e-03, -2.176037678372e-03},
-            {-2.176037678374e-03,  2.176037678373e-03,  2.176037678373e-03},
-            { 2.176037678372e-03, -2.176037678373e-03,  2.176037678373e-03},
-        }},
-        {"nh3", {
-            { 2.013460145031e-14, -1.763242409458e-05, -5.684077768786e-03},
-            {-1.068314767823e-16, -2.605231774153e-03,  1.888906795949e-03},
-            {-2.279577859184e-03,  1.311792297317e-03,  1.896415878683e-03},
-            { 2.279577859185e-03,  1.311792297318e-03,  1.896415878681e-03},
-        }},
+        {"h2o",
+         {
+             {-1.338316571841e-15, -8.456672528774e-16, -8.415435826656e-03},
+             {2.356922883545e-16, -5.231182081665e-03, 4.209926730038e-03},
+             {-2.289012244022e-16, 5.231182081664e-03, 4.209926730037e-03},
+         }},
+        {"ch4",
+         {
+             {7.002495363078e-16, -2.078354458644e-15, -1.989664157781e-15},
+             {-2.176037678373e-03, -2.176037678373e-03, -2.176037678372e-03},
+             {2.176037678373e-03, 2.176037678375e-03, -2.176037678372e-03},
+             {-2.176037678374e-03, 2.176037678373e-03, 2.176037678373e-03},
+             {2.176037678372e-03, -2.176037678373e-03, 2.176037678373e-03},
+         }},
+        {"nh3",
+         {
+             {2.013460145031e-14, -1.763242409458e-05, -5.684077768786e-03},
+             {-1.068314767823e-16, -2.605231774153e-03, 1.888906795949e-03},
+             {-2.279577859184e-03, 1.311792297317e-03, 1.896415878683e-03},
+             {2.279577859185e-03, 1.311792297318e-03, 1.896415878681e-03},
+         }},
     };
     return ref;
 }
@@ -173,14 +182,14 @@ const std::vector<RefForces>& pbe0_reference() {
 // OH bond = 0.968733 A, HOH angle = 103.6519 deg.
 constexpr double kB3LYPOptEnergyHa = -76.4089538451;
 constexpr double kB3LYPOptGeom[3][3] = {
-    { 0.0000000000,  0.0000000000,  0.1242918872},
-    { 0.0000000000,  0.7615569969, -0.4744358138},
-    { 0.0000000000, -0.7615569969, -0.4744358138},
+    {0.0000000000, 0.0000000000, 0.1242918872},
+    {0.0000000000, 0.7615569969, -0.4744358138},
+    {0.0000000000, -0.7615569969, -0.4744358138},
 };
 
 // Run the analytic hybrid gradient for one molecule at 6-31G*.
 cpu::scf::GradientResult run_hybrid_gradient(const std::string& stem,
-                                            XCType xc) {
+                                             XCType xc) {
     auto frame = make_molecule(stem);
     auto integrals = cpu::scf::build_integrals(frame, BasisSet::Pople631Gs);
     cpu::scf::SCFConfig cfg = (xc == XCType::B3LYP)
@@ -216,7 +225,7 @@ void check_against_pyscf(const std::string& stem, XCType xc,
                 label, stem.c_str(), max_err);
 }
 
-}  // namespace
+} // namespace
 
 // ── ac-001: B3LYP analytic force vs PySCF ───────────────────────────────
 
@@ -272,11 +281,11 @@ void check_moving_grid_fd(const std::string& stem, XCType xc,
                 << label << " " << stem << " atom=" << A << " axis=" << d;
         }
     }
-    std::printf("[hybrid-grad] %s %s max|analytic-FD| = %.3e Ha/Bohr\n",
-                label, stem.c_str(), max_err);
+    std::printf("[hybrid-grad] %s %s max|analytic-FD| = %.3e Ha/Bohr\n", label,
+                stem.c_str(), max_err);
 }
 
-}  // namespace
+} // namespace
 
 TEST(HybridGradient, B3LYPForceMatchesFiniteDifference) {
     check_moving_grid_fd("h2o", XCType::B3LYP, "B3LYP/6-31G*");
@@ -339,14 +348,13 @@ TEST(HybridGradient, B3LYPGeometryOptimizationMatchesPySCF) {
     // A small alpha0 would cap every step at a tiny fraction of the Newton
     // step and stall progress with a ~(1-alpha0) geometric decay. Force
     // tolerances are tight so the optimizer drives onto the true minimum.
-    cpu::minimizer::LBFGS step{
-        /*memory=*/8, /*alpha0=*/1.0,
-        /*ftol=*/0.01,         // eV/Angstrom (~2e-4 Ha/Bohr)
-        /*max_ls=*/20,
-        /*rms_ftol=*/0.005,
-        /*max_dtol=*/0.005,
-        /*rms_dtol=*/0.002,
-        /*etol=*/1e-5};
+    cpu::minimizer::LBFGS step{/*memory=*/8,       /*alpha0=*/1.0,
+                               /*ftol=*/0.01, // eV/Angstrom (~2e-4 Ha/Bohr)
+                               /*max_ls=*/20,
+                               /*rms_ftol=*/0.005,
+                               /*max_dtol=*/0.005,
+                               /*rms_dtol=*/0.002,
+                               /*etol=*/1e-5};
     step.line_search();
     opt.add(std::move(step));
     opt.on(ATV::minimizer::Phase::force)
@@ -373,7 +381,10 @@ TEST(HybridGradient, B3LYPGeometryOptimizationMatchesPySCF) {
         com_ref[1] += kB3LYPOptGeom[A][1];
         com_ref[2] += kB3LYPOptGeom[A][2];
     }
-    for (int d = 0; d < 3; ++d) { com_atv[d] /= 3.0; com_ref[d] /= 3.0; }
+    for (int d = 0; d < 3; ++d) {
+        com_atv[d] /= 3.0;
+        com_ref[d] /= 3.0;
+    }
 
     double sum_sq = 0.0;
     for (int A = 0; A < 3; ++A) {
@@ -384,7 +395,7 @@ TEST(HybridGradient, B3LYPGeometryOptimizationMatchesPySCF) {
         const double ry = kB3LYPOptGeom[A][1] - com_ref[1];
         const double rz = kB3LYPOptGeom[A][2] - com_ref[2];
         sum_sq += (ax - rx) * (ax - rx) + (ay - ry) * (ay - ry)
-                + (az - rz) * (az - rz);
+                  + (az - rz) * (az - rz);
     }
     const double rms = std::sqrt(sum_sq / 3.0);
     std::printf("[hybrid-grad] ac-005 geometry RMS vs PySCF = %.3e Angstrom\n",
@@ -394,12 +405,12 @@ TEST(HybridGradient, B3LYPGeometryOptimizationMatchesPySCF) {
 
     // Final energy vs PySCF optimized reference. SCFEvaluator writes the
     // KS total energy (eV) into frame.energy; convert back to Hartree.
-    const double e_final_ha = units::convert(
-        frame.energy, units::Energy::eV, units::Energy::Hartree);
+    const double e_final_ha =
+        units::convert(frame.energy, units::Energy::eV, units::Energy::Hartree);
     std::printf("[hybrid-grad] ac-005 final E = %.10f Ha (PySCF %.10f Ha)\n",
                 e_final_ha, kB3LYPOptEnergyHa);
     EXPECT_NEAR(e_final_ha, kB3LYPOptEnergyHa, 1e-6)
         << "optimized B3LYP/6-31G* water energy mismatch vs PySCF";
 }
 
-#endif  // ATV_HAS_RHF
+#endif // ATV_HAS_RHF

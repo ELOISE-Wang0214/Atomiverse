@@ -22,8 +22,8 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/component.h"
 #include "atomiverse/core/binding.h"
+#include "atomiverse/cpu/component.h"
 
 namespace ATV {
 namespace cpu {
@@ -32,7 +32,7 @@ class AnalysisExecutor;
 
 /// @brief Copies frame fields into a ring slot for async consumption.
 class SnapshotPublisher : public cpu::ComponentBase {
-public:
+  public:
     std::string name() const override { return "snapshot_publisher"; }
 
     /// @brief No default binding -- drivers wire explicitly at their own
@@ -44,7 +44,7 @@ public:
     void launch(const LaunchContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;
 
-private:
+  private:
     AnalysisExecutor* exec_ = nullptr;
 };
 

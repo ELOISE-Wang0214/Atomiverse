@@ -7,8 +7,8 @@
 
 #include "atomiverse/torch/potentials/harmonic_bond.cuh"
 
-#include <cuda_runtime.h>
 #include <cmath>
+#include <cuda_runtime.h>
 
 namespace atorch = ATV::torch;
 
@@ -20,8 +20,12 @@ double analytical_bond_energy(double r, double K, double r0) {
 }
 
 atorch::Frame make_bond_frame(double x0, double x1) {
-    auto real_opts = ::torch::TensorOptions().dtype(atorch::kRealDtype).device(::torch::kCUDA);
-    auto int_opts = ::torch::TensorOptions().dtype(atorch::kIntDtype).device(::torch::kCUDA);
+    auto real_opts = ::torch::TensorOptions()
+                         .dtype(atorch::kRealDtype)
+                         .device(::torch::kCUDA);
+    auto int_opts = ::torch::TensorOptions()
+                        .dtype(atorch::kIntDtype)
+                        .device(::torch::kCUDA);
 
     atorch::Frame frame;
     frame.n_atoms_ = 2;
@@ -48,11 +52,13 @@ atorch::Frame make_bond_frame(double x0, double x1) {
 TEST(TorchHarmonicBond, SingleBondAnalytical) {
     double K_val = double(100.0), r0_val = double(1.54), x1 = double(1.8);
     auto frame = make_bond_frame(double(0), x1);
-    auto real_opts = ::torch::TensorOptions().dtype(atorch::kRealDtype).device(::torch::kCUDA);
+    auto real_opts = ::torch::TensorOptions()
+                         .dtype(atorch::kRealDtype)
+                         .device(::torch::kCUDA);
 
-    auto energy = atorch::harmonic_bond(frame,
-        ::torch::tensor({K_val}, real_opts),
-        ::torch::tensor({r0_val}, real_opts));
+    auto energy =
+        atorch::harmonic_bond(frame, ::torch::tensor({K_val}, real_opts),
+                              ::torch::tensor({r0_val}, real_opts));
     cudaDeviceSynchronize();
 
     double computed = energy.to(::torch::kCPU).item<double>();
@@ -62,11 +68,14 @@ TEST(TorchHarmonicBond, SingleBondAnalytical) {
 
 TEST(TorchHarmonicBond, GradcheckK) {
     double K_val = double(100.0), r0_val = double(1.54), x1 = double(1.8);
-    auto real_opts = ::torch::TensorOptions().dtype(atorch::kRealDtype).device(::torch::kCUDA);
+    auto real_opts = ::torch::TensorOptions()
+                         .dtype(atorch::kRealDtype)
+                         .device(::torch::kCUDA);
 
     double h = double(0.01);
     double numerical = (analytical_bond_energy(x1, K_val + h, r0_val)
-                    - analytical_bond_energy(x1, K_val - h, r0_val)) / (double(2) * h);
+                        - analytical_bond_energy(x1, K_val - h, r0_val))
+                       / (double(2) * h);
 
     auto frame = make_bond_frame(double(0), x1);
     auto K = ::torch::tensor({K_val}, real_opts).requires_grad_(true);
@@ -82,11 +91,14 @@ TEST(TorchHarmonicBond, GradcheckK) {
 
 TEST(TorchHarmonicBond, GradcheckR0) {
     double K_val = double(100.0), r0_val = double(1.54), x1 = double(1.8);
-    auto real_opts = ::torch::TensorOptions().dtype(atorch::kRealDtype).device(::torch::kCUDA);
+    auto real_opts = ::torch::TensorOptions()
+                         .dtype(atorch::kRealDtype)
+                         .device(::torch::kCUDA);
 
     double h = double(1e-4);
     double numerical = (analytical_bond_energy(x1, K_val, r0_val + h)
-                    - analytical_bond_energy(x1, K_val, r0_val - h)) / (double(2) * h);
+                        - analytical_bond_energy(x1, K_val, r0_val - h))
+                       / (double(2) * h);
 
     auto frame = make_bond_frame(double(0), x1);
     auto K = ::torch::tensor({K_val}, real_opts);
@@ -101,7 +113,9 @@ TEST(TorchHarmonicBond, GradcheckR0) {
 }
 
 TEST(TorchHarmonicBond, ZeroBonds) {
-    auto real_opts = ::torch::TensorOptions().dtype(atorch::kRealDtype).device(::torch::kCUDA);
+    auto real_opts = ::torch::TensorOptions()
+                         .dtype(atorch::kRealDtype)
+                         .device(::torch::kCUDA);
 
     atorch::Frame frame;
     frame.n_atoms_ = 2;
@@ -114,12 +128,13 @@ TEST(TorchHarmonicBond, ZeroBonds) {
     frame.atoms.fz = ::torch::zeros({2}, real_opts);
     frame.energy = ::torch::zeros({1}, real_opts);
 
-    auto energy = atorch::harmonic_bond(frame,
-        ::torch::tensor({double(100.0)}, real_opts),
+    auto energy = atorch::harmonic_bond(
+        frame, ::torch::tensor({double(100.0)}, real_opts),
         ::torch::tensor({double(1.54)}, real_opts));
     cudaDeviceSynchronize();
 
-    EXPECT_NEAR(energy.to(::torch::kCPU).item<double>(), double(0), double(1e-6));
+    EXPECT_NEAR(energy.to(::torch::kCPU).item<double>(), double(0),
+                double(1e-6));
 }
 
 TEST(TorchHarmonicBond, ForceSymmetry) {
@@ -127,11 +142,13 @@ TEST(TorchHarmonicBond, ForceSymmetry) {
     double K_val = double(100.0), r0_val = double(1.54);
     double x0 = double(0), x1 = double(1.8);
     auto frame = make_bond_frame(x0, x1);
-    auto real_opts = ::torch::TensorOptions().dtype(atorch::kRealDtype).device(::torch::kCUDA);
+    auto real_opts = ::torch::TensorOptions()
+                         .dtype(atorch::kRealDtype)
+                         .device(::torch::kCUDA);
 
-    auto energy = atorch::harmonic_bond(frame,
-        ::torch::tensor({K_val}, real_opts),
-        ::torch::tensor({r0_val}, real_opts));
+    auto energy =
+        atorch::harmonic_bond(frame, ::torch::tensor({K_val}, real_opts),
+                              ::torch::tensor({r0_val}, real_opts));
     cudaDeviceSynchronize();
 
     auto fx_cpu = frame.atoms.fx.to(::torch::kCPU);

@@ -37,29 +37,30 @@ void AngleHarmonic::build(const BuildContext& ctx) {
 void AngleHarmonic::compute(const LaunchContext& ctx) {
     auto& f = ctx.frame;
     const int n_angles = static_cast<int>(f.angles.atomi.size());
-    if (n_angles == 0) return;
+    if (n_angles == 0)
+        return;
 
     const auto* dd = ctx.runtime.dd;
     const bool multi_rank = (dd != nullptr) && (ctx.runtime.mpi_size > 1);
     int n_atoms = multi_rank ? (dd->n_local + dd->n_ghost) : f.atoms.size();
 
     // Owner-tag rule for angle (i,j,k): centre atom j. LAMMPS convention.
-    const auto& owned = select_owned_tuples(
-        ctx, n_angles,
-        [&](int a) -> std::int64_t {
+    const auto& owned =
+        select_owned_tuples(ctx, n_angles, [&](int a) -> std::int64_t {
             return static_cast<std::int64_t>(f.angles.atomj[a]);
         });
     const int n_work = static_cast<int>(owned.size());
-    if (n_work == 0) return;
+    if (n_work == 0)
+        return;
 
     double energy_total = 0;
     // Angle virial: Σ_atoms r_α · F_β = d_ji_α · F_i_β + d_jk_α · F_k_β
     // (centre-atom force F_j = -(F_i + F_k) drops out by Newton's 3rd).
     double v_xx = 0, v_yy = 0, v_zz = 0, v_xy = 0, v_xz = 0, v_yz = 0;
 
-    #pragma omp parallel reduction(+:energy_total) \
-        reduction(+:v_xx) reduction(+:v_yy) reduction(+:v_zz) \
-        reduction(+:v_xy) reduction(+:v_xz) reduction(+:v_yz)
+#pragma omp parallel reduction(+ : energy_total) reduction(+ : v_xx)           \
+    reduction(+ : v_yy) reduction(+ : v_zz) reduction(+ : v_xy)                \
+    reduction(+ : v_xz) reduction(+ : v_yz)
     {
         int tid = 0;
 #ifdef _OPENMP
@@ -77,7 +78,7 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
         const double* __restrict y_ptr = f.atoms.y.data();
         const double* __restrict z_ptr = f.atoms.z.data();
 
-        #pragma omp for schedule(static)
+#pragma omp for schedule(static)
         for (int ia = 0; ia < n_work; ++ia) {
             const int a = owned[static_cast<std::size_t>(ia)];
             int i = f.angles.atomi[a];
@@ -90,11 +91,13 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
             // of the three atoms is beyond this rank's halo skin.
             if (multi_rank) {
                 auto it_j = dd->tag_to_local.find(static_cast<std::int64_t>(j));
-                if (it_j == dd->tag_to_local.end()) continue;
+                if (it_j == dd->tag_to_local.end())
+                    continue;
                 auto it_i = dd->tag_to_local.find(static_cast<std::int64_t>(i));
                 auto it_k = dd->tag_to_local.find(static_cast<std::int64_t>(k));
-                if (it_i == dd->tag_to_local.end() ||
-                    it_k == dd->tag_to_local.end()) continue;
+                if (it_i == dd->tag_to_local.end()
+                    || it_k == dd->tag_to_local.end())
+                    continue;
                 i = it_i->second;
                 j = it_j->second;
                 k = it_k->second;
@@ -105,9 +108,9 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
             // from registers, removing the per-component xtensor strided
             // indirection. Bit-identical: the FP operations and order are
             // unchanged, only the address computation moves outward.
-            const double ri[3] = { x_ptr[i], y_ptr[i], z_ptr[i] };
-            const double rj[3] = { x_ptr[j], y_ptr[j], z_ptr[j] };
-            const double rk[3] = { x_ptr[k], y_ptr[k], z_ptr[k] };
+            const double ri[3] = {x_ptr[i], y_ptr[i], z_ptr[i]};
+            const double rj[3] = {x_ptr[j], y_ptr[j], z_ptr[j]};
+            const double rk[3] = {x_ptr[k], y_ptr[k], z_ptr[k]};
 
             // r_ji = r_i - r_j
             double dx_ji = ri[0] - rj[0];
@@ -121,10 +124,13 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
             double dz_jk = rk[2] - rj[2];
             f.box.min_image(dx_jk, dy_jk, dz_jk);
 
-            double r_ji = std::sqrt(dx_ji * dx_ji + dy_ji * dy_ji + dz_ji * dz_ji);
-            double r_jk = std::sqrt(dx_jk * dx_jk + dy_jk * dy_jk + dz_jk * dz_jk);
+            double r_ji =
+                std::sqrt(dx_ji * dx_ji + dy_ji * dy_ji + dz_ji * dz_ji);
+            double r_jk =
+                std::sqrt(dx_jk * dx_jk + dy_jk * dy_jk + dz_jk * dz_jk);
 
-            double cos_theta = (dx_ji * dx_jk + dy_ji * dy_jk + dz_ji * dz_jk) / (r_ji * r_jk);
+            double cos_theta =
+                (dx_ji * dx_jk + dy_ji * dy_jk + dz_ji * dz_jk) / (r_ji * r_jk);
             cos_theta = std::max(double(-1), std::min(double(1), cos_theta));
             double theta = std::acos(cos_theta);
 
@@ -136,7 +142,8 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
 
             // sin(theta) for force projection
             double sin_theta = std::sqrt(double(1) - cos_theta * cos_theta);
-            if (sin_theta < double(1e-10)) continue;
+            if (sin_theta < double(1e-10))
+                continue;
 
             // F_i = -dV/dr_i = +(dV/dθ)/(r_ji·sin θ) · (r_jk_hat - cos θ·r_ji_hat)
             // (the - in d(cos θ)/dr_i and the - in dθ/d(cos θ) = -1/sin θ
@@ -153,8 +160,12 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
             double fk_z = c_coeff * (dz_ji / r_ji - cos_theta * dz_jk / r_jk);
 
             // Force on j: -(fi + fk) (Newton's 3rd law)
-            fxt[i] += fi_x;  fyt[i] += fi_y;  fzt[i] += fi_z;
-            fxt[k] += fk_x;  fyt[k] += fk_y;  fzt[k] += fk_z;
+            fxt[i] += fi_x;
+            fyt[i] += fi_y;
+            fzt[i] += fi_z;
+            fxt[k] += fk_x;
+            fyt[k] += fk_y;
+            fzt[k] += fk_z;
             fxt[j] -= fi_x + fk_x;
             fyt[j] -= fi_y + fk_y;
             fzt[j] -= fi_z + fk_z;
@@ -170,7 +181,7 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
             v_yz += dy_ji * fi_z + dy_jk * fk_z;
         }
 
-        #pragma omp for schedule(static)
+#pragma omp for schedule(static)
         for (int i = 0; i < n_atoms; ++i) {
             for (int t = 0; t < n_threads_; ++t) {
                 f.atoms.fx[i] += fx_thr_[t][i];

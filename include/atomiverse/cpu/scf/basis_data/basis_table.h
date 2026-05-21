@@ -30,9 +30,10 @@ namespace basis_data {
 /// three Cartesian components px/py/pz. For `l = 2` (d), likewise
 /// across the six Cartesian components d_xx..d_yz (Stage B2b).
 struct ContractedShell {
-    int l;                         ///< Angular momentum (0 = s, 1 = p, 2 = d).
-    std::vector<double> alpha;     ///< Gaussian exponents, length `n_prim`.
-    std::vector<double> coeff;     ///< Contraction coefficients (unnormalized), length `n_prim`.
+    int l;                     ///< Angular momentum (0 = s, 1 = p, 2 = d).
+    std::vector<double> alpha; ///< Gaussian exponents, length `n_prim`.
+    std::vector<double>
+        coeff; ///< Contraction coefficients (unnormalized), length `n_prim`.
 };
 
 /// @brief All shells belonging to one element.

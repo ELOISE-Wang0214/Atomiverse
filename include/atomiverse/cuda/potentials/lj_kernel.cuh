@@ -5,7 +5,6 @@
 /// It accepts raw pointers so it can be called from any backend.
 #pragma once
 
-
 #include "atomiverse/cuda/types.cuh"
 
 namespace ATV {
@@ -30,14 +29,16 @@ inline constexpr cuda::work_t kMinPairDist = cuda::work_t(1e-10);
 /// @param cutoff          Interaction cutoff [Angstrom].
 /// @param v_shift         Potential shift at cutoff [eV].
 /// @param n_pairs_ptr     Pair count [1, device].
-__global__ void lj_force(
-    cuda::real_t* __restrict__ fx, cuda::real_t* __restrict__ fy, cuda::real_t* __restrict__ fz,
-    cuda::prec_t* __restrict__ energy,
-    const int* __restrict__ pi, const int* __restrict__ pj,
-    const cuda::real_t* __restrict__ pdx, const cuda::real_t* __restrict__ pdy,
-    const cuda::real_t* __restrict__ pdz, const cuda::real_t* __restrict__ pdist,
-    cuda::work_t epsilon, cuda::work_t sigma, cuda::work_t cutoff, cuda::work_t v_shift,
-    const int* __restrict__ n_pairs_ptr);
+__global__ void
+lj_force(cuda::real_t* __restrict__ fx, cuda::real_t* __restrict__ fy,
+         cuda::real_t* __restrict__ fz, cuda::prec_t* __restrict__ energy,
+         const int* __restrict__ pi, const int* __restrict__ pj,
+         const cuda::real_t* __restrict__ pdx,
+         const cuda::real_t* __restrict__ pdy,
+         const cuda::real_t* __restrict__ pdz,
+         const cuda::real_t* __restrict__ pdist, cuda::work_t epsilon,
+         cuda::work_t sigma, cuda::work_t cutoff, cuda::work_t v_shift,
+         const int* __restrict__ n_pairs_ptr);
 
 /// @brief Compute LJ potential shift at cutoff.
 /// @param epsilon Well depth [eV].

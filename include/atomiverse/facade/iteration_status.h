@@ -26,9 +26,9 @@ namespace ATV {
 /// @brief Outer-driver loop status, owned by the category driver, written by
 ///        `ConvergenceCheck` components, polled at the end of each iteration.
 struct IterationStatus {
-    bool converged = false;        ///< Optimizer normal success.
-    bool stop_requested = false;   ///< Explicit early termination.
-    std::string reason;            ///< Human-readable detail.
+    bool converged = false;      ///< Optimizer normal success.
+    bool stop_requested = false; ///< Explicit early termination.
+    std::string reason;          ///< Human-readable detail.
 
     /// @brief Reset to "fresh iteration" state.
     void reset() noexcept {

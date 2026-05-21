@@ -43,9 +43,9 @@
 #include <string>
 
 #include "atomiverse/cpu/component.h"
-#include "atomiverse/cpu/md/pair_list.h"
 #include "atomiverse/cpu/md/cell_list.h"
 #include "atomiverse/cpu/md/mpi/domain.h"
+#include "atomiverse/cpu/md/pair_list.h"
 
 namespace ATV {
 namespace cpu {
@@ -65,7 +65,7 @@ namespace md {
 /// Defaults match LAMMPS: `every=1`, `delay=10`, `check=true` (`check yes`).
 template <typename Strategy = CellList>
 class NeighborList : public cpu::ComponentBase {
-public:
+  public:
     /// @param cutoff Interaction cutoff [Angstrom].
     /// @param skin Verlet skin width [Angstrom]. Negative = auto (0.3 * cutoff).
     /// @param every Attempt rebuild at most every N steps (LAMMPS `neigh_modify
@@ -100,7 +100,7 @@ public:
         trim_inum_to_local(ctx.runtime, pairs_);
         ctx.runtime.pair_list = &pairs_;
         ago_ = 0;
-        n_rebuilds_ = 1;  // initial enumeration counts as rebuild #1
+        n_rebuilds_ = 1; // initial enumeration counts as rebuild #1
     }
 
     void launch(const cpu::LaunchContext& ctx) override {
@@ -119,8 +119,7 @@ public:
         //   every gate:  ago % every != 0 → no rebuild attempt (LAMMPS `every`)
         //   check yes:   max_disp * 2 > skin → rebuild (half-skin trigger)
         //   check no:    rebuild unconditionally once the every/delay gate opens
-        const bool size_stale =
-            n_active != strategy_.n_at_last_build();
+        const bool size_stale = n_active != strategy_.n_at_last_build();
         const bool delay_ok = ago_ >= delay_;
         const bool every_ok = (ago_ % every_) == 0;
         // When the gate is open: check no → always rebuild; check yes →
@@ -156,7 +155,7 @@ public:
     /// @brief Access the underlying strategy.
     const Strategy& strategy() const { return strategy_; }
 
-private:
+  private:
     /// @brief True when running with multiple MPI ranks (and the DD struct
     /// is available). Single-rank or null-`dd` returns false.
     static bool is_multi_rank(const cpu::Context& rt) {
@@ -166,7 +165,8 @@ private:
     /// @brief Active atom count: owners + current ghosts under multi-rank,
     /// otherwise the full atom array (single-rank legacy).
     static int active_count(const cpu::Context& rt, const cpu::Frame& frame) {
-        if (is_multi_rank(rt)) return rt.dd->n_local + rt.dd->n_ghost;
+        if (is_multi_rank(rt))
+            return rt.dd->n_local + rt.dd->n_ghost;
         return frame.atoms.size();
     }
 

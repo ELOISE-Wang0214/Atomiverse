@@ -18,8 +18,8 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/component.h"
 #include "atomiverse/core/binding.h"
+#include "atomiverse/cpu/component.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -32,7 +32,7 @@ namespace mpi {
 /// Phase 1: structural no-op. Registers `pre_force @ -30` so the component
 /// graph has the correct slot reserved from the start.
 class AtomMigration : public cpu::ComponentBase {
-public:
+  public:
     /// @param every Attempt owner migration every N steps. The component also
     ///        runs immediately when an external partition update bumps
     ///        `DomainDecomposition::neighbor_generation`.
@@ -44,7 +44,7 @@ public:
     }
     void launch(const cpu::LaunchContext& ctx) override;
 
-private:
+  private:
     int every_ = 1;
     std::uint64_t last_observed_generation_ = ~std::uint64_t{0};
 };

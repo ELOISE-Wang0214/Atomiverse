@@ -16,10 +16,10 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cuda/frame.cuh"
-#include "atomiverse/cuda/context.cuh"
-#include "atomiverse/core/types.h"
 #include "atomiverse/core/binding.h"
+#include "atomiverse/core/types.h"
+#include "atomiverse/cuda/context.cuh"
+#include "atomiverse/cuda/frame.cuh"
 #include "atomiverse/facade/component_role.h"
 
 namespace ATV {
@@ -75,7 +75,7 @@ struct DestroyContext {
 /// @see Driver for the user-facing registration API
 /// @see Backend for lifecycle dispatch
 class ComponentBase {
-public:
+  public:
     virtual ~ComponentBase() = default;
 
     /// @brief Human-readable component name (used in timing reports).

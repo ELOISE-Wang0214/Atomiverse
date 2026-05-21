@@ -29,9 +29,12 @@ namespace scf {
 /// Each derivative tensor is indexed as [atom_index, cart_component, mu, nu]
 /// where cart_component = 0,1,2 for x,y,z. All in Hartree/Bohr.
 struct IntegralDerivPack {
-    xt::xtensor<double, 4> dS;     ///< dS/dR [n_atoms, 3, n_basis, n_basis] [1/Bohr].
-    xt::xtensor<double, 4> dT;     ///< dT/dR [n_atoms, 3, n_basis, n_basis] [Hartree/Bohr].
-    xt::xtensor<double, 4> dV;     ///< dV/dR [n_atoms, 3, n_basis, n_basis] [Hartree/Bohr].
+    xt::xtensor<double, 4>
+        dS; ///< dS/dR [n_atoms, 3, n_basis, n_basis] [1/Bohr].
+    xt::xtensor<double, 4>
+        dT; ///< dT/dR [n_atoms, 3, n_basis, n_basis] [Hartree/Bohr].
+    xt::xtensor<double, 4>
+        dV; ///< dV/dR [n_atoms, 3, n_basis, n_basis] [Hartree/Bohr].
     xt::xtensor<double, 2> dV_nuc; ///< dV_nuc/dR [n_atoms, 3] [Hartree/Bohr].
     int n_atoms = 0;               ///< Number of atoms.
     int n_basis = 0;               ///< Number of basis functions.
@@ -74,13 +77,12 @@ IntegralDerivPack build_integral_derivatives(const IntegralPack& pack);
 /// @param result         Converged SCF result with spin densities.
 /// @param config         SCF configuration selecting HF/KS, hybrid functional,
 ///                       and spin treatment.
-void accumulate_two_electron_gradient(
-    xt::xtensor<double, 2>& grad,
-    const Frame& frame,
-    const IntegralPack& integrals,
-    const xt::xtensor<double, 2>& P_total,
-    const SCFResult& result,
-    const SCFConfig& config);
+void accumulate_two_electron_gradient(xt::xtensor<double, 2>& grad,
+                                      const Frame& frame,
+                                      const IntegralPack& integrals,
+                                      const xt::xtensor<double, 2>& P_total,
+                                      const SCFResult& result,
+                                      const SCFConfig& config);
 
 } // namespace scf
 } // namespace cpu

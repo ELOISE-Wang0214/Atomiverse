@@ -5,8 +5,8 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/component.h"
 #include "atomiverse/core/binding.h"
+#include "atomiverse/cpu/component.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -34,7 +34,7 @@ namespace md {
 /// `fix nve` exactly. `fix nve/sphere`/`nve/asphere` rotational variants
 /// are out of scope (point-mass NVE only).
 class VelocityVerlet : public cpu::ComponentBase {
-public:
+  public:
     /// @param dt Timestep [fs]. Mirrors the global LAMMPS `timestep`
     ///           consumed by `fix nve` via `update->dt`.
     explicit VelocityVerlet(double dt);
@@ -47,7 +47,7 @@ public:
     }
     void launch(const cpu::LaunchContext& ctx) override;
 
-private:
+  private:
     double dt_;
 };
 

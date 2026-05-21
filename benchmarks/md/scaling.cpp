@@ -31,13 +31,13 @@
 #include <string>
 #include <vector>
 
+#include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/lj.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/mpi/halo_exchange.h"
 #include "atomiverse/cpu/md/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/core/mat3.h"
 
 #ifdef ATV_HAS_MPI
 #include <mpi.h>
@@ -50,14 +50,14 @@ using namespace ATV;
 namespace {
 
 struct Args {
-    int  atoms          = 0;       ///< total atoms (strong scaling); 0 = unset
-    int  atoms_per_rank = 50'000;  ///< atoms per rank (weak scaling default)
-    int  steps          = 200;     ///< MD steps to time
-    int  warmup         = 10;      ///< unrecorded warmup steps before timing
-    double cutoff       = 6.0;     ///< LJ cutoff [Angstrom]
-    double dt           = 1.0;     ///< Time step [fs]
-    bool csv_header     = false;   ///< print CSV header to stdout (rank 0 only)
-    bool quiet          = false;   ///< suppress one-line per-rank reports
+    int atoms = 0;               ///< total atoms (strong scaling); 0 = unset
+    int atoms_per_rank = 50'000; ///< atoms per rank (weak scaling default)
+    int steps = 200;             ///< MD steps to time
+    int warmup = 10;             ///< unrecorded warmup steps before timing
+    double cutoff = 6.0;         ///< LJ cutoff [Angstrom]
+    double dt = 1.0;             ///< Time step [fs]
+    bool csv_header = false;     ///< print CSV header to stdout (rank 0 only)
+    bool quiet = false;          ///< suppress one-line per-rank reports
 };
 
 void print_help() {
@@ -79,26 +79,49 @@ bool parse_args(int argc, char** argv, Args& a) {
     for (int i = 1; i < argc; ++i) {
         const char* s = argv[i];
         auto take = [&](const char* name, int& dst) {
-            if (std::strcmp(s, name) != 0) return false;
-            if (i + 1 >= argc) { std::fprintf(stderr, "%s requires a value\n", name); std::exit(2); }
+            if (std::strcmp(s, name) != 0)
+                return false;
+            if (i + 1 >= argc) {
+                std::fprintf(stderr, "%s requires a value\n", name);
+                std::exit(2);
+            }
             dst = std::atoi(argv[++i]);
             return true;
         };
         auto take_d = [&](const char* name, double& dst) {
-            if (std::strcmp(s, name) != 0) return false;
-            if (i + 1 >= argc) { std::fprintf(stderr, "%s requires a value\n", name); std::exit(2); }
+            if (std::strcmp(s, name) != 0)
+                return false;
+            if (i + 1 >= argc) {
+                std::fprintf(stderr, "%s requires a value\n", name);
+                std::exit(2);
+            }
             dst = std::atof(argv[++i]);
             return true;
         };
-        if (take("--atoms", a.atoms)) continue;
-        if (take("--atoms-per-rank", a.atoms_per_rank)) continue;
-        if (take("--steps", a.steps)) continue;
-        if (take("--warmup", a.warmup)) continue;
-        if (take_d("--cutoff", a.cutoff)) continue;
-        if (take_d("--dt", a.dt)) continue;
-        if (std::strcmp(s, "--csv-header") == 0) { a.csv_header = true; continue; }
-        if (std::strcmp(s, "--quiet") == 0)      { a.quiet = true;      continue; }
-        if (std::strcmp(s, "--help") == 0)       { print_help(); std::exit(0); }
+        if (take("--atoms", a.atoms))
+            continue;
+        if (take("--atoms-per-rank", a.atoms_per_rank))
+            continue;
+        if (take("--steps", a.steps))
+            continue;
+        if (take("--warmup", a.warmup))
+            continue;
+        if (take_d("--cutoff", a.cutoff))
+            continue;
+        if (take_d("--dt", a.dt))
+            continue;
+        if (std::strcmp(s, "--csv-header") == 0) {
+            a.csv_header = true;
+            continue;
+        }
+        if (std::strcmp(s, "--quiet") == 0) {
+            a.quiet = true;
+            continue;
+        }
+        if (std::strcmp(s, "--help") == 0) {
+            print_help();
+            std::exit(0);
+        }
         std::fprintf(stderr, "unknown argument: %s\n", s);
         print_help();
         return false;
@@ -110,19 +133,23 @@ bool parse_args(int argc, char** argv, Args& a) {
 // nearest cube), a = 5.3 Å (matches the LAMMPS-typical Ar density for σ=3.4).
 cpu::Frame make_fcc_argon_total(int n_target) {
     const int atoms_per_unit_cell = 4;
-    int n_cells_per_axis = std::max(1, static_cast<int>(std::cbrt(
-        static_cast<double>(n_target) / atoms_per_unit_cell)));
-    while (atoms_per_unit_cell *
-           n_cells_per_axis * n_cells_per_axis * n_cells_per_axis < n_target) {
+    int n_cells_per_axis =
+        std::max(1, static_cast<int>(std::cbrt(static_cast<double>(n_target)
+                                               / atoms_per_unit_cell)));
+    while (atoms_per_unit_cell * n_cells_per_axis * n_cells_per_axis
+               * n_cells_per_axis
+           < n_target) {
         ++n_cells_per_axis;
     }
     const double a_lat = 5.3;
-    const int n = atoms_per_unit_cell *
-                  n_cells_per_axis * n_cells_per_axis * n_cells_per_axis;
+    const int n = atoms_per_unit_cell * n_cells_per_axis * n_cells_per_axis
+                  * n_cells_per_axis;
     cpu::Frame frame(n);
     const double basis[4][3] = {
-        {0.0, 0.0, 0.0}, {0.5, 0.5, 0.0},
-        {0.5, 0.0, 0.5}, {0.0, 0.5, 0.5},
+        {0.0, 0.0, 0.0},
+        {0.5, 0.5, 0.0},
+        {0.5, 0.0, 0.5},
+        {0.0, 0.5, 0.5},
     };
     const double shift = 0.25 * a_lat;
     int idx = 0;
@@ -160,7 +187,8 @@ double now_seconds() {
 
 int main(int argc, char** argv) {
     Args args;
-    if (!parse_args(argc, argv, args)) return 2;
+    if (!parse_args(argc, argv, args))
+        return 2;
 
 #ifdef ATV_HAS_MPI
     int provided = 0;
@@ -176,7 +204,7 @@ int main(int argc, char** argv) {
     const char* mode = "weak";
     int n_total = args.atoms;
     if (n_total <= 0) {
-        n_total = args.atoms_per_rank * world_size;  // weak scaling
+        n_total = args.atoms_per_rank * world_size; // weak scaling
     } else {
         mode = "strong";
     }
@@ -185,18 +213,23 @@ int main(int argc, char** argv) {
     const int n_actual = frame.atoms.size();
 
     if (my_rank == 0 && args.csv_header) {
-        std::printf("ranks,atoms,steps,time_total_s,time_per_step_ms,atoms_per_rank,mode\n");
+        std::printf("ranks,atoms,steps,time_total_s,time_per_step_ms,atoms_per_"
+                    "rank,mode\n");
     }
 
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{args.dt});
-    sim.on(ATV::md::Phase::pre_force).add(cpu::md::mpi::HaloExchangeForward{args.cutoff}, -20);
-    sim.on(ATV::md::Phase::post_force).add(cpu::md::mpi::HaloExchangeReverse{}, -1000);
-    sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{args.cutoff}, -10);
+    sim.on(ATV::md::Phase::pre_force)
+        .add(cpu::md::mpi::HaloExchangeForward{args.cutoff}, -20);
+    sim.on(ATV::md::Phase::post_force)
+        .add(cpu::md::mpi::HaloExchangeReverse{}, -1000);
+    sim.on(ATV::md::Phase::force)
+        .add(cpu::md::NeighborList<>{args.cutoff}, -10);
     sim.on(ATV::md::Phase::force).add(cpu::md::LJ{0.0104, 3.4, args.cutoff});
     sim.build();
 
-    if (args.warmup > 0) sim.run(frame, args.warmup);
+    if (args.warmup > 0)
+        sim.run(frame, args.warmup);
 
 #ifdef ATV_HAS_MPI
     MPI_Barrier(MPI_COMM_WORLD);
@@ -213,15 +246,14 @@ int main(int argc, char** argv) {
 
     if (my_rank == 0) {
         const int per_rank = (n_actual + world_size - 1) / world_size;
-        std::printf("%d,%d,%d,%.6f,%.6f,%d,%s\n",
-                    world_size, n_actual, args.steps,
-                    total_s, per_step_ms, per_rank, mode);
+        std::printf("%d,%d,%d,%.6f,%.6f,%d,%s\n", world_size, n_actual,
+                    args.steps, total_s, per_step_ms, per_rank, mode);
         if (!args.quiet) {
             std::fprintf(stderr,
-                "scaling: %d ranks  %d atoms  %d steps  %.4f s total  "
-                "%.4f ms/step  (%s, ~%d atoms/rank)\n",
-                world_size, n_actual, args.steps, total_s, per_step_ms,
-                mode, per_rank);
+                         "scaling: %d ranks  %d atoms  %d steps  %.4f s total  "
+                         "%.4f ms/step  (%s, ~%d atoms/rank)\n",
+                         world_size, n_actual, args.steps, total_s, per_step_ms,
+                         mode, per_rank);
         }
     }
 

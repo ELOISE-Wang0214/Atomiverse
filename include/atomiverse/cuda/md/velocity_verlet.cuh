@@ -34,7 +34,7 @@ namespace md {
 /// - `Phase::initial_integrate`: updates velocities (half-step) and positions.
 /// - `Phase::final_integrate`: updates velocities (half-step).
 class VelocityVerlet : public ComponentBase {
-public:
+  public:
     /// @brief Construct with a time step.
     /// @param dt Time step [fs].
     explicit VelocityVerlet(double dt) : dt_(dt) {}
@@ -54,8 +54,8 @@ public:
     /// @param ctx Launch context with phase and step information.
     void launch(const LaunchContext& ctx) override;
 
-private:
-    double dt_;  ///< Time step [fs].
+  private:
+    double dt_; ///< Time step [fs].
 };
 
 } // namespace md

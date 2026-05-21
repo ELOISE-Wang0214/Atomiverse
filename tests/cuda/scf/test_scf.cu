@@ -1,12 +1,12 @@
 /// @file test_scf.cu
 /// @brief Integration tests for the SCF driver and CPU/CUDA parity.
 
-#include <gtest/gtest.h>
 #include <cmath>
+#include <gtest/gtest.h>
 
-#include "atomiverse/cuda/scf/scf.cuh"
-#include "atomiverse/cuda/recorder/thermo.cuh"
 #include "atomiverse/cpu/scf/solve.h"
+#include "atomiverse/cuda/recorder/thermo.cuh"
+#include "atomiverse/cuda/scf/scf.cuh"
 
 using namespace ATV;
 
@@ -114,7 +114,8 @@ TEST(SCF, CUDAAlphaEffect) {
 // ── CPU reference tests ───────────────────────────────────────────────
 
 TEST(SCF, CPUConvergence) {
-    double cpu_tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-8);
+    double cpu_tol =
+        (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-8);
     auto result = cpu::scf::solve(8, 3, double(0.1), cpu_tol, 200);
     EXPECT_TRUE(result.converged);
     EXPECT_TRUE(std::isfinite(static_cast<double>(result.energy)));
@@ -124,14 +125,16 @@ TEST(SCF, CPUConvergence) {
 
 TEST(SCF, CPUAlphaZero) {
     // alpha=0: no self-consistency, converges in 2 iterations
-    double cpu_tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
+    double cpu_tol =
+        (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     auto result = cpu::scf::solve(8, 3, double(0), cpu_tol, 50);
     EXPECT_TRUE(result.converged);
-    EXPECT_LE(result.iterations, 3);  // 2 for double, possibly 3 for float
+    EXPECT_LE(result.iterations, 3); // 2 for double, possibly 3 for float
 }
 
 TEST(SCF, CPUReproducibility) {
-    double cpu_tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-8);
+    double cpu_tol =
+        (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-8);
     auto r1 = cpu::scf::solve(16, 4, double(0.1), cpu_tol, 100);
     auto r2 = cpu::scf::solve(16, 4, double(0.1), cpu_tol, 100);
     EXPECT_DOUBLE_EQ(static_cast<double>(r1.energy),

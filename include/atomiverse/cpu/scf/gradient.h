@@ -22,8 +22,8 @@ namespace scf {
 
 /// @brief Result of a gradient computation.
 struct GradientResult {
-    xt::xtensor<double, 2> forces;  ///< Forces [n_atoms, 3] in eV/Angstrom.
-    double energy;                   ///< Total energy in eV.
+    xt::xtensor<double, 2> forces; ///< Forces [n_atoms, 3] in eV/Angstrom.
+    double energy;                 ///< Total energy in eV.
 };
 
 /// @brief Unified analytic nuclear gradient for all mean-field methods.
@@ -40,12 +40,8 @@ struct GradientResult {
 /// @param result    Converged SCF result from scf_solve().
 /// @param config    SCF configuration (method, spin, XC type, grid parameters).
 /// @return Forces on all atoms (eV/Angstrom) and total energy (eV).
-GradientResult scf_gradient(
-    const Frame& frame,
-    const IntegralPack& integrals,
-    const SCFResult& result,
-    const SCFConfig& config
-);
+GradientResult scf_gradient(const Frame& frame, const IntegralPack& integrals,
+                            const SCFResult& result, const SCFConfig& config);
 
 /// @brief Unified finite-difference gradient for validation.
 ///
@@ -58,13 +54,10 @@ GradientResult scf_gradient(
 /// @param h      Displacement step in Angstrom (default 5e-5).
 /// @param basis  Which basis to rebuild integrals in (default STO-3G).
 /// @return Forces on all atoms (eV/Angstrom) and total energy (eV).
-GradientResult scf_finite_difference_gradient(
-    const Frame& frame,
-    const SCFConfig& config,
-    int charge = 0,
-    double h = 5e-5,
-    BasisSet basis = BasisSet::STO3G
-);
+GradientResult scf_finite_difference_gradient(const Frame& frame,
+                                              const SCFConfig& config,
+                                              int charge = 0, double h = 5e-5,
+                                              BasisSet basis = BasisSet::STO3G);
 
 } // namespace scf
 } // namespace cpu

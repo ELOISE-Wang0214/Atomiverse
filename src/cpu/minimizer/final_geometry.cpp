@@ -14,7 +14,8 @@ FinalGeometry::FinalGeometry(std::string filename)
     : filename_(std::move(filename)) {}
 
 void FinalGeometry::launch(const cpu::LaunchContext& ctx) {
-    if (ctx.runtime.mpi_rank != 0) return;
+    if (ctx.runtime.mpi_rank != 0)
+        return;
 
     MolRec rec;
     rec.set_geometry(ctx.frame);

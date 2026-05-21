@@ -38,17 +38,19 @@ cpu::Frame make_h2(double bond_length) {
 
 int count_lines(const std::string& path) {
     std::ifstream is(path);
-    if (!is) return -1;
+    if (!is)
+        return -1;
     int n = 0;
     std::string line;
-    while (std::getline(is, line)) ++n;
+    while (std::getline(is, line))
+        ++n;
     return n;
 }
 
 } // namespace
 
 class MinimizerRecordersTest : public ::testing::Test {
-protected:
+  protected:
     std::filesystem::path tmpdir_;
 
     void SetUp() override {
@@ -63,7 +65,8 @@ protected:
 
 TEST_F(MinimizerRecordersTest, TrajectoryFileIsAppendedEveryStep) {
     auto frame = make_h2(1.2);
-    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto integrals =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals);
 
     const auto traj_path = tmpdir_ / "traj.xyz";
@@ -71,7 +74,8 @@ TEST_F(MinimizerRecordersTest, TrajectoryFileIsAppendedEveryStep) {
     opt.add(cpu::minimizer::LBFGS{5, 0.01, 0.5, 10});
     opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
     opt.on(minimizer::Phase::end_of_step)
-        .add(cpu::minimizer::TrajectoryWriter{traj_path.string(), /*stride=*/1});
+        .add(
+            cpu::minimizer::TrajectoryWriter{traj_path.string(), /*stride=*/1});
     opt.build();
     opt.run(frame, 4);
 
@@ -85,7 +89,8 @@ TEST_F(MinimizerRecordersTest, TrajectoryFileIsAppendedEveryStep) {
 
 TEST_F(MinimizerRecordersTest, TrajectoryRespectsStride) {
     auto frame = make_h2(1.2);
-    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto integrals =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals);
 
     const auto traj_path = tmpdir_ / "traj_stride.xyz";
@@ -93,7 +98,8 @@ TEST_F(MinimizerRecordersTest, TrajectoryRespectsStride) {
     opt.add(cpu::minimizer::LBFGS{5, 0.01, 0.5, 10});
     opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
     opt.on(minimizer::Phase::end_of_step)
-        .add(cpu::minimizer::TrajectoryWriter{traj_path.string(), /*stride=*/2});
+        .add(
+            cpu::minimizer::TrajectoryWriter{traj_path.string(), /*stride=*/2});
     opt.build();
     opt.run(frame, 4);
 
@@ -106,7 +112,8 @@ TEST_F(MinimizerRecordersTest, TrajectoryRespectsStride) {
 
 TEST_F(MinimizerRecordersTest, OptLogTSVHasOneRowPerStep) {
     auto frame = make_h2(1.2);
-    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto integrals =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals);
 
     const auto log_path = tmpdir_ / "opt.tsv";
@@ -127,13 +134,15 @@ TEST_F(MinimizerRecordersTest, OptLogTSVHasOneRowPerStep) {
     int n_rows = 0;
     std::string line;
     while (std::getline(is, line))
-        if (!line.empty()) ++n_rows;
+        if (!line.empty())
+            ++n_rows;
     EXPECT_EQ(n_rows, 3);
 }
 
 TEST_F(MinimizerRecordersTest, FinalGeometryContainsOneFrame) {
     auto frame = make_h2(1.2);
-    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto integrals =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals);
 
     const auto final_path = tmpdir_ / "final.xyz";

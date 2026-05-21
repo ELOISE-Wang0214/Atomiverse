@@ -11,8 +11,8 @@
 #include <memory>
 
 #include "atomiverse/cpu/component.h"
-#include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/context.h"
+#include "atomiverse/cpu/frame.h"
 #include "atomiverse/facade/plan.h"
 
 namespace ATV {
@@ -39,7 +39,7 @@ struct DomainDecomposition;
 /// 5. destroy_components() -- release resources (reverse order)
 /// 6. shutdown() -- cleanup
 class Backend {
-public:
+  public:
     /// @brief Default-construct an uninitialized Backend.
     Backend();
 
@@ -98,7 +98,7 @@ public:
     /// @brief Access the Frame.
     Frame& frame() { return *frame_; }
 
-private:
+  private:
     Context context_{};
     cpu::Frame* frame_ = nullptr;
     const Plan<cpu::ComponentBase>* plan_ = nullptr;

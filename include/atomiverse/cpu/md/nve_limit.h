@@ -7,8 +7,8 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/component.h"
 #include "atomiverse/core/binding.h"
+#include "atomiverse/cpu/component.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -51,7 +51,7 @@ namespace md {
 /// Bound to `initial_integrate @ 0` and `final_integrate @ 0` --
 /// replaces (do not combine with) `VelocityVerlet`.
 class NVELimit : public cpu::ComponentBase {
-public:
+  public:
     /// @param dt   Timestep [fs]. Mirrors the global LAMMPS `timestep`.
     /// @param xmax Maximum distance an atom may move in one step [Å]
     ///             (LAMMPS `fix nve/limit xmax`). The cap enforces
@@ -67,7 +67,7 @@ public:
     }
     void launch(const cpu::LaunchContext& ctx) override;
 
-private:
+  private:
     double dt_;
     double xmax_;
 };

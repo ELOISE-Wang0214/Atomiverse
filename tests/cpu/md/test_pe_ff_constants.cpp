@@ -33,27 +33,25 @@ namespace {
 //   pair_coeff      1 1  0.112  4.01
 constexpr double kKcalPerMolToEv = 1.0 / 23.060547830619026;
 
-constexpr double kBondK_kcal     = 350.0;
-constexpr double kBondR0         = 1.53;      // Å
-constexpr double kAngleK_kcal    = 60.0;      // kcal/mol/rad²
-constexpr double kAngleTheta0    = 109.5 * ATV::kPI / 180.0;  // rad (sp³)
+constexpr double kBondK_kcal = 350.0;
+constexpr double kBondR0 = 1.53;                          // Å
+constexpr double kAngleK_kcal = 60.0;                     // kcal/mol/rad²
+constexpr double kAngleTheta0 = 109.5 * ATV::kPI / 180.0; // rad (sp³)
 // Direct multi-harmonic coefficients (no OPLS Fourier conversion).
-constexpr double kDihC0_kcal     = 1.73;
-constexpr double kDihC1_kcal     = -4.49;
-constexpr double kDihC2_kcal     = 0.776;
-constexpr double kDihC3_kcal     = 6.99;
-constexpr double kDihC4_kcal     = 0.0;
+constexpr double kDihC0_kcal = 1.73;
+constexpr double kDihC1_kcal = -4.49;
+constexpr double kDihC2_kcal = 0.776;
+constexpr double kDihC3_kcal = 6.99;
+constexpr double kDihC4_kcal = 0.0;
 
-constexpr double kLjEps_kcal     = 0.112;
-constexpr double kLjSigma        = 4.01;      // Å
-constexpr double kLjCutoff       = 10.5;      // Å
+constexpr double kLjEps_kcal = 0.112;
+constexpr double kLjSigma = 4.01;  // Å
+constexpr double kLjCutoff = 10.5; // Å
 
 std::vector<double> dihedral_Cn_eV() {
     return {
-        kDihC0_kcal * kKcalPerMolToEv,
-        kDihC1_kcal * kKcalPerMolToEv,
-        kDihC2_kcal * kKcalPerMolToEv,
-        kDihC3_kcal * kKcalPerMolToEv,
+        kDihC0_kcal * kKcalPerMolToEv, kDihC1_kcal * kKcalPerMolToEv,
+        kDihC2_kcal * kKcalPerMolToEv, kDihC3_kcal * kKcalPerMolToEv,
         kDihC4_kcal * kKcalPerMolToEv,
     };
 }
@@ -84,15 +82,15 @@ TEST(PEFFConstants, DihedralMatchesMSUPaper) {
     // dihedral_Cn_eV() must produce the same coefficients converted to eV.
     const auto Cn = dihedral_Cn_eV();
     ASSERT_EQ(Cn.size(), 5u);
-    EXPECT_DOUBLE_EQ(Cn[0], 1.73    * kKcalPerMolToEv);
-    EXPECT_DOUBLE_EQ(Cn[1], -4.49   * kKcalPerMolToEv);
-    EXPECT_DOUBLE_EQ(Cn[2], 0.776   * kKcalPerMolToEv);
-    EXPECT_DOUBLE_EQ(Cn[3], 6.99    * kKcalPerMolToEv);
+    EXPECT_DOUBLE_EQ(Cn[0], 1.73 * kKcalPerMolToEv);
+    EXPECT_DOUBLE_EQ(Cn[1], -4.49 * kKcalPerMolToEv);
+    EXPECT_DOUBLE_EQ(Cn[2], 0.776 * kKcalPerMolToEv);
+    EXPECT_DOUBLE_EQ(Cn[3], 6.99 * kKcalPerMolToEv);
     EXPECT_DOUBLE_EQ(Cn[4], 0.0);
 }
 
 TEST(PEFFConstants, LJMatchesMSUPaper) {
     EXPECT_DOUBLE_EQ(kLjEps_kcal, 0.112);
-    EXPECT_DOUBLE_EQ(kLjSigma,    4.01);
-    EXPECT_DOUBLE_EQ(kLjCutoff,  10.5);
+    EXPECT_DOUBLE_EQ(kLjSigma, 4.01);
+    EXPECT_DOUBLE_EQ(kLjCutoff, 10.5);
 }

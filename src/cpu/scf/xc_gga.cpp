@@ -33,7 +33,7 @@ namespace scf {
 // ── Constants ────────────────────────────────────────────────────────────
 
 static constexpr double kPi = 3.14159265358979323846;
-static constexpr double kRhoMin = 1e-12;  // total density cutoff
+static constexpr double kRhoMin = 1e-12; // total density cutoff
 
 // Dirac exchange constant in libxc's convention:
 //   X_FACTOR_C = (3/8) (3/pi)^{1/3} 4^{2/3}
@@ -43,7 +43,7 @@ static const double kXFactorC =
     (3.0 / 8.0) * std::cbrt(3.0 / kPi) * std::cbrt(16.0);
 
 // libxc threshold below which a spin channel is treated as empty.
-static constexpr double kZetaThreshold = 2.2204460492503131e-16;  // DBL_EPSILON
+static constexpr double kZetaThreshold = 2.2204460492503131e-16; // DBL_EPSILON
 
 // ── B88 exchange ─────────────────────────────────────────────────────────
 
@@ -67,8 +67,8 @@ static constexpr double kB88_gamma = 6.0;
 ///                       spin channel [Hartree/Bohr^3].
 /// @param[out] vrho_s    d(ex_s)/drho_s, exchange potential [Hartree].
 /// @param[out] vsigma_ss d(ex_s)/dsigma_ss [Hartree*Bohr^2].
-void b88_exchange_spin(double rho_s, double sigma_ss,
-                       double& ex_s, double& vrho_s, double& vsigma_ss) {
+void b88_exchange_spin(double rho_s, double sigma_ss, double& ex_s,
+                       double& vrho_s, double& vsigma_ss) {
     // Empty spin channel: exact zero on every channel, matching libxc's
     // dens_threshold early-return for B88 exchange.
     if (rho_s < kRhoMin * 0.5) {
@@ -79,7 +79,7 @@ void b88_exchange_spin(double rho_s, double sigma_ss,
     }
 
     const double C = kXFactorC;
-    const double k = kB88_beta / C;  // = beta / X_FACTOR_C
+    const double k = kB88_beta / C; // = beta / X_FACTOR_C
 
     // Reduced gradient x = |grad rho_s| / rho_s^{4/3}.
     const double r43 = std::pow(rho_s, 4.0 / 3.0);
@@ -94,8 +94,8 @@ void b88_exchange_spin(double rho_s, double sigma_ss,
     const double F = 1.0 + k * x * x / D;
 
     // D'(x) = gamma*beta*(asinh(x) + x/sqrt(1+x^2)).
-    const double dD = kB88_gamma * kB88_beta *
-                      (asinh_x + x / std::sqrt(1.0 + x * x));
+    const double dD =
+        kB88_gamma * kB88_beta * (asinh_x + x / std::sqrt(1.0 + x * x));
 
     // F'(x)/x = k (2D - x D') / D^2  -- finite as x -> 0 (-> 2k).
     const double dF_over_x = k * (2.0 * D - x * dD) / (D * D);
@@ -127,7 +127,7 @@ namespace {
 // libxc maple2c my_piecewise3(cond, a, b) -> cond ? a : b
 inline double pw3(bool cond, double a, double b) { return cond ? a : b; }
 
-}  // namespace
+} // namespace
 
 /// @brief Lee-Yang-Parr GGA correlation (libxc XC_GGA_C_LYP, id 131),
 ///        spin-polarized.
@@ -151,10 +151,10 @@ inline double pw3(bool cond, double a, double b) { return cond ? a : b; }
 /// @param[out] vsigma_aa d(rho*ec)/dsigma_aa [Hartree*Bohr^2].
 /// @param[out] vsigma_ab d(rho*ec)/dsigma_ab [Hartree*Bohr^2].
 /// @param[out] vsigma_bb d(rho*ec)/dsigma_bb [Hartree*Bohr^2].
-void lyp_correlation(double rho_a, double rho_b,
-                     double sigma_aa, double sigma_ab, double sigma_bb,
-                     double& ec, double& vc_a, double& vc_b,
-                     double& vsigma_aa, double& vsigma_ab, double& vsigma_bb) {
+void lyp_correlation(double rho_a, double rho_b, double sigma_aa,
+                     double sigma_ab, double sigma_bb, double& ec, double& vc_a,
+                     double& vc_b, double& vsigma_aa, double& vsigma_ab,
+                     double& vsigma_bb) {
     // Direct port of libxc's maple2c gga_c_lyp `func_vxc_pol` kernel.
     // Variable names t1..t377 mirror the generated code so the port is
     // line-by-line auditable against the libxc reference. `tzk0` is the
@@ -172,8 +172,11 @@ void lyp_correlation(double rho_a, double rho_b,
     // Density cutoff: below it, libxc's work_gga returns zero.
     if (rho0 + rho1 < kRhoMin) {
         ec = 0.0;
-        vc_a = 0.0; vc_b = 0.0;
-        vsigma_aa = 0.0; vsigma_ab = 0.0; vsigma_bb = 0.0;
+        vc_a = 0.0;
+        vc_b = 0.0;
+        vsigma_aa = 0.0;
+        vsigma_ab = 0.0;
+        vsigma_bb = 0.0;
         return;
     }
 
@@ -260,8 +263,10 @@ void lyp_correlation(double rho_a, double rho_b,
     const double t108 = t70 * t50;
     const double t114 = -t22 * t30 - 3.0 / 20.0 * t37 * t7 * t58
                         + t63 * t81 / 32.0 + t63 * t96 / 576.0
-                        - t62 * (2.0 / 3.0 * t72 + 2.0 / 3.0 * t79
-                                 - t102 * t103 / 4.0 - t107 * t108 / 4.0) / 8.0;
+                        - t62
+                              * (2.0 / 3.0 * t72 + 2.0 / 3.0 * t79
+                                 - t102 * t103 / 4.0 - t107 * t108 / 4.0)
+                              / 8.0;
     const double tzk0 = a * (t16 * t12 * t114 - t7 * t12);
 
     // ── vrho[0] = tvrho0 ──
@@ -329,15 +334,15 @@ void lyp_correlation(double rho_a, double rho_b,
     const double t235 = t234 * sigma0;
     const double t238 = t189 * t50;
     const double t241 = t70 * t170;
-    const double t247 = t149 - t22 * t161 - 3.0 / 20.0 * t37 * t124 * t58
-                        - 3.0 / 20.0 * t37 * t7 * t176
-                        + t180 * t81 / 32.0 + t186 + t63 * t196 / 32.0
-                        + t180 * t96 / 576.0 + t205 + t63 * t217 / 576.0
-                        - t62 * (-16.0 / 9.0 * t191 + 2.0 / 3.0 * t193
-                                 + 2.0 / 3.0 * t194 - t226 * t103 / 4.0
-                                 - t102 * t229 / 4.0 - t235 * t108 / 4.0
-                                 + 2.0 / 3.0 * t107 * t238
-                                 - t107 * t241 / 4.0) / 8.0;
+    const double t247 =
+        t149 - t22 * t161 - 3.0 / 20.0 * t37 * t124 * t58
+        - 3.0 / 20.0 * t37 * t7 * t176 + t180 * t81 / 32.0 + t186
+        + t63 * t196 / 32.0 + t180 * t96 / 576.0 + t205 + t63 * t217 / 576.0
+        - t62
+              * (-16.0 / 9.0 * t191 + 2.0 / 3.0 * t193 + 2.0 / 3.0 * t194
+                 - t226 * t103 / 4.0 - t102 * t229 / 4.0 - t235 * t108 / 4.0
+                 + 2.0 / 3.0 * t107 * t238 - t107 * t241 / 4.0)
+              / 8.0;
     const double t250 = t16 * t12 * t247 - t124 * t12 - t133 + t139 + t144;
     const double tvrho0 = t118 * t250 + tzk0;
 
@@ -370,14 +375,15 @@ void lyp_correlation(double rho_a, double rho_b,
     const double t322 = pw3(t52, 0.0, 2.0 * t51 * t266);
     const double t323 = t322 * sigma0;
     const double t326 = t70 * t265;
-    const double t332 = t149 - t22 * t257 - 3.0 / 20.0 * t37 * t253 * t58
-                        - 3.0 / 20.0 * t37 * t7 * t270
-                        + t274 * t81 / 32.0 + t186 + t63 * t286 / 32.0
-                        + t274 * t96 / 576.0 + t205 + t63 * t302 / 576.0
-                        - t62 * (2.0 / 3.0 * t277 - 16.0 / 9.0 * t282
-                                 + 2.0 / 3.0 * t284 - t311 * t103 / 4.0
-                                 + 2.0 / 3.0 * t102 * t314 - t102 * t317 / 4.0
-                                 - t323 * t108 / 4.0 - t107 * t326 / 4.0) / 8.0;
+    const double t332 =
+        t149 - t22 * t257 - 3.0 / 20.0 * t37 * t253 * t58
+        - 3.0 / 20.0 * t37 * t7 * t270 + t274 * t81 / 32.0 + t186
+        + t63 * t286 / 32.0 + t274 * t96 / 576.0 + t205 + t63 * t302 / 576.0
+        - t62
+              * (2.0 / 3.0 * t277 - 16.0 / 9.0 * t282 + 2.0 / 3.0 * t284
+                 - t311 * t103 / 4.0 + 2.0 / 3.0 * t102 * t314
+                 - t102 * t317 / 4.0 - t323 * t108 / 4.0 - t107 * t326 / 4.0)
+              / 8.0;
     const double t335 = t16 * t12 * t332 - t253 * t12 - t133 + t139 + t144;
     const double tvrho1 = t118 * t335 + tzk0;
 

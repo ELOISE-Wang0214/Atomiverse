@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
 #include <vector>
 
-#include "atomiverse/cuda/backend.cuh"
 #include "atomiverse/cpu/frame.h"
+#include "atomiverse/cuda/backend.cuh"
 #include "atomiverse/cuda/transfer.cuh"
 #include "atomiverse/facade/stage.h"
 
@@ -10,7 +10,8 @@ using namespace ATV;
 
 namespace {
 
-__global__ void add_one_k(double* fx, double* fy, double* fz, const int* n_ptr) {
+__global__ void add_one_k(double* fx, double* fy, double* fz,
+                          const int* n_ptr) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < *n_ptr) {
         atomicAdd(&fx[idx], double(1));
@@ -20,26 +21,28 @@ __global__ void add_one_k(double* fx, double* fy, double* fz, const int* n_ptr) 
 }
 
 class AddOne : public ComponentBase {
-public:
+  public:
     std::string name() const override { return "add_one"; }
     void launch(const LaunchContext& ctx) override {
         auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
         auto& frame = ctx.frame;
         int block = 256;
         int grid = (static_cast<int>(ctx.frame.n_atoms()) + block - 1) / block;
-        if (grid < 1) grid = 1;
-        add_one_k<<<grid, block, 0, stream>>>(frame.atoms.fx, frame.atoms.fy,
-                                               frame.atoms.fz, frame.atoms.d_size);
+        if (grid < 1)
+            grid = 1;
+        add_one_k<<<grid, block, 0, stream>>>(
+            frame.atoms.fx, frame.atoms.fy, frame.atoms.fz, frame.atoms.d_size);
     }
 };
 
 __global__ void double_vel_k(double* vx, const int* n_ptr) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < *n_ptr) vx[idx] *= double(2);
+    if (idx < *n_ptr)
+        vx[idx] *= double(2);
 }
 
 class DoubleVel : public ComponentBase {
-public:
+  public:
     std::string name() const override { return "double_vel"; }
     Scheduling scheduling() const override { return Scheduling::deferrable; }
     void launch(const LaunchContext& ctx) override {
@@ -47,13 +50,15 @@ public:
         auto& frame = ctx.frame;
         int block = 256;
         int grid = (static_cast<int>(ctx.frame.n_atoms()) + block - 1) / block;
-        if (grid < 1) grid = 1;
-        double_vel_k<<<grid, block, 0, stream>>>(frame.atoms.vx, frame.atoms.d_size);
+        if (grid < 1)
+            grid = 1;
+        double_vel_k<<<grid, block, 0, stream>>>(frame.atoms.vx,
+                                                 frame.atoms.d_size);
     }
 };
 
 class FreqDoubler : public ComponentBase {
-public:
+  public:
     std::string name() const override { return "freq_doubler"; }
     int frequency() const override { return 3; }
     void launch(const LaunchContext& ctx) override {
@@ -61,8 +66,10 @@ public:
         auto& frame = ctx.frame;
         int block = 256;
         int grid = (static_cast<int>(ctx.frame.n_atoms()) + block - 1) / block;
-        if (grid < 1) grid = 1;
-        double_vel_k<<<grid, block, 0, stream>>>(frame.atoms.vx, frame.atoms.d_size);
+        if (grid < 1)
+            grid = 1;
+        double_vel_k<<<grid, block, 0, stream>>>(frame.atoms.vx,
+                                                 frame.atoms.d_size);
     }
 };
 

@@ -48,25 +48,23 @@ cpu::Frame make_fcc_argon(int n_cells, double a, double mass) {
     const int n_atoms = n_cells * n_cells * n_cells * atoms_per_cell;
     cpu::Frame frame(n_atoms);
     const double basis[4][3] = {
-        {0.0, 0.0, 0.0}, {0.5, 0.5, 0.0},
-        {0.5, 0.0, 0.5}, {0.0, 0.5, 0.5}
-    };
+        {0.0, 0.0, 0.0}, {0.5, 0.5, 0.0}, {0.5, 0.0, 0.5}, {0.0, 0.5, 0.5}};
     int idx = 0;
     for (int ix = 0; ix < n_cells; ++ix)
-    for (int iy = 0; iy < n_cells; ++iy)
-    for (int iz = 0; iz < n_cells; ++iz)
-    for (int b = 0; b < 4; ++b) {
-        frame.atoms.x[idx] = (ix + basis[b][0] + 0.25) * a;
-        frame.atoms.y[idx] = (iy + basis[b][1] + 0.25) * a;
-        frame.atoms.z[idx] = (iz + basis[b][2] + 0.25) * a;
-        frame.atoms.mass[idx] = mass;
-        frame.atoms.type[idx] = 18;
-        const double s = 1e-4 * ((idx % 2 == 0) ? 1.0 : -1.0);
-        frame.atoms.vx[idx] = s;
-        frame.atoms.vy[idx] = s * 0.5;
-        frame.atoms.vz[idx] = s * 0.25;
-        ++idx;
-    }
+        for (int iy = 0; iy < n_cells; ++iy)
+            for (int iz = 0; iz < n_cells; ++iz)
+                for (int b = 0; b < 4; ++b) {
+                    frame.atoms.x[idx] = (ix + basis[b][0] + 0.25) * a;
+                    frame.atoms.y[idx] = (iy + basis[b][1] + 0.25) * a;
+                    frame.atoms.z[idx] = (iz + basis[b][2] + 0.25) * a;
+                    frame.atoms.mass[idx] = mass;
+                    frame.atoms.type[idx] = 18;
+                    const double s = 1e-4 * ((idx % 2 == 0) ? 1.0 : -1.0);
+                    frame.atoms.vx[idx] = s;
+                    frame.atoms.vy[idx] = s * 0.5;
+                    frame.atoms.vz[idx] = s * 0.25;
+                    ++idx;
+                }
     frame.box = Mat3::cubic(n_cells * a);
     return frame;
 }
@@ -76,9 +74,9 @@ cpu::Frame make_fcc_argon(int n_cells, double a, double mass) {
 double lammps_pressure(const cpu::Frame& frame) {
     const double V = frame.box.volume();
     const double trace = (frame.stress[0] + frame.stress[1] + frame.stress[2])
-                       + (frame.stress_kinetic[0] + frame.stress_kinetic[1]
-                          + frame.stress_kinetic[2]);
-    return +trace / (3.0 * V);  // LAMMPS sign: positive compressive.
+                         + (frame.stress_kinetic[0] + frame.stress_kinetic[1]
+                            + frame.stress_kinetic[2]);
+    return +trace / (3.0 * V); // LAMMPS sign: positive compressive.
 }
 
 } // namespace
@@ -97,18 +95,18 @@ double lammps_pressure(const cpu::Frame& frame) {
 // double precision and asserts exact equality.
 TEST(PressureLammpsAlign, BerendsenMuInvariantUnderSignFlip) {
     // A representative over-compressed snapshot: positive virial trace.
-    const double trace = 1.7e-2;       // eV (Σ virial + Σ kinetic)
-    const double V     = 1.85e4;       // Å³
-    const double dt    = 0.5;          // fs
-    const double tau_P = 200.0;        // fs
-    const double P_target = 0.0;       // default setpoint
+    const double trace = 1.7e-2; // eV (Σ virial + Σ kinetic)
+    const double V = 1.85e4;     // Å³
+    const double dt = 0.5;       // fs
+    const double tau_P = 200.0;  // fs
+    const double P_target = 0.0; // default setpoint
 
     // Pre-flip representation.
-    const double P_old   = -trace / (3.0 * V);
+    const double P_old = -trace / (3.0 * V);
     const double mu3_old = 1.0 - (dt / tau_P) * (P_old - P_target);
 
     // Post-flip (LAMMPS) representation, β = bulk_modulus = 1.
-    const double P_new   = +trace / (3.0 * V);
+    const double P_new = +trace / (3.0 * V);
     const double mu3_new = 1.0 - (dt / tau_P) * (P_target - P_new) / 1.0;
 
     // Representation change — the μ³ argument must be bit-identical.
@@ -128,7 +126,7 @@ TEST(PressureLammpsAlign, BerendsenMuInvariantUnderSignFlip) {
 // produced exactly the same μ at P_target = 0 (proven above); this
 // test pins the *behaviour*: an over-pressured box grows.
 TEST(PressureLammpsAlign, BarostatExpandsOverCompressedBox) {
-    auto frame = make_fcc_argon(4, 4.6, 39.948);  // dense ⇒ P > 0
+    auto frame = make_fcc_argon(4, 4.6, 39.948); // dense ⇒ P > 0
 
     const double dt = 0.5;
     cpu::md::MD sim;
@@ -183,8 +181,8 @@ TEST(PressureLammpsAlign, BulkModulusScalesRelaxationRate) {
     };
 
     const double V0 = make_fcc_argon(4, 4.6, 39.948).box.volume();
-    const double V_soft = run(1.0);    // soft modulus ⇒ fast relaxation
-    const double V_stiff = run(50.0);  // stiff modulus ⇒ slow relaxation
+    const double V_soft = run(1.0);   // soft modulus ⇒ fast relaxation
+    const double V_stiff = run(50.0); // stiff modulus ⇒ slow relaxation
 
     // Over-compressed ⇒ both expand, but the stiff modulus expands less.
     EXPECT_GT(V_soft, V0);
@@ -241,9 +239,11 @@ TEST(PressureLammpsAlign, NptAndBarostatRelaxToSameDensity) {
             .add(cpu::md::NeighborList<>{6.0}, -10)
             .add(cpu::md::LJ{0.0104, 3.4, 6.0});
         sim.add(cpu::md::VirialStress{});
-        sim.set_integrator(cpu::md::NoseHooverNPT{
-            {.T_target = 30.0, .tau_T = 100.0, .P_target = P_target,
-             .tau_P = 500.0, .dt = dt}});
+        sim.set_integrator(cpu::md::NoseHooverNPT{{.T_target = 30.0,
+                                                   .tau_T = 100.0,
+                                                   .P_target = P_target,
+                                                   .tau_P = 500.0,
+                                                   .dt = dt}});
         sim.build();
         sim.run(frame, 2000);
         V_npt = frame.box.volume();
@@ -257,8 +257,8 @@ TEST(PressureLammpsAlign, NptAndBarostatRelaxToSameDensity) {
     EXPECT_GT(V_npt, V0);
     // Same equilibrium density within 25 % — the two schemes converge
     // to the same LJ zero-pressure volume from the same start.
-    const double rel_diff = std::abs(V_berendsen - V_npt)
-                          / (0.5 * (V_berendsen + V_npt));
+    const double rel_diff =
+        std::abs(V_berendsen - V_npt) / (0.5 * (V_berendsen + V_npt));
     EXPECT_LT(rel_diff, 0.25)
         << "Berendsen V=" << V_berendsen << " (P0=" << P_berendsen_0
         << " P1=" << P_berendsen_1 << ") vs NPT V=" << V_npt;

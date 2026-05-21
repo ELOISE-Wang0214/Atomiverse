@@ -13,7 +13,7 @@ namespace ATV {
 namespace cpu {
 
 class DihedralMultiHarmonic : public Dihedral {
-public:
+  public:
     /// @param Cn Coefficients per dihedral type. Cn[type] = {C0, C1, C2, ...}.
     explicit DihedralMultiHarmonic(std::vector<std::vector<double>> Cn);
 
@@ -27,10 +27,10 @@ public:
     void build(const BuildContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;
 
-protected:
+  protected:
     void compute(const LaunchContext& ctx) override;
 
-private:
+  private:
     std::vector<std::vector<double>> Cn_;
 
     int n_threads_ = 1;

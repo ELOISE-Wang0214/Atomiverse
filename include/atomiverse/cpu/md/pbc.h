@@ -27,7 +27,7 @@ inline void wrap_orthorhombic(cpu::Frame& frame, int n_owned) {
     const double lx = frame.box.length(0);
     const double ly = frame.box.length(1);
     const double lz = frame.box.length(2);
-    #pragma omp parallel for schedule(static)
+#pragma omp parallel for schedule(static)
     for (int i = 0; i < n_owned; ++i) {
         frame.atoms.x[i] -= lx * std::floor(frame.atoms.x[i] / lx);
         frame.atoms.y[i] -= ly * std::floor(frame.atoms.y[i] / ly);

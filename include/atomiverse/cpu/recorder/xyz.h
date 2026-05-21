@@ -13,7 +13,7 @@ namespace cpu {
 
 /// @brief XYZ and extxyz trajectory writer.
 class XYZ {
-public:
+  public:
     explicit XYZ(const std::string& filename);
     ~XYZ();
     XYZ(const XYZ&) = delete;
@@ -24,13 +24,13 @@ public:
     void append(const MolRec& rec);
     void append_ext(const MolRec& rec);
 
-private:
+  private:
     std::string filename_;
 };
 
 /// @brief Zarr V3 trajectory writer backed by molrs::MolRec::write_zarr.
 class ZarrWriter {
-public:
+  public:
     explicit ZarrWriter(const std::string& path);
     ~ZarrWriter();
     ZarrWriter(const ZarrWriter&) = delete;
@@ -39,7 +39,7 @@ public:
     /// @brief Write all committed frames to the Zarr store.
     void write(const MolRec& rec);
 
-private:
+  private:
     std::string path_;
 };
 

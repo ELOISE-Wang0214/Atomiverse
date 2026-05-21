@@ -19,34 +19,34 @@
 #include <cmath>
 #include <vector>
 
-#include "atomiverse/cpu/potentials/harmonic_angle.h"
-#include "atomiverse/cpu/potentials/harmonic_bond.h"
-#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
+#include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/core/mat3.h"
-#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/potentials/harmonic_angle.h"
+#include "atomiverse/cpu/potentials/harmonic_bond.h"
+#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
 
 using namespace ATV;
 
 namespace {
 
 inline constexpr double kKcalPerMolToEv = 1.0 / 23.060547830619026;
-inline constexpr double kBondK_kcal  = 268.0;
-inline constexpr double kBondR0      = 1.53;
+inline constexpr double kBondK_kcal = 268.0;
+inline constexpr double kBondR0 = 1.53;
 inline constexpr double kAngleK_kcal = 60.0;
 inline constexpr double kAngleTheta0 = 109.5 * kPI / 180.0;
 
-inline double bond_K_eV()  { return kBondK_kcal  * kKcalPerMolToEv; }
+inline double bond_K_eV() { return kBondK_kcal * kKcalPerMolToEv; }
 inline double angle_K_eV() { return kAngleK_kcal * kKcalPerMolToEv; }
 inline std::vector<double> dihedral_Cn_eV() {
     return {
-        1.73    * kKcalPerMolToEv,   // C0  (MSU paper, Tschopp 2010)
-        -4.49   * kKcalPerMolToEv,   // C1
-        0.776   * kKcalPerMolToEv,   // C2
-        6.99    * kKcalPerMolToEv,   // C3
-        0.0,                          // C4
+        1.73 * kKcalPerMolToEv,  // C0  (MSU paper, Tschopp 2010)
+        -4.49 * kKcalPerMolToEv, // C1
+        0.776 * kKcalPerMolToEv, // C2
+        6.99 * kKcalPerMolToEv,  // C3
+        0.0,                     // C4
     };
 }
 
@@ -56,12 +56,12 @@ inline std::vector<double> dihedral_Cn_eV() {
 // (centred at x = 3·box_x/4) to rank 1.
 cpu::Frame make_two_chain_box(double box_x, double box_yz) {
     const int n_carbons = 20;
-    const int n_atoms   = 2 * n_carbons;
+    const int n_atoms = 2 * n_carbons;
     cpu::Frame frame(n_atoms);
 
     const double half_apex = (kPI - kAngleTheta0) / 2.0;
-    const double dy_step = kBondR0 * std::cos(half_apex);   // along y now
-    const double dz_step = kBondR0 * std::sin(half_apex);   // small z zigzag
+    const double dy_step = kBondR0 * std::cos(half_apex); // along y now
+    const double dz_step = kBondR0 * std::sin(half_apex); // small z zigzag
 
     auto place_chain = [&](int base, double cx) {
         // Chain laid along y, centred at (cx, box_yz/2, box_yz/2).
@@ -69,13 +69,15 @@ cpu::Frame make_two_chain_box(double box_x, double box_yz) {
         for (int i = 0; i < n_carbons; ++i) {
             frame.atoms.x[base + i] = cx;
             frame.atoms.y[base + i] = y0 + i * dy_step;
-            frame.atoms.z[base + i] = box_yz / 2.0 + (i % 2 == 0 ? 0.0 : dz_step);
+            frame.atoms.z[base + i] =
+                box_yz / 2.0 + (i % 2 == 0 ? 0.0 : dz_step);
             frame.atoms.mass[base + i] = 14.027;
             frame.atoms.type[base + i] = 0;
         }
     };
-    place_chain(0,           box_x * 0.25);   // owned by rank 0 (x in [0, box_x/2))
-    place_chain(n_carbons,   box_x * 0.75);   // owned by rank 1 (x in [box_x/2, box_x))
+    place_chain(0, box_x * 0.25); // owned by rank 0 (x in [0, box_x/2))
+    place_chain(n_carbons,
+                box_x * 0.75); // owned by rank 1 (x in [box_x/2, box_x))
 
     // Tiny opposite-sign kick per chain so we exercise the integrator
     // without driving atoms across the slab boundary in 200 steps.
@@ -99,16 +101,16 @@ cpu::Frame make_two_chain_box(double box_x, double box_yz) {
 
     frame.bonds.atomi = xt::zeros<int>({n_b_tot});
     frame.bonds.atomj = xt::zeros<int>({n_b_tot});
-    frame.bonds.type  = xt::zeros<int>({n_b_tot});
+    frame.bonds.type = xt::zeros<int>({n_b_tot});
     frame.angles.atomi = xt::zeros<int>({n_a_tot});
     frame.angles.atomj = xt::zeros<int>({n_a_tot});
     frame.angles.atomk = xt::zeros<int>({n_a_tot});
-    frame.angles.type  = xt::zeros<int>({n_a_tot});
+    frame.angles.type = xt::zeros<int>({n_a_tot});
     frame.dihedrals.atomi = xt::zeros<int>({n_d_tot});
     frame.dihedrals.atomj = xt::zeros<int>({n_d_tot});
     frame.dihedrals.atomk = xt::zeros<int>({n_d_tot});
     frame.dihedrals.atoml = xt::zeros<int>({n_d_tot});
-    frame.dihedrals.type  = xt::zeros<int>({n_d_tot});
+    frame.dihedrals.type = xt::zeros<int>({n_d_tot});
 
     for (int c = 0; c < n_chains; ++c) {
         const int base = c * n_carbons;

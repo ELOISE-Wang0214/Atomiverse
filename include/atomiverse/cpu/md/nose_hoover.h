@@ -6,8 +6,8 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/component.h"
 #include "atomiverse/core/binding.h"
+#include "atomiverse/cpu/component.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -74,7 +74,7 @@ namespace md {
 /// for the segmented-run idiom (retune the setpoint between `run()`
 /// calls); the ramp is the continuous alternative.
 class NoseHoover : public cpu::ComponentBase {
-public:
+  public:
     /// @param T_start Ramp start / target temperature [K]
     ///                (LAMMPS `Tstart`).
     /// @param tau_T   Thermostat coupling time constant [fs]
@@ -140,30 +140,30 @@ public:
     /// @return `*this`, so the call can chain before registration.
     NoseHoover& set_run_span(std::int64_t nfirst, std::int64_t nlast) {
         nfirst_ = nfirst;
-        nlast_  = nlast;
+        nlast_ = nlast;
         return *this;
     }
 
     /// @return Live thermostat setpoint [K] — for diagnostics / observers.
     double T_target() const noexcept { return T_live_; }
 
-private:
+  private:
     /// @brief Interpolate the live thermostat setpoint for `step`,
     ///        mirroring LAMMPS `fix_nh.cpp::compute_temp_target()`.
     ///        Returns `T_start_` when no ramp is active.
     double compute_temp_target(std::int64_t step) const;
 
-    double T_start_;  ///< Ramp start temperature [K] (LAMMPS `t_start`).
-    double T_stop_;   ///< Ramp end temperature [K] (LAMMPS `t_stop`).
-    double tau_T_;    ///< Coupling time constant [fs] (LAMMPS `Tdamp`).
+    double T_start_; ///< Ramp start temperature [K] (LAMMPS `t_start`).
+    double T_stop_;  ///< Ramp end temperature [K] (LAMMPS `t_stop`).
+    double tau_T_;   ///< Coupling time constant [fs] (LAMMPS `Tdamp`).
     double dt_;
-    double xi_ = 0;    ///< Thermostat variable (single chain).
-    double Q_ = 0;     ///< Thermostat mass.
-    int    n_dof_global_ = 0;  ///< Cached at build() — used by set_T_target.
+    double xi_ = 0;        ///< Thermostat variable (single chain).
+    double Q_ = 0;         ///< Thermostat mass.
+    int n_dof_global_ = 0; ///< Cached at build() — used by set_T_target.
 
     // Temperature-ramp run span (LAMMPS `update->beginstep` / `endstep`).
-    std::int64_t nfirst_ = 0;  ///< First MD step of the run.
-    std::int64_t nlast_  = 0;  ///< Last MD step of the run.
+    std::int64_t nfirst_ = 0; ///< First MD step of the run.
+    std::int64_t nlast_ = 0;  ///< Last MD step of the run.
     /// @brief Live thermostat setpoint [K], interpolated each step from
     /// the ramp; equals `T_start_` when no ramp is active.
     double T_live_ = 0.0;

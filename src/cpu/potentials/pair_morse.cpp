@@ -36,8 +36,9 @@ void PairMorse::compute(const LaunchContext& ctx) {
             double dy = y[j] - y[i];
             double dz = z[j] - z[i];
             f.box.min_image(dx, dy, dz);
-            const double r2 = dx*dx + dy*dy + dz*dz;
-            if (r2 >= cutoff_sq_ || r2 == 0.0) continue;
+            const double r2 = dx * dx + dy * dy + dz * dz;
+            if (r2 >= cutoff_sq_ || r2 == 0.0)
+                continue;
 
             const double r = std::sqrt(r2);
             const double xexp = std::exp(-alpha_ * (r - r0_));
@@ -45,10 +46,14 @@ void PairMorse::compute(const LaunchContext& ctx) {
             const double v = D_ * one_minus_x * one_minus_x - v_shift_;
             // dV/dr = 2 D α (1 − x) x
             const double dvdr = 2.0 * D_ * alpha_ * one_minus_x * xexp;
-            const double fpair = -dvdr / r;   // F_ij = fpair · r_ij
+            const double fpair = -dvdr / r; // F_ij = fpair · r_ij
 
-            fx[i] -= fpair * dx;  fy[i] -= fpair * dy;  fz[i] -= fpair * dz;
-            fx[j] += fpair * dx;  fy[j] += fpair * dy;  fz[j] += fpair * dz;
+            fx[i] -= fpair * dx;
+            fy[i] -= fpair * dy;
+            fz[i] -= fpair * dz;
+            fx[j] += fpair * dx;
+            fy[j] += fpair * dy;
+            fz[j] += fpair * dz;
             energy += v;
         }
     }

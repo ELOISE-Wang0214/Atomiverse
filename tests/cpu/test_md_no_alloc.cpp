@@ -24,7 +24,8 @@
 #include <cstdlib>
 #include <vector>
 
-#include "atomiverse/cpu/potentials/harmonic_bond.h"
+#include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/init.h"
 #include "atomiverse/cpu/md/lj.h"
@@ -32,12 +33,11 @@
 #include "atomiverse/cpu/md/neighbor_list.h"
 #include "atomiverse/cpu/md/nose_hoover.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/core/mat3.h"
-#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/potentials/harmonic_bond.h"
 
 #if defined(__GLIBC__) && defined(__linux__)
-#  define ATV_TEST_HAVE_MALLOC_HOOK 1
-#  include <malloc.h>
+#define ATV_TEST_HAVE_MALLOC_HOOK 1
+#include <malloc.h>
 #endif
 
 #ifdef ATV_TEST_HAVE_MALLOC_HOOK
@@ -59,7 +59,7 @@ bool& alloc_count_armed() {
 extern "C" void* __libc_malloc(size_t);
 extern "C" void* __libc_calloc(size_t, size_t);
 extern "C" void* __libc_realloc(void*, size_t);
-extern "C" void  __libc_free(void*);
+extern "C" void __libc_free(void*);
 
 extern "C" void* malloc(size_t sz) {
     if (alloc_count_armed())
@@ -85,13 +85,13 @@ extern "C" void free(void* p) {
 
 } // namespace
 
-#endif  // ATV_TEST_HAVE_MALLOC_HOOK
+#endif // ATV_TEST_HAVE_MALLOC_HOOK
 
 namespace {
 
 constexpr double kKcalPerMolToEv = 1.0 / 23.060547830619026;
-constexpr double kBondR0         = 1.53;
-constexpr double kBondK_kcal     = 350.0;
+constexpr double kBondR0 = 1.53;
+constexpr double kBondK_kcal = 350.0;
 
 ATV::cpu::Frame make_small_chain(int n_carbons, double box_len) {
     using namespace ATV;
@@ -106,7 +106,7 @@ ATV::cpu::Frame make_small_chain(int n_carbons, double box_len) {
     const int n_b = n_carbons - 1;
     frame.bonds.atomi = xt::zeros<int>({n_b});
     frame.bonds.atomj = xt::zeros<int>({n_b});
-    frame.bonds.type  = xt::zeros<int>({n_b});
+    frame.bonds.type = xt::zeros<int>({n_b});
     for (int k = 0; k < n_b; ++k) {
         frame.bonds.atomi[k] = k;
         frame.bonds.atomj[k] = k + 1;
@@ -131,11 +131,9 @@ TEST(MdNoAlloc, InnerLoopAfterWarmupAllocatesNothing) {
     sim.add(cpu::md::VelocityVerlet{0.5});
     sim.add(cpu::md::InitVelocity{300.0, /*seed=*/4242});
     sim.add(cpu::md::NoseHoover{300.0, 100.0, 0.5});
+    sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{5.0}, -10);
     sim.on(ATV::md::Phase::force)
-        .add(cpu::md::NeighborList<>{5.0}, -10);
-    sim.on(ATV::md::Phase::force)
-        .add(HarmonicBond{{kBondK_kcal * kKcalPerMolToEv},
-                                        {kBondR0}});
+        .add(HarmonicBond{{kBondK_kcal * kKcalPerMolToEv}, {kBondR0}});
     sim.build();
 
     // Warm-up: lets NeighborList/halo arenas reach steady state.

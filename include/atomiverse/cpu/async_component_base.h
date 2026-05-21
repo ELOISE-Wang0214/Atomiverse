@@ -39,10 +39,10 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/component.h"
-#include "atomiverse/cpu/frame_snapshot.h"
 #include "atomiverse/core/binding.h"
 #include "atomiverse/core/types.h"
+#include "atomiverse/cpu/component.h"
+#include "atomiverse/cpu/frame_snapshot.h"
 
 namespace ATV {
 namespace cpu {
@@ -51,7 +51,7 @@ class AnalysisExecutor;
 
 /// @brief Driver-agnostic base for components whose work runs off the main hot path.
 class AsyncComponentBase : public cpu::ComponentBase {
-public:
+  public:
     /// @brief No default binding. Users bind explicitly or subclass one of
     /// the driver-specific wrappers in `cpu/<driver>/async_observer.h`.
     std::vector<DefaultBinding> default_bindings() const override { return {}; }
@@ -66,7 +66,9 @@ public:
     /// @brief Backpressure preference. Defaults to `drop_oldest` -- cheapest
     /// and appropriate for observers/recorders where missing an occasional
     /// frame is acceptable.
-    virtual BackpressurePolicy backpressure() const { return BackpressurePolicy::drop_oldest; }
+    virtual BackpressurePolicy backpressure() const {
+        return BackpressurePolicy::drop_oldest;
+    }
 
     /// @brief Register with the executor resolved from `ctx.runtime.executor`.
     void build(const BuildContext& ctx) override;
@@ -88,7 +90,7 @@ public:
     /// @brief Accessor for the bound executor (e.g. for MPI sub-communicator).
     AnalysisExecutor* executor() const noexcept { return exec_; }
 
-private:
+  private:
     AnalysisExecutor* exec_ = nullptr;
 };
 

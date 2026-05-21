@@ -11,8 +11,8 @@
 
 #include <vector>
 
-#include "atomiverse/cpu/async_component_base.h"
 #include "atomiverse/core/binding.h"
+#include "atomiverse/cpu/async_component_base.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -22,7 +22,7 @@ namespace minimizer {
 /// @brief Minimizer-specific async observer base
 /// (binds `minimizer::Phase::end_of_step @ +20`).
 class AsyncObserver : public cpu::AsyncComponentBase {
-public:
+  public:
     ComponentRole role() const override { return ComponentRole::Observer; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {{static_cast<int>(ATV::minimizer::Phase::end_of_step), 20}};

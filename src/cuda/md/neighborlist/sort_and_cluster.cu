@@ -4,9 +4,9 @@
 #include "nlist_impl.cuh"
 #include "triclinic.cuh"
 
+#include "atomiverse/cuda/types.cuh"
 #include <cub/cub.cuh>
 #include <cuda_runtime.h>
-#include "atomiverse/cuda/types.cuh"
 
 #include <cstddef>
 #include <cstdint>
@@ -19,26 +19,26 @@ namespace ATV::md::nlist {
 // ---------------------------------------------------------------------------
 
 template <typename work_t>
-__global__ void aos_to_soa(const double* __restrict__ positions,
-                                  int num_atoms,
-                                  real_t* __restrict__ x,
-                                  real_t* __restrict__ y,
-                                  real_t* __restrict__ z) {
+__global__ void aos_to_soa(const double* __restrict__ positions, int num_atoms,
+                           real_t* __restrict__ x, real_t* __restrict__ y,
+                           real_t* __restrict__ z) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= num_atoms) return;
+    if (i >= num_atoms)
+        return;
     x[i] = static_cast<work_t>(positions[i * 3 + 0]);
     y[i] = static_cast<work_t>(positions[i * 3 + 1]);
     z[i] = static_cast<work_t>(positions[i * 3 + 2]);
 }
 
 template <typename work_t>
-void launch_aos_to_soa(const double* positions_aos, int num_atoms,
-                       real_t* x, real_t* y, real_t* z, cudaStream_t stream) {
-    if (num_atoms == 0) return;
+void launch_aos_to_soa(const double* positions_aos, int num_atoms, real_t* x,
+                       real_t* y, real_t* z, cudaStream_t stream) {
+    if (num_atoms == 0)
+        return;
     int block = ATV::cuda::kDefaultBlock;
     int grid = (num_atoms + block - 1) / block;
-    aos_to_soa<work_t><<<grid, block, 0, stream>>>(
-        positions_aos, num_atoms, x, y, z);
+    aos_to_soa<work_t>
+        <<<grid, block, 0, stream>>>(positions_aos, num_atoms, x, y, z);
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 
@@ -53,15 +53,15 @@ template void launch_aos_to_soa<double>(const double*, int, double*, double*,
 
 template <typename work_t>
 __global__ void compute_morton(const real_t* __restrict__ pos_x,
-                                      const real_t* __restrict__ pos_y,
-                                      const real_t* __restrict__ pos_z,
-                                      int num_atoms,
-                                      const real_t* __restrict__ inv_cell,
-                                      bool periodic,
-                                      uint32_t* __restrict__ morton_codes,
-                                      int* __restrict__ atom_indices) {
+                               const real_t* __restrict__ pos_y,
+                               const real_t* __restrict__ pos_z, int num_atoms,
+                               const real_t* __restrict__ inv_cell,
+                               bool periodic,
+                               uint32_t* __restrict__ morton_codes,
+                               int* __restrict__ atom_indices) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= num_atoms) return;
+    if (i >= num_atoms)
+        return;
 
     work_t rx = pos_x[i], ry = pos_y[i], rz = pos_z[i];
 
@@ -89,19 +89,19 @@ void launch_compute_morton(const real_t* pos_x, const real_t* pos_y,
                            const real_t* inv_cell, bool periodic,
                            uint32_t* morton_codes, int* atom_indices,
                            cudaStream_t stream) {
-    if (num_atoms == 0) return;
+    if (num_atoms == 0)
+        return;
     int block = ATV::cuda::kDefaultBlock;
     int grid = (num_atoms + block - 1) / block;
-    compute_morton<work_t><<<grid, block, 0, stream>>>(
-        pos_x, pos_y, pos_z, num_atoms, inv_cell, periodic,
-        morton_codes, atom_indices);
+    compute_morton<work_t>
+        <<<grid, block, 0, stream>>>(pos_x, pos_y, pos_z, num_atoms, inv_cell,
+                                     periodic, morton_codes, atom_indices);
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 
 template void launch_compute_morton<float>(const float*, const float*,
                                            const float*, int, const float*,
-                                           bool, uint32_t*, int*,
-                                           cudaStream_t);
+                                           bool, uint32_t*, int*, cudaStream_t);
 template void launch_compute_morton<double>(const double*, const double*,
                                             const double*, int, const double*,
                                             bool, uint32_t*, int*,
@@ -111,24 +111,21 @@ template void launch_compute_morton<double>(const double*, const double*,
 // CUB radix sort wrapper — temp storage owned by DeviceVector
 // ---------------------------------------------------------------------------
 
-void launch_radix_sort(uint32_t* keys_in, uint32_t* keys_out,
-                       int* values_in, int* values_out,
-                       int num_items, DeviceVector<char>& temp,
+void launch_radix_sort(uint32_t* keys_in, uint32_t* keys_out, int* values_in,
+                       int* values_out, int num_items, DeviceVector<char>& temp,
                        cudaStream_t stream) {
     // Query required temp size
     size_t needed = 0;
-    cub::DeviceRadixSort::SortPairs(nullptr, needed,
-                                    keys_in, keys_out,
-                                    values_in, values_out,
-                                    num_items, 0, 30, stream);
+    cub::DeviceRadixSort::SortPairs(nullptr, needed, keys_in, keys_out,
+                                    values_in, values_out, num_items, 0, 30,
+                                    stream);
     if (needed > temp.capacity()) {
         temp.resize(needed);
     }
     size_t avail = temp.capacity();
-    cub::DeviceRadixSort::SortPairs(temp.data(), avail,
-                                    keys_in, keys_out,
-                                    values_in, values_out,
-                                    num_items, 0, 30, stream);
+    cub::DeviceRadixSort::SortPairs(temp.data(), avail, keys_in, keys_out,
+                                    values_in, values_out, num_items, 0, 30,
+                                    stream);
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 
@@ -137,16 +134,12 @@ void launch_radix_sort(uint32_t* keys_in, uint32_t* keys_out,
 // ---------------------------------------------------------------------------
 
 template <typename work_t>
-__global__ void scatter_to_soa(const int* __restrict__ sorted_indices,
-                                      const real_t* __restrict__ src_x,
-                                      const real_t* __restrict__ src_y,
-                                      const real_t* __restrict__ src_z,
-                                      int num_atoms, int num_clusters,
-                                      real_t* __restrict__ dst_x,
-                                      real_t* __restrict__ dst_y,
-                                      real_t* __restrict__ dst_z,
-                                      int* __restrict__ original_index,
-                                      int* __restrict__ cluster_count) {
+__global__ void scatter_to_soa(
+    const int* __restrict__ sorted_indices, const real_t* __restrict__ src_x,
+    const real_t* __restrict__ src_y, const real_t* __restrict__ src_z,
+    int num_atoms, int num_clusters, real_t* __restrict__ dst_x,
+    real_t* __restrict__ dst_y, real_t* __restrict__ dst_z,
+    int* __restrict__ original_index, int* __restrict__ cluster_count) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int padded = num_clusters * kClusterSize;
 
@@ -170,38 +163,35 @@ __global__ void scatter_to_soa(const int* __restrict__ sorted_indices,
         int ci = i / kClusterSize;
         int first = ci * kClusterSize;
         int last = first + kClusterSize;
-        if (last > num_atoms) last = num_atoms;
+        if (last > num_atoms)
+            last = num_atoms;
         cluster_count[ci] = (last > first) ? (last - first) : 0;
     }
 }
 
 template <typename work_t>
-void launch_scatter_to_soa(const int* sorted_indices,
-                           const real_t* pos_x, const real_t* pos_y,
-                           const real_t* pos_z, int num_atoms,
-                           int num_clusters,
-                           work_t* cluster_x, work_t* cluster_y,
-                           work_t* cluster_z,
+void launch_scatter_to_soa(const int* sorted_indices, const real_t* pos_x,
+                           const real_t* pos_y, const real_t* pos_z,
+                           int num_atoms, int num_clusters, work_t* cluster_x,
+                           work_t* cluster_y, work_t* cluster_z,
                            int* original_index, int* cluster_count,
                            cudaStream_t stream) {
     int padded = num_clusters * kClusterSize;
     int block = ATV::cuda::kDefaultBlock;
     int grid = (padded + block - 1) / block;
     scatter_to_soa<work_t><<<grid, block, 0, stream>>>(
-        sorted_indices, pos_x, pos_y, pos_z,
-        num_atoms, num_clusters,
-        cluster_x, cluster_y, cluster_z,
-        original_index, cluster_count);
+        sorted_indices, pos_x, pos_y, pos_z, num_atoms, num_clusters, cluster_x,
+        cluster_y, cluster_z, original_index, cluster_count);
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 
 template void launch_scatter_to_soa<float>(const int*, const float*,
-                                           const float*, const float*,
-                                           int, int, float*, float*, float*,
-                                           int*, int*, cudaStream_t);
+                                           const float*, const float*, int, int,
+                                           float*, float*, float*, int*, int*,
+                                           cudaStream_t);
 template void launch_scatter_to_soa<double>(const int*, const double*,
-                                            const double*, const double*,
-                                            int, int, double*, double*, double*,
+                                            const double*, const double*, int,
+                                            int, double*, double*, double*,
                                             int*, int*, cudaStream_t);
 
 // ---------------------------------------------------------------------------
@@ -209,15 +199,15 @@ template void launch_scatter_to_soa<double>(const int*, const double*,
 // ---------------------------------------------------------------------------
 
 template <typename work_t>
-__global__ void aos_to_soa_morton(
-    const double* __restrict__ positions_aos,
-    int num_atoms,
-    real_t* __restrict__ x, real_t* __restrict__ y, real_t* __restrict__ z,
-    const real_t* __restrict__ inv_cell, bool periodic,
-    uint32_t* __restrict__ morton_codes,
-    int* __restrict__ atom_indices) {
+__global__ void
+aos_to_soa_morton(const double* __restrict__ positions_aos, int num_atoms,
+                  real_t* __restrict__ x, real_t* __restrict__ y,
+                  real_t* __restrict__ z, const real_t* __restrict__ inv_cell,
+                  bool periodic, uint32_t* __restrict__ morton_codes,
+                  int* __restrict__ atom_indices) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= num_atoms) return;
+    if (i >= num_atoms)
+        return;
 
     // AoS double → SoA work_t
     work_t rx = static_cast<work_t>(positions_aos[i * 3 + 0]);
@@ -246,25 +236,28 @@ __global__ void aos_to_soa_morton(
 
 template <typename work_t>
 void launch_aos_to_soa_morton(const double* positions_aos, int num_atoms,
-                               work_t* x, work_t* y, work_t* z,
-                               const real_t* inv_cell, bool periodic,
-                               uint32_t* morton_codes, int* atom_indices,
-                               cudaStream_t stream) {
-    if (num_atoms == 0) return;
+                              work_t* x, work_t* y, work_t* z,
+                              const real_t* inv_cell, bool periodic,
+                              uint32_t* morton_codes, int* atom_indices,
+                              cudaStream_t stream) {
+    if (num_atoms == 0)
+        return;
     int block = ATV::cuda::kDefaultBlock;
     int grid = (num_atoms + block - 1) / block;
     aos_to_soa_morton<work_t><<<grid, block, 0, stream>>>(
-        positions_aos, num_atoms, x, y, z, inv_cell, periodic,
-        morton_codes, atom_indices);
+        positions_aos, num_atoms, x, y, z, inv_cell, periodic, morton_codes,
+        atom_indices);
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 
-template void launch_aos_to_soa_morton<float>(
-    const double*, int, float*, float*, float*,
-    const float*, bool, uint32_t*, int*, cudaStream_t);
-template void launch_aos_to_soa_morton<double>(
-    const double*, int, double*, double*, double*,
-    const double*, bool, uint32_t*, int*, cudaStream_t);
+template void launch_aos_to_soa_morton<float>(const double*, int, float*,
+                                              float*, float*, const float*,
+                                              bool, uint32_t*, int*,
+                                              cudaStream_t);
+template void launch_aos_to_soa_morton<double>(const double*, int, double*,
+                                               double*, double*, const double*,
+                                               bool, uint32_t*, int*,
+                                               cudaStream_t);
 
 // ---------------------------------------------------------------------------
 // Fused kernel: Scatter to cluster SoA + AABB (replaces separate K4+K5)
@@ -272,24 +265,21 @@ template void launch_aos_to_soa_morton<double>(
 
 template <typename work_t>
 __global__ void scatter_and_aabb(
-    const int* __restrict__ sorted_indices,
-    const real_t* __restrict__ src_x,
-    const real_t* __restrict__ src_y,
-    const real_t* __restrict__ src_z,
-    int num_atoms, int num_clusters,
-    real_t* __restrict__ dst_x,
-    real_t* __restrict__ dst_y,
-    real_t* __restrict__ dst_z,
-    int* __restrict__ original_index,
-    int* __restrict__ cluster_count,
-    real_t* __restrict__ min_x, real_t* __restrict__ min_y, real_t* __restrict__ min_z,
-    real_t* __restrict__ max_x, real_t* __restrict__ max_y, real_t* __restrict__ max_z) {
+    const int* __restrict__ sorted_indices, const real_t* __restrict__ src_x,
+    const real_t* __restrict__ src_y, const real_t* __restrict__ src_z,
+    int num_atoms, int num_clusters, real_t* __restrict__ dst_x,
+    real_t* __restrict__ dst_y, real_t* __restrict__ dst_z,
+    int* __restrict__ original_index, int* __restrict__ cluster_count,
+    real_t* __restrict__ min_x, real_t* __restrict__ min_y,
+    real_t* __restrict__ min_z, real_t* __restrict__ max_x,
+    real_t* __restrict__ max_y, real_t* __restrict__ max_z) {
 
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     int lane = tid % kClusterSize;
     int ci = tid / kClusterSize;
 
-    if (ci >= num_clusters) return;
+    if (ci >= num_clusters)
+        return;
 
     int i = ci * kClusterSize + lane;
     bool valid = (i < num_atoms);
@@ -308,7 +298,9 @@ __global__ void scatter_and_aabb(
         dst_z[i] = vz;
         original_index[i] = old_idx;
     } else {
-        vx = huge; vy = huge; vz = huge;
+        vx = huge;
+        vy = huge;
+        vz = huge;
         dst_x[i] = huge;
         dst_y[i] = huge;
         dst_z[i] = huge;
@@ -319,68 +311,80 @@ __global__ void scatter_and_aabb(
     if (lane == 0) {
         int first = ci * kClusterSize;
         int last = first + kClusterSize;
-        if (last > num_atoms) last = num_atoms;
+        if (last > num_atoms)
+            last = num_atoms;
         cluster_count[ci] = (last > first) ? (last - first) : 0;
     }
 
     // Phase 2: AABB via warp-shuffle reduction
-    work_t lo_x = valid ? vx :  huge;
-    work_t lo_y = valid ? vy :  huge;
-    work_t lo_z = valid ? vz :  huge;
+    work_t lo_x = valid ? vx : huge;
+    work_t lo_y = valid ? vy : huge;
+    work_t lo_z = valid ? vz : huge;
     work_t hi_x = valid ? vx : -huge;
     work_t hi_y = valid ? vy : -huge;
     work_t hi_z = valid ? vz : -huge;
 
-    unsigned mask = 0xFFu << (((threadIdx.x % 32) / kClusterSize) * kClusterSize);
+    unsigned mask =
+        0xFFu << (((threadIdx.x % 32) / kClusterSize) * kClusterSize);
     for (int offset = kClusterSize / 2; offset >= 1; offset >>= 1) {
         work_t tmp;
-        tmp = __shfl_down_sync(mask, lo_x, offset); lo_x = fmin(lo_x, tmp);
-        tmp = __shfl_down_sync(mask, hi_x, offset); hi_x = fmax(hi_x, tmp);
-        tmp = __shfl_down_sync(mask, lo_y, offset); lo_y = fmin(lo_y, tmp);
-        tmp = __shfl_down_sync(mask, hi_y, offset); hi_y = fmax(hi_y, tmp);
-        tmp = __shfl_down_sync(mask, lo_z, offset); lo_z = fmin(lo_z, tmp);
-        tmp = __shfl_down_sync(mask, hi_z, offset); hi_z = fmax(hi_z, tmp);
+        tmp = __shfl_down_sync(mask, lo_x, offset);
+        lo_x = fmin(lo_x, tmp);
+        tmp = __shfl_down_sync(mask, hi_x, offset);
+        hi_x = fmax(hi_x, tmp);
+        tmp = __shfl_down_sync(mask, lo_y, offset);
+        lo_y = fmin(lo_y, tmp);
+        tmp = __shfl_down_sync(mask, hi_y, offset);
+        hi_y = fmax(hi_y, tmp);
+        tmp = __shfl_down_sync(mask, lo_z, offset);
+        lo_z = fmin(lo_z, tmp);
+        tmp = __shfl_down_sync(mask, hi_z, offset);
+        hi_z = fmax(hi_z, tmp);
     }
 
     if (lane == 0) {
-        min_x[ci] = lo_x; min_y[ci] = lo_y; min_z[ci] = lo_z;
-        max_x[ci] = hi_x; max_y[ci] = hi_y; max_z[ci] = hi_z;
+        min_x[ci] = lo_x;
+        min_y[ci] = lo_y;
+        min_z[ci] = lo_z;
+        max_x[ci] = hi_x;
+        max_y[ci] = hi_y;
+        max_z[ci] = hi_z;
     }
 }
 
 template <typename work_t>
-void launch_scatter_and_aabb(const int* sorted_indices,
-                              const real_t* pos_x, const real_t* pos_y,
-                              const real_t* pos_z,
-                              int num_atoms, int num_clusters,
-                              work_t* cluster_x, work_t* cluster_y, work_t* cluster_z,
-                              int* original_index, int* cluster_count,
-                              work_t* aabb_min_x, work_t* aabb_min_y,
-                              work_t* aabb_min_z,
-                              work_t* aabb_max_x, work_t* aabb_max_y,
-                              work_t* aabb_max_z,
-                              cudaStream_t stream) {
-    if (num_clusters == 0) return;
+void launch_scatter_and_aabb(const int* sorted_indices, const real_t* pos_x,
+                             const real_t* pos_y, const real_t* pos_z,
+                             int num_atoms, int num_clusters, work_t* cluster_x,
+                             work_t* cluster_y, work_t* cluster_z,
+                             int* original_index, int* cluster_count,
+                             work_t* aabb_min_x, work_t* aabb_min_y,
+                             work_t* aabb_min_z, work_t* aabb_max_x,
+                             work_t* aabb_max_y, work_t* aabb_max_z,
+                             cudaStream_t stream) {
+    if (num_clusters == 0)
+        return;
     int threads_needed = num_clusters * kClusterSize;
     int block = ATV::cuda::kDefaultBlock;
     int grid = (threads_needed + block - 1) / block;
     scatter_and_aabb<work_t><<<grid, block, 0, stream>>>(
-        sorted_indices, pos_x, pos_y, pos_z,
-        num_atoms, num_clusters,
-        cluster_x, cluster_y, cluster_z,
-        original_index, cluster_count,
-        aabb_min_x, aabb_min_y, aabb_min_z,
-        aabb_max_x, aabb_max_y, aabb_max_z);
+        sorted_indices, pos_x, pos_y, pos_z, num_atoms, num_clusters, cluster_x,
+        cluster_y, cluster_z, original_index, cluster_count, aabb_min_x,
+        aabb_min_y, aabb_min_z, aabb_max_x, aabb_max_y, aabb_max_z);
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 
-template void launch_scatter_and_aabb<float>(
-    const int*, const float*, const float*, const float*,
-    int, int, float*, float*, float*, int*, int*,
-    float*, float*, float*, float*, float*, float*, cudaStream_t);
-template void launch_scatter_and_aabb<double>(
-    const int*, const double*, const double*, const double*,
-    int, int, double*, double*, double*, int*, int*,
-    double*, double*, double*, double*, double*, double*, cudaStream_t);
+template void launch_scatter_and_aabb<float>(const int*, const float*,
+                                             const float*, const float*, int,
+                                             int, float*, float*, float*, int*,
+                                             int*, float*, float*, float*,
+                                             float*, float*, float*,
+                                             cudaStream_t);
+template void launch_scatter_and_aabb<double>(const int*, const double*,
+                                              const double*, const double*, int,
+                                              int, double*, double*, double*,
+                                              int*, int*, double*, double*,
+                                              double*, double*, double*,
+                                              double*, cudaStream_t);
 
 } // namespace ATV::md::nlist

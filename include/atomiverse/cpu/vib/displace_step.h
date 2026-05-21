@@ -34,7 +34,7 @@ namespace vib {
 /// `role() == None`; it mutates positions (an implicit frame field) but
 /// declares no `capabilities()` (Energy/Force/... are unaffected).
 class DisplaceStep : public cpu::ComponentBase {
-public:
+  public:
     /// @brief Construct bound to a driver-owned workspace.
     /// @param ws Non-owning pointer to the shared Hessian workspace.
     explicit DisplaceStep(HessianWorkspace* ws) : ws_(ws) {}
@@ -51,7 +51,7 @@ public:
     /// @brief Set frame coordinates to `R0 +/- h*e_{i.alpha}` (or restore `R0`).
     /// @param ctx Launch context; `ctx.step` is the displacement index `s`.
     void launch(const cpu::LaunchContext& ctx) override {
-        const int n   = ws_->n_atoms;
+        const int n = ws_->n_atoms;
         const int dim = 3 * n;
 
         // Restore every coordinate to R0 first — this both clears the
@@ -63,20 +63,24 @@ public:
         }
 
         const int s = ctx.step;
-        if (s >= 2 * dim) return; // finalize pass: leave the frame at R0.
+        if (s >= 2 * dim)
+            return; // finalize pass: leave the frame at R0.
 
-        const int    coord = s / 2;
-        const double sign  = (s % 2 == 0) ? +1.0 : -1.0;
-        const int    atom  = coord / 3;
-        const int    axis  = coord % 3;
+        const int coord = s / 2;
+        const double sign = (s % 2 == 0) ? +1.0 : -1.0;
+        const int atom = coord / 3;
+        const int axis = coord % 3;
         const double shift = sign * kHessianStepAngstrom;
 
-        if (axis == 0)      ctx.frame.atoms.x(atom) += shift;
-        else if (axis == 1) ctx.frame.atoms.y(atom) += shift;
-        else                ctx.frame.atoms.z(atom) += shift;
+        if (axis == 0)
+            ctx.frame.atoms.x(atom) += shift;
+        else if (axis == 1)
+            ctx.frame.atoms.y(atom) += shift;
+        else
+            ctx.frame.atoms.z(atom) += shift;
     }
 
-private:
+  private:
     HessianWorkspace* ws_; ///< Non-owning; driver-owned.
 };
 

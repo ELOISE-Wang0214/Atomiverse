@@ -32,7 +32,7 @@ namespace cpu {
 /// cutoff in Ångströms. `needs_neighbor_list()` is always `true` for
 /// pair-cutoff evaluators.
 class PairEvaluator : public cpu::ComponentBase {
-public:
+  public:
     /// @brief Pair interaction cutoff [Å]. Used by category drivers
     /// to size MPI halo exchange and surfaced in error messages when
     /// a `NeighborList` is missing.

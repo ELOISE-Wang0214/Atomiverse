@@ -25,7 +25,8 @@ namespace md {
 /// @return `dd->n_local` under multi-rank, `ctx.frame.atoms.size()` otherwise.
 inline int owned_count(const cpu::LaunchContext& ctx) {
     const auto* dd = ctx.runtime.dd;
-    if (dd && ctx.runtime.mpi_size > 1) return dd->n_local;
+    if (dd && ctx.runtime.mpi_size > 1)
+        return dd->n_local;
     return ctx.frame.atoms.size();
 }
 
@@ -36,7 +37,8 @@ inline int owned_count(const cpu::LaunchContext& ctx) {
 /// @return `dd->n_local` under multi-rank, `ctx.frame.atoms.size()` otherwise.
 inline int owned_count(const cpu::BuildContext& ctx) {
     const auto* dd = ctx.runtime.dd;
-    if (dd && ctx.runtime.mpi_size > 1) return dd->n_local;
+    if (dd && ctx.runtime.mpi_size > 1)
+        return dd->n_local;
     return ctx.frame.atoms.size();
 }
 

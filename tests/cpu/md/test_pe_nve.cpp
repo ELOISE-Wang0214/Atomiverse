@@ -13,14 +13,14 @@
 #include <cmath>
 #include <vector>
 
-#include "atomiverse/cpu/potentials/harmonic_angle.h"
-#include "atomiverse/cpu/potentials/harmonic_bond.h"
-#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
+#include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/core/mat3.h"
-#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/potentials/harmonic_angle.h"
+#include "atomiverse/cpu/potentials/harmonic_bond.h"
+#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
 
 using namespace ATV;
 
@@ -29,20 +29,20 @@ namespace {
 // ── OPLS-AA UA parameters (same as test_pe_single_chain.cpp) ──────────
 
 inline constexpr double kKcalPerMolToEv = 1.0 / 23.060547830619026;
-inline constexpr double kBondK_kcal  = 268.0;
-inline constexpr double kBondR0      = 1.53;
+inline constexpr double kBondK_kcal = 268.0;
+inline constexpr double kBondR0 = 1.53;
 inline constexpr double kAngleK_kcal = 60.0;
 inline constexpr double kAngleTheta0 = 109.5 * kPI / 180.0;
 
-inline double bond_K_eV()  { return kBondK_kcal  * kKcalPerMolToEv; }
+inline double bond_K_eV() { return kBondK_kcal * kKcalPerMolToEv; }
 inline double angle_K_eV() { return kAngleK_kcal * kKcalPerMolToEv; }
 inline std::vector<double> dihedral_Cn_eV() {
     return {
-        1.73    * kKcalPerMolToEv,   // C0  (MSU paper, Tschopp 2010)
-        -4.49   * kKcalPerMolToEv,   // C1
-        0.776   * kKcalPerMolToEv,   // C2
-        6.99    * kKcalPerMolToEv,   // C3
-        0.0,                          // C4
+        1.73 * kKcalPerMolToEv,  // C0  (MSU paper, Tschopp 2010)
+        -4.49 * kKcalPerMolToEv, // C1
+        0.776 * kKcalPerMolToEv, // C2
+        6.99 * kKcalPerMolToEv,  // C3
+        0.0,                     // C4
     };
 }
 
@@ -61,30 +61,30 @@ cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
         frame.atoms.x[i] = x0 + i * dx_step;
         frame.atoms.y[i] = y0 + (i % 2 == 0 ? 0.0 : dy_step);
         frame.atoms.z[i] = z0;
-        frame.atoms.mass[i] = 14.027;  // CH2 united atom (amu)
+        frame.atoms.mass[i] = 14.027; // CH2 united atom (amu)
         frame.atoms.type[i] = 0;
     }
 
     const int n_bonds = n_carbons - 1;
     frame.bonds.atomi = xt::zeros<int>({n_bonds});
     frame.bonds.atomj = xt::zeros<int>({n_bonds});
-    frame.bonds.type  = xt::zeros<int>({n_bonds});
+    frame.bonds.type = xt::zeros<int>({n_bonds});
     for (int k = 0; k < n_bonds; ++k) {
         frame.bonds.atomi[k] = k;
         frame.bonds.atomj[k] = k + 1;
-        frame.bonds.type[k]  = 0;
+        frame.bonds.type[k] = 0;
     }
 
     const int n_angles = n_carbons - 2;
     frame.angles.atomi = xt::zeros<int>({n_angles});
     frame.angles.atomj = xt::zeros<int>({n_angles});
     frame.angles.atomk = xt::zeros<int>({n_angles});
-    frame.angles.type  = xt::zeros<int>({n_angles});
+    frame.angles.type = xt::zeros<int>({n_angles});
     for (int k = 0; k < n_angles; ++k) {
         frame.angles.atomi[k] = k;
         frame.angles.atomj[k] = k + 1;
         frame.angles.atomk[k] = k + 2;
-        frame.angles.type[k]  = 0;
+        frame.angles.type[k] = 0;
     }
 
     const int n_dihedrals = n_carbons - 3;
@@ -92,13 +92,13 @@ cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
     frame.dihedrals.atomj = xt::zeros<int>({n_dihedrals});
     frame.dihedrals.atomk = xt::zeros<int>({n_dihedrals});
     frame.dihedrals.atoml = xt::zeros<int>({n_dihedrals});
-    frame.dihedrals.type  = xt::zeros<int>({n_dihedrals});
+    frame.dihedrals.type = xt::zeros<int>({n_dihedrals});
     for (int k = 0; k < n_dihedrals; ++k) {
         frame.dihedrals.atomi[k] = k;
         frame.dihedrals.atomj[k] = k + 1;
         frame.dihedrals.atomk[k] = k + 2;
         frame.dihedrals.atoml[k] = k + 3;
-        frame.dihedrals.type[k]  = 0;
+        frame.dihedrals.type[k] = 0;
     }
 
     frame.box = Mat3::cubic(box_len);
@@ -118,11 +118,11 @@ TEST(PeNve, EnergyConserves1000Steps) {
     // inside the harmonic regime of every bonded potential.
     for (int i = 0; i < frame.atoms.size(); ++i) {
         const double sign = (i % 2 == 0) ? +1.0 : -1.0;
-        frame.atoms.vz[i] = sign * 1e-3;   // Å / fs
+        frame.atoms.vz[i] = sign * 1e-3; // Å / fs
     }
 
     cpu::md::MD sim;
-    sim.add(cpu::md::VelocityVerlet{0.5});   // Δt = 0.5 fs
+    sim.add(cpu::md::VelocityVerlet{0.5}); // Δt = 0.5 fs
     sim.on(ATV::md::Phase::force)
         .add(HarmonicBond{{bond_K_eV()}, {kBondR0}})
         .add(HarmonicAngle{{angle_K_eV()}, {kAngleTheta0}})

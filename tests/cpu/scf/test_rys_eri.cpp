@@ -15,8 +15,8 @@
 
 #include <gtest/gtest.h>
 
-#include <cstdint>
 #include <cmath>
+#include <cstdint>
 #include <vector>
 
 #include <xtensor/containers/xtensor.hpp>
@@ -39,11 +39,21 @@ namespace {
 /// @brief Build a 3-atom water frame (C2v, OH ≈ 0.96 Å).
 cpu::Frame make_water() {
     cpu::Frame f(3);
-    f.atoms.x[0] = 0.0;       f.atoms.y[0] = 0.0;       f.atoms.z[0] = 0.0;
-    f.atoms.x[1] = 0.7572;    f.atoms.y[1] = 0.5859;    f.atoms.z[1] = 0.0;
-    f.atoms.x[2] = -0.7572;   f.atoms.y[2] = 0.5859;    f.atoms.z[2] = 0.0;
-    f.atoms.type[0] = 8; f.atoms.type[1] = 1; f.atoms.type[2] = 1;
-    f.atoms.mass[0] = 15.999; f.atoms.mass[1] = 1.008; f.atoms.mass[2] = 1.008;
+    f.atoms.x[0] = 0.0;
+    f.atoms.y[0] = 0.0;
+    f.atoms.z[0] = 0.0;
+    f.atoms.x[1] = 0.7572;
+    f.atoms.y[1] = 0.5859;
+    f.atoms.z[1] = 0.0;
+    f.atoms.x[2] = -0.7572;
+    f.atoms.y[2] = 0.5859;
+    f.atoms.z[2] = 0.0;
+    f.atoms.type[0] = 8;
+    f.atoms.type[1] = 1;
+    f.atoms.type[2] = 1;
+    f.atoms.mass[0] = 15.999;
+    f.atoms.mass[1] = 1.008;
+    f.atoms.mass[2] = 1.008;
     f.box = Mat3::cubic(100.0);
     return f;
 }
@@ -51,10 +61,16 @@ cpu::Frame make_water() {
 /// @brief Build a carbon monoxide frame.
 cpu::Frame make_co() {
     cpu::Frame f(2);
-    f.atoms.x[0] = 0.0; f.atoms.y[0] = 0.0; f.atoms.z[0] = 0.0;
-    f.atoms.x[1] = 1.128; f.atoms.y[1] = 0.0; f.atoms.z[1] = 0.0;
-    f.atoms.type[0] = 6; f.atoms.type[1] = 8;
-    f.atoms.mass[0] = 12.011; f.atoms.mass[1] = 15.999;
+    f.atoms.x[0] = 0.0;
+    f.atoms.y[0] = 0.0;
+    f.atoms.z[0] = 0.0;
+    f.atoms.x[1] = 1.128;
+    f.atoms.y[1] = 0.0;
+    f.atoms.z[1] = 0.0;
+    f.atoms.type[0] = 6;
+    f.atoms.type[1] = 8;
+    f.atoms.mass[0] = 12.011;
+    f.atoms.mass[1] = 15.999;
     f.box = Mat3::cubic(100.0);
     return f;
 }
@@ -75,12 +91,14 @@ xt::xtensor<double, 4> build_eri_via_rys(const ShellBlockPairList& sp) {
         const auto& Bi = sp.blocks[bi];
         for (int bj = 0; bj < nb; ++bj) {
             const auto& Bj = sp.blocks[bj];
-            if (Bi.l < Bj.l) continue;  // rys_eri_block requires li >= lj
+            if (Bi.l < Bj.l)
+                continue; // rys_eri_block requires li >= lj
             for (int bk = 0; bk < nb; ++bk) {
                 const auto& Bk = sp.blocks[bk];
                 for (int bl = 0; bl < nb; ++bl) {
                     const auto& Bl = sp.blocks[bl];
-                    if (Bk.l < Bl.l) continue;
+                    if (Bk.l < Bl.l)
+                        continue;
 
                     const int na = Bi.n_cart;
                     const int nb_c = Bj.n_cart;
@@ -94,20 +112,22 @@ xt::xtensor<double, 4> build_eri_via_rys(const ShellBlockPairList& sp) {
                     // symmetry) to fill the three swapped orderings —
                     // those quartets are otherwise skipped by the
                     // li<lj / lk<ll guards above.
-                    for (int ia = 0; ia < na;   ++ia)
-                    for (int ib = 0; ib < nb_c; ++ib)
-                    for (int ic = 0; ic < nc;   ++ic)
-                    for (int id = 0; id < nd;   ++id) {
-                        const double v = buf[((ia * nb_c + ib) * nc + ic) * nd + id];
-                        const int ai = Bi.ao_start + ia;
-                        const int aj = Bj.ao_start + ib;
-                        const int ak = Bk.ao_start + ic;
-                        const int al = Bl.ao_start + id;
-                        ERI(ai, aj, ak, al) = v;
-                        ERI(aj, ai, ak, al) = v;
-                        ERI(ai, aj, al, ak) = v;
-                        ERI(aj, ai, al, ak) = v;
-                    }
+                    for (int ia = 0; ia < na; ++ia)
+                        for (int ib = 0; ib < nb_c; ++ib)
+                            for (int ic = 0; ic < nc; ++ic)
+                                for (int id = 0; id < nd; ++id) {
+                                    const double v =
+                                        buf[((ia * nb_c + ib) * nc + ic) * nd
+                                            + id];
+                                    const int ai = Bi.ao_start + ia;
+                                    const int aj = Bj.ao_start + ib;
+                                    const int ak = Bk.ao_start + ic;
+                                    const int al = Bl.ao_start + id;
+                                    ERI(ai, aj, ak, al) = v;
+                                    ERI(aj, ai, ak, al) = v;
+                                    ERI(ai, aj, al, ak) = v;
+                                    ERI(aj, ai, al, ak) = v;
+                                }
                 }
             }
         }
@@ -116,36 +136,40 @@ xt::xtensor<double, 4> build_eri_via_rys(const ShellBlockPairList& sp) {
 }
 
 /// @brief Fetch the (ij|kl) entry from a dense 4-index tensor.
-inline double eri_at(const xt::xtensor<double, 4>& T, int i, int j, int k, int l) {
+inline double eri_at(const xt::xtensor<double, 4>& T, int i, int j, int k,
+                     int l) {
     return T(i, j, k, l);
 }
 
 void compare_tensors(const xt::xtensor<double, 4>& a,
-                     const xt::xtensor<double, 4>& b,
-                     double tol,
-                     const char* label)
-{
+                     const xt::xtensor<double, 4>& b, double tol,
+                     const char* label) {
     const int n = static_cast<int>(a.shape()[0]);
     int bad = 0;
     double worst = 0.0;
-    int wi=-1, wj=-1, wk=-1, wl=-1;
+    int wi = -1, wj = -1, wk = -1, wl = -1;
 
     for (int i = 0; i < n; ++i)
-    for (int j = 0; j < n; ++j)
-    for (int k = 0; k < n; ++k)
-    for (int l = 0; l < n; ++l) {
-        double diff = std::abs(eri_at(a,i,j,k,l) - eri_at(b,i,j,k,l));
-        if (diff > worst) {
-            worst = diff; wi = i; wj = j; wk = k; wl = l;
-        }
-        if (diff > tol) ++bad;
-    }
-    EXPECT_EQ(bad, 0) << label
-                      << " — " << bad << " ERI elements exceed " << tol
-                      << " (worst=" << worst
-                      << " at (" << wi << "," << wj << "," << wk << "," << wl
-                      << "): a=" << eri_at(a,wi,wj,wk,wl)
-                      << " b=" << eri_at(b,wi,wj,wk,wl) << ")";
+        for (int j = 0; j < n; ++j)
+            for (int k = 0; k < n; ++k)
+                for (int l = 0; l < n; ++l) {
+                    double diff =
+                        std::abs(eri_at(a, i, j, k, l) - eri_at(b, i, j, k, l));
+                    if (diff > worst) {
+                        worst = diff;
+                        wi = i;
+                        wj = j;
+                        wk = k;
+                        wl = l;
+                    }
+                    if (diff > tol)
+                        ++bad;
+                }
+    EXPECT_EQ(bad, 0) << label << " — " << bad << " ERI elements exceed " << tol
+                      << " (worst=" << worst << " at (" << wi << "," << wj
+                      << "," << wk << "," << wl
+                      << "): a=" << eri_at(a, wi, wj, wk, wl)
+                      << " b=" << eri_at(b, wi, wj, wk, wl) << ")";
 }
 
 } // namespace
@@ -158,7 +182,8 @@ void compare_tensors(const xt::xtensor<double, 4>& a,
 // catches gross algebraic errors in rys_eri_block.
 TEST(RysEri, MatchesMcMurchieDavidson_H2O) {
     auto frame = make_water();
-    auto pack = build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, /*need_eri=*/true);
+    auto pack =
+        build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, /*need_eri=*/true);
     auto sp = build_shell_block_pair_list(pack, 1e-14);
 
     auto eri_rys = build_eri_via_rys(sp);
@@ -167,7 +192,8 @@ TEST(RysEri, MatchesMcMurchieDavidson_H2O) {
 
 TEST(RysEri, MatchesMcMurchieDavidson_CO) {
     auto frame = make_co();
-    auto pack = build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, /*need_eri=*/true);
+    auto pack =
+        build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, /*need_eri=*/true);
     auto sp = build_shell_block_pair_list(pack, 1e-14);
 
     auto eri_rys = build_eri_via_rys(sp);
@@ -180,7 +206,8 @@ TEST(RysEri, MatchesMcMurchieDavidson_CO) {
 
 TEST(RysEri, MatchesLibcint_H2O) {
     auto frame = make_water();
-    auto pack = build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, /*need_eri=*/true);
+    auto pack =
+        build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, /*need_eri=*/true);
     auto sp = build_shell_block_pair_list(pack, 1e-14);
 
     auto eri_rys = build_eri_via_rys(sp);
@@ -190,7 +217,8 @@ TEST(RysEri, MatchesLibcint_H2O) {
 
 TEST(RysEri, MatchesLibcint_CO) {
     auto frame = make_co();
-    auto pack = build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, /*need_eri=*/true);
+    auto pack =
+        build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, /*need_eri=*/true);
     auto sp = build_shell_block_pair_list(pack, 1e-14);
 
     auto eri_rys = build_eri_via_rys(sp);
@@ -213,21 +241,23 @@ TEST(RysEri, MatchesLibcint_CO) {
 TEST(RysEri, MatchesLibcint_DShell_631Gs_H2O) {
     auto frame = make_water();
     // 6-31G* puts a d-shell on oxygen → d quartets appear in the tensor.
-    auto pack = build_integrals(frame, cpu::scf::BasisSet::Pople631Gs,
-                                0, /*need_eri=*/true);
+    auto pack = build_integrals(frame, cpu::scf::BasisSet::Pople631Gs, 0,
+                                /*need_eri=*/true);
     auto sp = build_shell_block_pair_list(pack, 1e-14);
-    ASSERT_GT(sp.n_basis, 7) << "6-31G* H2O must have > 7 AOs (d-shell present)";
+    ASSERT_GT(sp.n_basis, 7)
+        << "6-31G* H2O must have > 7 AOs (d-shell present)";
 
     auto eri_rys = build_eri_via_rys(sp);
     auto eri_ref = test::build_eri_libcint_from_pack(frame, pack);
-    compare_tensors(eri_ref, eri_rys, 1e-7, "H2O 6-31G* d-shell rys vs libcint");
+    compare_tensors(eri_ref, eri_rys, 1e-7,
+                    "H2O 6-31G* d-shell rys vs libcint");
 }
 
 TEST(RysEri, MatchesLibcint_DShell_631Gs_CO) {
     auto frame = make_co();
     // 6-31G* puts a d-shell on both C and O → (dd|dd) quartets present.
-    auto pack = build_integrals(frame, cpu::scf::BasisSet::Pople631Gs,
-                                0, /*need_eri=*/true);
+    auto pack = build_integrals(frame, cpu::scf::BasisSet::Pople631Gs, 0,
+                                /*need_eri=*/true);
     auto sp = build_shell_block_pair_list(pack, 1e-14);
 
     auto eri_rys = build_eri_via_rys(sp);

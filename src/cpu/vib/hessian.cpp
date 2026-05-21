@@ -81,23 +81,23 @@ HessianResult Hessian::run(cpu::Frame& frame) {
     // Publish the assembled, symmetrized Hessian, the vibrational
     // frequencies (MassWeighting + EigenSolver), and the harmonic
     // thermochemistry (Thermochem).
-    last_result_.hessian      = workspace_->hessian;
-    last_result_.n_atoms      = n_atoms;
-    last_result_.units        = "eV/Angstrom^2";
-    last_result_.frequencies  = workspace_->frequencies;
+    last_result_.hessian = workspace_->hessian;
+    last_result_.n_atoms = n_atoms;
+    last_result_.units = "eV/Angstrom^2";
+    last_result_.frequencies = workspace_->frequencies;
     last_result_.normal_modes = workspace_->normal_modes;
-    last_result_.n_imaginary  = workspace_->n_imaginary;
-    last_result_.is_linear    = workspace_->is_linear;
-    last_result_.zpe          = workspace_->zpe;
-    last_result_.u_tot        = workspace_->u_tot;
-    last_result_.h_tot        = workspace_->h_tot;
-    last_result_.s_tot        = workspace_->s_tot;
-    last_result_.s_elec       = workspace_->s_elec;
-    last_result_.s_trans      = workspace_->s_trans;
-    last_result_.s_rot        = workspace_->s_rot;
-    last_result_.s_vib        = workspace_->s_vib;
-    last_result_.g_tot        = workspace_->g_tot;
-    last_result_.g_thermal    = workspace_->g_thermal;
+    last_result_.n_imaginary = workspace_->n_imaginary;
+    last_result_.is_linear = workspace_->is_linear;
+    last_result_.zpe = workspace_->zpe;
+    last_result_.u_tot = workspace_->u_tot;
+    last_result_.h_tot = workspace_->h_tot;
+    last_result_.s_tot = workspace_->s_tot;
+    last_result_.s_elec = workspace_->s_elec;
+    last_result_.s_trans = workspace_->s_trans;
+    last_result_.s_rot = workspace_->s_rot;
+    last_result_.s_vib = workspace_->s_vib;
+    last_result_.g_tot = workspace_->g_tot;
+    last_result_.g_thermal = workspace_->g_thermal;
     return last_result_;
 }
 

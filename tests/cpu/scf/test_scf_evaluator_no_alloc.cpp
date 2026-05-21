@@ -42,8 +42,8 @@
 #include "atomiverse/cpu/scf/scf_solve.h"
 
 #if defined(__GLIBC__) && defined(__linux__)
-#  define ATV_TEST_HAVE_MALLOC_HOOK 1
-#  include <malloc.h>
+#define ATV_TEST_HAVE_MALLOC_HOOK 1
+#include <malloc.h>
 #endif
 
 #ifdef ATV_TEST_HAVE_MALLOC_HOOK
@@ -63,7 +63,7 @@ bool& alloc_count_armed() {
 extern "C" void* __libc_malloc(size_t);
 extern "C" void* __libc_calloc(size_t, size_t);
 extern "C" void* __libc_realloc(void*, size_t);
-extern "C" void  __libc_free(void*);
+extern "C" void __libc_free(void*);
 
 extern "C" void* malloc(size_t sz) {
     if (alloc_count_armed())
@@ -84,7 +84,7 @@ extern "C" void free(void* p) { __libc_free(p); }
 
 } // namespace
 
-#endif  // ATV_TEST_HAVE_MALLOC_HOOK
+#endif // ATV_TEST_HAVE_MALLOC_HOOK
 
 namespace {
 
@@ -124,7 +124,8 @@ TEST(SCFEvaluatorNoAlloc, ConstantAllocCountAcrossSteadyStateLaunches) {
     using namespace ATV;
 
     auto frame = make_h2();
-    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto integrals =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto cfg = cpu::scf::rhf_config(integrals);
 
     cpu::md::MD sim;
@@ -144,12 +145,10 @@ TEST(SCFEvaluatorNoAlloc, ConstantAllocCountAcrossSteadyStateLaunches) {
     const uint64_t b = armed_launch_count(sim, frame);
     const uint64_t c = armed_launch_count(sim, frame);
 
-    EXPECT_EQ(b, a)
-        << "launch alloc count drifted: launch[N]=" << a
-        << " vs launch[N+1]=" << b;
-    EXPECT_EQ(c, b)
-        << "launch alloc count drifted: launch[N+1]=" << b
-        << " vs launch[N+2]=" << c;
+    EXPECT_EQ(b, a) << "launch alloc count drifted: launch[N]=" << a
+                    << " vs launch[N+1]=" << b;
+    EXPECT_EQ(c, b) << "launch alloc count drifted: launch[N+1]=" << b
+                    << " vs launch[N+2]=" << c;
     // The actual per-launch count is bookkeeping, not a hard bound (yet
     // — Phase 4.5 drives this toward zero). Surface it via gtest's
     // RecordProperty so xUnit reporters can plot drift over time without

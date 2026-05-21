@@ -24,34 +24,34 @@
 #include <cmath>
 #include <vector>
 
-#include "atomiverse/cpu/potentials/harmonic_angle.h"
-#include "atomiverse/cpu/potentials/harmonic_bond.h"
-#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
+#include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/core/mat3.h"
-#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/potentials/harmonic_angle.h"
+#include "atomiverse/cpu/potentials/harmonic_bond.h"
+#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
 
 using namespace ATV;
 
 namespace {
 
 inline constexpr double kKcalPerMolToEv = 1.0 / 23.060547830619026;
-inline constexpr double kBondK_kcal  = 268.0;
-inline constexpr double kBondR0      = 1.53;
+inline constexpr double kBondK_kcal = 268.0;
+inline constexpr double kBondR0 = 1.53;
 inline constexpr double kAngleK_kcal = 60.0;
 inline constexpr double kAngleTheta0 = 109.5 * kPI / 180.0;
 
-inline double bond_K_eV()  { return kBondK_kcal  * kKcalPerMolToEv; }
+inline double bond_K_eV() { return kBondK_kcal * kKcalPerMolToEv; }
 inline double angle_K_eV() { return kAngleK_kcal * kKcalPerMolToEv; }
 inline std::vector<double> dihedral_Cn_eV() {
     return {
-        1.73    * kKcalPerMolToEv,   // C0  (MSU paper, Tschopp 2010)
-        -4.49   * kKcalPerMolToEv,   // C1
-        0.776   * kKcalPerMolToEv,   // C2
-        6.99    * kKcalPerMolToEv,   // C3
-        0.0,                          // C4
+        1.73 * kKcalPerMolToEv,  // C0  (MSU paper, Tschopp 2010)
+        -4.49 * kKcalPerMolToEv, // C1
+        0.776 * kKcalPerMolToEv, // C2
+        6.99 * kKcalPerMolToEv,  // C3
+        0.0,                     // C4
     };
 }
 
@@ -65,18 +65,19 @@ inline std::vector<double> dihedral_Cn_eV() {
 // row-major order.
 cpu::Frame make_8chain_box(double box_len, int n_carbons, double y_margin) {
     const int n_chains = 8;
-    const int n_atoms  = n_chains * n_carbons;
+    const int n_atoms = n_chains * n_carbons;
     cpu::Frame frame(n_atoms);
 
     const double half_apex = (kPI - kAngleTheta0) / 2.0;
-    const double dy_step   = kBondR0 * std::cos(half_apex);
-    const double dz_step   = kBondR0 * std::sin(half_apex);
+    const double dy_step = kBondR0 * std::cos(half_apex);
+    const double dz_step = kBondR0 * std::sin(half_apex);
 
     const double slab = box_len / 2.0;
     const double chain_len = (n_carbons - 1) * dy_step;
     if (chain_len + 2 * y_margin > slab) {
         // Will trip the partition check; surface a clear error early.
-        throw std::runtime_error("chain length > slab - 2 margin -- shrink chain or grow box");
+        throw std::runtime_error(
+            "chain length > slab - 2 margin -- shrink chain or grow box");
     }
 
     int idx = 0;
@@ -88,7 +89,7 @@ cpu::Frame make_8chain_box(double box_len, int n_carbons, double y_margin) {
                 const double sub_z_lo = cz * slab;
                 const double cx0 = sub_x_lo + slab / 2.0;
                 const double cz0 = sub_z_lo + slab / 2.0;
-                const double y0  = sub_y_lo + y_margin;
+                const double y0 = sub_y_lo + y_margin;
                 for (int i = 0; i < n_carbons; ++i) {
                     frame.atoms.x[idx] = cx0;
                     frame.atoms.y[idx] = y0 + i * dy_step;
@@ -117,16 +118,16 @@ cpu::Frame make_8chain_box(double box_len, int n_carbons, double y_margin) {
 
     frame.bonds.atomi = xt::zeros<int>({n_b_tot});
     frame.bonds.atomj = xt::zeros<int>({n_b_tot});
-    frame.bonds.type  = xt::zeros<int>({n_b_tot});
+    frame.bonds.type = xt::zeros<int>({n_b_tot});
     frame.angles.atomi = xt::zeros<int>({n_a_tot});
     frame.angles.atomj = xt::zeros<int>({n_a_tot});
     frame.angles.atomk = xt::zeros<int>({n_a_tot});
-    frame.angles.type  = xt::zeros<int>({n_a_tot});
+    frame.angles.type = xt::zeros<int>({n_a_tot});
     frame.dihedrals.atomi = xt::zeros<int>({n_d_tot});
     frame.dihedrals.atomj = xt::zeros<int>({n_d_tot});
     frame.dihedrals.atomk = xt::zeros<int>({n_d_tot});
     frame.dihedrals.atoml = xt::zeros<int>({n_d_tot});
-    frame.dihedrals.type  = xt::zeros<int>({n_d_tot});
+    frame.dihedrals.type = xt::zeros<int>({n_d_tot});
 
     for (int c = 0; c < n_chains; ++c) {
         const int base = c * n_carbons;
@@ -189,9 +190,9 @@ TEST(PeChains8Rank, BondedNveConservation) {
     sim.run(frame, 999);
     const double e1 = total_energy_global(frame);
     const double drift = std::abs(e1 - e0) / std::abs(e0);
-    EXPECT_LT(drift, 1e-3)
-        << "8-rank bonded NVE drift " << drift
-        << " exceeds 1e-3 over 1000 steps (E0=" << e0 << ", E1=" << e1 << ")";
+    EXPECT_LT(drift, 1e-3) << "8-rank bonded NVE drift " << drift
+                           << " exceeds 1e-3 over 1000 steps (E0=" << e0
+                           << ", E1=" << e1 << ")";
 
     // No NaN explosion on any rank.
     int my_rank = 0;

@@ -13,27 +13,26 @@
 ///   ./build/examples/01_scf
 
 #include <cmath>
-#include <iostream>
 #include <iomanip>
+#include <iostream>
 
+#include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/containers/xtensor.hpp>
 #include <xtensor/reducers/xnorm.hpp>
 #include <xtensor/views/xview.hpp>
-#include <xtensor-blas/xlinalg.hpp>
 
 int main() {
     // ── Parameters ────────────────────────────────────────────────────
-    int n       = 16;     // matrix dimension
-    int n_occ   = 4;      // occupied orbitals
-    double alpha = 0.5;   // density coupling
-    double tol   = 1e-10; // convergence tolerance
+    int n = 16;         // matrix dimension
+    int n_occ = 4;      // occupied orbitals
+    double alpha = 0.5; // density coupling
+    double tol = 1e-10; // convergence tolerance
     int max_iter = 100;
 
     std::cout << "=== SCF Introduction ===\n"
-              << "n=" << n << ", n_occ=" << n_occ
-              << ", alpha=" << std::fixed << std::setprecision(2) << alpha
-              << ", tol=" << std::scientific << std::setprecision(1) << tol
-              << "\n\n";
+              << "n=" << n << ", n_occ=" << n_occ << ", alpha=" << std::fixed
+              << std::setprecision(2) << alpha << ", tol=" << std::scientific
+              << std::setprecision(1) << tol << "\n\n";
 
     // ── Build H0: deterministic symmetric positive-definite ───────────
     //
@@ -56,11 +55,10 @@ int main() {
     // Each iteration mirrors one "step" through the CUDA SCF phases:
     //   build_hamiltonian -> diagonalize -> build_density -> convergence_check
     //
-    xt::xtensor<double, 2> P     = xt::zeros<double>({n, n});
+    xt::xtensor<double, 2> P = xt::zeros<double>({n, n});
     xt::xtensor<double, 2> P_old = xt::zeros<double>({n, n});
 
-    std::cout << std::setw(5) << "Iter"
-              << std::setw(17) << "Energy"
+    std::cout << std::setw(5) << "Iter" << std::setw(17) << "Energy"
               << std::setw(13) << "Residual" << "\n";
 
     bool converged = false;
@@ -85,12 +83,11 @@ int main() {
 
         // Phase: convergence_check
         double residual = xt::norm_l2(P - P_old)();
-        double energy   = xt::sum(H * P)();
+        double energy = xt::sum(H * P)();
 
-        std::cout << std::setw(5) << iter
-                  << std::fixed << std::setprecision(10) << std::setw(17) << energy
-                  << std::scientific << std::setprecision(2) << std::setw(13) << residual
-                  << "\n";
+        std::cout << std::setw(5) << iter << std::fixed << std::setprecision(10)
+                  << std::setw(17) << energy << std::scientific
+                  << std::setprecision(2) << std::setw(13) << residual << "\n";
 
         final_energy = energy;
         final_iter = iter;
@@ -102,7 +99,8 @@ int main() {
             // Print occupied eigenvalues
             std::cout << "Occupied eigenvalues:";
             for (int k = 0; k < n_occ; ++k)
-                std::cout << " " << std::fixed << std::setprecision(6) << eig(k);
+                std::cout << " " << std::fixed << std::setprecision(6)
+                          << eig(k);
             std::cout << "\n";
             break;
         }
@@ -122,10 +120,10 @@ int main() {
     double idempotency = xt::norm_l2(P2 - P)();
 
     std::cout << "\nDensity checks:\n"
-              << "  Tr(P)         = " << std::fixed << std::setprecision(6) << trace_P
-              << "  (expected: " << n_occ << ")\n"
-              << "  ||P^2 - P||_F = " << std::scientific << std::setprecision(2) << idempotency
-              << "  (idempotency)\n";
+              << "  Tr(P)         = " << std::fixed << std::setprecision(6)
+              << trace_P << "  (expected: " << n_occ << ")\n"
+              << "  ||P^2 - P||_F = " << std::scientific << std::setprecision(2)
+              << idempotency << "  (idempotency)\n";
 
     // ── Reference: alpha=0 ────────────────────────────────────────────
     std::cout << "\n--- alpha=0 reference (no coupling, 2 iterations) ---\n";

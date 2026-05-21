@@ -3,10 +3,10 @@
 #include <cstdlib>
 #include <vector>
 
-#include "atomiverse/cuda/potentials/lj.cuh"
 #include "atomiverse/cuda/md/md.cuh"
-#include "atomiverse/cuda/neighbor_list.cuh"
 #include "atomiverse/cuda/md/velocity_verlet.cuh"
+#include "atomiverse/cuda/neighbor_list.cuh"
+#include "atomiverse/cuda/potentials/lj.cuh"
 
 using namespace ATV;
 
@@ -42,6 +42,7 @@ static void BM_MDStep(benchmark::State& state) {
     state.SetItemsProcessed(state.iterations() * 1000);
 }
 
-BENCHMARK(BM_MDStep)->Arg(100)->Arg(1000)->Arg(10000)->Unit(benchmark::kMillisecond);
+BENCHMARK(BM_MDStep)->Arg(100)->Arg(1000)->Arg(10000)->Unit(
+    benchmark::kMillisecond);
 
 BENCHMARK_MAIN();

@@ -16,8 +16,10 @@ TrajectoryWriter::TrajectoryWriter(std::string filename, int stride)
     : filename_(std::move(filename)), stride_(stride < 1 ? 1 : stride) {}
 
 void TrajectoryWriter::launch(const cpu::LaunchContext& ctx) {
-    if (ctx.runtime.mpi_rank != 0) return;
-    if ((ctx.step % stride_) != 0) return;
+    if (ctx.runtime.mpi_rank != 0)
+        return;
+    if ((ctx.step % stride_) != 0)
+        return;
 
     // First write: truncate any pre-existing file so we do not append to it.
     if (!truncated_) {

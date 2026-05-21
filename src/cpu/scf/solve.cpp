@@ -5,9 +5,9 @@
 
 #include <cmath>
 
+#include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/reducers/xnorm.hpp>
 #include <xtensor/views/xview.hpp>
-#include <xtensor-blas/xlinalg.hpp>
 
 namespace ATV {
 namespace cpu {

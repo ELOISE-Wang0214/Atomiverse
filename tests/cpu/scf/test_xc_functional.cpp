@@ -3,8 +3,8 @@
 
 #ifdef ATV_HAS_RHF
 
-#include <gtest/gtest.h>
 #include <cmath>
+#include <gtest/gtest.h>
 
 #include "atomiverse/cpu/scf/xc_functional.h"
 
@@ -47,7 +47,7 @@ TEST(XCFunctional, SlaterExchangeFullyPolarized) {
     // E_x[ρ, 0] should be 2^{1/3} times E_x[ρ/2, ρ/2] per electron.
     double rho = 0.5;
     auto closed = evaluate_xc(XCType::LSDA, rho / 2, rho / 2);
-    auto polar  = evaluate_xc(XCType::LSDA, rho, double(1e-13));
+    auto polar = evaluate_xc(XCType::LSDA, rho, double(1e-13));
 
     // The fully polarized exchange should be more negative (lower energy)
     // than unpolarized, because 2^{1/3} > 1.
@@ -163,8 +163,10 @@ TEST(XCFunctional, NoNaNAtVariousDensities) {
     // Sweep over a range of densities to check for NaN/Inf.
     for (double rho : {1e-11, 1e-6, 0.001, 0.01, 0.1, 1.0, 10.0, 100.0}) {
         auto lda = evaluate_xc(XCType::LSDA, rho / 2, rho / 2);
-        EXPECT_FALSE(std::isnan(static_cast<double>(lda.exc))) << "NaN at rho=" << rho;
-        EXPECT_FALSE(std::isinf(static_cast<double>(lda.exc))) << "Inf at rho=" << rho;
+        EXPECT_FALSE(std::isnan(static_cast<double>(lda.exc)))
+            << "NaN at rho=" << rho;
+        EXPECT_FALSE(std::isinf(static_cast<double>(lda.exc)))
+            << "Inf at rho=" << rho;
     }
 }
 
@@ -181,7 +183,8 @@ TEST(XCFunctional, FullyPolarizedNoNaN) {
 
 #include <gtest/gtest.h>
 TEST(XCFunctional, SkippedNoBuildRHF) {
-    GTEST_SKIP() << "ATV_BUILD_RHF=OFF — XC functional tests require -DATV_BUILD_RHF=ON";
+    GTEST_SKIP()
+        << "ATV_BUILD_RHF=OFF — XC functional tests require -DATV_BUILD_RHF=ON";
 }
 
 #endif // ATV_HAS_RHF

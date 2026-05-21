@@ -7,8 +7,8 @@
 
 #include <benchmark/benchmark.h>
 
-#include "atomiverse/cuda/scf/scf.cuh"
 #include "atomiverse/cpu/scf/solve.h"
+#include "atomiverse/cuda/scf/scf.cuh"
 
 using namespace ATV;
 
@@ -38,7 +38,10 @@ static void BM_SCF_CPU(benchmark::State& state) {
 }
 
 BENCHMARK(BM_SCF_CPU)
-    ->Arg(16)->Arg(32)->Arg(64)->Arg(128)
+    ->Arg(16)
+    ->Arg(32)
+    ->Arg(64)
+    ->Arg(128)
     ->Unit(benchmark::kMillisecond);
 
 // ── CUDA solver (end-to-end: alloc + transfer + solve + retrieve) ─────
@@ -73,7 +76,10 @@ static void BM_SCF_CUDA(benchmark::State& state) {
 }
 
 BENCHMARK(BM_SCF_CUDA)
-    ->Arg(16)->Arg(32)->Arg(64)->Arg(128)
+    ->Arg(16)
+    ->Arg(32)
+    ->Arg(64)
+    ->Arg(128)
     ->Unit(benchmark::kMillisecond);
 
 BENCHMARK_MAIN();

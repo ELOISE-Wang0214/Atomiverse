@@ -22,7 +22,7 @@
 
 namespace {
 
-const std::string kRoot   = ATV_SOURCE_DIR;
+const std::string kRoot = ATV_SOURCE_DIR;
 const std::string kRefDir = kRoot + "/benchmarks/md/reference/polyethylene";
 
 /// @brief Read an entire file into a string ("" if missing).
@@ -38,14 +38,16 @@ std::vector<std::string> lines_of(const std::string& text) {
     std::vector<std::string> out;
     std::istringstream in(text);
     std::string line;
-    while (std::getline(in, line)) out.push_back(line);
+    while (std::getline(in, line))
+        out.push_back(line);
     return out;
 }
 
 /// @brief Strip leading whitespace.
 std::string ltrim(const std::string& s) {
     size_t i = 0;
-    while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i]))) ++i;
+    while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i])))
+        ++i;
     return s.substr(i);
 }
 
@@ -54,7 +56,8 @@ std::vector<std::string> tokens_of(const std::string& line) {
     std::vector<std::string> out;
     std::istringstream in(line);
     std::string tok;
-    while (in >> tok) out.push_back(tok);
+    while (in >> tok)
+        out.push_back(tok);
     return out;
 }
 
@@ -129,8 +132,10 @@ TEST(MsuLammpsDeck, MatchesCanonicalProtocolEnsembles) {
         const auto toks = tokens_of(ltrim(raw));
         if (toks.size() >= 2 && toks[0] == "timestep") {
             const double dt = std::stod(toks[1]);
-            if (dt == 0.5) ++n_half;
-            else if (dt == 1.0) ++n_full;
+            if (dt == 0.5)
+                ++n_half;
+            else if (dt == 1.0)
+                ++n_full;
         }
     }
     EXPECT_EQ(n_half, 3) << "stages 2-4 use timestep 0.5";
@@ -165,7 +170,8 @@ namespace {
 std::string stage_section(const std::string& src, int id) {
     const std::string marker = "// ── Stage " + std::to_string(id) + " ";
     const size_t start = src.find(marker);
-    if (start == std::string::npos) return "";
+    if (start == std::string::npos)
+        return "";
     const std::string next = "// ── Stage " + std::to_string(id + 1) + " ";
     const size_t end = src.find(next, start);
     return src.substr(start, end == std::string::npos ? std::string::npos
@@ -276,15 +282,15 @@ TEST(PeTensionBenchmark, PerStageTimestepsMatchLammpsIn) {
     EXPECT_NE(src.find("dt_stage4"), std::string::npos);
     EXPECT_NE(src.find("dt_stage5"), std::string::npos);
     // Default values: stages 1 and 5 at 1.0 fs, stages 2-4 at 0.5 fs.
-    EXPECT_NE(src.find("dt_stage1   = 1.0"), std::string::npos)
+    EXPECT_NE(src.find("dt_stage1 = 1.0"), std::string::npos)
         << "stage 1 default dt must be 1.0 fs";
-    EXPECT_NE(src.find("dt_stage2   = 0.5"), std::string::npos)
+    EXPECT_NE(src.find("dt_stage2 = 0.5"), std::string::npos)
         << "stage 2 default dt must be 0.5 fs";
-    EXPECT_NE(src.find("dt_stage3   = 0.5"), std::string::npos)
+    EXPECT_NE(src.find("dt_stage3 = 0.5"), std::string::npos)
         << "stage 3 default dt must be 0.5 fs";
-    EXPECT_NE(src.find("dt_stage4   = 0.5"), std::string::npos)
+    EXPECT_NE(src.find("dt_stage4 = 0.5"), std::string::npos)
         << "stage 4 default dt must be 0.5 fs";
-    EXPECT_NE(src.find("dt_stage5   = 1.0"), std::string::npos)
+    EXPECT_NE(src.find("dt_stage5 = 1.0"), std::string::npos)
         << "stage 5 default dt must be 1.0 fs";
 }
 
@@ -312,7 +318,8 @@ void check_reference_csv(const std::string& path,
     double prev = -1e300;
     int data_rows = 0;
     for (size_t i = 1; i < rows.size(); ++i) {
-        if (rows[i].empty()) continue;
+        if (rows[i].empty())
+            continue;
         const double key = std::stod(rows[i].substr(0, rows[i].find(',')));
         EXPECT_GT(key, prev)
             << path << " row " << i << " first column not increasing";
@@ -328,8 +335,8 @@ TEST(MsuReferenceArtifacts, ThermoCsvsHaveCanonicalColumns) {
     const std::string header = "step,T,P,E_pot,E_kin,Pxx,Pyy,Pzz";
     for (const char* eng : {"atomiverse", "lammps"}) {
         for (const char* rk : {"1r", "8r"}) {
-            check_reference_csv(
-                kRefDir + "/thermo_" + eng + "_" + rk + ".csv", header);
+            check_reference_csv(kRefDir + "/thermo_" + eng + "_" + rk + ".csv",
+                                header);
         }
     }
 }
@@ -339,8 +346,7 @@ TEST(MsuReferenceArtifacts, StressStrainCsvsHaveCanonicalColumns) {
     for (const char* eng : {"atomiverse", "lammps"}) {
         for (const char* rk : {"1r", "8r"}) {
             check_reference_csv(
-                kRefDir + "/stress_strain_" + eng + "_" + rk + ".csv",
-                header);
+                kRefDir + "/stress_strain_" + eng + "_" + rk + ".csv", header);
         }
     }
 }

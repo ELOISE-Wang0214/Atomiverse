@@ -11,7 +11,7 @@
 /// Production code MUST NOT include this header.
 #pragma once
 
-#include "atomiverse/cpu/scf/xc_functional.h"  // for ATV::cpu::scf::XCOutput
+#include "atomiverse/cpu/scf/xc_functional.h" // for ATV::cpu::scf::XCOutput
 
 namespace ATV {
 namespace test {

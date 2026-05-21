@@ -11,7 +11,8 @@ namespace cpu {
 
 void AsyncComponentBase::build(const BuildContext& ctx) {
     exec_ = ctx.runtime.executor;
-    if (!exec_) return;
+    if (!exec_)
+        return;
     exec_->register_subscriber(this);
     // Pre-size ring slot buffers for this subscriber's mask so
     // `SnapshotPublisher::launch()` never reallocates at fire time.
@@ -20,14 +21,17 @@ void AsyncComponentBase::build(const BuildContext& ctx) {
 }
 
 void AsyncComponentBase::launch(const LaunchContext& ctx) {
-    if (!exec_) return;
+    if (!exec_)
+        return;
 
     const int freq = frequency();
     if (freq > 0) {
-        if (ctx.step == 0 || ctx.step % freq != 0) return;
+        if (ctx.step == 0 || ctx.step % freq != 0)
+            return;
     } else {
         // freq == 0: every step after the publisher has fired (step >= 1).
-        if (ctx.step == 0) return;
+        if (ctx.step == 0)
+            return;
     }
 
     // The snapshot filled at this end-of-step was stamped by
@@ -36,10 +40,12 @@ void AsyncComponentBase::launch(const LaunchContext& ctx) {
     // does not match `ctx.step`, the publisher did not fire (e.g. no firing
     // subscribers under any mask) and we silently skip.
     const int slot_idx = exec_->last_published_slot();
-    if (slot_idx < 0) return;
+    if (slot_idx < 0)
+        return;
 
     const FrameSnapshot& cand = exec_->slot(slot_idx);
-    if (cand.step != ctx.step) return;
+    if (cand.step != ctx.step)
+        return;
 
     exec_->submit(this, slot_idx);
 }

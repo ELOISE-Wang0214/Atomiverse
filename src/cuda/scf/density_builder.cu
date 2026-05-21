@@ -4,14 +4,14 @@
 #include "atomiverse/cuda/scf/density_builder.cuh"
 #include "cublas_dispatch.cuh"
 
-#include <cuda_runtime.h>
 #include "atomiverse/cuda/types.cuh"
+#include <cuda_runtime.h>
 
 namespace ATV {
 
+using cuda::prec_t;
 using cuda::real_t;
 using cuda::work_t;
-using cuda::prec_t;
 
 namespace scf {
 
@@ -26,7 +26,8 @@ void DensityBuilder::build(const BuildContext& ctx) {
 
 void DensityBuilder::launch(const LaunchContext& ctx) {
     auto& scf = ctx.frame.scf;
-    if (scf.converged) return;
+    if (scf.converged)
+        return;
 
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto handle = static_cast<cublasHandle_t>(cublas_handle_);
@@ -41,10 +42,8 @@ void DensityBuilder::launch(const LaunchContext& ctx) {
     // C is n x n column-major. C_occ = C[:, 0:n_occ] = first n_occ*n elements.
     prec_t one = prec_t(1);
     prec_t zero = prec_t(0);
-    detail::gemm(handle, CUBLAS_OP_N, CUBLAS_OP_T,
-                 n, n, n_occ,
-                 &one, scf.C, n, scf.C, n,
-                 &zero, scf.P, n);
+    detail::gemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, n, n, n_occ, &one, scf.C, n,
+                 scf.C, n, &zero, scf.P, n);
 }
 
 void DensityBuilder::destroy(const DestroyContext& /*ctx*/) {

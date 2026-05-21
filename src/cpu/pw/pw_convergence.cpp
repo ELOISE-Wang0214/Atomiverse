@@ -13,7 +13,8 @@ void PW_Convergence::build(const cpu::BuildContext& ctx) {
 void PW_Convergence::launch(const cpu::LaunchContext&) {
     ++iter_;
     ws_->converged = false;
-    if (iter_ <= warmup_) return;
+    if (iter_ <= warmup_)
+        return;
 
     Real diff = 0;
     for (int i = 0; i < ws_->n_g; ++i) {

@@ -17,17 +17,17 @@
 #include <string>
 #include <vector>
 
+#include "atomiverse/core/binding.h"
+#include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/context.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/lj.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/md/neighbor_list.h"
-#include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/md/mpi/atom_migration.h"
 #include "atomiverse/cpu/md/mpi/halo_exchange.h"
 #include "atomiverse/cpu/md/mpi/reduce.h"
-#include "atomiverse/core/binding.h"
-#include "atomiverse/core/mat3.h"
+#include "atomiverse/cpu/md/neighbor_list.h"
+#include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/facade/stage.h"
 
 using namespace ATV;
@@ -38,8 +38,10 @@ cpu::Frame make_fcc_argon(int n_cells, double a) {
     int n = n_cells * n_cells * n_cells * 4;
     cpu::Frame frame(n);
     double basis[4][3] = {
-        {0.0, 0.0, 0.0}, {0.5, 0.5, 0.0},
-        {0.5, 0.0, 0.5}, {0.0, 0.5, 0.5},
+        {0.0, 0.0, 0.0},
+        {0.5, 0.5, 0.0},
+        {0.5, 0.0, 0.5},
+        {0.0, 0.5, 0.5},
     };
     int idx = 0;
     for (int ix = 0; ix < n_cells; ++ix)
@@ -57,8 +59,10 @@ cpu::Frame make_fcc_argon(int n_cells, double a) {
     return frame;
 }
 
-bool has_binding(const std::vector<DefaultBinding>& bindings, int phase, int order) {
-    if (bindings.size() != 1) return false;
+bool has_binding(const std::vector<DefaultBinding>& bindings, int phase,
+                 int order) {
+    if (bindings.size() != 1)
+        return false;
     return bindings[0].phase == phase && bindings[0].order == order;
 }
 
@@ -69,28 +73,32 @@ bool has_binding(const std::vector<DefaultBinding>& bindings, int phase, int ord
 TEST(MpiStubBindings, HaloExchangeForwardBindings) {
     cpu::md::mpi::HaloExchangeForward hx{};
     auto b = hx.default_bindings();
-    EXPECT_TRUE(has_binding(b, static_cast<int>(ATV::md::Phase::pre_force), -20))
+    EXPECT_TRUE(
+        has_binding(b, static_cast<int>(ATV::md::Phase::pre_force), -20))
         << "HaloExchangeForward must bind pre_force @ -20";
 }
 
 TEST(MpiStubBindings, HaloExchangeReverseBindings) {
     cpu::md::mpi::HaloExchangeReverse hx{};
     auto b = hx.default_bindings();
-    EXPECT_TRUE(has_binding(b, static_cast<int>(ATV::md::Phase::post_force), -1000))
+    EXPECT_TRUE(
+        has_binding(b, static_cast<int>(ATV::md::Phase::post_force), -1000))
         << "HaloExchangeReverse must bind post_force @ -1000";
 }
 
 TEST(MpiStubBindings, AtomMigrationBinding) {
     cpu::md::mpi::AtomMigration am{};
     auto b = am.default_bindings();
-    EXPECT_TRUE(has_binding(b, static_cast<int>(ATV::md::Phase::pre_force), -30))
+    EXPECT_TRUE(
+        has_binding(b, static_cast<int>(ATV::md::Phase::pre_force), -30))
         << "AtomMigration must bind pre_force @ -30";
 }
 
 TEST(MpiStubBindings, ReduceEnergyBinding) {
     cpu::md::mpi::ReduceEnergy re{};
     auto b = re.default_bindings();
-    EXPECT_TRUE(has_binding(b, static_cast<int>(ATV::md::Phase::end_of_step), -50))
+    EXPECT_TRUE(
+        has_binding(b, static_cast<int>(ATV::md::Phase::end_of_step), -50))
         << "ReduceEnergy must bind end_of_step @ -50";
 }
 
@@ -118,7 +126,7 @@ TEST(MpiStubBindings, SingleRankLaunchNoOp) {
     {
         cpu::md::MD sim;
         const double zero_force_cut = 3.0;
-        sim.set_integrator(cpu::md::VelocityVerlet{1e-6});  // negligible dt
+        sim.set_integrator(cpu::md::VelocityVerlet{1e-6}); // negligible dt
         sim.set_pair(cpu::md::LJ{1e-12, 3.4, zero_force_cut});
         sim.set_neighbor(cpu::md::NeighborList<>{zero_force_cut, /*skin=*/0.1});
         sim.add(cpu::md::mpi::HaloExchangeForward{});
@@ -150,7 +158,9 @@ TEST(MpiStubBindings, ClassNamesAreDistinct) {
     const std::string n_rev = rev.name();
     EXPECT_NE(n_fwd, n_rev);
     EXPECT_NE(n_fwd.find("halo"), std::string::npos)
-        << "HaloExchangeForward::name() should contain 'halo': got '" << n_fwd << "'";
+        << "HaloExchangeForward::name() should contain 'halo': got '" << n_fwd
+        << "'";
     EXPECT_NE(n_rev.find("halo"), std::string::npos)
-        << "HaloExchangeReverse::name() should contain 'halo': got '" << n_rev << "'";
+        << "HaloExchangeReverse::name() should contain 'halo': got '" << n_rev
+        << "'";
 }

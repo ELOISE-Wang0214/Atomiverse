@@ -13,7 +13,7 @@ namespace ATV {
 namespace cpu {
 
 class AngleHarmonic : public Angle {
-public:
+  public:
     /// @param K Force constants per angle type [eV/rad²].
     /// @param theta0 Equilibrium angles per angle type [radians].
     AngleHarmonic(std::vector<double> K, std::vector<double> theta0);
@@ -28,10 +28,10 @@ public:
     void build(const BuildContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;
 
-protected:
+  protected:
     void compute(const LaunchContext& ctx) override;
 
-private:
+  private:
     std::vector<double> K_, theta0_;
 
     int n_threads_ = 1;

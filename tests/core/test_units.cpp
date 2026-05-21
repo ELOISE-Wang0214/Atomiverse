@@ -10,16 +10,13 @@ using namespace ATV;
 
 TEST(Units, AngstromToBohr) {
     Real bohr = Real(5.43) * kAngstrom2Bohr;
-    EXPECT_NEAR(static_cast<double>(bohr), 5.43 * static_cast<double>(kAngstrom2Bohr), 1e-2);
+    EXPECT_NEAR(static_cast<double>(bohr),
+                5.43 * static_cast<double>(kAngstrom2Bohr), 1e-2);
 }
 
-TEST(Units, RyToHartreeExact) {
-    EXPECT_EQ(kRy2Hartree, Real(0.5));
-}
+TEST(Units, RyToHartreeExact) { EXPECT_EQ(kRy2Hartree, Real(0.5)); }
 
-TEST(Units, RyToEV) {
-    EXPECT_EQ(kRy2eV, Real(13.605693));
-}
+TEST(Units, RyToEV) { EXPECT_EQ(kRy2eV, Real(13.605693)); }
 
 TEST(Units, RoundtripAngstromBohr) {
     Real a = 5.43;

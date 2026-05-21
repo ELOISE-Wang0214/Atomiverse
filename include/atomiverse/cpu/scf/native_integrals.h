@@ -24,12 +24,12 @@ namespace native {
 /// @brief Contracted Gaussian shell (s and p type), single-AO view.
 /// Used for one-electron integrals and legacy direct-SCF.
 struct Shell {
-    int n_prim;            ///< Number of primitive Gaussians.
-    const double* alpha;   ///< Exponents [n_prim].
-    const double* coeff;   ///< Normalized contraction coefficients [n_prim].
-    double center[3];      ///< Shell center in Bohr [x, y, z].
-    int l;                 ///< Angular momentum (0=s, 1=p).
-    int cart;              ///< Cartesian component: s->0, p->0=x,1=y,2=z.
+    int n_prim;          ///< Number of primitive Gaussians.
+    const double* alpha; ///< Exponents [n_prim].
+    const double* coeff; ///< Normalized contraction coefficients [n_prim].
+    double center[3];    ///< Shell center in Bohr [x, y, z].
+    int l;               ///< Angular momentum (0=s, 1=p).
+    int cart;            ///< Cartesian component: s->0, p->0=x,1=y,2=z.
 };
 
 /// @brief Shell block for shell-level ERI computation (libcint/PySCF approach).
@@ -45,19 +45,19 @@ struct Shell {
 /// @see eri_block
 /// @see cpu::scf::ShellBlockPairList
 struct ShellBlock {
-    int n_prim;           ///< Number of primitive Gaussians (same for all AOs in this shell).
-    const double* alpha;  ///< Exponents [n_prim].
-    const double* coeff;  ///< Normalized contraction coefficients [n_prim].
-    double center[3];     ///< Shell center in Bohr [x, y, z].
-    int l;                ///< Angular momentum: 0=s, 1=p.
-    int n_cart;           ///< Number of Cartesian AOs: l=0→1, l=1→3.
-    int ao_start;         ///< First global AO index for this shell block.
+    int n_prim; ///< Number of primitive Gaussians (same for all AOs in this shell).
+    const double* alpha; ///< Exponents [n_prim].
+    const double* coeff; ///< Normalized contraction coefficients [n_prim].
+    double center[3];    ///< Shell center in Bohr [x, y, z].
+    int l;               ///< Angular momentum: 0=s, 1=p.
+    int n_cart;          ///< Number of Cartesian AOs: l=0→1, l=1→3.
+    int ao_start;        ///< First global AO index for this shell block.
 };
 
 /// @brief Atom descriptor for nuclear attraction integrals.
 struct Atom {
-    int Z;                 ///< Atomic number (nuclear charge).
-    double pos[3];         ///< Position in Bohr [x, y, z].
+    int Z;         ///< Atomic number (nuclear charge).
+    double pos[3]; ///< Position in Bohr [x, y, z].
 };
 
 // ── Utility ───────────────────────────────────────────────────────────
@@ -127,8 +127,7 @@ double kinetic_ss(const Shell& a, const Shell& b);
 /// @param atoms Array of atoms (nuclei).
 /// @param natm Number of atoms.
 /// @return Nuclear attraction integral <a|sum(-Z/r)|b>.
-double nuclear_ss(const Shell& a, const Shell& b,
-                  const Atom* atoms, int natm);
+double nuclear_ss(const Shell& a, const Shell& b, const Atom* atoms, int natm);
 
 // ── Two-electron integrals ────────────────────────────────────────────
 
@@ -140,8 +139,7 @@ double nuclear_ss(const Shell& a, const Shell& b,
 /// @param c Shell for electron 2, bra.
 /// @param d Shell for electron 2, ket.
 /// @return ERI in chemist's notation (ab|cd).
-double eri_ssss(const Shell& a, const Shell& b,
-                const Shell& c, const Shell& d);
+double eri_ssss(const Shell& a, const Shell& b, const Shell& c, const Shell& d);
 
 // ── General integrals (s+p type) ─────────────────────────────────────
 
@@ -164,8 +162,7 @@ double kinetic(const Shell& a, const Shell& b);
 /// @param atoms Array of atoms (nuclei).
 /// @param natm Number of atoms.
 /// @return Nuclear attraction integral <a|sum(-Z/r)|b>.
-double nuclear(const Shell& a, const Shell& b,
-               const Atom* atoms, int natm);
+double nuclear(const Shell& a, const Shell& b, const Atom* atoms, int natm);
 
 /// @brief General two-electron repulsion integral for shells with l in {0,1}.
 /// @param a Shell for electron 1, bra.
@@ -173,8 +170,7 @@ double nuclear(const Shell& a, const Shell& b,
 /// @param c Shell for electron 2, bra.
 /// @param d Shell for electron 2, ket.
 /// @return ERI in chemist's notation (ab|cd).
-double eri(const Shell& a, const Shell& b,
-           const Shell& c, const Shell& d);
+double eri(const Shell& a, const Shell& b, const Shell& c, const Shell& d);
 
 // ── Shell-block ERI (libcint/PySCF approach) ─────────────────────────
 
@@ -201,9 +197,8 @@ double eri(const Shell& a, const Shell& b,
 ///             + ic*D.n_cart + id] = (ia_in_A  ib_in_B | ic_in_C  id_in_D).
 ///   The buffer is zeroed on entry and accumulated into (supports warm accumulation).
 /// @note out must be pre-zeroed; the function accumulates into it.
-void eri_block(const ShellBlock& A, const ShellBlock& B,
-               const ShellBlock& C, const ShellBlock& D,
-               double* out);
+void eri_block(const ShellBlock& A, const ShellBlock& B, const ShellBlock& C,
+               const ShellBlock& D, double* out);
 
 // ── Shell-block one-electron integrals ────────────────────────────────
 
@@ -219,15 +214,13 @@ void eri_block(const ShellBlock& A, const ShellBlock& B,
 /// @param out  Pre-zeroed buffer of size A.n_cart * B.n_cart, flat
 ///             layout `out[ia * B.n_cart + ib] = <A_ia|B_ib>`.
 ///             Accumulated into (ss! caller must pre-zero).
-void overlap_block(const ShellBlock& A, const ShellBlock& B,
-                   double* out);
+void overlap_block(const ShellBlock& A, const ShellBlock& B, double* out);
 
 /// @brief Compute all kinetic-energy integrals for a shell-block pair.
 ///
 /// Same batching strategy as overlap_block. Requires 1D overlap tables
 /// up to (imax, jmax+2) per axis; builds them once per primitive pair.
-void kinetic_block(const ShellBlock& A, const ShellBlock& B,
-                   double* out);
+void kinetic_block(const ShellBlock& A, const ShellBlock& B, double* out);
 
 /// @brief Compute all nuclear-attraction integrals for a shell-block pair.
 ///
@@ -240,9 +233,8 @@ void kinetic_block(const ShellBlock& A, const ShellBlock& B,
 /// @param atoms  Nuclei (charges + positions in Bohr).
 /// @param natm   Number of nuclei.
 /// @param out    Pre-zeroed buffer of size A.n_cart * B.n_cart.
-void nuclear_block(const ShellBlock& A, const ShellBlock& B,
-                   const Atom* atoms, int natm,
-                   double* out);
+void nuclear_block(const ShellBlock& A, const ShellBlock& B, const Atom* atoms,
+                   int natm, double* out);
 
 // ── Primitive-level functions (exposed for derivative code) ──────────
 
@@ -256,9 +248,8 @@ void nuclear_block(const ShellBlock& A, const ShellBlock& B,
 /// @param alpha_b Exponent on center B.
 /// @param B Center B position [3].
 /// @return Primitive overlap integral value.
-double overlap_prim_3d(const int a_ang[3], const int b_ang[3],
-                       double alpha_a, const double A[3],
-                       double alpha_b, const double B[3]);
+double overlap_prim_3d(const int a_ang[3], const int b_ang[3], double alpha_a,
+                       const double A[3], double alpha_b, const double B[3]);
 
 /// @brief Primitive kinetic energy integral for arbitrary Cartesian angular momenta.
 /// @details Computes the 3D kinetic integral for a single primitive pair.
@@ -270,9 +261,8 @@ double overlap_prim_3d(const int a_ang[3], const int b_ang[3],
 /// @param alpha_b Exponent on center B.
 /// @param B Center B position [3].
 /// @return Primitive kinetic integral value.
-double kinetic_prim_3d(const int a_ang[3], const int b_ang[3],
-                       double alpha_a, const double A[3],
-                       double alpha_b, const double B[3]);
+double kinetic_prim_3d(const int a_ang[3], const int b_ang[3], double alpha_a,
+                       const double A[3], double alpha_b, const double B[3]);
 
 /// @brief Primitive nuclear attraction integral for one nucleus.
 /// @details McMurchie-Davidson scheme with Hermite Coulomb integrals.
@@ -286,9 +276,8 @@ double kinetic_prim_3d(const int a_ang[3], const int b_ang[3],
 /// @param PC P - C vector [3].
 /// @param K_AB exp(-mu * |A-B|^2).
 /// @return Primitive nuclear attraction integral value (without -Z).
-double nuclear_prim(const int a_ang[3], const int b_ang[3],
-                    double gamma, const double PA[3],
-                    const double PB[3], const double PC[3],
+double nuclear_prim(const int a_ang[3], const int b_ang[3], double gamma,
+                    const double PA[3], const double PB[3], const double PC[3],
                     double K_AB);
 
 /// @brief Primitive two-electron repulsion integral (McMurchie-Davidson).
@@ -306,12 +295,10 @@ double nuclear_prim(const int a_ang[3], const int b_ang[3],
 /// @param alpha_d Exponent on D.
 /// @param D Center D position [3].
 /// @return Primitive ERI value.
-double eri_prim(const int a_ang[3], const int b_ang[3],
-                const int c_ang[3], const int d_ang[3],
-                double alpha_a, const double A[3],
-                double alpha_b, const double B[3],
-                double alpha_c, const double C[3],
-                double alpha_d, const double D[3]);
+double eri_prim(const int a_ang[3], const int b_ang[3], const int c_ang[3],
+                const int d_ang[3], double alpha_a, const double A[3],
+                double alpha_b, const double B[3], double alpha_c,
+                const double C[3], double alpha_d, const double D[3]);
 
 } // namespace native
 } // namespace scf

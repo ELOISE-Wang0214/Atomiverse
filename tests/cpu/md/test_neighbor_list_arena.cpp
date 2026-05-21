@@ -18,10 +18,10 @@
 #include <cstdint>
 #include <vector>
 
+#include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/cell_list.h"
 #include "atomiverse/cpu/md/pair_list.h"
-#include "atomiverse/core/mat3.h"
 
 using namespace ATV;
 
@@ -62,16 +62,16 @@ TEST(NeighborListArena, RefreshHalfReusesBuffersInSteadyState) {
     cl.build(frame, n);
 
     cpu::md::PairList pairs;
-    cl.refresh_half(frame, n, pairs);  // warmup 1
+    cl.refresh_half(frame, n, pairs); // warmup 1
 
     // Steady-state reference: pointers + capacity after the first real
     // rebuild. All subsequent rebuilds must reuse these same allocations.
-    const void* ilist_ptr      = pairs.ilist.data();
-    const void* numneigh_ptr   = pairs.numneigh.data();
+    const void* ilist_ptr = pairs.ilist.data();
+    const void* numneigh_ptr = pairs.numneigh.data();
     const void* firstneigh_ptr = pairs.firstneigh.data();
-    const void* neighbors_ptr  = pairs.neighbors.data();
+    const void* neighbors_ptr = pairs.neighbors.data();
     const std::size_t neighbors_cap = pairs.neighbors.capacity();
-    const int ref_total_pairs  = pairs.total_pairs;
+    const int ref_total_pairs = pairs.total_pairs;
 
     ASSERT_GT(ref_total_pairs, 0)
         << "expected a nonzero neighbor count on a 125-atom cubic grid";
@@ -94,7 +94,7 @@ TEST(NeighborListArena, RefreshHalfReusesBuffersInSteadyState) {
             << "neighbors vector moved on step " << step
             << " (std::vector reallocated)";
         EXPECT_EQ(pairs.neighbors.capacity(), neighbors_cap)
-            << "neighbors vector capacity grew on step " << step
-            << " from " << neighbors_cap << " to " << pairs.neighbors.capacity();
+            << "neighbors vector capacity grew on step " << step << " from "
+            << neighbors_cap << " to " << pairs.neighbors.capacity();
     }
 }

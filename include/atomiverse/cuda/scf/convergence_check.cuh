@@ -25,7 +25,7 @@ namespace scf {
 ///
 /// Optionally computes SCF energy E = trace(H * P) via cuBLAS dot.
 class ConvergenceCheck : public ComponentBase {
-public:
+  public:
     /// @brief Construct convergence checker.
     /// @param tol Frobenius norm tolerance for convergence.
     /// @param compute_energy If true, compute E=dot(H,P) and write to frame.energy.
@@ -53,10 +53,10 @@ public:
     /// @param ctx Destroy context.
     void destroy(const DestroyContext& ctx) override;
 
-private:
-    double tol_;  ///< Convergence tolerance (Frobenius norm).
-    bool compute_energy_;  ///< Whether to compute and write energy.
-    void* cublas_handle_ = nullptr;  ///< cuBLAS handle.
+  private:
+    double tol_;                    ///< Convergence tolerance (Frobenius norm).
+    bool compute_energy_;           ///< Whether to compute and write energy.
+    void* cublas_handle_ = nullptr; ///< cuBLAS handle.
 };
 
 } // namespace scf

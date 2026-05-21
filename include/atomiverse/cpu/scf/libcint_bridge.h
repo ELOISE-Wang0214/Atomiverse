@@ -22,13 +22,13 @@ namespace scf {
 
 /// @brief Prepared libcint arguments for the current molecule.
 struct LibcintContext {
-    std::vector<int> atm;            ///< libcint atm table [natm * ATM_SLOTS].
-    std::vector<int> bas;            ///< libcint bas table [nshells * BAS_SLOTS].
-    std::vector<double> env;         ///< libcint env array (Bohr / normalized coeffs).
-    std::vector<int> shell_offsets;  ///< AO offset per shell.
-    int natm = 0;                    ///< Number of atoms.
-    int nshells = 0;                 ///< Number of libcint shells.
-    int nao = 0;                     ///< Number of cartesian AOs (s/p only).
+    std::vector<int> atm;    ///< libcint atm table [natm * ATM_SLOTS].
+    std::vector<int> bas;    ///< libcint bas table [nshells * BAS_SLOTS].
+    std::vector<double> env; ///< libcint env array (Bohr / normalized coeffs).
+    std::vector<int> shell_offsets; ///< AO offset per shell.
+    int natm = 0;                   ///< Number of atoms.
+    int nshells = 0;                ///< Number of libcint shells.
+    int nao = 0;                    ///< Number of cartesian AOs (s/p only).
 };
 
 /// @brief Build libcint atm/bas/env arrays for the molecule.

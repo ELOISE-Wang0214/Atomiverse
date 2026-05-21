@@ -8,8 +8,8 @@
 /// @see build_g_rhf_direct, build_jk_uhf_direct, build_j_direct
 #pragma once
 
-#include <vector>
 #include <array>
+#include <vector>
 
 #include "atomiverse/cpu/scf/native_integrals.h"
 
@@ -17,8 +17,8 @@ namespace ATV {
 namespace cpu {
 namespace scf {
 
-struct IntegralPack;  // forward declare
-struct ShellList;     // forward declare
+struct IntegralPack; // forward declare
+struct ShellList;    // forward declare
 
 /// @brief Single canonical shell pair with Cauchy-Schwarz bound.
 struct ShellPair {
@@ -32,12 +32,13 @@ struct ShellPair {
 /// Owns copies of shells, atoms, and shell_data so it can outlive the IntegralPack.
 /// Only pairs with schwarz > threshold are retained.
 struct ShellPairList {
-    std::vector<ShellPair>            pairs;      ///< Screened canonical pairs.
-    std::vector<native::Shell>        shells;     ///< Owned shell copies.
-    std::vector<native::Atom>         atoms;      ///< Owned atom copies.
-    std::vector<std::vector<double>>  shell_data; ///< Backing [α..., c...] per shell (length 2*n_prim).
-    int    n_basis    = 0;                        ///< Total basis functions.
-    double threshold  = 1e-10;                    ///< Schwarz screening threshold.
+    std::vector<ShellPair> pairs;      ///< Screened canonical pairs.
+    std::vector<native::Shell> shells; ///< Owned shell copies.
+    std::vector<native::Atom> atoms;   ///< Owned atom copies.
+    std::vector<std::vector<double>>
+        shell_data;  ///< Backing [α..., c...] per shell (length 2*n_prim).
+    int n_basis = 0; ///< Total basis functions.
+    double threshold = 1e-10; ///< Schwarz screening threshold.
 };
 
 /// @brief Build the canonical shell pair list from an IntegralPack.
@@ -48,7 +49,8 @@ struct ShellPairList {
 /// @param pack Source integral pack (uses pack.shells, pack.shell_data, pack.atoms).
 /// @param thr  Cauchy-Schwarz screening threshold [default 1e-10].
 /// @return ShellPairList with screened pairs and owned data.
-ShellPairList build_shell_pair_list(const IntegralPack& pack, double thr = 1e-10);
+ShellPairList build_shell_pair_list(const IntegralPack& pack,
+                                    double thr = 1e-10);
 
 // ── Shell-block pair list (libcint/PySCF approach) ────────────────────
 
@@ -58,9 +60,9 @@ ShellPairList build_shell_pair_list(const IntegralPack& pack, double thr = 1e-10
 /// all AO combinations within the block pair.  Used to screen entire block
 /// quartets before computing eri_block().
 struct ShellBlockPair {
-    int si;          ///< Block index i (si >= sj, canonical ordering).
-    int sj;          ///< Block index j.
-    double schwarz;  ///< Block-level Schwarz bound sqrt(max_diag (AB|AB)).
+    int si;         ///< Block index i (si >= sj, canonical ordering).
+    int sj;         ///< Block index j.
+    double schwarz; ///< Block-level Schwarz bound sqrt(max_diag (AB|AB)).
 };
 
 /// @brief Precomputed canonical shell-block pair list for direct SCF.
@@ -71,11 +73,12 @@ struct ShellBlockPair {
 ///
 /// The list owns all shell-block data so it can outlive the IntegralPack.
 struct ShellBlockPairList {
-    std::vector<ShellBlockPair>           pairs;       ///< Screened canonical block pairs.
-    std::vector<native::ShellBlock>       blocks;      ///< Owned shell-block descriptors.
-    std::vector<std::vector<double>>      block_data;  ///< Backing [α..., c...] per block (length 2*n_prim).
-    int    n_basis   = 0;                              ///< Total AO basis functions.
-    double threshold = 1e-10;                          ///< Schwarz screening threshold.
+    std::vector<ShellBlockPair> pairs;      ///< Screened canonical block pairs.
+    std::vector<native::ShellBlock> blocks; ///< Owned shell-block descriptors.
+    std::vector<std::vector<double>>
+        block_data;  ///< Backing [α..., c...] per block (length 2*n_prim).
+    int n_basis = 0; ///< Total AO basis functions.
+    double threshold = 1e-10; ///< Schwarz screening threshold.
 };
 
 /// @brief Build the canonical shell-block pair list from an IntegralPack.

@@ -5,8 +5,8 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/component.h"
 #include "atomiverse/core/binding.h"
+#include "atomiverse/cpu/component.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -67,7 +67,7 @@ namespace md {
 /// `(P − P_target)`), `μ` is numerically unchanged for the same physical
 /// state — a representation change, not a behaviour change.
 class Barostat : public cpu::ComponentBase {
-public:
+  public:
     /// @brief LAMMPS `fix press/berendsen`-equivalent isotropic barostat.
     /// @param P_target     Target pressure [eV/Å³], LAMMPS-standard sign
     ///                     (`+trace(σ)/(3V)`, positive ⇔ compressive).
@@ -114,9 +114,9 @@ public:
     }
     double bulk_modulus() const noexcept { return bulk_modulus_; }
 
-private:
+  private:
     double P_target_, tau_P_, dt_, bulk_modulus_;
-    bool   enabled_ = true;
+    bool enabled_ = true;
 };
 
 } // namespace md

@@ -17,12 +17,12 @@
 #include <cmath>
 #include <vector>
 
+#include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/backend.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/mpi/atom_migration.h"
 #include "atomiverse/cpu/md/mpi/domain.h"
 #include "atomiverse/cpu/md/mpi/rcb.h"
-#include "atomiverse/core/mat3.h"
 
 using namespace ATV;
 
@@ -51,7 +51,8 @@ cpu::Frame make_skewed_frame(double box_len, int n_atoms) {
 TEST(RCBBalancer, SingleRankIsNoOp) {
     int world_size = 0;
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-    if (world_size != 1) GTEST_SKIP() << "single-rank guard";
+    if (world_size != 1)
+        GTEST_SKIP() << "single-rank guard";
 
     auto frame = make_skewed_frame(20.0, 64);
     cpu::Backend backend;
@@ -79,7 +80,8 @@ TEST(RCBBalancer, SingleRankIsNoOp) {
 TEST(RCBBalancer, RebalancesSkewedDistribution) {
     int world_size = 0;
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-    if (world_size != 8) GTEST_SKIP() << "8-rank specific";
+    if (world_size != 8)
+        GTEST_SKIP() << "8-rank specific";
 
     auto frame = make_skewed_frame(20.0, 512);
     cpu::Backend backend;
@@ -94,8 +96,10 @@ TEST(RCBBalancer, RebalancesSkewedDistribution) {
     // Baseline: uniform brick. High-coord ranks should be (near) empty.
     const int n_local_uniform = dd->n_local;
     int min_uniform = 0, max_uniform = 0;
-    MPI_Allreduce(&n_local_uniform, &min_uniform, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
-    MPI_Allreduce(&n_local_uniform, &max_uniform, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+    MPI_Allreduce(&n_local_uniform, &min_uniform, 1, MPI_INT, MPI_MIN,
+                  MPI_COMM_WORLD);
+    MPI_Allreduce(&n_local_uniform, &max_uniform, 1, MPI_INT, MPI_MAX,
+                  MPI_COMM_WORLD);
 
     // The skewed distribution should produce a meaningful imbalance under
     // uniform decomposition (some ranks have 0 atoms, one has many). If this
@@ -118,7 +122,7 @@ TEST(RCBBalancer, RebalancesSkewedDistribution) {
             ASSERT_EQ(static_cast<int>(dd->cuts[d].size()), dd->dims[d] + 1)
                 << "axis " << d << " cuts size mismatch";
             EXPECT_DOUBLE_EQ(dd->cuts[d].front(), 0.0) << "axis " << d;
-            EXPECT_DOUBLE_EQ(dd->cuts[d].back(),  1.0) << "axis " << d;
+            EXPECT_DOUBLE_EQ(dd->cuts[d].back(), 1.0) << "axis " << d;
             for (int k = 1; k < static_cast<int>(dd->cuts[d].size()); ++k) {
                 EXPECT_GE(dd->cuts[d][k], dd->cuts[d][k - 1])
                     << "axis " << d << " cuts not monotonic at index " << k;
@@ -135,9 +139,12 @@ TEST(RCBBalancer, RebalancesSkewedDistribution) {
     // Post-migration: per-rank counts should be much more balanced.
     const int n_local_post = dd->n_local;
     int min_post = 0, max_post = 0, sum_post = 0;
-    MPI_Allreduce(&n_local_post, &min_post, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
-    MPI_Allreduce(&n_local_post, &max_post, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
-    MPI_Allreduce(&n_local_post, &sum_post, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+    MPI_Allreduce(&n_local_post, &min_post, 1, MPI_INT, MPI_MIN,
+                  MPI_COMM_WORLD);
+    MPI_Allreduce(&n_local_post, &max_post, 1, MPI_INT, MPI_MAX,
+                  MPI_COMM_WORLD);
+    MPI_Allreduce(&n_local_post, &sum_post, 1, MPI_INT, MPI_SUM,
+                  MPI_COMM_WORLD);
 
     EXPECT_EQ(sum_post, 512) << "atom count not conserved across migration";
 
@@ -150,8 +157,9 @@ TEST(RCBBalancer, RebalancesSkewedDistribution) {
         << "RCB rebalance left too much imbalance: min=" << min_post
         << " max=" << max_post << " mean=" << mean;
     if (my_rank == 0) {
-        std::printf("RCB rebalance: uniform [%d, %d] -> RCB [%d, %d] (mean %.1f)\n",
-                    min_uniform, max_uniform, min_post, max_post, mean);
+        std::printf(
+            "RCB rebalance: uniform [%d, %d] -> RCB [%d, %d] (mean %.1f)\n",
+            min_uniform, max_uniform, min_post, max_post, mean);
     }
 
     backend.shutdown();

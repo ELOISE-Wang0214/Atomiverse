@@ -38,7 +38,7 @@ namespace scf {
 /// }
 /// @endcode
 class ASPCPredictor {
-public:
+  public:
     /// @brief Construct with extrapolation order.
     /// @param order Lagrange extrapolation order K (default 3). Uses K+1 history points.
     explicit ASPCPredictor(int order = 3);
@@ -59,11 +59,9 @@ public:
     /// @param P_scf       SCF-converged density at current step.
     /// @param P_predicted Predictor output (from predict()).
     /// @param[out] P_corrected Blended density to record.
-    void correct(
-        const xt::xtensor<double, 2>& P_scf,
-        const xt::xtensor<double, 2>& P_predicted,
-        xt::xtensor<double, 2>& P_corrected
-    ) const;
+    void correct(const xt::xtensor<double, 2>& P_scf,
+                 const xt::xtensor<double, 2>& P_predicted,
+                 xt::xtensor<double, 2>& P_corrected) const;
 
     /// @brief Reset history (e.g., after geometry discontinuity or restart).
     void reset();
@@ -76,10 +74,11 @@ public:
     /// @return Lagrange extrapolation order.
     int order() const { return K_; }
 
-private:
-    int K_;                                        ///< Extrapolation order.
-    std::deque<xt::xtensor<double, 2>> history_;  ///< Stored density matrices (newest last).
-    std::vector<double> omega_;                    ///< Lagrange extrapolation coefficients.
+  private:
+    int K_; ///< Extrapolation order.
+    std::deque<xt::xtensor<double, 2>>
+        history_;               ///< Stored density matrices (newest last).
+    std::vector<double> omega_; ///< Lagrange extrapolation coefficients.
 
     /// @brief Compute Lagrange extrapolation coefficients for order K.
     void compute_coefficients();

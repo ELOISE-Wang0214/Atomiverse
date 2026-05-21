@@ -12,9 +12,6 @@
 /// Validated against CPU native integrals (ground truth: libcint).
 #pragma once
 
-
-
-
 namespace ATV {
 namespace cuda {
 namespace scf {
@@ -37,12 +34,11 @@ namespace scf {
 /// @param n_prim Primitives per shell.
 /// @param natm Number of atoms.
 /// @param stream CUDA stream.
-void launch_1e_integrals(
-    double* S, double* T, double* V,
-    const double* shell_alpha, const double* shell_coeff, const double* shell_centers,
-    const int* atom_Z, const double* atom_pos,
-    int n_shells, int n_prim, int natm,
-    void* stream);
+void launch_1e_integrals(double* S, double* T, double* V,
+                         const double* shell_alpha, const double* shell_coeff,
+                         const double* shell_centers, const int* atom_Z,
+                         const double* atom_pos, int n_shells, int n_prim,
+                         int natm, void* stream);
 
 /// @brief Launch ERI kernel (full n^4 tensor for small systems).
 ///
@@ -57,11 +53,9 @@ void launch_1e_integrals(
 /// @param n_shells Number of shells.
 /// @param n_prim Primitives per shell.
 /// @param stream CUDA stream.
-void launch_eri(
-    double* ERI,
-    const double* shell_alpha, const double* shell_coeff, const double* shell_centers,
-    int n_shells, int n_prim,
-    void* stream);
+void launch_eri(double* ERI, const double* shell_alpha,
+                const double* shell_coeff, const double* shell_centers,
+                int n_shells, int n_prim, void* stream);
 
 /// @brief Device Boys function F_0(x) = 0.5 * sqrt(pi/x) * erf(sqrt(x)).
 ///

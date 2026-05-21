@@ -34,7 +34,7 @@ namespace vib {
 /// canonical Hessian-producing component that `ResponseDriver`'s
 /// build-time validation requires.
 class HessianAccumulator : public cpu::ComponentBase {
-public:
+  public:
     /// @brief Construct bound to a driver-owned workspace.
     /// @param ws Non-owning pointer to the shared Hessian workspace.
     explicit HessianAccumulator(HessianWorkspace* ws) : ws_(ws) {}
@@ -56,10 +56,11 @@ public:
     /// @brief Store `+h` forces or write a central-difference Hessian row.
     /// @param ctx Launch context; `ctx.step` is the displacement index `s`.
     void launch(const cpu::LaunchContext& ctx) override {
-        const int n   = ws_->n_atoms;
+        const int n = ws_->n_atoms;
         const int dim = 3 * n;
-        const int s   = ctx.step;
-        if (s >= 2 * dim) return; // finalize pass carries no force data.
+        const int s = ctx.step;
+        if (s >= 2 * dim)
+            return; // finalize pass carries no force data.
 
         if (s % 2 == 0) {
             // +h evaluation: snapshot the force vector for later pairing.
@@ -86,7 +87,7 @@ public:
         }
     }
 
-private:
+  private:
     HessianWorkspace* ws_; ///< Non-owning; driver-owned.
 };
 

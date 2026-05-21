@@ -50,9 +50,8 @@ void build_coulomb_exchange_fused(const RealMatrix& P_total,
 /// @param sp      Shell pair list with Schwarz bounds (from build_shell_pair_list).
 /// @param P_total Total RHF density matrix P = 2 * P_occ [n x n].
 /// @param[out] G  Fused G = J - 0.5*K [n x n].
-void build_g_rhf_direct(const ShellPairList& sp,
-                         const RealMatrix& P_total,
-                         RealMatrix& G);
+void build_g_rhf_direct(const ShellPairList& sp, const RealMatrix& P_total,
+                        RealMatrix& G);
 
 /// @brief Direct UHF J, K_alpha, K_beta via one on-the-fly ERI pass.
 ///
@@ -68,22 +67,18 @@ void build_g_rhf_direct(const ShellPairList& sp,
 /// @param[out] J       Coulomb matrix [n x n].
 /// @param[out] K_alpha Alpha exchange matrix [n x n].
 /// @param[out] K_beta  Beta exchange matrix [n x n].
-void build_jk_uhf_direct(const ShellPairList& sp,
-                          const RealMatrix& P_total,
-                          const RealMatrix& P_alpha,
-                          const RealMatrix& P_beta,
-                          RealMatrix& J,
-                          RealMatrix& K_alpha,
-                          RealMatrix& K_beta);
+void build_jk_uhf_direct(const ShellPairList& sp, const RealMatrix& P_total,
+                         const RealMatrix& P_alpha, const RealMatrix& P_beta,
+                         RealMatrix& J, RealMatrix& K_alpha,
+                         RealMatrix& K_beta);
 
 /// @brief Direct Coulomb-only J matrix for UKS (exchange via XC functional).
 ///
 /// @param sp      Shell pair list with Schwarz bounds.
 /// @param P_total Total density P_alpha + P_beta [n x n].
 /// @param[out] J  Coulomb matrix [n x n].
-void build_j_direct(const ShellPairList& sp,
-                     const RealMatrix& P_total,
-                     RealMatrix& J);
+void build_j_direct(const ShellPairList& sp, const RealMatrix& P_total,
+                    RealMatrix& J);
 
 // ── Shell-block direct-SCF operators (libcint/PySCF approach) ────────────
 
@@ -102,8 +97,7 @@ void build_j_direct(const ShellPairList& sp,
 /// @param sp Shell block pair list (from build_shell_block_pair_list).
 /// @param P  Total RHF density matrix P = 2*P_occ [n x n].
 /// @param[out] K Exchange matrix [n x n], symmetric, no 0.5 factor.
-void build_k_direct_block(const ShellBlockPairList& sp,
-                          const RealMatrix& P,
+void build_k_direct_block(const ShellBlockPairList& sp, const RealMatrix& P,
                           RealMatrix& K);
 
 /// @brief Shell-block direct RHF G = J - 0.5*K (libcint/PySCF approach).
@@ -125,8 +119,7 @@ void build_k_direct_block(const ShellBlockPairList& sp,
 /// @param P_total Total RHF density matrix P = 2*P_occ [n x n].
 /// @param[out] G  Fused G = J - 0.5*K [n x n].
 void build_g_rhf_direct_block(const ShellBlockPairList& sp,
-                               const RealMatrix& P_total,
-                               RealMatrix& G);
+                              const RealMatrix& P_total, RealMatrix& G);
 
 } // namespace scf
 } // namespace cpu

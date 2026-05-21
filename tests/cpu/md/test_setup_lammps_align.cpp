@@ -41,9 +41,9 @@ cpu::Frame make_fcc_argon() {
     constexpr double box_len = n_cell * a;
 
     const double basis[4][3] = {
-        {0.0,     0.0,     0.0},
-        {0.0,     0.5 * a, 0.5 * a},
-        {0.5 * a, 0.0,     0.5 * a},
+        {0.0, 0.0, 0.0},
+        {0.0, 0.5 * a, 0.5 * a},
+        {0.5 * a, 0.0, 0.5 * a},
         {0.5 * a, 0.5 * a, 0.0},
     };
 
@@ -63,7 +63,7 @@ cpu::Frame make_fcc_argon() {
         frame.atoms.x[i] = x[i];
         frame.atoms.y[i] = y[i];
         frame.atoms.z[i] = z[i];
-        frame.atoms.mass[i] = 39.948;  // Ar amu
+        frame.atoms.mass[i] = 39.948; // Ar amu
         frame.atoms.type[i] = 0;
     }
     frame.box = Mat3::cubic(box_len);
@@ -74,11 +74,11 @@ cpu::Frame make_fcc_argon() {
 /// LAMMPS `compute temp` with `extra_dof = dimension`.
 double measured_temperature(const cpu::Frame& f) {
     const int n = f.atoms.size();
-    double ke2 = 0.0;  // 2 * KE / kMvv2e  ==  sum(m v^2)
+    double ke2 = 0.0; // 2 * KE / kMvv2e  ==  sum(m v^2)
     for (int i = 0; i < n; ++i) {
         const double v2 = f.atoms.vx[i] * f.atoms.vx[i]
-                        + f.atoms.vy[i] * f.atoms.vy[i]
-                        + f.atoms.vz[i] * f.atoms.vz[i];
+                          + f.atoms.vy[i] * f.atoms.vy[i]
+                          + f.atoms.vz[i] * f.atoms.vz[i];
         ke2 += f.atoms.mass[i] * v2;
     }
     const double ke = 0.5 * kMvv2e * ke2;
@@ -96,7 +96,8 @@ TEST(SetupLammpsAlign, CheckNoRebuildsEveryEligibleStep) {
     // only the initial build() counts. Under `check no` the rebuild fires
     // on every `every`/`delay`-eligible step regardless of displacement.
     constexpr double cutoff = 6.8;
-    constexpr double skin = 10.0;   // huge: skin/2 = 5 Å, atoms never move that far
+    constexpr double skin =
+        10.0; // huge: skin/2 = 5 Å, atoms never move that far
     constexpr int every = 1;
     constexpr int delay = 0;
     constexpr int n_steps = 50;
@@ -188,15 +189,16 @@ TEST(SetupLammpsAlign, InitVelocityTemperatureExactGaussian) {
     auto frame = make_fcc_argon();
 
     cpu::md::MD sim;
-    build_with_init(sim, cpu::md::InitVelocity{T, /*seed=*/12345u,
-                                               cpu::md::VelocityDist::gaussian});
+    build_with_init(sim,
+                    cpu::md::InitVelocity{T, /*seed=*/12345u,
+                                          cpu::md::VelocityDist::gaussian});
     (void)frame;
     sim.run(frame, 0);
 
     const double T_meas = measured_temperature(frame);
     EXPECT_NEAR(T_meas, T, 1e-6)
-        << "Gaussian InitVelocity must rescale measured T to exactly "
-        << T << " K (LAMMPS velocity create), got " << T_meas;
+        << "Gaussian InitVelocity must rescale measured T to exactly " << T
+        << " K (LAMMPS velocity create), got " << T_meas;
 }
 
 TEST(SetupLammpsAlign, InitVelocityTemperatureExactUniform) {
@@ -210,8 +212,8 @@ TEST(SetupLammpsAlign, InitVelocityTemperatureExactUniform) {
 
     const double T_meas = measured_temperature(frame);
     EXPECT_NEAR(T_meas, T, 1e-6)
-        << "Uniform InitVelocity must rescale measured T to exactly "
-        << T << " K, got " << T_meas;
+        << "Uniform InitVelocity must rescale measured T to exactly " << T
+        << " K, got " << T_meas;
 }
 
 TEST(SetupLammpsAlign, InitVelocityDefaultDistGaussian) {
@@ -237,8 +239,9 @@ TEST(SetupLammpsAlign, InitVelocityZeroesLinearMomentum) {
     auto frame = make_fcc_argon();
 
     cpu::md::MD sim;
-    build_with_init(sim, cpu::md::InitVelocity{T, /*seed=*/9001u,
-                                               cpu::md::VelocityDist::gaussian});
+    build_with_init(sim,
+                    cpu::md::InitVelocity{T, /*seed=*/9001u,
+                                          cpu::md::VelocityDist::gaussian});
     sim.run(frame, 0);
 
     const int n = frame.atoms.size();
@@ -268,14 +271,16 @@ TEST(SetupLammpsAlign, InitVelocityDistModesDiffer) {
 
     {
         cpu::md::MD sim;
-        build_with_init(sim, cpu::md::InitVelocity{T, /*seed=*/555u,
-                                                   cpu::md::VelocityDist::gaussian});
+        build_with_init(sim,
+                        cpu::md::InitVelocity{T, /*seed=*/555u,
+                                              cpu::md::VelocityDist::gaussian});
         sim.run(frame_g, 0);
     }
     {
         cpu::md::MD sim;
-        build_with_init(sim, cpu::md::InitVelocity{T, /*seed=*/555u,
-                                                   cpu::md::VelocityDist::uniform});
+        build_with_init(sim,
+                        cpu::md::InitVelocity{T, /*seed=*/555u,
+                                              cpu::md::VelocityDist::uniform});
         sim.run(frame_u, 0);
     }
 

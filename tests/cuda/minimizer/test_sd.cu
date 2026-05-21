@@ -1,12 +1,12 @@
 /// @file test_minimizer.cu
 /// @brief Integration test: steepest descent minimization of LJ system.
 
-#include <gtest/gtest.h>
 #include <cmath>
+#include <gtest/gtest.h>
 
-#include "atomiverse/cuda/potentials/lj.cuh"
-#include "atomiverse/cuda/neighbor_list.cuh"
 #include "atomiverse/cuda/minimizer/sd.cuh"
+#include "atomiverse/cuda/neighbor_list.cuh"
+#include "atomiverse/cuda/potentials/lj.cuh"
 #include "atomiverse/cuda/recorder/thermo.cuh"
 
 using namespace ATV;
@@ -14,7 +14,8 @@ using namespace ATV;
 namespace {
 
 /// Create a simple cubic lattice slightly perturbed from equilibrium.
-cpu::Frame make_displaced_system(int n_side, double density, double displacement) {
+cpu::Frame make_displaced_system(int n_side, double density,
+                                 double displacement) {
     int n = n_side * n_side * n_side;
     double box_len = std::cbrt(double(n) / density);
     double spacing = box_len / double(n_side);
@@ -25,12 +26,21 @@ cpu::Frame make_displaced_system(int n_side, double density, double displacement
     for (int ix = 0; ix < n_side; ++ix)
         for (int iy = 0; iy < n_side; ++iy)
             for (int iz = 0; iz < n_side; ++iz) {
-                frame.atoms.x[idx] = (double(ix) + double(0.5)) * spacing +
-                    displacement * (double(std::rand()) / double(RAND_MAX) - double(0.5));
-                frame.atoms.y[idx] = (double(iy) + double(0.5)) * spacing +
-                    displacement * (double(std::rand()) / double(RAND_MAX) - double(0.5));
-                frame.atoms.z[idx] = (double(iz) + double(0.5)) * spacing +
-                    displacement * (double(std::rand()) / double(RAND_MAX) - double(0.5));
+                frame.atoms.x[idx] =
+                    (double(ix) + double(0.5)) * spacing
+                    + displacement
+                          * (double(std::rand()) / double(RAND_MAX)
+                             - double(0.5));
+                frame.atoms.y[idx] =
+                    (double(iy) + double(0.5)) * spacing
+                    + displacement
+                          * (double(std::rand()) / double(RAND_MAX)
+                             - double(0.5));
+                frame.atoms.z[idx] =
+                    (double(iz) + double(0.5)) * spacing
+                    + displacement
+                          * (double(std::rand()) / double(RAND_MAX)
+                             - double(0.5));
                 frame.atoms.mass[idx] = double(1.0);
                 frame.atoms.type[idx] = 0;
                 idx++;
@@ -53,7 +63,9 @@ TEST(Minimizer, SDEnergyDecreases) {
             .add(NeighborList{cutoff}, -10)
             .add(LJ{double(1.0), double(1.0), cutoff});
         min.build();
-        min.run(frame_init, 1);  // 1 step: force eval only (step 0 has zero forces → step update is no-op)
+        min.run(
+            frame_init,
+            1); // 1 step: force eval only (step 0 has zero forces → step update is no-op)
     }
     double e_after_1 = frame_init.energy;
 
@@ -83,8 +95,7 @@ TEST(Minimizer, SDWithThermo) {
     min.on(minimizer::Phase::force)
         .add(NeighborList{cutoff}, -10)
         .add(LJ{double(1.0), double(1.0), cutoff});
-    min.on(minimizer::Phase::end_of_step)
-        .add(Thermo{10});
+    min.on(minimizer::Phase::end_of_step).add(Thermo{10});
     min.build();
 
     // Should print thermo without crashing

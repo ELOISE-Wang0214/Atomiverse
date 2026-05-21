@@ -91,8 +91,7 @@ struct GatheredFrame {
 /// @param root Rank index that receives the gathered data. Defaults to 0.
 /// @return Gathered frame -- populated on `root`, empty buffers on others.
 GatheredFrame gather_to_root(const cpu::Frame& frame,
-                             const DomainDecomposition& dd,
-                             int root = 0);
+                             const DomainDecomposition& dd, int root = 0);
 
 } // namespace mpi
 } // namespace md

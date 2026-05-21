@@ -30,7 +30,8 @@ void ASPCPredictor::compute_coefficients() {
     for (int k = 0; k <= K_; ++k) {
         double num = 1, den = 1;
         for (int j = 0; j <= K_; ++j) {
-            if (j == k) continue;
+            if (j == k)
+                continue;
             num *= (K_ + 1) - j;
             den *= k - j;
         }
@@ -59,21 +60,19 @@ bool ASPCPredictor::predict(xt::xtensor<double, 2>& P_predicted) const {
     return true;
 }
 
-void ASPCPredictor::correct(
-    const xt::xtensor<double, 2>& P_scf,
-    const xt::xtensor<double, 2>& P_predicted,
-    xt::xtensor<double, 2>& P_corrected) const
-{
+void ASPCPredictor::correct(const xt::xtensor<double, 2>& P_scf,
+                            const xt::xtensor<double, 2>& P_predicted,
+                            xt::xtensor<double, 2>& P_corrected) const {
     // Kolafa corrector: weighted blend for time-reversibility
     // P_corr = (K+2)/(2K+3) * P_scf + (K+1)/(2K+3) * P_pred
-    double w_scf = static_cast<double>(K_ + 2) / static_cast<double>(2 * K_ + 3);
-    double w_pred = static_cast<double>(K_ + 1) / static_cast<double>(2 * K_ + 3);
+    double w_scf =
+        static_cast<double>(K_ + 2) / static_cast<double>(2 * K_ + 3);
+    double w_pred =
+        static_cast<double>(K_ + 1) / static_cast<double>(2 * K_ + 3);
     P_corrected = w_scf * P_scf + w_pred * P_predicted;
 }
 
-void ASPCPredictor::reset() {
-    history_.clear();
-}
+void ASPCPredictor::reset() { history_.clear(); }
 
 } // namespace scf
 } // namespace cpu

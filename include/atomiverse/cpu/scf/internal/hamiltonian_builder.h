@@ -12,7 +12,7 @@
 
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/scf_solve.h"   // SCFConfig, MeanFieldType, SpinType
+#include "atomiverse/cpu/scf/scf_solve.h" // SCFConfig, MeanFieldType, SpinType
 #include "atomiverse/cpu/scf/scf_utils.h"
 #include "atomiverse/cpu/scf/shell_pair.h"
 
@@ -22,22 +22,22 @@ namespace scf {
 namespace internal {
 
 struct FockResult {
-    RealMatrix F_alpha;          ///< α-channel Fock matrix [n × n].
-    RealMatrix F_beta;           ///< β-channel Fock matrix [n × n].
-    RealMatrix J;                ///< Coulomb J built from the total density.
-    double     E_xc_grid     = 0;///< Grid-integrated E_xc (KS only) [Hartree].
-    double     int_n_alpha   = 0;///< Grid-integrated α electron count (KS only).
-    double     int_n_beta    = 0;///< Grid-integrated β electron count (KS only).
+    RealMatrix F_alpha;     ///< α-channel Fock matrix [n × n].
+    RealMatrix F_beta;      ///< β-channel Fock matrix [n × n].
+    RealMatrix J;           ///< Coulomb J built from the total density.
+    double E_xc_grid = 0;   ///< Grid-integrated E_xc (KS only) [Hartree].
+    double int_n_alpha = 0; ///< Grid-integrated α electron count (KS only).
+    double int_n_beta = 0;  ///< Grid-integrated β electron count (KS only).
     /// @brief Exact (Hartree-Fock) exchange energy admixture for a KS
     ///        global hybrid: `alpha_hf * E_K` [Hartree]. Zero for pure
     ///        KS and for HF (HF carries its exchange inside F directly).
     ///        The Fock builder applies `alpha_hf` at a single site so this
     ///        term and the `-alpha_hf*K` Fock term use the same scaled K.
-    double     E_exact_exchange = 0;
+    double E_exact_exchange = 0;
 };
 
 class HamiltonianBuilder {
-public:
+  public:
     HamiltonianBuilder() = default;
 
     /// @brief One-time setup. Builds shell-pair lists + (KS only) the
@@ -53,15 +53,13 @@ public:
     /// @param P_beta    β density (alias of P_alpha when restricted; total = P_alpha
     ///                  for the restricted KS energy formula).
     /// @return Filled FockResult.
-    FockResult step(const IntegralPack& integrals,
-                    const SCFConfig& config,
-                    const RealMatrix& P_alpha,
-                    const RealMatrix& P_beta) const;
+    FockResult step(const IntegralPack& integrals, const SCFConfig& config,
+                    const RealMatrix& P_alpha, const RealMatrix& P_beta) const;
 
-private:
-    ShellBlockPairList sp_block_;  ///< RHF/RKS shell-block list (libcint-style).
-    ShellPairList      sp_;        ///< AO-level list for UHF/UKS J/K paths.
-    MolecularGrid      grid_;      ///< KS XC grid (empty for HF).
+  private:
+    ShellBlockPairList sp_block_; ///< RHF/RKS shell-block list (libcint-style).
+    ShellPairList sp_;            ///< AO-level list for UHF/UKS J/K paths.
+    MolecularGrid grid_;          ///< KS XC grid (empty for HF).
 };
 
 } // namespace internal

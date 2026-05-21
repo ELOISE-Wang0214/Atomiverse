@@ -5,8 +5,8 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/component.h"
 #include "atomiverse/core/binding.h"
+#include "atomiverse/cpu/component.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -60,7 +60,7 @@ namespace md {
 /// Bound at `initial_integrate @ +200`, after VelocityVerlet (+0) and
 /// NoseHoover (+100).
 class Deform : public cpu::ComponentBase {
-public:
+  public:
     /// @brief Per-axis strain mode -- mirrors LAMMPS `fix deform` keywords.
     enum class Mode {
         /// Engineering strain: target edge `L = L0*(1 + R*t_elapsed)`,
@@ -110,13 +110,14 @@ public:
     /// @return Current strain mode.
     Mode mode() const noexcept { return mode_; }
 
-private:
-    Mode   mode_;            ///< erate (engineering) or trate (true strain)
-    double rate_;            ///< strain rate R [1/fs]
-    double dt_;              ///< MD step size [fs]
-    int    axis_;            ///< deformed axis: 0=x, 1=y, 2=z
-    double L0_{0.0};         ///< deformed-axis edge at activation [Angstrom]
-    int    origin_step_{-1}; ///< step index at activation; -1 = not yet snapshotted
+  private:
+    Mode mode_;      ///< erate (engineering) or trate (true strain)
+    double rate_;    ///< strain rate R [1/fs]
+    double dt_;      ///< MD step size [fs]
+    int axis_;       ///< deformed axis: 0=x, 1=y, 2=z
+    double L0_{0.0}; ///< deformed-axis edge at activation [Angstrom]
+    int origin_step_{
+        -1}; ///< step index at activation; -1 = not yet snapshotted
 };
 
 } // namespace md

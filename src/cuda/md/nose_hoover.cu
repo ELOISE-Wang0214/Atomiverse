@@ -1,27 +1,27 @@
 /// @file md/nose_hoover.cu
 /// @brief NoseHoover -- single-chain Nosé-Hoover thermostat.
 
-#include "atomiverse/cuda/md/nose_hoover.cuh"
-#include "atomiverse/cuda/launch.cuh"
-#include "atomiverse/facade/stage.h"
 #include "atomiverse/core/units.h"
-#include <cuda_runtime.h>
+#include "atomiverse/cuda/launch.cuh"
+#include "atomiverse/cuda/md/nose_hoover.cuh"
 #include "atomiverse/cuda/types.cuh"
+#include "atomiverse/facade/stage.h"
+#include <cuda_runtime.h>
 
 namespace ATV {
 
+using cuda::prec_t;
 using cuda::real_t;
 using cuda::work_t;
-using cuda::prec_t;
 
 namespace md {
 
 struct NoseHoover::State {
-    work_t* d_xi = nullptr;        // thermostat variable [1/fs]
-    work_t* d_ke_temp = nullptr;   // temporary KE [eV]
-    work_t* d_scale = nullptr;     // velocity scale factor [1 element]
+    work_t* d_xi = nullptr;                // thermostat variable [1/fs]
+    work_t* d_ke_temp = nullptr;           // temporary KE [eV]
+    work_t* d_scale = nullptr;             // velocity scale factor [1 element]
     unsigned int* d_block_count = nullptr; // last-block detection counter
-    work_t Q = 0;                  // thermostat mass
+    work_t Q = 0;                          // thermostat mass
     int ndof = 0;
 };
 
@@ -47,13 +47,11 @@ namespace {
 /// updates the thermostat variable xi and computes the velocity scale
 /// factor, eliminating the separate <<<1,1>>> kernel launch.
 __global__ void reduce_ke_and_update(
-    const real_t* __restrict__ vx, const real_t* __restrict__ vy, const real_t* __restrict__ vz,
-    const real_t* __restrict__ mass, work_t* __restrict__ ke_out,
-    int n, work_t kMvv2e_val,
-    work_t* __restrict__ xi, work_t* __restrict__ scale,
-    work_t Q, work_t ndof_kbT, work_t half_dt,
-    unsigned int* __restrict__ block_count)
-{
+    const real_t* __restrict__ vx, const real_t* __restrict__ vy,
+    const real_t* __restrict__ vz, const real_t* __restrict__ mass,
+    work_t* __restrict__ ke_out, int n, work_t kMvv2e_val,
+    work_t* __restrict__ xi, work_t* __restrict__ scale, work_t Q,
+    work_t ndof_kbT, work_t half_dt, unsigned int* __restrict__ block_count) {
     extern __shared__ work_t sdata[];
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     work_t val = 0;
@@ -62,16 +60,18 @@ __global__ void reduce_ke_and_update(
         work_t vx_w = static_cast<work_t>(vx[idx]);
         work_t vy_w = static_cast<work_t>(vy[idx]);
         work_t vz_w = static_cast<work_t>(vz[idx]);
-        val = work_t(0.5) * kMvv2e_val * m *
-              (vx_w * vx_w + vy_w * vy_w + vz_w * vz_w);
+        val = work_t(0.5) * kMvv2e_val * m
+              * (vx_w * vx_w + vy_w * vy_w + vz_w * vz_w);
     }
     sdata[threadIdx.x] = val;
     __syncthreads();
     for (int s = blockDim.x / 2; s > 0; s >>= 1) {
-        if (threadIdx.x < s) sdata[threadIdx.x] += sdata[threadIdx.x + s];
+        if (threadIdx.x < s)
+            sdata[threadIdx.x] += sdata[threadIdx.x + s];
         __syncthreads();
     }
-    if (threadIdx.x == 0) atomicAdd(ke_out, sdata[0]);
+    if (threadIdx.x == 0)
+        atomicAdd(ke_out, sdata[0]);
 
     // Last-block pattern: ensure atomicAdd is globally visible, then detect
     // the last block to finish. Thread 0 of the last block updates xi/scale.
@@ -91,12 +91,12 @@ __global__ void reduce_ke_and_update(
 }
 
 /// @brief Scale all velocities by the precomputed factor.
-__global__ void scale_vel(
-    real_t* __restrict__ vx, real_t* __restrict__ vy, real_t* __restrict__ vz,
-    const work_t* __restrict__ scale, int n)
-{
+__global__ void scale_vel(real_t* __restrict__ vx, real_t* __restrict__ vy,
+                          real_t* __restrict__ vz,
+                          const work_t* __restrict__ scale, int n) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= n) return;
+    if (idx >= n)
+        return;
     work_t s = *scale;
     vx[idx] = static_cast<real_t>(static_cast<work_t>(vx[idx]) * s);
     vy[idx] = static_cast<real_t>(static_cast<work_t>(vy[idx]) * s);
@@ -108,7 +108,8 @@ __global__ void scale_vel(
 void NoseHoover::build(const BuildContext& ctx) {
     int n = ctx.frame.n_atoms();
     state_->ndof = 3 * n - 3;
-    state_->Q = static_cast<work_t>(state_->ndof) * kBoltzmann * T_target_ * tau_ * tau_;
+    state_->Q = static_cast<work_t>(state_->ndof) * kBoltzmann * T_target_
+                * tau_ * tau_;
 
     cudaMalloc(&state_->d_xi, sizeof(work_t));
     cudaMalloc(&state_->d_ke_temp, sizeof(work_t));
@@ -129,21 +130,20 @@ void NoseHoover::launch(const LaunchContext& ctx) {
     int block = cuda::kDefaultBlock;
     int grid = cuda::grid_size(static_cast<int>(n));
 
-    work_t ndof_kbT = static_cast<work_t>(state_->ndof) * kBoltzmann * T_target_;
+    work_t ndof_kbT =
+        static_cast<work_t>(state_->ndof) * kBoltzmann * T_target_;
     work_t half_dt = work_t(0.5) * dt_;
 
     // Fused: reduce KE + update xi/scale (last block computes scale)
     cudaMemsetAsync(state_->d_ke_temp, 0, sizeof(work_t), stream);
     reduce_ke_and_update<<<grid, block, block * sizeof(work_t), stream>>>(
-        f.atoms.vx, f.atoms.vy, f.atoms.vz, f.atoms.mass, state_->d_ke_temp,
-        n, kMvv2e,
-        state_->d_xi, state_->d_scale,
-        state_->Q, ndof_kbT, half_dt,
+        f.atoms.vx, f.atoms.vy, f.atoms.vz, f.atoms.mass, state_->d_ke_temp, n,
+        kMvv2e, state_->d_xi, state_->d_scale, state_->Q, ndof_kbT, half_dt,
         state_->d_block_count);
 
     // Scale velocities (reads scale written by the last block above)
-    scale_vel<<<grid, block, 0, stream>>>(
-        f.atoms.vx, f.atoms.vy, f.atoms.vz, state_->d_scale, n);
+    scale_vel<<<grid, block, 0, stream>>>(f.atoms.vx, f.atoms.vy, f.atoms.vz,
+                                          state_->d_scale, n);
 }
 
 void NoseHoover::destroy(const DestroyContext& ctx) {

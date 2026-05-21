@@ -19,11 +19,11 @@
 
 #include <cmath>
 
-#include "atomiverse/cpu/md/deform.h"
+#include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/context.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/core/mat3.h"
+#include "atomiverse/cpu/md/deform.h"
 
 using namespace ATV;
 
@@ -63,10 +63,10 @@ void run_deform(cpu::md::Deform& deform, cpu::Frame& frame, int n_steps) {
 // ── ac-002 / ac-004: Mode::erate reproduces L(t) = L0*(1 + R*t) ─────────
 
 TEST(DeformLammpsAlign, ErateLinearEngineeringStrainTrajectory) {
-    const double L0   = 40.0;   // Angstrom
-    const double dt   = 1.0;    // fs
-    const double rate = 1e-3;   // 1/fs
-    const int    N    = 50;     // steps
+    const double L0 = 40.0;   // Angstrom
+    const double dt = 1.0;    // fs
+    const double rate = 1e-3; // 1/fs
+    const int N = 50;         // steps
 
     auto frame = make_two_atom_box(L0);
     cpu::md::Deform deform{cpu::md::Deform::Mode::erate, rate, dt, /*axis=*/0};
@@ -85,10 +85,10 @@ TEST(DeformLammpsAlign, ErateLinearEngineeringStrainTrajectory) {
 // ── ac-002 / ac-003: Mode::trate reproduces L(t) = L0*exp(R*t) ──────────
 
 TEST(DeformLammpsAlign, TrateExponentialTrueStrainTrajectory) {
-    const double L0   = 40.0;
-    const double dt   = 1.0;
+    const double L0 = 40.0;
+    const double dt = 1.0;
     const double rate = 1e-3;
-    const int    N    = 50;
+    const int N = 50;
 
     auto frame = make_two_atom_box(L0);
     cpu::md::Deform deform{cpu::md::Deform::Mode::trate, rate, dt, /*axis=*/0};
@@ -108,10 +108,10 @@ TEST(DeformLammpsAlign, TrateExponentialTrueStrainTrajectory) {
 // ── erate affine remap: atom coords scale with the box edge ─────────────
 
 TEST(DeformLammpsAlign, ErateAffinelyRemapsAtomCoordinates) {
-    const double L0   = 40.0;
-    const double dt   = 1.0;
+    const double L0 = 40.0;
+    const double dt = 1.0;
     const double rate = 2e-3;
-    const int    N    = 20;
+    const int N = 20;
 
     auto frame = make_two_atom_box(L0);
     const double x0_atom1 = frame.atoms.x[1];
@@ -135,11 +135,11 @@ TEST(DeformLammpsAlign, ErateAffinelyRemapsAtomCoordinates) {
 // strain must reference the 73 A activation-time length: a positive ramp.
 
 TEST(DeformLammpsAlign, ErateReferencesActivationLengthNotSimInitial) {
-    const double L_sim_initial = 80.0;   // box at frame construction
-    const double L_activation  = 73.0;   // box edge AFTER NPT compression
-    const double dt   = 1.0;
-    const double rate = 1e-5;            // matches lammps.in erate 1e-5
-    const int    N    = 1000;
+    const double L_sim_initial = 80.0; // box at frame construction
+    const double L_activation = 73.0;  // box edge AFTER NPT compression
+    const double dt = 1.0;
+    const double rate = 1e-5; // matches lammps.in erate 1e-5
+    const int N = 1000;
 
     // Frame built at 80 A, then "pre-compressed" to 73 A before Deform runs.
     auto frame = make_two_atom_box(L_sim_initial);
@@ -151,7 +151,8 @@ TEST(DeformLammpsAlign, ErateReferencesActivationLengthNotSimInitial) {
     // Engineering strain referenced to the ACTIVATION length (73 A).
     const double L_final = frame.box(0, 0);
     const double strain_vs_activation = (L_final - L_activation) / L_activation;
-    const double strain_vs_sim_initial = (L_final - L_sim_initial) / L_sim_initial;
+    const double strain_vs_sim_initial =
+        (L_final - L_sim_initial) / L_sim_initial;
 
     // The LAMMPS-correct strain is positive and equals R*N*dt.
     EXPECT_GT(strain_vs_activation, 0.0)
@@ -171,9 +172,9 @@ TEST(DeformLammpsAlign, ErateReferencesActivationLengthNotSimInitial) {
 
 TEST(DeformLammpsAlign, TrateReferencesActivationLength) {
     const double L_activation = 73.0;
-    const double dt   = 1.0;
+    const double dt = 1.0;
     const double rate = 1e-4;
-    const int    N    = 100;
+    const int N = 100;
 
     auto frame = make_two_atom_box(80.0);
     frame.box = Mat3::cubic(L_activation);
@@ -188,9 +189,9 @@ TEST(DeformLammpsAlign, TrateReferencesActivationLength) {
 // ── build() re-arms the snapshot -- a rebuilt driver re-references L0 ────
 
 TEST(DeformLammpsAlign, RebuildReSnapshotsActivationLength) {
-    const double dt   = 1.0;
+    const double dt = 1.0;
     const double rate = 1e-3;
-    const int    N    = 30;
+    const int N = 30;
 
     cpu::md::Deform deform{cpu::md::Deform::Mode::erate, rate, dt, /*axis=*/0};
 
@@ -230,10 +231,10 @@ TEST(DeformLammpsAlign, SetRateZeroFreezesBox) {
 // ── negative rate compresses (sign convention matches fix deform) ───────
 
 TEST(DeformLammpsAlign, NegativeRateCompresses) {
-    const double L0   = 40.0;
-    const double dt   = 1.0;
+    const double L0 = 40.0;
+    const double dt = 1.0;
     const double rate = -5e-4;
-    const int    N    = 50;
+    const int N = 50;
 
     auto frame = make_two_atom_box(L0);
     cpu::md::Deform deform{cpu::md::Deform::Mode::erate, rate, dt, /*axis=*/0};
@@ -246,10 +247,10 @@ TEST(DeformLammpsAlign, NegativeRateCompresses) {
 // ── axis selection: y axis (axis=1) deforms, x and z untouched ──────────
 
 TEST(DeformLammpsAlign, AxisSelectionDeformsRequestedAxisOnly) {
-    const double L0   = 40.0;
-    const double dt   = 1.0;
+    const double L0 = 40.0;
+    const double dt = 1.0;
     const double rate = 1e-3;
-    const int    N    = 30;
+    const int N = 30;
 
     auto frame = make_two_atom_box(L0);
     cpu::md::Deform deform{cpu::md::Deform::Mode::erate, rate, dt, /*axis=*/1};

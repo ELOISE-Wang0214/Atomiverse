@@ -16,11 +16,11 @@
 #include <thread>
 #include <vector>
 
+#include "atomiverse/core/types.h"
 #include "atomiverse/cpu/analysis_executor.h"
 #include "atomiverse/cpu/async_component_base.h"
 #include "atomiverse/cpu/context.h"
 #include "atomiverse/cpu/frame_snapshot.h"
-#include "atomiverse/core/types.h"
 
 using namespace ATV;
 
@@ -28,13 +28,16 @@ namespace {
 
 /// @brief Test-only async component used to measure submission behaviour.
 class SlowCapture : public cpu::AsyncComponentBase {
-public:
-    explicit SlowCapture(std::chrono::milliseconds delay = std::chrono::milliseconds(50))
+  public:
+    explicit SlowCapture(
+        std::chrono::milliseconds delay = std::chrono::milliseconds(50))
         : delay_(delay) {}
 
     std::string name() const override { return "slow_capture"; }
     cpu::CaptureMask capture_mask() const override {
-        cpu::CaptureMask m; m.positions = true; return m;
+        cpu::CaptureMask m;
+        m.positions = true;
+        return m;
     }
 
     void on_snapshot(const cpu::FrameSnapshot& /*snap*/) override {
@@ -44,7 +47,7 @@ public:
 
     int handled() const { return n_handled_.load(std::memory_order_relaxed); }
 
-private:
+  private:
     std::chrono::milliseconds delay_;
     std::atomic<int> n_handled_{0};
 };
@@ -74,7 +77,7 @@ TEST(AnalysisExecutor, AcquireSlotRoundRobin) {
     cpu::AnalysisExecutor exec;
     cpu::Context ctx;
     cpu::AnalysisExecutor::Config cfg;
-    cfg.n_threads = 0;  // no workers — just test the ring mechanics
+    cfg.n_threads = 0; // no workers — just test the ring mechanics
     cfg.ring_size = 3;
     cfg.policy = ATV::BackpressurePolicy::drop_oldest;
     exec.init(cfg, ctx);
@@ -143,7 +146,8 @@ TEST(AnalysisExecutor, BlockBackpressure) {
         std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
     // With block policy, the 4th/5th acquire must wait for worker to free a slot.
     EXPECT_GE(elapsed_ms, 80)
-        << "block policy did not block hot-path submit (elapsed " << elapsed_ms << " ms)";
+        << "block policy did not block hot-path submit (elapsed " << elapsed_ms
+        << " ms)";
     EXPECT_EQ(exec.n_dropped(), 0);
 
     exec.shutdown();

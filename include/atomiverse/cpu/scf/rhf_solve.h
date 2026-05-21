@@ -19,23 +19,23 @@ namespace scf {
 
 /// @brief Per-iteration data for convergence analysis.
 struct IterationRecord {
-    int iter = 0;              ///< Iteration number (1-based).
-    double energy = 0;         ///< Total energy at this iteration [Hartree].
-    double residual = 0;       ///< ||P_new - P_old||_F.
-    bool diis_active = false;  ///< Whether DIIS was used this iteration.
+    int iter = 0;             ///< Iteration number (1-based).
+    double energy = 0;        ///< Total energy at this iteration [Hartree].
+    double residual = 0;      ///< ||P_new - P_old||_F.
+    bool diis_active = false; ///< Whether DIIS was used this iteration.
 };
 
 /// @brief RHF solver result.
 struct RHFResult {
-    bool converged = false;              ///< Whether SCF converged within max_iter.
-    int iterations = 0;                  ///< Number of iterations performed.
-    double energy = 0;                   ///< Total energy (electronic + nuclear) [Hartree].
-    double electronic_energy = 0;        ///< Electronic energy only [Hartree].
-    double residual = 0;                 ///< Final ||P_new - P_old||_F.
-    xt::xtensor<double, 1> eigenvalues;  ///< Orbital energies [Hartree].
+    bool converged = false; ///< Whether SCF converged within max_iter.
+    int iterations = 0;     ///< Number of iterations performed.
+    double energy = 0;      ///< Total energy (electronic + nuclear) [Hartree].
+    double electronic_energy = 0;       ///< Electronic energy only [Hartree].
+    double residual = 0;                ///< Final ||P_new - P_old||_F.
+    xt::xtensor<double, 1> eigenvalues; ///< Orbital energies [Hartree].
     xt::xtensor<double, 2> P;           ///< Final density matrix.
     xt::xtensor<double, 2> C;           ///< Final MO coefficient matrix.
-    std::vector<IterationRecord> trace;  ///< Per-iteration convergence trace.
+    std::vector<IterationRecord> trace; ///< Per-iteration convergence trace.
 };
 
 /// @brief Run RHF on CPU using xtensor-blas.

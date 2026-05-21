@@ -16,12 +16,12 @@
 
 #include <cmath>
 
+#include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/context.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/vib/eigen_solver.h"
 #include "atomiverse/cpu/vib/hessian_workspace.h"
 #include "atomiverse/cpu/vib/mass_weighting.h"
-#include "atomiverse/core/mat3.h"
 
 using namespace ATV;
 
@@ -44,8 +44,8 @@ void run_diagonalize(cpu::Frame& frame, cpu::vib::HessianWorkspace& ws) {
 cpu::Frame make_h2o() {
     cpu::Frame f(3);
     f.atoms.x = {0.0, 0.7572, -0.7572};
-    f.atoms.y = {0.0, 0.5865,  0.5865};
-    f.atoms.z = {0.0, 0.0,     0.0};
+    f.atoms.y = {0.0, 0.5865, 0.5865};
+    f.atoms.z = {0.0, 0.0, 0.0};
     f.atoms.type = {8, 1, 1};
     f.box = Mat3::cubic(100.0);
     return f;
@@ -55,8 +55,8 @@ cpu::Frame make_h2o() {
 cpu::Frame make_co2() {
     cpu::Frame f(3);
     f.atoms.x = {0.0, 1.16, -1.16}; // C at origin, two O symmetric.
-    f.atoms.y = {0.0, 0.0,  0.0};
-    f.atoms.z = {0.0, 0.0,  0.0};
+    f.atoms.y = {0.0, 0.0, 0.0};
+    f.atoms.z = {0.0, 0.0, 0.0};
     f.atoms.type = {6, 8, 8};
     f.box = Mat3::cubic(100.0);
     return f;

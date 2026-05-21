@@ -17,9 +17,9 @@
 #include <thread>
 #include <vector>
 
+#include "atomiverse/core/types.h"
 #include "atomiverse/cpu/context.h"
 #include "atomiverse/cpu/frame_snapshot.h"
-#include "atomiverse/core/types.h"
 
 #ifdef ATV_HAS_MPI
 #include <mpi.h>
@@ -40,11 +40,12 @@ class AsyncComponentBase;
 /// and release the slot back to the ring. Backpressure is controlled per
 /// `Config::policy`.
 class AnalysisExecutor {
-public:
+  public:
     /// @brief Runtime configuration, captured into the executor on `init()`.
     struct Config {
-        int n_threads = 1;                     ///< Worker thread count (0 = ring-only, no dispatch).
-        int ring_size = 3;                     ///< Initial ring capacity.
+        int n_threads =
+            1; ///< Worker thread count (0 = ring-only, no dispatch).
+        int ring_size = 3; ///< Initial ring capacity.
         BackpressurePolicy policy = BackpressurePolicy::drop_oldest;
         /// @brief Pin each worker thread to a distinct logical CPU.
         ///
@@ -57,7 +58,8 @@ public:
         /// the kernel scheduler decides placement.
         bool affinity_hint = false;
 #ifdef ATV_HAS_MPI
-        MPI_Comm parent_comm = MPI_COMM_WORLD; ///< Dupped into `analysis_comm()`.
+        MPI_Comm parent_comm =
+            MPI_COMM_WORLD; ///< Dupped into `analysis_comm()`.
 #endif
     };
 
@@ -150,7 +152,9 @@ public:
     /// Used by `SnapshotPublisher` to iterate subscribers and decide whether
     /// any are firing at the current step, which selects the zero-subscriber
     /// fast path. Safe on the main thread before `shutdown()`.
-    const std::vector<AsyncComponentBase*>& subscribers() const noexcept { return subscribers_; }
+    const std::vector<AsyncComponentBase*>& subscribers() const noexcept {
+        return subscribers_;
+    }
 
     /// @brief Hand an (observer, slot) pair to the worker queue.
     /// @param sub Subscriber whose `on_snapshot` will be called.
@@ -158,13 +162,19 @@ public:
     void submit(AsyncComponentBase* sub, int slot_idx);
 
     /// @brief Total number of drops since `init()` (drop_oldest policy).
-    int n_dropped() const noexcept { return n_dropped_.load(std::memory_order_relaxed); }
+    int n_dropped() const noexcept {
+        return n_dropped_.load(std::memory_order_relaxed);
+    }
 
     /// @brief True iff `grow` policy expanded the ring at least once.
-    bool ring_size_grew() const noexcept { return ring_grew_.load(std::memory_order_relaxed); }
+    bool ring_size_grew() const noexcept {
+        return ring_grew_.load(std::memory_order_relaxed);
+    }
 
     /// @brief Current ring capacity.
-    int ring_capacity() const noexcept { return ring_capacity_.load(std::memory_order_relaxed); }
+    int ring_capacity() const noexcept {
+        return ring_capacity_.load(std::memory_order_relaxed);
+    }
 
 #ifdef ATV_HAS_MPI
     /// @brief MPI sub-communicator for observer collectives. Dupped from
@@ -172,17 +182,17 @@ public:
     MPI_Comm analysis_comm() const noexcept { return analysis_comm_; }
 #endif
 
-private:
+  private:
     struct Job {
         AsyncComponentBase* sub;
         int slot_idx;
     };
 
     void worker_loop(int worker_idx);
-    int  acquire_slot_locked();           ///< implementation helper
-    void grow_ring_locked();              ///< grow path for `grow` policy
+    int acquire_slot_locked(); ///< implementation helper
+    void grow_ring_locked();   ///< grow path for `grow` policy
     void wait_for_free_slot_locked(std::unique_lock<std::mutex>& lk);
-    void apply_worker_affinity(int worker_idx);  ///< Linux-only; no-op elsewhere
+    void apply_worker_affinity(int worker_idx); ///< Linux-only; no-op elsewhere
 
     bool initialized_ = false;
     bool affinity_hint_ = false;
@@ -190,7 +200,8 @@ private:
 
     // Ring storage -- contiguous vector, resized only by grow_ring_locked().
     std::vector<FrameSnapshot> ring_;
-    std::vector<bool> slot_busy_;    ///< slot is checked-out (publisher writing or worker reading)
+    std::vector<bool>
+        slot_busy_; ///< slot is checked-out (publisher writing or worker reading)
     std::atomic<int> ring_capacity_{0};
     std::atomic<int> next_slot_{0};
     std::atomic<int> n_dropped_{0};
@@ -204,7 +215,7 @@ private:
     std::condition_variable cv_work_;
     std::condition_variable cv_slot_free_;
     std::atomic<bool> stop_{false};
-    std::atomic<int> in_flight_{0};  ///< jobs dequeued but not finished
+    std::atomic<int> in_flight_{0}; ///< jobs dequeued but not finished
 
     std::vector<AsyncComponentBase*> subscribers_;
 

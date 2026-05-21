@@ -12,8 +12,8 @@
 /// @see Driver for the inherited fluent API
 #pragma once
 
-#include "atomiverse/facade/driver.h"
 #include "atomiverse/cuda/md/init.cuh"
+#include "atomiverse/facade/driver.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -27,7 +27,7 @@ namespace minimizer {
 ///
 /// @see md::MD for the molecular dynamics driver
 class CG : public Driver<Phase> {
-public:
+  public:
     /// @brief Construct CG driver with auto-added zeroing infrastructure.
     CG() {
         on(Phase::force).add(md::ZeroForces{}, -1000);

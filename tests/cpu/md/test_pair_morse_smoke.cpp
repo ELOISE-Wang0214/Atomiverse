@@ -8,38 +8,45 @@
 
 #include <cmath>
 
-#include "atomiverse/cpu/potentials/pair_morse.h"
+#include "atomiverse/core/mat3.h"
+#include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/cpu/frame.h"
-#include "atomiverse/core/mat3.h"
+#include "atomiverse/cpu/potentials/pair_morse.h"
 
 TEST(PairMorseDemo, TwoAtomNveOscillates) {
     // Morse parameters: shallow, slow-oscillating bond.
-    const double D     = 0.5;   // well depth [eV]
-    const double alpha = 1.5;   // width [Å⁻¹]
-    const double r0    = 2.0;   // equilibrium [Å]
-    const double rcut  = 6.0;   // cutoff [Å]
-    const double r_init = 2.2;  // small displacement off r₀
+    const double D = 0.5;      // well depth [eV]
+    const double alpha = 1.5;  // width [Å⁻¹]
+    const double r0 = 2.0;     // equilibrium [Å]
+    const double rcut = 6.0;   // cutoff [Å]
+    const double r_init = 2.2; // small displacement off r₀
 
     ATV::cpu::Frame frame(2);
-    frame.atoms.x[0] = 0.0;     frame.atoms.x[1] = r_init;
-    frame.atoms.y[0] = 0.0;     frame.atoms.y[1] = 0.0;
-    frame.atoms.z[0] = 0.0;     frame.atoms.z[1] = 0.0;
-    frame.atoms.mass[0] = 12.0; frame.atoms.mass[1] = 12.0;
-    frame.atoms.vx[0] = 0.0;    frame.atoms.vx[1] = 0.0;
-    frame.atoms.vy[0] = 0.0;    frame.atoms.vy[1] = 0.0;
-    frame.atoms.vz[0] = 0.0;    frame.atoms.vz[1] = 0.0;
+    frame.atoms.x[0] = 0.0;
+    frame.atoms.x[1] = r_init;
+    frame.atoms.y[0] = 0.0;
+    frame.atoms.y[1] = 0.0;
+    frame.atoms.z[0] = 0.0;
+    frame.atoms.z[1] = 0.0;
+    frame.atoms.mass[0] = 12.0;
+    frame.atoms.mass[1] = 12.0;
+    frame.atoms.vx[0] = 0.0;
+    frame.atoms.vx[1] = 0.0;
+    frame.atoms.vy[0] = 0.0;
+    frame.atoms.vy[1] = 0.0;
+    frame.atoms.vz[0] = 0.0;
+    frame.atoms.vz[1] = 0.0;
     frame.box = ATV::Mat3::cubic(50.0);
 
     ATV::cpu::md::MD sim;
-    sim.set_integrator(ATV::cpu::md::VelocityVerlet{/*dt=*/0.1});  // 0.1 fs
+    sim.set_integrator(ATV::cpu::md::VelocityVerlet{/*dt=*/0.1}); // 0.1 fs
     sim.set_pair(ATV::cpu::PairMorse{D, alpha, r0, rcut});
     sim.build();
 
     // Capture initial total energy at step 1 (one launch + one integration).
     sim.run(frame, 1);
-    const double E0 = frame.energy + 0.0;  // PE only at step 1 (v=0 → KE=0)
+    const double E0 = frame.energy + 0.0; // PE only at step 1 (v=0 → KE=0)
 
     // Run 100 more steps; check NVE conservation and r stays in well basin.
     sim.run(frame, 100);

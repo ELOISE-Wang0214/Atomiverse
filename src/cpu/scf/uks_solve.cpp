@@ -8,11 +8,9 @@ namespace ATV {
 namespace cpu {
 namespace scf {
 
-UKSResult uks_solve(const IntegralPack& integrals,
-                    int n_alpha, int n_beta,
-                    XCType xc_type,
-                    int n_radial, int n_angular,
-                    double tol, int max_iter) {
+UKSResult uks_solve(const IntegralPack& integrals, int n_alpha, int n_beta,
+                    XCType xc_type, int n_radial, int n_angular, double tol,
+                    int max_iter) {
     auto config = uks_config(integrals, n_alpha, n_beta, xc_type, tol);
     config.max_iter = max_iter;
     // uks_solve exposes explicit (n_radial, n_angular) counts, so honour

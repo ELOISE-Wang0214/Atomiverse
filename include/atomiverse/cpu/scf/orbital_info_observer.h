@@ -37,13 +37,12 @@ namespace scf {
 /// No default bindings: user chooses `end_of_step` of whichever driver hosts
 /// the SCFEvaluator (MD, minimizer, future SinglePoint).
 class OrbitalInfoObserver : public cpu::ComponentBase {
-public:
+  public:
     /// @brief Construct.
     /// @param handle        Shared view of the SCFEvaluator's latest state.
     /// @param filename      Output TSV path. Empty string disables file output.
     /// @param also_stdout   If true, mirror each row to stdout.
-    OrbitalInfoObserver(SCFResultHandle handle,
-                        std::string filename = "",
+    OrbitalInfoObserver(SCFResultHandle handle, std::string filename = "",
                         bool also_stdout = false);
 
     std::string name() const override { return "orbital_info_observer"; }
@@ -64,7 +63,7 @@ public:
     /// @brief HOMO-LUMO gap [eV] from the last launch.
     double gap_eV() const { return lumo_eV_ - homo_eV_; }
 
-private:
+  private:
     SCFResultHandle handle_;
     std::string filename_;
     bool also_stdout_;

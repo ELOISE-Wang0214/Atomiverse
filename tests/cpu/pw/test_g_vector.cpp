@@ -1,9 +1,9 @@
 /// @file test_g_vector.cpp
-#include <gtest/gtest.h>
-#include "atomiverse/cpu/pw/internal/g_vector.h"
 #include "atomiverse/core/box.h"
-#include "atomiverse/core/vec3.h"
 #include "atomiverse/core/units.h"
+#include "atomiverse/core/vec3.h"
+#include "atomiverse/cpu/pw/internal/g_vector.h"
+#include <gtest/gtest.h>
 
 using namespace ATV;
 using namespace ATV::cpu::pw::internal;
@@ -29,5 +29,6 @@ TEST(GVector, SortedByNorm) {
     auto box = Box::cubic(Real(10));
     auto gv = enumerate_g_vectors(box, Real(2), Vec3::zeros());
     for (int i = 1; i < gv.count(); ++i)
-        EXPECT_LE(gv.g[i-1].norm_squared(), gv.g[i].norm_squared() + Real(1e-12));
+        EXPECT_LE(gv.g[i - 1].norm_squared(),
+                  gv.g[i].norm_squared() + Real(1e-12));
 }

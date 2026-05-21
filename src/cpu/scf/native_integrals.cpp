@@ -8,9 +8,9 @@
 /// Validated element-by-element against libcint in test_native_integrals.cu.
 
 #include "atomiverse/cpu/scf/native_integrals.h"
+#include "atomiverse/core/gto.h"
 #include "atomiverse/cpu/scf/cart.h"
 #include "atomiverse/cpu/scf/rys_eri.h"
-#include "atomiverse/core/gto.h"
 
 #include <cmath>
 #include <xsimd/xsimd.hpp>
@@ -26,8 +26,8 @@ static constexpr double PI = 3.14159265358979323846;
 
 /// Squared distance between two 3D points.
 static inline double dist2(const double a[3], const double b[3]) {
-    double dx = a[0]-b[0], dy = a[1]-b[1], dz = a[2]-b[2];
-    return dx*dx + dy*dy + dz*dz;
+    double dx = a[0] - b[0], dy = a[1] - b[1], dz = a[2] - b[2];
+    return dx * dx + dy * dy + dz * dz;
 }
 
 // ── Phase 1: GTO normalization ────────────────────────────────────────
@@ -62,8 +62,9 @@ double overlap_ss(const Shell& a, const Shell& b) {
     double S = 0;
     for (int p = 0; p < a.n_prim; ++p)
         for (int q = 0; q < b.n_prim; ++q)
-            S += a.coeff[p] * b.coeff[q]
-               * overlap_primitive(a.alpha[p], a.center, b.alpha[q], b.center);
+            S +=
+                a.coeff[p] * b.coeff[q]
+                * overlap_primitive(a.alpha[p], a.center, b.alpha[q], b.center);
     return S;
 }
 
@@ -86,8 +87,7 @@ double kinetic_ss(const Shell& a, const Shell& b) {
 
 // ── Phase 4: Nuclear attraction integral (s|V|s) ──────────────────────
 
-double nuclear_ss(const Shell& a, const Shell& b,
-                  const Atom* atoms, int natm) {
+double nuclear_ss(const Shell& a, const Shell& b, const Atom* atoms, int natm) {
     // V = sum_C (-Z_C) * sum_pq c_p c_q * (2*pi/gamma) * exp(-mu*R^2) * F_0(gamma*|P-C|^2)
     // P = Gaussian product center = (alpha_a * A + alpha_b * B) / gamma
     // PERF: unchecked() candidate — 9 * natm iterations
@@ -106,8 +106,8 @@ double nuclear_ss(const Shell& a, const Shell& b,
             for (int d = 0; d < 3; ++d)
                 P[d] = (alpha_a * a.center[d] + alpha_b * b.center[d]) / gamma;
 
-            double prefactor = a.coeff[p] * b.coeff[q]
-                             * (2.0 * PI / gamma) * std::exp(-mu * R2_AB);
+            double prefactor = a.coeff[p] * b.coeff[q] * (2.0 * PI / gamma)
+                               * std::exp(-mu * R2_AB);
 
             // Sum over all nuclei
             for (int c = 0; c < natm; ++c) {
@@ -120,8 +120,8 @@ double nuclear_ss(const Shell& a, const Shell& b,
 
 // ── Phase 5: Two-electron ERI (ss|ss) ─────────────────────────────────
 
-double eri_ssss(const Shell& a, const Shell& b,
-                const Shell& c, const Shell& d) {
+double eri_ssss(const Shell& a, const Shell& b, const Shell& c,
+                const Shell& d) {
     // (ab|cd) = sum_pqrs c_p c_q c_r c_s
     //   * 2*pi^{5/2} / (gamma1 * gamma2 * sqrt(gamma1 + gamma2))
     //   * exp(-mu1*R_AB^2 - mu2*R_CD^2)
@@ -138,35 +138,37 @@ double eri_ssss(const Shell& a, const Shell& b,
     double R2_CD = dist2(c.center, d.center);
 
     for (int p = 0; p < a.n_prim; ++p)
-      for (int q = 0; q < b.n_prim; ++q) {
-        double gamma1 = a.alpha[p] + b.alpha[q];
-        double mu1 = a.alpha[p] * b.alpha[q] / gamma1;
-        double K_AB = std::exp(-mu1 * R2_AB);
+        for (int q = 0; q < b.n_prim; ++q) {
+            double gamma1 = a.alpha[p] + b.alpha[q];
+            double mu1 = a.alpha[p] * b.alpha[q] / gamma1;
+            double K_AB = std::exp(-mu1 * R2_AB);
 
-        double P[3];
-        for (int dd = 0; dd < 3; ++dd)
-            P[dd] = (a.alpha[p] * a.center[dd] + b.alpha[q] * b.center[dd]) / gamma1;
-
-        for (int r = 0; r < c.n_prim; ++r)
-          for (int s = 0; s < d.n_prim; ++s) {
-            double gamma2 = c.alpha[r] + d.alpha[s];
-            double mu2 = c.alpha[r] * d.alpha[s] / gamma2;
-            double K_CD = std::exp(-mu2 * R2_CD);
-
-            double Q[3];
+            double P[3];
             for (int dd = 0; dd < 3; ++dd)
-                Q[dd] = (c.alpha[r] * c.center[dd] + d.alpha[s] * d.center[dd]) / gamma2;
+                P[dd] = (a.alpha[p] * a.center[dd] + b.alpha[q] * b.center[dd])
+                        / gamma1;
 
-            double rho = gamma1 * gamma2 / (gamma1 + gamma2);
-            double PQ2 = dist2(P, Q);
+            for (int r = 0; r < c.n_prim; ++r)
+                for (int s = 0; s < d.n_prim; ++s) {
+                    double gamma2 = c.alpha[r] + d.alpha[s];
+                    double mu2 = c.alpha[r] * d.alpha[s] / gamma2;
+                    double K_CD = std::exp(-mu2 * R2_CD);
 
-            result += a.coeff[p] * b.coeff[q] * c.coeff[r] * d.coeff[s]
-                    * 2.0 * std::pow(PI, 2.5)
-                    / (gamma1 * gamma2 * std::sqrt(gamma1 + gamma2))
-                    * K_AB * K_CD
-                    * boys_f0(rho * PQ2);
-          }
-      }
+                    double Q[3];
+                    for (int dd = 0; dd < 3; ++dd)
+                        Q[dd] = (c.alpha[r] * c.center[dd]
+                                 + d.alpha[s] * d.center[dd])
+                                / gamma2;
+
+                    double rho = gamma1 * gamma2 / (gamma1 + gamma2);
+                    double PQ2 = dist2(P, Q);
+
+                    result += a.coeff[p] * b.coeff[q] * c.coeff[r] * d.coeff[s]
+                              * 2.0 * std::pow(PI, 2.5)
+                              / (gamma1 * gamma2 * std::sqrt(gamma1 + gamma2))
+                              * K_AB * K_CD * boys_f0(rho * PQ2);
+                }
+        }
     return result;
 }
 
@@ -242,8 +244,8 @@ double overlap(const Shell& a, const Shell& b) {
     double result = 0.0;
     for (int p = 0; p < a.n_prim; ++p) {
         for (int q = 0; q < b.n_prim; ++q) {
-            const double prim = overlap_prim_3d(
-                a_ang, b_ang, a.alpha[p], a.center, b.alpha[q], b.center);
+            const double prim = overlap_prim_3d(a_ang, b_ang, a.alpha[p],
+                                                a.center, b.alpha[q], b.center);
             result += a.coeff[p] * b.coeff[q] * prim;
         }
     }
@@ -275,9 +277,9 @@ static inline double kinetic_1d(int i, int j, double beta, const double* S) {
     double s_ijp2 = S[i * jstride + j + 2];
     double s_ijm2 = (j >= 2) ? S[i * jstride + j - 2] : 0.0;
 
-    return -0.5 * (j * (j - 1) * s_ijm2
-                   - 2.0 * beta * (2 * j + 1) * s_ij
-                   + 4.0 * beta * beta * s_ijp2);
+    return -0.5
+           * (j * (j - 1) * s_ijm2 - 2.0 * beta * (2 * j + 1) * s_ij
+              + 4.0 * beta * beta * s_ijp2);
 }
 
 double kinetic(const Shell& a, const Shell& b) {
@@ -288,8 +290,8 @@ double kinetic(const Shell& a, const Shell& b) {
     double result = 0.0;
     for (int p = 0; p < a.n_prim; ++p) {
         for (int q = 0; q < b.n_prim; ++q) {
-            const double prim = kinetic_prim_3d(
-                a_ang, b_ang, a.alpha[p], a.center, b.alpha[q], b.center);
+            const double prim = kinetic_prim_3d(a_ang, b_ang, a.alpha[p],
+                                                a.center, b.alpha[q], b.center);
             result += a.coeff[p] * b.coeff[q] * prim;
         }
     }
@@ -306,8 +308,7 @@ double kinetic(const Shell& a, const Shell& b) {
 ///   E coefficients: E^{i,j}_t from Obara-Saika Hermite expansion.
 ///   R integrals:    R^m_{t+1,u,v} = t*R^{m+1}_{t-1,u,v} + PC_x*R^{m+1}_{t,u,v}
 ///                   R^m_{0,0,0}   = (-2*gamma)^m * F_m(gamma*|PC|^2)
-double nuclear(const Shell& a, const Shell& b,
-               const Atom* atoms, int natm) {
+double nuclear(const Shell& a, const Shell& b, const Atom* atoms, int natm) {
     int a_ang[3], b_ang[3];
     cart_exponents(a, a_ang);
     cart_exponents(b, b_ang);
@@ -338,7 +339,8 @@ double nuclear(const Shell& a, const Shell& b,
                     PC[d] = P[d] - atoms[c].pos[d];
                 }
 
-                double V_prim = nuclear_prim(a_ang, b_ang, gamma, PA, PB, PC, K_AB);
+                double V_prim =
+                    nuclear_prim(a_ang, b_ang, gamma, PA, PB, PC, K_AB);
                 V_total += a.coeff[p] * b.coeff[q] * (-atoms[c].Z) * V_prim;
             }
         }
@@ -360,9 +362,8 @@ double nuclear(const Shell& a, const Shell& b,
 /// @return Primitive ERI value (without contraction coefficients).
 static double eri_prim_md(const int a_ang[3], const int b_ang[3],
                           const int c_ang[3], const int d_ang[3],
-                          double alpha_a, const double A[3],
-                          double alpha_b, const double B[3],
-                          double alpha_c, const double C[3],
+                          double alpha_a, const double A[3], double alpha_b,
+                          const double B[3], double alpha_c, const double C[3],
                           double alpha_d, const double D[3]) {
     const double gamma1 = alpha_a + alpha_b;
     const double gamma2 = alpha_c + alpha_d;
@@ -396,8 +397,9 @@ static double eri_prim_md(const int a_ang[3], const int b_ang[3],
     const double T = rho * PQ2;
 
     // Prefactor: 2*pi^{5/2} / (gamma1 * gamma2 * sqrt(delta))
-    const double prefactor = 2.0 * std::pow(PI, 2.5) / (gamma1 * gamma2 * std::sqrt(delta))
-                           * K_AB * K_CD;
+    const double prefactor = 2.0 * std::pow(PI, 2.5)
+                             / (gamma1 * gamma2 * std::sqrt(delta)) * K_AB
+                             * K_CD;
 
     // Angular momentum totals per direction
     const int Lx1 = a_ang[0] + b_ang[0]; // bra x angular momentum
@@ -498,18 +500,18 @@ static double eri_prim_md(const int a_ang[3], const int b_ang[3],
 
         // x-pass: R^m_{t,0,0} = (t-1)*R^{m+1}_{t-2,0,0} + PQ_x*R^{m+1}_{t-1,0,0}
         for (int t = 1; t <= max_tuv && t <= Rx_max; ++t) {
-            R_tab[m][t][0][0] = PQ[0] * R_tab[m+1][t-1][0][0];
+            R_tab[m][t][0][0] = PQ[0] * R_tab[m + 1][t - 1][0][0];
             if (t >= 2) {
-                R_tab[m][t][0][0] += (t - 1) * R_tab[m+1][t-2][0][0];
+                R_tab[m][t][0][0] += (t - 1) * R_tab[m + 1][t - 2][0][0];
             }
         }
 
         // y-pass: R^m_{t,u,0} for u >= 1
         for (int t = 0; t <= Rx_max && t <= max_tuv; ++t) {
             for (int u = 1; u <= Ry_max && t + u <= max_tuv; ++u) {
-                R_tab[m][t][u][0] = PQ[1] * R_tab[m+1][t][u-1][0];
+                R_tab[m][t][u][0] = PQ[1] * R_tab[m + 1][t][u - 1][0];
                 if (u >= 2) {
-                    R_tab[m][t][u][0] += (u - 1) * R_tab[m+1][t][u-2][0];
+                    R_tab[m][t][u][0] += (u - 1) * R_tab[m + 1][t][u - 2][0];
                 }
             }
         }
@@ -518,9 +520,10 @@ static double eri_prim_md(const int a_ang[3], const int b_ang[3],
         for (int t = 0; t <= Rx_max && t <= max_tuv; ++t) {
             for (int u = 0; u <= Ry_max && t + u <= max_tuv; ++u) {
                 for (int v = 1; v <= Rz_max && t + u + v <= max_tuv; ++v) {
-                    R_tab[m][t][u][v] = PQ[2] * R_tab[m+1][t][u][v-1];
+                    R_tab[m][t][u][v] = PQ[2] * R_tab[m + 1][t][u][v - 1];
                     if (v >= 2) {
-                        R_tab[m][t][u][v] += (v - 1) * R_tab[m+1][t][u][v-2];
+                        R_tab[m][t][u][v] +=
+                            (v - 1) * R_tab[m + 1][t][u][v - 2];
                     }
                 }
             }
@@ -538,15 +541,18 @@ static double eri_prim_md(const int a_ang[3], const int b_ang[3],
         for (int u = 0; u <= Ly1; ++u) {
             for (int v = 0; v <= Lz1; ++v) {
                 const double e1_tuv = E1[0][t] * E1[1][u] * E1[2][v];
-                if (e1_tuv == 0.0) continue;
+                if (e1_tuv == 0.0)
+                    continue;
                 for (int tau = 0; tau <= Lx2; ++tau) {
                     for (int nu = 0; nu <= Ly2; ++nu) {
                         for (int phi = 0; phi <= Lz2; ++phi) {
-                            const double e2_tnp = E2[0][tau] * E2[1][nu] * E2[2][phi];
-                            if (e2_tnp == 0.0) continue;
+                            const double e2_tnp =
+                                E2[0][tau] * E2[1][nu] * E2[2][phi];
+                            if (e2_tnp == 0.0)
+                                continue;
                             int sign = ((tau + nu + phi) & 1) ? -1 : 1;
                             eri_val += e1_tuv * e2_tnp * sign
-                                     * R_tab[0][t+tau][u+nu][v+phi];
+                                       * R_tab[0][t + tau][u + nu][v + phi];
                         }
                     }
                 }
@@ -557,8 +563,7 @@ static double eri_prim_md(const int a_ang[3], const int b_ang[3],
     return prefactor * eri_val;
 }
 
-double eri(const Shell& a, const Shell& b,
-           const Shell& c, const Shell& d) {
+double eri(const Shell& a, const Shell& b, const Shell& c, const Shell& d) {
     int a_ang[3], b_ang[3], c_ang[3], d_ang[3];
     cart_exponents(a, a_ang);
     cart_exponents(b, b_ang);
@@ -575,16 +580,16 @@ double eri(const Shell& a, const Shell& b,
 
     double result = 0.0;
     for (int p = 0; p < a.n_prim; ++p) {
-      for (int q = 0; q < b.n_prim; ++q) {
-        for (int r = 0; r < c.n_prim; ++r) {
-          for (int s = 0; s < d.n_prim; ++s) {
-            result += a.coeff[p] * b.coeff[q] * c.coeff[r] * d.coeff[s]
-                    * prim(a_ang, b_ang, c_ang, d_ang,
-                           a.alpha[p], a.center, b.alpha[q], b.center,
-                           c.alpha[r], c.center, d.alpha[s], d.center);
-          }
+        for (int q = 0; q < b.n_prim; ++q) {
+            for (int r = 0; r < c.n_prim; ++r) {
+                for (int s = 0; s < d.n_prim; ++s) {
+                    result += a.coeff[p] * b.coeff[q] * c.coeff[r] * d.coeff[s]
+                              * prim(a_ang, b_ang, c_ang, d_ang, a.alpha[p],
+                                     a.center, b.alpha[q], b.center, c.alpha[r],
+                                     c.center, d.alpha[s], d.center);
+                }
+            }
         }
-      }
     }
     return result;
 }
@@ -593,9 +598,8 @@ double eri(const Shell& a, const Shell& b,
 // General primitive functions (l up to 2 per component for derivatives)
 // ═══════════════════════════════════════════════════════════════════════
 
-double overlap_prim_3d(const int a_ang[3], const int b_ang[3],
-                       double alpha_a, const double A[3],
-                       double alpha_b, const double B[3]) {
+double overlap_prim_3d(const int a_ang[3], const int b_ang[3], double alpha_a,
+                       const double A[3], double alpha_b, const double B[3]) {
     const double gamma = alpha_a + alpha_b;
     const double mu = alpha_a * alpha_b / gamma;
     const double inv2g = 0.5 / gamma;
@@ -623,9 +627,8 @@ double overlap_prim_3d(const int a_ang[3], const int b_ang[3],
     return result;
 }
 
-double kinetic_prim_3d(const int a_ang[3], const int b_ang[3],
-                       double alpha_a, const double A[3],
-                       double alpha_b, const double B[3]) {
+double kinetic_prim_3d(const int a_ang[3], const int b_ang[3], double alpha_a,
+                       const double A[3], double alpha_b, const double B[3]) {
     const double gamma = alpha_a + alpha_b;
     const double mu = alpha_a * alpha_b / gamma;
     const double inv2g = 0.5 / gamma;
@@ -637,12 +640,14 @@ double kinetic_prim_3d(const int a_ang[3], const int b_ang[3],
     int imax_all = a_ang[0];
     int jmax_base = b_ang[0];
     for (int d = 1; d < 3; ++d) {
-        if (a_ang[d] > imax_all) imax_all = a_ang[d];
-        if (b_ang[d] > jmax_base) jmax_base = b_ang[d];
+        if (a_ang[d] > imax_all)
+            imax_all = a_ang[d];
+        if (b_ang[d] > jmax_base)
+            jmax_base = b_ang[d];
     }
-    const int im = imax_all;       // max kMaxL+1 = 3 (derivative bump)
-    const int jm = jmax_base + 2;  // max kMaxL+1+2 = 5
-    const int jstride = jm + 1;    // max 6
+    const int im = imax_all;      // max kMaxL+1 = 3 (derivative bump)
+    const int jm = jmax_base + 2; // max kMaxL+1+2 = 5
+    const int jstride = jm + 1;   // max 6
 
     // Build 1D overlap tables in each direction with uniform size.
     // Max table cells: (kMaxL+2) * (kMaxL+4) = 4 * 6 = 24 per direction.
@@ -668,17 +673,19 @@ double kinetic_prim_3d(const int a_ang[3], const int b_ang[3],
         const int j = b_ang[d];
         const double beta = alpha_b;
 
-        double s_ij   = Sd[d][i * jstride + j];
+        double s_ij = Sd[d][i * jstride + j];
         double s_ijp2 = Sd[d][i * jstride + j + 2];
         double s_ijm2 = (j >= 2) ? Sd[d][i * jstride + j - 2] : 0.0;
 
-        double T1d_val = -0.5 * (j * (j - 1) * s_ijm2
-                                 - 2.0 * beta * (2 * j + 1) * s_ij
-                                 + 4.0 * beta * beta * s_ijp2);
+        double T1d_val =
+            -0.5
+            * (j * (j - 1) * s_ijm2 - 2.0 * beta * (2 * j + 1) * s_ij
+               + 4.0 * beta * beta * s_ijp2);
 
         double other = 1.0;
         for (int e = 0; e < 3; ++e) {
-            if (e != d) other *= S1d[e];
+            if (e != d)
+                other *= S1d[e];
         }
         prim_kin += T1d_val * other;
     }
@@ -696,17 +703,18 @@ double kinetic_prim_3d(const int a_ang[3], const int b_ang[3],
 inline constexpr int kDerivL = kMaxL + 1;
 /// t-index dim in E^{i,j}_t (t ∈ [0, ai+bj]; +1 slack lets the recurrence
 /// read E[t+1] without a bounds branch when t hits the real max).
-inline constexpr int kMDEDim = 2 * kDerivL + 1;  // 7 for d-shells
+inline constexpr int kMDEDim = 2 * kDerivL + 1; // 7 for d-shells
 /// i-index dim in the E_buf[i][t] intermediate.
-inline constexpr int kMDEIDim = kDerivL + 1;     // 4 for d-shells
+inline constexpr int kMDEIDim = kDerivL + 1; // 4 for d-shells
 
 /// @brief McMurchie-Davidson E coefficients E^{ai,bj}_t.
 /// @details Supports ai, bj up to kDerivL = kMaxL + 1 to accommodate the
 ///   gradient path which raises one center's angular by +1. Output is
 ///   populated for t = 0..ai+bj; entries past that are zero.
 static void md_e_coeffs(int ai, int bj, double PA, double PB, double inv2g,
-                         double E[kMDEDim]) {
-    for (int t = 0; t < kMDEDim; ++t) E[t] = 0.0;
+                        double E[kMDEDim]) {
+    for (int t = 0; t < kMDEDim; ++t)
+        E[t] = 0.0;
 
     // Step 1: build E^{i,0}_t for i = 0..ai via the upward recurrence
     //   E^{i+1,0}_t = inv2g * E^{i,0}_{t-1} + PA * E^{i,0}_t + (t+1)*E^{i,0}_{t+1}
@@ -714,10 +722,10 @@ static void md_e_coeffs(int ai, int bj, double PA, double PB, double inv2g,
     E_buf[0][0] = 1.0;
 
     for (int i = 0; i < ai; ++i) {
-        const int tmax = i + 1;  // max t reachable at level i+1
+        const int tmax = i + 1; // max t reachable at level i+1
         for (int t = 0; t <= tmax; ++t) {
-            const double etm1 = (t > 0)          ? E_buf[i][t - 1] : 0.0;
-            const double et   =                     E_buf[i][t];
+            const double etm1 = (t > 0) ? E_buf[i][t - 1] : 0.0;
+            const double et = E_buf[i][t];
             const double etp1 = (t + 1 < kMDEDim) ? E_buf[i][t + 1] : 0.0;
             E_buf[i + 1][t] = inv2g * etm1 + PA * et + (t + 1) * etp1;
         }
@@ -727,31 +735,33 @@ static void md_e_coeffs(int ai, int bj, double PA, double PB, double inv2g,
     //   E^{i,j+1}_t = inv2g * E^{i,j}_{t-1} + PB * E^{i,j}_t + (t+1)*E^{i,j}_{t+1}
     double W[2][kMDEDim] = {};
     int cur = 0;
-    for (int t = 0; t < kMDEDim; ++t) W[cur][t] = E_buf[ai][t];
+    for (int t = 0; t < kMDEDim; ++t)
+        W[cur][t] = E_buf[ai][t];
 
     for (int jj = 0; jj < bj; ++jj) {
         const int nxt = 1 - cur;
-        for (int t = 0; t < kMDEDim; ++t) W[nxt][t] = 0.0;
+        for (int t = 0; t < kMDEDim; ++t)
+            W[nxt][t] = 0.0;
         const int tmax = ai + jj + 1;
         for (int t = 0; t <= tmax && t < kMDEDim; ++t) {
-            const double etm1 = (t > 0)          ? W[cur][t - 1] : 0.0;
-            const double et   =                     W[cur][t];
+            const double etm1 = (t > 0) ? W[cur][t - 1] : 0.0;
+            const double et = W[cur][t];
             const double etp1 = (t + 1 < kMDEDim) ? W[cur][t + 1] : 0.0;
             W[nxt][t] = inv2g * etm1 + PB * et + (t + 1) * etp1;
         }
         cur = nxt;
     }
 
-    for (int t = 0; t <= ai + bj && t < kMDEDim; ++t) E[t] = W[cur][t];
+    for (int t = 0; t <= ai + bj && t < kMDEDim; ++t)
+        E[t] = W[cur][t];
 }
 
-double nuclear_prim(const int a_ang[3], const int b_ang[3],
-                    double gamma, const double PA[3],
-                    const double PB[3], const double PC[3],
+double nuclear_prim(const int a_ang[3], const int b_ang[3], double gamma,
+                    const double PA[3], const double PB[3], const double PC[3],
                     double K_AB) {
     const double inv2g = 0.5 / gamma;
     const double prefactor = 2.0 * PI / gamma * K_AB;
-    const double PC2 = PC[0]*PC[0] + PC[1]*PC[1] + PC[2]*PC[2];
+    const double PC2 = PC[0] * PC[0] + PC[1] * PC[1] + PC[2] * PC[2];
     const double T = gamma * PC2;
 
     // Angular momentum totals per direction. Derivative raising bumps
@@ -763,7 +773,7 @@ double nuclear_prim(const int a_ang[3], const int b_ang[3],
     const int Lz = a_ang[2] + b_ang[2];
     const int Ltot = Lx + Ly + Lz;
 
-    constexpr int kRDim = 2 * kDerivL + 1;  // 7 for d-shells; m and per-axis dim
+    constexpr int kRDim = 2 * kDerivL + 1; // 7 for d-shells; m and per-axis dim
 
     // Boys functions F_m for m = 0..Ltot
     double Fm[kRDim];
@@ -800,17 +810,17 @@ double nuclear_prim(const int a_ang[3], const int b_ang[3],
 
         // x-pass
         for (int t = 1; t <= Lx && t <= max_tuv; ++t) {
-            R_tab[m][t][0][0] = PC[0] * R_tab[m+1][t-1][0][0];
+            R_tab[m][t][0][0] = PC[0] * R_tab[m + 1][t - 1][0][0];
             if (t >= 2)
-                R_tab[m][t][0][0] += (t - 1) * R_tab[m+1][t-2][0][0];
+                R_tab[m][t][0][0] += (t - 1) * R_tab[m + 1][t - 2][0][0];
         }
 
         // y-pass
         for (int t = 0; t <= Lx && t <= max_tuv; ++t) {
             for (int u = 1; u <= Ly && t + u <= max_tuv; ++u) {
-                R_tab[m][t][u][0] = PC[1] * R_tab[m+1][t][u-1][0];
+                R_tab[m][t][u][0] = PC[1] * R_tab[m + 1][t][u - 1][0];
                 if (u >= 2)
-                    R_tab[m][t][u][0] += (u - 1) * R_tab[m+1][t][u-2][0];
+                    R_tab[m][t][u][0] += (u - 1) * R_tab[m + 1][t][u - 2][0];
             }
         }
 
@@ -818,9 +828,10 @@ double nuclear_prim(const int a_ang[3], const int b_ang[3],
         for (int t = 0; t <= Lx && t <= max_tuv; ++t) {
             for (int u = 0; u <= Ly && t + u <= max_tuv; ++u) {
                 for (int v = 1; v <= Lz && t + u + v <= max_tuv; ++v) {
-                    R_tab[m][t][u][v] = PC[2] * R_tab[m+1][t][u][v-1];
+                    R_tab[m][t][u][v] = PC[2] * R_tab[m + 1][t][u][v - 1];
                     if (v >= 2)
-                        R_tab[m][t][u][v] += (v - 1) * R_tab[m+1][t][u][v-2];
+                        R_tab[m][t][u][v] +=
+                            (v - 1) * R_tab[m + 1][t][u][v - 2];
                 }
             }
         }
@@ -839,12 +850,10 @@ double nuclear_prim(const int a_ang[3], const int b_ang[3],
     return prefactor * V;
 }
 
-double eri_prim(const int a_ang[3], const int b_ang[3],
-                const int c_ang[3], const int d_ang[3],
-                double alpha_a, const double A[3],
-                double alpha_b, const double B[3],
-                double alpha_c, const double C[3],
-                double alpha_d, const double D[3]) {
+double eri_prim(const int a_ang[3], const int b_ang[3], const int c_ang[3],
+                const int d_ang[3], double alpha_a, const double A[3],
+                double alpha_b, const double B[3], double alpha_c,
+                const double C[3], double alpha_d, const double D[3]) {
     const double gamma1 = alpha_a + alpha_b;
     const double gamma2 = alpha_c + alpha_d;
     const double delta = gamma1 + gamma2;
@@ -877,8 +886,9 @@ double eri_prim(const int a_ang[3], const int b_ang[3],
     const double T = rho * PQ2;
 
     // Prefactor: 2*pi^{5/2} / (gamma1 * gamma2 * sqrt(delta))
-    const double prefactor = 2.0 * std::pow(PI, 2.5) / (gamma1 * gamma2 * std::sqrt(delta))
-                           * K_AB * K_CD;
+    const double prefactor = 2.0 * std::pow(PI, 2.5)
+                             / (gamma1 * gamma2 * std::sqrt(delta)) * K_AB
+                             * K_CD;
 
     // Angular momentum totals per direction. Derivative path raises one
     // of a/b/c/d on one axis by +1, so per-pair Lxi may reach kDerivL+kMaxL
@@ -893,7 +903,7 @@ double eri_prim(const int a_ang[3], const int b_ang[3],
 
     // R-table sizing: m ∈ [0, Ltot] and per-axis index ∈ [0, Lxi+Lx2_i].
     // Max = 4*kMaxL+1 for 1st derivatives of a (dd|dd) quartet.
-    constexpr int kERIRDim = 4 * kMaxL + 2;  // 10 for d-shells
+    constexpr int kERIRDim = 4 * kMaxL + 2; // 10 for d-shells
 
     // Boys functions F_m(T) for m = 0..Ltot
     double Fm[kERIRDim];
@@ -934,25 +944,26 @@ double eri_prim(const int a_ang[3], const int b_ang[3],
         const int max_tuv = Ltot - m;
 
         for (int t = 1; t <= Rx_max && t <= max_tuv; ++t) {
-            R_tab[m][t][0][0] = PQ[0] * R_tab[m+1][t-1][0][0];
+            R_tab[m][t][0][0] = PQ[0] * R_tab[m + 1][t - 1][0][0];
             if (t >= 2)
-                R_tab[m][t][0][0] += (t - 1) * R_tab[m+1][t-2][0][0];
+                R_tab[m][t][0][0] += (t - 1) * R_tab[m + 1][t - 2][0][0];
         }
 
         for (int t = 0; t <= Rx_max && t <= max_tuv; ++t) {
             for (int u = 1; u <= Ry_max && t + u <= max_tuv; ++u) {
-                R_tab[m][t][u][0] = PQ[1] * R_tab[m+1][t][u-1][0];
+                R_tab[m][t][u][0] = PQ[1] * R_tab[m + 1][t][u - 1][0];
                 if (u >= 2)
-                    R_tab[m][t][u][0] += (u - 1) * R_tab[m+1][t][u-2][0];
+                    R_tab[m][t][u][0] += (u - 1) * R_tab[m + 1][t][u - 2][0];
             }
         }
 
         for (int t = 0; t <= Rx_max && t <= max_tuv; ++t) {
             for (int u = 0; u <= Ry_max && t + u <= max_tuv; ++u) {
                 for (int v = 1; v <= Rz_max && t + u + v <= max_tuv; ++v) {
-                    R_tab[m][t][u][v] = PQ[2] * R_tab[m+1][t][u][v-1];
+                    R_tab[m][t][u][v] = PQ[2] * R_tab[m + 1][t][u][v - 1];
                     if (v >= 2)
-                        R_tab[m][t][u][v] += (v - 1) * R_tab[m+1][t][u][v-2];
+                        R_tab[m][t][u][v] +=
+                            (v - 1) * R_tab[m + 1][t][u][v - 2];
                 }
             }
         }
@@ -964,15 +975,18 @@ double eri_prim(const int a_ang[3], const int b_ang[3],
         for (int u = 0; u <= Ly1; ++u) {
             for (int v = 0; v <= Lz1; ++v) {
                 const double e1_tuv = E1[0][t] * E1[1][u] * E1[2][v];
-                if (e1_tuv == 0.0) continue;
+                if (e1_tuv == 0.0)
+                    continue;
                 for (int tau = 0; tau <= Lx2; ++tau) {
                     for (int nu = 0; nu <= Ly2; ++nu) {
                         for (int phi = 0; phi <= Lz2; ++phi) {
-                            const double e2_tnp = E2[0][tau] * E2[1][nu] * E2[2][phi];
-                            if (e2_tnp == 0.0) continue;
+                            const double e2_tnp =
+                                E2[0][tau] * E2[1][nu] * E2[2][phi];
+                            if (e2_tnp == 0.0)
+                                continue;
                             int sign = ((tau + nu + phi) & 1) ? -1 : 1;
                             eri_val += e1_tuv * e2_tnp * sign
-                                     * R_tab[0][t+tau][u+nu][v+phi];
+                                       * R_tab[0][t + tau][u + nu][v + phi];
                         }
                     }
                 }
@@ -1038,12 +1052,14 @@ void overlap_block(const ShellBlock& A, const ShellBlock& B, double* out) {
 
             // Scatter across angular combinations — shared 1D tables.
             for (int ia = 0; ia < A.n_cart; ++ia) {
-                const int ax = a_ang[ia][0], ay = a_ang[ia][1], az = a_ang[ia][2];
+                const int ax = a_ang[ia][0], ay = a_ang[ia][1],
+                          az = a_ang[ia][2];
                 for (int ib = 0; ib < B.n_cart; ++ib) {
-                    const int bx = b_ang[ib][0], by = b_ang[ib][1], bz = b_ang[ib][2];
+                    const int bx = b_ang[ib][0], by = b_ang[ib][1],
+                              bz = b_ang[ib][2];
                     const double v = S1d[0][ax * jstride + bx]
-                                   * S1d[1][ay * jstride + by]
-                                   * S1d[2][az * jstride + bz];
+                                     * S1d[1][ay * jstride + by]
+                                     * S1d[2][az * jstride + bz];
                     out[ia * B.n_cart + ib] += cpq * v;
                 }
             }
@@ -1057,8 +1073,8 @@ void kinetic_block(const ShellBlock& A, const ShellBlock& B, double* out) {
     fill_cart_comps(B.l, b_ang);
 
     const int imax = A.l;
-    const int jmax_k = B.l + 2;      // kinetic needs S(i, j+2)
-    const int jstride = jmax_k + 1;  // table column stride
+    const int jmax_k = B.l + 2;     // kinetic needs S(i, j+2)
+    const int jstride = jmax_k + 1; // table column stride
 
     for (int p = 0; p < A.n_prim; ++p) {
         for (int q = 0; q < B.n_prim; ++q) {
@@ -1097,14 +1113,18 @@ void kinetic_block(const ShellBlock& A, const ShellBlock& B, double* out) {
                         const int i = aa_ang[d];
                         const int j = bb_ang[d];
                         // T_1d(i,j) = -(1/2) [j(j-1) S(i,j-2) - 2β(2j+1) S(i,j) + 4β² S(i,j+2)]
-                        const double s_ij   = S1d[d][i * jstride + j];
+                        const double s_ij = S1d[d][i * jstride + j];
                         const double s_ijp2 = S1d[d][i * jstride + j + 2];
-                        const double s_ijm2 = (j >= 2) ? S1d[d][i * jstride + j - 2] : 0.0;
-                        const double t1d = -0.5 * (j * (j - 1) * s_ijm2
-                                                   - 2.0 * ab * (2 * j + 1) * s_ij
-                                                   + 4.0 * ab * ab * s_ijp2);
+                        const double s_ijm2 =
+                            (j >= 2) ? S1d[d][i * jstride + j - 2] : 0.0;
+                        const double t1d = -0.5
+                                           * (j * (j - 1) * s_ijm2
+                                              - 2.0 * ab * (2 * j + 1) * s_ij
+                                              + 4.0 * ab * ab * s_ijp2);
                         double other = 1.0;
-                        for (int e = 0; e < 3; ++e) if (e != d) other *= s_prod[e];
+                        for (int e = 0; e < 3; ++e)
+                            if (e != d)
+                                other *= s_prod[e];
                         t_sum += t1d * other;
                     }
                     out[ia * B.n_cart + ib] += cpq * t_sum;
@@ -1114,16 +1134,15 @@ void kinetic_block(const ShellBlock& A, const ShellBlock& B, double* out) {
     }
 }
 
-void nuclear_block(const ShellBlock& A, const ShellBlock& B,
-                   const Atom* atoms, int natm, double* out)
-{
+void nuclear_block(const ShellBlock& A, const ShellBlock& B, const Atom* atoms,
+                   int natm, double* out) {
     int a_ang[kMaxNCart][3], b_ang[kMaxNCart][3];
     fill_cart_comps(A.l, a_ang);
     fill_cart_comps(B.l, b_ang);
 
     const int imax = A.l;
     const int jmax = B.l;
-    const int Lmax_dir = imax + jmax;  // max Hermite index per axis
+    const int Lmax_dir = imax + jmax; // max Hermite index per axis
 
     for (int p = 0; p < A.n_prim; ++p) {
         for (int q = 0; q < B.n_prim; ++q) {
@@ -1140,8 +1159,8 @@ void nuclear_block(const ShellBlock& A, const ShellBlock& B,
             double P_c[3], PA[3], PB[3];
             for (int d = 0; d < 3; ++d) {
                 P_c[d] = (aa * A.center[d] + ab * B.center[d]) / gamma;
-                PA[d]  = P_c[d] - A.center[d];
-                PB[d]  = P_c[d] - B.center[d];
+                PA[d] = P_c[d] - A.center[d];
+                PB[d] = P_c[d] - B.center[d];
             }
 
             // E_full[d][ai][bj][t] — Hermite expansion of xA^ai * xB^bj.
@@ -1149,8 +1168,8 @@ void nuclear_block(const ShellBlock& A, const ShellBlock& B,
             // with imax, jmax <= kMaxL. t runs to ai+bj <= 2*kMaxL, so
             // the Hermite-index dimension is 2*kMaxL+1 (7 for f-shells).
             // No zero-init: every entry read is explicitly written below.
-            constexpr int kAng = kMaxL + 1;        // 4 for f
-            constexpr int kL = 2 * kMaxL + 1;      // 7 for f
+            constexpr int kAng = kMaxL + 1;   // 4 for f
+            constexpr int kL = 2 * kMaxL + 1; // 7 for f
             double E_full[3][kAng][kAng][kL];
             for (int d = 0; d < 3; ++d) {
                 for (int ai = 0; ai <= imax; ++ai) {
@@ -1170,14 +1189,15 @@ void nuclear_block(const ShellBlock& A, const ShellBlock& B,
                 double PC[3];
                 for (int d = 0; d < 3; ++d)
                     PC[d] = P_c[d] - atoms[c].pos[d];
-                const double PC2 = PC[0] * PC[0] + PC[1] * PC[1] + PC[2] * PC[2];
+                const double PC2 =
+                    PC[0] * PC[0] + PC[1] * PC[1] + PC[2] * PC[2];
                 const double T = gamma * PC2;
 
                 // Boys functions F_0..F_{Ltot_max} — Ltot_max = 3 * Lmax_dir.
                 // Lmax_dir = imax+jmax <= 2*kMaxL, so Ltot_max <= 6*kMaxL
                 // (18 for f-shells) and Fm needs 6*kMaxL+1 = 19 entries.
                 const int Ltot_max = 3 * Lmax_dir;
-                constexpr int kBoysN = 6 * kMaxL + 1;  // 19 for f
+                constexpr int kBoysN = 6 * kMaxL + 1; // 19 for f
                 double Fm[kBoysN];
                 boys_fn_vec(T, Ltot_max, Fm);
 
@@ -1185,8 +1205,8 @@ void nuclear_block(const ShellBlock& A, const ShellBlock& B,
                 // m ∈ [0, Ltot_max] ≤ 6*kMaxL; t, u, v ∈ [0, Lmax_dir]
                 // ≤ 2*kMaxL. No zero-init needed: the recurrence only
                 // reads entries it has already written.
-                constexpr int kRm = 6 * kMaxL + 1;  // 19 for f
-                constexpr int kRd = 2 * kMaxL + 1;  // 7 for f
+                constexpr int kRm = 6 * kMaxL + 1; // 19 for f
+                constexpr int kRd = 2 * kMaxL + 1; // 7 for f
                 double R_tab[kRm][kRd][kRd][kRd];
                 double pow_neg2g = 1.0;
                 const double neg2g = -2.0 * gamma;
@@ -1199,32 +1219,43 @@ void nuclear_block(const ShellBlock& A, const ShellBlock& B,
                     for (int t = 1; t <= Lmax_dir && t <= max_tuv; ++t) {
                         R_tab[m][t][0][0] = PC[0] * R_tab[m + 1][t - 1][0][0];
                         if (t >= 2)
-                            R_tab[m][t][0][0] += (t - 1) * R_tab[m + 1][t - 2][0][0];
+                            R_tab[m][t][0][0] +=
+                                (t - 1) * R_tab[m + 1][t - 2][0][0];
                     }
                     for (int t = 0; t <= Lmax_dir && t <= max_tuv; ++t) {
-                        for (int u = 1; u <= Lmax_dir && t + u <= max_tuv; ++u) {
-                            R_tab[m][t][u][0] = PC[1] * R_tab[m + 1][t][u - 1][0];
+                        for (int u = 1; u <= Lmax_dir && t + u <= max_tuv;
+                             ++u) {
+                            R_tab[m][t][u][0] =
+                                PC[1] * R_tab[m + 1][t][u - 1][0];
                             if (u >= 2)
-                                R_tab[m][t][u][0] += (u - 1) * R_tab[m + 1][t][u - 2][0];
+                                R_tab[m][t][u][0] +=
+                                    (u - 1) * R_tab[m + 1][t][u - 2][0];
                         }
                     }
                     for (int t = 0; t <= Lmax_dir && t <= max_tuv; ++t) {
-                        for (int u = 0; u <= Lmax_dir && t + u <= max_tuv; ++u) {
-                            for (int v = 1; v <= Lmax_dir && t + u + v <= max_tuv; ++v) {
-                                R_tab[m][t][u][v] = PC[2] * R_tab[m + 1][t][u][v - 1];
+                        for (int u = 0; u <= Lmax_dir && t + u <= max_tuv;
+                             ++u) {
+                            for (int v = 1;
+                                 v <= Lmax_dir && t + u + v <= max_tuv; ++v) {
+                                R_tab[m][t][u][v] =
+                                    PC[2] * R_tab[m + 1][t][u][v - 1];
                                 if (v >= 2)
-                                    R_tab[m][t][u][v] += (v - 1) * R_tab[m + 1][t][u][v - 2];
+                                    R_tab[m][t][u][v] +=
+                                        (v - 1) * R_tab[m + 1][t][u][v - 2];
                             }
                         }
                     }
                 }
 
                 // Scatter across angular combinations.
-                const double prefactor_c = prefactor_pq * (-static_cast<double>(atoms[c].Z));
+                const double prefactor_c =
+                    prefactor_pq * (-static_cast<double>(atoms[c].Z));
                 for (int ia = 0; ia < A.n_cart; ++ia) {
-                    const int ax = a_ang[ia][0], ay = a_ang[ia][1], az = a_ang[ia][2];
+                    const int ax = a_ang[ia][0], ay = a_ang[ia][1],
+                              az = a_ang[ia][2];
                     for (int ib = 0; ib < B.n_cart; ++ib) {
-                        const int bx = b_ang[ib][0], by = b_ang[ib][1], bz = b_ang[ib][2];
+                        const int bx = b_ang[ib][0], by = b_ang[ib][1],
+                                  bz = b_ang[ib][2];
                         const int Lx = ax + bx, Ly = ay + by, Lz = az + bz;
                         double V = 0.0;
                         for (int t = 0; t <= Lx; ++t) {
@@ -1232,7 +1263,8 @@ void nuclear_block(const ShellBlock& A, const ShellBlock& B,
                             for (int u = 0; u <= Ly; ++u) {
                                 const double Ey = E_full[1][ay][by][u];
                                 for (int v = 0; v <= Lz; ++v) {
-                                    V += Ex * Ey * E_full[2][az][bz][v] * R_tab[0][t][u][v];
+                                    V += Ex * Ey * E_full[2][az][bz][v]
+                                         * R_tab[0][t][u][v];
                                 }
                             }
                         }
@@ -1248,7 +1280,8 @@ void nuclear_block(const ShellBlock& A, const ShellBlock& B,
 /// Uses upward recurrence from F_0 (one erf + one exp total).
 static inline void boys_fn_vec(double T, int n_max, double Fm[]) {
     Fm[0] = boys_f0(T);
-    if (n_max == 0) return;
+    if (n_max == 0)
+        return;
     if (T < 1e-12) {
         for (int m = 1; m <= n_max; ++m)
             Fm[m] = 1.0 / (2 * m + 1);
@@ -1268,8 +1301,8 @@ static constexpr double TWO_PI_2_5 = 34.98683665524972497; // 2 * pi^2.5
 /// @brief (ss|ss) ERI block. Ltot=0: only F_0, no R-table recurrence.
 /// The r×s ket primitive loop is vectorized with xsimd::batch<double>.
 static void eri_blk_ss_ss(const ShellBlock& A, const ShellBlock& B,
-                           const ShellBlock& C, const ShellBlock& D,
-                           double* out) {
+                          const ShellBlock& C, const ShellBlock& D,
+                          double* out) {
     using batch_t = xsimd::batch<double>;
     constexpr int W = static_cast<int>(batch_t::size);
 
@@ -1294,9 +1327,9 @@ static void eri_blk_ss_ss(const ShellBlock& A, const ShellBlock& B,
             const double dcd0 = C.center[0] - D.center[0];
             const double dcd1 = C.center[1] - D.center[1];
             const double dcd2 = C.center[2] - D.center[2];
-            const double R2_CD = dcd0*dcd0 + dcd1*dcd1 + dcd2*dcd2;
-            kcd_coeff_k[k] = std::exp(-(ac * ad / g2) * R2_CD)
-                             * C.coeff[r] * D.coeff[s];
+            const double R2_CD = dcd0 * dcd0 + dcd1 * dcd1 + dcd2 * dcd2;
+            kcd_coeff_k[k] =
+                std::exp(-(ac * ad / g2) * R2_CD) * C.coeff[r] * D.coeff[s];
             ++k;
         }
     }
@@ -1313,23 +1346,25 @@ static void eri_blk_ss_ss(const ShellBlock& A, const ShellBlock& B,
             const double dab0 = A.center[0] - B.center[0];
             const double dab1 = A.center[1] - B.center[1];
             const double dab2 = A.center[2] - B.center[2];
-            const double R2_AB = dab0*dab0 + dab1*dab1 + dab2*dab2;
+            const double R2_AB = dab0 * dab0 + dab1 * dab1 + dab2 * dab2;
             const double K_AB = std::exp(-(aa * ab / gamma1) * R2_AB);
-            const double bra_fac = A.coeff[p] * B.coeff[q] * K_AB
-                                 * TWO_PI_2_5 / gamma1;
-            if (bra_fac == 0.0) continue;
+            const double bra_fac =
+                A.coeff[p] * B.coeff[q] * K_AB * TWO_PI_2_5 / gamma1;
+            if (bra_fac == 0.0)
+                continue;
 
             // Build T_k and pref_k for all ket pairs
             double T_k[KMAX], pref_k[KMAX];
             for (int kk = 0; kk < nket; ++kk) {
-                const double g2    = gamma2_k[kk];
+                const double g2 = gamma2_k[kk];
                 const double delta = gamma1 + g2;
-                const double rho   = gamma1 * g2 / delta;
-                const double dPQ0  = P0 - Q0_k[kk];
-                const double dPQ1  = P1 - Q1_k[kk];
-                const double dPQ2  = P2 - Q2_k[kk];
-                T_k[kk]    = rho * (dPQ0*dPQ0 + dPQ1*dPQ1 + dPQ2*dPQ2);
-                pref_k[kk] = bra_fac * kcd_coeff_k[kk] / (g2 * std::sqrt(delta));
+                const double rho = gamma1 * g2 / delta;
+                const double dPQ0 = P0 - Q0_k[kk];
+                const double dPQ1 = P1 - Q1_k[kk];
+                const double dPQ2 = P2 - Q2_k[kk];
+                T_k[kk] = rho * (dPQ0 * dPQ0 + dPQ1 * dPQ1 + dPQ2 * dPQ2);
+                pref_k[kk] =
+                    bra_fac * kcd_coeff_k[kk] / (g2 * std::sqrt(delta));
             }
 
             // xsimd-vectorized: acc += pref * boys_f0(T) for each ket pair
@@ -1337,21 +1372,23 @@ static void eri_blk_ss_ss(const ShellBlock& A, const ShellBlock& B,
             batch_t acc_v(0.0);
             int kk = 0;
             for (; kk + W <= nket; kk += W) {
-                batch_t T_v    = batch_t::load_unaligned(T_k    + kk);
+                batch_t T_v = batch_t::load_unaligned(T_k + kk);
                 batch_t pref_v = batch_t::load_unaligned(pref_k + kk);
-                auto small  = T_v < batch_t(1e-12);
+                auto small = T_v < batch_t(1e-12);
                 auto safe_T = xsimd::select(small, batch_t(1.0), T_v);
-                auto sqrtT  = xsimd::sqrt(safe_T);
-                auto F0_v   = xsimd::select(small, batch_t(1.0),
-                                  batch_t(0.5) * xsimd::sqrt(batch_t(PI) / safe_T)
-                                              * xsimd::erf(sqrtT));
+                auto sqrtT = xsimd::sqrt(safe_T);
+                auto F0_v = xsimd::select(
+                    small, batch_t(1.0),
+                    batch_t(0.5) * xsimd::sqrt(batch_t(PI) / safe_T)
+                        * xsimd::erf(sqrtT));
                 acc_v += pref_v * F0_v;
             }
             // Horizontal reduce: store to array and sum (portable across xsimd versions)
             double acc_arr[16]; // W ≤ 16 (AVX-512 = 8 doubles)
             acc_v.store_unaligned(acc_arr);
             double acc = 0.0;
-            for (int i = 0; i < W; ++i) acc += acc_arr[i];
+            for (int i = 0; i < W; ++i)
+                acc += acc_arr[i];
             // Scalar tail
             for (; kk < nket; ++kk)
                 acc += pref_k[kk] * boys_f0(T_k[kk]);
@@ -1365,12 +1402,12 @@ static void eri_blk_ss_ss(const ShellBlock& A, const ShellBlock& B,
 /// @brief Shell-block ERI with compile-time maximum Ltot.
 /// Identical algorithm to the generic case but Boys recurrence and R-table
 /// build loops have fixed bounds → the compiler can unroll them.
-template<int LTOT>
+template <int LTOT>
 static void eri_blk_ltot(const ShellBlock& A, const ShellBlock& B,
-                          const ShellBlock& C, const ShellBlock& D,
-                          double* out) {
+                         const ShellBlock& C, const ShellBlock& D,
+                         double* out) {
     constexpr int Ltot_max = LTOT;
-    constexpr int RS = LTOT + 1;         // R-table dimension per axis
+    constexpr int RS = LTOT + 1; // R-table dimension per axis
     const int na = A.n_cart, nb = B.n_cart;
     const int nc = C.n_cart, nd = D.n_cart;
 
@@ -1382,154 +1419,217 @@ static void eri_blk_ltot(const ShellBlock& A, const ShellBlock& B,
     fill_cart_comps(D.l, d_ang_tbl);
 
     for (int p = 0; p < A.n_prim; ++p) {
-      for (int q = 0; q < B.n_prim; ++q) {
-        const double aa = A.alpha[p], ab = B.alpha[q];
-        const double gamma1 = aa + ab;
-        const double inv2g1 = 0.5 / gamma1;
+        for (int q = 0; q < B.n_prim; ++q) {
+            const double aa = A.alpha[p], ab = B.alpha[q];
+            const double gamma1 = aa + ab;
+            const double inv2g1 = 0.5 / gamma1;
 
-        double P[3], PA[3], PB[3];
-        double R2_AB = 0.0;
-        for (int d = 0; d < 3; ++d) {
-            P[d]  = (aa * A.center[d] + ab * B.center[d]) / gamma1;
-            PA[d] = P[d] - A.center[d];
-            PB[d] = P[d] - B.center[d];
-            const double dAB = A.center[d] - B.center[d];
-            R2_AB += dAB * dAB;
-        }
-        const double K_AB = std::exp(-(aa * ab / gamma1) * R2_AB);
-
-        // Bra prefactor: skip entire ket loop when bra contribution is negligible
-        const double bra_fac = A.coeff[p] * B.coeff[q] * K_AB * TWO_PI_2_5 / gamma1;
-        if (std::abs(bra_fac) < 1e-15) continue;
-
-        double E_bra[3][2][2][3];
-        for (int d = 0; d < 3; ++d) {
-            E_bra[d][0][0][0] = 1.0;   E_bra[d][0][0][1] = 0.0;   E_bra[d][0][0][2] = 0.0;
-            E_bra[d][1][0][0] = PA[d]; E_bra[d][1][0][1] = inv2g1; E_bra[d][1][0][2] = 0.0;
-            E_bra[d][0][1][0] = PB[d]; E_bra[d][0][1][1] = inv2g1; E_bra[d][0][1][2] = 0.0;
-            E_bra[d][1][1][0] = PA[d] * PB[d] + inv2g1;
-            E_bra[d][1][1][1] = inv2g1 * (PA[d] + PB[d]);
-            E_bra[d][1][1][2] = inv2g1 * inv2g1;
-        }
-
-        for (int r = 0; r < C.n_prim; ++r) {
-          for (int s = 0; s < D.n_prim; ++s) {
-            const double ac = C.alpha[r], ad = D.alpha[s];
-            const double gamma2 = ac + ad;
-            const double inv2g2 = 0.5 / gamma2;
-            const double delta  = gamma1 + gamma2;
-            const double rho    = gamma1 * gamma2 / delta;
-
-            double Q[3], QC[3], QD[3], PQ[3];
-            double R2_CD = 0.0, PQ2 = 0.0;
+            double P[3], PA[3], PB[3];
+            double R2_AB = 0.0;
             for (int d = 0; d < 3; ++d) {
-                Q[d]  = (ac * C.center[d] + ad * D.center[d]) / gamma2;
-                QC[d] = Q[d] - C.center[d];
-                QD[d] = Q[d] - D.center[d];
-                PQ[d] = P[d] - Q[d];
-                const double dCD = C.center[d] - D.center[d];
-                R2_CD += dCD * dCD;
-                PQ2   += PQ[d] * PQ[d];
+                P[d] = (aa * A.center[d] + ab * B.center[d]) / gamma1;
+                PA[d] = P[d] - A.center[d];
+                PB[d] = P[d] - B.center[d];
+                const double dAB = A.center[d] - B.center[d];
+                R2_AB += dAB * dAB;
             }
-            const double K_CD = std::exp(-(ac * ad / gamma2) * R2_CD);
+            const double K_AB = std::exp(-(aa * ab / gamma1) * R2_AB);
 
-            const double prefactor =
-                bra_fac * C.coeff[r] * D.coeff[s]
-                * K_CD / (gamma2 * std::sqrt(delta));
-            if (std::abs(prefactor) < 1e-15) continue;
+            // Bra prefactor: skip entire ket loop when bra contribution is negligible
+            const double bra_fac =
+                A.coeff[p] * B.coeff[q] * K_AB * TWO_PI_2_5 / gamma1;
+            if (std::abs(bra_fac) < 1e-15)
+                continue;
 
-            const double T_pq = rho * PQ2;
-
-            // Boys functions F_0..F_LTOT (fixed-size array, loop unrollable)
-            double Fm[LTOT + 1];
-            boys_fn_vec(T_pq, Ltot_max, Fm);
-
-            double E_ket[3][2][2][3];
+            double E_bra[3][2][2][3];
             for (int d = 0; d < 3; ++d) {
-                E_ket[d][0][0][0] = 1.0;   E_ket[d][0][0][1] = 0.0;   E_ket[d][0][0][2] = 0.0;
-                E_ket[d][1][0][0] = QC[d]; E_ket[d][1][0][1] = inv2g2; E_ket[d][1][0][2] = 0.0;
-                E_ket[d][0][1][0] = QD[d]; E_ket[d][0][1][1] = inv2g2; E_ket[d][0][1][2] = 0.0;
-                E_ket[d][1][1][0] = QC[d] * QD[d] + inv2g2;
-                E_ket[d][1][1][1] = inv2g2 * (QC[d] + QD[d]);
-                E_ket[d][1][1][2] = inv2g2 * inv2g2;
+                E_bra[d][0][0][0] = 1.0;
+                E_bra[d][0][0][1] = 0.0;
+                E_bra[d][0][0][2] = 0.0;
+                E_bra[d][1][0][0] = PA[d];
+                E_bra[d][1][0][1] = inv2g1;
+                E_bra[d][1][0][2] = 0.0;
+                E_bra[d][0][1][0] = PB[d];
+                E_bra[d][0][1][1] = inv2g1;
+                E_bra[d][0][1][2] = 0.0;
+                E_bra[d][1][1][0] = PA[d] * PB[d] + inv2g1;
+                E_bra[d][1][1][1] = inv2g1 * (PA[d] + PB[d]);
+                E_bra[d][1][1][2] = inv2g1 * inv2g1;
             }
 
-            // R-table: sized exactly to [LTOT+1]^4 — avoids wasted zero-init.
-            // LTOT=1: 16 doubles (128 B) vs 625 (5000 B) previously.
-            double R_tab[RS][RS][RS][RS] = {};
+            for (int r = 0; r < C.n_prim; ++r) {
+                for (int s = 0; s < D.n_prim; ++s) {
+                    const double ac = C.alpha[r], ad = D.alpha[s];
+                    const double gamma2 = ac + ad;
+                    const double inv2g2 = 0.5 / gamma2;
+                    const double delta = gamma1 + gamma2;
+                    const double rho = gamma1 * gamma2 / delta;
 
-            double pow_neg2rho = 1.0;
-            const double neg2rho = -2.0 * rho;
-            for (int m = 0; m <= Ltot_max; ++m) {
-                R_tab[m][0][0][0] = pow_neg2rho * Fm[m];
-                pow_neg2rho *= neg2rho;
-            }
-
-            for (int m = Ltot_max - 1; m >= 0; --m) {
-                const int max_tuv = Ltot_max - m;
-                for (int t = 1; t <= Ltot_max && t <= max_tuv; ++t) {
-                    R_tab[m][t][0][0] = PQ[0] * R_tab[m+1][t-1][0][0];
-                    if (t >= 2) R_tab[m][t][0][0] += (t-1) * R_tab[m+1][t-2][0][0];
-                }
-                for (int t = 0; t <= Ltot_max && t <= max_tuv; ++t)
-                    for (int u = 1; u <= Ltot_max && t+u <= max_tuv; ++u) {
-                        R_tab[m][t][u][0] = PQ[1] * R_tab[m+1][t][u-1][0];
-                        if (u >= 2) R_tab[m][t][u][0] += (u-1) * R_tab[m+1][t][u-2][0];
+                    double Q[3], QC[3], QD[3], PQ[3];
+                    double R2_CD = 0.0, PQ2 = 0.0;
+                    for (int d = 0; d < 3; ++d) {
+                        Q[d] = (ac * C.center[d] + ad * D.center[d]) / gamma2;
+                        QC[d] = Q[d] - C.center[d];
+                        QD[d] = Q[d] - D.center[d];
+                        PQ[d] = P[d] - Q[d];
+                        const double dCD = C.center[d] - D.center[d];
+                        R2_CD += dCD * dCD;
+                        PQ2 += PQ[d] * PQ[d];
                     }
-                for (int t = 0; t <= Ltot_max && t <= max_tuv; ++t)
-                    for (int u = 0; u <= Ltot_max && t+u <= max_tuv; ++u)
-                        for (int v = 1; v <= Ltot_max && t+u+v <= max_tuv; ++v) {
-                            R_tab[m][t][u][v] = PQ[2] * R_tab[m+1][t][u][v-1];
-                            if (v >= 2) R_tab[m][t][u][v] += (v-1) * R_tab[m+1][t][u][v-2];
+                    const double K_CD = std::exp(-(ac * ad / gamma2) * R2_CD);
+
+                    const double prefactor = bra_fac * C.coeff[r] * D.coeff[s]
+                                             * K_CD
+                                             / (gamma2 * std::sqrt(delta));
+                    if (std::abs(prefactor) < 1e-15)
+                        continue;
+
+                    const double T_pq = rho * PQ2;
+
+                    // Boys functions F_0..F_LTOT (fixed-size array, loop unrollable)
+                    double Fm[LTOT + 1];
+                    boys_fn_vec(T_pq, Ltot_max, Fm);
+
+                    double E_ket[3][2][2][3];
+                    for (int d = 0; d < 3; ++d) {
+                        E_ket[d][0][0][0] = 1.0;
+                        E_ket[d][0][0][1] = 0.0;
+                        E_ket[d][0][0][2] = 0.0;
+                        E_ket[d][1][0][0] = QC[d];
+                        E_ket[d][1][0][1] = inv2g2;
+                        E_ket[d][1][0][2] = 0.0;
+                        E_ket[d][0][1][0] = QD[d];
+                        E_ket[d][0][1][1] = inv2g2;
+                        E_ket[d][0][1][2] = 0.0;
+                        E_ket[d][1][1][0] = QC[d] * QD[d] + inv2g2;
+                        E_ket[d][1][1][1] = inv2g2 * (QC[d] + QD[d]);
+                        E_ket[d][1][1][2] = inv2g2 * inv2g2;
+                    }
+
+                    // R-table: sized exactly to [LTOT+1]^4 — avoids wasted zero-init.
+                    // LTOT=1: 16 doubles (128 B) vs 625 (5000 B) previously.
+                    double R_tab[RS][RS][RS][RS] = {};
+
+                    double pow_neg2rho = 1.0;
+                    const double neg2rho = -2.0 * rho;
+                    for (int m = 0; m <= Ltot_max; ++m) {
+                        R_tab[m][0][0][0] = pow_neg2rho * Fm[m];
+                        pow_neg2rho *= neg2rho;
+                    }
+
+                    for (int m = Ltot_max - 1; m >= 0; --m) {
+                        const int max_tuv = Ltot_max - m;
+                        for (int t = 1; t <= Ltot_max && t <= max_tuv; ++t) {
+                            R_tab[m][t][0][0] =
+                                PQ[0] * R_tab[m + 1][t - 1][0][0];
+                            if (t >= 2)
+                                R_tab[m][t][0][0] +=
+                                    (t - 1) * R_tab[m + 1][t - 2][0][0];
                         }
-            }
+                        for (int t = 0; t <= Ltot_max && t <= max_tuv; ++t)
+                            for (int u = 1; u <= Ltot_max && t + u <= max_tuv;
+                                 ++u) {
+                                R_tab[m][t][u][0] =
+                                    PQ[1] * R_tab[m + 1][t][u - 1][0];
+                                if (u >= 2)
+                                    R_tab[m][t][u][0] +=
+                                        (u - 1) * R_tab[m + 1][t][u - 2][0];
+                            }
+                        for (int t = 0; t <= Ltot_max && t <= max_tuv; ++t)
+                            for (int u = 0; u <= Ltot_max && t + u <= max_tuv;
+                                 ++u)
+                                for (int v = 1;
+                                     v <= Ltot_max && t + u + v <= max_tuv;
+                                     ++v) {
+                                    R_tab[m][t][u][v] =
+                                        PQ[2] * R_tab[m + 1][t][u][v - 1];
+                                    if (v >= 2)
+                                        R_tab[m][t][u][v] +=
+                                            (v - 1) * R_tab[m + 1][t][u][v - 2];
+                                }
+                    }
 
-            for (int ia = 0; ia < na; ++ia) {
-                const int* a_ang = a_ang_tbl[ia];
-                for (int ib = 0; ib < nb; ++ib) {
-                    const int* b_ang = b_ang_tbl[ib];
-                    const int Lx1 = a_ang[0] + b_ang[0];
-                    const int Ly1 = a_ang[1] + b_ang[1];
-                    const int Lz1 = a_ang[2] + b_ang[2];
-                    double* out_ab = out + (ia * nb + ib) * (nc * nd);
+                    for (int ia = 0; ia < na; ++ia) {
+                        const int* a_ang = a_ang_tbl[ia];
+                        for (int ib = 0; ib < nb; ++ib) {
+                            const int* b_ang = b_ang_tbl[ib];
+                            const int Lx1 = a_ang[0] + b_ang[0];
+                            const int Ly1 = a_ang[1] + b_ang[1];
+                            const int Lz1 = a_ang[2] + b_ang[2];
+                            double* out_ab = out + (ia * nb + ib) * (nc * nd);
 
-                    for (int ic = 0; ic < nc; ++ic) {
-                        const int* c_ang = c_ang_tbl[ic];
-                        for (int id = 0; id < nd; ++id) {
-                            const int* d_ang = d_ang_tbl[id];
-                            const int Lx2 = c_ang[0] + d_ang[0];
-                            const int Ly2 = c_ang[1] + d_ang[1];
-                            const int Lz2 = c_ang[2] + d_ang[2];
+                            for (int ic = 0; ic < nc; ++ic) {
+                                const int* c_ang = c_ang_tbl[ic];
+                                for (int id = 0; id < nd; ++id) {
+                                    const int* d_ang = d_ang_tbl[id];
+                                    const int Lx2 = c_ang[0] + d_ang[0];
+                                    const int Ly2 = c_ang[1] + d_ang[1];
+                                    const int Lz2 = c_ang[2] + d_ang[2];
 
-                            double val = 0.0;
-                            for (int t = 0; t <= Lx1; ++t) {
-                                const double Ex1 = E_bra[0][a_ang[0]][b_ang[0]][t];
-                                for (int u = 0; u <= Ly1; ++u) {
-                                    const double Exy1 = Ex1 * E_bra[1][a_ang[1]][b_ang[1]][u];
-                                    for (int v = 0; v <= Lz1; ++v) {
-                                        const double e1 = Exy1 * E_bra[2][a_ang[2]][b_ang[2]][v];
-                                        for (int tau = 0; tau <= Lx2; ++tau) {
-                                            const double Ex2 = e1 * E_ket[0][c_ang[0]][d_ang[0]][tau];
-                                            for (int nu = 0; nu <= Ly2; ++nu) {
-                                                const double Exy2 = Ex2 * E_ket[1][c_ang[1]][d_ang[1]][nu];
-                                                for (int phi = 0; phi <= Lz2; ++phi) {
-                                                    const double e2 = Exy2 * E_ket[2][c_ang[2]][d_ang[2]][phi];
-                                                    const int sign = ((tau + nu + phi) & 1) ? -1 : 1;
-                                                    val += e2 * sign * R_tab[0][t+tau][u+nu][v+phi];
+                                    double val = 0.0;
+                                    for (int t = 0; t <= Lx1; ++t) {
+                                        const double Ex1 =
+                                            E_bra[0][a_ang[0]][b_ang[0]][t];
+                                        for (int u = 0; u <= Ly1; ++u) {
+                                            const double Exy1 =
+                                                Ex1
+                                                * E_bra[1][a_ang[1]][b_ang[1]]
+                                                       [u];
+                                            for (int v = 0; v <= Lz1; ++v) {
+                                                const double e1 =
+                                                    Exy1
+                                                    * E_bra[2][a_ang[2]]
+                                                           [b_ang[2]][v];
+                                                for (int tau = 0; tau <= Lx2;
+                                                     ++tau) {
+                                                    const double Ex2 =
+                                                        e1
+                                                        * E_ket[0][c_ang[0]]
+                                                               [d_ang[0]][tau];
+                                                    for (int nu = 0; nu <= Ly2;
+                                                         ++nu) {
+                                                        const double Exy2 =
+                                                            Ex2
+                                                            * E_ket[1][c_ang[1]]
+                                                                   [d_ang[1]]
+                                                                   [nu];
+                                                        for (int phi = 0;
+                                                             phi <= Lz2;
+                                                             ++phi) {
+                                                            const double e2 =
+                                                                Exy2
+                                                                * E_ket
+                                                                    [2]
+                                                                    [c_ang[2]]
+                                                                    [d_ang[2]]
+                                                                    [phi];
+                                                            const int sign =
+                                                                ((tau + nu
+                                                                  + phi)
+                                                                 & 1)
+                                                                    ? -1
+                                                                    : 1;
+                                                            val +=
+                                                                e2 * sign
+                                                                * R_tab[0]
+                                                                       [t + tau]
+                                                                       [u + nu]
+                                                                       [v
+                                                                        + phi];
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
                                     }
+                                    out_ab[ic * nd + id] += prefactor * val;
                                 }
                             }
-                            out_ab[ic * nd + id] += prefactor * val;
                         }
                     }
-                }
-            }
-          } // s
-        } // r
-      } // q
+                } // s
+            } // r
+        } // q
     } // p
 }
 
@@ -1538,8 +1638,8 @@ static void eri_blk_ltot(const ShellBlock& A, const ShellBlock& B,
 /// @brief Generic shell-block ERI for shells with l ≥ 2 (d, f, …).
 /// Identical to the original eri_block() implementation; runtime Ltot.
 static void eri_blk_general(const ShellBlock& A, const ShellBlock& B,
-                             const ShellBlock& C, const ShellBlock& D,
-                             double* out) {
+                            const ShellBlock& C, const ShellBlock& D,
+                            double* out) {
     const int Ltot_max = A.l + B.l + C.l + D.l;
     const int na = A.n_cart, nb = B.n_cart;
     const int nc = C.n_cart, nd = D.n_cart;
@@ -1552,148 +1652,209 @@ static void eri_blk_general(const ShellBlock& A, const ShellBlock& B,
     fill_cart_comps(D.l, d_ang_tbl);
 
     for (int p = 0; p < A.n_prim; ++p) {
-      for (int q = 0; q < B.n_prim; ++q) {
-        const double aa = A.alpha[p], ab = B.alpha[q];
-        const double gamma1 = aa + ab;
-        const double inv2g1 = 0.5 / gamma1;
+        for (int q = 0; q < B.n_prim; ++q) {
+            const double aa = A.alpha[p], ab = B.alpha[q];
+            const double gamma1 = aa + ab;
+            const double inv2g1 = 0.5 / gamma1;
 
-        double P[3], PA[3], PB[3];
-        double R2_AB = 0.0;
-        for (int d = 0; d < 3; ++d) {
-            P[d]  = (aa * A.center[d] + ab * B.center[d]) / gamma1;
-            PA[d] = P[d] - A.center[d];
-            PB[d] = P[d] - B.center[d];
-            const double dAB = A.center[d] - B.center[d];
-            R2_AB += dAB * dAB;
-        }
-        const double K_AB = std::exp(-(aa * ab / gamma1) * R2_AB);
-
-        const double bra_fac_gen = A.coeff[p] * B.coeff[q] * K_AB * TWO_PI_2_5 / gamma1;
-        if (std::abs(bra_fac_gen) < 1e-15) continue;
-
-        double E_bra[3][2][2][3];
-        for (int d = 0; d < 3; ++d) {
-            E_bra[d][0][0][0] = 1.0;   E_bra[d][0][0][1] = 0.0;   E_bra[d][0][0][2] = 0.0;
-            E_bra[d][1][0][0] = PA[d]; E_bra[d][1][0][1] = inv2g1; E_bra[d][1][0][2] = 0.0;
-            E_bra[d][0][1][0] = PB[d]; E_bra[d][0][1][1] = inv2g1; E_bra[d][0][1][2] = 0.0;
-            E_bra[d][1][1][0] = PA[d] * PB[d] + inv2g1;
-            E_bra[d][1][1][1] = inv2g1 * (PA[d] + PB[d]);
-            E_bra[d][1][1][2] = inv2g1 * inv2g1;
-        }
-
-        for (int r = 0; r < C.n_prim; ++r) {
-          for (int s = 0; s < D.n_prim; ++s) {
-            const double ac = C.alpha[r], ad = D.alpha[s];
-            const double gamma2 = ac + ad;
-            const double inv2g2 = 0.5 / gamma2;
-            const double delta  = gamma1 + gamma2;
-            const double rho    = gamma1 * gamma2 / delta;
-
-            double Q[3], QC[3], QD[3], PQ[3];
-            double R2_CD = 0.0, PQ2 = 0.0;
+            double P[3], PA[3], PB[3];
+            double R2_AB = 0.0;
             for (int d = 0; d < 3; ++d) {
-                Q[d]  = (ac * C.center[d] + ad * D.center[d]) / gamma2;
-                QC[d] = Q[d] - C.center[d];
-                QD[d] = Q[d] - D.center[d];
-                PQ[d] = P[d] - Q[d];
-                const double dCD = C.center[d] - D.center[d];
-                R2_CD += dCD * dCD;
-                PQ2   += PQ[d] * PQ[d];
+                P[d] = (aa * A.center[d] + ab * B.center[d]) / gamma1;
+                PA[d] = P[d] - A.center[d];
+                PB[d] = P[d] - B.center[d];
+                const double dAB = A.center[d] - B.center[d];
+                R2_AB += dAB * dAB;
             }
-            const double K_CD = std::exp(-(ac * ad / gamma2) * R2_CD);
-            const double T_pq = rho * PQ2;
+            const double K_AB = std::exp(-(aa * ab / gamma1) * R2_AB);
 
-            const double prefactor =
-                bra_fac_gen * C.coeff[r] * D.coeff[s]
-                * K_CD / (gamma2 * std::sqrt(delta));
-            if (std::abs(prefactor) < 1e-15) continue;
+            const double bra_fac_gen =
+                A.coeff[p] * B.coeff[q] * K_AB * TWO_PI_2_5 / gamma1;
+            if (std::abs(bra_fac_gen) < 1e-15)
+                continue;
 
-            double Fm[9]; // generous upper bound for high-l shells
-            boys_fn_vec(T_pq, Ltot_max, Fm);
-
-            double E_ket[3][2][2][3];
+            double E_bra[3][2][2][3];
             for (int d = 0; d < 3; ++d) {
-                E_ket[d][0][0][0] = 1.0;   E_ket[d][0][0][1] = 0.0;   E_ket[d][0][0][2] = 0.0;
-                E_ket[d][1][0][0] = QC[d]; E_ket[d][1][0][1] = inv2g2; E_ket[d][1][0][2] = 0.0;
-                E_ket[d][0][1][0] = QD[d]; E_ket[d][0][1][1] = inv2g2; E_ket[d][0][1][2] = 0.0;
-                E_ket[d][1][1][0] = QC[d] * QD[d] + inv2g2;
-                E_ket[d][1][1][1] = inv2g2 * (QC[d] + QD[d]);
-                E_ket[d][1][1][2] = inv2g2 * inv2g2;
+                E_bra[d][0][0][0] = 1.0;
+                E_bra[d][0][0][1] = 0.0;
+                E_bra[d][0][0][2] = 0.0;
+                E_bra[d][1][0][0] = PA[d];
+                E_bra[d][1][0][1] = inv2g1;
+                E_bra[d][1][0][2] = 0.0;
+                E_bra[d][0][1][0] = PB[d];
+                E_bra[d][0][1][1] = inv2g1;
+                E_bra[d][0][1][2] = 0.0;
+                E_bra[d][1][1][0] = PA[d] * PB[d] + inv2g1;
+                E_bra[d][1][1][1] = inv2g1 * (PA[d] + PB[d]);
+                E_bra[d][1][1][2] = inv2g1 * inv2g1;
             }
 
-            const int Rmax = Ltot_max;
-            double R_tab[9][9][9][9] = {};
-            double pow_neg2rho = 1.0;
-            const double neg2rho = -2.0 * rho;
-            for (int m = 0; m <= Ltot_max; ++m) {
-                R_tab[m][0][0][0] = pow_neg2rho * Fm[m];
-                pow_neg2rho *= neg2rho;
-            }
-            for (int m = Ltot_max - 1; m >= 0; --m) {
-                const int max_tuv = Ltot_max - m;
-                for (int t = 1; t <= Rmax && t <= max_tuv; ++t) {
-                    R_tab[m][t][0][0] = PQ[0] * R_tab[m+1][t-1][0][0];
-                    if (t >= 2) R_tab[m][t][0][0] += (t-1) * R_tab[m+1][t-2][0][0];
-                }
-                for (int t = 0; t <= Rmax && t <= max_tuv; ++t)
-                    for (int u = 1; u <= Rmax && t+u <= max_tuv; ++u) {
-                        R_tab[m][t][u][0] = PQ[1] * R_tab[m+1][t][u-1][0];
-                        if (u >= 2) R_tab[m][t][u][0] += (u-1) * R_tab[m+1][t][u-2][0];
+            for (int r = 0; r < C.n_prim; ++r) {
+                for (int s = 0; s < D.n_prim; ++s) {
+                    const double ac = C.alpha[r], ad = D.alpha[s];
+                    const double gamma2 = ac + ad;
+                    const double inv2g2 = 0.5 / gamma2;
+                    const double delta = gamma1 + gamma2;
+                    const double rho = gamma1 * gamma2 / delta;
+
+                    double Q[3], QC[3], QD[3], PQ[3];
+                    double R2_CD = 0.0, PQ2 = 0.0;
+                    for (int d = 0; d < 3; ++d) {
+                        Q[d] = (ac * C.center[d] + ad * D.center[d]) / gamma2;
+                        QC[d] = Q[d] - C.center[d];
+                        QD[d] = Q[d] - D.center[d];
+                        PQ[d] = P[d] - Q[d];
+                        const double dCD = C.center[d] - D.center[d];
+                        R2_CD += dCD * dCD;
+                        PQ2 += PQ[d] * PQ[d];
                     }
-                for (int t = 0; t <= Rmax && t <= max_tuv; ++t)
-                    for (int u = 0; u <= Rmax && t+u <= max_tuv; ++u)
-                        for (int v = 1; v <= Rmax && t+u+v <= max_tuv; ++v) {
-                            R_tab[m][t][u][v] = PQ[2] * R_tab[m+1][t][u][v-1];
-                            if (v >= 2) R_tab[m][t][u][v] += (v-1) * R_tab[m+1][t][u][v-2];
+                    const double K_CD = std::exp(-(ac * ad / gamma2) * R2_CD);
+                    const double T_pq = rho * PQ2;
+
+                    const double prefactor = bra_fac_gen * C.coeff[r]
+                                             * D.coeff[s] * K_CD
+                                             / (gamma2 * std::sqrt(delta));
+                    if (std::abs(prefactor) < 1e-15)
+                        continue;
+
+                    double Fm[9]; // generous upper bound for high-l shells
+                    boys_fn_vec(T_pq, Ltot_max, Fm);
+
+                    double E_ket[3][2][2][3];
+                    for (int d = 0; d < 3; ++d) {
+                        E_ket[d][0][0][0] = 1.0;
+                        E_ket[d][0][0][1] = 0.0;
+                        E_ket[d][0][0][2] = 0.0;
+                        E_ket[d][1][0][0] = QC[d];
+                        E_ket[d][1][0][1] = inv2g2;
+                        E_ket[d][1][0][2] = 0.0;
+                        E_ket[d][0][1][0] = QD[d];
+                        E_ket[d][0][1][1] = inv2g2;
+                        E_ket[d][0][1][2] = 0.0;
+                        E_ket[d][1][1][0] = QC[d] * QD[d] + inv2g2;
+                        E_ket[d][1][1][1] = inv2g2 * (QC[d] + QD[d]);
+                        E_ket[d][1][1][2] = inv2g2 * inv2g2;
+                    }
+
+                    const int Rmax = Ltot_max;
+                    double R_tab[9][9][9][9] = {};
+                    double pow_neg2rho = 1.0;
+                    const double neg2rho = -2.0 * rho;
+                    for (int m = 0; m <= Ltot_max; ++m) {
+                        R_tab[m][0][0][0] = pow_neg2rho * Fm[m];
+                        pow_neg2rho *= neg2rho;
+                    }
+                    for (int m = Ltot_max - 1; m >= 0; --m) {
+                        const int max_tuv = Ltot_max - m;
+                        for (int t = 1; t <= Rmax && t <= max_tuv; ++t) {
+                            R_tab[m][t][0][0] =
+                                PQ[0] * R_tab[m + 1][t - 1][0][0];
+                            if (t >= 2)
+                                R_tab[m][t][0][0] +=
+                                    (t - 1) * R_tab[m + 1][t - 2][0][0];
                         }
-            }
+                        for (int t = 0; t <= Rmax && t <= max_tuv; ++t)
+                            for (int u = 1; u <= Rmax && t + u <= max_tuv;
+                                 ++u) {
+                                R_tab[m][t][u][0] =
+                                    PQ[1] * R_tab[m + 1][t][u - 1][0];
+                                if (u >= 2)
+                                    R_tab[m][t][u][0] +=
+                                        (u - 1) * R_tab[m + 1][t][u - 2][0];
+                            }
+                        for (int t = 0; t <= Rmax && t <= max_tuv; ++t)
+                            for (int u = 0; u <= Rmax && t + u <= max_tuv; ++u)
+                                for (int v = 1;
+                                     v <= Rmax && t + u + v <= max_tuv; ++v) {
+                                    R_tab[m][t][u][v] =
+                                        PQ[2] * R_tab[m + 1][t][u][v - 1];
+                                    if (v >= 2)
+                                        R_tab[m][t][u][v] +=
+                                            (v - 1) * R_tab[m + 1][t][u][v - 2];
+                                }
+                    }
 
-            for (int ia = 0; ia < na; ++ia) {
-                const int* a_ang = a_ang_tbl[ia];
-                for (int ib = 0; ib < nb; ++ib) {
-                    const int* b_ang = b_ang_tbl[ib];
-                    const int Lx1 = a_ang[0] + b_ang[0];
-                    const int Ly1 = a_ang[1] + b_ang[1];
-                    const int Lz1 = a_ang[2] + b_ang[2];
-                    double* out_ab = out + (ia * nb + ib) * (nc * nd);
+                    for (int ia = 0; ia < na; ++ia) {
+                        const int* a_ang = a_ang_tbl[ia];
+                        for (int ib = 0; ib < nb; ++ib) {
+                            const int* b_ang = b_ang_tbl[ib];
+                            const int Lx1 = a_ang[0] + b_ang[0];
+                            const int Ly1 = a_ang[1] + b_ang[1];
+                            const int Lz1 = a_ang[2] + b_ang[2];
+                            double* out_ab = out + (ia * nb + ib) * (nc * nd);
 
-                    for (int ic = 0; ic < nc; ++ic) {
-                        const int* c_ang = c_ang_tbl[ic];
-                        for (int id = 0; id < nd; ++id) {
-                            const int* d_ang = d_ang_tbl[id];
-                            const int Lx2 = c_ang[0] + d_ang[0];
-                            const int Ly2 = c_ang[1] + d_ang[1];
-                            const int Lz2 = c_ang[2] + d_ang[2];
+                            for (int ic = 0; ic < nc; ++ic) {
+                                const int* c_ang = c_ang_tbl[ic];
+                                for (int id = 0; id < nd; ++id) {
+                                    const int* d_ang = d_ang_tbl[id];
+                                    const int Lx2 = c_ang[0] + d_ang[0];
+                                    const int Ly2 = c_ang[1] + d_ang[1];
+                                    const int Lz2 = c_ang[2] + d_ang[2];
 
-                            double val = 0.0;
-                            for (int t = 0; t <= Lx1; ++t) {
-                                const double Ex1 = E_bra[0][a_ang[0]][b_ang[0]][t];
-                                for (int u = 0; u <= Ly1; ++u) {
-                                    const double Exy1 = Ex1 * E_bra[1][a_ang[1]][b_ang[1]][u];
-                                    for (int v = 0; v <= Lz1; ++v) {
-                                        const double e1 = Exy1 * E_bra[2][a_ang[2]][b_ang[2]][v];
-                                        for (int tau = 0; tau <= Lx2; ++tau) {
-                                            const double Ex2 = e1 * E_ket[0][c_ang[0]][d_ang[0]][tau];
-                                            for (int nu = 0; nu <= Ly2; ++nu) {
-                                                const double Exy2 = Ex2 * E_ket[1][c_ang[1]][d_ang[1]][nu];
-                                                for (int phi = 0; phi <= Lz2; ++phi) {
-                                                    const double e2 = Exy2 * E_ket[2][c_ang[2]][d_ang[2]][phi];
-                                                    const int sign = ((tau + nu + phi) & 1) ? -1 : 1;
-                                                    val += e2 * sign * R_tab[0][t+tau][u+nu][v+phi];
+                                    double val = 0.0;
+                                    for (int t = 0; t <= Lx1; ++t) {
+                                        const double Ex1 =
+                                            E_bra[0][a_ang[0]][b_ang[0]][t];
+                                        for (int u = 0; u <= Ly1; ++u) {
+                                            const double Exy1 =
+                                                Ex1
+                                                * E_bra[1][a_ang[1]][b_ang[1]]
+                                                       [u];
+                                            for (int v = 0; v <= Lz1; ++v) {
+                                                const double e1 =
+                                                    Exy1
+                                                    * E_bra[2][a_ang[2]]
+                                                           [b_ang[2]][v];
+                                                for (int tau = 0; tau <= Lx2;
+                                                     ++tau) {
+                                                    const double Ex2 =
+                                                        e1
+                                                        * E_ket[0][c_ang[0]]
+                                                               [d_ang[0]][tau];
+                                                    for (int nu = 0; nu <= Ly2;
+                                                         ++nu) {
+                                                        const double Exy2 =
+                                                            Ex2
+                                                            * E_ket[1][c_ang[1]]
+                                                                   [d_ang[1]]
+                                                                   [nu];
+                                                        for (int phi = 0;
+                                                             phi <= Lz2;
+                                                             ++phi) {
+                                                            const double e2 =
+                                                                Exy2
+                                                                * E_ket
+                                                                    [2]
+                                                                    [c_ang[2]]
+                                                                    [d_ang[2]]
+                                                                    [phi];
+                                                            const int sign =
+                                                                ((tau + nu
+                                                                  + phi)
+                                                                 & 1)
+                                                                    ? -1
+                                                                    : 1;
+                                                            val +=
+                                                                e2 * sign
+                                                                * R_tab[0]
+                                                                       [t + tau]
+                                                                       [u + nu]
+                                                                       [v
+                                                                        + phi];
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
                                     }
+                                    out_ab[ic * nd + id] += prefactor * val;
                                 }
                             }
-                            out_ab[ic * nd + id] += prefactor * val;
                         }
                     }
-                }
-            }
-          } // s
-        } // r
-      } // q
+                } // s
+            } // r
+        } // q
     } // p
 }
 
@@ -1709,9 +1870,8 @@ static void eri_blk_general(const ShellBlock& A, const ShellBlock& B,
 /// it beats Rys by ~1.5× for pure s-shells because a 1-root Rys
 /// quadrature with allocation overhead is slower than a direct
 /// F_0(T)-sum in that corner of the parameter space.
-void eri_block(const ShellBlock& A, const ShellBlock& B,
-               const ShellBlock& C, const ShellBlock& D,
-               double* out) {
+void eri_block(const ShellBlock& A, const ShellBlock& B, const ShellBlock& C,
+               const ShellBlock& D, double* out) {
     if (A.l == 0 && B.l == 0 && C.l == 0 && D.l == 0) {
         return eri_blk_ss_ss(A, B, C, D, out);
     }

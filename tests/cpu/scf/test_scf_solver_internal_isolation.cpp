@@ -16,9 +16,9 @@
 
 #ifdef ATV_HAS_RHF
 
-#include <gtest/gtest.h>
 #include <cstdio>
 #include <fstream>
+#include <gtest/gtest.h>
 #include <sstream>
 #include <string>
 #include <type_traits>
@@ -42,19 +42,22 @@ static_assert(
     !std::is_base_of_v<cpu::ComponentBase, cpu::scf::internal::DIISMixer>,
     "internal::DIISMixer must not inherit cpu::ComponentBase");
 static_assert(
-    !std::is_base_of_v<cpu::ComponentBase, cpu::scf::internal::DualConvergenceCheck>,
+    !std::is_base_of_v<cpu::ComponentBase,
+                       cpu::scf::internal::DualConvergenceCheck>,
     "internal::DualConvergenceCheck must not inherit cpu::ComponentBase");
 static_assert(
     !std::is_base_of_v<cpu::ComponentBase, cpu::scf::internal::EigenSolver>,
     "internal::EigenSolver must not inherit cpu::ComponentBase");
 static_assert(
-    !std::is_base_of_v<cpu::ComponentBase, cpu::scf::internal::HamiltonianBuilder>,
+    !std::is_base_of_v<cpu::ComponentBase,
+                       cpu::scf::internal::HamiltonianBuilder>,
     "internal::HamiltonianBuilder must not inherit cpu::ComponentBase");
 
 TEST(SCFSolverInternalIsolation, NotComponentBaseSubclasses) {
     // The static_asserts above are the load-bearing check; this test exists
     // so ctest reports a single named pass on this invariant.
-    SUCCEED() << "static_assert: no internal helper inherits cpu::ComponentBase";
+    SUCCEED()
+        << "static_assert: no internal helper inherits cpu::ComponentBase";
 }
 
 // ── Grep gate: facade-public headers must not include internal/*.h ──
@@ -67,15 +70,18 @@ void collect_offenders(const std::string& dir, std::vector<std::string>& bad) {
     // Use a tiny shell-out — the test runtime does not have <filesystem>
     // recursion turned on across all compilers we support.
     std::string cmd =
-        "grep -rln '#include[ \\t]*\"atomiverse/cpu/scf/internal/' " + dir + " 2>/dev/null";
+        "grep -rln '#include[ \\t]*\"atomiverse/cpu/scf/internal/' " + dir
+        + " 2>/dev/null";
     FILE* p = popen(cmd.c_str(), "r");
     ASSERT_NE(p, nullptr);
     char buf[1024];
     while (std::fgets(buf, sizeof(buf), p)) {
         std::string line(buf);
-        if (!line.empty() && line.back() == '\n') line.pop_back();
+        if (!line.empty() && line.back() == '\n')
+            line.pop_back();
         // Skip files inside the internal/ subtree itself.
-        if (line.find("/internal/") != std::string::npos) continue;
+        if (line.find("/internal/") != std::string::npos)
+            continue;
         bad.push_back(line);
     }
     pclose(p);
@@ -85,7 +91,8 @@ const char* find_repo_root() {
     // The test binary is run from the repo root by ctest. Verify by
     // probing for the canonical CLAUDE.md.
     std::ifstream probe("CLAUDE.md");
-    if (probe.good()) return ".";
+    if (probe.good())
+        return ".";
     return nullptr;
 }
 
@@ -102,11 +109,12 @@ TEST(SCFSolverInternalIsolation, FacadePublicHeadersDoNotIncludeInternal) {
     collect_offenders("include/atomiverse", bad);
     EXPECT_TRUE(bad.empty())
         << "facade-public headers must not #include cpu/scf/internal/*.h. "
-        << "Offending files:\n  " << ([&]{
-            std::ostringstream s;
-            for (auto& b : bad) s << b << "\n  ";
-            return s.str();
-        })();
+        << "Offending files:\n  " << ([&] {
+               std::ostringstream s;
+               for (auto& b : bad)
+                   s << b << "\n  ";
+               return s.str();
+           })();
 }
 
 #endif // ATV_HAS_RHF

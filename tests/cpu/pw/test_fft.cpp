@@ -1,7 +1,7 @@
 /// @file test_fft.cpp
-#include <gtest/gtest.h>
-#include "atomiverse/cpu/pw/internal/fft.h"
 #include "atomiverse/core/real.h"
+#include "atomiverse/cpu/pw/internal/fft.h"
+#include <gtest/gtest.h>
 #include <random>
 #include <vector>
 
@@ -12,12 +12,13 @@ TEST(FFT, RoundTrip) {
     int nx = 12, ny = 12, nz = 12;
     FFTPlan3D plan(nx, ny, nz);
     int nr = nx * ny * nz;
-    int nc = (nx/2+1) * ny * nz;
+    int nc = (nx / 2 + 1) * ny * nz;
 
     std::vector<Real> orig(nr);
     std::mt19937 rng(42);
     std::uniform_real_distribution<Real> dist(-1, 1);
-    for (int i = 0; i < nr; ++i) orig[i] = dist(rng);
+    for (int i = 0; i < nr; ++i)
+        orig[i] = dist(rng);
 
     auto* cbuf = fftw_alloc_complex(static_cast<size_t>(nc));
     std::vector<Real> back(nr);

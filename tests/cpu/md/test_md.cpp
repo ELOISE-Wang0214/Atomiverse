@@ -1,44 +1,40 @@
 /// @file tests/cpu/md/test_md.cpp
 /// @brief Unit and integration tests for CPU MD backend components.
 
-#include <gtest/gtest.h>
 #include <cmath>
+#include <gtest/gtest.h>
 
+#include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/fix_langevin.h"
-#include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/cpu/md/lj.h"
 #include "atomiverse/cpu/md/init.h"
+#include "atomiverse/cpu/md/lj.h"
+#include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/mpi/halo_exchange.h"
+#include "atomiverse/cpu/md/neighbor_list.h"
 #include "atomiverse/cpu/md/nose_hoover.h"
 #include "atomiverse/cpu/md/nose_hoover_npt.h"
 #include "atomiverse/cpu/md/nve_limit.h"
-#include "atomiverse/cpu/md/neighbor_list.h"
 #include "atomiverse/cpu/md/pair_list.h"
+#include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/md/virial_stress.h"
-#include "atomiverse/cpu/recorder/thermo.h"
 #include "atomiverse/cpu/potentials/harmonic_bond.h"
-#include "atomiverse/cpu/frame.h"
-#include "atomiverse/core/units.h"
-#include "atomiverse/core/mat3.h"
+#include "atomiverse/cpu/recorder/thermo.h"
 
 using namespace ATV;
 
 // ── Fixture: FCC Argon system ───────────────────────────────────────
 
 class CpuMdTest : public ::testing::Test {
-protected:
+  protected:
     static cpu::Frame make_fcc_argon(int n_cells, double lattice_const) {
         int atoms_per_cell = 4;
         int n_atoms = n_cells * n_cells * n_cells * atoms_per_cell;
         cpu::Frame frame(n_atoms);
 
         double basis[4][3] = {
-            {0.0, 0.0, 0.0},
-            {0.5, 0.5, 0.0},
-            {0.5, 0.0, 0.5},
-            {0.0, 0.5, 0.5}
-        };
+            {0.0, 0.0, 0.0}, {0.5, 0.5, 0.0}, {0.5, 0.0, 0.5}, {0.0, 0.5, 0.5}};
 
         int idx = 0;
         for (int ix = 0; ix < n_cells; ++ix)
@@ -93,9 +89,14 @@ TEST_F(CpuMdTest, ZeroForces) {
 
 TEST_F(CpuMdTest, KineticEnergy) {
     cpu::Frame frame(2);
-    frame.atoms.mass[0] = double(1);  frame.atoms.mass[1] = double(1);
-    frame.atoms.vx[0] = double(1);   frame.atoms.vy[0] = double(0); frame.atoms.vz[0] = double(0);
-    frame.atoms.vx[1] = double(0);   frame.atoms.vy[1] = double(1); frame.atoms.vz[1] = double(0);
+    frame.atoms.mass[0] = double(1);
+    frame.atoms.mass[1] = double(1);
+    frame.atoms.vx[0] = double(1);
+    frame.atoms.vy[0] = double(0);
+    frame.atoms.vz[0] = double(0);
+    frame.atoms.vx[1] = double(0);
+    frame.atoms.vy[1] = double(1);
+    frame.atoms.vz[1] = double(0);
     frame.box = Mat3::cubic(10.0);
     frame.kinetic = 0;
 
@@ -105,8 +106,8 @@ TEST_F(CpuMdTest, KineticEnergy) {
     cpu::md::KineticEnergy ke;
     ke.launch(lctx);
 
-    EXPECT_NEAR(static_cast<double>(frame.kinetic),
-                static_cast<double>(kMvv2e), 1e-5);
+    EXPECT_NEAR(static_cast<double>(frame.kinetic), static_cast<double>(kMvv2e),
+                1e-5);
 }
 
 // ── LJ force ────────────────────────────────────────────────────────
@@ -118,9 +119,14 @@ TEST_F(CpuMdTest, LjAnalyticForce) {
     double cutoff = double(8.0);
 
     double r = double(4.0);
-    frame.atoms.x[0] = double(0); frame.atoms.y[0] = double(0); frame.atoms.z[0] = double(0);
-    frame.atoms.x[1] = r;       frame.atoms.y[1] = double(0); frame.atoms.z[1] = double(0);
-    frame.atoms.mass[0] = double(39.948); frame.atoms.mass[1] = double(39.948);
+    frame.atoms.x[0] = double(0);
+    frame.atoms.y[0] = double(0);
+    frame.atoms.z[0] = double(0);
+    frame.atoms.x[1] = r;
+    frame.atoms.y[1] = double(0);
+    frame.atoms.z[1] = double(0);
+    frame.atoms.mass[0] = double(39.948);
+    frame.atoms.mass[1] = double(39.948);
     frame.box = Mat3::cubic(20.0);
     frame.energy = 0;
 
@@ -139,8 +145,8 @@ TEST_F(CpuMdTest, LjAnalyticForce) {
     double sig_r = static_cast<double>(sigma) / static_cast<double>(r);
     double sig_r6 = sig_r * sig_r * sig_r * sig_r * sig_r * sig_r;
     double sig_r12 = sig_r6 * sig_r6;
-    double f_analytic = 24.0 * static_cast<double>(epsilon) / static_cast<double>(r)
-                        * (2.0 * sig_r12 - sig_r6);
+    double f_analytic = 24.0 * static_cast<double>(epsilon)
+                        / static_cast<double>(r) * (2.0 * sig_r12 - sig_r6);
 
     EXPECT_NEAR(std::abs(static_cast<double>(frame.atoms.fx[0])),
                 std::abs(f_analytic), 1e-8);
@@ -158,7 +164,9 @@ TEST_F(CpuMdTest, ForceSumZero) {
 
     int n = frame.atoms.size();
     for (int i = 0; i < n; ++i) {
-        frame.atoms.fx[i] = 0; frame.atoms.fy[i] = 0; frame.atoms.fz[i] = 0;
+        frame.atoms.fx[i] = 0;
+        frame.atoms.fy[i] = 0;
+        frame.atoms.fz[i] = 0;
     }
 
     cpu::md::NeighborList<> nlist(kCutoff);
@@ -203,15 +211,23 @@ TEST_F(CpuMdTest, CellListPairCount) {
             double dx = frame.atoms.x[i] - frame.atoms.x[j];
             double dy = frame.atoms.y[i] - frame.atoms.y[j];
             double dz = frame.atoms.z[i] - frame.atoms.z[j];
-            double lx = frame.box(0, 0), ly = frame.box(1, 1), lz = frame.box(2, 2);
-            if (dx >  lx * double(0.5)) dx -= lx;
-            if (dx < -lx * double(0.5)) dx += lx;
-            if (dy >  ly * double(0.5)) dy -= ly;
-            if (dy < -ly * double(0.5)) dy += ly;
-            if (dz >  lz * double(0.5)) dz -= lz;
-            if (dz < -lz * double(0.5)) dz += lz;
+            double lx = frame.box(0, 0), ly = frame.box(1, 1),
+                   lz = frame.box(2, 2);
+            if (dx > lx * double(0.5))
+                dx -= lx;
+            if (dx < -lx * double(0.5))
+                dx += lx;
+            if (dy > ly * double(0.5))
+                dy -= ly;
+            if (dy < -ly * double(0.5))
+                dy += ly;
+            if (dz > lz * double(0.5))
+                dz -= lz;
+            if (dz < -lz * double(0.5))
+                dz += lz;
             double r2 = dx * dx + dy * dy + dz * dz;
-            if (r2 < rc_skin_sq) ++bf_count;
+            if (r2 < rc_skin_sq)
+                ++bf_count;
         }
     }
 
@@ -249,10 +265,10 @@ TEST_F(CpuMdTest, CellListShrinkingNActive) {
 
     for (int idx = 0; idx < pairs_shrink.total_pairs; ++idx) {
         const int j = pairs_shrink.neighbors[idx];
-        ASSERT_GE(j, 0)        << "negative neighbor index";
-        ASSERT_LT(j, n_shrink) << "neighbor index " << j
-                                << " >= n_active=" << n_shrink
-                                << " (stale binned_atoms_ leaked)";
+        ASSERT_GE(j, 0) << "negative neighbor index";
+        ASSERT_LT(j, n_shrink)
+            << "neighbor index " << j << " >= n_active=" << n_shrink
+            << " (stale binned_atoms_ leaked)";
     }
 }
 
@@ -330,7 +346,7 @@ TEST_F(CpuMdTest, CellListMultiRankMigrationCycle) {
     // new atom positions into slots [n_owners, n_with_ghost) -- the real
     // framework's HaloExchangeForward does this.
     for (int i = n_owners; i < n_with_ghost; ++i) {
-        frame.atoms.x[i] = frame.atoms.x[i - n_owners] - frame.box(0,0);
+        frame.atoms.x[i] = frame.atoms.x[i - n_owners] - frame.box(0, 0);
         frame.atoms.y[i] = frame.atoms.y[i - n_owners];
         frame.atoms.z[i] = frame.atoms.z[i - n_owners];
     }
@@ -361,8 +377,12 @@ TEST_F(CpuMdTest, CellListMultiRankMigrationCycle) {
 /// land in adjacent cells, or relies on something else for PBC.
 TEST_F(CpuMdTest, CellListPbcPairAcrossEdge) {
     cpu::Frame frame(2);
-    frame.atoms.x[0] = 0.5;  frame.atoms.y[0] = 1.0; frame.atoms.z[0] = 1.0;
-    frame.atoms.x[1] = 29.5; frame.atoms.y[1] = 1.0; frame.atoms.z[1] = 1.0;
+    frame.atoms.x[0] = 0.5;
+    frame.atoms.y[0] = 1.0;
+    frame.atoms.z[0] = 1.0;
+    frame.atoms.x[1] = 29.5;
+    frame.atoms.y[1] = 1.0;
+    frame.atoms.z[1] = 1.0;
     for (int i = 0; i < 2; ++i) {
         frame.atoms.mass[i] = 1.0;
     }
@@ -421,8 +441,8 @@ TEST_F(CpuMdTest, NveEnergyConservation) {
         sim.add(cpu::md::VelocityVerlet{dt});
         sim.add(cpu::md::InitVelocity{double(50.0), 42});
         sim.on(ATV::md::Phase::force)
-           .add(cpu::md::NeighborList<>{kCutoff}, -10)
-           .add(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
+            .add(cpu::md::NeighborList<>{kCutoff}, -10)
+            .add(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
         sim.build();
         sim.run(frame, 100);
     }
@@ -433,8 +453,8 @@ TEST_F(CpuMdTest, NveEnergyConservation) {
         cpu::md::MD sim;
         sim.add(cpu::md::VelocityVerlet{dt});
         sim.on(ATV::md::Phase::force)
-           .add(cpu::md::NeighborList<>{kCutoff}, -10)
-           .add(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
+            .add(cpu::md::NeighborList<>{kCutoff}, -10)
+            .add(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
         sim.build();
         sim.run(frame, 100);
     }
@@ -455,9 +475,14 @@ TEST_F(CpuMdTest, NveEnergyConservation) {
 
 TEST_F(CpuMdTest, BondedForce) {
     cpu::Frame frame(2);
-    frame.atoms.x[0] = double(0); frame.atoms.y[0] = double(0); frame.atoms.z[0] = double(0);
-    frame.atoms.x[1] = double(1.5); frame.atoms.y[1] = double(0); frame.atoms.z[1] = double(0);
-    frame.atoms.mass[0] = double(12); frame.atoms.mass[1] = double(12);
+    frame.atoms.x[0] = double(0);
+    frame.atoms.y[0] = double(0);
+    frame.atoms.z[0] = double(0);
+    frame.atoms.x[1] = double(1.5);
+    frame.atoms.y[1] = double(0);
+    frame.atoms.z[1] = double(0);
+    frame.atoms.mass[0] = double(12);
+    frame.atoms.mass[1] = double(12);
     frame.box = Mat3::cubic(20.0);
 
     frame.bonds.atomi = xt::xtensor<int, 1>({int(1)});
@@ -491,37 +516,45 @@ TEST_F(CpuMdTest, BondedForce) {
 
 TEST_F(CpuMdTest, NveLimitCapsHotVelocity) {
     cpu::Frame frame(2);
-    frame.atoms.x[0] = 0; frame.atoms.y[0] = 0; frame.atoms.z[0] = 0;
-    frame.atoms.x[1] = 5; frame.atoms.y[1] = 0; frame.atoms.z[1] = 0;
-    frame.atoms.mass[0] = 1.0; frame.atoms.mass[1] = 1.0;
+    frame.atoms.x[0] = 0;
+    frame.atoms.y[0] = 0;
+    frame.atoms.z[0] = 0;
+    frame.atoms.x[1] = 5;
+    frame.atoms.y[1] = 0;
+    frame.atoms.z[1] = 0;
+    frame.atoms.mass[0] = 1.0;
+    frame.atoms.mass[1] = 1.0;
     // pre-existing huge velocity in +x: |v| = 10 Å/fs
     frame.atoms.vx[0] = 10.0;
     frame.box = Mat3::cubic(20.0);
 
     const double dt = 0.5;
-    const double xmax = 0.05;     // → vmax = 0.1 Å/fs
+    const double xmax = 0.05; // → vmax = 0.1 Å/fs
     cpu::md::NVELimit limit(dt, xmax);
 
     cpu::Context ctx;
-    cpu::LaunchContext lctx_init{ctx, frame, static_cast<int>(ATV::md::Phase::initial_integrate), 0};
+    cpu::LaunchContext lctx_init{
+        ctx, frame, static_cast<int>(ATV::md::Phase::initial_integrate), 0};
     limit.launch(lctx_init);
 
     const double vmax = xmax / dt;
     const double v_after = std::sqrt(frame.atoms.vx[0] * frame.atoms.vx[0]
-                                   + frame.atoms.vy[0] * frame.atoms.vy[0]
-                                   + frame.atoms.vz[0] * frame.atoms.vz[0]);
-    EXPECT_NEAR(v_after, vmax, 1e-10) << "NVELimit failed to cap |v| <= xmax/dt";
+                                     + frame.atoms.vy[0] * frame.atoms.vy[0]
+                                     + frame.atoms.vz[0] * frame.atoms.vz[0]);
+    EXPECT_NEAR(v_after, vmax, 1e-10)
+        << "NVELimit failed to cap |v| <= xmax/dt";
 }
 
 TEST_F(CpuMdTest, NveLimitNoCapBelowThreshold) {
     cpu::Frame frame(1);
     frame.atoms.mass[0] = 1.0;
-    frame.atoms.vx[0] = 0.05;     // |v| = 0.05, vmax = 0.1 -> no cap
+    frame.atoms.vx[0] = 0.05; // |v| = 0.05, vmax = 0.1 -> no cap
     frame.box = Mat3::cubic(20.0);
 
     cpu::md::NVELimit limit(0.5, 0.05);
     cpu::Context ctx;
-    cpu::LaunchContext lctx{ctx, frame, static_cast<int>(ATV::md::Phase::final_integrate), 0};
+    cpu::LaunchContext lctx{
+        ctx, frame, static_cast<int>(ATV::md::Phase::final_integrate), 0};
     limit.launch(lctx);
     EXPECT_NEAR(static_cast<double>(frame.atoms.vx[0]), 0.05, 1e-12);
 }
@@ -536,12 +569,13 @@ TEST_F(CpuMdTest, NveLimitNoCapBelowThreshold) {
 TEST_F(CpuMdTest, FixLangevinReachesEquipartition) {
     const int n_atoms = 256;
     const double T_target = 300.0;
-    const double damp     = 50.0;        // fs
-    const double dt       = 1.0;         // fs
-    const double mass     = 16.0;        // amu
+    const double damp = 50.0; // fs
+    const double dt = 1.0;    // fs
+    const double mass = 16.0; // amu
 
     auto frame = make_fcc_argon(4, 4.0); // 256 atoms, neutral box
-    for (int i = 0; i < n_atoms; ++i) frame.atoms.mass[i] = mass;
+    for (int i = 0; i < n_atoms; ++i)
+        frame.atoms.mass[i] = mass;
 
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{dt});
@@ -549,14 +583,14 @@ TEST_F(CpuMdTest, FixLangevinReachesEquipartition) {
                                  /*seed=*/12345});
     sim.build();
 
-    sim.run(frame, 4000);  // ~80 damping times -- well-equilibrated
+    sim.run(frame, 4000); // ~80 damping times -- well-equilibrated
 
     // Average KE from current velocities (no time integration, just sample).
     double KE = 0;
     for (int i = 0; i < n_atoms; ++i) {
-        const double v2 = frame.atoms.vx[i]*frame.atoms.vx[i]
-                        + frame.atoms.vy[i]*frame.atoms.vy[i]
-                        + frame.atoms.vz[i]*frame.atoms.vz[i];
+        const double v2 = frame.atoms.vx[i] * frame.atoms.vx[i]
+                          + frame.atoms.vy[i] * frame.atoms.vy[i]
+                          + frame.atoms.vz[i] * frame.atoms.vz[i];
         KE += 0.5 * mass * v2;
     }
     KE *= kMvv2e;
@@ -572,26 +606,28 @@ TEST_F(CpuMdTest, FixLangevinReachesEquipartition) {
 
 TEST_F(CpuMdTest, NoseHooverNptRelaxesPressure) {
     // Slightly compressed FCC argon -- LJ pair virial drives P > 0.
-    auto frame = make_fcc_argon(4, 5.1);  // a < equilibrium for argon
+    auto frame = make_fcc_argon(4, 5.1); // a < equilibrium for argon
     const int n = frame.atoms.size();
-    for (int i = 0; i < n; ++i) frame.atoms.mass[i] = 39.948;
+    for (int i = 0; i < n; ++i)
+        frame.atoms.mass[i] = 39.948;
 
-    const double dt    = 1.0;
+    const double dt = 1.0;
     const double T_tgt = 100.0;
     const double tau_T = 100.0;
     const double tau_P = 1000.0;
 
     cpu::md::MD sim;
     sim.add(cpu::md::InitVelocity{T_tgt, /*seed=*/777});
-    sim.add(cpu::md::NoseHooverNPT{{T_tgt, tau_T, /*P_target=*/0.0, tau_P, dt}});
+    sim.add(
+        cpu::md::NoseHooverNPT{{T_tgt, tau_T, /*P_target=*/0.0, tau_P, dt}});
     sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{kCutoff}, -10);
     sim.on(ATV::md::Phase::force).add(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
     sim.add(cpu::md::VirialStress{});
     sim.build();
 
-    const double V0 = frame.box(0,0) * frame.box(1,1) * frame.box(2,2);
+    const double V0 = frame.box(0, 0) * frame.box(1, 1) * frame.box(2, 2);
     sim.run(frame, 2000);
-    const double V1 = frame.box(0,0) * frame.box(1,1) * frame.box(2,2);
+    const double V1 = frame.box(0, 0) * frame.box(1, 1) * frame.box(2, 2);
 
     // No NaN explosion.
     for (int i = 0; i < n; ++i) {
@@ -625,11 +661,15 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionEmptyTopology) {
 TEST_F(CpuMdTest, HaloForwardBondedExtensionBondLength) {
     // Diatomic: single bond of length 1.5 Å. Extension = bond length.
     cpu::Frame frame(2);
-    frame.atoms.x[0] = 0.0; frame.atoms.y[0] = 0.0; frame.atoms.z[0] = 0.0;
-    frame.atoms.x[1] = 1.5; frame.atoms.y[1] = 0.0; frame.atoms.z[1] = 0.0;
+    frame.atoms.x[0] = 0.0;
+    frame.atoms.y[0] = 0.0;
+    frame.atoms.z[0] = 0.0;
+    frame.atoms.x[1] = 1.5;
+    frame.atoms.y[1] = 0.0;
+    frame.atoms.z[1] = 0.0;
     frame.bonds.atomi = xt::zeros<int>({1});
     frame.bonds.atomj = xt::zeros<int>({1});
-    frame.bonds.type  = xt::zeros<int>({1});
+    frame.bonds.type = xt::zeros<int>({1});
     frame.bonds.atomi[0] = 0;
     frame.bonds.atomj[0] = 1;
     const double ext =
@@ -648,7 +688,7 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionAngleSpan) {
     frame.angles.atomi = xt::zeros<int>({1});
     frame.angles.atomj = xt::zeros<int>({1});
     frame.angles.atomk = xt::zeros<int>({1});
-    frame.angles.type  = xt::zeros<int>({1});
+    frame.angles.type = xt::zeros<int>({1});
     frame.angles.atomi[0] = 0;
     frame.angles.atomj[0] = 1;
     frame.angles.atomk[0] = 2;
@@ -674,7 +714,7 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionDihedralSpan) {
     frame.dihedrals.atomj = xt::zeros<int>({1});
     frame.dihedrals.atomk = xt::zeros<int>({1});
     frame.dihedrals.atoml = xt::zeros<int>({1});
-    frame.dihedrals.type  = xt::zeros<int>({1});
+    frame.dihedrals.type = xt::zeros<int>({1});
     frame.dihedrals.atomi[0] = 0;
     frame.dihedrals.atomj[0] = 1;
     frame.dihedrals.atomk[0] = 2;
@@ -685,10 +725,10 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionDihedralSpan) {
     EXPECT_GT(ext, 3.5) << "dihedral span too small: " << ext;
     EXPECT_LT(ext, 4.2) << "dihedral span too large: " << ext;
     // The widest pair in a tuple is always i-l, not i-j / i-k / j-k / j-l / k-l.
-    const double expected = bond * std::sqrt(9.0 * std::cos(half_apex) *
-                                              std::cos(half_apex)
-                                              + std::sin(half_apex) *
-                                                std::sin(half_apex));
+    const double expected =
+        bond
+        * std::sqrt(9.0 * std::cos(half_apex) * std::cos(half_apex)
+                    + std::sin(half_apex) * std::sin(half_apex));
     EXPECT_NEAR(ext, expected, 1e-10);
 }
 
@@ -702,7 +742,7 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionMaxAcrossTupleKinds) {
     // One bond (0-1, length 1.0)
     frame.bonds.atomi = xt::zeros<int>({1});
     frame.bonds.atomj = xt::zeros<int>({1});
-    frame.bonds.type  = xt::zeros<int>({1});
+    frame.bonds.type = xt::zeros<int>({1});
     frame.bonds.atomi[0] = 0;
     frame.bonds.atomj[0] = 1;
 
@@ -717,7 +757,7 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionMaxAcrossTupleKinds) {
     frame.angles.atomi = xt::zeros<int>({1});
     frame.angles.atomj = xt::zeros<int>({1});
     frame.angles.atomk = xt::zeros<int>({1});
-    frame.angles.type  = xt::zeros<int>({1});
+    frame.angles.type = xt::zeros<int>({1});
     frame.angles.atomi[0] = 0;
     frame.angles.atomj[0] = 1;
     frame.angles.atomk[0] = 2;
@@ -726,7 +766,7 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionMaxAcrossTupleKinds) {
     frame.dihedrals.atomj = xt::zeros<int>({1});
     frame.dihedrals.atomk = xt::zeros<int>({1});
     frame.dihedrals.atoml = xt::zeros<int>({1});
-    frame.dihedrals.type  = xt::zeros<int>({1});
+    frame.dihedrals.type = xt::zeros<int>({1});
     frame.dihedrals.atomi[0] = 0;
     frame.dihedrals.atomj[0] = 1;
     frame.dihedrals.atomk[0] = 2;
@@ -747,11 +787,15 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionPeriodicBondWrap) {
     // Regression guard for the debug_amorphous 2/4-rank crash.
     cpu::Frame frame(2);
     frame.box = Mat3::cubic(80.0);
-    frame.atoms.x[0] = 0.5;  frame.atoms.y[0] = 0.0; frame.atoms.z[0] = 0.0;
-    frame.atoms.x[1] = 79.5; frame.atoms.y[1] = 0.0; frame.atoms.z[1] = 0.0;
+    frame.atoms.x[0] = 0.5;
+    frame.atoms.y[0] = 0.0;
+    frame.atoms.z[0] = 0.0;
+    frame.atoms.x[1] = 79.5;
+    frame.atoms.y[1] = 0.0;
+    frame.atoms.z[1] = 0.0;
     frame.bonds.atomi = xt::zeros<int>({1});
     frame.bonds.atomj = xt::zeros<int>({1});
-    frame.bonds.type  = xt::zeros<int>({1});
+    frame.bonds.type = xt::zeros<int>({1});
     frame.bonds.atomi[0] = 0;
     frame.bonds.atomj[0] = 1;
     const double ext =

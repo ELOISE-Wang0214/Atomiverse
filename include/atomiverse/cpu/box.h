@@ -45,7 +45,7 @@ namespace cpu {
 /// The triclinic branch uses a Cartesian↔fractional roundtrip with the
 /// cached `inv_cell`.
 class Box {
-public:
+  public:
     /// @brief Default-construct an identity box (cell = 0, ortho = true).
     Box() noexcept = default;
 
@@ -67,9 +67,7 @@ public:
     /// @brief Construct a cubic box.
     /// @param l Edge length [Angstrom].
     /// @return Cubic Box with edge length `l`.
-    static Box cubic(double l) noexcept {
-        return orthorhombic(l, l, l);
-    }
+    static Box cubic(double l) noexcept { return orthorhombic(l, l, l); }
 
     // ── Hot-path queries (always-inline, branch-free) ──────────────────
 
@@ -90,7 +88,8 @@ public:
         const double a = cell_(0, 0), b = cell_(0, 1), c = cell_(0, 2);
         const double d = cell_(1, 0), e = cell_(1, 1), f = cell_(1, 2);
         const double g = cell_(2, 0), h = cell_(2, 1), i = cell_(2, 2);
-        const double det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+        const double det =
+            a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
         return det < 0.0 ? -det : det;
     }
 
@@ -115,21 +114,30 @@ public:
     /// @param dx Cartesian x displacement [Angstrom], modified in place.
     /// @param dy Cartesian y displacement [Angstrom], modified in place.
     /// @param dz Cartesian z displacement [Angstrom], modified in place.
-    [[gnu::always_inline]] inline void
-    min_image(double& dx, double& dy, double& dz) const noexcept {
+    [[gnu::always_inline]] inline void min_image(double& dx, double& dy,
+                                                 double& dz) const noexcept {
         if (ortho_) {
             const double lx = cell_(0, 0), ly = cell_(1, 1), lz = cell_(2, 2);
-            if (dx >  half_lx_) dx -= lx;
-            if (dx < -half_lx_) dx += lx;
-            if (dy >  half_ly_) dy -= ly;
-            if (dy < -half_ly_) dy += ly;
-            if (dz >  half_lz_) dz -= lz;
-            if (dz < -half_lz_) dz += lz;
+            if (dx > half_lx_)
+                dx -= lx;
+            if (dx < -half_lx_)
+                dx += lx;
+            if (dy > half_ly_)
+                dy -= ly;
+            if (dy < -half_ly_)
+                dy += ly;
+            if (dz > half_lz_)
+                dz -= lz;
+            if (dz < -half_lz_)
+                dz += lz;
         } else {
             // Triclinic: f = inv_cell · d, f -= round(f), d = cell · f.
-            const double fx = inv_cell_(0, 0) * dx + inv_cell_(0, 1) * dy + inv_cell_(0, 2) * dz;
-            const double fy = inv_cell_(1, 0) * dx + inv_cell_(1, 1) * dy + inv_cell_(1, 2) * dz;
-            const double fz = inv_cell_(2, 0) * dx + inv_cell_(2, 1) * dy + inv_cell_(2, 2) * dz;
+            const double fx = inv_cell_(0, 0) * dx + inv_cell_(0, 1) * dy
+                              + inv_cell_(0, 2) * dz;
+            const double fy = inv_cell_(1, 0) * dx + inv_cell_(1, 1) * dy
+                              + inv_cell_(1, 2) * dz;
+            const double fz = inv_cell_(2, 0) * dx + inv_cell_(2, 1) * dy
+                              + inv_cell_(2, 2) * dz;
             const double rfx = fx - std::nearbyint(fx);
             const double rfy = fy - std::nearbyint(fy);
             const double rfz = fz - std::nearbyint(fz);
@@ -149,14 +157,17 @@ public:
     /// @param d Axis index in `[0, 2]`.
     /// @return `q` shifted by an integer multiple of `L_d` to lie in `[0, L_d)`.
     ///         If `L_d <= 0`, returns `q` unchanged.
-    [[gnu::always_inline]] inline double
-    wrap_axis(double q, int d) const noexcept {
+    [[gnu::always_inline]] inline double wrap_axis(double q,
+                                                   int d) const noexcept {
         const double L = cell_(d, d);
-        if (L <= 0.0) return q;
+        if (L <= 0.0)
+            return q;
         const double inv_L = (d == 0) ? inv_lx_ : (d == 1) ? inv_ly_ : inv_lz_;
         double w = q - std::floor(q * inv_L) * L;
-        if (w < 0.0)  w += L;
-        if (w >= L)   w -= L;
+        if (w < 0.0)
+            w += L;
+        if (w >= L)
+            w -= L;
         return w;
     }
 
@@ -164,8 +175,8 @@ public:
     /// @param x x coordinate [Angstrom], modified in place.
     /// @param y y coordinate [Angstrom], modified in place.
     /// @param z z coordinate [Angstrom], modified in place.
-    [[gnu::always_inline]] inline void
-    wrap_into(double& x, double& y, double& z) const noexcept {
+    [[gnu::always_inline]] inline void wrap_into(double& x, double& y,
+                                                 double& z) const noexcept {
         x = wrap_axis(x, 0);
         y = wrap_axis(y, 1);
         z = wrap_axis(z, 2);
@@ -225,7 +236,8 @@ public:
     /// @param i Row index in `[0, 2]`.
     /// @param j Column index in `[0, 2]`.
     /// @return `cell(i, j)` [Angstrom].
-    [[gnu::always_inline]] inline double operator()(int i, int j) const noexcept {
+    [[gnu::always_inline]] inline double operator()(int i,
+                                                    int j) const noexcept {
         return cell_(i, j);
     }
 
@@ -237,12 +249,12 @@ public:
         return *this;
     }
 
-private:
-    Mat3   cell_{};
-    Mat3   inv_cell_{};
+  private:
+    Mat3 cell_{};
+    Mat3 inv_cell_{};
     double half_lx_{0.0}, half_ly_{0.0}, half_lz_{0.0};
-    double inv_lx_{0.0},  inv_ly_{0.0},  inv_lz_{0.0};
-    bool   ortho_{true};
+    double inv_lx_{0.0}, inv_ly_{0.0}, inv_lz_{0.0};
+    bool ortho_{true};
 
     void recompute_cache_() noexcept;
 };

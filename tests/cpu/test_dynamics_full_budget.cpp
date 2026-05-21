@@ -84,5 +84,6 @@ TEST(DynamicsFullBudget, BreaksOnStopRequested) {
     d.run(frame, /*n_steps=*/10);
     // Driver runs step 0,1,2,3 — at step 3 the stopper flips
     // stop_requested=true, the driver checks after the step and breaks.
-    EXPECT_EQ(integ.step_count, 4) << "Expected break after step 3 fires stopper";
+    EXPECT_EQ(integ.step_count, 4)
+        << "Expected break after step 3 fires stopper";
 }

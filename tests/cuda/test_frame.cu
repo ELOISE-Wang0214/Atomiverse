@@ -1,11 +1,11 @@
-#include <gtest/gtest.h>
 #include <cuda_runtime.h>
+#include <gtest/gtest.h>
 
-#include "atomiverse/cuda/backend.cuh"
-#include "atomiverse/cuda/transfer.cuh"
-#include "atomiverse/cpu/transfer.h"
 #include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/transfer.h"
+#include "atomiverse/cuda/backend.cuh"
 #include "atomiverse/cuda/md/init.cuh"
+#include "atomiverse/cuda/transfer.cuh"
 #include "atomiverse/facade/stage.h"
 
 using namespace ATV;
@@ -83,19 +83,26 @@ TEST(Frame, TopologyRoundTrip) {
     // Verify counts via D2H
     int nb = 0, na = 0, nd = 0;
     cudaMemcpy(&nb, d_frame.bonds.n_bonds, sizeof(int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&na, d_frame.angles.n_angles, sizeof(int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&nd, d_frame.dihedrals.n_dihedrals, sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&na, d_frame.angles.n_angles, sizeof(int),
+               cudaMemcpyDeviceToHost);
+    cudaMemcpy(&nd, d_frame.dihedrals.n_dihedrals, sizeof(int),
+               cudaMemcpyDeviceToHost);
     EXPECT_EQ(nb, 3);
     EXPECT_EQ(na, 2);
     EXPECT_EQ(nd, 1);
 
     // Verify bond indices round-trip
     std::vector<int> host_bond_i(3), host_bond_j(3);
-    cudaMemcpy(host_bond_i.data(), d_frame.bonds.atomi, 3 * sizeof(int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(host_bond_j.data(), d_frame.bonds.atomj, 3 * sizeof(int), cudaMemcpyDeviceToHost);
-    EXPECT_EQ(host_bond_i[0], 0); EXPECT_EQ(host_bond_j[0], 1);
-    EXPECT_EQ(host_bond_i[1], 1); EXPECT_EQ(host_bond_j[1], 2);
-    EXPECT_EQ(host_bond_i[2], 2); EXPECT_EQ(host_bond_j[2], 3);
+    cudaMemcpy(host_bond_i.data(), d_frame.bonds.atomi, 3 * sizeof(int),
+               cudaMemcpyDeviceToHost);
+    cudaMemcpy(host_bond_j.data(), d_frame.bonds.atomj, 3 * sizeof(int),
+               cudaMemcpyDeviceToHost);
+    EXPECT_EQ(host_bond_i[0], 0);
+    EXPECT_EQ(host_bond_j[0], 1);
+    EXPECT_EQ(host_bond_i[1], 1);
+    EXPECT_EQ(host_bond_j[1], 2);
+    EXPECT_EQ(host_bond_i[2], 2);
+    EXPECT_EQ(host_bond_j[2], 3);
 
     // Verify host-cached metadata in cuda::Frame
     d_frame.n_atoms_ = 4;
@@ -146,7 +153,8 @@ TEST(Frame, ZeroForces) {
 
     // Set forces to 1 via host copy
     std::vector<double> ones(32, double(1));
-    cudaMemcpy(d_frame.atoms.fx, ones.data(), 32 * sizeof(double), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_frame.atoms.fx, ones.data(), 32 * sizeof(double),
+               cudaMemcpyHostToDevice);
 
     // Build + launch ZeroForces via Plan
     md::ZeroForces zf;

@@ -31,7 +31,7 @@ namespace scf {
 /// - n_occ: number of occupied orbitals
 /// - alpha: coupling strength for density feedback
 class Hamiltonian : public ComponentBase {
-public:
+  public:
     /// @brief Construct Hamiltonian builder.
     /// @param n_occ Number of occupied orbitals.
     /// @param alpha Coupling parameter for H = H0 + alpha*P.
@@ -58,10 +58,11 @@ public:
     /// @param ctx Destroy context.
     void destroy(const DestroyContext& ctx) override;
 
-private:
-    int n_occ_;     ///< Number of occupied orbitals.
-    double alpha_;    ///< Density coupling parameter.
-    void* cublas_handle_ = nullptr;  ///< cuBLAS handle (cast to cublasHandle_t in .cu).
+  private:
+    int n_occ_;    ///< Number of occupied orbitals.
+    double alpha_; ///< Density coupling parameter.
+    void* cublas_handle_ =
+        nullptr; ///< cuBLAS handle (cast to cublasHandle_t in .cu).
 };
 
 } // namespace scf

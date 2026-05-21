@@ -33,15 +33,15 @@
 namespace {
 
 constexpr double kCutoff = 6.0;
-constexpr double kEps    = 0.0104;
-constexpr double kSigma  = 3.4;
-constexpr double kSkin   = 0.3;
-constexpr double kDt     = 1.0;
+constexpr double kEps = 0.0104;
+constexpr double kSigma = 3.4;
+constexpr double kSkin = 0.3;
+constexpr double kDt = 1.0;
 
 /// @brief Per-phase (phase, order, name) signature of a compiled Plan.
 /// Two Plans are "Plan-equivalent" iff their signatures match exactly.
 struct PlanSig {
-    std::vector<std::tuple<int, std::string>> rows;  // (phase, name)
+    std::vector<std::tuple<int, std::string>> rows; // (phase, name)
 
     bool operator==(const PlanSig& o) const { return rows == o.rows; }
 };
@@ -60,8 +60,8 @@ PlanSig signature_of(const ATV::cpu::md::MD& sim) {
 std::string render(const PlanSig& s) {
     std::string out;
     for (const auto& row : s.rows) {
-        out += "  phase=" + std::to_string(std::get<0>(row)) +
-               " name=" + std::get<1>(row) + "\n";
+        out += "  phase=" + std::to_string(std::get<0>(row))
+               + " name=" + std::get<1>(row) + "\n";
     }
     return out;
 }
@@ -78,14 +78,16 @@ TEST(MDPlanEquivalence, NVELJSetApiMatchesRawAddPath) {
 
     cpu::md::MD via_raw;
     via_raw.on(md::Phase::force).add(cpu::md::LJ{kEps, kSigma, kCutoff}, 0);
-    via_raw.on(md::Phase::force).add(cpu::md::NeighborList<>{kCutoff, kSkin}, -10);
+    via_raw.on(md::Phase::force)
+        .add(cpu::md::NeighborList<>{kCutoff, kSkin}, -10);
     via_raw.add(cpu::md::VelocityVerlet{kDt});
     via_raw.build();
 
     const auto sa = signature_of(via_setters);
     const auto sr = signature_of(via_raw);
-    EXPECT_EQ(sa, sr) << "categorical setters:\n" << render(sa)
-                      << "raw add() path:\n"      << render(sr);
+    EXPECT_EQ(sa, sr) << "categorical setters:\n"
+                      << render(sa) << "raw add() path:\n"
+                      << render(sr);
 }
 
 // ─── T10: Plan equivalence — NPT (auto-VirialStress vs explicit) ─────
@@ -99,36 +101,48 @@ TEST(MDPlanEquivalence, NPTSetApiMatchesRawAddPathWithExplicitVirialStress) {
     cpu::md::MD via_setters;
     via_setters.set_pair(cpu::md::LJ{kEps, kSigma, kCutoff});
     via_setters.set_neighbor(cpu::md::NeighborList<>{kCutoff, kSkin});
-    via_setters.set_integrator(cpu::md::NoseHooverNPT{
-        {.T_target=300.0, .tau_T=100.0, .P_target=0.0, .tau_P=1000.0, .dt=kDt}});
+    via_setters.set_integrator(cpu::md::NoseHooverNPT{{.T_target = 300.0,
+                                                       .tau_T = 100.0,
+                                                       .P_target = 0.0,
+                                                       .tau_P = 1000.0,
+                                                       .dt = kDt}});
     via_setters.build();
 
     // The raw path adds VirialStress explicitly — what existing
     // tests-mpi/* tests do today.
     cpu::md::MD via_raw;
     via_raw.on(md::Phase::force).add(cpu::md::LJ{kEps, kSigma, kCutoff}, 0);
-    via_raw.on(md::Phase::force).add(cpu::md::NeighborList<>{kCutoff, kSkin}, -10);
-    via_raw.add(cpu::md::VelocityVerlet{kDt}); // placeholder integrator? no, we want NPT
+    via_raw.on(md::Phase::force)
+        .add(cpu::md::NeighborList<>{kCutoff, kSkin}, -10);
+    via_raw.add(cpu::md::VelocityVerlet{
+        kDt}); // placeholder integrator? no, we want NPT
     // Actually, swap in NPT — we mirror the via_setters integrator.
     // Reconstructing because VV was added above for clarity.
     cpu::md::MD via_raw2;
     via_raw2.on(md::Phase::force).add(cpu::md::LJ{kEps, kSigma, kCutoff}, 0);
-    via_raw2.on(md::Phase::force).add(cpu::md::NeighborList<>{kCutoff, kSkin}, -10);
-    via_raw2.add(cpu::md::NoseHooverNPT{
-        {.T_target=300.0, .tau_T=100.0, .P_target=0.0, .tau_P=1000.0, .dt=kDt}});
-    via_raw2.add(cpu::md::VirialStress{});  // explicit — what existing NPT tests do
+    via_raw2.on(md::Phase::force)
+        .add(cpu::md::NeighborList<>{kCutoff, kSkin}, -10);
+    via_raw2.add(cpu::md::NoseHooverNPT{{.T_target = 300.0,
+                                         .tau_T = 100.0,
+                                         .P_target = 0.0,
+                                         .tau_P = 1000.0,
+                                         .dt = kDt}});
+    via_raw2.add(
+        cpu::md::VirialStress{}); // explicit — what existing NPT tests do
     via_raw2.build();
 
     const auto sa = signature_of(via_setters);
     const auto sr = signature_of(via_raw2);
-    EXPECT_EQ(sa, sr) << "categorical setters:\n" << render(sa)
-                      << "raw add() path with explicit VirialStress:\n" << render(sr);
+    EXPECT_EQ(sa, sr) << "categorical setters:\n"
+                      << render(sa)
+                      << "raw add() path with explicit VirialStress:\n"
+                      << render(sr);
 }
 
 // ─── T15: add()/on() escape hatch coexists with set_* setters ───────
 
 class CustomEndOfStepHook : public ATV::cpu::ComponentBase {
-public:
+  public:
     std::string name() const override { return "custom_eos_hook"; }
     void launch(const ATV::cpu::LaunchContext&) override {}
 };
@@ -145,7 +159,7 @@ TEST(MDPlanEquivalence, CustomHookViaOnAddCoexistsWithSetters) {
 
     const auto sig = signature_of(sim);
     bool found = false;
-    int  found_phase = -1;
+    int found_phase = -1;
     for (const auto& row : sig.rows) {
         if (std::get<1>(row) == "custom_eos_hook") {
             found = true;

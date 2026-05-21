@@ -17,9 +17,9 @@
 
 #ifdef ATV_HAS_RHF
 
-#include <gtest/gtest.h>
 #include <array>
 #include <cmath>
+#include <gtest/gtest.h>
 #include <vector>
 
 #include "atomiverse/cpu/scf/native_integrals.h"
@@ -31,7 +31,7 @@ using namespace ATV::cpu::scf::native;
 
 struct PrimShell {
     int l;
-    int cart;    ///< For l=1, pick one cart component; 0 otherwise.
+    int cart; ///< For l=1, pick one cart component; 0 otherwise.
     double alpha[3];
     double coeff[3];
     int n_prim;
@@ -62,21 +62,23 @@ std::vector<double> eri_block(const PrimShell& A, const PrimShell& B,
     const auto Bb = make_shell_block(B);
     const auto Cb = make_shell_block(C);
     const auto Db = make_shell_block(D);
-    std::vector<double> out(
-        static_cast<size_t>(Ab.n_cart) * Bb.n_cart * Cb.n_cart * Db.n_cart, 0.0);
+    std::vector<double> out(static_cast<size_t>(Ab.n_cart) * Bb.n_cart
+                                * Cb.n_cart * Db.n_cart,
+                            0.0);
     rys_eri_block(Ab, Bb, Cb, Db, out.data());
     return out;
 }
 
 /// Compute the 3-axis derivative block via rys_eri_block_deriv.
 std::vector<double> deriv_block(const PrimShell& A, const PrimShell& B,
-                                 const PrimShell& C, const PrimShell& D,
-                                 int deriv_center) {
+                                const PrimShell& C, const PrimShell& D,
+                                int deriv_center) {
     const auto Ab = make_shell_block(A);
     const auto Bb = make_shell_block(B);
     const auto Cb = make_shell_block(C);
     const auto Db = make_shell_block(D);
-    const size_t n = static_cast<size_t>(Ab.n_cart) * Bb.n_cart * Cb.n_cart * Db.n_cart;
+    const size_t n =
+        static_cast<size_t>(Ab.n_cart) * Bb.n_cart * Cb.n_cart * Db.n_cart;
     std::vector<double> out(3 * n, 0.0);
     rys_eri_block_deriv(Ab, Bb, Cb, Db, deriv_center, out.data());
     return out;
@@ -91,9 +93,12 @@ PrimShell make_shell(int l, const double center[3]) {
     s.l = l;
     s.cart = 0;
     s.n_prim = 3;
-    s.alpha[0] = 3.0;  s.coeff[0] = 0.4;
-    s.alpha[1] = 1.0;  s.coeff[1] = 0.5;
-    s.alpha[2] = 0.3;  s.coeff[2] = 0.3;
+    s.alpha[0] = 3.0;
+    s.coeff[0] = 0.4;
+    s.alpha[1] = 1.0;
+    s.coeff[1] = 0.5;
+    s.alpha[2] = 0.3;
+    s.coeff[2] = 0.3;
     s.center[0] = center[0];
     s.center[1] = center[1];
     s.center[2] = center[2];
@@ -102,16 +107,16 @@ PrimShell make_shell(int l, const double center[3]) {
 
 /// Finite-difference derivative of the ERI block w.r.t. one component
 /// of one centre. Returns `(ERI(+h) - ERI(-h)) / (2h)` per integral.
-std::vector<double>
-fd_deriv_block(PrimShell A, PrimShell B, PrimShell C, PrimShell D,
-               int deriv_center, int axis, double h) {
-    PrimShell& target =
-        (deriv_center == 0) ? A :
-        (deriv_center == 1) ? B :
-        (deriv_center == 2) ? C : D;
+std::vector<double> fd_deriv_block(PrimShell A, PrimShell B, PrimShell C,
+                                   PrimShell D, int deriv_center, int axis,
+                                   double h) {
+    PrimShell& target = (deriv_center == 0)   ? A
+                        : (deriv_center == 1) ? B
+                        : (deriv_center == 2) ? C
+                                              : D;
     const double saved = target.center[axis];
     target.center[axis] = saved + h;
-    auto plus  = eri_block(A, B, C, D);
+    auto plus = eri_block(A, B, C, D);
     target.center[axis] = saved - h;
     auto minus = eri_block(A, B, C, D);
     target.center[axis] = saved;
@@ -123,17 +128,17 @@ fd_deriv_block(PrimShell A, PrimShell B, PrimShell C, PrimShell D,
 
 /// Compare analytic deriv to finite difference over all (axis, ia, ib,
 /// ic, id) combinations. Tolerance is the user-provided FD-noise floor.
-::testing::AssertionResult
-expect_close(const std::vector<double>& analytic,
-             const std::vector<double>& fd_x,
-             const std::vector<double>& fd_y,
-             const std::vector<double>& fd_z,
-             size_t n_block, double tol) {
+::testing::AssertionResult expect_close(const std::vector<double>& analytic,
+                                        const std::vector<double>& fd_x,
+                                        const std::vector<double>& fd_y,
+                                        const std::vector<double>& fd_z,
+                                        size_t n_block, double tol) {
     double max_diff = 0.0;
     int worst_axis = -1, worst_idx = -1;
     for (int axis = 0; axis < 3; ++axis) {
-        const std::vector<double>& fd =
-            (axis == 0) ? fd_x : (axis == 1) ? fd_y : fd_z;
+        const std::vector<double>& fd = (axis == 0)   ? fd_x
+                                        : (axis == 1) ? fd_y
+                                                      : fd_z;
         for (size_t i = 0; i < n_block; ++i) {
             const double a = analytic[axis * n_block + i];
             const double f = fd[i];
@@ -145,18 +150,18 @@ expect_close(const std::vector<double>& analytic,
             }
         }
     }
-    if (max_diff < tol) return ::testing::AssertionSuccess();
+    if (max_diff < tol)
+        return ::testing::AssertionSuccess();
     return ::testing::AssertionFailure()
-        << "max |analytic - FD| = " << max_diff
-        << " at axis=" << worst_axis << " idx=" << worst_idx
-        << " (tol=" << tol << ")";
+           << "max |analytic - FD| = " << max_diff << " at axis=" << worst_axis
+           << " idx=" << worst_idx << " (tol=" << tol << ")";
 }
 
 /// Run the analytic-vs-FD comparison for a given shell quartet and
 /// deriv-centre. Covers all 3 Cartesian axes in one call.
 void check_deriv_vs_fd(const PrimShell& A, const PrimShell& B,
-                       const PrimShell& C, const PrimShell& D,
-                       int deriv_center, double tol = 1e-6) {
+                       const PrimShell& C, const PrimShell& D, int deriv_center,
+                       double tol = 1e-6) {
     const auto analytic = deriv_block(A, B, C, D, deriv_center);
     const double h = 1e-4;
     const auto fd_x = fd_deriv_block(A, B, C, D, deriv_center, 0, h);
@@ -168,9 +173,9 @@ void check_deriv_vs_fd(const PrimShell& A, const PrimShell& B,
 
 // ── Shared centres ───────────────────────────────────────────────────
 
-const double RA[3] = { 0.0, 0.0, 0.0};
-const double RB[3] = { 0.9, 0.0, 0.0};
-const double RC[3] = { 0.3, 0.7, 0.0};
+const double RA[3] = {0.0, 0.0, 0.0};
+const double RB[3] = {0.9, 0.0, 0.0};
+const double RC[3] = {0.3, 0.7, 0.0};
 const double RD[3] = {-0.2, 0.1, 0.5};
 
 // ── Tests: l-combinations × deriv-centres ────────────────────────────
@@ -180,7 +185,8 @@ TEST(RysEriDeriv, SSSS_All4Centers) {
     const auto B = make_shell(0, RB);
     const auto C = make_shell(0, RC);
     const auto D = make_shell(0, RD);
-    for (int dc = 0; dc < 4; ++dc) check_deriv_vs_fd(A, B, C, D, dc);
+    for (int dc = 0; dc < 4; ++dc)
+        check_deriv_vs_fd(A, B, C, D, dc);
 }
 
 TEST(RysEriDeriv, PSSS_DerivOnP) {
@@ -224,7 +230,8 @@ TEST(RysEriDeriv, PPPP_All4Centers) {
     const auto B = make_shell(1, RB);
     const auto C = make_shell(1, RC);
     const auto D = make_shell(1, RD);
-    for (int dc = 0; dc < 4; ++dc) check_deriv_vs_fd(A, B, C, D, dc);
+    for (int dc = 0; dc < 4; ++dc)
+        check_deriv_vs_fd(A, B, C, D, dc);
 }
 
 TEST(RysEriDeriv, SPPS_BothSwaps) {
@@ -233,7 +240,8 @@ TEST(RysEriDeriv, SPPS_BothSwaps) {
     const auto B = make_shell(1, RB);
     const auto C = make_shell(0, RC);
     const auto D = make_shell(1, RD);
-    for (int dc = 0; dc < 4; ++dc) check_deriv_vs_fd(A, B, C, D, dc);
+    for (int dc = 0; dc < 4; ++dc)
+        check_deriv_vs_fd(A, B, C, D, dc);
 }
 
 // ── d-shell coverage (Phase 1 Stage A) ───────────────────────────────
@@ -311,7 +319,8 @@ TEST(RysEriDeriv, DDDD_All4Centers) {
     const auto B = make_shell(2, RB);
     const auto C = make_shell(2, RC);
     const auto D = make_shell(2, RD);
-    for (int dc = 0; dc < 4; ++dc) check_deriv_vs_fd(A, B, C, D, dc);
+    for (int dc = 0; dc < 4; ++dc)
+        check_deriv_vs_fd(A, B, C, D, dc);
 }
 
 } // namespace

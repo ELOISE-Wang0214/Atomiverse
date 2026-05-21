@@ -9,13 +9,13 @@ using namespace ATV;
 // Dummy component for testing
 
 class DummyComponent : public ComponentBase {
-public:
+  public:
     DummyComponent(std::string n) : name_(std::move(n)) {}
 
     std::string name() const override { return name_; }
     void launch(const LaunchContext&) override {}
 
-private:
+  private:
     std::string name_;
 };
 

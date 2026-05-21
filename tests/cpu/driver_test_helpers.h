@@ -40,10 +40,14 @@ namespace atv_test {
 /// Default-binds to `md::Phase::force` so callers can use plain
 /// `sim.add(NoOpForce{})`.
 class NoOpForce : public ATV::cpu::ComponentBase {
-public:
+  public:
     std::string name() const override { return "noop_force"; }
-    ATV::ComponentRole role() const override { return ATV::ComponentRole::Evaluator; }
-    ATV::Capability   capabilities() const override { return ATV::Capability::Force; }
+    ATV::ComponentRole role() const override {
+        return ATV::ComponentRole::Evaluator;
+    }
+    ATV::Capability capabilities() const override {
+        return ATV::Capability::Force;
+    }
     std::vector<ATV::DefaultBinding> default_bindings() const override {
         return {{static_cast<int>(ATV::md::Phase::force), 0}};
     }
@@ -54,20 +58,24 @@ public:
 /// assertions. Bound explicitly via `on(phase).add()` — no default
 /// bindings.
 class StubIntegrator : public ATV::cpu::ComponentBase {
-public:
+  public:
     int step_count = 0;
     std::string name() const override { return "stub_integrator"; }
-    ATV::ComponentRole role() const override { return ATV::ComponentRole::Integrator; }
+    ATV::ComponentRole role() const override {
+        return ATV::ComponentRole::Integrator;
+    }
     void launch(const ATV::cpu::LaunchContext&) override { ++step_count; }
 };
 
 /// @brief Evaluator stub advertising `Energy | Force` — satisfies both
 /// `DynamicsDriver` and `OptimizeDriver` validation. No-op launch.
 class StubForceEvaluator : public ATV::cpu::ComponentBase {
-public:
+  public:
     std::string name() const override { return "stub_force"; }
-    ATV::ComponentRole role() const override { return ATV::ComponentRole::Evaluator; }
-    ATV::Capability   capabilities() const override {
+    ATV::ComponentRole role() const override {
+        return ATV::ComponentRole::Evaluator;
+    }
+    ATV::Capability capabilities() const override {
         return ATV::Capability::Energy | ATV::Capability::Force;
     }
     void launch(const ATV::cpu::LaunchContext&) override {}
@@ -77,26 +85,32 @@ public:
 /// `EvaluateDriver` and `OptimizeDriver`, rejected by `DynamicsDriver`
 /// (no `Force`). Used to test the capability-axis validation contract.
 class StubEnergyEvaluator : public ATV::cpu::ComponentBase {
-public:
+  public:
     std::string name() const override { return "stub_energy"; }
-    ATV::ComponentRole role() const override { return ATV::ComponentRole::Evaluator; }
-    ATV::Capability   capabilities() const override { return ATV::Capability::Energy; }
+    ATV::ComponentRole role() const override {
+        return ATV::ComponentRole::Evaluator;
+    }
+    ATV::Capability capabilities() const override {
+        return ATV::Capability::Energy;
+    }
     void launch(const ATV::cpu::LaunchContext&) override {}
 };
 
 /// @brief Optimizer role stub with optional step counter.
 class StubOptimizer : public ATV::cpu::ComponentBase {
-public:
+  public:
     int step_count = 0;
     std::string name() const override { return "stub_optimizer"; }
-    ATV::ComponentRole role() const override { return ATV::ComponentRole::Optimizer; }
+    ATV::ComponentRole role() const override {
+        return ATV::ComponentRole::Optimizer;
+    }
     void launch(const ATV::cpu::LaunchContext&) override { ++step_count; }
 };
 
 /// @brief `role()` defaults to `None`. Used to confirm structural-only
 /// components don't satisfy any required role/capability slot.
 class StubBareInfra : public ATV::cpu::ComponentBase {
-public:
+  public:
     std::string name() const override { return "stub_bare"; }
     void launch(const ATV::cpu::LaunchContext&) override {}
 };

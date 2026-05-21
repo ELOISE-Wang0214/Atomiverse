@@ -72,8 +72,7 @@ constexpr int kRysMaxRoots = 7;
 /// @param out Pre-zeroed flat buffer of size
 ///            A.n_cart·B.n_cart·C.n_cart·D.n_cart.
 void rys_eri_block(const ShellBlock& A, const ShellBlock& B,
-                   const ShellBlock& C, const ShellBlock& D,
-                   double* out);
+                   const ShellBlock& C, const ShellBlock& D, double* out);
 
 /// @brief Block-level derivative of the ERI w.r.t. one nuclear centre.
 ///
@@ -100,9 +99,8 @@ void rys_eri_block(const ShellBlock& A, const ShellBlock& B,
 ///       Ltot = 13 and stays within the `kRysMaxRoots = 7` budget served
 ///       by the iterative root finder.
 void rys_eri_block_deriv(const ShellBlock& A, const ShellBlock& B,
-                          const ShellBlock& C, const ShellBlock& D,
-                          int deriv_center,
-                          double* out_axes);
+                         const ShellBlock& C, const ShellBlock& D,
+                         int deriv_center, double* out_axes);
 
 } // namespace native
 } // namespace scf

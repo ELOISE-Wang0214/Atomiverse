@@ -37,9 +37,11 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/potentials/harmonic_angle.h"
-#include "atomiverse/cpu/potentials/harmonic_bond.h"
-#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
+#include "atomiverse/core/binding.h"
+#include "atomiverse/core/device.h"
+#include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/backend_traits.h"
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/init.h"
@@ -50,12 +52,10 @@
 #include "atomiverse/cpu/md/neighbor_list.h"
 #include "atomiverse/cpu/md/nose_hoover.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
+#include "atomiverse/cpu/potentials/harmonic_angle.h"
+#include "atomiverse/cpu/potentials/harmonic_bond.h"
+#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
 #include "atomiverse/cpu/snapshot_publisher.h"
-#include "atomiverse/core/binding.h"
-#include "atomiverse/core/device.h"
-#include "atomiverse/cpu/backend_traits.h"
-#include "atomiverse/core/mat3.h"
-#include "atomiverse/core/units.h"
 #include "atomiverse/facade/driver.h"
 #include "atomiverse/facade/stage.h"
 
@@ -70,7 +70,7 @@ using ATV::md::Phase;
 namespace {
 
 class ProfileRegistry {
-public:
+  public:
     static ProfileRegistry& instance() {
         static ProfileRegistry r;
         return r;
@@ -94,12 +94,11 @@ public:
                 kv.second.total_ns.load(std::memory_order_relaxed) / 1e6;
             const uint64_t n =
                 kv.second.n_calls.load(std::memory_order_relaxed);
-            const double pct = step_total_ms > 0.0
-                                   ? 100.0 * total_ms / step_total_ms
-                                   : 0.0;
+            const double pct =
+                step_total_ms > 0.0 ? 100.0 * total_ms / step_total_ms : 0.0;
             const double mean_us = n > 0 ? (total_ms * 1000.0 / n) : 0.0;
-            os << kv.first << "," << total_ms << "," << pct << ","
-               << n << "," << mean_us << "\n";
+            os << kv.first << "," << total_ms << "," << pct << "," << n << ","
+               << mean_us << "\n";
         }
     }
 
@@ -110,7 +109,7 @@ public:
         }
     }
 
-private:
+  private:
     ProfileRegistry() = default;
     std::map<std::string, Entry> entries_;
 };
@@ -120,11 +119,11 @@ private:
 /// Carries an explicit phase/order so it can be added via `Driver::on()`
 /// without depending on the wrapped type's `default_bindings()`.
 class TimedComponent : public cpu::ComponentBase {
-public:
-    TimedComponent(std::unique_ptr<cpu::ComponentBase> inner,
-                   std::string label, int phase, int order)
-        : inner_(std::move(inner)), label_(std::move(label)),
-          phase_(phase), order_(order) {}
+  public:
+    TimedComponent(std::unique_ptr<cpu::ComponentBase> inner, std::string label,
+                   int phase, int order)
+        : inner_(std::move(inner)), label_(std::move(label)), phase_(phase),
+          order_(order) {}
 
     std::string name() const override { return label_; }
     std::vector<DefaultBinding> default_bindings() const override {
@@ -137,14 +136,15 @@ public:
         const auto t0 = std::chrono::steady_clock::now();
         inner_->launch(ctx);
         const auto t1 = std::chrono::steady_clock::now();
-        const auto ns = std::chrono::duration_cast<
-            std::chrono::nanoseconds>(t1 - t0).count();
+        const auto ns =
+            std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0)
+                .count();
         ProfileRegistry::instance().record(label_, static_cast<uint64_t>(ns));
     }
 
     int frequency() const override { return inner_->frequency(); }
 
-private:
+  private:
     std::unique_ptr<cpu::ComponentBase> inner_;
     std::string label_;
     int phase_;
@@ -153,40 +153,39 @@ private:
 
 template <typename C>
 TimedComponent* make_timed(C&& comp, std::string label, int phase, int order) {
-    auto inner = std::make_unique<std::remove_reference_t<C>>(
-        std::forward<C>(comp));
+    auto inner =
+        std::make_unique<std::remove_reference_t<C>>(std::forward<C>(comp));
     // Heap-allocated; lifetime is process-end (intentional leak — the
     // benchmark is one-shot and the driver requires lvalue lifetime).
-    return new TimedComponent(std::move(inner), std::move(label),
-                               phase, order);
+    return new TimedComponent(std::move(inner), std::move(label), phase, order);
 }
 
 // ───────────────────────────── Force-field constants ────────────────
 constexpr double kKcalPerMolToEv = 1.0 / 23.060547830619026;
-constexpr double kBondK_kcal     = 350.0;
-constexpr double kBondR0         = 1.53;
-constexpr double kAngleK_kcal    = 60.0;
-constexpr double kAngleTheta0    = 109.5 * kPI / 180.0;
-constexpr double kLjEps_kcal     = 0.112;
-constexpr double kLjSigma        = 4.01;
-constexpr double kLjCutoff       = 10.5;
+constexpr double kBondK_kcal = 350.0;
+constexpr double kBondR0 = 1.53;
+constexpr double kAngleK_kcal = 60.0;
+constexpr double kAngleTheta0 = 109.5 * kPI / 180.0;
+constexpr double kLjEps_kcal = 0.112;
+constexpr double kLjSigma = 4.01;
+constexpr double kLjCutoff = 10.5;
 
-double bond_k_eV()  { return kBondK_kcal  * kKcalPerMolToEv; }
+double bond_k_eV() { return kBondK_kcal * kKcalPerMolToEv; }
 double angle_k_eV() { return kAngleK_kcal * kKcalPerMolToEv; }
-double lj_eps_eV()  { return kLjEps_kcal  * kKcalPerMolToEv; }
+double lj_eps_eV() { return kLjEps_kcal * kKcalPerMolToEv; }
 
 std::vector<double> dihedral_Cn_eV() {
     return {
-        1.73    * kKcalPerMolToEv,   // C0  (MSU paper, Tschopp 2010)
-        -4.49   * kKcalPerMolToEv,   // C1
-        0.776   * kKcalPerMolToEv,   // C2
-        6.99    * kKcalPerMolToEv,   // C3
-        0.0,                          // C4
+        1.73 * kKcalPerMolToEv,  // C0  (MSU paper, Tschopp 2010)
+        -4.49 * kKcalPerMolToEv, // C1
+        0.776 * kKcalPerMolToEv, // C2
+        6.99 * kKcalPerMolToEv,  // C3
+        0.0,                     // C4
     };
 }
 
-cpu::Frame make_pe_box(int chains_per_axis, int n_carbons,
-                        double box_len, double margin) {
+cpu::Frame make_pe_box(int chains_per_axis, int n_carbons, double box_len,
+                       double margin) {
     const int n_chains = chains_per_axis * chains_per_axis * chains_per_axis;
     const int n_atoms = n_chains * n_carbons;
     cpu::Frame frame(n_atoms);
@@ -202,7 +201,7 @@ cpu::Frame make_pe_box(int chains_per_axis, int n_carbons,
             for (int cz = 0; cz < chains_per_axis; ++cz) {
                 const double cx0 = cx * cell + cell / 2.0;
                 const double cz0 = cz * cell + cell / 2.0;
-                const double y0  = cy * cell + margin;
+                const double y0 = cy * cell + margin;
                 for (int i = 0; i < n_carbons; ++i) {
                     frame.atoms.x[idx] = cx0;
                     frame.atoms.y[idx] = y0 + i * dy_step;
@@ -218,18 +217,18 @@ cpu::Frame make_pe_box(int chains_per_axis, int n_carbons,
     const int nb_per = n_carbons - 1;
     const int na_per = n_carbons - 2;
     const int nd_per = n_carbons - 3;
-    frame.bonds.atomi  = xt::zeros<int>({n_chains * nb_per});
-    frame.bonds.atomj  = xt::zeros<int>({n_chains * nb_per});
-    frame.bonds.type   = xt::zeros<int>({n_chains * nb_per});
+    frame.bonds.atomi = xt::zeros<int>({n_chains * nb_per});
+    frame.bonds.atomj = xt::zeros<int>({n_chains * nb_per});
+    frame.bonds.type = xt::zeros<int>({n_chains * nb_per});
     frame.angles.atomi = xt::zeros<int>({n_chains * na_per});
     frame.angles.atomj = xt::zeros<int>({n_chains * na_per});
     frame.angles.atomk = xt::zeros<int>({n_chains * na_per});
-    frame.angles.type  = xt::zeros<int>({n_chains * na_per});
+    frame.angles.type = xt::zeros<int>({n_chains * na_per});
     frame.dihedrals.atomi = xt::zeros<int>({n_chains * nd_per});
     frame.dihedrals.atomj = xt::zeros<int>({n_chains * nd_per});
     frame.dihedrals.atomk = xt::zeros<int>({n_chains * nd_per});
     frame.dihedrals.atoml = xt::zeros<int>({n_chains * nd_per});
-    frame.dihedrals.type  = xt::zeros<int>({n_chains * nd_per});
+    frame.dihedrals.type = xt::zeros<int>({n_chains * nd_per});
 
     for (int c = 0; c < n_chains; ++c) {
         const int base = c * n_carbons;
@@ -257,17 +256,17 @@ cpu::Frame make_pe_box(int chains_per_axis, int n_carbons,
 }
 
 struct Args {
-    int    steps          = 1000;
-    int    warmup         = 100;
-    int    chains_per_axis = 4;
-    int    n_atoms_per_chain = 18;
-    double box_len        = 60.0;
-    double T_target       = 300.0;
-    double dt             = 0.5;
-    double tau_T          = 100.0;
-    int    seed           = 12345;
+    int steps = 1000;
+    int warmup = 100;
+    int chains_per_axis = 4;
+    int n_atoms_per_chain = 18;
+    double box_len = 60.0;
+    double T_target = 300.0;
+    double dt = 0.5;
+    double tau_T = 100.0;
+    int seed = 12345;
     std::string out_csv;
-    bool   quiet          = false;
+    bool quiet = false;
 };
 
 void print_help() {
@@ -291,32 +290,57 @@ bool parse_args(int argc, char** argv, Args& a) {
     for (int i = 1; i < argc; ++i) {
         const char* s = argv[i];
         auto take_d = [&](const char* n, double& d) {
-            if (std::strcmp(s, n) != 0) return false;
-            if (i + 1 >= argc) std::exit(2);
-            d = std::atof(argv[++i]); return true;
+            if (std::strcmp(s, n) != 0)
+                return false;
+            if (i + 1 >= argc)
+                std::exit(2);
+            d = std::atof(argv[++i]);
+            return true;
         };
         auto take_i = [&](const char* n, int& d) {
-            if (std::strcmp(s, n) != 0) return false;
-            if (i + 1 >= argc) std::exit(2);
-            d = std::atoi(argv[++i]); return true;
+            if (std::strcmp(s, n) != 0)
+                return false;
+            if (i + 1 >= argc)
+                std::exit(2);
+            d = std::atoi(argv[++i]);
+            return true;
         };
         auto take_s = [&](const char* n, std::string& d) {
-            if (std::strcmp(s, n) != 0) return false;
-            if (i + 1 >= argc) std::exit(2);
-            d = argv[++i]; return true;
+            if (std::strcmp(s, n) != 0)
+                return false;
+            if (i + 1 >= argc)
+                std::exit(2);
+            d = argv[++i];
+            return true;
         };
-        if (take_i("--steps", a.steps)) continue;
-        if (take_i("--warmup", a.warmup)) continue;
-        if (take_i("--chains-per-axis", a.chains_per_axis)) continue;
-        if (take_i("--n-atoms-per-chain", a.n_atoms_per_chain)) continue;
-        if (take_d("--box-len", a.box_len)) continue;
-        if (take_d("--T", a.T_target)) continue;
-        if (take_d("--dt", a.dt)) continue;
-        if (take_d("--tau-T", a.tau_T)) continue;
-        if (take_i("--seed", a.seed)) continue;
-        if (take_s("--out", a.out_csv)) continue;
-        if (std::strcmp(s, "--quiet") == 0) { a.quiet = true; continue; }
-        if (std::strcmp(s, "--help")  == 0) { print_help(); std::exit(0); }
+        if (take_i("--steps", a.steps))
+            continue;
+        if (take_i("--warmup", a.warmup))
+            continue;
+        if (take_i("--chains-per-axis", a.chains_per_axis))
+            continue;
+        if (take_i("--n-atoms-per-chain", a.n_atoms_per_chain))
+            continue;
+        if (take_d("--box-len", a.box_len))
+            continue;
+        if (take_d("--T", a.T_target))
+            continue;
+        if (take_d("--dt", a.dt))
+            continue;
+        if (take_d("--tau-T", a.tau_T))
+            continue;
+        if (take_i("--seed", a.seed))
+            continue;
+        if (take_s("--out", a.out_csv))
+            continue;
+        if (std::strcmp(s, "--quiet") == 0) {
+            a.quiet = true;
+            continue;
+        }
+        if (std::strcmp(s, "--help") == 0) {
+            print_help();
+            std::exit(0);
+        }
         std::fprintf(stderr, "unknown argument: %s\n", s);
         return false;
     }
@@ -337,7 +361,8 @@ double now_seconds() {
 
 int main(int argc, char** argv) {
     Args a;
-    if (!parse_args(argc, argv, a)) return 2;
+    if (!parse_args(argc, argv, a))
+        return 2;
 
     int my_rank = 0;
     int world_size = 1;
@@ -354,98 +379,114 @@ int main(int argc, char** argv) {
         a.out_csv = buf;
     }
 
-    auto frame = make_pe_box(a.chains_per_axis, a.n_atoms_per_chain,
-                              a.box_len, /*margin=*/1.0);
+    auto frame = make_pe_box(a.chains_per_axis, a.n_atoms_per_chain, a.box_len,
+                             /*margin=*/1.0);
     const int n_atoms = frame.atoms.size();
 
     // Use the base Driver template directly so we control every binding.
     Driver<Phase, cpu::device_tag> sim;
 
-    const int p_init  = static_cast<int>(Phase::initial_integrate);
-    const int p_pre   = static_cast<int>(Phase::pre_force);
+    const int p_init = static_cast<int>(Phase::initial_integrate);
+    const int p_pre = static_cast<int>(Phase::pre_force);
     const int p_force = static_cast<int>(Phase::force);
-    const int p_post  = static_cast<int>(Phase::post_force);
+    const int p_post = static_cast<int>(Phase::post_force);
     const int p_final = static_cast<int>(Phase::final_integrate);
-    const int p_eos   = static_cast<int>(Phase::end_of_step);
+    const int p_eos = static_cast<int>(Phase::end_of_step);
 
     // Init helper (one-shot at step 0): bound at initial_integrate@10
     // through its default_bindings; we instrument it the same way.
     sim.on(Phase::initial_integrate)
-        .add(*make_timed(cpu::md::InitVelocity{a.T_target,
-                                                static_cast<unsigned int>(a.seed)},
-                          "InitVelocity", p_init, 10), 10);
+        .add(*make_timed(
+                 cpu::md::InitVelocity{a.T_target,
+                                       static_cast<unsigned int>(a.seed)},
+                 "InitVelocity", p_init, 10),
+             10);
     sim.on(Phase::initial_integrate)
         .add(*make_timed(cpu::md::VelocityVerlet{a.dt}, "VelocityVerlet",
-                          p_init, 0), 0);
+                         p_init, 0),
+             0);
     sim.on(Phase::initial_integrate)
         .add(*make_timed(cpu::md::NoseHoover{a.T_target, a.tau_T, a.dt},
-                          "NoseHoover", p_init, 100), 100);
+                         "NoseHoover", p_init, 100),
+             100);
 
     sim.on(Phase::pre_force)
         .add(*make_timed(cpu::md::mpi::AtomMigration{10}, "AtomMigration",
-                          p_pre, -30), -30);
+                         p_pre, -30),
+             -30);
     sim.on(Phase::pre_force)
         .add(*make_timed(cpu::md::mpi::HaloExchangeForward{kLjCutoff},
-                          "HaloExchangeForward", p_pre, -20), -20);
+                         "HaloExchangeForward", p_pre, -20),
+             -20);
 
     sim.on(Phase::force)
-        .add(*make_timed(cpu::md::ZeroForces{}, "ZeroForces",
-                          p_force, -100), -100);
+        .add(*make_timed(cpu::md::ZeroForces{}, "ZeroForces", p_force, -100),
+             -100);
     sim.on(Phase::force)
-        .add(*make_timed(cpu::md::ZeroEnergy{}, "ZeroEnergy",
-                          p_force, -99), -99);
+        .add(*make_timed(cpu::md::ZeroEnergy{}, "ZeroEnergy", p_force, -99),
+             -99);
     sim.on(Phase::force)
-        .add(*make_timed(cpu::md::ZeroStress{}, "ZeroStress",
-                          p_force, -98), -98);
+        .add(*make_timed(cpu::md::ZeroStress{}, "ZeroStress", p_force, -98),
+             -98);
     sim.on(Phase::force)
-        .add(*make_timed(cpu::md::NeighborList<>{kLjCutoff},
-                          "NeighborList", p_force, -10), -10);
+        .add(*make_timed(cpu::md::NeighborList<>{kLjCutoff}, "NeighborList",
+                         p_force, -10),
+             -10);
     sim.on(Phase::force)
         .add(*make_timed(cpu::md::LJ{lj_eps_eV(), kLjSigma, kLjCutoff}
-                              .set_special_bonds(0.0, 0.0, 0.0),
-                          "LJ", p_force, 0), 0);
+                             .set_special_bonds(0.0, 0.0, 0.0),
+                         "LJ", p_force, 0),
+             0);
     sim.on(Phase::force)
-        .add(*make_timed(HarmonicBond{{bond_k_eV()}, {kBondR0}},
-                          "HarmonicBond", p_force, 1), 1);
+        .add(*make_timed(HarmonicBond{{bond_k_eV()}, {kBondR0}}, "HarmonicBond",
+                         p_force, 1),
+             1);
     sim.on(Phase::force)
-        .add(*make_timed(HarmonicAngle{{angle_k_eV()},
-                                                     {kAngleTheta0}},
-                          "HarmonicAngle", p_force, 2), 2);
+        .add(*make_timed(HarmonicAngle{{angle_k_eV()}, {kAngleTheta0}},
+                         "HarmonicAngle", p_force, 2),
+             2);
     sim.on(Phase::force)
         .add(*make_timed(MultiHarmonicDihedral{{dihedral_Cn_eV()}},
-                          "MultiHarmonicDihedral", p_force, 3), 3);
+                         "MultiHarmonicDihedral", p_force, 3),
+             3);
 
     sim.on(Phase::post_force)
         .add(*make_timed(cpu::md::mpi::HaloExchangeReverse{},
-                          "HaloExchangeReverse", p_post, -1000), -1000);
+                         "HaloExchangeReverse", p_post, -1000),
+             -1000);
 
     sim.on(Phase::final_integrate)
         .add(*make_timed(cpu::md::VelocityVerlet{a.dt}, "VelocityVerlet_final",
-                          p_final, 0), 0);
+                         p_final, 0),
+             0);
 
     sim.on(Phase::end_of_step)
-        .add(*make_timed(cpu::md::ZeroKinetic{}, "ZeroKinetic",
-                          p_eos, -1000), -1000);
+        .add(*make_timed(cpu::md::ZeroKinetic{}, "ZeroKinetic", p_eos, -1000),
+             -1000);
     sim.on(Phase::end_of_step)
-        .add(*make_timed(cpu::md::KineticEnergy{}, "KineticEnergy",
-                          p_eos, -100), -100);
+        .add(
+            *make_timed(cpu::md::KineticEnergy{}, "KineticEnergy", p_eos, -100),
+            -100);
     sim.on(Phase::end_of_step)
-        .add(*make_timed(cpu::md::mpi::ReduceEnergy{},
-                          "ReduceEnergy", p_eos, -50), -50);
+        .add(*make_timed(cpu::md::mpi::ReduceEnergy{}, "ReduceEnergy", p_eos,
+                         -50),
+             -50);
     sim.on(Phase::end_of_step)
-        .add(*make_timed(cpu::SnapshotPublisher{},
-                          "SnapshotPublisher", p_eos, 10), 10);
+        .add(*make_timed(cpu::SnapshotPublisher{}, "SnapshotPublisher", p_eos,
+                         10),
+             10);
 
     sim.build();
 
     if (my_rank == 0 && !a.quiet) {
-        std::fprintf(stderr,
-            "pe_profile_single: ranks=%d atoms=%d warmup=%d steps=%d\n",
+        std::fprintf(
+            stderr, "pe_profile_single: ranks=%d atoms=%d warmup=%d steps=%d\n",
             world_size, n_atoms, a.warmup, a.steps);
     }
 
     // Warm-up: run but discard timings.
-    if (a.warmup > 0) sim.run(frame, a.warmup);
+    if (a.warmup > 0)
+        sim.run(frame, a.warmup);
     ProfileRegistry::instance().reset();
 
     const double t0 = now_seconds();
@@ -464,10 +505,10 @@ int main(int argc, char** argv) {
         csv.close();
         if (!a.quiet) {
             std::fprintf(stderr,
-                "  wrote %s — total_step_wall=%.2fms over %d steps "
-                "(%.4f ms/step)\n",
-                a.out_csv.c_str(), total_step_ms, a.steps,
-                total_step_ms / std::max(1, a.steps));
+                         "  wrote %s — total_step_wall=%.2fms over %d steps "
+                         "(%.4f ms/step)\n",
+                         a.out_csv.c_str(), total_step_ms, a.steps,
+                         total_step_ms / std::max(1, a.steps));
         }
     }
 

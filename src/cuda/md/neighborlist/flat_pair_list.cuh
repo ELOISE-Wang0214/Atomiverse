@@ -15,9 +15,10 @@ namespace ATV::md::nlist {
 /// @note Non-owning view; lifetime managed by NListBuffers.
 template <typename work_t>
 struct FlatPairList {
-    int* ci;                    ///< [num_pairs] i-cluster index
-    int* cj;                    ///< [num_pairs] j-cluster index
-    uint64_t* interaction_mask; ///< [num_pairs] 64-bit mask (only non-zero masks stored)
+    int* ci; ///< [num_pairs] i-cluster index
+    int* cj; ///< [num_pairs] j-cluster index
+    uint64_t*
+        interaction_mask; ///< [num_pairs] 64-bit mask (only non-zero masks stored)
     const int* num_pairs_device; ///< Device pointer to the current pair count
     int pair_capacity;           ///< Allocated capacity for the flat arrays
 };

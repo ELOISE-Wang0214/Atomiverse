@@ -17,10 +17,10 @@
 
 #include "atomiverse/core/log.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
-#include "atomiverse/cpu/scf/scf_evaluator.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h"
+#include "atomiverse/cpu/scf/integrals.h"
+#include "atomiverse/cpu/scf/scf_evaluator.h"
+#include "atomiverse/cpu/scf/scf_solve.h"
 
 using namespace ATV;
 
@@ -37,55 +37,48 @@ static cpu::Frame make_aspirin() {
 
     // Atomic numbers: 9C + 4O + 8H = 21 atoms, 94 electrons
     int types[21] = {
-        6, 6, 6, 6, 6, 6,    // C1-C6 (benzene ring)
-        6,                     // C7 (carboxyl C)
-        8, 8,                  // O8 (C=O), O9 (OH)
-        8,                     // O10 (ester O)
-        6,                     // C11 (acetyl carbonyl C)
-        8,                     // O12 (acetyl C=O)
-        6,                     // C13 (methyl C)
-        1, 1, 1, 1,           // H14-H17 (ring)
-        1,                     // H18 (OH)
-        1, 1, 1,              // H19-H21 (CH3)
+        6, 6, 6, 6, 6, 6, // C1-C6 (benzene ring)
+        6,                // C7 (carboxyl C)
+        8, 8,             // O8 (C=O), O9 (OH)
+        8,                // O10 (ester O)
+        6,                // C11 (acetyl carbonyl C)
+        8,                // O12 (acetyl C=O)
+        6,                // C13 (methyl C)
+        1, 1, 1, 1,       // H14-H17 (ring)
+        1,                // H18 (OH)
+        1, 1, 1,          // H19-H21 (CH3)
     };
 
     // Masses [amu]
     double masses[21] = {
-        12.011, 12.011, 12.011, 12.011, 12.011, 12.011,
-        12.011,
-        15.999, 15.999,
-        15.999,
-        12.011,
-        15.999,
-        12.011,
-        1.008, 1.008, 1.008, 1.008,
-        1.008,
-        1.008, 1.008, 1.008,
+        12.011, 12.011, 12.011, 12.011, 12.011, 12.011, 12.011,
+        15.999, 15.999, 15.999, 12.011, 15.999, 12.011, 1.008,
+        1.008,  1.008,  1.008,  1.008,  1.008,  1.008,  1.008,
     };
 
     // Coordinates [Angstrom] — PySCF-validated aspirin geometry
     double coords[21][3] = {
-        { 1.2879,  0.1068,  0.0000},  // C1
-        { 0.1768,  1.0827,  0.0000},  // C2
-        { 0.5171,  2.4290,  0.0000},  // C3
-        { 1.8519,  2.7993,  0.0000},  // C4
-        { 2.9293,  1.8524,  0.0000},  // C5
-        { 2.6191,  0.4890,  0.0000},  // C6
-        {-1.2076,  0.6698,  0.0000},  // C7
-        {-1.5541, -0.4994,  0.0000},  // O8
-        {-2.0632,  1.6805,  0.0000},  // O9
-        { 0.9973, -1.2285,  0.0000},  // O10
-        {-0.2830, -1.7447,  0.0000},  // C11
-        {-0.3696, -2.9537,  0.0000},  // O12
-        {-1.3593, -0.7411,  0.3000},  // C13
-        {-0.2980,  3.1365,  0.0000},  // H14
-        { 2.0791,  3.8586,  0.0000},  // H15
-        { 3.9560,  2.1939,  0.0000},  // H16
-        { 3.4546, -0.2019,  0.0000},  // H17
-        {-2.9828,  1.3621,  0.0000},  // H18
-        {-1.0697, -0.1755,  1.1920},  // H19
-        {-2.3482, -1.1583,  0.5001},  // H20
-        {-1.4267, -0.2091, -0.6502},  // H21
+        {1.2879, 0.1068, 0.0000},    // C1
+        {0.1768, 1.0827, 0.0000},    // C2
+        {0.5171, 2.4290, 0.0000},    // C3
+        {1.8519, 2.7993, 0.0000},    // C4
+        {2.9293, 1.8524, 0.0000},    // C5
+        {2.6191, 0.4890, 0.0000},    // C6
+        {-1.2076, 0.6698, 0.0000},   // C7
+        {-1.5541, -0.4994, 0.0000},  // O8
+        {-2.0632, 1.6805, 0.0000},   // O9
+        {0.9973, -1.2285, 0.0000},   // O10
+        {-0.2830, -1.7447, 0.0000},  // C11
+        {-0.3696, -2.9537, 0.0000},  // O12
+        {-1.3593, -0.7411, 0.3000},  // C13
+        {-0.2980, 3.1365, 0.0000},   // H14
+        {2.0791, 3.8586, 0.0000},    // H15
+        {3.9560, 2.1939, 0.0000},    // H16
+        {3.4546, -0.2019, 0.0000},   // H17
+        {-2.9828, 1.3621, 0.0000},   // H18
+        {-1.0697, -0.1755, 1.1920},  // H19
+        {-2.3482, -1.1583, 0.5001},  // H20
+        {-1.4267, -0.2091, -0.6502}, // H21
     };
 
     for (int i = 0; i < 21; ++i) {
@@ -113,10 +106,10 @@ int main() {
     // production once the d-shell XC-grid extension ships (tracked in
     // Phase 1.2).
     ATV_INFO("[example] initial integrals start");
-    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    ATV_INFO(
-        "[example] initial integrals done basis={} electrons={}",
-        integrals.n_basis, integrals.n_electrons);
+    auto integrals =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    ATV_INFO("[example] initial integrals done basis={} electrons={}",
+             integrals.n_basis, integrals.n_electrons);
 
     // Locked production defaults: restricted Kohn–Sham / PBE with MINAO
     // initial guess. Override select fields for the tutorial's turnaround.
@@ -136,18 +129,16 @@ int main() {
     //   etol=1e-3 eV     (energy diff)
     cpu::minimizer::Minimize opt;
     opt.add(cpu::minimizer::LBFGS{
-        5,              // memory
-        double(0.01),   // alpha0 [Å²/eV]
-        double(0.05),   // ftol [eV/Å]
-        10,             // max_ls (reserved; line search not yet active)
-        double(0.03),   // rms_ftol [eV/Å]
-        double(0.1),    // max_dtol [Å]
-        double(0.05),   // rms_dtol [Å]
-        double(1e-3)    // etol [eV]
+        5,            // memory
+        double(0.01), // alpha0 [Å²/eV]
+        double(0.05), // ftol [eV/Å]
+        10,           // max_ls (reserved; line search not yet active)
+        double(0.03), // rms_ftol [eV/Å]
+        double(0.1),  // max_dtol [Å]
+        double(0.05), // rms_dtol [Å]
+        double(1e-3)  // etol [eV]
     });
-    opt.on(ATV::minimizer::Phase::force).add(
-        cpu::scf::SCFEvaluator{config}
-    );
+    opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
     ATV_INFO("[example] optimizer build start");
     opt.build();
     ATV_INFO("[example] optimizer build done");
@@ -159,25 +150,22 @@ int main() {
     // Compute final max force
     double max_f = 0;
     for (int i = 0; i < frame.atoms.size(); ++i) {
-        double fx = frame.atoms.fx(i), fy = frame.atoms.fy(i), fz = frame.atoms.fz(i);
-        double mag = std::sqrt(fx*fx + fy*fy + fz*fz);
-        if (mag > max_f) max_f = mag;
+        double fx = frame.atoms.fx(i), fy = frame.atoms.fy(i),
+               fz = frame.atoms.fz(i);
+        double mag = std::sqrt(fx * fx + fy * fy + fz * fz);
+        if (mag > max_f)
+            max_f = mag;
     }
-    ATV_INFO(
-        "[example] final state energy_eV={:.6f} max_force_eVA={:.6f}",
-        frame.energy, max_f);
+    ATV_INFO("[example] final state energy_eV={:.6f} max_force_eVA={:.6f}",
+             frame.energy, max_f);
 
     // Print final coordinates
     ATV_INFO("[example] final coordinates [Angstrom]");
     const char* symbols[] = {"", "H", "He", "Li", "Be", "B", "C", "N", "O"};
     for (int i = 0; i < frame.atoms.size(); ++i) {
         int Z = static_cast<int>(frame.atoms.type(i));
-        ATV_INFO(
-            "  {:>2s} {:12.6f} {:12.6f} {:12.6f}",
-            symbols[Z],
-            frame.atoms.x(i),
-            frame.atoms.y(i),
-            frame.atoms.z(i));
+        ATV_INFO("  {:>2s} {:12.6f} {:12.6f} {:12.6f}", symbols[Z],
+                 frame.atoms.x(i), frame.atoms.y(i), frame.atoms.z(i));
     }
 
     ATV_INFO("[example] done");

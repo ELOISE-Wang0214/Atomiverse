@@ -18,12 +18,12 @@
 #include <cstdint>
 #include <vector>
 
+#include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/backend.h"
 #include "atomiverse/cpu/context.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/mpi/atom_migration.h"
 #include "atomiverse/cpu/md/mpi/domain.h"
-#include "atomiverse/core/mat3.h"
 
 using namespace ATV;
 
@@ -59,7 +59,7 @@ TEST(AtomMigration, AtomDriftsAcrossPosXBoundary) {
         GTEST_SKIP() << "2-rank-specific test; world_size=" << world_size;
     }
 
-    auto frame = make_chain_frame(20.0, 8);  // 8 atoms in a 20 Å box
+    auto frame = make_chain_frame(20.0, 8); // 8 atoms in a 20 Å box
     cpu::Backend backend;
     backend.init();
     backend.set_frame(frame);
@@ -78,7 +78,8 @@ TEST(AtomMigration, AtomDriftsAcrossPosXBoundary) {
         // Take the rightmost owner and shove it 1 Å past subhi[0].
         int rightmost = 0;
         for (int i = 1; i < dd->n_local; ++i) {
-            if (frame.atoms.x[i] > frame.atoms.x[rightmost]) rightmost = i;
+            if (frame.atoms.x[i] > frame.atoms.x[rightmost])
+                rightmost = i;
         }
         moved_tag = frame.atoms.tag[rightmost];
         const double Lx = frame.box(0, 0);
@@ -114,15 +115,19 @@ TEST(AtomMigration, AtomDriftsAcrossPosXBoundary) {
     // Globally the atom count must be conserved.
     int local_count = dd->n_local;
     int global_count = 0;
-    MPI_Allreduce(&local_count, &global_count, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+    MPI_Allreduce(&local_count, &global_count, 1, MPI_INT, MPI_SUM,
+                  MPI_COMM_WORLD);
     EXPECT_EQ(global_count, 8) << "atom count must be globally conserved";
 
     // The migrated tag must now appear in exactly one rank's tag_to_local.
-    int i_have_it = (dd->tag_to_local.find(moved_tag) != dd->tag_to_local.end()) ? 1 : 0;
+    int i_have_it =
+        (dd->tag_to_local.find(moved_tag) != dd->tag_to_local.end()) ? 1 : 0;
     int total_owners_of_tag = 0;
-    MPI_Allreduce(&i_have_it, &total_owners_of_tag, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+    MPI_Allreduce(&i_have_it, &total_owners_of_tag, 1, MPI_INT, MPI_SUM,
+                  MPI_COMM_WORLD);
     EXPECT_EQ(total_owners_of_tag, 1)
-        << "tag " << moved_tag << " must have exactly one owner across all ranks";
+        << "tag " << moved_tag
+        << " must have exactly one owner across all ranks";
 
     // The tag must now belong to the receiver (rank 1).
     if (my_rank == 1) {
@@ -159,10 +164,12 @@ TEST(AtomMigration, SingleRankIsNoOp) {
     cpu::LaunchContext lctx{backend.context(), frame, 0, 0};
     mig.launch(lctx);
 
-    EXPECT_EQ(dd->n_local, n_before) << "single-rank migration must not change n_local";
+    EXPECT_EQ(dd->n_local, n_before)
+        << "single-rank migration must not change n_local";
     EXPECT_EQ(dd->neighbor_generation, gen_before)
         << "single-rank migration must not bump neighbor_generation";
-    EXPECT_DOUBLE_EQ(frame.atoms.x[0], 19.5) << "single-rank migration must not move atoms";
+    EXPECT_DOUBLE_EQ(frame.atoms.x[0], 19.5)
+        << "single-rank migration must not move atoms";
 
     backend.shutdown();
 }

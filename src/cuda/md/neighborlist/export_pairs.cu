@@ -11,31 +11,23 @@
 
 namespace ATV::md::nlist {
 
-
 __global__ void export_atom_pairs_kernel(
-    const int* __restrict__ flat_ci,
-    const int* __restrict__ flat_cj,
+    const int* __restrict__ flat_ci, const int* __restrict__ flat_cj,
     const uint64_t* __restrict__ flat_mask,
     const int* __restrict__ num_flat_device,
-    const int* __restrict__ original_index,
-    const real_t* __restrict__ pos_x,
-    const real_t* __restrict__ pos_y,
-    const real_t* __restrict__ pos_z,
-    bool periodic,
-    const real_t* __restrict__ cell_matrix,
-    const real_t* __restrict__ inv_cell,
-    int* __restrict__ out_i,
-    int* __restrict__ out_j,
-    real_t* __restrict__ out_dx,
-    real_t* __restrict__ out_dy,
-    real_t* __restrict__ out_dz,
-    real_t* __restrict__ out_dist,
-    int* __restrict__ out_count,
+    const int* __restrict__ original_index, const real_t* __restrict__ pos_x,
+    const real_t* __restrict__ pos_y, const real_t* __restrict__ pos_z,
+    bool periodic, const real_t* __restrict__ cell_matrix,
+    const real_t* __restrict__ inv_cell, int* __restrict__ out_i,
+    int* __restrict__ out_j, real_t* __restrict__ out_dx,
+    real_t* __restrict__ out_dy, real_t* __restrict__ out_dz,
+    real_t* __restrict__ out_dist, int* __restrict__ out_count,
     const int* __restrict__ capacity_ptr) {
 
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int n_flat = *num_flat_device;
-    if (idx >= n_flat) return;
+    if (idx >= n_flat)
+        return;
 
     int ci = flat_ci[idx];
     int cj = flat_cj[idx];
@@ -47,7 +39,8 @@ __global__ void export_atom_pairs_kernel(
     // Reduces global atomic contention from O(n_pairs) to O(n_threads).
     int my_count = __popcll(mask);
     int my_base = 0;
-    if (my_count > 0) my_base = atomicAdd(out_count, int(my_count));
+    if (my_count > 0)
+        my_base = atomicAdd(out_count, int(my_count));
 
     int local = 0;
     while (mask != 0) {
@@ -79,22 +72,24 @@ __global__ void export_atom_pairs_kernel(
     }
 }
 
-void launch_export_atom_pairs(
-    const int* flat_ci, const int* flat_cj, const uint64_t* flat_mask,
-    const int* num_flat_device, int n_flat, const int* original_index,
-    const real_t* pos_x, const real_t* pos_y, const real_t* pos_z,
-    bool periodic, const real_t* cell_matrix, const real_t* inv_cell,
-    int* out_i, int* out_j, work_t* out_dx, work_t* out_dy, work_t* out_dz,
-    work_t* out_dist, int* out_count, const int* capacity_ptr,
-    cudaStream_t stream) {
-    if (n_flat == 0) return;
+void launch_export_atom_pairs(const int* flat_ci, const int* flat_cj,
+                              const uint64_t* flat_mask,
+                              const int* num_flat_device, int n_flat,
+                              const int* original_index, const real_t* pos_x,
+                              const real_t* pos_y, const real_t* pos_z,
+                              bool periodic, const real_t* cell_matrix,
+                              const real_t* inv_cell, int* out_i, int* out_j,
+                              work_t* out_dx, work_t* out_dy, work_t* out_dz,
+                              work_t* out_dist, int* out_count,
+                              const int* capacity_ptr, cudaStream_t stream) {
+    if (n_flat == 0)
+        return;
     int block = ATV::cuda::kDefaultBlock;
     int grid = (n_flat + block - 1) / block;
     export_atom_pairs_kernel<<<grid, block, 0, stream>>>(
-        flat_ci, flat_cj, flat_mask, num_flat_device, original_index,
-        pos_x, pos_y, pos_z, periodic, cell_matrix, inv_cell,
-        out_i, out_j, out_dx, out_dy, out_dz, out_dist,
-        out_count, capacity_ptr);
+        flat_ci, flat_cj, flat_mask, num_flat_device, original_index, pos_x,
+        pos_y, pos_z, periodic, cell_matrix, inv_cell, out_i, out_j, out_dx,
+        out_dy, out_dz, out_dist, out_count, capacity_ptr);
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 

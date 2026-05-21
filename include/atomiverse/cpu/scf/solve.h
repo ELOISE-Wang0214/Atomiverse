@@ -20,12 +20,12 @@ namespace scf {
 
 /// @brief SCF solver result.
 struct SCFResult {
-    bool converged = false;              ///< Whether SCF converged within max_iter.
-    int iterations = 0;                  ///< Number of iterations performed.
-    double energy = 0;                   ///< Final SCF energy = trace(H * P).
-    double residual = 0;                 ///< Final ||P_new - P_old||_F.
-    xt::xtensor<double, 1> eigenvalues;  ///< Final eigenvalues (ascending).
-    xt::xtensor<double, 2> density;      ///< Final density matrix P.
+    bool converged = false; ///< Whether SCF converged within max_iter.
+    int iterations = 0;     ///< Number of iterations performed.
+    double energy = 0;      ///< Final SCF energy = trace(H * P).
+    double residual = 0;    ///< Final ||P_new - P_old||_F.
+    xt::xtensor<double, 1> eigenvalues; ///< Final eigenvalues (ascending).
+    xt::xtensor<double, 2> density;     ///< Final density matrix P.
 };
 
 /// @brief Run the toy SCF loop on CPU using xtensor-blas.

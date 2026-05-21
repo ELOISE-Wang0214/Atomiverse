@@ -11,10 +11,10 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/context.h"
-#include "atomiverse/core/types.h"
 #include "atomiverse/core/binding.h"
+#include "atomiverse/core/types.h"
+#include "atomiverse/cpu/context.h"
+#include "atomiverse/cpu/frame.h"
 #include "atomiverse/facade/component_role.h"
 
 namespace ATV {
@@ -25,7 +25,8 @@ namespace cpu {
 struct BuildContext {
     cpu::Context& runtime; ///< CPU execution context.
     cpu::Frame& frame;     ///< Host-resident system state.
-    void* pw_workspace = nullptr; ///< PWWorkspace* for plane-wave components (optional).
+    void* pw_workspace =
+        nullptr; ///< PWWorkspace* for plane-wave components (optional).
 };
 
 /// @brief Context for per-step computation on CPU.
@@ -49,7 +50,7 @@ struct DestroyContext {
 /// Lifecycle: build() -> launch() x N -> destroy().
 /// All data is host-resident (xtensor). OpenMP parallelism in launch().
 class ComponentBase {
-public:
+  public:
     virtual ~ComponentBase() = default;
 
     /// @brief Human-readable component name.

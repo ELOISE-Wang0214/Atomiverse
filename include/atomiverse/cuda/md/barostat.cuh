@@ -19,7 +19,7 @@ namespace md {
 /// Binds to final_integrate at order +200 (after VelocityVerlet + NoseHoover).
 /// Requires VirialStress at post_force to populate DeviceFrame::stress.
 class Barostat : public ComponentBase {
-public:
+  public:
     /// @brief Construct barostat.
     /// @param P_target Target pressure [eV/Angstrom^3].
     /// @param tau_p    Pressure coupling time [fs].
@@ -35,7 +35,7 @@ public:
     void launch(const LaunchContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;
 
-private:
+  private:
     double P_target_, tau_p_, dt_;
     struct State;
     std::unique_ptr<State> state_;

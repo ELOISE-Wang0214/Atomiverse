@@ -44,7 +44,7 @@ namespace cpu {
 
 /// @brief Finite-difference response (numerical-Hessian) driver base.
 class ResponseDriver : public CPUDriver<ATV::vib::Phase> {
-public:
+  public:
     /// @brief Run the full `6N`-displacement finite-difference response loop.
     ///
     /// Derives `N = frame.atoms.size()` internally. Executes one Plan
@@ -57,7 +57,8 @@ public:
     ///              carries the equilibrium geometry again.
     void run(cpu::Frame& frame) {
         const int n_atoms = frame.atoms.size();
-        const int n_disp  = 6 * n_atoms; ///< Two displacements per Cartesian coord.
+        const int n_disp =
+            6 * n_atoms; ///< Two displacements per Cartesian coord.
 
         setup_pass(frame);
         for (int d = 0; d < n_disp; ++d) {
@@ -72,9 +73,9 @@ public:
         teardown_pass();
     }
 
-protected:
+  protected:
     void validate_components() const override {
-        bool has_force_writer  = false;
+        bool has_force_writer = false;
         bool has_hessian_writer = false;
         for_each_pending([&](const cpu::ComponentBase& c) {
             if (has_capability(c.capabilities(), Capability::Force))

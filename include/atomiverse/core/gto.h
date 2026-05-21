@@ -53,8 +53,7 @@ inline double phys_norm_d(double alpha) {
 /// @param alpha Gaussian exponent.
 /// @return Normalization factor.
 inline double phys_norm_f(double alpha) {
-    return std::pow(2.0 * alpha / M_PI, 0.75)
-         * std::pow(4.0 * alpha, 1.5);
+    return std::pow(2.0 * alpha / M_PI, 0.75) * std::pow(4.0 * alpha, 1.5);
 }
 
 /// @brief GTO normalization factor (libcint convention, matches CINTgto_norm).
@@ -64,7 +63,7 @@ inline double phys_norm_f(double alpha) {
 /// @param alpha Gaussian exponent.
 /// @return Normalization factor.
 inline double gto_norm(int l, double alpha) {
-    double n1 = (2*l + 2 + 1) * 0.5;
+    double n1 = (2 * l + 2 + 1) * 0.5;
     double gi = std::exp(std::lgamma(n1)) / (2.0 * std::pow(2.0 * alpha, n1));
     return 1.0 / std::sqrt(gi);
 }
@@ -73,7 +72,8 @@ inline double gto_norm(int l, double alpha) {
 /// @param x Non-negative argument.
 /// @return F_0(x).
 inline double boys_f0(double x) {
-    if (x < 1e-12) return 1.0;
+    if (x < 1e-12)
+        return 1.0;
     double sx = std::sqrt(x);
     return 0.5 * std::sqrt(M_PI / x) * std::erf(sx);
 }
@@ -86,8 +86,10 @@ inline double boys_f0(double x) {
 /// @param x Non-negative argument.
 /// @return F_n(x).
 inline double boys_fn(int n, double x) {
-    if (n == 0) return boys_f0(x);
-    if (x < 1e-12) return 1.0 / (2 * n + 1);
+    if (n == 0)
+        return boys_f0(x);
+    if (x < 1e-12)
+        return 1.0 / (2 * n + 1);
     double ex = std::exp(-x);
     double inv2x = 0.5 / x;
     double fn = boys_f0(x);

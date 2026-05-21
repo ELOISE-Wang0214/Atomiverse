@@ -3,15 +3,14 @@
 
 #include "atomiverse/cuda/async_bridge.cuh"
 
-#include <cuda_runtime.h>
 #include "atomiverse/cuda/types.cuh"
+#include <cuda_runtime.h>
 
 namespace ATV {
 
+using cuda::prec_t;
 using cuda::real_t;
 using cuda::work_t;
-using cuda::prec_t;
-
 
 void AsyncBridge::build(const BuildContext& ctx) {
     cudaEvent_t ev;
@@ -21,11 +20,12 @@ void AsyncBridge::build(const BuildContext& ctx) {
 }
 
 void AsyncBridge::launch(const LaunchContext& ctx) {
-    if (!can_run(ctx)) return;
+    if (!can_run(ctx))
+        return;
 
-    auto main_stream  = static_cast<cudaStream_t>(ctx.runtime.stream);
+    auto main_stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto defer_stream = static_cast<cudaStream_t>(ctx.runtime.defer_stream);
-    auto event        = static_cast<cudaEvent_t>(event_);
+    auto event = static_cast<cudaEvent_t>(event_);
 
     // Order defer stream after all main-stream physics work (non-blocking)
     cudaEventRecord(event, main_stream);

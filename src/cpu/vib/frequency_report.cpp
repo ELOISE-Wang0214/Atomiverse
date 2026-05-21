@@ -12,17 +12,19 @@ namespace cpu {
 namespace vib {
 
 void FrequencyReport::launch(const cpu::LaunchContext& ctx) {
-    if (ws_ == nullptr) return;            // test-only role-check ctor.
+    if (ws_ == nullptr)
+        return; // test-only role-check ctor.
     const int dim = 3 * ws_->n_atoms;
-    if (ctx.step < 2 * dim) return;         // not the finalize pass yet.
+    if (ctx.step < 2 * dim)
+        return; // not the finalize pass yet.
 
     std::ofstream os(path_);
-    if (!os) return;
+    if (!os)
+        return;
 
     // Full round-trip precision so the trailer ZPE / Gibbs values parse
     // back exactly (default ostream precision drops to 6 digits).
-    os << std::setprecision(
-              std::numeric_limits<double>::max_digits10);
+    os << std::setprecision(std::numeric_limits<double>::max_digits10);
 
     // Header row — tab-separated column names.
     os << "index\tfrequency_cm-1\ttype\n";
@@ -33,8 +35,8 @@ void FrequencyReport::launch(const cpu::LaunchContext& ctx) {
     const int n_modes = static_cast<int>(ws_->frequencies.size());
     for (int i = 0; i < n_modes; ++i) {
         const double f = ws_->frequencies(i);
-        os << i << '\t' << f << '\t'
-           << (f < 0.0 ? "imaginary" : "real") << '\n';
+        os << i << '\t' << f << '\t' << (f < 0.0 ? "imaginary" : "real")
+           << '\n';
     }
 
     // Trailer — summary quantities from the Thermochem pass. Prefixed

@@ -31,7 +31,7 @@ namespace vib {
 /// `role() == ComponentRole::Recorder` — I/O only; `capabilities()` is
 /// empty (it writes no `cpu::Frame` field).
 class NormalModeWriter : public cpu::ComponentBase {
-public:
+  public:
     /// @brief Construct bound to a driver-owned workspace.
     /// @param ws     Non-owning pointer to the shared Hessian workspace.
     /// @param prefix Output path prefix; mode `k` is written to
@@ -39,18 +39,16 @@ public:
     /// @param amplitude Peak Cartesian displacement amplitude [Angstrom]
     ///               of the sinusoidal sweep (default `0.5`).
     /// @param n_frames Number of animation frames per period (default 20).
-    explicit NormalModeWriter(HessianWorkspace* ws,
-                              std::string prefix = "mode",
-                              double amplitude = 0.5,
-                              int n_frames = 20)
-        : ws_(ws), prefix_(std::move(prefix)),
-          amplitude_(amplitude), n_frames_(n_frames) {}
+    explicit NormalModeWriter(HessianWorkspace* ws, std::string prefix = "mode",
+                              double amplitude = 0.5, int n_frames = 20)
+        : ws_(ws), prefix_(std::move(prefix)), amplitude_(amplitude),
+          n_frames_(n_frames) {}
 
     /// @brief Construct without a workspace (test-only role check).
     /// @param prefix Output path prefix.
     explicit NormalModeWriter(std::string prefix)
-        : ws_(nullptr), prefix_(std::move(prefix)),
-          amplitude_(0.5), n_frames_(20) {}
+        : ws_(nullptr), prefix_(std::move(prefix)), amplitude_(0.5),
+          n_frames_(20) {}
 
     std::string name() const override { return "vib_normal_mode_writer"; }
 
@@ -87,7 +85,7 @@ public:
     /// @param ctx Launch context; `ctx.step` is the displacement index.
     void launch(const cpu::LaunchContext& ctx) override;
 
-private:
+  private:
     HessianWorkspace* ws_; ///< Non-owning; driver-owned (may be null).
     std::string prefix_;   ///< Output file-name prefix.
     double amplitude_;     ///< Sweep peak amplitude [Angstrom].

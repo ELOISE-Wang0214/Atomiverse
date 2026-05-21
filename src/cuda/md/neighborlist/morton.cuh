@@ -30,9 +30,12 @@ __host__ __device__ inline uint32_t morton_from_frac(work_t fx, work_t fy,
     auto clamp = [](work_t v, work_t lo, work_t hi) {
         return v < lo ? lo : (v > hi ? hi : v);
     };
-    uint32_t ix = static_cast<uint32_t>(clamp(fx * 1024, work_t(0), work_t(resolution)));
-    uint32_t iy = static_cast<uint32_t>(clamp(fy * 1024, work_t(0), work_t(resolution)));
-    uint32_t iz = static_cast<uint32_t>(clamp(fz * 1024, work_t(0), work_t(resolution)));
+    uint32_t ix =
+        static_cast<uint32_t>(clamp(fx * 1024, work_t(0), work_t(resolution)));
+    uint32_t iy =
+        static_cast<uint32_t>(clamp(fy * 1024, work_t(0), work_t(resolution)));
+    uint32_t iz =
+        static_cast<uint32_t>(clamp(fz * 1024, work_t(0), work_t(resolution)));
     return morton_3d(ix, iy, iz);
 }
 

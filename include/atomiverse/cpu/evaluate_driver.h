@@ -15,15 +15,15 @@
 #pragma once
 
 #include "atomiverse/cpu/component.h"
-#include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/cpu_driver.h"
+#include "atomiverse/cpu/frame.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
 namespace cpu {
 
 class EvaluateDriver : public CPUDriver<ATV::evaluate::Phase> {
-public:
+  public:
     /// @brief Run a single evaluation pass through the compiled Plan.
     /// @param frame Host-resident system state, updated in place.
     void run(cpu::Frame& frame) {
@@ -32,12 +32,12 @@ public:
         teardown_pass();
     }
 
-protected:
+  protected:
     void validate_components() const override {
         bool found_evaluator = false;
         for_each_pending([&](const cpu::ComponentBase& c) {
-            if (c.role() == ComponentRole::Evaluator &&
-                !is_none(c.capabilities())) {
+            if (c.role() == ComponentRole::Evaluator
+                && !is_none(c.capabilities())) {
                 found_evaluator = true;
             }
         });

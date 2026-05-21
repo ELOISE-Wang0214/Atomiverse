@@ -1,19 +1,19 @@
 /// @file md/init.cu
 /// @brief Initializer implementations: ZeroForces, ZeroEnergy, ZeroKinetic, InitVelocity.
 
-#include "atomiverse/cuda/md/init.cuh"
-#include "atomiverse/cuda/launch.cuh"
 #include "atomiverse/core/units.h"
+#include "atomiverse/cuda/launch.cuh"
+#include "atomiverse/cuda/md/init.cuh"
 
-#include <cuda_runtime.h>
 #include "atomiverse/cuda/types.cuh"
+#include <cuda_runtime.h>
 #include <curand_kernel.h>
 
 namespace ATV {
 
+using cuda::prec_t;
 using cuda::real_t;
 using cuda::work_t;
-using cuda::prec_t;
 
 namespace md {
 
@@ -48,21 +48,26 @@ namespace {
 ///
 /// v_i ~ N(0, sigma) where sigma = sqrt(kB*T / (kMvv2e * m_i)).
 /// Uses cuRAND device API (per-thread state, Philox generator).
-__global__ void generate_velocities(
-    real_t* __restrict__ vx, real_t* __restrict__ vy, real_t* __restrict__ vz,
-    const real_t* __restrict__ mass, work_t kbt_over_mvv2e,
-    unsigned long long seed, const int* __restrict__ n_ptr) {
+__global__ void
+generate_velocities(real_t* __restrict__ vx, real_t* __restrict__ vy,
+                    real_t* __restrict__ vz, const real_t* __restrict__ mass,
+                    work_t kbt_over_mvv2e, unsigned long long seed,
+                    const int* __restrict__ n_ptr) {
 
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= *n_ptr) return;
+    if (i >= *n_ptr)
+        return;
 
     curandState state;
     curand_init(seed, i, 0, &state);
 
     work_t sigma = sqrt(kbt_over_mvv2e / static_cast<work_t>(mass[i]));
-    vx[i] = static_cast<real_t>(static_cast<work_t>(curand_normal_double(&state)) * sigma);
-    vy[i] = static_cast<real_t>(static_cast<work_t>(curand_normal_double(&state)) * sigma);
-    vz[i] = static_cast<real_t>(static_cast<work_t>(curand_normal_double(&state)) * sigma);
+    vx[i] = static_cast<real_t>(
+        static_cast<work_t>(curand_normal_double(&state)) * sigma);
+    vy[i] = static_cast<real_t>(
+        static_cast<work_t>(curand_normal_double(&state)) * sigma);
+    vz[i] = static_cast<real_t>(
+        static_cast<work_t>(curand_normal_double(&state)) * sigma);
 }
 
 /// @brief Accumulate total momentum and total mass via atomicAdd.
@@ -75,7 +80,8 @@ __global__ void accumulate_momentum(
     work_t* __restrict__ total_mass, const int* __restrict__ n_ptr) {
 
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= *n_ptr) return;
+    if (i >= *n_ptr)
+        return;
 
     atomicAdd(px, static_cast<work_t>(mass[i]) * static_cast<work_t>(vx[i]));
     atomicAdd(py, static_cast<work_t>(mass[i]) * static_cast<work_t>(vy[i]));
@@ -84,12 +90,13 @@ __global__ void accumulate_momentum(
 }
 
 /// @brief Subtract center-of-mass velocity from all atoms.
-__global__ void remove_com(
-    real_t* __restrict__ vx, real_t* __restrict__ vy, real_t* __restrict__ vz,
-    work_t vcm_x, work_t vcm_y, work_t vcm_z, const int* __restrict__ n_ptr) {
+__global__ void remove_com(real_t* __restrict__ vx, real_t* __restrict__ vy,
+                           real_t* __restrict__ vz, work_t vcm_x, work_t vcm_y,
+                           work_t vcm_z, const int* __restrict__ n_ptr) {
 
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= *n_ptr) return;
+    if (i >= *n_ptr)
+        return;
 
     vx[i] -= static_cast<real_t>(vcm_x);
     vy[i] -= static_cast<real_t>(vcm_y);
@@ -115,19 +122,22 @@ void InitVelocity::build(const BuildContext& ctx) {
         kbt_over_mvv2e, seed_, frame.atoms.d_size);
 
     // 2. Compute total momentum + total mass
-    work_t* d_px;  work_t* d_py;  work_t* d_pz;  work_t* d_M;
+    work_t* d_px;
+    work_t* d_py;
+    work_t* d_pz;
+    work_t* d_M;
     cudaMalloc(&d_px, sizeof(work_t));
     cudaMalloc(&d_py, sizeof(work_t));
     cudaMalloc(&d_pz, sizeof(work_t));
-    cudaMalloc(&d_M,  sizeof(work_t));
+    cudaMalloc(&d_M, sizeof(work_t));
     cudaMemsetAsync(d_px, 0, sizeof(work_t), stream);
     cudaMemsetAsync(d_py, 0, sizeof(work_t), stream);
     cudaMemsetAsync(d_pz, 0, sizeof(work_t), stream);
-    cudaMemsetAsync(d_M,  0, sizeof(work_t), stream);
+    cudaMemsetAsync(d_M, 0, sizeof(work_t), stream);
 
     accumulate_momentum<<<grid, block, 0, stream>>>(
-        frame.atoms.vx, frame.atoms.vy, frame.atoms.vz, frame.atoms.mass,
-        d_px, d_py, d_pz, d_M, frame.atoms.d_size);
+        frame.atoms.vx, frame.atoms.vy, frame.atoms.vz, frame.atoms.mass, d_px,
+        d_py, d_pz, d_M, frame.atoms.d_size);
 
     // 3. D2H momentum + mass (build-time D2H allowed)
     work_t px = 0, py = 0, pz = 0, M = 0;
@@ -135,18 +145,21 @@ void InitVelocity::build(const BuildContext& ctx) {
     cudaMemcpy(&px, d_px, sizeof(work_t), cudaMemcpyDeviceToHost);
     cudaMemcpy(&py, d_py, sizeof(work_t), cudaMemcpyDeviceToHost);
     cudaMemcpy(&pz, d_pz, sizeof(work_t), cudaMemcpyDeviceToHost);
-    cudaMemcpy(&M,  d_M,  sizeof(work_t), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&M, d_M, sizeof(work_t), cudaMemcpyDeviceToHost);
 
-    cudaFree(d_px); cudaFree(d_py); cudaFree(d_pz); cudaFree(d_M);
+    cudaFree(d_px);
+    cudaFree(d_py);
+    cudaFree(d_pz);
+    cudaFree(d_M);
 
     // 4. Remove center-of-mass velocity
     if (M > work_t(0)) {
         work_t vcm_x = px / M;
         work_t vcm_y = py / M;
         work_t vcm_z = pz / M;
-        remove_com<<<grid, block, 0, stream>>>(
-            frame.atoms.vx, frame.atoms.vy, frame.atoms.vz,
-            vcm_x, vcm_y, vcm_z, frame.atoms.d_size);
+        remove_com<<<grid, block, 0, stream>>>(frame.atoms.vx, frame.atoms.vy,
+                                               frame.atoms.vz, vcm_x, vcm_y,
+                                               vcm_z, frame.atoms.d_size);
         cudaStreamSynchronize(stream);
     }
 }

@@ -1,21 +1,21 @@
 /// @file test_md.cu
 /// @brief Integration test: NVE MD with LJ + output components.
 
-#include <gtest/gtest.h>
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
+#include <gtest/gtest.h>
 #include <string>
 
+#include "atomiverse/core/units.h"
 #include "atomiverse/cuda/md/init.cuh"
-#include "atomiverse/cuda/potentials/lj.cuh"
 #include "atomiverse/cuda/md/md.cuh"
-#include "atomiverse/cuda/neighbor_list.cuh"
 #include "atomiverse/cuda/md/velocity_verlet.cuh"
+#include "atomiverse/cuda/neighbor_list.cuh"
 #include "atomiverse/cuda/observer/rdf.cuh"
+#include "atomiverse/cuda/potentials/lj.cuh"
 #include "atomiverse/cuda/recorder/recorder.cuh"
 #include "atomiverse/cuda/recorder/thermo.cuh"
-#include "atomiverse/core/units.h"
 
 using namespace ATV;
 
@@ -44,9 +44,15 @@ cpu::Frame make_lj_system(int n_side, double density) {
     // Small random velocities
     std::srand(42);
     for (int i = 0; i < n; ++i) {
-        frame.atoms.vx[i] = double(0.001) * (double(std::rand()) / double(RAND_MAX) - double(0.5));
-        frame.atoms.vy[i] = double(0.001) * (double(std::rand()) / double(RAND_MAX) - double(0.5));
-        frame.atoms.vz[i] = double(0.001) * (double(std::rand()) / double(RAND_MAX) - double(0.5));
+        frame.atoms.vx[i] =
+            double(0.001)
+            * (double(std::rand()) / double(RAND_MAX) - double(0.5));
+        frame.atoms.vy[i] =
+            double(0.001)
+            * (double(std::rand()) / double(RAND_MAX) - double(0.5));
+        frame.atoms.vz[i] =
+            double(0.001)
+            * (double(std::rand()) / double(RAND_MAX) - double(0.5));
     }
 
     // Remove center-of-mass velocity
@@ -56,7 +62,9 @@ cpu::Frame make_lj_system(int n_side, double density) {
         mvy += frame.atoms.vy[i];
         mvz += frame.atoms.vz[i];
     }
-    mvx /= double(n); mvy /= double(n); mvz /= double(n);
+    mvx /= double(n);
+    mvy /= double(n);
+    mvz /= double(n);
     for (int i = 0; i < n; ++i) {
         frame.atoms.vx[i] -= mvx;
         frame.atoms.vy[i] -= mvy;
@@ -69,7 +77,7 @@ cpu::Frame make_lj_system(int n_side, double density) {
 } // anonymous namespace
 
 TEST(MD, NVEEnergyConservation) {
-    auto frame = make_lj_system(4, double(0.8));  // 64 atoms
+    auto frame = make_lj_system(4, double(0.8)); // 64 atoms
     double cutoff = double(3.0);
 
     // First run: get initial total energy
@@ -104,8 +112,7 @@ TEST(MD, NVEEnergyConservation) {
     // Total energy should be conserved within tolerance
     // (small dt = 0.001 fs, 100 steps, float precision)
     double tol = std::abs(e_initial) * double(0.01) + double(0.01);
-    EXPECT_NEAR(static_cast<double>(e_final),
-                static_cast<double>(e_initial),
+    EXPECT_NEAR(static_cast<double>(e_final), static_cast<double>(e_initial),
                 static_cast<double>(tol));
 }
 
@@ -118,8 +125,7 @@ TEST(MD, ThermoOutput) {
     sim.on(md::Phase::force)
         .add(NeighborList{cutoff}, -10)
         .add(LJ{double(1.0), double(1.0), cutoff});
-    sim.on(md::Phase::end_of_step)
-        .add(Thermo{5});
+    sim.on(md::Phase::end_of_step).add(Thermo{5});
     sim.build();
 
     // Should print thermo output without crashing
@@ -134,7 +140,7 @@ TEST(MD, ThermoOutput) {
 }
 
 TEST(MD, RecorderXYZ) {
-    auto frame = make_lj_system(3, double(0.8));  // 27 atoms
+    auto frame = make_lj_system(3, double(0.8)); // 27 atoms
     double cutoff = double(3.0);
     std::string filename = "test_traj.xyz";
 
@@ -144,8 +150,7 @@ TEST(MD, RecorderXYZ) {
         sim.on(md::Phase::force)
             .add(NeighborList{cutoff}, -10)
             .add(LJ{double(1.0), double(1.0), cutoff});
-        sim.on(md::Phase::end_of_step)
-            .add(Recorder{filename, 3});
+        sim.on(md::Phase::end_of_step).add(Recorder{filename, 3});
         sim.build();
         sim.run(frame, 9);
     }
@@ -159,7 +164,8 @@ TEST(MD, RecorderXYZ) {
     std::string line;
     while (std::getline(file, line)) {
         // Atom count line
-        if (line == "27") frame_count++;
+        if (line == "27")
+            frame_count++;
     }
     // freq=3, steps 0..8 -> steps 0,3,6 = 3 frames
     EXPECT_EQ(frame_count, 3);
@@ -179,8 +185,7 @@ TEST(MD, RDFOutput) {
         sim.on(md::Phase::force)
             .add(NeighborList{cutoff}, -10)
             .add(LJ{double(1.0), double(1.0), cutoff});
-        sim.on(md::Phase::end_of_step)
-            .add(RDF{cutoff, 50, filename});
+        sim.on(md::Phase::end_of_step).add(RDF{cutoff, 50, filename});
         sim.build();
         sim.run(frame, 5);
     }
@@ -193,7 +198,8 @@ TEST(MD, RDFOutput) {
     std::string line;
     int data_lines = 0;
     while (std::getline(file, line)) {
-        if (line.empty() || line[0] == '#') continue;
+        if (line.empty() || line[0] == '#')
+            continue;
         data_lines++;
     }
     EXPECT_EQ(data_lines, 50);
@@ -243,7 +249,8 @@ TEST(MD, InitVelocity) {
     // Velocities should now be non-zero
     bool has_nonzero = false;
     for (int i = 0; i < n; ++i) {
-        if (frame.atoms.vx[i] != double(0) || frame.atoms.vy[i] != double(0) || frame.atoms.vz[i] != double(0))
+        if (frame.atoms.vx[i] != double(0) || frame.atoms.vy[i] != double(0)
+            || frame.atoms.vz[i] != double(0))
             has_nonzero = true;
     }
     EXPECT_TRUE(has_nonzero);
@@ -268,6 +275,8 @@ TEST(MD, InitVelocity) {
     // Temperature should be in the right ballpark (within factor 3 for 64 atoms)
     int ndof = 3 * n - 3;
     double temp = double(2) * frame.kinetic / (double(ndof) * kBoltzmann);
-    EXPECT_GT(static_cast<double>(temp), static_cast<double>(target_temp) * 0.3);
-    EXPECT_LT(static_cast<double>(temp), static_cast<double>(target_temp) * 3.0);
+    EXPECT_GT(static_cast<double>(temp),
+              static_cast<double>(target_temp) * 0.3);
+    EXPECT_LT(static_cast<double>(temp),
+              static_cast<double>(target_temp) * 3.0);
 }

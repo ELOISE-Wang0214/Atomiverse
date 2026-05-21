@@ -8,8 +8,8 @@
 #include "xc_libxc_oracle.h"
 
 #include <xc.h>
-#include <xc_funcs.h>  // XC_LDA_X, XC_LDA_C_VWN, XC_GGA_X_PBE, XC_GGA_C_PBE,
-                       // XC_GGA_X_B88, XC_GGA_C_LYP, XC_LDA_C_VWN_RPA
+#include <xc_funcs.h> // XC_LDA_X, XC_LDA_C_VWN, XC_GGA_X_PBE, XC_GGA_C_PBE,
+                      // XC_GGA_X_B88, XC_GGA_C_LYP, XC_LDA_C_VWN_RPA
 
 #include <cstring>
 #include <initializer_list>
@@ -20,12 +20,11 @@ namespace xc_oracle {
 
 namespace {
 
-constexpr double kRhoMin = 1e-12;  ///< Match native evaluate_xc cutoff.
+constexpr double kRhoMin = 1e-12; ///< Match native evaluate_xc cutoff.
 
 /// @brief Run an XC functional pair (X+C) in spin-polarized LSDA mode,
 ///        sum into the output struct.
-void run_lsda_pair(int func_x_id, int func_c_id,
-                   double rho_a, double rho_b,
+void run_lsda_pair(int func_x_id, int func_c_id, double rho_a, double rho_b,
                    ::ATV::cpu::scf::XCOutput& out) {
     const double rho[2] = {rho_a, rho_b};
     double exc[1] = {0.0};
@@ -53,8 +52,7 @@ void run_lsda_pair(int func_x_id, int func_c_id,
 
 /// @brief Run an XC functional pair (X+C) in spin-polarized GGA mode,
 ///        sum into the output struct.
-void run_gga_pair(int func_x_id, int func_c_id,
-                  double rho_a, double rho_b,
+void run_gga_pair(int func_x_id, int func_c_id, double rho_a, double rho_b,
                   double sigma_aa, double sigma_ab, double sigma_bb,
                   ::ATV::cpu::scf::XCOutput& out) {
     const double rho[2] = {rho_a, rho_b};
@@ -94,9 +92,8 @@ void run_gga_pair(int func_x_id, int func_c_id,
 }
 
 /// @brief Run a single GGA functional in spin-polarized mode.
-void run_gga_single(int func_id,
-                    double rho_a, double rho_b,
-                    double sigma_aa, double sigma_ab, double sigma_bb,
+void run_gga_single(int func_id, double rho_a, double rho_b, double sigma_aa,
+                    double sigma_ab, double sigma_bb,
                     ::ATV::cpu::scf::XCOutput& out) {
     const double rho[2] = {rho_a, rho_b};
     const double sigma[3] = {sigma_aa, sigma_ab, sigma_bb};
@@ -140,7 +137,8 @@ void run_lda_single(int func_id, double rho_a, double rho_b,
 } // namespace
 
 ::ATV::cpu::scf::XCOutput evaluate_lsda(double rho_a, double rho_b) {
-    if (rho_a + rho_b < kRhoMin) return zero_output();
+    if (rho_a + rho_b < kRhoMin)
+        return zero_output();
     ::ATV::cpu::scf::XCOutput out = zero_output();
     run_lsda_pair(XC_LDA_X, XC_LDA_C_VWN, rho_a, rho_b, out);
     return out;
@@ -149,42 +147,47 @@ void run_lda_single(int func_id, double rho_a, double rho_b,
 ::ATV::cpu::scf::XCOutput evaluate_pbe(double rho_a, double rho_b,
                                        double sigma_aa, double sigma_ab,
                                        double sigma_bb) {
-    if (rho_a + rho_b < kRhoMin) return zero_output();
+    if (rho_a + rho_b < kRhoMin)
+        return zero_output();
     ::ATV::cpu::scf::XCOutput out = zero_output();
-    run_gga_pair(XC_GGA_X_PBE, XC_GGA_C_PBE,
-                 rho_a, rho_b, sigma_aa, sigma_ab, sigma_bb, out);
+    run_gga_pair(XC_GGA_X_PBE, XC_GGA_C_PBE, rho_a, rho_b, sigma_aa, sigma_ab,
+                 sigma_bb, out);
     return out;
 }
 
 ::ATV::cpu::scf::XCOutput evaluate_gga_x_b88(double rho_a, double rho_b,
                                              double sigma_aa, double sigma_ab,
                                              double sigma_bb) {
-    if (rho_a + rho_b < kRhoMin) return zero_output();
+    if (rho_a + rho_b < kRhoMin)
+        return zero_output();
     ::ATV::cpu::scf::XCOutput out = zero_output();
-    run_gga_single(XC_GGA_X_B88, rho_a, rho_b,
-                   sigma_aa, sigma_ab, sigma_bb, out);
+    run_gga_single(XC_GGA_X_B88, rho_a, rho_b, sigma_aa, sigma_ab, sigma_bb,
+                   out);
     return out;
 }
 
 ::ATV::cpu::scf::XCOutput evaluate_gga_c_lyp(double rho_a, double rho_b,
                                              double sigma_aa, double sigma_ab,
                                              double sigma_bb) {
-    if (rho_a + rho_b < kRhoMin) return zero_output();
+    if (rho_a + rho_b < kRhoMin)
+        return zero_output();
     ::ATV::cpu::scf::XCOutput out = zero_output();
-    run_gga_single(XC_GGA_C_LYP, rho_a, rho_b,
-                   sigma_aa, sigma_ab, sigma_bb, out);
+    run_gga_single(XC_GGA_C_LYP, rho_a, rho_b, sigma_aa, sigma_ab, sigma_bb,
+                   out);
     return out;
 }
 
 ::ATV::cpu::scf::XCOutput evaluate_lda_c_vwn_rpa(double rho_a, double rho_b) {
-    if (rho_a + rho_b < kRhoMin) return zero_output();
+    if (rho_a + rho_b < kRhoMin)
+        return zero_output();
     ::ATV::cpu::scf::XCOutput out = zero_output();
     run_lda_single(XC_LDA_C_VWN_RPA, rho_a, rho_b, out);
     return out;
 }
 
 ::ATV::cpu::scf::XCOutput evaluate_lda_x(double rho_a, double rho_b) {
-    if (rho_a + rho_b < kRhoMin) return zero_output();
+    if (rho_a + rho_b < kRhoMin)
+        return zero_output();
     const double rho[2] = {rho_a, rho_b};
     double exc[1] = {0.0};
     double vrho[2] = {0.0, 0.0};

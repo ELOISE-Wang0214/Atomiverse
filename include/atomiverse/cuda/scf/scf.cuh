@@ -25,12 +25,12 @@
 /// @see Driver for the inherited fluent API
 #pragma once
 
+#include "atomiverse/cuda/scf/convergence_check.cuh"
+#include "atomiverse/cuda/scf/density_builder.cuh"
+#include "atomiverse/cuda/scf/eigen_solver.cuh"
+#include "atomiverse/cuda/scf/hamiltonian.cuh"
 #include "atomiverse/facade/driver.h"
 #include "atomiverse/facade/stage.h"
-#include "atomiverse/cuda/scf/hamiltonian.cuh"
-#include "atomiverse/cuda/scf/eigen_solver.cuh"
-#include "atomiverse/cuda/scf/density_builder.cuh"
-#include "atomiverse/cuda/scf/convergence_check.cuh"
 
 namespace ATV {
 namespace scf {
@@ -40,7 +40,7 @@ namespace scf {
 /// Infrastructure component auto-added by scf::SCF at build_hamiltonian (order -1000).
 /// Ensures P starts at zero for the first SCF iteration.
 class ZeroDensity : public ComponentBase {
-public:
+  public:
     /// @brief Component name.
     /// @return "zero_density".
     std::string name() const override { return "zero_density"; }
@@ -54,11 +54,9 @@ public:
 ///
 /// Auto-adds ZeroDensity at build_hamiltonian (order -1000).
 class SCF : public Driver<Phase> {
-public:
+  public:
     /// @brief Construct SCF driver with auto-added infrastructure.
-    SCF() {
-        on(Phase::build_hamiltonian).add(ZeroDensity{}, -1000);
-    }
+    SCF() { on(Phase::build_hamiltonian).add(ZeroDensity{}, -1000); }
 };
 
 } // namespace scf

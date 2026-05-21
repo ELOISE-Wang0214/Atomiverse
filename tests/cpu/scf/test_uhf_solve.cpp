@@ -3,11 +3,11 @@
 
 #ifdef ATV_HAS_RHF
 
-#include <gtest/gtest.h>
 #include <cmath>
+#include <gtest/gtest.h>
 
-#include <xtensor/reducers/xnorm.hpp>
 #include <xtensor-blas/xlinalg.hpp>
+#include <xtensor/reducers/xnorm.hpp>
 
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/scf/integrals.h"
@@ -17,13 +17,16 @@
 using namespace ATV;
 
 class UHFSolveTest : public ::testing::Test {
-protected:
-    static constexpr double kTol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-9);
+  protected:
+    static constexpr double kTol =
+        (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-9);
     static constexpr double kEnergyTol = 1e-3;
 
     static cpu::Frame make_h_atom() {
         cpu::Frame f(1);
-        f.atoms.x[0] = double(0); f.atoms.y[0] = double(0); f.atoms.z[0] = double(0);
+        f.atoms.x[0] = double(0);
+        f.atoms.y[0] = double(0);
+        f.atoms.z[0] = double(0);
         f.atoms.type[0] = 1;
         f.box = Mat3::cubic(100.0);
         return f;
@@ -31,7 +34,9 @@ protected:
 
     static cpu::Frame make_he_atom() {
         cpu::Frame f(1);
-        f.atoms.x[0] = double(0); f.atoms.y[0] = double(0); f.atoms.z[0] = double(0);
+        f.atoms.x[0] = double(0);
+        f.atoms.y[0] = double(0);
+        f.atoms.z[0] = double(0);
         f.atoms.type[0] = 2;
         f.box = Mat3::cubic(100.0);
         return f;
@@ -39,7 +44,9 @@ protected:
 
     static cpu::Frame make_li_atom() {
         cpu::Frame f(1);
-        f.atoms.x[0] = double(0); f.atoms.y[0] = double(0); f.atoms.z[0] = double(0);
+        f.atoms.x[0] = double(0);
+        f.atoms.y[0] = double(0);
+        f.atoms.z[0] = double(0);
         f.atoms.type[0] = 3;
         f.box = Mat3::cubic(100.0);
         return f;
@@ -47,9 +54,14 @@ protected:
 
     static cpu::Frame make_h2(double bond_length_angstrom) {
         cpu::Frame f(2);
-        f.atoms.x[0] = double(0);                    f.atoms.y[0] = double(0); f.atoms.z[0] = double(0);
-        f.atoms.x[1] = double(bond_length_angstrom); f.atoms.y[1] = double(0); f.atoms.z[1] = double(0);
-        f.atoms.type[0] = 1; f.atoms.type[1] = 1;
+        f.atoms.x[0] = double(0);
+        f.atoms.y[0] = double(0);
+        f.atoms.z[0] = double(0);
+        f.atoms.x[1] = double(bond_length_angstrom);
+        f.atoms.y[1] = double(0);
+        f.atoms.z[1] = double(0);
+        f.atoms.type[0] = 1;
+        f.atoms.type[1] = 1;
         f.box = Mat3::cubic(100.0);
         return f;
     }

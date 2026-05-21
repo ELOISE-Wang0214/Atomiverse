@@ -17,8 +17,8 @@
 
 #ifdef ATV_HAS_RHF
 
-#include <gtest/gtest.h>
 #include <cmath>
+#include <gtest/gtest.h>
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame.h"
@@ -33,10 +33,10 @@ namespace {
 cpu::Frame make_h2o() {
     cpu::Frame f(3);
     // Standard H2O geometry (Angstrom). O at origin; H atoms in the xz plane.
-    f.atoms.x = {0.0,  0.7572,  -0.7572};
-    f.atoms.y = {0.0,  0.0,      0.0};
-    f.atoms.z = {0.0, -0.5860,  -0.5860};
-    f.atoms.type = {8, 1, 1};   // O, H, H
+    f.atoms.x = {0.0, 0.7572, -0.7572};
+    f.atoms.y = {0.0, 0.0, 0.0};
+    f.atoms.z = {0.0, -0.5860, -0.5860};
+    f.atoms.type = {8, 1, 1}; // O, H, H
     f.atoms.mass = {15.999, 1.008, 1.008};
     f.box = Mat3::cubic(50.0);
     return f;
@@ -46,7 +46,8 @@ cpu::Frame make_h2o() {
 
 TEST(SCFSolver, H2OConvergesAndMatchesShim) {
     auto frame = make_h2o();
-    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto integrals =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto cfg = cpu::scf::rhf_config(integrals);
 
     cpu::scf::SCFSolver solver{cfg};
@@ -67,14 +68,16 @@ TEST(SCFSolver, H2OConvergesAndMatchesShim) {
     ASSERT_EQ(result.P_alpha.shape(0), result_via_shim.P_alpha.shape(0));
     for (std::size_t i = 0; i < result.P_alpha.shape(0); ++i) {
         for (std::size_t j = 0; j < result.P_alpha.shape(1); ++j) {
-            EXPECT_NEAR(result.P_alpha(i, j), result_via_shim.P_alpha(i, j), 1e-10);
+            EXPECT_NEAR(result.P_alpha(i, j), result_via_shim.P_alpha(i, j),
+                        1e-10);
         }
     }
 }
 
 TEST(SCFSolver, RunIsIdempotentAcrossInvocations) {
     auto frame = make_h2o();
-    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto integrals =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto cfg = cpu::scf::rhf_config(integrals);
 
     cpu::scf::SCFSolver solver{cfg};
@@ -83,7 +86,7 @@ TEST(SCFSolver, RunIsIdempotentAcrossInvocations) {
     auto& r1 = solver.run(integrals);
     const double e1 = r1.energy;
     const int iters1 = r1.iterations;
-    auto P1 = r1.P_alpha;  // copy before second run overwrites the buffer
+    auto P1 = r1.P_alpha; // copy before second run overwrites the buffer
 
     auto& r2 = solver.run(integrals);
     // Cross-run determinism is *converged-energy* equality, not bit-equality:
@@ -92,7 +95,8 @@ TEST(SCFSolver, RunIsIdempotentAcrossInvocations) {
     // tolerance. The contract tested here is "no state leaks across runs"
     // — the iteration count and converged result must match within FP noise.
     EXPECT_NEAR(r2.energy, e1, 1e-10)
-        << "Same solver, same input → same converged energy across run() invocations";
+        << "Same solver, same input → same converged energy across run() "
+           "invocations";
     EXPECT_EQ(r2.iterations, iters1)
         << "Same solver, same input → same iteration count";
     for (std::size_t i = 0; i < P1.shape(0); ++i)
@@ -102,7 +106,8 @@ TEST(SCFSolver, RunIsIdempotentAcrossInvocations) {
 
 TEST(SCFSolver, H2OUKSLSDA) {
     auto frame = make_h2o();
-    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto integrals =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto cfg = cpu::scf::uks_config(integrals,
                                     /*n_alpha=*/5, /*n_beta=*/5,
                                     cpu::scf::XCType::LSDA);

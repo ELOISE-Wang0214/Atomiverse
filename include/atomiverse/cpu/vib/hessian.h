@@ -50,7 +50,7 @@ namespace vib {
 
 /// @brief Finite-difference numerical-Hessian driver.
 class Hessian : public cpu::ResponseDriver {
-public:
+  public:
     /// @brief Tag type to construct a driver WITHOUT the HessianAccumulator.
     ///
     /// Exists only so tests can verify `ResponseDriver::validate_components()`
@@ -64,8 +64,8 @@ public:
     /// `mode_xyz_prefix` is the `NormalModeWriter` file-name prefix
     /// (mode `k` is written to `"<prefix>_mode<k>.xyz"`).
     struct OutputConfig {
-        std::string frequency_tsv   = "frequencies.tsv"; ///< TSV path.
-        std::string mode_xyz_prefix = "mode";            ///< XYZ prefix.
+        std::string frequency_tsv = "frequencies.tsv"; ///< TSV path.
+        std::string mode_xyz_prefix = "mode";          ///< XYZ prefix.
     };
 
     /// @brief Construct a fully-wired numerical-Hessian driver.
@@ -127,7 +127,7 @@ public:
     /// @return The cached Hessian result.
     const HessianResult& last_result() const { return last_result_; }
 
-private:
+  private:
     /// @brief Shared scratch for the four structural components.
     ///
     /// Heap-allocated so its address is stable across any driver move —

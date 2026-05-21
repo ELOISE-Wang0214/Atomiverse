@@ -33,11 +33,13 @@ cpu::Frame make_h2(double bond_length) {
 
 TEST(OrbitalInfoObserverTest, WritesHeaderAndRowsForH2) {
     auto frame = make_h2(0.74);
-    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto integrals =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals);
 
     auto tmp = std::filesystem::temp_directory_path() / "atv_obs_h2.tsv";
-    std::error_code ec; std::filesystem::remove(tmp, ec);
+    std::error_code ec;
+    std::filesystem::remove(tmp, ec);
 
     cpu::scf::SCFEvaluator scf{config};
     auto handle = scf.result_handle();
@@ -61,11 +63,13 @@ TEST(OrbitalInfoObserverTest, WritesHeaderAndRowsForH2) {
     double last_homo = 0, last_lumo = 0;
     std::string line;
     while (std::getline(is, line)) {
-        if (line.empty()) continue;
+        if (line.empty())
+            continue;
         ++rows;
         int step;
         double homo, lumo, gap;
-        std::sscanf(line.c_str(), "%d\t%lf\t%lf\t%lf", &step, &homo, &lumo, &gap);
+        std::sscanf(line.c_str(), "%d\t%lf\t%lf\t%lf", &step, &homo, &lumo,
+                    &gap);
         last_homo = homo;
         last_lumo = lumo;
     }
@@ -78,7 +82,6 @@ TEST(OrbitalInfoObserverTest, WritesHeaderAndRowsForH2) {
 
 TEST(OrbitalInfoObserverTest, NullHandleThrows) {
     cpu::scf::SCFResultHandle empty{};
-    EXPECT_THROW(
-        cpu::scf::OrbitalInfoObserver(empty, ""),
-        std::invalid_argument);
+    EXPECT_THROW(cpu::scf::OrbitalInfoObserver(empty, ""),
+                 std::invalid_argument);
 }

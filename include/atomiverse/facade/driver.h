@@ -25,7 +25,7 @@ class Timer;
 #else
 /// @brief Stub Timer for non-CUDA builds (never instantiated).
 class Timer {
-public:
+  public:
     void init() {}
     void shutdown() {}
     std::string summary(const std::vector<std::string>&) const { return ""; }
@@ -40,8 +40,8 @@ namespace detail {
 /// sorted `StageSlot` operations.
 template <typename Component>
 struct PendingBinding {
-    int phase;          ///< Target phase index.
-    int order;          ///< Ordering within the phase (lower runs earlier).
+    int phase;            ///< Target phase index.
+    int order;            ///< Ordering within the phase (lower runs earlier).
     Component* component; ///< Non-owning pointer to the registered component.
 };
 } // namespace detail
@@ -50,7 +50,8 @@ struct PendingBinding {
 template <typename PhaseEnum, typename DeviceTag>
 class PhaseBuilder {
     using Component = typename backend_traits<DeviceTag>::component_type;
-public:
+
+  public:
     /// @brief Register a component explicitly on the current phase.
     ///
     /// Ownership follows the value category of the argument (symmetric with
@@ -74,8 +75,9 @@ public:
         return *this;
     }
 
-private:
-    template <typename PE, typename DT> friend class Driver;
+  private:
+    template <typename PE, typename DT>
+    friend class Driver;
     PhaseBuilder(std::vector<detail::PendingBinding<Component>>* b,
                  std::vector<std::unique_ptr<Component>>* o, PhaseEnum p)
         : bindings_(b), owned_(o), phase_(p) {}
@@ -90,12 +92,12 @@ private:
 /// @tparam DeviceTag Device tag (cpu::device_tag or cuda::device_tag).
 template <typename PhaseEnum, typename DeviceTag>
 class Driver {
-protected:
-    using traits    = backend_traits<DeviceTag>;
+  protected:
+    using traits = backend_traits<DeviceTag>;
     using Component = typename traits::component_type;
-    using BackendT  = typename traits::backend_type;
+    using BackendT = typename traits::backend_type;
 
-public:
+  public:
     Driver() = default;
     ~Driver() { shutdown(); }
     Driver(const Driver&) = delete;
@@ -139,16 +141,18 @@ public:
             // Non-owning: caller retains lifetime.
             auto bindings = comp.default_bindings();
             if (bindings.empty())
-                throw std::runtime_error("Component '" + comp.name() +
-                    "' has no default bindings. Use .on(phase).add().");
+                throw std::runtime_error(
+                    "Component '" + comp.name()
+                    + "' has no default bindings. Use .on(phase).add().");
             for (auto& db : bindings)
                 pending_.push_back({db.phase, db.order, &comp});
         } else {
             auto ptr = std::make_unique<C>(std::forward<Comp>(comp));
             auto bindings = ptr->default_bindings();
             if (bindings.empty())
-                throw std::runtime_error("Component '" + ptr->name() +
-                    "' has no default bindings. Use .on(phase).add().");
+                throw std::runtime_error(
+                    "Component '" + ptr->name()
+                    + "' has no default bindings. Use .on(phase).add().");
             auto* raw = ptr.get();
             owned_components_.push_back(std::move(ptr));
             for (auto& db : bindings)
@@ -160,7 +164,8 @@ public:
     /// @param phase Phase value returned by the driver's `Phase` enum.
     /// @return A `PhaseBuilder` bound to that phase.
     PhaseBuilder<PhaseEnum, DeviceTag> on(PhaseEnum phase) {
-        return PhaseBuilder<PhaseEnum, DeviceTag>(&pending_, &owned_components_, phase);
+        return PhaseBuilder<PhaseEnum, DeviceTag>(&pending_, &owned_components_,
+                                                  phase);
     }
 
     /// @brief Read-only access to the compiled Plan (after `build()`).
@@ -193,7 +198,7 @@ public:
     /// @brief Shut down Backend and release all resources.
     void shutdown();
 
-protected:
+  protected:
     // Internals are protected (not private) so category-driver bases
     // (cpu::EvaluateDriver / DynamicsDriver / OptimizeDriver) can drive
     // the per-iteration loop themselves with category-correct termination

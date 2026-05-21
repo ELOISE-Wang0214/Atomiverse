@@ -12,19 +12,21 @@ namespace minao {
 
 /// @brief One contracted shell (single l, possibly multiple contraction columns).
 struct Shell {
-    int l;                ///< Angular momentum (0=s, 1=p, 2=d, 3=f).
-    int n_prim;           ///< Number of primitive Gaussians.
-    int n_contract;       ///< Number of contracted functions sharing the exponents.
-    const double* alpha;  ///< [n_prim] exponents.
-    const double* coeff;  ///< [n_prim * n_contract] contraction matrix, row-major (prim, contract).
+    int l;          ///< Angular momentum (0=s, 1=p, 2=d, 3=f).
+    int n_prim;     ///< Number of primitive Gaussians.
+    int n_contract; ///< Number of contracted functions sharing the exponents.
+    const double* alpha; ///< [n_prim] exponents.
+    const double*
+        coeff; ///< [n_prim * n_contract] contraction matrix, row-major (prim, contract).
 };
 
 /// @brief MINAO basis for one element.
 struct ElementBasis {
     int n_shells;
-    int n_ao;                    ///< Total AOs = sum over shells of (2l+1)*n_contract.
+    int n_ao; ///< Total AOs = sum over shells of (2l+1)*n_contract.
     const Shell* shells;
-    const double* occupations;   ///< [n_ao] fractional occupations (spin-averaged, RHF total).
+    const double*
+        occupations; ///< [n_ao] fractional occupations (spin-averaged, RHF total).
 };
 
 /// @brief Whether element Z is supported (H, C, N, O, F).

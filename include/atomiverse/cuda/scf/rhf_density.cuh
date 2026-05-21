@@ -24,7 +24,7 @@ namespace scf {
 
 /// @brief Back-transform MO coefficients, rebuild density, compute RHF energy.
 class RHFDensity : public ComponentBase {
-public:
+  public:
     /// @brief Construct with occupation count.
     /// @param n_occ Number of doubly-occupied orbitals.
     explicit RHFDensity(int n_occ) : n_occ_(n_occ) {}
@@ -39,10 +39,11 @@ public:
     void launch(const LaunchContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;
 
-private:
+  private:
     int n_occ_;
     void* cublas_handle_ = nullptr;
-    double* d_HplusF_ = nullptr;  ///< Temporary Hcore+F for energy [device, n*n].
+    double* d_HplusF_ =
+        nullptr; ///< Temporary Hcore+F for energy [device, n*n].
 };
 
 #endif // ATV_HAS_RHF

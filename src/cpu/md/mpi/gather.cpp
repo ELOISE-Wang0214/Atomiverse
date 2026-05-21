@@ -43,14 +43,16 @@ void copy_owners_into(GatheredFrame& out, const Frame& frame, int n_local) {
     out.mass.assign(frame.atoms.mass.data(), frame.atoms.mass.data() + n_local);
     out.type.assign(frame.atoms.type.data(), frame.atoms.type.data() + n_local);
     out.tag.assign(frame.atoms.tag.data(), frame.atoms.tag.data() + n_local);
-    out.image.assign(frame.atoms.image.data(), frame.atoms.image.data() + 3 * n_local);
+    out.image.assign(frame.atoms.image.data(),
+                     frame.atoms.image.data() + 3 * n_local);
 }
 
 // Reorder all per-atom fields in `g` so that `g.tag` is ascending. Stable so
 // equal tags (which would indicate a bug upstream) preserve their order.
 void sort_by_tag(GatheredFrame& g) {
     const int n = g.n_total;
-    if (n <= 1) return;
+    if (n <= 1)
+        return;
     std::vector<int> perm(static_cast<std::size_t>(n));
     std::iota(perm.begin(), perm.end(), 0);
     std::stable_sort(perm.begin(), perm.end(),
@@ -58,17 +60,20 @@ void sort_by_tag(GatheredFrame& g) {
 
     auto apply_perm_double = [&](std::vector<double>& v) {
         std::vector<double> tmp(v.size());
-        for (int i = 0; i < n; ++i) tmp[i] = v[perm[i]];
+        for (int i = 0; i < n; ++i)
+            tmp[i] = v[perm[i]];
         v.swap(tmp);
     };
     auto apply_perm_int = [&](std::vector<int>& v) {
         std::vector<int> tmp(v.size());
-        for (int i = 0; i < n; ++i) tmp[i] = v[perm[i]];
+        for (int i = 0; i < n; ++i)
+            tmp[i] = v[perm[i]];
         v.swap(tmp);
     };
     auto apply_perm_int64 = [&](std::vector<std::int64_t>& v) {
         std::vector<std::int64_t> tmp(v.size());
-        for (int i = 0; i < n; ++i) tmp[i] = v[perm[i]];
+        for (int i = 0; i < n; ++i)
+            tmp[i] = v[perm[i]];
         v.swap(tmp);
     };
 
@@ -101,8 +106,7 @@ void sort_by_tag(GatheredFrame& g) {
 #ifdef ATV_HAS_MPI
 
 GatheredFrame gather_to_root(const cpu::Frame& frame,
-                             const DomainDecomposition& dd,
-                             int root) {
+                             const DomainDecomposition& dd, int root) {
     GatheredFrame out;
     out.root_rank = root;
     out.box = frame.box.cell();
@@ -127,10 +131,10 @@ GatheredFrame gather_to_root(const cpu::Frame& frame,
 
     // Step 1: every rank ships its owner count to root.
     std::vector<int> recv_counts;
-    if (my_rank == root) recv_counts.assign(static_cast<std::size_t>(world_size), 0);
-    MPI_Gather(&n_local, 1, MPI_INT,
-               recv_counts.data(), 1, MPI_INT,
-               root, dd.cart_comm);
+    if (my_rank == root)
+        recv_counts.assign(static_cast<std::size_t>(world_size), 0);
+    MPI_Gather(&n_local, 1, MPI_INT, recv_counts.data(), 1, MPI_INT, root,
+               dd.cart_comm);
 
     // Compute total + per-rank displacements on root.
     std::vector<int> displs;
@@ -167,35 +171,44 @@ GatheredFrame gather_to_root(const cpu::Frame& frame,
 
     // Helper: gather one per-atom double field.
     auto gather_double = [&](const double* sendbuf, double* recvbuf) {
-        MPI_Gatherv(sendbuf, n_local, MPI_DOUBLE,
-                    recvbuf,
+        MPI_Gatherv(sendbuf, n_local, MPI_DOUBLE, recvbuf,
                     my_rank == root ? recv_counts.data() : nullptr,
-                    my_rank == root ? displs.data()      : nullptr,
-                    MPI_DOUBLE, root, dd.cart_comm);
+                    my_rank == root ? displs.data() : nullptr, MPI_DOUBLE, root,
+                    dd.cart_comm);
     };
 
-    gather_double(frame.atoms.x.data(),    my_rank == root ? out.x.data()    : nullptr);
-    gather_double(frame.atoms.y.data(),    my_rank == root ? out.y.data()    : nullptr);
-    gather_double(frame.atoms.z.data(),    my_rank == root ? out.z.data()    : nullptr);
-    gather_double(frame.atoms.vx.data(),   my_rank == root ? out.vx.data()   : nullptr);
-    gather_double(frame.atoms.vy.data(),   my_rank == root ? out.vy.data()   : nullptr);
-    gather_double(frame.atoms.vz.data(),   my_rank == root ? out.vz.data()   : nullptr);
-    gather_double(frame.atoms.fx.data(),   my_rank == root ? out.fx.data()   : nullptr);
-    gather_double(frame.atoms.fy.data(),   my_rank == root ? out.fy.data()   : nullptr);
-    gather_double(frame.atoms.fz.data(),   my_rank == root ? out.fz.data()   : nullptr);
-    gather_double(frame.atoms.mass.data(), my_rank == root ? out.mass.data() : nullptr);
+    gather_double(frame.atoms.x.data(),
+                  my_rank == root ? out.x.data() : nullptr);
+    gather_double(frame.atoms.y.data(),
+                  my_rank == root ? out.y.data() : nullptr);
+    gather_double(frame.atoms.z.data(),
+                  my_rank == root ? out.z.data() : nullptr);
+    gather_double(frame.atoms.vx.data(),
+                  my_rank == root ? out.vx.data() : nullptr);
+    gather_double(frame.atoms.vy.data(),
+                  my_rank == root ? out.vy.data() : nullptr);
+    gather_double(frame.atoms.vz.data(),
+                  my_rank == root ? out.vz.data() : nullptr);
+    gather_double(frame.atoms.fx.data(),
+                  my_rank == root ? out.fx.data() : nullptr);
+    gather_double(frame.atoms.fy.data(),
+                  my_rank == root ? out.fy.data() : nullptr);
+    gather_double(frame.atoms.fz.data(),
+                  my_rank == root ? out.fz.data() : nullptr);
+    gather_double(frame.atoms.mass.data(),
+                  my_rank == root ? out.mass.data() : nullptr);
 
     MPI_Gatherv(frame.atoms.type.data(), n_local, MPI_INT,
                 my_rank == root ? out.type.data() : nullptr,
                 my_rank == root ? recv_counts.data() : nullptr,
-                my_rank == root ? displs.data()      : nullptr,
-                MPI_INT, root, dd.cart_comm);
+                my_rank == root ? displs.data() : nullptr, MPI_INT, root,
+                dd.cart_comm);
 
     MPI_Gatherv(frame.atoms.tag.data(), n_local, MPI_INT64_T,
                 my_rank == root ? out.tag.data() : nullptr,
                 my_rank == root ? recv_counts.data() : nullptr,
-                my_rank == root ? displs.data()      : nullptr,
-                MPI_INT64_T, root, dd.cart_comm);
+                my_rank == root ? displs.data() : nullptr, MPI_INT64_T, root,
+                dd.cart_comm);
 
     // image is shape [n, 3] -- ship 3 bytes per atom.
     std::vector<int> img_counts;
@@ -204,15 +217,17 @@ GatheredFrame gather_to_root(const cpu::Frame& frame,
         img_counts.assign(static_cast<std::size_t>(world_size), 0);
         img_displs.assign(static_cast<std::size_t>(world_size), 0);
         for (int r = 0; r < world_size; ++r) {
-            img_counts[static_cast<std::size_t>(r)] = 3 * recv_counts[static_cast<std::size_t>(r)];
-            img_displs[static_cast<std::size_t>(r)] = 3 * displs[static_cast<std::size_t>(r)];
+            img_counts[static_cast<std::size_t>(r)] =
+                3 * recv_counts[static_cast<std::size_t>(r)];
+            img_displs[static_cast<std::size_t>(r)] =
+                3 * displs[static_cast<std::size_t>(r)];
         }
     }
     MPI_Gatherv(frame.atoms.image.data(), 3 * n_local, MPI_INT8_T,
                 my_rank == root ? out.image.data() : nullptr,
                 my_rank == root ? img_counts.data() : nullptr,
-                my_rank == root ? img_displs.data() : nullptr,
-                MPI_INT8_T, root, dd.cart_comm);
+                my_rank == root ? img_displs.data() : nullptr, MPI_INT8_T, root,
+                dd.cart_comm);
 
     if (my_rank == root) {
         sort_by_tag(out);
@@ -223,8 +238,7 @@ GatheredFrame gather_to_root(const cpu::Frame& frame,
 #else // !ATV_HAS_MPI
 
 GatheredFrame gather_to_root(const cpu::Frame& frame,
-                             const DomainDecomposition& dd,
-                             int root) {
+                             const DomainDecomposition& dd, int root) {
     GatheredFrame out;
     out.root_rank = root;
     copy_owners_into(out, frame, dd.n_local);

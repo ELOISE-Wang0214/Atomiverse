@@ -14,8 +14,9 @@ namespace cuda {
 ///
 /// Components must launch kernels onto these streams, never the default stream.
 struct Context {
-    void* stream = nullptr;       ///< Main CUDA stream (cast to cudaStream_t in .cu).
-    void* defer_stream = nullptr; ///< Secondary stream for deferrable operations.
+    void* stream = nullptr; ///< Main CUDA stream (cast to cudaStream_t in .cu).
+    void* defer_stream =
+        nullptr; ///< Secondary stream for deferrable operations.
 };
 
 } // namespace cuda

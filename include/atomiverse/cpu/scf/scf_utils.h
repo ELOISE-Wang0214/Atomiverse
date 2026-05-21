@@ -10,9 +10,9 @@
 #include <cmath>
 #include <utility>
 
+#include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/containers/xtensor.hpp>
 #include <xtensor/views/xview.hpp>
-#include <xtensor-blas/xlinalg.hpp>
 
 namespace ATV {
 namespace cpu {
@@ -33,11 +33,13 @@ using RealVector = xt::xtensor<double, 1>;
 inline RealMatrix build_orthogonalization_matrix(const RealMatrix& S) {
     int n = static_cast<int>(S.shape(0));
     auto [s_eig, U] = xt::linalg::eigh(S);
-    constexpr double kLindepTol = 1e-7;  // PySCF default
+    constexpr double kLindepTol = 1e-7; // PySCF default
     double s_min = s_eig(0);
-    for (int i = 1; i < n; ++i) if (s_eig(i) < s_min) s_min = s_eig(i);
+    for (int i = 1; i < n; ++i)
+        if (s_eig(i) < s_min)
+            s_min = s_eig(i);
     // Caller can inspect s_min via build_orthogonalization_info if needed.
-    (void)s_min;  // retained for future lindep enforcement
+    (void)s_min; // retained for future lindep enforcement
     (void)kLindepTol;
     RealMatrix s_inv_sqrt = xt::zeros<double>({n, n});
     for (int i = 0; i < n; ++i)
@@ -49,9 +51,10 @@ inline RealMatrix build_orthogonalization_matrix(const RealMatrix& S) {
 /// @param F Fock matrix in AO basis [n x n].
 /// @param X Orthogonalization matrix S^{-1/2} [n x n].
 /// @return (orbital energies [n], AO MO coefficient matrix [n x n]).
-inline std::pair<RealVector, RealMatrix> diagonalize_fock(
-    const RealMatrix& F, const RealMatrix& X) {
-    RealMatrix F_prime = xt::linalg::dot(xt::transpose(X), xt::linalg::dot(F, X));
+inline std::pair<RealVector, RealMatrix> diagonalize_fock(const RealMatrix& F,
+                                                          const RealMatrix& X) {
+    RealMatrix F_prime =
+        xt::linalg::dot(xt::transpose(X), xt::linalg::dot(F, X));
     auto [eig, C_prime] = xt::linalg::eigh(F_prime);
     RealMatrix C = xt::linalg::dot(X, C_prime);
     return {eig, C};
@@ -65,8 +68,8 @@ inline std::pair<RealVector, RealMatrix> diagonalize_fock(
 /// @param F Fock matrix in AO basis [n x n].
 /// @param S Overlap matrix [n x n].
 /// @return (orbital energies [n], AO MO coefficient matrix [n x n]).
-inline std::pair<RealVector, RealMatrix> diagonalize_fock_generalized(
-    const RealMatrix& F, const RealMatrix& S) {
+inline std::pair<RealVector, RealMatrix>
+diagonalize_fock_generalized(const RealMatrix& F, const RealMatrix& S) {
     auto [eig, C] = xt::linalg::eigh(F, S);
     return {eig, C};
 }
@@ -79,7 +82,8 @@ inline std::pair<RealVector, RealMatrix> diagonalize_fock_generalized(
 /// @return Density matrix [n x n].
 inline RealMatrix build_density_matrix(const RealMatrix& C, int n_occ, int n,
                                        double factor = 1.0) {
-    if (n_occ == 0) return xt::zeros<double>({n, n});
+    if (n_occ == 0)
+        return xt::zeros<double>({n, n});
     auto C_occ = xt::view(C, xt::all(), xt::range(0, n_occ));
     return factor * xt::linalg::dot(C_occ, xt::transpose(C_occ));
 }
@@ -96,7 +100,8 @@ inline RealMatrix build_density_matrix(const RealMatrix& C, int n_occ, int n,
 /// @param theta Rotation angle in radians (default 20 degrees = 0.349 rad).
 inline void apply_homo_lumo_mixing(RealMatrix& C, int n_occ, int n,
                                    double theta = 0.3490658503988659) {
-    if (n_occ <= 0 || n_occ >= n) return;
+    if (n_occ <= 0 || n_occ >= n)
+        return;
     const double ca = std::cos(theta);
     const double sa = std::sin(theta);
     int homo = n_occ - 1;
@@ -104,7 +109,7 @@ inline void apply_homo_lumo_mixing(RealMatrix& C, int n_occ, int n,
     for (int r = 0; r < n; ++r) {
         double ci = C(r, homo);
         double cj = C(r, lumo);
-        C(r, homo) =  ca * ci + sa * cj;
+        C(r, homo) = ca * ci + sa * cj;
         C(r, lumo) = -sa * ci + ca * cj;
     }
 }
@@ -120,14 +125,16 @@ inline void apply_homo_lumo_mixing(RealMatrix& C, int n_occ, int n,
 /// @param n_alpha Number of alpha electrons.
 /// @param n_beta  Number of beta electrons.
 /// @return <S^2> - S(S+1), where S = (n_alpha - n_beta) / 2.
-inline double compute_spin_contamination(
-    const RealMatrix& C_alpha, const RealMatrix& C_beta,
-    const RealMatrix& S, int n_alpha, int n_beta) {
-    if (n_alpha == 0 || n_beta == 0) return 0.0;
+inline double compute_spin_contamination(const RealMatrix& C_alpha,
+                                         const RealMatrix& C_beta,
+                                         const RealMatrix& S, int n_alpha,
+                                         int n_beta) {
+    if (n_alpha == 0 || n_beta == 0)
+        return 0.0;
     auto Ca = xt::view(C_alpha, xt::all(), xt::range(0, n_alpha));
-    auto Cb = xt::view(C_beta,  xt::all(), xt::range(0, n_beta));
+    auto Cb = xt::view(C_beta, xt::all(), xt::range(0, n_beta));
     RealMatrix SCb = xt::linalg::dot(S, Cb);
-    RealMatrix O   = xt::linalg::dot(xt::transpose(Ca), SCb);
+    RealMatrix O = xt::linalg::dot(xt::transpose(Ca), SCb);
     return static_cast<double>(n_beta) - xt::sum(O * O)();
 }
 

@@ -34,7 +34,7 @@ namespace {
 // Per-AO storage: exponents concatenated with normalized-coeffs,
 // plus the native::Shell view pointing into this storage.
 struct MinaoAO {
-    std::vector<double> data;  // [n_prim alpha] + [n_prim coeff (normalized)]
+    std::vector<double> data; // [n_prim alpha] + [n_prim coeff (normalized)]
     native::Shell shell;
     double occupation;
 };
@@ -48,7 +48,8 @@ static void build_minao_ao_list(const IntegralPack& integrals,
     for (const auto& atom : integrals.atoms) {
         const auto* basis = minao::element_basis(atom.Z);
         if (basis == nullptr)
-            throw std::runtime_error("MINAO: unsupported element Z=" + std::to_string(atom.Z));
+            throw std::runtime_error("MINAO: unsupported element Z="
+                                     + std::to_string(atom.Z));
 
         int ao_in_elem = 0;
         for (int sh = 0; sh < basis->n_shells; ++sh) {
@@ -62,8 +63,8 @@ static void build_minao_ao_list(const IntegralPack& integrals,
                     base[p] = mshell.alpha[p];
                     // primitive physical normalization
                     double N = (mshell.l == 0)
-                                 ? native::phys_norm(mshell.alpha[p])
-                                 : native::phys_norm_p(mshell.alpha[p]);
+                                   ? native::phys_norm(mshell.alpha[p])
+                                   : native::phys_norm_p(mshell.alpha[p]);
                     // coeff layout in minao_data: row-major [n_prim][n_contract]
                     double raw_c = mshell.coeff[p * mshell.n_contract + c];
                     base[np + p] = raw_c * N;
@@ -79,16 +80,17 @@ static void build_minao_ao_list(const IntegralPack& integrals,
                 probe.center[1] = atom.pos[1];
                 probe.center[2] = atom.pos[2];
                 probe.l = mshell.l;
-                probe.cart = 0;  // l=0 -> 0; for l=1 the three Cartesians share
-                                 // the same radial self-overlap, so cart=0 suffices.
+                probe.cart = 0; // l=0 -> 0; for l=1 the three Cartesians share
+                // the same radial self-overlap, so cart=0 suffices.
                 double self = native::overlap(probe, probe);
                 double inv_norm = 1.0 / std::sqrt(self);
-                for (int p = 0; p < np; ++p) base[np + p] *= inv_norm;
+                for (int p = 0; p < np; ++p)
+                    base[np + p] *= inv_norm;
 
-                const int degen = 2 * mshell.l + 1;  // l=0 -> 1, l=1 -> 3
+                const int degen = 2 * mshell.l + 1; // l=0 -> 1, l=1 -> 3
                 for (int cart = 0; cart < degen; ++cart) {
                     MinaoAO ao;
-                    ao.data = base;  // one copy per AO so pointers are stable
+                    ao.data = base; // one copy per AO so pointers are stable
                     ao.shell.n_prim = np;
                     ao.shell.alpha = ao.data.data();
                     ao.shell.coeff = ao.data.data() + np;
@@ -110,7 +112,8 @@ static void build_minao_ao_list(const IntegralPack& integrals,
 
 bool minao_supported(const IntegralPack& integrals) {
     for (const auto& atom : integrals.atoms) {
-        if (minao::element_basis(atom.Z) == nullptr) return false;
+        if (minao::element_basis(atom.Z) == nullptr)
+            return false;
     }
     return true;
 }
@@ -121,7 +124,7 @@ RealMatrix build_minao_density(const IntegralPack& integrals) {
     build_minao_ao_list(integrals, minao_aos);
 
     const int n_target = integrals.n_basis;
-    const int n_minao  = static_cast<int>(minao_aos.size());
+    const int n_minao = static_cast<int>(minao_aos.size());
 
     // ── 2. Target-basis shells already normalized by build_integrals
     //        — just borrow the pointers.
@@ -137,13 +140,14 @@ RealMatrix build_minao_density(const IntegralPack& integrals) {
     RealMatrix S_cross = xt::zeros<double>({n_target, n_minao});
     for (int i = 0; i < n_target; ++i) {
         for (int j = 0; j < n_minao; ++j) {
-            S_cross(i, j) = native::overlap(target_shells[i], minao_aos[j].shell);
+            S_cross(i, j) =
+                native::overlap(target_shells[i], minao_aos[j].shell);
         }
     }
 
     // ── 4. Solve S_target * mo = S_cross   (PySCF's cho_solve) ─────────
     //       xt::linalg::solve dispatches to LAPACK dgesv.
-    RealMatrix S_target = integrals.S;  // copy (dgesv overwrites A)
+    RealMatrix S_target = integrals.S; // copy (dgesv overwrites A)
     RealMatrix mo = xt::linalg::solve(S_target, S_cross);
 
     // ── 5. Assemble P = mo * diag(occ) * mo^T ──────────────────────────

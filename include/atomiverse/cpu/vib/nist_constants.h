@@ -80,8 +80,8 @@ inline constexpr double BOLTZMANN = 1.38064852e-23;
 /// rather than a `constexpr` variable.
 /// @return The au-frequency-to-Hz conversion factor.
 inline double au2hz() {
-    return std::sqrt(HARTREE2J / (ATOMIC_MASS * BOHR_SI * BOHR_SI)) /
-           (2.0 * PI);
+    return std::sqrt(HARTREE2J / (ATOMIC_MASS * BOHR_SI * BOHR_SI))
+           / (2.0 * PI);
 }
 
 /// @brief Conversion factor: a unit `freq_au` -> wavenumber [cm^-1].
@@ -91,9 +91,7 @@ inline double au2hz() {
 /// `harmonic_analysis` computes it. It is always derived here from the
 /// CODATA-2014 constants above, never written as a magic literal.
 /// @return The freq_au-to-wavenumber conversion factor [cm^-1].
-inline double au2wavenumber() {
-    return au2hz() / LIGHT_SPEED_SI * 1.0e-2;
-}
+inline double au2wavenumber() { return au2hz() / LIGHT_SPEED_SI * 1.0e-2; }
 
 } // namespace nist
 } // namespace vib

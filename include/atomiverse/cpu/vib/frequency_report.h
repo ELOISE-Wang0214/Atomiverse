@@ -31,7 +31,7 @@ namespace vib {
 /// `role() == ComponentRole::Recorder` — I/O only; `capabilities()` is
 /// empty (it writes no `cpu::Frame` field).
 class FrequencyReport : public cpu::ComponentBase {
-public:
+  public:
     /// @brief Construct bound to a driver-owned workspace.
     /// @param ws   Non-owning pointer to the shared Hessian workspace.
     /// @param path Output TSV path (default `"frequencies.tsv"`).
@@ -68,7 +68,7 @@ public:
     /// @param ctx Launch context; `ctx.step` is the displacement index.
     void launch(const cpu::LaunchContext& ctx) override;
 
-private:
+  private:
     HessianWorkspace* ws_; ///< Non-owning; driver-owned (may be null).
     std::string path_;     ///< Output TSV file path.
 };

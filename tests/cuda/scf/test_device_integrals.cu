@@ -6,16 +6,16 @@
 
 #ifdef ATV_HAS_RHF
 
-#include <gtest/gtest.h>
 #include <cmath>
-#include <vector>
+#include <gtest/gtest.h>
 #include <random>
+#include <vector>
 
 #include <cuda_runtime.h>
 
-#include "atomiverse/cuda/scf/device_integrals.cuh"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
+#include "atomiverse/cuda/scf/device_integrals.cuh"
 
 using namespace ATV;
 
@@ -27,8 +27,10 @@ static constexpr double sto3g_coeff[3] = {0.15432897, 0.53532814, 0.44463454};
 
 TEST(DeviceIntegrals, BoysF0) {
     // Generate test values: 0, small, medium, large
-    std::vector<double> h_x = {0, double(1e-15), double(0.01), double(0.1), double(0.5),
-                              double(1), double(2), double(5), double(10), double(50), double(100)};
+    std::vector<double> h_x = {0,           double(1e-15), double(0.01),
+                               double(0.1), double(0.5),   double(1),
+                               double(2),   double(5),     double(10),
+                               double(50),  double(100)};
     int n = static_cast<int>(h_x.size());
 
     double *d_x, *d_out;
@@ -68,10 +70,16 @@ struct DeviceBasis {
     DeviceBasis() : n_shells(2), n_prim(3), natm(2) {
         // Compute CPU reference
         cpu::Frame frame(2);
-        frame.atoms.x[0] = double(0);    frame.atoms.y[0] = double(0); frame.atoms.z[0] = double(0);
-        frame.atoms.x[1] = double(0.74); frame.atoms.y[1] = double(0); frame.atoms.z[1] = double(0);
-        frame.atoms.mass[0] = double(1.008); frame.atoms.mass[1] = double(1.008);
-        frame.atoms.type[0] = 1; frame.atoms.type[1] = 1;
+        frame.atoms.x[0] = double(0);
+        frame.atoms.y[0] = double(0);
+        frame.atoms.z[0] = double(0);
+        frame.atoms.x[1] = double(0.74);
+        frame.atoms.y[1] = double(0);
+        frame.atoms.z[1] = double(0);
+        frame.atoms.mass[0] = double(1.008);
+        frame.atoms.mass[1] = double(1.008);
+        frame.atoms.type[0] = 1;
+        frame.atoms.type[1] = 1;
         frame.box = Mat3::cubic(100.0);
         ref = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
 
@@ -83,15 +91,16 @@ struct DeviceBasis {
         double cx[2] = {0, 0.74 * kA2B};
         for (int s = 0; s < 2; ++s) {
             for (int p = 0; p < 3; ++p) {
-                h_alpha[s*3 + p] = double(sto3g_exp[p]);
-                h_coeff[s*3 + p] = double(sto3g_coeff[p] * cpu::scf::native::phys_norm(sto3g_exp[p]));
+                h_alpha[s * 3 + p] = double(sto3g_exp[p]);
+                h_coeff[s * 3 + p] = double(
+                    sto3g_coeff[p] * cpu::scf::native::phys_norm(sto3g_exp[p]));
             }
-            h_centers[s*3 + 0] = double(cx[s]);
-            h_centers[s*3 + 1] = double(0);
-            h_centers[s*3 + 2] = double(0);
-            h_pos[s*3 + 0] = double(cx[s]);
-            h_pos[s*3 + 1] = double(0);
-            h_pos[s*3 + 2] = double(0);
+            h_centers[s * 3 + 0] = double(cx[s]);
+            h_centers[s * 3 + 1] = double(0);
+            h_centers[s * 3 + 2] = double(0);
+            h_pos[s * 3 + 0] = double(cx[s]);
+            h_pos[s * 3 + 1] = double(0);
+            h_pos[s * 3 + 2] = double(0);
         }
 
         cudaMalloc(&d_alpha, 6 * sizeof(double));
@@ -100,16 +109,22 @@ struct DeviceBasis {
         cudaMalloc(&d_Z, 2 * sizeof(int));
         cudaMalloc(&d_pos, 6 * sizeof(double));
 
-        cudaMemcpy(d_alpha, h_alpha, 6 * sizeof(double), cudaMemcpyHostToDevice);
-        cudaMemcpy(d_coeff, h_coeff, 6 * sizeof(double), cudaMemcpyHostToDevice);
-        cudaMemcpy(d_centers, h_centers, 6 * sizeof(double), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_alpha, h_alpha, 6 * sizeof(double),
+                   cudaMemcpyHostToDevice);
+        cudaMemcpy(d_coeff, h_coeff, 6 * sizeof(double),
+                   cudaMemcpyHostToDevice);
+        cudaMemcpy(d_centers, h_centers, 6 * sizeof(double),
+                   cudaMemcpyHostToDevice);
         cudaMemcpy(d_Z, h_Z, 2 * sizeof(int), cudaMemcpyHostToDevice);
         cudaMemcpy(d_pos, h_pos, 6 * sizeof(double), cudaMemcpyHostToDevice);
     }
 
     ~DeviceBasis() {
-        cudaFree(d_alpha); cudaFree(d_coeff); cudaFree(d_centers);
-        cudaFree(d_Z); cudaFree(d_pos);
+        cudaFree(d_alpha);
+        cudaFree(d_coeff);
+        cudaFree(d_centers);
+        cudaFree(d_Z);
+        cudaFree(d_pos);
     }
 };
 
@@ -124,9 +139,9 @@ TEST(DeviceIntegrals, Overlap) {
     cudaMalloc(&d_T, nn * sizeof(double));
     cudaMalloc(&d_V, nn * sizeof(double));
 
-    cuda::scf::launch_1e_integrals(
-        d_S, d_T, d_V, db.d_alpha, db.d_coeff, db.d_centers,
-        db.d_Z, db.d_pos, db.n_shells, db.n_prim, db.natm, nullptr);
+    cuda::scf::launch_1e_integrals(d_S, d_T, d_V, db.d_alpha, db.d_coeff,
+                                   db.d_centers, db.d_Z, db.d_pos, db.n_shells,
+                                   db.n_prim, db.natm, nullptr);
     cudaDeviceSynchronize();
 
     std::vector<double> h_S(nn);
@@ -134,11 +149,13 @@ TEST(DeviceIntegrals, Overlap) {
 
     for (int i = 0; i < 2; ++i)
         for (int j = 0; j < 2; ++j)
-            EXPECT_NEAR(static_cast<double>(h_S[i + j*2]),
+            EXPECT_NEAR(static_cast<double>(h_S[i + j * 2]),
                         static_cast<double>(db.ref.S(i, j)), 5e-7)
                 << "S(" << i << "," << j << ") GPU vs CPU mismatch";
 
-    cudaFree(d_S); cudaFree(d_T); cudaFree(d_V);
+    cudaFree(d_S);
+    cudaFree(d_T);
+    cudaFree(d_V);
 }
 
 // ── 1e integrals: kinetic ─────────────────────────────────────────────
@@ -152,9 +169,9 @@ TEST(DeviceIntegrals, Kinetic) {
     cudaMalloc(&d_T, nn * sizeof(double));
     cudaMalloc(&d_V, nn * sizeof(double));
 
-    cuda::scf::launch_1e_integrals(
-        d_S, d_T, d_V, db.d_alpha, db.d_coeff, db.d_centers,
-        db.d_Z, db.d_pos, db.n_shells, db.n_prim, db.natm, nullptr);
+    cuda::scf::launch_1e_integrals(d_S, d_T, d_V, db.d_alpha, db.d_coeff,
+                                   db.d_centers, db.d_Z, db.d_pos, db.n_shells,
+                                   db.n_prim, db.natm, nullptr);
     cudaDeviceSynchronize();
 
     std::vector<double> h_T(nn);
@@ -162,11 +179,13 @@ TEST(DeviceIntegrals, Kinetic) {
 
     for (int i = 0; i < 2; ++i)
         for (int j = 0; j < 2; ++j)
-            EXPECT_NEAR(static_cast<double>(h_T[i + j*2]),
+            EXPECT_NEAR(static_cast<double>(h_T[i + j * 2]),
                         static_cast<double>(db.ref.T(i, j)), 5e-7)
                 << "T(" << i << "," << j << ") GPU vs CPU mismatch";
 
-    cudaFree(d_S); cudaFree(d_T); cudaFree(d_V);
+    cudaFree(d_S);
+    cudaFree(d_T);
+    cudaFree(d_V);
 }
 
 // ── 1e integrals: nuclear ─────────────────────────────────────────────
@@ -180,9 +199,9 @@ TEST(DeviceIntegrals, Nuclear) {
     cudaMalloc(&d_T, nn * sizeof(double));
     cudaMalloc(&d_V, nn * sizeof(double));
 
-    cuda::scf::launch_1e_integrals(
-        d_S, d_T, d_V, db.d_alpha, db.d_coeff, db.d_centers,
-        db.d_Z, db.d_pos, db.n_shells, db.n_prim, db.natm, nullptr);
+    cuda::scf::launch_1e_integrals(d_S, d_T, d_V, db.d_alpha, db.d_coeff,
+                                   db.d_centers, db.d_Z, db.d_pos, db.n_shells,
+                                   db.n_prim, db.natm, nullptr);
     cudaDeviceSynchronize();
 
     std::vector<double> h_V(nn);
@@ -190,11 +209,13 @@ TEST(DeviceIntegrals, Nuclear) {
 
     for (int i = 0; i < 2; ++i)
         for (int j = 0; j < 2; ++j)
-            EXPECT_NEAR(static_cast<double>(h_V[i + j*2]),
+            EXPECT_NEAR(static_cast<double>(h_V[i + j * 2]),
                         static_cast<double>(db.ref.V(i, j)), 5e-7)
                 << "V(" << i << "," << j << ") GPU vs CPU mismatch";
 
-    cudaFree(d_S); cudaFree(d_T); cudaFree(d_V);
+    cudaFree(d_S);
+    cudaFree(d_T);
+    cudaFree(d_V);
 }
 
 // ── 2e integrals: ERI ─────────────────────────────────────────────────
@@ -206,24 +227,26 @@ TEST(DeviceIntegrals, ERI) {
     double* d_ERI;
     cudaMalloc(&d_ERI, n4 * sizeof(double));
 
-    cuda::scf::launch_eri(
-        d_ERI, db.d_alpha, db.d_coeff, db.d_centers,
-        db.n_shells, db.n_prim, nullptr);
+    cuda::scf::launch_eri(d_ERI, db.d_alpha, db.d_coeff, db.d_centers,
+                          db.n_shells, db.n_prim, nullptr);
     cudaDeviceSynchronize();
 
     std::vector<double> h_ERI(n4);
-    cudaMemcpy(h_ERI.data(), d_ERI, n4 * sizeof(double), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_ERI.data(), d_ERI, n4 * sizeof(double),
+               cudaMemcpyDeviceToHost);
 
     int n = 2;
     for (int i = 0; i < n; ++i)
-      for (int j = 0; j < n; ++j)
-        for (int k = 0; k < n; ++k)
-          for (int l = 0; l < n; ++l) {
-            int idx = i + j*n + k*n*n + l*n*n*n;
-            EXPECT_NEAR(static_cast<double>(h_ERI[idx]),
-                        static_cast<double>(db.ref.ERI(i, j, k, l)), 5e-7)
-                << "ERI(" << i << "," << j << "," << k << "," << l << ") GPU vs CPU mismatch";
-          }
+        for (int j = 0; j < n; ++j)
+            for (int k = 0; k < n; ++k)
+                for (int l = 0; l < n; ++l) {
+                    int idx = i + j * n + k * n * n + l * n * n * n;
+                    EXPECT_NEAR(static_cast<double>(h_ERI[idx]),
+                                static_cast<double>(db.ref.ERI(i, j, k, l)),
+                                5e-7)
+                        << "ERI(" << i << "," << j << "," << k << "," << l
+                        << ") GPU vs CPU mismatch";
+                }
 
     cudaFree(d_ERI);
 }

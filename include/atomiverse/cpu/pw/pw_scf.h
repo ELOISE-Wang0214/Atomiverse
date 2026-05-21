@@ -12,9 +12,9 @@ namespace pw {
 
 /// @brief Result of a plane-wave DFT total energy calculation.
 struct PWResult {
-    double energy = 0;       ///< Total energy [Ry].
-    bool converged = false;  ///< Whether SCF converged within max_iter.
-    int iterations = 0;      ///< Actual SCF iterations taken.
+    double energy = 0;      ///< Total energy [Ry].
+    bool converged = false; ///< Whether SCF converged within max_iter.
+    int iterations = 0;     ///< Actual SCF iterations taken.
 };
 
 /// @brief Run plane-wave LDA total energy calculation for a periodic system.
@@ -29,11 +29,8 @@ struct PWResult {
 /// @param tol        SCF convergence tolerance on density change.
 /// @param max_iter   Maximum SCF iterations.
 /// @return PWResult with energy (Ry), converged, iterations.
-PWResult pw_scf(const cpu::Frame& frame,
-                const std::string& upf_path = "",
-                double ecut_ry = 30.0,
-                int k_mesh = 4,
-                double tol = 1e-6,
+PWResult pw_scf(const cpu::Frame& frame, const std::string& upf_path = "",
+                double ecut_ry = 30.0, int k_mesh = 4, double tol = 1e-6,
                 int max_iter = 50);
 
 } // namespace pw

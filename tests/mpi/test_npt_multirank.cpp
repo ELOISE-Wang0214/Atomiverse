@@ -16,6 +16,7 @@
 #include <cmath>
 #include <vector>
 
+#include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/barostat.h"
 #include "atomiverse/cpu/md/lj.h"
@@ -24,7 +25,6 @@
 #include "atomiverse/cpu/md/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/md/virial_stress.h"
-#include "atomiverse/core/mat3.h"
 
 using namespace ATV;
 
@@ -34,8 +34,10 @@ cpu::Frame make_fcc_argon(int n_cells, double a_lat) {
     const int n = n_cells * n_cells * n_cells * 4;
     cpu::Frame frame(n);
     double basis[4][3] = {
-        {0.0, 0.0, 0.0}, {0.5, 0.5, 0.0},
-        {0.5, 0.0, 0.5}, {0.0, 0.5, 0.5},
+        {0.0, 0.0, 0.0},
+        {0.5, 0.5, 0.0},
+        {0.5, 0.0, 0.5},
+        {0.0, 0.5, 0.5},
     };
     int idx = 0;
     for (int ix = 0; ix < n_cells; ++ix)
@@ -61,10 +63,10 @@ cpu::Frame make_fcc_argon(int n_cells, double a_lat) {
 // compressive — matches `compute pressure`, `NoseHooverNPT` and the
 // post-`lammps-api-align-04` `Barostat`.
 double pressure_from_frame(const cpu::Frame& frame) {
-    const double V = frame.box(0,0) * frame.box(1,1) * frame.box(2,2);
+    const double V = frame.box(0, 0) * frame.box(1, 1) * frame.box(2, 2);
     const double trace = (frame.stress[0] + frame.stress[1] + frame.stress[2])
-                       + (frame.stress_kinetic[0] + frame.stress_kinetic[1]
-                          + frame.stress_kinetic[2]);
+                         + (frame.stress_kinetic[0] + frame.stress_kinetic[1]
+                            + frame.stress_kinetic[2]);
     return +trace / (3.0 * V);
 }
 
@@ -84,7 +86,7 @@ TEST(NptMultiRank, BarostatRelaxesOverPressure) {
     const double lj_eps = 0.0104;
     const double lj_sig = 3.4;
     const double lj_cut = 6.0;
-    const double dt     = 0.5;
+    const double dt = 0.5;
 
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{dt});
@@ -96,16 +98,17 @@ TEST(NptMultiRank, BarostatRelaxesOverPressure) {
         .add(cpu::md::NeighborList<>{lj_cut}, -10)
         .add(cpu::md::LJ{lj_eps, lj_sig, lj_cut});
     sim.add(cpu::md::VirialStress{});
-    sim.add(cpu::md::Barostat{0.0, /*tau_P=*/200.0, dt});  // P_target = 0
+    sim.add(cpu::md::Barostat{0.0, /*tau_P=*/200.0, dt}); // P_target = 0
     sim.build();
 
     sim.run(frame, 1);
-    const double V_initial = frame.box(0,0) * frame.box(1,1) * frame.box(2,2);
+    const double V_initial =
+        frame.box(0, 0) * frame.box(1, 1) * frame.box(2, 2);
     const double P_initial = pressure_from_frame(frame);
 
     sim.run(frame, 999);
-    const double V_final   = frame.box(0,0) * frame.box(1,1) * frame.box(2,2);
-    const double P_final   = pressure_from_frame(frame);
+    const double V_final = frame.box(0, 0) * frame.box(1, 1) * frame.box(2, 2);
+    const double P_final = pressure_from_frame(frame);
 
     int my_rank = 0;
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);

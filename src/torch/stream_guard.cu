@@ -5,8 +5,8 @@
 
 #include "atomiverse/torch/stream_guard.cuh"
 
-#include <cuda_runtime.h>
 #include <c10/cuda/CUDAStream.h>
+#include <cuda_runtime.h>
 
 namespace ATV {
 namespace torch {
@@ -14,14 +14,11 @@ namespace torch {
 StreamGuard::StreamGuard(void* atv_stream)
     : prev_stream_(::c10::cuda::getCurrentCUDAStream()) {
     auto stream = ::c10::cuda::getStreamFromExternal(
-        static_cast<cudaStream_t>(atv_stream),
-        prev_stream_.device_index());
+        static_cast<cudaStream_t>(atv_stream), prev_stream_.device_index());
     ::c10::cuda::setCurrentCUDAStream(stream);
 }
 
-StreamGuard::~StreamGuard() {
-    ::c10::cuda::setCurrentCUDAStream(prev_stream_);
-}
+StreamGuard::~StreamGuard() { ::c10::cuda::setCurrentCUDAStream(prev_stream_); }
 
 } // namespace torch
 } // namespace ATV

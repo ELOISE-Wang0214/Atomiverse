@@ -17,14 +17,14 @@
 #include <cmath>
 #include <vector>
 
-#include "atomiverse/cpu/potentials/harmonic_angle.h"
-#include "atomiverse/cpu/potentials/harmonic_bond.h"
-#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
+#include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/context.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/core/mat3.h"
-#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/potentials/harmonic_angle.h"
+#include "atomiverse/cpu/potentials/harmonic_bond.h"
+#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
 
 using namespace ATV;
 
@@ -49,25 +49,25 @@ namespace {
 inline constexpr double kKcalPerMolToEv = 1.0 / 23.060547830619026;
 
 // CT-CT bond (alkane sp3-sp3 single bond).
-inline constexpr double kBondK_kcal  = 268.0;       // kcal/mol/Å^2 (LAMMPS K)
-inline constexpr double kBondR0      = 1.53;       // Å
+inline constexpr double kBondK_kcal = 268.0; // kcal/mol/Å^2 (LAMMPS K)
+inline constexpr double kBondR0 = 1.53;      // Å
 
 // CT-CT-CT angle.
-inline constexpr double kAngleK_kcal = 60.0;       // kcal/mol/rad^2 (LAMMPS K)
-inline constexpr double kAngleTheta0 = 109.5 * kPI / 180.0;  // rad
+inline constexpr double kAngleK_kcal = 60.0; // kcal/mol/rad^2 (LAMMPS K)
+inline constexpr double kAngleTheta0 = 109.5 * kPI / 180.0; // rad
 
 // CT-CT-CT-CT dihedral (n-alkane backbone OPLS).
 
-inline double bond_K_eV()      { return kBondK_kcal  * kKcalPerMolToEv; }
-inline double angle_K_eV()     { return kAngleK_kcal * kKcalPerMolToEv; }
+inline double bond_K_eV() { return kBondK_kcal * kKcalPerMolToEv; }
+inline double angle_K_eV() { return kAngleK_kcal * kKcalPerMolToEv; }
 
 inline std::vector<double> dihedral_Cn_eV() {
     return {
-        1.73    * kKcalPerMolToEv,   // C0  (MSU paper, Tschopp 2010)
-        -4.49   * kKcalPerMolToEv,   // C1
-        0.776   * kKcalPerMolToEv,   // C2
-        6.99    * kKcalPerMolToEv,   // C3
-        0.0,                          // C4
+        1.73 * kKcalPerMolToEv,  // C0  (MSU paper, Tschopp 2010)
+        -4.49 * kKcalPerMolToEv, // C1
+        0.776 * kKcalPerMolToEv, // C2
+        6.99 * kKcalPerMolToEv,  // C3
+        0.0,                     // C4
     };
 }
 
@@ -80,7 +80,8 @@ inline std::vector<double> dihedral_Cn_eV() {
 cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
     cpu::Frame frame(n_carbons);
 
-    const double half_apex = (kPI - kAngleTheta0) / 2.0;  // half of (180° - theta)
+    const double half_apex =
+        (kPI - kAngleTheta0) / 2.0; // half of (180° - theta)
     const double dx_step = kBondR0 * std::cos(half_apex);
     const double dy_step = kBondR0 * std::sin(half_apex);
 
@@ -92,7 +93,7 @@ cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
         frame.atoms.x[i] = x0 + i * dx_step;
         frame.atoms.y[i] = y0 + (i % 2 == 0 ? 0.0 : dy_step);
         frame.atoms.z[i] = z0;
-        frame.atoms.mass[i] = 14.027;   // CH2 united atom
+        frame.atoms.mass[i] = 14.027; // CH2 united atom
         frame.atoms.type[i] = 0;
     }
 
@@ -100,11 +101,11 @@ cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
     const int n_bonds = n_carbons - 1;
     frame.bonds.atomi = xt::zeros<int>({n_bonds});
     frame.bonds.atomj = xt::zeros<int>({n_bonds});
-    frame.bonds.type  = xt::zeros<int>({n_bonds});
+    frame.bonds.type = xt::zeros<int>({n_bonds});
     for (int k = 0; k < n_bonds; ++k) {
         frame.bonds.atomi[k] = k;
         frame.bonds.atomj[k] = k + 1;
-        frame.bonds.type[k]  = 0;
+        frame.bonds.type[k] = 0;
     }
 
     // Angles: 0-1-2, 1-2-3, ..., (n-3)-(n-2)-(n-1). All type 0.
@@ -112,12 +113,12 @@ cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
     frame.angles.atomi = xt::zeros<int>({n_angles});
     frame.angles.atomj = xt::zeros<int>({n_angles});
     frame.angles.atomk = xt::zeros<int>({n_angles});
-    frame.angles.type  = xt::zeros<int>({n_angles});
+    frame.angles.type = xt::zeros<int>({n_angles});
     for (int k = 0; k < n_angles; ++k) {
         frame.angles.atomi[k] = k;
         frame.angles.atomj[k] = k + 1;
         frame.angles.atomk[k] = k + 2;
-        frame.angles.type[k]  = 0;
+        frame.angles.type[k] = 0;
     }
 
     // Dihedrals: 0-1-2-3, ..., (n-4)-(n-3)-(n-2)-(n-1). All type 0.
@@ -126,13 +127,13 @@ cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
     frame.dihedrals.atomj = xt::zeros<int>({n_dihedrals});
     frame.dihedrals.atomk = xt::zeros<int>({n_dihedrals});
     frame.dihedrals.atoml = xt::zeros<int>({n_dihedrals});
-    frame.dihedrals.type  = xt::zeros<int>({n_dihedrals});
+    frame.dihedrals.type = xt::zeros<int>({n_dihedrals});
     for (int k = 0; k < n_dihedrals; ++k) {
         frame.dihedrals.atomi[k] = k;
         frame.dihedrals.atomj[k] = k + 1;
         frame.dihedrals.atomk[k] = k + 2;
         frame.dihedrals.atoml[k] = k + 3;
-        frame.dihedrals.type[k]  = 0;
+        frame.dihedrals.type[k] = 0;
     }
 
     frame.box = Mat3::cubic(box_len);
@@ -141,10 +142,8 @@ cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
 
 // Run a single force-evaluation pass with each bonded component, accumulating
 // V into frame.energy. Caller is responsible for resetting frame.energy first.
-void evaluate_bonded(cpu::Frame& frame,
-                      HarmonicBond& bond,
-                      HarmonicAngle& angle,
-                      MultiHarmonicDihedral& dih) {
+void evaluate_bonded(cpu::Frame& frame, HarmonicBond& bond,
+                     HarmonicAngle& angle, MultiHarmonicDihedral& dih) {
     cpu::Context ctx;
     cpu::BuildContext bctx{ctx, frame};
     cpu::LaunchContext lctx{ctx, frame, 0, 0};
@@ -207,8 +206,8 @@ TEST(PeSingleChain, AllTransGeometryIsStationaryPoint) {
     double max_f = 0.0;
     for (int i = 0; i < frame.atoms.size(); ++i) {
         const double fmag = std::sqrt(frame.atoms.fx[i] * frame.atoms.fx[i]
-                                     + frame.atoms.fy[i] * frame.atoms.fy[i]
-                                     + frame.atoms.fz[i] * frame.atoms.fz[i]);
+                                      + frame.atoms.fy[i] * frame.atoms.fy[i]
+                                      + frame.atoms.fz[i] * frame.atoms.fz[i]);
         max_f = std::max(max_f, fmag);
     }
     EXPECT_LT(max_f, 1e-10) << "max |force| at equilibrium = " << max_f;
@@ -244,7 +243,8 @@ TEST(PeSingleChain, StretchOneBondMatchesAnalytic) {
 
     const double v_expected = bond_K_eV() * dr * dr;
     EXPECT_NEAR(fresh.energy, v_expected, 1e-9)
-        << "end-atom shifted by " << dr << " Å along bond axis should give K*Δr² = " << v_expected;
+        << "end-atom shifted by " << dr
+        << " Å along bond axis should give K*Δr² = " << v_expected;
 }
 
 // ── Bend one angle: V_angle = K * (Δθ)^2 ──────────────────────────────
@@ -269,7 +269,7 @@ TEST(PeSingleChain, BendOneAngleMatchesAnalytic) {
     // is hard; instead we lift atom 1 by a small h, then compute Δθ from
     // the new geometry directly and compare V_angle against K * (Δθ)^2.
 
-    const double h = 0.02;  // Å
+    const double h = 0.02; // Å
     cpu::Frame fresh = make_all_trans_alkane(20, 50.0);
     fresh.atoms.z[1] += h;
 
@@ -281,12 +281,16 @@ TEST(PeSingleChain, BendOneAngleMatchesAnalytic) {
         double rkj[3] = {f.atoms.x[k] - f.atoms.x[j],
                          f.atoms.y[k] - f.atoms.y[j],
                          f.atoms.z[k] - f.atoms.z[j]};
-        const double dot = rij[0]*rkj[0] + rij[1]*rkj[1] + rij[2]*rkj[2];
-        const double mij = std::sqrt(rij[0]*rij[0] + rij[1]*rij[1] + rij[2]*rij[2]);
-        const double mkj = std::sqrt(rkj[0]*rkj[0] + rkj[1]*rkj[1] + rkj[2]*rkj[2]);
+        const double dot = rij[0] * rkj[0] + rij[1] * rkj[1] + rij[2] * rkj[2];
+        const double mij =
+            std::sqrt(rij[0] * rij[0] + rij[1] * rij[1] + rij[2] * rij[2]);
+        const double mkj =
+            std::sqrt(rkj[0] * rkj[0] + rkj[1] * rkj[1] + rkj[2] * rkj[2]);
         double c = dot / (mij * mkj);
-        if (c >  1.0) c =  1.0;
-        if (c < -1.0) c = -1.0;
+        if (c > 1.0)
+            c = 1.0;
+        if (c < -1.0)
+            c = -1.0;
         return std::acos(c);
     };
     const double theta_new = angle_at(fresh, 0, 1, 2);
@@ -302,11 +306,11 @@ TEST(PeSingleChain, BendOneAngleMatchesAnalytic) {
     fresh.angles.atomi = xt::zeros<int>({1});
     fresh.angles.atomj = xt::zeros<int>({1});
     fresh.angles.atomk = xt::zeros<int>({1});
-    fresh.angles.type  = xt::zeros<int>({1});
+    fresh.angles.type = xt::zeros<int>({1});
     fresh.angles.atomi[0] = 0;
     fresh.angles.atomj[0] = 1;
     fresh.angles.atomk[0] = 2;
-    fresh.angles.type[0]  = 0;
+    fresh.angles.type[0] = 0;
 
     fresh.energy = 0;
     angle_only.launch(lctx);
@@ -314,7 +318,8 @@ TEST(PeSingleChain, BendOneAngleMatchesAnalytic) {
 
     const double v_expected = angle_K_eV() * dtheta * dtheta;
     EXPECT_NEAR(fresh.energy, v_expected, 1e-9)
-        << "one angle bent by " << dtheta << " rad should give K*Δθ² = " << v_expected;
+        << "one angle bent by " << dtheta
+        << " rad should give K*Δθ² = " << v_expected;
 }
 
 // ── All-trans dihedral: V_Dreiding-UA at φ = 180° is a constant offset ─

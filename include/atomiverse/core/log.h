@@ -22,8 +22,8 @@
 #endif
 
 #include <chrono>
-#include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/spdlog.h>
 
 #include <memory>
 
@@ -32,17 +32,16 @@ namespace ATV {
 using LogClock = std::chrono::steady_clock;
 
 /// @brief Elapsed wall time in milliseconds.
-inline double elapsed_ms(
-    LogClock::time_point start,
-    LogClock::time_point end = LogClock::now())
-{
+inline double elapsed_ms(LogClock::time_point start,
+                         LogClock::time_point end = LogClock::now()) {
     return std::chrono::duration<double, std::milli>(end - start).count();
 }
 
 /// @brief Get the project-wide logger instance.
 /// @return Reference to the "atv" named spdlog logger (created on first call).
 inline spdlog::logger& logger() {
-    static std::shared_ptr<spdlog::logger> instance = spdlog::stdout_color_mt("atv");
+    static std::shared_ptr<spdlog::logger> instance =
+        spdlog::stdout_color_mt("atv");
     return *instance;
 }
 
@@ -58,9 +57,9 @@ inline void log_init(spdlog::level::level_enum level = spdlog::level::info) {
 
 // -- Convenience macros (compile to nothing when spdlog strips the level) ----
 
-#define ATV_TRACE(...)    SPDLOG_LOGGER_TRACE(&ATV::logger(), __VA_ARGS__)
-#define ATV_DEBUG(...)    SPDLOG_LOGGER_DEBUG(&ATV::logger(), __VA_ARGS__)
-#define ATV_INFO(...)     SPDLOG_LOGGER_INFO(&ATV::logger(), __VA_ARGS__)
-#define ATV_WARN(...)     SPDLOG_LOGGER_WARN(&ATV::logger(), __VA_ARGS__)
-#define ATV_ERROR(...)    SPDLOG_LOGGER_ERROR(&ATV::logger(), __VA_ARGS__)
+#define ATV_TRACE(...) SPDLOG_LOGGER_TRACE(&ATV::logger(), __VA_ARGS__)
+#define ATV_DEBUG(...) SPDLOG_LOGGER_DEBUG(&ATV::logger(), __VA_ARGS__)
+#define ATV_INFO(...) SPDLOG_LOGGER_INFO(&ATV::logger(), __VA_ARGS__)
+#define ATV_WARN(...) SPDLOG_LOGGER_WARN(&ATV::logger(), __VA_ARGS__)
+#define ATV_ERROR(...) SPDLOG_LOGGER_ERROR(&ATV::logger(), __VA_ARGS__)
 #define ATV_CRITICAL(...) SPDLOG_LOGGER_CRITICAL(&ATV::logger(), __VA_ARGS__)

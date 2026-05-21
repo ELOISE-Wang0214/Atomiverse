@@ -23,22 +23,22 @@ namespace ATV::cpu::detail {
 /// @param owned            Cache vector owned by the calling base class.
 /// @param cached_gen       Cache generation owned by the calling base.
 /// @return Const reference to `owned`.
-inline const std::vector<int>& refresh_owned_tuples(
-    const LaunchContext& ctx,
-    int n_tuples,
-    const std::function<std::int64_t(int)>& owner_tag_of,
-    std::vector<int>& owned,
-    std::uint64_t& cached_gen) {
+inline const std::vector<int>&
+refresh_owned_tuples(const LaunchContext& ctx, int n_tuples,
+                     const std::function<std::int64_t(int)>& owner_tag_of,
+                     std::vector<int>& owned, std::uint64_t& cached_gen) {
     const auto* dd = ctx.runtime.dd;
     const bool multi_rank = (dd != nullptr) && (ctx.runtime.mpi_size > 1);
     if (!multi_rank) {
         if (static_cast<int>(owned.size()) != n_tuples) {
             owned.resize(static_cast<std::size_t>(n_tuples));
-            for (int t = 0; t < n_tuples; ++t) owned[t] = t;
+            for (int t = 0; t < n_tuples; ++t)
+                owned[t] = t;
         }
         return owned;
     }
-    if (cached_gen == dd->neighbor_generation) return owned;
+    if (cached_gen == dd->neighbor_generation)
+        return owned;
     owned.clear();
     owned.reserve(static_cast<std::size_t>(n_tuples));
     for (int t = 0; t < n_tuples; ++t) {

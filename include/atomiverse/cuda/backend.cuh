@@ -11,13 +11,15 @@
 #include <cuda_runtime.h>
 
 #include "atomiverse/cuda/component.cuh"
-#include "atomiverse/cuda/frame.cuh"
 #include "atomiverse/cuda/context.cuh"
+#include "atomiverse/cuda/frame.cuh"
 #include "atomiverse/facade/plan.h"
 
 namespace ATV {
 
-namespace cpu { class Frame; }
+namespace cpu {
+class Frame;
+}
 class Timer;
 
 /// @brief GPU execution engine -- lifecycle manager + dispatcher.
@@ -33,7 +35,7 @@ class Timer;
 ///
 /// @see Driver::run() which orchestrates this full sequence
 class Backend {
-public:
+  public:
     /// @brief Create CUDA streams and populate Runtime.
     void init();
 
@@ -79,11 +81,12 @@ public:
     /// @brief Access the cuda::Frame.
     cuda::Frame& frame() { return frame_; }
 
-private:
-    cuda::Context context_{};    ///< CUDA stream handles.
-    cuda::Frame frame_{};        ///< Device-resident system state + host metadata.
-    const Plan<ComponentBase>* plan_ = nullptr; ///< Non-owning pointer to compiled Plan.
-    Timer* timer_ = nullptr;     ///< Non-owning pointer to optional Timer.
+  private:
+    cuda::Context context_{}; ///< CUDA stream handles.
+    cuda::Frame frame_{};     ///< Device-resident system state + host metadata.
+    const Plan<ComponentBase>* plan_ =
+        nullptr;             ///< Non-owning pointer to compiled Plan.
+    Timer* timer_ = nullptr; ///< Non-owning pointer to optional Timer.
 };
 
 } // namespace ATV

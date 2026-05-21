@@ -10,8 +10,8 @@
 /// @see cpu::scf::rhf_solve for the CPU RHF solver that consumes IntegralPack
 #pragma once
 
-#include <vector>
 #include <array>
+#include <vector>
 #include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/cpu/frame.h"
@@ -24,14 +24,16 @@ namespace scf {
 
 /// @brief Molecular integrals for a Hartree-Fock / Kohn-Sham calculation.
 struct IntegralPack {
-    xt::xtensor<double, 2> S;       ///< Overlap matrix [n_basis x n_basis].
-    xt::xtensor<double, 2> T;       ///< Kinetic energy matrix [n_basis x n_basis].
-    xt::xtensor<double, 2> V;       ///< Nuclear attraction matrix [n_basis x n_basis].
-    xt::xtensor<double, 2> Hcore;   ///< Core Hamiltonian T + V [n_basis x n_basis].
-    xt::xtensor<double, 4> ERI;     ///< Two-electron integrals (ij|kl) [n^4].
-    double V_nuc = 0;               ///< Nuclear repulsion energy [Hartree].
-    int n_basis = 0;                ///< Number of basis functions.
-    int n_electrons = 0;            ///< Total number of electrons.
+    xt::xtensor<double, 2> S; ///< Overlap matrix [n_basis x n_basis].
+    xt::xtensor<double, 2> T; ///< Kinetic energy matrix [n_basis x n_basis].
+    xt::xtensor<double, 2>
+        V; ///< Nuclear attraction matrix [n_basis x n_basis].
+    xt::xtensor<double, 2>
+        Hcore;                  ///< Core Hamiltonian T + V [n_basis x n_basis].
+    xt::xtensor<double, 4> ERI; ///< Two-electron integrals (ij|kl) [n^4].
+    double V_nuc = 0;           ///< Nuclear repulsion energy [Hartree].
+    int n_basis = 0;            ///< Number of basis functions.
+    int n_electrons = 0;        ///< Total number of electrons.
 
     /// @brief Atom descriptors (Z, position in Bohr). Populated by build_integrals.
     std::vector<native::Atom> atoms;
@@ -69,8 +71,8 @@ struct IntegralPack {
 /// @param charge      Molecular charge (0 = neutral, +1 = cation, etc.).
 /// @param compute_eri If true, compute and store the full ERI tensor [default false].
 /// @return IntegralPack with S, T, V, Hcore, V_nuc, shells, atoms (ERI only if requested).
-IntegralPack build_integrals(const Frame& frame, BasisSet basis,
-                             int charge = 0, bool compute_eri = false);
+IntegralPack build_integrals(const Frame& frame, BasisSet basis, int charge = 0,
+                             bool compute_eri = false);
 
 } // namespace scf
 } // namespace cpu

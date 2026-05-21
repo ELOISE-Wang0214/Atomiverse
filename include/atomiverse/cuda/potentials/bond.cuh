@@ -16,7 +16,7 @@ namespace ATV {
 namespace cuda {
 
 class Bond : public ComponentBase {
-public:
+  public:
     ~Bond() override = default;
 
     ComponentRole role() const final { return ComponentRole::Evaluator; }
@@ -26,7 +26,7 @@ public:
 
     void launch(const LaunchContext& ctx) final { compute(ctx); }
 
-protected:
+  protected:
     Bond() = default;
 
     virtual void compute(const LaunchContext& ctx) = 0;
@@ -35,12 +35,11 @@ protected:
     /// CUDA has no MPI DD today — returns `0..n_tuples-1`. Signature
     /// matches `cpu::Bond::select_owned_tuples` so derived classes look
     /// the same on both backends.
-    const std::vector<int>& select_owned_tuples(
-        const LaunchContext& ctx,
-        int n_tuples,
-        const std::function<std::int64_t(int)>& owner_tag_of);
+    const std::vector<int>&
+    select_owned_tuples(const LaunchContext& ctx, int n_tuples,
+                        const std::function<std::int64_t(int)>& owner_tag_of);
 
-private:
+  private:
     std::vector<int> owned_;
 };
 

@@ -42,21 +42,19 @@ cpu::Frame make_fcc_argon(int n_cells, double a, double mass) {
     const int n_atoms = n_cells * n_cells * n_cells * atoms_per_cell;
     cpu::Frame frame(n_atoms);
     const double basis[4][3] = {
-        {0.0, 0.0, 0.0}, {0.5, 0.5, 0.0},
-        {0.5, 0.0, 0.5}, {0.0, 0.5, 0.5}
-    };
+        {0.0, 0.0, 0.0}, {0.5, 0.5, 0.0}, {0.5, 0.0, 0.5}, {0.0, 0.5, 0.5}};
     int idx = 0;
     for (int ix = 0; ix < n_cells; ++ix)
-    for (int iy = 0; iy < n_cells; ++iy)
-    for (int iz = 0; iz < n_cells; ++iz)
-    for (int b = 0; b < 4; ++b) {
-        frame.atoms.x[idx] = (ix + basis[b][0]) * a;
-        frame.atoms.y[idx] = (iy + basis[b][1]) * a;
-        frame.atoms.z[idx] = (iz + basis[b][2]) * a;
-        frame.atoms.mass[idx] = mass;
-        frame.atoms.type[idx] = 0;
-        ++idx;
-    }
+        for (int iy = 0; iy < n_cells; ++iy)
+            for (int iz = 0; iz < n_cells; ++iz)
+                for (int b = 0; b < 4; ++b) {
+                    frame.atoms.x[idx] = (ix + basis[b][0]) * a;
+                    frame.atoms.y[idx] = (iy + basis[b][1]) * a;
+                    frame.atoms.z[idx] = (iz + basis[b][2]) * a;
+                    frame.atoms.mass[idx] = mass;
+                    frame.atoms.type[idx] = 0;
+                    ++idx;
+                }
     frame.box = Mat3::cubic(n_cells * a);
     return frame;
 }
@@ -67,9 +65,9 @@ double instantaneous_T(const cpu::Frame& f) {
     const int n = f.atoms.size();
     double KE = 0.0;
     for (int i = 0; i < n; ++i) {
-        const double v2 = f.atoms.vx[i]*f.atoms.vx[i]
-                        + f.atoms.vy[i]*f.atoms.vy[i]
-                        + f.atoms.vz[i]*f.atoms.vz[i];
+        const double v2 = f.atoms.vx[i] * f.atoms.vx[i]
+                          + f.atoms.vy[i] * f.atoms.vy[i]
+                          + f.atoms.vz[i] * f.atoms.vz[i];
         KE += 0.5 * f.atoms.mass[i] * v2;
     }
     KE *= kMvv2e;
@@ -85,8 +83,8 @@ double instantaneous_T(const cpu::Frame& f) {
 // change from the pre-spec single-temperature callers.
 TEST(ThermostatLammpsAlign, FixLangevinConstantTemperatureHoldsSetpoint) {
     constexpr double T = 300.0;
-    constexpr double damp = 50.0;   // fs
-    constexpr double dt   = 1.0;    // fs
+    constexpr double damp = 50.0; // fs
+    constexpr double dt = 1.0;    // fs
 
     auto frame = make_fcc_argon(4, 4.2, 16.0);
 
@@ -111,9 +109,9 @@ TEST(ThermostatLammpsAlign, FixLangevinConstantTemperatureHoldsSetpoint) {
 // sweep with the ramp.
 TEST(ThermostatLammpsAlign, FixLangevinTemperatureRampTracksSetpoint) {
     constexpr double T_start = 150.0;
-    constexpr double T_stop  = 450.0;
-    constexpr double damp    = 25.0;   // fs (stiff coupling so T tracks)
-    constexpr double dt      = 1.0;    // fs
+    constexpr double T_stop = 450.0;
+    constexpr double damp = 25.0; // fs (stiff coupling so T tracks)
+    constexpr double dt = 1.0;    // fs
     constexpr int total_steps = 12000;
 
     auto frame = make_fcc_argon(4, 4.2, 16.0);
@@ -124,7 +122,7 @@ TEST(ThermostatLammpsAlign, FixLangevinTemperatureRampTracksSetpoint) {
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
     sim.add(cpu::md::InitVelocity{T_start, /*seed=*/777u});
-    sim.add(lang);   // lvalue → non-owning storage
+    sim.add(lang); // lvalue → non-owning storage
     sim.build();
 
     constexpr int n_windows = 6;
@@ -136,8 +134,9 @@ TEST(ThermostatLammpsAlign, FixLangevinTemperatureRampTracksSetpoint) {
         const double delta = static_cast<double>(step) / total_steps;
         const double setpoint = T_start + delta * (T_stop - T_start);
         const double T_meas = instantaneous_T(frame);
-        std::cerr << "langevin ramp step " << step << ": setpoint = "
-                  << setpoint << " K, measured = " << T_meas << " K\n";
+        std::cerr << "langevin ramp step " << step
+                  << ": setpoint = " << setpoint << " K, measured = " << T_meas
+                  << " K\n";
         EXPECT_NEAR(T_meas, setpoint, 60.0)
             << "FixLangevin T does not track the linear ramp at fraction "
             << delta;
@@ -156,8 +155,8 @@ TEST(ThermostatLammpsAlign, FixLangevinTemperatureRampTracksSetpoint) {
 // time the run with the smaller `damp` must be measurably hotter.
 TEST(ThermostatLammpsAlign, FixLangevinDampIsTimeConstant) {
     constexpr double T_target = 400.0;
-    constexpr double dt = 1.0;          // fs
-    constexpr int relax_steps = 40;     // short window, mid-relaxation
+    constexpr double dt = 1.0;      // fs
+    constexpr int relax_steps = 40; // short window, mid-relaxation
 
     auto run_relax = [&](double damp) {
         auto frame = make_fcc_argon(4, 4.2, 16.0);
@@ -172,8 +171,8 @@ TEST(ThermostatLammpsAlign, FixLangevinDampIsTimeConstant) {
         return instantaneous_T(frame);
     };
 
-    const double T_fast = run_relax(20.0);   // small damp → fast heating
-    const double T_slow = run_relax(40.0);   // large damp → slow heating
+    const double T_fast = run_relax(20.0); // small damp → fast heating
+    const double T_slow = run_relax(40.0); // large damp → slow heating
 
     std::cerr << "langevin damp=20 → T=" << T_fast << " K, "
               << "damp=40 → T=" << T_slow << " K\n";
@@ -196,14 +195,14 @@ TEST(ThermostatLammpsAlign, FixLangevinDampIsTimeConstant) {
 // LAMMPS `fix_nh.cpp::compute_temp_target()`.
 TEST(ThermostatLammpsAlign, NoseHooverTemperatureRampTracksSetpoint) {
     constexpr double T_start = 200.0;
-    constexpr double T_stop  = 500.0;
-    constexpr double tau_T   = 30.0;   // fs
-    constexpr double dt      = 1.0;    // fs
+    constexpr double T_stop = 500.0;
+    constexpr double tau_T = 30.0; // fs
+    constexpr double dt = 1.0;     // fs
     constexpr int total_steps = 12000;
     // FCC argon: a = 5.79 Å, mass 39.948 amu, LJ ε/σ/cutoff.
     constexpr double kEpsilon = 0.010339;
-    constexpr double kSigma   = 3.405;
-    constexpr double kCutoff  = 8.5;
+    constexpr double kSigma = 3.405;
+    constexpr double kCutoff = 8.5;
 
     auto frame = make_fcc_argon(4, 5.79, 39.948);
 
@@ -214,7 +213,7 @@ TEST(ThermostatLammpsAlign, NoseHooverTemperatureRampTracksSetpoint) {
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{dt});
     sim.add(cpu::md::InitVelocity{T_start, /*seed=*/4242u});
-    sim.add(nh);   // lvalue → non-owning storage
+    sim.add(nh); // lvalue → non-owning storage
     sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
     sim.set_pair(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
     sim.build();
@@ -228,8 +227,8 @@ TEST(ThermostatLammpsAlign, NoseHooverTemperatureRampTracksSetpoint) {
         const double delta = static_cast<double>(step) / total_steps;
         const double setpoint = T_start + delta * (T_stop - T_start);
         const double T_meas = instantaneous_T(frame);
-        std::cerr << "nvt ramp step " << step << ": setpoint = "
-                  << setpoint << " K, measured = " << T_meas << " K\n";
+        std::cerr << "nvt ramp step " << step << ": setpoint = " << setpoint
+                  << " K, measured = " << T_meas << " K\n";
         EXPECT_NEAR(T_meas, setpoint, 70.0)
             << "NoseHoover T does not track the linear ramp at fraction "
             << delta;
@@ -246,12 +245,12 @@ TEST(ThermostatLammpsAlign, NoseHooverTemperatureRampTracksSetpoint) {
 // window the stiffer (smaller tau_T) run must be measurably colder.
 TEST(ThermostatLammpsAlign, NoseHooverTauIsTimeConstant) {
     constexpr double T_target = 200.0;
-    constexpr double T_init   = 400.0;
-    constexpr double dt = 1.0;          // fs
+    constexpr double T_init = 400.0;
+    constexpr double dt = 1.0; // fs
     constexpr int relax_steps = 200;
     constexpr double kEpsilon = 0.010339;
-    constexpr double kSigma   = 3.405;
-    constexpr double kCutoff  = 8.5;
+    constexpr double kSigma = 3.405;
+    constexpr double kCutoff = 8.5;
 
     auto run_relax = [&](double tau_T) {
         auto frame = make_fcc_argon(4, 5.79, 39.948);
@@ -266,8 +265,8 @@ TEST(ThermostatLammpsAlign, NoseHooverTauIsTimeConstant) {
         return instantaneous_T(frame);
     };
 
-    const double T_stiff = run_relax(20.0);   // small tau_T → fast cooling
-    const double T_soft  = run_relax(60.0);   // large tau_T → slow cooling
+    const double T_stiff = run_relax(20.0); // small tau_T → fast cooling
+    const double T_soft = run_relax(60.0);  // large tau_T → slow cooling
 
     std::cerr << "nvt tau_T=20 → T=" << T_stiff << " K, "
               << "tau_T=60 → T=" << T_soft << " K\n";
@@ -285,11 +284,11 @@ TEST(ThermostatLammpsAlign, NoseHooverTauIsTimeConstant) {
 // temperature, consistent with LAMMPS `fix nvt` at the same setpoint.
 TEST(ThermostatLammpsAlign, NoseHooverHoldsMeanTemperature) {
     constexpr double T_target = 300.0;
-    constexpr double tau_T = 100.0;     // fs
-    constexpr double dt    = 1.0;       // fs
+    constexpr double tau_T = 100.0; // fs
+    constexpr double dt = 1.0;      // fs
     constexpr double kEpsilon = 0.010339;
-    constexpr double kSigma   = 3.405;
-    constexpr double kCutoff  = 8.5;
+    constexpr double kSigma = 3.405;
+    constexpr double kCutoff = 8.5;
 
     auto frame = make_fcc_argon(4, 5.79, 39.948);
 
@@ -300,7 +299,7 @@ TEST(ThermostatLammpsAlign, NoseHooverHoldsMeanTemperature) {
     sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
     sim.set_pair(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
     sim.build();
-    sim.run(frame, 2000);  // burn-in
+    sim.run(frame, 2000); // burn-in
 
     // Block-average the temperature over the sampling window.
     double T_sum = 0.0;

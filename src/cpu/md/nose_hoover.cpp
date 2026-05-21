@@ -32,12 +32,12 @@ void NoseHoover::build(const cpu::BuildContext& ctx) {
     // (the storage is allocated once by the user before Backend::set_frame
     // partitions). This gives the correct global `n_dof` for `Q_`.
     const int n_global = ctx.frame.atoms.size();
-    n_dof_global_ = 3 * n_global - 3;  // 3N - 3 (COM removal)
+    n_dof_global_ = 3 * n_global - 3; // 3N - 3 (COM removal)
     // Initial chain mass at the ramp anchor `T_start_`; `launch()`
     // retunes it each step to the live setpoint (LAMMPS recomputes
     // `eta_mass[0] = tdof·boltz·t_target/t_freq²` in nhc_temp_integrate).
-    Q_ = static_cast<double>(n_dof_global_) * kBoltzmann * T_start_
-       * tau_T_ * tau_T_;
+    Q_ = static_cast<double>(n_dof_global_) * kBoltzmann * T_start_ * tau_T_
+         * tau_T_;
 }
 
 void NoseHoover::set_T_target(double T_target, bool reset_chain) {
@@ -45,14 +45,15 @@ void NoseHoover::set_T_target(double T_target, bool reset_chain) {
     // Moving the anchor also collapses any configured continuous ramp —
     // a `set_T_target` call is the segmented-run idiom, distinct from
     // the `set_T_stop` + `set_run_span` continuous ramp.
-    T_stop_  = T_target;
-    T_live_  = T_target;
+    T_stop_ = T_target;
+    T_live_ = T_target;
     // Rescale `Q_` to the new setpoint using the cached global DOF count.
     // Skipping this would leave the chain mass tuned to the old bath
     // temperature, producing the wrong response time after the transition.
-    Q_ = static_cast<double>(n_dof_global_) * kBoltzmann * T_target
-       * tau_T_ * tau_T_;
-    if (reset_chain) xi_ = 0.0;
+    Q_ = static_cast<double>(n_dof_global_) * kBoltzmann * T_target * tau_T_
+         * tau_T_;
+    if (reset_chain)
+        xi_ = 0.0;
 }
 
 /// @see LAMMPS `FixNH::compute_temp_target()` (`src/fix_nh.cpp:2204`):
@@ -73,7 +74,7 @@ double NoseHoover::compute_temp_target(std::int64_t step) const {
     double delta = 0.0;
     if (nlast_ > nfirst_) {
         delta = static_cast<double>(step - nfirst_)
-              / static_cast<double>(nlast_ - nfirst_);
+                / static_cast<double>(nlast_ - nfirst_);
         delta = std::clamp(delta, 0.0, 1.0);
     }
     return T_start_ + delta * (T_stop_ - T_start_);
@@ -84,26 +85,27 @@ void NoseHoover::launch(const cpu::LaunchContext& ctx) {
     const int n = owned_count(ctx);
     // Reconstruct global DOF from the same factor used in build().
     const int n_global =
-        (ctx.runtime.dd && ctx.runtime.mpi_size > 1) ? f.atoms.size()
-                                                     : n;
+        (ctx.runtime.dd && ctx.runtime.mpi_size > 1) ? f.atoms.size() : n;
     const int n_dof = 3 * n_global - 3;
 
-    if (ctx.stage == static_cast<int>(ATV::md::Phase::initial_integrate) ||
-        ctx.stage == static_cast<int>(ATV::md::Phase::final_integrate)) {
+    if (ctx.stage == static_cast<int>(ATV::md::Phase::initial_integrate)
+        || ctx.stage == static_cast<int>(ATV::md::Phase::final_integrate)) {
 
         // Live thermostat setpoint for this step (Tstart→Tstop ramp).
         // `Q_` is retuned to the live temperature so the coupling
         // frequency `ω = 1/tau_T` stays constant across the ramp,
         // matching LAMMPS recomputing `eta_mass[0]` each NHC update.
         T_live_ = compute_temp_target(ctx.step);
-        Q_ = static_cast<double>(n_dof_global_) * kBoltzmann * T_live_
-           * tau_T_ * tau_T_;
+        Q_ = static_cast<double>(n_dof_global_) * kBoltzmann * T_live_ * tau_T_
+             * tau_T_;
 
         // Per-rank kinetic over owned atoms only.
         double ke_local = 0;
-        #pragma omp parallel for schedule(static) reduction(+:ke_local)
+#pragma omp parallel for schedule(static) reduction(+ : ke_local)
         for (int i = 0; i < n; ++i) {
-            double v2 = f.atoms.vx[i] * f.atoms.vx[i] + f.atoms.vy[i] * f.atoms.vy[i] + f.atoms.vz[i] * f.atoms.vz[i];
+            double v2 = f.atoms.vx[i] * f.atoms.vx[i]
+                        + f.atoms.vy[i] * f.atoms.vy[i]
+                        + f.atoms.vz[i] * f.atoms.vz[i];
             ke_local += f.atoms.mass[i] * v2;
         }
         ke_local *= double(0.5) * kMvv2e;
@@ -123,11 +125,14 @@ void NoseHoover::launch(const cpu::LaunchContext& ctx) {
 #endif
 
         // Update thermostat variable against the live target.
-        xi_ += (dt_ * double(0.5)) * (double(2) * ke - static_cast<double>(n_dof) * kBoltzmann * T_live_) / Q_;
+        xi_ += (dt_ * double(0.5))
+               * (double(2) * ke
+                  - static_cast<double>(n_dof) * kBoltzmann * T_live_)
+               / Q_;
 
         // Rescale velocities (owners only).
         double scale = std::exp(-dt_ * double(0.5) * xi_);
-        #pragma omp parallel for schedule(static)
+#pragma omp parallel for schedule(static)
         for (int i = 0; i < n; ++i) {
             f.atoms.vx[i] *= scale;
             f.atoms.vy[i] *= scale;

@@ -3,8 +3,8 @@
 #pragma once
 
 #include "atomiverse/cpu/component.h"
-#include "atomiverse/facade/stage.h"
 #include "atomiverse/cpu/pw/pw_workspace.h"
+#include "atomiverse/facade/stage.h"
 
 namespace ATV {
 namespace cpu {
@@ -15,13 +15,15 @@ class PW_Density : public cpu::ComponentBase {
     Real mix_beta_ = Real(0.4);
     int pulay_depth_ = 5;
     int iter_ = 0;
-public:
+
+  public:
     PW_Density() = default;
     PW_Density(Real beta, int pulay_depth = 5)
         : mix_beta_(beta), pulay_depth_(pulay_depth) {}
     std::string name() const override { return "PW_Density"; }
     std::vector<DefaultBinding> default_bindings() const override {
-        return {DefaultBinding{static_cast<int>(ATV::scf::Phase::build_density), 0}};
+        return {DefaultBinding{static_cast<int>(ATV::scf::Phase::build_density),
+                               0}};
     }
     void build(const cpu::BuildContext& ctx) override;
     void launch(const cpu::LaunchContext& ctx) override;

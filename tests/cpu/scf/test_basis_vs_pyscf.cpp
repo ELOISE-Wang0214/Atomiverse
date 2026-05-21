@@ -30,12 +30,18 @@ namespace {
 cpu::Frame make_h2o() {
     cpu::Frame f(3);
     // Geometry copied verbatim from the PySCF reference script.
-    f.atoms.type[0] = 8;  // O
-    f.atoms.type[1] = 1;  // H
-    f.atoms.type[2] = 1;  // H
-    f.atoms.x[0] = 0.000000; f.atoms.y[0] = 0.000000; f.atoms.z[0] = 0.117790;
-    f.atoms.x[1] = 0.000000; f.atoms.y[1] = 0.755453; f.atoms.z[1] = -0.471161;
-    f.atoms.x[2] = 0.000000; f.atoms.y[2] = -0.755453; f.atoms.z[2] = -0.471161;
+    f.atoms.type[0] = 8; // O
+    f.atoms.type[1] = 1; // H
+    f.atoms.type[2] = 1; // H
+    f.atoms.x[0] = 0.000000;
+    f.atoms.y[0] = 0.000000;
+    f.atoms.z[0] = 0.117790;
+    f.atoms.x[1] = 0.000000;
+    f.atoms.y[1] = 0.755453;
+    f.atoms.z[1] = -0.471161;
+    f.atoms.x[2] = 0.000000;
+    f.atoms.y[2] = -0.755453;
+    f.atoms.z[2] = -0.471161;
     f.box = Mat3::cubic(100.0);
     return f;
 }
@@ -136,15 +142,16 @@ TEST(BasisVsPySCF, H2O_def2TZVP_f_shell_build_integrals) {
     const int n = integrals.n_basis;
     bool eri_nonzero = false;
     for (int i = 0; i < n; ++i)
-    for (int j = 0; j < n; ++j)
-    for (int k = 0; k < n; ++k)
-    for (int l = 0; l < n; ++l) {
-        const double v = integrals.ERI(i, j, k, l);
-        ASSERT_TRUE(std::isfinite(v))
-            << "non-finite def2-TZVP ERI at (" << i << "," << j << ","
-            << k << "," << l << ")";
-        if (std::abs(v) > 1e-12) eri_nonzero = true;
-    }
+        for (int j = 0; j < n; ++j)
+            for (int k = 0; k < n; ++k)
+                for (int l = 0; l < n; ++l) {
+                    const double v = integrals.ERI(i, j, k, l);
+                    ASSERT_TRUE(std::isfinite(v))
+                        << "non-finite def2-TZVP ERI at (" << i << "," << j
+                        << "," << k << "," << l << ")";
+                    if (std::abs(v) > 1e-12)
+                        eri_nonzero = true;
+                }
     EXPECT_TRUE(eri_nonzero) << "def2-TZVP ERI tensor is all-zero";
 
     // Self-repulsion integrals (ii|ii) are strictly positive.

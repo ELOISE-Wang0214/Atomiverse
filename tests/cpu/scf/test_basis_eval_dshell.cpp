@@ -33,9 +33,18 @@ namespace {
 
 cpu::Frame make_water() {
     cpu::Frame f(3);
-    f.atoms.x[0]=0.0; f.atoms.y[0]=0.0;    f.atoms.z[0]= 0.117; f.atoms.type[0]=8;
-    f.atoms.x[1]=0.0; f.atoms.y[1]= 0.757; f.atoms.z[1]=-0.468; f.atoms.type[1]=1;
-    f.atoms.x[2]=0.0; f.atoms.y[2]=-0.757; f.atoms.z[2]=-0.468; f.atoms.type[2]=1;
+    f.atoms.x[0] = 0.0;
+    f.atoms.y[0] = 0.0;
+    f.atoms.z[0] = 0.117;
+    f.atoms.type[0] = 8;
+    f.atoms.x[1] = 0.0;
+    f.atoms.y[1] = 0.757;
+    f.atoms.z[1] = -0.468;
+    f.atoms.type[1] = 1;
+    f.atoms.x[2] = 0.0;
+    f.atoms.y[2] = -0.757;
+    f.atoms.z[2] = -0.468;
+    f.atoms.type[2] = 1;
     f.box = Mat3::cubic(100.0);
     return f;
 }
@@ -48,15 +57,19 @@ TEST(BasisEvalDShell, GradientAndHessianMatchFiniteDifference) {
     // Use the first d-shell of oxygen in 6-31G* so we inherit a real
     // primitive spec rather than hand-crafting one.
     auto frame = make_water();
-    auto integrals = cpu::scf::build_integrals(
-        frame, cpu::scf::BasisSet::Pople631Gs);
+    auto integrals =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Pople631Gs);
 
     // Find a d-shell in the integrals.
     const cpu::scf::native::Shell* d_shell = nullptr;
     for (const auto& sh : integrals.shells) {
-        if (sh.l == 2) { d_shell = &sh; break; }
+        if (sh.l == 2) {
+            d_shell = &sh;
+            break;
+        }
     }
-    ASSERT_NE(d_shell, nullptr) << "6-31G* on O should include at least one d shell";
+    ASSERT_NE(d_shell, nullptr)
+        << "6-31G* on O should include at least one d shell";
 
     // Evaluate at a grid point offset from the shell center so none of the
     // Cartesian polynomial components vanish trivially.
@@ -70,17 +83,17 @@ TEST(BasisEvalDShell, GradientAndHessianMatchFiniteDifference) {
         sh.cart = cart;
 
         double val, gx, gy, gz, hxx, hxy, hxz, hyy, hyz, hzz;
-        cpu::scf::eval_basis_all(sh, rx, ry, rz, val,
-                                 gx, gy, gz, hxx, hxy, hxz, hyy, hyz, hzz);
+        cpu::scf::eval_basis_all(sh, rx, ry, rz, val, gx, gy, gz, hxx, hxy, hxz,
+                                 hyy, hyz, hzz);
 
         // FD gradient
         const double h = 1e-5;
-        double vpx = cpu::scf::eval_basis(sh, rx+h, ry, rz);
-        double vmx = cpu::scf::eval_basis(sh, rx-h, ry, rz);
-        double vpy = cpu::scf::eval_basis(sh, rx, ry+h, rz);
-        double vmy = cpu::scf::eval_basis(sh, rx, ry-h, rz);
-        double vpz = cpu::scf::eval_basis(sh, rx, ry, rz+h);
-        double vmz = cpu::scf::eval_basis(sh, rx, ry, rz-h);
+        double vpx = cpu::scf::eval_basis(sh, rx + h, ry, rz);
+        double vmx = cpu::scf::eval_basis(sh, rx - h, ry, rz);
+        double vpy = cpu::scf::eval_basis(sh, rx, ry + h, rz);
+        double vmy = cpu::scf::eval_basis(sh, rx, ry - h, rz);
+        double vpz = cpu::scf::eval_basis(sh, rx, ry, rz + h);
+        double vmz = cpu::scf::eval_basis(sh, rx, ry, rz - h);
         double fd_gx = (vpx - vmx) / (2 * h);
         double fd_gy = (vpy - vmy) / (2 * h);
         double fd_gz = (vpz - vmz) / (2 * h);
@@ -99,10 +112,10 @@ TEST(BasisEvalDShell, GradientAndHessianMatchFiniteDifference) {
         EXPECT_NEAR(hzz, fd_hzz, 1e-4) << "d-cart=" << cart << " hzz";
 
         // FD off-diagonal Hessian: central five-point mix.
-        double vpxpy = cpu::scf::eval_basis(sh, rx+h, ry+h, rz);
-        double vmxmy = cpu::scf::eval_basis(sh, rx-h, ry-h, rz);
-        double vpxmy = cpu::scf::eval_basis(sh, rx+h, ry-h, rz);
-        double vmxpy = cpu::scf::eval_basis(sh, rx-h, ry+h, rz);
+        double vpxpy = cpu::scf::eval_basis(sh, rx + h, ry + h, rz);
+        double vmxmy = cpu::scf::eval_basis(sh, rx - h, ry - h, rz);
+        double vpxmy = cpu::scf::eval_basis(sh, rx + h, ry - h, rz);
+        double vmxpy = cpu::scf::eval_basis(sh, rx - h, ry + h, rz);
         double fd_hxy = (vpxpy - vpxmy - vmxpy + vmxmy) / (4 * h * h);
         EXPECT_NEAR(hxy, fd_hxy, 1e-4) << "d-cart=" << cart << " hxy";
     }
@@ -112,8 +125,8 @@ TEST(BasisEvalDShell, GradientAndHessianMatchFiniteDifference) {
 
 TEST(BasisEvalDShell, DensityIntegralRecoversElectronCountOn631GsWater) {
     auto frame = make_water();
-    auto integrals = cpu::scf::build_integrals(
-        frame, cpu::scf::BasisSet::Pople631Gs);
+    auto integrals =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Pople631Gs);
     auto config = cpu::scf::baseline_config(integrals);
     config.max_iter = 200;
     auto result = cpu::scf::scf_solve(integrals, config);
@@ -127,13 +140,19 @@ TEST(BasisEvalDShell, DensityIntegralRecoversElectronCountOn631GsWater) {
     double ymin = integrals.atoms[0].pos[1], ymax = ymin;
     double zmin = integrals.atoms[0].pos[2], zmax = zmin;
     for (const auto& a : integrals.atoms) {
-        xmin = std::min(xmin, a.pos[0]); xmax = std::max(xmax, a.pos[0]);
-        ymin = std::min(ymin, a.pos[1]); ymax = std::max(ymax, a.pos[1]);
-        zmin = std::min(zmin, a.pos[2]); zmax = std::max(zmax, a.pos[2]);
+        xmin = std::min(xmin, a.pos[0]);
+        xmax = std::max(xmax, a.pos[0]);
+        ymin = std::min(ymin, a.pos[1]);
+        ymax = std::max(ymax, a.pos[1]);
+        zmin = std::min(zmin, a.pos[2]);
+        zmax = std::max(zmax, a.pos[2]);
     }
-    xmin -= pad; xmax += pad;
-    ymin -= pad; ymax += pad;
-    zmin -= pad; zmax += pad;
+    xmin -= pad;
+    xmax += pad;
+    ymin -= pad;
+    ymax += pad;
+    zmin -= pad;
+    zmax += pad;
     const int nx = static_cast<int>(std::ceil((xmax - xmin) / step)) + 1;
     const int ny = static_cast<int>(std::ceil((ymax - ymin) / step)) + 1;
     const int nz = static_cast<int>(std::ceil((zmax - zmin) / step)) + 1;
@@ -176,8 +195,8 @@ TEST(BasisEvalDShell, DensityIntegralRecoversElectronCountOn631GsWater) {
 
 TEST(BasisEvalDShell, PBE_def2SVP_RKS_Water_MatchesPyscf) {
     auto frame = make_water();
-    auto integrals = cpu::scf::build_integrals(
-        frame, cpu::scf::BasisSet::Def2SVP);
+    auto integrals =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Def2SVP);
 
     // Restricted-KS path via default_config.
     auto config = cpu::scf::default_config(integrals);
@@ -185,7 +204,8 @@ TEST(BasisEvalDShell, PBE_def2SVP_RKS_Water_MatchesPyscf) {
     config.tol = 1e-9;
 
     auto result = cpu::scf::scf_solve(integrals, config);
-    ASSERT_TRUE(result.converged) << "PBE/def2-SVP RKS on water should converge";
+    ASSERT_TRUE(result.converged)
+        << "PBE/def2-SVP RKS on water should converge";
 
     // PySCF RKS/PBE/def2-SVP on this same geometry: -76.2743 Ha.
     // default_config now ships the GridLevel::MatchPySCF grid, which
@@ -196,8 +216,8 @@ TEST(BasisEvalDShell, PBE_def2SVP_RKS_Water_MatchesPyscf) {
 
 TEST(BasisEvalDShell, PBE_631Gs_WaterConvergesAndIntegratesNElectrons) {
     auto frame = make_water();
-    auto integrals = cpu::scf::build_integrals(
-        frame, cpu::scf::BasisSet::Pople631Gs);
+    auto integrals =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Pople631Gs);
 
     // Unrestricted KS / PBE on water — exercises both the d-shell basis_eval
     // path (through xc_grid_engine + GGA gradient) and the native::eri
@@ -214,8 +234,10 @@ TEST(BasisEvalDShell, PBE_631Gs_WaterConvergesAndIntegratesNElectrons) {
     // recovery is limited to ~1e-2 with PySCF-matching Bragg-Slater radii
     // (the H radius is 40% larger than Slater 1964, spreading the radial
     // grid over a wider range and reducing near-O accuracy).
-    EXPECT_NEAR(result.integrated_n_alpha, static_cast<double>(config.n_alpha), 1e-2);
-    EXPECT_NEAR(result.integrated_n_beta,  static_cast<double>(config.n_beta),  1e-2);
+    EXPECT_NEAR(result.integrated_n_alpha, static_cast<double>(config.n_alpha),
+                1e-2);
+    EXPECT_NEAR(result.integrated_n_beta, static_cast<double>(config.n_beta),
+                1e-2);
     EXPECT_LT(result.xc_energy, 0.0);
 }
 

@@ -37,8 +37,8 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/component.h"
 #include "atomiverse/core/binding.h"
+#include "atomiverse/cpu/component.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -48,7 +48,7 @@ namespace mpi {
 
 /// @brief Non-uniform brick load balancer based on a global atom histogram.
 class RCBBalancer : public cpu::ComponentBase {
-public:
+  public:
     /// @param every Step interval between balance passes. Default 1000.
     /// @param n_bins Bins per axis for the global histogram. Default 256;
     ///        higher resolution gives finer cut placement at higher comm
@@ -77,7 +77,7 @@ public:
     /// @brief Bins per axis used for histogram bisection (read-only accessor).
     int n_bins() const noexcept { return n_bins_; }
 
-private:
+  private:
     int every_;
     int n_bins_;
 };

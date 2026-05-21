@@ -69,7 +69,7 @@ TEST(OptimizeEarlyStop, RunsToBudgetWhenNeverConverged) {
     cpu::OptimizeDriver opt;
     StubOptimizer optimizer;
     StubEnergyEvaluator energy;
-    ConvergeAtStep never{/*step=*/9999};  // far beyond max_iter
+    ConvergeAtStep never{/*step=*/9999}; // far beyond max_iter
 
     opt.on(minimizer::Phase::search_direction).add(optimizer);
     opt.on(minimizer::Phase::force).add(energy);

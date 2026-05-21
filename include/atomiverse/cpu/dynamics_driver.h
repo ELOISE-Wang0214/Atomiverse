@@ -17,15 +17,15 @@
 #pragma once
 
 #include "atomiverse/cpu/component.h"
-#include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/cpu_driver.h"
+#include "atomiverse/cpu/frame.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
 namespace cpu {
 
 class DynamicsDriver : public CPUDriver<ATV::md::Phase> {
-public:
+  public:
     /// @brief Flush component `destroy()` hooks if a run is still live.
     ///
     /// `run()` is continuable: `setup_pass()` (which calls component
@@ -34,7 +34,8 @@ public:
     /// `build → launch×N → destroy` lifecycle spans *all* `run()` calls.
     /// The base `~Driver()` shuts the backend down afterwards.
     ~DynamicsDriver() {
-        if (live_ && this->backend_) this->backend_->destroy_components();
+        if (live_ && this->backend_)
+            this->backend_->destroy_components();
     }
 
     /// @brief Advance the system for `n_steps` MD steps.
@@ -62,14 +63,15 @@ public:
         }
         if (!live_) {
             setup_pass(frame);
-            frame_ptr_     = &frame;
-            step_counter_  = 0;
-            live_          = true;
+            frame_ptr_ = &frame;
+            step_counter_ = 0;
+            live_ = true;
         }
         for (int s = 0; s < n_steps; ++s) {
             mutable_outer_status().reset();
             step_once(step_counter_++);
-            if (outer_status().stop_requested) break;
+            if (outer_status().stop_requested)
+                break;
             // Dynamics deliberately ignores outer_status().converged.
         }
         // Drain async-analysis workers so every snapshot from this
@@ -79,7 +81,7 @@ public:
         this->backend_->drain_analysis();
     }
 
-protected:
+  protected:
     void validate_components() const override {
         bool has_integrator = false;
         bool has_force_writer = false;
@@ -100,7 +102,7 @@ protected:
             throw_missing("Component with Capability::Force");
     }
 
-private:
+  private:
     /// @brief True between the first `run()` and driver destruction —
     /// the backend + components are live and must not be rebuilt.
     bool live_ = false;

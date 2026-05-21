@@ -1,16 +1,16 @@
 /// @file test_bonded.cu
 /// @brief Tests for bonded interactions: HarmonicBond, HarmonicAngle, MultiHarmonicDihedral.
 
-#include <gtest/gtest.h>
 #include <cmath>
+#include <gtest/gtest.h>
 
-#include "atomiverse/cuda/potentials/harmonic_bond.cuh"
-#include "atomiverse/cuda/potentials/harmonic_angle.cuh"
-#include "atomiverse/cuda/potentials/multi_harmonic_dihedral.cuh"
+#include "atomiverse/cpu/frame.h"
 #include "atomiverse/cuda/md/md.cuh"
 #include "atomiverse/cuda/md/velocity_verlet.cuh"
 #include "atomiverse/cuda/neighbor_list.cuh"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cuda/potentials/harmonic_angle.cuh"
+#include "atomiverse/cuda/potentials/harmonic_bond.cuh"
+#include "atomiverse/cuda/potentials/multi_harmonic_dihedral.cuh"
 
 using namespace ATV;
 
@@ -64,8 +64,8 @@ TEST(HarmonicBond, DimerDisplaced) {
     EXPECT_NEAR(frame.energy, expected_V, 1e-6);
 
     // Forces should be attractive (pulling atoms together)
-    EXPECT_GT(frame.atoms.fx[0], 0.0);  // atom 0 pushed right
-    EXPECT_LT(frame.atoms.fx[1], 0.0);  // atom 1 pushed left
+    EXPECT_GT(frame.atoms.fx[0], 0.0); // atom 0 pushed right
+    EXPECT_LT(frame.atoms.fx[1], 0.0); // atom 1 pushed left
     // Newton's 3rd law
     EXPECT_NEAR(frame.atoms.fx[0] + frame.atoms.fx[1], 0.0, 1e-10);
 }
@@ -79,8 +79,10 @@ TEST(HarmonicAngle, AtEquilibrium) {
     double theta0 = theta0_deg * M_PI / 180.0;
     double r = 1.53;
 
-    frame.atoms.x = xt::xtensor<double, 1>({double(0), r, double(r + r * cos(M_PI - theta0))});
-    frame.atoms.y = xt::xtensor<double, 1>({double(0), double(0), double(r * sin(M_PI - theta0))});
+    frame.atoms.x = xt::xtensor<double, 1>(
+        {double(0), r, double(r + r * cos(M_PI - theta0))});
+    frame.atoms.y = xt::xtensor<double, 1>(
+        {double(0), double(0), double(r * sin(M_PI - theta0))});
     frame.atoms.z = xt::xtensor<double, 1>({0.0, 0.0, 0.0});
     frame.atoms.mass = xt::xtensor<double, 1>({14.0, 14.0, 14.0});
     frame.box = Mat3::cubic(20.0);
@@ -117,8 +119,8 @@ TEST(MultiHarmonicDihedral, TransConformation) {
 
     // For a collinear chain, b1×b2 = 0, so the dihedral is undefined.
     // Move atom 0 and 3 off-axis to create a well-defined trans dihedral.
-    frame.atoms.y[0] = 0.5;   // atom 0 above the axis
-    frame.atoms.y[3] = -0.5;  // atom 3 below = trans
+    frame.atoms.y[0] = 0.5;  // atom 0 above the axis
+    frame.atoms.y[3] = -0.5; // atom 3 below = trans
 
     std::array<double, 5> C = {1.73, -4.49, 0.776, 6.99, 0.0};
 
@@ -153,8 +155,7 @@ TEST(Bonded, ChainWithLJ) {
 
     md::MD sim;
     sim.add(md::VelocityVerlet{0.1});
-    sim.on(md::Phase::force)
-        .add(HarmonicBond{{350.0}, {1.53}});
+    sim.on(md::Phase::force).add(HarmonicBond{{350.0}, {1.53}});
     sim.build();
     sim.run(frame, 10);
 

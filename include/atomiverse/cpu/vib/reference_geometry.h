@@ -25,7 +25,7 @@ namespace vib {
 /// `role() == None` (structural infrastructure, like `Zero*`); writes no
 /// frame field, so `capabilities() == None`.
 class ReferenceGeometry : public cpu::ComponentBase {
-public:
+  public:
     /// @brief Construct bound to a driver-owned workspace.
     /// @param ws Non-owning pointer to the shared Hessian workspace.
     explicit ReferenceGeometry(HessianWorkspace* ws) : ws_(ws) {}
@@ -42,7 +42,8 @@ public:
     /// @brief Cache `R0` on the first pass; idempotent thereafter.
     /// @param ctx Launch context; `ctx.step` is the displacement index.
     void launch(const cpu::LaunchContext& ctx) override {
-        if (ws_->r0_ready) return;
+        if (ws_->r0_ready)
+            return;
         const int n = ctx.frame.atoms.size();
         for (int i = 0; i < n; ++i) {
             ws_->r0[3 * i + 0] = ctx.frame.atoms.x(i);
@@ -52,8 +53,9 @@ public:
         ws_->r0_ready = true;
     }
 
-private:
-    HessianWorkspace* ws_; ///< Non-owning; outlives this component (driver-owned).
+  private:
+    HessianWorkspace*
+        ws_; ///< Non-owning; outlives this component (driver-owned).
 };
 
 } // namespace vib

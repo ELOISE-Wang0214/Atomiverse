@@ -18,8 +18,8 @@
 #include <vector>
 
 #include "atomiverse/cuda/component.cuh"
-#include "atomiverse/facade/driver.h"
 #include "atomiverse/cuda/md/init.cuh"
+#include "atomiverse/facade/driver.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -32,7 +32,7 @@ namespace minimizer {
 ///
 /// @see minimizer::SD for the driver that auto-adds zeroing infrastructure
 class SteepestDescentStep : public ComponentBase {
-public:
+  public:
     /// @brief Construct steepest descent step.
     /// @param alpha Step size [fs] (pseudo-timestep, same units as VelocityVerlet dt).
     explicit SteepestDescentStep(double alpha) : alpha_(alpha) {}
@@ -55,7 +55,7 @@ public:
     /// @return alpha [fs].
     double alpha() const { return alpha_; }
 
-private:
+  private:
     double alpha_; ///< Step size (pseudo-timestep) [fs].
 };
 
@@ -78,7 +78,7 @@ private:
 ///
 /// @see minimizer::CG for the conjugate gradient driver
 class SD : public Driver<Phase> {
-public:
+  public:
     /// @brief Construct SD driver with auto-added zeroing infrastructure.
     SD() {
         on(Phase::force).add(md::ZeroForces{}, -1000);

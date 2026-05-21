@@ -20,8 +20,8 @@
 /// Expected total energy: about -1.1168 Hartree (Szabo & Ostlund, Table 3.7)
 
 #include <cmath>
-#include <iostream>
 #include <iomanip>
+#include <iostream>
 
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/rhf_solve.h"
@@ -34,10 +34,16 @@ int main() {
     // cpu::Frame is the user-facing data container. Positions in Angstrom,
     // type_id = atomic number Z. The library converts to Bohr internally.
     cpu::Frame frame(2);
-    frame.atoms.x[0] = double(0);     frame.atoms.y[0] = double(0); frame.atoms.z[0] = double(0);
-    frame.atoms.x[1] = double(0.74);  frame.atoms.y[1] = double(0); frame.atoms.z[1] = double(0);
-    frame.atoms.mass[0] = double(1.008); frame.atoms.mass[1] = double(1.008);
-    frame.atoms.type[0] = 1; frame.atoms.type[1] = 1;  // H: Z=1
+    frame.atoms.x[0] = double(0);
+    frame.atoms.y[0] = double(0);
+    frame.atoms.z[0] = double(0);
+    frame.atoms.x[1] = double(0.74);
+    frame.atoms.y[1] = double(0);
+    frame.atoms.z[1] = double(0);
+    frame.atoms.mass[0] = double(1.008);
+    frame.atoms.mass[1] = double(1.008);
+    frame.atoms.type[0] = 1;
+    frame.atoms.type[1] = 1; // H: Z=1
     frame.box = Mat3::cubic(100.0);
 
     std::cout << "=== H2 / STO-3G / RHF (CPU) ===\n"
@@ -51,32 +57,40 @@ int main() {
     //   - Nuclear repulsion V_nuc = Z_A * Z_B / R_AB
     //
     // All matrices are xtensor arrays. No CUDA involved.
-    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto integrals =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
 
     std::cout << "Basis functions: " << integrals.n_basis << "\n"
               << "Electrons:       " << integrals.n_electrons << "\n"
-              << "Occupied MOs:    " << integrals.n_occ() << " (RHF closed-shell)\n"
+              << "Occupied MOs:    " << integrals.n_occ()
+              << " (RHF closed-shell)\n"
               << std::fixed << std::setprecision(10)
-              << "V_nuc:           " << static_cast<double>(integrals.V_nuc) << " Hartree\n\n";
+              << "V_nuc:           " << static_cast<double>(integrals.V_nuc)
+              << " Hartree\n\n";
 
     std::cout << "Overlap S:\n" << std::fixed << std::setprecision(6);
     for (int i = 0; i < integrals.n_basis; ++i) {
         for (int j = 0; j < integrals.n_basis; ++j)
-            std::cout << "  " << std::setw(10) << static_cast<double>(integrals.S(i, j));
+            std::cout << "  " << std::setw(10)
+                      << static_cast<double>(integrals.S(i, j));
         std::cout << "\n";
     }
 
     std::cout << "\nCore Hamiltonian Hcore = T + V:\n";
     for (int i = 0; i < integrals.n_basis; ++i) {
         for (int j = 0; j < integrals.n_basis; ++j)
-            std::cout << "  " << std::setw(10) << static_cast<double>(integrals.Hcore(i, j));
+            std::cout << "  " << std::setw(10)
+                      << static_cast<double>(integrals.Hcore(i, j));
         std::cout << "\n";
     }
 
     std::cout << "\nKey ERI (chemist's notation):\n"
-              << "  (11|11) = " << static_cast<double>(integrals.ERI(0,0,0,0)) << "\n"
-              << "  (11|22) = " << static_cast<double>(integrals.ERI(0,0,1,1)) << "\n"
-              << "  (12|12) = " << static_cast<double>(integrals.ERI(0,1,0,1)) << "\n";
+              << "  (11|11) = "
+              << static_cast<double>(integrals.ERI(0, 0, 0, 0)) << "\n"
+              << "  (11|22) = "
+              << static_cast<double>(integrals.ERI(0, 0, 1, 1)) << "\n"
+              << "  (12|12) = "
+              << static_cast<double>(integrals.ERI(0, 1, 0, 1)) << "\n";
 
     // ── 3. Run RHF ────────────────────────────────────────────────────
     //
@@ -86,17 +100,20 @@ int main() {
     //     P = 2 C_occ C_occ^T  ->  E = 0.5 Tr[(Hcore+F)P] + V_nuc
     //
     // All linear algebra via xtensor-blas (LAPACK).
-    double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
+    double tol =
+        (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     auto result = cpu::scf::rhf_solve(integrals, tol, 100);
 
     // ── 4. Results ────────────────────────────────────────────────────
     std::cout << "\n=== RHF Result ===\n"
               << "Converged:        " << (result.converged ? "yes" : "no")
               << " (" << result.iterations << " iterations)\n"
-              << std::fixed << std::setprecision(10)
-              << "E_electronic:     " << static_cast<double>(result.electronic_energy) << " Hartree\n"
-              << "V_nuclear:        " << static_cast<double>(integrals.V_nuc) << " Hartree\n"
-              << "E_total:          " << static_cast<double>(result.energy) << " Hartree\n\n";
+              << std::fixed << std::setprecision(10) << "E_electronic:     "
+              << static_cast<double>(result.electronic_energy) << " Hartree\n"
+              << "V_nuclear:        " << static_cast<double>(integrals.V_nuc)
+              << " Hartree\n"
+              << "E_total:          " << static_cast<double>(result.energy)
+              << " Hartree\n\n";
 
     std::cout << "Orbital energies:\n" << std::setprecision(6);
     for (int i = 0; i < integrals.n_basis; ++i)
@@ -112,7 +129,8 @@ int main() {
     std::cout << "\n--- Textbook comparison (Szabo & Ostlund) ---\n"
               << "  Reference: -1.1168 Hartree\n"
               << std::setprecision(4)
-              << "  This:      " << static_cast<double>(result.energy) << " Hartree\n";
+              << "  This:      " << static_cast<double>(result.energy)
+              << " Hartree\n";
 
     std::cout << "\n=== Done ===\n";
     return 0;

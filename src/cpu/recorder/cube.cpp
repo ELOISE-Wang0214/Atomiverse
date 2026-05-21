@@ -15,8 +15,7 @@ namespace ATV {
 namespace cpu {
 namespace recorder {
 
-CubeGrid bounding_box_grid(const scf::IntegralPack& integrals,
-                           double padding,
+CubeGrid bounding_box_grid(const scf::IntegralPack& integrals, double padding,
                            double spacing) {
     if (integrals.atoms.empty())
         throw std::runtime_error("bounding_box_grid: empty integral pack");
@@ -30,9 +29,12 @@ CubeGrid bounding_box_grid(const scf::IntegralPack& integrals,
     double zmin = integrals.atoms[0].pos[2];
     double zmax = zmin;
     for (const auto& a : integrals.atoms) {
-        xmin = std::min(xmin, a.pos[0]); xmax = std::max(xmax, a.pos[0]);
-        ymin = std::min(ymin, a.pos[1]); ymax = std::max(ymax, a.pos[1]);
-        zmin = std::min(zmin, a.pos[2]); zmax = std::max(zmax, a.pos[2]);
+        xmin = std::min(xmin, a.pos[0]);
+        xmax = std::max(xmax, a.pos[0]);
+        ymin = std::min(ymin, a.pos[1]);
+        ymax = std::max(ymax, a.pos[1]);
+        zmin = std::min(zmin, a.pos[2]);
+        zmax = std::max(zmax, a.pos[2]);
     }
     CubeGrid g{};
     g.origin = {xmin - padding, ymin - padding, zmin - padding};
@@ -46,12 +48,9 @@ CubeGrid bounding_box_grid(const scf::IntegralPack& integrals,
     return g;
 }
 
-void write_cube(const std::string& filename,
-                const std::string& title1,
-                const std::string& title2,
-                const scf::IntegralPack& integrals,
-                const CubeGrid& grid,
-                const std::vector<double>& values) {
+void write_cube(const std::string& filename, const std::string& title1,
+                const std::string& title2, const scf::IntegralPack& integrals,
+                const CubeGrid& grid, const std::vector<double>& values) {
     if (static_cast<long>(values.size()) != grid.n_points())
         throw std::invalid_argument(
             "write_cube: values.size() != grid.n_points()");
@@ -67,21 +66,20 @@ void write_cube(const std::string& filename,
     // Header: n_atoms, origin[3].  Negative n_atoms flags "no additional scalar
     // field header"; positive is the standard cube convention used by most
     // visualizers.
-    std::fprintf(fp, "%5d %12.6f %12.6f %12.6f\n",
-                 natm, grid.origin[0], grid.origin[1], grid.origin[2]);
+    std::fprintf(fp, "%5d %12.6f %12.6f %12.6f\n", natm, grid.origin[0],
+                 grid.origin[1], grid.origin[2]);
     // Grid axes: N, dx, dy, dz per line (diagonal axes in our convention).
-    std::fprintf(fp, "%5d %12.6f %12.6f %12.6f\n",
-                 grid.dims[0], grid.spacing[0], 0.0, 0.0);
-    std::fprintf(fp, "%5d %12.6f %12.6f %12.6f\n",
-                 grid.dims[1], 0.0, grid.spacing[1], 0.0);
-    std::fprintf(fp, "%5d %12.6f %12.6f %12.6f\n",
-                 grid.dims[2], 0.0, 0.0, grid.spacing[2]);
+    std::fprintf(fp, "%5d %12.6f %12.6f %12.6f\n", grid.dims[0],
+                 grid.spacing[0], 0.0, 0.0);
+    std::fprintf(fp, "%5d %12.6f %12.6f %12.6f\n", grid.dims[1], 0.0,
+                 grid.spacing[1], 0.0);
+    std::fprintf(fp, "%5d %12.6f %12.6f %12.6f\n", grid.dims[2], 0.0, 0.0,
+                 grid.spacing[2]);
 
     // Atom block: Z, charge (placeholder = Z), x, y, z (Bohr).
     for (const auto& a : integrals.atoms) {
-        std::fprintf(fp, "%5d %12.6f %12.6f %12.6f %12.6f\n",
-                     a.Z, static_cast<double>(a.Z),
-                     a.pos[0], a.pos[1], a.pos[2]);
+        std::fprintf(fp, "%5d %12.6f %12.6f %12.6f %12.6f\n", a.Z,
+                     static_cast<double>(a.Z), a.pos[0], a.pos[1], a.pos[2]);
     }
 
     // Values: iz is the fastest-running axis. Format: 6 values per line,
@@ -96,9 +94,13 @@ void write_cube(const std::string& filename,
                 long idx = (static_cast<long>(ix) * ny + iy) * nz + iz;
                 std::fprintf(fp, " %12.5e", values[idx]);
                 ++col;
-                if (col == 6) { std::fputc('\n', fp); col = 0; }
+                if (col == 6) {
+                    std::fputc('\n', fp);
+                    col = 0;
+                }
             }
-            if (col != 0) std::fputc('\n', fp);
+            if (col != 0)
+                std::fputc('\n', fp);
         }
     }
     std::fclose(fp);

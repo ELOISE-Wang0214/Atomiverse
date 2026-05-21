@@ -17,11 +17,11 @@ void VirialStress::launch(const cpu::LaunchContext& ctx) {
 
     double v_xx = 0, v_yy = 0, v_zz = 0, v_xy = 0, v_xz = 0, v_yz = 0;
 
-    #pragma omp parallel for schedule(static) \
-        reduction(+:v_xx) reduction(+:v_yy) reduction(+:v_zz) \
-        reduction(+:v_xy) reduction(+:v_xz) reduction(+:v_yz)
+#pragma omp parallel for schedule(static) reduction(+ : v_xx)                  \
+    reduction(+ : v_yy) reduction(+ : v_zz) reduction(+ : v_xy)                \
+    reduction(+ : v_xz) reduction(+ : v_yz)
     for (int i = 0; i < n; ++i) {
-        const double m   = f.atoms.mass[i];
+        const double m = f.atoms.mass[i];
         const double vxi = f.atoms.vx[i];
         const double vyi = f.atoms.vy[i];
         const double vzi = f.atoms.vz[i];

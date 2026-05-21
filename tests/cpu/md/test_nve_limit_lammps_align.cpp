@@ -23,12 +23,12 @@
 
 #include <cmath>
 
+#include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/nve_limit.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/core/mat3.h"
-#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/potentials/harmonic_bond.h"
 
 using namespace ATV;
@@ -36,12 +36,12 @@ using namespace ATV;
 namespace {
 
 constexpr int kInitial = static_cast<int>(ATV::md::Phase::initial_integrate);
-constexpr int kFinal   = static_cast<int>(ATV::md::Phase::final_integrate);
+constexpr int kFinal = static_cast<int>(ATV::md::Phase::final_integrate);
 
 double speed(const cpu::Frame& f, int i) {
-    return std::sqrt(f.atoms.vx[i] * f.atoms.vx[i] +
-                     f.atoms.vy[i] * f.atoms.vy[i] +
-                     f.atoms.vz[i] * f.atoms.vz[i]);
+    return std::sqrt(f.atoms.vx[i] * f.atoms.vx[i]
+                     + f.atoms.vy[i] * f.atoms.vy[i]
+                     + f.atoms.vz[i] * f.atoms.vz[i]);
 }
 
 // Single free atom at the box centre, unit mass, zero velocity.
@@ -55,7 +55,7 @@ cpu::Frame make_single_atom() {
     frame.atoms.vz[0] = 0.0;
     frame.atoms.mass[0] = 1.0;
     frame.atoms.type[0] = 0;
-    frame.box = Mat3::cubic(1000.0);  // huge box → no PBC wrap interference
+    frame.box = Mat3::cubic(1000.0); // huge box → no PBC wrap interference
     return frame;
 }
 
@@ -70,14 +70,14 @@ cpu::Frame make_single_atom() {
 
 TEST(NveLimitLammpsAlign, InitialHalfDistanceCap) {
     auto frame = make_single_atom();
-    const double dt   = 0.5;     // fs
-    const double xmax = 0.05;    // Å  → vmax = xmax/dt = 0.1 Å/fs
+    const double dt = 0.5;    // fs
+    const double xmax = 0.05; // Å  → vmax = xmax/dt = 0.1 Å/fs
 
     // Force spike (in eV/Å). dtfm = 0.5*dt*kFtm2v/m. With a large enough
     // force the post-kick speed far exceeds vmax, so the cap MUST engage.
     const double F = 1.0e4;
     frame.atoms.fx[0] = 0.6 * F;
-    frame.atoms.fy[0] = 0.8 * F;   // |f| direction is (0.6, 0.8, 0)
+    frame.atoms.fy[0] = 0.8 * F; // |f| direction is (0.6, 0.8, 0)
     frame.atoms.fz[0] = 0.0;
 
     const double x0 = frame.atoms.x[0];
@@ -94,9 +94,10 @@ TEST(NveLimitLammpsAlign, InitialHalfDistanceCap) {
         << "post-kick Euclidean speed must be capped to xmax/dt";
 
     // Displacement of this single step must be exactly xmax (distance cap).
-    const double disp = std::sqrt((frame.atoms.x[0] - x0) * (frame.atoms.x[0] - x0) +
-                                  (frame.atoms.y[0] - y0) * (frame.atoms.y[0] - y0) +
-                                  (frame.atoms.z[0] - z0) * (frame.atoms.z[0] - z0));
+    const double disp =
+        std::sqrt((frame.atoms.x[0] - x0) * (frame.atoms.x[0] - x0)
+                  + (frame.atoms.y[0] - y0) * (frame.atoms.y[0] - y0)
+                  + (frame.atoms.z[0] - z0) * (frame.atoms.z[0] - z0));
     EXPECT_NEAR(disp, xmax, 1e-12)
         << "per-step displacement must be bounded by xmax (a distance)";
 
@@ -112,13 +113,13 @@ TEST(NveLimitLammpsAlign, InitialHalfDistanceCap) {
 
 TEST(NveLimitLammpsAlign, FinalHalfDistanceCap) {
     auto frame = make_single_atom();
-    const double dt   = 0.5;
+    const double dt = 0.5;
     const double xmax = 0.05;
 
     const double F = 1.0e4;
     frame.atoms.fx[0] = 0.0;
     frame.atoms.fy[0] = 0.0;
-    frame.atoms.fz[0] = F;   // pure +z spike
+    frame.atoms.fz[0] = F; // pure +z spike
 
     cpu::md::NVELimit limit(dt, xmax);
     cpu::Context ctx;
@@ -141,7 +142,7 @@ TEST(NveLimitLammpsAlign, FinalHalfDistanceCap) {
 
 TEST(NveLimitLammpsAlign, EuclideanNormNotPerComponent) {
     auto frame = make_single_atom();
-    const double dt   = 0.5;
+    const double dt = 0.5;
     const double xmax = 0.05;
     const double vmax = xmax / dt;
 
@@ -170,11 +171,11 @@ TEST(NveLimitLammpsAlign, EuclideanNormNotPerComponent) {
 
 TEST(NveLimitLammpsAlign, NoCapBelowThreshold) {
     auto frame = make_single_atom();
-    const double dt   = 0.5;
-    const double xmax = 0.05;    // vmax = 0.1 Å/fs
+    const double dt = 0.5;
+    const double xmax = 0.05; // vmax = 0.1 Å/fs
 
     frame.atoms.vx[0] = 0.03;
-    frame.atoms.vy[0] = 0.04;    // |v| = 0.05 < vmax = 0.1 → untouched
+    frame.atoms.vy[0] = 0.04; // |v| = 0.05 < vmax = 0.1 → untouched
     frame.atoms.vz[0] = 0.0;
 
     cpu::md::NVELimit limit(dt, xmax);
@@ -196,8 +197,12 @@ TEST(NveLimitLammpsAlign, NoCapBelowThreshold) {
 TEST(NveLimitLammpsAlign, LargeXmaxReducesToVelocityVerlet) {
     auto build_pair = []() {
         cpu::Frame f(2);
-        f.atoms.x[0] = 9.0;  f.atoms.y[0] = 10.0; f.atoms.z[0] = 10.0;
-        f.atoms.x[1] = 11.4; f.atoms.y[1] = 10.0; f.atoms.z[1] = 10.0;  // stretched bond
+        f.atoms.x[0] = 9.0;
+        f.atoms.y[0] = 10.0;
+        f.atoms.z[0] = 10.0;
+        f.atoms.x[1] = 11.4;
+        f.atoms.y[1] = 10.0;
+        f.atoms.z[1] = 10.0; // stretched bond
         for (int i = 0; i < 2; ++i) {
             f.atoms.mass[i] = 12.0;
             f.atoms.type[i] = 0;
@@ -205,17 +210,17 @@ TEST(NveLimitLammpsAlign, LargeXmaxReducesToVelocityVerlet) {
         }
         f.bonds.atomi = xt::zeros<int>({1});
         f.bonds.atomj = xt::zeros<int>({1});
-        f.bonds.type  = xt::zeros<int>({1});
+        f.bonds.type = xt::zeros<int>({1});
         f.bonds.atomi[0] = 0;
         f.bonds.atomj[0] = 1;
         f.box = Mat3::cubic(1000.0);
         return f;
     };
 
-    const double dt    = 0.5;
-    const double K     = 20.0;   // eV/Å²
-    const double r0    = 1.53;   // Å
-    const int    steps = 200;
+    const double dt = 0.5;
+    const double K = 20.0;  // eV/Å²
+    const double r0 = 1.53; // Å
+    const int steps = 200;
 
     cpu::Frame frame_vv = build_pair();
     {
@@ -252,8 +257,12 @@ TEST(NveLimitLammpsAlign, LargeXmaxReducesToVelocityVerlet) {
 
 TEST(NveLimitLammpsAlign, VelocityVerletConservesEnergy) {
     cpu::Frame frame(2);
-    frame.atoms.x[0] = 9.3;  frame.atoms.y[0] = 10.0; frame.atoms.z[0] = 10.0;
-    frame.atoms.x[1] = 11.0; frame.atoms.y[1] = 10.0; frame.atoms.z[1] = 10.0;
+    frame.atoms.x[0] = 9.3;
+    frame.atoms.y[0] = 10.0;
+    frame.atoms.z[0] = 10.0;
+    frame.atoms.x[1] = 11.0;
+    frame.atoms.y[1] = 10.0;
+    frame.atoms.z[1] = 10.0;
     for (int i = 0; i < 2; ++i) {
         frame.atoms.mass[i] = 12.0;
         frame.atoms.type[i] = 0;
@@ -261,7 +270,7 @@ TEST(NveLimitLammpsAlign, VelocityVerletConservesEnergy) {
     }
     frame.bonds.atomi = xt::zeros<int>({1});
     frame.bonds.atomj = xt::zeros<int>({1});
-    frame.bonds.type  = xt::zeros<int>({1});
+    frame.bonds.type = xt::zeros<int>({1});
     frame.bonds.atomi[0] = 0;
     frame.bonds.atomj[0] = 1;
     frame.box = Mat3::cubic(1000.0);
@@ -283,9 +292,9 @@ TEST(NveLimitLammpsAlign, VelocityVerletConservesEnergy) {
     const double e1 = frame.energy + frame.kinetic;
 
     const double drift = std::abs(e1 - e0) / std::abs(e0);
-    EXPECT_LT(drift, 1e-4)
-        << "VelocityVerlet NVE drift " << drift << " exceeds 1e-4 over "
-        << "2000 steps (E0=" << e0 << ", E1=" << e1 << ")";
+    EXPECT_LT(drift, 1e-4) << "VelocityVerlet NVE drift " << drift
+                           << " exceeds 1e-4 over "
+                           << "2000 steps (E0=" << e0 << ", E1=" << e1 << ")";
 }
 
 // ── ac-003: far-from-equilibrium run — per-step displacement bounded ─
@@ -296,8 +305,12 @@ TEST(NveLimitLammpsAlign, VelocityVerletConservesEnergy) {
 
 TEST(NveLimitLammpsAlign, FarFromEquilibriumDisplacementBounded) {
     cpu::Frame frame(2);
-    frame.atoms.x[0] = 10.00; frame.atoms.y[0] = 10.0; frame.atoms.z[0] = 10.0;
-    frame.atoms.x[1] = 10.02; frame.atoms.y[1] = 10.0; frame.atoms.z[1] = 10.0;
+    frame.atoms.x[0] = 10.00;
+    frame.atoms.y[0] = 10.0;
+    frame.atoms.z[0] = 10.0;
+    frame.atoms.x[1] = 10.02;
+    frame.atoms.y[1] = 10.0;
+    frame.atoms.z[1] = 10.0;
     for (int i = 0; i < 2; ++i) {
         frame.atoms.mass[i] = 1.0;
         frame.atoms.type[i] = 0;
@@ -305,14 +318,14 @@ TEST(NveLimitLammpsAlign, FarFromEquilibriumDisplacementBounded) {
     }
     frame.bonds.atomi = xt::zeros<int>({1});
     frame.bonds.atomj = xt::zeros<int>({1});
-    frame.bonds.type  = xt::zeros<int>({1});
+    frame.bonds.type = xt::zeros<int>({1});
     frame.bonds.atomi[0] = 0;
     frame.bonds.atomj[0] = 1;
     frame.box = Mat3::cubic(1000.0);
 
-    const double dt   = 0.5;
-    const double xmax = 0.1;     // Å per step
-    const int    steps = 100;
+    const double dt = 0.5;
+    const double xmax = 0.1; // Å per step
+    const int steps = 100;
 
     cpu::md::MD sim;
     sim.add(cpu::md::NVELimit{dt, xmax});
@@ -327,19 +340,26 @@ TEST(NveLimitLammpsAlign, FarFromEquilibriumDisplacementBounded) {
 
     for (int s = 0; s < steps; ++s) {
         sim.run(frame, 1);
-        const double d0 = std::sqrt((frame.atoms.x[0] - prev_x0) * (frame.atoms.x[0] - prev_x0) +
-                                    (frame.atoms.y[0] - prev_y0) * (frame.atoms.y[0] - prev_y0) +
-                                    (frame.atoms.z[0] - prev_z0) * (frame.atoms.z[0] - prev_z0));
-        const double d1 = std::sqrt((frame.atoms.x[1] - prev_x1) * (frame.atoms.x[1] - prev_x1) +
-                                    (frame.atoms.y[1] - prev_y1) * (frame.atoms.y[1] - prev_y1) +
-                                    (frame.atoms.z[1] - prev_z1) * (frame.atoms.z[1] - prev_z1));
+        const double d0 = std::sqrt(
+            (frame.atoms.x[0] - prev_x0) * (frame.atoms.x[0] - prev_x0)
+            + (frame.atoms.y[0] - prev_y0) * (frame.atoms.y[0] - prev_y0)
+            + (frame.atoms.z[0] - prev_z0) * (frame.atoms.z[0] - prev_z0));
+        const double d1 = std::sqrt(
+            (frame.atoms.x[1] - prev_x1) * (frame.atoms.x[1] - prev_x1)
+            + (frame.atoms.y[1] - prev_y1) * (frame.atoms.y[1] - prev_y1)
+            + (frame.atoms.z[1] - prev_z1) * (frame.atoms.z[1] - prev_z1));
         // Per-step displacement = |v_capped|·dt ≤ xmax. A small tolerance
         // covers floating-point round-off in the rescale.
         EXPECT_LE(d0, xmax + 1e-9) << "atom 0 step " << s << " moved " << d0;
         EXPECT_LE(d1, xmax + 1e-9) << "atom 1 step " << s << " moved " << d1;
-        ASSERT_FALSE(std::isnan(frame.atoms.x[0])) << "atom 0 blew up at step " << s;
+        ASSERT_FALSE(std::isnan(frame.atoms.x[0]))
+            << "atom 0 blew up at step " << s;
 
-        prev_x0 = frame.atoms.x[0]; prev_y0 = frame.atoms.y[0]; prev_z0 = frame.atoms.z[0];
-        prev_x1 = frame.atoms.x[1]; prev_y1 = frame.atoms.y[1]; prev_z1 = frame.atoms.z[1];
+        prev_x0 = frame.atoms.x[0];
+        prev_y0 = frame.atoms.y[0];
+        prev_z0 = frame.atoms.z[0];
+        prev_x1 = frame.atoms.x[1];
+        prev_y1 = frame.atoms.y[1];
+        prev_z1 = frame.atoms.z[1];
     }
 }

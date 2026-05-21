@@ -27,8 +27,12 @@ namespace {
 struct EnergyOnlyEvaluator : ATV::cpu::ComponentBase {
     int launch_count = 0;
     std::string name() const override { return "energy_only"; }
-    ATV::ComponentRole role() const override { return ATV::ComponentRole::Evaluator; }
-    ATV::Capability   capabilities() const override { return ATV::Capability::Energy; }
+    ATV::ComponentRole role() const override {
+        return ATV::ComponentRole::Evaluator;
+    }
+    ATV::Capability capabilities() const override {
+        return ATV::Capability::Energy;
+    }
     void launch(const ATV::cpu::LaunchContext&) override { ++launch_count; }
 };
 
@@ -56,7 +60,8 @@ TEST(EvaluateCapabilities, EnergyOnlyRejectedByDynamics) {
     d.on(md::Phase::force).add(energy);
     try {
         d.build();
-        FAIL() << "Dynamics requires Force capability — energy-only must reject";
+        FAIL()
+            << "Dynamics requires Force capability — energy-only must reject";
     } catch (const std::runtime_error& e) {
         EXPECT_NE(std::string(e.what()).find("Force"), std::string::npos)
             << e.what();

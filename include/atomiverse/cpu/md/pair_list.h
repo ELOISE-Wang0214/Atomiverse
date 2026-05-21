@@ -30,12 +30,13 @@ namespace md {
 /// `inum` entries in place on each rebuild, so steady-state rebuilds
 /// never enter the allocator once capacity has stabilised.
 struct PairList {
-    int inum = 0;                          ///< Number of I atoms with neighbor lists.
-    std::vector<int> ilist;                ///< I atom indices [capacity].
-    std::vector<int> numneigh;             ///< Number of neighbors per atom [capacity].
-    std::vector<int> firstneigh;           ///< Offset into neighbors[] per atom [capacity].
-    std::vector<int> neighbors;            ///< Flat neighbor indices [total_pairs].
-    int total_pairs = 0;                   ///< Total entries in neighbors[].
+    int inum = 0;              ///< Number of I atoms with neighbor lists.
+    std::vector<int> ilist;    ///< I atom indices [capacity].
+    std::vector<int> numneigh; ///< Number of neighbors per atom [capacity].
+    std::vector<int>
+        firstneigh; ///< Offset into neighbors[] per atom [capacity].
+    std::vector<int> neighbors; ///< Flat neighbor indices [total_pairs].
+    int total_pairs = 0;        ///< Total entries in neighbors[].
 
     /// @brief Monotonic rebuild counter. `NeighborList::launch` bumps this by
     /// 1 every time it actually re-enumerates the list. Consumers that cache
@@ -63,7 +64,7 @@ struct PairList {
     /// @tparam F Callable with signature void(int i, int j).
     template <typename F>
     void for_each_pair_omp(F&& func) const {
-        #pragma omp parallel for schedule(static)
+#pragma omp parallel for schedule(static)
         for (int ii = 0; ii < inum; ++ii) {
             int i = ilist[ii];
             int jnum_i = numneigh[i];

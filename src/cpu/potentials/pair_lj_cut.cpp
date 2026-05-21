@@ -2,9 +2,9 @@
 /// @brief CPU PairLJCut — LJ 12-6 shifted, xsimd ket-loop, OMP force reduction.
 
 #include "atomiverse/cpu/potentials/pair_lj_cut.h"
+#include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/md/mpi/domain.h"
 #include "atomiverse/cpu/md/pair_list.h"
-#include "atomiverse/core/mat3.h"
 
 #include <algorithm>
 #include <cmath>
@@ -82,10 +82,12 @@ void PairLJCut::build(const BuildContext& ctx) {
     const bool any_excl = has_excl_12 || has_excl_13 || has_excl_14;
 
     excluded_by_tag_.clear();
-    if (!any_excl) return;
+    if (!any_excl)
+        return;
 
     auto add_pair = [&](std::int64_t a, std::int64_t b) {
-        if (a == b) return;
+        if (a == b)
+            return;
         excluded_by_tag_[a].push_back(b);
         excluded_by_tag_[b].push_back(a);
     };
@@ -120,7 +122,8 @@ void PairLJCut::build(const BuildContext& ctx) {
     }
 }
 
-void PairLJCut::rebuild_filtered_list(const Frame& f, const md::PairList& pairs) {
+void PairLJCut::rebuild_filtered_list(const Frame& f,
+                                      const md::PairList& pairs) {
     // Walk the upstream CSR once, drop excluded pairs, write a dense CSR
     // into `filtered_*`. Runs once per NL rebuild (~every `every` steps)
     // amortizing the `tag_ptr[j]` gather + `binary_search` that the old
@@ -144,7 +147,7 @@ void PairLJCut::rebuild_filtered_list(const Frame& f, const md::PairList& pairs)
             (it != excluded_by_tag_.end()) ? &it->second : nullptr;
 
         const int off = firstneigh[i];
-        const int jn  = numneigh[i];
+        const int jn = numneigh[i];
         filtered_firstneigh_[i] = static_cast<int>(filtered_neighbors_.size());
         int kept = 0;
         for (int jj = 0; jj < jn; ++jj) {
@@ -186,29 +189,24 @@ void PairLJCut::compute(const LaunchContext& ctx) {
         rebuild_filtered_list(f, pairs);
         filtered_version_ = pairs.version;
     }
-    const int  k_inum       = use_filtered ? filtered_inum_
-                                           : pairs.inum;
-    const int* __restrict k_ilist     = use_filtered
-                                           ? nullptr  // contiguous 0..n-1
-                                           : pairs.ilist.data();
-    const int* __restrict k_numneigh  = use_filtered
-                                           ? filtered_numneigh_.data()
-                                           : pairs.numneigh.data();
-    const int* __restrict k_firstneigh= use_filtered
-                                           ? filtered_firstneigh_.data()
-                                           : pairs.firstneigh.data();
-    const int* __restrict k_neighbors = use_filtered
-                                           ? filtered_neighbors_.data()
-                                           : pairs.neighbors.data();
+    const int k_inum = use_filtered ? filtered_inum_ : pairs.inum;
+    const int* __restrict k_ilist = use_filtered ? nullptr // contiguous 0..n-1
+                                                 : pairs.ilist.data();
+    const int* __restrict k_numneigh =
+        use_filtered ? filtered_numneigh_.data() : pairs.numneigh.data();
+    const int* __restrict k_firstneigh =
+        use_filtered ? filtered_firstneigh_.data() : pairs.firstneigh.data();
+    const int* __restrict k_neighbors =
+        use_filtered ? filtered_neighbors_.data() : pairs.neighbors.data();
 
     // Pair virial accumulators (Voigt order: xx yy zz xy xz yz). Reduced
     // across OpenMP threads via OMP reduction; cross-rank reduction is
     // handled by ReduceEnergy at end_of_step.
     double v_xx = 0, v_yy = 0, v_zz = 0, v_xy = 0, v_xz = 0, v_yz = 0;
 
-    #pragma omp parallel reduction(+:energy_total) \
-        reduction(+:v_xx) reduction(+:v_yy) reduction(+:v_zz) \
-        reduction(+:v_xy) reduction(+:v_xz) reduction(+:v_yz)
+#pragma omp parallel reduction(+ : energy_total) reduction(+ : v_xx)           \
+    reduction(+ : v_yy) reduction(+ : v_zz) reduction(+ : v_xy)                \
+    reduction(+ : v_xz) reduction(+ : v_yz)
     {
         int tid = 0;
 #ifdef _OPENMP
@@ -274,8 +272,10 @@ void PairLJCut::compute(const LaunchContext& ctx) {
         constexpr std::size_t W = batch_t::size;
 
         const batch_t v_lx(lx), v_ly(ly), v_lz(lz);
-        const batch_t v_half_lx(half_lx), v_half_ly(half_ly), v_half_lz(half_lz);
-        const batch_t v_neg_half_lx(-half_lx), v_neg_half_ly(-half_ly), v_neg_half_lz(-half_lz);
+        const batch_t v_half_lx(half_lx), v_half_ly(half_ly),
+            v_half_lz(half_lz);
+        const batch_t v_neg_half_lx(-half_lx), v_neg_half_ly(-half_ly),
+            v_neg_half_lz(-half_lz);
         const batch_t v_rc_sq(rc_sq);
         const batch_t v_sig6(sig6);
         const batch_t v_eps4(eps4), v_eps24(eps24), v_vshift(vshift);
@@ -290,7 +290,7 @@ void PairLJCut::compute(const LaunchContext& ctx) {
         alignas(64) double r2_buf[16], r6inv_buf[16];
         alignas(64) std::int32_t mask_buf[16];
 
-        #pragma omp for schedule(static)
+#pragma omp for schedule(static)
         for (int ii = 0; ii < k_inum; ++ii) {
             // Filtered path: i == ii (neighbors are already pruned of
             // excluded partners). Upstream path: `k_ilist[ii]` gives the
@@ -310,7 +310,8 @@ void PairLJCut::compute(const LaunchContext& ctx) {
 
             int jj = 0;
             // ── SIMD ket loop: W neighbors per iteration ────────────
-            for (; jj + static_cast<int>(W) <= jnum; jj += static_cast<int>(W)) {
+            for (; jj + static_cast<int>(W) <= jnum;
+                 jj += static_cast<int>(W)) {
                 // Manual gather: pack the next W neighbor coords into the
                 // aligned stack buffers. j-indices are non-contiguous (NL
                 // is a permutation), so a true SIMD gather instruction
@@ -318,7 +319,8 @@ void PairLJCut::compute(const LaunchContext& ctx) {
                 // no double-precision gather, so the scalar-load loop is
                 // the right thing here.
                 for (std::size_t lane = 0; lane < W; ++lane) {
-                    const int j = k_neighbors[off + jj + static_cast<int>(lane)];
+                    const int j =
+                        k_neighbors[off + jj + static_cast<int>(lane)];
                     xj_buf[lane] = x_ptr[j];
                     yj_buf[lane] = y_ptr[j];
                     zj_buf[lane] = z_ptr[j];
@@ -336,19 +338,19 @@ void PairLJCut::compute(const LaunchContext& ctx) {
                 // box members across the inner loop -- swapping this for
                 // box.min_image_batch costs ~7% per-step (member loads
                 // through `this` are not hoisted under aliasing analysis).
-                v_dx = xsimd::select(v_dx >  v_half_lx,    v_dx - v_lx, v_dx);
-                v_dx = xsimd::select(v_dx <  v_neg_half_lx, v_dx + v_lx, v_dx);
-                v_dy = xsimd::select(v_dy >  v_half_ly,    v_dy - v_ly, v_dy);
-                v_dy = xsimd::select(v_dy <  v_neg_half_ly, v_dy + v_ly, v_dy);
-                v_dz = xsimd::select(v_dz >  v_half_lz,    v_dz - v_lz, v_dz);
-                v_dz = xsimd::select(v_dz <  v_neg_half_lz, v_dz + v_lz, v_dz);
+                v_dx = xsimd::select(v_dx > v_half_lx, v_dx - v_lx, v_dx);
+                v_dx = xsimd::select(v_dx < v_neg_half_lx, v_dx + v_lx, v_dx);
+                v_dy = xsimd::select(v_dy > v_half_ly, v_dy - v_ly, v_dy);
+                v_dy = xsimd::select(v_dy < v_neg_half_ly, v_dy + v_ly, v_dy);
+                v_dz = xsimd::select(v_dz > v_half_lz, v_dz - v_lz, v_dz);
+                v_dz = xsimd::select(v_dz < v_neg_half_lz, v_dz + v_lz, v_dz);
 
                 // r2 with parenthesized addition tree to keep order
                 // matching scalar `(dx*dx + dy*dy) + dz*dz`.
                 batch_t v_dxsq = v_dx * v_dx;
                 batch_t v_dysq = v_dy * v_dy;
                 batch_t v_dzsq = v_dz * v_dz;
-                batch_t v_r2   = (v_dxsq + v_dysq) + v_dzsq;
+                batch_t v_r2 = (v_dxsq + v_dysq) + v_dzsq;
 
                 // Cutoff mask. Lanes outside the cutoff get fpair=0 so
                 // they contribute nothing to forces / energy / virial; the
@@ -363,8 +365,8 @@ void PairLJCut::compute(const LaunchContext& ctx) {
 
                 batch_t v_r2inv = v_one / v_r2_safe;
                 batch_t v_r6inv = ((v_r2inv * v_r2inv) * v_r2inv) * v_sig6;
-                batch_t v_fpair = v_eps24 * v_r2inv *
-                                  (v_two * v_r6inv * v_r6inv - v_r6inv);
+                batch_t v_fpair =
+                    v_eps24 * v_r2inv * (v_two * v_r6inv * v_r6inv - v_r6inv);
                 v_fpair = xsimd::select(mask, v_fpair, v_zero);
 
                 batch_t v_fxp = v_fpair * v_dx;
@@ -392,11 +394,13 @@ void PairLJCut::compute(const LaunchContext& ctx) {
                 // surviving pair contributes the same per-pair triple
                 // (fxp, fyp, fzp) the scalar code would have computed.
                 for (std::size_t lane = 0; lane < W; ++lane) {
-                    if (mask_d_buf[lane] == 0.0) continue;
-                    const int j = k_neighbors[off + jj + static_cast<int>(lane)];
-                    const double dx_l  = dx_buf[lane];
-                    const double dy_l  = dy_buf[lane];
-                    const double dz_l  = dz_buf[lane];
+                    if (mask_d_buf[lane] == 0.0)
+                        continue;
+                    const int j =
+                        k_neighbors[off + jj + static_cast<int>(lane)];
+                    const double dx_l = dx_buf[lane];
+                    const double dy_l = dy_buf[lane];
+                    const double dz_l = dz_buf[lane];
                     const double fxp_l = fxp_buf[lane];
                     const double fyp_l = fyp_buf[lane];
                     const double fzp_l = fzp_buf[lane];
@@ -416,7 +420,8 @@ void PairLJCut::compute(const LaunchContext& ctx) {
                     v_xz += dx_l * fzp_l;
                     v_yz += dy_l * fzp_l;
 
-                    energy_total += eps4 * (r6inv_l * r6inv_l - r6inv_l) - vshift;
+                    energy_total +=
+                        eps4 * (r6inv_l * r6inv_l - r6inv_l) - vshift;
                 }
                 (void)mask_buf;
             }
@@ -431,18 +436,26 @@ void PairLJCut::compute(const LaunchContext& ctx) {
                 // above and keeps the hoisted half_lx / lx locals in
                 // registers across the entire scalar tail. (Substituting
                 // box.min_image here costs the same ~7% as the SIMD path.)
-                if (dx >  half_lx) dx -= lx;
-                if (dx < -half_lx) dx += lx;
-                if (dy >  half_ly) dy -= ly;
-                if (dy < -half_ly) dy += ly;
-                if (dz >  half_lz) dz -= lz;
-                if (dz < -half_lz) dz += lz;
+                if (dx > half_lx)
+                    dx -= lx;
+                if (dx < -half_lx)
+                    dx += lx;
+                if (dy > half_ly)
+                    dy -= ly;
+                if (dy < -half_ly)
+                    dy += ly;
+                if (dz > half_lz)
+                    dz -= lz;
+                if (dz < -half_lz)
+                    dz += lz;
                 const double r2 = dx * dx + dy * dy + dz * dz;
-                if (r2 >= rc_sq) continue;
+                if (r2 >= rc_sq)
+                    continue;
 
                 const double r2inv = double(1) / r2;
                 const double r6inv = r2inv * r2inv * r2inv * sig6;
-                const double fpair = eps24 * r2inv * (double(2) * r6inv * r6inv - r6inv);
+                const double fpair =
+                    eps24 * r2inv * (double(2) * r6inv * r6inv - r6inv);
 
                 const double fxp = fpair * dx;
                 const double fyp = fpair * dy;
@@ -468,8 +481,8 @@ void PairLJCut::compute(const LaunchContext& ctx) {
             fzt_ptr[i] += fi_z;
         }
 
-        // Reduce per-thread forces into frame
-        #pragma omp for schedule(static)
+// Reduce per-thread forces into frame
+#pragma omp for schedule(static)
         for (int i = 0; i < n_force; ++i) {
             for (int t = 0; t < n_threads_; ++t) {
                 f.atoms.fx[i] += fx_thr_[t][i];

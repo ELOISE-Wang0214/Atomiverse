@@ -24,11 +24,10 @@ constexpr int kBlockBuf1e = kMaxNCart * kMaxNCart;
 /// `buf` is the dense A.n_cart × B.n_cart output from a block kernel.
 /// For i != j block pairs we also populate the transposed entries; for
 /// diagonal block pairs the kernel already produces the whole block.
-inline void scatter_block(
-    xt::xtensor<double, 2>& M,
-    const native::ShellBlock& A, const native::ShellBlock& B,
-    const double* buf, bool diag)
-{
+inline void scatter_block(xt::xtensor<double, 2>& M,
+                          const native::ShellBlock& A,
+                          const native::ShellBlock& B, const double* buf,
+                          bool diag) {
     const int na = A.n_cart, nb = B.n_cart;
     if (diag) {
         for (int ia = 0; ia < na; ++ia) {
@@ -53,10 +52,8 @@ inline void scatter_block(
 ///        lower-triangular (i ≥ j) block pair and scatter into `M`.
 template <typename Kernel>
 void for_each_canonical_block_pair(
-    xt::xtensor<double, 2>& M,
-    const std::vector<native::ShellBlock>& blocks,
-    Kernel&& kernel)
-{
+    xt::xtensor<double, 2>& M, const std::vector<native::ShellBlock>& blocks,
+    Kernel&& kernel) {
     const int nb = static_cast<int>(blocks.size());
     double buf[kBlockBuf1e];
     for (int i = 0; i < nb; ++i) {
@@ -64,7 +61,8 @@ void for_each_canonical_block_pair(
             const auto& A = blocks[static_cast<std::size_t>(i)];
             const auto& B = blocks[static_cast<std::size_t>(j)];
             const int nab = A.n_cart * B.n_cart;
-            for (int k = 0; k < nab; ++k) buf[k] = 0.0;
+            for (int k = 0; k < nab; ++k)
+                buf[k] = 0.0;
             kernel(A, B, buf);
             scatter_block(M, A, B, buf, /*diag=*/(i == j));
         }
@@ -77,10 +75,10 @@ xt::xtensor<double, 2> build_overlap(const ShellList& shells) {
     const int n = shells.n_basis;
     xt::xtensor<double, 2> S = xt::zeros<double>({n, n});
     const auto blocks = blocks_from_shells(shells.shells);
-    for_each_canonical_block_pair(S, blocks,
-        [](const native::ShellBlock& A, const native::ShellBlock& B, double* buf) {
-            native::overlap_block(A, B, buf);
-        });
+    for_each_canonical_block_pair(
+        S, blocks,
+        [](const native::ShellBlock& A, const native::ShellBlock& B,
+           double* buf) { native::overlap_block(A, B, buf); });
     return S;
 }
 
@@ -88,22 +86,23 @@ xt::xtensor<double, 2> build_kinetic(const ShellList& shells) {
     const int n = shells.n_basis;
     xt::xtensor<double, 2> T = xt::zeros<double>({n, n});
     const auto blocks = blocks_from_shells(shells.shells);
-    for_each_canonical_block_pair(T, blocks,
-        [](const native::ShellBlock& A, const native::ShellBlock& B, double* buf) {
-            native::kinetic_block(A, B, buf);
-        });
+    for_each_canonical_block_pair(
+        T, blocks,
+        [](const native::ShellBlock& A, const native::ShellBlock& B,
+           double* buf) { native::kinetic_block(A, B, buf); });
     return T;
 }
 
-xt::xtensor<double, 2> build_nuclear_attraction(
-    const ShellList& shells, const AtomList& atoms)
-{
+xt::xtensor<double, 2> build_nuclear_attraction(const ShellList& shells,
+                                                const AtomList& atoms) {
     const int n = shells.n_basis;
     const int natm = static_cast<int>(atoms.atoms.size());
     xt::xtensor<double, 2> V = xt::zeros<double>({n, n});
     const auto blocks = blocks_from_shells(shells.shells);
-    for_each_canonical_block_pair(V, blocks,
-        [&](const native::ShellBlock& A, const native::ShellBlock& B, double* buf) {
+    for_each_canonical_block_pair(
+        V, blocks,
+        [&](const native::ShellBlock& A, const native::ShellBlock& B,
+            double* buf) {
             native::nuclear_block(A, B, atoms.atoms.data(), natm, buf);
         });
     return V;

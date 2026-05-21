@@ -34,18 +34,19 @@ namespace units {
 // Both the enum-dispatched convert() below and the legacy ATV::k*
 // aliases at the bottom of this header read from these constants.
 
-inline constexpr double kAngstromInBohr              = 1.8897261245650618;
-inline constexpr double kEvInHartree                 = 1.0 / 27.211386245988;
-inline constexpr double kDegreeInRad                 = 3.14159265358979323846 / 180.0;
+inline constexpr double kAngstromInBohr = 1.8897261245650618;
+inline constexpr double kEvInHartree = 1.0 / 27.211386245988;
+inline constexpr double kDegreeInRad = 3.14159265358979323846 / 180.0;
 inline constexpr double kEvPerAngstromInHartreePerBohr =
-    (1.0 / 27.211386245988) / 1.8897261245650618;  // = (1 eV / 1 Å) in (Hartree / Bohr)
+    (1.0 / 27.211386245988)
+    / 1.8897261245650618; // = (1 eV / 1 Å) in (Hartree / Bohr)
 
 // ── Dimension enums ──────────────────────────────────────────────────
 
 enum class Length { Bohr, Angstrom };
 enum class Energy { Hartree, eV };
-enum class Angle  { Rad, Degree };
-enum class Force  { HartreePerBohr, eVPerAngstrom };
+enum class Angle { Rad, Degree };
+enum class Force { HartreePerBohr, eVPerAngstrom };
 
 // ── Enum-dispatched factor lookup (internal) ────────────────────────
 
@@ -53,32 +54,40 @@ namespace detail {
 
 [[nodiscard]] inline constexpr double factor(Length u) {
     switch (u) {
-        case Length::Bohr:     return 1.0;
-        case Length::Angstrom: return kAngstromInBohr;
+    case Length::Bohr:
+        return 1.0;
+    case Length::Angstrom:
+        return kAngstromInBohr;
     }
-    return 0.0;  // unreachable
+    return 0.0; // unreachable
 }
 
 [[nodiscard]] inline constexpr double factor(Energy u) {
     switch (u) {
-        case Energy::Hartree: return 1.0;
-        case Energy::eV:      return kEvInHartree;
+    case Energy::Hartree:
+        return 1.0;
+    case Energy::eV:
+        return kEvInHartree;
     }
     return 0.0;
 }
 
 [[nodiscard]] inline constexpr double factor(Angle u) {
     switch (u) {
-        case Angle::Rad:    return 1.0;
-        case Angle::Degree: return kDegreeInRad;
+    case Angle::Rad:
+        return 1.0;
+    case Angle::Degree:
+        return kDegreeInRad;
     }
     return 0.0;
 }
 
 [[nodiscard]] inline constexpr double factor(Force u) {
     switch (u) {
-        case Force::HartreePerBohr: return 1.0;
-        case Force::eVPerAngstrom:  return kEvPerAngstromInHartreePerBohr;
+    case Force::HartreePerBohr:
+        return 1.0;
+    case Force::eVPerAngstrom:
+        return kEvPerAngstromInHartreePerBohr;
     }
     return 0.0;
 }
@@ -109,8 +118,8 @@ inline constexpr double kB_ev_per_k = 8.617333262e-5;
 //
 //   acceleration [Å/fs²] = force_to_accel    * (force[eV/Å] / mass[amu])
 //   KE [eV]              = 0.5 * mass_v2_to_energy * mass[amu] * v² [Å²/fs²]
-inline constexpr double force_to_accel     = 1.0 / 103.6427;
-inline constexpr double mass_v2_to_energy  = 103.6427;
+inline constexpr double force_to_accel = 1.0 / 103.6427;
+inline constexpr double mass_v2_to_energy = 103.6427;
 
 } // namespace units
 
@@ -120,15 +129,16 @@ inline constexpr double mass_v2_to_energy  = 103.6427;
 // involvement.
 // ─────────────────────────────────────────────────────────────────────
 
-inline constexpr double kPI             = units::pi;
-inline constexpr double kDegToRad       = units::kDegreeInRad;
+inline constexpr double kPI = units::pi;
+inline constexpr double kDegToRad = units::kDegreeInRad;
 inline constexpr double kAngstromToBohr = units::kAngstromInBohr;
-inline constexpr double kBohr2Ang       = 1.0 / units::kAngstromInBohr;
-inline constexpr double kHartree2eV     = 1.0 / units::kEvInHartree;
-inline constexpr double kForceAU2Metal  = 1.0 / units::kEvPerAngstromInHartreePerBohr;
-inline constexpr double kBoltzmann      = units::kB_ev_per_k;
-inline constexpr double kFtm2v          = units::force_to_accel;
-inline constexpr double kMvv2e          = units::mass_v2_to_energy;
+inline constexpr double kBohr2Ang = 1.0 / units::kAngstromInBohr;
+inline constexpr double kHartree2eV = 1.0 / units::kEvInHartree;
+inline constexpr double kForceAU2Metal =
+    1.0 / units::kEvPerAngstromInHartreePerBohr;
+inline constexpr double kBoltzmann = units::kB_ev_per_k;
+inline constexpr double kFtm2v = units::force_to_accel;
+inline constexpr double kMvv2e = units::mass_v2_to_energy;
 
 /// @brief Angstrom to Bohr (QE convention: 1 Bohr = 0.5291772083 A).
 constexpr double kAngstrom2Bohr = 1.8897259886;

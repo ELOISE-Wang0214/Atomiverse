@@ -12,7 +12,7 @@ namespace ATV {
 namespace cuda {
 
 class Angle : public ComponentBase {
-public:
+  public:
     ~Angle() override = default;
 
     ComponentRole role() const final { return ComponentRole::Evaluator; }
@@ -22,17 +22,16 @@ public:
 
     void launch(const LaunchContext& ctx) final { compute(ctx); }
 
-protected:
+  protected:
     Angle() = default;
 
     virtual void compute(const LaunchContext& ctx) = 0;
 
-    const std::vector<int>& select_owned_tuples(
-        const LaunchContext& ctx,
-        int n_tuples,
-        const std::function<std::int64_t(int)>& owner_tag_of);
+    const std::vector<int>&
+    select_owned_tuples(const LaunchContext& ctx, int n_tuples,
+                        const std::function<std::int64_t(int)>& owner_tag_of);
 
-private:
+  private:
     std::vector<int> owned_;
 };
 

@@ -2,10 +2,10 @@
 /// @brief CUDA backend_traits specialization.
 #pragma once
 
-#include "atomiverse/core/device.h"
 #include "atomiverse/core/backend_traits.h"
-#include "atomiverse/cuda/component.cuh"
+#include "atomiverse/core/device.h"
 #include "atomiverse/cuda/backend.cuh"
+#include "atomiverse/cuda/component.cuh"
 
 namespace ATV {
 
@@ -13,7 +13,7 @@ namespace ATV {
 template <>
 struct backend_traits<cuda::device_tag> {
     using component_type = ComponentBase;
-    using backend_type   = Backend;
+    using backend_type = Backend;
 };
 
 } // namespace ATV

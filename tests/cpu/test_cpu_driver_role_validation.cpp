@@ -55,7 +55,8 @@ TEST(CPUDriverRoleValidation, DynamicsThrowsWithoutForceEvaluator) {
     d.on(md::Phase::force).add(energy_only);
     try {
         d.build();
-        FAIL() << "expected throw — DynamicsDriver missing Force-capable evaluator";
+        FAIL() << "expected throw — DynamicsDriver missing Force-capable "
+                  "evaluator";
     } catch (const std::runtime_error& e) {
         EXPECT_TRUE(message_mentions(e, "Force")) << e.what();
     }
@@ -95,10 +96,11 @@ TEST(CPUDriverRoleValidation, OptimizeThrowsWithoutEnergyOrForceEvaluator) {
     o.on(minimizer::Phase::end_of_step).add(infra);
     try {
         o.build();
-        FAIL() << "expected throw — OptimizeDriver missing Energy/Force evaluator";
+        FAIL()
+            << "expected throw — OptimizeDriver missing Energy/Force evaluator";
     } catch (const std::runtime_error& e) {
-        EXPECT_TRUE(message_mentions(e, "Energy") ||
-                    message_mentions(e, "Force"))
+        EXPECT_TRUE(message_mentions(e, "Energy")
+                    || message_mentions(e, "Force"))
             << e.what();
     }
 }

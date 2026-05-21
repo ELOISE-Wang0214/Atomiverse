@@ -14,9 +14,10 @@ namespace cpu {
 namespace vib {
 
 void MassWeighting::launch(const cpu::LaunchContext& ctx) {
-    const int n   = ws_->n_atoms;
+    const int n = ws_->n_atoms;
     const int dim = 3 * n;
-    if (ctx.step < 2 * dim) return; // not the finalize pass yet.
+    if (ctx.step < 2 * dim)
+        return; // not the finalize pass yet.
 
     // Fetch IUPAC-2013 atomic masses from each atom's atomic number.
     // mass_amu() throws on an unsupported element (no fallback).

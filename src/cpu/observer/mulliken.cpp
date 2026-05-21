@@ -5,8 +5,8 @@
 
 #include <stdexcept>
 
-#include <xtensor/containers/xtensor.hpp>
 #include <xtensor-blas/xlinalg.hpp>
+#include <xtensor/containers/xtensor.hpp>
 
 namespace ATV {
 namespace cpu {
@@ -22,7 +22,7 @@ namespace {
 /// only fundamental physical quantities.
 std::vector<int> derive_basis_to_atom(const scf::IntegralPack& pack) {
     const int n_basis = pack.n_basis;
-    const int natm    = static_cast<int>(pack.atoms.size());
+    const int natm = static_cast<int>(pack.atoms.size());
 
     std::vector<int> b2a(static_cast<std::size_t>(n_basis), -1);
     for (int mu = 0; mu < n_basis; ++mu) {
@@ -35,21 +35,19 @@ std::vector<int> derive_basis_to_atom(const scf::IntegralPack& pack) {
             }
         }
         if (b2a[static_cast<std::size_t>(mu)] < 0) {
-            throw std::runtime_error(
-                "cpu::mulliken: shell center at AO " + std::to_string(mu) +
-                " matches no atom in IntegralPack");
+            throw std::runtime_error("cpu::mulliken: shell center at AO "
+                                     + std::to_string(mu)
+                                     + " matches no atom in IntegralPack");
         }
     }
     return b2a;
 }
 
 /// @brief Scatter the diagonal of (D S) per atom using the AO->atom map.
-std::vector<double> accumulate_diag_ds_per_atom(
-    const xt::xtensor<double, 2>& D,
-    const xt::xtensor<double, 2>& S,
-    const std::vector<int>& basis_to_atom,
-    int natm)
-{
+std::vector<double>
+accumulate_diag_ds_per_atom(const xt::xtensor<double, 2>& D,
+                            const xt::xtensor<double, 2>& S,
+                            const std::vector<int>& basis_to_atom, int natm) {
     const xt::xtensor<double, 2> DS = xt::linalg::dot(D, S);
 
     std::vector<double> out(static_cast<std::size_t>(natm), 0.0);
@@ -64,8 +62,7 @@ std::vector<double> accumulate_diag_ds_per_atom(
 } // namespace
 
 std::vector<double> mulliken_charge(const scf::IntegralPack& pack,
-                                    const xt::xtensor<double, 2>& P)
-{
+                                    const xt::xtensor<double, 2>& P) {
     const int natm = static_cast<int>(pack.atoms.size());
     const auto b2a = derive_basis_to_atom(pack);
 
@@ -82,8 +79,7 @@ std::vector<double> mulliken_charge(const scf::IntegralPack& pack,
 
 std::vector<double> mulliken_spin(const scf::IntegralPack& pack,
                                   const xt::xtensor<double, 2>& P_alpha,
-                                  const xt::xtensor<double, 2>& P_beta)
-{
+                                  const xt::xtensor<double, 2>& P_beta) {
     const int natm = static_cast<int>(pack.atoms.size());
     const auto b2a = derive_basis_to_atom(pack);
 

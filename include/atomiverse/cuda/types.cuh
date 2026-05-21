@@ -36,8 +36,10 @@ using real_t = ATV_CUDA_REAL_TYPE;
 using work_t = ATV_CUDA_WORK_TYPE;
 using prec_t = ATV_CUDA_PREC_TYPE;
 
-static_assert(sizeof(real_t) <= sizeof(work_t), "real_t must not exceed work_t");
-static_assert(sizeof(work_t) <= sizeof(prec_t), "work_t must not exceed prec_t");
+static_assert(sizeof(real_t) <= sizeof(work_t),
+              "real_t must not exceed work_t");
+static_assert(sizeof(work_t) <= sizeof(prec_t),
+              "work_t must not exceed prec_t");
 
 } // namespace cuda
 } // namespace ATV

@@ -16,47 +16,47 @@
 #include <cmath>
 #include <vector>
 
-#include "atomiverse/cpu/potentials/harmonic_angle.h"
-#include "atomiverse/cpu/potentials/harmonic_bond.h"
-#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
+#include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/init.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/nose_hoover.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/core/mat3.h"
-#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/potentials/harmonic_angle.h"
+#include "atomiverse/cpu/potentials/harmonic_bond.h"
+#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
 
 using namespace ATV;
 
 namespace {
 
 inline constexpr double kKcalPerMolToEv = 1.0 / 23.060547830619026;
-inline constexpr double kBondK_kcal  = 268.0;
-inline constexpr double kBondR0      = 1.53;
+inline constexpr double kBondK_kcal = 268.0;
+inline constexpr double kBondR0 = 1.53;
 inline constexpr double kAngleK_kcal = 60.0;
 inline constexpr double kAngleTheta0 = 109.5 * kPI / 180.0;
 
-inline double bond_K_eV()  { return kBondK_kcal  * kKcalPerMolToEv; }
+inline double bond_K_eV() { return kBondK_kcal * kKcalPerMolToEv; }
 inline double angle_K_eV() { return kAngleK_kcal * kKcalPerMolToEv; }
 inline std::vector<double> dihedral_Cn_eV() {
     return {
-        1.73    * kKcalPerMolToEv,   // C0  (MSU paper, Tschopp 2010)
-        -4.49   * kKcalPerMolToEv,   // C1
-        0.776   * kKcalPerMolToEv,   // C2
-        6.99    * kKcalPerMolToEv,   // C3
-        0.0,                          // C4
+        1.73 * kKcalPerMolToEv,  // C0  (MSU paper, Tschopp 2010)
+        -4.49 * kKcalPerMolToEv, // C1
+        0.776 * kKcalPerMolToEv, // C2
+        6.99 * kKcalPerMolToEv,  // C3
+        0.0,                     // C4
     };
 }
 
 cpu::Frame make_8chain_box(double box_len, int n_carbons, double y_margin) {
     const int n_chains = 8;
-    const int n_atoms  = n_chains * n_carbons;
+    const int n_atoms = n_chains * n_carbons;
     cpu::Frame frame(n_atoms);
 
     const double half_apex = (kPI - kAngleTheta0) / 2.0;
-    const double dy_step   = kBondR0 * std::cos(half_apex);
-    const double dz_step   = kBondR0 * std::sin(half_apex);
+    const double dy_step = kBondR0 * std::cos(half_apex);
+    const double dz_step = kBondR0 * std::sin(half_apex);
 
     const double slab = box_len / 2.0;
     int idx = 0;
@@ -65,7 +65,7 @@ cpu::Frame make_8chain_box(double box_len, int n_carbons, double y_margin) {
             for (int cz = 0; cz < 2; ++cz) {
                 const double cx0 = cx * slab + slab / 2.0;
                 const double cz0 = cz * slab + slab / 2.0;
-                const double y0  = cy * slab + y_margin;
+                const double y0 = cy * slab + y_margin;
                 for (int i = 0; i < n_carbons; ++i) {
                     frame.atoms.x[idx] = cx0;
                     frame.atoms.y[idx] = y0 + i * dy_step;
@@ -83,16 +83,16 @@ cpu::Frame make_8chain_box(double box_len, int n_carbons, double y_margin) {
     const int n_d_per = n_carbons - 3;
     frame.bonds.atomi = xt::zeros<int>({n_chains * n_b_per});
     frame.bonds.atomj = xt::zeros<int>({n_chains * n_b_per});
-    frame.bonds.type  = xt::zeros<int>({n_chains * n_b_per});
+    frame.bonds.type = xt::zeros<int>({n_chains * n_b_per});
     frame.angles.atomi = xt::zeros<int>({n_chains * n_a_per});
     frame.angles.atomj = xt::zeros<int>({n_chains * n_a_per});
     frame.angles.atomk = xt::zeros<int>({n_chains * n_a_per});
-    frame.angles.type  = xt::zeros<int>({n_chains * n_a_per});
+    frame.angles.type = xt::zeros<int>({n_chains * n_a_per});
     frame.dihedrals.atomi = xt::zeros<int>({n_chains * n_d_per});
     frame.dihedrals.atomj = xt::zeros<int>({n_chains * n_d_per});
     frame.dihedrals.atomk = xt::zeros<int>({n_chains * n_d_per});
     frame.dihedrals.atoml = xt::zeros<int>({n_chains * n_d_per});
-    frame.dihedrals.type  = xt::zeros<int>({n_chains * n_d_per});
+    frame.dihedrals.type = xt::zeros<int>({n_chains * n_d_per});
     for (int c = 0; c < n_chains; ++c) {
         const int base = c * n_carbons;
         for (int k = 0; k < n_b_per; ++k) {
@@ -119,7 +119,8 @@ cpu::Frame make_8chain_box(double box_len, int n_carbons, double y_margin) {
     return frame;
 }
 
-double temperature_from_kinetic_global(double e_kin_ev_global, int n_atoms_global) {
+double temperature_from_kinetic_global(double e_kin_ev_global,
+                                       int n_atoms_global) {
     return (2.0 / 3.0) * e_kin_ev_global / (n_atoms_global * kBoltzmann);
 }
 
@@ -132,9 +133,9 @@ TEST(PeNvtMultiRank, NoseHooverHoldsGlobalTemperature) {
         GTEST_SKIP() << "8-rank specific test; got world_size=" << world_size;
     }
 
-    const double T_target = 300.0;   // K
-    const double dt       = 0.5;     // fs
-    const double tau_T    = 100.0;   // fs
+    const double T_target = 300.0; // K
+    const double dt = 0.5;         // fs
+    const double tau_T = 100.0;    // fs
 
     const int n_carbons = 18;
     auto frame = make_8chain_box(48.0, n_carbons, 1.0);

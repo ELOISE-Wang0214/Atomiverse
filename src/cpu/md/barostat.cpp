@@ -20,17 +20,19 @@ namespace md {
 
 Barostat::Barostat(double P_target, double tau_P, double dt,
                    double bulk_modulus)
-    : P_target_(P_target), tau_P_(tau_P), dt_(dt),
-      bulk_modulus_(bulk_modulus) {}
+    : P_target_(P_target), tau_P_(tau_P), dt_(dt), bulk_modulus_(bulk_modulus) {
+}
 
 void Barostat::launch(const cpu::LaunchContext& ctx) {
-    if (!enabled_) return;
+    if (!enabled_)
+        return;
     auto& f = ctx.frame;
 
     // Volume from box (orthorhombic). For multi-rank the box is
     // identical across ranks, so V is the global volume.
     const double V = f.box.volume();
-    if (V <= 0.0) return;
+    if (V <= 0.0)
+        return;
 
     // LAMMPS-standard scalar pressure P = +trace(σ)/(3V), positive ⇔
     // compressive — `compute pressure::compute_scalar()`:
@@ -41,9 +43,9 @@ void Barostat::launch(const cpu::LaunchContext& ctx) {
     // post-force velocity snapshot. This `+trace/(3V)` convention is
     // identical to `NoseHooverNPT` and LAMMPS — the link
     // `lammps-api-align-04` flipped the previous `−trace/(3V)`.
-    const double trace_total = (f.stress[0] + f.stress[1] + f.stress[2])
-                             + (f.stress_kinetic[0] + f.stress_kinetic[1]
-                                + f.stress_kinetic[2]);
+    const double trace_total =
+        (f.stress[0] + f.stress[1] + f.stress[2])
+        + (f.stress_kinetic[0] + f.stress_kinetic[1] + f.stress_kinetic[2]);
     const double P = +trace_total / (3.0 * V);
 
     // Berendsen dilation factor — `fix_press_berendsen.cpp::end_of_step`:
@@ -67,7 +69,7 @@ void Barostat::launch(const cpu::LaunchContext& ctx) {
     // Affine-rescale owned atom positions only. Ghost slots are
     // overwritten by the next step's HaloExchangeForward.
     const int n = owned_count(ctx);
-    #pragma omp parallel for schedule(static)
+#pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
         f.atoms.x[i] *= mu;
         f.atoms.y[i] *= mu;

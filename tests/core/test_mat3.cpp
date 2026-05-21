@@ -1,8 +1,8 @@
 /// @file test_mat3.cpp
 /// @brief Unit tests for Mat3 OOP class (xtensor_fixed rewrite).
 
-#include <gtest/gtest.h>
 #include <cmath>
+#include <gtest/gtest.h>
 #include <random>
 
 #include "atomiverse/core/mat3.h"
@@ -25,17 +25,25 @@ TEST(Mat3, Identity) {
     auto m = Mat3::identity();
     for (int i = 0; i < 3; ++i) {
         for (int j = 0; j < 3; ++j) {
-            if (i == j) EXPECT_EQ(m(i, j), Real(1));
-            else        EXPECT_EQ(m(i, j), Real(0));
+            if (i == j)
+                EXPECT_EQ(m(i, j), Real(1));
+            else
+                EXPECT_EQ(m(i, j), Real(0));
         }
     }
 }
 
 TEST(Mat3, Diagonal) {
     auto m = Mat3::diagonal(1, 2, 3);
-    EXPECT_EQ(m(0, 0), Real(1)); EXPECT_EQ(m(0, 1), Real(0)); EXPECT_EQ(m(0, 2), Real(0));
-    EXPECT_EQ(m(1, 0), Real(0)); EXPECT_EQ(m(1, 1), Real(2)); EXPECT_EQ(m(1, 2), Real(0));
-    EXPECT_EQ(m(2, 0), Real(0)); EXPECT_EQ(m(2, 1), Real(0)); EXPECT_EQ(m(2, 2), Real(3));
+    EXPECT_EQ(m(0, 0), Real(1));
+    EXPECT_EQ(m(0, 1), Real(0));
+    EXPECT_EQ(m(0, 2), Real(0));
+    EXPECT_EQ(m(1, 0), Real(0));
+    EXPECT_EQ(m(1, 1), Real(2));
+    EXPECT_EQ(m(1, 2), Real(0));
+    EXPECT_EQ(m(2, 0), Real(0));
+    EXPECT_EQ(m(2, 1), Real(0));
+    EXPECT_EQ(m(2, 2), Real(3));
 }
 
 TEST(Mat3, Addition) {
@@ -90,10 +98,11 @@ TEST(Mat3, DeterminantRandom) {
             for (int j = 0; j < 3; ++j)
                 m(i, j) = dist(rng);
         // cofactor expansion
-        Real ref = m(0,0)*(m(1,1)*m(2,2)-m(1,2)*m(2,1))
-                 - m(0,1)*(m(1,0)*m(2,2)-m(1,2)*m(2,0))
-                 + m(0,2)*(m(1,0)*m(2,1)-m(1,1)*m(2,0));
-        EXPECT_NEAR(m.det(), ref, kTol) << "det mismatch for random matrix " << n;
+        Real ref = m(0, 0) * (m(1, 1) * m(2, 2) - m(1, 2) * m(2, 1))
+                   - m(0, 1) * (m(1, 0) * m(2, 2) - m(1, 2) * m(2, 0))
+                   + m(0, 2) * (m(1, 0) * m(2, 1) - m(1, 1) * m(2, 0));
+        EXPECT_NEAR(m.det(), ref, kTol)
+            << "det mismatch for random matrix " << n;
     }
 }
 
@@ -105,9 +114,12 @@ TEST(Mat3, InverseTimesIdentity) {
         m(0, 0) = dist(rng) + Real(6); // ensure non-singular
         m(1, 1) = dist(rng) + Real(6);
         m(2, 2) = dist(rng) + Real(6);
-        m(0, 1) = dist(rng); m(0, 2) = dist(rng);
-        m(1, 0) = dist(rng); m(1, 2) = dist(rng);
-        m(2, 0) = dist(rng); m(2, 1) = dist(rng);
+        m(0, 1) = dist(rng);
+        m(0, 2) = dist(rng);
+        m(1, 0) = dist(rng);
+        m(1, 2) = dist(rng);
+        m(2, 0) = dist(rng);
+        m(2, 1) = dist(rng);
 
         auto inv = m.inverse();
         auto prod = m * inv;
@@ -115,7 +127,8 @@ TEST(Mat3, InverseTimesIdentity) {
             for (int j = 0; j < 3; ++j) {
                 Real expected = (i == j) ? Real(1) : Real(0);
                 EXPECT_NEAR(prod(i, j), expected, kTol)
-                    << "I - M*inv(M) at (" << i << "," << j << ") for matrix " << n;
+                    << "I - M*inv(M) at (" << i << "," << j << ") for matrix "
+                    << n;
             }
         }
     }
@@ -123,13 +136,25 @@ TEST(Mat3, InverseTimesIdentity) {
 
 TEST(Mat3, Transpose) {
     Mat3 m;
-    m(0, 0) = 1; m(0, 1) = 2; m(0, 2) = 3;
-    m(1, 0) = 4; m(1, 1) = 5; m(1, 2) = 6;
-    m(2, 0) = 7; m(2, 1) = 8; m(2, 2) = 9;
+    m(0, 0) = 1;
+    m(0, 1) = 2;
+    m(0, 2) = 3;
+    m(1, 0) = 4;
+    m(1, 1) = 5;
+    m(1, 2) = 6;
+    m(2, 0) = 7;
+    m(2, 1) = 8;
+    m(2, 2) = 9;
     auto t = m.transpose();
-    EXPECT_EQ(t(0, 0), Real(1)); EXPECT_EQ(t(0, 1), Real(4)); EXPECT_EQ(t(0, 2), Real(7));
-    EXPECT_EQ(t(1, 0), Real(2)); EXPECT_EQ(t(1, 1), Real(5)); EXPECT_EQ(t(1, 2), Real(8));
-    EXPECT_EQ(t(2, 0), Real(3)); EXPECT_EQ(t(2, 1), Real(6)); EXPECT_EQ(t(2, 2), Real(9));
+    EXPECT_EQ(t(0, 0), Real(1));
+    EXPECT_EQ(t(0, 1), Real(4));
+    EXPECT_EQ(t(0, 2), Real(7));
+    EXPECT_EQ(t(1, 0), Real(2));
+    EXPECT_EQ(t(1, 1), Real(5));
+    EXPECT_EQ(t(1, 2), Real(8));
+    EXPECT_EQ(t(2, 0), Real(3));
+    EXPECT_EQ(t(2, 1), Real(6));
+    EXPECT_EQ(t(2, 2), Real(9));
 }
 
 TEST(Mat3, MatrixMultiply) {
@@ -152,7 +177,7 @@ TEST(Mat3, Mat3TimesVec3) {
         Vec3 v{dist(rng), dist(rng), dist(rng)};
         auto r = m * v;
         for (int i = 0; i < 3; ++i) {
-            Real ref = m(i,0)*v[0] + m(i,1)*v[1] + m(i,2)*v[2];
+            Real ref = m(i, 0) * v[0] + m(i, 1) * v[1] + m(i, 2) * v[2];
             EXPECT_NEAR(r[i], ref, kTol) << "M*v mismatch at component " << i;
         }
     }

@@ -17,10 +17,12 @@ namespace cpu {
 namespace vib {
 
 void NormalModeWriter::launch(const cpu::LaunchContext& ctx) {
-    if (ws_ == nullptr) return;             // test-only role-check ctor.
-    const int n   = ws_->n_atoms;
+    if (ws_ == nullptr)
+        return; // test-only role-check ctor.
+    const int n = ws_->n_atoms;
     const int dim = 3 * n;
-    if (ctx.step < 2 * dim) return;          // not the finalize pass yet.
+    if (ctx.step < 2 * dim)
+        return; // not the finalize pass yet.
 
     // Atom symbols from each atom's atomic number (no-fallback table).
     std::vector<std::string> symbol(n);
@@ -37,7 +39,8 @@ void NormalModeWriter::launch(const cpu::LaunchContext& ctx) {
     const int n_modes = static_cast<int>(ws_->frequencies.size());
     for (int k = 0; k < n_modes; ++k) {
         // Imaginary modes (negative wavenumber) are not animated.
-        if (ws_->frequencies(k) <= 0.0) continue;
+        if (ws_->frequencies(k) <= 0.0)
+            continue;
 
         // Cartesian displacement vector for mode k, normalized so the
         // largest single-atom displacement has unit magnitude — the
@@ -50,23 +53,22 @@ void NormalModeWriter::launch(const cpu::LaunchContext& ctx) {
                 comp[d] = ws_->normal_modes(3 * i + d, k) * inv_sqrt_m[i];
                 disp[3 * i + d] = comp[d];
             }
-            const double nrm = std::sqrt(comp[0] * comp[0] +
-                                         comp[1] * comp[1] +
-                                         comp[2] * comp[2]);
-            if (nrm > max_norm) max_norm = nrm;
+            const double nrm = std::sqrt(comp[0] * comp[0] + comp[1] * comp[1]
+                                         + comp[2] * comp[2]);
+            if (nrm > max_norm)
+                max_norm = nrm;
         }
-        const double scale =
-            (max_norm > 0.0) ? amplitude_ / max_norm : 0.0;
+        const double scale = (max_norm > 0.0) ? amplitude_ / max_norm : 0.0;
 
         std::ofstream os(mode_path(k));
-        if (!os) continue;
+        if (!os)
+            continue;
         os << std::setprecision(10);
 
         // Sinusoidal sweep: one full period of n_frames_ frames.
         for (int f = 0; f < n_frames_; ++f) {
-            const double phase =
-                2.0 * nist::PI * static_cast<double>(f) /
-                static_cast<double>(n_frames_);
+            const double phase = 2.0 * nist::PI * static_cast<double>(f)
+                                 / static_cast<double>(n_frames_);
             const double s = scale * std::sin(phase);
 
             os << n << '\n';

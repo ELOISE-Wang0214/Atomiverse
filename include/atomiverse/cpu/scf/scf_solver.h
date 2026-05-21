@@ -36,7 +36,7 @@
 #include "atomiverse/cpu/scf/internal/dual_convergence_check.h"
 #include "atomiverse/cpu/scf/internal/eigen_solver.h"
 #include "atomiverse/cpu/scf/internal/hamiltonian_builder.h"
-#include "atomiverse/cpu/scf/scf_solve.h"   // SCFConfig, SCFInitialGuess, SCFResult
+#include "atomiverse/cpu/scf/scf_solve.h" // SCFConfig, SCFInitialGuess, SCFResult
 
 namespace ATV {
 namespace cpu {
@@ -47,7 +47,7 @@ namespace scf {
 /// Construction → build(reference) → run(integrals[, guess]).
 /// `last_result()` is valid after each `run()` call.
 class SCFSolver {
-public:
+  public:
     /// @brief Construct from an SCF configuration.
     /// @param config  Method, spin, convergence, grid parameters.
     explicit SCFSolver(SCFConfig config);
@@ -73,18 +73,18 @@ public:
     /// @brief Access the current SCF configuration (for inspection).
     const SCFConfig& config() const { return config_; }
 
-private:
+  private:
     SCFConfig config_;
-    bool      built_ = false;
+    bool built_ = false;
 
     // Per-build state.
-    RealMatrix X_;  ///< Orthogonalization matrix (S^{-1/2}). Owned.
+    RealMatrix X_; ///< Orthogonalization matrix (S^{-1/2}). Owned.
 
     // Internal SCF step helpers.
     internal::HamiltonianBuilder hamiltonian_;
-    internal::EigenSolver        eigen_;
-    internal::DensityBuilder     density_;
-    internal::DIISMixer          diis_;
+    internal::EigenSolver eigen_;
+    internal::DensityBuilder density_;
+    internal::DIISMixer diis_;
     internal::DualConvergenceCheck convergence_;
 
     // Owned result buffer (returned by reference from run()).

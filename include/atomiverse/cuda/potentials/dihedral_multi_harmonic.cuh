@@ -13,7 +13,7 @@ namespace ATV {
 namespace cuda {
 
 class DihedralMultiHarmonic : public Dihedral {
-public:
+  public:
     /// @param C Per-type arrays of 5 coefficients {C0..C4} [eV].
     DihedralMultiHarmonic(std::vector<std::array<double, 5>> C);
     ~DihedralMultiHarmonic() override;
@@ -25,10 +25,10 @@ public:
     void build(const BuildContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;
 
-protected:
+  protected:
     void compute(const LaunchContext& ctx) override;
 
-private:
+  private:
     std::vector<std::array<double, 5>> C_;
     struct State;
     std::unique_ptr<State> state_;

@@ -20,9 +20,9 @@
 /// @see Driver for the inherited fluent API
 #pragma once
 
-#include "atomiverse/facade/driver.h"
-#include "atomiverse/cuda/md/kinetic_energy.cuh"
 #include "atomiverse/cuda/md/init.cuh"
+#include "atomiverse/cuda/md/kinetic_energy.cuh"
+#include "atomiverse/facade/driver.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -36,7 +36,7 @@ namespace md {
 ///
 /// @see minimizer::CG for the energy minimizer driver
 class MD : public Driver<Phase> {
-public:
+  public:
     /// @brief Construct MD driver with auto-added zeroing infrastructure.
     MD() {
         on(Phase::pre_force).add(ZeroForces{}, -1000);

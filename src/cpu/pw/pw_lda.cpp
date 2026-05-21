@@ -1,8 +1,8 @@
 /// @file cpu/pw/pw_lda.cpp
 /// @brief LDA XC: compute V_xc(r) from ρ(r), FFT to G-space.
 #include "atomiverse/cpu/pw/pw_lda.h"
-#include "atomiverse/cpu/scf/xc_functional.h"
 #include "atomiverse/cpu/pw/internal/fft.h"
+#include "atomiverse/cpu/scf/xc_functional.h"
 #include <cmath>
 #include <cstring>
 #include <fftw3.h>
@@ -27,15 +27,15 @@ void PW_LDA::launch(const cpu::LaunchContext&) {
     int nr = ws_->nr;
     int nc = ws_->nc;
     int nx = ws_->fft_nx, ny = ws_->fft_ny, nz = ws_->fft_nz;
-    int nxc = nx/2 + 1;
+    int nxc = nx / 2 + 1;
     auto& gv = *ws_->gvec;
 
     // Step 1: FFT ρ(G) → ρ(r)
     // Pad ρ(G) to half-complex FFT grid, then c2r
     auto* rho_g_half = static_cast<fftw_complex*>(
         fftw_malloc(sizeof(fftw_complex) * static_cast<size_t>(nc)));
-    auto* rho_r = static_cast<Real*>(
-        fftw_malloc(sizeof(Real) * static_cast<size_t>(nr)));
+    auto* rho_r =
+        static_cast<Real*>(fftw_malloc(sizeof(Real) * static_cast<size_t>(nr)));
 
     for (int i = 0; i < nc; ++i)
         rho_g_half[i][0] = rho_g_half[i][1] = 0;
@@ -46,7 +46,7 @@ void PW_LDA::launch(const cpu::LaunchContext&) {
         int ky = ((k % ny) + ny) % ny;
         int kz = ((l % nz) + nz) % nz;
         bool conj = false;
-        if (kx > nx/2) {
+        if (kx > nx / 2) {
             kx = nx - kx;
             ky = (ny - ky) % ny;
             kz = (nz - kz) % nz;
@@ -55,8 +55,8 @@ void PW_LDA::launch(const cpu::LaunchContext&) {
         int idx = kx + nxc * (ky + ny * kz);
         if (idx >= 0 && idx < nc) {
             rho_g_half[idx][0] = static_cast<double>(ws_->rho_G[ig].real());
-            rho_g_half[idx][1] = static_cast<double>(conj ? -ws_->rho_G[ig].imag()
-                                                          : ws_->rho_G[ig].imag());
+            rho_g_half[idx][1] = static_cast<double>(
+                conj ? -ws_->rho_G[ig].imag() : ws_->rho_G[ig].imag());
         }
     }
 
@@ -79,8 +79,8 @@ void PW_LDA::launch(const cpu::LaunchContext&) {
             ws_->V_xc_r[i] = 0;
             ws_->exc_r[i] = 0;
         } else {
-            auto out = cpu::scf::evaluate_xc(
-                cpu::scf::XCType::PBE, rho / Real(2), rho / Real(2));
+            auto out = cpu::scf::evaluate_xc(cpu::scf::XCType::PBE,
+                                             rho / Real(2), rho / Real(2));
             ws_->V_xc_r[i] = static_cast<Real>(out.vrho_alpha);
             ws_->exc_r[i] = static_cast<Real>(out.exc);
             // E_xc = ∫ ρ(r) ε_xc(r) d³r = Σ ρ_i * exc_i * dV
@@ -103,7 +103,7 @@ void PW_LDA::launch(const cpu::LaunchContext&) {
         int ky = ((k % ny) + ny) % ny;
         int kz = ((l % nz) + nz) % nz;
         bool conj = false;
-        if (kx > nx/2) {
+        if (kx > nx / 2) {
             kx = nx - kx;
             ky = (ny - ky) % ny;
             kz = (nz - kz) % nz;
@@ -114,7 +114,8 @@ void PW_LDA::launch(const cpu::LaunchContext&) {
             ws_->V_xc_G[ig] = std::complex<Real>(
                 static_cast<Real>(vxc_g_half[idx][0]) * inv_nr,
                 static_cast<Real>(conj ? -vxc_g_half[idx][1]
-                                       : vxc_g_half[idx][1]) * inv_nr);
+                                       : vxc_g_half[idx][1])
+                    * inv_nr);
         } else {
             ws_->V_xc_G[ig] = std::complex<Real>(0, 0);
         }

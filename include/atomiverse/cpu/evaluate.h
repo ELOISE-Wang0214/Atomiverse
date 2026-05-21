@@ -53,13 +53,15 @@ namespace cpu {
 /// Categorical setters (set_pair, set_bond, set_angle, set_dihedral,
 /// set_neighbor, set_observer, set_record) are inherited from CPUDriver.
 class Evaluate : public EvaluateDriver {
-public:
+  public:
     Evaluate() {
-        this->on(ATV::evaluate::Phase::prepare).add(cpu::md::ZeroForces{}, -1000);
-        this->on(ATV::evaluate::Phase::prepare).add(cpu::md::ZeroEnergy{},  -999);
+        this->on(ATV::evaluate::Phase::prepare)
+            .add(cpu::md::ZeroForces{}, -1000);
+        this->on(ATV::evaluate::Phase::prepare)
+            .add(cpu::md::ZeroEnergy{}, -999);
     }
 
-protected:
+  protected:
     void install_infra() override {
         const auto s = this->scan_pending_infra_();
         this->throw_if_missing_neighbor_list_(

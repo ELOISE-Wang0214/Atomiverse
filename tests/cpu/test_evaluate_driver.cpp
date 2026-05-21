@@ -15,8 +15,8 @@
 
 #ifdef ATV_HAS_RHF
 
-#include <gtest/gtest.h>
 #include <cmath>
+#include <gtest/gtest.h>
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/units.h"
@@ -35,8 +35,8 @@ namespace {
 
 cpu::Frame make_h2o() {
     cpu::Frame f(3);
-    f.atoms.x = {0.0,  0.7572, -0.7572};
-    f.atoms.y = {0.0,  0.0,     0.0};
+    f.atoms.x = {0.0, 0.7572, -0.7572};
+    f.atoms.y = {0.0, 0.0, 0.0};
     f.atoms.z = {0.0, -0.5860, -0.5860};
     f.atoms.type = {8, 1, 1};
     f.atoms.mass = {15.999, 1.008, 1.008};
@@ -48,7 +48,8 @@ cpu::Frame make_h2o() {
 
 TEST(EvaluateDriver, EnergyOnlyEvaluatorAcceptedByEvaluate) {
     auto frame = make_h2o();
-    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto integrals =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto cfg = cpu::scf::rhf_config(integrals);
 
     cpu::scf::SCFEvaluator scf{cfg};
@@ -63,7 +64,8 @@ TEST(EvaluateDriver, EnergyOnlyEvaluatorAcceptedByEvaluate) {
 
 TEST(EvaluateDriver, EnergyOnlyEvaluatorRejectedByDynamics) {
     auto frame = make_h2o();
-    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto integrals =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto cfg = cpu::scf::rhf_config(integrals);
 
     cpu::scf::SCFEvaluator scf{cfg};
@@ -74,7 +76,8 @@ TEST(EvaluateDriver, EnergyOnlyEvaluatorRejectedByDynamics) {
     d.on(ATV::md::Phase::force).add(scf);
     try {
         d.build();
-        FAIL() << "DynamicsDriver should reject an evaluator without Force capability";
+        FAIL() << "DynamicsDriver should reject an evaluator without Force "
+                  "capability";
     } catch (const std::runtime_error& e) {
         EXPECT_NE(std::string(e.what()).find("Force"), std::string::npos)
             << e.what();
@@ -84,7 +87,8 @@ TEST(EvaluateDriver, EnergyOnlyEvaluatorRejectedByDynamics) {
 TEST(EvaluateDriver, MatchesSCFSolverDirectOnH2O) {
     // Path 1 — direct SCFSolver.
     auto frame_direct = make_h2o();
-    auto integrals = cpu::scf::build_integrals(frame_direct, cpu::scf::BasisSet::STO3G);
+    auto integrals =
+        cpu::scf::build_integrals(frame_direct, cpu::scf::BasisSet::STO3G);
     auto cfg = cpu::scf::rhf_config(integrals);
 
     cpu::scf::SCFSolver solver{cfg};
@@ -116,7 +120,8 @@ TEST(EvaluateDriver, MatchesSCFSolverDirectOnH2O) {
 TEST(EvaluateDriver, SinglePointHelperEquivalentToInline) {
     auto frame_inline = make_h2o();
     auto frame_helper = make_h2o();
-    auto integrals = cpu::scf::build_integrals(frame_inline, cpu::scf::BasisSet::STO3G);
+    auto integrals =
+        cpu::scf::build_integrals(frame_inline, cpu::scf::BasisSet::STO3G);
     auto cfg = cpu::scf::rhf_config(integrals);
 
     // Inline construction.

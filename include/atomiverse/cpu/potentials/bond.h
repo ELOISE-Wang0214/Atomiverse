@@ -24,7 +24,7 @@ namespace cpu {
 /// per bond. The base provides the ownership cache so each derived
 /// `compute()` does not re-implement the LAMMPS owner-tag filter.
 class Bond : public ComponentBase {
-public:
+  public:
     ~Bond() override = default;
 
     ComponentRole role() const final { return ComponentRole::Evaluator; }
@@ -34,7 +34,7 @@ public:
 
     void launch(const LaunchContext& ctx) final { compute(ctx); }
 
-protected:
+  protected:
     Bond() = default;
 
     /// @brief Hot-path override. No virtual call inside the per-bond loop.
@@ -57,12 +57,11 @@ protected:
     /// @param owner_tag_of  Callback `idx → global tag of the owner atom`.
     /// @return Const reference to the cached index vector. Valid until the
     ///         next migration generation bump.
-    const std::vector<int>& select_owned_tuples(
-        const LaunchContext& ctx,
-        int n_tuples,
-        const std::function<std::int64_t(int)>& owner_tag_of);
+    const std::vector<int>&
+    select_owned_tuples(const LaunchContext& ctx, int n_tuples,
+                        const std::function<std::int64_t(int)>& owner_tag_of);
 
-private:
+  private:
     std::vector<int> owned_;
     std::uint64_t cached_generation_ = ~std::uint64_t{0};
 };

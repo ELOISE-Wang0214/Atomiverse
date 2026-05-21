@@ -3,9 +3,9 @@
 #include "nlist_impl.cuh"
 #include "triclinic.cuh"
 
+#include "atomiverse/cuda/types.cuh"
 #include <cub/cub.cuh>
 #include <cuda_runtime.h>
-#include "atomiverse/cuda/types.cuh"
 
 namespace ATV::md::nlist {
 
@@ -14,20 +14,19 @@ namespace ATV::md::nlist {
 // ---------------------------------------------------------------------------
 
 template <typename work_t>
-__global__ void assign_clusters_to_cells(
-    const real_t* __restrict__ aabb_min_x,
-    const real_t* __restrict__ aabb_min_y,
-    const real_t* __restrict__ aabb_min_z,
-    const real_t* __restrict__ aabb_max_x,
-    const real_t* __restrict__ aabb_max_y,
-    const real_t* __restrict__ aabb_max_z,
-    int num_clusters,
-    const real_t* __restrict__ inv_cell,
-    int dims_x, int dims_y, int dims_z,
-    bool periodic,
-    int* __restrict__ cluster_cell_idx) {
+__global__ void
+assign_clusters_to_cells(const real_t* __restrict__ aabb_min_x,
+                         const real_t* __restrict__ aabb_min_y,
+                         const real_t* __restrict__ aabb_min_z,
+                         const real_t* __restrict__ aabb_max_x,
+                         const real_t* __restrict__ aabb_max_y,
+                         const real_t* __restrict__ aabb_max_z,
+                         int num_clusters, const real_t* __restrict__ inv_cell,
+                         int dims_x, int dims_y, int dims_z, bool periodic,
+                         int* __restrict__ cluster_cell_idx) {
     int ci = blockIdx.x * blockDim.x + threadIdx.x;
-    if (ci >= num_clusters) return;
+    if (ci >= num_clusters)
+        return;
 
     // Centroid in Cartesian
     work_t cx = (aabb_min_x[ci] + aabb_max_x[ci]) * work_t(0.5);
@@ -57,37 +56,29 @@ __global__ void assign_clusters_to_cells(
 }
 
 template <typename work_t>
-void launch_assign_clusters_to_cells(const real_t* aabb_min_x,
-                                     const real_t* aabb_min_y,
-                                     const real_t* aabb_min_z,
-                                     const real_t* aabb_max_x,
-                                     const real_t* aabb_max_y,
-                                     const real_t* aabb_max_z,
-                                     int num_clusters,
-                                     const real_t* inv_cell,
-                                     int dims_x, int dims_y, int dims_z,
-                                     bool periodic,
-                                     int* cluster_cell_idx,
-                                     cudaStream_t stream) {
-    if (num_clusters == 0) return;
+void launch_assign_clusters_to_cells(
+    const real_t* aabb_min_x, const real_t* aabb_min_y,
+    const real_t* aabb_min_z, const real_t* aabb_max_x,
+    const real_t* aabb_max_y, const real_t* aabb_max_z, int num_clusters,
+    const real_t* inv_cell, int dims_x, int dims_y, int dims_z, bool periodic,
+    int* cluster_cell_idx, cudaStream_t stream) {
+    if (num_clusters == 0)
+        return;
     int block = ATV::cuda::kDefaultBlock;
     int grid = (num_clusters + block - 1) / block;
     assign_clusters_to_cells<work_t><<<grid, block, 0, stream>>>(
-        aabb_min_x, aabb_min_y, aabb_min_z,
-        aabb_max_x, aabb_max_y, aabb_max_z,
-        num_clusters, inv_cell, dims_x, dims_y, dims_z,
-        periodic, cluster_cell_idx);
+        aabb_min_x, aabb_min_y, aabb_min_z, aabb_max_x, aabb_max_y, aabb_max_z,
+        num_clusters, inv_cell, dims_x, dims_y, dims_z, periodic,
+        cluster_cell_idx);
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 
 template void launch_assign_clusters_to_cells<float>(
-    const float*, const float*, const float*,
-    const float*, const float*, const float*,
-    int, const float*, int, int, int, bool, int*, cudaStream_t);
+    const float*, const float*, const float*, const float*, const float*,
+    const float*, int, const float*, int, int, int, bool, int*, cudaStream_t);
 template void launch_assign_clusters_to_cells<double>(
-    const double*, const double*, const double*,
-    const double*, const double*, const double*,
-    int, const double*, int, int, int, bool, int*, cudaStream_t);
+    const double*, const double*, const double*, const double*, const double*,
+    const double*, int, const double*, int, int, int, bool, int*, cudaStream_t);
 
 // ---------------------------------------------------------------------------
 // CUB exclusive sum wrapper — temp storage owned by DeviceVector
@@ -96,14 +87,14 @@ template void launch_assign_clusters_to_cells<double>(
 void launch_exclusive_sum(const int* input, int* output, int num_items,
                           DeviceVector<char>& temp, cudaStream_t stream) {
     size_t needed = 0;
-    cub::DeviceScan::ExclusiveSum(nullptr, needed, input, output,
-                                  num_items, stream);
+    cub::DeviceScan::ExclusiveSum(nullptr, needed, input, output, num_items,
+                                  stream);
     if (needed > temp.capacity()) {
         temp.resize(needed);
     }
     size_t avail = temp.capacity();
-    cub::DeviceScan::ExclusiveSum(temp.data(), avail, input, output,
-                                  num_items, stream);
+    cub::DeviceScan::ExclusiveSum(temp.data(), avail, input, output, num_items,
+                                  stream);
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 
@@ -120,10 +111,10 @@ __global__ void build_histogram(const int* __restrict__ cell_idx,
 }
 
 __global__ void scatter_to_grid(const int* __restrict__ cell_idx,
-                                       int num_clusters,
-                                       const int* __restrict__ cell_start,
-                                       int* __restrict__ cell_clusters,
-                                       int* __restrict__ counter) {
+                                int num_clusters,
+                                const int* __restrict__ cell_start,
+                                int* __restrict__ cell_clusters,
+                                int* __restrict__ counter) {
     int ci = blockIdx.x * blockDim.x + threadIdx.x;
     if (ci < num_clusters) {
         int cell = cell_idx[ci];
@@ -136,7 +127,8 @@ void launch_build_grid_csr(const int* cluster_cell_idx, int num_clusters,
                            int ncells, int* cell_start, int* cell_clusters,
                            int* histogram, DeviceVector<char>& scan_temp,
                            cudaStream_t stream) {
-    if (num_clusters == 0 || ncells == 0) return;
+    if (num_clusters == 0 || ncells == 0)
+        return;
 
     int block = ATV::cuda::kDefaultBlock;
     int grid = (num_clusters + block - 1) / block;
@@ -145,8 +137,8 @@ void launch_build_grid_csr(const int* cluster_cell_idx, int num_clusters,
     ATV_CUDA_CHECK(cudaMemsetAsync(histogram, 0, ncells * sizeof(int), stream));
 
     // Step 2: Build histogram
-    build_histogram<<<grid, block, 0, stream>>>(
-        cluster_cell_idx, num_clusters, histogram);
+    build_histogram<<<grid, block, 0, stream>>>(cluster_cell_idx, num_clusters,
+                                                histogram);
     ATV_CUDA_CHECK(cudaGetLastError());
 
     // Step 3: Prefix sum → cell_start[0..ncells-1]

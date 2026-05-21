@@ -36,7 +36,7 @@ void Deform::build(const BuildContext& /*ctx*/) {
     // mirroring LAMMPS re-issuing `fix deform` (init() re-snapshots
     // lo_start/hi_start).
     origin_step_ = -1;
-    L0_          = 0.0;
+    L0_ = 0.0;
 }
 
 void Deform::launch(const cpu::LaunchContext& ctx) {
@@ -47,7 +47,7 @@ void Deform::launch(const cpu::LaunchContext& ctx) {
     // capturing lo_start/hi_start). Strain is referenced to the box edge
     // at Deform activation, not the simulation-initial box.
     if (origin_step_ < 0) {
-        L0_          = f.box.length(axis_);
+        L0_ = f.box.length(axis_);
         origin_step_ = ctx.step;
     }
 
@@ -61,17 +61,17 @@ void Deform::launch(const cpu::LaunchContext& ctx) {
     // Target edge length for the deformed axis.
     double L_target;
     switch (mode_) {
-        case Mode::erate:
-            // Engineering strain: L = L0*(1 + R*t).
-            L_target = L0_ * (1.0 + rate_ * t_elapsed);
-            break;
-        case Mode::trate:
-            // True (logarithmic) strain: L = L0*exp(R*t).
-            L_target = L0_ * std::exp(rate_ * t_elapsed);
-            break;
-        default:
-            L_target = L0_;
-            break;
+    case Mode::erate:
+        // Engineering strain: L = L0*(1 + R*t).
+        L_target = L0_ * (1.0 + rate_ * t_elapsed);
+        break;
+    case Mode::trate:
+        // True (logarithmic) strain: L = L0*exp(R*t).
+        L_target = L0_ * std::exp(rate_ * t_elapsed);
+        break;
+    default:
+        L_target = L0_;
+        break;
     }
 
     // Convert the absolute target to a multiplicative scale on the
@@ -79,17 +79,19 @@ void Deform::launch(const cpu::LaunchContext& ctx) {
     // unperturbed box this is exact; the affine atom remap below uses
     // the same factor (= LAMMPS `remap x`).
     const double L_prev = f.box.length(axis_);
-    if (L_prev <= 0.0) return;
+    if (L_prev <= 0.0)
+        return;
     const double scale = L_target / L_prev;
-    if (scale == 1.0) return;
+    if (scale == 1.0)
+        return;
 
     f.box.scale_axis(axis_, scale);
 
     const int n = owned_count(ctx);
-    auto& coord = (axis_ == 0) ? f.atoms.x
-                : (axis_ == 1) ? f.atoms.y
-                                : f.atoms.z;
-    #pragma omp parallel for schedule(static)
+    auto& coord = (axis_ == 0)   ? f.atoms.x
+                  : (axis_ == 1) ? f.atoms.y
+                                 : f.atoms.z;
+#pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
         coord[i] *= scale;
     }

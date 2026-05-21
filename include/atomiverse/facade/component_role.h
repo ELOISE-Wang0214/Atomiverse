@@ -36,15 +36,16 @@ namespace ATV {
 /// "Evaluator" position (Role::Evaluator) describes *what* it computes
 /// through `capabilities()`, not through the role tag.
 enum class ComponentRole : uint8_t {
-    None = 0,           ///< Untagged / structural infrastructure (Zero*, KineticEnergy, recorders, observers — set explicitly via Recorder/Observer if needed).
-    Evaluator,          ///< Computes one or more fields on the frame; capabilities() says which.
-    Integrator,         ///< Time-step integrator (VelocityVerlet, ...).
-    Optimizer,          ///< Optimization step (LBFGS, CG, FIRE, ...).
-    Thermostat,         ///< Temperature controller (NoseHoover, Langevin, ...).
-    Barostat,           ///< Pressure controller (Berendsen, MTK, ...).
-    ConvergenceCheck,   ///< Reports loop convergence to the outer driver via outer_status.
-    Recorder,           ///< Writes I/O (XYZ, Zarr, thermo).
-    Observer,           ///< Computes derived diagnostics (RDF, density, orbital info).
+    None =
+        0, ///< Untagged / structural infrastructure (Zero*, KineticEnergy, recorders, observers — set explicitly via Recorder/Observer if needed).
+    Evaluator, ///< Computes one or more fields on the frame; capabilities() says which.
+    Integrator, ///< Time-step integrator (VelocityVerlet, ...).
+    Optimizer,  ///< Optimization step (LBFGS, CG, FIRE, ...).
+    Thermostat, ///< Temperature controller (NoseHoover, Langevin, ...).
+    Barostat,   ///< Pressure controller (Berendsen, MTK, ...).
+    ConvergenceCheck, ///< Reports loop convergence to the outer driver via outer_status.
+    Recorder, ///< Writes I/O (XYZ, Zarr, thermo).
+    Observer, ///< Computes derived diagnostics (RDF, density, orbital info).
 };
 
 /// @brief Bitset of computable quantities a component can write.
@@ -53,23 +54,26 @@ enum class ComponentRole : uint8_t {
 /// New bits are added as the project grows; reserved up to 32 bits.
 /// When the bitspace is exhausted, switch to `std::bitset<N>`.
 enum class Capability : uint32_t {
-    None          = 0,
-    Energy        = 1u << 0,
-    Force         = 1u << 1,
-    Stress        = 1u << 2,
-    Charge        = 1u << 3,
-    Dipole        = 1u << 4,
+    None = 0,
+    Energy = 1u << 0,
+    Force = 1u << 1,
+    Stress = 1u << 2,
+    Charge = 1u << 3,
+    Dipole = 1u << 4,
     DensityMatrix = 1u << 5,
-    Orbitals      = 1u << 6,
-    Hessian       = 1u << 7,  ///< Second-derivative matrix d2E/dRdR (Response category).
+    Orbitals = 1u << 6,
+    Hessian =
+        1u << 7, ///< Second-derivative matrix d2E/dRdR (Response category).
 };
 
 constexpr Capability operator|(Capability a, Capability b) noexcept {
-    return static_cast<Capability>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
+    return static_cast<Capability>(static_cast<uint32_t>(a)
+                                   | static_cast<uint32_t>(b));
 }
 
 constexpr Capability operator&(Capability a, Capability b) noexcept {
-    return static_cast<Capability>(static_cast<uint32_t>(a) & static_cast<uint32_t>(b));
+    return static_cast<Capability>(static_cast<uint32_t>(a)
+                                   & static_cast<uint32_t>(b));
 }
 
 constexpr Capability& operator|=(Capability& a, Capability b) noexcept {
@@ -83,8 +87,6 @@ constexpr bool has_capability(Capability set, Capability bits) noexcept {
 }
 
 /// @brief True iff `c` carries no capability bits.
-constexpr bool is_none(Capability c) noexcept {
-    return c == Capability::None;
-}
+constexpr bool is_none(Capability c) noexcept { return c == Capability::None; }
 
 } // namespace ATV

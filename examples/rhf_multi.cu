@@ -18,17 +18,17 @@
 ///   cmake --build build --target rhf_multi
 
 #include <cmath>
-#include <iostream>
 #include <iomanip>
+#include <iostream>
 #include <string>
 #include <vector>
 
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/rhf_solve.h"
-#include "atomiverse/cuda/scf/scf.cuh"
-#include "atomiverse/cuda/scf/rhf_fock.cuh"
-#include "atomiverse/cuda/scf/rhf_density.cuh"
 #include "atomiverse/cuda/recorder/thermo.cuh"
+#include "atomiverse/cuda/scf/rhf_density.cuh"
+#include "atomiverse/cuda/scf/rhf_fock.cuh"
+#include "atomiverse/cuda/scf/scf.cuh"
 
 #ifdef ATV_HAS_MATPLOT
 #include <matplot/matplot.h>
@@ -51,7 +51,8 @@ struct SystemResult {
 
 static SystemResult run_system(const char* name, cpu::Frame& frame,
                                const cpu::scf::IntegralPack& integrals) {
-    double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
+    double tol =
+        (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
 
     auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);
 
@@ -66,23 +67,23 @@ static SystemResult run_system(const char* name, cpu::Frame& frame,
     double cpu_e = static_cast<double>(cpu_result.energy);
     double cuda_e = static_cast<double>(frame.energy);
 
-    std::cout << "  " << std::left << std::setw(6) << name
-              << std::right
+    std::cout << "  " << std::left << std::setw(6) << name << std::right
               << "  basis=" << std::setw(2) << integrals.n_basis
               << "  elec=" << std::setw(2) << integrals.n_electrons
               << std::fixed << std::setprecision(8)
               << "  E_cpu=" << std::setw(12) << cpu_e
-              << "  E_cuda=" << std::setw(12) << cuda_e
-              << std::scientific << std::setprecision(1)
-              << "  diff=" << std::abs(cpu_e - cuda_e)
-              << "  iter=" << cpu_result.iterations
-              << "  DIIS=" << ((!cpu_result.trace.empty() && cpu_result.trace.back().diis_active)
-                    ? "on" : "off")
+              << "  E_cuda=" << std::setw(12) << cuda_e << std::scientific
+              << std::setprecision(1) << "  diff=" << std::abs(cpu_e - cuda_e)
+              << "  iter=" << cpu_result.iterations << "  DIIS="
+              << ((!cpu_result.trace.empty()
+                   && cpu_result.trace.back().diis_active)
+                      ? "on"
+                      : "off")
               << "\n";
 
-    return {name, integrals.n_basis, integrals.n_electrons,
-            cpu_e, cuda_e, cpu_result.iterations, cpu_result.converged,
-            cpu_result.trace};
+    return {
+        name,   integrals.n_basis,     integrals.n_electrons, cpu_e,
+        cuda_e, cpu_result.iterations, cpu_result.converged,  cpu_result.trace};
 }
 
 // ── Plotting (ACS style) ────────────────────────────────────────────
@@ -124,7 +125,10 @@ static void plot_h2_pes(const std::vector<double>& r_vals,
     // Find and annotate minimum
     double e_min = 1e10, r_min = 0;
     for (size_t i = 0; i < r_vals.size(); ++i)
-        if (e_cpu[i] < e_min) { e_min = e_cpu[i]; r_min = r_vals[i]; }
+        if (e_cpu[i] < e_min) {
+            e_min = e_cpu[i];
+            r_min = r_vals[i];
+        }
 
     // Axis labels
     auto ax = matplot::gca();
@@ -140,9 +144,11 @@ static void plot_h2_pes(const std::vector<double>& r_vals,
 }
 
 /// Fig 2: SCF convergence trace — shows DIIS acceleration
-static void plot_convergence(const std::vector<cpu::scf::IterationRecord>& trace,
-                             const char* system_name) {
-    if (trace.size() < 2) return;
+static void
+plot_convergence(const std::vector<cpu::scf::IterationRecord>& trace,
+                 const char* system_name) {
+    if (trace.size() < 2)
+        return;
 
     std::vector<double> iters, energies, residuals;
     for (auto& rec : trace) {
@@ -166,7 +172,8 @@ static void plot_convergence(const std::vector<cpu::scf::IterationRecord>& trace
     ax->font_size(11);
     matplot::xlabel("SCF Iteration");
     matplot::ylabel("||\\DeltaP||_F");
-    std::string title = std::string(system_name) + " / STO-3G / RHF Convergence";
+    std::string title =
+        std::string(system_name) + " / STO-3G / RHF Convergence";
     matplot::title(title);
 
     matplot::save("scf_convergence.png");
@@ -188,58 +195,83 @@ int main() {
     // He
     {
         cpu::Frame f(1);
-        f.x[0] = 0; f.y[0] = 0; f.z[0] = 0;
-        f.mass[0] = double(4.003); f.type_id[0] = 2;
+        f.x[0] = 0;
+        f.y[0] = 0;
+        f.z[0] = 0;
+        f.mass[0] = double(4.003);
+        f.type_id[0] = 2;
         f.box = Mat3::cubic(100.0);
-        auto integrals = cpu::scf::build_integrals(f, cpu::scf::BasisSet::STO3G);
+        auto integrals =
+            cpu::scf::build_integrals(f, cpu::scf::BasisSet::STO3G);
         he_result = run_system("He", f, integrals);
     }
 
     // HeH+
     {
         cpu::Frame f(2);
-        f.x[0] = double(0);     f.y[0] = 0; f.z[0] = 0;
-        f.x[1] = double(0.772); f.y[1] = 0; f.z[1] = 0;
-        f.mass[0] = double(4.003); f.mass[1] = double(1.008);
-        f.type_id[0] = 2; f.type_id[1] = 1;
+        f.x[0] = double(0);
+        f.y[0] = 0;
+        f.z[0] = 0;
+        f.x[1] = double(0.772);
+        f.y[1] = 0;
+        f.z[1] = 0;
+        f.mass[0] = double(4.003);
+        f.mass[1] = double(1.008);
+        f.type_id[0] = 2;
+        f.type_id[1] = 1;
         f.box = Mat3::cubic(100.0);
-        auto integrals = cpu::scf::build_integrals(f, cpu::scf::BasisSet::STO3G, 1);
+        auto integrals =
+            cpu::scf::build_integrals(f, cpu::scf::BasisSet::STO3G, 1);
         heh_result = run_system("HeH+", f, integrals);
     }
 
     // LiH
     {
         cpu::Frame f(2);
-        f.x[0] = double(0);     f.y[0] = 0; f.z[0] = 0;
-        f.x[1] = double(1.595); f.y[1] = 0; f.z[1] = 0;
-        f.mass[0] = double(6.941); f.mass[1] = double(1.008);
-        f.type_id[0] = 3; f.type_id[1] = 1;
+        f.x[0] = double(0);
+        f.y[0] = 0;
+        f.z[0] = 0;
+        f.x[1] = double(1.595);
+        f.y[1] = 0;
+        f.z[1] = 0;
+        f.mass[0] = double(6.941);
+        f.mass[1] = double(1.008);
+        f.type_id[0] = 3;
+        f.type_id[1] = 1;
         f.box = Mat3::cubic(100.0);
-        auto integrals = cpu::scf::build_integrals(f, cpu::scf::BasisSet::STO3G);
+        auto integrals =
+            cpu::scf::build_integrals(f, cpu::scf::BasisSet::STO3G);
         lih_result = run_system("LiH", f, integrals);
     }
 
     // ── H2 PES scan ──────────────────────────────────────────────────
     std::cout << "\nH2 bond-length scan:\n"
-              << std::setw(8) << "R(A)"
-              << std::setw(15) << "E_cpu(Ha)"
-              << std::setw(15) << "E_cuda(Ha)"
-              << std::setw(5) << "iter" << "\n";
+              << std::setw(8) << "R(A)" << std::setw(15) << "E_cpu(Ha)"
+              << std::setw(15) << "E_cuda(Ha)" << std::setw(5) << "iter"
+              << "\n";
 
-    double tol = (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
+    double tol =
+        (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     std::vector<double> r_vals, e_cpu_vals, e_cuda_vals;
 
     int n_points = 20;
     for (int i = 0; i < n_points; ++i) {
         double r = 0.4 + i * (3.0 - 0.4) / (n_points - 1);
         cpu::Frame f(2);
-        f.x[0] = double(0); f.y[0] = 0; f.z[0] = 0;
-        f.x[1] = double(r); f.y[1] = 0; f.z[1] = 0;
-        f.mass[0] = double(1.008); f.mass[1] = double(1.008);
-        f.type_id[0] = 1; f.type_id[1] = 1;
+        f.x[0] = double(0);
+        f.y[0] = 0;
+        f.z[0] = 0;
+        f.x[1] = double(r);
+        f.y[1] = 0;
+        f.z[1] = 0;
+        f.mass[0] = double(1.008);
+        f.mass[1] = double(1.008);
+        f.type_id[0] = 1;
+        f.type_id[1] = 1;
         f.box = Mat3::cubic(100.0);
 
-        auto integrals = cpu::scf::build_integrals(f, cpu::scf::BasisSet::STO3G);
+        auto integrals =
+            cpu::scf::build_integrals(f, cpu::scf::BasisSet::STO3G);
         auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);
 
         scf::SCF solver;
@@ -253,11 +285,10 @@ int main() {
         double cpu_e = static_cast<double>(cpu_result.energy);
         double cuda_e = static_cast<double>(f.energy);
 
-        std::cout << std::fixed
-                  << std::setw(8) << std::setprecision(3) << r
+        std::cout << std::fixed << std::setw(8) << std::setprecision(3) << r
                   << std::setw(15) << std::setprecision(10) << cpu_e
-                  << std::setw(15) << cuda_e
-                  << std::setw(5) << cpu_result.iterations << "\n";
+                  << std::setw(15) << cuda_e << std::setw(5)
+                  << cpu_result.iterations << "\n";
 
         r_vals.push_back(r);
         e_cpu_vals.push_back(cpu_e);
@@ -270,7 +301,8 @@ int main() {
     plot_h2_pes(r_vals, e_cpu_vals, e_cuda_vals);
     plot_convergence(lih_result.trace, "LiH");
 #else
-    std::cout << "\nPlotting disabled. Rebuild with -DATV_USE_MATPLOT=ON for figures.\n";
+    std::cout << "\nPlotting disabled. Rebuild with -DATV_USE_MATPLOT=ON for "
+                 "figures.\n";
 #endif
 
     std::cout << "\n=== Done ===\n";

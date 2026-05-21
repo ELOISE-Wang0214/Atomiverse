@@ -58,12 +58,21 @@ inline double ev_a_to_ha_bohr(double f_ev_a) {
 /// carry over.
 cpu::Frame make_h2o() {
     cpu::Frame f(3);
-    f.atoms.type[0] = 8; f.atoms.mass[0] = 15.999;
-    f.atoms.type[1] = 1; f.atoms.mass[1] = 1.008;
-    f.atoms.type[2] = 1; f.atoms.mass[2] = 1.008;
-    f.atoms.x[0] = 0.000000; f.atoms.y[0] = 0.000000; f.atoms.z[0] = 0.117790;
-    f.atoms.x[1] = 0.000000; f.atoms.y[1] = 0.755453; f.atoms.z[1] = -0.471161;
-    f.atoms.x[2] = 0.000000; f.atoms.y[2] = -0.755453; f.atoms.z[2] = -0.471161;
+    f.atoms.type[0] = 8;
+    f.atoms.mass[0] = 15.999;
+    f.atoms.type[1] = 1;
+    f.atoms.mass[1] = 1.008;
+    f.atoms.type[2] = 1;
+    f.atoms.mass[2] = 1.008;
+    f.atoms.x[0] = 0.000000;
+    f.atoms.y[0] = 0.000000;
+    f.atoms.z[0] = 0.117790;
+    f.atoms.x[1] = 0.000000;
+    f.atoms.y[1] = 0.755453;
+    f.atoms.z[1] = -0.471161;
+    f.atoms.x[2] = 0.000000;
+    f.atoms.y[2] = -0.755453;
+    f.atoms.z[2] = -0.471161;
     f.box = Mat3::cubic(100.0);
     return f;
 }
@@ -75,9 +84,12 @@ cpu::Frame make_h2o() {
 /// analytic KS gradient must recognise it as near-stationary.
 cpu::Frame make_h2o_pbe_optimized() {
     cpu::Frame f(3);
-    f.atoms.type[0] = 8; f.atoms.mass[0] = 15.999;
-    f.atoms.type[1] = 1; f.atoms.mass[1] = 1.008;
-    f.atoms.type[2] = 1; f.atoms.mass[2] = 1.008;
+    f.atoms.type[0] = 8;
+    f.atoms.mass[0] = 15.999;
+    f.atoms.type[1] = 1;
+    f.atoms.mass[1] = 1.008;
+    f.atoms.type[2] = 1;
+    f.atoms.mass[2] = 1.008;
     // r = 0.9686 A, half-angle = 51.775 deg.
     //   y_H = r sin(theta/2) = 0.761301
     //   dz  = r cos(theta/2) = 0.598873
@@ -85,11 +97,17 @@ cpu::Frame make_h2o_pbe_optimized() {
     const double dz = 0.598873;
     // Place O so the molecule sits near the origin; the absolute offset
     // is irrelevant (translational invariance).
-    const double zO = dz / 3.0;          // arbitrary, keeps COM-ish placement
+    const double zO = dz / 3.0; // arbitrary, keeps COM-ish placement
     const double zH = zO - dz;
-    f.atoms.x[0] = 0.0; f.atoms.y[0] = 0.0;  f.atoms.z[0] = zO;
-    f.atoms.x[1] = 0.0; f.atoms.y[1] = yH;   f.atoms.z[1] = zH;
-    f.atoms.x[2] = 0.0; f.atoms.y[2] = -yH;  f.atoms.z[2] = zH;
+    f.atoms.x[0] = 0.0;
+    f.atoms.y[0] = 0.0;
+    f.atoms.z[0] = zO;
+    f.atoms.x[1] = 0.0;
+    f.atoms.y[1] = yH;
+    f.atoms.z[1] = zH;
+    f.atoms.x[2] = 0.0;
+    f.atoms.y[2] = -yH;
+    f.atoms.z[2] = zH;
     f.box = Mat3::cubic(100.0);
     return f;
 }
@@ -110,7 +128,7 @@ cpu::Frame make_h2o_pbe_optimized() {
 /// translational XC force vanishes from first principles, no projection.
 cpu::scf::SCFConfig pbe_config(const cpu::scf::IntegralPack& ints,
                                int n_radial = 50, int n_angular = 110) {
-    auto c = cpu::scf::default_config(ints);  // KS / PBE / MINAO
+    auto c = cpu::scf::default_config(ints); // KS / PBE / MINAO
     c.tol = 1e-9;
     c.max_iter = 200;
     c.grid_level = cpu::scf::GridLevel::SG0;
@@ -146,8 +164,8 @@ TEST(KsDShellGradient, PBE_631Gs_AnalyticMatchesFD) {
     auto ints = cpu::scf::build_integrals(frame, basis);
     auto cfg = pbe_config(ints);
     const double h_ang = 1e-3 / units::kAngstromInBohr;
-    auto fd = cpu::scf::scf_finite_difference_gradient(
-        frame, cfg, /*charge=*/0, h_ang, basis);
+    auto fd = cpu::scf::scf_finite_difference_gradient(frame, cfg, /*charge=*/0,
+                                                       h_ang, basis);
 
     double max_err = 0.0;
     for (int A = 0; A < 3; ++A) {
@@ -173,8 +191,8 @@ TEST(KsDShellGradient, PBE_def2SVP_AnalyticMatchesFD) {
     auto ints = cpu::scf::build_integrals(frame, basis);
     auto cfg = pbe_config(ints);
     const double h_ang = 1e-3 / units::kAngstromInBohr;
-    auto fd = cpu::scf::scf_finite_difference_gradient(
-        frame, cfg, /*charge=*/0, h_ang, basis);
+    auto fd = cpu::scf::scf_finite_difference_gradient(frame, cfg, /*charge=*/0,
+                                                       h_ang, basis);
 
     double max_err = 0.0;
     for (int A = 0; A < 3; ++A) {
@@ -213,13 +231,14 @@ TEST(KsDShellGradient, PBE_def2SVP_OptimizedGeometryNearStationary) {
         max_force_ha_bohr = 0.0;
         for (int A = 0; A < 3; ++A)
             for (int d = 0; d < 3; ++d)
-                max_force_ha_bohr = std::max(
-                    max_force_ha_bohr,
-                    ev_a_to_ha_bohr(std::abs(g.forces(A, d))));
-        if (max_force_ha_bohr <= 1e-3) break;
+                max_force_ha_bohr =
+                    std::max(max_force_ha_bohr,
+                             ev_a_to_ha_bohr(std::abs(g.forces(A, d))));
+        if (max_force_ha_bohr <= 1e-3)
+            break;
         // Steepest descent: x <- x + step * force. force = -dE/dr; forces in
         // eV/A, positions in A. A small fixed step is stable for water.
-        const double step = 0.02;  // A^2 / eV
+        const double step = 0.02; // A^2 / eV
         for (int A = 0; A < 3; ++A) {
             frame.atoms.x[A] += step * g.forces(A, 0);
             frame.atoms.y[A] += step * g.forces(A, 1);
@@ -228,7 +247,8 @@ TEST(KsDShellGradient, PBE_def2SVP_OptimizedGeometryNearStationary) {
     }
 
     std::printf("[ks-dshell] PBE/def2-SVP relaxed (%d SD steps) max-force "
-                "= %.3e Ha/Bohr\n", steps, max_force_ha_bohr);
+                "= %.3e Ha/Bohr\n",
+                steps, max_force_ha_bohr);
     EXPECT_LE(max_force_ha_bohr, 1e-3)
         << "KS gradient must drive water to a near-stationary PBE/def2-SVP "
            "geometry (max-force <= 1e-3 Ha/Bohr)";
@@ -249,19 +269,19 @@ TEST(KsDShellGradient, PBE_def2SVP_TightFDAgreementDenseGrid) {
     auto ints = cpu::scf::build_integrals(frame, basis);
     auto cfg = pbe_config(ints, n_radial, n_angular);
     const double h_ang = 1e-3 / units::kAngstromInBohr;
-    auto fd = cpu::scf::scf_finite_difference_gradient(
-        frame, cfg, /*charge=*/0, h_ang, basis);
+    auto fd = cpu::scf::scf_finite_difference_gradient(frame, cfg, /*charge=*/0,
+                                                       h_ang, basis);
 
     double max_err_ha_bohr = 0.0;
     for (int A = 0; A < 3; ++A)
         for (int d = 0; d < 3; ++d)
             max_err_ha_bohr = std::max(
-                max_err_ha_bohr,
-                ev_a_to_ha_bohr(
-                    std::abs(analytic.forces(A, d) - fd.forces(A, d))));
+                max_err_ha_bohr, ev_a_to_ha_bohr(std::abs(analytic.forces(A, d)
+                                                          - fd.forces(A, d))));
 
     std::printf("[ks-dshell] PBE/def2-SVP dense-grid max|analytic-FD| "
-                "= %.3e Ha/Bohr\n", max_err_ha_bohr);
+                "= %.3e Ha/Bohr\n",
+                max_err_ha_bohr);
     // ac-005 target is 1e-5 Ha/Bohr. The molecular grid is atom-centered
     // and rotates with the geometry under FD displacement, so residual
     // grid-weight noise sets a floor; the binding correctness bar is the
@@ -279,7 +299,8 @@ TEST(KsDShellGradient, PBE_def2SVP_TranslationalInvarianceAndC2vSymmetry) {
     // Translational invariance: sum_A dE/dR_A = 0 per axis.
     for (int d = 0; d < 3; ++d) {
         double s = 0.0;
-        for (int A = 0; A < 3; ++A) s += g.forces(A, d);
+        for (int A = 0; A < 3; ++A)
+            s += g.forces(A, d);
         EXPECT_NEAR(s, 0.0, 1e-7) << "translational invariance axis " << d;
     }
 

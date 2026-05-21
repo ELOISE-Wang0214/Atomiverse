@@ -1,32 +1,33 @@
 /// @file cuda/potentials/bond_harmonic.cu
 /// @brief CUDA BondHarmonic — V = K(r − r₀)² (kernel + class).
 
+#include "atomiverse/cuda/launch.cuh"
 #include "atomiverse/cuda/potentials/bond_harmonic.cuh"
 #include "atomiverse/cuda/potentials/harmonic_bond_kernel.cuh"
-#include "atomiverse/cuda/launch.cuh"
-#include <cuda_runtime.h>
 #include "atomiverse/cuda/types.cuh"
 #include <cmath>
+#include <cuda_runtime.h>
 
 namespace ATV {
 
+using cuda::prec_t;
 using cuda::real_t;
 using cuda::work_t;
-using cuda::prec_t;
 
+namespace cuda {
+namespace kernels {
 
-namespace cuda { namespace kernels {
-
-__global__ void harmonic_bond_k(
-    const real_t* __restrict__ x, const real_t* __restrict__ y, const real_t* __restrict__ z,
-    real_t* __restrict__ fx, real_t* __restrict__ fy, real_t* __restrict__ fz,
-    prec_t* __restrict__ energy,
-    const int* __restrict__ bi, const int* __restrict__ bj, const int* __restrict__ bt,
-    const work_t* __restrict__ K, const work_t* __restrict__ r0,
-    const prec_t* __restrict__ box, int n_bonds)
-{
+__global__ void
+harmonic_bond_k(const real_t* __restrict__ x, const real_t* __restrict__ y,
+                const real_t* __restrict__ z, real_t* __restrict__ fx,
+                real_t* __restrict__ fy, real_t* __restrict__ fz,
+                prec_t* __restrict__ energy, const int* __restrict__ bi,
+                const int* __restrict__ bj, const int* __restrict__ bt,
+                const work_t* __restrict__ K, const work_t* __restrict__ r0,
+                const prec_t* __restrict__ box, int n_bonds) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= n_bonds) return;
+    if (idx >= n_bonds)
+        return;
 
     int i = bi[idx], j = bj[idx], t = bt[idx];
 
@@ -64,13 +65,16 @@ __global__ void harmonic_bond_k(
     sdata[threadIdx.x] = v;
     __syncthreads();
     for (int s = blockDim.x / 2; s > 0; s >>= 1) {
-        if (threadIdx.x < s) sdata[threadIdx.x] += sdata[threadIdx.x + s];
+        if (threadIdx.x < s)
+            sdata[threadIdx.x] += sdata[threadIdx.x + s];
         __syncthreads();
     }
-    if (threadIdx.x == 0) atomicAdd(energy, static_cast<prec_t>(sdata[0]));
+    if (threadIdx.x == 0)
+        atomicAdd(energy, static_cast<prec_t>(sdata[0]));
 }
 
-}} // namespace cuda::kernels
+} // namespace kernels
+} // namespace cuda
 
 namespace cuda {
 
@@ -92,22 +96,25 @@ void BondHarmonic::build(const BuildContext& /*ctx*/) {
     state_->n_types = nt;
     cudaMalloc(&state_->d_K, nt * sizeof(work_t));
     cudaMalloc(&state_->d_r0, nt * sizeof(work_t));
-    cudaMemcpy(state_->d_K, K_.data(), nt * sizeof(work_t), cudaMemcpyHostToDevice);
-    cudaMemcpy(state_->d_r0, r0_.data(), nt * sizeof(work_t), cudaMemcpyHostToDevice);
+    cudaMemcpy(state_->d_K, K_.data(), nt * sizeof(work_t),
+               cudaMemcpyHostToDevice);
+    cudaMemcpy(state_->d_r0, r0_.data(), nt * sizeof(work_t),
+               cudaMemcpyHostToDevice);
 }
 
 void BondHarmonic::compute(const LaunchContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& f = ctx.frame;
     int nb = f.n_bonds();
-    if (nb == 0) return;
+    if (nb == 0)
+        return;
 
     int block = kDefaultBlock;
     int grid = grid_size(static_cast<int>(nb));
     kernels::harmonic_bond_k<<<grid, block, block * sizeof(work_t), stream>>>(
-        f.atoms.x, f.atoms.y, f.atoms.z, f.atoms.fx, f.atoms.fy, f.atoms.fz, f.energy,
-        f.bonds.atomi, f.bonds.atomj, f.bonds.type,
-        state_->d_K, state_->d_r0, f.box, nb);
+        f.atoms.x, f.atoms.y, f.atoms.z, f.atoms.fx, f.atoms.fy, f.atoms.fz,
+        f.energy, f.bonds.atomi, f.bonds.atomj, f.bonds.type, state_->d_K,
+        state_->d_r0, f.box, nb);
 }
 
 void BondHarmonic::destroy(const DestroyContext& /*ctx*/) {

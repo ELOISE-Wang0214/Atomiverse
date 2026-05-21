@@ -31,10 +31,10 @@ namespace scf {
 /// id 8) share the same Pade functional form and differ only in these
 /// four constants per channel.
 struct VWN5Params {
-    double A;   ///< Amplitude A, Hartree convention (A_Rydberg / 2).
-    double x0;  ///< Pade pole location x0 [sqrt(Bohr)].
-    double b;   ///< Pade denominator linear coefficient.
-    double c;   ///< Pade denominator constant term.
+    double A;  ///< Amplitude A, Hartree convention (A_Rydberg / 2).
+    double x0; ///< Pade pole location x0 [sqrt(Bohr)].
+    double b;  ///< Pade denominator linear coefficient.
+    double c;  ///< Pade denominator constant term.
 };
 
 /// @brief VWN Pade-approximant correlation function F(x).
@@ -68,8 +68,8 @@ double vwn5_dFdx(double x, const VWN5Params& p);
 /// @param[out] ec   Correlation energy density per electron [Hartree].
 /// @param[out] vc_a d(rho*ec)/drho_alpha, alpha potential [Hartree].
 /// @param[out] vc_b d(rho*ec)/drho_beta, beta potential [Hartree].
-void vwn_rpa_correlation(double rho_a, double rho_b,
-                         double& ec, double& vc_a, double& vc_b);
+void vwn_rpa_correlation(double rho_a, double rho_b, double& ec, double& vc_a,
+                         double& vc_b);
 
 /// @brief Becke-1988 GGA exchange for a single spin channel
 ///        (libxc XC_GGA_X_B88, id 106).
@@ -88,8 +88,8 @@ void vwn_rpa_correlation(double rho_a, double rho_b,
 /// @param[out] vrho_s    d(rho_s*eps_x)/drho_s, exchange potential
 ///                       [Hartree].
 /// @param[out] vsigma_ss d(rho_s*eps_x)/dsigma_ss [Hartree*Bohr^2].
-void b88_exchange_spin(double rho_s, double sigma_ss,
-                       double& ex_s, double& vrho_s, double& vsigma_ss);
+void b88_exchange_spin(double rho_s, double sigma_ss, double& ex_s,
+                       double& vrho_s, double& vsigma_ss);
 
 /// @brief Lee-Yang-Parr GGA correlation (libxc XC_GGA_C_LYP, id 131),
 ///        spin-polarized, in the Miehlich-Savin-Stoll-Preuss closed form.
@@ -111,10 +111,10 @@ void b88_exchange_spin(double rho_s, double sigma_ss,
 /// @param[out] vsigma_aa d(rho*ec)/dsigma_aa [Hartree*Bohr^2].
 /// @param[out] vsigma_ab d(rho*ec)/dsigma_ab [Hartree*Bohr^2].
 /// @param[out] vsigma_bb d(rho*ec)/dsigma_bb [Hartree*Bohr^2].
-void lyp_correlation(double rho_a, double rho_b,
-                     double sigma_aa, double sigma_ab, double sigma_bb,
-                     double& ec, double& vc_a, double& vc_b,
-                     double& vsigma_aa, double& vsigma_ab, double& vsigma_bb);
+void lyp_correlation(double rho_a, double rho_b, double sigma_aa,
+                     double sigma_ab, double sigma_bb, double& ec, double& vc_a,
+                     double& vc_b, double& vsigma_aa, double& vsigma_ab,
+                     double& vsigma_bb);
 
 } // namespace scf
 } // namespace cpu

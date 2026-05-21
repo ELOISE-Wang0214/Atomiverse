@@ -17,8 +17,8 @@
 #include <deque>
 #include <utility>
 
-#include <xtensor/containers/xtensor.hpp>
 #include <xtensor-blas/xlinalg.hpp>
+#include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/cpu/scf/scf_utils.h"
 
@@ -34,7 +34,7 @@ namespace internal {
 inline RealMatrix diis_error(const RealMatrix& F, const RealMatrix& P,
                              const RealMatrix& S, const RealMatrix& X) {
     RealMatrix commutator = xt::linalg::dot(F, xt::linalg::dot(P, S))
-                          - xt::linalg::dot(S, xt::linalg::dot(P, F));
+                            - xt::linalg::dot(S, xt::linalg::dot(P, F));
     return xt::linalg::dot(xt::transpose(X), xt::linalg::dot(commutator, X));
 }
 
@@ -48,14 +48,15 @@ inline RealMatrix diis_error(const RealMatrix& F, const RealMatrix& P,
 /// use the single-channel overload. The combined B matrix naturally
 /// reduces to standard single-channel DIIS when e_alpha == e_beta.
 class DIISMixer {
-public:
+  public:
     /// @param max_vectors Maximum number of stored (F, e) pairs.
     explicit DIISMixer(int max_vectors = 6) : max_vectors_(max_vectors) {}
 
     /// @brief Store a new Fock/error pair and return extrapolated Fock matrices.
-    std::pair<RealMatrix, RealMatrix> step(
-        const RealMatrix& F_alpha, const RealMatrix& e_alpha,
-        const RealMatrix& F_beta,  const RealMatrix& e_beta);
+    std::pair<RealMatrix, RealMatrix> step(const RealMatrix& F_alpha,
+                                           const RealMatrix& e_alpha,
+                                           const RealMatrix& F_beta,
+                                           const RealMatrix& e_beta);
 
     /// @brief Single-channel convenience (for restricted SCF).
     RealMatrix step(const RealMatrix& F, const RealMatrix& e);
@@ -65,11 +66,13 @@ public:
 
     /// @brief Clear all history.
     void reset() {
-        Fa_hist_.clear(); Fb_hist_.clear();
-        ea_hist_.clear(); eb_hist_.clear();
+        Fa_hist_.clear();
+        Fb_hist_.clear();
+        ea_hist_.clear();
+        eb_hist_.clear();
     }
 
-private:
+  private:
     int max_vectors_;
     std::deque<RealMatrix> Fa_hist_, Fb_hist_;
     std::deque<RealMatrix> ea_hist_, eb_hist_;

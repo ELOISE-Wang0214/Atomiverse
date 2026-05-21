@@ -29,12 +29,14 @@ using Device = ::torch::Device;
 /// @}
 
 /// @brief Compile-time mapping: cuda::real_t -> Torch ScalarType (per-atom storage).
-inline constexpr ScalarType kRealDtype =
-    std::is_same_v<cuda::real_t, float> ? ScalarType::Float : ScalarType::Double;
+inline constexpr ScalarType kRealDtype = std::is_same_v<cuda::real_t, float>
+                                             ? ScalarType::Float
+                                             : ScalarType::Double;
 
 /// @brief Compile-time mapping: cuda::prec_t -> Torch ScalarType (accumulators, energy).
-inline constexpr ScalarType kPrecDtype =
-    std::is_same_v<cuda::prec_t, float> ? ScalarType::Float : ScalarType::Double;
+inline constexpr ScalarType kPrecDtype = std::is_same_v<cuda::prec_t, float>
+                                             ? ScalarType::Float
+                                             : ScalarType::Double;
 
 /// @brief Compile-time mapping: int -> Torch ScalarType.
 inline constexpr ScalarType kIntDtype = ScalarType::Int;
@@ -55,49 +57,52 @@ struct Frame {
 
     /// @brief Per-atom tensors matching molpy atoms namespace.
     struct Atoms {
-        Tensor x, y, z;              ///< Positions [Angstrom].
-        Tensor vx, vy, vz;           ///< Velocities [Angstrom/fs].
-        Tensor fx, fy, fz;           ///< Forces [eV/Angstrom].
-        Tensor mass;                 ///< Masses [amu].
-        Tensor type;                 ///< Atom type indices (kIntDtype, no grad).
+        Tensor x, y, z;    ///< Positions [Angstrom].
+        Tensor vx, vy, vz; ///< Velocities [Angstrom/fs].
+        Tensor fx, fy, fz; ///< Forces [eV/Angstrom].
+        Tensor mass;       ///< Masses [amu].
+        Tensor type;       ///< Atom type indices (kIntDtype, no grad).
     } atoms;
 
     // ---- Bond topology block (molcrafts "bonds" namespace) ----
 
     /// @brief Bond topology matching molpy bonds namespace.
     struct Bonds {
-        Tensor atomi, atomj;         ///< Bond atom indices [n_bonds], kIntDtype.
-        Tensor type;                 ///< Bond types [n_bonds], kIntDtype.
+        Tensor atomi, atomj; ///< Bond atom indices [n_bonds], kIntDtype.
+        Tensor type;         ///< Bond types [n_bonds], kIntDtype.
     } bonds;
 
     // ---- Angle topology block (molcrafts "angles" namespace) ----
 
     /// @brief Angle topology matching molpy angles namespace.
     struct Angles {
-        Tensor atomi, atomj, atomk;  ///< Angle atom indices [n_angles], j is center.
-        Tensor type;                 ///< Angle types [n_angles], kIntDtype.
+        Tensor atomi, atomj,
+            atomk;   ///< Angle atom indices [n_angles], j is center.
+        Tensor type; ///< Angle types [n_angles], kIntDtype.
     } angles;
 
     // ---- Dihedral topology block (molcrafts "dihedrals" namespace) ----
 
     /// @brief Dihedral topology matching molpy dihedrals namespace.
     struct Dihedrals {
-        Tensor atomi, atomj, atomk, atoml; ///< Dihedral atom indices [n_dihedrals].
-        Tensor type;                       ///< Dihedral types [n_dihedrals], kIntDtype.
+        Tensor atomi, atomj, atomk,
+            atoml;   ///< Dihedral atom indices [n_dihedrals].
+        Tensor type; ///< Dihedral types [n_dihedrals], kIntDtype.
     } dihedrals;
 
     // ---- Pair list (populated by neighbor_list, no grad on indices) ----
 
-    Tensor pair_i, pair_j;                   ///< Pair indices [n_pairs], kIntDtype.
-    Tensor pair_dx, pair_dy, pair_dz;        ///< Pair displacements [n_pairs], kRealDtype.
-    Tensor pair_dist;                        ///< Pair distances [n_pairs], kRealDtype.
+    Tensor pair_i, pair_j; ///< Pair indices [n_pairs], kIntDtype.
+    Tensor pair_dx, pair_dy,
+        pair_dz;      ///< Pair displacements [n_pairs], kRealDtype.
+    Tensor pair_dist; ///< Pair distances [n_pairs], kRealDtype.
 
     // ---- System scalars ----
 
-    Tensor energy;               ///< Potential energy [1], [eV].
-    Tensor kinetic;              ///< Kinetic energy [1], [eV].
-    Tensor stress;               ///< Stress tensor [6], Voigt [eV/Angstrom^3].
-    Tensor box;                  ///< Simulation cell [9], row-major [Angstrom].
+    Tensor energy;  ///< Potential energy [1], [eV].
+    Tensor kinetic; ///< Kinetic energy [1], [eV].
+    Tensor stress;  ///< Stress tensor [6], Voigt [eV/Angstrom^3].
+    Tensor box;     ///< Simulation cell [9], row-major [Angstrom].
 
     // ---- Metadata (host-cached) ----
 
@@ -110,11 +115,11 @@ struct Frame {
     /// @brief Number of pairs in the pair list.
     int n_pairs() const { return n_pairs_; }
 
-    int n_atoms_ = 0;      ///< Host-cached atom count.
-    int n_bonds_ = 0;      ///< Host-cached bond count.
-    int n_angles_ = 0;     ///< Host-cached angle count.
-    int n_dihedrals_ = 0;  ///< Host-cached dihedral count.
-    int n_pairs_ = 0;      ///< Host-cached pair count.
+    int n_atoms_ = 0;     ///< Host-cached atom count.
+    int n_bonds_ = 0;     ///< Host-cached bond count.
+    int n_angles_ = 0;    ///< Host-cached angle count.
+    int n_dihedrals_ = 0; ///< Host-cached dihedral count.
+    int n_pairs_ = 0;     ///< Host-cached pair count.
 };
 
 } // namespace torch

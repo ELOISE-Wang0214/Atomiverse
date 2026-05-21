@@ -17,8 +17,8 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/component.h"
 #include "atomiverse/core/binding.h"
+#include "atomiverse/cpu/component.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -30,7 +30,7 @@ namespace mpi {
 ///
 /// Phase 1: structural no-op; single-rank state is already globally consistent.
 class ReduceEnergy : public cpu::ComponentBase {
-public:
+  public:
     std::string name() const override { return "reduce_energy"; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {{static_cast<int>(ATV::md::Phase::end_of_step), -50}};

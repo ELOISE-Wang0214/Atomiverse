@@ -18,13 +18,13 @@
 ///
 /// Both tests use the H2 STO-3G fixture for sub-second wall time.
 
-#include <gtest/gtest.h>
 #include <cmath>
+#include <gtest/gtest.h>
 #include <limits>
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/evaluate.h"
+#include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
@@ -75,11 +75,12 @@ cpu::Frame make_h2(double bond_length, double v_stretch) {
 
 TEST(AIMDConservation, RHFNVEEnergyDrift200Steps) {
     auto frame = make_h2(0.78, /*v_stretch=*/0.001);
-    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto integrals =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals);
 
-    const double dt = 0.5;     // fs
-    const int n_steps = 200;   // 100 fs total
+    const double dt = 0.5;   // fs
+    const int n_steps = 200; // 100 fs total
     const int sample_every = 10;
 
     cpu::md::MD sim;
@@ -95,9 +96,11 @@ TEST(AIMDConservation, RHFNVEEnergyDrift200Steps) {
     for (int s = 0; s < n_steps; s += sample_every) {
         sim.run(frame, sample_every);
         const double E = static_cast<double>(frame.energy)
-                       + static_cast<double>(frame.kinetic);
-        if (E < e_min) e_min = E;
-        if (E > e_max) e_max = E;
+                         + static_cast<double>(frame.kinetic);
+        if (E < e_min)
+            e_min = E;
+        if (E > e_max)
+            e_max = E;
         EXPECT_TRUE(std::isfinite(E));
     }
 
@@ -129,7 +132,8 @@ TEST(AIMDConservation, RHFNVEEnergyDrift200Steps) {
 
 TEST(AIMDConservation, ASPCMatchesFreshSinglePointMidTrajectory) {
     auto frame = make_h2(0.80, /*v_stretch=*/0.001);
-    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto integrals =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals);
 
     const double dt = 0.5;
@@ -156,7 +160,7 @@ TEST(AIMDConservation, ASPCMatchesFreshSinglePointMidTrajectory) {
     cpu::Frame snapshot = frame;
     const double fx0_prop = static_cast<double>(frame.atoms.fx(0));
     const double fx1_prop = static_cast<double>(frame.atoms.fx(1));
-    const double E_prop   = static_cast<double>(frame.energy);
+    const double E_prop = static_cast<double>(frame.energy);
 
     // Stand-alone single-point on the same geometry — Evaluate driver,
     // fresh SCFEvaluator (no predictor history). Forces here are the
@@ -165,11 +169,11 @@ TEST(AIMDConservation, ASPCMatchesFreshSinglePointMidTrajectory) {
     cpu::Evaluate eval;
     eval.on(ATV::evaluate::Phase::evaluate).add(fresh);
     eval.build();
-    eval.run(snapshot);  // EvaluateDriver runs exactly one pass
+    eval.run(snapshot); // EvaluateDriver runs exactly one pass
 
     const double fx0_fresh = static_cast<double>(snapshot.atoms.fx(0));
     const double fx1_fresh = static_cast<double>(snapshot.atoms.fx(1));
-    const double E_fresh   = static_cast<double>(snapshot.energy);
+    const double E_fresh = static_cast<double>(snapshot.energy);
 
     // Convert the spec's 1e-7 Ha/Bohr threshold into eV/Å:
     //   1 Ha / Bohr = kHartree2eV / kBohr2A eV/Å ≈ 27.211386 / 0.529177 ≈ 51.422 eV/Å
@@ -182,7 +186,8 @@ TEST(AIMDConservation, ASPCMatchesFreshSinglePointMidTrajectory) {
         << "ASPC propagation force on atom 0 disagrees with fresh single-point "
         << "at the same geometry — possible state leakage in SCFEvaluator.";
     EXPECT_NEAR(fx1_prop, fx1_fresh, force_tol_eVA)
-        << "ASPC propagation force on atom 1 disagrees with fresh single-point.";
+        << "ASPC propagation force on atom 1 disagrees with fresh "
+           "single-point.";
 
     // Energy is variational (O(δP²)), so it should agree at least one
     // order tighter than the forces.

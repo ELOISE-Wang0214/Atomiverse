@@ -9,11 +9,11 @@
 
 #include <cstdint>
 
+#include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/backend.h"
 #include "atomiverse/cpu/context.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/mpi/domain.h"
-#include "atomiverse/core/mat3.h"
 
 using namespace ATV;
 
@@ -47,8 +47,8 @@ TEST(DomainDecomposition, SingleRankDefaults) {
     auto backend = make_backend_for(frame);
 
     cpu::Context& ctx = backend.context();
-    ASSERT_NE(ctx.dd, nullptr)
-        << "Context::dd must be non-null after Backend::init() even in single-rank mode";
+    ASSERT_NE(ctx.dd, nullptr) << "Context::dd must be non-null after "
+                                  "Backend::init() even in single-rank mode";
 
     EXPECT_EQ(ctx.dd->dims[0], 1);
     EXPECT_EQ(ctx.dd->dims[1], 1);

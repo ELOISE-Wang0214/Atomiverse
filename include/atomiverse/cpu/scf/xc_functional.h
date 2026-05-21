@@ -52,13 +52,14 @@ bool is_gga(XCType type);
 
 /// @brief Output from XC evaluation at a single grid point.
 struct XCOutput {
-    double exc;          ///< XC energy density per electron f(rho_alpha, rho_beta) [Hartree].
-    double vrho_alpha;   ///< df/drho_alpha (XC potential for alpha).
-    double vrho_beta;    ///< df/drho_beta (XC potential for beta).
+    double
+        exc; ///< XC energy density per electron f(rho_alpha, rho_beta) [Hartree].
+    double vrho_alpha; ///< df/drho_alpha (XC potential for alpha).
+    double vrho_beta;  ///< df/drho_beta (XC potential for beta).
     // GGA only:
-    double vsigma_aa;    ///< df/dsigma_alpha_alpha.
-    double vsigma_ab;    ///< df/dsigma_alpha_beta.
-    double vsigma_bb;    ///< df/dsigma_beta_beta.
+    double vsigma_aa; ///< df/dsigma_alpha_alpha.
+    double vsigma_ab; ///< df/dsigma_alpha_beta.
+    double vsigma_bb; ///< df/dsigma_beta_beta.
 };
 
 /// @brief Evaluate XC functional at a single grid point.
@@ -76,7 +77,8 @@ struct XCOutput {
 /// @param sigma_bb |grad rho_beta|^2 (GGA only).
 /// @return XCOutput with energy density and potential derivatives.
 XCOutput evaluate_xc(XCType type, double rho_a, double rho_b,
-                     double sigma_aa = 0, double sigma_ab = 0, double sigma_bb = 0);
+                     double sigma_aa = 0, double sigma_ab = 0,
+                     double sigma_bb = 0);
 
 /// @brief Batched XC evaluation over an array of grid points.
 ///
@@ -96,13 +98,11 @@ XCOutput evaluate_xc(XCType type, double rho_a, double rho_b,
 /// @param[out] vsigma_aa df/dsigma_alpha_alpha [n] (GGA only, may be nullptr for LDA).
 /// @param[out] vsigma_ab df/dsigma_alpha_beta [n] (GGA only).
 /// @param[out] vsigma_bb df/dsigma_beta_beta [n] (GGA only).
-void evaluate_xc_batch(XCType type, int n,
-                       const double* rho_a, const double* rho_b,
-                       const double* sigma_aa, const double* sigma_ab,
-                       const double* sigma_bb,
+void evaluate_xc_batch(XCType type, int n, const double* rho_a,
+                       const double* rho_b, const double* sigma_aa,
+                       const double* sigma_ab, const double* sigma_bb,
                        double* exc, double* vrho_a, double* vrho_b,
-                       double* vsigma_aa, double* vsigma_ab,
-                       double* vsigma_bb);
+                       double* vsigma_aa, double* vsigma_ab, double* vsigma_bb);
 
 } // namespace scf
 } // namespace cpu

@@ -12,7 +12,7 @@ namespace ATV {
 namespace cuda {
 
 class AngleHarmonic : public Angle {
-public:
+  public:
     /// @param K      Spring constants per angle type [eV/rad²].
     /// @param theta0 Equilibrium angles per type [degrees] (converted to radians internally).
     AngleHarmonic(std::vector<double> K, std::vector<double> theta0);
@@ -25,10 +25,10 @@ public:
     void build(const BuildContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;
 
-protected:
+  protected:
     void compute(const LaunchContext& ctx) override;
 
-private:
+  private:
     std::vector<double> K_, theta0_;
     struct State;
     std::unique_ptr<State> state_;

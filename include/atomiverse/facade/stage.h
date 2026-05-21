@@ -14,12 +14,12 @@ namespace md {
 /// @brief Phase order for one molecular-dynamics step.
 enum class Phase {
     initial_integrate, ///< First half-step: v += 0.5*dt*f/m, x += dt*v
-    pre_force,         ///< Pre-force hooks (pair list rebuild, constraint setup)
-    force,             ///< Force evaluation (evaluators accumulate here)
-    post_force,        ///< Post-force corrections (constraints, long-range)
-    final_integrate,   ///< Second half-step: v += 0.5*dt*f/m
-    end_of_step,       ///< Per-step observers, recorders, controllers
-    COUNT              ///< Sentinel -- total number of phases
+    pre_force,       ///< Pre-force hooks (pair list rebuild, constraint setup)
+    force,           ///< Force evaluation (evaluators accumulate here)
+    post_force,      ///< Post-force corrections (constraints, long-range)
+    final_integrate, ///< Second half-step: v += 0.5*dt*f/m
+    end_of_step,     ///< Per-step observers, recorders, controllers
+    COUNT            ///< Sentinel -- total number of phases
 };
 
 /// @brief Human-readable names for the MD phases.
@@ -27,8 +27,8 @@ enum class Phase {
 /// @return Phase names in the same order as the enum values, excluding `COUNT`.
 inline std::vector<std::string> phase_names(Phase phase_tag) {
     (void)phase_tag;
-    return {"initial_integrate", "pre_force", "force",
-            "post_force", "final_integrate", "end_of_step"};
+    return {"initial_integrate", "pre_force",       "force",
+            "post_force",        "final_integrate", "end_of_step"};
 }
 
 } // namespace md
@@ -51,8 +51,8 @@ enum class Phase {
 /// @return Phase names in the same order as the enum values, excluding `COUNT`.
 inline std::vector<std::string> phase_names(Phase phase_tag) {
     (void)phase_tag;
-    return {"search_direction", "line_search", "force",
-            "convergence_check", "end_of_step"};
+    return {"search_direction", "line_search", "force", "convergence_check",
+            "end_of_step"};
 }
 
 } // namespace minimizer
@@ -94,12 +94,12 @@ namespace scf {
 
 /// @brief Phase order for one SCF iteration.
 enum class Phase {
-    build_hamiltonian,    ///< Construct effective Hamiltonian H(P) = H0 + alpha*P
-    diagonalize,          ///< Eigensolve H -> eigenvalues + eigenvectors
-    build_density,        ///< Rebuild density P = C_occ * C_occ^T
-    convergence_check,    ///< Check ||P_new - P_old||_F < tol
-    end_of_step,          ///< Per-iteration observers, recorders
-    COUNT                 ///< Sentinel -- total number of phases
+    build_hamiltonian, ///< Construct effective Hamiltonian H(P) = H0 + alpha*P
+    diagonalize,       ///< Eigensolve H -> eigenvalues + eigenvectors
+    build_density,     ///< Rebuild density P = C_occ * C_occ^T
+    convergence_check, ///< Check ||P_new - P_old||_F < tol
+    end_of_step,       ///< Per-iteration observers, recorders
+    COUNT              ///< Sentinel -- total number of phases
 };
 
 /// @brief Human-readable names for the SCF phases.
@@ -130,14 +130,14 @@ namespace vib {
 
 /// @brief Phase order for one Response-category pass.
 enum class Phase {
-    setup,        ///< Cache the equilibrium geometry (ReferenceGeometry).
-    displace,     ///< Apply +/-h displacement for the current coordinate (DisplaceStep).
-    force,        ///< Force evaluation (user-registered evaluator runs here).
-    accumulate,   ///< Central-difference Hessian-row assembly (HessianAccumulator).
-    diagonalize,  ///< Symmetrization / future diagonalization (Symmetrize).
-    thermochem,   ///< Reserved — thermochemistry link; no component here.
-    end_of_step,  ///< Per-pass observers / recorders.
-    COUNT         ///< Sentinel -- total number of phases.
+    setup, ///< Cache the equilibrium geometry (ReferenceGeometry).
+    displace, ///< Apply +/-h displacement for the current coordinate (DisplaceStep).
+    force,      ///< Force evaluation (user-registered evaluator runs here).
+    accumulate, ///< Central-difference Hessian-row assembly (HessianAccumulator).
+    diagonalize, ///< Symmetrization / future diagonalization (Symmetrize).
+    thermochem,  ///< Reserved — thermochemistry link; no component here.
+    end_of_step, ///< Per-pass observers / recorders.
+    COUNT        ///< Sentinel -- total number of phases.
 };
 
 /// @brief Human-readable names for the vibrational-analysis phases.
@@ -145,7 +145,7 @@ enum class Phase {
 /// @return Phase names in the same order as the enum values, excluding `COUNT`.
 inline std::vector<std::string> phase_names(Phase phase_tag) {
     (void)phase_tag;
-    return {"setup", "displace", "force", "accumulate",
+    return {"setup",       "displace",   "force",      "accumulate",
             "diagonalize", "thermochem", "end_of_step"};
 }
 

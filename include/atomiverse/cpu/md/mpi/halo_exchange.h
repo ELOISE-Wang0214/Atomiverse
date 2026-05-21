@@ -38,9 +38,9 @@
 #include <string>
 #include <vector>
 
+#include "atomiverse/core/binding.h"
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/core/binding.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -70,7 +70,7 @@ struct FaceBufs;
 /// the global box are shifted by `±L_d` on the way out so the receiver sees
 /// them in its own coordinate frame.
 class HaloExchangeForward : public cpu::ComponentBase {
-public:
+  public:
     /// @brief No-op default constructor (cutoff = 0).
     HaloExchangeForward();
 
@@ -147,7 +147,7 @@ public:
     /// buffers are per-instance rather than a process-global static.
     std::size_t send_buf_capacity_for_test() const;
 
-private:
+  private:
     double cutoff_ = 0.0;
     double bonded_extension_ = 0.0;
     std::unique_ptr<detail::FaceBufs> bufs_;
@@ -199,7 +199,7 @@ private:
 /// `unpack_face` in `halo_exchange.cpp`, or (b) operate on owners only
 /// and reduce the per-rank totals globally via `ReduceEnergy`.
 class HaloExchangeReverse : public cpu::ComponentBase {
-public:
+  public:
     HaloExchangeReverse();
     ~HaloExchangeReverse() override;
     HaloExchangeReverse(HaloExchangeReverse&&) noexcept;
@@ -221,7 +221,7 @@ public:
     /// @param ctx Launch context.
     void launch(const cpu::LaunchContext& ctx) override;
 
-private:
+  private:
     std::unique_ptr<detail::FaceBufs> bufs_;
 };
 

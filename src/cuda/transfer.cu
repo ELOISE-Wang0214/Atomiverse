@@ -13,9 +13,9 @@
 
 namespace ATV {
 
+using cuda::prec_t;
 using cuda::real_t;
 using cuda::work_t;
-using cuda::prec_t;
 
 // ── Narrowing helpers ────────────────────────────────────────────────
 //
@@ -33,7 +33,8 @@ void copy_h2d_narrow(real_t* d_dst, const Real* h_src, int n) {
         std::vector<real_t> tmp(n);
         for (int i = 0; i < n; ++i)
             tmp[i] = static_cast<real_t>(h_src[i]);
-        cudaMemcpy(d_dst, tmp.data(), n * sizeof(real_t), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_dst, tmp.data(), n * sizeof(real_t),
+                   cudaMemcpyHostToDevice);
     }
 }
 
@@ -43,7 +44,8 @@ void copy_d2h_widen(Real* h_dst, const real_t* d_src, int n) {
         cudaMemcpy(h_dst, d_src, n * sizeof(real_t), cudaMemcpyDeviceToHost);
     } else {
         std::vector<real_t> tmp(n);
-        cudaMemcpy(tmp.data(), d_src, n * sizeof(real_t), cudaMemcpyDeviceToHost);
+        cudaMemcpy(tmp.data(), d_src, n * sizeof(real_t),
+                   cudaMemcpyDeviceToHost);
         for (int i = 0; i < n; ++i)
             h_dst[i] = static_cast<Real>(tmp[i]);
     }
@@ -57,7 +59,8 @@ void copy_h2d_prec(prec_t* d_dst, const Real* h_src, int n) {
         std::vector<prec_t> tmp(n);
         for (int i = 0; i < n; ++i)
             tmp[i] = static_cast<prec_t>(h_src[i]);
-        cudaMemcpy(d_dst, tmp.data(), n * sizeof(prec_t), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_dst, tmp.data(), n * sizeof(prec_t),
+                   cudaMemcpyHostToDevice);
     }
 }
 
@@ -67,7 +70,8 @@ void copy_d2h_prec(Real* h_dst, const prec_t* d_src, int n) {
         cudaMemcpy(h_dst, d_src, n * sizeof(prec_t), cudaMemcpyDeviceToHost);
     } else {
         std::vector<prec_t> tmp(n);
-        cudaMemcpy(tmp.data(), d_src, n * sizeof(prec_t), cudaMemcpyDeviceToHost);
+        cudaMemcpy(tmp.data(), d_src, n * sizeof(prec_t),
+                   cudaMemcpyDeviceToHost);
         for (int i = 0; i < n; ++i)
             h_dst[i] = static_cast<Real>(tmp[i]);
     }
@@ -122,7 +126,8 @@ cuda::Frame to_cuda(const Frame& frame) {
     copy_h2d_narrow(d.atoms.vy, frame.atoms.vy.data(), n);
     copy_h2d_narrow(d.atoms.vz, frame.atoms.vz.data(), n);
     copy_h2d_narrow(d.atoms.mass, frame.atoms.mass.data(), n);
-    cudaMemcpy(d.atoms.type, frame.atoms.type.data(), n * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d.atoms.type, frame.atoms.type.data(), n * sizeof(int),
+               cudaMemcpyHostToDevice);
 
     cudaMemset(d.atoms.fx, 0, n * sizeof(real_t));
     cudaMemset(d.atoms.fy, 0, n * sizeof(real_t));
@@ -150,9 +155,12 @@ cuda::Frame to_cuda(const Frame& frame) {
         cudaMalloc(&d.bonds.atomi, nb * sizeof(int));
         cudaMalloc(&d.bonds.atomj, nb * sizeof(int));
         cudaMalloc(&d.bonds.type, nb * sizeof(int));
-        cudaMemcpy(d.bonds.atomi, frame.bonds.atomi.data(), nb * sizeof(int), cudaMemcpyHostToDevice);
-        cudaMemcpy(d.bonds.atomj, frame.bonds.atomj.data(), nb * sizeof(int), cudaMemcpyHostToDevice);
-        cudaMemcpy(d.bonds.type, frame.bonds.type.data(), nb * sizeof(int), cudaMemcpyHostToDevice);
+        cudaMemcpy(d.bonds.atomi, frame.bonds.atomi.data(), nb * sizeof(int),
+                   cudaMemcpyHostToDevice);
+        cudaMemcpy(d.bonds.atomj, frame.bonds.atomj.data(), nb * sizeof(int),
+                   cudaMemcpyHostToDevice);
+        cudaMemcpy(d.bonds.type, frame.bonds.type.data(), nb * sizeof(int),
+                   cudaMemcpyHostToDevice);
     }
 
     // Angle topology
@@ -164,27 +172,37 @@ cuda::Frame to_cuda(const Frame& frame) {
         cudaMalloc(&d.angles.atomj, na * sizeof(int));
         cudaMalloc(&d.angles.atomk, na * sizeof(int));
         cudaMalloc(&d.angles.type, na * sizeof(int));
-        cudaMemcpy(d.angles.atomi, frame.angles.atomi.data(), na * sizeof(int), cudaMemcpyHostToDevice);
-        cudaMemcpy(d.angles.atomj, frame.angles.atomj.data(), na * sizeof(int), cudaMemcpyHostToDevice);
-        cudaMemcpy(d.angles.atomk, frame.angles.atomk.data(), na * sizeof(int), cudaMemcpyHostToDevice);
-        cudaMemcpy(d.angles.type, frame.angles.type.data(), na * sizeof(int), cudaMemcpyHostToDevice);
+        cudaMemcpy(d.angles.atomi, frame.angles.atomi.data(), na * sizeof(int),
+                   cudaMemcpyHostToDevice);
+        cudaMemcpy(d.angles.atomj, frame.angles.atomj.data(), na * sizeof(int),
+                   cudaMemcpyHostToDevice);
+        cudaMemcpy(d.angles.atomk, frame.angles.atomk.data(), na * sizeof(int),
+                   cudaMemcpyHostToDevice);
+        cudaMemcpy(d.angles.type, frame.angles.type.data(), na * sizeof(int),
+                   cudaMemcpyHostToDevice);
     }
 
     // Dihedral topology
     int nd = d.n_dihedrals_;
     if (nd > 0) {
         cudaMalloc(&d.dihedrals.n_dihedrals, sizeof(int));
-        cudaMemcpy(d.dihedrals.n_dihedrals, &nd, sizeof(int), cudaMemcpyHostToDevice);
+        cudaMemcpy(d.dihedrals.n_dihedrals, &nd, sizeof(int),
+                   cudaMemcpyHostToDevice);
         cudaMalloc(&d.dihedrals.atomi, nd * sizeof(int));
         cudaMalloc(&d.dihedrals.atomj, nd * sizeof(int));
         cudaMalloc(&d.dihedrals.atomk, nd * sizeof(int));
         cudaMalloc(&d.dihedrals.atoml, nd * sizeof(int));
         cudaMalloc(&d.dihedrals.type, nd * sizeof(int));
-        cudaMemcpy(d.dihedrals.atomi, frame.dihedrals.atomi.data(), nd * sizeof(int), cudaMemcpyHostToDevice);
-        cudaMemcpy(d.dihedrals.atomj, frame.dihedrals.atomj.data(), nd * sizeof(int), cudaMemcpyHostToDevice);
-        cudaMemcpy(d.dihedrals.atomk, frame.dihedrals.atomk.data(), nd * sizeof(int), cudaMemcpyHostToDevice);
-        cudaMemcpy(d.dihedrals.atoml, frame.dihedrals.atoml.data(), nd * sizeof(int), cudaMemcpyHostToDevice);
-        cudaMemcpy(d.dihedrals.type, frame.dihedrals.type.data(), nd * sizeof(int), cudaMemcpyHostToDevice);
+        cudaMemcpy(d.dihedrals.atomi, frame.dihedrals.atomi.data(),
+                   nd * sizeof(int), cudaMemcpyHostToDevice);
+        cudaMemcpy(d.dihedrals.atomj, frame.dihedrals.atomj.data(),
+                   nd * sizeof(int), cudaMemcpyHostToDevice);
+        cudaMemcpy(d.dihedrals.atomk, frame.dihedrals.atomk.data(),
+                   nd * sizeof(int), cudaMemcpyHostToDevice);
+        cudaMemcpy(d.dihedrals.atoml, frame.dihedrals.atoml.data(),
+                   nd * sizeof(int), cudaMemcpyHostToDevice);
+        cudaMemcpy(d.dihedrals.type, frame.dihedrals.type.data(),
+                   nd * sizeof(int), cudaMemcpyHostToDevice);
     }
 
     return d;
@@ -229,41 +247,69 @@ void to_cpu(const Frame& d, cpu::Frame& frame) {
 }
 
 void destroy(Frame& d) {
-    cudaFree(d.atoms.x); cudaFree(d.atoms.y); cudaFree(d.atoms.z);
-    cudaFree(d.atoms.vx); cudaFree(d.atoms.vy); cudaFree(d.atoms.vz);
-    cudaFree(d.atoms.fx); cudaFree(d.atoms.fy); cudaFree(d.atoms.fz);
-    cudaFree(d.atoms.mass); cudaFree(d.atoms.type);
-    cudaFree(d.energy); cudaFree(d.kinetic);
+    cudaFree(d.atoms.x);
+    cudaFree(d.atoms.y);
+    cudaFree(d.atoms.z);
+    cudaFree(d.atoms.vx);
+    cudaFree(d.atoms.vy);
+    cudaFree(d.atoms.vz);
+    cudaFree(d.atoms.fx);
+    cudaFree(d.atoms.fy);
+    cudaFree(d.atoms.fz);
+    cudaFree(d.atoms.mass);
+    cudaFree(d.atoms.type);
+    cudaFree(d.energy);
+    cudaFree(d.kinetic);
     cudaFree(d.stress);
-    cudaFree(d.box); cudaFree(d.atoms.d_size);
+    cudaFree(d.box);
+    cudaFree(d.atoms.d_size);
 
-    cudaFree(d.pairs.i); cudaFree(d.pairs.j);
-    cudaFree(d.pairs.dx); cudaFree(d.pairs.dy);
-    cudaFree(d.pairs.dz); cudaFree(d.pairs.dist);
-    cudaFree(d.pairs.n_pairs); cudaFree(d.pairs.capacity);
+    cudaFree(d.pairs.i);
+    cudaFree(d.pairs.j);
+    cudaFree(d.pairs.dx);
+    cudaFree(d.pairs.dy);
+    cudaFree(d.pairs.dz);
+    cudaFree(d.pairs.dist);
+    cudaFree(d.pairs.n_pairs);
+    cudaFree(d.pairs.capacity);
 
-    cudaFree(d.bonds.atomi); cudaFree(d.bonds.atomj);
-    cudaFree(d.bonds.type); cudaFree(d.bonds.n_bonds);
+    cudaFree(d.bonds.atomi);
+    cudaFree(d.bonds.atomj);
+    cudaFree(d.bonds.type);
+    cudaFree(d.bonds.n_bonds);
 
-    cudaFree(d.angles.atomi); cudaFree(d.angles.atomj); cudaFree(d.angles.atomk);
-    cudaFree(d.angles.type); cudaFree(d.angles.n_angles);
+    cudaFree(d.angles.atomi);
+    cudaFree(d.angles.atomj);
+    cudaFree(d.angles.atomk);
+    cudaFree(d.angles.type);
+    cudaFree(d.angles.n_angles);
 
-    cudaFree(d.dihedrals.atomi); cudaFree(d.dihedrals.atomj);
-    cudaFree(d.dihedrals.atomk); cudaFree(d.dihedrals.atoml);
-    cudaFree(d.dihedrals.type); cudaFree(d.dihedrals.n_dihedrals);
+    cudaFree(d.dihedrals.atomi);
+    cudaFree(d.dihedrals.atomj);
+    cudaFree(d.dihedrals.atomk);
+    cudaFree(d.dihedrals.atoml);
+    cudaFree(d.dihedrals.type);
+    cudaFree(d.dihedrals.n_dihedrals);
 
     // SCF workspace (shared)
-    cudaFree(d.scf.H0); cudaFree(d.scf.H);
-    cudaFree(d.scf.P); cudaFree(d.scf.P_old);
-    cudaFree(d.scf.C); cudaFree(d.scf.eig);
+    cudaFree(d.scf.H0);
+    cudaFree(d.scf.H);
+    cudaFree(d.scf.P);
+    cudaFree(d.scf.P_old);
+    cudaFree(d.scf.C);
+    cudaFree(d.scf.eig);
     cudaFree(d.scf.work);
     // SCF workspace (RHF)
-    cudaFree(d.scf.Hcore); cudaFree(d.scf.X);
-    cudaFree(d.scf.F_prime); cudaFree(d.scf.ERI);
+    cudaFree(d.scf.Hcore);
+    cudaFree(d.scf.X);
+    cudaFree(d.scf.F_prime);
+    cudaFree(d.scf.ERI);
     // SCF workspace (GPU integral basis data)
-    cudaFree(d.scf.d_shell_alpha); cudaFree(d.scf.d_shell_coeff);
+    cudaFree(d.scf.d_shell_alpha);
+    cudaFree(d.scf.d_shell_coeff);
     cudaFree(d.scf.d_shell_center);
-    cudaFree(d.scf.d_atom_Z); cudaFree(d.scf.d_atom_pos);
+    cudaFree(d.scf.d_atom_Z);
+    cudaFree(d.scf.d_atom_pos);
 
     d = {};
 }

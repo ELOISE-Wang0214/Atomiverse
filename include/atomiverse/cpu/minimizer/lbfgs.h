@@ -39,13 +39,15 @@ namespace minimizer {
 
 /// @brief Per-step optimization record for diagnostics.
 struct OptRecord {
-    int step = 0;              ///< Optimization step number.
-    double energy = 0;           ///< Total energy [eV].
-    double max_force = 0;        ///< Maximum atomic force magnitude [eV/Angstrom].
-    double rms_force = 0;        ///< RMS of atomic force magnitudes [eV/Angstrom].
-    double max_displacement = 0; ///< Maximum displacement from previous step [Angstrom].
-    double rms_displacement = 0; ///< RMS displacement from previous step [Angstrom].
-    double energy_change = 0;    ///< Energy change from previous step [eV].
+    int step = 0;         ///< Optimization step number.
+    double energy = 0;    ///< Total energy [eV].
+    double max_force = 0; ///< Maximum atomic force magnitude [eV/Angstrom].
+    double rms_force = 0; ///< RMS of atomic force magnitudes [eV/Angstrom].
+    double max_displacement =
+        0; ///< Maximum displacement from previous step [Angstrom].
+    double rms_displacement =
+        0; ///< RMS displacement from previous step [Angstrom].
+    double energy_change = 0; ///< Energy change from previous step [eV].
 };
 
 /// @brief L-BFGS Optimizer component.
@@ -63,7 +65,7 @@ struct OptRecord {
 ///
 /// At step 0: steepest descent (no history). From step 1: L-BFGS direction.
 class LBFGS : public cpu::ComponentBase {
-public:
+  public:
     /// @brief Construct L-BFGS step.
     /// @param memory    Number of correction pairs to store (default 5).
     /// @param alpha0    Initial step size [Angstrom^2/eV] (default 0.01).
@@ -73,9 +75,8 @@ public:
     /// @param max_dtol  Max displacement tolerance [Angstrom] (default 0.002).
     /// @param rms_dtol  RMS displacement tolerance [Angstrom] (default 0.001).
     /// @param etol      Energy change tolerance [eV] (default 1e-5).
-    LBFGS(int memory = 5, double alpha0 = 0.01,
-          double ftol = 0.05, int max_ls = 10,
-          double rms_ftol = 0.03, double max_dtol = 0.002,
+    LBFGS(int memory = 5, double alpha0 = 0.01, double ftol = 0.05,
+          int max_ls = 10, double rms_ftol = 0.03, double max_dtol = 0.002,
           double rms_dtol = 0.001, double etol = 1e-5);
 
     /// @brief Enable the backtracking line search (Armijo condition).
@@ -92,8 +93,7 @@ public:
     /// @param min_alpha  Minimum alpha before accepting the trial even on
     ///                   Armijo failure (default 1e-6).
     /// @return Reference to self for chaining.
-    LBFGS& line_search(double c1 = 1e-4,
-                       double contract = 0.5,
+    LBFGS& line_search(double c1 = 1e-4, double contract = 0.5,
                        double min_alpha = 1e-6);
 
     std::string name() const override { return "lbfgs"; }
@@ -102,8 +102,7 @@ public:
     std::vector<DefaultBinding> default_bindings() const override {
         return {
             {static_cast<int>(ATV::minimizer::Phase::search_direction), 0},
-            {static_cast<int>(ATV::minimizer::Phase::convergence_check), 0}
-        };
+            {static_cast<int>(ATV::minimizer::Phase::convergence_check), 0}};
     }
 
     void build(const cpu::BuildContext& ctx) override;
@@ -118,7 +117,7 @@ public:
     /// @brief Per-step optimization trace.
     const std::vector<OptRecord>& trace() const { return trace_; }
 
-private:
+  private:
     int memory_;
     double alpha0_;
     double ftol_;
@@ -129,16 +128,16 @@ private:
     double etol_;
 
     // L-BFGS history (circular buffer)
-    std::vector<std::vector<double>> s_history_;  // position differences
-    std::vector<std::vector<double>> y_history_;  // gradient differences
-    std::vector<double> rho_history_;             // 1 / (y^T s)
+    std::vector<std::vector<double>> s_history_; // position differences
+    std::vector<std::vector<double>> y_history_; // gradient differences
+    std::vector<double> rho_history_;            // 1 / (y^T s)
     int n_stored_ = 0;
     int oldest_ = 0;
 
     // Previous step state
     std::vector<double> x_prev_;
     std::vector<double> g_prev_;
-    std::vector<double> direction_;  // search direction
+    std::vector<double> direction_; // search direction
     bool has_prev_ = false;
     bool converged_ = false;
     double max_force_ = 0;
@@ -147,13 +146,13 @@ private:
 
     // Line search (optional; off by default to preserve legacy behaviour).
     bool line_search_enabled_ = false;
-    double ls_c1_ = 1e-4;        // Armijo constant.
-    double ls_contract_ = 0.5;   // Backtracking factor.
-    double ls_min_alpha_ = 1e-6; // Floor on alpha.
-    double ls_alpha_ = 0;        // Alpha chosen for the most recent trial.
-    double ls_gd_ = 0;           // g_k · d_k at the trial's origin point.
-    double ls_origin_energy_ = 0;// E at the trial's origin (x_prev_).
-    bool   ls_had_trial_ = false;
+    double ls_c1_ = 1e-4;         // Armijo constant.
+    double ls_contract_ = 0.5;    // Backtracking factor.
+    double ls_min_alpha_ = 1e-6;  // Floor on alpha.
+    double ls_alpha_ = 0;         // Alpha chosen for the most recent trial.
+    double ls_gd_ = 0;            // g_k · d_k at the trial's origin point.
+    double ls_origin_energy_ = 0; // E at the trial's origin (x_prev_).
+    bool ls_had_trial_ = false;
 
     // Optimization trace
     std::vector<OptRecord> trace_;

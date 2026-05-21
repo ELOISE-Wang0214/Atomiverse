@@ -9,8 +9,8 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/component.h"
 #include "atomiverse/core/binding.h"
+#include "atomiverse/cpu/component.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -157,27 +157,27 @@ namespace md {
 /// rewrites `frame.kinetic` after the second NHC update so any thermo
 /// output bound at `end_of_step @ > -40` reads the post-NPT value.
 class NoseHooverNPT : public cpu::ComponentBase {
-public:
+  public:
     /// @brief All NPT parameters, grouped so each field is named at the
     /// call site and the order of `tau_T` vs `tau_P` can't be swapped
     /// silently. Built as an aggregate (no defaulted fields) so the
     /// compiler flags any omission via `-Wmissing-field-initializers`.
     struct Config {
-        double T_target;  ///< Target temperature [K].
-        double tau_T;     ///< Thermostat coupling time [fs] (LAMMPS `Tdamp`).
-        double P_target;  ///< Target pressure [eV/Å³], LAMMPS-standard
-                          ///  sign (`+trace(σ)/(3V)`, positive ⇔
-                          ///  compressive) — same convention as LAMMPS
-                          ///  `fix npt iso`. 1 bar = 6.2415e-7 eV/Å³.
-        double tau_P;     ///< Barostat coupling time [fs] (LAMMPS `Pdamp`).
-        double dt;        ///< Timestep [fs].
-        double drag = 0.0;  ///< LAMMPS-style empirical drag on the
-                            ///  innermost thermostat and barostat NHC
-                            ///  momenta (applied at each chain update as
-                            ///  `eta_dot[0] *= 1 - drag*half_dt/tau`).
-                            ///  Zero disables. `fix npt ... drag 2`.
-        int mtchain = 3;    ///< Atom-NHC chain length. LAMMPS default 3.
-        int mpchain = 3;    ///< Baro-NHC chain length. LAMMPS default 3.
+        double T_target;   ///< Target temperature [K].
+        double tau_T;      ///< Thermostat coupling time [fs] (LAMMPS `Tdamp`).
+        double P_target;   ///< Target pressure [eV/Å³], LAMMPS-standard
+                           ///  sign (`+trace(σ)/(3V)`, positive ⇔
+                           ///  compressive) — same convention as LAMMPS
+                           ///  `fix npt iso`. 1 bar = 6.2415e-7 eV/Å³.
+        double tau_P;      ///< Barostat coupling time [fs] (LAMMPS `Pdamp`).
+        double dt;         ///< Timestep [fs].
+        double drag = 0.0; ///< LAMMPS-style empirical drag on the
+                           ///  innermost thermostat and barostat NHC
+                           ///  momenta (applied at each chain update as
+                           ///  `eta_dot[0] *= 1 - drag*half_dt/tau`).
+                           ///  Zero disables. `fix npt ... drag 2`.
+        int mtchain = 3;   ///< Atom-NHC chain length. LAMMPS default 3.
+        int mpchain = 3;   ///< Baro-NHC chain length. LAMMPS default 3.
 
         /// @brief Per-axis barostat enable flags `{x, y, z}`.
         ///
@@ -195,7 +195,7 @@ public:
         /// `T_stop == T_target` ⇒ a constant-temperature run (no ramp),
         /// so existing aggregate-initialised callers are unaffected.
         /// Mirrors LAMMPS `fix npt temp T_start T_stop tau`.
-        double T_stop = -1.0;  ///< -1 sentinel: ctor folds to `T_target`.
+        double T_stop = -1.0; ///< -1 sentinel: ctor folds to `T_target`.
     };
 
     /// @param cfg Aggregate NPT configuration. See `Config` for units.
@@ -216,7 +216,7 @@ public:
     /// @return `*this`, so the call can chain before `set_integrator`.
     NoseHooverNPT& set_run_span(std::int64_t nfirst, std::int64_t nlast) {
         nfirst_ = nfirst;
-        nlast_  = nlast;
+        nlast_ = nlast;
         return *this;
     }
 
@@ -233,31 +233,31 @@ public:
     Capability reads() const override { return Capability::Stress; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {{static_cast<int>(ATV::md::Phase::initial_integrate), 0},
-                {static_cast<int>(ATV::md::Phase::final_integrate),   0},
-                {static_cast<int>(ATV::md::Phase::end_of_step),     -40}};
+                {static_cast<int>(ATV::md::Phase::final_integrate), 0},
+                {static_cast<int>(ATV::md::Phase::end_of_step), -40}};
     }
     void build(const cpu::BuildContext& ctx) override;
     void launch(const cpu::LaunchContext& ctx) override;
 
-private:
+  private:
     // Configuration
-    double T_target_;  ///< Ramp start temperature [K] (LAMMPS `t_start`).
-    double T_stop_;    ///< Ramp end temperature [K] (LAMMPS `t_stop`).
+    double T_target_; ///< Ramp start temperature [K] (LAMMPS `t_start`).
+    double T_stop_;   ///< Ramp end temperature [K] (LAMMPS `t_stop`).
     double tau_T_;
     double P_target_;
     double tau_P_;
     double dt_;
     double drag_;
-    int    mtchain_;
-    int    mpchain_;
+    int mtchain_;
+    int mpchain_;
     /// @brief Per-axis barostat enable flags `{x,y,z}` — LAMMPS `p_flag`.
     std::array<bool, 3> couple_axis_;
     /// @brief Count of `true` entries in `couple_axis_` — LAMMPS `pdim`.
     int pdim_ = 3;
 
     // Temperature-ramp run span (LAMMPS `update->beginstep` / `endstep`).
-    std::int64_t nfirst_ = 0;  ///< First MD step of the run.
-    std::int64_t nlast_  = 0;  ///< Last MD step of the run.
+    std::int64_t nfirst_ = 0; ///< First MD step of the run.
+    std::int64_t nlast_ = 0;  ///< Last MD step of the run.
     /// @brief Live thermostat setpoint [K], interpolated each step from
     /// the ramp; equals `T_target_` when no ramp is active.
     double T_live_ = 0.0;
@@ -267,11 +267,11 @@ private:
     double pdrag_factor_ = 1.0;
 
     // Derived in build()
-    int    n_dof_   = 0;     ///< 3N - 3 (COM removed)
-    double kT_      = 0.0;   ///< kB · T_target [eV]
+    int n_dof_ = 0;           ///< 3N - 3 (COM removed)
+    double kT_ = 0.0;         ///< kB · T_target [eV]
     std::vector<double> Q_t_; ///< Atom-NHC masses per chain link [eV·fs²]
     std::vector<double> Q_b_; ///< Baro-NHC masses per chain link [eV·fs²]
-    double W_       = 0.0;   ///< Barostat mass [eV·fs²]
+    double W_ = 0.0;          ///< Barostat mass [eV·fs²]
 
     // Extended-Lagrangian state (per-step)
     std::vector<double> eta_t_dot_; ///< Atom-NHC momenta [1/fs]
@@ -299,13 +299,13 @@ private:
     /// @brief Interpolate the live thermostat setpoint for `step`,
     ///        mirroring LAMMPS `fix_nh.cpp::compute_temp_target()`.
     ///        Updates `T_live_` and `kT_`.
-    void   compute_temp_target(int step);
-    void   nhc_atoms_half(const cpu::LaunchContext& ctx, double half_dt);
-    void   nhc_baro_half(double half_dt);
-    void   update_eps_dot(const cpu::LaunchContext& ctx, double half_dt);
-    void   scale_v_by_baro(const cpu::LaunchContext& ctx, double half_dt);
-    void   kick_v_by_force(const cpu::LaunchContext& ctx, double half_dt);
-    void   propagate_x_and_box(const cpu::LaunchContext& ctx);
+    void compute_temp_target(int step);
+    void nhc_atoms_half(const cpu::LaunchContext& ctx, double half_dt);
+    void nhc_baro_half(double half_dt);
+    void update_eps_dot(const cpu::LaunchContext& ctx, double half_dt);
+    void scale_v_by_baro(const cpu::LaunchContext& ctx, double half_dt);
+    void kick_v_by_force(const cpu::LaunchContext& ctx, double half_dt);
+    void propagate_x_and_box(const cpu::LaunchContext& ctx);
     /// @brief The conserved MTK extended Hamiltonian — written to
     /// `frame.conserved` each step so `Thermo` can log it and a flat
     /// trace can confirm the integrator is symplectic.

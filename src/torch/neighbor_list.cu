@@ -3,16 +3,16 @@
 
 #ifdef ATV_HAS_TORCH
 
+#include "atomiverse/cpu/transfer.h"
+#include "atomiverse/cuda/component.cuh"
+#include "atomiverse/cuda/neighbor_list.cuh"
+#include "atomiverse/cuda/transfer.cuh"
 #include "atomiverse/torch/neighbor_list.cuh"
 #include "atomiverse/torch/transfer.cuh"
-#include "atomiverse/cuda/neighbor_list.cuh"
-#include "atomiverse/cuda/component.cuh"
-#include "atomiverse/cpu/transfer.h"
-#include "atomiverse/cuda/transfer.cuh"
 
-#include <torch/torch.h>
 #include <c10/cuda/CUDAStream.h>
 #include <cuda_runtime.h>
+#include <torch/torch.h>
 
 namespace ATV {
 namespace torch {
@@ -29,9 +29,9 @@ NeighborList::~NeighborList() {
         // Free the cuda::Frame arrays allocated by cpu::to_cuda
         // (but NOT the pairs -- already freed by nl_->destroy)
         auto saved_pairs = cframe_.pairs;
-        cframe_.pairs = {};  // prevent double-free
+        cframe_.pairs = {}; // prevent double-free
         cuda::destroy(cframe_);
-        cframe_.pairs = saved_pairs;  // already freed
+        cframe_.pairs = saved_pairs; // already freed
     }
 }
 
@@ -69,15 +69,16 @@ void NeighborList::update(Frame& frame) {
     cudaStream_t stream = static_cast<cudaStream_t>(ctx_.stream);
 
     int n = frame.n_atoms();
-    cudaMemcpyAsync(cframe_.atoms.x, frame.atoms.x.data_ptr<cuda::real_t>(), n * sizeof(cuda::real_t),
-                    cudaMemcpyDeviceToDevice, stream);
-    cudaMemcpyAsync(cframe_.atoms.y, frame.atoms.y.data_ptr<cuda::real_t>(), n * sizeof(cuda::real_t),
-                    cudaMemcpyDeviceToDevice, stream);
-    cudaMemcpyAsync(cframe_.atoms.z, frame.atoms.z.data_ptr<cuda::real_t>(), n * sizeof(cuda::real_t),
-                    cudaMemcpyDeviceToDevice, stream);
+    cudaMemcpyAsync(cframe_.atoms.x, frame.atoms.x.data_ptr<cuda::real_t>(),
+                    n * sizeof(cuda::real_t), cudaMemcpyDeviceToDevice, stream);
+    cudaMemcpyAsync(cframe_.atoms.y, frame.atoms.y.data_ptr<cuda::real_t>(),
+                    n * sizeof(cuda::real_t), cudaMemcpyDeviceToDevice, stream);
+    cudaMemcpyAsync(cframe_.atoms.z, frame.atoms.z.data_ptr<cuda::real_t>(),
+                    n * sizeof(cuda::real_t), cudaMemcpyDeviceToDevice, stream);
     if (frame.box.defined() && cframe_.box) {
-        cudaMemcpyAsync(cframe_.box, frame.box.data_ptr<cuda::prec_t>(), 9 * sizeof(cuda::prec_t),
-                        cudaMemcpyDeviceToDevice, stream);
+        cudaMemcpyAsync(cframe_.box, frame.box.data_ptr<cuda::prec_t>(),
+                        9 * sizeof(cuda::prec_t), cudaMemcpyDeviceToDevice,
+                        stream);
     }
 
     // Launch pair search
@@ -89,23 +90,31 @@ void NeighborList::update(Frame& frame) {
     // Read n_pairs from device
     int h_n_pairs = 0;
     if (cframe_.pairs.n_pairs) {
-        cudaMemcpy(&h_n_pairs, cframe_.pairs.n_pairs,
-                   sizeof(int), cudaMemcpyDeviceToHost);
+        cudaMemcpy(&h_n_pairs, cframe_.pairs.n_pairs, sizeof(int),
+                   cudaMemcpyDeviceToHost);
     }
     frame.n_pairs_ = h_n_pairs;
 
     // Wrap pair list as self-contained Tensors (cloned)
     if (h_n_pairs > 0) {
-        auto real_opts = ::torch::TensorOptions().dtype(kRealDtype).device(::torch::kCUDA);
-        auto int_opts = ::torch::TensorOptions().dtype(kIntDtype).device(::torch::kCUDA);
+        auto real_opts =
+            ::torch::TensorOptions().dtype(kRealDtype).device(::torch::kCUDA);
+        auto int_opts =
+            ::torch::TensorOptions().dtype(kIntDtype).device(::torch::kCUDA);
         int64_t np = static_cast<int64_t>(h_n_pairs);
 
-        frame.pair_i = ::torch::from_blob(cframe_.pairs.i, {np}, int_opts).clone();
-        frame.pair_j = ::torch::from_blob(cframe_.pairs.j, {np}, int_opts).clone();
-        frame.pair_dx = ::torch::from_blob(cframe_.pairs.dx, {np}, real_opts).clone();
-        frame.pair_dy = ::torch::from_blob(cframe_.pairs.dy, {np}, real_opts).clone();
-        frame.pair_dz = ::torch::from_blob(cframe_.pairs.dz, {np}, real_opts).clone();
-        frame.pair_dist = ::torch::from_blob(cframe_.pairs.dist, {np}, real_opts).clone();
+        frame.pair_i =
+            ::torch::from_blob(cframe_.pairs.i, {np}, int_opts).clone();
+        frame.pair_j =
+            ::torch::from_blob(cframe_.pairs.j, {np}, int_opts).clone();
+        frame.pair_dx =
+            ::torch::from_blob(cframe_.pairs.dx, {np}, real_opts).clone();
+        frame.pair_dy =
+            ::torch::from_blob(cframe_.pairs.dy, {np}, real_opts).clone();
+        frame.pair_dz =
+            ::torch::from_blob(cframe_.pairs.dz, {np}, real_opts).clone();
+        frame.pair_dist =
+            ::torch::from_blob(cframe_.pairs.dist, {np}, real_opts).clone();
     } else {
         frame.pair_i = Tensor();
         frame.pair_j = Tensor();

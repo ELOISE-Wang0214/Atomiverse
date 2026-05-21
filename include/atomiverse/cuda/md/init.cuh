@@ -26,7 +26,7 @@ namespace md {
 /// Infrastructure component auto-added by md::MD at pre_force (order -1000).
 /// Uses DMA engine (cudaMemsetAsync), not a compute kernel.
 class ZeroForces : public ComponentBase {
-public:
+  public:
     /// @brief Component name.
     /// @return "zero_forces".
     std::string name() const override { return "zero_forces"; }
@@ -41,7 +41,7 @@ public:
 /// Infrastructure component auto-added by md::MD at pre_force (order -999).
 /// Uses DMA engine (cudaMemsetAsync), not a compute kernel.
 class ZeroEnergy : public ComponentBase {
-public:
+  public:
     /// @brief Component name.
     /// @return "zero_energy".
     std::string name() const override { return "zero_energy"; }
@@ -56,7 +56,7 @@ public:
 /// Infrastructure component auto-added by md::MD at end_of_step (order -1000).
 /// Uses DMA engine (cudaMemsetAsync), not a compute kernel.
 class ZeroKinetic : public ComponentBase {
-public:
+  public:
     /// @brief Component name.
     /// @return "zero_kinetic".
     std::string name() const override { return "zero_kinetic"; }
@@ -84,7 +84,7 @@ public:
 ///
 /// @see LAMMPS velocity create: https://docs.lammps.org/velocity.html
 class InitVelocity : public ComponentBase {
-public:
+  public:
     /// @brief Construct velocity initializer.
     /// @param temperature Target temperature [K].
     /// @param seed Random number seed.
@@ -117,9 +117,9 @@ public:
     /// @return Seed value.
     unsigned long long seed() const { return seed_; }
 
-private:
-    double temperature_;         ///< Target temperature [K].
-    unsigned long long seed_;  ///< RNG seed.
+  private:
+    double temperature_;      ///< Target temperature [K].
+    unsigned long long seed_; ///< RNG seed.
 };
 
 } // namespace md

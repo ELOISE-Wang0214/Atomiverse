@@ -50,11 +50,11 @@
 #include "atomiverse/cpu/backend_traits.h"
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/pair_evaluator.h"
+#include "atomiverse/cpu/recorder/thermo.h"
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/driver.h"
 #include "atomiverse/facade/iteration_status.h"
 #include "atomiverse/facade/stage.h"
-#include "atomiverse/cpu/recorder/thermo.h"
 
 namespace ATV {
 namespace cpu {
@@ -70,31 +70,31 @@ struct CategoryTraits;
 template <>
 struct CategoryTraits<ATV::md::Phase> {
     static constexpr auto eval_phase = ATV::md::Phase::force;
-    static constexpr auto end_phase  = ATV::md::Phase::end_of_step;
+    static constexpr auto end_phase = ATV::md::Phase::end_of_step;
 };
 
 template <>
 struct CategoryTraits<ATV::minimizer::Phase> {
     static constexpr auto eval_phase = ATV::minimizer::Phase::force;
-    static constexpr auto end_phase  = ATV::minimizer::Phase::end_of_step;
+    static constexpr auto end_phase = ATV::minimizer::Phase::end_of_step;
 };
 
 template <>
 struct CategoryTraits<ATV::evaluate::Phase> {
     static constexpr auto eval_phase = ATV::evaluate::Phase::evaluate;
-    static constexpr auto end_phase  = ATV::evaluate::Phase::finalize;
+    static constexpr auto end_phase = ATV::evaluate::Phase::finalize;
 };
 
 template <>
 struct CategoryTraits<ATV::vib::Phase> {
     static constexpr auto eval_phase = ATV::vib::Phase::force;
-    static constexpr auto end_phase  = ATV::vib::Phase::end_of_step;
+    static constexpr auto end_phase = ATV::vib::Phase::end_of_step;
 };
 
 /// @brief CPU-backend driver layer — shared by all three CPU category bases.
 template <typename PhaseEnum>
 class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
-public:
+  public:
     using Base = Driver<PhaseEnum, cpu::device_tag>;
     using Traits = CategoryTraits<PhaseEnum>;
 
@@ -111,7 +111,7 @@ public:
         Base::build();
     }
 
-protected:
+  protected:
     /// @brief Subclass hook — install opt-in infrastructure components
     /// derived from declared user state (e.g. `NoseHooverNPT::reads()
     /// == Stress` → inject `VirialStress`; pair evaluator + multi-rank
@@ -154,9 +154,7 @@ protected:
     }
 
     /// @brief Single iteration through the compiled Plan.
-    void step_once(int iter_index) {
-        this->backend_->step(iter_index);
-    }
+    void step_once(int iter_index) { this->backend_->step(iter_index); }
 
     /// @brief Tear down — destroy components + shut down backend.
     void teardown_pass() {
@@ -178,10 +176,11 @@ protected:
     /// @brief Convenience: throw a clear exception when a required role or
     /// capability is absent at `validate_components()` time.
     [[noreturn]] static void throw_missing(const char* what) {
-        throw std::runtime_error(std::string("driver build: missing required ") + what);
+        throw std::runtime_error(std::string("driver build: missing required ")
+                                 + what);
     }
 
-public:
+  public:
     // ─── Categorical setter API ─────────────────────────────────────
     //
     // These are the LAMMPS-shaped setters shared across MD, Minimize,
@@ -246,15 +245,15 @@ public:
     /// Binds `cpu::Thermo{every}` at the driver's end-of-step phase @ +20.
     void set_thermo(int every) {
         if (thermo_every_) {
-            if (*thermo_every_ == every) return;
-            throw std::invalid_argument(
-                "set_thermo already configured with " +
-                std::to_string(*thermo_every_) +
-                ", rejected re-call with " + std::to_string(every));
+            if (*thermo_every_ == every)
+                return;
+            throw std::invalid_argument("set_thermo already configured with "
+                                        + std::to_string(*thermo_every_)
+                                        + ", rejected re-call with "
+                                        + std::to_string(every));
         }
         thermo_every_ = every;
-        this->on(Traits::end_phase)
-             .add(ATV::cpu::Thermo{every}, +20);
+        this->on(Traits::end_phase).add(ATV::cpu::Thermo{every}, +20);
     }
 
     // ─── Singular-setter helpers (used by the categorical setters above) ──
@@ -262,15 +261,15 @@ public:
     /// @brief Singular setter using the component's `default_bindings()`.
     /// Idempotent on same-name re-call; throws on different-name re-call.
     template <typename C>
-    void set_singular_default_(C&& comp,
-                               std::optional<std::string>& slot,
+    void set_singular_default_(C&& comp, std::optional<std::string>& slot,
                                const char* setter_name) {
         const std::string n = comp.name();
         if (slot) {
-            if (*slot == n) return;
+            if (*slot == n)
+                return;
             throw std::invalid_argument(
-                std::string(setter_name) + " already configured with '" +
-                *slot + "', rejected re-call with '" + n + "'");
+                std::string(setter_name) + " already configured with '" + *slot
+                + "', rejected re-call with '" + n + "'");
         }
         slot = n;
         this->add(std::forward<C>(comp));
@@ -280,33 +279,35 @@ public:
     /// components without `default_bindings()` (NeighborList) or where
     /// the categorical API pins a specific slot.
     template <typename C>
-    void set_singular_at_(C&& comp,
-                          std::optional<std::string>& slot,
-                          const char* setter_name,
-                          PhaseEnum phase, int order) {
+    void set_singular_at_(C&& comp, std::optional<std::string>& slot,
+                          const char* setter_name, PhaseEnum phase, int order) {
         const std::string n = comp.name();
         if (slot) {
-            if (*slot == n) return;
+            if (*slot == n)
+                return;
             throw std::invalid_argument(
-                std::string(setter_name) + " already configured with '" +
-                *slot + "', rejected re-call with '" + n + "'");
+                std::string(setter_name) + " already configured with '" + *slot
+                + "', rejected re-call with '" + n + "'");
         }
         slot = n;
         this->on(phase).add(std::forward<C>(comp), order);
     }
 
-protected:
+  protected:
     // ── Infrastructure scan (subclass install_infra() only) ──────────
 
     /// @brief Aggregate of pending-component facts that `install_infra()`
     /// uses to decide what to auto-inject and what to throw about. Single
     /// pass over `pending_` populates everything.
     struct InfraScan {
-        bool needs_stress      = false;  ///< Some pending component reads Stress.
-        bool has_virial_stress = false;  ///< Canonical Stress provider already there.
-        bool has_neighbor_list = false;  ///< NeighborList already there.
-        std::string pair_evaluator_name; ///< First component reporting `needs_neighbor_list()`.
-        std::optional<Real> pair_evaluator_cutoff;  ///< Set when the above is a `PairEvaluator`.
+        bool needs_stress = false; ///< Some pending component reads Stress.
+        bool has_virial_stress =
+            false; ///< Canonical Stress provider already there.
+        bool has_neighbor_list = false; ///< NeighborList already there.
+        std::string
+            pair_evaluator_name; ///< First component reporting `needs_neighbor_list()`.
+        std::optional<Real>
+            pair_evaluator_cutoff; ///< Set when the above is a `PairEvaluator`.
     };
 
     /// @brief Walk the pending list once, collect everything install_infra
@@ -317,8 +318,10 @@ protected:
             if (has_capability(c.reads(), Capability::Stress))
                 s.needs_stress = true;
             const std::string n = c.name();
-            if (n == "virial_stress") s.has_virial_stress = true;
-            if (n == "neighbor_list") s.has_neighbor_list = true;
+            if (n == "virial_stress")
+                s.has_virial_stress = true;
+            if (n == "neighbor_list")
+                s.has_neighbor_list = true;
             if (c.needs_neighbor_list() && s.pair_evaluator_name.empty()) {
                 s.pair_evaluator_name = n;
                 if (auto* pe = dynamic_cast<const cpu::PairEvaluator*>(&c))
@@ -336,14 +339,16 @@ protected:
                                          const char* driver_name,
                                          const char* setter_help) const {
         if (!s.pair_evaluator_name.empty() && !s.has_neighbor_list) {
-            throw std::runtime_error(
-                std::string(driver_name) + "::build(): component '" +
-                s.pair_evaluator_name + "' reports needs_neighbor_list()==true "
-                "but no neighbor list was registered. " + setter_help);
+            throw std::runtime_error(std::string(driver_name)
+                                     + "::build(): component '"
+                                     + s.pair_evaluator_name
+                                     + "' reports needs_neighbor_list()==true "
+                                       "but no neighbor list was registered. "
+                                     + setter_help);
         }
     }
 
-private:
+  private:
     // ── Categorical setter slots ────────────────────────────────────
 
     std::optional<std::string> pair_set_;
@@ -351,7 +356,7 @@ private:
     std::optional<std::string> angle_set_;
     std::optional<std::string> dihedral_set_;
     std::optional<std::string> neighbor_set_;
-    std::optional<int>         thermo_every_;
+    std::optional<int> thermo_every_;
 };
 
 } // namespace cpu

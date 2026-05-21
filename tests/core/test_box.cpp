@@ -51,7 +51,8 @@ TEST(Box, ToFracToCartRoundtrip) {
 TEST(Box, Wrap) {
     auto box = Box::cubic(10);
     for (int n = 0; n < 100; ++n) {
-        Vec3 cart{Real(-50 + n % 100), Real(-30 + (n * 7) % 60), Real(-20 + (n * 13) % 40)};
+        Vec3 cart{Real(-50 + n % 100), Real(-30 + (n * 7) % 60),
+                  Real(-20 + (n * 13) % 40)};
         auto wrapped = box.wrap(cart);
         auto frac = box.to_frac(wrapped);
         EXPECT_GE(frac[0], Real(0)) << "frac x < 0";
@@ -107,10 +108,11 @@ TEST(Box, Lengths) {
 
 TEST(Box, WrapBatch) {
     auto box = Box::cubic(10);
-    Real xyz[12] = {15, -3, 22,  -8, 5, 12,  0, 0, 0,  10, 10, 10};
+    Real xyz[12] = {15, -3, 22, -8, 5, 12, 0, 0, 0, 10, 10, 10};
     box.wrap_batch(xyz, 4);
     for (int i = 0; i < 4; ++i) {
-        auto frac = box.to_frac(Vec3{xyz[i*3], xyz[i*3+1], xyz[i*3+2]});
+        auto frac =
+            box.to_frac(Vec3{xyz[i * 3], xyz[i * 3 + 1], xyz[i * 3 + 2]});
         EXPECT_GE(frac[0], Real(0));
         EXPECT_LT(frac[0], Real(1));
         EXPECT_GE(frac[1], Real(0));

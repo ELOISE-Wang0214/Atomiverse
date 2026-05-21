@@ -11,8 +11,8 @@
 /// cleaner than fighting that heuristic.
 
 #include "atomiverse/cpu/lammps_data.h"
-#include "atomiverse/cpu/frame.h"
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/cpu/frame.h"
 
 #include <cctype>
 #include <fstream>
@@ -34,7 +34,8 @@ bool starts_with(const std::string& s, const char* prefix) {
 
 std::string ltrim(const std::string& s) {
     std::size_t i = 0;
-    while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i]))) ++i;
+    while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i])))
+        ++i;
     return s.substr(i);
 }
 
@@ -47,7 +48,8 @@ std::string ltrim(const std::string& s) {
 bool next_data_line(std::ifstream& in, std::string& out) {
     while (std::getline(in, out)) {
         const std::string t = ltrim(out);
-        if (t.empty() || t[0] == '#') continue;
+        if (t.empty() || t[0] == '#')
+            continue;
         out = t;
         return true;
     }
@@ -58,7 +60,8 @@ bool next_data_line(std::ifstream& in, std::string& out) {
 
 Frame load_lammps_data(const std::string& path) {
     std::ifstream in(path);
-    if (!in) die(path, "cannot open file");
+    if (!in)
+        die(path, "cannot open file");
 
     // ── Pass 1: header ─────────────────────────────────────────────────
     int n_atoms = 0, n_bonds = 0, n_angles = 0, n_dihedrals = 0;
@@ -70,26 +73,26 @@ Frame load_lammps_data(const std::string& path) {
 
     while (next_data_line(in, line)) {
         // Section headers end the header block.
-        if (starts_with(line, "Masses") || starts_with(line, "Atoms") ||
-            starts_with(line, "Bonds") || starts_with(line, "Angles") ||
-            starts_with(line, "Dihedrals") || starts_with(line, "Impropers") ||
-            starts_with(line, "Velocities")) {
+        if (starts_with(line, "Masses") || starts_with(line, "Atoms")
+            || starts_with(line, "Bonds") || starts_with(line, "Angles")
+            || starts_with(line, "Dihedrals") || starts_with(line, "Impropers")
+            || starts_with(line, "Velocities")) {
             // Push the section line back by seeking; simpler: process it as
             // the section dispatcher below.
             break;
         }
         std::istringstream iss(line);
-        if (line.find("atoms") != std::string::npos &&
-            line.find("atom types") == std::string::npos) {
+        if (line.find("atoms") != std::string::npos
+            && line.find("atom types") == std::string::npos) {
             iss >> n_atoms;
-        } else if (line.find("bonds") != std::string::npos &&
-                   line.find("bond types") == std::string::npos) {
+        } else if (line.find("bonds") != std::string::npos
+                   && line.find("bond types") == std::string::npos) {
             iss >> n_bonds;
-        } else if (line.find("angles") != std::string::npos &&
-                   line.find("angle types") == std::string::npos) {
+        } else if (line.find("angles") != std::string::npos
+                   && line.find("angle types") == std::string::npos) {
             iss >> n_angles;
-        } else if (line.find("dihedrals") != std::string::npos &&
-                   line.find("dihedral types") == std::string::npos) {
+        } else if (line.find("dihedrals") != std::string::npos
+                   && line.find("dihedral types") == std::string::npos) {
             iss >> n_dihedrals;
         } else if (line.find("xlo xhi") != std::string::npos) {
             iss >> xlo >> xhi;
@@ -101,7 +104,8 @@ Frame load_lammps_data(const std::string& path) {
         // Ignore "N atom types", "N bond types", etc. — single type assumed.
     }
 
-    if (n_atoms <= 0) die(path, "header reports zero atoms");
+    if (n_atoms <= 0)
+        die(path, "header reports zero atoms");
 
     Frame frame(n_atoms);
 
@@ -111,7 +115,8 @@ Frame load_lammps_data(const std::string& path) {
     auto consume_n = [&](int n, auto handler) {
         int read = 0;
         while (read < n) {
-            if (!next_data_line(in, line)) die(path, "unexpected EOF in section");
+            if (!next_data_line(in, line))
+                die(path, "unexpected EOF in section");
             handler(line);
             ++read;
         }
@@ -131,14 +136,18 @@ Frame load_lammps_data(const std::string& path) {
             // Masses: <type> <mass>
             // Type count is unbounded in the header; consume until next header.
             while (next_data_line(in, line)) {
-                if (starts_with(line, "Atoms") || starts_with(line, "Bonds") ||
-                    starts_with(line, "Angles") || starts_with(line, "Dihedrals") ||
-                    starts_with(line, "Velocities") || starts_with(line, "Impropers")) {
+                if (starts_with(line, "Atoms") || starts_with(line, "Bonds")
+                    || starts_with(line, "Angles")
+                    || starts_with(line, "Dihedrals")
+                    || starts_with(line, "Velocities")
+                    || starts_with(line, "Impropers")) {
                     break;
                 }
                 std::istringstream iss(line);
-                int t; double m;
-                if (iss >> t >> m) type_to_mass[t] = m;
+                int t;
+                double m;
+                if (iss >> t >> m)
+                    type_to_mass[t] = m;
             }
             continue; // `line` now holds the next section header
         }
@@ -153,21 +162,23 @@ Frame load_lammps_data(const std::string& path) {
                 }
                 const int idx = next_idx++;
                 id_to_idx[id] = idx;
-                frame.atoms.x[idx]    = x;
-                frame.atoms.y[idx]    = y;
-                frame.atoms.z[idx]    = z;
-                frame.atoms.type[idx] = atype - 1;  // 0-indexed
+                frame.atoms.x[idx] = x;
+                frame.atoms.y[idx] = y;
+                frame.atoms.z[idx] = z;
+                frame.atoms.type[idx] = atype - 1; // 0-indexed
                 auto it = type_to_mass.find(atype);
-                frame.atoms.mass[idx] = (it != type_to_mass.end()) ? it->second : 0.0;
+                frame.atoms.mass[idx] =
+                    (it != type_to_mass.end()) ? it->second : 0.0;
             });
             // Fetch next header.
-            if (!next_data_line(in, line)) line.clear();
+            if (!next_data_line(in, line))
+                line.clear();
             continue;
         }
         if (is_section("Bonds")) {
             frame.bonds.atomi = xt::zeros<int>({n_bonds});
             frame.bonds.atomj = xt::zeros<int>({n_bonds});
-            frame.bonds.type  = xt::zeros<int>({n_bonds});
+            frame.bonds.type = xt::zeros<int>({n_bonds});
             int row = 0;
             consume_n(n_bonds, [&](const std::string& l) {
                 std::istringstream iss(l);
@@ -175,19 +186,20 @@ Frame load_lammps_data(const std::string& path) {
                 if (!(iss >> bid >> btype >> ai >> aj)) {
                     die(path, "malformed Bonds row: " + l);
                 }
-                frame.bonds.type[row]  = btype - 1;
+                frame.bonds.type[row] = btype - 1;
                 frame.bonds.atomi[row] = id_to_idx[ai];
                 frame.bonds.atomj[row] = id_to_idx[aj];
                 ++row;
             });
-            if (!next_data_line(in, line)) line.clear();
+            if (!next_data_line(in, line))
+                line.clear();
             continue;
         }
         if (is_section("Angles")) {
             frame.angles.atomi = xt::zeros<int>({n_angles});
             frame.angles.atomj = xt::zeros<int>({n_angles});
             frame.angles.atomk = xt::zeros<int>({n_angles});
-            frame.angles.type  = xt::zeros<int>({n_angles});
+            frame.angles.type = xt::zeros<int>({n_angles});
             int row = 0;
             consume_n(n_angles, [&](const std::string& l) {
                 std::istringstream iss(l);
@@ -195,13 +207,14 @@ Frame load_lammps_data(const std::string& path) {
                 if (!(iss >> aid >> atype >> ai >> aj >> ak)) {
                     die(path, "malformed Angles row: " + l);
                 }
-                frame.angles.type[row]  = atype - 1;
+                frame.angles.type[row] = atype - 1;
                 frame.angles.atomi[row] = id_to_idx[ai];
                 frame.angles.atomj[row] = id_to_idx[aj];
                 frame.angles.atomk[row] = id_to_idx[ak];
                 ++row;
             });
-            if (!next_data_line(in, line)) line.clear();
+            if (!next_data_line(in, line))
+                line.clear();
             continue;
         }
         if (is_section("Dihedrals")) {
@@ -209,7 +222,7 @@ Frame load_lammps_data(const std::string& path) {
             frame.dihedrals.atomj = xt::zeros<int>({n_dihedrals});
             frame.dihedrals.atomk = xt::zeros<int>({n_dihedrals});
             frame.dihedrals.atoml = xt::zeros<int>({n_dihedrals});
-            frame.dihedrals.type  = xt::zeros<int>({n_dihedrals});
+            frame.dihedrals.type = xt::zeros<int>({n_dihedrals});
             int row = 0;
             consume_n(n_dihedrals, [&](const std::string& l) {
                 std::istringstream iss(l);
@@ -217,24 +230,28 @@ Frame load_lammps_data(const std::string& path) {
                 if (!(iss >> did >> dtype >> ai >> aj >> ak >> al)) {
                     die(path, "malformed Dihedrals row: " + l);
                 }
-                frame.dihedrals.type[row]  = dtype - 1;
+                frame.dihedrals.type[row] = dtype - 1;
                 frame.dihedrals.atomi[row] = id_to_idx[ai];
                 frame.dihedrals.atomj[row] = id_to_idx[aj];
                 frame.dihedrals.atomk[row] = id_to_idx[ak];
                 frame.dihedrals.atoml[row] = id_to_idx[al];
                 ++row;
             });
-            if (!next_data_line(in, line)) line.clear();
+            if (!next_data_line(in, line))
+                line.clear();
             continue;
         }
         // Skip Velocities / Impropers — not used in this benchmark.
         if (is_section("Velocities") || is_section("Impropers")) {
             // Best-effort skip: advance until the next section header or EOF.
             while (next_data_line(in, line)) {
-                if (starts_with(line, "Atoms") || starts_with(line, "Bonds") ||
-                    starts_with(line, "Angles") || starts_with(line, "Dihedrals") ||
-                    starts_with(line, "Masses") || starts_with(line, "Velocities") ||
-                    starts_with(line, "Impropers")) break;
+                if (starts_with(line, "Atoms") || starts_with(line, "Bonds")
+                    || starts_with(line, "Angles")
+                    || starts_with(line, "Dihedrals")
+                    || starts_with(line, "Masses")
+                    || starts_with(line, "Velocities")
+                    || starts_with(line, "Impropers"))
+                    break;
             }
             continue;
         }

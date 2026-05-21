@@ -20,9 +20,8 @@
 #include <cmath>
 #include <vector>
 
-#include "atomiverse/cpu/potentials/harmonic_angle.h"
-#include "atomiverse/cpu/potentials/harmonic_bond.h"
-#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
+#include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/barostat.h"
 #include "atomiverse/cpu/md/deform.h"
@@ -34,35 +33,37 @@
 #include "atomiverse/cpu/md/nose_hoover.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/md/virial_stress.h"
-#include "atomiverse/core/mat3.h"
-#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/potentials/harmonic_angle.h"
+#include "atomiverse/cpu/potentials/harmonic_bond.h"
+#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
 
 using namespace ATV;
 
 namespace {
 
 inline constexpr double kKcalPerMolToEv = 1.0 / 23.060547830619026;
-inline constexpr double kBondK_kcal  = 268.0;
-inline constexpr double kBondR0      = 1.53;
+inline constexpr double kBondK_kcal = 268.0;
+inline constexpr double kBondR0 = 1.53;
 inline constexpr double kAngleK_kcal = 60.0;
 inline constexpr double kAngleTheta0 = 109.5 * kPI / 180.0;
 
-inline double bond_K_eV()  { return kBondK_kcal  * kKcalPerMolToEv; }
+inline double bond_K_eV() { return kBondK_kcal * kKcalPerMolToEv; }
 inline double angle_K_eV() { return kAngleK_kcal * kKcalPerMolToEv; }
 inline std::vector<double> dihedral_Cn_eV() {
     return {
-        1.73    * kKcalPerMolToEv,   // C0  (MSU paper, Tschopp 2010)
-        -4.49   * kKcalPerMolToEv,   // C1
-        0.776   * kKcalPerMolToEv,   // C2
-        6.99    * kKcalPerMolToEv,   // C3
-        0.0,                          // C4
+        1.73 * kKcalPerMolToEv,  // C0  (MSU paper, Tschopp 2010)
+        -4.49 * kKcalPerMolToEv, // C1
+        0.776 * kKcalPerMolToEv, // C2
+        6.99 * kKcalPerMolToEv,  // C3
+        0.0,                     // C4
     };
 }
 
 cpu::Frame make_pe_box(int n_chains_per_axis, int n_carbons_per_chain,
-                        double box_len, double margin) {
-    const int n_chains = n_chains_per_axis * n_chains_per_axis * n_chains_per_axis;
-    const int n_atoms  = n_chains * n_carbons_per_chain;
+                       double box_len, double margin) {
+    const int n_chains =
+        n_chains_per_axis * n_chains_per_axis * n_chains_per_axis;
+    const int n_atoms = n_chains * n_carbons_per_chain;
     cpu::Frame frame(n_atoms);
 
     const double half_apex = (kPI - kAngleTheta0) / 2.0;
@@ -76,7 +77,7 @@ cpu::Frame make_pe_box(int n_chains_per_axis, int n_carbons_per_chain,
             for (int cz = 0; cz < n_chains_per_axis; ++cz) {
                 const double cx0 = cx * cell + cell / 2.0;
                 const double cz0 = cz * cell + cell / 2.0;
-                const double y0  = cy * cell + margin;
+                const double y0 = cy * cell + margin;
                 for (int i = 0; i < n_carbons_per_chain; ++i) {
                     frame.atoms.x[idx] = cx0;
                     frame.atoms.y[idx] = y0 + i * dy_step;
@@ -94,16 +95,16 @@ cpu::Frame make_pe_box(int n_chains_per_axis, int n_carbons_per_chain,
     const int n_d_per = n_carbons_per_chain - 3;
     frame.bonds.atomi = xt::zeros<int>({n_chains * n_b_per});
     frame.bonds.atomj = xt::zeros<int>({n_chains * n_b_per});
-    frame.bonds.type  = xt::zeros<int>({n_chains * n_b_per});
+    frame.bonds.type = xt::zeros<int>({n_chains * n_b_per});
     frame.angles.atomi = xt::zeros<int>({n_chains * n_a_per});
     frame.angles.atomj = xt::zeros<int>({n_chains * n_a_per});
     frame.angles.atomk = xt::zeros<int>({n_chains * n_a_per});
-    frame.angles.type  = xt::zeros<int>({n_chains * n_a_per});
+    frame.angles.type = xt::zeros<int>({n_chains * n_a_per});
     frame.dihedrals.atomi = xt::zeros<int>({n_chains * n_d_per});
     frame.dihedrals.atomj = xt::zeros<int>({n_chains * n_d_per});
     frame.dihedrals.atomk = xt::zeros<int>({n_chains * n_d_per});
     frame.dihedrals.atoml = xt::zeros<int>({n_chains * n_d_per});
-    frame.dihedrals.type  = xt::zeros<int>({n_chains * n_d_per});
+    frame.dihedrals.type = xt::zeros<int>({n_chains * n_d_per});
     for (int c = 0; c < n_chains; ++c) {
         const int base = c * n_carbons_per_chain;
         for (int k = 0; k < n_b_per; ++k) {
@@ -144,14 +145,14 @@ TEST(PeMsuPipeline, NvtPlusNptPlusDeform) {
     // 8 chains × 18 atoms = 144 atoms in a 48 Å box (slab 24 Å, chain
     // length ~21.6 Å fits inside one slab).
     auto frame = make_pe_box(/*chains_per_axis=*/2, /*n_carbons_per_chain=*/18,
-                              /*box_len=*/48.0, /*margin=*/1.0);
+                             /*box_len=*/48.0, /*margin=*/1.0);
 
-    const double T_target = 300.0;     // K
-    const double P_target = 0.0;       // eV/Å³
-    const double dt       = 0.5;       // fs
-    const double tau_T    = 100.0;     // fs
-    const double tau_P    = 500.0;     // fs (slower than T_target)
-    const double strain_rate = 5e-5;   // 1/fs (~5e10 / s -- tension-like)
+    const double T_target = 300.0;   // K
+    const double P_target = 0.0;     // eV/Å³
+    const double dt = 0.5;           // fs
+    const double tau_T = 100.0;      // fs
+    const double tau_P = 500.0;      // fs (slower than T_target)
+    const double strain_rate = 5e-5; // 1/fs (~5e10 / s -- tension-like)
 
     const double lj_eps = 0.00512;
     const double lj_sig = 4.01;
@@ -167,7 +168,8 @@ TEST(PeMsuPipeline, NvtPlusNptPlusDeform) {
         .add(cpu::md::mpi::HaloExchangeReverse{}, -1000);
     sim.on(ATV::md::Phase::force)
         .add(cpu::md::NeighborList<>{lj_cut}, -10)
-        .add(cpu::md::LJ{lj_eps, lj_sig, lj_cut}.set_special_bonds(0.0, 0.0, 0.0))
+        .add(cpu::md::LJ{lj_eps, lj_sig, lj_cut}.set_special_bonds(0.0, 0.0,
+                                                                   0.0))
         .add(HarmonicBond{{bond_K_eV()}, {kBondR0}})
         .add(HarmonicAngle{{angle_K_eV()}, {kAngleTheta0}})
         .add(MultiHarmonicDihedral{{dihedral_Cn_eV()}});

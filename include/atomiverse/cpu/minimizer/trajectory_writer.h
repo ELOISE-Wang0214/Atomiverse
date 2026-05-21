@@ -35,7 +35,7 @@ namespace minimizer {
 ///
 /// MPI-aware: only rank 0 writes.
 class TrajectoryWriter : public cpu::ComponentBase {
-public:
+  public:
     /// @brief Construct.
     /// @param filename Output XYZ path (appended; existing file is overwritten
     ///                 on the first launched step).
@@ -53,7 +53,7 @@ public:
     /// @brief Number of frames written so far.
     int n_frames_written() const { return n_written_; }
 
-private:
+  private:
     std::string filename_;
     int stride_;
     int n_written_ = 0;

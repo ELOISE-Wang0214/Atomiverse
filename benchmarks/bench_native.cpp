@@ -27,22 +27,22 @@
 #include <cmath>
 #include <vector>
 
-#include "atomiverse/cpu/scf/native_integrals.h"
-#include "atomiverse/cpu/scf/rys_roots.h"
-#include "atomiverse/cpu/scf/rys_eri.h"
-#include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/shell_pair.h"
-#include "atomiverse/cpu/scf/operators.h"
 #include "atomiverse/cpu/scf/integral_derivatives.h"
+#include "atomiverse/cpu/scf/integrals.h"
+#include "atomiverse/cpu/scf/native_integrals.h"
+#include "atomiverse/cpu/scf/operators.h"
+#include "atomiverse/cpu/scf/rys_eri.h"
+#include "atomiverse/cpu/scf/rys_roots.h"
+#include "atomiverse/cpu/scf/shell_pair.h"
 #include "atomiverse/cpu/scf/xc_functional.h"
 #ifdef ATV_HAS_LIBXC
 #include "atomiverse/cpu/scf/xc_libxc.h"
 #endif
-#include "atomiverse/cpu/scf/grid.h"
-#include "atomiverse/cpu/scf/scf_solve.h"
-#include "atomiverse/cpu/scf/gradient.h"
 #include "atomiverse/core/constants.h"
 #include "atomiverse/core/log.h"
+#include "atomiverse/cpu/scf/gradient.h"
+#include "atomiverse/cpu/scf/grid.h"
+#include "atomiverse/cpu/scf/scf_solve.h"
 
 using namespace ATV;
 using namespace ATV::cpu::scf;
@@ -74,50 +74,24 @@ static cpu::Frame make_lih() {
 static cpu::Frame make_aspirin() {
     cpu::Frame frame(21);
     int types[21] = {
-        6, 6, 6, 6, 6, 6,
-        6,
-        8, 8,
-        8,
-        6,
-        8,
-        6,
-        1, 1, 1, 1,
-        1,
-        1, 1, 1,
+        6, 6, 6, 6, 6, 6, 6, 8, 8, 8, 6, 8, 6, 1, 1, 1, 1, 1, 1, 1, 1,
     };
     double masses[21] = {
-        12.011, 12.011, 12.011, 12.011, 12.011, 12.011,
-        12.011,
-        15.999, 15.999,
-        15.999,
-        12.011,
-        15.999,
-        12.011,
-        1.008, 1.008, 1.008, 1.008,
-        1.008,
-        1.008, 1.008, 1.008,
+        12.011, 12.011, 12.011, 12.011, 12.011, 12.011, 12.011,
+        15.999, 15.999, 15.999, 12.011, 15.999, 12.011, 1.008,
+        1.008,  1.008,  1.008,  1.008,  1.008,  1.008,  1.008,
     };
     double coords[21][3] = {
-        { 1.2879,  0.1068,  0.0000},
-        { 0.1768,  1.0827,  0.0000},
-        { 0.5171,  2.4290,  0.0000},
-        { 1.8519,  2.7993,  0.0000},
-        { 2.9293,  1.8524,  0.0000},
-        { 2.6191,  0.4890,  0.0000},
-        {-1.2076,  0.6698,  0.0000},
-        {-1.5541, -0.4994,  0.0000},
-        {-2.0632,  1.6805,  0.0000},
-        { 0.9973, -1.2285,  0.0000},
-        {-0.2830, -1.7447,  0.0000},
-        {-0.3696, -2.9537,  0.0000},
-        {-1.3593, -0.7411,  0.3000},
-        {-0.2980,  3.1365,  0.0000},
-        { 2.0791,  3.8586,  0.0000},
-        { 3.9560,  2.1939,  0.0000},
-        { 3.4546, -0.2019,  0.0000},
-        {-2.9828,  1.3621,  0.0000},
-        {-1.0697, -0.1755,  1.1920},
-        {-2.3482, -1.1583,  0.5001},
+        {1.2879, 0.1068, 0.0000},    {0.1768, 1.0827, 0.0000},
+        {0.5171, 2.4290, 0.0000},    {1.8519, 2.7993, 0.0000},
+        {2.9293, 1.8524, 0.0000},    {2.6191, 0.4890, 0.0000},
+        {-1.2076, 0.6698, 0.0000},   {-1.5541, -0.4994, 0.0000},
+        {-2.0632, 1.6805, 0.0000},   {0.9973, -1.2285, 0.0000},
+        {-0.2830, -1.7447, 0.0000},  {-0.3696, -2.9537, 0.0000},
+        {-1.3593, -0.7411, 0.3000},  {-0.2980, 3.1365, 0.0000},
+        {2.0791, 3.8586, 0.0000},    {3.9560, 2.1939, 0.0000},
+        {3.4546, -0.2019, 0.0000},   {-2.9828, 1.3621, 0.0000},
+        {-1.0697, -0.1755, 1.1920},  {-2.3482, -1.1583, 0.5001},
         {-1.4267, -0.2091, -0.6502},
     };
 
@@ -162,17 +136,18 @@ static cpu::Frame make_ethanol() {
     // C2H5OH: 9 atoms, 26 AOs (STO-3G)
     cpu::Frame frame(9);
     int types[] = {6, 6, 8, 1, 1, 1, 1, 1, 1};
-    double masses[] = {12.011, 12.011, 15.999, 1.008, 1.008, 1.008, 1.008, 1.008, 1.008};
+    double masses[] = {12.011, 12.011, 15.999, 1.008, 1.008,
+                       1.008,  1.008,  1.008,  1.008};
     double coords[][3] = {
-        {-0.748, -0.015,  0.024},  // C1
-        { 0.558,  0.683, -0.060},  // C2
-        { 1.651, -0.217,  0.018},  // O
-        {-0.813, -0.543,  0.978},  // H
-        {-0.813, -0.726, -0.801},  // H
-        {-1.576,  0.695,  0.026},  // H
-        { 0.622,  1.395,  0.768},  // H
-        { 0.622,  1.214, -1.009},  // H
-        { 1.617, -0.694,  0.865},  // H (OH)
+        {-0.748, -0.015, 0.024},  // C1
+        {0.558, 0.683, -0.060},   // C2
+        {1.651, -0.217, 0.018},   // O
+        {-0.813, -0.543, 0.978},  // H
+        {-0.813, -0.726, -0.801}, // H
+        {-1.576, 0.695, 0.026},   // H
+        {0.622, 1.395, 0.768},    // H
+        {0.622, 1.214, -1.009},   // H
+        {1.617, -0.694, 0.865},   // H (OH)
     };
     for (int i = 0; i < 9; ++i) {
         frame.atoms.type[i] = types[i];
@@ -275,10 +250,8 @@ static void BM_XC_PBE_SinglePoint(benchmark::State& state) {
     const auto point = make_pbe_point_case(static_cast<int>(state.range(0)));
     state.SetLabel(point.label);
     for (auto _ : state) {
-        auto out = evaluate_xc(
-            XCType::PBE,
-            point.rho_a, point.rho_b,
-            point.sigma_aa, point.sigma_ab, point.sigma_bb);
+        auto out = evaluate_xc(XCType::PBE, point.rho_a, point.rho_b,
+                               point.sigma_aa, point.sigma_ab, point.sigma_bb);
         benchmark::DoNotOptimize(out.exc);
     }
 }
@@ -289,10 +262,9 @@ static void BM_XC_PBE_SinglePoint_Libxc(benchmark::State& state) {
     const auto point = make_pbe_point_case(static_cast<int>(state.range(0)));
     state.SetLabel(point.label);
     for (auto _ : state) {
-        auto out = evaluate_xc_libxc(
-            XCType::PBE,
-            point.rho_a, point.rho_b,
-            point.sigma_aa, point.sigma_ab, point.sigma_bb);
+        auto out =
+            evaluate_xc_libxc(XCType::PBE, point.rho_a, point.rho_b,
+                              point.sigma_aa, point.sigma_ab, point.sigma_bb);
         benchmark::DoNotOptimize(out.exc);
     }
 }
@@ -343,7 +315,8 @@ BENCHMARK(BM_XC_LSDA_Batch_Libxc)->Arg(100)->Arg(1000)->Arg(10000);
 
 static void BM_XC_PBE_Batch(benchmark::State& state) {
     int n = static_cast<int>(state.range(0));
-    std::vector<double> rho_a(n), rho_b(n), sigma_aa(n), sigma_ab(n), sigma_bb(n);
+    std::vector<double> rho_a(n), rho_b(n), sigma_aa(n), sigma_ab(n),
+        sigma_bb(n);
     for (int i = 0; i < n; ++i) {
         double r = 0.01 + 2.0 * i / n;
         rho_a[i] = 0.5 * std::exp(-r);
@@ -356,8 +329,8 @@ static void BM_XC_PBE_Batch(benchmark::State& state) {
     for (auto _ : state) {
         double total = 0.0;
         for (int i = 0; i < n; ++i) {
-            auto out = evaluate_xc(XCType::PBE, rho_a[i], rho_b[i],
-                                   sigma_aa[i], sigma_ab[i], sigma_bb[i]);
+            auto out = evaluate_xc(XCType::PBE, rho_a[i], rho_b[i], sigma_aa[i],
+                                   sigma_ab[i], sigma_bb[i]);
             total += out.exc;
         }
         benchmark::DoNotOptimize(total);
@@ -369,7 +342,8 @@ BENCHMARK(BM_XC_PBE_Batch)->Arg(100)->Arg(1000)->Arg(10000);
 #ifdef ATV_HAS_LIBXC
 static void BM_XC_PBE_Batch_Libxc(benchmark::State& state) {
     int n = static_cast<int>(state.range(0));
-    std::vector<double> rho_a(n), rho_b(n), sigma_aa(n), sigma_ab(n), sigma_bb(n);
+    std::vector<double> rho_a(n), rho_b(n), sigma_aa(n), sigma_ab(n),
+        sigma_bb(n);
     for (int i = 0; i < n; ++i) {
         double r = 0.01 + 2.0 * i / n;
         rho_a[i] = 0.5 * std::exp(-r);
@@ -382,10 +356,8 @@ static void BM_XC_PBE_Batch_Libxc(benchmark::State& state) {
     for (auto _ : state) {
         double total = 0.0;
         for (int i = 0; i < n; ++i) {
-            auto out = evaluate_xc_libxc(
-                XCType::PBE,
-                rho_a[i], rho_b[i],
-                sigma_aa[i], sigma_ab[i], sigma_bb[i]);
+            auto out = evaluate_xc_libxc(XCType::PBE, rho_a[i], rho_b[i],
+                                         sigma_aa[i], sigma_ab[i], sigma_bb[i]);
             total += out.exc;
         }
         benchmark::DoNotOptimize(total);
@@ -408,7 +380,11 @@ static void BM_Grid_SingleAtom(benchmark::State& state) {
     }
 }
 BENCHMARK(BM_Grid_SingleAtom)
-    ->Arg(6)->Arg(26)->Arg(110)->Arg(302)->Arg(590)
+    ->Arg(6)
+    ->Arg(26)
+    ->Arg(110)
+    ->Arg(302)
+    ->Arg(590)
     ->Unit(benchmark::kMicrosecond);
 
 static void BM_Grid_H2(benchmark::State& state) {
@@ -421,7 +397,10 @@ static void BM_Grid_H2(benchmark::State& state) {
     }
 }
 BENCHMARK(BM_Grid_H2)
-    ->Arg(6)->Arg(26)->Arg(110)->Arg(302)
+    ->Arg(6)
+    ->Arg(26)
+    ->Arg(110)
+    ->Arg(302)
     ->Unit(benchmark::kMicrosecond);
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -431,8 +410,8 @@ BENCHMARK(BM_Grid_H2)
 static void BM_IntegralDeriv_H2(benchmark::State& state) {
     auto frame = make_h2();
     for (auto _ : state) {
-        auto dpack = build_integral_derivatives(
-            build_integrals(frame, BasisSet::STO3G));
+        auto dpack =
+            build_integral_derivatives(build_integrals(frame, BasisSet::STO3G));
         benchmark::DoNotOptimize(dpack.dV_nuc(0, 0));
     }
 }
@@ -441,8 +420,8 @@ BENCHMARK(BM_IntegralDeriv_H2)->Unit(benchmark::kMicrosecond);
 static void BM_IntegralDeriv_LiH(benchmark::State& state) {
     auto frame = make_lih();
     for (auto _ : state) {
-        auto dpack = build_integral_derivatives(
-            build_integrals(frame, BasisSet::STO3G));
+        auto dpack =
+            build_integral_derivatives(build_integrals(frame, BasisSet::STO3G));
         benchmark::DoNotOptimize(dpack.dV_nuc(0, 0));
     }
 }
@@ -451,8 +430,8 @@ BENCHMARK(BM_IntegralDeriv_LiH)->Unit(benchmark::kMicrosecond);
 static void BM_IntegralDeriv_Aspirin(benchmark::State& state) {
     auto frame = make_aspirin();
     for (auto _ : state) {
-        auto dpack = build_integral_derivatives(
-            build_integrals(frame, BasisSet::STO3G));
+        auto dpack =
+            build_integral_derivatives(build_integrals(frame, BasisSet::STO3G));
         benchmark::DoNotOptimize(dpack.dV_nuc(0, 0));
     }
 }
@@ -586,7 +565,8 @@ static void BM_GBuild_AO_Aspirin(benchmark::State& state) {
     auto sp = build_shell_pair_list(integrals);
     int n = integrals.n_basis;
     RealMatrix P = xt::zeros<double>({(size_t)n, (size_t)n});
-    for (int i = 0; i < n; ++i) P(i, i) = 1.0;
+    for (int i = 0; i < n; ++i)
+        P(i, i) = 1.0;
     RealMatrix G;
     for (auto _ : state) {
         build_g_rhf_direct(sp, P, G);
@@ -602,7 +582,8 @@ static void BM_GBuild_Block_Aspirin(benchmark::State& state) {
     auto sp_blk = build_shell_block_pair_list(integrals);
     int n = integrals.n_basis;
     RealMatrix P = xt::zeros<double>({(size_t)n, (size_t)n});
-    for (int i = 0; i < n; ++i) P(i, i) = 1.0;
+    for (int i = 0; i < n; ++i)
+        P(i, i) = 1.0;
     RealMatrix G;
     for (auto _ : state) {
         build_g_rhf_direct_block(sp_blk, P, G);
@@ -636,7 +617,8 @@ static void BM_GBuild_Block_Aspirin_ccPVDZ(benchmark::State& state) {
     auto sp_blk = build_shell_block_pair_list(integrals);
     int n = integrals.n_basis;
     RealMatrix P = xt::zeros<double>({(size_t)n, (size_t)n});
-    for (int i = 0; i < n; ++i) P(i, i) = 1.0;
+    for (int i = 0; i < n; ++i)
+        P(i, i) = 1.0;
     RealMatrix G;
     for (auto _ : state) {
         build_g_rhf_direct_block(sp_blk, P, G);
@@ -655,7 +637,8 @@ static void BM_GBuild_Block_Water(benchmark::State& state) {
     auto sp_blk = build_shell_block_pair_list(integrals);
     int n = integrals.n_basis;
     RealMatrix P = xt::zeros<double>({(size_t)n, (size_t)n});
-    for (int i = 0; i < n; ++i) P(i, i) = 1.0;
+    for (int i = 0; i < n; ++i)
+        P(i, i) = 1.0;
     RealMatrix G;
     for (auto _ : state) {
         build_g_rhf_direct_block(sp_blk, P, G);
@@ -671,7 +654,8 @@ static void BM_GBuild_Block_Methane(benchmark::State& state) {
     auto sp_blk = build_shell_block_pair_list(integrals);
     int n = integrals.n_basis;
     RealMatrix P = xt::zeros<double>({(size_t)n, (size_t)n});
-    for (int i = 0; i < n; ++i) P(i, i) = 1.0;
+    for (int i = 0; i < n; ++i)
+        P(i, i) = 1.0;
     RealMatrix G;
     for (auto _ : state) {
         build_g_rhf_direct_block(sp_blk, P, G);
@@ -687,7 +671,8 @@ static void BM_GBuild_Block_Ethanol(benchmark::State& state) {
     auto sp_blk = build_shell_block_pair_list(integrals);
     int n = integrals.n_basis;
     RealMatrix P = xt::zeros<double>({(size_t)n, (size_t)n});
-    for (int i = 0; i < n; ++i) P(i, i) = 1.0;
+    for (int i = 0; i < n; ++i)
+        P(i, i) = 1.0;
     RealMatrix G;
     for (auto _ : state) {
         build_g_rhf_direct_block(sp_blk, P, G);
@@ -730,9 +715,10 @@ BENCHMARK(BM_RHFSolve_Ethanol)->Unit(benchmark::kMillisecond);
 static void BM_RHFSolve_Aspirin(benchmark::State& state) {
     auto frame = make_aspirin();
     // PySCF approach: store ERI once, BLAS contraction per iteration.
-    auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, /*compute_eri=*/true);
+    auto integrals = build_integrals(frame, cpu::scf::BasisSet::STO3G, 0,
+                                     /*compute_eri=*/true);
     auto cfg = rhf_config(integrals);
-    cfg.tol = 1e-9;   // match PySCF conv_tol (|dE|<tol + ||err||<sqrt(tol))
+    cfg.tol = 1e-9; // match PySCF conv_tol (|dE|<tol + ||err||<sqrt(tol))
     cfg.max_iter = 50;
     for (auto _ : state) {
         auto result = scf_solve(integrals, cfg);
@@ -835,9 +821,13 @@ static native::ShellBlock make_s_block() {
     static const double alpha[] = {3.42525091, 0.62391373, 0.16885540};
     static const double coeff[] = {0.15432897, 0.53532814, 0.44463454};
     native::ShellBlock b{};
-    b.n_prim = 3; b.alpha = alpha; b.coeff = coeff;
+    b.n_prim = 3;
+    b.alpha = alpha;
+    b.coeff = coeff;
     b.center[0] = b.center[1] = b.center[2] = 0.0;
-    b.l = 0; b.n_cart = 1; b.ao_start = 0;
+    b.l = 0;
+    b.n_cart = 1;
+    b.ao_start = 0;
     return b;
 }
 
@@ -847,16 +837,25 @@ static native::ShellBlock make_p_block() {
     static const double alpha[] = {2.9412494, 0.6834831, 0.2222899};
     static const double coeff[] = {-0.09996723, 0.39951283, 0.70011547};
     native::ShellBlock b{};
-    b.n_prim = 3; b.alpha = alpha; b.coeff = coeff;
-    b.center[0] = 1.4; b.center[1] = 0.0; b.center[2] = 0.0;
-    b.l = 1; b.n_cart = 3; b.ao_start = 1;
+    b.n_prim = 3;
+    b.alpha = alpha;
+    b.coeff = coeff;
+    b.center[0] = 1.4;
+    b.center[1] = 0.0;
+    b.center[2] = 0.0;
+    b.l = 1;
+    b.n_cart = 3;
+    b.ao_start = 1;
     return b;
 }
 
 } // namespace
 
 static void BM_RysERI_ssss(benchmark::State& state) {
-    auto A = make_s_block(); auto B = A; auto C = A; auto D = A;
+    auto A = make_s_block();
+    auto B = A;
+    auto C = A;
+    auto D = A;
     double out[1];
     for (auto _ : state) {
         out[0] = 0.0;
@@ -867,8 +866,10 @@ static void BM_RysERI_ssss(benchmark::State& state) {
 BENCHMARK(BM_RysERI_ssss);
 
 static void BM_RysERI_psss(benchmark::State& state) {
-    auto A = make_p_block(); auto B = make_s_block();
-    auto C = make_s_block(); auto D = make_s_block();
+    auto A = make_p_block();
+    auto B = make_s_block();
+    auto C = make_s_block();
+    auto D = make_s_block();
     double out[3];
     for (auto _ : state) {
         std::fill(out, out + 3, 0.0);
@@ -879,8 +880,10 @@ static void BM_RysERI_psss(benchmark::State& state) {
 BENCHMARK(BM_RysERI_psss);
 
 static void BM_RysERI_ppss(benchmark::State& state) {
-    auto A = make_p_block(); auto B = make_p_block();
-    auto C = make_s_block(); auto D = make_s_block();
+    auto A = make_p_block();
+    auto B = make_p_block();
+    auto C = make_s_block();
+    auto D = make_s_block();
     double out[9];
     for (auto _ : state) {
         std::fill(out, out + 9, 0.0);
@@ -891,8 +894,10 @@ static void BM_RysERI_ppss(benchmark::State& state) {
 BENCHMARK(BM_RysERI_ppss);
 
 static void BM_RysERI_pppp(benchmark::State& state) {
-    auto A = make_p_block(); auto B = make_p_block();
-    auto C = make_p_block(); auto D = make_p_block();
+    auto A = make_p_block();
+    auto B = make_p_block();
+    auto C = make_p_block();
+    auto D = make_p_block();
     double out[81];
     for (auto _ : state) {
         std::fill(out, out + 81, 0.0);

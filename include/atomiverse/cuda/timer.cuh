@@ -23,7 +23,7 @@ namespace ATV {
 /// elapsed times after each slot sync (zero extra sync overhead).
 /// Produces a LAMMPS-style summary table.
 class Timer {
-public:
+  public:
     /// @brief Allocate CUDA events.
     void init() {
         for (int i = 0; i < kMaxOps; ++i) {
@@ -74,68 +74,69 @@ public:
     /// @param phase_names Phase name strings indexed by phase number.
     /// @return Formatted timing table string.
     std::string summary(const std::vector<std::string>& phase_names) const {
-        if (total_steps_ == 0) return "No timing data.\n";
+        if (total_steps_ == 0)
+            return "No timing data.\n";
 
         // Per-phase totals and max phase index
         std::map<int, double> phase_ms;
         int max_phase = -1;
         for (auto& e : entries_) {
             phase_ms[e.phase] += e.total_ms;
-            if (e.phase > max_phase) max_phase = e.phase;
+            if (e.phase > max_phase)
+                max_phase = e.phase;
         }
 
         double total = 0;
-        for (auto& [p, ms] : phase_ms) total += ms;
+        for (auto& [p, ms] : phase_ms)
+            total += ms;
 
         std::ostringstream os;
         os << std::fixed;
 
         double sps = (total > 0) ? total_steps_ / (total * 0.001) : 0;
         os << "Performance: " << total_steps_ << " steps, "
-           << std::setprecision(1) << total << " ms ("
-           << std::setprecision(0) << sps << " steps/s)\n\n";
+           << std::setprecision(1) << total << " ms (" << std::setprecision(0)
+           << sps << " steps/s)\n\n";
 
-        os << std::left  << std::setw(22) << "Phase"
-           << std::setw(22) << "Component"
-           << std::right << std::setw(10) << "Time(ms)"
-           << std::setw(8)  << "Calls"
-           << std::setw(8)  << "%" << "\n";
+        os << std::left << std::setw(22) << "Phase" << std::setw(22)
+           << "Component" << std::right << std::setw(10) << "Time(ms)"
+           << std::setw(8) << "Calls" << std::setw(8) << "%" << "\n";
         os << std::string(70, '-') << "\n";
 
         // Iterate by phase index — guarantees each phase appears once
         for (int p = 0; p <= max_phase; ++p) {
             auto pit = phase_ms.find(p);
-            if (pit == phase_ms.end()) continue;
+            if (pit == phase_ms.end())
+                continue;
 
             double pms = pit->second;
             double ppct = total > 0 ? 100.0 * pms / total : 0;
             std::string pname = (p < (int)phase_names.size())
-                ? phase_names[p] : std::to_string(p);
+                                    ? phase_names[p]
+                                    : std::to_string(p);
 
-            os << std::left  << std::setw(22) << pname
-               << std::setw(22) << ""
+            os << std::left << std::setw(22) << pname << std::setw(22) << ""
                << std::right << std::setprecision(2) << std::setw(10) << pms
-               << std::setw(8) << ""
-               << std::setprecision(1) << std::setw(8) << ppct << "\n";
+               << std::setw(8) << "" << std::setprecision(1) << std::setw(8)
+               << ppct << "\n";
 
             // Component rows for this phase (insertion order preserved)
             for (auto& e : entries_) {
-                if (e.phase != p) continue;
+                if (e.phase != p)
+                    continue;
                 double cpct = total > 0 ? 100.0 * e.total_ms / total : 0;
-                os << std::left  << std::setw(22) << ""
-                   << std::setw(22) << e.name
-                   << std::right << std::setprecision(2) << std::setw(10) << e.total_ms
-                   << std::setw(8)  << e.calls
+                os << std::left << std::setw(22) << "" << std::setw(22)
+                   << e.name << std::right << std::setprecision(2)
+                   << std::setw(10) << e.total_ms << std::setw(8) << e.calls
                    << std::setprecision(1) << std::setw(8) << cpct << "\n";
             }
         }
 
         os << std::string(70, '-') << "\n";
-        os << std::left  << std::setw(22) << "Total"
-           << std::setw(22) << ""
+        os << std::left << std::setw(22) << "Total" << std::setw(22) << ""
            << std::right << std::setprecision(2) << std::setw(10) << total
-           << std::setw(8) << ""
-           << std::setprecision(1) << std::setw(8) << 100.0 << "\n";
+           << std::setw(8) << "" << std::setprecision(1) << std::setw(8)
+           << 100.0 << "\n";
 
         return os.str();
     }
@@ -143,8 +144,10 @@ public:
     /// @brief Destroy CUDA events and reset state.
     void shutdown() {
         for (int i = 0; i < kMaxOps; ++i) {
-            if (starts_[i]) cudaEventDestroy(starts_[i]);
-            if (stops_[i])  cudaEventDestroy(stops_[i]);
+            if (starts_[i])
+                cudaEventDestroy(starts_[i]);
+            if (stops_[i])
+                cudaEventDestroy(stops_[i]);
             starts_[i] = nullptr;
             stops_[i] = nullptr;
         }
@@ -154,7 +157,7 @@ public:
         pending_ = 0;
     }
 
-private:
+  private:
     static constexpr int kMaxOps = 16;
 
     // Per-slot scratch (reset by flush)

@@ -41,8 +41,8 @@ namespace scf {
 /// @param shells Resolved shell list.
 /// @param atoms  Atoms supplying nuclear charges and positions.
 /// @return (n_basis × n_basis) symmetric matrix.
-[[nodiscard]] xt::xtensor<double, 2> build_nuclear_attraction(
-    const ShellList& shells, const AtomList& atoms);
+[[nodiscard]] xt::xtensor<double, 2>
+build_nuclear_attraction(const ShellList& shells, const AtomList& atoms);
 
 /// @brief Classical nucleus-nucleus repulsion energy
 ///        V_nuc = Σ_{A<B} Z_A Z_B / |R_A - R_B|, in Hartree.

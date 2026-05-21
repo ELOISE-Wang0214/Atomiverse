@@ -30,11 +30,11 @@ namespace scf {
 /// `include/atomiverse/cpu/scf/basis_data/`. Stage B1 ships STO-3G only;
 /// Stage B2 adds the remaining entries.
 enum class BasisSet {
-    STO3G,        ///< Minimal STO-3G (s/sp, H–O). Production baseline.
-    Pople631G,    ///< 6-31G split-valence (no polarization). Stage B2.
-    Pople631Gs,   ///< 6-31G* (d polarization on heavy atoms). Stage B2.
-    Def2SVP,      ///< def2-SVP (Ahlrichs split-valence polarized). Stage B2.
-    Def2TZVP,     ///< def2-TZVP (triple-zeta). Stage B2.
+    STO3G,      ///< Minimal STO-3G (s/sp, H–O). Production baseline.
+    Pople631G,  ///< 6-31G split-valence (no polarization). Stage B2.
+    Pople631Gs, ///< 6-31G* (d polarization on heavy atoms). Stage B2.
+    Def2SVP,    ///< def2-SVP (Ahlrichs split-valence polarized). Stage B2.
+    Def2TZVP,   ///< def2-TZVP (triple-zeta). Stage B2.
 };
 
 /// @brief Human-readable name for a BasisSet, suitable for logs and reports.
@@ -46,8 +46,8 @@ enum class BasisSet {
 /// routine expects) plus the net electron count given the molecular
 /// charge. The Frame itself stores positions in Angstrom.
 struct AtomList {
-    std::vector<native::Atom> atoms;   ///< Z + position in Bohr.
-    int n_electrons = 0;               ///< Sum(Z) - charge.
+    std::vector<native::Atom> atoms; ///< Z + position in Bohr.
+    int n_electrons = 0;             ///< Sum(Z) - charge.
 };
 
 /// @brief Shell list resolved from an atom list and a basis set.
@@ -62,18 +62,27 @@ struct AtomList {
 /// Copy / move rebinds the pointers automatically so the caller does not
 /// need to worry about relocation.
 struct ShellList {
-    std::vector<native::Shell> shells;                    ///< Shell descriptors (AO-level).
-    std::vector<std::vector<double>> shell_storage;       ///< [α_0..α_{np-1}, c_0..c_{np-1}] per shell.
-    int n_basis = 0;                                      ///< Total AOs (sum of n_cart over shells).
-    BasisSet basis = BasisSet::STO3G;                     ///< Which basis set produced this list.
+    std::vector<native::Shell> shells; ///< Shell descriptors (AO-level).
+    std::vector<std::vector<double>>
+        shell_storage; ///< [α_0..α_{np-1}, c_0..c_{np-1}] per shell.
+    int n_basis = 0;   ///< Total AOs (sum of n_cart over shells).
+    BasisSet basis = BasisSet::STO3G; ///< Which basis set produced this list.
 
     ShellList() = default;
     ShellList(const ShellList& o) { copy_from(o); }
     ShellList(ShellList&& o) noexcept { move_from(std::move(o)); }
-    ShellList& operator=(const ShellList& o) { if (this != &o) copy_from(o); return *this; }
-    ShellList& operator=(ShellList&& o) noexcept { if (this != &o) move_from(std::move(o)); return *this; }
+    ShellList& operator=(const ShellList& o) {
+        if (this != &o)
+            copy_from(o);
+        return *this;
+    }
+    ShellList& operator=(ShellList&& o) noexcept {
+        if (this != &o)
+            move_from(std::move(o));
+        return *this;
+    }
 
-private:
+  private:
     void copy_from(const ShellList& o);
     void move_from(ShellList&& o) noexcept;
     void rebind_pointers();

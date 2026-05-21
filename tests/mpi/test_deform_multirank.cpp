@@ -16,6 +16,7 @@
 
 #include <cmath>
 
+#include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/deform.h"
 #include "atomiverse/cpu/md/lj.h"
@@ -24,7 +25,6 @@
 #include "atomiverse/cpu/md/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/md/virial_stress.h"
-#include "atomiverse/core/mat3.h"
 
 using namespace ATV;
 
@@ -34,8 +34,10 @@ cpu::Frame make_fcc_argon(int n_cells, double a_lat) {
     const int n = n_cells * n_cells * n_cells * 4;
     cpu::Frame frame(n);
     double basis[4][3] = {
-        {0.0, 0.0, 0.0}, {0.5, 0.5, 0.0},
-        {0.5, 0.0, 0.5}, {0.0, 0.5, 0.5},
+        {0.0, 0.0, 0.0},
+        {0.5, 0.5, 0.0},
+        {0.5, 0.0, 0.5},
+        {0.0, 0.5, 0.5},
     };
     int idx = 0;
     for (int ix = 0; ix < n_cells; ++ix)
@@ -67,11 +69,11 @@ TEST(DeformMultiRank, UniaxialPullStretchesBoxOnAllRanks) {
     const double lj_eps = 0.0104;
     const double lj_sig = 3.4;
     const double lj_cut = 6.0;
-    const double dt     = 0.5;
+    const double dt = 0.5;
 
     const double box_x_initial = frame.box(0, 0);
-    const double strain_rate   = 1e-4;       // 1/fs
-    const int    n_steps       = 200;
+    const double strain_rate = 1e-4; // 1/fs
+    const int n_steps = 200;
 
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{dt});

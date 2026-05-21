@@ -14,36 +14,36 @@
 #include <cmath>
 #include <vector>
 
-#include "atomiverse/cpu/potentials/harmonic_angle.h"
-#include "atomiverse/cpu/potentials/harmonic_bond.h"
-#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
+#include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/lj.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/core/mat3.h"
-#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/potentials/harmonic_angle.h"
+#include "atomiverse/cpu/potentials/harmonic_bond.h"
+#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
 
 using namespace ATV;
 
 namespace {
 
 inline constexpr double kKcalPerMolToEv = 1.0 / 23.060547830619026;
-inline constexpr double kBondK_kcal  = 268.0;
-inline constexpr double kBondR0      = 1.53;
+inline constexpr double kBondK_kcal = 268.0;
+inline constexpr double kBondR0 = 1.53;
 inline constexpr double kAngleK_kcal = 60.0;
 inline constexpr double kAngleTheta0 = 109.5 * kPI / 180.0;
 
-inline double bond_K_eV()  { return kBondK_kcal  * kKcalPerMolToEv; }
+inline double bond_K_eV() { return kBondK_kcal * kKcalPerMolToEv; }
 inline double angle_K_eV() { return kAngleK_kcal * kKcalPerMolToEv; }
 inline std::vector<double> dihedral_Cn_eV() {
     return {
-        1.73    * kKcalPerMolToEv,   // C0  (MSU paper, Tschopp 2010)
-        -4.49   * kKcalPerMolToEv,   // C1
-        0.776   * kKcalPerMolToEv,   // C2
-        6.99    * kKcalPerMolToEv,   // C3
-        0.0,                          // C4
+        1.73 * kKcalPerMolToEv,  // C0  (MSU paper, Tschopp 2010)
+        -4.49 * kKcalPerMolToEv, // C1
+        0.776 * kKcalPerMolToEv, // C2
+        6.99 * kKcalPerMolToEv,  // C3
+        0.0,                     // C4
     };
 }
 
@@ -53,8 +53,8 @@ inline std::vector<double> dihedral_Cn_eV() {
 struct MultiChainConfig {
     int n_chains_y = 2;
     int n_chains_z = 4;
-    int n_carbons  = 20;
-    double chain_dy = 12.0;   // Å; chain-to-chain spacing in y
+    int n_carbons = 20;
+    double chain_dy = 12.0; // Å; chain-to-chain spacing in y
     double chain_dz = 12.0;
 };
 
@@ -67,11 +67,11 @@ cpu::Frame make_multi_chain_box(const MultiChainConfig& cfg) {
     const double dx_step = kBondR0 * std::cos(half_apex);
     const double dy_step = kBondR0 * std::sin(half_apex);
 
-    const double Lx = (cfg.n_carbons - 1) * dx_step + 6.0;   // padding so PBC
-                                                              // image of the chain
-                                                              // ends does not meet
-                                                              // its head within a
-                                                              // bonded distance.
+    const double Lx = (cfg.n_carbons - 1) * dx_step + 6.0; // padding so PBC
+                                                           // image of the chain
+                                                           // ends does not meet
+                                                           // its head within a
+                                                           // bonded distance.
     const double Ly = cfg.n_chains_y * cfg.chain_dy;
     const double Lz = cfg.n_chains_z * cfg.chain_dz;
 
@@ -81,7 +81,8 @@ cpu::Frame make_multi_chain_box(const MultiChainConfig& cfg) {
             const double y0 = (cy + 0.5) * cfg.chain_dy;
             const double z0 = (cz + 0.5) * cfg.chain_dz;
             for (int i = 0; i < cfg.n_carbons; ++i) {
-                frame.atoms.x[idx] = 3.0 + i * dx_step;     // start a bit inside box
+                frame.atoms.x[idx] =
+                    3.0 + i * dx_step; // start a bit inside box
                 frame.atoms.y[idx] = y0 + (i % 2 == 0 ? 0.0 : dy_step);
                 frame.atoms.z[idx] = z0;
                 frame.atoms.mass[idx] = 14.027;
@@ -103,25 +104,25 @@ cpu::Frame make_multi_chain_box(const MultiChainConfig& cfg) {
     }
 
     // Per-chain bond / angle / dihedral lists, contiguous in index space.
-    const int n_bonds_per     = cfg.n_carbons - 1;
-    const int n_angles_per    = cfg.n_carbons - 2;
+    const int n_bonds_per = cfg.n_carbons - 1;
+    const int n_angles_per = cfg.n_carbons - 2;
     const int n_dihedrals_per = cfg.n_carbons - 3;
-    const int n_bonds         = n_chains * n_bonds_per;
-    const int n_angles        = n_chains * n_angles_per;
-    const int n_dihedrals     = n_chains * n_dihedrals_per;
+    const int n_bonds = n_chains * n_bonds_per;
+    const int n_angles = n_chains * n_angles_per;
+    const int n_dihedrals = n_chains * n_dihedrals_per;
 
     frame.bonds.atomi = xt::zeros<int>({n_bonds});
     frame.bonds.atomj = xt::zeros<int>({n_bonds});
-    frame.bonds.type  = xt::zeros<int>({n_bonds});
+    frame.bonds.type = xt::zeros<int>({n_bonds});
     frame.angles.atomi = xt::zeros<int>({n_angles});
     frame.angles.atomj = xt::zeros<int>({n_angles});
     frame.angles.atomk = xt::zeros<int>({n_angles});
-    frame.angles.type  = xt::zeros<int>({n_angles});
+    frame.angles.type = xt::zeros<int>({n_angles});
     frame.dihedrals.atomi = xt::zeros<int>({n_dihedrals});
     frame.dihedrals.atomj = xt::zeros<int>({n_dihedrals});
     frame.dihedrals.atomk = xt::zeros<int>({n_dihedrals});
     frame.dihedrals.atoml = xt::zeros<int>({n_dihedrals});
-    frame.dihedrals.type  = xt::zeros<int>({n_dihedrals});
+    frame.dihedrals.type = xt::zeros<int>({n_dihedrals});
 
     int b_off = 0, a_off = 0, d_off = 0;
     for (int c = 0; c < n_chains; ++c) {
@@ -173,9 +174,9 @@ TEST(PeMultiChain, BondedOnlyNveConservation) {
     sim.run(frame, 999);
     const double e1 = frame.energy + frame.kinetic;
     const double drift = std::abs(e1 - e0) / std::abs(e0);
-    EXPECT_LT(drift, 1e-4)
-        << "8-chain bonded NVE drift " << drift
-        << " exceeds 1e-4 over 1000 steps (E0=" << e0 << ", E1=" << e1 << ")";
+    EXPECT_LT(drift, 1e-4) << "8-chain bonded NVE drift " << drift
+                           << " exceeds 1e-4 over 1000 steps (E0=" << e0
+                           << ", E1=" << e1 << ")";
 
     // Net force should sum to zero (Newton's 3rd law on a closed system).
     double sum_fx = 0, sum_fy = 0, sum_fz = 0;
@@ -209,7 +210,8 @@ TEST(PeMultiChain, BondedPlusLjNveConservation) {
         .add(HarmonicAngle{{angle_K_eV()}, {kAngleTheta0}})
         .add(MultiHarmonicDihedral{{dihedral_Cn_eV()}})
         .add(cpu::md::NeighborList<>{lj_cut}, -10)
-        .add(cpu::md::LJ{lj_eps, lj_sig, lj_cut}.set_special_bonds(0.0, 0.0, 0.0));
+        .add(cpu::md::LJ{lj_eps, lj_sig, lj_cut}.set_special_bonds(0.0, 0.0,
+                                                                   0.0));
     sim.build();
 
     // Single sim.run() to avoid the Driver re-init overhead. We can't
@@ -222,7 +224,8 @@ TEST(PeMultiChain, BondedPlusLjNveConservation) {
     const double e1 = frame.energy + frame.kinetic;
     EXPECT_FALSE(std::isnan(e1)) << "200-step run returned NaN total energy";
     EXPECT_LT(std::abs(e1), 1e6)
-        << "total energy " << e1 << " is wildly large -- LJ exclusions likely broken";
+        << "total energy " << e1
+        << " is wildly large -- LJ exclusions likely broken";
 
     // No NaN explosion.
     for (int i = 0; i < frame.atoms.size(); ++i) {

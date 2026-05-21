@@ -18,15 +18,15 @@ namespace cpu {
 // ── Promotion helper ─────────────────────────────────────────────────────────
 // Zero-copy when T == double; promotes to double otherwise.
 
-template<typename T>
+template <typename T>
 static rust::Slice<const double> as_f64(const T* data, size_t n,
-                                         std::vector<double>& buf)
-{
+                                        std::vector<double>& buf) {
     if constexpr (std::is_same_v<T, double>) {
         return {data, n};
     } else {
         buf.resize(n);
-        for (size_t i = 0; i < n; ++i) buf[i] = static_cast<double>(data[i]);
+        for (size_t i = 0; i < n; ++i)
+            buf[i] = static_cast<double>(data[i]);
         return {buf.data(), n};
     }
 }
@@ -63,22 +63,17 @@ void MolRec::set_geometry(const Frame& frame) {
             box_mat[i * 3 + j] = static_cast<double>(frame.box.cell()(i, j));
 
     std::vector<double> xb, yb, zb; // unused when double == double
-    molrs::molrec_set_geometry(
-        *impl_->inner,
-        {tid.data(), tid.size()},
-        as_f64(frame.atoms.x.data(), n, xb),
-        as_f64(frame.atoms.y.data(), n, yb),
-        as_f64(frame.atoms.z.data(), n, zb),
-        {box_mat, 9}
-    );
+    molrs::molrec_set_geometry(*impl_->inner, {tid.data(), tid.size()},
+                               as_f64(frame.atoms.x.data(), n, xb),
+                               as_f64(frame.atoms.y.data(), n, yb),
+                               as_f64(frame.atoms.z.data(), n, zb),
+                               {box_mat, 9});
 }
 
 void MolRec::add_field(const std::string& name, std::vector<double> values) {
     std::vector<double> buf;
-    molrs::molrec_add_field(
-        *impl_->inner, {name.data(), name.size()},
-        as_f64(values.data(), values.size(), buf)
-    );
+    molrs::molrec_add_field(*impl_->inner, {name.data(), name.size()},
+                            as_f64(values.data(), values.size(), buf));
 }
 
 void MolRec::add_scalar(const std::string& name, double value) {
@@ -87,23 +82,18 @@ void MolRec::add_scalar(const std::string& name, double value) {
 }
 
 void MolRec::add_string(const std::string& name, std::string value) {
-    molrs::molrec_add_string(
-        *impl_->inner, {name.data(), name.size()}, {value.data(), value.size()}
-    );
+    molrs::molrec_add_string(*impl_->inner, {name.data(), name.size()},
+                             {value.data(), value.size()});
 }
 
-void MolRec::commit_frame() {
-    molrs::molrec_commit_frame(*impl_->inner);
-}
+void MolRec::commit_frame() { molrs::molrec_commit_frame(*impl_->inner); }
 
 int MolRec::n_frames() const {
     return static_cast<int>(molrs::molrec_n_frames(
         *static_cast<const molrs::AtvMolRec*>(ffi_handle())));
 }
 
-void MolRec::clear() {
-    molrs::molrec_clear(*impl_->inner);
-}
+void MolRec::clear() { molrs::molrec_clear(*impl_->inner); }
 
 // ── print_summary ────────────────────────────────────────────────────────────
 

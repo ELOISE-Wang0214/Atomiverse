@@ -31,10 +31,10 @@ namespace cpu {
 /// The grid is axis-aligned and non-periodic.
 /// Indexing: rho[ix * ny * nz + iy * nz + iz]  (C order).
 struct DensityGrid {
-    int    nx = 0, ny = 0, nz = 0; ///< Grid dimensions.
+    int nx = 0, ny = 0, nz = 0;    ///< Grid dimensions.
     double ox = 0, oy = 0, oz = 0; ///< Grid origin [Angstrom].
     double lx = 0, ly = 0, lz = 0; ///< Box extent [Angstrom].
-    std::vector<double> rho;        ///< Density values [nx*ny*nz, e/Angstrom^3].
+    std::vector<double> rho;       ///< Density values [nx*ny*nz, e/Angstrom^3].
 
     bool empty() const { return rho.empty(); }
 };
@@ -60,15 +60,12 @@ struct DensityGrid {
 /// @param nz        Grid points along z.
 /// @param padding   Extra padding around atom bounds [Angstrom].
 /// @return Populated DensityGrid, or empty on failure.
-DensityGrid eval_density_grid(
-    const std::vector<int>&  type_id,
-    const std::vector<double>& x,
-    const std::vector<double>& y,
-    const std::vector<double>& z,
-    const double*  P,
-    int          n_basis,
-    int nx, int ny, int nz,
-    double padding);
+DensityGrid eval_density_grid(const std::vector<int>& type_id,
+                              const std::vector<double>& x,
+                              const std::vector<double>& y,
+                              const std::vector<double>& z, const double* P,
+                              int n_basis, int nx, int ny, int nz,
+                              double padding);
 
 } // namespace cpu
 } // namespace ATV

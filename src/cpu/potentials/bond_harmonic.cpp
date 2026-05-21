@@ -45,7 +45,8 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
     // `bond_harmonic::compute` which accumulates the same
     // `fpair * Δ_α * Δ_β` terms into its virial array.
     double v_xx = 0, v_yy = 0, v_zz = 0, v_xy = 0, v_xz = 0, v_yz = 0;
-    if (n_bonds == 0) return;
+    if (n_bonds == 0)
+        return;
 
     const auto* dd = ctx.runtime.dd;
     const bool multi_rank = (dd != nullptr) && (ctx.runtime.mpi_size > 1);
@@ -54,21 +55,21 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
     // Owner-tag rule for bond (i,j): min(tag[i], tag[j]). LAMMPS convention.
     // Helper caches the result against dd->neighbor_generation; in
     // single-rank it returns 0..n_bonds-1.
-    const auto& owned = select_owned_tuples(
-        ctx, n_bonds,
-        [&](int b) -> std::int64_t {
+    const auto& owned =
+        select_owned_tuples(ctx, n_bonds, [&](int b) -> std::int64_t {
             const std::int64_t ti = static_cast<std::int64_t>(f.bonds.atomi[b]);
             const std::int64_t tj = static_cast<std::int64_t>(f.bonds.atomj[b]);
             return (ti < tj) ? ti : tj;
         });
     const int n_work = static_cast<int>(owned.size());
-    if (n_work == 0) return;
+    if (n_work == 0)
+        return;
 
     double energy_total = 0;
 
-    #pragma omp parallel reduction(+:energy_total) \
-        reduction(+:v_xx) reduction(+:v_yy) reduction(+:v_zz) \
-        reduction(+:v_xy) reduction(+:v_xz) reduction(+:v_yz)
+#pragma omp parallel reduction(+ : energy_total) reduction(+ : v_xx)           \
+    reduction(+ : v_yy) reduction(+ : v_zz) reduction(+ : v_xy)                \
+    reduction(+ : v_xz) reduction(+ : v_yz)
     {
         int tid = 0;
 #ifdef _OPENMP
@@ -86,7 +87,7 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
         const double* __restrict y_ptr = f.atoms.y.data();
         const double* __restrict z_ptr = f.atoms.z.data();
 
-        #pragma omp for schedule(static)
+#pragma omp for schedule(static)
         for (int ib = 0; ib < n_work; ++ib) {
             const int b = owned[static_cast<std::size_t>(ib)];
             int i = f.bonds.atomi[b];
@@ -102,8 +103,9 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
                 const std::int64_t tj = static_cast<std::int64_t>(j);
                 auto it_i = dd->tag_to_local.find(ti);
                 auto it_j = dd->tag_to_local.find(tj);
-                if (it_i == dd->tag_to_local.end() ||
-                    it_j == dd->tag_to_local.end()) continue;
+                if (it_i == dd->tag_to_local.end()
+                    || it_j == dd->tag_to_local.end())
+                    continue;
                 i = it_i->second;
                 j = it_j->second;
             }
@@ -114,8 +116,8 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
             // `operator[]` from the math below — speeds up auto-vectorization
             // of the per-bond arithmetic. Bit-identical to the inlined form
             // (same loads, same order of FP operations).
-            const double ri[3] = { x_ptr[i], y_ptr[i], z_ptr[i] };
-            const double rj[3] = { x_ptr[j], y_ptr[j], z_ptr[j] };
+            const double ri[3] = {x_ptr[i], y_ptr[i], z_ptr[i]};
+            const double rj[3] = {x_ptr[j], y_ptr[j], z_ptr[j]};
             double dx = ri[0] - rj[0];
             double dy = ri[1] - rj[1];
             double dz = ri[2] - rj[2];
@@ -132,9 +134,12 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
             double fy_val = fpair * dy;
             double fz_val = fpair * dz;
 
-            fxt[i] += fx_val;  fxt[j] -= fx_val;
-            fyt[i] += fy_val;  fyt[j] -= fy_val;
-            fzt[i] += fz_val;  fzt[j] -= fz_val;
+            fxt[i] += fx_val;
+            fxt[j] -= fx_val;
+            fyt[i] += fy_val;
+            fyt[j] -= fy_val;
+            fzt[i] += fz_val;
+            fzt[j] -= fz_val;
 
             // Virial: σ_αβ += Δ_α · F_β. Per-bond contribution,
             // counted once by the owner rank (matches the LAMMPS
@@ -149,7 +154,7 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
             v_yz += dy * fz_val;
         }
 
-        #pragma omp for schedule(static)
+#pragma omp for schedule(static)
         for (int i = 0; i < n_atoms; ++i) {
             for (int t = 0; t < n_threads_; ++t) {
                 f.atoms.fx[i] += fx_thr_[t][i];

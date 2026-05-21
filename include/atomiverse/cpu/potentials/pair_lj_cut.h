@@ -11,8 +11,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "atomiverse/cpu/potentials/pair.h"
 #include "atomiverse/cpu/md/pair_list.h"
+#include "atomiverse/cpu/potentials/pair.h"
 
 namespace ATV {
 namespace cpu {
@@ -33,7 +33,7 @@ namespace cpu {
 /// (Newton's 3rd law). xsimd ket-loop in the inner pair walk (Track B.2,
 /// 1.21× over scalar on NEON64).
 class PairLJCut : public Pair {
-public:
+  public:
     /// @param epsilon Well depth [eV].
     /// @param sigma   Size parameter [Å].
     /// @param cutoff  Cutoff distance [Å].
@@ -45,15 +45,15 @@ public:
     /// See pre-refactor `cpu::md::LJ::set_special_bonds` for full
     /// semantics — unchanged by the rename.
     PairLJCut& set_special_bonds(double s12, double s13, double s14) &;
-    PairLJCut  set_special_bonds(double s12, double s13, double s14) &&;
+    PairLJCut set_special_bonds(double s12, double s13, double s14) &&;
 
     void build(const BuildContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;
 
-protected:
+  protected:
     void compute(const LaunchContext& ctx) override;
 
-private:
+  private:
     /// @brief Rebuild `filtered_{numneigh,firstneigh,neighbors}` from
     /// `pairs` by walking each owner i's neighbors, resolving partner
     /// tags, and dropping any pair (i,j) whose j_tag appears in i's
@@ -70,7 +70,8 @@ private:
 
     // Tag-indexed exclusion lists. See pre-refactor LJ for full docs;
     // unchanged by the rename.
-    std::unordered_map<std::int64_t, std::vector<std::int64_t>> excluded_by_tag_;
+    std::unordered_map<std::int64_t, std::vector<std::int64_t>>
+        excluded_by_tag_;
 
     // Per-thread force reduction buffers
     int n_threads_ = 1;

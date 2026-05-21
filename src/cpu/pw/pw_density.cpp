@@ -40,7 +40,8 @@ void PW_Density::launch(const cpu::LaunchContext&) {
         auto* rho_g_half = static_cast<fftw_complex*>(
             fftw_malloc(sizeof(fftw_complex) * static_cast<size_t>(nc)));
 
-        for (int i = 0; i < nr; ++i) rho_r[i] = Real(0);
+        for (int i = 0; i < nr; ++i)
+            rho_r[i] = Real(0);
 
         // Build map: (h,k,l) on wfc grid → flat index on density c2c grid
         // The c2c grid uses a FULL complex array (nx*ny*nz), not half-complex.
@@ -75,7 +76,7 @@ void PW_Density::launch(const cpu::LaunchContext&) {
             // We'll fix normalization at the end.
             for (int i = 0; i < nr; ++i) {
                 Real v = static_cast<Real>(psi_cc[i][0] * psi_cc[i][0]
-                                         + psi_cc[i][1] * psi_cc[i][1]);
+                                           + psi_cc[i][1] * psi_cc[i][1]);
                 rho_r[i] += Real(2) * v;
             }
         }
@@ -86,7 +87,7 @@ void PW_Density::launch(const cpu::LaunchContext&) {
 
         // Extract ρ(G) at G-vector sphere positions
         // r2c half-complex format: kx=0..nx/2
-        int nxc = nx/2 + 1;
+        int nxc = nx / 2 + 1;
         Real inv_nr = Real(1) / static_cast<Real>(nr);
         for (int ig = 0; ig < ng; ++ig) {
             int h = gv.h[ig], k = gv.k[ig], l = gv.l[ig];
@@ -94,7 +95,7 @@ void PW_Density::launch(const cpu::LaunchContext&) {
             int ky = ((k % ny) + ny) % ny;
             int kz = ((l % nz) + nz) % nz;
             bool conj = false;
-            if (kx > nx/2) {
+            if (kx > nx / 2) {
                 kx = nx - kx;
                 ky = (ny - ky) % ny;
                 kz = (nz - kz) % nz;
@@ -104,7 +105,8 @@ void PW_Density::launch(const cpu::LaunchContext&) {
             if (idx >= 0 && idx < nc) {
                 Real re = static_cast<Real>(rho_g_half[idx][0]) * inv_nr;
                 Real im = static_cast<Real>(rho_g_half[idx][1]) * inv_nr;
-                if (conj) im = -im;
+                if (conj)
+                    im = -im;
                 ws_->rho_G[ig] = std::complex<Real>(re, im);
             } else {
                 ws_->rho_G[ig] = std::complex<Real>(0, 0);
@@ -140,25 +142,31 @@ void PW_Density::launch(const cpu::LaunchContext&) {
 
                 // Compute overlap sums per band + projector
                 // S_ij = Σ_b f_b c_i^{a*} c_j^a
-                std::vector<std::complex<Real>> S_ij(np * np, std::complex<Real>(0,0));
+                std::vector<std::complex<Real>> S_ij(np * np,
+                                                     std::complex<Real>(0, 0));
                 for (int b = 0; b < nb; ++b) {
-                    std::vector<std::complex<Real>> c(np, std::complex<Real>(0,0));
+                    std::vector<std::complex<Real>> c(np,
+                                                      std::complex<Real>(0, 0));
                     // Reconstruct spherically-averaged beta for augmentation:
                     // β_avg(G) = √(4π)/√Ω * f_l(G) * exp(-iG·R)
-                    Real prefac = std::sqrt(Real(4.0*M_PI)/ws_->omega);
+                    Real prefac = std::sqrt(Real(4.0 * M_PI) / ws_->omega);
                     for (int ip = 0; ip < np; ++ip) {
                         for (int ig = 0; ig < ng_wfc; ++ig) {
-                            Real Gx=gv.g[ig][0], Gy=gv.g[ig][1], Gz=gv.g[ig][2];
-                            Real phase = Gx*ax + Gy*ay + Gz*az;
+                            Real Gx = gv.g[ig][0], Gy = gv.g[ig][1],
+                                 Gz = gv.g[ig][2];
+                            Real phase = Gx * ax + Gy * ay + Gz * az;
                             std::complex<Real> beta_avg(
-                                prefac * atom_proj[ip].f_G[ig] * std::cos(phase),
-                                -prefac * atom_proj[ip].f_G[ig] * std::sin(phase));
+                                prefac * atom_proj[ip].f_G[ig]
+                                    * std::cos(phase),
+                                -prefac * atom_proj[ip].f_G[ig]
+                                    * std::sin(phase));
                             c[ip] += std::conj(beta_avg) * wfc(b, ig);
                         }
                     }
                     for (int ip = 0; ip < np; ++ip)
                         for (int jp = 0; jp < np; ++jp)
-                            S_ij[ip * np + jp] += Real(2) * std::conj(c[ip]) * c[jp];
+                            S_ij[ip * np + jp] +=
+                                Real(2) * std::conj(c[ip]) * c[jp];
                 }
 
                 // Compute S = Σ_ij Q_ij S_ij for this atom
@@ -174,9 +182,10 @@ void PW_Density::launch(const cpu::LaunchContext&) {
 
                 // Add Δρ_aug(G) = S_a(G) * F(G) * S_atom
                 for (int ig = 0; ig < ng; ++ig) {
-                    if (std::abs(ws_->aug_form_factor_G[ig]) < Real(1e-30)) continue;
+                    if (std::abs(ws_->aug_form_factor_G[ig]) < Real(1e-30))
+                        continue;
                     Real Gx = gv.g[ig][0], Gy = gv.g[ig][1], Gz = gv.g[ig][2];
-                    Real phase = Gx*ax + Gy*ay + Gz*az;
+                    Real phase = Gx * ax + Gy * ay + Gz * az;
                     std::complex<Real> Sa(std::cos(phase), -std::sin(phase));
                     ws_->rho_G[ig] += ws_->aug_form_factor_G[ig] * Sa * S_atom;
                 }

@@ -15,36 +15,36 @@
 #include <cmath>
 #include <vector>
 
-#include "atomiverse/cpu/potentials/harmonic_angle.h"
-#include "atomiverse/cpu/potentials/harmonic_bond.h"
-#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
+#include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/init.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/nose_hoover.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/core/mat3.h"
-#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/potentials/harmonic_angle.h"
+#include "atomiverse/cpu/potentials/harmonic_bond.h"
+#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
 
 using namespace ATV;
 
 namespace {
 
 inline constexpr double kKcalPerMolToEv = 1.0 / 23.060547830619026;
-inline constexpr double kBondK_kcal  = 268.0;
-inline constexpr double kBondR0      = 1.53;
+inline constexpr double kBondK_kcal = 268.0;
+inline constexpr double kBondR0 = 1.53;
 inline constexpr double kAngleK_kcal = 60.0;
 inline constexpr double kAngleTheta0 = 109.5 * kPI / 180.0;
 
-inline double bond_K_eV()  { return kBondK_kcal  * kKcalPerMolToEv; }
+inline double bond_K_eV() { return kBondK_kcal * kKcalPerMolToEv; }
 inline double angle_K_eV() { return kAngleK_kcal * kKcalPerMolToEv; }
 inline std::vector<double> dihedral_Cn_eV() {
     return {
-        1.73    * kKcalPerMolToEv,   // C0  (MSU paper, Tschopp 2010)
-        -4.49   * kKcalPerMolToEv,   // C1
-        0.776   * kKcalPerMolToEv,   // C2
-        6.99    * kKcalPerMolToEv,   // C3
-        0.0,                          // C4
+        1.73 * kKcalPerMolToEv,  // C0  (MSU paper, Tschopp 2010)
+        -4.49 * kKcalPerMolToEv, // C1
+        0.776 * kKcalPerMolToEv, // C2
+        6.99 * kKcalPerMolToEv,  // C3
+        0.0,                     // C4
     };
 }
 
@@ -66,7 +66,7 @@ cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
     const int n_b = n_carbons - 1;
     frame.bonds.atomi = xt::zeros<int>({n_b});
     frame.bonds.atomj = xt::zeros<int>({n_b});
-    frame.bonds.type  = xt::zeros<int>({n_b});
+    frame.bonds.type = xt::zeros<int>({n_b});
     for (int k = 0; k < n_b; ++k) {
         frame.bonds.atomi[k] = k;
         frame.bonds.atomj[k] = k + 1;
@@ -75,7 +75,7 @@ cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
     frame.angles.atomi = xt::zeros<int>({n_a});
     frame.angles.atomj = xt::zeros<int>({n_a});
     frame.angles.atomk = xt::zeros<int>({n_a});
-    frame.angles.type  = xt::zeros<int>({n_a});
+    frame.angles.type = xt::zeros<int>({n_a});
     for (int k = 0; k < n_a; ++k) {
         frame.angles.atomi[k] = k;
         frame.angles.atomj[k] = k + 1;
@@ -86,7 +86,7 @@ cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
     frame.dihedrals.atomj = xt::zeros<int>({n_d});
     frame.dihedrals.atomk = xt::zeros<int>({n_d});
     frame.dihedrals.atoml = xt::zeros<int>({n_d});
-    frame.dihedrals.type  = xt::zeros<int>({n_d});
+    frame.dihedrals.type = xt::zeros<int>({n_d});
     for (int k = 0; k < n_d; ++k) {
         frame.dihedrals.atomi[k] = k;
         frame.dihedrals.atomj[k] = k + 1;
@@ -107,9 +107,9 @@ double temperature_from_kinetic(double e_kin_ev, int n_atoms) {
 } // namespace
 
 TEST(PeNvt, NoseHooverHoldsTargetTemperature) {
-    const double T_target = 300.0;        // K
-    const double dt       = 0.5;          // fs
-    const double tau_T    = 100.0;        // fs (typical NoseHoover coupling)
+    const double T_target = 300.0; // K
+    const double dt = 0.5;         // fs
+    const double tau_T = 100.0;    // fs (typical NoseHoover coupling)
 
     auto frame = make_all_trans_alkane(20, 50.0);
 
@@ -126,7 +126,8 @@ TEST(PeNvt, NoseHooverHoldsTargetTemperature) {
     // Single 5000-step run (avoid Driver re-init across calls).
     sim.run(frame, 5000);
 
-    const double T_final = temperature_from_kinetic(frame.kinetic, frame.atoms.size());
+    const double T_final =
+        temperature_from_kinetic(frame.kinetic, frame.atoms.size());
     const double rel_err = std::abs(T_final - T_target) / T_target;
 
     // The instantaneous temperature on a 20-atom chain has substantial

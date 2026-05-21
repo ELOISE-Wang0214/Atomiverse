@@ -5,8 +5,8 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/component.h"
 #include "atomiverse/core/binding.h"
+#include "atomiverse/cpu/component.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -53,7 +53,7 @@ namespace md {
 /// sign correction needed; `frame.stress` is already LAMMPS-consistent.
 /// **Audit confirmed aligned — no code change to this component.**
 class VirialStress : public cpu::ComponentBase {
-public:
+  public:
     std::string name() const override { return "virial_stress"; }
     ComponentRole role() const override { return ComponentRole::Observer; }
     std::vector<DefaultBinding> default_bindings() const override {

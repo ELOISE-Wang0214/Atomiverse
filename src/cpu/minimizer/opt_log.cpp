@@ -14,16 +14,18 @@ OptLog::OptLog(std::string filename, bool also_stdout)
     : filename_(std::move(filename)), also_stdout_(also_stdout) {}
 
 void OptLog::build(const cpu::BuildContext& ctx) {
-    if (ctx.runtime.mpi_rank != 0) return;
+    if (ctx.runtime.mpi_rank != 0)
+        return;
     os_.open(filename_, std::ios::out | std::ios::trunc);
     os_ << "step\tenergy_eV\tmax_force\trms_force\tstep_norm\n";
     if (also_stdout_)
-        std::printf("%6s  %15s  %12s  %12s  %12s\n",
-                    "step", "E[eV]", "max_F", "rms_F", "|dx|");
+        std::printf("%6s  %15s  %12s  %12s  %12s\n", "step", "E[eV]", "max_F",
+                    "rms_F", "|dx|");
 }
 
 void OptLog::launch(const cpu::LaunchContext& ctx) {
-    if (ctx.runtime.mpi_rank != 0) return;
+    if (ctx.runtime.mpi_rank != 0)
+        return;
 
     const auto& f = ctx.frame;
     const int n = f.atoms.size();
@@ -32,9 +34,10 @@ void OptLog::launch(const cpu::LaunchContext& ctx) {
         double fx = f.atoms.fx(i);
         double fy = f.atoms.fy(i);
         double fz = f.atoms.fz(i);
-        double m2 = fx*fx + fy*fy + fz*fz;
+        double m2 = fx * fx + fy * fy + fz * fz;
         sumsq += m2;
-        if (m2 > maxsq) maxsq = m2;
+        if (m2 > maxsq)
+            maxsq = m2;
     }
     double max_force = std::sqrt(maxsq);
     double rms_force = (n > 0) ? std::sqrt(sumsq / n) : 0.0;
@@ -46,7 +49,7 @@ void OptLog::launch(const cpu::LaunchContext& ctx) {
             double dx = f.atoms.x(i) - x_prev_[i];
             double dy = f.atoms.y(i) - y_prev_[i];
             double dz = f.atoms.z(i) - z_prev_[i];
-            acc += dx*dx + dy*dy + dz*dz;
+            acc += dx * dx + dy * dy + dz * dz;
         }
         step_norm = std::sqrt(acc);
     }
@@ -62,22 +65,20 @@ void OptLog::launch(const cpu::LaunchContext& ctx) {
     has_prev_ = true;
 
     if (os_.is_open()) {
-        os_ << ctx.step << '\t'
-            << f.energy << '\t'
-            << max_force << '\t'
-            << rms_force << '\t'
-            << step_norm << '\n';
+        os_ << ctx.step << '\t' << f.energy << '\t' << max_force << '\t'
+            << rms_force << '\t' << step_norm << '\n';
         os_.flush();
     }
     if (also_stdout_) {
-        std::printf("%6d  %15.8e  %12.6e  %12.6e  %12.6e\n",
-                    ctx.step, f.energy, max_force, rms_force, step_norm);
+        std::printf("%6d  %15.8e  %12.6e  %12.6e  %12.6e\n", ctx.step, f.energy,
+                    max_force, rms_force, step_norm);
     }
     ++n_rows_;
 }
 
 void OptLog::destroy(const cpu::DestroyContext& /*ctx*/) {
-    if (os_.is_open()) os_.close();
+    if (os_.is_open())
+        os_.close();
 }
 
 } // namespace minimizer

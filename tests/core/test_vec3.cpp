@@ -75,7 +75,7 @@ TEST(Vec3, ScalarDivide) {
 
 TEST(Vec3, DotProduct) {
     Vec3 a{1, 2, 3}, b{4, -5, 6};
-    Real expected = 1*4 + 2*(-5) + 3*6; // = 12
+    Real expected = 1 * 4 + 2 * (-5) + 3 * 6; // = 12
     EXPECT_NEAR(a.dot(b), expected, kTol);
 }
 
@@ -85,7 +85,7 @@ TEST(Vec3, DotProductRandom) {
     for (int n = 0; n < 5; ++n) {
         Vec3 u{dist(rng), dist(rng), dist(rng)};
         Vec3 v{dist(rng), dist(rng), dist(rng)};
-        Real ref = u[0]*v[0] + u[1]*v[1] + u[2]*v[2];
+        Real ref = u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
         EXPECT_NEAR(u.dot(v), ref, kTol);
     }
 }
@@ -106,9 +106,9 @@ TEST(Vec3, CrossProductRandom) {
         Vec3 u{dist(rng), dist(rng), dist(rng)};
         Vec3 v{dist(rng), dist(rng), dist(rng)};
         auto c = u.cross(v);
-        Real cx = u[1]*v[2] - u[2]*v[1];
-        Real cy = u[2]*v[0] - u[0]*v[2];
-        Real cz = u[0]*v[1] - u[1]*v[0];
+        Real cx = u[1] * v[2] - u[2] * v[1];
+        Real cy = u[2] * v[0] - u[0] * v[2];
+        Real cz = u[0] * v[1] - u[1] * v[0];
         EXPECT_NEAR(c[0], cx, kTol);
         EXPECT_NEAR(c[1], cy, kTol);
         EXPECT_NEAR(c[2], cz, kTol);

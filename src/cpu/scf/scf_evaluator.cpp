@@ -49,7 +49,8 @@ WrappedPositionsSnapshot unwrap_for_scf(ATV::cpu::Frame& frame) {
     const int n = static_cast<int>(frame.atoms.size());
     WrappedPositionsSnapshot snap{frame.atoms.x, frame.atoms.y, frame.atoms.z};
 
-    if (n <= 1) return snap;
+    if (n <= 1)
+        return snap;
 
     const double lx = frame.box.length(0);
     const double ly = frame.box.length(1);
@@ -113,13 +114,13 @@ void SCFEvaluator::set_predictor_(int order, int corrector_steps,
 }
 
 SCFEvaluator& SCFEvaluator::predictor(int order, int corrector_steps,
-                                       double corrector_tol, bool fallback) & {
+                                      double corrector_tol, bool fallback) & {
     set_predictor_(order, corrector_steps, corrector_tol, fallback);
     return *this;
 }
 
 SCFEvaluator&& SCFEvaluator::predictor(int order, int corrector_steps,
-                                        double corrector_tol, bool fallback) && {
+                                       double corrector_tol, bool fallback) && {
     set_predictor_(order, corrector_steps, corrector_tol, fallback);
     return std::move(*this);
 }
@@ -128,12 +129,14 @@ void SCFEvaluator::set_on_evaluate_(std::function<void(const SCFResult&)> cb) {
     on_evaluate_ = std::move(cb);
 }
 
-SCFEvaluator& SCFEvaluator::on_evaluate(std::function<void(const SCFResult&)> cb) & {
+SCFEvaluator&
+SCFEvaluator::on_evaluate(std::function<void(const SCFResult&)> cb) & {
     set_on_evaluate_(std::move(cb));
     return *this;
 }
 
-SCFEvaluator&& SCFEvaluator::on_evaluate(std::function<void(const SCFResult&)> cb) && {
+SCFEvaluator&&
+SCFEvaluator::on_evaluate(std::function<void(const SCFResult&)> cb) && {
     set_on_evaluate_(std::move(cb));
     return std::move(*this);
 }
@@ -148,19 +151,18 @@ void SCFEvaluator::build(const cpu::BuildContext& ctx) {
     solver_ = std::make_unique<SCFSolver>(config_);
     solver_->build(*last_integrals_);
 
-    ATV_INFO(
-        "[scf_eval] build charge={} predictor={} compute_force={} basis={} n_basis={}",
-        charge_, use_predictor_, compute_force_,
-        basis_set_name(basis_), last_integrals_->n_basis);
+    ATV_INFO("[scf_eval] build charge={} predictor={} compute_force={} "
+             "basis={} n_basis={}",
+             charge_, use_predictor_, compute_force_, basis_set_name(basis_),
+             last_integrals_->n_basis);
 }
 
 void SCFEvaluator::launch(const cpu::LaunchContext& ctx) {
     const auto t_total = LogClock::now();
     auto& frame = ctx.frame;
     const int natm = static_cast<int>(frame.atoms.size());
-    ATV_INFO(
-        "[scf_eval] step={} start natm={} charge={}",
-        ctx.step, natm, charge_);
+    ATV_INFO("[scf_eval] step={} start natm={} charge={}", ctx.step, natm,
+             charge_);
 
     // Unwrap the molecule before SCF: build_integrals + scf_gradient are
     // not minimum-image aware, so an atom that the MD integrator wrapped
@@ -174,10 +176,10 @@ void SCFEvaluator::launch(const cpu::LaunchContext& ctx) {
     const auto t_integrals = LogClock::now();
     *last_integrals_ = build_integrals(frame, basis_, charge_);
     auto& integrals = *last_integrals_;
-    ATV_DEBUG(
-        "[scf_eval] step={} integrals_ms={:.1f} basis={} n_basis={} electrons={}",
-        ctx.step, elapsed_ms(t_integrals),
-        basis_set_name(basis_), integrals.n_basis, integrals.n_electrons);
+    ATV_DEBUG("[scf_eval] step={} integrals_ms={:.1f} basis={} n_basis={} "
+              "electrons={}",
+              ctx.step, elapsed_ms(t_integrals), basis_set_name(basis_),
+              integrals.n_basis, integrals.n_electrons);
 
     SCFResult result;
 
@@ -186,20 +188,21 @@ void SCFEvaluator::launch(const cpu::LaunchContext& ctx) {
     if (use_predictor_ && aspc_alpha_ && aspc_beta_) {
         xt::xtensor<double, 2> Pa_guess, Pb_guess;
         const bool have_alpha = aspc_alpha_->predict(Pa_guess);
-        const bool have_beta  = aspc_beta_->predict(Pb_guess);
+        const bool have_beta = aspc_beta_->predict(Pb_guess);
 
         if (have_alpha && have_beta) {
             density_guess.P_alpha = std::move(Pa_guess);
-            density_guess.P_beta  = std::move(Pb_guess);
+            density_guess.P_beta = std::move(Pb_guess);
             density_guess.has_alpha = true;
-            density_guess.has_beta  = true;
+            density_guess.has_beta = true;
 
             // ASPC corrector run: tighter tol, fewer iterations, transient
             // solver because the SCFConfig differs from the main one.
             SCFConfig corrector_config = config_;
-            corrector_config.tol      = corrector_tol_;
+            corrector_config.tol = corrector_tol_;
             corrector_config.max_iter = corrector_steps_;
-            ATV_INFO("[scf_eval] step={} scf guess source=aspc_predictor", ctx.step);
+            ATV_INFO("[scf_eval] step={} scf guess source=aspc_predictor",
+                     ctx.step);
             {
                 SCFSolver corrector{corrector_config};
                 corrector.build(integrals);
@@ -210,20 +213,22 @@ void SCFEvaluator::launch(const cpu::LaunchContext& ctx) {
                 result = solver_->run(integrals, &density_guess);
 
             xt::xtensor<double, 2> Pa_corr, Pb_corr;
-            aspc_alpha_->correct(result.P_alpha, density_guess.P_alpha, Pa_corr);
-            aspc_beta_->correct(result.P_beta,  density_guess.P_beta,  Pb_corr);
+            aspc_alpha_->correct(result.P_alpha, density_guess.P_alpha,
+                                 Pa_corr);
+            aspc_beta_->correct(result.P_beta, density_guess.P_beta, Pb_corr);
             aspc_alpha_->record(Pa_corr);
             aspc_beta_->record(Pb_corr);
             has_last_density_ = true;
             last_P_alpha_ = result.P_alpha;
-            last_P_beta_  = result.P_beta;
+            last_P_beta_ = result.P_beta;
         } else {
             if (has_last_density_) {
                 density_guess.P_alpha = last_P_alpha_;
-                density_guess.P_beta  = last_P_beta_;
+                density_guess.P_beta = last_P_beta_;
                 density_guess.has_alpha = true;
-                density_guess.has_beta  = true;
-                ATV_INFO("[scf_eval] step={} scf guess source=previous_density", ctx.step);
+                density_guess.has_beta = true;
+                ATV_INFO("[scf_eval] step={} scf guess source=previous_density",
+                         ctx.step);
                 result = solver_->run(integrals, &density_guess);
             } else {
                 result = solver_->run(integrals);
@@ -232,36 +237,37 @@ void SCFEvaluator::launch(const cpu::LaunchContext& ctx) {
             aspc_beta_->record(result.P_beta);
             has_last_density_ = true;
             last_P_alpha_ = result.P_alpha;
-            last_P_beta_  = result.P_beta;
+            last_P_beta_ = result.P_beta;
         }
     } else if (has_last_density_) {
         density_guess.P_alpha = last_P_alpha_;
-        density_guess.P_beta  = last_P_beta_;
+        density_guess.P_beta = last_P_beta_;
         density_guess.has_alpha = true;
-        density_guess.has_beta  = true;
-        ATV_INFO("[scf_eval] step={} scf guess source=previous_density", ctx.step);
+        density_guess.has_beta = true;
+        ATV_INFO("[scf_eval] step={} scf guess source=previous_density",
+                 ctx.step);
         result = solver_->run(integrals, &density_guess);
         has_last_density_ = true;
         last_P_alpha_ = result.P_alpha;
-        last_P_beta_  = result.P_beta;
+        last_P_beta_ = result.P_beta;
     } else {
         result = solver_->run(integrals);
         has_last_density_ = true;
         last_P_alpha_ = result.P_alpha;
-        last_P_beta_  = result.P_beta;
+        last_P_beta_ = result.P_beta;
     }
-    ATV_DEBUG(
-        "[scf_eval] step={} scf_ms={:.1f} converged={} iterations={} energy_ha={:.10f}",
-        ctx.step, elapsed_ms(t_scf), result.converged, result.iterations, result.energy);
+    ATV_DEBUG("[scf_eval] step={} scf_ms={:.1f} converged={} iterations={} "
+              "energy_ha={:.10f}",
+              ctx.step, elapsed_ms(t_scf), result.converged, result.iterations,
+              result.energy);
 
     // Forces — only when gradient is enabled. Energy-only single-point
     // mode (with_gradient(false)) skips this entirely.
     if (compute_force_) {
         const auto t_gradient = LogClock::now();
         auto grad = scf_gradient(frame, integrals, result, config_);
-        ATV_DEBUG(
-            "[scf_eval] step={} gradient_ms={:.1f}",
-            ctx.step, elapsed_ms(t_gradient));
+        ATV_DEBUG("[scf_eval] step={} gradient_ms={:.1f}", ctx.step,
+                  elapsed_ms(t_gradient));
 
         double max_force = 0.0;
         for (int A = 0; A < natm; ++A) {
@@ -276,17 +282,17 @@ void SCFEvaluator::launch(const cpu::LaunchContext& ctx) {
         }
         frame.energy = grad.energy;
 
-        ATV_INFO(
-            "[scf_eval] step={} done total_ms={:.1f} energy_eV={:.6f} max_force_eVA={:.6f} scf_converged={} scf_iterations={}",
-            ctx.step, elapsed_ms(t_total), frame.energy, max_force,
-            result.converged, result.iterations);
+        ATV_INFO("[scf_eval] step={} done total_ms={:.1f} energy_eV={:.6f} "
+                 "max_force_eVA={:.6f} scf_converged={} scf_iterations={}",
+                 ctx.step, elapsed_ms(t_total), frame.energy, max_force,
+                 result.converged, result.iterations);
     } else {
         // Energy-only path. Convert result.energy (Ha) to frame.energy (eV).
         frame.energy = result.energy * ATV::kHartree2eV;
-        ATV_INFO(
-            "[scf_eval] step={} done total_ms={:.1f} energy_eV={:.6f} (energy-only) scf_converged={} scf_iterations={}",
-            ctx.step, elapsed_ms(t_total), frame.energy,
-            result.converged, result.iterations);
+        ATV_INFO("[scf_eval] step={} done total_ms={:.1f} energy_eV={:.6f} "
+                 "(energy-only) scf_converged={} scf_iterations={}",
+                 ctx.step, elapsed_ms(t_total), frame.energy, result.converged,
+                 result.iterations);
     }
 
     if (on_evaluate_)

@@ -42,8 +42,8 @@
 #include "atomiverse/core/constants.h"
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/md/init.h"
 #include "atomiverse/cpu/md/fix_langevin.h"
+#include "atomiverse/cpu/md/init.h"
 #include "atomiverse/cpu/md/lj.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/neighbor_list.h"
@@ -63,21 +63,19 @@ cpu::Frame make_fcc_argon_256() {
     cpu::Frame frame(n_atoms);
 
     const double basis[4][3] = {
-        {0.0, 0.0, 0.0}, {0.5, 0.5, 0.0},
-        {0.5, 0.0, 0.5}, {0.0, 0.5, 0.5}
-    };
+        {0.0, 0.0, 0.0}, {0.5, 0.5, 0.0}, {0.5, 0.0, 0.5}, {0.0, 0.5, 0.5}};
     int idx = 0;
     for (int ix = 0; ix < n_cells; ++ix)
-    for (int iy = 0; iy < n_cells; ++iy)
-    for (int iz = 0; iz < n_cells; ++iz)
-    for (int b = 0; b < 4; ++b) {
-        frame.atoms.x[idx] = (ix + basis[b][0]) * a;
-        frame.atoms.y[idx] = (iy + basis[b][1]) * a;
-        frame.atoms.z[idx] = (iz + basis[b][2]) * a;
-        frame.atoms.mass[idx] = 39.948;
-        frame.atoms.type[idx] = 0;
-        ++idx;
-    }
+        for (int iy = 0; iy < n_cells; ++iy)
+            for (int iz = 0; iz < n_cells; ++iz)
+                for (int b = 0; b < 4; ++b) {
+                    frame.atoms.x[idx] = (ix + basis[b][0]) * a;
+                    frame.atoms.y[idx] = (iy + basis[b][1]) * a;
+                    frame.atoms.z[idx] = (iz + basis[b][2]) * a;
+                    frame.atoms.mass[idx] = 39.948;
+                    frame.atoms.type[idx] = 0;
+                    ++idx;
+                }
     frame.box = Mat3::cubic(n_cells * a);
     return frame;
 }
@@ -86,9 +84,9 @@ double instantaneous_T(const cpu::Frame& f) {
     const int n = f.atoms.size();
     double KE_eV = 0.0;
     for (int i = 0; i < n; ++i) {
-        const double v2 = f.atoms.vx[i]*f.atoms.vx[i]
-                        + f.atoms.vy[i]*f.atoms.vy[i]
-                        + f.atoms.vz[i]*f.atoms.vz[i];
+        const double v2 = f.atoms.vx[i] * f.atoms.vx[i]
+                          + f.atoms.vy[i] * f.atoms.vy[i]
+                          + f.atoms.vz[i] * f.atoms.vz[i];
         KE_eV += 0.5 * f.atoms.mass[i] * v2;
     }
     KE_eV *= kMvv2e;
@@ -101,9 +99,9 @@ double instantaneous_KE_eV(const cpu::Frame& f) {
     const int n = f.atoms.size();
     double KE = 0.0;
     for (int i = 0; i < n; ++i) {
-        const double v2 = f.atoms.vx[i]*f.atoms.vx[i]
-                        + f.atoms.vy[i]*f.atoms.vy[i]
-                        + f.atoms.vz[i]*f.atoms.vz[i];
+        const double v2 = f.atoms.vx[i] * f.atoms.vx[i]
+                          + f.atoms.vy[i] * f.atoms.vy[i]
+                          + f.atoms.vz[i] * f.atoms.vz[i];
         KE += 0.5 * f.atoms.mass[i] * v2;
     }
     return KE * kMvv2e;
@@ -113,15 +111,15 @@ double instantaneous_KE_eV(const cpu::Frame& f) {
 
 TEST(LammpsParity, Slow_LangevinNvtMatchesLammpsEnsembleAverages) {
     constexpr double T_target = 300.0;
-    constexpr double damp     = 100.0; // fs
-    constexpr double dt       = 1.0;   // fs
+    constexpr double damp = 100.0;        // fs
+    constexpr double dt = 1.0;            // fs
     constexpr double kEpsilon = 0.010339; // eV
-    constexpr double kSigma   = 3.405;    // Å
-    constexpr double kCutoff  = 8.5;      // Å
+    constexpr double kSigma = 3.405;      // Å
+    constexpr double kCutoff = 8.5;       // Å
 
     constexpr int burn_in_steps = 1000;
-    constexpr int sample_steps  = 99000;
-    constexpr int sample_every  = 100;
+    constexpr int sample_steps = 99000;
+    constexpr int sample_every = 100;
 
     auto frame = make_fcc_argon_256();
 
@@ -146,23 +144,24 @@ TEST(LammpsParity, Slow_LangevinNvtMatchesLammpsEnsembleAverages) {
         KE_sum += instantaneous_KE_eV(frame);
         ++samples;
     }
-    const double T_mean  = T_sum  / samples;
+    const double T_mean = T_sum / samples;
     const double KE_mean = KE_sum / samples;
 
     // LAMMPS reference (in.langevin_nvt, 99 000 steps post-burn-in).
-    constexpr double T_lammps  = 301.934;
-    constexpr double KE_lammps =   9.95214;
+    constexpr double T_lammps = 301.934;
+    constexpr double KE_lammps = 9.95214;
 
-    const double T_rel  = std::abs(T_mean - T_lammps) / T_target;
+    const double T_rel = std::abs(T_mean - T_lammps) / T_target;
     const double KE_rel = std::abs(KE_mean - KE_lammps) / std::abs(KE_lammps);
 
-    std::cerr << "Atomiverse: <T> = " << T_mean << " K, <KE> = " << KE_mean << " eV\n"
-              << "LAMMPS:     <T> = " << T_lammps << " K, <KE> = " << KE_lammps << " eV\n"
+    std::cerr << "Atomiverse: <T> = " << T_mean << " K, <KE> = " << KE_mean
+              << " eV\n"
+              << "LAMMPS:     <T> = " << T_lammps << " K, <KE> = " << KE_lammps
+              << " eV\n"
               << "Δ(T)/T_target = " << (T_rel * 100.0) << "%, "
               << "Δ(KE)/<KE>   = " << (KE_rel * 100.0) << "%\n";
 
-    EXPECT_LE(T_rel,  0.02)
-        << "Langevin <T> drifts > 2% from LAMMPS reference.";
+    EXPECT_LE(T_rel, 0.02) << "Langevin <T> drifts > 2% from LAMMPS reference.";
     EXPECT_LE(KE_rel, 0.02)
         << "Langevin <KE> drifts > 2% from LAMMPS reference.";
 }

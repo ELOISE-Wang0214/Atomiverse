@@ -11,19 +11,19 @@
 ///   Szabo & Ostlund, "Modern Quantum Chemistry" (1996), Appendix A
 ///   Ufimtsev & Martinez, JCTC 4(2), 222-231 (2008)
 
-#include "atomiverse/cuda/scf/device_integrals.cuh"
-#include "atomiverse/cuda/launch.cuh"
 #include "atomiverse/core/constants.h"
+#include "atomiverse/cuda/launch.cuh"
+#include "atomiverse/cuda/scf/device_integrals.cuh"
 
-#include <cuda_runtime.h>
 #include "atomiverse/cuda/types.cuh"
 #include <cmath>
+#include <cuda_runtime.h>
 
 namespace ATV {
 
+using cuda::prec_t;
 using cuda::real_t;
 using cuda::work_t;
-using cuda::prec_t;
 
 namespace cuda {
 namespace scf {
@@ -35,16 +35,18 @@ static constexpr work_t kBoysEpsilon = work_t(1e-12);
 
 /// Boys function F_0(x) using hardware erf() intrinsic.
 __device__ __forceinline__ work_t boys_f0_device(work_t x) {
-    if (x < kBoysEpsilon) return work_t(1);
+    if (x < kBoysEpsilon)
+        return work_t(1);
     work_t sx = sqrt(x);
     return work_t(0.5) * sqrt(work_t(kPI) / x) * erf(sx);
 }
 
 /// Squared distance between two 3D points.
-__device__ __forceinline__ work_t dist2_device(
-    work_t ax, work_t ay, work_t az, work_t bx, work_t by, work_t bz) {
+__device__ __forceinline__ work_t dist2_device(work_t ax, work_t ay, work_t az,
+                                               work_t bx, work_t by,
+                                               work_t bz) {
     work_t dx = ax - bx, dy = ay - by, dz = az - bz;
-    return dx*dx + dy*dy + dz*dz;
+    return dx * dx + dy * dy + dz * dz;
 }
 
 // ── Kernel: Boys function test (for validation) ───────────────────────
@@ -55,7 +57,8 @@ __global__ void boys_f0_test_kernel(const prec_t* x, prec_t* out, int n) {
         out[i] = boys_f0_device(x[i]);
 }
 
-void launch_boys_f0_test(const prec_t* d_x, prec_t* d_out, int n, void* stream) {
+void launch_boys_f0_test(const prec_t* d_x, prec_t* d_out, int n,
+                         void* stream) {
     auto s = static_cast<cudaStream_t>(stream);
     int threads = cuda::kDefaultBlock;
     int blocks = cuda::grid_size(n, threads);
@@ -73,15 +76,14 @@ void launch_boys_f0_test(const prec_t* d_x, prec_t* d_out, int n, void* stream) 
 //
 // This avoids 3× redundant exp() calls compared to separate S, T, V kernels.
 
-__global__ void compute_1e_kernel(
-    prec_t* S, prec_t* T, prec_t* V,
-    const prec_t* shell_alpha,     // [n_shells * n_prim]
-    const prec_t* shell_coeff,     // [n_shells * n_prim]
-    const prec_t* shell_centers,   // [n_shells * 3]
-    const int* atom_Z,           // [natm]
-    const prec_t* atom_pos,        // [natm * 3]
-    int n, int n_prim, int natm)
-{
+__global__ void
+compute_1e_kernel(prec_t* S, prec_t* T, prec_t* V,
+                  const prec_t* shell_alpha,   // [n_shells * n_prim]
+                  const prec_t* shell_coeff,   // [n_shells * n_prim]
+                  const prec_t* shell_centers, // [n_shells * 3]
+                  const int* atom_Z,           // [natm]
+                  const prec_t* atom_pos,      // [natm * 3]
+                  int n, int n_prim, int natm) {
     // Triangular indexing: n_pairs = n*(n+1)/2
     int n_pairs = n * (n + 1) / 2;
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -92,15 +94,18 @@ __global__ void compute_1e_kernel(
         int si = (int)((-1.0 + sqrt(1.0 + 8.0 * pair)) * 0.5);
         int sj = pair - si * (si + 1) / 2;
         // Clamp (floating point rounding)
-        if (sj > si) { si++; sj = pair - si*(si+1)/2; }
+        if (sj > si) {
+            si++;
+            sj = pair - si * (si + 1) / 2;
+        }
 
         // Shell centers
-        work_t Ax = static_cast<work_t>(shell_centers[si*3 + 0]);
-        work_t Ay = static_cast<work_t>(shell_centers[si*3 + 1]);
-        work_t Az = static_cast<work_t>(shell_centers[si*3 + 2]);
-        work_t Bx = static_cast<work_t>(shell_centers[sj*3 + 0]);
-        work_t By = static_cast<work_t>(shell_centers[sj*3 + 1]);
-        work_t Bz = static_cast<work_t>(shell_centers[sj*3 + 2]);
+        work_t Ax = static_cast<work_t>(shell_centers[si * 3 + 0]);
+        work_t Ay = static_cast<work_t>(shell_centers[si * 3 + 1]);
+        work_t Az = static_cast<work_t>(shell_centers[si * 3 + 2]);
+        work_t Bx = static_cast<work_t>(shell_centers[sj * 3 + 0]);
+        work_t By = static_cast<work_t>(shell_centers[sj * 3 + 1]);
+        work_t Bz = static_cast<work_t>(shell_centers[sj * 3 + 2]);
         work_t R2 = dist2_device(Ax, Ay, Az, Bx, By, Bz);
 
         work_t acc_S = 0, acc_T = 0, acc_V = 0;
@@ -108,12 +113,13 @@ __global__ void compute_1e_kernel(
         // Contract over primitive pairs
         for (int p = 0; p < n_prim; ++p) {
             work_t alpha_p = static_cast<work_t>(shell_alpha[si * n_prim + p]);
-            work_t c_p     = static_cast<work_t>(shell_coeff[si * n_prim + p]);
+            work_t c_p = static_cast<work_t>(shell_coeff[si * n_prim + p]);
 
             for (int q = 0; q < n_prim; ++q) {
-                work_t alpha_q = static_cast<work_t>(shell_alpha[sj * n_prim + q]);
-                work_t c_q     = static_cast<work_t>(shell_coeff[sj * n_prim + q]);
-                work_t c_pq    = c_p * c_q;
+                work_t alpha_q =
+                    static_cast<work_t>(shell_alpha[sj * n_prim + q]);
+                work_t c_q = static_cast<work_t>(shell_coeff[sj * n_prim + q]);
+                work_t c_pq = c_p * c_q;
 
                 work_t gamma = alpha_p + alpha_q;
                 work_t mu = alpha_p * alpha_q / gamma;
@@ -134,14 +140,16 @@ __global__ void compute_1e_kernel(
                 work_t Px = (alpha_p * Ax + alpha_q * Bx) * inv_gamma;
                 work_t Py = (alpha_p * Ay + alpha_q * By) * inv_gamma;
                 work_t Pz = (alpha_p * Az + alpha_q * Bz) * inv_gamma;
-                work_t v_prefactor = c_pq * work_t(2) * work_t(kPI) * inv_gamma * K_AB;
+                work_t v_prefactor =
+                    c_pq * work_t(2) * work_t(kPI) * inv_gamma * K_AB;
 
                 for (int a = 0; a < natm; ++a) {
-                    work_t Cx = static_cast<work_t>(atom_pos[a*3 + 0]);
-                    work_t Cy = static_cast<work_t>(atom_pos[a*3 + 1]);
-                    work_t Cz = static_cast<work_t>(atom_pos[a*3 + 2]);
+                    work_t Cx = static_cast<work_t>(atom_pos[a * 3 + 0]);
+                    work_t Cy = static_cast<work_t>(atom_pos[a * 3 + 1]);
+                    work_t Cz = static_cast<work_t>(atom_pos[a * 3 + 2]);
                     work_t PC2 = dist2_device(Px, Py, Pz, Cx, Cy, Cz);
-                    acc_V += v_prefactor * work_t(-atom_Z[a]) * boys_f0_device(gamma * PC2);
+                    acc_V += v_prefactor * work_t(-atom_Z[a])
+                             * boys_f0_device(gamma * PC2);
                 }
             }
         }
@@ -149,27 +157,29 @@ __global__ void compute_1e_kernel(
         // Write output (column-major: A[i,j] = A[i + j*n])
         int ij = si + sj * n;
         int ji = sj + si * n;
-        S[ij] = acc_S;  T[ij] = acc_T;  V[ij] = acc_V;
+        S[ij] = acc_S;
+        T[ij] = acc_T;
+        V[ij] = acc_V;
         if (si != sj) {
-            S[ji] = acc_S;  T[ji] = acc_T;  V[ji] = acc_V;
+            S[ji] = acc_S;
+            T[ji] = acc_T;
+            V[ji] = acc_V;
         }
     }
 }
 
-void launch_1e_integrals(
-    prec_t* S, prec_t* T, prec_t* V,
-    const prec_t* shell_alpha, const prec_t* shell_coeff, const prec_t* shell_centers,
-    const int* atom_Z, const prec_t* atom_pos,
-    int n_shells, int n_prim, int natm,
-    void* stream)
-{
+void launch_1e_integrals(prec_t* S, prec_t* T, prec_t* V,
+                         const prec_t* shell_alpha, const prec_t* shell_coeff,
+                         const prec_t* shell_centers, const int* atom_Z,
+                         const prec_t* atom_pos, int n_shells, int n_prim,
+                         int natm, void* stream) {
     auto s = static_cast<cudaStream_t>(stream);
     int n_pairs = n_shells * (n_shells + 1) / 2;
     int threads = cuda::kDefaultBlock;
     int blocks = cuda::grid_size(n_pairs, threads);
     compute_1e_kernel<<<blocks, threads, 0, s>>>(
-        S, T, V, shell_alpha, shell_coeff, shell_centers,
-        atom_Z, atom_pos, n_shells, n_prim, natm);
+        S, T, V, shell_alpha, shell_coeff, shell_centers, atom_Z, atom_pos,
+        n_shells, n_prim, natm);
 }
 
 // ── Kernel: Two-electron ERI (full tensor, 8-fold symmetry) ───────────
@@ -182,13 +192,12 @@ void launch_1e_integrals(
 // Key optimization: exp(-mu * R_AB^2) is hoisted out of the inner (r,s) loop.
 // On GPU, exp() costs ~20 cycles vs ~4 cycles for multiply.
 
-__global__ void compute_eri_kernel(
-    prec_t* ERI,
-    const prec_t* shell_alpha,     // [n_shells * n_prim]
-    const prec_t* shell_coeff,     // [n_shells * n_prim]
-    const prec_t* shell_centers,   // [n_shells * 3]
-    int n, int n_prim)
-{
+__global__ void
+compute_eri_kernel(prec_t* ERI,
+                   const prec_t* shell_alpha,   // [n_shells * n_prim]
+                   const prec_t* shell_coeff,   // [n_shells * n_prim]
+                   const prec_t* shell_centers, // [n_shells * 3]
+                   int n, int n_prim) {
     // Total shell quartets: n^4. We compute all and let threads handle full set.
     // For larger systems, would use prescreened list + symmetry.
     int n4 = n * n * n * n;
@@ -204,10 +213,18 @@ __global__ void compute_eri_kernel(
         int si = rem % n;
 
         // Shell centers
-        work_t Ax = static_cast<work_t>(shell_centers[si*3]), Ay = static_cast<work_t>(shell_centers[si*3+1]), Az = static_cast<work_t>(shell_centers[si*3+2]);
-        work_t Bx = static_cast<work_t>(shell_centers[sj*3]), By = static_cast<work_t>(shell_centers[sj*3+1]), Bz = static_cast<work_t>(shell_centers[sj*3+2]);
-        work_t Cx = static_cast<work_t>(shell_centers[sk*3]), Cy = static_cast<work_t>(shell_centers[sk*3+1]), Cz = static_cast<work_t>(shell_centers[sk*3+2]);
-        work_t Dx = static_cast<work_t>(shell_centers[sl*3]), Dy = static_cast<work_t>(shell_centers[sl*3+1]), Dz = static_cast<work_t>(shell_centers[sl*3+2]);
+        work_t Ax = static_cast<work_t>(shell_centers[si * 3]),
+               Ay = static_cast<work_t>(shell_centers[si * 3 + 1]),
+               Az = static_cast<work_t>(shell_centers[si * 3 + 2]);
+        work_t Bx = static_cast<work_t>(shell_centers[sj * 3]),
+               By = static_cast<work_t>(shell_centers[sj * 3 + 1]),
+               Bz = static_cast<work_t>(shell_centers[sj * 3 + 2]);
+        work_t Cx = static_cast<work_t>(shell_centers[sk * 3]),
+               Cy = static_cast<work_t>(shell_centers[sk * 3 + 1]),
+               Cz = static_cast<work_t>(shell_centers[sk * 3 + 2]);
+        work_t Dx = static_cast<work_t>(shell_centers[sl * 3]),
+               Dy = static_cast<work_t>(shell_centers[sl * 3 + 1]),
+               Dz = static_cast<work_t>(shell_centers[sl * 3 + 2]);
 
         work_t R2_AB = dist2_device(Ax, Ay, Az, Bx, By, Bz);
         work_t R2_CD = dist2_device(Cx, Cy, Cz, Dx, Dy, Dz);
@@ -234,11 +251,15 @@ __global__ void compute_eri_kernel(
 
                 // Inner primitive pair (r,s)
                 for (int r = 0; r < n_prim; ++r) {
-                    work_t a_r = static_cast<work_t>(shell_alpha[sk * n_prim + r]);
-                    work_t c_r = static_cast<work_t>(shell_coeff[sk * n_prim + r]);
+                    work_t a_r =
+                        static_cast<work_t>(shell_alpha[sk * n_prim + r]);
+                    work_t c_r =
+                        static_cast<work_t>(shell_coeff[sk * n_prim + r]);
                     for (int s = 0; s < n_prim; ++s) {
-                        work_t a_s = static_cast<work_t>(shell_alpha[sl * n_prim + s]);
-                        work_t c_s = static_cast<work_t>(shell_coeff[sl * n_prim + s]);
+                        work_t a_s =
+                            static_cast<work_t>(shell_alpha[sl * n_prim + s]);
+                        work_t c_s =
+                            static_cast<work_t>(shell_coeff[sl * n_prim + s]);
 
                         work_t gamma2 = a_r + a_s;
                         work_t mu2 = a_r * a_s / gamma2;
@@ -253,11 +274,10 @@ __global__ void compute_eri_kernel(
                         work_t PQ2 = dist2_device(Px, Py, Pz, Qx, Qy, Qz);
 
                         work_t pi_val = work_t(kPI);
-                        result += c_p * c_q * c_r * c_s
-                                * work_t(2) * pi_val * pi_val * sqrt(pi_val)
-                                / (gamma1 * gamma2 * sqrt(gamma1 + gamma2))
-                                * K_AB * K_CD
-                                * boys_f0_device(rho * PQ2);
+                        result += c_p * c_q * c_r * c_s * work_t(2) * pi_val
+                                  * pi_val * sqrt(pi_val)
+                                  / (gamma1 * gamma2 * sqrt(gamma1 + gamma2))
+                                  * K_AB * K_CD * boys_f0_device(rho * PQ2);
                     }
                 }
             }
@@ -268,12 +288,9 @@ __global__ void compute_eri_kernel(
     }
 }
 
-void launch_eri(
-    prec_t* ERI,
-    const prec_t* shell_alpha, const prec_t* shell_coeff, const prec_t* shell_centers,
-    int n_shells, int n_prim,
-    void* stream)
-{
+void launch_eri(prec_t* ERI, const prec_t* shell_alpha,
+                const prec_t* shell_coeff, const prec_t* shell_centers,
+                int n_shells, int n_prim, void* stream) {
     auto s = static_cast<cudaStream_t>(stream);
     int n4 = n_shells * n_shells * n_shells * n_shells;
     int threads = cuda::kDefaultBlock;

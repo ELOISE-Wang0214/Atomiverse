@@ -17,7 +17,7 @@ namespace ATV {
 namespace cpu {
 
 class Dihedral : public ComponentBase {
-public:
+  public:
     ~Dihedral() override = default;
 
     ComponentRole role() const final { return ComponentRole::Evaluator; }
@@ -27,7 +27,7 @@ public:
 
     void launch(const LaunchContext& ctx) final { compute(ctx); }
 
-protected:
+  protected:
     Dihedral() = default;
 
     virtual void compute(const LaunchContext& ctx) = 0;
@@ -37,12 +37,11 @@ protected:
     /// LAMMPS convention: dihedral (i,j,k,l) owned by the rank holding
     /// `tag[j]` (the 2nd atom). See `Bond::select_owned_tuples` for full
     /// semantics.
-    const std::vector<int>& select_owned_tuples(
-        const LaunchContext& ctx,
-        int n_tuples,
-        const std::function<std::int64_t(int)>& owner_tag_of);
+    const std::vector<int>&
+    select_owned_tuples(const LaunchContext& ctx, int n_tuples,
+                        const std::function<std::int64_t(int)>& owner_tag_of);
 
-private:
+  private:
     std::vector<int> owned_;
     std::uint64_t cached_generation_ = ~std::uint64_t{0};
 };

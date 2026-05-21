@@ -20,7 +20,7 @@ namespace cpu {
 /// Hamiltonian for Nosé-Hoover NVT/NPT) at the given frequency.
 /// MPI-aware: only rank 0 prints.
 class Thermo : public cpu::ComponentBase {
-public:
+  public:
     explicit Thermo(int freq);
 
     std::string name() const override { return "thermo"; }
@@ -28,7 +28,7 @@ public:
     int frequency() const override { return freq_; }
     void launch(const cpu::LaunchContext& ctx) override;
 
-private:
+  private:
     int freq_;
 };
 

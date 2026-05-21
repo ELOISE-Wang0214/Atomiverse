@@ -6,8 +6,8 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/component.h"
 #include "atomiverse/core/binding.h"
+#include "atomiverse/cpu/component.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -16,7 +16,7 @@ namespace md {
 
 /// @brief Zero all forces. Phase-agnostic — driver binds to its own phase.
 class ZeroForces : public cpu::ComponentBase {
-public:
+  public:
     std::string name() const override { return "zero_forces"; }
     ComponentRole role() const override { return ComponentRole::None; }
     void launch(const cpu::LaunchContext& ctx) override;
@@ -24,7 +24,7 @@ public:
 
 /// @brief Zero potential energy. Phase-agnostic — driver binds to its own phase.
 class ZeroEnergy : public cpu::ComponentBase {
-public:
+  public:
     std::string name() const override { return "zero_energy"; }
     ComponentRole role() const override { return ComponentRole::None; }
     void launch(const cpu::LaunchContext& ctx) override;
@@ -35,7 +35,7 @@ public:
 /// Stress accumulation by force kernels (LJ pair virial, future bonded
 /// virials) requires a clean baseline at the start of each step.
 class ZeroStress : public cpu::ComponentBase {
-public:
+  public:
     std::string name() const override { return "zero_stress"; }
     ComponentRole role() const override { return ComponentRole::None; }
     void launch(const cpu::LaunchContext& ctx) override;
@@ -43,7 +43,7 @@ public:
 
 /// @brief Zero kinetic energy. Phase-agnostic — driver binds to its own phase.
 class ZeroKinetic : public cpu::ComponentBase {
-public:
+  public:
     std::string name() const override { return "zero_kinetic"; }
     ComponentRole role() const override { return ComponentRole::None; }
     void launch(const cpu::LaunchContext& ctx) override;
@@ -53,7 +53,7 @@ public:
 ///
 /// KE = 0.5 * kMvv2e * sum(m * v^2), with OpenMP reduction.
 class KineticEnergy : public cpu::ComponentBase {
-public:
+  public:
     std::string name() const override { return "kinetic_energy"; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {{static_cast<int>(ATV::md::Phase::end_of_step), -100}};
@@ -69,7 +69,7 @@ public:
 /// and fix_npt alone doesn't zero it).  Bound late in `end_of_step` so
 /// the freshly-integrated velocities are zeroed before the next step.
 class ZeroLinearMomentum : public cpu::ComponentBase {
-public:
+  public:
     /// @param freq Remove momentum every `freq` steps (LAMMPS default 1).
     explicit ZeroLinearMomentum(int freq = 1) : freq_(freq) {}
 
@@ -82,7 +82,7 @@ public:
     }
     void launch(const cpu::LaunchContext& ctx) override;
 
-private:
+  private:
     int freq_;
     long long step_ = 0;
 };
@@ -103,8 +103,8 @@ private:
 /// `dist` only affects the *shape* of the per-atom distribution, never the
 /// aggregate temperature.
 enum class VelocityDist {
-    uniform,   ///< U(-0.5, 0.5) per component (LAMMPS `dist uniform`).
-    gaussian,  ///< N(0, 1) per component (LAMMPS `dist gaussian`).
+    uniform,  ///< U(-0.5, 0.5) per component (LAMMPS `dist uniform`).
+    gaussian, ///< N(0, 1) per component (LAMMPS `dist gaussian`).
 };
 
 /// @brief Maxwell-Boltzmann velocity initialization (build-time only).
@@ -128,7 +128,7 @@ enum class VelocityDist {
 /// removes the COM velocity, then rescales to the exact target
 /// temperature. No-op during launch().
 class InitVelocity : public cpu::ComponentBase {
-public:
+  public:
     /// @param temperature Target temperature [K].
     /// @param seed Random number generator seed.
     /// @param dist Velocity-draw distribution (LAMMPS `dist`; Atomiverse
@@ -147,7 +147,7 @@ public:
     /// @brief Velocity-draw distribution (LAMMPS `dist`).
     VelocityDist dist() const { return dist_; }
 
-private:
+  private:
     double temperature_;
     unsigned seed_;
     VelocityDist dist_;

@@ -32,7 +32,7 @@
 #include <vector>
 
 #include "atomiverse/cpu/component.h"
-#include "atomiverse/cpu/minimizer/lbfgs.h"  // for OptRecord
+#include "atomiverse/cpu/minimizer/lbfgs.h" // for OptRecord
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
 
@@ -42,7 +42,7 @@ namespace minimizer {
 
 /// @brief Polak-Ribière conjugate-gradient Optimizer.
 class CG : public cpu::ComponentBase {
-public:
+  public:
     /// @brief Construct CG optimizer.
     /// @param alpha0    Step size [Å²/eV] (default 0.01).
     /// @param ftol      Max force convergence tolerance [eV/Å] (default 0.05).
@@ -50,12 +50,9 @@ public:
     /// @param max_dtol  Max displacement tolerance [Å] (default 0.002).
     /// @param rms_dtol  RMS displacement tolerance [Å] (default 0.001).
     /// @param etol      Energy change tolerance [eV] (default 1e-5).
-    explicit CG(double alpha0 = 0.01,
-                double ftol = 0.05,
-                double rms_ftol = 0.03,
-                double max_dtol = 0.002,
-                double rms_dtol = 0.001,
-                double etol = 1e-5);
+    explicit CG(double alpha0 = 0.01, double ftol = 0.05,
+                double rms_ftol = 0.03, double max_dtol = 0.002,
+                double rms_dtol = 0.001, double etol = 1e-5);
 
     std::string name() const override { return "cg"; }
     ComponentRole role() const override { return ComponentRole::Optimizer; }
@@ -63,8 +60,7 @@ public:
     std::vector<DefaultBinding> default_bindings() const override {
         return {
             {static_cast<int>(ATV::minimizer::Phase::search_direction), 0},
-            {static_cast<int>(ATV::minimizer::Phase::convergence_check), 0}
-        };
+            {static_cast<int>(ATV::minimizer::Phase::convergence_check), 0}};
     }
 
     void build(const cpu::BuildContext& ctx) override;
@@ -74,19 +70,19 @@ public:
     double max_force() const { return max_force_; }
     const std::vector<OptRecord>& trace() const { return trace_; }
 
-private:
+  private:
     double alpha0_;
     double ftol_, rms_ftol_, max_dtol_, rms_dtol_, etol_;
 
     // Previous-step state.
     std::vector<double> x_prev_;
     std::vector<double> g_prev_;
-    std::vector<double> d_prev_;     ///< Previous CG search direction.
-    bool   has_prev_ = false;
-    bool   converged_ = false;
+    std::vector<double> d_prev_; ///< Previous CG search direction.
+    bool has_prev_ = false;
+    bool converged_ = false;
     double max_force_ = 0;
     double energy_prev_ = 0;
-    int    step_ = 0;
+    int step_ = 0;
 
     std::vector<OptRecord> trace_;
 };

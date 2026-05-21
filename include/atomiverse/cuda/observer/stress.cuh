@@ -19,7 +19,7 @@ namespace ATV {
 /// Computes 6-component Voigt stress (xx, yy, zz, xy, xz, yz) and writes to
 /// DeviceFrame::stress. Includes kinetic and pair-wise contributions.
 class VirialStress : public ComponentBase {
-public:
+  public:
     VirialStress();
     ~VirialStress() override;
     VirialStress(VirialStress&&) noexcept;
@@ -30,7 +30,7 @@ public:
     void launch(const LaunchContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;
 
-private:
+  private:
     struct State;
     std::unique_ptr<State> state_;
 };

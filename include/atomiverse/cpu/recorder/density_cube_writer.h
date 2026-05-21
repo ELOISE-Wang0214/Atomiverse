@@ -36,24 +36,20 @@ namespace recorder {
 ///
 /// Default stride = 0 (every step). Set stride > 0 to thin output.
 class DensityCubeWriter : public cpu::ComponentBase {
-public:
+  public:
     /// @brief Construct with automatic bounding-box grid.
     /// @param handle     Shared view of the SCFEvaluator's state.
     /// @param filename   Output cube path. Overwritten on each launch.
     /// @param padding    Bounding-box padding [Bohr].
     /// @param spacing    Isotropic grid spacing [Bohr].
     /// @param stride     Write every N steps (0 or 1 = every step).
-    DensityCubeWriter(scf::SCFResultHandle handle,
-                      std::string filename,
-                      double padding = 4.0,
-                      double spacing = 0.25,
+    DensityCubeWriter(scf::SCFResultHandle handle, std::string filename,
+                      double padding = 4.0, double spacing = 0.25,
                       int stride = 1);
 
     /// @brief Construct with an explicit grid.
-    DensityCubeWriter(scf::SCFResultHandle handle,
-                      std::string filename,
-                      CubeGrid grid,
-                      int stride = 1);
+    DensityCubeWriter(scf::SCFResultHandle handle, std::string filename,
+                      CubeGrid grid, int stride = 1);
 
     std::string name() const override { return "density_cube_writer"; }
 
@@ -66,7 +62,7 @@ public:
     /// Useful for verifying normalization against n_electrons.
     double last_integrated_density() const { return last_integral_; }
 
-private:
+  private:
     scf::SCFResultHandle handle_;
     std::string filename_;
     bool auto_grid_;

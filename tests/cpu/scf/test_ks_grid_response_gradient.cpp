@@ -53,12 +53,21 @@ inline double ev_a_to_ha_bohr(double f_ev_a) {
 /// @brief Water near its def2-SVP / 6-31G* RHF equilibrium (C2v, z-axis).
 cpu::Frame make_h2o() {
     cpu::Frame f(3);
-    f.atoms.type[0] = 8; f.atoms.mass[0] = 15.999;
-    f.atoms.type[1] = 1; f.atoms.mass[1] = 1.008;
-    f.atoms.type[2] = 1; f.atoms.mass[2] = 1.008;
-    f.atoms.x[0] = 0.000000; f.atoms.y[0] = 0.000000; f.atoms.z[0] = 0.117790;
-    f.atoms.x[1] = 0.000000; f.atoms.y[1] = 0.755453; f.atoms.z[1] = -0.471161;
-    f.atoms.x[2] = 0.000000; f.atoms.y[2] = -0.755453; f.atoms.z[2] = -0.471161;
+    f.atoms.type[0] = 8;
+    f.atoms.mass[0] = 15.999;
+    f.atoms.type[1] = 1;
+    f.atoms.mass[1] = 1.008;
+    f.atoms.type[2] = 1;
+    f.atoms.mass[2] = 1.008;
+    f.atoms.x[0] = 0.000000;
+    f.atoms.y[0] = 0.000000;
+    f.atoms.z[0] = 0.117790;
+    f.atoms.x[1] = 0.000000;
+    f.atoms.y[1] = 0.755453;
+    f.atoms.z[1] = -0.471161;
+    f.atoms.x[2] = 0.000000;
+    f.atoms.y[2] = -0.755453;
+    f.atoms.z[2] = -0.471161;
     f.box = Mat3::cubic(100.0);
     return f;
 }
@@ -80,13 +89,13 @@ std::vector<native::Atom> make_asymmetric_h2o_bohr() {
 TEST(KsGridResponseGradient, BeckeWeightDerivativeMatchesFD) {
     const auto atoms = make_asymmetric_h2o_bohr();
     const int natm = static_cast<int>(atoms.size());
-    const double h = 1e-4;  // Bohr
+    const double h = 1e-4; // Bohr
 
     // A scattered set of probe points spanning the molecular region.
     const double probes[][3] = {
-        {0.30, 0.40, 0.10}, {-0.50, 0.20, 0.60}, {0.90, -0.40, -0.20},
+        {0.30, 0.40, 0.10},  {-0.50, 0.20, 0.60},  {0.90, -0.40, -0.20},
         {0.05, 1.10, -0.30}, {-0.80, -0.60, 0.40}, {1.20, 0.10, 0.55},
-        {0.00, 0.00, 1.30}, {-1.40, 0.50, -0.10},
+        {0.00, 0.00, 1.30},  {-1.40, 0.50, -0.10},
     };
 
     double max_err = 0.0;
@@ -119,12 +128,12 @@ TEST(KsGridResponseGradient, BeckeWeightDerivativeMatchesFD) {
                         rp[d] += h;
                         rm[d] -= h;
                     }
-                    becke_partition_weights_for_test(
-                        a_plus.data(), natm, rp[0], rp[1], rp[2],
-                        w_plus.data());
-                    becke_partition_weights_for_test(
-                        a_minus.data(), natm, rm[0], rm[1], rm[2],
-                        w_minus.data());
+                    becke_partition_weights_for_test(a_plus.data(), natm, rp[0],
+                                                     rp[1], rp[2],
+                                                     w_plus.data());
+                    becke_partition_weights_for_test(a_minus.data(), natm,
+                                                     rm[0], rm[1], rm[2],
+                                                     w_minus.data());
                     const double fd =
                         (w_plus[parent] - w_minus[parent]) / (2.0 * h);
                     const double an = dw[A * 3 + d];
@@ -147,7 +156,7 @@ TEST(KsGridResponseGradient, BeckeWeightDerivativeSumsToZero) {
     const int natm = static_cast<int>(atoms.size());
 
     const double probes[][3] = {
-        {0.30, 0.40, 0.10}, {-0.50, 0.20, 0.60}, {0.90, -0.40, -0.20},
+        {0.30, 0.40, 0.10},  {-0.50, 0.20, 0.60},  {0.90, -0.40, -0.20},
         {0.05, 1.10, -0.30}, {-0.80, -0.60, 0.40}, {1.20, 0.10, 0.55},
     };
 
@@ -159,7 +168,8 @@ TEST(KsGridResponseGradient, BeckeWeightDerivativeSumsToZero) {
                                     parent, GridLevel::SG0, dw.data());
             for (int d = 0; d < 3; ++d) {
                 double s = 0.0;
-                for (int A = 0; A < natm; ++A) s += dw[A * 3 + d];
+                for (int A = 0; A < natm; ++A)
+                    s += dw[A * 3 + d];
                 max_residual = std::max(max_residual, std::abs(s));
                 EXPECT_NEAR(s, 0.0, 1e-10)
                     << "rigid-shift identity broken: parent=" << parent
@@ -178,10 +188,10 @@ TEST(KsGridResponseGradient, NetTranslationalForceVanishesWithoutProjection) {
     const auto basis = cpu::scf::BasisSet::Def2SVP;
 
     auto ints = cpu::scf::build_integrals(frame, basis);
-    auto cfg = cpu::scf::default_config(ints);  // KS / PBE / MatchPySCF
+    auto cfg = cpu::scf::default_config(ints); // KS / PBE / MatchPySCF
     cfg.tol = 1e-9;
     cfg.max_iter = 200;
-    cfg.xc_grad_project_translation = false;  // genuine first-principles path
+    cfg.xc_grad_project_translation = false; // genuine first-principles path
 
     auto res = cpu::scf::scf_solve(ints, cfg);
     ASSERT_TRUE(res.converged) << "PBE RKS should converge";
@@ -191,11 +201,11 @@ TEST(KsGridResponseGradient, NetTranslationalForceVanishesWithoutProjection) {
     double max_net = 0.0;
     for (int d = 0; d < 3; ++d) {
         double s = 0.0;
-        for (int A = 0; A < 3; ++A) s += ev_a_to_ha_bohr(g.forces(A, d));
+        for (int A = 0; A < 3; ++A)
+            s += ev_a_to_ha_bohr(g.forces(A, d));
         max_net = std::max(max_net, std::abs(s));
-        EXPECT_LE(std::abs(s), 1e-8)
-            << "net translational force on axis " << d
-            << " must vanish without projection";
+        EXPECT_LE(std::abs(s), 1e-8) << "net translational force on axis " << d
+                                     << " must vanish without projection";
     }
     std::printf("[grid-response] ac-003 ||sum_A dE_xc/dR_A|| = %.3e Ha/Bohr\n",
                 max_net);
@@ -224,8 +234,8 @@ void check_moving_grid_fd(const cpu::Frame& frame, cpu::scf::BasisSet basis,
     // Moving-grid FD: fixed_grid stays null, so scf_finite_difference_gradient
     // regenerates the grid at each displacement.
     const double h_ang = 1e-3 / units::kAngstromInBohr;
-    auto fd = cpu::scf::scf_finite_difference_gradient(
-        frame, cfg, /*charge=*/0, h_ang, basis);
+    auto fd = cpu::scf::scf_finite_difference_gradient(frame, cfg, /*charge=*/0,
+                                                       h_ang, basis);
 
     double max_err = 0.0;
     const int natm = static_cast<int>(frame.atoms.size());
@@ -243,20 +253,21 @@ void check_moving_grid_fd(const cpu::Frame& frame, cpu::scf::BasisSet basis,
                 label, max_err);
 }
 
-}  // namespace
+} // namespace
 
 TEST(KsGridResponseGradient, MovingGridFD_RKS_PBE_def2SVP) {
     const auto frame = make_h2o();
     auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Def2SVP);
-    auto cfg = cpu::scf::default_config(ints);  // RKS / PBE / MatchPySCF
+    auto cfg = cpu::scf::default_config(ints); // RKS / PBE / MatchPySCF
     check_moving_grid_fd(frame, cpu::scf::BasisSet::Def2SVP, cfg,
                          "RKS PBE/def2-SVP");
 }
 
 TEST(KsGridResponseGradient, MovingGridFD_RKS_PBE_631Gs) {
     const auto frame = make_h2o();
-    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Pople631Gs);
-    auto cfg = cpu::scf::default_config(ints);  // RKS / PBE / MatchPySCF
+    auto ints =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Pople631Gs);
+    auto cfg = cpu::scf::default_config(ints); // RKS / PBE / MatchPySCF
     check_moving_grid_fd(frame, cpu::scf::BasisSet::Pople631Gs, cfg,
                          "RKS PBE/6-31G*");
 }
@@ -274,7 +285,8 @@ TEST(KsGridResponseGradient, MovingGridFD_UKS_PBE_def2SVP) {
 
 TEST(KsGridResponseGradient, MovingGridFD_UKS_PBE_631Gs) {
     const auto frame = make_h2o();
-    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Pople631Gs);
+    auto ints =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Pople631Gs);
     auto cfg = cpu::scf::default_config(ints);
     cfg.spin = cpu::scf::SpinType::Unrestricted;
     cfg.n_alpha = ints.n_occ();

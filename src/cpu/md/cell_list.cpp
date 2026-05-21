@@ -21,8 +21,7 @@ namespace md {
 // ── CellList ─────────────────────────────────────────────────────
 
 CellList::CellList(double cutoff, double skin)
-    : cutoff_(cutoff),
-      skin_(skin < 0 ? double(0.3) * cutoff : skin),
+    : cutoff_(cutoff), skin_(skin < 0 ? double(0.3) * cutoff : skin),
       cutoff_skin_(cutoff + (skin < 0 ? double(0.3) * cutoff : skin)) {}
 
 void CellList::init(const cpu::Frame& frame, double /*cutoff_skin*/) {
@@ -44,7 +43,7 @@ void CellList::init(const cpu::Frame& frame, double /*cutoff_skin*/) {
 }
 
 void CellList::init_extended(const cpu::Frame& frame, double /*cutoff_skin*/,
-                              const int dims[3], int capacity) {
+                             const int dims[3], int capacity) {
     cutoff_skin_ = cutoff_ + skin_;
     // Multi-rank: extend each axis with dims>1 to cover ghost halo.
     for (int d = 0; d < 3; ++d) {
@@ -65,13 +64,22 @@ void CellList::init_extended(const cpu::Frame& frame, double /*cutoff_skin*/,
 void CellList::compute_grid(const cpu::Frame& frame) {
     // Per-axis effective grid length: box edge plus halo skin on each
     // extended side. Single-rank axes use the box edge as-is.
-    double lx_eff = frame.box.length(0) + (axis_extended_[0] ? double(2) * cutoff_skin_ : double(0));
-    double ly_eff = frame.box.length(1) + (axis_extended_[1] ? double(2) * cutoff_skin_ : double(0));
-    double lz_eff = frame.box.length(2) + (axis_extended_[2] ? double(2) * cutoff_skin_ : double(0));
+    double lx_eff =
+        frame.box.length(0)
+        + (axis_extended_[0] ? double(2) * cutoff_skin_ : double(0));
+    double ly_eff =
+        frame.box.length(1)
+        + (axis_extended_[1] ? double(2) * cutoff_skin_ : double(0));
+    double lz_eff =
+        frame.box.length(2)
+        + (axis_extended_[2] ? double(2) * cutoff_skin_ : double(0));
 
-    ncx_ = std::max(int(1), static_cast<int>(std::floor(lx_eff / cutoff_skin_)));
-    ncy_ = std::max(int(1), static_cast<int>(std::floor(ly_eff / cutoff_skin_)));
-    ncz_ = std::max(int(1), static_cast<int>(std::floor(lz_eff / cutoff_skin_)));
+    ncx_ =
+        std::max(int(1), static_cast<int>(std::floor(lx_eff / cutoff_skin_)));
+    ncy_ =
+        std::max(int(1), static_cast<int>(std::floor(ly_eff / cutoff_skin_)));
+    ncz_ =
+        std::max(int(1), static_cast<int>(std::floor(lz_eff / cutoff_skin_)));
 
     csx_ = lx_eff / ncx_;
     csy_ = ly_eff / ncy_;
@@ -112,10 +120,10 @@ void CellList::bin_atoms(const cpu::Frame& frame, int n_active) {
     // Clear cell counts
     std::fill(cell_count_.begin(), cell_count_.end(), int(0));
 
-    // Assign atoms to cells. Single-rank axes wrap into [0, L); extended
-    // axes leave the position alone so PBC-shifted ghost coordinates land
-    // in the dedicated halo cells around the slab.
-    #pragma omp parallel for schedule(static)
+// Assign atoms to cells. Single-rank axes wrap into [0, L); extended
+// axes leave the position alone so PBC-shifted ghost coordinates land
+// in the dedicated halo cells around the slab.
+#pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
         double xi = frame.atoms.x[i];
         double yi = frame.atoms.y[i];
@@ -150,7 +158,7 @@ void CellList::bin_atoms(const cpu::Frame& frame, int n_active) {
         cell_offset_[c] = cell_offset_[c - 1] + cell_count_[c - 1];
 
     // Scatter atoms into bins (use temporary write pointers)
-    auto write_ptr = cell_offset_;  // copy
+    auto write_ptr = cell_offset_; // copy
     for (int i = 0; i < n; ++i) {
         int c = atom_cell_[i];
         binned_atoms_[write_ptr[c]] = i;
@@ -199,11 +207,13 @@ bool CellList::needs_rebuild(const cpu::Frame& frame, int n_active) const {
     // beyond the current `n_active`. Reading those produces an out-of-
     // bounds access in `build_half`.  Force a rebuild whenever the active
     // count moves.
-    if (n != n_at_last_build_) return true;
+    if (n != n_at_last_build_)
+        return true;
 
     // NPT: barostat may have scaled the box, invalidating the cell grid
     // (`csx_/csy_/csz_` were sized for the old box edge). Force a rebuild.
-    if (frame.box.length(0) != box_at_last_build_) return true;
+    if (frame.box.length(0) != box_at_last_build_)
+        return true;
 
     double max_disp_sq = 0;
 
@@ -215,7 +225,8 @@ bool CellList::needs_rebuild(const cpu::Frame& frame, int n_active) const {
         // boundaries doesn't falsely signal a ~box-length displacement.
         frame.box.min_image(dx, dy, dz);
         double dsq = dx * dx + dy * dy + dz * dz;
-        if (dsq > max_disp_sq) max_disp_sq = dsq;
+        if (dsq > max_disp_sq)
+            max_disp_sq = dsq;
     }
 
     // Rebuild when 2 * max_disp > skin
@@ -236,22 +247,24 @@ namespace {
 /// CSR arrays keep a monotonically-non-decreasing capacity across
 /// steady-state launches.
 inline void ensure_at_least(std::vector<int>& arr, std::size_t n) {
-    if (arr.size() < n) arr.resize(n);
+    if (arr.size() < n)
+        arr.resize(n);
 }
 
 } // namespace
 
 void CellList::refresh_half(const cpu::Frame& frame, int n_active,
                             PairList& result) const {
-    const int n = (n_active < 0) ? static_cast<int>(frame.atoms.size())
-                                 : n_active;
+    const int n =
+        (n_active < 0) ? static_cast<int>(frame.atoms.size()) : n_active;
     const double rc_sq = cutoff_skin_ * cutoff_skin_;
 
     ensure_at_least(result.ilist, static_cast<std::size_t>(n));
     ensure_at_least(result.numneigh, static_cast<std::size_t>(n));
     ensure_at_least(result.firstneigh, static_cast<std::size_t>(n));
 
-    for (int i = 0; i < n; ++i) result.ilist[i] = i;
+    for (int i = 0; i < n; ++i)
+        result.ilist[i] = i;
     result.inum = n;
 
     int n_threads = 1;
@@ -309,22 +322,31 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
                 int cz = cz0 + s.dk;
 
                 if (axis_extended_[0]) {
-                    if (cx < 0 || cx >= ncx_) continue;
+                    if (cx < 0 || cx >= ncx_)
+                        continue;
                 } else {
-                    if (cx <  0)    cx += ncx_;
-                    if (cx >= ncx_) cx -= ncx_;
+                    if (cx < 0)
+                        cx += ncx_;
+                    if (cx >= ncx_)
+                        cx -= ncx_;
                 }
                 if (axis_extended_[1]) {
-                    if (cy < 0 || cy >= ncy_) continue;
+                    if (cy < 0 || cy >= ncy_)
+                        continue;
                 } else {
-                    if (cy <  0)    cy += ncy_;
-                    if (cy >= ncy_) cy -= ncy_;
+                    if (cy < 0)
+                        cy += ncy_;
+                    if (cy >= ncy_)
+                        cy -= ncy_;
                 }
                 if (axis_extended_[2]) {
-                    if (cz < 0 || cz >= ncz_) continue;
+                    if (cz < 0 || cz >= ncz_)
+                        continue;
                 } else {
-                    if (cz <  0)    cz += ncz_;
-                    if (cz >= ncz_) cz -= ncz_;
+                    if (cz < 0)
+                        cz += ncz_;
+                    if (cz >= ncz_)
+                        cz -= ncz_;
                 }
 
                 const int cj = cx * ncy_ * ncz_ + cy * ncz_ + cz;
@@ -333,27 +355,38 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
                 // int[27] so the compiler keeps it in a register file.
                 bool seen = false;
                 for (int v = 0; v < visited_n; ++v) {
-                    if (visited[v] == cj) { seen = true; break; }
+                    if (visited[v] == cj) {
+                        seen = true;
+                        break;
+                    }
                 }
-                if (seen) continue;
+                if (seen)
+                    continue;
                 visited[visited_n++] = cj;
 
                 const int start = cell_offset_ptr[cj];
-                const int end   = start + cell_count_ptr[cj];
+                const int end = start + cell_count_ptr[cj];
 
                 for (int idx = start; idx < end; ++idx) {
                     int j = binned_ptr[idx];
-                    if (j <= i) continue;
+                    if (j <= i)
+                        continue;
 
                     double dx = xi - x_ptr[j];
                     double dy = yi - y_ptr[j];
                     double dz = zi - z_ptr[j];
-                    if (dx >  half_lx) dx -= lx;
-                    if (dx < -half_lx) dx += lx;
-                    if (dy >  half_ly) dy -= ly;
-                    if (dy < -half_ly) dy += ly;
-                    if (dz >  half_lz) dz -= lz;
-                    if (dz < -half_lz) dz += lz;
+                    if (dx > half_lx)
+                        dx -= lx;
+                    if (dx < -half_lx)
+                        dx += lx;
+                    if (dy > half_ly)
+                        dy -= ly;
+                    if (dy < -half_ly)
+                        dy += ly;
+                    if (dz > half_lz)
+                        dz -= lz;
+                    if (dz < -half_lz)
+                        dz += lz;
 
                     double r2 = dx * dx + dy * dy + dz * dz;
                     if (r2 < rc_sq) {
@@ -379,9 +412,10 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
     // implementation paid this overhead even with OMP=1 — that cost is
     // what the serial branch above reclaims.
     std::vector<std::vector<std::pair<int, int>>> thread_pairs(n_threads);
-    for (int i = 0; i < n; ++i) result.numneigh[i] = 0;
+    for (int i = 0; i < n; ++i)
+        result.numneigh[i] = 0;
 
-    #pragma omp parallel
+#pragma omp parallel
     {
         int tid = 0;
 #ifdef _OPENMP
@@ -392,7 +426,7 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
         std::vector<int> visited;
         visited.reserve(27);
 
-        #pragma omp for schedule(dynamic)
+#pragma omp for schedule(dynamic)
         for (int i = 0; i < n; ++i) {
             const int ci = atom_cell_[i];
             const int cz0 = ci % ncz_;
@@ -407,37 +441,52 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
                 int cz = cz0 + s.dk;
 
                 if (axis_extended_[0]) {
-                    if (cx < 0 || cx >= ncx_) continue;
+                    if (cx < 0 || cx >= ncx_)
+                        continue;
                 } else {
-                    if (cx <  0)    cx += ncx_;
-                    if (cx >= ncx_) cx -= ncx_;
+                    if (cx < 0)
+                        cx += ncx_;
+                    if (cx >= ncx_)
+                        cx -= ncx_;
                 }
                 if (axis_extended_[1]) {
-                    if (cy < 0 || cy >= ncy_) continue;
+                    if (cy < 0 || cy >= ncy_)
+                        continue;
                 } else {
-                    if (cy <  0)    cy += ncy_;
-                    if (cy >= ncy_) cy -= ncy_;
+                    if (cy < 0)
+                        cy += ncy_;
+                    if (cy >= ncy_)
+                        cy -= ncy_;
                 }
                 if (axis_extended_[2]) {
-                    if (cz < 0 || cz >= ncz_) continue;
+                    if (cz < 0 || cz >= ncz_)
+                        continue;
                 } else {
-                    if (cz <  0)    cz += ncz_;
-                    if (cz >= ncz_) cz -= ncz_;
+                    if (cz < 0)
+                        cz += ncz_;
+                    if (cz >= ncz_)
+                        cz -= ncz_;
                 }
 
                 const int cj = cx * ncy_ * ncz_ + cy * ncz_ + cz;
 
                 bool seen = false;
-                for (int v : visited) if (v == cj) { seen = true; break; }
-                if (seen) continue;
+                for (int v : visited)
+                    if (v == cj) {
+                        seen = true;
+                        break;
+                    }
+                if (seen)
+                    continue;
                 visited.push_back(cj);
 
                 const int start = cell_offset_[cj];
-                const int end   = start + cell_count_[cj];
+                const int end = start + cell_count_[cj];
 
                 for (int idx = start; idx < end; ++idx) {
                     int j = binned_atoms_[idx];
-                    if (j <= i) continue;
+                    if (j <= i)
+                        continue;
 
                     double dx = frame.atoms.x[i] - frame.atoms.x[j];
                     double dy = frame.atoms.y[i] - frame.atoms.y[j];
@@ -459,9 +508,11 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
 
     result.firstneigh[0] = 0;
     for (int i = 1; i < n; ++i)
-        result.firstneigh[i] = result.firstneigh[i - 1] + result.numneigh[i - 1];
+        result.firstneigh[i] =
+            result.firstneigh[i - 1] + result.numneigh[i - 1];
 
-    result.total_pairs = (n > 0) ? result.firstneigh[n - 1] + result.numneigh[n - 1] : 0;
+    result.total_pairs =
+        (n > 0) ? result.firstneigh[n - 1] + result.numneigh[n - 1] : 0;
     result.neighbors.resize(static_cast<std::size_t>(result.total_pairs));
 
     auto write_ptr = result.firstneigh;
@@ -471,7 +522,6 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
             write_ptr[i]++;
         }
     }
-
 }
 
 PairList CellList::build_half(const cpu::Frame& frame, int n_active) const {
@@ -482,8 +532,8 @@ PairList CellList::build_half(const cpu::Frame& frame, int n_active) const {
 
 void CellList::refresh_full(const cpu::Frame& frame, int n_active,
                             PairList& result) const {
-    const int n = (n_active < 0) ? static_cast<int>(frame.atoms.size())
-                                 : n_active;
+    const int n =
+        (n_active < 0) ? static_cast<int>(frame.atoms.size()) : n_active;
     const double rc_sq = cutoff_skin_ * cutoff_skin_;
 
     ensure_at_least(result.ilist, static_cast<std::size_t>(n));
@@ -502,7 +552,7 @@ void CellList::refresh_full(const cpu::Frame& frame, int n_active,
 
     std::vector<std::vector<std::pair<int, int>>> thread_pairs(n_threads);
 
-    #pragma omp parallel
+#pragma omp parallel
     {
         int tid = 0;
 #ifdef _OPENMP
@@ -513,7 +563,7 @@ void CellList::refresh_full(const cpu::Frame& frame, int n_active,
         std::vector<int> visited;
         visited.reserve(27);
 
-        #pragma omp for schedule(dynamic)
+#pragma omp for schedule(dynamic)
         for (int i = 0; i < n; ++i) {
             const int ci = atom_cell_[i];
             const int cz0 = ci % ncz_;
@@ -528,37 +578,52 @@ void CellList::refresh_full(const cpu::Frame& frame, int n_active,
                 int cz = cz0 + s.dk;
 
                 if (axis_extended_[0]) {
-                    if (cx < 0 || cx >= ncx_) continue;
+                    if (cx < 0 || cx >= ncx_)
+                        continue;
                 } else {
-                    if (cx <  0)    cx += ncx_;
-                    if (cx >= ncx_) cx -= ncx_;
+                    if (cx < 0)
+                        cx += ncx_;
+                    if (cx >= ncx_)
+                        cx -= ncx_;
                 }
                 if (axis_extended_[1]) {
-                    if (cy < 0 || cy >= ncy_) continue;
+                    if (cy < 0 || cy >= ncy_)
+                        continue;
                 } else {
-                    if (cy <  0)    cy += ncy_;
-                    if (cy >= ncy_) cy -= ncy_;
+                    if (cy < 0)
+                        cy += ncy_;
+                    if (cy >= ncy_)
+                        cy -= ncy_;
                 }
                 if (axis_extended_[2]) {
-                    if (cz < 0 || cz >= ncz_) continue;
+                    if (cz < 0 || cz >= ncz_)
+                        continue;
                 } else {
-                    if (cz <  0)    cz += ncz_;
-                    if (cz >= ncz_) cz -= ncz_;
+                    if (cz < 0)
+                        cz += ncz_;
+                    if (cz >= ncz_)
+                        cz -= ncz_;
                 }
 
                 const int cj = cx * ncy_ * ncz_ + cy * ncz_ + cz;
 
                 bool seen = false;
-                for (int v : visited) if (v == cj) { seen = true; break; }
-                if (seen) continue;
+                for (int v : visited)
+                    if (v == cj) {
+                        seen = true;
+                        break;
+                    }
+                if (seen)
+                    continue;
                 visited.push_back(cj);
 
                 const int start = cell_offset_[cj];
-                const int end   = start + cell_count_[cj];
+                const int end = start + cell_count_[cj];
 
                 for (int idx = start; idx < end; ++idx) {
                     int j = binned_atoms_[idx];
-                    if (j == i) continue;
+                    if (j == i)
+                        continue;
 
                     double dx = frame.atoms.x[i] - frame.atoms.x[j];
                     double dy = frame.atoms.y[i] - frame.atoms.y[j];
@@ -580,9 +645,11 @@ void CellList::refresh_full(const cpu::Frame& frame, int n_active,
 
     result.firstneigh[0] = 0;
     for (int i = 1; i < n; ++i)
-        result.firstneigh[i] = result.firstneigh[i - 1] + result.numneigh[i - 1];
+        result.firstneigh[i] =
+            result.firstneigh[i - 1] + result.numneigh[i - 1];
 
-    result.total_pairs = (n > 0) ? result.firstneigh[n - 1] + result.numneigh[n - 1] : 0;
+    result.total_pairs =
+        (n > 0) ? result.firstneigh[n - 1] + result.numneigh[n - 1] : 0;
     result.neighbors.resize(static_cast<std::size_t>(result.total_pairs));
 
     auto write_ptr = result.firstneigh;

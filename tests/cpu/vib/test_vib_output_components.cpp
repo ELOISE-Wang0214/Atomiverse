@@ -44,7 +44,7 @@ cpu::Frame make_water() {
     f.atoms.x = {-0.000000000000, -0.000000000000, 0.000000000000};
     f.atoms.y = {-0.000000000000, 0.785166496369, -0.785166496369};
     f.atoms.z = {0.034902683452, 0.569048658274, 0.569048658274};
-    f.atoms.type = {8, 1, 1};   // atomic numbers Z.
+    f.atoms.type = {8, 1, 1}; // atomic numbers Z.
     f.box = Mat3::cubic(100.0);
     return f;
 }
@@ -56,9 +56,8 @@ cpu::Frame make_water() {
 cpu::vib::HessianResult run_water(const std::string& freq_path,
                                   const std::string& mode_prefix) {
     cpu::Frame frame = make_water();
-    auto ints = cpu::scf::build_integrals(frame,
-                                          cpu::scf::BasisSet::Pople631G);
-    auto cfg  = cpu::scf::rhf_config(ints, /*tol=*/1e-12);
+    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Pople631G);
+    auto cfg = cpu::scf::rhf_config(ints, /*tol=*/1e-12);
     cfg.conv_tol_grad = 1e-9;
 
     // Build the driver with H2O's symmetry number sigma = 2 and the
@@ -66,11 +65,11 @@ cpu::vib::HessianResult run_water(const std::string& freq_path,
     cpu::vib::Thermochem::Config tc;
     tc.symmetry_number = 2;
     cpu::vib::Hessian::OutputConfig out;
-    out.frequency_tsv  = freq_path;
+    out.frequency_tsv = freq_path;
     out.mode_xyz_prefix = mode_prefix;
     cpu::vib::Hessian driver{tc, out};
     driver.on(ATV::vib::Phase::force)
-          .add(cpu::scf::SCFEvaluator{cfg, cpu::scf::BasisSet::Pople631G});
+        .add(cpu::scf::SCFEvaluator{cfg, cpu::scf::BasisSet::Pople631G});
     driver.build();
     return driver.run(frame);
 }
@@ -116,17 +115,26 @@ TEST(VibOutputComponents, FrequencyReportTsv) {
     int trailer_n_modes = -1;
     bool saw_zpe = false, saw_count = false;
     while (std::getline(is, line)) {
-        if (line.empty()) continue;
+        if (line.empty())
+            continue;
         std::istringstream ss(line);
         if (line[0] == '#') {
             // Trailer comment: "# key<TAB>value".
             std::string hash, key;
             ss >> hash >> key;
-            if (key == "zpe_hartree") { ss >> trailer_zpe; saw_zpe = true; }
-            if (key == "n_modes") { ss >> trailer_n_modes; saw_count = true; }
+            if (key == "zpe_hartree") {
+                ss >> trailer_zpe;
+                saw_zpe = true;
+            }
+            if (key == "n_modes") {
+                ss >> trailer_n_modes;
+                saw_count = true;
+            }
         } else {
             // Data row: index<TAB>frequency<TAB>type.
-            int idx; double freq; std::string type;
+            int idx;
+            double freq;
+            std::string type;
             ss >> idx >> freq >> type;
             EXPECT_FALSE(ss.fail()) << "unparseable TSV data row: " << line;
             ++n_data_rows;
@@ -134,15 +142,13 @@ TEST(VibOutputComponents, FrequencyReportTsv) {
     }
 
     // One data row per frequency (3N-6 = 3 modes for H2O).
-    EXPECT_EQ(n_data_rows,
-              static_cast<int>(result.frequencies.size()));
+    EXPECT_EQ(n_data_rows, static_cast<int>(result.frequencies.size()));
     EXPECT_EQ(n_data_rows, 3);
 
     // Trailer carries the correct count and the ZPE.
     ASSERT_TRUE(saw_count) << "TSV trailer missing n_modes";
     ASSERT_TRUE(saw_zpe) << "TSV trailer missing zpe_hartree";
-    EXPECT_EQ(trailer_n_modes,
-              static_cast<int>(result.frequencies.size()));
+    EXPECT_EQ(trailer_n_modes, static_cast<int>(result.frequencies.size()));
     EXPECT_NEAR(trailer_zpe, result.zpe, 1e-12);
 
     fs::remove(tsv);
@@ -167,8 +173,7 @@ TEST(VibOutputComponents, NormalModeWriterXyz) {
 
     // Each real mode produced a multi-frame XYZ file.
     for (int k = 0; k < n_modes; ++k) {
-        const std::string xyz =
-            prefix + "_mode" + std::to_string(k) + ".xyz";
+        const std::string xyz = prefix + "_mode" + std::to_string(k) + ".xyz";
         ASSERT_TRUE(fs::exists(xyz))
             << "NormalModeWriter did not write " << xyz;
 
@@ -178,7 +183,8 @@ TEST(VibOutputComponents, NormalModeWriterXyz) {
         int n_frames = 0;
         std::string line;
         while (std::getline(is, line)) {
-            if (line.empty()) continue;
+            if (line.empty())
+                continue;
             // Each XYZ frame: count line, comment line, N atom lines.
             const int natoms = std::stoi(line);
             EXPECT_EQ(natoms, 3) << "each frame must have the H2O atom count";
@@ -188,18 +194,21 @@ TEST(VibOutputComponents, NormalModeWriterXyz) {
             for (int i = 0; i < natoms; ++i) {
                 ASSERT_TRUE(std::getline(is, line));
                 std::istringstream ss(line);
-                std::string sym; double x, y, z;
+                std::string sym;
+                double x, y, z;
                 ss >> sym >> x >> y >> z;
                 EXPECT_FALSE(ss.fail())
                     << "unparseable XYZ atom line: " << line;
                 // Atom symbols must match the H2O input (O, H, H).
-                if (i == 0) EXPECT_EQ(sym, "O");
-                else        EXPECT_EQ(sym, "H");
+                if (i == 0)
+                    EXPECT_EQ(sym, "O");
+                else
+                    EXPECT_EQ(sym, "H");
             }
             ++n_frames;
         }
-        EXPECT_GT(n_frames, 1) << "mode " << k
-                               << " must be a multi-frame animation";
+        EXPECT_GT(n_frames, 1)
+            << "mode " << k << " must be a multi-frame animation";
     }
 
     for (int k = 0; k < n_modes; ++k)

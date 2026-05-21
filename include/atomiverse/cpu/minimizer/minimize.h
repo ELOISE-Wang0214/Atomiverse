@@ -43,14 +43,14 @@ namespace minimizer {
 /// Driver<minimizer::Phase, cpu::device_tag>.
 /// CPUDriver provides the shared categorical setters and slot variables.
 class Minimize : public OptimizeDriver {
-public:
+  public:
     Minimize() {
         // Phase-agnostic Zero* from cpu::md, bound to minimizer phases.
         this->on(ATV::minimizer::Phase::force)
             .add(cpu::md::ZeroForces{}, -1000)
-            .add(cpu::md::ZeroEnergy{},  -999);
+            .add(cpu::md::ZeroEnergy{}, -999);
         this->on(ATV::minimizer::Phase::end_of_step)
-             .add(cpu::SnapshotPublisher{}, 10);
+            .add(cpu::SnapshotPublisher{}, 10);
     }
 
     // ─── Minimizer-specific categorical setters ─────────────────────
@@ -66,7 +66,7 @@ public:
         return *this;
     }
 
-protected:
+  protected:
     void install_infra() override {
         const auto s = this->scan_pending_infra_();
         this->throw_if_missing_neighbor_list_(
@@ -74,7 +74,7 @@ protected:
             "Add `opt.set_neighbor(cpu::md::NeighborList<>{cutoff, skin})`.");
     }
 
-private:
+  private:
     std::optional<std::string> optimizer_set_;
 };
 

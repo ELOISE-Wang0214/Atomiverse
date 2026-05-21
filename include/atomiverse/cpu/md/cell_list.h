@@ -32,7 +32,7 @@ namespace md {
 /// 3. Build CSR half-neighbor list via stencil search
 /// 4. Track max displacement for rebuild check
 class CellList {
-public:
+  public:
     /// @param cutoff Interaction cutoff [Angstrom].
     /// @param skin Verlet skin width [Angstrom]. Negative = auto (0.3 * cutoff).
     explicit CellList(double cutoff, double skin = -1.0);
@@ -54,7 +54,7 @@ public:
     /// @param capacity Maximum number of active atoms (owners + ghost slack);
     ///        per-atom bookkeeping arrays are sized to this.
     void init_extended(const cpu::Frame& frame, double cutoff_skin,
-                        const int dims[3], int capacity);
+                       const int dims[3], int capacity);
 
     /// @brief Full rebuild: bin atoms, build stencil.
     /// @param frame Frame to bin.
@@ -98,7 +98,8 @@ public:
     /// @param frame Frame for distance evaluation.
     /// @param n_active Number of i-atoms this rebuild should cover.
     /// @param out PairList whose buffers are overwritten in place.
-    void refresh_half(const cpu::Frame& frame, int n_active, PairList& out) const;
+    void refresh_half(const cpu::Frame& frame, int n_active,
+                      PairList& out) const;
 
     /// @brief Rebuild the full-neighbor list **in place** into an existing
     /// `PairList`. See `refresh_half` for the capacity-preservation
@@ -106,7 +107,8 @@ public:
     /// @param frame Frame for distance evaluation.
     /// @param n_active Number of i-atoms this rebuild should cover.
     /// @param out PairList whose buffers are overwritten in place.
-    void refresh_full(const cpu::Frame& frame, int n_active, PairList& out) const;
+    void refresh_full(const cpu::Frame& frame, int n_active,
+                      PairList& out) const;
 
     /// @brief Number of active atoms at the last `build()` / `refresh_*`
     /// call, or `-1` before the first build. `NeighborList::launch` uses
@@ -115,12 +117,12 @@ public:
     /// check would have skipped it.
     int n_at_last_build() const { return n_at_last_build_; }
 
-private:
+  private:
     double cutoff_, skin_, cutoff_skin_;
 
     // Grid
-    int ncx_ = 0, ncy_ = 0, ncz_ = 0;   ///< Cells per axis.
-    double csx_ = 0, csy_ = 0, csz_ = 0;   ///< Cell dimensions.
+    int ncx_ = 0, ncy_ = 0, ncz_ = 0;    ///< Cells per axis.
+    double csx_ = 0, csy_ = 0, csz_ = 0; ///< Cell dimensions.
     int total_cells_ = 0;
     /// @brief Grid origin per axis [Angstrom]. `0.0` for single-rank axes;
     /// `-cutoff_skin` for axes extended to cover ghost halo.
@@ -133,10 +135,10 @@ private:
     int capacity_ = 0;
 
     // Binning
-    xt::xtensor<int, 1> atom_cell_;       ///< Atom -> cell index [capacity].
-    xt::xtensor<int, 1> cell_count_;      ///< Atoms per cell [total_cells].
-    xt::xtensor<int, 1> cell_offset_;     ///< Prefix sum [total_cells].
-    xt::xtensor<int, 1> binned_atoms_;    ///< Sorted atom indices [capacity].
+    xt::xtensor<int, 1> atom_cell_;    ///< Atom -> cell index [capacity].
+    xt::xtensor<int, 1> cell_count_;   ///< Atoms per cell [total_cells].
+    xt::xtensor<int, 1> cell_offset_;  ///< Prefix sum [total_cells].
+    xt::xtensor<int, 1> binned_atoms_; ///< Sorted atom indices [capacity].
 
     // Stencil. Stored as (di, dj, dk) triples so that opposite-edge
     // wraps under PBC can be applied per-axis at lookup time. The flat
@@ -145,7 +147,11 @@ private:
     // (i.e. single-rank or single-rank-along-this-axis under MPI).
     /// @brief Stencil offset triple. Used by `build_half`/`build_full`
     /// together with each cell's (cx,cy,cz) decomposition + PBC wrap.
-    struct StencilOffset { int di; int dj; int dk; };
+    struct StencilOffset {
+        int di;
+        int dj;
+        int dk;
+    };
     std::vector<StencilOffset> half_stencil_;
     std::vector<StencilOffset> full_stencil_;
 

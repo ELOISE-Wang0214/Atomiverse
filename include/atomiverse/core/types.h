@@ -11,8 +11,8 @@ namespace ATV {
 /// - **blocking** -- main stream (serialized with other blocking ops)
 /// - **deferrable** -- secondary stream (may overlap with main stream work)
 enum class Scheduling {
-    blocking,   ///< Execute on main stream (serialized).
-    deferrable  ///< Execute on secondary stream (may overlap).
+    blocking,  ///< Execute on main stream (serialized).
+    deferrable ///< Execute on secondary stream (may overlap).
 };
 
 /// @brief Backpressure policy for the CPU analysis executor's snapshot ring.
@@ -27,11 +27,7 @@ enum class Scheduling {
 /// therefore a documented exception to the "no allocation in launch()" rule.
 /// Use only in diagnostic / benchmark runs where neither drops nor stalls
 /// are acceptable. Not recommended for production hot paths.
-enum class BackpressurePolicy {
-    drop_oldest,
-    block,
-    grow
-};
+enum class BackpressurePolicy { drop_oldest, block, grow };
 
 // Forward type declarations (actual types defined in their respective headers)
 class Mat3;

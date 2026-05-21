@@ -2,19 +2,20 @@
 /// @brief G-vector enumeration implementation.
 
 #include "atomiverse/cpu/pw/internal/g_vector.h"
-#include <cmath>
 #include <algorithm>
+#include <cmath>
 
 namespace ATV {
 namespace cpu {
 namespace pw {
 namespace internal {
 
-GVectorList enumerate_g_vectors(const ::ATV::Box& cell_bohr, Real ecut, const Vec3& k) {
+GVectorList enumerate_g_vectors(const ::ATV::Box& cell_bohr, Real ecut,
+                                const Vec3& k) {
     auto recip = cell_bohr.recip_cell();
-    Vec3 b0{recip(0,0), recip(0,1), recip(0,2)};
-    Vec3 b1{recip(1,0), recip(1,1), recip(1,2)};
-    Vec3 b2{recip(2,0), recip(2,1), recip(2,2)};
+    Vec3 b0{recip(0, 0), recip(0, 1), recip(0, 2)};
+    Vec3 b1{recip(1, 0), recip(1, 1), recip(1, 2)};
+    Vec3 b2{recip(2, 0), recip(2, 1), recip(2, 2)};
 
     Real b0n = b0.norm(), b1n = b1.norm(), b2n = b2.norm();
     Real gmax = std::sqrt(Real(2) * ecut);
@@ -22,7 +23,11 @@ GVectorList enumerate_g_vectors(const ::ATV::Box& cell_bohr, Real ecut, const Ve
     int kmax = static_cast<int>(gmax / b1n) + 1;
     int lmax = static_cast<int>(gmax / b2n) + 1;
 
-    struct GV { Vec3 v; Real e; int hi, ki, li; };
+    struct GV {
+        Vec3 v;
+        Real e;
+        int hi, ki, li;
+    };
     std::vector<GV> tmp;
 
     for (int h = -hmax; h <= hmax; ++h) {
@@ -38,8 +43,9 @@ GVectorList enumerate_g_vectors(const ::ATV::Box& cell_bohr, Real ecut, const Ve
         }
     }
 
-    std::sort(tmp.begin(), tmp.end(),
-        [](const GV& a, const GV& b) { return a.v.norm_squared() < b.v.norm_squared(); });
+    std::sort(tmp.begin(), tmp.end(), [](const GV& a, const GV& b) {
+        return a.v.norm_squared() < b.v.norm_squared();
+    });
 
     GVectorList result;
     result.g.reserve(tmp.size());
@@ -59,7 +65,12 @@ GVectorList enumerate_g_vectors(const ::ATV::Box& cell_bohr, Real ecut, const Ve
     int nx = 2 * (hmax + 1);
     int ny = 2 * (kmax + 1);
     int nz = 2 * (lmax + 1);
-    if (nx % 2) ++nx; if (ny % 2) ++ny; if (nz % 2) ++nz;
+    if (nx % 2)
+        ++nx;
+    if (ny % 2)
+        ++ny;
+    if (nz % 2)
+        ++nz;
     result.nx = nx;
     result.ny = ny;
     result.nz = nz;

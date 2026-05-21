@@ -31,14 +31,14 @@
 
 #include <vector>
 
-#include "atomiverse/cpu/potentials/angle_harmonic.h"
-#include "atomiverse/cpu/potentials/bond_harmonic.h"
-#include "atomiverse/cpu/potentials/dihedral_multi_harmonic.h"
+#include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/context.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/core/mat3.h"
-#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/potentials/angle_harmonic.h"
+#include "atomiverse/cpu/potentials/bond_harmonic.h"
+#include "atomiverse/cpu/potentials/dihedral_multi_harmonic.h"
 
 using namespace ATV;
 
@@ -54,27 +54,24 @@ inline constexpr double kKcalToEv = 1.0 / 23.060547830619026;
 // LAMMPS bond/angle `harmonic` absorb the textbook ½: V = K(r-r0)²,
 // V = K(θ-θ0)². Atomiverse `BondHarmonic` / `AngleHarmonic` use the
 // identical convention, so K converts by units alone.
-inline constexpr double kBondK_kcal  = 350.0;                  // kcal/mol/Å²
-inline constexpr double kBondR0      = 1.53;                   // Å
-inline constexpr double kAngleK_kcal = 60.0;                   // kcal/mol/rad²
-inline constexpr double kAngleTheta0 = 109.5 * kPI / 180.0;    // rad
+inline constexpr double kBondK_kcal = 350.0;                // kcal/mol/Å²
+inline constexpr double kBondR0 = 1.53;                     // Å
+inline constexpr double kAngleK_kcal = 60.0;                // kcal/mol/rad²
+inline constexpr double kAngleTheta0 = 109.5 * kPI / 180.0; // rad
 
-inline double bond_K_eV()  { return kBondK_kcal  * kKcalToEv; }
+inline double bond_K_eV() { return kBondK_kcal * kKcalToEv; }
 inline double angle_K_eV() { return kAngleK_kcal * kKcalToEv; }
 
 // Dihedral multi/harmonic A1..A5 → Atomiverse C0..C4 (same load order).
 inline std::vector<double> dihedral_Cn_eV() {
-    return {1.73  * kKcalToEv,
-            -4.49 * kKcalToEv,
-            0.776 * kKcalToEv,
-            6.99  * kKcalToEv,
-            0.0};
+    return {1.73 * kKcalToEv, -4.49 * kKcalToEv, 0.776 * kKcalToEv,
+            6.99 * kKcalToEv, 0.0};
 }
 
 // ── LAMMPS reference energies ────────────────────────────────────────
 // `lmp_serial -in in.c20h42_energy`, run 0, Step/E_bond/E_angle/E_dihed
 // thermo line — verbatim, kcal/mol. Regenerate per SOURCES.md.
-inline constexpr double kRefBondKcal  = 122.63225361801;
+inline constexpr double kRefBondKcal = 122.63225361801;
 inline constexpr double kRefAngleKcal = 30.774982565814;
 inline constexpr double kRefDihedKcal = 3.5122664779742;
 
@@ -111,10 +108,10 @@ constexpr double kCoords[kN][3] = {
 cpu::Frame make_c20h42_perturbed() {
     cpu::Frame frame(kN);
     for (int i = 0; i < kN; ++i) {
-        frame.atoms.x[i]    = kCoords[i][0];
-        frame.atoms.y[i]    = kCoords[i][1];
-        frame.atoms.z[i]    = kCoords[i][2];
-        frame.atoms.mass[i] = 14.027;   // CH2 united atom
+        frame.atoms.x[i] = kCoords[i][0];
+        frame.atoms.y[i] = kCoords[i][1];
+        frame.atoms.z[i] = kCoords[i][2];
+        frame.atoms.mass[i] = 14.027; // CH2 united atom
         frame.atoms.type[i] = 0;
     }
 
@@ -122,35 +119,35 @@ cpu::Frame make_c20h42_perturbed() {
 
     frame.bonds.atomi = xt::zeros<int>({nb});
     frame.bonds.atomj = xt::zeros<int>({nb});
-    frame.bonds.type  = xt::zeros<int>({nb});
+    frame.bonds.type = xt::zeros<int>({nb});
     for (int k = 0; k < nb; ++k) {
         frame.bonds.atomi[k] = k;
         frame.bonds.atomj[k] = k + 1;
-        frame.bonds.type[k]  = 0;
+        frame.bonds.type[k] = 0;
     }
 
     frame.angles.atomi = xt::zeros<int>({na});
     frame.angles.atomj = xt::zeros<int>({na});
     frame.angles.atomk = xt::zeros<int>({na});
-    frame.angles.type  = xt::zeros<int>({na});
+    frame.angles.type = xt::zeros<int>({na});
     for (int k = 0; k < na; ++k) {
         frame.angles.atomi[k] = k;
         frame.angles.atomj[k] = k + 1;
         frame.angles.atomk[k] = k + 2;
-        frame.angles.type[k]  = 0;
+        frame.angles.type[k] = 0;
     }
 
     frame.dihedrals.atomi = xt::zeros<int>({nd});
     frame.dihedrals.atomj = xt::zeros<int>({nd});
     frame.dihedrals.atomk = xt::zeros<int>({nd});
     frame.dihedrals.atoml = xt::zeros<int>({nd});
-    frame.dihedrals.type  = xt::zeros<int>({nd});
+    frame.dihedrals.type = xt::zeros<int>({nd});
     for (int k = 0; k < nd; ++k) {
         frame.dihedrals.atomi[k] = k;
         frame.dihedrals.atomj[k] = k + 1;
         frame.dihedrals.atomk[k] = k + 2;
         frame.dihedrals.atoml[k] = k + 3;
-        frame.dihedrals.type[k]  = 0;
+        frame.dihedrals.type[k] = 0;
     }
 
     frame.box = Mat3::cubic(100.0);
@@ -196,17 +193,18 @@ TEST(PeEnergyXcheck, GeometryAndTopologyPinned) {
 
 TEST(PeEnergyXcheck, PerturbedGeometryExercisesKernels) {
     auto frame = make_c20h42_perturbed();
-    cpu::BondHarmonic  bond({bond_K_eV()},   {kBondR0});
+    cpu::BondHarmonic bond({bond_K_eV()}, {kBondR0});
     cpu::AngleHarmonic angle({angle_K_eV()}, {kAngleTheta0});
 
-    const double e_bond  = eval_one(frame, bond);
+    const double e_bond = eval_one(frame, bond);
     const double e_angle = eval_one(frame, angle);
 
     // A perfect-equilibrium chain gives E_bond = E_angle = 0 and would
     // pass any comparison trivially. The deterministic perturbation must
     // drive both strictly positive.
-    EXPECT_GT(e_bond,  1e-3) << "perturbed C20H42 must exercise the bond kernel";
-    EXPECT_GT(e_angle, 1e-3) << "perturbed C20H42 must exercise the angle kernel";
+    EXPECT_GT(e_bond, 1e-3) << "perturbed C20H42 must exercise the bond kernel";
+    EXPECT_GT(e_angle, 1e-3)
+        << "perturbed C20H42 must exercise the angle kernel";
 }
 
 // ── ac-005: bonded energies match LAMMPS term-by-term within 1e-6 eV ──
@@ -215,7 +213,7 @@ TEST(PeEnergyXcheck, BondEnergyMatchesLammps) {
     auto frame = make_c20h42_perturbed();
     cpu::BondHarmonic bond({bond_K_eV()}, {kBondR0});
     const double e_bond = eval_one(frame, bond);
-    const double ref    = kRefBondKcal * kKcalToEv;
+    const double ref = kRefBondKcal * kKcalToEv;
     EXPECT_NEAR(e_bond, ref, 1e-6)
         << "E_bond: Atomiverse " << e_bond << " eV vs LAMMPS " << ref << " eV";
 }
@@ -224,34 +222,32 @@ TEST(PeEnergyXcheck, AngleEnergyMatchesLammps) {
     auto frame = make_c20h42_perturbed();
     cpu::AngleHarmonic angle({angle_K_eV()}, {kAngleTheta0});
     const double e_angle = eval_one(frame, angle);
-    const double ref     = kRefAngleKcal * kKcalToEv;
-    EXPECT_NEAR(e_angle, ref, 1e-6)
-        << "E_angle: Atomiverse " << e_angle << " eV vs LAMMPS " << ref << " eV";
+    const double ref = kRefAngleKcal * kKcalToEv;
+    EXPECT_NEAR(e_angle, ref, 1e-6) << "E_angle: Atomiverse " << e_angle
+                                    << " eV vs LAMMPS " << ref << " eV";
 }
 
 TEST(PeEnergyXcheck, DihedralEnergyMatchesLammps) {
     auto frame = make_c20h42_perturbed();
     cpu::DihedralMultiHarmonic dih({dihedral_Cn_eV()});
     const double e_dih = eval_one(frame, dih);
-    const double ref   = kRefDihedKcal * kKcalToEv;
+    const double ref = kRefDihedKcal * kKcalToEv;
     // The multi/harmonic A1 constant term contributes 17·A1 as a fixed
     // offset to edihed — physically real and present on both engines.
-    EXPECT_NEAR(e_dih, ref, 1e-6)
-        << "E_dihedral: Atomiverse " << e_dih << " eV vs LAMMPS " << ref << " eV";
+    EXPECT_NEAR(e_dih, ref, 1e-6) << "E_dihedral: Atomiverse " << e_dih
+                                  << " eV vs LAMMPS " << ref << " eV";
 }
 
 TEST(PeEnergyXcheck, TotalBondedEnergyMatchesLammps) {
     auto frame = make_c20h42_perturbed();
-    cpu::BondHarmonic          bond({bond_K_eV()},   {kBondR0});
-    cpu::AngleHarmonic         angle({angle_K_eV()}, {kAngleTheta0});
+    cpu::BondHarmonic bond({bond_K_eV()}, {kBondR0});
+    cpu::AngleHarmonic angle({angle_K_eV()}, {kAngleTheta0});
     cpu::DihedralMultiHarmonic dih({dihedral_Cn_eV()});
 
-    const double total = eval_one(frame, bond)
-                       + eval_one(frame, angle)
-                       + eval_one(frame, dih);
-    const double ref   = (kRefBondKcal + kRefAngleKcal + kRefDihedKcal)
-                       * kKcalToEv;
-    EXPECT_NEAR(total, ref, 1e-6)
-        << "E_bonded total: Atomiverse " << total << " eV vs LAMMPS "
-        << ref << " eV";
+    const double total =
+        eval_one(frame, bond) + eval_one(frame, angle) + eval_one(frame, dih);
+    const double ref =
+        (kRefBondKcal + kRefAngleKcal + kRefDihedKcal) * kKcalToEv;
+    EXPECT_NEAR(total, ref, 1e-6) << "E_bonded total: Atomiverse " << total
+                                  << " eV vs LAMMPS " << ref << " eV";
 }

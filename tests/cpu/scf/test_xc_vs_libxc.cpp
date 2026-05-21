@@ -9,8 +9,8 @@
 /// exempted: native code must handle the (1-zeta)^{-1/3} singularity the
 /// same way libxc does.
 
-#include <gtest/gtest.h>
 #include <cmath>
+#include <gtest/gtest.h>
 
 #include "atomiverse/cpu/scf/xc_functional.h"
 #include "atomiverse/cpu/scf/xc_internal.h"
@@ -54,28 +54,27 @@ struct DensityPoint {
 // is well-polarized (zeta ~ 0.91) and exercises the same numerical regime
 // without the unphysical singularity.
 constexpr DensityPoint kPoints[] = {
-    {0.5,   0.5,   "unpolarized rho=1.0"},
-    {0.8,   0.2,   "partially polarized 0.8/0.2"},
-    {1.0,   0.05,  "highly polarized 1.0/0.05 (zeta ~ 0.905)"},
+    {0.5, 0.5, "unpolarized rho=1.0"},
+    {0.8, 0.2, "partially polarized 0.8/0.2"},
+    {1.0, 0.05, "highly polarized 1.0/0.05 (zeta ~ 0.905)"},
     {1.0e-6, 1.0e-8, "low density"},
-    {100.0, 50.0,  "high density"},
+    {100.0, 50.0, "high density"},
 };
 
 // PBE sigma sweep: sigma_aa = sigma_bb in {0, 0.01, 0.1, 1.0};
 // sigma_ab = (sigma_aa + sigma_bb)/2 = sigma_aa.
 constexpr double kSigmaValues[] = {0.0, 0.01, 0.1, 1.0};
 
-void expect_channel(double native, double oracle,
-                    const char* channel, const char* point_label) {
+void expect_channel(double native, double oracle, const char* channel,
+                    const char* point_label) {
     double diff = std::abs(native - oracle);
     double scale = std::max(std::abs(native), std::abs(oracle));
     double bound = std::max(kAbsTol, kRelTol * scale);
-    EXPECT_LE(diff, bound)
-        << "Channel " << channel
-        << " mismatch at point '" << point_label << "' (native="
-        << native << ", oracle=" << oracle
-        << ", diff=" << (native - oracle)
-        << ", bound=" << bound << ")";
+    EXPECT_LE(diff, bound) << "Channel " << channel << " mismatch at point '"
+                           << point_label << "' (native=" << native
+                           << ", oracle=" << oracle
+                           << ", diff=" << (native - oracle)
+                           << ", bound=" << bound << ")";
 }
 
 void compare_lsda(const XCOutput& native, const XCOutput& oracle,
@@ -112,17 +111,17 @@ TEST(XCvsLibxc, PbeBattery) {
         for (double sigma_diag : kSigmaValues) {
             double sigma_aa = sigma_diag;
             double sigma_bb = sigma_diag;
-            double sigma_ab = sigma_diag;  // (sigma_aa + sigma_bb)/2 = sigma_diag
+            double sigma_ab =
+                sigma_diag; // (sigma_aa + sigma_bb)/2 = sigma_diag
 
             char label[256];
-            std::snprintf(label, sizeof(label),
-                          "%s, sigma=%.2f", pt.label, sigma_diag);
+            std::snprintf(label, sizeof(label), "%s, sigma=%.2f", pt.label,
+                          sigma_diag);
 
-            XCOutput native = evaluate_xc(XCType::PBE,
-                                          pt.rho_a, pt.rho_b,
+            XCOutput native = evaluate_xc(XCType::PBE, pt.rho_a, pt.rho_b,
                                           sigma_aa, sigma_ab, sigma_bb);
-            XCOutput oracle = evaluate_pbe(pt.rho_a, pt.rho_b,
-                                           sigma_aa, sigma_ab, sigma_bb);
+            XCOutput oracle =
+                evaluate_pbe(pt.rho_a, pt.rho_b, sigma_aa, sigma_ab, sigma_bb);
             compare_pbe(native, oracle, label);
         }
     }
@@ -165,8 +164,8 @@ TEST(XCvsLibxc, B88Battery) {
             const double sigma_ab = sigma_diag;
 
             char label[256];
-            std::snprintf(label, sizeof(label),
-                          "%s, sigma=%.2f", pt.label, sigma_diag);
+            std::snprintf(label, sizeof(label), "%s, sigma=%.2f", pt.label,
+                          sigma_diag);
 
             double ex_a, vrho_a, vsigma_aa;
             double ex_b, vrho_b, vsigma_bb;
@@ -182,8 +181,8 @@ TEST(XCvsLibxc, B88Battery) {
             native.vsigma_ab = 0.0;
             native.vsigma_bb = vsigma_bb;
 
-            XCOutput oracle = evaluate_gga_x_b88(pt.rho_a, pt.rho_b,
-                                                 sigma_aa, sigma_ab, sigma_bb);
+            XCOutput oracle = evaluate_gga_x_b88(pt.rho_a, pt.rho_b, sigma_aa,
+                                                 sigma_ab, sigma_bb);
             compare_pbe(native, oracle, label);
         }
     }
@@ -203,13 +202,12 @@ TEST(XCvsLibxc, LypBattery) {
             const double sigma_ab = sigma_diag;
 
             char label[256];
-            std::snprintf(label, sizeof(label),
-                          "%s, sigma=%.2f", pt.label, sigma_diag);
+            std::snprintf(label, sizeof(label), "%s, sigma=%.2f", pt.label,
+                          sigma_diag);
 
             double ec, vc_a, vc_b, vsigma_aa, vsigma_ab, vsigma_bb;
             lyp_correlation(pt.rho_a, pt.rho_b, sigma_aa, sigma_ab, sigma_bb,
-                            ec, vc_a, vc_b,
-                            vsigma_aa, vsigma_ab, vsigma_bb);
+                            ec, vc_a, vc_b, vsigma_aa, vsigma_ab, vsigma_bb);
 
             XCOutput native{};
             native.exc = ec;
@@ -219,8 +217,8 @@ TEST(XCvsLibxc, LypBattery) {
             native.vsigma_ab = vsigma_ab;
             native.vsigma_bb = vsigma_bb;
 
-            XCOutput oracle = evaluate_gga_c_lyp(pt.rho_a, pt.rho_b,
-                                                 sigma_aa, sigma_ab, sigma_bb);
+            XCOutput oracle = evaluate_gga_c_lyp(pt.rho_a, pt.rho_b, sigma_aa,
+                                                 sigma_ab, sigma_bb);
             compare_pbe(native, oracle, label);
         }
     }

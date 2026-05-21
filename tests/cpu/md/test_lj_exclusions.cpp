@@ -13,19 +13,19 @@
 
 #include <cmath>
 
+#include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/context.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/lj.h"
 #include "atomiverse/cpu/md/neighbor_list.h"
-#include "atomiverse/core/mat3.h"
-#include "atomiverse/core/units.h"
 
 using namespace ATV;
 
 namespace {
 
-inline constexpr double kBondR0      = 1.53;
+inline constexpr double kBondR0 = 1.53;
 inline constexpr double kAngleTheta0 = 109.5 * kPI / 180.0;
 
 cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
@@ -46,7 +46,7 @@ cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
     const int n_b = n_carbons - 1;
     frame.bonds.atomi = xt::zeros<int>({n_b});
     frame.bonds.atomj = xt::zeros<int>({n_b});
-    frame.bonds.type  = xt::zeros<int>({n_b});
+    frame.bonds.type = xt::zeros<int>({n_b});
     for (int k = 0; k < n_b; ++k) {
         frame.bonds.atomi[k] = k;
         frame.bonds.atomj[k] = k + 1;
@@ -55,7 +55,7 @@ cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
     frame.angles.atomi = xt::zeros<int>({n_a});
     frame.angles.atomj = xt::zeros<int>({n_a});
     frame.angles.atomk = xt::zeros<int>({n_a});
-    frame.angles.type  = xt::zeros<int>({n_a});
+    frame.angles.type = xt::zeros<int>({n_a});
     for (int k = 0; k < n_a; ++k) {
         frame.angles.atomi[k] = k;
         frame.angles.atomj[k] = k + 1;
@@ -66,7 +66,7 @@ cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
     frame.dihedrals.atomj = xt::zeros<int>({n_d});
     frame.dihedrals.atomk = xt::zeros<int>({n_d});
     frame.dihedrals.atoml = xt::zeros<int>({n_d});
-    frame.dihedrals.type  = xt::zeros<int>({n_d});
+    frame.dihedrals.type = xt::zeros<int>({n_d});
     for (int k = 0; k < n_d; ++k) {
         frame.dihedrals.atomi[k] = k;
         frame.dihedrals.atomj[k] = k + 1;
@@ -77,8 +77,8 @@ cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
     return frame;
 }
 
-double evaluate_lj_only(cpu::Frame& frame, double eps, double sig, double cutoff,
-                        double s12, double s13, double s14) {
+double evaluate_lj_only(cpu::Frame& frame, double eps, double sig,
+                        double cutoff, double s12, double s13, double s14) {
     cpu::Context ctx;
     cpu::BuildContext bctx{ctx, frame};
     cpu::LaunchContext lctx{ctx, frame, 0, 0};
@@ -93,7 +93,9 @@ double evaluate_lj_only(cpu::Frame& frame, double eps, double sig, double cutoff
 
     const int n = frame.atoms.size();
     for (int i = 0; i < n; ++i) {
-        frame.atoms.fx[i] = 0; frame.atoms.fy[i] = 0; frame.atoms.fz[i] = 0;
+        frame.atoms.fx[i] = 0;
+        frame.atoms.fy[i] = 0;
+        frame.atoms.fz[i] = 0;
     }
     frame.energy = 0;
     lj.launch(lctx);
@@ -114,14 +116,17 @@ TEST(LjExclusions, SingleChainExclusionsDropEnergy) {
     const double sig = 4.01;
     const double cutoff = 10.5;
 
-    const double E_with_excl = evaluate_lj_only(frame_a, eps, sig, cutoff, 0.0, 0.0, 0.0);
-    const double E_no_excl   = evaluate_lj_only(frame_b, eps, sig, cutoff, 1.0, 1.0, 1.0);
+    const double E_with_excl =
+        evaluate_lj_only(frame_a, eps, sig, cutoff, 0.0, 0.0, 0.0);
+    const double E_no_excl =
+        evaluate_lj_only(frame_b, eps, sig, cutoff, 1.0, 1.0, 1.0);
 
     // Sanity: bonded-pair LJ at r = 1.529 Å with σ = 4.01 → r/σ ≈ 0.38 →
     // (σ/r)^12 ≈ 1.7e8 → V per pair ~ +2 keV. With 19 such bonds, the
     // un-excluded LJ energy is in the +1e4 eV range. The excluded version
     // sees only 1-5+ pairs and stays modest.
-    EXPECT_GT(E_no_excl, 1e3) << "without exclusions, 1-2 LJ should be enormous";
+    EXPECT_GT(E_no_excl, 1e3)
+        << "without exclusions, 1-2 LJ should be enormous";
     EXPECT_LT(std::abs(E_with_excl), 1.0)
         << "with full bonded exclusions, only 1-5+ LJ contributes";
     EXPECT_LT(E_with_excl, E_no_excl);
@@ -142,7 +147,7 @@ TEST(LjExclusions, BondExclusionRemovesOne12PairOnly) {
         }
         (*f).bonds.atomi = xt::zeros<int>({1});
         (*f).bonds.atomj = xt::zeros<int>({1});
-        (*f).bonds.type  = xt::zeros<int>({1});
+        (*f).bonds.type = xt::zeros<int>({1});
         (*f).bonds.atomi[0] = 0;
         (*f).bonds.atomj[0] = 1;
         (*f).box = Mat3::cubic(40.0);
@@ -154,8 +159,10 @@ TEST(LjExclusions, BondExclusionRemovesOne12PairOnly) {
     const double sig = 4.01;
     const double cutoff = 10.5;
 
-    const double E_excl_12   = evaluate_lj_only(frame_a, eps, sig, cutoff, 0.0, 1.0, 1.0);
-    const double E_no_excl   = evaluate_lj_only(frame_b, eps, sig, cutoff, 1.0, 1.0, 1.0);
+    const double E_excl_12 =
+        evaluate_lj_only(frame_a, eps, sig, cutoff, 0.0, 1.0, 1.0);
+    const double E_no_excl =
+        evaluate_lj_only(frame_b, eps, sig, cutoff, 1.0, 1.0, 1.0);
 
     EXPECT_GT(E_no_excl, E_excl_12)
         << "removing the 0-1 LJ pair must lower the total LJ energy";

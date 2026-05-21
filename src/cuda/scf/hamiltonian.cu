@@ -1,18 +1,18 @@
 /// @file cuda/scf/hamiltonian.cu
 /// @brief Hamiltonian: allocate SCF workspace + build H = H0 + alpha * P.
 
-#include "atomiverse/cuda/scf/hamiltonian.cuh"
 #include "atomiverse/cuda/launch.cuh"
+#include "atomiverse/cuda/scf/hamiltonian.cuh"
 #include "cublas_dispatch.cuh"
 
-#include <cuda_runtime.h>
 #include "atomiverse/cuda/types.cuh"
+#include <cuda_runtime.h>
 
 namespace ATV {
 
+using cuda::prec_t;
 using cuda::real_t;
 using cuda::work_t;
-using cuda::prec_t;
 
 namespace scf {
 
@@ -49,18 +49,18 @@ void Hamiltonian::build(const BuildContext& ctx) {
     scf.n_occ = n_occ_;
     scf.converged = false;
     scf.iteration = 0;
-    scf.residual = 0.0;  // residual is double, not work_t
+    scf.residual = 0.0; // residual is double, not work_t
 
     int nn = n * n;
 
     // Allocate all SCF workspace matrices
-    cudaMalloc(&scf.H0,    nn * sizeof(prec_t));
-    cudaMalloc(&scf.H,     nn * sizeof(prec_t));
-    cudaMalloc(&scf.P,     nn * sizeof(prec_t));
+    cudaMalloc(&scf.H0, nn * sizeof(prec_t));
+    cudaMalloc(&scf.H, nn * sizeof(prec_t));
+    cudaMalloc(&scf.P, nn * sizeof(prec_t));
     cudaMalloc(&scf.P_old, nn * sizeof(prec_t));
-    cudaMalloc(&scf.C,     nn * sizeof(prec_t));
-    cudaMalloc(&scf.eig,   n * sizeof(prec_t));
-    cudaMalloc(&scf.work,  nn * sizeof(prec_t));
+    cudaMalloc(&scf.C, nn * sizeof(prec_t));
+    cudaMalloc(&scf.eig, n * sizeof(prec_t));
+    cudaMalloc(&scf.work, nn * sizeof(prec_t));
 
     // Zero-initialize P
     cudaMemsetAsync(scf.P, 0, nn * sizeof(prec_t), stream);
@@ -82,7 +82,8 @@ void Hamiltonian::build(const BuildContext& ctx) {
 
 void Hamiltonian::launch(const LaunchContext& ctx) {
     auto& scf = ctx.frame.scf;
-    if (scf.converged) return;
+    if (scf.converged)
+        return;
 
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto handle = static_cast<cublasHandle_t>(cublas_handle_);
@@ -90,7 +91,8 @@ void Hamiltonian::launch(const LaunchContext& ctx) {
     int nn = n * n;
 
     // H = H0 (copy)
-    cudaMemcpyAsync(scf.H, scf.H0, nn * sizeof(prec_t), cudaMemcpyDeviceToDevice, stream);
+    cudaMemcpyAsync(scf.H, scf.H0, nn * sizeof(prec_t),
+                    cudaMemcpyDeviceToDevice, stream);
 
     // H += alpha * P
     prec_t alpha = static_cast<prec_t>(alpha_);

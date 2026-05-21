@@ -4,14 +4,14 @@
 #include "atomiverse/cuda/scf/convergence_check.cuh"
 #include "cublas_dispatch.cuh"
 
-#include <cuda_runtime.h>
 #include "atomiverse/cuda/types.cuh"
+#include <cuda_runtime.h>
 
 namespace ATV {
 
+using cuda::prec_t;
 using cuda::real_t;
 using cuda::work_t;
-using cuda::prec_t;
 
 namespace scf {
 
@@ -26,7 +26,8 @@ void ConvergenceCheck::build(const BuildContext& ctx) {
 
 void ConvergenceCheck::launch(const LaunchContext& ctx) {
     auto& scf = ctx.frame.scf;
-    if (scf.converged) return;
+    if (scf.converged)
+        return;
 
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto handle = static_cast<cublasHandle_t>(cublas_handle_);

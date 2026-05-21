@@ -5,8 +5,8 @@
 
 #include "nlist_error.cuh"
 
-#include <cuda_runtime.h>
 #include "atomiverse/cuda/types.cuh"
+#include <cuda_runtime.h>
 
 #include <cstddef>
 #include <utility>
@@ -19,13 +19,14 @@ namespace ATV::md::nlist {
 /// when the requested size fits in the existing allocation.
 template <typename T>
 class DeviceVector {
-public:
+  public:
     DeviceVector() = default;
 
     explicit DeviceVector(std::size_t count) { resize(count); }
 
     ~DeviceVector() {
-        if (ptr_) cudaFree(ptr_);
+        if (ptr_)
+            cudaFree(ptr_);
     }
 
     DeviceVector(const DeviceVector&) = delete;
@@ -40,7 +41,8 @@ public:
 
     DeviceVector& operator=(DeviceVector&& o) noexcept {
         if (this != &o) {
-            if (ptr_) cudaFree(ptr_);
+            if (ptr_)
+                cudaFree(ptr_);
             ptr_ = o.ptr_;
             size_ = o.size_;
             capacity_ = o.capacity_;
@@ -54,7 +56,8 @@ public:
     /// @brief Resize the buffer. Does NOT preserve contents on reallocation.
     void resize(std::size_t count) {
         if (count > capacity_) {
-            if (ptr_) cudaFree(ptr_);
+            if (ptr_)
+                cudaFree(ptr_);
             ptr_ = nullptr;
             // Geometric growth to amortize allocation cost
             std::size_t new_cap = std::max(count, capacity_ * 2);
@@ -82,7 +85,7 @@ public:
     std::size_t bytes() const { return size_ * sizeof(T); }
     bool empty() const { return size_ == 0; }
 
-private:
+  private:
     T* ptr_ = nullptr;
     std::size_t size_ = 0;
     std::size_t capacity_ = 0;

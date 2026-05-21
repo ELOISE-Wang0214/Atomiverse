@@ -6,14 +6,14 @@
 #include "atomiverse/cuda/scf/rhf_density.cuh"
 #include "cublas_dispatch.cuh"
 
-#include <cuda_runtime.h>
 #include "atomiverse/cuda/types.cuh"
+#include <cuda_runtime.h>
 
 namespace ATV {
 
+using cuda::prec_t;
 using cuda::real_t;
 using cuda::work_t;
-using cuda::prec_t;
 
 namespace scf {
 
@@ -36,7 +36,8 @@ void RHFDensity::build(const BuildContext& ctx) {
 
 void RHFDensity::launch(const LaunchContext& ctx) {
     auto& scf = ctx.frame.scf;
-    if (scf.converged) return;
+    if (scf.converged)
+        return;
 
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto handle = static_cast<cublasHandle_t>(cublas_handle_);
@@ -49,23 +50,25 @@ void RHFDensity::launch(const LaunchContext& ctx) {
     // Step 1: Back-transform C = X * C'
     // C' is in scf.C (from EigenSolver). We need C = X * C'.
     // Use d_HplusF_ as temp to hold C' before overwriting scf.C.
-    cudaMemcpyAsync(d_HplusF_, scf.C, nn * sizeof(prec_t), cudaMemcpyDeviceToDevice, stream);
+    cudaMemcpyAsync(d_HplusF_, scf.C, nn * sizeof(prec_t),
+                    cudaMemcpyDeviceToDevice, stream);
     prec_t one = prec_t(1);
     prec_t zero = prec_t(0);
-    detail::gemm(handle, CUBLAS_OP_N, CUBLAS_OP_N,
-                 n, n, n, &one, scf.X, n, d_HplusF_, n, &zero, scf.C, n);
+    detail::gemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, &one, scf.X, n,
+                 d_HplusF_, n, &zero, scf.C, n);
 
     // Step 2: P_old = P; P = 2 * C_occ * C_occ^T
-    cudaMemcpyAsync(scf.P_old, scf.P, nn * sizeof(prec_t), cudaMemcpyDeviceToDevice, stream);
+    cudaMemcpyAsync(scf.P_old, scf.P, nn * sizeof(prec_t),
+                    cudaMemcpyDeviceToDevice, stream);
     prec_t two = prec_t(2);
-    detail::gemm(handle, CUBLAS_OP_N, CUBLAS_OP_T,
-                 n, n, n_occ_,
-                 &two, scf.C, n, scf.C, n, &zero, scf.P, n);
+    detail::gemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, n, n, n_occ_, &two, scf.C, n,
+                 scf.C, n, &zero, scf.P, n);
 
     // Step 3: Energy = 0.5 * Tr[(Hcore + F) * P] + V_nuc
     // scf.work = F (saved by RHFFock). Hcore = scf.Hcore.
     // d_HplusF_ = Hcore + F
-    cudaMemcpyAsync(d_HplusF_, scf.Hcore, nn * sizeof(prec_t), cudaMemcpyDeviceToDevice, stream);
+    cudaMemcpyAsync(d_HplusF_, scf.Hcore, nn * sizeof(prec_t),
+                    cudaMemcpyDeviceToDevice, stream);
     detail::axpy(handle, nn, &one, scf.work, 1, d_HplusF_, 1);
 
     // E_elec = 0.5 * dot(HplusF, P)
@@ -84,7 +87,8 @@ void RHFDensity::destroy(const DestroyContext& /*ctx*/) {
         cublasDestroy(static_cast<cublasHandle_t>(cublas_handle_));
         cublas_handle_ = nullptr;
     }
-    cudaFree(d_HplusF_); d_HplusF_ = nullptr;
+    cudaFree(d_HplusF_);
+    d_HplusF_ = nullptr;
 }
 
 } // namespace scf

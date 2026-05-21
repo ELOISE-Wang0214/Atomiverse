@@ -23,7 +23,7 @@ namespace cpu {
 /// walk + per-pair energy/force math. `pair_cutoff()` reports the
 /// interaction cutoff for the framework's `NeighborList` integration.
 class Pair : public PairEvaluator {
-public:
+  public:
     ~Pair() override = default;
 
     /// @brief Structural role — pair styles are evaluators.
@@ -42,7 +42,7 @@ public:
     /// per-type tables.
     Real pair_cutoff() const override { return cutoff_; }
 
-protected:
+  protected:
     explicit Pair(Real cutoff) : cutoff_(cutoff) {}
 
     /// @brief The hot-path override. Derived class implements the

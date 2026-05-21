@@ -2,10 +2,10 @@
 /// @brief Build canonical shell pair list with Cauchy-Schwarz screening.
 
 #include "atomiverse/cpu/scf/shell_pair.h"
+#include "atomiverse/core/log.h"
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/cart.h"
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/core/log.h"
 
 #include <algorithm>
 #include <cmath>
@@ -27,19 +27,19 @@ blocks_from_shells(const std::vector<native::Shell>& shells) {
         const int n_cart = n_cart_of(sh.l);
 
         native::ShellBlock blk;
-        blk.n_prim    = sh.n_prim;
-        blk.alpha     = sh.alpha;
-        blk.coeff     = sh.coeff;
+        blk.n_prim = sh.n_prim;
+        blk.alpha = sh.alpha;
+        blk.coeff = sh.coeff;
         blk.center[0] = sh.center[0];
         blk.center[1] = sh.center[1];
         blk.center[2] = sh.center[2];
-        blk.l         = sh.l;
-        blk.n_cart    = n_cart;
-        blk.ao_start  = ao_idx;
+        blk.l = sh.l;
+        blk.n_cart = n_cart;
+        blk.ao_start = ao_idx;
         blocks.push_back(blk);
 
         shell_idx += n_cart;
-        ao_idx    += n_cart;
+        ao_idx += n_cart;
     }
     return blocks;
 }
@@ -48,18 +48,18 @@ ShellPairList build_shell_pair_list(const IntegralPack& pack, double thr) {
     const int n = pack.n_basis;
 
     ShellPairList spl;
-    spl.n_basis   = n;
+    spl.n_basis = n;
     spl.threshold = thr;
 
     // Copy backing storage and fix up shell pointers to own data.
     // pack.shells[i].alpha/coeff point into pack.shell_data; after copy they
     // must be redirected into spl.shell_data.
     spl.shell_data = pack.shell_data;
-    spl.atoms      = pack.atoms;
+    spl.atoms = pack.atoms;
     spl.shells.resize(n);
     for (int i = 0; i < n; ++i) {
-        spl.shells[i]       = pack.shells[i];
-        const int np        = spl.shells[i].n_prim;
+        spl.shells[i] = pack.shells[i];
+        const int np = spl.shells[i].n_prim;
         spl.shells[i].alpha = spl.shell_data[i].data();
         spl.shells[i].coeff = spl.shell_data[i].data() + np;
     }
@@ -93,9 +93,8 @@ ShellPairList build_shell_pair_list(const IntegralPack& pack, double thr) {
         }
     }
 
-    ATV_DEBUG(
-        "[shell_pair] built n_basis={} pairs={} screened={} thr={:.1e}",
-        n, spl.pairs.size(), n_screened, thr);
+    ATV_DEBUG("[shell_pair] built n_basis={} pairs={} screened={} thr={:.1e}",
+              n, spl.pairs.size(), n_screened, thr);
 
     return spl;
 }
@@ -106,7 +105,7 @@ ShellBlockPairList build_shell_block_pair_list(const IntegralPack& pack,
     const int n_raw_shells = static_cast<int>(pack.shells.size());
 
     ShellBlockPairList sbl;
-    sbl.n_basis   = n;
+    sbl.n_basis = n;
     sbl.threshold = thr;
 
     // ── Step 1: Group shells into blocks (shared helper).
@@ -129,7 +128,8 @@ ShellBlockPairList build_shell_block_pair_list(const IntegralPack& pack,
     }
     (void)n_raw_shells;
 
-    ATV_DEBUG("[shell_pair] block grouping done n_basis={} n_blocks={}", n, n_blocks);
+    ATV_DEBUG("[shell_pair] block grouping done n_basis={} n_blocks={}", n,
+              n_blocks);
 
     // ── Step 2: Canonical block pairs + Schwarz bounds ────────────────
     // For each canonical pair (si >= sj), compute the block-level Schwarz
@@ -150,7 +150,8 @@ ShellBlockPairList build_shell_block_pair_list(const IntegralPack& pack,
 
             // Compute eri_block(Bsi, Bsj, Bsi, Bsj)
             const int buf_size = na * nb * na * nb;
-            for (int k = 0; k < buf_size; ++k) blk_buf[k] = 0.0;
+            for (int k = 0; k < buf_size; ++k)
+                blk_buf[k] = 0.0;
             native::eri_block(Bsi, Bsj, Bsi, Bsj, blk_buf);
 
             // Block-level Schwarz bound: sqrt(max_{ia,ib} blk[ia,ib,ia,ib])
@@ -159,7 +160,8 @@ ShellBlockPairList build_shell_block_pair_list(const IntegralPack& pack,
                 for (int ib = 0; ib < nb; ++ib) {
                     // Index: [ia,ib,ia,ib] in layout (na, nb, na, nb)
                     const int idx = ((ia * nb + ib) * na + ia) * nb + ib;
-                    if (blk_buf[idx] > max_sq) max_sq = blk_buf[idx];
+                    if (blk_buf[idx] > max_sq)
+                        max_sq = blk_buf[idx];
                 }
 
             const double schwarz = std::sqrt(std::max(0.0, max_sq));
@@ -171,9 +173,9 @@ ShellBlockPairList build_shell_block_pair_list(const IntegralPack& pack,
         }
     }
 
-    ATV_DEBUG(
-        "[shell_pair] block pair list built n_blocks={} pairs={} screened={} thr={:.1e}",
-        n_blocks, sbl.pairs.size(), n_screened, thr);
+    ATV_DEBUG("[shell_pair] block pair list built n_blocks={} pairs={} "
+              "screened={} thr={:.1e}",
+              n_blocks, sbl.pairs.size(), n_screened, thr);
 
     return sbl;
 }

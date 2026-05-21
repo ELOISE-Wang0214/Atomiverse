@@ -34,7 +34,7 @@ namespace native {
 /// @param x      Boys parameter T = ρ·|P-Q|² (non-negative).
 /// @param u      Output array [nroots] — transformed roots t_i²/(1-t_i²).
 /// @param w      Output array [nroots] — quadrature weights.
-void rys_roots(int nroots, double x, double *u, double *w);
+void rys_roots(int nroots, double x, double* u, double* w);
 
 } // namespace native
 } // namespace scf

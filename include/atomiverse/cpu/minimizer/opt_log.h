@@ -29,7 +29,7 @@ namespace minimizer {
 /// so it works with any force evaluator (classical, SCF-based, ...).
 /// Computes step_norm = ||x - x_prev|| between successive launches.
 class OptLog : public cpu::ComponentBase {
-public:
+  public:
     /// @brief Construct.
     /// @param filename   Output TSV path.
     /// @param also_stdout If true, mirror each row to stdout.
@@ -48,7 +48,7 @@ public:
     /// @brief Number of rows written (excluding header).
     int n_rows() const { return n_rows_; }
 
-private:
+  private:
     std::string filename_;
     bool also_stdout_;
     std::ofstream os_;

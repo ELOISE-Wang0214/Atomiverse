@@ -41,7 +41,7 @@ namespace vib {
 /// shared `HessianWorkspace`; it performs no I/O and writes no
 /// `cpu::Frame` field, so `capabilities()` is empty.
 class Thermochem : public cpu::ComponentBase {
-public:
+  public:
     /// @brief Per-molecule thermochemistry inputs.
     ///
     /// `temperature` and `pressure` default to standard conditions
@@ -50,18 +50,17 @@ public:
     /// `symmetry_number` is the rotational symmetry number sigma,
     /// supplied verbatim — it is NOT auto-detected.
     struct Config {
-        double temperature    = 298.15;   ///< Temperature [K].
-        double pressure       = 101325.0; ///< Pressure [Pa].
-        int    multiplicity   = 1;        ///< Spin multiplicity `2S+1`.
-        int    symmetry_number = 1;       ///< Rotational sigma.
+        double temperature = 298.15; ///< Temperature [K].
+        double pressure = 101325.0;  ///< Pressure [Pa].
+        int multiplicity = 1;        ///< Spin multiplicity `2S+1`.
+        int symmetry_number = 1;     ///< Rotational sigma.
     };
 
     /// @brief Construct bound to a driver-owned workspace.
     /// @param ws  Non-owning pointer to the shared Hessian workspace.
     /// @param cfg Thermochemistry inputs (temperature / pressure /
     ///            multiplicity / symmetry number).
-    Thermochem(HessianWorkspace* ws, const Config& cfg)
-        : ws_(ws), cfg_(cfg) {}
+    Thermochem(HessianWorkspace* ws, const Config& cfg) : ws_(ws), cfg_(cfg) {}
 
     /// @brief Construct without a workspace (test-only role check).
     ///
@@ -93,7 +92,7 @@ public:
     /// @param ctx Launch context; `ctx.step` is the displacement index.
     void launch(const cpu::LaunchContext& ctx) override;
 
-private:
+  private:
     HessianWorkspace* ws_; ///< Non-owning; driver-owned (may be null).
     Config cfg_;           ///< Per-molecule thermochemistry inputs.
 };

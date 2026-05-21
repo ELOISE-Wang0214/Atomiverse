@@ -3,8 +3,8 @@
 
 #include "atomiverse/cpu/analysis_executor.h"
 
-#include "atomiverse/cpu/async_component_base.h"
 #include "atomiverse/core/log.h"
+#include "atomiverse/cpu/async_component_base.h"
 
 #include <algorithm>
 #include <cassert>
@@ -26,7 +26,8 @@ AnalysisExecutor::~AnalysisExecutor() {
 }
 
 void AnalysisExecutor::init(const Config& cfg, Context& ctx) {
-    if (initialized_) return;
+    if (initialized_)
+        return;
 
     policy_ = cfg.policy;
     affinity_hint_ = cfg.affinity_hint;
@@ -72,28 +73,32 @@ void AnalysisExecutor::init(const Config& cfg, Context& ctx) {
     ctx.executor = this;
     initialized_ = true;
 
-    ATV_DEBUG("analysis_executor initialized: {} workers, ring {}",
-              n_workers, ring_size);
+    ATV_DEBUG("analysis_executor initialized: {} workers, ring {}", n_workers,
+              ring_size);
 }
 
 void AnalysisExecutor::quiesce() {
-    if (!initialized_) return;
+    if (!initialized_)
+        return;
     // Wait for the queue to empty and all in-flight jobs to finish.
     // Workers stay alive — this is the mid-run barrier, not teardown.
     std::unique_lock<std::mutex> lk(mtx_);
     cv_work_.wait(lk, [this] {
-        return queue_.empty() && in_flight_.load(std::memory_order_relaxed) == 0;
+        return queue_.empty()
+               && in_flight_.load(std::memory_order_relaxed) == 0;
     });
 }
 
 void AnalysisExecutor::shutdown() {
-    if (!initialized_) return;
+    if (!initialized_)
+        return;
 
     // Wait for in-flight submissions to drain, then signal stop.
     {
         std::unique_lock<std::mutex> lk(mtx_);
         cv_work_.wait(lk, [this] {
-            return queue_.empty() && in_flight_.load(std::memory_order_relaxed) == 0;
+            return queue_.empty()
+                   && in_flight_.load(std::memory_order_relaxed) == 0;
         });
         stop_.store(true, std::memory_order_relaxed);
     }
@@ -101,14 +106,16 @@ void AnalysisExecutor::shutdown() {
     cv_slot_free_.notify_all();
 
     for (auto& t : workers_) {
-        if (t.joinable()) t.join();
+        if (t.joinable())
+            t.join();
     }
     workers_.clear();
 
     // Subscriber finalize() after all workers have joined, on the main thread,
     // exactly once per subscriber.
     for (auto* sub : subscribers_) {
-        if (sub) sub->finalize();
+        if (sub)
+            sub->finalize();
     }
     subscribers_.clear();
 
@@ -148,47 +155,47 @@ int AnalysisExecutor::acquire_slot_locked() {
 
     // Slot busy; dispatch per policy.
     switch (policy_) {
-        case BackpressurePolicy::drop_oldest: {
-            n_dropped_.fetch_add(1, std::memory_order_relaxed);
-            slot_busy_[static_cast<std::size_t>(idx)] = true; // already true, keep
-            next_slot_.store((idx + 1) % cap, std::memory_order_relaxed);
-            return idx;
-        }
-        case BackpressurePolicy::block: {
-            std::unique_lock<std::mutex> lk(mtx_, std::adopt_lock);
-            cv_slot_free_.wait(lk, [&] {
-                const int cap2 = ring_capacity_.load(std::memory_order_relaxed);
-                for (int k = 0; k < cap2; ++k) {
-                    if (!slot_busy_[static_cast<std::size_t>(k)]) {
-                        next_slot_.store(k, std::memory_order_relaxed);
-                        return true;
-                    }
-                }
-                return false;
-            });
-            const int k = next_slot_.load(std::memory_order_relaxed);
-            slot_busy_[static_cast<std::size_t>(k)] = true;
+    case BackpressurePolicy::drop_oldest: {
+        n_dropped_.fetch_add(1, std::memory_order_relaxed);
+        slot_busy_[static_cast<std::size_t>(idx)] = true; // already true, keep
+        next_slot_.store((idx + 1) % cap, std::memory_order_relaxed);
+        return idx;
+    }
+    case BackpressurePolicy::block: {
+        std::unique_lock<std::mutex> lk(mtx_, std::adopt_lock);
+        cv_slot_free_.wait(lk, [&] {
             const int cap2 = ring_capacity_.load(std::memory_order_relaxed);
-            next_slot_.store((k + 1) % cap2, std::memory_order_relaxed);
-            lk.release(); // caller's unique_lock still owns
-            return k;
-        }
-        case BackpressurePolicy::grow: {
-            grow_ring_locked();
-            const int cap2 = ring_capacity_.load(std::memory_order_relaxed);
-            // After growth, there's a free slot at the end of the previous range.
             for (int k = 0; k < cap2; ++k) {
                 if (!slot_busy_[static_cast<std::size_t>(k)]) {
-                    slot_busy_[static_cast<std::size_t>(k)] = true;
-                    next_slot_.store((k + 1) % cap2, std::memory_order_relaxed);
-                    return k;
+                    next_slot_.store(k, std::memory_order_relaxed);
+                    return true;
                 }
             }
-            // Shouldn't happen; fall back to index 0.
-            slot_busy_[0] = true;
-            next_slot_.store(1 % cap2, std::memory_order_relaxed);
-            return 0;
+            return false;
+        });
+        const int k = next_slot_.load(std::memory_order_relaxed);
+        slot_busy_[static_cast<std::size_t>(k)] = true;
+        const int cap2 = ring_capacity_.load(std::memory_order_relaxed);
+        next_slot_.store((k + 1) % cap2, std::memory_order_relaxed);
+        lk.release(); // caller's unique_lock still owns
+        return k;
+    }
+    case BackpressurePolicy::grow: {
+        grow_ring_locked();
+        const int cap2 = ring_capacity_.load(std::memory_order_relaxed);
+        // After growth, there's a free slot at the end of the previous range.
+        for (int k = 0; k < cap2; ++k) {
+            if (!slot_busy_[static_cast<std::size_t>(k)]) {
+                slot_busy_[static_cast<std::size_t>(k)] = true;
+                next_slot_.store((k + 1) % cap2, std::memory_order_relaxed);
+                return k;
+            }
         }
+        // Shouldn't happen; fall back to index 0.
+        slot_busy_[0] = true;
+        next_slot_.store(1 % cap2, std::memory_order_relaxed);
+        return 0;
+    }
     }
     // Unreachable.
     return idx;
@@ -219,19 +226,28 @@ void AnalysisExecutor::prealloc_slots(int n_atoms, CaptureMask mask) {
     std::lock_guard<std::mutex> lk(mtx_);
     for (auto& snap : ring_) {
         if (mask.positions) {
-            if (static_cast<int>(snap.x.size()) < n_atoms) snap.x.resize(static_cast<std::size_t>(n_atoms));
-            if (static_cast<int>(snap.y.size()) < n_atoms) snap.y.resize(static_cast<std::size_t>(n_atoms));
-            if (static_cast<int>(snap.z.size()) < n_atoms) snap.z.resize(static_cast<std::size_t>(n_atoms));
+            if (static_cast<int>(snap.x.size()) < n_atoms)
+                snap.x.resize(static_cast<std::size_t>(n_atoms));
+            if (static_cast<int>(snap.y.size()) < n_atoms)
+                snap.y.resize(static_cast<std::size_t>(n_atoms));
+            if (static_cast<int>(snap.z.size()) < n_atoms)
+                snap.z.resize(static_cast<std::size_t>(n_atoms));
         }
         if (mask.velocities) {
-            if (static_cast<int>(snap.vx.size()) < n_atoms) snap.vx.resize(static_cast<std::size_t>(n_atoms));
-            if (static_cast<int>(snap.vy.size()) < n_atoms) snap.vy.resize(static_cast<std::size_t>(n_atoms));
-            if (static_cast<int>(snap.vz.size()) < n_atoms) snap.vz.resize(static_cast<std::size_t>(n_atoms));
+            if (static_cast<int>(snap.vx.size()) < n_atoms)
+                snap.vx.resize(static_cast<std::size_t>(n_atoms));
+            if (static_cast<int>(snap.vy.size()) < n_atoms)
+                snap.vy.resize(static_cast<std::size_t>(n_atoms));
+            if (static_cast<int>(snap.vz.size()) < n_atoms)
+                snap.vz.resize(static_cast<std::size_t>(n_atoms));
         }
         if (mask.forces) {
-            if (static_cast<int>(snap.fx.size()) < n_atoms) snap.fx.resize(static_cast<std::size_t>(n_atoms));
-            if (static_cast<int>(snap.fy.size()) < n_atoms) snap.fy.resize(static_cast<std::size_t>(n_atoms));
-            if (static_cast<int>(snap.fz.size()) < n_atoms) snap.fz.resize(static_cast<std::size_t>(n_atoms));
+            if (static_cast<int>(snap.fx.size()) < n_atoms)
+                snap.fx.resize(static_cast<std::size_t>(n_atoms));
+            if (static_cast<int>(snap.fy.size()) < n_atoms)
+                snap.fy.resize(static_cast<std::size_t>(n_atoms));
+            if (static_cast<int>(snap.fz.size()) < n_atoms)
+                snap.fz.resize(static_cast<std::size_t>(n_atoms));
         }
         if (mask.types && static_cast<int>(snap.type.size()) < n_atoms) {
             snap.type.resize(static_cast<std::size_t>(n_atoms));
@@ -257,10 +273,12 @@ void AnalysisExecutor::submit(AsyncComponentBase* sub, int slot_idx) {
 }
 
 void AnalysisExecutor::apply_worker_affinity(int worker_idx) {
-    if (!affinity_hint_) return;
+    if (!affinity_hint_)
+        return;
 #ifdef __linux__
     const long n_cpus = sysconf(_SC_NPROCESSORS_ONLN);
-    if (n_cpus <= 0) return;
+    if (n_cpus <= 0)
+        return;
     // Pin worker N to the highest-numbered cores first, on the assumption
     // that the OMP team driving the hot path has the lower cores. Modular
     // wrap so configurations with more workers than cores still succeed
@@ -268,11 +286,13 @@ void AnalysisExecutor::apply_worker_affinity(int worker_idx) {
     const int target = static_cast<int>(n_cpus - 1 - (worker_idx % n_cpus));
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    if (target >= 0) CPU_SET(target, &cpuset);
+    if (target >= 0)
+        CPU_SET(target, &cpuset);
     pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
-    ATV_DEBUG("analysis_executor: worker {} pinned to CPU {}", worker_idx, target);
+    ATV_DEBUG("analysis_executor: worker {} pinned to CPU {}", worker_idx,
+              target);
 #else
-    (void)worker_idx;  // hint is a no-op outside Linux
+    (void)worker_idx; // hint is a no-op outside Linux
 #endif
 }
 
@@ -286,7 +306,8 @@ void AnalysisExecutor::worker_loop(int worker_idx) {
                 return stop_.load(std::memory_order_relaxed) || !queue_.empty();
             });
             if (queue_.empty()) {
-                if (stop_.load(std::memory_order_relaxed)) return;
+                if (stop_.load(std::memory_order_relaxed))
+                    return;
                 continue;
             }
             job = queue_.front();
@@ -303,7 +324,7 @@ void AnalysisExecutor::worker_loop(int worker_idx) {
             in_flight_.fetch_sub(1, std::memory_order_relaxed);
         }
         cv_slot_free_.notify_all();
-        cv_work_.notify_all();  // wake up shutdown-waiters too
+        cv_work_.notify_all(); // wake up shutdown-waiters too
     }
 }
 

@@ -15,6 +15,7 @@
 #include <string>
 #include <thread>
 
+#include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/analysis_executor.h"
 #include "atomiverse/cpu/async_component_base.h"
 #include "atomiverse/cpu/frame.h"
@@ -22,7 +23,6 @@
 #include "atomiverse/cpu/md/async_observer.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/core/mat3.h"
 
 #include "cpu/driver_test_helpers.h"
 
@@ -50,10 +50,12 @@ cpu::Frame make_tiny(int n) {
 /// Uses `cpu::md::AsyncObserver` so `sim.add(rec)` picks up the MD
 /// default binding (`md::Phase::end_of_step @ +20`).
 class ThreadRecorder : public cpu::md::AsyncObserver {
-public:
+  public:
     std::string name() const override { return "thread_recorder"; }
     cpu::CaptureMask capture_mask() const override {
-        cpu::CaptureMask m; m.positions = true; return m;
+        cpu::CaptureMask m;
+        m.positions = true;
+        return m;
     }
     int frequency() const override { return freq_; }
     void set_frequency(int f) { freq_ = f; }
@@ -69,10 +71,14 @@ public:
         std::lock_guard<std::mutex> g(mtx_);
         return thread_id_;
     }
-    int fire_count() const { return fire_count_.load(std::memory_order_relaxed); }
-    int finalize_count() const { return finalize_count_.load(std::memory_order_relaxed); }
+    int fire_count() const {
+        return fire_count_.load(std::memory_order_relaxed);
+    }
+    int finalize_count() const {
+        return finalize_count_.load(std::memory_order_relaxed);
+    }
 
-private:
+  private:
     mutable std::mutex mtx_;
     std::thread::id thread_id_{};
     std::atomic<int> fire_count_{0};
@@ -93,14 +99,15 @@ TEST(AsyncComponentBase, OnSnapshotRunsOnAnalysisThread) {
 
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{1e-6});
-        sim.add(NoOpForce{});
+    sim.add(NoOpForce{});
     sim.add(rec);
     sim.build();
-    sim.run(frame, 5);  // step >= 1 needed for publisher to fire
+    sim.run(frame, 5); // step >= 1 needed for publisher to fire
 
     EXPECT_GE(rec.fire_count(), 1);
     EXPECT_NE(rec.captured_thread_id(), main_id)
-        << "on_snapshot() ran on the main thread — analysis executor not firing async";
+        << "on_snapshot() ran on the main thread — analysis executor not "
+           "firing async";
 }
 
 // ── frequency respected ──────────────────────────────────────────────
@@ -113,7 +120,7 @@ TEST(AsyncComponentBase, FrequencyRespected) {
 
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{1e-6});
-        sim.add(NoOpForce{});
+    sim.add(NoOpForce{});
     sim.add(rec);
     sim.build();
     sim.run(frame, 20);
@@ -136,7 +143,7 @@ TEST(AsyncComponentBase, FinalizeCalledOnce) {
         sim.add(rec);
         sim.build();
         sim.run(frame, 5);
-    }  // sim shutdown drains executor and calls finalize() once
+    } // sim shutdown drains executor and calls finalize() once
 
     EXPECT_EQ(rec.finalize_count(), 1);
 }
@@ -146,10 +153,12 @@ TEST(AsyncComponentBase, FinalizeCalledOnce) {
 #ifdef ATV_HAS_MPI
 namespace {
 class MpiAllreduceSub : public cpu::md::AsyncObserver {
-public:
+  public:
     std::string name() const override { return "mpi_allreduce_sub"; }
     cpu::CaptureMask capture_mask() const override {
-        cpu::CaptureMask m; m.positions = true; return m;
+        cpu::CaptureMask m;
+        m.positions = true;
+        return m;
     }
     void on_snapshot(const cpu::FrameSnapshot& /*snap*/) override {
         double local = 1.0;
@@ -162,10 +171,11 @@ public:
         last_size_ = size;
     }
     double last_global() const { return last_global_.load(); }
-    int    last_size()   const { return last_size_.load(); }
-private:
+    int last_size() const { return last_size_.load(); }
+
+  private:
     std::atomic<double> last_global_{0.0};
-    std::atomic<int>    last_size_{0};
+    std::atomic<int> last_size_{0};
 };
 } // namespace
 
@@ -173,9 +183,10 @@ TEST(AsyncComponentBase, MpiAllreduceInOnSnapshotWorks) {
     int mpi_initialized = 0;
     MPI_Initialized(&mpi_initialized);
     if (!mpi_initialized) {
-        GTEST_SKIP() << "Test process was not launched under MPI; skipping "
-                        "MPI sub-communicator collective check. Re-run with "
-                        "`mpirun -n N ./test_cpu_async_component_base` to exercise.";
+        GTEST_SKIP()
+            << "Test process was not launched under MPI; skipping "
+               "MPI sub-communicator collective check. Re-run with "
+               "`mpirun -n N ./test_cpu_async_component_base` to exercise.";
     }
 
     auto frame = make_tiny(4);
@@ -184,7 +195,7 @@ TEST(AsyncComponentBase, MpiAllreduceInOnSnapshotWorks) {
 
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{1e-6});
-        sim.add(NoOpForce{});
+    sim.add(NoOpForce{});
     sim.add(sub);
     sim.build();
     sim.run(frame, 5);
@@ -194,4 +205,4 @@ TEST(AsyncComponentBase, MpiAllreduceInOnSnapshotWorks) {
     EXPECT_EQ(sub.last_size(), world_size);
     EXPECT_NEAR(sub.last_global(), static_cast<double>(world_size), 1e-12);
 }
-#endif  // ATV_HAS_MPI
+#endif // ATV_HAS_MPI

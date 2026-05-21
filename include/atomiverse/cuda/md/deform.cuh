@@ -17,7 +17,7 @@ namespace md {
 /// Each step: box[axis] *= (1 + rate*dt). Atom positions remapped proportionally.
 /// Binds to initial_integrate at order -100 (before VelocityVerlet).
 class Deform : public ComponentBase {
-public:
+  public:
     /// @brief Construct deformation component.
     /// @param axis        Deformation axis (0=x, 1=y, 2=z).
     /// @param strain_rate Engineering strain rate [1/fs].
@@ -28,7 +28,7 @@ public:
     std::vector<DefaultBinding> default_bindings() const override;
     void launch(const LaunchContext& ctx) override;
 
-private:
+  private:
     int axis_;
     double strain_rate_, dt_;
 };

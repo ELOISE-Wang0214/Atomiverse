@@ -3,8 +3,8 @@
 #pragma once
 
 #include "atomiverse/cpu/component.h"
-#include "atomiverse/facade/stage.h"
 #include "atomiverse/cpu/pw/pw_workspace.h"
+#include "atomiverse/facade/stage.h"
 
 namespace ATV {
 namespace cpu {
@@ -15,13 +15,15 @@ class PW_Davidson : public cpu::ComponentBase {
     int n_bands_ = 4;
     Real tol_ = Real(1e-8);
     int max_iter_ = 50;
-public:
+
+  public:
     PW_Davidson() = default;
     PW_Davidson(int n_bands, Real tol = Real(1e-8), int max_iter = 50)
         : n_bands_(n_bands), tol_(tol), max_iter_(max_iter) {}
     std::string name() const override { return "PW_Davidson"; }
     std::vector<DefaultBinding> default_bindings() const override {
-        return {DefaultBinding{static_cast<int>(ATV::scf::Phase::diagonalize), 0}};
+        return {
+            DefaultBinding{static_cast<int>(ATV::scf::Phase::diagonalize), 0}};
     }
     void build(const cpu::BuildContext& ctx) override;
     void launch(const cpu::LaunchContext& ctx) override;

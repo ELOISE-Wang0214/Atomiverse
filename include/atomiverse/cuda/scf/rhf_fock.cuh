@@ -29,7 +29,7 @@ namespace scf {
 /// build(): compute X = S^{-1/2} on host, upload Hcore/ERI/X to device.
 /// launch(): G(P) from ERI, F = Hcore + G, F' = X^T F X.
 class RHFFock : public ComponentBase {
-public:
+  public:
     /// @brief Construct with precomputed CPU integrals.
     explicit RHFFock(const cpu::scf::IntegralPack& integrals)
         : integrals_(integrals) {}
@@ -44,7 +44,7 @@ public:
     void launch(const LaunchContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;
 
-private:
+  private:
     cpu::scf::IntegralPack integrals_;
     void* cublas_handle_ = nullptr;
     double* d_temp_ = nullptr;
@@ -62,7 +62,7 @@ private:
 /// solver.add(scf::RHFFockDevice{n_prim, exponents, coefficients, n_occ});
 /// @endcode
 class RHFFockDevice : public ComponentBase {
-public:
+  public:
     /// @brief Construct for CUDA-only integral computation.
     /// @param n_prim Primitives per shell (3 for STO-3G).
     /// @param exponents Gaussian exponents [n_prim].
@@ -81,7 +81,7 @@ public:
     void launch(const LaunchContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;
 
-private:
+  private:
     int n_prim_;
     int n_occ_;
     std::vector<double> exponents_;
@@ -89,9 +89,9 @@ private:
     void* cublas_handle_ = nullptr;
     void* cusolver_handle_ = nullptr;
     double* d_temp_ = nullptr;
-    double* d_S_ = nullptr;  ///< Overlap (device, for X computation).
-    double* d_T_ = nullptr;  ///< Kinetic (device, temp).
-    double* d_V_ = nullptr;  ///< Nuclear (device, temp).
+    double* d_S_ = nullptr; ///< Overlap (device, for X computation).
+    double* d_T_ = nullptr; ///< Kinetic (device, temp).
+    double* d_V_ = nullptr; ///< Nuclear (device, temp).
 };
 
 #endif // ATV_HAS_RHF

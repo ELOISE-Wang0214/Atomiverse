@@ -1,19 +1,19 @@
 /// @file test_thermostat.cu
 /// @brief Tests for NoseHoover thermostat, Deform, VirialStress, Barostat.
 
-#include <gtest/gtest.h>
 #include <cmath>
+#include <gtest/gtest.h>
 
-#include "atomiverse/cuda/md/md.cuh"
-#include "atomiverse/cuda/md/velocity_verlet.cuh"
-#include "atomiverse/cuda/md/init.cuh"
-#include "atomiverse/cuda/md/nose_hoover.cuh"
-#include "atomiverse/cuda/md/deform.cuh"
-#include "atomiverse/cuda/md/barostat.cuh"
-#include "atomiverse/cuda/neighbor_list.cuh"
-#include "atomiverse/cuda/potentials/lj.cuh"
-#include "atomiverse/cuda/observer/stress.cuh"
 #include "atomiverse/cpu/frame.h"
+#include "atomiverse/cuda/md/barostat.cuh"
+#include "atomiverse/cuda/md/deform.cuh"
+#include "atomiverse/cuda/md/init.cuh"
+#include "atomiverse/cuda/md/md.cuh"
+#include "atomiverse/cuda/md/nose_hoover.cuh"
+#include "atomiverse/cuda/md/velocity_verlet.cuh"
+#include "atomiverse/cuda/neighbor_list.cuh"
+#include "atomiverse/cuda/observer/stress.cuh"
+#include "atomiverse/cuda/potentials/lj.cuh"
 
 using namespace ATV;
 
@@ -36,7 +36,7 @@ static cpu::Frame make_cubic(int n_side, double spacing) {
 
 TEST(NoseHoover, TemperatureControl) {
     // Minimal: 8 atoms, well-separated, weak LJ, small dt
-    auto frame = make_cubic(2, 5.0);  // 8 atoms
+    auto frame = make_cubic(2, 5.0); // 8 atoms
 
     double dt = 0.001;
     md::MD sim;
@@ -86,8 +86,7 @@ TEST(VirialStress, FiniteStress) {
     sim.on(md::Phase::force)
         .add(NeighborList{8.0}, -10)
         .add(LJ{0.01, 3.4, 8.0});
-    sim.on(md::Phase::post_force)
-        .add(VirialStress{});
+    sim.on(md::Phase::post_force).add(VirialStress{});
     sim.build();
     sim.run(frame, 10);
 
@@ -110,8 +109,7 @@ TEST(Barostat, FiniteResults) {
     sim.on(md::Phase::force)
         .add(NeighborList{8.0}, -10)
         .add(LJ{0.01, 3.4, 8.0});
-    sim.on(md::Phase::post_force)
-        .add(VirialStress{});
+    sim.on(md::Phase::post_force).add(VirialStress{});
     sim.build();
     sim.run(frame, 50);
 

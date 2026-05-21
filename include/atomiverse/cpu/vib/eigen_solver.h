@@ -43,7 +43,7 @@ namespace vib {
 /// `role() == None` and `capabilities()` empty — it writes the
 /// frequency fields of the shared workspace, not a `cpu::Frame` field.
 class EigenSolver : public cpu::ComponentBase {
-public:
+  public:
     /// @brief Construct bound to a driver-owned workspace.
     /// @param ws Non-owning pointer to the shared Hessian workspace.
     explicit EigenSolver(HessianWorkspace* ws) : ws_(ws) {}
@@ -68,7 +68,7 @@ public:
     /// @param ctx Launch context; `ctx.step` is the displacement index.
     void launch(const cpu::LaunchContext& ctx) override;
 
-private:
+  private:
     HessianWorkspace* ws_; ///< Non-owning; driver-owned.
 };
 

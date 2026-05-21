@@ -1,17 +1,17 @@
 /// @file md/velocity_verlet.cu
 
-#include "atomiverse/cuda/md/velocity_verlet.cuh"
-#include "atomiverse/cuda/launch.cuh"
-#include "atomiverse/facade/stage.h"
 #include "atomiverse/core/units.h"
-#include <cuda_runtime.h>
+#include "atomiverse/cuda/launch.cuh"
+#include "atomiverse/cuda/md/velocity_verlet.cuh"
 #include "atomiverse/cuda/types.cuh"
+#include "atomiverse/facade/stage.h"
+#include <cuda_runtime.h>
 
 namespace ATV {
 
+using cuda::prec_t;
 using cuda::real_t;
 using cuda::work_t;
-using cuda::prec_t;
 
 namespace md {
 
@@ -24,7 +24,8 @@ __global__ void initial_integrate(
     const real_t* __restrict__ fz, const real_t* __restrict__ mass,
     const prec_t* __restrict__ box, work_t dt, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n) return;
+    if (i >= n)
+        return;
     work_t inv_m = work_t(1) / static_cast<work_t>(mass[i]);
     work_t hdt = work_t(0.5) * dt;
     work_t ax = static_cast<work_t>(fx[i]) * inv_m * kFtm2v;
@@ -38,19 +39,21 @@ __global__ void initial_integrate(
     z[i] += dt * vz[i];
     // PBC wrapping (orthorhombic: diagonal elements)
     work_t Lx = box[0], Ly = box[4], Lz = box[8];
-    work_t inv_Lx = work_t(1) / Lx, inv_Ly = work_t(1) / Ly, inv_Lz = work_t(1) / Lz;
+    work_t inv_Lx = work_t(1) / Lx, inv_Ly = work_t(1) / Ly,
+           inv_Lz = work_t(1) / Lz;
     x[i] -= Lx * floor(x[i] * inv_Lx);
     y[i] -= Ly * floor(y[i] * inv_Ly);
     z[i] -= Lz * floor(z[i] * inv_Lz);
 }
 
-__global__ void final_integrate(
-    real_t* __restrict__ vx, real_t* __restrict__ vy, real_t* __restrict__ vz,
-    const real_t* __restrict__ fx, const real_t* __restrict__ fy,
-    const real_t* __restrict__ fz, const real_t* __restrict__ mass,
-    work_t dt, int n) {
+__global__ void
+final_integrate(real_t* __restrict__ vx, real_t* __restrict__ vy,
+                real_t* __restrict__ vz, const real_t* __restrict__ fx,
+                const real_t* __restrict__ fy, const real_t* __restrict__ fz,
+                const real_t* __restrict__ mass, work_t dt, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n) return;
+    if (i >= n)
+        return;
     work_t inv_m = work_t(1) / static_cast<work_t>(mass[i]);
     work_t hdt = work_t(0.5) * dt;
     vx[i] += hdt * static_cast<work_t>(fx[i]) * inv_m * kFtm2v;
@@ -68,13 +71,13 @@ void VelocityVerlet::launch(const LaunchContext& ctx) {
     int grid = cuda::grid_size(static_cast<int>(n));
     if (ctx.stage == static_cast<int>(Phase::initial_integrate)) {
         initial_integrate<<<grid, block, 0, stream>>>(
-            frame.atoms.x, frame.atoms.y, frame.atoms.z, frame.atoms.vx, frame.atoms.vy, frame.atoms.vz,
-            frame.atoms.fx, frame.atoms.fy, frame.atoms.fz, frame.atoms.mass,
-            frame.box, dt_, n);
+            frame.atoms.x, frame.atoms.y, frame.atoms.z, frame.atoms.vx,
+            frame.atoms.vy, frame.atoms.vz, frame.atoms.fx, frame.atoms.fy,
+            frame.atoms.fz, frame.atoms.mass, frame.box, dt_, n);
     } else {
         final_integrate<<<grid, block, 0, stream>>>(
-            frame.atoms.vx, frame.atoms.vy, frame.atoms.vz, frame.atoms.fx, frame.atoms.fy, frame.atoms.fz,
-            frame.atoms.mass, dt_, n);
+            frame.atoms.vx, frame.atoms.vy, frame.atoms.vz, frame.atoms.fx,
+            frame.atoms.fy, frame.atoms.fz, frame.atoms.mass, dt_, n);
     }
 }
 

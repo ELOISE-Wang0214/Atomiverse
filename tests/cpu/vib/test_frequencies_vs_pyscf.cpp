@@ -38,9 +38,9 @@ cpu::Frame make_frame(const pyscf_ref::RefMolecule& ref) {
     const int n = ref.natoms;
     cpu::Frame f(n);
     for (int i = 0; i < n; ++i) {
-        f.atoms.x(i)    = ref.geom[i].x;
-        f.atoms.y(i)    = ref.geom[i].y;
-        f.atoms.z(i)    = ref.geom[i].z;
+        f.atoms.x(i) = ref.geom[i].x;
+        f.atoms.y(i) = ref.geom[i].y;
+        f.atoms.z(i) = ref.geom[i].z;
         f.atoms.type(i) = ref.geom[i].Z;
     }
     f.box = Mat3::cubic(100.0);
@@ -60,13 +60,12 @@ cpu::scf::SCFConfig tight_rhf_config(const cpu::scf::IntegralPack& ints) {
 /// @param frame Equilibrium geometry (RHF / 6-31G).
 /// @return HessianResult with frequencies/normal modes populated.
 cpu::vib::HessianResult run_vib(cpu::Frame frame) {
-    auto ints = cpu::scf::build_integrals(frame,
-                                          cpu::scf::BasisSet::Pople631G);
-    auto cfg  = tight_rhf_config(ints);
+    auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::Pople631G);
+    auto cfg = tight_rhf_config(ints);
 
     cpu::vib::Hessian driver;
     driver.on(ATV::vib::Phase::force)
-          .add(cpu::scf::SCFEvaluator{cfg, cpu::scf::BasisSet::Pople631G});
+        .add(cpu::scf::SCFEvaluator{cfg, cpu::scf::BasisSet::Pople631G});
     driver.build();
     return driver.run(frame);
 }
@@ -89,7 +88,8 @@ double max_deviation(std::vector<double> a, std::vector<double> b) {
 /// @brief Look up a reference molecule by name.
 const pyscf_ref::RefMolecule& ref(const char* name) {
     for (const auto& m : pyscf_ref::reference())
-        if (std::string(m.name) == name) return m;
+        if (std::string(m.name) == name)
+            return m;
     throw std::runtime_error(std::string("no reference for ") + name);
 }
 
@@ -102,8 +102,7 @@ void check_molecule(const char* name, double tol_cm1) {
 
     // ac-003: exactly 3N-6 (nonlinear) projected modes for these molecules.
     EXPECT_FALSE(result.is_linear) << name << " must be nonlinear";
-    ASSERT_EQ(static_cast<int>(result.frequencies.size()),
-              3 * r.natoms - 6)
+    ASSERT_EQ(static_cast<int>(result.frequencies.size()), 3 * r.natoms - 6)
         << name << " must yield exactly 3N-6 modes";
     EXPECT_EQ(result.frequencies.size(), r.freq.size());
 
@@ -111,8 +110,9 @@ void check_molecule(const char* name, double tol_cm1) {
                             result.frequencies.end());
     const double dev = max_deviation(got, r.freq);
     EXPECT_LE(dev, tol_cm1)
-        << name << ": max frequency deviation vs PySCF analytic Hessian = "
-        << dev << " cm^-1 (tolerance " << tol_cm1 << ")";
+        << name
+        << ": max frequency deviation vs PySCF analytic Hessian = " << dev
+        << " cm^-1 (tolerance " << tol_cm1 << ")";
     // Always report the achieved deviation for the record.
     std::cout << "[ parity ] " << name << " max deviation = " << dev
               << " cm^-1\n";
@@ -122,17 +122,11 @@ void check_molecule(const char* name, double tol_cm1) {
 
 // ── ac-005: H2O / NH3 / CH4 numerical frequencies vs PySCF ──────────────
 
-TEST(VibFrequenciesVsPyscf, Water) {
-    check_molecule("h2o", 5.0);
-}
+TEST(VibFrequenciesVsPyscf, Water) { check_molecule("h2o", 5.0); }
 
-TEST(VibFrequenciesVsPyscf, Ammonia) {
-    check_molecule("nh3", 5.0);
-}
+TEST(VibFrequenciesVsPyscf, Ammonia) { check_molecule("nh3", 5.0); }
 
-TEST(VibFrequenciesVsPyscf, Methane) {
-    check_molecule("ch4", 5.0);
-}
+TEST(VibFrequenciesVsPyscf, Methane) { check_molecule("ch4", 5.0); }
 
 // ── Provenance: reference data is from a genuine PySCF run ───────────────
 

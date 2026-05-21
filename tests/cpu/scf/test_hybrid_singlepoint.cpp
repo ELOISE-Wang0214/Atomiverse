@@ -54,17 +54,18 @@ constexpr double kHartreeToEV = 27.211386245988;
 // `"<block>": {` and the key by `"<key>":` inside it.
 
 std::string read_reference_file(const std::string& stem) {
-    const std::string path =
-        std::string(ATV_SOURCE_DIR) + "/benchmarks/qc/reference/" + stem + ".json";
+    const std::string path = std::string(ATV_SOURCE_DIR)
+                             + "/benchmarks/qc/reference/" + stem + ".json";
     std::ifstream in(path);
-    if (!in) throw std::runtime_error("cannot open reference JSON: " + path);
+    if (!in)
+        throw std::runtime_error("cannot open reference JSON: " + path);
     std::stringstream ss;
     ss << in.rdbuf();
     return ss.str();
 }
 
 double json_value(const std::string& doc, const std::string& block,
-                   const std::string& key) {
+                  const std::string& key) {
     const std::string blk = "\"" + block + "\"";
     std::size_t bpos = doc.find(blk);
     if (bpos == std::string::npos)
@@ -133,22 +134,27 @@ cpu::Frame make_benzene() {
 cpu::Frame make_glycine() {
     cpu::Frame f(10);
     f.atoms.type = {7, 6, 6, 8, 8, 1, 1, 1, 1, 1};
-    f.atoms.x = {-1.400839, -0.370019, 0.925792, 1.233153, 1.771618,
+    f.atoms.x = {-1.400839, -0.370019, 0.925792,  1.233153,  1.771618,
                  -1.625527, -2.268277, -0.238214, -0.673752, 2.646065};
-    f.atoms.y = {0.271160, -0.558813, 0.184484, 0.868576, 0.156585,
+    f.atoms.y = {0.271160, -0.558813, 0.184484,  0.868576,  0.156585,
                  1.052674, -0.307372, -1.486583, -0.848738, 0.668026};
-    f.atoms.z = {-0.425197, 0.187422, 0.223822, 1.236362, -0.880405,
-                 0.233297, -0.505344, -0.410315, 1.218266, -0.877908};
+    f.atoms.z = {-0.425197, 0.187422,  0.223822,  1.236362, -0.880405,
+                 0.233297,  -0.505344, -0.410315, 1.218266, -0.877908};
     f.box = Mat3::cubic(100.0);
     return f;
 }
 
 cpu::Frame make_molecule(const std::string& stem) {
-    if (stem == "h2o") return make_h2o();
-    if (stem == "ch4") return make_ch4();
-    if (stem == "nh3") return make_nh3();
-    if (stem == "benzene") return make_benzene();
-    if (stem == "glycine") return make_glycine();
+    if (stem == "h2o")
+        return make_h2o();
+    if (stem == "ch4")
+        return make_ch4();
+    if (stem == "nh3")
+        return make_nh3();
+    if (stem == "benzene")
+        return make_benzene();
+    if (stem == "glycine")
+        return make_glycine();
     throw std::runtime_error("unknown molecule: " + stem);
 }
 
@@ -242,8 +248,8 @@ TEST(HybridSinglePoint, HomoLumoMatchesPySCF) {
     for (const char* stem : kMolecules) {
         const std::string doc = read_reference_file(stem);
         for (const char* xc_name : {"b3lyp", "pbe0"}) {
-            const XCType xc =
-                (std::string(xc_name) == "b3lyp") ? XCType::B3LYP : XCType::PBE0;
+            const XCType xc = (std::string(xc_name) == "b3lyp") ? XCType::B3LYP
+                                                                : XCType::PBE0;
             const double homo_ref = json_value(doc, xc_name, "homo_hartree");
             const double lumo_ref = json_value(doc, xc_name, "lumo_hartree");
 
@@ -270,9 +276,9 @@ TEST(HybridSinglePoint, EnergyDecompositionCloses) {
             auto result = run_hybrid(stem, xc);
             ASSERT_TRUE(result.converged);
             const double recomposed =
-                result.one_electron_energy + result.coulomb_energy +
-                result.exchange_energy + result.xc_energy +
-                result.nuclear_repulsion;
+                result.one_electron_energy + result.coulomb_energy
+                + result.exchange_energy + result.xc_energy
+                + result.nuclear_repulsion;
             EXPECT_NEAR(result.energy, recomposed, 1e-10)
                 << "decomposition did not close for " << stem;
         }
@@ -325,7 +331,7 @@ TEST(HybridSinglePoint, AlphaZeroReproducesPurePBE) {
     auto hyb_cfg = cpu::scf::default_config(integrals);
     hyb_cfg.xc_type = XCType::PBE;
     hyb_cfg.tol = 1e-10;
-    hyb_cfg.hybrid_alpha_override = 0.0;  // force the K branch with alpha=0
+    hyb_cfg.hybrid_alpha_override = 0.0; // force the K branch with alpha=0
     cpu::scf::SCFSolver hyb_solver{hyb_cfg};
     hyb_solver.build(integrals);
     const double e_hyb = hyb_solver.run(integrals).energy;

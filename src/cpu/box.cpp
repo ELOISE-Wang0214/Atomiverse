@@ -17,9 +17,8 @@ namespace {
 /// without a tolerance. Triclinic cells with intentional off-diagonal
 /// entries fall through to the general path.
 inline bool is_diagonal(const Mat3& m) noexcept {
-    return m(0, 1) == 0.0 && m(0, 2) == 0.0
-        && m(1, 0) == 0.0 && m(1, 2) == 0.0
-        && m(2, 0) == 0.0 && m(2, 1) == 0.0;
+    return m(0, 1) == 0.0 && m(0, 2) == 0.0 && m(1, 0) == 0.0 && m(1, 2) == 0.0
+           && m(2, 0) == 0.0 && m(2, 1) == 0.0;
 }
 
 /// @brief Invert a 3×3 row-major matrix via cofactor expansion.
@@ -31,7 +30,8 @@ void invert_3x3(const Mat3& m, Mat3& inv) noexcept {
     const double d = m(1, 0), e = m(1, 1), f = m(1, 2);
     const double g = m(2, 0), h = m(2, 1), i = m(2, 2);
 
-    const double det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+    const double det =
+        a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
     const double inv_det = 1.0 / det;
 
     inv(0, 0) = (e * i - f * h) * inv_det;
@@ -56,9 +56,9 @@ void Box::recompute_cache_() noexcept {
         half_lx_ = 0.5 * lx;
         half_ly_ = 0.5 * ly;
         half_lz_ = 0.5 * lz;
-        inv_lx_  = (lx > 0.0) ? 1.0 / lx : 0.0;
-        inv_ly_  = (ly > 0.0) ? 1.0 / ly : 0.0;
-        inv_lz_  = (lz > 0.0) ? 1.0 / lz : 0.0;
+        inv_lx_ = (lx > 0.0) ? 1.0 / lx : 0.0;
+        inv_ly_ = (ly > 0.0) ? 1.0 / ly : 0.0;
+        inv_lz_ = (lz > 0.0) ? 1.0 / lz : 0.0;
         // Diagonal inverse for compat readers of `inv_cell()`.
         inv_cell_ = Mat3::diagonal(inv_lx_, inv_ly_, inv_lz_);
     } else {
