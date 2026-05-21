@@ -176,6 +176,14 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/vib/thermochem.cpp
         src/cpu/vib/frequency_report.cpp
         src/cpu/vib/normal_mode_writer.cpp
+        # CPU geometry-optimization (Optimize category) driver components.
+        # The minimizer is a general optimizer (it minimizes any Force-capable
+        # evaluator, classical or QM) — it does NOT depend on ATV_BUILD_RHF.
+        src/cpu/minimizer/lbfgs.cpp
+        src/cpu/minimizer/cg.cpp
+        src/cpu/minimizer/trajectory_writer.cpp
+        src/cpu/minimizer/opt_log.cpp
+        src/cpu/minimizer/final_geometry.cpp
         # CPU MD MPI infrastructure (single-rank stubs in Phase 1)
         src/cpu/md/mpi/domain.cpp
         src/cpu/md/mpi/halo_exchange.cpp
@@ -259,11 +267,6 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/aspc_predictor.cpp
             src/cpu/scf/scf_evaluator.cpp
             src/cpu/scf/orbital_info_observer.cpp
-            src/cpu/minimizer/lbfgs.cpp
-            src/cpu/minimizer/cg.cpp
-            src/cpu/minimizer/trajectory_writer.cpp
-            src/cpu/minimizer/opt_log.cpp
-            src/cpu/minimizer/final_geometry.cpp
             src/cpu/recorder/cube.cpp
             src/cpu/recorder/density_cube_writer.cpp
             src/cpu/recorder/orbital_cube_writer.cpp
