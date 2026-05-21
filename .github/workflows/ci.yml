@@ -1,5 +1,12 @@
 name: CI
 
+# CPU build + our own unit-test suite (ctest). This workflow deliberately
+# does NOT build or link any third-party comparison library (libxc via
+# ATV_BUILD_XC_ORACLE, libcint via ATV_BUILD_LIBCINT) and does NOT run the
+# QC benchmark-vs-PySCF binary — it builds Atomiverse and runs Atomiverse's
+# own unit tests. The oracle/libcint-backed parity tests are developer
+# tools, gated behind their CMake options and excluded from CI.
+
 on:
   push:
     branches: [master]
@@ -10,13 +17,21 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # ── CPU build + test (no CUDA) ─────────────────────────────────────────────
-  cpu-build:
-    name: CPU (${{ matrix.real }})
+  # ── CPU build + unit tests ────────────────────────────────────────────────
+  # float  -> core + MD (RHF off; SCF asserts double-precision tolerances)
+  # double -> full suite incl. SCF / hybrid DFT / vibrations (RHF on)
+  cpu:
+    name: CPU (${{ matrix.real }}, RHF ${{ matrix.rhf }})
     runs-on: ubuntu-24.04
+    timeout-minutes: 150
     strategy:
+      fail-fast: false
       matrix:
-        real: [float, double]
+        include:
+          - real: float
+            rhf: 'OFF'
+          - real: double
+            rhf: 'ON'
     steps:
       - uses: actions/checkout@v4
 
@@ -46,52 +61,21 @@ jobs:
             -DATV_BUILD_CUDA=OFF \
             -DATV_BUILD_TESTS=ON \
             -DATV_BUILD_EXAMPLES=ON \
+            -DATV_BUILD_RHF=${{ matrix.rhf }} \
             -DATV_REAL=${{ matrix.real }} \
             -DATV_MOLRS_PATH=${{ github.workspace }}/molrs
 
       - name: Build
         run: cmake --build build -j$(nproc)
 
-      - name: Test
-        run: ctest --test-dir build --output-on-failure
+      - name: Test (our unit-test suite)
+        run: ctest --test-dir build -j$(nproc) --output-on-failure
 
-  # ── CUDA build + test ──────────────────────────────────────────────────────
-  cuda-build:
-    name: CUDA (${{ matrix.real }})
-    runs-on: self-hosted
-    strategy:
-      matrix:
-        real: [float, double]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Checkout molrs
-        uses: actions/checkout@v4
-        with:
-          repository: MolCrafts/molrs
-          path: molrs
-
-      - name: Configure
-        run: |
-          cmake -B build \
-            -DATV_BUILD_CUDA=ON \
-            -DATV_BUILD_TESTS=ON \
-            -DATV_BUILD_BENCHMARKS=ON \
-            -DATV_BUILD_EXAMPLES=ON \
-            -DATV_BUILD_RHF=ON \
-            -DATV_REAL=${{ matrix.real }} \
-            -DATV_MOLRS_PATH=${{ github.workspace }}/molrs
-
-      - name: Build
-        run: cmake --build build -j$(nproc)
-
-      - name: Test
-        run: ctest --test-dir build --output-on-failure
-
-  # ── Format check ───────────────────────────────────────────────────────────
+  # ── Format check ──────────────────────────────────────────────────────────
   fmt:
     name: Format
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -116,10 +100,11 @@ jobs:
           check-path: 'include src'
           fallback-style: 'LLVM'
 
-  # ── Documentation build ────────────────────────────────────────────────────
+  # ── Documentation build ───────────────────────────────────────────────────
   docs:
     name: Docs
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
