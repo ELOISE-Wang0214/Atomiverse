@@ -8,6 +8,7 @@
 #include <string>
 
 #include "atomiverse/cuda/component.cuh"
+#include "atomiverse/facade/component_role.h"
 
 namespace ATV {
 namespace cuda {
@@ -26,6 +27,15 @@ class Deform : public ComponentBase {
     Deform(int axis, double strain_rate, double dt);
 
     std::string name() const override { return "deform"; }
+
+    /// @brief Structural role — a box/position time-step integrator.
+    ///
+    /// Mirrors `cpu::md::Deform`: a strain-rate deformation advances the
+    /// box and positions each step, so it occupies the `Integrator`
+    /// slot.
+    /// @return ComponentRole::Integrator.
+    ComponentRole role() const override { return ComponentRole::Integrator; }
+
     std::vector<DefaultBinding> default_bindings() const override;
     void launch(const LaunchContext& ctx) override;
 

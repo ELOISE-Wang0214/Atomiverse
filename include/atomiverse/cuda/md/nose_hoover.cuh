@@ -10,6 +10,7 @@
 #include <string>
 
 #include "atomiverse/cuda/component.cuh"
+#include "atomiverse/facade/component_role.h"
 
 namespace ATV {
 namespace cuda {
@@ -31,6 +32,13 @@ class NoseHoover : public ComponentBase {
     NoseHoover& operator=(NoseHoover&&) noexcept;
 
     std::string name() const override { return "nose_hoover"; }
+
+    /// @brief Structural role — the temperature controller.
+    ///
+    /// Mirrors `cpu::md::NoseHoover`.
+    /// @return ComponentRole::Thermostat.
+    ComponentRole role() const override { return ComponentRole::Thermostat; }
+
     std::vector<DefaultBinding> default_bindings() const override;
     void build(const BuildContext& ctx) override;
     void launch(const LaunchContext& ctx) override;

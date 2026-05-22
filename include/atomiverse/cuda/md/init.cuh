@@ -5,10 +5,14 @@
 /// - ZeroForces / ZeroEnergy / ZeroKinetic: zero accumulators via cudaMemsetAsync.
 /// - InitVelocity: Maxwell-Boltzmann velocity initialization (LAMMPS `velocity create`).
 ///
-/// Auto-added by drivers at the appropriate phases.
+/// The Zero* components are **phase-agnostic**: they declare no
+/// `default_bindings()`, so the concrete driver binds them to its own
+/// phase enum via explicit `on(phase).add()`. `cuda::md::MD` binds them
+/// at `md::Phase`; `cuda::minimizer` drivers reuse the same classes at
+/// `minimizer::Phase`. This mirrors the CPU resolution in `cpu/md/init.h`.
 /// CUDA-free header.
 ///
-/// @see md::MD for the MD driver that auto-adds force/energy/kinetic initializers
+/// @see md::MD for the MD driver that explicitly binds the Zero* initializers
 /// @see md::KineticEnergy for the component that accumulates kinetic energy
 #pragma once
 
@@ -16,6 +20,7 @@
 #include <vector>
 
 #include "atomiverse/cuda/component.cuh"
+#include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -24,13 +29,20 @@ namespace md {
 
 /// @brief Zeros force arrays (fx, fy, fz) on device using cudaMemsetAsync.
 ///
-/// Infrastructure component auto-added by md::MD at pre_force (order -1000).
-/// Uses DMA engine (cudaMemsetAsync), not a compute kernel.
+/// Phase-agnostic infrastructure component — the driver binds it to its
+/// own phase via explicit `on(phase).add()` (md::MD binds it at
+/// pre_force, order -1000). Uses the DMA engine (cudaMemsetAsync), not a
+/// compute kernel.
 class ZeroForces : public ComponentBase {
   public:
     /// @brief Component name.
     /// @return "zero_forces".
     std::string name() const override { return "zero_forces"; }
+
+    /// @brief Structural role — none. Zeroing an accumulator is not a
+    ///        loop slot; the driver decides where it binds.
+    /// @return ComponentRole::None.
+    ComponentRole role() const override { return ComponentRole::None; }
 
     /// @brief Zero fx, fy, fz arrays via cudaMemsetAsync.
     /// @param ctx Launch context.
@@ -39,13 +51,20 @@ class ZeroForces : public ComponentBase {
 
 /// @brief Zeros potential energy scalar on device using cudaMemsetAsync.
 ///
-/// Infrastructure component auto-added by md::MD at pre_force (order -999).
-/// Uses DMA engine (cudaMemsetAsync), not a compute kernel.
+/// Phase-agnostic infrastructure component — the driver binds it to its
+/// own phase via explicit `on(phase).add()` (md::MD binds it at
+/// pre_force, order -999). Uses the DMA engine (cudaMemsetAsync), not a
+/// compute kernel.
 class ZeroEnergy : public ComponentBase {
   public:
     /// @brief Component name.
     /// @return "zero_energy".
     std::string name() const override { return "zero_energy"; }
+
+    /// @brief Structural role — none. Zeroing an accumulator is not a
+    ///        loop slot; the driver decides where it binds.
+    /// @return ComponentRole::None.
+    ComponentRole role() const override { return ComponentRole::None; }
 
     /// @brief Zero energy scalar via cudaMemsetAsync.
     /// @param ctx Launch context.
@@ -54,13 +73,20 @@ class ZeroEnergy : public ComponentBase {
 
 /// @brief Zeros kinetic energy scalar on device using cudaMemsetAsync.
 ///
-/// Infrastructure component auto-added by md::MD at end_of_step (order -1000).
-/// Uses DMA engine (cudaMemsetAsync), not a compute kernel.
+/// Phase-agnostic infrastructure component — the driver binds it to its
+/// own phase via explicit `on(phase).add()` (md::MD binds it at
+/// end_of_step, order -1000). Uses the DMA engine (cudaMemsetAsync), not
+/// a compute kernel.
 class ZeroKinetic : public ComponentBase {
   public:
     /// @brief Component name.
     /// @return "zero_kinetic".
     std::string name() const override { return "zero_kinetic"; }
+
+    /// @brief Structural role — none. Zeroing an accumulator is not a
+    ///        loop slot; the driver decides where it binds.
+    /// @return ComponentRole::None.
+    ComponentRole role() const override { return ComponentRole::None; }
 
     /// @brief Zero kinetic energy scalar via cudaMemsetAsync.
     /// @param ctx Launch context.
@@ -73,6 +99,12 @@ class ZeroKinetic : public ComponentBase {
 /// and removes center-of-mass velocity (zero total momentum).
 ///
 /// One-time initialization in build(). launch() is a no-op.
+///
+/// `role()` stays `None` and `capabilities()` stays `None` (the
+/// `ComponentBase` defaults), mirroring `cpu::md::InitVelocity`: it is a
+/// structural one-shot setup component, neither a loop slot (Integrator
+/// / Thermostat / …) nor a per-step writer of a `Capability` field — it
+/// touches velocities once in `build()`, not in `launch()`.
 ///
 /// @par Units
 /// Temperature in Kelvin. Velocities in Angstrom/fs.

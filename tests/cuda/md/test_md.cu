@@ -6,8 +6,10 @@
 #include <fstream>
 #include <gtest/gtest.h>
 #include <string>
+#include <type_traits>
 
 #include "atomiverse/core/units.h"
+#include "atomiverse/cuda/dynamics_driver.cuh"
 #include "atomiverse/cuda/md/init.cuh"
 #include "atomiverse/cuda/md/md.cuh"
 #include "atomiverse/cuda/md/velocity_verlet.cuh"
@@ -75,6 +77,44 @@ cpu::Frame make_lj_system(int n_side, double density) {
 }
 
 } // anonymous namespace
+
+// ── Structural / taxonomy tests (link 02-md reparent) ────────────────
+
+/// cuda::md::MD must derive from the cuda::DynamicsDriver category base,
+/// inheriting its continuable run() and validate_components().
+TEST(MDTaxonomy, IsADynamicsDriver) {
+    static_assert(std::is_base_of_v<cuda::DynamicsDriver, cuda::md::MD>,
+                  "cuda::md::MD must inherit cuda::DynamicsDriver");
+    EXPECT_TRUE((std::is_base_of_v<cuda::DynamicsDriver, cuda::md::MD>));
+}
+
+/// The Zero* infrastructure components are phase-agnostic: they expose no
+/// hardcoded default_bindings(), so each concrete driver binds them to
+/// its own phase enum via explicit on(phase).add().
+TEST(MDTaxonomy, ZeroComponentsArePhaseAgnostic) {
+    EXPECT_TRUE(cuda::md::ZeroForces{}.default_bindings().empty());
+    EXPECT_TRUE(cuda::md::ZeroEnergy{}.default_bindings().empty());
+    EXPECT_TRUE(cuda::md::ZeroKinetic{}.default_bindings().empty());
+}
+
+/// An MD setup with a Force-capable evaluator but no Integrator-role
+/// component must be rejected at build() by DynamicsDriver validation.
+TEST(MDTaxonomy, ThrowsOnMissingIntegrator) {
+    double cutoff = double(3.0);
+    cuda::md::MD sim;
+    sim.on(md::Phase::force)
+        .add(cuda::NeighborList{cutoff}, -10)
+        .add(cuda::LJ{double(1.0), double(1.0), cutoff});
+    EXPECT_THROW(sim.build(), std::runtime_error);
+}
+
+/// An MD setup with an Integrator but no Force-capable evaluator must be
+/// rejected at build() by DynamicsDriver validation.
+TEST(MDTaxonomy, ThrowsOnMissingForceWriter) {
+    cuda::md::MD sim;
+    sim.add(cuda::md::VelocityVerlet{double(0.001)});
+    EXPECT_THROW(sim.build(), std::runtime_error);
+}
 
 TEST(MD, NVEEnergyConservation) {
     auto frame = make_lj_system(4, double(0.8)); // 64 atoms

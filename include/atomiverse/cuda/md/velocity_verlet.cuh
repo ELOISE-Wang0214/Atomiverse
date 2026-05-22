@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "atomiverse/cuda/component.cuh"
+#include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -43,6 +44,13 @@ class VelocityVerlet : public ComponentBase {
     /// @brief Component name.
     /// @return "velocity_verlet".
     std::string name() const override { return "velocity_verlet"; }
+
+    /// @brief Structural role — the time-step integrator.
+    ///
+    /// Mirrors `cpu::md::VelocityVerlet`. `cuda::DynamicsDriver`
+    /// requires ≥ 1 `Integrator`-role component at build time.
+    /// @return ComponentRole::Integrator.
+    ComponentRole role() const override { return ComponentRole::Integrator; }
 
     /// @brief Default bindings: initial_integrate (order 0) and final_integrate (order 0).
     /// @return Two DefaultBinding entries.

@@ -10,6 +10,7 @@
 #include <string>
 
 #include "atomiverse/cuda/component.cuh"
+#include "atomiverse/facade/component_role.h"
 
 namespace ATV {
 namespace cuda {
@@ -31,6 +32,16 @@ class Barostat : public ComponentBase {
     Barostat& operator=(Barostat&&) noexcept;
 
     std::string name() const override { return "barostat"; }
+
+    /// @brief Structural role — the pressure controller.
+    ///
+    /// Mirrors `cpu::md::Barostat`. The CPU `Barostat` also overrides
+    /// `reads()==Stress`; the CUDA `ComponentBase` has no `reads()`
+    /// virtual yet, so only `role()` is declared here (the `reads()`
+    /// mirror is deferred to a later spec).
+    /// @return ComponentRole::Barostat.
+    ComponentRole role() const override { return ComponentRole::Barostat; }
+
     std::vector<DefaultBinding> default_bindings() const override;
     void build(const BuildContext& ctx) override;
     void launch(const LaunchContext& ctx) override;
