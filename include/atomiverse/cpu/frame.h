@@ -1,13 +1,20 @@
 /// @file cpu/frame.h
-/// @brief cpu::Frame -- CPU device system state backed by xtensor.
+/// @brief cpu::Frame -- CPU backend execution frame backed by xtensor.
 ///
-/// This is the primary data container users interact with. CPU is treated
-/// as a device, symmetric with CUDA. Transfer between devices uses
-/// cpu::to_cuda() and cuda::to_cpu().
+/// `cpu::Frame` is a pure execution product, not a user-facing data type.
+/// The canonical exchange layer is `molrs.Frame`: a driver's user-facing
+/// `run(molrs::FrameRef&, ...)` entry materializes a `molrs.Frame` into a
+/// transient `cpu::Frame` (via `cpu::materialize`), executes against it, and
+/// writes results back (via `cpu::write_back`). The `cpu::Frame` lives only
+/// for the duration of that one `run()` call. CPU is treated as a device,
+/// symmetric with CUDA; transfer between device frames uses cpu::to_cuda()
+/// and cuda::to_cpu().
 ///
 /// Data is organized into sub-structs (atoms, bonds, angles, dihedrals)
 /// matching the molcrafts naming convention (molpy Block model).
 ///
+/// @see molrs.hpp for the canonical molrs.Frame exchange layer
+/// @see cpu::materialize / cpu::write_back for the molrs.Frame <-> cpu::Frame bridge
 /// @see cuda::Frame for the GPU device counterpart
 /// @see cpu::to_cuda() for CPU -> CUDA transfer
 /// @see cuda::to_cpu() for CUDA -> CPU transfer
@@ -26,13 +33,15 @@
 namespace ATV {
 namespace cpu {
 
-/// @brief CPU device system state backed by xtensor arrays.
+/// @brief CPU backend execution frame backed by xtensor arrays.
 ///
-/// All arrays use SoA layout (one xtensor per dimension).
-/// Fields are organized into sub-structs matching molpy's Block model:
-/// atoms, bonds, angles, dihedrals.
+/// A transient execution product owned by a driver's `run()` call, not a
+/// user-facing data type. Materialized from a `molrs.Frame` on entry and
+/// written back on exit. All arrays use SoA layout (one xtensor per
+/// dimension). Fields are organized into sub-structs matching molpy's Block
+/// model: atoms, bonds, angles, dihedrals.
 ///
-/// Usage:
+/// Internal usage (driver / test code):
 /// @code{.cpp}
 /// cpu::Frame frame(1000);
 /// frame.atoms.x(0) = 0.0;

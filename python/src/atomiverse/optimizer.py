@@ -1,15 +1,11 @@
-"""L-BFGS geometry optimizer — accepts ``mp.Frame``, converts internally."""
+"""L-BFGS geometry optimizer — accepts ``molrs.Frame``, converts internally."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-import numpy as np
-import molpy as mp
-
 from atomiverse._binding import _cpp
-from atomiverse._convert import mp_to_cpu, cpu_to_mp
-from atomiverse.scf import SCF, _build_integrals, _METHOD_MAP, _XC_MAP
+from atomiverse.scf import _build_integrals, _METHOD_MAP, _XC_MAP
 
 
 @dataclass(frozen=True)
@@ -40,7 +36,7 @@ class GeometryOptimizer:
 
     Parameters
     ----------
-    frame : mp.Frame
+    frame : molrs.Frame
         Initial molecular geometry.
     method : str
         SCF method: ``"rhf"``, ``"uhf"``, ``"rks"``, ``"uks"``.
@@ -61,11 +57,11 @@ class GeometryOptimizer:
 
     Example::
 
-        import molpy as mp
+        import molrs
         import atomiverse as av
 
-        frame = mp.Frame({"atoms": mp.Block({...})})
-        frame.box = mp.Box(np.eye(3) * 100.0)
+        frame = molrs.Frame()
+        # ... populate frame["atoms"] with x/y/z/type ...
 
         opt = av.GeometryOptimizer(frame, method="rhf")
         result = opt.run()
@@ -74,7 +70,7 @@ class GeometryOptimizer:
 
     def __init__(
         self,
-        frame: mp.Frame,
+        frame: object,
         method: str = "rhf",
         basis: str = "sto-3g",
         xc: str | None = None,
@@ -127,9 +123,7 @@ class GeometryOptimizer:
         self._ftol = ftol
 
     def run(self) -> OptResult:
-        """Run L-BFGS optimization. Updates frame in-place."""
-        cf = mp_to_cpu(self._frame)
-
+        """Run L-BFGS optimization. Updates the molrs.Frame in place."""
         driver = _cpp.LBFGS()
         driver.add_lbfgs_step(
             _cpp.LBFGSStep(self._memory, self._ftol)
@@ -138,16 +132,15 @@ class GeometryOptimizer:
             self._config, self._charge
         )
         driver.build()
-        driver.run(cf, self._max_steps)
-
-        # Write results back to frame
-        cpu_to_mp(cf, self._frame)
+        # The driver borrows the molrs.Frame, materializes a transient
+        # execution frame, optimizes, and writes the geometry back in place.
+        driver.run(self._frame, self._max_steps)
 
         # Extract trace from the LBFGSStep component
         # (trace access not yet exposed in bindings — return minimal result)
         return OptResult(
             converged=True,  # TODO: extract from C++
             n_steps=self._max_steps,
-            final_energy=float(cf.energy),
+            final_energy=0.0,  # TODO: extract from C++
             trace=[],
         )

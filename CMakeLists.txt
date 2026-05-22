@@ -535,7 +535,7 @@ if(NOT ATV_DOCS_ONLY)
 
         nanobind_add_module(_atomiverse
             python/src/bindings/bind.cpp
-            python/src/bindings/bind_frame.cpp
+            python/src/bindings/bind_md.cpp
             python/src/bindings/bind_pw.cpp
         )
         target_link_libraries(_atomiverse PRIVATE atomiverse)

@@ -1,4 +1,4 @@
-"""Unified SCF solver — accepts ``mp.Frame``, converts internally.
+"""Unified SCF solver — accepts ``molrs.Frame``, converts internally.
 
 Replaces the old per-method classes (RHF, UHF, UKS) with a single
 ``SCF`` class backed by the unified C++ ``scf_solve`` engine.
@@ -7,10 +7,8 @@ Replaces the old per-method classes (RHF, UHF, UKS) with a single
 from __future__ import annotations
 
 import numpy as np
-import molpy as mp
 
 from atomiverse._binding import _cpp
-from atomiverse._convert import mp_to_cpu
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -228,14 +226,13 @@ _METHOD_MAP: dict[str, tuple[str, str]] = {
 # Unified SCF solver
 # ═══════════════════════════════════════════════════════════════════════
 
-def _build_integrals(frame: mp.Frame, basis: str, charge: int) -> object:
-    """Build integrals from mp.Frame."""
+def _build_integrals(frame: object, basis: str, charge: int) -> object:
+    """Build integrals from a molrs.Frame."""
     if basis != "sto-3g":
         raise ValueError(
             f"Only 'sto-3g' basis is currently supported, got {basis!r}"
         )
-    cf = mp_to_cpu(frame)
-    return _cpp.build_integrals_sto3g(cf, charge)
+    return _cpp.build_integrals_sto3g(frame, charge)
 
 
 class SCF:
@@ -243,7 +240,7 @@ class SCF:
 
     Parameters
     ----------
-    frame : mp.Frame
+    frame : molrs.Frame
         Molecular geometry. ``atoms.type`` must be atomic numbers (1=H, ..., 8=O).
     basis : str
         Basis set name (currently only ``"sto-3g"``).
@@ -258,14 +255,17 @@ class SCF:
 
     Example::
 
-        import molpy as mp
+        import numpy as np
+        import molrs
         import atomiverse as av
 
-        frame = mp.Frame({"atoms": mp.Block({
-            "x": [0.0, 0.96], "y": [0, 0.59], "z": [0, 0],
-            "type": [8, 1], "mass": [15.999, 1.008],
-        })})
-        frame.box = mp.Box(np.eye(3) * 100.0)
+        frame = molrs.Frame()
+        atoms = molrs.Block()
+        atoms.insert("x", np.array([0.0, 0.96]))
+        atoms.insert("y", np.array([0.0, 0.59]))
+        atoms.insert("z", np.array([0.0, 0.0]))
+        atoms.insert("type", np.array([8, 1], dtype=np.int32))
+        frame["atoms"] = atoms
 
         scf = av.SCF(frame, method="rhf")
         result = scf.solve()
@@ -274,7 +274,7 @@ class SCF:
 
     def __init__(
         self,
-        frame: mp.Frame,
+        frame: object,
         basis: str = "sto-3g",
         method: str = "rhf",
         xc: str | None = None,
@@ -344,8 +344,9 @@ class SCF:
         """
         if not hasattr(self, "_result"):
             raise RuntimeError("Call solve() before gradient()")
-        cf = mp_to_cpu(self._frame)
-        grad = _cpp.scf_gradient(cf, self._ip_cpp, self._result, self._config)
+        grad = _cpp.scf_gradient(
+            self._frame, self._ip_cpp, self._result, self._config
+        )
         return GradientResult(grad)
 
     def __repr__(self) -> str:
@@ -367,7 +368,7 @@ class RHF(SCF):
 
     Parameters
     ----------
-    frame : mp.Frame
+    frame : molrs.Frame
         Molecular geometry. ``atoms.type`` must be atomic numbers.
     basis : str
         Basis set name (currently only ``"sto-3g"``).
@@ -383,7 +384,7 @@ class RHF(SCF):
 
     def __init__(
         self,
-        frame: mp.Frame,
+        frame: object,
         basis: str = "sto-3g",
         charge: int = 0,
     ) -> None:
@@ -401,7 +402,7 @@ class UHF(SCF):
 
     Parameters
     ----------
-    frame : mp.Frame
+    frame : molrs.Frame
         Molecular geometry.
     basis : str
         Basis set name.
@@ -418,7 +419,7 @@ class UHF(SCF):
 
     def __init__(
         self,
-        frame: mp.Frame,
+        frame: object,
         basis: str = "sto-3g",
         charge: int = 0,
         multiplicity: int = 1,
@@ -443,7 +444,7 @@ class UKS(SCF):
 
     Parameters
     ----------
-    frame : mp.Frame
+    frame : molrs.Frame
         Molecular geometry.
     basis : str
         Basis set name.
@@ -467,7 +468,7 @@ class UKS(SCF):
 
     def __init__(
         self,
-        frame: mp.Frame,
+        frame: object,
         basis: str = "sto-3g",
         xc: str = "LSDA",
         charge: int = 0,

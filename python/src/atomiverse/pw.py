@@ -5,16 +5,19 @@ plane-wave basis, norm-conserving pseudopotentials, and LDA.
 
 Example::
 
+    import numpy as np
+    import molrs
     import atomiverse as av
 
-    # Build a structure
-    frame = av.Frame(2)
-    frame.atoms.type[:] = [14, 14]  # Si
-    frame.atoms.mass[:] = [28.0855, 28.0855]
-    frame.atoms.x[:] = [0.0, 1.3575]
-    frame.atoms.y[:] = [0.0, 1.3575]
-    frame.atoms.z[:] = [0.0, 1.3575]
-    # ... set frame.box for FCC cell
+    # Build a structure (atoms.type carries the atomic number Z).
+    frame = molrs.Frame()
+    atoms = molrs.Block()
+    atoms.insert("type", np.array([14, 14], dtype=np.int32))  # Si
+    atoms.insert("x", np.array([0.0, 1.3575]))
+    atoms.insert("y", np.array([0.0, 1.3575]))
+    atoms.insert("z", np.array([0.0, 1.3575]))
+    frame["atoms"] = atoms
+    # ... set frame.box for the FCC cell
 
     result = av.pw_scf(frame, "Si.upf", ecut_ry=30.0, k_mesh=4)
     print(result.energy)  # Ry

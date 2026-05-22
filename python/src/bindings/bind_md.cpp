@@ -1,7 +1,7 @@
 /// @file python/bind_md.cpp
 /// @brief MD driver, components, potentials, and observer bindings.
 
-#include "cpu_frame_wrapper.h"
+#include "molrs_frame_bridge.h"
 
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
@@ -17,6 +17,8 @@
 #include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
 #include "atomiverse/cpu/recorder/thermo.h"
 #include "atomiverse/facade/stage.h"
+
+using namespace ATV;
 
 void bind_md(nb::module_& m) {
     // ── Phase enum ──
@@ -64,15 +66,17 @@ void bind_md(nb::module_& m) {
         .def(
             "run",
             [](CpuMD& self, nb::object frame_obj, int n_steps) {
-                // Extract CpuFrame from Python object
-                auto& cf = nb::cast<CpuFrame&>(frame_obj);
+                // Borrow the molrs.Frame; the driver materializes a
+                // transient cpu::Frame, runs, and writes results back into
+                // the same molrs.Frame. The borrow window is this call.
+                auto frame = borrow_molrs_frame(frame_obj);
                 {
                     nb::gil_scoped_release release;
-                    self.run(cf.frame, n_steps);
+                    self.run(*frame, n_steps);
                 }
             },
             nb::arg("frame"), nb::arg("n_steps"),
-            "Run simulation. GIL is released during computation.")
+            "Run MD on a molrs.Frame for n_steps. GIL released during compute.")
         .def("enable_timing", &CpuMD::enable_timing)
         .def("summary", &CpuMD::summary);
 

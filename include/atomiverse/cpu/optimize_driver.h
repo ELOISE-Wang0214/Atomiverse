@@ -20,6 +20,7 @@
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/cpu_driver.h"
 #include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/materialize.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -42,6 +43,22 @@ class OptimizeDriver : public CPUDriver<ATV::minimizer::Phase> {
                 break;
         }
         teardown_pass();
+        return iters;
+    }
+
+    /// @brief User-facing entry — optimize the system stored in a molrs.Frame.
+    ///
+    /// Materializes the molrs.Frame into a transient `cpu::Frame`, runs the
+    /// minimization loop on it, and writes the optimized geometry back into
+    /// the *same* molrs.Frame. The borrow window is strictly this one call.
+    ///
+    /// @param frame molrs.Frame handle (input geometry + output sink).
+    /// @param max_iter Iteration budget.
+    /// @return Number of iterations actually executed (≤ `max_iter`).
+    int run(molrs::FrameRef& frame, int max_iter) {
+        cpu::Frame work = cpu::materialize(frame);
+        const int iters = run(work, max_iter);
+        cpu::write_back(work, frame);
         return iters;
     }
 

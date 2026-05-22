@@ -21,14 +21,17 @@
 #include <cmath>
 #include <gtest/gtest.h>
 #include <limits>
+#include <vector>
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/evaluate.h"
 #include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/materialize.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
 #include "atomiverse/cpu/scf/scf_solve.h"
+#include "atomiverse/molrs.hpp"
 
 using namespace ATV;
 
@@ -53,6 +56,37 @@ cpu::Frame make_h2(double bond_length, double v_stretch) {
     f.scalars.kinetic = 0;
     f.box = Mat3::cubic(100.0);
     return f;
+}
+
+/// @brief Build an H2 molrs.Frame mirroring `make_h2`, ready for the
+///        `cpu::md::MD::run(molrs::FrameRef&, ...)` ingress path.
+::rust::Box<molrs::FrameRef> make_h2_molrs(double bond_length,
+                                           double v_stretch) {
+    auto fr = molrs::frame_new();
+    const std::vector<double> x = {0.0, bond_length};
+    const std::vector<double> y = {0.0, 0.0};
+    const std::vector<double> z = {0.0, 0.0};
+    const std::vector<double> vx = {-v_stretch / 2, v_stretch / 2};
+    const std::vector<double> vy = {0.0, 0.0};
+    const std::vector<double> vz = {0.0, 0.0};
+    const std::vector<double> mass = {1.008, 1.008};
+    const std::vector<std::int32_t> type = {1, 1};
+    auto f64 = [](const std::vector<double>& v) {
+        return ::rust::Slice<const double>(v.data(), v.size());
+    };
+    molrs::frame_set_column_f64(*fr, "atoms", "x", f64(x));
+    molrs::frame_set_column_f64(*fr, "atoms", "y", f64(y));
+    molrs::frame_set_column_f64(*fr, "atoms", "z", f64(z));
+    molrs::frame_set_column_f64(*fr, "atoms", "vx", f64(vx));
+    molrs::frame_set_column_f64(*fr, "atoms", "vy", f64(vy));
+    molrs::frame_set_column_f64(*fr, "atoms", "vz", f64(vz));
+    molrs::frame_set_column_f64(*fr, "atoms", "mass", f64(mass));
+    molrs::frame_set_column_i32(
+        *fr, "atoms", "type",
+        ::rust::Slice<const std::int32_t>(type.data(), type.size()));
+    const double h[9] = {100.0, 0, 0, 0, 100.0, 0, 0, 0, 100.0};
+    molrs::frame_set_simbox(*fr, ::rust::Slice<const double>(h, 9));
+    return fr;
 }
 
 } // namespace
@@ -193,4 +227,58 @@ TEST(AIMDConservation, ASPCMatchesFreshSinglePointMidTrajectory) {
     // order tighter than the forces.
     EXPECT_NEAR(E_prop, E_fresh, 1e-6)
         << "ASPC propagation energy disagrees with fresh single-point.";
+}
+
+// ── NVE energy-drift through the molrs.Frame ingress path ───────────
+//
+// rust-frame-lowering-03 ac-003: the same H2 / STO-3G NVE drift check,
+// but the starting geometry comes in as a molrs.Frame and is brought
+// across by `cpu::materialize` into ONE `cpu::Frame` that the whole
+// AIMD trajectory then runs on. This pins that the new molrs-Frame
+// ingress preserves the AIMD shared-frame invariant (MD + SCFEvaluator
+// on a single cpu::Frame) and energy conservation.
+
+TEST(AIMDConservation, RHFNVEEnergyDriftViaMaterializedFrame) {
+    // Geometry arrives as a molrs.Frame, exactly as the Python path
+    // would deliver it, then is materialized once.
+    auto molrs_frame = make_h2_molrs(0.78, /*v_stretch=*/0.001);
+    cpu::Frame frame = cpu::materialize(*molrs_frame);
+
+    auto integrals =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto config = cpu::scf::rhf_config(integrals);
+
+    const double dt = 0.5;   // fs
+    const int n_steps = 200; // 100 fs total
+    const int sample_every = 10;
+
+    cpu::md::MD sim;
+    sim.add(cpu::md::VelocityVerlet{dt});
+    sim.on(md::Phase::force).add(cpu::scf::SCFEvaluator{config});
+    sim.build();
+
+    // The whole trajectory advances ONE materialized cpu::Frame —
+    // consecutive sim.run() calls continue the same simulation.
+    double e_min = std::numeric_limits<double>::infinity();
+    double e_max = -std::numeric_limits<double>::infinity();
+    for (int s = 0; s < n_steps; s += sample_every) {
+        sim.run(frame, sample_every);
+        const double E = static_cast<double>(frame.scalars.energy)
+                         + static_cast<double>(frame.scalars.kinetic);
+        if (E < e_min)
+            e_min = E;
+        if (E > e_max)
+            e_max = E;
+        EXPECT_TRUE(std::isfinite(E));
+    }
+
+    const double envelope = e_max - e_min;
+    // Same 0.10 eV bound as RHFNVEEnergyDrift200Steps — the materialized
+    // ingress must not perturb conservation.
+    EXPECT_LT(envelope, 0.10)
+        << "NVE total-energy envelope = " << envelope
+        << " eV across a materialized-frame AIMD run — expected ≤ 0.10.";
+    EXPECT_LT(e_max, -25.0)
+        << "Energy escaped the bonded H2 well after materialization.";
+    EXPECT_GT(e_min, -35.0);
 }

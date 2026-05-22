@@ -1,11 +1,14 @@
-"""OOP Molecular Dynamics driver — accepts ``mp.Frame``, converts internally."""
+"""OOP Molecular Dynamics driver — operates directly on a ``molrs.Frame``.
+
+The driver borrows the ``molrs.Frame`` for the duration of :meth:`MD.run`:
+the C++ side materializes a transient execution frame, advances it, and
+writes positions / velocities / forces / energy back into the *same*
+``molrs.Frame``. Atomiverse never owns a separate Frame data type.
+"""
 
 from __future__ import annotations
 
-import molpy as mp
-
 from atomiverse._binding import _cpp
-from atomiverse._convert import mp_to_cpu, cpu_to_mp
 
 # ---------------------------------------------------------------------------
 # Phase name → C++ enum
@@ -74,13 +77,15 @@ class MD:
 
     Example::
 
-        import molpy as mp
+        import numpy as np
+        import molrs
         import atomiverse as av
 
-        frame = mp.Frame({"atoms": mp.Block({
-            "x": x, "y": y, "z": z, "mass": m, "type": t,
-        })})
-        frame.box = mp.Box(np.eye(3) * 30.0)
+        frame = molrs.Frame()
+        atoms = molrs.Block()
+        atoms.insert("x", x); atoms.insert("y", y); atoms.insert("z", z)
+        atoms.insert("mass", m); atoms.insert("type", t)
+        frame["atoms"] = atoms
 
         sim = av.MD(dt=0.001)
         sim.add(av.InitVelocity(temperature=10.0, seed=42))
@@ -142,30 +147,24 @@ class MD:
         self._cpp.build()
         self._built = True
 
-    def run(self, frame: mp.Frame, n_steps: int) -> None:
+    def run(self, frame: object, n_steps: int) -> None:
         """Run *n_steps* of MD on *frame*.
 
-        Converts ``mp.Frame`` to internal representation, runs the
-        simulation, then writes positions/velocities/forces/energy back
-        into *frame* in-place.
+        *frame* is a ``molrs.Frame``. The C++ driver borrows it, materializes
+        a transient execution frame, advances it, and writes
+        positions / velocities / forces / energy back into *frame* in place.
 
-        Raises
-        ------
-        ValueError
-            If *frame* is missing required fields (atoms with x/y/z/type).
-            If ``mass`` is not set in the atoms block (required for MD).
+        Parameters
+        ----------
+        frame : molrs.Frame
+            System state. Must carry an ``atoms`` block with
+            ``x, y, z, type`` columns (``mass`` required for MD).
+        n_steps : int
+            Number of MD steps to advance.
         """
-        if "atoms" in frame and "mass" not in frame["atoms"]:
-            raise ValueError(
-                "MD requires 'mass' in atoms block. "
-                "Set frame['atoms']['mass'] before calling run()."
-            )
-
-        cf = mp_to_cpu(frame)
         if not self._built:
             self.build()
-        self._cpp.run(cf, n_steps)
-        cpu_to_mp(cf, frame)
+        self._cpp.run(frame, n_steps)
 
     # ------------------------------------------------------------------
     # Diagnostics
@@ -182,3 +181,15 @@ class MD:
     def __repr__(self) -> str:
         state = "built" if self._built else "not built"
         return f"MD({state})"
+
+
+# Re-export the C++ component classes so users can build them via ``av.*``.
+VelocityVerlet = _cpp.VelocityVerlet
+InitVelocity = _cpp.InitVelocity
+NoseHoover = _cpp.NoseHoover
+LJ = _cpp.LJ
+NeighborList = _cpp.NeighborList
+HarmonicBond = _cpp.HarmonicBond
+HarmonicAngle = _cpp.HarmonicAngle
+MultiHarmonicDihedral = _cpp.MultiHarmonicDihedral
+Thermo = _cpp.Thermo

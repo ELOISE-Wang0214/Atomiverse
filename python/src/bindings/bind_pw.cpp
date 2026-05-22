@@ -1,17 +1,19 @@
 /// @file python/bind_pw.cpp
 /// @brief Plane-wave DFT bindings: pw::pw_scf()
 
-#include "cpu_frame_wrapper.h"
+#include "molrs_frame_bridge.h"
 
 #include <nanobind/stl/string.h>
 
 #ifdef ATV_HAS_PW
+#include "atomiverse/cpu/materialize.h"
 #include "atomiverse/cpu/pw/pw_scf.h"
 #endif
 
 void bind_pw(nb::module_& m) {
 
 #ifdef ATV_HAS_PW
+    using namespace ATV;
     using namespace ATV::cpu::pw;
 
     nb::class_<PWResult>(m, "PWResult",
@@ -35,12 +37,12 @@ void bind_pw(nb::module_& m) {
         "pw_scf",
         [](nb::object frame_obj, const std::string& upf_path, double ecut_ry,
            int k_mesh, double tol, int max_iter) {
-            auto& cf = nb::cast<CpuFrame&>(frame_obj);
+            auto fref = borrow_molrs_frame(frame_obj);
             PWResult result;
             {
                 nb::gil_scoped_release release;
-                result =
-                    pw_scf(cf.frame, upf_path, ecut_ry, k_mesh, tol, max_iter);
+                cpu::Frame work = cpu::materialize(*fref);
+                result = pw_scf(work, upf_path, ecut_ry, k_mesh, tol, max_iter);
             }
             return result;
         },

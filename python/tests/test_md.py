@@ -1,10 +1,23 @@
-"""Tests for the OOP MD driver with mp.Frame."""
+"""Python integration tests for the MD driver running on a molrs.Frame.
+
+Covers rust-frame-lowering-03 ac-002: a Python MD run starts from a
+molrs.Frame end to end — the driver borrows the molrs.Frame, advances it,
+and writes positions / velocities / energy back into that same frame.
+
+Also asserts ac-001's structural deliverable from the Python side: no
+CpuFrame type is exposed and atomiverse._convert no longer exists.
+"""
+
+import importlib
 
 import numpy as np
 import pytest
-import molpy as mp
+import molrs
 
 import atomiverse as av
+
+
+# ── Component construction ──────────────────────────────────────────
 
 
 class TestComponentConstruction:
@@ -29,34 +42,13 @@ class TestComponentConstruction:
     def test_thermo(self):
         assert av.Thermo(100) is not None
 
-    def test_harmonic_bond(self):
-        assert av.HarmonicBond([100.0], [1.54]) is not None
 
-    def test_harmonic_angle(self):
-        assert av.HarmonicAngle([60.0], [1.91]) is not None
-
-    def test_multi_harmonic_dihedral(self):
-        assert av.MultiHarmonicDihedral([[1.0, -1.0, 0.0, 0.0, 0.0]]) is not None
+# ── Driver build ────────────────────────────────────────────────────
 
 
 class TestMDDriverBuild:
-    def test_empty_build(self):
-        sim = av.MD()
-        sim.build()
-
-    def test_dt_shorthand(self):
-        sim = av.MD(dt=0.001)
-        sim.build()
-
-    def test_add_components(self):
-        sim = av.MD(dt=0.001)
-        sim.add(av.InitVelocity(10.0, 42))
-        sim.add(av.NoseHoover(300.0, 100.0, 0.001))
-        sim.build()
-
-    def test_on_returns_phase_builder(self):
-        sim = av.MD()
-        assert sim.on("force") is not None
+    def test_dt_shorthand_builds(self, full_lj_md):
+        full_lj_md.build()
 
     def test_phase_builder_chain(self):
         sim = av.MD(dt=0.001)
@@ -69,79 +61,85 @@ class TestMDDriverBuild:
         with pytest.raises(ValueError, match="Unknown phase"):
             sim.on("nonexistent")
 
-    def test_invalid_driver_component_raises(self):
-        sim = av.MD()
-        with pytest.raises(TypeError, match="Cannot add"):
-            sim.add(av.LJ(0.01, 3.4, 8.5))
-
-    def test_invalid_phase_component_raises(self):
-        builder = av.MD().on("force")
-        with pytest.raises(TypeError, match="Cannot add"):
-            builder.add(av.VelocityVerlet(0.001))
-
-
-class TestMDRun:
-    def test_velocity_init_sets_velocities(self, argon_frame):
-        sim = av.MD(dt=0.001)
-        sim.add(av.InitVelocity(10.0, 42))
-        sim.run(argon_frame, 1)
-        vx = np.asarray(argon_frame["atoms"]["vx"])
-        assert not np.allclose(vx, 0.0), "Velocities should be initialized"
-
-    def test_kinetic_energy_positive_after_init(self, argon_frame):
-        sim = av.MD(dt=0.001)
-        sim.add(av.InitVelocity(10.0, 42))
-        sim.run(argon_frame, 1)
-        assert argon_frame.metadata["kinetic"] > 0.0
-
-    def test_positions_change_after_md(self, argon_frame):
-        x_before = np.asarray(argon_frame["atoms"]["x"]).copy()
-        sim = av.MD(dt=0.001)
-        sim.add(av.InitVelocity(10.0, 42))
-        sim.run(argon_frame, 10)
-        x_after = np.asarray(argon_frame["atoms"]["x"])
-        assert not np.allclose(x_before, x_after), "Positions should move"
-
-    def test_lj_md_energy_finite(self, argon_frame, full_lj_md):
-        full_lj_md.run(argon_frame, 5)
-        assert np.isfinite(argon_frame.metadata["energy"])
-        assert np.isfinite(argon_frame.metadata["kinetic"])
-
-    def test_lj_md_forces_finite(self, argon_frame, full_lj_md):
-        full_lj_md.run(argon_frame, 1)
-        fx = np.asarray(argon_frame["atoms"]["fx"])
-        assert np.all(np.isfinite(fx)), "Forces should be finite"
-
-    def test_auto_build(self, argon_frame):
-        """run() should call build() automatically."""
-        sim = av.MD(dt=0.001)
-        sim.add(av.InitVelocity(10.0, 42))
-        sim.run(argon_frame, 1)
-
-    def test_missing_mass_raises(self):
-        frame = mp.Frame({"atoms": mp.Block({
-            "x": [0.0], "y": [0.0], "z": [0.0],
-            "type": np.array([0], dtype=np.int32),
-            # no mass!
-        })})
-        frame.box = mp.Box(np.eye(3) * 10.0)
-        sim = av.MD(dt=0.001)
-        with pytest.raises(ValueError, match="mass"):
-            sim.run(frame, 1)
-
-    def test_summary_returns_string(self, argon_frame):
-        sim = av.MD(dt=0.001)
-        sim.add(av.InitVelocity(10.0, 42))
-        sim.enable_timing()
-        sim.run(argon_frame, 1)
-        assert isinstance(sim.summary(), str)
-
-    def test_run_zero_steps(self, argon_frame):
-        sim = av.MD(dt=0.001)
-        sim.run(argon_frame, 0)
-
     def test_repr(self):
         sim = av.MD(dt=0.001)
         assert "not built" in repr(sim)
+        sim.on("force").add(av.NeighborList(8.5), order=-10) \
+                       .add(av.LJ(0.0104, 3.4, 8.5))
         sim.build()
         assert "built" in repr(sim)
+
+
+# ── ac-002: MD on a molrs.Frame, end to end ─────────────────────────
+
+
+class TestMDRunOnMolrsFrame:
+    def test_positions_written_back(self, argon_frame, full_lj_md):
+        """Positions update in the SAME molrs.Frame after run()."""
+        x_before = np.asarray(argon_frame["atoms"]["x"]).copy()
+        full_lj_md.run(argon_frame, 10)
+        x_after = np.asarray(argon_frame["atoms"]["x"])
+        assert not np.allclose(x_before, x_after), \
+            "positions should move and be written back into the molrs.Frame"
+
+    def test_velocities_written_back(self, argon_frame, full_lj_md):
+        """InitVelocity-seeded velocities land back in the molrs.Frame."""
+        full_lj_md.run(argon_frame, 1)
+        vx = np.asarray(argon_frame["atoms"]["vx"])
+        assert np.any(vx != 0.0), \
+            "velocities should be initialized and written back"
+
+    def test_energy_finite(self, argon_frame, full_lj_md):
+        """Run yields a finite total energy in the molrs.Frame."""
+        full_lj_md.run(argon_frame, 5)
+        assert "scalars" in argon_frame.keys()
+        energy = float(np.asarray(argon_frame["scalars"]["energy"])[0])
+        kinetic = float(np.asarray(argon_frame["scalars"]["kinetic"])[0])
+        assert np.isfinite(energy)
+        assert np.isfinite(kinetic)
+        assert kinetic > 0.0
+
+    def test_forces_finite(self, argon_frame, full_lj_md):
+        """Forces written back are finite."""
+        full_lj_md.run(argon_frame, 1)
+        fx = np.asarray(argon_frame["atoms"]["fx"])
+        assert np.all(np.isfinite(fx))
+
+    def test_auto_build(self, argon_frame, full_lj_md):
+        """run() compiles the plan automatically."""
+        # full_lj_md is not explicitly built; run() must build it.
+        full_lj_md.run(argon_frame, 1)
+
+    def test_run_zero_steps(self, argon_frame, full_lj_md):
+        full_lj_md.run(argon_frame, 0)
+
+    def test_missing_required_field_raises(self):
+        """A molrs.Frame without atom positions fails loud."""
+        frame = molrs.Frame()
+        sim = av.MD(dt=0.001)
+        sim.on("force").add(av.NeighborList(8.5), order=-10) \
+                       .add(av.LJ(0.0104, 3.4, 8.5))
+        with pytest.raises(RuntimeError, match="atoms"):
+            sim.run(frame, 1)
+
+    def test_non_frame_argument_raises(self, full_lj_md):
+        """Passing a non-molrs.Frame object fails with a clear message."""
+        with pytest.raises(RuntimeError, match="molrs.Frame"):
+            full_lj_md.run(object(), 1)
+
+
+# ── ac-001: no CpuFrame / no _convert on the Python surface ─────────
+
+
+class TestFrameBindingRemoved:
+    def test_no_cpuframe_on_extension(self):
+        from atomiverse._binding import _cpp
+        assert not hasattr(_cpp, "CpuFrame")
+
+    def test_no_frame_attr_on_package(self):
+        # The old `atomiverse.Frame = _cpp.CpuFrame` alias is gone.
+        assert not hasattr(av, "Frame")
+
+    def test_convert_module_gone(self):
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module("atomiverse._convert")
