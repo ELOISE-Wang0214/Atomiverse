@@ -49,7 +49,7 @@ namespace md {
 /// `cuda::DynamicsDriver`; the constructor only binds the zeroing and
 /// kinetic-energy infrastructure components.
 ///
-/// @see cuda::minimizer::CG for the energy minimizer driver
+/// @see cuda::minimizer::Minimize for the energy minimizer driver
 class MD : public cuda::DynamicsDriver {
   public:
     /// @brief Construct MD driver, binding the phase-agnostic Zero* and

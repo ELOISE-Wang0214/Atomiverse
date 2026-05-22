@@ -1,5 +1,5 @@
 /// @file minimizer/sd.cu
-/// @brief SteepestDescentStep kernel: x += alpha * f / m * kFtm2v.
+/// @brief cuda::minimizer::SteepestDescent kernel: x += alpha * f / m * kFtm2v.
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cuda/launch.cuh"
@@ -61,7 +61,7 @@ __global__ void sd_step(real_t* __restrict__ x, real_t* __restrict__ y,
 
 } // anonymous namespace
 
-void SteepestDescentStep::launch(const LaunchContext& ctx) {
+void SteepestDescent::launch(const LaunchContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& frame = ctx.frame;
     int n = ctx.frame.n_atoms();
