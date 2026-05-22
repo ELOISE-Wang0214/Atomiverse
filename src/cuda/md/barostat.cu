@@ -14,6 +14,7 @@ using cuda::prec_t;
 using cuda::real_t;
 using cuda::work_t;
 
+namespace cuda {
 namespace md {
 
 struct Barostat::State {
@@ -30,7 +31,7 @@ Barostat::Barostat(Barostat&&) noexcept = default;
 Barostat& Barostat::operator=(Barostat&&) noexcept = default;
 
 std::vector<DefaultBinding> Barostat::default_bindings() const {
-    return {{static_cast<int>(Phase::final_integrate), 200}};
+    return {{static_cast<int>(ATV::md::Phase::final_integrate), 200}};
 }
 
 namespace {
@@ -96,4 +97,5 @@ void Barostat::launch(const LaunchContext& ctx) {
 void Barostat::destroy(const DestroyContext& ctx) { *state_ = {}; }
 
 } // namespace md
+} // namespace cuda
 } // namespace ATV

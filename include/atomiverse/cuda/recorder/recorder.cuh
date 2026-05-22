@@ -16,6 +16,7 @@
 #include "atomiverse/cuda/async_bridge.cuh"
 
 namespace ATV {
+namespace cuda {
 
 /// @brief XYZ trajectory recorder.
 ///
@@ -97,4 +98,5 @@ class Recorder : public AsyncBridge {
     std::ofstream file_;
 };
 
+} // namespace cuda
 } // namespace ATV

@@ -1,5 +1,5 @@
 /// @file test_minimizer.cu
-/// @brief Integration test: steepest descent minimization of LJ system.
+/// @brief Integration test: steepest descent minimization of cuda::LJ system.
 
 #include <cmath>
 #include <gtest/gtest.h>
@@ -58,10 +58,10 @@ TEST(Minimizer, SDEnergyDecreases) {
     // Get initial energy with a single force evaluation
     cpu::Frame frame_init = frame;
     {
-        minimizer::SD min;
+        cuda::minimizer::SD min;
         min.on(minimizer::Phase::force)
-            .add(NeighborList{cutoff}, -10)
-            .add(LJ{double(1.0), double(1.0), cutoff});
+            .add(cuda::NeighborList{cutoff}, -10)
+            .add(cuda::LJ{double(1.0), double(1.0), cutoff});
         min.build();
         min.run(
             frame_init,
@@ -72,11 +72,11 @@ TEST(Minimizer, SDEnergyDecreases) {
     // Run more steps of minimization
     cpu::Frame frame_min = frame;
     {
-        minimizer::SD min;
-        min.add(minimizer::SteepestDescentStep{double(0.01)});
+        cuda::minimizer::SD min;
+        min.add(cuda::minimizer::SteepestDescentStep{double(0.01)});
         min.on(minimizer::Phase::force)
-            .add(NeighborList{cutoff}, -10)
-            .add(LJ{double(1.0), double(1.0), cutoff});
+            .add(cuda::NeighborList{cutoff}, -10)
+            .add(cuda::LJ{double(1.0), double(1.0), cutoff});
         min.build();
         min.run(frame_min, 50);
     }
@@ -90,12 +90,12 @@ TEST(Minimizer, SDWithThermo) {
     auto frame = make_displaced_system(3, double(0.8), double(0.2));
     double cutoff = double(3.0);
 
-    minimizer::SD min;
-    min.add(minimizer::SteepestDescentStep{double(0.01)});
+    cuda::minimizer::SD min;
+    min.add(cuda::minimizer::SteepestDescentStep{double(0.01)});
     min.on(minimizer::Phase::force)
-        .add(NeighborList{cutoff}, -10)
-        .add(LJ{double(1.0), double(1.0), cutoff});
-    min.on(minimizer::Phase::end_of_step).add(Thermo{10});
+        .add(cuda::NeighborList{cutoff}, -10)
+        .add(cuda::LJ{double(1.0), double(1.0), cutoff});
+    min.on(minimizer::Phase::end_of_step).add(cuda::Thermo{10});
     min.build();
 
     // Should print thermo without crashing

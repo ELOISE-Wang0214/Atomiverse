@@ -17,6 +17,7 @@
 #include "atomiverse/cuda/component.cuh"
 
 namespace ATV {
+namespace cuda {
 
 /// @brief Cluster-based neighbor list builder.
 ///
@@ -74,4 +75,5 @@ class NeighborList : public ComponentBase {
     std::unique_ptr<State> state_; ///< Internal GPU buffers.
 };
 
+} // namespace cuda
 } // namespace ATV

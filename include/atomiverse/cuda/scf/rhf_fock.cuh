@@ -20,6 +20,7 @@
 #endif
 
 namespace ATV {
+namespace cuda {
 namespace scf {
 
 #ifdef ATV_HAS_RHF
@@ -37,7 +38,7 @@ class RHFFock : public ComponentBase {
     std::string name() const override { return "rhf_fock"; }
 
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(Phase::build_hamiltonian), 0}};
+        return {{static_cast<int>(ATV::scf::Phase::build_hamiltonian), 0}};
     }
 
     void build(const BuildContext& ctx) override;
@@ -74,7 +75,7 @@ class RHFFockDevice : public ComponentBase {
     std::string name() const override { return "rhf_fock_device"; }
 
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(Phase::build_hamiltonian), 0}};
+        return {{static_cast<int>(ATV::scf::Phase::build_hamiltonian), 0}};
     }
 
     void build(const BuildContext& ctx) override;
@@ -97,4 +98,5 @@ class RHFFockDevice : public ComponentBase {
 #endif // ATV_HAS_RHF
 
 } // namespace scf
+} // namespace cuda
 } // namespace ATV

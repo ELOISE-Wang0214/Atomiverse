@@ -10,7 +10,7 @@
 #include "atomiverse/cuda/types.cuh"
 #include <cuda_runtime.h>
 
-namespace ATV::md::nlist {
+namespace ATV::cuda::md::nlist {
 
 // ---------------------------------------------------------------------------
 // Device: Minimum AABB distance² between two clusters
@@ -239,16 +239,8 @@ void launch_fill_cluster_pairs(
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 
-template void launch_fill_cluster_pairs<float>(
-    const int*, const int*, const int*, int, int, int, const int*, const int*,
-    const int*, const int*, const float*, const float*, const float*,
-    const float*, const float*, const float*, int, bool, float, const float*,
-    const float*, const int*, int*, int*, cudaStream_t);
-template void launch_fill_cluster_pairs<double>(
-    const int*, const int*, const int*, int, int, int, const int*, const int*,
-    const int*, const int*, const double*, const double*, const double*,
-    const double*, const double*, const double*, int, bool, double,
-    const double*, const double*, const int*, int*, int*, cudaStream_t);
+
+
 
 // ---------------------------------------------------------------------------
 // Kernel: Write row_ptr sentinel on device (avoids D→H readback)
@@ -312,4 +304,17 @@ void launch_compact_pairs(int* col_idx, const int* row_ptr_upper,
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 
-} // namespace ATV::md::nlist
+
+
+
+// ── Forced template instantiations ───────────────────────────────────
+// Instantiate each launcher template over the configured work_t type
+// (the only argument the call sites use). Address-of ODR-uses the
+// template, so the compiler-deduced signature is instantiated without
+// a hand-written parameter list that could drift out of sync.
+namespace {
+[[maybe_unused]] const void* _inst_launch_fill_cluster_pairs =
+    reinterpret_cast<const void*>(&launch_fill_cluster_pairs<work_t>);
+} // namespace
+
+} // namespace ATV::cuda::md::nlist

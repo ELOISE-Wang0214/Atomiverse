@@ -10,6 +10,7 @@
 #include "atomiverse/cuda/component.cuh"
 
 namespace ATV {
+namespace cuda {
 namespace md {
 
 /// @brief Uniaxial constant-strain-rate deformation.
@@ -34,4 +35,5 @@ class Deform : public ComponentBase {
 };
 
 } // namespace md
+} // namespace cuda
 } // namespace ATV

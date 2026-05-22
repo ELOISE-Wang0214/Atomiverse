@@ -1,5 +1,5 @@
 /// @file test_md.cu
-/// @brief Integration test: NVE MD with LJ + output components.
+/// @brief Integration test: NVE MD with cuda::LJ + output components.
 
 #include <cmath>
 #include <cstdlib>
@@ -21,7 +21,7 @@ using namespace ATV;
 
 namespace {
 
-/// Create a simple cubic lattice of LJ particles.
+/// Create a simple cubic lattice of cuda::LJ particles.
 cpu::Frame make_lj_system(int n_side, double density) {
     int n = n_side * n_side * n_side;
     double box_len = std::cbrt(double(n) / density);
@@ -83,11 +83,11 @@ TEST(MD, NVEEnergyConservation) {
     // First run: get initial total energy
     cpu::Frame frame1 = frame;
     {
-        md::MD sim;
-        sim.add(md::VelocityVerlet{double(0.001)});
+        cuda::md::MD sim;
+        sim.add(cuda::md::VelocityVerlet{double(0.001)});
         sim.on(md::Phase::force)
-            .add(NeighborList{cutoff}, -10)
-            .add(LJ{double(1.0), double(1.0), cutoff});
+            .add(cuda::NeighborList{cutoff}, -10)
+            .add(cuda::LJ{double(1.0), double(1.0), cutoff});
         sim.build();
         sim.run(frame1, 1);
     }
@@ -96,11 +96,11 @@ TEST(MD, NVEEnergyConservation) {
     // Run 100 steps
     cpu::Frame frame2 = frame;
     {
-        md::MD sim;
-        sim.add(md::VelocityVerlet{double(0.001)});
+        cuda::md::MD sim;
+        sim.add(cuda::md::VelocityVerlet{double(0.001)});
         sim.on(md::Phase::force)
-            .add(NeighborList{cutoff}, -10)
-            .add(LJ{double(1.0), double(1.0), cutoff});
+            .add(cuda::NeighborList{cutoff}, -10)
+            .add(cuda::LJ{double(1.0), double(1.0), cutoff});
         sim.build();
         sim.run(frame2, 100);
     }
@@ -120,12 +120,12 @@ TEST(MD, ThermoOutput) {
     auto frame = make_lj_system(4, double(0.8));
     double cutoff = double(3.0);
 
-    md::MD sim;
-    sim.add(md::VelocityVerlet{double(0.001)});
+    cuda::md::MD sim;
+    sim.add(cuda::md::VelocityVerlet{double(0.001)});
     sim.on(md::Phase::force)
-        .add(NeighborList{cutoff}, -10)
-        .add(LJ{double(1.0), double(1.0), cutoff});
-    sim.on(md::Phase::end_of_step).add(Thermo{5});
+        .add(cuda::NeighborList{cutoff}, -10)
+        .add(cuda::LJ{double(1.0), double(1.0), cutoff});
+    sim.on(md::Phase::end_of_step).add(cuda::Thermo{5});
     sim.build();
 
     // Should print thermo output without crashing
@@ -145,12 +145,12 @@ TEST(MD, RecorderXYZ) {
     std::string filename = "test_traj.xyz";
 
     {
-        md::MD sim;
-        sim.add(md::VelocityVerlet{double(0.001)});
+        cuda::md::MD sim;
+        sim.add(cuda::md::VelocityVerlet{double(0.001)});
         sim.on(md::Phase::force)
-            .add(NeighborList{cutoff}, -10)
-            .add(LJ{double(1.0), double(1.0), cutoff});
-        sim.on(md::Phase::end_of_step).add(Recorder{filename, 3});
+            .add(cuda::NeighborList{cutoff}, -10)
+            .add(cuda::LJ{double(1.0), double(1.0), cutoff});
+        sim.on(md::Phase::end_of_step).add(cuda::Recorder{filename, 3});
         sim.build();
         sim.run(frame, 9);
     }
@@ -180,12 +180,12 @@ TEST(MD, RDFOutput) {
     std::string filename = "test_rdf.dat";
 
     {
-        md::MD sim;
-        sim.add(md::VelocityVerlet{double(0.001)});
+        cuda::md::MD sim;
+        sim.add(cuda::md::VelocityVerlet{double(0.001)});
         sim.on(md::Phase::force)
-            .add(NeighborList{cutoff}, -10)
-            .add(LJ{double(1.0), double(1.0), cutoff});
-        sim.on(md::Phase::end_of_step).add(RDF{cutoff, 50, filename});
+            .add(cuda::NeighborList{cutoff}, -10)
+            .add(cuda::LJ{double(1.0), double(1.0), cutoff});
+        sim.on(md::Phase::end_of_step).add(cuda::RDF{cutoff, 50, filename});
         sim.build();
         sim.run(frame, 5);
     }
@@ -236,12 +236,12 @@ TEST(MD, InitVelocity) {
 
     // Run 1 step with InitVelocity — velocities should be set
     {
-        md::MD sim;
-        sim.add(md::InitVelocity{target_temp, 42});
-        sim.add(md::VelocityVerlet{double(0.001)});
+        cuda::md::MD sim;
+        sim.add(cuda::md::InitVelocity{target_temp, 42});
+        sim.add(cuda::md::VelocityVerlet{double(0.001)});
         sim.on(md::Phase::force)
-            .add(NeighborList{cutoff}, -10)
-            .add(LJ{double(1.0), double(1.0), cutoff});
+            .add(cuda::NeighborList{cutoff}, -10)
+            .add(cuda::LJ{double(1.0), double(1.0), cutoff});
         sim.build();
         sim.run(frame, 1);
     }

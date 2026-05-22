@@ -13,6 +13,7 @@ using cuda::prec_t;
 using cuda::real_t;
 using cuda::work_t;
 
+namespace cuda {
 namespace md {
 
 namespace {
@@ -65,4 +66,5 @@ void KineticEnergy::launch(const LaunchContext& ctx) {
 }
 
 } // namespace md
+} // namespace cuda
 } // namespace ATV

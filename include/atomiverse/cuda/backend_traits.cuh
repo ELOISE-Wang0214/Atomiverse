@@ -12,8 +12,8 @@ namespace ATV {
 /// @brief CUDA backend trait specialization.
 template <>
 struct backend_traits<cuda::device_tag> {
-    using component_type = ComponentBase;
-    using backend_type = Backend;
+    using component_type = cuda::ComponentBase;
+    using backend_type = cuda::Backend;
 };
 
 } // namespace ATV

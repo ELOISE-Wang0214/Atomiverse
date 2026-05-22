@@ -12,6 +12,7 @@ using cuda::prec_t;
 using cuda::real_t;
 using cuda::work_t;
 
+namespace cuda {
 namespace scf {
 
 void ZeroDensity::launch(const LaunchContext& ctx) {
@@ -29,4 +30,5 @@ void ZeroDensity::launch(const LaunchContext& ctx) {
 }
 
 } // namespace scf
+} // namespace cuda
 } // namespace ATV

@@ -14,6 +14,7 @@ using cuda::prec_t;
 using cuda::real_t;
 using cuda::work_t;
 
+namespace cuda {
 namespace md {
 
 struct NoseHoover::State {
@@ -34,8 +35,8 @@ NoseHoover::NoseHoover(NoseHoover&&) noexcept = default;
 NoseHoover& NoseHoover::operator=(NoseHoover&&) noexcept = default;
 
 std::vector<DefaultBinding> NoseHoover::default_bindings() const {
-    return {{static_cast<int>(Phase::initial_integrate), 100},
-            {static_cast<int>(Phase::final_integrate), 100}};
+    return {{static_cast<int>(ATV::md::Phase::initial_integrate), 100},
+            {static_cast<int>(ATV::md::Phase::final_integrate), 100}};
 }
 
 namespace {
@@ -155,4 +156,5 @@ void NoseHoover::destroy(const DestroyContext& ctx) {
 }
 
 } // namespace md
+} // namespace cuda
 } // namespace ATV

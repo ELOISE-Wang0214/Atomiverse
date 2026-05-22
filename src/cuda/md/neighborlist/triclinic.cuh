@@ -19,7 +19,7 @@
 
 #include "atomiverse/cuda/box.cuh"
 
-namespace ATV::md::nlist {
+namespace ATV::cuda::md::nlist {
 
 /// @brief Forward to `ATV::cuda::min_image(dx, dy, dz, box)`.
 ///
@@ -129,4 +129,4 @@ __host__ __device__ inline work_t wrap_frac(work_t f) {
     return f;
 }
 
-} // namespace ATV::md::nlist
+} // namespace ATV::cuda::md::nlist

@@ -23,6 +23,7 @@
 #include "atomiverse/facade/component_role.h"
 
 namespace ATV {
+namespace cuda {
 
 /// @brief Context for one-time component build (after Runtime + DeviceFrame exist).
 ///
@@ -137,4 +138,5 @@ class ComponentBase {
     virtual void destroy(const DestroyContext& ctx) {}
 };
 
+} // namespace cuda
 } // namespace ATV

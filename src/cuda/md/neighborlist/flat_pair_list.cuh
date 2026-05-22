@@ -9,7 +9,7 @@
 
 #include <cstdint>
 
-namespace ATV::md::nlist {
+namespace ATV::cuda::md::nlist {
 
 /// @brief Flat SoA pair list — output of the fused search+mask kernel.
 /// @note Non-owning view; lifetime managed by NListBuffers.
@@ -23,4 +23,4 @@ struct FlatPairList {
     int pair_capacity;           ///< Allocated capacity for the flat arrays
 };
 
-} // namespace ATV::md::nlist
+} // namespace ATV::cuda::md::nlist

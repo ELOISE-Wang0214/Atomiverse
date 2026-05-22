@@ -1,5 +1,5 @@
 /// @file test_bonded.cu
-/// @brief Tests for bonded interactions: HarmonicBond, HarmonicAngle, MultiHarmonicDihedral.
+/// @brief Tests for bonded interactions: cuda::HarmonicBond, cuda::HarmonicAngle, cuda::MultiHarmonicDihedral.
 
 #include <cmath>
 #include <gtest/gtest.h>
@@ -14,7 +14,7 @@
 
 using namespace ATV;
 
-// ── HarmonicBond ───────────────────────────────────────────────────
+// ── cuda::HarmonicBond ───────────────────────────────────────────────────
 
 TEST(HarmonicBond, DimerAtEquilibrium) {
     // 2-atom system at r0 → V=0, F=0
@@ -29,8 +29,8 @@ TEST(HarmonicBond, DimerAtEquilibrium) {
     frame.bonds.atomj = xt::xtensor<int, 1>({1});
     frame.bonds.type = xt::xtensor<int, 1>({0});
 
-    md::MD sim;
-    sim.on(md::Phase::force).add(HarmonicBond{{350.0}, {1.53}});
+    cuda::md::MD sim;
+    sim.on(md::Phase::force).add(cuda::HarmonicBond{{350.0}, {1.53}});
     sim.build();
     sim.run(frame, 1);
 
@@ -55,8 +55,8 @@ TEST(HarmonicBond, DimerDisplaced) {
 
     double K = 350.0, r0 = 1.53;
 
-    md::MD sim;
-    sim.on(md::Phase::force).add(HarmonicBond{{K}, {r0}});
+    cuda::md::MD sim;
+    sim.on(md::Phase::force).add(cuda::HarmonicBond{{K}, {r0}});
     sim.build();
     sim.run(frame, 1);
 
@@ -70,7 +70,7 @@ TEST(HarmonicBond, DimerDisplaced) {
     EXPECT_NEAR(frame.atoms.fx[0] + frame.atoms.fx[1], 0.0, 1e-10);
 }
 
-// ── HarmonicAngle ──────────────────────────────────────────────────
+// ── cuda::HarmonicAngle ──────────────────────────────────────────────────
 
 TEST(HarmonicAngle, AtEquilibrium) {
     // 3-atom system at θ0=109.5° → V=0, F=0
@@ -92,15 +92,15 @@ TEST(HarmonicAngle, AtEquilibrium) {
     frame.angles.atomk = xt::xtensor<int, 1>({2});
     frame.angles.type = xt::xtensor<int, 1>({0});
 
-    md::MD sim;
-    sim.on(md::Phase::force).add(HarmonicAngle{{60.0}, {theta0_deg}});
+    cuda::md::MD sim;
+    sim.on(md::Phase::force).add(cuda::HarmonicAngle{{60.0}, {theta0_deg}});
     sim.build();
     sim.run(frame, 1);
 
     EXPECT_NEAR(frame.energy, 0.0, 1e-6);
 }
 
-// ── MultiHarmonicDihedral ──────────────────────────────────────────
+// ── cuda::MultiHarmonicDihedral ──────────────────────────────────────────
 
 TEST(MultiHarmonicDihedral, TransConformation) {
     // 4-atom chain in trans (φ=180°) → known V
@@ -124,8 +124,8 @@ TEST(MultiHarmonicDihedral, TransConformation) {
 
     std::array<double, 5> C = {1.73, -4.49, 0.776, 6.99, 0.0};
 
-    md::MD sim;
-    sim.on(md::Phase::force).add(MultiHarmonicDihedral{{C}});
+    cuda::md::MD sim;
+    sim.on(md::Phase::force).add(cuda::MultiHarmonicDihedral{{C}});
     sim.build();
     sim.run(frame, 1);
 
@@ -153,9 +153,9 @@ TEST(Bonded, ChainWithLJ) {
     frame.bonds.atomj = xt::xtensor<int, 1>({1, 2, 3});
     frame.bonds.type = xt::xtensor<int, 1>({0, 0, 0});
 
-    md::MD sim;
-    sim.add(md::VelocityVerlet{0.1});
-    sim.on(md::Phase::force).add(HarmonicBond{{350.0}, {1.53}});
+    cuda::md::MD sim;
+    sim.add(cuda::md::VelocityVerlet{0.1});
+    sim.on(md::Phase::force).add(cuda::HarmonicBond{{350.0}, {1.53}});
     sim.build();
     sim.run(frame, 10);
 

@@ -145,7 +145,7 @@ TEST(Frame, ZeroForces) {
     frame.box = Mat3::cubic(10.0);
 
     // Use Driver-level lifecycle
-    Backend backend;
+    cuda::Backend backend;
     backend.init();
 
     backend.materialize(frame);
@@ -157,19 +157,19 @@ TEST(Frame, ZeroForces) {
                cudaMemcpyHostToDevice);
 
     // Build + launch ZeroForces via Plan
-    md::ZeroForces zf;
-    PlanBuilder builder;
+    cuda::md::ZeroForces zf;
+    PlanBuilder<cuda::ComponentBase> builder;
     builder.add({0, 0, &zf});
     auto plan = builder.build(static_cast<int>(md::Phase::COUNT));
     backend.load(plan);
 
-    BuildContext bctx{backend.context(), d_frame};
+    cuda::BuildContext bctx{backend.context(), d_frame};
     zf.build(bctx);
 
     backend.step(0);
     backend.sync();
 
-    DestroyContext dctx{backend.context(), d_frame};
+    cuda::DestroyContext dctx{backend.context(), d_frame};
     zf.destroy(dctx);
 
     cuda::to_cpu(d_frame, frame);

@@ -8,7 +8,9 @@
 #include "atomiverse/cuda/potentials/bond_harmonic.cuh"
 
 namespace ATV {
+namespace cuda {
 
 using HarmonicBond = ATV::cuda::BondHarmonic;
 
+} // namespace cuda
 } // namespace ATV

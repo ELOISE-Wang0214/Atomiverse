@@ -5,7 +5,7 @@
 
 #include <cstdint>
 
-namespace ATV::md::nlist {
+namespace ATV::cuda::md::nlist {
 
 /// @brief Spread 10 bits across 30 bits for 3D Morton code.
 __host__ __device__ inline uint32_t expand_bits(uint32_t v) {
@@ -39,4 +39,4 @@ __host__ __device__ inline uint32_t morton_from_frac(work_t fx, work_t fy,
     return morton_3d(ix, iy, iz);
 }
 
-} // namespace ATV::md::nlist
+} // namespace ATV::cuda::md::nlist

@@ -12,6 +12,7 @@
 #include "atomiverse/cuda/component.cuh"
 
 namespace ATV {
+namespace cuda {
 namespace md {
 
 /// @brief Berendsen isotropic barostat.
@@ -42,4 +43,5 @@ class Barostat : public ComponentBase {
 };
 
 } // namespace md
+} // namespace cuda
 } // namespace ATV

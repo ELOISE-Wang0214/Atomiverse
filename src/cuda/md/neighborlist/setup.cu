@@ -10,7 +10,7 @@
 #include <cmath>
 #include <cuda_runtime.h>
 
-namespace ATV::md::nlist {
+namespace ATV::cuda::md::nlist {
 
 // ---------------------------------------------------------------------------
 // Shared device logic (called by both kernel entry points)
@@ -202,4 +202,4 @@ void launch_write_int(int* arr, int idx, int val, cudaStream_t stream) {
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 
-} // namespace ATV::md::nlist
+} // namespace ATV::cuda::md::nlist

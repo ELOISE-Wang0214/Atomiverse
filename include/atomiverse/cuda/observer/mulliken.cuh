@@ -30,6 +30,7 @@
 #endif
 
 namespace ATV {
+namespace cuda {
 
 #ifdef ATV_HAS_RHF
 
@@ -117,4 +118,5 @@ class MullikenObs : public AsyncBridge {
 
 #endif // ATV_HAS_RHF
 
+} // namespace cuda
 } // namespace ATV

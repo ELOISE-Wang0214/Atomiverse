@@ -12,6 +12,7 @@
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
+namespace cuda {
 
 using cuda::prec_t;
 using cuda::real_t;
@@ -37,16 +38,16 @@ void Backend::build_components() {
     for (auto& slot : plan_->slots)
         for (auto& op : slot.ops) {
             if (timer_)
-                timer_->begin(static_cast<cudaStream_t>(context_.stream));
+                timer_->impl()->begin(static_cast<cudaStream_t>(context_.stream));
             op.component->build(ctx);
             if (timer_) {
-                timer_->end(static_cast<cudaStream_t>(context_.stream),
+                timer_->impl()->end(static_cast<cudaStream_t>(context_.stream),
                             slot.phase, op.component->name() + "/build");
             }
         }
     cudaStreamSynchronize(static_cast<cudaStream_t>(context_.stream));
     if (timer_)
-        timer_->flush();
+        timer_->impl()->flush();
 }
 
 void Backend::step(int step_idx) {
@@ -62,15 +63,15 @@ void Backend::step(int step_idx) {
                     : context_.stream);
             LaunchContext ctx{context_, frame_, slot.phase, step_idx};
             if (timer_)
-                timer_->begin(stream);
+                timer_->impl()->begin(stream);
             op.component->launch(ctx);
             if (timer_)
-                timer_->end(stream, slot.phase, op.component->name());
+                timer_->impl()->end(stream, slot.phase, op.component->name());
         }
         cudaStreamSynchronize(static_cast<cudaStream_t>(context_.stream));
         cudaStreamSynchronize(static_cast<cudaStream_t>(context_.defer_stream));
         if (timer_)
-            timer_->flush();
+            timer_->impl()->flush();
     }
     if (timer_)
         timer_->step_done();
@@ -111,10 +112,13 @@ void Backend::shutdown() {
     cuda::unregister_log_callback();
 }
 
+} // namespace cuda
+
 // ── Explicit instantiations (CUDA) ───────────────────────────────
 
 template class Driver<md::Phase, cuda::device_tag>;
 template class Driver<minimizer::Phase, cuda::device_tag>;
 template class Driver<scf::Phase, cuda::device_tag>;
+template class Driver<evaluate::Phase, cuda::device_tag>;
 
 } // namespace ATV

@@ -21,6 +21,7 @@
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
+namespace cuda {
 namespace md {
 
 /// @brief Computes kinetic energy: KE = 0.5 * kMvv2e * sum(m_i * v_i^2) [eV].
@@ -36,7 +37,7 @@ class KineticEnergy : public ComponentBase {
     /// @brief Default bindings: end_of_step at order -100.
     /// @return Single binding to end_of_step.
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(Phase::end_of_step), -100}};
+        return {{static_cast<int>(ATV::md::Phase::end_of_step), -100}};
     }
 
     /// @brief Launch KE reduction kernel.
@@ -45,4 +46,5 @@ class KineticEnergy : public ComponentBase {
 };
 
 } // namespace md
+} // namespace cuda
 } // namespace ATV

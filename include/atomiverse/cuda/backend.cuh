@@ -13,6 +13,7 @@
 #include "atomiverse/cuda/component.cuh"
 #include "atomiverse/cuda/context.cuh"
 #include "atomiverse/cuda/frame.cuh"
+#include "atomiverse/cuda/timer.h"
 #include "atomiverse/facade/plan.h"
 
 namespace ATV {
@@ -20,7 +21,8 @@ namespace ATV {
 namespace cpu {
 class Frame;
 }
-class Timer;
+
+namespace cuda {
 
 /// @brief GPU execution engine -- lifecycle manager + dispatcher.
 ///
@@ -89,4 +91,5 @@ class Backend {
     Timer* timer_ = nullptr; ///< Non-owning pointer to optional Timer.
 };
 
+} // namespace cuda
 } // namespace ATV

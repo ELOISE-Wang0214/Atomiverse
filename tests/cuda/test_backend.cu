@@ -20,10 +20,10 @@ __global__ void add_one_k(double* fx, double* fy, double* fz,
     }
 }
 
-class AddOne : public ComponentBase {
+class AddOne : public cuda::ComponentBase {
   public:
     std::string name() const override { return "add_one"; }
-    void launch(const LaunchContext& ctx) override {
+    void launch(const cuda::LaunchContext& ctx) override {
         auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
         auto& frame = ctx.frame;
         int block = 256;
@@ -41,11 +41,11 @@ __global__ void double_vel_k(double* vx, const int* n_ptr) {
         vx[idx] *= double(2);
 }
 
-class DoubleVel : public ComponentBase {
+class DoubleVel : public cuda::ComponentBase {
   public:
     std::string name() const override { return "double_vel"; }
     Scheduling scheduling() const override { return Scheduling::deferrable; }
-    void launch(const LaunchContext& ctx) override {
+    void launch(const cuda::LaunchContext& ctx) override {
         auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
         auto& frame = ctx.frame;
         int block = 256;
@@ -57,11 +57,11 @@ class DoubleVel : public ComponentBase {
     }
 };
 
-class FreqDoubler : public ComponentBase {
+class FreqDoubler : public cuda::ComponentBase {
   public:
     std::string name() const override { return "freq_doubler"; }
     int frequency() const override { return 3; }
-    void launch(const LaunchContext& ctx) override {
+    void launch(const cuda::LaunchContext& ctx) override {
         auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
         auto& frame = ctx.frame;
         int block = 256;
@@ -80,23 +80,23 @@ TEST(Backend, KernelDispatch) {
     frame.atoms.mass.fill(double(1.0));
     frame.box = Mat3::cubic(10.0);
 
-    Backend backend;
+    cuda::Backend backend;
     backend.init();
     backend.materialize(frame);
 
     AddOne adder;
-    PlanBuilder builder;
+    PlanBuilder<cuda::ComponentBase> builder;
     builder.add({0, 0, &adder});
     auto plan = builder.build(static_cast<int>(md::Phase::COUNT));
     backend.load(plan);
 
-    BuildContext bctx{backend.context(), backend.frame()};
+    cuda::BuildContext bctx{backend.context(), backend.frame()};
     adder.build(bctx);
 
     backend.step(0);
     backend.sync();
 
-    DestroyContext dctx{backend.context(), backend.frame()};
+    cuda::DestroyContext dctx{backend.context(), backend.frame()};
     adder.destroy(dctx);
 
     cuda::to_cpu(backend.frame(), frame);
@@ -112,27 +112,27 @@ TEST(Backend, BlockingDeferrable) {
     frame.atoms.vx.fill(double(1.0));
     frame.box = Mat3::cubic(10.0);
 
-    Backend backend;
+    cuda::Backend backend;
     backend.init();
     backend.materialize(frame);
 
     AddOne adder;
     DoubleVel doubler;
 
-    PlanBuilder builder;
+    PlanBuilder<cuda::ComponentBase> builder;
     builder.add({static_cast<int>(md::Phase::force), 0, &adder});
     builder.add({static_cast<int>(md::Phase::end_of_step), 0, &doubler});
     auto plan = builder.build(static_cast<int>(md::Phase::COUNT));
     backend.load(plan);
 
-    BuildContext bctx{backend.context(), backend.frame()};
+    cuda::BuildContext bctx{backend.context(), backend.frame()};
     adder.build(bctx);
     doubler.build(bctx);
 
     backend.step(0);
     backend.sync();
 
-    DestroyContext dctx{backend.context(), backend.frame()};
+    cuda::DestroyContext dctx{backend.context(), backend.frame()};
     adder.destroy(dctx);
     doubler.destroy(dctx);
 
@@ -151,23 +151,23 @@ TEST(Backend, ConditionalExecution) {
     frame.atoms.vx.fill(double(1.0));
     frame.box = Mat3::cubic(10.0);
 
-    Backend backend;
+    cuda::Backend backend;
     backend.init();
     backend.materialize(frame);
 
     FreqDoubler freq;
-    PlanBuilder builder;
+    PlanBuilder<cuda::ComponentBase> builder;
     builder.add({static_cast<int>(md::Phase::end_of_step), 0, &freq});
     auto plan = builder.build(static_cast<int>(md::Phase::COUNT));
     backend.load(plan);
 
-    BuildContext bctx{backend.context(), backend.frame()};
+    cuda::BuildContext bctx{backend.context(), backend.frame()};
     freq.build(bctx);
 
     backend.run(6);
     backend.sync();
 
-    DestroyContext dctx{backend.context(), backend.frame()};
+    cuda::DestroyContext dctx{backend.context(), backend.frame()};
     freq.destroy(dctx);
 
     cuda::to_cpu(backend.frame(), frame);

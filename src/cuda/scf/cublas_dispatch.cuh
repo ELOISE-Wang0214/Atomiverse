@@ -10,6 +10,7 @@
 #include "atomiverse/core/real.h"
 
 namespace ATV {
+namespace cuda {
 
 using cuda::prec_t;
 using cuda::real_t;
@@ -99,4 +100,5 @@ inline cusolverStatus_t syevd(cusolverDnHandle_t h, cusolverEigMode_t mode,
 
 } // namespace detail
 } // namespace scf
+} // namespace cuda
 } // namespace ATV

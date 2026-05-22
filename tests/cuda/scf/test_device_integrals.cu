@@ -13,6 +13,7 @@
 
 #include <cuda_runtime.h>
 
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 #include "atomiverse/cuda/scf/device_integrals.cuh"
@@ -81,7 +82,9 @@ struct DeviceBasis {
         frame.atoms.type[0] = 1;
         frame.atoms.type[1] = 1;
         frame.box = Mat3::cubic(100.0);
-        ref = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+        // compute_eri=true: the ERI test reads ref.ERI directly.
+        ref = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G, 0,
+                                        true);
 
         // Build host arrays with PHYSICAL normalization (for GPU kernels)
         double h_alpha[6], h_coeff[6], h_centers[6];

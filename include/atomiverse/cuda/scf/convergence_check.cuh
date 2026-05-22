@@ -19,6 +19,7 @@
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
+namespace cuda {
 namespace scf {
 
 /// @brief SCF convergence check: ||P_new - P_old||_F < tol.
@@ -38,7 +39,7 @@ class ConvergenceCheck : public ComponentBase {
 
     /// @brief Default binding: convergence_check phase at order 0.
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(Phase::convergence_check), 0}};
+        return {{static_cast<int>(ATV::scf::Phase::convergence_check), 0}};
     }
 
     /// @brief Allocate cuBLAS handle.
@@ -60,4 +61,5 @@ class ConvergenceCheck : public ComponentBase {
 };
 
 } // namespace scf
+} // namespace cuda
 } // namespace ATV

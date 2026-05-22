@@ -14,6 +14,7 @@ using cuda::prec_t;
 using cuda::real_t;
 using cuda::work_t;
 
+namespace cuda {
 namespace scf {
 
 // ── Kernel: initialize H0 as a deterministic symmetric matrix ────────
@@ -107,4 +108,5 @@ void Hamiltonian::destroy(const DestroyContext& /*ctx*/) {
 }
 
 } // namespace scf
+} // namespace cuda
 } // namespace ATV

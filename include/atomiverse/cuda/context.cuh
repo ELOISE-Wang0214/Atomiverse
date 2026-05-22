@@ -7,6 +7,8 @@
 /// @see cuda::Frame for the device-side data
 #pragma once
 
+#include "atomiverse/facade/iteration_status.h"
+
 namespace ATV {
 namespace cuda {
 
@@ -17,6 +19,15 @@ struct Context {
     void* stream = nullptr; ///< Main CUDA stream (cast to cudaStream_t in .cu).
     void* defer_stream =
         nullptr; ///< Secondary stream for deferrable operations.
+
+    /// @brief Outer-driver loop status, owned by the category driver.
+    ///
+    /// Reset before each outer iteration; written by
+    /// `ConvergenceCheck`-tagged components; polled by `cuda::CUDADriver`
+    /// subclasses (`OptimizeDriver` for `converged`, `DynamicsDriver`
+    /// for `stop_requested`). Mirrors `cpu::Context::outer_status`.
+    /// @see facade/iteration_status.h
+    ATV::IterationStatus outer_status;
 };
 
 } // namespace cuda

@@ -4,12 +4,13 @@
 /// @brief GPU data structures for the cluster-based neighbor list.
 
 #include "atomiverse/cuda/launch.cuh"
+#include "atomiverse/cuda/types.cuh"
 #include "flat_pair_list.cuh"
 
 #include <cstddef>
 #include <cstdint>
 
-namespace ATV::md::nlist {
+namespace ATV::cuda::md::nlist {
 
 /// @brief Number of atoms per cluster (fixed for warp-friendly sizing).
 inline constexpr int kClusterSize = 8;
@@ -62,4 +63,4 @@ struct ClusterGrid {
     const real_t* d_inv_cell;    ///< Device pointer to inverse cell matrix
 };
 
-} // namespace ATV::md::nlist
+} // namespace ATV::cuda::md::nlist

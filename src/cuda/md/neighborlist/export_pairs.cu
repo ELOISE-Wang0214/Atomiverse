@@ -9,7 +9,7 @@
 
 #include <cuda_runtime.h>
 
-namespace ATV::md::nlist {
+namespace ATV::cuda::md::nlist {
 
 __global__ void export_atom_pairs_kernel(
     const int* __restrict__ flat_ci, const int* __restrict__ flat_cj,
@@ -93,4 +93,4 @@ void launch_export_atom_pairs(const int* flat_ci, const int* flat_cj,
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 
-} // namespace ATV::md::nlist
+} // namespace ATV::cuda::md::nlist

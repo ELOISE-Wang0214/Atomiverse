@@ -7,7 +7,7 @@
 #include <cub/cub.cuh>
 #include <cuda_runtime.h>
 
-namespace ATV::md::nlist {
+namespace ATV::cuda::md::nlist {
 
 // ---------------------------------------------------------------------------
 // Kernel: Assign each cluster to a grid cell based on its AABB centroid.
@@ -73,12 +73,8 @@ void launch_assign_clusters_to_cells(
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 
-template void launch_assign_clusters_to_cells<float>(
-    const float*, const float*, const float*, const float*, const float*,
-    const float*, int, const float*, int, int, int, bool, int*, cudaStream_t);
-template void launch_assign_clusters_to_cells<double>(
-    const double*, const double*, const double*, const double*, const double*,
-    const double*, int, const double*, int, int, int, bool, int*, cudaStream_t);
+
+
 
 // ---------------------------------------------------------------------------
 // CUB exclusive sum wrapper — temp storage owned by DeviceVector
@@ -155,4 +151,17 @@ void launch_build_grid_csr(const int* cluster_cell_idx, int num_clusters,
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 
-} // namespace ATV::md::nlist
+
+
+
+// ── Forced template instantiations ───────────────────────────────────
+// Instantiate each launcher template over the configured work_t type
+// (the only argument the call sites use). Address-of ODR-uses the
+// template, so the compiler-deduced signature is instantiated without
+// a hand-written parameter list that could drift out of sync.
+namespace {
+[[maybe_unused]] const void* _inst_launch_assign_clusters_to_cells =
+    reinterpret_cast<const void*>(&launch_assign_clusters_to_cells<work_t>);
+} // namespace
+
+} // namespace ATV::cuda::md::nlist

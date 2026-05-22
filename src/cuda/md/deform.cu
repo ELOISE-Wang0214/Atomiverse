@@ -13,13 +13,14 @@ using cuda::prec_t;
 using cuda::real_t;
 using cuda::work_t;
 
+namespace cuda {
 namespace md {
 
 Deform::Deform(int axis, double strain_rate, double dt)
     : axis_(axis), strain_rate_(strain_rate), dt_(dt) {}
 
 std::vector<DefaultBinding> Deform::default_bindings() const {
-    return {{static_cast<int>(Phase::initial_integrate), -100}};
+    return {{static_cast<int>(ATV::md::Phase::initial_integrate), -100}};
 }
 
 namespace {
@@ -72,4 +73,5 @@ void Deform::launch(const LaunchContext& ctx) {
 }
 
 } // namespace md
+} // namespace cuda
 } // namespace ATV

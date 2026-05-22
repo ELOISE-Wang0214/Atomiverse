@@ -19,6 +19,7 @@
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
+namespace cuda {
 namespace md {
 
 /// @brief Zeros force arrays (fx, fy, fz) on device using cudaMemsetAsync.
@@ -98,7 +99,7 @@ class InitVelocity : public ComponentBase {
     /// @brief Default bindings: initial_integrate at order -2000 (before integrator).
     /// @return Single binding to initial_integrate.
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(Phase::initial_integrate), -2000}};
+        return {{static_cast<int>(ATV::md::Phase::initial_integrate), -2000}};
     }
 
     /// @brief Generate Maxwell-Boltzmann velocities on device, remove COM velocity.
@@ -123,4 +124,5 @@ class InitVelocity : public ComponentBase {
 };
 
 } // namespace md
+} // namespace cuda
 } // namespace ATV

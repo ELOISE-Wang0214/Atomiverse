@@ -12,7 +12,7 @@
 #include <cstdint>
 #include <limits>
 
-namespace ATV::md::nlist {
+namespace ATV::cuda::md::nlist {
 
 // ---------------------------------------------------------------------------
 // Kernel: AoS double* → SoA real_t* (x, y, z separate arrays)
@@ -42,10 +42,8 @@ void launch_aos_to_soa(const double* positions_aos, int num_atoms, real_t* x,
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 
-template void launch_aos_to_soa<float>(const double*, int, float*, float*,
-                                       float*, cudaStream_t);
-template void launch_aos_to_soa<double>(const double*, int, double*, double*,
-                                        double*, cudaStream_t);
+
+
 
 // ---------------------------------------------------------------------------
 // Kernel: Compute Morton codes from SoA positions
@@ -99,13 +97,8 @@ void launch_compute_morton(const real_t* pos_x, const real_t* pos_y,
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 
-template void launch_compute_morton<float>(const float*, const float*,
-                                           const float*, int, const float*,
-                                           bool, uint32_t*, int*, cudaStream_t);
-template void launch_compute_morton<double>(const double*, const double*,
-                                            const double*, int, const double*,
-                                            bool, uint32_t*, int*,
-                                            cudaStream_t);
+
+
 
 // ---------------------------------------------------------------------------
 // CUB radix sort wrapper — temp storage owned by DeviceVector
@@ -185,14 +178,8 @@ void launch_scatter_to_soa(const int* sorted_indices, const real_t* pos_x,
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 
-template void launch_scatter_to_soa<float>(const int*, const float*,
-                                           const float*, const float*, int, int,
-                                           float*, float*, float*, int*, int*,
-                                           cudaStream_t);
-template void launch_scatter_to_soa<double>(const int*, const double*,
-                                            const double*, const double*, int,
-                                            int, double*, double*, double*,
-                                            int*, int*, cudaStream_t);
+
+
 
 // ---------------------------------------------------------------------------
 // Fused kernel: AoS→SoA + Morton code (replaces separate K1+K2)
@@ -250,14 +237,8 @@ void launch_aos_to_soa_morton(const double* positions_aos, int num_atoms,
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 
-template void launch_aos_to_soa_morton<float>(const double*, int, float*,
-                                              float*, float*, const float*,
-                                              bool, uint32_t*, int*,
-                                              cudaStream_t);
-template void launch_aos_to_soa_morton<double>(const double*, int, double*,
-                                               double*, double*, const double*,
-                                               bool, uint32_t*, int*,
-                                               cudaStream_t);
+
+
 
 // ---------------------------------------------------------------------------
 // Fused kernel: Scatter to cluster SoA + AABB (replaces separate K4+K5)
@@ -374,17 +355,28 @@ void launch_scatter_and_aabb(const int* sorted_indices, const real_t* pos_x,
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 
-template void launch_scatter_and_aabb<float>(const int*, const float*,
-                                             const float*, const float*, int,
-                                             int, float*, float*, float*, int*,
-                                             int*, float*, float*, float*,
-                                             float*, float*, float*,
-                                             cudaStream_t);
-template void launch_scatter_and_aabb<double>(const int*, const double*,
-                                              const double*, const double*, int,
-                                              int, double*, double*, double*,
-                                              int*, int*, double*, double*,
-                                              double*, double*, double*,
-                                              double*, cudaStream_t);
 
-} // namespace ATV::md::nlist
+
+
+
+
+
+// ── Forced template instantiations ───────────────────────────────────
+// Instantiate each launcher template over the configured work_t type
+// (the only argument the call sites use). Address-of ODR-uses the
+// template, so the compiler-deduced signature is instantiated without
+// a hand-written parameter list that could drift out of sync.
+namespace {
+[[maybe_unused]] const void* _inst_launch_aos_to_soa =
+    reinterpret_cast<const void*>(&launch_aos_to_soa<work_t>);
+[[maybe_unused]] const void* _inst_launch_compute_morton =
+    reinterpret_cast<const void*>(&launch_compute_morton<work_t>);
+[[maybe_unused]] const void* _inst_launch_scatter_to_soa =
+    reinterpret_cast<const void*>(&launch_scatter_to_soa<work_t>);
+[[maybe_unused]] const void* _inst_launch_aos_to_soa_morton =
+    reinterpret_cast<const void*>(&launch_aos_to_soa_morton<work_t>);
+[[maybe_unused]] const void* _inst_launch_scatter_and_aabb =
+    reinterpret_cast<const void*>(&launch_scatter_and_aabb<work_t>);
+} // namespace
+
+} // namespace ATV::cuda::md::nlist

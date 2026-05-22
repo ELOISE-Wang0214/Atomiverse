@@ -13,6 +13,7 @@ using cuda::prec_t;
 using cuda::real_t;
 using cuda::work_t;
 
+namespace cuda {
 namespace scf {
 
 void EigenSolver::build(const BuildContext& ctx) {
@@ -69,4 +70,5 @@ void EigenSolver::destroy(const DestroyContext& /*ctx*/) {
 }
 
 } // namespace scf
+} // namespace cuda
 } // namespace ATV

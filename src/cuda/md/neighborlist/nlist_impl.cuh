@@ -13,7 +13,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace ATV::md::nlist {
+namespace ATV::cuda::md::nlist {
 
 /// @brief Manages all device memory and kernel orchestration.
 template <typename work_t>
@@ -301,4 +301,4 @@ void launch_export_atom_pairs(const int* flat_ci, const int* flat_cj,
                               work_t* out_dist, int* out_count,
                               const int* capacity_ptr, cudaStream_t stream = 0);
 
-} // namespace ATV::md::nlist
+} // namespace ATV::cuda::md::nlist

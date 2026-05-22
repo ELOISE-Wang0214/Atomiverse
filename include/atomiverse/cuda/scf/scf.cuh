@@ -29,10 +29,12 @@
 #include "atomiverse/cuda/scf/density_builder.cuh"
 #include "atomiverse/cuda/scf/eigen_solver.cuh"
 #include "atomiverse/cuda/scf/hamiltonian.cuh"
+#include "atomiverse/cuda/backend_traits.cuh"
 #include "atomiverse/facade/driver.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
+namespace cuda {
 namespace scf {
 
 /// @brief Zero the density matrix P via cudaMemsetAsync.
@@ -53,11 +55,14 @@ class ZeroDensity : public ComponentBase {
 /// @brief SCF driver with iterative dense-matrix phases.
 ///
 /// Auto-adds ZeroDensity at build_hamiltonian (order -1000).
-class SCF : public Driver<Phase> {
+class SCF : public Driver<ATV::scf::Phase, cuda::device_tag> {
   public:
     /// @brief Construct SCF driver with auto-added infrastructure.
-    SCF() { on(Phase::build_hamiltonian).add(ZeroDensity{}, -1000); }
+    SCF() {
+        on(ATV::scf::Phase::build_hamiltonian).add(ZeroDensity{}, -1000);
+    }
 };
 
 } // namespace scf
+} // namespace cuda
 } // namespace ATV

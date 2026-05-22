@@ -1,5 +1,5 @@
 /// @file test_thermostat.cu
-/// @brief Tests for NoseHoover thermostat, Deform, VirialStress, Barostat.
+/// @brief Tests for NoseHoover thermostat, Deform, cuda::VirialStress, Barostat.
 
 #include <cmath>
 #include <gtest/gtest.h>
@@ -35,17 +35,17 @@ static cpu::Frame make_cubic(int n_side, double spacing) {
 }
 
 TEST(NoseHoover, TemperatureControl) {
-    // Minimal: 8 atoms, well-separated, weak LJ, small dt
+    // Minimal: 8 atoms, well-separated, weak cuda::LJ, small dt
     auto frame = make_cubic(2, 5.0); // 8 atoms
 
     double dt = 0.001;
-    md::MD sim;
-    sim.add(md::VelocityVerlet{dt});
-    sim.add(md::NoseHoover{100.0, 100.0, dt});
-    sim.add(md::InitVelocity{50.0, 42});
+    cuda::md::MD sim;
+    sim.add(cuda::md::VelocityVerlet{dt});
+    sim.add(cuda::md::NoseHoover{100.0, 100.0, dt});
+    sim.add(cuda::md::InitVelocity{50.0, 42});
     sim.on(md::Phase::force)
-        .add(NeighborList{8.0}, -10)
-        .add(LJ{0.01, 3.4, 8.0});
+        .add(cuda::NeighborList{8.0}, -10)
+        .add(cuda::LJ{0.01, 3.4, 8.0});
     sim.build();
     sim.run(frame, 50);
 
@@ -63,12 +63,12 @@ TEST(Deform, BoxGrows) {
     double dt = 0.01;
     int n_steps = 100;
 
-    md::MD sim;
-    sim.add(md::VelocityVerlet{dt});
-    sim.add(md::Deform{0, rate, dt});
+    cuda::md::MD sim;
+    sim.add(cuda::md::VelocityVerlet{dt});
+    sim.add(cuda::md::Deform{0, rate, dt});
     sim.on(md::Phase::force)
-        .add(NeighborList{10.0}, -10)
-        .add(LJ{0.01, 3.4, 10.0});
+        .add(cuda::NeighborList{10.0}, -10)
+        .add(cuda::LJ{0.01, 3.4, 10.0});
     sim.build();
     sim.run(frame, n_steps);
 
@@ -80,13 +80,13 @@ TEST(Deform, BoxGrows) {
 TEST(VirialStress, FiniteStress) {
     auto frame = make_cubic(2, 5.0);
 
-    md::MD sim;
-    sim.add(md::VelocityVerlet{0.001});
-    sim.add(md::InitVelocity{50.0, 42});
+    cuda::md::MD sim;
+    sim.add(cuda::md::VelocityVerlet{0.001});
+    sim.add(cuda::md::InitVelocity{50.0, 42});
     sim.on(md::Phase::force)
-        .add(NeighborList{8.0}, -10)
-        .add(LJ{0.01, 3.4, 8.0});
-    sim.on(md::Phase::post_force).add(VirialStress{});
+        .add(cuda::NeighborList{8.0}, -10)
+        .add(cuda::LJ{0.01, 3.4, 8.0});
+    sim.on(md::Phase::post_force).add(cuda::VirialStress{});
     sim.build();
     sim.run(frame, 10);
 
@@ -101,15 +101,15 @@ TEST(Barostat, FiniteResults) {
     auto frame = make_cubic(2, 5.0);
     double dt = 0.001;
 
-    md::MD sim;
-    sim.add(md::VelocityVerlet{dt});
-    sim.add(md::NoseHoover{100.0, 100.0, dt});
-    sim.add(md::InitVelocity{50.0, 42});
-    sim.add(md::Barostat{0.0, 500.0, dt});
+    cuda::md::MD sim;
+    sim.add(cuda::md::VelocityVerlet{dt});
+    sim.add(cuda::md::NoseHoover{100.0, 100.0, dt});
+    sim.add(cuda::md::InitVelocity{50.0, 42});
+    sim.add(cuda::md::Barostat{0.0, 500.0, dt});
     sim.on(md::Phase::force)
-        .add(NeighborList{8.0}, -10)
-        .add(LJ{0.01, 3.4, 8.0});
-    sim.on(md::Phase::post_force).add(VirialStress{});
+        .add(cuda::NeighborList{8.0}, -10)
+        .add(cuda::LJ{0.01, 3.4, 8.0});
+    sim.on(md::Phase::post_force).add(cuda::VirialStress{});
     sim.build();
     sim.run(frame, 50);
 

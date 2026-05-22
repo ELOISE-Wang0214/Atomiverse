@@ -10,7 +10,9 @@
 #include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 
 namespace ATV {
+namespace cuda {
 
 using LJ = ATV::cuda::PairLJCut;
 
+} // namespace cuda
 } // namespace ATV

@@ -18,6 +18,7 @@
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
+namespace cuda {
 namespace scf {
 
 #ifdef ATV_HAS_RHF
@@ -32,7 +33,7 @@ class RHFDensity : public ComponentBase {
     std::string name() const override { return "rhf_density"; }
 
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(Phase::build_density), 0}};
+        return {{static_cast<int>(ATV::scf::Phase::build_density), 0}};
     }
 
     void build(const BuildContext& ctx) override;
@@ -49,4 +50,5 @@ class RHFDensity : public ComponentBase {
 #endif // ATV_HAS_RHF
 
 } // namespace scf
+} // namespace cuda
 } // namespace ATV

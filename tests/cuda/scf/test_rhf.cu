@@ -215,11 +215,11 @@ TEST(RHF, CUDAConvergence) {
     double tol =
         (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
 
-    scf::SCF solver;
-    solver.add(scf::RHFFock{integrals});
-    solver.add(scf::EigenSolver{});
-    solver.add(scf::RHFDensity{integrals.n_occ()});
-    solver.add(scf::ConvergenceCheck{tol, false});
+    cuda::scf::SCF solver;
+    solver.add(cuda::scf::RHFFock{integrals});
+    solver.add(cuda::scf::EigenSolver{});
+    solver.add(cuda::scf::RHFDensity{integrals.n_occ()});
+    solver.add(cuda::scf::ConvergenceCheck{tol, false});
     solver.build();
     solver.run(frame, 100);
 
@@ -242,11 +242,11 @@ TEST(RHF, CPUCUDAParity) {
     auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);
 
     // CUDA
-    scf::SCF solver;
-    solver.add(scf::RHFFock{integrals});
-    solver.add(scf::EigenSolver{});
-    solver.add(scf::RHFDensity{integrals.n_occ()});
-    solver.add(scf::ConvergenceCheck{tol, false});
+    cuda::scf::SCF solver;
+    solver.add(cuda::scf::RHFFock{integrals});
+    solver.add(cuda::scf::EigenSolver{});
+    solver.add(cuda::scf::RHFDensity{integrals.n_occ()});
+    solver.add(cuda::scf::ConvergenceCheck{tol, false});
     solver.build();
     solver.run(frame, 100);
 
@@ -267,11 +267,11 @@ TEST(RHF, CUDAOnlyGPUIntegrals) {
     double exp[3] = {3.42525091, 0.62391373, 0.16885540};
     double coeff[3] = {0.15432897, 0.53532814, 0.44463454};
 
-    scf::SCF solver;
-    solver.add(scf::RHFFockDevice{3, exp, coeff, 1}); // n_prim=3, n_occ=1
-    solver.add(scf::EigenSolver{});
-    solver.add(scf::RHFDensity{1});
-    solver.add(scf::ConvergenceCheck{double(1e-5), false});
+    cuda::scf::SCF solver;
+    solver.add(cuda::scf::RHFFockDevice{3, exp, coeff, 1}); // n_prim=3, n_occ=1
+    solver.add(cuda::scf::EigenSolver{});
+    solver.add(cuda::scf::RHFDensity{1});
+    solver.add(cuda::scf::ConvergenceCheck{double(1e-5), false});
     solver.build();
     solver.run(frame, 100);
 
@@ -362,7 +362,8 @@ TEST(RHF, LiH) {
     auto frame = make_lih();
     auto integrals =
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-    EXPECT_EQ(integrals.n_basis, 3); // Li: 1s+2s=2, H: 1s=1 -> total 3
+    EXPECT_EQ(integrals.n_basis,
+              6); // Li: 1s+2s+2p(x,y,z)=5, H: 1s=1 -> total 6
     EXPECT_EQ(integrals.n_electrons, 4);
     double tol =
         (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
@@ -420,11 +421,11 @@ TEST(RHF, CUDAHeAtom) {
 
     auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);
 
-    scf::SCF solver;
-    solver.add(scf::RHFFock{integrals});
-    solver.add(scf::EigenSolver{});
-    solver.add(scf::RHFDensity{integrals.n_occ()});
-    solver.add(scf::ConvergenceCheck{tol, false});
+    cuda::scf::SCF solver;
+    solver.add(cuda::scf::RHFFock{integrals});
+    solver.add(cuda::scf::EigenSolver{});
+    solver.add(cuda::scf::RHFDensity{integrals.n_occ()});
+    solver.add(cuda::scf::ConvergenceCheck{tol, false});
     solver.build();
     solver.run(frame, 100);
 
@@ -445,11 +446,11 @@ TEST(RHF, CUDALiH) {
 
     auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);
 
-    scf::SCF solver;
-    solver.add(scf::RHFFock{integrals});
-    solver.add(scf::EigenSolver{});
-    solver.add(scf::RHFDensity{integrals.n_occ()});
-    solver.add(scf::ConvergenceCheck{tol, false});
+    cuda::scf::SCF solver;
+    solver.add(cuda::scf::RHFFock{integrals});
+    solver.add(cuda::scf::EigenSolver{});
+    solver.add(cuda::scf::RHFDensity{integrals.n_occ()});
+    solver.add(cuda::scf::ConvergenceCheck{tol, false});
     solver.build();
     solver.run(frame, 100);
 
@@ -470,11 +471,11 @@ TEST(RHF, CUDAHeHPlus) {
 
     auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);
 
-    scf::SCF solver;
-    solver.add(scf::RHFFock{integrals});
-    solver.add(scf::EigenSolver{});
-    solver.add(scf::RHFDensity{integrals.n_occ()});
-    solver.add(scf::ConvergenceCheck{tol, false});
+    cuda::scf::SCF solver;
+    solver.add(cuda::scf::RHFFock{integrals});
+    solver.add(cuda::scf::EigenSolver{});
+    solver.add(cuda::scf::RHFDensity{integrals.n_occ()});
+    solver.add(cuda::scf::ConvergenceCheck{tol, false});
     solver.build();
     solver.run(frame, 100);
 
@@ -491,7 +492,7 @@ TEST(RHF, CUDAHeHPlus) {
 TEST(RHF, DriverAcceptsCPUFrameOnly) {
     // Driver::run() takes cpu::Frame& -- compile-time guarantee.
     // This test verifies the API shape at the type level.
-    static_assert(std::is_invocable_v<decltype(&scf::SCF::run), scf::SCF*,
+    static_assert(std::is_invocable_v<decltype(&cuda::scf::SCF::run), cuda::scf::SCF*,
                                       cpu::Frame&, int>,
                   "Driver::run() must accept cpu::Frame&");
 }

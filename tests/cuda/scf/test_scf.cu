@@ -35,11 +35,11 @@ TEST(SCF, CUDAConvergence) {
     int n_occ = 3;
     auto frame = make_scf_system(n);
 
-    scf::SCF solver;
-    solver.add(scf::Hamiltonian{n_occ, double(0.1)});
-    solver.add(scf::EigenSolver{});
-    solver.add(scf::DensityBuilder{});
-    solver.add(scf::ConvergenceCheck{double(1e-6)});
+    cuda::scf::SCF solver;
+    solver.add(cuda::scf::Hamiltonian{n_occ, double(0.1)});
+    solver.add(cuda::scf::EigenSolver{});
+    solver.add(cuda::scf::DensityBuilder{});
+    solver.add(cuda::scf::ConvergenceCheck{double(1e-6)});
     solver.build();
     solver.run(frame, 200);
 
@@ -53,11 +53,11 @@ TEST(SCF, CUDAReproducibility) {
     auto frame2 = make_scf_system(n);
 
     for (auto* f : {&frame1, &frame2}) {
-        scf::SCF solver;
-        solver.add(scf::Hamiltonian{2, double(0.1)});
-        solver.add(scf::EigenSolver{});
-        solver.add(scf::DensityBuilder{});
-        solver.add(scf::ConvergenceCheck{double(1e-7)});
+        cuda::scf::SCF solver;
+        solver.add(cuda::scf::Hamiltonian{2, double(0.1)});
+        solver.add(cuda::scf::EigenSolver{});
+        solver.add(cuda::scf::DensityBuilder{});
+        solver.add(cuda::scf::ConvergenceCheck{double(1e-7)});
         solver.build();
         solver.run(*f, 200);
     }
@@ -70,12 +70,12 @@ TEST(SCF, CUDAWithThermo) {
     int n = 8;
     auto frame = make_scf_system(n);
 
-    scf::SCF solver;
-    solver.add(scf::Hamiltonian{2, double(0.1)});
-    solver.add(scf::EigenSolver{});
-    solver.add(scf::DensityBuilder{});
-    solver.add(scf::ConvergenceCheck{double(1e-6)});
-    solver.on(scf::Phase::end_of_step).add(Thermo{10});
+    cuda::scf::SCF solver;
+    solver.add(cuda::scf::Hamiltonian{2, double(0.1)});
+    solver.add(cuda::scf::EigenSolver{});
+    solver.add(cuda::scf::DensityBuilder{});
+    solver.add(cuda::scf::ConvergenceCheck{double(1e-6)});
+    solver.on(scf::Phase::end_of_step).add(cuda::Thermo{10});
     solver.build();
     solver.run(frame, 50);
 
@@ -88,20 +88,20 @@ TEST(SCF, CUDAAlphaEffect) {
     auto frame_a1 = make_scf_system(n);
 
     {
-        scf::SCF solver;
-        solver.add(scf::Hamiltonian{2, double(0)});
-        solver.add(scf::EigenSolver{});
-        solver.add(scf::DensityBuilder{});
-        solver.add(scf::ConvergenceCheck{double(1e-6)});
+        cuda::scf::SCF solver;
+        solver.add(cuda::scf::Hamiltonian{2, double(0)});
+        solver.add(cuda::scf::EigenSolver{});
+        solver.add(cuda::scf::DensityBuilder{});
+        solver.add(cuda::scf::ConvergenceCheck{double(1e-6)});
         solver.build();
         solver.run(frame_a0, 50);
     }
     {
-        scf::SCF solver;
-        solver.add(scf::Hamiltonian{2, double(0.5)});
-        solver.add(scf::EigenSolver{});
-        solver.add(scf::DensityBuilder{});
-        solver.add(scf::ConvergenceCheck{double(1e-6)});
+        cuda::scf::SCF solver;
+        solver.add(cuda::scf::Hamiltonian{2, double(0.5)});
+        solver.add(cuda::scf::EigenSolver{});
+        solver.add(cuda::scf::DensityBuilder{});
+        solver.add(cuda::scf::ConvergenceCheck{double(1e-6)});
         solver.build();
         solver.run(frame_a1, 200);
     }
@@ -156,11 +156,11 @@ TEST(SCF, CPUCUDAParity) {
     // CUDA via Driver
     auto frame = make_scf_system(n);
     {
-        scf::SCF solver;
-        solver.add(scf::Hamiltonian{n_occ, alpha});
-        solver.add(scf::EigenSolver{});
-        solver.add(scf::DensityBuilder{});
-        solver.add(scf::ConvergenceCheck{tol});
+        cuda::scf::SCF solver;
+        solver.add(cuda::scf::Hamiltonian{n_occ, alpha});
+        solver.add(cuda::scf::EigenSolver{});
+        solver.add(cuda::scf::DensityBuilder{});
+        solver.add(cuda::scf::ConvergenceCheck{tol});
         solver.build();
         solver.run(frame, 200);
     }
@@ -184,11 +184,11 @@ TEST(SCF, CPUCUDAParityN16) {
 
     auto frame = make_scf_system(n);
     {
-        scf::SCF solver;
-        solver.add(scf::Hamiltonian{n_occ, alpha});
-        solver.add(scf::EigenSolver{});
-        solver.add(scf::DensityBuilder{});
-        solver.add(scf::ConvergenceCheck{tol});
+        cuda::scf::SCF solver;
+        solver.add(cuda::scf::Hamiltonian{n_occ, alpha});
+        solver.add(cuda::scf::EigenSolver{});
+        solver.add(cuda::scf::DensityBuilder{});
+        solver.add(cuda::scf::ConvergenceCheck{tol});
         solver.build();
         solver.run(frame, 200);
     }

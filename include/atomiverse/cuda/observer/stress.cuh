@@ -13,6 +13,7 @@
 #include "atomiverse/cuda/component.cuh"
 
 namespace ATV {
+namespace cuda {
 
 /// @brief Virial stress tensor computation.
 ///
@@ -35,4 +36,5 @@ class VirialStress : public ComponentBase {
     std::unique_ptr<State> state_;
 };
 
+} // namespace cuda
 } // namespace ATV

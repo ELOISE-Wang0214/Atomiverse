@@ -21,6 +21,7 @@
 #ifdef ATV_HAS_RHF
 
 namespace ATV {
+namespace cuda {
 
 /// @brief Evaluate and store electron density rho(r) on a uniform grid.
 ///
@@ -110,6 +111,7 @@ class DensityRecorder : public AsyncBridge {
     std::vector<double> hx_, hy_, hz_;
 };
 
+} // namespace cuda
 } // namespace ATV
 
 #endif // ATV_HAS_RHF

@@ -7,6 +7,7 @@
 #include <cuda_runtime.h>
 
 namespace ATV {
+namespace cuda {
 
 using cuda::prec_t;
 using cuda::real_t;
@@ -99,4 +100,5 @@ void VirialStress::destroy(const DestroyContext& ctx) {
     *state_ = {};
 }
 
+} // namespace cuda
 } // namespace ATV

@@ -15,6 +15,7 @@ using cuda::prec_t;
 using cuda::real_t;
 using cuda::work_t;
 
+namespace cuda {
 namespace md {
 
 // ── Zero initializers ────────────────────────────────────────────────
@@ -169,4 +170,5 @@ void InitVelocity::launch(const LaunchContext& /*ctx*/) {
 }
 
 } // namespace md
+} // namespace cuda
 } // namespace ATV

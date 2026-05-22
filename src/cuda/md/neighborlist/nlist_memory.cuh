@@ -11,7 +11,7 @@
 #include <cstddef>
 #include <utility>
 
-namespace ATV::md::nlist {
+namespace ATV::cuda::md::nlist {
 
 /// @brief Lightweight RAII device buffer for internal neighborlist use.
 ///
@@ -91,4 +91,4 @@ class DeviceVector {
     std::size_t capacity_ = 0;
 };
 
-} // namespace ATV::md::nlist
+} // namespace ATV::cuda::md::nlist

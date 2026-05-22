@@ -22,10 +22,12 @@
 
 #include "atomiverse/cuda/md/init.cuh"
 #include "atomiverse/cuda/md/kinetic_energy.cuh"
+#include "atomiverse/cuda/backend_traits.cuh"
 #include "atomiverse/facade/driver.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
+namespace cuda {
 namespace md {
 
 /// @brief MD driver with LAMMPS-style phase sequence.
@@ -35,16 +37,17 @@ namespace md {
 /// - ZeroEnergy at pre_force (order -999) -- zeros potential energy.
 ///
 /// @see minimizer::CG for the energy minimizer driver
-class MD : public Driver<Phase> {
+class MD : public Driver<ATV::md::Phase, cuda::device_tag> {
   public:
     /// @brief Construct MD driver with auto-added zeroing infrastructure.
     MD() {
-        on(Phase::pre_force).add(ZeroForces{}, -1000);
-        on(Phase::pre_force).add(ZeroEnergy{}, -999);
-        on(Phase::end_of_step).add(ZeroKinetic{}, -1000);
-        on(Phase::end_of_step).add(KineticEnergy{}, -100);
+        on(ATV::md::Phase::pre_force).add(ZeroForces{}, -1000);
+        on(ATV::md::Phase::pre_force).add(ZeroEnergy{}, -999);
+        on(ATV::md::Phase::end_of_step).add(ZeroKinetic{}, -1000);
+        on(ATV::md::Phase::end_of_step).add(KineticEnergy{}, -100);
     }
 };
 
 } // namespace md
+} // namespace cuda
 } // namespace ATV

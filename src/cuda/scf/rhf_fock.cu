@@ -20,6 +20,7 @@
 #include <xtensor/views/xview.hpp>
 
 namespace ATV {
+namespace cuda {
 
 using cuda::prec_t;
 using cuda::real_t;
@@ -464,6 +465,7 @@ void RHFFockDevice::destroy(const DestroyContext& /*ctx*/) {
 }
 
 } // namespace scf
+} // namespace cuda
 } // namespace ATV
 
 #endif // ATV_HAS_RHF

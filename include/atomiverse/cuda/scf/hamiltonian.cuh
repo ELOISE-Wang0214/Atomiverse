@@ -18,6 +18,7 @@
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
+namespace cuda {
 namespace scf {
 
 /// @brief Construct effective Hamiltonian H(P) = H0 + alpha * P.
@@ -43,7 +44,7 @@ class Hamiltonian : public ComponentBase {
 
     /// @brief Default binding: build_hamiltonian phase at order 0.
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(Phase::build_hamiltonian), 0}};
+        return {{static_cast<int>(ATV::scf::Phase::build_hamiltonian), 0}};
     }
 
     /// @brief Allocate SCF workspace and initialize H0 on device.
@@ -66,4 +67,5 @@ class Hamiltonian : public ComponentBase {
 };
 
 } // namespace scf
+} // namespace cuda
 } // namespace ATV

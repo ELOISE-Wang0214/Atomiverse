@@ -14,6 +14,7 @@
 #include "atomiverse/cuda/async_bridge.cuh"
 
 namespace ATV {
+namespace cuda {
 
 /// @brief Thermodynamic output (LAMMPS thermo_style one).
 ///
@@ -80,4 +81,5 @@ class Thermo : public AsyncBridge {
     double* h_ke_ = nullptr;
 };
 
+} // namespace cuda
 } // namespace ATV

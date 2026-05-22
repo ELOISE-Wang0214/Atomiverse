@@ -7,6 +7,7 @@
 #include <cuda_runtime.h>
 
 namespace ATV {
+namespace cuda {
 
 using cuda::prec_t;
 using cuda::real_t;
@@ -49,4 +50,5 @@ void AsyncBridge::destroy(const DestroyContext& ctx) {
     }
 }
 
+} // namespace cuda
 } // namespace ATV

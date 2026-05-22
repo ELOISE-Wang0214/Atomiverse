@@ -13,10 +13,12 @@
 #pragma once
 
 #include "atomiverse/cuda/md/init.cuh"
+#include "atomiverse/cuda/backend_traits.cuh"
 #include "atomiverse/facade/driver.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
+namespace cuda {
 namespace minimizer {
 
 /// @brief CG minimizer driver with auto-added zeroing infrastructure.
@@ -26,14 +28,15 @@ namespace minimizer {
 /// - ZeroEnergy at force phase (order -999).
 ///
 /// @see md::MD for the molecular dynamics driver
-class CG : public Driver<Phase> {
+class CG : public Driver<ATV::minimizer::Phase, cuda::device_tag> {
   public:
     /// @brief Construct CG driver with auto-added zeroing infrastructure.
     CG() {
-        on(Phase::force).add(md::ZeroForces{}, -1000);
-        on(Phase::force).add(md::ZeroEnergy{}, -999);
+        on(ATV::minimizer::Phase::force).add(md::ZeroForces{}, -1000);
+        on(ATV::minimizer::Phase::force).add(md::ZeroEnergy{}, -999);
     }
 };
 
 } // namespace minimizer
+} // namespace cuda
 } // namespace ATV

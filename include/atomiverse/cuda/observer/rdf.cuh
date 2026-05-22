@@ -18,6 +18,7 @@
 #include "atomiverse/cuda/async_bridge.cuh"
 
 namespace ATV {
+namespace cuda {
 
 /// @brief Radial distribution function g(r) observer.
 ///
@@ -123,4 +124,5 @@ class RDF : public AsyncBridge {
     int* h_n_pairs_ = nullptr;
 };
 
+} // namespace cuda
 } // namespace ATV

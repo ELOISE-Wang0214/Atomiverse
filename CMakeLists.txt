@@ -16,7 +16,11 @@ if(NOT ATV_DOCS_ONLY)
     option(ATV_BUILD_CUDA "Build CUDA backend (requires CUDA toolkit)" ON)
     if(ATV_BUILD_CUDA)
         enable_language(CUDA)
-        set(CMAKE_CUDA_STANDARD 17)
+        # CUDA TUs that transitively include xtensor (via cpu/frame.h) need
+        # C++20: xtensor 0.27.1 uses `<concepts>` / `std::input_iterator`
+        # on toolchains where `<concepts>` is available (GCC 13), which
+        # nvcc cannot parse at -std=c++17. The CPU side stays at C++17.
+        set(CMAKE_CUDA_STANDARD 20)
         set(CMAKE_CUDA_STANDARD_REQUIRED ON)
         if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
             set(CMAKE_CUDA_ARCHITECTURES native)
@@ -206,6 +210,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cuda/log_callback.cpp
             src/cuda/async_bridge.cu
             src/cuda/transfer.cu
+            src/cuda/timer.cu
             src/cuda/driver.cu
             src/cuda/md/velocity_verlet.cu
             src/cuda/md/init.cu

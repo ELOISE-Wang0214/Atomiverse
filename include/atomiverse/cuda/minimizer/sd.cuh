@@ -19,10 +19,12 @@
 
 #include "atomiverse/cuda/component.cuh"
 #include "atomiverse/cuda/md/init.cuh"
+#include "atomiverse/cuda/backend_traits.cuh"
 #include "atomiverse/facade/driver.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
+namespace cuda {
 namespace minimizer {
 
 /// @brief Steepest descent step: x += alpha * f / m * kFtm2v.
@@ -44,7 +46,8 @@ class SteepestDescentStep : public ComponentBase {
     /// @brief Default bindings: search_direction at order 0.
     /// @return Single binding to search_direction.
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(Phase::search_direction), 0}};
+        return {
+            {static_cast<int>(ATV::minimizer::Phase::search_direction), 0}};
     }
 
     /// @brief Launch SD position update kernel.
@@ -77,14 +80,15 @@ class SteepestDescentStep : public ComponentBase {
 /// @endcode
 ///
 /// @see minimizer::CG for the conjugate gradient driver
-class SD : public Driver<Phase> {
+class SD : public Driver<ATV::minimizer::Phase, cuda::device_tag> {
   public:
     /// @brief Construct SD driver with auto-added zeroing infrastructure.
     SD() {
-        on(Phase::force).add(md::ZeroForces{}, -1000);
-        on(Phase::force).add(md::ZeroEnergy{}, -999);
+        on(ATV::minimizer::Phase::force).add(md::ZeroForces{}, -1000);
+        on(ATV::minimizer::Phase::force).add(md::ZeroEnergy{}, -999);
     }
 };
 
 } // namespace minimizer
+} // namespace cuda
 } // namespace ATV

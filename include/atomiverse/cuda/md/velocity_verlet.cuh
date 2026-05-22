@@ -26,6 +26,7 @@
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
+namespace cuda {
 namespace md {
 
 /// @brief Velocity-Verlet integrator. Auto-binds to initial_integrate and final_integrate.
@@ -46,8 +47,8 @@ class VelocityVerlet : public ComponentBase {
     /// @brief Default bindings: initial_integrate (order 0) and final_integrate (order 0).
     /// @return Two DefaultBinding entries.
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(Phase::initial_integrate), 0},
-                {static_cast<int>(Phase::final_integrate), 0}};
+        return {{static_cast<int>(ATV::md::Phase::initial_integrate), 0},
+                {static_cast<int>(ATV::md::Phase::final_integrate), 0}};
     }
 
     /// @brief Per-step kernel launch (dispatches by phase).
@@ -59,4 +60,5 @@ class VelocityVerlet : public ComponentBase {
 };
 
 } // namespace md
+} // namespace cuda
 } // namespace ATV

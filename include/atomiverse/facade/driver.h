@@ -16,21 +16,20 @@
 #include "atomiverse/core/binding.h"
 #include "atomiverse/core/device.h"
 #include "atomiverse/cpu/frame.h"
+#include "atomiverse/cuda/timer.h"
 #include "atomiverse/facade/plan.h"
 
 namespace ATV {
 
-#ifdef ATV_HAS_CUDA
-class Timer;
-#else
-/// @brief Stub Timer for non-CUDA builds (never instantiated).
-class Timer {
-  public:
-    void init() {}
-    void shutdown() {}
-    std::string summary(const std::vector<std::string>&) const { return ""; }
-};
-#endif
+/// @brief GPU profiler type held by `Driver` (CUDA-free PIMPL facade).
+///
+/// `cuda::Timer` has a complete CUDA-free definition (`cuda/timer.h`)
+/// with all special members declared and defined out-of-line in
+/// `src/cuda/timer.cu`. This lets every translation unit — CUDA or not —
+/// hold and destroy a `std::unique_ptr<Timer>` member. On non-CUDA builds
+/// the profiler is simply never constructed (`enable_timing()` is a
+/// no-op for `cpu::device_tag`).
+using Timer = cuda::Timer;
 
 namespace detail {
 /// @brief Unresolved component binding collected before `Driver::build()`.

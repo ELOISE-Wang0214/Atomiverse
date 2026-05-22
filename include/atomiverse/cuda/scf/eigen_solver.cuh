@@ -18,6 +18,7 @@
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
+namespace cuda {
 namespace scf {
 
 /// @brief Dense symmetric eigendecomposition via cuSOLVER syevd.
@@ -33,7 +34,7 @@ class EigenSolver : public ComponentBase {
 
     /// @brief Default binding: diagonalize phase at order 0.
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(Phase::diagonalize), 0}};
+        return {{static_cast<int>(ATV::scf::Phase::diagonalize), 0}};
     }
 
     /// @brief Allocate cuSOLVER handle and workspace.
@@ -56,4 +57,5 @@ class EigenSolver : public ComponentBase {
 };
 
 } // namespace scf
+} // namespace cuda
 } // namespace ATV

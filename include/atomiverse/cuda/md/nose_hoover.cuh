@@ -12,6 +12,7 @@
 #include "atomiverse/cuda/component.cuh"
 
 namespace ATV {
+namespace cuda {
 namespace md {
 
 /// @brief Single-chain Nosé-Hoover thermostat.
@@ -42,4 +43,5 @@ class NoseHoover : public ComponentBase {
 };
 
 } // namespace md
+} // namespace cuda
 } // namespace ATV

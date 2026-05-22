@@ -30,6 +30,7 @@
 #include "atomiverse/cuda/component.cuh"
 
 namespace ATV {
+namespace cuda {
 
 /// @brief Base class for CUDA async-D2H observer and recorder components.
 ///
@@ -97,4 +98,5 @@ class AsyncBridge : public ComponentBase {
         nullptr; ///< CUDA event (cudaEvent_t, as void*) owned by this base.
 };
 
+} // namespace cuda
 } // namespace ATV

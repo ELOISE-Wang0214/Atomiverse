@@ -14,11 +14,12 @@
 #include "atomiverse/cuda/types.cuh"
 #include <cuda_runtime.h>
 
-using namespace ATV::md::nlist;
+using namespace ATV::cuda::md::nlist;
 
 static constexpr int kMaxStencil = 512;
 
 namespace ATV {
+namespace cuda {
 
 using cuda::prec_t;
 using cuda::real_t;
@@ -270,4 +271,5 @@ NeighborList::~NeighborList() = default;
 NeighborList::NeighborList(NeighborList&&) noexcept = default;
 NeighborList& NeighborList::operator=(NeighborList&&) noexcept = default;
 
+} // namespace cuda
 } // namespace ATV

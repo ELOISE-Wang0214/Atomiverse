@@ -14,7 +14,7 @@
 
 #include <cstdint>
 
-namespace ATV::md::nlist {
+namespace ATV::cuda::md::nlist {
 
 // ---------------------------------------------------------------------------
 // Kernel: CSR → Flat expansion (one warp per cluster, parallel copy)
@@ -135,18 +135,8 @@ void launch_cluster_displacement(
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 
-template void launch_cluster_displacement<float>(const float*, const float*,
-                                                 const float*, const float*,
-                                                 const float*, const float*,
-                                                 const int*, int, float, float*,
-                                                 int*, int*, float,
-                                                 cudaStream_t);
-template void launch_cluster_displacement<double>(const double*, const double*,
-                                                  const double*, const double*,
-                                                  const double*, const double*,
-                                                  const int*, int, double,
-                                                  double*, int*, int*, double,
-                                                  cudaStream_t);
+
+
 
 // ---------------------------------------------------------------------------
 // Kernel: Refresh atom-pair masks on the flat pair list.
@@ -251,13 +241,22 @@ void launch_smart_rolling_prune(
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 
-template void launch_smart_rolling_prune<float>(
-    const float*, const float*, const float*, const int*, const int*,
-    const int*, int, const int*, bool, float, const float*, const float*,
-    uint64_t*, int, int, cudaStream_t);
-template void launch_smart_rolling_prune<double>(
-    const double*, const double*, const double*, const int*, const int*,
-    const int*, int, const int*, bool, double, const double*, const double*,
-    uint64_t*, int, int, cudaStream_t);
 
-} // namespace ATV::md::nlist
+
+
+
+
+
+// ── Forced template instantiations ───────────────────────────────────
+// Instantiate each launcher template over the configured work_t type
+// (the only argument the call sites use). Address-of ODR-uses the
+// template, so the compiler-deduced signature is instantiated without
+// a hand-written parameter list that could drift out of sync.
+namespace {
+[[maybe_unused]] const void* _inst_launch_cluster_displacement =
+    reinterpret_cast<const void*>(&launch_cluster_displacement<work_t>);
+[[maybe_unused]] const void* _inst_launch_smart_rolling_prune =
+    reinterpret_cast<const void*>(&launch_smart_rolling_prune<work_t>);
+} // namespace
+
+} // namespace ATV::cuda::md::nlist

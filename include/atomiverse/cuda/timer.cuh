@@ -1,9 +1,13 @@
 /// @file cuda/timer.cuh
-/// @brief Timer -- reusable GPU profiler using CUDA events.
+/// @brief cuda::Timer::Impl -- CUDA-event-based GPU profiler implementation.
 ///
-/// Standalone instrumentation module. Attach to any Backend via
-/// `backend.set_timer(&timer)`. CUDA-dependent, internal header.
-/// Enabled by Driver::enable_timing(), results via Driver::summary().
+/// Defines `Timer::Impl` (the CUDA-dependent profiler state declared by
+/// the CUDA-free `cuda/timer.h` PIMPL facade) and the out-of-line
+/// `Timer` special members / methods. CUDA-dependent, internal header --
+/// only included by `.cu` translation units (currently `src/cuda/driver.cu`).
+///
+/// Attach to a `cuda::Backend` via `backend.set_timer(&timer)`. Enabled
+/// by `Driver::enable_timing()`, results via `Driver::summary()`.
 #pragma once
 
 #include <cuda_runtime.h>
@@ -15,14 +19,17 @@
 #include <utility>
 #include <vector>
 
-namespace ATV {
+#include "atomiverse/cuda/timer.h"
 
-/// @brief Per-component GPU profiler using CUDA events.
+namespace ATV {
+namespace cuda {
+
+/// @brief CUDA-dependent profiler state behind the `Timer` PIMPL facade.
 ///
 /// Records start/stop events around component launches. Accumulates
 /// elapsed times after each slot sync (zero extra sync overhead).
 /// Produces a LAMMPS-style summary table.
-class Timer {
+class Timer::Impl {
   public:
     /// @brief Allocate CUDA events.
     void init() {
@@ -72,7 +79,7 @@ class Timer {
 
     /// @brief Format a LAMMPS-style timing summary.
     /// @param phase_names Phase name strings indexed by phase number.
-    /// @return Formatted timing table string.
+    /// @return Formatted timing table string [no units — text].
     std::string summary(const std::vector<std::string>& phase_names) const {
         if (total_steps_ == 0)
             return "No timing data.\n";
@@ -179,4 +186,5 @@ class Timer {
     int total_steps_ = 0;
 };
 
+} // namespace cuda
 } // namespace ATV

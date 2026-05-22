@@ -13,6 +13,7 @@ using cuda::prec_t;
 using cuda::real_t;
 using cuda::work_t;
 
+namespace cuda {
 namespace minimizer {
 
 namespace {
@@ -72,4 +73,5 @@ void SteepestDescentStep::launch(const LaunchContext& ctx) {
 }
 
 } // namespace minimizer
+} // namespace cuda
 } // namespace ATV

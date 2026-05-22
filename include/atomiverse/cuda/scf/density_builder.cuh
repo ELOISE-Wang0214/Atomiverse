@@ -15,6 +15,7 @@
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
+namespace cuda {
 namespace scf {
 
 /// @brief Rebuild density matrix P from occupied eigenvectors.
@@ -30,7 +31,7 @@ class DensityBuilder : public ComponentBase {
 
     /// @brief Default binding: build_density phase at order 0.
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(Phase::build_density), 0}};
+        return {{static_cast<int>(ATV::scf::Phase::build_density), 0}};
     }
 
     /// @brief Allocate cuBLAS handle.
@@ -50,4 +51,5 @@ class DensityBuilder : public ComponentBase {
 };
 
 } // namespace scf
+} // namespace cuda
 } // namespace ATV
