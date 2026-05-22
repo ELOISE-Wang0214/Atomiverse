@@ -14,6 +14,7 @@
 
 #include "atomiverse/cpu/recorder/trajectory.h"
 #include "atomiverse/cuda/async_bridge.cuh"
+#include "atomiverse/cuda/types.cuh"
 
 namespace ATV {
 namespace cuda {
@@ -42,9 +43,14 @@ class Recorder : public AsyncBridge {
         n_atoms_ = frame.n_atoms();
         auto n = static_cast<size_t>(n_atoms_);
 
-        cudaMallocHost(&hx_, n * sizeof(double));
-        cudaMallocHost(&hy_, n * sizeof(double));
-        cudaMallocHost(&hz_, n * sizeof(double));
+        // frame.atoms.x/y/z are real_t device buffers -- size by real_t.
+        cudaMallocHost(&hx_, n * sizeof(real_t));
+        cudaMallocHost(&hy_, n * sizeof(real_t));
+        cudaMallocHost(&hz_, n * sizeof(real_t));
+
+        dx_.resize(n);
+        dy_.resize(n);
+        dz_.resize(n);
 
         htype_.resize(n);
         cudaMemcpyAsync(htype_.data(), frame.atoms.type, n * sizeof(int),
@@ -57,17 +63,23 @@ class Recorder : public AsyncBridge {
     void issue_d2h(const LaunchContext& ctx) override {
         auto ds = static_cast<cudaStream_t>(ctx.runtime.defer_stream);
         auto n = static_cast<size_t>(n_atoms_);
-        cudaMemcpyAsync(hx_, ctx.frame.atoms.x, n * sizeof(double),
+        cudaMemcpyAsync(hx_, ctx.frame.atoms.x, n * sizeof(real_t),
                         cudaMemcpyDeviceToHost, ds);
-        cudaMemcpyAsync(hy_, ctx.frame.atoms.y, n * sizeof(double),
+        cudaMemcpyAsync(hy_, ctx.frame.atoms.y, n * sizeof(real_t),
                         cudaMemcpyDeviceToHost, ds);
-        cudaMemcpyAsync(hz_, ctx.frame.atoms.z, n * sizeof(double),
+        cudaMemcpyAsync(hz_, ctx.frame.atoms.z, n * sizeof(real_t),
                         cudaMemcpyDeviceToHost, ds);
     }
 
     void on_data_ready(const LaunchContext& ctx) override {
-        cpu::trajectory_append(file_, htype_.data(), hx_, hy_, hz_, n_atoms_,
-                               ctx.step);
+        // Widen real_t staging buffers to double for the CPU writer.
+        for (int i = 0; i < n_atoms_; ++i) {
+            dx_[i] = static_cast<double>(hx_[i]);
+            dy_[i] = static_cast<double>(hy_[i]);
+            dz_[i] = static_cast<double>(hz_[i]);
+        }
+        cpu::trajectory_append(file_, htype_.data(), dx_.data(), dy_.data(),
+                               dz_.data(), n_atoms_, ctx.step);
     }
 
     void on_destroy(const DestroyContext&) override {
@@ -91,9 +103,10 @@ class Recorder : public AsyncBridge {
     std::string filename_;
     int every_;
     int n_atoms_ = 0;
-    double* hx_ = nullptr;
-    double* hy_ = nullptr;
-    double* hz_ = nullptr;
+    real_t* hx_ = nullptr;
+    real_t* hy_ = nullptr;
+    real_t* hz_ = nullptr;
+    std::vector<double> dx_, dy_, dz_;
     std::vector<int> htype_;
     std::ofstream file_;
 };

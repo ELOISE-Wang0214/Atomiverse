@@ -13,6 +13,7 @@
 
 #include "atomiverse/cpu/observer/density.h"
 #include "atomiverse/cuda/async_bridge.cuh"
+#include "atomiverse/cuda/types.cuh"
 
 #ifdef ATV_HAS_ZARR
 #include "atomiverse/cpu/recorder/zarr.h"
@@ -58,13 +59,21 @@ class DensityRecorder : public AsyncBridge {
         hz_.resize(na);
         cudaMemcpyAsync(htype_.data(), frame.atoms.type, na * sizeof(int),
                         cudaMemcpyDeviceToHost, stream);
-        cudaMemcpyAsync(hx_.data(), frame.atoms.x, na * sizeof(double),
+        // frame.atoms.x/y/z are real_t device buffers -- stage as real_t,
+        // then widen to double for cpu::eval_density_grid.
+        std::vector<real_t> tx(na), ty(na), tz(na);
+        cudaMemcpyAsync(tx.data(), frame.atoms.x, na * sizeof(real_t),
                         cudaMemcpyDeviceToHost, stream);
-        cudaMemcpyAsync(hy_.data(), frame.atoms.y, na * sizeof(double),
+        cudaMemcpyAsync(ty.data(), frame.atoms.y, na * sizeof(real_t),
                         cudaMemcpyDeviceToHost, stream);
-        cudaMemcpyAsync(hz_.data(), frame.atoms.z, na * sizeof(double),
+        cudaMemcpyAsync(tz.data(), frame.atoms.z, na * sizeof(real_t),
                         cudaMemcpyDeviceToHost, stream);
         cudaStreamSynchronize(stream);
+        for (size_t i = 0; i < na; ++i) {
+            hx_[i] = static_cast<double>(tx[i]);
+            hy_[i] = static_cast<double>(ty[i]);
+            hz_[i] = static_cast<double>(tz[i]);
+        }
 
         const auto nb = static_cast<size_t>(n_basis_);
         cudaMallocHost(&h_P_, nb * nb * sizeof(double));

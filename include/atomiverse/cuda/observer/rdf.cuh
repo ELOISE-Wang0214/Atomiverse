@@ -16,6 +16,7 @@
 
 #include "atomiverse/cpu/observer/rdf.h"
 #include "atomiverse/cuda/async_bridge.cuh"
+#include "atomiverse/cuda/types.cuh"
 
 namespace ATV {
 namespace cuda {
@@ -64,8 +65,11 @@ class RDF : public AsyncBridge {
         }
         pair_capacity_ = static_cast<int>(cap);
 
-        if (pair_capacity_ > 0)
-            cudaMallocHost(&h_dist_, pair_capacity_ * sizeof(double));
+        // frame.pairs.dist is a real_t device buffer -- size by real_t.
+        if (pair_capacity_ > 0) {
+            cudaMallocHost(&h_dist_, pair_capacity_ * sizeof(real_t));
+            dist_.resize(static_cast<size_t>(pair_capacity_));
+        }
         cudaMallocHost(&h_n_pairs_, sizeof(int));
         *h_n_pairs_ = int(0);
 
@@ -81,7 +85,7 @@ class RDF : public AsyncBridge {
         cudaMemcpyAsync(h_n_pairs_, ctx.frame.pairs.n_pairs, sizeof(int),
                         cudaMemcpyDeviceToHost, ds);
         cudaMemcpyAsync(h_dist_, ctx.frame.pairs.dist,
-                        pair_capacity_ * sizeof(double), cudaMemcpyDeviceToHost,
+                        pair_capacity_ * sizeof(real_t), cudaMemcpyDeviceToHost,
                         ds);
     }
 
@@ -92,8 +96,11 @@ class RDF : public AsyncBridge {
         int np = static_cast<int>(n_pairs);
         if (np > pair_capacity_)
             np = pair_capacity_;
+        // Widen real_t staging buffer to double for the CPU accumulator.
+        for (int i = 0; i < np; ++i)
+            dist_[i] = static_cast<double>(h_dist_[i]);
         double bin_width = r_max_ / double(n_bins_);
-        cpu::rdf_accumulate(histogram_, h_dist_, np, bin_width, n_bins_);
+        cpu::rdf_accumulate(histogram_, dist_.data(), np, bin_width, n_bins_);
         n_samples_++;
     }
 
@@ -120,7 +127,8 @@ class RDF : public AsyncBridge {
     int n_samples_ = 0;
     int pair_capacity_ = 0;
     std::vector<long long> histogram_;
-    double* h_dist_ = nullptr;
+    real_t* h_dist_ = nullptr;
+    std::vector<double> dist_;
     int* h_n_pairs_ = nullptr;
 };
 
