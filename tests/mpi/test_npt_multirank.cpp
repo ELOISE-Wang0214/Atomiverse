@@ -64,9 +64,11 @@ cpu::Frame make_fcc_argon(int n_cells, double a_lat) {
 // post-`lammps-api-align-04` `Barostat`.
 double pressure_from_frame(const cpu::Frame& frame) {
     const double V = frame.box(0, 0) * frame.box(1, 1) * frame.box(2, 2);
-    const double trace = (frame.stress[0] + frame.stress[1] + frame.stress[2])
-                         + (frame.stress_kinetic[0] + frame.stress_kinetic[1]
-                            + frame.stress_kinetic[2]);
+    const double trace =
+        (frame.scalars.stress[0] + frame.scalars.stress[1]
+         + frame.scalars.stress[2])
+        + (frame.scalars.stress_kinetic[0] + frame.scalars.stress_kinetic[1]
+           + frame.scalars.stress_kinetic[2]);
     return +trace / (3.0 * V);
 }
 

@@ -280,19 +280,19 @@ void SCFEvaluator::launch(const cpu::LaunchContext& ctx) {
             const double mag = std::sqrt(fx * fx + fy * fy + fz * fz);
             max_force = std::max(max_force, mag);
         }
-        frame.energy = grad.energy;
+        frame.scalars.energy = grad.energy;
 
         ATV_INFO("[scf_eval] step={} done total_ms={:.1f} energy_eV={:.6f} "
                  "max_force_eVA={:.6f} scf_converged={} scf_iterations={}",
-                 ctx.step, elapsed_ms(t_total), frame.energy, max_force,
+                 ctx.step, elapsed_ms(t_total), frame.scalars.energy, max_force,
                  result.converged, result.iterations);
     } else {
-        // Energy-only path. Convert result.energy (Ha) to frame.energy (eV).
-        frame.energy = result.energy * ATV::kHartree2eV;
+        // Energy-only path. Convert result.energy (Ha) to frame.scalars.energy (eV).
+        frame.scalars.energy = result.energy * ATV::kHartree2eV;
         ATV_INFO("[scf_eval] step={} done total_ms={:.1f} energy_eV={:.6f} "
                  "(energy-only) scf_converged={} scf_iterations={}",
-                 ctx.step, elapsed_ms(t_total), frame.energy, result.converged,
-                 result.iterations);
+                 ctx.step, elapsed_ms(t_total), frame.scalars.energy,
+                 result.converged, result.iterations);
     }
 
     if (on_evaluate_)

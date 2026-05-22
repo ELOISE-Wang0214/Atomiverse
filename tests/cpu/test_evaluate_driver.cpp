@@ -110,11 +110,11 @@ TEST(EvaluateDriver, MatchesSCFSolverDirectOnH2O) {
     EXPECT_NEAR(E_via_eval_Ha, E_direct_Ha, 1e-10)
         << "Evaluate + SCFEvaluator should match SCFSolver direct to FP noise";
 
-    // frame.energy is populated in eV; spot-check the conversion.
-    const double frame_eV = frame_eval.energy;
+    // frame.scalars.energy is populated in eV; spot-check the conversion.
+    const double frame_eV = frame_eval.scalars.energy;
     const double frame_Ha = frame_eV / kHartree2eV;
     EXPECT_NEAR(frame_Ha, E_via_eval_Ha, 1e-10)
-        << "frame.energy (eV) should be SCF energy (Ha) × Hartree2eV";
+        << "frame.scalars.energy (eV) should be SCF energy (Ha) × Hartree2eV";
 }
 
 TEST(EvaluateDriver, SinglePointHelperEquivalentToInline) {
@@ -143,7 +143,8 @@ TEST(EvaluateDriver, SinglePointHelperEquivalentToInline) {
                 scf_helper.last_result().energy, 1e-10)
         << "single_point() must be equivalent to inline Evaluate construction "
         << "(1e-10 — parallel-reduction order can vary by ~1e-12)";
-    EXPECT_NEAR(frame_inline.energy, frame_helper.energy, 1e-10);
+    EXPECT_NEAR(frame_inline.scalars.energy, frame_helper.scalars.energy,
+                1e-10);
 }
 
 #endif // ATV_HAS_RHF

@@ -4,7 +4,7 @@
 /// 2x2x2 box of 8 PE chains (one per rank slab) with InitVelocity at 300 K
 /// and a NoseHoover thermostat at 300 K. Drives 5000 Velocity-Verlet steps
 /// with bonded forces only and asserts the final-step temperature -- read
-/// from the (already globally reduced) `frame.kinetic` -- sits within
+/// from the (already globally reduced) `frame.scalars.kinetic` -- sits within
 /// 30% of the target. The 30% bound matches the single-rank Phase A.5
 /// tolerance and accounts for the 1/√N statistical noise on a 144-atom
 /// system.
@@ -153,9 +153,9 @@ TEST(PeNvtMultiRank, NoseHooverHoldsGlobalTemperature) {
 
     sim.run(frame, 5000);
 
-    // ReduceEnergy already wrote the global KE into frame.kinetic.
+    // ReduceEnergy already wrote the global KE into frame.scalars.kinetic.
     const double T_final =
-        temperature_from_kinetic_global(frame.kinetic, n_atoms_global);
+        temperature_from_kinetic_global(frame.scalars.kinetic, n_atoms_global);
     const double rel_err = std::abs(T_final - T_target) / T_target;
 
     // 144-atom system: instantaneous-T statistical noise is √(2/N) ≈ 12 %;

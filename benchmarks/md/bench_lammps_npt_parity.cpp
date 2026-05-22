@@ -47,7 +47,7 @@
 ///     is now continuable (build once, destroy at driver teardown).
 ///
 /// Supporting fixes also landed: LAMMPS-matching outer-NHC Trotter
-/// order; a `frame.stress` / `frame.stress_kinetic` split feeding a
+/// order; a `frame.scalars.stress` / `frame.scalars.stress_kinetic` split feeding a
 /// fresh kinetic-stress trace into `update_eps_dot`; the exact MTK
 /// position-drift factor `(e^{ε̇dt}-1)/(ε̇dt)` in place of the bare
 /// `sinhc`; and a `CellList` grid resize on box change.
@@ -208,7 +208,7 @@ BENCH_CASE(LammpsParity_Slow_NptMatchesLammpsEnsembleAverages) {
 // Hamiltonian (atom KE+PE + barostat KE + both NHC chains' KE/PE +
 // p·V) — NOT the plain KE+PE, which exchanges energy with the
 // thermostat/barostat. `NoseHooverNPT` publishes it to
-// `frame.conserved` every step (the `Conserved` column of `Thermo`).
+// `frame.scalars.conserved` every step (the `Conserved` column of `Thermo`).
 // This case runs the parity system 10 000 steps and asserts the
 // extended H neither drifts nor blows up — the canonical proof the
 // integrator's Trotter splitting is symplectic.
@@ -233,16 +233,17 @@ BENCH_CASE(LammpsParity_Slow_NptConservesExtendedHamiltonian) {
     sim.set_pair(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
     sim.build();
 
-    // One step to populate frame.conserved, then take that as H(0).
+    // One step to populate frame.scalars.conserved, then take that as H(0).
     sim.run(frame, 1);
-    const double H0 = frame.conserved;
+    const double H0 = frame.scalars.conserved;
 
     double max_abs_drift = 0.0;
     constexpr int n_chunks = 100;
     constexpr int chunk = 100; // 100 × 100 = 10 000 steps
     for (int c = 0; c < n_chunks; ++c) {
         sim.run(frame, chunk);
-        max_abs_drift = std::max(max_abs_drift, std::abs(frame.conserved - H0));
+        max_abs_drift =
+            std::max(max_abs_drift, std::abs(frame.scalars.conserved - H0));
     }
 
     std::cerr << "MTK extended H: H(0) = " << H0 << " eV, "
@@ -426,7 +427,7 @@ BENCH_CASE(LammpsParity_Slow_AnisoNptConservesExtendedHamiltonian) {
     // Burn in past the violent first-relaxation transient of the
     // over-dense FCC start before sampling the conserved quantity.
     sim.run(frame, 3000);
-    const double H0 = frame.conserved;
+    const double H0 = frame.scalars.conserved;
 
     double max_abs_drift = 0.0;
     double first_half = 0.0, second_half = 0.0;
@@ -435,7 +436,7 @@ BENCH_CASE(LammpsParity_Slow_AnisoNptConservesExtendedHamiltonian) {
     constexpr int chunk = 100; // 80 × 100 = 8000 sampled steps
     for (int c = 0; c < n_chunks; ++c) {
         sim.run(frame, chunk);
-        const double H = frame.conserved;
+        const double H = frame.scalars.conserved;
         max_abs_drift = std::max(max_abs_drift, std::abs(H - H0));
         if (c < n_chunks / 2) {
             first_half += H;

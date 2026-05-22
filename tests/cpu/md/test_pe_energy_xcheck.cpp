@@ -155,7 +155,7 @@ cpu::Frame make_c20h42_perturbed() {
 }
 
 /// @brief Run one bonded component through `build → launch → destroy`
-/// and return the energy it accumulated into `frame.energy` [eV].
+/// and return the energy it accumulated into `frame.scalars.energy` [eV].
 template <typename Comp>
 double eval_one(cpu::Frame& frame, Comp& comp) {
     cpu::Context ctx;
@@ -169,10 +169,10 @@ double eval_one(cpu::Frame& frame, Comp& comp) {
         frame.atoms.fy[i] = 0;
         frame.atoms.fz[i] = 0;
     }
-    frame.energy = 0;
+    frame.scalars.energy = 0;
     comp.launch(lctx);
     comp.destroy({ctx, frame});
-    return frame.energy;
+    return frame.scalars.energy;
 }
 
 } // namespace

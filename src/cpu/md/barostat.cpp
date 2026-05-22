@@ -37,15 +37,16 @@ void Barostat::launch(const cpu::LaunchContext& ctx) {
     // LAMMPS-standard scalar pressure P = +trace(σ)/(3V), positive ⇔
     // compressive — `compute pressure::compute_scalar()`:
     //   P = (2·KE + Σ virial) / (3·V).
-    // `frame.stress` holds the pair-virial part Σ r·F; the kinetic
-    // part Σ m·v² (trace = 2·KE) lives in `frame.stress_kinetic`.
+    // `frame.scalars.stress` holds the pair-virial part Σ r·F; the kinetic
+    // part Σ m·v² (trace = 2·KE) lives in `frame.scalars.stress_kinetic`.
     // Berendsen runs at `end_of_step`, so both fields are at the same
     // post-force velocity snapshot. This `+trace/(3V)` convention is
     // identical to `NoseHooverNPT` and LAMMPS — the link
     // `lammps-api-align-04` flipped the previous `−trace/(3V)`.
     const double trace_total =
-        (f.stress[0] + f.stress[1] + f.stress[2])
-        + (f.stress_kinetic[0] + f.stress_kinetic[1] + f.stress_kinetic[2]);
+        (f.scalars.stress[0] + f.scalars.stress[1] + f.scalars.stress[2])
+        + (f.scalars.stress_kinetic[0] + f.scalars.stress_kinetic[1]
+           + f.scalars.stress_kinetic[2]);
     const double P = +trace_total / (3.0 * V);
 
     // Berendsen dilation factor — `fix_press_berendsen.cpp::end_of_step`:

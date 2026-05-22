@@ -86,7 +86,7 @@ inline constexpr double kAmuPerA3ToGPerCc = 1.660'539'066'60;
 // (LAMMPS pe/ke/etotal are in kcal/mol and we convert to eV in
 // compare.py). ThermoPrinter prints energies in eV.
 class ThermoPrinter : public cpu::ComponentBase {
-public:
+  public:
     ThermoPrinter(int period, std::ostream& out, int n_atoms_global,
                   double total_mass_amu)
         : period_(period), out_(&out), n_global_(n_atoms_global),
@@ -98,44 +98,47 @@ public:
     }
 
     void launch(const cpu::LaunchContext& ctx) override {
-        if (ctx.runtime.mpi_rank != 0) { ++step_; return; }
+        if (ctx.runtime.mpi_rank != 0) {
+            ++step_;
+            return;
+        }
         const auto& f = ctx.frame;
 
         if (step_ % period_ == 0) {
-            const double Lx = f.box(0,0);
-            const double Ly = f.box(1,1);
-            const double Lz = f.box(2,2);
-            const double V  = Lx * Ly * Lz;
+            const double Lx = f.box(0, 0);
+            const double Ly = f.box(1, 1);
+            const double Lz = f.box(2, 2);
+            const double V = Lx * Ly * Lz;
             const double T = (n_global_ > 1)
-                ? (2.0 * f.kinetic) /
-                  (3.0 * (n_global_ - 1) * kBoltzmann)
-                : 0.0;
+                                 ? (2.0 * f.scalars.kinetic)
+                                       / (3.0 * (n_global_ - 1) * kBoltzmann)
+                                 : 0.0;
             // Atomiverse `frame.stress` stores the LAMMPS-style virial
             // directly (virial[0] = Σ r_ij,x · F_ij,x accumulated with
             // compression-positive sign), so the physical pressure is
             // just `(kin + pair virial)/(3V)` with NO sign flip. Sign
             // must match LAMMPS log (+ = compression).
-            const double P_evA3 =
-                +(f.stress[0] + f.stress[1] + f.stress[2]) / (3.0 * V);
+            const double P_evA3 = +(f.scalars.stress[0] + f.scalars.stress[1]
+                                    + f.scalars.stress[2])
+                                  / (3.0 * V);
             const double P_atm = P_evA3 * kEvPerA3ToAtm;
 
-            const double density = (V > 0.0)
-                ? total_mass_amu_ * kAmuPerA3ToGPerCc / V
-                : 0.0;
-            const double etotal = f.energy + f.kinetic;
+            const double density =
+                (V > 0.0) ? total_mass_amu_ * kAmuPerA3ToGPerCc / V : 0.0;
+            const double etotal = f.scalars.energy + f.scalars.kinetic;
 
-            (*out_) << std::setw(10) << step_
-                    << ' ' << std::setw(14) << std::setprecision(8) << T
-                    << ' ' << std::setw(14) << std::setprecision(8) << P_atm
-                    << ' ' << std::setw(14) << std::setprecision(8) << f.energy
-                    << ' ' << std::setw(14) << std::setprecision(8) << f.kinetic
-                    << ' ' << std::setw(14) << std::setprecision(8) << etotal
-                    << ' ' << std::setw(12) << std::setprecision(6) << density
-                    << ' ' << std::setw(14) << std::setprecision(8) << V
-                    << ' ' << std::setw(10) << std::setprecision(7) << Lx
-                    << ' ' << std::setw(10) << std::setprecision(7) << Ly
-                    << ' ' << std::setw(10) << std::setprecision(7) << Lz
-                    << '\n';
+            (*out_) << std::setw(10) << step_ << ' ' << std::setw(14)
+                    << std::setprecision(8) << T << ' ' << std::setw(14)
+                    << std::setprecision(8) << P_atm << ' ' << std::setw(14)
+                    << std::setprecision(8) << f.scalars.energy << ' '
+                    << std::setw(14) << std::setprecision(8)
+                    << f.scalars.kinetic << ' ' << std::setw(14)
+                    << std::setprecision(8) << etotal << ' ' << std::setw(12)
+                    << std::setprecision(6) << density << ' ' << std::setw(14)
+                    << std::setprecision(8) << V << ' ' << std::setw(10)
+                    << std::setprecision(7) << Lx << ' ' << std::setw(10)
+                    << std::setprecision(7) << Ly << ' ' << std::setw(10)
+                    << std::setprecision(7) << Lz << '\n';
             out_->flush();
         }
         ++step_;
@@ -143,7 +146,7 @@ public:
 
     void reset_step() { step_ = 0; }
 
-private:
+  private:
     int period_;
     std::ostream* out_;
     int n_global_;
@@ -170,10 +173,10 @@ int main(int argc, char** argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 
-    std::string data_path =
-        "/Users/roykid/work/molcrafts/Atomiverse/debug_amorphous/PE_nc10_cl1000.dat";
-    std::string log_path  =
-        "/Users/roykid/work/molcrafts/Atomiverse/debug_amorphous/log.atomiverse.txt";
+    std::string data_path = "/Users/roykid/work/molcrafts/Atomiverse/"
+                            "debug_amorphous/PE_nc10_cl1000.dat";
+    std::string log_path = "/Users/roykid/work/molcrafts/Atomiverse/"
+                           "debug_amorphous/log.atomiverse.txt";
     int n_steps_stage1 = 10000;
     int n_steps_stage2 = 50000;
     bool short_run = false;
@@ -182,12 +185,18 @@ int main(int argc, char** argv) {
 
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
-        if      (a == "--data" && i + 1 < argc) data_path = argv[++i];
-        else if (a == "--log"  && i + 1 < argc) log_path  = argv[++i];
-        else if (a == "--steps-stage1" && i + 1 < argc) n_steps_stage1 = std::stoi(argv[++i]);
-        else if (a == "--steps-stage2" && i + 1 < argc) n_steps_stage2 = std::stoi(argv[++i]);
-        else if (a == "--stage1-only") run_stage2 = false;
-        else if (a == "--stage2-only") run_stage1 = false;
+        if (a == "--data" && i + 1 < argc)
+            data_path = argv[++i];
+        else if (a == "--log" && i + 1 < argc)
+            log_path = argv[++i];
+        else if (a == "--steps-stage1" && i + 1 < argc)
+            n_steps_stage1 = std::stoi(argv[++i]);
+        else if (a == "--steps-stage2" && i + 1 < argc)
+            n_steps_stage2 = std::stoi(argv[++i]);
+        else if (a == "--stage1-only")
+            run_stage2 = false;
+        else if (a == "--stage2-only")
+            run_stage1 = false;
         else if (a == "--short") {
             short_run = true;
             n_steps_stage1 = 1000;
@@ -203,26 +212,28 @@ int main(int argc, char** argv) {
                   << " steps × 1.0 fs\n";
         std::cerr << "[atomiverse] stage 2    = " << n_steps_stage2
                   << " steps × 0.5 fs\n";
-        if (short_run) std::cerr << "[atomiverse] (--short)\n";
+        if (short_run)
+            std::cerr << "[atomiverse] (--short)\n";
     }
 
     // ── Force field (LAMMPS amorphous.in, kcal/mol → eV) ────────────
-    const double bond_K_kcal   = 350.0;
-    const double bond_r0       = 1.53;
-    const double angle_K_kcal  = 60.0;
-    const double angle_theta0  = deg2rad(109.5);
+    const double bond_K_kcal = 350.0;
+    const double bond_r0 = 1.53;
+    const double angle_K_kcal = 60.0;
+    const double angle_theta0 = deg2rad(109.5);
     const std::vector<double> dihedral_kcal = {1.73, -4.49, 0.776, 6.99, 0.0};
 
-    const double bond_K_ev  = bond_K_kcal  * kKcalPerMolToEv;
+    const double bond_K_ev = bond_K_kcal * kKcalPerMolToEv;
     const double angle_K_ev = angle_K_kcal * kKcalPerMolToEv;
     std::vector<double> dihedral_ev;
     dihedral_ev.reserve(dihedral_kcal.size());
-    for (double v : dihedral_kcal) dihedral_ev.push_back(v * kKcalPerMolToEv);
+    for (double v : dihedral_kcal)
+        dihedral_ev.push_back(v * kKcalPerMolToEv);
 
     const double lj_eps_kcal = 0.112;
-    const double lj_sig      = 4.01;
-    const double lj_cut      = 10.5;
-    const double lj_eps_ev   = lj_eps_kcal * kKcalPerMolToEv;
+    const double lj_sig = 4.01;
+    const double lj_cut = 10.5;
+    const double lj_eps_ev = lj_eps_kcal * kKcalPerMolToEv;
 
     // ── Load the LAMMPS data file (every rank reads the full file
     //    — DomainDecomposition partitions atoms in Backend::setup) ───
@@ -237,9 +248,8 @@ int main(int argc, char** argv) {
                   << '\n';
         std::cerr << "[atomiverse] n_dihedrals = " << frame.dihedrals.size()
                   << '\n';
-        std::cerr << "[atomiverse] box (Å)     = "
-                  << frame.box(0,0) << ' ' << frame.box(1,1) << ' '
-                  << frame.box(2,2) << '\n';
+        std::cerr << "[atomiverse] box (Å)     = " << frame.box(0, 0) << ' '
+                  << frame.box(1, 1) << ' ' << frame.box(2, 2) << '\n';
     }
 
     const int n_atoms_global = frame.atoms.size();
@@ -253,11 +263,10 @@ int main(int argc, char** argv) {
         total_mass_amu += frame.atoms.mass[i];
     }
     if (rank == 0) {
-        std::cerr << "[atomiverse] total_mass = " << total_mass_amu
-                  << " amu\n";
+        std::cerr << "[atomiverse] total_mass = " << total_mass_amu << " amu\n";
     }
 
-    int stage1_n_local = frame.atoms.size();  // assume all-on-rank-0 default
+    int stage1_n_local = frame.atoms.size(); // assume all-on-rank-0 default
 
     std::ofstream log_stream;
     if (rank == 0) {
@@ -269,10 +278,10 @@ int main(int argc, char** argv) {
 
     // ── Stage 1: nve/limit + Langevin at 500 K, dt = 1 fs ──────────
     if (run_stage1 && n_steps_stage1 > 0) {
-        const double dt    = 1.0;
+        const double dt = 1.0;
         const double T_tgt = 500.0;
-        const double tau_lang = 10.0;          // LAMMPS-equivalent damp
-        const double xmax     = 0.05;          // LAMMPS-equivalent cap
+        const double tau_lang = 10.0; // LAMMPS-equivalent damp
+        const double xmax = 0.05;     // LAMMPS-equivalent cap
 
         cpu::md::MD sim;
         sim.add(cpu::md::NVELimit{dt, xmax});
@@ -284,9 +293,10 @@ int main(int argc, char** argv) {
         sim.on(ATV::md::Phase::post_force)
             .add(cpu::md::mpi::HaloExchangeReverse{}, -1000);
         sim.on(ATV::md::Phase::force)
-            .add(cpu::md::NeighborList<>{lj_cut, /*skin=*/0.4, /*every=*/10}, -10)
-            .add(cpu::md::LJ{lj_eps_ev, lj_sig, lj_cut}
-                 .set_special_bonds(0.0, 0.0, 0.0))
+            .add(cpu::md::NeighborList<>{lj_cut, /*skin=*/0.4, /*every=*/10},
+                 -10)
+            .add(cpu::md::LJ{lj_eps_ev, lj_sig, lj_cut}.set_special_bonds(
+                0.0, 0.0, 0.0))
             .add(HarmonicBond{{bond_K_ev}, {bond_r0}})
             .add(HarmonicAngle{{angle_K_ev}, {angle_theta0}})
             .add(MultiHarmonicDihedral{{dihedral_ev}});
@@ -306,9 +316,10 @@ int main(int argc, char** argv) {
         sim.build();
 
         if (rank == 0) {
-            print_thermo_header(log_stream,
+            print_thermo_header(
+                log_stream,
                 "Stage 1: NVE/limit + Langevin (T=500 K, damp=10 fs), dt=1 fs, "
-                + std::to_string(n_steps_stage1) + " steps");
+                    + std::to_string(n_steps_stage1) + " steps");
         }
 
         const auto t0 = std::chrono::steady_clock::now();
@@ -316,10 +327,8 @@ int main(int argc, char** argv) {
         const auto t1 = std::chrono::steady_clock::now();
 
         if (rank == 0) {
-            const double secs =
-                std::chrono::duration<double>(t1 - t0).count();
-            std::cerr << "[atomiverse] stage 1 wall time : "
-                      << secs << " s ("
+            const double secs = std::chrono::duration<double>(t1 - t0).count();
+            std::cerr << "[atomiverse] stage 1 wall time : " << secs << " s ("
                       << (n_steps_stage1 / secs) << " steps/s)\n";
             log_stream << "# stage1 wall_seconds = " << secs << '\n';
         }
@@ -327,12 +336,11 @@ int main(int argc, char** argv) {
 
     // ── Inter-stage gather: replicate the full frame on every rank ──
     if (run_stage1 && n_steps_stage1 > 0 && run_stage2 && world_size > 1) {
-        debug_amorphous::gather_full_frame_inplace(
-            frame, stage1_n_local, world_size, MPI_COMM_WORLD);
+        debug_amorphous::gather_full_frame_inplace(frame, stage1_n_local,
+                                                   world_size, MPI_COMM_WORLD);
         if (rank == 0) {
             std::cerr << "[atomiverse] inter-stage gather complete "
-                      << "(n_local on rank 0 was " << stage1_n_local
-                      << ")\n";
+                      << "(n_local on rank 0 was " << stage1_n_local << ")\n";
         }
     }
 
@@ -350,22 +358,22 @@ int main(int argc, char** argv) {
     // conditions — ⟨T⟩, ⟨P⟩, ⟨ρ⟩ should match pointwise after the
     // common equilibration transient, not just in ensemble average.
     if (run_stage2) {
-        const double dt    = 0.5;
+        const double dt = 0.5;
         const double T_tgt = 500.0;
-        const double tau_T = 50.0;      // LAMMPS Tdamp
+        const double tau_T = 50.0; // LAMMPS Tdamp
         const double P_tgt = 0.0;
-        const double tau_P = 1000.0;    // LAMMPS Pdamp
+        const double tau_P = 1000.0; // LAMMPS Pdamp
 
         cpu::md::MD sim;
         sim.add(cpu::md::NoseHooverNPT{{
-            /*.T_target=*/ T_tgt,
-            /*.tau_T   =*/ tau_T,
-            /*.P_target=*/ P_tgt,
-            /*.tau_P   =*/ tau_P,
-            /*.dt      =*/ dt,
-            /*.drag    =*/ 2.0,           // LAMMPS `drag 2`
-            /*.mtchain =*/ 3,             // LAMMPS default
-            /*.mpchain =*/ 3,             // LAMMPS default
+            /*.T_target=*/T_tgt,
+            /*.tau_T   =*/tau_T,
+            /*.P_target=*/P_tgt,
+            /*.tau_P   =*/tau_P,
+            /*.dt      =*/dt,
+            /*.drag    =*/2.0, // LAMMPS `drag 2`
+            /*.mtchain =*/3,   // LAMMPS default
+            /*.mpchain =*/3,   // LAMMPS default
         }});
         // LAMMPS `fix momentum 1 linear 1 1 1` equivalent.
         sim.add(cpu::md::ZeroLinearMomentum{1});
@@ -374,9 +382,10 @@ int main(int argc, char** argv) {
         sim.on(ATV::md::Phase::post_force)
             .add(cpu::md::mpi::HaloExchangeReverse{}, -1000);
         sim.on(ATV::md::Phase::force)
-            .add(cpu::md::NeighborList<>{lj_cut, /*skin=*/0.4, /*every=*/10}, -10)
-            .add(cpu::md::LJ{lj_eps_ev, lj_sig, lj_cut}
-                 .set_special_bonds(0.0, 0.0, 0.0))
+            .add(cpu::md::NeighborList<>{lj_cut, /*skin=*/0.4, /*every=*/10},
+                 -10)
+            .add(cpu::md::LJ{lj_eps_ev, lj_sig, lj_cut}.set_special_bonds(
+                0.0, 0.0, 0.0))
             .add(HarmonicBond{{bond_K_ev}, {bond_r0}})
             .add(HarmonicAngle{{angle_K_ev}, {angle_theta0}})
             .add(MultiHarmonicDihedral{{dihedral_ev}});
@@ -390,10 +399,10 @@ int main(int argc, char** argv) {
         sim.build();
 
         if (rank == 0) {
-            print_thermo_header(log_stream,
-                "Stage 2: NoseHooverNPT (T=500 K, tau_T=50 fs, "
-                "P=0, tau_P=1 ps, drag=2, M=3), dt=0.5 fs, "
-                + std::to_string(n_steps_stage2) + " steps");
+            print_thermo_header(
+                log_stream, "Stage 2: NoseHooverNPT (T=500 K, tau_T=50 fs, "
+                            "P=0, tau_P=1 ps, drag=2, M=3), dt=0.5 fs, "
+                                + std::to_string(n_steps_stage2) + " steps");
         }
 
         const auto t0 = std::chrono::steady_clock::now();
@@ -401,16 +410,15 @@ int main(int argc, char** argv) {
         const auto t1 = std::chrono::steady_clock::now();
 
         if (rank == 0) {
-            const double secs =
-                std::chrono::duration<double>(t1 - t0).count();
-            std::cerr << "[atomiverse] stage 2 wall time : "
-                      << secs << " s ("
+            const double secs = std::chrono::duration<double>(t1 - t0).count();
+            std::cerr << "[atomiverse] stage 2 wall time : " << secs << " s ("
                       << (n_steps_stage2 / secs) << " steps/s)\n";
             log_stream << "# stage2 wall_seconds = " << secs << '\n';
         }
     }
 
-    if (rank == 0) log_stream.close();
+    if (rank == 0)
+        log_stream.close();
     MPI_Finalize();
     return 0;
 }

@@ -161,8 +161,8 @@ struct CpuFrame {
         return copy_to_numpy(frame.atoms.type.data(), frame.atoms.size());
     }
 
-    double get_energy() const { return frame.energy; }
-    double get_kinetic() const { return frame.kinetic; }
+    double get_energy() const { return frame.scalars.energy; }
+    double get_kinetic() const { return frame.scalars.kinetic; }
 
     nb::ndarray<nb::numpy, double, nb::shape<3, 3>> get_box() const {
         double* buf = new double[9];

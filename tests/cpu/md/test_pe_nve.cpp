@@ -130,11 +130,11 @@ TEST(PeNve, EnergyConserves1000Steps) {
     sim.build();
 
     sim.run(frame, 1);
-    const double e0 = frame.energy + frame.kinetic;
+    const double e0 = frame.scalars.energy + frame.scalars.kinetic;
     ASSERT_GT(std::abs(e0), 0.0) << "initial energy must be nonzero";
 
     sim.run(frame, 999);
-    const double e1 = frame.energy + frame.kinetic;
+    const double e1 = frame.scalars.energy + frame.scalars.kinetic;
 
     const double drift = std::abs(e1 - e0) / std::abs(e0);
     EXPECT_LT(drift, 1e-4)

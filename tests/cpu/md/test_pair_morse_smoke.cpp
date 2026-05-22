@@ -46,7 +46,8 @@ TEST(PairMorseDemo, TwoAtomNveOscillates) {
 
     // Capture initial total energy at step 1 (one launch + one integration).
     sim.run(frame, 1);
-    const double E0 = frame.energy + 0.0; // PE only at step 1 (v=0 → KE=0)
+    const double E0 =
+        frame.scalars.energy + 0.0; // PE only at step 1 (v=0 → KE=0)
 
     // Run 100 more steps; check NVE conservation and r stays in well basin.
     sim.run(frame, 100);
@@ -55,7 +56,7 @@ TEST(PairMorseDemo, TwoAtomNveOscillates) {
     const double dx = frame.atoms.x[1] - frame.atoms.x[0];
     const double r_final = std::abs(dx);
 
-    // (a) Energy conservation. The harness reports `frame.energy` as
+    // (a) Energy conservation. The harness reports `frame.scalars.energy` as
     // potential only; with conservative forces and zero initial v, the
     // bound oscillation keeps KE+PE constant. The PE alone at r ≈ r₀
     // is ≈ 0 (well bottom); at the turning point r ≈ r_init it's the
@@ -63,8 +64,8 @@ TEST(PairMorseDemo, TwoAtomNveOscillates) {
     // KE-redistribution allowance. A loose 5% relative bound suffices
     // for the demo (the live demo cares about "does it run", not "is
     // it bit-identical to a reference impl").
-    EXPECT_LT(std::abs(frame.energy - E0) / std::abs(E0), 5e-2)
-        << "PE drift: E0=" << E0 << " E_final=" << frame.energy;
+    EXPECT_LT(std::abs(frame.scalars.energy - E0) / std::abs(E0), 5e-2)
+        << "PE drift: E0=" << E0 << " E_final=" << frame.scalars.energy;
 
     // (b) Atoms stay in the Morse well basin (r within 50% of r₀).
     EXPECT_GT(r_final, 0.5 * r0)

@@ -164,13 +164,13 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
         }
     }
 
-    f.energy += energy_total;
-    f.stress[0] += v_xx;
-    f.stress[1] += v_yy;
-    f.stress[2] += v_zz;
-    f.stress[3] += v_xy;
-    f.stress[4] += v_xz;
-    f.stress[5] += v_yz;
+    f.scalars.energy += energy_total;
+    f.scalars.stress[0] += v_xx;
+    f.scalars.stress[1] += v_yy;
+    f.scalars.stress[2] += v_zz;
+    f.scalars.stress[3] += v_xy;
+    f.scalars.stress[4] += v_xz;
+    f.scalars.stress[5] += v_yz;
 }
 
 void BondHarmonic::destroy(const DestroyContext& /*ctx*/) {

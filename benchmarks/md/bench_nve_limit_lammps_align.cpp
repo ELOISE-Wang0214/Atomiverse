@@ -287,14 +287,14 @@ BENCH_CASE(NveLimitLammpsAlign_VelocityVerletConservesEnergy) {
     sim.build();
 
     sim.run(frame, 1);
-    const double e0 = frame.energy + frame.kinetic;
+    const double e0 = frame.scalars.energy + frame.scalars.kinetic;
     if (!(std::abs(e0) > 0.0)) {
         BM_TRUE(false) << "initial total energy must be nonzero";
         return;
     }
 
     sim.run(frame, 1999);
-    const double e1 = frame.energy + frame.kinetic;
+    const double e1 = frame.scalars.energy + frame.scalars.kinetic;
 
     const double drift = std::abs(e1 - e0) / std::abs(e0);
     BM_LT(drift, 1e-4) << "VelocityVerlet NVE drift " << drift

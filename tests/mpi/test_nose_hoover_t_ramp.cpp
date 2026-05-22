@@ -189,8 +189,8 @@ TEST(NoseHooverTRamp, SetTargetTracksAcrossSegmentsAtTwoRanks) {
         }
         sim.run(frame, 500);
 
-        observed_T[seg] =
-            temperature_from_kinetic_global(frame.kinetic, n_atoms_global);
+        observed_T[seg] = temperature_from_kinetic_global(frame.scalars.kinetic,
+                                                          n_atoms_global);
         // Loose sanity: T must remain in a physical range for any setpoint
         // we asked for. No NaN, no negative, not exploding.
         ASSERT_GT(observed_T[seg], 1.0)

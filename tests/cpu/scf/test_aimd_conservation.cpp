@@ -49,8 +49,8 @@ cpu::Frame make_h2(double bond_length, double v_stretch) {
     f.atoms.fz = {0.0, 0.0};
     f.atoms.mass = {1.008, 1.008};
     f.atoms.type = {1, 1};
-    f.energy = 0;
-    f.kinetic = 0;
+    f.scalars.energy = 0;
+    f.scalars.kinetic = 0;
     f.box = Mat3::cubic(100.0);
     return f;
 }
@@ -95,8 +95,8 @@ TEST(AIMDConservation, RHFNVEEnergyDrift200Steps) {
     double e_max = -std::numeric_limits<double>::infinity();
     for (int s = 0; s < n_steps; s += sample_every) {
         sim.run(frame, sample_every);
-        const double E = static_cast<double>(frame.energy)
-                         + static_cast<double>(frame.kinetic);
+        const double E = static_cast<double>(frame.scalars.energy)
+                         + static_cast<double>(frame.scalars.kinetic);
         if (E < e_min)
             e_min = E;
         if (E > e_max)
@@ -160,7 +160,7 @@ TEST(AIMDConservation, ASPCMatchesFreshSinglePointMidTrajectory) {
     cpu::Frame snapshot = frame;
     const double fx0_prop = static_cast<double>(frame.atoms.fx(0));
     const double fx1_prop = static_cast<double>(frame.atoms.fx(1));
-    const double E_prop = static_cast<double>(frame.energy);
+    const double E_prop = static_cast<double>(frame.scalars.energy);
 
     // Stand-alone single-point on the same geometry — Evaluate driver,
     // fresh SCFEvaluator (no predictor history). Forces here are the
@@ -173,7 +173,7 @@ TEST(AIMDConservation, ASPCMatchesFreshSinglePointMidTrajectory) {
 
     const double fx0_fresh = static_cast<double>(snapshot.atoms.fx(0));
     const double fx1_fresh = static_cast<double>(snapshot.atoms.fx(1));
-    const double E_fresh = static_cast<double>(snapshot.energy);
+    const double E_fresh = static_cast<double>(snapshot.scalars.energy);
 
     // Convert the spec's 1e-7 Ha/Bohr threshold into eV/Å:
     //   1 Ha / Bohr = kHartree2eV / kBohr2A eV/Å ≈ 27.211386 / 0.529177 ≈ 51.422 eV/Å

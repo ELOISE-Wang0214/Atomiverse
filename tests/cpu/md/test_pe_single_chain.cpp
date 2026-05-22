@@ -141,7 +141,7 @@ cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
 }
 
 // Run a single force-evaluation pass with each bonded component, accumulating
-// V into frame.energy. Caller is responsible for resetting frame.energy first.
+// V into frame.scalars.energy. Caller is responsible for resetting frame.scalars.energy first.
 void evaluate_bonded(cpu::Frame& frame, HarmonicBond& bond,
                      HarmonicAngle& angle, MultiHarmonicDihedral& dih) {
     cpu::Context ctx;
@@ -160,7 +160,7 @@ void evaluate_bonded(cpu::Frame& frame, HarmonicBond& bond,
         frame.atoms.fy[i] = 0;
         frame.atoms.fz[i] = 0;
     }
-    frame.energy = 0;
+    frame.scalars.energy = 0;
 
     bond.launch(lctx);
     angle.launch(lctx);
@@ -198,7 +198,7 @@ TEST(PeSingleChain, AllTransGeometryIsStationaryPoint) {
     // offset at trans; the physical claim "all-trans is the minimum"
     // is unchanged — see the max_f gate below.)
     const double expected_dih_offset = 17.0 * 0.006 / 23.060547830619026;
-    EXPECT_NEAR(frame.energy, expected_dih_offset, 1e-4)
+    EXPECT_NEAR(frame.scalars.energy, expected_dih_offset, 1e-4)
         << "all-trans C20H42 PE has only the Dreiding-UA dihedral "
         << "constant offset (~4.4e-3 eV) above zero";
 
@@ -237,12 +237,12 @@ TEST(PeSingleChain, StretchOneBondMatchesAnalytic) {
     cpu::LaunchContext lctx{ctx, fresh, 0, 0};
     HarmonicBond bond_only({bond_K_eV()}, {kBondR0});
     bond_only.build(bctx);
-    fresh.energy = 0;
+    fresh.scalars.energy = 0;
     bond_only.launch(lctx);
     bond_only.destroy({ctx, fresh});
 
     const double v_expected = bond_K_eV() * dr * dr;
-    EXPECT_NEAR(fresh.energy, v_expected, 1e-9)
+    EXPECT_NEAR(fresh.scalars.energy, v_expected, 1e-9)
         << "end-atom shifted by " << dr
         << " Å along bond axis should give K*Δr² = " << v_expected;
 }
@@ -312,12 +312,12 @@ TEST(PeSingleChain, BendOneAngleMatchesAnalytic) {
     fresh.angles.atomk[0] = 2;
     fresh.angles.type[0] = 0;
 
-    fresh.energy = 0;
+    fresh.scalars.energy = 0;
     angle_only.launch(lctx);
     angle_only.destroy({ctx, fresh});
 
     const double v_expected = angle_K_eV() * dtheta * dtheta;
-    EXPECT_NEAR(fresh.energy, v_expected, 1e-9)
+    EXPECT_NEAR(fresh.scalars.energy, v_expected, 1e-9)
         << "one angle bent by " << dtheta
         << " rad should give K*Δθ² = " << v_expected;
 }
@@ -337,12 +337,12 @@ TEST(PeSingleChain, AllTransDihedralIsStationaryPoint) {
     MultiHarmonicDihedral dih({dihedral_Cn_eV()});
     dih.build(bctx);
 
-    fresh.energy = 0;
+    fresh.scalars.energy = 0;
     dih.launch(lctx);
     dih.destroy({ctx, fresh});
 
     const double expected = 17.0 * 0.006 / 23.060547830619026;
-    EXPECT_NEAR(fresh.energy, expected, 1e-6)
+    EXPECT_NEAR(fresh.scalars.energy, expected, 1e-6)
         << "17 dihedrals at trans should give the Dreiding-UA constant "
         << "offset ~4.4e-3 eV (not 0 — OPLS used to set this to 0 by "
         << "construction; Dreiding-UA does not).";

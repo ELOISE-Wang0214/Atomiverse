@@ -101,6 +101,7 @@ atv_add_cpp_test(test_cpu_install_infra_hook              cpu/test_install_infra
 atv_add_cpp_test(test_cpu_md_set_api                      cpu/md/test_md_set_api.cpp)
 atv_add_cpp_test(test_cpu_md_plan_equivalence             cpu/md/test_md_plan_equivalence.cpp)
 atv_add_cpp_test(test_cpu_minimize_evaluate_set_api       cpu/test_minimize_evaluate_set_api.cpp)
+atv_add_cpp_test(test_cpu_materialize                     cpu/test_materialize.cpp)
 
 # ── MPI tests (launched under `mpirun`) ─────────────────────────────────
 

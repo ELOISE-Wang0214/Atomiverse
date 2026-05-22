@@ -74,7 +74,7 @@ static void BM_AIMD_NoPredict(benchmark::State& state) {
 
     for (auto _ : state) {
         sim.run(frame, 1);
-        benchmark::DoNotOptimize(frame.energy);
+        benchmark::DoNotOptimize(frame.scalars.energy);
     }
 }
 BENCHMARK(BM_AIMD_NoPredict)->Unit(benchmark::kMicrosecond);
@@ -98,7 +98,7 @@ static void BM_AIMD_ASPC3(benchmark::State& state) {
 
     for (auto _ : state) {
         sim.run(frame, 1);
-        benchmark::DoNotOptimize(frame.energy);
+        benchmark::DoNotOptimize(frame.scalars.energy);
     }
 }
 BENCHMARK(BM_AIMD_ASPC3)->Unit(benchmark::kMicrosecond);
@@ -119,7 +119,7 @@ static void BM_SinglePoint_Gradient(benchmark::State& state) {
         eval.on(ATV::evaluate::Phase::evaluate).add(std::move(scf));
         eval.build();
         eval.run(frame);
-        benchmark::DoNotOptimize(frame.energy);
+        benchmark::DoNotOptimize(frame.scalars.energy);
     }
 }
 BENCHMARK(BM_SinglePoint_Gradient)->Unit(benchmark::kMicrosecond);

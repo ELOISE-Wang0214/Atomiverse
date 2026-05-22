@@ -157,7 +157,7 @@ int main() {
             max_f = mag;
     }
     ATV_INFO("[example] final state energy_eV={:.6f} max_force_eVA={:.6f}",
-             frame.energy, max_f);
+             frame.scalars.energy, max_f);
 
     // Print final coordinates
     ATV_INFO("[example] final coordinates [Angstrom]");

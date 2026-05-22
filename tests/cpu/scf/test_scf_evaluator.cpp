@@ -35,8 +35,8 @@ class SCFEvaluatorTest : public ::testing::Test {
         f.atoms.fz = {0.0, 0.0};
         f.atoms.mass = {1.008, 1.008};
         f.atoms.type = {1, 1};
-        f.energy = 0;
-        f.kinetic = 0;
+        f.scalars.energy = 0;
+        f.scalars.kinetic = 0;
         f.box = Mat3::cubic(100.0);
         return f;
     }
@@ -54,8 +54,8 @@ TEST_F(SCFEvaluatorTest, SinglePointRHF) {
     sim.build();
     sim.run(frame, 1);
 
-    EXPECT_LT(static_cast<double>(frame.energy), -29.0);
-    EXPECT_GT(static_cast<double>(frame.energy), -32.0);
+    EXPECT_LT(static_cast<double>(frame.scalars.energy), -29.0);
+    EXPECT_GT(static_cast<double>(frame.scalars.energy), -32.0);
     EXPECT_NEAR(static_cast<double>(frame.atoms.fx(0)),
                 -static_cast<double>(frame.atoms.fx(1)), 0.01);
 }
@@ -72,8 +72,8 @@ TEST_F(SCFEvaluatorTest, SinglePointUHF) {
     sim.build();
     sim.run(frame, 1);
 
-    EXPECT_LT(static_cast<double>(frame.energy), -29.0);
-    EXPECT_GT(static_cast<double>(frame.energy), -32.0);
+    EXPECT_LT(static_cast<double>(frame.scalars.energy), -29.0);
+    EXPECT_GT(static_cast<double>(frame.scalars.energy), -32.0);
 }
 
 TEST_F(SCFEvaluatorTest, SinglePointKSLSDA) {
@@ -88,8 +88,8 @@ TEST_F(SCFEvaluatorTest, SinglePointKSLSDA) {
     sim.build();
     sim.run(frame, 1);
 
-    EXPECT_LT(static_cast<double>(frame.energy), -29.0);
-    EXPECT_GT(static_cast<double>(frame.energy), -32.0);
+    EXPECT_LT(static_cast<double>(frame.scalars.energy), -29.0);
+    EXPECT_GT(static_cast<double>(frame.scalars.energy), -32.0);
     EXPECT_NEAR(static_cast<double>(frame.atoms.fx(0)),
                 -static_cast<double>(frame.atoms.fx(1)), 0.02);
 }
@@ -106,8 +106,8 @@ TEST_F(SCFEvaluatorTest, SinglePointKSPBE) {
     sim.build();
     sim.run(frame, 1);
 
-    EXPECT_LT(static_cast<double>(frame.energy), -29.0);
-    EXPECT_GT(static_cast<double>(frame.energy), -33.0);
+    EXPECT_LT(static_cast<double>(frame.scalars.energy), -29.0);
+    EXPECT_GT(static_cast<double>(frame.scalars.energy), -33.0);
 }
 
 // ── BOMD integration tests ──────────────────────────────────────────
@@ -126,8 +126,8 @@ TEST_F(BOMDTest, RHFEnergyConservation) {
     sim.build();
     sim.run(frame, 5);
 
-    EXPECT_LT(static_cast<double>(frame.energy), 0.0);
-    EXPECT_GT(static_cast<double>(frame.energy), -40.0);
+    EXPECT_LT(static_cast<double>(frame.scalars.energy), 0.0);
+    EXPECT_GT(static_cast<double>(frame.scalars.energy), -40.0);
 }
 
 TEST_F(BOMDTest, RHFBondOscillation) {
@@ -183,8 +183,8 @@ TEST_F(BOMDTest, RHFWithASPC) {
     sim.build();
     sim.run(frame, 5);
 
-    EXPECT_LT(static_cast<double>(frame.energy), 0.0);
-    EXPECT_GT(static_cast<double>(frame.energy), -40.0);
+    EXPECT_LT(static_cast<double>(frame.scalars.energy), 0.0);
+    EXPECT_GT(static_cast<double>(frame.scalars.energy), -40.0);
 }
 
 // ── Ensemble integration tests (AIMD = MD driver + SCFEvaluator + ─────
@@ -210,12 +210,12 @@ TEST_F(BOMDTest, RHFNoseHooverNVT) {
     sim.build();
     sim.run(frame, 30);
 
-    EXPECT_LT(static_cast<double>(frame.energy), 0.0)
+    EXPECT_LT(static_cast<double>(frame.scalars.energy), 0.0)
         << "SCF should still converge under NoseHoover coupling";
-    EXPECT_GT(static_cast<double>(frame.kinetic), 0.0)
+    EXPECT_GT(static_cast<double>(frame.scalars.kinetic), 0.0)
         << "InitVelocity + VelocityVerlet must produce non-zero KE";
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.energy)));
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.kinetic)));
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.energy)));
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.kinetic)));
 }
 
 TEST_F(BOMDTest, RHFLangevinNVT) {
@@ -240,10 +240,10 @@ TEST_F(BOMDTest, RHFLangevinNVT) {
     sim.build();
     sim.run(frame, 30);
 
-    EXPECT_LT(static_cast<double>(frame.energy), 0.0);
-    EXPECT_GT(static_cast<double>(frame.kinetic), 0.0);
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.energy)));
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.kinetic)));
+    EXPECT_LT(static_cast<double>(frame.scalars.energy), 0.0);
+    EXPECT_GT(static_cast<double>(frame.scalars.kinetic), 0.0);
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.energy)));
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.kinetic)));
 }
 
 TEST_F(BOMDTest, RHFBerendsenNPT) {
@@ -269,11 +269,11 @@ TEST_F(BOMDTest, RHFBerendsenNPT) {
     sim.build();
     sim.run(frame, 20);
 
-    EXPECT_LT(static_cast<double>(frame.energy), 0.0)
+    EXPECT_LT(static_cast<double>(frame.scalars.energy), 0.0)
         << "Box mutation between SCF launches must not break IntegralPack "
            "rebuild";
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.energy)));
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.kinetic)));
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.energy)));
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.kinetic)));
     // Barostat may scale the box at zero pressure with non-zero virial;
     // we only require it stays finite and within a sane range.
     EXPECT_TRUE(std::isfinite(frame.box(0, 0)));
@@ -306,8 +306,8 @@ TEST_F(BOMDTest, ChainedBuilderOnTemporaryDoesNotSEGV) {
     sim.build();
     sim.run(frame, 3);
 
-    EXPECT_LT(static_cast<double>(frame.energy), 0.0);
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.energy)));
+    EXPECT_LT(static_cast<double>(frame.scalars.energy), 0.0);
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.energy)));
 }
 
 TEST_F(BOMDTest, ChainedBuilderWithGradientToggleOnTemporary) {
@@ -324,8 +324,8 @@ TEST_F(BOMDTest, ChainedBuilderWithGradientToggleOnTemporary) {
     sim.build();
     sim.run(frame, 1);
 
-    EXPECT_LT(static_cast<double>(frame.energy), 0.0);
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.energy)));
+    EXPECT_LT(static_cast<double>(frame.scalars.energy), 0.0);
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.energy)));
 }
 
 // ── Regression: PBC-wrap × non-min-image SCF (Bug #2) ───────────────
@@ -359,8 +359,8 @@ TEST_F(BOMDTest, BoundaryAtomsRecoverAfterWrap) {
     frame.atoms.fz = {0.0, 0.0};
     frame.atoms.mass = {1.008, 1.008};
     frame.atoms.type = {1, 1};
-    frame.energy = 0;
-    frame.kinetic = 0;
+    frame.scalars.energy = 0;
+    frame.scalars.kinetic = 0;
     frame.box = Mat3::cubic(100.0);
 
     auto integrals =
@@ -376,11 +376,11 @@ TEST_F(BOMDTest, BoundaryAtomsRecoverAfterWrap) {
     // After fix: SCF unwraps before building integrals, so PE stays in
     // the bonded H2 range (≈ -30 eV). Pre-fix, atoms wrapped on step 1
     // and PE collapsed to ≈ -4 eV (RHF ionic limit at ~100 Å apart).
-    EXPECT_LT(static_cast<double>(frame.energy), -25.0)
+    EXPECT_LT(static_cast<double>(frame.scalars.energy), -25.0)
         << "PE ≈ -4 eV indicates SCF saw atoms ~box-length apart "
         << "(wrap × non-minimum-image SCF pathology). Expected bonded H2 "
         << "energy ≈ -30 eV.";
-    EXPECT_GT(static_cast<double>(frame.energy), -35.0);
+    EXPECT_GT(static_cast<double>(frame.scalars.energy), -35.0);
 }
 
 // ── ASPC predictor unit tests ───────────────────────────────────────

@@ -154,6 +154,7 @@ if(NOT ATV_DOCS_ONLY)
         # CPU backend infrastructure
         src/cpu/backend.cpp
         src/cpu/box.cpp
+        src/cpu/materialize.cpp
         src/cpu/driver.cpp
         src/cpu/analysis_executor.cpp
         src/cpu/async_component_base.cpp

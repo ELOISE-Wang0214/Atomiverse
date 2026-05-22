@@ -13,7 +13,7 @@
 ///     not migrate across slab boundaries within the run (Phase 2 has no
 ///     atom migration; see spec §A.4).
 ///   - 20 steps of NVE integration with `dt = 1 fs`.
-///   - Each step: compute total energy = `Σ local frame.energy +
+///   - Each step: compute total energy = `Σ local frame.scalars.energy +
 ///     Σ local kinetic` reduced across ranks via `MPI_Allreduce`. In NVE
 ///     the total energy drift must stay below 1e-2 relative.
 
@@ -80,10 +80,10 @@ cpu::Frame make_fcc_argon(int n_cells, double a_lat) {
 
 double total_energy_global(const cpu::Frame& frame) {
     // ReduceEnergy (Phase 0.4) runs at end_of_step @ -50 and writes the
-    // globally-reduced sum back into frame.energy / frame.kinetic, so
+    // globally-reduced sum back into frame.scalars.energy / frame.scalars.kinetic, so
     // every rank sees the same global value here. Pre-Phase-0.4 callers
     // had to MPI_Allreduce manually -- doing so now would double-reduce.
-    return frame.energy + frame.kinetic;
+    return frame.scalars.energy + frame.scalars.kinetic;
 }
 
 } // namespace
@@ -113,11 +113,11 @@ TEST(LjNve, EnergyConservationSingleRank) {
     sim.build();
 
     sim.run(frame, 1);
-    const double e0 = frame.energy + frame.kinetic;
+    const double e0 = frame.scalars.energy + frame.scalars.kinetic;
     ASSERT_GT(std::abs(e0), 1e-12) << "initial energy should be nonzero";
 
     sim.run(frame, 20);
-    const double e1 = frame.energy + frame.kinetic;
+    const double e1 = frame.scalars.energy + frame.scalars.kinetic;
     const double drift = std::abs(e1 - e0) / std::abs(e0);
     EXPECT_LT(drift, 1e-2) << "single-rank NVE energy drift " << drift
                            << " exceeds 1e-2 over 20 steps (E0=" << e0

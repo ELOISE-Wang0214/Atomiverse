@@ -76,9 +76,11 @@ cpu::Frame make_fcc_argon(int n_cells, double a, double mass) {
 /// positive ⇔ compressive — `compute pressure::compute_scalar()`.
 double lammps_pressure(const cpu::Frame& frame) {
     const double V = frame.box.volume();
-    const double trace = (frame.stress[0] + frame.stress[1] + frame.stress[2])
-                         + (frame.stress_kinetic[0] + frame.stress_kinetic[1]
-                            + frame.stress_kinetic[2]);
+    const double trace =
+        (frame.scalars.stress[0] + frame.scalars.stress[1]
+         + frame.scalars.stress[2])
+        + (frame.scalars.stress_kinetic[0] + frame.scalars.stress_kinetic[1]
+           + frame.scalars.stress_kinetic[2]);
     return +trace / (3.0 * V); // LAMMPS sign: positive compressive.
 }
 
@@ -262,9 +264,9 @@ BENCH_CASE(PressureLammpsAlign_NptAndBarostatRelaxToSameDensity) {
     // to the same LJ zero-pressure volume from the same start.
     const double rel_diff =
         std::abs(V_berendsen - V_npt) / (0.5 * (V_berendsen + V_npt));
-    BM_LT(rel_diff, 0.25)
-        << "Berendsen V=" << V_berendsen << " (P0=" << P_berendsen_0
-        << " P1=" << P_berendsen_1 << ") vs NPT V=" << V_npt;
+    BM_LT(rel_diff, 0.25) << "Berendsen V=" << V_berendsen
+                          << " (P0=" << P_berendsen_0 << " P1=" << P_berendsen_1
+                          << ") vs NPT V=" << V_npt;
 }
 
 BENCH_MAIN("MD pressure / barostats — LAMMPS API alignment");

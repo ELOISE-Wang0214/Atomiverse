@@ -68,6 +68,6 @@ TEST(PairLJCutPort, EnergyMatchesAnalyticFormula) {
     // 1e-6 absolute tolerance covers the tiny displacement during the
     // single integration step (atoms move ~ a·dt²/2 ~ 1e-10 Å with
     // initial force ≈ 0 at r=σ).
-    EXPECT_NEAR(frame.energy, expected, 1e-6)
+    EXPECT_NEAR(frame.scalars.energy, expected, 1e-6)
         << "PairLJCut at r≈σ should yield −V_shift = " << expected;
 }

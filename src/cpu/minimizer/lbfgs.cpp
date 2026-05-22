@@ -98,13 +98,14 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
             }
         }
         double rms_disp = (step_ > 0) ? std::sqrt(sum_d2 / (3 * n)) : double(0);
-        double energy_change =
-            (step_ > 0) ? std::abs(f.energy - energy_prev_) : double(1e30);
+        double energy_change = (step_ > 0)
+                                   ? std::abs(f.scalars.energy - energy_prev_)
+                                   : double(1e30);
 
         // Record trace
         OptRecord rec;
         rec.step = step_;
-        rec.energy = f.energy;
+        rec.energy = f.scalars.energy;
         rec.max_force = max_force_;
         rec.rms_force = rms_force;
         rec.max_displacement = max_disp;
@@ -121,8 +122,8 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
         ATV_INFO("[lbfgs] step={} energy_eV={:.6f} max_force_eVA={:.6f} "
                  "rms_force_eVA={:.6f} max_disp_A={:.6e} rms_disp_A={:.6e} "
                  "dE_eV={:.6e} converged={}",
-                 step_, f.energy, max_force_, rms_force, max_disp, rms_disp,
-                 energy_change, converged_);
+                 step_, f.scalars.energy, max_force_, rms_force, max_disp,
+                 rms_disp, energy_change, converged_);
 
         // Report convergence to the outer OptimizeDriver loop so it can
         // break early. Driver-level early-stop is the contract introduced
@@ -133,7 +134,7 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
                 "lbfgs multi-criteria convergence";
         }
 
-        energy_prev_ = f.energy;
+        energy_prev_ = f.scalars.energy;
         return;
     }
 
@@ -155,7 +156,7 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
     //
     // On step k > 0 we evaluate the trial taken during step k-1's
     // search_direction: x_k = x_{k-1} + alpha * d_{k-1}, E_k is now in
-    // f.energy. Armijo requires E_k - E_{k-1} <= c1 * alpha * (g_{k-1} . d_{k-1}).
+    // f.scalars.energy. Armijo requires E_k - E_{k-1} <= c1 * alpha * (g_{k-1} . d_{k-1}).
     //
     // On rejection we roll back to x_{k-1}, scale alpha by `contract`,
     // re-take the step, and return without updating L-BFGS history. The
@@ -163,7 +164,7 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
     // full backtracking loop plays out over successive driver steps.
     if (line_search_enabled_ && ls_had_trial_) {
         const double armijo_rhs = ls_c1_ * ls_alpha_ * ls_gd_; // < 0 on descent
-        const double dE = f.energy - ls_origin_energy_;
+        const double dE = f.scalars.energy - ls_origin_energy_;
         const bool armijo_ok = (dE <= armijo_rhs);
         if (!armijo_ok && ls_alpha_ > ls_min_alpha_) {
             ls_alpha_ *= ls_contract_;
@@ -276,7 +277,7 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
         ls_gd_ = 0;
         for (int j = 0; j < dim; ++j)
             ls_gd_ += g[j] * direction_[j];
-        ls_origin_energy_ = f.energy; // energy at x_prev_ (pre-step)
+        ls_origin_energy_ = f.scalars.energy; // energy at x_prev_ (pre-step)
         ls_had_trial_ = true;
     }
 
