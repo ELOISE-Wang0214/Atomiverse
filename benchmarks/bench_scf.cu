@@ -8,7 +8,8 @@
 #include <benchmark/benchmark.h>
 
 #include "atomiverse/cpu/scf/solve.h"
-#include "atomiverse/cuda/scf/scf.cuh"
+#include "atomiverse/cuda/evaluate.cuh"
+#include "atomiverse/cuda/scf/scf_evaluator.cuh"
 
 using namespace ATV;
 
@@ -53,24 +54,18 @@ static void BM_SCF_CUDA(benchmark::State& state) {
     // Warm up GPU
     {
         auto frame = make_frame(n);
-        scf::SCF solver;
-        solver.add(scf::Hamiltonian{n_occ, double(0.1)});
-        solver.add(scf::EigenSolver{});
-        solver.add(scf::DensityBuilder{});
-        solver.add(scf::ConvergenceCheck{double(1e-5)});
-        solver.build();
-        solver.run(frame, 50);
+        cuda::Evaluate eval;
+        eval.add(cuda::scf::SCFEvaluator{n_occ, double(0.1), double(1e-5), 50});
+        eval.build();
+        eval.run(frame);
     }
 
     for (auto _ : state) {
         auto frame = make_frame(n);
-        scf::SCF solver;
-        solver.add(scf::Hamiltonian{n_occ, double(0.1)});
-        solver.add(scf::EigenSolver{});
-        solver.add(scf::DensityBuilder{});
-        solver.add(scf::ConvergenceCheck{double(1e-5)});
-        solver.build();
-        solver.run(frame, 50);
+        cuda::Evaluate eval;
+        eval.add(cuda::scf::SCFEvaluator{n_occ, double(0.1), double(1e-5), 50});
+        eval.build();
+        eval.run(frame);
         benchmark::DoNotOptimize(frame.energy);
     }
 }

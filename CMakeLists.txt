@@ -231,7 +231,8 @@ if(NOT ATV_DOCS_ONLY)
             src/cuda/scf/eigen_solver.cu
             src/cuda/scf/density_builder.cu
             src/cuda/scf/convergence_check.cu
-            src/cuda/scf/driver.cu
+            src/cuda/scf/scf_solver.cu
+            src/cuda/scf/scf_evaluator.cu
         )
         # CUDA potentials sources — globbed; same rationale as CPU.
         file(GLOB CUDA_POTENTIALS_SRCS CONFIGURE_DEPENDS

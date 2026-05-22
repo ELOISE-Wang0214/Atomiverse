@@ -1,9 +1,10 @@
 /// @file cuda/scf/rhf_density.cu
-/// @brief RHFDensity: C = X*C', P = 2*C_occ*C_occ^T, E = 0.5*Tr[(Hcore+F)*P]+V_nuc.
+/// @brief internal::RHFDensity: C = X*C', P = 2*C_occ*C_occ^T,
+///        E = 0.5*Tr[(Hcore+F)*P]+V_nuc.
 
 #ifdef ATV_HAS_RHF
 
-#include "atomiverse/cuda/scf/rhf_density.cuh"
+#include "atomiverse/cuda/scf/internal/rhf_density.cuh"
 #include "cublas_dispatch.cuh"
 
 #include "atomiverse/cuda/types.cuh"
@@ -17,6 +18,7 @@ using cuda::work_t;
 
 namespace cuda {
 namespace scf {
+namespace internal {
 
 void RHFDensity::build(const BuildContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
@@ -35,7 +37,7 @@ void RHFDensity::build(const BuildContext& ctx) {
     cublas_handle_ = handle;
 }
 
-void RHFDensity::launch(const LaunchContext& ctx) {
+void RHFDensity::step(const LaunchContext& ctx) {
     auto& scf = ctx.frame.scf;
     if (scf.converged)
         return;
@@ -92,6 +94,7 @@ void RHFDensity::destroy(const DestroyContext& /*ctx*/) {
     d_HplusF_ = nullptr;
 }
 
+} // namespace internal
 } // namespace scf
 } // namespace cuda
 } // namespace ATV

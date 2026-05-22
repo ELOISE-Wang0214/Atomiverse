@@ -5,7 +5,7 @@
 /// and CPU/CUDA parity tests. Uses xt::linalg for eigendecomposition
 /// and matrix operations -- no manual linear algebra.
 ///
-/// @see scf::SCF for the CUDA Driver-based implementation
+/// @see cuda::scf::SCFSolver for the CUDA inner-solver implementation
 #pragma once
 
 #include <vector>

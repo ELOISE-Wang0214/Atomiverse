@@ -1,5 +1,6 @@
 /// @file cuda/scf/rhf_fock.cu
-/// @brief RHFFock: upload integrals, build G(P), F=Hcore+G, F'=X^T*F*X.
+/// @brief internal::RHFFock: upload integrals, build G(P), F=Hcore+G,
+///        F'=X^T*F*X.
 
 #ifdef ATV_HAS_RHF
 
@@ -7,7 +8,7 @@
 #include "atomiverse/core/gto.h"
 #include "atomiverse/cuda/launch.cuh"
 #include "atomiverse/cuda/scf/device_integrals.cuh"
-#include "atomiverse/cuda/scf/rhf_fock.cuh"
+#include "atomiverse/cuda/scf/internal/rhf_fock.cuh"
 #include "cublas_dispatch.cuh"
 
 #include "atomiverse/cuda/types.cuh"
@@ -27,6 +28,7 @@ using cuda::real_t;
 using cuda::work_t;
 
 namespace scf {
+namespace internal {
 
 // ── Kernel: build G(P) from ERI ──────────────────────────────────────
 // G_ij = sum_kl P_kl * [(ij|kl) - 0.5*(ik|jl)]
@@ -123,7 +125,7 @@ void RHFFock::build(const BuildContext& ctx) {
     cudaStreamSynchronize(stream);
 }
 
-void RHFFock::launch(const LaunchContext& ctx) {
+void RHFFock::step(const LaunchContext& ctx) {
     auto& scf = ctx.frame.scf;
     if (scf.converged)
         return;
@@ -184,13 +186,14 @@ void RHFFock::destroy(const DestroyContext& /*ctx*/) {
     d_temp_ = nullptr;
 }
 
+} // namespace internal
+} // namespace scf
+
 // ══════════════════════════════════════════════════════════════════════
 // RHFFockDevice — CUDA-only path: GPU integral kernels, zero CPU integrals
 // ══════════════════════════════════════════════════════════════════════
 
 // kAngstromToBohr is in core/constants.h
-
-} // namespace scf
 
 static void call_1e_integrals(ATV::cuda::prec_t* S, ATV::cuda::prec_t* T,
                               ATV::cuda::prec_t* V, const ATV::cuda::prec_t* a,
@@ -207,7 +210,8 @@ static void call_eri(ATV::cuda::prec_t* ERI, const ATV::cuda::prec_t* a,
     ATV::cuda::scf::launch_eri(ERI, a, c, ctr, ns, np, st);
 }
 
-namespace scf { // reopen
+namespace scf {
+namespace internal {
 
 RHFFockDevice::RHFFockDevice(int n_prim, const double* exponents,
                              const double* coefficients, int n_occ)
@@ -412,8 +416,8 @@ void RHFFockDevice::build(const BuildContext& ctx) {
     cudaStreamSynchronize(stream);
 }
 
-void RHFFockDevice::launch(const LaunchContext& ctx) {
-    // Identical to RHFFock::launch — same Fock build logic
+void RHFFockDevice::step(const LaunchContext& ctx) {
+    // Identical to RHFFock::step — same Fock build logic
     auto& scf = ctx.frame.scf;
     if (scf.converged)
         return;
@@ -464,6 +468,7 @@ void RHFFockDevice::destroy(const DestroyContext& /*ctx*/) {
     d_V_ = nullptr;
 }
 
+} // namespace internal
 } // namespace scf
 } // namespace cuda
 } // namespace ATV

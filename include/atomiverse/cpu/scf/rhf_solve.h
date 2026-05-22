@@ -4,7 +4,7 @@
 /// Full Restricted Hartree-Fock for closed-shell systems.
 /// Uses xt::linalg for eigendecomposition and matrix operations.
 ///
-/// @see scf::SCF for the CUDA Driver-based implementation
+/// @see cuda::scf::SCFSolver for the CUDA inner-solver implementation
 /// @see cpu::scf::IntegralPack for the input integrals
 #pragma once
 

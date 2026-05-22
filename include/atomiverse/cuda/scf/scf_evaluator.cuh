@@ -1,0 +1,124 @@
+/// @file cuda/scf/scf_evaluator.cuh
+/// @brief cuda::scf::SCFEvaluator — CUDA Evaluator component wrapping an
+///        inner `SCFSolver`.
+///
+/// `SCFEvaluator` is a real `cuda::ComponentBase` with
+/// `role() == ComponentRole::Evaluator` and
+/// `capabilities() == Energy | DensityMatrix | Orbitals`. It owns one
+/// `cuda::scf::SCFSolver`, builds it once in `build()`, and runs the full
+/// SCF self-consistency cycle in `launch()`, writing the converged energy
+/// and density into the device frame.
+///
+/// The user-facing single-point CUDA SCF workflow is
+/// `cuda::Evaluate + cuda::scf::SCFEvaluator` (or the `cuda::single_point`
+/// helper). Mirrors `cpu::scf::SCFEvaluator` minus the CPU-only
+/// `with_gradient` toggle and ASPC `predictor()` warm-start — there is no
+/// CUDA SCF gradient kernel, so this evaluator is energy/density only.
+///
+/// @code{.cpp}
+///   cuda::Evaluate eval;
+///   eval.add(cuda::scf::SCFEvaluator{integrals, tol, max_iter});
+///   eval.build();
+///   eval.run(frame);            // frame.energy populated
+/// @endcode
+///
+/// @see cuda::scf::SCFSolver for the inner SCF self-consistency loop
+/// @see cuda::Evaluate for the one-pass driver this component plugs into
+#pragma once
+
+#include <memory>
+#include <string>
+
+#include "atomiverse/cuda/component.cuh"
+#include "atomiverse/cuda/scf/scf_solver.cuh"
+#include "atomiverse/facade/component_role.h"
+#include "atomiverse/facade/stage.h"
+
+#ifdef ATV_HAS_RHF
+#include "atomiverse/cpu/scf/integrals.h"
+#endif
+
+namespace ATV {
+namespace cuda {
+namespace scf {
+
+/// @brief CUDA SCF energy/density evaluator component.
+///
+/// Owns an `SCFSolver`, built once in `build()` and run in `launch()`.
+/// Three constructors map onto the three `SCFSolver` run paths. Binds to
+/// `evaluate::Phase::evaluate` by default.
+class SCFEvaluator : public cuda::ComponentBase {
+  public:
+    /// @brief Construct a synthetic-path SCF evaluator `H(P) = H0 + alpha*P`.
+    /// @param n_occ Number of occupied orbitals [dimensionless].
+    /// @param alpha Density coupling parameter [dimensionless].
+    /// @param tol Convergence tolerance, Frobenius norm of P change
+    ///        [dimensionless].
+    /// @param max_iter Maximum number of SCF iterations [dimensionless].
+    SCFEvaluator(int n_occ, double alpha, double tol, int max_iter);
+
+#ifdef ATV_HAS_RHF
+    /// @brief Construct an RHF evaluator driven by host-computed integrals.
+    /// @param integrals Precomputed molecular integral pack
+    ///        (Hcore, ERI, S, V_nuc).
+    /// @param tol Convergence tolerance, Frobenius norm of P change
+    ///        [dimensionless].
+    /// @param max_iter Maximum number of SCF iterations [dimensionless].
+    SCFEvaluator(const cpu::scf::IntegralPack& integrals, double tol,
+                 int max_iter);
+
+    /// @brief Construct an RHF evaluator driven by GPU-native integrals.
+    /// @param n_prim Primitives per shell (3 for STO-3G) [dimensionless].
+    /// @param exponents Gaussian exponents [n_prim] [Bohr^-2].
+    /// @param coefficients Raw contraction coefficients [n_prim]
+    ///        (NOT normalized).
+    /// @param n_occ Number of doubly-occupied orbitals [dimensionless].
+    /// @param tol Convergence tolerance, Frobenius norm of P change
+    ///        [dimensionless].
+    /// @param max_iter Maximum number of SCF iterations [dimensionless].
+    SCFEvaluator(int n_prim, const double* exponents,
+                 const double* coefficients, int n_occ, double tol,
+                 int max_iter);
+#endif
+
+    /// @brief Component name.
+    /// @return "scf_evaluator".
+    std::string name() const override { return "scf_evaluator"; }
+
+    /// @brief Structural role of this component.
+    /// @return ComponentRole::Evaluator.
+    ComponentRole role() const override { return ComponentRole::Evaluator; }
+
+    /// @brief Frame fields this component writes each launch.
+    /// @return `Energy | DensityMatrix | Orbitals` — no `Force` (no CUDA
+    ///         SCF gradient kernel exists).
+    Capability capabilities() const override {
+        return Capability::Energy | Capability::DensityMatrix
+               | Capability::Orbitals;
+    }
+
+    /// @brief Default binding: evaluate phase at order 0.
+    /// @return Single binding to `evaluate::Phase::evaluate`.
+    std::vector<DefaultBinding> default_bindings() const override {
+        return {{static_cast<int>(ATV::evaluate::Phase::evaluate), 0}};
+    }
+
+    /// @brief Build the owned `SCFSolver` (one-time device allocation).
+    /// @param ctx Build context (CUDA stream + device frame).
+    void build(const BuildContext& ctx) override;
+
+    /// @brief Run the full SCF cycle, writing energy/density to the frame.
+    /// @param ctx Launch context (CUDA stream + device frame + step index).
+    void launch(const LaunchContext& ctx) override;
+
+    /// @brief Release the inner `SCFSolver`'s device resources.
+    /// @param ctx Destroy context (CUDA stream + device frame).
+    void destroy(const DestroyContext& ctx) override;
+
+  private:
+    std::unique_ptr<SCFSolver> solver_; ///< Owned inner SCF solver.
+};
+
+} // namespace scf
+} // namespace cuda
+} // namespace ATV

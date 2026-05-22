@@ -1,0 +1,54 @@
+/// @file cuda/scf/internal/eigen_solver.cuh
+/// @brief internal::EigenSolver -- dense symmetric eigendecomposition via cuSOLVER.
+///
+/// **Internal SCF helper.** Does NOT inherit `cuda::ComponentBase` and is
+/// never registered into a `Driver` Plan. Owned by `cuda::scf::SCFSolver`,
+/// which drives its `build` / `step` / `destroy` lifecycle directly.
+///
+/// Diagonalizes the effective Hamiltonian H each SCF iteration:
+///   H * C = C * diag(eig)
+///
+/// Uses cusolverDnSsyevd (float) or cusolverDnDsyevd (double) depending
+/// on compile-time precision.
+///
+/// @see cuda::scf::SCFSolver for the inner solver that owns this helper
+/// @see internal::Hamiltonian for the helper that builds H
+#pragma once
+
+#include "atomiverse/cuda/component.cuh"
+
+namespace ATV {
+namespace cuda {
+namespace scf {
+namespace internal {
+
+/// @brief Dense symmetric eigendecomposition via cuSOLVER syevd.
+///
+/// In `build()`, allocates the cuSOLVER workspace.
+/// In `step()`, copies H -> C then solves in-place.
+/// Eigenvalues written to frame.scf.eig, eigenvectors to frame.scf.C.
+class EigenSolver {
+  public:
+    /// @brief Allocate cuSOLVER handle and workspace.
+    /// @param ctx Build context (CUDA stream + device frame).
+    void build(const BuildContext& ctx);
+
+    /// @brief Diagonalize H: copy H -> C, solve C in-place, eigenvalues to eig.
+    /// @param ctx Launch context (CUDA stream + device frame + step index).
+    void step(const LaunchContext& ctx);
+
+    /// @brief Free cuSOLVER handle and workspace.
+    /// @param ctx Destroy context (CUDA stream + device frame).
+    void destroy(const DestroyContext& ctx);
+
+  private:
+    void* cusolver_handle_ = nullptr; ///< cuSOLVER handle.
+    double* d_work_ = nullptr;        ///< cuSOLVER workspace [device].
+    int work_size_ = 0;               ///< Workspace size in elements.
+    int* d_info_ = nullptr; ///< cuSOLVER convergence info [device, 1 element].
+};
+
+} // namespace internal
+} // namespace scf
+} // namespace cuda
+} // namespace ATV

@@ -381,9 +381,8 @@ BENCHMARK(BM_FullBuild_Native)->Unit(benchmark::kMicrosecond);
 // ── Stage-separated end-to-end benchmarks ────────────────────────────
 
 #include "atomiverse/cpu/scf/rhf_solve.h"
-#include "atomiverse/cuda/scf/rhf_density.cuh"
-#include "atomiverse/cuda/scf/rhf_fock.cuh"
-#include "atomiverse/cuda/scf/scf.cuh"
+#include "atomiverse/cuda/evaluate.cuh"
+#include "atomiverse/cuda/scf/scf_evaluator.cuh"
 
 static void BM_CPURHFSolve(benchmark::State& state) {
     auto frame = make_h2();
@@ -403,14 +402,11 @@ static void BM_CUDARHFSolve(benchmark::State& state) {
     double tol =
         (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     for (auto _ : state) {
-        // Includes materialize + solve + retrieve (full Driver lifecycle)
-        scf::SCF solver;
-        solver.add(scf::RHFFock{integrals});
-        solver.add(scf::EigenSolver{});
-        solver.add(scf::RHFDensity{integrals.n_occ()});
-        solver.add(scf::ConvergenceCheck{tol, false});
-        solver.build();
-        solver.run(frame, 100);
+        // Includes materialize + solve + retrieve (full driver lifecycle)
+        cuda::Evaluate eval;
+        eval.add(cuda::scf::SCFEvaluator{integrals, tol, 100});
+        eval.build();
+        eval.run(frame);
         benchmark::DoNotOptimize(frame.energy);
     }
 }
@@ -452,13 +448,10 @@ static void BM_CUDARHFSolve_LiH(benchmark::State& state) {
     double tol =
         (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
     for (auto _ : state) {
-        scf::SCF solver;
-        solver.add(scf::RHFFock{integrals});
-        solver.add(scf::EigenSolver{});
-        solver.add(scf::RHFDensity{integrals.n_occ()});
-        solver.add(scf::ConvergenceCheck{tol, false});
-        solver.build();
-        solver.run(frame, 100);
+        cuda::Evaluate eval;
+        eval.add(cuda::scf::SCFEvaluator{integrals, tol, 100});
+        eval.build();
+        eval.run(frame);
         benchmark::DoNotOptimize(frame.energy);
     }
 }

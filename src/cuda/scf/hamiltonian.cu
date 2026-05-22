@@ -1,8 +1,8 @@
 /// @file cuda/scf/hamiltonian.cu
-/// @brief Hamiltonian: allocate SCF workspace + build H = H0 + alpha * P.
+/// @brief internal::Hamiltonian: allocate SCF workspace + build H = H0 + alpha * P.
 
 #include "atomiverse/cuda/launch.cuh"
-#include "atomiverse/cuda/scf/hamiltonian.cuh"
+#include "atomiverse/cuda/scf/internal/hamiltonian.cuh"
 #include "cublas_dispatch.cuh"
 
 #include "atomiverse/cuda/types.cuh"
@@ -16,6 +16,7 @@ using cuda::work_t;
 
 namespace cuda {
 namespace scf {
+namespace internal {
 
 // ── Kernel: initialize H0 as a deterministic symmetric matrix ────────
 
@@ -81,7 +82,7 @@ void Hamiltonian::build(const BuildContext& ctx) {
     cudaStreamSynchronize(stream);
 }
 
-void Hamiltonian::launch(const LaunchContext& ctx) {
+void Hamiltonian::step(const LaunchContext& ctx) {
     auto& scf = ctx.frame.scf;
     if (scf.converged)
         return;
@@ -107,6 +108,7 @@ void Hamiltonian::destroy(const DestroyContext& /*ctx*/) {
     }
 }
 
+} // namespace internal
 } // namespace scf
 } // namespace cuda
 } // namespace ATV

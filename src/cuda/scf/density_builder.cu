@@ -1,7 +1,8 @@
 /// @file cuda/scf/density_builder.cu
-/// @brief DensityBuilder: P_old = P, then P = C_occ * C_occ^T via cuBLAS gemm.
+/// @brief internal::DensityBuilder: P_old = P, then P = C_occ * C_occ^T
+///        via cuBLAS gemm.
 
-#include "atomiverse/cuda/scf/density_builder.cuh"
+#include "atomiverse/cuda/scf/internal/density_builder.cuh"
 #include "cublas_dispatch.cuh"
 
 #include "atomiverse/cuda/types.cuh"
@@ -15,6 +16,7 @@ using cuda::work_t;
 
 namespace cuda {
 namespace scf {
+namespace internal {
 
 void DensityBuilder::build(const BuildContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
@@ -25,7 +27,7 @@ void DensityBuilder::build(const BuildContext& ctx) {
     cublas_handle_ = handle;
 }
 
-void DensityBuilder::launch(const LaunchContext& ctx) {
+void DensityBuilder::step(const LaunchContext& ctx) {
     auto& scf = ctx.frame.scf;
     if (scf.converged)
         return;
@@ -54,6 +56,7 @@ void DensityBuilder::destroy(const DestroyContext& /*ctx*/) {
     }
 }
 
+} // namespace internal
 } // namespace scf
 } // namespace cuda
 } // namespace ATV

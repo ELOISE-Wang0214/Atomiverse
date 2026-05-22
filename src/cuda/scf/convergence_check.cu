@@ -1,7 +1,8 @@
 /// @file cuda/scf/convergence_check.cu
-/// @brief ConvergenceCheck: ||P - P_old||_F, energy = trace(H*P), convergence flag.
+/// @brief internal::ConvergenceCheck: ||P - P_old||_F, energy = trace(H*P),
+///        convergence flag.
 
-#include "atomiverse/cuda/scf/convergence_check.cuh"
+#include "atomiverse/cuda/scf/internal/convergence_check.cuh"
 #include "cublas_dispatch.cuh"
 
 #include "atomiverse/cuda/types.cuh"
@@ -15,6 +16,7 @@ using cuda::work_t;
 
 namespace cuda {
 namespace scf {
+namespace internal {
 
 void ConvergenceCheck::build(const BuildContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
@@ -25,7 +27,7 @@ void ConvergenceCheck::build(const BuildContext& ctx) {
     cublas_handle_ = handle;
 }
 
-void ConvergenceCheck::launch(const LaunchContext& ctx) {
+void ConvergenceCheck::step(const LaunchContext& ctx) {
     auto& scf = ctx.frame.scf;
     if (scf.converged)
         return;
@@ -70,6 +72,7 @@ void ConvergenceCheck::destroy(const DestroyContext& /*ctx*/) {
     }
 }
 
+} // namespace internal
 } // namespace scf
 } // namespace cuda
 } // namespace ATV

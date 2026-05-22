@@ -1,7 +1,8 @@
 /// @file cuda/scf/eigen_solver.cu
-/// @brief EigenSolver: dense symmetric eigendecomposition via cuSOLVER syevd.
+/// @brief internal::EigenSolver: dense symmetric eigendecomposition via
+///        cuSOLVER syevd.
 
-#include "atomiverse/cuda/scf/eigen_solver.cuh"
+#include "atomiverse/cuda/scf/internal/eigen_solver.cuh"
 #include "cublas_dispatch.cuh"
 
 #include "atomiverse/cuda/types.cuh"
@@ -15,6 +16,7 @@ using cuda::work_t;
 
 namespace cuda {
 namespace scf {
+namespace internal {
 
 void EigenSolver::build(const BuildContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
@@ -40,7 +42,7 @@ void EigenSolver::build(const BuildContext& ctx) {
     cudaStreamSynchronize(stream);
 }
 
-void EigenSolver::launch(const LaunchContext& ctx) {
+void EigenSolver::step(const LaunchContext& ctx) {
     auto& scf = ctx.frame.scf;
     if (scf.converged)
         return;
@@ -69,6 +71,7 @@ void EigenSolver::destroy(const DestroyContext& /*ctx*/) {
     d_info_ = nullptr;
 }
 
+} // namespace internal
 } // namespace scf
 } // namespace cuda
 } // namespace ATV

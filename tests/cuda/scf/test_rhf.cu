@@ -10,12 +10,15 @@
 #include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/xview.hpp>
 
+#include "atomiverse/core/device.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/rhf_solve.h"
-#include "atomiverse/cuda/recorder/thermo.cuh"
-#include "atomiverse/cuda/scf/rhf_density.cuh"
-#include "atomiverse/cuda/scf/rhf_fock.cuh"
-#include "atomiverse/cuda/scf/scf.cuh"
+#include "atomiverse/cuda/evaluate.cuh"
+#include "atomiverse/cuda/scf/scf_evaluator.cuh"
+#include "atomiverse/cuda/scf/scf_solver.cuh"
+#include "atomiverse/cuda/single_point.cuh"
+#include "atomiverse/facade/driver.h"
+#include "atomiverse/facade/stage.h"
 
 using namespace ATV;
 
@@ -205,9 +208,12 @@ TEST(RHF, CPUDensityTrace) {
                 static_cast<double>(integrals.n_electrons), 0.01);
 }
 
-// ── CUDA RHF tests ────────────────────────────────────────────────────
+// ── CUDA RHF single-point tests (cuda::Evaluate + SCFEvaluator) ───────
 
-TEST(RHF, CUDAConvergence) {
+TEST(RHF, CUDASinglePointEnergy) {
+    // ac-006: single-point H2/STO-3G RHF through
+    // `cuda::Evaluate + cuda::scf::SCFEvaluator` reproduces the textbook
+    // reference -1.1167 Ha.
     auto frame = make_h2();
     auto integrals =
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, true);
@@ -215,17 +221,42 @@ TEST(RHF, CUDAConvergence) {
     double tol =
         (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
 
-    cuda::scf::SCF solver;
-    solver.add(cuda::scf::RHFFock{integrals});
-    solver.add(cuda::scf::EigenSolver{});
-    solver.add(cuda::scf::RHFDensity{integrals.n_occ()});
-    solver.add(cuda::scf::ConvergenceCheck{tol, false});
-    solver.build();
-    solver.run(frame, 100);
+    cuda::Evaluate eval;
+    eval.add(cuda::scf::SCFEvaluator{integrals, tol, 100});
+    eval.build();
+    eval.run(frame);
 
     EXPECT_TRUE(std::isfinite(static_cast<double>(frame.energy)));
     EXPECT_NEAR(static_cast<double>(frame.energy), kH2Energy, 0.01)
-        << "CUDA RHF energy " << frame.energy << " does not match textbook";
+        << "CUDA RHF single-point energy " << frame.energy
+        << " does not match textbook";
+}
+
+TEST(RHF, CUDASinglePointHelper) {
+    // cuda::single_point produces the identical result as constructing
+    // cuda::Evaluate and add()-ing the evaluator directly.
+    auto frame_direct = make_h2();
+    auto frame_helper = make_h2();
+    auto integrals_d = cpu::scf::build_integrals(
+        frame_direct, cpu::scf::BasisSet::STO3G, 0, true);
+    auto integrals_h = cpu::scf::build_integrals(
+        frame_helper, cpu::scf::BasisSet::STO3G, 0, true);
+    double tol =
+        (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
+
+    {
+        cuda::Evaluate eval;
+        eval.add(cuda::scf::SCFEvaluator{integrals_d, tol, 100});
+        eval.build();
+        eval.run(frame_direct);
+    }
+    {
+        cuda::scf::SCFEvaluator scf{integrals_h, tol, 100};
+        cuda::single_point(frame_helper, scf);
+    }
+
+    EXPECT_NEAR(static_cast<double>(frame_direct.energy),
+                static_cast<double>(frame_helper.energy), 1e-9);
 }
 
 // ── CPU/CUDA parity ───────────────────────────────────────────────────
@@ -241,14 +272,11 @@ TEST(RHF, CPUCUDAParity) {
     // CPU
     auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);
 
-    // CUDA
-    cuda::scf::SCF solver;
-    solver.add(cuda::scf::RHFFock{integrals});
-    solver.add(cuda::scf::EigenSolver{});
-    solver.add(cuda::scf::RHFDensity{integrals.n_occ()});
-    solver.add(cuda::scf::ConvergenceCheck{tol, false});
-    solver.build();
-    solver.run(frame, 100);
+    // CUDA via SCFEvaluator + Evaluate
+    cuda::Evaluate eval;
+    eval.add(cuda::scf::SCFEvaluator{integrals, tol, 100});
+    eval.build();
+    eval.run(frame);
 
     double cpu_e = static_cast<double>(cpu_result.energy);
     double cuda_e = static_cast<double>(frame.energy);
@@ -267,13 +295,11 @@ TEST(RHF, CUDAOnlyGPUIntegrals) {
     double exp[3] = {3.42525091, 0.62391373, 0.16885540};
     double coeff[3] = {0.15432897, 0.53532814, 0.44463454};
 
-    cuda::scf::SCF solver;
-    solver.add(cuda::scf::RHFFockDevice{3, exp, coeff, 1}); // n_prim=3, n_occ=1
-    solver.add(cuda::scf::EigenSolver{});
-    solver.add(cuda::scf::RHFDensity{1});
-    solver.add(cuda::scf::ConvergenceCheck{double(1e-5), false});
-    solver.build();
-    solver.run(frame, 100);
+    cuda::Evaluate eval;
+    // n_prim=3, n_occ=1
+    eval.add(cuda::scf::SCFEvaluator{3, exp, coeff, 1, double(1e-5), 100});
+    eval.build();
+    eval.run(frame);
 
     EXPECT_NEAR(static_cast<double>(frame.energy), kH2Energy, 0.01)
         << "CUDA-only RHF energy " << frame.energy
@@ -421,13 +447,10 @@ TEST(RHF, CUDAHeAtom) {
 
     auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);
 
-    cuda::scf::SCF solver;
-    solver.add(cuda::scf::RHFFock{integrals});
-    solver.add(cuda::scf::EigenSolver{});
-    solver.add(cuda::scf::RHFDensity{integrals.n_occ()});
-    solver.add(cuda::scf::ConvergenceCheck{tol, false});
-    solver.build();
-    solver.run(frame, 100);
+    cuda::Evaluate eval;
+    eval.add(cuda::scf::SCFEvaluator{integrals, tol, 100});
+    eval.build();
+    eval.run(frame);
 
     double rel_tol = (sizeof(double) == sizeof(float)) ? 1e-3 : 1e-8;
     EXPECT_NEAR(static_cast<double>(frame.energy),
@@ -446,13 +469,10 @@ TEST(RHF, CUDALiH) {
 
     auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);
 
-    cuda::scf::SCF solver;
-    solver.add(cuda::scf::RHFFock{integrals});
-    solver.add(cuda::scf::EigenSolver{});
-    solver.add(cuda::scf::RHFDensity{integrals.n_occ()});
-    solver.add(cuda::scf::ConvergenceCheck{tol, false});
-    solver.build();
-    solver.run(frame, 100);
+    cuda::Evaluate eval;
+    eval.add(cuda::scf::SCFEvaluator{integrals, tol, 100});
+    eval.build();
+    eval.run(frame);
 
     double rel_tol = (sizeof(double) == sizeof(float)) ? 1e-2 : 1e-6;
     EXPECT_NEAR(static_cast<double>(frame.energy),
@@ -471,13 +491,10 @@ TEST(RHF, CUDAHeHPlus) {
 
     auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);
 
-    cuda::scf::SCF solver;
-    solver.add(cuda::scf::RHFFock{integrals});
-    solver.add(cuda::scf::EigenSolver{});
-    solver.add(cuda::scf::RHFDensity{integrals.n_occ()});
-    solver.add(cuda::scf::ConvergenceCheck{tol, false});
-    solver.build();
-    solver.run(frame, 100);
+    cuda::Evaluate eval;
+    eval.add(cuda::scf::SCFEvaluator{integrals, tol, 100});
+    eval.build();
+    eval.run(frame);
 
     double rel_tol = (sizeof(double) == sizeof(float)) ? 1e-3 : 1e-8;
     EXPECT_NEAR(static_cast<double>(frame.energy),
@@ -487,14 +504,37 @@ TEST(RHF, CUDAHeHPlus) {
         << "HeH+ CPU/CUDA parity";
 }
 
-// ── Discipline tests ─────────────────────────────────────────────────
+// ── Structural / discipline tests ────────────────────────────────────
 
-TEST(RHF, DriverAcceptsCPUFrameOnly) {
-    // Driver::run() takes cpu::Frame& -- compile-time guarantee.
-    // This test verifies the API shape at the type level.
-    static_assert(std::is_invocable_v<decltype(&cuda::scf::SCF::run), cuda::scf::SCF*,
-                                      cpu::Frame&, int>,
-                  "Driver::run() must accept cpu::Frame&");
+TEST(RHF, SCFEvaluatorIsEnergyDensityOrbitalsOnly) {
+    // ac-005: the RHF-configured SCFEvaluator carries exactly
+    // Energy|DensityMatrix|Orbitals — no Force capability (no CUDA SCF
+    // gradient kernel exists).
+    auto frame = make_h2();
+    auto integrals =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, true);
+    cuda::scf::SCFEvaluator eval{integrals, double(1e-6), 100};
+    EXPECT_EQ(eval.role(), ComponentRole::Evaluator);
+    EXPECT_EQ(eval.capabilities(),
+              Capability::Energy | Capability::DensityMatrix
+                  | Capability::Orbitals);
+    EXPECT_FALSE(has_capability(eval.capabilities(), Capability::Force));
+}
+
+TEST(RHF, SCFSolverIsNotADriver) {
+    // ac-002: the RHF inner solver is a low-level class, not a Driver<>.
+    static_assert(
+        !std::is_base_of_v<Driver<ATV::scf::Phase, cuda::device_tag>,
+                           cuda::scf::SCFSolver>,
+        "cuda::scf::SCFSolver must not be a Driver<scf::Phase> subclass");
+    SUCCEED();
+}
+
+TEST(RHF, EvaluateRunAcceptsCPUFrameOnly) {
+    // cuda::Evaluate::run() takes cpu::Frame& -- compile-time guarantee.
+    static_assert(std::is_invocable_v<decltype(&cuda::Evaluate::run),
+                                      cuda::Evaluate*, cpu::Frame&>,
+                  "cuda::Evaluate::run() must accept cpu::Frame&");
 }
 
 TEST(RHF, IntegralPackHasNoCUDA) {
