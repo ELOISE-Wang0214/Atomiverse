@@ -165,8 +165,8 @@ __global__ void scatter_to_soa(
 template <typename work_t>
 void launch_scatter_to_soa(const int* sorted_indices, const real_t* pos_x,
                            const real_t* pos_y, const real_t* pos_z,
-                           int num_atoms, int num_clusters, work_t* cluster_x,
-                           work_t* cluster_y, work_t* cluster_z,
+                           int num_atoms, int num_clusters, real_t* cluster_x,
+                           real_t* cluster_y, real_t* cluster_z,
                            int* original_index, int* cluster_count,
                            cudaStream_t stream) {
     int padded = num_clusters * kClusterSize;
@@ -223,7 +223,7 @@ aos_to_soa_morton(const double* __restrict__ positions_aos, int num_atoms,
 
 template <typename work_t>
 void launch_aos_to_soa_morton(const double* positions_aos, int num_atoms,
-                              work_t* x, work_t* y, work_t* z,
+                              real_t* x, real_t* y, real_t* z,
                               const real_t* inv_cell, bool periodic,
                               uint32_t* morton_codes, int* atom_indices,
                               cudaStream_t stream) {
@@ -336,12 +336,12 @@ __global__ void scatter_and_aabb(
 template <typename work_t>
 void launch_scatter_and_aabb(const int* sorted_indices, const real_t* pos_x,
                              const real_t* pos_y, const real_t* pos_z,
-                             int num_atoms, int num_clusters, work_t* cluster_x,
-                             work_t* cluster_y, work_t* cluster_z,
+                             int num_atoms, int num_clusters, real_t* cluster_x,
+                             real_t* cluster_y, real_t* cluster_z,
                              int* original_index, int* cluster_count,
-                             work_t* aabb_min_x, work_t* aabb_min_y,
-                             work_t* aabb_min_z, work_t* aabb_max_x,
-                             work_t* aabb_max_y, work_t* aabb_max_z,
+                             real_t* aabb_min_x, real_t* aabb_min_y,
+                             real_t* aabb_min_z, real_t* aabb_max_x,
+                             real_t* aabb_max_y, real_t* aabb_max_z,
                              cudaStream_t stream) {
     if (num_clusters == 0)
         return;

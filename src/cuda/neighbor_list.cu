@@ -32,8 +32,8 @@ using cuda::work_t;
 struct NeighborList::State {
     NListBuffers<real_t> buf;
 
-    DeviceVector<work_t> d_cell{9};
-    DeviceVector<work_t> d_inv_cell{9};
+    DeviceVector<real_t> d_cell{9};
+    DeviceVector<real_t> d_inv_cell{9};
     DeviceVector<int> d_dims{3};
     DeviceVector<int> d_ncells{1};
     DeviceVector<int> stencil_dx{kMaxStencil};

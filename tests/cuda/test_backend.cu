@@ -10,13 +10,13 @@ using namespace ATV;
 
 namespace {
 
-__global__ void add_one_k(double* fx, double* fy, double* fz,
+__global__ void add_one_k(cuda::real_t* fx, cuda::real_t* fy, cuda::real_t* fz,
                           const int* n_ptr) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < *n_ptr) {
-        atomicAdd(&fx[idx], double(1));
-        atomicAdd(&fy[idx], double(1));
-        atomicAdd(&fz[idx], double(1));
+        atomicAdd(&fx[idx], cuda::real_t(1));
+        atomicAdd(&fy[idx], cuda::real_t(1));
+        atomicAdd(&fz[idx], cuda::real_t(1));
     }
 }
 
@@ -35,10 +35,10 @@ class AddOne : public cuda::ComponentBase {
     }
 };
 
-__global__ void double_vel_k(double* vx, const int* n_ptr) {
+__global__ void double_vel_k(cuda::real_t* vx, const int* n_ptr) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < *n_ptr)
-        vx[idx] *= double(2);
+        vx[idx] *= cuda::real_t(2);
 }
 
 class DoubleVel : public cuda::ComponentBase {

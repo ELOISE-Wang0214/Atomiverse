@@ -229,7 +229,7 @@ void launch_build_grid_csr(const int* cluster_cell_idx, int num_clusters,
 // Fused AoS→SoA + Morton code computation (replaces separate K1+K2)
 template <typename work_t>
 void launch_aos_to_soa_morton(const double* positions_aos, int num_atoms,
-                              work_t* x, work_t* y, work_t* z,
+                              real_t* x, real_t* y, real_t* z,
                               const real_t* inv_cell, bool periodic,
                               uint32_t* morton_codes, int* atom_indices,
                               cudaStream_t stream = 0);
@@ -238,12 +238,12 @@ void launch_aos_to_soa_morton(const double* positions_aos, int num_atoms,
 template <typename work_t>
 void launch_scatter_and_aabb(const int* sorted_indices, const real_t* pos_x,
                              const real_t* pos_y, const real_t* pos_z,
-                             int num_atoms, int num_clusters, work_t* cluster_x,
-                             work_t* cluster_y, work_t* cluster_z,
+                             int num_atoms, int num_clusters, real_t* cluster_x,
+                             real_t* cluster_y, real_t* cluster_z,
                              int* original_index, int* cluster_count,
-                             work_t* aabb_min_x, work_t* aabb_min_y,
-                             work_t* aabb_min_z, work_t* aabb_max_x,
-                             work_t* aabb_max_y, work_t* aabb_max_z,
+                             real_t* aabb_min_x, real_t* aabb_min_y,
+                             real_t* aabb_min_z, real_t* aabb_max_x,
+                             real_t* aabb_max_y, real_t* aabb_max_z,
                              cudaStream_t stream = 0);
 
 // CSR→Flat expansion (one warp per cluster, parallel copy)
@@ -258,7 +258,7 @@ void launch_cluster_displacement(
     const real_t* cluster_x, const real_t* cluster_y, const real_t* cluster_z,
     const real_t* ref_cluster_x, const real_t* ref_cluster_y,
     const real_t* ref_cluster_z, const int* cluster_count, int num_clusters,
-    work_t dirty_threshold_sq, work_t* cluster_disp_sq, int* dirty_flags,
+    work_t dirty_threshold_sq, real_t* cluster_disp_sq, int* dirty_flags,
     int* rebuild_flag, work_t half_skin_sq, cudaStream_t stream = 0);
 
 // Smart rolling prune on flat pair list (skip clean pairs)
@@ -272,16 +272,16 @@ void launch_smart_rolling_prune(
 
 // --- GPU-side setup (setup.cu) ---
 
-void launch_setup_cell_device(const real_t* d_box, work_t* d_cell,
-                              work_t* d_inv_cell, int* d_dims,
+void launch_setup_cell_device(const prec_t* d_box, real_t* d_cell,
+                              real_t* d_inv_cell, int* d_dims,
                               int* d_stencil_dx, int* d_stencil_dy,
                               int* d_stencil_dz, int* d_n_stencil,
                               int* d_ncells, work_t cutoff_plus_skin,
                               bool periodic, int max_stencil,
                               cudaStream_t stream = 0);
 
-void launch_setup_cell(const real_t* box_data, work_t* d_cell,
-                       work_t* d_inv_cell, int* d_dims, int* d_stencil_dx,
+void launch_setup_cell(const real_t* box_data, real_t* d_cell,
+                       real_t* d_inv_cell, int* d_dims, int* d_stencil_dx,
                        int* d_stencil_dy, int* d_stencil_dz, int* d_n_stencil,
                        int* d_ncells, work_t cutoff_plus_skin, bool periodic,
                        int max_stencil, cudaStream_t stream = 0);
@@ -297,8 +297,8 @@ void launch_export_atom_pairs(const int* flat_ci, const int* flat_cj,
                               const real_t* pos_y, const real_t* pos_z,
                               bool periodic, const real_t* cell_matrix,
                               const real_t* inv_cell, int* out_i, int* out_j,
-                              work_t* out_dx, work_t* out_dy, work_t* out_dz,
-                              work_t* out_dist, int* out_count,
+                              real_t* out_dx, real_t* out_dy, real_t* out_dz,
+                              real_t* out_dist, int* out_count,
                               const int* capacity_ptr, cudaStream_t stream = 0);
 
 } // namespace ATV::cuda::md::nlist

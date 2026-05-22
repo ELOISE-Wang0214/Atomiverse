@@ -31,9 +31,9 @@ namespace scf {
 // ── Kernel: build G(P) from ERI ──────────────────────────────────────
 // G_ij = sum_kl P_kl * [(ij|kl) - 0.5*(ik|jl)]
 // P already includes factor 2 from RHF closed-shell occupancy.
-__global__ void build_G_kernel(real_t* __restrict__ G,
-                               const real_t* __restrict__ P,
-                               const real_t* __restrict__ ERI, int n) {
+__global__ void build_G_kernel(prec_t* __restrict__ G,
+                               const prec_t* __restrict__ P,
+                               const prec_t* __restrict__ ERI, int n) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int total = n * n;
     for (int ij = idx; ij < total; ij += blockDim.x * gridDim.x) {

@@ -79,8 +79,8 @@ void launch_export_atom_pairs(const int* flat_ci, const int* flat_cj,
                               const real_t* pos_y, const real_t* pos_z,
                               bool periodic, const real_t* cell_matrix,
                               const real_t* inv_cell, int* out_i, int* out_j,
-                              work_t* out_dx, work_t* out_dy, work_t* out_dz,
-                              work_t* out_dist, int* out_count,
+                              real_t* out_dx, real_t* out_dy, real_t* out_dz,
+                              real_t* out_dist, int* out_count,
                               const int* capacity_ptr, cudaStream_t stream) {
     if (n_flat == 0)
         return;
