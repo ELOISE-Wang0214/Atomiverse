@@ -1,6 +1,6 @@
 ---
 title: MSU-PE Phase D.3 — equilibrium-state observable comparison vs LAMMPS
-status: in-progress
+status: code-complete
 created: 2026-05-20
 parent: msu-pe-validation.md
 ---

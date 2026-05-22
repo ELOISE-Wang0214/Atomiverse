@@ -1,6 +1,6 @@
 ---
 title: MSU-PE Phase D.4 — stress-strain curve comparison and Phase D exit gate
-status: in-progress
+status: code-complete
 created: 2026-05-20
 parent: msu-pe-validation.md
 ---
