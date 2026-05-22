@@ -59,6 +59,17 @@ if [[ ! -f "$DATA" ]]; then
   exit 3
 fi
 
+# The reference LAMMPS binary (lmp_cuda) is dynamically linked against the
+# CUDA 12.x runtime (libcudart.so.12) even when run in CPU mode. Source the
+# project build-environment file — it puts the CUDA runtime + OpenBLAS on
+# LD_LIBRARY_PATH. Guarded: skipped if absent. Override the path with
+# ATV_ENV_FILE; point it at an empty file to opt out.
+ATV_ENV_FILE="${ATV_ENV_FILE:-$HOME/atv-build-env/env.sh}"
+if [[ -f "$ATV_ENV_FILE" ]]; then
+  # shellcheck disable=SC1090
+  source "$ATV_ENV_FILE"
+fi
+
 # Default to the user's single lmp_cuda binary run in CPU mode: the CPU arm
 # passes NO GPU package args (no `-sf gpu` / `-pk gpu`), so lmp_cuda runs as
 # a plain MPI/OpenMP CPU build. LMP_BIN still overrides the binary.

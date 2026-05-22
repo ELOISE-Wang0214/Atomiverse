@@ -52,6 +52,16 @@ BUILD_DIR="${ATV_BUILD_DIR:-$REPO_ROOT/build}"
 BIN="$BUILD_DIR/benchmarks/polyethylene_tension"
 REF_DIR="$REPO_ROOT/benchmarks/md/reference/polyethylene"
 
+# The Atomiverse benchmark is built against the project toolchain (CUDA
+# runtime + OpenBLAS). Source the build-environment file so its shared
+# libraries are on LD_LIBRARY_PATH. Guarded: skipped if absent. Override
+# the path with ATV_ENV_FILE; point it at an empty file to opt out.
+ATV_ENV_FILE="${ATV_ENV_FILE:-$HOME/atv-build-env/env.sh}"
+if [[ -f "$ATV_ENV_FILE" ]]; then
+  # shellcheck disable=SC1090
+  source "$ATV_ENV_FILE"
+fi
+
 if [[ ! -x "$BIN" ]]; then
   echo "error: $BIN not found or not executable." >&2
   echo "       build with: cmake -B $BUILD_DIR -DATV_BUILD_BENCHMARKS=ON" >&2
