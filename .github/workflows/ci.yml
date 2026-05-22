@@ -71,14 +71,14 @@ jobs:
       - name: Test (our unit-test suite)
         # `-E` excludes tests that cannot pass on a generic Linux CI
         # runner and are local developer checks, not portable gates:
-        #   *_no_alloc            — allocation-counting micro-checks; the
-        #                           count depends on the C++ runtime and
-        #                           OpenMP implementation (CI's glibc +
-        #                           libgomp allocates internally where a
-        #                           developer's libc++/libomp does not).
-        #   test_setup_lammps_align — needs a large MSU reference data
-        #                           artifact that is not checked into the
-        #                           repository.
+        #   *_no_alloc — allocation-counting micro-checks; the count
+        #                depends on the C++ runtime and OpenMP
+        #                implementation (CI's glibc + libgomp allocates
+        #                internally where a developer's libc++/libomp
+        #                does not).
+        # LAMMPS API-alignment / parity checks no longer run here at all:
+        # they are third-party-comparison validation benchmarks under
+        # benchmarks/md/ (-DATV_BUILD_BENCHMARKS=ON), not ctest gates.
         run: >-
           ctest --test-dir build -j$(nproc) --output-on-failure
-          -E 'no_alloc|setup_lammps_align'
+          -E 'no_alloc'

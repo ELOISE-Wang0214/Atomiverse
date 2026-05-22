@@ -1,7 +1,9 @@
-/// @file tests/cpu/md/test_nve_limit_lammps_align.cpp
-/// @brief LAMMPS API-alignment audit for the NVE family (spec
-///        lammps-api-align-02-nve): `cpu::md::VelocityVerlet` ↔ LAMMPS
-///        `fix nve` and `cpu::md::NVELimit` ↔ LAMMPS `fix nve/limit`.
+/// @file benchmarks/md/bench_nve_limit_lammps_align.cpp
+/// @brief LAMMPS API-alignment validation benchmark for the NVE family
+///        (spec lammps-api-align-02-nve): `cpu::md::VelocityVerlet` ↔
+///        LAMMPS `fix nve` and `cpu::md::NVELimit` ↔ LAMMPS
+///        `fix nve/limit`. Ported from the gtest unit-test suite; this is
+///        a third-party-comparison validation benchmark, not a ctest gate.
 ///
 /// Grounded in the verbatim LAMMPS sources `src/fix_nve.cpp` and
 /// `src/fix_nve_limit.cpp`:
@@ -14,12 +16,12 @@
 ///     `|v|·dt <= xlimit`. The cap is applied in BOTH integrate halves.
 ///   - `fix nve` is plain velocity-Verlet, parameter-free.
 ///
-/// These tests assert the Atomiverse semantics match: `xmax` is a
+/// These checks assert the Atomiverse semantics match: `xmax` is a
 /// per-step distance cap on the Euclidean speed, engaging in both the
 /// initial and final integrate halves; a large `xmax` reduces `NVELimit`
 /// to plain `VelocityVerlet`; and `VelocityVerlet` conserves NVE energy.
 
-#include <gtest/gtest.h>
+#include "bench_check.h"
 
 #include <cmath>
 
@@ -68,7 +70,7 @@ cpu::Frame make_single_atom() {
 // cap; verify the post-kick Euclidean speed equals exactly xmax/dt and
 // the displacement of that step equals exactly xmax.
 
-TEST(NveLimitLammpsAlign, InitialHalfDistanceCap) {
+BENCH_CASE(NveLimitLammpsAlign_InitialHalfDistanceCap) {
     auto frame = make_single_atom();
     const double dt = 0.5;    // fs
     const double xmax = 0.05; // Å  → vmax = xmax/dt = 0.1 Å/fs
@@ -90,7 +92,7 @@ TEST(NveLimitLammpsAlign, InitialHalfDistanceCap) {
     limit.launch(lctx);
 
     const double vmax = xmax / dt;
-    EXPECT_NEAR(speed(frame, 0), vmax, 1e-12)
+    BM_NEAR(speed(frame, 0), vmax, 1e-12)
         << "post-kick Euclidean speed must be capped to xmax/dt";
 
     // Displacement of this single step must be exactly xmax (distance cap).
@@ -98,12 +100,12 @@ TEST(NveLimitLammpsAlign, InitialHalfDistanceCap) {
         std::sqrt((frame.atoms.x[0] - x0) * (frame.atoms.x[0] - x0)
                   + (frame.atoms.y[0] - y0) * (frame.atoms.y[0] - y0)
                   + (frame.atoms.z[0] - z0) * (frame.atoms.z[0] - z0));
-    EXPECT_NEAR(disp, xmax, 1e-12)
+    BM_NEAR(disp, xmax, 1e-12)
         << "per-step displacement must be bounded by xmax (a distance)";
 
     // Cap preserves direction: v stays parallel to the force spike.
-    EXPECT_NEAR(frame.atoms.vx[0] / speed(frame, 0), 0.6, 1e-12);
-    EXPECT_NEAR(frame.atoms.vy[0] / speed(frame, 0), 0.8, 1e-12);
+    BM_NEAR(frame.atoms.vx[0] / speed(frame, 0), 0.6, 1e-12);
+    BM_NEAR(frame.atoms.vy[0] / speed(frame, 0), 0.8, 1e-12);
 }
 
 // ── ac-003: the cap also engages in the FINAL integrate half ─────────
@@ -111,7 +113,7 @@ TEST(NveLimitLammpsAlign, InitialHalfDistanceCap) {
 // final_integrate() does v += dtfm*f only (no x update). Inject the
 // spike here; verify the post-kick speed is still capped to xmax/dt.
 
-TEST(NveLimitLammpsAlign, FinalHalfDistanceCap) {
+BENCH_CASE(NveLimitLammpsAlign_FinalHalfDistanceCap) {
     auto frame = make_single_atom();
     const double dt = 0.5;
     const double xmax = 0.05;
@@ -127,12 +129,12 @@ TEST(NveLimitLammpsAlign, FinalHalfDistanceCap) {
     limit.launch(lctx);
 
     const double vmax = xmax / dt;
-    EXPECT_NEAR(speed(frame, 0), vmax, 1e-12)
+    BM_NEAR(speed(frame, 0), vmax, 1e-12)
         << "final_integrate half must also cap |v| to xmax/dt";
     // final_integrate must NOT move the atom.
-    EXPECT_NEAR(frame.atoms.x[0], 10.0, 1e-12);
-    EXPECT_NEAR(frame.atoms.y[0], 10.0, 1e-12);
-    EXPECT_NEAR(frame.atoms.z[0], 10.0, 1e-12);
+    BM_NEAR(frame.atoms.x[0], 10.0, 1e-12);
+    BM_NEAR(frame.atoms.y[0], 10.0, 1e-12);
+    BM_NEAR(frame.atoms.z[0], 10.0, 1e-12);
 }
 
 // ── ac-002: the cap uses the Euclidean (L2) norm, not per-component ──
@@ -140,7 +142,7 @@ TEST(NveLimitLammpsAlign, FinalHalfDistanceCap) {
 // A velocity equal in all three components must be rescaled as a vector:
 // the resulting |v|_2 equals xmax/dt, while each component is xmax/dt/√3.
 
-TEST(NveLimitLammpsAlign, EuclideanNormNotPerComponent) {
+BENCH_CASE(NveLimitLammpsAlign_EuclideanNormNotPerComponent) {
     auto frame = make_single_atom();
     const double dt = 0.5;
     const double xmax = 0.05;
@@ -160,16 +162,16 @@ TEST(NveLimitLammpsAlign, EuclideanNormNotPerComponent) {
     cpu::LaunchContext lctx{ctx, frame, kFinal, 0};
     limit.launch(lctx);
 
-    EXPECT_NEAR(speed(frame, 0), vmax, 1e-12)
+    BM_NEAR(speed(frame, 0), vmax, 1e-12)
         << "cap must use Euclidean speed vsq = v·v";
-    EXPECT_NEAR(frame.atoms.vx[0], vmax / std::sqrt(3.0), 1e-12);
-    EXPECT_NEAR(frame.atoms.vy[0], vmax / std::sqrt(3.0), 1e-12);
-    EXPECT_NEAR(frame.atoms.vz[0], vmax / std::sqrt(3.0), 1e-12);
+    BM_NEAR(frame.atoms.vx[0], vmax / std::sqrt(3.0), 1e-12);
+    BM_NEAR(frame.atoms.vy[0], vmax / std::sqrt(3.0), 1e-12);
+    BM_NEAR(frame.atoms.vz[0], vmax / std::sqrt(3.0), 1e-12);
 }
 
 // ── ac-002: below-threshold velocities pass through unchanged ─────────
 
-TEST(NveLimitLammpsAlign, NoCapBelowThreshold) {
+BENCH_CASE(NveLimitLammpsAlign_NoCapBelowThreshold) {
     auto frame = make_single_atom();
     const double dt = 0.5;
     const double xmax = 0.05; // vmax = 0.1 Å/fs
@@ -183,9 +185,9 @@ TEST(NveLimitLammpsAlign, NoCapBelowThreshold) {
     cpu::LaunchContext lctx{ctx, frame, kFinal, 0};
     limit.launch(lctx);
 
-    EXPECT_NEAR(frame.atoms.vx[0], 0.03, 1e-14);
-    EXPECT_NEAR(frame.atoms.vy[0], 0.04, 1e-14);
-    EXPECT_NEAR(frame.atoms.vz[0], 0.0, 1e-14);
+    BM_NEAR(frame.atoms.vx[0], 0.03, 1e-14);
+    BM_NEAR(frame.atoms.vy[0], 0.04, 1e-14);
+    BM_NEAR(frame.atoms.vz[0], 0.0, 1e-14);
 }
 
 // ── ac-004: large xmax → NVELimit reduces to plain VelocityVerlet ────
@@ -194,7 +196,7 @@ TEST(NveLimitLammpsAlign, NoCapBelowThreshold) {
 // far larger than any per-step displacement, the cap never engages and
 // the two trajectories must be bit-for-bit identical.
 
-TEST(NveLimitLammpsAlign, LargeXmaxReducesToVelocityVerlet) {
+BENCH_CASE(NveLimitLammpsAlign_LargeXmaxReducesToVelocityVerlet) {
     auto build_pair = []() {
         cpu::Frame f(2);
         f.atoms.x[0] = 9.0;
@@ -242,10 +244,10 @@ TEST(NveLimitLammpsAlign, LargeXmaxReducesToVelocityVerlet) {
     }
 
     for (int i = 0; i < 2; ++i) {
-        EXPECT_NEAR(frame_lim.atoms.x[i], frame_vv.atoms.x[i], 1e-12)
+        BM_NEAR(frame_lim.atoms.x[i], frame_vv.atoms.x[i], 1e-12)
             << "atom " << i << " x diverged: NVELimit with large xmax must "
             << "match plain VelocityVerlet";
-        EXPECT_NEAR(frame_lim.atoms.vx[i], frame_vv.atoms.vx[i], 1e-12)
+        BM_NEAR(frame_lim.atoms.vx[i], frame_vv.atoms.vx[i], 1e-12)
             << "atom " << i << " vx diverged";
     }
 }
@@ -255,7 +257,7 @@ TEST(NveLimitLammpsAlign, LargeXmaxReducesToVelocityVerlet) {
 // A harmonic-bonded pair given a small stretch oscillates; total energy
 // (potential + kinetic) must stay constant within symplectic drift.
 
-TEST(NveLimitLammpsAlign, VelocityVerletConservesEnergy) {
+BENCH_CASE(NveLimitLammpsAlign_VelocityVerletConservesEnergy) {
     cpu::Frame frame(2);
     frame.atoms.x[0] = 9.3;
     frame.atoms.y[0] = 10.0;
@@ -286,15 +288,18 @@ TEST(NveLimitLammpsAlign, VelocityVerletConservesEnergy) {
 
     sim.run(frame, 1);
     const double e0 = frame.energy + frame.kinetic;
-    ASSERT_GT(std::abs(e0), 0.0) << "initial total energy must be nonzero";
+    if (!(std::abs(e0) > 0.0)) {
+        BM_TRUE(false) << "initial total energy must be nonzero";
+        return;
+    }
 
     sim.run(frame, 1999);
     const double e1 = frame.energy + frame.kinetic;
 
     const double drift = std::abs(e1 - e0) / std::abs(e0);
-    EXPECT_LT(drift, 1e-4) << "VelocityVerlet NVE drift " << drift
-                           << " exceeds 1e-4 over "
-                           << "2000 steps (E0=" << e0 << ", E1=" << e1 << ")";
+    BM_LT(drift, 1e-4) << "VelocityVerlet NVE drift " << drift
+                       << " exceeds 1e-4 over "
+                       << "2000 steps (E0=" << e0 << ", E1=" << e1 << ")";
 }
 
 // ── ac-003: far-from-equilibrium run — per-step displacement bounded ─
@@ -303,7 +308,7 @@ TEST(NveLimitLammpsAlign, VelocityVerletConservesEnergy) {
 // bond restoring force. Without the cap they would fly apart in one
 // step; NVELimit must bound every per-step displacement by xmax.
 
-TEST(NveLimitLammpsAlign, FarFromEquilibriumDisplacementBounded) {
+BENCH_CASE(NveLimitLammpsAlign_FarFromEquilibriumDisplacementBounded) {
     cpu::Frame frame(2);
     frame.atoms.x[0] = 10.00;
     frame.atoms.y[0] = 10.0;
@@ -350,10 +355,12 @@ TEST(NveLimitLammpsAlign, FarFromEquilibriumDisplacementBounded) {
             + (frame.atoms.z[1] - prev_z1) * (frame.atoms.z[1] - prev_z1));
         // Per-step displacement = |v_capped|·dt ≤ xmax. A small tolerance
         // covers floating-point round-off in the rescale.
-        EXPECT_LE(d0, xmax + 1e-9) << "atom 0 step " << s << " moved " << d0;
-        EXPECT_LE(d1, xmax + 1e-9) << "atom 1 step " << s << " moved " << d1;
-        ASSERT_FALSE(std::isnan(frame.atoms.x[0]))
-            << "atom 0 blew up at step " << s;
+        BM_LE(d0, xmax + 1e-9) << "atom 0 step " << s << " moved " << d0;
+        BM_LE(d1, xmax + 1e-9) << "atom 1 step " << s << " moved " << d1;
+        if (std::isnan(frame.atoms.x[0])) {
+            BM_TRUE(false) << "atom 0 blew up at step " << s;
+            return;
+        }
 
         prev_x0 = frame.atoms.x[0];
         prev_y0 = frame.atoms.y[0];
@@ -363,3 +370,5 @@ TEST(NveLimitLammpsAlign, FarFromEquilibriumDisplacementBounded) {
         prev_z1 = frame.atoms.z[1];
     }
 }
+
+BENCH_MAIN("MD fix nve / nve/limit — LAMMPS API alignment");

@@ -1,5 +1,7 @@
-/// @file tests/cpu/md/test_setup_lammps_align.cpp
-/// @brief LAMMPS-API-alignment 05 — simulation-setup components.
+/// @file benchmarks/md/bench_setup_lammps_align.cpp
+/// @brief LAMMPS-API-alignment validation benchmark — simulation-setup
+///        components. Ported from the gtest unit-test suite; this is a
+///        third-party-comparison validation benchmark, not a ctest gate.
 ///
 /// Verifies that `cpu::md::NeighborList` and `cpu::md::InitVelocity` match
 /// the semantics of LAMMPS `neighbor` / `neigh_modify` and `velocity create`
@@ -16,7 +18,7 @@
 ///    (`rescale(t, t_desired)` at velocity.cpp:368).
 ///  - `InitVelocity` supports both `dist` modes (`uniform` / `gaussian`).
 
-#include <gtest/gtest.h>
+#include "bench_check.h"
 
 #include <cmath>
 #include <vector>
@@ -90,7 +92,7 @@ double measured_temperature(const cpu::Frame& f) {
 
 // ── NeighborList: check no vs check yes ───────────────────────────────
 
-TEST(SetupLammpsAlign, CheckNoRebuildsEveryEligibleStep) {
+BENCH_CASE(SetupLammpsAlign_CheckNoRebuildsEveryEligibleStep) {
     // A slow-moving system with a large skin: under `check yes` the
     // displacement gate (max_disp*2 > skin) essentially never fires, so
     // only the initial build() counts. Under `check no` the rebuild fires
@@ -131,20 +133,20 @@ TEST(SetupLammpsAlign, CheckNoRebuildsEveryEligibleStep) {
     }
 
     // check yes: enormous skin + zero velocities → only the initial build.
-    EXPECT_EQ(rebuilds_yes, 1)
+    BM_EQ(rebuilds_yes, 1)
         << "check yes with enormous skin should rebuild only at build()";
 
     // check no: rebuild fires on every every/delay-eligible step.
     // every=1, delay=0 → eligible at every step → 1 (initial) + n_steps.
-    EXPECT_EQ(rebuilds_no, 1 + n_steps)
+    BM_EQ(rebuilds_no, 1 + n_steps)
         << "check no with every=1 delay=0 must rebuild every step";
 
     // The binding criterion: check no rebuilds strictly more often.
-    EXPECT_GT(rebuilds_no, rebuilds_yes)
+    BM_GT(rebuilds_no, rebuilds_yes)
         << "check no must rebuild more than check yes for a slow system";
 }
 
-TEST(SetupLammpsAlign, CheckNoHonoursEveryAndDelayGates) {
+BENCH_CASE(SetupLammpsAlign_CheckNoHonoursEveryAndDelayGates) {
     // check no still respects the every/delay gates: `decide()` increments
     // ago then tests `ago >= delay && ago % every == 0` BEFORE the
     // dist_check==0 short-circuit. With every=5, delay=0 the rebuild fires
@@ -165,7 +167,7 @@ TEST(SetupLammpsAlign, CheckNoHonoursEveryAndDelayGates) {
     sim.run(frame, n_steps);
 
     // 1 (initial) + n_steps/every rebuilds.
-    EXPECT_EQ(nl.n_rebuilds(), 1 + n_steps / every)
+    BM_EQ(nl.n_rebuilds(), 1 + n_steps / every)
         << "check no must still honour the every gate";
 }
 
@@ -184,7 +186,7 @@ void build_with_init(cpu::md::MD& sim, cpu::md::InitVelocity init) {
     sim.build();
 }
 
-TEST(SetupLammpsAlign, InitVelocityTemperatureExactGaussian) {
+BENCH_CASE(SetupLammpsAlign_InitVelocityTemperatureExactGaussian) {
     constexpr double T = 300.0;
     auto frame = make_fcc_argon();
 
@@ -196,12 +198,12 @@ TEST(SetupLammpsAlign, InitVelocityTemperatureExactGaussian) {
     sim.run(frame, 0);
 
     const double T_meas = measured_temperature(frame);
-    EXPECT_NEAR(T_meas, T, 1e-6)
+    BM_NEAR(T_meas, T, 1e-6)
         << "Gaussian InitVelocity must rescale measured T to exactly " << T
         << " K (LAMMPS velocity create), got " << T_meas;
 }
 
-TEST(SetupLammpsAlign, InitVelocityTemperatureExactUniform) {
+BENCH_CASE(SetupLammpsAlign_InitVelocityTemperatureExactUniform) {
     constexpr double T = 150.0;
     auto frame = make_fcc_argon();
 
@@ -211,12 +213,12 @@ TEST(SetupLammpsAlign, InitVelocityTemperatureExactUniform) {
     sim.run(frame, 0);
 
     const double T_meas = measured_temperature(frame);
-    EXPECT_NEAR(T_meas, T, 1e-6)
+    BM_NEAR(T_meas, T, 1e-6)
         << "Uniform InitVelocity must rescale measured T to exactly " << T
         << " K, got " << T_meas;
 }
 
-TEST(SetupLammpsAlign, InitVelocityDefaultDistGaussian) {
+BENCH_CASE(SetupLammpsAlign_InitVelocityDefaultDistGaussian) {
     // Atomiverse keeps Gaussian as its default `dist` (documented
     // divergence from LAMMPS `dist uniform`): the two-arg ctor must still
     // produce an exact temperature.
@@ -228,13 +230,13 @@ TEST(SetupLammpsAlign, InitVelocityDefaultDistGaussian) {
     sim.run(frame, 0);
 
     const double T_meas = measured_temperature(frame);
-    EXPECT_NEAR(T_meas, T, 1e-6)
+    BM_NEAR(T_meas, T, 1e-6)
         << "default-dist InitVelocity must rescale to exact T";
 }
 
 // ── InitVelocity: COM momentum removal ────────────────────────────────
 
-TEST(SetupLammpsAlign, InitVelocityZeroesLinearMomentum) {
+BENCH_CASE(SetupLammpsAlign_InitVelocityZeroesLinearMomentum) {
     constexpr double T = 300.0;
     auto frame = make_fcc_argon();
 
@@ -254,14 +256,14 @@ TEST(SetupLammpsAlign, InitVelocityZeroesLinearMomentum) {
         mtot += m;
     }
     // Net COM velocity must be zero (LAMMPS `mom yes` default).
-    EXPECT_NEAR(p[0] / mtot, 0.0, 1e-10);
-    EXPECT_NEAR(p[1] / mtot, 0.0, 1e-10);
-    EXPECT_NEAR(p[2] / mtot, 0.0, 1e-10);
+    BM_NEAR(p[0] / mtot, 0.0, 1e-10);
+    BM_NEAR(p[1] / mtot, 0.0, 1e-10);
+    BM_NEAR(p[2] / mtot, 0.0, 1e-10);
 }
 
 // ── InitVelocity: dist modes produce distinct draws ───────────────────
 
-TEST(SetupLammpsAlign, InitVelocityDistModesDiffer) {
+BENCH_CASE(SetupLammpsAlign_InitVelocityDistModesDiffer) {
     // Same seed + same T but different `dist`: the per-atom velocities
     // must differ (different underlying draws), while both still hit the
     // exact target temperature.
@@ -291,9 +293,11 @@ TEST(SetupLammpsAlign, InitVelocityDistModesDiffer) {
             break;
         }
     }
-    EXPECT_TRUE(any_diff)
+    BM_TRUE(any_diff)
         << "gaussian and uniform dist must draw distinct velocities";
 
-    EXPECT_NEAR(measured_temperature(frame_g), T, 1e-6);
-    EXPECT_NEAR(measured_temperature(frame_u), T, 1e-6);
+    BM_NEAR(measured_temperature(frame_g), T, 1e-6);
+    BM_NEAR(measured_temperature(frame_u), T, 1e-6);
 }
+
+BENCH_MAIN("MD simulation-setup — LAMMPS API alignment");

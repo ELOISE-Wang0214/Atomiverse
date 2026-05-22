@@ -1,6 +1,8 @@
-/// @file tests/cpu/md/test_lammps_npt_parity.cpp
+/// @file benchmarks/md/bench_lammps_npt_parity.cpp
 /// @brief Quantitative parity check: Atomiverse NoseHooverNPT vs LAMMPS
-///        `fix npt iso` on a 256-atom LJ-argon system.
+///        `fix npt iso` on a 256-atom LJ-argon system. Ported from the
+///        gtest unit-test suite; this is a third-party-comparison
+///        validation benchmark, not a ctest gate.
 ///
 /// Reference run (LAMMPS `units metal`):
 ///   benchmarks/md/validation/lammps_npt/in.npt
@@ -50,7 +52,7 @@
 /// position-drift factor `(e^{ε̇dt}-1)/(ε̇dt)` in place of the bare
 /// `sinhc`; and a `CellList` grid resize on box change.
 
-#include <gtest/gtest.h>
+#include "bench_check.h"
 
 #include "atomiverse/core/constants.h"
 #include "atomiverse/core/mat3.h"
@@ -127,9 +129,9 @@ double volume(const cpu::Frame& f) {
 
 } // namespace
 
-// `Slow_` prefix: runs in the default suite but flags a multi-second
-// sampling run (≈ 5 s). See docstring for the resolution history.
-TEST(LammpsParity, Slow_NptMatchesLammpsEnsembleAverages) {
+// `Slow_` prefix: a multi-second sampling run (≈ 5 s). See docstring for
+// the resolution history.
+BENCH_CASE(LammpsParity_Slow_NptMatchesLammpsEnsembleAverages) {
     constexpr double T_target = 100.0;
     constexpr double tau_T = 100.0;  // fs
     constexpr double tau_P = 1000.0; // fs
@@ -195,9 +197,9 @@ TEST(LammpsParity, Slow_NptMatchesLammpsEnsembleAverages) {
               << "Δ(KE)/<KE>    = " << (KE_rel * 100) << "%, "
               << "Δ(V)/<V>      = " << (V_rel * 100) << "%\n";
 
-    EXPECT_LE(T_rel, 0.05) << "NPT <T> drifts > 5% from LAMMPS reference.";
-    EXPECT_LE(KE_rel, 0.05) << "NPT <KE> drifts > 5% from LAMMPS reference.";
-    EXPECT_LE(V_rel, 0.05) << "NPT <V> drifts > 5% from LAMMPS reference.";
+    BM_LE(T_rel, 0.05) << "NPT <T> drifts > 5% from LAMMPS reference.";
+    BM_LE(KE_rel, 0.05) << "NPT <KE> drifts > 5% from LAMMPS reference.";
+    BM_LE(V_rel, 0.05) << "NPT <V> drifts > 5% from LAMMPS reference.";
 }
 
 // ── ac-006: MTK extended-Hamiltonian conservation ────────────────────
@@ -207,10 +209,10 @@ TEST(LammpsParity, Slow_NptMatchesLammpsEnsembleAverages) {
 // p·V) — NOT the plain KE+PE, which exchanges energy with the
 // thermostat/barostat. `NoseHooverNPT` publishes it to
 // `frame.conserved` every step (the `Conserved` column of `Thermo`).
-// This test runs the parity system 10 000 steps and asserts the
+// This case runs the parity system 10 000 steps and asserts the
 // extended H neither drifts nor blows up — the canonical proof the
 // integrator's Trotter splitting is symplectic.
-TEST(LammpsParity, Slow_NptConservesExtendedHamiltonian) {
+BENCH_CASE(LammpsParity_Slow_NptConservesExtendedHamiltonian) {
     constexpr double T_target = 100.0;
     constexpr double dt = 1.0;                      // fs
     constexpr double P_target = 2731.0 * 6.2415e-7; // eV/Å³
@@ -248,7 +250,7 @@ TEST(LammpsParity, Slow_NptConservesExtendedHamiltonian) {
               << " eV\n";
 
     // ac-006 gate: the extended Hamiltonian is conserved to 1e-3 eV.
-    EXPECT_LE(max_abs_drift, 1.0e-3)
+    BM_LE(max_abs_drift, 1.0e-3)
         << "MTK extended Hamiltonian drifts > 1e-3 eV — integrator not "
            "symplectic.";
 }
@@ -260,10 +262,9 @@ TEST(LammpsParity, Slow_NptConservesExtendedHamiltonian) {
 // parity reference. This is the regression gate: the anisotropic
 // generalisation must reduce algebraically to the pre-change isotropic
 // arithmetic. The configuration here sets `couple_axis` and `T_stop`
-// *explicitly* to their defaults so the test fails to compile (Config
-// has no such fields) against the unmodified integrator, and once it
-// compiles, asserts the same LAMMPS reference averages.
-TEST(LammpsParity, Slow_AnisoNptIsotropicDefaultMatchesLammps) {
+// *explicitly* to their defaults and asserts the same LAMMPS reference
+// averages.
+BENCH_CASE(LammpsParity_Slow_AnisoNptIsotropicDefaultMatchesLammps) {
     constexpr double T_target = 100.0;
     constexpr double tau_T = 100.0;                 // fs
     constexpr double tau_P = 1000.0;                // fs
@@ -324,9 +325,9 @@ TEST(LammpsParity, Slow_AnisoNptIsotropicDefaultMatchesLammps) {
               << "%, Δ(KE)/<KE> = " << (KE_rel * 100)
               << "%, Δ(V)/<V> = " << (V_rel * 100) << "%\n";
 
-    EXPECT_LE(T_rel, 0.05) << "aniso-default <T> drifts > 5% from LAMMPS.";
-    EXPECT_LE(KE_rel, 0.05) << "aniso-default <KE> drifts > 5% from LAMMPS.";
-    EXPECT_LE(V_rel, 0.05) << "aniso-default <V> drifts > 5% from LAMMPS.";
+    BM_LE(T_rel, 0.05) << "aniso-default <T> drifts > 5% from LAMMPS.";
+    BM_LE(KE_rel, 0.05) << "aniso-default <KE> drifts > 5% from LAMMPS.";
+    BM_LE(V_rel, 0.05) << "aniso-default <V> drifts > 5% from LAMMPS.";
 }
 
 // ── msu-pe-align-01 ac-002 / happy path: anisotropic per-axis barostat ─
@@ -335,7 +336,7 @@ TEST(LammpsParity, Slow_AnisoNptIsotropicDefaultMatchesLammps) {
 // rigid. The x box edge must stay constant (within integrator noise)
 // while y and z are free to relax under the barostat. Mirrors LAMMPS
 // `fix npt y P P tau z P P tau` with x absent from `p_flag`.
-TEST(LammpsParity, Slow_AnisoNptFixedXAxisHoldsXEdge) {
+BENCH_CASE(LammpsParity_Slow_AnisoNptFixedXAxisHoldsXEdge) {
     constexpr double T_target = 100.0;
     constexpr double P_target = 2731.0 * 6.2415e-7; // eV/Å³
     constexpr double dt = 1.0;                      // fs
@@ -372,12 +373,12 @@ TEST(LammpsParity, Slow_AnisoNptFixedXAxisHoldsXEdge) {
               << " -> " << Ly << ", Lz " << Lz0 << " -> " << Lz << " A\n";
 
     // x is not barostatted: its edge must be byte-for-byte unchanged.
-    EXPECT_DOUBLE_EQ(Lx, Lx0)
+    BM_DOUBLE_EQ(Lx, Lx0)
         << "fixed x axis (couple_axis[0]=false) must keep its box edge.";
     // y and z ARE barostatted: they should have moved away from the
     // FCC start length (the FCC a=5.3 start is over-dense for 2731 bar,
     // so the box relaxes). At least one of them must have changed.
-    EXPECT_TRUE(std::abs(Ly - Ly0) > 1e-6 || std::abs(Lz - Lz0) > 1e-6)
+    BM_TRUE(std::abs(Ly - Ly0) > 1e-6 || std::abs(Lz - Lz0) > 1e-6)
         << "barostatted y/z axes did not evolve.";
 }
 
@@ -398,7 +399,7 @@ TEST(LammpsParity, Slow_AnisoNptFixedXAxisHoldsXEdge) {
 // coupling being `(Σ ε̇)/N_dof` (no `1/pdim`); getting either wrong
 // drifts the MTK Hamiltonian. A short burn-in skips the violent
 // first-relaxation transient of the over-dense FCC start.
-TEST(LammpsParity, Slow_AnisoNptConservesExtendedHamiltonian) {
+BENCH_CASE(LammpsParity_Slow_AnisoNptConservesExtendedHamiltonian) {
     constexpr double T_target = 100.0;
     constexpr double dt = 1.0;                      // fs
     constexpr double P_target = 2731.0 * 6.2415e-7; // eV/Å³
@@ -458,10 +459,10 @@ TEST(LammpsParity, Slow_AnisoNptConservesExtendedHamiltonian) {
     // split is symplectic. The bound matches the isotropic-case gate
     // (Slow_NptConservesExtendedHamiltonian, 1e-3 eV); the observed
     // residual is far tighter (~5e-5 eV).
-    EXPECT_LE(max_abs_drift, 1.0e-3)
+    BM_LE(max_abs_drift, 1.0e-3)
         << "anisotropic MTK extended Hamiltonian left its bounded band — "
            "per-axis Trotter split not symplectic.";
-    EXPECT_LE(secular, 1.0e-3)
+    BM_LE(secular, 1.0e-3)
         << "anisotropic MTK extended Hamiltonian drifts secularly — "
            "per-axis Trotter split not symplectic.";
 }
@@ -473,7 +474,7 @@ TEST(LammpsParity, Slow_AnisoNptConservesExtendedHamiltonian) {
 // `fix npt temp T_start T_stop tau` + `compute_temp_target()`. The
 // measured temperature must track the interpolated setpoint
 // `T_start + delta·(T_stop - T_start)` within thermostat tolerance.
-TEST(LammpsParity, Slow_NptTemperatureRampTracksSetpoint) {
+BENCH_CASE(LammpsParity_Slow_NptTemperatureRampTracksSetpoint) {
     constexpr double T_start = 200.0;
     constexpr double T_stop = 100.0;
     constexpr double P_target = 2731.0 * 6.2415e-7; // eV/Å³
@@ -523,7 +524,7 @@ TEST(LammpsParity, Slow_NptTemperatureRampTracksSetpoint) {
         // sizeable fluctuation for 256 atoms. 30 K tolerance covers both
         // while still proving the measured T is sweeping with the ramp
         // (a no-ramp run would stay near T_start = 200 K throughout).
-        EXPECT_NEAR(T_meas, setpoint, 30.0)
+        BM_NEAR(T_meas, setpoint, 30.0)
             << "measured T does not track the linear ramp setpoint at "
                "run fraction "
             << delta;
@@ -531,6 +532,8 @@ TEST(LammpsParity, Slow_NptTemperatureRampTracksSetpoint) {
 
     // End-of-run sanity: the system must have cooled substantially from
     // its 200 K start toward the 100 K stop — a no-op ramp would not.
-    EXPECT_LT(instantaneous_T(frame), 150.0)
+    BM_LT(instantaneous_T(frame), 150.0)
         << "temperature ramp did not cool the system toward T_stop.";
 }
+
+BENCH_MAIN("MD fix npt — LAMMPS NPT ensemble parity");

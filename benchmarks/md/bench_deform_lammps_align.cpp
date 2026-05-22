@@ -1,5 +1,7 @@
-/// @file tests/cpu/md/test_deform_lammps_align.cpp
-/// @brief LAMMPS `fix deform` API-alignment tests for cpu::md::Deform.
+/// @file benchmarks/md/bench_deform_lammps_align.cpp
+/// @brief LAMMPS `fix deform` API-alignment validation benchmark for
+///        cpu::md::Deform. Ported from the gtest unit-test suite; this is
+///        a third-party-comparison validation benchmark, not a ctest gate.
 ///
 /// Audited against lammps/src/fix_deform.cpp (ERATE / TRATE strain modes
 /// and the L0-at-fix-issue snapshot). Covers:
@@ -15,7 +17,7 @@
 /// under test from the unrelated `DynamicsDriver` requirement that a
 /// Force-capable evaluator be present.
 
-#include <gtest/gtest.h>
+#include "bench_check.h"
 
 #include <cmath>
 
@@ -62,7 +64,7 @@ void run_deform(cpu::md::Deform& deform, cpu::Frame& frame, int n_steps) {
 
 // ── ac-002 / ac-004: Mode::erate reproduces L(t) = L0*(1 + R*t) ─────────
 
-TEST(DeformLammpsAlign, ErateLinearEngineeringStrainTrajectory) {
+BENCH_CASE(DeformLammpsAlign_ErateLinearEngineeringStrainTrajectory) {
     const double L0 = 40.0;   // Angstrom
     const double dt = 1.0;    // fs
     const double rate = 1e-3; // 1/fs
@@ -74,17 +76,17 @@ TEST(DeformLammpsAlign, ErateLinearEngineeringStrainTrajectory) {
 
     // LAMMPS fix deform ERATE: L = L0*(1 + R*t_elapsed), t_elapsed = N*dt.
     const double expected = L0 * (1.0 + rate * N * dt);
-    EXPECT_NEAR(frame.box(0, 0), expected, 1e-9)
+    BM_NEAR(frame.box(0, 0), expected, 1e-9)
         << "erate box edge diverged from L0*(1+R*t)";
 
     // y and z untouched.
-    EXPECT_DOUBLE_EQ(frame.box(1, 1), L0);
-    EXPECT_DOUBLE_EQ(frame.box(2, 2), L0);
+    BM_DOUBLE_EQ(frame.box(1, 1), L0);
+    BM_DOUBLE_EQ(frame.box(2, 2), L0);
 }
 
 // ── ac-002 / ac-003: Mode::trate reproduces L(t) = L0*exp(R*t) ──────────
 
-TEST(DeformLammpsAlign, TrateExponentialTrueStrainTrajectory) {
+BENCH_CASE(DeformLammpsAlign_TrateExponentialTrueStrainTrajectory) {
     const double L0 = 40.0;
     const double dt = 1.0;
     const double rate = 1e-3;
@@ -96,18 +98,18 @@ TEST(DeformLammpsAlign, TrateExponentialTrueStrainTrajectory) {
 
     // LAMMPS fix deform TRATE: L = L0*exp(R*t_elapsed).
     const double expected = L0 * std::exp(rate * N * dt);
-    EXPECT_NEAR(frame.box(0, 0), expected, 1e-9)
+    BM_NEAR(frame.box(0, 0), expected, 1e-9)
         << "trate box edge diverged from L0*exp(R*t)";
 
     // erate and trate must differ beyond first order.
     const double erate_value = L0 * (1.0 + rate * N * dt);
-    EXPECT_GT(std::abs(frame.box(0, 0) - erate_value), 1e-6)
+    BM_GT(std::abs(frame.box(0, 0) - erate_value), 1e-6)
         << "trate must be distinct from erate beyond first order";
 }
 
 // ── erate affine remap: atom coords scale with the box edge ─────────────
 
-TEST(DeformLammpsAlign, ErateAffinelyRemapsAtomCoordinates) {
+BENCH_CASE(DeformLammpsAlign_ErateAffinelyRemapsAtomCoordinates) {
     const double L0 = 40.0;
     const double dt = 1.0;
     const double rate = 2e-3;
@@ -120,7 +122,7 @@ TEST(DeformLammpsAlign, ErateAffinelyRemapsAtomCoordinates) {
     run_deform(deform, frame, N);
 
     const double box_factor = (1.0 + rate * N * dt);
-    EXPECT_NEAR(frame.atoms.x[1], x0_atom1 * box_factor, 1e-9)
+    BM_NEAR(frame.atoms.x[1], x0_atom1 * box_factor, 1e-9)
         << "erate did not affinely remap atom x coordinate";
 }
 
@@ -134,7 +136,7 @@ TEST(DeformLammpsAlign, ErateAffinelyRemapsAtomCoordinates) {
 // simulation-initial box gave all-negative strain. After this fix the
 // strain must reference the 73 A activation-time length: a positive ramp.
 
-TEST(DeformLammpsAlign, ErateReferencesActivationLengthNotSimInitial) {
+BENCH_CASE(DeformLammpsAlign_ErateReferencesActivationLengthNotSimInitial) {
     const double L_sim_initial = 80.0; // box at frame construction
     const double L_activation = 73.0;  // box edge AFTER NPT compression
     const double dt = 1.0;
@@ -155,22 +157,22 @@ TEST(DeformLammpsAlign, ErateReferencesActivationLengthNotSimInitial) {
         (L_final - L_sim_initial) / L_sim_initial;
 
     // The LAMMPS-correct strain is positive and equals R*N*dt.
-    EXPECT_GT(strain_vs_activation, 0.0)
+    BM_GT(strain_vs_activation, 0.0)
         << "strain must be a positive ramp referenced to activation length";
-    EXPECT_NEAR(strain_vs_activation, rate * N * dt, 1e-9)
+    BM_NEAR(strain_vs_activation, rate * N * dt, 1e-9)
         << "engineering strain must equal R*N*dt referenced to L_activation";
 
     // The buggy sim-initial reference would have reported NEGATIVE strain.
-    EXPECT_LT(strain_vs_sim_initial, 0.0)
+    BM_LT(strain_vs_sim_initial, 0.0)
         << "sanity: sim-initial reference is negative -- the old bug";
 
     // Box edge itself: L_activation*(1 + R*N*dt).
-    EXPECT_NEAR(L_final, L_activation * (1.0 + rate * N * dt), 1e-9);
+    BM_NEAR(L_final, L_activation * (1.0 + rate * N * dt), 1e-9);
 }
 
 // ── trate reference-frame regression: L0 snapshot at activation ─────────
 
-TEST(DeformLammpsAlign, TrateReferencesActivationLength) {
+BENCH_CASE(DeformLammpsAlign_TrateReferencesActivationLength) {
     const double L_activation = 73.0;
     const double dt = 1.0;
     const double rate = 1e-4;
@@ -182,13 +184,13 @@ TEST(DeformLammpsAlign, TrateReferencesActivationLength) {
     cpu::md::Deform deform{cpu::md::Deform::Mode::trate, rate, dt, /*axis=*/0};
     run_deform(deform, frame, N);
 
-    EXPECT_NEAR(frame.box(0, 0), L_activation * std::exp(rate * N * dt), 1e-9)
+    BM_NEAR(frame.box(0, 0), L_activation * std::exp(rate * N * dt), 1e-9)
         << "trate must reference the activation-time box edge";
 }
 
 // ── build() re-arms the snapshot -- a rebuilt driver re-references L0 ────
 
-TEST(DeformLammpsAlign, RebuildReSnapshotsActivationLength) {
+BENCH_CASE(DeformLammpsAlign_RebuildReSnapshotsActivationLength) {
     const double dt = 1.0;
     const double rate = 1e-3;
     const int N = 30;
@@ -198,19 +200,19 @@ TEST(DeformLammpsAlign, RebuildReSnapshotsActivationLength) {
     // First segment from L = 40.
     auto frame_a = make_two_atom_box(40.0);
     run_deform(deform, frame_a, N);
-    EXPECT_NEAR(frame_a.box(0, 0), 40.0 * (1.0 + rate * N * dt), 1e-9);
+    BM_NEAR(frame_a.box(0, 0), 40.0 * (1.0 + rate * N * dt), 1e-9);
 
     // Second segment: same component, different box edge. build() must
     // re-snapshot L0 so strain references the new activation length.
     auto frame_b = make_two_atom_box(55.0);
     run_deform(deform, frame_b, N);
-    EXPECT_NEAR(frame_b.box(0, 0), 55.0 * (1.0 + rate * N * dt), 1e-9)
+    BM_NEAR(frame_b.box(0, 0), 55.0 * (1.0 + rate * N * dt), 1e-9)
         << "build() must re-arm the L0 snapshot for a new segment";
 }
 
 // ── set_rate(0) freezes the box; component stays usable ─────────────────
 
-TEST(DeformLammpsAlign, SetRateZeroFreezesBox) {
+BENCH_CASE(DeformLammpsAlign_SetRateZeroFreezesBox) {
     const double L0 = 40.0;
     const double dt = 1.0;
 
@@ -218,19 +220,19 @@ TEST(DeformLammpsAlign, SetRateZeroFreezesBox) {
 
     cpu::md::Deform deform{cpu::md::Deform::Mode::erate, 1e-3, dt, /*axis=*/0};
     deform.set_rate(0.0);
-    EXPECT_DOUBLE_EQ(deform.rate(), 0.0);
-    EXPECT_EQ(deform.mode(), cpu::md::Deform::Mode::erate);
+    BM_DOUBLE_EQ(deform.rate(), 0.0);
+    BM_EQ(deform.mode(), cpu::md::Deform::Mode::erate);
 
     run_deform(deform, frame, 100);
 
-    EXPECT_DOUBLE_EQ(frame.box(0, 0), L0) << "set_rate(0) must freeze the box";
-    EXPECT_DOUBLE_EQ(frame.atoms.x[1], 0.75 * L0)
+    BM_DOUBLE_EQ(frame.box(0, 0), L0) << "set_rate(0) must freeze the box";
+    BM_DOUBLE_EQ(frame.atoms.x[1], 0.75 * L0)
         << "set_rate(0) must leave atom coordinates untouched";
 }
 
 // ── negative rate compresses (sign convention matches fix deform) ───────
 
-TEST(DeformLammpsAlign, NegativeRateCompresses) {
+BENCH_CASE(DeformLammpsAlign_NegativeRateCompresses) {
     const double L0 = 40.0;
     const double dt = 1.0;
     const double rate = -5e-4;
@@ -240,13 +242,13 @@ TEST(DeformLammpsAlign, NegativeRateCompresses) {
     cpu::md::Deform deform{cpu::md::Deform::Mode::erate, rate, dt, /*axis=*/0};
     run_deform(deform, frame, N);
 
-    EXPECT_LT(frame.box(0, 0), L0) << "negative erate must compress the box";
-    EXPECT_NEAR(frame.box(0, 0), L0 * (1.0 + rate * N * dt), 1e-9);
+    BM_LT(frame.box(0, 0), L0) << "negative erate must compress the box";
+    BM_NEAR(frame.box(0, 0), L0 * (1.0 + rate * N * dt), 1e-9);
 }
 
 // ── axis selection: y axis (axis=1) deforms, x and z untouched ──────────
 
-TEST(DeformLammpsAlign, AxisSelectionDeformsRequestedAxisOnly) {
+BENCH_CASE(DeformLammpsAlign_AxisSelectionDeformsRequestedAxisOnly) {
     const double L0 = 40.0;
     const double dt = 1.0;
     const double rate = 1e-3;
@@ -256,12 +258,9 @@ TEST(DeformLammpsAlign, AxisSelectionDeformsRequestedAxisOnly) {
     cpu::md::Deform deform{cpu::md::Deform::Mode::erate, rate, dt, /*axis=*/1};
     run_deform(deform, frame, N);
 
-    EXPECT_NEAR(frame.box(1, 1), L0 * (1.0 + rate * N * dt), 1e-9);
-    EXPECT_DOUBLE_EQ(frame.box(0, 0), L0);
-    EXPECT_DOUBLE_EQ(frame.box(2, 2), L0);
+    BM_NEAR(frame.box(1, 1), L0 * (1.0 + rate * N * dt), 1e-9);
+    BM_DOUBLE_EQ(frame.box(0, 0), L0);
+    BM_DOUBLE_EQ(frame.box(2, 2), L0);
 }
 
-int main(int argc, char** argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}
+BENCH_MAIN("MD fix deform — LAMMPS API alignment");

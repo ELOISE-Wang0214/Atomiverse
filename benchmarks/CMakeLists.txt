@@ -64,3 +64,26 @@ endfunction()
 atv_add_cpp_md_bench(scaling)
 atv_add_cpp_md_bench(polyethylene_tension)
 atv_add_cpp_md_bench(pe_profile_single)
+
+# ── CPU MD LAMMPS-validation benchmarks ───────────────────────────
+# Ported out of the unit-test suite (tests/cpu/md/test_*_lammps_align,
+# test_lammps_*_parity): these compare Atomiverse MD components against
+# LAMMPS reference behaviour and reference ensemble averages. That is a
+# third-party-comparison validation benchmark, not a portable ctest
+# gate — they live here and are run manually, never by CI's `ctest`.
+# Each is a plain executable using the gtest-free PASS/FAIL harness in
+# benchmarks/md/bench_check.h; it returns a non-zero exit code on any
+# failing case.
+function(atv_add_md_validation name)
+    add_executable(${name} md/${name}.cpp)
+    target_link_libraries(${name} PRIVATE atomiverse)
+    set_target_properties(${name} PROPERTIES CXX_STANDARD 17)
+endfunction()
+
+atv_add_md_validation(bench_setup_lammps_align)
+atv_add_md_validation(bench_deform_lammps_align)
+atv_add_md_validation(bench_nve_limit_lammps_align)
+atv_add_md_validation(bench_thermostat_lammps_align)
+atv_add_md_validation(bench_pressure_lammps_align)
+atv_add_md_validation(bench_lammps_langevin_parity)
+atv_add_md_validation(bench_lammps_npt_parity)

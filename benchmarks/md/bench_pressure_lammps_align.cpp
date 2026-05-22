@@ -1,5 +1,8 @@
-/// @file tests/cpu/md/test_pressure_lammps_align.cpp
-/// @brief lammps-api-align-04 — pressure-component alignment with LAMMPS.
+/// @file benchmarks/md/bench_pressure_lammps_align.cpp
+/// @brief lammps-api-align-04 validation benchmark — pressure-component
+///        alignment with LAMMPS. Ported from the gtest unit-test suite;
+///        this is a third-party-comparison validation benchmark, not a
+///        ctest gate.
 ///
 /// Pins the three binding runtime properties of the link:
 ///
@@ -22,7 +25,7 @@
 /// with `P_current` the LAMMPS-standard `compute pressure` scalar
 /// `P = (2·KE + Σ virial)/(3V)`, positive ⇔ compressive.
 
-#include <gtest/gtest.h>
+#include "bench_check.h"
 
 #include "atomiverse/core/constants.h"
 #include "atomiverse/core/mat3.h"
@@ -91,9 +94,9 @@ double lammps_pressure(const cpu::Frame& frame) {
 //     μ³_old = 1 − dt/τ·(P_old)        = 1 + dt/τ·trace/(3V)
 //     μ³_new = 1 − dt/τ·(0 − P_new)    = 1 + dt/τ·P_new
 //            = 1 + dt/τ·trace/(3V)
-// — bit-identical. This test reproduces both arithmetic forms in
+// — bit-identical. This case reproduces both arithmetic forms in
 // double precision and asserts exact equality.
-TEST(PressureLammpsAlign, BerendsenMuInvariantUnderSignFlip) {
+BENCH_CASE(PressureLammpsAlign_BerendsenMuInvariantUnderSignFlip) {
     // A representative over-compressed snapshot: positive virial trace.
     const double trace = 1.7e-2; // eV (Σ virial + Σ kinetic)
     const double V = 1.85e4;     // Å³
@@ -110,12 +113,12 @@ TEST(PressureLammpsAlign, BerendsenMuInvariantUnderSignFlip) {
     const double mu3_new = 1.0 - (dt / tau_P) * (P_target - P_new) / 1.0;
 
     // Representation change — the μ³ argument must be bit-identical.
-    EXPECT_DOUBLE_EQ(mu3_old, mu3_new);
-    EXPECT_DOUBLE_EQ(std::cbrt(mu3_old), std::cbrt(mu3_new));
+    BM_DOUBLE_EQ(mu3_old, mu3_new);
+    BM_DOUBLE_EQ(std::cbrt(mu3_old), std::cbrt(mu3_new));
 
     // And P_new is the LAMMPS positive-compressive sign (trace > 0 ⇒ P > 0).
-    EXPECT_GT(P_new, 0.0);
-    EXPECT_LT(P_old, 0.0);
+    BM_GT(P_new, 0.0);
+    BM_LT(P_old, 0.0);
 }
 
 // ── ac-002 — Barostat applies the LAMMPS-standard sign ──────────────
@@ -124,8 +127,8 @@ TEST(PressureLammpsAlign, BerendsenMuInvariantUnderSignFlip) {
 // (compressive) LAMMPS pressure ⇒ with P_target = 0 the box must
 // EXPAND (μ > 1). The pre-flip code, computing P = −trace/(3V) < 0,
 // produced exactly the same μ at P_target = 0 (proven above); this
-// test pins the *behaviour*: an over-pressured box grows.
-TEST(PressureLammpsAlign, BarostatExpandsOverCompressedBox) {
+// case pins the *behaviour*: an over-pressured box grows.
+BENCH_CASE(PressureLammpsAlign_BarostatExpandsOverCompressedBox) {
     auto frame = make_fcc_argon(4, 4.6, 39.948); // dense ⇒ P > 0
 
     const double dt = 0.5;
@@ -143,19 +146,19 @@ TEST(PressureLammpsAlign, BarostatExpandsOverCompressedBox) {
     const double P0 = lammps_pressure(frame);
 
     // Over-compressed: LAMMPS sign says P > 0 (compressive).
-    EXPECT_GT(P0, 0.0) << "over-compressed box must read positive pressure";
+    BM_GT(P0, 0.0) << "over-compressed box must read positive pressure";
 
     sim.run(frame, 400);
     const double V1 = frame.box.volume();
     const double P1 = lammps_pressure(frame);
 
     for (int i = 0; i < frame.atoms.size(); ++i)
-        ASSERT_FALSE(std::isnan(frame.atoms.x[i]));
+        BM_ASSERT_FALSE(std::isnan(frame.atoms.x[i]));
 
     // Positive (compressive) pressure at P_target = 0 ⇒ box expands.
-    EXPECT_GT(V1, V0) << "compressive pressure must drive box growth";
+    BM_GT(V1, V0) << "compressive pressure must drive box growth";
     // The barostat reduces the pressure magnitude toward the setpoint.
-    EXPECT_LT(std::abs(P1), std::abs(P0));
+    BM_LT(std::abs(P1), std::abs(P0));
 }
 
 // ── ac-004 — bulk_modulus scales the relaxation rate ────────────────
@@ -164,7 +167,7 @@ TEST(PressureLammpsAlign, BarostatExpandsOverCompressedBox) {
 // ⇒ smaller per-step rescale ⇒ slower box relaxation. Two otherwise
 // identical runs differing only in bulk_modulus must reach different
 // volumes, with the larger modulus moving the box less.
-TEST(PressureLammpsAlign, BulkModulusScalesRelaxationRate) {
+BENCH_CASE(PressureLammpsAlign_BulkModulusScalesRelaxationRate) {
     const double dt = 0.5;
     auto run = [&](double bulk_modulus) {
         auto frame = make_fcc_argon(4, 4.6, 39.948);
@@ -185,9 +188,9 @@ TEST(PressureLammpsAlign, BulkModulusScalesRelaxationRate) {
     const double V_stiff = run(50.0); // stiff modulus ⇒ slow relaxation
 
     // Over-compressed ⇒ both expand, but the stiff modulus expands less.
-    EXPECT_GT(V_soft, V0);
-    EXPECT_GT(V_stiff, V0);
-    EXPECT_GT(V_soft - V0, V_stiff - V0)
+    BM_GT(V_soft, V0);
+    BM_GT(V_stiff, V0);
+    BM_GT(V_soft - V0, V_stiff - V0)
         << "larger bulk_modulus must slow the box relaxation";
 }
 
@@ -199,7 +202,7 @@ TEST(PressureLammpsAlign, BulkModulusScalesRelaxationRate) {
 // transient, so the tolerance is loose — the binding claim is that
 // both move the box in the SAME direction toward a COMMON setpoint and
 // that the unified positive-compressive pressure sign holds in both.
-TEST(PressureLammpsAlign, NptAndBarostatRelaxToSameDensity) {
+BENCH_CASE(PressureLammpsAlign_NptAndBarostatRelaxToSameDensity) {
     const double dt = 0.5;
     const double P_target = 0.0;
 
@@ -223,11 +226,11 @@ TEST(PressureLammpsAlign, NptAndBarostatRelaxToSameDensity) {
         V_berendsen = frame.box.volume();
         P_berendsen_1 = lammps_pressure(frame);
         for (int i = 0; i < frame.atoms.size(); ++i)
-            ASSERT_FALSE(std::isnan(frame.atoms.x[i]));
+            BM_ASSERT_FALSE(std::isnan(frame.atoms.x[i]));
         // Unified sign: over-compressed ⇒ P > 0 (compressive), and the
         // barostat drives |P| down toward the setpoint.
-        EXPECT_GT(P_berendsen_0, 0.0);
-        EXPECT_LT(std::abs(P_berendsen_1), std::abs(P_berendsen_0));
+        BM_GT(P_berendsen_0, 0.0);
+        BM_LT(std::abs(P_berendsen_1), std::abs(P_berendsen_0));
     }
 
     // MTK NoseHooverNPT path.
@@ -248,18 +251,20 @@ TEST(PressureLammpsAlign, NptAndBarostatRelaxToSameDensity) {
         sim.run(frame, 2000);
         V_npt = frame.box.volume();
         for (int i = 0; i < frame.atoms.size(); ++i)
-            ASSERT_FALSE(std::isnan(frame.atoms.x[i]));
+            BM_ASSERT_FALSE(std::isnan(frame.atoms.x[i]));
     }
 
     // Both relax an over-compressed box outward toward a common density.
     const double V0 = make_fcc_argon(4, 4.7, 39.948).box.volume();
-    EXPECT_GT(V_berendsen, V0);
-    EXPECT_GT(V_npt, V0);
+    BM_GT(V_berendsen, V0);
+    BM_GT(V_npt, V0);
     // Same equilibrium density within 25 % — the two schemes converge
     // to the same LJ zero-pressure volume from the same start.
     const double rel_diff =
         std::abs(V_berendsen - V_npt) / (0.5 * (V_berendsen + V_npt));
-    EXPECT_LT(rel_diff, 0.25)
+    BM_LT(rel_diff, 0.25)
         << "Berendsen V=" << V_berendsen << " (P0=" << P_berendsen_0
         << " P1=" << P_berendsen_1 << ") vs NPT V=" << V_npt;
 }
+
+BENCH_MAIN("MD pressure / barostats — LAMMPS API alignment");

@@ -1,8 +1,10 @@
-/// @file tests/cpu/md/test_thermostat_lammps_align.cpp
-/// @brief lammps-api-align-03 — runtime checks that FixLangevin and
-///        NoseHoover match LAMMPS `fix langevin` / `fix nvt` semantics:
-///        the `Tstart`→`Tstop` linear temperature ramp and the
-///        damp / tau_T parameter being a *time constant* (not a rate).
+/// @file benchmarks/md/bench_thermostat_lammps_align.cpp
+/// @brief lammps-api-align-03 validation benchmark — runtime checks that
+///        FixLangevin and NoseHoover match LAMMPS `fix langevin` /
+///        `fix nvt` semantics: the `Tstart`→`Tstop` linear temperature
+///        ramp and the damp / tau_T parameter being a *time constant*
+///        (not a rate). Ported from the gtest unit-test suite; this is a
+///        third-party-comparison validation benchmark, not a ctest gate.
 ///
 /// Acceptance: ac-004 (ramp interpolates linearly across the run span),
 /// ac-005 (halving damp/tau_T roughly doubles the relaxation rate),
@@ -16,7 +18,7 @@
 ///   * `set_run_span(nfirst, nlast)` on both, mirroring LAMMPS
 ///     `update->beginstep` / `endstep` captured at run setup.
 
-#include <gtest/gtest.h>
+#include "bench_check.h"
 
 #include "atomiverse/core/constants.h"
 #include "atomiverse/core/mat3.h"
@@ -30,6 +32,7 @@
 #include "atomiverse/cpu/md/velocity_verlet.h"
 
 #include <cmath>
+#include <iostream>
 
 using namespace ATV;
 
@@ -81,7 +84,7 @@ double instantaneous_T(const cpu::Frame& f) {
 // The ctor is `(T_start, T_stop, damp, dt, seed)`. With `T_stop ==
 // T_start` the run is a constant-temperature thermostat — no behavioural
 // change from the pre-spec single-temperature callers.
-TEST(ThermostatLammpsAlign, FixLangevinConstantTemperatureHoldsSetpoint) {
+BENCH_CASE(ThermostatLammpsAlign_FixLangevinConstantTemperatureHoldsSetpoint) {
     constexpr double T = 300.0;
     constexpr double damp = 50.0; // fs
     constexpr double dt = 1.0;    // fs
@@ -96,7 +99,7 @@ TEST(ThermostatLammpsAlign, FixLangevinConstantTemperatureHoldsSetpoint) {
     sim.build();
     sim.run(frame, 3000);
 
-    EXPECT_NEAR(instantaneous_T(frame), T, 0.15 * T)
+    BM_NEAR(instantaneous_T(frame), T, 0.15 * T)
         << "constant-T FixLangevin failed to hold the setpoint";
 }
 
@@ -107,7 +110,7 @@ TEST(ThermostatLammpsAlign, FixLangevinConstantTemperatureHoldsSetpoint) {
 // T_start)`, `delta = (step − nfirst)/(nlast − nfirst) ∈ [0,1]`, exactly
 // as LAMMPS `fix_langevin.cpp::compute_target()`. The measured T must
 // sweep with the ramp.
-TEST(ThermostatLammpsAlign, FixLangevinTemperatureRampTracksSetpoint) {
+BENCH_CASE(ThermostatLammpsAlign_FixLangevinTemperatureRampTracksSetpoint) {
     constexpr double T_start = 150.0;
     constexpr double T_stop = 450.0;
     constexpr double damp = 25.0; // fs (stiff coupling so T tracks)
@@ -137,12 +140,12 @@ TEST(ThermostatLammpsAlign, FixLangevinTemperatureRampTracksSetpoint) {
         std::cerr << "langevin ramp step " << step
                   << ": setpoint = " << setpoint << " K, measured = " << T_meas
                   << " K\n";
-        EXPECT_NEAR(T_meas, setpoint, 60.0)
+        BM_NEAR(T_meas, setpoint, 60.0)
             << "FixLangevin T does not track the linear ramp at fraction "
             << delta;
     }
     // A no-ramp run would stay near T_start; the ramp must have heated it.
-    EXPECT_GT(instantaneous_T(frame), 300.0)
+    BM_GT(instantaneous_T(frame), 300.0)
         << "FixLangevin ramp did not heat the system toward T_stop";
 }
 
@@ -153,7 +156,7 @@ TEST(ThermostatLammpsAlign, FixLangevinTemperatureRampTracksSetpoint) {
 // (T0 ≈ 0) and thermostatting to `T_target`, the approach is
 // exponential `T(t) = T_target·(1 − e^{−2t/damp})`. After a fixed short
 // time the run with the smaller `damp` must be measurably hotter.
-TEST(ThermostatLammpsAlign, FixLangevinDampIsTimeConstant) {
+BENCH_CASE(ThermostatLammpsAlign_FixLangevinDampIsTimeConstant) {
     constexpr double T_target = 400.0;
     constexpr double dt = 1.0;      // fs
     constexpr int relax_steps = 40; // short window, mid-relaxation
@@ -178,13 +181,13 @@ TEST(ThermostatLammpsAlign, FixLangevinDampIsTimeConstant) {
               << "damp=40 → T=" << T_slow << " K\n";
 
     // Faster coupling heats more in the same wall-time window.
-    EXPECT_GT(T_fast, T_slow)
+    BM_GT(T_fast, T_slow)
         << "halving damp did not speed up the relaxation — damp is not "
            "behaving as a time constant";
     // Exponential rise: ratio of (1−e^{−2t/damp}) for damp 20 vs 40 at
     // t = 40 fs is (1−e^{−4})/(1−e^{−2}) ≈ 1.13 — require at least a
     // clear 5% separation to rule out noise.
-    EXPECT_GT(T_fast / std::max(T_slow, 1e-9), 1.05)
+    BM_GT(T_fast / std::max(T_slow, 1e-9), 1.05)
         << "relaxation-rate ratio too small for a halved time constant";
 }
 
@@ -193,7 +196,7 @@ TEST(ThermostatLammpsAlign, FixLangevinDampIsTimeConstant) {
 // NoseHoover exposes `tau_T` (renamed from `tau`) and a `T_stop` ramp.
 // With a run span set, the live setpoint sweeps linearly, mirroring
 // LAMMPS `fix_nh.cpp::compute_temp_target()`.
-TEST(ThermostatLammpsAlign, NoseHooverTemperatureRampTracksSetpoint) {
+BENCH_CASE(ThermostatLammpsAlign_NoseHooverTemperatureRampTracksSetpoint) {
     constexpr double T_start = 200.0;
     constexpr double T_stop = 500.0;
     constexpr double tau_T = 30.0; // fs
@@ -229,11 +232,11 @@ TEST(ThermostatLammpsAlign, NoseHooverTemperatureRampTracksSetpoint) {
         const double T_meas = instantaneous_T(frame);
         std::cerr << "nvt ramp step " << step << ": setpoint = " << setpoint
                   << " K, measured = " << T_meas << " K\n";
-        EXPECT_NEAR(T_meas, setpoint, 70.0)
+        BM_NEAR(T_meas, setpoint, 70.0)
             << "NoseHoover T does not track the linear ramp at fraction "
             << delta;
     }
-    EXPECT_GT(instantaneous_T(frame), 350.0)
+    BM_GT(instantaneous_T(frame), 350.0)
         << "NoseHoover ramp did not heat the system toward T_stop";
 }
 
@@ -243,7 +246,7 @@ TEST(ThermostatLammpsAlign, NoseHooverTemperatureRampTracksSetpoint) {
 // stiffens the coupling and roughly doubles the temperature-relaxation
 // rate. Start hot (2·T_target) and thermostat down: after a fixed
 // window the stiffer (smaller tau_T) run must be measurably colder.
-TEST(ThermostatLammpsAlign, NoseHooverTauIsTimeConstant) {
+BENCH_CASE(ThermostatLammpsAlign_NoseHooverTauIsTimeConstant) {
     constexpr double T_target = 200.0;
     constexpr double T_init = 400.0;
     constexpr double dt = 1.0; // fs
@@ -273,7 +276,7 @@ TEST(ThermostatLammpsAlign, NoseHooverTauIsTimeConstant) {
 
     // The stiffer coupling pulls the temperature toward the setpoint
     // faster — the smaller-tau run is closer to T_target.
-    EXPECT_LT(std::abs(T_stiff - T_target), std::abs(T_soft - T_target))
+    BM_LT(std::abs(T_stiff - T_target), std::abs(T_soft - T_target))
         << "halving tau_T did not speed up the NVT relaxation — tau_T is "
            "not behaving as a time constant";
 }
@@ -282,7 +285,7 @@ TEST(ThermostatLammpsAlign, NoseHooverTauIsTimeConstant) {
 //
 // A constant-T NoseHoover run reaches and holds the target mean
 // temperature, consistent with LAMMPS `fix nvt` at the same setpoint.
-TEST(ThermostatLammpsAlign, NoseHooverHoldsMeanTemperature) {
+BENCH_CASE(ThermostatLammpsAlign_NoseHooverHoldsMeanTemperature) {
     constexpr double T_target = 300.0;
     constexpr double tau_T = 100.0; // fs
     constexpr double dt = 1.0;      // fs
@@ -311,6 +314,8 @@ TEST(ThermostatLammpsAlign, NoseHooverHoldsMeanTemperature) {
     }
     const double T_mean = T_sum / samples;
     std::cerr << "nvt equilibration <T> = " << T_mean << " K\n";
-    EXPECT_NEAR(T_mean, T_target, 0.10 * T_target)
+    BM_NEAR(T_mean, T_target, 0.10 * T_target)
         << "NoseHoover NVT mean temperature off the LAMMPS setpoint";
 }
+
+BENCH_MAIN("MD thermostats — LAMMPS API alignment");

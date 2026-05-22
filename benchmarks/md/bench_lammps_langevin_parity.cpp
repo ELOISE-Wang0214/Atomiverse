@@ -1,6 +1,8 @@
-/// @file tests/cpu/md/test_lammps_langevin_parity.cpp
+/// @file benchmarks/md/bench_lammps_langevin_parity.cpp
 /// @brief Quantitative parity check: Atomiverse FixLangevin vs LAMMPS
-///        `fix langevin` on a 256-atom LJ-argon NVT system.
+///        `fix langevin` on a 256-atom LJ-argon NVT system. Ported from
+///        the gtest unit-test suite; this is a third-party-comparison
+///        validation benchmark, not a ctest gate.
 ///
 /// Reference run (LAMMPS `units metal`):
 ///   benchmarks/md/validation/lammps_langevin_nvt/in.langevin_nvt
@@ -32,12 +34,8 @@
 /// residual at finite ratio. Here dt/damp = 0.01 ⇒ residual ~ 1.3%, which
 /// matches what we observe. Tightening this gate further requires porting
 /// the LAMMPS half-step split — tracked as a future spec.
-///
-/// Marked SLOW (`Slow_*` test prefix) — 100 000 steps × 256 atoms ≈ a few
-/// seconds, but more than the cheap-test default. Run with
-/// `ctest -R lammps_langevin_parity --output-on-failure`.
 
-#include <gtest/gtest.h>
+#include "bench_check.h"
 
 #include "atomiverse/core/constants.h"
 #include "atomiverse/core/mat3.h"
@@ -50,6 +48,7 @@
 #include "atomiverse/cpu/md/velocity_verlet.h"
 
 #include <cmath>
+#include <iostream>
 
 using namespace ATV;
 
@@ -109,7 +108,7 @@ double instantaneous_KE_eV(const cpu::Frame& f) {
 
 } // namespace
 
-TEST(LammpsParity, Slow_LangevinNvtMatchesLammpsEnsembleAverages) {
+BENCH_CASE(LammpsParity_Slow_LangevinNvtMatchesLammpsEnsembleAverages) {
     constexpr double T_target = 300.0;
     constexpr double damp = 100.0;        // fs
     constexpr double dt = 1.0;            // fs
@@ -161,7 +160,8 @@ TEST(LammpsParity, Slow_LangevinNvtMatchesLammpsEnsembleAverages) {
               << "Δ(T)/T_target = " << (T_rel * 100.0) << "%, "
               << "Δ(KE)/<KE>   = " << (KE_rel * 100.0) << "%\n";
 
-    EXPECT_LE(T_rel, 0.02) << "Langevin <T> drifts > 2% from LAMMPS reference.";
-    EXPECT_LE(KE_rel, 0.02)
-        << "Langevin <KE> drifts > 2% from LAMMPS reference.";
+    BM_LE(T_rel, 0.02) << "Langevin <T> drifts > 2% from LAMMPS reference.";
+    BM_LE(KE_rel, 0.02) << "Langevin <KE> drifts > 2% from LAMMPS reference.";
 }
+
+BENCH_MAIN("MD fix langevin — LAMMPS NVT ensemble parity");

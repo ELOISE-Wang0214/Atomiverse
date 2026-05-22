@@ -77,13 +77,11 @@ target_compile_definitions(test_cpu_md_msu_reference_inputs PRIVATE
 atv_add_cpp_test(test_cpu_lammps_data_loader      cpu/test_lammps_data_loader.cpp)
 target_compile_definitions(test_cpu_lammps_data_loader PRIVATE
     ATV_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-atv_add_cpp_test(test_cpu_md_lammps_langevin_parity cpu/md/test_lammps_langevin_parity.cpp)
-atv_add_cpp_test(test_cpu_md_lammps_npt_parity      cpu/md/test_lammps_npt_parity.cpp)
-atv_add_cpp_test(test_deform_lammps_align           cpu/md/test_deform_lammps_align.cpp)
-atv_add_cpp_test(test_nve_limit_lammps_align        cpu/md/test_nve_limit_lammps_align.cpp)
-atv_add_cpp_test(test_thermostat_lammps_align       cpu/md/test_thermostat_lammps_align.cpp)
-atv_add_cpp_test(test_pressure_lammps_align         cpu/md/test_pressure_lammps_align.cpp)
-atv_add_cpp_test(test_setup_lammps_align            cpu/md/test_setup_lammps_align.cpp)
+# LAMMPS API-alignment / parity checks are third-party-comparison
+# validation benchmarks, not portable ctest gates — they now live under
+# benchmarks/md/bench_*_lammps_align.cpp and
+# benchmarks/md/bench_lammps_*_parity.cpp, built with
+# -DATV_BUILD_BENCHMARKS=ON.
 atv_add_cpp_test(test_cpu_md_neighbor_list_arena  cpu/md/test_neighbor_list_arena.cpp)
 atv_add_cpp_test(test_cpu_md_neighbor_list_rebuild  cpu/md/test_neighbor_list_rebuild.cpp)
 atv_add_cpp_test(test_cpu_md_pe_nvt               cpu/md/test_pe_nvt.cpp)
