@@ -140,16 +140,16 @@ enum class Mode { full, nvt, npt, tension, single_stage };
 struct Args {
     Mode mode = Mode::full;
     int single_stage_id = 1; ///< 1..5 when mode == single_stage
-    /// Per-stage step counts. Defaults are scaled-down from `lammps.in`
-    /// so the benchmark completes in minutes for CI smoke runs; large
-    /// runs override via `--scale N` (multiplies every stage's step
-    /// count).
-    int stage1_steps = 2000;  ///< NVELimit+Langevin @ 500 K
-    int stage2_steps = 5000;  ///< NPT @ 500 K
-    int stage3_steps = 5000;  ///< NPT cool 500 → 100 K
-    int stage4_steps = 5000;  ///< NPT @ 100 K
-    int stage5_steps = 10000; ///< tension along x
-    double scale = 1.0;       ///< multiplier on each stage's steps
+    /// Per-stage step counts — byte-aligned with `lammps.in` /
+    /// `lammps_msu_paper.in`, the immutable MSU reference protocol, so a
+    /// plain run reproduces the reference exactly. `--scale F` multiplies
+    /// every stage; pass F < 1 (e.g. 0.05) for a quick smoke run.
+    int stage1_steps = 10000;  ///< NVELimit+Langevin @ 500 K  (run 10000)
+    int stage2_steps = 50000;  ///< NPT @ 500 K                (run 50000)
+    int stage3_steps = 50000;  ///< NPT cool 500 → 100 K       (run 50000)
+    int stage4_steps = 50000;  ///< NPT @ 100 K                (run 50000)
+    int stage5_steps = 171800; ///< tension along x            (run 171800)
+    double scale = 1.0;        ///< multiplier on each stage's steps
 
     int print_every = 100;
     int chains_per_axis = 4;
