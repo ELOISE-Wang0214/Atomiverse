@@ -115,6 +115,16 @@ class SCFEvaluator : public cuda::ComponentBase {
     /// @param ctx Destroy context (CUDA stream + device frame).
     void destroy(const DestroyContext& ctx) override;
 
+    /// @brief Access the converged SCF workspace (density matrix, MO
+    ///        coefficients, orbital energies, convergence state).
+    ///
+    /// Valid after `build()`. Downstream `finalize`-phase observers and
+    /// recorders (`MullikenObs`, `DensityRecorder`) hold a reference to
+    /// this evaluator and read the converged density through here, since
+    /// the SCF workspace is no longer carried on `cuda::Frame`.
+    /// @return The device-resident SCF workspace.
+    const SCFWorkspace& workspace() const { return solver_->workspace(); }
+
   private:
     std::unique_ptr<SCFSolver> solver_; ///< Owned inner SCF solver.
 };

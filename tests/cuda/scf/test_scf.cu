@@ -140,8 +140,8 @@ TEST(SCF, CUDAConvergence) {
     eval.build();
     eval.run(frame);
 
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.energy)));
-    EXPECT_GT(frame.energy, double(0));
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.energy)));
+    EXPECT_GT(frame.scalars.energy, double(0));
 }
 
 TEST(SCF, CUDAReproducibility) {
@@ -158,8 +158,8 @@ TEST(SCF, CUDAReproducibility) {
         eval.run(*f);
     }
 
-    EXPECT_NEAR(static_cast<double>(frame1.energy),
-                static_cast<double>(frame2.energy), 1e-10);
+    EXPECT_NEAR(static_cast<double>(frame1.scalars.energy),
+                static_cast<double>(frame2.scalars.energy), 1e-10);
 }
 
 TEST(SCF, CUDASinglePointHelper) {
@@ -180,8 +180,8 @@ TEST(SCF, CUDASinglePointHelper) {
         cuda::single_point(frame_helper, scf);
     }
 
-    EXPECT_NEAR(static_cast<double>(frame_direct.energy),
-                static_cast<double>(frame_helper.energy), 1e-10);
+    EXPECT_NEAR(static_cast<double>(frame_direct.scalars.energy),
+                static_cast<double>(frame_helper.scalars.energy), 1e-10);
 }
 
 TEST(SCF, CUDAAlphaEffect) {
@@ -202,9 +202,9 @@ TEST(SCF, CUDAAlphaEffect) {
         eval.run(frame_a1);
     }
 
-    EXPECT_NE(frame_a0.energy, frame_a1.energy);
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame_a0.energy)));
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame_a1.energy)));
+    EXPECT_NE(frame_a0.scalars.energy, frame_a1.scalars.energy);
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame_a0.scalars.energy)));
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame_a1.scalars.energy)));
 }
 
 TEST(SCF, CUDAMaxIterCap) {
@@ -222,7 +222,7 @@ TEST(SCF, CUDAMaxIterCap) {
 
     // The run must terminate (no hang) and leave a finite energy even
     // though the tight tolerance is not met within 3 iterations.
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.energy)));
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.energy)));
 }
 
 TEST(SCF, EvaluateRejectsFrameWithNoEvaluator) {
@@ -285,7 +285,7 @@ TEST(SCF, CPUCUDAParity) {
 
     // Energy must agree within float tolerance
     double cpu_e = static_cast<double>(cpu_result.energy);
-    double cuda_e = static_cast<double>(frame.energy);
+    double cuda_e = static_cast<double>(frame.scalars.energy);
     double rel_tol = (sizeof(double) == sizeof(float)) ? 1e-4 : 1e-8;
 
     EXPECT_NEAR(cpu_e, cuda_e, std::abs(cpu_e) * rel_tol + 1e-6)
@@ -309,7 +309,7 @@ TEST(SCF, CPUCUDAParityN16) {
     }
 
     double cpu_e = static_cast<double>(cpu_result.energy);
-    double cuda_e = static_cast<double>(frame.energy);
+    double cuda_e = static_cast<double>(frame.scalars.energy);
     double rel_tol = (sizeof(double) == sizeof(float)) ? 1e-4 : 1e-8;
 
     EXPECT_NEAR(cpu_e, cuda_e, std::abs(cpu_e) * rel_tol + 1e-6)

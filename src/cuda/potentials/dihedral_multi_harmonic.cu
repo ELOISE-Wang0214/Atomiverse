@@ -199,8 +199,9 @@ void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
     int grid = grid_size(static_cast<int>(nd));
     multi_harmonic_dihedral_k<<<grid, block, block * sizeof(work_t), stream>>>(
         f.atoms.x, f.atoms.y, f.atoms.z, f.atoms.fx, f.atoms.fy, f.atoms.fz,
-        f.energy, f.dihedrals.atomi, f.dihedrals.atomj, f.dihedrals.atomk,
-        f.dihedrals.atoml, f.dihedrals.type, state_->d_C, f.box, nd);
+        &f.scalars->energy, f.dihedrals.atomi, f.dihedrals.atomj,
+        f.dihedrals.atomk, f.dihedrals.atoml, f.dihedrals.type, state_->d_C,
+        f.box, nd);
 }
 
 void DihedralMultiHarmonic::destroy(const DestroyContext& /*ctx*/) {

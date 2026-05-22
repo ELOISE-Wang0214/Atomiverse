@@ -1,6 +1,6 @@
 ---
 title: cuda/torch Frame cleanup, materializers, and three-Frame alignment
-status: approved
+status: code-complete
 created: 2026-05-22
 follows: rust-frame-lowering-03-python-path
 ---
@@ -39,12 +39,14 @@ follows: rust-frame-lowering-03-python-path
 
 ## Tasks
 
-- [ ] Remove SCFWorkspace from cuda::Frame and relocate it to CUDA SCF components
-- [ ] Remove PairList from cuda::Frame and relocate it to CUDA NeighborList
-- [ ] Align cuda::Frame and torch::Frame with cpu::Frame (SystemScalars, tag/image/conserved)
-- [ ] Implement cuda::materialize and torch::materialize with explicit H2D / D2H
-- [ ] Update CLAUDE.md and notes for the finalized Frame model
-- [ ] Run full check + test suite
+- [x] Remove SCFWorkspace from cuda::Frame and relocate it to CUDA SCF components
+- [x] Remove PairList from cuda::Frame and relocate it to CUDA NeighborList
+- [x] Align cuda::Frame and torch::Frame with cpu::Frame (SystemScalars, tag/image/conserved)
+- [x] Implement cuda::materialize and torch::materialize with explicit H2D / D2H
+- [x] Update CLAUDE.md and notes for the finalized Frame model
+- [x] Run full check + test suite
+- [x] Hygiene: pure relocation refactor — no legacy/shims/dead code introduced
+      (transfer.cu's now-unused copy_*_prec helpers deleted in the rewrite)
 
 ## Testing strategy
 

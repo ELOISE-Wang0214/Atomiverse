@@ -41,9 +41,9 @@ __global__ void init_h0_kernel(prec_t* H0, int n) {
 
 // ── Lifecycle ────────────────────────────────────────────────────────
 
-void Hamiltonian::build(const BuildContext& ctx) {
+void Hamiltonian::build(const BuildContext& ctx, SCFWorkspace& ws) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
-    auto& scf = ctx.frame.scf;
+    auto& scf = ws;
     int n = ctx.frame.n_atoms();
 
     // Store metadata
@@ -82,8 +82,8 @@ void Hamiltonian::build(const BuildContext& ctx) {
     cudaStreamSynchronize(stream);
 }
 
-void Hamiltonian::step(const LaunchContext& ctx) {
-    auto& scf = ctx.frame.scf;
+void Hamiltonian::step(const LaunchContext& ctx, SCFWorkspace& ws) {
+    auto& scf = ws;
     if (scf.converged)
         return;
 
@@ -101,7 +101,7 @@ void Hamiltonian::step(const LaunchContext& ctx) {
     detail::axpy(handle, nn, &alpha, scf.P, 1, scf.H, 1);
 }
 
-void Hamiltonian::destroy(const DestroyContext& /*ctx*/) {
+void Hamiltonian::destroy(const DestroyContext& /*ctx*/, SCFWorkspace& /*ws*/) {
     if (cublas_handle_) {
         cublasDestroy(static_cast<cublasHandle_t>(cublas_handle_));
         cublas_handle_ = nullptr;

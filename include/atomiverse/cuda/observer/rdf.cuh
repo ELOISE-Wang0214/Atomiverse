@@ -16,6 +16,7 @@
 
 #include "atomiverse/cpu/observer/rdf.h"
 #include "atomiverse/cuda/async_bridge.cuh"
+#include "atomiverse/cuda/neighbor_list.cuh"
 #include "atomiverse/cuda/types.cuh"
 
 namespace ATV {
@@ -56,16 +57,18 @@ class RDF : public AsyncBridge {
         box_vol_ = std::abs(ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx)
                             + az * (bx * cy - by * cx));
 
-        // D2H pair capacity to size pinned buffer.
+        // D2H pair capacity to size pinned buffer. The pair list is owned by
+        // NeighborList and published on the context.
         int cap = 0;
-        if (frame.pairs.capacity) {
-            cudaMemcpyAsync(&cap, frame.pairs.capacity, sizeof(int),
+        const PairList* pairs = ctx.runtime.pair_list;
+        if (pairs && pairs->capacity) {
+            cudaMemcpyAsync(&cap, pairs->capacity, sizeof(int),
                             cudaMemcpyDeviceToHost, stream);
             cudaStreamSynchronize(stream);
         }
         pair_capacity_ = static_cast<int>(cap);
 
-        // frame.pairs.dist is a real_t device buffer -- size by real_t.
+        // pairs->dist is a real_t device buffer -- size by real_t.
         if (pair_capacity_ > 0) {
             cudaMallocHost(&h_dist_, pair_capacity_ * sizeof(real_t));
             dist_.resize(static_cast<size_t>(pair_capacity_));
@@ -77,16 +80,18 @@ class RDF : public AsyncBridge {
     }
 
     bool can_run(const LaunchContext& ctx) const override {
-        return ctx.frame.pairs.n_pairs != nullptr && pair_capacity_ > 0;
+        const PairList* pairs = ctx.runtime.pair_list;
+        return pairs != nullptr && pairs->n_pairs != nullptr
+               && pair_capacity_ > 0;
     }
 
     void issue_d2h(const LaunchContext& ctx) override {
         auto ds = static_cast<cudaStream_t>(ctx.runtime.defer_stream);
-        cudaMemcpyAsync(h_n_pairs_, ctx.frame.pairs.n_pairs, sizeof(int),
+        const PairList* pairs = ctx.runtime.pair_list;
+        cudaMemcpyAsync(h_n_pairs_, pairs->n_pairs, sizeof(int),
                         cudaMemcpyDeviceToHost, ds);
-        cudaMemcpyAsync(h_dist_, ctx.frame.pairs.dist,
-                        pair_capacity_ * sizeof(real_t), cudaMemcpyDeviceToHost,
-                        ds);
+        cudaMemcpyAsync(h_dist_, pairs->dist, pair_capacity_ * sizeof(real_t),
+                        cudaMemcpyDeviceToHost, ds);
     }
 
     void on_data_ready(const LaunchContext&) override {

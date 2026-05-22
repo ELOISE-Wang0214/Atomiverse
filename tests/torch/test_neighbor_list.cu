@@ -1,5 +1,10 @@
 /// @file tests/test_torch_neighbor_list.cu
 /// @brief Tests for torch NeighborList operator.
+///
+/// The neighbor pair list is owned by `torch::NeighborList` (its nested
+/// `PairList`), not by `torch::Frame`. The convenience `neighbor_list()`
+/// free function returns the built NeighborList so callers can read
+/// `nl.pairs()`.
 
 #include <gtest/gtest.h>
 
@@ -49,62 +54,65 @@ TEST(TorchNeighborList, CubicLatticePairCount) {
     double cutoff = double(4.0);
     auto frame = make_cubic_frame(3, box_len);
 
-    atorch::neighbor_list(frame, cutoff, double(0));
+    auto nl = atorch::neighbor_list(frame, cutoff, double(0));
 
     // Exact count depends on cluster algorithm; just check populated
-    EXPECT_GT(frame.n_pairs(), 0);
-    EXPECT_TRUE(frame.pair_i.defined());
-    EXPECT_TRUE(frame.pair_j.defined());
-    EXPECT_TRUE(frame.pair_dist.defined());
+    EXPECT_GT(nl.n_pairs(), 0);
+    EXPECT_TRUE(nl.pairs().pair_i.defined());
+    EXPECT_TRUE(nl.pairs().pair_j.defined());
+    EXPECT_TRUE(nl.pairs().pair_dist.defined());
 }
 
 TEST(TorchNeighborList, PairTensorsNoGrad) {
     auto frame = make_cubic_frame(3, double(10.0));
 
-    atorch::neighbor_list(frame, double(4.0), double(0));
-    ASSERT_GT(frame.n_pairs(), 0);
+    auto nl = atorch::neighbor_list(frame, double(4.0), double(0));
+    ASSERT_GT(nl.n_pairs(), 0);
 
-    EXPECT_FALSE(frame.pair_i.requires_grad());
-    EXPECT_FALSE(frame.pair_j.requires_grad());
-    EXPECT_FALSE(frame.pair_dx.requires_grad());
-    EXPECT_FALSE(frame.pair_dy.requires_grad());
-    EXPECT_FALSE(frame.pair_dz.requires_grad());
-    EXPECT_FALSE(frame.pair_dist.requires_grad());
+    const auto& pairs = nl.pairs();
+    EXPECT_FALSE(pairs.pair_i.requires_grad());
+    EXPECT_FALSE(pairs.pair_j.requires_grad());
+    EXPECT_FALSE(pairs.pair_dx.requires_grad());
+    EXPECT_FALSE(pairs.pair_dy.requires_grad());
+    EXPECT_FALSE(pairs.pair_dz.requires_grad());
+    EXPECT_FALSE(pairs.pair_dist.requires_grad());
 }
 
 TEST(TorchNeighborList, PairTensorsAreSelfContained) {
     auto frame = make_cubic_frame(3, double(10.0));
 
-    atorch::neighbor_list(frame, double(4.0), double(0));
-    ASSERT_GT(frame.n_pairs(), 0);
+    auto nl = atorch::neighbor_list(frame, double(4.0), double(0));
+    ASSERT_GT(nl.n_pairs(), 0);
 
-    EXPECT_TRUE(frame.pair_i.is_cuda());
-    EXPECT_TRUE(frame.pair_i.is_contiguous());
-    EXPECT_EQ(frame.pair_i.scalar_type(), atorch::kIntDtype);
+    const auto& pairs = nl.pairs();
+    EXPECT_TRUE(pairs.pair_i.is_cuda());
+    EXPECT_TRUE(pairs.pair_i.is_contiguous());
+    EXPECT_EQ(pairs.pair_i.scalar_type(), atorch::kIntDtype);
 
-    EXPECT_TRUE(frame.pair_dist.is_cuda());
-    EXPECT_TRUE(frame.pair_dist.is_contiguous());
-    EXPECT_EQ(frame.pair_dist.scalar_type(), atorch::kRealDtype);
+    EXPECT_TRUE(pairs.pair_dist.is_cuda());
+    EXPECT_TRUE(pairs.pair_dist.is_contiguous());
+    EXPECT_EQ(pairs.pair_dist.scalar_type(), atorch::kRealDtype);
 
-    int64_t np = static_cast<int64_t>(frame.n_pairs());
-    EXPECT_EQ(frame.pair_i.numel(), np);
-    EXPECT_EQ(frame.pair_j.numel(), np);
-    EXPECT_EQ(frame.pair_dx.numel(), np);
-    EXPECT_EQ(frame.pair_dist.numel(), np);
+    int64_t np = static_cast<int64_t>(nl.n_pairs());
+    EXPECT_EQ(pairs.pair_i.numel(), np);
+    EXPECT_EQ(pairs.pair_j.numel(), np);
+    EXPECT_EQ(pairs.pair_dx.numel(), np);
+    EXPECT_EQ(pairs.pair_dist.numel(), np);
 }
 
 TEST(TorchNeighborList, DistanceConsistency) {
     auto frame = make_cubic_frame(3, double(10.0));
 
-    atorch::neighbor_list(frame, double(4.0), double(0));
-    ASSERT_GT(frame.n_pairs(), 0);
+    auto nl = atorch::neighbor_list(frame, double(4.0), double(0));
+    ASSERT_GT(nl.n_pairs(), 0);
 
-    auto dx = frame.pair_dx.to(::torch::kCPU);
-    auto dy = frame.pair_dy.to(::torch::kCPU);
-    auto dz = frame.pair_dz.to(::torch::kCPU);
-    auto dist = frame.pair_dist.to(::torch::kCPU);
+    const auto& pairs = nl.pairs();
+    auto dx = pairs.pair_dx.to(::torch::kCPU);
+    auto dy = pairs.pair_dy.to(::torch::kCPU);
+    auto dz = pairs.pair_dz.to(::torch::kCPU);
+    auto dist = pairs.pair_dist.to(::torch::kCPU);
 
-    for (int64_t p = 0; p < frame.n_pairs(); ++p) {
+    for (int64_t p = 0; p < nl.n_pairs(); ++p) {
         double d = dx[p].item<double>();
         double e = dy[p].item<double>();
         double f = dz[p].item<double>();
@@ -120,18 +128,21 @@ TEST(TorchNeighborList, PairListFeedsLJ) {
     auto real_opts = ::torch::TensorOptions()
                          .dtype(atorch::kRealDtype)
                          .device(::torch::kCUDA);
+    auto scalar_opts = ::torch::TensorOptions()
+                           .dtype(::at::ScalarType::Double)
+                           .device(::torch::kCUDA);
 
     int n = frame.n_atoms();
     frame.atoms.fx = ::torch::zeros({n}, real_opts);
     frame.atoms.fy = ::torch::zeros({n}, real_opts);
     frame.atoms.fz = ::torch::zeros({n}, real_opts);
-    frame.energy = ::torch::zeros({1}, real_opts);
+    frame.energy = ::torch::zeros({1}, scalar_opts);
 
-    atorch::neighbor_list(frame, double(4.0), double(0));
-    ASSERT_GT(frame.n_pairs(), 0);
+    auto nl = atorch::neighbor_list(frame, double(4.0), double(0));
+    ASSERT_GT(nl.n_pairs(), 0);
 
     double eps = double(1.0), sig = double(1.0);
-    auto energy = atorch::lj(frame, ::torch::tensor({eps}, real_opts),
+    auto energy = atorch::lj(frame, nl, ::torch::tensor({eps}, real_opts),
                              ::torch::tensor({sig}, real_opts), double(4.0));
     cudaDeviceSynchronize();
 
@@ -147,12 +158,12 @@ TEST(TorchNeighborList, ClassBasedBuildUpdate) {
     nl.build(frame);
     nl.update(frame);
 
-    int first_count = frame.n_pairs();
+    int first_count = nl.n_pairs();
     EXPECT_GT(first_count, 0);
 
     // Update again (same positions -> same result)
     nl.update(frame);
-    EXPECT_EQ(frame.n_pairs(), first_count);
+    EXPECT_EQ(nl.n_pairs(), first_count);
 }
 
 #else

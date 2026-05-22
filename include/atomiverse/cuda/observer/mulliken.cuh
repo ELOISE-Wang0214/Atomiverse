@@ -8,10 +8,17 @@
 /// `cuda::scf::SCFEvaluator`; it runs in the `evaluate::Phase::finalize`
 /// pass, after the inner `cuda::scf::SCFSolver` has converged the density.
 ///
+/// The converged density matrix is no longer carried on `cuda::Frame`; the
+/// observer holds a reference to the `cuda::scf::SCFEvaluator` and reads the
+/// density from its SCF workspace. Construct the evaluator as a stable
+/// lvalue and register it borrowed (lvalue `add`), so the reference the
+/// observer holds stays valid for the whole run.
+///
 /// @code{.cpp}
-/// MullikenObs mulliken(integrals);
+/// cuda::scf::SCFEvaluator scf{integrals, tol, max_iter};
+/// MullikenObs mulliken(integrals, scf);
 /// cuda::Evaluate eval;
-/// eval.add(cuda::scf::SCFEvaluator{integrals, tol, max_iter});
+/// eval.add(scf);                          // lvalue -> borrowed
 /// eval.on(evaluate::Phase::finalize).add(mulliken);
 /// eval.build();
 /// eval.run(frame);
@@ -34,6 +41,7 @@
 
 #ifdef ATV_HAS_RHF
 #include "atomiverse/cpu/scf/integrals.h"
+#include "atomiverse/cuda/scf/scf_evaluator.cuh"
 #endif
 
 namespace ATV {
@@ -49,8 +57,14 @@ namespace cuda {
 /// matrix back to host via the async D2H bridge.
 class MullikenObs : public AsyncBridge {
   public:
-    explicit MullikenObs(const cpu::scf::IntegralPack& ints, int every = 1)
-        : integrals_(ints), every_(every) {}
+    /// @brief Construct a Mulliken observer.
+    /// @param ints      Integral pack carrying atoms, shells, and overlap S.
+    /// @param evaluator SCF evaluator whose converged workspace supplies the
+    ///                  density matrix (borrowed -- must outlive this observer).
+    /// @param every     Sampling stride in steps (1 = every step).
+    MullikenObs(const cpu::scf::IntegralPack& ints,
+                const scf::SCFEvaluator& evaluator, int every = 1)
+        : integrals_(ints), evaluator_(&evaluator), every_(every) {}
 
     ~MullikenObs() override = default;
 
@@ -63,29 +77,29 @@ class MullikenObs : public AsyncBridge {
     int n_occ() const { return n_occ_; }
 
   protected:
-    void on_build(const BuildContext& ctx) override {
-        n_basis_ = ctx.frame.scf.n;
+    void on_build(const BuildContext&) override {
+        n_basis_ = evaluator_->workspace().n;
         cudaMallocHost(&h_P_, n_basis_ * n_basis_ * sizeof(double));
         cudaMallocHost(&h_energy_, sizeof(double));
         *h_energy_ = 0.0;
     }
 
-    bool can_run(const LaunchContext& ctx) const override {
-        return ctx.frame.scf.P != nullptr;
+    bool can_run(const LaunchContext&) const override {
+        return evaluator_->workspace().P != nullptr;
     }
 
     void issue_d2h(const LaunchContext& ctx) override {
         auto ds = static_cast<cudaStream_t>(ctx.runtime.defer_stream);
         auto& f = ctx.frame;
         const int n2 = n_basis_ * n_basis_;
-        cudaMemcpyAsync(h_P_, f.scf.P, n2 * sizeof(double),
+        cudaMemcpyAsync(h_P_, evaluator_->workspace().P, n2 * sizeof(double),
                         cudaMemcpyDeviceToHost, ds);
-        if (f.energy)
-            cudaMemcpyAsync(h_energy_, f.energy, sizeof(double),
+        if (f.scalars)
+            cudaMemcpyAsync(h_energy_, &f.scalars->energy, sizeof(double),
                             cudaMemcpyDeviceToHost, ds);
     }
 
-    void on_data_ready(const LaunchContext& ctx) override {
+    void on_data_ready(const LaunchContext&) override {
         // Adapt the pinned host buffer as a non-owning xtensor view.
         const std::size_t nb = static_cast<std::size_t>(n_basis_);
         auto P_view = xt::adapt(h_P_, nb * nb, xt::no_ownership(),
@@ -94,8 +108,8 @@ class MullikenObs : public AsyncBridge {
 
         charges_ = cpu::mulliken_charge(integrals_, P);
         energy_val_ = *h_energy_;
-        iterations_ = ctx.frame.scf.iteration;
-        n_occ_ = static_cast<int>(ctx.frame.scf.n_occ);
+        iterations_ = evaluator_->workspace().iteration;
+        n_occ_ = static_cast<int>(evaluator_->workspace().n_occ);
     }
 
     void on_destroy(const DestroyContext&) override {
@@ -111,6 +125,8 @@ class MullikenObs : public AsyncBridge {
 
   private:
     cpu::scf::IntegralPack integrals_;
+    const scf::SCFEvaluator* evaluator_ =
+        nullptr; ///< Borrowed SCF evaluator (density source).
     int every_;
 
     std::vector<double> charges_;

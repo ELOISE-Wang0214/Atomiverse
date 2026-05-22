@@ -16,6 +16,7 @@
 #pragma once
 
 #include "atomiverse/cuda/component.cuh"
+#include "atomiverse/cuda/scf/scf_workspace.cuh"
 
 namespace ATV {
 namespace cuda {
@@ -26,20 +27,23 @@ namespace internal {
 ///
 /// In `build()`, allocates the cuSOLVER workspace.
 /// In `step()`, copies H -> C then solves in-place.
-/// Eigenvalues written to frame.scf.eig, eigenvectors to frame.scf.C.
+/// Eigenvalues written to the SCF workspace `ws.eig`, eigenvectors to `ws.C`.
 class EigenSolver {
   public:
     /// @brief Allocate cuSOLVER handle and workspace.
     /// @param ctx Build context (CUDA stream + device frame).
-    void build(const BuildContext& ctx);
+    /// @param ws SCF electronic-structure workspace.
+    void build(const BuildContext& ctx, SCFWorkspace& ws);
 
     /// @brief Diagonalize H: copy H -> C, solve C in-place, eigenvalues to eig.
     /// @param ctx Launch context (CUDA stream + device frame + step index).
-    void step(const LaunchContext& ctx);
+    /// @param ws SCF electronic-structure workspace.
+    void step(const LaunchContext& ctx, SCFWorkspace& ws);
 
     /// @brief Free cuSOLVER handle and workspace.
     /// @param ctx Destroy context (CUDA stream + device frame).
-    void destroy(const DestroyContext& ctx);
+    /// @param ws SCF electronic-structure workspace.
+    void destroy(const DestroyContext& ctx, SCFWorkspace& ws);
 
   private:
     void* cusolver_handle_ = nullptr; ///< cuSOLVER handle.

@@ -192,26 +192,27 @@ struct LJFunction : public ::torch::autograd::Function<LJFunction> {
 
 } // anonymous namespace
 
-Tensor lj(Frame& frame, const Tensor& epsilon, const Tensor& sigma,
-          double cutoff) {
+Tensor lj(Frame& frame, const NeighborList& neighbors, const Tensor& epsilon,
+          const Tensor& sigma, double cutoff) {
     int na = frame.n_atoms();
-    int np = frame.n_pairs_;
+
+    // Pair list is owned by the NeighborList, not by the Frame.
+    const NeighborList::PairList& pairs = neighbors.pairs();
+    int np = pairs.n_pairs();
 
     // Estimate max pairs for grid sizing
     int64_t max_pairs =
         np > 0 ? static_cast<int64_t>(np) : static_cast<int64_t>(na) * 50;
 
     // n_pairs as device tensor (for kernel)
+    auto int_opts =
+        ::torch::TensorOptions().dtype(kIntDtype).device(::torch::kCUDA);
     Tensor n_pairs_t;
-    if (frame.pair_i.defined() && frame.pair_i.numel() > 0) {
-        // If n_pairs_ is set, create a device scalar
-        auto opts =
-            ::torch::TensorOptions().dtype(kIntDtype).device(::torch::kCUDA);
-        n_pairs_t = ::torch::full({1}, static_cast<int64_t>(np), opts);
+    if (pairs.pair_i.defined() && pairs.pair_i.numel() > 0) {
+        // If n_pairs is set, create a device scalar
+        n_pairs_t = ::torch::full({1}, static_cast<int64_t>(np), int_opts);
     } else {
-        auto opts =
-            ::torch::TensorOptions().dtype(kIntDtype).device(::torch::kCUDA);
-        n_pairs_t = ::torch::zeros({1}, opts);
+        n_pairs_t = ::torch::zeros({1}, int_opts);
     }
 
     // Zero energy before accumulation
@@ -219,9 +220,9 @@ Tensor lj(Frame& frame, const Tensor& epsilon, const Tensor& sigma,
 
     auto result = LJFunction::apply(
         frame.atoms.x, frame.atoms.y, frame.atoms.z, frame.atoms.fx,
-        frame.atoms.fy, frame.atoms.fz, frame.energy, frame.pair_i,
-        frame.pair_j, frame.pair_dx, frame.pair_dy, frame.pair_dz,
-        frame.pair_dist, n_pairs_t, epsilon, sigma, static_cast<double>(cutoff),
+        frame.atoms.fy, frame.atoms.fz, frame.energy, pairs.pair_i,
+        pairs.pair_j, pairs.pair_dx, pairs.pair_dy, pairs.pair_dz,
+        pairs.pair_dist, n_pairs_t, epsilon, sigma, static_cast<double>(cutoff),
         static_cast<int64_t>(na), max_pairs);
 
     return result[0];

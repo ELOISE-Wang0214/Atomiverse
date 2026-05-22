@@ -78,7 +78,7 @@ TEST(Frame, TopologyRoundTrip) {
     EXPECT_NE(d_frame.angles.n_angles, nullptr);
     EXPECT_NE(d_frame.dihedrals.atomi, nullptr);
     EXPECT_NE(d_frame.dihedrals.n_dihedrals, nullptr);
-    EXPECT_NE(d_frame.stress, nullptr);
+    EXPECT_NE(d_frame.scalars, nullptr);
 
     // Verify counts via D2H
     int nb = 0, na = 0, nd = 0;

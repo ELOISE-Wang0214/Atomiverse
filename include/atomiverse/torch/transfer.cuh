@@ -19,7 +19,9 @@ namespace torch {
 
 /// @brief Wrap a cuda::Frame as a torch::Frame (zero-copy borrow).
 ///
-/// Tensors wrap existing device pointers via torch::from_blob.
+/// Tensors wrap existing device pointers via torch::from_blob. The system
+/// scalars (energy, kinetic, conserved, stress, stress_kinetic) are wrapped
+/// as views into the cuda::Frame's device-resident `SystemScalars` struct.
 /// The cuda::Frame owns the memory; the torch::Frame is a non-owning view.
 /// Caller must ensure the cuda::Frame outlives the returned torch::Frame.
 ///
@@ -31,6 +33,8 @@ Frame to_torch(const cuda::Frame& src);
 ///
 /// Validates that all tensors are CUDA, contiguous, and correct dtype.
 /// Non-owning: the cuda::Frame borrows pointers from the torch::Frame.
+/// The system-scalar Tensors are copied (D2D) into the cuda::Frame's
+/// device-resident `SystemScalars` struct, which must already be allocated.
 ///
 /// @param src  torch::Frame to extract from.
 /// @param dst  cuda::Frame to write pointers into.

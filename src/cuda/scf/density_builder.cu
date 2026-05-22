@@ -18,7 +18,7 @@ namespace cuda {
 namespace scf {
 namespace internal {
 
-void DensityBuilder::build(const BuildContext& ctx) {
+void DensityBuilder::build(const BuildContext& ctx, SCFWorkspace& /*ws*/) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
 
     cublasHandle_t handle;
@@ -27,8 +27,8 @@ void DensityBuilder::build(const BuildContext& ctx) {
     cublas_handle_ = handle;
 }
 
-void DensityBuilder::step(const LaunchContext& ctx) {
-    auto& scf = ctx.frame.scf;
+void DensityBuilder::step(const LaunchContext& ctx, SCFWorkspace& ws) {
+    auto& scf = ws;
     if (scf.converged)
         return;
 
@@ -49,7 +49,8 @@ void DensityBuilder::step(const LaunchContext& ctx) {
                  scf.C, n, &zero, scf.P, n);
 }
 
-void DensityBuilder::destroy(const DestroyContext& /*ctx*/) {
+void DensityBuilder::destroy(const DestroyContext& /*ctx*/,
+                             SCFWorkspace& /*ws*/) {
     if (cublas_handle_) {
         cublasDestroy(static_cast<cublasHandle_t>(cublas_handle_));
         cublas_handle_ = nullptr;

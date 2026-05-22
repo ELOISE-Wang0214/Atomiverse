@@ -17,6 +17,7 @@
 #pragma once
 
 #include "atomiverse/cuda/component.cuh"
+#include "atomiverse/cuda/scf/scf_workspace.cuh"
 
 namespace ATV {
 namespace cuda {
@@ -37,15 +38,18 @@ class Hamiltonian {
 
     /// @brief Allocate SCF workspace and initialize H0 on device.
     /// @param ctx Build context (CUDA stream + device frame).
-    void build(const BuildContext& ctx);
+    /// @param ws SCF electronic-structure workspace.
+    void build(const BuildContext& ctx, SCFWorkspace& ws);
 
     /// @brief Compute H = H0 + alpha * P via cuBLAS.
     /// @param ctx Launch context (CUDA stream + device frame + step index).
-    void step(const LaunchContext& ctx);
+    /// @param ws SCF electronic-structure workspace.
+    void step(const LaunchContext& ctx, SCFWorkspace& ws);
 
     /// @brief Free cuBLAS handle.
     /// @param ctx Destroy context (CUDA stream + device frame).
-    void destroy(const DestroyContext& ctx);
+    /// @param ws SCF electronic-structure workspace.
+    void destroy(const DestroyContext& ctx, SCFWorkspace& ws);
 
   private:
     int n_occ_;    ///< Number of occupied orbitals.

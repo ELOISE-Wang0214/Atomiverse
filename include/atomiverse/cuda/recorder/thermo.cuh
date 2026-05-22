@@ -47,9 +47,9 @@ class Thermo : public AsyncBridge {
 
     void issue_d2h(const LaunchContext& ctx) override {
         auto ds = static_cast<cudaStream_t>(ctx.runtime.defer_stream);
-        cudaMemcpyAsync(h_pe_, ctx.frame.energy, sizeof(double),
+        cudaMemcpyAsync(h_pe_, &ctx.frame.scalars->energy, sizeof(double),
                         cudaMemcpyDeviceToHost, ds);
-        cudaMemcpyAsync(h_ke_, ctx.frame.kinetic, sizeof(double),
+        cudaMemcpyAsync(h_ke_, &ctx.frame.scalars->kinetic, sizeof(double),
                         cudaMemcpyDeviceToHost, ds);
     }
 

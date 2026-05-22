@@ -89,9 +89,9 @@ void Barostat::launch(const LaunchContext& ctx) {
     // Typical β for solids ~ 1e-4 GPa^-1. We absorb it into the coupling.
     work_t beta_dt_tau = dt_ / tau_p_;
 
-    berendsen_scale_k<<<grid, block, 0, stream>>>(f.atoms.x, f.atoms.y,
-                                                  f.atoms.z, f.box, f.stress,
-                                                  P_target_, beta_dt_tau, n);
+    berendsen_scale_k<<<grid, block, 0, stream>>>(
+        f.atoms.x, f.atoms.y, f.atoms.z, f.box, f.scalars->stress, P_target_,
+        beta_dt_tau, n);
 }
 
 void Barostat::destroy(const DestroyContext& ctx) { *state_ = {}; }

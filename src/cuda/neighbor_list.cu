@@ -101,20 +101,23 @@ void NeighborList::build(const BuildContext& ctx) {
     s.buf.interaction_mask.resize(ms);
     s.buf.resize_flat_pairs(ms);
 
-    // Allocate PairList in cuda::Frame
+    // Allocate the owned PairList
     int atom_pair_cap = std::max(1, n * 50);
-    cudaMalloc(&frame.pairs.i, atom_pair_cap * sizeof(int));
-    cudaMalloc(&frame.pairs.j, atom_pair_cap * sizeof(int));
-    cudaMalloc(&frame.pairs.dx, atom_pair_cap * sizeof(real_t));
-    cudaMalloc(&frame.pairs.dy, atom_pair_cap * sizeof(real_t));
-    cudaMalloc(&frame.pairs.dz, atom_pair_cap * sizeof(real_t));
-    cudaMalloc(&frame.pairs.dist, atom_pair_cap * sizeof(real_t));
-    cudaMalloc(&frame.pairs.n_pairs, sizeof(int));
-    cudaMemset(frame.pairs.n_pairs, 0, sizeof(int));
-    cudaMalloc(&frame.pairs.capacity, sizeof(int));
+    cudaMalloc(&pairs_.i, atom_pair_cap * sizeof(int));
+    cudaMalloc(&pairs_.j, atom_pair_cap * sizeof(int));
+    cudaMalloc(&pairs_.dx, atom_pair_cap * sizeof(real_t));
+    cudaMalloc(&pairs_.dy, atom_pair_cap * sizeof(real_t));
+    cudaMalloc(&pairs_.dz, atom_pair_cap * sizeof(real_t));
+    cudaMalloc(&pairs_.dist, atom_pair_cap * sizeof(real_t));
+    cudaMalloc(&pairs_.n_pairs, sizeof(int));
+    cudaMemset(pairs_.n_pairs, 0, sizeof(int));
+    cudaMalloc(&pairs_.capacity, sizeof(int));
     int cap_val = static_cast<int>(atom_pair_cap);
-    cudaMemcpy(frame.pairs.capacity, &cap_val, sizeof(int),
-               cudaMemcpyHostToDevice);
+    cudaMemcpy(pairs_.capacity, &cap_val, sizeof(int), cudaMemcpyHostToDevice);
+
+    // Publish the pair list to the execution context for downstream
+    // consumers (LJ, RDF), mirroring cpu::md::NeighborList.
+    ctx.runtime.pair_list = &pairs_;
 }
 
 // ============================================================================
@@ -125,6 +128,9 @@ void NeighborList::launch(const LaunchContext& ctx) {
     auto& s = *state_;
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& frame = ctx.frame;
+
+    // Re-publish the pair list (address is stable across the run).
+    ctx.runtime.pair_list = &pairs_;
 
     int n = s.num_atoms;
     int nc = s.num_clusters;
@@ -221,7 +227,7 @@ void NeighborList::launch(const LaunchContext& ctx) {
     // Export to atom-level PairList
     int cap = s.pair_capacity;
     if (cap <= 0) {
-        cudaMemsetAsync(frame.pairs.n_pairs, 0, sizeof(int), stream);
+        cudaMemsetAsync(pairs_.n_pairs, 0, sizeof(int), stream);
         return;
     }
 
@@ -230,11 +236,11 @@ void NeighborList::launch(const LaunchContext& ctx) {
         s.buf.flat_ci.data(), s.buf.flat_cj.data(), s.buf.flat_mask.data(),
         s.buf.flat_pair_counter.data(), cap, s.buf.original_index.data(),
         frame.atoms.x, frame.atoms.y, frame.atoms.z, s.periodic,
-        s.d_cell.data(), s.d_inv_cell.data(), frame.pairs.i, frame.pairs.j,
-        frame.pairs.dx, frame.pairs.dy, frame.pairs.dz, frame.pairs.dist,
-        s.d_pair_count.data(), frame.pairs.capacity, stream);
+        s.d_cell.data(), s.d_inv_cell.data(), pairs_.i, pairs_.j, pairs_.dx,
+        pairs_.dy, pairs_.dz, pairs_.dist, s.d_pair_count.data(),
+        pairs_.capacity, stream);
 
-    cudaMemcpyAsync(frame.pairs.n_pairs, s.d_pair_count.data(), sizeof(int),
+    cudaMemcpyAsync(pairs_.n_pairs, s.d_pair_count.data(), sizeof(int),
                     cudaMemcpyDeviceToDevice, stream);
 }
 
@@ -243,18 +249,17 @@ void NeighborList::launch(const LaunchContext& ctx) {
 // ============================================================================
 
 void NeighborList::destroy(const DestroyContext& ctx) {
-    auto& frame = ctx.frame;
-
-    // Free PairList (allocated in build)
-    cudaFree(frame.pairs.i);
-    cudaFree(frame.pairs.j);
-    cudaFree(frame.pairs.dx);
-    cudaFree(frame.pairs.dy);
-    cudaFree(frame.pairs.dz);
-    cudaFree(frame.pairs.dist);
-    cudaFree(frame.pairs.n_pairs);
-    cudaFree(frame.pairs.capacity);
-    frame.pairs = {};
+    // Free the owned PairList (allocated in build)
+    cudaFree(pairs_.i);
+    cudaFree(pairs_.j);
+    cudaFree(pairs_.dx);
+    cudaFree(pairs_.dy);
+    cudaFree(pairs_.dz);
+    cudaFree(pairs_.dist);
+    cudaFree(pairs_.n_pairs);
+    cudaFree(pairs_.capacity);
+    pairs_ = {};
+    ctx.runtime.pair_list = nullptr;
 
     // Free internal state (DeviceVectors auto-free in State destructor)
     state_.reset();

@@ -23,8 +23,14 @@ TEST(TorchFrame, DefaultConstruct) {
     atorch::Frame frame;
     EXPECT_EQ(frame.n_atoms(), 0);
     EXPECT_EQ(frame.n_bonds(), 0);
-    EXPECT_EQ(frame.n_pairs(), 0);
+    EXPECT_EQ(frame.n_angles(), 0);
+    EXPECT_EQ(frame.n_dihedrals(), 0);
     EXPECT_FALSE(frame.atoms.x.defined());
+    EXPECT_FALSE(frame.atoms.charge.defined());
+    EXPECT_FALSE(frame.atoms.tag.defined());
+    EXPECT_FALSE(frame.atoms.image.defined());
+    EXPECT_FALSE(frame.conserved.defined());
+    EXPECT_FALSE(frame.stress_kinetic.defined());
 }
 
 TEST(TorchFrame, ManualConstruct) {
@@ -36,6 +42,16 @@ TEST(TorchFrame, ManualConstruct) {
                         .dtype(atorch::kIntDtype)
                         .device(::torch::kCUDA);
 
+    auto long_opts = ::torch::TensorOptions()
+                         .dtype(atorch::kLongDtype)
+                         .device(::torch::kCUDA);
+    auto image_opts = ::torch::TensorOptions()
+                          .dtype(atorch::kImageDtype)
+                          .device(::torch::kCUDA);
+    auto scalar_opts = ::torch::TensorOptions()
+                           .dtype(::at::ScalarType::Double)
+                           .device(::torch::kCUDA);
+
     atorch::Frame frame;
     frame.n_atoms_ = static_cast<int>(n);
     frame.atoms.x = ::torch::zeros({n}, real_opts);
@@ -45,10 +61,15 @@ TEST(TorchFrame, ManualConstruct) {
     frame.atoms.fy = ::torch::zeros({n}, real_opts);
     frame.atoms.fz = ::torch::zeros({n}, real_opts);
     frame.atoms.mass = ::torch::ones({n}, real_opts);
+    frame.atoms.charge = ::torch::zeros({n}, real_opts);
     frame.atoms.type = ::torch::zeros({n}, int_opts);
-    frame.energy = ::torch::zeros({1}, real_opts);
-    frame.kinetic = ::torch::zeros({1}, real_opts);
-    frame.stress = ::torch::zeros({6}, real_opts);
+    frame.atoms.tag = ::torch::arange(n, long_opts);
+    frame.atoms.image = ::torch::zeros({n, 3}, image_opts);
+    frame.energy = ::torch::zeros({1}, scalar_opts);
+    frame.kinetic = ::torch::zeros({1}, scalar_opts);
+    frame.conserved = ::torch::zeros({1}, scalar_opts);
+    frame.stress = ::torch::zeros({6}, scalar_opts);
+    frame.stress_kinetic = ::torch::zeros({6}, scalar_opts);
     frame.box = ::torch::zeros({9}, real_opts);
 
     EXPECT_EQ(frame.n_atoms(), static_cast<int>(n));
@@ -56,6 +77,22 @@ TEST(TorchFrame, ManualConstruct) {
     EXPECT_EQ(frame.atoms.x.scalar_type(), atorch::kRealDtype);
     EXPECT_EQ(frame.atoms.x.numel(), n);
     EXPECT_TRUE(frame.atoms.x.is_contiguous());
+
+    // New per-atom fields mirror cpu::Frame / cuda::Frame.
+    EXPECT_TRUE(frame.atoms.charge.is_cuda());
+    EXPECT_EQ(frame.atoms.charge.numel(), n);
+    EXPECT_EQ(frame.atoms.tag.scalar_type(), atorch::kLongDtype);
+    EXPECT_EQ(frame.atoms.tag.numel(), n);
+    EXPECT_EQ(frame.atoms.image.scalar_type(), atorch::kImageDtype);
+    EXPECT_EQ(frame.atoms.image.dim(), 2);
+    EXPECT_EQ(frame.atoms.image.size(0), n);
+    EXPECT_EQ(frame.atoms.image.size(1), 3);
+
+    // New system scalars mirror core/system_scalars.h's SystemScalars.
+    EXPECT_TRUE(frame.conserved.defined());
+    EXPECT_EQ(frame.conserved.numel(), 1);
+    EXPECT_TRUE(frame.stress_kinetic.defined());
+    EXPECT_EQ(frame.stress_kinetic.numel(), 6);
 }
 
 TEST(TorchFrame, RequiresGrad) {

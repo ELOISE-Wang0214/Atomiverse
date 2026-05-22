@@ -149,8 +149,8 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
     int grid = grid_size(static_cast<int>(na));
     harmonic_angle_k<<<grid, block, block * sizeof(work_t), stream>>>(
         f.atoms.x, f.atoms.y, f.atoms.z, f.atoms.fx, f.atoms.fy, f.atoms.fz,
-        f.energy, f.angles.atomi, f.angles.atomj, f.angles.atomk, f.angles.type,
-        state_->d_K, state_->d_theta0, f.box, na);
+        &f.scalars->energy, f.angles.atomi, f.angles.atomj, f.angles.atomk,
+        f.angles.type, state_->d_K, state_->d_theta0, f.box, na);
 }
 
 void AngleHarmonic::destroy(const DestroyContext& /*ctx*/) {

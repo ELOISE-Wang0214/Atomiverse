@@ -16,7 +16,8 @@ namespace cuda {
 /// @brief Lennard-Jones 12-6 pair potential evaluator (CUDA).
 ///
 /// Must be explicitly bound to a force phase (cross-driver component).
-/// Requires a populated PairList in DeviceFrame (from NeighborList).
+/// Requires a populated PairList published on `cuda::Context::pair_list`
+/// by a NeighborList component.
 class PairLJCut : public Pair {
   public:
     /// @brief Construct with LJ parameters.

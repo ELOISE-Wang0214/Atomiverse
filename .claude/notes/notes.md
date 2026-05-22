@@ -5,6 +5,33 @@ Agents read this alongside CLAUDE.md. When a note stabilizes, promote it into CL
 
 ---
 
+## [2026-05-22] cuda/torch Frame purity — SCF workspace & pair list relocated
+
+`rust-frame-lowering-04` finished the Frame-purity chain on the device
+backends. `cuda::Frame` / `torch::Frame` no longer embed method-specific
+scratch:
+
+- `cuda::scf::SCFWorkspace` (`cuda/scf/scf_workspace.cuh`) is owned by
+  `cuda::scf::SCFSolver` and passed by reference into the `internal::*`
+  step helpers (`build/step/destroy(ctx, ws)`). `SCFEvaluator` exposes it
+  via `workspace()`; `MullikenObs` / `DensityRecorder` hold a borrowed
+  `const SCFEvaluator&` to read the converged density.
+- `cuda::PairList` (`cuda/neighbor_list.cuh`) is owned by `NeighborList`
+  and published as `cuda::Context::pair_list` — the mirror of
+  `cpu::Context::pair_list`. `PairLJCut` / `RDF` read it from the context.
+- System scalars are one device-resident `SystemScalars*` (energy,
+  kinetic, conserved, stress, stress_kinetic); `atoms` gained
+  `charge`/`tag`/`image`. The three execution frames now share one field
+  set, differing only in device representation.
+- `cuda::materialize` / `torch::materialize` (backend roots, sibling of
+  `transfer`) bridge `molrs.Frame` ⇄ device frame, reusing
+  `cpu::materialize` + `to_cuda` / `from_cpu`.
+
+**Rule**: device frames (`cuda::Frame`, `torch::Frame`) carry only
+fundamental physical quantities — same contract as `cpu::Frame`. Method
+scratch (SCF workspace, pair lists, neighbor data) belongs to the
+component that computes it and travels via `Context`, never the frame.
+
 ## [2026-03-25] DeviceSystem removed — metadata lives in cuda::Frame
 
 DeviceSystem class was deleted. Host-cached metadata (n_atoms, n_bonds, n_angles, n_dihedrals) now lives directly in `cuda::Frame` as plain Int fields with accessor methods. The device-side atom count pointer is `d_n_atoms` (not `n_atoms`). (Note: `DeviceFrame` was later renamed to `cuda::Frame`.)

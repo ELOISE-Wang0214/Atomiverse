@@ -211,6 +211,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cuda/log_callback.cpp
             src/cuda/async_bridge.cu
             src/cuda/transfer.cu
+            src/cuda/materialize.cu
             src/cuda/timer.cu
             src/cuda/driver.cu
             src/cuda/md/velocity_verlet.cu
@@ -329,6 +330,7 @@ if(NOT ATV_DOCS_ONLY)
         find_package(Torch REQUIRED)
         target_sources(atomiverse PRIVATE
             src/torch/transfer.cu
+            src/torch/materialize.cu
             src/torch/stream_guard.cu
             src/torch/potentials/lj.cu
             src/torch/neighbor_list.cu

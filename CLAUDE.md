@@ -156,8 +156,20 @@ inside `SCFSolver`).
 
 ### Data residency
 
+The three execution frames — `cpu::Frame` (xtensor on host), `cuda::Frame`
+(raw device pointers), `torch::Frame` (`at::Tensor`) — carry an **identical
+field set** (atoms incl. `charge`/`tag`/`image`, bonds/angles/dihedrals, the
+`core/system_scalars.h` `SystemScalars` bundle, box); they differ only in
+device representation. Per the Frame purity rule the frame holds **no**
+method-specific scratch: the SCF workspace is owned by `*::scf::SCFSolver`
+(`cuda::scf::SCFWorkspace`), the neighbor pair list by `*::NeighborList`
+(`cuda::PairList`), published to consumers as a non-owning pointer on
+`Context::pair_list`.
+
 - `cpu::Frame` = xtensor arrays on host. Zero-copy in Driver (no transfer).
 - `cuda::Frame` = device pointers. `cpu::to_cuda()` / `cuda::to_cpu()` for transfer.
+- `torch::Frame` = `at::Tensor` (autograd-capable). `torch::transfer` bridges to cpu/cuda.
+- `molrs.Frame` ⇄ a device frame via `cpu`/`cuda`/`torch::materialize()` (explicit H2D) and `write_back()` (explicit D2H) — backend roots, sibling of `transfer`, run once per `run()`.
 - No implicit transfer in low-level operators. CUDA pipelines stay on device between explicit transfers.
 
 ### CUDA execution model

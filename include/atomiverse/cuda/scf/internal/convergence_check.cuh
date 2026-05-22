@@ -7,10 +7,11 @@
 /// which drives its `build` / `step` / `destroy` lifecycle directly.
 ///
 /// Computes ||P - P_old||_F using cuBLAS (axpy + nrm2) and compares against
-/// the specified tolerance. Sets frame.scf.converged when satisfied.
+/// the specified tolerance. Sets the SCF workspace `ws.converged` when
+/// satisfied.
 ///
 /// When compute_energy is true (default), also computes E = dot(H, P) and
-/// writes it to frame.energy. Set to false when another helper (e.g.
+/// writes it to frame.scalars->energy. Set to false when another helper (e.g.
 /// internal::RHFDensity) computes the proper energy.
 ///
 /// @see cuda::scf::SCFSolver for the inner solver that owns this helper
@@ -18,6 +19,7 @@
 #pragma once
 
 #include "atomiverse/cuda/component.cuh"
+#include "atomiverse/cuda/scf/scf_workspace.cuh"
 
 namespace ATV {
 namespace cuda {
@@ -32,22 +34,25 @@ class ConvergenceCheck {
     /// @brief Construct convergence checker.
     /// @param tol Frobenius-norm tolerance for convergence [dimensionless].
     /// @param compute_energy If true, compute E=dot(H,P) and write to
-    ///        frame.energy.
+    ///        frame.scalars->energy.
     explicit ConvergenceCheck(double tol, bool compute_energy = true)
         : tol_(tol), compute_energy_(compute_energy) {}
 
     /// @brief Allocate cuBLAS handle.
     /// @param ctx Build context (CUDA stream + device frame).
-    void build(const BuildContext& ctx);
+    /// @param ws SCF electronic-structure workspace.
+    void build(const BuildContext& ctx, SCFWorkspace& ws);
 
     /// @brief Compute ||P - P_old||_F, check convergence, optionally compute
     ///        energy.
     /// @param ctx Launch context (CUDA stream + device frame + step index).
-    void step(const LaunchContext& ctx);
+    /// @param ws SCF electronic-structure workspace.
+    void step(const LaunchContext& ctx, SCFWorkspace& ws);
 
     /// @brief Free cuBLAS handle.
     /// @param ctx Destroy context (CUDA stream + device frame).
-    void destroy(const DestroyContext& ctx);
+    /// @param ws SCF electronic-structure workspace.
+    void destroy(const DestroyContext& ctx, SCFWorkspace& ws);
 
   private:
     double tol_;                    ///< Convergence tolerance (Frobenius norm).

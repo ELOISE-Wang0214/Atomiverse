@@ -101,7 +101,7 @@ TEST(Minimizer, SDEnergyDecreases) {
             frame_init,
             1); // 1 step: force eval only (step 0 has zero forces → step update is no-op)
     }
-    double e_after_1 = frame_init.energy;
+    double e_after_1 = frame_init.scalars.energy;
 
     // Run more steps of minimization
     cpu::Frame frame_min = frame;
@@ -114,7 +114,7 @@ TEST(Minimizer, SDEnergyDecreases) {
         min.build();
         min.run(frame_min, 50);
     }
-    double e_final = frame_min.energy;
+    double e_final = frame_min.scalars.energy;
 
     // Energy should have decreased (system relaxed)
     EXPECT_LT(static_cast<double>(e_final), static_cast<double>(e_after_1));
@@ -141,7 +141,7 @@ TEST(Minimizer, SDWithThermo) {
     EXPECT_NE(output.find("PotEng"), std::string::npos);
 
     // Energy should be finite
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.energy)));
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.energy)));
 }
 
 TEST(Minimizer, BuildThrowsWithoutOptimizer) {

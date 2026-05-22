@@ -18,7 +18,7 @@ namespace cuda {
 namespace scf {
 namespace internal {
 
-void ConvergenceCheck::build(const BuildContext& ctx) {
+void ConvergenceCheck::build(const BuildContext& ctx, SCFWorkspace& /*ws*/) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
 
     cublasHandle_t handle;
@@ -27,8 +27,8 @@ void ConvergenceCheck::build(const BuildContext& ctx) {
     cublas_handle_ = handle;
 }
 
-void ConvergenceCheck::step(const LaunchContext& ctx) {
-    auto& scf = ctx.frame.scf;
+void ConvergenceCheck::step(const LaunchContext& ctx, SCFWorkspace& ws) {
+    auto& scf = ws;
     if (scf.converged)
         return;
 
@@ -51,7 +51,7 @@ void ConvergenceCheck::step(const LaunchContext& ctx) {
     if (compute_energy_) {
         prec_t energy = 0;
         detail::dot(handle, nn, scf.H, 1, scf.P, 1, &energy);
-        cudaMemcpyAsync(ctx.frame.energy, &energy, sizeof(prec_t),
+        cudaMemcpyAsync(&ctx.frame.scalars->energy, &energy, sizeof(prec_t),
                         cudaMemcpyHostToDevice, stream);
     }
     cudaStreamSynchronize(stream);
@@ -65,7 +65,8 @@ void ConvergenceCheck::step(const LaunchContext& ctx) {
     }
 }
 
-void ConvergenceCheck::destroy(const DestroyContext& /*ctx*/) {
+void ConvergenceCheck::destroy(const DestroyContext& /*ctx*/,
+                               SCFWorkspace& /*ws*/) {
     if (cublas_handle_) {
         cublasDestroy(static_cast<cublasHandle_t>(cublas_handle_));
         cublas_handle_ = nullptr;

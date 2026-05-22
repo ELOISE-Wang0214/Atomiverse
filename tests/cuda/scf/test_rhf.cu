@@ -226,9 +226,9 @@ TEST(RHF, CUDASinglePointEnergy) {
     eval.build();
     eval.run(frame);
 
-    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.energy)));
-    EXPECT_NEAR(static_cast<double>(frame.energy), kH2Energy, 0.01)
-        << "CUDA RHF single-point energy " << frame.energy
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.energy)));
+    EXPECT_NEAR(static_cast<double>(frame.scalars.energy), kH2Energy, 0.01)
+        << "CUDA RHF single-point energy " << frame.scalars.energy
         << " does not match textbook";
 }
 
@@ -255,8 +255,8 @@ TEST(RHF, CUDASinglePointHelper) {
         cuda::single_point(frame_helper, scf);
     }
 
-    EXPECT_NEAR(static_cast<double>(frame_direct.energy),
-                static_cast<double>(frame_helper.energy), 1e-9);
+    EXPECT_NEAR(static_cast<double>(frame_direct.scalars.energy),
+                static_cast<double>(frame_helper.scalars.energy), 1e-9);
 }
 
 // ── CPU/CUDA parity ───────────────────────────────────────────────────
@@ -279,7 +279,7 @@ TEST(RHF, CPUCUDAParity) {
     eval.run(frame);
 
     double cpu_e = static_cast<double>(cpu_result.energy);
-    double cuda_e = static_cast<double>(frame.energy);
+    double cuda_e = static_cast<double>(frame.scalars.energy);
     double rel_tol = (sizeof(double) == sizeof(float)) ? 1e-3 : 1e-8;
 
     EXPECT_NEAR(cpu_e, cuda_e, std::abs(cpu_e) * rel_tol + 1e-6)
@@ -301,8 +301,8 @@ TEST(RHF, CUDAOnlyGPUIntegrals) {
     eval.build();
     eval.run(frame);
 
-    EXPECT_NEAR(static_cast<double>(frame.energy), kH2Energy, 0.01)
-        << "CUDA-only RHF energy " << frame.energy
+    EXPECT_NEAR(static_cast<double>(frame.scalars.energy), kH2Energy, 0.01)
+        << "CUDA-only RHF energy " << frame.scalars.energy
         << " does not match textbook";
 }
 
@@ -453,7 +453,7 @@ TEST(RHF, CUDAHeAtom) {
     eval.run(frame);
 
     double rel_tol = (sizeof(double) == sizeof(float)) ? 1e-3 : 1e-8;
-    EXPECT_NEAR(static_cast<double>(frame.energy),
+    EXPECT_NEAR(static_cast<double>(frame.scalars.energy),
                 static_cast<double>(cpu_result.energy),
                 std::abs(static_cast<double>(cpu_result.energy)) * rel_tol
                     + 1e-6)
@@ -475,11 +475,11 @@ TEST(RHF, CUDALiH) {
     eval.run(frame);
 
     double rel_tol = (sizeof(double) == sizeof(float)) ? 1e-2 : 1e-6;
-    EXPECT_NEAR(static_cast<double>(frame.energy),
+    EXPECT_NEAR(static_cast<double>(frame.scalars.energy),
                 static_cast<double>(cpu_result.energy),
                 std::abs(static_cast<double>(cpu_result.energy)) * rel_tol
                     + 1e-4)
-        << "LiH CPU=" << cpu_result.energy << " CUDA=" << frame.energy;
+        << "LiH CPU=" << cpu_result.energy << " CUDA=" << frame.scalars.energy;
 }
 
 TEST(RHF, CUDAHeHPlus) {
@@ -497,7 +497,7 @@ TEST(RHF, CUDAHeHPlus) {
     eval.run(frame);
 
     double rel_tol = (sizeof(double) == sizeof(float)) ? 1e-3 : 1e-8;
-    EXPECT_NEAR(static_cast<double>(frame.energy),
+    EXPECT_NEAR(static_cast<double>(frame.scalars.energy),
                 static_cast<double>(cpu_result.energy),
                 std::abs(static_cast<double>(cpu_result.energy)) * rel_tol
                     + 1e-6)

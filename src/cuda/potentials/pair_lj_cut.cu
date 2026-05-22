@@ -2,6 +2,7 @@
 /// @brief CUDA PairLJCut — Lennard-Jones 12-6 shifted (kernel + class).
 
 #include "atomiverse/cuda/launch.cuh"
+#include "atomiverse/cuda/neighbor_list.cuh"
 #include "atomiverse/cuda/potentials/lj_kernel.cuh"
 #include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 #include "atomiverse/cuda/types.cuh"
@@ -85,15 +86,19 @@ PairLJCut::PairLJCut(double epsilon, double sigma, double cutoff)
 void PairLJCut::compute(const LaunchContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& frame = ctx.frame;
+    // The neighbor pair list is owned by NeighborList and published on the
+    // execution context (cpu::Context::pair_list mirror).
+    const PairList* pairs = ctx.runtime.pair_list;
+    if (!pairs)
+        return;
     int n = ctx.frame.n_atoms();
     int max_pairs = static_cast<int>(n) * kEstMaxNeighbors / 2;
     int block = kDefaultBlock;
     int grid = grid_size(max_pairs);
     kernels::lj_force<<<grid, block, block * sizeof(work_t), stream>>>(
-        frame.atoms.fx, frame.atoms.fy, frame.atoms.fz, frame.energy,
-        frame.pairs.i, frame.pairs.j, frame.pairs.dx, frame.pairs.dy,
-        frame.pairs.dz, frame.pairs.dist, epsilon_, sigma_, cutoff_, v_shift_,
-        frame.pairs.n_pairs);
+        frame.atoms.fx, frame.atoms.fy, frame.atoms.fz, &frame.scalars->energy,
+        pairs->i, pairs->j, pairs->dx, pairs->dy, pairs->dz, pairs->dist,
+        epsilon_, sigma_, cutoff_, v_shift_, pairs->n_pairs);
 }
 
 } // namespace cuda

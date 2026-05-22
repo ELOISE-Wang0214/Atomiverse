@@ -25,9 +25,10 @@ void to_cpu(const Frame& src, cpu::Frame& dst);
 
 /// @brief Free all device memory in a CUDA Frame.
 ///
-/// Frees all device pointers including PairList and topology arrays.
-/// cudaFree(nullptr) is safe, so unallocated fields are handled.
-/// Resets the Frame to zero after freeing.
+/// Frees all per-atom, system-scalar, box, and topology device pointers.
+/// The SCF workspace and neighbor pair list are no longer frame-owned --
+/// their owning components free them. cudaFree(nullptr) is safe, so
+/// unallocated fields are handled. Resets the Frame to zero after freeing.
 ///
 /// @param frame CUDA Frame to free (zeroed after this call).
 void destroy(Frame& frame);

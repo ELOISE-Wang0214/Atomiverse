@@ -3,12 +3,13 @@
 ///        self-consistency loop.
 ///
 /// `SCFSolver` orchestrates its owned `internal::*` step helpers through
-/// the fixed-order SCF cycle. It absorbs the former `ZeroDensity`
-/// infrastructure component: the density matrix is zeroed via
-/// `cudaMemsetAsync` as the first step of `run()`. The solver is not a
-/// `Driver` and carries no phase enum, and never touches
-/// `cuda::Context::outer_status` — it manages its own convergence
-/// internally via `frame.scf.converged`.
+/// the fixed-order SCF cycle. It owns the `SCFWorkspace` (no longer part
+/// of `cuda::Frame`) and passes it by reference into every helper call.
+/// It absorbs the former `ZeroDensity` infrastructure component: the
+/// density matrix is zeroed via `cudaMemsetAsync` as the first step of
+/// `run()`. The solver is not a `Driver` and carries no phase enum, and
+/// never touches `cuda::Context::outer_status` — it manages its own
+/// convergence internally via the workspace's `converged` flag.
 
 #include "atomiverse/cuda/scf/scf_solver.cuh"
 
@@ -58,26 +59,26 @@ void SCFSolver::build(cuda::Context& runtime, cuda::Frame& frame) {
     BuildContext ctx{runtime, frame};
 
     // The Fock/Hamiltonian builder allocates the SCF workspace (H, P, ...)
-    // and must build first; the remaining helpers size off frame.scf.n.
+    // and must build first; the remaining helpers size off workspace_.n.
     switch (path_) {
     case Path::Synthetic:
-        hamiltonian_->build(ctx);
-        eigen_->build(ctx);
-        density_->build(ctx);
-        convergence_->build(ctx);
+        hamiltonian_->build(ctx, workspace_);
+        eigen_->build(ctx, workspace_);
+        density_->build(ctx, workspace_);
+        convergence_->build(ctx, workspace_);
         break;
 #ifdef ATV_HAS_RHF
     case Path::RHFHostIntegrals:
-        rhf_fock_->build(ctx);
-        eigen_->build(ctx);
-        rhf_density_->build(ctx);
-        convergence_->build(ctx);
+        rhf_fock_->build(ctx, workspace_);
+        eigen_->build(ctx, workspace_);
+        rhf_density_->build(ctx, workspace_);
+        convergence_->build(ctx, workspace_);
         break;
     case Path::RHFDeviceIntegrals:
-        rhf_fock_device_->build(ctx);
-        eigen_->build(ctx);
-        rhf_density_->build(ctx);
-        convergence_->build(ctx);
+        rhf_fock_device_->build(ctx, workspace_);
+        eigen_->build(ctx, workspace_);
+        rhf_density_->build(ctx, workspace_);
+        convergence_->build(ctx, workspace_);
         break;
 #endif
     }
@@ -89,7 +90,7 @@ void SCFSolver::run(cuda::Context& runtime, cuda::Frame& frame) {
         build(runtime, frame);
 
     auto stream = static_cast<cudaStream_t>(runtime.stream);
-    auto& scf = frame.scf;
+    auto& scf = workspace_;
 
     // ── Absorbed ZeroDensity: zero P before the first iteration ───────
     scf.converged = false;
@@ -101,30 +102,30 @@ void SCFSolver::run(cuda::Context& runtime, cuda::Frame& frame) {
     // ── Internal SCF self-consistency loop ────────────────────────────
     // Fixed-order cycle: build Fock/Hamiltonian → diagonalize →
     // build density → convergence check. Helpers no-op once
-    // frame.scf.converged is set; the loop also breaks early on it.
+    // workspace_.converged is set; the loop also breaks early on it.
     iterations_ = 0;
     for (int iter = 0; iter < max_iter_; ++iter) {
         LaunchContext ctx{runtime, frame, /*stage=*/0, /*step=*/iter};
 
         switch (path_) {
         case Path::Synthetic:
-            hamiltonian_->step(ctx);
-            eigen_->step(ctx);
-            density_->step(ctx);
-            convergence_->step(ctx);
+            hamiltonian_->step(ctx, workspace_);
+            eigen_->step(ctx, workspace_);
+            density_->step(ctx, workspace_);
+            convergence_->step(ctx, workspace_);
             break;
 #ifdef ATV_HAS_RHF
         case Path::RHFHostIntegrals:
-            rhf_fock_->step(ctx);
-            eigen_->step(ctx);
-            rhf_density_->step(ctx);
-            convergence_->step(ctx);
+            rhf_fock_->step(ctx, workspace_);
+            eigen_->step(ctx, workspace_);
+            rhf_density_->step(ctx, workspace_);
+            convergence_->step(ctx, workspace_);
             break;
         case Path::RHFDeviceIntegrals:
-            rhf_fock_device_->step(ctx);
-            eigen_->step(ctx);
-            rhf_density_->step(ctx);
-            convergence_->step(ctx);
+            rhf_fock_device_->step(ctx, workspace_);
+            eigen_->step(ctx, workspace_);
+            rhf_density_->step(ctx, workspace_);
+            convergence_->step(ctx, workspace_);
             break;
 #endif
         }
@@ -140,26 +141,48 @@ void SCFSolver::destroy(cuda::Context& runtime, cuda::Frame& frame) {
 
     switch (path_) {
     case Path::Synthetic:
-        convergence_->destroy(ctx);
-        density_->destroy(ctx);
-        eigen_->destroy(ctx);
-        hamiltonian_->destroy(ctx);
+        convergence_->destroy(ctx, workspace_);
+        density_->destroy(ctx, workspace_);
+        eigen_->destroy(ctx, workspace_);
+        hamiltonian_->destroy(ctx, workspace_);
         break;
 #ifdef ATV_HAS_RHF
     case Path::RHFHostIntegrals:
-        convergence_->destroy(ctx);
-        rhf_density_->destroy(ctx);
-        eigen_->destroy(ctx);
-        rhf_fock_->destroy(ctx);
+        convergence_->destroy(ctx, workspace_);
+        rhf_density_->destroy(ctx, workspace_);
+        eigen_->destroy(ctx, workspace_);
+        rhf_fock_->destroy(ctx, workspace_);
         break;
     case Path::RHFDeviceIntegrals:
-        convergence_->destroy(ctx);
-        rhf_density_->destroy(ctx);
-        eigen_->destroy(ctx);
-        rhf_fock_device_->destroy(ctx);
+        convergence_->destroy(ctx, workspace_);
+        rhf_density_->destroy(ctx, workspace_);
+        eigen_->destroy(ctx, workspace_);
+        rhf_fock_device_->destroy(ctx, workspace_);
         break;
 #endif
     }
+
+    // Free the device-resident SCF workspace arrays owned by this solver.
+    // (Formerly freed by cuda::destroy(frame) when the workspace lived on
+    // the frame; the helpers above release only their private scratch.)
+    cudaFree(workspace_.H0);
+    cudaFree(workspace_.H);
+    cudaFree(workspace_.P);
+    cudaFree(workspace_.P_old);
+    cudaFree(workspace_.C);
+    cudaFree(workspace_.eig);
+    cudaFree(workspace_.work);
+    cudaFree(workspace_.Hcore);
+    cudaFree(workspace_.X);
+    cudaFree(workspace_.F_prime);
+    cudaFree(workspace_.ERI);
+    cudaFree(workspace_.d_shell_alpha);
+    cudaFree(workspace_.d_shell_coeff);
+    cudaFree(workspace_.d_shell_center);
+    cudaFree(workspace_.d_atom_Z);
+    cudaFree(workspace_.d_atom_pos);
+    workspace_ = {};
+
     built_ = false;
 }
 

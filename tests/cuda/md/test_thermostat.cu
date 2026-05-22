@@ -50,7 +50,7 @@ TEST(NoseHoover, TemperatureControl) {
     sim.run(frame, 50);
 
     // After 50 steps with thermostat, results should be finite
-    EXPECT_TRUE(std::isfinite(frame.kinetic));
+    EXPECT_TRUE(std::isfinite(frame.scalars.kinetic));
     for (int i = 0; i < frame.atoms.size(); ++i)
         EXPECT_TRUE(std::isfinite(frame.atoms.x[i]));
 }
@@ -92,9 +92,9 @@ TEST(VirialStress, FiniteStress) {
 
     // Stress tensor should be finite
     for (int c = 0; c < 6; ++c)
-        EXPECT_TRUE(std::isfinite(frame.stress[c]));
+        EXPECT_TRUE(std::isfinite(frame.scalars.stress[c]));
     // Kinetic contribution guarantees non-zero diagonal
-    EXPECT_NE(frame.stress[0], 0.0);
+    EXPECT_NE(frame.scalars.stress[0], 0.0);
 }
 
 TEST(Barostat, FiniteResults) {

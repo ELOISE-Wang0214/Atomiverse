@@ -34,7 +34,7 @@ TEST(HarmonicBond, DimerAtEquilibrium) {
     sim.build();
     sim.run(frame, 1);
 
-    EXPECT_NEAR(frame.energy, 0.0, 1e-10);
+    EXPECT_NEAR(frame.scalars.energy, 0.0, 1e-10);
     EXPECT_NEAR(frame.atoms.fx[0], 0.0, 1e-10);
     EXPECT_NEAR(frame.atoms.fx[1], 0.0, 1e-10);
 }
@@ -61,7 +61,7 @@ TEST(HarmonicBond, DimerDisplaced) {
     sim.run(frame, 1);
 
     double expected_V = K * (r - r0) * (r - r0);
-    EXPECT_NEAR(frame.energy, expected_V, 1e-6);
+    EXPECT_NEAR(frame.scalars.energy, expected_V, 1e-6);
 
     // Forces should be attractive (pulling atoms together)
     EXPECT_GT(frame.atoms.fx[0], 0.0); // atom 0 pushed right
@@ -97,7 +97,7 @@ TEST(HarmonicAngle, AtEquilibrium) {
     sim.build();
     sim.run(frame, 1);
 
-    EXPECT_NEAR(frame.energy, 0.0, 1e-6);
+    EXPECT_NEAR(frame.scalars.energy, 0.0, 1e-6);
 }
 
 // ── cuda::MultiHarmonicDihedral ──────────────────────────────────────────
@@ -130,7 +130,7 @@ TEST(MultiHarmonicDihedral, TransConformation) {
     sim.run(frame, 1);
 
     // Energy should be finite
-    EXPECT_TRUE(std::isfinite(frame.energy));
+    EXPECT_TRUE(std::isfinite(frame.scalars.energy));
     // Forces should be finite
     for (int i = 0; i < 4; ++i) {
         EXPECT_TRUE(std::isfinite(frame.atoms.fx[i]));

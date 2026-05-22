@@ -131,7 +131,7 @@ TEST(MD, NVEEnergyConservation) {
         sim.build();
         sim.run(frame1, 1);
     }
-    double e_initial = frame1.energy + frame1.kinetic;
+    double e_initial = frame1.scalars.energy + frame1.scalars.kinetic;
 
     // Run 100 steps
     cpu::Frame frame2 = frame;
@@ -144,10 +144,10 @@ TEST(MD, NVEEnergyConservation) {
         sim.build();
         sim.run(frame2, 100);
     }
-    double e_final = frame2.energy + frame2.kinetic;
+    double e_final = frame2.scalars.energy + frame2.scalars.kinetic;
 
     // KE should be positive after integration
-    EXPECT_GT(frame2.kinetic, double(0));
+    EXPECT_GT(frame2.scalars.kinetic, double(0));
 
     // Total energy should be conserved within tolerance
     // (small dt = 0.001 fs, 100 steps, float precision)
@@ -310,11 +310,11 @@ TEST(MD, InitVelocity) {
     EXPECT_NEAR(static_cast<double>(mvz / M), 0.0, 0.01);
 
     // Kinetic energy should be positive (velocities were generated)
-    EXPECT_GT(frame.kinetic, double(0));
+    EXPECT_GT(frame.scalars.kinetic, double(0));
 
     // Temperature should be in the right ballpark (within factor 3 for 64 atoms)
     int ndof = 3 * n - 3;
-    double temp = double(2) * frame.kinetic / (double(ndof) * kBoltzmann);
+    double temp = double(2) * frame.scalars.kinetic / (double(ndof) * kBoltzmann);
     EXPECT_GT(static_cast<double>(temp),
               static_cast<double>(target_temp) * 0.3);
     EXPECT_LT(static_cast<double>(temp),

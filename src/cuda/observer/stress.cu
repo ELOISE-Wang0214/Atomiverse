@@ -88,11 +88,12 @@ void VirialStress::launch(const LaunchContext& ctx) {
     int grid = cuda::grid_size(static_cast<int>(n));
 
     // Zero accumulation buffer
-    cudaMemsetAsync(f.stress, 0, 6 * sizeof(prec_t), stream);
+    cudaMemsetAsync(f.scalars->stress, 0, 6 * sizeof(prec_t), stream);
 
     // Kinetic contribution (volume factor folded into reduction)
     kinetic_stress_k<<<grid, block, 6 * block * sizeof(work_t), stream>>>(
-        f.atoms.vx, f.atoms.vy, f.atoms.vz, f.atoms.mass, f.stress, f.box, n);
+        f.atoms.vx, f.atoms.vy, f.atoms.vz, f.atoms.mass, f.scalars->stress,
+        f.box, n);
 }
 
 void VirialStress::destroy(const DestroyContext& ctx) {

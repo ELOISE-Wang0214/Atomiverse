@@ -32,13 +32,13 @@ void ZeroForces::launch(const LaunchContext& ctx) {
 void ZeroEnergy::launch(const LaunchContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& frame = ctx.frame;
-    cudaMemsetAsync(frame.energy, 0, sizeof(prec_t), stream);
+    cudaMemsetAsync(&frame.scalars->energy, 0, sizeof(prec_t), stream);
 }
 
 void ZeroKinetic::launch(const LaunchContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& frame = ctx.frame;
-    cudaMemsetAsync(frame.kinetic, 0, sizeof(prec_t), stream);
+    cudaMemsetAsync(&frame.scalars->kinetic, 0, sizeof(prec_t), stream);
 }
 
 // ── InitVelocity ─────────────────────────────────────────────────────

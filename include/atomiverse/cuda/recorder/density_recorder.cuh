@@ -21,6 +21,8 @@
 
 #ifdef ATV_HAS_RHF
 
+#include "atomiverse/cuda/scf/scf_evaluator.cuh"
+
 namespace ATV {
 namespace cuda {
 
@@ -30,18 +32,32 @@ namespace cuda {
 /// `cuda::scf::SCFEvaluator`; it runs in the `evaluate::Phase::finalize`
 /// pass, after the inner `cuda::scf::SCFSolver` has converged the density.
 ///
+/// The converged density matrix is no longer carried on `cuda::Frame`; the
+/// recorder holds a reference to the `cuda::scf::SCFEvaluator` and reads the
+/// density from its SCF workspace. Register the evaluator borrowed (lvalue
+/// `add`) so the reference stays valid for the whole run.
+///
 /// @code{.cpp}
+/// cuda::scf::SCFEvaluator scf{integrals, tol, max_iter};
 /// cuda::Evaluate eval;
-/// eval.add(cuda::scf::SCFEvaluator{integrals, tol, max_iter});
+/// eval.add(scf);                          // lvalue -> borrowed
 /// eval.on(evaluate::Phase::finalize).add(
-///     DensityRecorder{"density.zarr", 20, 20, 20});
+///     DensityRecorder{"density.zarr", scf, 20, 20, 20});
 /// @endcode
 class DensityRecorder : public AsyncBridge {
   public:
-    DensityRecorder(std::string store_path, int nx, int ny, int nz,
+    /// @brief Construct an electron-density grid recorder.
+    /// @param store_path Output store path.
+    /// @param evaluator  SCF evaluator whose converged workspace supplies
+    ///                    the density matrix (borrowed -- must outlive this).
+    /// @param nx,ny,nz   Grid dimensions.
+    /// @param padding    Bounding-box padding [Angstrom].
+    /// @param every      Sampling stride in steps.
+    DensityRecorder(std::string store_path,
+                    const scf::SCFEvaluator& evaluator, int nx, int ny, int nz,
                     double padding = double(2.0), int every = 1)
-        : store_path_(std::move(store_path)), nx_(nx), ny_(ny), nz_(nz),
-          padding_(padding), every_(every) {}
+        : store_path_(std::move(store_path)), evaluator_(&evaluator), nx_(nx),
+          ny_(ny), nz_(nz), padding_(padding), every_(every) {}
 
     ~DensityRecorder() override = default;
     DensityRecorder(DensityRecorder&&) noexcept = default;
@@ -55,7 +71,7 @@ class DensityRecorder : public AsyncBridge {
         auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
         auto& frame = ctx.frame;
         n_atoms_ = frame.n_atoms();
-        n_basis_ = frame.scf.n;
+        n_basis_ = evaluator_->workspace().n;
 
         const auto na = static_cast<size_t>(n_atoms_);
 
@@ -85,15 +101,15 @@ class DensityRecorder : public AsyncBridge {
         cudaMallocHost(&h_P_, nb * nb * sizeof(double));
     }
 
-    bool can_run(const LaunchContext& ctx) const override {
-        return ctx.frame.scf.P != nullptr && n_basis_ > 0;
+    bool can_run(const LaunchContext&) const override {
+        return evaluator_->workspace().P != nullptr && n_basis_ > 0;
     }
 
     void issue_d2h(const LaunchContext& ctx) override {
         auto ds = static_cast<cudaStream_t>(ctx.runtime.defer_stream);
         const size_t nb = static_cast<size_t>(n_basis_);
-        cudaMemcpyAsync(h_P_, ctx.frame.scf.P, nb * nb * sizeof(double),
-                        cudaMemcpyDeviceToHost, ds);
+        cudaMemcpyAsync(h_P_, evaluator_->workspace().P,
+                        nb * nb * sizeof(double), cudaMemcpyDeviceToHost, ds);
     }
 
     void on_data_ready(const LaunchContext& ctx) override {

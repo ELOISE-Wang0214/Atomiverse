@@ -13,6 +13,7 @@
 #pragma once
 
 #include "atomiverse/cuda/component.cuh"
+#include "atomiverse/cuda/scf/scf_workspace.cuh"
 
 namespace ATV {
 namespace cuda {
@@ -28,15 +29,18 @@ class DensityBuilder {
   public:
     /// @brief Allocate cuBLAS handle.
     /// @param ctx Build context (CUDA stream + device frame).
-    void build(const BuildContext& ctx);
+    /// @param ws SCF electronic-structure workspace.
+    void build(const BuildContext& ctx, SCFWorkspace& ws);
 
     /// @brief Copy P -> P_old, then rebuild P = C_occ * C_occ^T.
     /// @param ctx Launch context (CUDA stream + device frame + step index).
-    void step(const LaunchContext& ctx);
+    /// @param ws SCF electronic-structure workspace.
+    void step(const LaunchContext& ctx, SCFWorkspace& ws);
 
     /// @brief Free cuBLAS handle.
     /// @param ctx Destroy context (CUDA stream + device frame).
-    void destroy(const DestroyContext& ctx);
+    /// @param ws SCF electronic-structure workspace.
+    void destroy(const DestroyContext& ctx, SCFWorkspace& ws);
 
   private:
     void* cublas_handle_ = nullptr; ///< cuBLAS handle.

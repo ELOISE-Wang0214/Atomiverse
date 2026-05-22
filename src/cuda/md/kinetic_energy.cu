@@ -62,7 +62,7 @@ void KineticEnergy::launch(const LaunchContext& ctx) {
     int grid = cuda::grid_size(static_cast<int>(n));
     kinetic_energy<<<grid, block, block * sizeof(work_t), stream>>>(
         frame.atoms.vx, frame.atoms.vy, frame.atoms.vz, frame.atoms.mass,
-        frame.kinetic, n);
+        &frame.scalars->kinetic, n);
 }
 
 } // namespace md

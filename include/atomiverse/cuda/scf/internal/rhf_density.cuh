@@ -9,13 +9,14 @@
 ///   1. C = X * C' (back-transform from orthogonal basis)
 ///   2. P_old = P; P = 2 * C_occ * C_occ^T (RHF closed-shell)
 ///   3. E = 0.5 * Tr[(Hcore + F) * P] + V_nuc
-///   4. Write E to frame.energy
+///   4. Write E to frame.scalars->energy
 ///
 /// @see cuda::scf::SCFSolver for the inner solver that owns this helper
 /// @see internal::RHFFock for the Fock matrix builder
 #pragma once
 
 #include "atomiverse/cuda/component.cuh"
+#include "atomiverse/cuda/scf/scf_workspace.cuh"
 
 namespace ATV {
 namespace cuda {
@@ -33,15 +34,18 @@ class RHFDensity {
 
     /// @brief Allocate cuBLAS handle and the Hcore+F scratch buffer.
     /// @param ctx Build context (CUDA stream + device frame).
-    void build(const BuildContext& ctx);
+    /// @param ws SCF electronic-structure workspace.
+    void build(const BuildContext& ctx, SCFWorkspace& ws);
 
     /// @brief Back-transform C, rebuild P, compute and write RHF energy.
     /// @param ctx Launch context (CUDA stream + device frame + step index).
-    void step(const LaunchContext& ctx);
+    /// @param ws SCF electronic-structure workspace.
+    void step(const LaunchContext& ctx, SCFWorkspace& ws);
 
     /// @brief Free cuBLAS handle and scratch buffer.
     /// @param ctx Destroy context (CUDA stream + device frame).
-    void destroy(const DestroyContext& ctx);
+    /// @param ws SCF electronic-structure workspace.
+    void destroy(const DestroyContext& ctx, SCFWorkspace& ws);
 
   private:
     int n_occ_;                     ///< Doubly-occupied orbital count.

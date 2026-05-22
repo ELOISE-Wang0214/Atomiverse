@@ -6,31 +6,29 @@
 /// CUDA-free header (contains only pointer declarations).
 ///
 /// Data is organized into sub-structs (atoms, bonds, angles, dihedrals)
-/// matching the molcrafts naming convention (molpy Block model).
+/// matching the molcrafts naming convention (molpy Block model). The field
+/// set mirrors `cpu::Frame` and `torch::Frame` exactly -- the three
+/// execution frames differ only in device representation (xtensor /
+/// raw device pointers / at::Tensor), never in which physical quantities
+/// they hold. Per the CLAUDE.md Frame purity rule the frame carries only
+/// fundamental physical quantities: method-specific scratch (the SCF
+/// workspace, the neighbor pair list) is owned by the components that
+/// compute it, not by the frame.
 ///
 /// @see cpu::Frame for the host-side counterpart
+/// @see core/system_scalars.h for the shared system-scalar bundle
+/// @see cuda/scf/scf_workspace.cuh for the relocated SCF scratch
+/// @see cuda/neighbor_list.cuh for the relocated neighbor pair list
 /// @see cpu::to_cuda / cuda::to_cpu for transfer
 #pragma once
 
+#include <cstdint>
+
+#include "atomiverse/core/system_scalars.h"
 #include "atomiverse/cuda/types.cuh"
 
 namespace ATV {
 namespace cuda {
-
-/// @brief Neighbor pair list -- all arrays on device.
-///
-/// Allocated by NeighborList::build(), populated by NeighborList::launch(),
-/// freed by NeighborList::destroy(). Starts as nullptr in a fresh Frame.
-struct PairList {
-    int* i = nullptr;        ///< First atom index [device].
-    int* j = nullptr;        ///< Second atom index [device].
-    real_t* dx = nullptr;    ///< x-displacement (j - i) [Angstrom, device].
-    real_t* dy = nullptr;    ///< y-displacement (j - i) [Angstrom, device].
-    real_t* dz = nullptr;    ///< z-displacement (j - i) [Angstrom, device].
-    real_t* dist = nullptr;  ///< Pair distance [Angstrom, device].
-    int* n_pairs = nullptr;  ///< Current pair count [device, 1 element].
-    int* capacity = nullptr; ///< Pre-allocated slot count [device, 1 element].
-};
 
 /// @brief Bond topology list -- all arrays on device, molcrafts naming.
 struct BondList {
@@ -61,92 +59,63 @@ struct DihedralList {
 
 /// @brief GPU-side system state -- device pointers + host-cached metadata.
 ///
-/// Device pointer fields are GPU-resident. Metadata fields (n_atoms_, n_bonds_,
-/// etc.) are host-cached counts set at materialize time to avoid D2H transfers.
+/// Device pointer fields are GPU-resident. Metadata fields (n_atoms_,
+/// n_bonds_, etc.) are host-cached counts set at materialize time to avoid
+/// D2H transfers.
 ///
-/// Created by cpu::to_cuda(), freed by cuda::destroy().
+/// Created by cpu::to_cuda() / cuda::materialize(), freed by cuda::destroy().
 struct Frame {
-    // ── Per-atom arrays (device pointers, molcrafts "atoms" block) ──
+    // -- Per-atom arrays (device pointers, molcrafts "atoms" block) --
 
     /// @brief Per-atom data block matching molpy atoms namespace.
     struct Atoms {
-        real_t* x = nullptr;    ///< x positions [Angstrom, device].
-        real_t* y = nullptr;    ///< y positions [Angstrom, device].
-        real_t* z = nullptr;    ///< z positions [Angstrom, device].
-        real_t* vx = nullptr;   ///< x velocities [Angstrom/fs, device].
-        real_t* vy = nullptr;   ///< y velocities [Angstrom/fs, device].
-        real_t* vz = nullptr;   ///< z velocities [Angstrom/fs, device].
-        real_t* fx = nullptr;   ///< x forces [eV/Angstrom, device].
-        real_t* fy = nullptr;   ///< y forces [eV/Angstrom, device].
-        real_t* fz = nullptr;   ///< z forces [eV/Angstrom, device].
-        real_t* mass = nullptr; ///< Masses [amu, device].
-        int* type = nullptr;    ///< Atom types [device].
-        int* d_size = nullptr;  ///< Atom count [device, 1 element].
+        real_t* x = nullptr;     ///< x positions [Angstrom, device].
+        real_t* y = nullptr;     ///< y positions [Angstrom, device].
+        real_t* z = nullptr;     ///< z positions [Angstrom, device].
+        real_t* vx = nullptr;    ///< x velocities [Angstrom/fs, device].
+        real_t* vy = nullptr;    ///< y velocities [Angstrom/fs, device].
+        real_t* vz = nullptr;    ///< z velocities [Angstrom/fs, device].
+        real_t* fx = nullptr;    ///< x forces [eV/Angstrom, device].
+        real_t* fy = nullptr;    ///< y forces [eV/Angstrom, device].
+        real_t* fz = nullptr;    ///< z forces [eV/Angstrom, device].
+        real_t* mass = nullptr;  ///< Masses [amu, device].
+        real_t* charge = nullptr; ///< Partial charges [e, device].
+        int* type = nullptr;     ///< Atom types [device].
+
+        /// @brief Global atom identity [device], persistent across MPI
+        /// migration and restart. Mirrors `cpu::Frame::Atoms::tag`.
+        std::int64_t* tag = nullptr;
+
+        /// @brief Per-atom PBC crossing counts, flat row-major [device,
+        /// 3 * n_atoms], `image[i * 3 + d]` for atom i along dimension d.
+        /// Mirrors `cpu::Frame::Atoms::image`.
+        std::int8_t* image = nullptr;
+
+        int* d_size = nullptr; ///< Atom count [device, 1 element].
     } atoms;
 
-    // ── System scalars (device pointers) ──
+    // -- System scalars (device-resident SystemScalars) --
 
-    prec_t* energy = nullptr;  ///< Potential energy [eV, device, 1 element].
-    prec_t* kinetic = nullptr; ///< Kinetic energy [eV, device, 1 element].
-    prec_t* stress =
-        nullptr; ///< Stress tensor [eV/Angstrom^3, device, 6 elements, Voigt].
+    /// @brief Per-frame system scalars (energy, kinetic, conserved, stress,
+    /// kinetic stress) -- one device-resident `SystemScalars` struct.
+    ///
+    /// Embeds `core/system_scalars.h`'s `SystemScalars` exactly as
+    /// `cpu::Frame` does; the only difference is the device representation
+    /// (a raw device pointer here, an inline value on the CPU frame). See
+    /// that header for the field-by-field documentation.
+    SystemScalars* scalars = nullptr;
+
     prec_t* box =
-        nullptr; ///< Simulation cell 3x3 row-major [Angstrom, device, 9 elements].
+        nullptr; ///< Simulation cell 3x3 row-major [Angstrom, device, 9].
 
-    // ── Sub-structures ──
+    // -- Topology sub-structures --
 
-    PairList pairs; ///< Neighbor pair list (allocated by NeighborList::build).
-    BondList bonds; ///< Bond topology (transferred by cpu::to_cuda).
-    AngleList angles; ///< Angle topology (transferred by cpu::to_cuda).
+    BondList bonds;     ///< Bond topology (transferred by cpu::to_cuda).
+    AngleList angles;   ///< Angle topology (transferred by cpu::to_cuda).
     DihedralList
         dihedrals; ///< Dihedral topology (transferred by cpu::to_cuda).
 
-    /// @brief SCF electronic-structure workspace -- all arrays on device.
-    ///
-    /// Allocated by SCF components in build(), freed in destroy().
-    /// Column-major dense matrices (cuBLAS convention), dimension n x n.
-    struct SCFWorkspace {
-        // ── Shared (toy-scf + RHF) ──
-        prec_t* H0 = nullptr; ///< Base Hamiltonian (toy) [device, n*n].
-        prec_t* H =
-            nullptr; ///< Effective Hamiltonian / Fock matrix [device, n*n].
-        prec_t* P = nullptr;     ///< Density matrix [device, n*n].
-        prec_t* P_old = nullptr; ///< Previous density matrix [device, n*n].
-        prec_t* C =
-            nullptr; ///< Eigenvectors / MO coefficients [device, n*n, col-major].
-        prec_t* eig = nullptr;  ///< Eigenvalues / orbital energies [device, n].
-        prec_t* work = nullptr; ///< Scratch buffer [device, n*n].
-        int n = 0;              ///< Matrix dimension (host-cached).
-        int n_occ = 0;          ///< Occupation count (host-cached).
-        bool converged = false; ///< Convergence flag (host-cached).
-        int iteration = 0;      ///< Iteration that converged (host-cached).
-        double residual = 0;    ///< Last convergence residual (host-cached).
-
-        // ── RHF-specific ──
-        prec_t* Hcore = nullptr; ///< Core Hamiltonian T+V [device, n*n].
-        prec_t* X =
-            nullptr; ///< Orthogonalization matrix S^{-1/2} [device, n*n].
-        prec_t* F_prime = nullptr; ///< Transformed Fock X^T*F*X [device, n*n].
-        prec_t* ERI = nullptr;     ///< Two-electron integrals [device, n^4].
-        double V_nuc = 0;          ///< Nuclear repulsion energy (host-cached).
-
-        // ── Basis data for GPU-native integral kernels ──
-        prec_t* d_shell_alpha =
-            nullptr; ///< Exponents [device, n_shells * n_prim].
-        prec_t* d_shell_coeff =
-            nullptr; ///< Normalized coefficients [device, n_shells * n_prim].
-        prec_t* d_shell_center =
-            nullptr; ///< Shell centers [device, n_shells * 3] (Bohr).
-        int* d_atom_Z = nullptr; ///< Nuclear charges [device, natm].
-        prec_t* d_atom_pos =
-            nullptr;      ///< Atom positions [device, natm * 3] (Bohr).
-        int n_prim = 0;   ///< Primitives per shell (host-cached).
-        int n_shells = 0; ///< Number of shells (host-cached).
-        int natm = 0;     ///< Number of atoms (host-cached).
-    };
-    SCFWorkspace scf; ///< SCF workspace (allocated by SCF components).
-
-    // ── Host-cached metadata (set at materialize, avoids D2H in loop) ──
+    // -- Host-cached metadata (set at materialize, avoids D2H in loop) --
 
     /// @brief Number of atoms cached on the host side.
     /// @return Atom count.

@@ -20,9 +20,9 @@ namespace cuda {
 namespace scf {
 namespace internal {
 
-void RHFDensity::build(const BuildContext& ctx) {
+void RHFDensity::build(const BuildContext& ctx, SCFWorkspace& ws) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
-    auto& scf = ctx.frame.scf;
+    auto& scf = ws;
     int n = scf.n;
 
     // Store n_occ in workspace
@@ -37,8 +37,8 @@ void RHFDensity::build(const BuildContext& ctx) {
     cublas_handle_ = handle;
 }
 
-void RHFDensity::step(const LaunchContext& ctx) {
-    auto& scf = ctx.frame.scf;
+void RHFDensity::step(const LaunchContext& ctx, SCFWorkspace& ws) {
+    auto& scf = ws;
     if (scf.converged)
         return;
 
@@ -80,12 +80,12 @@ void RHFDensity::step(const LaunchContext& ctx) {
     prec_t energy = prec_t(0.5) * dot_val + static_cast<prec_t>(scf.V_nuc);
 
     // Write to device energy scalar
-    cudaMemcpyAsync(ctx.frame.energy, &energy, sizeof(prec_t),
+    cudaMemcpyAsync(&ctx.frame.scalars->energy, &energy, sizeof(prec_t),
                     cudaMemcpyHostToDevice, stream);
     cudaStreamSynchronize(stream);
 }
 
-void RHFDensity::destroy(const DestroyContext& /*ctx*/) {
+void RHFDensity::destroy(const DestroyContext& /*ctx*/, SCFWorkspace& /*ws*/) {
     if (cublas_handle_) {
         cublasDestroy(static_cast<cublasHandle_t>(cublas_handle_));
         cublas_handle_ = nullptr;

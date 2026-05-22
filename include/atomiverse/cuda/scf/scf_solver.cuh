@@ -27,7 +27,8 @@
 ///   cuda::scf::SCFSolver solver{n_occ, alpha, tol, max_iter};
 ///   solver.build(runtime, frame);
 ///   solver.run(runtime, frame);
-///   // frame.scf.converged / frame.scf.residual / frame.energy populated.
+///   // solver.workspace().converged / .residual and frame.scalars->energy
+///   // are populated.
 /// @endcode
 ///
 /// Usage (single-point through the outer facade):
@@ -47,6 +48,7 @@
 #include "atomiverse/cuda/scf/internal/density_builder.cuh"
 #include "atomiverse/cuda/scf/internal/eigen_solver.cuh"
 #include "atomiverse/cuda/scf/internal/hamiltonian.cuh"
+#include "atomiverse/cuda/scf/scf_workspace.cuh"
 
 #ifdef ATV_HAS_RHF
 #include "atomiverse/cpu/scf/integrals.h"
@@ -108,17 +110,15 @@ class SCFSolver {
     /// Zeroes the density matrix internally, then loops the fixed-order
     /// SCF cycle (Fock/Hamiltonian build → diagonalize → density build →
     /// convergence check) up to `max_iter` iterations, breaking early when
-    /// `frame.scf.converged` is set. Performs no device allocation.
+    /// the owned workspace's `converged` flag is set. Performs no device
+    /// allocation.
     /// @param runtime CUDA execution context (streams).
     /// @param frame Device-resident system state, updated in place.
     void run(cuda::Context& runtime, cuda::Frame& frame);
 
-    /// @brief Release the cuBLAS/cuSOLVER handles and per-helper scratch
-    ///        buffers held by the owned `internal::*` step helpers.
-    ///
-    /// The shared SCF workspace in `frame.scf` is freed by the backend's
-    /// `cuda::destroy(frame)`; this releases only the helper-private
-    /// resources allocated in `build()`.
+    /// @brief Release the owned SCF workspace plus the cuBLAS/cuSOLVER
+    ///        handles and per-helper scratch buffers held by the
+    ///        `internal::*` step helpers.
     /// @param runtime CUDA execution context (streams).
     /// @param frame Device-resident system state.
     void destroy(cuda::Context& runtime, cuda::Frame& frame);
@@ -126,6 +126,15 @@ class SCFSolver {
     /// @brief Number of SCF iterations executed by the most recent `run()`.
     /// @return Iteration count [dimensionless].
     int iterations() const { return iterations_; }
+
+    /// @brief Access the owned SCF workspace (density matrix, MO
+    ///        coefficients, orbital energies, convergence state).
+    ///
+    /// Valid after `build()`. Exposed so force-evaluator components
+    /// (`SCFEvaluator`) can forward SCF results to downstream observers
+    /// and recorders.
+    /// @return The device-resident SCF workspace.
+    const SCFWorkspace& workspace() const { return workspace_; }
 
   private:
     /// @brief Run-path selector — fixes which `internal::*` helpers drive
@@ -141,6 +150,12 @@ class SCFSolver {
     int max_iter_;  ///< Maximum SCF iteration count.
     bool built_ = false;     ///< Whether build() has run.
     int iterations_ = 0;     ///< Iterations executed by the last run().
+
+    /// @brief Device-resident SCF workspace owned by this solver.
+    ///
+    /// Relocated out of `cuda::Frame` (Frame purity rule); allocated by
+    /// the `internal::*` helpers in `build()`, freed in `destroy()`.
+    SCFWorkspace workspace_;
 
     // Step helpers shared by every path.
     std::unique_ptr<internal::EigenSolver> eigen_;

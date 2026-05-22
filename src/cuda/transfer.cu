@@ -1,12 +1,15 @@
 /// @file cuda/transfer.cu
 /// @brief cpu::to_cuda(), cuda::to_cpu(), cuda::destroy() implementations.
 ///
-/// Implements double<->real_t/prec_t conversion with temporary buffers
-/// when the device storage type differs from the host Real type.
+/// Implements double<->real_t conversion with temporary buffers when the
+/// device storage type differs from the host Real type. The system scalars
+/// travel as a single device-resident `SystemScalars` struct.
 
 #include "atomiverse/cpu/transfer.h"
 #include "atomiverse/cuda/transfer.cuh"
 #include "atomiverse/cuda/types.cuh"
+
+#include <cstdint>
 
 #include <cuda_runtime.h>
 #include <vector>
@@ -15,11 +18,10 @@ namespace ATV {
 
 using cuda::prec_t;
 using cuda::real_t;
-using cuda::work_t;
 
-// ── Narrowing helpers ────────────────────────────────────────────────
+// -- Narrowing helpers ------------------------------------------------
 //
-// cpu::Frame stores arrays as Real (double by default).
+// cpu::Frame stores per-atom arrays as Real (double by default).
 // cuda::Frame stores per-atom arrays as real_t (float by default).
 // When real_t != Real, we must convert through a temporary buffer.
 
@@ -51,35 +53,9 @@ void copy_d2h_widen(Real* h_dst, const real_t* d_src, int n) {
     }
 }
 
-/// @brief Copy host double array to device prec_t array with narrowing.
-void copy_h2d_prec(prec_t* d_dst, const Real* h_src, int n) {
-    if constexpr (std::is_same_v<prec_t, Real>) {
-        cudaMemcpy(d_dst, h_src, n * sizeof(prec_t), cudaMemcpyHostToDevice);
-    } else {
-        std::vector<prec_t> tmp(n);
-        for (int i = 0; i < n; ++i)
-            tmp[i] = static_cast<prec_t>(h_src[i]);
-        cudaMemcpy(d_dst, tmp.data(), n * sizeof(prec_t),
-                   cudaMemcpyHostToDevice);
-    }
-}
-
-/// @brief Copy device prec_t array to host double array with widening.
-void copy_d2h_prec(Real* h_dst, const prec_t* d_src, int n) {
-    if constexpr (std::is_same_v<prec_t, Real>) {
-        cudaMemcpy(h_dst, d_src, n * sizeof(prec_t), cudaMemcpyDeviceToHost);
-    } else {
-        std::vector<prec_t> tmp(n);
-        cudaMemcpy(tmp.data(), d_src, n * sizeof(prec_t),
-                   cudaMemcpyDeviceToHost);
-        for (int i = 0; i < n; ++i)
-            h_dst[i] = static_cast<Real>(tmp[i]);
-    }
-}
-
 } // anonymous namespace
 
-// ── cpu::to_cuda ──────────────────────────────────────────────────────
+// -- cpu::to_cuda ----------------------------------------------------
 
 namespace cpu {
 
@@ -108,15 +84,15 @@ cuda::Frame to_cuda(const Frame& frame) {
     cudaMalloc(&d.atoms.fy, n * sizeof(real_t));
     cudaMalloc(&d.atoms.fz, n * sizeof(real_t));
     cudaMalloc(&d.atoms.mass, n * sizeof(real_t));
+    cudaMalloc(&d.atoms.charge, n * sizeof(real_t));
     cudaMalloc(&d.atoms.type, n * sizeof(int));
+    cudaMalloc(&d.atoms.tag, n * sizeof(std::int64_t));
+    cudaMalloc(&d.atoms.image, 3 * n * sizeof(std::int8_t));
 
-    // Precision-critical scalars (prec_t storage)
-    cudaMalloc(&d.energy, sizeof(prec_t));
-    cudaMalloc(&d.kinetic, sizeof(prec_t));
-
-    // Stress tensor (6 Voigt components, prec_t)
-    cudaMalloc(&d.stress, 6 * sizeof(prec_t));
-    cudaMemset(d.stress, 0, 6 * sizeof(prec_t));
+    // System scalars: one device-resident SystemScalars struct
+    cudaMalloc(&d.scalars, sizeof(SystemScalars));
+    cudaMemcpy(d.scalars, &frame.scalars, sizeof(SystemScalars),
+               cudaMemcpyHostToDevice);
 
     // H2D with narrowing conversion for per-atom arrays
     copy_h2d_narrow(d.atoms.x, frame.atoms.x.data(), n);
@@ -126,15 +102,17 @@ cuda::Frame to_cuda(const Frame& frame) {
     copy_h2d_narrow(d.atoms.vy, frame.atoms.vy.data(), n);
     copy_h2d_narrow(d.atoms.vz, frame.atoms.vz.data(), n);
     copy_h2d_narrow(d.atoms.mass, frame.atoms.mass.data(), n);
+    copy_h2d_narrow(d.atoms.charge, frame.atoms.charge.data(), n);
     cudaMemcpy(d.atoms.type, frame.atoms.type.data(), n * sizeof(int),
                cudaMemcpyHostToDevice);
+    cudaMemcpy(d.atoms.tag, frame.atoms.tag.data(), n * sizeof(std::int64_t),
+               cudaMemcpyHostToDevice);
+    cudaMemcpy(d.atoms.image, frame.atoms.image.data(),
+               3 * n * sizeof(std::int8_t), cudaMemcpyHostToDevice);
 
     cudaMemset(d.atoms.fx, 0, n * sizeof(real_t));
     cudaMemset(d.atoms.fy, 0, n * sizeof(real_t));
     cudaMemset(d.atoms.fz, 0, n * sizeof(real_t));
-    prec_t zero = 0;
-    cudaMemcpy(d.energy, &zero, sizeof(prec_t), cudaMemcpyHostToDevice);
-    cudaMemcpy(d.kinetic, &zero, sizeof(prec_t), cudaMemcpyHostToDevice);
 
     // Box: 3x3 row-major on device (prec_t)
     cudaMalloc(&d.box, 9 * sizeof(prec_t));
@@ -143,9 +121,6 @@ cuda::Frame to_cuda(const Frame& frame) {
         for (int j = 0; j < 3; ++j)
             box_data[i * 3 + j] = static_cast<prec_t>(frame.box(i, j));
     cudaMemcpy(d.box, box_data, 9 * sizeof(prec_t), cudaMemcpyHostToDevice);
-
-    // Pair list -- empty (allocated by NeighborList on first build)
-    d.pairs = {};
 
     // Bond topology
     int nb = d.n_bonds_;
@@ -210,7 +185,7 @@ cuda::Frame to_cuda(const Frame& frame) {
 
 } // namespace cpu
 
-// ── cuda::to_cpu / cuda::destroy ──────────────────────────────────────
+// -- cuda::to_cpu / cuda::destroy ------------------------------------
 
 namespace cuda {
 
@@ -228,11 +203,19 @@ void to_cpu(const Frame& d, cpu::Frame& frame) {
     copy_d2h_widen(frame.atoms.fy.data(), d.atoms.fy, n);
     copy_d2h_widen(frame.atoms.fz.data(), d.atoms.fz, n);
 
-    // Precision-critical scalars
-    copy_d2h_prec(&frame.scalars.energy, d.energy, 1);
-    copy_d2h_prec(&frame.scalars.kinetic, d.kinetic, 1);
-    if (d.stress)
-        copy_d2h_prec(frame.scalars.stress, d.stress, 6);
+    // Per-atom partial charge (mutable: charge-equilibration methods)
+    if (d.atoms.charge)
+        copy_d2h_widen(frame.atoms.charge.data(), d.atoms.charge, n);
+
+    // Per-atom PBC image counts (mutable: updated as atoms cross box faces)
+    if (d.atoms.image)
+        cudaMemcpy(frame.atoms.image.data(), d.atoms.image,
+                   3 * n * sizeof(std::int8_t), cudaMemcpyDeviceToHost);
+
+    // System scalars: one device-resident SystemScalars struct
+    if (d.scalars)
+        cudaMemcpy(&frame.scalars, d.scalars, sizeof(SystemScalars),
+                   cudaMemcpyDeviceToHost);
 
     // Box (may have changed via Deform or Barostat)
     if (d.box) {
@@ -257,21 +240,13 @@ void destroy(Frame& d) {
     cudaFree(d.atoms.fy);
     cudaFree(d.atoms.fz);
     cudaFree(d.atoms.mass);
+    cudaFree(d.atoms.charge);
     cudaFree(d.atoms.type);
-    cudaFree(d.energy);
-    cudaFree(d.kinetic);
-    cudaFree(d.stress);
-    cudaFree(d.box);
+    cudaFree(d.atoms.tag);
+    cudaFree(d.atoms.image);
     cudaFree(d.atoms.d_size);
-
-    cudaFree(d.pairs.i);
-    cudaFree(d.pairs.j);
-    cudaFree(d.pairs.dx);
-    cudaFree(d.pairs.dy);
-    cudaFree(d.pairs.dz);
-    cudaFree(d.pairs.dist);
-    cudaFree(d.pairs.n_pairs);
-    cudaFree(d.pairs.capacity);
+    cudaFree(d.scalars);
+    cudaFree(d.box);
 
     cudaFree(d.bonds.atomi);
     cudaFree(d.bonds.atomj);
@@ -290,26 +265,6 @@ void destroy(Frame& d) {
     cudaFree(d.dihedrals.atoml);
     cudaFree(d.dihedrals.type);
     cudaFree(d.dihedrals.n_dihedrals);
-
-    // SCF workspace (shared)
-    cudaFree(d.scf.H0);
-    cudaFree(d.scf.H);
-    cudaFree(d.scf.P);
-    cudaFree(d.scf.P_old);
-    cudaFree(d.scf.C);
-    cudaFree(d.scf.eig);
-    cudaFree(d.scf.work);
-    // SCF workspace (RHF)
-    cudaFree(d.scf.Hcore);
-    cudaFree(d.scf.X);
-    cudaFree(d.scf.F_prime);
-    cudaFree(d.scf.ERI);
-    // SCF workspace (GPU integral basis data)
-    cudaFree(d.scf.d_shell_alpha);
-    cudaFree(d.scf.d_shell_coeff);
-    cudaFree(d.scf.d_shell_center);
-    cudaFree(d.scf.d_atom_Z);
-    cudaFree(d.scf.d_atom_pos);
 
     d = {};
 }

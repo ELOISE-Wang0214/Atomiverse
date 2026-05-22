@@ -113,8 +113,8 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
     int grid = grid_size(static_cast<int>(nb));
     kernels::harmonic_bond_k<<<grid, block, block * sizeof(work_t), stream>>>(
         f.atoms.x, f.atoms.y, f.atoms.z, f.atoms.fx, f.atoms.fy, f.atoms.fz,
-        f.energy, f.bonds.atomi, f.bonds.atomj, f.bonds.type, state_->d_K,
-        state_->d_r0, f.box, nb);
+        &f.scalars->energy, f.bonds.atomi, f.bonds.atomj, f.bonds.type,
+        state_->d_K, state_->d_r0, f.box, nb);
 }
 
 void BondHarmonic::destroy(const DestroyContext& /*ctx*/) {

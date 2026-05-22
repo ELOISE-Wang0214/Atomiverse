@@ -52,9 +52,9 @@ __global__ void build_G_kernel(prec_t* __restrict__ G,
     }
 }
 
-void RHFFock::build(const BuildContext& ctx) {
+void RHFFock::build(const BuildContext& ctx, SCFWorkspace& ws) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
-    auto& scf = ctx.frame.scf;
+    auto& scf = ws;
     int n = integrals_.n_basis;
     int nn = n * n;
     int n4 = nn * nn;
@@ -125,8 +125,8 @@ void RHFFock::build(const BuildContext& ctx) {
     cudaStreamSynchronize(stream);
 }
 
-void RHFFock::step(const LaunchContext& ctx) {
-    auto& scf = ctx.frame.scf;
+void RHFFock::step(const LaunchContext& ctx, SCFWorkspace& ws) {
+    auto& scf = ws;
     if (scf.converged)
         return;
 
@@ -177,7 +177,7 @@ void RHFFock::step(const LaunchContext& ctx) {
     // Now: scf.H = F' (for EigenSolver), scf.work = F (for energy in RHFDensity)
 }
 
-void RHFFock::destroy(const DestroyContext& /*ctx*/) {
+void RHFFock::destroy(const DestroyContext& /*ctx*/, SCFWorkspace& /*ws*/) {
     if (cublas_handle_) {
         cublasDestroy(static_cast<cublasHandle_t>(cublas_handle_));
         cublas_handle_ = nullptr;
@@ -218,9 +218,9 @@ RHFFockDevice::RHFFockDevice(int n_prim, const double* exponents,
     : n_prim_(n_prim), n_occ_(n_occ), exponents_(exponents, exponents + n_prim),
       coefficients_(coefficients, coefficients + n_prim) {}
 
-void RHFFockDevice::build(const BuildContext& ctx) {
+void RHFFockDevice::build(const BuildContext& ctx, SCFWorkspace& ws) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
-    auto& scf = ctx.frame.scf;
+    auto& scf = ws;
     int natm = ctx.frame.n_atoms();
     int n = natm; // 1 basis function per atom (STO-3G 1s for H)
     int nn = n * n;
@@ -416,9 +416,9 @@ void RHFFockDevice::build(const BuildContext& ctx) {
     cudaStreamSynchronize(stream);
 }
 
-void RHFFockDevice::step(const LaunchContext& ctx) {
+void RHFFockDevice::step(const LaunchContext& ctx, SCFWorkspace& ws) {
     // Identical to RHFFock::step — same Fock build logic
-    auto& scf = ctx.frame.scf;
+    auto& scf = ws;
     if (scf.converged)
         return;
 
@@ -449,7 +449,8 @@ void RHFFockDevice::step(const LaunchContext& ctx) {
                     cudaMemcpyDeviceToDevice, stream);
 }
 
-void RHFFockDevice::destroy(const DestroyContext& /*ctx*/) {
+void RHFFockDevice::destroy(const DestroyContext& /*ctx*/,
+                            SCFWorkspace& /*ws*/) {
     if (cublas_handle_) {
         cublasDestroy(static_cast<cublasHandle_t>(cublas_handle_));
         cublas_handle_ = nullptr;

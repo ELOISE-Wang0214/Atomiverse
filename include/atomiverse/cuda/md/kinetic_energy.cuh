@@ -11,7 +11,7 @@
 /// the accumulator before KineticEnergy writes.
 ///
 /// @see ZeroKinetic for the zeroing infrastructure
-/// @see Thermo for the component that reads frame.kinetic
+/// @see Thermo for the component that reads frame.scalars->kinetic
 #pragma once
 
 #include <string>
@@ -31,7 +31,7 @@ namespace md {
 ///
 /// `role()` stays `None` and `capabilities()` stays `None` (the
 /// `ComponentBase` defaults), mirroring `cpu::md::KineticEnergy`:
-/// kinetic energy is written to `frame.kinetic`, which is **not** one of
+/// kinetic energy is written to `frame.scalars->kinetic`, which is **not** one of
 /// the `Capability` bits (those cover potential `Energy`, `Force`,
 /// `Stress`, charge / density / orbital fields). It is a structural
 /// diagnostic, not a force/energy producer, so `DynamicsDriver`
