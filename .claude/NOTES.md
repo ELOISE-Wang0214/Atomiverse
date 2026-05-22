@@ -8,6 +8,82 @@ Agents read this alongside CLAUDE.md. When a note stabilizes, promote it into CL
 
 ---
 
+## [2026-05-22] CUDA driver taxonomy migration — CUDA matches the three-category shape
+
+Landed `.claude/specs/cuda-driver-taxonomy-*.md` (the 5-link
+`cuda-driver-taxonomy` chain). Brings the CUDA backend onto the same
+category-driven taxonomy CPU adopted in the 2026-05-06 redesign,
+replacing the per-algorithm CUDA driver shape.
+
+**The 5-link CUDA migration:**
+
+  - **01** — namespace-normalized the CUDA backend (`ATV::cuda::*`) and
+    added the `cuda::CUDADriver<PhaseEnum>` layer + the three category
+    bases (`cuda::EvaluateDriver` / `DynamicsDriver` / `OptimizeDriver`),
+    parallel to `cpu::CPUDriver<PhaseEnum>`.
+  - **02** — `cuda::md::MD` migrated to `cuda::DynamicsDriver`.
+  - **03** — `cuda::minimizer::Minimize` (`OptimizeDriver`) with
+    `cuda::minimizer::SteepestDescent` as a hot-swappable Optimizer
+    component, replacing the `cuda::minimizer::SD`/`CG`
+    algorithm-as-driver classes.
+  - **04** — CUDA SCF demoted from a `Driver` to the
+    `cuda::scf::SCFSolver` inner solver behind the `cuda::scf::SCFEvaluator`
+    Evaluator component; the SCF step helpers relocated to
+    `cuda::scf::internal::` (`include/atomiverse/cuda/scf/internal/`),
+    `cuda::scf::scf.cuh` deleted. `cuda::Evaluate` is the one-pass driver;
+    single-point CUDA energy is `cuda::Evaluate + cuda::scf::SCFEvaluator`
+    (or the `cuda::single_point` helper) — no `cuda::scf::SinglePoint`
+    class.
+  - **05** (this link) — scrubbed the now-dangling CUDA references to
+    `ATV::scf::Phase`: deleted the dead
+    `Driver<scf::Phase, cuda::device_tag>` explicit instantiation in
+    `src/cuda/driver.cu` and re-pointed the surviving `@see` /
+    usage-snippet doc-comments to the `cuda::scf::SCFSolver` API. A
+    `tests/cuda/scf_phase_scrub.sh` grep gate (CTest
+    `test_cuda_scf_phase_scrub`) now asserts no `scf::Phase` token
+    survives under `include/atomiverse/cuda/` or `src/cuda/`. CLAUDE.md
+    and this log updated to the shipped shape.
+
+**Two latent bugs surfaced and fixed in link 01.** The namespace
+normalization in 01 replaced the explicit `<float>`/`<double>` CUDA
+kernel-launcher instantiations with `<work_t>`-only forced
+instantiations. Under the default build config
+(`ATV_CUDA_REAL=float`, `ATV_CUDA_WORK=double`) this exposed two
+pre-existing precision-tier defects:
+
+  1. **`real_t`/`work_t`/`prec_t` signature drift** (build regression,
+     ~25 errors across 6 files). Neighbor-list/SCF kernels were already
+     correct, but their launch wrappers and the shared
+     `nlist_impl.cuh` declarations had drifted: per-atom SoA/AABB/
+     displacement buffers are `real_t` (not `work_t`), cell/inverse-cell
+     matrices are `real_t` (consumed by `triclinic.cuh`), and
+     `frame.box` is `prec_t`. Launchers and header decls were
+     corrected to flow each precision tier uniformly.
+  2. **D2H copies sized by the wrong element type.** The RDF observer
+     and the XYZ/density recorders copied per-atom / per-pair `real_t`
+     device buffers (`frame.pairs.dist`, `frame.atoms.x/y/z`) sized by
+     `sizeof(double)`, reading 2x past the end and leaving a sticky
+     CUDA "invalid argument" error. Fixed by staging through
+     `real_t` pinned buffers copied as `sizeof(real_t)`, then widening
+     to `double` for the CPU consumers.
+
+**`ATV::scf::Phase` kept — owned by the CPU plane-wave SCF.** The chain
+plan assumed `scf::Phase` (`facade/stage.h`) would be unreferenced once
+CUDA SCF became an inner solver and could be deleted. A tree-wide grep
+during link 05 drafting showed that is false: the CPU **plane-wave**
+SCF (`cpu::pw`) runs as a `Driver<scf::Phase, cpu::device_tag>`
+(`src/cpu/driver.cpp`) and seven `cpu::pw::PW_*` components return
+`DefaultBinding` values keyed on `scf::Phase::*`. The enum and the CPU
+instantiation are kept; only the enum's doc-comment was corrected from
+the now-false "Legacy CUDA-only … will retire" to name `cpu::pw` as
+its owner.
+
+**Follow-up — migrate `cpu::pw` off `scf::Phase`.** The plane-wave SCF
+is the last `Driver<scf::Phase>` outer loop. Moving it onto its own
+phase enum / category driver is a genuine architectural refactor with
+behavior risk, unrelated to the CUDA migration, and was left out of
+this chain. Recorded here as the open follow-up.
+
 ## [2026-05-06] CPU driver taxonomy redesign — three categories + SCFSolver inner solver
 
 Landed `.claude/specs/cpu-driver-taxonomy.md` (phases 1-6). Replaces the

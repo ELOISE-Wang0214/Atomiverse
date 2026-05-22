@@ -26,8 +26,14 @@ namespace cuda {
 
 /// @brief Evaluate and store electron density rho(r) on a uniform grid.
 ///
+/// Registers on a `cuda::Evaluate` driver alongside a
+/// `cuda::scf::SCFEvaluator`; it runs in the `evaluate::Phase::finalize`
+/// pass, after the inner `cuda::scf::SCFSolver` has converged the density.
+///
 /// @code{.cpp}
-/// solver.on(scf::Phase::end_of_step).add(
+/// cuda::Evaluate eval;
+/// eval.add(cuda::scf::SCFEvaluator{integrals, tol, max_iter});
+/// eval.on(evaluate::Phase::finalize).add(
 ///     DensityRecorder{"density.zarr", 20, 20, 20});
 /// @endcode
 class DensityRecorder : public AsyncBridge {

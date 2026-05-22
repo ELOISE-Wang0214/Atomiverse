@@ -93,9 +93,16 @@ like `cpu::scf::SCFEvaluator`. Single-point energy in user code is
 `cpu::Evaluate + cpu::scf::SCFEvaluator`. There is no `SinglePoint`
 class.
 
-CUDA still uses the per-algorithm shape (`cuda::md::MD`,
-`cuda::minimizer::CG`/`SD`, `cuda::scf::SCF`) — migration tracked in
-`.claude/specs/cuda-driver-taxonomy.md`.
+CUDA mirrors the same three-category taxonomy. `cuda::Evaluate`,
+`cuda::md::MD`, and `cuda::minimizer::Minimize` are the three concrete
+CUDA category drivers, each subclassing `cuda::CUDADriver<PhaseEnum>`
+(the CUDA backend layer, parallel to `cpu::CPUDriver<PhaseEnum>`).
+CUDA SCF is `cuda::scf::SCFSolver` — an inner solver, not a driver —
+used by the `cuda::scf::SCFEvaluator` Evaluator component. Single-point
+CUDA energy is `cuda::Evaluate + cuda::scf::SCFEvaluator` (or the
+`cuda::single_point` helper); there is no `cuda::scf::SinglePoint`
+class. The optimizer algorithm is a component:
+`cuda::minimizer::SteepestDescent` plugs into `cuda::minimizer::Minimize`.
 
 ```
 CPUDriver<PhaseEnum>::run(frame, ...)
@@ -163,13 +170,13 @@ molrs (Rust) is a hard dependency for I/O. `cpu::MolRec` uses PIMPL — no `rust
 
 ## Conventions
 
-- **Namespace:** `ATV`. Sub: `ATV::cpu`, `ATV::cuda`, `ATV::md`, `ATV::minimizer`, `ATV::scf`, `ATV::evaluate`. SCF internals: `ATV::cpu::scf::internal`.
+- **Namespace:** `ATV`. Sub: `ATV::cpu`, `ATV::cuda`, `ATV::md`, `ATV::minimizer`, `ATV::scf`, `ATV::evaluate`. SCF internals: `ATV::cpu::scf::internal` and `ATV::cuda::scf::internal`. Inner SCF solvers: `ATV::cpu::scf::SCFSolver`, `ATV::cuda::scf::SCFSolver`.
 - **File extensions:** CPU `.h`/`.cpp`, CUDA `.cuh`/`.cu`, facade/core `.h`
-- **Driver template:** `Driver<PhaseEnum, DeviceTag>` is the underlying primitive. User-facing CPU code subclasses one of `cpu::EvaluateDriver` / `DynamicsDriver` / `OptimizeDriver`, not `Driver<>` directly. CPU driver subclass headers must include `cpu/backend_traits.h`.
+- **Driver template:** `Driver<PhaseEnum, DeviceTag>` is the underlying primitive. User-facing CPU code subclasses one of `cpu::EvaluateDriver` / `DynamicsDriver` / `OptimizeDriver`, and CUDA code one of `cuda::EvaluateDriver` / `DynamicsDriver` / `OptimizeDriver`, not `Driver<>` directly. CPU/CUDA driver subclass headers must include the matching `backend_traits.h`.
 - **Component tagging:** `role()` returns `ComponentRole` (structural slot); `capabilities()` returns `Capability` bitset (frame fields written). Both default to `None`.
 - **No factory functions** — components are classes with constructors
 - **No fallback values** — lookup tables throw on unsupported input
-- **Phase naming:** Evaluate: `prepare, evaluate, finalize`. MD: LAMMPS-style. Minimizer: `search_direction, line_search, force, convergence_check, end_of_step`. SCF: `build_hamiltonian, diagonalize, build_density, convergence_check, end_of_step` (CUDA-only legacy; CPU SCF is an inner solver and uses no outer phase enum).
+- **Phase naming:** Evaluate: `prepare, evaluate, finalize`. MD: LAMMPS-style. Minimizer: `search_direction, line_search, force, convergence_check, end_of_step`. SCF: `build_hamiltonian, diagonalize, build_density, convergence_check, end_of_step` — `ATV::scf::Phase` is the phase enum for the CPU **plane-wave** SCF outer driver (`cpu::pw`, a `Driver<scf::Phase, cpu::device_tag>`). Gaussian-basis CPU SCF (`cpu::scf::SCFSolver`) and the migrated CUDA SCF (`cuda::scf::SCFSolver`) are inner solvers and use no outer phase enum.
 - **Units:** eV, Å, fs, amu, eV/Å, K. Conversion constants in `core/units.h`.
 - **Precision:** compile-time `Real` (`-DATV_REAL=float|double`), `Int` (`-DATV_INT=int|int64_t`)
 - **libxc:** when enabled, native XC must match libxc to 1e-12
@@ -185,12 +192,14 @@ molrs (Rust) is a hard dependency for I/O. `cpu::MolRec` uses PIMPL — no `rust
 | `cpu::Evaluate` | CPU | `EvaluateDriver` | `evaluate::Phase` |
 | `cpu::md::MD` | CPU | `DynamicsDriver` | `md::Phase` |
 | `cpu::minimizer::Minimize` | CPU | `OptimizeDriver` | `minimizer::Phase` |
-| `md::MD` (CUDA) | CUDA | (legacy — pending migration) | `md::Phase` |
-| `cuda::minimizer::SD` / `CG` | CUDA | (legacy — algorithm-as-driver) | `minimizer::Phase` |
-| `cuda::scf::SCF` | CUDA | (legacy — pending migration) | `scf::Phase` |
+| `cuda::Evaluate` | CUDA | `EvaluateDriver` | `evaluate::Phase` |
+| `cuda::md::MD` | CUDA | `DynamicsDriver` | `md::Phase` |
+| `cuda::minimizer::Minimize` | CUDA | `OptimizeDriver` | `minimizer::Phase` |
 
-CUDA migration to the same three-category taxonomy is tracked in
-`.claude/specs/cuda-driver-taxonomy.md`.
+SCF is **not** a driver category on either backend. The inner SCF
+solver is `cpu::scf::SCFSolver` / `cuda::scf::SCFSolver`, driven by the
+`SCFEvaluator` Evaluator component. Single-point energy is
+`Evaluate + scf::SCFEvaluator` — there is no `SinglePoint` class.
 
 Single-point energy in user code:
 ```cpp
@@ -208,8 +217,23 @@ LBFGS (Optimizer — was `LBFGSStep`), CG (Optimizer — Polak-Ribière+).
 Optimizer choice is hot-swappable: the same `cpu::minimizer::Minimize`
 driver accepts either by adding the component.
 
-### SCF components (CUDA)
-RHFFock, RHFFockDevice, EigenSolver, RHFDensity, DensityBuilder, ConvergenceCheck, Hamiltonian
+### CUDA SCF (requires `-DATV_BUILD_RHF=ON`)
+- **Inner solver:** `cuda::scf::SCFSolver` — public low-level class,
+  NOT a `Driver<>` subclass. Owns the device-resident SCF cycle
+  (Fock/Hamiltonian build → diagonalize → density build → convergence
+  check), looping internally to convergence. Three run paths: synthetic,
+  RHF from host integrals, RHF from GPU-native integral kernels.
+- **Internal step helpers** (`cuda::scf::internal::`,
+  `include/atomiverse/cuda/scf/internal/`): `Hamiltonian`, `RHFFock`,
+  `RHFFockDevice`, `EigenSolver`, `DensityBuilder`, `RHFDensity`,
+  `ConvergenceCheck`. Owned by `SCFSolver`, driven directly in a fixed
+  order, carry no phase enum, NOT registered into any Plan, NOT
+  `ComponentBase` subclasses.
+- **Force evaluator:** `cuda::scf::SCFEvaluator` — `cuda::ComponentBase`
+  with `role()==Evaluator` and `capabilities()=Energy|DensityMatrix|
+  Orbitals`. Holds an `SCFSolver` member built once. Energy/density
+  only — there is no CUDA SCF gradient kernel. Plugs into
+  `cuda::Evaluate`.
 
 ### CPU SCF (requires `-DATV_BUILD_RHF=ON`)
 - **Inner solver:** `cpu::scf::SCFSolver` — public low-level class.
@@ -291,6 +315,24 @@ opt.set_optimizer(cpu::minimizer::LBFGS{5, 0.01, 0.05});
 opt.add(cpu::scf::SCFEvaluator{config});
 opt.build();
 opt.run(frame, /*max_iter=*/100);
+
+// CUDA single-point SCF energy — cuda::Evaluate + SCFEvaluator
+cuda::Evaluate ceval;
+ceval.add(cuda::scf::SCFEvaluator{integrals, tol, /*max_iter=*/100});
+ceval.build();
+ceval.run(frame);            // frame.energy populated
+// or the free-function helper:
+cuda::scf::SCFEvaluator cscf{integrals, tol, 100};
+cuda::single_point(frame, cscf);
+
+// CUDA classical MD (Dynamics)
+cuda::md::MD csim;
+csim.on(md::Phase::force)
+    .add(cuda::NeighborList{6.8}, -10)
+    .add(cuda::LJ{0.0104, 3.4, 6.8});
+csim.add(cuda::md::VelocityVerlet{0.01});
+csim.build();
+csim.run(frame, 1000);
 ```
 
 ## Skills & agents

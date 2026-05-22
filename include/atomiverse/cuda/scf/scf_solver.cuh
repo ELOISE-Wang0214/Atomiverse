@@ -10,8 +10,10 @@
 /// `SCFSolver` is also a public API for low-level use (debugging, testing,
 /// CPU/CUDA parity). It owns its `internal::*` step helpers, each with a
 /// `build` / `step` / `destroy` lifecycle and pre-allocated device
-/// workspaces. The helpers are **not** registered into any `Driver` Plan
-/// and do not reference `scf::Phase` or `cuda::Context::outer_status`.
+/// workspaces. The helpers are **not** registered into any `Driver` Plan,
+/// carry no phase enum, and do not touch `cuda::Context::outer_status`;
+/// `SCFSolver` drives them directly in a fixed order and owns its own
+/// internal convergence.
 ///
 /// Three run paths are surfaced as distinct constructors:
 ///  - **Synthetic** — `H(P) = H0 + alpha*P` toy self-consistency cycle.

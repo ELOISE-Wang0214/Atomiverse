@@ -4,10 +4,17 @@
 /// Pure observer: computes and stores per-atom charges.  Does NOT write to
 /// MolRec or any file format — that is the recorder's job.
 ///
+/// Registers on a `cuda::Evaluate` driver alongside a
+/// `cuda::scf::SCFEvaluator`; it runs in the `evaluate::Phase::finalize`
+/// pass, after the inner `cuda::scf::SCFSolver` has converged the density.
+///
 /// @code{.cpp}
 /// MullikenObs mulliken(integrals);
-/// solver.on(scf::Phase::end_of_step).add(mulliken);
-/// solver.run(frame, 100);
+/// cuda::Evaluate eval;
+/// eval.add(cuda::scf::SCFEvaluator{integrals, tol, max_iter});
+/// eval.on(evaluate::Phase::finalize).add(mulliken);
+/// eval.build();
+/// eval.run(frame);
 /// auto q = mulliken.charges();            // observer: pure data
 /// rec.add_field("charge", q);             // recorder: I/O
 /// @endcode

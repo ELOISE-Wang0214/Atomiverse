@@ -3,11 +3,12 @@
 ///        self-consistency loop.
 ///
 /// `SCFSolver` orchestrates its owned `internal::*` step helpers through
-/// the fixed-order SCF cycle. It absorbs the legacy `ZeroDensity`
+/// the fixed-order SCF cycle. It absorbs the former `ZeroDensity`
 /// infrastructure component: the density matrix is zeroed via
-/// `cudaMemsetAsync` as the first step of `run()`. The solver never
-/// references `scf::Phase` and never touches `cuda::Context::outer_status`
-/// — it manages its own convergence internally via `frame.scf.converged`.
+/// `cudaMemsetAsync` as the first step of `run()`. The solver is not a
+/// `Driver` and carries no phase enum, and never touches
+/// `cuda::Context::outer_status` — it manages its own convergence
+/// internally via `frame.scf.converged`.
 
 #include "atomiverse/cuda/scf/scf_solver.cuh"
 

@@ -118,7 +118,6 @@ void Backend::shutdown() {
 
 template class Driver<md::Phase, cuda::device_tag>;
 template class Driver<minimizer::Phase, cuda::device_tag>;
-template class Driver<scf::Phase, cuda::device_tag>;
 template class Driver<evaluate::Phase, cuda::device_tag>;
 
 } // namespace ATV

@@ -86,10 +86,15 @@ inline std::vector<std::string> phase_names(Phase phase_tag) {
 
 /// @brief Self-consistent field phases.
 ///
-/// @note Legacy CUDA-only enum. CPU SCF is encapsulated by
-///       `cpu::scf::SCFSolver` (an inner solver, not a Driver subclass)
-///       and does not use this enum. This namespace will retire once
-///       the CUDA SCF migration ships.
+/// @note Phase enum for the CPU **plane-wave** SCF outer driver
+///       (`cpu::pw`), which runs as a `Driver<scf::Phase, cpu::device_tag>`
+///       and is its sole consumer: `src/cpu/driver.cpp` instantiates that
+///       driver and the `cpu::pw::PW_*` components return `DefaultBinding`
+///       values keyed on these phases.
+/// @note The Gaussian-basis CPU SCF (`cpu::scf::SCFSolver`) and the
+///       migrated CUDA SCF (`cuda::scf::SCFSolver`) are inner solvers,
+///       not Driver subclasses, and do **not** use this enum — they own
+///       their internal convergence directly.
 namespace scf {
 
 /// @brief Phase order for one SCF iteration.
