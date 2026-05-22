@@ -2,7 +2,6 @@
 
 - [aimd](aimd.md) — first-class Born-Oppenheimer AIMD by reusing cpu::md::MD + SCFEvaluator: set_qm categorical setter + faithful Kolafa-ASPC density warm-start + NVE energy-conservation validation [approved]
 
-- [rust-frame-lowering-01-molrs-bridge](rust-frame-lowering-01-molrs-bridge.md) — molrs CXX bridge: add Frame zero-copy ingress + create/write, expose the Frame handle from molrs-python [approved]
 - [rust-frame-lowering-02-cpu-materialize](rust-frame-lowering-02-cpu-materialize.md) — cpu::Frame materializer for molrs.Frame ↔ cpu::Frame, add charge field, extract shared SystemScalars [approved]
 - [rust-frame-lowering-03-python-path](rust-frame-lowering-03-python-path.md) — run() accepts molrs.Frame via a shared handle; delete _convert.py and the CpuFrame binding [approved]
 - [rust-frame-lowering-04-cuda-torch](rust-frame-lowering-04-cuda-torch.md) — remove SCFWorkspace/PairList from cuda::Frame, align the three Frames, add cuda/torch materializers [approved]
