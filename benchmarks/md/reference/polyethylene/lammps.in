@@ -19,8 +19,9 @@
 #   stage 4   npt 100 K, iso 0 bar                50000 steps  dt 0.5 fs
 #   stage 5   npt 100 K (y,z) + deform x         171800 steps  dt 1.0 fs
 #
-# The ~330000-step run is a ~24h operator action, NOT a CI step. Only the
-# `run` step counts may be shortened for a quick check; nothing else.
+# The 331800-step run (10000+50000+50000+50000+171800) is a ~24h operator
+# action, NOT a CI step. Only the `run` step counts may be shortened for a
+# quick check; nothing else.
 
 units           real
 boundary        p p p

@@ -119,22 +119,26 @@ fi
 
 # Publish canonical-schema reference artifacts (engine + rank suffixed)
 # under the reference directory so Phase D.2/D.3/D.4 reference them by a
-# stable path. The benchmark's thermo.csv carries an isotropic pressure
+# stable path. Canonicalization is delegated to the shared, pytest-covered
+# tools/canonicalize_msu_output.py so LAMMPS and Atomiverse use one tested
+# converter (no inline awk to drift).
+#
+# Phase G.2 TODO: the benchmark's thermo.csv carries an isotropic pressure
 # column only; the canonical schema's Pxx/Pyy/Pzz are filled with that
-# isotropic value as a stand-in until Phase D.2 wires per-axis pressure
-# into the benchmark.
+# isotropic value as a stand-in. The real per-axis (Pxx/Pyy/Pzz) pressure
+# path is umbrella-phase msu-pe-validation.md Phase G.2 — until it lands,
+# downstream consumers of per-axis Atomiverse stress must treat these three
+# columns as an isotropic placeholder. canonicalize_msu_output.py preserves
+# this stand-in deliberately; do NOT "fix" it in this Phase-D.1 link.
+CANON="$REPO_ROOT/tools/canonicalize_msu_output.py"
 THERMO_REF="$REF_DIR/thermo_atomiverse_${RANKS}r.csv"
 STRESS_REF="$REF_DIR/stress_strain_atomiverse_${RANKS}r.csv"
 if [[ -s "$THERMO" ]]; then
-  awk -F, 'NR==1 { print "step,T,P,E_pot,E_kin,Pxx,Pyy,Pzz"; next }
-           NF>=7 { print $1","$4","$5","$6","$7","$5","$5","$5 }' \
-      "$THERMO" > "$THERMO_REF"
+  python3 "$CANON" atomiverse thermo "$THERMO" "$THERMO_REF"
 fi
 STRESS="$RUN_DIR/stress_strain.csv"
 if [[ -s "$STRESS" ]]; then
-  awk -F, 'NR==1 { print "strain,sigma_xx"; next }
-           NF>=5 { print $3","$5 }' \
-      "$STRESS" > "$STRESS_REF"
+  python3 "$CANON" atomiverse stress-strain "$STRESS" "$STRESS_REF"
 fi
 
 echo

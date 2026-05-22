@@ -1,0 +1,303 @@
+#!/usr/bin/env python3
+"""Canonicalize raw MSU-PE engine output into the downstream canonical CSV schema.
+
+This is the Phase D.1 canonicalization step for
+``.claude/specs/msu-pe-phase-d-01-reference-runs.md``. It is pure stdlib Python
+(``csv`` + ``argparse`` only) so it runs on a fresh install, is side-effect-free
+beyond writing the requested output file, and is idempotent: running it twice on
+the same input yields byte-identical output.
+
+"Canonicalization" = converting a raw engine output file into the schema the
+downstream chain links (``msu-pe-align-03`` / ``-d-03`` / ``-d-04``) consume:
+
+* thermo        — ``step,T,P,E_pot,E_kin,Pxx,Pyy,Pzz``
+* stress-strain — ``strain,sigma_xx``
+
+Engine / kind matrix
+--------------------
+
+* ``lammps stress-strain`` — the input is the upstream paper deck's
+  space-separated, ``#``-commented ``def1`` print file (columns
+  ``strain pxx_GPa pyy_GPa pzz_GPa lx ly lz temp``, the deck's
+  ``-pxx/10000*1.01325`` already converts atm→GPa and flips the sign to
+  tension-positive). Output ``strain,sigma_xx`` is def1 col0, col1.
+* ``lammps thermo`` — the online ``lammps.in`` ``fix print`` already streams the
+  canonical 8-column schema. This mode validates the header / column order and
+  passes the rows through unchanged; a non-canonical header fails loudly.
+* ``atomiverse thermo`` — the benchmark's ``thermo.csv`` is remapped exactly as
+  the inline ``awk`` in ``tools/run_msu_atomiverse.sh`` did: ``$1,$4,$5,$6,$7``
+  become ``step,T,P,E_pot,E_kin`` and the isotropic ``P`` ($5) is replicated
+  into ``Pxx/Pyy/Pzz``. That replication is a Phase G.2 stand-in (real per-axis
+  pressure is an umbrella-phase fix) and is preserved verbatim here.
+* ``atomiverse stress-strain`` — the benchmark's ``stress_strain.csv`` is
+  remapped as the inline ``awk`` did: ``$3 → strain``, ``$5 → sigma_xx``.
+
+Behaviour
+---------
+
+* ``#``-comment lines and blank lines in the input are skipped.
+* An empty or header-only input yields a header-only output, not a crash.
+* A malformed row (wrong column count) raises :class:`CanonicalizeError`
+  naming the offending line; the CLI turns that into a non-zero exit.
+
+CLI
+---
+
+::
+
+    canonicalize_msu_output.py <engine> <kind> <in> <out>
+        engine ∈ {lammps, atomiverse}
+        kind   ∈ {thermo, stress-strain}
+
+Exit codes
+----------
+
+* ``0`` — conversion succeeded.
+* ``1`` — a malformed input row or a non-canonical header was found.
+* ``2`` — a bad CLI argument (handled by argparse) or a missing input file.
+
+@see .claude/specs/msu-pe-phase-d-01-reference-runs.md
+"""
+
+import argparse
+import csv
+import os
+import sys
+
+
+#: Canonical thermo CSV schema consumed by the downstream chain links.
+THERMO_HEADER = ["step", "T", "P", "E_pot", "E_kin", "Pxx", "Pyy", "Pzz"]
+
+#: Canonical stress-strain CSV schema consumed by msu-pe-phase-d-04.
+STRESS_HEADER = ["strain", "sigma_xx"]
+
+
+class CanonicalizeError(Exception):
+    """A raw engine output file could not be canonicalized.
+
+    Raised on a malformed input row (wrong column count) or a non-canonical
+    LAMMPS thermo header. The message names the offending line so the failure
+    is loud, not silent.
+    """
+
+
+# ── input parsing ────────────────────────────────────────────────────────────
+
+
+def _iter_data_lines(path):
+    """Yield ``(line_number, raw_line)`` for non-blank, non-``#``-comment lines.
+
+    ``line_number`` is 1-based and counts every physical line of the file so the
+    number in an error message points at the real line. Blank lines and lines
+    whose first non-whitespace character is ``#`` are skipped.
+
+    @raises CanonicalizeError  When the input file does not exist.
+    """
+    if not os.path.isfile(path):
+        raise CanonicalizeError("input file not found: {}".format(path))
+    with open(path, newline="") as f:
+        for lineno, raw in enumerate(f, start=1):
+            stripped = raw.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            yield lineno, raw
+
+
+def _split_ws(raw):
+    """Split a whitespace-separated row into its fields (no empty fields)."""
+    return raw.split()
+
+
+def _split_csv(raw):
+    """Split a comma-separated row into its fields, trimming surrounding space."""
+    return [cell.strip() for cell in next(csv.reader([raw]))]
+
+
+# ── per-engine / per-kind converters ─────────────────────────────────────────
+
+
+def _lammps_stress_strain(path):
+    """``lammps stress-strain``: def1 print → ``strain,sigma_xx``.
+
+    The input is the upstream paper deck's space-separated, ``#``-commented
+    ``def1`` file with 8 columns ``strain pxx_GPa pyy_GPa pzz_GPa lx ly lz
+    temp``. The canonical row is ``(col0, col1)`` — ``sigma_xx`` is the deck's
+    already-GPa, already-tension-positive ``pxx``.
+
+    The online ``lammps.in`` ``fix ss5`` already streams the canonical
+    comma-separated ``strain,sigma_xx`` schema. When the first data line is
+    exactly that header this mode validates the column order and passes the
+    rows through unchanged, so the online and offline LAMMPS stress-strain
+    paths share one tested canonicalization implementation.
+    """
+    rows = []
+    expected = 8
+    canonical_mode = False
+    header_seen = False
+    for lineno, raw in _iter_data_lines(path):
+        if not header_seen:
+            header_seen = True
+            if _split_csv(raw) == STRESS_HEADER:
+                canonical_mode = True
+                continue
+            # else: not the online CSV — fall through, treat as a def1 row.
+        if canonical_mode:
+            fields = _split_csv(raw)
+            if len(fields) != len(STRESS_HEADER):
+                raise CanonicalizeError(
+                    "malformed stress-strain row at line {}: expected {} "
+                    "columns, got {} -- {!r}".format(
+                        lineno, len(STRESS_HEADER), len(fields), raw.strip()))
+            rows.append(fields)
+            continue
+        fields = _split_ws(raw)
+        if len(fields) != expected:
+            raise CanonicalizeError(
+                "malformed def1 row at line {}: expected {} columns, got {} "
+                "-- {!r}".format(lineno, expected, len(fields), raw.strip()))
+        rows.append([fields[0], fields[1]])
+    return STRESS_HEADER, rows
+
+
+def _lammps_thermo(path):
+    """``lammps thermo``: validate the canonical 8-column header and pass through.
+
+    The online ``lammps.in`` ``fix print`` already emits
+    ``step,T,P,E_pot,E_kin,Pxx,Pyy,Pzz``. This mode asserts the header is
+    exactly that (fails loudly otherwise) and copies every data row verbatim.
+    """
+    header = None
+    rows = []
+    expected = len(THERMO_HEADER)
+    for lineno, raw in _iter_data_lines(path):
+        fields = _split_csv(raw)
+        if header is None:
+            header = fields
+            if header != THERMO_HEADER:
+                raise CanonicalizeError(
+                    "non-canonical LAMMPS thermo header at line {}: expected "
+                    "{}, got {}".format(lineno, THERMO_HEADER, header))
+            continue
+        if len(fields) != expected:
+            raise CanonicalizeError(
+                "malformed thermo row at line {}: expected {} columns, got {} "
+                "-- {!r}".format(lineno, expected, len(fields), raw.strip()))
+        rows.append(fields)
+    return THERMO_HEADER, rows
+
+
+def _atomiverse_thermo(path):
+    """``atomiverse thermo``: benchmark ``thermo.csv`` → canonical 8 columns.
+
+    Reproduces the inline ``awk`` of ``tools/run_msu_atomiverse.sh``:
+    ``$1,$4,$5,$6,$7`` map to ``step,T,P,E_pot,E_kin`` and the isotropic ``P``
+    ($5) is replicated into ``Pxx/Pyy/Pzz``. That replication is a Phase G.2
+    stand-in (real per-axis pressure is an umbrella-phase fix) — preserved here
+    intentionally, do not "fix" it in this link.
+    """
+    header = None
+    rows = []
+    min_cols = 7  # awk guard: NF >= 7
+    for lineno, raw in _iter_data_lines(path):
+        fields = _split_csv(raw)
+        if header is None:
+            header = fields  # benchmark header, not validated column-by-column
+            continue
+        if len(fields) < min_cols:
+            raise CanonicalizeError(
+                "malformed atomiverse thermo row at line {}: expected at least "
+                "{} columns, got {} -- {!r}".format(
+                    lineno, min_cols, len(fields), raw.strip()))
+        step, t, p, e_pot, e_kin = (
+            fields[0], fields[3], fields[4], fields[5], fields[6])
+        # Pxx/Pyy/Pzz filled with isotropic P -- Phase G.2 stand-in.
+        rows.append([step, t, p, e_pot, e_kin, p, p, p])
+    return THERMO_HEADER, rows
+
+
+def _atomiverse_stress_strain(path):
+    """``atomiverse stress-strain``: benchmark ``stress_strain.csv`` → 2 columns.
+
+    Reproduces the inline ``awk`` of ``tools/run_msu_atomiverse.sh``:
+    ``$3 → strain``, ``$5 → sigma_xx`` (the ``NF >= 5`` guard).
+    """
+    header = None
+    rows = []
+    min_cols = 5  # awk guard: NF >= 5
+    for lineno, raw in _iter_data_lines(path):
+        fields = _split_csv(raw)
+        if header is None:
+            header = fields
+            continue
+        if len(fields) < min_cols:
+            raise CanonicalizeError(
+                "malformed atomiverse stress-strain row at line {}: expected "
+                "at least {} columns, got {} -- {!r}".format(
+                    lineno, min_cols, len(fields), raw.strip()))
+        rows.append([fields[2], fields[4]])
+    return STRESS_HEADER, rows
+
+
+#: Dispatch table: (engine, kind) → converter returning ``(header, rows)``.
+_CONVERTERS = {
+    ("lammps", "stress-strain"): _lammps_stress_strain,
+    ("lammps", "thermo"): _lammps_thermo,
+    ("atomiverse", "thermo"): _atomiverse_thermo,
+    ("atomiverse", "stress-strain"): _atomiverse_stress_strain,
+}
+
+
+# ── public API ───────────────────────────────────────────────────────────────
+
+
+def canonicalize(engine, kind, in_path, out_path):
+    """Convert a raw engine output file into a canonical-schema CSV.
+
+    @param engine    ``"lammps"`` or ``"atomiverse"``.
+    @param kind      ``"thermo"`` or ``"stress-strain"``.
+    @param in_path   Raw engine output file (def1 print / benchmark CSV /
+                     online LAMMPS canonical CSV).
+    @param out_path  Canonical CSV to write. An empty / header-only input
+                     yields a header-only output.
+    @raises CanonicalizeError  On an unknown ``(engine, kind)`` pair, a missing
+                               input file, a malformed input row, or a
+                               non-canonical LAMMPS thermo header.
+    """
+    converter = _CONVERTERS.get((engine, kind))
+    if converter is None:
+        raise CanonicalizeError(
+            "unknown engine/kind combination: {!r}/{!r}".format(engine, kind))
+    header, rows = converter(in_path)
+    with open(out_path, "w", newline="") as f:
+        writer = csv.writer(f, lineterminator="\n")
+        writer.writerow(header)
+        writer.writerows(rows)
+
+
+# ── CLI ──────────────────────────────────────────────────────────────────────
+
+
+def main(argv=None):
+    """CLI entry point. See the module docstring for the exit-code contract."""
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("engine", choices=["lammps", "atomiverse"],
+                   help="Source engine of the raw output file.")
+    p.add_argument("kind", choices=["thermo", "stress-strain"],
+                   help="Kind of canonical schema to emit.")
+    p.add_argument("input", help="Raw engine output file to canonicalize.")
+    p.add_argument("output", help="Canonical-schema CSV file to write.")
+    args = p.parse_args(argv)
+
+    try:
+        canonicalize(args.engine, args.kind, args.input, args.output)
+    except CanonicalizeError as exc:
+        print("canonicalize_msu_output: {}".format(exc), file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

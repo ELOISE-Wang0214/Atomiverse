@@ -23,7 +23,7 @@ Usage: $(basename "$0") [RANKS] [-- <extra lmp args>]
 
 Environment:
   OMP_NUM_THREADS, OMP_PROC_BIND, OMP_PLACES — propagated as-is.
-  LMP_BIN   — override LAMMPS binary (default: lmp on PATH).
+  LMP_BIN   — override LAMMPS binary (default: lmp_cuda, run in CPU mode).
 EOF
 }
 
@@ -59,7 +59,10 @@ if [[ ! -f "$DATA" ]]; then
   exit 3
 fi
 
-LMP="${LMP_BIN:-lmp}"
+# Default to the user's single lmp_cuda binary run in CPU mode: the CPU arm
+# passes NO GPU package args (no `-sf gpu` / `-pk gpu`), so lmp_cuda runs as
+# a plain MPI/OpenMP CPU build. LMP_BIN still overrides the binary.
+LMP="${LMP_BIN:-lmp_cuda}"
 if ! command -v "$LMP" >/dev/null 2>&1; then
   echo "error: LAMMPS binary '$LMP' not on PATH (override with LMP_BIN=...)." >&2
   exit 4
@@ -101,16 +104,22 @@ END="$(date +%s.%N)"
 
 WALL="$(awk -v s="$START" -v e="$END" 'BEGIN { printf "%.3f", e - s }')"
 
-# Publish the deck's canonical-schema CSVs as committed reference
+# Publish the deck's output as committed canonical-schema reference
 # artifacts, suffixed by engine and rank count, directly under the
 # reference directory so Phase D.2/D.3/D.4 reference them by stable path.
+# The deck's `fix thermolog` / `fix ss5` already stream the canonical
+# schema; routing through canonicalize_msu_output.py (rather than a bare
+# cp) audits the header / column order with the shared, tested converter
+# so LAMMPS and Atomiverse use one canonicalization path.
+CANON="$REPO_ROOT/tools/canonicalize_msu_output.py"
 THERMO_REF="$REF_DIR/thermo_lammps_${RANKS}r.csv"
 STRESS_REF="$REF_DIR/stress_strain_lammps_${RANKS}r.csv"
 if [[ -s "$RUN_DIR/thermo.lammps.csv" ]]; then
-  cp "$RUN_DIR/thermo.lammps.csv" "$THERMO_REF"
+  python3 "$CANON" lammps thermo "$RUN_DIR/thermo.lammps.csv" "$THERMO_REF"
 fi
 if [[ -s "$RUN_DIR/stress_strain.lammps.csv" ]]; then
-  cp "$RUN_DIR/stress_strain.lammps.csv" "$STRESS_REF"
+  python3 "$CANON" lammps stress-strain \
+    "$RUN_DIR/stress_strain.lammps.csv" "$STRESS_REF"
 fi
 
 echo

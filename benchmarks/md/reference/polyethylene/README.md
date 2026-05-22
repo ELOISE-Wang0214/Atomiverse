@@ -84,9 +84,14 @@ loop. Stage 5 holds the x box edge rigid under the NPT barostat
 (`couple_axis={false,true,true}`) while `Deform` drives the x edge at
 the engineering strain rate and y/z barostat to P=0.
 
-The full ~360000-step run is ~24h-class wall time — an **operator
-action, not a CI step**. Reproduce the reference artifacts at 1 and 8
-ranks with:
+The full **331800-step** run (10000 + 50000 + 50000 + 50000 + 171800)
+is ~24h-class wall time — an **operator action, not a CI step**.
+
+The LAMMPS launcher `tools/run_msu_lammps.sh` defaults to the user's
+single `lmp_cuda` binary run in **CPU mode** — the CPU arm passes no GPU
+package args, so `lmp_cuda` runs as a plain MPI/OpenMP CPU build;
+`LMP_BIN` still overrides the binary. Reproduce the reference artifacts
+at 1 and 8 ranks on a local node with:
 
 ```bash
 ./tools/run_msu_lammps.sh 1
@@ -95,9 +100,25 @@ ranks with:
 ./tools/run_msu_atomiverse.sh 8
 ```
 
-Each launcher publishes engine- and rank-suffixed canonical CSVs
-(`thermo_<engine>_<N>r.csv`, `stress_strain_<engine>_<N>r.csv`) into
-this directory; the Phase D.2/D.3/D.4 comparison
-(`tools/validate_polyethylene.py`) consumes them by path. See
-`SOURCES.md` § Phase D.1 for the protocol table, the canonical filename
-scheme, and the full operator procedure.
+On **PDC Dardel**, submit each run as a SLURM job on the `main`
+partition with the submission wrapper `tools/run_msu_pdc.sh` (account
+`naiss2025-1-25` for the CPU arm; the `-A` flag is required, no default):
+
+```bash
+./tools/run_msu_pdc.sh lammps     1 -A naiss2025-1-25
+./tools/run_msu_pdc.sh lammps     8 -A naiss2025-1-25
+./tools/run_msu_pdc.sh atomiverse 1 -A naiss2025-1-25
+./tools/run_msu_pdc.sh atomiverse 8 -A naiss2025-1-25
+```
+
+`run_msu_pdc.sh` generates a `main`-partition, 24h-cap SLURM script that
+runs the matching launcher under `srun -n <ranks>` and `sbatch`es it.
+
+Each launcher routes raw engine output through the shared, pytest-covered
+converter `tools/canonicalize_msu_output.py` and publishes engine- and
+rank-suffixed canonical CSVs (`thermo_<engine>_<N>r.csv`,
+`stress_strain_<engine>_<N>r.csv`) into this directory; the Phase
+D.2/D.3/D.4 comparison (`tools/validate_polyethylene.py`) consumes them
+by path. See `SOURCES.md` § Phase D.1 for the protocol table, the
+331800-step total, the canonical filename scheme, the
+`canonicalize_msu_output.py` step, and the full operator procedure.

@@ -165,6 +165,19 @@ the stage-1 integrator choice is load-bearing, not cosmetic.
 Force-field coefficients are identical to `lammps_msu_paper.in` and the
 FF table above.
 
+### Total step count
+
+The five-stage protocol is exactly **331800 steps**:
+
+```
+10000 + 50000 + 50000 + 50000 + 171800 = 331800
+```
+
+(stage 1 + stage 2 + stage 3 + stage 4 + stage 5). An earlier "~360000"
+figure here was an overestimate and has been corrected — the `run`
+step-counts above are the authoritative source. The full run is still
+~24h-class wall time, inside the PDC 24h job cap.
+
 ### Canonical reference artifacts (filename scheme)
 
 `tools/run_msu_lammps.sh` and `tools/run_msu_atomiverse.sh` publish their
@@ -177,15 +190,57 @@ output as engine- and rank-suffixed CSVs directly under this directory:
 | `stress_strain_lammps_<N>r.csv` | LAMMPS, N ranks |
 | `stress_strain_atomiverse_<N>r.csv` | Atomiverse, N ranks |
 
+Both run scripts route raw engine output through the shared, pytest-covered
+converter `tools/canonicalize_msu_output.py` (no inline `awk`/`cp`), so
+LAMMPS and Atomiverse use one tested canonicalization implementation:
+
+```bash
+# raw engine output  ->  canonical-schema CSV
+python3 tools/canonicalize_msu_output.py <engine> <kind> <in> <out>
+#   engine ∈ {lammps, atomiverse}   kind ∈ {thermo, stress-strain}
+```
+
 The Atomiverse benchmark currently logs an isotropic pressure only; the
 `Pxx/Pyy/Pzz` columns of `thermo_atomiverse_*.csv` are filled with that
-isotropic value as a stand-in until Phase D.2 wires per-axis pressure
-into `benchmarks/md/polyethylene_tension.cpp`.
+isotropic value as a **Phase G.2 stand-in** (umbrella spec
+`msu-pe-validation.md` Phase G.2 wires per-axis pressure into
+`benchmarks/md/polyethylene_tension.cpp`). `canonicalize_msu_output.py`
+preserves this stand-in deliberately. Downstream consumers of per-axis
+Atomiverse stress must treat those three columns as isotropic placeholders
+until Phase G.2 lands.
+
+### Staged-landing decision (per spec `msu-pe-phase-d-01-reference-runs`)
+
+- **Now** — `stress_strain_lammps_8r.csv` is committed: it was produced by
+  `canonicalize_msu_output.py` from the already-completed 8-rank paper-deck
+  run in `runs/lammps_n8_paper/PE_nc10_cl1000.def1.txt`, giving
+  `msu-pe-phase-d-04`'s load-bearing stress-strain gate its first real
+  LAMMPS-side reference data without a re-run.
+- **After the operator runs** — `thermo_lammps_<N>r.csv` and
+  `stress_strain_lammps_<N>r.csv` (N ∈ {1,8}) from the four full PDC runs.
+- **After Phase G.2** — `thermo_atomiverse_<N>r.csv` /
+  `stress_strain_atomiverse_<N>r.csv` with real per-axis pressure. If an
+  Atomiverse reference is run before G.2, its `Pxx/Pyy/Pzz` are isotropic
+  stand-ins and must be flagged as such here.
+
+### Deck-fidelity audit
+
+`tools/audit_lammps_deck.sh` is the machine-verifiable gate behind the
+"`lammps.in` physics ≡ `lammps_msu_paper.in`" claim above: it strips each
+deck's non-physics output hooks (`fix print` / `dump` / `compute rdf` /
+`log` / `write_restart` / `reset_timestep` / `thermo_style` ...) and
+asserts the remaining physics lines — units, force field, every stage's
+fixes / timesteps / run step-counts — are set-equal. It exits 0 on the
+in-tree decks.
 
 ### Operator run procedure (NOT a CI step)
 
-The full ~360000-step protocol is ~24h-class wall time — an **operator
-action, never a CI step**:
+The full 331800-step protocol is ~24h-class wall time — an **operator
+action, never a CI step**.
+
+The LAMMPS launcher defaults to the user's single `lmp_cuda` binary run in
+**CPU mode** (no GPU package args — plain MPI/OpenMP); `LMP_BIN` still
+overrides it. On a local node:
 
 ```bash
 ./tools/run_msu_lammps.sh 1       # LAMMPS reference, 1 rank
@@ -194,5 +249,18 @@ action, never a CI step**:
 ./tools/run_msu_atomiverse.sh 8   # Atomiverse reference, 8 ranks
 ```
 
-Each run also leaves a timestamped audit copy under `runs/`. Commit the
+On PDC Dardel, submit each as a SLURM job on the `main` partition via the
+submission wrapper `tools/run_msu_pdc.sh` (account `naiss2025-1-25` for
+the CPU arm; the `-A` flag is required, no default):
+
+```bash
+./tools/run_msu_pdc.sh lammps     1 -A naiss2025-1-25
+./tools/run_msu_pdc.sh lammps     8 -A naiss2025-1-25
+./tools/run_msu_pdc.sh atomiverse 1 -A naiss2025-1-25
+./tools/run_msu_pdc.sh atomiverse 8 -A naiss2025-1-25
+```
+
+`run_msu_pdc.sh` generates a `main`-partition, 24h-cap SLURM script whose
+body runs the matching launcher under `srun -n <ranks>`, then `sbatch`es
+it. Each run also leaves a timestamped audit copy under `runs/`. Commit the
 eight canonical CSVs once all four runs complete.

@@ -1,13 +1,27 @@
 ---
-title: MSU amorphous-PE tension — correctness and multi-core performance validation vs LAMMPS
+title: MSU amorphous-PE tension — dual-backend (CPU + CUDA) correctness and performance validation vs LAMMPS
 status: in-progress
-created: 2026-04-19
-last-updated: 2026-05-19 (Phase C data file + input deck downloaded from CAVS ICME wiki — `msu_pe.data` + `lammps_msu_paper.in` + `SOURCES.md` in tree. Surfaces a Dreiding-UA vs OPLS angle/dihedral discrepancy in `polyethylene_tension.cpp` that blocks Phase D.)
+created: 2026-05-22
+last-updated: 2026-05-22 (SUPERSEDE/REFINE of msu-pe-validation — extends the umbrella to dual-backend: adds single-GPU CUDA correctness validation against LAMMPS GPU mode, a functional-gap phase that implements the missing CUDA components, an async-correctness phase, and a 2×2 four-config comparison. CPU Phase 0/A/B/C remain ✅ as landed. Phase D sub-chain `msu-pe-phase-d-*` and `msu-pe-align-03` are referenced, not re-specified.)
+supersedes: msu-pe-validation (in place)
 ---
 
-# MSU amorphous-PE validation
+# MSU amorphous-PE validation (dual-backend)
 
-## Status snapshot
+## 综述 (Summary)
+
+本规范是 `msu-pe-validation` 的就地 SUPERSEDE/REFINE：把原本只针对 CPU/MPI 引擎的 MSU 非晶聚乙烯单轴拉伸验证，扩展为 **CPU 与 CUDA 双后端** 对 LAMMPS 的验证。用户的最终诉求是：MSU 非晶 PE 拉伸基准要同时验证 Atomiverse 的 CPU 后端和 CUDA 后端,并在四种引擎配置上对比能量、密度、每阶段墙钟时间和应力-应变曲线;凡是缺失的功能必须**先实现**;所有非热路径的 recorder / thermo / observer 必须改为异步,尤其在 CUDA 上 GPU 绝不能因为 analyzer/recorder 而停等。
+
+本规范保持 **伞型路线图 (umbrella roadmap)** 形态:它持有阶段状态快照、依赖图、各阶段的退出门 (exit gate),并把详细的可实现切片继续下放给各阶段子链 (Phase D → `msu-pe-phase-d-*`)。它不被拆成链 —— 用户明确要求更新这一个文件。CPU 侧的 Phase 0 / A / B / C 已全部完成,其 ✅ 状态原样保留;新工作以新阶段的形式编织进来:功能补齐阶段 (G)、异步正确性阶段 (H)、CUDA 单卡正确性验证阶段 (I),并把 Phase D / E / F 升级为双后端、四配置。用户可见的成果:一次基准运行同时给出 CPU 与 CUDA 对 LAMMPS 的统计学一致性结论,以及四引擎的逐阶段性能对比,且 GPU 永不为 recorder 停等。
+
+## 已确认的范围决定 (fixed scope decisions)
+
+1. **CUDA 范围 = 单卡正确性验证。** CUDA 在单张 GPU 上跑完整 5 阶段协议;结果与 LAMMPS GPU 模式、以及 Atomiverse CPU 运行对比。多 GPU / CUDA+MPI 扩展性 **不在范围内** —— 现有的 CPU/MPI Phase E (强/弱扩展性, E.1–E.7) 保持 CPU-only 不变。
+2. **"每阶段速度" = 每阶段墙钟时间。** 给基准加每阶段墙钟计时,在四种引擎配置间对比。这是计时/性能对比,不是原子速度的物理观测量。
+3. **对比是同类相比的 2×2。** 用户构建了单个 LAMMPS 二进制 `lmp_cuda`,可跑 CPU 模式和 GPU 模式两种模式。两条参考轨道:Atomiverse-CPU ↔ `lmp_cuda` CPU 模式;Atomiverse-CUDA ↔ `lmp_cuda` GPU 模式;外加一条 Atomiverse-CPU ↔ Atomiverse-CUDA 交叉校验。由于协议是随机性的 (stage 1 是带种子的 Langevin) 且 CUDA 是单精度,**所有跨引擎数值对比一律用集合均值的统计分块平均 (statistical block-average of ensemble means)** —— 遵循 `msu-pe-align-03`;不做对 LAMMPS 的逐步或比特级对比。
+4. **集群 = PDC Dardel, SLURM。** 参考运行是操作员动作 (完整 ~360k 步协议约 24 小时级墙钟,PDC 作业上限 24h)。LAMMPS CPU + Atomiverse CPU 跑 `main` 分区;LAMMPS GPU 模式 + Atomiverse CUDA 跑 `gpugh` 分区 (Nvidia GH200 节点)。运行脚本通过 `sbatch`/`srun` 提交,需要 `-A <project>` 账户标志。
+
+## 状态快照 (Status snapshot)
 
 | Phase | Sub-item | Status |
 |---|---|---|
@@ -25,471 +39,353 @@ last-updated: 2026-05-19 (Phase C data file + input deck downloaded from CAVS IC
 | B.2 | 8-rank PE bonded NVE conservation | ✅ landed |
 | B.3 | 8-rank NoseHoover NVT, real chain crossing rank boundary | ✅ landed |
 | End-to-end | 8-rank pipeline (bonded + LJ + halo + NVT + NPT + tension) | ✅ landed |
-| C | MSU **10**k-atom system construction (data file) | ✅ downloaded 2026-05-19 — `benchmarks/md/reference/polyethylene/msu_pe.data` (original `PE_nc10_cl1000.dat` from CAVS ICME wiki; HTML wrapper stripped, payload byte-identical). Note: MSU's canonical example is 10 chains × 1000 monomers = 10 000 atoms, not the 20 000 the spec body originally targeted. See `benchmarks/md/reference/polyethylene/SOURCES.md`. |
-| C.input | MSU paper-scale LAMMPS input deck | ✅ downloaded 2026-05-19 — `benchmarks/md/reference/polyethylene/lammps_msu_paper.in` (original `in.deform_dreiding.txt`, Tschopp 2010 attribution). |
-| D | LAMMPS reference run + comparison script | 🟡 ready to run — `pe-ff-migrate-dreiding-ua` landed 2026-05-19, Atomiverse PE now uses MSU Dreiding-UA constants. `lammps_msu_paper.in` is the canonical reference. D.2/D.3/D.4 quantitative ±5% comparison can be driven now; just needs operator time + the comparison script. |
-| E.2/E.3 | Strong / weak scaling at 1, 2, 4, 8, 16, 32 ranks | ⏳ external -- needs cluster access for ranks > 8 (M4 dev box maxes at 10 cores) |
-| E.4 | vs LAMMPS head-to-head | ⏳ depends on D (FF migration first) |
+| C | MSU 10k-atom system construction (data file) | ✅ downloaded 2026-05-19 — `benchmarks/md/reference/polyethylene/msu_pe.data` |
+| C.input | MSU paper-scale LAMMPS input deck | ✅ downloaded 2026-05-19 — `benchmarks/md/reference/polyethylene/lammps_msu_paper.in` |
+| G.1 | Reference-fidelity defect: `fix momentum` (ZeroMomentum, CPU+CUDA) | 🔴 not started — hard fidelity defect |
+| G.2 | Reference-fidelity defect: per-axis `Pxx/Pyy/Pzz` virial output | 🔴 not started — hard fidelity defect (run script currently FAKES it) |
+| G.3 | Reference-fidelity defect: energy decomposition `E_pair/E_bond/E_angle/E_dihedral` | 🔴 not started — hard fidelity defect |
+| G.4 | CUDA categorical setter API parity (`set_pair/set_bond/...`) | 🔴 not started — blocks CUDA benchmark wiring |
+| G.5 | CUDA `NVELimit` integrator | 🔴 not started — blocks CUDA stage 1 |
+| G.6 | CUDA `FixLangevin` thermostat | 🔴 not started — blocks CUDA stage 1 |
+| G.7 | CUDA `NoseHooverNPT` (iso + aniso y/z) | 🔴 not started — blocks CUDA stages 2–5 |
+| G.8 | CUDA `LJ` 1-2/1-3/1-4 special-bonds exclusions | 🔴 not started — silently corrupts bonded polymer on CUDA |
+| G.9 | CUDA path in `polyethylene_tension.cpp` | 🔴 not started — depends on G.4–G.8 |
+| H.1 | CPU `Thermo` → `AsyncComponentBase` | 🔴 not started |
+| H.2 | CUDA driver hot-path desync (no per-phase-slot `defer_stream` sync) | 🔴 not started |
+| H.3 | CUDA `VirialStress` deferrable when observed-only | 🔴 not started |
+| H.4 | Async-correctness exit gate (step time independent of recorder freq) | 🔴 not started |
+| I | CUDA single-GPU 5-stage correctness validation | 🔴 not started — blocked by G + H |
+| D | Dual-backend LAMMPS comparison (2×2 + CPU↔CUDA) | 🟡 CPU arm sub-chained — `msu-pe-phase-d-*` + `msu-pe-align-03`; CUDA arm blocked by G/H/I |
+| E.2/E.3 | CPU strong / weak scaling at 1–32 ranks | ⏳ external — needs cluster access for ranks > 8 |
+| E.4 | CPU vs LAMMPS-CPU head-to-head | ⏳ depends on D |
+| E.8 | Per-stage wall-clock timing across AV-CPU/AV-CUDA/LAMMPS-CPU/LAMMPS-GPU | 🔴 not started |
+| F | Reproducibility artifacts — `lmp_cuda`, PDC `gpugh` sbatch, multi-engine validator | 🟡 CPU-only artifacts partially landed; CUDA/PDC artifacts not started |
 
-What can be done **right now** without external tooling:
-* Any multi-rank PE simulation (NVE / NVT / NPT / tension) on systems
-  the user constructs in code.
-* Any qualitative check (energy conservation, no-NaN, rank-consistent
-  state, box growth direction).
-
-What needs **external setup**:
-* Reading MSU's exact data file (a LAMMPS-format file -- requires the
-  `molrs` LAMMPS data reader and a copy of the file).
-* Quantitative match against LAMMPS (requires LAMMPS install + a
-  scripted run + `tools/validate_polyethylene.py`).
-* Multi-rank performance benchmarks at scale (single-machine 8 ranks
-  works today; cluster 32-128 ranks needs MPI on a multi-node host).
+What can be done **right now** without external/cluster tooling: all of Phase G (component implementation + unit tests), Phase H (async refactor + the async-correctness micro-benchmark gate), and the multi-engine extension of `validate_polyethylene.py`. What needs **external setup**: the operator cluster runs on PDC Dardel (`main` + `gpugh`), the LAMMPS `lmp_cuda` reference runs, and any quantitative LAMMPS comparison.
 
 ---
 
+## Domain basis
 
-Final acceptance deliverable for the parallel CPU MD engine: run the MSU amorphous-polyethylene uniaxial-tension protocol (<https://www.cavs.msstate.edu/icme/code/lammps/atomistic_research/polymers/amorphous.php>) on Atomiverse, cross-validate every observable against a LAMMPS reference run of the same system, and publish a multi-core performance report (strong + weak scaling, hybrid MPI×OpenMP, profile breakdown) that closes the parallel-md-engine roadmap.
+The protocol physics is the immutable upstream deck `benchmarks/md/reference/polyethylene/lammps_msu_paper.in` (Tschopp 2010; M.A. Tschopp, M.F. Horstemeyer, M.K. Hossain et al., "Molecular dynamics simulations of deformation in amorphous polyethylene," *Polymer* 2010; CAVS ICME source <https://www.cavs.msstate.edu/icme/code/lammps/atomistic_research/polymers/amorphous.php>). System: 10 chains × 1000 united-atom CH₂ = 10 000 atoms, cubic box 80.0586 Å, mass 14.02 amu per UA bead (`benchmarks/md/reference/polyethylene/SOURCES.md`).
 
-**Primary success criterion**: at 8 MPI ranks on one node, Atomiverse produces a stress-strain curve σ_xx(ε) whose elastic modulus, yield stress, and hardening slope agree with LAMMPS within ±5% relative error, while wall-clock time per MD step is within 2× of LAMMPS at the same rank count.
+Force field — Dreiding-UA, verbatim from the deck: harmonic bond *k* = 350 kcal/mol/Å², *r*₀ = 1.53 Å; harmonic angle *k* = 60 kcal/mol/rad², θ₀ = 109.5°; multi/harmonic dihedral *A*₁..*A*₅ = 1.73, −4.49, 0.776, 6.99, 0.0 kcal/mol; LJ ε = 0.112 kcal/mol, σ = 4.01 Å, *r*_cut = 10.5 Å. Units: eV, Å, fs, amu, K (`core/units.h`); LAMMPS `units real` → Atomiverse eV via `1 kcal/mol = 1/23.060547830619026 eV`.
 
-**Secondary success criterion**: strong-scaling efficiency ≥ 70% at 32 ranks, weak-scaling efficiency ≥ 85% at 128 ranks (if a cluster is available), on the same system.
+Five-stage protocol (every fix, ensemble, timestep and step count is byte-faithful ground truth):
 
-Everything in this spec is downstream of `parallel-md-engine.md`. Engine phases referenced as **"P2.x"** / **"P3.x"** refer to that spec.
+| Stage | Ensemble / fix | T | P | Steps | dt |
+|---|---|---|---|---|---|
+| 1 | `nve/limit 0.05` + `langevin 500 500 10.0 904297` | 500 K | — | 10 000 | 1.0 fs |
+| 2 | `npt ... iso` + `momentum 1 linear 1 1 1` | 500 K | 0 bar | 50 000 | 0.5 fs |
+| 3 | `npt temp 500 100 ... iso` + `momentum` (cooling ramp) | 500→100 K | 0 bar | 50 000 | 0.5 fs |
+| 4 | `npt ... iso` + `momentum` | 100 K | 0 bar | 50 000 | 0.5 fs |
+| 5 | `npt ... y ... z` (aniso) + `deform 1 x erate 1e-5` | 100 K | 0 bar (y,z) | 171 800 | 1.0 fs |
+
+Stage 1 is load-bearing in two ways: (a) `msu_pe.data` is a built-but-**unrelaxed** configuration with non-bonded overlaps (initial `E_pair ≈ 3.4×10⁸ kcal/mol`) — a displacement-capped `nve/limit` integrator is mandatory, a plain Velocity-Verlet integrator blows the system up; (b) `fix langevin` is **seeded** (`904297`), so stage 1 is a **stochastic** thermostat. Per `msu-pe-align-03` (block averaging — Flyvbjerg & Petersen 1989, *J. Chem. Phys.* 91, 461, doi:10.1063/1.457480), two engines running the same stochastic-thermostat protocol with different RNG streams and (for CUDA) different precision do **not** share a trajectory — they sample the same ensemble. **Every cross-engine value comparison in this spec is therefore a statistical block-average of ensemble means; no per-step or bit-level comparison against LAMMPS.** CUDA being single-precision makes this doubly binding.
+
+Stress for the stress-strain curve: engineering strain ε = box_x/box_x0 − 1; σ_xx in GPa (`1 eV/Å³ = 160.21766 GPa`). Mechanical descriptors (per `msu-pe-phase-d-04`): elastic modulus *E* = dσ/dε over ε < 0.02, yield σ_y = max σ_xx over ε ∈ [0,0.1], hardening slope dσ/dε over ε ∈ [0.5,1.0].
+
+### Strict reference-fidelity requirement
+
+The benchmark protocol must be **byte-faithful in physics** to `lammps_msu_paper.in`: every fix, ensemble, integrator, timestep, step count and force-field coefficient. Three current fidelity defects are called out and fixed in Phase G:
+
+- **`fix momentum` missing.** The deck applies `fix momentum 1 linear 1 1 1` (zero center-of-mass linear momentum every step) in stages 2/3/4. Atomiverse has no equivalent component on either backend. This is a physics deviation, not cosmetic.
+- **Per-axis pressure faked.** The deck dumps `pxx pyy pzz` in stages 4 and 5; the stress-strain curve needs real σ_xx. The benchmark thermo CSV emits only isotropic `P_bar`, and `tools/run_msu_atomiverse.sh` currently *copies* isotropic P into the `Pxx/Pyy/Pzz` columns. That stand-in is wrong and must be replaced by a real per-axis virial path.
+- **Energy decomposition missing.** The deck dumps `epair ebond eangle edihed` in stages 4 and 5; the user asks to compare energy. The benchmark emits only total `E_pot/E_kin` and must additionally emit `E_pair/E_bond/E_angle/E_dihedral`.
+
+The per-stage timesteps and step counts in `polyethylene_tension.cpp` already match the reference (verified — stage 5 is dt = 1.0 fs, 171 800 steps).
 
 ---
 
 ## Dependency graph
 
 ```
-Phase 0 (engine blockers)  →  Phase A (single-rank FF correctness)
-                                    ↓
-                         Phase B (multi-rank correctness)
-                                    ↓
-                         Phase C (MSU system setup)
-                                    ↓
-                  Phase D (LAMMPS correctness comparison)
-                                    ↓
-                Phase E (multi-core performance benchmarks)
-                                    ↓
-                      Phase F (reproducibility artifacts)
+Phase 0 ✅ ─→ Phase A ✅ ─→ Phase B ✅ ─→ Phase C ✅
+                                            │
+                ┌───────────────────────────┤
+                ▼                           ▼
+   Phase G (functional gaps)      Phase D-CPU arm
+   CUDA components + fidelity     (msu-pe-phase-d-* chain
+   defects — HARD-BLOCKS          + msu-pe-align-03) — CPU
+   CUDA validation                quantitative comparison
+                │
+                ▼
+   Phase H (async correctness)
+   CPU Thermo async + CUDA
+   driver hot-path desync
+                │
+                ▼
+   Phase I (CUDA single-GPU 5-stage correctness)
+                │
+                ▼
+   Phase D-CUDA arm  →  2×2 + CPU↔CUDA cross-check
+                │
+                ▼
+   Phase E (per-stage timing + CPU scaling unchanged)
+                │
+                ▼
+   Phase F (reproducibility artifacts — lmp_cuda, PDC gpugh)
 ```
 
-Phase 0 is hard-blocking. A through F are largely sequential but C.1 (system construction) can start in parallel with A.3+ once the bonded force field is correct on one rank.
+Phase 0/A/B/C are landed. Phase G **hard-blocks** the entire CUDA validation arm — no CUDA stage runs without the missing CUDA components, and the fidelity defects (G.1–G.3) corrupt both backends until fixed. Phase H is independent of correctness and can proceed in parallel with G. Phase I requires both G and H. The Phase D-CUDA arm requires I. Phase D-CPU arm is already delegated to the `msu-pe-phase-d-*` sub-chain and `msu-pe-align-03` and is not re-specified here.
 
 ---
 
-## Phase 0 — Engine blockers (must land in parallel-md-engine before anything in this spec runs)
+## Phase 0 — Engine blockers (✅ landed, unchanged)
 
-These are items from `parallel-md-engine.md` that are **not yet implemented** and are prerequisites for the MSU run specifically. Tracked here as gates, not redesigned.
+Items 0.1–0.7 from `parallel-md-engine.md` — all ✅. Exit criterion (32-rank LJ + harmonic-bond run on 10⁵ atoms matches 1-rank to 1e-10 relative energy through 10 000 steps) met. Retained verbatim; see prior spec history.
 
-| ID | Blocker | Spec ref | Notes |
+## Phase A — Single-rank force-field correctness (✅ landed, unchanged)
+
+A.2–A.5 all green on one CPU rank. Dreiding-UA force field migrated 2026-05-19 (`pe-ff-migrate-dreiding-ua`). Retained verbatim.
+
+## Phase B — Multi-rank correctness (✅ landed, unchanged)
+
+B.2/B.3 and the end-to-end 8-rank pipeline green. Retained verbatim.
+
+## Phase C — MSU amorphous-PE system construction (✅ landed, unchanged)
+
+`msu_pe.data` and `lammps_msu_paper.in` downloaded from the CAVS ICME wiki (`SOURCES.md`). System is 10 chains × 1000 UA = 10 000 atoms. Retained.
+
+---
+
+## Phase G — Functional-gap implementation (CUDA components + reference-fidelity defects)
+
+Goal: implement every piece of missing functionality required before the CUDA backend can run the protocol at all, and fix the three reference-fidelity defects on both backends. **This phase hard-blocks the CUDA validation arm.** Each sub-item is a discrete component or output-path change; detailed implementable slicing of the larger CUDA components is delegated to a `msu-pe-cuda-components-*` chain at `/mol:impl` time — this umbrella states the gates.
+
+### G.1 `ZeroMomentum` component (CPU + CUDA) — fidelity defect
+
+Reference `fix momentum 1 linear 1 1 1` zeroes the center-of-mass linear momentum every step in stages 2/3/4. New `cpu::md::ZeroMomentum` and `cuda::md::ZeroMomentum` components (role `None` structural / Integrator-adjacent, no `Capability` write beyond velocities). Bound at the end-of-step phase slot; multi-rank-correct on CPU (COM momentum reduced across ranks before subtraction). Without it the CPU and CUDA runs both drift from the reference.
+
+### G.2 Per-axis `Pxx/Pyy/Pzz` virial output — fidelity defect
+
+The benchmark must emit a real per-axis pressure tensor, not isotropic P copied three ways. `VirialStress` (CPU `include/atomiverse/cpu/md/`, CUDA `include/atomiverse/cuda/observer/stress.cuh`) already computes the full virial tensor; the gap is the thermo/CSV path. The benchmark thermo writer must surface `Pxx/Pyy/Pzz` columns from the diagonal of the virial tensor, and `tools/run_msu_atomiverse.sh` must stop faking those columns.
+
+### G.3 Energy decomposition output — fidelity defect
+
+The benchmark must emit `E_pair/E_bond/E_angle/E_dihedral` columns (the reference deck dumps `epair ebond eangle edihed`). Each evaluator component already computes its own energy contribution; the gap is a per-term accumulation surfaced into the thermo CSV.
+
+### G.4 CUDA categorical setter API parity
+
+`cuda::md::MD` (`include/atomiverse/cuda/md/md.cuh`) currently exposes only raw `add()` / `on(phase).add()`. CPU `cpu::md::MD` has `set_pair/set_bond/set_angle/set_dihedral/set_neighbor/set_integrator/set_thermostat/set_barostat/set_observer/set_record/set_thermo`. CUDA must reach parity with the same categorical surface (and the same auto-injection behavior — halo/VirialStress auto-inject — where applicable to single-GPU). This is needed so the CUDA path in the benchmark mirrors the CPU path.
+
+### G.5 CUDA `NVELimit` integrator
+
+New `cuda::md::NVELimit` (`include/atomiverse/cuda/md/nve_limit.cuh` (new) + `src/cuda/md/nve_limit.cu` (new)). Displacement-capped integrator (`nve/limit 0.05`) — load-bearing for stage 1 on the unrelaxed `msu_pe.data`. CPU equivalent at `include/atomiverse/cpu/md/nve_limit.h`.
+
+### G.6 CUDA `FixLangevin` thermostat
+
+New `cuda::md::FixLangevin` (`include/atomiverse/cuda/md/fix_langevin.cuh` (new) + `src/cuda/md/fix_langevin.cu` (new)). Stage-1 Langevin thermostat: per-atom RNG state, friction drag, random kick, temperature ramp. Thermostat role, also Force-capable. CPU equivalent at `include/atomiverse/cpu/md/fix_langevin.h`.
+
+### G.7 CUDA `NoseHooverNPT` integrator
+
+New `cuda::md::NoseHooverNPT` (`include/atomiverse/cuda/md/nose_hoover_npt.cuh` (new) + `src/cuda/md/nose_hoover_npt.cu` (new)). Integrated NPT (integrator + thermostat + barostat) supporting **both** isotropic coupling (stages 2–4) and **anisotropic y/z-only** coupling (stage 5), plus the 500→100 K temperature ramp. CUDA today has only separate `cuda::md::NoseHoover` + `cuda::md::Barostat`; CPU equivalent at `include/atomiverse/cpu/md/nose_hoover_npt.h`.
+
+### G.8 CUDA `LJ` special-bonds exclusions
+
+CUDA `LJ` / `pair_lj_cut` (`include/atomiverse/cuda/potentials/pair_lj_cut.cuh`, `include/atomiverse/cuda/potentials/lj_kernel.cuh`, `src/cuda/potentials/pair_lj_cut.cu`) has no 1-2/1-3/1-4 special-bonds exclusion support — the kernel processes every neighbor pair unconditionally, silently corrupting any bonded polymer on CUDA. Add a `set_special_bonds` API and exclusion masking in the kernel, matching CPU `pair_lj_cut.h`.
+
+### G.9 CUDA path in `polyethylene_tension.cpp`
+
+`benchmarks/md/polyethylene_tension.cpp` is CPU-only — five per-stage `cpu::md::MD` instances, no CUDA branch. Add an `#ifdef`-guarded CUDA path that builds the equivalent five-stage `cuda::md::MD` pipeline via the G.4 categorical API, reading the same `msu_pe.data`, writing the same CSV schema (incl. G.2 per-axis P and G.3 energy decomposition). Selectable at runtime (engine flag).
+
+**Exit gate for Phase G**: (a) `ZeroMomentum` (CPU+CUDA), `cuda::md::NVELimit`, `cuda::md::FixLangevin`, `cuda::md::NoseHooverNPT` (iso + aniso), CUDA `LJ` special-bonds exclusions all have green unit tests in `tests/cuda/md/` / `tests/cpu/md/`; (b) CUDA categorical setter API compiles and a smoke CUDA MD run via `set_*` completes; (c) the benchmark emits `Pxx/Pyy/Pzz` and `E_pair/E_bond/E_angle/E_dihedral` real columns on both backends and `run_msu_atomiverse.sh` no longer fakes per-axis P; (d) `polyethylene_tension.cpp` builds and runs a short (≤1000-step) protocol on CUDA without NaN.
+
+---
+
+## Phase H — Async correctness (no recorder ever stalls the loop)
+
+Goal: make every non-hot-path recorder / thermo / observer genuinely asynchronous so the integration loop — and on CUDA the GPU compute stream — never stalls on an analyzer/recorder.
+
+### H.1 CPU `Thermo` → `AsyncComponentBase`
+
+CPU `Thermo` (`include/atomiverse/cpu/recorder/thermo.h`, `src/cpu/recorder/thermo.cpp`) runs synchronously inside `launch()` on the integration thread — it is not an async observer. The CPU async machinery already exists: `AsyncComponentBase` (`include/atomiverse/cpu/async_component_base.h`) + `AnalysisExecutor` (`include/atomiverse/cpu/analysis_executor.h`, triple-buffered snapshot ring + worker pool) — CPU `RDF` already uses it. Move `Thermo` onto `AsyncComponentBase` so its reduction + I/O run off the integration thread.
+
+### H.2 CUDA driver hot-path desync
+
+CUDA `AsyncBridge` (`include/atomiverse/cuda/async_bridge.cuh`) is sound — a sidecar `defer_stream` + CUDA event lets recorders' D2H + host callback run off the compute stream. But the CUDA driver `src/cuda/driver.cu` `Backend::step()` calls `cudaStreamSynchronize(stream)` **and** `cudaStreamSynchronize(defer_stream)` after **every phase slot, every step**, which defeats the deferral: the host blocks on the recorder's D2H+callback before the next phase slot, so recorders do stall the loop and the GPU ends up waiting on the analyzer/recorder. The fix: deferred work must lag behind the compute stream across steps — snapshot device buffers into recorder-owned buffers so compute can overwrite the live frame; remove the per-phase-slot `defer_stream` sync from the hot path; a bounded backlog drains at run teardown. The `stream` (compute) sync stays where genuinely required for correctness; only the recorder/observer deferral path is desynced.
+
+### H.3 CUDA `VirialStress` deferrable when observed-only
+
+CUDA `VirialStress` (`include/atomiverse/cuda/observer/stress.cuh`, `src/cuda/observer/stress.cu`) launches its kernel on the main compute stream — correct when a barostat consumes the stress that same step (genuinely hot-path), but when stress is only being observed/recorded it must be deferrable onto the `defer_stream` like other observers. Make `VirialStress` aware of whether a same-step consumer (barostat) reads its output: hot-path when consumed, deferred when observed-only.
+
+### H.4 Async-correctness exit gate
+
+A micro-benchmark in `benchmarks/md/` measures steps/s on the CUDA backend with recorders/observers off versus at high recording frequency. The gate: step wall-time must be independent of recorder/observer frequency within a small tolerance (target: high-frequency steps/s ≥ 95% of recorders-off steps/s) — proving the GPU never stalls on a recorder. A CPU counterpart confirms the same for the now-async `Thermo`.
+
+**Exit gate for Phase H**: H.1, H.2, H.3 implemented with unit/integration tests green; H.4 micro-benchmark shows CUDA steps/s with recorders at high frequency within 5% of recorders-off, and CPU `Thermo`-on within 5% of `Thermo`-off.
+
+---
+
+## Phase I — CUDA single-GPU 5-stage correctness validation
+
+Goal: mirror the CPU Phase A–C structure for the CUDA backend on a single GPU — prove the CUDA force field is correct, the full 5-stage protocol completes, and CUDA agrees with both the Atomiverse CPU run and LAMMPS GPU mode. Blocked by G (components) and H (async). All cross-engine comparisons are statistical block-averages per `msu-pe-align-03`.
+
+### I.1 CUDA force-field correctness
+
+New `tests/cuda/md/test_pe_cuda_ff.cpp` (new): evaluate `E_pair/E_bond/E_angle/E_dihedral` for the C₂₀H₄₂ perturbed-geometry cross-check (the same geometry as `tests/cpu/md/test_pe_energy_xcheck.cpp`, with the closed-form perturbation in `SOURCES.md`) on CUDA. Because CUDA is single-precision the tolerance is statistical/loose, not the CPU 1e-6 eV bound: each energy term agrees with the CPU double-precision value to a relative tolerance consistent with float accumulation over 10 000 atoms (target ≤ 1e-3 relative). Confirms G.5–G.8 components produce physically correct forces, including special-bonds exclusions.
+
+### I.2 CUDA full 5-stage protocol completes
+
+CUDA path of `polyethylene_tension.cpp` runs the full 5-stage protocol on `msu_pe.data` on a single GH200 GPU to completion without NaN, writing the canonical CSV schema (thermo with per-axis P + energy decomposition, stress-strain). Operator action on the PDC `gpugh` partition. Density after stage 4 within 5% of the MSU reported amorphous-PE density at 100 K (~0.94 g/cm³).
+
+### I.3 CUDA ↔ CPU cross-check
+
+`tools/validate_polyethylene.py` compares the Atomiverse-CUDA and Atomiverse-CPU runs on block-averaged ensemble means: ⟨T⟩, ⟨E_pot⟩ and the energy decomposition over stage 4, density, and the three stress-strain descriptors. Tolerance is the statistical bar widened for single vs double precision (target ~2–3% relative on means, ±5% on stress-strain descriptors). This isolates precision/RNG effects from genuine engine bugs before the LAMMPS comparison.
+
+### I.4 CUDA ↔ LAMMPS-GPU statistical comparison
+
+`tools/validate_polyethylene.py` compares the Atomiverse-CUDA run against the `lmp_cuda` GPU-mode reference run on block-averaged ensemble means — the GPU-mode arm of the 2×2. Same statistical methodology and tolerances as the CPU↔LAMMPS arm (`msu-pe-align-03` / `msu-pe-phase-d-*`).
+
+**Exit gate for Phase I**: I.1 green; I.2 completes the 5-stage CUDA run with density within 5% of reference; I.3 CUDA↔CPU statistical comparison passes; I.4 CUDA↔LAMMPS-GPU statistical comparison passes.
+
+---
+
+## Phase D — Dual-backend LAMMPS comparison (2×2 + CPU↔CUDA cross-check)
+
+Goal: demonstrate Atomiverse and LAMMPS, starting from the same `msu_pe.data` and running the same protocol, produce statistically matching observables on **both** backends. Phase D is now dual-backend and four-config.
+
+### D-CPU arm — already sub-chained (referenced, not re-specified)
+
+The CPU arm of Phase D is delegated to the `msu-pe-phase-d-*` chain and `msu-pe-align-03`:
+- `msu-pe-phase-d-01-reference-runs` — produces the LAMMPS + Atomiverse-CPU reference CSVs.
+- `msu-pe-align-03-statistical-thermo` (supersedes `msu-pe-phase-d-02`) — block-average statistical thermo parity, `validate_polyethylene.py --check thermo`.
+- `msu-pe-phase-d-03-equilibrium` — equilibrium-state observables (ρ, ⟨E_pot⟩, RDF peak, ⟨R²⟩), `--check equilibrium`.
+- `msu-pe-phase-d-04-stress-strain` — stress-strain descriptors + Phase D exit gate, `--check stress-strain` / `--check all`.
+
+This umbrella does **not** redo those sub-specs. The CUDA arm below stays consistent with them: same statistical block-average methodology, same `validate_polyethylene.py` surface, same exit-gate shape.
+
+### D.5 The 2×2 comparison matrix
+
+Four engine configs, three comparison tracks — all statistical block-average of ensemble means:
+
+| Track | Engine A | Engine B | Methodology |
 |---|---|---|---|
-| 0.1 | Ghost-aware `CellList` | P2.7 | Size bookkeeping to `dd->capacity`; bin `n_local + n_ghost`; bin grid covers halo skin. Unblocks multi-rank LJ NVE exit gate. |
-| 0.2 | `AtomMigration` component | P3.1 | `MPI_Alltoallv` of atoms crossing `sublo/subhi`; bump `dd->neighbor_generation`; rebuild `tag_to_local`. PE chains will diffuse in 10⁵–10⁶ steps — without migration, owners drift from atoms. |
-| 0.3 | Bonded cross-boundary | P3.2 | Ownership rule: bond = min-tag, angle = center, dihedral = 2nd atom. Bonded tuples migrate alongside atoms. Ghost skin widened to `cutoff + δ + bonded_extension`. |
-| 0.4 | `ReduceEnergy` batched allreduce | P3.3 | 9-double `MPI_Allreduce` of `{energy, kinetic, virial[6], n_local}` at `end_of_step @ -50`. Required for meaningful thermo output. |
-| 0.5 | `NoseHoover` multi-rank KE | P3.4 | Pull reduced KE (not rank-local) for thermostat coupling. Must run *after* `ReduceEnergy`. |
-| 0.6 | `Barostat` multi-rank virial | P3.5 | Same: use globally-reduced virial. |
-| 0.7 | `Deform` multi-rank affine | P3.6 | Every rank applies identical affine box update; ghost slab bounds recomputed; no desync of `dd->sublo/subhi` across ranks. |
+| CPU reference | Atomiverse-CPU | `lmp_cuda` CPU-mode | block-average — `msu-pe-phase-d-*` chain |
+| GPU reference | Atomiverse-CUDA | `lmp_cuda` GPU-mode | block-average — Phase I.4 |
+| CPU↔CUDA cross-check | Atomiverse-CPU | Atomiverse-CUDA | block-average — Phase I.3 |
 
-**Exit criterion for Phase 0**: a 32-rank LJ + harmonic-bond run on 10⁵ atoms matches a 1-rank run to 1e-10 relative energy through 10 000 steps (= the existing Phase 3 exit gate of parallel-md-engine). When that lands, Phase A of this spec can proceed.
+Compared observables in every track: energy (incl. the `E_pair/E_bond/E_angle/E_dihedral` decomposition from G.3), density ρ, equilibrium observables (RDF peak, ⟨R²⟩), and the stress-strain curve descriptors (E, σ_y, hardening slope). `tools/validate_polyethylene.py` becomes multi-engine: it must accept the four engine CSVs and run all three tracks, keeping the `msu-pe-align-03` statistical methodology and the `--check {thermo,equilibrium,stress-strain,all}` surface, extended with energy-decomposition columns and a track selector.
+
+**Exit gate for Phase D**: the CPU arm passes per the `msu-pe-phase-d-*` chain exit gates; the GPU-reference and CPU↔CUDA tracks pass per Phase I.3/I.4; `validate_polyethylene.py` runs all three tracks and exits 0.
 
 ---
 
-## Phase A — Single-rank force-field correctness
+## Phase E — Performance benchmarks (CPU scaling unchanged + per-stage timing)
 
-Goal: prove Atomiverse's CPU PE force field reproduces LAMMPS energies and forces on one rank, so any multi-rank discrepancies in Phase B are attributable to parallel bookkeeping, not to kernels.
+The CPU/MPI scaling work (E.1–E.7: single-rank breakdown, strong scaling, weak scaling, head-to-head vs LAMMPS-CPU, profile decomposition, hybrid MPI×OpenMP, multi-node) stays **CPU-only and unchanged** — see prior spec body. Multi-GPU / CUDA+MPI scaling is explicitly out of scope. One new sub-item is added:
 
-### A.1 Force-field choice
+### E.8 Per-stage wall-clock timing across four engine configs
 
-Use **Dreiding-style united-atom PE** (same potential family the MSU reference uses):
+Add per-stage wall-clock timing to `benchmarks/md/polyethylene_tension.cpp` (a timer bracketing each of the five stages) and emit a per-stage timing CSV. Compare per-stage wall time across the four configs — Atomiverse-CPU, Atomiverse-CUDA, `lmp_cuda` CPU-mode, `lmp_cuda` GPU-mode — via `tools/validate_polyethylene.py` (a new `--check timing` track). This is a timing/performance comparison, not a physics observable; it is descriptive (report the four-way per-stage breakdown) rather than a hard pass/fail tolerance gate, except that Atomiverse-CUDA per-stage time must be finite and the run must complete.
 
-- Bond: `HarmonicBond` — r_eq = 1.53 Å, k = 350 kcal/mol/Å² (convert to eV/Å²)
-- Angle: `HarmonicAngle` — θ_eq = 109.47°, k = 60 kcal/mol/rad²
-- Dihedral: `MultiHarmonicDihedral` — CH₂–CH₂–CH₂–CH₂ OPLS Fourier series (`K_1..K_4`)
-- Non-bonded: `LJ` — σ = 4.01 Å, ε = 0.112 kcal/mol, r_cut = 10.5 Å, 1-4 scaling factor **0.0** (Dreiding convention; MSU uses exclusion, not scaling; revisit if needed)
-
-All parameters stored in `benchmarks/md/reference/polyethylene/force_field.yaml` so LAMMPS and Atomiverse inputs both pull from one source of truth.
-
-### A.2 Single-chain energy decomposition
-
-New test `tests/cpu/md/test_pe_single_chain.cpp`:
-
-- Build a single all-trans C₂₀H₄₂ UA chain (20 atoms, 19 bonds, 18 angles, 17 dihedrals).
-- Evaluate `E_bond`, `E_angle`, `E_dihedral`, `E_vdW` with Atomiverse components at the same geometry.
-- Compare each term against LAMMPS running the same geometry (reference written to `benchmarks/md/reference/polyethylene/c20h42_energies.json`).
-- Tolerance: **1e-6 eV absolute**, per term.
-
-### A.3 Small-box static energy + forces
-
-New test `tests/cpu/md/test_pe_small_box.cpp`:
-
-- 64 chains × 20 CH₂ = 1 280 atoms in a cubic box at ρ ≈ 0.85 g/cm³.
-- Compare `E_total` and `max |Δf_i|` vs LAMMPS.
-- Tolerance: **1e-5 relative** on total energy, **1e-6 eV/Å absolute** on any component of any atomic force.
-
-### A.4 NVE energy conservation
-
-Extend `tests/cpu/md/test_pe_small_box.cpp`:
-
-- Run 1 000 steps NVE, `Δt = 0.5 fs`, starting from equilibrated geometry.
-- Check `|E(t) − E(0)| / |E(0)| < 1e-4` throughout.
-
-### A.5 NVT reference run
-
-New benchmark `benchmarks/md/pe_nvt_small.cpp`:
-
-- 1 000 steps NVT @ 500 K, `Δt = 1.0 fs`.
-- Report `⟨T⟩`, `⟨E_pot⟩`, `⟨P⟩` block-averaged over last 500 steps.
-- Compare against LAMMPS run of same duration and protocol.
-- Tolerance: **0.5% relative** on each block average.
-
-**Exit gate for Phase A**: A.2–A.5 all green on one rank.
+**Exit gate for Phase E**: E.1–E.5 pass their CPU efficiency targets (unchanged); E.8 emits a four-config per-stage timing table and `validate_polyethylene.py --check timing` produces it without error. E.6/E.7 remain stretch.
 
 ---
 
-## Phase B — Multi-rank correctness
+## Phase F — Reproducibility artifacts (dual-backend, PDC Dardel)
 
-Goal: prove that the multi-rank engine reproduces one-rank trajectories bit-for-bit within FP tolerance when the same seed, initial state, and potential are used.
-
-All tests launched via `mpirun -n N`. Label `mpi` in CTest.
-
-### B.1 Multi-rank LJ NVE (unlocks after P2.7)
-
-Already stubbed in `tests/mpi/test_lj_nve.cpp` as `LjNve.EnergyConservationMultiRank`. Uncomment body. Tolerance: **1e-2 relative drift** over 20 steps at 8 ranks (loose — this is the engine-level smoke test, not a science-grade bound).
-
-### B.2 Multi-rank bonded NVE
-
-New test `tests/mpi/test_pe_bonded_nve.cpp`:
-
-- 1 280-atom PE system (same as A.3).
-- Run 100 steps NVE at 1 rank and at 8 ranks.
-- Compare `frame.atoms.x[tag]`, `vx[tag]`, `fx[tag]` at step 100 after globally gathering to rank 0 and re-sorting by `tag`.
-- Tolerance: **1e-10 absolute** on every field (FP-deterministic tolerance).
-
-### B.3 Multi-rank NVT trajectories
-
-New test `tests/mpi/test_pe_nvt_multirank.cpp`:
-
-- 1 280-atom PE, 500 K, `Δt = 1.0 fs`, same seed.
-- Run 2 000 steps at 1 rank and at 8 ranks.
-- Block-average `T`, `E_pot`, `P_xx/yy/zz` over last 1 000 steps.
-- Tolerance: **0.3% relative** on each block average (slightly tighter than A.5 since it's same-engine comparison).
-
-### B.4 Multi-rank stress tensor
-
-Inside `test_pe_nvt_multirank.cpp`:
-
-- Log full virial tensor (`VirialStress`) every 100 steps.
-- 1-rank vs 8-rank: each tensor component agrees to **1e-6 relative** at matching steps.
-
-### B.5 Multi-rank RDF
-
-Inside `test_pe_nvt_multirank.cpp`:
-
-- Register `cpu::observer::RDF{r_max=10, bins=200, freq=100}` (async).
-- Finalize after run.
-- 1-rank and 8-rank RDF curves agree pointwise to **1e-8 absolute** on `g(r)`.
-
-**Exit gate for Phase B**: B.1–B.5 all green on 1 and 8 ranks.
-
----
-
-## Phase C — MSU amorphous-PE system construction
-
-Goal: reproduce the MSU initial state so LAMMPS and Atomiverse start from the *same* atom coordinates, velocities, and topology.
-
-### C.1 Initial configuration
-
-Two candidate paths:
-
-1. **Direct download** of the MSU LAMMPS data file if available from the MediaWiki link's supplementary material. Preferred — zero ambiguity.
-2. **Regenerate** using `moltemplate` or the RadonPy / PSP packaging-tool chain with the MSU recipe:
-   - 20 chains × 1 000 UA CH₂ (target — MSU uses different chain counts across examples; 20×1 000 = 20 000 atoms is a tractable size that matches parallel-md-engine Verification §7).
-   - FCC seed at 1.53 Å spacing → random coil relaxation.
-   - Box dimensions and ρ chosen to match MSU target.
-
-Stored at `benchmarks/md/reference/polyethylene/msu_pe.data` (LAMMPS data-file format). Both LAMMPS and Atomiverse inputs read it (Atomiverse via `molrs` LAMMPS data reader).
-
-### C.2 Equilibration protocol
-
-Matches `parallel-md-engine.md` Verification §7:
-
-| Stage | Ensemble | Duration | Δt | Purpose |
-|---|---|---|---|---|
-| 1 | NVT @ 500 K | 10 000 steps | 1.0 fs | initial randomization |
-| 2 | NPT @ 500 K, 0 bar | 50 000 steps | 0.5 fs | density relaxation |
-| 3 | NVT cooling 500 → 100 K (linear) | 50 000 steps | 0.5 fs | glass formation |
-| 4 | NPT @ 100 K, 0 bar | 50 000 steps | 0.5 fs | glassy equilibration |
-| 5 | Uniaxial tension along x | 200 000 steps | 0.5 fs | ε̇ = 10⁹ s⁻¹ to ε ≈ 1.0 |
-
-Output: `Thermo`, `VirialStress`, `XYZTrajectory @ 10 000`, `RDF @ 1 000`.
-
-### C.3 Atomiverse input
-
-New file `benchmarks/md/polyethylene_tension.cpp` (already listed in parallel-md-engine §Files-to-create). Builds the Driver with `VelocityVerlet + NoseHoover + Barostat + Deform + VirialStress + LJ + HarmonicBond + HarmonicAngle + MultiHarmonicDihedral`, reads `msu_pe.data`, runs the 5-stage protocol above, writes thermo CSV + stress-strain CSV.
-
-**Exit gate for Phase C**: single-rank Atomiverse completes all 5 stages on 20 000 atoms in ≤ 24 h wall time, writes correctly-formatted thermo and stress-strain CSVs, and its density after stage 4 is within 5% of the MSU reported amorphous-PE density at 100 K (~ 0.94 g/cm³).
-
----
-
-## Phase D — LAMMPS reference comparison
-
-Goal: demonstrate that Atomiverse and LAMMPS, starting from the same data file and running the same protocol, produce quantitatively matching observables.
-
-### D.1 LAMMPS reference run
-
-`benchmarks/md/reference/polyethylene/lammps.in` — LAMMPS input file implementing stages 1–5 of Phase C. Run at 1 and 8 ranks; collect:
-
-- `log.lammps` → thermo CSV (`step, T, P, E_pot, E_kin, Pxx, Pyy, Pzz`)
-- stress-strain CSV (`strain, sigma_xx`)
-- trajectory XYZ every 10 000 steps
-- final RDF
-
-### D.2 Per-step thermo comparison (first 1 000 steps)
-
-`tools/validate_polyethylene.py`:
-
-- Reads LAMMPS `log.lammps` and Atomiverse `thermo.csv`.
-- First 1 000 steps (deterministic regime before dissipative stochastics dominate): agreement to **1e-4 relative** on `T`, `E_pot`, `E_kin`; **1e-3 relative** on `Pxx/Pyy/Pzz`.
-- Failure threshold: any step exceeding tolerance flagged with step number and max deviation.
-
-### D.3 Equilibrium-state observables
-
-Compare block averages over stage-4 (100 K NPT, last 25 000 steps):
-
-| Observable | Source | Tolerance (relative) |
-|---|---|---|
-| ρ (density) | `Thermo` volume | 1% |
-| ⟨E_pot⟩ | `Thermo` | 0.5% |
-| RDF first-peak position r* | `RDF::finalize()` | 1 bin (< 0.05 Å) |
-| RDF first-peak height g(r*) | `RDF::finalize()` | 3% |
-| ⟨R²⟩ (end-to-end) | post-process `traj.xyz` | 10% (chain-statistics noise) |
-
-### D.4 Stress-strain curve
-
-`tools/validate_polyethylene.py`:
-
-- Overlay Atomiverse σ_xx(ε) on LAMMPS σ_xx(ε).
-- Extract:
-  - elastic modulus E = dσ/dε at ε < 0.02
-  - yield stress σ_y = max σ_xx for ε ∈ [0, 0.1]
-  - strain-hardening slope dσ/dε at ε ∈ [0.5, 1.0]
-- Tolerance: **±5% relative** on E, σ_y, hardening slope.
-
-**Exit gate for Phase D**: D.2, D.3, D.4 all pass at 1 rank and at 8 ranks.
-
----
-
-## Phase E — Multi-core performance benchmarks
-
-**Primary target of this spec.** Goal: quantify Atomiverse parallel efficiency and compare to LAMMPS head-to-head.
-
-### E.1 Single-rank baseline breakdown
-
-`benchmarks/md/pe_profile_single.cpp` — runs MSU system stage 5 for 1 000 steps at 1 rank, with internal timers around:
-
-- `HaloExchangeForward` (should be ~0 ns at 1 rank)
-- `NeighborList::update + build_half`
-- `LJ::launch`
-- `HarmonicBond/Angle/MultiHarmonicDihedral::launch`
-- `VelocityVerlet::launch`
-- `HaloExchangeReverse`
-- `ReduceEnergy`
-- `SnapshotPublisher + RDF submission`
-
-Report absolute and relative breakdown. Acceptance: no single component > 60% of step time (= no pathological hotspot); LJ + bonded combined ≥ 50% (forces dominating, as expected).
-
-### E.2 Strong scaling (fixed problem size)
-
-`benchmarks/md/scaling.cpp` at the MSU 20 000-atom system, 1 000 steps per rank-count:
-
-| Ranks | Target efficiency | Notes |
-|---|---|---|
-| 1 | reference (1.00×) | — |
-| 2 | ≥ 90% | — |
-| 4 | ≥ 85% | — |
-| 8 | ≥ 75% | matches MSU validation rank count |
-| 16 | ≥ 60% | atoms-per-rank drops to 1 250 |
-| 32 | ≥ 40% | comm-bound regime starts |
-
-Report: time/step vs ranks (log-log plot), speedup, efficiency %. Output CSV for inclusion in `benchmarks/md/reference/polyethylene/scaling_report.csv`.
-
-### E.3 Weak scaling (fixed atoms per rank)
-
-Same benchmark, scaled system:
-
-| Ranks | Atoms | Target efficiency |
-|---|---|---|
-| 1 | 20 000 | reference |
-| 2 | 40 000 | ≥ 95% |
-| 4 | 80 000 | ≥ 92% |
-| 8 | 160 000 | ≥ 90% |
-| 16 | 320 000 | ≥ 88% |
-| 32 | 640 000 | ≥ 85% |
-| 128 | 2 560 000 | ≥ 85% (if cluster) |
-
-### E.4 Head-to-head vs LAMMPS
-
-Same MSU 20 000-atom system, 1 000 steps, at matching rank counts (1, 2, 4, 8, 16, 32). LAMMPS command: `lmp -in lammps.in -var steps 1000 -pk ...`. Report:
-
-| Ranks | Atomiverse time/step | LAMMPS time/step | Ratio (AV/LAMMPS) |
-|---|---|---|---|
-| 1 | — | — | target ≤ 2.0× |
-| 8 | — | — | target ≤ 2.0× |
-| 32 | — | — | target ≤ 2.5× |
-
-Failure = ratio > stated target. Goal is *competitive*, not ≥ LAMMPS. Stretch goal: ratio ≤ 1.0× at any rank count.
-
-### E.5 Profile decomposition vs ranks
-
-At 1, 8, 32 ranks, repeat E.1 breakdown. Expected trends:
-
-- `HaloExchangeForward + Reverse`: grows from 0% → 20–30% at 32 ranks.
-- `ReduceEnergy`: grows from ~0% → 5–10%.
-- Force components: drop proportionally as comm grows.
-- Neighbor-list build: drops to near-zero (infrequent rebuilds).
-
-Publish stacked-bar plot in `scaling_report.csv` companion.
-
-### E.6 Hybrid MPI × OpenMP (optional, if time)
-
-At 32 total cores, compare:
-
-- 32 × 1 (pure MPI)
-- 16 × 2
-- 8 × 4
-- 4 × 8
-- 1 × 32 (pure OpenMP)
-
-Report best configuration. Expected: MPI-heavy wins on non-NUMA single-socket; OpenMP-heavy may win on large-atom-per-rank regime.
-
-### E.7 Multi-node (stretch, requires cluster access)
-
-If a compute cluster is available: 128-rank run across 4 nodes × 32 ranks. Report weak-scaling efficiency at 128. Target: ≥ 70% efficiency vs single-node 32 ranks.
-
-**Exit gate for Phase E**: E.1, E.2, E.3, E.4, E.5 all pass their target efficiencies on the local machine. E.6 and E.7 are stretch.
-
----
-
-## Phase F — Reproducibility artifacts
-
-Everything needed for an external reviewer to reproduce the results.
+Everything an external reviewer needs to reproduce the dual-backend results on PDC Dardel.
 
 ### F.1 Input files under version control
 
-```
-benchmarks/md/reference/polyethylene/
-    force_field.yaml             # single source of truth for FF params
-    msu_pe.data                  # LAMMPS data file (20 000 atoms)
-    lammps.in                    # LAMMPS input for full protocol
-    atomiverse.cpp               # symlink or note → benchmarks/md/polyethylene_tension.cpp
-    c20h42_geometry.xyz          # Phase A.2 single-chain test input
-    c20h42_energies.json         # Phase A.2 LAMMPS reference energies
-    small_box_reference.json     # Phase A.3 LAMMPS reference (E, max|Δf|)
-    thermo_reference.csv         # Phase D.2 reference thermo (1 rank and 8 ranks)
-    stress_strain_reference.csv  # Phase D.4 reference stress-strain
-    scaling_report.csv           # Phase E.2/E.3 scaling numbers
-    scaling_report.md            # human-readable scaling writeup + plots
-```
+Unchanged set under `benchmarks/md/reference/polyethylene/` (`force_field.yaml`, `msu_pe.data`, `lammps_msu_paper.in`, the reference CSVs, `SOURCES.md`, `README.md`), plus the GPU-mode and CUDA reference CSVs (engine-suffixed per the `SOURCES.md` Phase D.1 filename scheme, extended with a GPU/CUDA suffix).
 
-### F.2 Scripts
+### F.2 Scripts — `lmp_cuda` + PDC `gpugh`
 
-```
-tools/
-    run_msu_atomiverse.sh        # standardized launch at given rank count
-    run_msu_lammps.sh            # same, for LAMMPS
-    validate_polyethylene.py     # D.2 + D.3 + D.4 automated comparison
-    plot_scaling.py              # E.2/E.3 plots from scaling_report.csv
-    plot_profile.py              # E.5 stacked-bar plot
-```
+- `tools/run_msu_lammps.sh` — extended to launch `lmp_cuda` in **both** CPU mode and GPU mode (not the old CPU/MPI-only path); PDC `sbatch` submission, `-A <project>` account flag, `main` partition for CPU mode and `gpugh` partition for GPU mode.
+- `tools/run_msu_atomiverse.sh` — extended with a CUDA / GPU-mode launch path on the `gpugh` partition; stops faking per-axis P (G.2).
+- `tools/run_msu_pdc.sh` (new) — PDC Dardel SLURM submission wrapper: `sbatch`/`srun`, `-A` account flag (concrete values: `naiss2025-1-25` for the `main` CPU partition, `naiss2025-1-25-gpu` for the `gpugh` GPU partition), partition selection (`main` vs `gpugh`), 24h wall-time cap awareness. The flag stays required with no default in the script CLI; the concrete account belongs in docs/reproduction commands, not hardcoded.
+- `tools/validate_polyethylene.py` — the multi-engine 2×2 validator (D.5 / E.8): three comparison tracks, energy-decomposition columns, per-stage timing, statistical block-average methodology retained from `msu-pe-align-03`.
+- `tools/plot_scaling.py`, `tools/plot_profile.py` — unchanged.
 
 ### F.3 README
 
-`benchmarks/md/reference/polyethylene/README.md` containing:
+`benchmarks/md/reference/polyethylene/README.md` updated: the `lmp_cuda` build/usage (CPU mode + GPU mode), the PDC Dardel `gpugh` / `main` partition `sbatch` procedure with the `-A` account flag, the four-config 2×2 reproduction commands, and the dual-backend expected-results table. Reference: <https://support.pdc.kth.se/doc/run_jobs/job_scheduling/>.
 
-1. One-paragraph summary and link to MSU source.
-2. Exact commands to reproduce every phase (A–E) with expected outputs.
-3. Expected-results table (modulus / yield / hardening / timings at 1/8/32 ranks) with ±tolerance.
-4. "If this fails, check…" troubleshooting list.
-5. Citation of the MSU reference and LAMMPS version used.
-
-**Exit gate for Phase F**: a fresh clone + `./tools/run_msu_atomiverse.sh 8 && ./tools/validate_polyethylene.py` reproduces all green on a clean machine.
+**Exit gate for Phase F**: a fresh clone plus the documented operator commands reproduce all four engine runs on PDC Dardel and `tools/validate_polyethylene.py` runs the three 2×2 tracks + the timing track green.
 
 ---
 
-## Files to create
+## Files to create or modify
 
-```
-tests/cpu/md/test_pe_single_chain.cpp                # Phase A.2
-tests/cpu/md/test_pe_small_box.cpp                   # Phase A.3, A.4
-tests/mpi/test_pe_bonded_nve.cpp                     # Phase B.2
-tests/mpi/test_pe_nvt_multirank.cpp                  # Phase B.3, B.4, B.5
+### New files
 
-benchmarks/md/pe_nvt_small.cpp                       # Phase A.5
-benchmarks/md/polyethylene_tension.cpp               # Phase C.3 (listed in parallel-md-engine §Files)
-benchmarks/md/pe_profile_single.cpp                  # Phase E.1
-benchmarks/md/scaling.cpp                            # Phase E.2, E.3 (listed in parallel-md-engine §Files)
+- `include/atomiverse/cpu/md/zero_momentum.h` (new) — Phase G.1
+- `src/cpu/md/zero_momentum.cpp` (new) — Phase G.1
+- `include/atomiverse/cuda/md/zero_momentum.cuh` (new) — Phase G.1
+- `src/cuda/md/zero_momentum.cu` (new) — Phase G.1
+- `include/atomiverse/cuda/md/nve_limit.cuh` (new) — Phase G.5
+- `src/cuda/md/nve_limit.cu` (new) — Phase G.5
+- `include/atomiverse/cuda/md/fix_langevin.cuh` (new) — Phase G.6
+- `src/cuda/md/fix_langevin.cu` (new) — Phase G.6
+- `include/atomiverse/cuda/md/nose_hoover_npt.cuh` (new) — Phase G.7
+- `src/cuda/md/nose_hoover_npt.cu` (new) — Phase G.7
+- `tests/cpu/md/test_zero_momentum.cpp` (new) — Phase G.1
+- `tests/cuda/md/test_cuda_md_components.cpp` (new) — Phase G.5/G.6/G.7/G.8 unit tests (ZeroMomentum-CUDA, NVELimit, FixLangevin, NoseHooverNPT, LJ exclusions)
+- `tests/cuda/md/test_pe_cuda_ff.cpp` (new) — Phase I.1 CUDA force-field correctness
+- `tools/run_msu_pdc.sh` (new) — Phase F.2 PDC Dardel SLURM wrapper
 
-benchmarks/md/reference/polyethylene/force_field.yaml
-benchmarks/md/reference/polyethylene/msu_pe.data
-benchmarks/md/reference/polyethylene/lammps.in       # listed in parallel-md-engine §Files
-benchmarks/md/reference/polyethylene/c20h42_geometry.xyz
-benchmarks/md/reference/polyethylene/c20h42_energies.json
-benchmarks/md/reference/polyethylene/small_box_reference.json
-benchmarks/md/reference/polyethylene/thermo_reference.csv  # listed in parallel-md-engine §Files
-benchmarks/md/reference/polyethylene/stress_strain_reference.csv  # listed in parallel-md-engine §Files
-benchmarks/md/reference/polyethylene/scaling_report.csv
-benchmarks/md/reference/polyethylene/scaling_report.md
-benchmarks/md/reference/polyethylene/README.md
+### Modified files
 
-tools/validate_polyethylene.py                       # listed in parallel-md-engine §Files
-tools/run_msu_atomiverse.sh
-tools/run_msu_lammps.sh
-tools/plot_scaling.py
-tools/plot_profile.py
-```
+- `include/atomiverse/cuda/md/md.cuh` — Phase G.4 categorical setter API
+- `src/cuda/driver.cu` — Phase G.4 (setter wiring) + Phase H.2 (hot-path `defer_stream` desync)
+- `include/atomiverse/cuda/potentials/pair_lj_cut.cuh` — Phase G.8 `set_special_bonds`
+- `include/atomiverse/cuda/potentials/lj_kernel.cuh` — Phase G.8 exclusion masking in kernel
+- `src/cuda/potentials/pair_lj_cut.cu` — Phase G.8 exclusion launch wiring
+- `benchmarks/md/polyethylene_tension.cpp` — Phase G.2/G.3 (per-axis P + energy-decomposition CSV columns, per-stage timer for E.8), Phase G.9 (CUDA path)
+- `include/atomiverse/cpu/recorder/thermo.h` — Phase H.1 `AsyncComponentBase`
+- `src/cpu/recorder/thermo.cpp` — Phase H.1 async migration
+- `include/atomiverse/cuda/recorder/thermo.cuh` — Phase G.2/G.3 per-axis P + energy-decomposition columns on the CUDA thermo recorder
+- `include/atomiverse/cuda/observer/stress.cuh` — Phase H.3 deferrable-when-observed-only
+- `src/cuda/observer/stress.cu` — Phase H.3 defer-stream path
+- `tools/validate_polyethylene.py` — Phase D.5 multi-engine 2×2 tracks + energy decomposition + Phase E.8 `--check timing`
+- `tools/run_msu_atomiverse.sh` — Phase F.2 CUDA/gpugh launch path; stop faking per-axis P
+- `tools/run_msu_lammps.sh` — Phase F.2 `lmp_cuda` CPU-mode + GPU-mode launch
+- `tools/test_validate_polyethylene.py` — Phase D.5/E.8 test coverage for the new tracks
+- `benchmarks/md/reference/polyethylene/README.md` — Phase F.3 dual-backend + PDC reproduction
+- `benchmarks/md/reference/polyethylene/SOURCES.md` — Phase F.1 GPU/CUDA reference-CSV filename scheme
+- `CMakeLists.txt` — register new CUDA components, new tests, the async-correctness micro-benchmark
+- `.claude/specs/INDEX.md` — update this spec's umbrella entry to dual-backend
+- `.claude/NOTES.md` — record the dual-backend MSU validation umbrella + CUDA-component implementation
 
-## Files to modify
+## Tasks
 
-```
-src/cpu/molrec.cpp                    # confirm molrs LAMMPS data-file reader handles MSU data
-CMakeLists.txt                        # register new benchmarks under ATV_BUILD_BENCHMARKS
-.claude/specs/INDEX.md                # add this spec entry
-```
+> This umbrella spec delegates detailed implementable slicing of the larger CUDA components to a `msu-pe-cuda-components-*` chain at `/mol:impl` time. The tasks below are the umbrella-level tracker; each maps to a phase exit gate.
 
----
+- [ ] Write failing tests for ZeroMomentum (CPU+CUDA), CUDA NVELimit/FixLangevin/NoseHooverNPT, CUDA LJ special-bonds exclusions (tests/cpu/md/test_zero_momentum.cpp, tests/cuda/md/test_cuda_md_components.cpp)
+- [ ] Implement ZeroMomentum, cuda::md::NVELimit, cuda::md::FixLangevin, cuda::md::NoseHooverNPT, and CUDA LJ exclusions per Phase G.1/G.5/G.6/G.7/G.8
+- [ ] Implement CUDA categorical setter API in include/atomiverse/cuda/md/md.cuh and src/cuda/driver.cu per Phase G.4
+- [ ] Implement per-axis Pxx/Pyy/Pzz and E_pair/E_bond/E_angle/E_dihedral CSV columns and the CUDA path in benchmarks/md/polyethylene_tension.cpp per Phase G.2/G.3/G.9
+- [ ] Implement CPU Thermo on AsyncComponentBase and CUDA driver hot-path defer_stream desync per Phase H.1/H.2/H.3
+- [ ] Verify the async-correctness gate: CUDA steps/s at high recorder frequency within 5% of recorders-off (Phase H.4 micro-benchmark)
+- [ ] Verify CUDA force-field correctness against CPU double-precision values in tests/cuda/md/test_pe_cuda_ff.cpp per Phase I.1
+- [ ] Implement the multi-engine 2×2 tracks and --check timing in tools/validate_polyethylene.py per Phase D.5/E.8
+- [ ] Implement lmp_cuda CPU/GPU-mode launch and PDC gpugh sbatch in tools/run_msu_lammps.sh, tools/run_msu_atomiverse.sh, tools/run_msu_pdc.sh per Phase F.2
+- [ ] Add doxygen docstrings with units for all new CUDA components and update README.md per Phase F.3
+- [ ] Verify the CUDA↔CPU and CUDA↔LAMMPS-GPU statistical block-average comparisons pass per Phase I.3/I.4 (operator cluster run)
+- [ ] Run full check + test suite
 
-## Acceptance checklist (at a glance)
+## Testing strategy
 
-- [ ] **0.1–0.7** engine blockers from parallel-md-engine.md all green
-- [ ] **A.2** C₂₀H₄₂ energy decomposition vs LAMMPS, 1e-6 eV absolute
-- [ ] **A.3** 1 280-atom static E + forces vs LAMMPS, 1e-5 rel E, 1e-6 force
-- [ ] **A.4** 1 000-step NVE drift < 1e-4
-- [ ] **A.5** NVT block averages vs LAMMPS, 0.5% rel
-- [ ] **B.1** 8-rank LJ NVE drift < 1e-2 over 20 steps
-- [ ] **B.2** 8-rank bonded NVE atoms/velocities match 1-rank at 1e-10
-- [ ] **B.3** 8-rank NVT block averages match 1-rank at 0.3% rel
-- [ ] **B.4** 8-rank stress tensor matches 1-rank at 1e-6 rel
-- [ ] **B.5** 8-rank RDF matches 1-rank at 1e-8 absolute
-- [ ] **C.1** MSU data file in repo; identical to LAMMPS input
-- [ ] **C.2/C.3** full 5-stage protocol runs to completion, ρ within 5% of reference
-- [ ] **D.2** per-step thermo vs LAMMPS first 1 000 steps, 1e-4 rel
-- [ ] **D.3** equilibrium observables vs LAMMPS within listed tolerances
-- [ ] **D.4** σ_xx(ε) modulus / yield / hardening within ±5% of LAMMPS
-- [ ] **E.1** single-rank profile: no hotspot > 60%, force share ≥ 50%
-- [ ] **E.2** strong-scaling efficiency targets met (1–32 ranks)
-- [ ] **E.3** weak-scaling efficiency targets met
-- [ ] **E.4** Atomiverse time/step ≤ 2× LAMMPS at 8 ranks
-- [ ] **E.5** profile breakdown published at 1/8/32 ranks
-- [ ] **F.1–F.3** all artifacts in `benchmarks/md/reference/polyethylene/` + reproducible from README
+- **Happy path** — `tests/cuda/md/test_cuda_md_components.cpp` and `tests/cpu/md/test_zero_momentum.cpp` exercise each new component on a small synthetic system: `ZeroMomentum` drives COM momentum to zero; `NVELimit` caps displacement at the configured bound; `FixLangevin` drives temperature to the setpoint with a fixed seed; `NoseHooverNPT` relaxes a box to target pressure in both iso and aniso y/z modes; CUDA `LJ` with special-bonds excludes 1-2/1-3/1-4 pairs. The CUDA benchmark path runs a short (≤1000-step) protocol without NaN.
+- **Edge cases** — `NVELimit` on the overlapped `msu_pe.data` (initial E_pair ≈ 3.4×10⁸ kcal/mol) does not blow up; CUDA `LJ` with an empty special-bonds list behaves identically to the un-masked kernel; `validate_polyethylene.py` with a missing engine CSV exits non-zero with a clear error naming the absent track; the `--check timing` track on a CSV missing a stage column fails gracefully, not with a crash.
+- **Domain validation** — CUDA force field: `test_pe_cuda_ff.cpp` confirms each of `E_pair/E_bond/E_angle/E_dihedral` agrees with the CPU double-precision reference to ≤1e-3 relative on the C₂₀H₄₂ perturbed geometry. Stochastic-protocol parity: per `msu-pe-align-03`, the CUDA↔CPU and CUDA↔LAMMPS-GPU comparisons use block-averaged ensemble means (⟨T⟩, ⟨E_pot⟩, energy decomposition, density) over the equilibrated stages, never per-step; CUDA single precision widens the means tolerance to ~2–3% relative. Stress-strain descriptors (E, σ_y, hardening slope) agree to ±5%. Reference fidelity: an assertion confirms the benchmark applies a `fix momentum` equivalent in stages 2/3/4 and emits real (non-faked) `Pxx/Pyy/Pzz`.
+- **Async correctness** — the H.4 micro-benchmark measures steps/s with recorders/observers off vs at high frequency; the gate requires high-frequency steps/s ≥ 95% of recorders-off steps/s on CUDA, proving the GPU never stalls on a recorder; the CPU counterpart confirms the same for the now-async `Thermo`.
 
----
+## Out of scope
+
+- Multi-GPU and CUDA+MPI scaling — explicitly out of scope per fixed scope decision 1; CUDA validation is single-GPU correctness only. The CPU/MPI Phase E (E.1–E.7 strong/weak scaling) stays CPU-only and unchanged. (Considered adding a CUDA scaling phase; rejected — the user fixed CUDA scope to single-GPU correctness.)
+- Re-specifying the CPU Phase D sub-chain — `msu-pe-phase-d-01..04` and `msu-pe-align-03` are referenced and kept consistent with, not rewritten here. (Considered folding them back into the umbrella; rejected — the umbrella delegates detailed slicing to per-phase chains by design.)
+- Per-step or bit-level comparison against LAMMPS — physically impossible for this stochastic, single-precision-on-CUDA protocol; all cross-engine comparison is statistical block-average per `msu-pe-align-03`.
+- Matching MSU paper numbers directly — LAMMPS under identical inputs is the reproducible reference; MSU paper-number matching remains a downstream addendum, unchanged from the prior spec rationale.
+- Changing the protocol physics — `lammps_msu_paper.in` is immutable ground truth; the benchmark is corrected to match it, never the reverse.
 
 ## Rationale
 
-- **Why Dreiding-style UA, not exact MSU parameters?** MSU page does not publish a complete parameter file with every cross-term. Dreiding UA is the nearest widely-reproducible PE force field that Atomiverse already supports. Any science-grade parameter match is out of scope — this is an engine-validation spec, not a polymer-physics paper.
-- **Why LAMMPS head-to-head instead of "match MSU numbers"?** LAMMPS is a reproducible, open reference; MSU's paper numbers depend on their specific FF parameter values and random seeds, which are not fully exposed. Using LAMMPS as the reference under *identical* inputs turns "correctness" into a deterministic FP comparison.
-- **Why 2× LAMMPS as perf target, not ≥ LAMMPS?** LAMMPS has 20+ years of optimization. Matching it on first delivery is unrealistic; 2× is the industry norm for new engines at parity features. The scaling-efficiency targets (70–85%) are absolute performance-engineering criteria independent of the LAMMPS comparison.
-- **Why Phase E gets the most detailed structure?** User's stated primary goal is multi-core performance. Correctness (A–D) is necessary groundwork; scaling + head-to-head comparison (E) is the deliverable.
-- **Why hold off on MSU paper-number matching until later?** Two different unknowns (our FF parameters vs theirs, plus engine bugs) confounded in one test = impossible to debug. Phase D fixes the FF/protocol alignment via LAMMPS as intermediate reference; matching MSU paper numbers becomes a downstream Phase 5 addendum once both engines agree.
+- **Why supersede in place instead of splitting?** The user explicitly asked to update this one umbrella file. The umbrella already delegates detailed implementable slicing to per-phase chains (`msu-pe-phase-d-*`); the new CUDA-component work likewise delegates to a `msu-pe-cuda-components-*` chain at impl time. Keeping one umbrella preserves the single roadmap view.
+- **Why a dedicated functional-gap phase (G) before any CUDA validation?** The user said missing functionality must be implemented first. The CUDA backend literally cannot run the protocol — it has no `NVELimit`, `FixLangevin`, `NoseHooverNPT`, no special-bonds exclusions (which silently corrupt the polymer), and no categorical setter API. Phase G hard-blocks the CUDA arm; making it explicit prevents starting validation on a non-functional backend.
+- **Why call out `fix momentum`, per-axis P, and energy decomposition as fidelity defects?** The benchmark does not yet strictly match `lammps_msu_paper.in`: it omits `fix momentum` (a physics deviation), fakes `Pxx/Pyy/Pzz` by copying isotropic P (wrong for the stress-strain curve), and omits the energy decomposition the user wants to compare. These are correctness defects, not enhancements.
+- **Why statistical block-average for every CUDA comparison?** `msu-pe-align-03` established that the MSU protocol is stochastic (seeded stage-1 Langevin). CUDA additionally runs single precision. Two engines therefore never share a trajectory — they sample the same ensemble. The only physically meaningful cross-engine statement is agreement of block-averaged ensemble means.
+- **Why a dedicated async-correctness phase (H)?** The user's hard requirement is that the GPU never waits on a recorder. The CUDA `AsyncBridge` exists but is defeated by per-phase-slot `cudaStreamSynchronize(defer_stream)` in the driver hot path. An explicit phase with a measurable exit gate (step time independent of recorder frequency) turns "make it async" into a verifiable contract.
+- **Why PDC Dardel as the cluster?** Fixed scope decision 4: the reference runs are ~24h-class operator actions; PDC Dardel's `main` (CPU) and `gpugh` (GH200 GPU) partitions map cleanly onto the 2×2 engine matrix, and the 24h job cap is why the runs are operator actions, not CI steps.
