@@ -1,7 +1,7 @@
 /// @file python/bind_optimizer.cpp
 /// @brief L-BFGS geometry optimizer bindings.
 
-#include "cpu_frame_wrapper.h"
+#include "molrs_frame_bridge.h"
 
 #include <nanobind/stl/string.h>
 
@@ -74,14 +74,14 @@ void bind_optimizer(nb::module_& m) {
         .def(
             "run",
             [](CpuLBFGS& self, nb::object frame_obj, int n_steps) {
-                auto& cf = nb::cast<CpuFrame&>(frame_obj);
+                auto frame = borrow_molrs_frame(frame_obj);
                 {
                     nb::gil_scoped_release release;
-                    self.run(cf.frame, n_steps);
+                    self.run(*frame, n_steps);
                 }
             },
             nb::arg("frame"), nb::arg("n_steps"),
-            "Run optimization. GIL is released during computation.");
+            "Run optimization on a molrs.Frame. GIL released during compute.");
 
     // ── MinimizerPhaseBuilder ──
 

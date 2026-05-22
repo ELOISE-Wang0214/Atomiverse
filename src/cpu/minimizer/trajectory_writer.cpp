@@ -30,7 +30,7 @@ void TrajectoryWriter::launch(const cpu::LaunchContext& ctx) {
     MolRec rec;
     rec.set_geometry(ctx.frame);
     rec.add_scalar("step", static_cast<double>(ctx.step));
-    rec.add_scalar("energy_eV", ctx.frame.energy);
+    rec.add_scalar("energy_eV", ctx.frame.scalars.energy);
     rec.commit_frame();
 
     XYZ writer(filename_);

@@ -65,13 +65,13 @@ void OptLog::launch(const cpu::LaunchContext& ctx) {
     has_prev_ = true;
 
     if (os_.is_open()) {
-        os_ << ctx.step << '\t' << f.energy << '\t' << max_force << '\t'
+        os_ << ctx.step << '\t' << f.scalars.energy << '\t' << max_force << '\t'
             << rms_force << '\t' << step_norm << '\n';
         os_.flush();
     }
     if (also_stdout_) {
-        std::printf("%6d  %15.8e  %12.6e  %12.6e  %12.6e\n", ctx.step, f.energy,
-                    max_force, rms_force, step_norm);
+        std::printf("%6d  %15.8e  %12.6e  %12.6e  %12.6e\n", ctx.step,
+                    f.scalars.energy, max_force, rms_force, step_norm);
     }
     ++n_rows_;
 }

@@ -146,11 +146,12 @@ TEST(PeChainCrossing, BondedNveHandlesChainAcrossBoundary) {
 
     sim.run(frame, 1);
     const double e0 =
-        frame.energy + frame.kinetic; // already global via ReduceEnergy
+        frame.scalars.energy
+        + frame.scalars.kinetic; // already global via ReduceEnergy
     ASSERT_FALSE(std::isnan(e0)) << "step-1 global energy is NaN";
 
     sim.run(frame, 199);
-    const double e1 = frame.energy + frame.kinetic;
+    const double e1 = frame.scalars.energy + frame.scalars.kinetic;
     EXPECT_FALSE(std::isnan(e1)) << "global energy went NaN";
     EXPECT_LT(std::abs(e1), 1e3)
         << "global energy " << e1 << " is wildly large -- cross-boundary "
@@ -194,7 +195,7 @@ TEST(PeChainCrossing, BondedSkinAutoExtendsWithSmallPairCutoff) {
     sim.build();
 
     sim.run(frame, 50);
-    const double e = frame.energy + frame.kinetic;
+    const double e = frame.scalars.energy + frame.scalars.kinetic;
     EXPECT_FALSE(std::isnan(e)) << "global energy went NaN";
     EXPECT_LT(std::abs(e), 1e3)
         << "global energy " << e << " blew up -- auto-extension failed "

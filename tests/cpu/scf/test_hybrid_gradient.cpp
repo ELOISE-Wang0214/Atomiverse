@@ -404,9 +404,9 @@ TEST(HybridGradient, B3LYPGeometryOptimizationMatchesPySCF) {
         << "optimized B3LYP/6-31G* water geometry RMS exceeds 1e-3 Angstrom";
 
     // Final energy vs PySCF optimized reference. SCFEvaluator writes the
-    // KS total energy (eV) into frame.energy; convert back to Hartree.
-    const double e_final_ha =
-        units::convert(frame.energy, units::Energy::eV, units::Energy::Hartree);
+    // KS total energy (eV) into frame.scalars.energy; convert back to Hartree.
+    const double e_final_ha = units::convert(
+        frame.scalars.energy, units::Energy::eV, units::Energy::Hartree);
     std::printf("[hybrid-grad] ac-005 final E = %.10f Ha (PySCF %.10f Ha)\n",
                 e_final_ha, kB3LYPOptEnergyHa);
     EXPECT_NEAR(e_final_ha, kB3LYPOptEnergyHa, 1e-6)

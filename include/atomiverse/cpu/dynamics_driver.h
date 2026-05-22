@@ -19,6 +19,7 @@
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/cpu_driver.h"
 #include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/materialize.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -79,6 +80,26 @@ class DynamicsDriver : public CPUDriver<ATV::md::Phase> {
         // per-call teardown used to do this; continuation defers full
         // teardown, so the barrier is made explicit here.
         this->backend_->drain_analysis();
+    }
+
+    /// @brief User-facing entry — advance the system stored in a molrs.Frame.
+    ///
+    /// Materializes the molrs.Frame into a transient `cpu::Frame`, runs the
+    /// MD step budget on it, and writes the results back into the *same*
+    /// molrs.Frame. The borrow window is strictly this one call: the
+    /// `cpu::Frame` is a pure execution product, never exposed to the user.
+    ///
+    /// Note: each call to this overload materializes a fresh `cpu::Frame`,
+    /// so consecutive `run(molrs::FrameRef&, ...)` calls are independent
+    /// simulations (no trajectory continuation). For a continued trajectory
+    /// materialize once and use the `cpu::Frame&` overload.
+    ///
+    /// @param frame molrs.Frame handle (input geometry + output sink).
+    /// @param n_steps Step budget.
+    void run(molrs::FrameRef& frame, int n_steps) {
+        cpu::Frame work = cpu::materialize(frame);
+        run(work, n_steps);
+        cpu::write_back(work, frame);
     }
 
   protected:

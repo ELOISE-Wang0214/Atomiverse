@@ -1,13 +1,20 @@
 /// @file cpu/frame.h
-/// @brief cpu::Frame -- CPU device system state backed by xtensor.
+/// @brief cpu::Frame -- CPU backend execution frame backed by xtensor.
 ///
-/// This is the primary data container users interact with. CPU is treated
-/// as a device, symmetric with CUDA. Transfer between devices uses
-/// cpu::to_cuda() and cuda::to_cpu().
+/// `cpu::Frame` is a pure execution product, not a user-facing data type.
+/// The canonical exchange layer is `molrs.Frame`: a driver's user-facing
+/// `run(molrs::FrameRef&, ...)` entry materializes a `molrs.Frame` into a
+/// transient `cpu::Frame` (via `cpu::materialize`), executes against it, and
+/// writes results back (via `cpu::write_back`). The `cpu::Frame` lives only
+/// for the duration of that one `run()` call. CPU is treated as a device,
+/// symmetric with CUDA; transfer between device frames uses cpu::to_cuda()
+/// and cuda::to_cpu().
 ///
 /// Data is organized into sub-structs (atoms, bonds, angles, dihedrals)
 /// matching the molcrafts naming convention (molpy Block model).
 ///
+/// @see molrs.hpp for the canonical molrs.Frame exchange layer
+/// @see cpu::materialize / cpu::write_back for the molrs.Frame <-> cpu::Frame bridge
 /// @see cuda::Frame for the GPU device counterpart
 /// @see cpu::to_cuda() for CPU -> CUDA transfer
 /// @see cuda::to_cpu() for CUDA -> CPU transfer
@@ -20,18 +27,21 @@
 #include <xtensor/views/xview.hpp>
 
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/core/system_scalars.h"
 #include "atomiverse/cpu/box.h"
 
 namespace ATV {
 namespace cpu {
 
-/// @brief CPU device system state backed by xtensor arrays.
+/// @brief CPU backend execution frame backed by xtensor arrays.
 ///
-/// All arrays use SoA layout (one xtensor per dimension).
-/// Fields are organized into sub-structs matching molpy's Block model:
-/// atoms, bonds, angles, dihedrals.
+/// A transient execution product owned by a driver's `run()` call, not a
+/// user-facing data type. Materialized from a `molrs.Frame` on entry and
+/// written back on exit. All arrays use SoA layout (one xtensor per
+/// dimension). Fields are organized into sub-structs matching molpy's Block
+/// model: atoms, bonds, angles, dihedrals.
 ///
-/// Usage:
+/// Internal usage (driver / test code):
 /// @code{.cpp}
 /// cpu::Frame frame(1000);
 /// frame.atoms.x(0) = 0.0;
@@ -60,7 +70,8 @@ class Frame {
               vy(xt::zeros<double>({n})), vz(xt::zeros<double>({n})),
               fx(xt::zeros<double>({n})), fy(xt::zeros<double>({n})),
               fz(xt::zeros<double>({n})), mass(xt::zeros<double>({n})),
-              type(xt::zeros<int>({n})), tag(xt::arange<std::int64_t>(0, n)),
+              charge(xt::zeros<double>({n})), type(xt::zeros<int>({n})),
+              tag(xt::arange<std::int64_t>(0, n)),
               image(xt::zeros<std::int8_t>({n, 3})), n_(n) {}
 
         xt::xtensor<double, 1> x;    ///< x positions [Angstrom].
@@ -73,7 +84,15 @@ class Frame {
         xt::xtensor<double, 1> fy;   ///< y forces [eV/Angstrom].
         xt::xtensor<double, 1> fz;   ///< z forces [eV/Angstrom].
         xt::xtensor<double, 1> mass; ///< Masses [amu].
-        xt::xtensor<int, 1> type;    ///< Atom type indices.
+
+        /// @brief Per-atom partial charge [e] (elementary charge).
+        ///
+        /// Zero-initialized. Mirrors `Capability::Charge`: components that
+        /// declare that capability write here. Treated as a fundamental
+        /// physical property (analogue of LAMMPS atom->q).
+        xt::xtensor<double, 1> charge;
+
+        xt::xtensor<int, 1> type; ///< Atom type indices.
 
         /// @brief Global atom identity, persistent across MPI migration and restart.
         ///
@@ -142,42 +161,11 @@ class Frame {
 
     // ── System scalars ──
 
-    double energy = 0;  ///< Potential energy [eV].
-    double kinetic = 0; ///< Kinetic energy [eV].
-    /// @brief Integrator's conserved quantity [eV].
-    ///
-    /// For an extended-Lagrangian integrator this is the conserved
-    /// *extended* Hamiltonian — e.g. `NoseHooverNPT` writes the full
-    /// MTK Hamiltonian (atom KE+PE + barostat KE + Nosé-Hoover chain
-    /// KE/PE + p·V). For a plain symplectic integrator it is just
-    /// `KE+PE`. The integrator writes it once per step; it stays `0`
-    /// when no integrator populates it. A flat `conserved` trace is the
-    /// canonical correctness check that an integrator is symplectic;
-    /// `Thermo` logs it as a column.
-    double conserved = 0;
-    /// @brief Pair / bonded virial tensor Σ r·F [eV], Voigt order xx yy zz xy xz yz.
-    ///
-    /// Written by pair potentials (LJ, Coulomb, ...) and bonded
-    /// evaluators at `post_force`. **Does not** include the kinetic
-    /// contribution Σ m·v·v -- that lives in `stress_kinetic` so each
-    /// piece is consistent with its own time slice (virial is fixed
-    /// once forces are computed, kinetic varies as velocities are
-    /// updated through the Trotter step). The full pressure-tensor
-    /// sum is `stress[i] + stress_kinetic[i]`, and dividing the trace
-    /// by `3·V` gives the internal pressure under the LAMMPS sign
-    /// convention (positive ⇔ compressive).
-    double stress[6] = {};
-    /// @brief Kinetic stress tensor Σ m·v·v [eV], Voigt order xx yy zz xy xz yz.
-    ///
-    /// Written by `VirialStress` at `post_force` using the velocities
-    /// at that point. Time-dependent: integrators like
-    /// `NoseHooverNPT` that update velocities between `post_force`
-    /// and pressure evaluation recompute the kinetic stress fresh
-    /// from the post-update velocities rather than reusing this
-    /// stored value, so this field is *informational* for any
-    /// downstream observer/recorder that wants the post-force
-    /// pressure snapshot.
-    double stress_kinetic[6] = {};
+    /// @brief Per-frame system scalar results (energy, kinetic, conserved,
+    /// stress, kinetic stress). See `core/system_scalars.h` for the
+    /// field-by-field documentation; the shape is shared with the CUDA and
+    /// Torch frames.
+    SystemScalars scalars{};
 
     cpu::Box
         box{}; ///< Simulation cell [Angstrom]; canonical Box at backend root (see cpu/box.h).

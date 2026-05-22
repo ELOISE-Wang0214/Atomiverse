@@ -71,13 +71,14 @@ cpu::Frame make_h2() {
     return f;
 }
 
-/// @brief Approximate kinetic temperature from frame.kinetic.
+/// @brief Approximate kinetic temperature from frame.scalars.kinetic.
 ///        T = 2·KE / (n_dof · kB), with COM removed (n_dof = 3·N - 3).
 double temperature_K(const cpu::Frame& frame) {
     const int n_dof = 3 * frame.atoms.size() - 3;
     if (n_dof <= 0)
         return 0.0;
-    return 2.0 * static_cast<double>(frame.kinetic) / (n_dof * kBoltzmann);
+    return 2.0 * static_cast<double>(frame.scalars.kinetic)
+           / (n_dof * kBoltzmann);
 }
 
 } // namespace
@@ -118,19 +119,19 @@ int main() {
         .add(cpu::scf::SCFEvaluator{config}.predictor(/*order=*/3));
     sim.build();
 
-    // Take one step to populate frame.kinetic and frame.energy from the
+    // Take one step to populate frame.scalars.kinetic and frame.scalars.energy from the
     // integrator's first force evaluation.
     sim.run(frame, 1);
-    const double E_init = static_cast<double>(frame.energy);
-    const double KE_init = static_cast<double>(frame.kinetic);
+    const double E_init = static_cast<double>(frame.scalars.energy);
+    const double KE_init = static_cast<double>(frame.scalars.kinetic);
     const double T_init = temperature_K(frame);
     ATV_INFO("[aimd] step=1   PE_eV={:>10.4f}  KE_eV={:>8.4f}  T_K={:>7.2f}",
              E_init, KE_init, T_init);
 
     sim.run(frame, n_steps - 1);
 
-    const double E_final = static_cast<double>(frame.energy);
-    const double KE_final = static_cast<double>(frame.kinetic);
+    const double E_final = static_cast<double>(frame.scalars.energy);
+    const double KE_final = static_cast<double>(frame.scalars.kinetic);
     const double T_final = temperature_K(frame);
     ATV_INFO("[aimd] step={:<3d} PE_eV={:>10.4f}  KE_eV={:>8.4f}  T_K={:>7.2f}",
              n_steps, E_final, KE_final, T_final);

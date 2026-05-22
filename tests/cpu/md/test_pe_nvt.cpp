@@ -97,7 +97,7 @@ cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
     return frame;
 }
 
-// Instantaneous temperature from frame.kinetic [eV]:
+// Instantaneous temperature from frame.scalars.kinetic [eV]:
 //   E_kin = (3/2) N k_B T
 //   T = (2/3) * E_kin / (N k_B)
 double temperature_from_kinetic(double e_kin_ev, int n_atoms) {
@@ -127,7 +127,7 @@ TEST(PeNvt, NoseHooverHoldsTargetTemperature) {
     sim.run(frame, 5000);
 
     const double T_final =
-        temperature_from_kinetic(frame.kinetic, frame.atoms.size());
+        temperature_from_kinetic(frame.scalars.kinetic, frame.atoms.size());
     const double rel_err = std::abs(T_final - T_target) / T_target;
 
     // The instantaneous temperature on a 20-atom chain has substantial

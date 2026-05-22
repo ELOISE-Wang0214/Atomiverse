@@ -143,7 +143,8 @@ TEST(PeFullMultiRank, ChainCrossingWithLjExclusions) {
 
     sim.run(frame, 200);
 
-    const double e1 = frame.energy + frame.kinetic; // already global
+    const double e1 =
+        frame.scalars.energy + frame.scalars.kinetic; // already global
     EXPECT_FALSE(std::isnan(e1)) << "global E went NaN -- LJ likely saw a "
                                     "bonded ghost partner that exclusions "
                                     "failed to suppress";

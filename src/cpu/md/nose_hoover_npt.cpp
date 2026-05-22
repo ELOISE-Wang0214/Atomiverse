@@ -419,10 +419,10 @@ void NoseHooverNPT::update_eps_dot(const cpu::LaunchContext& ctx,
         return;
 
     // Standard MTK sign convention (Tuckerman 2006, LAMMPS `fix_nh.cpp`):
-    // pressure positive ⇔ compressive. `frame.stress[0..2]` holds the
+    // pressure positive ⇔ compressive. `frame.scalars.stress[0..2]` holds the
     // per-axis pair-virial diagonal; the kinetic diagonal `2·KE_α` is
     // computed fresh from the current velocities (NOT the stale
-    // `frame.stress_kinetic` snapshot taken at `post_force` time, before
+    // `frame.scalars.stress_kinetic` snapshot taken at `post_force` time, before
     // `kick_v_by_force` / `scale_v_by_baro` — using it pumped a runaway
     // box drift; see tests/cpu/md/test_lammps_npt_parity.cpp).
     //
@@ -441,9 +441,9 @@ void NoseHooverNPT::update_eps_dot(const cpu::LaunchContext& ctx,
     // `pcouple==XYZ` case): every `p_current[i]` is set to the averaged
     // pressure, collapsing the three forces to one shared value so the
     // all-coupled path is bit-identical to the legacy scalar `G_ε`.
-    double diag[3] = {f.stress[0] + 2.0 * ke_axis[0],
-                      f.stress[1] + 2.0 * ke_axis[1],
-                      f.stress[2] + 2.0 * ke_axis[2]};
+    double diag[3] = {f.scalars.stress[0] + 2.0 * ke_axis[0],
+                      f.scalars.stress[1] + 2.0 * ke_axis[1],
+                      f.scalars.stress[2] + 2.0 * ke_axis[2]};
     if (pdim_ == 3) {
         const double ave = (1.0 / 3.0) * (diag[0] + diag[1] + diag[2]);
         diag[0] = diag[1] = diag[2] = ave;
@@ -612,7 +612,7 @@ double
 NoseHooverNPT::extended_hamiltonian(const cpu::LaunchContext& ctx) const {
     const auto& f = ctx.frame;
     // Atom kinetic + potential energy.
-    double H = f.kinetic + f.energy;
+    double H = f.scalars.kinetic + f.scalars.energy;
     // Barostat kinetic energy Σ_α ½·W_axis·ε̇_α² over active axes, with
     // `W_axis = W_/3` the per-axis barostat mass. For the all-coupled,
     // all-equal case this sums to the legacy `½·W_·ε̇²`.
@@ -689,7 +689,7 @@ void NoseHooverNPT::launch(const cpu::LaunchContext& ctx) {
         kick_v_by_force(ctx, half_dt);
 
     } else if (ctx.stage == static_cast<int>(ATV::md::Phase::end_of_step)) {
-        // ReduceEnergy has run (frame.stress globally reduced).
+        // ReduceEnergy has run (frame.scalars.stress globally reduced).
         // Recompute KE_global_ from CURRENT v before pressure step.
         KE_global_ = compute_global_KE(ctx);
 
@@ -702,14 +702,14 @@ void NoseHooverNPT::launch(const cpu::LaunchContext& ctx) {
         nhc_atoms_half(ctx, half_dt); // P10
         nhc_baro_half(half_dt);       // P11
 
-        // Rewrite frame.kinetic so observers bound at end_of_step @ > -40
+        // Rewrite frame.scalars.kinetic so observers bound at end_of_step @ > -40
         // see the post-NPT kinetic energy.
-        ctx.frame.kinetic = KE_global_;
+        ctx.frame.scalars.kinetic = KE_global_;
 
         // Publish the conserved MTK extended Hamiltonian for `Thermo`
         // and the conservation regression gate. Computed last, once the
         // atoms, box, ε̇ and both chains hold their end-of-step values.
-        ctx.frame.conserved = extended_hamiltonian(ctx);
+        ctx.frame.scalars.conserved = extended_hamiltonian(ctx);
     }
 }
 

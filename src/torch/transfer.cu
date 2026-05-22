@@ -216,15 +216,16 @@ void to_cpu(const Frame& src, cpu::Frame& dst) {
 
     if (src.energy.defined() && src.energy.numel() > 0) {
         auto cpu_e = src.energy.to(::torch::kCPU);
-        dst.energy = cpu_e.item<double>();
+        dst.scalars.energy = cpu_e.item<double>();
     }
     if (src.kinetic.defined() && src.kinetic.numel() > 0) {
         auto cpu_k = src.kinetic.to(::torch::kCPU);
-        dst.kinetic = cpu_k.item<double>();
+        dst.scalars.kinetic = cpu_k.item<double>();
     }
     if (src.stress.defined() && src.stress.numel() == 6) {
         auto cpu_s = src.stress.to(::torch::kCPU).contiguous();
-        std::memcpy(dst.stress, cpu_s.data_ptr<double>(), 6 * sizeof(double));
+        std::memcpy(dst.scalars.stress, cpu_s.data_ptr<double>(),
+                    6 * sizeof(double));
     }
     if (src.box.defined() && src.box.numel() == 9) {
         auto cpu_b = src.box.to(::torch::kCPU).contiguous();

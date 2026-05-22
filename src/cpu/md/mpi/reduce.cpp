@@ -37,22 +37,22 @@ void ReduceEnergy::launch(const cpu::LaunchContext& ctx) {
     // be summed. Both stress fields reduce identically (each is a per-rank
     // partial sum of Voigt components).
     double sendbuf[14];
-    sendbuf[0] = f.energy;
-    sendbuf[1] = f.kinetic;
+    sendbuf[0] = f.scalars.energy;
+    sendbuf[1] = f.scalars.kinetic;
     for (int k = 0; k < 6; ++k)
-        sendbuf[2 + k] = f.stress[k];
+        sendbuf[2 + k] = f.scalars.stress[k];
     for (int k = 0; k < 6; ++k)
-        sendbuf[8 + k] = f.stress_kinetic[k];
+        sendbuf[8 + k] = f.scalars.stress_kinetic[k];
 
     double recvbuf[14];
     MPI_Allreduce(sendbuf, recvbuf, 14, MPI_DOUBLE, MPI_SUM, dd->cart_comm);
 
-    f.energy = recvbuf[0];
-    f.kinetic = recvbuf[1];
+    f.scalars.energy = recvbuf[0];
+    f.scalars.kinetic = recvbuf[1];
     for (int k = 0; k < 6; ++k)
-        f.stress[k] = recvbuf[2 + k];
+        f.scalars.stress[k] = recvbuf[2 + k];
     for (int k = 0; k < 6; ++k)
-        f.stress_kinetic[k] = recvbuf[8 + k];
+        f.scalars.stress_kinetic[k] = recvbuf[8 + k];
 }
 
 #else // !ATV_HAS_MPI

@@ -210,7 +210,7 @@ TEST(PeMsuPipeline, NvtPlusNptPlusDeform) {
         << "ranks disagree on box_x after combined deform + barostat";
 
     // Total energy is finite.
-    EXPECT_FALSE(std::isnan(frame.energy + frame.kinetic))
+    EXPECT_FALSE(std::isnan(frame.scalars.energy + frame.scalars.kinetic))
         << "global E went NaN after full pipeline";
 }
 

@@ -17,6 +17,7 @@
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/cpu_driver.h"
 #include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/materialize.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -30,6 +31,19 @@ class EvaluateDriver : public CPUDriver<ATV::evaluate::Phase> {
         setup_pass(frame);
         step_once(0);
         teardown_pass();
+    }
+
+    /// @brief User-facing entry — evaluate the system stored in a molrs.Frame.
+    ///
+    /// Materializes the molrs.Frame into a transient `cpu::Frame`, runs one
+    /// evaluation pass on it, and writes the results back into the *same*
+    /// molrs.Frame. The borrow window is strictly this one call.
+    ///
+    /// @param frame molrs.Frame handle (input geometry + output sink).
+    void run(molrs::FrameRef& frame) {
+        cpu::Frame work = cpu::materialize(frame);
+        run(work);
+        cpu::write_back(work, frame);
     }
 
   protected:

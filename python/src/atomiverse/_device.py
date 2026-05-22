@@ -12,49 +12,50 @@ Or::
 
     from atomiverse._device import register_devices
     register_devices()
+
+Note: Atomiverse drivers operate directly on a ``molrs.Frame``. These
+handlers exist only for the optional molpy device-registry protocol.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-import numpy as np
-
-if TYPE_CHECKING:
-    pass  # mp.Frame type used in signatures below
-
 
 class CpuDeviceHandler:
-    """Transfers mp.Frame data to/from Atomiverse cpu::Frame."""
+    """Placeholder CPU device handler for the molpy device registry.
+
+    Atomiverse drivers consume a ``molrs.Frame`` directly via
+    ``MD.run(frame, n_steps)`` — no device handler is needed for the
+    normal path. This handler is a stub for the optional molpy
+    ``frame.to("cpu")`` protocol.
+    """
 
     def from_cpu(self, frame: object) -> object:
-        """mp.Frame(cpu) → internal CpuFrame, run, write back."""
-        # TODO: implement when molpy Frame protocol is ready
+        """molpy Frame(cpu) → Atomiverse CPU execution path."""
         raise NotImplementedError(
             "CpuDeviceHandler.from_cpu() is not yet implemented. "
-            "Use av.Frame for direct Atomiverse access."
+            "Pass a molrs.Frame to the Atomiverse driver directly."
         )
 
     def to_cpu(self, frame: object) -> object:
-        """Internal representation → mp.Frame(cpu)."""
+        """Atomiverse CPU representation → molpy Frame(cpu)."""
         raise NotImplementedError(
             "CpuDeviceHandler.to_cpu() is not yet implemented. "
-            "Use av.Frame for direct Atomiverse access."
+            "Pass a molrs.Frame to the Atomiverse driver directly."
         )
 
 
 class CudaDeviceHandler:
-    """Transfers mp.Frame data to/from Atomiverse cuda::Frame via DLPack."""
+    """Placeholder CUDA device handler for the molpy device registry."""
 
     def from_cpu(self, frame: object) -> object:
-        """mp.Frame(cpu) → mp.Frame(cuda) via H2D transfer."""
+        """molpy Frame(cpu) → Frame(cuda) via H2D transfer."""
         raise NotImplementedError(
             "CudaDeviceHandler.from_cpu() is not yet implemented. "
             "Requires ATV_BUILD_CUDA=ON."
         )
 
     def to_cpu(self, frame: object) -> object:
-        """mp.Frame(cuda) → mp.Frame(cpu) via D2H transfer."""
+        """molpy Frame(cuda) → Frame(cpu) via D2H transfer."""
         raise NotImplementedError(
             "CudaDeviceHandler.to_cpu() is not yet implemented. "
             "Requires ATV_BUILD_CUDA=ON."

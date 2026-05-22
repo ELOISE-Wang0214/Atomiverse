@@ -36,13 +36,13 @@ void VirialStress::launch(const cpu::LaunchContext& ctx) {
     // mass·v² is in amu·(Å/fs)², the kMvv2e factor brings it to eV.
     // Overwrite (not +=) since this is the canonical kinetic contribution and
     // each integrator step computes it once from current velocities. The pair
-    // virial accumulates separately into `frame.stress`.
-    f.stress_kinetic[0] = kMvv2e * v_xx;
-    f.stress_kinetic[1] = kMvv2e * v_yy;
-    f.stress_kinetic[2] = kMvv2e * v_zz;
-    f.stress_kinetic[3] = kMvv2e * v_xy;
-    f.stress_kinetic[4] = kMvv2e * v_xz;
-    f.stress_kinetic[5] = kMvv2e * v_yz;
+    // virial accumulates separately into `frame.scalars.stress`.
+    f.scalars.stress_kinetic[0] = kMvv2e * v_xx;
+    f.scalars.stress_kinetic[1] = kMvv2e * v_yy;
+    f.scalars.stress_kinetic[2] = kMvv2e * v_zz;
+    f.scalars.stress_kinetic[3] = kMvv2e * v_xy;
+    f.scalars.stress_kinetic[4] = kMvv2e * v_xz;
+    f.scalars.stress_kinetic[5] = kMvv2e * v_yz;
 }
 
 } // namespace md

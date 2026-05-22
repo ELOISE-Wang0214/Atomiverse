@@ -4,11 +4,15 @@
 /// Breaking change from v1: replaces per-method solvers (rhf_solve, uhf_solve,
 /// uks_solve) with the unified scf_solve() + convenience config factories.
 
-#include "cpu_frame_wrapper.h"
+#include "molrs_frame_bridge.h"
 
+#include <nanobind/ndarray.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 
+#include <cstring>
+
+#include "atomiverse/cpu/materialize.h"
 #include "atomiverse/cpu/scf/gradient.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/scf_solve.h"
@@ -216,16 +220,17 @@ void bind_scf(nb::module_& m) {
     m.def(
         "build_integrals_sto3g",
         [](nb::object frame_obj, int charge) {
-            auto& cf = nb::cast<CpuFrame&>(frame_obj);
+            auto fref = borrow_molrs_frame(frame_obj);
             IntegralPack ip;
             {
                 nb::gil_scoped_release release;
-                ip = build_integrals(cf.frame, BasisSet::STO3G, charge, false);
+                cpu::Frame work = cpu::materialize(*fref);
+                ip = build_integrals(work, BasisSet::STO3G, charge, false);
             }
             return ip;
         },
         nb::arg("frame"), nb::arg("charge") = 0,
-        "Compute STO-3G molecular integrals from a CpuFrame.\n"
+        "Compute STO-3G molecular integrals from a molrs.Frame.\n"
         "atoms.type must be atomic number Z (1=H, 2=He, 3=Li).");
 
     // ── scf_solve ──
@@ -249,11 +254,12 @@ void bind_scf(nb::module_& m) {
         "scf_gradient",
         [](nb::object frame_obj, const IntegralPack& ip,
            const SCFResult& result, const SCFConfig& config) {
-            auto& cf = nb::cast<CpuFrame&>(frame_obj);
+            auto fref = borrow_molrs_frame(frame_obj);
             GradientResult grad;
             {
                 nb::gil_scoped_release release;
-                grad = scf_gradient(cf.frame, ip, result, config);
+                cpu::Frame work = cpu::materialize(*fref);
+                grad = scf_gradient(work, ip, result, config);
             }
             return grad;
         },

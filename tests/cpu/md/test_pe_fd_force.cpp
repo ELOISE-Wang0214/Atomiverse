@@ -82,7 +82,7 @@ double analytic_force(cpu::Frame frame, std::function<void(cpu::Frame&)> launch,
         frame.atoms.fy[i] = 0;
         frame.atoms.fz[i] = 0;
     }
-    frame.energy = 0;
+    frame.scalars.energy = 0;
     launch(frame);
     if (axis == 0)
         return frame.atoms.fx[atom_idx];
@@ -100,9 +100,9 @@ double fd_gradient(cpu::Frame frame, std::function<void(cpu::Frame&)> launch,
             f.atoms.fy[i] = 0;
             f.atoms.fz[i] = 0;
         }
-        f.energy = 0;
+        f.scalars.energy = 0;
         launch(f);
-        return f.energy;
+        return f.scalars.energy;
     };
     auto& pos = (axis == 0)   ? frame.atoms.x
                 : (axis == 1) ? frame.atoms.y

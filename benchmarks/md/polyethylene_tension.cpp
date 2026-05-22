@@ -407,7 +407,8 @@ double pressure_eV_per_A3(const cpu::Frame& f) {
     const double V = f.box(0, 0) * f.box(1, 1) * f.box(2, 2);
     if (V <= 0.0)
         return 0.0;
-    const double trace = f.stress[0] + f.stress[1] + f.stress[2];
+    const double trace =
+        f.scalars.stress[0] + f.scalars.stress[1] + f.scalars.stress[2];
     return trace / (3.0 * V);
 }
 
@@ -458,14 +459,15 @@ class CsvRecorder : public cpu::ComponentBase {
         if (ctx.runtime.mpi_rank != 0)
             return;
         const auto& f = ctx.frame;
-        const double T = temperature_K(f.kinetic, n_dof_);
+        const double T = temperature_K(f.scalars.kinetic, n_dof_);
         const double P_bar = pressure_eV_per_A3(f) * kEvPerA3ToBar;
         const int abs_step = current_step_offset_ + ctx.step;
         if (thermo_ && thermo_->is_open()) {
             (*thermo_) << abs_step << "," << current_stage_ << ","
                        << current_T_target_ << "," << T << "," << P_bar << ","
-                       << f.energy << "," << f.kinetic << "," << f.box(0, 0)
-                       << "," << f.box(1, 1) << "," << f.box(2, 2) << "\n";
+                       << f.scalars.energy << "," << f.scalars.kinetic << ","
+                       << f.box(0, 0) << "," << f.box(1, 1) << ","
+                       << f.box(2, 2) << "\n";
         }
         if (record_strain_ && stress_ && stress_->is_open()) {
             // Snapshot the engineering-strain reference at the first
@@ -477,10 +479,10 @@ class CsvRecorder : public cpu::ComponentBase {
                 strain_ref_set_ = true;
             }
             const double V = f.box(0, 0) * f.box(1, 1) * f.box(2, 2);
-            // Tensile stress sigma_xx = -P_xx: f.stress carries the
+            // Tensile stress sigma_xx = -P_xx: f.scalars.stress carries the
             // LAMMPS-standard +trace=compressive pressure convention, so
             // negate for tensile-positive stress (LAMMPS deck reports -pxx).
-            const double sigma_xx = (V > 0.0) ? -f.stress[0] / V : 0.0;
+            const double sigma_xx = (V > 0.0) ? -f.scalars.stress[0] / V : 0.0;
             const double strain = f.box(0, 0) / box_x0_ - 1.0;
             (*stress_) << abs_step << "," << current_stage_ << "," << strain
                        << "," << sigma_xx << "," << (sigma_xx * kEvPerA3ToGPa)

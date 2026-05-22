@@ -97,10 +97,10 @@ double evaluate_lj_only(cpu::Frame& frame, double eps, double sig,
         frame.atoms.fy[i] = 0;
         frame.atoms.fz[i] = 0;
     }
-    frame.energy = 0;
+    frame.scalars.energy = 0;
     lj.launch(lctx);
     lj.destroy({ctx, frame});
-    return frame.energy;
+    return frame.scalars.energy;
 }
 
 } // namespace

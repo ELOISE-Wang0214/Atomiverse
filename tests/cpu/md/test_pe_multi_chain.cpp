@@ -168,11 +168,11 @@ TEST(PeMultiChain, BondedOnlyNveConservation) {
     sim.build();
 
     sim.run(frame, 1);
-    const double e0 = frame.energy + frame.kinetic;
+    const double e0 = frame.scalars.energy + frame.scalars.kinetic;
     ASSERT_GT(std::abs(e0), 0.0);
 
     sim.run(frame, 999);
-    const double e1 = frame.energy + frame.kinetic;
+    const double e1 = frame.scalars.energy + frame.scalars.kinetic;
     const double drift = std::abs(e1 - e0) / std::abs(e0);
     EXPECT_LT(drift, 1e-4) << "8-chain bonded NVE drift " << drift
                            << " exceeds 1e-4 over 1000 steps (E0=" << e0
@@ -221,7 +221,7 @@ TEST(PeMultiChain, BondedPlusLjNveConservation) {
     // covered by the single-chain Phase A.4 test; this test's job is to
     // prove LJ exclusions keep the multi-chain box stable.
     sim.run(frame, 200);
-    const double e1 = frame.energy + frame.kinetic;
+    const double e1 = frame.scalars.energy + frame.scalars.kinetic;
     EXPECT_FALSE(std::isnan(e1)) << "200-step run returned NaN total energy";
     EXPECT_LT(std::abs(e1), 1e6)
         << "total energy " << e1

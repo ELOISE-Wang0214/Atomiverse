@@ -229,10 +229,10 @@ void to_cpu(const Frame& d, cpu::Frame& frame) {
     copy_d2h_widen(frame.atoms.fz.data(), d.atoms.fz, n);
 
     // Precision-critical scalars
-    copy_d2h_prec(&frame.energy, d.energy, 1);
-    copy_d2h_prec(&frame.kinetic, d.kinetic, 1);
+    copy_d2h_prec(&frame.scalars.energy, d.energy, 1);
+    copy_d2h_prec(&frame.scalars.kinetic, d.kinetic, 1);
     if (d.stress)
-        copy_d2h_prec(frame.stress, d.stress, 6);
+        copy_d2h_prec(frame.scalars.stress, d.stress, 6);
 
     // Box (may have changed via Deform or Barostat)
     if (d.box) {

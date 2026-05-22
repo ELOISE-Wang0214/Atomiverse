@@ -57,7 +57,7 @@ void PairMorse::compute(const LaunchContext& ctx) {
             energy += v;
         }
     }
-    f.energy += energy;
+    f.scalars.energy += energy;
 }
 
 } // namespace cpu

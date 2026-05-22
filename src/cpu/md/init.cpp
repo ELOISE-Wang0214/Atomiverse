@@ -45,26 +45,28 @@ void ZeroForces::launch(const cpu::LaunchContext& ctx) {
 
 // ── ZeroEnergy ───────────────────────────────────────────────────
 
-void ZeroEnergy::launch(const cpu::LaunchContext& ctx) { ctx.frame.energy = 0; }
+void ZeroEnergy::launch(const cpu::LaunchContext& ctx) {
+    ctx.frame.scalars.energy = 0;
+}
 
 // ── ZeroStress ───────────────────────────────────────────────────
 
 void ZeroStress::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
     for (int k = 0; k < 6; ++k)
-        f.stress[k] = 0;
+        f.scalars.stress[k] = 0;
     // `stress_kinetic` is overwritten (not accumulated) by VirialStress
     // each step, so it does not strictly need zeroing -- but zero it
     // here for symmetry and so observers that read it before VirialStress
     // ever ran see a deterministic zero rather than uninitialised data.
     for (int k = 0; k < 6; ++k)
-        f.stress_kinetic[k] = 0;
+        f.scalars.stress_kinetic[k] = 0;
 }
 
 // ── ZeroKinetic ──────────────────────────────────────────────────
 
 void ZeroKinetic::launch(const cpu::LaunchContext& ctx) {
-    ctx.frame.kinetic = 0;
+    ctx.frame.scalars.kinetic = 0;
 }
 
 // ── KineticEnergy ────────────────────────────────────────────────
@@ -82,7 +84,7 @@ void KineticEnergy::launch(const cpu::LaunchContext& ctx) {
         ke += f.atoms.mass[i] * v2;
     }
 
-    f.kinetic = double(0.5) * kMvv2e * ke;
+    f.scalars.kinetic = double(0.5) * kMvv2e * ke;
 }
 
 // ── ZeroLinearMomentum ───────────────────────────────────────────

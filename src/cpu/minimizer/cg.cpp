@@ -62,11 +62,11 @@ void CG::launch(const cpu::LaunchContext& ctx) {
         }
         const double rms_disp = (step_ > 0) ? std::sqrt(sum_d2 / (3 * n)) : 0.0;
         const double energy_change =
-            (step_ > 0) ? std::abs(f.energy - energy_prev_) : 1e30;
+            (step_ > 0) ? std::abs(f.scalars.energy - energy_prev_) : 1e30;
 
         OptRecord rec{};
         rec.step = step_;
-        rec.energy = f.energy;
+        rec.energy = f.scalars.energy;
         rec.max_force = max_force_;
         rec.rms_force = rms_force;
         rec.max_displacement = max_disp;
@@ -82,15 +82,15 @@ void CG::launch(const cpu::LaunchContext& ctx) {
         ATV_INFO("[cg] step={} energy_eV={:.6f} max_force_eVA={:.6f} "
                  "rms_force_eVA={:.6f} max_disp_A={:.6e} rms_disp_A={:.6e} "
                  "dE_eV={:.6e} converged={}",
-                 step_, f.energy, max_force_, rms_force, max_disp, rms_disp,
-                 energy_change, converged_);
+                 step_, f.scalars.energy, max_force_, rms_force, max_disp,
+                 rms_disp, energy_change, converged_);
 
         if (converged_) {
             ctx.runtime.outer_status.converged = true;
             ctx.runtime.outer_status.reason = "cg multi-criteria convergence";
         }
 
-        energy_prev_ = f.energy;
+        energy_prev_ = f.scalars.energy;
         return;
     }
 

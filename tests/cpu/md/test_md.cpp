@@ -98,7 +98,7 @@ TEST_F(CpuMdTest, KineticEnergy) {
     frame.atoms.vy[1] = double(1);
     frame.atoms.vz[1] = double(0);
     frame.box = Mat3::cubic(10.0);
-    frame.kinetic = 0;
+    frame.scalars.kinetic = 0;
 
     cpu::Context ctx;
     cpu::LaunchContext lctx{ctx, frame, 0, 0};
@@ -106,8 +106,8 @@ TEST_F(CpuMdTest, KineticEnergy) {
     cpu::md::KineticEnergy ke;
     ke.launch(lctx);
 
-    EXPECT_NEAR(static_cast<double>(frame.kinetic), static_cast<double>(kMvv2e),
-                1e-5);
+    EXPECT_NEAR(static_cast<double>(frame.scalars.kinetic),
+                static_cast<double>(kMvv2e), 1e-5);
 }
 
 // ── LJ force ────────────────────────────────────────────────────────
@@ -128,7 +128,7 @@ TEST_F(CpuMdTest, LjAnalyticForce) {
     frame.atoms.mass[0] = double(39.948);
     frame.atoms.mass[1] = double(39.948);
     frame.box = Mat3::cubic(20.0);
-    frame.energy = 0;
+    frame.scalars.energy = 0;
 
     cpu::Context ctx;
     cpu::BuildContext bctx{ctx, frame};
@@ -447,7 +447,7 @@ TEST_F(CpuMdTest, NveEnergyConservation) {
         sim.run(frame, 100);
     }
 
-    double e_first = frame.energy + frame.kinetic;
+    double e_first = frame.scalars.energy + frame.scalars.kinetic;
 
     {
         cpu::md::MD sim;
@@ -459,7 +459,7 @@ TEST_F(CpuMdTest, NveEnergyConservation) {
         sim.run(frame, 100);
     }
 
-    double e_second = frame.energy + frame.kinetic;
+    double e_second = frame.scalars.energy + frame.scalars.kinetic;
 
     double e1 = static_cast<double>(e_first);
     double e2 = static_cast<double>(e_second);

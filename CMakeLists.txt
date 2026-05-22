@@ -158,6 +158,7 @@ if(NOT ATV_DOCS_ONLY)
         # CPU backend infrastructure
         src/cpu/backend.cpp
         src/cpu/box.cpp
+        src/cpu/materialize.cpp
         src/cpu/driver.cpp
         src/cpu/analysis_executor.cpp
         src/cpu/async_component_base.cpp
@@ -540,7 +541,7 @@ if(NOT ATV_DOCS_ONLY)
 
         nanobind_add_module(_atomiverse
             python/src/bindings/bind.cpp
-            python/src/bindings/bind_frame.cpp
+            python/src/bindings/bind_md.cpp
             python/src/bindings/bind_pw.cpp
         )
         target_link_libraries(_atomiverse PRIVATE atomiverse)

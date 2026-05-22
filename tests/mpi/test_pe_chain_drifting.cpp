@@ -143,7 +143,8 @@ TEST(PeChainDrifting, MigrationKeepsChainIntact) {
 
     sim.run(frame, 1000);
 
-    const double e1 = frame.energy + frame.kinetic; // global via ReduceEnergy
+    const double e1 =
+        frame.scalars.energy + frame.scalars.kinetic; // global via ReduceEnergy
     EXPECT_FALSE(std::isnan(e1)) << "global E went NaN -- migration broke "
                                     "bonded ownership routing";
     EXPECT_LT(std::abs(e1), 1e3)
