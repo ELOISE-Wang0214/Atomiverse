@@ -32,7 +32,13 @@ void ZeroForces::launch(const LaunchContext& ctx) {
 void ZeroEnergy::launch(const LaunchContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& frame = ctx.frame;
-    cudaMemsetAsync(&frame.scalars->energy, 0, sizeof(prec_t), stream);
+    // Zero `energy` plus the four per-term fields
+    // (energy_pair / energy_bond / energy_angle / energy_dihedral) in one
+    // DMA: they are declared contiguously at the head of `SystemScalars`
+    // (5 × `double`, no padding). See `core/system_scalars.h`. Keeps the
+    // per-term invariant `energy == Σ per-term` in lockstep with the CPU
+    // backend (msu-pe-cuda-components-01 / Phase G.3).
+    cudaMemsetAsync(&frame.scalars->energy, 0, 5 * sizeof(double), stream);
 }
 
 void ZeroKinetic::launch(const LaunchContext& ctx) {

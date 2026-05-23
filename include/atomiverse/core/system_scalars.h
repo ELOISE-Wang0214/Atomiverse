@@ -15,7 +15,38 @@ namespace ATV {
 /// All values are device-resident on the owning Frame's device. Units are
 /// the MD-internal set (eV, Angstrom, fs, amu, K) -- see `core/units.h`.
 struct SystemScalars {
-    double energy = 0;  ///< Potential energy [eV].
+    double energy = 0;  ///< Potential energy [eV] — sum of all evaluator contributions.
+
+    /// @brief Pair (non-bonded) potential energy [eV].
+    ///
+    /// Accumulated by `cpu::PairLJCut` (and any future pair evaluator)
+    /// alongside `energy`; cleared by `ZeroEnergy` each step. Mirrors
+    /// LAMMPS `thermo_style epair` (`thermo.cpp`, keyword `epair`).
+    double energy_pair = 0;
+
+    /// @brief Bond (2-body bonded) potential energy [eV].
+    ///
+    /// Accumulated by `cpu::HarmonicBond` (and any future bond evaluator)
+    /// alongside `energy`. Mirrors LAMMPS `thermo_style ebond`.
+    double energy_bond = 0;
+
+    /// @brief Angle (3-body bonded) potential energy [eV].
+    ///
+    /// Accumulated by `cpu::HarmonicAngle` (and any future angle evaluator)
+    /// alongside `energy`. Mirrors LAMMPS `thermo_style eangle`.
+    double energy_angle = 0;
+
+    /// @brief Dihedral (4-body bonded) potential energy [eV].
+    ///
+    /// Accumulated by `cpu::MultiHarmonicDihedral` (and any future dihedral
+    /// evaluator) alongside `energy`. Mirrors LAMMPS `thermo_style edihed`.
+    ///
+    /// Invariant: `energy ≈ energy_pair + energy_bond + energy_angle +
+    /// energy_dihedral` (plus any future per-term fields) to round-off
+    /// precision, when every contributing evaluator writes both `energy`
+    /// and its term-specific field on the same `+=` line.
+    double energy_dihedral = 0;
+
     double kinetic = 0; ///< Kinetic energy [eV].
 
     /// @brief Integrator's conserved quantity [eV].

@@ -46,7 +46,16 @@ void ZeroForces::launch(const cpu::LaunchContext& ctx) {
 // ── ZeroEnergy ───────────────────────────────────────────────────
 
 void ZeroEnergy::launch(const cpu::LaunchContext& ctx) {
-    ctx.frame.scalars.energy = 0;
+    auto& s = ctx.frame.scalars;
+    s.energy = 0;
+    // Per-term decomposition (msu-pe-cuda-components-01 / Phase G.3).
+    // Each evaluator writes both `energy` and its term-specific field;
+    // ZeroEnergy must clear all of them in lockstep so the per-step
+    // invariant `energy == Σ per-term` holds.
+    s.energy_pair = 0;
+    s.energy_bond = 0;
+    s.energy_angle = 0;
+    s.energy_dihedral = 0;
 }
 
 // ── ZeroStress ───────────────────────────────────────────────────

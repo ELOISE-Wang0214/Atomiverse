@@ -31,28 +31,40 @@ void ReduceEnergy::launch(const cpu::LaunchContext& ctx) {
         return;
 
     auto& f = ctx.frame;
-    // Pack {energy, kinetic, stress[6], stress_kinetic[6]} into a single
-    // buffer for one 14-double allreduce. `n_local` is omitted -- it is
-    // authoritative on each rank from `dd->n_local` and does not need to
-    // be summed. Both stress fields reduce identically (each is a per-rank
-    // partial sum of Voigt components).
-    double sendbuf[14];
+    // Pack {energy, energy_pair, energy_bond, energy_angle, energy_dihedral,
+    // kinetic, stress[6], stress_kinetic[6]} into a single buffer for one
+    // 18-double allreduce. The 4 per-term energy fields were added by
+    // msu-pe-cuda-components-01 (Phase G.3); they reduce identically to
+    // `energy` (each is a per-rank partial sum of one evaluator family).
+    // `n_local` is omitted -- it is authoritative on each rank from
+    // `dd->n_local` and does not need to be summed. Both stress fields
+    // reduce identically (each is a per-rank partial sum of Voigt
+    // components).
+    double sendbuf[18];
     sendbuf[0] = f.scalars.energy;
-    sendbuf[1] = f.scalars.kinetic;
+    sendbuf[1] = f.scalars.energy_pair;
+    sendbuf[2] = f.scalars.energy_bond;
+    sendbuf[3] = f.scalars.energy_angle;
+    sendbuf[4] = f.scalars.energy_dihedral;
+    sendbuf[5] = f.scalars.kinetic;
     for (int k = 0; k < 6; ++k)
-        sendbuf[2 + k] = f.scalars.stress[k];
+        sendbuf[6 + k] = f.scalars.stress[k];
     for (int k = 0; k < 6; ++k)
-        sendbuf[8 + k] = f.scalars.stress_kinetic[k];
+        sendbuf[12 + k] = f.scalars.stress_kinetic[k];
 
-    double recvbuf[14];
-    MPI_Allreduce(sendbuf, recvbuf, 14, MPI_DOUBLE, MPI_SUM, dd->cart_comm);
+    double recvbuf[18];
+    MPI_Allreduce(sendbuf, recvbuf, 18, MPI_DOUBLE, MPI_SUM, dd->cart_comm);
 
     f.scalars.energy = recvbuf[0];
-    f.scalars.kinetic = recvbuf[1];
+    f.scalars.energy_pair = recvbuf[1];
+    f.scalars.energy_bond = recvbuf[2];
+    f.scalars.energy_angle = recvbuf[3];
+    f.scalars.energy_dihedral = recvbuf[4];
+    f.scalars.kinetic = recvbuf[5];
     for (int k = 0; k < 6; ++k)
-        f.scalars.stress[k] = recvbuf[2 + k];
+        f.scalars.stress[k] = recvbuf[6 + k];
     for (int k = 0; k < 6; ++k)
-        f.scalars.stress_kinetic[k] = recvbuf[8 + k];
+        f.scalars.stress_kinetic[k] = recvbuf[12 + k];
 }
 
 #else // !ATV_HAS_MPI

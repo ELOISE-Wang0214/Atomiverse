@@ -274,6 +274,7 @@ void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
     }
 
     f.scalars.energy += energy_total;
+    f.scalars.energy_dihedral += energy_total;
     f.scalars.stress[0] += v_xx;
     f.scalars.stress[1] += v_yy;
     f.scalars.stress[2] += v_zz;
