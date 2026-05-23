@@ -215,6 +215,8 @@ if(NOT ATV_DOCS_ONLY)
             src/cuda/timer.cu
             src/cuda/driver.cu
             src/cuda/md/velocity_verlet.cu
+            src/cuda/md/nve_limit.cu
+            src/cuda/md/fix_langevin.cu
             src/cuda/md/init.cu
             src/cuda/md/kinetic_energy.cu
             src/cuda/neighbor_list.cu
