@@ -967,6 +967,27 @@ void run_cuda_pipeline(const Args& a, cpu::Frame& frame,
     std::vector<std::array<double, 5>> cuda_Cn{
         {Cn_vec[0], Cn_vec[1], Cn_vec[2], Cn_vec[3], Cn_vec[4]}};
 
+    // Per-stage timing log written to <out-dir>/stage_timing.csv so we
+    // can compare wall time / ns-per-day with the matching LAMMPS log
+    // breakdown. One line per executed stage; columns mirror LAMMPS's
+    // "Performance" line.
+    std::ofstream timing_csv(a.out_dir + "/stage_timing.csv");
+    timing_csv << "stage,steps,dt_fs,wall_seconds,steps_per_second,ns_per_day\n";
+    auto log_stage = [&](int stage_id, int steps, double dt_fs, double wall_s) {
+        const double sps = (wall_s > 0.0) ? steps / wall_s : 0.0;
+        const double ns_per_day =
+            (wall_s > 0.0)
+                ? (double(steps) * dt_fs * 1e-6) * (86400.0 / wall_s)
+                : 0.0;
+        timing_csv << stage_id << "," << steps << "," << dt_fs << ","
+                   << wall_s << "," << sps << "," << ns_per_day << "\n";
+        timing_csv.flush();
+        if (!quiet)
+            std::fprintf(stderr,
+                         "  stage %d wall=%.2fs  %.0f step/s  %.2f ns/day\n",
+                         stage_id, wall_s, sps, ns_per_day);
+    };
+
     // Stage 1 — NVELimit + FixLangevin @ T_hot.
     if (stage_active(a.mode, 1, a.single_stage_id)) {
         const int steps = scaled_steps(a.stage1_steps, a.scale);
@@ -997,7 +1018,9 @@ void run_cuda_pipeline(const Args& a, cpu::Frame& frame,
                 static_cast<std::uint32_t>(a.seed + 1)});
         sim.add(rec);  // uses default_bindings: end_of_step @ +20
         sim.build();
+        const double ts0 = now_seconds();
         sim.run(frame, steps);
+        log_stage(1, steps, a.dt_stage1, now_seconds() - ts0);
         // DIAG: dump per-atom forces right after stage 1 step `steps`.
         // For step-0 comparison with LAMMPS, run with `--scale 0.0001`
         // (1 step). The frame is now host-synced (DynamicsDriver retrieves
@@ -1052,7 +1075,9 @@ void run_cuda_pipeline(const Args& a, cpu::Frame& frame,
         wire_npt_stage(sim, npt);
         sim.add(cuda::md::ZeroMomentum{1});
         sim.build();
+        const double ts0 = now_seconds();
         sim.run(frame, steps);
+        log_stage(2, steps, a.dt_stage2, now_seconds() - ts0);
     }
 
     // Stage 3 — ramped NoseHooverNPT T_hot → T_cold.
@@ -1074,7 +1099,9 @@ void run_cuda_pipeline(const Args& a, cpu::Frame& frame,
         wire_npt_stage(sim, npt);
         sim.add(cuda::md::ZeroMomentum{1});
         sim.build();
+        const double ts0 = now_seconds();
         sim.run(frame, steps);
+        log_stage(3, steps, a.dt_stage3, now_seconds() - ts0);
     }
 
     // Stage 4 — iso NoseHooverNPT @ T_cold.
@@ -1094,7 +1121,9 @@ void run_cuda_pipeline(const Args& a, cpu::Frame& frame,
         wire_npt_stage(sim, npt);
         sim.add(cuda::md::ZeroMomentum{1});
         sim.build();
+        const double ts0 = now_seconds();
         sim.run(frame, steps);
+        log_stage(4, steps, a.dt_stage4, now_seconds() - ts0);
     }
 
     // Stage 5 — aniso NoseHooverNPT (y/z) + Deform x.
@@ -1115,7 +1144,9 @@ void run_cuda_pipeline(const Args& a, cpu::Frame& frame,
         wire_npt_stage(sim, npt);
         sim.add(cuda::md::Deform{/*axis=*/0, a.strain_rate, a.dt_stage5});
         sim.build();
+        const double ts0 = now_seconds();
         sim.run(frame, steps);
+        log_stage(5, steps, a.dt_stage5, now_seconds() - ts0);
     }
 }
 

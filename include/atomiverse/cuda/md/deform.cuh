@@ -37,11 +37,20 @@ class Deform : public ComponentBase {
     ComponentRole role() const override { return ComponentRole::Integrator; }
 
     std::vector<DefaultBinding> default_bindings() const override;
+    void build(const BuildContext& ctx) override;
     void launch(const LaunchContext& ctx) override;
 
   private:
     int axis_;
     double strain_rate_, dt_;
+    // LAMMPS-equivalent engineering-strain bookkeeping: cache L0 at build()
+    // and compute L_k = L0·(1 + erate·k·dt) per step, so the box grows
+    // LINEARLY with time. The previous per-step multiplier `(1+erate·dt)`
+    // compounded to L0·exp(erate·t) — fine for small total strain (LAMMPS
+    // agreement at ε≪1) but wrong at the stage-5 full strain ε=1.7 of the
+    // MSU PE deck, where it overshot to L/L0 ≈ 5.57 vs LAMMPS 2.72.
+    double L0_ = 0.0;
+    long long step_count_ = 0;
 };
 
 } // namespace md

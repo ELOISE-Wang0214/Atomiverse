@@ -492,6 +492,28 @@ void NoseHooverNPT::propagate_x_and_box_(const LaunchContext& ctx) {
         drift[d] = expm1c(eps_dt[d] * 0.5);
     }
 
+    // Refresh cached box from device — a cooperative component bound earlier
+    // in `initial_integrate` (e.g. `cuda::md::Deform`, which runs at order
+    // -100 vs this integrator's order 0) may have rescaled f.box[0,4,8]
+    // since the last NPT step. Without this D2H the cached values would
+    // overwrite Deform's modification: stage-5 tension showed box_x frozen
+    // at the initial 64.665 Å and strain stuck at 0 instead of ramping to
+    // 1.7 over 172 000 steps. The sync is one D2H of three doubles per
+    // step (negligible vs the force eval cost) and only matters when a
+    // peer integrator-phase component mutates the box; otherwise it's a
+    // round-trip of the value we cached on the previous step.
+    cudaStreamSynchronize(stream);
+    prec_t box_diag_dev[3] = {prec_t(0), prec_t(0), prec_t(0)};
+    cudaMemcpy(&box_diag_dev[0], &f.box[0], sizeof(prec_t),
+               cudaMemcpyDeviceToHost);
+    cudaMemcpy(&box_diag_dev[1], &f.box[4], sizeof(prec_t),
+               cudaMemcpyDeviceToHost);
+    cudaMemcpy(&box_diag_dev[2], &f.box[8], sizeof(prec_t),
+               cudaMemcpyDeviceToHost);
+    box_lx_ = static_cast<double>(box_diag_dev[0]);
+    box_ly_ = static_cast<double>(box_diag_dev[1]);
+    box_lz_ = static_cast<double>(box_diag_dev[2]);
+
     double lx_new = box_lx_ * a_arr[0];
     double ly_new = box_ly_ * a_arr[1];
     double lz_new = box_lz_ * a_arr[2];

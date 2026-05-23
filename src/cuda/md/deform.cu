@@ -23,6 +23,16 @@ std::vector<DefaultBinding> Deform::default_bindings() const {
     return {{static_cast<int>(ATV::md::Phase::initial_integrate), -100}};
 }
 
+void Deform::build(const BuildContext& ctx) {
+    // Cache the initial box edge on the deform axis so launch() can
+    // compute L_k = L0 · (1 + erate · k · dt). One D2H at build time.
+    prec_t host_box[9];
+    cudaMemcpy(host_box, ctx.frame.box, 9 * sizeof(prec_t),
+               cudaMemcpyDeviceToHost);
+    L0_ = static_cast<double>(host_box[axis_ * 3 + axis_]);
+    step_count_ = 0;
+}
+
 namespace {
 
 __global__ void
@@ -54,7 +64,17 @@ void Deform::launch(const LaunchContext& ctx) {
     int block = cuda::kDefaultBlock;
     int grid = cuda::grid_size(static_cast<int>(n));
 
-    work_t scale = work_t(1) + strain_rate_ * dt_;
+    // LAMMPS-equivalent engineering strain: box grows LINEARLY in time
+    // (`fix deform x erate value` doc § "Units box remap x"). Compute the
+    // target edge L_k = L0·(1 + erate·k·dt) and apply the per-step ratio
+    // L_k / L_{k-1} so the box and atom positions land exactly on the
+    // engineering-strain ramp. Previous `scale = 1 + erate·dt` compounded
+    // to L0·exp(erate·t) — fine at small strain but ~2.05× too long at
+    // the stage-5 full strain ε=1.7 (L/L0 = 5.57 vs LAMMPS 2.72).
+    ++step_count_;
+    const double L_prev = L0_ * (1.0 + strain_rate_ * dt_ * (step_count_ - 1));
+    const double L_curr = L0_ * (1.0 + strain_rate_ * dt_ * step_count_);
+    work_t scale = static_cast<work_t>(L_curr / L_prev);
 
     real_t* pos = nullptr;
     switch (axis_) {
