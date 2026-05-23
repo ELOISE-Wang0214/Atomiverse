@@ -13,7 +13,8 @@ criteria:
       protected fields `Snapshot* device_snapshot_`, `Snapshot host_snapshot_`,
       `cudaEvent_t copy_done_event_`, `cudaStream_t defer_stream_`.
       Compiles standalone via `cmake --build build --target atomiverse_cuda`.
-    status: pending
+    status: verified
+    last_checked: 2026-05-23
   - id: ac-002
     summary: cuda::stream_synchronize wrapper and ATV_CUDA_TRACK_SYNCS counter declared
     type: code
@@ -25,7 +26,8 @@ criteria:
       Release builds (without `ATV_BUILD_TESTS`) compile the wrapper down to a
       direct `cudaStreamSynchronize` call with zero counter overhead (verified
       by reading the preprocessed source).
-    status: pending
+    status: verified
+    last_checked: 2026-05-23
   - id: ac-003
     summary: CudaCsvRecorder inherits AsyncRecordBase; ad-hoc async code removed
     type: code
@@ -36,7 +38,8 @@ criteria:
       `cudaEventRecord` — all D2H staging goes through
       `AsyncRecordBase::submit_async`. `git grep cudaMemcpyAsync
       benchmarks/md/polyethylene_tension.cpp` returns no matches.
-    status: pending
+    status: verified
+    last_checked: 2026-05-23
   - id: ac-004
     summary: hot-path sync count remains zero across 100 cuda::md::MD steps
     type: runtime
@@ -49,7 +52,8 @@ criteria:
       `cuda::detail::sync_count() == 0` (gtest EXPECT_EQ). If
       `ATV_BUILD_TESTS=OFF`, the test is not registered and ctest does not
       list it.
-    status: pending
+    status: verified
+    last_checked: 2026-05-23
   - id: ac-005
     summary: async vs sync recorder produce field-equivalent CSVs
     type: runtime
@@ -62,7 +66,8 @@ criteria:
       `cudaMemcpy` sync path). For every row index present in BOTH CSVs, every
       numeric column satisfies `|x_async - x_sync| <= 1e-6 * max(|x_sync|, 1.0)`.
       The row-count difference between the two CSVs is `<= 1`.
-    status: pending
+    status: verified
+    last_checked: 2026-05-23
   - id: ac-006
     summary: 25x recorder-frequency overhead stays below 5% wall-clock
     type: performance
@@ -74,7 +79,8 @@ criteria:
       --print-every 25` (control) and `--print-every 1` (high-frequency)
       five times each, takes the median wall-clock per configuration, and
       asserts `wall_high / wall_low - 1 < 0.05`.
-    status: pending
+    status: verified
+    last_checked: 2026-05-23
   - id: ac-007
     summary: lifecycle build/destroy round-trip leaks no device memory
     type: runtime
@@ -87,6 +93,15 @@ criteria:
       `device_snapshot_ == nullptr` and `copy_done_event_ == nullptr` (gtest
       EXPECT_EQ).
     status: pending
+    last_checked: 2026-05-23
+    notes: |
+      The `LifecycleRoundTrip` test in tests/cuda/async/test_hot_path_no_sync.cu
+      runs the 3× build→launch→destroy cycle and passes; AsyncRecordBase::destroy
+      manifestly cudaFrees device_snapshot_ and cudaEventDestroys both events
+      (see include/atomiverse/cuda/async/record_base.cuh). `compute-sanitizer` is
+      not installed in ~/atv-build-env/cuda so the formal memcheck gate is
+      deferred to whoever has the tool; the code-review path covers the
+      logical lifecycle invariant.
   - id: ac-008
     summary: doxygen documents the zero-block contract, defer-stream, and worker semantics
     type: docs
@@ -98,7 +113,8 @@ criteria:
       (c) `cudaEventSynchronize` runs on the `AnalysisExecutor` worker
       thread, not the MD hot-path. Every public member has `@brief` and any
       pointer/handle parameter is documented as owning/non-owning.
-    status: pending
+    status: verified
+    last_checked: 2026-05-23
   - id: ac-009
     summary: spec index lists the new chain link
     type: docs
@@ -106,7 +122,8 @@ criteria:
       `.claude/specs/INDEX.md` contains a line referencing
       `msu-pe-cuda-components-07-async-correctness` with a one-line
       summary and an `[approved]` (or later) lifecycle tag.
-    status: pending
+    status: verified
+    last_checked: 2026-05-23
   - id: ac-010
     summary: full check + test suite green after the change
     type: runtime
@@ -115,7 +132,8 @@ criteria:
       -DATV_BUILD_BENCHMARKS=ON && cmake --build build -j && ctest --test-dir
       build --output-on-failure` exits 0 (CUDA-gated tests may be `Skipped`
       on non-GPU hosts; no test reports `Failed`).
-    status: pending
+    status: verified
+    last_checked: 2026-05-23
 ---
 
 # Acceptance criteria

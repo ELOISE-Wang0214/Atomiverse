@@ -295,6 +295,13 @@ if(ATV_BUILD_CUDA)
     atv_add_test(test_cuda_scf_device_integrals cuda/scf/test_device_integrals.cu)
     atv_add_test(test_cuda_driver_role_validation cuda/test_cuda_driver_role_validation.cu)
 
+    # msu-pe-cuda-components-07 — AsyncRecordBase contract guards.
+    # Tests in cuda/async/ depend on the polyethylene_tension benchmark
+    # binary; only register them when benchmarks are built.
+    if(ATV_BUILD_BENCHMARKS)
+        add_subdirectory(cuda/async)
+    endif()
+
     # Grep gate: the migrated CUDA tree must carry no `scf::Phase` token.
     # CUDA SCF is the `cuda::scf::SCFSolver` inner solver — no CUDA driver
     # is parameterized on `ATV::scf::Phase`. Scoped to cuda/ only; the CPU

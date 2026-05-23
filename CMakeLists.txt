@@ -210,6 +210,7 @@ if(NOT ATV_DOCS_ONLY)
         list(APPEND ATOMIVERSE_SRCS
             src/cuda/log_callback.cpp
             src/cuda/async_bridge.cu
+            src/cuda/async/record_base.cu
             src/cuda/transfer.cu
             src/cuda/materialize.cu
             src/cuda/timer.cu
@@ -558,6 +559,13 @@ if(NOT ATV_DOCS_ONLY)
     endif()
 
     if(ATV_BUILD_TESTS)
+        # Surface the build option as a compile definition so library code
+        # that wants to enable test-only hooks (e.g. the
+        # cuda::stream_synchronize counter in src/cuda/async/record_base.cu
+        # used by msu-pe-cuda-components-07's hot-path zero-sync gate) can
+        # compile in those hooks. PUBLIC so test executables that link
+        # atomiverse pick up the same definition.
+        target_compile_definitions(atomiverse PUBLIC ATV_BUILD_TESTS)
         enable_testing()
         add_subdirectory(tests)
     endif()

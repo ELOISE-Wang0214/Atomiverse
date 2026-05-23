@@ -78,6 +78,7 @@
 #include <cstring>
 #include <fstream>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -110,6 +111,7 @@
 
 #ifdef ATV_BUILD_CUDA
 #include "atomiverse/core/system_scalars.h"
+#include "atomiverse/cuda/async/record_base.cuh"
 #include "atomiverse/cuda/md/deform.cuh"
 #include "atomiverse/cuda/md/fix_langevin.cuh"
 #include "atomiverse/cuda/md/init.cuh"
@@ -738,19 +740,43 @@ void wire_shared(cpu::md::MD& sim, SharedComponents& sc) {
 
 #ifdef ATV_BUILD_CUDA
 
+/// @brief Snapshot POD that bundles every per-step scalar the CUDA CSV
+///        recorder needs on the host. Trivially copyable so a single
+///        async D2H copy can stage it device-to-host. Composed of the
+///        canonical `SystemScalars` + the 3-element box diagonal that
+///        the 17-column thermo schema needs (`box_x`, `box_y`, `box_z`).
+struct SystemScalarsSnapshot {
+    SystemScalars scalars;
+    cuda::prec_t box_x = 0;
+    cuda::prec_t box_y = 0;
+    cuda::prec_t box_z = 0;
+};
+
 /// @brief CUDA-side recorder mirroring the 17-column extended-schema CPU
-///        `CsvRecorder`. Reads `frame.scalars->{energy*,kinetic,stress*}`
-///        and `frame.box[0/4/8]` per active step via a synchronous D2H
-///        copy (will be migrated to `cuda::AsyncRecordBase` once chain
-///        link 07 lands). Bound at `end_of_step @ +20`, same slot as
-///        the CPU sibling.
-class CudaCsvRecorder : public cuda::ComponentBase {
+///        `CsvRecorder`. Inherits the zero-block sidecar contract from
+///        `cuda::AsyncRecordBase<SystemScalarsSnapshot>`: the GPU
+///        compute stream stages the snapshot into a device-resident
+///        buffer (D2D); the base class enqueues a single
+///        non-blocking D2H async copy on the defer stream and submits
+///        the CSV-row write to a host worker thread. Hot-path
+///        `cudaStreamSynchronize` count stays at zero
+///        (msu-pe-cuda-components-07).
+///
+/// Set the environment variable `ATV_TEST_RECORD_SYNC=1` to force the
+/// legacy synchronous D2H path for the chain link 07 correctness test
+/// (`tests/cuda/async/test_async_record_correctness.cu`). Default is
+/// the async path.
+class CudaCsvRecorder
+    : public cuda::AsyncRecordBase<SystemScalarsSnapshot> {
   public:
     CudaCsvRecorder(std::ofstream* thermo, std::ofstream* stress,
                     int print_every, int n_global_dof, double box_x_initial)
         : thermo_(thermo), stress_(stress),
           print_every_(std::max(1, print_every)), n_dof_(n_global_dof),
-          box_x0_(box_x_initial) {}
+          box_x0_(box_x_initial) {
+        if (const char* env = std::getenv("ATV_TEST_RECORD_SYNC"))
+            sync_mode_ = (env[0] == '1');
+    }
 
     std::string name() const override { return "cuda_csv_recorder"; }
     int frequency() const override { return print_every_; }
@@ -771,19 +797,61 @@ class CudaCsvRecorder : public cuda::ComponentBase {
 
     void launch(const cuda::LaunchContext& ctx) override {
         ++stage_steps_so_far_;
-        // Synchronous D2H of SystemScalars + box diagonal. Single-step
-        // overhead is fine here; chain link 07 will defer this onto an
-        // async stream.
-        SystemScalars s{};
-        cudaMemcpy(&s, ctx.frame.scalars, sizeof(SystemScalars),
-                   cudaMemcpyDeviceToHost);
-        cuda::prec_t box_h[9];
-        cudaMemcpy(box_h, ctx.frame.box, 9 * sizeof(cuda::prec_t),
-                   cudaMemcpyDeviceToHost);
-        const double box_x = static_cast<double>(box_h[0]);
-        const double box_y = static_cast<double>(box_h[4]);
-        const double box_z = static_cast<double>(box_h[8]);
+        const int abs_step = current_step_offset_ + ctx.step;
 
+        if (sync_mode_) {
+            // Legacy synchronous D2H path -- preserved behind a runtime
+            // env-flag so chain link 07's correctness test can compare
+            // async vs sync byte-by-byte. Production runs (env unset)
+            // always take the async branch.
+            SystemScalarsSnapshot snap{};
+            cudaMemcpy(&snap.scalars, ctx.frame.scalars, sizeof(SystemScalars),
+                       cudaMemcpyDeviceToHost);
+            cuda::prec_t box_h[9];
+            cudaMemcpy(box_h, ctx.frame.box, 9 * sizeof(cuda::prec_t),
+                       cudaMemcpyDeviceToHost);
+            snap.box_x = box_h[0];
+            snap.box_y = box_h[4];
+            snap.box_z = box_h[8];
+            write_csv_row(snap, abs_step);
+            return;
+        }
+
+        // Async path. Stage the snapshot on the compute stream so the
+        // D2D copies are ordered after any kernel that wrote
+        // ctx.frame.scalars / ctx.frame.box in this step (e.g.
+        // KineticEnergy, VirialStress, NoseHooverNPT integrator).
+        // `stage_device_field` wraps the async D2D copy so the recorder
+        // never names the CUDA runtime API directly.
+        auto compute_stream =
+            static_cast<cudaStream_t>(ctx.runtime.stream);
+        stage_device_field(&device_snapshot_->scalars, ctx.frame.scalars,
+                           sizeof(SystemScalars), compute_stream);
+        // Box diagonal -- 3 separate prec_t fields; the strided source
+        // (box[0], box[4], box[8]) makes a single cudaMemcpy2D less
+        // clear than three explicit element copies.
+        stage_device_field(&device_snapshot_->box_x, &ctx.frame.box[0],
+                           sizeof(cuda::prec_t), compute_stream);
+        stage_device_field(&device_snapshot_->box_y, &ctx.frame.box[4],
+                           sizeof(cuda::prec_t), compute_stream);
+        stage_device_field(&device_snapshot_->box_z, &ctx.frame.box[8],
+                           sizeof(cuda::prec_t), compute_stream);
+        submit_async(static_cast<std::int64_t>(abs_step),
+                     [this](const SystemScalarsSnapshot& snap,
+                            std::int64_t step) {
+                         write_csv_row(snap, static_cast<int>(step));
+                     });
+    }
+
+  private:
+    /// @brief Format one CSV row from a host-resident snapshot. Runs on
+    ///        the AsyncRecordBase worker thread (or inline on the hot
+    ///        thread when sync_mode_ is set).
+    void write_csv_row(const SystemScalarsSnapshot& snap, int abs_step) {
+        const double box_x = static_cast<double>(snap.box_x);
+        const double box_y = static_cast<double>(snap.box_y);
+        const double box_z = static_cast<double>(snap.box_z);
+        const auto& s = snap.scalars;
         const double T = (n_dof_ > 0)
                              ? 2.0 * s.kinetic
                                    / (static_cast<double>(n_dof_) * kBoltzmann)
@@ -799,7 +867,7 @@ class CudaCsvRecorder : public cuda::ComponentBase {
             Pyy = (s.stress[1] + s.stress_kinetic[1]) / V * kEvPerA3ToBar;
             Pzz = (s.stress[2] + s.stress_kinetic[2]) / V * kEvPerA3ToBar;
         }
-        const int abs_step = current_step_offset_ + ctx.step;
+        std::lock_guard<std::mutex> lk(io_mtx_);
         if (thermo_ && thermo_->is_open()) {
             (*thermo_) << abs_step << "," << current_stage_ << ","
                        << current_T_target_ << "," << T << "," << P_bar << ","
@@ -823,18 +891,19 @@ class CudaCsvRecorder : public cuda::ComponentBase {
         }
     }
 
-  private:
     std::ofstream* thermo_;
     std::ofstream* stress_;
     int print_every_;
     int n_dof_;
     double box_x0_;
+    bool sync_mode_ = false; ///< ATV_TEST_RECORD_SYNC=1 → legacy sync D2H.
     int current_stage_ = 0;
     double current_T_target_ = 0.0;
     bool record_strain_ = false;
     bool strain_ref_set_ = false;
     int current_step_offset_ = 0;
     int stage_steps_so_far_ = 0;
+    std::mutex io_mtx_; ///< Guards thermo_ / stress_ streams across worker + main.
 };
 
 /// @brief Run the 5-stage MSU PE protocol on CUDA. Mirrors the CPU

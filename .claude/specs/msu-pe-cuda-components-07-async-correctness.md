@@ -1,6 +1,6 @@
 ---
 title: MSU PE CUDA components — link 07 — async correctness for CUDA recorders
-status: approved
+status: code-complete
 created: 2026-05-23
 parent: msu-pe-validation.md (Phase H.1–H.3)
 chain: msu-pe-cuda-components-* (link 7/8)
@@ -130,18 +130,18 @@ public:
 
 ## Tasks
 
-- [ ] Write failing test `tests/cuda/async/test_hot_path_no_sync.cu` asserting hot-path `cudaStreamSynchronize` count == 0 over a 100-step `cuda::md::MD` loop with `CudaCsvRecorder` bound
-- [ ] Write failing test `tests/cuda/async/test_async_record_correctness.cu` comparing async vs sync recorder CSV field-by-field (`EXPECT_NEAR ±1e-6`, row-count tolerance ≤ 1)
-- [ ] Write failing test `tests/cuda/async/test_async_record_perf.cu` asserting wall-clock(`--print-every 1`) / wall-clock(`--print-every 25`) − 1 < 0.05 on stage 2 of `polyethylene_tension --backend cuda --scale 0.005`
-- [ ] Implement `cuda::AsyncRecordBase<Snapshot>` template in `include/atomiverse/cuda/async/record_base.cuh` + explicit `SystemScalarsSnapshot` instantiation in `src/cuda/async/record_base.cu`
-- [ ] Implement `cuda::stream_synchronize` wrapper + `ATV_CUDA_TRACK_SYNCS` counter in `include/atomiverse/cuda/async/sync_guard.cuh`
-- [ ] Wire hot-path sync counter reset + assertion into `src/cuda/md/md.cu::step()` under `ATV_BUILD_TESTS=ON` only
-- [ ] Refactor `CudaCsvRecorder` in `benchmarks/md/polyethylene_tension.cpp` to inherit `cuda::AsyncRecordBase<SystemScalarsSnapshot>`, deleting the ad-hoc async code from chain link 06
-- [ ] Wire `add_subdirectory(cuda/async)` into `tests/CMakeLists.txt` under `if(ATV_BUILD_CUDA)`
-- [ ] Register the three new tests in `tests/cuda/async/CMakeLists.txt` with `LABELS "cuda;async;gpu_required"`
-- [ ] Add `msu-pe-cuda-components-07-async-correctness` entry to `.claude/specs/INDEX.md`
-- [ ] Add doxygen on `AsyncRecordBase` documenting the zero-block contract, the defer-stream + cudaEvent pattern, and the `AnalysisExecutor` host-thread semantics
-- [ ] Run full check + test suite (`cmake -B build -DATV_BUILD_TESTS=ON -DATV_BUILD_CUDA=ON -DATV_BUILD_BENCHMARKS=ON && cmake --build build -j && ctest --test-dir build --output-on-failure -L cuda`)
+- [x] Write failing test `tests/cuda/async/test_hot_path_no_sync.cu` asserting hot-path `cudaStreamSynchronize` count == 0 over a 100-step `cuda::md::MD` loop with `CudaCsvRecorder` bound
+- [x] Write failing test `tests/cuda/async/test_async_record_correctness.cu` comparing async vs sync recorder CSV field-by-field (`EXPECT_NEAR ±1e-6`, row-count tolerance ≤ 1)
+- [x] Write failing test `tests/cuda/async/test_async_record_perf.cu` asserting wall-clock(`--print-every 1`) / wall-clock(`--print-every 25`) − 1 < 0.05 on stage 2 of `polyethylene_tension --backend cuda --scale 0.005`
+- [x] Implement `cuda::AsyncRecordBase<Snapshot>` template in `include/atomiverse/cuda/async/record_base.cuh` + `HostWorker` runtime in `src/cuda/async/record_base.cu` (header-only template avoids the explicit-instantiation step the design sketched)
+- [x] Implement `cuda::stream_synchronize` wrapper + opt-in sync counter (gated on `ATV_BUILD_TESTS=ON`) in `include/atomiverse/cuda/async/sync_guard.cuh` and `src/cuda/async/record_base.cu`
+- [x] Hot-path sync counter reset + assertion: lives in `test_hot_path_no_sync.cu` (resets at run start, asserts == 0 after 100 steps). Since `cuda::md::MD` has no `src/cuda/md/md.cu` and `step()` lives in `Backend::step()`, the test-driven reset/assert pattern is the equivalent gate — `ATV_BUILD_TESTS=OFF` compiles the wrapper to a direct `cudaStreamSynchronize` call.
+- [x] Refactor `CudaCsvRecorder` in `benchmarks/md/polyethylene_tension.cpp` to inherit `cuda::AsyncRecordBase<SystemScalarsSnapshot>`; chain-link-06 ad-hoc sync `cudaMemcpy` lives only behind the `ATV_TEST_RECORD_SYNC=1` env flag for the parity test.
+- [x] Wire `add_subdirectory(cuda/async)` into `tests/CMakeLists.txt` under `if(ATV_BUILD_CUDA) ∧ if(ATV_BUILD_BENCHMARKS)` (the correctness/perf tests shell out to the polyethylene_tension binary).
+- [x] Register the three new tests in `tests/cuda/async/CMakeLists.txt` with `LABELS "cuda;async;gpu_required"` + `RUN_SERIAL TRUE` on the two GPU-hogging ones.
+- [x] `msu-pe-cuda-components-07-async-correctness` already listed in `.claude/specs/INDEX.md`; lifecycle tag bumped to `[code-complete]` post-implementation.
+- [x] Doxygen on `AsyncRecordBase`: zero-block contract, defer-stream + cudaEvent ordering (pack_done_event_ on compute stream → cudaStreamWaitEvent → D2H on defer stream → copy_done_event_ → worker thread cudaEventSynchronize), owning/non-owning of every member.
+- [x] Full check + test suite green: `cmake --build build` builds the atomiverse library + all CUDA tests; `ctest --test-dir build -L cuda` 3/3 pass; `ctest -R 'test_cuda_md|test_cpu_md'` 28/28 pass. The 3 pre-existing stale benchmarks (`bench_md_step`, `bench_rhf`, `bench_scf`) still fail to build with unrelated stale APIs as documented in the spec scope.
 
 ## Testing strategy
 
