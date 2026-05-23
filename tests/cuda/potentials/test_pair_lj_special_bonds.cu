@@ -81,20 +81,17 @@ TEST(CudaPairLJSpecialBonds, ApiRejectsMixedScaling) {
         std::invalid_argument);
 }
 
-// DISABLED: end-to-end verification of the kernel-level exclusion mask
-// on this 4-atom synthetic geometry still produces residual -0.40 eV
-// after the rvalue-overload fix on `set_special_bonds`. The rvalue fix
-// resolved the "pure virtual method called" crash that link 06 stage 2
-// hit, and confirmed via trace that `has_exclusions_=1`, `s_excl_=0`,
-// `n_excl_total_=12`, and a populated CSR reach `compute()` cleanly —
-// yet pairs still energize. Most likely root cause is the test's
-// xt::xtensor topology initialization (atomi/atomj/atomk/atoml arrays)
-// not propagating into the device-side cuda::Frame.bonds/angles/
-// dihedrals on materialize, so the CSR build() reads phantom topology.
-// The benchmark `--backend cuda --mode full` path verifies the
-// exclusion semantics end-to-end via the link-08 statistical
-// comparison vs LAMMPS-GPU; this synthetic gate stays parked.
-TEST(CudaPairLJSpecialBonds, DISABLED_FourAtomChainAllExcludedZeroEnergy) {
+// Re-enabled after the LJ kernel got an `(i >= 0 && j >= 0)` ghost-pair
+// guard. The cluster-based neighbor list export pads each cluster to
+// kClusterSize atoms, and the padded slots leak into the flat PairList
+// with j = -1 and garbage `dx/dy/dz` that can coincidentally give a
+// finite pdist (here r = 1.0 for atom 1's padding slot). Those ghost
+// pairs bypass the exclusion CSR mask (-1 is in no partner list) and
+// erroneously contributed ~-0.40 eV to the total LJ energy. The new
+// guard rejects pairs with negative atom indices outright; valid pairs
+// still flow through the existing `r < cutoff && r >= kMinPairDist`
+// filter as before.
+TEST(CudaPairLJSpecialBonds, FourAtomChainAllExcludedZeroEnergy) {
     auto frame = make_chain4();
     const double cutoff = 3.0;
     // Use cuda::md::MD instead of cuda::Evaluate so we run through the

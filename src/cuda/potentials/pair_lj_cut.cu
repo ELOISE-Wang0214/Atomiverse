@@ -58,10 +58,18 @@ __global__ void lj_force(real_t* __restrict__ fx, real_t* __restrict__ fy,
 
     work_t my_energy = work_t(0);
     if (idx < n_pairs) {
-        work_t r = pdist[idx];
-        if (r < cutoff && r >= kMinPairDist) {
-            int i = pi[idx], j = pj[idx];
-
+        int i = pi[idx], j = pj[idx];
+        // Reject ghost / padding pairs emitted by the cluster-based neighbor
+        // list export. The cluster representation pads each cluster to
+        // kClusterSize atoms; padded slots leak into the flat PairList with
+        // j = -1 (sentinel) and garbage `dx/dy/dz` that can coincidentally
+        // produce a finite `pdist[idx]` not caught by the `r >= kMinPairDist`
+        // floor. Without this guard those ghost pairs bypass the
+        // exclusion-CSR mask (-1 is in no partner list) and erroneously
+        // contribute LJ energy. Both i and j are checked for symmetry.
+        const bool valid_pair = (i >= 0) && (j >= 0);
+        work_t r = valid_pair ? pdist[idx] : work_t(0);
+        if (valid_pair && r < cutoff && r >= kMinPairDist) {
             // Special-bonds exclusion check.
             // `excl_offsets == nullptr` ⇒ no exclusions configured ⇒ fast path.
             work_t scale = work_t(1);

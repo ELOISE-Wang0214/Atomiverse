@@ -34,12 +34,35 @@ if [[ "${1-}" == "--help" || "${1-}" == "-h" ]]; then
   exit 0
 fi
 
-RANKS="${1-8}"
-shift || true
-if [[ "${1-}" == "--" ]]; then
-  shift
-fi
+# Parse --backend {cpu|cuda} (chain link 06). May appear before or after
+# the RANKS positional but before `--`. Default cpu preserves prior
+# byte-identical behaviour for existing callers.
+BACKEND="cpu"
+POSITIONAL=()
+while (( $# )); do
+  case "$1" in
+    --backend)
+      shift
+      BACKEND="${1-}"
+      if [[ "$BACKEND" != "cpu" && "$BACKEND" != "cuda" ]]; then
+        echo "error: --backend must be cpu or cuda, got: $BACKEND" >&2
+        usage >&2
+        exit 2
+      fi
+      shift || true
+      ;;
+    --)
+      shift
+      break
+      ;;
+    *)
+      POSITIONAL+=("$1")
+      shift
+      ;;
+  esac
+done
 EXTRA_ARGS=("$@")
+RANKS="${POSITIONAL[0]-8}"
 
 if ! [[ "$RANKS" =~ ^[0-9]+$ ]]; then
   echo "error: RANKS must be a positive integer, got: $RANKS" >&2
@@ -70,7 +93,15 @@ if [[ ! -x "$BIN" ]]; then
 fi
 
 TS="$(date +%Y%m%d_%H%M%S)"
-RUN_DIR="$REPO_ROOT/benchmarks/md/reference/polyethylene/runs/atomiverse_${RANKS}r_${TS}"
+# Tag RUN_DIR with `_cuda_` when backend=cuda so
+# canonicalize_msu_output.py's --backend auto picks "cuda" from the path
+# (per msu-pe-cuda-components-06 § Design). cpu keeps the legacy untagged
+# name for back-compat with link-01 and prior CPU reference runs.
+if [[ "$BACKEND" == "cuda" ]]; then
+  RUN_DIR="$REPO_ROOT/benchmarks/md/reference/polyethylene/runs/atomiverse_cuda_${RANKS}r_${TS}"
+else
+  RUN_DIR="$REPO_ROOT/benchmarks/md/reference/polyethylene/runs/atomiverse_${RANKS}r_${TS}"
+fi
 mkdir -p "$RUN_DIR"
 
 # Record env / git tag so runs are auditable later.
@@ -110,9 +141,25 @@ START="$(date +%s.%N)"
 # Atomiverse run is comparable to the LAMMPS reference. The benchmark parser
 # takes the final occurrence of a repeated flag, so a caller can still override
 # via `-- --data /some/other.data`.
+# Backend dispatch (link 06): forward --backend cuda to polyethylene_tension.
+# RANKS is forced to 1 in cuda mode — the CUDA arm is single-GPU only
+# (msu-pe-validation § fixed-scope decision #1), so a caller passing
+# RANKS>1 + --backend cuda would launch MPI ranks all contending for the
+# same GPU. EXTRA_ARGS still passed verbatim so the caller can override
+# --mode / --scale / --seed.
+BACKEND_ARGS=()
+if [[ "$BACKEND" == "cuda" ]]; then
+  BACKEND_ARGS=(--backend cuda)
+  if [[ "$RANKS" != "1" ]]; then
+    echo "warning: --backend cuda forces RANKS=1 (single-GPU only)" >&2
+    LAUNCH=()
+    if command -v mpirun >/dev/null 2>&1; then LAUNCH=(mpirun -n 1); fi
+  fi
+fi
 "${LAUNCH[@]}" "$BIN" --out-dir "$RUN_DIR" \
   --data "$REF_DIR/msu_pe.data" \
-  --traj-every 10000 --rdf 10.5,200,1000 "${EXTRA_ARGS[@]}"
+  --traj-every 10000 --rdf 10.5,200,1000 \
+  "${BACKEND_ARGS[@]}" "${EXTRA_ARGS[@]}"
 END="$(date +%s.%N)"
 
 WALL="$(awk -v s="$START" -v e="$END" 'BEGIN { printf "%.3f", e - s }')"
@@ -143,8 +190,16 @@ fi
 # real per-axis Pxx/Pyy/Pzz columns in its thermo.csv extended schema, so
 # the canonical passthrough reads them directly. No more isotropic stand-in.
 CANON="$REPO_ROOT/tools/canonicalize_msu_output.py"
-THERMO_REF="$REF_DIR/thermo_atomiverse_${RANKS}r.csv"
-STRESS_REF="$REF_DIR/stress_strain_atomiverse_${RANKS}r.csv"
+# Backend-tagged canonical names (link 06+08): CUDA runs publish to
+# `thermo_atomiverse_cuda_${RANKS}r.csv` so the link-08 compare_msu.py
+# resolves them by stable path.
+if [[ "$BACKEND" == "cuda" ]]; then
+  THERMO_REF="$REF_DIR/thermo_atomiverse_cuda_${RANKS}r.csv"
+  STRESS_REF="$REF_DIR/stress_strain_atomiverse_cuda_${RANKS}r.csv"
+else
+  THERMO_REF="$REF_DIR/thermo_atomiverse_${RANKS}r.csv"
+  STRESS_REF="$REF_DIR/stress_strain_atomiverse_${RANKS}r.csv"
+fi
 if [[ -s "$THERMO" ]]; then
   python3 "$CANON" atomiverse thermo "$THERMO" "$THERMO_REF"
 fi
