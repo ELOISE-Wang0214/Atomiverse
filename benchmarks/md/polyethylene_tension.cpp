@@ -451,7 +451,13 @@ class CsvRecorder : public cpu::ComponentBase {
         current_stage_ = stage_id;
         current_T_target_ = T_target;
         record_strain_ = record_strain;
-        current_step_offset_ += stage_steps_so_far_;
+        // `stage_steps_so_far_` counts launch() invocations, which fire
+        // every `print_every_` integration steps. Multiply to recover
+        // the actual step count of the completed stage so the absolute
+        // step column stays globally monotonic across stages (assumes
+        // each stage's step count is a multiple of print_every_, which
+        // the MSU protocol satisfies).
+        current_step_offset_ += stage_steps_so_far_ * print_every_;
         stage_steps_so_far_ = 0;
         // Re-arm the strain reference: it is snapshotted at the first
         // stress-recorded step so engineering strain is referenced to

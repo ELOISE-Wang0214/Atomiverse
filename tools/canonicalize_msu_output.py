@@ -66,10 +66,19 @@ import sys
 
 
 #: Canonical thermo CSV schema consumed by the downstream chain links.
+#: Per CLAUDE.md project units: T [K], P [bar], E_pot/E_kin [eV],
+#: Pxx/Pyy/Pzz [bar]. Atomiverse already streams in these units;
+#: LAMMPS ``units real`` is converted on canonicalisation.
 THERMO_HEADER = ["step", "T", "P", "E_pot", "E_kin", "Pxx", "Pyy", "Pzz"]
 
 #: Canonical stress-strain CSV schema consumed by msu-pe-phase-d-04.
 STRESS_HEADER = ["strain", "sigma_xx"]
+
+#: LAMMPS ``units real`` → canonical unit conversions.
+#:   pressure: 1 atm     = 1.01325 bar
+#:   energy:   1 kcal/mol = 1/23.060547830619026 eV
+_ATM_TO_BAR = 1.01325
+_KCAL_PER_MOL_TO_EV = 1.0 / 23.060547830619026
 
 
 class CanonicalizeError(Exception):
@@ -160,15 +169,29 @@ def _lammps_stress_strain(path):
 
 
 def _lammps_thermo(path):
-    """``lammps thermo``: validate the canonical 8-column header and pass through.
+    """``lammps thermo``: convert ``units real`` to canonical units + dedupe.
 
-    The online ``lammps.in`` ``fix print`` already emits
-    ``step,T,P,E_pot,E_kin,Pxx,Pyy,Pzz``. This mode asserts the header is
-    exactly that (fails loudly otherwise) and copies every data row verbatim.
+    The online ``lammps.in`` ``fix print`` emits the canonical 8-column
+    header ``step,T,P,E_pot,E_kin,Pxx,Pyy,Pzz`` but the values are in
+    ``units real`` (T [K], P [atm], E [kcal/mol]). This pass converts
+    P / Pxx / Pyy / Pzz from atm to bar (×1.01325) and E_pot / E_kin from
+    kcal/mol to eV (÷23.060547830619026), so the canonical CSV matches the
+    Atomiverse-emitted unit set and ``validate_polyethylene.py`` can compare
+    ensemble means in a single unit.
+
+    Consecutive rows with the same ``step`` value (LAMMPS sometimes emits a
+    duplicate at stage transitions where one ``fix print`` rolls off and
+    another rolls on at the same timestep) are deduplicated — only the first
+    is kept. This satisfies the strict-monotonic-step contract that
+    ``tests/cpu/md/test_msu_reference_inputs.cpp`` enforces.
+
+    A non-canonical header still fails loudly; a malformed data row still
+    raises :class:`CanonicalizeError` naming the line.
     """
     header = None
     rows = []
     expected = len(THERMO_HEADER)
+    last_step = None
     for lineno, raw in _iter_data_lines(path):
         fields = _split_csv(raw)
         if header is None:
@@ -182,7 +205,24 @@ def _lammps_thermo(path):
             raise CanonicalizeError(
                 "malformed thermo row at line {}: expected {} columns, got {} "
                 "-- {!r}".format(lineno, expected, len(fields), raw.strip()))
-        rows.append(fields)
+        if fields[0] == last_step:
+            continue  # skip consecutive-same-step duplicate
+        last_step = fields[0]
+        try:
+            step = fields[0]
+            t_K = fields[1]                                    # K — unchanged
+            p_bar = repr(float(fields[2]) * _ATM_TO_BAR)
+            e_pot_eV = repr(float(fields[3]) * _KCAL_PER_MOL_TO_EV)
+            e_kin_eV = repr(float(fields[4]) * _KCAL_PER_MOL_TO_EV)
+            pxx_bar = repr(float(fields[5]) * _ATM_TO_BAR)
+            pyy_bar = repr(float(fields[6]) * _ATM_TO_BAR)
+            pzz_bar = repr(float(fields[7]) * _ATM_TO_BAR)
+        except ValueError as exc:
+            raise CanonicalizeError(
+                "non-numeric thermo cell at line {}: {!r} -- {}".format(
+                    lineno, raw.strip(), exc))
+        rows.append([step, t_K, p_bar, e_pot_eV, e_kin_eV,
+                     pxx_bar, pyy_bar, pzz_bar])
     return THERMO_HEADER, rows
 
 

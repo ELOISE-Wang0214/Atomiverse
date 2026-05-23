@@ -105,7 +105,13 @@ START="$(date +%s.%N)"
 # Paper-scale defaults: emit a trajectory frame every 10000 steps and a
 # strided RDF. Anything in EXTRA_ARGS comes last and overrides these
 # (the benchmark parser takes the final occurrence of a repeated flag).
+# MSU PE reference run: default to loading benchmarks/md/reference/polyethylene/msu_pe.data
+# (the canonical 10-chain × 1000-monomer system from the CAVS ICME wiki) so the
+# Atomiverse run is comparable to the LAMMPS reference. The benchmark parser
+# takes the final occurrence of a repeated flag, so a caller can still override
+# via `-- --data /some/other.data`.
 "${LAUNCH[@]}" "$BIN" --out-dir "$RUN_DIR" \
+  --data "$REF_DIR/msu_pe.data" \
   --traj-every 10000 --rdf 10.5,200,1000 "${EXTRA_ARGS[@]}"
 END="$(date +%s.%N)"
 

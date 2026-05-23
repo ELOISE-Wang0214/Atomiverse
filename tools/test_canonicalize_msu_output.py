@@ -105,8 +105,8 @@ def test_lammps_stress_strain_passes_through_online_canonical_csv(tmp_path):
 # ── lammps thermo — canonical pass-through with header validation ────────────
 
 
-def test_lammps_thermo_passes_through_canonical_csv(tmp_path):
-    """The online LAMMPS fix print already emits the canonical 8-column schema."""
+def test_lammps_thermo_converts_units_real_to_canonical(tmp_path):
+    """LAMMPS ``units real`` (atm, kcal/mol) → canonical (bar, eV)."""
     src = tmp_path / "thermo.lammps.csv"
     src.write_text(
         "step,T,P,E_pot,E_kin,Pxx,Pyy,Pzz\n"
@@ -115,10 +115,40 @@ def test_lammps_thermo_passes_through_canonical_csv(tmp_path):
     )
     out = tmp_path / "thermo.csv"
     canonicalize("lammps", "thermo", str(src), str(out))
-    rows = _lines(str(out))
-    assert rows[0] == "step,T,P,E_pot,E_kin,Pxx,Pyy,Pzz"
-    assert rows[1] == "0,500.0,1.2,-1000.0,300.0,1.1,1.0,0.9"
-    assert rows[2] == "100,498.0,0.8,-1010.0,305.0,0.7,0.8,0.9"
+    import csv
+    rows = list(csv.reader(open(str(out))))
+    assert rows[0] == ["step", "T", "P", "E_pot", "E_kin",
+                       "Pxx", "Pyy", "Pzz"]
+    KCAL_PER_MOL_TO_EV = 1.0 / 23.060547830619026
+    ATM_TO_BAR = 1.01325
+    # row 1: step=0, raw P=1.2 atm, E_pot=-1000 kcal/mol, …
+    r1 = [float(x) for x in rows[1]]
+    assert r1[0] == 0.0
+    assert r1[1] == 500.0                                       # T unchanged
+    assert r1[2] == pytest.approx(1.2 * ATM_TO_BAR)             # P
+    assert r1[3] == pytest.approx(-1000.0 * KCAL_PER_MOL_TO_EV) # E_pot
+    assert r1[4] == pytest.approx(300.0 * KCAL_PER_MOL_TO_EV)   # E_kin
+    assert r1[5] == pytest.approx(1.1 * ATM_TO_BAR)             # Pxx
+    assert r1[6] == pytest.approx(1.0 * ATM_TO_BAR)             # Pyy
+    assert r1[7] == pytest.approx(0.9 * ATM_TO_BAR)             # Pzz
+
+
+def test_lammps_thermo_dedupes_consecutive_same_step(tmp_path):
+    """Duplicate step (LAMMPS stage-rollover) keeps only the first row."""
+    src = tmp_path / "thermo.lammps.csv"
+    src.write_text(
+        "step,T,P,E_pot,E_kin,Pxx,Pyy,Pzz\n"
+        "0,500.0,1.0,-1000.0,300.0,1.0,1.0,1.0\n"
+        "100,498.0,0.9,-1010.0,305.0,0.9,0.9,0.9\n"
+        "100,498.0,0.91,-1010.1,305.0,0.91,0.91,0.91\n"
+        "200,497.0,0.8,-1020.0,310.0,0.8,0.8,0.8\n"
+    )
+    out = tmp_path / "thermo.csv"
+    canonicalize("lammps", "thermo", str(src), str(out))
+    import csv
+    rows = list(csv.reader(open(str(out))))
+    steps = [r[0] for r in rows[1:]]
+    assert steps == ["0", "100", "200"]                         # second 100 dropped
 
 
 def test_lammps_thermo_rejects_non_canonical_header(tmp_path):
