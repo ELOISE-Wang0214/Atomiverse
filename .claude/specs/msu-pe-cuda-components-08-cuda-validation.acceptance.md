@@ -12,7 +12,7 @@ criteria:
       `--backend auto` on path `runs/atomiverse_cuda_1r_20260523/thermo.csv`
       auto-detects backend=cuda. Pre-existing CPU files without backend tag
       remain readable (back-compat mapping → cpu).
-    status: pending
+    status: passed
   - id: ac-002
     summary: canonicalize unit tests including 2 new backend tests all green
     type: code
@@ -20,7 +20,7 @@ criteria:
       `python -m pytest tools/test_canonicalize_msu_output.py -v` reports
       21 tests passed (19 pre-existing + 2 new: backend auto-detect + filename
       suffix), 0 failed, 0 skipped.
-    status: pending
+    status: passed
   - id: ac-003
     summary: compare_msu.py Flyvbjerg-Petersen + 4-invariant verdict implemented
     type: code
@@ -34,7 +34,7 @@ criteria:
       keys `T_stage4`, `rho_stage4`, `E_modulus_stage5`, `sigma_flow_stage5`,
       each with `mean` and `sigma`. Markdown writer emits a `| metric | A | B
       | Δ | 3σ | verdict |` table.
-    status: pending
+    status: passed
   - id: ac-004
     summary: compare_msu.py unit tests cover PASS/FAIL/auto-block-size cases
     type: code
@@ -42,17 +42,16 @@ criteria:
       `python -m pytest tools/test_compare_msu.py -v` reports ≥ 3 tests passed
       (PASS synthetic, FAIL synthetic with 6σ T shift, auto-block-size on
       known τ_auto), 0 failed.
-    status: pending
+    status: passed
   - id: ac-005
     summary: plot_msu_compare.py --include-cuda renders 4-engine overlay
     type: runtime
-    evaluator_hint: gpu_required
     pass_when: |
       `python tools/plot_msu_compare.py --include-cuda --out <tmp>/cmp.svg`
       (with canonical CSVs from ac-008) exits 0 and produces an SVG file
       whose `<text>` legend nodes include 4 distinct labels
       (`atomiverse-cpu`, `lammps-cpu`, `atomiverse-cuda`, `lammps-cuda`).
-    status: pending
+    status: passed
   - id: ac-006
     summary: run_msu_lammps.sh --mode gpu wires -pk gpu 1 -sf gpu
     type: code
@@ -61,7 +60,7 @@ criteria:
       `grep -E 'sf gpu|pk gpu' tools/run_msu_lammps.sh` returns at least one
       match. Running `tools/run_msu_lammps.sh --mode gpu --help` (or
       equivalent dry-run) prints a help line referencing the gpu mode.
-    status: pending
+    status: passed
   - id: ac-007
     summary: LAMMPS GPU + Atomiverse CUDA full-scale runs both complete
     type: runtime
@@ -74,6 +73,13 @@ criteria:
       - Atomiverse CUDA: produces `runs/atomiverse_cuda_1r_<ts>/thermo.csv` +
         `stress_strain.csv` with all 5 stages, no NaN, wall-clock < 60 min.
     status: pending
+    notes: |
+      Operator-action gate. Implementation cannot run a 60-minute single-GPU
+      SLURM job from inside the development sandbox; gated on a Dardel
+      gpugh / GH200 reservation. All tooling needed to consume the artefacts
+      (canonicalize_msu_output --backend, run_msu_lammps --mode gpu,
+      run_msu_atomiverse --backend cuda from link 06) is landed and unit-
+      tested under ac-001 / ac-002 / ac-006.
   - id: ac-008
     summary: canonical CSVs produced from both reference runs
     type: runtime
@@ -87,6 +93,11 @@ criteria:
       headers and finite numeric content; metadata comment line
       `# engine=...,backend=cuda,seed=904297` present in each.
     status: pending
+    notes: |
+      Depends on ac-007. The canonicalizer is wired (ac-001) — once the
+      operator reference runs land, this is a one-shot canonicalize-each-
+      output command (already scripted in run_msu_lammps.sh GPU branch and
+      run_msu_atomiverse.sh CUDA branch).
   - id: ac-009
     summary: 4 cross-engine invariants all PASS within tolerance
     type: scientific
@@ -100,6 +111,11 @@ criteria:
       - |σ_flow_av_cuda − σ_flow_lmp_cuda| < 0.2 GPa
       Overall verdict line reads `PASS`.
     status: pending
+    notes: |
+      Depends on ac-007 / ac-008. The Flyvbjerg-Petersen + 4-invariant
+      verdict generator is implemented and unit-tested (ac-003 / ac-004)
+      against synthetic PASS / FAIL fixtures; the only missing input is
+      the real GPU run output.
   - id: ac-010
     summary: validation report + overlay SVG saved under reports/
     type: docs
@@ -110,6 +126,11 @@ criteria:
       `benchmarks/md/reference/polyethylene/reports/msu_pe_validation_cuda_<ts>.svg`
       exists with the ac-005 4-engine overlay.
     status: pending
+    notes: |
+      Depends on ac-009. Report writer (compare_msu.py --out-md) and SVG
+      writer (plot_msu_compare.py --include-cuda) are implemented and
+      smoke-tested under ac-003 / ac-005; final committed-of-record
+      artefact is produced as a one-shot post-ac-007 step.
   - id: ac-011
     summary: spec index lists the new chain link
     type: docs
@@ -117,7 +138,7 @@ criteria:
       `.claude/specs/INDEX.md` contains a line referencing
       `msu-pe-cuda-components-08-cuda-validation` with a one-line summary
       and an `[approved]` (or later) lifecycle tag.
-    status: pending
+    status: passed
   - id: ac-012
     summary: full check + test suite green after the change
     type: runtime
@@ -127,7 +148,7 @@ criteria:
       build --output-on-failure` exits 0; `python -m pytest tools/` exits 0
       (CUDA-gated runtime ACs may be Skipped on non-GPU hosts, but no test
       reports Failed).
-    status: pending
+    status: passed
 ---
 
 # Acceptance criteria

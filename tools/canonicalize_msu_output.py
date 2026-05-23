@@ -62,6 +62,7 @@ Exit codes
 import argparse
 import csv
 import os
+import re
 import sys
 
 
@@ -300,10 +301,61 @@ _CONVERTERS = {
 }
 
 
+# ── msu-pe-cuda-components-08 — backend tag ──────────────────────────────────
+
+#: Backend values recognised by the CLI.
+_BACKENDS = ("cpu", "cuda", "auto")
+
+
+def infer_backend_from_path(path):
+    """Infer the backend (cpu / cuda) from a raw-output directory path.
+
+    Convention (msu-pe-cuda-components-08 § Design):
+
+    * ``runs/atomiverse_cuda_*`` (any segment of the path) → ``cuda``
+    * ``runs/lammps_*_gpu_*``                              → ``cuda``
+    * anything else (incl. pre-link-08 CPU-era paths)      → ``cpu``
+
+    The mapping is intentionally permissive: pre-existing CPU-era runs
+    without a backend tag in their path map to ``cpu`` so back-compat is
+    preserved (no breaking change for the existing
+    ``thermo_atomiverse_1r.csv`` / ``thermo_lammps_1r.csv`` artefacts).
+
+    @param path  Any file path. Only the path segments are inspected; the
+                 file content is not read.
+    @return  ``"cuda"`` or ``"cpu"``.
+    """
+    norm = path.replace("\\", "/")
+    # atomiverse_cuda_* — explicit CUDA tag in any segment.
+    if re.search(r"(^|/)atomiverse_cuda(_|/)", norm):
+        return "cuda"
+    # lammps_*_gpu_* — GPU mode tag in any segment.
+    if re.search(r"(^|/)lammps_[^/]*_gpu(_|/)", norm):
+        return "cuda"
+    return "cpu"
+
+
+def _detect_kind_from_path(path):
+    """Best-effort kind inference from a raw-output filename.
+
+    Used by the flag-based CLI form when ``--kind`` is omitted:
+
+    * filenames containing ``stress_strain`` (or ``stress-strain``) → ``stress-strain``
+    * filenames containing ``thermo``                               → ``thermo``
+    * otherwise                                                     → ``None`` (CLI demands explicit ``--kind``)
+    """
+    name = os.path.basename(path).lower()
+    if "stress_strain" in name or "stress-strain" in name:
+        return "stress-strain"
+    if "thermo" in name:
+        return "thermo"
+    return None
+
+
 # ── public API ───────────────────────────────────────────────────────────────
 
 
-def canonicalize(engine, kind, in_path, out_path):
+def canonicalize(engine, kind, in_path, out_path, metadata=None):
     """Convert a raw engine output file into a canonical-schema CSV.
 
     @param engine    ``"lammps"`` or ``"atomiverse"``.
@@ -311,7 +363,16 @@ def canonicalize(engine, kind, in_path, out_path):
     @param in_path   Raw engine output file (def1 print / benchmark CSV /
                      online LAMMPS canonical CSV).
     @param out_path  Canonical CSV to write. An empty / header-only input
-                     yields a header-only output.
+                     yields a header-only output (metadata comment line, if
+                     requested, still emitted).
+    @param metadata  Optional ``dict`` of provenance fields written as a
+                     leading ``#`` comment line so downstream readers
+                     (``_iter_data_lines`` skips ``#`` lines verbatim) can
+                     surface engine / backend / seed without re-parsing the
+                     run directory. Keys are emitted in deterministic order:
+                     ``engine``, ``backend``, ``seed``, then everything else
+                     alphabetically. ``None`` (default) keeps the legacy
+                     header-only output untouched for back-compat.
     @raises CanonicalizeError  On an unknown ``(engine, kind)`` pair, a missing
                                input file, a malformed input row, or a
                                non-canonical LAMMPS thermo header.
@@ -322,30 +383,169 @@ def canonicalize(engine, kind, in_path, out_path):
             "unknown engine/kind combination: {!r}/{!r}".format(engine, kind))
     header, rows = converter(in_path)
     with open(out_path, "w", newline="") as f:
+        if metadata:
+            # Deterministic field order: engine, backend, seed first; then
+            # any remaining keys alphabetically. Comma-separated, leading
+            # ``#`` so the canonical reader skips it transparently.
+            ordered_keys = []
+            for k in ("engine", "backend", "seed"):
+                if k in metadata:
+                    ordered_keys.append(k)
+            for k in sorted(metadata):
+                if k not in ordered_keys:
+                    ordered_keys.append(k)
+            parts = ["{}={}".format(k, metadata[k]) for k in ordered_keys]
+            f.write("# " + ",".join(parts) + "\n")
         writer = csv.writer(f, lineterminator="\n")
         writer.writerow(header)
         writer.writerows(rows)
 
 
+def _backend_tagged_output_name(engine, backend, kind, runs):
+    """Filename for the canonical output under the flag-based CLI form.
+
+    Pattern (msu-pe-cuda-components-08 § Design):
+
+    * ``thermo``        → ``thermo_<engine>_<backend>_<runs>r.csv``
+    * ``stress-strain`` → ``stress_strain_<engine>_<backend>_<runs>r.csv``
+
+    Back-compat note: pre-link-08 names ``thermo_atomiverse_1r.csv`` (no
+    backend tag) are *not* re-emitted by this helper — they continue to be
+    produced by the legacy positional CLI form / by the older runner
+    scripts. The new tagged names live alongside them; readers that want
+    backend-discriminated artefacts opt in by using the new names.
+    """
+    stem = "thermo" if kind == "thermo" else "stress_strain"
+    return "{}_{}_{}_{}r.csv".format(stem, engine, backend, runs)
+
+
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
 
+def _is_legacy_positional_form(argv):
+    """Heuristic: legacy form is ``<engine> <kind> <in> <out>``.
+
+    Detected by the first non-flag argument being one of the engine choices
+    AND there being at least four non-flag tokens. The new flag-based form
+    always has ``--engine`` somewhere and at most one positional (the input
+    file).
+    """
+    positionals = [a for a in argv if not a.startswith("-")]
+    if len(positionals) < 4:
+        return False
+    return positionals[0] in ("lammps", "atomiverse")
+
+
 def main(argv=None):
-    """CLI entry point. See the module docstring for the exit-code contract."""
+    """CLI entry point. Two supported invocation forms:
+
+    Legacy (positional)::
+
+        canonicalize.py <engine> <kind> <input> <output>
+
+    Flag-based (msu-pe-cuda-components-08)::
+
+        canonicalize.py <input> --engine {lammps,atomiverse}
+                                [--kind {thermo,stress-strain}]
+                                [--backend {cpu,cuda,auto}]
+                                [--seed <S>]
+                                [--runs <N>]
+                                [--output-dir <D>]
+                                [--output <FILE>]
+
+    ``--backend auto`` (default in the flag form) infers backend from the
+    input path via :func:`infer_backend_from_path`. ``--kind`` is inferred
+    from the filename when omitted (``thermo`` / ``stress_strain``). When
+    ``--output-dir`` is given, the output filename is
+    ``thermo_<engine>_<backend>_<runs>r.csv`` (or ``stress_strain_…``); pass
+    ``--output`` to override with a concrete path.
+
+    See the module docstring for the exit-code contract.
+    """
+    if argv is None:
+        argv = sys.argv[1:]
+
+    # Legacy positional form: <engine> <kind> <in> <out>.
+    if _is_legacy_positional_form(argv):
+        p = argparse.ArgumentParser(
+            description=__doc__,
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+        )
+        p.add_argument("engine", choices=["lammps", "atomiverse"],
+                       help="Source engine of the raw output file.")
+        p.add_argument("kind", choices=["thermo", "stress-strain"],
+                       help="Kind of canonical schema to emit.")
+        p.add_argument("input", help="Raw engine output file to canonicalize.")
+        p.add_argument("output", help="Canonical-schema CSV file to write.")
+        args = p.parse_args(argv)
+        try:
+            canonicalize(args.engine, args.kind, args.input, args.output)
+        except CanonicalizeError as exc:
+            print("canonicalize_msu_output: {}".format(exc), file=sys.stderr)
+            return 1
+        return 0
+
+    # Flag-based form: <input> --engine ... [--backend ...] [--output-dir ...]
     p = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p.add_argument("engine", choices=["lammps", "atomiverse"],
-                   help="Source engine of the raw output file.")
-    p.add_argument("kind", choices=["thermo", "stress-strain"],
-                   help="Kind of canonical schema to emit.")
     p.add_argument("input", help="Raw engine output file to canonicalize.")
-    p.add_argument("output", help="Canonical-schema CSV file to write.")
+    p.add_argument("--engine", required=True,
+                   choices=["lammps", "atomiverse"],
+                   help="Source engine of the raw output file.")
+    p.add_argument("--kind", choices=["thermo", "stress-strain"],
+                   default=None,
+                   help="Kind of canonical schema to emit "
+                        "(default: inferred from the input filename).")
+    p.add_argument("--backend", choices=list(_BACKENDS), default="auto",
+                   help="Backend tag for the metadata comment + filename "
+                        "suffix (default: auto, infer from input path).")
+    p.add_argument("--seed", default=None,
+                   help="Provenance seed; written into the metadata comment.")
+    p.add_argument("--runs", default="1",
+                   help="Number of ranks / runs; used in the tagged "
+                        "filename `<engine>_<backend>_<runs>r.csv` "
+                        "(default: 1).")
+    p.add_argument("--output-dir", default=None,
+                   help="Directory under which the tagged filename is "
+                        "written. Mutually exclusive with --output.")
+    p.add_argument("--output", default=None,
+                   help="Concrete output path (overrides --output-dir + "
+                        "tagged-filename logic).")
     args = p.parse_args(argv)
 
+    if args.output_dir and args.output:
+        print("canonicalize_msu_output: --output-dir and --output are "
+              "mutually exclusive", file=sys.stderr)
+        return 2
+
+    kind = args.kind or _detect_kind_from_path(args.input)
+    if kind is None:
+        print("canonicalize_msu_output: could not infer --kind from "
+              "filename {!r}; pass --kind explicitly".format(args.input),
+              file=sys.stderr)
+        return 2
+
+    backend = args.backend
+    if backend == "auto":
+        backend = infer_backend_from_path(args.input)
+
+    if args.output:
+        out_path = args.output
+    else:
+        out_dir = args.output_dir or os.path.dirname(args.input) or "."
+        out_path = os.path.join(
+            out_dir,
+            _backend_tagged_output_name(args.engine, backend, kind, args.runs))
+
+    metadata = {"engine": args.engine, "backend": backend}
+    if args.seed is not None:
+        metadata["seed"] = args.seed
+
     try:
-        canonicalize(args.engine, args.kind, args.input, args.output)
+        canonicalize(args.engine, kind, args.input, out_path,
+                     metadata=metadata)
     except CanonicalizeError as exc:
         print("canonicalize_msu_output: {}".format(exc), file=sys.stderr)
         return 1

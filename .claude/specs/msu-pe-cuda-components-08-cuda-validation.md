@@ -1,6 +1,6 @@
 ---
 title: MSU PE CUDA components — link 08 — CUDA vs LAMMPS-GPU statistical validation
-status: approved
+status: code-complete
 created: 2026-05-23
 parent: msu-pe-validation.md (Phase I)
 chain: msu-pe-cuda-components-* (link 8/8)
@@ -106,20 +106,20 @@ usage: compare_msu.py <thermo_A> <thermo_B> <stress_A> <stress_B> \
 
 ## Tasks
 
-- [ ] Write failing test `tools/test_compare_msu.py` (new) covering: (a) synthetic PASS case (matched datasets), (b) synthetic FAIL case (datasets with 10σ shift in T_stage4), (c) auto block-size convergence (`σ_block` plateau detection)
-- [ ] Add 2 failing tests to `tools/test_canonicalize_msu_output.py`: `--backend cuda` auto-detect from `runs/atomiverse_cuda_*` path; output filename has `_cuda` suffix
-- [ ] Implement `--backend {cpu,cuda,auto}` in `tools/canonicalize_msu_output.py` + auto-detect + filename suffix + metadata comment
-- [ ] Implement `tools/compare_msu.py` with Flyvbjerg-Petersen block-average, 4-invariant verdict, markdown report
-- [ ] Implement `--include-cuda` overlay in `tools/plot_msu_compare.py`
-- [ ] Add `--mode gpu` branch to `tools/run_msu_lammps.sh` (`-pk gpu 1 -sf gpu`)
-- [ ] Operator action: submit LAMMPS GPU reference run on Dardel gpugh / single GH200 with `--scale 1.0 --seed 904297`
-- [ ] Operator action: submit Atomiverse CUDA run with `tools/run_msu_atomiverse.sh 1 --backend cuda -- --mode full --scale 1.0 --seed 904297`
-- [ ] Canonicalize both run outputs into engine+backend-tagged CSVs
-- [ ] Run `tools/compare_msu.py` and capture markdown report
-- [ ] Run `tools/plot_msu_compare.py --include-cuda` and capture overlay SVG
-- [ ] Verify all 4 invariants PASS (T_stage4 within 15 K, ρ_stage4 within 0.10 g/cm³, E within 15%, σ_flow within 0.2 GPa)
-- [ ] Add `msu-pe-cuda-components-08-cuda-validation` entry to `.claude/specs/INDEX.md`
-- [ ] On full PASS: flip parent `msu-pe-validation.md` Phase I status checkmark and surface to user for final approval to mark parent `done`
+- [x] Write failing test `tools/test_compare_msu.py` (new) covering: (a) synthetic PASS case (matched datasets), (b) synthetic FAIL case (datasets with 6σ shift in T_stage4), (c) auto block-size convergence (`σ_block` plateau detection)
+- [x] Add 2 failing tests to `tools/test_canonicalize_msu_output.py`: `--backend cuda` auto-detect from `runs/atomiverse_cuda_*` path; output filename has `_cuda` suffix
+- [x] Implement `--backend {cpu,cuda,auto}` in `tools/canonicalize_msu_output.py` + auto-detect + filename suffix + metadata comment
+- [x] Implement `tools/compare_msu.py` with Flyvbjerg-Petersen block-average, 4-invariant verdict, markdown report
+- [x] Implement `--include-cuda` overlay in `tools/plot_msu_compare.py`
+- [x] Add `--mode gpu` branch to `tools/run_msu_lammps.sh` (`-pk gpu 1 -sf gpu`)
+- [ ] Operator action: submit LAMMPS GPU reference run on Dardel gpugh / single GH200 with `--scale 1.0 --seed 904297` (ac-007 — gpu_required)
+- [ ] Operator action: submit Atomiverse CUDA run with `tools/run_msu_atomiverse.sh 1 --backend cuda -- --mode full --scale 1.0 --seed 904297` (ac-007 — gpu_required)
+- [ ] Canonicalize both run outputs into engine+backend-tagged CSVs (ac-008 — depends on ac-007)
+- [ ] Run `tools/compare_msu.py` and capture markdown report (ac-009 — depends on ac-008)
+- [ ] Run `tools/plot_msu_compare.py --include-cuda` and capture overlay SVG (ac-010 — depends on ac-008)
+- [ ] Verify all 4 invariants PASS (T_stage4 within 15 K, ρ_stage4 within 0.10 g/cm³, E within 15%, σ_flow within 0.2 GPa) (ac-009)
+- [x] Add `msu-pe-cuda-components-08-cuda-validation` entry to `.claude/specs/INDEX.md`
+- [ ] On full PASS: flip parent `msu-pe-validation.md` Phase I status checkmark and surface to user for final approval to mark parent `done` (parent-gate, awaits ac-009 outcome)
 
 ## Testing strategy
 

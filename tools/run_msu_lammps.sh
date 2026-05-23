@@ -16,14 +16,21 @@ set -euo pipefail
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [RANKS] [-- <extra lmp args>]
+Usage: $(basename "$0") [RANKS] [--mode cpu|gpu] [-- <extra lmp args>]
 
-  RANKS     MPI rank count (default: 8). Positional argument.
-  --        Forward subsequent args verbatim to lmp.
+  RANKS         MPI rank count (default: 8). Positional argument.
+  --mode cpu    CPU mode (default): no GPU-package args; lmp_cuda runs as
+                a plain MPI/OpenMP CPU build.
+  --mode gpu    GPU mode (msu-pe-cuda-components-08): adds
+                -pk gpu 1 -sf gpu to the lmp command line, wiring the
+                GPU-package style with one GPU per rank. Run directory
+                is tagged lammps_<RANKS>r_gpu_<TS>/ so the
+                canonicalize-msu-output backend-autodetect picks "cuda".
+  --            Forward subsequent args verbatim to lmp.
 
 Environment:
   OMP_NUM_THREADS, OMP_PROC_BIND, OMP_PLACES — propagated as-is.
-  LMP_BIN   — override LAMMPS binary (default: lmp_cuda, run in CPU mode).
+  LMP_BIN   — override LAMMPS binary (default: lmp_cuda).
 EOF
 }
 
@@ -32,12 +39,34 @@ if [[ "${1-}" == "--help" || "${1-}" == "-h" ]]; then
   exit 0
 fi
 
-RANKS="${1-8}"
-shift || true
-if [[ "${1-}" == "--" ]]; then
-  shift
-fi
+# Default mode is cpu; --mode {cpu,gpu} may appear before, between, or
+# after the RANKS positional (but before `--`).
+MODE="cpu"
+POSITIONAL=()
+while (( $# )); do
+  case "$1" in
+    --mode)
+      shift
+      MODE="${1-}"
+      if [[ "$MODE" != "cpu" && "$MODE" != "gpu" ]]; then
+        echo "error: --mode must be cpu or gpu, got: $MODE" >&2
+        usage >&2
+        exit 2
+      fi
+      shift || true
+      ;;
+    --)
+      shift
+      break
+      ;;
+    *)
+      POSITIONAL+=("$1")
+      shift
+      ;;
+  esac
+done
 EXTRA_ARGS=("$@")
+RANKS="${POSITIONAL[0]-8}"
 
 if ! [[ "$RANKS" =~ ^[0-9]+$ ]]; then
   echo "error: RANKS must be a positive integer, got: $RANKS" >&2
@@ -80,7 +109,14 @@ if ! command -v "$LMP" >/dev/null 2>&1; then
 fi
 
 TS="$(date +%Y%m%d_%H%M%S)"
-RUN_DIR="$REF_DIR/runs/lammps_${RANKS}r_${TS}"
+# In GPU mode, tag the run-dir name with `_gpu_` so
+# canonicalize_msu_output.py's --backend auto picks `cuda` from the path
+# (per msu-pe-cuda-components-08 § Design).
+if [[ "$MODE" == "gpu" ]]; then
+  RUN_DIR="$REF_DIR/runs/lammps_${RANKS}r_gpu_${TS}"
+else
+  RUN_DIR="$REF_DIR/runs/lammps_${RANKS}r_${TS}"
+fi
 mkdir -p "$RUN_DIR"
 
 cp "$INPUT" "$RUN_DIR/lammps.in"
@@ -88,6 +124,7 @@ cp "$DATA"  "$RUN_DIR/msu_pe.data"
 
 {
   echo "RANKS=$RANKS"
+  echo "MODE=$MODE"
   echo "LMP_BIN=$LMP"
   echo "OMP_NUM_THREADS=${OMP_NUM_THREADS-unset}"
   echo "OMP_PROC_BIND=${OMP_PROC_BIND-unset}"
@@ -96,6 +133,16 @@ cp "$DATA"  "$RUN_DIR/msu_pe.data"
   echo "host=$(uname -a)"
   echo "args=${EXTRA_ARGS[*]-(none)}"
 } > "$RUN_DIR/run_env.txt"
+
+# msu-pe-cuda-components-08 § Design: GPU-package args are prepended to
+# the lmp command line so they apply to every loaded fix / pair style
+# that has a /gpu variant. `-sf gpu` is the suffix flag (LAMMPS will try
+# the /gpu variant before the base style); `-pk gpu 1` tells the GPU
+# package to use one GPU per rank.
+MODE_ARGS=()
+if [[ "$MODE" == "gpu" ]]; then
+  MODE_ARGS=(-pk gpu 1 -sf gpu)
+fi
 
 LAUNCH=()
 if [[ "$RANKS" == "1" ]]; then
@@ -110,7 +157,7 @@ else
 fi
 
 START="$(date +%s.%N)"
-( cd "$RUN_DIR" && "${LAUNCH[@]}" "$LMP" -in lammps.in -log log.lammps "${EXTRA_ARGS[@]}" )
+( cd "$RUN_DIR" && "${LAUNCH[@]}" "$LMP" "${MODE_ARGS[@]}" -in lammps.in -log log.lammps "${EXTRA_ARGS[@]}" )
 END="$(date +%s.%N)"
 
 WALL="$(awk -v s="$START" -v e="$END" 'BEGIN { printf "%.3f", e - s }')"
@@ -123,8 +170,16 @@ WALL="$(awk -v s="$START" -v e="$END" 'BEGIN { printf "%.3f", e - s }')"
 # cp) audits the header / column order with the shared, tested converter
 # so LAMMPS and Atomiverse use one canonicalization path.
 CANON="$REPO_ROOT/tools/canonicalize_msu_output.py"
-THERMO_REF="$REF_DIR/thermo_lammps_${RANKS}r.csv"
-STRESS_REF="$REF_DIR/stress_strain_lammps_${RANKS}r.csv"
+# msu-pe-cuda-components-08: GPU runs emit backend-tagged canonical
+# names so the link-08 compare_msu.py can resolve them by stable path.
+# CPU runs keep the legacy untagged names for back-compat with link-01.
+if [[ "$MODE" == "gpu" ]]; then
+  THERMO_REF="$REF_DIR/thermo_lammps_cuda_${RANKS}r.csv"
+  STRESS_REF="$REF_DIR/stress_strain_lammps_cuda_${RANKS}r.csv"
+else
+  THERMO_REF="$REF_DIR/thermo_lammps_${RANKS}r.csv"
+  STRESS_REF="$REF_DIR/stress_strain_lammps_${RANKS}r.csv"
+fi
 if [[ -s "$RUN_DIR/thermo.lammps.csv" ]]; then
   python3 "$CANON" lammps thermo "$RUN_DIR/thermo.lammps.csv" "$THERMO_REF"
 fi
@@ -136,6 +191,7 @@ fi
 echo
 echo "[run_msu_lammps] complete"
 echo "  ranks      : $RANKS"
+echo "  mode       : $MODE"
 echo "  wall time  : ${WALL}s"
 echo "  run dir    : $RUN_DIR"
 echo "  env        : $RUN_DIR/run_env.txt"

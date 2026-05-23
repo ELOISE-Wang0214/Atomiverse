@@ -29,6 +29,7 @@ from canonicalize_msu_output import (  # noqa: E402
     STRESS_HEADER,
     CanonicalizeError,
     canonicalize,
+    infer_backend_from_path,
     main,
 )
 
@@ -372,3 +373,65 @@ def test_headers_are_the_canonical_schemas():
     assert THERMO_HEADER == ["step", "T", "P", "E_pot", "E_kin",
                              "Pxx", "Pyy", "Pzz"]
     assert STRESS_HEADER == ["strain", "sigma_xx"]
+
+
+# ── msu-pe-cuda-components-08 — --backend flag + filename suffix ─────────────
+
+
+def test_backend_autodetect_from_atomiverse_cuda_path():
+    """`--backend auto` on `runs/atomiverse_cuda_*` path infers `cuda`.
+
+    Per spec § Design: backend is inferred from the input path when not
+    explicit:
+      - `runs/atomiverse_cuda_*` → cuda
+      - `runs/lammps_*_gpu_*`    → cuda
+      - anything else            → cpu (back-compat default)
+    """
+    assert infer_backend_from_path(
+        "runs/atomiverse_cuda_1r_20260523/thermo.csv") == "cuda"
+    assert infer_backend_from_path(
+        "/abs/path/runs/atomiverse_cuda_8r_20260523_120000/"
+        "thermo.csv") == "cuda"
+    # LAMMPS GPU run dir convention.
+    assert infer_backend_from_path(
+        "runs/lammps_1r_gpu_20260523_120000/log.lammps") == "cuda"
+    # CPU fallback / back-compat: existing CPU-era paths without a backend
+    # tag map to `cpu` (no breaking change).
+    assert infer_backend_from_path(
+        "runs/atomiverse_1r_20260523_093004/thermo.csv") == "cpu"
+    assert infer_backend_from_path(
+        "runs/lammps_8r_20260523_120000/thermo.lammps.csv") == "cpu"
+
+
+def test_main_flag_form_emits_backend_tagged_filename(tmp_path):
+    """`canonicalize.py <in> --engine atomiverse --backend cuda --output-dir <d>`
+    writes `<d>/thermo_atomiverse_cuda_1r.csv` (filename has `_cuda` suffix)
+    and a `# engine=...,backend=cuda` metadata comment as the first line.
+
+    This is the new flag-based CLI form (the legacy positional
+    `<engine> <kind> <in> <out>` form is preserved by tests above).
+    """
+    src = tmp_path / "thermo.csv"
+    # Phase G.2+G.3 17-column extended schema (matches _atomiverse_thermo).
+    src.write_text(
+        "step,stage,T_target_K,T_K,P_bar,Pxx,Pyy,Pzz,E_pot_eV,E_pair_eV,"
+        "E_bond_eV,E_angle_eV,E_dihedral_eV,E_kin_eV,box_x,box_y,box_z\n"
+        "0,4,100.0,100.0,0.5,0.5,0.5,0.5,-1000.0,-400.0,-200.0,-250.0,"
+        "-150.0,60.0,30.0,30.0,30.0\n"
+    )
+    rc = main([
+        str(src),
+        "--engine", "atomiverse",
+        "--backend", "cuda",
+        "--output-dir", str(tmp_path),
+        "--runs", "1",
+    ])
+    assert rc == 0
+    out = tmp_path / "thermo_atomiverse_cuda_1r.csv"
+    assert out.exists(), "expected backend-tagged filename"
+    txt = out.read_text()
+    first_line = txt.splitlines()[0]
+    assert first_line.startswith("# engine=atomiverse"), first_line
+    assert "backend=cuda" in first_line, first_line
+    # Canonical header on line 2 (comments skipped).
+    assert "step,T,P,E_pot,E_kin,Pxx,Pyy,Pzz" in txt
