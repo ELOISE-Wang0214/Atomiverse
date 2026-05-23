@@ -407,8 +407,14 @@ double pressure_eV_per_A3(const cpu::Frame& f) {
     const double V = f.box(0, 0) * f.box(1, 1) * f.box(2, 2);
     if (V <= 0.0)
         return 0.0;
+    // LAMMPS `compute pressure`: P = (2·KE + virial_trace) / (3V).
+    // f.scalars.stress carries the pair+bonded virial; the kinetic part
+    // (trace = 2·KE) lives in f.scalars.stress_kinetic. Barostat /
+    // NoseHooverNPT already combine the two — this reporter must match.
     const double trace =
-        f.scalars.stress[0] + f.scalars.stress[1] + f.scalars.stress[2];
+        f.scalars.stress[0] + f.scalars.stress[1] + f.scalars.stress[2]
+        + f.scalars.stress_kinetic[0] + f.scalars.stress_kinetic[1]
+        + f.scalars.stress_kinetic[2];
     return trace / (3.0 * V);
 }
 
@@ -479,10 +485,16 @@ class CsvRecorder : public cpu::ComponentBase {
                 strain_ref_set_ = true;
             }
             const double V = f.box(0, 0) * f.box(1, 1) * f.box(2, 2);
-            // Tensile stress sigma_xx = -P_xx: f.scalars.stress carries the
-            // LAMMPS-standard +trace=compressive pressure convention, so
-            // negate for tensile-positive stress (LAMMPS deck reports -pxx).
-            const double sigma_xx = (V > 0.0) ? -f.scalars.stress[0] / V : 0.0;
+            // Tensile stress σ_xx = -P_xx with LAMMPS pressure convention
+            // P_αα = (kinetic_αα + virial_αα) / V. f.scalars.stress carries
+            // the pair+bonded virial; f.scalars.stress_kinetic the kinetic
+            // (Σ m·vα·vα). Both must be summed — omitting kinetic shifted
+            // σ_xx by ~+0.05 GPa at 100 K (≈ NkT/V per axis), enough to
+            // bias the small-strain elastic-modulus fit by several×.
+            const double sigma_xx =
+                (V > 0.0) ? -(f.scalars.stress[0]
+                              + f.scalars.stress_kinetic[0]) / V
+                          : 0.0;
             const double strain = f.box(0, 0) / box_x0_ - 1.0;
             (*stress_) << abs_step << "," << current_stage_ << "," << strain
                        << "," << sigma_xx << "," << (sigma_xx * kEvPerA3ToGPa)
