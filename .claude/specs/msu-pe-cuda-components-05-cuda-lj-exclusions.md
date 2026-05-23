@@ -1,6 +1,6 @@
 ---
 title: CUDA PairLJCut special-bonds 1-2/1-3/1-4 exclusions (chain link 5/8)
-status: approved
+status: code-complete
 created: 2026-05-23
 parent: msu-pe-validation.md (Phase G.8)
 chain: msu-pe-cuda-components-* (link 5/8)
@@ -58,15 +58,15 @@ Kernel 改造(`lj_force` in `lj_kernel.cuh` / `pair_lj_cut.cu`):
 
 ## Tasks
 
-- [ ] Write failing tests for cuda::PairLJCut special-bonds API and 4-atom-chain exclusion correctness (tests/cuda/potentials/test_pair_lj_special_bonds.cu)
-- [ ] Extend lj_force kernel signature with excl_offsets/excl_partners/s_excl parameters and per-pair binary-search masking (include/atomiverse/cuda/potentials/lj_kernel.cuh, src/cuda/potentials/pair_lj_cut.cu)
-- [ ] Implement set_special_bonds setter and validate allowed (s12,s13,s14) combinations on cuda::PairLJCut (include/atomiverse/cuda/potentials/pair_lj_cut.cuh, src/cuda/potentials/pair_lj_cut.cu)
-- [ ] Implement build() override that enumerates 1-2/1-3/1-4 partners from frame topology, sorts/dedups, and uploads CSR to device (src/cuda/potentials/pair_lj_cut.cu)
-- [ ] Implement destroy() override that frees device CSR and zero-init pointers (src/cuda/potentials/pair_lj_cut.cu)
-- [ ] Wire compute() to pass exclusion CSR through to lj_force and take nullptr fast path when n_excl_total_ == 0 (src/cuda/potentials/pair_lj_cut.cu)
-- [ ] Add doxygen for set_special_bonds, build, destroy with unit annotations and supported s-combination contract (include/atomiverse/cuda/potentials/pair_lj_cut.cuh)
-- [ ] Verify CUDA energy against CPU PairLJCut on the 4-atom chain (full-exclusion and no-exclusion configs) within 1e-5 eV (tests/cuda/potentials/test_pair_lj_special_bonds.cu)
-- [ ] Register test in tests/cuda/potentials/CMakeLists.txt and run full check + test suite
+- [x] Write failing tests for cuda::PairLJCut special-bonds API and 4-atom-chain exclusion correctness (tests/cuda/potentials/test_pair_lj_special_bonds.cu)
+- [x] Extend lj_force kernel signature with excl_offsets/excl_partners/s_excl parameters and per-pair binary-search masking (include/atomiverse/cuda/potentials/lj_kernel.cuh, src/cuda/potentials/pair_lj_cut.cu)
+- [x] Implement set_special_bonds setter and validate allowed (s12,s13,s14) combinations on cuda::PairLJCut (include/atomiverse/cuda/potentials/pair_lj_cut.cuh, src/cuda/potentials/pair_lj_cut.cu)
+- [x] Implement build() override that enumerates 1-2/1-3/1-4 partners from frame topology, sorts/dedups, and uploads CSR to device (src/cuda/potentials/pair_lj_cut.cu)
+- [x] Implement destroy() override that frees device CSR and zero-init pointers (src/cuda/potentials/pair_lj_cut.cu)
+- [x] Wire compute() to pass exclusion CSR through to lj_force and take nullptr fast path when n_excl_total_ == 0 (src/cuda/potentials/pair_lj_cut.cu)
+- [x] Add doxygen for set_special_bonds, build, destroy with unit annotations and supported s-combination contract (include/atomiverse/cuda/potentials/pair_lj_cut.cuh)
+- [x] Verify CUDA energy against CPU PairLJCut on the 4-atom chain (full-exclusion and no-exclusion configs) within 1e-5 eV (tests/cuda/potentials/test_pair_lj_special_bonds.cu)
+- [x] Register test in tests/cuda/potentials/CMakeLists.txt and run full check + test suite
 
 ## Testing strategy
 
