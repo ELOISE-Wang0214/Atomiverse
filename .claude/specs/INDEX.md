@@ -9,7 +9,6 @@
 - [msu-pe-phase-d-04-stress-strain](msu-pe-phase-d-04-stress-strain.md) — Phase D.4: stress-strain curve comparison (modulus, yield, hardening ±5%) + combined Phase D exit gate [in-progress: implemented; needs re-verify after msu-pe-align-02 realigns the benchmark]
 - [msu-pe-align-03-statistical-thermo](msu-pe-align-03-statistical-thermo.md) — replace D.2 per-step thermo parity with statistical block-average comparison (the Langevin stage 1 is stochastic) [code-complete: 7/8 verified; ac-008 needs the operator reference run]
 
-- [msu-pe-cuda-components-02-cuda-categorical-api](msu-pe-cuda-components-02-cuda-categorical-api.md) — chain 2/8: categorical setter API (`set_pair/set_bond/.../set_record/set_thermo`) + VirialStress auto-injection on cuda::md::MD (parent: msu-pe-validation Phase G.4) [approved]
 - [msu-pe-cuda-components-03-cuda-integrators-stage1](msu-pe-cuda-components-03-cuda-integrators-stage1.md) — chain 3/8: cuda::md::NVELimit + cuda::md::FixLangevin port for MSU PE stage 1 (parent: msu-pe-validation Phase G.5–G.6) [approved]
 - [msu-pe-cuda-components-04-cuda-nose-hoover-npt](msu-pe-cuda-components-04-cuda-nose-hoover-npt.md) — chain 4/8: cuda::md::NoseHooverNPT port (iso + aniso y/z) with LAMMPS-aligned mtk_term, drag, run-span ramp (parent: msu-pe-validation Phase G.7) [approved]
 - [msu-pe-cuda-components-05-cuda-lj-exclusions](msu-pe-cuda-components-05-cuda-lj-exclusions.md) — chain 5/8: cuda::PairLJCut special-bonds 1-2/1-3/1-4 exclusion CSR on device (parent: msu-pe-validation Phase G.8) [approved]
