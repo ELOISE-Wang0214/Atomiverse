@@ -170,6 +170,32 @@ class CellList {
     /// and would otherwise miss pair candidates after the box grows.
     double box_at_last_build_ = 0.0;
 
+    /// @brief Per-rebuild scratch state — promoted to member variables
+    /// to honour the "no allocation in `launch()`" component contract
+    /// (CLAUDE.md, Architecture / Component lifecycle).
+    ///
+    /// `refresh_half` / `refresh_full` were re-constructing
+    /// `std::vector<std::vector<std::pair<int,int>>> thread_pairs(n_threads)`
+    /// and per-thread `visited` vectors on every rebuild, producing
+    /// O(n_threads) heap allocations per neighbor-list refresh. On the
+    /// 288-thread aarch64 GH200 node a single rebuild leaked ~345
+    /// allocations into the MD hot path. Promoting both buffers to
+    /// members lets each rebuild clear the inner vectors (keeping
+    /// capacity) and reuse them. Both fields are `mutable` because the
+    /// rebuild functions are `const` views of the cell-list state.
+    mutable std::vector<std::vector<std::pair<int, int>>> thread_pairs_;
+    mutable std::vector<std::vector<int>> thread_visited_;
+
+    /// @brief Per-rebuild bin-scatter cursor: a `std::vector<int>` of
+    /// length `total_cells_` reused across `bin_atoms` calls. Sized
+    /// monotonically in `bin_atoms` itself; the contents are
+    /// overwritten from `cell_offset_` at the start of each call so
+    /// the per-cell scatter offsets stay in lockstep with the prefix
+    /// sum. Replaces the per-call `auto write_ptr = cell_offset_;`
+    /// xtensor copy that previously leaked one heap allocation per
+    /// neighbor-list rebuild into the MD hot loop.
+    std::vector<int> bin_write_ptr_;
+
     void compute_grid(const cpu::Frame& frame);
     void bin_atoms(const cpu::Frame& frame, int n_active);
     void build_stencil();

@@ -157,12 +157,20 @@ void CellList::bin_atoms(const cpu::Frame& frame, int n_active) {
     for (int c = 1; c < total_cells_; ++c)
         cell_offset_[c] = cell_offset_[c - 1] + cell_count_[c - 1];
 
-    // Scatter atoms into bins (use temporary write pointers)
-    auto write_ptr = cell_offset_; // copy
+    // Scatter atoms into bins. `bin_write_ptr_` is member state sized
+    // once in `compute_grid()` to match `cell_offset_`; copying through
+    // it avoids the per-call `auto write_ptr = cell_offset_;` xtensor
+    // allocation that otherwise leaks ~1 heap allocation into the MD
+    // hot loop per neighbor-list rebuild (violating CLAUDE.md's
+    // "no allocation in launch()" contract).
+    if (bin_write_ptr_.size() < static_cast<std::size_t>(total_cells_))
+        bin_write_ptr_.resize(static_cast<std::size_t>(total_cells_));
+    for (int c = 0; c < total_cells_; ++c)
+        bin_write_ptr_[c] = cell_offset_[c];
     for (int i = 0; i < n; ++i) {
         int c = atom_cell_[i];
-        binned_atoms_[write_ptr[c]] = i;
-        write_ptr[c]++;
+        binned_atoms_[bin_write_ptr_[c]] = i;
+        bin_write_ptr_[c]++;
     }
 }
 
@@ -284,7 +292,25 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
     // atoms). `firstneigh[i]` is the live cursor at function entry, so
     // consumers that later index `neighbors[firstneigh[i] + k]` see the
     // exact slot we wrote. Matches LAMMPS `NPairHalfBin::build`.
-    if (n_threads == 1) {
+    // Serial fast-path gate: when there are fewer atoms than threads,
+    // the multi-thread path's per-thread `my_pairs` buffer would either
+    // sit idle on most threads or grow from a tiny baseline on the few
+    // that get any work — both produce sporadic heap allocations that
+    // would otherwise be amortised out by capacity saturation. Falling
+    // back to serial on these small workloads keeps the hot loop
+    // allocation-free (CLAUDE.md "no allocation in launch()") and
+    // avoids paying OMP fork/join overhead that was already net-negative
+    // at this scale.
+    if (n_threads == 1 || n < n_threads) {
+        // Pre-reserve neighbors with a 32-per-atom heuristic so the
+        // first rebuild saturates capacity above any realistic per-atom
+        // half-list count (typical LJ + bonded chains: < 16/atom). After
+        // saturation, every subsequent rebuild's `push_back` is a
+        // pointer-bump store, honouring the "no allocation in launch()"
+        // contract.
+        const std::size_t want = static_cast<std::size_t>(n) * 32u;
+        if (result.neighbors.capacity() < want)
+            result.neighbors.reserve(want);
         result.neighbors.clear();
 
         const double* __restrict x_ptr = frame.atoms.x.data();
@@ -411,7 +437,24 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
     // fast path but keeps scaling on OMP ≥ 2. The old single-path
     // implementation paid this overhead even with OMP=1 — that cost is
     // what the serial branch above reclaims.
-    std::vector<std::vector<std::pair<int, int>>> thread_pairs(n_threads);
+    //
+    // `thread_pairs_` / `thread_visited_` are *member* state: grow them
+    // to the current OMP team size if needed, clear the inner vectors
+    // (capacity preserved), and reuse. This is the "no allocation in
+    // launch()" fix — the old code re-constructed n_threads vectors
+    // per rebuild, leaking O(n_threads) heap allocations into the MD
+    // hot path on every neighbor refresh.
+    if (static_cast<int>(thread_pairs_.size()) < n_threads)
+        thread_pairs_.resize(static_cast<std::size_t>(n_threads));
+    if (static_cast<int>(thread_visited_.size()) < n_threads)
+        thread_visited_.resize(static_cast<std::size_t>(n_threads));
+    for (auto& tp : thread_pairs_)
+        tp.clear();
+    for (auto& tv : thread_visited_) {
+        tv.clear();
+        if (tv.capacity() < 27u)
+            tv.reserve(27); // 27-cell stencil; lazy one-shot grow per thread.
+    }
     for (int i = 0; i < n; ++i)
         result.numneigh[i] = 0;
 
@@ -421,10 +464,8 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
 #ifdef _OPENMP
         tid = omp_get_thread_num();
 #endif
-        auto& my_pairs = thread_pairs[tid];
-
-        std::vector<int> visited;
-        visited.reserve(27);
+        auto& my_pairs = thread_pairs_[tid];
+        auto& visited = thread_visited_[tid];
 
 #pragma omp for schedule(dynamic)
         for (int i = 0; i < n; ++i) {
@@ -502,8 +543,11 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
         }
     }
 
-    for (auto& tp : thread_pairs)
-        for (auto& [i, j] : tp)
+    // Iterate only [0, n_threads) — `thread_pairs_` may be larger than
+    // the current team if a prior rebuild ran on a wider team; those
+    // extra slots are already cleared above but still skip them.
+    for (int t = 0; t < n_threads; ++t)
+        for (auto& [i, j] : thread_pairs_[t])
             result.numneigh[i]++;
 
     result.firstneigh[0] = 0;
@@ -516,8 +560,8 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
     result.neighbors.resize(static_cast<std::size_t>(result.total_pairs));
 
     auto write_ptr = result.firstneigh;
-    for (auto& tp : thread_pairs) {
-        for (auto& [i, j] : tp) {
+    for (int t = 0; t < n_threads; ++t) {
+        for (auto& [i, j] : thread_pairs_[t]) {
             result.neighbors[write_ptr[i]] = j;
             write_ptr[i]++;
         }
@@ -550,7 +594,20 @@ void CellList::refresh_full(const cpu::Frame& frame, int n_active,
     n_threads = omp_get_max_threads();
 #endif
 
-    std::vector<std::vector<std::pair<int, int>>> thread_pairs(n_threads);
+    // Member-state scratch reuse — same contract as the `refresh_half`
+    // version. See the long comment above for the "no allocation in
+    // launch()" rationale.
+    if (static_cast<int>(thread_pairs_.size()) < n_threads)
+        thread_pairs_.resize(static_cast<std::size_t>(n_threads));
+    if (static_cast<int>(thread_visited_.size()) < n_threads)
+        thread_visited_.resize(static_cast<std::size_t>(n_threads));
+    for (auto& tp : thread_pairs_)
+        tp.clear();
+    for (auto& tv : thread_visited_) {
+        tv.clear();
+        if (tv.capacity() < 27u)
+            tv.reserve(27);
+    }
 
 #pragma omp parallel
     {
@@ -558,10 +615,8 @@ void CellList::refresh_full(const cpu::Frame& frame, int n_active,
 #ifdef _OPENMP
         tid = omp_get_thread_num();
 #endif
-        auto& my_pairs = thread_pairs[tid];
-
-        std::vector<int> visited;
-        visited.reserve(27);
+        auto& my_pairs = thread_pairs_[tid];
+        auto& visited = thread_visited_[tid];
 
 #pragma omp for schedule(dynamic)
         for (int i = 0; i < n; ++i) {
@@ -639,8 +694,8 @@ void CellList::refresh_full(const cpu::Frame& frame, int n_active,
         }
     }
 
-    for (auto& tp : thread_pairs)
-        for (auto& [i, j] : tp)
+    for (int t = 0; t < n_threads; ++t)
+        for (auto& [i, j] : thread_pairs_[t])
             result.numneigh[i]++;
 
     result.firstneigh[0] = 0;
@@ -653,8 +708,8 @@ void CellList::refresh_full(const cpu::Frame& frame, int n_active,
     result.neighbors.resize(static_cast<std::size_t>(result.total_pairs));
 
     auto write_ptr = result.firstneigh;
-    for (auto& tp : thread_pairs) {
-        for (auto& [i, j] : tp) {
+    for (int t = 0; t < n_threads; ++t) {
+        for (auto& [i, j] : thread_pairs_[t]) {
             result.neighbors[write_ptr[i]] = j;
             write_ptr[i]++;
         }
