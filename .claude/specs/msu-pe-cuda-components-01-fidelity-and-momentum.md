@@ -83,15 +83,15 @@ notes: |
 
 ## Tasks
 
-- [ ] Write failing test for new SystemScalars per-term energy fields default-zero invariant (`tests/cpu/md/test_pe_thermo_schema.cpp`)
-- [ ] Add `energy_pair/energy_bond/energy_angle/energy_dihedral` to `include/atomiverse/core/system_scalars.h` and wire `ZeroEnergy` + 4 evaluators + `reduce.cpp` to write/clear/reduce them
-- [ ] Write failing test for `cuda::md::ZeroMomentum` zeroing COM linear momentum on a synthetic 1024-atom uniform-velocity device frame (`tests/cuda/md/test_zero_momentum.cu`)
-- [ ] Implement `cuda::md::ZeroMomentum` in `include/atomiverse/cuda/md/init.cuh` + `src/cuda/md/init.cu` (build/launch/destroy + device reduction + host-scalar broadcast subtract); add `using ZeroMomentum = ZeroLinearMomentum;` to `include/atomiverse/cpu/md/init.h`
-- [ ] Write failing test for benchmark thermo.csv schema: 16 columns including `Pxx/Pyy/Pzz` + 4 per-term energies, all finite, Pxx≠Pyy on a deliberately anisotropic stage-5 smoke run (`tests/cpu/md/test_pe_thermo_schema.cpp`)
-- [ ] Implement `pressure_per_axis_bar` and extend `CsvRecorder` header + row in `benchmarks/md/polyethylene_tension.cpp`; add `wire_zero_momentum` and call from stages 2/3/4
-- [ ] Update `tools/run_msu_atomiverse.sh` (remove G.2 TODO block) and `tools/canonicalize_msu_output.py` (transparent Pxx/Pyy/Pzz passthrough, drop awk replication, refresh docstring + pytest fixture)
-- [ ] Verify byte-faithful match against `benchmarks/md/reference/polyethylene/lammps.in` stages 2/3/4 thermo output: `fix momentum` present, `thermo_style custom` 8-column schema, energy decomposition columns positive-definite per-term where physics expects (E_bond ≥ 0, E_angle ≥ 0)
-- [ ] Run full check + test suite (`cmake --build build -j$(nproc)` + `ctest --test-dir build --output-on-failure`)
+- [x] Write failing test for new SystemScalars per-term energy fields default-zero invariant (`tests/cpu/md/test_pe_thermo_schema.cpp`)
+- [x] Add `energy_pair/energy_bond/energy_angle/energy_dihedral` to `include/atomiverse/core/system_scalars.h` and wire `ZeroEnergy` + 4 evaluators + `reduce.cpp` to write/clear/reduce them
+- [x] Write failing test for `cuda::md::ZeroMomentum` zeroing COM linear momentum on a synthetic 1024-atom uniform-velocity device frame (`tests/cuda/md/test_zero_momentum.cu`)
+- [x] Implement `cuda::md::ZeroMomentum` in `include/atomiverse/cuda/md/init.cuh` + `src/cuda/md/init.cu` (build/launch/destroy + device reduction + host-scalar broadcast subtract); add `using ZeroMomentum = ZeroLinearMomentum;` to `include/atomiverse/cpu/md/init.h`
+- [x] Write failing test for benchmark thermo.csv schema: 16 columns including `Pxx/Pyy/Pzz` + 4 per-term energies, all finite, Pxx≠Pyy on a deliberately anisotropic stage-5 smoke run (`tests/cpu/md/test_pe_thermo_schema.cpp`)
+- [x] Implement `pressure_per_axis_bar` and extend `CsvRecorder` header + row in `benchmarks/md/polyethylene_tension.cpp`; add `wire_zero_momentum` and call from stages 2/3/4
+- [x] Update `tools/run_msu_atomiverse.sh` (remove G.2 TODO block) and `tools/canonicalize_msu_output.py` (transparent Pxx/Pyy/Pzz passthrough, drop awk replication, refresh docstring + pytest fixture)
+- [x] Verify byte-faithful match against `benchmarks/md/reference/polyethylene/lammps.in` stages 2/3/4 thermo output: `fix momentum` present, `thermo_style custom` 8-column schema, energy decomposition columns positive-definite per-term where physics expects (E_bond ≥ 0, E_angle ≥ 0)
+- [x] Run full check + test suite (`cmake --build build -j$(nproc)` + `ctest --test-dir build --output-on-failure`)
 
 ## Testing strategy
 

@@ -93,6 +93,84 @@ class ZeroKinetic : public ComponentBase {
     void launch(const LaunchContext& ctx) override;
 };
 
+/// @brief Removes net linear COM momentum every `freq` steps.
+///
+/// CUDA sibling of `cpu::md::ZeroLinearMomentum` (`cpu::md::ZeroMomentum`
+/// alias). Mirrors LAMMPS `fix momentum N linear 1 1 1`
+/// (`velocity.cpp:738`): subtracts `P_cm / M_tot` from every atom's
+/// velocity so the net translational drift stays zero — required on
+/// stages 2/3/4 of the MSU PE protocol where Langevin + NPT coupling
+/// otherwise lets the COM walk away.
+///
+/// Auto-binds to `end_of_step @ +25` (same slot as the CPU sibling, so
+/// it runs after `KineticEnergy(-100)`, `NoseHooverNPT(-40)`, the
+/// integrator's `end_of_step`, and the recorder/thermo writers at
+/// `+20`, but before any user-added end_of_step observer that needs to
+/// see drift-corrected velocities).
+///
+/// Single-GPU scope (no multi-GPU sync). The 4-double D2H of
+/// `{Σ mv_x, Σ mv_y, Σ mv_z, Σ m}` at every active step is the
+/// dominant cost; for cheap operation use `freq > 1`. The host scalars
+/// are computed on the host stream synchronously and the subtract
+/// kernel re-launched on the compute stream — this is a deliberate
+/// host barrier and is excluded from the Phase H zero-sync recorder
+/// contract (integrity components are exempt).
+///
+/// @see cpu::md::ZeroLinearMomentum for the CPU reference implementation.
+/// @see .claude/specs/msu-pe-cuda-components-01-fidelity-and-momentum.md
+class ZeroMomentum : public ComponentBase {
+  public:
+    /// @brief Construct momentum-removal component.
+    /// @param freq Subtract every `freq` `end_of_step` invocations
+    ///        (LAMMPS default 1). `freq=0` is treated as 1.
+    explicit ZeroMomentum(int freq = 1)
+        : freq_(freq <= 0 ? 1 : freq) {}
+
+    /// @brief Component name.
+    /// @return "zero_momentum".
+    std::string name() const override { return "zero_momentum"; }
+
+    /// @brief Structural role — none. This is an integrity / drift-
+    ///        cancellation hook, not a loop slot
+    ///        (Thermostat / Integrator / …).
+    /// @return ComponentRole::None.
+    ComponentRole role() const override { return ComponentRole::None; }
+
+    /// @brief Default binding: `end_of_step @ +25` — after thermo/recorder
+    ///        writers (`+20`) and the integrator's `end_of_step` slot.
+    /// @return Single binding.
+    std::vector<DefaultBinding> default_bindings() const override {
+        return {{static_cast<int>(ATV::md::Phase::end_of_step), +25}};
+    }
+
+    /// @brief Allocate the 4 device scratch words `{px, py, pz, M_tot}`
+    ///        used to accumulate momentum + total mass each active step.
+    /// @param ctx Build context.
+    void build(const BuildContext& ctx) override;
+
+    /// @brief Compute COM momentum on the device, D2H copy, broadcast
+    ///        `v_cm = P_cm / M_tot` back as kernel args, subtract from
+    ///        every velocity. No-op when `step % freq != 0`.
+    /// @param ctx Launch context.
+    void launch(const LaunchContext& ctx) override;
+
+    /// @brief Free the device scratch buffer allocated in build().
+    /// @param ctx Destroy context.
+    void destroy(const DestroyContext& ctx) override;
+
+    /// @brief Removal frequency (LAMMPS `fix momentum N`).
+    /// @return Integer frequency (always >= 1).
+    int frequency_steps() const { return freq_; }
+
+  private:
+    int freq_;
+    long long step_ = 0;
+    // 4 contiguous work_t = {Σ mv_x, Σ mv_y, Σ mv_z, Σ m}. cudaMalloc'd
+    // in build(), zeroed in launch() before each accumulate, cudaFree'd
+    // in destroy().
+    void* d_scratch_ = nullptr; // work_t[4]
+};
+
 /// @brief Maxwell-Boltzmann velocity initialization (LAMMPS `velocity create`).
 ///
 /// Generates Gaussian-distributed velocities at the target temperature

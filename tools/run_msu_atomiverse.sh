@@ -139,13 +139,9 @@ fi
 # tools/canonicalize_msu_output.py so LAMMPS and Atomiverse use one tested
 # converter (no inline awk to drift).
 #
-# Phase G.2 TODO: the benchmark's thermo.csv carries an isotropic pressure
-# column only; the canonical schema's Pxx/Pyy/Pzz are filled with that
-# isotropic value as a stand-in. The real per-axis (Pxx/Pyy/Pzz) pressure
-# path is umbrella-phase msu-pe-validation.md Phase G.2 — until it lands,
-# downstream consumers of per-axis Atomiverse stress must treat these three
-# columns as an isotropic placeholder. canonicalize_msu_output.py preserves
-# this stand-in deliberately; do NOT "fix" it in this Phase-D.1 link.
+# Phase G.2 cleared (msu-pe-cuda-components-01): the benchmark now writes
+# real per-axis Pxx/Pyy/Pzz columns in its thermo.csv extended schema, so
+# the canonical passthrough reads them directly. No more isotropic stand-in.
 CANON="$REPO_ROOT/tools/canonicalize_msu_output.py"
 THERMO_REF="$REF_DIR/thermo_atomiverse_${RANKS}r.csv"
 STRESS_REF="$REF_DIR/stress_strain_atomiverse_${RANKS}r.csv"

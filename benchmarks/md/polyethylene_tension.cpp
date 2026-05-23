@@ -53,7 +53,11 @@
 ///   * `stage:<id>` -- run a single stage by 1-indexed id.
 ///
 /// Output (rank 0 only) under `--out-dir`:
-///   * `thermo.csv`: `step,stage,T_target_K,T_K,P_bar,E_pot_eV,E_kin_eV,box_x,box_y,box_z`
+///   * `thermo.csv`: 17-column extended schema (Phase G.2 + G.3,
+///     msu-pe-cuda-components-01) — `step,stage,T_target_K,T_K,P_bar,
+///     Pxx,Pyy,Pzz,E_pot_eV,E_pair_eV,E_bond_eV,E_angle_eV,E_dihedral_eV,
+///     E_kin_eV,box_x,box_y,box_z`. Pxx/Pyy/Pzz are genuine per-axis
+///     virials [bar]; the 4 per-term energies decompose E_pot_eV.
 ///   * `stress_strain.csv`: `step,stage,strain,sigma_xx_eV_per_A3,sigma_xx_GPa`
 ///   * `trajectory.xyz` (only with `--traj-every N`): plain-XYZ frames.
 ///   * `rdf.dat` (only with `--rdf RMAX,BINS[,STRIDE]`): radial g(r).
@@ -418,6 +422,27 @@ double pressure_eV_per_A3(const cpu::Frame& f) {
     return trace / (3.0 * V);
 }
 
+/// @brief Per-axis pressure tensor diagonal [bar], Voigt Pxx/Pyy/Pzz.
+///
+/// LAMMPS `compute pressure` (`compute_pressure.cpp:257`):
+/// `P_αα = (Σ_i m_i v_iα² + virial_αα) / V`. Same sign convention as
+/// `pressure_eV_per_A3` (positive ⇔ compressive). `f.scalars.stress`
+/// carries the pair+bonded virial diagonal; `f.scalars.stress_kinetic`
+/// carries Σ m·v_α². Reports in bar via `kEvPerA3ToBar`. Phase G.2
+/// reporter (msu-pe-cuda-components-01).
+void pressure_per_axis_bar(const cpu::Frame& f, double Pbar[3]) {
+    const double V = f.box(0, 0) * f.box(1, 1) * f.box(2, 2);
+    if (V <= 0.0) {
+        Pbar[0] = Pbar[1] = Pbar[2] = 0.0;
+        return;
+    }
+    for (int k = 0; k < 3; ++k) {
+        const double t_axis =
+            f.scalars.stress[k] + f.scalars.stress_kinetic[k];
+        Pbar[k] = (t_axis / V) * kEvPerA3ToBar;
+    }
+}
+
 /// @brief Inline observer: writes thermo + stress-strain CSV every step.
 ///
 /// Bound to `end_of_step @ +20` -- after `ReduceEnergy(-50)` and the
@@ -473,13 +498,28 @@ class CsvRecorder : public cpu::ComponentBase {
         const auto& f = ctx.frame;
         const double T = temperature_K(f.scalars.kinetic, n_dof_);
         const double P_bar = pressure_eV_per_A3(f) * kEvPerA3ToBar;
+        double Pbar[3];
+        pressure_per_axis_bar(f, Pbar);
         const int abs_step = current_step_offset_ + ctx.step;
         if (thermo_ && thermo_->is_open()) {
+            // Phase G.2 + G.3 extended schema (msu-pe-cuda-components-01):
+            //   step,stage,T_target_K,T_K,P_bar,
+            //   Pxx,Pyy,Pzz,
+            //   E_pot_eV,E_pair_eV,E_bond_eV,E_angle_eV,E_dihedral_eV,E_kin_eV,
+            //   box_x,box_y,box_z
+            // Pxx/Pyy/Pzz [bar] are genuine per-axis virials, not the
+            // old isotropic-P stand-in. The 4 per-term energies decompose
+            // f.scalars.energy by evaluator family (LAMMPS thermo_style
+            // epair/ebond/eangle/edihed equivalent).
             (*thermo_) << abs_step << "," << current_stage_ << ","
                        << current_T_target_ << "," << T << "," << P_bar << ","
-                       << f.scalars.energy << "," << f.scalars.kinetic << ","
-                       << f.box(0, 0) << "," << f.box(1, 1) << ","
-                       << f.box(2, 2) << "\n";
+                       << Pbar[0] << "," << Pbar[1] << "," << Pbar[2] << ","
+                       << f.scalars.energy << "," << f.scalars.energy_pair
+                       << "," << f.scalars.energy_bond << ","
+                       << f.scalars.energy_angle << ","
+                       << f.scalars.energy_dihedral << ","
+                       << f.scalars.kinetic << "," << f.box(0, 0) << ","
+                       << f.box(1, 1) << "," << f.box(2, 2) << "\n";
         }
         if (record_strain_ && stress_ && stress_->is_open()) {
             // Snapshot the engineering-strain reference at the first
@@ -694,8 +734,13 @@ int main(int argc, char** argv) {
         thermo_csv.open(a.out_dir + "/thermo.csv");
         stress_csv.open(a.out_dir + "/stress_strain.csv");
         if (thermo_csv.is_open()) {
-            thermo_csv << "step,stage,T_target_K,T_K,P_bar,E_pot_eV,E_kin_eV,"
-                          "box_x,box_y,box_z\n";
+            // Phase G.2 + G.3 17-column extended schema
+            // (msu-pe-cuda-components-01). Pxx/Pyy/Pzz are real per-axis
+            // virials; 4 per-term energies decompose E_pot.
+            thermo_csv
+                << "step,stage,T_target_K,T_K,P_bar,Pxx,Pyy,Pzz,E_pot_eV,"
+                   "E_pair_eV,E_bond_eV,E_angle_eV,E_dihedral_eV,E_kin_eV,"
+                   "box_x,box_y,box_z\n";
         }
         if (stress_csv.is_open()) {
             stress_csv << "step,stage,strain,sigma_xx_eV_per_A3,sigma_xx_GPa\n";
@@ -797,8 +842,14 @@ int main(int argc, char** argv) {
                                     .tau_P = a.tau_P,
                                     .dt = a.dt_stage2,
                                     .drag = 2.0}};
+        // LAMMPS `fix momentum 1 linear 1 1 1`: zero net COM drift each
+        // step under NPT + Langevin coupling (Phase G.1). Per-stage stack
+        // lvalue — modulo counter starts fresh at each stage; freq=1 so
+        // the counter doesn't matter for correctness.
+        cpu::md::ZeroMomentum zm{1};
         cpu::md::MD sim;
         sim.set_integrator(npt);
+        sim.add(zm);
         wire_shared(sim, shared);
         rec.begin_stage(2, a.T_hot, /*record_strain=*/false);
         sim.build();
@@ -829,8 +880,11 @@ int main(int argc, char** argv) {
         // step counter at 0, so the ramp delta sweeps 0 -> 1 over the
         // stage exactly as LAMMPS `update->beginstep / endstep`.
         npt.set_run_span(0, std::max(0, steps - 1));
+        // LAMMPS `fix momentum 1 linear 1 1 1` (Phase G.1).
+        cpu::md::ZeroMomentum zm{1};
         cpu::md::MD sim;
         sim.set_integrator(npt);
+        sim.add(zm);
         wire_shared(sim, shared);
         rec.begin_stage(3, a.T_cold, /*record_strain=*/false);
         sim.build();
@@ -851,8 +905,11 @@ int main(int argc, char** argv) {
                                     .tau_P = a.tau_P,
                                     .dt = a.dt_stage4,
                                     .drag = 2.0}};
+        // LAMMPS `fix momentum 1 linear 1 1 1` (Phase G.1).
+        cpu::md::ZeroMomentum zm{1};
         cpu::md::MD sim;
         sim.set_integrator(npt);
+        sim.add(zm);
         wire_shared(sim, shared);
         rec.begin_stage(4, a.T_cold, /*record_strain=*/false);
         sim.build();

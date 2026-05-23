@@ -27,7 +27,7 @@ Engine / kind matrix
 * ``atomiverse thermo`` — the benchmark's ``thermo.csv`` is remapped exactly as
   the inline ``awk`` in ``tools/run_msu_atomiverse.sh`` did: ``$1,$4,$5,$6,$7``
   become ``step,T,P,E_pot,E_kin`` and the isotropic ``P`` ($5) is replicated
-  into ``Pxx/Pyy/Pzz``. That replication is a Phase G.2 stand-in (real per-axis
+  into ``Pxx/Pyy/Pzz``. (Pre msu-pe-cuda-components-01: Phase G.2 stand-in. Real per-axis
   pressure is an umbrella-phase fix) and is preserved verbatim here.
 * ``atomiverse stress-strain`` — the benchmark's ``stress_strain.csv`` is
   remapped as the inline ``awk`` did: ``$3 → strain``, ``$5 → sigma_xx``.
@@ -229,15 +229,23 @@ def _lammps_thermo(path):
 def _atomiverse_thermo(path):
     """``atomiverse thermo``: benchmark ``thermo.csv`` → canonical 8 columns.
 
-    Reproduces the inline ``awk`` of ``tools/run_msu_atomiverse.sh``:
-    ``$1,$4,$5,$6,$7`` map to ``step,T,P,E_pot,E_kin`` and the isotropic ``P``
-    ($5) is replicated into ``Pxx/Pyy/Pzz``. That replication is a Phase G.2
-    stand-in (real per-axis pressure is an umbrella-phase fix) — preserved here
-    intentionally, do not "fix" it in this link.
+    Reads the Phase G.2 + G.3 17-column extended schema produced by
+    ``benchmarks/md/polyethylene_tension.cpp``::
+
+        step,stage,T_target_K,T_K,P_bar,Pxx,Pyy,Pzz,E_pot_eV,E_pair_eV,
+        E_bond_eV,E_angle_eV,E_dihedral_eV,E_kin_eV,box_x,box_y,box_z
+
+    and emits the canonical 8-column schema ``step,T,P,E_pot,E_kin,Pxx,Pyy,Pzz``
+    by passthrough — no more isotropic-P replication into Pxx/Pyy/Pzz (that
+    was the Phase G.2 stand-in, retired by msu-pe-cuda-components-01).
+    The 4 per-term energy columns (E_pair / E_bond / E_angle / E_dihedral)
+    are read by the benchmark output but not propagated to the canonical
+    schema in this link; downstream consumers that need the decomposition
+    read the raw thermo.csv directly.
     """
     header = None
     rows = []
-    min_cols = 7  # awk guard: NF >= 7
+    min_cols = 14  # need at least up to E_kin_eV (column index 13)
     for lineno, raw in _iter_data_lines(path):
         fields = _split_csv(raw)
         if header is None:
@@ -248,10 +256,15 @@ def _atomiverse_thermo(path):
                 "malformed atomiverse thermo row at line {}: expected at least "
                 "{} columns, got {} -- {!r}".format(
                     lineno, min_cols, len(fields), raw.strip()))
-        step, t, p, e_pot, e_kin = (
-            fields[0], fields[3], fields[4], fields[5], fields[6])
-        # Pxx/Pyy/Pzz filled with isotropic P -- Phase G.2 stand-in.
-        rows.append([step, t, p, e_pot, e_kin, p, p, p])
+        step = fields[0]
+        t = fields[3]       # T_K
+        p = fields[4]       # P_bar
+        pxx = fields[5]     # Pxx (real per-axis virial, bar)
+        pyy = fields[6]     # Pyy
+        pzz = fields[7]     # Pzz
+        e_pot = fields[8]   # E_pot_eV
+        e_kin = fields[13]  # E_kin_eV
+        rows.append([step, t, p, e_pot, e_kin, pxx, pyy, pzz])
     return THERMO_HEADER, rows
 
 

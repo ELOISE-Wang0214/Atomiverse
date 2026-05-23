@@ -87,6 +87,16 @@ class ZeroLinearMomentum : public cpu::ComponentBase {
     long long step_ = 0;
 };
 
+/// @brief Cross-backend alias of `ZeroLinearMomentum` (chain-friendly name).
+///
+/// The umbrella spec `msu-pe-cuda-components-*` uses the shorter
+/// `ZeroMomentum` name on both CPU and CUDA; the CPU class keeps its
+/// historical `ZeroLinearMomentum` name to avoid an ABI break on
+/// downstream callers, with this alias bridging the two so chain code
+/// can write `cpu::md::ZeroMomentum{1}` symmetrically with the CUDA
+/// sibling `cuda::md::ZeroMomentum{1}`.
+using ZeroMomentum = ZeroLinearMomentum;
+
 /// @brief Velocity-draw distribution for `InitVelocity` (LAMMPS `dist`).
 ///
 /// Mirrors LAMMPS `velocity create ... dist` (`velocity.cpp:38`,

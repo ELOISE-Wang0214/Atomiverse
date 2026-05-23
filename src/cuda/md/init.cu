@@ -175,6 +175,85 @@ void InitVelocity::launch(const LaunchContext& /*ctx*/) {
     // No-op: velocities initialized once in build().
 }
 
+// ── ZeroMomentum ────────────────────────────────────────────────────
+//
+// CUDA sibling of `cpu::md::ZeroLinearMomentum`. Drops the net COM
+// linear momentum every `freq` `end_of_step` invocations. Same kernels
+// as `InitVelocity::build`'s helpers (`accumulate_momentum`,
+// `remove_com` in the anonymous namespace above) — they are file-local
+// reductions reused here for the same `Σ m v_α + Σ m → broadcast v_cm
+// → subtract` flow.
+
+void ZeroMomentum::build(const BuildContext& /*ctx*/) {
+    // 4 contiguous work_t = {Σ mv_x, Σ mv_y, Σ mv_z, Σ m}. One alloc per
+    // component instance; preserved across launches.
+    work_t* scratch = nullptr;
+    cudaMalloc(&scratch, 4 * sizeof(work_t));
+    d_scratch_ = scratch;
+}
+
+void ZeroMomentum::launch(const LaunchContext& ctx) {
+    // Frequency gate matches `cpu::md::ZeroLinearMomentum`: skip every
+    // step that is not a multiple of `freq_`. step counter is local so
+    // a shared lvalue ZeroMomentum can be re-registered into successive
+    // per-stage drivers without the gate getting confused by out-of-band
+    // step indices.
+    if (step_++ % freq_ != 0)
+        return;
+
+    auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
+    auto& frame = ctx.frame;
+    int n = frame.n_atoms();
+    if (n <= 0)
+        return;
+
+    int block = cuda::kDefaultBlock;
+    int grid = cuda::grid_size(n);
+    auto* scratch = static_cast<work_t*>(d_scratch_);
+    work_t* d_px = scratch + 0;
+    work_t* d_py = scratch + 1;
+    work_t* d_pz = scratch + 2;
+    work_t* d_M = scratch + 3;
+
+    // 1. Zero the 4 accumulator words on the compute stream.
+    cudaMemsetAsync(scratch, 0, 4 * sizeof(work_t), stream);
+
+    // 2. Σ_i m_i v_i (3 axes) + Σ_i m_i via atomicAdd. Reusing the
+    //    same kernel as InitVelocity::build (anonymous-namespace helper
+    //    declared earlier in this file).
+    accumulate_momentum<<<grid, block, 0, stream>>>(
+        frame.atoms.vx, frame.atoms.vy, frame.atoms.vz, frame.atoms.mass, d_px,
+        d_py, d_pz, d_M, frame.atoms.d_size);
+
+    // 3. Synchronous D2H copy of the 4-word scratch: integrity
+    //    components are exempt from the Phase H zero-sync recorder
+    //    contract (link 7 design). For multi-rank operation a single-
+    //    GPU range (umbrella scope decision §1) means no MPI_Allreduce
+    //    is needed; the device-local sums are already the global sums.
+    cudaStreamSynchronize(stream);
+    work_t h[4] = {0, 0, 0, 0};
+    cudaMemcpy(h, scratch, 4 * sizeof(work_t), cudaMemcpyDeviceToHost);
+    work_t M = h[3];
+    if (!(M > work_t(0)))
+        return;
+
+    work_t vcm_x = h[0] / M;
+    work_t vcm_y = h[1] / M;
+    work_t vcm_z = h[2] / M;
+
+    // 4. Broadcast v_cm back as kernel args and subtract.
+    remove_com<<<grid, block, 0, stream>>>(frame.atoms.vx, frame.atoms.vy,
+                                           frame.atoms.vz, vcm_x, vcm_y, vcm_z,
+                                           frame.atoms.d_size);
+}
+
+void ZeroMomentum::destroy(const DestroyContext& /*ctx*/) {
+    if (d_scratch_) {
+        cudaFree(d_scratch_);
+        d_scratch_ = nullptr;
+    }
+}
+
 } // namespace md
 } // namespace cuda
 } // namespace ATV

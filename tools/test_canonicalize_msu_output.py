@@ -164,21 +164,48 @@ def test_lammps_thermo_rejects_non_canonical_header(tmp_path):
 
 
 def test_atomiverse_thermo_maps_benchmark_columns(tmp_path):
-    """Mirror run_msu_atomiverse.sh's awk: $1,$4,$5,$6,$7 and Pxx/Pyy/Pzz=$5."""
+    """Map the Phase G.2 + G.3 17-column extended schema to canonical 8 cols.
+
+    Input columns: step,stage,T_target_K,T_K,P_bar,Pxx,Pyy,Pzz,E_pot_eV,
+    E_pair_eV,E_bond_eV,E_angle_eV,E_dihedral_eV,E_kin_eV,box_x,box_y,box_z
+    → canonical: step,T,P,E_pot,E_kin,Pxx,Pyy,Pzz.
+    """
     src = tmp_path / "thermo.csv"
-    # benchmark schema: step,time,?,T,P,E_pot,E_kin (>=7 columns).
     src.write_text(
-        "step,time,col3,T,P,E_pot,E_kin\n"
-        "0,0.0,x,500.0,2.5,-900.0,310.0\n"
-        "100,50.0,y,498.0,2.1,-905.0,315.0\n"
+        "step,stage,T_target_K,T_K,P_bar,Pxx,Pyy,Pzz,E_pot_eV,E_pair_eV,"
+        "E_bond_eV,E_angle_eV,E_dihedral_eV,E_kin_eV,box_x,box_y,box_z\n"
+        "0,2,500.0,500.0,2.5,2.5,2.5,2.5,-900.0,-300.0,-200.0,-250.0,-150.0,"
+        "310.0,30.0,30.0,30.0\n"
+        "100,2,500.0,498.0,2.1,2.1,2.1,2.1,-905.0,-303.0,-201.0,-251.0,"
+        "-150.0,315.0,29.9,30.0,30.1\n"
     )
     out = tmp_path / "thermo_canon.csv"
     canonicalize("atomiverse", "thermo", str(src), str(out))
     rows = _lines(str(out))
     assert rows[0] == "step,T,P,E_pot,E_kin,Pxx,Pyy,Pzz"
-    # P (col5 = 2.5) is replicated into Pxx/Pyy/Pzz — Phase G.2 stand-in.
+    # Genuine per-axis Pxx/Pyy/Pzz passthrough; E_pot from col 8, E_kin from
+    # col 13 in the extended 17-col input schema.
     assert rows[1] == "0,500.0,2.5,-900.0,310.0,2.5,2.5,2.5"
     assert rows[2] == "100,498.0,2.1,-905.0,315.0,2.1,2.1,2.1"
+
+
+def test_atomiverse_thermo_passes_through_distinct_pxx_pyy_pzz(tmp_path):
+    """Phase G.2 retirement (msu-pe-cuda-components-01 ac-008): Pxx ≠ Pyy ≠ Pzz
+    round-trips unchanged through the canonicalizer — no more isotropic-P
+    replication."""
+    src = tmp_path / "thermo.csv"
+    src.write_text(
+        "step,stage,T_target_K,T_K,P_bar,Pxx,Pyy,Pzz,E_pot_eV,E_pair_eV,"
+        "E_bond_eV,E_angle_eV,E_dihedral_eV,E_kin_eV,box_x,box_y,box_z\n"
+        # P_bar = (Pxx+Pyy+Pzz)/3 numerically, but the three Pα are distinct.
+        "0,5,100.0,100.0,0.5,1.2,0.3,0.0,-1000.0,-400.0,-200.0,-250.0,"
+        "-150.0,60.0,30.0,30.0,30.0\n"
+    )
+    out = tmp_path / "thermo_canon.csv"
+    canonicalize("atomiverse", "thermo", str(src), str(out))
+    rows = _lines(str(out))
+    assert rows[0] == "step,T,P,E_pot,E_kin,Pxx,Pyy,Pzz"
+    assert rows[1] == "0,100.0,0.5,-1000.0,60.0,1.2,0.3,0.0"
 
 
 # ── atomiverse stress-strain — benchmark stress_strain.csv → strain,sigma_xx ─
@@ -223,7 +250,10 @@ def test_comment_only_lammps_stress_strain_emits_header_only(tmp_path):
 def test_header_only_atomiverse_thermo_emits_header_only(tmp_path):
     """An atomiverse thermo with only its header yields a header-only CSV."""
     src = tmp_path / "thermo.csv"
-    src.write_text("step,time,col3,T,P,E_pot,E_kin\n")
+    src.write_text(
+        "step,stage,T_target_K,T_K,P_bar,Pxx,Pyy,Pzz,E_pot_eV,E_pair_eV,"
+        "E_bond_eV,E_angle_eV,E_dihedral_eV,E_kin_eV,box_x,box_y,box_z\n"
+    )
     out = tmp_path / "out.csv"
     canonicalize("atomiverse", "thermo", str(src), str(out))
     assert _lines(str(out)) == ["step,T,P,E_pot,E_kin,Pxx,Pyy,Pzz"]
@@ -249,9 +279,13 @@ def test_malformed_lammps_stress_strain_row_fails_loudly(tmp_path):
 
 def test_malformed_atomiverse_thermo_row_fails_loudly(tmp_path):
     src = tmp_path / "bad.csv"
+    # Schema requires >= 14 columns (up through E_kin_eV at index 13);
+    # the second row has only 2.
     src.write_text(
-        "step,time,col3,T,P,E_pot,E_kin\n"
-        "0,0.0,x,500.0,2.5,-900.0,310.0\n"
+        "step,stage,T_target_K,T_K,P_bar,Pxx,Pyy,Pzz,E_pot_eV,E_pair_eV,"
+        "E_bond_eV,E_angle_eV,E_dihedral_eV,E_kin_eV,box_x,box_y,box_z\n"
+        "0,2,500.0,500.0,2.5,2.5,2.5,2.5,-900.0,-300.0,-200.0,-250.0,-150.0,"
+        "310.0,30.0,30.0,30.0\n"
         "100,50.0\n"  # too few columns
     )
     out = tmp_path / "out.csv"
