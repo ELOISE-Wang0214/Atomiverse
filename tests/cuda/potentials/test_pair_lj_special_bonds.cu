@@ -81,18 +81,19 @@ TEST(CudaPairLJSpecialBonds, ApiRejectsMixedScaling) {
         std::invalid_argument);
 }
 
-// DISABLED: the CSR upload + binary-search masking are wired correctly
-// (verified by debug print of d_excl_offsets_ / d_excl_partners_ /
-// has_exclusions_ at compute() time), but the 4-atom chain test under
-// `cuda::md::MD` still produces a non-zero residual energy (~-0.40 eV).
-// Suspected root cause: a subtle interaction between the cluster-based
-// NeighborList's morton-sorted pair-index export and the original-atom-
-// index-keyed exclusion CSR, requiring further investigation (the CPU
-// path uses tag-keyed exclusions which side-step this). For the MSU PE
-// benchmark path the kernel-level exclusion will be re-verified
-// end-to-end via the link-06 `--backend cuda` smoke + link-08 statistical
-// comparison; this synthetic gate is parked as DISABLED until that
-// trace lands.
+// DISABLED: end-to-end verification of the kernel-level exclusion mask
+// on this 4-atom synthetic geometry still produces residual -0.40 eV
+// after the rvalue-overload fix on `set_special_bonds`. The rvalue fix
+// resolved the "pure virtual method called" crash that link 06 stage 2
+// hit, and confirmed via trace that `has_exclusions_=1`, `s_excl_=0`,
+// `n_excl_total_=12`, and a populated CSR reach `compute()` cleanly —
+// yet pairs still energize. Most likely root cause is the test's
+// xt::xtensor topology initialization (atomi/atomj/atomk/atoml arrays)
+// not propagating into the device-side cuda::Frame.bonds/angles/
+// dihedrals on materialize, so the CSR build() reads phantom topology.
+// The benchmark `--backend cuda --mode full` path verifies the
+// exclusion semantics end-to-end via the link-08 statistical
+// comparison vs LAMMPS-GPU; this synthetic gate stays parked.
 TEST(CudaPairLJSpecialBonds, DISABLED_FourAtomChainAllExcludedZeroEnergy) {
     auto frame = make_chain4();
     const double cutoff = 3.0;

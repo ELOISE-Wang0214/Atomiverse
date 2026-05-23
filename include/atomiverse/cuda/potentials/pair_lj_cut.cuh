@@ -50,7 +50,18 @@ class PairLJCut : public Pair {
     /// @param s13 Scale for 1-3 (across-angle) pairs.
     /// @param s14 Scale for 1-4 (across-dihedral) pairs.
     /// @return `*this`, chainable.
-    PairLJCut& set_special_bonds(double s12, double s13, double s14);
+    ///
+    /// @note Two ref-qualified overloads (mirrors `cpu::PairLJCut`): the
+    /// lvalue form returns `PairLJCut&` for `obj.set_special_bonds(…)`
+    /// usage; the rvalue form returns `PairLJCut` BY VALUE so a chained
+    /// `cuda::PairLJCut{…}.set_special_bonds(…)` expression yields an
+    /// rvalue (not a dangling lvalue reference to a temporary). Passing
+    /// the latter into `sim.set_pair(…)` moves the configured component
+    /// into the driver's `unique_ptr`, instead of storing a dangling
+    /// `&temporary` that would later trigger a "pure virtual method
+    /// called" abort when the driver invokes `compute()` / `build()`.
+    PairLJCut& set_special_bonds(double s12, double s13, double s14) &;
+    PairLJCut set_special_bonds(double s12, double s13, double s14) &&;
 
     void build(const BuildContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;

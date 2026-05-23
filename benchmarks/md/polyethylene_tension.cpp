@@ -1087,9 +1087,22 @@ int main(int argc, char** argv) {
     // ── Dispatch: CUDA pipeline (chain link 06) or CPU stages below ──
     if (a.backend == Backend::cuda) {
 #ifdef ATV_BUILD_CUDA
-        if (my_rank == 0)
-            run_cuda_pipeline(a, frame, thermo_csv, stress_csv, n_global_dof,
-                              box_x0, a.quiet);
+        if (my_rank == 0) {
+            try {
+                run_cuda_pipeline(a, frame, thermo_csv, stress_csv,
+                                  n_global_dof, box_x0, a.quiet);
+            } catch (const std::exception& e) {
+                std::fprintf(stderr,
+                             "polyethylene_tension: CUDA pipeline threw: %s\n",
+                             e.what());
+                return 3;
+            } catch (...) {
+                std::fprintf(stderr,
+                             "polyethylene_tension: CUDA pipeline threw "
+                             "unknown exception\n");
+                return 3;
+            }
+        }
 #else
         std::fprintf(stderr,
                      "polyethylene_tension: --backend cuda not compiled in. "

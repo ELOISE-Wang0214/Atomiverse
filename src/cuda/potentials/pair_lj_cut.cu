@@ -128,7 +128,8 @@ PairLJCut::PairLJCut(double epsilon, double sigma, double cutoff)
     v_shift_ = kernels::lj_shift(epsilon, sigma, cutoff);
 }
 
-PairLJCut& PairLJCut::set_special_bonds(double s12, double s13, double s14) {
+PairLJCut& PairLJCut::set_special_bonds(double s12, double s13,
+                                        double s14) & {
     // Supported combinations: all equal (incl. (0,0,0)) or all 1.0.
     if (s12 == 1.0 && s13 == 1.0 && s14 == 1.0) {
         s12_ = s13_ = s14_ = 1.0;
@@ -146,6 +147,16 @@ PairLJCut& PairLJCut::set_special_bonds(double s12, double s13, double s14) {
     s_excl_ = s12;
     has_exclusions_ = true; // exclusions enumerated at build()
     return *this;
+}
+
+PairLJCut PairLJCut::set_special_bonds(double s12, double s13,
+                                       double s14) && {
+    // Rvalue overload: delegate to the lvalue body, then move-return so
+    // the chained `cuda::PairLJCut{…}.set_special_bonds(…)` expression
+    // yields a movable rvalue (not a dangling lvalue reference to a
+    // temporary). cf. `cpu::PairLJCut::set_special_bonds(…) &&`.
+    this->set_special_bonds(s12, s13, s14);
+    return std::move(*this);
 }
 
 void PairLJCut::build(const BuildContext& ctx) {
