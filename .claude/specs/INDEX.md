@@ -9,7 +9,6 @@
 - [msu-pe-phase-d-04-stress-strain](msu-pe-phase-d-04-stress-strain.md) — Phase D.4: stress-strain curve comparison (modulus, yield, hardening ±5%) + combined Phase D exit gate [in-progress: implemented; needs re-verify after msu-pe-align-02 realigns the benchmark]
 - [msu-pe-align-03-statistical-thermo](msu-pe-align-03-statistical-thermo.md) — replace D.2 per-step thermo parity with statistical block-average comparison (the Langevin stage 1 is stochastic) [code-complete: 7/8 verified; ac-008 needs the operator reference run]
 
-- [msu-pe-cuda-components-04-cuda-nose-hoover-npt](msu-pe-cuda-components-04-cuda-nose-hoover-npt.md) — chain 4/8: cuda::md::NoseHooverNPT port (iso + aniso y/z) with LAMMPS-aligned mtk_term, drag, run-span ramp (parent: msu-pe-validation Phase G.7) [approved]
 - [msu-pe-cuda-components-05-cuda-lj-exclusions](msu-pe-cuda-components-05-cuda-lj-exclusions.md) — chain 5/8: cuda::PairLJCut special-bonds 1-2/1-3/1-4 exclusion CSR on device (parent: msu-pe-validation Phase G.8) [approved]
 - [msu-pe-cuda-components-06-cuda-benchmark-path](msu-pe-cuda-components-06-cuda-benchmark-path.md) — chain 6/8: `--backend {cpu|cuda}` dual-backend path through polyethylene_tension benchmark + CudaCsvRecorder (parent: msu-pe-validation Phase G.9) [approved]
 - [msu-pe-cuda-components-07-async-correctness](msu-pe-cuda-components-07-async-correctness.md) — chain 7/8: cuda::AsyncRecordBase + hot-path cudaStreamSynchronize == 0 guard + 25× recorder-frequency wall-clock < 5% (parent: msu-pe-validation Phase H.1–H.3) [approved]
