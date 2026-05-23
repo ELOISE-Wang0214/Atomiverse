@@ -399,18 +399,17 @@ void NoseHooverNPT::nhc_baro_half(double half_dt) {
 ///
 /// with `P_α` the (possibly averaged) axis pressure.
 ///
-/// **MTK kinetic coupling.** LAMMPS `mtk_term1 = (Σ_{α active} 2·KE_α)
-/// / (pdim·N)` — the per-axis kinetic energies summed over the active
-/// axes. Atomiverse splits the global KE isotropically (`KE_α = KE/3`,
-/// the same split used for the pressure term's kinetic diagonal), so
-/// `Σ_{α active} 2·KE_α = pdim·(2·KE/3)` and the `pdim` cancels:
-/// `mtk_term1 = 2·KE/(3·N)` independent of `pdim`. The Atomiverse term
-/// `mtk_term = 3·mtk_term1` is therefore the legacy `(6/N_dof)·KE` for
-/// **every** coupling — no `pdim` scaling — which keeps the all-coupled
-/// path bit-identical to the pre-change isotropic integrator and keeps
-/// the partial-coupling Trotter split symplectic (an earlier `3/pdim`
-/// scaling over-drove the barostat and broke MTK-Hamiltonian
-/// conservation for `pdim < 3`).
+/// **MTK kinetic coupling.** LAMMPS-exact: `mtk_term1 = Σ_{α active}
+/// 2·KE_α / (pdim·N)` using *actual* per-axis kinetic energies
+/// (`fix_nh.cpp:2541-2551`). AV uses `W = 3·omega_mass` and
+/// `G_ε = 3·f_omega`, so the equation-of-motion's MTK contribution is
+/// `mtk_term = 3·mtk_term1 = 6·Σ_{α active} KE_α / (pdim·N)`. For
+/// `pdim=3` with equipartitioned per-axis KE this reduces to the
+/// legacy `2·KE/N` (the historical isotropic integrator stays
+/// bit-identical at equipartition). For `pdim<3` it uses the genuine
+/// anisotropic kinetic split so the barostat tracks LAMMPS — required
+/// for runs with mixed barostatted/free axes (e.g. y/z-coupled NPT
+/// with x driven by an external `Deform`).
 void NoseHooverNPT::update_eps_dot(const cpu::LaunchContext& ctx,
                                    double half_dt) {
     const auto& f = ctx.frame;
@@ -449,11 +448,26 @@ void NoseHooverNPT::update_eps_dot(const cpu::LaunchContext& ctx,
         diag[0] = diag[1] = diag[2] = ave;
     }
 
-    // MTK kinetic coupling. With the per-axis KE summed over active axes
-    // the `pdim` cancels (see the function-doc derivation), so this is
-    // the legacy `(6/N_dof)·KE` for every coupling.
+    // MTK kinetic coupling — LAMMPS-exact (`fix_nh.cpp:2541-2551`):
+    //   mtk_term1 = Σ_{α active} 2·KE_α / (pdim·N)
+    // AV uses W = 3·omega_mass and G_eps = 3·f_omega, so its mtk_term
+    // in the per-axis G_eps drive is 3·mtk_term1 =
+    //   6·Σ_{α active} KE_α / (pdim·N).
+    // The kinetic contribution uses the *actual* per-axis ke_axis[α]
+    // (the same per-axis split used in the diagonal above), not an
+    // equipartitioned KE/3 — required to match LAMMPS for pdim<3
+    // (e.g. stage-5 y/z-coupled tension). For pdim=3 with isotropic
+    // KE this reduces to the legacy 2·KE/N.
+    double mtk_active_ke = 0.0;
+    for (int a = 0; a < 3; ++a)
+        if (couple_axis_[a])
+            mtk_active_ke += ke_axis[a];
+    const int N_atoms = (n_dof_ + 3) / 3;
     const double mtk_term =
-        (pdim_ > 0) ? (6.0 / static_cast<double>(n_dof_)) * KE_global_ : 0.0;
+        (pdim_ > 0)
+            ? 6.0 * mtk_active_ke
+                  / (static_cast<double>(pdim_) * N_atoms)
+            : 0.0;
 
     for (int a = 0; a < 3; ++a) {
         if (!couple_axis_[a])
@@ -474,28 +488,29 @@ void NoseHooverNPT::update_eps_dot(const cpu::LaunchContext& ctx,
 /// `ε̇_α == 0`) still receives the global `mtk_term2` coupling — exactly
 /// LAMMPS, where `mtk_term2` is added to every component's factor.
 ///
-/// `mtk_term2 = (Σ_active ε̇)/N_dof`. For the all-coupled case
-/// `Σ_active ε̇ = 3·ε̇`, so `mtk_term2 = (3/N_dof)·ε̇` and the per-axis
-/// factor collapses to the legacy `exp(-(1+3/N_dof)·ε̇·dt/2)`
-/// bit-for-bit (ac-004).
-///
-/// The `1/N_dof` (no `1/pdim`) is what keeps the per-axis split
-/// symplectic: `scale_v_by_baro` removes `2·mtk_term2·KE` from the atom
-/// KE, which must equal the MTK term the barostat absorbs across its
-/// `pdim` active axes (`pdim·mtk/3`); that balance fixes
-/// `mtk_term2 = (Σ_active ε̇)/N_dof`. An earlier `(3/N_dof)/pdim` form
-/// over-removed atom KE for `pdim < 3` and drifted the MTK Hamiltonian.
+/// LAMMPS-exact: `mtk_term2 = Σ_{α active} ω̇ / (pdim·N)`
+/// (`fix_nh.cpp:2564-2569`). For `pdim=3` with `Σ_active ε̇ = 3·ε̇` this
+/// reduces to `ε̇/N`, and combined with `n_dof ≈ 3N` the per-axis
+/// factor matches the legacy `exp(-(1+3/N_dof)·ε̇·dt/2)` at
+/// equipartition. For `pdim<3` it follows LAMMPS exactly, restoring
+/// anisotropic-NPT alignment under partial coupling.
 void NoseHooverNPT::scale_v_by_baro(const cpu::LaunchContext& ctx,
                                     double half_dt) {
     auto& f = ctx.frame;
     const int n = owned_count(ctx);
 
-    // MTK velocity-coupling term — global, applied to all 3 components.
+    // MTK velocity-coupling term — LAMMPS-exact (`fix_nh.cpp:2564-2569`):
+    //   mtk_term2 = Σ_{α active} ω̇ / (pdim·N).
     double sum_eps_dot = 0.0;
     for (int a = 0; a < 3; ++a)
         if (couple_axis_[a])
             sum_eps_dot += eps_dot_[a];
-    const double mtk_term2 = sum_eps_dot / static_cast<double>(n_dof_);
+    const int N_atoms = (n_dof_ + 3) / 3;
+    const double mtk_term2 =
+        (pdim_ > 0)
+            ? sum_eps_dot
+                  / (static_cast<double>(pdim_) * N_atoms)
+            : 0.0;
 
     const double sx = std::exp(-(eps_dot_[0] + mtk_term2) * half_dt);
     const double sy = std::exp(-(eps_dot_[1] + mtk_term2) * half_dt);
