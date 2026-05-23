@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 
 #include "atomiverse/cpu/frame.h"
+#include "atomiverse/cuda/evaluate.cuh"
 #include "atomiverse/cuda/md/md.cuh"
 #include "atomiverse/cuda/md/velocity_verlet.cuh"
 #include "atomiverse/cuda/neighbor_list.cuh"
@@ -29,10 +30,12 @@ TEST(HarmonicBond, DimerAtEquilibrium) {
     frame.bonds.atomj = xt::xtensor<int, 1>({1});
     frame.bonds.type = xt::xtensor<int, 1>({0});
 
-    cuda::md::MD sim;
-    sim.on(md::Phase::force).add(cuda::HarmonicBond{{350.0}, {1.53}});
+    // Single-pass force evaluation -> use cuda::Evaluate (no Integrator
+    // required, unlike cuda::md::MD which validates one in build()).
+    cuda::Evaluate sim;
+    sim.on(evaluate::Phase::evaluate).add(cuda::HarmonicBond{{350.0}, {1.53}});
     sim.build();
-    sim.run(frame, 1);
+    sim.run(frame);
 
     EXPECT_NEAR(frame.scalars.energy, 0.0, 1e-10);
     EXPECT_NEAR(frame.atoms.fx[0], 0.0, 1e-10);
@@ -55,10 +58,10 @@ TEST(HarmonicBond, DimerDisplaced) {
 
     double K = 350.0, r0 = 1.53;
 
-    cuda::md::MD sim;
-    sim.on(md::Phase::force).add(cuda::HarmonicBond{{K}, {r0}});
+    cuda::Evaluate sim;
+    sim.on(evaluate::Phase::evaluate).add(cuda::HarmonicBond{{K}, {r0}});
     sim.build();
-    sim.run(frame, 1);
+    sim.run(frame);
 
     double expected_V = K * (r - r0) * (r - r0);
     EXPECT_NEAR(frame.scalars.energy, expected_V, 1e-6);
@@ -92,10 +95,10 @@ TEST(HarmonicAngle, AtEquilibrium) {
     frame.angles.atomk = xt::xtensor<int, 1>({2});
     frame.angles.type = xt::xtensor<int, 1>({0});
 
-    cuda::md::MD sim;
-    sim.on(md::Phase::force).add(cuda::HarmonicAngle{{60.0}, {theta0_deg}});
+    cuda::Evaluate sim;
+    sim.on(evaluate::Phase::evaluate).add(cuda::HarmonicAngle{{60.0}, {theta0_deg}});
     sim.build();
-    sim.run(frame, 1);
+    sim.run(frame);
 
     EXPECT_NEAR(frame.scalars.energy, 0.0, 1e-6);
 }
@@ -124,10 +127,10 @@ TEST(MultiHarmonicDihedral, TransConformation) {
 
     std::array<double, 5> C = {1.73, -4.49, 0.776, 6.99, 0.0};
 
-    cuda::md::MD sim;
-    sim.on(md::Phase::force).add(cuda::MultiHarmonicDihedral{{C}});
+    cuda::Evaluate sim;
+    sim.on(evaluate::Phase::evaluate).add(cuda::MultiHarmonicDihedral{{C}});
     sim.build();
-    sim.run(frame, 1);
+    sim.run(frame);
 
     // Energy should be finite
     EXPECT_TRUE(std::isfinite(frame.scalars.energy));
