@@ -66,12 +66,19 @@ __global__ void apply_langevin(
                              / (damp * dt * kMvv2e);
     work_t gfactor2 = sqrt(gfactor2_inside) / kFtm2v;
 
-    // Per-atom (seed, step, tag)-keyed RNG. Mix into a single 64-bit
-    // counter and run 3 splitmix steps for 3 Gaussian pairs (need 3
-    // gaussians per atom for x/y/z; Box-Muller gives them in pairs so
-    // we draw 2 pairs and use 3 of the 4 outputs).
+    // Per-atom (seed, step, tag)-keyed RNG. Multiply the global tag by
+    // a large odd prime BEFORE adding it to the (seed+step) base — same
+    // pattern as cpu::md::FixLangevin's `GaussStream`. The naive
+    // `base ^ (tag + magic)` keying fails because (atom_i, step_j) and
+    // (atom_j, step_i) collide whenever `i ^ j` produces the same bit
+    // pattern via small-carry symmetry, dramatically reducing the
+    // unique RNG-stream count and leaving the ensemble net-correlated
+    // (system heats up instead of thermalising). The multiplication by
+    // 0xD6E8FEB86659FD93 spreads adjacent tags by ~2^63 distance in
+    // key-space; combined with step in `base_seed` (low 32 bits) the
+    // (tag, step) → key map is collision-free.
     std::uint64_t t = static_cast<std::uint64_t>(tag[i]);
-    std::uint64_t k = base_seed ^ (t + 0xD2B74407B1CE6E93ull);
+    std::uint64_t k = base_seed + t * 0xD6E8FEB86659FD93ull;
     std::uint64_t h1 = splitmix64(k);
     std::uint64_t h2 = splitmix64(h1);
     std::uint64_t h3 = splitmix64(h2);
@@ -114,11 +121,18 @@ void FixLangevin::launch(const LaunchContext& ctx) {
     int block = cuda::kDefaultBlock;
     int grid = cuda::grid_size(n);
 
-    // Per-step seed: mix the 32-bit user seed with the step counter so
-    // each step draws a fresh stream. The kernel then mixes in
-    // `tag[i]` per atom (see splitmix in the kernel).
-    std::uint64_t base_seed = (static_cast<std::uint64_t>(seed_) << 32)
-                              ^ static_cast<std::uint64_t>(ctx.step);
+    // Per-step seed: mix the 32-bit user seed with the step counter via
+    // PRIME multiplication (matches cpu::md::FixLangevin). The previous
+    // `(seed << 32) ^ step` keying caused consecutive steps' base_seed
+    // to differ by only ~1 bit, which left a small but DEFINITE positive
+    // autocorrelation in the per-step Gaussian stream after splitmix.
+    // Over many steps the cross-terms compounded into the no-drag
+    // accumulating-variance test, producing T_eq ≈ 4× target. CPU keying
+    // gives ~2^60 separation between consecutive steps' base, so splitmix
+    // avalanches into a fully independent stream.
+    std::uint64_t base_seed =
+        static_cast<std::uint64_t>(seed_) * 0x9E3779B97F4A7C15ULL
+        + static_cast<std::uint64_t>(ctx.step) * 0xBF58476D1CE4E5B9ULL;
 
     apply_langevin<<<grid, block, 0, stream>>>(
         frame.atoms.vx, frame.atoms.vy, frame.atoms.vz, frame.atoms.fx,

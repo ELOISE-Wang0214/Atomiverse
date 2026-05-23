@@ -95,8 +95,12 @@ TEST(HarmonicAngle, AtEquilibrium) {
     frame.angles.atomk = xt::xtensor<int, 1>({2});
     frame.angles.type = xt::xtensor<int, 1>({0});
 
+    // AngleHarmonic API contract: theta0 is in RADIANS, matching the CPU
+    // sibling (cpu::HarmonicAngle uses theta0_[type] directly in
+    // `theta - theta0_[type]`) and the polyethylene_tension benchmark
+    // (passes `109.5° · π/180`). Pass `theta0` in radians here.
     cuda::Evaluate sim;
-    sim.on(evaluate::Phase::evaluate).add(cuda::HarmonicAngle{{60.0}, {theta0_deg}});
+    sim.on(evaluate::Phase::evaluate).add(cuda::HarmonicAngle{{60.0}, {theta0}});
     sim.build();
     sim.run(frame);
 

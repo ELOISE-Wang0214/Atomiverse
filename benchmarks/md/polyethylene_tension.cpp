@@ -201,13 +201,31 @@ struct Args {
     double dt_stage5 = 1.0;       ///< [fs] -- lammps.in `timestep 1`
     double tau_T = 100.0;         ///< [fs]
     double tau_P = 1000.0;        ///< [fs]
-    double langevin_damp = 100.0; ///< [fs] stage-1 Langevin damp
+    double langevin_damp = 10.0;  ///< [fs] stage-1 Langevin damp — matches
+                                  ///  lammps.in `fix langevin 500 500 10`.
+                                  ///  Was 100.0 (a weak-coupling default that
+                                  ///  doesn't match the reference). At T=500
+                                  ///  with NVELimit and 10000 atoms with
+                                  ///  initial LJ overlap, damp=100 left the
+                                  ///  Langevin too weak to absorb the
+                                  ///  repulsive transient and stage 1 blew
+                                  ///  up. damp=10 matches the LAMMPS GPU
+                                  ///  reference both numerically (Pearson
+                                  ///  block-average gate) and in stability.
     double strain_rate =
         1e-5; ///< 1/fs (stage 5) -- lammps.in `fix deform x erate 1e-5`
     std::string out_dir = ".";
     bool quiet = false;
     int traj_every = 0;   ///< trajectory XYZ stride (0 = off)
     std::string rdf_spec; ///< "RMAX,BINS[,STRIDE]" (empty = off)
+    // ── Diagnostic flags: disable individual force kernels (CUDA path
+    //    only) to isolate which kernel breaks energy conservation under
+    //    pure NVE. Always-off in production.
+    bool disable_lj = false;
+    bool disable_bond = false;
+    bool disable_angle = false;
+    bool disable_dihedral = false;
+    bool disable_langevin = false;
 };
 
 void print_help() {
@@ -234,9 +252,13 @@ void print_help() {
         "  --tau-T fs                  Thermostat time constant (default "
         "100).\n"
         "  --tau-P fs                  Barostat time constant (default 1000).\n"
-        "  --langevin-damp fs          Stage-1 Langevin damp (default 100).\n"
+        "  --langevin-damp fs          Stage-1 Langevin damp (default 10, "
+        "matches LAMMPS).\n"
         "  --strain-rate /fs           Engineering strain rate stage 5 "
         "(default 1e-5).\n"
+        "  --disable-{lj|bond|angle|dihedral|langevin}\n"
+        "                              Diagnostic: drop the named force /\n"
+        "                              thermostat term from the CUDA stack.\n"
         "  --out-dir DIR               Where to write CSV outputs (default "
         "'.').\n"
         "  --data PATH                 Load this LAMMPS data file as the\n"
@@ -358,6 +380,26 @@ bool parse_args(int argc, char** argv, Args& a) {
             continue;
         if (std::strcmp(s, "--quiet") == 0) {
             a.quiet = true;
+            continue;
+        }
+        if (std::strcmp(s, "--disable-lj") == 0) {
+            a.disable_lj = true;
+            continue;
+        }
+        if (std::strcmp(s, "--disable-bond") == 0) {
+            a.disable_bond = true;
+            continue;
+        }
+        if (std::strcmp(s, "--disable-angle") == 0) {
+            a.disable_angle = true;
+            continue;
+        }
+        if (std::strcmp(s, "--disable-dihedral") == 0) {
+            a.disable_dihedral = true;
+            continue;
+        }
+        if (std::strcmp(s, "--disable-langevin") == 0) {
+            a.disable_langevin = true;
             continue;
         }
         if (std::strcmp(s, "--help") == 0) {
@@ -936,31 +978,59 @@ void run_cuda_pipeline(const Args& a, cpu::Frame& frame,
         rec.begin_stage(1, a.T_hot, /*record_strain=*/false);
         cuda::md::MD sim;
         sim.set_neighbor(cuda::NeighborList{kLjCutoff});
-        sim.set_pair(cuda::PairLJCut{lj_eps_eV(), kLjSigma, kLjCutoff}
-                         .set_special_bonds(0.0, 0.0, 0.0));
-        sim.set_bond(cuda::BondHarmonic{{bond_k_eV()}, {kBondR0}});
-        sim.set_angle(cuda::AngleHarmonic{{angle_k_eV()}, {kAngleTheta0}});
-        sim.set_dihedral(cuda::DihedralMultiHarmonic{cuda_Cn});
+        if (!a.disable_lj)
+            sim.set_pair(cuda::PairLJCut{lj_eps_eV(), kLjSigma, kLjCutoff}
+                             .set_special_bonds(0.0, 0.0, 0.0));
+        if (!a.disable_bond)
+            sim.set_bond(cuda::BondHarmonic{{bond_k_eV()}, {kBondR0}});
+        if (!a.disable_angle)
+            sim.set_angle(cuda::AngleHarmonic{{angle_k_eV()}, {kAngleTheta0}});
+        if (!a.disable_dihedral)
+            sim.set_dihedral(cuda::DihedralMultiHarmonic{cuda_Cn});
         sim.set_integrator(cuda::md::NVELimit{a.dt_stage1, 0.05});
-        sim.add(cuda::md::InitVelocity{a.T_hot,
+        if (!std::getenv("ATV_NO_INITVEL"))
+            sim.add(cuda::md::InitVelocity{a.T_hot,
                                        static_cast<unsigned long long>(a.seed)});
-        sim.set_thermostat(cuda::md::FixLangevin{
-            a.T_hot, a.T_hot, a.langevin_damp, a.dt_stage1,
-            static_cast<std::uint32_t>(a.seed + 1)});
+        if (!a.disable_langevin)
+            sim.set_thermostat(cuda::md::FixLangevin{
+                a.T_hot, a.T_hot, a.langevin_damp, a.dt_stage1,
+                static_cast<std::uint32_t>(a.seed + 1)});
         sim.add(rec);  // uses default_bindings: end_of_step @ +20
         sim.build();
         sim.run(frame, steps);
+        // DIAG: dump per-atom forces right after stage 1 step `steps`.
+        // For step-0 comparison with LAMMPS, run with `--scale 0.0001`
+        // (1 step). The frame is now host-synced (DynamicsDriver retrieves
+        // on every run()), so the host-side fx/fy/fz hold device forces
+        // from the LAST evaluated step.
+        if (std::getenv("ATV_DUMP_FORCES")) {
+            FILE* fp = std::fopen("/tmp/cuda_forces.dump", "w");
+            std::fprintf(fp, "ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n%d\n"
+                             "ITEM: BOX BOUNDS pp pp pp\n0 1\n0 1\n0 1\n"
+                             "ITEM: ATOMS id fx fy fz\n",
+                         frame.atoms.size());
+            for (int i = 0; i < frame.atoms.size(); ++i)
+                std::fprintf(fp, "%lld %.10e %.10e %.10e\n",
+                             (long long)(frame.atoms.tag[i] + 1),
+                             frame.atoms.fx[i], frame.atoms.fy[i],
+                             frame.atoms.fz[i]);
+            std::fclose(fp);
+        }
     }
 
     // Helper to build a per-stage NPT driver with the shared FF.
     auto wire_npt_stage = [&](cuda::md::MD& sim,
                               cuda::md::NoseHooverNPT& npt) {
         sim.set_neighbor(cuda::NeighborList{kLjCutoff});
-        sim.set_pair(cuda::PairLJCut{lj_eps_eV(), kLjSigma, kLjCutoff}
-                         .set_special_bonds(0.0, 0.0, 0.0));
-        sim.set_bond(cuda::BondHarmonic{{bond_k_eV()}, {kBondR0}});
-        sim.set_angle(cuda::AngleHarmonic{{angle_k_eV()}, {kAngleTheta0}});
-        sim.set_dihedral(cuda::DihedralMultiHarmonic{cuda_Cn});
+        if (!a.disable_lj)
+            sim.set_pair(cuda::PairLJCut{lj_eps_eV(), kLjSigma, kLjCutoff}
+                             .set_special_bonds(0.0, 0.0, 0.0));
+        if (!a.disable_bond)
+            sim.set_bond(cuda::BondHarmonic{{bond_k_eV()}, {kBondR0}});
+        if (!a.disable_angle)
+            sim.set_angle(cuda::AngleHarmonic{{angle_k_eV()}, {kAngleTheta0}});
+        if (!a.disable_dihedral)
+            sim.set_dihedral(cuda::DihedralMultiHarmonic{cuda_Cn});
         sim.set_integrator(npt);
         sim.add(rec);  // uses default_bindings: end_of_step @ +20
     };
@@ -976,7 +1046,7 @@ void run_cuda_pipeline(const Args& a, cpu::Frame& frame,
         rec.begin_stage(2, a.T_hot, /*record_strain=*/false);
         cuda::md::NoseHooverNPT::Config cfg{
             .T_target = a.T_hot, .tau_T = a.tau_T, .P_target = 0.0,
-            .tau_P = a.tau_P, .dt = a.dt_stage2, .drag = 2.0};
+            .tau_P = a.tau_P, .dt = a.dt_stage2, .drag = 2.0};  // LAMMPS `drag 2`
         cuda::md::MD sim;
         cuda::md::NoseHooverNPT npt{cfg};
         wire_npt_stage(sim, npt);

@@ -31,53 +31,77 @@ __global__ void multi_harmonic_dihedral_k(
     const real_t* __restrict__ x, const real_t* __restrict__ y,
     const real_t* __restrict__ z, real_t* __restrict__ fx,
     real_t* __restrict__ fy, real_t* __restrict__ fz,
-    prec_t* __restrict__ energy, const int* __restrict__ di,
+    prec_t* __restrict__ energy, prec_t* __restrict__ stress,
+    const int* __restrict__ di,
     const int* __restrict__ dj, const int* __restrict__ dk,
     const int* __restrict__ dl, const int* __restrict__ dt,
     const work_t* __restrict__ C, // [n_types * 5]
     const prec_t* __restrict__ box, int n_dihed) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= n_dihed)
-        return;
 
-    int i = di[idx], j = dj[idx], k = dk[idx], l = dl[idx];
-    int type = dt[idx];
-    const work_t* Cn = &C[type * 5];
+    // See bond_harmonic.cu for the rationale: early-returning out-of-range
+    // threads (or degenerate-geometry threads) before the shared-memory
+    // reduction leaves their `sdata[threadIdx.x]` slots UNINITIALISED,
+    // which makes the block-wide energy/virial sums add garbage. Stage 1
+    // saw E_pot ~20× the LAMMPS value; stage 2 NPT saw barostat blowup
+    // from the same garbage written into stress[]. Gate all the per-
+    // dihedral work on an `active` flag instead.
+    work_t v = work_t(0);
+    work_t my_v[6] = {work_t(0), work_t(0), work_t(0),
+                      work_t(0), work_t(0), work_t(0)};
+    bool active = (idx < n_dihed);
 
-    // Vectors along the backbone
-    work_t b1x = x[j] - x[i], b1y = y[j] - y[i], b1z = z[j] - z[i];
-    work_t b2x = x[k] - x[j], b2y = y[k] - y[j], b2z = z[k] - z[j];
-    work_t b3x = x[l] - x[k], b3y = y[l] - y[k], b3z = z[l] - z[k];
+    // Predeclare locals used by the active branch — referenced from the
+    // virial accumulation block at the bottom of the active section.
+    work_t b1x = 0, b1y = 0, b1z = 0;
+    work_t b2x = 0, b2y = 0, b2z = 0;
+    work_t b3x = 0, b3y = 0, b3z = 0;
 
-    // Minimum image
-    work_t bx = box[0], by = box[4], bz = box[8];
-    b1x -= bx * round(b1x / bx);
-    b1y -= by * round(b1y / by);
-    b1z -= bz * round(b1z / bz);
-    b2x -= bx * round(b2x / bx);
-    b2y -= by * round(b2y / by);
-    b2z -= bz * round(b2z / bz);
-    b3x -= bx * round(b3x / bx);
-    b3y -= by * round(b3y / by);
-    b3z -= bz * round(b3z / bz);
+    if (active) {
+        int i = di[idx], j = dj[idx], k = dk[idx], l = dl[idx];
+        int type = dt[idx];
+        const work_t* Cn = &C[type * 5];
 
-    // Normal vectors: n1 = b1 × b2, n2 = b2 × b3
-    work_t n1x = b1y * b2z - b1z * b2y;
-    work_t n1y = b1z * b2x - b1x * b2z;
-    work_t n1z = b1x * b2y - b1y * b2x;
+        // Vectors along the backbone
+        b1x = x[j] - x[i]; b1y = y[j] - y[i]; b1z = z[j] - z[i];
+        b2x = x[k] - x[j]; b2y = y[k] - y[j]; b2z = z[k] - z[j];
+        b3x = x[l] - x[k]; b3y = y[l] - y[k]; b3z = z[l] - z[k];
 
-    work_t n2x = b2y * b3z - b2z * b3y;
-    work_t n2y = b2z * b3x - b2x * b3z;
-    work_t n2z = b2x * b3y - b2y * b3x;
+        // Minimum image
+        work_t bx = box[0], by = box[4], bz = box[8];
+        b1x -= bx * round(b1x / bx);
+        b1y -= by * round(b1y / by);
+        b1z -= bz * round(b1z / bz);
+        b2x -= bx * round(b2x / bx);
+        b2y -= by * round(b2y / by);
+        b2z -= bz * round(b2z / bz);
+        b3x -= bx * round(b3x / bx);
+        b3y -= by * round(b3y / by);
+        b3z -= bz * round(b3z / bz);
 
-    work_t n1_len = sqrt(n1x * n1x + n1y * n1y + n1z * n1z);
-    work_t n2_len = sqrt(n2x * n2x + n2y * n2y + n2z * n2z);
-    constexpr work_t kVecEpsilon = work_t(1e-10);
-    if (n1_len < kVecEpsilon || n2_len < kVecEpsilon)
-        return;
+        // Normal vectors: n1 = b1 × b2, n2 = b2 × b3
+        work_t n1x = b1y * b2z - b1z * b2y;
+        work_t n1y = b1z * b2x - b1x * b2z;
+        work_t n1z = b1x * b2y - b1y * b2x;
 
-    work_t n1_inv = work_t(1) / n1_len;
-    work_t n2_inv = work_t(1) / n2_len;
+        work_t n2x = b2y * b3z - b2z * b3y;
+        work_t n2y = b2z * b3x - b2x * b3z;
+        work_t n2z = b2x * b3y - b2y * b3x;
+
+        work_t n1_len = sqrt(n1x * n1x + n1y * n1y + n1z * n1z);
+        work_t n2_len = sqrt(n2x * n2x + n2y * n2y + n2z * n2z);
+        constexpr work_t kVecEpsilon = work_t(1e-10);
+        if (n1_len < kVecEpsilon || n2_len < kVecEpsilon) {
+            // Degenerate geometry — skip this dihedral's force/energy
+            // contribution but stay in the kernel so we participate in
+            // the block reductions below with v=my_v=0.
+            active = false;
+        }
+
+        if (active) {
+
+        work_t n1_inv = work_t(1) / n1_len;
+        work_t n2_inv = work_t(1) / n2_len;
     n1x *= n1_inv;
     n1y *= n1_inv;
     n1z *= n1_inv;
@@ -88,64 +112,87 @@ __global__ void multi_harmonic_dihedral_k(
     work_t cos_phi = n1x * n2x + n1y * n2y + n1z * n2z;
     cos_phi = fmin(fmax(cos_phi, work_t(-1)), work_t(1));
 
-    // V = Σ C_n cos^n(φ)
+    // V = Σ C_n cos^n(φ) — straight Horner-form polynomial in cos_phi.
+    // dV/d(cos φ) = Σ n·C_n cos^(n-1).
     work_t cp = cos_phi;
-    work_t v = Cn[0] + Cn[1] * cp;
-    work_t cp2 = cp * cp;
-    v += Cn[2] * cp2;
-    v += Cn[3] * cp2 * cp;
-    v += Cn[4] * cp2 * cp2;
+    v = Cn[0] + cp * (Cn[1] + cp * (Cn[2] + cp * (Cn[3] + cp * Cn[4])));
+    work_t dv_dcos =
+        Cn[1] + cp * (work_t(2) * Cn[2]
+                       + cp * (work_t(3) * Cn[3] + cp * work_t(4) * Cn[4]));
 
-    // dV/d(cos φ) = C1 + 2*C2*cos + 3*C3*cos^2 + 4*C4*cos^3
-    work_t dv_dcos = Cn[1] + work_t(2) * Cn[2] * cp + work_t(3) * Cn[3] * cp2
-                     + work_t(4) * Cn[4] * cp2 * cp;
+    // ─── Force decomposition (verbatim port of cpu::DihedralMultiHarmonic;
+    //     FD-verified by tests/cpu/md/test_pe_fd_force.cpp) ───────────
+    //
+    // Define unit normals n1_hat, n2_hat, then
+    //   ∂cos_phi/∂n1 = (n2_hat - cos_phi·n1_hat) / |n1|   ≡ fh1
+    //   ∂cos_phi/∂n2 = (n1_hat - cos_phi·n2_hat) / |n2|   ≡ fh2
+    // and propagate to bond-vector gradients via cross products:
+    //   ∂cos/∂b1 = b2 × fh1
+    //   ∂cos/∂b3 = fh2 × b2
+    //   ∂cos/∂b2 = (fh1 × b1) + (b3 × fh2)
+    // Forces on the 4 atoms (i, j, k, l) follow:
+    //   F_i = dV/dcos · ∂cos/∂b1
+    //   F_l = -dV/dcos · ∂cos/∂b3
+    //   F_j = -F_i + dV/dcos · ∂cos/∂b2
+    //   F_k = -dV/dcos · ∂cos/∂b2 - F_l
+    //
+    // Note: this matches LAMMPS dihedral_multi_harmonic.cpp algebraically
+    // (LAMMPS pre-multiplies dV/dcos into the working `c`/`s12` and
+    // builds aₘₙ scalars; this form keeps dv_dcos as a single outer
+    // factor for clarity). The previous CUDA kernel used a wrong
+    // textbook decomposition `F_i = a11·n1_hat` that was missing the
+    // b2-direction component of ∂cos/∂b1 entirely — the force vector
+    // had no projection along the dihedral's central bond, so each
+    // dihedral pumped net momentum into the system and stage-1 PE
+    // simulations failed to thermalise.
+    const work_t n1h_x = n1x, n1h_y = n1y, n1h_z = n1z;  // already normalized
+    const work_t n2h_x = n2x, n2h_y = n2y, n2h_z = n2z;
 
-    // Forces via the standard dihedral force decomposition
-    // F_i = -dV/d(cos φ) * d(cos φ)/dr_i
-    work_t b2_len = sqrt(b2x * b2x + b2y * b2y + b2z * b2z);
-    if (b2_len < kVecEpsilon)
-        return;
+    const work_t fh1_x = (n2h_x - cos_phi * n1h_x) * n1_inv;
+    const work_t fh1_y = (n2h_y - cos_phi * n1h_y) * n1_inv;
+    const work_t fh1_z = (n2h_z - cos_phi * n1h_z) * n1_inv;
 
-    // Force on atom i: F_i = -(dV/dcos) * |b2| / |n1|^2 * n1
-    work_t fi_coeff = -dv_dcos * b2_len * n1_inv * n1_inv * n1_len;
-    // This simplifies. Using standard LAMMPS-style force decomposition:
-    // F_i = (dV/dcos) * |b2| * n1_hat / |n1|
-    // But we already normalized n1. Let me use the standard formula.
+    const work_t fh2_x = (n1h_x - cos_phi * n2h_x) * n2_inv;
+    const work_t fh2_y = (n1h_y - cos_phi * n2h_y) * n2_inv;
+    const work_t fh2_z = (n1h_z - cos_phi * n2h_z) * n2_inv;
 
-    work_t f1 = -dv_dcos * b2_len / (n1_len * n1_len) * n1_inv;
-    // Actually, let me use a simpler correct formula:
-    // See Allen & Tildesley, or LAMMPS dihedral_multi_harmonic.cpp
+    // ∂cos/∂b1 = b2 × fh1
+    const work_t db1_x = b2y * fh1_z - b2z * fh1_y;
+    const work_t db1_y = b2z * fh1_x - b2x * fh1_z;
+    const work_t db1_z = b2x * fh1_y - b2y * fh1_x;
 
-    work_t a11 = -dv_dcos * b2_len / (n1_len * n1_len);
-    work_t a22 = dv_dcos * b2_len / (n2_len * n2_len);
+    // ∂cos/∂b3 = fh2 × b2
+    const work_t db3_x = fh2_y * b2z - fh2_z * b2y;
+    const work_t db3_y = fh2_z * b2x - fh2_x * b2z;
+    const work_t db3_z = fh2_x * b2y - fh2_y * b2x;
 
-    // b1 dot b2 and b3 dot b2
-    work_t b1b2 = b1x * b2x + b1y * b2y + b1z * b2z;
-    work_t b3b2 = b3x * b2x + b3y * b2y + b3z * b2z;
-    work_t b2_len2 = b2_len * b2_len;
+    // ∂cos/∂b2 = (fh1 × b1) + (b3 × fh2)
+    const work_t db2_x =
+        (fh1_y * b1z - fh1_z * b1y) + (b3y * fh2_z - b3z * fh2_y);
+    const work_t db2_y =
+        (fh1_z * b1x - fh1_x * b1z) + (b3z * fh2_x - b3x * fh2_z);
+    const work_t db2_z =
+        (fh1_x * b1y - fh1_y * b1x) + (b3x * fh2_y - b3y * fh2_x);
 
-    work_t a12 = a11 * b1b2 / b2_len2;
-    work_t a23 = a22 * b3b2 / b2_len2;
+    const work_t fix = dv_dcos * db1_x;
+    const work_t fiy = dv_dcos * db1_y;
+    const work_t fiz = dv_dcos * db1_z;
 
-    // Force on i
-    work_t fix = a11 * n1x;
-    work_t fiy = a11 * n1y;
-    work_t fiz = a11 * n1z;
+    const work_t flx = -dv_dcos * db3_x;
+    const work_t fly = -dv_dcos * db3_y;
+    const work_t flz = -dv_dcos * db3_z;
 
-    // Force on l
-    work_t flx = a22 * n2x;
-    work_t fly = a22 * n2y;
-    work_t flz = a22 * n2z;
+    const work_t gx = dv_dcos * db2_x;
+    const work_t gy = dv_dcos * db2_y;
+    const work_t gz = dv_dcos * db2_z;
 
-    // Force on j = -F_i + a12*n1 - a23*n2  (from chain rule)
-    work_t fjx = -fix + a12 * n1x - a23 * n2x;
-    work_t fjy = -fiy + a12 * n1y - a23 * n2y;
-    work_t fjz = -fiz + a12 * n1z - a23 * n2z;
+    const work_t fjx = -fix + gx;
+    const work_t fjy = -fiy + gy;
+    const work_t fjz = -fiz + gz;
 
-    // Force on k = -F_l - a12*n1 + a23*n2
-    work_t fkx = -flx - a12 * n1x + a23 * n2x;
-    work_t fky = -fly - a12 * n1y + a23 * n2y;
-    work_t fkz = -flz - a12 * n1z + a23 * n2z;
+    const work_t fkx = -gx - flx;
+    const work_t fky = -gy - fly;
+    const work_t fkz = -gz - flz;
 
     atomicAdd(&fx[i], static_cast<real_t>(fix));
     atomicAdd(&fy[i], static_cast<real_t>(fiy));
@@ -160,7 +207,21 @@ __global__ void multi_harmonic_dihedral_k(
     atomicAdd(&fy[l], static_cast<real_t>(fly));
     atomicAdd(&fz[l], static_cast<real_t>(flz));
 
-    // Energy reduction
+    // Dihedral virial (LAMMPS ev_tally convention) — use translation-
+    // invariant form r_i · F_i + r_l · F_l + r_k · F_k with j as origin.
+    // r_i = -b1, r_k = b2, r_l = b2 + b3 (relative to j).
+    work_t r_lx = b2x + b3x, r_ly = b2y + b3y, r_lz = b2z + b3z;
+    my_v[0] = -b1x * fix + b2x * fkx + r_lx * flx;  // xx
+    my_v[1] = -b1y * fiy + b2y * fky + r_ly * fly;  // yy
+    my_v[2] = -b1z * fiz + b2z * fkz + r_lz * flz;  // zz
+    my_v[3] = -b1x * fiy + b2x * fky + r_lx * fly;  // xy
+    my_v[4] = -b1x * fiz + b2x * fkz + r_lx * flz;  // xz
+    my_v[5] = -b1y * fiz + b2y * fkz + r_ly * flz;  // yz
+        } // end inner `if (active)` (post-degeneracy check)
+    } // end outer `if (active)` (idx < n_dihed)
+
+    // Energy reduction — ALL threads in the block participate, with
+    // inactive / out-of-range threads contributing v=0 and my_v=0.
     extern __shared__ work_t sdata[];
     sdata[threadIdx.x] = v;
     __syncthreads();
@@ -171,6 +232,22 @@ __global__ void multi_harmonic_dihedral_k(
     }
     if (threadIdx.x == 0)
         atomicAdd(energy, static_cast<prec_t>(sdata[0]));
+    __syncthreads();
+
+    if (stress != nullptr) {
+        for (int comp = 0; comp < 6; ++comp) {
+            sdata[threadIdx.x] = my_v[comp];
+            __syncthreads();
+            for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+                if (threadIdx.x < s)
+                    sdata[threadIdx.x] += sdata[threadIdx.x + s];
+                __syncthreads();
+            }
+            if (threadIdx.x == 0 && sdata[0] != work_t(0))
+                atomicAdd(&stress[comp], static_cast<prec_t>(sdata[0]));
+            __syncthreads();
+        }
+    }
 }
 
 } // anonymous namespace
@@ -199,8 +276,9 @@ void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
     int grid = grid_size(static_cast<int>(nd));
     multi_harmonic_dihedral_k<<<grid, block, block * sizeof(work_t), stream>>>(
         f.atoms.x, f.atoms.y, f.atoms.z, f.atoms.fx, f.atoms.fy, f.atoms.fz,
-        &f.scalars->energy, f.dihedrals.atomi, f.dihedrals.atomj,
-        f.dihedrals.atomk, f.dihedrals.atoml, f.dihedrals.type, state_->d_C,
+        &f.scalars->energy, &f.scalars->stress[0], f.dihedrals.atomi,
+        f.dihedrals.atomj, f.dihedrals.atomk, f.dihedrals.atoml,
+        f.dihedrals.type, state_->d_C,
         f.box, nd);
 }
 

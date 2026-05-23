@@ -101,8 +101,58 @@ void NeighborList::build(const BuildContext& ctx) {
     s.buf.interaction_mask.resize(ms);
     s.buf.resize_flat_pairs(ms);
 
-    // Allocate the owned PairList
-    int atom_pair_cap = std::max(1, n * 50);
+    // Allocate the owned PairList.
+    //
+    // Capacity sized from physical density × neighborhood volume rather
+    // than a flat per-atom guess. For dense molecular systems (e.g. UA
+    // polyethylene at ρ ≈ 0.0195 atoms/Å³, cutoff 10.5 Å + skin 2 Å) a
+    // pair can have ~160 neighbors within the search shell; a single
+    // (i,j) entry is emitted per pair from the cluster export, so the
+    // tight upper bound is n_pairs ≈ n · N_neighbors / 2. We multiply
+    // by a 2× safety factor for inhomogeneous regions (the typical hot
+    // spot during stage-1 NVELimit relaxation of an "as-built" PE
+    // configuration is local overlap that briefly inflates the neighbor
+    // count). Falls back to `max(n·50, 64k)` when the density estimate
+    // is degenerate (atomless or zero-volume frame).
+    //
+    // The previous flat `n · 50` cap silently TRUNCATED overflow pairs:
+    // a 10000-atom PE system with ~160 neighbors per atom hit ~800k
+    // pairs while capacity was 500k → ~37% of pairs missing per step.
+    // The dropped pairs had no LJ contribution, so atoms drifted toward
+    // each other under bond/angle forces alone until LJ "rediscovered"
+    // them at near-zero r → catastrophic E_pot spikes (10¹⁴ eV
+    // observed) and irrecoverable energy injection that no Langevin
+    // damp could compensate.
+    double box_vol = 0.0;
+    double cut_search = static_cast<double>(cutoff_ + skin_);
+    {
+        // Read the orthorhombic box volume from the device-side box[0],4,8.
+        prec_t box_diag[3] = {prec_t(0), prec_t(0), prec_t(0)};
+        cudaMemcpy(&box_diag[0], &ctx.frame.box[0], sizeof(prec_t),
+                   cudaMemcpyDeviceToHost);
+        cudaMemcpy(&box_diag[1], &ctx.frame.box[4], sizeof(prec_t),
+                   cudaMemcpyDeviceToHost);
+        cudaMemcpy(&box_diag[2], &ctx.frame.box[8], sizeof(prec_t),
+                   cudaMemcpyDeviceToHost);
+        box_vol = static_cast<double>(box_diag[0]) * box_diag[1] * box_diag[2];
+    }
+    int atom_pair_cap = 0;
+    if (box_vol > 0.0 && n > 0) {
+        double density = double(n) / box_vol;
+        double sphere_vol = (4.0 / 3.0) * 3.141592653589793 * cut_search
+                            * cut_search * cut_search;
+        double n_neighbors_est = density * sphere_vol;
+        // Cluster-based export emits each pair TWICE (Ci→Cj and Cj→Ci);
+        // empirical entry count is ~2.4× density·sphere_vol per atom
+        // (cluster padding rounds neighbor lists up to the next
+        // 8-atom group, so the effective sphere is slightly larger
+        // than the geometric r_search). Use 3× as a comfortable cap.
+        double per_atom = std::max(100.0, 3.0 * n_neighbors_est);
+        atom_pair_cap = static_cast<int>(std::min(
+            double(n) * per_atom,  // each atom appears in `per_atom` entries
+            double(std::numeric_limits<int>::max())));
+    }
+    atom_pair_cap = std::max(atom_pair_cap, std::max(1, n * 50));
     cudaMalloc(&pairs_.i, atom_pair_cap * sizeof(int));
     cudaMalloc(&pairs_.j, atom_pair_cap * sizeof(int));
     cudaMalloc(&pairs_.dx, atom_pair_cap * sizeof(real_t));
@@ -223,6 +273,31 @@ void NeighborList::launch(const LaunchContext& ctx) {
     launch_csr_to_flat(s.buf.row_ptr.data(), s.buf.col_idx.data(),
                        s.buf.interaction_mask.data(), nc, s.buf.flat_ci.data(),
                        s.buf.flat_cj.data(), s.buf.flat_mask.data(), stream);
+
+    // Mask refresh: replaces the all-ones initial mask above with the actual
+    // per-atom-pair interaction mask computed from current cluster positions.
+    //
+    // CRITICAL — without this call:
+    //   * flat_mask stays at 0xFF for every cluster pair (memset above).
+    //   * export_atom_pairs emits ALL 64 atom-pair combos per cluster pair.
+    //   * Intra-cluster (ci == cj) emits both (a,b) and (b,a) directions PLUS
+    //     diagonal self-pairs → forces on intra-cluster pairs are DOUBLED
+    //     by the LJ kernel's Newton-3 accumulation; self-pairs at r=0 are
+    //     filtered by the `r >= kMinPairDist` guard but waste pair slots.
+    //   * Inter-cluster pairs at r > cutoff but within cutoff+skin AABB get
+    //     exported and only filtered (silently) by the LJ kernel's `r <
+    //     cutoff` test — wasted compute and pair slots, but no force.
+    // smart_rolling_prune both filters by interaction cutoff and applies the
+    // half-Newton exclusion for ci == cj (only j_lane > i_lane bits kept),
+    // which gives the correct per-atom-pair entry count downstream.
+    work_t cutoff_sq = cutoff_ * cutoff_;
+    launch_smart_rolling_prune<work_t>(
+        s.buf.cluster_x.data(), s.buf.cluster_y.data(), s.buf.cluster_z.data(),
+        s.buf.flat_ci.data(), s.buf.flat_cj.data(),
+        s.buf.flat_pair_counter.data(), s.pair_capacity,
+        s.buf.dirty_flags.data(), s.periodic, cutoff_sq, s.d_cell.data(),
+        s.d_inv_cell.data(), s.buf.flat_mask.data(), /*prune_step*/ 0,
+        /*prune_period*/ 1, stream);
 
     // Export to atom-level PairList
     int cap = s.pair_capacity;

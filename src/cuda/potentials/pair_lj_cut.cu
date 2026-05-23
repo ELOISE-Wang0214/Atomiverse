@@ -42,6 +42,7 @@ __device__ inline bool excl_contains(const int* __restrict__ partners, int beg,
 
 __global__ void lj_force(real_t* __restrict__ fx, real_t* __restrict__ fy,
                          real_t* __restrict__ fz, prec_t* __restrict__ energy,
+                         prec_t* __restrict__ stress,
                          const int* __restrict__ pi, const int* __restrict__ pj,
                          const real_t* __restrict__ pdx,
                          const real_t* __restrict__ pdy,
@@ -57,6 +58,8 @@ __global__ void lj_force(real_t* __restrict__ fx, real_t* __restrict__ fy,
     int n_pairs = *n_pairs_ptr;
 
     work_t my_energy = work_t(0);
+    work_t my_vxx = work_t(0), my_vyy = work_t(0), my_vzz = work_t(0);
+    work_t my_vxy = work_t(0), my_vxz = work_t(0), my_vyz = work_t(0);
     if (idx < n_pairs) {
         int i = pi[idx], j = pj[idx];
         // Reject ghost / padding pairs emitted by the cluster-based neighbor
@@ -64,9 +67,8 @@ __global__ void lj_force(real_t* __restrict__ fx, real_t* __restrict__ fy,
         // kClusterSize atoms; padded slots leak into the flat PairList with
         // j = -1 (sentinel) and garbage `dx/dy/dz` that can coincidentally
         // produce a finite `pdist[idx]` not caught by the `r >= kMinPairDist`
-        // floor. Without this guard those ghost pairs bypass the
-        // exclusion-CSR mask (-1 is in no partner list) and erroneously
-        // contribute LJ energy. Both i and j are checked for symmetry.
+        // floor.
+        //
         const bool valid_pair = (i >= 0) && (j >= 0);
         work_t r = valid_pair ? pdist[idx] : work_t(0);
         if (valid_pair && r < cutoff && r >= kMinPairDist) {
@@ -106,6 +108,17 @@ __global__ void lj_force(real_t* __restrict__ fx, real_t* __restrict__ fy,
 
                 my_energy =
                     scale * (work_t(4) * epsilon * (sr12 - sr6) - v_shift);
+
+                // Pair virial (LAMMPS sign: w_ab = Σ_pairs r_a · F_b, where
+                // F on atom j = +f_over_r · d_ab). The diagonal of the
+                // stress tensor (used by NoseHooverNPT) is the sum of pair
+                // virials plus the kinetic component, divided by 3·V.
+                my_vxx = dx * (f_over_r * dx);
+                my_vyy = dy * (f_over_r * dy);
+                my_vzz = dz * (f_over_r * dz);
+                my_vxy = dx * (f_over_r * dy);
+                my_vxz = dx * (f_over_r * dz);
+                my_vyz = dy * (f_over_r * dz);
             }
         }
     }
@@ -120,14 +133,30 @@ __global__ void lj_force(real_t* __restrict__ fx, real_t* __restrict__ fy,
     }
     if (threadIdx.x == 0 && s_energy[0] != work_t(0))
         atomicAdd(energy, static_cast<prec_t>(s_energy[0]));
+    __syncthreads();  // ensure energy reduction done before reusing s_energy
+
+    // Block-level virial reduction → atomicAdd to global stress[0..5].
+    // Reuses s_energy shared-memory slot in 6 successive sweeps.
+    if (stress != nullptr) {
+        const work_t my_v[6] = {my_vxx, my_vyy, my_vzz,
+                                my_vxy, my_vxz, my_vyz};
+        for (int comp = 0; comp < 6; ++comp) {
+            s_energy[threadIdx.x] = my_v[comp];
+            __syncthreads();
+            for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+                if (threadIdx.x < s)
+                    s_energy[threadIdx.x] += s_energy[threadIdx.x + s];
+                __syncthreads();
+            }
+            if (threadIdx.x == 0 && s_energy[0] != work_t(0))
+                atomicAdd(&stress[comp], static_cast<prec_t>(s_energy[0]));
+            __syncthreads();
+        }
+    }
 }
 
 } // namespace kernels
 } // namespace cuda
-
-namespace {
-constexpr int kEstMaxNeighbors = 100;
-} // anonymous namespace
 
 namespace cuda {
 
@@ -256,18 +285,31 @@ void PairLJCut::compute(const LaunchContext& ctx) {
     if (!pairs)
         return;
     int n = ctx.frame.n_atoms();
-    int max_pairs = static_cast<int>(n) * kEstMaxNeighbors / 2;
+    // Grid size MUST cover the ACTUAL pair count, not a guess. The
+    // earlier `n * kEstMaxNeighbors / 2` upper-bound for orientation
+    // was used as the kernel grid — but in dense systems (PE at
+    // 0.0195 atoms/Å³, cutoff 10.5 Å) the real count of 5M+ pairs
+    // dwarfs the n·50 estimate; only the first 500k pairs got a
+    // thread and the rest were silently dropped → severe under-counting
+    // of LJ forces (10,000× too small for some atoms vs LAMMPS-real).
+    // Read n_pairs back D2H to size the grid exactly. This is a small
+    // synchronisation cost incurred once per step that pays for itself
+    // by NOT shipping wrong forces to the integrator.
+    int n_pairs_host = 0;
+    cudaMemcpyAsync(&n_pairs_host, pairs->n_pairs, sizeof(int),
+                    cudaMemcpyDeviceToHost, stream);
+    cudaStreamSynchronize(stream);
     int block = kDefaultBlock;
-    int grid = grid_size(max_pairs);
+    int grid = grid_size(n_pairs_host > 0 ? n_pairs_host : 1);
     // Pass nullptr for exclusion CSR when none configured — kernel takes
     // fast path and avoids the partner lookup overhead entirely.
     const int* excl_off = (has_exclusions_) ? d_excl_offsets_ : nullptr;
     const int* excl_par = (has_exclusions_) ? d_excl_partners_ : nullptr;
     kernels::lj_force<<<grid, block, block * sizeof(work_t), stream>>>(
         frame.atoms.fx, frame.atoms.fy, frame.atoms.fz, &frame.scalars->energy,
-        pairs->i, pairs->j, pairs->dx, pairs->dy, pairs->dz, pairs->dist,
-        epsilon_, sigma_, cutoff_, v_shift_, pairs->n_pairs, excl_off, excl_par,
-        static_cast<work_t>(s_excl_));
+        &frame.scalars->stress[0], pairs->i, pairs->j, pairs->dx, pairs->dy,
+        pairs->dz, pairs->dist, epsilon_, sigma_, cutoff_, v_shift_,
+        pairs->n_pairs, excl_off, excl_par, static_cast<work_t>(s_excl_));
 }
 
 } // namespace cuda
