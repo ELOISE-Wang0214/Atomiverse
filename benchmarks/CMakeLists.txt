@@ -65,6 +65,13 @@ atv_add_cpp_md_bench(scaling)
 atv_add_cpp_md_bench(polyethylene_tension)
 atv_add_cpp_md_bench(pe_profile_single)
 
+# polyethylene_tension gets the ATV_BUILD_CUDA compile definition so its
+# #ifdef-gated `--backend cuda` path (msu-pe-cuda-components-06) reaches
+# the cuda::md::* components compiled into the atomiverse library.
+if(ATV_BUILD_CUDA)
+    target_compile_definitions(polyethylene_tension PRIVATE ATV_BUILD_CUDA)
+endif()
+
 # ── CPU MD LAMMPS-validation benchmarks ───────────────────────────
 # Ported out of the unit-test suite (tests/cpu/md/test_*_lammps_align,
 # test_lammps_*_parity): these compare Atomiverse MD components against

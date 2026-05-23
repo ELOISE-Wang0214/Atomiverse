@@ -108,6 +108,24 @@
 #include <chrono>
 #endif
 
+#ifdef ATV_BUILD_CUDA
+#include "atomiverse/core/system_scalars.h"
+#include "atomiverse/cuda/md/deform.cuh"
+#include "atomiverse/cuda/md/fix_langevin.cuh"
+#include "atomiverse/cuda/md/init.cuh"
+#include "atomiverse/cuda/md/md.cuh"
+#include "atomiverse/cuda/md/nose_hoover_npt.cuh"
+#include "atomiverse/cuda/md/nve_limit.cuh"
+#include "atomiverse/cuda/neighbor_list.cuh"
+#include "atomiverse/cuda/observer/stress.cuh"
+#include "atomiverse/cuda/potentials/angle_harmonic.cuh"
+#include "atomiverse/cuda/potentials/bond_harmonic.cuh"
+#include "atomiverse/cuda/potentials/dihedral_multi_harmonic.cuh"
+#include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
+#include "atomiverse/cuda/types.cuh"
+#include <cuda_runtime.h>
+#endif
+
 using namespace ATV;
 
 namespace {
@@ -141,8 +159,13 @@ std::vector<double> dihedral_Cn_eV() {
 
 enum class Mode { full, nvt, npt, tension, single_stage };
 
+/// @brief Backend selector — CPU (default) or CUDA (single-GPU, requires
+/// the binary to be compiled with `ATV_BUILD_CUDA`). msu-pe-cuda-components-06.
+enum class Backend { cpu, cuda };
+
 struct Args {
     Mode mode = Mode::full;
+    Backend backend = Backend::cpu;
     int single_stage_id = 1; ///< 1..5 when mode == single_stage
     /// Per-stage step counts — byte-aligned with `lammps.in` /
     /// `lammps_msu_paper.in`, the immutable MSU reference protocol, so a
@@ -258,6 +281,21 @@ bool parse_args(int argc, char** argv, Args& a) {
             dst = argv[++i];
             return true;
         };
+        if (std::strcmp(s, "--backend") == 0) {
+            if (i + 1 >= argc)
+                std::exit(2);
+            const std::string v = argv[++i];
+            if (v == "cpu")
+                a.backend = Backend::cpu;
+            else if (v == "cuda")
+                a.backend = Backend::cuda;
+            else {
+                std::fprintf(stderr, "unknown backend: %s (expected cpu|cuda)\n",
+                             v.c_str());
+                return false;
+            }
+            continue;
+        }
         if (std::strcmp(s, "--mode") == 0) {
             if (i + 1 >= argc)
                 std::exit(2);
@@ -698,6 +736,252 @@ void wire_shared(cpu::md::MD& sim, SharedComponents& sc) {
     }
 }
 
+#ifdef ATV_BUILD_CUDA
+
+/// @brief CUDA-side recorder mirroring the 17-column extended-schema CPU
+///        `CsvRecorder`. Reads `frame.scalars->{energy*,kinetic,stress*}`
+///        and `frame.box[0/4/8]` per active step via a synchronous D2H
+///        copy (will be migrated to `cuda::AsyncRecordBase` once chain
+///        link 07 lands). Bound at `end_of_step @ +20`, same slot as
+///        the CPU sibling.
+class CudaCsvRecorder : public cuda::ComponentBase {
+  public:
+    CudaCsvRecorder(std::ofstream* thermo, std::ofstream* stress,
+                    int print_every, int n_global_dof, double box_x_initial)
+        : thermo_(thermo), stress_(stress),
+          print_every_(std::max(1, print_every)), n_dof_(n_global_dof),
+          box_x0_(box_x_initial) {}
+
+    std::string name() const override { return "cuda_csv_recorder"; }
+    int frequency() const override { return print_every_; }
+    std::vector<DefaultBinding> default_bindings() const override {
+        return {{static_cast<int>(ATV::md::Phase::end_of_step), 20}};
+    }
+
+    /// @brief Enter a new stage. Mirrors `CsvRecorder::begin_stage`.
+    void begin_stage(int stage_id, double T_target, bool record_strain) {
+        current_stage_ = stage_id;
+        current_T_target_ = T_target;
+        record_strain_ = record_strain;
+        current_step_offset_ += stage_steps_so_far_ * print_every_;
+        stage_steps_so_far_ = 0;
+        if (record_strain)
+            strain_ref_set_ = false;
+    }
+
+    void launch(const cuda::LaunchContext& ctx) override {
+        ++stage_steps_so_far_;
+        // Synchronous D2H of SystemScalars + box diagonal. Single-step
+        // overhead is fine here; chain link 07 will defer this onto an
+        // async stream.
+        SystemScalars s{};
+        cudaMemcpy(&s, ctx.frame.scalars, sizeof(SystemScalars),
+                   cudaMemcpyDeviceToHost);
+        cuda::prec_t box_h[9];
+        cudaMemcpy(box_h, ctx.frame.box, 9 * sizeof(cuda::prec_t),
+                   cudaMemcpyDeviceToHost);
+        const double box_x = static_cast<double>(box_h[0]);
+        const double box_y = static_cast<double>(box_h[4]);
+        const double box_z = static_cast<double>(box_h[8]);
+
+        const double T = (n_dof_ > 0)
+                             ? 2.0 * s.kinetic
+                                   / (static_cast<double>(n_dof_) * kBoltzmann)
+                             : 0.0;
+        const double V = box_x * box_y * box_z;
+        double P_bar = 0, Pxx = 0, Pyy = 0, Pzz = 0;
+        if (V > 0.0) {
+            const double trace = s.stress[0] + s.stress[1] + s.stress[2]
+                                 + s.stress_kinetic[0] + s.stress_kinetic[1]
+                                 + s.stress_kinetic[2];
+            P_bar = trace / (3.0 * V) * kEvPerA3ToBar;
+            Pxx = (s.stress[0] + s.stress_kinetic[0]) / V * kEvPerA3ToBar;
+            Pyy = (s.stress[1] + s.stress_kinetic[1]) / V * kEvPerA3ToBar;
+            Pzz = (s.stress[2] + s.stress_kinetic[2]) / V * kEvPerA3ToBar;
+        }
+        const int abs_step = current_step_offset_ + ctx.step;
+        if (thermo_ && thermo_->is_open()) {
+            (*thermo_) << abs_step << "," << current_stage_ << ","
+                       << current_T_target_ << "," << T << "," << P_bar << ","
+                       << Pxx << "," << Pyy << "," << Pzz << "," << s.energy
+                       << "," << s.energy_pair << "," << s.energy_bond << ","
+                       << s.energy_angle << "," << s.energy_dihedral << ","
+                       << s.kinetic << "," << box_x << "," << box_y << ","
+                       << box_z << "\n";
+        }
+        if (record_strain_ && stress_ && stress_->is_open()) {
+            if (!strain_ref_set_) {
+                box_x0_ = box_x;
+                strain_ref_set_ = true;
+            }
+            const double sigma_xx =
+                (V > 0.0) ? -(s.stress[0] + s.stress_kinetic[0]) / V : 0.0;
+            const double strain = box_x / box_x0_ - 1.0;
+            (*stress_) << abs_step << "," << current_stage_ << "," << strain
+                       << "," << sigma_xx << "," << (sigma_xx * kEvPerA3ToGPa)
+                       << "\n";
+        }
+    }
+
+  private:
+    std::ofstream* thermo_;
+    std::ofstream* stress_;
+    int print_every_;
+    int n_dof_;
+    double box_x0_;
+    int current_stage_ = 0;
+    double current_T_target_ = 0.0;
+    bool record_strain_ = false;
+    bool strain_ref_set_ = false;
+    int current_step_offset_ = 0;
+    int stage_steps_so_far_ = 0;
+};
+
+/// @brief Run the 5-stage MSU PE protocol on CUDA. Mirrors the CPU
+///        pipeline line for line via the categorical setter API on
+///        `cuda::md::MD`. `cpu::Frame` ferries state across stages —
+///        each per-stage driver materializes to device on `run()` and
+///        syncs back when it returns, exactly the pattern used in
+///        `tests/cuda/md/test_md.cu`.
+void run_cuda_pipeline(const Args& a, cpu::Frame& frame,
+                       std::ofstream& thermo_csv, std::ofstream& stress_csv,
+                       int n_global_dof, double box_x0, bool quiet) {
+    CudaCsvRecorder rec{&thermo_csv, &stress_csv, a.print_every, n_global_dof,
+                        box_x0};
+
+    // cuda::DihedralMultiHarmonic takes std::vector<std::array<double, 5>>
+    // (one per type); the CPU helper returns std::vector<double>. Convert
+    // once for both stage-1 and the NPT stages.
+    auto Cn_vec = dihedral_Cn_eV();
+    std::vector<std::array<double, 5>> cuda_Cn{
+        {Cn_vec[0], Cn_vec[1], Cn_vec[2], Cn_vec[3], Cn_vec[4]}};
+
+    // Stage 1 — NVELimit + FixLangevin @ T_hot.
+    if (stage_active(a.mode, 1, a.single_stage_id)) {
+        const int steps = scaled_steps(a.stage1_steps, a.scale);
+        if (!quiet)
+            std::fprintf(stderr,
+                         "  stage 1 (cuda): NVE/limit + Langevin @ %.1f K, "
+                         "dt=%.2f fs, %d steps\n",
+                         a.T_hot, a.dt_stage1, steps);
+        rec.begin_stage(1, a.T_hot, /*record_strain=*/false);
+        cuda::md::MD sim;
+        sim.set_neighbor(cuda::NeighborList{kLjCutoff});
+        sim.set_pair(cuda::PairLJCut{lj_eps_eV(), kLjSigma, kLjCutoff}
+                         .set_special_bonds(0.0, 0.0, 0.0));
+        sim.set_bond(cuda::BondHarmonic{{bond_k_eV()}, {kBondR0}});
+        sim.set_angle(cuda::AngleHarmonic{{angle_k_eV()}, {kAngleTheta0}});
+        sim.set_dihedral(cuda::DihedralMultiHarmonic{cuda_Cn});
+        sim.set_integrator(cuda::md::NVELimit{a.dt_stage1, 0.05});
+        sim.add(cuda::md::InitVelocity{a.T_hot,
+                                       static_cast<unsigned long long>(a.seed)});
+        sim.set_thermostat(cuda::md::FixLangevin{
+            a.T_hot, a.T_hot, a.langevin_damp, a.dt_stage1,
+            static_cast<std::uint32_t>(a.seed + 1)});
+        sim.add(rec);  // uses default_bindings: end_of_step @ +20
+        sim.build();
+        sim.run(frame, steps);
+    }
+
+    // Helper to build a per-stage NPT driver with the shared FF.
+    auto wire_npt_stage = [&](cuda::md::MD& sim,
+                              cuda::md::NoseHooverNPT& npt) {
+        sim.set_neighbor(cuda::NeighborList{kLjCutoff});
+        sim.set_pair(cuda::PairLJCut{lj_eps_eV(), kLjSigma, kLjCutoff}
+                         .set_special_bonds(0.0, 0.0, 0.0));
+        sim.set_bond(cuda::BondHarmonic{{bond_k_eV()}, {kBondR0}});
+        sim.set_angle(cuda::AngleHarmonic{{angle_k_eV()}, {kAngleTheta0}});
+        sim.set_dihedral(cuda::DihedralMultiHarmonic{cuda_Cn});
+        sim.set_integrator(npt);
+        sim.add(rec);  // uses default_bindings: end_of_step @ +20
+    };
+
+    // Stage 2 — iso NoseHooverNPT @ T_hot.
+    if (stage_active(a.mode, 2, a.single_stage_id)) {
+        const int steps = scaled_steps(a.stage2_steps, a.scale);
+        if (!quiet)
+            std::fprintf(stderr,
+                         "  stage 2 (cuda): NPT (iso) @ %.1f K, dt=%.2f fs, "
+                         "%d steps\n",
+                         a.T_hot, a.dt_stage2, steps);
+        rec.begin_stage(2, a.T_hot, /*record_strain=*/false);
+        cuda::md::NoseHooverNPT::Config cfg{
+            .T_target = a.T_hot, .tau_T = a.tau_T, .P_target = 0.0,
+            .tau_P = a.tau_P, .dt = a.dt_stage2, .drag = 2.0};
+        cuda::md::MD sim;
+        cuda::md::NoseHooverNPT npt{cfg};
+        wire_npt_stage(sim, npt);
+        sim.add(cuda::md::ZeroMomentum{1});
+        sim.build();
+        sim.run(frame, steps);
+    }
+
+    // Stage 3 — ramped NoseHooverNPT T_hot → T_cold.
+    if (stage_active(a.mode, 3, a.single_stage_id)) {
+        const int steps = scaled_steps(a.stage3_steps, a.scale);
+        if (!quiet)
+            std::fprintf(stderr,
+                         "  stage 3 (cuda): NPT cool %.1f -> %.1f K (ramp), "
+                         "dt=%.2f fs, %d steps\n",
+                         a.T_hot, a.T_cold, a.dt_stage3, steps);
+        rec.begin_stage(3, a.T_cold, /*record_strain=*/false);
+        cuda::md::NoseHooverNPT::Config cfg{
+            .T_target = a.T_hot, .tau_T = a.tau_T, .P_target = 0.0,
+            .tau_P = a.tau_P, .dt = a.dt_stage3, .drag = 2.0,
+            .T_stop = a.T_cold};
+        cuda::md::MD sim;
+        cuda::md::NoseHooverNPT npt{cfg};
+        npt.set_run_span(0, std::max(0, steps - 1));
+        wire_npt_stage(sim, npt);
+        sim.add(cuda::md::ZeroMomentum{1});
+        sim.build();
+        sim.run(frame, steps);
+    }
+
+    // Stage 4 — iso NoseHooverNPT @ T_cold.
+    if (stage_active(a.mode, 4, a.single_stage_id)) {
+        const int steps = scaled_steps(a.stage4_steps, a.scale);
+        if (!quiet)
+            std::fprintf(stderr,
+                         "  stage 4 (cuda): NPT (iso) @ %.1f K, dt=%.2f fs, "
+                         "%d steps\n",
+                         a.T_cold, a.dt_stage4, steps);
+        rec.begin_stage(4, a.T_cold, /*record_strain=*/false);
+        cuda::md::NoseHooverNPT::Config cfg{
+            .T_target = a.T_cold, .tau_T = a.tau_T, .P_target = 0.0,
+            .tau_P = a.tau_P, .dt = a.dt_stage4, .drag = 2.0};
+        cuda::md::MD sim;
+        cuda::md::NoseHooverNPT npt{cfg};
+        wire_npt_stage(sim, npt);
+        sim.add(cuda::md::ZeroMomentum{1});
+        sim.build();
+        sim.run(frame, steps);
+    }
+
+    // Stage 5 — aniso NoseHooverNPT (y/z) + Deform x.
+    if (stage_active(a.mode, 5, a.single_stage_id)) {
+        const int steps = scaled_steps(a.stage5_steps, a.scale);
+        if (!quiet)
+            std::fprintf(stderr,
+                         "  stage 5 (cuda): tension epsdot=%.2e /fs @ %.1f K, "
+                         "dt=%.2f fs, %d steps\n",
+                         a.strain_rate, a.T_cold, a.dt_stage5, steps);
+        rec.begin_stage(5, a.T_cold, /*record_strain=*/true);
+        cuda::md::NoseHooverNPT::Config cfg{
+            .T_target = a.T_cold, .tau_T = a.tau_T, .P_target = 0.0,
+            .tau_P = a.tau_P, .dt = a.dt_stage5, .drag = 2.0,
+            .couple_axis = {false, true, true}};
+        cuda::md::MD sim;
+        cuda::md::NoseHooverNPT npt{cfg};
+        wire_npt_stage(sim, npt);
+        sim.add(cuda::md::Deform{/*axis=*/0, a.strain_rate, a.dt_stage5});
+        sim.build();
+        sim.run(frame, steps);
+    }
+}
+
+#endif // ATV_BUILD_CUDA
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -799,6 +1083,33 @@ int main(int argc, char** argv) {
     }
 
     const double t0 = now_seconds();
+
+    // ── Dispatch: CUDA pipeline (chain link 06) or CPU stages below ──
+    if (a.backend == Backend::cuda) {
+#ifdef ATV_BUILD_CUDA
+        if (my_rank == 0)
+            run_cuda_pipeline(a, frame, thermo_csv, stress_csv, n_global_dof,
+                              box_x0, a.quiet);
+#else
+        std::fprintf(stderr,
+                     "polyethylene_tension: --backend cuda not compiled in. "
+                     "Rebuild with -DATV_BUILD_CUDA=ON.\n");
+        return 2;
+#endif
+        // Close output streams + finalize MPI before returning.
+        if (my_rank == 0) {
+            if (thermo_csv.is_open())
+                thermo_csv.close();
+            if (stress_csv.is_open())
+                stress_csv.close();
+            if (traj_xyz.is_open())
+                traj_xyz.close();
+        }
+#ifdef ATV_HAS_MPI
+        MPI_Finalize();
+#endif
+        return 0;
+    }
 
     // ── Stage 1 — NVELimit + FixLangevin @ T_hot, dt 1.0 fs ───────────
     // Mirrors lammps.in `fix nve/limit 0.05` + `fix langevin 500 500 10`

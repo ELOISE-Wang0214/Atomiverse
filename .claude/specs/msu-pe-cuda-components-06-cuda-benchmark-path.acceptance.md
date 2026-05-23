@@ -10,7 +10,8 @@ criteria:
       --data msu_pe.data` produce byte-identical `thermo.csv` and `stress_strain.csv`
       (`diff` exit 0). `--backend cuda` on a build with `ATV_BUILD_CUDA=OFF` exits
       with code 2 and stderr contains "cuda backend not compiled in".
-    status: pending
+    status: verified
+    last_checked: 2026-05-23
   - id: ac-002
     summary: CUDA path compiles under ATV_BUILD_CUDA=ON
     type: code
@@ -22,7 +23,8 @@ criteria:
       library and lists `cuda::md::MD` / `cuda::md::NoseHooverNPT` /
       `cuda::md::NVELimit` / `cuda::md::FixLangevin` / `cuda::md::ZeroMomentum` /
       `cuda::LJ::set_special_bonds` symbol references via `nm`.
-    status: pending
+    status: verified
+    last_checked: 2026-05-23
   - id: ac-003
     summary: CUDA smoke run completes the 5-stage protocol at scale 0.01 without NaN
     type: runtime
@@ -35,7 +37,8 @@ criteria:
       `step,stage,T_target,T,P_bar,Pxx,Pyy,Pzz,E_pair,E_bond,E_angle,E_dihedral,E_pot,E_kin,box_x,box_y,box_z`
       verbatim; the file has rows from every stage 1..5; every numeric cell is
       finite (no NaN/Inf); the `step` column is strictly monotonic across stages.
-    status: pending
+    status: verified
+    last_checked: 2026-05-23
   - id: ac-004
     summary: CUDA NoseHooverNPT temperature control reaches 100 K in stage 4
     type: scientific
@@ -43,7 +46,8 @@ criteria:
     pass_when: |
       In the ac-003 smoke run's `thermo.csv`, the mean of the `T` column over
       rows whose `stage == 4` lies within ±10 K of 100 K (i.e. ⟨T⟩ ∈ [90, 110]).
-    status: pending
+    status: verified
+    last_checked: 2026-05-23
   - id: ac-005
     summary: CUDA NoseHooverNPT pressure control reaches 0 bar in stage 4
     type: scientific
@@ -51,7 +55,8 @@ criteria:
     pass_when: |
       In the ac-003 smoke run's `thermo.csv`, the mean of the `P_bar` column over
       rows whose `stage == 4` lies within ±200 bar of 0 (i.e. ⟨P_bar⟩ ∈ [-200, +200]).
-    status: pending
+    status: verified
+    last_checked: 2026-05-23
   - id: ac-006
     summary: stage-5 engineering strain column monotonically increases
     type: scientific
@@ -61,7 +66,8 @@ criteria:
       `stage == 5`, the `strain` column is non-decreasing for every consecutive
       pair (strict monotone up to floating-point rounding; numpy `diff(strain) >=
       -1e-9` over the stage-5 subset).
-    status: pending
+    status: verified
+    last_checked: 2026-05-23
   - id: ac-007
     summary: run_msu_atomiverse.sh --backend cuda invokes the CUDA path with backend-tagged RUN_DIR
     type: runtime
@@ -74,7 +80,8 @@ criteria:
       `benchmarks/md/reference/polyethylene/thermo_atomiverse_cuda_1r.csv`
       (backend tag in filename) distinct from any pre-existing
       `thermo_atomiverse_1r.csv` from CPU runs.
-    status: pending
+    status: verified
+    last_checked: 2026-05-23
   - id: ac-008
     summary: CTest smoke test test_polyethylene_tension_cuda_smoke registered and green
     type: runtime
@@ -84,7 +91,8 @@ criteria:
       -R test_polyethylene_tension_cuda_smoke --output-on-failure -L cuda` runs
       the test and reports `Passed`. On a build without CUDA the test is absent
       from the test list (does not "Skipped" or "Failed", simply not registered).
-    status: pending
+    status: verified
+    last_checked: 2026-05-23
   - id: ac-009
     summary: spec index lists the new chain link
     type: docs
@@ -92,7 +100,8 @@ criteria:
       `.claude/specs/INDEX.md` contains a line referencing
       `msu-pe-cuda-components-06-cuda-benchmark-path` with a one-line summary
       and a `[approved]` (or later) lifecycle tag.
-    status: pending
+    status: verified
+    last_checked: 2026-05-23
   - id: ac-010
     summary: full check + test suite green after the change
     type: runtime
@@ -101,7 +110,8 @@ criteria:
       -DATV_BUILD_BENCHMARKS=ON && cmake --build build -j && ctest --test-dir
       build --output-on-failure` exits 0 (CUDA-gated tests may be `Skipped`
       rather than `Passed` on a non-GPU host, but no test reports `Failed`).
-    status: pending
+    status: verified
+    last_checked: 2026-05-23
 ---
 
 # Acceptance criteria
