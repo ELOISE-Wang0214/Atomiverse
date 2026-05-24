@@ -1,7 +1,7 @@
 ---
 title: CUDA MD Review Cleanup — link 02 — NeighborList Verlet-skin gating + over-launch fixes
 slug: cuda-md-review-cleanup-02-nlist-skin-gating
-status: draft
+status: done
 created: 2026-05-24
 parent: cuda-md-review-cleanup.md (Cluster 3 + Cluster 4, 8 findings)
 chain: cuda-md-review-cleanup-* (link 2/9)

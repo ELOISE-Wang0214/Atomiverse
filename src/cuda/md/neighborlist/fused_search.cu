@@ -63,6 +63,12 @@ void launch_csr_to_flat(const int* row_ptr, const int* col_idx,
 
 // ---------------------------------------------------------------------------
 // Kernel: Per-cluster displacement + dirty flags + rebuild flag
+//
+// Retained as a cluster-granularity reference; the live Verlet-skin
+// gate uses `launch_atom_displacement_max` (defined below) against
+// `frame.atoms.x/y/z` vs `NListBuffers::ref_x/y/z` instead. The
+// cluster-granular path is kept for future use by a periodic-skip
+// smart-prune optimization.
 // ---------------------------------------------------------------------------
 
 template <typename work_t>
@@ -148,6 +154,11 @@ void launch_cluster_displacement(
 // permanently.
 // ---------------------------------------------------------------------------
 
+// `dirty_flags`, `prune_step`, `prune_period` are reserved for a
+// future periodic-skip optimization (see cuda-md-review-cleanup-05*).
+// The kernel currently re-prunes every step from current cluster
+// positions per the correctness note above — the parameters are
+// accepted-but-unread.
 template <typename work_t>
 __global__ __launch_bounds__(ATV::cuda::kDefaultBlock) void smart_rolling_prune(
     const real_t* __restrict__ cluster_x, const real_t* __restrict__ cluster_y,
@@ -247,6 +258,89 @@ void launch_smart_rolling_prune(
 
 
 
+// ---------------------------------------------------------------------------
+// Kernel: Per-atom displacement vs ref_{x,y,z}, atomicMax rebuild_flag
+// ---------------------------------------------------------------------------
+//
+// Reads frame.atoms.x/y/z directly (always live), not cluster_x/y/z
+// (sorted layout, stale between rebuilds). Each thread computes one
+// atom's squared displacement; any thread whose d² > half_skin_sq
+// races to atomicMax(rebuild_flag, 1). No reduction needed — we only
+// care "any atom exceeded?", not "what's the max?".
+//
+// Cost: one global load × 6 (current + ref) + 1 atomicMax on at most
+// one thread per launch. ~few µs per call on a 10k-atom system.
+
+template <typename work_t>
+__global__ void atom_displacement_max(
+    const real_t* __restrict__ pos_x, const real_t* __restrict__ pos_y,
+    const real_t* __restrict__ pos_z, const real_t* __restrict__ ref_x,
+    const real_t* __restrict__ ref_y, const real_t* __restrict__ ref_z,
+    int num_atoms, work_t half_skin_sq, int* __restrict__ rebuild_flag) {
+
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= num_atoms)
+        return;
+
+    work_t dx = pos_x[i] - ref_x[i];
+    work_t dy = pos_y[i] - ref_y[i];
+    work_t dz = pos_z[i] - ref_z[i];
+    work_t d2 = dx * dx + dy * dy + dz * dz;
+
+    if (d2 > half_skin_sq) {
+        atomicMax(rebuild_flag, 1);
+    }
+}
+
+template <typename work_t>
+void launch_atom_displacement_max(const real_t* pos_x, const real_t* pos_y,
+                                  const real_t* pos_z, const real_t* ref_x,
+                                  const real_t* ref_y, const real_t* ref_z,
+                                  int num_atoms, work_t half_skin_sq,
+                                  int* rebuild_flag, cudaStream_t stream) {
+    if (num_atoms == 0)
+        return;
+    // Caller pre-clears rebuild_flag (the launcher mustn't, because we
+    // need to OR into a multi-source flag eventually).
+    int block = ATV::cuda::kDefaultBlock;
+    int grid = (num_atoms + block - 1) / block;
+    atom_displacement_max<work_t><<<grid, block, 0, stream>>>(
+        pos_x, pos_y, pos_z, ref_x, ref_y, ref_z, num_atoms, half_skin_sq,
+        rebuild_flag);
+    ATV_CUDA_CHECK(cudaGetLastError());
+}
+
+// ---------------------------------------------------------------------------
+// Kernel: Snapshot per-atom positions into ref_{x,y,z}
+// ---------------------------------------------------------------------------
+
+__global__ void snapshot_ref_atoms(const real_t* __restrict__ pos_x,
+                                   const real_t* __restrict__ pos_y,
+                                   const real_t* __restrict__ pos_z,
+                                   real_t* __restrict__ ref_x,
+                                   real_t* __restrict__ ref_y,
+                                   real_t* __restrict__ ref_z, int num_atoms) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= num_atoms)
+        return;
+    ref_x[i] = pos_x[i];
+    ref_y[i] = pos_y[i];
+    ref_z[i] = pos_z[i];
+}
+
+void launch_snapshot_ref_atoms(const real_t* pos_x, const real_t* pos_y,
+                               const real_t* pos_z, real_t* ref_x,
+                               real_t* ref_y, real_t* ref_z, int num_atoms,
+                               cudaStream_t stream) {
+    if (num_atoms == 0)
+        return;
+    int block = ATV::cuda::kDefaultBlock;
+    int grid = (num_atoms + block - 1) / block;
+    snapshot_ref_atoms<<<grid, block, 0, stream>>>(pos_x, pos_y, pos_z, ref_x,
+                                                   ref_y, ref_z, num_atoms);
+    ATV_CUDA_CHECK(cudaGetLastError());
+}
+
 // ── Forced template instantiations ───────────────────────────────────
 // Instantiate each launcher template over the configured work_t type
 // (the only argument the call sites use). Address-of ODR-uses the
@@ -257,6 +351,8 @@ namespace {
     reinterpret_cast<const void*>(&launch_cluster_displacement<work_t>);
 [[maybe_unused]] const void* _inst_launch_smart_rolling_prune =
     reinterpret_cast<const void*>(&launch_smart_rolling_prune<work_t>);
+[[maybe_unused]] const void* _inst_launch_atom_displacement_max =
+    reinterpret_cast<const void*>(&launch_atom_displacement_max<work_t>);
 } // namespace
 
 } // namespace ATV::cuda::md::nlist

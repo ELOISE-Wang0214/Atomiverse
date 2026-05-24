@@ -49,12 +49,10 @@ struct NListBuffers {
     DeviceVector<uint64_t> interaction_mask; // [num_pairs]
     DeviceVector<char> prefix_temp;
 
-    // Reference positions for rebuild check
+    // Reference positions for the Verlet-skin rebuild check
+    // (snapshot of frame.atoms.x/y/z taken at the end of every full
+    // rebuild; consumed by launch_atom_displacement_max each step).
     DeviceVector<work_t> ref_x, ref_y, ref_z;
-    DeviceVector<int> rebuild_flag; // single device-side flag
-
-    // Input positions (device copy)
-    DeviceVector<work_t> pos_x, pos_y, pos_z;
 
     // Stencil (device copy)
     DeviceVector<int> stencil_dx, stencil_dy, stencil_dz;
@@ -64,11 +62,10 @@ struct NListBuffers {
     DeviceVector<uint64_t> flat_mask;
     DeviceVector<int> flat_pair_counter; // single int, atomic counter
 
-    // Displacement tracking (smart prune)
-    DeviceVector<work_t> ref_cluster_x, ref_cluster_y, ref_cluster_z;
-    DeviceVector<work_t> cluster_disp_sq;
+    // Dirty flags written by launch_cluster_displacement; currently
+    // accepted-but-unread by smart_rolling_prune (reserved for a
+    // future periodic-skip optimization, see cuda-md-review-cleanup-05*).
     DeviceVector<int> dirty_flags;
-    DeviceVector<int> flat_histogram;
 
     void resize_atoms(int n, int n_clusters) {
         morton_codes.resize(n);
@@ -99,11 +96,6 @@ struct NListBuffers {
         ref_x.resize(n);
         ref_y.resize(n);
         ref_z.resize(n);
-        rebuild_flag.resize(1);
-
-        pos_x.resize(n);
-        pos_y.resize(n);
-        pos_z.resize(n);
     }
 
     void resize_grid(int ncells) {
@@ -124,15 +116,7 @@ struct NListBuffers {
         flat_pair_counter.resize(1);
     }
 
-    void resize_displacement(int n_clusters) {
-        int padded = n_clusters * kClusterSize;
-        ref_cluster_x.resize(padded);
-        ref_cluster_y.resize(padded);
-        ref_cluster_z.resize(padded);
-        cluster_disp_sq.resize(n_clusters);
-        dirty_flags.resize(n_clusters);
-        flat_histogram.resize(n_clusters);
-    }
+    void resize_displacement(int n_clusters) { dirty_flags.resize(n_clusters); }
 
     ClusterData<work_t> cluster_data(int num_clusters, int num_atoms) {
         return {cluster_x.data(),
@@ -218,6 +202,22 @@ void launch_radix_sort(uint32_t* keys_in, uint32_t* keys_out, int* values_in,
 void launch_exclusive_sum(const int* input, int* output, int num_items,
                           DeviceVector<char>& temp, cudaStream_t stream = 0);
 
+// Query the maximum temp-storage bytes that CUB radix sort and exclusive
+// sum will require for `n_atoms` items / `n_clusters` items, so the
+// caller can pre-size DeviceVector<char> temps in build() and avoid any
+// cudaMalloc in the per-step launch() path.
+//
+// Returns {sort_bytes, scan_bytes_atoms, scan_bytes_clusters}. The
+// extra `scan_bytes_clusters` covers `prefix_temp` used over
+// `pair_counts[num_clusters]` in `launch_exclusive_sum` from
+// `neighbor_list.cu::launch()`.
+struct CubTempBytes {
+    std::size_t sort_bytes;
+    std::size_t scan_bytes_atoms;
+    std::size_t scan_bytes_clusters;
+};
+CubTempBytes query_cub_temp_bytes(int num_atoms, int num_clusters);
+
 // Grid CSR build
 void launch_build_grid_csr(const int* cluster_cell_idx, int num_clusters,
                            int ncells, int* cell_start, int* cell_clusters,
@@ -260,6 +260,27 @@ void launch_cluster_displacement(
     const real_t* ref_cluster_z, const int* cluster_count, int num_clusters,
     work_t dirty_threshold_sq, real_t* cluster_disp_sq, int* dirty_flags,
     int* rebuild_flag, work_t half_skin_sq, cudaStream_t stream = 0);
+
+// Per-atom displacement vs ref_{x,y,z}; sets rebuild_flag=1 on first
+// thread whose squared displacement exceeds half_skin_sq. Reads
+// `frame.atoms.x/y/z` directly (always live), unlike
+// `launch_cluster_displacement` which would compare stale sorted
+// `cluster_x/y/z` to its ref snapshot between rebuilds. Used by
+// `cuda::NeighborList::launch()` as the Verlet-skin gate.
+template <typename work_t>
+void launch_atom_displacement_max(const real_t* pos_x, const real_t* pos_y,
+                                  const real_t* pos_z, const real_t* ref_x,
+                                  const real_t* ref_y, const real_t* ref_z,
+                                  int num_atoms, work_t half_skin_sq,
+                                  int* rebuild_flag, cudaStream_t stream = 0);
+
+// Snapshot current per-atom positions into ref_{x,y,z} buffers. Called
+// after every full neighbor-list rebuild so the next step's
+// `launch_atom_displacement_max` measures motion since the rebuild.
+void launch_snapshot_ref_atoms(const real_t* pos_x, const real_t* pos_y,
+                               const real_t* pos_z, real_t* ref_x,
+                               real_t* ref_y, real_t* ref_z, int num_atoms,
+                               cudaStream_t stream = 0);
 
 // Smart rolling prune on flat pair list (skip clean pairs)
 template <typename work_t>

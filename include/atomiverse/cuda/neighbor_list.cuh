@@ -73,9 +73,21 @@ class NeighborList : public ComponentBase {
     /// @param ctx Build context with Runtime and DeviceFrame.
     void build(const BuildContext& ctx) override;
 
-    /// @brief Rebuild pair list from current positions. Pure GPU -- zero D2H.
+    /// @brief Rebuild pair list from current positions, gated by the
+    ///        Verlet-skin rebuild check.
     ///
-    /// Full pipeline: morton sort, cluster AABB, grid CSR, pair search, export.
+    /// Pipeline (run only when `rebuild_flag` from the previous step is
+    /// set): morton sort → CUB radix sort → fused scatter+AABB → grid
+    /// CSR → coarse count → fill → compact → csr_to_flat → snapshot
+    /// ref_x/y/z. Every step (rebuild or skip): mask refresh via
+    /// `smart_rolling_prune` → atom-pair export → `atom_displacement_max`
+    /// for the next step's rebuild gate.
+    ///
+    /// First launch always rebuilds (no prior flag exists). Subsequent
+    /// launches use a 1-step-lagged async D2H of `rebuild_flag` —
+    /// `skin/2` width absorbs the extra step of motion (standard
+    /// LAMMPS / GROMACS pattern).
+    ///
     /// Re-publishes the owned pair list to `ctx.runtime.pair_list`.
     ///
     /// @param ctx Launch context with Runtime and DeviceFrame.
@@ -96,6 +108,16 @@ class NeighborList : public ComponentBase {
     /// @brief Get Verlet skin width.
     /// @return Skin width [Angstrom].
     double skin() const { return skin_; }
+
+    /// @brief Number of full neighbor-list rebuilds since `build()`.
+    ///
+    /// Test introspection only — used by `test_neighborlist_skin_gating`
+    /// to assert that a quiescent system rebuilds at most O(1) times
+    /// over many steps. Production code should not depend on this
+    /// counter (the rebuild cadence is a perf-tuning detail, not a
+    /// public contract).
+    /// @return Rebuild count over the lifetime of this component.
+    int rebuild_count() const noexcept;
 
   private:
     double cutoff_; ///< Interaction cutoff [Angstrom].

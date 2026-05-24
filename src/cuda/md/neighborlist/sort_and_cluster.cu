@@ -123,6 +123,37 @@ void launch_radix_sort(uint32_t* keys_in, uint32_t* keys_out, int* values_in,
 }
 
 // ---------------------------------------------------------------------------
+// CUB temp byte query — used by NeighborList::build() to pre-allocate
+// sort/scan temps so launch() never trips the resize-cudaMalloc path.
+// ---------------------------------------------------------------------------
+
+CubTempBytes query_cub_temp_bytes(int num_atoms, int num_clusters) {
+    CubTempBytes out{0, 0, 0};
+    if (num_atoms > 0) {
+        // Radix sort of `num_atoms` Morton codes (uint32 keys + int values).
+        uint32_t* dummy_keys = nullptr;
+        int* dummy_values = nullptr;
+        cub::DeviceRadixSort::SortPairs(
+            nullptr, out.sort_bytes, dummy_keys, dummy_keys, dummy_values,
+            dummy_values, num_atoms, 0, 30, cudaStream_t{0});
+        // Exclusive sum over `num_atoms` ints (largest scan path).
+        int* dummy_in = nullptr;
+        int* dummy_out = nullptr;
+        cub::DeviceScan::ExclusiveSum(nullptr, out.scan_bytes_atoms, dummy_in,
+                                      dummy_out, num_atoms, cudaStream_t{0});
+    }
+    if (num_clusters > 0) {
+        // Exclusive sum over `num_clusters` ints (used by row_ptr build).
+        int* dummy_in = nullptr;
+        int* dummy_out = nullptr;
+        cub::DeviceScan::ExclusiveSum(nullptr, out.scan_bytes_clusters,
+                                      dummy_in, dummy_out, num_clusters,
+                                      cudaStream_t{0});
+    }
+    return out;
+}
+
+// ---------------------------------------------------------------------------
 // Kernel: Scatter sorted atoms into cluster SoA layout
 // ---------------------------------------------------------------------------
 
