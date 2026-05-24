@@ -285,22 +285,31 @@ void PairLJCut::compute(const LaunchContext& ctx) {
     if (!pairs)
         return;
     int n = ctx.frame.n_atoms();
-    // Grid size MUST cover the ACTUAL pair count, not a guess. The
-    // earlier `n * kEstMaxNeighbors / 2` upper-bound for orientation
-    // was used as the kernel grid — but in dense systems (PE at
-    // 0.0195 atoms/Å³, cutoff 10.5 Å) the real count of 5M+ pairs
-    // dwarfs the n·50 estimate; only the first 500k pairs got a
-    // thread and the rest were silently dropped → severe under-counting
-    // of LJ forces (10,000× too small for some atoms vs LAMMPS-real).
-    // Read n_pairs back D2H to size the grid exactly. This is a small
-    // synchronisation cost incurred once per step that pays for itself
-    // by NOT shipping wrong forces to the integrator.
-    int n_pairs_host = 0;
-    cudaMemcpyAsync(&n_pairs_host, pairs->n_pairs, sizeof(int),
-                    cudaMemcpyDeviceToHost, stream);
-    cudaStreamSynchronize(stream);
+    (void)n; // kept for symmetry with sibling pair styles
+    // Grid size = the NeighborList's pair_capacity upper bound (read once
+    // from device). The kernel early-exits via `if (idx >= *n_pairs)` at
+    // line 63, so over-launching by a few × is cheap (one global load +
+    // early return per wasted thread) and far cheaper than the per-step
+    // D2H + cudaStreamSynchronize that the previous grid-by-n_pairs
+    // sizing required. The pair_capacity was previously read at build
+    // time and is stable; we read it once here at first call and cache
+    // the host int statically (per-instance via PIMPL would be cleaner
+    // but adds State plumbing — the read is build-time-equivalent and
+    // pays only on the first launch).
+    //
+    // The earlier bug — n·50 host estimate silently truncating overflow
+    // pairs at ~37% loss on a 10k-atom PE system — was solved by the
+    // density-based capacity rewrite in NeighborList::build()
+    // (cuda-md-review-cleanup-02). With the new capacity sized to
+    // ~3× n_neighbors_est, this kernel over-launches by ~3× actual
+    // count; the early-exit absorbs it.
+    if (pair_capacity_host_ == 0) {
+        cudaMemcpyAsync(&pair_capacity_host_, pairs->capacity, sizeof(int),
+                        cudaMemcpyDeviceToHost, stream);
+        cudaStreamSynchronize(stream); // build-time-equivalent: first launch only
+    }
     int block = kDefaultBlock;
-    int grid = grid_size(n_pairs_host > 0 ? n_pairs_host : 1);
+    int grid = grid_size(pair_capacity_host_ > 0 ? pair_capacity_host_ : 1);
     // Pass nullptr for exclusion CSR when none configured — kernel takes
     // fast path and avoids the partner lookup overhead entirely.
     const int* excl_off = (has_exclusions_) ? d_excl_offsets_ : nullptr;

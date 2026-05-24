@@ -96,7 +96,7 @@ __global__ void accumulate_momentum(
     atomicAdd(total_mass, static_cast<work_t>(mass[i]));
 }
 
-/// @brief Subtract center-of-mass velocity from all atoms.
+/// @brief Subtract center-of-mass velocity from all atoms (host-provided v_cm).
 __global__ void remove_com(real_t* __restrict__ vx, real_t* __restrict__ vy,
                            real_t* __restrict__ vz, work_t vcm_x, work_t vcm_y,
                            work_t vcm_z, const int* __restrict__ n_ptr) {
@@ -104,6 +104,42 @@ __global__ void remove_com(real_t* __restrict__ vx, real_t* __restrict__ vy,
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= *n_ptr)
         return;
+
+    vx[i] -= static_cast<real_t>(vcm_x);
+    vy[i] -= static_cast<real_t>(vcm_y);
+    vz[i] -= static_cast<real_t>(vcm_z);
+}
+
+/// @brief Subtract COM velocity computed from device-resident
+///        `scratch = {Σ m·v_x, Σ m·v_y, Σ m·v_z, Σ m}` (4 work_t words).
+///
+/// Pure GPU — replaces the D2H + sync + host-divide + H2D-as-arg pattern
+/// used by the build()-time path with a single per-atom division. Cost:
+/// 3 FP64 divisions per atom (~60 cycles total on Hopper), dwarfed by the
+/// surrounding atomic-accumulate cost. Used by `ZeroMomentum::launch()`
+/// to keep the hot path GPU-pure (`CLAUDE.md ## Architecture § CUDA
+/// execution model` "launch() must be GPU-pure" rule).
+///
+/// Each thread reads the 4-word scratch as broadcast — coalesced across
+/// the whole grid, served from L1 after the first warp.
+__global__ void
+remove_com_from_scratch(real_t* __restrict__ vx, real_t* __restrict__ vy,
+                        real_t* __restrict__ vz,
+                        const work_t* __restrict__ scratch_pM,
+                        const int* __restrict__ n_ptr) {
+
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= *n_ptr)
+        return;
+
+    work_t M = scratch_pM[3];
+    if (!(M > work_t(0))) // zero or NaN: no-op
+        return;
+
+    work_t inv_M = work_t(1) / M;
+    work_t vcm_x = scratch_pM[0] * inv_M;
+    work_t vcm_y = scratch_pM[1] * inv_M;
+    work_t vcm_z = scratch_pM[2] * inv_M;
 
     vx[i] -= static_cast<real_t>(vcm_x);
     vy[i] -= static_cast<real_t>(vcm_y);
@@ -225,26 +261,18 @@ void ZeroMomentum::launch(const LaunchContext& ctx) {
         frame.atoms.vx, frame.atoms.vy, frame.atoms.vz, frame.atoms.mass, d_px,
         d_py, d_pz, d_M, frame.atoms.d_size);
 
-    // 3. Synchronous D2H copy of the 4-word scratch: integrity
-    //    components are exempt from the Phase H zero-sync recorder
-    //    contract (link 7 design). For multi-rank operation a single-
-    //    GPU range (umbrella scope decision §1) means no MPI_Allreduce
-    //    is needed; the device-local sums are already the global sums.
-    cudaStreamSynchronize(stream);
-    work_t h[4] = {0, 0, 0, 0};
-    cudaMemcpy(h, scratch, 4 * sizeof(work_t), cudaMemcpyDeviceToHost);
-    work_t M = h[3];
-    if (!(M > work_t(0)))
-        return;
-
-    work_t vcm_x = h[0] / M;
-    work_t vcm_y = h[1] / M;
-    work_t vcm_z = h[2] / M;
-
-    // 4. Broadcast v_cm back as kernel args and subtract.
-    remove_com<<<grid, block, 0, stream>>>(frame.atoms.vx, frame.atoms.vy,
-                                           frame.atoms.vz, vcm_x, vcm_y, vcm_z,
-                                           frame.atoms.d_size);
+    // 3. On-device v_cm broadcast — reads the 4-word scratch, computes
+    //    v_cm = Σmv/Σm, subtracts. No D2H, no sync — keeps launch()
+    //    GPU-pure per the CLAUDE.md "## Architecture § CUDA execution
+    //    model" contract (cuda-md-review-cleanup-03-launch-purity).
+    //    The previous host-divide + H2D-as-arg pattern was the last
+    //    `cudaStreamSynchronize` on the MD hot path; this rewrite
+    //    eliminates it. For multi-rank operation a single-GPU range
+    //    (umbrella scope decision §1) means no MPI_Allreduce is needed;
+    //    device-local sums are already the global sums.
+    remove_com_from_scratch<<<grid, block, 0, stream>>>(
+        frame.atoms.vx, frame.atoms.vy, frame.atoms.vz, scratch,
+        frame.atoms.d_size);
 }
 
 void ZeroMomentum::destroy(const DestroyContext& /*ctx*/) {

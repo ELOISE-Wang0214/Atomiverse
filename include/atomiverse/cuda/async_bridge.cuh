@@ -6,8 +6,10 @@
 /// @code
 ///   build():   cudaEventCreate + on_build(ctx)
 ///   launch():  EventRecord(main) → StreamWaitEvent(defer) → issue_d2h(ctx)
-///              → cudaStreamSynchronize(defer) → on_data_ready(ctx)
-///   destroy(): on_destroy(ctx) → cudaEventDestroy
+///              → cudaLaunchHostFunc(defer, &cuda_callback_)
+///              → [worker thread: on_data_ready(ctx) → free payload]
+///   destroy(): cudaStreamSynchronize(defer)  [drain pending callbacks]
+///              → on_destroy(ctx) → cudaEventDestroy
 /// @endcode
 ///
 /// Subclasses implement four hooks:
@@ -23,9 +25,6 @@
 ///
 /// @see cpu/observer/rdf.h, cpu/recorder/thermo.h, cpu/recorder/trajectory.h
 #pragma once
-
-#include <string>
-#include <vector>
 
 #include "atomiverse/cuda/component.cuh"
 
@@ -45,9 +44,12 @@ class AsyncBridge : public ComponentBase {
     /// @param ctx Build context.
     void build(const BuildContext& ctx) final;
 
-    /// @brief Sidecar boilerplate: event-order defer stream, issue D2H, sync, call CPU impl.
+    /// @brief Sidecar boilerplate: event-order defer stream, issue
+    ///        D2H, dispatch on_data_ready via cudaLaunchHostFunc.
     ///
-    /// Calls can_run(ctx) first; returns immediately if false.
+    /// Calls can_run(ctx) first; returns immediately if false. The
+    /// host hook runs on a CUDA worker thread after the D2H completes;
+    /// the main thread is free to queue subsequent steps in parallel.
     /// @param ctx Launch context.
     void launch(const LaunchContext& ctx) final;
 
@@ -96,6 +98,20 @@ class AsyncBridge : public ComponentBase {
 
     void* event_ =
         nullptr; ///< CUDA event (cudaEvent_t, as void*) owned by this base.
+
+  public:
+    /// @brief Stream-callback dispatcher — internal, do not call directly.
+    ///
+    /// Routed via `cudaLaunchHostFunc` on the defer stream after the
+    /// subclass's `issue_d2h(ctx)` completes. Runs on a CUDA worker
+    /// thread (not the main thread). Reads the heap-allocated callback
+    /// args struct (owned per-call), constructs a `LaunchContext`, and
+    /// invokes the subclass's `on_data_ready()` hook. Frees the args.
+    ///
+    /// Exposed `public` so the C-callable callback signature
+    /// (`cudaHostFn_t`) can reach the static dispatch without friend
+    /// declarations. Not part of the user-extension API.
+    static void cuda_callback_(void* user_data);
 };
 
 } // namespace cuda

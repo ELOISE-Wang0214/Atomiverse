@@ -286,6 +286,12 @@ if(ATV_BUILD_CUDA)
     atv_add_test(test_cuda_md_components cuda/md/test_cuda_md_components.cu)
     atv_add_test(test_cuda_install_infra_capability cuda/md/test_install_infra_capability.cu)
     atv_add_test(test_cuda_neighborlist_skin_gating cuda/md/test_neighborlist_skin_gating.cu)
+    atv_add_test(test_cuda_pair_lj_no_d2h cuda/test_pair_lj_no_d2h.cu)
+    target_compile_definitions(test_cuda_pair_lj_no_d2h PRIVATE
+        ATV_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    atv_add_test(test_cuda_driver_no_per_phase_sync cuda/test_driver_no_per_phase_sync.cu)
+    target_compile_definitions(test_cuda_driver_no_per_phase_sync PRIVATE
+        ATV_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     atv_add_test(test_cuda_md_nve_limit cuda/md/test_nve_limit.cu)
     atv_add_test(test_cuda_md_fix_langevin cuda/md/test_fix_langevin.cu)
     atv_add_test(test_cuda_md_nose_hoover_npt cuda/md/test_cuda_nose_hoover_npt.cu)

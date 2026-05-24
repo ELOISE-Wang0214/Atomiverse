@@ -21,6 +21,7 @@
 #include "atomiverse/cuda/async/sync_guard.cuh"
 #include "atomiverse/cuda/md/init.cuh"
 #include "atomiverse/cuda/md/md.cuh"
+#include "atomiverse/cuda/md/nose_hoover_npt.cuh"
 #include "atomiverse/cuda/md/velocity_verlet.cuh"
 #include "atomiverse/cuda/neighbor_list.cuh"
 #include "atomiverse/cuda/potentials/lj.cuh"
@@ -108,6 +109,36 @@ TEST(CudaAsyncHotPathNoSync, ZeroSyncOver100Steps) {
     EXPECT_EQ(cuda::detail::sync_count(), 0u)
         << "AsyncRecordBase routed at least one cuda::stream_synchronize "
            "call on the hot path; this breaks the zero-block contract.";
+}
+
+/// @brief Same gate, but with NoseHooverNPT replacing VelocityVerlet.
+///        Asserts the NPT consolidation in `cuda-md-review-cleanup-03-launch-purity`
+///        (8-double pinned scratch + event-sync) keeps the wrapper counter
+///        at zero across 100 NPT steps.
+TEST(CudaAsyncHotPathNoSync, ZeroSyncOverNPTLoop) {
+    cpu::Frame frame = make_lj_cube();
+    NoOpAsyncRecorder rec;
+
+    cuda::md::MD sim;
+    sim.on(md::Phase::force)
+        .add(cuda::NeighborList{2.5}, -10)
+        .add(cuda::LJ{1.0, 1.0, 2.5});
+    sim.add(cuda::md::InitVelocity{1.0, 12345ULL});
+    sim.set_integrator(cuda::md::NoseHooverNPT{
+        {/*T_target=*/1.0,
+         /*tau_T=*/100.0,
+         /*P_target=*/0.0,
+         /*tau_P=*/1000.0,
+         /*dt=*/0.001}});
+    sim.add(rec);
+    sim.build();
+
+    cuda::detail::reset_sync_count();
+    sim.run(frame, 100);
+    EXPECT_EQ(cuda::detail::sync_count(), 0u)
+        << "NPT hot path routed at least one cuda::stream_synchronize "
+           "call; the link-03 consolidation should have eliminated all of "
+           "them (defer-stream + event-sync for KE/stress/box reads).";
 }
 
 /// @brief Lifecycle: build/destroy round-trip leaves pointers null.

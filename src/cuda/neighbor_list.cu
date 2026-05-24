@@ -271,10 +271,11 @@ void NeighborList::launch(const LaunchContext& ctx) {
     // cudaEventSynchronize blocks only the host thread, not the GPU
     // stream, and the event has typically already fired by the next
     // launch() call.
-    // TODO(cuda-md-review-cleanup-03-launch-purity): replace
-    // cudaEventSynchronize with a fully event-driven pattern
-    // (cudaStreamWaitEvent on next launch) so the host thread never
-    // waits. See .claude/specs/cuda-md-review-cleanup-03-launch-purity.md.
+    // Future: a fully event-driven pattern (`cudaStreamWaitEvent` on
+    // next launch so the host thread never waits) is plausible but is
+    // explicitly out of scope for the cleanup chain — link 03's
+    // launch-purity contract is satisfied by the lagged-readback +
+    // cudaEventSynchronize pattern here.
     bool rebuild_needed;
     if (s.first_launch) {
         rebuild_needed = true;

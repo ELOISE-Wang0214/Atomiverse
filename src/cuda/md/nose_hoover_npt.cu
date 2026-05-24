@@ -119,12 +119,16 @@ __global__ void propagate_x_k(real_t* __restrict__ x, real_t* __restrict__ y,
 
 // ── KE reductions ───────────────────────────────────────────────────
 //
-// Kernels write to a 4-double device buffer:
-//   d_ke_buf[0] = Σ m·(vx² + vy² + vz²)   (global ke pre-factor)
-//   d_ke_buf[1] = Σ m·vx²                  (per-axis x)
-//   d_ke_buf[2] = Σ m·vy²
-//   d_ke_buf[3] = Σ m·vz²
-// Caller multiplies by 0.5·kMvv2e to get eV.
+// reduce_ke_axes_k writes the first 4 slots of the consolidated
+// NPT scratch buffer (`State::d_npt_scratch_`, size kNptScratchSize):
+//   d_npt_scratch_[0] = Σ m·(vx² + vy² + vz²)   (global ke pre-factor)
+//   d_npt_scratch_[1] = Σ m·vx²                  (per-axis x)
+//   d_npt_scratch_[2] = Σ m·vy²
+//   d_npt_scratch_[3] = Σ m·vz²
+// Slots [4..6] hold the stress[0..2] mirror; [7] the energy mirror —
+// both filled by `gather_npt_scalars_k` so a single async D2H pulls
+// all NPT scalars in one defer-stream round-trip.
+// Caller multiplies the KE slots by 0.5·kMvv2e to get eV.
 
 __global__ void reduce_ke_axes_k(const real_t* __restrict__ vx,
                                  const real_t* __restrict__ vy,
@@ -163,6 +167,42 @@ __global__ void reduce_ke_axes_k(const real_t* __restrict__ vx,
         atomicAdd(&buf[2], by);
         atomicAdd(&buf[3], bz);
         atomicAdd(&buf[0], bx + by + bz);
+    }
+}
+
+/// @brief Mirror stress[0..2] + energy device scalars into the
+///        8-double consolidated NPT scratch buffer (slots [4..7]).
+///
+/// Pairs with `reduce_ke_axes_k` (which fills [0..3]). One thread is
+/// sufficient — the four mirrored values are tiny and contiguous —
+/// and pairing the two kernels behind a single async D2H pulls all
+/// NPT scalars in one defer-stream round-trip
+/// (cuda-md-review-cleanup-03-launch-purity).
+__global__ void gather_npt_scalars_k(const double* __restrict__ stress,
+                                     const double* __restrict__ energy,
+                                     double* __restrict__ scratch /*8*/) {
+    if (threadIdx.x == 0) {
+        scratch[4] = stress[0];
+        scratch[5] = stress[1];
+        scratch[6] = stress[2];
+        scratch[7] = *energy;
+    }
+}
+
+/// @brief Snapshot box diagonal (box[0], box[4], box[8]) into a
+///        3-double scratch buffer for async readback.
+///
+/// Used by `propagate_x_and_box_` to refresh the host-cached box
+/// dimensions after `cuda::md::Deform` (order -100, before NPT at
+/// order 0) may have rescaled the box in-place. Single thread is
+/// sufficient — three loads + three stores
+/// (cuda-md-review-cleanup-03-launch-purity).
+__global__ void gather_box_diag_k(const prec_t* __restrict__ box,
+                                  double* __restrict__ scratch /*3*/) {
+    if (threadIdx.x == 0) {
+        scratch[0] = static_cast<double>(box[0]);
+        scratch[1] = static_cast<double>(box[4]);
+        scratch[2] = static_cast<double>(box[8]);
     }
 }
 
@@ -219,54 +259,148 @@ void NoseHooverNPT::build(const BuildContext& ctx) {
     box_ly_ = static_cast<double>(host_box[4]);
     box_lz_ = static_cast<double>(host_box[8]);
 
-    // Device scratch: 4 doubles for KE reductions.
-    double* d_ke = nullptr;
-    cudaMalloc(&d_ke, 4 * sizeof(double));
-    d_ke_buf_ = d_ke;
+    // Consolidated NPT scratch: 8 doubles
+    //   [0..3] = KE_axes reduction output (existing reduce_ke_axes_k)
+    //   [4..6] = stress[0..2] mirror (filled by gather_npt_scalars_k)
+    //   [7]    = energy mirror
+    double* d_npt = nullptr;
+    cudaMalloc(&d_npt, kNptScratchSize * sizeof(double));
+    cudaMemset(d_npt, 0, kNptScratchSize * sizeof(double));
+    d_npt_scratch_ = d_npt;
+
+    // Box-diagonal device scratch (3 doubles): refreshed by Deform-aware
+    // path in propagate_x_and_box_.
+    double* d_box = nullptr;
+    cudaMalloc(&d_box, kBoxDiagSize * sizeof(double));
+    d_box_diag_ = d_box;
+
+    // Pinned host scratch + events. Routed through defer_stream so the
+    // main compute stream is never drained for KE / stress / box reads
+    // (cuda-md-review-cleanup-03-launch-purity).
+    cudaMallocHost(&h_npt_scratch_, kNptScratchSize * sizeof(double));
+    for (int i = 0; i < kNptScratchSize; ++i)
+        h_npt_scratch_[i] = 0.0;
+    cudaMallocHost(&h_box_diag_pinned_, kBoxDiagSize * sizeof(double));
+    h_box_diag_pinned_[0] = box_lx_;
+    h_box_diag_pinned_[1] = box_ly_;
+    h_box_diag_pinned_[2] = box_lz_;
+    cudaMallocHost(&h_kinetic_conserved_pinned_,
+                   kKineticConservedPinnedSize * sizeof(double));
+    h_kinetic_conserved_pinned_[0] = KE_global_;
+    h_kinetic_conserved_pinned_[1] = 0.0;
+
+    cudaEvent_t ev_npt = nullptr;
+    cudaEventCreateWithFlags(&ev_npt, cudaEventDisableTiming);
+    npt_scratch_event_ = ev_npt;
+    cudaEvent_t ev_box = nullptr;
+    cudaEventCreateWithFlags(&ev_box, cudaEventDisableTiming);
+    box_diag_event_ = ev_box;
 }
 
 void NoseHooverNPT::destroy(const DestroyContext& /*ctx*/) {
-    if (d_ke_buf_) {
-        cudaFree(d_ke_buf_);
-        d_ke_buf_ = nullptr;
+    if (d_npt_scratch_) {
+        cudaFree(d_npt_scratch_);
+        d_npt_scratch_ = nullptr;
+    }
+    if (d_box_diag_) {
+        cudaFree(d_box_diag_);
+        d_box_diag_ = nullptr;
+    }
+    if (h_npt_scratch_) {
+        cudaFreeHost(h_npt_scratch_);
+        h_npt_scratch_ = nullptr;
+    }
+    if (h_box_diag_pinned_) {
+        cudaFreeHost(h_box_diag_pinned_);
+        h_box_diag_pinned_ = nullptr;
+    }
+    if (h_kinetic_conserved_pinned_) {
+        cudaFreeHost(h_kinetic_conserved_pinned_);
+        h_kinetic_conserved_pinned_ = nullptr;
+    }
+    if (npt_scratch_event_) {
+        cudaEventDestroy(static_cast<cudaEvent_t>(npt_scratch_event_));
+        npt_scratch_event_ = nullptr;
+    }
+    if (box_diag_event_) {
+        cudaEventDestroy(static_cast<cudaEvent_t>(box_diag_event_));
+        box_diag_event_ = nullptr;
     }
 }
 
-// ── KE helpers ──────────────────────────────────────────────────────
-
-double NoseHooverNPT::compute_global_KE_(const LaunchContext& ctx) {
-    auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
+// ── Consolidated NPT scalar readback ────────────────────────────────
+//
+// Replaces the old per-call `cudaStreamSynchronize(stream) +
+// cudaMemcpy(D2H)` patterns in compute_global_KE_ / compute_axis_KE_ /
+// update_eps_dot_ / extended_hamiltonian_. Issues one reduction
+// kernel + one gather kernel + one async 8-double D2H on
+// `defer_stream` (ordered after main_stream via event), then a host
+// wait on the data-ready event. The main compute stream is never
+// drained — link 03 launch-purity contract
+// (cuda-md-review-cleanup-03-launch-purity).
+//
+// All four host-side scalars (ke_total, ke_axes[3], stress_diag[3],
+// E_pot) are populated in one round-trip; subsequent reads within the
+// same NPT phase reuse the host cache without re-issuing the kernel.
+void NoseHooverNPT::refresh_npt_scalars_(const LaunchContext& ctx) {
+    auto main_stream = static_cast<cudaStream_t>(ctx.runtime.stream);
+    auto defer_stream = static_cast<cudaStream_t>(ctx.runtime.defer_stream);
     auto& f = ctx.frame;
     int n = f.n_atoms();
-    auto* d_ke = static_cast<double*>(d_ke_buf_);
-    cudaMemsetAsync(d_ke, 0, 4 * sizeof(double), stream);
+    auto* d_npt = static_cast<double*>(d_npt_scratch_);
+
+    // Order defer_stream after all pending main_stream work (the
+    // velocity / stress / energy values are produced by main_stream
+    // kernels — VirialStress, ZeroEnergy, integrator kicks).
+    auto event = static_cast<cudaEvent_t>(npt_scratch_event_);
+    cudaEventRecord(event, main_stream);
+    cudaStreamWaitEvent(defer_stream, event, 0);
+
+    // Zero the 4 KE slots + the 4 mirror slots (mirror slots are
+    // overwritten by gather_npt_scalars_k but cheap to clear).
+    cudaMemsetAsync(d_npt, 0, kNptScratchSize * sizeof(double), defer_stream);
+
+    // KE reduction → d_npt[0..3]
     int block = cuda::kDefaultBlock;
     int grid = cuda::grid_size(n);
     size_t smem = 3 * block * sizeof(double);
-    reduce_ke_axes_k<<<grid, block, smem, stream>>>(
-        f.atoms.vx, f.atoms.vy, f.atoms.vz, f.atoms.mass, d_ke, n);
-    cudaStreamSynchronize(stream);
-    double h[4] = {0, 0, 0, 0};
-    cudaMemcpy(h, d_ke, 4 * sizeof(double), cudaMemcpyDeviceToHost);
-    return 0.5 * kMvv2e * h[0];
+    reduce_ke_axes_k<<<grid, block, smem, defer_stream>>>(
+        f.atoms.vx, f.atoms.vy, f.atoms.vz, f.atoms.mass, d_npt, n);
+
+    // Mirror stress[0..2] + energy → d_npt[4..7]
+    gather_npt_scalars_k<<<1, 1, 0, defer_stream>>>(
+        &f.scalars->stress[0], &f.scalars->energy, d_npt);
+
+    // Async D2H to pinned + event record. Host-block on event.
+    cudaMemcpyAsync(h_npt_scratch_, d_npt, kNptScratchSize * sizeof(double),
+                    cudaMemcpyDeviceToHost, defer_stream);
+    cudaEventRecord(event, defer_stream);
+    cudaEventSynchronize(event); // host-thread wait; no stream sync
 }
 
-std::array<double, 3>
-NoseHooverNPT::compute_axis_KE_(const LaunchContext& ctx) {
-    auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
+double NoseHooverNPT::compute_global_KE_(const LaunchContext& ctx) {
+    refresh_npt_scalars_(ctx);
+    return 0.5 * kMvv2e * h_npt_scratch_[0];
+}
+
+void NoseHooverNPT::refresh_box_diag_(const LaunchContext& ctx) {
+    auto main_stream = static_cast<cudaStream_t>(ctx.runtime.stream);
+    auto defer_stream = static_cast<cudaStream_t>(ctx.runtime.defer_stream);
     auto& f = ctx.frame;
-    int n = f.n_atoms();
-    auto* d_ke = static_cast<double*>(d_ke_buf_);
-    cudaMemsetAsync(d_ke, 0, 4 * sizeof(double), stream);
-    int block = cuda::kDefaultBlock;
-    int grid = cuda::grid_size(n);
-    size_t smem = 3 * block * sizeof(double);
-    reduce_ke_axes_k<<<grid, block, smem, stream>>>(
-        f.atoms.vx, f.atoms.vy, f.atoms.vz, f.atoms.mass, d_ke, n);
-    cudaStreamSynchronize(stream);
-    double h[4] = {0, 0, 0, 0};
-    cudaMemcpy(h, d_ke, 4 * sizeof(double), cudaMemcpyDeviceToHost);
-    return {0.5 * kMvv2e * h[1], 0.5 * kMvv2e * h[2], 0.5 * kMvv2e * h[3]};
+    auto* d_box = static_cast<double*>(d_box_diag_);
+
+    // Order defer_stream after Deform's box mutation (which runs on
+    // main_stream at order -100).
+    auto event = static_cast<cudaEvent_t>(box_diag_event_);
+    cudaEventRecord(event, main_stream);
+    cudaStreamWaitEvent(defer_stream, event, 0);
+
+    // Single-thread gather + async D2H + event-sync.
+    gather_box_diag_k<<<1, 1, 0, defer_stream>>>(f.box, d_box);
+    cudaMemcpyAsync(h_box_diag_pinned_, d_box, kBoxDiagSize * sizeof(double),
+                    cudaMemcpyDeviceToHost, defer_stream);
+    cudaEventRecord(event, defer_stream);
+    cudaEventSynchronize(event); // host-thread wait; no stream sync
 }
 
 // ── Temperature ramp ────────────────────────────────────────────────
@@ -384,24 +518,19 @@ void NoseHooverNPT::nhc_baro_half_(double half_dt) {
 // ── Pressure update ─────────────────────────────────────────────────
 
 void NoseHooverNPT::update_eps_dot_(const LaunchContext& ctx, double half_dt) {
-    const auto& f = ctx.frame;
     double V = box_lx_ * box_ly_ * box_lz_;
     if (V <= 0.0)
         return;
 
-    // Per-axis kinetic energy (one reduction kernel + D2H).
-    auto ke_axis = compute_axis_KE_(ctx);
-
-    // D2H the pair-virial diagonal stress[0..2].
-    double stress_diag[3] = {0.0, 0.0, 0.0};
-    {
-        double tmp[6];
-        cudaMemcpy(tmp, &f.scalars->stress[0], 6 * sizeof(double),
-                   cudaMemcpyDeviceToHost);
-        stress_diag[0] = tmp[0];
-        stress_diag[1] = tmp[1];
-        stress_diag[2] = tmp[2];
-    }
+    // Consolidated readback fills h_npt_scratch_[0..7] in one pass —
+    // ke_axes + ke_total + stress[0..2] + energy — via defer_stream +
+    // event-sync (no main_stream drain).
+    refresh_npt_scalars_(ctx);
+    std::array<double, 3> ke_axis = {0.5 * kMvv2e * h_npt_scratch_[1],
+                                     0.5 * kMvv2e * h_npt_scratch_[2],
+                                     0.5 * kMvv2e * h_npt_scratch_[3]};
+    double stress_diag[3] = {h_npt_scratch_[4], h_npt_scratch_[5],
+                             h_npt_scratch_[6]};
 
     double diag[3] = {stress_diag[0] + 2.0 * ke_axis[0],
                       stress_diag[1] + 2.0 * ke_axis[1],
@@ -492,27 +621,23 @@ void NoseHooverNPT::propagate_x_and_box_(const LaunchContext& ctx) {
         drift[d] = expm1c(eps_dt[d] * 0.5);
     }
 
-    // Refresh cached box from device — a cooperative component bound earlier
-    // in `initial_integrate` (e.g. `cuda::md::Deform`, which runs at order
-    // -100 vs this integrator's order 0) may have rescaled f.box[0,4,8]
-    // since the last NPT step. Without this D2H the cached values would
-    // overwrite Deform's modification: stage-5 tension showed box_x frozen
-    // at the initial 64.665 Å and strain stuck at 0 instead of ramping to
-    // 1.7 over 172 000 steps. The sync is one D2H of three doubles per
-    // step (negligible vs the force eval cost) and only matters when a
-    // peer integrator-phase component mutates the box; otherwise it's a
-    // round-trip of the value we cached on the previous step.
-    cudaStreamSynchronize(stream);
-    prec_t box_diag_dev[3] = {prec_t(0), prec_t(0), prec_t(0)};
-    cudaMemcpy(&box_diag_dev[0], &f.box[0], sizeof(prec_t),
-               cudaMemcpyDeviceToHost);
-    cudaMemcpy(&box_diag_dev[1], &f.box[4], sizeof(prec_t),
-               cudaMemcpyDeviceToHost);
-    cudaMemcpy(&box_diag_dev[2], &f.box[8], sizeof(prec_t),
-               cudaMemcpyDeviceToHost);
-    box_lx_ = static_cast<double>(box_diag_dev[0]);
-    box_ly_ = static_cast<double>(box_diag_dev[1]);
-    box_lz_ = static_cast<double>(box_diag_dev[2]);
+    // Refresh cached box from device via defer-stream + event-sync —
+    // a cooperative component bound earlier in `initial_integrate`
+    // (e.g. `cuda::md::Deform`, which runs at order -100 vs this
+    // integrator's order 0) may have rescaled f.box[0,4,8] since the
+    // last NPT step. Without this read the cached values would
+    // overwrite Deform's modification: stage-5 tension showed box_x
+    // frozen at the initial 64.665 Å and strain stuck at 0 instead of
+    // ramping to 1.7 over 172 000 steps.
+    //
+    // Routed through defer_stream so the main compute stream is not
+    // drained; cudaEventSynchronize on the host thread blocks only
+    // until the small 3-double copy completes
+    // (cuda-md-review-cleanup-03-launch-purity).
+    refresh_box_diag_(ctx);
+    box_lx_ = h_box_diag_pinned_[0];
+    box_ly_ = h_box_diag_pinned_[1];
+    box_lz_ = h_box_diag_pinned_[2];
 
     double lx_new = box_lx_ * a_arr[0];
     double ly_new = box_ly_ * a_arr[1];
@@ -535,14 +660,15 @@ void NoseHooverNPT::propagate_x_and_box_(const LaunchContext& ctx) {
 
 // ── Conserved MTK Hamiltonian ───────────────────────────────────────
 
-double NoseHooverNPT::extended_hamiltonian_(const LaunchContext& ctx) const {
-    const auto& f = ctx.frame;
-    // D2H read of energy + kinetic.
-    double E_pot = 0.0, KE = 0.0;
-    cudaMemcpy(&E_pot, &f.scalars->energy, sizeof(double),
-               cudaMemcpyDeviceToHost);
-    cudaMemcpy(&KE, &f.scalars->kinetic, sizeof(double),
-               cudaMemcpyDeviceToHost);
+double NoseHooverNPT::extended_hamiltonian_(const LaunchContext& /*ctx*/) const {
+    // E_pot already pulled into `h_npt_scratch_[7]` by the most recent
+    // refresh_npt_scalars_ call (compute_global_KE_ in end_of_step P8).
+    // KE is host-side (`KE_global_` analytically maintained through the
+    // step), no D2H needed. The previous synchronous cudaMemcpy of
+    // energy + kinetic from device is eliminated
+    // (cuda-md-review-cleanup-03-launch-purity).
+    double E_pot = h_npt_scratch_[7];
+    double KE = KE_global_;
     double H = KE + E_pot;
     const double W_axis = W_ / 3.0;
     for (int a = 0; a < 3; ++a)
@@ -593,13 +719,21 @@ void NoseHooverNPT::launch(const LaunchContext& ctx) {
         nhc_atoms_half_(ctx, half_dt);    // P10
         nhc_baro_half_(half_dt);          // P11
 
-        // Rewrite frame.scalars.kinetic so downstream observers see
-        // the post-NPT KE. D2H write.
-        cudaMemcpy(&ctx.frame.scalars->kinetic, &KE_global_, sizeof(double),
-                   cudaMemcpyHostToDevice);
-        double H = extended_hamiltonian_(ctx);
-        cudaMemcpy(&ctx.frame.scalars->conserved, &H, sizeof(double),
-                   cudaMemcpyHostToDevice);
+        // Rewrite frame.scalars.{kinetic, conserved} so downstream
+        // observers see post-NPT values. Source must be pinned host
+        // memory so the async copy can outlive this lexical scope —
+        // a stack-local `double H` would have its storage reused as
+        // soon as launch() returns, racing the queued D2H copy.
+        // h_kinetic_conserved_pinned_[0]=kinetic, [1]=conserved.
+        auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
+        h_kinetic_conserved_pinned_[0] = KE_global_;
+        h_kinetic_conserved_pinned_[1] = extended_hamiltonian_(ctx);
+        cudaMemcpyAsync(&ctx.frame.scalars->kinetic,
+                        &h_kinetic_conserved_pinned_[0], sizeof(double),
+                        cudaMemcpyHostToDevice, stream);
+        cudaMemcpyAsync(&ctx.frame.scalars->conserved,
+                        &h_kinetic_conserved_pinned_[1], sizeof(double),
+                        cudaMemcpyHostToDevice, stream);
     }
 }
 

@@ -68,8 +68,21 @@ void Backend::step(int step_idx) {
             if (timer_)
                 timer_->impl()->end(stream, slot.phase, op.component->name());
         }
-        cudaStreamSynchronize(static_cast<cudaStream_t>(context_.stream));
-        cudaStreamSynchronize(static_cast<cudaStream_t>(context_.defer_stream));
+        // Per-phase syncs intentionally removed
+        // (cuda-md-review-cleanup-03-launch-purity ac-005):
+        //   - Components within a phase already serialize via CUDA's
+        //     in-stream FIFO ordering. The previous unconditional
+        //     `cudaStreamSynchronize(stream) + cudaStreamSynchronize(defer)`
+        //     drained both streams 6× per step (per-phase × main + defer),
+        //     ~80 µs/step pure host wait on Hopper for no semantic gain.
+        //   - Cross-stream dependencies (defer_stream reads main_stream's
+        //     buffers) are explicitly ordered by AsyncBridge::launch via
+        //     cudaEventRecord(main) + cudaStreamWaitEvent(defer) per
+        //     deferred op, so cross-stream reads see consistent values
+        //     without per-phase sync.
+        //   - End-of-run sync happens in Backend::sync() / retrieve();
+        //     individual components issue event syncs when they need
+        //     specific host-visible values (NPT, NeighborList).
         if (timer_)
             timer_->impl()->flush();
     }

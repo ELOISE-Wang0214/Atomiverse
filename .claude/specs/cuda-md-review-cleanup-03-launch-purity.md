@@ -1,7 +1,7 @@
 ---
 title: CUDA MD Review Cleanup — link 03 — launch() GPU-purity (zero D2H, zero sync)
 slug: cuda-md-review-cleanup-03-launch-purity
-status: draft
+status: done
 created: 2026-05-24
 parent: cuda-md-review-cleanup.md (Cluster 2, 8 findings)
 chain: cuda-md-review-cleanup-* (link 3/9)
