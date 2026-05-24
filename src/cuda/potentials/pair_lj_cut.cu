@@ -7,7 +7,6 @@
 #include "atomiverse/cuda/potentials/lj_kernel.cuh"
 #include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 #include "atomiverse/cuda/types.cuh"
-#include <algorithm>
 #include <cuda_runtime.h>
 #include <set>
 #include <stdexcept>
@@ -40,19 +39,17 @@ __device__ inline bool excl_contains(const int* __restrict__ partners, int beg,
     return false;
 }
 
-__global__ void lj_force(real_t* __restrict__ fx, real_t* __restrict__ fy,
-                         real_t* __restrict__ fz, prec_t* __restrict__ energy,
-                         prec_t* __restrict__ stress,
-                         const int* __restrict__ pi, const int* __restrict__ pj,
-                         const real_t* __restrict__ pdx,
-                         const real_t* __restrict__ pdy,
-                         const real_t* __restrict__ pdz,
-                         const real_t* __restrict__ pdist, work_t epsilon,
-                         work_t sigma, work_t cutoff, work_t v_shift,
-                         const int* __restrict__ n_pairs_ptr,
-                         const int* __restrict__ excl_offsets,
-                         const int* __restrict__ excl_partners,
-                         work_t s_excl) {
+__global__ __launch_bounds__(ATV::cuda::kDefaultBlock, 4) void
+lj_force(real_t* __restrict__ fx, real_t* __restrict__ fy,
+         real_t* __restrict__ fz, prec_t* __restrict__ energy,
+         prec_t* __restrict__ stress, const int* __restrict__ pi,
+         const int* __restrict__ pj, const real_t* __restrict__ pdx,
+         const real_t* __restrict__ pdy, const real_t* __restrict__ pdz,
+         const real_t* __restrict__ pdist_sq, work_t epsilon, work_t sigma_sq,
+         work_t cutoff_sq, work_t min_pair_dist_sq, work_t v_shift,
+         const int* __restrict__ n_pairs_ptr,
+         const int* __restrict__ excl_offsets,
+         const int* __restrict__ excl_partners, work_t s_excl) {
 
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int n_pairs = *n_pairs_ptr;
@@ -66,12 +63,16 @@ __global__ void lj_force(real_t* __restrict__ fx, real_t* __restrict__ fy,
         // list export. The cluster representation pads each cluster to
         // kClusterSize atoms; padded slots leak into the flat PairList with
         // j = -1 (sentinel) and garbage `dx/dy/dz` that can coincidentally
-        // produce a finite `pdist[idx]` not caught by the `r >= kMinPairDist`
-        // floor.
+        // produce a finite `pdist_sq[idx]` not caught by the
+        // `r² >= kMinPairDist²` floor.
         //
+        // Per cuda-md-review-cleanup-06-launch-config-streams the pair
+        // list stores r² (not r); LJ uses inv_r² directly and saves the
+        // sqrt(r²) that the export kernel previously paid per pair, plus
+        // the per-thread FP64 div inv_r = 1/r in this kernel.
         const bool valid_pair = (i >= 0) && (j >= 0);
-        work_t r = valid_pair ? pdist[idx] : work_t(0);
-        if (valid_pair && r < cutoff && r >= kMinPairDist) {
+        work_t r2 = valid_pair ? pdist_sq[idx] : work_t(0);
+        if (valid_pair && r2 < cutoff_sq && r2 >= min_pair_dist_sq) {
             // Special-bonds exclusion check.
             // `excl_offsets == nullptr` ⇒ no exclusions configured ⇒ fast path.
             work_t scale = work_t(1);
@@ -89,14 +90,17 @@ __global__ void lj_force(real_t* __restrict__ fx, real_t* __restrict__ fy,
             }
 
             if (!skip_pair) {
-                work_t inv_r = work_t(1) / r;
-                work_t sr = sigma * inv_r;
-                work_t sr2 = sr * sr;
+                // Single 64-bit divide replaces the original
+                // sqrt + (1/r) + (1/r)² chain — three transcendentals
+                // collapse to one IEEE divide on r² (already squared
+                // upstream by export_atom_pairs_kernel).
+                work_t inv_r2 = work_t(1) / r2;
+                work_t sr2 = sigma_sq * inv_r2;
                 work_t sr6 = sr2 * sr2 * sr2;
                 work_t sr12 = sr6 * sr6;
 
                 work_t f_over_r = scale * work_t(24) * epsilon
-                                  * (work_t(2) * sr12 - sr6) * inv_r * inv_r;
+                                  * (work_t(2) * sr12 - sr6) * inv_r2;
                 work_t dx = pdx[idx], dy = pdy[idx], dz = pdz[idx];
 
                 atomicAdd(&fx[i], static_cast<real_t>(-f_over_r * dx));
@@ -275,8 +279,6 @@ void PairLJCut::compute(const LaunchContext& ctx) {
     const PairList* pairs = ctx.runtime.pair_list;
     if (!pairs)
         return;
-    int n = ctx.frame.n_atoms();
-    (void)n; // kept for symmetry with sibling pair styles
     // Grid size = the NeighborList's pair_capacity upper bound (read once
     // from device). The kernel early-exits via `if (idx >= *n_pairs)` at
     // line 63, so over-launching by a few × is cheap (one global load +
@@ -306,11 +308,22 @@ void PairLJCut::compute(const LaunchContext& ctx) {
     // fast path and avoids the partner lookup overhead entirely.
     const int* excl_off = (has_exclusions_) ? d_excl_offsets_ : nullptr;
     const int* excl_par = (has_exclusions_) ? d_excl_partners_ : nullptr;
+    // Pass cutoff² + sigma² + min_pair_dist² so the kernel avoids the
+    // sqrt(r²) → r → 1/r chain entirely; everything is in r² space
+    // (cuda-md-review-cleanup-06-launch-config-streams).
+    const work_t cutoff_sq = static_cast<work_t>(cutoff_)
+                             * static_cast<work_t>(cutoff_);
+    const work_t sigma_sq = static_cast<work_t>(sigma_)
+                            * static_cast<work_t>(sigma_);
+    const work_t min_pair_dist_sq =
+        static_cast<work_t>(kernels::kMinPairDist)
+        * static_cast<work_t>(kernels::kMinPairDist);
     kernels::lj_force<<<grid, block, shmem, stream>>>(
         frame.atoms.fx, frame.atoms.fy, frame.atoms.fz, &frame.scalars->energy,
         &frame.scalars->stress[0], pairs->i, pairs->j, pairs->dx, pairs->dy,
-        pairs->dz, pairs->dist, epsilon_, sigma_, cutoff_, v_shift_,
-        pairs->n_pairs, excl_off, excl_par, static_cast<work_t>(s_excl_));
+        pairs->dz, pairs->dist_sq, epsilon_, sigma_sq, cutoff_sq,
+        min_pair_dist_sq, v_shift_, pairs->n_pairs, excl_off, excl_par,
+        static_cast<work_t>(s_excl_));
 }
 
 } // namespace cuda

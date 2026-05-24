@@ -1,7 +1,6 @@
 /// @file cuda/potentials/angle_harmonic.cu
 /// @brief CUDA AngleHarmonic — V = K(θ − θ₀)² (kernel + class).
 
-#include "atomiverse/core/constants.h"
 #include "atomiverse/cuda/box.cuh"
 #include "atomiverse/cuda/launch.cuh"
 #include "atomiverse/cuda/potentials/angle_harmonic.cuh"
@@ -28,7 +27,7 @@ AngleHarmonic& AngleHarmonic::operator=(AngleHarmonic&&) noexcept = default;
 
 namespace {
 
-__global__ void
+__global__ __launch_bounds__(ATV::cuda::kDefaultBlock, 4) void
 harmonic_angle_k(const real_t* __restrict__ x, const real_t* __restrict__ y,
                  const real_t* __restrict__ z, real_t* __restrict__ fx,
                  real_t* __restrict__ fy, real_t* __restrict__ fz,

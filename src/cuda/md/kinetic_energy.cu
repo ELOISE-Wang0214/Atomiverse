@@ -37,7 +37,8 @@ namespace {
 /// Stress writes Σ m·vα·vβ (kMvv2e folded in, NO volume division);
 /// the consumer (`cuda::md::NoseHooverNPT::update_eps_dot_` /
 /// pressure observers) divides by V.
-__global__ void kinetic_energy_stress(const real_t* __restrict__ vx,
+__global__ __launch_bounds__(ATV::cuda::kDefaultBlock, 4) void
+kinetic_energy_stress(const real_t* __restrict__ vx,
                                       const real_t* __restrict__ vy,
                                       const real_t* __restrict__ vz,
                                       const real_t* __restrict__ mass,

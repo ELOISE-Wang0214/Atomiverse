@@ -70,9 +70,12 @@ class RDF : public AsyncBridge {
         }
         pair_capacity_ = static_cast<int>(cap);
 
-        // pairs->dist is a real_t device buffer -- size by real_t.
+        // pairs->dist_sq is a real_t device buffer -- size by real_t.
+        // (Per cuda-md-review-cleanup-06-launch-config-streams the
+        // pair list stores r² rather than r; this observer takes the
+        // sqrt at read time in on_data_ready.)
         if (pair_capacity_ > 0) {
-            cudaMallocHost(&h_dist_, pair_capacity_ * sizeof(real_t));
+            cudaMallocHost(&h_dist_sq_, pair_capacity_ * sizeof(real_t));
             dist_.resize(static_cast<size_t>(pair_capacity_));
         }
         cudaMallocHost(&h_n_pairs_, sizeof(int));
@@ -92,7 +95,8 @@ class RDF : public AsyncBridge {
         const PairList* pairs = ctx.runtime.pair_list;
         cudaMemcpyAsync(h_n_pairs_, pairs->n_pairs, sizeof(int),
                         cudaMemcpyDeviceToHost, ds);
-        cudaMemcpyAsync(h_dist_, pairs->dist, pair_capacity_ * sizeof(real_t),
+        cudaMemcpyAsync(h_dist_sq_, pairs->dist_sq,
+                        pair_capacity_ * sizeof(real_t),
                         cudaMemcpyDeviceToHost, ds);
     }
 
@@ -103,9 +107,11 @@ class RDF : public AsyncBridge {
         int np = static_cast<int>(n_pairs);
         if (np > pair_capacity_)
             np = pair_capacity_;
-        // Widen real_t staging buffer to double for the CPU accumulator.
+        // Widen real_t staging buffer to double for the CPU accumulator
+        // and take the sqrt that the export kernel skipped (per
+        // cuda-md-review-cleanup-06-launch-config-streams).
         for (int i = 0; i < np; ++i)
-            dist_[i] = static_cast<double>(h_dist_[i]);
+            dist_[i] = std::sqrt(static_cast<double>(h_dist_sq_[i]));
         double bin_width = r_max_ / double(n_bins_);
         cpu::rdf_accumulate(histogram_, dist_.data(), np, bin_width, n_bins_);
         n_samples_++;
@@ -114,9 +120,9 @@ class RDF : public AsyncBridge {
     void on_destroy(const DestroyContext&) override {
         cpu::rdf_write(filename_, histogram_, n_samples_, n_atoms_, box_vol_,
                        r_max_, n_bins_);
-        if (h_dist_) {
-            cudaFreeHost(h_dist_);
-            h_dist_ = nullptr;
+        if (h_dist_sq_) {
+            cudaFreeHost(h_dist_sq_);
+            h_dist_sq_ = nullptr;
         }
         if (h_n_pairs_) {
             cudaFreeHost(h_n_pairs_);
@@ -134,8 +140,8 @@ class RDF : public AsyncBridge {
     int n_samples_ = 0;
     int pair_capacity_ = 0;
     std::vector<long long> histogram_;
-    real_t* h_dist_ = nullptr;
-    std::vector<double> dist_;
+    real_t* h_dist_sq_ = nullptr; ///< Pinned host buffer of r² (sqrt at on_data_ready)
+    std::vector<double> dist_;    ///< Widened-to-double sqrt(r²) for the histogram
     int* h_n_pairs_ = nullptr;
 };
 

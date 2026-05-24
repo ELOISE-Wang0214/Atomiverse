@@ -24,7 +24,7 @@ __global__ void export_atom_pairs_kernel(
     bool periodic, cuda::Box box, int* __restrict__ out_i,
     int* __restrict__ out_j, real_t* __restrict__ out_dx,
     real_t* __restrict__ out_dy, real_t* __restrict__ out_dz,
-    real_t* __restrict__ out_dist, int* __restrict__ out_count,
+    real_t* __restrict__ out_dist_sq, int* __restrict__ out_count,
     const int* __restrict__ capacity_ptr) {
 
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -70,7 +70,10 @@ __global__ void export_atom_pairs_kernel(
             }
         }
 
-        work_t r = sqrt(dx * dx + dy * dy + dz * dz);
+        // Store r² (no sqrt). LJ uses inv_r² directly; RDF takes
+        // sqrt at host read (one sqrt per pair only when RDF is
+        // bound, vs one per pair every step for sqrt in export).
+        work_t r2 = dx * dx + dy * dy + dz * dz;
         int slot = my_base + local;
         if (slot < cap) {
             out_i[slot] = static_cast<int>(ai);
@@ -78,7 +81,7 @@ __global__ void export_atom_pairs_kernel(
             out_dx[slot] = dx;
             out_dy[slot] = dy;
             out_dz[slot] = dz;
-            out_dist[slot] = r;
+            out_dist_sq[slot] = r2;
         }
         local++;
     }
@@ -91,8 +94,9 @@ void launch_export_atom_pairs(const int* flat_ci, const int* flat_cj,
                               const real_t* pos_y, const real_t* pos_z,
                               bool periodic, cuda::Box box, int* out_i,
                               int* out_j, real_t* out_dx, real_t* out_dy,
-                              real_t* out_dz, real_t* out_dist, int* out_count,
-                              const int* capacity_ptr, cudaStream_t stream) {
+                              real_t* out_dz, real_t* out_dist_sq,
+                              int* out_count, const int* capacity_ptr,
+                              cudaStream_t stream) {
     if (n_flat == 0)
         return;
     int block = ATV::cuda::kDefaultBlock;
@@ -101,12 +105,12 @@ void launch_export_atom_pairs(const int* flat_ci, const int* flat_cj,
         export_atom_pairs_kernel<true><<<grid, block, 0, stream>>>(
             flat_ci, flat_cj, flat_mask, num_flat_device, original_index, pos_x,
             pos_y, pos_z, periodic, box, out_i, out_j, out_dx, out_dy, out_dz,
-            out_dist, out_count, capacity_ptr);
+            out_dist_sq, out_count, capacity_ptr);
     } else {
         export_atom_pairs_kernel<false><<<grid, block, 0, stream>>>(
             flat_ci, flat_cj, flat_mask, num_flat_device, original_index, pos_x,
             pos_y, pos_z, periodic, box, out_i, out_j, out_dx, out_dy, out_dz,
-            out_dist, out_count, capacity_ptr);
+            out_dist_sq, out_count, capacity_ptr);
     }
     ATV_CUDA_CHECK(cudaGetLastError());
 }

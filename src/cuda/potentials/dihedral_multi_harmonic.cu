@@ -28,7 +28,12 @@ DihedralMultiHarmonic::operator=(DihedralMultiHarmonic&&) noexcept = default;
 
 namespace {
 
-__global__ void multi_harmonic_dihedral_k(
+// Dihedral kernel has ~30+ double locals (b1/b2/b3 cross products,
+// fi/fk/fl decomposition); register pressure approaches Hopper's
+// 255-reg limit. Cap at 128 threads/block to give the compiler more
+// register budget per thread before spilling
+// (cuda-md-review-cleanup-06-launch-config-streams).
+__global__ __launch_bounds__(128, 4) void multi_harmonic_dihedral_k(
     const real_t* __restrict__ x, const real_t* __restrict__ y,
     const real_t* __restrict__ z, real_t* __restrict__ fx,
     real_t* __restrict__ fy, real_t* __restrict__ fz,

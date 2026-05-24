@@ -18,7 +18,7 @@ using cuda::work_t;
 namespace cuda {
 namespace kernels {
 
-__global__ void
+__global__ __launch_bounds__(ATV::cuda::kDefaultBlock, 4) void
 harmonic_bond_k(const real_t* __restrict__ x, const real_t* __restrict__ y,
                 const real_t* __restrict__ z, real_t* __restrict__ fx,
                 real_t* __restrict__ fy, real_t* __restrict__ fz,

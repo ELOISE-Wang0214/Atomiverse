@@ -28,12 +28,19 @@ namespace cuda {
 /// to consumers as a non-owning `const PairList*` on `cuda::Context`,
 /// mirroring `cpu::md::NeighborList` / `cpu::Context::pair_list`.
 struct PairList {
-    int* i = nullptr;        ///< First atom index [device].
-    int* j = nullptr;        ///< Second atom index [device].
-    real_t* dx = nullptr;    ///< x-displacement (j - i) [Angstrom, device].
-    real_t* dy = nullptr;    ///< y-displacement (j - i) [Angstrom, device].
-    real_t* dz = nullptr;    ///< z-displacement (j - i) [Angstrom, device].
-    real_t* dist = nullptr;  ///< Pair distance [Angstrom, device].
+    int* i = nullptr;     ///< First atom index [device].
+    int* j = nullptr;     ///< Second atom index [device].
+    real_t* dx = nullptr; ///< x-displacement (j - i) [Angstrom, device].
+    real_t* dy = nullptr; ///< y-displacement (j - i) [Angstrom, device].
+    real_t* dz = nullptr; ///< z-displacement (j - i) [Angstrom, device].
+    real_t* dist_sq =
+        nullptr; ///< Squared pair distance dx²+dy²+dz² [Å², device].
+    ///<
+    ///< Per cuda-md-review-cleanup-06-launch-config-streams, the
+    ///< neighbor-list export stores r² rather than r — pair styles
+    ///< need inv_r² for the LJ force calculation and can skip the
+    ///< sqrt entirely. Consumers that need r (e.g. cuda::RDF for
+    ///< histogram binning) take sqrt at read time.
     int* n_pairs = nullptr;  ///< Current pair count [device, 1 element].
     int* capacity = nullptr; ///< Pre-allocated slot count [device, 1 element].
 };
@@ -68,7 +75,10 @@ class NeighborList : public ComponentBase {
     ///        publish the pair list to `ctx.runtime.pair_list`.
     ///
     /// Reads grid dimensions from device (build-time D2H allowed).
-    /// Allocates pair capacity based on atom count heuristic (n * 50).
+    /// Pair capacity is sized from physical density × cutoff sphere volume
+    /// (`max(100, 3 × ρ × (4/3)π(r_cut+skin)³) per atom`); falls back to
+    /// `n × 50` only for atomless / zero-volume frames. See `neighbor_list.cu`
+    /// `NeighborList::build` for the density-based rationale.
     ///
     /// @param ctx Build context with Runtime and DeviceFrame.
     void build(const BuildContext& ctx) override;

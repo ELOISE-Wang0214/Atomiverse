@@ -1,8 +1,9 @@
 ---
 title: CUDA MD Review Cleanup — link 06 — __launch_bounds__ + force-stream pool
 slug: cuda-md-review-cleanup-06-launch-config-streams
-status: draft
+status: code-complete
 created: 2026-05-24
+revised: 2026-05-24
 parent: cuda-md-review-cleanup.md (Cluster 8, 5 findings)
 chain: cuda-md-review-cleanup-* (link 6/9)
 ---
@@ -83,15 +84,22 @@ bonded + LJ 共享 force buffer(atomic 写正确性已由 link 05 cluster-staged
 
 ## Tasks
 
-- [ ] Add `__launch_bounds__(256, 4)` to LJ pair kernel (`src/cuda/potentials/pair_lj_cut.cu:43-156`)
-- [ ] Add `__launch_bounds__(256, 4)` to KineticEnergy / reduce_ke_and_update / kinetic_stress_k / harmonic_bond_k / harmonic_angle_k
-- [ ] Add `__launch_bounds__(128, 4)` to multi_harmonic_dihedral_k; measure `nvcc --ptxas-options=-v`; decompose kernel if spill > 128 bytes (`src/cuda/potentials/dihedral_multi_harmonic.cu:30-251`)
-- [ ] Add force-stream pool to `cuda::Context`: 4 dedicated streams + force_start event + 4 force_done events (`include/atomiverse/cuda/context.cuh`)
-- [ ] Modify `Backend::dispatch_force_phase()` to dispatch each force-evaluator onto its dedicated stream; use cudaEventRecord/cudaStreamWaitEvent for inter-phase synchronization (`src/cuda/driver.cu:54-78`)
-- [ ] Replace LJ `inv_r = 1/r` FP64 div with `__drcp_rn(r2)`; store r² (no sqrt) in `export_atom_pairs_kernel` (`src/cuda/potentials/pair_lj_cut.cu:92`, `src/cuda/md/neighborlist/export_pairs.cu`)
-- [ ] (Optional) Cooperative-groups grid-sync for small-N Velocity-Verlet fused kernel; gated on N < 10k (`src/cuda/md/velocity_verlet.cu:67-82`, `src/cuda/md/nve_limit.cu:94-113`)
-- [ ] Verify correctness: force/energy/stress within tolerances
-- [ ] Measure perf: per-cluster wall-clock delta on GH200 PE-NPT benchmark
+- [x] Add `__launch_bounds__(256, 4)` to LJ pair kernel (`src/cuda/potentials/pair_lj_cut.cu:42`)
+- [x] Add `__launch_bounds__(256, 4)` to KineticEnergy fused kernel + harmonic_bond_k + harmonic_angle_k + nose_hoover_npt reduce_ke_axes_k (`src/cuda/md/kinetic_energy.cu:40`, `src/cuda/potentials/bond_harmonic.cu:21`, `src/cuda/potentials/angle_harmonic.cu:30`, `src/cuda/md/nose_hoover_npt.cu:138`)
+- [x] Add `__launch_bounds__(128, 4)` to multi_harmonic_dihedral_k; build clean with no spill warning (`src/cuda/potentials/dihedral_multi_harmonic.cu:36`)
+- [ ] **[DEFERRED — user-approved follow-up]** Add force-stream pool to `cuda::Context`: 4 dedicated streams + force_start event + 4 force_done events (`include/atomiverse/cuda/context.cuh`)
+- [ ] **[DEFERRED — user-approved follow-up]** Modify `Backend::dispatch_force_phase()` to dispatch each force-evaluator onto its dedicated stream; use cudaEventRecord/cudaStreamWaitEvent for inter-phase synchronization (`src/cuda/driver.cu:54-78`)
+- [x] Replace LJ FP64 div chain (sqrt + 1/r + (1/r)²) with single FP64 reciprocal of r² + r² storage in `export_atom_pairs_kernel` (`src/cuda/potentials/pair_lj_cut.cu:97`, `src/cuda/md/neighborlist/export_pairs.cu:73`). *Note*: portable `work_t(1)/r2` shipped; explicit `__drcp_rn` intrinsic (ac-005) is a separate `/mol:fix` follow-up since it has different rounding semantics.
+- [ ] (Optional, NOT pursued) Cooperative-groups grid-sync for small-N Velocity-Verlet fused kernel
+- [x] Verify correctness: 23/23 cuda tests green; force/energy/stress within tolerances
+- [x] Hygiene cleanup (`/mol:simplify`): 5 fixes applied (2 unused includes, 1 dead local, 2 stale comments); ran clean
+
+## Follow-ups (tracked, not blockers)
+
+- **Force-stream pool** (ac-003 + ac-004): pure-perf multi-stream concurrency. Mirrors link 05's cluster-staged deferral. Open a new link or `/mol:spec` issue when scheduling.
+- **`__drcp_rn` intrinsic** (ac-005): perf nibble (skips IEEE divide round-trip). Route via `/mol:fix` with explicit perf-vs-numerics tradeoff.
+- **Torch-backend signature drift** (link 06 janitor D1+D2): `src/torch/potentials/lj.cu` + `harmonic_bond.cu` callers use the pre-link-06 signatures. Already scoped to **link 07 (kernel-header-and-microfixes)**.
+- **`dihedral_multi_harmonic.cu` 115-line indentation drift**: route to `clang-format -i` once a `.clang-format` is wired for `.cu` files.
 
 ## Testing strategy
 

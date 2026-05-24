@@ -217,7 +217,7 @@ void NeighborList::build(const BuildContext& ctx) {
     cudaMalloc(&pairs_.dx, atom_pair_cap * sizeof(real_t));
     cudaMalloc(&pairs_.dy, atom_pair_cap * sizeof(real_t));
     cudaMalloc(&pairs_.dz, atom_pair_cap * sizeof(real_t));
-    cudaMalloc(&pairs_.dist, atom_pair_cap * sizeof(real_t));
+    cudaMalloc(&pairs_.dist_sq, atom_pair_cap * sizeof(real_t));
     cudaMalloc(&pairs_.n_pairs, sizeof(int));
     cudaMemset(pairs_.n_pairs, 0, sizeof(int));
     cudaMalloc(&pairs_.capacity, sizeof(int));
@@ -446,7 +446,7 @@ void NeighborList::launch(const LaunchContext& ctx) {
         s.buf.flat_pair_counter.data(), export_grid_pairs,
         s.buf.original_index.data(), frame.atoms.x, frame.atoms.y,
         frame.atoms.z, s.periodic, ctx.runtime.host_box, pairs_.i, pairs_.j,
-        pairs_.dx, pairs_.dy, pairs_.dz, pairs_.dist, s.d_pair_count.data(),
+        pairs_.dx, pairs_.dy, pairs_.dz, pairs_.dist_sq, s.d_pair_count.data(),
         pairs_.capacity, stream);
 
     cudaMemcpyAsync(pairs_.n_pairs, s.d_pair_count.data(), sizeof(int),
@@ -491,7 +491,7 @@ void NeighborList::destroy(const DestroyContext& ctx) {
     cudaFree(pairs_.dx);
     cudaFree(pairs_.dy);
     cudaFree(pairs_.dz);
-    cudaFree(pairs_.dist);
+    cudaFree(pairs_.dist_sq);
     cudaFree(pairs_.n_pairs);
     cudaFree(pairs_.capacity);
     pairs_ = {};

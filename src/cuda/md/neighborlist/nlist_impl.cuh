@@ -326,7 +326,8 @@ void launch_export_atom_pairs(const int* flat_ci, const int* flat_cj,
                               const real_t* pos_y, const real_t* pos_z,
                               bool periodic, ATV::cuda::Box box, int* out_i,
                               int* out_j, real_t* out_dx, real_t* out_dy,
-                              real_t* out_dz, real_t* out_dist, int* out_count,
-                              const int* capacity_ptr, cudaStream_t stream = 0);
+                              real_t* out_dz, real_t* out_dist_sq,
+                              int* out_count, const int* capacity_ptr,
+                              cudaStream_t stream = 0);
 
 } // namespace ATV::cuda::md::nlist

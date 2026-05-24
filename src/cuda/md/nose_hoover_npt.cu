@@ -135,7 +135,8 @@ __global__ void propagate_x_k(real_t* __restrict__ x, real_t* __restrict__ y,
 // all NPT scalars in one defer-stream round-trip.
 // Caller multiplies the KE slots by 0.5·kMvv2e to get eV.
 
-__global__ void reduce_ke_axes_k(const real_t* __restrict__ vx,
+__global__ __launch_bounds__(ATV::cuda::kDefaultBlock, 4) void
+reduce_ke_axes_k(const real_t* __restrict__ vx,
                                  const real_t* __restrict__ vy,
                                  const real_t* __restrict__ vz,
                                  const real_t* __restrict__ mass,
