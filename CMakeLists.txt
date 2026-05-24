@@ -245,6 +245,12 @@ if(NOT ATV_DOCS_ONLY)
             "${CMAKE_SOURCE_DIR}/src/cuda/potentials/*.cu"
         )
         list(APPEND ATOMIVERSE_SRCS ${CUDA_POTENTIALS_SRCS})
+    else()
+        # CUDA-free build still links against cuda::Timer (a CUDA-free PIMPL
+        # facade held by std::unique_ptr in facade/driver.h). The full impl
+        # lives in src/cuda/timer.cu; substitute an inert stub so CPU
+        # Driver instantiations resolve their destructors.
+        list(APPEND ATOMIVERSE_SRCS src/cuda/timer_cpu_stub.cpp)
     endif()
 
     add_library(atomiverse ${ATOMIVERSE_SRCS})
