@@ -170,7 +170,10 @@ void launch_coarse_count_pairs(const int* cell_start,
                                bool periodic, int* pair_counts,
                                cudaStream_t stream = 0);
 
-// Single-pass AABB fill: writes pairs at row_ptr_upper offsets, outputs actual pair_counts
+// Single-pass AABB fill: writes pairs at row_ptr_upper offsets, outputs
+// actual pair_counts. Launcher dispatches on `box.ortho` so the
+// per-pair min-image check is template-specialized at compile time
+// (cuda-md-review-cleanup-04-box-by-value-pbc).
 template <typename work_t>
 void launch_fill_cluster_pairs(
     const int* cell_start, const int* cell_clusters,
@@ -180,9 +183,8 @@ void launch_fill_cluster_pairs(
     const real_t* aabb_min_y, const real_t* aabb_min_z,
     const real_t* aabb_max_x, const real_t* aabb_max_y,
     const real_t* aabb_max_z, int num_clusters, bool periodic,
-    work_t cutoff_plus_skin_sq, const real_t* cell_matrix,
-    const real_t* inv_cell, const int* row_ptr_upper, int* col_idx,
-    int* pair_counts, cudaStream_t stream = 0);
+    work_t cutoff_plus_skin_sq, ATV::cuda::Box box, const int* row_ptr_upper,
+    int* col_idx, int* pair_counts, cudaStream_t stream = 0);
 
 // Write row_ptr[N] = row_ptr[N-1] + pair_counts[N-1] on device (avoids D→H readback)
 void launch_write_row_ptr_sentinel(int* row_ptr, const int* pair_counts,
@@ -282,14 +284,18 @@ void launch_snapshot_ref_atoms(const real_t* pos_x, const real_t* pos_y,
                                real_t* ref_y, real_t* ref_z, int num_atoms,
                                cudaStream_t stream = 0);
 
-// Smart rolling prune on flat pair list (skip clean pairs)
+// Smart rolling prune on flat pair list (skip clean pairs). Templated on
+// `bool Ortho` inside the .cu so the triclinic branch dead-eliminates in
+// the ortho specialization; the dispatcher takes a cuda::Box by value
+// and selects the right instantiation based on `box.ortho`
+// (cuda-md-review-cleanup-04-box-by-value-pbc).
 template <typename work_t>
 void launch_smart_rolling_prune(
     const real_t* cluster_x, const real_t* cluster_y, const real_t* cluster_z,
     const int* flat_ci, const int* flat_cj, const int* num_flat_pairs_device,
-    int pair_capacity, const int* dirty_flags, bool periodic, work_t cutoff_sq,
-    const real_t* cell_matrix, const real_t* inv_cell, uint64_t* flat_mask,
-    int prune_step, int prune_period, cudaStream_t stream = 0);
+    int pair_capacity, const int* dirty_flags, work_t cutoff_sq,
+    ATV::cuda::Box box, uint64_t* flat_mask, int prune_step, int prune_period,
+    cudaStream_t stream = 0);
 
 // --- GPU-side setup (setup.cu) ---
 
@@ -311,15 +317,16 @@ void launch_write_int(int* arr, int idx, int val, cudaStream_t stream = 0);
 
 // --- Export to atom pairs (export_pairs.cu) ---
 
+// Launcher dispatches on `box.ortho` for compile-time PBC specialization
+// (cuda-md-review-cleanup-04-box-by-value-pbc).
 void launch_export_atom_pairs(const int* flat_ci, const int* flat_cj,
                               const uint64_t* flat_mask,
                               const int* num_flat_device, int n_flat,
                               const int* original_index, const real_t* pos_x,
                               const real_t* pos_y, const real_t* pos_z,
-                              bool periodic, const real_t* cell_matrix,
-                              const real_t* inv_cell, int* out_i, int* out_j,
-                              real_t* out_dx, real_t* out_dy, real_t* out_dz,
-                              real_t* out_dist, int* out_count,
+                              bool periodic, ATV::cuda::Box box, int* out_i,
+                              int* out_j, real_t* out_dx, real_t* out_dy,
+                              real_t* out_dz, real_t* out_dist, int* out_count,
                               const int* capacity_ptr, cudaStream_t stream = 0);
 
 } // namespace ATV::cuda::md::nlist

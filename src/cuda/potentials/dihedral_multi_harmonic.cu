@@ -1,6 +1,7 @@
 /// @file cuda/potentials/dihedral_multi_harmonic.cu
 /// @brief CUDA DihedralMultiHarmonic — V = Σₙ Cₙ cosⁿ(φ).
 
+#include "atomiverse/cuda/box.cuh"
 #include "atomiverse/cuda/launch.cuh"
 #include "atomiverse/cuda/potentials/dihedral_multi_harmonic.cuh"
 #include "atomiverse/cuda/types.cuh"
@@ -36,7 +37,7 @@ __global__ void multi_harmonic_dihedral_k(
     const int* __restrict__ dj, const int* __restrict__ dk,
     const int* __restrict__ dl, const int* __restrict__ dt,
     const work_t* __restrict__ C, // [n_types * 5]
-    const prec_t* __restrict__ box, int n_dihed) {
+    cuda::Box box, int n_dihed) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     // See bond_harmonic.cu for the rationale: early-returning out-of-range
@@ -67,17 +68,11 @@ __global__ void multi_harmonic_dihedral_k(
         b2x = x[k] - x[j]; b2y = y[k] - y[j]; b2z = z[k] - z[j];
         b3x = x[l] - x[k]; b3y = y[l] - y[k]; b3z = z[l] - z[k];
 
-        // Minimum image
-        work_t bx = box[0], by = box[4], bz = box[8];
-        b1x -= bx * round(b1x / bx);
-        b1y -= by * round(b1y / by);
-        b1z -= bz * round(b1z / bz);
-        b2x -= bx * round(b2x / bx);
-        b2y -= by * round(b2y / by);
-        b2z -= bz * round(b2z / bz);
-        b3x -= bx * round(b3x / bx);
-        b3y -= by * round(b3y / by);
-        b3z -= bz * round(b3z / bz);
+        // Minimum image via cached inv_l on the by-value Box
+        // (cuda-md-review-cleanup-04-box-by-value-pbc).
+        box.min_image(b1x, b1y, b1z);
+        box.min_image(b2x, b2y, b2z);
+        box.min_image(b3x, b3y, b3z);
 
         // Normal vectors: n1 = b1 × b2, n2 = b2 × b3
         work_t n1x = b1y * b2z - b1z * b2y;
@@ -278,8 +273,7 @@ void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
         f.atoms.x, f.atoms.y, f.atoms.z, f.atoms.fx, f.atoms.fy, f.atoms.fz,
         &f.scalars->energy, &f.scalars->stress[0], f.dihedrals.atomi,
         f.dihedrals.atomj, f.dihedrals.atomk, f.dihedrals.atoml,
-        f.dihedrals.type, state_->d_C,
-        f.box, nd);
+        f.dihedrals.type, state_->d_C, ctx.runtime.host_box, nd);
 }
 
 void DihedralMultiHarmonic::destroy(const DestroyContext& /*ctx*/) {

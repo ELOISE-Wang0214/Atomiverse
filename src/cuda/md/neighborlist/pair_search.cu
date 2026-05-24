@@ -16,13 +16,15 @@ namespace ATV::cuda::md::nlist {
 // Device: Minimum AABB distance² between two clusters
 // ---------------------------------------------------------------------------
 
-template <typename work_t>
+// Templated on `bool Ortho` so the triclinic min_image branch is
+// dead-eliminated from the orthorhombic specialization
+// (cuda-md-review-cleanup-04-box-by-value-pbc).
+template <bool Ortho, typename work_t>
 __device__ work_t min_aabb_dist_sq(
     work_t ci_min_x, work_t ci_min_y, work_t ci_min_z, work_t ci_max_x,
     work_t ci_max_y, work_t ci_max_z, work_t cj_min_x, work_t cj_min_y,
     work_t cj_min_z, work_t cj_max_x, work_t cj_max_y, work_t cj_max_z,
-    bool periodic, const real_t* __restrict__ cell_matrix,
-    const real_t* __restrict__ inv_cell) {
+    bool periodic, cuda::Box box) {
     work_t cx_i = (ci_min_x + ci_max_x) * work_t(0.5);
     work_t cy_i = (ci_min_y + ci_max_y) * work_t(0.5);
     work_t cz_i = (ci_min_z + ci_max_z) * work_t(0.5);
@@ -31,8 +33,15 @@ __device__ work_t min_aabb_dist_sq(
     work_t cz_j = (cj_min_z + cj_max_z) * work_t(0.5);
 
     work_t dx = cx_j - cx_i, dy = cy_j - cy_i, dz = cz_j - cz_i;
-    if (periodic)
-        minimum_image(dx, dy, dz, cell_matrix, inv_cell);
+    if (periodic) {
+        if constexpr (Ortho) {
+            dx -= work_t(box.cell[0]) * nearbyint(dx * work_t(box.inv_l[0]));
+            dy -= work_t(box.cell[4]) * nearbyint(dy * work_t(box.inv_l[1]));
+            dz -= work_t(box.cell[8]) * nearbyint(dz * work_t(box.inv_l[2]));
+        } else {
+            box.min_image(dx, dy, dz);
+        }
+    }
 
     work_t hx_i = (ci_max_x - ci_min_x) * work_t(0.5);
     work_t hy_i = (ci_max_y - ci_min_y) * work_t(0.5);
@@ -121,7 +130,9 @@ void launch_coarse_count_pairs(const int* cell_start,
 // Uses cluster_cell_idx to avoid recomputing home cell (P5).
 // ---------------------------------------------------------------------------
 
-template <typename work_t>
+// Templated on `bool Ortho` — propagates through to `min_aabb_dist_sq`
+// so the triclinic branch dead-eliminates in the ortho specialization.
+template <bool Ortho, typename work_t>
 __global__ __launch_bounds__(ATV::cuda::kDefaultBlock) void fill_pairs(
     const int* __restrict__ cell_start, const int* __restrict__ cell_clusters,
     const int* __restrict__ cluster_cell_idx, int dims_x, int dims_y,
@@ -134,9 +145,9 @@ __global__ __launch_bounds__(ATV::cuda::kDefaultBlock) void fill_pairs(
     const real_t* __restrict__ aabb_max_x,
     const real_t* __restrict__ aabb_max_y,
     const real_t* __restrict__ aabb_max_z, int num_clusters, bool periodic,
-    work_t cutoff_plus_skin_sq, const real_t* __restrict__ cell_matrix,
-    const real_t* __restrict__ inv_cell, const int* __restrict__ row_ptr_upper,
-    int* __restrict__ col_idx, int* __restrict__ pair_counts) {
+    work_t cutoff_plus_skin_sq, cuda::Box box,
+    const int* __restrict__ row_ptr_upper, int* __restrict__ col_idx,
+    int* __restrict__ pair_counts) {
     int warp_id = (blockIdx.x * blockDim.x + threadIdx.x) / 32;
     int lane = threadIdx.x % 32;
 
@@ -184,13 +195,12 @@ __global__ __launch_bounds__(ATV::cuda::kDefaultBlock) void fill_pairs(
             if (local < num_cj) {
                 cj_val = cell_clusters[start + local];
                 if (cj_val >= ci) {
-                    work_t dist_sq = min_aabb_dist_sq(
+                    work_t dist_sq = min_aabb_dist_sq<Ortho, work_t>(
                         aabb_min_x[ci], aabb_min_y[ci], aabb_min_z[ci],
                         aabb_max_x[ci], aabb_max_y[ci], aabb_max_z[ci],
                         aabb_min_x[cj_val], aabb_min_y[cj_val],
                         aabb_min_z[cj_val], aabb_max_x[cj_val],
-                        aabb_max_y[cj_val], aabb_max_z[cj_val], periodic,
-                        cell_matrix, inv_cell);
+                        aabb_max_y[cj_val], aabb_max_z[cj_val], periodic, box);
                     passes = (dist_sq <= cutoff_plus_skin_sq);
                 }
             }
@@ -222,20 +232,28 @@ void launch_fill_cluster_pairs(
     const real_t* aabb_min_y, const real_t* aabb_min_z,
     const real_t* aabb_max_x, const real_t* aabb_max_y,
     const real_t* aabb_max_z, int num_clusters, bool periodic,
-    work_t cutoff_plus_skin_sq, const real_t* cell_matrix,
-    const real_t* inv_cell, const int* row_ptr_upper, int* col_idx,
-    int* pair_counts, cudaStream_t stream) {
+    work_t cutoff_plus_skin_sq, cuda::Box box, const int* row_ptr_upper,
+    int* col_idx, int* pair_counts, cudaStream_t stream) {
     if (num_clusters == 0)
         return;
     int threads_needed = num_clusters * 32;
     int block = ATV::cuda::kDefaultBlock;
     int grid = (threads_needed + block - 1) / block;
-    fill_pairs<work_t><<<grid, block, 0, stream>>>(
-        cell_start, cell_clusters, cluster_cell_idx, dims_x, dims_y, dims_z,
-        stencil_dx, stencil_dy, stencil_dz, num_stencil_ptr, aabb_min_x,
-        aabb_min_y, aabb_min_z, aabb_max_x, aabb_max_y, aabb_max_z,
-        num_clusters, periodic, cutoff_plus_skin_sq, cell_matrix, inv_cell,
-        row_ptr_upper, col_idx, pair_counts);
+    if (box.ortho) {
+        fill_pairs<true, work_t><<<grid, block, 0, stream>>>(
+            cell_start, cell_clusters, cluster_cell_idx, dims_x, dims_y, dims_z,
+            stencil_dx, stencil_dy, stencil_dz, num_stencil_ptr, aabb_min_x,
+            aabb_min_y, aabb_min_z, aabb_max_x, aabb_max_y, aabb_max_z,
+            num_clusters, periodic, cutoff_plus_skin_sq, box, row_ptr_upper,
+            col_idx, pair_counts);
+    } else {
+        fill_pairs<false, work_t><<<grid, block, 0, stream>>>(
+            cell_start, cell_clusters, cluster_cell_idx, dims_x, dims_y, dims_z,
+            stencil_dx, stencil_dy, stencil_dz, num_stencil_ptr, aabb_min_x,
+            aabb_min_y, aabb_min_z, aabb_max_x, aabb_max_y, aabb_max_z,
+            num_clusters, periodic, cutoff_plus_skin_sq, box, row_ptr_upper,
+            col_idx, pair_counts);
+    }
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 

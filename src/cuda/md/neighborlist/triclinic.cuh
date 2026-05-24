@@ -1,18 +1,17 @@
 #pragma once
 
 /// @file triclinic.cuh
-/// @brief Fractional coordinate transforms, minimum image, stencil computation.
+/// @brief Fractional coordinate transforms + 3x3 inverse helpers for
+///        neighbor-list internals.
 ///
 /// Cell convention: row-major 3x3 matrix, r_cart = cell * r_frac.
 /// Rows of cell are lattice vectors a, b, c.
 ///
-/// **Migration note.** `ATV::cuda::Box` (in
-/// `include/atomiverse/cuda/box.cuh`) is the canonical Box at the CUDA
-/// backend root. New callers should use `ATV::cuda::min_image(dx, dy,
-/// dz, box)` directly instead of the raw-pointer overloads here.
-/// The pointer overloads stay so existing kernel signatures
-/// (`(cell, inv_cell)` pairs) compile unchanged during the staged
-/// migration.
+/// **Minimum image:** call `box.min_image(dx, dy, dz)` on
+/// `ATV::cuda::Box` directly. The old raw-pointer / Box-forwarding
+/// `minimum_image` shims were retired in
+/// `cuda-md-review-cleanup-04-box-by-value-pbc` once all pair / fill /
+/// export kernels migrated to the by-value-Box signature.
 
 #include <cmath>
 #include <cstdint>
@@ -20,18 +19,6 @@
 #include "atomiverse/cuda/box.cuh"
 
 namespace ATV::cuda::md::nlist {
-
-/// @brief Forward to `ATV::cuda::min_image(dx, dy, dz, box)`.
-///
-/// Box-aware overload of the older pointer-based `minimum_image`. New
-/// code should call this; the pointer-based templated overload below
-/// remains for compatibility with kernel signatures that still pass
-/// `(cell, inv_cell)` directly.
-template <typename work_t>
-__host__ __device__ inline void
-minimum_image(work_t& dx, work_t& dy, work_t& dz, const ATV::cuda::Box& box) {
-    ATV::cuda::min_image(dx, dy, dz, box);
-}
 
 /// @brief 3-component vector for device-side math.
 template <typename work_t>
@@ -72,15 +59,6 @@ cart_to_frac(work_t rx, work_t ry, work_t rz, const real_t* inv_cell) {
             inv_cell[6] * rx + inv_cell[7] * ry + inv_cell[8] * rz};
 }
 
-/// @brief Fractional to Cartesian: r_cart = cell * r_frac
-template <typename work_t>
-__host__ __device__ inline Vec3<work_t>
-frac_to_cart(work_t fx, work_t fy, work_t fz, const real_t* cell) {
-    return {cell[0] * fx + cell[1] * fy + cell[2] * fz,
-            cell[3] * fx + cell[4] * fy + cell[5] * fz,
-            cell[6] * fx + cell[7] * fy + cell[8] * fz};
-}
-
 /// @brief Clamp fractional coordinate to [0, 1).
 /// @brief Boundary epsilon for clamping fractional coordinates to [0,1).
 template <typename work_t>
@@ -93,28 +71,6 @@ __device__ inline work_t clamp01(work_t v) {
     if (v >= work_t(1))
         return work_t(1) - kFracBoundaryEps<work_t>;
     return v;
-}
-
-/// @brief Apply minimum image convention in fractional space.
-/// @param[in,out] dx, dy, dz Cartesian displacement, modified in place
-template <typename work_t>
-__host__ __device__ inline void minimum_image(work_t& dx, work_t& dy,
-                                              work_t& dz, const real_t* cell,
-                                              const real_t* inv_cell) {
-    // To fractional
-    work_t fx = inv_cell[0] * dx + inv_cell[1] * dy + inv_cell[2] * dz;
-    work_t fy = inv_cell[3] * dx + inv_cell[4] * dy + inv_cell[5] * dz;
-    work_t fz = inv_cell[6] * dx + inv_cell[7] * dy + inv_cell[8] * dz;
-
-    // Nearest image
-    fx -= nearbyint(fx);
-    fy -= nearbyint(fy);
-    fz -= nearbyint(fz);
-
-    // Back to Cartesian
-    dx = cell[0] * fx + cell[1] * fy + cell[2] * fz;
-    dy = cell[3] * fx + cell[4] * fy + cell[5] * fz;
-    dz = cell[6] * fx + cell[7] * fy + cell[8] * fz;
 }
 
 /// @brief Wrap fractional coordinate to [0, 1).

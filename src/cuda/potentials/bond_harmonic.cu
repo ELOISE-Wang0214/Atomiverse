@@ -1,6 +1,7 @@
 /// @file cuda/potentials/bond_harmonic.cu
 /// @brief CUDA BondHarmonic — V = K(r − r₀)² (kernel + class).
 
+#include "atomiverse/cuda/box.cuh"
 #include "atomiverse/cuda/launch.cuh"
 #include "atomiverse/cuda/potentials/bond_harmonic.cuh"
 #include "atomiverse/cuda/potentials/harmonic_bond_kernel.cuh"
@@ -25,7 +26,7 @@ harmonic_bond_k(const real_t* __restrict__ x, const real_t* __restrict__ y,
                 const int* __restrict__ bi,
                 const int* __restrict__ bj, const int* __restrict__ bt,
                 const work_t* __restrict__ K, const work_t* __restrict__ r0,
-                const prec_t* __restrict__ box, int n_bonds) {
+                cuda::Box box, int n_bonds) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     // Per-bond locals — initialised to zero so out-of-range threads
@@ -48,11 +49,10 @@ harmonic_bond_k(const real_t* __restrict__ x, const real_t* __restrict__ y,
         work_t dy = y[j] - y[i];
         work_t dz = z[j] - z[i];
 
-        // Minimum image convention (orthorhombic)
-        work_t bx = box[0], by = box[4], bz = box[8];
-        dx -= bx * round(dx / bx);
-        dy -= by * round(dy / by);
-        dz -= bz * round(dz / bz);
+        // Minimum image convention via cached inv_l on the by-value
+        // Box — no per-topology FP64 division
+        // (cuda-md-review-cleanup-04-box-by-value-pbc).
+        box.min_image(dx, dy, dz);
 
         work_t r = sqrt(dx * dx + dy * dy + dz * dz);
         work_t dr = r - r0[t];
@@ -151,7 +151,8 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
     kernels::harmonic_bond_k<<<grid, block, block * sizeof(work_t), stream>>>(
         f.atoms.x, f.atoms.y, f.atoms.z, f.atoms.fx, f.atoms.fy, f.atoms.fz,
         &f.scalars->energy, &f.scalars->stress[0], f.bonds.atomi,
-        f.bonds.atomj, f.bonds.type, state_->d_K, state_->d_r0, f.box, nb);
+        f.bonds.atomj, f.bonds.type, state_->d_K, state_->d_r0,
+        ctx.runtime.host_box, nb);
 }
 
 void BondHarmonic::destroy(const DestroyContext& /*ctx*/) {

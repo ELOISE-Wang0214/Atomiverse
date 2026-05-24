@@ -2,6 +2,7 @@
 /// @brief CUDA AngleHarmonic — V = K(θ − θ₀)² (kernel + class).
 
 #include "atomiverse/core/constants.h"
+#include "atomiverse/cuda/box.cuh"
 #include "atomiverse/cuda/launch.cuh"
 #include "atomiverse/cuda/potentials/angle_harmonic.cuh"
 #include "atomiverse/cuda/types.cuh"
@@ -35,8 +36,8 @@ harmonic_angle_k(const real_t* __restrict__ x, const real_t* __restrict__ y,
                  const int* __restrict__ ai,
                  const int* __restrict__ aj, const int* __restrict__ ak,
                  const int* __restrict__ at, const work_t* __restrict__ K,
-                 const work_t* __restrict__ theta0,
-                 const prec_t* __restrict__ box, int n_angles) {
+                 const work_t* __restrict__ theta0, cuda::Box box,
+                 int n_angles) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     // See bond_harmonic.cu for the rationale: out-of-range threads must
@@ -57,14 +58,10 @@ harmonic_angle_k(const real_t* __restrict__ x, const real_t* __restrict__ y,
         work_t rij_x = x[i] - x[j], rij_y = y[i] - y[j], rij_z = z[i] - z[j];
         work_t rkj_x = x[k] - x[j], rkj_y = y[k] - y[j], rkj_z = z[k] - z[j];
 
-        // Minimum image
-        work_t bx = box[0], by = box[4], bz = box[8];
-        rij_x -= bx * round(rij_x / bx);
-        rij_y -= by * round(rij_y / by);
-        rij_z -= bz * round(rij_z / bz);
-        rkj_x -= bx * round(rkj_x / bx);
-        rkj_y -= by * round(rkj_y / by);
-        rkj_z -= bz * round(rkj_z / bz);
+        // Minimum image via cached inv_l on the by-value Box
+        // (cuda-md-review-cleanup-04-box-by-value-pbc).
+        box.min_image(rij_x, rij_y, rij_z);
+        box.min_image(rkj_x, rkj_y, rkj_z);
 
         work_t rij2 = rij_x * rij_x + rij_y * rij_y + rij_z * rij_z;
         work_t rkj2 = rkj_x * rkj_x + rkj_y * rkj_y + rkj_z * rkj_z;
@@ -197,7 +194,7 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
         f.atoms.x, f.atoms.y, f.atoms.z, f.atoms.fx, f.atoms.fy, f.atoms.fz,
         &f.scalars->energy, &f.scalars->stress[0], f.angles.atomi,
         f.angles.atomj, f.angles.atomk, f.angles.type, state_->d_K,
-        state_->d_theta0, f.box, na);
+        state_->d_theta0, ctx.runtime.host_box, na);
 }
 
 void AngleHarmonic::destroy(const DestroyContext& /*ctx*/) {

@@ -1,6 +1,7 @@
 /// @file md/velocity_verlet.cu
 
 #include "atomiverse/core/units.h"
+#include "atomiverse/cuda/box.cuh"
 #include "atomiverse/cuda/launch.cuh"
 #include "atomiverse/cuda/md/velocity_verlet.cuh"
 #include "atomiverse/cuda/types.cuh"
@@ -23,7 +24,7 @@ __global__ void initial_integrate(
     real_t* __restrict__ vx, real_t* __restrict__ vy, real_t* __restrict__ vz,
     const real_t* __restrict__ fx, const real_t* __restrict__ fy,
     const real_t* __restrict__ fz, const real_t* __restrict__ mass,
-    const prec_t* __restrict__ box, work_t dt, int n) {
+    cuda::Box box, work_t dt, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n)
         return;
@@ -38,10 +39,13 @@ __global__ void initial_integrate(
     x[i] += dt * vx[i];
     y[i] += dt * vy[i];
     z[i] += dt * vz[i];
-    // PBC wrapping (orthorhombic: diagonal elements)
-    work_t Lx = box[0], Ly = box[4], Lz = box[8];
-    work_t inv_Lx = work_t(1) / Lx, inv_Ly = work_t(1) / Ly,
-           inv_Lz = work_t(1) / Lz;
+    // PBC wrap via cached inv_l on the by-value Box — no per-thread
+    // 1/Lx FP64 division, no widely-spaced box[0]/box[4]/box[8] loads
+    // (cuda-md-review-cleanup-04-box-by-value-pbc).
+    work_t Lx = work_t(box.cell[0]), Ly = work_t(box.cell[4]),
+           Lz = work_t(box.cell[8]);
+    work_t inv_Lx = work_t(box.inv_l[0]), inv_Ly = work_t(box.inv_l[1]),
+           inv_Lz = work_t(box.inv_l[2]);
     x[i] -= Lx * floor(x[i] * inv_Lx);
     y[i] -= Ly * floor(y[i] * inv_Ly);
     z[i] -= Lz * floor(z[i] * inv_Lz);
@@ -74,7 +78,7 @@ void VelocityVerlet::launch(const LaunchContext& ctx) {
         initial_integrate<<<grid, block, 0, stream>>>(
             frame.atoms.x, frame.atoms.y, frame.atoms.z, frame.atoms.vx,
             frame.atoms.vy, frame.atoms.vz, frame.atoms.fx, frame.atoms.fy,
-            frame.atoms.fz, frame.atoms.mass, frame.box, dt_, n);
+            frame.atoms.fz, frame.atoms.mass, ctx.runtime.host_box, dt_, n);
     } else {
         final_integrate<<<grid, block, 0, stream>>>(
             frame.atoms.vx, frame.atoms.vy, frame.atoms.vz, frame.atoms.fx,

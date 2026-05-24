@@ -86,8 +86,7 @@ __global__ void propagate_x_k(real_t* __restrict__ x, real_t* __restrict__ y,
                               const real_t* __restrict__ vz, work_t ax,
                               work_t ay, work_t az, work_t dx, work_t dy,
                               work_t dz, work_t dt, prec_t* __restrict__ box,
-                              work_t lx_new, work_t ly_new, work_t lz_new,
-                              int n) {
+                              cuda::Box new_box, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n) {
         // Closed-form per-axis MTK position propagator (matches CPU
@@ -98,22 +97,28 @@ __global__ void propagate_x_k(real_t* __restrict__ x, real_t* __restrict__ y,
                                    + static_cast<work_t>(vy[i]) * dt * dy);
         z[i] = static_cast<real_t>(static_cast<work_t>(z[i]) * az
                                    + static_cast<work_t>(vz[i]) * dt * dz);
-        // Orthorhombic PBC wrap into the freshly-scaled box.
-        work_t inv_lx = work_t(1) / lx_new;
-        work_t inv_ly = work_t(1) / ly_new;
-        work_t inv_lz = work_t(1) / lz_new;
+        // Orthorhombic PBC wrap into the freshly-scaled box via cached
+        // inv_l on the by-value Box — no per-thread FP64 division
+        // (cuda-md-review-cleanup-04-box-by-value-pbc).
+        work_t Lx = work_t(new_box.cell[0]), Ly = work_t(new_box.cell[4]),
+               Lz = work_t(new_box.cell[8]);
+        work_t inv_Lx = work_t(new_box.inv_l[0]),
+               inv_Ly = work_t(new_box.inv_l[1]),
+               inv_Lz = work_t(new_box.inv_l[2]);
         x[i] -= static_cast<real_t>(
-            lx_new * floor(static_cast<work_t>(x[i]) * inv_lx));
+            Lx * floor(static_cast<work_t>(x[i]) * inv_Lx));
         y[i] -= static_cast<real_t>(
-            ly_new * floor(static_cast<work_t>(y[i]) * inv_ly));
+            Ly * floor(static_cast<work_t>(y[i]) * inv_Ly));
         z[i] -= static_cast<real_t>(
-            lz_new * floor(static_cast<work_t>(z[i]) * inv_lz));
+            Lz * floor(static_cast<work_t>(z[i]) * inv_Lz));
     }
-    // Thread 0 of block 0 writes the new box diagonal.
+    // Thread 0 of block 0 writes the new box diagonal to device, so
+    // downstream consumers reading raw `frame.box` see the updated
+    // dimensions in the same step.
     if (i == 0) {
-        box[0] = static_cast<prec_t>(lx_new);
-        box[4] = static_cast<prec_t>(ly_new);
-        box[8] = static_cast<prec_t>(lz_new);
+        box[0] = static_cast<prec_t>(new_box.cell[0]);
+        box[4] = static_cast<prec_t>(new_box.cell[4]);
+        box[8] = static_cast<prec_t>(new_box.cell[8]);
     }
 }
 
@@ -643,6 +648,34 @@ void NoseHooverNPT::propagate_x_and_box_(const LaunchContext& ctx) {
     double ly_new = box_ly_ * a_arr[1];
     double lz_new = box_lz_ * a_arr[2];
 
+    // Build the new cuda::Box on host so the kernel can read cached
+    // inv_l without a per-thread FP64 division, and so peer components
+    // (bonded force kernels in the same / next step) see the updated
+    // box via `ctx.runtime.host_box`.
+    // Build the new orthorhombic Box for the kernel + host_box
+    // mirror. Triclinic NPT not yet supported (couple_axis is per
+    // diagonal axis; off-diagonals stay zero).
+    cuda::Box new_box = ctx.runtime.host_box;
+    const real_t Lx = static_cast<real_t>(lx_new);
+    const real_t Ly = static_cast<real_t>(ly_new);
+    const real_t Lz = static_cast<real_t>(lz_new);
+    new_box.cell[0] = Lx;
+    new_box.cell[4] = Ly;
+    new_box.cell[8] = Lz;
+    new_box.inv_l[0] = real_t(1) / Lx;
+    new_box.inv_l[1] = real_t(1) / Ly;
+    new_box.inv_l[2] = real_t(1) / Lz;
+    new_box.half_l[0] = real_t(0.5) * Lx;
+    new_box.half_l[1] = real_t(0.5) * Ly;
+    new_box.half_l[2] = real_t(0.5) * Lz;
+    if (new_box.ortho) {
+        for (int k = 0; k < 9; ++k)
+            new_box.inv_cell[k] = real_t(0);
+        new_box.inv_cell[0] = new_box.inv_l[0];
+        new_box.inv_cell[4] = new_box.inv_l[1];
+        new_box.inv_cell[8] = new_box.inv_l[2];
+    }
+
     int block = cuda::kDefaultBlock;
     int grid = cuda::grid_size(n);
     propagate_x_k<<<grid, block, 0, stream>>>(
@@ -650,8 +683,11 @@ void NoseHooverNPT::propagate_x_and_box_(const LaunchContext& ctx) {
         static_cast<work_t>(a_arr[0]), static_cast<work_t>(a_arr[1]),
         static_cast<work_t>(a_arr[2]), static_cast<work_t>(drift[0]),
         static_cast<work_t>(drift[1]), static_cast<work_t>(drift[2]),
-        static_cast<work_t>(dt_), f.box, static_cast<work_t>(lx_new),
-        static_cast<work_t>(ly_new), static_cast<work_t>(lz_new), n);
+        static_cast<work_t>(dt_), f.box, new_box, n);
+
+    // Mutate the host-side Context Box so peer components see the
+    // new dimensions on the next launch().
+    ctx.runtime.host_box = new_box;
 
     box_lx_ = lx_new;
     box_ly_ = ly_new;

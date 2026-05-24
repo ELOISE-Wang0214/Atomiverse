@@ -356,7 +356,7 @@ void NeighborList::launch(const LaunchContext& ctx) {
             s.buf.aabb_min_y.data(), s.buf.aabb_min_z.data(),
             s.buf.aabb_max_x.data(), s.buf.aabb_max_y.data(),
             s.buf.aabb_max_z.data(), nc, s.periodic, s.cut_skin_sq,
-            s.d_cell.data(), s.d_inv_cell.data(), s.buf.row_ptr_upper.data(),
+            ctx.runtime.host_box, s.buf.row_ptr_upper.data(),
             s.buf.col_idx.data(), s.buf.pair_counts.data(), stream);
 
         launch_exclusive_sum(s.buf.pair_counts.data(), s.buf.row_ptr.data(), nc,
@@ -426,8 +426,8 @@ void NeighborList::launch(const LaunchContext& ctx) {
         s.buf.cluster_x.data(), s.buf.cluster_y.data(), s.buf.cluster_z.data(),
         s.buf.flat_ci.data(), s.buf.flat_cj.data(),
         s.buf.flat_pair_counter.data(), prune_grid_pairs,
-        s.buf.dirty_flags.data(), s.periodic, s.cutoff_sq, s.d_cell.data(),
-        s.d_inv_cell.data(), s.buf.flat_mask.data(), /*prune_step*/ 0,
+        s.buf.dirty_flags.data(), s.cutoff_sq, ctx.runtime.host_box,
+        s.buf.flat_mask.data(), /*prune_step*/ 0,
         /*prune_period*/ 1, stream);
 
     // Export to atom-level PairList. Same lagged sizing rationale.
@@ -445,9 +445,9 @@ void NeighborList::launch(const LaunchContext& ctx) {
         s.buf.flat_ci.data(), s.buf.flat_cj.data(), s.buf.flat_mask.data(),
         s.buf.flat_pair_counter.data(), export_grid_pairs,
         s.buf.original_index.data(), frame.atoms.x, frame.atoms.y,
-        frame.atoms.z, s.periodic, s.d_cell.data(), s.d_inv_cell.data(),
-        pairs_.i, pairs_.j, pairs_.dx, pairs_.dy, pairs_.dz, pairs_.dist,
-        s.d_pair_count.data(), pairs_.capacity, stream);
+        frame.atoms.z, s.periodic, ctx.runtime.host_box, pairs_.i, pairs_.j,
+        pairs_.dx, pairs_.dy, pairs_.dz, pairs_.dist, s.d_pair_count.data(),
+        pairs_.capacity, stream);
 
     cudaMemcpyAsync(pairs_.n_pairs, s.d_pair_count.data(), sizeof(int),
                     cudaMemcpyDeviceToDevice, stream);

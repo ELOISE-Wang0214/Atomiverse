@@ -1,5 +1,5 @@
 /// @file cuda/context.cuh
-/// @brief cuda::Context -- CUDA execution context (stream handles).
+/// @brief cuda::Context -- CUDA execution context (stream handles + host-side box).
 ///
 /// Holds stream handles as void* to keep this header CUDA-free.
 /// Components cast to cudaStream_t in their .cu implementations.
@@ -7,6 +7,7 @@
 /// @see cuda::Frame for the device-side data
 #pragma once
 
+#include "atomiverse/cuda/box.cuh"
 #include "atomiverse/facade/iteration_status.h"
 
 namespace ATV {
@@ -41,6 +42,20 @@ struct Context {
     /// for `stop_requested`). Mirrors `cpu::Context::outer_status`.
     /// @see facade/iteration_status.h
     ATV::IterationStatus outer_status;
+
+    /// @brief Host-resident snapshot of the simulation cell, passed by
+    ///        value into integrator + bonded + pair kernels so they
+    ///        avoid per-thread FP64 division and uncoalesced
+    ///        widely-spaced `frame.box[0]/[4]/[8]` loads.
+    ///
+    /// Populated by `Backend::materialize(cpu::Frame)` at build time
+    /// from the canonical `cpu::Box` in `cpu::Frame`. Mutated by
+    /// integrators that change the cell (`cuda::md::NoseHooverNPT`,
+    /// `cuda::md::Barostat`, `cuda::md::Deform`) after they write the
+    /// new diagonal to device-side `frame.box`. All consumers read
+    /// from this field at launch — no per-step D2H of box[0,4,8]
+    /// (cuda-md-review-cleanup-04-box-by-value-pbc).
+    cuda::Box host_box;
 };
 
 } // namespace cuda

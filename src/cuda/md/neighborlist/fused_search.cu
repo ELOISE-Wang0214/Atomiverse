@@ -159,14 +159,20 @@ void launch_cluster_displacement(
 // The kernel currently re-prunes every step from current cluster
 // positions per the correctness note above — the parameters are
 // accepted-but-unread.
-template <typename work_t>
+//
+// Templated on `bool Ortho` so the triclinic branch (`box.min_image`'s
+// inv_cell-roundtrip path) is dead-eliminated from the orthorhombic
+// specialization. The ortho path is 3 FMAs per axis; the triclinic
+// path is 12 muls + 6 adds + 3 nearbyint + back-multiply — saving
+// ~4-5× FLOPS per pair × kClusterSize lanes × inner loop
+// (cuda-md-review-cleanup-04-box-by-value-pbc).
+template <bool Ortho, typename work_t>
 __global__ __launch_bounds__(ATV::cuda::kDefaultBlock) void smart_rolling_prune(
     const real_t* __restrict__ cluster_x, const real_t* __restrict__ cluster_y,
     const real_t* __restrict__ cluster_z, const int* __restrict__ flat_ci,
     const int* __restrict__ flat_cj,
     const int* __restrict__ num_flat_pairs_device,
-    const int* __restrict__ dirty_flags, bool periodic, work_t cutoff_sq,
-    const real_t* __restrict__ cell_matrix, const real_t* __restrict__ inv_cell,
+    const int* __restrict__ dirty_flags, work_t cutoff_sq, cuda::Box box,
     uint64_t* __restrict__ flat_mask, int prune_step, int prune_period) {
 
     // kClusterSize threads per pair (8 threads compute the mask)
@@ -203,8 +209,15 @@ __global__ __launch_bounds__(ATV::cuda::kDefaultBlock) void smart_rolling_prune(
         work_t dy = jy_j - yi;
         work_t dz = jz_j - zi;
 
-        if (periodic) {
-            minimum_image(dx, dy, dz, cell_matrix, inv_cell);
+        // Compile-time-specialized PBC wrap. Ortho path: 3 FMA per axis
+        // (no triclinic detour, no inv_cell roundtrip). Triclinic path:
+        // full inv_cell·dx → fractional → nearbyint → cell·frac.
+        if constexpr (Ortho) {
+            dx -= work_t(box.cell[0]) * nearbyint(dx * work_t(box.inv_l[0]));
+            dy -= work_t(box.cell[4]) * nearbyint(dy * work_t(box.inv_l[1]));
+            dz -= work_t(box.cell[8]) * nearbyint(dz * work_t(box.inv_l[2]));
+        } else {
+            box.min_image(dx, dy, dz);
         }
 
         work_t r2 = dx * dx + dy * dy + dz * dz;
@@ -235,9 +248,9 @@ template <typename work_t>
 void launch_smart_rolling_prune(
     const real_t* cluster_x, const real_t* cluster_y, const real_t* cluster_z,
     const int* flat_ci, const int* flat_cj, const int* num_flat_pairs_device,
-    int pair_capacity, const int* dirty_flags, bool periodic, work_t cutoff_sq,
-    const real_t* cell_matrix, const real_t* inv_cell, uint64_t* flat_mask,
-    int prune_step, int prune_period, cudaStream_t stream) {
+    int pair_capacity, const int* dirty_flags, work_t cutoff_sq, cuda::Box box,
+    uint64_t* flat_mask, int prune_step, int prune_period,
+    cudaStream_t stream) {
     if (pair_capacity == 0)
         return;
 
@@ -245,10 +258,19 @@ void launch_smart_rolling_prune(
     int block = ATV::cuda::kDefaultBlock;
     int grid = (threads_needed + block - 1) / block;
 
-    smart_rolling_prune<work_t><<<grid, block, 0, stream>>>(
-        cluster_x, cluster_y, cluster_z, flat_ci, flat_cj,
-        num_flat_pairs_device, dirty_flags, periodic, cutoff_sq, cell_matrix,
-        inv_cell, flat_mask, prune_step, prune_period);
+    // Dispatch the kernel templated on `box.ortho` so the dead branch
+    // is compile-time eliminated.
+    if (box.ortho) {
+        smart_rolling_prune<true, work_t><<<grid, block, 0, stream>>>(
+            cluster_x, cluster_y, cluster_z, flat_ci, flat_cj,
+            num_flat_pairs_device, dirty_flags, cutoff_sq, box, flat_mask,
+            prune_step, prune_period);
+    } else {
+        smart_rolling_prune<false, work_t><<<grid, block, 0, stream>>>(
+            cluster_x, cluster_y, cluster_z, flat_ci, flat_cj,
+            num_flat_pairs_device, dirty_flags, cutoff_sq, box, flat_mask,
+            prune_step, prune_period);
+    }
     ATV_CUDA_CHECK(cudaGetLastError());
 }
 

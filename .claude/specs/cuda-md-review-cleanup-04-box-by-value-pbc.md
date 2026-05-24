@@ -1,7 +1,7 @@
 ---
 title: CUDA MD Review Cleanup — link 04 — pass cuda::Box by value (PBC kernel reform)
 slug: cuda-md-review-cleanup-04-box-by-value-pbc
-status: draft
+status: done
 created: 2026-05-24
 parent: cuda-md-review-cleanup.md (Cluster 6, 5 findings)
 chain: cuda-md-review-cleanup-* (link 4/9)
