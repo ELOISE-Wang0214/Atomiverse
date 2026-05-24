@@ -60,6 +60,10 @@ class NeighborList : public ComponentBase {
     /// @return "neighbor_list".
     std::string name() const override { return "neighbor_list"; }
 
+    /// @brief Identifies this component as the neighbor-list supplier
+    ///        for `cuda::md::MD::install_infra_`'s typed query.
+    bool provides_neighbor_list() const override { return true; }
+
     /// @brief Allocate the owned PairList + all internal GPU buffers, and
     ///        publish the pair list to `ctx.runtime.pair_list`.
     ///

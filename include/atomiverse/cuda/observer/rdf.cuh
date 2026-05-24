@@ -37,6 +37,8 @@ class RDF : public AsyncBridge {
     RDF& operator=(RDF&&) noexcept = default;
 
     std::string name() const override { return "rdf"; }
+    /// @brief Observer — accumulates pair-distance histogram (no I/O per step).
+    ComponentRole role() const override { return ComponentRole::Observer; }
 
   protected:
     void on_build(const BuildContext& ctx) override {

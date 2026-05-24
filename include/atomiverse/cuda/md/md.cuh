@@ -35,18 +35,21 @@
 ///
 /// `MD::build()` runs an `install_infra_()` pass *before* the
 /// `CUDADriver::build()` chain (so auto-injected components reach
-/// `validate_components()`). Single-GPU subset of the CPU rules:
+/// `validate_components()`). Single-GPU subset of the CPU rules,
+/// keyed on capability-typed virtuals (no string proxies, no
+/// `dynamic_cast`):
 ///
-/// - **VirialStress** — if any pending component has
-///   `role() == ComponentRole::Barostat` and no pending component is
-///   named `"virial_stress"`, a fresh `cuda::VirialStress{}` is added.
-///   Uses `role()==Barostat` as the proxy for "needs Stress" because
-///   `cuda::ComponentBase` has no `reads()` virtual yet
-///   (`cuda/md/barostat.cuh` defers that to a later spec).
-/// - **NeighborList missing** — if any pending component named
-///   `"pair_lj_cut"` / `"pair_morse"` / … (any name suggesting a
-///   neighbor-list consumer) is present without a `"neighbor_list"`
-///   component, `build()` throws naming the offending evaluator.
+/// - **VirialStress** — if any pending component declares
+///   `(reads() & Capability::Stress) != None` and no pending component
+///   already advertises `(capabilities() & Capability::Stress) != None`
+///   with `role() == Observer`, a fresh `cuda::VirialStress{}` is
+///   added at `post_force @ -50`. Covers both `cuda::md::Barostat`
+///   (Berendsen, `role()==Barostat`) and `cuda::md::NoseHooverNPT`
+///   (MTK NPT, `role()==Integrator`) uniformly via `reads()`.
+/// - **NeighborList missing** — if any pending component reports
+///   `needs_neighbor_list() == true` (pair-style evaluators do, via
+///   `cuda::Pair`) without a registered `cuda::NeighborList`,
+///   `build()` throws naming the offending evaluator.
 ///
 /// Multi-GPU halo exchange auto-injection is **out of scope** for the
 /// CUDA arm per `msu-pe-validation.md` fixed-scope decision #1.
@@ -82,7 +85,6 @@
 #include "atomiverse/cuda/md/init.cuh"
 #include "atomiverse/cuda/md/kinetic_energy.cuh"
 #include "atomiverse/cuda/observer/stress.cuh"
-#include "atomiverse/cuda/potentials/pair.cuh"
 #include "atomiverse/cuda/recorder/thermo.cuh"
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
@@ -226,11 +228,12 @@ class MD : public cuda::DynamicsDriver {
     /// @brief Override `CUDADriver::build()` so the auto-injection pass
     ///        runs *before* `validate_components()` sees pending_.
     ///
-    /// `install_infra_()` may add a `cuda::VirialStress{}` if a
-    /// Barostat-role component is present. After the install pass we
-    /// chain to `cuda::DynamicsDriver::build()` (which calls
-    /// `validate_components()` + `Base::build()` in that order — see
-    /// `cuda/cuda_driver.cuh`).
+    /// `install_infra_()` may add a `cuda::VirialStress{}` if any pending
+    /// component declares `(reads() & Capability::Stress) != None`
+    /// (covers both `cuda::md::Barostat` and `cuda::md::NoseHooverNPT`).
+    /// After the install pass we chain to `cuda::DynamicsDriver::build()`
+    /// (which calls `validate_components()` + `Base::build()` in that
+    /// order — see `cuda/cuda_driver.cuh`).
     void build() {
         install_infra_();
         cuda::DynamicsDriver::build();
@@ -239,49 +242,44 @@ class MD : public cuda::DynamicsDriver {
   protected:
     /// @brief Auto-injection pass — single-GPU subset of the CPU rules.
     ///
-    /// Two checks:
-    ///   1. If any pending component has `role()==Barostat` AND no
-    ///      pending component is named `"virial_stress"`, add a fresh
-    ///      `cuda::VirialStress{}`.
-    ///   2. If a pending component reports
-    ///      `needs_neighbor_list()==true` (TODO: cuda::ComponentBase
-    ///      does not expose this method yet — see deferral note below)
-    ///      without a `"neighbor_list"`-named component, throw naming
-    ///      the offender.
-    ///
-    /// Because `cuda::ComponentBase` lacks both `reads()` and
-    /// `needs_neighbor_list()` virtuals at the time of this link, the
-    /// CUDA-side install relies on `role()` and `name()` proxies. When
-    /// those virtuals land (out-of-scope follow-up), the install logic
-    /// can collapse onto the CPU-side `InfraScan` machinery directly.
+    /// Two checks, both keyed on `ComponentBase` capability-typed
+    /// virtuals (`reads()`, `capabilities()`, `needs_neighbor_list()`,
+    /// `provides_neighbor_list()`) — no `name()` string matching,
+    /// no `dynamic_cast`:
+    ///   1. If any pending component declares `(reads() & Stress) != None`
+    ///      AND no pending component already declares
+    ///      `(capabilities() & Stress) != None && role()==Observer`,
+    ///      add a fresh `cuda::VirialStress{}` at `post_force @ -50`.
+    ///   2. If any pending component reports
+    ///      `needs_neighbor_list() == true` without any pending component
+    ///      reporting `provides_neighbor_list() == true`, throw naming
+    ///      the first offender.
     void install_infra_() {
-        bool has_barostat = false;
-        bool has_virial_stress = false;
+        bool needs_stress_input = false;
+        bool has_stress_producer = false;
         bool has_neighbor_list = false;
-        std::string pair_evaluator_name; // first cuda::Pair-derived component
+        std::string pair_evaluator_name; // first needs_neighbor_list consumer
         this->for_each_pending([&](const cuda::ComponentBase& c) {
-            if (c.role() == ComponentRole::Barostat)
-                has_barostat = true;
-            const std::string n = c.name();
-            if (n == "virial_stress")
-                has_virial_stress = true;
-            if (n == "neighbor_list")
+            if ((c.reads() & Capability::Stress) != Capability::None)
+                needs_stress_input = true;
+            if (c.role() == ComponentRole::Observer
+                && (c.capabilities() & Capability::Stress) != Capability::None)
+                has_stress_producer = true;
+            if (c.needs_neighbor_list()) {
+                if (pair_evaluator_name.empty())
+                    pair_evaluator_name = c.name();
+            }
+            if (c.provides_neighbor_list())
                 has_neighbor_list = true;
-            // Pair-evaluator detection via dynamic_cast to the cuda::Pair
-            // base — robust across pair styles whose name() does not start
-            // with "pair_" (e.g. cuda::LJ → name "lj").
-            if (pair_evaluator_name.empty()
-                && dynamic_cast<const cuda::Pair*>(&c) != nullptr)
-                pair_evaluator_name = n;
         });
 
-        if (has_barostat && !has_virial_stress) {
-            // `cuda::VirialStress` has no default_bindings(), so bind it
-            // explicitly to `post_force @ -50` — the slot CPU
-            // `VirialStress::default_bindings()` uses, where the pair /
-            // bonded virials are already accumulated and the velocities
-            // are post-integrator-kick so Σ m·v·v reflects the
-            // appropriate time-slice.
+        if (needs_stress_input && !has_stress_producer) {
+            // `cuda::VirialStress` has no default_bindings(); bind it
+            // explicitly to `post_force @ -50` — the slot the CPU
+            // sibling `cpu::md::VirialStress::default_bindings()` uses,
+            // where pair / bonded virials are already accumulated and
+            // the velocities are post-integrator-kick so Σ m·v·v
+            // reflects the appropriate time-slice.
             this->on(ATV::md::Phase::post_force).add(cuda::VirialStress{}, -50);
         }
 

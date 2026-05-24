@@ -27,6 +27,13 @@ class VirialStress : public ComponentBase {
     VirialStress& operator=(VirialStress&&) noexcept;
 
     std::string name() const override { return "virial_stress"; }
+    /// @brief Structural role — derived-quantity observer (writes Stress).
+    /// Mirrors `cpu::md::VirialStress::role()`. Used by
+    /// `cuda::md::MD::install_infra_` to dedupe duplicate virial-stress
+    /// components via capability matching instead of `name()` strings.
+    ComponentRole role() const override { return ComponentRole::Observer; }
+    /// @brief Capability — writes `frame.scalars->stress[]`.
+    Capability capabilities() const override { return Capability::Stress; }
     void build(const BuildContext& ctx) override;
     void launch(const LaunchContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;

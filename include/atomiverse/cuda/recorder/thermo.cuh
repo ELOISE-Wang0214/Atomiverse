@@ -28,6 +28,8 @@ class Thermo : public AsyncBridge {
         : every_(every), filename_(std::move(filename)) {}
 
     std::string name() const override { return "thermo"; }
+    /// @brief Recorder — writes thermo line to stdout (and optional file).
+    ComponentRole role() const override { return ComponentRole::Recorder; }
     int frequency() const override { return every_; }
 
   protected:

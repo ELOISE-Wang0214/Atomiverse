@@ -19,6 +19,10 @@ class Pair : public ComponentBase {
     Capability capabilities() const override {
         return Capability::Energy | Capability::Force | Capability::Stress;
     }
+    /// @brief Pair styles depend on a neighbor list — used by
+    ///        `cuda::md::MD::install_infra_` to detect a missing
+    ///        `cuda::NeighborList` registration without `dynamic_cast`.
+    bool needs_neighbor_list() const final { return true; }
 
     /// @brief Framework dispatch — `final`, calls `compute()`.
     void launch(const LaunchContext& ctx) final { compute(ctx); }

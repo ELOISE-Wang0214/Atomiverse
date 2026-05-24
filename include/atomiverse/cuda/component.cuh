@@ -98,6 +98,38 @@ class ComponentBase {
     /// @see facade/component_role.h
     virtual Capability capabilities() const { return Capability::None; }
 
+    /// @brief Bitset of frame fields this component consumes.
+    ///
+    /// Mirrors `cpu::ComponentBase::reads()`. Defaults to `None`;
+    /// concrete components override to declare their inputs. Used by
+    /// `cuda::md::MD::install_infra_` for capability-typed auto-injection
+    /// — e.g. a barostat that declares `reads()==Stress` auto-pulls in
+    /// `cuda::VirialStress` if none is registered.
+    /// @return Capability bitset of frame fields read (defaults to None).
+    /// @see facade/component_role.h
+    virtual Capability reads() const { return Capability::None; }
+
+    /// @brief Whether this component requires a `cuda::NeighborList` in
+    ///        the same plan.
+    ///
+    /// Defaults to `false`. Pair evaluators (`cuda::Pair` subclasses)
+    /// override to return `true`; `cuda::md::MD::install_infra_` uses
+    /// this to detect missing neighbor lists and throws with the
+    /// offender's name.
+    /// @return true if this component needs a `cuda::NeighborList`
+    ///         registered in the same plan.
+    virtual bool needs_neighbor_list() const { return false; }
+
+    /// @brief Whether this component *is* a neighbor list (the supply
+    ///        side of the `needs_neighbor_list()` contract).
+    ///
+    /// Defaults to `false`. `cuda::NeighborList` overrides to return
+    /// `true`. Used by `cuda::md::MD::install_infra_` to detect a
+    /// registered NeighborList without keying on `name() == "neighbor_list"`.
+    /// @return true if this component supplies the neighbor list to
+    ///         downstream consumers.
+    virtual bool provides_neighbor_list() const { return false; }
+
     /// @brief Scheduling trait (blocking or deferrable).
     /// @return Scheduling::blocking (default) or Scheduling::deferrable.
     virtual Scheduling scheduling() const { return Scheduling::blocking; }

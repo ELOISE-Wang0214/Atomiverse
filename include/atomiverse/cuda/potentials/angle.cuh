@@ -16,8 +16,11 @@ class Angle : public ComponentBase {
     ~Angle() override = default;
 
     ComponentRole role() const final { return ComponentRole::Evaluator; }
+    /// @brief Capabilities — Energy + Force + Stress. The kernel writes
+    ///        per-pair virial contributions into `frame.scalars->stress[]`
+    ///        (see `cuda/potentials/angle_harmonic.cu` block reduction).
     Capability capabilities() const override {
-        return Capability::Energy | Capability::Force;
+        return Capability::Energy | Capability::Force | Capability::Stress;
     }
 
     void launch(const LaunchContext& ctx) final { compute(ctx); }

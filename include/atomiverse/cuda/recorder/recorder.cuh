@@ -34,6 +34,8 @@ class Recorder : public AsyncBridge {
     Recorder& operator=(Recorder&&) noexcept = default;
 
     std::string name() const override { return "recorder"; }
+    /// @brief Recorder — writes XYZ trajectory frames.
+    ComponentRole role() const override { return ComponentRole::Recorder; }
     int frequency() const override { return every_; }
 
   protected:

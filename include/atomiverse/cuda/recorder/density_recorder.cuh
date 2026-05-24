@@ -64,6 +64,8 @@ class DensityRecorder : public AsyncBridge {
     DensityRecorder& operator=(DensityRecorder&&) noexcept = default;
 
     std::string name() const override { return "density_recorder"; }
+    /// @brief Recorder — writes electron-density grid to Zarr store.
+    ComponentRole role() const override { return ComponentRole::Recorder; }
     int frequency() const override { return every_; }
 
   protected:

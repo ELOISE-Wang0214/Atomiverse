@@ -35,12 +35,14 @@ class Barostat : public ComponentBase {
 
     /// @brief Structural role — the pressure controller.
     ///
-    /// Mirrors `cpu::md::Barostat`. The CPU `Barostat` also overrides
-    /// `reads()==Stress`; the CUDA `ComponentBase` has no `reads()`
-    /// virtual yet, so only `role()` is declared here (the `reads()`
-    /// mirror is deferred to a later spec).
+    /// Mirrors `cpu::md::Barostat`.
     /// @return ComponentRole::Barostat.
     ComponentRole role() const override { return ComponentRole::Barostat; }
+    /// @brief Reads — consumes `Stress` to drive the Berendsen volume
+    ///        rescale. Triggers `cuda::md::MD::install_infra_` to
+    ///        auto-inject `cuda::VirialStress` via capability matching
+    ///        (the `role()==Barostat` proxy is no longer required).
+    Capability reads() const override { return Capability::Stress; }
 
     std::vector<DefaultBinding> default_bindings() const override;
     void build(const BuildContext& ctx) override;

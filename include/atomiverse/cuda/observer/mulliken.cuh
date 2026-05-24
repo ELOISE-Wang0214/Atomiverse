@@ -69,6 +69,8 @@ class MullikenObs : public AsyncBridge {
     ~MullikenObs() override = default;
 
     std::string name() const override { return "mulliken"; }
+    /// @brief Observer — derives Mulliken charges from SCF density (no I/O).
+    ComponentRole role() const override { return ComponentRole::Observer; }
     int frequency() const override { return every_; }
 
     const std::vector<double>& charges() const { return charges_; }

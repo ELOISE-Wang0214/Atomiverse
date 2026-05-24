@@ -16,8 +16,11 @@ class Dihedral : public ComponentBase {
     ~Dihedral() override = default;
 
     ComponentRole role() const final { return ComponentRole::Evaluator; }
+    /// @brief Capabilities — Energy + Force + Stress. The kernel writes
+    ///        per-tuple virial contributions into `frame.scalars->stress[]`
+    ///        (see `cuda/potentials/dihedral_multi_harmonic.cu`).
     Capability capabilities() const override {
-        return Capability::Energy | Capability::Force;
+        return Capability::Energy | Capability::Force | Capability::Stress;
     }
 
     void launch(const LaunchContext& ctx) final { compute(ctx); }

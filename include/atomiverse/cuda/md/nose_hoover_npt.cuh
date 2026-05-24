@@ -82,6 +82,11 @@ class NoseHooverNPT : public ComponentBase {
 
     std::string name() const override { return "nose_hoover_npt"; }
     ComponentRole role() const override { return ComponentRole::Integrator; }
+    /// @brief Reads — consumes `Stress` to drive ε̇ via `update_eps_dot_`.
+    ///        Triggers `cuda::md::MD::install_infra_` to auto-inject
+    ///        `cuda::VirialStress` if none is registered. The Integrator
+    ///        role alone could not express this dependency.
+    Capability reads() const override { return Capability::Stress; }
 
     std::vector<DefaultBinding> default_bindings() const override {
         return {{static_cast<int>(ATV::md::Phase::initial_integrate), 0},

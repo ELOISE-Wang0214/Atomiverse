@@ -9,6 +9,9 @@
 #include "atomiverse/cuda/potentials/lj.cuh"
 
 using namespace ATV;
+// `cuda::md::MD`, `cuda::NeighborList`, `cuda::LJ` are fully qualified
+// below to avoid an `md` ambiguity between `ATV::md` (phase enum) and
+// `ATV::cuda::md` (driver namespace).
 
 static void BM_MDStep(benchmark::State& state) {
     int n = state.range(0);
@@ -25,11 +28,11 @@ static void BM_MDStep(benchmark::State& state) {
     }
     frame.box = Mat3::cubic(static_cast<double>(box_len));
 
-    md::MD sim;
-    sim.add(md::VelocityVerlet{double(0.001)});
-    sim.on(md::Phase::force)
-        .add(NeighborList{cutoff}, -10)
-        .add(LJ{double(1.0), double(1.0), cutoff});
+    cuda::md::MD sim;
+    sim.add(cuda::md::VelocityVerlet{double(0.001)});
+    sim.on(ATV::md::Phase::force)
+        .add(cuda::NeighborList{cutoff}, -10)
+        .add(cuda::LJ{double(1.0), double(1.0), cutoff});
 
     sim.build();
     sim.run(frame, 10); // warm up
