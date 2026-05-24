@@ -169,14 +169,16 @@ WALL="$(awk -v s="$START" -v e="$END" 'BEGIN { printf "%.3f", e - s }')"
 THERMO="$RUN_DIR/thermo.csv"
 PER_STEP_MS="n/a"
 if [[ -s "$THERMO" ]]; then
-  N_ROWS="$(awk 'NR>1' "$THERMO" | wc -l | tr -d ' ')"
-  if [[ "$N_ROWS" -gt 0 ]]; then
-    # Steps recorded = rows × (last-step - first-step) / (N_ROWS-1) approx.
-    # Conservative: use the last "step" column directly.
-    LAST_STEP="$(awk -F, 'NR>1 {s=$1} END{print s}' "$THERMO")"
-    if [[ -n "$LAST_STEP" && "$LAST_STEP" -gt 0 ]]; then
-      PER_STEP_MS="$(awk -v w="$WALL" -v n="$LAST_STEP" 'BEGIN { printf "%.4f", 1000.0 * w / n }')"
-    fi
+  # Last "step" column (first CSV field) of the last data row. Skipped rows
+  # that don't parse as a positive integer — guards against a partial /
+  # malformed trailing line that would otherwise crash the bash `[[ -gt ]]`
+  # arithmetic test below (it can't compare floats or non-numeric tokens).
+  LAST_STEP="$(awk -F, '
+      NR>1 && $1 ~ /^[0-9]+$/ { s = $1 + 0 }
+      END                    { if (s > 0) print s }
+    ' "$THERMO")"
+  if [[ -n "$LAST_STEP" ]]; then
+    PER_STEP_MS="$(awk -v w="$WALL" -v n="$LAST_STEP" 'BEGIN { printf "%.4f", 1000.0 * w / n }')"
   fi
 fi
 

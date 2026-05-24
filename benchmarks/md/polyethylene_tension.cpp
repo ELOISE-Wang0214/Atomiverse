@@ -79,6 +79,7 @@
 #include <fstream>
 #include <memory>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -589,19 +590,22 @@ class CsvRecorder : public cpu::ComponentBase {
             //   Pxx,Pyy,Pzz,
             //   E_pot_eV,E_pair_eV,E_bond_eV,E_angle_eV,E_dihedral_eV,E_kin_eV,
             //   box_x,box_y,box_z
-            // Pxx/Pyy/Pzz [bar] are genuine per-axis virials, not the
-            // old isotropic-P stand-in. The 4 per-term energies decompose
-            // f.scalars.energy by evaluator family (LAMMPS thermo_style
-            // epair/ebond/eangle/edihed equivalent).
-            (*thermo_) << abs_step << "," << current_stage_ << ","
-                       << current_T_target_ << "," << T << "," << P_bar << ","
-                       << Pbar[0] << "," << Pbar[1] << "," << Pbar[2] << ","
-                       << f.scalars.energy << "," << f.scalars.energy_pair
-                       << "," << f.scalars.energy_bond << ","
-                       << f.scalars.energy_angle << ","
-                       << f.scalars.energy_dihedral << ","
-                       << f.scalars.kinetic << "," << f.box(0, 0) << ","
-                       << f.box(1, 1) << "," << f.box(2, 2) << "\n";
+            // Build the row in a local ostringstream and flush as ONE
+            // ofstream insertion — keeps every CSV row a single atomic
+            // write to the underlying file (the chained-<< form gets
+            // shredded into ~16 tiny stream-buffer writes that can
+            // interleave across step / phase / OMP boundaries on
+            // shared-fs Lustre, producing ~0.8% malformed rows).
+            std::ostringstream row;
+            row << abs_step << "," << current_stage_ << ","
+                << current_T_target_ << "," << T << "," << P_bar << ","
+                << Pbar[0] << "," << Pbar[1] << "," << Pbar[2] << ","
+                << f.scalars.energy << "," << f.scalars.energy_pair << ","
+                << f.scalars.energy_bond << "," << f.scalars.energy_angle
+                << "," << f.scalars.energy_dihedral << ","
+                << f.scalars.kinetic << "," << f.box(0, 0) << ","
+                << f.box(1, 1) << "," << f.box(2, 2) << "\n";
+            (*thermo_) << row.str();
         }
         if (record_strain_ && stress_ && stress_->is_open()) {
             // Snapshot the engineering-strain reference at the first
@@ -624,9 +628,10 @@ class CsvRecorder : public cpu::ComponentBase {
                               + f.scalars.stress_kinetic[0]) / V
                           : 0.0;
             const double strain = f.box(0, 0) / box_x0_ - 1.0;
-            (*stress_) << abs_step << "," << current_stage_ << "," << strain
-                       << "," << sigma_xx << "," << (sigma_xx * kEvPerA3ToGPa)
-                       << "\n";
+            std::ostringstream row;
+            row << abs_step << "," << current_stage_ << "," << strain << ","
+                << sigma_xx << "," << (sigma_xx * kEvPerA3ToGPa) << "\n";
+            (*stress_) << row.str();
         }
     }
 
