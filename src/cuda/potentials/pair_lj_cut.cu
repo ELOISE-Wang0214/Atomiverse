@@ -123,34 +123,25 @@ __global__ void lj_force(real_t* __restrict__ fx, real_t* __restrict__ fy,
         }
     }
 
-    extern __shared__ work_t s_energy[];
-    s_energy[threadIdx.x] = my_energy;
-    __syncthreads();
-    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
-        if (threadIdx.x < s)
-            s_energy[threadIdx.x] += s_energy[threadIdx.x + s];
-        __syncthreads();
-    }
-    if (threadIdx.x == 0 && s_energy[0] != work_t(0))
-        atomicAdd(energy, static_cast<prec_t>(s_energy[0]));
-    __syncthreads();  // ensure energy reduction done before reusing s_energy
+    // Packed warp-shuffle reduction: 7 scalars (energy + 6 stress
+    // components) reduced via cg::reduce. Replaces the original
+    // sequential 7-pass shared-mem reductions with 7 × `__syncthreads`
+    // (one per scalar inside `block_reduce_sum`) instead of 7 × 8
+    // shared-mem barrier-steps. Drops shared-mem footprint from
+    // `blockDim.x × sizeof(work_t)` to (blockDim.x / 32) × sizeof(work_t)
+    // (cuda-md-review-cleanup-05-reductions-and-atomics).
+    extern __shared__ work_t warp_scratch[]; // per-warp staging cells
 
-    // Block-level virial reduction → atomicAdd to global stress[0..5].
-    // Reuses s_energy shared-memory slot in 6 successive sweeps.
-    if (stress != nullptr) {
-        const work_t my_v[6] = {my_vxx, my_vyy, my_vzz,
-                                my_vxy, my_vxz, my_vyz};
-        for (int comp = 0; comp < 6; ++comp) {
-            s_energy[threadIdx.x] = my_v[comp];
-            __syncthreads();
-            for (int s = blockDim.x / 2; s > 0; s >>= 1) {
-                if (threadIdx.x < s)
-                    s_energy[threadIdx.x] += s_energy[threadIdx.x + s];
-                __syncthreads();
-            }
-            if (threadIdx.x == 0 && s_energy[0] != work_t(0))
-                atomicAdd(&stress[comp], static_cast<prec_t>(s_energy[0]));
-            __syncthreads();
+    work_t my_vals[7] = {my_energy, my_vxx, my_vyy, my_vzz,
+                         my_vxy,    my_vxz, my_vyz};
+    work_t out[7];
+    block_reduce_sum_n<7>(my_vals, warp_scratch, out);
+    if (threadIdx.x == 0) {
+        atomicAdd(energy, static_cast<prec_t>(out[0]));
+        if (stress != nullptr) {
+#pragma unroll
+            for (int c = 0; c < 6; ++c)
+                atomicAdd(&stress[c], static_cast<prec_t>(out[c + 1]));
         }
     }
 }
@@ -310,11 +301,12 @@ void PairLJCut::compute(const LaunchContext& ctx) {
     }
     int block = kDefaultBlock;
     int grid = grid_size(pair_capacity_host_ > 0 ? pair_capacity_host_ : 1);
+    int shmem = warps_per_block(block) * sizeof(work_t);
     // Pass nullptr for exclusion CSR when none configured — kernel takes
     // fast path and avoids the partner lookup overhead entirely.
     const int* excl_off = (has_exclusions_) ? d_excl_offsets_ : nullptr;
     const int* excl_par = (has_exclusions_) ? d_excl_partners_ : nullptr;
-    kernels::lj_force<<<grid, block, block * sizeof(work_t), stream>>>(
+    kernels::lj_force<<<grid, block, shmem, stream>>>(
         frame.atoms.fx, frame.atoms.fy, frame.atoms.fz, &frame.scalars->energy,
         &frame.scalars->stress[0], pairs->i, pairs->j, pairs->dx, pairs->dy,
         pairs->dz, pairs->dist, epsilon_, sigma_, cutoff_, v_shift_,

@@ -1,7 +1,7 @@
 ---
 title: CUDA MD Review Cleanup — link 05 — warp-shuffle reductions + cluster-staged force atomics
 slug: cuda-md-review-cleanup-05-reductions-and-atomics
-status: draft
+status: code-complete
 created: 2026-05-24
 parent: cuda-md-review-cleanup.md (Cluster 5 + Cluster 7, 7 findings)
 chain: cuda-md-review-cleanup-* (link 5/9)

@@ -37,7 +37,7 @@ __global__ void multi_harmonic_dihedral_k(
     const int* __restrict__ dj, const int* __restrict__ dk,
     const int* __restrict__ dl, const int* __restrict__ dt,
     const work_t* __restrict__ C, // [n_types * 5]
-    cuda::Box box, int n_dihed) {
+    cuda::Box box, int n_dihedrals) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     // See bond_harmonic.cu for the rationale: early-returning out-of-range
@@ -50,7 +50,7 @@ __global__ void multi_harmonic_dihedral_k(
     work_t v = work_t(0);
     work_t my_v[6] = {work_t(0), work_t(0), work_t(0),
                       work_t(0), work_t(0), work_t(0)};
-    bool active = (idx < n_dihed);
+    bool active = (idx < n_dihedrals);
 
     // Predeclare locals used by the active branch — referenced from the
     // virial accumulation block at the bottom of the active section.
@@ -213,34 +213,24 @@ __global__ void multi_harmonic_dihedral_k(
     my_v[4] = -b1x * fiz + b2x * fkz + r_lx * flz;  // xz
     my_v[5] = -b1y * fiz + b2y * fkz + r_ly * flz;  // yz
         } // end inner `if (active)` (post-degeneracy check)
-    } // end outer `if (active)` (idx < n_dihed)
+    } // end outer `if (active)` (idx < n_dihedrals)
 
-    // Energy reduction — ALL threads in the block participate, with
-    // inactive / out-of-range threads contributing v=0 and my_v=0.
-    extern __shared__ work_t sdata[];
-    sdata[threadIdx.x] = v;
-    __syncthreads();
-    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
-        if (threadIdx.x < s)
-            sdata[threadIdx.x] += sdata[threadIdx.x + s];
-        __syncthreads();
-    }
-    if (threadIdx.x == 0)
-        atomicAdd(energy, static_cast<prec_t>(sdata[0]));
-    __syncthreads();
-
-    if (stress != nullptr) {
-        for (int comp = 0; comp < 6; ++comp) {
-            sdata[threadIdx.x] = my_v[comp];
-            __syncthreads();
-            for (int s = blockDim.x / 2; s > 0; s >>= 1) {
-                if (threadIdx.x < s)
-                    sdata[threadIdx.x] += sdata[threadIdx.x + s];
-                __syncthreads();
-            }
-            if (threadIdx.x == 0 && sdata[0] != work_t(0))
-                atomicAdd(&stress[comp], static_cast<prec_t>(sdata[0]));
-            __syncthreads();
+    // Packed warp-shuffle reduction: 7 scalars (energy + 6 stress
+    // components) via cuda::block_reduce_sum_n. All threads in the
+    // block participate; inactive / out-of-range threads contribute
+    // v=0 and my_v=0
+    // (cuda-md-review-cleanup-05-reductions-and-atomics).
+    extern __shared__ work_t warp_scratch[];
+    work_t my_vals[7] = {v,        my_v[0], my_v[1], my_v[2],
+                         my_v[3], my_v[4], my_v[5]};
+    work_t out[7];
+    block_reduce_sum_n<7>(my_vals, warp_scratch, out);
+    if (threadIdx.x == 0) {
+        atomicAdd(energy, static_cast<prec_t>(out[0]));
+        if (stress != nullptr) {
+#pragma unroll
+            for (int c = 0; c < 6; ++c)
+                atomicAdd(&stress[c], static_cast<prec_t>(out[c + 1]));
         }
     }
 }
@@ -269,7 +259,8 @@ void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
 
     int block = kDefaultBlock;
     int grid = grid_size(static_cast<int>(nd));
-    multi_harmonic_dihedral_k<<<grid, block, block * sizeof(work_t), stream>>>(
+    int shmem = warps_per_block(block) * sizeof(work_t);
+    multi_harmonic_dihedral_k<<<grid, block, shmem, stream>>>(
         f.atoms.x, f.atoms.y, f.atoms.z, f.atoms.fx, f.atoms.fy, f.atoms.fz,
         &f.scalars->energy, &f.scalars->stress[0], f.dihedrals.atomi,
         f.dihedrals.atomj, f.dihedrals.atomk, f.dihedrals.atoml,

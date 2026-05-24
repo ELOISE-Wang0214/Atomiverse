@@ -140,9 +140,8 @@ __global__ void reduce_ke_axes_k(const real_t* __restrict__ vx,
                                  const real_t* __restrict__ vz,
                                  const real_t* __restrict__ mass,
                                  double* __restrict__ buf, int n) {
-    extern __shared__ double s_buf[]; // 4 * blockDim.x
-    int tid = threadIdx.x;
-    int i = blockIdx.x * blockDim.x + tid;
+    extern __shared__ double warp_scratch[]; // per-warp staging cells
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
     double mx = 0.0, my = 0.0, mz = 0.0;
     if (i < n) {
         double m = static_cast<double>(mass[i]);
@@ -153,21 +152,15 @@ __global__ void reduce_ke_axes_k(const real_t* __restrict__ vx,
         my = m * vyi * vyi;
         mz = m * vzi * vzi;
     }
-    int blk = blockDim.x;
-    s_buf[tid] = mx;
-    s_buf[blk + tid] = my;
-    s_buf[2 * blk + tid] = mz;
-    __syncthreads();
-    for (int off = blk / 2; off > 0; off >>= 1) {
-        if (tid < off) {
-            s_buf[tid] += s_buf[tid + off];
-            s_buf[blk + tid] += s_buf[blk + tid + off];
-            s_buf[2 * blk + tid] += s_buf[2 * blk + tid + off];
-        }
-        __syncthreads();
-    }
-    if (tid == 0) {
-        double bx = s_buf[0], by = s_buf[blk], bz = s_buf[2 * blk];
+    // Warp-shuffle reduction via the shared helper. Drops shared-mem
+    // from `3 * blockDim * 8` = ~6 KiB/block to (blockDim/32) * 8 ≈
+    // 64 bytes/block — opens up occupancy on the 228 KiB/SM budget
+    // (cuda-md-review-cleanup-05-reductions-and-atomics).
+    double my_vals[3] = {mx, my, mz};
+    double out[3];
+    ATV::cuda::block_reduce_sum_n<3>(my_vals, warp_scratch, out);
+    if (threadIdx.x == 0) {
+        double bx = out[0], by = out[1], bz = out[2];
         atomicAdd(&buf[1], bx);
         atomicAdd(&buf[2], by);
         atomicAdd(&buf[3], bz);
@@ -336,8 +329,10 @@ void NoseHooverNPT::destroy(const DestroyContext& /*ctx*/) {
 // ── Consolidated NPT scalar readback ────────────────────────────────
 //
 // Replaces the old per-call `cudaStreamSynchronize(stream) +
-// cudaMemcpy(D2H)` patterns in compute_global_KE_ / compute_axis_KE_ /
-// update_eps_dot_ / extended_hamiltonian_. Issues one reduction
+// cudaMemcpy(D2H)` patterns in compute_global_KE_ / update_eps_dot_ /
+// extended_hamiltonian_ (CPU sibling has a separate compute_axis_KE_;
+// CUDA folds the per-axis path into refresh_npt_scalars_). Issues one
+// reduction
 // kernel + one gather kernel + one async 8-double D2H on
 // `defer_stream` (ordered after main_stream via event), then a host
 // wait on the data-ready event. The main compute stream is never
@@ -368,7 +363,7 @@ void NoseHooverNPT::refresh_npt_scalars_(const LaunchContext& ctx) {
     // KE reduction → d_npt[0..3]
     int block = cuda::kDefaultBlock;
     int grid = cuda::grid_size(n);
-    size_t smem = 3 * block * sizeof(double);
+    size_t smem = cuda::warps_per_block(block) * sizeof(double);
     reduce_ke_axes_k<<<grid, block, smem, defer_stream>>>(
         f.atoms.vx, f.atoms.vy, f.atoms.vz, f.atoms.mass, d_npt, n);
 

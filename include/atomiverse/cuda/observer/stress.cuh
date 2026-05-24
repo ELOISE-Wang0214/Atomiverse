@@ -1,10 +1,31 @@
 /// @file cuda/observer/stress.cuh
-/// @brief VirialStress -- computes virial stress tensor from kinetic + pair contributions.
+/// @brief VirialStress -- ZEROING of the kinetic-stress accumulator.
 ///
-/// σ_αβ = (1/V) [Σ_i m_i v_iα v_iβ + Σ_{pairs} r_ij_α F_ij_β]
+/// The full virial stress tensor is
+///   σ_αβ = (1/V) [Σ_i m_i v_iα v_iβ + Σ_{pairs} r_ij_α F_ij_β]
 ///
-/// Cross-driver component: empty default_bindings(), bind at post_force or end_of_step.
-/// CUDA-free header.
+/// Producer split:
+///   - Kinetic term `Σ m·vα·vβ · kMvv2e` → `cuda::md::KineticEnergy`
+///     atomic-adds it into `frame.scalars->stress_kinetic[6]` via the
+///     packed warp-shuffle reduction it does for KE (one fused kernel
+///     since cuda-md-review-cleanup-05).
+///   - Pair / bonded virial → `cuda::PairLJCut`, `cuda::HarmonicBond`,
+///     etc. atomic-add into `frame.scalars->stress[6]` from their own
+///     force kernels.
+///   - Volume division → the consumer (`cuda::md::NoseHooverNPT`,
+///     pressure observers).
+///
+/// This component's residual responsibilities are:
+///   - **Capability declaration** (`role()==Observer`,
+///     `capabilities()==Stress`) so `cuda::md::MD::install_infra_`
+///     auto-injects it whenever any peer component reports
+///     `reads()==Stress` (NPT, Barostat).
+///   - **Zeroing** the `stress_kinetic[6]` accumulator on its
+///     `post_force @ -50` slot so `KineticEnergy` at
+///     `end_of_step @ -100` can atomic-add into a known-zero buffer.
+///
+/// Cross-driver component: empty default_bindings(), bound by the
+/// install_infra_ injector at post_force @ -50. CUDA-free header.
 #pragma once
 
 #include <memory>
@@ -15,10 +36,8 @@
 namespace ATV {
 namespace cuda {
 
-/// @brief Virial stress tensor computation.
-///
-/// Computes 6-component Voigt stress (xx, yy, zz, xy, xz, yz) and writes to
-/// DeviceFrame::stress. Includes kinetic and pair-wise contributions.
+/// @brief Capability-declaring zeroing shim for the kinetic-stress
+///        accumulator. See file-level docstring for the producer split.
 class VirialStress : public ComponentBase {
   public:
     VirialStress();
@@ -27,12 +46,15 @@ class VirialStress : public ComponentBase {
     VirialStress& operator=(VirialStress&&) noexcept;
 
     std::string name() const override { return "virial_stress"; }
-    /// @brief Structural role — derived-quantity observer (writes Stress).
-    /// Mirrors `cpu::md::VirialStress::role()`. Used by
+    /// @brief Structural role — Observer. Triggers
     /// `cuda::md::MD::install_infra_` to dedupe duplicate virial-stress
     /// components via capability matching instead of `name()` strings.
     ComponentRole role() const override { return ComponentRole::Observer; }
-    /// @brief Capability — writes `frame.scalars->stress[]`.
+    /// @brief Declares the `Stress` capability so any peer component
+    /// reporting `reads()==Stress` (e.g. NoseHooverNPT, Barostat) auto-
+    /// injects this component. The actual `stress_kinetic[]` writes are
+    /// emitted by `cuda::md::KineticEnergy` at end_of_step; this
+    /// component only zeroes the buffer at post_force.
     Capability capabilities() const override { return Capability::Stress; }
     void build(const BuildContext& ctx) override;
     void launch(const LaunchContext& ctx) override;

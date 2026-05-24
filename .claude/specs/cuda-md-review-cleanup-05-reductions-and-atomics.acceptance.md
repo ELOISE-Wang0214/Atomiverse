@@ -2,96 +2,126 @@
 slug: cuda-md-review-cleanup-05-reductions-and-atomics
 criteria:
   - id: ac-001
-    summary: cg_reduce.cuh provides warp-shuffle reduction helper
+    summary: cuda::block_reduce_sum + block_reduce_sum_n in launch.cuh
     type: code
     pass_when: |
-      `include/atomiverse/cuda/cg_reduce.cuh` declares a templated function
-      that performs warp-level sum reduction over N values using
-      `cooperative_groups::reduce` or `__reduce_add_sync(0xffffffff, val)`.
-      Compiles standalone via `cmake --build build --target atomiverse_cuda`.
-    status: pending
-    last_checked: ""
+      `include/atomiverse/cuda/launch.cuh` declares
+      `template <typename T> __device__ __forceinline__ T
+      block_reduce_sum(T value, T* warp_scratch)` and
+      `template <int N, typename T> __device__ __forceinline__ void
+      block_reduce_sum_n(const T (&values)[N], T* warp_scratch, T (&out)[N])`
+      backed by `cooperative_groups::reduce` (compiles to
+      `__reduce_add_sync` on sm_80+, shfl_xor fallback otherwise).
+      Also exposes `cuda::kWarpSize = 32` and
+      `cuda::warps_per_block(int block = kDefaultBlock)` so launch
+      sites size the per-warp shared scratch without magic numbers.
+      Initially landed as a separate `cg_reduce.cuh`; merged into
+      `launch.cuh` per user feedback to avoid `cg` / coarse-grain
+      naming ambiguity and to keep kernel-author helpers centralised.
+    status: verified
+    last_checked: 2026-05-24
   - id: ac-002
     summary: Hot force kernels use warp-shuffle reduction (not 6 sequential shared-mem)
     type: code
     pass_when: |
       `src/cuda/potentials/pair_lj_cut.cu`, `bond_harmonic.cu`,
-      `angle_harmonic.cu`, `dihedral_multi_harmonic.cu` each invoke either
-      `__reduce_add_sync` or a function from `cuda/cg_reduce.cuh` in their
-      stress-reduction block. The previous pattern of 6 `__syncthreads()`
-      calls in a row is removed: `grep -c '__syncthreads()' <each file>` is
-      reduced by at least 4 lines per file compared to baseline.
-    status: pending
-    last_checked: ""
+      `angle_harmonic.cu`, `dihedral_multi_harmonic.cu` each replace
+      the legacy 7-pass `extern __shared__ work_t sdata[]` tree
+      reduction with a single `cuda::block_reduce_sum_n<7>` call
+      packing energy + 6 stress components. `grep -c '__syncthreads'`
+      drops by ≥ 4 lines per file vs the pre-link-05 baseline. Shared
+      memory per block drops from `blockDim.x * sizeof(work_t)` to
+      `warps_per_block * sizeof(work_t)` (~8× less).
+    status: verified
+    last_checked: 2026-05-24
   - id: ac-003
     summary: KineticEnergy and kinetic_stress_k fused into single 7-value kernel
     type: code
     pass_when: |
-      A single device kernel (call it `kinetic_energy_and_stress_k` or
-      equivalent) in `src/cuda/md/kinetic_energy.cu` (or `observer/stress.cu`)
-      writes 7 reduction values `{ke, stress_xx, stress_yy, stress_zz,
-      stress_xy, stress_xz, stress_yz}`. The previous separate launch of
-      `kinetic_stress_k` from `cuda::VirialStress::launch()` is removed.
-    status: pending
-    last_checked: ""
+      `src/cuda/md/kinetic_energy.cu` declares
+      `kinetic_energy_stress` (renamed from `kinetic_energy`) that
+      atomic-adds 7 partials per block: 1 ke scalar +
+      6 stress_kinetic components (with kMvv2e folded in).
+      `src/cuda/observer/stress.cu` no longer contains a
+      `kinetic_stress_k` kernel definition or launch; its `launch()`
+      is narrowed to a single `cudaMemsetAsync` clearing
+      `stress_kinetic[6]` (so KineticEnergy's atomic-add lands in a
+      known-zero buffer). VirialStress::State no longer allocates
+      `d_stress_tmp`. The previous separate launch
+      (`kinetic_stress_k`) is eliminated.
+    status: verified
+    last_checked: 2026-05-24
   - id: ac-004
     summary: kinetic_stress_k shared usage reduced to <1 KiB (warp-shuffle path)
     type: code
     pass_when: |
-      `src/cuda/observer/stress.cu` `kinetic_stress_k` (or the new fused
-      kernel) declares `__shared__` storage totaling < 1024 bytes for the
-      reduction. The previous `6 * blockDim * sizeof(work_t)` allocation
-      pattern is gone.
-    status: pending
-    last_checked: ""
+      The fused `kinetic_energy_stress` kernel declares `__shared__
+      work_t warp_scratch[]` sized to `warps_per_block(block) *
+      sizeof(work_t)` = ≤ 64 bytes for the default 256-thread block.
+      The previous `6 * blockDim * sizeof(work_t)` ≈ 12 KiB
+      allocation pattern is gone.
+    status: verified
+    last_checked: 2026-05-24
   - id: ac-005
     summary: reduce_ke_axes_k uses warp-shuffle (not 6 KiB shared)
     type: code
     pass_when: |
-      `src/cuda/md/nose_hoover_npt.cu:129-167` `reduce_ke_axes_k` uses
-      warp-shuffle (or cooperative_groups warp reduce) for the 3-axis
-      reduction. Shared memory usage < 1 KiB.
-    status: pending
-    last_checked: ""
+      `src/cuda/md/nose_hoover_npt.cu` `reduce_ke_axes_k` uses
+      `cuda::block_reduce_sum_n<3>` for the 3-axis KE reduction.
+      Shared memory sized via `warps_per_block(block) * sizeof(double)`
+      = ≤ 64 bytes (vs the pre-link-05 `3 * blockDim * sizeof(double)`
+      ≈ 6 KiB).
+    status: verified
+    last_checked: 2026-05-24
   - id: ac-006
     summary: 'if (s_energy[0] != 0) atomicAdd' pattern removed
     type: code
     pass_when: |
-      `grep -rn 'if.*s_energy\[0\].*!= .*atomicAdd' src/cuda/potentials/ src/cuda/observer/ src/cuda/md/`
-      returns 0 hits.
-    status: pending
-    last_checked: ""
+      `grep -rn 'if.*s_energy\[0\].*!= .*atomicAdd' src/cuda/potentials/
+      src/cuda/observer/ src/cuda/md/` returns 0 hits. The new
+      warp-shuffle reductions emit unconditional atomicAdds —
+      `atomicAdd(_, 0)` is free on modern GPUs and the conditional
+      branch wasn't pulling its weight.
+    status: verified
+    last_checked: 2026-05-24
   - id: ac-007
     summary: LJ pair uses cluster-staged force write (≤2 atomicAdds per atom per block)
     type: code
     pass_when: |
-      `src/cuda/potentials/pair_lj_cut.cu` force kernel declares
-      `__shared__ work_t fi_local[CLUSTER_SIZE][3]` (or similar staging
-      buffer); the per-pair `atomicAdd` count inside the inner pair loop
-      is 0; final `atomicAdd` to global `force` happens once per atom per
-      block. `grep -c atomicAdd src/cuda/potentials/pair_lj_cut.cu` shows
-      the count dropped from 6 (pre-fix) to ≤ 2 inside the kernel body.
-    status: pending
-    last_checked: ""
+      DEFERRED to a follow-up link. The cluster-staged restructure
+      requires reorganising `pair_lj_cut` to consume cluster-pair
+      input (flat_ci/flat_cj groupings) and stage partial forces in
+      shared memory before a single atomicAdd per atom per block.
+      This is a non-mechanical data-structure rewrite with
+      regression risk; user-approved deferral to keep link 05
+      shipping the 8 reduction migrations + KE/stress fusion that
+      did land. Backlog: track under
+      `cuda-md-review-cleanup-09-bench-and-regression` umbrella or
+      a new follow-up link.
+    status: deferred
+    last_checked: 2026-05-24
   - id: ac-008
     summary: Bonded kernels reduce per-topology atomicAdd count
     type: code
     pass_when: |
-      EITHER `bond_harmonic.cu`, `angle_harmonic.cu` introduce a per-atom
-      owner-list reverse index and accumulate in register (with at most
-      one atomicAdd per dest atom per topology batch), OR they use
-      shared-mem partial accumulation per block. `grep -c atomicAdd`
-      shows the per-topology atomic count reduced by at least 3× from
-      baseline.
-    status: pending
-    last_checked: ""
+      DEFERRED to a follow-up link. The per-atom owner-list reverse
+      index requires building a new topology data structure (per-atom
+      owner lists in BondHarmonic/AngleHarmonic/MultiHarmonicDihedral
+      build()) and rewriting the kernels to iterate by destination
+      atom instead of by topology entry. Non-mechanical change;
+      user-approved deferral. Backlog as ac-007.
+    status: deferred
+    last_checked: 2026-05-24
   - id: ac-009
     summary: Correctness preserved (force/energy/stress match within tolerances)
     type: runtime
     pass_when: |
       `ctest --test-dir build -R 'cuda_md|cuda_potentials|cuda_observer'
-      --output-on-failure` exits 0. Per-step force, energy, and stress
-      values match pre-fix to within existing test tolerances on both
-      sparse (random-LJ) and dense (PE topology) systems.
-    status: pending
-    last_checked: ""
+      --output-on-failure` exits 0. Per-step force, energy, stress,
+      and kinetic-energy values match pre-fix to within existing test
+      tolerances on both sparse (random-LJ) and dense (PE topology)
+      systems. Verified 2026-05-24: 23/23 cuda tests pass including
+      existing NPT, install-infra-capability, neighborlist-skin-gating,
+      pair-LJ-special-bonds, potentials-bonded, hot-path-no-sync.
+    status: verified
+    last_checked: 2026-05-24
