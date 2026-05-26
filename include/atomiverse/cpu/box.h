@@ -118,17 +118,29 @@ class Box {
                                                  double& dz) const noexcept {
         if (ortho_) {
             const double lx = cell_(0, 0), ly = cell_(1, 1), lz = cell_(2, 2);
-            if (dx > half_lx_)
+            // `while` (not `if`): under multi-rank with periodic boundaries
+            // a ghost atom can be PBC-shifted up to ±2L from its
+            // counterpart on the receiving rank (HaloExchangeForward
+            // packs cross-PBC ghosts at `pos ± L`; if owner and ghost are
+            // on opposite slab corners that adds another ±L). A single
+            // wrap then leaves `|Δ| = L`, which inflates bonded Δ to the
+            // box length and explodes E_bond at the first AtomMigration
+            // boundary that crosses a chain (observed: PE bench at 2x2x2
+            // decomposition, stage 2 step ~194 of stage 2,
+            // tag pair (9733, 9734), r=80.42). Single-rank flows never
+            // have ghosts so this loop runs once and the form is
+            // bit-identical to the legacy `if`.
+            while (dx > half_lx_)
                 dx -= lx;
-            if (dx < -half_lx_)
+            while (dx < -half_lx_)
                 dx += lx;
-            if (dy > half_ly_)
+            while (dy > half_ly_)
                 dy -= ly;
-            if (dy < -half_ly_)
+            while (dy < -half_ly_)
                 dy += ly;
-            if (dz > half_lz_)
+            while (dz > half_lz_)
                 dz -= lz;
-            if (dz < -half_lz_)
+            while (dz < -half_lz_)
                 dz += lz;
         } else {
             // Triclinic: f = inv_cell · d, f -= round(f), d = cell · f.
