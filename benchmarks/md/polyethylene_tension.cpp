@@ -1585,11 +1585,6 @@ int main(int argc, char** argv) {
         }
         if (mid_dump_step > 0 && mid_dump_step < steps) {
             sim.run(frame, mid_dump_step);
-#ifdef ATV_HAS_MPI
-            const int n_local =
-                sim.release_dd() ? 0 : 0; // placeholder, see below
-#endif
-            // Need preserved_dd's n_local; release/re-adopt around the dump.
             auto tmp_dd = sim.release_dd();
             const int n_local_here =
                 tmp_dd ? tmp_dd->n_local : static_cast<int>(frame.atoms.size());
