@@ -125,7 +125,26 @@ void Backend::set_frame(cpu::Frame& frame) {
 
 #ifdef ATV_HAS_MPI
     if (context_.mpi_size > 1 && dd_->cart_comm != MPI_COMM_NULL) {
-        dd_->partition_atoms(frame);
+        // First call: dd has no prior partition (n_local==0) → do the full
+        // initial scan that classifies the global frame into per-rank slabs.
+        //
+        // Subsequent calls (e.g. `adopt_dd` across per-stage driver
+        // rebuilds in polyethylene_tension): dd already holds the previous
+        // stage's partition state. Re-running `partition_atoms` here would
+        // iterate only `[0, n_local)` and DROP any atom that has drifted
+        // across a slab boundary since the last AtomMigration — those
+        // atoms vanish (no rank picks them up) and the global count
+        // silently decreases (observed: 10000 → 9978 after stage 1, then
+        // catastrophic NPT response in stage 2 step ~100-300 once the
+        // density mismatch destabilizes the barostat). Skip the
+        // re-partition; refresh slab bounds against the (possibly
+        // box-changed) current box and let the next AtomMigration absorb
+        // any small drift exactly as it does mid-stage.
+        if (dd_->n_local == 0) {
+            dd_->partition_atoms(frame);
+        } else {
+            dd_->compute_sublo_subhi(frame.box);
+        }
         return;
     }
 #endif
