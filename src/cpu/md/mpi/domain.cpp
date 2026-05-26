@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <unordered_set>
 
 #include "atomiverse/core/mat3.h"
@@ -77,8 +79,27 @@ void DomainDecomposition::init_topology(MPI_Comm world) {
     cart_comm = world;
 
     // `MPI_Dims_create` is safe -- it's a pure algorithm with no state.
+    // Optional env-var override `ATV_FORCE_DIMS=Nx,Ny,Nz` skips the
+    // automatic 3D decomposition and uses the given factorization. This
+    // is a diagnostic/workaround: the face-only halo exchange misses
+    // edge/corner ghosts in true 3D decompositions, so for
+    // bonded-heavy systems (e.g. PE chains in 2x2x2) a 1D `Nx,1,1`
+    // override produces correct multi-rank behavior at the cost of
+    // less-uniform slab geometry. See
+    // `.claude/notes/cpu_mpi_halo_edge_corner_bug_2026-05-27.md`.
     dims[0] = dims[1] = dims[2] = 0;
-    MPI_Dims_create(world_size, 3, dims);
+    if (const char* env = std::getenv("ATV_FORCE_DIMS")) {
+        int dx, dy, dz;
+        if (std::sscanf(env, "%d,%d,%d", &dx, &dy, &dz) == 3
+            && dx * dy * dz == world_size) {
+            dims[0] = dx;
+            dims[1] = dy;
+            dims[2] = dz;
+        }
+    }
+    if (dims[0] == 0) {
+        MPI_Dims_create(world_size, 3, dims);
+    }
 
     // Convention: rank index = ix * (dy*dz) + iy * dz + iz.
     coords[0] = my_rank / (dims[1] * dims[2]);
