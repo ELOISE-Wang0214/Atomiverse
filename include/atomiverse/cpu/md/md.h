@@ -5,9 +5,11 @@
 #include <string>
 #include <type_traits>
 
+#include "atomiverse/cpu/backend.h"
 #include "atomiverse/cpu/dynamics_driver.h"
 #include "atomiverse/cpu/md/init.h"
 #include "atomiverse/cpu/md/mpi/atom_migration.h"
+#include "atomiverse/cpu/md/mpi/domain.h"
 #include "atomiverse/cpu/md/mpi/halo_exchange.h"
 #include "atomiverse/cpu/md/mpi/reduce.h"
 #include "atomiverse/cpu/md/virial_stress.h"
@@ -30,7 +32,7 @@ namespace md {
 ///
 ///   - Stress capability dependency → auto-injects `VirialStress`
 ///     (deduped against an explicitly-registered `VirialStress`).
-///   - `#ifdef ATV_BUILD_MPI` and a pair evaluator was set →
+///   - `#ifdef ATV_HAS_MPI` and a pair evaluator was set →
 ///     auto-injects `HaloExchangeForward{cutoff}` and
 ///     `HaloExchangeReverse{}` at the documented orders.
 ///   - A pair evaluator with `needs_neighbor_list()==true` was
@@ -116,6 +118,34 @@ class MD : public DynamicsDriver {
         return *this;
     }
 
+    /// @brief Hand off the spatial `DomainDecomposition` from a previously-
+    ///        torn-down MD instance.
+    ///
+    /// Call BEFORE `build()` to make the new MD reuse the partition state
+    /// (`n_local`, `tag_to_local`, `sublo/subhi`, `cuts`) of the prior
+    /// stage's DD. The companion `release_dd()` is invoked on the prior
+    /// MD just before its destructor; the orchestrator (e.g.
+    /// polyethylene_tension's per-stage loop) shuttles the unique_ptr
+    /// through. Without this, every new MD ⇒ new Backend ⇒ new DD ⇒
+    /// `first_partition=true` re-scan that misinterprets the previous
+    /// stage's stale frame tail as owned atoms.
+    void adopt_dd(std::unique_ptr<cpu::md::mpi::DomainDecomposition> dd) {
+        using Base = Driver<ATV::md::Phase, cpu::device_tag>;
+        if (!this->backend_)
+            this->backend_ = std::make_unique<typename Base::BackendT>();
+        this->backend_->adopt_dd(std::move(dd));
+    }
+
+    /// @brief Release the DD for the next stage to adopt.
+    ///
+    /// Call AFTER the last `run()` of this stage and BEFORE letting this
+    /// MD destruct. Returns nullptr if no DD is owned.
+    std::unique_ptr<cpu::md::mpi::DomainDecomposition> release_dd() {
+        if (!this->backend_)
+            return nullptr;
+        return this->backend_->release_dd();
+    }
+
   protected:
     void install_infra() override {
         const auto s = this->scan_pending_infra_();
@@ -123,7 +153,7 @@ class MD : public DynamicsDriver {
         if (s.needs_stress && !s.has_virial_stress)
             this->add(VirialStress{});
 
-#ifdef ATV_BUILD_MPI
+#ifdef ATV_HAS_MPI
         if (s.pair_evaluator_cutoff) {
             this->add(mpi::HaloExchangeForward{
                 static_cast<double>(*s.pair_evaluator_cutoff)});

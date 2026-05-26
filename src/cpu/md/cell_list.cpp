@@ -262,9 +262,15 @@ inline void ensure_at_least(std::vector<int>& arr, std::size_t n) {
 } // namespace
 
 void CellList::refresh_half(const cpu::Frame& frame, int n_active,
-                            PairList& result) const {
+                            PairList& result, int n_local) const {
     const int n =
         (n_active < 0) ? static_cast<int>(frame.atoms.size()) : n_active;
+    // Multi-rank ghost-pair tie-breaker. `n_local < 0` → single-rank mode,
+    // pure local-index filter. `n_local >= 0` → owner-ghost pairs are
+    // deduplicated by tag, mirroring LAMMPS `newton on` convention.
+    const bool tag_dedup = (n_local >= 0);
+    const std::int64_t* __restrict tag_ptr =
+        tag_dedup ? frame.atoms.tag.data() : nullptr;
     const double rc_sq = cutoff_skin_ * cutoff_skin_;
 
     ensure_at_least(result.ilist, static_cast<std::size_t>(n));
@@ -397,6 +403,16 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
                     int j = binned_ptr[idx];
                     if (j <= i)
                         continue;
+                    // Multi-rank ghost-pair tie-breaker: when j is a halo
+                    // ghost (j >= n_local), only the rank whose owner has
+                    // the smaller tag adds this pair. Without this, the
+                    // same owner-ghost pair gets added on BOTH ranks (each
+                    // sees its own atom as having the smaller local row),
+                    // double-counting LJ energy + virial. Matches LAMMPS
+                    // `npair_half_bin_newton::build` newton-on path.
+                    if (tag_dedup && j >= n_local
+                        && tag_ptr[j] < tag_ptr[i])
+                        continue;
 
                     double dx = xi - x_ptr[j];
                     double dy = yi - y_ptr[j];
@@ -527,6 +543,11 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
                 for (int idx = start; idx < end; ++idx) {
                     int j = binned_atoms_[idx];
                     if (j <= i)
+                        continue;
+                    // Multi-rank ghost tie-breaker — see serial path
+                    // comment above for the LAMMPS-newton-on rationale.
+                    if (tag_dedup && j >= n_local
+                        && tag_ptr[j] < tag_ptr[i])
                         continue;
 
                     double dx = frame.atoms.x[i] - frame.atoms.x[j];

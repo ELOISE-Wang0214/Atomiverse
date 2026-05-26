@@ -95,9 +95,27 @@ NoseHooverNPT::NoseHooverNPT(Config cfg)
 ///      `etap_mass`). Atomiverse folds `omega_mass` (LAMMPS per-axis)
 ///      into the single isotropic `W_ = 3·omega_mass`.
 void NoseHooverNPT::build(const cpu::BuildContext& ctx) {
-    // atoms.size() at build time = global N (set by user before
-    // Backend::set_frame partitions).
-    const int N = static_cast<int>(ctx.frame.atoms.size());
+    // n_dof must be the GLOBAL degree-of-freedom count: it controls Q_t_[0]
+    // (thermostat coupling mass), W_ (barostat mass) and the equipartition
+    // target 0.5·n_dof·kT used by compute_global_KE's NHC update. Using a
+    // per-rank value blows up the barostat under multi-rank rebuilds.
+    //
+    // Single-rank: frame.atoms.size() IS global N. Multi-rank: when build()
+    // runs BEFORE partitioning (initial build), atoms.size() is global too;
+    // but when build() runs AFTER a prior stage has already partitioned
+    // (the polyethylene_tension per-stage driver rebuild), atoms.size() ==
+    // n_local + n_ghost — wrong. The DD's `n_local` is authoritative on
+    // each rank post-partition, so Allreduce-sum that to recover global N.
+    int N = static_cast<int>(ctx.frame.atoms.size());
+#ifdef ATV_HAS_MPI
+    if (ctx.runtime.mpi_size > 1 && ctx.runtime.dd
+        && ctx.runtime.dd->cart_comm != MPI_COMM_NULL
+        && ctx.runtime.dd->n_local > 0) {
+        const int n_local = ctx.runtime.dd->n_local;
+        MPI_Allreduce(&n_local, &N, 1, MPI_INT, MPI_SUM,
+                      ctx.runtime.dd->cart_comm);
+    }
+#endif
     n_dof_ = 3 * N - 3;
     kT_ = kBoltzmann * T_target_;
 

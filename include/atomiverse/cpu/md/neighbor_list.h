@@ -95,7 +95,10 @@ class NeighborList : public cpu::ComponentBase {
         // the allocator. `pairs_.neighbors` is a `std::vector<int>` and
         // amortises growth itself -- leave it empty, the first refresh
         // reaches the correct size within one resize.
-        strategy_.refresh_half(ctx.frame, n_active, pairs_);
+        strategy_.refresh_half(ctx.frame, n_active, pairs_,
+                               is_multi_rank(ctx.runtime)
+                                   ? ctx.runtime.dd->n_local
+                                   : -1);
         ++pairs_.version;
         trim_inum_to_local(ctx.runtime, pairs_);
         ctx.runtime.pair_list = &pairs_;
@@ -130,7 +133,10 @@ class NeighborList : public cpu::ComponentBase {
             && (!check_ || strategy_.needs_rebuild(ctx.frame, n_active));
         if (size_stale || disp_rebuild) {
             strategy_.build(ctx.frame, n_active);
-            strategy_.refresh_half(ctx.frame, n_active, pairs_);
+            strategy_.refresh_half(ctx.frame, n_active, pairs_,
+                               is_multi_rank(ctx.runtime)
+                                   ? ctx.runtime.dd->n_local
+                                   : -1);
             ++pairs_.version;
             ago_ = 0;
             ++n_rebuilds_;

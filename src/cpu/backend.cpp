@@ -107,6 +107,17 @@ void Backend::init() {
     }
 }
 
+void Backend::adopt_dd(
+    std::unique_ptr<md::mpi::DomainDecomposition> dd) {
+    dd_ = std::move(dd);
+    context_.dd = dd_.get();
+}
+
+std::unique_ptr<md::mpi::DomainDecomposition> Backend::release_dd() {
+    context_.dd = nullptr;
+    return std::move(dd_);
+}
+
 void Backend::set_frame(cpu::Frame& frame) {
     frame_ = &frame;
     if (!dd_)

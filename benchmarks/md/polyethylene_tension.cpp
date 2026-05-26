@@ -94,6 +94,7 @@
 #include "atomiverse/cpu/md/init.h"
 #include "atomiverse/cpu/md/lj.h"
 #include "atomiverse/cpu/md/md.h"
+#include "atomiverse/cpu/md/mpi/domain.h"
 #include "atomiverse/cpu/md/neighbor_list.h"
 #include "atomiverse/cpu/md/nose_hoover_npt.h"
 #include "atomiverse/cpu/md/nve_limit.h"
@@ -1299,6 +1300,20 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    // ── Per-stage DD handoff (multi-rank only). ─────────────────────────
+    // Each per-stage `cpu::md::MD` instance owns its own Backend ⇒ its
+    // own `DomainDecomposition`; a fresh DD has `n_local==0` so
+    // `partition_atoms`'s `first_partition` branch fires and re-scans the
+    // *whole* frame allocation, claiming stale tail rows from the
+    // previous stage's compaction as owned atoms (LJ then finds duplicate
+    // positions ⇒ step-0 blow-up). Threading the same DD through every
+    // stage preserves `n_local` so subsequent `partition_atoms` iterates
+    // only [0..n_local), which is the well-tested "Driver::run() twice"
+    // path. cart_comm is recreated on each stage's `init_topology()`;
+    // that is intentional (the comm shouldn't outlive its parent
+    // Backend) and fast (microseconds).
+    std::unique_ptr<cpu::md::mpi::DomainDecomposition> preserved_dd;
+
     // ── Stage 1 — NVELimit + FixLangevin @ T_hot, dt 1.0 fs ───────────
     // Mirrors lammps.in `fix nve/limit 0.05` + `fix langevin 500 500 10`
     // + `velocity create 500`. NVELimit's per-step displacement cap
@@ -1323,8 +1338,11 @@ int main(int argc, char** argv) {
         sim.set_thermostat(langevin);
         wire_shared(sim, shared);
         rec.begin_stage(1, a.T_hot, /*record_strain=*/false);
+        if (preserved_dd)
+            sim.adopt_dd(std::move(preserved_dd));
         sim.build();
         sim.run(frame, steps);
+        preserved_dd = sim.release_dd();
     }
 
     // ── Stage 2 — isotropic NoseHooverNPT @ T_hot, P=0, dt 0.5 fs ─────
@@ -1351,8 +1369,11 @@ int main(int argc, char** argv) {
         sim.add(zm);
         wire_shared(sim, shared);
         rec.begin_stage(2, a.T_hot, /*record_strain=*/false);
+        if (preserved_dd)
+            sim.adopt_dd(std::move(preserved_dd));
         sim.build();
         sim.run(frame, steps);
+        preserved_dd = sim.release_dd();
     }
 
     // ── Stage 3 — ramped NoseHooverNPT 500 → 100 K, P=0, dt 0.5 fs ────
@@ -1386,8 +1407,11 @@ int main(int argc, char** argv) {
         sim.add(zm);
         wire_shared(sim, shared);
         rec.begin_stage(3, a.T_cold, /*record_strain=*/false);
+        if (preserved_dd)
+            sim.adopt_dd(std::move(preserved_dd));
         sim.build();
         sim.run(frame, steps);
+        preserved_dd = sim.release_dd();
     }
 
     // ── Stage 4 — isotropic NoseHooverNPT @ T_cold, P=0, dt 0.5 fs ────
@@ -1411,8 +1435,11 @@ int main(int argc, char** argv) {
         sim.add(zm);
         wire_shared(sim, shared);
         rec.begin_stage(4, a.T_cold, /*record_strain=*/false);
+        if (preserved_dd)
+            sim.adopt_dd(std::move(preserved_dd));
         sim.build();
         sim.run(frame, steps);
+        preserved_dd = sim.release_dd();
     }
 
     // ── Stage 5 — anisotropic NoseHooverNPT + Deform x, dt 1.0 fs ─────
@@ -1442,8 +1469,11 @@ int main(int argc, char** argv) {
         sim.add(deform);
         wire_shared(sim, shared);
         rec.begin_stage(5, a.T_cold, /*record_strain=*/true);
+        if (preserved_dd)
+            sim.adopt_dd(std::move(preserved_dd));
         sim.build();
         sim.run(frame, steps);
+        preserved_dd = sim.release_dd();
     }
 
     const double t1 = now_seconds();

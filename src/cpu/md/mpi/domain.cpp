@@ -7,6 +7,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <unordered_set>
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame.h"
@@ -156,7 +158,26 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
     std::vector<int> owned_indices;
     owned_indices.reserve(static_cast<std::size_t>(n_to_iterate));
 
+    // First-partition deduplication. When the caller passed an
+    // already-partitioned frame (e.g. polyethylene_tension's per-stage
+    // driver rebuild: stage 1 partitioned the frame into [0..n_local) +
+    // stale tail; stage 2's fresh DD enters here with n_local==0 so the
+    // tail rows are also scanned), the same tag can appear at both the
+    // compacted slot and the stale slot. Without dedup both copies are
+    // claimed, LJ then finds two atoms at identical positions, and the
+    // run blows up at stage 2 step 0. Tag-keyed `first-wins` keeps the
+    // live (compacted) copy and drops the stale one — physics is
+    // identical to a clean global-frame first-partition.
+    std::unordered_set<std::int64_t> seen_tags;
+    if (first_partition)
+        seen_tags.reserve(static_cast<std::size_t>(n_to_iterate));
+
     for (int i = 0; i < n_to_iterate; ++i) {
+        if (first_partition) {
+            const std::int64_t t = frame.atoms.tag(i);
+            if (!seen_tags.insert(t).second)
+                continue; // duplicate tag from stale tail — keep first
+        }
         const double xw = wrap_to_cell(frame.atoms.x(i), Lx);
         const double yw = wrap_to_cell(frame.atoms.y(i), Ly);
         const double zw = wrap_to_cell(frame.atoms.z(i), Lz);

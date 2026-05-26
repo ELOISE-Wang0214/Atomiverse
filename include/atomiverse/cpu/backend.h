@@ -98,6 +98,29 @@ class Backend {
     /// @brief Access the Frame.
     Frame& frame() { return *frame_; }
 
+    /// @brief Adopt an externally-owned `DomainDecomposition`.
+    ///
+    /// Takes ownership of `dd`. Must be called BEFORE `init()`; once the
+    /// dd is set, `init()` skips the default `make_unique<DD>()` step and
+    /// rebuilds topology on the adopted instance instead (preserving its
+    /// `n_local`, `tag_to_local`, `sublo/subhi`, and `cuts`, while
+    /// recreating `cart_comm` on the current `MPI_COMM_WORLD`).
+    ///
+    /// Intended for stage-orchestrators that create one Backend per
+    /// stage but want the spatial partition state to survive the
+    /// teardown — without this, each fresh Backend's
+    /// `partition_atoms(frame)` re-iterates the whole atom array
+    /// (`first_partition = (n_local == 0)`) and misinterprets the
+    /// previous stage's stale tail as owned atoms.
+    void adopt_dd(std::unique_ptr<md::mpi::DomainDecomposition> dd);
+
+    /// @brief Release the owned `DomainDecomposition` for reuse.
+    ///
+    /// Call between stages to extract the DD before tearing this Backend
+    /// down; pass it back to the next stage's Backend via `adopt_dd()`.
+    /// Returns nullptr if no DD is owned.
+    std::unique_ptr<md::mpi::DomainDecomposition> release_dd();
+
   private:
     Context context_{};
     cpu::Frame* frame_ = nullptr;

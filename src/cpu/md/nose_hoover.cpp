@@ -28,10 +28,23 @@ NoseHoover::NoseHoover(double T_start, double tau_T, double dt)
 }
 
 void NoseHoover::build(const cpu::BuildContext& ctx) {
-    // `atoms.size()` at build time is the *global* pre-partition atom count
-    // (the storage is allocated once by the user before Backend::set_frame
-    // partitions). This gives the correct global `n_dof` for `Q_`.
-    const int n_global = ctx.frame.atoms.size();
+    // `Q_` (chain mass) is set from the *global* DOF count; using a per-rank
+    // value diverges the chain dynamics under multi-rank. atoms.size() at
+    // build time equals global N only on the *initial* build (before
+    // Backend::set_frame partitions). When a driver is rebuilt after a
+    // partition has happened (e.g. polyethylene_tension's per-stage rebuild)
+    // atoms.size() == n_local + n_ghost — wrong. Allreduce-sum dd->n_local
+    // to recover global N in that case.
+    int n_global = static_cast<int>(ctx.frame.atoms.size());
+#ifdef ATV_HAS_MPI
+    if (ctx.runtime.mpi_size > 1 && ctx.runtime.dd
+        && ctx.runtime.dd->cart_comm != MPI_COMM_NULL
+        && ctx.runtime.dd->n_local > 0) {
+        const int n_local = ctx.runtime.dd->n_local;
+        MPI_Allreduce(&n_local, &n_global, 1, MPI_INT, MPI_SUM,
+                      ctx.runtime.dd->cart_comm);
+    }
+#endif
     n_dof_global_ = 3 * n_global - 3; // 3N - 3 (COM removal)
     // Initial chain mass at the ramp anchor `T_start_`; `launch()`
     // retunes it each step to the live setpoint (LAMMPS recomputes
@@ -83,10 +96,11 @@ double NoseHoover::compute_temp_target(std::int64_t step) const {
 void NoseHoover::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
     const int n = owned_count(ctx);
-    // Reconstruct global DOF from the same factor used in build().
-    const int n_global =
-        (ctx.runtime.dd && ctx.runtime.mpi_size > 1) ? f.atoms.size() : n;
-    const int n_dof = 3 * n_global - 3;
+    // Use the build-time-cached global DOF. atoms.size() at launch is the
+    // per-rank capacity (n_local + n_ghost), not global N — the old form
+    // gave a 3× over-count under MPI from ghost slots, and under per-stage
+    // rebuilds it was even smaller than n_local.
+    const int n_dof = n_dof_global_;
 
     if (ctx.stage == static_cast<int>(ATV::md::Phase::initial_integrate)
         || ctx.stage == static_cast<int>(ATV::md::Phase::final_integrate)) {

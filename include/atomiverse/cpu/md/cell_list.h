@@ -98,8 +98,20 @@ class CellList {
     /// @param frame Frame for distance evaluation.
     /// @param n_active Number of i-atoms this rebuild should cover.
     /// @param out PairList whose buffers are overwritten in place.
+    /// @param n_local Owner count (only rows in `[0, n_local)` are this
+    ///        rank's owned atoms; the rest are halo ghosts). When
+    ///        `>= 0` (multi-rank), pairs whose `j` is a ghost are
+    ///        deduplicated across ranks by atom tag — only the rank
+    ///        whose owner's tag is smaller adds the pair, exactly
+    ///        LAMMPS `npair_half_bin_newton::build` (newton on,
+    ///        `tag[j] < tag[i]` skip). Without this, the same
+    ///        owner-ghost LJ pair is computed on BOTH ranks (each
+    ///        sees its own atom as the local-index-smaller side) and
+    ///        E_pair / virial are 1.3-2× LAMMPS, driving NPT into a
+    ///        runaway barostat. Default `-1` (= single-rank mode):
+    ///        pure local-index half-list, byte-identical to legacy.
     void refresh_half(const cpu::Frame& frame, int n_active,
-                      PairList& out) const;
+                      PairList& out, int n_local = -1) const;
 
     /// @brief Rebuild the full-neighbor list **in place** into an existing
     /// `PairList`. See `refresh_half` for the capacity-preservation
