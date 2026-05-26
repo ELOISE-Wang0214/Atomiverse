@@ -95,6 +95,21 @@ void Deform::launch(const cpu::LaunchContext& ctx) {
     for (int i = 0; i < n; ++i) {
         coord[i] *= scale;
     }
+
+    // Ghost rows must track the box transform too. Without this, force
+    // evaluators between this deform call and the next skin-gated
+    // HaloExchangeForward see owner→ghost separations corrupted by
+    // `(scale-1)*pos` on the deformed axis (mirrors the NPT case;
+    // LAMMPS `fix deform`'s `remap` also operates on nlocal+nghost).
+    // Velocity drift is intentionally omitted — the owner rank applies
+    // it; the next forward halo propagates the result.
+    const int n_total = static_cast<int>(f.atoms.size());
+    if (n_total > n) {
+#pragma omp parallel for schedule(static)
+        for (int i = n; i < n_total; ++i) {
+            coord[i] *= scale;
+        }
+    }
 }
 
 } // namespace md

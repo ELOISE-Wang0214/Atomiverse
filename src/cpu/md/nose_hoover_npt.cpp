@@ -614,6 +614,32 @@ void NoseHooverNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
         f.atoms.z[i] = f.atoms.z[i] * az + f.atoms.vz[i] * dt_ * dz;
     }
 
+    // Ghost rows must also track the box scaling. Between this call and
+    // the next `HaloExchangeForward`, force evaluators (bond/angle/LJ)
+    // will compute owner→ghost separations against the FRESHLY-SCALED
+    // box. If the ghosts are left at their pre-scale absolute positions,
+    // the owner→ghost Δ is wrong by `(ax-1)*pos` per axis. With ax≈1.001
+    // and pos≈40 Å, that's 0.04 Å of spurious bond stretch per step,
+    // driving E_bond and per-axis stress (especially for chain-aligned
+    // systems like PE) to runaway within ~100–300 steps. HaloExchange's
+    // skin gate may skip the refresh entirely if atoms haven't drifted
+    // far enough, so the only safe fix is to scale ghosts here.
+    //
+    // LAMMPS `FixNH::remap()` does the same: `domain->x2lamda(nlocal +
+    // nghost)` → scale box → `domain->lamda2x(nlocal + nghost)`. The
+    // velocity-drift term is intentionally omitted for ghosts — their
+    // owner rank applies the v drift to its own owned copy, which the
+    // next forward halo will propagate.
+    const int n_total = static_cast<int>(f.atoms.size());
+    if (n_total > n) {
+#pragma omp parallel for schedule(static)
+        for (int i = n; i < n_total; ++i) {
+            f.atoms.x[i] *= ax;
+            f.atoms.y[i] *= ay;
+            f.atoms.z[i] *= az;
+        }
+    }
+
     // Update box edges per axis: edge_α *= exp(ε̇_α·dt). A rigid axis
     // multiplies by exp(0)=1, i.e. is left unchanged. For the all-coupled
     // case all three factors are equal so this is identical to the

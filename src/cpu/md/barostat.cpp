@@ -67,14 +67,31 @@ void Barostat::launch(const cpu::LaunchContext& ctx) {
     // consistent across ranks without any explicit broadcast.
     f.box.scale_isotropic(mu);
 
-    // Affine-rescale owned atom positions only. Ghost slots are
-    // overwritten by the next step's HaloExchangeForward.
+    // Affine-rescale owned atom positions.
     const int n = owned_count(ctx);
 #pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
         f.atoms.x[i] *= mu;
         f.atoms.y[i] *= mu;
         f.atoms.z[i] *= mu;
+    }
+
+    // Ghost rows must also track the box transform. The next
+    // HaloExchangeForward is skin-gated and may skip the refresh; if
+    // ghosts retain their pre-scale absolute positions while the box
+    // (and owner positions) have moved to the new scale, force
+    // evaluators see owner→ghost separations corrupted by
+    // `(μ-1)*pos`. Mirrors LAMMPS `fix press/berendsen::end_of_step`
+    // calling `domain->x2lamda(nlocal+nghost) / lamda2x(...)` so
+    // every atom slot tracks the rescale.
+    const int n_total = static_cast<int>(f.atoms.size());
+    if (n_total > n) {
+#pragma omp parallel for schedule(static)
+        for (int i = n; i < n_total; ++i) {
+            f.atoms.x[i] *= mu;
+            f.atoms.y[i] *= mu;
+            f.atoms.z[i] *= mu;
+        }
     }
 }
 
