@@ -102,7 +102,9 @@
 #include "atomiverse/cpu/potentials/harmonic_angle.h"
 #include "atomiverse/cpu/potentials/harmonic_bond.h"
 #include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
+#include "atomiverse/cpu/molrec.h"
 #include "atomiverse/cpu/recorder/trajectory.h"
+#include "atomiverse/cpu/recorder/xyz.h"
 #include "atomiverse/facade/stage.h"
 
 #ifdef ATV_HAS_MPI
@@ -110,6 +112,126 @@
 #else
 #include <chrono>
 #endif
+
+// ── Zarr checkpoint helpers (CLI: --ckpt-dump-after N:<path>,
+//    --ckpt-load-before N:<path>) ──
+namespace ckpt {
+
+inline bool parse_spec(const std::string& spec, int& stage_id,
+                       std::string& path) {
+    const auto colon = spec.find(':');
+    if (colon == std::string::npos)
+        return false;
+    stage_id = std::atoi(spec.substr(0, colon).c_str());
+    path = spec.substr(colon + 1);
+    return stage_id >= 1 && stage_id <= 5 && !path.empty();
+}
+
+#ifdef ATV_HAS_MPI
+/// @brief Gather owned atoms from every rank to rank 0 and write a
+///        global Zarr checkpoint via cpu::ZarrWriter.
+///
+/// Called at the end of stage N (after `preserved_dd = sim.release_dd()`)
+/// when `--ckpt-dump-after N:<path>` matches. Captures positions,
+/// velocities, mass, tag, type, image counts, and the simbox.
+inline bool dump_global(int my_rank, const ATV::cpu::Frame& frame,
+                        int n_local, const std::string& path) {
+    int world_size = 1;
+    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+
+    std::vector<int> n_locals(static_cast<std::size_t>(world_size), 0);
+    MPI_Gather(&n_local, 1, MPI_INT, n_locals.data(), 1, MPI_INT, 0,
+               MPI_COMM_WORLD);
+
+    int n_global = 0;
+    std::vector<int> displs(static_cast<std::size_t>(world_size), 0);
+    if (my_rank == 0) {
+        for (int r = 0; r < world_size; ++r) {
+            displs[static_cast<std::size_t>(r)] = n_global;
+            n_global += n_locals[static_cast<std::size_t>(r)];
+        }
+    }
+
+    auto gather_d = [&](const double* local) {
+        std::vector<double> out(my_rank == 0
+                                    ? static_cast<std::size_t>(n_global)
+                                    : 0);
+        MPI_Gatherv(local, n_local, MPI_DOUBLE,
+                    my_rank == 0 ? out.data() : nullptr, n_locals.data(),
+                    displs.data(), MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        return out;
+    };
+
+    // Pack int32 type and int64 tag and int8 image to doubles for the
+    // gather (molrs add_field is f64-only; values are exactly
+    // representable in double since they're small integers).
+    std::vector<double> type_d(static_cast<std::size_t>(n_local));
+    std::vector<double> tag_d(static_cast<std::size_t>(n_local));
+    std::vector<double> img_x(static_cast<std::size_t>(n_local));
+    std::vector<double> img_y(static_cast<std::size_t>(n_local));
+    std::vector<double> img_z(static_cast<std::size_t>(n_local));
+    for (int i = 0; i < n_local; ++i) {
+        type_d[static_cast<std::size_t>(i)] =
+            static_cast<double>(frame.atoms.type[i]);
+        tag_d[static_cast<std::size_t>(i)] =
+            static_cast<double>(frame.atoms.tag[i]);
+        img_x[static_cast<std::size_t>(i)] =
+            static_cast<double>(frame.atoms.image(i, 0));
+        img_y[static_cast<std::size_t>(i)] =
+            static_cast<double>(frame.atoms.image(i, 1));
+        img_z[static_cast<std::size_t>(i)] =
+            static_cast<double>(frame.atoms.image(i, 2));
+    }
+
+    auto gx = gather_d(frame.atoms.x.data());
+    auto gy = gather_d(frame.atoms.y.data());
+    auto gz = gather_d(frame.atoms.z.data());
+    auto gvx = gather_d(frame.atoms.vx.data());
+    auto gvy = gather_d(frame.atoms.vy.data());
+    auto gvz = gather_d(frame.atoms.vz.data());
+    auto gmass = gather_d(frame.atoms.mass.data());
+    auto gtype = gather_d(type_d.data());
+    auto gtag = gather_d(tag_d.data());
+    auto gimx = gather_d(img_x.data());
+    auto gimy = gather_d(img_y.data());
+    auto gimz = gather_d(img_z.data());
+
+    if (my_rank != 0)
+        return true;
+
+    // Build a global Frame on rank 0 and stage it through cpu::MolRec.
+    ATV::cpu::Frame global(n_global);
+    global.box = frame.box;
+    for (int i = 0; i < n_global; ++i) {
+        global.atoms.x[i] = gx[static_cast<std::size_t>(i)];
+        global.atoms.y[i] = gy[static_cast<std::size_t>(i)];
+        global.atoms.z[i] = gz[static_cast<std::size_t>(i)];
+        global.atoms.type[i] =
+            static_cast<int>(gtype[static_cast<std::size_t>(i)]);
+        global.atoms.tag[i] =
+            static_cast<std::int64_t>(gtag[static_cast<std::size_t>(i)]);
+    }
+    ATV::cpu::MolRec mr;
+    mr.set_geometry(global);
+    mr.add_field("vx", std::move(gvx));
+    mr.add_field("vy", std::move(gvy));
+    mr.add_field("vz", std::move(gvz));
+    mr.add_field("mass", std::move(gmass));
+    mr.add_field("tag", std::move(gtag));
+    // `set_geometry` stores type via the "element" symbol column, which
+    // round-trips lossily back to int. Keep an explicit numeric "type"
+    // copy so ZarrReader can read it directly as an f64 column and cast.
+    mr.add_field("type", std::move(gtype));
+    mr.add_field("image_x", std::move(gimx));
+    mr.add_field("image_y", std::move(gimy));
+    mr.add_field("image_z", std::move(gimz));
+    mr.commit_frame();
+    ATV::cpu::ZarrWriter(path).write(mr);
+    return true;
+}
+#endif // ATV_HAS_MPI
+
+} // namespace ckpt
 
 #ifdef ATV_BUILD_CUDA
 #include "atomiverse/core/system_scalars.h"
@@ -228,6 +350,21 @@ struct Args {
     bool disable_angle = false;
     bool disable_dihedral = false;
     bool disable_langevin = false;
+    // Zarr checkpoints — enable fast iteration on stage-2+ bugs without
+    // re-running stage 1. `--ckpt-dump-after <N>:<path>` writes a global
+    // (rank-0 gathered) Zarr at the end of stage N. `--ckpt-load-before
+    // <N>:<path>` reads that Zarr into the frame at startup and skips
+    // stages < N. Both use molrs Zarr V3 via cpu::ZarrWriter /
+    // cpu::ZarrReader; positions, velocities, mass, tag, image counts,
+    // and the simbox round-trip exactly.
+    std::string ckpt_dump_after_stage; ///< "<N>:<path>"  (empty = off)
+    std::string ckpt_load_before_stage; ///< "<N>:<path>"  (empty = off)
+    /// "<step>:<prefix>" — dump a global checkpoint at this *internal*
+    /// step of stage 2 (i.e. ctx.step == N when stage 2's driver fires
+    /// the dump). Empty = off. Used for fast bug iteration: dump the
+    /// frame just before a crash, then reload and bisect with
+    /// `--print-every 1`.
+    std::string stage2_dump_step;
 };
 
 void print_help() {
@@ -404,6 +541,12 @@ bool parse_args(int argc, char** argv, Args& a) {
             a.disable_langevin = true;
             continue;
         }
+        if (take_s("--ckpt-dump-after", a.ckpt_dump_after_stage))
+            continue;
+        if (take_s("--ckpt-load-before", a.ckpt_load_before_stage))
+            continue;
+        if (take_s("--stage2-dump-step", a.stage2_dump_step))
+            continue;
         if (std::strcmp(s, "--help") == 0) {
             print_help();
             std::exit(0);
@@ -1183,6 +1326,42 @@ int main(int argc, char** argv) {
                            ? make_pe_box(a.chains_per_axis, a.n_atoms_per_chain,
                                          a.box_len, a.margin)
                            : cpu::load_lammps_data(a.data_path);
+
+    // Parse checkpoint specs once so we can both gate stages and write
+    // at end-of-stage.
+    int ckpt_load_stage = 0, ckpt_dump_stage = 0;
+    std::string ckpt_load_path, ckpt_dump_path;
+    if (!a.ckpt_load_before_stage.empty()
+        && !ckpt::parse_spec(a.ckpt_load_before_stage, ckpt_load_stage,
+                             ckpt_load_path)) {
+        std::fprintf(stderr,
+                     "polyethylene_tension: --ckpt-load-before spec '%s' "
+                     "must be 'N:<path>' with N in 1..5\n",
+                     a.ckpt_load_before_stage.c_str());
+        return 2;
+    }
+    if (!a.ckpt_dump_after_stage.empty()
+        && !ckpt::parse_spec(a.ckpt_dump_after_stage, ckpt_dump_stage,
+                             ckpt_dump_path)) {
+        std::fprintf(stderr,
+                     "polyethylene_tension: --ckpt-dump-after spec '%s' "
+                     "must be 'N:<path>' with N in 1..5\n",
+                     a.ckpt_dump_after_stage.c_str());
+        return 2;
+    }
+    // Load BEFORE everything else — overwrites positions/velocities/etc.
+    // in the frame (sized by load_lammps_data / make_pe_box) with the
+    // Zarr contents. All ranks read the same Zarr; the subsequent
+    // first-call partition_atoms reclassifies atoms by position.
+    if (ckpt_load_stage > 0) {
+        const int n_loaded = cpu::ZarrReader(ckpt_load_path).read_into(frame);
+        if (my_rank == 0)
+            std::fprintf(stderr,
+                         "[ckpt] loaded %d atoms from %s; starting at "
+                         "stage %d\n",
+                         n_loaded, ckpt_load_path.c_str(), ckpt_load_stage);
+    }
+
     const int n_atoms = frame.atoms.size();
     const int n_global_dof = 3 * n_atoms - 3;
     const double box_x0 = frame.box(0, 0);
@@ -1314,12 +1493,35 @@ int main(int argc, char** argv) {
     // Backend) and fast (microseconds).
     std::unique_ptr<cpu::md::mpi::DomainDecomposition> preserved_dd;
 
+    // Wrap stage_active to honor --ckpt-load-before (skip earlier stages)
+    // and add a single end-of-stage dump hook for --ckpt-dump-after.
+    auto stage_should_run = [&](int stage_id) {
+        if (ckpt_load_stage > 0 && stage_id < ckpt_load_stage)
+            return false;
+        return stage_active(a.mode, stage_id, a.single_stage_id);
+    };
+    auto maybe_dump_after_stage = [&](int stage_id) {
+#ifdef ATV_HAS_MPI
+        if (ckpt_dump_stage != stage_id || ckpt_dump_path.empty())
+            return;
+        const int n_local = preserved_dd
+                                ? preserved_dd->n_local
+                                : static_cast<int>(frame.atoms.size());
+        ckpt::dump_global(my_rank, frame, n_local, ckpt_dump_path);
+        if (my_rank == 0)
+            std::fprintf(stderr, "[ckpt] dumped stage %d → %s\n",
+                         stage_id, ckpt_dump_path.c_str());
+#else
+        (void)stage_id;
+#endif
+    };
+
     // ── Stage 1 — NVELimit + FixLangevin @ T_hot, dt 1.0 fs ───────────
     // Mirrors lammps.in `fix nve/limit 0.05` + `fix langevin 500 500 10`
     // + `velocity create 500`. NVELimit's per-step displacement cap
     // tames the unrelaxed-config atom overlap (E_pair ~3.4e8 at step 0)
     // that plain Velocity-Verlet cannot survive.
-    if (stage_active(a.mode, 1, a.single_stage_id)) {
+    if (stage_should_run(1)) {
         const int steps = scaled_steps(a.stage1_steps, a.scale);
         if (my_rank == 0 && !a.quiet)
             std::fprintf(stderr,
@@ -1343,11 +1545,12 @@ int main(int argc, char** argv) {
         sim.build();
         sim.run(frame, steps);
         preserved_dd = sim.release_dd();
+        maybe_dump_after_stage(1);
     }
 
     // ── Stage 2 — isotropic NoseHooverNPT @ T_hot, P=0, dt 0.5 fs ─────
     // Mirrors lammps.in `fix npt temp 500 500 50 iso 0 0 1000 drag 2`.
-    if (stage_active(a.mode, 2, a.single_stage_id)) {
+    if (stage_should_run(2)) {
         const int steps = scaled_steps(a.stage2_steps, a.scale);
         if (my_rank == 0 && !a.quiet)
             std::fprintf(
@@ -1372,8 +1575,38 @@ int main(int argc, char** argv) {
         if (preserved_dd)
             sim.adopt_dd(std::move(preserved_dd));
         sim.build();
-        sim.run(frame, steps);
+
+        // Mid-stage dump: split into [0, N), dump, [N, end). Used to
+        // capture the frame just before a crash for fast iteration.
+        int mid_dump_step = 0;
+        std::string mid_dump_path;
+        if (!a.stage2_dump_step.empty()) {
+            ckpt::parse_spec(a.stage2_dump_step, mid_dump_step, mid_dump_path);
+        }
+        if (mid_dump_step > 0 && mid_dump_step < steps) {
+            sim.run(frame, mid_dump_step);
+#ifdef ATV_HAS_MPI
+            const int n_local =
+                sim.release_dd() ? 0 : 0; // placeholder, see below
+#endif
+            // Need preserved_dd's n_local; release/re-adopt around the dump.
+            auto tmp_dd = sim.release_dd();
+            const int n_local_here =
+                tmp_dd ? tmp_dd->n_local : static_cast<int>(frame.atoms.size());
+#ifdef ATV_HAS_MPI
+            ckpt::dump_global(my_rank, frame, n_local_here, mid_dump_path);
+            if (my_rank == 0)
+                std::fprintf(stderr,
+                             "[ckpt] mid-stage-2 dump at step %d → %s\n",
+                             mid_dump_step, mid_dump_path.c_str());
+#endif
+            sim.adopt_dd(std::move(tmp_dd));
+            sim.run(frame, steps - mid_dump_step);
+        } else {
+            sim.run(frame, steps);
+        }
         preserved_dd = sim.release_dd();
+        maybe_dump_after_stage(2);
     }
 
     // ── Stage 3 — ramped NoseHooverNPT 500 → 100 K, P=0, dt 0.5 fs ────
@@ -1381,7 +1614,7 @@ int main(int argc, char** argv) {
     // a SINGLE NoseHooverNPT with T_start=T_hot, T_stop=T_cold and a
     // run span covering the whole stage. The integrator interpolates
     // the setpoint internally — no cooling micro-segment loop.
-    if (stage_active(a.mode, 3, a.single_stage_id)) {
+    if (stage_should_run(3)) {
         const int steps = scaled_steps(a.stage3_steps, a.scale);
         if (my_rank == 0 && !a.quiet)
             std::fprintf(
@@ -1412,11 +1645,12 @@ int main(int argc, char** argv) {
         sim.build();
         sim.run(frame, steps);
         preserved_dd = sim.release_dd();
+        maybe_dump_after_stage(3);
     }
 
     // ── Stage 4 — isotropic NoseHooverNPT @ T_cold, P=0, dt 0.5 fs ────
     // Mirrors lammps.in `fix npt temp 100 100 50 iso 0 0 1000 drag 2`.
-    if (stage_active(a.mode, 4, a.single_stage_id)) {
+    if (stage_should_run(4)) {
         const int steps = scaled_steps(a.stage4_steps, a.scale);
         if (my_rank == 0 && !a.quiet)
             std::fprintf(
@@ -1440,6 +1674,7 @@ int main(int argc, char** argv) {
         sim.build();
         sim.run(frame, steps);
         preserved_dd = sim.release_dd();
+        maybe_dump_after_stage(4);
     }
 
     // ── Stage 5 — anisotropic NoseHooverNPT + Deform x, dt 1.0 fs ─────
@@ -1447,7 +1682,7 @@ int main(int argc, char** argv) {
     // + `fix deform 1 x erate 1e-5`: x held rigid by the NPT barostat
     // (couple_axis = {false, true, true}) while Deform drives the x box
     // edge at the engineering strain rate; y and z barostat to P=0.
-    if (stage_active(a.mode, 5, a.single_stage_id)) {
+    if (stage_should_run(5)) {
         const int steps = scaled_steps(a.stage5_steps, a.scale);
         if (my_rank == 0 && !a.quiet)
             std::fprintf(
@@ -1474,6 +1709,7 @@ int main(int argc, char** argv) {
         sim.build();
         sim.run(frame, steps);
         preserved_dd = sim.release_dd();
+        maybe_dump_after_stage(5);
     }
 
     const double t1 = now_seconds();
