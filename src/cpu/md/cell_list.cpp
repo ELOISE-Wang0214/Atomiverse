@@ -417,17 +417,22 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
                     double dx = xi - x_ptr[j];
                     double dy = yi - y_ptr[j];
                     double dz = zi - z_ptr[j];
-                    if (dx > half_lx)
+                    // Multi-wrap (see Box::min_image): cross-PBC ghosts
+                    // can be ±2L from owners on small Cartesian grids
+                    // (e.g. 2×2×2 where +x and -x neighbors are the same
+                    // rank). Single-wrap silently drops legitimate
+                    // cross-PBC LJ pairs from the half-list.
+                    while (dx > half_lx)
                         dx -= lx;
-                    if (dx < -half_lx)
+                    while (dx < -half_lx)
                         dx += lx;
-                    if (dy > half_ly)
+                    while (dy > half_ly)
                         dy -= ly;
-                    if (dy < -half_ly)
+                    while (dy < -half_ly)
                         dy += ly;
-                    if (dz > half_lz)
+                    while (dz > half_lz)
                         dz -= lz;
-                    if (dz < -half_lz)
+                    while (dz < -half_lz)
                         dz += lz;
 
                     double r2 = dx * dx + dy * dy + dz * dz;

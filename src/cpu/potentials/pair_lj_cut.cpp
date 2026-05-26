@@ -276,6 +276,13 @@ void PairLJCut::compute(const LaunchContext& ctx) {
             v_half_lz(half_lz);
         const batch_t v_neg_half_lx(-half_lx), v_neg_half_ly(-half_ly),
             v_neg_half_lz(-half_lz);
+        // Floor-form min-image constants. The legacy single-`select` pair
+        // form below only handled |Δ| ≤ L; cross-PBC ghosts at ±2L are
+        // silently dropped by the cutoff filter. The floor form
+        // `Δ -= L · round(Δ/L)` is correct for arbitrary |Δ| in one
+        // SIMD op without a branch (see Box::min_image fix).
+        const batch_t v_inv_lx(1.0 / lx), v_inv_ly(1.0 / ly),
+            v_inv_lz(1.0 / lz);
         const batch_t v_rc_sq(rc_sq);
         const batch_t v_sig6(sig6);
         const batch_t v_eps4(eps4), v_eps24(eps24), v_vshift(vshift);
@@ -338,12 +345,24 @@ void PairLJCut::compute(const LaunchContext& ctx) {
                 // box members across the inner loop -- swapping this for
                 // box.min_image_batch costs ~7% per-step (member loads
                 // through `this` are not hoisted under aliasing analysis).
-                v_dx = xsimd::select(v_dx > v_half_lx, v_dx - v_lx, v_dx);
-                v_dx = xsimd::select(v_dx < v_neg_half_lx, v_dx + v_lx, v_dx);
-                v_dy = xsimd::select(v_dy > v_half_ly, v_dy - v_ly, v_dy);
-                v_dy = xsimd::select(v_dy < v_neg_half_ly, v_dy + v_ly, v_dy);
-                v_dz = xsimd::select(v_dz > v_half_lz, v_dz - v_lz, v_dz);
-                v_dz = xsimd::select(v_dz < v_neg_half_lz, v_dz + v_lz, v_dz);
+                // Floor-form min-image (single shot, handles |Δ| up to
+                // any integer multiple of L). The legacy single-`select`
+                // pair form was correct for `|Δ| ≤ L` but silently left
+                // `|Δ| = L` for cross-PBC ghosts at ±2L (then the
+                // cutoff filter dropped legitimate pairs).
+                v_dx = v_dx - v_lx * xsimd::round(v_dx * v_inv_lx);
+                v_dy = v_dy - v_ly * xsimd::round(v_dy * v_inv_ly);
+                v_dz = v_dz - v_lz * xsimd::round(v_dz * v_inv_lz);
+                // Suppress unused-variable warnings for the legacy
+                // half-L locals which are now reserved for the v3
+                // hot-path microbench (`bench_md_step` v_half_*
+                // sensitivity).
+                (void)v_half_lx;
+                (void)v_neg_half_lx;
+                (void)v_half_ly;
+                (void)v_neg_half_ly;
+                (void)v_half_lz;
+                (void)v_neg_half_lz;
 
                 // r2 with parenthesized addition tree to keep order
                 // matching scalar `(dx*dx + dy*dy) + dz*dz`.
@@ -436,17 +455,19 @@ void PairLJCut::compute(const LaunchContext& ctx) {
                 // above and keeps the hoisted half_lx / lx locals in
                 // registers across the entire scalar tail. (Substituting
                 // box.min_image here costs the same ~7% as the SIMD path.)
-                if (dx > half_lx)
+                // Multi-wrap to handle cross-PBC ghosts at ±2L on small
+                // Cartesian grids (see Box::min_image fix).
+                while (dx > half_lx)
                     dx -= lx;
-                if (dx < -half_lx)
+                while (dx < -half_lx)
                     dx += lx;
-                if (dy > half_ly)
+                while (dy > half_ly)
                     dy -= ly;
-                if (dy < -half_ly)
+                while (dy < -half_ly)
                     dy += ly;
-                if (dz > half_lz)
+                while (dz > half_lz)
                     dz -= lz;
-                if (dz < -half_lz)
+                while (dz < -half_lz)
                     dz += lz;
                 const double r2 = dx * dx + dy * dy + dz * dz;
                 if (r2 >= rc_sq)
