@@ -79,6 +79,25 @@ struct DomainDecomposition {
     /// halo-list consumers rebuild when they observe a bump.
     std::uint64_t neighbor_generation = 0;
 
+    /// @brief Generation counter, bumped at every `HaloExchangeForward` *full
+    /// rebuild* (not on position-only refreshes). Distinct from
+    /// `neighbor_generation` because a full halo rebuild can reshuffle
+    /// ghost slot indices (atoms entering / leaving the cutoff zone, or
+    /// just re-binning across axes when per-face `recv_counts` change),
+    /// which invalidates any cached structure that stores raw frame
+    /// indices for ghost atoms — most importantly the `NeighborList`
+    /// pair-list CSR, whose `j` entries hold raw slot indices. Without
+    /// this signal the NL keeps pointing at slots whose *atoms* have
+    /// been replaced, producing a per-rebuild PE / virial discontinuity
+    /// that injects 1-3 eV per halo cycle into the MTK extended
+    /// Hamiltonian and accumulates to a step-1000 catastrophic ε̇
+    /// runaway under MSU PE stage-2 NPT. (`atom_migration` keys off
+    /// `neighbor_generation` only — bumping that counter from the halo
+    /// path interacts disastrously with its first_launch handling on a
+    /// Zarr-loaded state; see
+    /// `.claude/notes/msu_stage2_conserved_drift_2026-05-27.md`.)
+    std::uint64_t halo_generation = 0;
+
     /// @brief Per-face send lists: owned-atom indices shadowed to each face neighbor.
     /// Order matches `face_neighbors`. Empty in single-rank mode. Rebuilt by
     /// `HaloExchangeForward::launch()` each step; consumed by both

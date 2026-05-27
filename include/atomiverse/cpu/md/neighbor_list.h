@@ -104,6 +104,14 @@ class NeighborList : public cpu::ComponentBase {
         ctx.runtime.pair_list = &pairs_;
         ago_ = 0;
         n_rebuilds_ = 1; // initial enumeration counts as rebuild #1
+        // Snapshot the halo generation so the first `launch()` doesn't
+        // re-rebuild against a freshly built CSR. (Pre-`launch()` the
+        // first halo full rebuild may or may not have run yet — under MD
+        // it has, via `pre_force`; under `Evaluate` there is no halo
+        // launch before the first force eval, hence the
+        // `is_multi_rank` guard.)
+        if (is_multi_rank(ctx.runtime))
+            last_halo_generation_ = ctx.runtime.dd->halo_generation;
     }
 
     void launch(const cpu::LaunchContext& ctx) override {
@@ -118,11 +126,23 @@ class NeighborList : public cpu::ComponentBase {
         //     } else return 0;
         //   size_stale: atom count changed (migration / halo resize) → force
         //               rebuild. Atomiverse-only short-circuit, no LAMMPS keyword.
+        //   halo_stale: HaloExchangeForward did a full rebuild that may have
+        //               reshuffled ghost slot indices (different atoms in the
+        //               same slot, or atoms relocated to a different slot
+        //               because earlier-axis recv_counts changed). The pair
+        //               list CSR stores `j` as raw slot indices, so a
+        //               reshuffle without a rebuild leaves the LJ + bonded
+        //               kernels reading stale (wrong-atom) positions —
+        //               observed as a +1-3 eV per-halo-cycle drift of the
+        //               MTK extended Hamiltonian under MSU stage-2 NPT,
+        //               accumulating to a step-1000 catastrophic ε̇ runaway.
         //   delay gate:  ago < delay → no rebuild attempt (LAMMPS `delay`)
         //   every gate:  ago % every != 0 → no rebuild attempt (LAMMPS `every`)
         //   check yes:   max_disp * 2 > skin → rebuild (half-skin trigger)
         //   check no:    rebuild unconditionally once the every/delay gate opens
         const bool size_stale = n_active != strategy_.n_at_last_build();
+        const bool halo_stale = is_multi_rank(ctx.runtime)
+            && ctx.runtime.dd->halo_generation != last_halo_generation_;
         const bool delay_ok = ago_ >= delay_;
         const bool every_ok = (ago_ % every_) == 0;
         // When the gate is open: check no → always rebuild; check yes →
@@ -131,7 +151,7 @@ class NeighborList : public cpu::ComponentBase {
         const bool disp_rebuild =
             delay_ok && every_ok
             && (!check_ || strategy_.needs_rebuild(ctx.frame, n_active));
-        if (size_stale || disp_rebuild) {
+        if (size_stale || halo_stale || disp_rebuild) {
             strategy_.build(ctx.frame, n_active);
             strategy_.refresh_half(ctx.frame, n_active, pairs_,
                                is_multi_rank(ctx.runtime)
@@ -140,6 +160,8 @@ class NeighborList : public cpu::ComponentBase {
             ++pairs_.version;
             ago_ = 0;
             ++n_rebuilds_;
+            if (is_multi_rank(ctx.runtime))
+                last_halo_generation_ = ctx.runtime.dd->halo_generation;
         }
 
         trim_inum_to_local(ctx.runtime, pairs_);
@@ -217,6 +239,12 @@ class NeighborList : public cpu::ComponentBase {
     int ago_ = 0;
     /// @brief Total rebuild count (includes the initial `build()` enumeration).
     int n_rebuilds_ = 0;
+    /// @brief Last observed value of `dd->halo_generation` (multi-rank only).
+    /// Used to force a CSR rebuild when `HaloExchangeForward`'s full rebuild
+    /// reshuffles ghost slot indices — see the `halo_stale` branch in
+    /// `launch()`. Initialised to 0 so the very first launch (which
+    /// initialises the CSR via `build()` already) doesn't double-rebuild.
+    std::uint64_t last_halo_generation_ = 0;
 };
 
 } // namespace md

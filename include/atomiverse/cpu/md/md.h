@@ -155,8 +155,28 @@ class MD : public DynamicsDriver {
 
 #ifdef ATV_HAS_MPI
         if (s.pair_evaluator_cutoff) {
-            this->add(mpi::HaloExchangeForward{
-                static_cast<double>(*s.pair_evaluator_cutoff)});
+            // Halo cutoff must include a SKIN beyond the pair cutoff so
+            // ghost atoms stay registered as they drift in/out of the
+            // pair-cutoff zone between full halo rebuilds. Without the
+            // skin band, atoms slip out of `tag_to_local` at each
+            // `every_=10` rebuild and any cross-rank bond/angle/dihedral
+            // involving them is silently dropped — observed under MSU
+            // PE stage-2 NPT as a +1-3 eV per-rebuild jump in the MTK
+            // extended Hamiltonian (E_bond drops by ~2.5 eV at rebuild
+            // boundaries because ~16 chain bonds lose their ghost
+            // partner each cycle). The 10% multiplier matches the
+            // ~0.1 Å typical 10-step drift at PE-thermalized 500 K with
+            // good margin while staying under `2× pair_cutoff` for the
+            // 144-atom-in-48Å unit tests (those have slabs of 24 Å, so
+            // a 13.65 Å halo would duplicate ghosts and overflow
+            // `frame.atoms.size()`). Callers running with a custom NL
+            // skin > 10% of cutoff should register
+            // `HaloExchangeForward{halo_cut}` explicitly before the
+            // pair evaluator — `install_infra` will see an existing
+            // halo and skip the auto-inject.
+            const double halo_cut =
+                1.1 * static_cast<double>(*s.pair_evaluator_cutoff);
+            this->add(mpi::HaloExchangeForward{halo_cut});
             this->add(mpi::HaloExchangeReverse{});
         }
 #endif

@@ -589,6 +589,18 @@ void HaloExchangeForward::launch(const cpu::LaunchContext& ctx) {
         }
         dd->n_ghost = slot - dd->n_local;
 
+        // Signal to ghost-index-caching consumers (the NeighborList CSR
+        // is the load-bearing one) that ghost slot assignments may have
+        // changed. Without this bump the NL pair list keeps `j` indices
+        // pointing at slots whose atoms have been replaced by the
+        // current rebuild, producing a per-rebuild PE / virial
+        // discontinuity that drifts the NPT extended Hamiltonian
+        // (~1-3 eV per `every_=10` rebuild → catastrophic at step
+        // ~1000). See `.claude/notes/msu_stage2_conserved_drift_2026-05-27.md`
+        // for why we use a halo-local counter instead of bumping the
+        // shared `neighbor_generation`.
+        ++dd->halo_generation;
+
         ago_ = 0;
         last_rebuild_generation_ = dd->neighbor_generation;
         return;
