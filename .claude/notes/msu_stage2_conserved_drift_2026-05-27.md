@@ -70,9 +70,29 @@ Result: **CATASTROPHIC** — `conserved` jumps to 1×10²⁸ at step 1 (immediat
 - `include/atomiverse/cpu/md/neighbor_list.h`: `NeighborList<Strategy>::skin()` accessor.
 - `tests/mpi/test_nose_hoover_npt_multirank.cpp`: `BondedKineticNonZero` + `BondsOnlyKineticNonZero` now accept 1-rank as well as 8-rank (`world_size != 8 && world_size != 1 → SKIP`), so the same test can localize whether a particular failure is multi-rank-specific.
 
-## Next-session pickup
+## Update (later same day) — partial fixes landed in 7b9263d
 
-The conserved-jump pattern at halo full-rebuild boundaries is the smoking gun. Two productive next steps:
+Two follow-on attempts:
 
-1. **Halo-only counter:** instead of bumping `dd->neighbor_generation` (which triggers `atom_migration`), add a separate `dd->halo_generation` counter that only NL subscribes to. Avoids the gen-counter coupling that broke attempt 2.
-2. **Per-phase H trace:** log `extended_hamiltonian` after each of P1-P11 inside NoseHooverNPT for one rebuild-boundary step (e.g., step 10), and the same for the previous non-rebuild step (step 9). The phase where H jumps localizes the leak.
+3. **Halo-only `halo_generation` counter** — implemented in 7b9263d. Decoupled from `neighbor_generation` so the NL CSR rebuilds at every halo full rebuild without triggering `atom_migration`'s first_launch cascade. **Neutral effect** on the conserved trajectory (drift pattern identical) — confirms the bug is NOT in NL stale-CSR.
+4. **10 % halo skin (1.1× pair_cutoff)** — also landed in 7b9263d. 1.3× = NL auto-skin overflows the 144-atom-in-48 Å test slabs (`2*halo > slab`); 1.1× is the largest factor that still keeps that test under capacity. **Partial benefit**: the eventual catastrophe at step ~1100 is softened (T = 99k K instead of 807k K), but the per-rebuild +1-3 eV drift up to step 1000 is identical to baseline. So skin extension helps at high T (when atoms move fast enough to actually drift past the bare-cutoff halo edge) but doesn't address the underlying mechanism.
+
+## Mechanism is STILL unclear
+
+The boundary-step thermo breakdown nails the leak to **bonded forces**, not LJ:
+
+```
+step 9:  E_pair=-347.056  E_bond=230.901  E_angle=227.355  E_dih=397.511  E_kin=641.882  cons=1150.61
+step 10: E_pair=-347.055  E_bond=228.456  E_angle=226.738  E_dih=395.648  E_kin=643.376  cons=1147.18
+                                ↑Δ=-2.45        ↑Δ=-0.62        ↑Δ=-1.86       ↑Δ=+1.49        ↑Δ=-3.43
+```
+
+ΔE_pair is FP noise (-0.001), ΔE_bond/angle/dih are 5 eV combined drop, ΔE_kin only catches 1.5 of it → 3.43 eV escapes the atom subsystem. NoseHoover-NPT's thermostat / barostat chains do not absorb it.
+
+Hypothesis "atoms drift past halo cutoff → cross-rank bonded tuple skipped" doesn't survive the 1.1× skin null result. The bonded mass loss is real but its mechanism is not "ghost set shrinking".
+
+## Next-session pickup (still open)
+
+- **Per-phase Hamiltonian trace.** Log `extended_hamiltonian` inside NoseHooverNPT::launch after each of P1-P11 for the step-9→step-10 boundary and step-19→step-20 boundary. The phase that introduces the jump localizes the leak. (Probably need a debug-only flag — the conditional reads + logging adds ~100 ns/step which is fine for a 2000-step verify.)
+- **Bond-by-bond audit.** Dump every owner-resolved bond's `r` at step 9 and step 10, identify which bonds changed by more than typical thermal drift. If a specific subset is mis-handled, that points at a specific topology corner case.
+- **Cross-check vs LAMMPS at single-rank.** Single-rank Atomiverse currently can't reload stage1.zarr (cross-rank-count tag/index bug noted earlier), but a fresh single-rank stage-1 + stage-2 run with `econserve` thermo would tell us whether the drift exists at single-rank too — i.e., whether this is an MPI-specific bug or a NoseHooverNPT integrator bug that's always present and only exposed by the larger 8-rank energy scale.
