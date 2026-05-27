@@ -750,6 +750,7 @@ class CsvRecorder : public cpu::ComponentBase {
                 << f.scalars.kinetic << "," << f.box(0, 0) << ","
                 << f.box(1, 1) << "," << f.box(2, 2) << "\n";
             (*thermo_) << row.str();
+            thermo_->flush();
         }
         if (record_strain_ && stress_ && stress_->is_open()) {
             // Snapshot the engineering-strain reference at the first
