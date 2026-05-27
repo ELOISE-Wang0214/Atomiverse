@@ -1,9 +1,21 @@
 /// @file src/cpu/md/mpi/halo_exchange.cpp
 /// @brief `HaloExchangeForward` / `HaloExchangeReverse` real implementation.
 ///
-/// Phase 2: orthorhombic, 6 face neighbors, non-blocking `MPI_Isend/Irecv`.
+/// Orthorhombic, LAMMPS-style multi-stage forward comm: 3 sequential axis
+/// stages (`x`, then `y`, then `z`), within each stage the ±-direction send
+/// pair is dispatched concurrently. The key invariant is that each axis
+/// stage's send list scans `[0, n_local + n_ghost_accumulated_so_far)` —
+/// so ghosts received from an earlier axis are eligible to be **forwarded**
+/// to a later-axis neighbor. After three stages every rank has the
+/// owned-atom plus 1-, 2- and 3-axis-shifted ghost copies it needs, which
+/// reaches all 26 cartesian neighbors via cascade (6 face + 12 edge + 8
+/// corner). The previous single-round 6-face exchange dropped every
+/// edge/corner ghost which silently dropped bonded tuples whose partner
+/// lived diagonally — see `.claude/notes/cpu_mpi_halo_edge_corner_bug_2026-05-27.md`.
+///
 /// Ghost slots are appended in face order `{-x, +x, -y, +y, -z, +z}` so
-/// `Reverse` can mirror the layout via `dd->recv_counts[]`.
+/// `Reverse` can mirror the layout via `dd->recv_counts[]`; `Reverse`
+/// processes the axes in reverse order so the cascade plays backwards.
 
 #include "atomiverse/cpu/md/mpi/halo_exchange.h"
 
@@ -202,38 +214,34 @@ inline double pbc_shift_for_face(const DomainDecomposition& dd, int f,
     return 0.0;
 }
 
-/// @brief Decide which owned atoms qualify as ghosts for each face.
+/// @brief Build the ±dim send pair, scanning frame indices `[0, sources_end)`.
 ///
-/// An atom qualifies for face f along dim/sign when its position is within
-/// `cutoff` of the slab boundary in that direction. Wraps `dd->send_lists[f]`
-/// in place; `vector<int>` capacity is preserved across rebuilds.
-void rebuild_send_lists(const Frame& frame, DomainDecomposition& dd,
-                        double cutoff) {
-    for (int f = 0; f < 6; ++f)
-        dd.send_lists[f].clear();
+/// Multi-stage forward comm scans owned atoms in the first axis stage, then
+/// owned + axis-0 ghosts in the second stage, etc. The eligibility test is
+/// the same proximity check used before (within `cutoff` of the slab
+/// boundary along the send direction); the only change is the scan upper
+/// bound, which is the caller's responsibility.
+///
+/// `dd.send_lists[2*dim]` (= face `−dim`) and `dd.send_lists[2*dim+1]` (=
+/// face `+dim`) are cleared and refilled. Capacity is preserved.
+void rebuild_send_lists_for_axis(const Frame& frame, DomainDecomposition& dd,
+                                 int dim, int sources_end, double cutoff) {
+    const int f_lo = 2 * dim;
+    const int f_hi = 2 * dim + 1;
+    dd.send_lists[static_cast<std::size_t>(f_lo)].clear();
+    dd.send_lists[static_cast<std::size_t>(f_hi)].clear();
 
-    const int n_local = dd.n_local;
-    const double* x = frame.atoms.x.data();
-    const double* y = frame.atoms.y.data();
-    const double* z = frame.atoms.z.data();
+    const double* q = (dim == 0) ? frame.atoms.x.data()
+                      : (dim == 1) ? frame.atoms.y.data()
+                                   : frame.atoms.z.data();
+    const double lo = dd.sublo[dim];
+    const double hi = dd.subhi[dim];
 
-    for (int i = 0; i < n_local; ++i) {
-        // -x: atom near sublo[0]
-        if (x[i] - dd.sublo[0] < cutoff)
-            dd.send_lists[0].push_back(i);
-        // +x: atom near subhi[0]
-        if (dd.subhi[0] - x[i] < cutoff)
-            dd.send_lists[1].push_back(i);
-        // -y / +y
-        if (y[i] - dd.sublo[1] < cutoff)
-            dd.send_lists[2].push_back(i);
-        if (dd.subhi[1] - y[i] < cutoff)
-            dd.send_lists[3].push_back(i);
-        // -z / +z
-        if (z[i] - dd.sublo[2] < cutoff)
-            dd.send_lists[4].push_back(i);
-        if (dd.subhi[2] - z[i] < cutoff)
-            dd.send_lists[5].push_back(i);
+    for (int i = 0; i < sources_end; ++i) {
+        if (q[i] - lo < cutoff)
+            dd.send_lists[static_cast<std::size_t>(f_lo)].push_back(i);
+        if (hi - q[i] < cutoff)
+            dd.send_lists[static_cast<std::size_t>(f_hi)].push_back(i);
     }
 }
 
@@ -359,6 +367,179 @@ void HaloExchangeForward::build(const cpu::BuildContext& ctx) {
         dd->send_lists[f].reserve(static_cast<std::size_t>(dd->capacity));
 }
 
+// Per-axis sub-stage helper for the forward path. Both `full_rebuild` and
+// the position-only refresh path walk the same three axis stages; what
+// differs is whether send lists are rebuilt and whether the tag column is
+// included in the packet. Encapsulating one axis as a single function
+// keeps the orchestrator readable.
+namespace {
+
+/// @brief Drive one axis-`dim` sub-stage of the cascading forward halo.
+///
+/// `slot_in_out` is the running ghost-slot write cursor: on entry it is
+/// the next row to write (`n_local` before axis 0; after every axis it
+/// advances by the total ghosts received in that axis). `frame_cap` is
+/// the per-atom array capacity used for the overflow guard. When
+/// `full_rebuild`, the function rescans `[0, sources_end)` for ghost
+/// candidates, packs positions+tag, registers each received tag in
+/// `tag_to_local` / `ghost_tags`, and stores per-face `recv_counts`. When
+/// `!full_rebuild`, send lists and `recv_counts` are reused from the last
+/// rebuild and only positions get refreshed.
+///
+/// Returns `true` on success, `false` on capacity overflow (the orchestrator
+/// is expected to have already triggered `MPI_Abort` in that case via its
+/// own logging, but the caller may want to short-circuit cleanup paths).
+inline void forward_axis_stage(Frame& frame, DomainDecomposition& dd,
+                               FaceBufs& bufs, int dim, int sources_end,
+                               double cutoff, bool full_rebuild,
+                               int frame_cap, int my_rank,
+                               double bonded_extension_for_log,
+                               int& slot_in_out) {
+    const int f_lo = 2 * dim;
+    const int f_hi = 2 * dim + 1;
+    const std::size_t fz_lo = static_cast<std::size_t>(f_lo);
+    const std::size_t fz_hi = static_cast<std::size_t>(f_hi);
+
+    if (full_rebuild) {
+        rebuild_send_lists_for_axis(frame, dd, dim, sources_end, cutoff);
+    }
+
+    const int neighbor_lo = dd.face_neighbors[fz_lo];
+    const int neighbor_hi = dd.face_neighbors[fz_hi];
+
+    int send_counts[2] = {static_cast<int>(dd.send_lists[fz_lo].size()),
+                          static_cast<int>(dd.send_lists[fz_hi].size())};
+    int recv_counts[2];
+
+    if (full_rebuild) {
+        recv_counts[0] = 0;
+        recv_counts[1] = 0;
+        MPI_Request count_reqs[4];
+        int n_creqs = 0;
+        auto post_count = [&](int s) {
+            const int face_s = (s == 0) ? f_lo : f_hi;
+            const int neighbor = (s == 0) ? neighbor_lo : neighbor_hi;
+            if (neighbor == MPI_PROC_NULL || neighbor == my_rank)
+                return;
+            MPI_Isend(&send_counts[s], 1, MPI_INT, neighbor, face_s,
+                      dd.cart_comm, &count_reqs[n_creqs++]);
+            MPI_Irecv(&recv_counts[s], 1, MPI_INT, neighbor,
+                      opposite_face(face_s), dd.cart_comm,
+                      &count_reqs[n_creqs++]);
+        };
+        post_count(0);
+        post_count(1);
+        if (n_creqs > 0)
+            MPI_Waitall(n_creqs, count_reqs, MPI_STATUSES_IGNORE);
+    } else {
+        recv_counts[0] = dd.recv_counts[fz_lo];
+        recv_counts[1] = dd.recv_counts[fz_hi];
+    }
+
+    const int per_atom_doubles =
+        full_rebuild ? kPosTagDoublesPerAtom : kPosOnlyDoublesPerAtom;
+
+    for (int s = 0; s < 2; ++s) {
+        const int face_s = (s == 0) ? f_lo : f_hi;
+        const int neighbor = (s == 0) ? neighbor_lo : neighbor_hi;
+        auto& sbuf = bufs.send_pos[static_cast<std::size_t>(face_s)];
+        auto& rbuf = bufs.recv_pos[static_cast<std::size_t>(face_s)];
+        if (neighbor == MPI_PROC_NULL) {
+            sbuf.clear();
+        } else if (full_rebuild) {
+            pack_positions_for_face(frame, dd, face_s, sbuf);
+        } else {
+            pack_positions_only_for_face(frame, dd, face_s, sbuf);
+        }
+        rbuf.assign(static_cast<std::size_t>(recv_counts[s])
+                        * static_cast<std::size_t>(per_atom_doubles),
+                    0.0);
+    }
+
+    MPI_Request pos_reqs[4];
+    int n_preqs = 0;
+    for (int s = 0; s < 2; ++s) {
+        const int face_s = (s == 0) ? f_lo : f_hi;
+        const int neighbor = (s == 0) ? neighbor_lo : neighbor_hi;
+        if (neighbor == MPI_PROC_NULL || neighbor == my_rank)
+            continue;
+        if (send_counts[s] > 0) {
+            MPI_Isend(bufs.send_pos[static_cast<std::size_t>(face_s)].data(),
+                      static_cast<int>(
+                          bufs.send_pos[static_cast<std::size_t>(face_s)]
+                              .size()),
+                      MPI_DOUBLE, neighbor, 100 + face_s, dd.cart_comm,
+                      &pos_reqs[n_preqs++]);
+        }
+        if (recv_counts[s] > 0) {
+            MPI_Irecv(bufs.recv_pos[static_cast<std::size_t>(face_s)].data(),
+                      static_cast<int>(
+                          bufs.recv_pos[static_cast<std::size_t>(face_s)]
+                              .size()),
+                      MPI_DOUBLE, neighbor, 100 + opposite_face(face_s),
+                      dd.cart_comm, &pos_reqs[n_preqs++]);
+        }
+    }
+    if (n_preqs > 0)
+        MPI_Waitall(n_preqs, pos_reqs, MPI_STATUSES_IGNORE);
+
+    if (full_rebuild) {
+        // Capacity guard for this axis. The per-atom xtensor arrays are
+        // sized to `frame.atoms.size()` (== original global atom count);
+        // overflowing here silently corrupts memory and eventually trips
+        // LJ / bonded kernels.
+        const int new_ghosts = recv_counts[0] + recv_counts[1];
+        if (slot_in_out + new_ghosts > frame_cap) {
+            ATV_CRITICAL(
+                "halo_exchange: rank {} ghost capacity overflow at axis {}: "
+                "slot={} + new={} > frame.atoms.size()={}. "
+                "send=[{},{}] recv=[{},{}] cutoff={} bonded_ext={}",
+                my_rank, dim, slot_in_out, new_ghosts, frame_cap,
+                send_counts[0], send_counts[1], recv_counts[0], recv_counts[1],
+                cutoff, bonded_extension_for_log);
+            MPI_Abort(dd.cart_comm, 1);
+        }
+    }
+
+    // Unpack into ghost slots — for full rebuilds register tags too. The
+    // unpack order ALSO defines the slot layout that `Reverse` mirrors
+    // via `dd->recv_counts`.
+    int slot = slot_in_out;
+    for (int s = 0; s < 2; ++s) {
+        const int face_s = (s == 0) ? f_lo : f_hi;
+        const int n = recv_counts[s];
+        const auto& rbuf = bufs.recv_pos[static_cast<std::size_t>(face_s)];
+        if (full_rebuild) {
+            for (int k = 0; k < n; ++k) {
+                const std::size_t off =
+                    static_cast<std::size_t>(k) * kPosTagDoublesPerAtom;
+                frame.atoms.x[slot] = rbuf[off + 0];
+                frame.atoms.y[slot] = rbuf[off + 1];
+                frame.atoms.z[slot] = rbuf[off + 2];
+                const std::int64_t tag =
+                    static_cast<std::int64_t>(rbuf[off + 3]);
+                frame.atoms.tag[slot] = tag;
+                dd.tag_to_local[tag] = slot;
+                dd.ghost_tags.push_back(tag);
+                ++slot;
+            }
+            dd.recv_counts[static_cast<std::size_t>(face_s)] = n;
+        } else {
+            for (int k = 0; k < n; ++k) {
+                const std::size_t off =
+                    static_cast<std::size_t>(k) * kPosOnlyDoublesPerAtom;
+                frame.atoms.x[slot] = rbuf[off + 0];
+                frame.atoms.y[slot] = rbuf[off + 1];
+                frame.atoms.z[slot] = rbuf[off + 2];
+                ++slot;
+            }
+        }
+    }
+    slot_in_out = slot;
+}
+
+} // namespace
+
 void HaloExchangeForward::launch(const cpu::LaunchContext& ctx) {
     if (ctx.runtime.mpi_size <= 1 || cutoff_ <= 0.0)
         return;
@@ -386,127 +567,25 @@ void HaloExchangeForward::launch(const cpu::LaunchContext& ctx) {
 
     const double halo_cut =
         (cutoff_ > bonded_extension_) ? cutoff_ : bonded_extension_;
+    const int frame_cap = static_cast<int>(frame.atoms.tag.size());
 
     if (full_rebuild) {
-        // ── Full rebuild path ─────────────────────────────────────────
-        // Effective halo = max(pair cutoff, bonded skin): the wider of the
-        // two is sufficient for both pair partners and bonded-tuple members
-        // near the boundary.
-
-        // Roll back the previous reneighbor's ghost tag→slot entries before
-        // we overwrite the ghost rows.
+        // Effective halo = max(pair cutoff, bonded skin): the wider of
+        // the two is sufficient for both pair partners and bonded-tuple
+        // members near the boundary.
         for (auto t : dd->ghost_tags)
             dd->tag_to_local.erase(t);
         dd->ghost_tags.clear();
 
-        rebuild_send_lists(frame, *dd, halo_cut);
-
-        int send_counts[6];
-        int recv_counts[6];
-        MPI_Request count_reqs[12];
-        int n_count_reqs = 0;
-        for (int f = 0; f < 6; ++f) {
-            send_counts[f] = static_cast<int>(dd->send_lists[f].size());
-            recv_counts[f] = 0;
-        }
-        for (int f = 0; f < 6; ++f) {
-            const int neighbor =
-                dd->face_neighbors[static_cast<std::size_t>(f)];
-            if (neighbor == MPI_PROC_NULL)
-                continue;
-            if (neighbor == my_rank)
-                continue;
-            MPI_Isend(&send_counts[f], 1, MPI_INT, neighbor, f, dd->cart_comm,
-                      &count_reqs[n_count_reqs++]);
-            MPI_Irecv(&recv_counts[f], 1, MPI_INT, neighbor, opposite_face(f),
-                      dd->cart_comm, &count_reqs[n_count_reqs++]);
-        }
-        if (n_count_reqs > 0)
-            MPI_Waitall(n_count_reqs, count_reqs, MPI_STATUSES_IGNORE);
-
-        // Pack + exchange positions+tag (4 doubles per atom).
-        for (int f = 0; f < 6; ++f) {
-            if (dd->face_neighbors[static_cast<std::size_t>(f)]
-                == MPI_PROC_NULL) {
-                bufs.send_pos[f].clear();
-            } else {
-                pack_positions_for_face(frame, *dd, f, bufs.send_pos[f]);
-            }
-            bufs.recv_pos[f].assign(static_cast<std::size_t>(recv_counts[f])
-                                        * kPosTagDoublesPerAtom,
-                                    0.0);
-        }
-
-        MPI_Request pos_reqs[12];
-        int n_pos_reqs = 0;
-        for (int f = 0; f < 6; ++f) {
-            const int neighbor =
-                dd->face_neighbors[static_cast<std::size_t>(f)];
-            if (neighbor == MPI_PROC_NULL)
-                continue;
-            if (neighbor == my_rank)
-                continue;
-            if (send_counts[f] > 0) {
-                MPI_Isend(bufs.send_pos[f].data(),
-                          static_cast<int>(bufs.send_pos[f].size()), MPI_DOUBLE,
-                          neighbor, 100 + f, dd->cart_comm,
-                          &pos_reqs[n_pos_reqs++]);
-            }
-            if (recv_counts[f] > 0) {
-                MPI_Irecv(bufs.recv_pos[f].data(),
-                          static_cast<int>(bufs.recv_pos[f].size()), MPI_DOUBLE,
-                          neighbor, 100 + opposite_face(f), dd->cart_comm,
-                          &pos_reqs[n_pos_reqs++]);
-            }
-        }
-        if (n_pos_reqs > 0)
-            MPI_Waitall(n_pos_reqs, pos_reqs, MPI_STATUSES_IGNORE);
-
-        // Capacity check before writing ghost rows into the frame. The
-        // per-atom xtensor arrays are sized to `frame.atoms.size()`
-        // (== original global atom count). Writing past that silently
-        // corrupts memory and eventually trips LJ / bonded kernels.
-        int total_recv = 0;
-        for (int f = 0; f < 6; ++f)
-            total_recv += recv_counts[f];
-        const int frame_cap = static_cast<int>(frame.atoms.tag.size());
-        const int needed = dd->n_local + total_recv;
-        if (needed > frame_cap) {
-            ATV_CRITICAL(
-                "halo_exchange: rank {} ghost capacity overflow: n_local={} + "
-                "n_ghost={} > frame.atoms.size()={}. "
-                "send_counts=[{},{},{},{},{},{}] "
-                "recv_counts=[{},{},{},{},{},{}] "
-                "halo_cut={} bonded_ext={} cutoff={}",
-                my_rank, dd->n_local, total_recv, frame_cap, send_counts[0],
-                send_counts[1], send_counts[2], send_counts[3], send_counts[4],
-                send_counts[5], recv_counts[0], recv_counts[1], recv_counts[2],
-                recv_counts[3], recv_counts[4], recv_counts[5], halo_cut,
-                bonded_extension_, cutoff_);
-            MPI_Abort(dd->cart_comm, 1);
-        }
-
-        // Unpack positions+tag into ghost slots. Each ghost's tag is
-        // inserted into `tag_to_local` so bonded force kernels can
-        // resolve cross-rank tuple partners as ghost rows. These slot
-        // assignments are stable until the next reneighbor rebuild.
+        // 3 axis stages; each stage's send list scans [0, slot) so atoms
+        // received in earlier axes get *forwarded* to later-axis
+        // neighbors. After axis 2 (z), each rank has all 26 cartesian
+        // neighbor ghosts via cascade.
         int slot = dd->n_local;
-        for (int f = 0; f < 6; ++f) {
-            const int n = recv_counts[f];
-            for (int k = 0; k < n; ++k) {
-                const std::size_t off =
-                    static_cast<std::size_t>(k) * kPosTagDoublesPerAtom;
-                frame.atoms.x[slot] = bufs.recv_pos[f][off + 0];
-                frame.atoms.y[slot] = bufs.recv_pos[f][off + 1];
-                frame.atoms.z[slot] = bufs.recv_pos[f][off + 2];
-                const std::int64_t tag =
-                    static_cast<std::int64_t>(bufs.recv_pos[f][off + 3]);
-                frame.atoms.tag[slot] = tag;
-                dd->tag_to_local[tag] = slot;
-                dd->ghost_tags.push_back(tag);
-                ++slot;
-            }
-            dd->recv_counts[static_cast<std::size_t>(f)] = n;
+        for (int dim = 0; dim < 3; ++dim) {
+            forward_axis_stage(frame, *dd, bufs, dim, slot, halo_cut,
+                               /*full_rebuild=*/true, frame_cap, my_rank,
+                               bonded_extension_, slot);
         }
         dd->n_ghost = slot - dd->n_local;
 
@@ -515,70 +594,15 @@ void HaloExchangeForward::launch(const cpu::LaunchContext& ctx) {
         return;
     }
 
-    // ── Position-only refresh path (no reneighbor) ───────────────────
-    // Send/recv counts are unchanged from the last rebuild, carried on
-    // `dd->send_lists` (send side) and `dd->recv_counts` (recv side).
-    // Ghost slot assignments are preserved: slots `[n_local, n_local +
-    // n_ghost)` continue to refer to the same atoms, so we only refresh
-    // their x/y/z positions. No tag exchange, no `tag_to_local` edit.
-
-    int send_counts[6];
-    for (int f = 0; f < 6; ++f) {
-        send_counts[f] = static_cast<int>(dd->send_lists[f].size());
-    }
-    int recv_counts[6];
-    for (int f = 0; f < 6; ++f) {
-        recv_counts[f] = dd->recv_counts[static_cast<std::size_t>(f)];
-    }
-
-    for (int f = 0; f < 6; ++f) {
-        if (dd->face_neighbors[static_cast<std::size_t>(f)] == MPI_PROC_NULL) {
-            bufs.send_pos[f].clear();
-        } else {
-            pack_positions_only_for_face(frame, *dd, f, bufs.send_pos[f]);
-        }
-        bufs.recv_pos[f].assign(static_cast<std::size_t>(recv_counts[f])
-                                    * kPosOnlyDoublesPerAtom,
-                                0.0);
-    }
-
-    MPI_Request pos_reqs[12];
-    int n_pos_reqs = 0;
-    for (int f = 0; f < 6; ++f) {
-        const int neighbor = dd->face_neighbors[static_cast<std::size_t>(f)];
-        if (neighbor == MPI_PROC_NULL)
-            continue;
-        if (neighbor == my_rank)
-            continue;
-        if (send_counts[f] > 0) {
-            MPI_Isend(bufs.send_pos[f].data(),
-                      static_cast<int>(bufs.send_pos[f].size()), MPI_DOUBLE,
-                      neighbor, 100 + f, dd->cart_comm,
-                      &pos_reqs[n_pos_reqs++]);
-        }
-        if (recv_counts[f] > 0) {
-            MPI_Irecv(bufs.recv_pos[f].data(),
-                      static_cast<int>(bufs.recv_pos[f].size()), MPI_DOUBLE,
-                      neighbor, 100 + opposite_face(f), dd->cart_comm,
-                      &pos_reqs[n_pos_reqs++]);
-        }
-    }
-    if (n_pos_reqs > 0)
-        MPI_Waitall(n_pos_reqs, pos_reqs, MPI_STATUSES_IGNORE);
-
-    // Write refreshed positions into the existing ghost slots, in the
-    // same face order used by the last full rebuild.
+    // Position-only refresh path (no reneighbor). Same three axis stages
+    // play out; per-axis ghost positions must be refreshed in order so
+    // a later axis sees the up-to-date forwarded ghosts (a later-axis
+    // send list may reference an earlier-axis ghost slot).
     int slot = dd->n_local;
-    for (int f = 0; f < 6; ++f) {
-        const int n = recv_counts[f];
-        for (int k = 0; k < n; ++k) {
-            const std::size_t off =
-                static_cast<std::size_t>(k) * kPosOnlyDoublesPerAtom;
-            frame.atoms.x[slot] = bufs.recv_pos[f][off + 0];
-            frame.atoms.y[slot] = bufs.recv_pos[f][off + 1];
-            frame.atoms.z[slot] = bufs.recv_pos[f][off + 2];
-            ++slot;
-        }
+    for (int dim = 0; dim < 3; ++dim) {
+        forward_axis_stage(frame, *dd, bufs, dim, /*sources_end=*/0, halo_cut,
+                           /*full_rebuild=*/false, frame_cap, my_rank,
+                           bonded_extension_, slot);
     }
 }
 
@@ -603,72 +627,107 @@ void HaloExchangeReverse::launch(const cpu::LaunchContext& ctx) {
     Frame& frame = ctx.frame;
     FaceBufs& bufs = *bufs_;
 
-    // Pack ghost forces by face (reverse direction sends ghost forces back
-    // to their owners). Layout mirrors the recv layout established by Forward.
-    int slot = dd->n_local;
-    int send_force_counts[6] = {0, 0, 0, 0, 0, 0};
-    int recv_force_counts[6] = {0, 0, 0, 0, 0, 0};
-    for (int f = 0; f < 6; ++f) {
-        const int n = dd->recv_counts[static_cast<std::size_t>(f)];
-        send_force_counts[f] = n;
-        bufs.send_force[f].resize(static_cast<std::size_t>(n) * 3);
-        for (int k = 0; k < n; ++k) {
-            bufs.send_force[f][static_cast<std::size_t>(3 * k + 0)] =
-                frame.atoms.fx[slot];
-            bufs.send_force[f][static_cast<std::size_t>(3 * k + 1)] =
-                frame.atoms.fy[slot];
-            bufs.send_force[f][static_cast<std::size_t>(3 * k + 2)] =
-                frame.atoms.fz[slot];
-            ++slot;
-        }
-        // The corresponding inbound count is `send_lists[f].size() * 3`:
-        // the neighbor will return forces for the atoms I sent it in Forward,
-        // and those atoms are at indices `dd->send_lists[f]` in my local frame.
-        recv_force_counts[f] = static_cast<int>(
-            dd->send_lists[static_cast<std::size_t>(f)].size());
-        bufs.recv_force[f].assign(
-            static_cast<std::size_t>(recv_force_counts[f]) * 3, 0.0);
-    }
-
     int my_rank = 0;
     MPI_Comm_rank(dd->cart_comm, &my_rank);
 
-    MPI_Request reqs[12];
-    int n_reqs = 0;
-    for (int f = 0; f < 6; ++f) {
-        const int neighbor = dd->face_neighbors[static_cast<std::size_t>(f)];
-        if (neighbor == MPI_PROC_NULL)
-            continue;
-        if (neighbor == my_rank)
-            continue; // self-face short-circuit
-        if (send_force_counts[f] > 0) {
-            MPI_Isend(bufs.send_force[f].data(),
-                      static_cast<int>(bufs.send_force[f].size()), MPI_DOUBLE,
-                      neighbor, 200 + f, dd->cart_comm, &reqs[n_reqs++]);
-        }
-        if (recv_force_counts[f] > 0) {
-            MPI_Irecv(bufs.recv_force[f].data(),
-                      static_cast<int>(bufs.recv_force[f].size()), MPI_DOUBLE,
-                      neighbor, 200 + opposite_face(f), dd->cart_comm,
-                      &reqs[n_reqs++]);
+    // Per-face ghost slot start positions, fixed by the forward halo's
+    // unpack order: slot_start[f] = n_local + Σ_{j<f} recv_counts[j].
+    int slot_start[6];
+    {
+        int s = dd->n_local;
+        for (int f = 0; f < 6; ++f) {
+            slot_start[f] = s;
+            s += dd->recv_counts[static_cast<std::size_t>(f)];
         }
     }
-    if (n_reqs > 0)
-        MPI_Waitall(n_reqs, reqs, MPI_STATUSES_IGNORE);
 
-    // Add received ghost forces back into local atoms. The k-th atom in
-    // `dd->send_lists[f]` corresponds to the k-th triple in `recv_force[f]`.
-    for (int f = 0; f < 6; ++f) {
-        const auto& list = dd->send_lists[static_cast<std::size_t>(f)];
-        const int n = static_cast<int>(list.size());
-        for (int k = 0; k < n; ++k) {
-            const int i = list[static_cast<std::size_t>(k)];
-            frame.atoms.fx[i] +=
-                bufs.recv_force[f][static_cast<std::size_t>(3 * k + 0)];
-            frame.atoms.fy[i] +=
-                bufs.recv_force[f][static_cast<std::size_t>(3 * k + 1)];
-            frame.atoms.fz[i] +=
-                bufs.recv_force[f][static_cast<std::size_t>(3 * k + 2)];
+    // Reverse the axis cascade: z first, then y, then x. Forces accumulated
+    // on a swap-K ghost row by a later-axis reverse stage are then sent
+    // back further down the cascade in earlier-axis stages. Because the
+    // forward axis-K send list referenced rows in [0, n_local + Σ_{j<K}
+    // recv_counts[j]), the reverse accumulates correctly into rows that
+    // are either owned (axis 0) or earlier-axis ghosts (axes 1/2). By the
+    // time axis 0 (x) finishes, all force has flowed back to owners.
+    for (int dim = 2; dim >= 0; --dim) {
+        const int f_lo = 2 * dim;
+        const int f_hi = 2 * dim + 1;
+        const std::size_t fz_lo = static_cast<std::size_t>(f_lo);
+        const std::size_t fz_hi = static_cast<std::size_t>(f_hi);
+
+        const int neighbor_lo = dd->face_neighbors[fz_lo];
+        const int neighbor_hi = dd->face_neighbors[fz_hi];
+
+        // For face K's reverse: we send the K-ghost slot forces back to the
+        // rank that owns them (= face_neighbors[K], the same rank we
+        // exchanged with in forward), and we receive forces for the atoms
+        // we sent forward (those live at indices in dd->send_lists[K] on
+        // this rank).
+        int send_force_counts[2] = {dd->recv_counts[fz_lo],
+                                    dd->recv_counts[fz_hi]};
+        int recv_force_counts[2] = {
+            static_cast<int>(dd->send_lists[fz_lo].size()),
+            static_cast<int>(dd->send_lists[fz_hi].size())};
+
+        for (int s = 0; s < 2; ++s) {
+            const int face_s = (s == 0) ? f_lo : f_hi;
+            const int n = send_force_counts[s];
+            auto& sbuf = bufs.send_force[static_cast<std::size_t>(face_s)];
+            sbuf.resize(static_cast<std::size_t>(n) * 3);
+            int slot = slot_start[face_s];
+            for (int k = 0; k < n; ++k) {
+                sbuf[static_cast<std::size_t>(3 * k + 0)] = frame.atoms.fx[slot];
+                sbuf[static_cast<std::size_t>(3 * k + 1)] = frame.atoms.fy[slot];
+                sbuf[static_cast<std::size_t>(3 * k + 2)] = frame.atoms.fz[slot];
+                ++slot;
+            }
+            bufs.recv_force[static_cast<std::size_t>(face_s)].assign(
+                static_cast<std::size_t>(recv_force_counts[s]) * 3, 0.0);
+        }
+
+        MPI_Request reqs[4];
+        int n_reqs = 0;
+        for (int s = 0; s < 2; ++s) {
+            const int face_s = (s == 0) ? f_lo : f_hi;
+            const int neighbor = (s == 0) ? neighbor_lo : neighbor_hi;
+            if (neighbor == MPI_PROC_NULL || neighbor == my_rank)
+                continue;
+            if (send_force_counts[s] > 0) {
+                MPI_Isend(
+                    bufs.send_force[static_cast<std::size_t>(face_s)].data(),
+                    static_cast<int>(
+                        bufs.send_force[static_cast<std::size_t>(face_s)]
+                            .size()),
+                    MPI_DOUBLE, neighbor, 200 + face_s, dd->cart_comm,
+                    &reqs[n_reqs++]);
+            }
+            if (recv_force_counts[s] > 0) {
+                MPI_Irecv(
+                    bufs.recv_force[static_cast<std::size_t>(face_s)].data(),
+                    static_cast<int>(
+                        bufs.recv_force[static_cast<std::size_t>(face_s)]
+                            .size()),
+                    MPI_DOUBLE, neighbor, 200 + opposite_face(face_s),
+                    dd->cart_comm, &reqs[n_reqs++]);
+            }
+        }
+        if (n_reqs > 0)
+            MPI_Waitall(n_reqs, reqs, MPI_STATUSES_IGNORE);
+
+        // Accumulate received forces into send_list indices. Critical: for
+        // dim > 0 these indices may include ghost-row indices from earlier
+        // axes — those forces will be re-packed and sent further along the
+        // cascade in the next (lower-dim) iteration of this loop.
+        for (int s = 0; s < 2; ++s) {
+            const int face_s = (s == 0) ? f_lo : f_hi;
+            const auto& list = dd->send_lists[static_cast<std::size_t>(face_s)];
+            const auto& rbuf = bufs.recv_force[static_cast<std::size_t>(face_s)];
+            const int n = static_cast<int>(list.size());
+            for (int k = 0; k < n; ++k) {
+                const int i = list[static_cast<std::size_t>(k)];
+                frame.atoms.fx[i] += rbuf[static_cast<std::size_t>(3 * k + 0)];
+                frame.atoms.fy[i] += rbuf[static_cast<std::size_t>(3 * k + 1)];
+                frame.atoms.fz[i] += rbuf[static_cast<std::size_t>(3 * k + 2)];
+            }
         }
     }
 }
