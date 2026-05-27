@@ -155,6 +155,12 @@ class NeighborList : public cpu::ComponentBase {
     /// @brief LAMMPS `neigh_modify check` flag (`true` = `check yes`).
     bool check() const { return check_; }
 
+    /// @brief Verlet skin width [Angstrom] (negative input resolved to the
+    /// `0.3*cutoff` auto value during construction). Surfaced for the
+    /// MD/Evaluate auto-injection path that extends the halo cutoff by
+    /// the skin to keep ghosts stable across full-rebuild boundaries.
+    double skin() const { return strategy_.skin(); }
+
     /// @brief Access the current pair list (read-only).
     const PairList& pairs() const { return pairs_; }
 

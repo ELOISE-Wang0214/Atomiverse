@@ -748,7 +748,8 @@ class CsvRecorder : public cpu::ComponentBase {
                 << f.scalars.energy_bond << "," << f.scalars.energy_angle
                 << "," << f.scalars.energy_dihedral << ","
                 << f.scalars.kinetic << "," << f.box(0, 0) << ","
-                << f.box(1, 1) << "," << f.box(2, 2) << "\n";
+                << f.box(1, 1) << "," << f.box(2, 2) << ","
+                << f.scalars.conserved << "\n";
             (*thermo_) << row.str();
             thermo_->flush();
         }
@@ -1392,7 +1393,7 @@ int main(int argc, char** argv) {
             thermo_csv
                 << "step,stage,T_target_K,T_K,P_bar,Pxx,Pyy,Pzz,E_pot_eV,"
                    "E_pair_eV,E_bond_eV,E_angle_eV,E_dihedral_eV,E_kin_eV,"
-                   "box_x,box_y,box_z\n";
+                   "box_x,box_y,box_z,conserved_eV\n";
         }
         if (stress_csv.is_open()) {
             stress_csv << "step,stage,strain,sigma_xx_eV_per_A3,sigma_xx_GPa\n";

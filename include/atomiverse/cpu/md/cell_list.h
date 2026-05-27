@@ -129,6 +129,14 @@ class CellList {
     /// check would have skipped it.
     int n_at_last_build() const { return n_at_last_build_; }
 
+    /// @brief Verlet skin width [Angstrom] currently held by this strategy.
+    /// Used by infrastructure auto-injection (e.g. MD::install_infra
+    /// extending the halo cutoff by skin so atoms in the skin band stay
+    /// ghosts across full-rebuild boundaries — without this, ghosts
+    /// flicker in/out of the cutoff as atoms drift, injecting per-rebuild
+    /// energy jumps into the NPT extended Hamiltonian).
+    double skin() const { return skin_; }
+
   private:
     double cutoff_, skin_, cutoff_skin_;
 
