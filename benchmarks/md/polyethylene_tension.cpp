@@ -915,12 +915,24 @@ struct SharedComponents {
 
 /// @brief Register the force-field evaluators, neighbor list and shared
 /// recorders that every stage needs into a freshly-constructed driver.
-void wire_shared(cpu::md::MD& sim, SharedComponents& sc) {
+struct SharedDisableFlags {
+    bool no_lj = false;
+    bool no_bond = false;
+    bool no_angle = false;
+    bool no_dihedral = false;
+};
+
+void wire_shared(cpu::md::MD& sim, SharedComponents& sc,
+                 SharedDisableFlags disable = {}) {
     sim.set_neighbor(sc.nl);
-    sim.set_pair(sc.lj);
-    sim.set_bond(sc.hb);
-    sim.set_angle(sc.ha);
-    sim.set_dihedral(sc.hd);
+    if (!disable.no_lj)
+        sim.set_pair(sc.lj);
+    if (!disable.no_bond)
+        sim.set_bond(sc.hb);
+    if (!disable.no_angle)
+        sim.set_angle(sc.ha);
+    if (!disable.no_dihedral)
+        sim.set_dihedral(sc.hd);
     sim.on(ATV::md::Phase::end_of_step).add(*sc.rec, 20);
     if (sc.traj_on) {
         sim.on(ATV::md::Phase::end_of_step).add(*sc.trec, 25);
@@ -1571,7 +1583,9 @@ int main(int argc, char** argv) {
         cpu::md::MD sim;
         sim.set_integrator(npt);
         sim.add(zm);
-        wire_shared(sim, shared);
+        wire_shared(sim, shared,
+                    SharedDisableFlags{a.disable_lj, a.disable_bond,
+                                       a.disable_angle, a.disable_dihedral});
         rec.begin_stage(2, a.T_hot, /*record_strain=*/false);
         if (preserved_dd)
             sim.adopt_dd(std::move(preserved_dd));
