@@ -630,7 +630,17 @@ void NoseHooverNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
     // velocity-drift term is intentionally omitted for ghosts — their
     // owner rank applies the v drift to its own owned copy, which the
     // next forward halo will propagate.
-    const int n_total = static_cast<int>(f.atoms.size());
+    // Scale ghost positions too. In multi-rank the ghost range is
+    // `[dd->n_local, dd->n_local + dd->n_ghost)`; in single-rank there
+    // are no ghosts. `atoms.size()` reports the Frame-ctor capacity
+    // (10000) in the refactored layout, not the live nlocal+nghost
+    // count — using it walks ~6000 uninitialised rows past the ghost
+    // range and scales row-0 positions into a singularity that
+    // catastrophically explodes LJ at the next force pass.
+    int n_total = n;
+    if (ctx.runtime.dd && ctx.runtime.mpi_size > 1) {
+        n_total = ctx.runtime.dd->n_local + ctx.runtime.dd->n_ghost;
+    }
     if (n_total > n) {
 #pragma omp parallel for schedule(static)
         for (int i = n; i < n_total; ++i) {
