@@ -101,6 +101,12 @@ class Atom {
     /// @return `nlocal + nghost`.
     int n_total() const noexcept { return nlocal + nghost; }
 
+    /// @brief Owner count (alias for `nlocal`). Lets `for (int i=0; i<atoms.size(); ++i)`
+    /// continue to work; reading owners-only is the dominant idiom across
+    /// the CPU codebase. LAMMPS reads `atom->nlocal` directly; this is the
+    /// C++ container-API analogue.
+    int size() const noexcept { return nlocal; }
+
     // ── SoA per-atom fields (all sized to `nmax`) ──────────────────────────
 
     xt::xtensor<double, 1> x;       ///< x positions [Angstrom].
@@ -197,6 +203,47 @@ class Atom {
     /// @param begin First row to insert.
     /// @param end Past-the-end row.
     void map_set(int begin, int end);
+
+    // ── Per-atom topology population (LAMMPS Atom::data_atoms equivalents) ─
+    //
+    // Used by `cpu::materialize` and the LAMMPS-data reader to scatter a
+    // flat (global) topology specification into the per-atom layout
+    // before any MPI partition. Tags `ti/tj/tk/tl` are global atom tags;
+    // each helper looks the tag up in `map` to find the local row and
+    // appends to that row's bond / angle / dihedral list.
+    //
+    // **Pre-requisites for the caller:**
+    //   - `nlocal` is set to the total atom count
+    //   - `tag[i]` is set for `i in [0, nlocal)`
+    //   - `map_set(0, nlocal)` has been called so tag → local works
+
+    /// @brief Add a bond (ti, tj, type). LAMMPS Newton-bond-ON ownership:
+    /// the smaller-tag atom owns the bond; the bond appears only in that
+    /// atom's `bond_atom` list. Partner force is gathered via reverse_comm
+    /// when the partner is a ghost.
+    void add_bond(std::int64_t ti, std::int64_t tj, int type);
+
+    /// @brief Add an angle (ti, tj, tk, type). Center atom `tj` owns the
+    /// angle; the angle appears in `tj`'s `angle_atom` list with the two
+    /// non-center partners (ti, tk) stored as a pair.
+    void add_angle(std::int64_t ti, std::int64_t tj, std::int64_t tk, int type);
+
+    /// @brief Add a dihedral (ti, tj, tk, tl, type). Atom-j (`tj`, the
+    /// 2nd atom) owns the dihedral; the dihedral appears in `tj`'s
+    /// `dihedral_atom` list with (ti, tk, tl) stored as a triple.
+    void add_dihedral(std::int64_t ti, std::int64_t tj, std::int64_t tk,
+                      std::int64_t tl, int type);
+
+    /// @brief Build the 1-2 / 1-3 / 1-4 `nspecial` + `special` exclusion
+    /// list by BFS over the per-atom bond graph.
+    ///
+    /// Result layout per atom `i`: `special(i, 0 .. nspecial(i,0))` are
+    /// 1-2 partner tags (direct bonds); `special(i, nspecial(i,0) ..
+    /// nspecial(i,1))` are 1-3; `special(i, nspecial(i,1) ..
+    /// nspecial(i,2))` are 1-4. Call after all bonds are added.
+    /// Single-rank assumption: the bond graph is locally complete (no
+    /// migration has happened yet).
+    void build_special_list();
 };
 
 } // namespace cpu
