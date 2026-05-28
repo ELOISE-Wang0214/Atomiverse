@@ -169,46 +169,42 @@ cpu::Frame make_pe_box_simple(int n_chains_per_axis, int n_atoms_per_chain,
     const double cell = box_len / static_cast<double>(n_chains_per_axis);
 
     cpu::Frame frame(n_atoms);
-    frame.bonds.atomi = xt::zeros<int>({n_chains * (n_atoms_per_chain - 1)});
-    frame.bonds.atomj = xt::zeros<int>({n_chains * (n_atoms_per_chain - 1)});
-    frame.bonds.type = xt::zeros<int>({n_chains * (n_atoms_per_chain - 1)});
-    frame.angles.atomi = xt::zeros<int>({n_chains * (n_atoms_per_chain - 2)});
-    frame.angles.atomj = xt::zeros<int>({n_chains * (n_atoms_per_chain - 2)});
-    frame.angles.atomk = xt::zeros<int>({n_chains * (n_atoms_per_chain - 2)});
-    frame.angles.type = xt::zeros<int>({n_chains * (n_atoms_per_chain - 2)});
 
-    int atom_idx = 0, bond_idx = 0, angle_idx = 0;
+    int atom_idx = 0;
     for (int cx = 0; cx < n_chains_per_axis; ++cx)
         for (int cy = 0; cy < n_chains_per_axis; ++cy)
             for (int cz = 0; cz < n_chains_per_axis; ++cz) {
                 const double x0 = cx * cell + 0.5 * r0;
                 const double y0 = (cy + 0.5) * cell;
                 const double z0 = (cz + 0.5) * cell;
-                const int chain_base = atom_idx;
                 for (int k = 0; k < n_atoms_per_chain; ++k) {
                     frame.atoms.x[atom_idx] = x0 + k * r0;
                     frame.atoms.y[atom_idx] = y0;
                     frame.atoms.z[atom_idx] = z0;
                     frame.atoms.mass[atom_idx] = 14.0;
                     frame.atoms.type[atom_idx] = 1;
-                    // Leave tag at its Frame-ctor default (tag(i) == i) so
-                    // bonds.atomi/atomj indices match atoms.tag — required
-                    // under MPI where the bonded resolver looks up tags in
-                    // dd->tag_to_local.
+                    // Frame ctor default tag[i] == i, used by add_bond /
+                    // add_angle below to route the per-atom topology entry
+                    // to the LAMMPS-convention owner row.
                     ++atom_idx;
                 }
-                for (int k = 0; k < n_atoms_per_chain - 1; ++k) {
-                    frame.bonds.atomi[bond_idx] = chain_base + k;
-                    frame.bonds.atomj[bond_idx] = chain_base + k + 1;
-                    ++bond_idx;
-                }
-                for (int k = 0; k < n_atoms_per_chain - 2; ++k) {
-                    frame.angles.atomi[angle_idx] = chain_base + k;
-                    frame.angles.atomj[angle_idx] = chain_base + k + 1;
-                    frame.angles.atomk[angle_idx] = chain_base + k + 2;
-                    ++angle_idx;
-                }
             }
+
+    // Per-atom topology population (LAMMPS num_bond[i] + bond_atom[i][m]
+    // layout). `add_bond` routes to the smaller-tag owner; `add_angle`
+    // routes to the center atom.
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, frame.atoms.nlocal);
+    for (int c = 0; c < n_chains; ++c) {
+        const int chain_base = c * n_atoms_per_chain;
+        for (int k = 0; k < n_atoms_per_chain - 1; ++k)
+            frame.atoms.add_bond(chain_base + k, chain_base + k + 1, 0);
+        for (int k = 0; k < n_atoms_per_chain - 2; ++k)
+            frame.atoms.add_angle(chain_base + k, chain_base + k + 1,
+                                  chain_base + k + 2, 0);
+    }
+    frame.atoms.build_special_list();
+
     frame.box = Mat3::cubic(box_len);
     return frame;
 }
