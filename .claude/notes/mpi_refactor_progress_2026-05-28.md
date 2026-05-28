@@ -92,7 +92,53 @@ Either:
   `git reset --hard d8eb8a9` removes all 5 scaffold commits; the
   working `ghost_tags.clear()` fix remains in place.
 
-## Update — 2026-05-28 evening: switchover landed, multi-rank topology bug pending
+## Update — 2026-05-29 early morning: multi-rank works for in-code MD; Zarr-load step-75 spike remains
+
+The "astronomical E_bond" bug at 8-rank was diagnosed:
+**`partition_atoms` only updated `dd->n_local`, not `atoms.nlocal`.** The
+new per-atom force kernels were iterating `[0, atoms.nlocal)` — i.e. the
+Frame-ctor's full atom count, *including stale uncompacted rows*. Each
+stale row carried `num_bond/bond_atom` from the pre-partition layout
+and was matched against current (partitioned) positions, giving 100Å
+"bond lengths" → E_bond ≈ 2.85×10⁸ eV at step 0.
+
+A first attempt to sync `atoms.nlocal = dd->n_local` directly in
+`partition_atoms` segfaulted inside `MPI_Alltoallv`'s `MPIR_Localcopy`
+during the first `AtomMigration` step. The pack-stride math is tied to
+`frame.atoms.size()` which now reports the shrunk count; the buffer
+layout went inconsistent across ranks. **The right fix was to keep
+`atoms.nlocal` untouched and have the force kernels read `dd->n_local`
+directly in multi-rank mode** (single-rank still uses `atoms.nlocal`).
+
+Per-thread force accumulators (`fx_thr_[t]`) also needed sizing to
+`atoms.nmax` rather than `atoms.size()` — they accumulate into ghost
+rows that `reverse_comm` gathers back.
+
+Results after the fix (commit `70c1145`):
+- 8-rank `test_mpi_pe_msu_pipeline` PASSES (now exercising bonded
+  forces — previously vacuous because per-atom topology was empty
+  when the test used `frame.bonds.atomi` flat shim).
+- 8-rank MSU PE in-code NVT stage 1 runs cleanly through 80 steps:
+  T cooling from 10643K → 1124K via Langevin, E_bond bounded
+  (8 → 19766 → 4706 → 2030 → 1636 eV chain relaxation), n_local
+  stable per-rank around 1830-1850 with slight migration. **Same
+  ranges as single-rank.**
+- 8-rank MSU PE NPT stage 2 from `stage1.zarr`: **clean through
+  step 50** (T = 502, 509, 516 K; E_bond = 227, 218, 220 eV;
+  conserved drift = -0.01% — matches single-rank). **At step 75 a
+  spike appears** (T → 28000 K, conserved → 52000 eV). This is the
+  same "step ~70 catastrophic blowup" pattern that the original
+  `d8eb8a9` ghost-tags-clear fix had to chase down — likely a
+  similar subtle interaction at a halo full-rebuild boundary now
+  that the per-atom code path is exercised. Doesn't appear in the
+  in-code NVT path → specific to `--ckpt-load-before` + multi-rank
+  + per-atom topology.
+
+The step-75 Zarr-stage-2 spike is the last known issue. Diagnosis
+path: instrument `bond_atom[i][m]` resolution at step 70-75 to
+see whether (a) a partner tag resolves to a stale row, or (b) the
+ghost position for the partner is wrong (halo bug), or (c)
+`Atom::reshuffle_topology_to_tags` left some row mis-assigned.
 
 Commits `3ecefef`, `2a1c64a`, `5d8c777` landed the switchover on top of
 the scaffolding:
