@@ -63,11 +63,52 @@ cuda::Frame to_cuda(const Frame& frame) {
     int n = frame.atoms.size();
     cuda::Frame d{};
 
+    // Flatten per-atom topology (LAMMPS num_bond[i] / bond_atom[i][m]
+    // layout on `cpu::Atom`) into flat (atomi[k] / atomj[k]) host buffers
+    // for the CUDA-side flat `BondList`. CUDA kernels haven't been
+    // ported to per-atom topology yet (out-of-scope for this refactor);
+    // the bridge does the conversion every transfer. Each per-atom bond
+    // appears as one flat row: (atom-i, partner_tag). Same for angles
+    // (i, j, k) and dihedrals (i, j, k, l). Tags here are global atom
+    // IDs (= local-row index in single-rank, since materialize sets
+    // tag[row] = row).
+    std::vector<int> flat_bond_i, flat_bond_j, flat_bond_t;
+    std::vector<int> flat_ang_i, flat_ang_j, flat_ang_k, flat_ang_t;
+    std::vector<int> flat_dih_i, flat_dih_j, flat_dih_k, flat_dih_l, flat_dih_t;
+    for (int i = 0; i < n; ++i) {
+        const int nb = frame.atoms.num_bond[i];
+        for (int m = 0; m < nb; ++m) {
+            flat_bond_i.push_back(i);
+            flat_bond_j.push_back(static_cast<int>(frame.atoms.bond_atom(i, m)));
+            flat_bond_t.push_back(frame.atoms.bond_type(i, m));
+        }
+        const int na = frame.atoms.num_angle[i];
+        for (int m = 0; m < na; ++m) {
+            flat_ang_i.push_back(
+                static_cast<int>(frame.atoms.angle_atom(i, 2 * m + 0)));
+            flat_ang_j.push_back(i);
+            flat_ang_k.push_back(
+                static_cast<int>(frame.atoms.angle_atom(i, 2 * m + 1)));
+            flat_ang_t.push_back(frame.atoms.angle_type(i, m));
+        }
+        const int nd = frame.atoms.num_dihedral[i];
+        for (int m = 0; m < nd; ++m) {
+            flat_dih_i.push_back(
+                static_cast<int>(frame.atoms.dihedral_atom(i, 3 * m + 0)));
+            flat_dih_j.push_back(i);
+            flat_dih_k.push_back(
+                static_cast<int>(frame.atoms.dihedral_atom(i, 3 * m + 1)));
+            flat_dih_l.push_back(
+                static_cast<int>(frame.atoms.dihedral_atom(i, 3 * m + 2)));
+            flat_dih_t.push_back(frame.atoms.dihedral_type(i, m));
+        }
+    }
+
     // Host-cached metadata
     d.n_atoms_ = n;
-    d.n_bonds_ = frame.bonds.size();
-    d.n_angles_ = frame.angles.size();
-    d.n_dihedrals_ = frame.dihedrals.size();
+    d.n_bonds_ = static_cast<int>(flat_bond_i.size());
+    d.n_angles_ = static_cast<int>(flat_ang_i.size());
+    d.n_dihedrals_ = static_cast<int>(flat_dih_i.size());
 
     // Scalar metadata on device
     cudaMalloc(&d.atoms.d_size, sizeof(int));
@@ -122,7 +163,7 @@ cuda::Frame to_cuda(const Frame& frame) {
             box_data[i * 3 + j] = static_cast<prec_t>(frame.box(i, j));
     cudaMemcpy(d.box, box_data, 9 * sizeof(prec_t), cudaMemcpyHostToDevice);
 
-    // Bond topology
+    // Bond topology — copy from the flattened host buffers built above.
     int nb = d.n_bonds_;
     if (nb > 0) {
         cudaMalloc(&d.bonds.n_bonds, sizeof(int));
@@ -130,11 +171,11 @@ cuda::Frame to_cuda(const Frame& frame) {
         cudaMalloc(&d.bonds.atomi, nb * sizeof(int));
         cudaMalloc(&d.bonds.atomj, nb * sizeof(int));
         cudaMalloc(&d.bonds.type, nb * sizeof(int));
-        cudaMemcpy(d.bonds.atomi, frame.bonds.atomi.data(), nb * sizeof(int),
+        cudaMemcpy(d.bonds.atomi, flat_bond_i.data(), nb * sizeof(int),
                    cudaMemcpyHostToDevice);
-        cudaMemcpy(d.bonds.atomj, frame.bonds.atomj.data(), nb * sizeof(int),
+        cudaMemcpy(d.bonds.atomj, flat_bond_j.data(), nb * sizeof(int),
                    cudaMemcpyHostToDevice);
-        cudaMemcpy(d.bonds.type, frame.bonds.type.data(), nb * sizeof(int),
+        cudaMemcpy(d.bonds.type, flat_bond_t.data(), nb * sizeof(int),
                    cudaMemcpyHostToDevice);
     }
 
@@ -147,13 +188,13 @@ cuda::Frame to_cuda(const Frame& frame) {
         cudaMalloc(&d.angles.atomj, na * sizeof(int));
         cudaMalloc(&d.angles.atomk, na * sizeof(int));
         cudaMalloc(&d.angles.type, na * sizeof(int));
-        cudaMemcpy(d.angles.atomi, frame.angles.atomi.data(), na * sizeof(int),
+        cudaMemcpy(d.angles.atomi, flat_ang_i.data(), na * sizeof(int),
                    cudaMemcpyHostToDevice);
-        cudaMemcpy(d.angles.atomj, frame.angles.atomj.data(), na * sizeof(int),
+        cudaMemcpy(d.angles.atomj, flat_ang_j.data(), na * sizeof(int),
                    cudaMemcpyHostToDevice);
-        cudaMemcpy(d.angles.atomk, frame.angles.atomk.data(), na * sizeof(int),
+        cudaMemcpy(d.angles.atomk, flat_ang_k.data(), na * sizeof(int),
                    cudaMemcpyHostToDevice);
-        cudaMemcpy(d.angles.type, frame.angles.type.data(), na * sizeof(int),
+        cudaMemcpy(d.angles.type, flat_ang_t.data(), na * sizeof(int),
                    cudaMemcpyHostToDevice);
     }
 
@@ -168,15 +209,15 @@ cuda::Frame to_cuda(const Frame& frame) {
         cudaMalloc(&d.dihedrals.atomk, nd * sizeof(int));
         cudaMalloc(&d.dihedrals.atoml, nd * sizeof(int));
         cudaMalloc(&d.dihedrals.type, nd * sizeof(int));
-        cudaMemcpy(d.dihedrals.atomi, frame.dihedrals.atomi.data(),
+        cudaMemcpy(d.dihedrals.atomi, flat_dih_i.data(),
                    nd * sizeof(int), cudaMemcpyHostToDevice);
-        cudaMemcpy(d.dihedrals.atomj, frame.dihedrals.atomj.data(),
+        cudaMemcpy(d.dihedrals.atomj, flat_dih_j.data(),
                    nd * sizeof(int), cudaMemcpyHostToDevice);
-        cudaMemcpy(d.dihedrals.atomk, frame.dihedrals.atomk.data(),
+        cudaMemcpy(d.dihedrals.atomk, flat_dih_k.data(),
                    nd * sizeof(int), cudaMemcpyHostToDevice);
-        cudaMemcpy(d.dihedrals.atoml, frame.dihedrals.atoml.data(),
+        cudaMemcpy(d.dihedrals.atoml, flat_dih_l.data(),
                    nd * sizeof(int), cudaMemcpyHostToDevice);
-        cudaMemcpy(d.dihedrals.type, frame.dihedrals.type.data(),
+        cudaMemcpy(d.dihedrals.type, flat_dih_t.data(),
                    nd * sizeof(int), cudaMemcpyHostToDevice);
     }
 
