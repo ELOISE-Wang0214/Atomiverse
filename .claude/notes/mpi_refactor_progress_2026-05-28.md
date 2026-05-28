@@ -140,6 +140,58 @@ see whether (a) a partner tag resolves to a stale row, or (b) the
 ghost position for the partner is wrong (halo bug), or (c)
 `Atom::reshuffle_topology_to_tags` left some row mis-assigned.
 
+## Update — finer-grained diagnosis: spike correlates with AtomMigration event
+
+Print-every=5 trace at stage 2 from `stage1.zarr` shows the spike
+precisely at step 70:
+
+```
+step   T(K)  E_pot   E_bond  E_kin   conserved  neigh_gen
+0      502    502    227     649     1151       2
+…
+65     508    493    226     657     1151       8
+70     11433  2779   223     14776   17559      9   ← neighbor_gen++
+75     28382  14911  14604   36684   52698      9
+80     19101  16216  13351   24688   42476      10
+```
+
+`neighbor_generation` bumps from 8 → 9 between step 65 and 70 — that's
+an `AtomMigration::launch` event. The new `AtomMigration` pack/unpack
+goes through `comm::pack_exchange` / `unpack_exchange` (variable-length,
+carries per-atom topology) with a fixed 800-byte per-atom stride
+(`kAtomPayloadBytes = kMaxExchangeDoubles * 8`). Pack writes ≤ 100
+doubles per atom and zero-pads to 800; unpack reads back via the same
+helper and advances by the fixed 800 bytes. The stride math is
+self-consistent.
+
+But evidently *something* about the new per-atom-topology-carrying
+migration is corrupting per-atom topology rows for migrated atoms.
+The in-code NVT stage 1 (which also has migration events every ~10
+steps) does NOT blow up — so the issue is specific to
+**`Atom::reshuffle_topology_to_tags` interacting with migration**.
+After reshuffle, the row-i-holds-atom-tag[i] invariant is locally true.
+But when migration sends atom from rank A's row to rank B's row, it
+packs per-atom topology that was reshuffled relative to A's tag
+ordering — then unpacks into B at the new row index. B's tag_to_local
+post-migration maps the migrant's tag to the new row, but B's other
+atoms' topology references partner tags from a different rank's
+perspective.
+
+Hypothesis: after reshuffle, the per-atom `bond_atom[i][m]` partner
+tag is the *global atom tag* (preserved across migration), but
+`build_special_list` BFS produced the `nspecial`/`special` exclusion
+list under the assumption that the local bond graph was complete. On
+the receiving rank after migration, the migrant's row carries its
+old `nspecial`/`special` (correct global tags) — so the LJ exclusion
+loop is fine. Yet energy explodes.
+
+**Recommended next step**: instrument at the migration boundary —
+log `tag[migrant_row]`, `num_bond[migrant_row]`,
+`bond_atom[migrant_row][0..nb]` immediately BEFORE pack on the sender
+and immediately AFTER unpack on the receiver. If they differ → pack
+ordering bug. If they match → the issue is in how the recipient's
+tag_to_local / halo handles the new owner row.
+
 Commits `3ecefef`, `2a1c64a`, `5d8c777` landed the switchover on top of
 the scaffolding:
 
