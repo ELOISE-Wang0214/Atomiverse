@@ -1,6 +1,15 @@
 /// @file cpu/frame.h
 /// @brief cpu::Frame -- thin holder of Atom, Box, and SystemScalars.
 ///
+/// **Transitional state.** The nested `Frame::Bonds / Angles / Dihedrals`
+/// sub-structs below are *dead storage* — no force kernel reads them
+/// anymore (all bonded forces iterate `frame.atoms.num_bond[i]` etc. in
+/// the LAMMPS per-atom layout). They remain as compile-shims so the ~30
+/// tests + benchmarks that populate `frame.bonds.atomi = xt::zeros(...)`
+/// still build until they're individually migrated to the
+/// `frame.atoms.add_bond / add_angle / add_dihedral` setter API. Delete
+/// in the follow-up "test fixture update" commit once all callers move.
+///
 /// Post-refactor: Frame is no longer a god struct. The per-atom container
 /// is `cpu::Atom`, which carries positions, velocities, forces, type, tag,
 /// image, per-atom bonded topology (`num_bond[i] + bond_atom[i][m]`,
@@ -23,6 +32,8 @@
 /// @see cpu/atom.h, cpu/box.h, cpu/domain.h, cpu/comm/comm.h
 /// @see core/system_scalars.h
 #pragma once
+
+#include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/core/system_scalars.h"
 #include "atomiverse/cpu/atom.h"
@@ -53,6 +64,44 @@ class Frame {
 
     /// @brief Simulation cell.
     cpu::Box box{};
+
+    // ── Transitional dead-storage shims ────────────────────────────────
+    //
+    // These nested types exist only so the ~30 tests + benchmarks that
+    // pre-date the per-atom topology refactor still compile. They are
+    // *write-only from the test side* and *read-only by nothing else* —
+    // every force kernel and every halo / migration / NL path now reads
+    // from `frame.atoms.num_bond / bond_atom / angle_atom / dihedral_atom`
+    // (the LAMMPS per-atom layout). Materialize and the LAMMPS-data
+    // reader populate `frame.atoms` directly; the legacy `Bonds / Angles
+    // / Dihedrals` blocks they used to fill are no longer populated.
+    //
+    // Delete these sub-structs entirely once the test fixture cleanup
+    // commit lands.
+
+    struct Bonds {
+        xt::xtensor<int, 1> atomi;
+        xt::xtensor<int, 1> atomj;
+        xt::xtensor<int, 1> type;
+        int size() const { return static_cast<int>(atomi.size()); }
+    } bonds;
+
+    struct Angles {
+        xt::xtensor<int, 1> atomi;
+        xt::xtensor<int, 1> atomj;
+        xt::xtensor<int, 1> atomk;
+        xt::xtensor<int, 1> type;
+        int size() const { return static_cast<int>(atomi.size()); }
+    } angles;
+
+    struct Dihedrals {
+        xt::xtensor<int, 1> atomi;
+        xt::xtensor<int, 1> atomj;
+        xt::xtensor<int, 1> atomk;
+        xt::xtensor<int, 1> atoml;
+        xt::xtensor<int, 1> type;
+        int size() const { return static_cast<int>(atomi.size()); }
+    } dihedrals;
 };
 
 } // namespace cpu
