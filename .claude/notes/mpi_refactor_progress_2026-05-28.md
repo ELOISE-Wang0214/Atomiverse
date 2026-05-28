@@ -192,6 +192,59 @@ and immediately AFTER unpack on the receiver. If they differ → pack
 ordering bug. If they match → the issue is in how the recipient's
 tag_to_local / halo handles the new owner row.
 
+## Update — instrumentation result: pack/unpack consistent (the bug is elsewhere)
+
+Ran with `ATV_MIGRATE_DEBUG=1` and the diagnostic prints inserted in
+`pack_atom`/`unpack_atom`. Every traced atom showed the sender's PACK
+line matching the receiver's UNPACK line bit-for-bit: same tag, same
+num_bond, same bond_atom[0..nb], same bond_type[0..nb]. Pack/unpack
+fidelity is NOT the bug.
+
+Excerpt (rank 0 pack → rank 1 unpack):
+```
+[migrate][rank0 PACK]   dest=1 tag[1592]=7449 num_bond=1 bond_atom[0]=7450 bond_type[0]=0
+[migrate][rank1 UNPACK] slot=1492 tag=7449       num_bond=1 bond_atom[0]=7450 bond_type[0]=0
+```
+
+So the per-atom topology survives `MPI_Alltoallv` intact. The Zarr-stage-2
+step-70 spike must come from one of:
+
+1. **Halo ghost handling for migrated atoms** — `HaloExchangeForward`
+   runs immediately after `AtomMigration` in `pre_force`. It rebuilds
+   `dd->tag_to_local` for ghosts, ships positions of boundary atoms.
+   If the receiver's ghost slot ends up with a wrong position for the
+   migrated atom (e.g. PBC shift bug, or ghost slot reuse collision),
+   bond force on the partner's rank computes `(partner_pos - wrong_ghost_pos)`
+   → huge bond stretch → astronomical energy.
+
+2. **NeighborList CSR / cell-list cache** — NL caches per-step pair
+   list based on `dd->halo_generation`. The new code might be reading
+   a stale cache for the first force pass after migration, mixing
+   pre-migration ghost slots with post-migration atom data.
+
+3. **Compaction-time ordering inside `partition_atoms`** — the per-atom
+   topology compaction runs AFTER the SoA compaction. Between the two,
+   row indices in [0, n_local) are partially updated (tag/positions
+   compacted; topology still at original rows). If anything reads
+   topology in that window, it sees a mismatch.
+
+The diagnostic instrumentation was reverted (commit `<latest>`). The
+debug-print machinery is straightforward to re-add: search for
+`ATV_MIGRATE_DEBUG` in atom_migration.cpp git history. To diagnose
+further, the most direct path is:
+
+- Add a similar trace at HaloExchangeForward's full-rebuild unpack
+  for the *same atom tags* that migrated in the previous AtomMigration.
+- If those positions differ from the sender's positions → halo bug.
+- If those positions match but the partner's bond resolution still
+  produces huge force → bond_atom value is wrong despite the
+  pack/unpack trace showing it's right (which would mean topology is
+  being mutated between migration and force eval).
+
+The remaining 5 tasks (#16 Layer D, #17 CUDA bridge, #18 delete old
+code, #19 MPI tests, #20 verification) all depend on this last
+debug, then the cleanup is mechanical.
+
 Commits `3ecefef`, `2a1c64a`, `5d8c777` landed the switchover on top of
 the scaffolding:
 
