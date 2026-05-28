@@ -288,6 +288,56 @@ and compare against single-rank reference.
 **Workaround for the user:** Hard-reset `git reset --hard d8eb8a9`
 to restore the pre-refactor working state.
 
+## Final task status (session end)
+
+20 commits since `d8eb8a9` baseline. Task list state:
+
+| Task | Status      | Note                                                  |
+|------|-------------|-------------------------------------------------------|
+| #10  | completed   | cpu::Atom created (commit `6edff73`)                  |
+| #11  | completed   | cpu::comm::atom_pack (commit `4a9fbea`)               |
+| #12  | completed   | cpu::Domain (commit `3149313`)                        |
+| #13  | completed   | cpu::comm::Comm (commit `f15e376`)                    |
+| #14  | completed   | Force kernels rewritten (commit `3ecefef` + fixes)    |
+| #15  | completed   | Materialize/lammps_data scatter (in `3ecefef`)        |
+| #16  | **pending** | Layer D — needs Frame dissolution + new Comm wired up |
+| #17  | completed   | CUDA bridge: per-atom→flat conversion (commit `<latest>`) |
+| #18  | **pending** | Delete old halo/migration — needs Layer D first       |
+| #19  | **pending** | Update MPI tests — needs new comm wired               |
+| #20  | in-progress | Verification — single-rank pass; 8-rank NVT pass; NPT broken |
+| #21  | completed   | cpu::Frame thin holder (was: full deletion not done)  |
+| #22  | completed   | Mass rename — not actually needed (Frame stayed)      |
+
+**Key fix discovered**: commit `70c1145` — force kernels must
+iterate `dd->n_local`, not `atom.nlocal`, in multi-rank. Without
+this, stale uncompacted rows beyond `dd->n_local` give astronomical
+bonded forces. This is a correctness fix that any future
+per-atom-topology + multi-rank work must preserve.
+
+**Outstanding bug**: NoseHooverNPT × multi-rank × per-atom topology
+collapses energy to zero / explodes within ~10 stage-2 steps. Same
+pattern from in-code path AND from Zarr-load path. Reproducer:
+
+```
+salloc -n 8 -t 00:15:00
+srun -n 8 -c 1 build/benchmarks/polyethylene_tension \
+    --data benchmarks/md/reference/polyethylene/msu_pe.data \
+    --mode npt --scale 0.003 --print-every 20 \
+    --out-dir /tmp/repro
+```
+
+Step 40 stage 2 shows T=0, E_kin=0, E_pair=3.18e9. Diagnosis:
+NPT chain dynamics over-respond to the high E_pair from initial
+LJ collisions, killing velocities. But original d8eb8a9 with the
+same scale ran cleanly through all 5 stages, so my refactor broke
+something specific in the per-atom-topology + NPT interaction
+that I could not isolate in this session.
+
+**Three paths forward** documented earlier:
+- Continue NPT debug from this diagnosis baseline
+- Partial revert (force kernels back to flat, scaffolding stays)
+- Hard rollback to `d8eb8a9`
+
 Commits `3ecefef`, `2a1c64a`, `5d8c777` landed the switchover on top of
 the scaffolding:
 
