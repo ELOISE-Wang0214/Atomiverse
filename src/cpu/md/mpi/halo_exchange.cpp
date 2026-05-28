@@ -152,7 +152,13 @@ double compute_bonded_extension_local(const Frame& frame,
         return (it == dd->tag_to_local.end()) ? -1 : it->second;
     };
 
-    for (int i_owner = 0; i_owner < a.nlocal; ++i_owner) {
+    // Iterate the *compacted* owner range (`dd->n_local` in multi-rank;
+    // `atom.nlocal` single-rank). Beyond that range, rows hold stale
+    // pre-partition topology that would resolve to current rows whose
+    // positions belong to entirely different atoms — giving spurious
+    // 50+ Å bond distances and an astronomically wrong bonded extent.
+    const int nlocal_iter = (dd != nullptr) ? dd->n_local : a.nlocal;
+    for (int i_owner = 0; i_owner < nlocal_iter; ++i_owner) {
         const std::int64_t ti = a.tag[i_owner];
         // Bonds: owner is the smaller-tag atom; partner stored in
         // bond_atom[i][m].
