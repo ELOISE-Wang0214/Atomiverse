@@ -91,3 +91,65 @@ Either:
 - **Or roll back the scaffolding** if you decide the design is wrong.
   `git reset --hard d8eb8a9` removes all 5 scaffold commits; the
   working `ghost_tags.clear()` fix remains in place.
+
+## Update — 2026-05-28 evening: switchover landed, multi-rank topology bug pending
+
+Commits `3ecefef`, `2a1c64a`, `5d8c777` landed the switchover on top of
+the scaffolding:
+
+- `cpu::Frame::Atoms` is now `cpu::Atom` (alias of new type, member name
+  kept as `atoms` for ~1600 call-site continuity)
+- `Frame::Bonds/Angles/Dihedrals` are kept as **dead-storage shims** so
+  ~30 tests + benchmarks that populate them still build until they're
+  individually migrated to the per-atom `atoms.add_bond / add_angle /
+  add_dihedral` setter API. **Delete these dead shims** in the test
+  fixture cleanup.
+- `materialize.cpp` and `lammps_data.cpp` now scatter into per-atom
+  topology + `build_special_list()`.
+- Bonded force kernels (`bond_harmonic`, `angle_harmonic`,
+  `dihedral_multi_harmonic`) iterate per-atom (`for i in [0, nlocal):
+  for m in [0, atoms.num_bond[i])`). They fall back to
+  `dd->tag_to_local` in multi-rank mode (still maintained by old halo
+  path until the new `cpu::comm::Comm` is wired in via install_defaults).
+- `pair_lj_cut` reads 1-2/1-3/1-4 exclusion from `atoms.nspecial /
+  atoms.special`.
+- `partition_atoms` and `AtomMigration` were extended to carry per-atom
+  topology through compaction / pack-exchange.
+- `Atom::reshuffle_topology_to_tags()` added so the bench's `--ckpt-load-before`
+  path can move topology rows to match the Zarr-loaded tag permutation.
+
+**Known bug** (unblocks completion): 8-rank MSU PE benchmark (full
+`polyethylene_tension --mode nvt --data msu_pe.data`) shows astronomical
+bonded energies at step 0 — E_bond ~ 2.85e8 eV vs the correct ~0 eV
+at lattice positions. Single-rank PE tests pass (3 of 4 — the 4th
+fails by 1.6% in a 1e-9 tolerance check, FP-order sensitivity).
+`test_mpi_pe_msu_pipeline` (in-code construct via `make_pe_box` writing
+*flat* topology) passes — but that passes vacuously because flat
+topology is dead storage and per-atom topology is never populated,
+so bonded forces compute on `num_bond = 0` everywhere.
+
+The bug is likely in one of:
+1. **lammps_data add_bond ownership routing**: when n_atoms = 10000,
+   the bond owner is `min(id_to_idx[ai], id_to_idx[aj])`. id_to_idx
+   was just populated in the Atoms-section pass; check that map_set
+   ran for the full row range before the Bonds section.
+2. **partition_atoms in-place compaction**: rows iterate ascending,
+   sources are sorted ascending — should be safe but verify with a
+   print of `num_bond[0..3] / bond_atom[0][0..2]` before and after
+   the compaction loop.
+3. **AtomMigration pack/unpack**: the new pack uses `kMaxExchangeDoubles`
+   fixed-stride. Verify the pack writes exactly that many doubles
+   per atom, and the unpack reads the same — adding a marker double
+   at the head would help diagnose offset drift.
+
+**Recommended path to root-cause**: add `printf` of `frame.atoms.tag[0..3]`,
+`num_bond[0..3]`, `bond_atom(0, 0..2)` after each of (a) lammps_data
+load, (b) partition_atoms compaction, (c) first halo full-rebuild,
+(d) first bond_harmonic launch. Compare to single-rank values at the
+same logical position.
+
+**Rollback path**: `git revert 5d8c777 2a1c64a 3ecefef` restores
+force kernels to flat-topology + tag_to_local (the working pre-switchover
+state). The new `cpu::Atom / cpu::Domain / cpu::comm::Comm` scaffolding
+(commits `6edff73..741927f`) stays as a clean foundation for the next
+attempt.
