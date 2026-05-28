@@ -92,26 +92,29 @@ void PairLJCut::build(const BuildContext& ctx) {
         excluded_by_tag_[b].push_back(a);
     };
 
+    // Exclusion list is now read from per-atom `nspecial` / `special`
+    // populated by `materialize` / LAMMPS-data reader via
+    // `Atom::build_special_list`. nspecial[i][0..2] are cumulative
+    // counts for 1-2 / 1-3 / 1-4 partners; `special(i, 0..nspecial[i][2])`
+    // is the flat tag list.
     const auto& f = ctx.frame;
-    if (has_excl_12) {
-        const int nb = f.bonds.size();
-        for (int b = 0; b < nb; ++b) {
-            add_pair(static_cast<std::int64_t>(f.bonds.atomi[b]),
-                     static_cast<std::int64_t>(f.bonds.atomj[b]));
+    const auto& at = f.atoms;
+    for (int i = 0; i < at.nlocal; ++i) {
+        const std::int64_t ti = at.tag[i];
+        const int n12 = at.nspecial(i, 0);
+        const int n13 = at.nspecial(i, 1);
+        const int n14 = at.nspecial(i, 2);
+        if (has_excl_12) {
+            for (int s = 0; s < n12; ++s)
+                add_pair(ti, at.special(i, s));
         }
-    }
-    if (has_excl_13) {
-        const int na = f.angles.size();
-        for (int a = 0; a < na; ++a) {
-            add_pair(static_cast<std::int64_t>(f.angles.atomi[a]),
-                     static_cast<std::int64_t>(f.angles.atomk[a]));
+        if (has_excl_13) {
+            for (int s = n12; s < n13; ++s)
+                add_pair(ti, at.special(i, s));
         }
-    }
-    if (has_excl_14) {
-        const int nd = f.dihedrals.size();
-        for (int d = 0; d < nd; ++d) {
-            add_pair(static_cast<std::int64_t>(f.dihedrals.atomi[d]),
-                     static_cast<std::int64_t>(f.dihedrals.atoml[d]));
+        if (has_excl_14) {
+            for (int s = n13; s < n14; ++s)
+                add_pair(ti, at.special(i, s));
         }
     }
 

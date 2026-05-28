@@ -133,44 +133,65 @@ Frame materialize(const molrs::FrameRef& src) {
         }
     }
 
-    // ── Optional topology blocks ───────────────────────────────────────
+    // ── Optional topology blocks → scatter into per-atom layout ────────
+    //
+    // molrs stores topology as flat global arrays (`bonds.atomi[k]` etc.).
+    // `cpu::Atom` uses the LAMMPS per-atom layout. Scatter via the
+    // `add_*` helpers, which look up the owner atom's local row via the
+    // tag→local `map`. Atoms-block was filled above with default tags
+    // (tag[i] == i) or molrs-supplied tags; populate the map before
+    // scattering.
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, frame.atoms.nlocal);
     {
         const int nb = static_cast<int>(molrs::frame_block_nrows(src, "bonds"));
         if (nb > 0) {
-            frame.bonds.atomi = read_topology_column(src, "bonds", "atomi", nb);
-            frame.bonds.atomj = read_topology_column(src, "bonds", "atomj", nb);
-            frame.bonds.type = read_topology_column(src, "bonds", "type", nb);
+            auto atomi = read_topology_column(src, "bonds", "atomi", nb);
+            auto atomj = read_topology_column(src, "bonds", "atomj", nb);
+            auto btype = read_topology_column(src, "bonds", "type", nb);
+            for (int k = 0; k < nb; ++k) {
+                frame.atoms.add_bond(static_cast<std::int64_t>(atomi[k]),
+                                     static_cast<std::int64_t>(atomj[k]),
+                                     btype[k]);
+            }
         }
     }
     {
         const int na =
             static_cast<int>(molrs::frame_block_nrows(src, "angles"));
         if (na > 0) {
-            frame.angles.atomi =
-                read_topology_column(src, "angles", "atomi", na);
-            frame.angles.atomj =
-                read_topology_column(src, "angles", "atomj", na);
-            frame.angles.atomk =
-                read_topology_column(src, "angles", "atomk", na);
-            frame.angles.type = read_topology_column(src, "angles", "type", na);
+            auto atomi = read_topology_column(src, "angles", "atomi", na);
+            auto atomj = read_topology_column(src, "angles", "atomj", na);
+            auto atomk = read_topology_column(src, "angles", "atomk", na);
+            auto atype = read_topology_column(src, "angles", "type", na);
+            for (int k = 0; k < na; ++k) {
+                frame.atoms.add_angle(static_cast<std::int64_t>(atomi[k]),
+                                      static_cast<std::int64_t>(atomj[k]),
+                                      static_cast<std::int64_t>(atomk[k]),
+                                      atype[k]);
+            }
         }
     }
     {
         const int nd =
             static_cast<int>(molrs::frame_block_nrows(src, "dihedrals"));
         if (nd > 0) {
-            frame.dihedrals.atomi =
-                read_topology_column(src, "dihedrals", "atomi", nd);
-            frame.dihedrals.atomj =
-                read_topology_column(src, "dihedrals", "atomj", nd);
-            frame.dihedrals.atomk =
-                read_topology_column(src, "dihedrals", "atomk", nd);
-            frame.dihedrals.atoml =
-                read_topology_column(src, "dihedrals", "atoml", nd);
-            frame.dihedrals.type =
-                read_topology_column(src, "dihedrals", "type", nd);
+            auto atomi = read_topology_column(src, "dihedrals", "atomi", nd);
+            auto atomj = read_topology_column(src, "dihedrals", "atomj", nd);
+            auto atomk = read_topology_column(src, "dihedrals", "atomk", nd);
+            auto atoml = read_topology_column(src, "dihedrals", "atoml", nd);
+            auto dtype = read_topology_column(src, "dihedrals", "type", nd);
+            for (int k = 0; k < nd; ++k) {
+                frame.atoms.add_dihedral(static_cast<std::int64_t>(atomi[k]),
+                                         static_cast<std::int64_t>(atomj[k]),
+                                         static_cast<std::int64_t>(atomk[k]),
+                                         static_cast<std::int64_t>(atoml[k]),
+                                         dtype[k]);
+            }
         }
     }
+    // Build 1-2 / 1-3 / 1-4 special-neighbor list once topology is in.
+    frame.atoms.build_special_list();
 
     // ── Optional simulation box (9 row-major H entries) ────────────────
     {

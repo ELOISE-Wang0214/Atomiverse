@@ -127,45 +127,74 @@ inline int resolve_tag(const DomainDecomposition* dd, int atom_tag) {
 /// tuple is partial on every rank.
 double compute_bonded_extension_local(const Frame& frame,
                                       const DomainDecomposition* dd) {
+    // Reads per-atom bonded topology from `frame.atoms` (was: flat
+    // bonds/angles/dihedrals blocks on Frame; those are deleted).
+    // Single-rank: `dd` may be null; we treat all atoms as locally
+    // resolvable. Multi-rank: `dd->tag_to_local` (still maintained by
+    // the old halo / migration path until full switchover) is the
+    // resolver — same semantics as before, just sourced from a
+    // different layout.
     double max_sq = 0.0;
+    const auto& a = frame.atoms;
 
-    const int nb = frame.bonds.size();
-    for (int k = 0; k < nb; ++k) {
-        const int i = resolve_tag(dd, frame.bonds.atomi[k]);
-        const int j = resolve_tag(dd, frame.bonds.atomj[k]);
-        if (i < 0 || j < 0)
-            continue;
-        max_sq = std::max(max_sq, pair_dist_sq(frame, i, j));
+    auto pair_d2 = [&](int i, int j) {
+        double dx = a.x[i] - a.x[j];
+        double dy = a.y[i] - a.y[j];
+        double dz = a.z[i] - a.z[j];
+        frame.box.min_image(dx, dy, dz);
+        return dx * dx + dy * dy + dz * dz;
+    };
+
+    auto resolve_via_dd = [&](std::int64_t tag) -> int {
+        if (dd == nullptr)
+            return static_cast<int>(tag);
+        auto it = dd->tag_to_local.find(tag);
+        return (it == dd->tag_to_local.end()) ? -1 : it->second;
+    };
+
+    for (int i_owner = 0; i_owner < a.nlocal; ++i_owner) {
+        const std::int64_t ti = a.tag[i_owner];
+        // Bonds: owner is the smaller-tag atom; partner stored in
+        // bond_atom[i][m].
+        const int nb = a.num_bond[i_owner];
+        for (int m = 0; m < nb; ++m) {
+            const int i = resolve_via_dd(ti);
+            const int j = resolve_via_dd(a.bond_atom(i_owner, m));
+            if (i < 0 || j < 0)
+                continue;
+            max_sq = std::max(max_sq, pair_d2(i, j));
+        }
+        // Angles: center atom owns; non-center partners are
+        // (angle_atom(i, 2m), angle_atom(i, 2m+1)).
+        const int na = a.num_angle[i_owner];
+        for (int m = 0; m < na; ++m) {
+            const int j = resolve_via_dd(ti); // center
+            const int i = resolve_via_dd(a.angle_atom(i_owner, 2 * m + 0));
+            const int k = resolve_via_dd(a.angle_atom(i_owner, 2 * m + 1));
+            if (i < 0 || j < 0 || k < 0)
+                continue;
+            max_sq = std::max(max_sq, pair_d2(i, j));
+            max_sq = std::max(max_sq, pair_d2(j, k));
+            max_sq = std::max(max_sq, pair_d2(i, k));
+        }
+        // Dihedrals: atom-j owns; non-j partners are (i, k, l) at offsets
+        // 3m+0/1/2.
+        const int nd = a.num_dihedral[i_owner];
+        for (int m = 0; m < nd; ++m) {
+            const int j = resolve_via_dd(ti);
+            const int i = resolve_via_dd(a.dihedral_atom(i_owner, 3 * m + 0));
+            const int k = resolve_via_dd(a.dihedral_atom(i_owner, 3 * m + 1));
+            const int l = resolve_via_dd(a.dihedral_atom(i_owner, 3 * m + 2));
+            if (i < 0 || j < 0 || k < 0 || l < 0)
+                continue;
+            max_sq = std::max(max_sq, pair_d2(i, j));
+            max_sq = std::max(max_sq, pair_d2(i, k));
+            max_sq = std::max(max_sq, pair_d2(i, l));
+            max_sq = std::max(max_sq, pair_d2(j, k));
+            max_sq = std::max(max_sq, pair_d2(j, l));
+            max_sq = std::max(max_sq, pair_d2(k, l));
+        }
     }
-
-    const int na = frame.angles.size();
-    for (int k = 0; k < na; ++k) {
-        const int i = resolve_tag(dd, frame.angles.atomi[k]);
-        const int j = resolve_tag(dd, frame.angles.atomj[k]);
-        const int m = resolve_tag(dd, frame.angles.atomk[k]);
-        if (i < 0 || j < 0 || m < 0)
-            continue;
-        max_sq = std::max(max_sq, pair_dist_sq(frame, i, j));
-        max_sq = std::max(max_sq, pair_dist_sq(frame, j, m));
-        max_sq = std::max(max_sq, pair_dist_sq(frame, i, m));
-    }
-
-    const int nd = frame.dihedrals.size();
-    for (int k = 0; k < nd; ++k) {
-        const int i = resolve_tag(dd, frame.dihedrals.atomi[k]);
-        const int j = resolve_tag(dd, frame.dihedrals.atomj[k]);
-        const int m = resolve_tag(dd, frame.dihedrals.atomk[k]);
-        const int l = resolve_tag(dd, frame.dihedrals.atoml[k]);
-        if (i < 0 || j < 0 || m < 0 || l < 0)
-            continue;
-        max_sq = std::max(max_sq, pair_dist_sq(frame, i, j));
-        max_sq = std::max(max_sq, pair_dist_sq(frame, i, m));
-        max_sq = std::max(max_sq, pair_dist_sq(frame, i, l));
-        max_sq = std::max(max_sq, pair_dist_sq(frame, j, m));
-        max_sq = std::max(max_sq, pair_dist_sq(frame, j, l));
-        max_sq = std::max(max_sq, pair_dist_sq(frame, m, l));
-    }
-
     return (max_sq > 0.0) ? std::sqrt(max_sq) : 0.0;
 }
 

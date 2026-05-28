@@ -3,10 +3,10 @@
 
 #include "atomiverse/cpu/potentials/angle_harmonic.h"
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/md/mpi/domain.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -36,23 +36,17 @@ void AngleHarmonic::build(const BuildContext& ctx) {
 
 void AngleHarmonic::compute(const LaunchContext& ctx) {
     auto& f = ctx.frame;
-    const int n_angles = static_cast<int>(f.angles.atomi.size());
-    if (n_angles == 0)
+    auto& a = f.atoms;
+    const int nlocal = a.nlocal;
+
+    // Quick exit if no angles anywhere.
+    int max_na = 0;
+    for (int i = 0; i < nlocal; ++i)
+        max_na = std::max(max_na, a.num_angle[i]);
+    if (max_na == 0)
         return;
 
-    const auto* dd = ctx.runtime.dd;
-    const bool multi_rank = (dd != nullptr) && (ctx.runtime.mpi_size > 1);
-    int n_atoms = multi_rank ? (dd->n_local + dd->n_ghost) : f.atoms.size();
-
-    // Owner-tag rule for angle (i,j,k): centre atom j. LAMMPS convention.
-    const auto& owned =
-        select_owned_tuples(ctx, n_angles, [&](int a) -> std::int64_t {
-            return static_cast<std::int64_t>(f.angles.atomj[a]);
-        });
-    const int n_work = static_cast<int>(owned.size());
-    if (n_work == 0)
-        return;
-
+    const int n_atoms = a.n_total();
     double energy_total = 0;
     // Angle virial: Σ_atoms r_α · F_β = d_ji_α · F_i_β + d_jk_α · F_k_β
     // (centre-atom force F_j = -(F_i + F_k) drops out by Newton's 3rd).
@@ -73,35 +67,27 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
         std::fill(fyt.begin(), fyt.begin() + n_atoms, double(0));
         std::fill(fzt.begin(), fzt.begin() + n_atoms, double(0));
 
-        // Pointer hoist: drop xtensor's strided indexing on every access.
-        const double* __restrict x_ptr = f.atoms.x.data();
-        const double* __restrict y_ptr = f.atoms.y.data();
-        const double* __restrict z_ptr = f.atoms.z.data();
+        const double* __restrict x_ptr = a.x.data();
+        const double* __restrict y_ptr = a.y.data();
+        const double* __restrict z_ptr = a.z.data();
 
+        // LAMMPS-style per-atom iteration: each owned atom `j` (center)
+        // owns the angles where it sits in the middle. The two non-center
+        // partners (i, k) are stored at angle_atom(j, 2*m + 0/1).
 #pragma omp for schedule(static)
-        for (int ia = 0; ia < n_work; ++ia) {
-            const int a = owned[static_cast<std::size_t>(ia)];
-            int i = f.angles.atomi[a];
-            int j = f.angles.atomj[a]; // center atom
-            int k = f.angles.atomk[a];
-            int type = f.angles.type[a];
-
-            // Multi-rank: angles.atom{i,j,k} store global tags. Owner =
-            // rank holding centre atom (j). Skip if not owned, or if any
-            // of the three atoms is beyond this rank's halo skin.
-            if (multi_rank) {
-                auto it_j = dd->tag_to_local.find(static_cast<std::int64_t>(j));
-                if (it_j == dd->tag_to_local.end())
+        for (int j_owner = 0; j_owner < nlocal; ++j_owner) {
+            const int na = a.num_angle[j_owner];
+            const int j = j_owner;
+            for (int m = 0; m < na; ++m) {
+                const std::int64_t ti = a.angle_atom(j, 2 * m + 0);
+                const std::int64_t tk = a.angle_atom(j, 2 * m + 1);
+                auto it_i = a.map.find(ti);
+                auto it_k = a.map.find(tk);
+                if (it_i == a.map.end() || it_k == a.map.end())
                     continue;
-                auto it_i = dd->tag_to_local.find(static_cast<std::int64_t>(i));
-                auto it_k = dd->tag_to_local.find(static_cast<std::int64_t>(k));
-                if (it_i == dd->tag_to_local.end()
-                    || it_k == dd->tag_to_local.end())
-                    continue;
-                i = it_i->second;
-                j = it_j->second;
-                k = it_k->second;
-            }
+                const int i = it_i->second;
+                const int k = it_k->second;
+                const int type = a.angle_type(j, m);
 
             // Pack the angle tuple's positions into stack-resident triples
             // (B.3): three contiguous loads per atom feed the math below
@@ -179,7 +165,8 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
             v_xy += dx_ji * fi_y + dx_jk * fk_y;
             v_xz += dx_ji * fi_z + dx_jk * fk_z;
             v_yz += dy_ji * fi_z + dy_jk * fk_z;
-        }
+            }  // for m (per-atom angle entry)
+        }      // for j_owner (per-atom)
 
 #pragma omp for schedule(static)
         for (int i = 0; i < n_atoms; ++i) {

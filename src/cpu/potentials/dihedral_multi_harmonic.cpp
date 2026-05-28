@@ -3,10 +3,10 @@
 
 #include "atomiverse/cpu/potentials/dihedral_multi_harmonic.h"
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/md/mpi/domain.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -45,23 +45,16 @@ void DihedralMultiHarmonic::build(const BuildContext& ctx) {
 
 void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
     auto& f = ctx.frame;
-    const int n_dihedrals = static_cast<int>(f.dihedrals.atomi.size());
-    if (n_dihedrals == 0)
+    auto& a = f.atoms;
+    const int nlocal = a.nlocal;
+
+    int max_nd = 0;
+    for (int i = 0; i < nlocal; ++i)
+        max_nd = std::max(max_nd, a.num_dihedral[i]);
+    if (max_nd == 0)
         return;
 
-    const auto* dd = ctx.runtime.dd;
-    const bool multi_rank = (dd != nullptr) && (ctx.runtime.mpi_size > 1);
-    int n_atoms = multi_rank ? (dd->n_local + dd->n_ghost) : f.atoms.size();
-
-    // Owner-tag rule for dihedral (i,j,k,l): 2nd atom (j). LAMMPS convention.
-    const auto& owned =
-        select_owned_tuples(ctx, n_dihedrals, [&](int d) -> std::int64_t {
-            return static_cast<std::int64_t>(f.dihedrals.atomj[d]);
-        });
-    const int n_work = static_cast<int>(owned.size());
-    if (n_work == 0)
-        return;
-
+    const int n_atoms = a.n_total();
     double energy_total = 0;
     // Dihedral virial: rewriting Σ_atoms r_α·F_β with r_i2 as reference
     // (and Newton's 3rd F_i2 = -(F_i1+F_i3+F_i4)) gives
@@ -84,39 +77,31 @@ void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
         std::fill(fyt.begin(), fyt.begin() + n_atoms, double(0));
         std::fill(fzt.begin(), fzt.begin() + n_atoms, double(0));
 
-        // Pointer hoist: drop xtensor's strided indexing on every access.
-        const double* __restrict x_ptr = f.atoms.x.data();
-        const double* __restrict y_ptr = f.atoms.y.data();
-        const double* __restrict z_ptr = f.atoms.z.data();
+        const double* __restrict x_ptr = a.x.data();
+        const double* __restrict y_ptr = a.y.data();
+        const double* __restrict z_ptr = a.z.data();
 
+        // LAMMPS-style per-atom iteration: each owned atom `j` (the 2nd
+        // atom of the i-j-k-l quadruple) owns its dihedrals. Partners
+        // (i, k, l) stored at dihedral_atom(j, 3*m + 0/1/2).
 #pragma omp for schedule(static)
-        for (int id = 0; id < n_work; ++id) {
-            const int d = owned[static_cast<std::size_t>(id)];
-            int i1 = f.dihedrals.atomi[d];
-            int i2 = f.dihedrals.atomj[d];
-            int i3 = f.dihedrals.atomk[d];
-            int i4 = f.dihedrals.atoml[d];
-            int type = f.dihedrals.type[d];
-
-            // Multi-rank: dihedrals.atom{i,j,k,l} store global tags. Owner
-            // = rank holding the 2nd atom (j). Skip if not owned, or if
-            // any of the four atoms is beyond this rank's halo skin.
-            if (multi_rank) {
-                auto it2 = dd->tag_to_local.find(static_cast<std::int64_t>(i2));
-                if (it2 == dd->tag_to_local.end())
+        for (int j_owner = 0; j_owner < nlocal; ++j_owner) {
+            const int nd = a.num_dihedral[j_owner];
+            const int i2 = j_owner;
+            for (int m = 0; m < nd; ++m) {
+                const std::int64_t ti = a.dihedral_atom(j_owner, 3 * m + 0);
+                const std::int64_t tk = a.dihedral_atom(j_owner, 3 * m + 1);
+                const std::int64_t tl = a.dihedral_atom(j_owner, 3 * m + 2);
+                auto it_i = a.map.find(ti);
+                auto it_k = a.map.find(tk);
+                auto it_l = a.map.find(tl);
+                if (it_i == a.map.end() || it_k == a.map.end() ||
+                    it_l == a.map.end())
                     continue;
-                auto it1 = dd->tag_to_local.find(static_cast<std::int64_t>(i1));
-                auto it3 = dd->tag_to_local.find(static_cast<std::int64_t>(i3));
-                auto it4 = dd->tag_to_local.find(static_cast<std::int64_t>(i4));
-                if (it1 == dd->tag_to_local.end()
-                    || it3 == dd->tag_to_local.end()
-                    || it4 == dd->tag_to_local.end())
-                    continue;
-                i1 = it1->second;
-                i2 = it2->second;
-                i3 = it3->second;
-                i4 = it4->second;
-            }
+                const int i1 = it_i->second;
+                const int i3 = it_k->second;
+                const int i4 = it_l->second;
+                const int type = a.dihedral_type(j_owner, m);
 
             // Pack the dihedral tuple's positions into stack-resident triples
             // (B.3): four contiguous loads per atom let the compiler keep all
@@ -261,7 +246,8 @@ void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
             v_xy += -b1x * f1y + b2x * (f3y + f4y) + b3x * f4y;
             v_xz += -b1x * f1z + b2x * (f3z + f4z) + b3x * f4z;
             v_yz += -b1y * f1z + b2y * (f3z + f4z) + b3y * f4z;
-        }
+            }  // for m (per-atom dihedral entry)
+        }      // for j_owner
 
 #pragma omp for schedule(static)
         for (int i = 0; i < n_atoms; ++i) {
