@@ -101,12 +101,12 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     /// @brief Compile the Plan after installing infrastructure and
     /// validating the required role + capability set.
     ///
-    /// Order: `install_infra()` first (so auto-injected components are
+    /// Order: `install_defaults()` first (so auto-injected components are
     /// visible to validation and the compiled Plan), `validate_components()`
     /// second (so the auto-injected set counts toward role/capability
     /// requirements), `Base::build()` last.
     void build() {
-        install_infra();
+        install_defaults();
         validate_components();
         Base::build();
     }
@@ -120,12 +120,12 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     /// before `validate_components()` so the auto-injected set counts
     /// toward validation.
     /// @see .claude/specs/driver-infra-auto-injection.md
-    virtual void install_infra() {}
+    virtual void install_defaults() {}
 
     /// @brief Subclass hook — validate the component set and throw on
     /// missing roles / capabilities. Called *before* the Plan is built,
     /// so `this->pending_` still carries the registered components
-    /// (including any auto-injected by `install_infra()`).
+    /// (including any auto-injected by `install_defaults()`).
     virtual void validate_components() const = 0;
 
     /// @brief Walk every (component, phase, order) pending binding.
@@ -294,9 +294,9 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     }
 
   protected:
-    // ── Infrastructure scan (subclass install_infra() only) ──────────
+    // ── Infrastructure scan (subclass install_defaults() only) ──────────
 
-    /// @brief Aggregate of pending-component facts that `install_infra()`
+    /// @brief Aggregate of pending-component facts that `install_defaults()`
     /// uses to decide what to auto-inject and what to throw about. Single
     /// pass over `pending_` populates everything.
     struct InfraScan {
@@ -310,7 +310,7 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
             pair_evaluator_cutoff; ///< Set when the above is a `PairEvaluator`.
     };
 
-    /// @brief Walk the pending list once, collect everything install_infra
+    /// @brief Walk the pending list once, collect everything install_defaults
     /// rules might need.
     InfraScan scan_pending_infra_() const {
         InfraScan s;

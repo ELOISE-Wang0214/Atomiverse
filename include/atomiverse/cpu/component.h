@@ -78,7 +78,7 @@ class ComponentBase {
     ///
     /// Mirrors `capabilities()` (which is "what I write") on the
     /// consumer side. The CPU category drivers use this in
-    /// `install_infra()` to auto-provide canonical providers for
+    /// `install_defaults()` to auto-provide canonical providers for
     /// otherwise-unmet read requirements (e.g. `NoseHooverNPT::reads()
     /// == Stress` triggers auto-injection of `VirialStress`). Defaults
     /// to `None` — most components read implicit frame fields

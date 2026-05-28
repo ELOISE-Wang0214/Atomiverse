@@ -228,7 +228,7 @@ class NoseHooverNPT : public cpu::ComponentBase {
     ComponentRole role() const override { return ComponentRole::Integrator; }
     /// @brief Reads the kinetic-stress component of `frame.stress` to
     /// compute the internal pressure feedback. Triggers auto-injection
-    /// of `VirialStress` in `MD::install_infra()` when no canonical
+    /// of `VirialStress` in `MD::install_defaults()` when no canonical
     /// stress provider is otherwise registered.
     Capability reads() const override { return Capability::Stress; }
     std::vector<DefaultBinding> default_bindings() const override {

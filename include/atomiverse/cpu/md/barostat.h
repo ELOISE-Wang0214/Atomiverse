@@ -90,7 +90,7 @@ class Barostat : public cpu::ComponentBase {
     ComponentRole role() const override { return ComponentRole::Barostat; }
     /// @brief Reads `frame.stress` to derive internal pressure for
     /// the rescaling factor `μ`. Triggers auto-injection of
-    /// `VirialStress` in `MD::install_infra()` when no canonical
+    /// `VirialStress` in `MD::install_defaults()` when no canonical
     /// stress provider is otherwise registered.
     Capability reads() const override { return Capability::Stress; }
     std::vector<DefaultBinding> default_bindings() const override {

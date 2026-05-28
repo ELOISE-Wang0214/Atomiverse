@@ -67,7 +67,7 @@ class Minimize : public OptimizeDriver {
     }
 
   protected:
-    void install_infra() override {
+    void install_defaults() override {
         const auto s = this->scan_pending_infra_();
         this->throw_if_missing_neighbor_list_(
             s, "Minimize",

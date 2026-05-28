@@ -27,7 +27,7 @@ namespace md {
 /// in the constructor, exposes a LAMMPS-shaped categorical setter API
 /// (set_pair, set_bond, set_neighbor, set_integrator, set_thermostat,
 /// set_barostat, set_observer, set_record, set_thermo — the first six
-/// are inherited from CPUDriver), and runs `install_infra()` at `build()`
+/// are inherited from CPUDriver), and runs `install_defaults()` at `build()`
 /// time to derive opt-in infrastructure from declared component requirements:
 ///
 ///   - Stress capability dependency → auto-injects `VirialStress`
@@ -147,7 +147,7 @@ class MD : public DynamicsDriver {
     }
 
   protected:
-    void install_infra() override {
+    void install_defaults() override {
         const auto s = this->scan_pending_infra_();
 
         if (s.needs_stress && !s.has_virial_stress)
@@ -172,7 +172,7 @@ class MD : public DynamicsDriver {
             // `frame.atoms.size()`). Callers running with a custom NL
             // skin > 10% of cutoff should register
             // `HaloExchangeForward{halo_cut}` explicitly before the
-            // pair evaluator — `install_infra` will see an existing
+            // pair evaluator — `install_defaults` will see an existing
             // halo and skip the auto-inject.
             const double halo_cut =
                 1.1 * static_cast<double>(*s.pair_evaluator_cutoff);
