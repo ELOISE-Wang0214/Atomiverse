@@ -159,6 +159,7 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/atom.cpp
         src/cpu/backend.cpp
         src/cpu/box.cpp
+        src/cpu/domain.cpp
         src/cpu/materialize.cpp
         src/cpu/driver.cpp
         src/cpu/analysis_executor.cpp
