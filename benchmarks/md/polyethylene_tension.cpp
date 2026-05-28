@@ -749,7 +749,20 @@ class CsvRecorder : public cpu::ComponentBase {
                 << "," << f.scalars.energy_dihedral << ","
                 << f.scalars.kinetic << "," << f.box(0, 0) << ","
                 << f.box(1, 1) << "," << f.box(2, 2) << ","
-                << f.scalars.conserved << "\n";
+                << f.scalars.conserved;
+#ifdef ATV_HAS_MPI
+            if (ctx.runtime.dd) {
+                row << "," << ctx.runtime.dd->neighbor_generation
+                    << "," << ctx.runtime.dd->halo_generation
+                    << "," << ctx.runtime.dd->n_local
+                    << "," << ctx.runtime.dd->n_ghost;
+            } else {
+                row << ",0,0,0,0";
+            }
+#else
+            row << ",0,0,0,0";
+#endif
+            row << "\n";
             (*thermo_) << row.str();
             thermo_->flush();
         }
@@ -1374,6 +1387,17 @@ int main(int argc, char** argv) {
                          "[ckpt] loaded %d atoms from %s; starting at "
                          "stage %d\n",
                          n_loaded, ckpt_load_path.c_str(), ckpt_load_stage);
+        // ZarrReader permutes `frame.atoms.tag[]` to reflect the Zarr
+        // dump's atom ordering, but the per-atom topology arrays
+        // (num_bond, bond_atom, ...) are still aligned to the original
+        // lammps_data row order. Reshuffle to put each row's topology
+        // back next to its atom-tag.
+        frame.atoms.reshuffle_topology_to_tags();
+        // Rebuild the special-neighbor list (BFS depends on the
+        // bond graph having been reshuffled into place first).
+        frame.atoms.map_clear();
+        frame.atoms.map_set(0, frame.atoms.nlocal);
+        frame.atoms.build_special_list();
     }
 
     const int n_atoms = frame.atoms.size();
@@ -1393,7 +1417,8 @@ int main(int argc, char** argv) {
             thermo_csv
                 << "step,stage,T_target_K,T_K,P_bar,Pxx,Pyy,Pzz,E_pot_eV,"
                    "E_pair_eV,E_bond_eV,E_angle_eV,E_dihedral_eV,E_kin_eV,"
-                   "box_x,box_y,box_z,conserved_eV\n";
+                   "box_x,box_y,box_z,conserved_eV,neighbor_gen,halo_gen,"
+                   "n_local,n_ghost\n";
         }
         if (stress_csv.is_open()) {
             stress_csv << "step,stage,strain,sigma_xx_eV_per_A3,sigma_xx_GPa\n";

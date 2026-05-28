@@ -3,6 +3,7 @@
 
 #include "atomiverse/cpu/potentials/bond_harmonic.h"
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/cpu/md/mpi/domain.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -38,6 +39,21 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
     auto& f = ctx.frame;
     auto& a = f.atoms;
     const int nlocal = a.nlocal;
+
+    // Resolve partner tag → local row index. Multi-rank: use the
+    // canonical `dd->tag_to_local` (populated by HaloExchangeForward
+    // every borders pass — includes both owners and ghosts).
+    // Single-rank: use `atom.map` (populated by materialize).
+    const auto* dd = ctx.runtime.dd;
+    const bool multi_rank = (dd != nullptr) && (ctx.runtime.mpi_size > 1);
+    auto resolve = [&](std::int64_t tag) -> int {
+        if (multi_rank) {
+            auto it = dd->tag_to_local.find(tag);
+            return (it == dd->tag_to_local.end()) ? -1 : it->second;
+        }
+        auto it = a.map.find(tag);
+        return (it == a.map.end()) ? -1 : it->second;
+    };
 
     // Bond virial accumulators (Voigt xx yy zz xy xz yz). Stiff bonds
     // contribute significantly to the stress tensor; without this the
@@ -84,11 +100,10 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
             const int nb = a.num_bond[i];
             for (int m = 0; m < nb; ++m) {
                 const std::int64_t partner_tag = a.bond_atom(i, m);
-                auto it = a.map.find(partner_tag);
-                if (it == a.map.end())
+                const int j = resolve(partner_tag);
+                if (j < 0)
                     continue; // partner not on this rank — dropped silently
                               // (should not happen if halo cutoff is correct)
-                const int j = it->second;
                 const int type = a.bond_type(i, m);
 
                 const double ri[3] = {x_ptr[i], y_ptr[i], z_ptr[i]};

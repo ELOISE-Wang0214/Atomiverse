@@ -3,6 +3,7 @@
 
 #include "atomiverse/cpu/potentials/dihedral_multi_harmonic.h"
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/cpu/md/mpi/domain.h"
 
 #include <algorithm>
 #include <cmath>
@@ -54,6 +55,17 @@ void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
     if (max_nd == 0)
         return;
 
+    const auto* dd = ctx.runtime.dd;
+    const bool multi_rank = (dd != nullptr) && (ctx.runtime.mpi_size > 1);
+    auto resolve = [&](std::int64_t tag) -> int {
+        if (multi_rank) {
+            auto it = dd->tag_to_local.find(tag);
+            return (it == dd->tag_to_local.end()) ? -1 : it->second;
+        }
+        auto it = a.map.find(tag);
+        return (it == a.map.end()) ? -1 : it->second;
+    };
+
     const int n_atoms = a.n_total();
     double energy_total = 0;
     // Dihedral virial: rewriting Σ_atoms r_α·F_β with r_i2 as reference
@@ -92,15 +104,11 @@ void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
                 const std::int64_t ti = a.dihedral_atom(j_owner, 3 * m + 0);
                 const std::int64_t tk = a.dihedral_atom(j_owner, 3 * m + 1);
                 const std::int64_t tl = a.dihedral_atom(j_owner, 3 * m + 2);
-                auto it_i = a.map.find(ti);
-                auto it_k = a.map.find(tk);
-                auto it_l = a.map.find(tl);
-                if (it_i == a.map.end() || it_k == a.map.end() ||
-                    it_l == a.map.end())
+                const int i1 = resolve(ti);
+                const int i3 = resolve(tk);
+                const int i4 = resolve(tl);
+                if (i1 < 0 || i3 < 0 || i4 < 0)
                     continue;
-                const int i1 = it_i->second;
-                const int i3 = it_k->second;
-                const int i4 = it_l->second;
                 const int type = a.dihedral_type(j_owner, m);
 
             // Pack the dihedral tuple's positions into stack-resident triples

@@ -19,6 +19,7 @@
 #include <numeric>
 #include <vector>
 
+#include "atomiverse/cpu/comm/atom_pack.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/mpi/domain.h"
 
@@ -35,18 +36,14 @@ namespace mpi {
 
 namespace {
 
-// Per-atom payload layout (must stay in sync between pack and unpack).
-//   doubles: x, y, z, vx, vy, vz, fx, fy, fz, mass        (10)
-//   int32:   type                                          (1)
-//   int64:   tag                                           (1)
-//   int8:    image[3]                                      (3)
-constexpr int kPayloadDoubles = 10;
-constexpr int kPayloadInt32 = 1;
-constexpr int kPayloadInt64 = 1;
-constexpr int kPayloadInt8 = 3;
-constexpr int kAtomPayloadBytes =
-    sizeof(double) * kPayloadDoubles + sizeof(std::int32_t) * kPayloadInt32
-    + sizeof(std::int64_t) * kPayloadInt64 + sizeof(std::int8_t) * kPayloadInt8;
+// Per-atom payload layout: worst-case fixed-size dump from
+// `comm::pack_exchange`. Carries all SoA fields plus per-atom topology
+// (num_bond + bond_atom + bond_type + angles + dihedrals + nspecial +
+// special). Atoms with fewer bonds than the max simply leave the
+// trailing slots zero-padded — receiver reads `num_bond` first and
+// only consumes that many partner entries.
+constexpr int kAtomPayloadDoubles = comm::kMaxExchangeDoubles;
+constexpr int kAtomPayloadBytes = sizeof(double) * kAtomPayloadDoubles;
 
 inline int rank_along_dim(double q, double L, int dims_d) {
     if (dims_d <= 1)
@@ -100,87 +97,74 @@ inline int dest_rank_for(const DomainDecomposition& dd, double x, double y,
     return cx * (dd.dims[1] * dd.dims[2]) + cy * dd.dims[2] + cz;
 }
 
-// Pack one atom's per-atom fields into `buf` at `offset`. Returns the new
-// offset after writing `kAtomPayloadBytes` bytes.
+// Pack one atom (full SoA + per-atom topology) into `buf` at `offset`.
+// Delegates to `comm::pack_exchange` for the payload layout; pads with
+// zeros up to the worst-case `kAtomPayloadDoubles` so every atom
+// occupies the same byte count on the wire (atom_migration's
+// `MPI_Alltoallv` needs uniform per-atom strides).
 std::size_t pack_atom(std::vector<char>& buf, std::size_t offset,
                       const Frame& frame, int i) {
-    char* p = buf.data() + offset;
-    const double dvals[kPayloadDoubles] = {
-        frame.atoms.x[i],    frame.atoms.y[i],  frame.atoms.z[i],
-        frame.atoms.vx[i],   frame.atoms.vy[i], frame.atoms.vz[i],
-        frame.atoms.fx[i],   frame.atoms.fy[i], frame.atoms.fz[i],
-        frame.atoms.mass[i],
-    };
-    std::memcpy(p, dvals, sizeof(dvals));
-    p += sizeof(dvals);
-    const std::int32_t typ = static_cast<std::int32_t>(frame.atoms.type[i]);
-    std::memcpy(p, &typ, sizeof(typ));
-    p += sizeof(typ);
-    const std::int64_t tag = frame.atoms.tag[i];
-    std::memcpy(p, &tag, sizeof(tag));
-    p += sizeof(tag);
-    const std::int8_t img[3] = {
-        frame.atoms.image(i, 0),
-        frame.atoms.image(i, 1),
-        frame.atoms.image(i, 2),
-    };
-    std::memcpy(p, img, sizeof(img));
+    // pack_exchange writes between min and kMaxExchangeDoubles doubles.
+    double* dst = reinterpret_cast<double*>(buf.data() + offset);
+    // Zero-pad the slot first so the trailing topology entries don't
+    // carry stale data.
+    std::memset(dst, 0, kAtomPayloadBytes);
+    comm::pack_exchange(frame.atoms, i, dst);
     return offset + kAtomPayloadBytes;
 }
 
-// Unpack one atom's per-atom fields into local frame slot `slot`. Returns
-// the source offset after reading `kAtomPayloadBytes` bytes.
 std::size_t unpack_atom(const std::vector<char>& buf, std::size_t offset,
                         Frame& frame, int slot) {
-    const char* p = buf.data() + offset;
-    double dvals[kPayloadDoubles];
-    std::memcpy(dvals, p, sizeof(dvals));
-    p += sizeof(dvals);
-    frame.atoms.x[slot] = dvals[0];
-    frame.atoms.y[slot] = dvals[1];
-    frame.atoms.z[slot] = dvals[2];
-    frame.atoms.vx[slot] = dvals[3];
-    frame.atoms.vy[slot] = dvals[4];
-    frame.atoms.vz[slot] = dvals[5];
-    frame.atoms.fx[slot] = dvals[6];
-    frame.atoms.fy[slot] = dvals[7];
-    frame.atoms.fz[slot] = dvals[8];
-    frame.atoms.mass[slot] = dvals[9];
-    std::int32_t typ;
-    std::memcpy(&typ, p, sizeof(typ));
-    p += sizeof(typ);
-    frame.atoms.type[slot] = static_cast<int>(typ);
-    std::int64_t tag;
-    std::memcpy(&tag, p, sizeof(tag));
-    p += sizeof(tag);
-    frame.atoms.tag[slot] = tag;
-    std::int8_t img[3];
-    std::memcpy(img, p, sizeof(img));
-    frame.atoms.image(slot, 0) = img[0];
-    frame.atoms.image(slot, 1) = img[1];
-    frame.atoms.image(slot, 2) = img[2];
+    const double* src =
+        reinterpret_cast<const double*>(buf.data() + offset);
+    comm::unpack_exchange(frame.atoms, slot, src);
     return offset + kAtomPayloadBytes;
 }
 
-// Move owner row `oi` into slot `ni` (no-op when `oi == ni`).
+// Move owner row `oi` into slot `ni` (no-op when `oi == ni`). Handles
+// both SoA fields and per-atom topology.
 void move_row(Frame& frame, int ni, int oi) {
     if (ni == oi)
         return;
-    frame.atoms.x[ni] = frame.atoms.x[oi];
-    frame.atoms.y[ni] = frame.atoms.y[oi];
-    frame.atoms.z[ni] = frame.atoms.z[oi];
-    frame.atoms.vx[ni] = frame.atoms.vx[oi];
-    frame.atoms.vy[ni] = frame.atoms.vy[oi];
-    frame.atoms.vz[ni] = frame.atoms.vz[oi];
-    frame.atoms.fx[ni] = frame.atoms.fx[oi];
-    frame.atoms.fy[ni] = frame.atoms.fy[oi];
-    frame.atoms.fz[ni] = frame.atoms.fz[oi];
-    frame.atoms.mass[ni] = frame.atoms.mass[oi];
-    frame.atoms.type[ni] = frame.atoms.type[oi];
-    frame.atoms.tag[ni] = frame.atoms.tag[oi];
-    frame.atoms.image(ni, 0) = frame.atoms.image(oi, 0);
-    frame.atoms.image(ni, 1) = frame.atoms.image(oi, 1);
-    frame.atoms.image(ni, 2) = frame.atoms.image(oi, 2);
+    auto& a = frame.atoms;
+    a.x[ni] = a.x[oi];
+    a.y[ni] = a.y[oi];
+    a.z[ni] = a.z[oi];
+    a.vx[ni] = a.vx[oi];
+    a.vy[ni] = a.vy[oi];
+    a.vz[ni] = a.vz[oi];
+    a.fx[ni] = a.fx[oi];
+    a.fy[ni] = a.fy[oi];
+    a.fz[ni] = a.fz[oi];
+    a.mass[ni] = a.mass[oi];
+    a.charge[ni] = a.charge[oi];
+    a.type[ni] = a.type[oi];
+    a.tag[ni] = a.tag[oi];
+    a.image(ni, 0) = a.image(oi, 0);
+    a.image(ni, 1) = a.image(oi, 1);
+    a.image(ni, 2) = a.image(oi, 2);
+
+    // Per-atom topology — must follow the row.
+    a.num_bond(ni) = a.num_bond(oi);
+    for (int m = 0; m < cpu::Atom::kMaxBondPerAtom; ++m) {
+        a.bond_atom(ni, m) = a.bond_atom(oi, m);
+        a.bond_type(ni, m) = a.bond_type(oi, m);
+    }
+    a.num_angle(ni) = a.num_angle(oi);
+    for (int m = 0; m < 2 * cpu::Atom::kMaxAnglePerAtom; ++m)
+        a.angle_atom(ni, m) = a.angle_atom(oi, m);
+    for (int m = 0; m < cpu::Atom::kMaxAnglePerAtom; ++m)
+        a.angle_type(ni, m) = a.angle_type(oi, m);
+    a.num_dihedral(ni) = a.num_dihedral(oi);
+    for (int m = 0; m < 3 * cpu::Atom::kMaxDihedralPerAtom; ++m)
+        a.dihedral_atom(ni, m) = a.dihedral_atom(oi, m);
+    for (int m = 0; m < cpu::Atom::kMaxDihedralPerAtom; ++m)
+        a.dihedral_type(ni, m) = a.dihedral_type(oi, m);
+    a.nspecial(ni, 0) = a.nspecial(oi, 0);
+    a.nspecial(ni, 1) = a.nspecial(oi, 1);
+    a.nspecial(ni, 2) = a.nspecial(oi, 2);
+    for (int m = 0; m < cpu::Atom::kMaxSpecial; ++m)
+        a.special(ni, m) = a.special(oi, m);
 }
 
 } // namespace

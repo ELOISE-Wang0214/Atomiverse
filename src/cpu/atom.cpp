@@ -60,10 +60,14 @@ void Atom::grow(int target_nmax) {
     resize1d(charge);
     resize1d(type);
 
-    // `tag` is zero-initialised here; downstream materialization writes
-    // canonical tag values into [0, nlocal). LAMMPS-style: tag is owned
-    // by Atom::data_atoms (the data-file reader), not Atom::grow itself.
+    // tag default = identity (row index): preserves the legacy
+    // `cpu::Frame::Atoms` ctor invariant `tag(i) == i` so callers that
+    // skip materialize and write directly into [0, nlocal) still get
+    // sensible tags. Downstream `materialize` / `unpack_*` overwrite tag
+    // for rows they touch.
     resize1d(tag);
+    for (std::size_t i = static_cast<std::size_t>(nmax); i < n; ++i)
+        tag[i] = static_cast<std::int64_t>(i);
 
     resize2d(image, 3);
 
@@ -277,6 +281,97 @@ void Atom::build_special_list() {
             }
         }
         nspecial(i, 2) = n14;
+    }
+}
+
+void Atom::reshuffle_topology_to_tags() {
+    // Snapshot the current per-atom topology, indexed by row.
+    const int n = nlocal;
+    std::vector<int> snap_num_bond(static_cast<std::size_t>(n));
+    std::vector<int> snap_num_angle(static_cast<std::size_t>(n));
+    std::vector<int> snap_num_dihedral(static_cast<std::size_t>(n));
+    std::vector<std::int64_t> snap_bond_atom(
+        static_cast<std::size_t>(n) * kMaxBondPerAtom);
+    std::vector<int> snap_bond_type(static_cast<std::size_t>(n)
+                                    * kMaxBondPerAtom);
+    std::vector<std::int64_t> snap_angle_atom(
+        static_cast<std::size_t>(n) * 2 * kMaxAnglePerAtom);
+    std::vector<int> snap_angle_type(static_cast<std::size_t>(n)
+                                     * kMaxAnglePerAtom);
+    std::vector<std::int64_t> snap_dihedral_atom(
+        static_cast<std::size_t>(n) * 3 * kMaxDihedralPerAtom);
+    std::vector<int> snap_dihedral_type(static_cast<std::size_t>(n)
+                                        * kMaxDihedralPerAtom);
+    std::vector<int> snap_nspecial(static_cast<std::size_t>(n) * 3);
+    std::vector<std::int64_t> snap_special(static_cast<std::size_t>(n)
+                                           * kMaxSpecial);
+
+    for (int i = 0; i < n; ++i) {
+        snap_num_bond[static_cast<std::size_t>(i)] = num_bond[i];
+        snap_num_angle[static_cast<std::size_t>(i)] = num_angle[i];
+        snap_num_dihedral[static_cast<std::size_t>(i)] = num_dihedral[i];
+        for (int m = 0; m < kMaxBondPerAtom; ++m) {
+            snap_bond_atom[static_cast<std::size_t>(i) * kMaxBondPerAtom + m] =
+                bond_atom(i, m);
+            snap_bond_type[static_cast<std::size_t>(i) * kMaxBondPerAtom + m] =
+                bond_type(i, m);
+        }
+        for (int m = 0; m < 2 * kMaxAnglePerAtom; ++m)
+            snap_angle_atom[static_cast<std::size_t>(i) * 2 * kMaxAnglePerAtom
+                            + m] = angle_atom(i, m);
+        for (int m = 0; m < kMaxAnglePerAtom; ++m)
+            snap_angle_type[static_cast<std::size_t>(i) * kMaxAnglePerAtom + m] =
+                angle_type(i, m);
+        for (int m = 0; m < 3 * kMaxDihedralPerAtom; ++m)
+            snap_dihedral_atom[static_cast<std::size_t>(i) * 3
+                                   * kMaxDihedralPerAtom
+                               + m] = dihedral_atom(i, m);
+        for (int m = 0; m < kMaxDihedralPerAtom; ++m)
+            snap_dihedral_type[static_cast<std::size_t>(i) * kMaxDihedralPerAtom
+                               + m] = dihedral_type(i, m);
+        for (int m = 0; m < 3; ++m)
+            snap_nspecial[static_cast<std::size_t>(i) * 3 + m] =
+                nspecial(i, m);
+        for (int m = 0; m < kMaxSpecial; ++m)
+            snap_special[static_cast<std::size_t>(i) * kMaxSpecial + m] =
+                special(i, m);
+    }
+
+    // For each new row i, find the source row whose original atom-tag
+    // matches `tag[i]`. Since the snapshot was indexed by original row
+    // (and the populator assumed tag == row at populate time), the
+    // source row is just `tag[i]`.
+    for (int i = 0; i < n; ++i) {
+        const std::int64_t target_tag = tag[i];
+        if (target_tag < 0 || target_tag >= n) {
+            throw std::runtime_error(
+                "cpu::Atom::reshuffle_topology_to_tags: tag out of "
+                "range — caller must guarantee tag[0..nlocal) is a "
+                "permutation of [0, nlocal)");
+        }
+        const std::size_t src = static_cast<std::size_t>(target_tag);
+        num_bond[i] = snap_num_bond[src];
+        num_angle[i] = snap_num_angle[src];
+        num_dihedral[i] = snap_num_dihedral[src];
+        for (int m = 0; m < kMaxBondPerAtom; ++m) {
+            bond_atom(i, m) = snap_bond_atom[src * kMaxBondPerAtom + m];
+            bond_type(i, m) = snap_bond_type[src * kMaxBondPerAtom + m];
+        }
+        for (int m = 0; m < 2 * kMaxAnglePerAtom; ++m)
+            angle_atom(i, m) =
+                snap_angle_atom[src * 2 * kMaxAnglePerAtom + m];
+        for (int m = 0; m < kMaxAnglePerAtom; ++m)
+            angle_type(i, m) = snap_angle_type[src * kMaxAnglePerAtom + m];
+        for (int m = 0; m < 3 * kMaxDihedralPerAtom; ++m)
+            dihedral_atom(i, m) =
+                snap_dihedral_atom[src * 3 * kMaxDihedralPerAtom + m];
+        for (int m = 0; m < kMaxDihedralPerAtom; ++m)
+            dihedral_type(i, m) =
+                snap_dihedral_type[src * kMaxDihedralPerAtom + m];
+        for (int m = 0; m < 3; ++m)
+            nspecial(i, m) = snap_nspecial[src * 3 + m];
+        for (int m = 0; m < kMaxSpecial; ++m)
+            special(i, m) = snap_special[src * kMaxSpecial + m];
     }
 }
 

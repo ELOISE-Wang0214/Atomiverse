@@ -236,14 +236,23 @@ class Atom {
 
     /// @brief Build the 1-2 / 1-3 / 1-4 `nspecial` + `special` exclusion
     /// list by BFS over the per-atom bond graph.
-    ///
-    /// Result layout per atom `i`: `special(i, 0 .. nspecial(i,0))` are
-    /// 1-2 partner tags (direct bonds); `special(i, nspecial(i,0) ..
-    /// nspecial(i,1))` are 1-3; `special(i, nspecial(i,1) ..
-    /// nspecial(i,2))` are 1-4. Call after all bonds are added.
-    /// Single-rank assumption: the bond graph is locally complete (no
-    /// migration has happened yet).
     void build_special_list();
+
+    /// @brief Reorder per-atom topology rows to match the current `tag`
+    ///        permutation.
+    ///
+    /// Use case: a checkpoint loader (Zarr) overwrites `tag[i]` with a
+    /// permutation of `0..n-1` without touching the per-atom topology
+    /// arrays. After the load, row `i` holds atom-`tag[i]`'s state but
+    /// `num_bond[i] / bond_atom[i][m] / ...` still reflect what was
+    /// originally at row `i` (probably what was at atom-`i` if the
+    /// materializer assumed identity tags). This helper moves each
+    /// row's topology to wherever its tag now lives, so row `i`'s
+    /// topology again describes atom-`tag[i]`.
+    ///
+    /// Assumes `tag[0..nlocal)` is a permutation of `[0, nlocal)` —
+    /// i.e. tags are dense, 0-indexed, no gaps. Throws otherwise.
+    void reshuffle_topology_to_tags();
 };
 
 } // namespace cpu

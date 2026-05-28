@@ -3,6 +3,7 @@
 
 #include "atomiverse/cpu/potentials/angle_harmonic.h"
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/cpu/md/mpi/domain.h"
 
 #include <algorithm>
 #include <cmath>
@@ -46,6 +47,17 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
     if (max_na == 0)
         return;
 
+    const auto* dd = ctx.runtime.dd;
+    const bool multi_rank = (dd != nullptr) && (ctx.runtime.mpi_size > 1);
+    auto resolve = [&](std::int64_t tag) -> int {
+        if (multi_rank) {
+            auto it = dd->tag_to_local.find(tag);
+            return (it == dd->tag_to_local.end()) ? -1 : it->second;
+        }
+        auto it = a.map.find(tag);
+        return (it == a.map.end()) ? -1 : it->second;
+    };
+
     const int n_atoms = a.n_total();
     double energy_total = 0;
     // Angle virial: Σ_atoms r_α · F_β = d_ji_α · F_i_β + d_jk_α · F_k_β
@@ -81,12 +93,10 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
             for (int m = 0; m < na; ++m) {
                 const std::int64_t ti = a.angle_atom(j, 2 * m + 0);
                 const std::int64_t tk = a.angle_atom(j, 2 * m + 1);
-                auto it_i = a.map.find(ti);
-                auto it_k = a.map.find(tk);
-                if (it_i == a.map.end() || it_k == a.map.end())
+                const int i = resolve(ti);
+                const int k = resolve(tk);
+                if (i < 0 || k < 0)
                     continue;
-                const int i = it_i->second;
-                const int k = it_k->second;
                 const int type = a.angle_type(j, m);
 
             // Pack the angle tuple's positions into stack-resident triples
