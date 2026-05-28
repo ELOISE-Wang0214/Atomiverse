@@ -245,6 +245,49 @@ The remaining 5 tasks (#16 Layer D, #17 CUDA bridge, #18 delete old
 code, #19 MPI tests, #20 verification) all depend on this last
 debug, then the cleanup is mechanical.
 
+## Update — bug is NPT stage-transition, not Zarr-load
+
+Tested `--mode npt` WITHOUT `--ckpt-load-before` (stages 1→2 in-code,
+no Zarr involved). Stage 2 still breaks within 20 steps:
+T=0, E_kin=0, conserved=1.85e151. So the bug is NOT specific to
+Zarr — it's specific to the **stage-1 → stage-2 transition with
+NoseHooverNPT + per-atom topology + multi-rank**.
+
+In-code NVT stage 1 alone: works fine (T cooling, E_bond bounded).
+Stage transition into NPT stage 2: collapses.
+
+The per-stage driver rebuild flow:
+1. Stage 1 ends, `Backend::release_dd` extracts the dd state.
+2. Stage 2's `Backend::init` does `adopt_dd` to keep the partition.
+3. Backend's first `set_frame` for stage 2 sees `dd->n_local > 0`,
+   skips `partition_atoms`, just refreshes sublo/subhi.
+4. Components rebuild against existing dd.
+5. NoseHooverNPT new instance, first `launch()` runs.
+
+Hypotheses for what breaks the transition:
+- a) New `AtomMigration` instance's `last_observed_generation_` is
+     `~0`. With my pack_exchange-based pack/unpack and a generation
+     bump that already happened (from stage 1's halo/migration),
+     the first stage-2 launch might attempt a spurious migration
+     that ships uninitialised payload.
+- b) `compute_bonded_extension_local` in `HaloExchangeForward::build`
+     now iterates `dd->n_local` (commit just landed), which uses the
+     adopted dd's n_local. Should be correct.
+- c) NPT-specific: `NoseHooverNPT::build()` reads `atoms.size()`
+     (= 10000 always, my refactor unchanged it). For Q chain mass
+     calc it allreduces dd->n_local. But the integrator iteration
+     itself uses `owned_count(ctx)` → `dd->n_local` → correct.
+- d) Velocity scrambling: if stage transition somehow zeroes
+     velocities (which would explain T=0), KE is 0 and NPT's chain
+     diverges.
+
+The bug needs interactive debugging — instrument `NoseHooverNPT::build`
+and the first stage-2 `launch`, log `atom.vx[0..3]`, `dd->n_local`,
+and compare against single-rank reference.
+
+**Workaround for the user:** Hard-reset `git reset --hard d8eb8a9`
+to restore the pre-refactor working state.
+
 Commits `3ecefef`, `2a1c64a`, `5d8c777` landed the switchover on top of
 the scaffolding:
 
