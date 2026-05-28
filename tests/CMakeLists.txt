@@ -89,6 +89,7 @@ atv_add_cpp_test(test_cpu_md_pe_nvt               cpu/md/test_pe_nvt.cpp)
 atv_add_cpp_test(test_cpu_md_frame_tag_image      cpu/md/test_frame_tag_image.cpp)
 atv_add_cpp_test(test_cpu_md_domain_decomposition cpu/md/test_domain_decomposition.cpp)
 atv_add_cpp_test(test_cpu_md_mpi_stubs            cpu/md/test_mpi_stubs.cpp)
+atv_add_cpp_test(test_cpu_md_topology_resolved_locals cpu/md/test_topology_resolved_locals.cpp)
 atv_add_cpp_test(test_cpu_analysis_executor       cpu/test_analysis_executor.cpp)
 atv_add_cpp_test(test_cpu_snapshot_publisher      cpu/test_snapshot_publisher.cpp)
 atv_add_cpp_test(test_cpu_async_component_base    cpu/test_async_component_base.cpp)
@@ -149,6 +150,11 @@ if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
 
     atv_add_mpi_exec(test_mpi_npt_multirank mpi/test_npt_multirank.cpp)
     atv_add_mpi_run(test_mpi_npt_multirank_n8 test_mpi_npt_multirank 8)
+
+    atv_add_mpi_exec(test_mpi_nose_hoover_npt_multirank
+                     mpi/test_nose_hoover_npt_multirank.cpp)
+    atv_add_mpi_run(test_mpi_nose_hoover_npt_multirank_n8
+                    test_mpi_nose_hoover_npt_multirank 8)
 
     atv_add_mpi_exec(test_mpi_deform_multirank mpi/test_deform_multirank.cpp)
     atv_add_mpi_run(test_mpi_deform_multirank_n8 test_mpi_deform_multirank 8)

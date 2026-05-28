@@ -320,6 +320,19 @@ void AtomMigration::launch(const cpu::LaunchContext& ctx) {
         dd->tag_to_local.emplace(frame.atoms.tag[i], i);
     }
 
+    // Also clear `ghost_tags`. The previous step's ghost-tag log is now
+    // stale, and worse, leaving it populated lets `HaloExchangeForward`'s
+    // full-rebuild path `erase` those tags from the FRESH `tag_to_local`
+    // we just rebuilt. Any atom that was a ghost on this rank
+    // pre-migration AND just migrated IN as a now-owned atom would have
+    // its owner entry silently removed, causing the bonded
+    // `select_owned_tuples` filter to drop every bond owned by that atom
+    // on every rank (no rank sees it as `owned`, slot < n_local). For
+    // MSU PE that was ~15 bonds dropped per migration step, ~5 eV PE
+    // loss per halo cycle, accumulating to a catastrophic ε̇ runaway by
+    // step ~1000.
+    dd->ghost_tags.clear();
+
     last_observed_generation_ = dd->neighbor_generation;
 }
 
