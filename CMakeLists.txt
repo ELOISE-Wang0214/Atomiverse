@@ -156,6 +156,7 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/recorder/thermo.cpp
         src/cpu/recorder/xyz.cpp
         # CPU backend infrastructure
+        src/cpu/atom.cpp
         src/cpu/backend.cpp
         src/cpu/box.cpp
         src/cpu/materialize.cpp
