@@ -193,6 +193,7 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/minimizer/final_geometry.cpp
         # CPU MPI communication subsystem (LAMMPS-shaped)
         src/cpu/comm/atom_pack.cpp
+        src/cpu/comm/comm.cpp
         # CPU MD MPI infrastructure (single-rank stubs in Phase 1)
         src/cpu/md/mpi/domain.cpp
         src/cpu/md/mpi/halo_exchange.cpp
