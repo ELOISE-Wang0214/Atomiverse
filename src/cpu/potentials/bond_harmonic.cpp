@@ -24,7 +24,12 @@ void BondHarmonic::build(const BuildContext& ctx) {
 #ifdef _OPENMP
     n_threads_ = omp_get_max_threads();
 #endif
-    int n = ctx.frame.atoms.size();
+    // Size per-thread accumulators to the full backing-store capacity
+    // (`nmax`), not the owner count (`nlocal`). Force kernels accumulate
+    // into ghost rows too (the partner row may be a ghost), so the
+    // accumulator must accommodate indices up to `nlocal + nghost`,
+    // which is bounded by `nmax`.
+    int n = ctx.frame.atoms.nmax;
     fx_thr_.resize(n_threads_);
     fy_thr_.resize(n_threads_);
     fz_thr_.resize(n_threads_);
@@ -38,14 +43,17 @@ void BondHarmonic::build(const BuildContext& ctx) {
 void BondHarmonic::compute(const LaunchContext& ctx) {
     auto& f = ctx.frame;
     auto& a = f.atoms;
-    const int nlocal = a.nlocal;
 
-    // Resolve partner tag → local row index. Multi-rank: use the
-    // canonical `dd->tag_to_local` (populated by HaloExchangeForward
-    // every borders pass — includes both owners and ghosts).
-    // Single-rank: use `atom.map` (populated by materialize).
+    // Resolve partner tag → local row index, and pick the right owner-row
+    // count: multi-rank uses `dd->n_local` (the authoritative DD-managed
+    // count); single-rank uses `atoms.nlocal`. `atoms.nlocal` is left at
+    // the Frame-ctor default in multi-rank because syncing it broke the
+    // MPI_Alltoallv buffer math in atom_migration (the pack stride was
+    // tied to the old `frame.atoms.size()` value). The `dd->tag_to_local`
+    // map already covers owners + ghosts post-halo.
     const auto* dd = ctx.runtime.dd;
     const bool multi_rank = (dd != nullptr) && (ctx.runtime.mpi_size > 1);
+    const int nlocal = multi_rank ? dd->n_local : a.nlocal;
     auto resolve = [&](std::int64_t tag) -> int {
         if (multi_rank) {
             auto it = dd->tag_to_local.find(tag);

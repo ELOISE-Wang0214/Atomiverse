@@ -33,7 +33,7 @@ void DihedralMultiHarmonic::build(const BuildContext& ctx) {
 #ifdef _OPENMP
     n_threads_ = omp_get_max_threads();
 #endif
-    int n = ctx.frame.atoms.size();
+    int n = ctx.frame.atoms.nmax;
     fx_thr_.resize(n_threads_);
     fy_thr_.resize(n_threads_);
     fz_thr_.resize(n_threads_);
@@ -47,7 +47,9 @@ void DihedralMultiHarmonic::build(const BuildContext& ctx) {
 void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
     auto& f = ctx.frame;
     auto& a = f.atoms;
-    const int nlocal = a.nlocal;
+    const auto* dd = ctx.runtime.dd;
+    const bool multi_rank = (dd != nullptr) && (ctx.runtime.mpi_size > 1);
+    const int nlocal = multi_rank ? dd->n_local : a.nlocal;
 
     int max_nd = 0;
     for (int i = 0; i < nlocal; ++i)
@@ -55,8 +57,6 @@ void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
     if (max_nd == 0)
         return;
 
-    const auto* dd = ctx.runtime.dd;
-    const bool multi_rank = (dd != nullptr) && (ctx.runtime.mpi_size > 1);
     auto resolve = [&](std::int64_t tag) -> int {
         if (multi_rank) {
             auto it = dd->tag_to_local.find(tag);
