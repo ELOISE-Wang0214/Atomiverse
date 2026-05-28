@@ -267,6 +267,7 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
     // resolver was looking up the right partner tag but reading the
     // wrong owner row's bond list.)
     auto& a = frame.atoms;
+
     for (int ni = 0; ni < n_local; ++ni) {
         const int oi = owned_indices[static_cast<std::size_t>(ni)];
         if (oi == ni)
@@ -292,6 +293,7 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
         for (int m = 0; m < cpu::Atom::kMaxSpecial; ++m)
             a.special(ni, m) = a.special(oi, m);
     }
+
 
     tag_to_local.clear();
     tag_to_local.reserve(static_cast<std::size_t>(n_local));

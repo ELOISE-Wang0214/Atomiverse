@@ -148,6 +148,16 @@ load, (b) partition_atoms compaction, (c) first halo full-rebuild,
 (d) first bond_harmonic launch. Compare to single-rank values at the
 same logical position.
 
+**Debug-print finding (briefly, before reverting the prints)**: at
+partition_atoms's BEFORE-compact print for rank 0's owned_indices[0]=746,
+the value `tag[746]` is unexpectedly `5223` (not `746` as Frame ctor's
+identity default would give). This points to lammps_data — or
+somewhere — writing tags ≠ identity before partition runs. Best
+next step: instrument `lammps_data.cpp` right after the Atoms section
+to print `tag[0..3]`; if those are already non-identity, the bug is
+in the Atoms parser. If they're identity, walk forward to find the
+mutation.
+
 **Rollback path**: `git revert 5d8c777 2a1c64a 3ecefef` restores
 force kernels to flat-topology + tag_to_local (the working pre-switchover
 state). The new `cpu::Atom / cpu::Domain / cpu::comm::Comm` scaffolding
