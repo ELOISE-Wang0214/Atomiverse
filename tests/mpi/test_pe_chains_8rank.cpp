@@ -116,40 +116,19 @@ cpu::Frame make_8chain_box(double box_len, int n_carbons, double y_margin) {
     const int n_a_tot = n_chains * n_a_per;
     const int n_d_tot = n_chains * n_d_per;
 
-    frame.bonds.atomi = xt::zeros<int>({n_b_tot});
-    frame.bonds.atomj = xt::zeros<int>({n_b_tot});
-    frame.bonds.type = xt::zeros<int>({n_b_tot});
-    frame.angles.atomi = xt::zeros<int>({n_a_tot});
-    frame.angles.atomj = xt::zeros<int>({n_a_tot});
-    frame.angles.atomk = xt::zeros<int>({n_a_tot});
-    frame.angles.type = xt::zeros<int>({n_a_tot});
-    frame.dihedrals.atomi = xt::zeros<int>({n_d_tot});
-    frame.dihedrals.atomj = xt::zeros<int>({n_d_tot});
-    frame.dihedrals.atomk = xt::zeros<int>({n_d_tot});
-    frame.dihedrals.atoml = xt::zeros<int>({n_d_tot});
-    frame.dihedrals.type = xt::zeros<int>({n_d_tot});
-
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, frame.atoms.nlocal);
     for (int c = 0; c < n_chains; ++c) {
         const int base = c * n_carbons;
-        for (int k = 0; k < n_b_per; ++k) {
-            const int b = c * n_b_per + k;
-            frame.bonds.atomi[b] = base + k;
-            frame.bonds.atomj[b] = base + k + 1;
-        }
-        for (int k = 0; k < n_a_per; ++k) {
-            const int a = c * n_a_per + k;
-            frame.angles.atomi[a] = base + k;
-            frame.angles.atomj[a] = base + k + 1;
-            frame.angles.atomk[a] = base + k + 2;
-        }
-        for (int k = 0; k < n_d_per; ++k) {
-            const int d = c * n_d_per + k;
-            frame.dihedrals.atomi[d] = base + k;
-            frame.dihedrals.atomj[d] = base + k + 1;
-            frame.dihedrals.atomk[d] = base + k + 2;
-            frame.dihedrals.atoml[d] = base + k + 3;
-        }
+        for (int k = 0; k < n_b_per; ++k)
+            frame.atoms.add_bond(base + k, base + k + 1, 0);
+        for (int k = 0; k < n_a_per; ++k)
+            frame.atoms.add_angle(base + k, base + k + 1, base + k + 2, 0);
+        for (int k = 0; k < n_d_per; ++k)
+            frame.atoms.add_dihedral(base + k, base + k + 1, base + k + 2,
+                                     base + k + 3, 0);
     }
+    frame.atoms.build_special_list();
 
     frame.box = Mat3::cubic(box_len);
     return frame;

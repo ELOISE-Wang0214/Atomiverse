@@ -30,7 +30,7 @@
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/lj.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/md/mpi/halo_exchange.h"
+#include "atomiverse/cpu/comm/halo_exchange.h"
 #include "atomiverse/cpu/md/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 
@@ -107,9 +107,9 @@ TEST(LjNve, EnergyConservationSingleRank) {
     sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{6.0}, -10);
     sim.on(ATV::md::Phase::force).add(cpu::md::LJ{0.0104, 3.4, 6.0});
     sim.on(ATV::md::Phase::pre_force)
-        .add(cpu::md::mpi::HaloExchangeForward{6.0}, -20);
+        .add(cpu::comm::HaloExchangeForward{6.0}, -20);
     sim.on(ATV::md::Phase::post_force)
-        .add(cpu::md::mpi::HaloExchangeReverse{}, -1000);
+        .add(cpu::comm::HaloExchangeReverse{}, -1000);
     sim.build();
 
     sim.run(frame, 1);
@@ -143,9 +143,9 @@ TEST(LjNve, EnergyConservationMultiRank) {
     sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{6.0}, -10);
     sim.on(ATV::md::Phase::force).add(cpu::md::LJ{0.0104, 3.4, 6.0});
     sim.on(ATV::md::Phase::pre_force)
-        .add(cpu::md::mpi::HaloExchangeForward{6.0}, -20);
+        .add(cpu::comm::HaloExchangeForward{6.0}, -20);
     sim.on(ATV::md::Phase::post_force)
-        .add(cpu::md::mpi::HaloExchangeReverse{}, -1000);
+        .add(cpu::comm::HaloExchangeReverse{}, -1000);
     sim.build();
 
     sim.run(frame, 1);

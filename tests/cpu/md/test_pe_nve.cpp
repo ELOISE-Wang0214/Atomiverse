@@ -66,40 +66,20 @@ cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
     }
 
     const int n_bonds = n_carbons - 1;
-    frame.bonds.atomi = xt::zeros<int>({n_bonds});
-    frame.bonds.atomj = xt::zeros<int>({n_bonds});
-    frame.bonds.type = xt::zeros<int>({n_bonds});
-    for (int k = 0; k < n_bonds; ++k) {
-        frame.bonds.atomi[k] = k;
-        frame.bonds.atomj[k] = k + 1;
-        frame.bonds.type[k] = 0;
-    }
-
     const int n_angles = n_carbons - 2;
-    frame.angles.atomi = xt::zeros<int>({n_angles});
-    frame.angles.atomj = xt::zeros<int>({n_angles});
-    frame.angles.atomk = xt::zeros<int>({n_angles});
-    frame.angles.type = xt::zeros<int>({n_angles});
-    for (int k = 0; k < n_angles; ++k) {
-        frame.angles.atomi[k] = k;
-        frame.angles.atomj[k] = k + 1;
-        frame.angles.atomk[k] = k + 2;
-        frame.angles.type[k] = 0;
-    }
-
     const int n_dihedrals = n_carbons - 3;
-    frame.dihedrals.atomi = xt::zeros<int>({n_dihedrals});
-    frame.dihedrals.atomj = xt::zeros<int>({n_dihedrals});
-    frame.dihedrals.atomk = xt::zeros<int>({n_dihedrals});
-    frame.dihedrals.atoml = xt::zeros<int>({n_dihedrals});
-    frame.dihedrals.type = xt::zeros<int>({n_dihedrals});
-    for (int k = 0; k < n_dihedrals; ++k) {
-        frame.dihedrals.atomi[k] = k;
-        frame.dihedrals.atomj[k] = k + 1;
-        frame.dihedrals.atomk[k] = k + 2;
-        frame.dihedrals.atoml[k] = k + 3;
-        frame.dihedrals.type[k] = 0;
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, frame.atoms.nlocal);
+    for (int k = 0; k < n_bonds; ++k) {
+        frame.atoms.add_bond(k, k + 1, 0);
     }
+    for (int k = 0; k < n_angles; ++k) {
+        frame.atoms.add_angle(k, k + 1, k + 2, 0);
+    }
+    for (int k = 0; k < n_dihedrals; ++k) {
+        frame.atoms.add_dihedral(k, k + 1, k + 2, k + 3, 0);
+    }
+    frame.atoms.build_special_list();
 
     frame.box = Mat3::cubic(box_len);
     return frame;

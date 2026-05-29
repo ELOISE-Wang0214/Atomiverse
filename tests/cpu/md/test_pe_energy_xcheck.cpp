@@ -117,38 +117,18 @@ cpu::Frame make_c20h42_perturbed() {
 
     const int nb = kN - 1, na = kN - 2, nd = kN - 3;
 
-    frame.bonds.atomi = xt::zeros<int>({nb});
-    frame.bonds.atomj = xt::zeros<int>({nb});
-    frame.bonds.type = xt::zeros<int>({nb});
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, frame.atoms.nlocal);
     for (int k = 0; k < nb; ++k) {
-        frame.bonds.atomi[k] = k;
-        frame.bonds.atomj[k] = k + 1;
-        frame.bonds.type[k] = 0;
+        frame.atoms.add_bond(k, k + 1, 0);
     }
-
-    frame.angles.atomi = xt::zeros<int>({na});
-    frame.angles.atomj = xt::zeros<int>({na});
-    frame.angles.atomk = xt::zeros<int>({na});
-    frame.angles.type = xt::zeros<int>({na});
     for (int k = 0; k < na; ++k) {
-        frame.angles.atomi[k] = k;
-        frame.angles.atomj[k] = k + 1;
-        frame.angles.atomk[k] = k + 2;
-        frame.angles.type[k] = 0;
+        frame.atoms.add_angle(k, k + 1, k + 2, 0);
     }
-
-    frame.dihedrals.atomi = xt::zeros<int>({nd});
-    frame.dihedrals.atomj = xt::zeros<int>({nd});
-    frame.dihedrals.atomk = xt::zeros<int>({nd});
-    frame.dihedrals.atoml = xt::zeros<int>({nd});
-    frame.dihedrals.type = xt::zeros<int>({nd});
     for (int k = 0; k < nd; ++k) {
-        frame.dihedrals.atomi[k] = k;
-        frame.dihedrals.atomj[k] = k + 1;
-        frame.dihedrals.atomk[k] = k + 2;
-        frame.dihedrals.atoml[k] = k + 3;
-        frame.dihedrals.type[k] = 0;
+        frame.atoms.add_dihedral(k, k + 1, k + 2, k + 3, 0);
     }
+    frame.atoms.build_special_list();
 
     frame.box = Mat3::cubic(100.0);
     return frame;
@@ -184,9 +164,15 @@ TEST(PeEnergyXcheck, GeometryAndTopologyPinned) {
                   "embedded C20H42 geometry must have exactly 20 atoms");
     auto frame = make_c20h42_perturbed();
     EXPECT_EQ(frame.atoms.size(), 20);
-    EXPECT_EQ(frame.bonds.size(), 19);
-    EXPECT_EQ(frame.angles.size(), 18);
-    EXPECT_EQ(frame.dihedrals.size(), 17);
+    int n_bond = 0, n_angle = 0, n_dihedral = 0;
+    for (int i = 0; i < frame.atoms.nlocal; ++i) {
+        n_bond += frame.atoms.num_bond[i];
+        n_angle += frame.atoms.num_angle[i];
+        n_dihedral += frame.atoms.num_dihedral[i];
+    }
+    EXPECT_EQ(n_bond, 19);
+    EXPECT_EQ(n_angle, 18);
+    EXPECT_EQ(n_dihedral, 17);
 }
 
 // ── ac-004: the perturbation makes the bond/angle kernels non-trivial ─

@@ -20,7 +20,7 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/backend.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/md/mpi/atom_migration.h"
+#include "atomiverse/cpu/comm/atom_migration.h"
 #include "atomiverse/cpu/md/mpi/domain.h"
 #include "atomiverse/cpu/md/mpi/rcb.h"
 
@@ -132,7 +132,7 @@ TEST(RCBBalancer, RebalancesSkewedDistribution) {
     EXPECT_GT(dd->neighbor_generation, gen_before);
 
     // Now run AtomMigration so atoms move to their new rank.
-    cpu::md::mpi::AtomMigration mig{};
+    cpu::comm::AtomMigration mig{};
     mig.build(bctx);
     mig.launch(lctx);
 

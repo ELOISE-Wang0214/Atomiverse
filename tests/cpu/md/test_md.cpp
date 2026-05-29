@@ -11,7 +11,7 @@
 #include "atomiverse/cpu/md/init.h"
 #include "atomiverse/cpu/md/lj.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/md/mpi/halo_exchange.h"
+#include "atomiverse/cpu/comm/halo_exchange.h"
 #include "atomiverse/cpu/md/neighbor_list.h"
 #include "atomiverse/cpu/md/nose_hoover.h"
 #include "atomiverse/cpu/md/nose_hoover_npt.h"
@@ -485,12 +485,10 @@ TEST_F(CpuMdTest, BondedForce) {
     frame.atoms.mass[1] = double(12);
     frame.box = Mat3::cubic(20.0);
 
-    frame.bonds.atomi = xt::xtensor<int, 1>({int(1)});
-    frame.bonds.atomj = xt::xtensor<int, 1>({int(1)});
-    frame.bonds.type = xt::xtensor<int, 1>({int(1)});
-    frame.bonds.atomi[0] = 0;
-    frame.bonds.atomj[0] = 1;
-    frame.bonds.type[0] = 0;
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, frame.atoms.nlocal);
+    frame.atoms.add_bond(0, 1, 0);
+    frame.atoms.build_special_list();
 
     double K = double(100.0);
     double r0 = double(1.0);
@@ -654,7 +652,7 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionEmptyTopology) {
     // No bonds / angles / dihedrals → no extra skin required.
     cpu::Frame frame(10);
     const double ext =
-        cpu::md::mpi::HaloExchangeForward::compute_bonded_extension(frame);
+        cpu::comm::HaloExchangeForward::compute_bonded_extension(frame);
     EXPECT_DOUBLE_EQ(ext, 0.0);
 }
 
@@ -667,13 +665,12 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionBondLength) {
     frame.atoms.x[1] = 1.5;
     frame.atoms.y[1] = 0.0;
     frame.atoms.z[1] = 0.0;
-    frame.bonds.atomi = xt::zeros<int>({1});
-    frame.bonds.atomj = xt::zeros<int>({1});
-    frame.bonds.type = xt::zeros<int>({1});
-    frame.bonds.atomi[0] = 0;
-    frame.bonds.atomj[0] = 1;
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, frame.atoms.nlocal);
+    frame.atoms.add_bond(0, 1, 0);
+    frame.atoms.build_special_list();
     const double ext =
-        cpu::md::mpi::HaloExchangeForward::compute_bonded_extension(frame);
+        cpu::comm::HaloExchangeForward::compute_bonded_extension(frame);
     EXPECT_NEAR(ext, 1.5, 1e-12);
 }
 
@@ -685,15 +682,12 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionAngleSpan) {
         frame.atoms.y[i] = 0.0;
         frame.atoms.z[i] = 0.0;
     }
-    frame.angles.atomi = xt::zeros<int>({1});
-    frame.angles.atomj = xt::zeros<int>({1});
-    frame.angles.atomk = xt::zeros<int>({1});
-    frame.angles.type = xt::zeros<int>({1});
-    frame.angles.atomi[0] = 0;
-    frame.angles.atomj[0] = 1;
-    frame.angles.atomk[0] = 2;
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, frame.atoms.nlocal);
+    frame.atoms.add_angle(0, 1, 2, 0);
+    frame.atoms.build_special_list();
     const double ext =
-        cpu::md::mpi::HaloExchangeForward::compute_bonded_extension(frame);
+        cpu::comm::HaloExchangeForward::compute_bonded_extension(frame);
     EXPECT_NEAR(ext, 2.0, 1e-12);
 }
 
@@ -710,17 +704,12 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionDihedralSpan) {
         frame.atoms.y[i] = (i % 2) ? dy : 0.0;
         frame.atoms.z[i] = 0.0;
     }
-    frame.dihedrals.atomi = xt::zeros<int>({1});
-    frame.dihedrals.atomj = xt::zeros<int>({1});
-    frame.dihedrals.atomk = xt::zeros<int>({1});
-    frame.dihedrals.atoml = xt::zeros<int>({1});
-    frame.dihedrals.type = xt::zeros<int>({1});
-    frame.dihedrals.atomi[0] = 0;
-    frame.dihedrals.atomj[0] = 1;
-    frame.dihedrals.atomk[0] = 2;
-    frame.dihedrals.atoml[0] = 3;
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, frame.atoms.nlocal);
+    frame.atoms.add_dihedral(0, 1, 2, 3, 0);
+    frame.atoms.build_special_list();
     const double ext =
-        cpu::md::mpi::HaloExchangeForward::compute_bonded_extension(frame);
+        cpu::comm::HaloExchangeForward::compute_bonded_extension(frame);
     // Expect the i-l straight-line span, roughly 3.9 Å for these params.
     EXPECT_GT(ext, 3.5) << "dihedral span too small: " << ext;
     EXPECT_LT(ext, 4.2) << "dihedral span too large: " << ext;
@@ -739,41 +728,21 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionMaxAcrossTupleKinds) {
     frame.atoms.y = xt::zeros<double>({4});
     frame.atoms.z = xt::zeros<double>({4});
 
-    // One bond (0-1, length 1.0)
-    frame.bonds.atomi = xt::zeros<int>({1});
-    frame.bonds.atomj = xt::zeros<int>({1});
-    frame.bonds.type = xt::zeros<int>({1});
-    frame.bonds.atomi[0] = 0;
-    frame.bonds.atomj[0] = 1;
-
-    // One angle (0-1-3, i-to-k straight-line = 3.5; but we want angle max = 3.0 case)
-    // Relax: atoms at 0, 1, 1.5 → angle 0-1-2 i-k = 1.5; use atoms 0-1-3 span 3.5
-    // Actually we want the angle-max > dihedral-max to prove max is taken.
+    // One bond (0-1, length 1.0); one angle (0-1-2); one dihedral (0-1-2-3).
     // Redo atoms: 0, 1, 4, 2.5 → bond 0-1 = 1.0, angle 0-1-2 span 4.0, dihedral 0-1-2-3 span 2.5.
     frame.atoms.x = xt::xtensor<double, 1>({0.0, 1.0, 4.0, 2.5});
     // bond 0-1 length = 1.0
     // angle: atoms 0-1-2, i-k span = |x[0] - x[2]| = 4.0
     // dihedral: atoms 0-1-2-3, i-l span = |x[0] - x[3]| = 2.5
-    frame.angles.atomi = xt::zeros<int>({1});
-    frame.angles.atomj = xt::zeros<int>({1});
-    frame.angles.atomk = xt::zeros<int>({1});
-    frame.angles.type = xt::zeros<int>({1});
-    frame.angles.atomi[0] = 0;
-    frame.angles.atomj[0] = 1;
-    frame.angles.atomk[0] = 2;
-
-    frame.dihedrals.atomi = xt::zeros<int>({1});
-    frame.dihedrals.atomj = xt::zeros<int>({1});
-    frame.dihedrals.atomk = xt::zeros<int>({1});
-    frame.dihedrals.atoml = xt::zeros<int>({1});
-    frame.dihedrals.type = xt::zeros<int>({1});
-    frame.dihedrals.atomi[0] = 0;
-    frame.dihedrals.atomj[0] = 1;
-    frame.dihedrals.atomk[0] = 2;
-    frame.dihedrals.atoml[0] = 3;
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, frame.atoms.nlocal);
+    frame.atoms.add_bond(0, 1, 0);
+    frame.atoms.add_angle(0, 1, 2, 0);
+    frame.atoms.add_dihedral(0, 1, 2, 3, 0);
+    frame.atoms.build_special_list();
 
     const double ext =
-        cpu::md::mpi::HaloExchangeForward::compute_bonded_extension(frame);
+        cpu::comm::HaloExchangeForward::compute_bonded_extension(frame);
     EXPECT_NEAR(ext, 4.0, 1e-12)
         << "expected max(bond=1, angle=4, dihedral=2.5) = 4, got " << ext;
 }
@@ -793,13 +762,12 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionPeriodicBondWrap) {
     frame.atoms.x[1] = 79.5;
     frame.atoms.y[1] = 0.0;
     frame.atoms.z[1] = 0.0;
-    frame.bonds.atomi = xt::zeros<int>({1});
-    frame.bonds.atomj = xt::zeros<int>({1});
-    frame.bonds.type = xt::zeros<int>({1});
-    frame.bonds.atomi[0] = 0;
-    frame.bonds.atomj[0] = 1;
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, frame.atoms.nlocal);
+    frame.atoms.add_bond(0, 1, 0);
+    frame.atoms.build_special_list();
     const double ext =
-        cpu::md::mpi::HaloExchangeForward::compute_bonded_extension(frame);
+        cpu::comm::HaloExchangeForward::compute_bonded_extension(frame);
     EXPECT_NEAR(ext, 1.0, 1e-12)
         << "periodic bond picked up unwrapped span " << ext << " (box=80)";
 }

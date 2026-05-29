@@ -22,7 +22,7 @@
 #include "atomiverse/cpu/backend.h"
 #include "atomiverse/cpu/context.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/md/mpi/atom_migration.h"
+#include "atomiverse/cpu/comm/atom_migration.h"
 #include "atomiverse/cpu/md/mpi/domain.h"
 
 using namespace ATV;
@@ -94,7 +94,7 @@ TEST(AtomMigration, AtomDriftsAcrossPosXBoundary) {
     MPI_Bcast(&moved_tag, 1, MPI_INT64_T, 0, MPI_COMM_WORLD);
 
     // Drive a single AtomMigration::launch.
-    cpu::md::mpi::AtomMigration mig{};
+    cpu::comm::AtomMigration mig{};
     cpu::BuildContext bctx{backend.context(), frame};
     mig.build(bctx);
     cpu::LaunchContext lctx{backend.context(), frame, 0, 0};
@@ -158,7 +158,7 @@ TEST(AtomMigration, SingleRankIsNoOp) {
     // Move atom 0 past where the slab boundary would be (box edge in single-rank).
     frame.atoms.x[0] = 19.5;
 
-    cpu::md::mpi::AtomMigration mig{};
+    cpu::comm::AtomMigration mig{};
     cpu::BuildContext bctx{backend.context(), frame};
     mig.build(bctx);
     cpu::LaunchContext lctx{backend.context(), frame, 0, 0};

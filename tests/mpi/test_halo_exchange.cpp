@@ -32,7 +32,7 @@
 #include "atomiverse/cpu/context.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/mpi/domain.h"
-#include "atomiverse/cpu/md/mpi/halo_exchange.h"
+#include "atomiverse/cpu/comm/halo_exchange.h"
 
 using namespace ATV;
 
@@ -79,7 +79,7 @@ ForwardResult run_forward(double box_len, int n_per_side, double cutoff) {
     auto* dd = backend.context().dd;
 
     // Drive one Forward launch directly (without going through MD driver).
-    cpu::md::mpi::HaloExchangeForward fwd{cutoff};
+    cpu::comm::HaloExchangeForward fwd{cutoff};
     cpu::BuildContext bctx{backend.context(), frame};
     fwd.build(bctx);
     cpu::LaunchContext lctx{backend.context(), frame, 0, 0};
@@ -149,7 +149,7 @@ TEST(HaloForward, RecvCountsConsistentWithSendLists) {
     backend.set_frame(frame);
     auto* dd = backend.context().dd;
 
-    cpu::md::mpi::HaloExchangeForward fwd{2.0};
+    cpu::comm::HaloExchangeForward fwd{2.0};
     cpu::BuildContext bctx{backend.context(), frame};
     fwd.build(bctx);
     cpu::LaunchContext lctx{backend.context(), frame, 0, 0};
@@ -230,8 +230,8 @@ TEST(HaloReverse, ReverseAddsGhostForcesBackToOwners) {
     backend.set_frame(frame);
     auto* dd = backend.context().dd;
 
-    cpu::md::mpi::HaloExchangeForward fwd{2.0};
-    cpu::md::mpi::HaloExchangeReverse rev{};
+    cpu::comm::HaloExchangeForward fwd{2.0};
+    cpu::comm::HaloExchangeReverse rev{};
     cpu::BuildContext bctx{backend.context(), frame};
     fwd.build(bctx);
     rev.build(bctx);
@@ -303,7 +303,7 @@ TEST(HaloForward, FaceBufsAreInstanceOwned) {
     backend.init();
     backend.set_frame(frame_small);
 
-    cpu::md::mpi::HaloExchangeForward fwd_a{2.0};
+    cpu::comm::HaloExchangeForward fwd_a{2.0};
     cpu::BuildContext bctx_small{backend.context(), frame_small};
     fwd_a.build(bctx_small);
     const std::size_t cap_a_before = fwd_a.send_buf_capacity_for_test();
@@ -311,7 +311,7 @@ TEST(HaloForward, FaceBufsAreInstanceOwned) {
     // Rebind the same backend to a larger frame; dd->capacity now reflects
     // the bigger slab.
     backend.set_frame(frame_big);
-    cpu::md::mpi::HaloExchangeForward fwd_b{2.0};
+    cpu::comm::HaloExchangeForward fwd_b{2.0};
     cpu::BuildContext bctx_big{backend.context(), frame_big};
     fwd_b.build(bctx_big);
     const std::size_t cap_b = fwd_b.send_buf_capacity_for_test();

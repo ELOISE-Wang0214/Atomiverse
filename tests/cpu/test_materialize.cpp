@@ -144,9 +144,15 @@ TEST(Materialize, RoundTrip) {
     Frame cf = materialize(*fr);
 
     ASSERT_EQ(cf.atoms.size(), 3);
-    ASSERT_EQ(cf.bonds.size(), 1);
-    ASSERT_EQ(cf.angles.size(), 1);
-    ASSERT_EQ(cf.dihedrals.size(), 1);
+    int n_bond = 0, n_angle = 0, n_dihedral = 0;
+    for (int i = 0; i < cf.atoms.nlocal; ++i) {
+        n_bond += cf.atoms.num_bond[i];
+        n_angle += cf.atoms.num_angle[i];
+        n_dihedral += cf.atoms.num_dihedral[i];
+    }
+    ASSERT_EQ(n_bond, 1);
+    ASSERT_EQ(n_angle, 1);
+    ASSERT_EQ(n_dihedral, 1);
 
     // Mutate the cpu::Frame so write-back has something distinct to carry.
     cf.atoms.x[1] = 7.25;

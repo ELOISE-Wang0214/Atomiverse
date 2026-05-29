@@ -45,31 +45,16 @@ cpu::Frame make_perturbed_butane() {
     }
     frame.box = Mat3::cubic(50.0);
 
-    frame.bonds.atomi = xt::zeros<int>({3});
-    frame.bonds.atomj = xt::zeros<int>({3});
-    frame.bonds.type = xt::zeros<int>({3});
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, frame.atoms.nlocal);
     for (int k = 0; k < 3; ++k) {
-        frame.bonds.atomi[k] = k;
-        frame.bonds.atomj[k] = k + 1;
+        frame.atoms.add_bond(k, k + 1, 0);
     }
-    frame.angles.atomi = xt::zeros<int>({2});
-    frame.angles.atomj = xt::zeros<int>({2});
-    frame.angles.atomk = xt::zeros<int>({2});
-    frame.angles.type = xt::zeros<int>({2});
     for (int k = 0; k < 2; ++k) {
-        frame.angles.atomi[k] = k;
-        frame.angles.atomj[k] = k + 1;
-        frame.angles.atomk[k] = k + 2;
+        frame.atoms.add_angle(k, k + 1, k + 2, 0);
     }
-    frame.dihedrals.atomi = xt::zeros<int>({1});
-    frame.dihedrals.atomj = xt::zeros<int>({1});
-    frame.dihedrals.atomk = xt::zeros<int>({1});
-    frame.dihedrals.atoml = xt::zeros<int>({1});
-    frame.dihedrals.type = xt::zeros<int>({1});
-    frame.dihedrals.atomi[0] = 0;
-    frame.dihedrals.atomj[0] = 1;
-    frame.dihedrals.atomk[0] = 2;
-    frame.dihedrals.atoml[0] = 3;
+    frame.atoms.add_dihedral(0, 1, 2, 3, 0);
+    frame.atoms.build_special_list();
     return frame;
 }
 

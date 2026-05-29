@@ -46,8 +46,8 @@
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/init.h"
 #include "atomiverse/cpu/md/lj.h"
-#include "atomiverse/cpu/md/mpi/atom_migration.h"
-#include "atomiverse/cpu/md/mpi/halo_exchange.h"
+#include "atomiverse/cpu/comm/atom_migration.h"
+#include "atomiverse/cpu/comm/halo_exchange.h"
 #include "atomiverse/cpu/md/mpi/reduce.h"
 #include "atomiverse/cpu/md/neighbor_list.h"
 #include "atomiverse/cpu/md/nose_hoover.h"
@@ -411,11 +411,11 @@ int main(int argc, char** argv) {
              100);
 
     sim.on(Phase::pre_force)
-        .add(*make_timed(cpu::md::mpi::AtomMigration{10}, "AtomMigration",
+        .add(*make_timed(cpu::comm::AtomMigration{10}, "AtomMigration",
                          p_pre, -30),
              -30);
     sim.on(Phase::pre_force)
-        .add(*make_timed(cpu::md::mpi::HaloExchangeForward{kLjCutoff},
+        .add(*make_timed(cpu::comm::HaloExchangeForward{kLjCutoff},
                          "HaloExchangeForward", p_pre, -20),
              -20);
 
@@ -451,7 +451,7 @@ int main(int argc, char** argv) {
              3);
 
     sim.on(Phase::post_force)
-        .add(*make_timed(cpu::md::mpi::HaloExchangeReverse{},
+        .add(*make_timed(cpu::comm::HaloExchangeReverse{},
                          "HaloExchangeReverse", p_post, -1000),
              -1000);
 

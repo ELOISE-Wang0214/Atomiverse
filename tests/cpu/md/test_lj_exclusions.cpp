@@ -44,35 +44,20 @@ cpu::Frame make_all_trans_alkane(int n_carbons, double box_len) {
         frame.atoms.type[i] = 0;
     }
     const int n_b = n_carbons - 1;
-    frame.bonds.atomi = xt::zeros<int>({n_b});
-    frame.bonds.atomj = xt::zeros<int>({n_b});
-    frame.bonds.type = xt::zeros<int>({n_b});
-    for (int k = 0; k < n_b; ++k) {
-        frame.bonds.atomi[k] = k;
-        frame.bonds.atomj[k] = k + 1;
-    }
     const int n_a = n_carbons - 2;
-    frame.angles.atomi = xt::zeros<int>({n_a});
-    frame.angles.atomj = xt::zeros<int>({n_a});
-    frame.angles.atomk = xt::zeros<int>({n_a});
-    frame.angles.type = xt::zeros<int>({n_a});
-    for (int k = 0; k < n_a; ++k) {
-        frame.angles.atomi[k] = k;
-        frame.angles.atomj[k] = k + 1;
-        frame.angles.atomk[k] = k + 2;
-    }
     const int n_d = n_carbons - 3;
-    frame.dihedrals.atomi = xt::zeros<int>({n_d});
-    frame.dihedrals.atomj = xt::zeros<int>({n_d});
-    frame.dihedrals.atomk = xt::zeros<int>({n_d});
-    frame.dihedrals.atoml = xt::zeros<int>({n_d});
-    frame.dihedrals.type = xt::zeros<int>({n_d});
-    for (int k = 0; k < n_d; ++k) {
-        frame.dihedrals.atomi[k] = k;
-        frame.dihedrals.atomj[k] = k + 1;
-        frame.dihedrals.atomk[k] = k + 2;
-        frame.dihedrals.atoml[k] = k + 3;
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, frame.atoms.nlocal);
+    for (int k = 0; k < n_b; ++k) {
+        frame.atoms.add_bond(k, k + 1, 0);
     }
+    for (int k = 0; k < n_a; ++k) {
+        frame.atoms.add_angle(k, k + 1, k + 2, 0);
+    }
+    for (int k = 0; k < n_d; ++k) {
+        frame.atoms.add_dihedral(k, k + 1, k + 2, k + 3, 0);
+    }
+    frame.atoms.build_special_list();
     frame.box = Mat3::cubic(box_len);
     return frame;
 }
@@ -145,11 +130,10 @@ TEST(LjExclusions, BondExclusionRemovesOne12PairOnly) {
             (*f).atoms.mass[i] = 14.0;
             (*f).atoms.type[i] = 0;
         }
-        (*f).bonds.atomi = xt::zeros<int>({1});
-        (*f).bonds.atomj = xt::zeros<int>({1});
-        (*f).bonds.type = xt::zeros<int>({1});
-        (*f).bonds.atomi[0] = 0;
-        (*f).bonds.atomj[0] = 1;
+        (*f).atoms.map_clear();
+        (*f).atoms.map_set(0, (*f).atoms.nlocal);
+        (*f).atoms.add_bond(0, 1, 0);
+        (*f).atoms.build_special_list();
         (*f).box = Mat3::cubic(40.0);
     }
 

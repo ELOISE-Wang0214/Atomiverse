@@ -28,7 +28,7 @@
 #include "atomiverse/cpu/md/init.h"
 #include "atomiverse/cpu/md/lj.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/md/mpi/halo_exchange.h"
+#include "atomiverse/cpu/comm/halo_exchange.h"
 #include "atomiverse/cpu/md/neighbor_list.h"
 #include "atomiverse/cpu/md/nose_hoover.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
@@ -90,42 +90,20 @@ cpu::Frame make_pe_box(int n_chains_per_axis, int n_carbons_per_chain,
         }
     }
 
-    const int n_b_per = n_carbons_per_chain - 1;
-    const int n_a_per = n_carbons_per_chain - 2;
-    const int n_d_per = n_carbons_per_chain - 3;
-    frame.bonds.atomi = xt::zeros<int>({n_chains * n_b_per});
-    frame.bonds.atomj = xt::zeros<int>({n_chains * n_b_per});
-    frame.bonds.type = xt::zeros<int>({n_chains * n_b_per});
-    frame.angles.atomi = xt::zeros<int>({n_chains * n_a_per});
-    frame.angles.atomj = xt::zeros<int>({n_chains * n_a_per});
-    frame.angles.atomk = xt::zeros<int>({n_chains * n_a_per});
-    frame.angles.type = xt::zeros<int>({n_chains * n_a_per});
-    frame.dihedrals.atomi = xt::zeros<int>({n_chains * n_d_per});
-    frame.dihedrals.atomj = xt::zeros<int>({n_chains * n_d_per});
-    frame.dihedrals.atomk = xt::zeros<int>({n_chains * n_d_per});
-    frame.dihedrals.atoml = xt::zeros<int>({n_chains * n_d_per});
-    frame.dihedrals.type = xt::zeros<int>({n_chains * n_d_per});
+    // Per-atom topology (LAMMPS num_bond[i] + bond_atom[i][m] layout).
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, frame.atoms.nlocal);
     for (int c = 0; c < n_chains; ++c) {
         const int base = c * n_carbons_per_chain;
-        for (int k = 0; k < n_b_per; ++k) {
-            const int b = c * n_b_per + k;
-            frame.bonds.atomi[b] = base + k;
-            frame.bonds.atomj[b] = base + k + 1;
-        }
-        for (int k = 0; k < n_a_per; ++k) {
-            const int a = c * n_a_per + k;
-            frame.angles.atomi[a] = base + k;
-            frame.angles.atomj[a] = base + k + 1;
-            frame.angles.atomk[a] = base + k + 2;
-        }
-        for (int k = 0; k < n_d_per; ++k) {
-            const int d = c * n_d_per + k;
-            frame.dihedrals.atomi[d] = base + k;
-            frame.dihedrals.atomj[d] = base + k + 1;
-            frame.dihedrals.atomk[d] = base + k + 2;
-            frame.dihedrals.atoml[d] = base + k + 3;
-        }
+        for (int k = 0; k < n_carbons_per_chain - 1; ++k)
+            frame.atoms.add_bond(base + k, base + k + 1, 0);
+        for (int k = 0; k < n_carbons_per_chain - 2; ++k)
+            frame.atoms.add_angle(base + k, base + k + 1, base + k + 2, 0);
+        for (int k = 0; k < n_carbons_per_chain - 3; ++k)
+            frame.atoms.add_dihedral(base + k, base + k + 1, base + k + 2,
+                                     base + k + 3, 0);
     }
+    frame.atoms.build_special_list();
 
     frame.box = Mat3::cubic(box_len);
     return frame;
@@ -163,9 +141,9 @@ TEST(PeMsuPipeline, NvtPlusNptPlusDeform) {
     sim.add(cpu::md::InitVelocity{T_target, /*seed=*/12345});
     sim.add(cpu::md::NoseHoover{T_target, tau_T, dt});
     sim.on(ATV::md::Phase::pre_force)
-        .add(cpu::md::mpi::HaloExchangeForward{lj_cut}, -20);
+        .add(cpu::comm::HaloExchangeForward{lj_cut}, -20);
     sim.on(ATV::md::Phase::post_force)
-        .add(cpu::md::mpi::HaloExchangeReverse{}, -1000);
+        .add(cpu::comm::HaloExchangeReverse{}, -1000);
     sim.on(ATV::md::Phase::force)
         .add(cpu::md::NeighborList<>{lj_cut}, -10)
         .add(cpu::md::LJ{lj_eps, lj_sig, lj_cut}.set_special_bonds(0.0, 0.0,

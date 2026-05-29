@@ -27,7 +27,7 @@
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/lj.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/md/mpi/halo_exchange.h"
+#include "atomiverse/cpu/comm/halo_exchange.h"
 #include "atomiverse/cpu/md/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/potentials/harmonic_angle.h"
@@ -72,36 +72,15 @@ cpu::Frame make_chain_along_x(int n_carbons, double box_x, double box_yz) {
         frame.atoms.mass[i] = 14.027;
         frame.atoms.type[i] = 0;
     }
-    const int n_b = n_carbons - 1;
-    frame.bonds.atomi = xt::zeros<int>({n_b});
-    frame.bonds.atomj = xt::zeros<int>({n_b});
-    frame.bonds.type = xt::zeros<int>({n_b});
-    for (int k = 0; k < n_b; ++k) {
-        frame.bonds.atomi[k] = k;
-        frame.bonds.atomj[k] = k + 1;
-    }
-    const int n_a = n_carbons - 2;
-    frame.angles.atomi = xt::zeros<int>({n_a});
-    frame.angles.atomj = xt::zeros<int>({n_a});
-    frame.angles.atomk = xt::zeros<int>({n_a});
-    frame.angles.type = xt::zeros<int>({n_a});
-    for (int k = 0; k < n_a; ++k) {
-        frame.angles.atomi[k] = k;
-        frame.angles.atomj[k] = k + 1;
-        frame.angles.atomk[k] = k + 2;
-    }
-    const int n_d = n_carbons - 3;
-    frame.dihedrals.atomi = xt::zeros<int>({n_d});
-    frame.dihedrals.atomj = xt::zeros<int>({n_d});
-    frame.dihedrals.atomk = xt::zeros<int>({n_d});
-    frame.dihedrals.atoml = xt::zeros<int>({n_d});
-    frame.dihedrals.type = xt::zeros<int>({n_d});
-    for (int k = 0; k < n_d; ++k) {
-        frame.dihedrals.atomi[k] = k;
-        frame.dihedrals.atomj[k] = k + 1;
-        frame.dihedrals.atomk[k] = k + 2;
-        frame.dihedrals.atoml[k] = k + 3;
-    }
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, frame.atoms.nlocal);
+    for (int k = 0; k < n_carbons - 1; ++k)
+        frame.atoms.add_bond(k, k + 1, 0);
+    for (int k = 0; k < n_carbons - 2; ++k)
+        frame.atoms.add_angle(k, k + 1, k + 2, 0);
+    for (int k = 0; k < n_carbons - 3; ++k)
+        frame.atoms.add_dihedral(k, k + 1, k + 2, k + 3, 0);
+    frame.atoms.build_special_list();
     frame.box = Mat3::diagonal(box_x, box_yz, box_yz);
     return frame;
 }
@@ -129,9 +108,9 @@ TEST(PeFullMultiRank, ChainCrossingWithLjExclusions) {
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{0.5});
     sim.on(ATV::md::Phase::pre_force)
-        .add(cpu::md::mpi::HaloExchangeForward{lj_cut}, -20);
+        .add(cpu::comm::HaloExchangeForward{lj_cut}, -20);
     sim.on(ATV::md::Phase::post_force)
-        .add(cpu::md::mpi::HaloExchangeReverse{}, -1000);
+        .add(cpu::comm::HaloExchangeReverse{}, -1000);
     sim.on(ATV::md::Phase::force)
         .add(cpu::md::NeighborList<>{lj_cut}, -10)
         .add(cpu::md::LJ{lj_eps, lj_sig, lj_cut}.set_special_bonds(0.0, 0.0,

@@ -107,45 +107,23 @@ cpu::Frame make_multi_chain_box(const MultiChainConfig& cfg) {
     const int n_bonds_per = cfg.n_carbons - 1;
     const int n_angles_per = cfg.n_carbons - 2;
     const int n_dihedrals_per = cfg.n_carbons - 3;
-    const int n_bonds = n_chains * n_bonds_per;
-    const int n_angles = n_chains * n_angles_per;
-    const int n_dihedrals = n_chains * n_dihedrals_per;
 
-    frame.bonds.atomi = xt::zeros<int>({n_bonds});
-    frame.bonds.atomj = xt::zeros<int>({n_bonds});
-    frame.bonds.type = xt::zeros<int>({n_bonds});
-    frame.angles.atomi = xt::zeros<int>({n_angles});
-    frame.angles.atomj = xt::zeros<int>({n_angles});
-    frame.angles.atomk = xt::zeros<int>({n_angles});
-    frame.angles.type = xt::zeros<int>({n_angles});
-    frame.dihedrals.atomi = xt::zeros<int>({n_dihedrals});
-    frame.dihedrals.atomj = xt::zeros<int>({n_dihedrals});
-    frame.dihedrals.atomk = xt::zeros<int>({n_dihedrals});
-    frame.dihedrals.atoml = xt::zeros<int>({n_dihedrals});
-    frame.dihedrals.type = xt::zeros<int>({n_dihedrals});
-
-    int b_off = 0, a_off = 0, d_off = 0;
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, frame.atoms.nlocal);
     for (int c = 0; c < n_chains; ++c) {
         const int base = c * cfg.n_carbons;
         for (int k = 0; k < n_bonds_per; ++k) {
-            frame.bonds.atomi[b_off + k] = base + k;
-            frame.bonds.atomj[b_off + k] = base + k + 1;
+            frame.atoms.add_bond(base + k, base + k + 1, 0);
         }
-        b_off += n_bonds_per;
         for (int k = 0; k < n_angles_per; ++k) {
-            frame.angles.atomi[a_off + k] = base + k;
-            frame.angles.atomj[a_off + k] = base + k + 1;
-            frame.angles.atomk[a_off + k] = base + k + 2;
+            frame.atoms.add_angle(base + k, base + k + 1, base + k + 2, 0);
         }
-        a_off += n_angles_per;
         for (int k = 0; k < n_dihedrals_per; ++k) {
-            frame.dihedrals.atomi[d_off + k] = base + k;
-            frame.dihedrals.atomj[d_off + k] = base + k + 1;
-            frame.dihedrals.atomk[d_off + k] = base + k + 2;
-            frame.dihedrals.atoml[d_off + k] = base + k + 3;
+            frame.atoms.add_dihedral(base + k, base + k + 1, base + k + 2,
+                                     base + k + 3, 0);
         }
-        d_off += n_dihedrals_per;
     }
+    frame.atoms.build_special_list();
 
     frame.box = Mat3::diagonal(Lx, Ly, Lz);
     return frame;

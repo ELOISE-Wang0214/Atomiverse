@@ -21,7 +21,7 @@
 #include "atomiverse/cpu/md/deform.h"
 #include "atomiverse/cpu/md/lj.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/md/mpi/halo_exchange.h"
+#include "atomiverse/cpu/comm/halo_exchange.h"
 #include "atomiverse/cpu/md/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/md/virial_stress.h"
@@ -80,9 +80,9 @@ TEST(DeformMultiRank, UniaxialPullStretchesBoxOnAllRanks) {
     sim.add(cpu::md::Deform{cpu::md::Deform::Mode::erate, strain_rate, dt,
                             /*axis=*/0});
     sim.on(ATV::md::Phase::pre_force)
-        .add(cpu::md::mpi::HaloExchangeForward{lj_cut}, -20);
+        .add(cpu::comm::HaloExchangeForward{lj_cut}, -20);
     sim.on(ATV::md::Phase::post_force)
-        .add(cpu::md::mpi::HaloExchangeReverse{}, -1000);
+        .add(cpu::comm::HaloExchangeReverse{}, -1000);
     sim.on(ATV::md::Phase::force)
         .add(cpu::md::NeighborList<>{lj_cut}, -10)
         .add(cpu::md::LJ{lj_eps, lj_sig, lj_cut});
