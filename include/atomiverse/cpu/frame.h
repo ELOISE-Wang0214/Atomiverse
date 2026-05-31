@@ -14,8 +14,8 @@
 /// is `cpu::Atom`, which carries positions, velocities, forces, type, tag,
 /// image, per-atom bonded topology (`num_bond[i] + bond_atom[i][m]`,
 /// LAMMPS style), and the `tag → local` map. Decomposition state
-/// (`cpu::Domain`) and comm state (`cpu::comm::Comm`) live on `cpu::Backend`,
-/// not on Frame.
+/// (`cpu::md::mpi::DomainDecomposition`) lives on `cpu::Backend`, not on
+/// Frame.
 ///
 /// The member `Frame::atoms` is named in the plural (the legacy idiom)
 /// but its type is `cpu::Atom` (LAMMPS Atom-equivalent) — callsites that
@@ -29,7 +29,7 @@
 /// Callers that read `frame.bonds.atomi[k]` must switch to the per-atom
 /// iteration `for (i in [0, nlocal)) for (m in [0, atom.num_bond[i]))`.
 ///
-/// @see cpu/atom.h, cpu/box.h, cpu/domain.h, cpu/comm/comm.h
+/// @see cpu/atom.h, cpu/box.h, cpu/md/mpi/domain.h, cpu/comm/halo_exchange.h
 /// @see core/system_scalars.h
 #pragma once
 

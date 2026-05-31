@@ -61,12 +61,33 @@ class PairLJCut : public Pair {
     /// has advanced past the last snapshot we filtered.
     void rebuild_filtered_list(const Frame& frame, const md::PairList& pairs);
 
+    /// @brief (Re)build `excluded_by_tag_` from the CURRENT per-atom
+    /// `nspecial`/`special` topology of the first `n_owners` rows.
+    ///
+    /// Must run whenever the owned-atom set changes (multi-rank
+    /// `AtomMigration`): the per-atom special lists travel WITH the atom
+    /// (pack/unpack/move_row), but a map cached once at `build()` goes
+    /// stale the moment an atom migrates into a rank whose build-time map
+    /// never held that tag — its 1-2/1-3/1-4 partners then escape the
+    /// exclusion filter and the LJ kernel sees a ~1.5 Å bonded pair,
+    /// producing a catastrophic repulsive spike (MSU-PE multi-rank NPT
+    /// collapse). Called from `rebuild_filtered_list`, which is itself
+    /// gated on `pairs.version` so the refresh tracks every NL rebuild.
+    void refresh_exclusion_map(const Frame& frame, int n_owners);
+
     double epsilon_, sigma_;
     double sigma6_, cutoff_sq_, v_shift_;
 
     // Special-bonds: when any of these is < 1, the corresponding bonded
     // pair list is built at build() time and consulted at launch() time.
     double s12_ = 1.0, s13_ = 1.0, s14_ = 1.0;
+
+    // True when any special-bonds tier is fully excluded (scale 0). Gates
+    // the exclusion-filtered CSR path independently of whether the current
+    // exclusion map happens to be non-empty, so the filter (and its
+    // per-rebuild map refresh) stays active across migrations even on a
+    // step where this rank momentarily owns no excluded pair.
+    bool any_excl_ = false;
 
     // Tag-indexed exclusion lists. See pre-refactor LJ for full docs;
     // unchanged by the rename.

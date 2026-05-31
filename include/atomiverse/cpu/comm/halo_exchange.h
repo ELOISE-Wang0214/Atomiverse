@@ -11,7 +11,7 @@
 ///
 /// Both classes share a `HaloExchangeState` record (per-face send/recv
 /// indices, packed-position buffers, MPI request handles) held by
-/// `DomainDecomposition`. `HaloExchangeForward` is the producer (writes
+/// `md::mpi::DomainDecomposition`. `HaloExchangeForward` is the producer (writes
 /// `state->recv_counts_per_face` and the ghost rows); `HaloExchangeReverse`
 /// is the consumer (uses the same per-face counts to know how many ghost
 /// forces to pack and where they go on the owner's side).
@@ -45,8 +45,7 @@
 
 namespace ATV {
 namespace cpu {
-namespace md {
-namespace mpi {
+namespace comm {
 
 namespace detail {
 /// @brief Per-face MPI buffer storage (PIMPL). Definition lives in
@@ -164,7 +163,7 @@ class HaloExchangeForward : public cpu::ComponentBase {
 /// @brief Reverse pass: ghost-row forces → owner's force arrays.
 ///
 /// Phase 2: pairs with the most recent `HaloExchangeForward` exchange via
-/// the shared per-face state on `DomainDecomposition`. Ghost forces in
+/// the shared per-face state on `md::mpi::DomainDecomposition`. Ghost forces in
 /// `frame.atoms.fx/fy/fz[n_local : n_local + n_ghost)` are packed by face,
 /// `MPI_Isend/Irecv` to the originating ranks, and added into the owners'
 /// local force arrays at the indices in their own `send_lists`.
@@ -225,7 +224,6 @@ class HaloExchangeReverse : public cpu::ComponentBase {
     std::unique_ptr<detail::FaceBufs> bufs_;
 };
 
-} // namespace mpi
-} // namespace md
+} // namespace comm
 } // namespace cpu
 } // namespace ATV

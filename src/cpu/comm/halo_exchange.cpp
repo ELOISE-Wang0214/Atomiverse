@@ -17,7 +17,7 @@
 /// `Reverse` can mirror the layout via `dd->recv_counts[]`; `Reverse`
 /// processes the axes in reverse order so the cascade plays backwards.
 
-#include "atomiverse/cpu/md/mpi/halo_exchange.h"
+#include "atomiverse/cpu/comm/halo_exchange.h"
 
 #include <algorithm>
 #include <array>
@@ -37,8 +37,7 @@
 
 namespace ATV {
 namespace cpu {
-namespace md {
-namespace mpi {
+namespace comm {
 
 // ── Per-instance buffer storage (PIMPL) ──────────────────────────────
 //
@@ -113,7 +112,7 @@ inline double pair_dist_sq(const Frame& f, int i, int j) {
 /// `dd == nullptr` (pre-partition / single-rank path) the tag is assumed
 /// to equal the row index, matching the default `tag[i] = i` layout set
 /// up by `Frame::Atoms`'s constructor.
-inline int resolve_tag(const DomainDecomposition* dd, int atom_tag) {
+inline int resolve_tag(const md::mpi::DomainDecomposition* dd, int atom_tag) {
     if (dd == nullptr)
         return atom_tag;
     auto it = dd->tag_to_local.find(static_cast<std::int64_t>(atom_tag));
@@ -126,7 +125,7 @@ inline int resolve_tag(const DomainDecomposition* dd, int atom_tag) {
 /// bonded span is visible to every caller even when every cross-rank
 /// tuple is partial on every rank.
 double compute_bonded_extension_local(const Frame& frame,
-                                      const DomainDecomposition* dd) {
+                                      const md::mpi::DomainDecomposition* dd) {
     // Reads per-atom bonded topology from `frame.atoms` (was: flat
     // bonds/angles/dihedrals blocks on Frame; those are deleted).
     // Single-rank: `dd` may be null; we treat all atoms as locally
@@ -213,7 +212,7 @@ double HaloExchangeForward::compute_bonded_extension(const cpu::Frame& frame) {
     // into `frame.atoms.x/y/z`. This holds for single-rank callers, for
     // pre-partition callers, and for all current unit tests. Rank-local
     // multi-rank scans must go through `compute_bonded_extension_local`
-    // with the rank's `DomainDecomposition` to avoid reading wrong rows
+    // with the rank's `md::mpi::DomainDecomposition` to avoid reading wrong rows
     // in a post-`partition_atoms` compacted frame.
     return compute_bonded_extension_local(frame, /*dd=*/nullptr);
 }
@@ -238,7 +237,7 @@ inline int face_sign(int f) { return (f & 1) ? +1 : -1; }
 /// the receiving rank is at the opposite edge of the global box;
 /// pre-subtract `L_dim` from the packed coord so the receiver sees the
 /// atom in its own coordinate frame. Symmetric for the -dim edge.
-inline double pbc_shift_for_face(const DomainDecomposition& dd, int f,
+inline double pbc_shift_for_face(const md::mpi::DomainDecomposition& dd, int f,
                                  double L_dim) {
     const int dim = face_dim(f);
     const int sign = face_sign(f);
@@ -259,7 +258,7 @@ inline double pbc_shift_for_face(const DomainDecomposition& dd, int f,
 ///
 /// `dd.send_lists[2*dim]` (= face `−dim`) and `dd.send_lists[2*dim+1]` (=
 /// face `+dim`) are cleared and refilled. Capacity is preserved.
-void rebuild_send_lists_for_axis(const Frame& frame, DomainDecomposition& dd,
+void rebuild_send_lists_for_axis(const Frame& frame, md::mpi::DomainDecomposition& dd,
                                  int dim, int sources_end, double cutoff) {
     const int f_lo = 2 * dim;
     const int f_hi = 2 * dim + 1;
@@ -289,7 +288,7 @@ void rebuild_send_lists_for_axis(const Frame& frame, DomainDecomposition& dd,
 constexpr int kPosTagDoublesPerAtom = 4;
 constexpr int kPosOnlyDoublesPerAtom = 3;
 
-void pack_positions_for_face(const Frame& frame, const DomainDecomposition& dd,
+void pack_positions_for_face(const Frame& frame, const md::mpi::DomainDecomposition& dd,
                              int f, std::vector<double>& buf) {
     const auto& list = dd.send_lists[f];
     const int n = static_cast<int>(list.size());
@@ -325,7 +324,7 @@ void pack_positions_for_face(const Frame& frame, const DomainDecomposition& dd,
 /// reneighbor events). Ghost slot indices on the receiver stay fixed, so
 /// we do not re-send tags.
 void pack_positions_only_for_face(const Frame& frame,
-                                  const DomainDecomposition& dd, int f,
+                                  const md::mpi::DomainDecomposition& dd, int f,
                                   std::vector<double>& buf) {
     const auto& list = dd.send_lists[f];
     const int n = static_cast<int>(list.size());
@@ -424,7 +423,7 @@ namespace {
 /// Returns `true` on success, `false` on capacity overflow (the orchestrator
 /// is expected to have already triggered `MPI_Abort` in that case via its
 /// own logging, but the caller may want to short-circuit cleanup paths).
-inline void forward_axis_stage(Frame& frame, DomainDecomposition& dd,
+inline void forward_axis_stage(Frame& frame, md::mpi::DomainDecomposition& dd,
                                FaceBufs& bufs, int dim, int sources_end,
                                double cutoff, bool full_rebuild,
                                int frame_cap, int my_rank,
@@ -788,7 +787,6 @@ void HaloExchangeReverse::launch(const cpu::LaunchContext& /*ctx*/) {}
 
 #endif // ATV_HAS_MPI
 
-} // namespace mpi
-} // namespace md
+} // namespace comm
 } // namespace cpu
 } // namespace ATV

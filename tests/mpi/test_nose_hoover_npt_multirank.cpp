@@ -30,6 +30,7 @@
 #include "atomiverse/cpu/comm/halo_exchange.h"
 #include "atomiverse/cpu/md/neighbor_list.h"
 #include "atomiverse/cpu/md/nose_hoover_npt.h"
+#include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/potentials/angle_harmonic.h"
 #include "atomiverse/cpu/potentials/bond_harmonic.h"
 #include "atomiverse/cpu/potentials/dihedral_multi_harmonic.h"
@@ -347,6 +348,144 @@ TEST(NoseHooverNptMultiRank, BondedKineticNonZero) {
         ASSERT_GT(T, 1.0) << "T_K collapsed at step "
                           << (chunk + probe_every + 1)
                           << " — NoseHooverNPT + bonded MPI bug repro";
+    }
+}
+
+// ── Migration × special-bonds regression (MSU-PE 10k NPT collapse) ──────
+//
+// Root cause (fixed 2026-05-29): `PairLJCut` built its tag-keyed
+// special-bonds exclusion map ONCE at `build()` from that rank's
+// then-owned atoms. After `AtomMigration` moved an atom into a rank whose
+// build-time snapshot never held its tag, the atom's 1-2/1-3/1-4 partners
+// escaped the exclusion filter, so the LJ kernel saw a ~1.53 Å bonded
+// pair and produced a catastrophic repulsive spike (E_pair → 1e5+ eV;
+// under NPT this became T → 1e4 K then a frozen T = 0 collapse). The
+// NoseHooverNpt configs above never exposed it: each chain lives inside
+// one rank's slab, so no atom ever migrates.
+//
+// This test forces the exact mechanism deterministically. Every chain is
+// laid ENTIRELY in the x > box/2 half, so the x < box/2 ranks' build-time
+// exclusion map provably contains NONE of the chains' tags. A gentle
+// uniform −x drift carries the chains across the x = box/2 slab boundary;
+// the periodic AtomMigration (every 10 steps) then moves chain atoms onto
+// ranks whose stale map lacks them. NVE (no thermostat/barostat) keeps the
+// trajectory clean: only the LJ singularity can blow up E_pair, which is
+// drift-invariant. The fix rebuilds the exclusion map from the live
+// per-atom `special` lists on every neighbor-list rebuild, so the
+// exclusion survives migration and E_pair stays bounded.
+namespace {
+
+cpu::Frame make_drifting_x1_chains(int n_lanes, int n_atoms_per_chain,
+                                   double box_len, double drift_vx) {
+    // n_lanes^2 straight chains laid along +x, each in its own (y, z) lane,
+    // ALL starting in the upper-x half [box/2 + margin, …]. A uniform −x
+    // drift velocity carries them across x = box/2 within the run. Bond
+    // length 1.53 Å; chains stay clear of x = box so no wrap aliasing in
+    // the first ~hundred steps.
+    const int n_chains = n_lanes * n_lanes;
+    const int n_atoms = n_chains * n_atoms_per_chain;
+    const double r0 = 1.53;
+    const double lane = box_len / static_cast<double>(n_lanes);
+    const double x_start = 0.5 * box_len + 1.0; // just inside the x1 half
+
+    cpu::Frame frame(n_atoms);
+
+    int atom_idx = 0;
+    for (int ly = 0; ly < n_lanes; ++ly)
+        for (int lz = 0; lz < n_lanes; ++lz) {
+            const double y0 = (ly + 0.5) * lane;
+            const double z0 = (lz + 0.5) * lane;
+            for (int k = 0; k < n_atoms_per_chain; ++k) {
+                frame.atoms.x[atom_idx] = x_start + k * r0;
+                frame.atoms.y[atom_idx] = y0;
+                frame.atoms.z[atom_idx] = z0;
+                frame.atoms.vx[atom_idx] = drift_vx; // coherent −x march
+                frame.atoms.mass[atom_idx] = 14.0;
+                frame.atoms.type[atom_idx] = 1;
+                ++atom_idx;
+            }
+        }
+
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, frame.atoms.nlocal);
+    for (int c = 0; c < n_chains; ++c) {
+        const int chain_base = c * n_atoms_per_chain;
+        for (int k = 0; k < n_atoms_per_chain - 1; ++k)
+            frame.atoms.add_bond(chain_base + k, chain_base + k + 1, 0);
+        // Angles populate the 1-3 special tier so the exclusion covers the
+        // full 1-2/1-3/1-4 set the bench uses.
+        for (int k = 0; k < n_atoms_per_chain - 2; ++k)
+            frame.atoms.add_angle(chain_base + k, chain_base + k + 1,
+                                  chain_base + k + 2, 0);
+    }
+    frame.atoms.build_special_list();
+
+    frame.box = Mat3::cubic(box_len);
+    return frame;
+}
+
+} // namespace
+
+TEST(NoseHooverNptMultiRank, MigrationKeepsSpecialBondsExclusion) {
+    int world_size = 0;
+    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+    if (world_size != 8) {
+        GTEST_SKIP() << "8-rank specific (needs 2x2x2 slab crossing); got "
+                     << world_size;
+    }
+    int my_rank = 0;
+    MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
+
+    // 16 chains × 18 atoms in a 70 Å box, all in x ∈ [36, 62] at build
+    // (entirely the x1 half; x-slab boundary = 35 Å). drift_vx = −0.04 Å/fs
+    // ⇒ the chain heads reach x = 35 around step ~50 and migrate to the x0
+    // ranks, whose build-time exclusion map never held these tags.
+    // halo_cut = 1.1·lj_cut = 11.55 < slab/2 = 17.5 (cascade-bound rule).
+    auto frame = make_drifting_x1_chains(/*n_lanes=*/4, /*n_atoms_per_chain=*/18,
+                                         /*box_len=*/70.0, /*drift_vx=*/-0.04);
+
+    const double bond_K_eV = 350.0 * 0.0433641 / (1.53 * 1.53);
+    const double bond_r0 = 1.53;
+    const double lj_eps = 0.112 * 0.0433641;
+    const double lj_sig = 4.01;
+    const double lj_cut = 10.5;
+    const double dt = 0.5;
+
+    cpu::md::MD sim;
+    // NVE: isolate the migration × special-bonds path from any
+    // thermostat/barostat dynamics. The −x drift fires the migrations.
+    sim.set_integrator(cpu::md::VelocityVerlet{dt});
+    sim.set_neighbor(cpu::md::NeighborList<>{lj_cut, /*skin=*/0.3});
+    // special_bonds(0,0,0): 1-2/1-3/1-4 bonded pairs MUST be excluded from
+    // LJ. The migration-staleness bug dropped this exclusion for migrated
+    // atoms, feeding the LJ kernel a 1.53 Å pair (E_pair → 1e5+ eV).
+    sim.set_pair(cpu::md::LJ{lj_eps, lj_sig, lj_cut}.set_special_bonds(
+        0.0, 0.0, 0.0));
+    sim.set_bond(cpu::BondHarmonic{{bond_K_eV}, {bond_r0}});
+    sim.build();
+
+    // E_pair for these sparse, lane-separated chains is tiny: only intra-
+    // chain 1-5⁺ pairs at ≥ 6.1 Å contribute (1-2/1-3/1-4 excluded), and
+    // different lanes are box/4 = 17.5 Å > cutoff apart. A correct run
+    // holds |E_pair| ≲ a few eV. A lost exclusion puts a 1.53 Å pair into
+    // the kernel: (σ/r)¹² with σ/r ≈ 2.6 ⇒ thousands of eV per pair.
+    constexpr int n_steps = 150;
+    constexpr int probe_every = 10;
+    for (int chunk = 0; chunk < n_steps; chunk += probe_every) {
+        sim.run(frame, probe_every);
+        const double e_pair = static_cast<double>(frame.scalars.energy_pair);
+        if (my_rank == 0) {
+            std::printf("[mig-excl-8r] step %d: E_pair=%.4f eV, box=%.3f Å\n",
+                        chunk + probe_every, e_pair, frame.box(0, 0));
+        }
+        ASSERT_LT(std::abs(e_pair), 200.0)
+            << "E_pair exploded at step " << (chunk + probe_every)
+            << " — a migrated atom lost its special-bonds exclusion and the "
+               "LJ kernel saw a ~1.53 Å bonded pair (stale PairLJCut map)";
+    }
+    for (int i = 0; i < frame.atoms.size(); ++i) {
+        ASSERT_FALSE(std::isnan(frame.atoms.x[i]))
+            << "rank " << my_rank << " atom " << i << " x NaN";
     }
 }
 

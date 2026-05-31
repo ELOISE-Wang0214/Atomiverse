@@ -70,19 +70,41 @@ void PairLJCut::build(const BuildContext& ctx) {
         fz_thr_[t].resize(n, double(0));
     }
 
-    // Build tag-indexed exclusion map when any special-bonds scale is 0.
-    // Frame topology stores GLOBAL TAGS (tag == local index in single-rank
-    // by default; differs once partition compacts atoms in multi-rank).
-    // Per-tag exclusion is correct under any partition: at launch time we
-    // read the partner's tag from frame.atoms.tag[j] and look it up in
-    // the owner's excluded set.
+    // Tag-indexed special-bonds exclusion: active when any special-bonds
+    // tier is fully excluded (scale 0). The map itself is (re)built from
+    // the live per-atom topology by `refresh_exclusion_map`, called on
+    // every neighbor-list rebuild via `rebuild_filtered_list` — NOT cached
+    // once here. A build-time-only map goes stale the moment multi-rank
+    // `AtomMigration` moves an atom into a rank whose snapshot never held
+    // that tag, dropping its exclusions and feeding a ~1.5 Å bonded pair
+    // to the LJ kernel (MSU-PE multi-rank NPT collapse). We still build it
+    // once here so a no-migration / single-`compute()` caller (e.g.
+    // `Evaluate`) has a valid map before the first filtered walk.
+    any_excl_ = (s12_ == 0.0) || (s13_ == 0.0) || (s14_ == 0.0);
+    excluded_by_tag_.clear();
+    if (!any_excl_)
+        return;
+    const auto* dd = ctx.runtime.dd;
+    const int n_owners = (dd && ctx.runtime.mpi_size > 1)
+                             ? dd->n_local
+                             : ctx.frame.atoms.nlocal;
+    refresh_exclusion_map(ctx.frame, n_owners);
+}
+
+void PairLJCut::refresh_exclusion_map(const Frame& f, int n_owners) {
+    // Rebuild the tag-keyed exclusion lists from the CURRENT per-atom
+    // `nspecial` / `special` topology of owner rows `[0, n_owners)`.
+    // `special(i, ·)` holds GLOBAL TAGS, populated by `materialize` /
+    // the LAMMPS-data reader via `Atom::build_special_list`, and travels
+    // with the atom across migration (pack/unpack/move_row). Iterating
+    // owners and recording each owner's own partners makes
+    // `excluded_by_tag_[tag_i]` complete for every owner `i` the filtered
+    // walk consults — correct under any partition.
+    excluded_by_tag_.clear();
     const bool has_excl_12 = (s12_ == 0.0);
     const bool has_excl_13 = (s13_ == 0.0);
     const bool has_excl_14 = (s14_ == 0.0);
-    const bool any_excl = has_excl_12 || has_excl_13 || has_excl_14;
-
-    excluded_by_tag_.clear();
-    if (!any_excl)
+    if (!(has_excl_12 || has_excl_13 || has_excl_14))
         return;
 
     auto add_pair = [&](std::int64_t a, std::int64_t b) {
@@ -92,14 +114,8 @@ void PairLJCut::build(const BuildContext& ctx) {
         excluded_by_tag_[b].push_back(a);
     };
 
-    // Exclusion list is now read from per-atom `nspecial` / `special`
-    // populated by `materialize` / LAMMPS-data reader via
-    // `Atom::build_special_list`. nspecial[i][0..2] are cumulative
-    // counts for 1-2 / 1-3 / 1-4 partners; `special(i, 0..nspecial[i][2])`
-    // is the flat tag list.
-    const auto& f = ctx.frame;
     const auto& at = f.atoms;
-    for (int i = 0; i < at.nlocal; ++i) {
+    for (int i = 0; i < n_owners; ++i) {
         const std::int64_t ti = at.tag[i];
         const int n12 = at.nspecial(i, 0);
         const int n13 = at.nspecial(i, 1);
@@ -132,6 +148,12 @@ void PairLJCut::rebuild_filtered_list(const Frame& f,
     // amortizing the `tag_ptr[j]` gather + `binary_search` that the old
     // in-kernel path paid on every launch × every pair.
     const int n = pairs.inum;
+    // Refresh the exclusion map from the live topology of the current
+    // owners before filtering. `pairs.inum` is the authoritative owned
+    // count (trimmed to `dd->n_local` in multi-rank). This is what keeps
+    // special-bonds exclusions correct after an `AtomMigration` reshuffles
+    // ownership — the stale build-time map was the MSU-PE collapse cause.
+    refresh_exclusion_map(f, n);
     filtered_inum_ = n;
     filtered_numneigh_.assign(n, 0);
     filtered_firstneigh_.assign(n, 0);
@@ -187,7 +209,7 @@ void PairLJCut::compute(const LaunchContext& ctx) {
     // `rebuild_filtered_list` for the invariant. When no exclusions are
     // configured we iterate the upstream CSR directly — no copy, no
     // allocation, no per-pair branch.
-    const bool use_filtered = !excluded_by_tag_.empty();
+    const bool use_filtered = any_excl_;
     if (use_filtered && pairs.version != filtered_version_) {
         rebuild_filtered_list(f, pairs);
         filtered_version_ = pairs.version;
@@ -536,6 +558,7 @@ void PairLJCut::destroy(const DestroyContext& ctx) {
     filtered_firstneigh_.clear();
     filtered_inum_ = 0;
     filtered_version_ = 0;
+    any_excl_ = false;
 }
 
 } // namespace cpu

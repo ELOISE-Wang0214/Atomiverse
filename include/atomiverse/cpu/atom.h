@@ -22,7 +22,8 @@
 /// duration of a single `launch()` call.
 ///
 /// @see lammps/src/atom.h for the upstream model
-/// @see cpu/comm/comm.h for the components that drive nlocal/nghost
+/// @see cpu/comm/halo_exchange.h, cpu/comm/atom_migration.h for the
+///      components that drive nlocal/nghost
 /// @see cpu/comm/atom_pack.h for pack/unpack helpers
 #pragma once
 

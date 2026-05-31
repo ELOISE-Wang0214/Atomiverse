@@ -159,7 +159,6 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/atom.cpp
         src/cpu/backend.cpp
         src/cpu/box.cpp
-        src/cpu/domain.cpp
         src/cpu/materialize.cpp
         src/cpu/driver.cpp
         src/cpu/analysis_executor.cpp
@@ -191,13 +190,12 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/minimizer/trajectory_writer.cpp
         src/cpu/minimizer/opt_log.cpp
         src/cpu/minimizer/final_geometry.cpp
-        # CPU MPI communication subsystem (LAMMPS-shaped)
+        # CPU MPI communication subsystem (LAMMPS-shaped, ATV::cpu::comm::*)
         src/cpu/comm/atom_pack.cpp
-        src/cpu/comm/comm.cpp
+        src/cpu/comm/halo_exchange.cpp
+        src/cpu/comm/atom_migration.cpp
         # CPU MD MPI infrastructure (single-rank stubs in Phase 1)
         src/cpu/md/mpi/domain.cpp
-        src/cpu/md/mpi/halo_exchange.cpp
-        src/cpu/md/mpi/atom_migration.cpp
         src/cpu/md/mpi/reduce.cpp
         src/cpu/md/mpi/gather.cpp
         src/cpu/md/mpi/rcb.cpp

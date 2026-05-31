@@ -23,8 +23,8 @@
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/lj.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/md/mpi/atom_migration.h"
-#include "atomiverse/cpu/md/mpi/halo_exchange.h"
+#include "atomiverse/cpu/comm/atom_migration.h"
+#include "atomiverse/cpu/comm/halo_exchange.h"
 #include "atomiverse/cpu/md/mpi/reduce.h"
 #include "atomiverse/cpu/md/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
@@ -71,7 +71,7 @@ bool has_binding(const std::vector<DefaultBinding>& bindings, int phase,
 // ── bindings ─────────────────────────────────────────────────────────
 
 TEST(MpiStubBindings, HaloExchangeForwardBindings) {
-    cpu::md::mpi::HaloExchangeForward hx{};
+    cpu::comm::HaloExchangeForward hx{};
     auto b = hx.default_bindings();
     EXPECT_TRUE(
         has_binding(b, static_cast<int>(ATV::md::Phase::pre_force), -20))
@@ -79,7 +79,7 @@ TEST(MpiStubBindings, HaloExchangeForwardBindings) {
 }
 
 TEST(MpiStubBindings, HaloExchangeReverseBindings) {
-    cpu::md::mpi::HaloExchangeReverse hx{};
+    cpu::comm::HaloExchangeReverse hx{};
     auto b = hx.default_bindings();
     EXPECT_TRUE(
         has_binding(b, static_cast<int>(ATV::md::Phase::post_force), -1000))
@@ -87,7 +87,7 @@ TEST(MpiStubBindings, HaloExchangeReverseBindings) {
 }
 
 TEST(MpiStubBindings, AtomMigrationBinding) {
-    cpu::md::mpi::AtomMigration am{};
+    cpu::comm::AtomMigration am{};
     auto b = am.default_bindings();
     EXPECT_TRUE(
         has_binding(b, static_cast<int>(ATV::md::Phase::pre_force), -30))
@@ -129,9 +129,9 @@ TEST(MpiStubBindings, SingleRankLaunchNoOp) {
         sim.set_integrator(cpu::md::VelocityVerlet{1e-6}); // negligible dt
         sim.set_pair(cpu::md::LJ{1e-12, 3.4, zero_force_cut});
         sim.set_neighbor(cpu::md::NeighborList<>{zero_force_cut, /*skin=*/0.1});
-        sim.add(cpu::md::mpi::HaloExchangeForward{});
-        sim.add(cpu::md::mpi::HaloExchangeReverse{});
-        sim.add(cpu::md::mpi::AtomMigration{});
+        sim.add(cpu::comm::HaloExchangeForward{});
+        sim.add(cpu::comm::HaloExchangeReverse{});
+        sim.add(cpu::comm::AtomMigration{});
         sim.add(cpu::md::mpi::ReduceEnergy{});
         sim.build();
         sim.run(frame, 10);
@@ -152,8 +152,8 @@ TEST(MpiStubBindings, SingleRankLaunchNoOp) {
 // ── class-name hygiene ───────────────────────────────────────────────
 
 TEST(MpiStubBindings, ClassNamesAreDistinct) {
-    cpu::md::mpi::HaloExchangeForward fwd{};
-    cpu::md::mpi::HaloExchangeReverse rev{};
+    cpu::comm::HaloExchangeForward fwd{};
+    cpu::comm::HaloExchangeReverse rev{};
     const std::string n_fwd = fwd.name();
     const std::string n_rev = rev.name();
     EXPECT_NE(n_fwd, n_rev);

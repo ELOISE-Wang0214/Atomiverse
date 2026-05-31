@@ -4,7 +4,7 @@
 /// Phase 1: structural no-op with a default binding at `pre_force @ -30`.
 /// Phase 3: `MPI_Alltoallv` of atoms + bonded tuples to new owners whenever
 /// this rank's ownership set has drifted beyond the halo skin; bumps
-/// `DomainDecomposition::neighbor_generation` on each migration so
+/// `md::mpi::DomainDecomposition::neighbor_generation` on each migration so
 /// downstream consumers (neighbor list, halo send lists, bonded index
 /// remap) rebuild from tag→local.
 ///
@@ -24,8 +24,7 @@
 
 namespace ATV {
 namespace cpu {
-namespace md {
-namespace mpi {
+namespace comm {
 
 /// @brief Atom migration across rank boundaries.
 ///
@@ -35,7 +34,7 @@ class AtomMigration : public cpu::ComponentBase {
   public:
     /// @param every Attempt owner migration every N steps. The component also
     ///        runs immediately when an external partition update bumps
-    ///        `DomainDecomposition::neighbor_generation`.
+    ///        `md::mpi::DomainDecomposition::neighbor_generation`.
     explicit AtomMigration(int every = 1) : every_(every < 1 ? 1 : every) {}
 
     std::string name() const override { return "atom_migration"; }
@@ -49,7 +48,6 @@ class AtomMigration : public cpu::ComponentBase {
     std::uint64_t last_observed_generation_ = ~std::uint64_t{0};
 };
 
-} // namespace mpi
-} // namespace md
+} // namespace comm
 } // namespace cpu
 } // namespace ATV

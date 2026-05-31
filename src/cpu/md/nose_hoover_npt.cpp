@@ -666,6 +666,18 @@ void NoseHooverNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
     // out-of-range cell-list indices and a crash. compute_sublo_subhi is
     // O(1) (three multiplies) and is called identically on every rank, so
     // the partition stays consistent.
+    //
+    // We deliberately do NOT bump `neighbor_generation` here. An earlier
+    // revision did, to force a full halo rebuild + migration every NPT
+    // step — a workaround for the MSU-PE multi-rank collapse that was in
+    // fact a stale special-bonds exclusion map in `PairLJCut` (fixed
+    // there). Forcing per-step reneighbor made the 8-rank run ~10×
+    // slower for no correctness benefit: `AtomMigration` (every_=10) and
+    // `HaloExchangeForward` (every_=10 + position-only refresh in between,
+    // which already rescales ghosts as the box breathes) keep the halo
+    // valid on the standard LAMMPS-style cadence. Migration still fires
+    // promptly whenever an owner crosses a slab boundary because the
+    // refreshed `sublo/subhi` above feeds the next scheduled migration.
     if (ctx.runtime.dd && ctx.runtime.mpi_size > 1) {
         ctx.runtime.dd->compute_sublo_subhi(f.box);
     }

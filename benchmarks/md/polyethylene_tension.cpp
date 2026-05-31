@@ -1429,7 +1429,13 @@ int main(int argc, char** argv) {
     }
 
     // ── Shared evaluators + recorders (lvalues; outlive every driver) ──
-    cpu::md::NeighborList<> nl{kLjCutoff};
+    // Neighbor settings mirror the LAMMPS deck (`neighbor 0.4 bin` +
+    // `neigh_modify every 10`) so the parity comparison is apples-to-apples.
+    // The library default skin (0.3·cutoff = 3.15 Å) inflates the Verlet
+    // list radius to 13.65 Å vs LAMMPS's 10.9 Å — ~2× more candidate pairs
+    // scanned per LJ step, which alone accounted for most of the per-step
+    // wall-time gap against LAMMPS on this deck.
+    cpu::md::NeighborList<> nl{kLjCutoff, /*skin=*/0.4, /*every=*/10};
     cpu::md::LJ lj =
         cpu::md::LJ{lj_eps_eV(), kLjSigma, kLjCutoff}.set_special_bonds(
             0.0, 0.0, 0.0);

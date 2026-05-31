@@ -8,9 +8,9 @@
 #include "atomiverse/cpu/backend.h"
 #include "atomiverse/cpu/dynamics_driver.h"
 #include "atomiverse/cpu/md/init.h"
-#include "atomiverse/cpu/md/mpi/atom_migration.h"
+#include "atomiverse/cpu/comm/atom_migration.h"
 #include "atomiverse/cpu/md/mpi/domain.h"
-#include "atomiverse/cpu/md/mpi/halo_exchange.h"
+#include "atomiverse/cpu/comm/halo_exchange.h"
 #include "atomiverse/cpu/md/mpi/reduce.h"
 #include "atomiverse/cpu/md/virial_stress.h"
 #include "atomiverse/cpu/pair_evaluator.h"
@@ -80,7 +80,7 @@ class MD : public DynamicsDriver {
             .add(KineticEnergy{}, -100);
 
         // MPI infrastructure (single-rank no-ops in Phase 1).
-        add(mpi::AtomMigration{10});
+        add(comm::AtomMigration{10});
         add(mpi::ReduceEnergy{});
 
         // Async-analysis publisher — shared infrastructure, explicitly
@@ -176,8 +176,8 @@ class MD : public DynamicsDriver {
             // halo and skip the auto-inject.
             const double halo_cut =
                 1.1 * static_cast<double>(*s.pair_evaluator_cutoff);
-            this->add(mpi::HaloExchangeForward{halo_cut});
-            this->add(mpi::HaloExchangeReverse{});
+            this->add(comm::HaloExchangeForward{halo_cut});
+            this->add(comm::HaloExchangeReverse{});
         }
 #endif
 

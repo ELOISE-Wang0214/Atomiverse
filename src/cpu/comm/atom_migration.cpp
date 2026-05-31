@@ -10,7 +10,7 @@
 /// Bonded-tuple migration is **not** handled here; that is tracked under
 /// Phase 3.2 of msu-pe-validation.md.
 
-#include "atomiverse/cpu/md/mpi/atom_migration.h"
+#include "atomiverse/cpu/comm/atom_migration.h"
 
 #include <algorithm>
 #include <cmath>
@@ -31,8 +31,7 @@
 
 namespace ATV {
 namespace cpu {
-namespace md {
-namespace mpi {
+namespace comm {
 
 #ifdef ATV_HAS_MPI
 
@@ -80,9 +79,9 @@ inline int slab_along_dim_from_cuts(double frac,
 // formula applies. When non-empty (set by `RCBBalancer`), the destination is
 // derived from the box-length fraction via binary search through the cut
 // planes -- which guarantees the same rank assignment that
-// `DomainDecomposition::compute_sublo_subhi` would produce on the destination
+// `md::mpi::DomainDecomposition::compute_sublo_subhi` would produce on the destination
 // side.
-inline int dest_rank_for(const DomainDecomposition& dd, double x, double y,
+inline int dest_rank_for(const md::mpi::DomainDecomposition& dd, double x, double y,
                          double z, const cpu::Box& box) {
     auto axis_coord = [&](int d, double q) {
         const double L = box.length(d);
@@ -211,9 +210,6 @@ void AtomMigration::launch(const cpu::LaunchContext& ctx) {
         }
     }
 
-    // Early exit: if NO rank has anything to migrate, skip all collective
-    // work. We still need a global agreement on this -- a single rank with
-    // a migration would deadlock everyone if others bailed out early.
     int any_local = (n_to_migrate > 0) ? 1 : 0;
     int any_global = 0;
     MPI_Allreduce(&any_local, &any_global, 1, MPI_INT, MPI_LOR, dd->cart_comm);
@@ -222,8 +218,6 @@ void AtomMigration::launch(const cpu::LaunchContext& ctx) {
         return;
     }
 
-    // Pack per-rank send buffers into a single contiguous byte buffer for
-    // MPI_Alltoallv (which needs flat arrays + per-rank counts/displs).
     std::vector<int> send_counts(static_cast<std::size_t>(world_size), 0);
     std::vector<int> send_displs(static_cast<std::size_t>(world_size), 0);
     std::vector<int> recv_counts(static_cast<std::size_t>(world_size), 0);
@@ -248,8 +242,6 @@ void AtomMigration::launch(const cpu::LaunchContext& ctx) {
         }
     }
 
-    // Exchange counts (in bytes) so every rank knows how much to receive
-    // from every other rank.
     MPI_Alltoall(send_counts.data(), 1, MPI_INT, recv_counts.data(), 1, MPI_INT,
                  dd->cart_comm);
 
@@ -267,7 +259,6 @@ void AtomMigration::launch(const cpu::LaunchContext& ctx) {
                   MPI_BYTE, recv_buf.data(), recv_counts.data(),
                   recv_displs.data(), MPI_BYTE, dd->cart_comm);
 
-    // Compact kept owners to the front of every per-atom array.
     const int new_n_kept = static_cast<int>(keep_indices.size());
     for (int ni = 0; ni < new_n_kept; ++ni) {
         const int oi = keep_indices[static_cast<std::size_t>(ni)];
@@ -275,18 +266,8 @@ void AtomMigration::launch(const cpu::LaunchContext& ctx) {
             move_row(frame, ni, oi);
     }
 
-    // Append received atoms to the local owner range.
     const int n_received =
         static_cast<int>(total_recv_bytes / kAtomPayloadBytes);
-    const int new_total = new_n_kept + n_received;
-    if (new_total > dd->capacity) {
-        // Phase 0.2: never grow allocation in launch(). Capacity is fixed at
-        // partition time. If a real workload trips this, the user must
-        // pre-size the frame with enough slack (Phase 3 will move this to
-        // the driver-level rebuild_frame() hook).
-        // Fall through and clamp to capacity to avoid OOB; downstream tests
-        // will report the dropped atoms as a global count mismatch.
-    }
     const int n_appendable = std::min(n_received, dd->capacity - new_n_kept);
     std::size_t r_off = 0;
     for (int k = 0; k < n_appendable; ++k) {
@@ -294,9 +275,16 @@ void AtomMigration::launch(const cpu::LaunchContext& ctx) {
     }
 
     dd->n_local = new_n_kept + n_appendable;
-    dd->n_ghost = 0; // any ghost slots from the previous step are now stale;
-                     // HaloExchangeForward will rewrite them this step.
+    dd->n_ghost = 0;
     ++dd->neighbor_generation;
+
+    dd->tag_to_local.clear();
+    dd->tag_to_local.reserve(static_cast<std::size_t>(dd->n_local));
+    for (int i = 0; i < dd->n_local; ++i) {
+        dd->tag_to_local.emplace(frame.atoms.tag[i], i);
+    }
+
+    dd->ghost_tags.clear();
 
     // Rebuild tag → local index map. Bonded indices that key off `tag_to_local`
     // re-resolve through this map on the next neighbor / bonded build.
@@ -328,7 +316,6 @@ void AtomMigration::launch(const cpu::LaunchContext& /*ctx*/) {}
 
 #endif // ATV_HAS_MPI
 
-} // namespace mpi
-} // namespace md
+} // namespace comm
 } // namespace cpu
 } // namespace ATV
