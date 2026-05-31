@@ -278,14 +278,6 @@ void AtomMigration::launch(const cpu::LaunchContext& ctx) {
     dd->n_ghost = 0;
     ++dd->neighbor_generation;
 
-    dd->tag_to_local.clear();
-    dd->tag_to_local.reserve(static_cast<std::size_t>(dd->n_local));
-    for (int i = 0; i < dd->n_local; ++i) {
-        dd->tag_to_local.emplace(frame.atoms.tag[i], i);
-    }
-
-    dd->ghost_tags.clear();
-
     // Rebuild tag → local index map. Bonded indices that key off `tag_to_local`
     // re-resolve through this map on the next neighbor / bonded build.
     dd->tag_to_local.clear();

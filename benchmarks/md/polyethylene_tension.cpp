@@ -587,43 +587,24 @@ cpu::Frame make_pe_box(int chains_per_axis, int n_carbons, double box_len,
         }
     }
 
-    const int nb_per = n_carbons - 1;
-    const int na_per = n_carbons - 2;
-    const int nd_per = n_carbons - 3;
-    frame.bonds.atomi = xt::zeros<int>({n_chains * nb_per});
-    frame.bonds.atomj = xt::zeros<int>({n_chains * nb_per});
-    frame.bonds.type = xt::zeros<int>({n_chains * nb_per});
-    frame.angles.atomi = xt::zeros<int>({n_chains * na_per});
-    frame.angles.atomj = xt::zeros<int>({n_chains * na_per});
-    frame.angles.atomk = xt::zeros<int>({n_chains * na_per});
-    frame.angles.type = xt::zeros<int>({n_chains * na_per});
-    frame.dihedrals.atomi = xt::zeros<int>({n_chains * nd_per});
-    frame.dihedrals.atomj = xt::zeros<int>({n_chains * nd_per});
-    frame.dihedrals.atomk = xt::zeros<int>({n_chains * nd_per});
-    frame.dihedrals.atoml = xt::zeros<int>({n_chains * nd_per});
-    frame.dihedrals.type = xt::zeros<int>({n_chains * nd_per});
-
+    // Per-atom topology (LAMMPS num_bond[i] + bond_atom[i][m] layout). The
+    // Frame-owned flat bond/angle/dihedral arrays are dead storage now — the
+    // force kernels read the per-atom lists on cpu::Atom. Populate them here
+    // so the synthetic (--no-data) fallback exercises real bonded forces;
+    // the --data path goes through load_lammps_data, which already does this.
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, frame.atoms.nlocal);
     for (int c = 0; c < n_chains; ++c) {
         const int base = c * n_carbons;
-        for (int k = 0; k < nb_per; ++k) {
-            const int b = c * nb_per + k;
-            frame.bonds.atomi[b] = base + k;
-            frame.bonds.atomj[b] = base + k + 1;
-        }
-        for (int k = 0; k < na_per; ++k) {
-            const int aa = c * na_per + k;
-            frame.angles.atomi[aa] = base + k;
-            frame.angles.atomj[aa] = base + k + 1;
-            frame.angles.atomk[aa] = base + k + 2;
-        }
-        for (int k = 0; k < nd_per; ++k) {
-            const int d = c * nd_per + k;
-            frame.dihedrals.atomi[d] = base + k;
-            frame.dihedrals.atomj[d] = base + k + 1;
-            frame.dihedrals.atomk[d] = base + k + 2;
-            frame.dihedrals.atoml[d] = base + k + 3;
-        }
+        for (int k = 0; k < n_carbons - 1; ++k)
+            frame.atoms.add_bond(base + k, base + k + 1, 0);
+        for (int k = 0; k < n_carbons - 2; ++k)
+            frame.atoms.add_angle(base + k, base + k + 1, base + k + 2, 0);
+        for (int k = 0; k < n_carbons - 3; ++k)
+            frame.atoms.add_dihedral(base + k, base + k + 1, base + k + 2,
+                                     base + k + 3, 0);
     }
+    frame.atoms.build_special_list();
     frame.box = Mat3::cubic(box_len);
     return frame;
 }
