@@ -1,7 +1,7 @@
-/// @file cpu/md/mpi/halo_exchange.h
+/// @file cpu/comm/halo_exchange.h
 /// @brief Ghost-atom halo exchange components for MPI domain decomposition.
 ///
-/// Phase 2 implementation:
+/// LAMMPS-style forward/reverse comm:
 ///   - `HaloExchangeForward::launch` rebuilds per-face send lists from
 ///     current positions, packs owned positions (with PBC shift across
 ///     periodic-edge faces), issues 6-face `MPI_Isend/Irecv`, and unpacks
@@ -16,10 +16,10 @@
 /// is the consumer (uses the same per-face counts to know how many ghost
 /// forces to pack and where they go on the owner's side).
 ///
-/// `HaloExchangeForward{}` is a structural no-op (`cutoff = 0`). Real
-/// multi-rank runs add `HaloExchangeForward{cutoff_with_skin}` and a matching
-/// `HaloExchangeReverse{}` explicitly; `cpu::md::MD` does not auto-register
-/// halo components because reverse exchange must run exactly once.
+/// The default-constructed `HaloExchangeForward{}` (`cutoff = 0`) is a
+/// no-op sentinel. Real multi-rank runs add `HaloExchangeForward{cutoff_with_skin}`
+/// and a matching `HaloExchangeReverse{}` explicitly; `cpu::md::MD` does not
+/// auto-register halo components because reverse exchange must run exactly once.
 ///
 /// **Bonded skin auto-extension** (spec A.5): `build()` scans
 /// `frame.bonds/angles/dihedrals` (tag-aware: multi-rank scans resolve
@@ -58,11 +58,10 @@ struct FaceBufs;
 
 /// @brief Forward pass: owned positions → ghost rows on face neighbors.
 ///
-/// **Real implementation (Phase 2).** Per-face send lists are rebuilt every
-/// step from current owned positions; packed buffers are allocated once in
-/// `build()` based on a generous initial estimate (no `launch()` realloc on
-/// the steady-state path). Single-rank (`runtime.mpi_size == 1`) and
-/// `cutoff == 0` both early-return.
+/// Per-face send lists are rebuilt every step from current owned positions;
+/// packed buffers are allocated once in `build()` based on a generous initial
+/// estimate (no `launch()` realloc on the steady-state path). Single-rank
+/// (`runtime.mpi_size == 1`) and `cutoff == 0` both early-return.
 ///
 /// Atoms within `cutoff` of a face plane are flagged as ghosts to the
 /// corresponding face neighbor. PBC: atoms sent across the periodic edge of
@@ -162,7 +161,7 @@ class HaloExchangeForward : public cpu::ComponentBase {
 
 /// @brief Reverse pass: ghost-row forces → owner's force arrays.
 ///
-/// Phase 2: pairs with the most recent `HaloExchangeForward` exchange via
+/// Pairs with the most recent `HaloExchangeForward` exchange via
 /// the shared per-face state on `md::mpi::DomainDecomposition`. Ghost forces in
 /// `frame.atoms.fx/fy/fz[n_local : n_local + n_ghost)` are packed by face,
 /// `MPI_Isend/Irecv` to the originating ranks, and added into the owners'

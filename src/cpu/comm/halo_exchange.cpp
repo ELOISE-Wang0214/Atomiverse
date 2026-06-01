@@ -1,4 +1,4 @@
-/// @file src/cpu/md/mpi/halo_exchange.cpp
+/// @file src/cpu/comm/halo_exchange.cpp
 /// @brief `HaloExchangeForward` / `HaloExchangeReverse` real implementation.
 ///
 /// Orthorhombic, LAMMPS-style multi-stage forward comm: 3 sequential axis

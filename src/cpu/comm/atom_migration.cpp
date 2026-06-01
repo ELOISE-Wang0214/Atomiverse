@@ -1,5 +1,5 @@
-/// @file src/cpu/md/mpi/atom_migration.cpp
-/// @brief `AtomMigration` -- Phase 0.2 / P3.1 implementation.
+/// @file src/cpu/comm/atom_migration.cpp
+/// @brief `AtomMigration` -- MPI_Alltoallv owner migration implementation.
 ///
 /// For each owner whose post-integration position lies outside this rank's
 /// spatial slab, the atom (and all its per-atom fields) is shipped to the

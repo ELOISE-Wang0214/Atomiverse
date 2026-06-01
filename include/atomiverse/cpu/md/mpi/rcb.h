@@ -1,7 +1,7 @@
 /// @file cpu/md/mpi/rcb.h
 /// @brief `RCBBalancer` -- non-uniform brick load balancer.
 ///
-/// Phase 4 component. Recomputes per-axis cut planes from a globally-reduced
+/// Recomputes per-axis cut planes from a globally-reduced
 /// atom-density histogram so each rank ends up with approximately the same
 /// number of owned atoms. The decomposition stays a 3D Cartesian brick
 /// (the existing halo / migration topology); only the slab widths change.
