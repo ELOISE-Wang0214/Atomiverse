@@ -81,8 +81,10 @@ namespace {
         *fr, "atoms", "tag",
         ::rust::Slice<const std::int32_t>(tag.data(), tag.size()));
 
-    // Topology: one bond, one angle, one dihedral.
-    const std::vector<std::int32_t> bi = {0}, bj = {1}, bt = {1};
+    // Topology: one bond, one angle, one dihedral. molrs topology columns
+    // reference atoms by tag (materialize scatters them via the tag->local
+    // map), so use the atom tags {10,11,12} above -- not row indices.
+    const std::vector<std::int32_t> bi = {10}, bj = {11}, bt = {1};
     molrs::frame_set_column_i32(
         *fr, "bonds", "atomi",
         ::rust::Slice<const std::int32_t>(bi.data(), bi.size()));
@@ -93,7 +95,7 @@ namespace {
         *fr, "bonds", "type",
         ::rust::Slice<const std::int32_t>(bt.data(), bt.size()));
 
-    const std::vector<std::int32_t> ai = {0}, aj = {1}, ak = {2}, at = {1};
+    const std::vector<std::int32_t> ai = {10}, aj = {11}, ak = {12}, at = {1};
     molrs::frame_set_column_i32(
         *fr, "angles", "atomi",
         ::rust::Slice<const std::int32_t>(ai.data(), ai.size()));
@@ -107,7 +109,7 @@ namespace {
         *fr, "angles", "type",
         ::rust::Slice<const std::int32_t>(at.data(), at.size()));
 
-    const std::vector<std::int32_t> di = {0}, dj = {1}, dk = {2}, dl = {2},
+    const std::vector<std::int32_t> di = {10}, dj = {11}, dk = {12}, dl = {12},
                                     dt = {1};
     molrs::frame_set_column_i32(
         *fr, "dihedrals", "atomi",
@@ -199,13 +201,20 @@ TEST(Materialize, RoundTrip) {
     auto bi = molrs::frame_column_i32(*fr, "bonds", "atomi");
     auto bj = molrs::frame_column_i32(*fr, "bonds", "atomj");
     ASSERT_EQ(bi.size(), 1u);
-    EXPECT_EQ(bi[0], 0);
-    EXPECT_EQ(bj[0], 1);
-    EXPECT_EQ(cf.bonds.atomi[0], 0);
-    EXPECT_EQ(cf.bonds.atomj[0], 1);
-    EXPECT_EQ(cf.bonds.type[0], 1);
-    EXPECT_EQ(cf.angles.atomk[0], 2);
-    EXPECT_EQ(cf.dihedrals.atoml[0], 2);
+    EXPECT_EQ(bi[0], 10);
+    EXPECT_EQ(bj[0], 11);
+
+    // cpu side: topology scattered into the per-atom layout, keyed by tag.
+    // bond (tags 10-11): smaller tag 10 -> row 0 owns; partner tag 11.
+    ASSERT_EQ(cf.atoms.num_bond[0], 1);
+    EXPECT_EQ(cf.atoms.bond_atom(0, 0), 11);
+    EXPECT_EQ(cf.atoms.bond_type(0, 0), 1);
+    // angle (10-11-12): center tag 11 -> row 1 owns; k-partner tag is 12.
+    ASSERT_EQ(cf.atoms.num_angle[1], 1);
+    EXPECT_EQ(cf.atoms.angle_atom(1, 1), 12);
+    // dihedral (10-11-12-12): atom-j tag 11 -> row 1 owns; l-partner tag 12.
+    ASSERT_EQ(cf.atoms.num_dihedral[1], 1);
+    EXPECT_EQ(cf.atoms.dihedral_atom(1, 2), 12);
 
     // Box round-trips.
     auto h = molrs::frame_simbox(*fr);
@@ -300,10 +309,12 @@ TEST(Materialize, MissingOptionalFieldsDefaultToZero) {
         EXPECT_DOUBLE_EQ(cf.atoms.fx[i], 0.0);
         EXPECT_DOUBLE_EQ(cf.atoms.charge[i], 0.0);
     }
-    // No topology -> empty blocks.
-    EXPECT_EQ(cf.bonds.size(), 0);
-    EXPECT_EQ(cf.angles.size(), 0);
-    EXPECT_EQ(cf.dihedrals.size(), 0);
+    // No topology -> per-atom counts all zero.
+    for (int i = 0; i < cf.atoms.nlocal; ++i) {
+        EXPECT_EQ(cf.atoms.num_bond[i], 0);
+        EXPECT_EQ(cf.atoms.num_angle[i], 0);
+        EXPECT_EQ(cf.atoms.num_dihedral[i], 0);
+    }
 }
 
 // ── ac-004: a materialized cpu::Frame is runnable under cpu::md::MD ─────
