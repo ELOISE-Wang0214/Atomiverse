@@ -31,7 +31,7 @@
 /// while still adapting to non-uniform atom densities (e.g. polymer melts
 /// with regions of differing density during glass formation).
 ///
-/// @see .claude/specs/parallel-md-engine.md  § A.4 (Phase 4 row)
+/// @see .claude/specs/parallel-md-engine.md  § A.4
 #pragma once
 
 #include <string>

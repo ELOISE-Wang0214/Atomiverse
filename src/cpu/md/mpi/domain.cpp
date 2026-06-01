@@ -1,7 +1,6 @@
 /// @file src/cpu/md/mpi/domain.cpp
 /// @brief `DomainDecomposition` implementation: single-rank `bind`, plus
-/// multi-rank `init_topology`, `compute_sublo_subhi`, and `partition_atoms`
-/// (Phase 2).
+/// multi-rank `init_topology`, `compute_sublo_subhi`, and `partition_atoms`.
 
 #include "atomiverse/cpu/md/mpi/domain.h"
 
@@ -172,8 +171,10 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
     // physical atom be picked again as an extra owner (its stale FCC
     // position is unchanged, its post-step compacted copy is at a different
     // slot), and the resulting two near-identical "owner" rows blow up LJ.
-    // Phase 2 has no atom migration, so previously-owned atoms still belong
-    // to this rank; we only need to re-scan that range.
+    // On a re-partition the previously-owned rows [0, n_local) are the
+    // authoritative owner set (AtomMigration already re-homed any cross-slab
+    // drifters at pre_force); we only need to re-scan that range, not the
+    // stale ghost/old-owner rows beyond it.
     const bool first_partition = (n_local == 0);
     const int n_to_iterate = first_partition ? frame.atoms.size() : n_local;
     std::vector<int> owned_indices;

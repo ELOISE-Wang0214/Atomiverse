@@ -8,7 +8,7 @@
 /// either packs/unpacks zero bytes or some multiple of `kAtomPayloadBytes`.
 ///
 /// Bonded-tuple migration is **not** handled here; that is tracked under
-/// Phase 3.2 of msu-pe-validation.md.
+/// See msu-pe-validation.md (MSU-PE multi-rank validation).
 
 #include "atomiverse/cpu/comm/atom_migration.h"
 

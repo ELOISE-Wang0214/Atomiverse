@@ -37,10 +37,10 @@ namespace mpi {
 /// (d) a generation counter that consumers (neighbor lists, halo lists)
 /// rebuild against, and (e) derived bookkeeping (send lists, tag→local map).
 ///
-/// `Frame::atoms.size()` is the *allocated capacity* in multi-rank mode.
-/// In Phase 1 single-rank mode this still equals `n_local`; the loop-bound
-/// audit (replacing `atoms.size()` with `n_local` in force kernels) is
-/// deferred to Phase 2 where it becomes observable.
+/// `Frame::atoms.size()` is the *allocated capacity* in multi-rank mode;
+/// `n_local` is the owned-atom count. Force kernels and integrators iterate
+/// `n_local` (via `owned_count()` / `owned_range.h`), not `atoms.size()`,
+/// so ghost rows in `[n_local, n_local + n_ghost)` are never double-counted.
 struct DomainDecomposition {
 #ifdef ATV_HAS_MPI
     /// @brief Cartesian sub-communicator created by `MPI_Cart_create`.
@@ -140,9 +140,9 @@ struct DomainDecomposition {
     /// binary-searches the cuts to decide each owner's destination rank.
     ///
     /// Stored as fractions so the partition survives NPT box rescaling without
-    /// needing to be recomputed every step. Populated by `RCBBalancer` (Phase 4)
-    /// or any future load-balance component; left empty in default Phase 1–3
-    /// runs (uniform-brick decomposition).
+    /// needing to be recomputed every step. Populated by `RCBBalancer` or any
+    /// future load-balance component; left empty in the default uniform-brick
+    /// decomposition.
     ///
     /// All ranks must agree on these values for migration to be consistent.
     /// `RCBBalancer` derives them from a global atom histogram via
@@ -172,12 +172,12 @@ struct DomainDecomposition {
 
     /// @brief Compute and store this rank's spatial slab from the box.
     ///
-    /// Phase 2 (orthorhombic): `sublo[d] = (L_d / dims[d]) * coords[d]`,
+    /// Orthorhombic: `sublo[d] = (L_d / dims[d]) * coords[d]`,
     /// `subhi[d] = sublo[d] + L_d / dims[d]`. Idempotent. Single-rank
     /// (`dims == {1,1,1}`): the slab is the full box. Not MPI-gated: the
     /// slab record is useful for any spatial component, e.g. the neighbor
     /// list and future observer shell analysis.
-    /// @param box Simulation box (orthorhombic in Phase 2).
+    /// @param box Simulation box (orthorhombic).
     void compute_sublo_subhi(const ATV::cpu::Box& box);
 
 #ifdef ATV_HAS_MPI
@@ -207,11 +207,11 @@ struct DomainDecomposition {
     /// rows in `[n_local, capacity)` are reused later by `HaloExchangeForward`
     /// as ghost slots.
     ///
-    /// **Phase 2 contract:** every rank starts with the same `frame`.
-    /// Migration after integration is **not** performed (Phase 3). Setups
-    /// where atoms drift beyond their initial slab within the run produce
-    /// wrong physics under Phase 2; the spec mandates short runs at low
-    /// temperature for the exit-gate test.
+    /// **Initial-partition contract:** every rank starts with the same
+    /// `frame` and claims its spatial subset. Owners that later drift across
+    /// a slab boundary are re-homed by `cpu::comm::AtomMigration` at
+    /// `pre_force @ -30`, so long runs where atoms move between slabs are
+    /// handled correctly (see the MSU-PE multi-rank NPT validation).
     ///
     /// Single-rank: behaves like `bind(frame)`.
     /// @param frame Frame whose atoms this rank's slab claims a subset of.

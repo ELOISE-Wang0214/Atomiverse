@@ -171,7 +171,7 @@ class HaloExchangeForward : public cpu::ComponentBase {
 ///      `dd->recv_counts`; Reverse consumes those counts to decide how
 ///      many ghost forces to pack and where to add them on the owner side.
 ///
-/// ## Reverse-comm payload audit (Phase 5 Track B.5, 2026-05-06)
+/// ## Reverse-comm payload audit (2026-05-06)
 ///
 /// The reverse exchange transports **exactly three doubles per ghost
 /// row**: `fx, fy, fz`. No other per-atom field is mutated by force

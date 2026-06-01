@@ -9,8 +9,7 @@
 /// Single-rank mode: a fast-path direct copy from `frame.atoms[0..n_local)`
 /// into the result; no MPI calls.
 ///
-/// Phase 4 deliverable. Stops short of a parallel HDF5 / per-rank Zarr writer
-/// (Phase 5).
+/// Stops short of a parallel HDF5 / per-rank Zarr writer.
 ///
 /// @see .claude/specs/parallel-md-engine.md  § A.9
 #pragma once
