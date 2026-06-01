@@ -1,6 +1,6 @@
 /// @file src/cpu/md/mpi/reduce.cpp
 /// @brief `ReduceEnergy` -- batched end-of-step MPI_Allreduce of the
-///        per-rank scalars and stress tensor (Phase 0.4 / P3.3).
+///        per-rank scalars and stress tensor.
 ///
 /// Bound at `end_of_step @ -50`, after `KineticEnergy @ -100` (so KE is
 /// the locally-summed value) and before `SnapshotPublisher @ +10` (so any

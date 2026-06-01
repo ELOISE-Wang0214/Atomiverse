@@ -1,11 +1,13 @@
 /// @file cpu/md/mpi/reduce.h
-/// @brief End-of-step MPI reductions for MD: energy, kinetic, virial.
+/// @brief End-of-step MPI reductions for MD: energy, kinetic, stress.
 ///
-/// Phase 1: no-op stub with default binding at `end_of_step @ -50`.
-/// Phase 3: batched `MPI_Allreduce` of `{energy, kinetic, virial[6], n_local}`
-/// (9 doubles + 1 int) into a single collective so per-rank bookkeeping is
-/// consistent before observers or the snapshot publisher read the frame's
-/// scalar state.
+/// `ReduceEnergy` does one batched `MPI_Allreduce(SUM)` of the 18 per-rank
+/// scalar partials `{energy, energy_pair, energy_bond, energy_angle,
+/// energy_dihedral, kinetic, stress[6], stress_kinetic[6]}` into a single
+/// collective, so per-rank bookkeeping is globally consistent before
+/// observers or the snapshot publisher read the frame's scalar state.
+/// `n_local` is NOT reduced — it is authoritative per rank from
+/// `dd->n_local`. Single-rank: no-op early-return.
 ///
 /// Order is tight: must run after `KineticEnergy @ -100` so the reduced KE
 /// is the locally-summed one, and before `SnapshotPublisher @ +10` so async
@@ -26,9 +28,8 @@ namespace cpu {
 namespace md {
 namespace mpi {
 
-/// @brief Batched allreduce of `{energy, kinetic, virial[6], n_local}`.
-///
-/// Phase 1: structural no-op; single-rank state is already globally consistent.
+/// @brief Batched 18-double `MPI_Allreduce(SUM)` of the per-rank energy,
+/// kinetic, and stress partials. Single-rank: no-op (state already global).
 class ReduceEnergy : public cpu::ComponentBase {
   public:
     std::string name() const override { return "reduce_energy"; }
