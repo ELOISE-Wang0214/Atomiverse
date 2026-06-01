@@ -17,6 +17,7 @@
 #include "atomiverse/cpu/lammps_data.h"
 
 #include <cmath>
+#include <cstdint>
 #include <string>
 
 namespace {
@@ -33,9 +34,20 @@ TEST(LammpsDataLoader, MsuPolyethyleneCountsAndBox) {
     ATV::cpu::Frame frame = ATV::cpu::load_lammps_data(kDataPath);
 
     EXPECT_EQ(frame.atoms.size(), 10000);
-    EXPECT_EQ(frame.bonds.size(), 9990);
-    EXPECT_EQ(frame.angles.size(), 9980);
-    EXPECT_EQ(frame.dihedrals.size(), 9970);
+
+    // Topology lives in the LAMMPS per-atom layout (num_bond[i] /
+    // bond_atom[i][m]). Each bond/angle/dihedral is stored exactly once on
+    // its Newton owner (smaller-tag atom), so summing the per-atom counts
+    // reproduces the deck header totals.
+    long total_bonds = 0, total_angles = 0, total_dihedrals = 0;
+    for (int i = 0; i < frame.atoms.size(); ++i) {
+        total_bonds += frame.atoms.num_bond[i];
+        total_angles += frame.atoms.num_angle[i];
+        total_dihedrals += frame.atoms.num_dihedral[i];
+    }
+    EXPECT_EQ(total_bonds, 9990);
+    EXPECT_EQ(total_angles, 9980);
+    EXPECT_EQ(total_dihedrals, 9970);
 
     // Orthogonal 80.0586 Å cube.
     EXPECT_NEAR(frame.box(0, 0), 80.0586, 1e-3);
@@ -63,18 +75,21 @@ TEST(LammpsDataLoader, MsuPolyethyleneAtomDetails) {
 
 TEST(LammpsDataLoader, BondsAreZeroIndexed) {
     ATV::cpu::Frame frame = ATV::cpu::load_lammps_data(kDataPath);
-
-    // LAMMPS file is 1-indexed; we should see 0-indexed pairs.
-    // First bond row in msu_pe.data is "1 1 1 2", so after subtraction (i,j)=(0,1).
-    EXPECT_EQ(frame.bonds.atomi[0], 0);
-    EXPECT_EQ(frame.bonds.atomj[0], 1);
-    // Atom indices must all fall inside [0, n_atoms).
     const int n = frame.atoms.size();
-    for (int b = 0; b < frame.bonds.size(); ++b) {
-        EXPECT_GE(frame.bonds.atomi[b], 0);
-        EXPECT_LT(frame.bonds.atomi[b], n);
-        EXPECT_GE(frame.bonds.atomj[b], 0);
-        EXPECT_LT(frame.bonds.atomj[b], n);
+
+    // LAMMPS file is 1-indexed; the loader stores 0-indexed rows. The first
+    // bond row "1 1 1 2" makes atom 0 the Newton owner with partner row 1.
+    ASSERT_GE(frame.atoms.num_bond[0], 1);
+    EXPECT_EQ(frame.atoms.bond_atom(0, 0), 1);
+
+    // Every stored bond partner must resolve to a valid local row [0, n).
+    // (The owner row is the loop index, in range by construction.)
+    for (int i = 0; i < n; ++i) {
+        for (int m = 0; m < frame.atoms.num_bond[i]; ++m) {
+            const std::int64_t partner = frame.atoms.bond_atom(i, m);
+            EXPECT_GE(partner, 0);
+            EXPECT_LT(partner, n);
+        }
     }
 }
 
