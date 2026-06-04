@@ -124,17 +124,9 @@ void DomainDecomposition::init_topology(MPI_Comm world) {
 
 namespace {
 
-// Orthorhombic PBC wrap: bring `p` into [0, L).
-inline double wrap_to_cell(double p, double L) {
-    if (L <= 0.0)
-        return p;
-    double q = p - std::floor(p / L) * L;
-    if (q < 0.0)
-        q += L;
-    if (q >= L)
-        q -= L;
-    return q;
-}
+// Orthorhombic PBC wrap into [0, L) is provided by `Box::wrap_axis`
+// (`cpu/box.h`) — the single canonical implementation. partition_atoms()
+// below calls `frame.box.wrap_axis(coord, axis)` directly.
 
 // Rank index (along one dim) that owns wrapped position `q` with `dims_d`
 // equal-width slabs over `[0, L)`. Clamps to [0, dims_d - 1] against FP
@@ -200,9 +192,9 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
             if (!seen_tags.insert(t).second)
                 continue; // duplicate tag from stale tail — keep first
         }
-        const double xw = wrap_to_cell(frame.atoms.x(i), Lx);
-        const double yw = wrap_to_cell(frame.atoms.y(i), Ly);
-        const double zw = wrap_to_cell(frame.atoms.z(i), Lz);
+        const double xw = frame.box.wrap_axis(frame.atoms.x(i), 0);
+        const double yw = frame.box.wrap_axis(frame.atoms.y(i), 1);
+        const double zw = frame.box.wrap_axis(frame.atoms.z(i), 2);
         const int cx = rank_along_dim(xw, Lx, dims[0]);
         const int cy = rank_along_dim(yw, Ly, dims[1]);
         const int cz = rank_along_dim(zw, Lz, dims[2]);
