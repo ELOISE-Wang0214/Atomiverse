@@ -36,6 +36,7 @@ class AngleHarmonic : public Angle {
     std::vector<double> K_, theta0_;
 
     md::BondedForceScratch scratch_;
+    md::DropTally drops_;
 };
 
 } // namespace cpu

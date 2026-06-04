@@ -21,8 +21,10 @@
 #pragma once
 
 #include <algorithm>
+#include <cstdint>
 #include <vector>
 
+#include "atomiverse/core/log.h"
 #include "atomiverse/cpu/frame.h"
 
 #ifdef _OPENMP
@@ -129,6 +131,40 @@ struct Voigt6 {
         for (int k = 0; k < 6; ++k)
             s.stress[k] += v[k];
     }
+};
+
+/// @brief Rank-local tally of bonded partners that failed to resolve.
+///
+/// A bonded kernel drops any tuple whose partner tag resolves to -1
+/// (`ResolveView::resolve` — tag absent on this rank or outside
+/// `[0, n_force)`). With a correctly sized halo this never fires; a nonzero
+/// `dropped` means the cutoff/ghost layer was too thin and that tuple's
+/// energy + forces were silently lost. Counting is a couple of integer adds
+/// in the hot loop (cheap, allocation-free); the warning is emitted once at
+/// teardown via `report()`, so the no-allocation-in-launch invariant holds.
+struct DropTally {
+    std::uint64_t dropped = 0;   ///< bonded partners not resolvable.
+    std::uint64_t evaluated = 0; ///< bonded partners successfully resolved.
+
+    DropTally& operator+=(const DropTally& o) noexcept {
+        dropped += o.dropped;
+        evaluated += o.evaluated;
+        return *this;
+    }
+
+    /// @brief Emit a single warning if any partner was dropped. Call from
+    /// the kernel's `destroy()` (end of run) — never inside `compute()`.
+    void report(const char* kernel) const {
+        if (dropped == 0)
+            return;
+        ATV_WARN("{}: dropped {} of {} bonded partners (rank-local) — they "
+                 "resolved outside the halo, so their energy/forces were lost. "
+                 "The ghost cutoff is likely too thin for the bond/angle/"
+                 "dihedral span; widen the comm cutoff.",
+                 kernel, dropped, dropped + evaluated);
+    }
+
+    void reset() noexcept { dropped = evaluated = 0; }
 };
 
 } // namespace md

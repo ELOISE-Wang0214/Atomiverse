@@ -38,6 +38,7 @@ class BondHarmonic : public Bond {
     std::vector<double> K_, r0_;
 
     md::BondedForceScratch scratch_;
+    md::DropTally drops_;
 };
 
 } // namespace cpu

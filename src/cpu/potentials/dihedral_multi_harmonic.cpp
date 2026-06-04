@@ -51,6 +51,7 @@ void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
         return;
 
     double energy_total = 0;
+    std::uint64_t dropped = 0, evaluated = 0;
     // Dihedral virial = (-b1)⊗F1 + b2⊗(F3+F4) + b3⊗F4 (with i2 as the
     // reference atom and Newton's 3rd F2 = -(F1+F3+F4)) — translation/PBC
     // invariant. Each term is one Voigt6::add_pair.
@@ -62,7 +63,7 @@ void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
 
 // Thread-private virial combined under a critical section (no per-step heap
 // alloc, unlike an OMP user-defined reduction on Voigt6).
-#pragma omp parallel reduction(+ : energy_total)
+#pragma omp parallel reduction(+ : energy_total, dropped, evaluated)
     {
         int tid = 0;
 #ifdef _OPENMP
@@ -81,8 +82,11 @@ void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
                 const int i1 = rv.resolve(a.dihedral_atom(i2, 3 * m + 0));
                 const int i3 = rv.resolve(a.dihedral_atom(i2, 3 * m + 1));
                 const int i4 = rv.resolve(a.dihedral_atom(i2, 3 * m + 2));
-                if (i1 < 0 || i3 < 0 || i4 < 0)
+                if (i1 < 0 || i3 < 0 || i4 < 0) {
+                    ++dropped;
                     continue;
+                }
+                ++evaluated;
                 const int type = a.dihedral_type(i2, m);
 
                 const double r1[3] = {x_ptr[i1], y_ptr[i1], z_ptr[i1]};
@@ -213,9 +217,14 @@ void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
     f.scalars.energy += energy_total;
     f.scalars.energy_dihedral += energy_total;
     vir.flush_to(f.scalars);
+
+    drops_.dropped += dropped;
+    drops_.evaluated += evaluated;
 }
 
 void DihedralMultiHarmonic::destroy(const DestroyContext& /*ctx*/) {
+    drops_.report("DihedralMultiHarmonic");
+    drops_.reset();
     scratch_.clear();
     // Owned-tuple cache is owned by the cpu::Dihedral base.
 }

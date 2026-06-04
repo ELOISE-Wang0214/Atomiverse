@@ -35,6 +35,7 @@ class DihedralMultiHarmonic : public Dihedral {
     std::vector<std::vector<double>> Cn_;
 
     md::BondedForceScratch scratch_;
+    md::DropTally drops_;
 };
 
 } // namespace cpu

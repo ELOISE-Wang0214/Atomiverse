@@ -52,6 +52,7 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
 
     double energy_total = 0;
     md::Voigt6 vir;
+    std::uint64_t dropped = 0, evaluated = 0;
 
     const double* __restrict x_ptr = a.x.data();
     const double* __restrict y_ptr = a.y.data();
@@ -62,7 +63,7 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
 // a critical section (once per thread per step) — an OMP user-defined
 // reduction on Voigt6 would heap-allocate per step, violating the
 // "no allocation in launch()" invariant.
-#pragma omp parallel reduction(+ : energy_total)
+#pragma omp parallel reduction(+ : energy_total, dropped, evaluated)
     {
         int tid = 0;
 #ifdef _OPENMP
@@ -80,8 +81,11 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
             const int nb = a.num_bond[i];
             for (int m = 0; m < nb; ++m) {
                 const int j = rv.resolve(a.bond_atom(i, m));
-                if (j < 0)
-                    continue; // partner not resolvable on this rank
+                if (j < 0) {
+                    ++dropped; // partner not resolvable on this rank
+                    continue;
+                }
+                ++evaluated;
                 const int type = a.bond_type(i, m);
 
                 double dx = x_ptr[i] - x_ptr[j];
@@ -118,9 +122,14 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
     f.scalars.energy += energy_total;
     f.scalars.energy_bond += energy_total;
     vir.flush_to(f.scalars);
+
+    drops_.dropped += dropped;
+    drops_.evaluated += evaluated;
 }
 
 void BondHarmonic::destroy(const DestroyContext& /*ctx*/) {
+    drops_.report("BondHarmonic");
+    drops_.reset();
     scratch_.clear();
     // Owned-tuple cache is owned by the cpu::Bond base; nothing to clear here.
 }

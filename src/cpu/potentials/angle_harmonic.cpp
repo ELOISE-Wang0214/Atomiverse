@@ -42,6 +42,7 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
         return;
 
     double energy_total = 0;
+    std::uint64_t dropped = 0, evaluated = 0;
     // Angle virial: Σ d_ji ⊗ F_i + d_jk ⊗ F_k (centre force cancels by
     // Newton's 3rd, so this is translation-invariant and PBC-safe).
     md::Voigt6 vir;
@@ -52,7 +53,7 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
 
 // Thread-private virial combined under a critical section (no per-step heap
 // alloc, unlike an OMP user-defined reduction on Voigt6).
-#pragma omp parallel reduction(+ : energy_total)
+#pragma omp parallel reduction(+ : energy_total, dropped, evaluated)
     {
         int tid = 0;
 #ifdef _OPENMP
@@ -70,8 +71,11 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
             for (int m = 0; m < na; ++m) {
                 const int i = rv.resolve(a.angle_atom(j, 2 * m + 0));
                 const int k = rv.resolve(a.angle_atom(j, 2 * m + 1));
-                if (i < 0 || k < 0)
+                if (i < 0 || k < 0) {
+                    ++dropped;
                     continue;
+                }
+                ++evaluated;
                 const int type = a.angle_type(j, m);
 
                 const double ri[3] = {x_ptr[i], y_ptr[i], z_ptr[i]};
@@ -150,9 +154,14 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
     f.scalars.energy += energy_total;
     f.scalars.energy_angle += energy_total;
     vir.flush_to(f.scalars);
+
+    drops_.dropped += dropped;
+    drops_.evaluated += evaluated;
 }
 
 void AngleHarmonic::destroy(const DestroyContext& /*ctx*/) {
+    drops_.report("AngleHarmonic");
+    drops_.reset();
     scratch_.clear();
     // Owned-tuple cache is owned by the cpu::Angle base.
 }
