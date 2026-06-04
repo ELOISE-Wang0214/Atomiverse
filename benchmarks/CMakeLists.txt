@@ -64,6 +64,7 @@ endfunction()
 atv_add_cpp_md_bench(scaling)
 atv_add_cpp_md_bench(polyethylene_tension)
 atv_add_cpp_md_bench(pe_profile_single)
+atv_add_cpp_md_bench(debug_nve_npt)
 
 # polyethylene_tension gets the ATV_BUILD_CUDA compile definition so its
 # #ifdef-gated `--backend cuda` path (msu-pe-cuda-components-06) reaches
