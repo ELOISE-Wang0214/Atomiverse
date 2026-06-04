@@ -576,8 +576,18 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
         thread_pairs_.resize(static_cast<std::size_t>(n_threads));
     if (static_cast<int>(thread_visited_.size()) < n_threads)
         thread_visited_.resize(static_cast<std::size_t>(n_threads));
-    for (auto& tp : thread_pairs_)
+    // Reserve each thread's pair buffer to a per-thread share of the
+    // 32-per-atom half-list budget (the same heuristic the serial path uses
+    // for `neighbors`). Without this the buffers grow lazily as pair counts
+    // drift, leaking a heap allocation into the MD hot loop after warm-up
+    // (caught by MdNoAlloc). Margin covers schedule(dynamic) imbalance.
+    const std::size_t pair_cap_hint =
+        static_cast<std::size_t>(n / n_threads + 1) * 32u;
+    for (auto& tp : thread_pairs_) {
         tp.clear();
+        if (tp.capacity() < pair_cap_hint)
+            tp.reserve(pair_cap_hint);
+    }
     for (auto& tv : thread_visited_) {
         tv.clear();
         if (tv.capacity() < 27u)
@@ -692,11 +702,18 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
         (n > 0) ? result.firstneigh[n - 1] + result.numneigh[n - 1] : 0;
     result.neighbors.resize(static_cast<std::size_t>(result.total_pairs));
 
-    auto write_ptr = result.firstneigh;
+    // Member-state write cursor (no per-rebuild `auto write_ptr =
+    // result.firstneigh` vector copy — that leaked one heap allocation per
+    // neighbor-list rebuild into the MD hot loop). Sized monotonically; the
+    // contents are reset from firstneigh each call.
+    if (csr_write_cursor_.size() < static_cast<std::size_t>(n))
+        csr_write_cursor_.resize(static_cast<std::size_t>(n));
+    for (int i = 0; i < n; ++i)
+        csr_write_cursor_[i] = result.firstneigh[i];
     for (int t = 0; t < n_threads; ++t) {
         for (auto& [i, j] : thread_pairs_[t]) {
-            result.neighbors[write_ptr[i]] = j;
-            write_ptr[i]++;
+            result.neighbors[csr_write_cursor_[i]] = j;
+            csr_write_cursor_[i]++;
         }
     }
 }
@@ -734,8 +751,18 @@ void CellList::refresh_full(const cpu::Frame& frame, int n_active,
         thread_pairs_.resize(static_cast<std::size_t>(n_threads));
     if (static_cast<int>(thread_visited_.size()) < n_threads)
         thread_visited_.resize(static_cast<std::size_t>(n_threads));
-    for (auto& tp : thread_pairs_)
+    // Reserve each thread's pair buffer to a per-thread share of the
+    // 32-per-atom half-list budget (the same heuristic the serial path uses
+    // for `neighbors`). Without this the buffers grow lazily as pair counts
+    // drift, leaking a heap allocation into the MD hot loop after warm-up
+    // (caught by MdNoAlloc). Margin covers schedule(dynamic) imbalance.
+    const std::size_t pair_cap_hint =
+        static_cast<std::size_t>(n / n_threads + 1) * 32u;
+    for (auto& tp : thread_pairs_) {
         tp.clear();
+        if (tp.capacity() < pair_cap_hint)
+            tp.reserve(pair_cap_hint);
+    }
     for (auto& tv : thread_visited_) {
         tv.clear();
         if (tv.capacity() < 27u)
@@ -840,11 +867,18 @@ void CellList::refresh_full(const cpu::Frame& frame, int n_active,
         (n > 0) ? result.firstneigh[n - 1] + result.numneigh[n - 1] : 0;
     result.neighbors.resize(static_cast<std::size_t>(result.total_pairs));
 
-    auto write_ptr = result.firstneigh;
+    // Member-state write cursor (no per-rebuild `auto write_ptr =
+    // result.firstneigh` vector copy — that leaked one heap allocation per
+    // neighbor-list rebuild into the MD hot loop). Sized monotonically; the
+    // contents are reset from firstneigh each call.
+    if (csr_write_cursor_.size() < static_cast<std::size_t>(n))
+        csr_write_cursor_.resize(static_cast<std::size_t>(n));
+    for (int i = 0; i < n; ++i)
+        csr_write_cursor_[i] = result.firstneigh[i];
     for (int t = 0; t < n_threads; ++t) {
         for (auto& [i, j] : thread_pairs_[t]) {
-            result.neighbors[write_ptr[i]] = j;
-            write_ptr[i]++;
+            result.neighbors[csr_write_cursor_[i]] = j;
+            csr_write_cursor_[i]++;
         }
     }
 }

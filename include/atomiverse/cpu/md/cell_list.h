@@ -206,6 +206,13 @@ class CellList {
     mutable std::vector<std::vector<std::pair<int, int>>> thread_pairs_;
     mutable std::vector<std::vector<int>> thread_visited_;
 
+    /// @brief Per-rebuild CSR write cursor for the multi-thread scatter
+    /// finalizer. Reused across `refresh_half`/`refresh_full` rebuilds so the
+    /// scatter no longer does `auto write_ptr = result.firstneigh` (a full
+    /// std::vector copy = one heap allocation per neighbor-list rebuild in the
+    /// MD hot loop). `mutable` because the rebuild functions are `const`.
+    mutable std::vector<int> csr_write_cursor_;
+
     /// @brief Per-rebuild bin-scatter cursor: a `std::vector<int>` of
     /// length `total_cells_` reused across `bin_atoms` calls. Sized
     /// monotonically in `bin_atoms` itself; the contents are
