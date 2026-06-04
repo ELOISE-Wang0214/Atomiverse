@@ -659,6 +659,8 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionEmptyTopology) {
 TEST_F(CpuMdTest, HaloForwardBondedExtensionBondLength) {
     // Diatomic: single bond of length 1.5 Å. Extension = bond length.
     cpu::Frame frame(2);
+    frame.box = Mat3::cubic(100.0); // PBC no-op for this short bond; min_image
+                                    // needs a non-degenerate box
     frame.atoms.x[0] = 0.0;
     frame.atoms.y[0] = 0.0;
     frame.atoms.z[0] = 0.0;
@@ -677,6 +679,7 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionBondLength) {
 TEST_F(CpuMdTest, HaloForwardBondedExtensionAngleSpan) {
     // 3 atoms in a line, spaced 1.0 apart → angle-tuple span = 2.0.
     cpu::Frame frame(3);
+    frame.box = Mat3::cubic(100.0);
     for (int i = 0; i < 3; ++i) {
         frame.atoms.x[i] = double(i);
         frame.atoms.y[i] = 0.0;
@@ -695,6 +698,7 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionDihedralSpan) {
     // 4 atoms in a trans-zigzag, bond = 1.529, angle = 112.7°.
     // Dihedral 1-to-4 straight-line span ≈ bond * sqrt(9 cos² + sin²) ≈ 3.9.
     cpu::Frame frame(4);
+    frame.box = Mat3::cubic(100.0);
     const double bond = 1.529;
     const double half_apex = (kPI - 112.7 * kPI / 180.0) / 2.0;
     const double dx = bond * std::cos(half_apex);
@@ -724,6 +728,7 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionDihedralSpan) {
 TEST_F(CpuMdTest, HaloForwardBondedExtensionMaxAcrossTupleKinds) {
     // Mixed topology: bond 1.0 + angle 3.0 + dihedral 2.0 → returns 3.0.
     cpu::Frame frame(4);
+    frame.box = Mat3::cubic(100.0);
     frame.atoms.x = xt::xtensor<double, 1>({0.0, 1.0, 1.5, 3.5});
     frame.atoms.y = xt::zeros<double>({4});
     frame.atoms.z = xt::zeros<double>({4});
