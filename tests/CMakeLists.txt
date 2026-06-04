@@ -65,6 +65,8 @@ atv_add_cpp_test(test_cpu_md cpu/md/test_md.cpp)
 atv_add_cpp_test(test_cpu_md_pe_thermo_schema cpu/md/test_pe_thermo_schema.cpp)
 atv_add_cpp_test(test_cpu_md_pe_single_chain cpu/md/test_pe_single_chain.cpp)
 atv_add_cpp_test(test_cpu_md_pe_nve               cpu/md/test_pe_nve.cpp)
+atv_add_cpp_test(test_cpu_md_step_timing          cpu/md/test_step_timing.cpp)
+atv_add_cpp_test(test_cpu_md_timing_report        cpu/md/test_timing_report.cpp)
 atv_add_cpp_test(test_cpu_md_pe_fd_force          cpu/md/test_pe_fd_force.cpp)
 atv_add_cpp_test(test_cpu_md_pe_multi_chain       cpu/md/test_pe_multi_chain.cpp)
 atv_add_cpp_test(test_cpu_md_lj_exclusions        cpu/md/test_lj_exclusions.cpp)
@@ -121,6 +123,13 @@ if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
     atv_add_mpi_exec(test_mpi_lj_nve mpi/test_lj_nve.cpp)
     atv_add_mpi_run(test_mpi_lj_nve_n1 test_mpi_lj_nve 1)
     atv_add_mpi_run(test_mpi_lj_nve_n8 test_mpi_lj_nve 8)
+
+    atv_add_mpi_exec(test_mpi_lj_energy_bruteforce
+                     mpi/test_lj_energy_bruteforce.cpp)
+    atv_add_mpi_run(test_mpi_lj_energy_bruteforce_n1
+                    test_mpi_lj_energy_bruteforce 1)
+    atv_add_mpi_run(test_mpi_lj_energy_bruteforce_n8
+                    test_mpi_lj_energy_bruteforce 8)
 
     atv_add_mpi_exec(test_mpi_atom_migration mpi/test_atom_migration.cpp)
     atv_add_mpi_run(test_mpi_atom_migration_n1 test_mpi_atom_migration 1)

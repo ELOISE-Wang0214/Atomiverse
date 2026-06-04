@@ -102,6 +102,13 @@ class PairLJCut : public Pair {
     std::vector<int> filtered_neighbors_;
     std::vector<int> filtered_numneigh_;
     std::vector<int> filtered_firstneigh_;
+    // Per-pair PBC shifts parallel to filtered_neighbors_ (copied from the
+    // upstream PairList when it carries shifts) so the kernel can skip the
+    // per-pair min-image. Empty when the upstream list has no shifts.
+    std::vector<double> filtered_shift_x_;
+    std::vector<double> filtered_shift_y_;
+    std::vector<double> filtered_shift_z_;
+    bool filtered_has_shifts_ = false;
     int filtered_inum_ = 0;
     unsigned long long filtered_version_ = 0;
 };

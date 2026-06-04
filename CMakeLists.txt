@@ -147,6 +147,8 @@ if(NOT ATV_DOCS_ONLY)
     endif()
 
     set(ATOMIVERSE_SRCS
+        # Cross-cutting core (logging registry, metrics)
+        src/core/log.cpp
         src/cpu/scf/solve.cpp
         src/cpu/molrec.cpp
         src/cpu/lammps_data.cpp
@@ -175,6 +177,7 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/md/virial_stress.cpp
         src/cpu/md/barostat.cpp
         src/cpu/md/deform.cpp
+        src/cpu/md/timing_report.cpp
         # CPU vibrational-analysis (Response category) driver
         src/cpu/vib/hessian.cpp
         src/cpu/vib/mass_weighting.cpp

@@ -1,5 +1,9 @@
 # Spec Index
 
+- [cpu-md-parallel-perf](cpu-md-parallel-perf.md) — CPU MD multi-rank perf: port half-stencil+per-cell-shift neighbor build to MPI + ungate LJ shift in multi-rank + comm-path tightening; close the parallel gap to LAMMPS (NEW-AV 32r=321s/64r=225s vs 164/86). RCB out of scope (measured: not the gate) [code-complete: ac-001/002/003 verified green; ac-004 perf + ac-005 sci owed to operator SLURM run + msu-pe-validation]
+
+- [cpu-md-lammps-perf-assessment](cpu-md-lammps-perf-assessment.md) — CPU MD vs LAMMPS perf assessment: per-component attribution (Pair/Bonded/Neigh/Comm/Reduce) at 1/8/32/64 ranks + single-rank kernel isolation → decision report classifying algorithmic-vs-implementation gap and recommending refactor-vs-optimize; assessment only, no optimization implemented, CPU-only [approved]
+
 - [aimd](aimd.md) — first-class Born-Oppenheimer AIMD by reusing cpu::md::MD + SCFEvaluator: set_qm categorical setter + faithful Kolafa-ASPC density warm-start + NVE energy-conservation validation [approved]
 
 - [rust-frame-lowering-04-cuda-torch](rust-frame-lowering-04-cuda-torch.md) — remove SCFWorkspace/PairList from cuda::Frame, align the three Frames, add cuda/torch materializers [code-complete: ac-001/002/003 verified, CUDA build+tests green (incl. new test_cuda_materialize); ac-004 pending — torch runtime round-trip gated on ATV_BUILD_TORCH=ON]

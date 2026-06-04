@@ -108,9 +108,15 @@ void NoseHooverNPT::build(const cpu::BuildContext& ctx) {
     // each rank post-partition, so Allreduce-sum that to recover global N.
     int N = static_cast<int>(ctx.frame.atoms.size());
 #ifdef ATV_HAS_MPI
+    // MUST be unconditional across all ranks: MPI_Allreduce is a collective,
+    // so every rank on cart_comm has to call it or the ones that do hang
+    // forever. A rank that transiently owns no atoms (n_local == 0 — common
+    // at high rank counts, e.g. an empty cell in a 4x4x4 decomposition) still
+    // participates, contributing 0 to the sum so N stays the correct global
+    // total. Gating this on `n_local > 0` deadlocked the stage-1->stage-2 NPT
+    // rebuild at 64 ranks while 32 ranks (no empty cells) ran fine.
     if (ctx.runtime.mpi_size > 1 && ctx.runtime.dd
-        && ctx.runtime.dd->cart_comm != MPI_COMM_NULL
-        && ctx.runtime.dd->n_local > 0) {
+        && ctx.runtime.dd->cart_comm != MPI_COMM_NULL) {
         const int n_local = ctx.runtime.dd->n_local;
         MPI_Allreduce(&n_local, &N, 1, MPI_INT, MPI_SUM,
                       ctx.runtime.dd->cart_comm);

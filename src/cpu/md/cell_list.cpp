@@ -318,6 +318,17 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
         if (result.neighbors.capacity() < want)
             result.neighbors.reserve(want);
         result.neighbors.clear();
+        // Per-pair PBC shift, parallel to neighbors[], so force kernels skip
+        // the per-pair min-image. Populated in this serial path only.
+        if (result.shift_x.capacity() < want) {
+            result.shift_x.reserve(want);
+            result.shift_y.reserve(want);
+            result.shift_z.reserve(want);
+        }
+        result.shift_x.clear();
+        result.shift_y.clear();
+        result.shift_z.clear();
+        result.has_shifts = true;
 
         const double* __restrict x_ptr = frame.atoms.x.data();
         const double* __restrict y_ptr = frame.atoms.y.data();
@@ -332,6 +343,32 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
         const int* __restrict cell_count_ptr = cell_count_.data();
         const int* __restrict cell_offset_ptr = cell_offset_.data();
         const int* __restrict binned_ptr = binned_atoms_.data();
+
+        // Half-stencil (LAMMPS newton-on) fast path: iterate ~14 cells (home +
+        // forward) instead of the full 27 with a `j<=i` reject on every
+        // candidate. Each unordered pair is still emitted exactly once (home
+        // cell: j>i; forward cells: all j -- the reverse offset is backward
+        // from j and thus not in j's half stencil). Valid whenever no PBC
+        // wrap-aliasing can fold two stencil offsets onto the same cell, i.e.
+        // >=3 cells on every axis. This holds for single-rank (every axis
+        // wraps) AND multi-rank: extended (decomposed) axes never wrap
+        // (out-of-range stencil cells `continue`, see below), and the
+        // non-extended axes still need >=3 cells.
+        //
+        // Multi-rank cross-rank dedup (tag_dedup): ghost atoms are iterated as
+        // `i` too, but `inum` is trimmed to `n_local` downstream so only the
+        // owner's scan is consumed. An owner-ghost pair is therefore picked up
+        // by exactly the rank whose owner sees the partner in a *forward* cell
+        // (the partner rank sees it as a *backward* cell and never scans it);
+        // only when both sit in the *home* cell do both ranks see it, so the
+        // tag tie-break is needed there alone -- gated by `reject_le_i` below.
+        // This mirrors LAMMPS `npair_half_bin_newton` (coordinate tie-break in
+        // the home bin, unconditional add in the forward stencil bins).
+        // Small/aliased grids (<3 cells) fall back to the full stencil, where
+        // the tie-break applies on every cell because both ranks scan all 27.
+        const bool use_half = ncx_ >= 3 && ncy_ >= 3 && ncz_ >= 3;
+        const std::vector<StencilOffset>& stencil =
+            use_half ? half_stencil_ : full_stencil_;
 
         int visited[27];
         int cursor = 0;
@@ -348,37 +385,53 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
 
             int visited_n = 0;
 
-            for (auto s : full_stencil_) {
+            for (auto s : stencil) {
                 int cx = cx0 + s.di;
                 int cy = cy0 + s.dj;
                 int cz = cz0 + s.dk;
 
+                // Per-cell PBC shift: every atom in a wrapped neighbour cell
+                // shares the same image shift, so the inner pair loop applies
+                // it with a single add instead of the 6-branch per-pair
+                // min-image. Only consumed on the `use_half` (single-rank,
+                // >=3-cell, non-extended) path, where one wrap is always
+                // sufficient.
+                double shx = 0.0, shy = 0.0, shz = 0.0;
                 if (axis_extended_[0]) {
                     if (cx < 0 || cx >= ncx_)
                         continue;
                 } else {
-                    if (cx < 0)
+                    if (cx < 0) {
                         cx += ncx_;
-                    if (cx >= ncx_)
+                        shx = -lx;
+                    } else if (cx >= ncx_) {
                         cx -= ncx_;
+                        shx = lx;
+                    }
                 }
                 if (axis_extended_[1]) {
                     if (cy < 0 || cy >= ncy_)
                         continue;
                 } else {
-                    if (cy < 0)
+                    if (cy < 0) {
                         cy += ncy_;
-                    if (cy >= ncy_)
+                        shy = -ly;
+                    } else if (cy >= ncy_) {
                         cy -= ncy_;
+                        shy = ly;
+                    }
                 }
                 if (axis_extended_[2]) {
                     if (cz < 0 || cz >= ncz_)
                         continue;
                 } else {
-                    if (cz < 0)
+                    if (cz < 0) {
                         cz += ncz_;
-                    if (cz >= ncz_)
+                        shz = -lz;
+                    } else if (cz >= ncz_) {
                         cz -= ncz_;
+                        shz = lz;
+                    }
                 }
 
                 const int cj = cx * ncy_ * ncz_ + cy * ncz_ + cz;
@@ -399,9 +452,14 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
                 const int start = cell_offset_ptr[cj];
                 const int end = start + cell_count_ptr[cj];
 
+                // Half-stencil: only the home cell (cj==ci) needs the j>i
+                // reject; forward cells contribute every j exactly once.
+                // Full-stencil: every cell rejects j<=i.
+                const bool reject_le_i = !use_half || (cj == ci);
+
                 for (int idx = start; idx < end; ++idx) {
                     int j = binned_ptr[idx];
-                    if (j <= i)
+                    if (j <= i && reject_le_i)
                         continue;
                     // Multi-rank ghost-pair tie-breaker: when j is a halo
                     // ghost (j >= n_local), only the rank whose owner has
@@ -410,30 +468,48 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
                     // sees its own atom as having the smaller local row),
                     // double-counting LJ energy + virial. Matches LAMMPS
                     // `npair_half_bin_newton::build` newton-on path.
-                    if (tag_dedup && j >= n_local
+                    //
+                    // Gated by `reject_le_i`: the tie-break applies only where
+                    // both ranks scan the pair symmetrically -- every cell in
+                    // the full stencil, but ONLY the home cell in the half
+                    // stencil. In a half-stencil forward cell the partner rank
+                    // sees the pair as a backward cell and never scans it, so
+                    // applying the tie-break there would drop the pair on both
+                    // ranks. (`reject_le_i == !use_half || cj == ci` is exactly
+                    // "this cell is scanned by both ranks".)
+                    if (tag_dedup && reject_le_i && j >= n_local
                         && tag_ptr[j] < tag_ptr[i])
                         continue;
 
-                    double dx = xi - x_ptr[j];
-                    double dy = yi - y_ptr[j];
-                    double dz = zi - z_ptr[j];
-                    // Multi-wrap (see Box::min_image): cross-PBC ghosts
-                    // can be ±2L from owners on small Cartesian grids
-                    // (e.g. 2×2×2 where +x and -x neighbors are the same
-                    // rank). Single-wrap silently drops legitimate
-                    // cross-PBC LJ pairs from the half-list.
-                    while (dx > half_lx)
-                        dx -= lx;
-                    while (dx < -half_lx)
-                        dx += lx;
-                    while (dy > half_ly)
-                        dy -= ly;
-                    while (dy < -half_ly)
-                        dy += ly;
-                    while (dz > half_lz)
-                        dz -= lz;
-                    while (dz < -half_lz)
-                        dz += lz;
+                    double dx, dy, dz;
+                    if (use_half) {
+                        // Per-cell shift already encodes the (single) wrap;
+                        // one add, no per-pair branch.
+                        dx = xi - (x_ptr[j] + shx);
+                        dy = yi - (y_ptr[j] + shy);
+                        dz = zi - (z_ptr[j] + shz);
+                    } else {
+                        dx = xi - x_ptr[j];
+                        dy = yi - y_ptr[j];
+                        dz = zi - z_ptr[j];
+                        // Multi-wrap (see Box::min_image): cross-PBC ghosts
+                        // can be ±2L from owners on small Cartesian grids
+                        // (e.g. 2×2×2 where +x and -x neighbors are the same
+                        // rank). Single-wrap silently drops legitimate
+                        // cross-PBC LJ pairs from the half-list.
+                        while (dx > half_lx)
+                            dx -= lx;
+                        while (dx < -half_lx)
+                            dx += lx;
+                        while (dy > half_ly)
+                            dy -= ly;
+                        while (dy < -half_ly)
+                            dy += ly;
+                        while (dz > half_lz)
+                            dz -= lz;
+                        while (dz < -half_lz)
+                            dz += lz;
+                    }
 
                     double r2 = dx * dx + dy * dy + dz * dz;
                     if (r2 < rc_sq) {
@@ -442,6 +518,13 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
                         // capacity saturates and push_back is a
                         // pointer-bump store.
                         result.neighbors.push_back(j);
+                        // Stored shift reproduces this exact min-image:
+                        // d = xi - (xj + shift). For use_half this is the
+                        // per-cell (shx,shy,shz); the uniform form below also
+                        // captures the full-path multi-wrap.
+                        result.shift_x.push_back(xi - dx - x_ptr[j]);
+                        result.shift_y.push_back(yi - dy - y_ptr[j]);
+                        result.shift_z.push_back(zi - dz - z_ptr[j]);
                         ++cursor;
                     }
                 }
@@ -453,6 +536,8 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
     }
 
     // ── Multi-thread path ───────────────────────────────────────────
+    // Does not populate per-pair shifts; consumers fall back to min-image.
+    result.has_shifts = false;
     // Thread-private pair buffers feed a pair-count + prefix-sum +
     // scatter finalizer. Slightly more work per pair than the serial
     // fast path but keeps scaling on OMP ≥ 2. The old single-path

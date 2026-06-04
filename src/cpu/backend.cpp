@@ -5,7 +5,10 @@
 #include "atomiverse/core/log.h"
 #include "atomiverse/cpu/analysis_executor.h"
 #include "atomiverse/cpu/md/mpi/domain.h"
+#include "atomiverse/cpu/md/step_timing.h"
 
+#include <chrono>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -81,11 +84,35 @@ void Backend::init() {
         MPI_Comm_rank(MPI_COMM_WORLD, &context_.mpi_rank);
         MPI_Comm_size(MPI_COMM_WORLD, &context_.mpi_size);
     }
+#endif
+
+    // Rank-aware logging auto-init: gates console to rank 0 (so 64-rank runs
+    // don't spam stdout) and honors ATV_LOG_* env knobs. Skipped if the
+    // application already called `ATV::log_init(...)` explicitly (that wins).
+    if (!ATV::log_initialized()) {
+        LogConfig lc;
+        lc.mpi_rank = context_.mpi_rank;
+        lc.mpi_size = context_.mpi_size;
+        ATV::log_init(lc);
+    }
+
+#ifdef ATV_HAS_MPI
     ATV_INFO("CPU backend initialized: {} threads, MPI rank {}/{}",
              context_.n_threads, context_.mpi_rank, context_.mpi_size);
 #else
     ATV_INFO("CPU backend initialized: {} threads", context_.n_threads);
 #endif
+
+    // Opt-in per-component timing (default off, near-zero overhead). Enabled
+    // via ATV_TIMER=1 or programmatically via Backend::enable_timing(true) /
+    // MD::enable_timing(true). Publish the registry so components can record
+    // sub-scopes through Context::timer.
+    if (const char* tv = std::getenv("ATV_TIMER")) {
+        const std::string v = tv;
+        if (v == "1" || v == "true" || v == "TRUE" || v == "on")
+            timing_.set_enabled(true);
+    }
+    context_.timer = &timing_;
 
     if (!dd_)
         dd_ = std::make_unique<md::mpi::DomainDecomposition>();
@@ -154,24 +181,55 @@ void Backend::set_frame(cpu::Frame& frame) {
 
 void Backend::build_components() {
     BuildContext ctx{context_, *frame_};
-    for (auto& slot : plan_->slots)
+    // Register one timing handle per op (component name + phase + category
+    // rollup), precomputed so the hot step loop never re-classifies / allocates.
+    op_handle_.assign(plan_->slots.size(), {});
+    for (std::size_t s = 0; s < plan_->slots.size(); ++s) {
+        auto& slot = plan_->slots[s];
+        op_handle_[s].reserve(slot.ops.size());
         for (auto& op : slot.ops) {
-            ATV_DEBUG("building component '{}'", op.component->name());
+            const std::string nm = op.component->name();
+            ATV_DEBUG("building component '{}'", nm);
             op.component->build(ctx);
+            op_handle_[s].push_back(timing_.register_op(
+                TimerKey{nm, slot.phase,
+                         static_cast<int>(md::StepTiming::classify(nm)), ""}));
         }
+    }
     ATV_INFO("all components built");
 }
 
 void Backend::step(int step_idx) {
-    for (auto& slot : plan_->slots) {
+    const bool timing = timing_.enabled();
+    const bool have_handles = op_handle_.size() == plan_->slots.size();
+    const auto step_t0 = timing ? std::chrono::steady_clock::now()
+                                : std::chrono::steady_clock::time_point{};
+    for (std::size_t s = 0; s < plan_->slots.size(); ++s) {
+        auto& slot = plan_->slots[s];
         if (slot.ops.empty())
             continue;
-        for (auto& op : slot.ops) {
+        for (std::size_t o = 0; o < slot.ops.size(); ++o) {
+            auto& op = slot.ops[o];
             if (op.frequency > 0 && step_idx % op.frequency != 0)
                 continue;
             LaunchContext ctx{context_, *frame_, slot.phase, step_idx};
-            op.component->launch(ctx);
+            if (timing && have_handles) {
+                const auto t0 = std::chrono::steady_clock::now();
+                op.component->launch(ctx);
+                const auto t1 = std::chrono::steady_clock::now();
+                timing_.record(op_handle_[s][o],
+                               std::chrono::duration<double>(t1 - t0).count());
+            } else {
+                op.component->launch(ctx); // zero-overhead path when off
+            }
         }
+    }
+    if (timing) {
+        const auto step_t1 = std::chrono::steady_clock::now();
+        timing_.set_loop(
+            std::chrono::duration<double>(step_t1 - step_t0).count(),
+            dd_ ? dd_->n_local : static_cast<int>(frame_->atoms.size()));
+        timing_.tick_step();
     }
 }
 

@@ -168,6 +168,7 @@ pyrightconfig.json
 
 # Extra build trees (build/ already listed above)
 build_*/
+build-*/
 
 # Debug / run artifacts for debug_amorphous LAMMPS-comparison harness
 debug_amorphous/*.data

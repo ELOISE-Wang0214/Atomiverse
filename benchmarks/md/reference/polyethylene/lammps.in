@@ -55,10 +55,12 @@ variable        pke   equal ke
 variable        ppxx  equal pxx
 variable        ppyy  equal pyy
 variable        ppzz  equal pzz
+variable        pdens equal density
+variable        pvol  equal vol
 fix             thermolog all print 100 &
-                "${pstep},${ptemp},${ppres},${ppe},${pke},${ppxx},${ppyy},${ppzz}" &
+                "${pstep},${ptemp},${ppres},${ppe},${pke},${ppxx},${ppyy},${ppzz},${pdens},${pvol}" &
                 file thermo.lammps.csv screen no &
-                title "step,T,P,E_pot,E_kin,Pxx,Pyy,Pzz"
+                title "step,T,P,E_pot,E_kin,Pxx,Pyy,Pzz,density,vol"
 
 # ================= stage 1 : nve/limit + Langevin, 500 K =================
 velocity        all create 500.0 1231

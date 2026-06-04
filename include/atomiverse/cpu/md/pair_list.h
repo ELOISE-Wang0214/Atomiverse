@@ -38,6 +38,19 @@ struct PairList {
     std::vector<int> neighbors; ///< Flat neighbor indices [total_pairs].
     int total_pairs = 0;        ///< Total entries in neighbors[].
 
+    /// @brief Per-pair PBC image shift applied to neighbor j, parallel to
+    /// `neighbors[]`. The minimum-image displacement is
+    /// `d = x_i - (x_j + shift_j)`, so force kernels skip the per-pair
+    /// min-image when `has_shifts` is set. The shift is fixed for the list's
+    /// lifetime (the skin guarantees the chosen image stays valid between
+    /// rebuilds) -- this is LAMMPS's ghost-image trick encoded as a shift.
+    /// Only the single-rank serial build populates these today; other build
+    /// paths leave `has_shifts=false` and consumers fall back to min-image.
+    std::vector<double> shift_x;
+    std::vector<double> shift_y;
+    std::vector<double> shift_z;
+    bool has_shifts = false; ///< True when shift_{x,y,z} are populated.
+
     /// @brief Monotonic rebuild counter. `NeighborList::launch` bumps this by
     /// 1 every time it actually re-enumerates the list. Consumers that cache
     /// derived views (e.g. LJ's exclusion-filtered neighbor list) compare

@@ -9,7 +9,9 @@
 #pragma once
 
 #include <memory>
+#include <vector>
 
+#include "atomiverse/core/timer.h"
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/context.h"
 #include "atomiverse/cpu/frame.h"
@@ -98,6 +100,19 @@ class Backend {
     /// @brief Access the Frame.
     Frame& frame() { return *frame_; }
 
+    /// @brief The per-component timing registry (opt-in). Records each
+    /// component launch when enabled; reached by components via
+    /// `Context::timer`. @see core/timer.h, cpu/md/timing_report.h
+    TimerRegistry& timing() { return timing_; }
+    const TimerRegistry& timing() const { return timing_; }
+
+    /// @brief Enable/disable per-launch timing (default off; also set from the
+    /// `ATV_TIMER` env var in `init()`).
+    void enable_timing(bool on) { timing_.set_enabled(on); }
+
+    /// @brief Clear accumulated step timing (e.g. between protocol stages).
+    void reset_timing() { timing_.reset(); }
+
     /// @brief Adopt an externally-owned `DomainDecomposition`.
     ///
     /// Takes ownership of `dd`. Must be called BEFORE `init()`; once the
@@ -127,6 +142,12 @@ class Backend {
     const Plan<cpu::ComponentBase>* plan_ = nullptr;
     std::unique_ptr<md::mpi::DomainDecomposition> dd_;
     std::unique_ptr<AnalysisExecutor> executor_;
+
+    TimerRegistry timing_{};
+    /// Per-slot, per-op dense timing handles into `timing_`, precomputed in
+    /// `build_components()` so the hot `step()` loop never calls
+    /// `component->name()`. Mirrors `plan_->slots[s].ops` order.
+    std::vector<std::vector<int>> op_handle_;
 };
 
 } // namespace cpu

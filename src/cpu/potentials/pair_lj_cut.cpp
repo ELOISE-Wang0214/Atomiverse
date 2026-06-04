@@ -159,10 +159,22 @@ void PairLJCut::rebuild_filtered_list(const Frame& f,
     filtered_firstneigh_.assign(n, 0);
     filtered_neighbors_.clear();
     filtered_neighbors_.reserve(pairs.total_pairs);
+    filtered_has_shifts_ = pairs.has_shifts;
+    if (filtered_has_shifts_) {
+        filtered_shift_x_.clear();
+        filtered_shift_y_.clear();
+        filtered_shift_z_.clear();
+        filtered_shift_x_.reserve(pairs.total_pairs);
+        filtered_shift_y_.reserve(pairs.total_pairs);
+        filtered_shift_z_.reserve(pairs.total_pairs);
+    }
 
     const int* numneigh = pairs.numneigh.data();
     const int* firstneigh = pairs.firstneigh.data();
     const int* neighbors = pairs.neighbors.data();
+    const double* sx = filtered_has_shifts_ ? pairs.shift_x.data() : nullptr;
+    const double* sy = filtered_has_shifts_ ? pairs.shift_y.data() : nullptr;
+    const double* sz = filtered_has_shifts_ ? pairs.shift_z.data() : nullptr;
     const std::int64_t* tag = f.atoms.tag.data();
 
     for (int i = 0; i < n; ++i) {
@@ -183,6 +195,11 @@ void PairLJCut::rebuild_filtered_list(const Frame& f,
                     continue;
             }
             filtered_neighbors_.push_back(j);
+            if (filtered_has_shifts_) {
+                filtered_shift_x_.push_back(sx[off + jj]);
+                filtered_shift_y_.push_back(sy[off + jj]);
+                filtered_shift_z_.push_back(sz[off + jj]);
+            }
             ++kept;
         }
         filtered_numneigh_[i] = kept;
@@ -223,6 +240,30 @@ void PairLJCut::compute(const LaunchContext& ctx) {
         use_filtered ? filtered_firstneigh_.data() : pairs.firstneigh.data();
     const int* __restrict k_neighbors =
         use_filtered ? filtered_neighbors_.data() : pairs.neighbors.data();
+
+    // Per-pair PBC shift fast path: d = xi - (xj + shift), skipping the
+    // per-pair min-image. Bit-identical to the min-image path because the
+    // stored shift is, by construction, `xi - dx - xj` where `dx` is the
+    // exact displacement the neighbor build computed (`shift = (shx,shy,shz)`
+    // on the half-stencil path; the full min-image displacement otherwise) --
+    // it is the same integer image, stable for the list's lifetime under the
+    // neighbor skin. This holds under MPI as well: extended-axis ghosts carry
+    // a zero shift (they are already at their real, halo-resolved position, so
+    // min-image is a no-op) and only the non-decomposed wrapped pairs carry a
+    // nonzero shift, which the neighbor build already encoded correctly. The
+    // shift array is populated only on the serial neighbor-build path, so
+    // `has_shifts` is false (and this falls back to min-image) under OMP>1.
+    const bool k_has_shifts =
+        (use_filtered ? filtered_has_shifts_ : pairs.has_shifts);
+    const double* __restrict k_shift_x =
+        !k_has_shifts ? nullptr
+        : (use_filtered ? filtered_shift_x_.data() : pairs.shift_x.data());
+    const double* __restrict k_shift_y =
+        !k_has_shifts ? nullptr
+        : (use_filtered ? filtered_shift_y_.data() : pairs.shift_y.data());
+    const double* __restrict k_shift_z =
+        !k_has_shifts ? nullptr
+        : (use_filtered ? filtered_shift_z_.data() : pairs.shift_z.data());
 
     // Pair virial accumulators (Voigt order: xx yy zz xy xz yz). Reduced
     // across OpenMP threads via OMP reduction; cross-rank reduction is
@@ -339,6 +380,18 @@ void PairLJCut::compute(const LaunchContext& ctx) {
             const double zi = z_ptr[i];
             const batch_t v_xi(xi), v_yi(yi), v_zi(zi);
             double fi_x = 0, fi_y = 0, fi_z = 0;
+            // Batch accumulators for the i-force, virial and energy. Masked
+            // (out-of-cutoff) lanes contribute 0 (v_fpair is select-masked),
+            // so we accumulate whole batches and horizontal-reduce once per
+            // atom i -- far less scalar work at W=8 (AVX-512) than the old
+            // lane-by-lane add. Only the Newton-3rd-law scatter to f[j]
+            // (random index) stays scalar. (FP summation order differs from
+            // the legacy lane-serial form: results match to tolerance, not
+            // bit-for-bit.)
+            batch_t acc_fix(0.0), acc_fiy(0.0), acc_fiz(0.0);
+            batch_t acc_vxx(0.0), acc_vyy(0.0), acc_vzz(0.0);
+            batch_t acc_vxy(0.0), acc_vxz(0.0), acc_vyz(0.0);
+            batch_t acc_e(0.0);
 
             int jj = 0;
             // ── SIMD ket loop: W neighbors per iteration ────────────
@@ -364,6 +417,20 @@ void PairLJCut::compute(const LaunchContext& ctx) {
                 batch_t v_dx = v_xi - v_xj;
                 batch_t v_dy = v_yi - v_yj;
                 batch_t v_dz = v_zi - v_zj;
+                if (k_has_shifts) {
+                    // Pre-stored image: d = xi - (xj + shift). Contiguous
+                    // load (shifts parallel to neighbors). Bit-identical to
+                    // the floor-form below for the (stable) chosen image.
+                    v_dx = v_dx - batch_t::load_unaligned(&k_shift_x[off + jj]);
+                    v_dy = v_dy - batch_t::load_unaligned(&k_shift_y[off + jj]);
+                    v_dz = v_dz - batch_t::load_unaligned(&k_shift_z[off + jj]);
+                    (void)v_half_lx;
+                    (void)v_neg_half_lx;
+                    (void)v_half_ly;
+                    (void)v_neg_half_ly;
+                    (void)v_half_lz;
+                    (void)v_neg_half_lz;
+                } else {
                 // Branch-free minimum image: select(dx > +L/2, dx-L, dx);
                 // then select(dx < -L/2, dx+L, dx). Hoisted constants
                 // (v_lx, v_half_lx, ...) keep the compiler from reloading
@@ -388,6 +455,7 @@ void PairLJCut::compute(const LaunchContext& ctx) {
                 (void)v_neg_half_ly;
                 (void)v_half_lz;
                 (void)v_neg_half_lz;
+                }
 
                 // r2 with parenthesized addition tree to keep order
                 // matching scalar `(dx*dx + dy*dy) + dz*dz`.
@@ -417,83 +485,85 @@ void PairLJCut::compute(const LaunchContext& ctx) {
                 batch_t v_fyp = v_fpair * v_dy;
                 batch_t v_fzp = v_fpair * v_dz;
 
-                v_dx.store_aligned(dx_buf);
-                v_dy.store_aligned(dy_buf);
-                v_dz.store_aligned(dz_buf);
+                // i-force, virial and energy: whole-batch accumulation
+                // (masked lanes contribute 0). Per-pair energy is masked so
+                // out-of-cutoff lanes add nothing.
+                acc_fix = acc_fix + v_fxp;
+                acc_fiy = acc_fiy + v_fyp;
+                acc_fiz = acc_fiz + v_fzp;
+                acc_vxx = acc_vxx + v_dx * v_fxp;
+                acc_vyy = acc_vyy + v_dy * v_fyp;
+                acc_vzz = acc_vzz + v_dz * v_fzp;
+                acc_vxy = acc_vxy + v_dx * v_fyp;
+                acc_vxz = acc_vxz + v_dx * v_fzp;
+                acc_vyz = acc_vyz + v_dy * v_fzp;
+                acc_e = acc_e
+                        + xsimd::select(mask,
+                                        v_eps4 * (v_r6inv * v_r6inv - v_r6inv)
+                                            - v_vshift,
+                                        v_zero);
+
+                // Newton 3rd-law scatter to j (random index) stays scalar;
+                // masked lanes have fxp=0 so the subtract is a harmless no-op.
                 v_fxp.store_aligned(fxp_buf);
                 v_fyp.store_aligned(fyp_buf);
                 v_fzp.store_aligned(fzp_buf);
-                v_r6inv.store_aligned(r6inv_buf);
-                // Mask: store as integer (1 inside cutoff, 0 outside) so
-                // the scalar accumulation loop below can branch on it.
-                // batch_bool stores as the underlying SIMD compare result;
-                // we materialize via a select-to-int.
-                batch_t v_mask_d = xsimd::select(mask, v_one, v_zero);
-                alignas(64) double mask_d_buf[16];
-                v_mask_d.store_aligned(mask_d_buf);
-
-                // ── Scalar accumulation in original linear order ──
-                // Lane-by-lane add into fi_*, fxt[j], v_xx..v_yz, energy.
-                // This is identical FP order to the scalar loop: each
-                // surviving pair contributes the same per-pair triple
-                // (fxp, fyp, fzp) the scalar code would have computed.
                 for (std::size_t lane = 0; lane < W; ++lane) {
-                    if (mask_d_buf[lane] == 0.0)
-                        continue;
                     const int j =
                         k_neighbors[off + jj + static_cast<int>(lane)];
-                    const double dx_l = dx_buf[lane];
-                    const double dy_l = dy_buf[lane];
-                    const double dz_l = dz_buf[lane];
-                    const double fxp_l = fxp_buf[lane];
-                    const double fyp_l = fyp_buf[lane];
-                    const double fzp_l = fzp_buf[lane];
-                    const double r6inv_l = r6inv_buf[lane];
-
-                    fi_x += fxp_l;
-                    fi_y += fyp_l;
-                    fi_z += fzp_l;
-                    fxt_ptr[j] -= fxp_l;
-                    fyt_ptr[j] -= fyp_l;
-                    fzt_ptr[j] -= fzp_l;
-
-                    v_xx += dx_l * fxp_l;
-                    v_yy += dy_l * fyp_l;
-                    v_zz += dz_l * fzp_l;
-                    v_xy += dx_l * fyp_l;
-                    v_xz += dx_l * fzp_l;
-                    v_yz += dy_l * fzp_l;
-
-                    energy_total +=
-                        eps4 * (r6inv_l * r6inv_l - r6inv_l) - vshift;
+                    fxt_ptr[j] -= fxp_buf[lane];
+                    fyt_ptr[j] -= fyp_buf[lane];
+                    fzt_ptr[j] -= fzp_buf[lane];
                 }
                 (void)mask_buf;
+                (void)dx_buf;
+                (void)dy_buf;
+                (void)dz_buf;
+                (void)r2_buf;
+                (void)r6inv_buf;
             }
+
+            // Horizontal-reduce the batch accumulators into the per-atom /
+            // per-thread scalars before the scalar tail adds to them.
+            fi_x += xsimd::reduce_add(acc_fix);
+            fi_y += xsimd::reduce_add(acc_fiy);
+            fi_z += xsimd::reduce_add(acc_fiz);
+            v_xx += xsimd::reduce_add(acc_vxx);
+            v_yy += xsimd::reduce_add(acc_vyy);
+            v_zz += xsimd::reduce_add(acc_vzz);
+            v_xy += xsimd::reduce_add(acc_vxy);
+            v_xz += xsimd::reduce_add(acc_vxz);
+            v_yz += xsimd::reduce_add(acc_vyz);
+            energy_total += xsimd::reduce_add(acc_e);
 
             // ── Scalar tail (last jnum % W neighbors) ──────────────
             for (; jj < jnum; ++jj) {
                 const int j = k_neighbors[off + jj];
-                double dx = xi - x_ptr[j];
-                double dy = yi - y_ptr[j];
-                double dz = zi - z_ptr[j];
-                // Inlined branchy min-image: matches the SIMD ket-loop form
-                // above and keeps the hoisted half_lx / lx locals in
-                // registers across the entire scalar tail. (Substituting
-                // box.min_image here costs the same ~7% as the SIMD path.)
-                // Multi-wrap to handle cross-PBC ghosts at ±2L on small
-                // Cartesian grids (see Box::min_image fix).
-                while (dx > half_lx)
-                    dx -= lx;
-                while (dx < -half_lx)
-                    dx += lx;
-                while (dy > half_ly)
-                    dy -= ly;
-                while (dy < -half_ly)
-                    dy += ly;
-                while (dz > half_lz)
-                    dz -= lz;
-                while (dz < -half_lz)
-                    dz += lz;
+                double dx, dy, dz;
+                if (k_has_shifts) {
+                    dx = xi - (x_ptr[j] + k_shift_x[off + jj]);
+                    dy = yi - (y_ptr[j] + k_shift_y[off + jj]);
+                    dz = zi - (z_ptr[j] + k_shift_z[off + jj]);
+                } else {
+                    dx = xi - x_ptr[j];
+                    dy = yi - y_ptr[j];
+                    dz = zi - z_ptr[j];
+                    // Inlined branchy min-image: matches the SIMD ket-loop
+                    // form above. Multi-wrap to handle cross-PBC ghosts at
+                    // ±2L on small Cartesian grids (see Box::min_image fix).
+                    while (dx > half_lx)
+                        dx -= lx;
+                    while (dx < -half_lx)
+                        dx += lx;
+                    while (dy > half_ly)
+                        dy -= ly;
+                    while (dy < -half_ly)
+                        dy += ly;
+                    while (dz > half_lz)
+                        dz -= lz;
+                    while (dz < -half_lz)
+                        dz += lz;
+                }
                 const double r2 = dx * dx + dy * dy + dz * dz;
                 if (r2 >= rc_sq)
                     continue;

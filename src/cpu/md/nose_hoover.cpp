@@ -37,9 +37,13 @@ void NoseHoover::build(const cpu::BuildContext& ctx) {
     // to recover global N in that case.
     int n_global = static_cast<int>(ctx.frame.atoms.size());
 #ifdef ATV_HAS_MPI
+    // MUST be unconditional across all ranks (collective). A rank that owns no
+    // atoms (n_local == 0) still has to call MPI_Allreduce or the others hang;
+    // it contributes 0 so n_global stays the correct global total. Gating on
+    // `n_local > 0` caused a 64-rank stage-transition deadlock. See the twin
+    // fix in nose_hoover_npt.cpp::build.
     if (ctx.runtime.mpi_size > 1 && ctx.runtime.dd
-        && ctx.runtime.dd->cart_comm != MPI_COMM_NULL
-        && ctx.runtime.dd->n_local > 0) {
+        && ctx.runtime.dd->cart_comm != MPI_COMM_NULL) {
         const int n_local = ctx.runtime.dd->n_local;
         MPI_Allreduce(&n_local, &n_global, 1, MPI_INT, MPI_SUM,
                       ctx.runtime.dd->cart_comm);

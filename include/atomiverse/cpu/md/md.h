@@ -3,9 +3,11 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <type_traits>
 
 #include "atomiverse/cpu/backend.h"
+#include "atomiverse/cpu/md/timing_report.h"
 #include "atomiverse/cpu/dynamics_driver.h"
 #include "atomiverse/cpu/md/init.h"
 #include "atomiverse/cpu/comm/atom_migration.h"
@@ -144,6 +146,46 @@ class MD : public DynamicsDriver {
         if (!this->backend_)
             return nullptr;
         return this->backend_->release_dd();
+    }
+
+    /// @brief Enable/disable opt-in per-component timing for this run. Eagerly
+    /// creates the backend (like `adopt_dd`) so the flag survives into `run()`.
+    /// Call before `run()`. (Also enabled by the `ATV_TIMER` env var.)
+    void enable_timing(bool on = true) {
+        if (!this->backend_)
+            this->backend_ = std::make_unique<typename Base::BackendT>();
+        this->backend_->enable_timing(on);
+    }
+
+    /// @brief Reset the backend's accumulated step timing (e.g. per stage).
+    void reset_timing() {
+        if (this->backend_)
+            this->backend_->reset_timing();
+    }
+
+    /// @brief Raw access to the timing registry (null before the backend
+    /// exists). @see core/timer.h
+    const ATV::TimerRegistry* timing() const {
+        return this->backend_ ? &this->backend_->timing() : nullptr;
+    }
+
+    /// @brief Cross-rank-reduced timing report for this run/stage.
+    cpu::md::ReducedReport timing_report() const {
+        return this->backend_ ? cpu::md::reduce_timing(this->backend_->timing())
+                              : cpu::md::ReducedReport{};
+    }
+
+    /// @brief Emit the timing breakdown: human table (console, rank 0) and,
+    /// if a Csv sink is given, a machine row (metrics file). Routed through
+    /// the log module. @see cpu/md/timing_report.h
+    void emit_timing(std::string_view stage,
+                     ATV::report::Csv* csv = nullptr) const {
+        if (!this->backend_)
+            return;
+        const auto rep = cpu::md::reduce_timing(this->backend_->timing());
+        cpu::md::emit_timing_table(rep, stage);
+        if (csv)
+            cpu::md::emit_timing_csv(rep, *csv, stage);
     }
 
   protected:

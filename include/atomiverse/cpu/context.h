@@ -6,6 +6,9 @@
 #include "atomiverse/facade/iteration_status.h"
 
 namespace ATV {
+
+class TimerRegistry;
+
 namespace cpu {
 
 class AnalysisExecutor;
@@ -54,6 +57,12 @@ struct Context {
     /// Allocated by `Backend::init()`; published so components can reach
     /// the executor from any `BuildContext` / `LaunchContext`.
     AnalysisExecutor* executor = nullptr;
+
+    /// @brief Non-owning handle to the per-Backend timing registry.
+    /// Published by `Backend::init()`. Components reach it (via
+    /// `ATV_PROFILE_SCOPE`) to record sub-region timings; null / disabled by
+    /// default so timing is opt-in and zero-cost when off. @see core/timer.h
+    ATV::TimerRegistry* timer = nullptr;
 
     /// @brief Outer-driver-loop status — owned by the category driver
     ///        (Evaluate / Dynamics / Optimize), reset before each iteration,

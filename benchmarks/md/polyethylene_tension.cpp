@@ -84,7 +84,9 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
+#include "atomiverse/core/log.h"
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/core/report.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/frame.h"
@@ -935,6 +937,16 @@ void wire_shared(cpu::md::MD& sim, SharedComponents& sc,
     if (sc.rdf) {
         sim.add(*sc.rdf);
     }
+    // NOTE: RCB load-balancing was evaluated here and REVERTED — at 64 ranks
+    // perfect balance gave zero speedup and at 32 ranks the rebalance churn
+    // (histogram allreduce + migration + neighbor rebuild) made it ~1.6x
+    // slower. The multi-rank step is gated by Comm + Neigh + global sync, not
+    // by atom-count imbalance. (RCBBalancer remains available for workloads
+    // that ARE imbalance-bound.)
+
+    // This benchmark is a measurement tool: always record per-component timing
+    // (negligible overhead) so the assessment CSV/table are produced.
+    sim.enable_timing(true);
 }
 
 #ifdef ATV_BUILD_CUDA
@@ -1542,6 +1554,28 @@ int main(int argc, char** argv) {
 #endif
     };
 
+    // Per-stage per-component wall-clock breakdown (Pair/Bonded/Neigh/Comm/
+    // Reduce/Other) + load balance (min/max/avg owned atoms across ranks),
+    // written to <out-dir>/stage_component_timing.csv. This is the attribution
+    // data the LAMMPS performance assessment compares section-by-section with
+    // LAMMPS's own timing breakdown
+    // (.claude/specs/cpu-md-lammps-perf-assessment.md).
+    // Route the per-component breakdown through the log module: configure a
+    // metrics file sink (= stage_component_timing.csv) + rank-aware console,
+    // before any backend auto-inits logging. The cross-rank reduce + table +
+    // CSV row are produced by MD::emit_timing (cpu/md/timing_report.h).
+    {
+        ATV::LogConfig lc;
+        lc.mpi_rank = my_rank;
+        lc.mpi_size = world_size;
+        lc.metrics_file = a.out_dir + "/stage_component_timing.csv";
+        ATV::log_init(lc);
+    }
+    ATV::report::Csv comp_csv(cpu::md::StepTiming::csv_header());
+    auto log_components = [&](int stage_id, const cpu::md::MD& sim) {
+        sim.emit_timing("stage" + std::to_string(stage_id), &comp_csv);
+    };
+
     // ── Stage 1 — NVELimit + FixLangevin @ T_hot, dt 1.0 fs ───────────
     // Mirrors lammps.in `fix nve/limit 0.05` + `fix langevin 500 500 10`
     // + `velocity create 500`. NVELimit's per-step displacement cap
@@ -1570,6 +1604,7 @@ int main(int argc, char** argv) {
             sim.adopt_dd(std::move(preserved_dd));
         sim.build();
         sim.run(frame, steps);
+        log_components(1, sim);
         preserved_dd = sim.release_dd();
         maybe_dump_after_stage(1);
     }
@@ -1628,6 +1663,7 @@ int main(int argc, char** argv) {
         } else {
             sim.run(frame, steps);
         }
+        log_components(2, sim);
         preserved_dd = sim.release_dd();
         maybe_dump_after_stage(2);
     }
@@ -1667,6 +1703,7 @@ int main(int argc, char** argv) {
             sim.adopt_dd(std::move(preserved_dd));
         sim.build();
         sim.run(frame, steps);
+        log_components(3, sim);
         preserved_dd = sim.release_dd();
         maybe_dump_after_stage(3);
     }
@@ -1696,6 +1733,7 @@ int main(int argc, char** argv) {
             sim.adopt_dd(std::move(preserved_dd));
         sim.build();
         sim.run(frame, steps);
+        log_components(4, sim);
         preserved_dd = sim.release_dd();
         maybe_dump_after_stage(4);
     }
@@ -1731,6 +1769,7 @@ int main(int argc, char** argv) {
             sim.adopt_dd(std::move(preserved_dd));
         sim.build();
         sim.run(frame, steps);
+        log_components(5, sim);
         preserved_dd = sim.release_dd();
         maybe_dump_after_stage(5);
     }
