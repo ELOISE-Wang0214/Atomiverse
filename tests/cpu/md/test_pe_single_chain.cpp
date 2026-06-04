@@ -276,15 +276,18 @@ TEST(PeSingleChain, BendOneAngleMatchesAnalytic) {
     HarmonicAngle angle_only({angle_K_eV()}, {kAngleTheta0});
     angle_only.build(bctx);
 
-    // Single-angle frame: keep only the (0,1,2) angle so we isolate its V.
-    fresh.angles.atomi = xt::zeros<int>({1});
-    fresh.angles.atomj = xt::zeros<int>({1});
-    fresh.angles.atomk = xt::zeros<int>({1});
-    fresh.angles.type = xt::zeros<int>({1});
-    fresh.angles.atomi[0] = 0;
-    fresh.angles.atomj[0] = 1;
-    fresh.angles.atomk[0] = 2;
-    fresh.angles.type[0] = 0;
+    // Isolate the (0,1,2) angle in the PER-ATOM topology the kernel actually
+    // reads. The legacy flat `fresh.angles` is dead storage (kernels ignore
+    // it), so the original assignment did NOT isolate anything:
+    // make_all_trans_alkane wires every chain angle, and lifting atom 1
+    // perturbs both (0,1,2) and (1,2,3) — measuring two angles' energy.
+    // Clear all per-atom angles, then add only (0,1,2).
+    for (int i = 0; i < fresh.atoms.nlocal; ++i)
+        fresh.atoms.num_angle[i] = 0;
+    fresh.atoms.map_clear();
+    fresh.atoms.map_set(0, fresh.atoms.nlocal);
+    fresh.atoms.add_angle(0, 1, 2, 0);
+    fresh.atoms.build_special_list();
 
     fresh.scalars.energy = 0;
     angle_only.launch(lctx);
