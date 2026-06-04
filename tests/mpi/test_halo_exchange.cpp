@@ -253,28 +253,39 @@ TEST(HaloReverse, ReverseAddsGhostForcesBackToOwners) {
 
     rev.launch(lctx);
 
-    // After reverse, every owner whose tag was ghost-shipped to a *real*
-    // neighbor (not a self-wrap on a dims==1 axis) gets +10.0 back per
-    // face it appeared on. Self-wrap faces are short-circuited by the
-    // halo implementation, so they contribute zero.
-    int my_rank = 0;
-    MPI_Comm_rank(dd->cart_comm, &my_rank);
-    std::vector<int> ghost_appearances(static_cast<std::size_t>(dd->n_local),
-                                       0);
-    for (int f = 0; f < 6; ++f) {
-        if (dd->face_neighbors[f] == my_rank)
-            continue; // self-face: no comm
-        for (int idx : dd->send_lists[f])
-            ghost_appearances[static_cast<std::size_t>(idx)] += 1;
-    }
-
+    // Reverse sums every ghost copy's force back to its owner. The forward
+    // halo is a 3-axis cascade (x→y→z), so an owner near a corner is ghosted
+    // on up to 7 neighbours at 2×2×2 (3 face + 3 edge + 1 corner) — a count
+    // this rank's own `send_lists` does NOT capture (the edge/corner copies
+    // are forwarded by *other* ranks). The robust, topology-independent
+    // invariant is global conservation: every ghost's planted force lands on
+    // exactly one owner, so the global owner-force sum is
+    //   Σ owner fx = base_x·N_owners + 10·N_ghosts   (likewise fy, fz),
+    // with base = (1,2,3) on owners and 10 on every ghost.
+    double local_f[3] = {0.0, 0.0, 0.0};
     for (int i = 0; i < dd->n_local; ++i) {
-        const double expected =
-            1.0 + 10.0 * ghost_appearances[static_cast<std::size_t>(i)];
-        EXPECT_NEAR(frame.atoms.fx[i], expected, 1e-12)
-            << "owner " << i
-            << " fx not equal to base + 10 * (ghost appearances)";
+        local_f[0] += frame.atoms.fx[i];
+        local_f[1] += frame.atoms.fy[i];
+        local_f[2] += frame.atoms.fz[i];
+        // Per-owner sanity: the returned offset is a non-negative integer
+        // multiple of 10 on every axis (no partial/duplicated ghost force).
+        const double off = frame.atoms.fx[i] - 1.0;
+        EXPECT_GE(off, -1e-9) << "owner " << i << " lost its base force";
+        EXPECT_NEAR(off / 10.0, std::round(off / 10.0), 1e-9)
+            << "owner " << i << " fx offset " << off
+            << " is not a clean multiple of the 10.0 ghost force";
     }
+    long long local_counts[2] = {dd->n_local, dd->n_ghost};
+    double global_f[3] = {0.0, 0.0, 0.0};
+    long long global_counts[2] = {0, 0};
+    MPI_Allreduce(local_f, global_f, 3, MPI_DOUBLE, MPI_SUM, dd->cart_comm);
+    MPI_Allreduce(local_counts, global_counts, 2, MPI_LONG_LONG, MPI_SUM,
+                  dd->cart_comm);
+    const double no = static_cast<double>(global_counts[0]);
+    const double ng = static_cast<double>(global_counts[1]);
+    EXPECT_NEAR(global_f[0], 1.0 * no + 10.0 * ng, 1e-6) << "fx not conserved";
+    EXPECT_NEAR(global_f[1], 2.0 * no + 10.0 * ng, 1e-6) << "fy not conserved";
+    EXPECT_NEAR(global_f[2], 3.0 * no + 10.0 * ng, 1e-6) << "fz not conserved";
 
     backend.shutdown();
 }
