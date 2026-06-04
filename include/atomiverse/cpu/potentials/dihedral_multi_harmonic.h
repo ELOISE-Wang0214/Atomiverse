@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "atomiverse/cpu/md/force_scratch.h"
 #include "atomiverse/cpu/potentials/dihedral.h"
 
 namespace ATV {
@@ -33,8 +34,7 @@ class DihedralMultiHarmonic : public Dihedral {
   private:
     std::vector<std::vector<double>> Cn_;
 
-    int n_threads_ = 1;
-    std::vector<std::vector<double>> fx_thr_, fy_thr_, fz_thr_;
+    md::BondedForceScratch scratch_;
 };
 
 } // namespace cpu

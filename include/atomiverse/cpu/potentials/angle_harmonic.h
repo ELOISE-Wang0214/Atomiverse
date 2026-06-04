@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "atomiverse/cpu/md/force_scratch.h"
 #include "atomiverse/cpu/potentials/angle.h"
 
 namespace ATV {
@@ -34,8 +35,7 @@ class AngleHarmonic : public Angle {
   private:
     std::vector<double> K_, theta0_;
 
-    int n_threads_ = 1;
-    std::vector<std::vector<double>> fx_thr_, fy_thr_, fz_thr_;
+    md::BondedForceScratch scratch_;
 };
 
 } // namespace cpu
