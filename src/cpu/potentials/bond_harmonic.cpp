@@ -57,19 +57,19 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
     const double* __restrict y_ptr = a.y.data();
     const double* __restrict z_ptr = a.z.data();
 
-// Stiff bonds contribute significantly to the stress tensor; the per-pair
-// virial accumulates into `vir` (Voigt xx yy zz xy xz yz) and is reduced
-// across threads via the user-defined reduction below.
-#pragma omp declare reduction(vadd : md::Voigt6 : omp_out += omp_in)            \
-    initializer(omp_priv = md::Voigt6{})
-
-#pragma omp parallel reduction(+ : energy_total) reduction(vadd : vir)
+// Stiff bonds contribute significantly to the stress tensor. The per-pair
+// virial accumulates into a thread-private `vir_local` and is combined under
+// a critical section (once per thread per step) — an OMP user-defined
+// reduction on Voigt6 would heap-allocate per step, violating the
+// "no allocation in launch()" invariant.
+#pragma omp parallel reduction(+ : energy_total)
     {
         int tid = 0;
 #ifdef _OPENMP
         tid = omp_get_thread_num();
 #endif
         const md::ThreadForce tf = scratch_.begin_thread(tid, n_force);
+        md::Voigt6 vir_local;
 
         // LAMMPS-style per-atom iteration: each owned atom `i` iterates its
         // own bond list (Newton-bond-ON: only bonds where `i` is the
@@ -106,9 +106,11 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
                 tf.fz[i] += fz_val;
                 tf.fz[j] -= fz_val;
 
-                vir.add_pair(dx, dy, dz, fx_val, fy_val, fz_val);
+                vir_local.add_pair(dx, dy, dz, fx_val, fy_val, fz_val);
             }
         }
+#pragma omp critical
+        vir += vir_local;
     }
 
     scratch_.reduce_into(f, n_force);

@@ -50,16 +50,16 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
     const double* __restrict y_ptr = a.y.data();
     const double* __restrict z_ptr = a.z.data();
 
-#pragma omp declare reduction(vadd : md::Voigt6 : omp_out += omp_in)            \
-    initializer(omp_priv = md::Voigt6{})
-
-#pragma omp parallel reduction(+ : energy_total) reduction(vadd : vir)
+// Thread-private virial combined under a critical section (no per-step heap
+// alloc, unlike an OMP user-defined reduction on Voigt6).
+#pragma omp parallel reduction(+ : energy_total)
     {
         int tid = 0;
 #ifdef _OPENMP
         tid = omp_get_thread_num();
 #endif
         const md::ThreadForce tf = scratch_.begin_thread(tid, n_force);
+        md::Voigt6 vir_local;
 
         // LAMMPS-style per-atom iteration: each owned atom `j` (centre) owns
         // the angles where it sits in the middle. The two non-centre partners
@@ -137,10 +137,12 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
                 tf.fy[j] -= fi_y + fk_y;
                 tf.fz[j] -= fi_z + fk_z;
 
-                vir.add_pair(dx_ji, dy_ji, dz_ji, fi_x, fi_y, fi_z);
-                vir.add_pair(dx_jk, dy_jk, dz_jk, fk_x, fk_y, fk_z);
+                vir_local.add_pair(dx_ji, dy_ji, dz_ji, fi_x, fi_y, fi_z);
+                vir_local.add_pair(dx_jk, dy_jk, dz_jk, fk_x, fk_y, fk_z);
             }
         }
+#pragma omp critical
+        vir += vir_local;
     }
 
     scratch_.reduce_into(f, n_force);

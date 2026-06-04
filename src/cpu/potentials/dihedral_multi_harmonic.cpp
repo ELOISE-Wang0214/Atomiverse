@@ -60,16 +60,16 @@ void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
     const double* __restrict y_ptr = a.y.data();
     const double* __restrict z_ptr = a.z.data();
 
-#pragma omp declare reduction(vadd : md::Voigt6 : omp_out += omp_in)            \
-    initializer(omp_priv = md::Voigt6{})
-
-#pragma omp parallel reduction(+ : energy_total) reduction(vadd : vir)
+// Thread-private virial combined under a critical section (no per-step heap
+// alloc, unlike an OMP user-defined reduction on Voigt6).
+#pragma omp parallel reduction(+ : energy_total)
     {
         int tid = 0;
 #ifdef _OPENMP
         tid = omp_get_thread_num();
 #endif
         const md::ThreadForce tf = scratch_.begin_thread(tid, n_force);
+        md::Voigt6 vir_local;
 
         // LAMMPS-style per-atom iteration: each owned atom `i2` (2nd atom of
         // the i-j-k-l quadruple) owns its dihedrals; partners (i1,i3,i4) are
@@ -198,11 +198,14 @@ void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
                 tf.fz[i4] += f4z;
 
                 // Virial: (-b1)⊗F1 + b2⊗(F3+F4) + b3⊗F4.
-                vir.add_pair(-b1x, -b1y, -b1z, f1x, f1y, f1z);
-                vir.add_pair(b2x, b2y, b2z, f3x + f4x, f3y + f4y, f3z + f4z);
-                vir.add_pair(b3x, b3y, b3z, f4x, f4y, f4z);
+                vir_local.add_pair(-b1x, -b1y, -b1z, f1x, f1y, f1z);
+                vir_local.add_pair(b2x, b2y, b2z, f3x + f4x, f3y + f4y,
+                                   f3z + f4z);
+                vir_local.add_pair(b3x, b3y, b3z, f4x, f4y, f4z);
             }
         }
+#pragma omp critical
+        vir += vir_local;
     }
 
     scratch_.reduce_into(f, n_force);

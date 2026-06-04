@@ -102,19 +102,17 @@ cpu::Frame make_pe_fragment() {
     }
     f.box = Mat3::cubic(40.0);      // large box -> no PBC interference
 
-    // One bond (0-1), one angle (0-1-2), one dihedral (0-1-2-3).
-    f.bonds.atomi = {0};
-    f.bonds.atomj = {1};
-    f.bonds.type  = {0};
-    f.angles.atomi = {0};
-    f.angles.atomj = {1};
-    f.angles.atomk = {2};
-    f.angles.type  = {0};
-    f.dihedrals.atomi = {0};
-    f.dihedrals.atomj = {1};
-    f.dihedrals.atomk = {2};
-    f.dihedrals.atoml = {3};
-    f.dihedrals.type  = {0};
+    // One bond (0-1), one angle (0-1-2), one dihedral (0-1-2-3), in the
+    // per-atom topology the force kernels actually read (num_bond/bond_atom,
+    // num_angle/angle_atom, …). The legacy flat `f.bonds/angles/dihedrals`
+    // blocks are dead storage the kernels ignore, so populating those left
+    // every per-term energy at zero. Mirrors the MSU-PE pipeline idiom.
+    f.atoms.map_clear();
+    f.atoms.map_set(0, f.atoms.nlocal);
+    f.atoms.add_bond(0, 1, 0);
+    f.atoms.add_angle(0, 1, 2, 0);
+    f.atoms.add_dihedral(0, 1, 2, 3, 0);
+    f.atoms.build_special_list();
     return f;
 }
 

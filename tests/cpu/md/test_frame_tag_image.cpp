@@ -54,6 +54,10 @@ TEST(FrameTagImage, TagDtypeIsInt64) {
 TEST(FrameTagImage, ImageShapeIsNx3) {
     constexpr int n = 37;
     cpu::Frame frame(n);
-    EXPECT_EQ(static_cast<int>(frame.atoms.image.shape()[0]), n);
+    // Per-atom SoA fields are sized to capacity `nmax` (LAMMPS DELTA growth,
+    // floored at 64), not exactly `n`. The invariant is that `image` is a
+    // `[nmax, 3]` array with the same row count as the other per-atom fields.
+    EXPECT_GE(static_cast<int>(frame.atoms.image.shape()[0]), n);
+    EXPECT_EQ(frame.atoms.image.shape()[0], frame.atoms.x.shape()[0]);
     EXPECT_EQ(static_cast<int>(frame.atoms.image.shape()[1]), 3);
 }
