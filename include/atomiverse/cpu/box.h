@@ -118,30 +118,20 @@ class Box {
                                                  double& dz) const noexcept {
         if (ortho_) {
             const double lx = cell_(0, 0), ly = cell_(1, 1), lz = cell_(2, 2);
-            // `while` (not `if`): under multi-rank with periodic boundaries
-            // a ghost atom can be PBC-shifted up to ±2L from its
-            // counterpart on the receiving rank (HaloExchangeForward
-            // packs cross-PBC ghosts at `pos ± L`; if owner and ghost are
-            // on opposite slab corners that adds another ±L). A single
-            // wrap then leaves `|Δ| = L`, which inflates bonded Δ to the
-            // box length and explodes E_bond at the first AtomMigration
-            // boundary that crosses a chain (observed: PE bench at 2x2x2
-            // decomposition, stage 2 step ~194 of stage 2,
-            // tag pair (9733, 9734), r=80.42). Single-rank flows never
-            // have ghosts so this loop runs once and the form is
-            // bit-identical to the legacy `if`.
-            while (dx > half_lx_)
-                dx -= lx;
-            while (dx < -half_lx_)
-                dx += lx;
-            while (dy > half_ly_)
-                dy -= ly;
-            while (dy < -half_ly_)
-                dy += ly;
-            while (dz > half_lz_)
-                dz -= lz;
-            while (dz < -half_lz_)
-                dz += lz;
+            // Round-to-nearest-image (matches the triclinic branch below and
+            // the CUDA mirror). Wraps Δ into [-L/2, L/2] in O(1) for ANY
+            // multiple of L, so multi-rank ghosts at ±2L are handled in a
+            // single op — and, critically, a pathological Δ (e.g. a bonded
+            // partner that has stretched beyond the halo and resolves to a
+            // stale ghost slot, observed at ~1e11 Å in the 64-rank deform
+            // stage) is wrapped in one step instead of spinning the old
+            // `while (Δ > L/2) Δ -= L` loop ~1e10 times — that loop was the
+            // measured 64-rank Bonded straggler (one rank ~480s vs ~4s). For
+            // the common |Δ| <= 1.5L case this is bit-identical to the legacy
+            // single-wrap `if` form (nearbyint(Δ/L) ∈ {-1,0,1}).
+            dx -= lx * std::nearbyint(dx / lx);
+            dy -= ly * std::nearbyint(dy / ly);
+            dz -= lz * std::nearbyint(dz / lz);
         } else {
             // Triclinic: f = inv_cell · d, f -= round(f), d = cell · f.
             const double fx = inv_cell_(0, 0) * dx + inv_cell_(0, 1) * dy

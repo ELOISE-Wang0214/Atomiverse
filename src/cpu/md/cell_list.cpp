@@ -375,18 +375,25 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
 
         for (int i = 0; i < n; ++i) {
             result.firstneigh[i] = cursor;
-            // Multi-rank half-stencil: ghost rows (i >= n_local) are trimmed
-            // to inum = n_local downstream and never consumed by the force
-            // kernel. But the half-stencil's "all j in forward cells" rule
-            // would make a ghost build a *full, unpruned* neighbor row (the
-            // full-stencil path prunes these via j>i), and that wasted build
-            // work explodes once the halo is dense (NPT-compressed stages 4-5
-            // of the MSU-PE run -- a measured ~2.5x neighbor-build regression).
-            // Every owner-ghost pair is already emitted from the OWNER's scan
-            // (forward/home cells) or from the partner rank's owner (backward
-            // cells), so skipping ghost rows here loses no pair. This mirrors
-            // LAMMPS, whose half neighbor list iterates local atoms only.
-            if (use_half && tag_dedup && i >= n_local) {
+            // Multi-rank: ghost rows (i >= n_local) are trimmed to inum =
+            // n_local downstream and never consumed by the force kernel, so we
+            // skip building them entirely. Every owner-ghost pair is already
+            // emitted from the OWNER's scan (forward/home cells) or from the
+            // partner rank's owner (backward cells), so this loses no pair.
+            // This mirrors LAMMPS, whose half neighbor list iterates local
+            // atoms only.
+            //
+            // The skip is UNCONDITIONAL on use_half (it applies on both the
+            // half- and full-stencil paths). That consistency is essential: if
+            // it were gated on use_half, a rank whose deforming/compressing
+            // slab transiently drops below 3 cells/axis would flip to
+            // full-stencil AND resume building ghost rows, while its peers
+            // (still >=3 cells) skip them. That asymmetry makes the reverted
+            // rank a straggler and every collective (halo, energy Allreduce)
+            // blocks on it -- a measured Comm+Reduce blow-up in the 64-rank
+            // (4x4x4, thin-slab) deform stage. Skipping ghost rows on every
+            // rank regardless of stencil keeps the per-rank work balanced.
+            if (tag_dedup && i >= n_local) {
                 result.numneigh[i] = 0;
                 continue;
             }
