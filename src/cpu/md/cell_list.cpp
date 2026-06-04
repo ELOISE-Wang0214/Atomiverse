@@ -375,6 +375,21 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
 
         for (int i = 0; i < n; ++i) {
             result.firstneigh[i] = cursor;
+            // Multi-rank half-stencil: ghost rows (i >= n_local) are trimmed
+            // to inum = n_local downstream and never consumed by the force
+            // kernel. But the half-stencil's "all j in forward cells" rule
+            // would make a ghost build a *full, unpruned* neighbor row (the
+            // full-stencil path prunes these via j>i), and that wasted build
+            // work explodes once the halo is dense (NPT-compressed stages 4-5
+            // of the MSU-PE run -- a measured ~2.5x neighbor-build regression).
+            // Every owner-ghost pair is already emitted from the OWNER's scan
+            // (forward/home cells) or from the partner rank's owner (backward
+            // cells), so skipping ghost rows here loses no pair. This mirrors
+            // LAMMPS, whose half neighbor list iterates local atoms only.
+            if (use_half && tag_dedup && i >= n_local) {
+                result.numneigh[i] = 0;
+                continue;
+            }
             const int ci = atom_cell_ptr[i];
             const int cz0 = ci % ncz_;
             const int cy0 = (ci / ncz_) % ncy_;
