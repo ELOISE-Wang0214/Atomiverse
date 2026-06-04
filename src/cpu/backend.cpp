@@ -171,6 +171,15 @@ void Backend::set_frame(cpu::Frame& frame) {
             dd_->partition_atoms(frame);
         } else {
             dd_->compute_sublo_subhi(frame.box);
+            // Carry-over preserves the partition (no re-scan — see above), but
+            // the allocation bound must still grow if this frame is larger than
+            // the one the partition was sized for (e.g. a reused backend
+            // rebound to a bigger system). Without this, HaloExchangeForward /
+            // AtomMigration reserve their per-instance buffers against a stale,
+            // too-small `capacity` and can overflow. Grow-only: never shrink
+            // below the existing ghost slack.
+            if (frame.atoms.size() > dd_->capacity)
+                dd_->capacity = frame.atoms.size();
         }
         return;
     }
