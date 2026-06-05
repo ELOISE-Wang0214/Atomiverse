@@ -331,17 +331,17 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
         if (result.neighbors.capacity() < want)
             result.neighbors.reserve(want);
         result.neighbors.clear();
-        // Per-pair PBC shift, parallel to neighbors[], so force kernels skip
-        // the per-pair min-image. Populated in this serial path only.
-        if (result.shift_x.capacity() < want) {
-            result.shift_x.reserve(want);
-            result.shift_y.reserve(want);
-            result.shift_z.reserve(want);
-        }
-        result.shift_x.clear();
-        result.shift_y.clear();
-        result.shift_z.clear();
-        result.has_shifts = true;
+        // Consumers recompute the pair vector by minimum image every step
+        // (Box::min_image, O(1)). Storing the rebuild-time per-pair shift and
+        // reusing it across steps is UNSAFE: once an atom crosses a periodic
+        // boundary between neighbor rebuilds, its stored image offset is stale,
+        // and the LJ kernel then evaluates the wrong separation — single-rank
+        // NVE energy conservation drifts (~0.7 rel) at OMP_NUM_THREADS=1 (this
+        // serial path) while the multi-thread path, which never stored shifts,
+        // is fine. Match the multi-thread contract: no stored shifts. Ghosts
+        // are pre-placed at their nearest image by the halo, so min_image is a
+        // no-op on owner-ghost pairs (multi-rank stays correct).
+        result.has_shifts = false;
 
         const double* __restrict x_ptr = frame.atoms.x.data();
         const double* __restrict y_ptr = frame.atoms.y.data();
@@ -553,13 +553,6 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
                         // capacity saturates and push_back is a
                         // pointer-bump store.
                         result.neighbors.push_back(j);
-                        // Stored shift reproduces this exact min-image:
-                        // d = xi - (xj + shift). For use_half this is the
-                        // per-cell (shx,shy,shz); the uniform form below also
-                        // captures the full-path multi-wrap.
-                        result.shift_x.push_back(xi - dx - x_ptr[j]);
-                        result.shift_y.push_back(yi - dy - y_ptr[j]);
-                        result.shift_z.push_back(zi - dz - z_ptr[j]);
                         ++cursor;
                     }
                 }
