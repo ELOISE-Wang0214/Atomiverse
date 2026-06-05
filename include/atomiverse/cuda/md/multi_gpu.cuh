@@ -46,8 +46,22 @@ class MultiGpu {
 
     /// Owned atom count on subdomain `slot`.
     int n_local(int slot) const;
-    /// The device frame for `slot` (owned in [0,n_local), ghosts later).
+    /// Ghost atom count currently appended on subdomain `slot` (after a halo).
+    int n_ghost(int slot) const;
+    /// The device frame for `slot` (owned in [0,n_local), ghosts in [n_local,
+    /// n_local+n_ghost)).
     const cuda::Frame& frame(int slot) const { return frames_[slot]; }
+
+    /// One forward P2P halo pass: for each face, each subdomain sends its owned
+    /// atoms within `cutoff` of that face boundary to the face-neighbor GPU,
+    /// appended as ghosts in [n_local, n_local+n_ghost). Positions are raw
+    /// global coordinates (the neighbor list min-images against the global box,
+    /// so no PBC shift is needed). Ghost x/y/z/tag/type are transferred over
+    /// NVLink via cudaMemcpyPeerAsync. Self-neighbors (dims along an axis == 1)
+    /// are skipped — the periodic neighbor list already handles them. This
+    /// single pass is complete for a 1D (single-axis) decomposition; the
+    /// 3-axis cascade for edge/corner ghosts is the next step.
+    void exchange_halo(double cutoff);
 
     /// Merge all subdomains' owned atoms back into one cpu::Frame (positions /
     /// velocities by tag order matching the original global frame size). Used

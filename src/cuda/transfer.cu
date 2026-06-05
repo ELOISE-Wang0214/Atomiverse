@@ -59,8 +59,12 @@ void copy_d2h_widen(Real* h_dst, const real_t* d_src, int n) {
 
 namespace cpu {
 
-cuda::Frame to_cuda(const Frame& frame) {
+cuda::Frame to_cuda(const Frame& frame, int capacity) {
     int n = frame.atoms.size();
+    // Per-atom arrays are allocated to `cap` (>= n) so multi-GPU halo ghosts
+    // can be appended in [n_local, cap) without reallocation; only n values are
+    // copied. cap == n for the default single-GPU path.
+    int cap = (capacity > n) ? capacity : n;
     cuda::Frame d{};
 
     // Flatten per-atom topology (LAMMPS num_bond[i] / bond_atom[i][m]
@@ -111,7 +115,7 @@ cuda::Frame to_cuda(const Frame& frame) {
     d.n_atoms_ = n;
     d.n_local_ = n;
     d.n_ghost_ = 0;
-    d.capacity_ = n;
+    d.capacity_ = cap;
     d.n_bonds_ = static_cast<int>(flat_bond_i.size());
     d.n_angles_ = static_cast<int>(flat_ang_i.size());
     d.n_dihedrals_ = static_cast<int>(flat_dih_i.size());
@@ -120,21 +124,21 @@ cuda::Frame to_cuda(const Frame& frame) {
     cudaMalloc(&d.atoms.d_size, sizeof(int));
     cudaMemcpy(d.atoms.d_size, &n, sizeof(int), cudaMemcpyHostToDevice);
 
-    // Per-atom arrays (real_t storage)
-    cudaMalloc(&d.atoms.x, n * sizeof(real_t));
-    cudaMalloc(&d.atoms.y, n * sizeof(real_t));
-    cudaMalloc(&d.atoms.z, n * sizeof(real_t));
-    cudaMalloc(&d.atoms.vx, n * sizeof(real_t));
-    cudaMalloc(&d.atoms.vy, n * sizeof(real_t));
-    cudaMalloc(&d.atoms.vz, n * sizeof(real_t));
-    cudaMalloc(&d.atoms.fx, n * sizeof(real_t));
-    cudaMalloc(&d.atoms.fy, n * sizeof(real_t));
-    cudaMalloc(&d.atoms.fz, n * sizeof(real_t));
-    cudaMalloc(&d.atoms.mass, n * sizeof(real_t));
-    cudaMalloc(&d.atoms.charge, n * sizeof(real_t));
-    cudaMalloc(&d.atoms.type, n * sizeof(int));
-    cudaMalloc(&d.atoms.tag, n * sizeof(std::int64_t));
-    cudaMalloc(&d.atoms.image, 3 * n * sizeof(std::int8_t));
+    // Per-atom arrays (real_t storage) — allocated to `cap` for ghost headroom.
+    cudaMalloc(&d.atoms.x, cap * sizeof(real_t));
+    cudaMalloc(&d.atoms.y, cap * sizeof(real_t));
+    cudaMalloc(&d.atoms.z, cap * sizeof(real_t));
+    cudaMalloc(&d.atoms.vx, cap * sizeof(real_t));
+    cudaMalloc(&d.atoms.vy, cap * sizeof(real_t));
+    cudaMalloc(&d.atoms.vz, cap * sizeof(real_t));
+    cudaMalloc(&d.atoms.fx, cap * sizeof(real_t));
+    cudaMalloc(&d.atoms.fy, cap * sizeof(real_t));
+    cudaMalloc(&d.atoms.fz, cap * sizeof(real_t));
+    cudaMalloc(&d.atoms.mass, cap * sizeof(real_t));
+    cudaMalloc(&d.atoms.charge, cap * sizeof(real_t));
+    cudaMalloc(&d.atoms.type, cap * sizeof(int));
+    cudaMalloc(&d.atoms.tag, cap * sizeof(std::int64_t));
+    cudaMalloc(&d.atoms.image, 3 * cap * sizeof(std::int8_t));
 
     // System scalars: one device-resident SystemScalars struct
     cudaMalloc(&d.scalars, sizeof(SystemScalars));
@@ -157,9 +161,9 @@ cuda::Frame to_cuda(const Frame& frame) {
     cudaMemcpy(d.atoms.image, frame.atoms.image.data(),
                3 * n * sizeof(std::int8_t), cudaMemcpyHostToDevice);
 
-    cudaMemset(d.atoms.fx, 0, n * sizeof(real_t));
-    cudaMemset(d.atoms.fy, 0, n * sizeof(real_t));
-    cudaMemset(d.atoms.fz, 0, n * sizeof(real_t));
+    cudaMemset(d.atoms.fx, 0, cap * sizeof(real_t));
+    cudaMemset(d.atoms.fy, 0, cap * sizeof(real_t));
+    cudaMemset(d.atoms.fz, 0, cap * sizeof(real_t));
 
     // Box: 3x3 row-major on device (prec_t)
     cudaMalloc(&d.box, 9 * sizeof(prec_t));

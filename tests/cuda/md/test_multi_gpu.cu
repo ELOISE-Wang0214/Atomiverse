@@ -66,6 +66,40 @@ TEST(MultiGpu, PartitionGatherRoundTrip) {
     }
 }
 
+TEST(MultiGpu, HaloExchangeXSplit) {
+    // 2-GPU x-split (dims {2,1,1}); a single forward halo pass is complete.
+    cuda::md::MultiGpu mg(2);
+    if (mg.count() < 2)
+        GTEST_SKIP() << "needs >= 2 GPUs";
+
+    auto g = make_grid(12.0); // grid coords 1.5/4.5/7.5/10.5
+    mg.partition(g);          // creates the DomainDecomposition (dd_)
+    ASSERT_EQ(mg.domain().dims(),
+              (std::array<int, 3>{2, 1, 1})); // boundary at x = 6
+    mg.exchange_halo(3.0);                    // cutoff 3.0
+
+    // Each slab owns 32 atoms; boundary atoms within 3.0 of x=0/6/12 are sent
+    // both ways, so each side receives the other's near-boundary atoms.
+    EXPECT_GT(mg.n_ghost(0), 0);
+    EXPECT_EQ(mg.n_ghost(0), mg.n_ghost(1)); // symmetric exchange
+
+    // Ghosts on slab 0 must be slab-1 atoms (x in [6,12)); on slab 1, x in [0,6).
+    for (int slot = 0; slot < 2; ++slot) {
+        const auto& f = mg.frame(slot);
+        int ng = mg.n_ghost(slot);
+        std::vector<float> gx(ng);
+        cudaSetDevice(mg.devices().device_id(slot));
+        cudaMemcpy(gx.data(), f.atoms.x + mg.n_local(slot), ng * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+        for (int k = 0; k < ng; ++k) {
+            if (slot == 0)
+                EXPECT_GE(gx[k], 6.0f) << "slab0 ghost should be slab1 atom";
+            else
+                EXPECT_LT(gx[k], 6.0f) << "slab1 ghost should be slab0 atom";
+        }
+    }
+}
+
 TEST(MultiGpu, EachAtomOnOwnerSlab) {
     auto g = make_grid(12.0);
     cuda::md::MultiGpu mg;
