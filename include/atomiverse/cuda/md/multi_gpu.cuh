@@ -125,9 +125,19 @@ class MultiGpu {
     void setup_force_engine(double cutoff, double epsilon, double sigma,
                             double skin = -1.0);
 
-    /// Reneighbor step: rebuild the halo (cutoff+skin) and the per-subdomain
-    /// cluster neighbor list over the new owned+ghost set. Call every K steps.
+    /// Reneighbor step: migrate atoms that crossed subdomain boundaries to
+    /// their new owner GPU, rebuild the halo (cutoff+skin), and rebuild the
+    /// per-subdomain cluster neighbor list over the new owned+ghost set. Call
+    /// every K steps.
     void reneighbor();
+
+    /// Re-bucket owned atoms by their CURRENT owner subdomain: each atom that
+    /// drifted out of its subdomain is gathered with full per-atom state on its
+    /// old owner GPU and cudaMemcpyPeer'd to its new owner (single-process
+    /// equivalent of MPI_Alltoallv). Ghosts are dropped (rebuilt by build_halo).
+    /// Owned-atom global identity is carried by the persistent tag; gather()
+    /// resolves by tag afterwards. No-op on a single GPU.
+    void migrate();
 
     /// Compute LJ forces on every subdomain's owned atoms via the cluster
     /// kernel (zero forces over owned+ghost, refresh/launch the neighbor list,

@@ -498,6 +498,112 @@ TEST(MultiGpu, NveTrajectoryParityNlist) {
     }
 }
 
+TEST(MultiGpu, MigrateReassignsOwners) {
+    // Shift every owned atom +6 in x (box 24, dims {2,1,1}, boundary x=12) so a
+    // large fraction crosses into the neighbor subdomain, then migrate(). After
+    // migration: (a) owned counts per subdomain match owner_of on the shifted
+    // positions, (b) total owned atoms conserved, (c) every atom's full state
+    // (shifted position + velocity, resolved by tag) is preserved.
+    cuda::md::MultiGpu mg(2);
+    if (mg.count() < 2)
+        GTEST_SKIP() << "needs >= 2 GPUs";
+    auto g = make_grid_n(8, 24.0);
+    const int n = g.atoms.size();
+    for (int i = 0; i < n; ++i) {
+        g.atoms.vx[i] = 0.013 * std::sin(0.5 * i);
+        g.atoms.vy[i] = 0.017 * std::sin(0.9 * i);
+        g.atoms.vz[i] = 0.019 * std::sin(1.1 * i);
+    }
+    mg.partition(g, 2.0);
+    ASSERT_EQ(mg.domain().dims(), (std::array<int, 3>{2, 1, 1}));
+
+    const float delta = 6.0f;
+    for (int s = 0; s < 2; ++s) {
+        int nl = mg.n_local(s);
+        cudaSetDevice(mg.devices().device_id(s));
+        int block = 128, grid = (nl + block - 1) / block;
+        shift_owned_x<<<grid, block>>>(mg.frame(s).atoms.x, nl, delta);
+    }
+    for (int s = 0; s < 2; ++s) {
+        cudaSetDevice(mg.devices().device_id(s));
+        cudaDeviceSynchronize();
+    }
+
+    mg.migrate();
+
+    // (a) per-subdomain owned counts vs owner_of on the shifted positions.
+    const auto& dd = mg.domain();
+    std::vector<int> expect(2, 0);
+    for (int i = 0; i < n; ++i)
+        expect[dd.owner_of(g.atoms.x[i] + 6.0, g.atoms.y[i], g.atoms.z[i])]++;
+    int total = 0;
+    for (int s = 0; s < 2; ++s) {
+        EXPECT_EQ(mg.n_local(s), expect[s]) << "slab " << s;
+        total += mg.n_local(s);
+    }
+    EXPECT_EQ(total, n) << "atoms conserved across migration";
+
+    // (c) full state preserved, resolved by tag.
+    cpu::Frame out(n);
+    for (int i = 0; i < n; ++i)
+        out.atoms.tag[i] = i;
+    mg.gather(out);
+    for (int i = 0; i < n; ++i) {
+        EXPECT_NEAR(out.atoms.x[i], g.atoms.x[i] + 6.0, 2e-3) << "atom " << i;
+        EXPECT_NEAR(out.atoms.y[i], g.atoms.y[i], 2e-3) << "atom " << i;
+        EXPECT_NEAR(out.atoms.z[i], g.atoms.z[i], 2e-3) << "atom " << i;
+        EXPECT_NEAR(out.atoms.vx[i], g.atoms.vx[i], 1e-4) << "atom " << i;
+        EXPECT_NEAR(out.atoms.vz[i], g.atoms.vz[i], 1e-4) << "atom " << i;
+    }
+}
+
+TEST(MultiGpu, NveMigrationParity) {
+    // Long-run correctness: a uniform +x drift (Galilean boost — leaves all
+    // relative positions and forces unchanged) carries atoms across the x=12
+    // boundary during the run, so migrate() fires repeatedly inside reneighbor.
+    // Multi-GPU (partition + migrate) must still match single-GPU positions.
+    auto g = make_grid_n(8, 24.0);
+    const int n = g.atoms.size();
+    const double drift = 40.0;
+    for (int i = 0; i < n; ++i) {
+        g.atoms.x[i] += 0.3 * std::sin(0.7 * i + 0.1);
+        g.atoms.y[i] += 0.3 * std::sin(1.3 * i + 0.2);
+        g.atoms.z[i] += 0.3 * std::sin(1.9 * i + 0.3);
+        g.atoms.vx[i] = drift + 0.01 * std::sin(0.5 * i);
+        g.atoms.vy[i] = 0.01 * std::sin(0.9 * i);
+        g.atoms.vz[i] = 0.01 * std::sin(1.1 * i);
+        g.atoms.mass[i] = 1.0;
+    }
+    const double cut = 5.0, eps = 1.0, sig = 2.5, dt = 0.002;
+    const int K = 20, reneigh = 4; // 20*0.002*40 = 1.6 -> atoms cross x=12
+
+    cpu::Frame ref(n);
+    for (int i = 0; i < n; ++i)
+        ref.atoms.tag[i] = i;
+    {
+        cuda::md::MultiGpu mg1(1);
+        mg1.partition(g, 2.0);
+        mg1.run_nve_nlist(K, dt, cut, eps, sig, -1.0, reneigh);
+        mg1.gather(ref);
+    }
+
+    cuda::md::MultiGpu mg(2);
+    if (mg.count() < 2)
+        GTEST_SKIP() << "needs >= 2 GPUs";
+    mg.partition(g, 2.0);
+    mg.run_nve_nlist(K, dt, cut, eps, sig, -1.0, reneigh);
+    cpu::Frame mf(n);
+    for (int i = 0; i < n; ++i)
+        mf.atoms.tag[i] = i;
+    mg.gather(mf);
+
+    for (int i = 0; i < n; ++i) {
+        EXPECT_NEAR(mf.atoms.x[i], ref.atoms.x[i], 2e-2) << "atom " << i;
+        EXPECT_NEAR(mf.atoms.y[i], ref.atoms.y[i], 2e-2);
+        EXPECT_NEAR(mf.atoms.z[i], ref.atoms.z[i], 2e-2);
+    }
+}
+
 TEST(MultiGpu, EachAtomOnOwnerSlab) {
     auto g = make_grid(12.0);
     cuda::md::MultiGpu mg;

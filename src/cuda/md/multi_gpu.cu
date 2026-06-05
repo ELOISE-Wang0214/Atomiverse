@@ -561,6 +561,9 @@ void MultiGpu::reneighbor() {
     if (!engine_ready_)
         throw std::runtime_error(
             "MultiGpu::reneighbor: call setup_force_engine first");
+    // Atoms that drifted out of their subdomain change owner GPU first, THEN
+    // the halo is rebuilt around the updated owned sets.
+    migrate();
     // Halo over cutoff+skin so ghosts cover the skin region — no cross-boundary
     // neighbor can appear before the next reneighbor.
     build_halo(force_cutoff_ + force_skin_);
@@ -659,6 +662,252 @@ void MultiGpu::run_nve_nlist(int steps, double dt, double cutoff,
     }
 }
 
+// ── Migration: atoms crossing subdomain boundaries change owner GPU ────────
+
+namespace {
+// Owner slot of a position under the global 3D decomposition (device-side
+// mirror of DomainDecomposition::owner_of: wrap into [0,L), bin per axis,
+// x-fastest slot index).
+__device__ inline int dev_owner(double x, double y, double z, int d0, int d1,
+                                int d2, double Lx, double Ly, double Lz) {
+    double c[3] = {x, y, z}, L[3] = {Lx, Ly, Lz};
+    int dims[3] = {d0, d1, d2}, ci[3];
+    for (int d = 0; d < 3; ++d) {
+        double w = c[d] - floor(c[d] / L[d]) * L[d]; // wrap to [0,L)
+        int k = static_cast<int>(w * dims[d] / L[d]);
+        if (k >= dims[d])
+            k = dims[d] - 1;
+        if (k < 0)
+            k = 0;
+        ci[d] = k;
+    }
+    return (ci[2] * dims[1] + ci[1]) * dims[0] + ci[0];
+}
+
+__global__ void classify_owner(const real_t* x, const real_t* y,
+                               const real_t* z, int n, int d0, int d1, int d2,
+                               double Lx, double Ly, double Lz, int* owner,
+                               int* cnt) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n)
+        return;
+    int o = dev_owner(x[i], y[i], z[i], d0, d1, d2, Lx, Ly, Lz);
+    owner[i] = o;
+    atomicAdd(&cnt[o], 1);
+}
+
+// Stable counting-sort scatter: group owned indices by destination owner.
+__global__ void scatter_order(const int* owner, int n, const int* boff,
+                              int* fill, int* order) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n)
+        return;
+    int o = owner[i];
+    int pos = boff[o] + atomicAdd(&fill[o], 1);
+    order[pos] = i;
+}
+
+// Gather full per-atom state of `cnt` atoms named by idx[] into contiguous
+// send buffers (one P2P hop to the new owner).
+__global__ void gather_state(
+    const int* idx, int cnt, const real_t* x, const real_t* y, const real_t* z,
+    const real_t* vx, const real_t* vy, const real_t* vz, const real_t* mass,
+    const real_t* charge, const int* type, const std::int64_t* tag, real_t* ox,
+    real_t* oy, real_t* oz, real_t* ovx, real_t* ovy, real_t* ovz,
+    real_t* omass, real_t* ocharge, int* otype, std::int64_t* otag) {
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= cnt)
+        return;
+    int i = idx[k];
+    ox[k] = x[i];
+    oy[k] = y[i];
+    oz[k] = z[i];
+    ovx[k] = vx[i];
+    ovy[k] = vy[i];
+    ovz[k] = vz[i];
+    omass[k] = mass[i];
+    ocharge[k] = charge[i];
+    otype[k] = type[i];
+    otag[k] = tag[i];
+}
+
+// 10 per-atom fields moved by migration.
+struct MigBuf {
+    real_t *x, *y, *z, *vx, *vy, *vz, *mass, *charge;
+    int* type;
+    std::int64_t* tag;
+};
+void mig_alloc(MigBuf& b, int m) {
+    cudaMalloc(&b.x, m * sizeof(real_t));
+    cudaMalloc(&b.y, m * sizeof(real_t));
+    cudaMalloc(&b.z, m * sizeof(real_t));
+    cudaMalloc(&b.vx, m * sizeof(real_t));
+    cudaMalloc(&b.vy, m * sizeof(real_t));
+    cudaMalloc(&b.vz, m * sizeof(real_t));
+    cudaMalloc(&b.mass, m * sizeof(real_t));
+    cudaMalloc(&b.charge, m * sizeof(real_t));
+    cudaMalloc(&b.type, m * sizeof(int));
+    cudaMalloc(&b.tag, m * sizeof(std::int64_t));
+}
+void mig_free(MigBuf& b) {
+    cudaFree(b.x);
+    cudaFree(b.y);
+    cudaFree(b.z);
+    cudaFree(b.vx);
+    cudaFree(b.vy);
+    cudaFree(b.vz);
+    cudaFree(b.mass);
+    cudaFree(b.charge);
+    cudaFree(b.type);
+    cudaFree(b.tag);
+}
+} // namespace
+
+void MultiGpu::migrate() {
+    const int N = count();
+    if (N < 2)
+        return; // single GPU: every atom already owned here
+    const auto dims = dd_->dims();
+
+    // Phase 1 — per source: classify owners, counting-sort owned indices by
+    // destination into `order` (group dst at [boff[dst], boff[dst]+cnt[dst])).
+    std::vector<int*> d_order(N, nullptr);
+    std::vector<std::vector<int>> cnt(N, std::vector<int>(N, 0)); // cnt[src][dst]
+    std::vector<std::vector<int>> boff(N, std::vector<int>(N, 0));
+    for (int s = 0; s < N; ++s) {
+        const int nl = frames_[s].n_local_;
+        dm_.set_device(s);
+        int *owner, *dcnt, *order, *dfill, *dboff;
+        cudaMalloc(&owner, std::max(1, nl) * sizeof(int));
+        cudaMalloc(&order, std::max(1, nl) * sizeof(int));
+        cudaMalloc(&dcnt, N * sizeof(int));
+        cudaMalloc(&dfill, N * sizeof(int));
+        cudaMalloc(&dboff, N * sizeof(int));
+        CKM(cudaMemset(dcnt, 0, N * sizeof(int)));
+        if (nl > 0) {
+            auto& a = frames_[s].atoms;
+            int blk = 256, grd = (nl + blk - 1) / blk;
+            classify_owner<<<grd, blk>>>(a.x, a.y, a.z, nl, dims[0], dims[1],
+                                         dims[2], box_L_[0], box_L_[1],
+                                         box_L_[2], owner, dcnt);
+            CKM(cudaGetLastError());
+        }
+        std::vector<int> hc(N, 0);
+        CKM(cudaMemcpy(hc.data(), dcnt, N * sizeof(int), cudaMemcpyDeviceToHost));
+        cnt[s] = hc;
+        std::vector<int> hb(N, 0);
+        for (int d = 1; d < N; ++d)
+            hb[d] = hb[d - 1] + hc[d - 1];
+        boff[s] = hb;
+        CKM(cudaMemcpy(dboff, hb.data(), N * sizeof(int),
+                       cudaMemcpyHostToDevice));
+        CKM(cudaMemset(dfill, 0, N * sizeof(int)));
+        if (nl > 0) {
+            int blk = 256, grd = (nl + blk - 1) / blk;
+            scatter_order<<<grd, blk>>>(owner, nl, dboff, dfill, order);
+            CKM(cudaGetLastError());
+        }
+        d_order[s] = order;
+        cudaFree(owner);
+        cudaFree(dcnt);
+        cudaFree(dfill);
+        cudaFree(dboff);
+        CKM(cudaDeviceSynchronize()); // order[] ready for cross-device gather
+    }
+
+    // Phase 2 — new owned counts + per-(src) receive offsets on each dst.
+    std::vector<int> new_nl(N, 0);
+    std::vector<std::vector<int>> recv_off(N, std::vector<int>(N, 0));
+    for (int dst = 0; dst < N; ++dst) {
+        int off = 0;
+        for (int src = 0; src < N; ++src) {
+            recv_off[src][dst] = off;
+            off += cnt[src][dst];
+        }
+        new_nl[dst] = off;
+        if (off > frames_[dst].capacity_)
+            throw std::runtime_error("MultiGpu::migrate: owned overflow on slot "
+                                     + std::to_string(dst)
+                                     + " (raise ghost_headroom)");
+    }
+
+    // Phase 3 — staging owned arrays per dst (avoids read/write hazard on the
+    // live frame arrays while peers write into them).
+    std::vector<MigBuf> stg(N);
+    for (int dst = 0; dst < N; ++dst) {
+        dm_.set_device(dst);
+        mig_alloc(stg[dst], std::max(1, new_nl[dst]));
+    }
+
+    // Phase 4 — per (src,dst): gather state on src, P2P copy to dst staging.
+    for (int src = 0; src < N; ++src) {
+        dm_.set_device(src);
+        auto& a = frames_[src].atoms;
+        const int sd = dm_.device_id(src);
+        for (int dst = 0; dst < N; ++dst) {
+            const int c = cnt[src][dst];
+            if (c <= 0)
+                continue;
+            MigBuf sb;
+            mig_alloc(sb, c);
+            int blk = 256, grd = (c + blk - 1) / blk;
+            const int* idx = d_order[src] + boff[src][dst];
+            gather_state<<<grd, blk>>>(idx, c, a.x, a.y, a.z, a.vx, a.vy, a.vz,
+                                       a.mass, a.charge, a.type, a.tag, sb.x,
+                                       sb.y, sb.z, sb.vx, sb.vy, sb.vz, sb.mass,
+                                       sb.charge, sb.type, sb.tag);
+            CKM(cudaGetLastError());
+            const int dd_id = dm_.device_id(dst);
+            const int o = recv_off[src][dst];
+            MigBuf& D = stg[dst];
+            CKM(cudaMemcpyPeer(D.x + o, dd_id, sb.x, sd, c * sizeof(real_t)));
+            CKM(cudaMemcpyPeer(D.y + o, dd_id, sb.y, sd, c * sizeof(real_t)));
+            CKM(cudaMemcpyPeer(D.z + o, dd_id, sb.z, sd, c * sizeof(real_t)));
+            CKM(cudaMemcpyPeer(D.vx + o, dd_id, sb.vx, sd, c * sizeof(real_t)));
+            CKM(cudaMemcpyPeer(D.vy + o, dd_id, sb.vy, sd, c * sizeof(real_t)));
+            CKM(cudaMemcpyPeer(D.vz + o, dd_id, sb.vz, sd, c * sizeof(real_t)));
+            CKM(cudaMemcpyPeer(D.mass + o, dd_id, sb.mass, sd,
+                               c * sizeof(real_t)));
+            CKM(cudaMemcpyPeer(D.charge + o, dd_id, sb.charge, sd,
+                               c * sizeof(real_t)));
+            CKM(cudaMemcpyPeer(D.type + o, dd_id, sb.type, sd, c * sizeof(int)));
+            CKM(cudaMemcpyPeer(D.tag + o, dd_id, sb.tag, sd,
+                               c * sizeof(std::int64_t)));
+            mig_free(sb); // cudaMemcpyPeer is synchronous; safe to free
+        }
+    }
+
+    // Phase 5 — publish staging into the frame arrays, set new owned counts,
+    // drop ghosts (rebuilt by the following build_halo).
+    for (int dst = 0; dst < N; ++dst) {
+        dm_.set_device(dst);
+        auto& a = frames_[dst].atoms;
+        const int m = new_nl[dst];
+        if (m > 0) {
+            cudaMemcpy(a.x, stg[dst].x, m * sizeof(real_t), cudaMemcpyDeviceToDevice);
+            cudaMemcpy(a.y, stg[dst].y, m * sizeof(real_t), cudaMemcpyDeviceToDevice);
+            cudaMemcpy(a.z, stg[dst].z, m * sizeof(real_t), cudaMemcpyDeviceToDevice);
+            cudaMemcpy(a.vx, stg[dst].vx, m * sizeof(real_t), cudaMemcpyDeviceToDevice);
+            cudaMemcpy(a.vy, stg[dst].vy, m * sizeof(real_t), cudaMemcpyDeviceToDevice);
+            cudaMemcpy(a.vz, stg[dst].vz, m * sizeof(real_t), cudaMemcpyDeviceToDevice);
+            cudaMemcpy(a.mass, stg[dst].mass, m * sizeof(real_t), cudaMemcpyDeviceToDevice);
+            cudaMemcpy(a.charge, stg[dst].charge, m * sizeof(real_t), cudaMemcpyDeviceToDevice);
+            cudaMemcpy(a.type, stg[dst].type, m * sizeof(int), cudaMemcpyDeviceToDevice);
+            cudaMemcpy(a.tag, stg[dst].tag, m * sizeof(std::int64_t), cudaMemcpyDeviceToDevice);
+        }
+        frames_[dst].n_local_ = m;
+        n_local_[dst] = m;
+        frames_[dst].n_ghost_ = 0;
+        mig_free(stg[dst]);
+        cudaFree(d_order[dst]);
+    }
+    for (int s = 0; s < N; ++s) {
+        dm_.set_device(s);
+        CKM(cudaDeviceSynchronize());
+    }
+    owned_idx_.clear(); // stale after migration; gather() resolves by tag now
+}
+
 void MultiGpu::gather_forces(cpu::Frame& out) const {
     if (out.atoms.size() < n_global_)
         throw std::runtime_error("MultiGpu::gather_forces: out frame too small");
@@ -669,9 +918,13 @@ void MultiGpu::gather_forces(cpu::Frame& out) const {
         cpu::Frame tmp(cnt);
         dm_.set_device(s);
         cuda::to_cpu(frames_[s], tmp);
-        const auto& gidx = owned_idx_[s];
+        // Resolve each owned atom's global slot by its persistent TAG (robust
+        // after migration, when partition-time owned_idx_ is stale/cleared).
+        const int nout = out.atoms.size();
         for (int k = 0; k < cnt; ++k) {
-            const int g = gidx[k];
+            const int g = static_cast<int>(tmp.atoms.tag[k]);
+            if (g < 0 || g >= nout)
+                continue;
             out.atoms.fx[g] = tmp.atoms.fx[k];
             out.atoms.fy[g] = tmp.atoms.fy[k];
             out.atoms.fz[g] = tmp.atoms.fz[k];
@@ -689,13 +942,15 @@ void MultiGpu::gather(cpu::Frame& out) const {
         cpu::Frame tmp(cnt);
         dm_.set_device(s);
         cuda::to_cpu(frames_[s], tmp);
-        // Scatter owned atoms back to their global slots. Use the global
-        // indices captured at partition (atom k of subdomain s came from
-        // global atom owned_idx_[s][k]) rather than the device tags, which is
-        // robust and independent of tag round-trip.
-        const auto& gidx = owned_idx_[s];
+        // Scatter owned atoms back to their global slots by persistent TAG.
+        // (to_cpu round-trips tags D2H; tag-based resolution survives migration,
+        // unlike the partition-time owned_idx_ which goes stale once atoms move
+        // between subdomains.)
+        const int nout = out.atoms.size();
         for (int k = 0; k < cnt; ++k) {
-            const int g = gidx[k];
+            const int g = static_cast<int>(tmp.atoms.tag[k]);
+            if (g < 0 || g >= nout)
+                continue;
             out.atoms.x[g] = tmp.atoms.x[k];
             out.atoms.y[g] = tmp.atoms.y[k];
             out.atoms.z[g] = tmp.atoms.z[k];
