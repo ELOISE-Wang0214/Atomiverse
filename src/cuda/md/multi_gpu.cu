@@ -120,124 +120,152 @@ void MultiGpu::build_halo(double cutoff) {
         n_local_[s] = frames_[s].n_local_;
     }
 
-    for (int src = 0; src < N; ++src) {
-        const int nl = frames_[src].n_local_;
-        if (nl == 0)
-            continue;
-        dm_.set_device(src);
-        // Per-source scratch (worst case = all owned atoms). Positions captured
-        // here are also persisted per-plan so forward_comm can refresh them.
-        real_t *sx, *sy, *sz;
-        std::int64_t* stag;
-        int *stype, *sidx, *scnt;
-        cudaMalloc(&sx, nl * sizeof(real_t));
-        cudaMalloc(&sy, nl * sizeof(real_t));
-        cudaMalloc(&sz, nl * sizeof(real_t));
-        cudaMalloc(&stag, nl * sizeof(std::int64_t));
-        cudaMalloc(&stype, nl * sizeof(int));
-        cudaMalloc(&sidx, nl * sizeof(int));
-        cudaMalloc(&scnt, sizeof(int));
-        auto& a = frames_[src].atoms;
-        const auto lo = dd_->sublo(src);
-        const auto hi = dd_->subhi(src);
+    // 3-axis cascade: x, then y, then z. The y-pass forwards owned+x-ghosts and
+    // the z-pass forwards owned+x+y-ghosts, so edge/corner atoms reach
+    // diagonal-neighbor GPUs. The sendable set per subdomain is snapshotted at
+    // each axis start (owned + ghosts from prior axes); ghosts received during
+    // this axis are appended beyond that snapshot and so are not re-forwarded.
+    for (int axis = 0; axis < 3; ++axis) {
+        std::vector<int> n_send(N);
+        for (int s = 0; s < N; ++s)
+            n_send[s] = frames_[s].n_local_ + goff[s];
 
-        for (int face = 0; face < 6; ++face) {
-            const int dst = dd_->face_neighbor(src, face);
-            if (dst == src)
-                continue; // dims==1 along this axis: periodic self, no ghost
-            const int axis = face / 2;
-            const int dir = (face & 1) ? +1 : -1;
-            const double plane = (dir > 0) ? hi[axis] : lo[axis];
+        for (int src = 0; src < N; ++src) {
+            const int ns = n_send[src];
+            const int dlo = dd_->face_neighbor(src, 2 * axis);
+            const int dhi = dd_->face_neighbor(src, 2 * axis + 1);
+            if (ns == 0 || (dlo == src && dhi == src))
+                continue; // empty, or dims==1 along this axis (periodic self)
+            dm_.set_device(src);
+            // Per-source scratch sized to the current sendable set.
+            real_t *sx, *sy, *sz;
+            std::int64_t* stag;
+            int *stype, *sidx, *scnt;
+            cudaMalloc(&sx, ns * sizeof(real_t));
+            cudaMalloc(&sy, ns * sizeof(real_t));
+            cudaMalloc(&sz, ns * sizeof(real_t));
+            cudaMalloc(&stag, ns * sizeof(std::int64_t));
+            cudaMalloc(&stype, ns * sizeof(int));
+            cudaMalloc(&sidx, ns * sizeof(int));
+            cudaMalloc(&scnt, sizeof(int));
+            auto& a = frames_[src].atoms;
+            const auto lo = dd_->sublo(src);
+            const auto hi = dd_->subhi(src);
 
-            CKM(cudaMemset(scnt, 0, sizeof(int)));
-            int block = 256, grid = (nl + block - 1) / block;
-            pack_face<<<grid, block>>>(a.x, a.y, a.z, a.tag, a.type, nl, axis,
-                                       dir, plane, cutoff, sx, sy, sz, stag,
-                                       stype, sidx, scnt, nl);
-            CKM(cudaGetLastError());
-            int cnt = 0; // D2H of the counter also syncs the pack kernel
-            CKM(cudaMemcpy(&cnt, scnt, sizeof(int), cudaMemcpyDeviceToHost));
-            if (cnt <= 0)
-                continue;
+            for (int f = 0; f < 2; ++f) {
+                const int face = 2 * axis + f;
+                const int dst = dd_->face_neighbor(src, face);
+                if (dst == src)
+                    continue;
+                const int dir = (face & 1) ? +1 : -1;
+                const double plane = (dir > 0) ? hi[axis] : lo[axis];
 
-            // Append into dst's ghost region [n_local + goff, ...).
-            auto& da = frames_[dst].atoms;
-            const int base = frames_[dst].n_local_ + goff[dst];
-            if (base + cnt > frames_[dst].capacity_)
-                throw std::runtime_error(
-                    "MultiGpu::build_halo: ghost capacity exceeded on slot "
-                    + std::to_string(dst) + " (raise ghost_headroom)");
-            const int sd = dm_.device_id(src), dd_id = dm_.device_id(dst);
-            CKM(cudaMemcpyPeer(da.x + base, dd_id, sx, sd, cnt * sizeof(real_t)));
-            CKM(cudaMemcpyPeer(da.y + base, dd_id, sy, sd, cnt * sizeof(real_t)));
-            CKM(cudaMemcpyPeer(da.z + base, dd_id, sz, sd, cnt * sizeof(real_t)));
-            CKM(cudaMemcpyPeer(da.tag + base, dd_id, stag, sd,
-                               cnt * sizeof(std::int64_t)));
-            CKM(cudaMemcpyPeer(da.type + base, dd_id, stype, sd,
-                               cnt * sizeof(int)));
+                CKM(cudaMemset(scnt, 0, sizeof(int)));
+                int block = 256, grid = (ns + block - 1) / block;
+                pack_face<<<grid, block>>>(a.x, a.y, a.z, a.tag, a.type, ns, axis,
+                                           dir, plane, cutoff, sx, sy, sz, stag,
+                                           stype, sidx, scnt, ns);
+                CKM(cudaGetLastError());
+                int cnt = 0; // D2H of the counter also syncs the pack kernel
+                CKM(cudaMemcpy(&cnt, scnt, sizeof(int), cudaMemcpyDeviceToHost));
+                if (cnt <= 0)
+                    continue;
 
-            // Persist this transfer (src device): the selected owned indices and
-            // a contiguous position send buffer, for forward_comm replay.
-            HaloPlan p;
-            p.src = src;
-            p.dst = dst;
-            p.cnt = cnt;
-            p.base = base;
-            cudaMalloc(&p.d_src_idx, cnt * sizeof(int));
-            cudaMalloc(&p.d_sx, cnt * sizeof(real_t));
-            cudaMalloc(&p.d_sy, cnt * sizeof(real_t));
-            cudaMalloc(&p.d_sz, cnt * sizeof(real_t));
-            CKM(cudaMemcpy(p.d_src_idx, sidx, cnt * sizeof(int),
-                           cudaMemcpyDeviceToDevice));
-            CKM(cudaMemcpy(p.d_sx, sx, cnt * sizeof(real_t),
-                           cudaMemcpyDeviceToDevice));
-            CKM(cudaMemcpy(p.d_sy, sy, cnt * sizeof(real_t),
-                           cudaMemcpyDeviceToDevice));
-            CKM(cudaMemcpy(p.d_sz, sz, cnt * sizeof(real_t),
-                           cudaMemcpyDeviceToDevice));
-            halo_plan_.push_back(p);
+                // Append into dst's ghost region [n_local + goff, ...).
+                auto& da = frames_[dst].atoms;
+                const int base = frames_[dst].n_local_ + goff[dst];
+                if (base + cnt > frames_[dst].capacity_)
+                    throw std::runtime_error(
+                        "MultiGpu::build_halo: ghost capacity exceeded on slot "
+                        + std::to_string(dst) + " (raise ghost_headroom)");
+                const int sd = dm_.device_id(src), dd_id = dm_.device_id(dst);
+                CKM(cudaMemcpyPeer(da.x + base, dd_id, sx, sd,
+                                   cnt * sizeof(real_t)));
+                CKM(cudaMemcpyPeer(da.y + base, dd_id, sy, sd,
+                                   cnt * sizeof(real_t)));
+                CKM(cudaMemcpyPeer(da.z + base, dd_id, sz, sd,
+                                   cnt * sizeof(real_t)));
+                CKM(cudaMemcpyPeer(da.tag + base, dd_id, stag, sd,
+                                   cnt * sizeof(std::int64_t)));
+                CKM(cudaMemcpyPeer(da.type + base, dd_id, stype, sd,
+                                   cnt * sizeof(int)));
 
-            goff[dst] += cnt;
-            frames_[dst].n_ghost_ = goff[dst];
+                // Persist this transfer (src device): the selected src-array
+                // indices and a contiguous position send buffer, for
+                // forward_comm replay. Indices may reference prior-axis ghost
+                // slots (the cascade), which forward_comm refreshes in order.
+                HaloPlan p;
+                p.src = src;
+                p.dst = dst;
+                p.axis = axis;
+                p.cnt = cnt;
+                p.base = base;
+                cudaMalloc(&p.d_src_idx, cnt * sizeof(int));
+                cudaMalloc(&p.d_sx, cnt * sizeof(real_t));
+                cudaMalloc(&p.d_sy, cnt * sizeof(real_t));
+                cudaMalloc(&p.d_sz, cnt * sizeof(real_t));
+                CKM(cudaMemcpy(p.d_src_idx, sidx, cnt * sizeof(int),
+                               cudaMemcpyDeviceToDevice));
+                CKM(cudaMemcpy(p.d_sx, sx, cnt * sizeof(real_t),
+                               cudaMemcpyDeviceToDevice));
+                CKM(cudaMemcpy(p.d_sy, sy, cnt * sizeof(real_t),
+                               cudaMemcpyDeviceToDevice));
+                CKM(cudaMemcpy(p.d_sz, sz, cnt * sizeof(real_t),
+                               cudaMemcpyDeviceToDevice));
+                halo_plan_.push_back(p);
+
+                goff[dst] += cnt;
+                frames_[dst].n_ghost_ = goff[dst];
+            }
+            cudaSetDevice(dm_.device_id(src));
+            cudaFree(sx);
+            cudaFree(sy);
+            cudaFree(sz);
+            cudaFree(stag);
+            cudaFree(stype);
+            cudaFree(sidx);
+            cudaFree(scnt);
         }
-        cudaSetDevice(dm_.device_id(src));
-        cudaFree(sx);
-        cudaFree(sy);
-        cudaFree(sz);
-        cudaFree(stag);
-        cudaFree(stype);
-        cudaFree(sidx);
-        cudaFree(scnt);
-    }
-    // Ensure all peer copies completed before callers read ghosts.
-    for (int s = 0; s < N; ++s) {
-        dm_.set_device(s);
-        cudaDeviceSynchronize();
+        // Barrier between axes: received ghosts must be visible (and their
+        // positions settled) before the next axis packs from them.
+        for (int s = 0; s < N; ++s) {
+            dm_.set_device(s);
+            cudaDeviceSynchronize();
+        }
     }
 }
 
 void MultiGpu::forward_comm() {
-    for (auto& p : halo_plan_) {
-        if (p.cnt <= 0)
-            continue;
-        dm_.set_device(p.src);
-        auto& a = frames_[p.src].atoms;
-        int block = 256, grid = (p.cnt + block - 1) / block;
-        gather_positions<<<grid, block>>>(a.x, a.y, a.z, p.d_src_idx, p.cnt,
-                                          p.d_sx, p.d_sy, p.d_sz);
-        CKM(cudaGetLastError());
-        auto& da = frames_[p.dst].atoms;
-        const int sd = dm_.device_id(p.src), dd_id = dm_.device_id(p.dst);
-        CKM(cudaMemcpyPeer(da.x + p.base, dd_id, p.d_sx, sd,
-                           p.cnt * sizeof(real_t)));
-        CKM(cudaMemcpyPeer(da.y + p.base, dd_id, p.d_sy, sd,
-                           p.cnt * sizeof(real_t)));
-        CKM(cudaMemcpyPeer(da.z + p.base, dd_id, p.d_sz, sd,
-                           p.cnt * sizeof(real_t)));
-    }
-    for (int s = 0; s < count(); ++s) {
-        dm_.set_device(s);
-        cudaDeviceSynchronize();
+    // Replay the cascade IN AXIS ORDER with a barrier between axes: a y-axis
+    // plan may gather from x-ghost slots, whose positions the x-axis plans must
+    // have refreshed first. Plans were recorded axis-major, but barrier on the
+    // axis boundary explicitly rather than rely on push order.
+    for (int axis = 0; axis < 3; ++axis) {
+        bool any = false;
+        for (auto& p : halo_plan_) {
+            if (p.axis != axis || p.cnt <= 0)
+                continue;
+            any = true;
+            dm_.set_device(p.src);
+            auto& a = frames_[p.src].atoms;
+            int block = 256, grid = (p.cnt + block - 1) / block;
+            gather_positions<<<grid, block>>>(a.x, a.y, a.z, p.d_src_idx, p.cnt,
+                                              p.d_sx, p.d_sy, p.d_sz);
+            CKM(cudaGetLastError());
+            auto& da = frames_[p.dst].atoms;
+            const int sd = dm_.device_id(p.src), dd_id = dm_.device_id(p.dst);
+            CKM(cudaMemcpyPeer(da.x + p.base, dd_id, p.d_sx, sd,
+                               p.cnt * sizeof(real_t)));
+            CKM(cudaMemcpyPeer(da.y + p.base, dd_id, p.d_sy, sd,
+                               p.cnt * sizeof(real_t)));
+            CKM(cudaMemcpyPeer(da.z + p.base, dd_id, p.d_sz, sd,
+                               p.cnt * sizeof(real_t)));
+        }
+        if (any)
+            for (int s = 0; s < count(); ++s) {
+                dm_.set_device(s);
+                cudaDeviceSynchronize();
+            }
     }
 }
 

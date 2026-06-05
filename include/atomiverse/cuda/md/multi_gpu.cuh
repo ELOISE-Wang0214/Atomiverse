@@ -64,8 +64,11 @@ class MultiGpu {
     /// `HaloPlan`) so subsequent steps can refresh ghost POSITIONS cheaply via
     /// `forward_comm()` without re-selecting the ghost set. Call this every K
     /// steps (when the neighbor list is rebuilt); call `forward_comm()` on the
-    /// intervening steps. This single pass is complete for a 1D decomposition;
-    /// the 3-axis cascade for edge/corner ghosts is `build_halo`'s next step.
+    /// intervening steps. Communication is a 3-axis CASCADE (x, then y, then z):
+    /// the y-pass forwards owned+x-ghost atoms and the z-pass forwards
+    /// owned+x+y-ghosts, so edge/corner ghosts reach diagonal-neighbor GPUs.
+    /// Within an axis the sendable set is snapshotted at the axis start, so
+    /// ghosts received during that axis are not immediately re-forwarded.
     void build_halo(double cutoff);
 
     /// Backward-compatible alias for `build_halo` (full ghost-set rebuild).
@@ -113,9 +116,11 @@ class MultiGpu {
     struct HaloPlan {
         int src = 0;   // source subdomain slot
         int dst = 0;   // destination subdomain slot
+        int axis = 0;  // cascade stage (0=x,1=y,2=z); replayed in order
         int cnt = 0;   // atoms transferred
         int base = 0;  // dst ghost offset (n_local + accumulated)
-        int* d_src_idx = nullptr;          // [cnt] owned indices on src device
+        int* d_src_idx = nullptr;          // [cnt] src-array indices (owned OR
+                                           // prior-axis ghost) on src device
         real_t *d_sx = nullptr, *d_sy = nullptr, *d_sz = nullptr; // [cnt] send bufs
     };
 

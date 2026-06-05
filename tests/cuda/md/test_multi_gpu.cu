@@ -215,6 +215,58 @@ TEST(MultiGpu, LjForceParityVsSingleGpu) {
     }
 }
 
+TEST(MultiGpu, LjForceParityVsSingleGpu4Way) {
+    // The 4-GPU decomposition is 2x2x1, so atoms near the (x=6, y=6) edge have
+    // neighbors owned by the DIAGONAL subdomain. A single forward halo pass
+    // would never deliver those corner atoms; only the 3-axis cascade (x-pass
+    // then y-pass forwarding x-ghosts) does. This test fails without the
+    // cascade and passes with it — owned-atom LJ forces must match single-GPU.
+    cuda::md::MultiGpu mg(4);
+    if (mg.count() < 4)
+        GTEST_SKIP() << "needs 4 GPUs";
+    ASSERT_EQ(mg.devices().count(), 4);
+
+    auto g = make_grid(12.0);
+    const int n = g.atoms.size();
+    for (int i = 0; i < n; ++i) {
+        g.atoms.x[i] += 0.4 * std::sin(0.7 * i + 0.1);
+        g.atoms.y[i] += 0.4 * std::sin(1.3 * i + 0.2);
+        g.atoms.z[i] += 0.4 * std::sin(1.9 * i + 0.3);
+    }
+    const double cut = 3.5, eps = 1.0, sig = 2.5;
+
+    cpu::Frame ref(n);
+    for (int i = 0; i < n; ++i)
+        ref.atoms.tag[i] = i;
+    {
+        cuda::md::MultiGpu mg1(1);
+        mg1.partition(g);
+        mg1.build_halo(cut);
+        mg1.compute_lj_bruteforce(cut, eps, sig);
+        mg1.gather_forces(ref);
+    }
+
+    mg.partition(g); // creates the DomainDecomposition (dd_)
+
+    // Confirm the decomposition genuinely needs the cascade (>1 axis split).
+    const auto dims = mg.domain().dims();
+    int split_axes = (dims[0] > 1) + (dims[1] > 1) + (dims[2] > 1);
+    ASSERT_GE(split_axes, 2) << "4-GPU layout should split >=2 axes";
+
+    mg.build_halo(cut);
+    mg.compute_lj_bruteforce(cut, eps, sig);
+    cpu::Frame mf(n);
+    for (int i = 0; i < n; ++i)
+        mf.atoms.tag[i] = i;
+    mg.gather_forces(mf);
+
+    for (int i = 0; i < n; ++i) {
+        EXPECT_NEAR(mf.atoms.fx[i], ref.atoms.fx[i], 1e-3) << "atom " << i;
+        EXPECT_NEAR(mf.atoms.fy[i], ref.atoms.fy[i], 1e-3) << "atom " << i;
+        EXPECT_NEAR(mf.atoms.fz[i], ref.atoms.fz[i], 1e-3) << "atom " << i;
+    }
+}
+
 TEST(MultiGpu, NveTrajectoryParity) {
     // Run a short NVE trajectory single-GPU vs split-across-GPUs and require the
     // owned positions to agree — validating the full step loop (halo + force +
