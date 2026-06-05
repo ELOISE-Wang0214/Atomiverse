@@ -40,20 +40,6 @@ __device__ inline bool excl_contains(const int* __restrict__ partners, int beg,
     return false;
 }
 
-/// @brief Atom-centric, **atomic-free** LJ force. One thread owns one atom
-///        (cluster slot). It walks its cluster's FULL neighbor-cluster list
-///        (cl_col_idx over [row_ptr[ci], row_ptr[ci+1])), computes each
-///        pair distance from CURRENT atom positions (min-image), accumulates
-///        the owned atom's force in registers, and writes it ONCE — no
-///        atomicAdd, no flat pair list, no per-step export.
-///
-/// Replaces the old one-thread-per-pair kernel that did 6 atomicAdd/pair
-/// (~160-way contention per force slot in a dense melt → the 76%-of-runtime
-/// bottleneck). With a FULL neighbor list each interaction is computed twice
-/// (once by each endpoint's owning thread), so the force on each atom is
-/// complete without writing its neighbors; energy and virial are halved to
-/// undo the double count. kClusterSize is the neighbor list's fixed cluster
-/// width; pad slots carry a negative orig_index sentinel.
 // Gather current atom positions into the cluster-sorted slot layout so the
 // force kernel reads neighbour positions COALESCED (spx[cj*8+sj] is contiguous
 // per cluster) instead of scattering x[orig_index[..]] ~80×/atom. One scattered
@@ -77,6 +63,21 @@ __global__ void gather_cluster_pos(const int* __restrict__ orig_index,
     }
 }
 
+/// @brief Atom-centric, **atomic-free** LJ force. One thread owns one atom
+///        (cluster slot). It walks its cluster's FULL neighbor-cluster list
+///        (col_idx over [row_ptr[ci], row_ptr[ci+1])), computes each pair
+///        distance from CURRENT atom positions (passed pre-gathered in the
+///        cluster-sorted layout spx/spy/spz, min-image), accumulates the owned
+///        atom's force in registers, and writes it ONCE — no atomicAdd, no flat
+///        pair list, no per-step export.
+///
+/// Replaces the old one-thread-per-pair kernel that did 6 atomicAdd/pair
+/// (~160-way contention per force slot in a dense melt → the 76%-of-runtime
+/// bottleneck). With a FULL neighbor list each interaction is computed twice
+/// (once by each endpoint's owning thread), so the force on each atom is
+/// complete without writing its neighbors; energy and virial are halved to
+/// undo the double count. kClusterSize is the neighbor list's fixed cluster
+/// width; pad slots carry a negative orig_index sentinel.
 template <bool Ortho>
 __global__ __launch_bounds__(ATV::cuda::kDefaultBlock, 4) void
 lj_force_cluster(real_t* __restrict__ fx, real_t* __restrict__ fy,
@@ -343,27 +344,11 @@ void PairLJCut::compute(const LaunchContext& ctx) {
     const PairList* pairs = ctx.runtime.pair_list;
     if (!pairs)
         return;
-    // Grid size = the NeighborList's pair_capacity upper bound (read once
-    // from device). The kernel early-exits via `if (idx >= *n_pairs)` at
-    // line 63, so over-launching by a few × is cheap (one global load +
-    // early return per wasted thread) and far cheaper than the per-step
-    // D2H + cudaStreamSynchronize that the previous grid-by-n_pairs
-    // sizing required. The pair_capacity was previously read at build
-    // time and is stable; we read it once here at first call and cache
-    // the host int statically (per-instance via PIMPL would be cleaner
-    // but adds State plumbing — the read is build-time-equivalent and
-    // pays only on the first launch).
-    //
-    // The earlier bug — n·50 host estimate silently truncating overflow
-    // pairs at ~37% loss on a 10k-atom PE system — was solved by the
-    // density-based capacity rewrite in NeighborList::build()
-    // (cuda-md-review-cleanup-02). With the new capacity sized to
-    // ~3× n_neighbors_est, this kernel over-launches by ~3× actual
-    // count; the early-exit absorbs it.
     // Atom-centric, atomic-free path: one thread per atom (cluster slot)
     // traverses the FULL cluster neighbor CSR published by NeighborList and
     // accumulates its own force from current positions. No flat pair list,
-    // no per-step export, no atomicAdd on forces.
+    // no per-step export, no atomicAdd on forces. The grid is sized to
+    // num_clusters * kClusterSize; threads past the last cluster early-exit.
     if (pairs->cl_row_ptr == nullptr || pairs->num_clusters <= 0)
         return;
     constexpr int CS = 8; // kClusterSize

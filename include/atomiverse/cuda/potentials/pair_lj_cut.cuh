@@ -89,13 +89,6 @@ class PairLJCut : public Pair {
     int* d_excl_partners_ = nullptr;
     int n_excl_total_ = 0;
 
-    // First-launch cache of `pair_list->capacity` (device int read once
-    // via one-time D2H + sync). Subsequent launches size the LJ kernel
-    // grid from this value and rely on the kernel's `if (idx < *n_pairs)`
-    // early-exit to absorb over-launch — keeping `compute()` GPU-pure
-    // on every step except the first.
-    mutable int pair_capacity_host_ = 0;
-
     // Cluster-sorted current-position scratch (gathered each compute() so the
     // force kernel reads neighbour positions coalesced). Sized to
     // num_clusters*kClusterSize; grown when that count increases. Freed in

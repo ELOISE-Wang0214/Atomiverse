@@ -4,13 +4,16 @@
 /// @brief MultiGpu — single-process multi-GPU MD orchestrator. Owns the
 ///        DeviceManager (P2P over NVLink) and a 3D DomainDecomposition, splits
 ///        a global cpu::Frame into one device-resident subdomain frame per GPU,
-///        and (in later phases) drives the per-step P2P halo exchange,
-///        migration, and cross-GPU reduction.
+///        and drives the full Verlet-cadence step loop over NVLink: partition /
+///        gather, the 3-axis cascade halo (build_halo) + per-step position
+///        forward_comm, atom migration across subdomains, the per-subdomain
+///        cluster neighbor-list LJ force path, and velocity-Verlet NVE — all
+///        without MPI (ghost/migration traffic is cudaMemcpyPeer).
 ///
-/// This first cut implements partition (global frame -> N owned subdomain
-/// frames, materialized on their devices) and gather (merge the subdomain
-/// frames back into a global cpu::Frame, by tag) so the decomposition can be
-/// validated against the single-GPU result before the comm layer lands.
+/// gather()/gather_forces() merge owned atoms back into a global cpu::Frame by
+/// persistent tag (so they survive migration). What is NOT yet here: device-
+/// side cross-GPU reduction of energy/virial (gather is host-side) and bonded
+/// interactions across subdomain boundaries.
 
 #include <memory>
 #include <vector>
@@ -175,8 +178,6 @@ class MultiGpu {
     std::unique_ptr<DomainDecomposition> dd_;
     std::vector<cuda::Frame> frames_; // per-slot device frame
     std::vector<int> n_local_;        // per-slot owned count
-    std::vector<std::vector<int>>
-        owned_idx_;   // per-slot: global index of each owned atom (partition order)
     std::vector<HaloPlan> halo_plan_; // recorded by build_halo, replayed by forward_comm
     int n_global_ = 0;
     double box_L_[3] = {0, 0, 0}; // global orthorhombic box edge lengths

@@ -146,13 +146,13 @@ void MultiGpu::build_halo(double cutoff) {
             real_t *sx, *sy, *sz;
             std::int64_t* stag;
             int *stype, *sidx, *scnt;
-            cudaMalloc(&sx, ns * sizeof(real_t));
-            cudaMalloc(&sy, ns * sizeof(real_t));
-            cudaMalloc(&sz, ns * sizeof(real_t));
-            cudaMalloc(&stag, ns * sizeof(std::int64_t));
-            cudaMalloc(&stype, ns * sizeof(int));
-            cudaMalloc(&sidx, ns * sizeof(int));
-            cudaMalloc(&scnt, sizeof(int));
+            CKM(cudaMalloc(&sx, ns * sizeof(real_t)));
+            CKM(cudaMalloc(&sy, ns * sizeof(real_t)));
+            CKM(cudaMalloc(&sz, ns * sizeof(real_t)));
+            CKM(cudaMalloc(&stag, ns * sizeof(std::int64_t)));
+            CKM(cudaMalloc(&stype, ns * sizeof(int)));
+            CKM(cudaMalloc(&sidx, ns * sizeof(int)));
+            CKM(cudaMalloc(&scnt, sizeof(int)));
             auto& a = frames_[src].atoms;
             const auto lo = dd_->sublo(src);
             const auto hi = dd_->subhi(src);
@@ -222,10 +222,10 @@ void MultiGpu::build_halo(double cutoff) {
                 p.axis = axis;
                 p.cnt = cnt;
                 p.base = base;
-                cudaMalloc(&p.d_src_idx, cnt * sizeof(int));
-                cudaMalloc(&p.d_sx, cnt * sizeof(real_t));
-                cudaMalloc(&p.d_sy, cnt * sizeof(real_t));
-                cudaMalloc(&p.d_sz, cnt * sizeof(real_t));
+                CKM(cudaMalloc(&p.d_src_idx, cnt * sizeof(int)));
+                CKM(cudaMalloc(&p.d_sx, cnt * sizeof(real_t)));
+                CKM(cudaMalloc(&p.d_sy, cnt * sizeof(real_t)));
+                CKM(cudaMalloc(&p.d_sz, cnt * sizeof(real_t)));
                 CKM(cudaMemcpy(p.d_src_idx, sidx, cnt * sizeof(int),
                                cudaMemcpyDeviceToDevice));
                 CKM(cudaMemcpy(p.d_sx, sx, cnt * sizeof(real_t),
@@ -316,7 +316,6 @@ void MultiGpu::partition(const cpu::Frame& global, double ghost_headroom) {
 
     frames_.resize(N);
     n_local_.assign(N, 0);
-    owned_idx_ = buckets; // remember each owned atom's global index (gather map)
     for (int s = 0; s < N; ++s) {
         const auto& idx = buckets[s];
         const int cnt = static_cast<int>(idx.size());
@@ -750,16 +749,16 @@ struct MigBuf {
     std::int64_t* tag;
 };
 void mig_alloc(MigBuf& b, int m) {
-    cudaMalloc(&b.x, m * sizeof(real_t));
-    cudaMalloc(&b.y, m * sizeof(real_t));
-    cudaMalloc(&b.z, m * sizeof(real_t));
-    cudaMalloc(&b.vx, m * sizeof(real_t));
-    cudaMalloc(&b.vy, m * sizeof(real_t));
-    cudaMalloc(&b.vz, m * sizeof(real_t));
-    cudaMalloc(&b.mass, m * sizeof(real_t));
-    cudaMalloc(&b.charge, m * sizeof(real_t));
-    cudaMalloc(&b.type, m * sizeof(int));
-    cudaMalloc(&b.tag, m * sizeof(std::int64_t));
+    CKM(cudaMalloc(&b.x, m * sizeof(real_t)));
+    CKM(cudaMalloc(&b.y, m * sizeof(real_t)));
+    CKM(cudaMalloc(&b.z, m * sizeof(real_t)));
+    CKM(cudaMalloc(&b.vx, m * sizeof(real_t)));
+    CKM(cudaMalloc(&b.vy, m * sizeof(real_t)));
+    CKM(cudaMalloc(&b.vz, m * sizeof(real_t)));
+    CKM(cudaMalloc(&b.mass, m * sizeof(real_t)));
+    CKM(cudaMalloc(&b.charge, m * sizeof(real_t)));
+    CKM(cudaMalloc(&b.type, m * sizeof(int)));
+    CKM(cudaMalloc(&b.tag, m * sizeof(std::int64_t)));
 }
 void mig_free(MigBuf& b) {
     cudaFree(b.x);
@@ -790,11 +789,11 @@ void MultiGpu::migrate() {
         const int nl = frames_[s].n_local_;
         dm_.set_device(s);
         int *owner, *dcnt, *order, *dfill, *dboff;
-        cudaMalloc(&owner, std::max(1, nl) * sizeof(int));
-        cudaMalloc(&order, std::max(1, nl) * sizeof(int));
-        cudaMalloc(&dcnt, N * sizeof(int));
-        cudaMalloc(&dfill, N * sizeof(int));
-        cudaMalloc(&dboff, N * sizeof(int));
+        CKM(cudaMalloc(&owner, std::max(1, nl) * sizeof(int)));
+        CKM(cudaMalloc(&order, std::max(1, nl) * sizeof(int)));
+        CKM(cudaMalloc(&dcnt, N * sizeof(int)));
+        CKM(cudaMalloc(&dfill, N * sizeof(int)));
+        CKM(cudaMalloc(&dboff, N * sizeof(int)));
         CKM(cudaMemset(dcnt, 0, N * sizeof(int)));
         if (nl > 0) {
             auto& a = frames_[s].atoms;
@@ -896,16 +895,19 @@ void MultiGpu::migrate() {
         auto& a = frames_[dst].atoms;
         const int m = new_nl[dst];
         if (m > 0) {
-            cudaMemcpy(a.x, stg[dst].x, m * sizeof(real_t), cudaMemcpyDeviceToDevice);
-            cudaMemcpy(a.y, stg[dst].y, m * sizeof(real_t), cudaMemcpyDeviceToDevice);
-            cudaMemcpy(a.z, stg[dst].z, m * sizeof(real_t), cudaMemcpyDeviceToDevice);
-            cudaMemcpy(a.vx, stg[dst].vx, m * sizeof(real_t), cudaMemcpyDeviceToDevice);
-            cudaMemcpy(a.vy, stg[dst].vy, m * sizeof(real_t), cudaMemcpyDeviceToDevice);
-            cudaMemcpy(a.vz, stg[dst].vz, m * sizeof(real_t), cudaMemcpyDeviceToDevice);
-            cudaMemcpy(a.mass, stg[dst].mass, m * sizeof(real_t), cudaMemcpyDeviceToDevice);
-            cudaMemcpy(a.charge, stg[dst].charge, m * sizeof(real_t), cudaMemcpyDeviceToDevice);
-            cudaMemcpy(a.type, stg[dst].type, m * sizeof(int), cudaMemcpyDeviceToDevice);
-            cudaMemcpy(a.tag, stg[dst].tag, m * sizeof(std::int64_t), cudaMemcpyDeviceToDevice);
+            const size_t r = m * sizeof(real_t);
+            CKM(cudaMemcpy(a.x, stg[dst].x, r, cudaMemcpyDeviceToDevice));
+            CKM(cudaMemcpy(a.y, stg[dst].y, r, cudaMemcpyDeviceToDevice));
+            CKM(cudaMemcpy(a.z, stg[dst].z, r, cudaMemcpyDeviceToDevice));
+            CKM(cudaMemcpy(a.vx, stg[dst].vx, r, cudaMemcpyDeviceToDevice));
+            CKM(cudaMemcpy(a.vy, stg[dst].vy, r, cudaMemcpyDeviceToDevice));
+            CKM(cudaMemcpy(a.vz, stg[dst].vz, r, cudaMemcpyDeviceToDevice));
+            CKM(cudaMemcpy(a.mass, stg[dst].mass, r, cudaMemcpyDeviceToDevice));
+            CKM(cudaMemcpy(a.charge, stg[dst].charge, r, cudaMemcpyDeviceToDevice));
+            CKM(cudaMemcpy(a.type, stg[dst].type, m * sizeof(int),
+                           cudaMemcpyDeviceToDevice));
+            CKM(cudaMemcpy(a.tag, stg[dst].tag, m * sizeof(std::int64_t),
+                           cudaMemcpyDeviceToDevice));
         }
         frames_[dst].n_local_ = m;
         n_local_[dst] = m;
@@ -917,7 +919,6 @@ void MultiGpu::migrate() {
         dm_.set_device(s);
         CKM(cudaDeviceSynchronize());
     }
-    owned_idx_.clear(); // stale after migration; gather() resolves by tag now
 }
 
 void MultiGpu::gather_forces(cpu::Frame& out) const {
@@ -931,7 +932,7 @@ void MultiGpu::gather_forces(cpu::Frame& out) const {
         dm_.set_device(s);
         cuda::to_cpu(frames_[s], tmp);
         // Resolve each owned atom's global slot by its persistent TAG (robust
-        // after migration, when partition-time owned_idx_ is stale/cleared).
+        // after migration, since an atom's owner subdomain changes).
         const int nout = out.atoms.size();
         for (int k = 0; k < cnt; ++k) {
             const int g = static_cast<int>(tmp.atoms.tag[k]);
@@ -954,10 +955,9 @@ void MultiGpu::gather(cpu::Frame& out) const {
         cpu::Frame tmp(cnt);
         dm_.set_device(s);
         cuda::to_cpu(frames_[s], tmp);
-        // Scatter owned atoms back to their global slots by persistent TAG.
-        // (to_cpu round-trips tags D2H; tag-based resolution survives migration,
-        // unlike the partition-time owned_idx_ which goes stale once atoms move
-        // between subdomains.)
+        // Scatter owned atoms back to their global slots by persistent TAG
+        // (to_cpu round-trips tags D2H); tag resolution survives migration,
+        // where an atom's owner subdomain changes.
         const int nout = out.atoms.size();
         for (int k = 0; k < cnt; ++k) {
             const int g = static_cast<int>(tmp.atoms.tag[k]);
