@@ -525,6 +525,8 @@ void MultiGpu::destroy_force_engine() {
             dm_.set_device(s);
             cuda::DestroyContext dc{ctx_[s], frames_[s]};
             nlist_[s]->destroy(dc);
+            if (pair_[s])
+                pair_[s]->destroy(dc); // free PairLJCut's sorted-pos scratch
         }
     }
     nlist_.clear();

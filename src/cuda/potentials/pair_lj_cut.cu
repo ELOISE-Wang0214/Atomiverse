@@ -54,12 +54,35 @@ __device__ inline bool excl_contains(const int* __restrict__ partners, int beg,
 /// complete without writing its neighbors; energy and virial are halved to
 /// undo the double count. kClusterSize is the neighbor list's fixed cluster
 /// width; pad slots carry a negative orig_index sentinel.
+// Gather current atom positions into the cluster-sorted slot layout so the
+// force kernel reads neighbour positions COALESCED (spx[cj*8+sj] is contiguous
+// per cluster) instead of scattering x[orig_index[..]] ~80×/atom. One scattered
+// read per slot here amortises the scatter that previously happened per pair —
+// the dominant cost of lj_force_cluster (latency-bound uncoalesced gathers).
+__global__ void gather_cluster_pos(const int* __restrict__ orig_index,
+                                   const real_t* __restrict__ x,
+                                   const real_t* __restrict__ y,
+                                   const real_t* __restrict__ z, int n_slots,
+                                   real_t* __restrict__ spx,
+                                   real_t* __restrict__ spy,
+                                   real_t* __restrict__ spz) {
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= n_slots)
+        return;
+    int a = orig_index[k];
+    if (a >= 0) {
+        spx[k] = x[a];
+        spy[k] = y[a];
+        spz[k] = z[a];
+    }
+}
+
 template <bool Ortho>
 __global__ __launch_bounds__(ATV::cuda::kDefaultBlock, 4) void
 lj_force_cluster(real_t* __restrict__ fx, real_t* __restrict__ fy,
                  real_t* __restrict__ fz, prec_t* __restrict__ energy,
-                 prec_t* __restrict__ stress, const real_t* __restrict__ x,
-                 const real_t* __restrict__ y, const real_t* __restrict__ z,
+                 prec_t* __restrict__ stress, const real_t* __restrict__ spx,
+                 const real_t* __restrict__ spy, const real_t* __restrict__ spz,
                  const int* __restrict__ row_ptr,
                  const int* __restrict__ col_idx,
                  const int* __restrict__ orig_index, int num_clusters,
@@ -90,7 +113,8 @@ lj_force_cluster(real_t* __restrict__ fx, real_t* __restrict__ fy,
     if (ci < num_clusters) {
         int ai = orig_index[ci * CS + slot];
         if (ai >= 0) {
-            real_t xi = x[ai], yi = y[ai], zi = z[ai];
+            real_t xi = spx[ci * CS + slot], yi = spy[ci * CS + slot],
+                   zi = spz[ci * CS + slot];
             real_t fxi = real_t(0), fyi = real_t(0), fzi = real_t(0);
             const bool has_excl = (excl_offsets != nullptr);
             int beg_excl = has_excl ? excl_offsets[ai] : 0;
@@ -104,9 +128,9 @@ lj_force_cluster(real_t* __restrict__ fx, real_t* __restrict__ fy,
                     int aj = orig_index[cj * CS + sj];
                     if (aj < 0 || aj == ai)
                         continue;
-                    real_t dx = x[aj] - xi;
-                    real_t dy = y[aj] - yi;
-                    real_t dz = z[aj] - zi;
+                    real_t dx = spx[cj * CS + sj] - xi;
+                    real_t dy = spy[cj * CS + sj] - yi;
+                    real_t dz = spz[cj * CS + sj] - zi;
                     if (periodic) {
                         if constexpr (Ortho) {
                             dx -= box.cell[0] * nearbyintf(dx * box.inv_l[0]);
@@ -304,6 +328,13 @@ void PairLJCut::destroy(const DestroyContext& /*ctx*/) {
         d_excl_partners_ = nullptr;
     }
     n_excl_total_ = 0;
+    if (spx_) {
+        cudaFree(spx_);
+        cudaFree(spy_);
+        cudaFree(spz_);
+        spx_ = spy_ = spz_ = nullptr;
+        spos_cap_ = 0;
+    }
 }
 
 void PairLJCut::compute(const LaunchContext& ctx) {
@@ -337,8 +368,28 @@ void PairLJCut::compute(const LaunchContext& ctx) {
         return;
     constexpr int CS = 8; // kClusterSize
     int block = kDefaultBlock;
-    int grid = grid_size(pairs->num_clusters * CS);
+    int nslots = pairs->num_clusters * CS;
+    int grid = grid_size(nslots);
     int shmem = warps_per_block(block) * sizeof(work_t);
+
+    // Coalesced-position path: gather current positions into the cluster-sorted
+    // slot layout once, then the force kernel reads neighbours contiguously.
+    // (Re)allocate the sorted-position buffers when the slot count grows
+    // (num_clusters changes across multi-GPU reneighbor intervals).
+    if (nslots > spos_cap_) {
+        if (spx_) {
+            cudaFree(spx_);
+            cudaFree(spy_);
+            cudaFree(spz_);
+        }
+        cudaMalloc(&spx_, nslots * sizeof(real_t));
+        cudaMalloc(&spy_, nslots * sizeof(real_t));
+        cudaMalloc(&spz_, nslots * sizeof(real_t));
+        spos_cap_ = nslots;
+    }
+    kernels::gather_cluster_pos<<<grid, block, 0, stream>>>(
+        pairs->cl_orig_index, frame.atoms.x, frame.atoms.y, frame.atoms.z,
+        nslots, spx_, spy_, spz_);
     // Pass nullptr for exclusion CSR when none configured — kernel takes
     // fast path and avoids the partner lookup overhead entirely.
     const int* excl_off = (has_exclusions_) ? d_excl_offsets_ : nullptr;
@@ -354,19 +405,19 @@ void PairLJCut::compute(const LaunchContext& ctx) {
     if (box.ortho) {
         kernels::lj_force_cluster<true><<<grid, block, shmem, stream>>>(
             frame.atoms.fx, frame.atoms.fy, frame.atoms.fz,
-            &frame.scalars->energy, &frame.scalars->stress[0], frame.atoms.x,
-            frame.atoms.y, frame.atoms.z, pairs->cl_row_ptr, pairs->cl_col_idx,
-            pairs->cl_orig_index, pairs->num_clusters, box, /*periodic=*/true,
-            epsilon_, sigma_sq, cutoff_sq, min_pair_dist_sq, v_shift_, excl_off,
-            excl_par, static_cast<work_t>(s_excl_));
+            &frame.scalars->energy, &frame.scalars->stress[0], spx_, spy_, spz_,
+            pairs->cl_row_ptr, pairs->cl_col_idx, pairs->cl_orig_index,
+            pairs->num_clusters, box, /*periodic=*/true, epsilon_, sigma_sq,
+            cutoff_sq, min_pair_dist_sq, v_shift_, excl_off, excl_par,
+            static_cast<work_t>(s_excl_));
     } else {
         kernels::lj_force_cluster<false><<<grid, block, shmem, stream>>>(
             frame.atoms.fx, frame.atoms.fy, frame.atoms.fz,
-            &frame.scalars->energy, &frame.scalars->stress[0], frame.atoms.x,
-            frame.atoms.y, frame.atoms.z, pairs->cl_row_ptr, pairs->cl_col_idx,
-            pairs->cl_orig_index, pairs->num_clusters, box, /*periodic=*/true,
-            epsilon_, sigma_sq, cutoff_sq, min_pair_dist_sq, v_shift_, excl_off,
-            excl_par, static_cast<work_t>(s_excl_));
+            &frame.scalars->energy, &frame.scalars->stress[0], spx_, spy_, spz_,
+            pairs->cl_row_ptr, pairs->cl_col_idx, pairs->cl_orig_index,
+            pairs->num_clusters, box, /*periodic=*/true, epsilon_, sigma_sq,
+            cutoff_sq, min_pair_dist_sq, v_shift_, excl_off, excl_par,
+            static_cast<work_t>(s_excl_));
     }
 }
 

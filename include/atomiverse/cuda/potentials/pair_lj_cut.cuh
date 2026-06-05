@@ -95,6 +95,15 @@ class PairLJCut : public Pair {
     // early-exit to absorb over-launch — keeping `compute()` GPU-pure
     // on every step except the first.
     mutable int pair_capacity_host_ = 0;
+
+    // Cluster-sorted current-position scratch (gathered each compute() so the
+    // force kernel reads neighbour positions coalesced). Sized to
+    // num_clusters*kClusterSize; grown when that count increases. Freed in
+    // destroy(). Runtime container — not part of the frame.
+    real_t* spx_ = nullptr;
+    real_t* spy_ = nullptr;
+    real_t* spz_ = nullptr;
+    int spos_cap_ = 0;
 };
 
 } // namespace cuda
