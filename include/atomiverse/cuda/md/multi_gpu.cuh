@@ -15,9 +15,12 @@
 #include <memory>
 #include <vector>
 
+#include "atomiverse/cuda/context.cuh"
 #include "atomiverse/cuda/device_manager.cuh"
 #include "atomiverse/cuda/domain_decomposition.cuh"
 #include "atomiverse/cuda/frame.cuh"
+#include "atomiverse/cuda/neighbor_list.cuh"
+#include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 
 namespace ATV {
 namespace cpu {
@@ -108,6 +111,35 @@ class MultiGpu {
     void run_nve(int steps, double dt, double cutoff, double epsilon,
                  double sigma);
 
+    // ── Cluster neighbor-list force path (production performance) ──────────
+    // The real per-subdomain force engine: each GPU runs the optimized
+    // atom-centric cluster LJ kernel over its owned+ghost set, instead of the
+    // O(n²) brute force above. The neighbor list is rebuilt only on reneighbor
+    // steps (with a fresh halo over cutoff+skin); intervening steps just
+    // forward_comm ghost positions and let the Verlet skin-gating reuse the CSR.
+
+    /// Construct the per-subdomain force engine (Context + NeighborList +
+    /// PairLJCut). Call once after `partition`. `skin` < 0 ⇒ auto (0.3*cutoff).
+    /// The halo is built over `cutoff + skin` so ghosts cover the skin region
+    /// and no cross-boundary neighbor appears mid-interval.
+    void setup_force_engine(double cutoff, double epsilon, double sigma,
+                            double skin = -1.0);
+
+    /// Reneighbor step: rebuild the halo (cutoff+skin) and the per-subdomain
+    /// cluster neighbor list over the new owned+ghost set. Call every K steps.
+    void reneighbor();
+
+    /// Compute LJ forces on every subdomain's owned atoms via the cluster
+    /// kernel (zero forces over owned+ghost, refresh/launch the neighbor list,
+    /// run PairLJCut). Assumes the halo/forward_comm for this step already ran.
+    void compute_lj_nlist();
+
+    /// Velocity-Verlet NVE using the cluster neighbor-list force path.
+    /// `reneigh_every` steps between full halo+neighbor rebuilds; positions are
+    /// forward-communicated on the intervening steps.
+    void run_nve_nlist(int steps, double dt, double cutoff, double epsilon,
+                       double sigma, double skin = -1.0, int reneigh_every = 10);
+
     /// One recorded P2P ghost transfer (one src subdomain → one dst face
     /// neighbor). `d_src_idx` (on the src device) lists the owned-atom indices
     /// selected at build_halo; their current positions are gathered into
@@ -127,6 +159,7 @@ class MultiGpu {
   private:
     void destroy_frames();
     void destroy_halo_plan();
+    void destroy_force_engine();
 
     DeviceManager dm_;
     std::unique_ptr<DomainDecomposition> dd_;
@@ -137,6 +170,14 @@ class MultiGpu {
     std::vector<HaloPlan> halo_plan_; // recorded by build_halo, replayed by forward_comm
     int n_global_ = 0;
     double box_L_[3] = {0, 0, 0}; // global orthorhombic box edge lengths
+
+    // Cluster force engine (one per subdomain); built by setup_force_engine.
+    std::vector<cuda::Context> ctx_;
+    std::vector<std::unique_ptr<cuda::NeighborList>> nlist_;
+    std::vector<std::unique_ptr<cuda::PairLJCut>> pair_;
+    std::vector<char> nlist_built_; // per-slot: NeighborList::build called (vector<bool> avoided)
+    bool engine_ready_ = false;
+    double force_cutoff_ = 0, force_skin_ = 0;
 };
 
 } // namespace md

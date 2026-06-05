@@ -33,6 +33,7 @@ MultiGpu::MultiGpu(int n_gpus) : dm_(n_gpus) {}
 MultiGpu::~MultiGpu() { destroy_frames(); }
 
 void MultiGpu::destroy_frames() {
+    destroy_force_engine(); // frees per-subdomain NeighborList buffers (needs frames_)
     destroy_halo_plan();
     for (int s = 0; s < static_cast<int>(frames_.size()); ++s) {
         dm_.set_device(s);
@@ -478,6 +479,168 @@ void MultiGpu::run_nve(int steps, double dt, double cutoff, double epsilon,
         }
         exchange_halo(cutoff);
         compute_lj_bruteforce(cutoff, epsilon, sigma);
+        for (int s = 0; s < count(); ++s) {
+            const int nl = frames_[s].n_local_;
+            if (nl == 0)
+                continue;
+            dm_.set_device(s);
+            auto& a = frames_[s].atoms;
+            int block = 256, grid = (nl + block - 1) / block;
+            vv_second<<<grid, block>>>(a.vx, a.vy, a.vz, a.fx, a.fy, a.fz,
+                                       a.mass, nl, dtr);
+            CKM(cudaGetLastError());
+        }
+    }
+    for (int s = 0; s < count(); ++s) {
+        dm_.set_device(s);
+        CKM(cudaDeviceSynchronize());
+    }
+}
+
+// ── Cluster neighbor-list force path ──────────────────────────────────────
+
+namespace {
+cuda::Box make_ortho_box(const double L[3]) {
+    cuda::Box box{};
+    box.ortho = true;
+    for (int d = 0; d < 3; ++d)
+        box.periodic[d] = true;
+    box.cell[0] = static_cast<real_t>(L[0]);
+    box.cell[4] = static_cast<real_t>(L[1]);
+    box.cell[8] = static_cast<real_t>(L[2]);
+    box.half_l[0] = static_cast<real_t>(0.5 * L[0]);
+    box.half_l[1] = static_cast<real_t>(0.5 * L[1]);
+    box.half_l[2] = static_cast<real_t>(0.5 * L[2]);
+    box.inv_l[0] = static_cast<real_t>(1.0 / L[0]);
+    box.inv_l[1] = static_cast<real_t>(1.0 / L[1]);
+    box.inv_l[2] = static_cast<real_t>(1.0 / L[2]);
+    return box;
+}
+} // namespace
+
+void MultiGpu::destroy_force_engine() {
+    for (int s = 0; s < static_cast<int>(nlist_.size()); ++s) {
+        if (nlist_[s] && s < static_cast<int>(nlist_built_.size())
+            && nlist_built_[s]) {
+            dm_.set_device(s);
+            cuda::DestroyContext dc{ctx_[s], frames_[s]};
+            nlist_[s]->destroy(dc);
+        }
+    }
+    nlist_.clear();
+    pair_.clear();
+    ctx_.clear();
+    nlist_built_.clear();
+    engine_ready_ = false;
+}
+
+void MultiGpu::setup_force_engine(double cutoff, double epsilon, double sigma,
+                                  double skin) {
+    destroy_force_engine();
+    const int N = count();
+    force_cutoff_ = cutoff;
+    force_skin_ = (skin < 0) ? 0.3 * cutoff : skin;
+    const cuda::Box box = make_ortho_box(box_L_);
+    ctx_.resize(N);
+    nlist_.resize(N);
+    pair_.resize(N);
+    nlist_built_.assign(N, 0);
+    for (int s = 0; s < N; ++s) {
+        ctx_[s].stream = dm_.stream(s);
+        ctx_[s].defer_stream = dm_.defer_stream(s);
+        ctx_[s].host_box = box;
+        ctx_[s].pair_list = nullptr;
+        ctx_[s].flat_pairs_requested = false;
+        nlist_[s] = std::make_unique<cuda::NeighborList>(cutoff, force_skin_);
+        pair_[s] = std::make_unique<cuda::PairLJCut>(epsilon, sigma, cutoff);
+    }
+    engine_ready_ = true;
+}
+
+void MultiGpu::reneighbor() {
+    if (!engine_ready_)
+        throw std::runtime_error(
+            "MultiGpu::reneighbor: call setup_force_engine first");
+    // Halo over cutoff+skin so ghosts cover the skin region — no cross-boundary
+    // neighbor can appear before the next reneighbor.
+    build_halo(force_cutoff_ + force_skin_);
+    const int N = count();
+    for (int s = 0; s < N; ++s) {
+        const int na = frames_[s].n_local_ + frames_[s].n_ghost_;
+        frames_[s].n_atoms_ = na; // cluster owned+ghost; force writes owned only
+        if (na == 0)
+            continue;
+        dm_.set_device(s);
+        // n_all changed vs the prior interval, so the neighbor list (sized at
+        // build) must be torn down and reallocated. Reneighbor is infrequent.
+        if (nlist_built_[s]) {
+            cuda::DestroyContext dc{ctx_[s], frames_[s]};
+            nlist_[s]->destroy(dc);
+        }
+        cuda::BuildContext bc{ctx_[s], frames_[s]};
+        nlist_[s]->build(bc); // publishes pair_list to ctx_[s]
+        nlist_built_[s] = 1;
+    }
+    for (int s = 0; s < N; ++s) {
+        dm_.set_device(s);
+        CKM(cudaDeviceSynchronize());
+    }
+}
+
+void MultiGpu::compute_lj_nlist() {
+    if (!engine_ready_)
+        throw std::runtime_error(
+            "MultiGpu::compute_lj_nlist: call setup_force_engine + reneighbor");
+    const int N = count();
+    for (int s = 0; s < N; ++s) {
+        const int na = frames_[s].n_local_ + frames_[s].n_ghost_;
+        if (na == 0)
+            continue;
+        frames_[s].n_atoms_ = na;
+        dm_.set_device(s);
+        auto& a = frames_[s].atoms;
+        cudaStream_t st = static_cast<cudaStream_t>(ctx_[s].stream);
+        // The cluster kernel accumulates (fx[ai] += ...) over owned AND ghost
+        // slots, so zero the whole owned+ghost range first.
+        CKM(cudaMemsetAsync(a.fx, 0, na * sizeof(real_t), st));
+        CKM(cudaMemsetAsync(a.fy, 0, na * sizeof(real_t), st));
+        CKM(cudaMemsetAsync(a.fz, 0, na * sizeof(real_t), st));
+        cuda::LaunchContext lc{ctx_[s], frames_[s]};
+        nlist_[s]->launch(lc); // skin-gated CSR rebuild + republish pair_list
+        pair_[s]->launch(lc);  // atom-centric cluster LJ force (calls compute)
+    }
+    for (int s = 0; s < N; ++s) {
+        dm_.set_device(s);
+        CKM(cudaDeviceSynchronize());
+    }
+}
+
+void MultiGpu::run_nve_nlist(int steps, double dt, double cutoff,
+                             double epsilon, double sigma, double skin,
+                             int reneigh_every) {
+    setup_force_engine(cutoff, epsilon, sigma, skin);
+    reneighbor();
+    compute_lj_nlist();
+    const real_t dtr = static_cast<real_t>(dt);
+    if (reneigh_every < 1)
+        reneigh_every = 1;
+    for (int step = 0; step < steps; ++step) {
+        for (int s = 0; s < count(); ++s) {
+            const int nl = frames_[s].n_local_;
+            if (nl == 0)
+                continue;
+            dm_.set_device(s);
+            auto& a = frames_[s].atoms;
+            int block = 256, grid = (nl + block - 1) / block;
+            vv_first<<<grid, block>>>(a.x, a.y, a.z, a.vx, a.vy, a.vz, a.fx,
+                                      a.fy, a.fz, a.mass, nl, dtr);
+            CKM(cudaGetLastError());
+        }
+        if ((step + 1) % reneigh_every == 0)
+            reneighbor();    // re-select ghosts + rebuild neighbor list
+        else
+            forward_comm();  // refresh ghost positions only
+        compute_lj_nlist();
         for (int s = 0; s < count(); ++s) {
             const int nl = frames_[s].n_local_;
             if (nl == 0)

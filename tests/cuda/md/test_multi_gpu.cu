@@ -290,6 +290,71 @@ TEST(MultiGpu, LjForceParityDims2Overlap) {
     }
 }
 
+TEST(MultiGpu, LjForceParityNlistVsSingleGpu) {
+    // Stage C: the production force path uses the optimized atom-centric CLUSTER
+    // neighbor-list kernel per subdomain instead of brute force. Validate that
+    // multi-GPU cluster forces equal single-GPU cluster forces (same kernel,
+    // so only float summation order differs -> tight tolerance). A looser
+    // cross-check vs brute force confirms the cluster path is physically sane.
+    auto g = make_grid_n(8, 24.0); // 512 atoms, spacing 3.0
+    const int n = g.atoms.size();
+    for (int i = 0; i < n; ++i) {
+        g.atoms.x[i] += 0.4 * std::sin(0.7 * i + 0.1);
+        g.atoms.y[i] += 0.4 * std::sin(1.3 * i + 0.2);
+        g.atoms.z[i] += 0.4 * std::sin(1.9 * i + 0.3);
+    }
+    const double cut = 5.0, eps = 1.0, sig = 2.5;
+
+    // Reference: single-GPU cluster path.
+    cpu::Frame ref(n);
+    for (int i = 0; i < n; ++i)
+        ref.atoms.tag[i] = i;
+    {
+        cuda::md::MultiGpu mg1(1);
+        mg1.partition(g, 2.0);
+        mg1.setup_force_engine(cut, eps, sig);
+        mg1.reneighbor();
+        mg1.compute_lj_nlist();
+        mg1.gather_forces(ref);
+    }
+    // Sanity: single-GPU brute force should roughly agree with the cluster path.
+    cpu::Frame bf(n);
+    for (int i = 0; i < n; ++i)
+        bf.atoms.tag[i] = i;
+    {
+        cuda::md::MultiGpu mg1(1);
+        mg1.partition(g, 2.0);
+        mg1.build_halo(cut);
+        mg1.compute_lj_bruteforce(cut, eps, sig);
+        mg1.gather_forces(bf);
+    }
+    double maxabs = 0, maxdiff_bf = 0;
+    for (int i = 0; i < n; ++i) {
+        maxabs = std::max(maxabs, std::abs(ref.atoms.fx[i]));
+        maxdiff_bf = std::max(maxdiff_bf, std::abs(ref.atoms.fx[i] - bf.atoms.fx[i]));
+    }
+    EXPECT_GT(maxabs, 1e-2) << "reference forces should be nonzero";
+    EXPECT_LT(maxdiff_bf, 5e-2) << "cluster path should match brute force";
+
+    cuda::md::MultiGpu mg(2);
+    if (mg.count() < 2)
+        GTEST_SKIP() << "needs >= 2 GPUs";
+    mg.partition(g, 2.0);
+    mg.setup_force_engine(cut, eps, sig);
+    mg.reneighbor();
+    mg.compute_lj_nlist();
+    cpu::Frame mf(n);
+    for (int i = 0; i < n; ++i)
+        mf.atoms.tag[i] = i;
+    mg.gather_forces(mf);
+
+    for (int i = 0; i < n; ++i) {
+        EXPECT_NEAR(mf.atoms.fx[i], ref.atoms.fx[i], 2e-3) << "atom " << i;
+        EXPECT_NEAR(mf.atoms.fy[i], ref.atoms.fy[i], 2e-3) << "atom " << i;
+        EXPECT_NEAR(mf.atoms.fz[i], ref.atoms.fz[i], 2e-3) << "atom " << i;
+    }
+}
+
 TEST(MultiGpu, LjForceParityVsSingleGpu4Way) {
     // The 4-GPU decomposition is 2x2x1, so atoms near the (x=6, y=6) edge have
     // neighbors owned by the DIAGONAL subdomain. A single forward halo pass
