@@ -1,11 +1,13 @@
 /// @file tests/cpu/test_analysis_executor.cpp
-/// @brief RED tests for `cpu::AnalysisExecutor` lifecycle and backpressure policy.
+/// @brief Tests for `cpu::AnalysisExecutor` lifecycle and the single
+///        (drop_oldest) backpressure path.
 ///
-/// Spec: .claude/specs/parallel-md-engine.md § B.2.
+/// Spec: .claude/specs/async-analysis-snapshot-ring-01-uniformity.md.
 /// Verifies:
 ///   - clean init/shutdown (no thread leak)
 ///   - round-robin slot IDs + drop_oldest counter
-///   - drop_oldest / block / grow backpressure under load
+///   - drop_oldest is the sole backpressure behaviour under load
+///   - ring depth K is a constant global (capacity never changes after init)
 ///   - shutdown drains and joins cleanly
 
 #include <gtest/gtest.h>
@@ -16,7 +18,6 @@
 #include <thread>
 #include <vector>
 
-#include "atomiverse/core/types.h"
 #include "atomiverse/cpu/analysis_executor.h"
 #include "atomiverse/cpu/async_component_base.h"
 #include "atomiverse/cpu/context.h"
@@ -63,7 +64,6 @@ TEST(AnalysisExecutor, InitShutdownClean) {
     cpu::AnalysisExecutor::Config cfg;
     cfg.n_threads = 2;
     cfg.ring_size = 3;
-    cfg.policy = ATV::BackpressurePolicy::drop_oldest;
 
     exec.init(cfg, ctx);
     // No implicit leak: shutdown must join all workers.
@@ -79,7 +79,6 @@ TEST(AnalysisExecutor, AcquireSlotRoundRobin) {
     cpu::AnalysisExecutor::Config cfg;
     cfg.n_threads = 0; // no workers — just test the ring mechanics
     cfg.ring_size = 3;
-    cfg.policy = ATV::BackpressurePolicy::drop_oldest;
     exec.init(cfg, ctx);
 
     int s0 = exec.acquire_slot();
@@ -97,7 +96,7 @@ TEST(AnalysisExecutor, AcquireSlotRoundRobin) {
     exec.shutdown();
 }
 
-// ── drop_oldest backpressure ─────────────────────────────────────────
+// ── drop_oldest backpressure (the sole policy) ───────────────────────
 
 TEST(AnalysisExecutor, DropOldestBackpressure) {
     cpu::AnalysisExecutor exec;
@@ -105,7 +104,6 @@ TEST(AnalysisExecutor, DropOldestBackpressure) {
     cpu::AnalysisExecutor::Config cfg;
     cfg.n_threads = 1;
     cfg.ring_size = 3;
-    cfg.policy = ATV::BackpressurePolicy::drop_oldest;
     exec.init(cfg, ctx);
 
     SlowCapture sub{std::chrono::milliseconds(100)};
@@ -121,59 +119,29 @@ TEST(AnalysisExecutor, DropOldestBackpressure) {
     exec.shutdown();
 }
 
-// ── block backpressure ───────────────────────────────────────────────
+// ── ring depth K is a constant global ────────────────────────────────
 
-TEST(AnalysisExecutor, BlockBackpressure) {
+TEST(AnalysisExecutor, RingDepthIsConstantGlobalK) {
     cpu::AnalysisExecutor exec;
     cpu::Context ctx;
     cpu::AnalysisExecutor::Config cfg;
     cfg.n_threads = 1;
-    cfg.ring_size = 3;
-    cfg.policy = ATV::BackpressurePolicy::block;
+    cfg.ring_size = 4; // global ring depth K
     exec.init(cfg, ctx);
 
-    SlowCapture sub{std::chrono::milliseconds(80)};
+    EXPECT_EQ(exec.ring_capacity(), 4);
 
-    auto t0 = std::chrono::high_resolution_clock::now();
-    for (int k = 0; k < 5; ++k) {
-        int slot = exec.acquire_slot();
-        exec.publish(slot, k);
-        exec.submit(&sub, slot);
-    }
-    auto t1 = std::chrono::high_resolution_clock::now();
-
-    auto elapsed_ms =
-        std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
-    // With block policy, the 4th/5th acquire must wait for worker to free a slot.
-    EXPECT_GE(elapsed_ms, 80)
-        << "block policy did not block hot-path submit (elapsed " << elapsed_ms
-        << " ms)";
-    EXPECT_EQ(exec.n_dropped(), 0);
-
-    exec.shutdown();
-}
-
-// ── grow backpressure ────────────────────────────────────────────────
-
-TEST(AnalysisExecutor, GrowBackpressure) {
-    cpu::AnalysisExecutor exec;
-    cpu::Context ctx;
-    cpu::AnalysisExecutor::Config cfg;
-    cfg.n_threads = 1;
-    cfg.ring_size = 3;
-    cfg.policy = ATV::BackpressurePolicy::grow;
-    exec.init(cfg, ctx);
-
+    // Saturate well past K with a slow worker: capacity must NOT grow — the
+    // single drop_oldest policy overwrites in place at constant depth K.
     SlowCapture sub{std::chrono::milliseconds(40)};
-    for (int k = 0; k < 6; ++k) {
+    for (int k = 0; k < 12; ++k) {
         int slot = exec.acquire_slot();
         exec.publish(slot, k);
         exec.submit(&sub, slot);
     }
-
-    EXPECT_EQ(exec.n_dropped(), 0);
-    EXPECT_TRUE(exec.ring_size_grew())
-        << "grow policy did not expand ring capacity under load";
+    EXPECT_EQ(exec.ring_capacity(), 4)
+        << "ring depth K must stay constant; no dynamic growth path";
+    EXPECT_GT(exec.n_dropped(), 0);
 
     exec.shutdown();
 }
@@ -186,7 +154,6 @@ TEST(AnalysisExecutor, ShutdownWithInFlightJobs) {
     cpu::AnalysisExecutor::Config cfg;
     cfg.n_threads = 2;
     cfg.ring_size = 3;
-    cfg.policy = ATV::BackpressurePolicy::block;
     exec.init(cfg, ctx);
 
     SlowCapture sub{std::chrono::milliseconds(30)};

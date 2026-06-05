@@ -128,8 +128,7 @@ void Backend::init() {
         executor_ = std::make_unique<AnalysisExecutor>();
         AnalysisExecutor::Config cfg;
         cfg.n_threads = 1;
-        cfg.ring_size = 3;
-        cfg.policy = BackpressurePolicy::drop_oldest;
+        cfg.ring_size = 3; // global ring depth K
         executor_->init(cfg, context_);
     }
 }
