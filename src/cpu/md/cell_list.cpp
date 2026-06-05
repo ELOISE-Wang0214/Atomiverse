@@ -113,6 +113,19 @@ void CellList::build_stencil() {
 
 void CellList::bin_atoms(const cpu::Frame& frame, int n_active) {
     int n = (n_active < 0) ? frame.atoms.size() : n_active;
+    // Grow the per-atom arrays if the active count (n_local + n_ghost) exceeds
+    // the capacity captured at init. Previously every rank held nlocal ==
+    // global N so the init-time capacity always dominated; with right-sized
+    // per-rank storage the ghost count can push `n` past it (and the frame
+    // capacity can grow on a thin-subdomain halo overflow), so size on demand.
+    if (n > capacity_) {
+        capacity_ = n;
+        atom_cell_ = xt::zeros<int>({capacity_});
+        binned_atoms_ = xt::zeros<int>({capacity_});
+        x_save_ = xt::zeros<double>({capacity_});
+        y_save_ = xt::zeros<double>({capacity_});
+        z_save_ = xt::zeros<double>({capacity_});
+    }
     double lx = frame.box.length(0);
     double ly = frame.box.length(1);
     double lz = frame.box.length(2);

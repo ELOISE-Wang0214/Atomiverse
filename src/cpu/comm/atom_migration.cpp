@@ -309,9 +309,76 @@ void AtomMigration::launch(const cpu::LaunchContext& ctx) {
     last_observed_generation_ = dd->neighbor_generation;
 }
 
+void scatter_atoms_from_root(cpu::Frame& frame) {
+    int inited = 0;
+    MPI_Initialized(&inited);
+    if (!inited)
+        return;
+    int rank = 0, world = 1;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &world);
+    if (world <= 1)
+        return;
+
+    // 1. Broadcast the box (rank 0 read the file; others are empty and need it
+    //    to compute ownership). cpu::Box is trivially copyable.
+    MPI_Bcast(&frame.box, sizeof(cpu::Box), MPI_BYTE, 0, MPI_COMM_WORLD);
+
+    // 2. Topology identical to the DD the backend builds → ownership matches
+    //    partition_atoms' uniform-Cartesian rule (cuts empty here).
+    md::mpi::DomainDecomposition dd;
+    dd.init_topology(MPI_COMM_WORLD);
+    const int world_size = dd.dims[0] * dd.dims[1] * dd.dims[2];
+
+    // 3. Bucket every locally-held atom by owner (rank 0: all; others: none).
+    const int n = frame.atoms.size();
+    std::vector<std::vector<int>> by_dest(static_cast<std::size_t>(world_size));
+    for (int i = 0; i < n; ++i) {
+        const int dest = dest_rank_for(dd, frame.atoms.x[i], frame.atoms.y[i],
+                                       frame.atoms.z[i], frame.box);
+        by_dest[static_cast<std::size_t>(dest)].push_back(i);
+    }
+
+    // 4. Pack per destination (fixed stride) + Alltoallv.
+    std::vector<int> sc(world_size, 0), sd(world_size, 0), rc(world_size, 0),
+        rd(world_size, 0);
+    std::size_t tot_send = 0;
+    for (int r = 0; r < world_size; ++r) {
+        sd[r] = static_cast<int>(tot_send);
+        sc[r] = static_cast<int>(by_dest[r].size() * kAtomPayloadBytes);
+        tot_send += by_dest[r].size() * kAtomPayloadBytes;
+    }
+    std::vector<char> sbuf(tot_send);
+    std::size_t off = 0;
+    for (int r = 0; r < world_size; ++r)
+        for (int idx : by_dest[static_cast<std::size_t>(r)])
+            off = pack_atom(sbuf, off, frame, idx);
+
+    MPI_Alltoall(sc.data(), 1, MPI_INT, rc.data(), 1, MPI_INT, MPI_COMM_WORLD);
+    std::size_t tot_recv = 0;
+    for (int r = 0; r < world_size; ++r) {
+        rd[r] = static_cast<int>(tot_recv);
+        tot_recv += static_cast<std::size_t>(rc[r]);
+    }
+    std::vector<char> rbuf(tot_recv);
+    MPI_Alltoallv(sbuf.data(), sc.data(), sd.data(), MPI_BYTE, rbuf.data(),
+                  rc.data(), rd.data(), MPI_BYTE, MPI_COMM_WORLD);
+
+    // 5. Land received atoms in [0, n_recv); size to owned + ghost headroom.
+    const int n_recv = static_cast<int>(tot_recv / kAtomPayloadBytes);
+    frame.atoms.set_capacity(n_recv + std::max(n_recv, 16384));
+    std::size_t r_off = 0;
+    for (int k = 0; k < n_recv; ++k)
+        r_off = unpack_atom(rbuf, r_off, frame, k);
+    frame.atoms.nlocal = n_recv;
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, n_recv);
+}
+
 #else // !ATV_HAS_MPI
 
 void AtomMigration::launch(const cpu::LaunchContext& /*ctx*/) {}
+void scatter_atoms_from_root(cpu::Frame& /*frame*/) {}
 
 #endif // ATV_HAS_MPI
 

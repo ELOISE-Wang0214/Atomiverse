@@ -23,7 +23,18 @@
 
 namespace ATV {
 namespace cpu {
+
+class Frame;
+
 namespace comm {
+
+/// @brief One-shot initial distribution: a frame whose atoms are all held by
+///        rank 0 (others empty) is scattered so each rank ends up holding only
+///        the atoms in its spatial subdomain. Avoids every rank loading the
+///        full data file (per-rank memory ∝ total system size). Box broadcast
+///        from rank 0 first; ownership matches `partition_atoms`' uniform
+///        Cartesian rule. Non-MPI / single rank: no-op. Uses `MPI_COMM_WORLD`.
+void scatter_atoms_from_root(cpu::Frame& frame);
 
 /// @brief Atom migration across rank boundaries. Registers `pre_force @ -30`.
 class AtomMigration : public cpu::ComponentBase {

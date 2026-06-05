@@ -62,6 +62,16 @@ public:
         auto& fx = fx_[static_cast<std::size_t>(tid)];
         auto& fy = fy_[static_cast<std::size_t>(tid)];
         auto& fz = fz_[static_cast<std::size_t>(tid)];
+        // Grow this thread's buffers if n_force (n_local + n_ghost) outgrew the
+        // build-time size — e.g. when a thin-subdomain halo overflow enlarged
+        // the frame after build(). Each thread owns a distinct buffer, so the
+        // resize is race-free inside the parallel region. (Rare — steady state
+        // never reallocates, matching the no-alloc-in-launch contract.)
+        if (static_cast<int>(fx.size()) < n_force) {
+            fx.resize(static_cast<std::size_t>(n_force), 0.0);
+            fy.resize(static_cast<std::size_t>(n_force), 0.0);
+            fz.resize(static_cast<std::size_t>(n_force), 0.0);
+        }
         std::fill(fx.begin(), fx.begin() + n_force, 0.0);
         std::fill(fy.begin(), fy.begin() + n_force, 0.0);
         std::fill(fz.begin(), fz.begin() + n_force, 0.0);

@@ -60,7 +60,11 @@ void PairLJCut::build(const BuildContext& ctx) {
 #ifdef _OPENMP
     n_threads_ = omp_get_max_threads();
 #endif
-    int n = ctx.frame.atoms.size();
+    // Size to the backing-store capacity, not the owned count: the per-thread
+    // accumulators are indexed up to n_force = n_local + n_ghost, and ghost
+    // rows live in [n_local, nmax). (compute() grows them further if a halo
+    // overflow later enlarges the frame.)
+    int n = ctx.frame.atoms.nmax;
     fx_thr_.resize(n_threads_);
     fy_thr_.resize(n_threads_);
     fz_thr_.resize(n_threads_);
@@ -219,6 +223,20 @@ void PairLJCut::compute(const LaunchContext& ctx) {
     const auto* dd = ctx.runtime.dd;
     if (dd && ctx.runtime.mpi_size > 1) {
         n_force = dd->n_local + dd->n_ghost;
+    }
+    // Ensure the per-thread force accumulators cover [0, n_force). They are
+    // sized at build() from the then-current atom count, but n_force grows with
+    // the ghost count (and the frame capacity can itself grow on a thin-
+    // subdomain halo overflow). Previously every rank kept nlocal == global N,
+    // so the build-time size always dominated; with right-sized per-rank
+    // storage that no longer holds, so grow here on demand (rare — only when
+    // the ghost region expands; matches the neighbor-list growth contract).
+    if (static_cast<int>(fx_thr_.empty() ? 0 : fx_thr_[0].size()) < n_force) {
+        for (int t = 0; t < n_threads_; ++t) {
+            fx_thr_[t].resize(n_force, double(0));
+            fy_thr_[t].resize(n_force, double(0));
+            fz_thr_[t].resize(n_force, double(0));
+        }
     }
     double energy_total = 0;
 

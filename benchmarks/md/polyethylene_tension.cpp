@@ -1338,14 +1338,28 @@ int main(int argc, char** argv) {
     (void)world_size;
 #else
     int my_rank = 0;
+    int world_size = 1;
 #endif
 
     // The cpu::Frame is the carry-over state — it persists across every
     // per-stage driver rebuild, holding positions, velocities and the box.
-    cpu::Frame frame = a.data_path.empty()
-                           ? make_pe_box(a.chains_per_axis, a.n_atoms_per_chain,
-                                         a.box_len, a.margin)
-                           : cpu::load_lammps_data(a.data_path);
+    // Multi-rank: only rank 0 materializes the global frame and
+    // `scatter_atoms_from_root` ships each atom to its owner, so per-rank
+    // memory tracks the subdomain, not the total system. The checkpoint path
+    // reads per-rank, so it opts out.
+    const bool distribute_load =
+        (world_size > 1) && a.ckpt_load_before_stage.empty();
+    cpu::Frame frame(0);
+    if (my_rank == 0 || !distribute_load) {
+        frame = a.data_path.empty()
+                    ? make_pe_box(a.chains_per_axis, a.n_atoms_per_chain,
+                                  a.box_len, a.margin)
+                    : cpu::load_lammps_data(a.data_path);
+    }
+#ifdef ATV_HAS_MPI
+    if (distribute_load)
+        cpu::comm::scatter_atoms_from_root(frame);
+#endif
 
     // Parse checkpoint specs once so we can both gate stages and write
     // at end-of-stage.
