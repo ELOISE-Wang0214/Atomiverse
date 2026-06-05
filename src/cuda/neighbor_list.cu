@@ -466,75 +466,57 @@ void NeighborList::launch(const LaunchContext& ctx) {
                                   s.buf.ref_z.data(), n, stream);
     }
 
-    // ── Mask refresh: replaces the all-ones initial mask above (rebuild
-    // path) OR the previous step's mask (skin-gate-skip path) with the
-    // actual per-atom-pair interaction mask computed from current
-    // cluster positions. Runs every step.
-    //
-    // CRITICAL — without this call:
-    //   * flat_mask stays at the previous values, which may include pairs
-    //     now outside the cutoff (and miss pairs that drifted in).
-    //   * Intra-cluster (ci == cj) emits both (a,b) and (b,a) directions
-    //     PLUS diagonal self-pairs → forces on intra-cluster pairs are
-    //     DOUBLED by the LJ kernel's Newton-3 accumulation; self-pairs at
-    //     r=0 are filtered by the `r >= kMinPairDist` guard but waste
-    //     pair slots.
-    //   * Inter-cluster pairs at r > cutoff but within cutoff+skin AABB
-    //     get exported and only filtered (silently) by the LJ kernel's
-    //     `r < cutoff` test — wasted compute and pair slots.
-    // smart_rolling_prune both filters by interaction cutoff and applies
-    // the half-Newton exclusion for ci == cj (only j_lane > i_lane bits
-    // kept), which gives the correct per-atom-pair entry count downstream.
-    //
-    // Grid is sized by the lagged-readback `last_flat_pair_count` so we
-    // launch ~1× the actual pair count instead of ~3× `pair_capacity`.
-    // The first launch (no lagged value yet) falls back to pair_capacity.
-    int prune_grid_pairs = (s.last_flat_pair_count > 0)
-                               ? s.last_flat_pair_count
-                               : s.pair_capacity;
-    launch_smart_rolling_prune<work_t>(
-        s.buf.cluster_x.data(), s.buf.cluster_y.data(), s.buf.cluster_z.data(),
-        s.buf.flat_ci.data(), s.buf.flat_cj.data(),
-        s.buf.flat_pair_counter.data(), prune_grid_pairs,
-        s.buf.dirty_flags.data(), s.cutoff_sq, ctx.runtime.host_box,
-        s.buf.flat_mask.data(), /*prune_step*/ 0,
-        /*prune_period*/ 1, stream);
-
-    // Export to atom-level PairList. Same lagged sizing rationale.
-    int cap = s.pair_capacity;
-    if (cap <= 0) {
+    // ── Per-step prune + flat-pair export: OPT-IN ───────────────────────
+    // The atom-centric LJ force kernel (PairLJCut) consumes the cluster CSR
+    // (row_ptr/col_idx/original_index) directly and computes distances from
+    // CURRENT positions, so the flat (i,j,dx,dy,dz,r²) PairList is dead work
+    // for force evaluation — skipped by default (this prune + export were
+    // ~60% of the per-step time). Only flat-list consumers (e.g. cuda::RDF)
+    // set ctx.runtime.flat_pairs_requested in build(), re-enabling them.
+    if (!ctx.runtime.flat_pairs_requested) {
         cudaMemsetAsync(pairs_.n_pairs, 0, sizeof(int), stream);
-        return;
+    } else {
+        int prune_grid_pairs = (s.last_flat_pair_count > 0)
+                                   ? s.last_flat_pair_count
+                                   : s.pair_capacity;
+        launch_smart_rolling_prune<work_t>(
+            s.buf.cluster_x.data(), s.buf.cluster_y.data(),
+            s.buf.cluster_z.data(), s.buf.flat_ci.data(), s.buf.flat_cj.data(),
+            s.buf.flat_pair_counter.data(), prune_grid_pairs,
+            s.buf.dirty_flags.data(), s.cutoff_sq, ctx.runtime.host_box,
+            s.buf.flat_mask.data(), /*prune_step*/ 0, /*prune_period*/ 1,
+            stream);
+
+        int cap = s.pair_capacity;
+        if (cap > 0) {
+            cudaMemsetAsync(s.d_pair_count.data(), 0, sizeof(int), stream);
+            int export_grid_pairs = (s.last_flat_pair_count > 0)
+                                        ? s.last_flat_pair_count
+                                        : cap;
+            launch_export_atom_pairs(
+                s.buf.flat_ci.data(), s.buf.flat_cj.data(),
+                s.buf.flat_mask.data(), s.buf.flat_pair_counter.data(),
+                export_grid_pairs, s.buf.original_index.data(), frame.atoms.x,
+                frame.atoms.y, frame.atoms.z, s.periodic, ctx.runtime.host_box,
+                pairs_.i, pairs_.j, pairs_.dx, pairs_.dy, pairs_.dz,
+                pairs_.dist_sq, s.d_pair_count.data(), pairs_.capacity, stream);
+            cudaMemcpyAsync(pairs_.n_pairs, s.d_pair_count.data(), sizeof(int),
+                            cudaMemcpyDeviceToDevice, stream);
+
+            // Lagged flat_pair_counter readback for next step's grid sizing.
+            cudaMemcpyAsync(s.h_flat_pair_count,
+                            s.buf.flat_pair_counter.data(), sizeof(int),
+                            cudaMemcpyDeviceToHost, stream);
+            cudaEventRecord(s.flat_pair_count_event, stream);
+            if (s.flat_pair_count_event_valid) {
+                cudaEventSynchronize(s.flat_pair_count_event);
+                s.last_flat_pair_count = *s.h_flat_pair_count;
+            }
+            s.flat_pair_count_event_valid = true;
+        } else {
+            cudaMemsetAsync(pairs_.n_pairs, 0, sizeof(int), stream);
+        }
     }
-
-    cudaMemsetAsync(s.d_pair_count.data(), 0, sizeof(int), stream);
-    int export_grid_pairs = (s.last_flat_pair_count > 0)
-                                ? s.last_flat_pair_count
-                                : cap;
-    launch_export_atom_pairs(
-        s.buf.flat_ci.data(), s.buf.flat_cj.data(), s.buf.flat_mask.data(),
-        s.buf.flat_pair_counter.data(), export_grid_pairs,
-        s.buf.original_index.data(), frame.atoms.x, frame.atoms.y,
-        frame.atoms.z, s.periodic, ctx.runtime.host_box, pairs_.i, pairs_.j,
-        pairs_.dx, pairs_.dy, pairs_.dz, pairs_.dist_sq, s.d_pair_count.data(),
-        pairs_.capacity, stream);
-
-    cudaMemcpyAsync(pairs_.n_pairs, s.d_pair_count.data(), sizeof(int),
-                    cudaMemcpyDeviceToDevice, stream);
-
-    // Lagged flat_pair_counter readback for the next step's prune/export
-    // grid sizing. Async D2H + event — no host wait this step.
-    cudaMemcpyAsync(s.h_flat_pair_count, s.buf.flat_pair_counter.data(),
-                    sizeof(int), cudaMemcpyDeviceToHost, stream);
-    cudaEventRecord(s.flat_pair_count_event, stream);
-    // Read the previous step's event (no-op on first call) so next step's
-    // `last_flat_pair_count` is already populated. cudaEventSynchronize
-    // doesn't block the GPU stream, only the host.
-    if (s.flat_pair_count_event_valid) {
-        cudaEventSynchronize(s.flat_pair_count_event);
-        s.last_flat_pair_count = *s.h_flat_pair_count;
-    }
-    s.flat_pair_count_event_valid = true;
 
     // ── Compute next step's rebuild flag ────────────────────────────
     // Clear device flag, run per-atom displacement vs ref_x/y/z, issue

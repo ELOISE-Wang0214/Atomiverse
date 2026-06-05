@@ -34,6 +34,16 @@ struct Context {
     /// @see cuda::PairList
     const PairList* pair_list = nullptr;
 
+    /// @brief Opt-in request for the flat (i,j,dx,dy,dz,r²) atom pair list.
+    ///
+    /// The atom-centric LJ force kernel reads the cluster CSR directly and does
+    /// NOT need the flat list, so NeighborList skips the per-step prune+export
+    /// (~60% of step time) by default. Observers that genuinely need the flat
+    /// list (e.g. cuda::RDF, which histograms pair distances) set this true in
+    /// their build(); NeighborList::launch() then emits the flat list every
+    /// step. Set before the first launch (all build()s precede any launch()).
+    bool flat_pairs_requested = false;
+
     /// @brief Outer-driver loop status, owned by the category driver.
     ///
     /// Reset before each outer iteration; written by

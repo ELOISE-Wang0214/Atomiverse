@@ -47,6 +47,12 @@ class RDF : public AsyncBridge {
         n_atoms_ = frame.n_atoms();
         n_samples_ = 0;
 
+        // RDF histograms pair distances from the flat PairList, which the LJ
+        // force path no longer needs — request it so NeighborList re-enables
+        // the per-step export. (All build()s run before any launch(), so this
+        // is visible to NeighborList::launch from the first step.)
+        ctx.runtime.flat_pairs_requested = true;
+
         // D2H box to compute volume (sync OK at build time).
         double box_data[9];
         cudaMemcpyAsync(box_data, frame.box, 9 * sizeof(double),
