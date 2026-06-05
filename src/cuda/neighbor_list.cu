@@ -27,6 +27,8 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <stdexcept>
+#include <string>
 
 #include "atomiverse/cuda/types.cuh"
 #include <cuda_runtime.h>
@@ -127,10 +129,56 @@ void NeighborList::build(const BuildContext& ctx) {
                cudaMemcpyDeviceToHost);
     int ncells = s.dims_x * s.dims_y * s.dims_z;
 
-    // Pair capacity (upper bound)
-    long long pair_cap_ll = static_cast<long long>(nc) * (nc + 1) / 2;
-    s.pair_capacity = static_cast<int>(std::min(
-        pair_cap_ll, static_cast<long long>(std::numeric_limits<int>::max())));
+    // Box volume — read once here, reused for both the cluster-pair capacity
+    // (just below) and the atom-pair capacity further down.
+    double box_vol = 0.0;
+    {
+        prec_t bd[3] = {prec_t(0), prec_t(0), prec_t(0)};
+        cudaMemcpy(&bd[0], &frame.box[0], sizeof(prec_t), cudaMemcpyDeviceToHost);
+        cudaMemcpy(&bd[1], &frame.box[4], sizeof(prec_t), cudaMemcpyDeviceToHost);
+        cudaMemcpy(&bd[2], &frame.box[8], sizeof(prec_t), cudaMemcpyDeviceToHost);
+        box_vol = double(bd[0]) * double(bd[1]) * double(bd[2]);
+    }
+
+    // ── Cluster-pair capacity (density-based, NOT the dense upper bound) ──
+    // The CSR cluster-pair arrays (col_idx / interaction_mask / flat_ci /
+    // flat_cj / flat_mask) are PACKED: they store the actual number of
+    // interacting cluster pairs, indexed sequentially via row_ptr — not a
+    // dense nc*nc triangle. Sizing them to nc*(nc+1)/2 wasted ~21 GB at 312k
+    // atoms (the sole cause of the backend's ~95 GB/million-atom footprint and
+    // its OOM ceiling at ~558k). Size from physical density instead: a cluster
+    // sees ~density*sphere_vol(r_search) atoms => /kClusterSize neighbor
+    // clusters. The 6x factor absorbs the cluster's spatial extent (a cluster's
+    // atoms reach a shell ~one cluster-diameter beyond r_search) plus
+    // inhomogeneity; launch() additionally GUARDS against undershoot (throws
+    // if the counted total exceeds capacity) so this can never silently
+    // corrupt the CSR. Clamped to [min(dense, nc*64), dense upper bound].
+    // NOTE: the all-pairs figure nc*(nc+1)/2 is NOT a valid upper bound and is
+    // deliberately NOT used as a clamp. Under PBC a cluster can interact with
+    // periodic IMAGES of another cluster (and of itself), so for boxes that are
+    // not >> cutoff the true cluster-pair count exceeds nc*(nc+1)/2 (e.g. a
+    // frozen-lattice fixture with nc=8 produces 64 pairs > 36). Capacity is:
+    //   max( nc * 256                                  (floor; cheap + ample for
+    //                                                   small / sparse systems),
+    //        nc * 12 * (density * sphere(r_search)/kClusterSize)  (large melts) )
+    // The 12x absorbs the cubic-cell-stencil over-count vs a sphere plus the
+    // cluster's spatial extent (~7-8x measured; 1.5x margin). launch()'s
+    // overflow guard turns any residual undershoot into a loud throw, never
+    // silent CSR corruption.
+    const double kPi = 3.141592653589793;
+    long long cluster_cap_ll = static_cast<long long>(nc) * 256;
+    if (box_vol > 0.0 && n > 0) {
+        double density = double(n) / box_vol;
+        double rs = double(r_search);
+        double sphere = (4.0 / 3.0) * kPi * rs * rs * rs;
+        double neigh_clusters = density * sphere / double(kClusterSize);
+        double per_cluster = std::max(256.0, 12.0 * neigh_clusters);
+        cluster_cap_ll = std::max(
+            cluster_cap_ll, static_cast<long long>(double(nc) * per_cluster));
+    }
+    cluster_cap_ll = std::min(
+        cluster_cap_ll, static_cast<long long>(std::numeric_limits<int>::max()));
+    s.pair_capacity = static_cast<int>(cluster_cap_ll);
 
     // Allocate ALL internal buffers
     s.buf.resize_atoms(n, nc);
@@ -182,19 +230,8 @@ void NeighborList::build(const BuildContext& ctx) {
     // them at near-zero r → catastrophic E_pot spikes (10¹⁴ eV
     // observed) and irrecoverable energy injection that no Langevin
     // damp could compensate.
-    double box_vol = 0.0;
+    // box_vol was already read above (reused here for the atom-pair capacity).
     double cut_search = static_cast<double>(cutoff_ + skin_);
-    {
-        // Read the orthorhombic box volume from the device-side box[0],4,8.
-        prec_t box_diag[3] = {prec_t(0), prec_t(0), prec_t(0)};
-        cudaMemcpy(&box_diag[0], &ctx.frame.box[0], sizeof(prec_t),
-                   cudaMemcpyDeviceToHost);
-        cudaMemcpy(&box_diag[1], &ctx.frame.box[4], sizeof(prec_t),
-                   cudaMemcpyDeviceToHost);
-        cudaMemcpy(&box_diag[2], &ctx.frame.box[8], sizeof(prec_t),
-                   cudaMemcpyDeviceToHost);
-        box_vol = static_cast<double>(box_diag[0]) * box_diag[1] * box_diag[2];
-    }
     int atom_pair_cap = 0;
     if (box_vol > 0.0 && n > 0) {
         double density = double(n) / box_vol;
@@ -347,6 +384,26 @@ void NeighborList::launch(const LaunchContext& ctx) {
                              stream);
         launch_write_row_ptr_sentinel(s.buf.row_ptr_upper.data(),
                                       s.buf.pair_counts.data(), nc, stream);
+
+        // Overflow guard: row_ptr_upper[nc] now holds the exact total cluster-
+        // pair count. pair_capacity is a density estimate (see build()), so
+        // verify the count fits BEFORE fill_cluster_pairs writes col_idx —
+        // otherwise an undershoot would silently corrupt the CSR. Cheap: one
+        // 4-byte blocking D2H per rebuild (rebuilds are skin-gated, not every
+        // step). Fail loud rather than corrupt.
+        {
+            int total_cluster_pairs = 0;
+            cudaMemcpy(&total_cluster_pairs, s.buf.row_ptr_upper.data() + nc,
+                       sizeof(int), cudaMemcpyDeviceToHost);
+            if (total_cluster_pairs > s.pair_capacity) {
+                throw std::runtime_error(
+                    "cuda::NeighborList: cluster-pair count " +
+                    std::to_string(total_cluster_pairs) +
+                    " exceeds capacity " + std::to_string(s.pair_capacity) +
+                    " (density estimate too low — raise the safety factor in "
+                    "NeighborList::build()).");
+            }
+        }
 
         launch_fill_cluster_pairs<work_t>(
             s.buf.cell_start.data(), s.buf.cell_clusters.data(),

@@ -254,9 +254,14 @@ void launch_smart_rolling_prune(
     if (pair_capacity == 0)
         return;
 
-    int threads_needed = pair_capacity * kClusterSize;
+    // 64-bit: at multi-million atoms the launch count (pair_capacity here
+    // receives the actual flat-pair count or the capacity) times kClusterSize
+    // exceeds INT_MAX (e.g. 425M pairs * 8 = 3.4e9), which wrapped negative and
+    // produced a bogus ~4.29e9 grid dimension. The grid itself stays small.
+    long long threads_needed =
+        static_cast<long long>(pair_capacity) * kClusterSize;
     int block = ATV::cuda::kDefaultBlock;
-    int grid = (threads_needed + block - 1) / block;
+    int grid = static_cast<int>((threads_needed + block - 1) / block);
 
     // Dispatch the kernel templated on `box.ortho` so the dead branch
     // is compile-time eliminated.
