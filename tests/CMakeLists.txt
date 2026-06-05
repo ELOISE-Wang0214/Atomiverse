@@ -298,6 +298,7 @@ endif()
 
 if(ATV_BUILD_CUDA)
     atv_add_test(test_cuda_device_manager cuda/test_device_manager.cu)
+    atv_add_test(test_cuda_domain_decomposition cuda/test_domain_decomposition.cu)
     atv_add_test(test_cuda_frame      cuda/test_frame.cu)
     atv_add_test(test_cuda_materialize cuda/test_materialize.cu)
     atv_add_test(test_cuda_backend    cuda/test_backend.cu)
