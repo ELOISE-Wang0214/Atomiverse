@@ -33,6 +33,7 @@ MultiGpu::MultiGpu(int n_gpus) : dm_(n_gpus) {}
 MultiGpu::~MultiGpu() { destroy_frames(); }
 
 void MultiGpu::destroy_frames() {
+    destroy_halo_plan();
     for (int s = 0; s < static_cast<int>(frames_.size()); ++s) {
         dm_.set_device(s);
         cuda::destroy(frames_[s]);
@@ -46,8 +47,10 @@ int MultiGpu::n_ghost(int slot) const { return frames_[slot].n_ghost_; }
 
 namespace {
 // Select owned atoms within `cutoff` of a face plane and compact their
-// x/y/z/tag/type into the send buffers (atomic compaction). `dir > 0`: atoms
-// near the high (subhi) boundary; `dir < 0`: near the low (sublo) boundary.
+// x/y/z/tag/type into the send buffers (atomic compaction). Also records each
+// selected atom's OWNED INDEX in `oidx` so a later forward_comm can re-gather
+// its position. `dir > 0`: atoms near the high (subhi) boundary; `dir < 0`:
+// near the low (sublo) boundary.
 __global__ void pack_face(const real_t* __restrict__ x,
                           const real_t* __restrict__ y,
                           const real_t* __restrict__ z,
@@ -57,8 +60,8 @@ __global__ void pack_face(const real_t* __restrict__ x,
                           real_t* __restrict__ ox, real_t* __restrict__ oy,
                           real_t* __restrict__ oz,
                           std::int64_t* __restrict__ otag,
-                          int* __restrict__ otype, int* __restrict__ counter,
-                          int cap) {
+                          int* __restrict__ otype, int* __restrict__ oidx,
+                          int* __restrict__ counter, int cap) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n_local)
         return;
@@ -73,12 +76,43 @@ __global__ void pack_face(const real_t* __restrict__ x,
         oz[s] = z[i];
         otag[s] = tag[i];
         otype[s] = type[i];
+        oidx[s] = i;
     }
+}
+
+// Gather current positions of `cnt` owned atoms named by `idx` into the
+// contiguous send buffers (forward_comm position refresh).
+__global__ void gather_positions(const real_t* __restrict__ x,
+                                 const real_t* __restrict__ y,
+                                 const real_t* __restrict__ z,
+                                 const int* __restrict__ idx, int cnt,
+                                 real_t* __restrict__ ox,
+                                 real_t* __restrict__ oy,
+                                 real_t* __restrict__ oz) {
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= cnt)
+        return;
+    int i = idx[k];
+    ox[k] = x[i];
+    oy[k] = y[i];
+    oz[k] = z[i];
 }
 } // namespace
 
-void MultiGpu::exchange_halo(double cutoff) {
+void MultiGpu::destroy_halo_plan() {
+    for (auto& p : halo_plan_) {
+        dm_.set_device(p.src);
+        cudaFree(p.d_src_idx);
+        cudaFree(p.d_sx);
+        cudaFree(p.d_sy);
+        cudaFree(p.d_sz);
+    }
+    halo_plan_.clear();
+}
+
+void MultiGpu::build_halo(double cutoff) {
     const int N = count();
+    destroy_halo_plan(); // free any prior reneighbor-interval plan
     // Reset ghost state.
     std::vector<int> goff(N, 0);
     for (int s = 0; s < N; ++s) {
@@ -91,15 +125,17 @@ void MultiGpu::exchange_halo(double cutoff) {
         if (nl == 0)
             continue;
         dm_.set_device(src);
-        // Per-source send buffers (worst case = all owned atoms).
+        // Per-source scratch (worst case = all owned atoms). Positions captured
+        // here are also persisted per-plan so forward_comm can refresh them.
         real_t *sx, *sy, *sz;
         std::int64_t* stag;
-        int *stype, *scnt;
+        int *stype, *sidx, *scnt;
         cudaMalloc(&sx, nl * sizeof(real_t));
         cudaMalloc(&sy, nl * sizeof(real_t));
         cudaMalloc(&sz, nl * sizeof(real_t));
         cudaMalloc(&stag, nl * sizeof(std::int64_t));
         cudaMalloc(&stype, nl * sizeof(int));
+        cudaMalloc(&sidx, nl * sizeof(int));
         cudaMalloc(&scnt, sizeof(int));
         auto& a = frames_[src].atoms;
         const auto lo = dd_->sublo(src);
@@ -117,7 +153,7 @@ void MultiGpu::exchange_halo(double cutoff) {
             int block = 256, grid = (nl + block - 1) / block;
             pack_face<<<grid, block>>>(a.x, a.y, a.z, a.tag, a.type, nl, axis,
                                        dir, plane, cutoff, sx, sy, sz, stag,
-                                       stype, scnt, nl);
+                                       stype, sidx, scnt, nl);
             CKM(cudaGetLastError());
             int cnt = 0; // D2H of the counter also syncs the pack kernel
             CKM(cudaMemcpy(&cnt, scnt, sizeof(int), cudaMemcpyDeviceToHost));
@@ -129,7 +165,7 @@ void MultiGpu::exchange_halo(double cutoff) {
             const int base = frames_[dst].n_local_ + goff[dst];
             if (base + cnt > frames_[dst].capacity_)
                 throw std::runtime_error(
-                    "MultiGpu::exchange_halo: ghost capacity exceeded on slot "
+                    "MultiGpu::build_halo: ghost capacity exceeded on slot "
                     + std::to_string(dst) + " (raise ghost_headroom)");
             const int sd = dm_.device_id(src), dd_id = dm_.device_id(dst);
             CKM(cudaMemcpyPeer(da.x + base, dd_id, sx, sd, cnt * sizeof(real_t)));
@@ -139,6 +175,28 @@ void MultiGpu::exchange_halo(double cutoff) {
                                cnt * sizeof(std::int64_t)));
             CKM(cudaMemcpyPeer(da.type + base, dd_id, stype, sd,
                                cnt * sizeof(int)));
+
+            // Persist this transfer (src device): the selected owned indices and
+            // a contiguous position send buffer, for forward_comm replay.
+            HaloPlan p;
+            p.src = src;
+            p.dst = dst;
+            p.cnt = cnt;
+            p.base = base;
+            cudaMalloc(&p.d_src_idx, cnt * sizeof(int));
+            cudaMalloc(&p.d_sx, cnt * sizeof(real_t));
+            cudaMalloc(&p.d_sy, cnt * sizeof(real_t));
+            cudaMalloc(&p.d_sz, cnt * sizeof(real_t));
+            CKM(cudaMemcpy(p.d_src_idx, sidx, cnt * sizeof(int),
+                           cudaMemcpyDeviceToDevice));
+            CKM(cudaMemcpy(p.d_sx, sx, cnt * sizeof(real_t),
+                           cudaMemcpyDeviceToDevice));
+            CKM(cudaMemcpy(p.d_sy, sy, cnt * sizeof(real_t),
+                           cudaMemcpyDeviceToDevice));
+            CKM(cudaMemcpy(p.d_sz, sz, cnt * sizeof(real_t),
+                           cudaMemcpyDeviceToDevice));
+            halo_plan_.push_back(p);
+
             goff[dst] += cnt;
             frames_[dst].n_ghost_ = goff[dst];
         }
@@ -148,10 +206,36 @@ void MultiGpu::exchange_halo(double cutoff) {
         cudaFree(sz);
         cudaFree(stag);
         cudaFree(stype);
+        cudaFree(sidx);
         cudaFree(scnt);
     }
     // Ensure all peer copies completed before callers read ghosts.
     for (int s = 0; s < N; ++s) {
+        dm_.set_device(s);
+        cudaDeviceSynchronize();
+    }
+}
+
+void MultiGpu::forward_comm() {
+    for (auto& p : halo_plan_) {
+        if (p.cnt <= 0)
+            continue;
+        dm_.set_device(p.src);
+        auto& a = frames_[p.src].atoms;
+        int block = 256, grid = (p.cnt + block - 1) / block;
+        gather_positions<<<grid, block>>>(a.x, a.y, a.z, p.d_src_idx, p.cnt,
+                                          p.d_sx, p.d_sy, p.d_sz);
+        CKM(cudaGetLastError());
+        auto& da = frames_[p.dst].atoms;
+        const int sd = dm_.device_id(p.src), dd_id = dm_.device_id(p.dst);
+        CKM(cudaMemcpyPeer(da.x + p.base, dd_id, p.d_sx, sd,
+                           p.cnt * sizeof(real_t)));
+        CKM(cudaMemcpyPeer(da.y + p.base, dd_id, p.d_sy, sd,
+                           p.cnt * sizeof(real_t)));
+        CKM(cudaMemcpyPeer(da.z + p.base, dd_id, p.d_sz, sd,
+                           p.cnt * sizeof(real_t)));
+    }
+    for (int s = 0; s < count(); ++s) {
         dm_.set_device(s);
         cudaDeviceSynchronize();
     }

@@ -100,6 +100,70 @@ TEST(MultiGpu, HaloExchangeXSplit) {
     }
 }
 
+namespace {
+// Shift the x-coordinate of every owned atom by `delta` (test helper for
+// forward_comm: emulates one integration step moving the owners).
+__global__ void shift_owned_x(float* x, int n_local, float delta) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n_local)
+        x[i] += delta;
+}
+} // namespace
+
+TEST(MultiGpu, ForwardCommRefreshesGhostPositions) {
+    // build_halo establishes the ghost SET + a gather plan; forward_comm then
+    // refreshes only ghost POSITIONS from the current owners. Moving every
+    // owned atom by a fixed delta in x must move every ghost by the same delta
+    // (a ghost is a copy of some owner), with y/z and the ghost count unchanged.
+    cuda::md::MultiGpu mg(2);
+    if (mg.count() < 2)
+        GTEST_SKIP() << "needs >= 2 GPUs";
+    auto g = make_grid(12.0);
+    mg.partition(g);
+    mg.build_halo(3.0);
+
+    auto read_ghosts = [&](int slot, std::vector<float>& gx,
+                           std::vector<float>& gy, std::vector<float>& gz) {
+        int ng = mg.n_ghost(slot);
+        gx.resize(ng);
+        gy.resize(ng);
+        gz.resize(ng);
+        const auto& f = mg.frame(slot);
+        int off = mg.n_local(slot);
+        cudaSetDevice(mg.devices().device_id(slot));
+        cudaMemcpy(gx.data(), f.atoms.x + off, ng * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+        cudaMemcpy(gy.data(), f.atoms.y + off, ng * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+        cudaMemcpy(gz.data(), f.atoms.z + off, ng * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+    };
+
+    std::vector<std::vector<float>> bx(2), by(2), bz(2);
+    for (int s = 0; s < 2; ++s)
+        read_ghosts(s, bx[s], by[s], bz[s]);
+
+    const float delta = 0.123f;
+    for (int s = 0; s < 2; ++s) {
+        int nl = mg.n_local(s);
+        cudaSetDevice(mg.devices().device_id(s));
+        int block = 128, grid = (nl + block - 1) / block;
+        shift_owned_x<<<grid, block>>>(mg.frame(s).atoms.x, nl, delta);
+    }
+    mg.forward_comm();
+
+    for (int s = 0; s < 2; ++s) {
+        std::vector<float> ax, ay, az;
+        read_ghosts(s, ax, ay, az);
+        ASSERT_EQ(ax.size(), bx[s].size()) << "ghost count changed on slot " << s;
+        for (size_t k = 0; k < ax.size(); ++k) {
+            EXPECT_NEAR(ax[k], bx[s][k] + delta, 1e-5) << "slot " << s << " k " << k;
+            EXPECT_NEAR(ay[k], by[s][k], 1e-5);
+            EXPECT_NEAR(az[k], bz[s][k], 1e-5);
+        }
+    }
+}
+
 TEST(MultiGpu, LjForceParityVsSingleGpu) {
     // The crux of multi-GPU correctness: an owned atom must feel the SAME LJ
     // force whether the system runs on one GPU or is split across GPUs with a
