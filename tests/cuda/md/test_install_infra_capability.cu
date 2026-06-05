@@ -6,7 +6,7 @@
 ///   / `capabilities()` instead of `name() == "..."` string proxies and
 ///   `dynamic_cast<const cuda::Pair*>`.
 /// - A pending component carrying `(reads() & Capability::Stress) != None`
-///   auto-injects `cuda::VirialStress`. This is the key behavior change
+///   auto-injects `cuda::Virial`. This is the key behavior change
 ///   vs the old `role() == Barostat` proxy: `cuda::md::NoseHooverNPT`
 ///   reports `role() == Integrator` but consumes Stress, so the new
 ///   typed check picks it up where the old string/role proxy could not.
@@ -16,7 +16,7 @@
 /// These tests *cannot* introspect `pending_` directly (it's private to
 /// the Backend). Instead they observe injection through externally
 /// visible effects: a successful `build()` + `run()` for the NPT path
-/// (would-throw if VirialStress wasn't auto-injected because NPT's
+/// (would-throw if Virial wasn't auto-injected because NPT's
 /// Stress-reading branch would fault) and a `runtime_error` for the
 /// missing-NeighborList path.
 
@@ -114,27 +114,27 @@ TEST(InstallInfraCapability, NPTDeclaresReadsStress) {
     // cuda::md::NoseHooverNPT is the canonical Integrator that *also*
     // acts as a barostat — it consumes Stress to drive ε̇ updates. With
     // the old install_infra_ proxy (role==Barostat) this was invisible
-    // and required users to add cuda::VirialStress by hand. The new
+    // and required users to add cuda::Virial by hand. The new
     // reads() virtual exposes the dependency directly.
     cuda::md::NoseHooverNPT npt{default_npt_cfg()};
     EXPECT_EQ(npt.role(), ComponentRole::Integrator);
     EXPECT_NE((npt.reads() & Capability::Stress), Capability::None);
 }
 
-TEST(InstallInfraCapability, VirialStressDeclaresStressCapability) {
-    cuda::VirialStress vs;
+TEST(InstallInfraCapability, VirialDeclaresStressCapability) {
+    cuda::Virial vs;
     EXPECT_EQ(vs.role(), ComponentRole::Observer);
     EXPECT_NE((vs.capabilities() & Capability::Stress), Capability::None);
 }
 
 // ── ac-008: end-to-end auto-injection for the NPT/Stress path ───────
 
-TEST(InstallInfraCapability, NPTAutoInjectsVirialStress) {
+TEST(InstallInfraCapability, NPTAutoInjectsVirial) {
     // Before the rewrite, `cuda::md::NoseHooverNPT` had role==Integrator
     // and install_infra_ checked role==Barostat — so this configuration
-    // would NOT auto-inject VirialStress and the NPT stress-feedback
+    // would NOT auto-inject Virial and the NPT stress-feedback
     // branch would fault. After the rewrite, install_infra_ checks
-    // `reads() & Stress != None`, so NPT pulls in VirialStress
+    // `reads() & Stress != None`, so NPT pulls in Virial
     // automatically.
     auto frame = make_lj_system(4, 0.8);
     const double cutoff = 3.0;

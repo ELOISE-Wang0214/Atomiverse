@@ -18,6 +18,21 @@
 /// - ZeroKinetic at end_of_step (order -1000) -- zeros kinetic energy.
 /// - KineticEnergy at end_of_step (order -100) -- accumulates KE.
 ///
+/// ## Execution model (shared with the CPU backend)
+///
+/// `MD` walks the same LAMMPS-granular `md::Phase` skeleton documented in
+/// `docs/developer/md-execution-model.md` — every phase is always walked,
+/// even when empty. This single-GPU driver binds work to `neighbor`
+/// (NeighborList), `pre_force` (Zero*), `force` (pair/bonded),
+/// `post_force` (Virial), `initial_integrate`/`final_integrate`
+/// (integrator), and `end_of_step` (KE, thermo, observers). The
+/// communication phases `pre_exchange` (atom migration) and
+/// `pre_neighbor` (ghost-atom halo send), plus `post_integrate`, carry
+/// no component on a single GPU — multi-GPU halo/migration is out of
+/// scope per `msu-pe-validation.md` decision #1 — but the phases still
+/// exist as documented "nothing happens here" slots, ready for a
+/// future multi-GPU arm without a phase-skeleton change.
+///
 /// ## LAMMPS-shaped categorical setter API
 ///
 /// `MD` exposes the same 11-method categorical surface as
@@ -156,12 +171,14 @@ class MD : public cuda::DynamicsDriver {
     }
 
     /// @brief Configure the neighbor list (LAMMPS `neighbor`).
-    ///        Bound at `md::Phase::force @ -10`, before pair/bonded
-    ///        force evaluators.
+    ///        Bound at the dedicated `md::Phase::neighbor @ -10`, which
+    ///        runs just before `pre_force` (force/energy zeroing) and the
+    ///        `force` phase — mirroring the CPU `cpu::md::MD` neighbor
+    ///        placement (`CategoryTraits<md::Phase>::neighbor_phase`).
     template <typename N>
     MD& set_neighbor(N&& n_comp) {
         set_singular_at_(std::forward<N>(n_comp), neighbor_set_, "set_neighbor",
-                         ATV::md::Phase::force, -10);
+                         ATV::md::Phase::neighbor, -10);
         return *this;
     }
 

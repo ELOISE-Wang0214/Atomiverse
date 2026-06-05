@@ -1,5 +1,5 @@
 /// @file test_thermostat.cu
-/// @brief Tests for NoseHoover thermostat, Deform, cuda::VirialStress, Barostat.
+/// @brief Tests for NoseHoover thermostat, Deform, cuda::Virial, Barostat.
 
 #include <cmath>
 #include <gtest/gtest.h>
@@ -77,7 +77,7 @@ TEST(Deform, BoxGrows) {
     EXPECT_NEAR(frame.box(1, 1), L0, 1e-6);
 }
 
-TEST(VirialStress, FiniteStress) {
+TEST(Virial, FiniteStress) {
     auto frame = make_cubic(2, 5.0);
 
     cuda::md::MD sim;
@@ -86,7 +86,7 @@ TEST(VirialStress, FiniteStress) {
     sim.on(md::Phase::force)
         .add(cuda::NeighborList{8.0}, -10)
         .add(cuda::LJ{0.01, 3.4, 8.0});
-    sim.on(md::Phase::post_force).add(cuda::VirialStress{});
+    sim.on(md::Phase::post_force).add(cuda::Virial{});
     sim.build();
     sim.run(frame, 10);
 
@@ -109,7 +109,7 @@ TEST(Barostat, FiniteResults) {
     sim.on(md::Phase::force)
         .add(cuda::NeighborList{8.0}, -10)
         .add(cuda::LJ{0.01, 3.4, 8.0});
-    sim.on(md::Phase::post_force).add(cuda::VirialStress{});
+    sim.on(md::Phase::post_force).add(cuda::Virial{});
     sim.build();
     sim.run(frame, 50);
 

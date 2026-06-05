@@ -4,8 +4,8 @@
 /// Covers `msu-pe-cuda-components-02-cuda-categorical-api`:
 /// - ac-002: singular setters reject mismatched re-call, accept same-name
 /// - ac-003: plural setters append in insertion order
-/// - ac-004: VirialStress auto-injection on barostat presence (build
-///           does not throw; explicit VirialStress is deduped)
+/// - ac-004: Virial auto-injection on barostat presence (build
+///           does not throw; explicit Virial is deduped)
 /// - ac-005: missing NeighborList with a pair evaluator throws at build()
 /// - ac-006: categorical-API smoke MD run completes without NaN
 
@@ -126,11 +126,11 @@ TEST(CudaMdCategoricalApi, PluralAppendsBuildSucceeds) {
     EXPECT_NO_THROW(sim.run(frame, 1));
 }
 
-// ── ac-004: VirialStress auto-injection on barostat presence ────────
+// ── ac-004: Virial auto-injection on barostat presence ────────
 
-TEST(CudaMdCategoricalApi, VirialStressAutoInjectedOnBarostat) {
+TEST(CudaMdCategoricalApi, VirialAutoInjectedOnBarostat) {
     // Build with a Barostat-role component (cuda::md::Barostat) but
-    // no explicit VirialStress. install_infra_() must auto-inject one
+    // no explicit Virial. install_infra_() must auto-inject one
     // so build() does not throw and the Stress accumulator is fed.
     auto frame = make_lj_system(4, 0.8);
     const double cutoff = 3.0;
@@ -143,8 +143,8 @@ TEST(CudaMdCategoricalApi, VirialStressAutoInjectedOnBarostat) {
     EXPECT_NO_THROW(sim.run(frame, 1));
 }
 
-TEST(CudaMdCategoricalApi, VirialStressDedupedWhenExplicit) {
-    // Pre-add VirialStress, then add a Barostat. install_infra_()
+TEST(CudaMdCategoricalApi, VirialDedupedWhenExplicit) {
+    // Pre-add Virial, then add a Barostat. install_infra_()
     // must detect the existing "virial_stress" by name and not add
     // a second one. Externally observable: build() succeeds; if a
     // duplicate were added, the second one would still be valid (no
@@ -156,9 +156,9 @@ TEST(CudaMdCategoricalApi, VirialStressDedupedWhenExplicit) {
     sim.set_neighbor(cuda::NeighborList{cutoff});
     sim.set_pair(cuda::LJ{1.0, 1.0, cutoff});
     sim.set_integrator(cuda::md::VelocityVerlet{0.001});
-    // cuda::VirialStress has no default_bindings(), so explicit binding
+    // cuda::Virial has no default_bindings(), so explicit binding
     // is required (same slot install_infra_() would auto-inject into).
-    sim.on(ATV::md::Phase::post_force).add(cuda::VirialStress{}, -50);
+    sim.on(ATV::md::Phase::post_force).add(cuda::Virial{}, -50);
     sim.set_barostat(cuda::md::Barostat{0.0, 100.0, 0.001});
     EXPECT_NO_THROW(sim.build());
     EXPECT_NO_THROW(sim.run(frame, 1));
@@ -166,7 +166,7 @@ TEST(CudaMdCategoricalApi, VirialStressDedupedWhenExplicit) {
 
 TEST(CudaMdCategoricalApi, NoAutoInjectWithoutBarostat) {
     // Without a Barostat-role component, install_infra_() leaves
-    // VirialStress out. Externally observable: build() succeeds with
+    // Virial out. Externally observable: build() succeeds with
     // a plain integrator + pair-only force pipeline.
     auto frame = make_lj_system(4, 0.8);
     const double cutoff = 3.0;

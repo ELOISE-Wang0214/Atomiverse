@@ -15,6 +15,13 @@ state), `Component` (one unit of work), `Driver` (the loop) — and the
 [CPU Backend Internals](cpu-internals.md) chapter (why there are three driver
 categories). Here we zoom into *one step of the MD driver*.
 
+The phase enum (`ATV::md::Phase`) is backend-agnostic, so this skeleton is
+shared: the CUDA single-GPU MD driver (`cuda::md::MD`) walks the same phases
+with the same `(phase, order)` placements. It binds the same `neighbor →
+pre_force → force → post_force → integrate → end_of_step` work and simply
+leaves the multi-rank communication phases (`pre_exchange`, `pre_neighbor`)
+empty — a concrete instance of the empty-phase principle below.
+
 ## The three-stage driver lifetime
 
 Every driver runs the same shape, inherited from `CPUDriver`:
