@@ -134,6 +134,27 @@ struct Frame {
     int n_bonds_ = 0;     ///< Host-cached bond count.
     int n_angles_ = 0;    ///< Host-cached angle count.
     int n_dihedrals_ = 0; ///< Host-cached dihedral count.
+
+    // -- Domain-decomposition counts (single-process multi-GPU) --
+    // Owned atoms occupy [0, n_local); halo ghosts received from peer GPUs
+    // occupy [n_local, n_local + n_ghost); the per-atom arrays are allocated to
+    // `capacity` (>= n_local + n_ghost) so ghosts can be appended each step
+    // without reallocation. SINGLE-GPU invariant: n_local == n_atoms,
+    // n_ghost == 0, capacity == n_atoms (set at materialize) — so existing
+    // kernels that read n_atoms() are unchanged.
+
+    /// Owned atoms this subdomain integrates (force kernels write [0,n_local)).
+    int n_local() const { return n_local_; }
+    /// Ghost atoms received from peer GPUs (read-only halo copies).
+    int n_ghost() const { return n_ghost_; }
+    /// Owned + ghost — the range force kernels must READ positions over.
+    int n_all() const { return n_local_ + n_ghost_; }
+    /// Allocated per-atom array length (headroom for ghosts).
+    int capacity() const { return capacity_; }
+
+    int n_local_ = 0;
+    int n_ghost_ = 0;
+    int capacity_ = 0;
 };
 
 } // namespace cuda

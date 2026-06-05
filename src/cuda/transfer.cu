@@ -104,8 +104,14 @@ cuda::Frame to_cuda(const Frame& frame) {
         }
     }
 
-    // Host-cached metadata
+    // Host-cached metadata. Single-GPU defaults for the domain-decomposition
+    // counts: all atoms owned, no ghosts, capacity == atom count. A multi-GPU
+    // driver overrides n_local_/n_ghost_/capacity_ when it materializes a
+    // subdomain frame with halo headroom.
     d.n_atoms_ = n;
+    d.n_local_ = n;
+    d.n_ghost_ = 0;
+    d.capacity_ = n;
     d.n_bonds_ = static_cast<int>(flat_bond_i.size());
     d.n_angles_ = static_cast<int>(flat_ang_i.size());
     d.n_dihedrals_ = static_cast<int>(flat_dih_i.size());

@@ -175,3 +175,20 @@ TEST(Frame, ZeroForces) {
 
     backend.shutdown();
 }
+
+TEST(Frame, DomainDecompositionDefaults) {
+    // Single-GPU invariant: every materialized frame is all-owned, no ghosts,
+    // capacity == atom count — so existing kernels reading n_atoms() are
+    // unaffected by the new multi-GPU ghost fields.
+    cpu::Frame frame(4);
+    frame.atoms.x = xt::xtensor<double, 1>({1.0, 2.0, 3.0, 4.0});
+    frame.atoms.mass = xt::xtensor<double, 1>({1.0, 1.0, 1.0, 1.0});
+    frame.box = Mat3::cubic(10.0);
+    auto d_frame = cpu::to_cuda(frame);
+    EXPECT_EQ(d_frame.n_atoms(), 4);
+    EXPECT_EQ(d_frame.n_local(), 4);
+    EXPECT_EQ(d_frame.n_ghost(), 0);
+    EXPECT_EQ(d_frame.n_all(), 4);
+    EXPECT_EQ(d_frame.capacity(), 4);
+    cuda::destroy(d_frame);
+}
