@@ -262,8 +262,14 @@ void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
     if (nd == 0)
         return;
 
-    int block = kDefaultBlock;
-    int grid = grid_size(static_cast<int>(nd));
+    // multi_harmonic_dihedral_k is __launch_bounds__(128, 4) (capped at 128
+    // threads/block for the 255-register limit). Launching kDefaultBlock (256)
+    // exceeds that cap -> cuLaunchKernel returns CUDA_ERROR_INVALID_VALUE, the
+    // kernel never runs, and the sticky error later surfaces at an unrelated
+    // CUDA check (e.g. the neighbor prune). Launch at 128 to match the bound;
+    // grid and the per-warp reduction scratch must use the same block size.
+    constexpr int block = 128;
+    int grid = grid_size(static_cast<int>(nd), block);
     int shmem = warps_per_block(block) * sizeof(work_t);
     multi_harmonic_dihedral_k<<<grid, block, shmem, stream>>>(
         f.atoms.x, f.atoms.y, f.atoms.z, f.atoms.fx, f.atoms.fy, f.atoms.fz,

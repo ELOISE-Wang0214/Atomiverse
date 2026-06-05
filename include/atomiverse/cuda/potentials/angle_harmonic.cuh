@@ -14,7 +14,10 @@ namespace cuda {
 class AngleHarmonic : public Angle {
   public:
     /// @param K      Spring constants per angle type [eV/rad²].
-    /// @param theta0 Equilibrium angles per type [degrees] (converted to radians internally).
+    /// @param theta0 Equilibrium angles per type [RADIANS]. Used directly in
+    ///        `theta - theta0_[type]` (matches the CPU sibling + the PE
+    ///        benchmark, which pass `109.5 * pi/180`); NOT converted from
+    ///        degrees — see angle_harmonic.cu's note on the removed kDegToRad.
     AngleHarmonic(std::vector<double> K, std::vector<double> theta0);
     ~AngleHarmonic() override;
     AngleHarmonic(AngleHarmonic&&) noexcept;

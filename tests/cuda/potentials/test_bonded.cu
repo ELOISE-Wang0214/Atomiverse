@@ -112,23 +112,25 @@ TEST(HarmonicAngle, AtEquilibrium) {
 
 // ── cuda::MultiHarmonicDihedral ──────────────────────────────────────────
 
-TEST(MultiHarmonicDihedral, TransConformation) {
-    // 4-atom chain in trans (φ=180°) → known V
+TEST(MultiHarmonicDihedral, PerpendicularProducesForce) {
+    // φ = 90° dihedral — chosen deliberately to be OFF the V(φ) extrema so
+    // BOTH the energy and the torsional force are decisively nonzero. (The
+    // earlier "trans" geometry sat at φ=180°, an extremum where dV/dφ=0 and
+    // V≈0.006; a force of ~0 is correct there, so an isfinite-only check could
+    // not tell "kernel ran" from "kernel never launched" — which is exactly
+    // how the __launch_bounds__(128)-vs-256 launch bug hid.)
+    //   atom0=(0,1,0) atom1=(0,0,0) atom2=(1.5,0,0) atom3=(1.5,0,1)
+    // Planes (0,1,2) and (1,2,3) have normals along -z and -y → φ=90°.
     cpu::Frame frame(4);
-    frame.atoms.x = xt::xtensor<double, 1>({0.0, 1.0, 2.0, 3.0});
-    frame.atoms.y = xt::xtensor<double, 1>({0.0, 0.0, 0.0, 0.0});
-    frame.atoms.z = xt::xtensor<double, 1>({0.0, 0.0, 0.0, 0.0});
+    frame.atoms.x = xt::xtensor<double, 1>({0.0, 0.0, 1.5, 1.5});
+    frame.atoms.y = xt::xtensor<double, 1>({1.0, 0.0, 0.0, 0.0});
+    frame.atoms.z = xt::xtensor<double, 1>({0.0, 0.0, 0.0, 1.0});
     frame.atoms.mass = xt::xtensor<double, 1>({14.0, 14.0, 14.0, 14.0});
     frame.box = Mat3::cubic(20.0);
 
     frame.atoms.map_clear();
     frame.atoms.map_set(0, frame.atoms.nlocal);
     frame.atoms.add_dihedral(0, 1, 2, 3, 0);
-
-    // For a collinear chain, b1×b2 = 0, so the dihedral is undefined.
-    // Move atom 0 and 3 off-axis to create a well-defined trans dihedral.
-    frame.atoms.y[0] = 0.5;  // atom 0 above the axis
-    frame.atoms.y[3] = -0.5; // atom 3 below = trans
 
     std::array<double, 5> C = {1.73, -4.49, 0.776, 6.99, 0.0};
 
@@ -137,13 +139,28 @@ TEST(MultiHarmonicDihedral, TransConformation) {
     sim.build();
     sim.run(frame);
 
-    // Energy should be finite
+    // At φ=90°, cos φ=0 ⇒ V = C0 = 1.73 eV, and dV/dφ = -C1 = 4.49 ≠ 0 ⇒ a
+    // real torsional force. Both being nonzero proves the kernel executed.
     EXPECT_TRUE(std::isfinite(frame.scalars.energy));
-    // Forces should be finite
+    EXPECT_NEAR(frame.scalars.energy, 1.73, 0.05)
+        << "dihedral energy not ~C0 -> kernel likely never launched";
+    double fsum_x = 0.0, fsum_y = 0.0, fsum_z = 0.0, fmax = 0.0;
     for (int i = 0; i < 4; ++i) {
         EXPECT_TRUE(std::isfinite(frame.atoms.fx[i]));
         EXPECT_TRUE(std::isfinite(frame.atoms.fy[i]));
+        EXPECT_TRUE(std::isfinite(frame.atoms.fz[i]));
+        fsum_x += frame.atoms.fx[i];
+        fsum_y += frame.atoms.fy[i];
+        fsum_z += frame.atoms.fz[i];
+        fmax = std::max({fmax, std::abs(frame.atoms.fx[i]),
+                         std::abs(frame.atoms.fy[i]),
+                         std::abs(frame.atoms.fz[i])});
     }
+    // A torsional force exists (not all zero) and obeys Newton's 3rd law.
+    EXPECT_GT(fmax, 1e-2) << "all dihedral forces ~0 -> kernel likely never launched";
+    EXPECT_NEAR(fsum_x, 0.0, 1e-3);
+    EXPECT_NEAR(fsum_y, 0.0, 1e-3);
+    EXPECT_NEAR(fsum_z, 0.0, 1e-3);
 }
 
 // ── Integration: bonded + nonbonded ────────────────────────────────
