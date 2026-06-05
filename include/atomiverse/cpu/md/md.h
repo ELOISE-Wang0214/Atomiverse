@@ -54,10 +54,14 @@ namespace md {
 /// user-defined hooks (custom observers, recorders, etc.) that do
 /// not yet have a categorical setter.
 ///
-/// End-of-step ordering: ZeroKinetic(-1000) → KineticEnergy(-100) →
-/// Reduce(-50) → Publish(+10) → user observers.
-/// Categorical thermo at `set_thermo(N)` binds `cpu::Thermo{N}` at
-/// `end_of_step @ +20`. pre_force ordering includes Migrate(-30).
+/// Phase skeleton (LAMMPS-granular; see
+/// `.claude/notes/cpu-md-execution-model.md`): initial_integrate →
+/// post_integrate → pre_exchange (Migrate) → pre_neighbor (HaloSend) →
+/// neighbor (NeighborList) → pre_force (Zero{Forces,Energy,Stress}) → force
+/// (pair + bonded) → post_force (HaloRecv, Virial) → final_integrate →
+/// end_of_step. End-of-step ordering: ZeroKinetic(-1000) → KineticEnergy(-100)
+/// → Reduce(-50) → Publish(+10) → user observers. Categorical thermo at
+/// `set_thermo(N)` binds `cpu::Thermo{N}` at `end_of_step @ +20`.
 ///
 /// Usage (LAMMPS-shaped):
 /// @code{.cpp}
