@@ -554,6 +554,7 @@ void MultiGpu::setup_force_engine(double cutoff, double epsilon, double sigma,
         nlist_[s] = std::make_unique<cuda::NeighborList>(cutoff, force_skin_);
         pair_[s] = std::make_unique<cuda::PairLJCut>(epsilon, sigma, cutoff);
     }
+    nlist_cap_.assign(N, 0); // built lazily in reneighbor() at ~1.3x n_all
     engine_ready_ = true;
 }
 
@@ -570,19 +571,28 @@ void MultiGpu::reneighbor() {
     const int N = count();
     for (int s = 0; s < N; ++s) {
         const int na = frames_[s].n_local_ + frames_[s].n_ghost_;
-        frames_[s].n_atoms_ = na; // cluster owned+ghost; force writes owned only
-        if (na == 0)
-            continue;
         dm_.set_device(s);
-        // n_all changed vs the prior interval, so the neighbor list (sized at
-        // build) must be torn down and reallocated. Reneighbor is infrequent.
-        if (nlist_built_[s]) {
-            cuda::DestroyContext dc{ctx_[s], frames_[s]};
-            nlist_[s]->destroy(dc);
+        // (Re)build the neighbor list only when the owned+ghost count first
+        // exceeds the buffers' size; otherwise just reset the active count (no
+        // realloc — the dominant per-reneighbor cost). Build at ~1.3x n_all
+        // (capped at the frame's allocated capacity) so ghost-count fluctuation
+        // between intervals rarely forces a rebuild.
+        if (!nlist_built_[s] || na > nlist_cap_[s]) {
+            if (nlist_built_[s]) {
+                cuda::DestroyContext dc{ctx_[s], frames_[s]};
+                nlist_[s]->destroy(dc);
+            }
+            int want = static_cast<int>(na * 1.3) + 64;
+            if (want > frames_[s].capacity_)
+                want = frames_[s].capacity_;
+            frames_[s].n_atoms_ = want;
+            cuda::BuildContext bc{ctx_[s], frames_[s]};
+            nlist_[s]->build(bc);
+            nlist_cap_[s] = want;
+            nlist_built_[s] = 1;
         }
-        cuda::BuildContext bc{ctx_[s], frames_[s]};
-        nlist_[s]->build(bc); // publishes pair_list to ctx_[s]
-        nlist_built_[s] = 1;
+        frames_[s].n_atoms_ = na; // active owned+ghost; force writes owned only
+        nlist_[s]->set_active_count(na);
     }
     for (int s = 0; s < N; ++s) {
         dm_.set_device(s);

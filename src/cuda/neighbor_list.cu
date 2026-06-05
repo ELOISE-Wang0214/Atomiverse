@@ -64,6 +64,7 @@ struct NeighborList::State {
 
     int num_atoms = 0;
     int num_clusters = 0;
+    int max_atoms = 0; // build-time atom capacity (buffers sized for this)
     int pair_capacity = 0;
     int dims_x = 0, dims_y = 0, dims_z = 0;
     bool periodic = true;
@@ -100,6 +101,7 @@ void NeighborList::build(const BuildContext& ctx) {
     int n = s.num_atoms;
     int nc = (n + kClusterSize - 1) / kClusterSize;
     s.num_clusters = nc;
+    s.max_atoms = n; // all buffers below are sized for this atom count
     s.periodic = true;
 
     work_t r_search = cutoff_ + skin_;
@@ -290,6 +292,30 @@ void NeighborList::build(const BuildContext& ctx) {
 }
 
 // ============================================================================
+// set_active_count() — reuse build()-time buffers for a different atom count
+// ============================================================================
+//
+// Multi-GPU domain decomposition: a subdomain's owned+ghost count changes every
+// reneighbor interval, but the per-subdomain buffers were sized once for the
+// frame's full capacity at build(). Rather than destroy()+build() (reallocating
+// GB-scale buffers each reneighbor — the dominant multi-GPU overhead), the
+// driver calls this to reset the active atom/cluster count (<= the build-time
+// capacity) and force a full CSR rebuild on the next launch(). No allocation.
+// The single-GPU path never calls this, so its behaviour is unchanged.
+void NeighborList::set_active_count(int n_active) {
+    auto& s = *state_;
+    if (n_active < 0)
+        n_active = 0;
+    if (n_active > s.max_atoms)
+        throw std::runtime_error(
+            "NeighborList::set_active_count: " + std::to_string(n_active)
+            + " exceeds build capacity " + std::to_string(s.max_atoms));
+    s.num_atoms = n_active;
+    s.num_clusters = (n_active + kClusterSize - 1) / kClusterSize;
+    s.first_launch = true; // the atom SET changed — skin-gate cannot be trusted
+}
+
+// ============================================================================
 // launch() — per-step GPU work (pure GPU, zero D2H/sync/malloc)
 // ============================================================================
 
@@ -298,11 +324,14 @@ void NeighborList::launch(const LaunchContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& frame = ctx.frame;
 
-    // Re-publish the pair list (address is stable across the run).
+    // Re-publish the pair list (address is stable across the run). num_clusters
+    // can change between intervals via set_active_count(), so republish it too
+    // (the force kernel sizes its grid from pairs_.num_clusters).
     ctx.runtime.pair_list = &pairs_;
 
     int n = s.num_atoms;
     int nc = s.num_clusters;
+    pairs_.num_clusters = nc;
     work_t r_search = cutoff_ + skin_;
 
     // ── Skin-gate decision ──────────────────────────────────────────

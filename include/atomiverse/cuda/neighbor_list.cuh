@@ -118,6 +118,20 @@ class NeighborList : public ComponentBase {
     /// @param ctx Launch context with Runtime and DeviceFrame.
     void launch(const LaunchContext& ctx) override;
 
+    /// @brief Reset the active atom count to reuse build()-time buffers for a
+    ///        different (smaller-or-equal) atom count, forcing a full rebuild
+    ///        on the next launch() — no reallocation.
+    ///
+    /// For single-process multi-GPU domain decomposition: a subdomain's
+    /// owned+ghost count changes each reneighbor interval, but its buffers are
+    /// sized once at build() for the frame's full capacity. Calling this each
+    /// reneighbor (with the current owned+ghost count) avoids the
+    /// destroy()+build() realloc that otherwise dominates the multi-GPU step.
+    /// `n_active` must be <= the atom count passed to build(). The single-GPU
+    /// driver never calls this; its behaviour is unchanged.
+    /// @param n_active Current active atom count (<= build-time capacity).
+    void set_active_count(int n_active);
+
     /// @brief Free the owned PairList + all internal buffers.
     /// @param ctx Destroy context with Runtime and DeviceFrame.
     void destroy(const DestroyContext& ctx) override;

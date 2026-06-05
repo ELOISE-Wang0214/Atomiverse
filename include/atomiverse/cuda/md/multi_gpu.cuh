@@ -186,6 +186,7 @@ class MultiGpu {
     std::vector<std::unique_ptr<cuda::NeighborList>> nlist_;
     std::vector<std::unique_ptr<cuda::PairLJCut>> pair_;
     std::vector<char> nlist_built_; // per-slot: NeighborList::build called (vector<bool> avoided)
+    std::vector<int> nlist_cap_;    // per-slot: atom count the nlist buffers were built for
     bool engine_ready_ = false;
     double force_cutoff_ = 0, force_skin_ = 0;
 };
