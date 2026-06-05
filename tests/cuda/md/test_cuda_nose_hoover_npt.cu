@@ -112,8 +112,12 @@ TEST(CudaNoseHooverNPT, AnisoYZKeepsXRigid) {
     sim.build();
     sim.run(frame, 100);
 
-    // x edge must be bit-equal to its initial value (ε̇_x ≡ 0).
-    EXPECT_DOUBLE_EQ(frame.box(0, 0), box_x_initial);
+    // x is decoupled (ε̇_x ≡ 0), so its edge is rigid: the box-update
+    // scale factor is exp(ε̇_x·dt) = exp(0) = 1 exactly. The only delta is
+    // that cuda::Box stores edges in real_t (single precision), so the
+    // double box edge is quantized to float each step — rigid to float
+    // round-off, not double bit-equality.
+    EXPECT_NEAR(frame.box(0, 0), box_x_initial, box_x_initial * 1e-6);
     // y and z edges may have moved (they are barostatted).
     EXPECT_GT(frame.box(1, 1), 0.0);
     EXPECT_GT(frame.box(2, 2), 0.0);

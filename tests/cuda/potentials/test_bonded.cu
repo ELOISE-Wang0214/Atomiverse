@@ -26,9 +26,9 @@ TEST(HarmonicBond, DimerAtEquilibrium) {
     frame.atoms.mass = xt::xtensor<double, 1>({14.0, 14.0});
     frame.box = Mat3::cubic(20.0);
 
-    frame.bonds.atomi = xt::xtensor<int, 1>({0});
-    frame.bonds.atomj = xt::xtensor<int, 1>({1});
-    frame.bonds.type = xt::xtensor<int, 1>({0});
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, frame.atoms.nlocal);
+    frame.atoms.add_bond(0, 1, 0);
 
     // Single-pass force evaluation -> use cuda::Evaluate (no Integrator
     // required, unlike cuda::md::MD which validates one in build()).
@@ -37,9 +37,12 @@ TEST(HarmonicBond, DimerAtEquilibrium) {
     sim.build();
     sim.run(frame);
 
-    EXPECT_NEAR(frame.scalars.energy, 0.0, 1e-10);
-    EXPECT_NEAR(frame.atoms.fx[0], 0.0, 1e-10);
-    EXPECT_NEAR(frame.atoms.fx[1], 0.0, 1e-10);
+    // CUDA kernels compute in real_t (single precision), so "zero" force
+    // at equilibrium carries float round-off (~1e-5), not the double-grade
+    // 1e-10 the CPU sibling can assert. Use a float-appropriate tolerance.
+    EXPECT_NEAR(frame.scalars.energy, 0.0, 1e-6);
+    EXPECT_NEAR(frame.atoms.fx[0], 0.0, 1e-3);
+    EXPECT_NEAR(frame.atoms.fx[1], 0.0, 1e-3);
 }
 
 TEST(HarmonicBond, DimerDisplaced) {
@@ -52,9 +55,9 @@ TEST(HarmonicBond, DimerDisplaced) {
     frame.atoms.mass = xt::xtensor<double, 1>({14.0, 14.0});
     frame.box = Mat3::cubic(20.0);
 
-    frame.bonds.atomi = xt::xtensor<int, 1>({0});
-    frame.bonds.atomj = xt::xtensor<int, 1>({1});
-    frame.bonds.type = xt::xtensor<int, 1>({0});
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, frame.atoms.nlocal);
+    frame.atoms.add_bond(0, 1, 0);
 
     double K = 350.0, r0 = 1.53;
 
@@ -64,7 +67,8 @@ TEST(HarmonicBond, DimerDisplaced) {
     sim.run(frame);
 
     double expected_V = K * (r - r0) * (r - r0);
-    EXPECT_NEAR(frame.scalars.energy, expected_V, 1e-6);
+    // Single-precision kernel: ~1e-6 relative round-off on a V≈1.7 energy.
+    EXPECT_NEAR(frame.scalars.energy, expected_V, 1e-4);
 
     // Forces should be attractive (pulling atoms together)
     EXPECT_GT(frame.atoms.fx[0], 0.0); // atom 0 pushed right
@@ -90,10 +94,9 @@ TEST(HarmonicAngle, AtEquilibrium) {
     frame.atoms.mass = xt::xtensor<double, 1>({14.0, 14.0, 14.0});
     frame.box = Mat3::cubic(20.0);
 
-    frame.angles.atomi = xt::xtensor<int, 1>({0});
-    frame.angles.atomj = xt::xtensor<int, 1>({1});
-    frame.angles.atomk = xt::xtensor<int, 1>({2});
-    frame.angles.type = xt::xtensor<int, 1>({0});
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, frame.atoms.nlocal);
+    frame.atoms.add_angle(0, 1, 2, 0);
 
     // AngleHarmonic API contract: theta0 is in RADIANS, matching the CPU
     // sibling (cpu::HarmonicAngle uses theta0_[type] directly in
@@ -118,11 +121,9 @@ TEST(MultiHarmonicDihedral, TransConformation) {
     frame.atoms.mass = xt::xtensor<double, 1>({14.0, 14.0, 14.0, 14.0});
     frame.box = Mat3::cubic(20.0);
 
-    frame.dihedrals.atomi = xt::xtensor<int, 1>({0});
-    frame.dihedrals.atomj = xt::xtensor<int, 1>({1});
-    frame.dihedrals.atomk = xt::xtensor<int, 1>({2});
-    frame.dihedrals.atoml = xt::xtensor<int, 1>({3});
-    frame.dihedrals.type = xt::xtensor<int, 1>({0});
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, frame.atoms.nlocal);
+    frame.atoms.add_dihedral(0, 1, 2, 3, 0);
 
     // For a collinear chain, b1×b2 = 0, so the dihedral is undefined.
     // Move atom 0 and 3 off-axis to create a well-defined trans dihedral.
@@ -156,9 +157,11 @@ TEST(Bonded, ChainWithLJ) {
     frame.atoms.mass = xt::xtensor<double, 1>({14.0, 14.0, 14.0, 14.0});
     frame.box = Mat3::cubic(20.0);
 
-    frame.bonds.atomi = xt::xtensor<int, 1>({0, 1, 2});
-    frame.bonds.atomj = xt::xtensor<int, 1>({1, 2, 3});
-    frame.bonds.type = xt::xtensor<int, 1>({0, 0, 0});
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, frame.atoms.nlocal);
+    frame.atoms.add_bond(0, 1, 0);
+    frame.atoms.add_bond(1, 2, 0);
+    frame.atoms.add_bond(2, 3, 0);
 
     cuda::md::MD sim;
     sim.add(cuda::md::VelocityVerlet{0.1});

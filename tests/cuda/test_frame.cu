@@ -12,9 +12,12 @@ using namespace ATV;
 
 TEST(Frame, HostCreate) {
     cpu::Frame frame(100);
-    EXPECT_EQ(frame.atoms.size(), 100);
-    EXPECT_EQ(frame.atoms.x.size(), 100u);
-    EXPECT_EQ(frame.atoms.mass.size(), 100u);
+    EXPECT_EQ(frame.atoms.size(), 100); // logical count (nlocal)
+    // SoA arrays are allocated to nmax capacity with LAMMPS-style doubling
+    // growth (100 → 128), so the raw array length is the capacity, not the
+    // logical atom count.
+    EXPECT_GE(frame.atoms.x.size(), 100u);
+    EXPECT_GE(frame.atoms.mass.size(), 100u);
 }
 
 TEST(Frame, Mat3Box) {
@@ -51,23 +54,17 @@ TEST(Frame, TopologyRoundTrip) {
     frame.atoms.mass = xt::xtensor<double, 1>({14.0, 14.0, 14.0, 14.0});
     frame.box = Mat3::cubic(20.0);
 
-    // 3 bonds: 0-1, 1-2, 2-3
-    frame.bonds.atomi = xt::xtensor<int, 1>({0, 1, 2});
-    frame.bonds.atomj = xt::xtensor<int, 1>({1, 2, 3});
-    frame.bonds.type = xt::xtensor<int, 1>({0, 0, 0});
-
-    // 2 angles: 0-1-2, 1-2-3
-    frame.angles.atomi = xt::xtensor<int, 1>({0, 1});
-    frame.angles.atomj = xt::xtensor<int, 1>({1, 2});
-    frame.angles.atomk = xt::xtensor<int, 1>({2, 3});
-    frame.angles.type = xt::xtensor<int, 1>({0, 0});
-
-    // 1 dihedral: 0-1-2-3
-    frame.dihedrals.atomi = xt::xtensor<int, 1>({0});
-    frame.dihedrals.atomj = xt::xtensor<int, 1>({1});
-    frame.dihedrals.atomk = xt::xtensor<int, 1>({2});
-    frame.dihedrals.atoml = xt::xtensor<int, 1>({3});
-    frame.dihedrals.type = xt::xtensor<int, 1>({0});
+    // Per-atom topology (LAMMPS layout): the owner atom holds each
+    // bond/angle/dihedral; cpu::to_cuda() reads num_bond/bond_atom/… and
+    // emits the flat device tables in owner order.
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, frame.atoms.nlocal);
+    frame.atoms.add_bond(0, 1, 0); // bonds 0-1, 1-2, 2-3
+    frame.atoms.add_bond(1, 2, 0);
+    frame.atoms.add_bond(2, 3, 0);
+    frame.atoms.add_angle(0, 1, 2, 0); // angles 0-1-2, 1-2-3
+    frame.atoms.add_angle(1, 2, 3, 0);
+    frame.atoms.add_dihedral(0, 1, 2, 3, 0); // dihedral 0-1-2-3
 
     auto d_frame = cpu::to_cuda(frame);
 
