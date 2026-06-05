@@ -2,11 +2,11 @@
 /// @brief RED tests for the four Phase-1 no-op MPI components.
 ///
 /// Spec: .claude/specs/parallel-md-engine.md § A.4 (components table).
-/// Expected bindings (Phase enum as int):
-///   HaloSend → pre_force @ -20
-///   HaloRecv → post_force @ -1000
-///   Migrate       → pre_force @ -30
-///   Reduce        → end_of_step @ -50
+/// Expected bindings (Phase enum as int), LAMMPS-granular phases:
+///   Migrate  → pre_exchange @ 0     (re-home atoms that left the rank)
+///   HaloSend → pre_neighbor @ 0     (build ghosts before the neighbor list)
+///   HaloRecv → post_force @ -1000   (reverse ghost-force comm)
+///   Reduce   → end_of_step @ -50
 ///
 /// In single-rank mode every launch() is a no-op: frame positions must be
 /// byte-identical before and after.
@@ -70,15 +70,15 @@ bool has_binding(const std::vector<DefaultBinding>& bindings, int phase,
 
 // ── bindings ─────────────────────────────────────────────────────────
 
-TEST(MpiStubBindings, HaloExchangeForwardBindings) {
+TEST(MpiStubBindings, HaloSendBindings) {
     cpu::comm::HaloSend hx{};
     auto b = hx.default_bindings();
     EXPECT_TRUE(
-        has_binding(b, static_cast<int>(ATV::md::Phase::pre_force), -20))
-        << "HaloSend must bind pre_force @ -20";
+        has_binding(b, static_cast<int>(ATV::md::Phase::pre_neighbor), 0))
+        << "HaloSend must bind pre_neighbor @ 0";
 }
 
-TEST(MpiStubBindings, HaloExchangeReverseBindings) {
+TEST(MpiStubBindings, HaloRecvBindings) {
     cpu::comm::HaloRecv hx{};
     auto b = hx.default_bindings();
     EXPECT_TRUE(
@@ -86,12 +86,12 @@ TEST(MpiStubBindings, HaloExchangeReverseBindings) {
         << "HaloRecv must bind post_force @ -1000";
 }
 
-TEST(MpiStubBindings, AtomMigrationBinding) {
+TEST(MpiStubBindings, MigrateBinding) {
     cpu::comm::Migrate am{};
     auto b = am.default_bindings();
     EXPECT_TRUE(
-        has_binding(b, static_cast<int>(ATV::md::Phase::pre_force), -30))
-        << "Migrate must bind pre_force @ -30";
+        has_binding(b, static_cast<int>(ATV::md::Phase::pre_exchange), 0))
+        << "Migrate must bind pre_exchange @ 0";
 }
 
 TEST(MpiStubBindings, ReduceEnergyBinding) {
