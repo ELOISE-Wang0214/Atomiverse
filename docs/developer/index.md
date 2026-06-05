@@ -31,6 +31,13 @@ adding a minimizer, and adding an SCF inner-step helper — at the level
 of "what file do I create, what do I inherit, what does the test look
 like?"
 
+For molecular dynamics specifically, [MD Execution Model](md-execution-model.md)
+is the Atomiverse counterpart of the LAMMPS *Developer flow* page: it walks one
+timestep as a fixed sequence of named **phases**, documents what each phase is
+responsible for (even when empty), and explains the `(phase, order)` binding
+model a component uses to attach itself to the step. Read it before adding or
+moving any MD component.
+
 ## Codebase Map
 
 The repository is easier to navigate if you group it by responsibility instead

@@ -72,6 +72,8 @@ For contribution guidance, read [Extending Components](developer/extending-compo
 The CPU-specific deep-dive is in [CPU Backend Internals](developer/cpu-internals.md),
 and worked extension recipes for MD, the minimizer, and SCF inner-step
 helpers are in [Extending CPU Subsystems](developer/extending-cpu-subsystems.md).
+[MD Execution Model](developer/md-execution-model.md) explains one molecular-dynamics
+timestep as a fixed sequence of named phases — the LAMMPS *Developer flow* analogue.
 
 @section workflows Workflow Families
 
@@ -81,6 +83,8 @@ Atomiverse currently exposes three workflow families.
 
 `md::MD` executes a LAMMPS-style phase sequence. Typical components include
 `VelocityVerlet`, `NeighborList`, `LJ`, `NoseHoover`, `Thermo`, and `Recorder`.
+The full phase sequence and the `(phase, order)` binding model are documented in
+[MD Execution Model](developer/md-execution-model.md).
 
 @subsection workflows_min Minimization
 
