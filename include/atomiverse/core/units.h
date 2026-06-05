@@ -121,6 +121,13 @@ inline constexpr double kB_ev_per_k = 8.617333262e-5;
 inline constexpr double force_to_accel = 1.0 / 103.6427;
 inline constexpr double mass_v2_to_energy = 103.6427;
 
+// Electrostatic coupling in MD "metal" units (LAMMPS `qqr2e`):
+//
+//   E [eV] = coulomb * q_i q_j / r   with q in elementary charge, r in Å
+//
+// Equals 1/(4πε₀) · e²/Å expressed in eV (CODATA): 14.399645 eV·Å/e².
+inline constexpr double coulomb = 14.399645;
+
 } // namespace units
 
 // ─────────────────────────────────────────────────────────────────────
@@ -139,6 +146,10 @@ inline constexpr double kForceAU2Metal =
 inline constexpr double kBoltzmann = units::kB_ev_per_k;
 inline constexpr double kFtm2v = units::force_to_accel;
 inline constexpr double kMvv2e = units::mass_v2_to_energy;
+
+/// @brief Electrostatic constant 1/(4πε₀)·e²/Å in eV (LAMMPS `qqr2e`,
+/// metal units): `E[eV] = kCoulomb · q_i q_j / r` for q[e], r[Å].
+inline constexpr double kCoulomb = units::coulomb;
 
 /// @brief Angstrom to Bohr (QE convention: 1 Bohr = 0.5291772083 A).
 constexpr double kAngstrom2Bohr = 1.8897259886;

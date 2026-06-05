@@ -38,6 +38,7 @@ if(NOT ATV_DOCS_ONLY)
 
     option(ATV_BUILD_RHF "Build RHF electronic structure code" OFF)
     option(ATV_BUILD_PW "Build plane-wave DFT module (requires FFTW3)" OFF)
+    option(ATV_BUILD_KSPACE "Build Particle-Mesh Ewald (PME) electrostatics (CPU: FFTW3, CUDA: cuFFT)" OFF)
     option(ATV_BUILD_TORCH "Build LibTorch backend (requires LibTorch)" OFF)
     option(ATV_BUILD_LIBCINT "Fetch libcint for integral validation tests" OFF)
     option(ATV_BUILD_XC_ORACLE
@@ -212,6 +213,14 @@ if(NOT ATV_DOCS_ONLY)
     )
     list(APPEND ATOMIVERSE_SRCS ${CPU_POTENTIALS_SRCS})
 
+    # CPU reciprocal-space electrostatics. Direct Ewald has no external
+    # dependency and is always built; PME needs FFTW3 and is gated behind
+    # ATV_BUILD_KSPACE (wired further down, next to the FFTW discovery).
+    list(APPEND ATOMIVERSE_SRCS src/cpu/kspace/ewald.cpp)
+    if(ATV_BUILD_KSPACE)
+        list(APPEND ATOMIVERSE_SRCS src/cpu/kspace/pme.cpp)
+    endif()
+
     if(ATV_BUILD_CUDA)
         list(APPEND ATOMIVERSE_SRCS
             src/cuda/log_callback.cpp
@@ -254,6 +263,11 @@ if(NOT ATV_DOCS_ONLY)
             "${CMAKE_SOURCE_DIR}/src/cuda/potentials/*.cu"
         )
         list(APPEND ATOMIVERSE_SRCS ${CUDA_POTENTIALS_SRCS})
+        # CUDA reciprocal-space: direct Ewald always; PME (cuFFT) gated.
+        list(APPEND ATOMIVERSE_SRCS src/cuda/kspace/ewald.cu)
+        if(ATV_BUILD_KSPACE)
+            list(APPEND ATOMIVERSE_SRCS src/cuda/kspace/pme.cu)
+        endif()
     else()
         # CUDA-free build still links against cuda::Timer (a CUDA-free PIMPL
         # facade held by std::unique_ptr in facade/driver.h). The full impl
@@ -343,6 +357,26 @@ if(NOT ATV_DOCS_ONLY)
         endif()
         target_link_libraries(atomiverse PUBLIC fftw3_stub)
         target_compile_definitions(atomiverse PUBLIC ATV_HAS_PW)
+    endif()
+
+    if(ATV_BUILD_KSPACE)
+        # CPU PME needs FFTW3 (shared `fftw3_stub` with the PW module).
+        if(NOT TARGET fftw3_stub)
+            find_library(FFTW3_LIB fftw3 HINTS /opt/homebrew/opt/fftw/lib /usr/local/lib)
+            find_path(FFTW3_INC fftw3.h HINTS /opt/homebrew/opt/fftw/include /usr/local/include)
+            if(NOT FFTW3_LIB OR NOT FFTW3_INC)
+                message(FATAL_ERROR "FFTW3 required for ATV_BUILD_KSPACE but not found.")
+            endif()
+            add_library(fftw3_stub INTERFACE)
+            target_link_libraries(fftw3_stub INTERFACE ${FFTW3_LIB})
+            target_include_directories(fftw3_stub INTERFACE ${FFTW3_INC})
+        endif()
+        target_link_libraries(atomiverse PUBLIC fftw3_stub)
+        target_compile_definitions(atomiverse PUBLIC ATV_HAS_KSPACE)
+        # CUDA PME (cuFFT) — only when the CUDA backend is also enabled.
+        if(ATV_BUILD_CUDA)
+            target_link_libraries(atomiverse PUBLIC CUDA::cufft)
+        endif()
     endif()
 
     if(ATV_BUILD_TORCH)
