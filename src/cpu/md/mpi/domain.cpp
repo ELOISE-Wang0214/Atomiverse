@@ -288,6 +288,23 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
     }
 
 
+    // Release the global-N backing store. Each rank loaded the whole file
+    // (load_lammps_data is called per-rank) but owns only `n_local`; the
+    // arrays were left at global-N capacity "as slack for ghosts", which made
+    // per-rank memory scale with the TOTAL system size (measured: 237 GB vs
+    // LAMMPS 20 GB at 256 ranks). Shrink to owned + a generous ghost/migration
+    // headroom. Halo/migration grow via `set_capacity` on overflow, so this
+    // bound only needs to cover the common (roughly cubic subdomain) case;
+    // ghost shells run ~n_local for a compact subdomain.
+    {
+        const int headroom = std::max(n_local, 16384);
+        const int new_cap = n_local + headroom;
+        if (new_cap < frame.atoms.nmax) {
+            frame.atoms.set_capacity(new_cap);
+        }
+        capacity = frame.atoms.nmax;
+    }
+
     tag_to_local.clear();
     tag_to_local.reserve(static_cast<std::size_t>(n_local));
     for (int i = 0; i < n_local; ++i) {

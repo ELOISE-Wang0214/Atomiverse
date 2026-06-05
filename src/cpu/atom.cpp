@@ -90,6 +90,69 @@ void Atom::grow(int target_nmax) {
     nmax = new_nmax;
 }
 
+void Atom::set_capacity(int new_nmax) {
+    if (new_nmax < 0)
+        new_nmax = 0;
+    if (new_nmax == nmax)
+        return;
+
+    const std::size_t n = static_cast<std::size_t>(new_nmax);
+    const std::size_t keep =
+        std::min(static_cast<std::size_t>(nmax), n); // rows to preserve
+
+    // Reallocate into fresh zeroed storage and copy the preserved prefix
+    // explicitly — independent of whether xt::xtensor::resize preserves data,
+    // and correct for shrink as well as grow.
+    auto realloc1d = [&](auto& arr) {
+        using arr_t = std::decay_t<decltype(arr)>;
+        using value_t = typename arr_t::value_type;
+        arr_t fresh = xt::zeros<value_t>({n});
+        for (std::size_t i = 0; i < keep; ++i)
+            fresh(i) = arr(i);
+        arr = std::move(fresh);
+    };
+    auto realloc2d = [&](auto& arr, std::size_t cols) {
+        using arr_t = std::decay_t<decltype(arr)>;
+        using value_t = typename arr_t::value_type;
+        arr_t fresh = xt::zeros<value_t>({n, cols});
+        const std::size_t row_keep = keep * cols;
+        for (std::size_t i = 0; i < row_keep; ++i)
+            fresh.data()[i] = arr.data()[i];
+        arr = std::move(fresh);
+    };
+
+    realloc1d(x);
+    realloc1d(y);
+    realloc1d(z);
+    realloc1d(vx);
+    realloc1d(vy);
+    realloc1d(vz);
+    realloc1d(fx);
+    realloc1d(fy);
+    realloc1d(fz);
+    realloc1d(mass);
+    realloc1d(charge);
+    realloc1d(type);
+    realloc1d(tag);
+    // tag default = identity for any newly-added rows (matches grow()).
+    for (std::size_t i = keep; i < n; ++i)
+        tag(i) = static_cast<std::int64_t>(i);
+    realloc2d(image, 3);
+    realloc1d(num_bond);
+    realloc2d(bond_atom, static_cast<std::size_t>(kMaxBondPerAtom));
+    realloc2d(bond_type, static_cast<std::size_t>(kMaxBondPerAtom));
+    realloc1d(num_angle);
+    realloc2d(angle_atom, static_cast<std::size_t>(2 * kMaxAnglePerAtom));
+    realloc2d(angle_type, static_cast<std::size_t>(kMaxAnglePerAtom));
+    realloc1d(num_dihedral);
+    realloc2d(dihedral_atom, static_cast<std::size_t>(3 * kMaxDihedralPerAtom));
+    realloc2d(dihedral_type, static_cast<std::size_t>(kMaxDihedralPerAtom));
+    realloc2d(nspecial, 3);
+    realloc2d(special, static_cast<std::size_t>(kMaxSpecial));
+
+    nmax = new_nmax;
+}
+
 void Atom::map_set(int begin, int end) {
     map.reserve(map.size() + static_cast<std::size_t>(end - begin));
     for (int i = begin; i < end; ++i) {

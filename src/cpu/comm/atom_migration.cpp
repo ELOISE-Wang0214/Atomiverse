@@ -268,13 +268,20 @@ void AtomMigration::launch(const cpu::LaunchContext& ctx) {
 
     const int n_received =
         static_cast<int>(total_recv_bytes / kAtomPayloadBytes);
-    const int n_appendable = std::min(n_received, dd->capacity - new_n_kept);
+    // Grow on demand: ranks no longer hold the global-N backing store, so an
+    // influx that exceeds capacity must enlarge the arrays — never silently
+    // drop incoming owners (that would lose atoms and corrupt conservation).
+    const int n_needed = new_n_kept + n_received;
+    if (n_needed > frame.atoms.nmax) {
+        frame.atoms.set_capacity(n_needed + n_needed / 2 + 1024);
+        dd->capacity = frame.atoms.nmax;
+    }
     std::size_t r_off = 0;
-    for (int k = 0; k < n_appendable; ++k) {
+    for (int k = 0; k < n_received; ++k) {
         r_off = unpack_atom(recv_buf, r_off, frame, new_n_kept + k);
     }
 
-    dd->n_local = new_n_kept + n_appendable;
+    dd->n_local = new_n_kept + n_received;
     dd->n_ghost = 0;
     ++dd->neighbor_generation;
 

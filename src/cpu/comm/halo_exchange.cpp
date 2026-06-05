@@ -403,7 +403,7 @@ namespace {
 inline void forward_axis_stage(Frame& frame, md::mpi::DomainDecomposition& dd,
                                FaceBufs& bufs, int dim, int sources_end,
                                double cutoff, bool full_rebuild,
-                               int frame_cap, int my_rank,
+                               int& frame_cap, int my_rank,
                                double bonded_extension_for_log,
                                int& slot_in_out) {
     const int f_lo = 2 * dim;
@@ -495,20 +495,23 @@ inline void forward_axis_stage(Frame& frame, md::mpi::DomainDecomposition& dd,
         MPI_Waitall(n_preqs, pos_reqs, MPI_STATUSES_IGNORE);
 
     if (full_rebuild) {
-        // Capacity guard for this axis. The per-atom xtensor arrays are
-        // sized to `frame.atoms.size()` (== original global atom count);
-        // overflowing here silently corrupts memory and eventually trips
-        // LJ / bonded kernels.
+        // Capacity guard for this axis. Ranks no longer hold the global-N
+        // backing store (partition_atoms shrinks to owned + headroom to avoid
+        // per-rank memory scaling with the total system size), so a thin
+        // subdomain can legitimately need more ghost rows than the headroom.
+        // Grow on demand (explicit-copy realloc preserving the live rows)
+        // instead of aborting; update the shared capacity mirrors and the
+        // by-ref `frame_cap` so the remaining axis stages see the new size.
         const int new_ghosts = recv_counts[0] + recv_counts[1];
         if (slot_in_out + new_ghosts > frame_cap) {
-            ATV_CRITICAL(
-                "halo_exchange: rank {} ghost capacity overflow at axis {}: "
-                "slot={} + new={} > frame.atoms.size()={}. "
-                "send=[{},{}] recv=[{},{}] cutoff={} bonded_ext={}",
-                my_rank, dim, slot_in_out, new_ghosts, frame_cap,
-                send_counts[0], send_counts[1], recv_counts[0], recv_counts[1],
-                cutoff, bonded_extension_for_log);
-            MPI_Abort(dd.cart_comm, 1);
+            const int needed = slot_in_out + new_ghosts;
+            // 50% slack so a cascade of small overflows doesn't realloc each axis.
+            frame.atoms.set_capacity(needed + needed / 2 + 1024);
+            frame_cap = frame.atoms.nmax;
+            dd.capacity = frame.atoms.nmax;
+            ATV_DEBUG("halo_exchange: rank {} grew ghost capacity to {} "
+                      "(needed {}) at axis {}",
+                      my_rank, frame_cap, needed, dim);
         }
     }
 
@@ -593,7 +596,9 @@ void HaloExchangeForward::launch(const cpu::LaunchContext& ctx) {
 
     const double halo_cut =
         (cutoff_ > bonded_extension_) ? cutoff_ : bonded_extension_;
-    const int frame_cap = static_cast<int>(frame.atoms.tag.size());
+    // Mutable: forward_axis_stage grows the frame (and bumps frame_cap) when a
+    // shrunk rank needs more ghost rows than its headroom.
+    int frame_cap = static_cast<int>(frame.atoms.tag.size());
 
     if (full_rebuild) {
         // Effective halo = max(pair cutoff, bonded skin): the wider of

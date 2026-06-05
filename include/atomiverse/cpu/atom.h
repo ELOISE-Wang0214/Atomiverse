@@ -85,6 +85,20 @@ class Atom {
     ///          mid-`launch()`.
     void grow(int target_nmax);
 
+    /// @brief Reallocate every per-atom array to exactly `new_nmax` rows,
+    ///        preserving rows `[0, min(nmax, new_nmax))` by explicit copy and
+    ///        zero-filling any new tail (tag tail gets the identity default).
+    ///        Supports BOTH growth and shrink. Unlike `grow()` (which trusts
+    ///        `xt::xtensor::resize` to keep the prefix), this copies into fresh
+    ///        storage, so it is safe to shrink — used to release the global-N
+    ///        backing store each rank loads before partitioning down to its
+    ///        owned subset, and as the grow-on-overflow path for halo/migration
+    ///        when a rank starts under-provisioned. Caller updates any external
+    ///        capacity mirror (`DomainDecomposition::capacity`) and the
+    ///        tag→row `map` (entries past `new_nmax` are dropped on shrink).
+    /// @warning Invalidates cached `.data()` pointers (same contract as grow).
+    void set_capacity(int new_nmax);
+
     // ── Population counts (LAMMPS Atom::nlocal/nghost/nmax) ────────────────
 
     /// @brief Number of locally owned atoms. Owners occupy `[0, nlocal)`.
