@@ -194,15 +194,19 @@ __global__ __launch_bounds__(ATV::cuda::kDefaultBlock) void fill_pairs(
 
             if (local < num_cj) {
                 cj_val = cell_clusters[start + local];
-                if (cj_val >= ci) {
-                    work_t dist_sq = min_aabb_dist_sq<Ortho, work_t>(
-                        aabb_min_x[ci], aabb_min_y[ci], aabb_min_z[ci],
-                        aabb_max_x[ci], aabb_max_y[ci], aabb_max_z[ci],
-                        aabb_min_x[cj_val], aabb_min_y[cj_val],
-                        aabb_min_z[cj_val], aabb_max_x[cj_val],
-                        aabb_max_y[cj_val], aabb_max_z[cj_val], periodic, box);
-                    passes = (dist_sq <= cutoff_plus_skin_sq);
-                }
+                // FULL neighbor list: keep every neighbor cluster (cj < ci,
+                // cj == ci, cj > ci), not just the cj >= ci upper triangle.
+                // The atom-centric LJ force kernel owns each atom's force and
+                // accumulates it in registers from ITS cluster's full neighbor
+                // set, so it needs cj < ci entries too — in exchange it does
+                // zero atomicAdds (vs the old half-list + 6-atomic Newton).
+                work_t dist_sq = min_aabb_dist_sq<Ortho, work_t>(
+                    aabb_min_x[ci], aabb_min_y[ci], aabb_min_z[ci],
+                    aabb_max_x[ci], aabb_max_y[ci], aabb_max_z[ci],
+                    aabb_min_x[cj_val], aabb_min_y[cj_val], aabb_min_z[cj_val],
+                    aabb_max_x[cj_val], aabb_max_y[cj_val], aabb_max_z[cj_val],
+                    periodic, box);
+                passes = (dist_sq <= cutoff_plus_skin_sq);
             }
 
             unsigned ballot = __ballot_sync(0xFFFFFFFF, passes);

@@ -166,13 +166,17 @@ void NeighborList::build(const BuildContext& ctx) {
     // overflow guard turns any residual undershoot into a loud throw, never
     // silent CSR corruption.
     const double kPi = 3.141592653589793;
-    long long cluster_cap_ll = static_cast<long long>(nc) * 256;
+    long long cluster_cap_ll = static_cast<long long>(nc) * 512;
     if (box_vol > 0.0 && n > 0) {
         double density = double(n) / box_vol;
         double rs = double(r_search);
         double sphere = (4.0 / 3.0) * kPi * rs * rs * rs;
         double neigh_clusters = density * sphere / double(kClusterSize);
-        double per_cluster = std::max(256.0, 12.0 * neigh_clusters);
+        // 24x (was 12x): the cluster list is now FULL (every neighbor cluster,
+        // both directions) for the atomic-free atom-centric force kernel, ~2x
+        // the old half-list count. Absorbs cubic-stencil over-count + cluster
+        // extent with ~1.5x margin; the launch() guard catches any undershoot.
+        double per_cluster = std::max(512.0, 24.0 * neigh_clusters);
         cluster_cap_ll = std::max(
             cluster_cap_ll, static_cast<long long>(double(nc) * per_cluster));
     }
@@ -270,6 +274,15 @@ void NeighborList::build(const BuildContext& ctx) {
     *s.h_flat_pair_count = 0;
     cudaEventCreateWithFlags(&s.rebuild_flag_event, cudaEventDisableTiming);
     cudaEventCreateWithFlags(&s.flat_pair_count_event, cudaEventDisableTiming);
+
+    // Publish the cluster CSR (full neighbor list) for the atom-centric,
+    // atomic-free force path. Buffer addresses are stable across the run
+    // (DeviceVector capacity is fixed at build); contents are refreshed in
+    // place on each skin-gated rebuild in launch().
+    pairs_.cl_row_ptr = s.buf.row_ptr.data();
+    pairs_.cl_col_idx = s.buf.col_idx.data();
+    pairs_.cl_orig_index = s.buf.original_index.data();
+    pairs_.num_clusters = nc;
 
     // Publish the pair list to the execution context for downstream
     // consumers (LJ, RDF), mirroring cpu::md::NeighborList.

@@ -2,6 +2,7 @@
 /// @brief CUDA PairLJCut — Lennard-Jones 12-6 shifted (kernel + class).
 ///        Includes LAMMPS-style `special_bonds` 1-2/1-3/1-4 exclusions.
 
+#include "atomiverse/cuda/box.cuh"
 #include "atomiverse/cuda/launch.cuh"
 #include "atomiverse/cuda/neighbor_list.cuh"
 #include "atomiverse/cuda/potentials/lj_kernel.cuh"
@@ -39,91 +40,115 @@ __device__ inline bool excl_contains(const int* __restrict__ partners, int beg,
     return false;
 }
 
+/// @brief Atom-centric, **atomic-free** LJ force. One thread owns one atom
+///        (cluster slot). It walks its cluster's FULL neighbor-cluster list
+///        (cl_col_idx over [row_ptr[ci], row_ptr[ci+1])), computes each
+///        pair distance from CURRENT atom positions (min-image), accumulates
+///        the owned atom's force in registers, and writes it ONCE — no
+///        atomicAdd, no flat pair list, no per-step export.
+///
+/// Replaces the old one-thread-per-pair kernel that did 6 atomicAdd/pair
+/// (~160-way contention per force slot in a dense melt → the 76%-of-runtime
+/// bottleneck). With a FULL neighbor list each interaction is computed twice
+/// (once by each endpoint's owning thread), so the force on each atom is
+/// complete without writing its neighbors; energy and virial are halved to
+/// undo the double count. kClusterSize is the neighbor list's fixed cluster
+/// width; pad slots carry a negative orig_index sentinel.
+template <bool Ortho>
 __global__ __launch_bounds__(ATV::cuda::kDefaultBlock, 4) void
-lj_force(real_t* __restrict__ fx, real_t* __restrict__ fy,
-         real_t* __restrict__ fz, prec_t* __restrict__ energy,
-         prec_t* __restrict__ stress, const int* __restrict__ pi,
-         const int* __restrict__ pj, const real_t* __restrict__ pdx,
-         const real_t* __restrict__ pdy, const real_t* __restrict__ pdz,
-         const real_t* __restrict__ pdist_sq, work_t epsilon, work_t sigma_sq,
-         work_t cutoff_sq, work_t min_pair_dist_sq, work_t v_shift,
-         const int* __restrict__ n_pairs_ptr,
-         const int* __restrict__ excl_offsets,
-         const int* __restrict__ excl_partners, work_t s_excl) {
-
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int n_pairs = *n_pairs_ptr;
+lj_force_cluster(real_t* __restrict__ fx, real_t* __restrict__ fy,
+                 real_t* __restrict__ fz, prec_t* __restrict__ energy,
+                 prec_t* __restrict__ stress, const real_t* __restrict__ x,
+                 const real_t* __restrict__ y, const real_t* __restrict__ z,
+                 const int* __restrict__ row_ptr,
+                 const int* __restrict__ col_idx,
+                 const int* __restrict__ orig_index, int num_clusters,
+                 cuda::Box box, bool periodic, work_t epsilon, work_t sigma_sq,
+                 work_t cutoff_sq, work_t min_pair_dist_sq, work_t v_shift,
+                 const int* __restrict__ excl_offsets,
+                 const int* __restrict__ excl_partners, work_t s_excl) {
+    constexpr int CS = 8; // kClusterSize (neighbor-list cluster width)
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    int ci = tid / CS;
+    int slot = tid % CS;
 
     work_t my_energy = work_t(0);
     work_t my_vxx = work_t(0), my_vyy = work_t(0), my_vzz = work_t(0);
     work_t my_vxy = work_t(0), my_vxz = work_t(0), my_vyz = work_t(0);
-    if (idx < n_pairs) {
-        int i = pi[idx], j = pj[idx];
-        // Reject ghost / padding pairs emitted by the cluster-based neighbor
-        // list export. The cluster representation pads each cluster to
-        // kClusterSize atoms; padded slots leak into the flat PairList with
-        // j = -1 (sentinel) and garbage `dx/dy/dz` that can coincidentally
-        // produce a finite `pdist_sq[idx]` not caught by the
-        // `r² >= kMinPairDist²` floor.
-        //
-        // Per cuda-md-review-cleanup-06-launch-config-streams the pair
-        // list stores r² (not r); LJ uses inv_r² directly and saves the
-        // sqrt(r²) that the export kernel previously paid per pair, plus
-        // the per-thread FP64 div inv_r = 1/r in this kernel.
-        const bool valid_pair = (i >= 0) && (j >= 0);
-        work_t r2 = valid_pair ? pdist_sq[idx] : work_t(0);
-        if (valid_pair && r2 < cutoff_sq && r2 >= min_pair_dist_sq) {
-            // Special-bonds exclusion check.
-            // `excl_offsets == nullptr` ⇒ no exclusions configured ⇒ fast path.
-            work_t scale = work_t(1);
-            bool skip_pair = false;
-            if (excl_offsets != nullptr) {
-                int beg = excl_offsets[i];
-                int end = excl_offsets[i + 1];
-                if (end > beg
-                    && excl_contains(excl_partners, beg, end, j)) {
-                    if (s_excl == work_t(0))
-                        skip_pair = true;
-                    else
+
+    if (ci < num_clusters) {
+        int ai = orig_index[ci * CS + slot];
+        if (ai >= 0) {
+            work_t xi = x[ai], yi = y[ai], zi = z[ai];
+            work_t fxi = work_t(0), fyi = work_t(0), fzi = work_t(0);
+            const bool has_excl = (excl_offsets != nullptr);
+            int beg_excl = has_excl ? excl_offsets[ai] : 0;
+            int end_excl = has_excl ? excl_offsets[ai + 1] : 0;
+
+            int rstart = row_ptr[ci], rend = row_ptr[ci + 1];
+            for (int p = rstart; p < rend; ++p) {
+                int cj = col_idx[p];
+#pragma unroll
+                for (int sj = 0; sj < CS; ++sj) {
+                    int aj = orig_index[cj * CS + sj];
+                    if (aj < 0 || aj == ai)
+                        continue;
+                    work_t dx = work_t(x[aj]) - xi;
+                    work_t dy = work_t(y[aj]) - yi;
+                    work_t dz = work_t(z[aj]) - zi;
+                    if (periodic) {
+                        if constexpr (Ortho) {
+                            dx -= work_t(box.cell[0])
+                                  * nearbyint(dx * work_t(box.inv_l[0]));
+                            dy -= work_t(box.cell[4])
+                                  * nearbyint(dy * work_t(box.inv_l[1]));
+                            dz -= work_t(box.cell[8])
+                                  * nearbyint(dz * work_t(box.inv_l[2]));
+                        } else {
+                            box.min_image(dx, dy, dz);
+                        }
+                    }
+                    work_t r2 = dx * dx + dy * dy + dz * dz;
+                    if (r2 >= cutoff_sq || r2 < min_pair_dist_sq)
+                        continue;
+                    work_t scale = work_t(1);
+                    if (has_excl && end_excl > beg_excl
+                        && excl_contains(excl_partners, beg_excl, end_excl,
+                                         aj)) {
+                        if (s_excl == work_t(0))
+                            continue;
                         scale = s_excl;
+                    }
+                    work_t inv_r2 = work_t(1) / r2;
+                    work_t sr2 = sigma_sq * inv_r2;
+                    work_t sr6 = sr2 * sr2 * sr2;
+                    work_t sr12 = sr6 * sr6;
+                    work_t f_over_r = scale * work_t(24) * epsilon
+                                      * (work_t(2) * sr12 - sr6) * inv_r2;
+                    // dx = x[aj] - x[ai], so the force ON ai is -f_over_r·dx.
+                    fxi += -f_over_r * dx;
+                    fyi += -f_over_r * dy;
+                    fzi += -f_over_r * dz;
+                    // Each pair is visited twice (ai's and aj's threads):
+                    // halve the energy/virial to recover the unique-pair sum.
+                    my_energy += work_t(0.5)
+                                 * (scale
+                                        * (work_t(4) * epsilon * (sr12 - sr6)
+                                           - v_shift));
+                    my_vxx += work_t(0.5) * dx * (f_over_r * dx);
+                    my_vyy += work_t(0.5) * dy * (f_over_r * dy);
+                    my_vzz += work_t(0.5) * dz * (f_over_r * dz);
+                    my_vxy += work_t(0.5) * dx * (f_over_r * dy);
+                    my_vxz += work_t(0.5) * dx * (f_over_r * dz);
+                    my_vyz += work_t(0.5) * dy * (f_over_r * dz);
                 }
             }
-
-            if (!skip_pair) {
-                // Single 64-bit divide replaces the original
-                // sqrt + (1/r) + (1/r)² chain — three transcendentals
-                // collapse to one IEEE divide on r² (already squared
-                // upstream by export_atom_pairs_kernel).
-                work_t inv_r2 = work_t(1) / r2;
-                work_t sr2 = sigma_sq * inv_r2;
-                work_t sr6 = sr2 * sr2 * sr2;
-                work_t sr12 = sr6 * sr6;
-
-                work_t f_over_r = scale * work_t(24) * epsilon
-                                  * (work_t(2) * sr12 - sr6) * inv_r2;
-                work_t dx = pdx[idx], dy = pdy[idx], dz = pdz[idx];
-
-                atomicAdd(&fx[i], static_cast<real_t>(-f_over_r * dx));
-                atomicAdd(&fy[i], static_cast<real_t>(-f_over_r * dy));
-                atomicAdd(&fz[i], static_cast<real_t>(-f_over_r * dz));
-                atomicAdd(&fx[j], static_cast<real_t>(f_over_r * dx));
-                atomicAdd(&fy[j], static_cast<real_t>(f_over_r * dy));
-                atomicAdd(&fz[j], static_cast<real_t>(f_over_r * dz));
-
-                my_energy =
-                    scale * (work_t(4) * epsilon * (sr12 - sr6) - v_shift);
-
-                // Pair virial (LAMMPS sign: w_ab = Σ_pairs r_a · F_b, where
-                // F on atom j = +f_over_r · d_ab). The diagonal of the
-                // stress tensor (used by NoseHooverNPT) is the sum of pair
-                // virials plus the kinetic component, divided by 3·V.
-                my_vxx = dx * (f_over_r * dx);
-                my_vyy = dy * (f_over_r * dy);
-                my_vzz = dz * (f_over_r * dz);
-                my_vxy = dx * (f_over_r * dy);
-                my_vxz = dx * (f_over_r * dz);
-                my_vyz = dy * (f_over_r * dz);
-            }
+            // Single non-atomic accumulate: this thread uniquely owns atom ai
+            // (orig_index is a permutation), and force-phase kernels serialize
+            // on the stream, so += safely adds to bonded contributions.
+            fx[ai] += static_cast<real_t>(fxi);
+            fy[ai] += static_cast<real_t>(fyi);
+            fz[ai] += static_cast<real_t>(fzi);
         }
     }
 
@@ -296,21 +321,20 @@ void PairLJCut::compute(const LaunchContext& ctx) {
     // (cuda-md-review-cleanup-02). With the new capacity sized to
     // ~3× n_neighbors_est, this kernel over-launches by ~3× actual
     // count; the early-exit absorbs it.
-    if (pair_capacity_host_ == 0) {
-        cudaMemcpyAsync(&pair_capacity_host_, pairs->capacity, sizeof(int),
-                        cudaMemcpyDeviceToHost, stream);
-        cudaStreamSynchronize(stream); // build-time-equivalent: first launch only
-    }
+    // Atom-centric, atomic-free path: one thread per atom (cluster slot)
+    // traverses the FULL cluster neighbor CSR published by NeighborList and
+    // accumulates its own force from current positions. No flat pair list,
+    // no per-step export, no atomicAdd on forces.
+    if (pairs->cl_row_ptr == nullptr || pairs->num_clusters <= 0)
+        return;
+    constexpr int CS = 8; // kClusterSize
     int block = kDefaultBlock;
-    int grid = grid_size(pair_capacity_host_ > 0 ? pair_capacity_host_ : 1);
+    int grid = grid_size(pairs->num_clusters * CS);
     int shmem = warps_per_block(block) * sizeof(work_t);
     // Pass nullptr for exclusion CSR when none configured — kernel takes
     // fast path and avoids the partner lookup overhead entirely.
     const int* excl_off = (has_exclusions_) ? d_excl_offsets_ : nullptr;
     const int* excl_par = (has_exclusions_) ? d_excl_partners_ : nullptr;
-    // Pass cutoff² + sigma² + min_pair_dist² so the kernel avoids the
-    // sqrt(r²) → r → 1/r chain entirely; everything is in r² space
-    // (cuda-md-review-cleanup-06-launch-config-streams).
     const work_t cutoff_sq = static_cast<work_t>(cutoff_)
                              * static_cast<work_t>(cutoff_);
     const work_t sigma_sq = static_cast<work_t>(sigma_)
@@ -318,12 +342,24 @@ void PairLJCut::compute(const LaunchContext& ctx) {
     const work_t min_pair_dist_sq =
         static_cast<work_t>(kernels::kMinPairDist)
         * static_cast<work_t>(kernels::kMinPairDist);
-    kernels::lj_force<<<grid, block, shmem, stream>>>(
-        frame.atoms.fx, frame.atoms.fy, frame.atoms.fz, &frame.scalars->energy,
-        &frame.scalars->stress[0], pairs->i, pairs->j, pairs->dx, pairs->dy,
-        pairs->dz, pairs->dist_sq, epsilon_, sigma_sq, cutoff_sq,
-        min_pair_dist_sq, v_shift_, pairs->n_pairs, excl_off, excl_par,
-        static_cast<work_t>(s_excl_));
+    cuda::Box box = ctx.runtime.host_box;
+    if (box.ortho) {
+        kernels::lj_force_cluster<true><<<grid, block, shmem, stream>>>(
+            frame.atoms.fx, frame.atoms.fy, frame.atoms.fz,
+            &frame.scalars->energy, &frame.scalars->stress[0], frame.atoms.x,
+            frame.atoms.y, frame.atoms.z, pairs->cl_row_ptr, pairs->cl_col_idx,
+            pairs->cl_orig_index, pairs->num_clusters, box, /*periodic=*/true,
+            epsilon_, sigma_sq, cutoff_sq, min_pair_dist_sq, v_shift_, excl_off,
+            excl_par, static_cast<work_t>(s_excl_));
+    } else {
+        kernels::lj_force_cluster<false><<<grid, block, shmem, stream>>>(
+            frame.atoms.fx, frame.atoms.fy, frame.atoms.fz,
+            &frame.scalars->energy, &frame.scalars->stress[0], frame.atoms.x,
+            frame.atoms.y, frame.atoms.z, pairs->cl_row_ptr, pairs->cl_col_idx,
+            pairs->cl_orig_index, pairs->num_clusters, box, /*periodic=*/true,
+            epsilon_, sigma_sq, cutoff_sq, min_pair_dist_sq, v_shift_, excl_off,
+            excl_par, static_cast<work_t>(s_excl_));
+    }
 }
 
 } // namespace cuda

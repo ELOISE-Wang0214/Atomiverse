@@ -43,6 +43,21 @@ struct PairList {
     ///< histogram binning) take sqrt at read time.
     int* n_pairs = nullptr;  ///< Current pair count [device, 1 element].
     int* capacity = nullptr; ///< Pre-allocated slot count [device, 1 element].
+
+    // ── Cluster neighbor list (atom-centric, atomic-free force path) ──────
+    // The builder internally produces a per-cluster CSR. These expose it so a
+    // force kernel can own each atom (one thread per atom slot), traverse its
+    // cluster's FULL neighbor-cluster list, compute distances from CURRENT
+    // atom positions, accumulate the atom's force in registers, and write it
+    // ONCE — no atomics, no flat pair list, no per-step export. row_ptr/col_idx
+    // are FULL (every neighbor cluster, both directions). Addresses are stable
+    // across the run; rebuilt in place on each skin-gated rebuild. orig_index
+    // maps a (cluster*kClusterSize + slot) to the global atom index; pad slots
+    // hold a negative sentinel. Null until build() publishes them.
+    const int* cl_row_ptr = nullptr;    ///< [num_clusters+1] CSR row offsets.
+    const int* cl_col_idx = nullptr;    ///< neighbor cluster indices (full).
+    const int* cl_orig_index = nullptr; ///< cluster slot -> global atom index.
+    int num_clusters = 0;               ///< cluster count (host scalar).
 };
 
 /// @brief Cluster-based neighbor list builder.
