@@ -82,13 +82,28 @@ int main(int argc, char** argv) {
     auto t1 = std::chrono::high_resolution_clock::now();
     double wall = std::chrono::duration<double>(t1 - t0).count();
 
+    // Peak VRAM in use per device (total - free) after the run. peak_mb = the
+    // busiest single GPU (the meaningful per-card figure); total_mb = summed
+    // across the GPUs used.
+    double peak_mb = 0.0, total_mb = 0.0;
+    for (int d = 0; d < ng; ++d) {
+        cudaSetDevice(mg.devices().device_id(d));
+        size_t freeb = 0, totb = 0;
+        cudaMemGetInfo(&freeb, &totb);
+        double used = double(totb - freeb) / 1.0e6;
+        total_mb += used;
+        if (used > peak_mb)
+            peak_mb = used;
+    }
+
     double atom_steps = double(n) * double(steps);
     double aps = atom_steps / wall;
-    // CSV: n_atoms,n_gpus,steps,wall_s,atom_steps_per_s,Matom_steps_per_s
-    std::printf("CSV,%d,%d,%d,%.4f,%.3e,%.2f\n", n, ng, steps, wall, aps,
-                aps / 1e6);
-    std::printf("# %d atoms on %d GPU(s): %.4f s for %d steps -> %.2f "
-                "Matom-step/s\n",
-                n, ng, wall, steps, aps / 1e6);
+    double steps_per_s = double(steps) / wall;
+    // CSV: tag,atoms,gpus,steps,wall_s,steps_per_s,Matom_steps_per_s,peak_vram_mb,total_vram_mb
+    std::printf("CSV,%d,%d,%d,%.4f,%.2f,%.2f,%.1f,%.1f\n", n, ng, steps, wall,
+                steps_per_s, aps / 1e6, peak_mb, total_mb);
+    std::printf("# %d atoms on %d GPU(s): %.4f s, %d steps -> %.2f Matom-step/s,"
+                " peak %.0f MB/GPU, total %.0f MB\n",
+                n, ng, wall, steps, aps / 1e6, peak_mb, total_mb);
     return 0;
 }

@@ -64,8 +64,9 @@ struct NeighborList::State {
 
     int num_atoms = 0;
     int num_clusters = 0;
-    int max_atoms = 0; // build-time atom capacity (buffers sized for this)
+    int max_atoms = 0;      // build-time atom capacity (buffers sized for this)
     int pair_capacity = 0;
+    int atom_pair_cap = 0;  // flat (i,j,...) export capacity; allocated lazily
     int dims_x = 0, dims_y = 0, dims_z = 0;
     bool periodic = true;
 
@@ -168,7 +169,7 @@ void NeighborList::build(const BuildContext& ctx) {
     // overflow guard turns any residual undershoot into a loud throw, never
     // silent CSR corruption.
     const double kPi = 3.141592653589793;
-    long long cluster_cap_ll = static_cast<long long>(nc) * 512;
+    long long cluster_cap_ll = static_cast<long long>(nc) * 128;
     if (box_vol > 0.0 && n > 0) {
         double density = double(n) / box_vol;
         double rs = double(r_search);
@@ -178,7 +179,7 @@ void NeighborList::build(const BuildContext& ctx) {
         // both directions) for the atomic-free atom-centric force kernel, ~2x
         // the old half-list count. Absorbs cubic-stencil over-count + cluster
         // extent with ~1.5x margin; the launch() guard catches any undershoot.
-        double per_cluster = std::max(512.0, 24.0 * neigh_clusters);
+        double per_cluster = std::max(128.0, 24.0 * neigh_clusters);
         cluster_cap_ll = std::max(
             cluster_cap_ll, static_cast<long long>(double(nc) * per_cluster));
     }
@@ -255,12 +256,22 @@ void NeighborList::build(const BuildContext& ctx) {
             double(std::numeric_limits<int>::max())));
     }
     atom_pair_cap = std::max(atom_pair_cap, std::max(1, n * 50));
-    cudaMalloc(&pairs_.i, atom_pair_cap * sizeof(int));
-    cudaMalloc(&pairs_.j, atom_pair_cap * sizeof(int));
-    cudaMalloc(&pairs_.dx, atom_pair_cap * sizeof(real_t));
-    cudaMalloc(&pairs_.dy, atom_pair_cap * sizeof(real_t));
-    cudaMalloc(&pairs_.dz, atom_pair_cap * sizeof(real_t));
-    cudaMalloc(&pairs_.dist_sq, atom_pair_cap * sizeof(real_t));
+    s.atom_pair_cap = atom_pair_cap;
+    // The flat (i,j,dx,dy,dz,r²) atom-pair arrays are consumed ONLY by the
+    // opt-in flat export (cuda::RDF). The atom-centric LJ force path reads the
+    // cluster CSR directly, so for it (and any flat=false run) these big arrays
+    // — n·max(100,…) entries × 24 B, e.g. ~2.4 GB per million atoms — are dead
+    // allocation. Allocate them lazily on the first export instead (build()
+    // can't rely on flat_pairs_requested being set yet, since RDF's on_build
+    // may run after NeighborList's). n_pairs/capacity are tiny and always live.
+    if (ctx.runtime.flat_pairs_requested) {
+        cudaMalloc(&pairs_.i, atom_pair_cap * sizeof(int));
+        cudaMalloc(&pairs_.j, atom_pair_cap * sizeof(int));
+        cudaMalloc(&pairs_.dx, atom_pair_cap * sizeof(real_t));
+        cudaMalloc(&pairs_.dy, atom_pair_cap * sizeof(real_t));
+        cudaMalloc(&pairs_.dz, atom_pair_cap * sizeof(real_t));
+        cudaMalloc(&pairs_.dist_sq, atom_pair_cap * sizeof(real_t));
+    }
     cudaMalloc(&pairs_.n_pairs, sizeof(int));
     cudaMemset(pairs_.n_pairs, 0, sizeof(int));
     cudaMalloc(&pairs_.capacity, sizeof(int));
@@ -505,6 +516,17 @@ void NeighborList::launch(const LaunchContext& ctx) {
     if (!ctx.runtime.flat_pairs_requested) {
         cudaMemsetAsync(pairs_.n_pairs, 0, sizeof(int), stream);
     } else {
+        // Lazy one-time allocation of the flat export arrays (see build()): a
+        // flat consumer (RDF) requested them, possibly after build() ran.
+        if (pairs_.i == nullptr) {
+            int cap = std::max(1, s.atom_pair_cap);
+            cudaMalloc(&pairs_.i, cap * sizeof(int));
+            cudaMalloc(&pairs_.j, cap * sizeof(int));
+            cudaMalloc(&pairs_.dx, cap * sizeof(real_t));
+            cudaMalloc(&pairs_.dy, cap * sizeof(real_t));
+            cudaMalloc(&pairs_.dz, cap * sizeof(real_t));
+            cudaMalloc(&pairs_.dist_sq, cap * sizeof(real_t));
+        }
         int prune_grid_pairs = (s.last_flat_pair_count > 0)
                                    ? s.last_flat_pair_count
                                    : s.pair_capacity;
