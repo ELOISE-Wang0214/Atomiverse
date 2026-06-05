@@ -27,6 +27,13 @@ if(ATV_BUILD_CUDA)
     atv_add_bench(bench_md_step)
     atv_add_bench(bench_scf)
     atv_add_bench(bench_rhf)
+
+    # Multi-GPU strong-scaling benchmark — plain main() (not google-benchmark)
+    # so the GPU count / system size are argv-driven and it emits a CSV line.
+    add_executable(bench_multi_gpu_scaling bench_multi_gpu_scaling.cu)
+    target_link_libraries(bench_multi_gpu_scaling PRIVATE atomiverse)
+    set_target_properties(bench_multi_gpu_scaling PROPERTIES
+        CUDA_SEPARABLE_COMPILATION ON)
 endif()
 
 if(ATV_BUILD_RHF)

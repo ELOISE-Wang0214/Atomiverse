@@ -453,6 +453,51 @@ TEST(MultiGpu, NveTrajectoryParity) {
     }
 }
 
+TEST(MultiGpu, NveTrajectoryParityNlist) {
+    // End-to-end Verlet-cadence loop: single-GPU vs multi-GPU run_nve_nlist must
+    // agree on owned positions after a short trajectory. Exercises reneighbor
+    // (halo rebuild + neighbor-list rebuild) and forward_comm position refresh.
+    auto g = make_grid_n(8, 24.0);
+    const int n = g.atoms.size();
+    for (int i = 0; i < n; ++i) {
+        g.atoms.x[i] += 0.4 * std::sin(0.7 * i + 0.1);
+        g.atoms.y[i] += 0.4 * std::sin(1.3 * i + 0.2);
+        g.atoms.z[i] += 0.4 * std::sin(1.9 * i + 0.3);
+        g.atoms.vx[i] = 0.01 * std::sin(0.5 * i);
+        g.atoms.vy[i] = 0.01 * std::sin(0.9 * i);
+        g.atoms.vz[i] = 0.01 * std::sin(1.1 * i);
+        g.atoms.mass[i] = 1.0;
+    }
+    const double cut = 5.0, eps = 1.0, sig = 2.5, dt = 0.002;
+    const int K = 12, reneigh = 4;
+
+    cpu::Frame ref(n);
+    for (int i = 0; i < n; ++i)
+        ref.atoms.tag[i] = i;
+    {
+        cuda::md::MultiGpu mg1(1);
+        mg1.partition(g, 2.0);
+        mg1.run_nve_nlist(K, dt, cut, eps, sig, -1.0, reneigh);
+        mg1.gather(ref);
+    }
+
+    cuda::md::MultiGpu mg(2);
+    if (mg.count() < 2)
+        GTEST_SKIP() << "needs >= 2 GPUs";
+    mg.partition(g, 2.0);
+    mg.run_nve_nlist(K, dt, cut, eps, sig, -1.0, reneigh);
+    cpu::Frame mf(n);
+    for (int i = 0; i < n; ++i)
+        mf.atoms.tag[i] = i;
+    mg.gather(mf);
+
+    for (int i = 0; i < n; ++i) {
+        EXPECT_NEAR(mf.atoms.x[i], ref.atoms.x[i], 5e-3) << "atom " << i;
+        EXPECT_NEAR(mf.atoms.y[i], ref.atoms.y[i], 5e-3);
+        EXPECT_NEAR(mf.atoms.z[i], ref.atoms.z[i], 5e-3);
+    }
+}
+
 TEST(MultiGpu, EachAtomOnOwnerSlab) {
     auto g = make_grid(12.0);
     cuda::md::MultiGpu mg;
