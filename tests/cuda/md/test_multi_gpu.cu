@@ -215,6 +215,81 @@ TEST(MultiGpu, LjForceParityVsSingleGpu) {
     }
 }
 
+namespace {
+// s x s x s grid in a cubic box of edge L, deterministic tags.
+cpu::Frame make_grid_n(int s, double L) {
+    const int n = s * s * s;
+    cpu::Frame f(n);
+    f.box = Mat3::cubic(L);
+    double sp = L / s;
+    int idx = 0;
+    for (int ix = 0; ix < s; ++ix)
+        for (int iy = 0; iy < s; ++iy)
+            for (int iz = 0; iz < s; ++iz) {
+                f.atoms.x[idx] = (ix + 0.5) * sp;
+                f.atoms.y[idx] = (iy + 0.5) * sp;
+                f.atoms.z[idx] = (iz + 0.5) * sp;
+                f.atoms.mass[idx] = 1.0;
+                f.atoms.type[idx] = 0;
+                f.atoms.tag[idx] = idx;
+                ++idx;
+            }
+    return f;
+}
+} // namespace
+
+TEST(MultiGpu, LjForceParityDims2Overlap) {
+    // Regression for the dims==2 double-send bug: along an axis split into
+    // exactly 2 subdomains, both faces point to the SAME neighbor (periodic
+    // self-pair). An atom in the overlap band (within cutoff of BOTH shared
+    // boundaries) used to be sent TWICE, and the min-image force kernel then
+    // counted it twice -> doubled force. Here spacing 2.0 with cutoff 4.5 puts
+    // many atoms in the overlap band AND makes them genuine cross-boundary
+    // neighbors, so the bug would break parity. The dedup (mode=2 single send)
+    // restores it.
+    auto g = make_grid_n(6, 16.0); // box/2 = 8; slab width 8, overlap band [3.5,4.5]
+    const int n = g.atoms.size();  // spacing 2.667 > sigma -> gentle forces
+    for (int i = 0; i < n; ++i) {
+        g.atoms.x[i] += 0.3 * std::sin(0.7 * i + 0.1);
+        g.atoms.y[i] += 0.3 * std::sin(1.3 * i + 0.2);
+        g.atoms.z[i] += 0.3 * std::sin(1.9 * i + 0.3);
+    }
+    const double cut = 4.5, eps = 1.0, sig = 2.5;
+
+    cpu::Frame ref(n);
+    for (int i = 0; i < n; ++i)
+        ref.atoms.tag[i] = i;
+    {
+        cuda::md::MultiGpu mg1(1);
+        mg1.partition(g, 4.0); // generous ghost headroom for the dense band
+        mg1.build_halo(cut);
+        mg1.compute_lj_bruteforce(cut, eps, sig);
+        mg1.gather_forces(ref);
+    }
+
+    cuda::md::MultiGpu mg(2);
+    if (mg.count() < 2)
+        GTEST_SKIP() << "needs >= 2 GPUs";
+    mg.partition(g, 4.0);
+    ASSERT_EQ(mg.domain().dims(), (std::array<int, 3>{2, 1, 1}));
+    mg.build_halo(cut);
+    cpu::Frame mf(n);
+    for (int i = 0; i < n; ++i)
+        mf.atoms.tag[i] = i;
+    mg.compute_lj_bruteforce(cut, eps, sig);
+    mg.gather_forces(mf);
+
+    double maxabs = 0;
+    for (int i = 0; i < n; ++i)
+        maxabs = std::max(maxabs, std::abs(ref.atoms.fx[i]));
+    EXPECT_GT(maxabs, 1e-3) << "reference forces should be nonzero";
+    for (int i = 0; i < n; ++i) {
+        EXPECT_NEAR(mf.atoms.fx[i], ref.atoms.fx[i], 2e-3) << "atom " << i;
+        EXPECT_NEAR(mf.atoms.fy[i], ref.atoms.fy[i], 2e-3) << "atom " << i;
+        EXPECT_NEAR(mf.atoms.fz[i], ref.atoms.fz[i], 2e-3) << "atom " << i;
+    }
+}
+
 TEST(MultiGpu, LjForceParityVsSingleGpu4Way) {
     // The 4-GPU decomposition is 2x2x1, so atoms near the (x=6, y=6) edge have
     // neighbors owned by the DIAGONAL subdomain. A single forward halo pass

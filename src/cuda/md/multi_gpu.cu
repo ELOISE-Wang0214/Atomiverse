@@ -46,17 +46,20 @@ int MultiGpu::n_local(int slot) const { return n_local_[slot]; }
 int MultiGpu::n_ghost(int slot) const { return frames_[slot].n_ghost_; }
 
 namespace {
-// Select owned atoms within `cutoff` of a face plane and compact their
-// x/y/z/tag/type into the send buffers (atomic compaction). Also records each
-// selected atom's OWNED INDEX in `oidx` so a later forward_comm can re-gather
-// its position. `dir > 0`: atoms near the high (subhi) boundary; `dir < 0`:
-// near the low (sublo) boundary.
+// Select atoms within `cutoff` of a subdomain boundary along `axis` and
+// compact their x/y/z/tag/type into the send buffers (atomic compaction). Also
+// records each selected atom's array INDEX in `oidx` so a later forward_comm
+// can re-gather its position. `mode`: 0 = near the low (sublo) boundary only,
+// 1 = near the high (subhi) boundary only, 2 = near EITHER boundary, sent ONCE
+// (used when both face-neighbors are the same GPU, i.e. dims==2 along this
+// axis: with the min-image force kernel a single raw-position ghost serves all
+// periodic images, so the atom must not be sent twice or its force doubles).
 __global__ void pack_face(const real_t* __restrict__ x,
                           const real_t* __restrict__ y,
                           const real_t* __restrict__ z,
                           const std::int64_t* __restrict__ tag,
                           const int* __restrict__ type, int n_local, int axis,
-                          int dir, double plane, double cutoff,
+                          double lo, double hi, double cutoff, int mode,
                           real_t* __restrict__ ox, real_t* __restrict__ oy,
                           real_t* __restrict__ oz,
                           std::int64_t* __restrict__ otag,
@@ -66,7 +69,8 @@ __global__ void pack_face(const real_t* __restrict__ x,
     if (i >= n_local)
         return;
     real_t q = (axis == 0) ? x[i] : (axis == 1) ? y[i] : z[i];
-    bool sel = (dir > 0) ? (q > plane - cutoff) : (q < plane + cutoff);
+    bool near_lo = q < lo + cutoff, near_hi = q > hi - cutoff;
+    bool sel = (mode == 0) ? near_lo : (mode == 1) ? near_hi : (near_lo || near_hi);
     if (!sel)
         return;
     int s = atomicAdd(counter, 1);
@@ -152,19 +156,36 @@ void MultiGpu::build_halo(double cutoff) {
             const auto lo = dd_->sublo(src);
             const auto hi = dd_->subhi(src);
 
-            for (int f = 0; f < 2; ++f) {
-                const int face = 2 * axis + f;
-                const int dst = dd_->face_neighbor(src, face);
-                if (dst == src)
-                    continue;
-                const int dir = (face & 1) ? +1 : -1;
-                const double plane = (dir > 0) ? hi[axis] : lo[axis];
+            // Distinct (dst, mode) sends along this axis. When the low and high
+            // face-neighbors are the SAME GPU (dims==2 along the axis, periodic
+            // self-pair), an atom near either boundary must be sent to it just
+            // ONCE (mode 2) — the min-image force kernel resolves all periodic
+            // images from a single raw-position ghost, so a second copy would
+            // double that atom's force. Distinct neighbors (dims>=3) get
+            // separate low/high sends.
+            struct Send {
+                int dst, mode;
+            };
+            Send sends[2];
+            int n_sends = 0;
+            if (dlo != src && dlo == dhi) {
+                sends[n_sends++] = {dlo, 2};
+            } else {
+                if (dlo != src)
+                    sends[n_sends++] = {dlo, 0};
+                if (dhi != src)
+                    sends[n_sends++] = {dhi, 1};
+            }
+
+            for (int si = 0; si < n_sends; ++si) {
+                const int dst = sends[si].dst;
+                const int mode = sends[si].mode;
 
                 CKM(cudaMemset(scnt, 0, sizeof(int)));
                 int block = 256, grid = (ns + block - 1) / block;
                 pack_face<<<grid, block>>>(a.x, a.y, a.z, a.tag, a.type, ns, axis,
-                                           dir, plane, cutoff, sx, sy, sz, stag,
-                                           stype, sidx, scnt, ns);
+                                           lo[axis], hi[axis], cutoff, mode, sx,
+                                           sy, sz, stag, stype, sidx, scnt, ns);
                 CKM(cudaGetLastError());
                 int cnt = 0; // D2H of the counter also syncs the pack kernel
                 CKM(cudaMemcpy(&cnt, scnt, sizeof(int), cudaMemcpyDeviceToHost));
