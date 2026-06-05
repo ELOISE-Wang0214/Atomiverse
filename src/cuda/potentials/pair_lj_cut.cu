@@ -76,11 +76,22 @@ lj_force_cluster(real_t* __restrict__ fx, real_t* __restrict__ fy,
     work_t my_vxx = work_t(0), my_vyy = work_t(0), my_vzz = work_t(0);
     work_t my_vxy = work_t(0), my_vxz = work_t(0), my_vyz = work_t(0);
 
+    // Mixed precision (matches LAMMPS KOKKOS SINGLE_DOUBLE): geometry + force
+    // in real_t (float — FP32 is 2x FP64 throughput on GH200 and the divide is
+    // far cheaper), energy/virial accumulated in work_t (double). Force is
+    // stored as real_t anyway, so float accumulation loses nothing.
+    const real_t eps_r = real_t(epsilon);
+    const real_t sigsq_r = real_t(sigma_sq);
+    const real_t cut_r = real_t(cutoff_sq);
+    const real_t minr_r = real_t(min_pair_dist_sq);
+    const real_t vshift_r = real_t(v_shift);
+    const real_t sexcl_r = real_t(s_excl);
+
     if (ci < num_clusters) {
         int ai = orig_index[ci * CS + slot];
         if (ai >= 0) {
-            work_t xi = x[ai], yi = y[ai], zi = z[ai];
-            work_t fxi = work_t(0), fyi = work_t(0), fzi = work_t(0);
+            real_t xi = x[ai], yi = y[ai], zi = z[ai];
+            real_t fxi = real_t(0), fyi = real_t(0), fzi = real_t(0);
             const bool has_excl = (excl_offsets != nullptr);
             int beg_excl = has_excl ? excl_offsets[ai] : 0;
             int end_excl = has_excl ? excl_offsets[ai + 1] : 0;
@@ -93,62 +104,59 @@ lj_force_cluster(real_t* __restrict__ fx, real_t* __restrict__ fy,
                     int aj = orig_index[cj * CS + sj];
                     if (aj < 0 || aj == ai)
                         continue;
-                    work_t dx = work_t(x[aj]) - xi;
-                    work_t dy = work_t(y[aj]) - yi;
-                    work_t dz = work_t(z[aj]) - zi;
+                    real_t dx = x[aj] - xi;
+                    real_t dy = y[aj] - yi;
+                    real_t dz = z[aj] - zi;
                     if (periodic) {
                         if constexpr (Ortho) {
-                            dx -= work_t(box.cell[0])
-                                  * nearbyint(dx * work_t(box.inv_l[0]));
-                            dy -= work_t(box.cell[4])
-                                  * nearbyint(dy * work_t(box.inv_l[1]));
-                            dz -= work_t(box.cell[8])
-                                  * nearbyint(dz * work_t(box.inv_l[2]));
+                            dx -= box.cell[0] * nearbyintf(dx * box.inv_l[0]);
+                            dy -= box.cell[4] * nearbyintf(dy * box.inv_l[1]);
+                            dz -= box.cell[8] * nearbyintf(dz * box.inv_l[2]);
                         } else {
                             box.min_image(dx, dy, dz);
                         }
                     }
-                    work_t r2 = dx * dx + dy * dy + dz * dz;
-                    if (r2 >= cutoff_sq || r2 < min_pair_dist_sq)
+                    real_t r2 = dx * dx + dy * dy + dz * dz;
+                    if (r2 >= cut_r || r2 < minr_r)
                         continue;
-                    work_t scale = work_t(1);
+                    real_t scale = real_t(1);
                     if (has_excl && end_excl > beg_excl
                         && excl_contains(excl_partners, beg_excl, end_excl,
                                          aj)) {
-                        if (s_excl == work_t(0))
+                        if (sexcl_r == real_t(0))
                             continue;
-                        scale = s_excl;
+                        scale = sexcl_r;
                     }
-                    work_t inv_r2 = work_t(1) / r2;
-                    work_t sr2 = sigma_sq * inv_r2;
-                    work_t sr6 = sr2 * sr2 * sr2;
-                    work_t sr12 = sr6 * sr6;
-                    work_t f_over_r = scale * work_t(24) * epsilon
-                                      * (work_t(2) * sr12 - sr6) * inv_r2;
+                    real_t inv_r2 = real_t(1) / r2;
+                    real_t sr2 = sigsq_r * inv_r2;
+                    real_t sr6 = sr2 * sr2 * sr2;
+                    real_t sr12 = sr6 * sr6;
+                    real_t f_over_r = scale * real_t(24) * eps_r
+                                      * (real_t(2) * sr12 - sr6) * inv_r2;
                     // dx = x[aj] - x[ai], so the force ON ai is -f_over_r·dx.
                     fxi += -f_over_r * dx;
                     fyi += -f_over_r * dy;
                     fzi += -f_over_r * dz;
-                    // Each pair is visited twice (ai's and aj's threads):
-                    // halve the energy/virial to recover the unique-pair sum.
-                    my_energy += work_t(0.5)
-                                 * (scale
-                                        * (work_t(4) * epsilon * (sr12 - sr6)
-                                           - v_shift));
-                    my_vxx += work_t(0.5) * dx * (f_over_r * dx);
-                    my_vyy += work_t(0.5) * dy * (f_over_r * dy);
-                    my_vzz += work_t(0.5) * dz * (f_over_r * dz);
-                    my_vxy += work_t(0.5) * dx * (f_over_r * dy);
-                    my_vxz += work_t(0.5) * dx * (f_over_r * dz);
-                    my_vyz += work_t(0.5) * dy * (f_over_r * dz);
+                    // Each pair is visited twice (ai's and aj's threads): halve
+                    // the energy/virial to recover the unique-pair sum. Promote
+                    // the per-pair term to work_t for the double accumulation.
+                    real_t e_pair =
+                        scale * (real_t(4) * eps_r * (sr12 - sr6) - vshift_r);
+                    my_energy += work_t(0.5) * work_t(e_pair);
+                    my_vxx += work_t(0.5) * work_t(dx * (f_over_r * dx));
+                    my_vyy += work_t(0.5) * work_t(dy * (f_over_r * dy));
+                    my_vzz += work_t(0.5) * work_t(dz * (f_over_r * dz));
+                    my_vxy += work_t(0.5) * work_t(dx * (f_over_r * dy));
+                    my_vxz += work_t(0.5) * work_t(dx * (f_over_r * dz));
+                    my_vyz += work_t(0.5) * work_t(dy * (f_over_r * dz));
                 }
             }
             // Single non-atomic accumulate: this thread uniquely owns atom ai
             // (orig_index is a permutation), and force-phase kernels serialize
             // on the stream, so += safely adds to bonded contributions.
-            fx[ai] += static_cast<real_t>(fxi);
-            fy[ai] += static_cast<real_t>(fyi);
-            fz[ai] += static_cast<real_t>(fzi);
+            fx[ai] += fxi;
+            fy[ai] += fyi;
+            fz[ai] += fzi;
         }
     }
 
