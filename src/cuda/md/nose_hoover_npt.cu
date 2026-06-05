@@ -352,7 +352,7 @@ void NoseHooverNPT::refresh_npt_scalars_(const LaunchContext& ctx) {
 
     // Order defer_stream after all pending main_stream work (the
     // velocity / stress / energy values are produced by main_stream
-    // kernels — VirialStress, ZeroEnergy, integrator kicks).
+    // kernels — Virial, ZeroEnergy, integrator kicks).
     auto event = static_cast<cudaEvent_t>(npt_scratch_event_);
     cudaEventRecord(event, main_stream);
     cudaStreamWaitEvent(defer_stream, event, 0);
@@ -743,7 +743,7 @@ void NoseHooverNPT::launch(const LaunchContext& ctx) {
         kick_v_by_force_(ctx, half_dt);   // P7
 
     } else if (ctx.stage == static_cast<int>(ATV::md::Phase::end_of_step)) {
-        // ReduceEnergy has run (single-GPU: no-op, but the order matches CPU).
+        // Reduce has run (single-GPU: no-op, but the order matches CPU).
         KE_global_ = compute_global_KE_(ctx);
 
         scale_v_by_baro_(ctx, half_dt);   // P8

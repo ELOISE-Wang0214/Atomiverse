@@ -49,7 +49,7 @@ class DynamicsDriver : public CPUDriver<ATV::md::Phase> {
     /// `FixLangevin` RNG, …) and re-randomise `InitVelocity`, silently
     /// corrupting any chunked run. The step index passed to components
     /// is cumulative across calls so frequency-gated components
-    /// (`Thermo`, `AtomMigration`, recorders) keep a continuous cadence.
+    /// (`Thermo`, `Migrate`, recorders) keep a continuous cadence.
     ///
     /// Honours `outer_status.stop_requested` (early break); ignores
     /// `outer_status.converged` (Dynamics has no convergence success path).

@@ -10,7 +10,7 @@
 ///   * Box 30 Å × 30 Å × 30 Å, dims = (2, 1, 1) → slab_x = 15 Å.
 ///   * Chain atoms span x ≈ 3 → 27.2 Å; rank 0 owns atoms whose x < 15,
 ///     rank 1 owns the rest. Roughly half-and-half.
-///   * HaloExchangeForward cutoff = 5 Å so a dihedral that spans 3 bond
+///   * HaloSend cutoff = 5 Å so a dihedral that spans 3 bond
 ///     lengths can resolve every atom on at least one rank as either
 ///     owner or ghost.
 ///
@@ -114,9 +114,9 @@ TEST(PeChainCrossing, BondedNveHandlesChainAcrossBoundary) {
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{0.5});
     sim.on(ATV::md::Phase::pre_force)
-        .add(cpu::comm::HaloExchangeForward{5.0}, -20);
+        .add(cpu::comm::HaloSend{5.0}, -20);
     sim.on(ATV::md::Phase::post_force)
-        .add(cpu::comm::HaloExchangeReverse{}, -1000);
+        .add(cpu::comm::HaloRecv{}, -1000);
     sim.on(ATV::md::Phase::force)
         .add(HarmonicBond{{bond_K_eV()}, {kBondR0}})
         .add(HarmonicAngle{{angle_K_eV()}, {kAngleTheta0}})
@@ -126,7 +126,7 @@ TEST(PeChainCrossing, BondedNveHandlesChainAcrossBoundary) {
     sim.run(frame, 1);
     const double e0 =
         frame.scalars.energy
-        + frame.scalars.kinetic; // already global via ReduceEnergy
+        + frame.scalars.kinetic; // already global via Reduce
     ASSERT_FALSE(std::isnan(e0)) << "step-1 global energy is NaN";
 
     sim.run(frame, 199);
@@ -164,9 +164,9 @@ TEST(PeChainCrossing, BondedSkinAutoExtendsWithSmallPairCutoff) {
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{0.5});
     sim.on(ATV::md::Phase::pre_force)
-        .add(cpu::comm::HaloExchangeForward{tiny_pair_cutoff}, -20);
+        .add(cpu::comm::HaloSend{tiny_pair_cutoff}, -20);
     sim.on(ATV::md::Phase::post_force)
-        .add(cpu::comm::HaloExchangeReverse{}, -1000);
+        .add(cpu::comm::HaloRecv{}, -1000);
     sim.on(ATV::md::Phase::force)
         .add(HarmonicBond{{bond_K_eV()}, {kBondR0}})
         .add(HarmonicAngle{{angle_K_eV()}, {kAngleTheta0}})

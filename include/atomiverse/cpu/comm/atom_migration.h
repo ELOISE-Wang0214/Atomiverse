@@ -37,14 +37,14 @@ namespace comm {
 void scatter_atoms_from_root(cpu::Frame& frame);
 
 /// @brief Atom migration across rank boundaries. Registers `pre_force @ -30`.
-class AtomMigration : public cpu::ComponentBase {
+class Migrate : public cpu::ComponentBase {
   public:
     /// @param every Attempt owner migration every N steps. The component also
     ///        runs immediately when an external partition update bumps
     ///        `md::mpi::DomainDecomposition::neighbor_generation`.
-    explicit AtomMigration(int every = 1) : every_(every < 1 ? 1 : every) {}
+    explicit Migrate(int every = 1) : every_(every < 1 ? 1 : every) {}
 
-    std::string name() const override { return "atom_migration"; }
+    std::string name() const override { return "migrate"; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {{static_cast<int>(ATV::md::Phase::pre_exchange), 0}};
     }

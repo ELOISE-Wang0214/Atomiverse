@@ -104,7 +104,7 @@ class ComponentBase {
     /// concrete components override to declare their inputs. Used by
     /// `cuda::md::MD::install_infra_` for capability-typed auto-injection
     /// — e.g. a barostat that declares `reads()==Stress` auto-pulls in
-    /// `cuda::VirialStress` if none is registered.
+    /// `cuda::Virial` if none is registered.
     /// @return Capability bitset of frame fields read (defaults to None).
     /// @see facade/component_role.h
     virtual Capability reads() const { return Capability::None; }

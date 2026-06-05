@@ -8,8 +8,8 @@
 ///     re-call with a different component
 ///   - append setters (set_thermostat, set_observer, set_record) accept
 ///     repeated calls
-///   - install_infra: Stress dependency from NPT auto-injects VirialStress
-///   - install_infra: explicit VirialStress via set_observer suppresses
+///   - install_infra: Stress dependency from NPT auto-injects Virial
+///   - install_infra: explicit Virial via set_observer suppresses
 ///     the auto-inject (driver-level dedup by canonical-provider name)
 ///   - install_infra: pair evaluator without set_neighbor throws at build
 ///
@@ -128,7 +128,7 @@ TEST(MDSetApi, SetIntegratorRejectsDifferentTypeAfterFirst) {
         std::invalid_argument);
 }
 
-// ─── install_infra: Stress dependency → VirialStress ────────────────
+// ─── install_infra: Stress dependency → Virial ────────────────
 
 TEST(MDSetApi, NPTAutoInjectsVirialStress) {
     IntrospectMD sim;
@@ -140,8 +140,8 @@ TEST(MDSetApi, NPTAutoInjectsVirialStress) {
                                                     .tau_P = 1000.0,
                                                     .dt = kDt}});
     EXPECT_NO_THROW(sim.build());
-    EXPECT_EQ(sim.name_counts["virial_stress"], 1)
-        << "NPT::reads()==Stress → install_infra must add VirialStress once";
+    EXPECT_EQ(sim.name_counts["virial"], 1)
+        << "NPT::reads()==Stress → install_infra must add Virial once";
 }
 
 TEST(MDSetApi, ExplicitVirialStressSuppressesAutoInject) {
@@ -153,10 +153,10 @@ TEST(MDSetApi, ExplicitVirialStressSuppressesAutoInject) {
                                                     .P_target = kP,
                                                     .tau_P = 1000.0,
                                                     .dt = kDt}});
-    sim.set_observer(ATV::cpu::md::VirialStress{});
+    sim.set_observer(ATV::cpu::md::Virial{});
     EXPECT_NO_THROW(sim.build());
-    EXPECT_EQ(sim.name_counts["virial_stress"], 1)
-        << "Explicit VirialStress via set_observer must dedup the auto-inject";
+    EXPECT_EQ(sim.name_counts["virial"], 1)
+        << "Explicit Virial via set_observer must dedup the auto-inject";
 }
 
 TEST(MDSetApi, NoStressReadsLeavesVirialStressOut) {
@@ -166,8 +166,8 @@ TEST(MDSetApi, NoStressReadsLeavesVirialStressOut) {
     sim.set_integrator(
         ATV::cpu::md::VelocityVerlet{kDt}); // NVE — no stress dep
     EXPECT_NO_THROW(sim.build());
-    EXPECT_EQ(sim.name_counts["virial_stress"], 0)
-        << "VelocityVerlet does not read Stress → no VirialStress injection";
+    EXPECT_EQ(sim.name_counts["virial"], 0)
+        << "VelocityVerlet does not read Stress → no Virial injection";
 }
 
 // ─── install_infra: missing-NL throw ────────────────────────────────

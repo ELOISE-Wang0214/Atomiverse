@@ -126,7 +126,7 @@ class NeighborList : public cpu::ComponentBase {
         //     } else return 0;
         //   size_stale: atom count changed (migration / halo resize) → force
         //               rebuild. Atomiverse-only short-circuit, no LAMMPS keyword.
-        //   halo_stale: HaloExchangeForward did a full rebuild that may have
+        //   halo_stale: HaloSend did a full rebuild that may have
         //               reshuffled ghost slot indices (different atoms in the
         //               same slot, or atoms relocated to a different slot
         //               because earlier-axis recv_counts changed). The pair
@@ -240,7 +240,7 @@ class NeighborList : public cpu::ComponentBase {
     /// @brief Total rebuild count (includes the initial `build()` enumeration).
     int n_rebuilds_ = 0;
     /// @brief Last observed value of `dd->halo_generation` (multi-rank only).
-    /// Used to force a CSR rebuild when `HaloExchangeForward`'s full rebuild
+    /// Used to force a CSR rebuild when `HaloSend`'s full rebuild
     /// reshuffles ghost slot indices — see the `halo_stale` branch in
     /// `launch()`. Initialised to 0 so the very first launch (which
     /// initialises the CSR via `build()` already) doesn't double-rebuild.

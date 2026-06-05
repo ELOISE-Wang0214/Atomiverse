@@ -75,7 +75,7 @@ class ZeroLinearMomentum : public cpu::ComponentBase {
 
     std::string name() const override { return "zero_linear_momentum"; }
     std::vector<DefaultBinding> default_bindings() const override {
-        // +25 = after KineticEnergy (@-100) / ReduceEnergy (@-50) /
+        // +25 = after KineticEnergy (@-100) / Reduce (@-50) /
         // NoseHooverNPT (@-40) so we only touch post-integration
         // velocities.  ThermoPrinter sits at +20, also behind us.
         return {{static_cast<int>(ATV::md::Phase::end_of_step), +25}};

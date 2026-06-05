@@ -80,13 +80,13 @@ TEST(DeformMultiRank, UniaxialPullStretchesBoxOnAllRanks) {
     sim.add(cpu::md::Deform{cpu::md::Deform::Mode::erate, strain_rate, dt,
                             /*axis=*/0});
     sim.on(ATV::md::Phase::pre_force)
-        .add(cpu::comm::HaloExchangeForward{lj_cut}, -20);
+        .add(cpu::comm::HaloSend{lj_cut}, -20);
     sim.on(ATV::md::Phase::post_force)
-        .add(cpu::comm::HaloExchangeReverse{}, -1000);
+        .add(cpu::comm::HaloRecv{}, -1000);
     sim.on(ATV::md::Phase::force)
         .add(cpu::md::NeighborList<>{lj_cut}, -10)
         .add(cpu::md::LJ{lj_eps, lj_sig, lj_cut});
-    sim.add(cpu::md::VirialStress{});
+    sim.add(cpu::md::Virial{});
     sim.build();
 
     sim.run(frame, n_steps);

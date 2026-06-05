@@ -1,5 +1,5 @@
 /// @file tests/mpi/test_atom_migration.cpp
-/// @brief Phase 0.2 (msu-pe-validation) / P3.1 -- AtomMigration.
+/// @brief Phase 0.2 (msu-pe-validation) / P3.1 -- Migrate.
 ///
 /// Verifies that an owner whose post-integration position falls outside its
 /// rank's slab is transferred to the rank whose slab actually contains the
@@ -52,7 +52,7 @@ cpu::Frame make_chain_frame(double box_len, int n_atoms) {
 
 // ── 2-rank: a single atom drifts past +x boundary, must end up on neighbor ──
 
-TEST(AtomMigration, AtomDriftsAcrossPosXBoundary) {
+TEST(Migrate, AtomDriftsAcrossPosXBoundary) {
     int world_size = 0;
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
     if (world_size != 2) {
@@ -93,8 +93,8 @@ TEST(AtomMigration, AtomDriftsAcrossPosXBoundary) {
     // tag_to_local for it post-migration.
     MPI_Bcast(&moved_tag, 1, MPI_INT64_T, 0, MPI_COMM_WORLD);
 
-    // Drive a single AtomMigration::launch.
-    cpu::comm::AtomMigration mig{};
+    // Drive a single Migrate::launch.
+    cpu::comm::Migrate mig{};
     cpu::BuildContext bctx{backend.context(), frame};
     mig.build(bctx);
     cpu::LaunchContext lctx{backend.context(), frame, 0, 0};
@@ -137,9 +137,9 @@ TEST(AtomMigration, AtomDriftsAcrossPosXBoundary) {
     backend.shutdown();
 }
 
-// ── single-rank no-op: AtomMigration must leave the frame untouched ──
+// ── single-rank no-op: Migrate must leave the frame untouched ──
 
-TEST(AtomMigration, SingleRankIsNoOp) {
+TEST(Migrate, SingleRankIsNoOp) {
     int world_size = 0;
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
     if (world_size != 1) {
@@ -158,7 +158,7 @@ TEST(AtomMigration, SingleRankIsNoOp) {
     // Move atom 0 past where the slab boundary would be (box edge in single-rank).
     frame.atoms.x[0] = 19.5;
 
-    cpu::comm::AtomMigration mig{};
+    cpu::comm::Migrate mig{};
     cpu::BuildContext bctx{backend.context(), frame};
     mig.build(bctx);
     cpu::LaunchContext lctx{backend.context(), frame, 0, 0};

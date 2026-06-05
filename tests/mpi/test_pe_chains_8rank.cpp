@@ -135,7 +135,7 @@ cpu::Frame make_8chain_box(double box_len, int n_carbons, double y_margin) {
 }
 
 double total_energy_global(const cpu::Frame& frame) {
-    // ReduceEnergy already wrote the global PE/KE back into frame, so
+    // Reduce already wrote the global PE/KE back into frame, so
     // every rank has the same value here.
     return frame.scalars.energy + frame.scalars.kinetic;
 }

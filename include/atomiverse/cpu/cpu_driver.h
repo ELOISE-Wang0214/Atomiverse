@@ -122,7 +122,7 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
   protected:
     /// @brief Subclass hook — install opt-in infrastructure components
     /// derived from declared user state (e.g. `NoseHooverNPT::reads()
-    /// == Stress` → inject `VirialStress`; pair evaluator + multi-rank
+    /// == Stress` → inject `Virial`; pair evaluator + multi-rank
     /// build → inject MPI halo exchange). Default no-op. Subclasses
     /// override to apply category-specific rules. Called from `build()`
     /// before `validate_components()` so the auto-injected set counts
@@ -329,7 +329,7 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
             if (has_capability(c.reads(), Capability::Stress))
                 s.needs_stress = true;
             const std::string n = c.name();
-            if (n == "virial_stress")
+            if (n == "virial")
                 s.has_virial_stress = true;
             if (n == "neighbor_list")
                 s.has_neighbor_list = true;

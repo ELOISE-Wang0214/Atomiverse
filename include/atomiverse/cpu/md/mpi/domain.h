@@ -79,7 +79,7 @@ struct DomainDecomposition {
     /// halo-list consumers rebuild when they observe a bump.
     std::uint64_t neighbor_generation = 0;
 
-    /// @brief Generation counter, bumped at every `HaloExchangeForward` *full
+    /// @brief Generation counter, bumped at every `HaloSend` *full
     /// rebuild* (not on position-only refreshes). Distinct from
     /// `neighbor_generation` because a full halo rebuild can reshuffle
     /// ghost slot indices (atoms entering / leaving the cutoff zone, or
@@ -100,15 +100,15 @@ struct DomainDecomposition {
 
     /// @brief Per-face send lists: owned-atom indices shadowed to each face neighbor.
     /// Order matches `face_neighbors`. Empty in single-rank mode. Rebuilt by
-    /// `HaloExchangeForward::launch()` each step; consumed by both
-    /// `HaloExchangeForward` (to pack outgoing positions) and
-    /// `HaloExchangeReverse` (to add incoming ghost forces back to owners).
+    /// `HaloSend::launch()` each step; consumed by both
+    /// `HaloSend` (to pack outgoing positions) and
+    /// `HaloRecv` (to add incoming ghost forces back to owners).
     std::array<std::vector<int>, 6> send_lists{};
 
     /// @brief Per-face ghost counts received in the most recent forward halo.
     /// `recv_counts[f]` ghosts from face `f` occupy frame slots
     /// `[n_local + sum(recv_counts[0..f]), n_local + sum(recv_counts[0..f+1]))`.
-    /// Used by `HaloExchangeReverse` to know how many ghost forces to ship
+    /// Used by `HaloRecv` to know how many ghost forces to ship
     /// back per face. Reset to zero on partition; set by Forward.
     std::array<int, 6> recv_counts{};
 
@@ -120,12 +120,12 @@ struct DomainDecomposition {
     /// whether the atom is an owner or a halo ghost.
     ///
     /// Owner entries are rebuilt on every `partition_atoms()` /
-    /// `AtomMigration`. Ghost entries are appended by `HaloExchangeForward`
+    /// `Migrate`. Ghost entries are appended by `HaloSend`
     /// and erased back out at the start of the next halo via the
     /// companion `ghost_tags` log.
     std::unordered_map<std::int64_t, int> tag_to_local;
 
-    /// @brief Tags of the ghost atoms that `HaloExchangeForward` last
+    /// @brief Tags of the ghost atoms that `HaloSend` last
     /// inserted into `tag_to_local`, in slot order. Used to roll back
     /// ghost entries before the next halo write so a different ghost set
     /// does not leave stale tag→slot bindings behind.
@@ -136,16 +136,16 @@ struct DomainDecomposition {
     /// `cuts[d]` has either size `0` (uniform partition along axis `d`, default)
     /// or size `dims[d] + 1` with `cuts[d].front() == 0.0` and `cuts[d].back() == 1.0`.
     /// When non-empty, `compute_sublo_subhi()` reads from these instead of the
-    /// uniform `coord[d] / dims[d]` formula, and `AtomMigration::dest_rank_for`
+    /// uniform `coord[d] / dims[d]` formula, and `Migrate::dest_rank_for`
     /// binary-searches the cuts to decide each owner's destination rank.
     ///
     /// Stored as fractions so the partition survives NPT box rescaling without
-    /// needing to be recomputed every step. Populated by `RCBBalancer` or any
+    /// needing to be recomputed every step. Populated by `Rebalance` or any
     /// future load-balance component; left empty in the default uniform-brick
     /// decomposition.
     ///
     /// All ranks must agree on these values for migration to be consistent.
-    /// `RCBBalancer` derives them from a global atom histogram via
+    /// `Rebalance` derives them from a global atom histogram via
     /// `MPI_Allreduce`, which guarantees consistency by construction.
     std::array<std::vector<double>, 3> cuts{};
 
@@ -204,12 +204,12 @@ struct DomainDecomposition {
     /// subset whose (PBC-wrapped) positions fall in this rank's slab,
     /// compacts those atoms to the front of every per-atom array, and
     /// updates `n_local`, `n_ghost = 0`, `capacity = atoms.size()`. Stale
-    /// rows in `[n_local, capacity)` are reused later by `HaloExchangeForward`
+    /// rows in `[n_local, capacity)` are reused later by `HaloSend`
     /// as ghost slots.
     ///
     /// **Initial-partition contract:** every rank starts with the same
     /// `frame` and claims its spatial subset. Owners that later drift across
-    /// a slab boundary are re-homed by `cpu::comm::AtomMigration` at
+    /// a slab boundary are re-homed by `cpu::comm::Migrate` at
     /// `pre_force @ -30`, so long runs where atoms move between slabs are
     /// handled correctly (see the MSU-PE multi-rank NPT validation).
     ///

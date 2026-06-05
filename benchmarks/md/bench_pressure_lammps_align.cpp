@@ -139,7 +139,7 @@ BENCH_CASE(PressureLammpsAlign_BarostatExpandsOverCompressedBox) {
     sim.on(ATV::md::Phase::force)
         .add(cpu::md::NeighborList<>{6.0}, -10)
         .add(cpu::md::LJ{0.0104, 3.4, 6.0});
-    sim.add(cpu::md::VirialStress{});
+    sim.add(cpu::md::Virial{});
     sim.add(cpu::md::Barostat{0.0, /*tau_P=*/200.0, dt});
     sim.build();
 
@@ -178,7 +178,7 @@ BENCH_CASE(PressureLammpsAlign_BulkModulusScalesRelaxationRate) {
         sim.on(ATV::md::Phase::force)
             .add(cpu::md::NeighborList<>{6.0}, -10)
             .add(cpu::md::LJ{0.0104, 3.4, 6.0});
-        sim.add(cpu::md::VirialStress{});
+        sim.add(cpu::md::Virial{});
         sim.add(cpu::md::Barostat{0.0, /*tau_P=*/200.0, dt, bulk_modulus});
         sim.build();
         sim.run(frame, 200);
@@ -219,7 +219,7 @@ BENCH_CASE(PressureLammpsAlign_NptAndBarostatRelaxToSameDensity) {
         sim.on(ATV::md::Phase::force)
             .add(cpu::md::NeighborList<>{6.0}, -10)
             .add(cpu::md::LJ{0.0104, 3.4, 6.0});
-        sim.add(cpu::md::VirialStress{});
+        sim.add(cpu::md::Virial{});
         sim.add(cpu::md::Barostat{P_target, /*tau_P=*/100.0, dt});
         sim.build();
         sim.run(frame, 1);
@@ -243,7 +243,7 @@ BENCH_CASE(PressureLammpsAlign_NptAndBarostatRelaxToSameDensity) {
         sim.on(ATV::md::Phase::force)
             .add(cpu::md::NeighborList<>{6.0}, -10)
             .add(cpu::md::LJ{0.0104, 3.4, 6.0});
-        sim.add(cpu::md::VirialStress{});
+        sim.add(cpu::md::Virial{});
         sim.set_integrator(cpu::md::NoseHooverNPT{{.T_target = 30.0,
                                                    .tau_T = 100.0,
                                                    .P_target = P_target,

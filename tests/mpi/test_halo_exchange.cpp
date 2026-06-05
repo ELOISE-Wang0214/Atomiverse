@@ -1,7 +1,7 @@
 /// @file tests/mpi/test_halo_exchange.cpp
 /// @brief Phase 2.2 / 2.3 ghost halo correctness tests.
 ///
-/// Multi-rank tests for `HaloExchangeForward` + `HaloExchangeReverse`.
+/// Multi-rank tests for `HaloSend` + `HaloRecv`.
 /// Launched via `mpirun -n N`. Verifies:
 ///   - Forward populates `dd->n_ghost > 0` and `recv_counts` consistent with
 ///     each rank's own send list.
@@ -11,7 +11,7 @@
 ///     at coordinates that, when wrapped back to `[0, L)`, match an actual
 ///     owner position somewhere in the neighbor's slab.
 ///   - Reverse symmetry: applying a known per-ghost force and reducing
-///     back through `HaloExchangeReverse` adds exactly the right total to
+///     back through `HaloRecv` adds exactly the right total to
 ///     each owner's force.
 
 #include <gtest/gtest.h>
@@ -79,7 +79,7 @@ ForwardResult run_forward(double box_len, int n_per_side, double cutoff) {
     auto* dd = backend.context().dd;
 
     // Drive one Forward launch directly (without going through MD driver).
-    cpu::comm::HaloExchangeForward fwd{cutoff};
+    cpu::comm::HaloSend fwd{cutoff};
     cpu::BuildContext bctx{backend.context(), frame};
     fwd.build(bctx);
     cpu::LaunchContext lctx{backend.context(), frame, 0, 0};
@@ -149,7 +149,7 @@ TEST(HaloForward, RecvCountsConsistentWithSendLists) {
     backend.set_frame(frame);
     auto* dd = backend.context().dd;
 
-    cpu::comm::HaloExchangeForward fwd{2.0};
+    cpu::comm::HaloSend fwd{2.0};
     cpu::BuildContext bctx{backend.context(), frame};
     fwd.build(bctx);
     cpu::LaunchContext lctx{backend.context(), frame, 0, 0};
@@ -230,8 +230,8 @@ TEST(HaloReverse, ReverseAddsGhostForcesBackToOwners) {
     backend.set_frame(frame);
     auto* dd = backend.context().dd;
 
-    cpu::comm::HaloExchangeForward fwd{2.0};
-    cpu::comm::HaloExchangeReverse rev{};
+    cpu::comm::HaloSend fwd{2.0};
+    cpu::comm::HaloRecv rev{};
     cpu::BuildContext bctx{backend.context(), frame};
     fwd.build(bctx);
     rev.build(bctx);
@@ -294,7 +294,7 @@ TEST(HaloReverse, ReverseAddsGhostForcesBackToOwners) {
 
 // Catches a re-introduction of `static thread_local FaceBufs s` (or any
 // other cross-instance shared storage) behind the Forward / Reverse
-// facades. The test builds two HaloExchangeForward instances in sequence
+// facades. The test builds two HaloSend instances in sequence
 // against DIFFERENT `dd->capacity` values and verifies that the first
 // instance's per-face buffer capacity is unchanged by the second's
 // `build()`. With the old shared static, the vector's `reserve()`
@@ -314,7 +314,7 @@ TEST(HaloForward, FaceBufsAreInstanceOwned) {
     backend.init();
     backend.set_frame(frame_small);
 
-    cpu::comm::HaloExchangeForward fwd_a{2.0};
+    cpu::comm::HaloSend fwd_a{2.0};
     cpu::BuildContext bctx_small{backend.context(), frame_small};
     fwd_a.build(bctx_small);
     const std::size_t cap_a_before = fwd_a.send_buf_capacity_for_test();
@@ -322,7 +322,7 @@ TEST(HaloForward, FaceBufsAreInstanceOwned) {
     // Rebind the same backend to a larger frame; dd->capacity now reflects
     // the bigger slab.
     backend.set_frame(frame_big);
-    cpu::comm::HaloExchangeForward fwd_b{2.0};
+    cpu::comm::HaloSend fwd_b{2.0};
     cpu::BuildContext bctx_big{backend.context(), frame_big};
     fwd_b.build(bctx_big);
     const std::size_t cap_b = fwd_b.send_buf_capacity_for_test();
@@ -330,7 +330,7 @@ TEST(HaloForward, FaceBufsAreInstanceOwned) {
 
     // Per-instance invariant: A's bufs are untouched by B's build.
     EXPECT_EQ(cap_a_before, cap_a_after)
-        << "HaloExchangeForward #A's FaceBufs capacity changed from "
+        << "HaloSend #A's FaceBufs capacity changed from "
         << cap_a_before << " to " << cap_a_after
         << " after instance #B was built -- bufs must be per-instance, "
         << "not a shared static.";

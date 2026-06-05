@@ -6,19 +6,19 @@
 /// Auto-binds to end_of_step (order -100, before user observers).
 /// Accumulates into `frame.scalars->kinetic` AND
 /// `frame.scalars->stress_kinetic[6]` (the Σ m·vα·vβ·kMvv2e kinetic
-/// stress tensor — `cuda::VirialStress` zeroes the buffer at
+/// stress tensor — `cuda::Virial` zeroes the buffer at
 /// post_force then this kernel atomic-adds into it). Reduction is a
 /// packed warp-shuffle (`cuda::block_reduce_sum_n<7>`) — replaces the
 /// pre-link-05 two-kernel pattern (separate `kinetic_energy` +
 /// `kinetic_stress_k`) and the per-component shared-memory tree
 /// reduction.
 ///
-/// Requires ZeroKinetic (order -1000 at end_of_step) and VirialStress
+/// Requires ZeroKinetic (order -1000 at end_of_step) and Virial
 /// (auto-injected at post_force @ -50) to clear the accumulators
 /// before this kernel atomic-adds.
 ///
 /// @see ZeroKinetic for the kinetic-scalar zeroing infrastructure
-/// @see VirialStress for the stress_kinetic[] zeroing
+/// @see Virial for the stress_kinetic[] zeroing
 /// @see Thermo for the component that reads frame.scalars->kinetic
 #pragma once
 

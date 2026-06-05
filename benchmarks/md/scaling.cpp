@@ -220,9 +220,9 @@ int main(int argc, char** argv) {
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{args.dt});
     sim.on(ATV::md::Phase::pre_force)
-        .add(cpu::comm::HaloExchangeForward{args.cutoff}, -20);
+        .add(cpu::comm::HaloSend{args.cutoff}, -20);
     sim.on(ATV::md::Phase::post_force)
-        .add(cpu::comm::HaloExchangeReverse{}, -1000);
+        .add(cpu::comm::HaloRecv{}, -1000);
     sim.on(ATV::md::Phase::force)
         .add(cpu::md::NeighborList<>{args.cutoff}, -10);
     sim.on(ATV::md::Phase::force).add(cpu::md::LJ{0.0104, 3.4, args.cutoff});

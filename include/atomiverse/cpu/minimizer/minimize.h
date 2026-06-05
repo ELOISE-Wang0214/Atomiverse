@@ -32,7 +32,7 @@ namespace minimizer {
 /// @brief Energy-minimization driver — convergence-aware Optimize loop.
 ///
 /// Auto-adds ZeroForces and ZeroEnergy at force phase. Wires the shared
-/// `cpu::SnapshotPublisher` into `end_of_step @ +10` so async observers
+/// `cpu::Publish` into `end_of_step @ +10` so async observers
 /// see snapshots.
 ///
 /// Validation rules inherited from `OptimizeDriver`: requires ≥ 1
@@ -50,7 +50,7 @@ class Minimize : public OptimizeDriver {
             .add(cpu::md::ZeroForces{}, -1000)
             .add(cpu::md::ZeroEnergy{}, -999);
         this->on(ATV::minimizer::Phase::end_of_step)
-            .add(cpu::SnapshotPublisher{}, 10);
+            .add(cpu::Publish{}, 10);
     }
 
     // ─── Minimizer-specific categorical setters ─────────────────────

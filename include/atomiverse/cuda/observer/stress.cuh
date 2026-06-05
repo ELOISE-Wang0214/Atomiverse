@@ -1,5 +1,5 @@
 /// @file cuda/observer/stress.cuh
-/// @brief VirialStress -- ZEROING of the kinetic-stress accumulator.
+/// @brief Virial -- ZEROING of the kinetic-stress accumulator.
 ///
 /// The full virial stress tensor is
 ///   σ_αβ = (1/V) [Σ_i m_i v_iα v_iβ + Σ_{pairs} r_ij_α F_ij_β]
@@ -38,14 +38,14 @@ namespace cuda {
 
 /// @brief Capability-declaring zeroing shim for the kinetic-stress
 ///        accumulator. See file-level docstring for the producer split.
-class VirialStress : public ComponentBase {
+class Virial : public ComponentBase {
   public:
-    VirialStress();
-    ~VirialStress() override;
-    VirialStress(VirialStress&&) noexcept;
-    VirialStress& operator=(VirialStress&&) noexcept;
+    Virial();
+    ~Virial() override;
+    Virial(Virial&&) noexcept;
+    Virial& operator=(Virial&&) noexcept;
 
-    std::string name() const override { return "virial_stress"; }
+    std::string name() const override { return "virial"; }
     /// @brief Structural role — Observer. Triggers
     /// `cuda::md::MD::install_infra_` to dedupe duplicate virial-stress
     /// components via capability matching instead of `name()` strings.

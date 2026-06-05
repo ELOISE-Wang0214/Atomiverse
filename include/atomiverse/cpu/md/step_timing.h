@@ -27,10 +27,9 @@ struct StepTiming {
     ///
     /// Matches the concrete CPU MD component names: pair `lj`/`morse`;
     /// bonded `harmonic_bond`/`harmonic_angle`/`multi_harmonic_dihedral`;
-    /// neighbor `neighbor_list`/cell list; communication `halo_forward`/
-    /// `halo_reverse`/`atom_migration`/`rcb_balancer`; reduction
-    /// `reduce_energy`. Everything else (integrators, thermostats, barostat,
-    /// recorders) is `Other`.
+    /// neighbor `neighbor_list`/cell list; communication `halo_send`/
+    /// `halo_recv`/`migrate`/`rebalance`; reduction `reduce`. Everything
+    /// else (integrators, thermostats, barostat, recorders) is `Other`.
     static Category classify(std::string_view n) {
         auto has = [&](std::string_view s) {
             return n.find(s) != std::string_view::npos;
@@ -39,7 +38,7 @@ struct StepTiming {
             return Bonded;
         if (has("neighbor") || has("cell"))
             return Neigh;
-        if (has("halo") || has("migration") || has("rcb"))
+        if (has("halo") || has("migrat") || has("rebalance"))
             return Comm;
         if (has("reduce"))
             return Reduce;

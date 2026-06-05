@@ -460,7 +460,7 @@ void NoseHooverNPT::update_eps_dot(const cpu::LaunchContext& ctx,
     const std::array<double, 3> ke_axis = compute_axis_KE(ctx);
 
     // Per-axis pair virial. `f.scalars.stress[0..2]` is the rank-LOCAL diagonal
-    // here: the barostat runs at final_integrate, BEFORE ReduceEnergy
+    // here: the barostat runs at final_integrate, BEFORE Reduce
     // (end_of_step) reduces stress across ranks. ke_axis above is already
     // globally summed, so without summing the virial too the driving pressure
     // mixes global KE with ~1/nranks of the virial — the barostat then drives
@@ -640,7 +640,7 @@ void NoseHooverNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
     }
 
     // Ghost rows must also track the box scaling. Between this call and
-    // the next `HaloExchangeForward`, force evaluators (bond/angle/LJ)
+    // the next `HaloSend`, force evaluators (bond/angle/LJ)
     // will compute owner→ghost separations against the FRESHLY-SCALED
     // box. If the ghosts are left at their pre-scale absolute positions,
     // the owner→ghost Δ is wrong by `(ax-1)*pos` per axis. With ax≈1.001
@@ -686,7 +686,7 @@ void NoseHooverNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
 
     // The per-rank slab bounds (sublo/subhi) were set by Backend::set_frame
     // from the box at that point. NPT just changed the box -- if we don't
-    // refresh the slab, the next AtomMigration / HaloExchange will see
+    // refresh the slab, the next Migrate / HaloExchange will see
     // owned-atom positions that no longer fit the stale boundary, yielding
     // out-of-range cell-list indices and a crash. compute_sublo_subhi is
     // O(1) (three multiplies) and is called identically on every rank, so
@@ -697,8 +697,8 @@ void NoseHooverNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
     // step — a workaround for the MSU-PE multi-rank collapse that was in
     // fact a stale special-bonds exclusion map in `PairLJCut` (fixed
     // there). Forcing per-step reneighbor made the 8-rank run ~10×
-    // slower for no correctness benefit: `AtomMigration` (every_=10) and
-    // `HaloExchangeForward` (every_=10 + position-only refresh in between,
+    // slower for no correctness benefit: `Migrate` (every_=10) and
+    // `HaloSend` (every_=10 + position-only refresh in between,
     // which already rescales ghosts as the box breathes) keep the halo
     // valid on the standard LAMMPS-style cadence. Migration still fires
     // promptly whenever an owner crosses a slab boundary because the
@@ -754,7 +754,7 @@ NoseHooverNPT::extended_hamiltonian(const cpu::LaunchContext& ctx) const {
 ///      `FixNH::final_integrate()` (back-half P7-P11), `src/fix_nh.cpp`.
 ///      Atomiverse splits LAMMPS's `final_integrate()` across the MD
 ///      `final_integrate` phase (P7) and `end_of_step` (P8-P11) so the
-///      `ReduceEnergy` MPI all-reduce can run in between.
+///      `Reduce` MPI all-reduce can run in between.
 void NoseHooverNPT::launch(const cpu::LaunchContext& ctx) {
     const double half_dt = 0.5 * dt_;
 
@@ -795,7 +795,7 @@ void NoseHooverNPT::launch(const cpu::LaunchContext& ctx) {
         kick_v_by_force(ctx, half_dt);
 
     } else if (ctx.stage == static_cast<int>(ATV::md::Phase::end_of_step)) {
-        // ReduceEnergy has run (frame.scalars.stress globally reduced).
+        // Reduce has run (frame.scalars.stress globally reduced).
         // Recompute KE_global_ from CURRENT v before pressure step.
         KE_global_ = compute_global_KE(ctx);
 

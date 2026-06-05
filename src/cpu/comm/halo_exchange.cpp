@@ -1,5 +1,5 @@
 /// @file src/cpu/comm/halo_exchange.cpp
-/// @brief `HaloExchangeForward` / `HaloExchangeReverse` real implementation.
+/// @brief `HaloSend` / `HaloRecv` real implementation.
 ///
 /// Orthorhombic, LAMMPS-style multi-stage forward comm: 3 sequential axis
 /// stages (`x`, then `y`, then `z`), within each stage the ±-direction send
@@ -60,23 +60,23 @@ struct FaceBufs {
 
 // ── Special members (defined here so the PIMPL dtor sees complete FaceBufs) ──
 
-HaloExchangeForward::HaloExchangeForward() = default;
-HaloExchangeForward::HaloExchangeForward(double cutoff, int every)
+HaloSend::HaloSend() = default;
+HaloSend::HaloSend(double cutoff, int every)
     : cutoff_(cutoff), every_(every < 1 ? 1 : every) {}
-HaloExchangeForward::~HaloExchangeForward() = default;
-HaloExchangeForward::HaloExchangeForward(HaloExchangeForward&&) noexcept =
+HaloSend::~HaloSend() = default;
+HaloSend::HaloSend(HaloSend&&) noexcept =
     default;
-HaloExchangeForward&
-HaloExchangeForward::operator=(HaloExchangeForward&&) noexcept = default;
+HaloSend&
+HaloSend::operator=(HaloSend&&) noexcept = default;
 
-HaloExchangeReverse::HaloExchangeReverse() = default;
-HaloExchangeReverse::~HaloExchangeReverse() = default;
-HaloExchangeReverse::HaloExchangeReverse(HaloExchangeReverse&&) noexcept =
+HaloRecv::HaloRecv() = default;
+HaloRecv::~HaloRecv() = default;
+HaloRecv::HaloRecv(HaloRecv&&) noexcept =
     default;
-HaloExchangeReverse&
-HaloExchangeReverse::operator=(HaloExchangeReverse&&) noexcept = default;
+HaloRecv&
+HaloRecv::operator=(HaloRecv&&) noexcept = default;
 
-std::size_t HaloExchangeForward::send_buf_capacity_for_test() const {
+std::size_t HaloSend::send_buf_capacity_for_test() const {
     return bufs_ ? bufs_->send_pos[0].capacity() : 0;
 }
 
@@ -182,7 +182,7 @@ double compute_bonded_extension_local(const Frame& frame,
 
 } // namespace
 
-double HaloExchangeForward::compute_bonded_extension(const cpu::Frame& frame) {
+double HaloSend::compute_bonded_extension(const cpu::Frame& frame) {
     // Public, no-DD-provided variant: assumes `frame.atoms.tag(i) == i`
     // (the default layout produced by `Frame::Atoms`) so that tag values
     // in `frame.bonds/angles/dihedrals` can be used as direct row indices
@@ -347,7 +347,7 @@ void prealloc_bufs(FaceBufs& b, int initial_cap) {
 
 } // namespace
 
-void HaloExchangeForward::build(const cpu::BuildContext& ctx) {
+void HaloSend::build(const cpu::BuildContext& ctx) {
     // Compute the bonded skin extension from the rank-local topology.
     // Multi-rank: scan uses `dd->tag_to_local` to map topology atom-tags
     // to the post-partition row indices; tuples whose atoms are not all
@@ -554,9 +554,9 @@ inline void forward_axis_stage(Frame& frame, md::mpi::DomainDecomposition& dd,
 
 // Zero forces on ghost rows [n_local, n_local + n_ghost). ZeroForces only
 // clears owned rows (zeroing the full backing store is ~global-N work per
-// rank); the force kernels accumulate into ghost rows, and HaloExchangeReverse
+// rank); the force kernels accumulate into ghost rows, and HaloRecv
 // ships those contributions back to owners — so ghost forces must start each
-// step at zero. Called by HaloExchangeForward after the current n_ghost is set.
+// step at zero. Called by HaloSend after the current n_ghost is set.
 void zero_ghost_forces(Frame& frame, const md::mpi::DomainDecomposition& dd) {
     const int lo = dd.n_local;
     const int hi = dd.n_local + dd.n_ghost;
@@ -569,7 +569,7 @@ void zero_ghost_forces(Frame& frame, const md::mpi::DomainDecomposition& dd) {
 
 } // namespace
 
-void HaloExchangeForward::launch(const cpu::LaunchContext& ctx) {
+void HaloSend::launch(const cpu::LaunchContext& ctx) {
     if (ctx.runtime.mpi_size <= 1 || cutoff_ <= 0.0)
         return;
     auto* dd = ctx.runtime.dd;
@@ -651,7 +651,7 @@ void HaloExchangeForward::launch(const cpu::LaunchContext& ctx) {
     zero_ghost_forces(frame, *dd);
 }
 
-void HaloExchangeReverse::build(const cpu::BuildContext& ctx) {
+void HaloRecv::build(const cpu::BuildContext& ctx) {
     auto* dd = ctx.runtime.dd;
     if (!dd || ctx.runtime.mpi_size <= 1)
         return;
@@ -660,7 +660,7 @@ void HaloExchangeReverse::build(const cpu::BuildContext& ctx) {
     prealloc_bufs(*bufs_, dd->capacity);
 }
 
-void HaloExchangeReverse::launch(const cpu::LaunchContext& ctx) {
+void HaloRecv::launch(const cpu::LaunchContext& ctx) {
     if (ctx.runtime.mpi_size <= 1)
         return;
     auto* dd = ctx.runtime.dd;
@@ -779,10 +779,10 @@ void HaloExchangeReverse::launch(const cpu::LaunchContext& ctx) {
 
 #else // !ATV_HAS_MPI
 
-void HaloExchangeForward::build(const cpu::BuildContext& /*ctx*/) {}
-void HaloExchangeForward::launch(const cpu::LaunchContext& /*ctx*/) {}
-void HaloExchangeReverse::build(const cpu::BuildContext& /*ctx*/) {}
-void HaloExchangeReverse::launch(const cpu::LaunchContext& /*ctx*/) {}
+void HaloSend::build(const cpu::BuildContext& /*ctx*/) {}
+void HaloSend::launch(const cpu::LaunchContext& /*ctx*/) {}
+void HaloRecv::build(const cpu::BuildContext& /*ctx*/) {}
+void HaloRecv::launch(const cpu::LaunchContext& /*ctx*/) {}
 
 #endif // ATV_HAS_MPI
 

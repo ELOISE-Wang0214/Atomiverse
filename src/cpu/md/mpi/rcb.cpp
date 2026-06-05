@@ -1,5 +1,5 @@
 /// @file src/cpu/md/mpi/rcb.cpp
-/// @brief `RCBBalancer` -- histogram-based non-uniform brick rebalance.
+/// @brief `Rebalance` -- histogram-based non-uniform brick rebalance.
 ///
 /// Algorithm per launch:
 ///   1. Each rank builds three 1D histograms (`n_bins_` bins each) of its
@@ -12,7 +12,7 @@
 ///      `dd->cuts[d]`.
 ///   4. `compute_sublo_subhi(frame.box)` re-derives this rank's `sublo/subhi`
 ///      from the new cuts, and `dd->neighbor_generation` is bumped so the
-///      next `AtomMigration` ships any owner that has just moved outside
+///      next `Migrate` ships any owner that has just moved outside
 ///      its (resized) slab.
 ///
 /// Bit-identical cuts on every rank are essential: migration would otherwise
@@ -40,7 +40,7 @@ namespace cpu {
 namespace md {
 namespace mpi {
 
-RCBBalancer::RCBBalancer(int every, int n_bins)
+Rebalance::Rebalance(int every, int n_bins)
     : every_(std::max(1, every)), n_bins_(std::max(8, n_bins)) {}
 
 #ifdef ATV_HAS_MPI
@@ -155,7 +155,7 @@ std::vector<double> cuts_from_histogram(const std::vector<std::int64_t>& hist,
 
 } // namespace
 
-void RCBBalancer::launch(const cpu::LaunchContext& ctx) {
+void Rebalance::launch(const cpu::LaunchContext& ctx) {
     if (ctx.runtime.mpi_size <= 1)
         return;
     if (ctx.step <= 0)
@@ -211,15 +211,15 @@ void RCBBalancer::launch(const cpu::LaunchContext& ctx) {
     // Refresh this rank's slab from the new cuts.
     dd->compute_sublo_subhi(frame.box);
 
-    // Mark the partition as changed so AtomMigration ships any owner now
-    // outside its slab. Note that AtomMigration normally runs at the next
+    // Mark the partition as changed so Migrate ships any owner now
+    // outside its slab. Note that Migrate normally runs at the next
     // step's `pre_force @ -30`; the bump arms it.
     ++dd->neighbor_generation;
 }
 
 #else // !ATV_HAS_MPI
 
-void RCBBalancer::launch(const cpu::LaunchContext& /*ctx*/) {}
+void Rebalance::launch(const cpu::LaunchContext& /*ctx*/) {}
 
 #endif // ATV_HAS_MPI
 

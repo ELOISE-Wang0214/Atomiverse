@@ -9,12 +9,12 @@
 /// infrastructure components).
 ///
 /// Wrapped components (per acceptance criterion ac-008):
-///   HaloExchangeForward, HaloExchangeReverse, NeighborList, LJ,
+///   HaloSend, HaloRecv, NeighborList, LJ,
 ///   HarmonicBond, HarmonicAngle, MultiHarmonicDihedral, VelocityVerlet,
-///   NoseHoover, ReduceEnergy, SnapshotPublisher.
+///   NoseHoover, Reduce, Publish.
 ///
 /// Plus the small zero/init infrastructure components (ZeroForces,
-/// ZeroEnergy, ZeroStress, ZeroKinetic, KineticEnergy, AtomMigration,
+/// ZeroEnergy, ZeroStress, ZeroKinetic, KineticEnergy, Migrate,
 /// InitVelocity) which are also instrumented.
 ///
 /// CSV output schema (`--out`):
@@ -411,12 +411,12 @@ int main(int argc, char** argv) {
              100);
 
     sim.on(Phase::pre_force)
-        .add(*make_timed(cpu::comm::AtomMigration{10}, "AtomMigration",
+        .add(*make_timed(cpu::comm::Migrate{10}, "Migrate",
                          p_pre, -30),
              -30);
     sim.on(Phase::pre_force)
-        .add(*make_timed(cpu::comm::HaloExchangeForward{kLjCutoff},
-                         "HaloExchangeForward", p_pre, -20),
+        .add(*make_timed(cpu::comm::HaloSend{kLjCutoff},
+                         "HaloSend", p_pre, -20),
              -20);
 
     sim.on(Phase::force)
@@ -451,8 +451,8 @@ int main(int argc, char** argv) {
              3);
 
     sim.on(Phase::post_force)
-        .add(*make_timed(cpu::comm::HaloExchangeReverse{},
-                         "HaloExchangeReverse", p_post, -1000),
+        .add(*make_timed(cpu::comm::HaloRecv{},
+                         "HaloRecv", p_post, -1000),
              -1000);
 
     sim.on(Phase::final_integrate)
@@ -468,11 +468,11 @@ int main(int argc, char** argv) {
             *make_timed(cpu::md::KineticEnergy{}, "KineticEnergy", p_eos, -100),
             -100);
     sim.on(Phase::end_of_step)
-        .add(*make_timed(cpu::md::mpi::ReduceEnergy{}, "ReduceEnergy", p_eos,
+        .add(*make_timed(cpu::md::mpi::Reduce{}, "Reduce", p_eos,
                          -50),
              -50);
     sim.on(Phase::end_of_step)
-        .add(*make_timed(cpu::SnapshotPublisher{}, "SnapshotPublisher", p_eos,
+        .add(*make_timed(cpu::Publish{}, "Publish", p_eos,
                          10),
              10);
 

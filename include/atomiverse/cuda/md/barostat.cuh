@@ -2,7 +2,7 @@
 /// @brief Barostat -- Berendsen-style isotropic pressure coupling.
 ///
 /// Rescales box and positions: μ = (1 - β*dt/τ_p * (P_target - P))^(1/3).
-/// Reads stress tensor from DeviceFrame::stress (requires VirialStress to run first).
+/// Reads stress tensor from DeviceFrame::stress (requires Virial to run first).
 /// CUDA-free header.
 #pragma once
 
@@ -19,7 +19,7 @@ namespace md {
 /// @brief Berendsen isotropic barostat.
 ///
 /// Binds to final_integrate at order +200 (after VelocityVerlet + NoseHoover).
-/// Requires VirialStress at post_force to populate DeviceFrame::stress.
+/// Requires Virial at post_force to populate DeviceFrame::stress.
 class Barostat : public ComponentBase {
   public:
     /// @brief Construct barostat.
@@ -40,7 +40,7 @@ class Barostat : public ComponentBase {
     ComponentRole role() const override { return ComponentRole::Barostat; }
     /// @brief Reads — consumes `Stress` to drive the Berendsen volume
     ///        rescale. Triggers `cuda::md::MD::install_infra_` to
-    ///        auto-inject `cuda::VirialStress` via capability matching
+    ///        auto-inject `cuda::Virial` via capability matching
     ///        (the `role()==Barostat` proxy is no longer required).
     Capability reads() const override { return Capability::Stress; }
 

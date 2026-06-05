@@ -26,7 +26,7 @@ namespace md {
 /// step recompute the kinetic part fresh from current velocities
 /// (the trace equals `2·KE`); they read only `frame.stress` (virial)
 /// from this component's output. The reduce across MPI ranks happens
-/// separately at `end_of_step @ -50` (see `ReduceEnergy`), so any
+/// separately at `end_of_step @ -50` (see `Reduce`), so any
 /// component scheduled after that point reads the global values.
 ///
 /// ── LAMMPS `compute pressure` correspondence (`lammps-api-align-04`) ──
@@ -52,9 +52,9 @@ namespace md {
 /// (compressive) — matching `compute pressure` and both barostats. No
 /// sign correction needed; `frame.stress` is already LAMMPS-consistent.
 /// **Audit confirmed aligned — no code change to this component.**
-class VirialStress : public cpu::ComponentBase {
+class Virial : public cpu::ComponentBase {
   public:
-    std::string name() const override { return "virial_stress"; }
+    std::string name() const override { return "virial"; }
     ComponentRole role() const override { return ComponentRole::Observer; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {{static_cast<int>(ATV::md::Phase::post_force), -50}};

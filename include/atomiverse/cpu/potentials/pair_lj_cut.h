@@ -65,7 +65,7 @@ class PairLJCut : public Pair {
     /// `nspecial`/`special` topology of the first `n_owners` rows.
     ///
     /// Must run whenever the owned-atom set changes (multi-rank
-    /// `AtomMigration`): the per-atom special lists travel WITH the atom
+    /// `Migrate`): the per-atom special lists travel WITH the atom
     /// (pack/unpack/move_row), but a map cached once at `build()` goes
     /// stale the moment an atom migrates into a rank whose build-time map
     /// never held that tag — its 1-2/1-3/1-4 partners then escape the

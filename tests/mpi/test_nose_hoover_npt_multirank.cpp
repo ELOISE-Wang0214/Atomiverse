@@ -355,7 +355,7 @@ TEST(NoseHooverNptMultiRank, BondedKineticNonZero) {
 //
 // Root cause (fixed 2026-05-29): `PairLJCut` built its tag-keyed
 // special-bonds exclusion map ONCE at `build()` from that rank's
-// then-owned atoms. After `AtomMigration` moved an atom into a rank whose
+// then-owned atoms. After `Migrate` moved an atom into a rank whose
 // build-time snapshot never held its tag, the atom's 1-2/1-3/1-4 partners
 // escaped the exclusion filter, so the LJ kernel saw a ~1.53 Å bonded
 // pair and produced a catastrophic repulsive spike (E_pair → 1e5+ eV;
@@ -367,7 +367,7 @@ TEST(NoseHooverNptMultiRank, BondedKineticNonZero) {
 // laid ENTIRELY in the x > box/2 half, so the x < box/2 ranks' build-time
 // exclusion map provably contains NONE of the chains' tags. A gentle
 // uniform −x drift carries the chains across the x = box/2 slab boundary;
-// the periodic AtomMigration (every 10 steps) then moves chain atoms onto
+// the periodic Migrate (every 10 steps) then moves chain atoms onto
 // ranks whose stale map lacks them. NVE (no thermostat/barostat) keeps the
 // trajectory clean: only the LJ singularity can blow up E_pair, which is
 // drift-invariant. The fix rebuilds the exclusion map from the live

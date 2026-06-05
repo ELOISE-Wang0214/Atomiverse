@@ -79,7 +79,7 @@ cpu::Frame make_fcc_argon(int n_cells, double a_lat) {
 }
 
 double total_energy_global(const cpu::Frame& frame) {
-    // ReduceEnergy (Phase 0.4) runs at end_of_step @ -50 and writes the
+    // Reduce (Phase 0.4) runs at end_of_step @ -50 and writes the
     // globally-reduced sum back into frame.scalars.energy / frame.scalars.kinetic, so
     // every rank sees the same global value here. Pre-Phase-0.4 callers
     // had to MPI_Allreduce manually -- doing so now would double-reduce.
@@ -107,9 +107,9 @@ TEST(LjNve, EnergyConservationSingleRank) {
     sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{6.0}, -10);
     sim.on(ATV::md::Phase::force).add(cpu::md::LJ{0.0104, 3.4, 6.0});
     sim.on(ATV::md::Phase::pre_force)
-        .add(cpu::comm::HaloExchangeForward{6.0}, -20);
+        .add(cpu::comm::HaloSend{6.0}, -20);
     sim.on(ATV::md::Phase::post_force)
-        .add(cpu::comm::HaloExchangeReverse{}, -1000);
+        .add(cpu::comm::HaloRecv{}, -1000);
     sim.build();
 
     sim.run(frame, 1);
@@ -143,9 +143,9 @@ TEST(LjNve, EnergyConservationMultiRank) {
     sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{6.0}, -10);
     sim.on(ATV::md::Phase::force).add(cpu::md::LJ{0.0104, 3.4, 6.0});
     sim.on(ATV::md::Phase::pre_force)
-        .add(cpu::comm::HaloExchangeForward{6.0}, -20);
+        .add(cpu::comm::HaloSend{6.0}, -20);
     sim.on(ATV::md::Phase::post_force)
-        .add(cpu::comm::HaloExchangeReverse{}, -1000);
+        .add(cpu::comm::HaloRecv{}, -1000);
     sim.build();
 
     sim.run(frame, 1);

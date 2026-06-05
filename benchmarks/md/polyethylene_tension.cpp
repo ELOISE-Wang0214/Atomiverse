@@ -655,7 +655,7 @@ void pressure_per_axis_bar(const cpu::Frame& f, double Pbar[3]) {
 
 /// @brief Inline observer: writes thermo + stress-strain CSV every step.
 ///
-/// Bound to `end_of_step @ +20` -- after `ReduceEnergy(-50)` and the
+/// Bound to `end_of_step @ +20` -- after `Reduce(-50)` and the
 /// integrator's `end_of_step` slot so the recorded values are
 /// post-allreduce and reflect the post-step box. Only rank 0 writes
 /// to disk.
@@ -941,7 +941,7 @@ void wire_shared(cpu::md::MD& sim, SharedComponents& sc,
     // perfect balance gave zero speedup and at 32 ranks the rebalance churn
     // (histogram allreduce + migration + neighbor rebuild) made it ~1.6x
     // slower. The multi-rank step is gated by Comm + Neigh + global sync, not
-    // by atom-count imbalance. (RCBBalancer remains available for workloads
+    // by atom-count imbalance. (Rebalance remains available for workloads
     // that ARE imbalance-bound.)
 
     // This benchmark is a measurement tool: always record per-component timing
@@ -1031,7 +1031,7 @@ class CudaCsvRecorder
         // Async path. Stage the snapshot on the compute stream so the
         // D2D copies are ordered after any kernel that wrote
         // ctx.frame.scalars / ctx.frame.box in this step (e.g.
-        // KineticEnergy, VirialStress, NoseHooverNPT integrator).
+        // KineticEnergy, Virial, NoseHooverNPT integrator).
         // `stage_device_field` wraps the async D2D copy so the recorder
         // never names the CUDA runtime API directly.
         auto compute_stream =

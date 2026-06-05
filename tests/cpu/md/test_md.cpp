@@ -238,7 +238,7 @@ TEST_F(CpuMdTest, CellListPairCount) {
 /// the previous `build()`, the stale `binned_atoms_` entries from rows
 /// that are no longer "active" must NOT leak into the new pair list --
 /// otherwise `build_half` will index `frame.atoms.x[]` past the active
-/// count and crash. This is the failure mode triggered by AtomMigration
+/// count and crash. This is the failure mode triggered by Migrate
 /// shrinking `dd->n_local + dd->n_ghost` between MD steps under MPI.
 TEST_F(CpuMdTest, CellListShrinkingNActive) {
     // 4x4x4 FCC = 256 atoms in 24 Å box.
@@ -344,7 +344,7 @@ TEST_F(CpuMdTest, CellListMultiRankMigrationCycle) {
 
     // Launch 2: owners + ghosts (grew). Mimic halo exchange by writing
     // new atom positions into slots [n_owners, n_with_ghost) -- the real
-    // framework's HaloExchangeForward does this.
+    // framework's HaloSend does this.
     for (int i = n_owners; i < n_with_ghost; ++i) {
         frame.atoms.x[i] = frame.atoms.x[i - n_owners] - frame.box(0, 0);
         frame.atoms.y[i] = frame.atoms.y[i - n_owners];
@@ -620,7 +620,7 @@ TEST_F(CpuMdTest, NoseHooverNptRelaxesPressure) {
         cpu::md::NoseHooverNPT{{T_tgt, tau_T, /*P_target=*/0.0, tau_P, dt}});
     sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{kCutoff}, -10);
     sim.on(ATV::md::Phase::force).add(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
-    sim.add(cpu::md::VirialStress{});
+    sim.add(cpu::md::Virial{});
     sim.build();
 
     const double V0 = frame.box(0, 0) * frame.box(1, 1) * frame.box(2, 2);
@@ -636,10 +636,10 @@ TEST_F(CpuMdTest, NoseHooverNptRelaxesPressure) {
                       << " V1=" << V1;
 }
 
-// ── HaloExchangeForward::compute_bonded_extension ────────────────────
+// ── HaloSend::compute_bonded_extension ────────────────────
 //
 // Pure CPU unit tests for the topology-scan helper that tells
-// HaloExchangeForward how much extra ghost skin to carve beyond the pair
+// HaloSend how much extra ghost skin to carve beyond the pair
 // cutoff so every atom referenced by a locally-owned bonded tuple can be
 // resolved on the owner rank.
 //
@@ -652,7 +652,7 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionEmptyTopology) {
     // No bonds / angles / dihedrals → no extra skin required.
     cpu::Frame frame(10);
     const double ext =
-        cpu::comm::HaloExchangeForward::compute_bonded_extension(frame);
+        cpu::comm::HaloSend::compute_bonded_extension(frame);
     EXPECT_DOUBLE_EQ(ext, 0.0);
 }
 
@@ -672,7 +672,7 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionBondLength) {
     frame.atoms.add_bond(0, 1, 0);
     frame.atoms.build_special_list();
     const double ext =
-        cpu::comm::HaloExchangeForward::compute_bonded_extension(frame);
+        cpu::comm::HaloSend::compute_bonded_extension(frame);
     EXPECT_NEAR(ext, 1.5, 1e-12);
 }
 
@@ -690,7 +690,7 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionAngleSpan) {
     frame.atoms.add_angle(0, 1, 2, 0);
     frame.atoms.build_special_list();
     const double ext =
-        cpu::comm::HaloExchangeForward::compute_bonded_extension(frame);
+        cpu::comm::HaloSend::compute_bonded_extension(frame);
     EXPECT_NEAR(ext, 2.0, 1e-12);
 }
 
@@ -713,7 +713,7 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionDihedralSpan) {
     frame.atoms.add_dihedral(0, 1, 2, 3, 0);
     frame.atoms.build_special_list();
     const double ext =
-        cpu::comm::HaloExchangeForward::compute_bonded_extension(frame);
+        cpu::comm::HaloSend::compute_bonded_extension(frame);
     // Expect the i-l straight-line span, roughly 3.9 Å for these params.
     EXPECT_GT(ext, 3.5) << "dihedral span too small: " << ext;
     EXPECT_LT(ext, 4.2) << "dihedral span too large: " << ext;
@@ -747,7 +747,7 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionMaxAcrossTupleKinds) {
     frame.atoms.build_special_list();
 
     const double ext =
-        cpu::comm::HaloExchangeForward::compute_bonded_extension(frame);
+        cpu::comm::HaloSend::compute_bonded_extension(frame);
     EXPECT_NEAR(ext, 4.0, 1e-12)
         << "expected max(bond=1, angle=4, dihedral=2.5) = 4, got " << ext;
 }
@@ -772,7 +772,7 @@ TEST_F(CpuMdTest, HaloForwardBondedExtensionPeriodicBondWrap) {
     frame.atoms.add_bond(0, 1, 0);
     frame.atoms.build_special_list();
     const double ext =
-        cpu::comm::HaloExchangeForward::compute_bonded_extension(frame);
+        cpu::comm::HaloSend::compute_bonded_extension(frame);
     EXPECT_NEAR(ext, 1.0, 1e-12)
         << "periodic bond picked up unwrapped span " << ext << " (box=80)";
 }

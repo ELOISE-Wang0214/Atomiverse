@@ -1,9 +1,9 @@
 /// @file src/cpu/md/mpi/reduce.cpp
-/// @brief `ReduceEnergy` -- batched end-of-step MPI_Allreduce of the
+/// @brief `Reduce` -- batched end-of-step MPI_Allreduce of the
 ///        per-rank scalars and stress tensor.
 ///
 /// Bound at `end_of_step @ -50`, after `KineticEnergy @ -100` (so KE is
-/// the locally-summed value) and before `SnapshotPublisher @ +10` (so any
+/// the locally-summed value) and before `Publish @ +10` (so any
 /// async observer reading from the snapshot sees the globally-reduced
 /// scalars). Single-rank: structural no-op.
 
@@ -23,7 +23,7 @@ namespace mpi {
 
 #ifdef ATV_HAS_MPI
 
-void ReduceEnergy::launch(const cpu::LaunchContext& ctx) {
+void Reduce::launch(const cpu::LaunchContext& ctx) {
     if (ctx.runtime.mpi_size <= 1)
         return;
     auto* dd = ctx.runtime.dd;
@@ -69,7 +69,7 @@ void ReduceEnergy::launch(const cpu::LaunchContext& ctx) {
 
 #else // !ATV_HAS_MPI
 
-void ReduceEnergy::launch(const cpu::LaunchContext& /*ctx*/) {}
+void Reduce::launch(const cpu::LaunchContext& /*ctx*/) {}
 
 #endif // ATV_HAS_MPI
 

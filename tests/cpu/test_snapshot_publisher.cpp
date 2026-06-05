@@ -1,5 +1,5 @@
 /// @file tests/cpu/test_snapshot_publisher.cpp
-/// @brief RED tests for `cpu::SnapshotPublisher` zero-subscriber fast-path
+/// @brief RED tests for `cpu::Publish` zero-subscriber fast-path
 ///        and field-copy correctness.
 ///
 /// Spec: .claude/specs/parallel-md-engine.md § B.3.
@@ -85,10 +85,10 @@ class PositionCapture : public cpu::md::AsyncObserver {
 
 // ── zero-subscriber fast path ────────────────────────────────────────
 
-TEST(SnapshotPublisher, ZeroSubscribersEarlyReturn) {
+TEST(Publish, ZeroSubscribersEarlyReturn) {
     auto frame = make_small_frame(100);
     cpu::Context ctx;
-    cpu::SnapshotPublisher pub;
+    cpu::Publish pub;
     cpu::BuildContext bctx{ctx, frame};
     pub.build(bctx);
 
@@ -109,7 +109,7 @@ TEST(SnapshotPublisher, ZeroSubscribersEarlyReturn) {
 
 // ── positions propagate end-to-end ───────────────────────────────────
 
-TEST(SnapshotPublisher, SnapshotCopiesPositions) {
+TEST(Publish, SnapshotCopiesPositions) {
     auto frame = make_small_frame(64);
 
     // `cap` MUST outlive `sim`: sim only stores a non-owning pointer (lvalue
@@ -138,7 +138,7 @@ TEST(SnapshotPublisher, SnapshotCopiesPositions) {
 
 // ── box + step propagate ─────────────────────────────────────────────
 
-TEST(SnapshotPublisher, SnapshotCopiesBoxAndStep) {
+TEST(Publish, SnapshotCopiesBoxAndStep) {
     auto frame = make_small_frame(16);
 
     PositionCapture cap;
@@ -161,7 +161,7 @@ TEST(SnapshotPublisher, SnapshotCopiesBoxAndStep) {
 
 // ── CaptureMask respected ────────────────────────────────────────────
 
-TEST(SnapshotPublisher, CaptureMaskRespected) {
+TEST(Publish, CaptureMaskRespected) {
     auto frame = make_small_frame(32);
 
     PositionCapture cap;

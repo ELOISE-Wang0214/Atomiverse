@@ -6,7 +6,7 @@
 /// This is the first multi-rank test that exercises ALL the moving parts
 /// of the PE force pipeline together:
 ///   * tag-based bonded force resolution across rank boundary
-///   * LJ ghosts populated by HaloExchangeForward
+///   * LJ ghosts populated by HaloSend
 ///   * tag-based special-bonds exclusions on multi-rank ghosts
 ///
 /// Without correct exclusions the bonded pairs (r ≈ 1.5–4 Å, well below
@@ -108,9 +108,9 @@ TEST(PeFullMultiRank, ChainCrossingWithLjExclusions) {
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{0.5});
     sim.on(ATV::md::Phase::pre_force)
-        .add(cpu::comm::HaloExchangeForward{lj_cut}, -20);
+        .add(cpu::comm::HaloSend{lj_cut}, -20);
     sim.on(ATV::md::Phase::post_force)
-        .add(cpu::comm::HaloExchangeReverse{}, -1000);
+        .add(cpu::comm::HaloRecv{}, -1000);
     sim.on(ATV::md::Phase::force)
         .add(cpu::md::NeighborList<>{lj_cut}, -10)
         .add(cpu::md::LJ{lj_eps, lj_sig, lj_cut}.set_special_bonds(0.0, 0.0,

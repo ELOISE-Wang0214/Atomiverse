@@ -1,6 +1,6 @@
 /// @file src/cpu/async_component_base.cpp
 /// @brief `cpu::AsyncComponentBase` implementation -- thin dispatcher into the
-/// snapshot ring slot most recently stamped by `SnapshotPublisher`.
+/// snapshot ring slot most recently stamped by `Publish`.
 
 #include "atomiverse/cpu/async_component_base.h"
 
@@ -15,7 +15,7 @@ void AsyncComponentBase::build(const BuildContext& ctx) {
         return;
     exec_->register_subscriber(this);
     // Pre-size ring slot buffers for this subscriber's mask so
-    // `SnapshotPublisher::launch()` never reallocates at fire time.
+    // `Publish::launch()` never reallocates at fire time.
     // Multiple calls are idempotent (monotonic).
     exec_->prealloc_slots(ctx.frame.atoms.size(), capture_mask());
 }
@@ -35,7 +35,7 @@ void AsyncComponentBase::launch(const LaunchContext& ctx) {
     }
 
     // The snapshot filled at this end-of-step was stamped by
-    // `SnapshotPublisher::launch()` at order +10; we run at +20 and pick up
+    // `Publish::launch()` at order +10; we run at +20 and pick up
     // `last_published_slot()` in the same step. If the step tag on the slot
     // does not match `ctx.step`, the publisher did not fire (e.g. no firing
     // subscribers under any mask) and we silently skip.

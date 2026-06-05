@@ -75,7 +75,7 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
         // LAMMPS-style per-atom iteration: each owned atom `i` iterates its
         // own bond list (Newton-bond-ON: only bonds where `i` is the
         // smaller-tag owner). Partner `j` may be an owner or a ghost; ghost
-        // force halves ship home via HaloExchangeReverse.
+        // force halves ship home via HaloRecv.
 #pragma omp for schedule(static)
         for (int i = 0; i < nlocal; ++i) {
             const int nb = a.num_bond[i];

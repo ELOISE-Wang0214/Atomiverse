@@ -1,5 +1,5 @@
 /// @file src/cpu/snapshot_publisher.cpp
-/// @brief `cpu::SnapshotPublisher` implementation: collects subscriber
+/// @brief `cpu::Publish` implementation: collects subscriber
 /// `CaptureMask`s, fills a ring slot. Each `AsyncComponentBase` dispatches
 /// itself at `end_of_step @ +20` against the slot most recently published.
 
@@ -117,7 +117,7 @@ void clear_unmasked(FrameSnapshot& snap, CaptureMask m) {
 
 } // namespace
 
-void SnapshotPublisher::build(const BuildContext& ctx) {
+void Publish::build(const BuildContext& ctx) {
     exec_ = ctx.runtime.executor;
     // Pre-sizing per mask happens inside `AsyncComponentBase::build()` for
     // each registered subscriber -- the publisher runs first in plan order
@@ -125,7 +125,7 @@ void SnapshotPublisher::build(const BuildContext& ctx) {
     (void)ctx;
 }
 
-void SnapshotPublisher::launch(const LaunchContext& ctx) {
+void Publish::launch(const LaunchContext& ctx) {
     if (!exec_)
         return;
 
@@ -175,7 +175,7 @@ void SnapshotPublisher::launch(const LaunchContext& ctx) {
     // at end_of_step @ +20.
 }
 
-void SnapshotPublisher::destroy(const DestroyContext& /*ctx*/) {}
+void Publish::destroy(const DestroyContext& /*ctx*/) {}
 
 } // namespace cpu
 } // namespace ATV

@@ -7,7 +7,7 @@
 /// **Multi-rank ghost-aware mode** (`init_extended`):
 /// the bin grid is widened by `cutoff_skin` on each side along every axis
 /// `d` with `dims[d] > 1`, so ghost atoms whose positions lie outside the
-/// box (after PBC pre-shift by `HaloExchangeForward`) bin into dedicated
+/// box (after PBC pre-shift by `HaloSend`) bin into dedicated
 /// halo cells instead of wrapping back onto owner cells. Iteration bounds
 /// are explicit: `bin_atoms` walks `[0, n_active)` (= owners + current
 /// ghosts), and the half-list outer loop walks `[0, n_active)` so callers
@@ -124,7 +124,7 @@ class CellList {
 
     /// @brief Number of active atoms at the last `build()` / `refresh_*`
     /// call, or `-1` before the first build. `NeighborList::launch` uses
-    /// this to detect whether an upstream `AtomMigration` has changed the
+    /// this to detect whether an upstream `Migrate` has changed the
     /// owner count and force a rebuild even when the displacement skin
     /// check would have skipped it.
     int n_at_last_build() const { return n_at_last_build_; }
@@ -179,7 +179,7 @@ class CellList {
     xt::xtensor<double, 1> x_save_, y_save_, z_save_;
 
     /// @brief Number of active atoms at last build. `needs_rebuild` forces
-    /// a rebuild when `n_active` changes (e.g. after AtomMigration), since
+    /// a rebuild when `n_active` changes (e.g. after Migrate), since
     /// `binned_atoms_` would otherwise reference indices beyond the new
     /// `n_active` and produce out-of-bounds reads in `build_half`.
     int n_at_last_build_ = -1;

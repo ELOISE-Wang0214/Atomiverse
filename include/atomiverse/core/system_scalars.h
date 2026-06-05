@@ -76,7 +76,7 @@ struct SystemScalars {
 
     /// @brief Kinetic stress tensor Σ m·v·v [eV], Voigt order xx yy zz xy xz yz.
     ///
-    /// Written by `VirialStress` at `post_force` using the velocities
+    /// Written by `Virial` at `post_force` using the velocities
     /// at that point. Time-dependent: integrators like
     /// `NoseHooverNPT` that update velocities between `post_force`
     /// and pressure evaluation recompute the kinetic stress fresh

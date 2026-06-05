@@ -1,5 +1,5 @@
 /// @file observer/stress.cu
-/// @brief VirialStress -- ZEROING of `stress_kinetic[6]`.
+/// @brief Virial -- ZEROING of `stress_kinetic[6]`.
 ///
 /// After cuda-md-review-cleanup-05-reductions-and-atomics the kinetic
 /// stress tensor `Σ m·vα·vβ · kMvv2e` (eV units, no volume division)
@@ -23,19 +23,19 @@ namespace cuda {
 
 using cuda::prec_t;
 
-struct VirialStress::State {};
+struct Virial::State {};
 
-VirialStress::VirialStress() : state_(std::make_unique<State>()) {}
-VirialStress::~VirialStress() = default;
-VirialStress::VirialStress(VirialStress&&) noexcept = default;
-VirialStress& VirialStress::operator=(VirialStress&&) noexcept = default;
+Virial::Virial() : state_(std::make_unique<State>()) {}
+Virial::~Virial() = default;
+Virial::Virial(Virial&&) noexcept = default;
+Virial& Virial::operator=(Virial&&) noexcept = default;
 
-void VirialStress::build(const BuildContext& /*ctx*/) {
+void Virial::build(const BuildContext& /*ctx*/) {
     // No per-component scratch — the compute kernel moved to
     // cuda::md::KineticEnergy in cuda-md-review-cleanup-05.
 }
 
-void VirialStress::launch(const LaunchContext& ctx) {
+void Virial::launch(const LaunchContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& f = ctx.frame;
 
@@ -50,7 +50,7 @@ void VirialStress::launch(const LaunchContext& ctx) {
     cudaMemsetAsync(f.scalars->stress_kinetic, 0, 6 * sizeof(prec_t), stream);
 }
 
-void VirialStress::destroy(const DestroyContext& /*ctx*/) {}
+void Virial::destroy(const DestroyContext& /*ctx*/) {}
 
 } // namespace cuda
 } // namespace ATV

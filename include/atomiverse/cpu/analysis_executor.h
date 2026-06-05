@@ -33,7 +33,7 @@ class AsyncComponentBase;
 /// @brief Triple-buffered snapshot ring + worker pool for async analysis.
 ///
 /// Hot path: `acquire_slot()` returns a ring slot (round-robin), the
-/// `SnapshotPublisher` fills it, then `publish()` stamps the step and
+/// `Publish` fills it, then `publish()` stamps the step and
 /// `submit(obs, slot)` hands the (observer, slot) pair to a worker.
 ///
 /// Workers dequeue (observer, slot) pairs, invoke `observer->on_snapshot(slot)`,
@@ -109,7 +109,7 @@ class AnalysisExecutor {
     /// @return Ring slot index.
     int acquire_slot();
 
-    /// @brief Access the storage for a slot (for `SnapshotPublisher` to fill).
+    /// @brief Access the storage for a slot (for `Publish` to fill).
     /// @param idx Slot index returned by `acquire_slot()`.
     /// @return Reference to the underlying `FrameSnapshot`.
     FrameSnapshot& slot(int idx);
@@ -131,7 +131,7 @@ class AnalysisExecutor {
 
     /// @brief Pre-size every ring slot's vectors to `n_atoms`.
     ///
-    /// Called by `SnapshotPublisher::build()` so `launch()` never reallocates
+    /// Called by `Publish::build()` so `launch()` never reallocates
     /// snapshot buffers. Spec §B.1 contract. Safe to call multiple times
     /// (monotonic: does not shrink).
     /// @param n_atoms Size to which each enabled buffer is resized.
@@ -149,7 +149,7 @@ class AnalysisExecutor {
 
     /// @brief Non-owning view of registered subscribers.
     ///
-    /// Used by `SnapshotPublisher` to iterate subscribers and decide whether
+    /// Used by `Publish` to iterate subscribers and decide whether
     /// any are firing at the current step, which selects the zero-subscriber
     /// fast path. Safe on the main thread before `shutdown()`.
     const std::vector<AsyncComponentBase*>& subscribers() const noexcept {

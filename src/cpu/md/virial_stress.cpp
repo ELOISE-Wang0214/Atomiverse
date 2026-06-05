@@ -11,7 +11,7 @@ namespace ATV {
 namespace cpu {
 namespace md {
 
-void VirialStress::launch(const cpu::LaunchContext& ctx) {
+void Virial::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
     const int n = owned_count(ctx);
 

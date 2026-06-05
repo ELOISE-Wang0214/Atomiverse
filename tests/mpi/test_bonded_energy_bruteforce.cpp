@@ -273,12 +273,12 @@ TEST(BondedEnergyBruteForce, PerTermEnergyMatchesBruteForce) {
     // Bonded-only sim: no pair evaluator ⇒ halo is not auto-injected, so wire
     // the ghost exchange explicitly (cutoff must span the longest tuple).
     sim.on(ATV::md::Phase::pre_force)
-        .add(cpu::comm::HaloExchangeForward{cutoff}, -20);
+        .add(cpu::comm::HaloSend{cutoff}, -20);
     sim.on(ATV::md::Phase::post_force)
-        .add(cpu::comm::HaloExchangeReverse{}, -1000);
+        .add(cpu::comm::HaloRecv{}, -1000);
     sim.build();
 
-    sim.run(frame, 1); // one frozen step → ReduceEnergy fills global per-term
+    sim.run(frame, 1); // one frozen step → Reduce fills global per-term
 
     int my_rank = 0;
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);

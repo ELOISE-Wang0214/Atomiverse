@@ -133,7 +133,7 @@ TEST(PeNvtMultiRank, NoseHooverHoldsGlobalTemperature) {
 
     sim.run(frame, 5000);
 
-    // ReduceEnergy already wrote the global KE into frame.scalars.kinetic.
+    // Reduce already wrote the global KE into frame.scalars.kinetic.
     const double T_final =
         temperature_from_kinetic_global(frame.scalars.kinetic, n_atoms_global);
     const double rel_err = std::abs(T_final - T_target) / T_target;

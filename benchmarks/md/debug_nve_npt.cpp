@@ -97,7 +97,7 @@ void wire_forcefield(cpu::md::MD& sim) {
         .add(cpu::BondHarmonic{{kBondK_kcal * kKcalToEv}, {kBondR0}})
         .add(cpu::AngleHarmonic{{kAngleK_kcal * kKcalToEv}, {kAngleTheta0}})
         .add(cpu::DihedralMultiHarmonic{{dihedral_Cn_eV()}});
-    sim.add(cpu::md::VirialStress{});
+    sim.add(cpu::md::Virial{});
 }
 
 // Per-step thermo row. Energies emitted in eV and kcal/mol; T from KE.

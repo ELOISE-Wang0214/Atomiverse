@@ -4,7 +4,7 @@
 /// The snapshot is a contiguous host-allocated copy of a subset of frame
 /// fields, selected via a `CaptureMask`. Snapshots live in a triple-buffered
 /// ring held by `AnalysisExecutor`; each slot is populated by
-/// `SnapshotPublisher` at `end_of_step @ +10` and consumed by
+/// `Publish` at `end_of_step @ +10` and consumed by
 /// `AsyncComponentBase::on_snapshot` on a worker thread.
 ///
 /// @see .claude/specs/parallel-md-engine.md  § B.1
@@ -22,7 +22,7 @@ namespace cpu {
 
 /// @brief Selects which fields of `cpu::Frame::Atoms` a snapshot should carry.
 ///
-/// `SnapshotPublisher` copies only the fields flagged true, and clears
+/// `Publish` copies only the fields flagged true, and clears
 /// (i.e. resizes to zero) the rest. Consumers reading unflagged fields see
 /// an empty vector — a simple invariant easy to assert in tests.
 struct CaptureMask {
@@ -37,7 +37,7 @@ struct CaptureMask {
 ///
 /// Buffers are `std::vector<>`-backed for trivial copy/move semantics and
 /// bounded heap growth. All vectors are sized at `build()` time to the
-/// frame's initial capacity; `SnapshotPublisher` only writes, never reallocates.
+/// frame's initial capacity; `Publish` only writes, never reallocates.
 struct FrameSnapshot {
     int step = 0;    ///< Simulation step at which this snapshot was published.
     int n_owned = 0; ///< Number of owned atoms captured.

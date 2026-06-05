@@ -222,7 +222,7 @@ void CellList::build(const cpu::Frame& frame, int n_active) {
 bool CellList::needs_rebuild(const cpu::Frame& frame, int n_active) const {
     int n = (n_active < 0) ? frame.atoms.size() : n_active;
 
-    // Multi-rank: AtomMigration / HaloExchange may change n_local + n_ghost
+    // Multi-rank: Migrate / HaloExchange may change n_local + n_ghost
     // between launches.  When that happens, `binned_atoms_` from the
     // previous build still references the OLD atom indices, including ones
     // beyond the current `n_active`. Reading those produces an out-of-

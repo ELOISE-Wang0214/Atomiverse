@@ -3,10 +3,10 @@
 ///
 /// Spec: .claude/specs/parallel-md-engine.md § A.4 (components table).
 /// Expected bindings (Phase enum as int):
-///   HaloExchangeForward → pre_force @ -20
-///   HaloExchangeReverse → post_force @ -1000
-///   AtomMigration       → pre_force @ -30
-///   ReduceEnergy        → end_of_step @ -50
+///   HaloSend → pre_force @ -20
+///   HaloRecv → post_force @ -1000
+///   Migrate       → pre_force @ -30
+///   Reduce        → end_of_step @ -50
 ///
 /// In single-rank mode every launch() is a no-op: frame positions must be
 /// byte-identical before and after.
@@ -71,35 +71,35 @@ bool has_binding(const std::vector<DefaultBinding>& bindings, int phase,
 // ── bindings ─────────────────────────────────────────────────────────
 
 TEST(MpiStubBindings, HaloExchangeForwardBindings) {
-    cpu::comm::HaloExchangeForward hx{};
+    cpu::comm::HaloSend hx{};
     auto b = hx.default_bindings();
     EXPECT_TRUE(
         has_binding(b, static_cast<int>(ATV::md::Phase::pre_force), -20))
-        << "HaloExchangeForward must bind pre_force @ -20";
+        << "HaloSend must bind pre_force @ -20";
 }
 
 TEST(MpiStubBindings, HaloExchangeReverseBindings) {
-    cpu::comm::HaloExchangeReverse hx{};
+    cpu::comm::HaloRecv hx{};
     auto b = hx.default_bindings();
     EXPECT_TRUE(
         has_binding(b, static_cast<int>(ATV::md::Phase::post_force), -1000))
-        << "HaloExchangeReverse must bind post_force @ -1000";
+        << "HaloRecv must bind post_force @ -1000";
 }
 
 TEST(MpiStubBindings, AtomMigrationBinding) {
-    cpu::comm::AtomMigration am{};
+    cpu::comm::Migrate am{};
     auto b = am.default_bindings();
     EXPECT_TRUE(
         has_binding(b, static_cast<int>(ATV::md::Phase::pre_force), -30))
-        << "AtomMigration must bind pre_force @ -30";
+        << "Migrate must bind pre_force @ -30";
 }
 
 TEST(MpiStubBindings, ReduceEnergyBinding) {
-    cpu::md::mpi::ReduceEnergy re{};
+    cpu::md::mpi::Reduce re{};
     auto b = re.default_bindings();
     EXPECT_TRUE(
         has_binding(b, static_cast<int>(ATV::md::Phase::end_of_step), -50))
-        << "ReduceEnergy must bind end_of_step @ -50";
+        << "Reduce must bind end_of_step @ -50";
 }
 
 // ── single-rank no-op: positions byte-identical ──────────────────────
@@ -129,10 +129,10 @@ TEST(MpiStubBindings, SingleRankLaunchNoOp) {
         sim.set_integrator(cpu::md::VelocityVerlet{1e-6}); // negligible dt
         sim.set_pair(cpu::md::LJ{1e-12, 3.4, zero_force_cut});
         sim.set_neighbor(cpu::md::NeighborList<>{zero_force_cut, /*skin=*/0.1});
-        sim.add(cpu::comm::HaloExchangeForward{});
-        sim.add(cpu::comm::HaloExchangeReverse{});
-        sim.add(cpu::comm::AtomMigration{});
-        sim.add(cpu::md::mpi::ReduceEnergy{});
+        sim.add(cpu::comm::HaloSend{});
+        sim.add(cpu::comm::HaloRecv{});
+        sim.add(cpu::comm::Migrate{});
+        sim.add(cpu::md::mpi::Reduce{});
         sim.build();
         sim.run(frame, 10);
     }
@@ -152,15 +152,15 @@ TEST(MpiStubBindings, SingleRankLaunchNoOp) {
 // ── class-name hygiene ───────────────────────────────────────────────
 
 TEST(MpiStubBindings, ClassNamesAreDistinct) {
-    cpu::comm::HaloExchangeForward fwd{};
-    cpu::comm::HaloExchangeReverse rev{};
+    cpu::comm::HaloSend fwd{};
+    cpu::comm::HaloRecv rev{};
     const std::string n_fwd = fwd.name();
     const std::string n_rev = rev.name();
     EXPECT_NE(n_fwd, n_rev);
     EXPECT_NE(n_fwd.find("halo"), std::string::npos)
-        << "HaloExchangeForward::name() should contain 'halo': got '" << n_fwd
+        << "HaloSend::name() should contain 'halo': got '" << n_fwd
         << "'";
     EXPECT_NE(n_rev.find("halo"), std::string::npos)
-        << "HaloExchangeReverse::name() should contain 'halo': got '" << n_rev
+        << "HaloRecv::name() should contain 'halo': got '" << n_rev
         << "'";
 }

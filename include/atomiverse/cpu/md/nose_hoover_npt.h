@@ -60,7 +60,7 @@ namespace md {
 /// uses the same sign convention as LAMMPS `fix npt iso`, so passing
 /// `P_target = 0` matches LAMMPS at the same setpoint. Since
 /// `lammps-api-align-04` this is the SAME sign convention used by
-/// `cpu::md::Barostat` (Berendsen) and `cpu::md::VirialStress` /
+/// `cpu::md::Barostat` (Berendsen) and `cpu::md::Virial` /
 /// `compute pressure`: a single positive-trace-is-compressive
 /// convention holds across every Atomiverse pressure component.
 ///
@@ -69,7 +69,7 @@ namespace md {
 ///   * `initial_integrate @ 0`  -- steps P1 through P6
 ///   * `final_integrate   @ 0`  -- step  P7
 ///   * `end_of_step      @ -40` -- steps P8 through P11
-///                                 (after `ReduceEnergy @ -50` so
+///                                 (after `Reduce @ -50` so
 ///                                  pressure & KE are global)
 ///
 /// ── LAMMPS correspondence ───────────────────────────────────────────
@@ -228,7 +228,7 @@ class NoseHooverNPT : public cpu::ComponentBase {
     ComponentRole role() const override { return ComponentRole::Integrator; }
     /// @brief Reads the kinetic-stress component of `frame.stress` to
     /// compute the internal pressure feedback. Triggers auto-injection
-    /// of `VirialStress` in `MD::install_defaults()` when no canonical
+    /// of `Virial` in `MD::install_defaults()` when no canonical
     /// stress provider is otherwise registered.
     Capability reads() const override { return Capability::Stress; }
     std::vector<DefaultBinding> default_bindings() const override {

@@ -80,7 +80,7 @@ class ComponentBase {
     /// consumer side. The CPU category drivers use this in
     /// `install_defaults()` to auto-provide canonical providers for
     /// otherwise-unmet read requirements (e.g. `NoseHooverNPT::reads()
-    /// == Stress` triggers auto-injection of `VirialStress`). Defaults
+    /// == Stress` triggers auto-injection of `Virial`). Defaults
     /// to `None` — most components read implicit frame fields
     /// (positions / forces) that no provider needs to be matched
     /// against.

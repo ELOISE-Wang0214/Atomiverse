@@ -1,5 +1,5 @@
 /// @file src/cpu/comm/atom_migration.cpp
-/// @brief `AtomMigration` -- MPI_Alltoallv owner migration implementation.
+/// @brief `Migrate` -- MPI_Alltoallv owner migration implementation.
 ///
 /// For each owner whose post-integration position lies outside this rank's
 /// spatial slab, the atom (and all its per-atom fields) is shipped to the
@@ -76,7 +76,7 @@ inline int slab_along_dim_from_cuts(double frac,
 // Compute the rank that owns position (x, y, z) under the current DD.
 //
 // When `dd.cuts[d]` is empty along axis d, the uniform `coord = floor(q*dims/L)`
-// formula applies. When non-empty (set by `RCBBalancer`), the destination is
+// formula applies. When non-empty (set by `Rebalance`), the destination is
 // derived from the box-length fraction via binary search through the cut
 // planes -- which guarantees the same rank assignment that
 // `md::mpi::DomainDecomposition::compute_sublo_subhi` would produce on the destination
@@ -170,7 +170,7 @@ void move_row(Frame& frame, int ni, int oi) {
 
 } // namespace
 
-void AtomMigration::launch(const cpu::LaunchContext& ctx) {
+void Migrate::launch(const cpu::LaunchContext& ctx) {
     if (ctx.runtime.mpi_size <= 1)
         return;
     auto* dd = ctx.runtime.dd;
@@ -294,7 +294,7 @@ void AtomMigration::launch(const cpu::LaunchContext& ctx) {
     }
 
     // Also clear `ghost_tags`. The previous step's ghost-tag log is now
-    // stale, and worse, leaving it populated lets `HaloExchangeForward`'s
+    // stale, and worse, leaving it populated lets `HaloSend`'s
     // full-rebuild path `erase` those tags from the FRESH `tag_to_local`
     // we just rebuilt. Any atom that was a ghost on this rank
     // pre-migration AND just migrated IN as a now-owned atom would have
@@ -377,7 +377,7 @@ void scatter_atoms_from_root(cpu::Frame& frame) {
 
 #else // !ATV_HAS_MPI
 
-void AtomMigration::launch(const cpu::LaunchContext& /*ctx*/) {}
+void Migrate::launch(const cpu::LaunchContext& /*ctx*/) {}
 void scatter_atoms_from_root(cpu::Frame& /*frame*/) {}
 
 #endif // ATV_HAS_MPI

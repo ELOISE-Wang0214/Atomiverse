@@ -36,7 +36,7 @@ void DomainDecomposition::compute_sublo_subhi(const ATV::cpu::Box& box) {
     for (int d = 0; d < 3; ++d) {
         const double L = box.length(d);
         if (static_cast<int>(cuts[d].size()) == dims[d] + 1) {
-            // Non-uniform cut planes (set by `RCBBalancer`). cuts[d] is in
+            // Non-uniform cut planes (set by `Rebalance`). cuts[d] is in
             // box-length fractions, so the partition survives NPT/Deform box
             // rescaling without recomputation.
             sublo[d] = cuts[d][static_cast<std::size_t>(coords[d])] * L;
@@ -164,7 +164,7 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
     // position is unchanged, its post-step compacted copy is at a different
     // slot), and the resulting two near-identical "owner" rows blow up LJ.
     // On a re-partition the previously-owned rows [0, n_local) are the
-    // authoritative owner set (AtomMigration already re-homed any cross-slab
+    // authoritative owner set (Migrate already re-homed any cross-slab
     // drifters at pre_force); we only need to re-scan that range, not the
     // stale ghost/old-owner rows beyond it.
     const bool first_partition = (n_local == 0);

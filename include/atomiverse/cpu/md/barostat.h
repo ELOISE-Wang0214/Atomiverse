@@ -27,8 +27,8 @@ namespace md {
 ///
 /// — exactly `fix_press_berendsen.cpp::end_of_step()`'s `dilation`.
 ///
-/// Bound at `end_of_step @ -45`, after `ReduceEnergy @ -50`. In multi-rank
-/// runs `frame.stress` is the globally-reduced virial after ReduceEnergy,
+/// Bound at `end_of_step @ -45`, after `Reduce @ -50`. In multi-rank
+/// runs `frame.stress` is the globally-reduced virial after Reduce,
 /// so every rank computes the SAME `μ` and applies the SAME box update --
 /// the box stays consistent across ranks without any extra collective.
 ///
@@ -90,7 +90,7 @@ class Barostat : public cpu::ComponentBase {
     ComponentRole role() const override { return ComponentRole::Barostat; }
     /// @brief Reads `frame.stress` to derive internal pressure for
     /// the rescaling factor `μ`. Triggers auto-injection of
-    /// `VirialStress` in `MD::install_defaults()` when no canonical
+    /// `Virial` in `MD::install_defaults()` when no canonical
     /// stress provider is otherwise registered.
     Capability reads() const override { return Capability::Stress; }
     std::vector<DefaultBinding> default_bindings() const override {

@@ -1,5 +1,5 @@
 /// @file cpu/md/mpi/rcb.h
-/// @brief `RCBBalancer` -- non-uniform brick load balancer.
+/// @brief `Rebalance` -- non-uniform brick load balancer.
 ///
 /// Recomputes per-axis cut planes from a globally-reduced
 /// atom-density histogram so each rank ends up with approximately the same
@@ -16,11 +16,11 @@
 ///      store the resulting `dims[d] + 1` cut planes (as box-length fractions)
 ///      in `dd->cuts[d]`.
 ///   4. Refresh this rank's `sublo[]/subhi[]` via `compute_sublo_subhi(box)`.
-///   5. Bump `dd->neighbor_generation` so the next `AtomMigration::launch()`
+///   5. Bump `dd->neighbor_generation` so the next `Migrate::launch()`
 ///      ships every owner that now lies outside its rank's slab to its new owner.
 ///
 /// The component itself does not move atoms -- it only updates the partition.
-/// Migration is the responsibility of `AtomMigration`, which already runs at
+/// Migration is the responsibility of `Migrate`, which already runs at
 /// `pre_force @ -30` and consults `dd->cuts[]` (when populated) to decide each
 /// owner's destination.
 ///
@@ -47,15 +47,15 @@ namespace md {
 namespace mpi {
 
 /// @brief Non-uniform brick load balancer based on a global atom histogram.
-class RCBBalancer : public cpu::ComponentBase {
+class Rebalance : public cpu::ComponentBase {
   public:
     /// @param every Step interval between balance passes. Default 1000.
     /// @param n_bins Bins per axis for the global histogram. Default 256;
     ///        higher resolution gives finer cut placement at higher comm
     ///        cost. The full reduction is `O(3 * n_bins * dims_max)` doubles.
-    explicit RCBBalancer(int every = 1000, int n_bins = 256);
+    explicit Rebalance(int every = 1000, int n_bins = 256);
 
-    std::string name() const override { return "rcb_balancer"; }
+    std::string name() const override { return "rebalance"; }
 
     /// @brief Run every `every_` steps.
     /// @return Step stride.

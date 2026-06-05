@@ -39,10 +39,10 @@
 /// keyed on capability-typed virtuals (no string proxies, no
 /// `dynamic_cast`):
 ///
-/// - **VirialStress** — if any pending component declares
+/// - **Virial** — if any pending component declares
 ///   `(reads() & Capability::Stress) != None` and no pending component
 ///   already advertises `(capabilities() & Capability::Stress) != None`
-///   with `role() == Observer`, a fresh `cuda::VirialStress{}` is
+///   with `role() == Observer`, a fresh `cuda::Virial{}` is
 ///   added at `post_force @ -50`. Covers both `cuda::md::Barostat`
 ///   (Berendsen, `role()==Barostat`) and `cuda::md::NoseHooverNPT`
 ///   (MTK NPT, `role()==Integrator`) uniformly via `reads()`.
@@ -183,7 +183,7 @@ class MD : public cuda::DynamicsDriver {
     }
 
     /// @brief Add a barostat (LAMMPS `fix … press/berendsen`). Plural.
-    /// `install_infra_()` auto-injects a `cuda::VirialStress{}` if a
+    /// `install_infra_()` auto-injects a `cuda::Virial{}` if a
     /// Barostat-role component is present and no `virial_stress` is
     /// already registered.
     template <typename Bs>
@@ -228,7 +228,7 @@ class MD : public cuda::DynamicsDriver {
     /// @brief Override `CUDADriver::build()` so the auto-injection pass
     ///        runs *before* `validate_components()` sees pending_.
     ///
-    /// `install_infra_()` may add a `cuda::VirialStress{}` if any pending
+    /// `install_infra_()` may add a `cuda::Virial{}` if any pending
     /// component declares `(reads() & Capability::Stress) != None`
     /// (covers both `cuda::md::Barostat` and `cuda::md::NoseHooverNPT`).
     /// After the install pass we chain to `cuda::DynamicsDriver::build()`
@@ -249,7 +249,7 @@ class MD : public cuda::DynamicsDriver {
     ///   1. If any pending component declares `(reads() & Stress) != None`
     ///      AND no pending component already declares
     ///      `(capabilities() & Stress) != None && role()==Observer`,
-    ///      add a fresh `cuda::VirialStress{}` at `post_force @ -50`.
+    ///      add a fresh `cuda::Virial{}` at `post_force @ -50`.
     ///   2. If any pending component reports
     ///      `needs_neighbor_list() == true` without any pending component
     ///      reporting `provides_neighbor_list() == true`, throw naming
@@ -274,13 +274,13 @@ class MD : public cuda::DynamicsDriver {
         });
 
         if (needs_stress_input && !has_stress_producer) {
-            // `cuda::VirialStress` has no default_bindings(); bind it
+            // `cuda::Virial` has no default_bindings(); bind it
             // explicitly to `post_force @ -50` — the slot the CPU
-            // sibling `cpu::md::VirialStress::default_bindings()` uses,
+            // sibling `cpu::md::Virial::default_bindings()` uses,
             // where pair / bonded virials are already accumulated and
             // the velocities are post-integrator-kick so Σ m·v·v
             // reflects the appropriate time-slice.
-            this->on(ATV::md::Phase::post_force).add(cuda::VirialStress{}, -50);
+            this->on(ATV::md::Phase::post_force).add(cuda::Virial{}, -50);
         }
 
         if (!pair_evaluator_name.empty() && !has_neighbor_list) {

@@ -33,11 +33,11 @@ namespace md {
 /// are inherited from CPUDriver), and runs `install_defaults()` at `build()`
 /// time to derive opt-in infrastructure from declared component requirements:
 ///
-///   - Stress capability dependency → auto-injects `VirialStress`
-///     (deduped against an explicitly-registered `VirialStress`).
+///   - Stress capability dependency → auto-injects `Virial`
+///     (deduped against an explicitly-registered `Virial`).
 ///   - `#ifdef ATV_HAS_MPI` and a pair evaluator was set →
-///     auto-injects `HaloExchangeForward{cutoff}` and
-///     `HaloExchangeReverse{}` at the documented orders.
+///     auto-injects `HaloSend{cutoff}` and
+///     `HaloRecv{}` at the documented orders.
 ///   - A pair evaluator with `needs_neighbor_list()==true` was
 ///     registered without a corresponding `set_neighbor()` →
 ///     `build()` throws naming the offending evaluator.
@@ -55,9 +55,9 @@ namespace md {
 /// not yet have a categorical setter.
 ///
 /// End-of-step ordering: ZeroKinetic(-1000) → KineticEnergy(-100) →
-/// ReduceEnergy(-50) → SnapshotPublisher(+10) → user observers.
+/// Reduce(-50) → Publish(+10) → user observers.
 /// Categorical thermo at `set_thermo(N)` binds `cpu::Thermo{N}` at
-/// `end_of_step @ +20`. pre_force ordering includes AtomMigration(-30).
+/// `end_of_step @ +20`. pre_force ordering includes Migrate(-30).
 ///
 /// Usage (LAMMPS-shaped):
 /// @code{.cpp}
@@ -83,14 +83,14 @@ class MD : public DynamicsDriver {
             .add(KineticEnergy{}, -100);
 
         // MPI infrastructure (single-rank no-ops in Phase 1).
-        add(comm::AtomMigration{10});
-        add(mpi::ReduceEnergy{});
+        add(comm::Migrate{10});
+        add(mpi::Reduce{});
 
         // Async-analysis publisher — shared infrastructure, explicitly
         // bound to *this driver's* end_of_step @ +10. Subscribers
         // inheriting `cpu::md::AsyncObserver` default to +20 on the same
         // phase and see this publisher's slot.
-        this->on(ATV::md::Phase::end_of_step).add(cpu::SnapshotPublisher{}, 10);
+        this->on(ATV::md::Phase::end_of_step).add(cpu::Publish{}, 10);
     }
 
     // ─── MD-specific categorical setters ────────────────────────────
@@ -196,7 +196,7 @@ class MD : public DynamicsDriver {
         const auto s = this->scan_pending_infra_();
 
         if (s.needs_stress && !s.has_virial_stress)
-            this->add(VirialStress{});
+            this->add(Virial{});
 
 #ifdef ATV_HAS_MPI
         if (s.pair_evaluator_cutoff) {
@@ -216,13 +216,13 @@ class MD : public DynamicsDriver {
             // a 13.65 Å halo would duplicate ghosts and overflow
             // `frame.atoms.size()`). Callers running with a custom NL
             // skin > 10% of cutoff should register
-            // `HaloExchangeForward{halo_cut}` explicitly before the
+            // `HaloSend{halo_cut}` explicitly before the
             // pair evaluator — `install_defaults` will see an existing
             // halo and skip the auto-inject.
             const double halo_cut =
                 1.1 * static_cast<double>(*s.pair_evaluator_cutoff);
-            this->add(comm::HaloExchangeForward{halo_cut});
-            this->add(comm::HaloExchangeReverse{});
+            this->add(comm::HaloSend{halo_cut});
+            this->add(comm::HaloRecv{});
         }
 #endif
 

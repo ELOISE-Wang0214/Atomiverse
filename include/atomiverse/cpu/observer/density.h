@@ -12,7 +12,7 @@
 /// `FrameSnapshot::custom_payload` to shuttle P from the SCF solver to the
 /// analysis thread. That hook depends on `cpu::scf::SCFEvaluator` being
 /// extended to publish P into custom_payload, plus a concrete SCF driver
-/// class to auto-add the matching `SnapshotPublisher`. Deferred to Phase 1b
+/// class to auto-add the matching `Publish`. Deferred to Phase 1b
 /// or to the AIMD density-observation workstream.
 ///
 /// @see cuda::DensityRecorder (cuda/recorder/density_recorder.cuh)

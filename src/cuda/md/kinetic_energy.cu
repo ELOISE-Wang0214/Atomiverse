@@ -2,7 +2,7 @@
 /// @brief KineticEnergy kernel: per-atom KE with warp-shuffle block
 ///        reduction. Also writes the kinetic stress tensor
 ///        Σ m·vα·vβ (eV units, no volume division) into
-///        `frame.scalars->stress_kinetic[6]` so `cuda::VirialStress`
+///        `frame.scalars->stress_kinetic[6]` so `cuda::Virial`
 ///        no longer needs its own kernel launch
 ///        (cuda-md-review-cleanup-05-reductions-and-atomics).
 
@@ -93,7 +93,7 @@ void KineticEnergy::launch(const LaunchContext& ctx) {
     int grid = cuda::grid_size(static_cast<int>(n));
     int shmem = cuda::warps_per_block(block) * sizeof(work_t);
     // Fused KE + kinetic-stress reduction. Passes
-    // `frame.scalars->stress_kinetic` so a co-bound `VirialStress`
+    // `frame.scalars->stress_kinetic` so a co-bound `Virial`
     // doesn't need its own kernel launch — that component now
     // becomes a zero-kernel auto-injection that just declares the
     // capability (cuda-md-review-cleanup-05-reductions-and-atomics).

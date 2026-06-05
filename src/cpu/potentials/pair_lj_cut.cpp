@@ -79,7 +79,7 @@ void PairLJCut::build(const BuildContext& ctx) {
     // the live per-atom topology by `refresh_exclusion_map`, called on
     // every neighbor-list rebuild via `rebuild_filtered_list` — NOT cached
     // once here. A build-time-only map goes stale the moment multi-rank
-    // `AtomMigration` moves an atom into a rank whose snapshot never held
+    // `Migrate` moves an atom into a rank whose snapshot never held
     // that tag, dropping its exclusions and feeding a ~1.5 Å bonded pair
     // to the LJ kernel (MSU-PE multi-rank NPT collapse). We still build it
     // once here so a no-migration / single-`compute()` caller (e.g.
@@ -155,7 +155,7 @@ void PairLJCut::rebuild_filtered_list(const Frame& f,
     // Refresh the exclusion map from the live topology of the current
     // owners before filtering. `pairs.inum` is the authoritative owned
     // count (trimmed to `dd->n_local` in multi-rank). This is what keeps
-    // special-bonds exclusions correct after an `AtomMigration` reshuffles
+    // special-bonds exclusions correct after an `Migrate` reshuffles
     // ownership — the stale build-time map was the MSU-PE collapse cause.
     refresh_exclusion_map(f, n);
     filtered_inum_ = n;
@@ -285,7 +285,7 @@ void PairLJCut::compute(const LaunchContext& ctx) {
 
     // Pair virial accumulators (Voigt order: xx yy zz xy xz yz). Reduced
     // across OpenMP threads via OMP reduction; cross-rank reduction is
-    // handled by ReduceEnergy at end_of_step.
+    // handled by Reduce at end_of_step.
     double v_xx = 0, v_yy = 0, v_zz = 0, v_xy = 0, v_xz = 0, v_yz = 0;
 
 #pragma omp parallel reduction(+ : energy_total) reduction(+ : v_xx)           \

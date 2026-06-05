@@ -138,12 +138,12 @@ TEST(LjEnergyBruteForce, GlobalEnergyMatchesBruteForce) {
     sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{cutoff}, -10);
     sim.on(ATV::md::Phase::force).add(cpu::md::LJ{eps, sigma, cutoff});
     sim.on(ATV::md::Phase::pre_force)
-        .add(cpu::comm::HaloExchangeForward{cutoff}, -20);
+        .add(cpu::comm::HaloSend{cutoff}, -20);
     sim.on(ATV::md::Phase::post_force)
-        .add(cpu::comm::HaloExchangeReverse{}, -1000);
+        .add(cpu::comm::HaloRecv{}, -1000);
     sim.build();
 
-    sim.run(frame, 1); // one frozen step → ReduceEnergy fills global energy
+    sim.run(frame, 1); // one frozen step → Reduce fills global energy
 
     // frame.scalars.energy is the cross-rank reduced LJ potential energy.
     const double e_dist = frame.scalars.energy;

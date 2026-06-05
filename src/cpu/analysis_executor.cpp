@@ -55,7 +55,7 @@ void AnalysisExecutor::init(const Config& cfg, Context& ctx) {
         // GoogleTest cases). Aliasing means analysis-thread MPI collectives
         // share the world comm; that is safe as long as the analysis
         // worker does not run concurrently with a collective on the main
-        // thread -- SnapshotPublisher orders them strictly.
+        // thread -- Publish orders them strictly.
         analysis_comm_ = cfg.parent_comm;
         owns_analysis_comm_ = false;
     } else {

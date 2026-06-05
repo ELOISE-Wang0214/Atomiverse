@@ -31,9 +31,9 @@ void ZeroForces::launch(const cpu::LaunchContext& ctx) {
     // would touch ~global-N slots on every rank every step — measured as the
     // single largest scaling cost at high rank counts (it dwarfed the LJ
     // kernel). Ghost rows [n_local, n_local + n_ghost) are zeroed by
-    // `HaloExchangeForward` right after it (re)populates them this step
+    // `HaloSend` right after it (re)populates them this step
     // (ZeroForces runs at pre_force -1000, before the halo sets the current
-    // n_ghost), giving `HaloExchangeReverse` its known-zero ghost baseline.
+    // n_ghost), giving `HaloRecv` its known-zero ghost baseline.
     // Single-rank: `owned_count` == atoms.size() and n_ghost == 0, so this is
     // the full (and only) array. See owned_range.h for the row-range contract.
     const int n = owned_count(ctx);
@@ -66,9 +66,9 @@ void ZeroStress::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
     for (int k = 0; k < 6; ++k)
         f.scalars.stress[k] = 0;
-    // `stress_kinetic` is overwritten (not accumulated) by VirialStress
+    // `stress_kinetic` is overwritten (not accumulated) by Virial
     // each step, so it does not strictly need zeroing -- but zero it
-    // here for symmetry and so observers that read it before VirialStress
+    // here for symmetry and so observers that read it before Virial
     // ever ran see a deterministic zero rather than uninitialised data.
     for (int k = 0; k < 6; ++k)
         f.scalars.stress_kinetic[k] = 0;

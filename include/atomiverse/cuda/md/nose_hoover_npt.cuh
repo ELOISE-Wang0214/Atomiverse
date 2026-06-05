@@ -19,7 +19,7 @@
 /// post-NPT values.
 ///
 /// Single-GPU scope (`msu-pe-validation` fixed-scope #1). Pressure-sign
-/// is LAMMPS-standard (same as `cuda::VirialStress` /
+/// is LAMMPS-standard (same as `cuda::Virial` /
 /// `frame.scalars->stress`) — NOT the inverted convention used by
 /// `cuda::md::Barostat` (Berendsen). Trotter ordering across the three
 /// MD phases mirrors `cpu::md::NoseHooverNPT::launch`:
@@ -27,7 +27,7 @@
 /// - `initial_integrate` (P1–P6): nhc_baro_half → nhc_atoms_half →
 ///   update_eps_dot → scale_v_by_baro → kick_v_by_force → propagate_x.
 /// - `final_integrate` (P7): kick_v_by_force.
-/// - `end_of_step` (P8–P11, after ReduceEnergy): recompute KE_global →
+/// - `end_of_step` (P8–P11, after Reduce): recompute KE_global →
 ///   scale_v_by_baro → update_eps_dot → nhc_atoms_half (reversed
 ///   atoms-then-baro) → nhc_baro_half → write kinetic + conserved.
 ///
@@ -84,7 +84,7 @@ class NoseHooverNPT : public ComponentBase {
     ComponentRole role() const override { return ComponentRole::Integrator; }
     /// @brief Reads — consumes `Stress` to drive ε̇ via `update_eps_dot_`.
     ///        Triggers `cuda::md::MD::install_infra_` to auto-inject
-    ///        `cuda::VirialStress` if none is registered. The Integrator
+    ///        `cuda::Virial` if none is registered. The Integrator
     ///        role alone could not express this dependency.
     Capability reads() const override { return Capability::Stress; }
 

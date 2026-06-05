@@ -92,14 +92,14 @@ TEST(MDPlanEquivalence, NVELJSetApiMatchesRawAddPath) {
                       << render(sr);
 }
 
-// ─── T10: Plan equivalence — NPT (auto-VirialStress vs explicit) ─────
+// ─── T10: Plan equivalence — NPT (auto-Virial vs explicit) ─────
 
 TEST(MDPlanEquivalence, NPTSetApiMatchesRawAddPathWithExplicitVirialStress) {
     using namespace ATV;
 
     // The set_api path triggers Case A: install_infra auto-injects
-    // VirialStress because NoseHooverNPT::reads()==Stress and no
-    // explicit VirialStress was registered.
+    // Virial because NoseHooverNPT::reads()==Stress and no
+    // explicit Virial was registered.
     cpu::md::MD via_setters;
     via_setters.set_pair(cpu::md::LJ{kEps, kSigma, kCutoff});
     via_setters.set_neighbor(cpu::md::NeighborList<>{kCutoff, kSkin});
@@ -110,7 +110,7 @@ TEST(MDPlanEquivalence, NPTSetApiMatchesRawAddPathWithExplicitVirialStress) {
                                                        .dt = kDt}});
     via_setters.build();
 
-    // The raw path adds VirialStress explicitly — what existing
+    // The raw path adds Virial explicitly — what existing
     // tests-mpi/* tests do today.
     cpu::md::MD via_raw;
     via_raw.on(md::Phase::force).add(cpu::md::LJ{kEps, kSigma, kCutoff}, 0);
@@ -130,14 +130,14 @@ TEST(MDPlanEquivalence, NPTSetApiMatchesRawAddPathWithExplicitVirialStress) {
                                          .tau_P = 1000.0,
                                          .dt = kDt}});
     via_raw2.add(
-        cpu::md::VirialStress{}); // explicit — what existing NPT tests do
+        cpu::md::Virial{}); // explicit — what existing NPT tests do
     via_raw2.build();
 
     const auto sa = signature_of(via_setters);
     const auto sr = signature_of(via_raw2);
     EXPECT_EQ(sa, sr) << "categorical setters:\n"
                       << render(sa)
-                      << "raw add() path with explicit VirialStress:\n"
+                      << "raw add() path with explicit Virial:\n"
                       << render(sr);
 }
 

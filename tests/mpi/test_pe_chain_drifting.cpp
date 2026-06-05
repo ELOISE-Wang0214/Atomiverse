@@ -1,18 +1,18 @@
 /// @file tests/mpi/test_pe_chain_drifting.cpp
 /// @brief Phase 0.3 final / P56 -- a PE chain that DRIFTS across the rank
-///        boundary mid-run, verifying AtomMigration + bonded ownership
+///        boundary mid-run, verifying Migrate + bonded ownership
 ///        re-route automatically.
 ///
 /// With the tag-based topology design, every rank holds the FULL bond /
 /// angle / dihedral list, and force kernels filter by ownership at
-/// force-eval time. When AtomMigration moves an atom between ranks the
+/// force-eval time. When Migrate moves an atom between ranks the
 /// bond's owner-tag stays the same (tags are immutable) but the rank
 /// holding it changes -- so the bond starts being computed by the new
 /// owner rank without any explicit tuple migration.
 ///
 /// This test puts a 16-atom chain entirely in rank 0's slab initially,
 /// gives it a +x drift velocity, and runs long enough that several atoms
-/// cross into rank 1's slab. AtomMigration moves the crossing atoms;
+/// cross into rank 1's slab. Migrate moves the crossing atoms;
 /// bonded force pipeline must keep the chain intact through the
 /// migrations.
 
@@ -111,9 +111,9 @@ TEST(PeChainDrifting, MigrationKeepsChainIntact) {
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{0.5});
     sim.on(ATV::md::Phase::pre_force)
-        .add(cpu::comm::HaloExchangeForward{5.0}, -20);
+        .add(cpu::comm::HaloSend{5.0}, -20);
     sim.on(ATV::md::Phase::post_force)
-        .add(cpu::comm::HaloExchangeReverse{}, -1000);
+        .add(cpu::comm::HaloRecv{}, -1000);
     sim.on(ATV::md::Phase::force)
         .add(HarmonicBond{{bond_K_eV()}, {kBondR0}})
         .add(HarmonicAngle{{angle_K_eV()}, {kAngleTheta0}})
@@ -123,7 +123,7 @@ TEST(PeChainDrifting, MigrationKeepsChainIntact) {
     sim.run(frame, 1000);
 
     const double e1 =
-        frame.scalars.energy + frame.scalars.kinetic; // global via ReduceEnergy
+        frame.scalars.energy + frame.scalars.kinetic; // global via Reduce
     EXPECT_FALSE(std::isnan(e1)) << "global E went NaN -- migration broke "
                                     "bonded ownership routing";
     EXPECT_LT(std::abs(e1), 1e3)

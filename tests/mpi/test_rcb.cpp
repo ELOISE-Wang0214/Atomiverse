@@ -1,5 +1,5 @@
 /// @file tests/mpi/test_rcb.cpp
-/// @brief Phase 4 -- `RCBBalancer` non-uniform brick rebalance.
+/// @brief Phase 4 -- `Rebalance` non-uniform brick rebalance.
 ///
 /// Verifies that one balance pass on a deliberately skewed atom distribution:
 ///   1. Populates `dd->cuts[d]` with `dims[d] + 1` monotonically increasing
@@ -7,7 +7,7 @@
 ///   2. Re-derives this rank's `sublo/subhi` from the new cuts (consistent
 ///      with `compute_sublo_subhi`).
 ///   3. Bumps `dd->neighbor_generation`.
-///   4. Causes the next `AtomMigration` to redistribute atoms so per-rank
+///   4. Causes the next `Migrate` to redistribute atoms so per-rank
 ///      counts are within ~10% of the global mean.
 
 #include <gtest/gtest.h>
@@ -48,7 +48,7 @@ cpu::Frame make_skewed_frame(double box_len, int n_atoms) {
 
 } // namespace
 
-TEST(RCBBalancer, SingleRankIsNoOp) {
+TEST(Rebalance, SingleRankIsNoOp) {
     int world_size = 0;
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
     if (world_size != 1)
@@ -62,7 +62,7 @@ TEST(RCBBalancer, SingleRankIsNoOp) {
     auto* dd = backend.context().dd;
     const auto gen0 = dd->neighbor_generation;
 
-    cpu::md::mpi::RCBBalancer rcb{};
+    cpu::md::mpi::Rebalance rcb{};
     cpu::BuildContext bctx{backend.context(), frame};
     rcb.build(bctx);
     cpu::LaunchContext lctx{backend.context(), frame, 0, /*step=*/1};
@@ -77,7 +77,7 @@ TEST(RCBBalancer, SingleRankIsNoOp) {
     backend.shutdown();
 }
 
-TEST(RCBBalancer, RebalancesSkewedDistribution) {
+TEST(Rebalance, RebalancesSkewedDistribution) {
     int world_size = 0;
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
     if (world_size != 8)
@@ -110,7 +110,7 @@ TEST(RCBBalancer, RebalancesSkewedDistribution) {
     const auto gen_before = dd->neighbor_generation;
 
     // Run one RCB pass.
-    cpu::md::mpi::RCBBalancer rcb{};
+    cpu::md::mpi::Rebalance rcb{};
     cpu::BuildContext bctx{backend.context(), frame};
     rcb.build(bctx);
     cpu::LaunchContext lctx{backend.context(), frame, 0, /*step=*/1};
@@ -131,8 +131,8 @@ TEST(RCBBalancer, RebalancesSkewedDistribution) {
     }
     EXPECT_GT(dd->neighbor_generation, gen_before);
 
-    // Now run AtomMigration so atoms move to their new rank.
-    cpu::comm::AtomMigration mig{};
+    // Now run Migrate so atoms move to their new rank.
+    cpu::comm::Migrate mig{};
     mig.build(bctx);
     mig.launch(lctx);
 

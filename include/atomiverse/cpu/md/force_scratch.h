@@ -80,7 +80,7 @@ public:
 
     /// @brief Reduce all threads' `[0, n_force)` contributions into frame
     ///        forces. Call after the parallel region. The owned + ghost rows
-    ///        are both reduced (ghost forces ship home via HaloExchangeReverse).
+    ///        are both reduced (ghost forces ship home via HaloRecv).
     void reduce_into(cpu::Frame& f, int n_force) const {
         double* __restrict fx = f.atoms.fx.data();
         double* __restrict fy = f.atoms.fy.data();

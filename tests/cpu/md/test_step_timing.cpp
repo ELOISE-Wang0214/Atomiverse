@@ -73,11 +73,11 @@ TEST(StepTiming, ClassifyKnownComponentNames) {
     EXPECT_EQ(StepTiming::classify("harmonic_angle"), StepTiming::Bonded);
     EXPECT_EQ(StepTiming::classify("multi_harmonic_dihedral"), StepTiming::Bonded);
     EXPECT_EQ(StepTiming::classify("neighbor_list"), StepTiming::Neigh);
-    EXPECT_EQ(StepTiming::classify("halo_forward"), StepTiming::Comm);
-    EXPECT_EQ(StepTiming::classify("halo_reverse"), StepTiming::Comm);
-    EXPECT_EQ(StepTiming::classify("atom_migration"), StepTiming::Comm);
-    EXPECT_EQ(StepTiming::classify("rcb_balancer"), StepTiming::Comm);
-    EXPECT_EQ(StepTiming::classify("reduce_energy"), StepTiming::Reduce);
+    EXPECT_EQ(StepTiming::classify("halo_send"), StepTiming::Comm);
+    EXPECT_EQ(StepTiming::classify("halo_recv"), StepTiming::Comm);
+    EXPECT_EQ(StepTiming::classify("migrate"), StepTiming::Comm);
+    EXPECT_EQ(StepTiming::classify("rebalance"), StepTiming::Comm);
+    EXPECT_EQ(StepTiming::classify("reduce"), StepTiming::Reduce);
     EXPECT_EQ(StepTiming::classify("velocity_verlet"), StepTiming::Other);
     EXPECT_EQ(StepTiming::classify("nose_hoover_npt"), StepTiming::Other);
     EXPECT_EQ(StepTiming::classify("fix_langevin"), StepTiming::Other);

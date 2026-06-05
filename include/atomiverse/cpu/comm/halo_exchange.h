@@ -2,23 +2,23 @@
 /// @brief Ghost-atom halo exchange components for MPI domain decomposition.
 ///
 /// LAMMPS-style forward/reverse comm:
-///   - `HaloExchangeForward::launch` rebuilds per-face send lists from
+///   - `HaloSend::launch` rebuilds per-face send lists from
 ///     current positions, packs owned positions (with PBC shift across
 ///     periodic-edge faces), issues 6-face `MPI_Isend/Irecv`, and unpacks
 ///     received ghosts into `frame.atoms[n_local : n_local + n_ghost)`.
-///   - `HaloExchangeReverse::launch` symmetrically reduces ghost-row
+///   - `HaloRecv::launch` symmetrically reduces ghost-row
 ///     `fx/fy/fz` contributions back onto the owners.
 ///
 /// Both classes share a `HaloExchangeState` record (per-face send/recv
 /// indices, packed-position buffers, MPI request handles) held by
-/// `md::mpi::DomainDecomposition`. `HaloExchangeForward` is the producer (writes
-/// `state->recv_counts_per_face` and the ghost rows); `HaloExchangeReverse`
+/// `md::mpi::DomainDecomposition`. `HaloSend` is the producer (writes
+/// `state->recv_counts_per_face` and the ghost rows); `HaloRecv`
 /// is the consumer (uses the same per-face counts to know how many ghost
 /// forces to pack and where they go on the owner's side).
 ///
-/// The default-constructed `HaloExchangeForward{}` (`cutoff = 0`) is a
-/// no-op sentinel. Real multi-rank runs add `HaloExchangeForward{cutoff_with_skin}`
-/// and a matching `HaloExchangeReverse{}` explicitly; `cpu::md::MD` does not
+/// The default-constructed `HaloSend{}` (`cutoff = 0`) is a
+/// no-op sentinel. Real multi-rank runs add `HaloSend{cutoff_with_skin}`
+/// and a matching `HaloRecv{}` explicitly; `cpu::md::MD` does not
 /// auto-register halo components because reverse exchange must run exactly once.
 ///
 /// **Bonded skin auto-extension** (spec A.5): `build()` scans
@@ -50,7 +50,7 @@ namespace comm {
 namespace detail {
 /// @brief Per-face MPI buffer storage (PIMPL). Definition lives in
 /// `halo_exchange.cpp` so the header stays free of MPI-adjacent state.
-/// Held per-instance by `HaloExchangeForward` / `HaloExchangeReverse` so
+/// Held per-instance by `HaloSend` / `HaloRecv` so
 /// multiple components in the same process do not clobber each other's
 /// send/recv buffers.
 struct FaceBufs;
@@ -67,10 +67,10 @@ struct FaceBufs;
 /// corresponding face neighbor. PBC: atoms sent across the periodic edge of
 /// the global box are shifted by `±L_d` on the way out so the receiver sees
 /// them in its own coordinate frame.
-class HaloExchangeForward : public cpu::ComponentBase {
+class HaloSend : public cpu::ComponentBase {
   public:
     /// @brief No-op default constructor (cutoff = 0).
-    HaloExchangeForward();
+    HaloSend();
 
     /// @brief Real-comm constructor with the pair cutoff.
     /// @param cutoff Pair-interaction cutoff [Angstrom]. Typically
@@ -88,17 +88,17 @@ class HaloExchangeForward : public cpu::ComponentBase {
     ///        so the downstream neighbor list remains reusable. Matches
     ///        LAMMPS's reneighboring cadence. Default 10 lines up with
     ///        `NeighborList`'s default `every=10`.
-    explicit HaloExchangeForward(double cutoff, int every = 10);
+    explicit HaloSend(double cutoff, int every = 10);
 
     // unique_ptr<incomplete type> needs user-defined special members,
     // defined in the .cpp where detail::FaceBufs is complete.
-    ~HaloExchangeForward() override;
-    HaloExchangeForward(HaloExchangeForward&&) noexcept;
-    HaloExchangeForward& operator=(HaloExchangeForward&&) noexcept;
-    HaloExchangeForward(const HaloExchangeForward&) = delete;
-    HaloExchangeForward& operator=(const HaloExchangeForward&) = delete;
+    ~HaloSend() override;
+    HaloSend(HaloSend&&) noexcept;
+    HaloSend& operator=(HaloSend&&) noexcept;
+    HaloSend(const HaloSend&) = delete;
+    HaloSend& operator=(const HaloSend&) = delete;
 
-    std::string name() const override { return "halo_forward"; }
+    std::string name() const override { return "halo_send"; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {{static_cast<int>(ATV::md::Phase::pre_neighbor), 0}};
     }
@@ -161,13 +161,13 @@ class HaloExchangeForward : public cpu::ComponentBase {
 
 /// @brief Reverse pass: ghost-row forces → owner's force arrays.
 ///
-/// Pairs with the most recent `HaloExchangeForward` exchange via
+/// Pairs with the most recent `HaloSend` exchange via
 /// the shared per-face state on `md::mpi::DomainDecomposition`. Ghost forces in
 /// `frame.atoms.fx/fy/fz[n_local : n_local + n_ghost)` are packed by face,
 /// `MPI_Isend/Irecv` to the originating ranks, and added into the owners'
 /// local force arrays at the indices in their own `send_lists`.
 ///
-/// @see HaloExchangeForward for the matching producer of `dd->send_lists` /
+/// @see HaloSend for the matching producer of `dd->send_lists` /
 ///      `dd->recv_counts`; Reverse consumes those counts to decide how
 ///      many ghost forces to pack and where to add them on the owner side.
 ///
@@ -183,7 +183,7 @@ class HaloExchangeForward : public cpu::ComponentBase {
 ///     `MultiHarmonicDihedral`) write to `fx/fy/fz`. ✓ shipped.
 ///   * Per-atom virial / stress contributions are *accumulated globally*
 ///     via `frame.stress[6]` (a per-rank scalar tally) and reduced by
-///     `ReduceEnergy` at `end_of_step @ -50`. They are not stored per
+///     `Reduce` at `end_of_step @ -50`. They are not stored per
 ///     ghost row, so there is nothing for the halo reverse to ship.
 ///   * Per-atom kinetic energy is computed from owner velocities only
 ///     (loop bound `n_local`). Ghost velocities are never read.
@@ -195,17 +195,17 @@ class HaloExchangeForward : public cpu::ComponentBase {
 /// potential for QM/MM, per-atom virial tensor for stress profiles)
 /// must either (a) extend this payload list and update `pack_face`/
 /// `unpack_face` in `halo_exchange.cpp`, or (b) operate on owners only
-/// and reduce the per-rank totals globally via `ReduceEnergy`.
-class HaloExchangeReverse : public cpu::ComponentBase {
+/// and reduce the per-rank totals globally via `Reduce`.
+class HaloRecv : public cpu::ComponentBase {
   public:
-    HaloExchangeReverse();
-    ~HaloExchangeReverse() override;
-    HaloExchangeReverse(HaloExchangeReverse&&) noexcept;
-    HaloExchangeReverse& operator=(HaloExchangeReverse&&) noexcept;
-    HaloExchangeReverse(const HaloExchangeReverse&) = delete;
-    HaloExchangeReverse& operator=(const HaloExchangeReverse&) = delete;
+    HaloRecv();
+    ~HaloRecv() override;
+    HaloRecv(HaloRecv&&) noexcept;
+    HaloRecv& operator=(HaloRecv&&) noexcept;
+    HaloRecv(const HaloRecv&) = delete;
+    HaloRecv& operator=(const HaloRecv&) = delete;
 
-    std::string name() const override { return "halo_reverse"; }
+    std::string name() const override { return "halo_recv"; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {{static_cast<int>(ATV::md::Phase::post_force), -1000}};
     }
