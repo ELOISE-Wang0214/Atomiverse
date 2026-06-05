@@ -11,15 +11,26 @@ namespace ATV {
 /// @brief MD simulation phases -- LAMMPS-style naming.
 namespace md {
 
-/// @brief Phase order for one molecular-dynamics step.
+/// @brief Phase order for one molecular-dynamics step — LAMMPS-Verlet-granular
+///        so the whole timestep is legible from the enum (see
+///        `.claude/notes/cpu-md-execution-model.md`). Every phase is always
+///        walked even when empty; an empty phase is an explicit "nothing
+///        happens here" for this run, not an absence to infer. Within a phase
+///        components order by a small integer (negative = infrastructure first,
+///        0 = the op, positive = consumers) so a new op slots in without adding
+///        a phase.
 enum class Phase {
     initial_integrate, ///< First half-step: v += 0.5*dt*f/m, x += dt*v
-    pre_force,       ///< Pre-force hooks (pair list rebuild, constraint setup)
-    force,           ///< Force evaluation (evaluators accumulate here)
-    post_force,      ///< Post-force corrections (constraints, long-range)
-    final_integrate, ///< Second half-step: v += 0.5*dt*f/m
-    end_of_step,     ///< Per-step observers, recorders, controllers
-    COUNT            ///< Sentinel -- total number of phases
+    post_integrate,    ///< Hook right after kick/drift (usually empty)
+    pre_exchange,      ///< Re-home atoms that left this rank (atom migration)
+    pre_neighbor,      ///< Build ghost atoms (halo send) before the neighbor list
+    neighbor,          ///< (Re)build the cell / pair neighbor list
+    pre_force,         ///< Zero force/energy/stress accumulators before eval
+    force,             ///< Force/energy/virial accumulation (pair + bonded)
+    post_force,        ///< Reverse ghost-force comm, virial finalize, constraints
+    final_integrate,   ///< Second half-step: v += 0.5*dt*f/m
+    end_of_step,       ///< Global reductions, thermostat/barostat, observers, I/O
+    COUNT              ///< Sentinel -- total number of phases
 };
 
 /// @brief Human-readable names for the MD phases.
@@ -27,8 +38,10 @@ enum class Phase {
 /// @return Phase names in the same order as the enum values, excluding `COUNT`.
 inline std::vector<std::string> phase_names(Phase phase_tag) {
     (void)phase_tag;
-    return {"initial_integrate", "pre_force",       "force",
-            "post_force",        "final_integrate", "end_of_step"};
+    return {"initial_integrate", "post_integrate", "pre_exchange",
+            "pre_neighbor",      "neighbor",       "pre_force",
+            "force",             "post_force",     "final_integrate",
+            "end_of_step"};
 }
 
 } // namespace md

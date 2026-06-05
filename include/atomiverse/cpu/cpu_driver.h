@@ -67,27 +67,35 @@ namespace cpu {
 template <typename PhaseEnum>
 struct CategoryTraits;
 
+/// `neighbor_phase` is where the neighbor-list rebuild binds. MD has a
+/// dedicated `neighbor` phase (LAMMPS-granular skeleton); the other drivers
+/// have no separate phase, so it folds into `eval_phase` just before the
+/// force evaluators (order -10).
 template <>
 struct CategoryTraits<ATV::md::Phase> {
     static constexpr auto eval_phase = ATV::md::Phase::force;
+    static constexpr auto neighbor_phase = ATV::md::Phase::neighbor;
     static constexpr auto end_phase = ATV::md::Phase::end_of_step;
 };
 
 template <>
 struct CategoryTraits<ATV::minimizer::Phase> {
     static constexpr auto eval_phase = ATV::minimizer::Phase::force;
+    static constexpr auto neighbor_phase = ATV::minimizer::Phase::force;
     static constexpr auto end_phase = ATV::minimizer::Phase::end_of_step;
 };
 
 template <>
 struct CategoryTraits<ATV::evaluate::Phase> {
     static constexpr auto eval_phase = ATV::evaluate::Phase::evaluate;
+    static constexpr auto neighbor_phase = ATV::evaluate::Phase::evaluate;
     static constexpr auto end_phase = ATV::evaluate::Phase::finalize;
 };
 
 template <>
 struct CategoryTraits<ATV::vib::Phase> {
     static constexpr auto eval_phase = ATV::vib::Phase::force;
+    static constexpr auto neighbor_phase = ATV::vib::Phase::force;
     static constexpr auto end_phase = ATV::vib::Phase::end_of_step;
 };
 
@@ -221,11 +229,14 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     }
 
     /// @brief Configure the neighbor list (LAMMPS `neighbor` + `neigh_modify`).
-    /// Bound at eval_phase @ -10, before pair/bonded force evaluators.
+    /// Bound at the driver's `neighbor_phase` @ -10: for MD that is the
+    /// dedicated `neighbor` phase (runs after ghost build, before `force`); for
+    /// the other drivers it folds into `eval_phase` just ahead of the force
+    /// evaluators.
     template <typename N>
     void set_neighbor(N&& n_comp) {
         set_singular_at_(std::forward<N>(n_comp), neighbor_set_, "set_neighbor",
-                         Traits::eval_phase, -10);
+                         Traits::neighbor_phase, -10);
     }
 
     /// @brief Add a derived-quantity observer (LAMMPS `compute`). Plural.

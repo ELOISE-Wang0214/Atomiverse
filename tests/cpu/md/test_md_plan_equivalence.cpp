@@ -78,7 +78,9 @@ TEST(MDPlanEquivalence, NVELJSetApiMatchesRawAddPath) {
 
     cpu::md::MD via_raw;
     via_raw.on(md::Phase::force).add(cpu::md::LJ{kEps, kSigma, kCutoff}, 0);
-    via_raw.on(md::Phase::force)
+    // set_neighbor binds at the dedicated `neighbor` phase @ -10 (the
+    // LAMMPS-granular skeleton), so the raw mirror must too.
+    via_raw.on(md::Phase::neighbor)
         .add(cpu::md::NeighborList<>{kCutoff, kSkin}, -10);
     via_raw.add(cpu::md::VelocityVerlet{kDt});
     via_raw.build();
@@ -112,7 +114,7 @@ TEST(MDPlanEquivalence, NPTSetApiMatchesRawAddPathWithExplicitVirialStress) {
     // tests-mpi/* tests do today.
     cpu::md::MD via_raw;
     via_raw.on(md::Phase::force).add(cpu::md::LJ{kEps, kSigma, kCutoff}, 0);
-    via_raw.on(md::Phase::force)
+    via_raw.on(md::Phase::neighbor)
         .add(cpu::md::NeighborList<>{kCutoff, kSkin}, -10);
     via_raw.add(cpu::md::VelocityVerlet{
         kDt}); // placeholder integrator? no, we want NPT
@@ -120,7 +122,7 @@ TEST(MDPlanEquivalence, NPTSetApiMatchesRawAddPathWithExplicitVirialStress) {
     // Reconstructing because VV was added above for clarity.
     cpu::md::MD via_raw2;
     via_raw2.on(md::Phase::force).add(cpu::md::LJ{kEps, kSigma, kCutoff}, 0);
-    via_raw2.on(md::Phase::force)
+    via_raw2.on(md::Phase::neighbor)
         .add(cpu::md::NeighborList<>{kCutoff, kSkin}, -10);
     via_raw2.add(cpu::md::NoseHooverNPT{{.T_target = 300.0,
                                          .tau_T = 100.0,

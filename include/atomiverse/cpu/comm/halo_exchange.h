@@ -100,7 +100,7 @@ class HaloExchangeForward : public cpu::ComponentBase {
 
     std::string name() const override { return "halo_forward"; }
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::pre_force), -20}};
+        return {{static_cast<int>(ATV::md::Phase::pre_neighbor), 0}};
     }
 
     void build(const cpu::BuildContext& ctx) override;
