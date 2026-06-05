@@ -459,14 +459,33 @@ void NoseHooverNPT::update_eps_dot(const cpu::LaunchContext& ctx,
     // Hamiltonian secularly (caught by Slow_AnisoNptConserves…).
     const std::array<double, 3> ke_axis = compute_axis_KE(ctx);
 
+    // Per-axis pair virial. `f.scalars.stress[0..2]` is the rank-LOCAL diagonal
+    // here: the barostat runs at final_integrate, BEFORE ReduceEnergy
+    // (end_of_step) reduces stress across ranks. ke_axis above is already
+    // globally summed, so without summing the virial too the driving pressure
+    // mixes global KE with ~1/nranks of the virial — the barostat then drives
+    // off the wrong pressure, the box diverges between ranks, and multi-rank
+    // NPT/tension blows up (single-rank is unaffected). The pair virial is
+    // additive across ranks, so MPI_Allreduce(SUM) recovers the global value.
+    double vir[3] = {f.scalars.stress[0], f.scalars.stress[1],
+                     f.scalars.stress[2]};
+#ifdef ATV_HAS_MPI
+    if (ctx.runtime.mpi_size > 1 && ctx.runtime.dd
+        && ctx.runtime.dd->cart_comm != MPI_COMM_NULL) {
+        double local[3] = {vir[0], vir[1], vir[2]};
+        MPI_Allreduce(local, vir, 3, MPI_DOUBLE, MPI_SUM,
+                      ctx.runtime.dd->cart_comm);
+    }
+#endif
+
     // Per-axis virial + kinetic diagonal, with LAMMPS `couple()`
     // averaging applied when all three axes are coupled (the isotropic /
     // `pcouple==XYZ` case): every `p_current[i]` is set to the averaged
     // pressure, collapsing the three forces to one shared value so the
     // all-coupled path is bit-identical to the legacy scalar `G_ε`.
-    double diag[3] = {f.scalars.stress[0] + 2.0 * ke_axis[0],
-                      f.scalars.stress[1] + 2.0 * ke_axis[1],
-                      f.scalars.stress[2] + 2.0 * ke_axis[2]};
+    double diag[3] = {vir[0] + 2.0 * ke_axis[0],
+                      vir[1] + 2.0 * ke_axis[1],
+                      vir[2] + 2.0 * ke_axis[2]};
     if (pdim_ == 3) {
         const double ave = (1.0 / 3.0) * (diag[0] + diag[1] + diag[2]);
         diag[0] = diag[1] = diag[2] = ave;
