@@ -37,6 +37,7 @@
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/lj.h"
 #include "atomiverse/cpu/md/md.h"
+#include "atomiverse/cpu/comm/atom_migration.h"
 #include "atomiverse/cpu/comm/halo_exchange.h"
 #include "atomiverse/cpu/md/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
@@ -226,6 +227,11 @@ int main(int argc, char** argv) {
 
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{args.dt});
+    // Re-home atoms that drift across subdomain boundaries (pre_exchange).
+    // Without this the decomposition corrupts over a run and the neighbor
+    // list degrades toward O(N^2). Migrate also bumps neighbor_generation,
+    // which triggers the halo full-rebuild on migration steps.
+    sim.add(cpu::comm::Migrate{20});
     sim.on(ATV::md::Phase::pre_force)
         .add(cpu::comm::HaloSend{args.cutoff}, -20);
     sim.on(ATV::md::Phase::post_force)
