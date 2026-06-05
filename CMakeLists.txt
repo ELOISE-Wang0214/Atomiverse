@@ -223,6 +223,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cuda/materialize.cu
             src/cuda/timer.cu
             src/cuda/driver.cu
+            src/cuda/md/multi_gpu.cu
             src/cuda/md/velocity_verlet.cu
             src/cuda/md/nve_limit.cu
             src/cuda/md/fix_langevin.cu

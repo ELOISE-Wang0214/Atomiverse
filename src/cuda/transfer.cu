@@ -250,6 +250,13 @@ void to_cpu(const Frame& d, cpu::Frame& frame) {
     copy_d2h_widen(frame.atoms.fy.data(), d.atoms.fy, n);
     copy_d2h_widen(frame.atoms.fz.data(), d.atoms.fz, n);
 
+    // Global atom tags — round-trip so they survive a device round trip (used
+    // by multi-GPU gather/migration to identify atoms after they move between
+    // subdomains; previously only copied H2D, leaving stale host tags on D2H).
+    if (d.atoms.tag)
+        cudaMemcpy(frame.atoms.tag.data(), d.atoms.tag,
+                   n * sizeof(std::int64_t), cudaMemcpyDeviceToHost);
+
     // Per-atom partial charge (mutable: charge-equilibration methods)
     if (d.atoms.charge)
         copy_d2h_widen(frame.atoms.charge.data(), d.atoms.charge, n);
