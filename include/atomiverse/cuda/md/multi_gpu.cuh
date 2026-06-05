@@ -79,6 +79,14 @@ class MultiGpu {
     /// but for fx/fy/fz). `out` sized to the global atom count.
     void gather_forces(cpu::Frame& out) const;
 
+    /// Run `steps` of velocity-Verlet NVE across the GPUs (brute-force LJ):
+    /// each step refreshes the halo, recomputes forces (owned, from
+    /// owned+ghost), and integrates owned atoms. Acceleration is f/m (consistent
+    /// units; this validates parity, not a specific unit system). Assumes atoms
+    /// stay in their subdomain over the run (no migration yet).
+    void run_nve(int steps, double dt, double cutoff, double epsilon,
+                 double sigma);
+
   private:
     void destroy_frames();
 

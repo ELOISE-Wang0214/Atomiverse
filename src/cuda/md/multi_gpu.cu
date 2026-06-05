@@ -287,6 +287,82 @@ void MultiGpu::compute_lj_bruteforce(double cutoff, double epsilon,
     }
 }
 
+namespace {
+// Velocity-Verlet first half: v += 0.5*dt*(f/m); x += dt*v   (owned only).
+__global__ void vv_first(real_t* __restrict__ x, real_t* __restrict__ y,
+                         real_t* __restrict__ z, real_t* __restrict__ vx,
+                         real_t* __restrict__ vy, real_t* __restrict__ vz,
+                         const real_t* __restrict__ fx,
+                         const real_t* __restrict__ fy,
+                         const real_t* __restrict__ fz,
+                         const real_t* __restrict__ mass, int n_local,
+                         real_t dt) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n_local)
+        return;
+    real_t inv_m = real_t(1) / mass[i];
+    real_t h = real_t(0.5) * dt * inv_m;
+    vx[i] += h * fx[i];
+    vy[i] += h * fy[i];
+    vz[i] += h * fz[i];
+    x[i] += dt * vx[i];
+    y[i] += dt * vy[i];
+    z[i] += dt * vz[i];
+}
+// Velocity-Verlet second half: v += 0.5*dt*(f/m)   (owned only).
+__global__ void vv_second(real_t* __restrict__ vx, real_t* __restrict__ vy,
+                          real_t* __restrict__ vz, const real_t* __restrict__ fx,
+                          const real_t* __restrict__ fy,
+                          const real_t* __restrict__ fz,
+                          const real_t* __restrict__ mass, int n_local,
+                          real_t dt) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n_local)
+        return;
+    real_t h = real_t(0.5) * dt / mass[i];
+    vx[i] += h * fx[i];
+    vy[i] += h * fy[i];
+    vz[i] += h * fz[i];
+}
+} // namespace
+
+void MultiGpu::run_nve(int steps, double dt, double cutoff, double epsilon,
+                       double sigma) {
+    exchange_halo(cutoff);
+    compute_lj_bruteforce(cutoff, epsilon, sigma);
+    const real_t dtr = static_cast<real_t>(dt);
+    for (int step = 0; step < steps; ++step) {
+        for (int s = 0; s < count(); ++s) {
+            const int nl = frames_[s].n_local_;
+            if (nl == 0)
+                continue;
+            dm_.set_device(s);
+            auto& a = frames_[s].atoms;
+            int block = 256, grid = (nl + block - 1) / block;
+            vv_first<<<grid, block>>>(a.x, a.y, a.z, a.vx, a.vy, a.vz, a.fx,
+                                      a.fy, a.fz, a.mass, nl, dtr);
+            CKM(cudaGetLastError());
+        }
+        exchange_halo(cutoff);
+        compute_lj_bruteforce(cutoff, epsilon, sigma);
+        for (int s = 0; s < count(); ++s) {
+            const int nl = frames_[s].n_local_;
+            if (nl == 0)
+                continue;
+            dm_.set_device(s);
+            auto& a = frames_[s].atoms;
+            int block = 256, grid = (nl + block - 1) / block;
+            vv_second<<<grid, block>>>(a.vx, a.vy, a.vz, a.fx, a.fy, a.fz,
+                                       a.mass, nl, dtr);
+            CKM(cudaGetLastError());
+        }
+    }
+    for (int s = 0; s < count(); ++s) {
+        dm_.set_device(s);
+        CKM(cudaDeviceSynchronize());
+    }
+}
+
 void MultiGpu::gather_forces(cpu::Frame& out) const {
     if (out.atoms.size() < n_global_)
         throw std::runtime_error("MultiGpu::gather_forces: out frame too small");
