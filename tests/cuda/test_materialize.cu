@@ -64,7 +64,12 @@ namespace {
         *fr, "atoms", "tag",
         ::rust::Slice<const std::int32_t>(tag.data(), tag.size()));
 
-    const std::vector<std::int32_t> bi = {0}, bj = {1}, bt = {1};
+    // bonds reference atoms by GLOBAL TAG (not row index): cpu::materialize
+    // calls atoms.add_bond(ti, tj, ...) which resolves ti/tj through the
+    // tag->local map, mirroring the CPU sibling test. Atom tags are {10,11,12},
+    // so this bond joins tags 10 and 11. Using row indices {0,1} here would be
+    // silently dropped by add_bond (tag 0 not in the map) -> n_bonds()==0.
+    const std::vector<std::int32_t> bi = {10}, bj = {11}, bt = {1};
     molrs::frame_set_column_i32(
         *fr, "bonds", "atomi",
         ::rust::Slice<const std::int32_t>(bi.data(), bi.size()));
