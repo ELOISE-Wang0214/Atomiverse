@@ -1,9 +1,11 @@
 /// @file benchmarks/md/scaling.cpp
 /// @brief Strong / weak scaling benchmark for the parallel CPU MD engine.
 ///
-/// Builds an LJ argon-like FCC system, runs `--steps` MD steps under
-/// `cpu::md::MD`, and prints a one-line CSV row containing wall-clock time
-/// per step. Designed to be invoked at multiple rank counts via `mpirun`.
+/// Builds a simple-cubic LJ system (sigma=2.5, rho*=0.712, cut=2*sigma —
+/// identical to the GPU benchmark bench_multi_gpu_scaling so CPU and GPU
+/// panels share one system), runs `--steps` MD steps under `cpu::md::MD`, and
+/// prints a one-line CSV row with wall-clock time per step. Designed to be
+/// invoked at multiple rank counts via `mpirun`.
 ///
 /// Strong-scaling form (fixed total atoms):
 /// @code
@@ -18,7 +20,7 @@
 /// @endcode
 ///
 /// CSV header:
-///   `ranks,atoms,steps,time_total_s,time_per_step_ms,atoms_per_rank,mode`
+///   `ranks,atoms,steps,time_total_s,time_per_step_ms,atoms_per_rank,mode,peak_rss_total_kb`
 ///
 /// @see .claude/specs/parallel-md-engine.md  § Phase 4 / Verification §4
 
@@ -54,7 +56,7 @@ struct Args {
     int atoms_per_rank = 50'000; ///< atoms per rank (weak scaling default)
     int steps = 200;             ///< MD steps to time
     int warmup = 10;             ///< unrecorded warmup steps before timing
-    double cutoff = 6.0;         ///< LJ cutoff [Angstrom]
+    double cutoff = 5.0;         ///< LJ cutoff (= 2*sigma, matches GPU bench)
     double dt = 1.0;             ///< Time step [fs]
     bool csv_header = false;     ///< print CSV header to stdout (rank 0 only)
     bool quiet = false;          ///< suppress one-line per-rank reports
@@ -129,46 +131,36 @@ bool parse_args(int argc, char** argv, Args& a) {
     return true;
 }
 
-// Build an FCC argon lattice with `n_target` total atoms (rounded to the
-// nearest cube), a = 5.3 Å (matches the LAMMPS-typical Ar density for σ=3.4).
-cpu::Frame make_fcc_argon_total(int n_target) {
-    const int atoms_per_unit_cell = 4;
-    int n_cells_per_axis =
-        std::max(1, static_cast<int>(std::cbrt(static_cast<double>(n_target)
-                                               / atoms_per_unit_cell)));
-    while (atoms_per_unit_cell * n_cells_per_axis * n_cells_per_axis
-               * n_cells_per_axis
-           < n_target) {
-        ++n_cells_per_axis;
-    }
-    const double a_lat = 5.3;
-    const int n = atoms_per_unit_cell * n_cells_per_axis * n_cells_per_axis
-                  * n_cells_per_axis;
+// Build a simple-cubic LJ system with `n_target` total atoms (rounded to the
+// nearest cube), IDENTICAL to the GPU benchmark (bench_multi_gpu_scaling):
+// sigma = 2.5, spacing = 1.12*sigma -> reduced density rho* = 0.712, so the
+// CPU and GPU panels of the 2x2 study run the same LJ system. Mild
+// deterministic jitter + thermal velocities (not a frozen lattice).
+cpu::Frame make_sc_lj_total(int n_target) {
+    const double sigma = 2.5;
+    const double spacing = 1.12 * sigma; // rho* = (1/1.12)^3 = 0.712
+    int cells = std::max(
+        1, static_cast<int>(std::cbrt(static_cast<double>(n_target)) + 0.5));
+    const int n = cells * cells * cells;
     cpu::Frame frame(n);
-    const double basis[4][3] = {
-        {0.0, 0.0, 0.0},
-        {0.5, 0.5, 0.0},
-        {0.5, 0.0, 0.5},
-        {0.0, 0.5, 0.5},
-    };
-    const double shift = 0.25 * a_lat;
     int idx = 0;
-    for (int ix = 0; ix < n_cells_per_axis; ++ix)
-        for (int iy = 0; iy < n_cells_per_axis; ++iy)
-            for (int iz = 0; iz < n_cells_per_axis; ++iz)
-                for (int b = 0; b < 4; ++b) {
-                    frame.atoms.x[idx] = (ix + basis[b][0]) * a_lat + shift;
-                    frame.atoms.y[idx] = (iy + basis[b][1]) * a_lat + shift;
-                    frame.atoms.z[idx] = (iz + basis[b][2]) * a_lat + shift;
-                    frame.atoms.mass[idx] = 39.948;
-                    frame.atoms.type[idx] = 0;
-                    const double s = 1e-4 * ((idx % 2 == 0) ? 1.0 : -1.0);
-                    frame.atoms.vx[idx] = s;
-                    frame.atoms.vy[idx] = s * 0.5;
-                    frame.atoms.vz[idx] = s * 0.25;
-                    ++idx;
-                }
-    frame.box = Mat3::cubic(n_cells_per_axis * a_lat);
+    for (int ix = 0; ix < cells; ++ix)
+        for (int iy = 0; iy < cells; ++iy)
+            for (int iz = 0; iz < cells; ++iz) {
+                frame.atoms.x[idx] =
+                    (ix + 0.5) * spacing + 0.1 * std::sin(0.7 * idx);
+                frame.atoms.y[idx] =
+                    (iy + 0.5) * spacing + 0.1 * std::sin(1.3 * idx);
+                frame.atoms.z[idx] =
+                    (iz + 0.5) * spacing + 0.1 * std::sin(1.9 * idx);
+                frame.atoms.mass[idx] = 1.0;
+                frame.atoms.type[idx] = 0;
+                frame.atoms.vx[idx] = 0.01 * std::sin(0.5 * idx);
+                frame.atoms.vy[idx] = 0.01 * std::sin(0.9 * idx);
+                frame.atoms.vz[idx] = 0.01 * std::sin(1.1 * idx);
+                ++idx;
+            }
+    frame.box = Mat3::cubic(cells * spacing);
     return frame;
 }
 
@@ -181,6 +173,21 @@ double now_seconds() {
     const auto t = clk::now();
     return std::chrono::duration<double>(t - t0).count();
 #endif
+}
+
+// Peak resident set size of this process so far [kB] (Linux /proc/self/status
+// VmHWM). Summed across ranks this is the benchmark's total memory footprint.
+long read_vmhwm_kb() {
+    FILE* f = std::fopen("/proc/self/status", "r");
+    if (!f)
+        return 0;
+    char line[256];
+    long kb = 0;
+    while (std::fgets(line, sizeof(line), f))
+        if (std::sscanf(line, "VmHWM: %ld kB", &kb) == 1)
+            break;
+    std::fclose(f);
+    return kb;
 }
 
 } // namespace
@@ -209,12 +216,12 @@ int main(int argc, char** argv) {
         mode = "strong";
     }
 
-    cpu::Frame frame = make_fcc_argon_total(n_total);
+    cpu::Frame frame = make_sc_lj_total(n_total);
     const int n_actual = frame.atoms.size();
 
     if (my_rank == 0 && args.csv_header) {
         std::printf("ranks,atoms,steps,time_total_s,time_per_step_ms,atoms_per_"
-                    "rank,mode\n");
+                    "rank,mode,peak_rss_total_kb\n");
     }
 
     cpu::md::MD sim;
@@ -225,7 +232,7 @@ int main(int argc, char** argv) {
         .add(cpu::comm::HaloRecv{}, -1000);
     sim.on(ATV::md::Phase::force)
         .add(cpu::md::NeighborList<>{args.cutoff}, -10);
-    sim.on(ATV::md::Phase::force).add(cpu::md::LJ{0.0104, 3.4, args.cutoff});
+    sim.on(ATV::md::Phase::force).add(cpu::md::LJ{1.0, 2.5, args.cutoff});
     sim.build();
 
     if (args.warmup > 0)
@@ -244,10 +251,17 @@ int main(int argc, char** argv) {
     const double total_s = t1 - t0;
     const double per_step_ms = 1000.0 * total_s / std::max(1, args.steps);
 
+    // Total memory footprint = sum of per-rank peak RSS [kB].
+    long my_hwm = read_vmhwm_kb();
+    long total_hwm = my_hwm;
+#ifdef ATV_HAS_MPI
+    MPI_Reduce(&my_hwm, &total_hwm, 1, MPI_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
+#endif
+
     if (my_rank == 0) {
         const int per_rank = (n_actual + world_size - 1) / world_size;
-        std::printf("%d,%d,%d,%.6f,%.6f,%d,%s\n", world_size, n_actual,
-                    args.steps, total_s, per_step_ms, per_rank, mode);
+        std::printf("%d,%d,%d,%.6f,%.6f,%d,%s,%ld\n", world_size, n_actual,
+                    args.steps, total_s, per_step_ms, per_rank, mode, total_hwm);
         if (!args.quiet) {
             std::fprintf(stderr,
                          "scaling: %d ranks  %d atoms  %d steps  %.4f s total  "
