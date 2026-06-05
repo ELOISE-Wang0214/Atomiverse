@@ -2,6 +2,7 @@
 /// @brief cpu::md::MD — concrete time-advance driver under DynamicsDriver.
 #pragma once
 
+#include <cstdlib>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -184,6 +185,8 @@ class MD : public DynamicsDriver {
             return;
         const auto rep = cpu::md::reduce_timing(this->backend_->timing());
         cpu::md::emit_timing_table(rep, stage);
+        if (std::getenv("ATV_TIMER_VERBOSE"))
+            cpu::md::emit_per_component(this->backend_->timing(), stage);
         if (csv)
             cpu::md::emit_timing_csv(rep, *csv, stage);
     }

@@ -549,6 +549,21 @@ inline void forward_axis_stage(Frame& frame, md::mpi::DomainDecomposition& dd,
     slot_in_out = slot;
 }
 
+// Zero forces on ghost rows [n_local, n_local + n_ghost). ZeroForces only
+// clears owned rows (zeroing the full backing store is ~global-N work per
+// rank); the force kernels accumulate into ghost rows, and HaloExchangeReverse
+// ships those contributions back to owners — so ghost forces must start each
+// step at zero. Called by HaloExchangeForward after the current n_ghost is set.
+void zero_ghost_forces(Frame& frame, const md::mpi::DomainDecomposition& dd) {
+    const int lo = dd.n_local;
+    const int hi = dd.n_local + dd.n_ghost;
+    for (int i = lo; i < hi; ++i) {
+        frame.atoms.fx[i] = 0.0;
+        frame.atoms.fy[i] = 0.0;
+        frame.atoms.fz[i] = 0.0;
+    }
+}
+
 } // namespace
 
 void HaloExchangeForward::launch(const cpu::LaunchContext& ctx) {
@@ -614,6 +629,7 @@ void HaloExchangeForward::launch(const cpu::LaunchContext& ctx) {
 
         ago_ = 0;
         last_rebuild_generation_ = dd->neighbor_generation;
+        zero_ghost_forces(frame, *dd);
         return;
     }
 
@@ -627,6 +643,7 @@ void HaloExchangeForward::launch(const cpu::LaunchContext& ctx) {
                            /*full_rebuild=*/false, frame_cap, my_rank,
                            bonded_extension_, slot);
     }
+    zero_ghost_forces(frame, *dd);
 }
 
 void HaloExchangeReverse::build(const cpu::BuildContext& ctx) {

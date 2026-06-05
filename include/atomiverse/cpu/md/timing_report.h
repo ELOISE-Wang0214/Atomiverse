@@ -52,6 +52,13 @@ void emit_timing_table(const ReducedReport& rep, std::string_view stage);
 void emit_timing_csv(const ReducedReport& rep, report::Csv& csv,
                      std::string_view stage);
 
+/// @brief Diagnostic: emit per-component (per-name) max-over-ranks wall time —
+/// splits the category rollup (e.g. Comm) into its constituent components
+/// (halo_forward / halo_reverse / atom_migration). Rank 0 only; intended for
+/// scaling investigations. Component registration order is identical across
+/// ranks, so the per-component totals reduce elementwise.
+void emit_per_component(const TimerRegistry& reg, std::string_view stage);
+
 } // namespace md
 } // namespace cpu
 } // namespace ATV

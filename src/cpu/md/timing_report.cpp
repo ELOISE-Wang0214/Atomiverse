@@ -124,6 +124,48 @@ void emit_timing_csv(const ReducedReport& rep, report::Csv& csv,
     csv.row(r);
 }
 
+void emit_per_component(const TimerRegistry& reg, std::string_view stage) {
+    const auto& stats = reg.per_component();
+    const auto& keys = reg.keys();
+    const int n = static_cast<int>(stats.size());
+    std::vector<double> local(static_cast<std::size_t>(n));
+    for (int i = 0; i < n; ++i)
+        local[static_cast<std::size_t>(i)] = stats[static_cast<std::size_t>(i)].total_s;
+    std::vector<double> gmax = local;
+    int rank = 0;
+#ifdef ATV_HAS_MPI
+    int inited = 0;
+    MPI_Initialized(&inited);
+    if (inited) {
+        int ranks = 1;
+        MPI_Comm_size(MPI_COMM_WORLD, &ranks);
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        if (ranks > 1 && n > 0)
+            MPI_Allreduce(local.data(), gmax.data(), n, MPI_DOUBLE, MPI_MAX,
+                          MPI_COMM_WORLD);
+    }
+#endif
+    if (rank != 0)
+        return;
+    report::Table t("Per-component [" + std::string(stage)
+                        + "] (max-over-ranks s)",
+                    {{"component", 22, report::Align::Left},
+                     {"category", 9, report::Align::Left},
+                     {"calls"},
+                     {"max_s"}});
+    for (int i = 0; i < n; ++i) {
+        const auto& k = keys[static_cast<std::size_t>(i)];
+        const char* cat = (k.category >= 0
+                           && k.category < static_cast<int>(StepTiming::kNumCategories))
+                              ? StepTiming::kNames[static_cast<std::size_t>(k.category)].data()
+                              : "?";
+        t.row({k.component.empty() ? "(scoped)" : k.component, cat,
+               std::to_string(stats[static_cast<std::size_t>(i)].calls),
+               report::fmt(gmax[static_cast<std::size_t>(i)], 6)});
+    }
+    t.emit();
+}
+
 } // namespace md
 } // namespace cpu
 } // namespace ATV

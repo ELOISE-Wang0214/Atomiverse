@@ -26,15 +26,17 @@ namespace md {
 
 void ZeroForces::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
-    // Zero the full array (owners + every possible ghost slot up to capacity).
-    // ZeroForces sits at order -1000 in pre_force, BEFORE HaloExchangeForward
-    // populates ghosts for the current step, so we cannot rely on
-    // `dd->n_ghost` here -- it still holds the previous step's count.
-    // Zeroing [0, atoms.size()) is the cheapest correct option: it covers
-    // every slot the next halo could write into, leaves owner forces clean
-    // for force kernels, and gives `HaloExchangeReverse` a known-zero
-    // baseline on ghost rows.
-    const int n = f.atoms.size();
+    // Zero only the OWNED rows [0, n_local). In multi-rank the backing store
+    // is sized to the loaded (global) atom count, so zeroing [0, atoms.size())
+    // would touch ~global-N slots on every rank every step — measured as the
+    // single largest scaling cost at high rank counts (it dwarfed the LJ
+    // kernel). Ghost rows [n_local, n_local + n_ghost) are zeroed by
+    // `HaloExchangeForward` right after it (re)populates them this step
+    // (ZeroForces runs at pre_force -1000, before the halo sets the current
+    // n_ghost), giving `HaloExchangeReverse` its known-zero ghost baseline.
+    // Single-rank: `owned_count` == atoms.size() and n_ghost == 0, so this is
+    // the full (and only) array. See owned_range.h for the row-range contract.
+    const int n = owned_count(ctx);
 #pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
         f.atoms.fx[i] = 0;
