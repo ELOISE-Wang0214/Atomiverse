@@ -215,6 +215,7 @@ if(NOT ATV_DOCS_ONLY)
     if(ATV_BUILD_CUDA)
         list(APPEND ATOMIVERSE_SRCS
             src/cuda/log_callback.cpp
+            src/cuda/device_manager.cu
             src/cuda/async_bridge.cu
             src/cuda/async/record_base.cu
             src/cuda/transfer.cu
