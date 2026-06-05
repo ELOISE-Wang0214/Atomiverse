@@ -5,7 +5,9 @@
 
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/transfer.h"
+#include "atomiverse/cuda/box.cuh"
 #include "atomiverse/cuda/transfer.cuh"
+#include "atomiverse/cuda/types.cuh"
 
 #include <cuda_runtime.h>
 
@@ -165,6 +167,9 @@ void MultiGpu::partition(const cpu::Frame& global, double ghost_headroom) {
     const double Lx = global.box(0, 0);
     const double Ly = global.box(1, 1);
     const double Lz = global.box(2, 2);
+    box_L_[0] = Lx;
+    box_L_[1] = Ly;
+    box_L_[2] = Lz;
     dd_ = std::make_unique<DomainDecomposition>(N, Lx, Ly, Lz);
 
     // Bucket global atom indices by owner slab.
@@ -209,6 +214,96 @@ void MultiGpu::partition(const cpu::Frame& global, double ghost_headroom) {
         const int extra = std::max(64, static_cast<int>(cnt * ghost_headroom));
         dm_.set_device(s);
         frames_[s] = cpu::to_cuda(sub, cnt + extra);
+    }
+}
+
+namespace {
+// Brute-force LJ 12-6 force on owned atoms [0,n_local) from owned+ghost
+// [0,n_all), global-box min-image. Each owned atom's force is complete because
+// the halo supplied all cross-boundary neighbors as ghosts.
+__global__ void lj_bf_kernel(const real_t* __restrict__ x,
+                             const real_t* __restrict__ y,
+                             const real_t* __restrict__ z,
+                             real_t* __restrict__ fx, real_t* __restrict__ fy,
+                             real_t* __restrict__ fz, int n_local, int n_all,
+                             cuda::Box box, work_t eps, work_t sig_sq,
+                             work_t cut_sq, work_t min_sq) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n_local)
+        return;
+    work_t xi = x[i], yi = y[i], zi = z[i];
+    work_t fxi = 0, fyi = 0, fzi = 0;
+    for (int j = 0; j < n_all; ++j) {
+        if (j == i)
+            continue;
+        work_t dx = work_t(x[j]) - xi, dy = work_t(y[j]) - yi,
+               dz = work_t(z[j]) - zi;
+        box.min_image(dx, dy, dz);
+        work_t r2 = dx * dx + dy * dy + dz * dz;
+        if (r2 >= cut_sq || r2 < min_sq)
+            continue;
+        work_t inv = work_t(1) / r2;
+        work_t s2 = sig_sq * inv, s6 = s2 * s2 * s2, s12 = s6 * s6;
+        work_t fr = work_t(24) * eps * (work_t(2) * s12 - s6) * inv;
+        fxi += -fr * dx;
+        fyi += -fr * dy;
+        fzi += -fr * dz;
+    }
+    fx[i] = static_cast<real_t>(fxi);
+    fy[i] = static_cast<real_t>(fyi);
+    fz[i] = static_cast<real_t>(fzi);
+}
+} // namespace
+
+void MultiGpu::compute_lj_bruteforce(double cutoff, double epsilon,
+                                     double sigma) {
+    cuda::Box box{};
+    box.ortho = true;
+    box.cell[0] = static_cast<real_t>(box_L_[0]);
+    box.cell[4] = static_cast<real_t>(box_L_[1]);
+    box.cell[8] = static_cast<real_t>(box_L_[2]);
+    box.inv_l[0] = static_cast<real_t>(1.0 / box_L_[0]);
+    box.inv_l[1] = static_cast<real_t>(1.0 / box_L_[1]);
+    box.inv_l[2] = static_cast<real_t>(1.0 / box_L_[2]);
+    const work_t cut_sq = work_t(cutoff) * work_t(cutoff);
+    const work_t sig_sq = work_t(sigma) * work_t(sigma);
+    const work_t min_sq = work_t(1e-6);
+    for (int s = 0; s < count(); ++s) {
+        const int nl = frames_[s].n_local_;
+        if (nl == 0)
+            continue;
+        const int na = nl + frames_[s].n_ghost_;
+        dm_.set_device(s);
+        auto& a = frames_[s].atoms;
+        int block = 256, grid = (nl + block - 1) / block;
+        lj_bf_kernel<<<grid, block>>>(a.x, a.y, a.z, a.fx, a.fy, a.fz, nl, na,
+                                      box, work_t(epsilon), sig_sq, cut_sq,
+                                      min_sq);
+        CKM(cudaGetLastError());
+    }
+    for (int s = 0; s < count(); ++s) {
+        dm_.set_device(s);
+        CKM(cudaDeviceSynchronize());
+    }
+}
+
+void MultiGpu::gather_forces(cpu::Frame& out) const {
+    if (out.atoms.size() < n_global_)
+        throw std::runtime_error("MultiGpu::gather_forces: out frame too small");
+    for (int s = 0; s < count(); ++s) {
+        const int cnt = n_local_[s];
+        if (cnt == 0)
+            continue;
+        cpu::Frame tmp(cnt);
+        dm_.set_device(s);
+        cuda::to_cpu(frames_[s], tmp);
+        const auto& gidx = owned_idx_[s];
+        for (int k = 0; k < cnt; ++k) {
+            const int g = gidx[k];
+            out.atoms.fx[g] = tmp.atoms.fx[k];
+            out.atoms.fy[g] = tmp.atoms.fy[k];
+            out.atoms.fz[g] = tmp.atoms.fz[k];
+        }
     }
 }
 

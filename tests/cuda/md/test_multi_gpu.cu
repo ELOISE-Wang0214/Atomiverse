@@ -100,6 +100,57 @@ TEST(MultiGpu, HaloExchangeXSplit) {
     }
 }
 
+TEST(MultiGpu, LjForceParityVsSingleGpu) {
+    // The crux of multi-GPU correctness: an owned atom must feel the SAME LJ
+    // force whether the system runs on one GPU or is split across GPUs with a
+    // halo. Same brute-force kernel both ways; only the atom set in each owned
+    // atom's loop differs (single: all; multi: owned+ghost). With halo cutoff
+    // == LJ cutoff, the ghost set captures every cross-boundary neighbor, so
+    // the per-atom force sums are identical (up to float summation order).
+    auto g = make_grid(12.0); // spacing 3.0
+    const int n = g.atoms.size();
+    // Break the perfect-lattice symmetry (else neighbor forces cancel to ~0
+    // and the parity check is vacuous). Deterministic per-atom jitter.
+    for (int i = 0; i < n; ++i) {
+        g.atoms.x[i] += 0.4 * std::sin(0.7 * i + 0.1);
+        g.atoms.y[i] += 0.4 * std::sin(1.3 * i + 0.2);
+        g.atoms.z[i] += 0.4 * std::sin(1.9 * i + 0.3);
+    }
+    const double cut = 3.5, eps = 1.0, sig = 2.5;
+
+    cpu::Frame ref(n);
+    for (int i = 0; i < n; ++i)
+        ref.atoms.tag[i] = i;
+    {
+        cuda::md::MultiGpu mg1(1); // whole system on one GPU
+        mg1.partition(g);
+        mg1.exchange_halo(cut); // no ghosts (self-neighbors skipped)
+        mg1.compute_lj_bruteforce(cut, eps, sig);
+        mg1.gather_forces(ref);
+    }
+
+    cuda::md::MultiGpu mg(2);
+    if (mg.count() < 2)
+        GTEST_SKIP() << "needs >= 2 GPUs";
+    mg.partition(g);
+    mg.exchange_halo(cut);
+    mg.compute_lj_bruteforce(cut, eps, sig);
+    cpu::Frame mf(n);
+    for (int i = 0; i < n; ++i)
+        mf.atoms.tag[i] = i;
+    mg.gather_forces(mf);
+
+    double maxabs = 0;
+    for (int i = 0; i < n; ++i)
+        maxabs = std::max(maxabs, std::abs(ref.atoms.fx[i]));
+    EXPECT_GT(maxabs, 1e-3) << "reference forces should be nonzero";
+    for (int i = 0; i < n; ++i) {
+        EXPECT_NEAR(mf.atoms.fx[i], ref.atoms.fx[i], 1e-3) << "atom " << i;
+        EXPECT_NEAR(mf.atoms.fy[i], ref.atoms.fy[i], 1e-3) << "atom " << i;
+        EXPECT_NEAR(mf.atoms.fz[i], ref.atoms.fz[i], 1e-3) << "atom " << i;
+    }
+}
+
 TEST(MultiGpu, EachAtomOnOwnerSlab) {
     auto g = make_grid(12.0);
     cuda::md::MultiGpu mg;

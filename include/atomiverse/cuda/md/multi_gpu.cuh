@@ -68,6 +68,17 @@ class MultiGpu {
     /// to validate partition round-trips and, later, full multi-GPU runs.
     void gather(cpu::Frame& out) const;
 
+    /// Compute LJ 12-6 forces on each subdomain's OWNED atoms from its
+    /// owned+ghost set (brute force, global-box min-image). Run after
+    /// exchange_halo: each owned atom's force is complete (ghosts supply the
+    /// cross-boundary neighbors), so this needs no reverse halo. Validates the
+    /// decomposition+halo+force path against a single-GPU run.
+    void compute_lj_bruteforce(double cutoff, double epsilon, double sigma);
+
+    /// Gather owned-atom forces back to global tag/index order (like gather()
+    /// but for fx/fy/fz). `out` sized to the global atom count.
+    void gather_forces(cpu::Frame& out) const;
+
   private:
     void destroy_frames();
 
@@ -78,6 +89,7 @@ class MultiGpu {
     std::vector<std::vector<int>>
         owned_idx_;   // per-slot: global index of each owned atom (partition order)
     int n_global_ = 0;
+    double box_L_[3] = {0, 0, 0}; // global orthorhombic box edge lengths
 };
 
 } // namespace md
