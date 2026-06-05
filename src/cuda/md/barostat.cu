@@ -31,7 +31,12 @@ Barostat::Barostat(Barostat&&) noexcept = default;
 Barostat& Barostat::operator=(Barostat&&) noexcept = default;
 
 std::vector<DefaultBinding> Barostat::default_bindings() const {
-    return {{static_cast<int>(ATV::md::Phase::final_integrate), 200}};
+    // end_of_step @ -45, matching cpu::md::Barostat and LAMMPS
+    // `fix press/berendsen` (an end-of-step fix). Runs after KineticEnergy
+    // (end_of_step @ -100) so the instantaneous pressure the barostat reads
+    // (virial + current kinetic) is complete — at final_integrate the kinetic
+    // for this step is not yet accumulated, giving a stale pressure.
+    return {{static_cast<int>(ATV::md::Phase::end_of_step), -45}};
 }
 
 namespace {

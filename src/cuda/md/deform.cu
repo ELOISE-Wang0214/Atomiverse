@@ -20,7 +20,10 @@ Deform::Deform(int axis, double strain_rate, double dt)
     : axis_(axis), strain_rate_(strain_rate), dt_(dt) {}
 
 std::vector<DefaultBinding> Deform::default_bindings() const {
-    return {{static_cast<int>(ATV::md::Phase::initial_integrate), -100}};
+    // initial_integrate @ +200, matching cpu::md::Deform: the affine box
+    // remap runs AFTER the integrator's kick/drift (order 0), so the deformed
+    // box wraps the just-updated positions consistently across backends.
+    return {{static_cast<int>(ATV::md::Phase::initial_integrate), 200}};
 }
 
 void Deform::build(const BuildContext& ctx) {
