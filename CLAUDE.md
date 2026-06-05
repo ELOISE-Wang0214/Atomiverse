@@ -35,6 +35,29 @@ ctest --test-dir build --output-on-failure
 
 Requires: C++17, CMake ≥ 3.18, CUDA toolkit, Rust toolchain (for molrs), xtensor (auto-fetched).
 
+### GPU node (CUDA build & test on Arrhenius)
+
+The **login nodes are x86_64 with no CUDA toolkit** — the CUDA backend (`ATV_BUILD_CUDA=ON`, any `.cu`) can only be built and tested on the **aarch64 Grace/GH200 GPU node**. The CPU backend builds fine on the login node with `-DATV_BUILD_CUDA=OFF`.
+
+- **Interactive GPU node:** `hpc gpu` (NAISS `interactive` srun wrapper; defaults from `~/.hpc/config.sh`: partition `gpu`, account `naiss2026-4-715-gpu`, 1 GPU, 3 h).
+- **Batch / non-interactive** (use this from an automated agent — `hpc gpu` needs a TTY):
+  ```bash
+  sbatch -p gpu -A naiss2026-4-715-gpu --gpus 1 -t 01:00:00 -c 8 -o out.log job.sh
+  ```
+- **Inside the job script** (`#!/bin/bash -l` so Lmod's `module` is defined):
+  ```bash
+  #!/bin/bash -l
+  module load GPU/buildenv-gcccuda/2026.03-cu13.0   # NB: never pipe `module load` (subshell loses env)
+  # GCC 14.3, CUDA 13.0 (nvcc on PATH, GH200/sbsa), GPU-aware MPICH, NCCL,
+  # cuFFT/cuFFTMp, FFTW, OpenBLAS — all via CPATH / LIBRARY_PATH.
+  cmake -B build-cuda -DATV_BUILD_CUDA=ON -DATV_BUILD_TESTS=ON \
+        -DATV_MOLRS_PATH=$HOME/work/molcrafts/molrs   # ../molrs breaks from a worktree
+  cmake --build build-cuda -j$(nproc)
+  ctest --test-dir build-cuda --output-on-failure
+  ```
+- On the GPU node the **default rustup toolchain (aarch64) is correct** — do NOT set `RUSTUP_TOOLCHAIN` (that override is only needed on the x86_64 login node, whose default is wrongly aarch64).
+- cuFFT-backed PME and other `ATV_BUILD_KSPACE` CUDA code link `CUDA::cufft` automatically; FFTW/cuFFT are on `CPATH`/`LIBRARY_PATH` after the module load.
+
 ## Architecture
 
 Dual-backend (CPU + CUDA) molecular simulation platform. Three pillars: **Driver** (owns loop), **Component** (single-step operation), **Frame** (device-resident state).
