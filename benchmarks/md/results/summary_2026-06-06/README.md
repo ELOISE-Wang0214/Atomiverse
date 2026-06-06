@@ -34,8 +34,12 @@ GPU at large single-GPU N and across multi-GPU (single-process, NVLink P2P).
 - **(c)** Single-GPU throughput vs system size (GH200). AV overtakes
   LAMMPS-KOKKOS above ~1 M atoms after the atom-centric per-atom-Verlet force
   path (cuda-perf).
-- **(d)** Multi-GPU throughput at 64 M atoms (1/2/4 GPU). AV's single-process
-  NVLink decomposition scales where LAMMPS-KOKKOS multi-GPU (MPI) does not.
+- **(d)** Multi-GPU **weak** scaling — a fixed **16 M atoms per GPU** (total
+  16M→33M→64M as GPUs go 1→2→4; total atoms on the top axis), line plot with
+  per-GPU VRAM annotated. AV's single-process NVLink decomposition scales up
+  (2317→2964 Matom-step/s) where LAMMPS-KOKKOS multi-GPU (MPI) flattens/drops.
+  (A 64 M-atoms-per-GPU multi-run was not available — only the single-GPU 64 M
+  point exists, at 78 GB VRAM; the clean weak diagonal is 16 M/GPU.)
 
 ## Method
 
