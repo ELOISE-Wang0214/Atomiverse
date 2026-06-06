@@ -27,6 +27,9 @@ if(ATV_BUILD_CUDA)
     atv_add_bench(bench_md_step)
     atv_add_bench(bench_scf)
     atv_add_bench(bench_rhf)
+    # Async snapshot-ring resident-memory benchmark + K·N·B scaling-law gate
+    # (plain main()/CSV; the linked google-benchmark lib is unused).
+    atv_add_bench(bench_async_snapshot_mem)
 
     # Multi-GPU strong-scaling benchmark — plain main() (not google-benchmark)
     # so the GPU count / system size are argv-driven and it emits a CSV line.

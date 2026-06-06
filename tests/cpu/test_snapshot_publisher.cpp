@@ -2,7 +2,7 @@
 /// @brief RED tests for `cpu::Publish` zero-subscriber fast-path
 ///        and field-copy correctness.
 ///
-/// Spec: .claude/specs/parallel-md-engine.md § B.3.
+/// Spec: .claude/specs/async-analysis-snapshot-ring-01-uniformity.md.
 /// Required:
 ///   - zero subscribers → mean launch() cost < 100 ns (10 000 iters)
 ///   - positions, box, step propagate into FrameSnapshot
@@ -12,9 +12,11 @@
 
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <mutex>
 #include <string>
+#include <thread>
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/async_component_base.h"
@@ -79,6 +81,80 @@ class PositionCapture : public cpu::md::AsyncObserver {
     mutable std::mutex mtx_;
     cpu::FrameSnapshot last_;
     std::atomic<int> n_handled_{0};
+};
+
+/// @brief Integrator that stamps positions with an analytic trajectory
+/// `x_i(step) = tag_i + step` at `initial_integrate`, so a torn or
+/// mis-stamped snapshot is detectable per-atom on the consumer side.
+class StepStamper : public cpu::ComponentBase {
+  public:
+    std::string name() const override { return "step_stamper"; }
+    ComponentRole role() const override { return ComponentRole::Integrator; }
+    std::vector<DefaultBinding> default_bindings() const override {
+        return {{static_cast<int>(ATV::md::Phase::initial_integrate), 0}};
+    }
+    void launch(const cpu::LaunchContext& ctx) override {
+        auto& a = ctx.frame.atoms;
+        const int n = a.size();
+        for (int i = 0; i < n; ++i)
+            a.x[i] = static_cast<double>(a.tag[i])
+                     + static_cast<double>(ctx.step);
+    }
+};
+
+/// @brief Slow async observer that verifies every delivered snapshot is a
+/// single-step, correctly-stamped capture: `x_i == tag_i + step` for all i.
+class ConsistencyCheck : public cpu::md::AsyncObserver {
+  public:
+    std::string name() const override { return "consistency_check"; }
+    cpu::CaptureMask capture_mask() const override {
+        cpu::CaptureMask m;
+        m.positions = true;
+        m.tags = true;
+        return m;
+    }
+    void on_snapshot(const cpu::FrameSnapshot& snap) override {
+        // Artificially lag the worker so the hot loop races far ahead and
+        // drop_oldest discards frames; any DELIVERED frame must still be
+        // internally consistent.
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        bool ok = snap.n_owned > 0;
+        for (int i = 0; i < snap.n_owned; ++i) {
+            const double expected = static_cast<double>(snap.tag[i])
+                                    + static_cast<double>(snap.step);
+            if (std::abs(snap.x[i] - expected) > 1e-9) {
+                ok = false;
+                break;
+            }
+        }
+        if (!ok)
+            consistent_.store(false, std::memory_order_relaxed);
+        ++n_handled_;
+    }
+    bool consistent() const {
+        return consistent_.load(std::memory_order_relaxed);
+    }
+    int handled() const { return n_handled_.load(std::memory_order_relaxed); }
+
+  private:
+    std::atomic<bool> consistent_{true};
+    std::atomic<int> n_handled_{0};
+};
+
+/// @brief Velocity-capturing observer with a high frequency so it does NOT
+/// fire during a short run — used to prove the capture mask is the static
+/// union of ALL subscribers, not just the ones firing this step.
+class VelocityLowFreq : public cpu::md::AsyncObserver {
+  public:
+    std::string name() const override { return "velocity_low_freq"; }
+    int frequency() const override { return 1000; }
+    cpu::CaptureMask capture_mask() const override {
+        cpu::CaptureMask m;
+        m.positions = false;
+        m.velocities = true;
+        return m;
+    }
+    void on_snapshot(const cpu::FrameSnapshot& /*snap*/) override {}
 };
 
 } // namespace
@@ -183,4 +259,77 @@ TEST(Publish, CaptureMaskRespected) {
               static_cast<std::size_t>(0));
     EXPECT_EQ(static_cast<std::size_t>(snap.vz.size()),
               static_cast<std::size_t>(0));
+}
+
+// ── static capture-mask union over ALL subscribers (RED) ─────────────
+//
+// Two subscribers: `cap` (positions, fires every step) and `vel`
+// (velocities, frequency 1000 → does not fire in a 5-step run). The
+// captured field set must be the static union of ALL subscribers, so the
+// delivered snapshot carries `vel`'s velocities even on steps where only
+// `cap` fires. A per-step (firing-only) union would leave velocities at
+// their pre-sized zero state → RED before the static-mask change.
+
+TEST(Publish, StaticMaskUnionAllSubscribers) {
+    auto frame = make_small_frame(40);
+    const int n = frame.atoms.size();
+    // Distinctive, all-nonzero velocities so "not copied" (zeros) is
+    // distinguishable from "copied".
+    for (int i = 0; i < n; ++i) {
+        frame.atoms.vx[i] = 100.0 + i;
+        frame.atoms.vy[i] = 200.0 + i;
+        frame.atoms.vz[i] = 300.0 + i;
+    }
+
+    PositionCapture cap; // positions, every step, records snapshots
+    VelocityLowFreq vel; // velocities, freq 1000 (won't fire in 5 steps)
+
+    cpu::md::MD sim;
+    sim.add(cpu::md::VelocityVerlet{1e-6});
+    sim.add(NoOpForce{});
+    sim.add(cap);
+    sim.add(vel);
+    sim.build();
+    sim.run(frame, 5);
+
+    ASSERT_GE(cap.handled(), 1) << "no snapshot delivered to cap";
+    auto snap = cap.copy_last();
+    ASSERT_EQ(static_cast<int>(snap.vx.size()), n)
+        << "velocity buffer must be pre-sized for the velocity subscriber";
+    // Velocities must be the actually-copied frame values, not the pre-sized
+    // zeros — proving the static union included the non-firing subscriber.
+    for (int i = 0; i < n; ++i) {
+        EXPECT_NEAR(snap.vx[i], 100.0 + i, 1e-9)
+            << "static capture-mask union must copy a non-firing subscriber's "
+               "fields (i=" << i << ")";
+    }
+}
+
+// ── freeze-then-dispatch consistency under a lagging worker (lock) ────
+//
+// Every-step capture with an artificially slow worker (drop_oldest discards
+// most frames). The analytic trajectory x_i = tag_i + step makes any torn
+// (cross-step) or mis-stamped delivered snapshot detectable per-atom. Locks
+// the invariant the whole chain rests on; passes on CPU because Publish
+// freezes synchronously on the hot-path thread before the next step mutates
+// the frame.
+
+TEST(Publish, FreezeDispatchConsistencyUnderLag) {
+    auto frame = make_small_frame(48);
+    const int n = frame.atoms.size();
+    for (int i = 0; i < n; ++i)
+        frame.atoms.tag[i] = i + 1; // nonzero, distinct global tags
+
+    ConsistencyCheck cap;
+
+    cpu::md::MD sim;
+    sim.add(StepStamper{}); // sets x_i = tag_i + step each step
+    sim.add(NoOpForce{});
+    sim.add(cap);
+    sim.build();
+    sim.run(frame, 40); // hot loop races ahead of the 5 ms/frame worker
+
+    ASSERT_GE(cap.handled(), 1) << "no snapshot was delivered";
+    EXPECT_TRUE(cap.consistent())
+        << "a delivered snapshot was torn or mis-stamped (x_i != tag_i + step)";
 }

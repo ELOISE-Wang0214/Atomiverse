@@ -57,7 +57,7 @@ class DensityRecorder : public AsyncBridge {
                     const scf::SCFEvaluator& evaluator, int nx, int ny, int nz,
                     double padding = double(2.0), int every = 1)
         : store_path_(std::move(store_path)), evaluator_(&evaluator), nx_(nx),
-          ny_(ny), nz_(nz), padding_(padding), every_(every) {}
+          ny_(ny), nz_(nz), every_(every), padding_(padding) {}
 
     ~DensityRecorder() override = default;
     DensityRecorder(DensityRecorder&&) noexcept = default;
@@ -100,22 +100,34 @@ class DensityRecorder : public AsyncBridge {
         }
 
         const auto nb = static_cast<size_t>(n_basis_);
-        cudaMallocHost(&h_P_, nb * nb * sizeof(double));
+        for (int i = 0; i < kRingDepth; ++i) {
+            cudaMalloc(&d_P_[i], nb * nb * sizeof(double));   // device-ring slot
+            cudaMallocHost(&h_P_[i], nb * nb * sizeof(double)); // pinned host slot
+        }
     }
 
     bool can_run(const LaunchContext&) const override {
         return evaluator_->workspace().P != nullptr && n_basis_ > 0;
     }
 
-    void issue_d2h(const LaunchContext& ctx) override {
-        auto ds = static_cast<cudaStream_t>(ctx.runtime.defer_stream);
+    void freeze_slot(const LaunchContext& ctx, int slot) override {
+        // D2D freeze of the converged density on the compute stream, before a
+        // subsequent (AIMD) SCF solve overwrites the workspace.
+        auto ms = static_cast<cudaStream_t>(ctx.runtime.stream);
         const size_t nb = static_cast<size_t>(n_basis_);
-        cudaMemcpyAsync(h_P_, evaluator_->workspace().P,
-                        nb * nb * sizeof(double), cudaMemcpyDeviceToHost, ds);
+        cudaMemcpyAsync(d_P_[slot], evaluator_->workspace().P,
+                        nb * nb * sizeof(double), cudaMemcpyDeviceToDevice, ms);
     }
 
-    void on_data_ready(const LaunchContext& ctx) override {
-        auto grid = cpu::eval_density_grid(htype_, hx_, hy_, hz_, h_P_,
+    void d2h_slot(const LaunchContext& ctx, int slot) override {
+        auto ds = static_cast<cudaStream_t>(ctx.runtime.defer_stream);
+        const size_t nb = static_cast<size_t>(n_basis_);
+        cudaMemcpyAsync(h_P_[slot], d_P_[slot], nb * nb * sizeof(double),
+                        cudaMemcpyDeviceToHost, ds);
+    }
+
+    void on_data_ready(const LaunchContext& ctx, int slot) override {
+        auto grid = cpu::eval_density_grid(htype_, hx_, hy_, hz_, h_P_[slot],
                                            n_basis_, nx_, ny_, nz_, padding_);
         if (grid.empty())
             return;
@@ -125,21 +137,24 @@ class DensityRecorder : public AsyncBridge {
     }
 
     void on_destroy(const DestroyContext&) override {
-        if (h_P_) {
-            cudaFreeHost(h_P_);
-            h_P_ = nullptr;
+        for (int i = 0; i < kRingDepth; ++i) {
+            if (d_P_[i]) { cudaFree(d_P_[i]); d_P_[i] = nullptr; }
+            if (h_P_[i]) { cudaFreeHost(h_P_[i]); h_P_[i] = nullptr; }
         }
     }
 
   private:
     std::string store_path_;
+    const scf::SCFEvaluator* evaluator_ =
+        nullptr; ///< Borrowed SCF evaluator (density source).
     int nx_, ny_, nz_, every_;
     double padding_;
 
     int n_atoms_ = 0;
     int n_basis_ = 0;
 
-    double* h_P_ = nullptr;
+    double* d_P_[kRingDepth] = {}; ///< device-ring frozen density matrix
+    double* h_P_[kRingDepth] = {}; ///< pinned host density matrix
     std::vector<int> htype_;
     std::vector<double> hx_, hy_, hz_;
 };

@@ -6,7 +6,7 @@
 /// across plan swaps. Uses `std::thread` + `std::condition_variable`
 /// (C++17, not `std::jthread` which requires C++20).
 ///
-/// @see .claude/specs/parallel-md-engine.md  § B.2
+/// @see .claude/specs/async-analysis-snapshot-ring-01-uniformity.md
 #pragma once
 
 #include <atomic>
@@ -37,16 +37,24 @@ class AsyncComponentBase;
 /// `submit(obs, slot)` hands the (observer, slot) pair to a worker.
 ///
 /// Workers dequeue (observer, slot) pairs, invoke `observer->on_snapshot(slot)`,
-/// and release the slot back to the ring. Backpressure is controlled per
-/// `Config::policy`.
+/// and release the slot back to the ring. Backpressure is the sole
+/// `drop_oldest` path at constant ring depth K.
 class AnalysisExecutor {
   public:
     /// @brief Runtime configuration, captured into the executor on `init()`.
     struct Config {
         int n_threads =
             1; ///< Worker thread count (0 = ring-only, no dispatch).
-        int ring_size = 3; ///< Initial ring capacity.
-        BackpressurePolicy policy = BackpressurePolicy::drop_oldest;
+        /// @brief Global ring depth K -- the single backpressure knob.
+        ///
+        /// Number of snapshot slots in the ring, fixed for the executor's
+        /// lifetime (never grows). The hot path uses the sole `drop_oldest`
+        /// policy: when all K slots are in flight, the oldest is overwritten
+        /// and `n_dropped()` is incremented. Larger K = fewer drops under a
+        /// lagging worker, proportionally more resident snapshot memory
+        /// (~ K * N * captured-bytes-per-atom). One global value applies to
+        /// every subscriber; there is no per-component override.
+        int ring_size = 3;
         /// @brief Pin each worker thread to a distinct logical CPU.
         ///
         /// Linux-only via `pthread_setaffinity_np`; macOS / other platforms
@@ -76,7 +84,7 @@ class AnalysisExecutor {
     /// Publishes `this` into `ctx.executor` so components can reach the
     /// executor from any `BuildContext` / `LaunchContext`. Safe to call
     /// once; a second call with an already-initialized executor is a no-op.
-    /// @param cfg Runtime configuration (thread count, ring size, policy).
+    /// @param cfg Runtime configuration (thread count, ring depth K).
     /// @param ctx CPU execution context into which this executor registers itself.
     void init(const Config& cfg, Context& ctx);
 
@@ -100,13 +108,13 @@ class AnalysisExecutor {
 
     /// @brief Reserve a ring slot for the next snapshot.
     ///
-    /// Returns a slot index in `[0, ring_capacity())`. Policy determines
-    /// behaviour under saturation:
-    ///   - `drop_oldest`: overwrite slot 0 again, `n_dropped()` incremented.
-    ///   - `block`: caller blocks until a worker frees a slot.
-    ///   - `grow`: ring capacity is doubled and a fresh slot returned.
+    /// Returns a slot index in `[0, ring_capacity())`. Single `drop_oldest`
+    /// behaviour: when the round-robin slot is still in flight, it is
+    /// overwritten in place and `n_dropped()` is incremented. Allocation-free
+    /// and non-blocking -- the hot path never stalls. Ring depth K is
+    /// constant for the executor's lifetime.
     ///
-    /// @return Ring slot index.
+    /// @return Ring slot index in `[0, ring_capacity())`.
     int acquire_slot();
 
     /// @brief Access the storage for a slot (for `Publish` to fill).
@@ -161,17 +169,12 @@ class AnalysisExecutor {
     /// @param slot_idx Slot that has been published.
     void submit(AsyncComponentBase* sub, int slot_idx);
 
-    /// @brief Total number of drops since `init()` (drop_oldest policy).
+    /// @brief Total number of dropped (overwritten) snapshots since `init()`.
     int n_dropped() const noexcept {
         return n_dropped_.load(std::memory_order_relaxed);
     }
 
-    /// @brief True iff `grow` policy expanded the ring at least once.
-    bool ring_size_grew() const noexcept {
-        return ring_grew_.load(std::memory_order_relaxed);
-    }
-
-    /// @brief Current ring capacity.
+    /// @brief Current ring capacity (constant global depth K after `init()`).
     int ring_capacity() const noexcept {
         return ring_capacity_.load(std::memory_order_relaxed);
     }
@@ -190,22 +193,18 @@ class AnalysisExecutor {
 
     void worker_loop(int worker_idx);
     int acquire_slot_locked(); ///< implementation helper
-    void grow_ring_locked();   ///< grow path for `grow` policy
-    void wait_for_free_slot_locked(std::unique_lock<std::mutex>& lk);
     void apply_worker_affinity(int worker_idx); ///< Linux-only; no-op elsewhere
 
     bool initialized_ = false;
     bool affinity_hint_ = false;
-    BackpressurePolicy policy_ = BackpressurePolicy::drop_oldest;
 
-    // Ring storage -- contiguous vector, resized only by grow_ring_locked().
+    // Ring storage -- contiguous vector at constant depth K (sized in init()).
     std::vector<FrameSnapshot> ring_;
     std::vector<bool>
         slot_busy_; ///< slot is checked-out (publisher writing or worker reading)
     std::atomic<int> ring_capacity_{0};
     std::atomic<int> next_slot_{0};
     std::atomic<int> n_dropped_{0};
-    std::atomic<bool> ring_grew_{false};
     std::atomic<int> last_published_slot_{-1};
 
     // Worker pool.
@@ -213,7 +212,6 @@ class AnalysisExecutor {
     std::deque<Job> queue_;
     std::mutex mtx_;
     std::condition_variable cv_work_;
-    std::condition_variable cv_slot_free_;
     std::atomic<bool> stop_{false};
     std::atomic<int> in_flight_{0}; ///< jobs dequeued but not finished
 

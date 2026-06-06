@@ -407,7 +407,7 @@ static void BM_CUDARHFSolve(benchmark::State& state) {
         eval.add(cuda::scf::SCFEvaluator{integrals, tol, 100});
         eval.build();
         eval.run(frame);
-        benchmark::DoNotOptimize(frame.energy);
+        benchmark::DoNotOptimize(frame.scalars.energy);
     }
 }
 BENCHMARK(BM_CUDARHFSolve)->Unit(benchmark::kMicrosecond);
@@ -452,7 +452,7 @@ static void BM_CUDARHFSolve_LiH(benchmark::State& state) {
         eval.add(cuda::scf::SCFEvaluator{integrals, tol, 100});
         eval.build();
         eval.run(frame);
-        benchmark::DoNotOptimize(frame.energy);
+        benchmark::DoNotOptimize(frame.scalars.energy);
     }
 }
 BENCHMARK(BM_CUDARHFSolve_LiH)->Unit(benchmark::kMicrosecond);

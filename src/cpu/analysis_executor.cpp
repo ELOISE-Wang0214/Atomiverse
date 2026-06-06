@@ -29,7 +29,6 @@ void AnalysisExecutor::init(const Config& cfg, Context& ctx) {
     if (initialized_)
         return;
 
-    policy_ = cfg.policy;
     affinity_hint_ = cfg.affinity_hint;
 
     const int ring_size = std::max(1, cfg.ring_size);
@@ -38,7 +37,6 @@ void AnalysisExecutor::init(const Config& cfg, Context& ctx) {
     ring_capacity_.store(ring_size, std::memory_order_relaxed);
     next_slot_.store(0, std::memory_order_relaxed);
     n_dropped_.store(0, std::memory_order_relaxed);
-    ring_grew_.store(false, std::memory_order_relaxed);
     in_flight_.store(0, std::memory_order_relaxed);
     stop_.store(false, std::memory_order_relaxed);
     queue_.clear();
@@ -103,7 +101,6 @@ void AnalysisExecutor::shutdown() {
         stop_.store(true, std::memory_order_relaxed);
     }
     cv_work_.notify_all();
-    cv_slot_free_.notify_all();
 
     for (auto& t : workers_) {
         if (t.joinable())
@@ -144,70 +141,18 @@ int AnalysisExecutor::acquire_slot() {
 }
 
 int AnalysisExecutor::acquire_slot_locked() {
+    // Single drop_oldest policy: round-robin to the next slot at constant
+    // ring depth K. If that slot is still in flight, overwrite it in place
+    // and count the drop -- never blocks, never allocates.
     const int cap = ring_capacity_.load(std::memory_order_relaxed);
     const int idx = next_slot_.load(std::memory_order_relaxed);
 
-    if (!slot_busy_[static_cast<std::size_t>(idx)]) {
-        slot_busy_[static_cast<std::size_t>(idx)] = true;
-        next_slot_.store((idx + 1) % cap, std::memory_order_relaxed);
-        return idx;
-    }
-
-    // Slot busy; dispatch per policy.
-    switch (policy_) {
-    case BackpressurePolicy::drop_oldest: {
+    if (slot_busy_[static_cast<std::size_t>(idx)])
         n_dropped_.fetch_add(1, std::memory_order_relaxed);
-        slot_busy_[static_cast<std::size_t>(idx)] = true; // already true, keep
-        next_slot_.store((idx + 1) % cap, std::memory_order_relaxed);
-        return idx;
-    }
-    case BackpressurePolicy::block: {
-        std::unique_lock<std::mutex> lk(mtx_, std::adopt_lock);
-        cv_slot_free_.wait(lk, [&] {
-            const int cap2 = ring_capacity_.load(std::memory_order_relaxed);
-            for (int k = 0; k < cap2; ++k) {
-                if (!slot_busy_[static_cast<std::size_t>(k)]) {
-                    next_slot_.store(k, std::memory_order_relaxed);
-                    return true;
-                }
-            }
-            return false;
-        });
-        const int k = next_slot_.load(std::memory_order_relaxed);
-        slot_busy_[static_cast<std::size_t>(k)] = true;
-        const int cap2 = ring_capacity_.load(std::memory_order_relaxed);
-        next_slot_.store((k + 1) % cap2, std::memory_order_relaxed);
-        lk.release(); // caller's unique_lock still owns
-        return k;
-    }
-    case BackpressurePolicy::grow: {
-        grow_ring_locked();
-        const int cap2 = ring_capacity_.load(std::memory_order_relaxed);
-        // After growth, there's a free slot at the end of the previous range.
-        for (int k = 0; k < cap2; ++k) {
-            if (!slot_busy_[static_cast<std::size_t>(k)]) {
-                slot_busy_[static_cast<std::size_t>(k)] = true;
-                next_slot_.store((k + 1) % cap2, std::memory_order_relaxed);
-                return k;
-            }
-        }
-        // Shouldn't happen; fall back to index 0.
-        slot_busy_[0] = true;
-        next_slot_.store(1 % cap2, std::memory_order_relaxed);
-        return 0;
-    }
-    }
-    // Unreachable.
-    return idx;
-}
 
-void AnalysisExecutor::grow_ring_locked() {
-    const int old_cap = ring_capacity_.load(std::memory_order_relaxed);
-    const int new_cap = std::max(old_cap + 1, old_cap * 2);
-    ring_.resize(static_cast<std::size_t>(new_cap));
-    slot_busy_.resize(static_cast<std::size_t>(new_cap), false);
-    ring_capacity_.store(new_cap, std::memory_order_relaxed);
-    ring_grew_.store(true, std::memory_order_relaxed);
+    slot_busy_[static_cast<std::size_t>(idx)] = true;
+    next_slot_.store((idx + 1) % cap, std::memory_order_relaxed);
+    return idx;
 }
 
 FrameSnapshot& AnalysisExecutor::slot(int idx) {
@@ -323,7 +268,6 @@ void AnalysisExecutor::worker_loop(int worker_idx) {
             slot_busy_[static_cast<std::size_t>(job.slot_idx)] = false;
             in_flight_.fetch_sub(1, std::memory_order_relaxed);
         }
-        cv_slot_free_.notify_all();
         cv_work_.notify_all(); // wake up shutdown-waiters too
     }
 }

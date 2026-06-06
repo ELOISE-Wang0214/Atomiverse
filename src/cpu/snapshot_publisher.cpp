@@ -42,25 +42,6 @@ CaptureMask mask_union_all(const std::vector<AsyncComponentBase*>& subs) {
     return u;
 }
 
-CaptureMask mask_union_firing(const std::vector<AsyncComponentBase*>& subs,
-                              int step) {
-    CaptureMask u;
-    u.positions = u.velocities = u.forces = u.types = u.tags = false;
-    for (const auto* sub : subs) {
-        if (!sub)
-            continue;
-        if (!subscriber_fires(sub, step))
-            continue;
-        const CaptureMask m = sub->capture_mask();
-        u.positions = u.positions || m.positions;
-        u.velocities = u.velocities || m.velocities;
-        u.forces = u.forces || m.forces;
-        u.types = u.types || m.types;
-        u.tags = u.tags || m.tags;
-    }
-    return u;
-}
-
 // Copy src[0..n) into out[0..n); vectors already sized by prealloc_slots().
 void copy_range(std::vector<double>& out, const double* src, int n,
                 bool capture) {
@@ -87,32 +68,6 @@ void copy_range_i64(std::vector<std::int64_t>& out, const std::int64_t* src,
 #pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i)
         out[static_cast<std::size_t>(i)] = src[i];
-}
-
-// Clear vectors for unmasked fields so downstream tests / consumers see an
-// empty buffer (not pre-allocated garbage). Runs once in build(); not in launch.
-void clear_unmasked(FrameSnapshot& snap, CaptureMask m) {
-    if (!m.positions) {
-        snap.x.clear();
-        snap.y.clear();
-        snap.z.clear();
-    }
-    if (!m.velocities) {
-        snap.vx.clear();
-        snap.vy.clear();
-        snap.vz.clear();
-    }
-    if (!m.forces) {
-        snap.fx.clear();
-        snap.fy.clear();
-        snap.fz.clear();
-    }
-    if (!m.types) {
-        snap.type.clear();
-    }
-    if (!m.tags) {
-        snap.tag.clear();
-    }
 }
 
 } // namespace
@@ -145,10 +100,16 @@ void Publish::launch(const LaunchContext& ctx) {
     if (!any_firing)
         return;
 
-    // Only firing subscribers' masks matter at this step. Downstream
-    // AsyncComponentBase::launch picks up the published slot and dispatches
-    // itself; the publisher writes, never dispatches.
-    const CaptureMask mask = mask_union_firing(subs, step);
+    // Static capture-mask union over ALL subscribers, resolved once and
+    // reused -- the captured field set is uniform for every captured step and
+    // does not depend on which subscribers fire. Subscriber set is fixed after
+    // build(); compute lazily on the first capturing launch (the publisher at
+    // +10 builds before subscribers at +20, so the list is empty in build()).
+    if (!mask_ready_) {
+        static_mask_ = mask_union_all(subs);
+        mask_ready_ = true;
+    }
+    const CaptureMask mask = static_mask_;
 
     const int slot_idx = exec_->acquire_slot();
     FrameSnapshot& snap = exec_->slot(slot_idx);

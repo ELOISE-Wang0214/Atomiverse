@@ -33,7 +33,7 @@
 ///
 /// @see cpu/md/async_observer.h            driver-specific default binding
 /// @see cpu/minimizer/async_observer.h     driver-specific default binding
-/// @see .claude/specs/parallel-md-engine.md  § B.4
+/// @see .claude/specs/async-analysis-snapshot-ring-01-uniformity.md
 #pragma once
 
 #include <string>
@@ -62,13 +62,6 @@ class AsyncComponentBase : public cpu::ComponentBase {
 
     /// @brief Which frame fields the snapshot should carry for this subscriber.
     virtual CaptureMask capture_mask() const = 0;
-
-    /// @brief Backpressure preference. Defaults to `drop_oldest` -- cheapest
-    /// and appropriate for observers/recorders where missing an occasional
-    /// frame is acceptable.
-    virtual BackpressurePolicy backpressure() const {
-        return BackpressurePolicy::drop_oldest;
-    }
 
     /// @brief Register with the executor resolved from `ctx.runtime.executor`.
     void build(const BuildContext& ctx) override;
