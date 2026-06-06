@@ -24,6 +24,14 @@ latest data from the sibling result dirs (no data duplicated here):
 Atomiverse leads LAMMPS at **every** measured CPU core count and now leads on
 GPU at large single-GPU N and across multi-GPU (single-process, NVLink P2P).
 
+## Figure — unified template
+
+All four panels share one encoding: **throughput** on the left axis (solid
+lines, filled markers) and **memory** on the right axis (dotted lines, open
+markers) — max RSS/rank for CPU, peak VRAM for GPU, both in MB (log). Blue =
+Atomiverse, red = LAMMPS; one shared legend. Total atom count is on the top
+x-axis (or the bottom x for the single-GPU size-scaling panel).
+
 ## Figure panels
 
 - **(a)** CPU multicore weak-scaling throughput (LJ + PE), 1→1024 cores
