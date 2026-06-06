@@ -40,23 +40,45 @@ velocities, so the throughput numbers measure the same physics.
 - **GPU:** single NVIDIA GH200 node (up to 4 GPUs, NVLink). AV CUDA and LAMMPS
   KOKKOS/CUDA both **mixed precision**.
 
+## Engine optimizations applied (this data)
+
+This run uses the optimized LJ-MD path:
+- **LAMMPS-style vflag virial gating** (`set_compute_stress(false)`, CPU + CUDA):
+  a plain NVE run never consumes the pair virial, so the 6-component stress is
+  skipped. On CPU it trims the inner loop; on CUDA it additionally frees the
+  6 double accumulator registers under the kernel's launch-bounds budget.
+  Verified forces/energy bit-unchanged (n=1/n=8 MPI bruteforce; GH200
+  multi-GPU 13/13). Single-GPU **+~17%** across 0.26M–33M atoms.
+- **Verlet skin matched to LAMMPS (0.6 Å):** the engine auto-skin was
+  `0.3·cutoff = 1.5 Å`, 2.5× fatter than the `neighbor 0.6 bin` LAMMPS uses
+  here. The fat skin inflated both the per-step kernel and the list. Matching
+  it is the fair, correctness-preserving choice. CPU per-core throughput rose
+  1.3–3.3× (single-core weak now **6.46 vs the prior 4.84**, *ahead of* LAMMPS
+  4.67).
+
 ## Honest reading of the result
 
-- LAMMPS leads on every panel. On CPU it is ~10× the per-core throughput; on a
-  single GH200 it is ~2× AV's throughput; it also scales more steeply across
-  multiple GPUs.
-- **AV's biggest CPU gap is memory, not just speed:** the per-rank frame is
-  replicated, so weak-scaling peak RSS explodes to ~188 GB at 128 ranks vs
-  LAMMPS's <1 GB (visible on the log dashed axis). This is the dominant
-  open scalability issue for the CPU engine.
-- AV CPU multi-rank uses a **`HaloSend{cutoff, every=1}` workaround** (full
-  halo rebuild every step) — the position-only halo refresh path desyncs the
-  ranks on a bondless run. This costs the per-step count exchange and shows up
-  as the weak-scaling dip at n=2 (single rank pays no halo cost). See
-  `scaling.cpp` and the project note `atomiverse-cpu-mpi-desync-hang`.
+- **Per-core / single-device, AV is now competitive.** CPU weak n=1: AV 6.46 vs
+  LAMMPS 4.67 Matom-step/s (AV ahead). Single GH200 at 8M: AV 967 vs LAMMPS
+  1957 (~2× behind, was 2.36×). The remaining single-GPU gap is the
+  uncoalesced gather — atoms are never physically resorted into spatial order
+  (KOKKOS resorts; AV only sorts transient neighbor buffers). That is the next
+  CUDA lever.
+- **The residual CPU gap is parallel scaling, not the kernel.** At 128 ranks
+  AV is still ~9× behind (weak 40 vs 366; strong 45 vs 445). Two causes:
+  (1) the per-rank frame is **replicated**, so weak-scaling peak RSS explodes to
+  ~188 GB at 128 ranks vs LAMMPS <1 GB (log dashed axis); (2) the
+  **`HaloSend{cutoff, every=1}` workaround** (full halo rebuild every step,
+  the position-only-halo desync fix) costs a per-step count exchange — the
+  weak-scaling dip at n=2 (single rank pays no halo). See the project note
+  `atomiverse-cpu-mpi-desync-hang`.
+- The next CPU compute lever is the neighbor-build over-scan: cells sized at
+  `cutoff+skin` with a ±1 stencil scan ~6.7× too many candidates (profile:
+  build ~27% of single-rank time). Binning at half that with a cutoff-clipped
+  stencil is the open structural fix.
 - CPU strong-scaling AV points start at n=4: the n=1/2 single/dual-core 1M-atom
-  runs are ~10–16× slower than LAMMPS and exceed the benchmark time budget;
-  they add nothing to the (clear, log-log linear) trend.
+  runs exceed the benchmark time budget and add nothing to the (clear, log-log
+  linear) trend.
 
 ## Reproduce the figure
 
