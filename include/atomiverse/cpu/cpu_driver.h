@@ -315,6 +315,8 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
         bool has_virial_stress =
             false; ///< Canonical Stress provider already there.
         bool has_neighbor_list = false; ///< NeighborList already there.
+        bool has_halo_send = false; ///< A HaloSend is already registered.
+        bool has_halo_recv = false; ///< A HaloRecv is already registered.
         std::string
             pair_evaluator_name; ///< First component reporting `needs_neighbor_list()`.
         std::optional<Real>
@@ -333,6 +335,10 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
                 s.has_virial_stress = true;
             if (n == "neighbor_list")
                 s.has_neighbor_list = true;
+            if (n == "halo_send")
+                s.has_halo_send = true;
+            if (n == "halo_recv")
+                s.has_halo_recv = true;
             if (c.needs_neighbor_list() && s.pair_evaluator_name.empty()) {
                 s.pair_evaluator_name = n;
                 if (auto* pe = dynamic_cast<const cpu::PairEvaluator*>(&c))

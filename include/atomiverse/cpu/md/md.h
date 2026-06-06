@@ -223,10 +223,19 @@ class MD : public DynamicsDriver {
             // `HaloSend{halo_cut}` explicitly before the
             // pair evaluator — `install_defaults` will see an existing
             // halo and skip the auto-inject.
+            // Skip the auto-inject when the caller already registered halo
+            // components (custom cutoff / skin / reneighbor cadence). Auto-
+            // injecting on top of an explicit halo would run the REVERSE
+            // exchange (HaloRecv) twice, which double-applies the already-
+            // reduced ghost forces to their owners — a per-step momentum leak
+            // (Σ F ≠ 0) that pumps energy and blows the NVE trajectory up.
+            // `reverse exchange must run exactly once` (see halo_exchange.h).
             const double halo_cut =
                 1.1 * static_cast<double>(*s.pair_evaluator_cutoff);
-            this->add(comm::HaloSend{halo_cut});
-            this->add(comm::HaloRecv{});
+            if (!s.has_halo_send)
+                this->add(comm::HaloSend{halo_cut});
+            if (!s.has_halo_recv)
+                this->add(comm::HaloRecv{});
         }
 #endif
 
