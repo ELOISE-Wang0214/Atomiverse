@@ -92,6 +92,30 @@ struct Frame {
         std::int8_t* image = nullptr;
 
         int* d_size = nullptr; ///< Atom count [device, 1 element].
+
+        // -- Per-atom bonded topology (multi-GPU bonded path ONLY) --
+        //
+        // The single-GPU / standard `materialize` path leaves all of these null
+        // and uses the flat BondList/AngleList/DihedralList below. The
+        // multi-GPU domain decomposition (`MultiGpu`) allocates and fills them so
+        // each subdomain carries, per OWNED atom, the OWNER-filtered tuples it is
+        // responsible for, with partners stored as GLOBAL TAGS (not local rows).
+        // This lets `migrate` move topology with the atom and lets each
+        // reneighbor RE-materialize the flat tuple lists by resolving partner
+        // tags → local (owned or ghost) rows via the device tag→local map. Caps
+        // mirror cpu/atom.h (kMaxBond=6, kMaxAngle=6, kMaxDihedral=8,
+        // kMaxSpecial=16); arrays are sized to `capacity` rows (ghost headroom).
+        int* num_bond = nullptr;            ///< [capacity] owner-filtered bond count.
+        std::int64_t* bond_atom = nullptr;  ///< [capacity*kMaxBond] partner GLOBAL tags.
+        int* bond_type = nullptr;           ///< [capacity*kMaxBond] bond type ids.
+        int* num_angle = nullptr;           ///< [capacity] owner(center)-filtered angle count.
+        std::int64_t* angle_atom = nullptr; ///< [capacity*2*kMaxAngle] non-center tags.
+        int* angle_type = nullptr;          ///< [capacity*kMaxAngle] angle type ids.
+        int* num_dihedral = nullptr;        ///< [capacity] owner(2nd-atom)-filtered count.
+        std::int64_t* dihedral_atom = nullptr; ///< [capacity*3*kMaxDihedral] non-owner tags.
+        int* dihedral_type = nullptr;       ///< [capacity*kMaxDihedral] dihedral type ids.
+        int* nspecial = nullptr;            ///< [capacity*3] special-bond tier prefix counts.
+        std::int64_t* special = nullptr;    ///< [capacity*kMaxSpecial] special-bond partner tags.
     } atoms;
 
     // -- System scalars (device-resident SystemScalars) --
