@@ -43,11 +43,29 @@ struct ThreadForce {
 };
 
 /// @brief Owns per-thread force accumulators; zero/reduce sized to n_force.
+///
+/// Single-thread fast path: when `n_threads == 1` (the pure-MPI case — one
+/// rank per core, the production multi-node layout), there is no write race,
+/// so the kernel accumulates straight into the frame's force arrays. That
+/// elides BOTH the per-step zero pass (frame forces are already cleared by
+/// `ZeroForces` on owned rows + `zero_ghost_forces` on ghost rows) AND the
+/// reduce pass — two full O(n_force) array sweeps per kernel per step that
+/// LAMMPS never pays. With three bonded kernels (bond/angle/dihedral) those
+/// six sweeps were a measurable slice of the bonded-force gap vs LAMMPS.
 class BondedForceScratch {
 public:
-    /// @brief Allocate `n_threads` buffers of `nmax` rows each (call in build()).
+    /// @brief Allocate `n_threads` buffers of `nmax` rows each (call in
+    ///        build()). With a single thread no scratch is allocated — the
+    ///        kernel writes directly into the frame (see `begin_thread`).
     void build(int n_threads, int nmax) {
         n_threads_ = n_threads < 1 ? 1 : n_threads;
+        direct_ = (n_threads_ == 1);
+        if (direct_) {
+            fx_.clear();
+            fy_.clear();
+            fz_.clear();
+            return;
+        }
         fx_.assign(static_cast<std::size_t>(n_threads_),
                    std::vector<double>(static_cast<std::size_t>(nmax), 0.0));
         fy_ = fx_;
@@ -56,9 +74,14 @@ public:
 
     int n_threads() const noexcept { return n_threads_; }
 
-    /// @brief Zero thread `tid`'s `[0, n_force)` rows and return its pointers.
-    ///        Call once per thread at the top of the parallel region.
-    ThreadForce begin_thread(int tid, int n_force) {
+    /// @brief Begin thread `tid`'s accumulation over `[0, n_force)` and return
+    ///        its force pointers. Single-thread direct mode returns the frame's
+    ///        own force arrays (no zeroing — already cleared upstream); the
+    ///        multi-thread path zeros this thread's private buffer first. Call
+    ///        once per thread at the top of the parallel region.
+    ThreadForce begin_thread(int tid, int n_force, cpu::Frame& f) {
+        if (direct_)
+            return {f.atoms.fx.data(), f.atoms.fy.data(), f.atoms.fz.data()};
         auto& fx = fx_[static_cast<std::size_t>(tid)];
         auto& fy = fy_[static_cast<std::size_t>(tid)];
         auto& fz = fz_[static_cast<std::size_t>(tid)];
@@ -82,6 +105,10 @@ public:
     ///        forces. Call after the parallel region. The owned + ghost rows
     ///        are both reduced (ghost forces ship home via HaloRecv).
     void reduce_into(cpu::Frame& f, int n_force) const {
+        // Single-thread direct mode wrote straight into the frame — nothing to
+        // gather.
+        if (direct_)
+            return;
         double* __restrict fx = f.atoms.fx.data();
         double* __restrict fy = f.atoms.fy.data();
         double* __restrict fz = f.atoms.fz.data();
@@ -106,10 +133,12 @@ public:
         fy_.clear();
         fz_.clear();
         n_threads_ = 0;
+        direct_ = false;
     }
 
 private:
     int n_threads_ = 0;
+    bool direct_ = false; ///< single-thread: accumulate straight into frame.
     std::vector<std::vector<double>> fx_, fy_, fz_;
 };
 

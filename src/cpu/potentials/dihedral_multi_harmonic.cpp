@@ -69,7 +69,7 @@ void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
 #ifdef _OPENMP
         tid = omp_get_thread_num();
 #endif
-        const md::ThreadForce tf = scratch_.begin_thread(tid, n_force);
+        const md::ThreadForce tf = scratch_.begin_thread(tid, n_force, f);
         md::Voigt6 vir_local;
 
         // LAMMPS-style per-atom iteration: each owned atom `i2` (2nd atom of

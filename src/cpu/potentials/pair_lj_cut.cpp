@@ -78,10 +78,16 @@ void PairLJCut::build(const BuildContext& ctx) {
     fx_thr_.resize(n_threads_);
     fy_thr_.resize(n_threads_);
     fz_thr_.resize(n_threads_);
-    for (int t = 0; t < n_threads_; ++t) {
-        fx_thr_[t].resize(n, double(0));
-        fy_thr_[t].resize(n, double(0));
-        fz_thr_[t].resize(n, double(0));
+    // Single-thread (pure-MPI) fast path accumulates straight into the frame's
+    // force arrays, so no per-thread scratch is needed — leave the buffers
+    // empty. The multi-thread path needs one private buffer set per thread to
+    // avoid the cross-thread write race on shared force rows.
+    if (n_threads_ > 1) {
+        for (int t = 0; t < n_threads_; ++t) {
+            fx_thr_[t].resize(n, double(0));
+            fy_thr_[t].resize(n, double(0));
+            fz_thr_[t].resize(n, double(0));
+        }
     }
 
     // Tag-indexed special-bonds exclusion: active when any special-bonds
@@ -241,7 +247,8 @@ void PairLJCut::compute(const LaunchContext& ctx) {
     // so the build-time size always dominated; with right-sized per-rank
     // storage that no longer holds, so grow here on demand (rare — only when
     // the ghost region expands; matches the neighbor-list growth contract).
-    if (static_cast<int>(fx_thr_.empty() ? 0 : fx_thr_[0].size()) < n_force) {
+    if (n_threads_ > 1 &&
+        static_cast<int>(fx_thr_.empty() ? 0 : fx_thr_[0].size()) < n_force) {
         for (int t = 0; t < n_threads_; ++t) {
             fx_thr_[t].resize(n_force, double(0));
             fy_thr_[t].resize(n_force, double(0));
@@ -311,12 +318,31 @@ void PairLJCut::compute(const LaunchContext& ctx) {
 #ifdef _OPENMP
         tid = omp_get_thread_num();
 #endif
-        auto& fxt = fx_thr_[tid];
-        auto& fyt = fy_thr_[tid];
-        auto& fzt = fz_thr_[tid];
-        std::fill(fxt.begin(), fxt.begin() + n_force, double(0));
-        std::fill(fyt.begin(), fyt.begin() + n_force, double(0));
-        std::fill(fzt.begin(), fzt.begin() + n_force, double(0));
+        // Single-thread (pure-MPI): accumulate straight into the frame's force
+        // arrays — already cleared by ZeroForces (owned rows) +
+        // HaloSend::zero_ghost_forces (ghost rows). Elides the per-step
+        // zero-fill below AND the reduce sweep at the end of the region, two
+        // O(n_force) passes LAMMPS never pays. The multi-thread path keeps each
+        // thread's writes in a private buffer to avoid the shared-row race.
+        const bool direct = (n_threads_ == 1);
+        double* __restrict fxt_ptr;
+        double* __restrict fyt_ptr;
+        double* __restrict fzt_ptr;
+        if (direct) {
+            fxt_ptr = f.atoms.fx.data();
+            fyt_ptr = f.atoms.fy.data();
+            fzt_ptr = f.atoms.fz.data();
+        } else {
+            auto& fxt = fx_thr_[tid];
+            auto& fyt = fy_thr_[tid];
+            auto& fzt = fz_thr_[tid];
+            std::fill(fxt.begin(), fxt.begin() + n_force, double(0));
+            std::fill(fyt.begin(), fyt.begin() + n_force, double(0));
+            std::fill(fzt.begin(), fzt.begin() + n_force, double(0));
+            fxt_ptr = fxt.data();
+            fyt_ptr = fyt.data();
+            fzt_ptr = fzt.data();
+        }
 
         // Hoist box edges + LJ constants to locals so the inner loop keeps
         // them in registers instead of reloading the Mat3 / member fields
@@ -338,9 +364,6 @@ void PairLJCut::compute(const LaunchContext& ctx) {
         const double* __restrict x_ptr = f.atoms.x.data();
         const double* __restrict y_ptr = f.atoms.y.data();
         const double* __restrict z_ptr = f.atoms.z.data();
-        double* __restrict fxt_ptr = fxt.data();
-        double* __restrict fyt_ptr = fyt.data();
-        double* __restrict fzt_ptr = fzt.data();
 
         // Track B.2 — xsimd ket-loop vectorization of the inner pair loop.
         //
@@ -636,13 +659,16 @@ void PairLJCut::compute(const LaunchContext& ctx) {
             fzt_ptr[i] += fi_z;
         }
 
-// Reduce per-thread forces into frame
+        // Reduce per-thread forces into frame (skipped in single-thread direct
+        // mode — the kernel already wrote straight into the frame arrays).
+        if (!direct) {
 #pragma omp for schedule(static)
-        for (int i = 0; i < n_force; ++i) {
-            for (int t = 0; t < n_threads_; ++t) {
-                f.atoms.fx[i] += fx_thr_[t][i];
-                f.atoms.fy[i] += fy_thr_[t][i];
-                f.atoms.fz[i] += fz_thr_[t][i];
+            for (int i = 0; i < n_force; ++i) {
+                for (int t = 0; t < n_threads_; ++t) {
+                    f.atoms.fx[i] += fx_thr_[t][i];
+                    f.atoms.fy[i] += fy_thr_[t][i];
+                    f.atoms.fz[i] += fz_thr_[t][i];
+                }
             }
         }
     }
