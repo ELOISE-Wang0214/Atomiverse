@@ -65,3 +65,21 @@ fixed this for LJ has not yet been applied to PE.
    cross-node.
 2. **PE memory** — per-rank-local / streaming construction so rank 0 doesn't
    hold the global frame (the LJ fix, ported to the bonded chain builder).
+
+## PE-melt memory fix (commit 0140213)
+
+PE materialized the global frame on rank 0 then scattered (rank-0 RSS ∝ N →
+12 GB @1024). Fixed with per-rank-local construction: `make_pe_melt_local`
+replicates `gen_pe.py(seed=0)` exactly (verified bit-identical energies), each
+rank building only its subdomain. AV uses `--pe-melt-grid nx,ny,nz`; LAMMPS
+reads the same gen_pe file. Per-rank RSS now flat and on par with LAMMPS:
+
+| ranks | AV mem before | AV mem after | LAMMPS |
+|-------|---------------|--------------|--------|
+| 256   | 3082 MB       | 80 MB        | 70 MB  |
+| 512   | 6201 MB       | 148 MB       | 143 MB |
+| 1024  | 12295 MB      | 151 MB       | 144 MB |
+
+`pe_1-1024_memfixed.csv` is this run. Speed is unchanged (same system): AV
+0.90–1.03× LAMMPS — competitive ≤64 cores, ~10% behind at 128+ (PE is
+comm-bound; the high-core halo/comm efficiency is the remaining speed lever).
