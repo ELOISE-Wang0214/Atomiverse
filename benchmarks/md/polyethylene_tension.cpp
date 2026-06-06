@@ -312,6 +312,11 @@ struct Args {
     double box_len = 60.0;
     double margin = 1.0;
     int seed = 12345;
+    // gen_pe(seed=0)-replicating realistic PE melt, built PER-RANK-LOCAL (no
+    // rank holds the global frame). "nx,ny,nz"; spacing/gap_z = gen_pe defaults.
+    std::string pe_melt_grid;
+    double pe_spacing = 5.0;
+    double pe_gap_z = 4.0;
     std::string data_path; ///< If non-empty, load this LAMMPS data file
                            ///< instead of generating the chain grid.
     double T_hot = 500.0;  ///< stages 1-3 start setpoint [K]
@@ -513,6 +518,12 @@ bool parse_args(int argc, char** argv, Args& a) {
             continue;
         if (take_s("--data", a.data_path))
             continue;
+        if (take_s("--pe-melt-grid", a.pe_melt_grid))
+            continue;
+        if (take_d("--pe-spacing", a.pe_spacing))
+            continue;
+        if (take_d("--pe-gap-z", a.pe_gap_z))
+            continue;
         if (take_i("--traj-every", a.traj_every))
             continue;
         if (take_s("--rdf", a.rdf_spec))
@@ -610,6 +621,211 @@ cpu::Frame make_pe_box(int chains_per_axis, int n_carbons, double box_len,
     frame.box = Mat3::cubic(box_len);
     return frame;
 }
+
+#ifdef ATV_HAS_MPI
+// Per-rank-local twin of make_pe_box: each rank builds ONLY its subdomain's
+// chain atoms — no rank ever materializes the global frame (the old path had
+// rank 0 build the whole system then scatter, so rank-0 RSS grew with global
+// N: 12 GB at 1024 ranks). Mirrors the LJ fix (make_sc_lj_local). Ownership
+// matches DomainDecomposition exactly (MPI_Dims_create/ATV_FORCE_DIMS, rank
+// index convention, rank_along_dim = clamp(int(q*d/L))). Atom positions/tags
+// are identical to make_pe_box, so the distributed system is bit-identical.
+//
+// Bonded topology uses GLOBAL tags: add_bond/angle/dihedral self-filter by
+// owner-in-map (bond→1st atom, angle/dihedral→center), so each owned atom adds
+// exactly the tuples it owns; cross-boundary partners resolve to halo ghosts.
+// The 1-2/1-3/1-4 special list is set ANALYTICALLY (linear chain: p±1/±2/±3)
+// because build_special_list needs the full local bond graph, which a split
+// chain lacks. All special tiers are excluded (set_special_bonds(0,0,0)), so
+// the per-tier split only has to be self-consistent, which the chain order is.
+cpu::Frame make_pe_box_local(int chains_per_axis, int n_carbons, double box_len,
+                             double margin, int my_rank, int world_size) {
+    const double half_apex = (kPI - kAngleTheta0) / 2.0;
+    const double dy_step = kBondR0 * std::cos(half_apex);
+    const double dz_step = kBondR0 * std::sin(half_apex);
+    const double cell = box_len / chains_per_axis;
+    const double L = box_len;
+
+    int dims[3] = {0, 0, 0};
+    if (const char* env = std::getenv("ATV_FORCE_DIMS")) {
+        int dx, dy, dz;
+        if (std::sscanf(env, "%d,%d,%d", &dx, &dy, &dz) == 3
+            && dx * dy * dz == world_size) {
+            dims[0] = dx; dims[1] = dy; dims[2] = dz;
+        }
+    }
+    if (dims[0] == 0)
+        MPI_Dims_create(world_size, 3, dims);
+    const int coords[3] = {my_rank / (dims[1] * dims[2]),
+                           (my_rank / dims[2]) % dims[1], my_rank % dims[2]};
+    auto own = [&](double q, int d) {
+        q -= L * std::floor(q / L);
+        if (d <= 1) return 0;
+        return std::max(0, std::min(d - 1, static_cast<int>(q * d / L)));
+    };
+
+    std::vector<double> X, Y, Z;
+    std::vector<std::int64_t> TAG;
+    std::vector<int> POS; // chain position of each owned atom
+    const int cpa = chains_per_axis;
+    for (int cx = 0; cx < cpa; ++cx) {
+        const double x = cx * cell + cell / 2.0;
+        if (own(x, dims[0]) != coords[0])
+            continue; // x is fixed per chain → whole X-column filtered out
+        for (int cy = 0; cy < cpa; ++cy) {
+            for (int cz = 0; cz < cpa; ++cz) {
+                const double z0 = cz * cell + cell / 2.0;
+                const double y0 = cy * cell + margin;
+                const std::int64_t base =
+                    (static_cast<std::int64_t>(cx) * cpa + cy) * cpa + cz;
+                for (int i = 0; i < n_carbons; ++i) {
+                    const double y = y0 + i * dy_step;
+                    const double z = z0 + (i % 2 == 0 ? 0.0 : dz_step);
+                    if (own(y, dims[1]) != coords[1] || own(z, dims[2]) != coords[2])
+                        continue;
+                    X.push_back(x); Y.push_back(y); Z.push_back(z);
+                    TAG.push_back(base * n_carbons + i); POS.push_back(i);
+                }
+            }
+        }
+    }
+
+    const int n = static_cast<int>(X.size());
+    cpu::Frame frame(n);
+    for (int k = 0; k < n; ++k) {
+        frame.atoms.x[k] = X[k]; frame.atoms.y[k] = Y[k]; frame.atoms.z[k] = Z[k];
+        frame.atoms.mass[k] = 14.027; frame.atoms.type[k] = 0;
+        frame.atoms.tag[k] = TAG[k];
+    }
+    frame.atoms.nlocal = n;
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, n);
+    const int nc = n_carbons;
+    for (int k = 0; k < n; ++k) {
+        const std::int64_t t = TAG[k];
+        const int p = POS[k];
+        if (p < nc - 1) frame.atoms.add_bond(t, t + 1, 0);
+        if (p >= 1 && p <= nc - 2) frame.atoms.add_angle(t - 1, t, t + 1, 0);
+        if (p >= 1 && p <= nc - 3)
+            frame.atoms.add_dihedral(t - 1, t, t + 1, t + 2, 0);
+        // Analytic special list: chain neighbours p±1 (1-2), p±2 (1-3), p±3 (1-4).
+        const std::int64_t cbase = t - p;
+        int s = 0;
+        auto add = [&](int q) {
+            if (q >= 0 && q < nc) { frame.atoms.special(k, s) = cbase + q; ++s; }
+        };
+        add(p - 1); add(p + 1); const int n12 = s;
+        add(p - 2); add(p + 2); const int n13 = s;
+        add(p - 3); add(p + 3); const int n14 = s;
+        frame.atoms.nspecial(k, 0) = n12;
+        frame.atoms.nspecial(k, 1) = n13;
+        frame.atoms.nspecial(k, 2) = n14;
+    }
+    frame.box = Mat3::cubic(box_len);
+    return frame;
+}
+
+// Per-rank-local generator that REPLICATES gen_pe.py (seed=0) exactly: a
+// grid nx*ny*nz of zig-zag CH2 chains laid along Z (X-zig), realistic-density
+// PE melt in a NON-cubic box (Lx=nx*spacing, Ly=ny*spacing, Lz=nz*cz). Each
+// rank builds ONLY its subdomain's atoms, so no rank materializes the global
+// frame (the --data path had rank 0 hold all N -> 12 GB @1024). AV generates
+// this distributed while LAMMPS reads the matching gen_pe data file, so the
+// systems are identical. Bonded topology by global tag (partners->ghosts);
+// 1-2/1-3/1-4 special list set analytically (linear chain), all tiers excluded.
+cpu::Frame make_pe_melt_local(int nx, int ny, int nz, int chain_len,
+                              double spacing, double gap_z, int my_rank,
+                              int world_size) {
+    const double R0 = kBondR0;
+    const double dz = R0 * std::sqrt((1.0 + std::cos(kAngleTheta0)) / 2.0);
+    const double dx = std::sqrt(R0 * R0 - dz * dz);
+    const int L = chain_len;
+    const double cell = spacing;
+    const double cz = (L - 1) * dz + gap_z;
+    const double Lx = nx * cell, Ly = ny * cell, Lz = nz * cz;
+    const double Lax[3] = {Lx, Ly, Lz};
+
+    int dims[3] = {0, 0, 0};
+    if (const char* env = std::getenv("ATV_FORCE_DIMS")) {
+        int a, b, c;
+        if (std::sscanf(env, "%d,%d,%d", &a, &b, &c) == 3
+            && a * b * c == world_size) { dims[0]=a; dims[1]=b; dims[2]=c; }
+    }
+    if (dims[0] == 0)
+        MPI_Dims_create(world_size, 3, dims);
+    const int coords[3] = {my_rank / (dims[1] * dims[2]),
+                           (my_rank / dims[2]) % dims[1], my_rank % dims[2]};
+    auto own = [&](double q, int axis) {
+        const double Lq = Lax[axis];
+        q -= Lq * std::floor(q / Lq);
+        const int d = dims[axis];
+        if (d <= 1) return 0;
+        return std::max(0, std::min(d - 1, static_cast<int>(q * d / Lq)));
+    };
+
+    std::vector<double> X, Y, Z;
+    std::vector<std::int64_t> TAG;
+    std::vector<int> POS;
+    for (int i = 0; i < nx; ++i) {
+        const double x0 = i * cell + cell / 2.0;
+        if (own(x0 + dx / 2.0, 0) != coords[0]
+            && own(x0 - dx / 2.0, 0) != coords[0])
+            continue; // x ~ fixed per chain (±dx/2)
+        for (int j = 0; j < ny; ++j) {
+            const double y0 = j * cell + cell / 2.0;
+            if (own(y0, 1) != coords[1]) continue;
+            for (int k = 0; k < nz; ++k) {
+                const double z0 = k * cz + gap_z / 2.0;
+                const std::int64_t base =
+                    (static_cast<std::int64_t>(i) * ny + j) * nz + k;
+                for (int m = 0; m < L; ++m) {
+                    const double sgn = (m % 2 == 0) ? 1.0 : -1.0;
+                    const double x = x0 + sgn * (dx / 2.0);
+                    const double y = y0;
+                    const double z = z0 + m * dz;
+                    if (own(x, 0) != coords[0] || own(y, 1) != coords[1]
+                        || own(z, 2) != coords[2])
+                        continue;
+                    X.push_back(x); Y.push_back(y); Z.push_back(z);
+                    TAG.push_back(base * L + m); POS.push_back(m);
+                }
+            }
+        }
+    }
+
+    const int n = static_cast<int>(X.size());
+    cpu::Frame frame(n);
+    for (int q = 0; q < n; ++q) {
+        frame.atoms.x[q] = X[q]; frame.atoms.y[q] = Y[q]; frame.atoms.z[q] = Z[q];
+        frame.atoms.mass[q] = 14.02; frame.atoms.type[q] = 0;
+        frame.atoms.tag[q] = TAG[q];
+    }
+    frame.atoms.nlocal = n;
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, n);
+    for (int q = 0; q < n; ++q) {
+        const std::int64_t t = TAG[q];
+        const int p = POS[q];
+        if (p < L - 1) frame.atoms.add_bond(t, t + 1, 0);
+        if (p >= 1 && p <= L - 2) frame.atoms.add_angle(t - 1, t, t + 1, 0);
+        if (p >= 1 && p <= L - 3)
+            frame.atoms.add_dihedral(t - 1, t, t + 1, t + 2, 0);
+        const std::int64_t cbase = t - p;
+        int s = 0;
+        auto add = [&](int r) {
+            if (r >= 0 && r < L) { frame.atoms.special(q, s) = cbase + r; ++s; }
+        };
+        add(p - 1); add(p + 1); const int n12 = s;
+        add(p - 2); add(p + 2); const int n13 = s;
+        add(p - 3); add(p + 3); const int n14 = s;
+        frame.atoms.nspecial(q, 0) = n12;
+        frame.atoms.nspecial(q, 1) = n13;
+        frame.atoms.nspecial(q, 2) = n14;
+    }
+    frame.box = Mat3::diagonal(Lx, Ly, Lz);
+    return frame;
+}
+#endif
 
 double temperature_K(double ke_eV, int n_dof) {
     if (n_dof <= 0)
@@ -1350,14 +1566,34 @@ int main(int argc, char** argv) {
     const bool distribute_load =
         (world_size > 1) && a.ckpt_load_before_stage.empty();
     cpu::Frame frame(0);
-    if (my_rank == 0 || !distribute_load) {
-        frame = a.data_path.empty()
-                    ? make_pe_box(a.chains_per_axis, a.n_atoms_per_chain,
-                                  a.box_len, a.margin)
-                    : cpu::load_lammps_data(a.data_path);
-    }
 #ifdef ATV_HAS_MPI
-    if (distribute_load)
+    // --pe-melt-grid: realistic gen_pe(seed=0) melt, built PER-RANK-LOCAL — no
+    // rank materializes the global frame (the --data path had rank 0 hold all
+    // N -> 12 GB @1024). Works at world=1 too (dims=[1,1,1] -> full build).
+    // make_pe_box_local does the same for the cubic --chains-per-axis generator.
+    // The --data / checkpoint paths still go rank-0 + scatter (a generic file
+    // read isn't trivially per-rank: the special-list build needs the graph).
+    const bool melt_gen = !a.pe_melt_grid.empty();
+    const bool local_gen = melt_gen
+                           || (distribute_load && a.data_path.empty());
+    if (melt_gen) {
+        int nx = 0, ny = 0, nz = 0;
+        std::sscanf(a.pe_melt_grid.c_str(), "%d,%d,%d", &nx, &ny, &nz);
+        frame = make_pe_melt_local(nx, ny, nz, a.n_atoms_per_chain, a.pe_spacing,
+                                   a.pe_gap_z, my_rank, world_size);
+    } else if (distribute_load) {
+        frame = make_pe_box_local(a.chains_per_axis, a.n_atoms_per_chain,
+                                  a.box_len, a.margin, my_rank, world_size);
+    } else
+#endif
+        if (my_rank == 0 || !distribute_load) {
+            frame = a.data_path.empty()
+                        ? make_pe_box(a.chains_per_axis, a.n_atoms_per_chain,
+                                      a.box_len, a.margin)
+                        : cpu::load_lammps_data(a.data_path);
+        }
+#ifdef ATV_HAS_MPI
+    if (distribute_load && !local_gen)
         cpu::comm::scatter_atoms_from_root(frame);
 #endif
 
