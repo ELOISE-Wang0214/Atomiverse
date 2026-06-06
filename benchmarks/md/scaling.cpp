@@ -232,8 +232,15 @@ int main(int argc, char** argv) {
     // list degrades toward O(N^2). Migrate also bumps neighbor_generation,
     // which triggers the halo full-rebuild on migration steps.
     sim.add(cpu::comm::Migrate{20});
+    // HaloSend `every=1` forces a full halo rebuild (count exchange) every
+    // step. This is a WORKAROUND for a real bug: the halo's position-only
+    // refresh path (cached per-face counts between full rebuilds) desyncs the
+    // ranks on a bondless run — they drift apart until a Waitall can't be
+    // matched and they deadlock (PE-melt masks it; pure LJ exposes it). Forcing
+    // per-step full rebuild keeps the counts fresh and the ranks in lockstep.
+    // The proper fix belongs in halo_exchange.cpp's position-only branch.
     sim.on(ATV::md::Phase::pre_force)
-        .add(cpu::comm::HaloSend{args.cutoff}, -20);
+        .add(cpu::comm::HaloSend{args.cutoff, 1}, -20);
     sim.on(ATV::md::Phase::post_force)
         .add(cpu::comm::HaloRecv{}, -1000);
     sim.on(ATV::md::Phase::force)
