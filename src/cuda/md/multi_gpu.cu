@@ -821,8 +821,18 @@ void MultiGpu::destroy_force_engine() {
                 pair_[s]->destroy(dc); // free PairLJCut's sorted-pos scratch
         }
     }
+    // Bonded components destroy unconditionally (built in setup_bonded, not gated
+    // on the neighbor-list build cadence) — free each BondHarmonic's K/r0.
+    for (int s = 0; s < static_cast<int>(bond_.size()); ++s) {
+        if (bond_[s] && s < static_cast<int>(ctx_.size())) {
+            dm_.set_device(s);
+            cuda::DestroyContext dc{ctx_[s], frames_[s]};
+            bond_[s]->destroy(dc);
+        }
+    }
     nlist_.clear();
     pair_.clear();
+    bond_.clear();
     ctx_.clear();
     nlist_built_.clear();
     engine_ready_ = false;
@@ -966,6 +976,69 @@ void MultiGpu::destroy_tag_maps() {
     }
     tagmap_tag_.clear();
     tagmap_idx_.clear();
+}
+
+void MultiGpu::setup_bonded(std::vector<double> bond_K,
+                            std::vector<double> bond_r0) {
+    if (!engine_ready_)
+        throw std::runtime_error(
+            "MultiGpu::setup_bonded: call setup_force_engine first");
+    const int N = count();
+    bond_.resize(N);
+    for (int s = 0; s < N; ++s) {
+        dm_.set_device(s);
+        bond_[s] = std::make_unique<cuda::BondHarmonic>(bond_K, bond_r0);
+        cuda::BuildContext bc{ctx_[s], frames_[s]};
+        bond_[s]->build(bc); // uploads per-type K/r0 to this device
+    }
+}
+
+void MultiGpu::compute_bonded_forces() {
+    const int N = count();
+    if (static_cast<int>(bond_.size()) != N)
+        throw std::runtime_error(
+            "MultiGpu::compute_bonded_forces: call setup_bonded first");
+    // Zero owned+ghost forces and the scalar accumulators (bond-only here; the
+    // combined LJ+bonded path zeros once and runs both before reverse_comm).
+    for (int s = 0; s < N; ++s) {
+        const int na = frames_[s].n_local_ + frames_[s].n_ghost_;
+        dm_.set_device(s);
+        auto& a = frames_[s].atoms;
+        if (na > 0) {
+            CKM(cudaMemset(a.fx, 0, na * sizeof(real_t)));
+            CKM(cudaMemset(a.fy, 0, na * sizeof(real_t)));
+            CKM(cudaMemset(a.fz, 0, na * sizeof(real_t)));
+        }
+        CKM(cudaMemset(frames_[s].scalars, 0, sizeof(SystemScalars)));
+    }
+    // BondHarmonic over each subdomain's re-materialized tuples: deposits on
+    // owned AND ghost partner rows (atomicAdd); energy counted once per bond on
+    // its owner GPU.
+    for (int s = 0; s < N; ++s) {
+        const int na = frames_[s].n_local_ + frames_[s].n_ghost_;
+        if (na == 0)
+            continue;
+        dm_.set_device(s);
+        frames_[s].n_atoms_ = na;
+        cuda::LaunchContext lc{ctx_[s], frames_[s]};
+        bond_[s]->launch(lc);
+    }
+    for (int s = 0; s < N; ++s) {
+        dm_.set_device(s);
+        CKM(cudaDeviceSynchronize());
+    }
+    // Accumulate ghost-row bond forces onto their owners.
+    reverse_comm();
+    // Sum the per-subdomain bond energy (each bond owned by one GPU → no double
+    // count) into the host-side total.
+    bonded_energy_ = 0.0;
+    for (int s = 0; s < N; ++s) {
+        dm_.set_device(s);
+        SystemScalars sc{};
+        CKM(cudaMemcpy(&sc, frames_[s].scalars, sizeof(SystemScalars),
+                       cudaMemcpyDeviceToHost));
+        bonded_energy_ += static_cast<double>(sc.energy);
+    }
 }
 
 void MultiGpu::reneighbor() {

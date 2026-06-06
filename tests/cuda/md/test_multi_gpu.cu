@@ -191,6 +191,45 @@ TEST(MultiGpu, MigratePreservesBondedTopology) {
     EXPECT_EQ(got, ref); // per-atom bonded topology preserved across migration
 }
 
+// multigpu-bonded-03: cross-GPU BondHarmonic. The bond force on each owned atom
+// (and on ghost bond partners, then reverse_comm'd home) must match a single-GPU
+// run of the same bonds. Drives BondHarmonic over the re-materialized per-GPU
+// tuples; cross-GPU bonds exercise the ghost-deposit + reverse_comm path.
+TEST(MultiGpu, BondForceParityVsSingleGpu) {
+    cuda::md::MultiGpu mg; // all visible GPUs
+    if (mg.count() < 2)
+        GTEST_SKIP() << "needs >=2 GPUs for cross-boundary bonds";
+    auto g = make_bonded_grid(12.0); // x-bond length 3.0
+    const std::vector<double> K{100.0}, r0{2.0}; // stretched (force nonzero)
+
+    auto run = [&](cuda::md::MultiGpu& m, cpu::Frame& out, double& e) {
+        m.partition(g);
+        m.setup_force_engine(3.5, 0.0, 1.0); // ctx box/stream; LJ unused (eps 0)
+        m.setup_bonded(K, r0);
+        m.build_halo(3.5);          // ghosts cover the 3.0 bond
+        m.rebuild_bonded_tuples();  // resolve partners to local/ghost rows
+        m.compute_bonded_forces();  // zero → bond (owned+ghost) → reverse_comm
+        m.gather_forces(out);       // owned bond forces by tag (out pre-sized)
+        e = m.bonded_energy();
+    };
+
+    cpu::Frame fmulti(g.atoms.size()), fref(g.atoms.size());
+    double emulti = 0, eref = 0;
+    run(mg, fmulti, emulti);
+    {
+        cuda::md::MultiGpu mg1(1); // single-GPU reference (no ghosts/reverse)
+        run(mg1, fref, eref);
+    }
+
+    std::cerr << "[diag] bond E: multi=" << emulti << " ref=" << eref << "\n";
+    EXPECT_NEAR(emulti, eref, 1e-3 * std::abs(eref) + 1e-3);
+    for (int i = 0; i < g.atoms.size(); ++i) {
+        EXPECT_NEAR(fmulti.atoms.fx[i], fref.atoms.fx[i], 0.2) << "fx atom " << i;
+        EXPECT_NEAR(fmulti.atoms.fy[i], fref.atoms.fy[i], 0.2) << "fy atom " << i;
+        EXPECT_NEAR(fmulti.atoms.fz[i], fref.atoms.fz[i], 0.2) << "fz atom " << i;
+    }
+}
+
 TEST(MultiGpu, PartitionGatherRoundTrip) {
     auto g = make_grid(12.0);
     cuda::md::MultiGpu mg;

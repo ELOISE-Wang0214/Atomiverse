@@ -1,6 +1,6 @@
 ---
 title: Multi-GPU bonded — cross-GPU BondHarmonic + reverse_comm wiring
-status: approved
+status: code-complete
 created: 2026-06-06
 chain: multigpu-bonded
 link: 3
@@ -28,9 +28,9 @@ owned 力完整、无双计。能量分解 E_bond 跨卡求和与单卡一致(�
 - `tests/cuda/md/test_cuda_multi_gpu_bonded.cu`(扩展:键力等价)。
 
 ## Tasks
-- [ ] **P3.1** Wire per-GPU BondHarmonic over re-materialized bond tuples (deposit owned+ghost)
-- [ ] **P3.2** Call reverse_comm after bonded force; owner-only energy accumulation + cross-GPU reduce
-- [ ] **P3.3** RED→GREEN: 2/4-GPU bond energy + per-atom force == single-GPU == CPU; ΣF≈0
+- [x] **P3.1** Wire per-GPU BondHarmonic over re-materialized bond tuples (deposit owned+ghost)
+- [x] **P3.2** Call reverse_comm after bonded force; owner-only energy accumulation + cross-GPU reduce
+- [x] **P3.3** RED→GREEN: 2/4-GPU bond energy + per-atom force == single-GPU == CPU; ΣF≈0
 
 ## Testing
 - `test_cuda_multi_gpu_bonded`: 2/4-GPU vs single-GPU bond energy + forces within tol; ΣF≈0 each step; LJ tests green.

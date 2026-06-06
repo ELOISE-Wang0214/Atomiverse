@@ -23,6 +23,7 @@
 #include "atomiverse/cuda/domain_decomposition.cuh"
 #include "atomiverse/cuda/frame.cuh"
 #include "atomiverse/cuda/neighbor_list.cuh"
+#include "atomiverse/cuda/potentials/bond_harmonic.cuh"
 #include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 
 namespace ATV {
@@ -110,6 +111,24 @@ class MultiGpu {
     /// topology. Unresolvable partners (halo too thin) are dropped and counted.
     /// Public so multi-GPU bonded force paths and tests can drive it explicitly.
     void rebuild_bonded_tuples();
+
+    /// Set up the per-subdomain cross-GPU bonded force engine. Call after
+    /// `setup_force_engine` (it reuses the per-GPU Context's box/stream). One
+    /// `cuda::BondHarmonic` per subdomain, built with the given per-type spring
+    /// constants `bond_K` [eV/Å²] and equilibria `bond_r0` [Å].
+    void setup_bonded(std::vector<double> bond_K, std::vector<double> bond_r0);
+
+    /// Compute cross-GPU bonded forces: zero each subdomain's owned+ghost force
+    /// rows, run BondHarmonic over the re-materialized per-GPU bond tuples
+    /// (depositing on owned AND ghost partner rows), then `reverse_comm()` to
+    /// accumulate the ghost-row contributions onto their true owners. Each bond
+    /// is owned by exactly one GPU, so the summed energy is the total bond energy
+    /// (available via `bonded_energy()`). Requires a prior `rebuild_bonded_tuples`.
+    void compute_bonded_forces();
+
+    /// Total bond potential energy from the last `compute_bonded_forces` (summed
+    /// across subdomains; each bond counted once on its owner GPU).
+    double bonded_energy() const { return bonded_energy_; }
 
     /// Merge all subdomains' owned atoms back into one cpu::Frame (positions /
     /// velocities by tag order matching the original global frame size). Used
@@ -227,6 +246,10 @@ class MultiGpu {
     bool bonded_ = false;
     std::vector<std::int64_t*> tagmap_tag_; // [capacity] sorted global tags, per slot
     std::vector<int*> tagmap_idx_;          // [capacity] parallel local indices, per slot
+
+    // Cross-GPU bonded force engine (one BondHarmonic per subdomain).
+    std::vector<std::unique_ptr<cuda::BondHarmonic>> bond_;
+    double bonded_energy_ = 0.0;
 };
 
 } // namespace md
