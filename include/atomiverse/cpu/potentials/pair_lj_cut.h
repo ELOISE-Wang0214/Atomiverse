@@ -47,6 +47,17 @@ class PairLJCut : public Pair {
     PairLJCut& set_special_bonds(double s12, double s13, double s14) &;
     PairLJCut set_special_bonds(double s12, double s13, double s14) &&;
 
+    /// @brief Enable/disable per-pair virial (stress) accumulation.
+    ///
+    /// The pair virial (6 Voigt components) feeds the pressure / barostat
+    /// path only; a plain NVE run never consumes it. Computing it costs
+    /// ~20-25% of the inner-loop arithmetic (6 extra batch products + a
+    /// horizontal reduce per atom). Disabling it when no stress consumer is
+    /// active mirrors LAMMPS's per-step `vflag` gating. Forces and energy
+    /// are unaffected — bit-identical either way. Default: enabled.
+    PairLJCut& set_compute_stress(bool on) &;
+    PairLJCut set_compute_stress(bool on) &&;
+
     void build(const BuildContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;
 
@@ -81,6 +92,11 @@ class PairLJCut : public Pair {
     // Special-bonds: when any of these is < 1, the corresponding bonded
     // pair list is built at build() time and consulted at launch() time.
     double s12_ = 1.0, s13_ = 1.0, s14_ = 1.0;
+
+    // When false, the inner loop skips the 6-component pair virial and the
+    // final stress write (LAMMPS-style vflag gating). Forces/energy are
+    // unchanged. Default true to preserve behavior for pressure/NPT runs.
+    bool compute_stress_ = true;
 
     // True when any special-bonds tier is fully excluded (scale 0). Gates
     // the exclusion-filtered CSR path independently of whether the current

@@ -55,6 +55,16 @@ PairLJCut PairLJCut::set_special_bonds(double s12, double s13, double s14) && {
     return std::move(*this);
 }
 
+PairLJCut& PairLJCut::set_compute_stress(bool on) & {
+    compute_stress_ = on;
+    return *this;
+}
+
+PairLJCut PairLJCut::set_compute_stress(bool on) && {
+    compute_stress_ = on;
+    return std::move(*this);
+}
+
 void PairLJCut::build(const BuildContext& ctx) {
     n_threads_ = 1;
 #ifdef _OPENMP
@@ -288,6 +298,11 @@ void PairLJCut::compute(const LaunchContext& ctx) {
     // handled by Reduce at end_of_step.
     double v_xx = 0, v_yy = 0, v_zz = 0, v_xy = 0, v_xz = 0, v_yz = 0;
 
+    // LAMMPS-style vflag gating: skip the 6-component pair virial when no
+    // stress consumer is active (plain NVE). Loop-invariant, so the
+    // compiler unswitches the inner loop; forces/energy are unaffected.
+    const bool do_virial = compute_stress_;
+
 #pragma omp parallel reduction(+ : energy_total) reduction(+ : v_xx)           \
     reduction(+ : v_yy) reduction(+ : v_zz) reduction(+ : v_xy)                \
     reduction(+ : v_xz) reduction(+ : v_yz)
@@ -509,12 +524,14 @@ void PairLJCut::compute(const LaunchContext& ctx) {
                 acc_fix = acc_fix + v_fxp;
                 acc_fiy = acc_fiy + v_fyp;
                 acc_fiz = acc_fiz + v_fzp;
-                acc_vxx = acc_vxx + v_dx * v_fxp;
-                acc_vyy = acc_vyy + v_dy * v_fyp;
-                acc_vzz = acc_vzz + v_dz * v_fzp;
-                acc_vxy = acc_vxy + v_dx * v_fyp;
-                acc_vxz = acc_vxz + v_dx * v_fzp;
-                acc_vyz = acc_vyz + v_dy * v_fzp;
+                if (do_virial) {
+                    acc_vxx = acc_vxx + v_dx * v_fxp;
+                    acc_vyy = acc_vyy + v_dy * v_fyp;
+                    acc_vzz = acc_vzz + v_dz * v_fzp;
+                    acc_vxy = acc_vxy + v_dx * v_fyp;
+                    acc_vxz = acc_vxz + v_dx * v_fzp;
+                    acc_vyz = acc_vyz + v_dy * v_fzp;
+                }
                 acc_e = acc_e
                         + xsimd::select(mask,
                                         v_eps4 * (v_r6inv * v_r6inv - v_r6inv)
@@ -546,12 +563,14 @@ void PairLJCut::compute(const LaunchContext& ctx) {
             fi_x += xsimd::reduce_add(acc_fix);
             fi_y += xsimd::reduce_add(acc_fiy);
             fi_z += xsimd::reduce_add(acc_fiz);
-            v_xx += xsimd::reduce_add(acc_vxx);
-            v_yy += xsimd::reduce_add(acc_vyy);
-            v_zz += xsimd::reduce_add(acc_vzz);
-            v_xy += xsimd::reduce_add(acc_vxy);
-            v_xz += xsimd::reduce_add(acc_vxz);
-            v_yz += xsimd::reduce_add(acc_vyz);
+            if (do_virial) {
+                v_xx += xsimd::reduce_add(acc_vxx);
+                v_yy += xsimd::reduce_add(acc_vyy);
+                v_zz += xsimd::reduce_add(acc_vzz);
+                v_xy += xsimd::reduce_add(acc_vxy);
+                v_xz += xsimd::reduce_add(acc_vxz);
+                v_yz += xsimd::reduce_add(acc_vyz);
+            }
             energy_total += xsimd::reduce_add(acc_e);
 
             // ── Scalar tail (last jnum % W neighbors) ──────────────
@@ -601,12 +620,14 @@ void PairLJCut::compute(const LaunchContext& ctx) {
                 fyt_ptr[j] -= fyp;
                 fzt_ptr[j] -= fzp;
 
-                v_xx += dx * fxp;
-                v_yy += dy * fyp;
-                v_zz += dz * fzp;
-                v_xy += dx * fyp;
-                v_xz += dx * fzp;
-                v_yz += dy * fzp;
+                if (do_virial) {
+                    v_xx += dx * fxp;
+                    v_yy += dy * fyp;
+                    v_zz += dz * fzp;
+                    v_xy += dx * fyp;
+                    v_xz += dx * fzp;
+                    v_yz += dy * fzp;
+                }
 
                 energy_total += eps4 * (r6inv * r6inv - r6inv) - vshift;
             }
@@ -628,12 +649,14 @@ void PairLJCut::compute(const LaunchContext& ctx) {
 
     f.scalars.energy += energy_total;
     f.scalars.energy_pair += energy_total;
-    f.scalars.stress[0] += v_xx;
-    f.scalars.stress[1] += v_yy;
-    f.scalars.stress[2] += v_zz;
-    f.scalars.stress[3] += v_xy;
-    f.scalars.stress[4] += v_xz;
-    f.scalars.stress[5] += v_yz;
+    if (do_virial) {
+        f.scalars.stress[0] += v_xx;
+        f.scalars.stress[1] += v_yy;
+        f.scalars.stress[2] += v_zz;
+        f.scalars.stress[3] += v_xy;
+        f.scalars.stress[4] += v_xz;
+        f.scalars.stress[5] += v_yz;
+    }
 }
 
 void PairLJCut::destroy(const DestroyContext& ctx) {

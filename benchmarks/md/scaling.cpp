@@ -58,6 +58,7 @@ struct Args {
     int steps = 200;             ///< MD steps to time
     int warmup = 10;             ///< unrecorded warmup steps before timing
     double cutoff = 5.0;         ///< LJ cutoff (= 2*sigma, matches GPU bench)
+    double skin = 0.6;           ///< Verlet skin [A] — matches LAMMPS lj.in
     double dt = 1.0;             ///< Time step [fs]
     bool csv_header = false;     ///< print CSV header to stdout (rank 0 only)
     bool quiet = false;          ///< suppress one-line per-rank reports
@@ -71,7 +72,8 @@ void print_help() {
         "  --atoms-per-rank N  Atoms per rank (weak scaling). Default 50000.\n"
         "  --steps N           Timed MD steps. Default 200.\n"
         "  --warmup N          Warmup steps before timing. Default 10.\n"
-        "  --cutoff R          LJ cutoff in Angstrom. Default 6.0.\n"
+        "  --cutoff R          LJ cutoff in Angstrom. Default 5.0.\n"
+        "  --skin R            Verlet skin in Angstrom. Default 0.6.\n"
         "  --dt T              Time step in fs. Default 1.0.\n"
         "  --csv-header        Print CSV column header before the data row.\n"
         "  --quiet             Suppress per-rank summaries.\n"
@@ -110,6 +112,8 @@ bool parse_args(int argc, char** argv, Args& a) {
         if (take("--warmup", a.warmup))
             continue;
         if (take_d("--cutoff", a.cutoff))
+            continue;
+        if (take_d("--skin", a.skin))
             continue;
         if (take_d("--dt", a.dt))
             continue;
@@ -244,8 +248,11 @@ int main(int argc, char** argv) {
     sim.on(ATV::md::Phase::post_force)
         .add(cpu::comm::HaloRecv{}, -1000);
     sim.on(ATV::md::Phase::force)
-        .add(cpu::md::NeighborList<>{args.cutoff}, -10);
-    sim.on(ATV::md::Phase::force).add(cpu::md::LJ{1.0, 2.5, args.cutoff});
+        .add(cpu::md::NeighborList<>{args.cutoff, args.skin}, -10);
+    // Plain NVE: no barostat / pressure consumer, so skip the pair virial
+    // (LAMMPS-style vflag gating) — ~20-25% off the LJ inner loop.
+    sim.on(ATV::md::Phase::force)
+        .add(cpu::md::LJ{1.0, 2.5, args.cutoff}.set_compute_stress(false));
     sim.build();
 
     if (args.warmup > 0)
