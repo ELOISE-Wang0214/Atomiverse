@@ -1,67 +1,67 @@
-# PE-melt CPU optimization — Atomiverse now beats LAMMPS (2026-06-06)
+# CPU multicore scaling — Atomiverse beats LAMMPS (2026-06-06)
 
-Two correctness-preserving optimizations (commits `17032e9`, `5c47ef6` on
-`dev`) flipped the polyethylene-melt benchmark from **0.92× LAMMPS** (8 %
-behind at 256 cores) to **1.02–1.06× at every scale 1→1024 cores**.
+Latest CPU multicore weak-scaling results (LJ + PE-melt) after two
+correctness-preserving optimizations (commits `17032e9`, `5c47ef6` on `dev`).
+This dir supersedes the old `multicore_2026-06-06` (which compared the PE
+system with a wrong 18-atom-chain build).
 
-## What changed
+## Weak scaling — atom count grows with cores
+
+These are **weak-scaling** runs: each rank holds a fixed slice, so the *total*
+atom count grows with the core count (annotated on the top x-axis of the
+figure):
+
+- **LJ**: ~16 000 atoms/rank → 15 625 (1 core) … 16.4 M (1024 cores).
+- **PE**: 8 000 atoms/rank → 8 000 (1 core) … 8.19 M (1024 cores).
+
+## The two optimizations
 
 1. **Single-thread direct-write force path** (`17032e9`). For pure-MPI runs
-   (one rank per core, `OMP_NUM_THREADS=1` — the production multi-node layout)
-   the per-thread force scratch is pure overhead. Forces now accumulate
-   straight into the frame arrays (already cleared by `ZeroForces` +
-   `HaloSend::zero_ghost_forces`), eliding the per-step zero-fill **and** the
-   reduce sweep — two `O(n_force)` passes per kernel per step that LAMMPS never
-   pays. Applied to the three bonded kernels (`BondedForceScratch`) and
-   `PairLJCut`. Multi-thread (hybrid MPI+OMP) keeps the private-buffer + reduce
-   path. Effect: **Bonded −26 %**, Pair −2.7 %, Comm −10 %.
+   (one rank/core, OMP=1) forces accumulate straight into the frame arrays
+   instead of per-thread scratch — eliding the per-step zero-fill + reduce
+   sweep (two O(n_force) passes/kernel LAMMPS never pays). Bonded −26 %,
+   Pair −2.7 %. Helps both LJ (pair) and PE (pair + 3 bonded kernels).
+2. **Opt-in global-Allreduce cadence** (`5c47ef6`). The per-step 18-double
+   energy/kinetic/stress `MPI_Allreduce` is pure diagnostic overhead in
+   NVE+Langevin; `MD::set_scalar_reduce_every(N)` fires it only on sampled
+   steps (gated on the all-ranks-identical `ctx.step` — no deadlock). NoseHoover
+   NVT/NPT stages keep every-step reduction. PE Reduce −2.9 %.
 
-2. **Opt-in global-Allreduce cadence** (`5c47ef6`). The end-of-step `Reduce`
-   (18-double energy/kinetic/stress `MPI_Allreduce`) fired every step; a plain
-   NVE / per-atom-Langevin run consumes none of it between thermo samples
-   (LAMMPS likewise only reduces at thermo output). `Reduce(every)` +
-   `MD::set_scalar_reduce_every(N)` gate the collective on the all-ranks-
-   identical `ctx.step` (lockstep — no deadlock). `polyethylene_tension` stage 1
-   sets the cadence to the recorder stride; **stages 2–3 (NoseHoover NVT/NPT)
-   keep every-step reduction** — they integrate the global T/P each step.
-   Effect: Reduce_s 0.34 → 0.027 s, **−2.9 %**.
+Both verified physics-preserving: full `cpu_md` (40) + MPI suite (10, incl.
+NVT/NPT multirank + NVE→NPT `pe_msu_pipeline`) green at OMP=1 and OMP=4; PE
+thermo byte-identical at every sampled step.
 
-Both verified physics-preserving: full `cpu_md` suite (40) + MPI suite (10,
-incl. NVT/NPT multirank and the NVE→NPT `pe_msu_pipeline`) green at OMP=1
-(direct path) and OMP=4 (scratch path). Thermo at every sampled step is
-byte-identical to the every-step-reduce baseline (E_pot=139981, E_pair=−58486.5,
-E_bond=46409.3 at step 500 of the 2.048M-atom / 256-rank run).
+## Result (weak-scaling throughput, AV / LAMMPS)
 
-## Benchmark
+| cores | 1 | 8 | 64 | 256 | 512 | 1024 |
+|-------|---|---|----|-----|-----|------|
+| **LJ**  | 3.0× | 2.5× | 1.8× | 2.2× | 1.2× | 1.2× |
+| **PE**  | 1.04× | 1.05× | 1.03× | 1.03× | 1.03× | 1.02× |
 
-Weak scaling, 8000 atoms/rank, gen_pe Dreiding-UA melt (`--pe-melt-grid`,
-**20-atom chains** — `--n-atoms-per-chain 20`, matched to LAMMPS
-`pe_NxNxN.data`), stage 1 (NVE/limit + Langevin @ 500 K), 1000 steps, EPYC
-`cpu` partition (256 cores/node), `srun --mpi=pmi2`, OMP=1. AV
-`polyethylene_tension --mode stage:1`; LAMMPS `lammps_bench.in`.
+PE flipped from **0.92× (8 % behind)** at 256 cores to **1.02–1.06× ahead**
+across the whole range. LJ leads everywhere (1.2–3.0×). Peak per-rank memory
+(fair `/usr/bin/time -v` max RSS, both codes) is within ~1.5× of LAMMPS.
 
-**Gotcha:** AV `--pe-melt-grid` defaults to **18-atom chains**; the LAMMPS
-gen_pe data files are **20-atom**. Always pass `--n-atoms-per-chain 20` for a
-matched comparison (the earlier figure data compared 18 vs 20 chains).
-
-## Data files
+## Files
 
 | file | contents |
 |------|----------|
-| `pe_weak_1-1024_matched.csv` | weak scaling 1→1024 cores, AV vs LAMMPS, Matom-step/s (the headline sweep) |
-| `pe_256_ab.csv` | 256-core A/B: baseline → +direct-write → +reduce-gate → LAMMPS, per-component breakdown |
-| `plot_pe_opt.py` / `pe_weak_scaling_opt.png` | throughput + speedup-ratio figure |
+| `lj_pe_weak_matched.csv` | LJ + PE weak scaling 1→1024 cores: throughput + max RSS/rank, both codes |
+| `pe_256_ab.csv` | 256-core PE per-component A/B: baseline → +direct-write → +reduce-gate → LAMMPS |
+| `plot_multicore_opt.py` / `multicore_weak_opt.png` | the combined throughput + memory figure (atoms on top x-axis) |
 
-## Headline (Matom-step/s, AV / LAMMPS)
+## Method
 
-| cores | 1 | 32 | 64 | 128 | 256 | 512 | 1024 |
-|-------|---|----|----|-----|-----|-----|------|
-| AV    | 1.4 | 36.6 | 75.1 | 142.6 | 236.4 | 455.1 | 880.0 |
-| LMP   | 1.3 | 36.3 | 72.9 | 138.8 | 229.2 | 440.4 | 864.7 |
-| ratio | 1.04× | 1.01× | 1.03× | 1.03× | 1.03× | 1.03× | 1.02× |
+EPYC `cpu` partition (256 cores/node), 1→4 nodes, OMP=1, `srun --mpi=pmi2`.
+LJ: `scaling --atoms-per-rank 16000` vs LAMMPS `lj.in` (ρ*=0.712, rc=2σ,
+skin 0.6, reneigh 20). PE: `polyethylene_tension --pe-melt-grid …
+--n-atoms-per-chain 20 --mode stage:1` vs LAMMPS `lammps_bench.in` on the
+matched `pe_NxNxN.data`. PE throughput from the clean sweep; PE memory and all
+LJ data from the `/usr/bin/time -v` sweep (two contention-stragglers re-run
+best-of-3). **Gotcha:** AV `--pe-melt-grid` defaults to 18-atom chains; always
+pass `--n-atoms-per-chain 20` to match the LAMMPS gen_pe data.
 
 ## Remaining lever
 
-Comm is still ~1.8× LAMMPS at 256 cores (3-axis cascade halo with per-axis
-`Waitall` vs LAMMPS's pipelined 6-swap `comm_brick`). Closing it would widen
-the lead further; not required to beat LAMMPS.
+PE Comm is still ~1.8× LAMMPS at 256 cores (3-axis cascade halo vs pipelined
+6-swap `comm_brick`) — would widen the lead; not required to beat LAMMPS.

@@ -1,0 +1,49 @@
+# CPU multicore WEAK scaling (atoms grow with cores): Atomiverse vs LAMMPS, optimized binary, same EPYC nodes, OMP=1, srun --mpi=pmi2.
+# LJ: simple-cubic rho*=0.712, rc=2sigma, skin 0.6, reneigh 20, ~16000 atoms/rank, 200 steps.
+# PE: gen_pe Dreiding-UA melt, 20-atom chains, NVE/limit+Langevin, 8000 atoms/rank, 1000 steps. (PE speed=clean sweep 9771; memory=sweep 9857 maxrss.)
+# matom_step_s = throughput; maxrss_mb = max per-rank resident set (/usr/bin/time -v) for BOTH codes.
+system,code,ranks,atoms,matom_step_s,maxrss_mb
+lj,av,1,15625,13.7,31
+lj,lammps,1,15625,4.6,20
+lj,av,2,32768,20.9,47
+lj,lammps,2,32768,8.9,26
+lj,av,4,64000,44.3,48
+lj,lammps,4,64000,17.9,28
+lj,av,8,125000,85.7,49
+lj,lammps,8,125000,33.8,29
+lj,av,16,250047,122.1,56
+lj,lammps,16,250047,64.7,33
+lj,av,32,512000,307.5,55
+lj,lammps,32,512000,129.2,34
+lj,av,64,1030301,430.2,62
+lj,lammps,64,1030301,245.7,33
+lj,av,128,2048383,710.9,68
+lj,lammps,128,2048383,398.3,36
+lj,av,256,4096000,1667.5,69
+lj,lammps,256,4096000,745.7,41
+lj,av,512,8242408,1853.3,148
+lj,lammps,512,8242408,1559.3,108
+lj,av,1024,16387064,2858.8,164
+lj,lammps,1024,16387064,2370.2,111
+pe,av,1,8000,1.4,40
+pe,lammps,1,8000,1.3,30
+pe,av,2,16000,2.6,50
+pe,lammps,2,16000,2.5,34
+pe,av,4,32000,5.2,52
+pe,lammps,4,32000,4.9,34
+pe,av,8,64000,10.2,61
+pe,lammps,8,64000,9.7,38
+pe,av,16,128000,19.4,66
+pe,lammps,16,128000,18.9,44
+pe,av,32,256000,36.6,70
+pe,lammps,32,256000,36.3,47
+pe,av,64,512000,75.1,72
+pe,lammps,64,512000,72.9,50
+pe,av,128,1024000,142.6,76
+pe,lammps,128,1024000,138.8,56
+pe,av,256,2048000,236.4,83
+pe,lammps,256,2048000,229.2,70
+pe,av,512,4096000,455.1,152
+pe,lammps,512,4096000,440.4,146
+pe,av,1024,8192000,880.0,156
+pe,lammps,1024,8192000,864.7,149
