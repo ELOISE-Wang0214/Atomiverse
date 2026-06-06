@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cuda_runtime.h>
 #include <set>
@@ -276,6 +277,38 @@ TEST(MultiGpu, FullPotentialParityVsSingleGpu) {
         EXPECT_NEAR(fmulti.atoms.fy[i], fref.atoms.fy[i], 0.5) << "fy atom " << i;
         EXPECT_NEAR(fmulti.atoms.fz[i], fref.atoms.fz[i], 0.5) << "fz atom " << i;
     }
+}
+
+// multigpu-bonded-05 P5.4: per-step hot-path timing (forward_comm + the combined
+// LJ+bonded compute_forces). Disabled by default; run with
+// --gtest_also_run_disabled_tests --gtest_filter=*HotPathTiming*. Reports µs/step
+// so the P2P-batching before/after can be compared across engine versions.
+TEST(MultiGpu, DISABLED_HotPathTiming) {
+    cuda::md::MultiGpu mg;
+    if (mg.count() < 2)
+        GTEST_SKIP() << "needs >=2 GPUs";
+    auto g = make_bonded_grid(12.0);
+    const std::vector<double> K{100.0}, r0{2.0}, aK{50.0}, aT{109.5};
+    const std::vector<std::array<double, 5>> dC{{1.0, 0.5, -0.3, 0.2, 0.1}};
+    mg.partition(g);
+    mg.setup_force_engine(5.0, 0.1, 2.0);
+    mg.setup_bonded(K, r0, aK, aT, dC);
+    mg.enable_special_bonds();
+    mg.reneighbor();
+    const int M = 2000;
+    for (int i = 0; i < 100; ++i) { // warmup
+        mg.forward_comm();
+        mg.compute_forces();
+    }
+    auto t0 = std::chrono::high_resolution_clock::now();
+    for (int i = 0; i < M; ++i) {
+        mg.forward_comm();    // per-step position halo (forward, packed)
+        mg.compute_forces();  // LJ + bonded + reverse halo (packed)
+    }
+    auto t1 = std::chrono::high_resolution_clock::now();
+    double us = std::chrono::duration<double, std::micro>(t1 - t0).count() / M;
+    std::cerr << "[timing] forward_comm+compute_forces: " << us << " us/step ("
+              << mg.count() << " GPUs)\n";
 }
 
 TEST(MultiGpu, PartitionGatherRoundTrip) {

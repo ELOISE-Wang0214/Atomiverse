@@ -117,22 +117,35 @@ __global__ void pack_face(const real_t* __restrict__ x,
     }
 }
 
-// Gather current positions of `cnt` owned atoms named by `idx` into the
-// contiguous send buffers (forward_comm position refresh).
-__global__ void gather_positions(const real_t* __restrict__ x,
-                                 const real_t* __restrict__ y,
-                                 const real_t* __restrict__ z,
-                                 const int* __restrict__ idx, int cnt,
-                                 real_t* __restrict__ ox,
-                                 real_t* __restrict__ oy,
-                                 real_t* __restrict__ oz) {
+// Packed forward halo (multigpu-bonded-05): gather the positions of `cnt` atoms
+// named by idx into ONE contiguous [3*cnt] buffer (x|y|z blocks), so the
+// per-step position refresh is a single cudaMemcpyPeer per transfer.
+__global__ void gather_positions_packed(const real_t* __restrict__ x,
+                                        const real_t* __restrict__ y,
+                                        const real_t* __restrict__ z,
+                                        const int* __restrict__ idx, int cnt,
+                                        real_t* __restrict__ out3) {
     int k = blockIdx.x * blockDim.x + threadIdx.x;
     if (k >= cnt)
         return;
     int i = idx[k];
-    ox[k] = x[i];
-    oy[k] = y[i];
-    oz[k] = z[i];
+    out3[k] = x[i];
+    out3[cnt + k] = y[i];
+    out3[2 * cnt + k] = z[i];
+}
+
+// Packed forward halo: scatter a received [3*cnt] block into the dst ghost rows
+// [base, base+cnt).
+__global__ void unpack_positions_packed(real_t* __restrict__ x,
+                                        real_t* __restrict__ y,
+                                        real_t* __restrict__ z, int base,
+                                        int cnt, const real_t* __restrict__ in3) {
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= cnt)
+        return;
+    x[base + k] = in3[k];
+    y[base + k] = in3[cnt + k];
+    z[base + k] = in3[2 * cnt + k];
 }
 
 // Packed reverse halo (multigpu-bonded-05): gather a destination's ghost-row
@@ -280,13 +293,9 @@ void MultiGpu::destroy_halo_plan() {
     for (auto& p : halo_plan_) {
         dm_.set_device(p.src);
         freep(p.d_src_idx);
-        freep(p.d_sx);
-        freep(p.d_sy);
-        freep(p.d_sz);
-        // Packed reverse-halo buffers (src receive, dst gather).
-        freep(p.d_srev_src); // current device is p.src here
+        freep(p.d_pack_src); // packed forward/reverse staging on src
         dm_.set_device(p.dst);
-        freep(p.d_frev_dst);
+        freep(p.d_pack_dst); // packed forward/reverse staging on dst
     }
     halo_plan_.clear();
     // The freep's above are stream-ordered (cudaFreeAsync). Drain them so a
@@ -406,24 +415,14 @@ void MultiGpu::build_halo(double cutoff) {
                 p.cnt = cnt;
                 p.base = base;
                 CKM(mallocp(&p.d_src_idx, cnt * sizeof(int)));
-                CKM(mallocp(&p.d_sx, cnt * sizeof(real_t)));
-                CKM(mallocp(&p.d_sy, cnt * sizeof(real_t)));
-                CKM(mallocp(&p.d_sz, cnt * sizeof(real_t)));
                 CKM(cudaMemcpy(p.d_src_idx, sidx, cnt * sizeof(int),
                                cudaMemcpyDeviceToDevice));
-                CKM(cudaMemcpy(p.d_sx, sx, cnt * sizeof(real_t),
-                               cudaMemcpyDeviceToDevice));
-                CKM(cudaMemcpy(p.d_sy, sy, cnt * sizeof(real_t),
-                               cudaMemcpyDeviceToDevice));
-                CKM(cudaMemcpy(p.d_sz, sz, cnt * sizeof(real_t),
-                               cudaMemcpyDeviceToDevice));
-                // Packed reverse-halo buffers: one [3*cnt] receive buffer on the
-                // SRC device + one [3*cnt] gather buffer on the DST device, so
-                // the per-step reverse force exchange is a single P2P per
-                // transfer instead of three.
-                CKM(mallocp(&p.d_srev_src, 3 * cnt * sizeof(real_t)));
+                // Packed [3*cnt] staging shared by forward (positions) and
+                // reverse (forces): one buffer on the SRC device + one on the DST
+                // device, so each per-step exchange is a single P2P (vs three).
+                CKM(mallocp(&p.d_pack_src, 3 * cnt * sizeof(real_t)));
                 dm_.set_device(dst);
-                CKM(mallocp(&p.d_frev_dst, 3 * cnt * sizeof(real_t)));
+                CKM(mallocp(&p.d_pack_dst, 3 * cnt * sizeof(real_t)));
                 dm_.set_device(src);
                 halo_plan_.push_back(p);
 
@@ -459,20 +458,22 @@ void MultiGpu::forward_comm() {
             if (p.axis != axis || p.cnt <= 0)
                 continue;
             any = true;
+            const int sd = dm_.device_id(p.src), dd_id = dm_.device_id(p.dst);
+            int block = 256, grid = (p.cnt + block - 1) / block;
+            // Gather positions into the packed src buffer, ship in ONE P2P,
+            // unpack into the dst ghost rows.
             dm_.set_device(p.src);
             auto& a = frames_[p.src].atoms;
-            int block = 256, grid = (p.cnt + block - 1) / block;
-            gather_positions<<<grid, block>>>(a.x, a.y, a.z, p.d_src_idx, p.cnt,
-                                              p.d_sx, p.d_sy, p.d_sz);
+            gather_positions_packed<<<grid, block>>>(a.x, a.y, a.z, p.d_src_idx,
+                                                     p.cnt, p.d_pack_src);
             CKM(cudaGetLastError());
+            CKM(cudaMemcpyPeer(p.d_pack_dst, dd_id, p.d_pack_src, sd,
+                               3 * p.cnt * sizeof(real_t)));
+            dm_.set_device(p.dst);
             auto& da = frames_[p.dst].atoms;
-            const int sd = dm_.device_id(p.src), dd_id = dm_.device_id(p.dst);
-            CKM(cudaMemcpyPeer(da.x + p.base, dd_id, p.d_sx, sd,
-                               p.cnt * sizeof(real_t)));
-            CKM(cudaMemcpyPeer(da.y + p.base, dd_id, p.d_sy, sd,
-                               p.cnt * sizeof(real_t)));
-            CKM(cudaMemcpyPeer(da.z + p.base, dd_id, p.d_sz, sd,
-                               p.cnt * sizeof(real_t)));
+            unpack_positions_packed<<<grid, block>>>(da.x, da.y, da.z, p.base,
+                                                     p.cnt, p.d_pack_dst);
+            CKM(cudaGetLastError());
         }
         if (any)
             for (int s = 0; s < count(); ++s) {
@@ -503,18 +504,18 @@ void MultiGpu::reverse_comm() {
             auto& da = frames_[p.dst].atoms;
             gather_ghost_forces_packed<<<grid, block>>>(da.fx, da.fy, da.fz,
                                                         p.base, p.cnt,
-                                                        p.d_frev_dst);
+                                                        p.d_pack_dst);
             CKM(cudaGetLastError());
 
             // Ship dst → src in a single P2P (3*cnt contiguous).
-            CKM(cudaMemcpyPeer(p.d_srev_src, sd, p.d_frev_dst, dd_id,
+            CKM(cudaMemcpyPeer(p.d_pack_src, sd, p.d_pack_dst, dd_id,
                                3 * p.cnt * sizeof(real_t)));
 
             // Scatter-add into the src owned (or prior-axis ghost) rows.
             dm_.set_device(p.src);
             auto& a = frames_[p.src].atoms;
             scatter_add_forces_packed<<<grid, block>>>(
-                a.fx, a.fy, a.fz, p.d_src_idx, p.cnt, p.d_srev_src);
+                a.fx, a.fy, a.fz, p.d_src_idx, p.cnt, p.d_pack_src);
             CKM(cudaGetLastError());
         }
         // Barrier between axes: this axis's scatter-adds into prior-axis ghost
@@ -870,6 +871,7 @@ void MultiGpu::build_tag_maps() {
     if (static_cast<int>(tagmap_tag_.size()) != N) {
         tagmap_tag_.assign(N, nullptr);
         tagmap_idx_.assign(N, nullptr);
+        drop_ctr_.assign(N, nullptr);
     }
     for (int s = 0; s < N; ++s) {
         const int na = frames_[s].n_local_ + frames_[s].n_ghost_;
@@ -878,6 +880,7 @@ void MultiGpu::build_tag_maps() {
             CKM(cudaMalloc(&tagmap_tag_[s],
                            frames_[s].capacity_ * sizeof(std::int64_t)));
             CKM(cudaMalloc(&tagmap_idx_[s], frames_[s].capacity_ * sizeof(int)));
+            CKM(cudaMalloc(&drop_ctr_[s], sizeof(int))); // persistent, reused each rebuild
         }
         if (na <= 0)
             continue;
@@ -916,8 +919,7 @@ void MultiGpu::rebuild_bonded_tuples() {
         dm_.set_device(s);
         auto& a = frames_[s].atoms;
         auto& F = frames_[s];
-        int* d_drop = nullptr;
-        CKM(cudaMalloc(&d_drop, sizeof(int)));
+        int* d_drop = drop_ctr_[s]; // persistent (allocated in build_tag_maps)
         CKM(cudaMemset(d_drop, 0, sizeof(int)));
         const int block = 256, grid = (nl + block - 1) / block;
         // Each tuple type's flat arrays + count cell exist only if that subdomain
@@ -959,7 +961,7 @@ void MultiGpu::rebuild_bonded_tuples() {
         F.n_bonds_ = nb;
         F.n_angles_ = nan;
         F.n_dihedrals_ = nd;
-        cudaFree(d_drop);
+        (void)d_drop; // persistent counter; not freed here
         // Rebuild the LJ special-bonds exclusion CSR from the fresh flat lists
         // (local/ghost indices), so 1-2/1-3/1-4 partners — including cross-GPU
         // ghosts — are excluded from the pair force this interval.
@@ -976,9 +978,12 @@ void MultiGpu::destroy_tag_maps() {
         dm_.set_device(static_cast<int>(s));
         cudaFree(tagmap_tag_[s]);
         cudaFree(tagmap_idx_[s]);
+        if (s < drop_ctr_.size())
+            cudaFree(drop_ctr_[s]);
     }
     tagmap_tag_.clear();
     tagmap_idx_.clear();
+    drop_ctr_.clear();
 }
 
 void MultiGpu::setup_bonded(std::vector<double> bond_K,

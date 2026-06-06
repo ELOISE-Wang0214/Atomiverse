@@ -228,13 +228,12 @@ class MultiGpu {
         int base = 0;  // dst ghost offset (n_local + accumulated)
         int* d_src_idx = nullptr;          // [cnt] src-array indices (owned OR
                                            // prior-axis ghost) on src device
-        real_t *d_sx = nullptr, *d_sy = nullptr, *d_sz = nullptr; // [cnt] send bufs
-        // Reverse (force) halo, packed: ghost-row forces are gathered into one
-        // contiguous [3*cnt] buffer on the dst device (x|y|z blocks) and shipped
-        // back to the src device in a SINGLE cudaMemcpyPeer (vs three). Allocated
-        // by build_halo on their respective devices.
-        real_t* d_frev_dst = nullptr; // [3*cnt] dst-device gather buffer
-        real_t* d_srev_src = nullptr; // [3*cnt] src-device receive buffer
+        // Packed [3*cnt] halo staging, shared by the forward (positions) and
+        // reverse (forces) exchanges — they never overlap within a step. One
+        // buffer per device, so each forward/reverse transfer is a SINGLE
+        // cudaMemcpyPeer (x|y|z blocks) instead of three. Allocated by build_halo.
+        real_t* d_pack_src = nullptr; // [3*cnt] src device (forward send / reverse recv)
+        real_t* d_pack_dst = nullptr; // [3*cnt] dst device (forward recv / reverse gather)
     };
 
   private:
@@ -269,6 +268,7 @@ class MultiGpu {
     bool bonded_ = false;
     std::vector<std::int64_t*> tagmap_tag_; // [capacity] sorted global tags, per slot
     std::vector<int*> tagmap_idx_;          // [capacity] parallel local indices, per slot
+    std::vector<int*> drop_ctr_;            // [1] persistent dropped-tuple counter, per slot
 
     // Cross-GPU bonded force engine (one component per subdomain per type).
     std::vector<std::unique_ptr<cuda::BondHarmonic>> bond_;
