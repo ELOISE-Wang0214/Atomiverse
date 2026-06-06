@@ -86,9 +86,10 @@ class MD : public DynamicsDriver {
             .add(ZeroKinetic{}, -1000)
             .add(KineticEnergy{}, -100);
 
-        // MPI infrastructure (single-rank no-ops in Phase 1).
+        // MPI infrastructure (single-rank no-ops in Phase 1). `Reduce` is
+        // injected in install_defaults() so set_scalar_reduce_every() (which
+        // runs after construction) can configure its cadence.
         add(comm::Migrate{10});
-        add(mpi::Reduce{});
 
         // Async-analysis publisher — shared infrastructure, explicitly
         // bound to *this driver's* end_of_step @ +10. Subscribers
@@ -122,6 +123,20 @@ class MD : public DynamicsDriver {
     template <typename Bs>
     MD& set_barostat(Bs&& b) {
         this->add(std::forward<Bs>(b));
+        return *this;
+    }
+
+    /// @brief Set the cadence of the global scalar `MPI_Allreduce` (energy /
+    /// kinetic / stress). Default 1 = every step. A value > 1 fires the reduce
+    /// only on step 0 and every Nth step thereafter — eliding the per-step
+    /// latency-bound collective. ONLY valid when no per-step consumer reads the
+    /// reduced scalars (NVE / per-atom Langevin, where the global energy/stress
+    /// are pure diagnostics sampled every N steps). MUST stay 1 whenever a
+    /// NoseHoover thermostat or barostat is active — those integrate the global
+    /// temperature/pressure every step. Set N to align with the thermo /
+    /// recorder sampling stride so sampled steps see globally-reduced scalars.
+    MD& set_scalar_reduce_every(int every) {
+        scalar_reduce_every_ = every < 1 ? 1 : every;
         return *this;
     }
 
@@ -199,6 +214,10 @@ class MD : public DynamicsDriver {
     void install_defaults() override {
         const auto s = this->scan_pending_infra_();
 
+        // Global scalar reduction (single-rank no-op). Injected here rather
+        // than in the ctor so set_scalar_reduce_every() can set the cadence.
+        this->add(mpi::Reduce{scalar_reduce_every_});
+
         if (s.needs_stress && !s.has_virial_stress)
             this->add(Virial{});
 
@@ -246,6 +265,7 @@ class MD : public DynamicsDriver {
 
   private:
     std::optional<std::string> integrator_set_;
+    int scalar_reduce_every_ = 1;
 };
 
 } // namespace md

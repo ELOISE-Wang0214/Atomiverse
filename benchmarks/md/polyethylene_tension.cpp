@@ -1848,6 +1848,13 @@ int main(int argc, char** argv) {
         sim.set_integrator(nve);
         sim.add(init_v);
         sim.set_thermostat(langevin);
+        // Stage 1 is NVE/limit + per-atom Langevin: nothing consumes the global
+        // energy/kinetic/stress between thermo samples, so the per-step
+        // MPI_Allreduce is pure diagnostic overhead. Fire it only on sampled
+        // steps (aligned to the recorder stride). Multi-rank only; single-rank
+        // Reduce is a no-op. Stages 2-3 (NoseHoover NVT/NPT) keep every-step
+        // reduction — they integrate the global T/P each step.
+        sim.set_scalar_reduce_every(a.print_every);
         wire_shared(sim, shared);
         rec.begin_stage(1, a.T_hot, /*record_strain=*/false);
         if (preserved_dd)

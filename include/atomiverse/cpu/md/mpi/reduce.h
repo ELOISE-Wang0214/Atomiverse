@@ -30,13 +30,29 @@ namespace mpi {
 
 /// @brief Batched 18-double `MPI_Allreduce(SUM)` of the per-rank energy,
 /// kinetic, and stress partials. Single-rank: no-op (state already global).
+///
+/// `every` sets the reduction cadence: with `every == 1` (default) the
+/// collective fires every step — the only correct setting whenever a per-step
+/// consumer reads the global scalars (a NoseHoover thermostat integrates the
+/// global temperature, a barostat the global pressure, every step). With
+/// `every > 1` the reduce fires only on step 0 and every `every`-th step,
+/// gated on the all-ranks-identical `ctx.step` so the collective stays in
+/// lockstep (no rank-divergent skip → no deadlock). That is safe ONLY for runs
+/// whose global scalars are pure diagnostics sampled at a known cadence — plain
+/// NVE / per-atom Langevin (the throughput stage) — where it elides the
+/// per-step latency-bound collective LAMMPS likewise avoids until thermo output.
 class Reduce : public cpu::ComponentBase {
   public:
+    Reduce() = default;
+    explicit Reduce(int every) : every_(every < 1 ? 1 : every) {}
     std::string name() const override { return "reduce"; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {{static_cast<int>(ATV::md::Phase::end_of_step), -50}};
     }
     void launch(const cpu::LaunchContext& ctx) override;
+
+  private:
+    int every_ = 1;
 };
 
 } // namespace mpi

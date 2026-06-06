@@ -30,6 +30,15 @@ void Reduce::launch(const cpu::LaunchContext& ctx) {
     if (!dd || dd->cart_comm == MPI_COMM_NULL)
         return;
 
+    // Cadence gate (see Reduce doc): with every_ > 1, fire only on step 0 and
+    // every every_-th step. Gated on the all-ranks-identical ctx.step so the
+    // collective is still entered in lockstep — no rank-divergent skip, hence
+    // no deadlock. every_ == 1 (default) reduces every step, byte-identical to
+    // before; the larger cadence is opt-in via MD::set_scalar_reduce_every and
+    // only valid when no per-step consumer reads the global scalars.
+    if (every_ > 1 && ctx.step != 0 && (ctx.step % every_) != 0)
+        return;
+
     auto& f = ctx.frame;
     // Pack {energy, energy_pair, energy_bond, energy_angle, energy_dihedral,
     // kinetic, stress[6], stress_kinetic[6]} into a single buffer for one
