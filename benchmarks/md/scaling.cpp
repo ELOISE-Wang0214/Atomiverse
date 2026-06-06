@@ -59,7 +59,7 @@ struct Args {
     int warmup = 10;             ///< unrecorded warmup steps before timing
     double cutoff = 5.0;         ///< LJ cutoff (= 2*sigma, matches GPU bench)
     double skin = 0.6;           ///< Verlet skin [A] — matches LAMMPS lj.in
-    int reneigh = 1;             ///< halo full-rebuild cadence (steps)
+    int reneigh = 20;            ///< reneighbor cadence (steps) — matches LAMMPS
     int migrate = 0;             ///< migrate cadence (0 = follow reneigh)
     double dt = 1.0;             ///< Time step [fs]
     bool csv_header = false;     ///< print CSV header to stdout (rank 0 only)
@@ -241,23 +241,21 @@ int main(int argc, char** argv) {
     // Without this the decomposition corrupts over a run and the neighbor
     // list degrades toward O(N^2). Migrate also bumps neighbor_generation,
     // which triggers the halo full-rebuild on migration steps.
+    // Re-home drifted atoms + reneighbor every `reneigh` steps, matching the
+    // LAMMPS `neigh_modify every 20` cadence the comparison uses. Migrate shares
+    // the cadence (a reneighbor step is also an exchange step). Between these,
+    // the halo only refreshes ghost positions and the neighbor list is reused —
+    // so the per-step cost is the LJ kernel, not a rebuild.
     sim.add(cpu::comm::Migrate{args.migrate > 0 ? args.migrate : args.reneigh});
-    // HaloSend `every=N`: full halo rebuild (count exchange + slot reassign)
-    // every N steps; position-only ghost refresh in between. The neighbor list
-    // (coupled via dd->halo_generation) then rebuilds only on full-rebuild
-    // steps, not every step — that 48%-of-multi-rank-time Neigh + 41% Comm is
-    // the scaling bottleneck.
-    //
-    // DEFAULT reneigh=1 (full rebuild every step). reneigh>1 currently exposes
-    // a real bug in the position-only path: when Migrate does NOT run every
-    // step, an owned atom drifts and the full-rebuild cascade later leaves a
-    // ghost slot UNINITIALISED (garbage ~1.8e10 position), spiking a force and
-    // hanging one rank in PairLJCut while the others block in HaloRecv. Repro:
-    // `--reneigh 20 --migrate 20` (n>=8); `--reneigh 20 --migrate 1` works.
-    // Fixing the cascade ghost-slot accounting unlocks reneigh>1 and is the key
-    // to beating LAMMPS on multi-core. See note atomiverse-cpu-mpi-desync-hang.
+    // HaloSend cutoff = pair cutoff + Verlet skin (LAMMPS comm rule): ghosts
+    // must cover atoms that drift into the cutoff band before the next
+    // reneighbor, else a real pair is missed and the force blows up. Explicit
+    // halo here means MD::install_defaults skips its auto-inject (which would
+    // otherwise add a SECOND HaloRecv — see fix d8ea6a5: the reverse exchange
+    // must run exactly once or it double-applies ghost forces and leaks
+    // momentum).
     sim.on(ATV::md::Phase::pre_force)
-        .add(cpu::comm::HaloSend{args.cutoff, args.reneigh}, -20);
+        .add(cpu::comm::HaloSend{args.cutoff + args.skin, args.reneigh}, -20);
     sim.on(ATV::md::Phase::post_force)
         .add(cpu::comm::HaloRecv{}, -1000);
     sim.on(ATV::md::Phase::force)
@@ -291,6 +289,39 @@ int main(int argc, char** argv) {
 
     if (do_timing)
         sim.emit_timing("bench");
+
+    // Correctness oracle: frame.scalars.energy is the cross-rank-reduced total
+    // LJ potential energy (filled by the Reduce component) on rank 0 — the same
+    // field tests/mpi/test_lj_energy_bruteforce.cpp checks. Compare across
+    // reneigh cadences to confirm the position-only halo conserves energy.
+    if (do_timing) {
+        // Total linear momentum over OWNED atoms, reduced across ranks. For NVE
+        // it must stay constant — a drift exposes a Newton's-3rd-law violation
+        // in the multi-rank force path (reverse-halo / dedup). The authoritative
+        // owned count is dd->n_local (frame.atoms.nlocal is left at global N).
+        int nloc = frame.atoms.size();
+#ifdef ATV_HAS_MPI
+        auto dd_probe = sim.release_dd();
+        if (world_size > 1 && dd_probe)
+            nloc = dd_probe->n_local;
+#endif
+        double p[3] = {0, 0, 0};
+        for (int i = 0; i < nloc; ++i) {
+            const double m = frame.atoms.mass[i];
+            p[0] += m * frame.atoms.vx[i];
+            p[1] += m * frame.atoms.vy[i];
+            p[2] += m * frame.atoms.vz[i];
+        }
+        double pg[3] = {p[0], p[1], p[2]};
+#ifdef ATV_HAS_MPI
+        MPI_Reduce(p, pg, 3, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+#endif
+        const double pmag =
+            std::sqrt(pg[0] * pg[0] + pg[1] * pg[1] + pg[2] * pg[2]);
+        if (my_rank == 0)
+            std::fprintf(stderr, "FINAL_ENERGY %.6f  |P| %.6e  nloc0 %d\n",
+                         frame.scalars.energy, pmag, nloc);
+    }
 
     const double total_s = t1 - t0;
     const double per_step_ms = 1000.0 * total_s / std::max(1, args.steps);
