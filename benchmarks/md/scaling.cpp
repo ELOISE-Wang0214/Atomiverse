@@ -61,7 +61,13 @@ struct Args {
     double skin = 0.6;           ///< Verlet skin [A] — matches LAMMPS lj.in
     int reneigh = 20;            ///< reneighbor cadence (steps) — matches LAMMPS
     int migrate = 0;             ///< migrate cadence (0 = follow reneigh)
-    double dt = 1.0;             ///< Time step [fs]
+    // Time step. sigma=2.5, eps=1, m=1 → LJ time unit tau = sigma*sqrt(m/eps)
+    // = 2.5. LAMMPS lj.in uses dt* = 0.005 (reduced); the matching value here is
+    // 0.005*tau = 0.0125. dt=1.0 (dt/tau=0.4) was ~80x too large — the velocity-
+    // Verlet integrator was unstable and the system blew up (single-rank too),
+    // which is unphysical and also corrupts the throughput comparison (a blown-up
+    // system loses neighbors and runs artificially fast).
+    double dt = 0.0125;
     bool csv_header = false;     ///< print CSV header to stdout (rank 0 only)
     bool quiet = false;          ///< suppress one-line per-rank reports
 };
