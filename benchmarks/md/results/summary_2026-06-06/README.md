@@ -26,13 +26,13 @@ GPU at large single-GPU N and across multi-GPU (single-process, NVLink P2P).
 
 ## Figure — unified template
 
-All four panels share one identical template: **x = total atoms** (log);
-**throughput** on the left axis (solid lines, filled markers, log) and
-**memory** on the right axis (dotted lines, open markers, log) — max RSS/rank
-for CPU, peak VRAM for GPU, both in MB. Blue = Atomiverse, red = LAMMPS; one
-shared legend; matching log minor ticks on every axis. The hardware swept
-(cores / GPUs) is named in each panel title, not the axes, so the four panels
-are directly comparable.
+All four panels share one **style**: **throughput** on the left axis (solid
+lines, filled markers, log) and **memory** on the right axis (dotted lines,
+open markers, log) — max RSS/rank for CPU, peak VRAM for GPU, both in MB. Blue
+= Atomiverse, red = LAMMPS; one shared legend; log y with minor ticks. Each
+panel keeps its natural x-axis: (a)/(b) cores (log₂, bottom) with total atoms
+on the top axis; (c) atoms (log); (d) GPU count (bottom) with total atoms on
+top.
 
 ## Figure panels
 
