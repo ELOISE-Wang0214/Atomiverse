@@ -8,6 +8,54 @@ Agents read this alongside CLAUDE.md. When a note stabilizes, promote it into CL
 
 ---
 
+## [2026-06-06] Async analysis: freeze-then-dispatch invariant + device-ring (async-analysis-snapshot-ring)
+
+**Invariant (freeze-then-dispatch).** Any snapshot delivered to an off-hot-path
+consumer (recorder/observer) must be frozen into an immutable, step-stamped copy
+**on the stream that mutates the frame**, before the next step can overwrite it;
+consumers only ever read the frozen copy, never the live frame. Accuracy
+(per-frame consistency + correct step stamp) is unconditional for every
+component; completeness (may-drop-frames) is the orthogonal axis, governed by a
+single `drop_oldest` policy. The MD hot loop never blocks.
+
+**CPU (link 01).** `cpu::Publish` freezes the frame into a K-deep
+`cpu::AnalysisExecutor` host ring with a synchronous OMP memcpy on the hot-path
+thread (naturally ordered before the next step). Single uniform path:
+`drop_oldest` only (block/grow + the per-component `backpressure()` override
+removed), build-time static `mask_union_all`, global ring depth K
+(`Config.ring_size`), shared worker pool.
+
+**CUDA (link 02).** The fix lives in `cuda::AsyncBridge`, NOT a new
+`DevicePublish` and NOT `cuda::Context.executor`: Thermo/RDF/Mulliken/Density
+capture scalars / pair-distances / density-matrix, none of which fit the CPU
+`FrameSnapshot` ring, so a shared-host-ring unification was the wrong shape.
+Each `AsyncBridge` subclass owns a K-deep device ring + K pinned host slots
+(K = compile-time `AsyncBridge::kRingDepth` = 3). `launch()` order:
+`freeze_slot` (D2D live→device_ring[slot] on the **compute** stream) →
+`cudaEventRecord(pack_events_[slot], main)` → `cudaStreamWaitEvent(defer)` →
+`d2h_slot` (device_ring[slot]→pinned, defer stream) →
+`cudaLaunchHostFunc(on_data_ready(slot))`. The compute-stream freeze is what
+closes the prior cross-stream read-after-write tearing (the old path D2H'd from
+live device pointers on the defer stream while the next step raced ahead).
+`AsyncRecordBase` gains an internal `device_ring_[K]`+`host_ring_[K]` with
+**slot-busy drop_oldest** (its HostWorker queue is unbounded, so it must drop a
+capture whose slot is still in flight rather than overwrite it; `AsyncBridge`
+needs no explicit drop because `cudaLaunchHostFunc` back-pressures the host
+enqueue thread, keeping compute within K steps of defer).
+
+**CUDA execution-model classification — add the device-ring-freeze row.**
+Alongside *compute* (GPU-pure launch), *CPU bridge* (D2H + host callback), and
+*host-dependent compute*: an `AsyncBridge`/`AsyncRecordBase` recorder/observer
+is a **deferred device-ring-freeze CPU bridge** — `launch()` enqueues a
+compute-stream D2D freeze + defer-stream D2H + host callback, zero
+`cuda::stream_synchronize` on the step loop (guarded by
+`tests/cuda/async/test_hot_path_no_sync.cu` and `test_async_bridge_tearing.cu`).
+
+**Memory (link 03).** Ring footprint ≈ K·N·B (device ring) + equal pinned host
+ring ⇒ ≈ 2·K·N·B; verified by `benchmarks/bench_async_snapshot_mem`.
+
+---
+
 ## [2026-05-22] CUDA driver taxonomy migration — CUDA matches the three-category shape
 
 Landed `.claude/specs/cuda-driver-taxonomy-*.md` (the 5-link

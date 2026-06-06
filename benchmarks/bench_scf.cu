@@ -66,7 +66,7 @@ static void BM_SCF_CUDA(benchmark::State& state) {
         eval.add(cuda::scf::SCFEvaluator{n_occ, double(0.1), double(1e-5), 50});
         eval.build();
         eval.run(frame);
-        benchmark::DoNotOptimize(frame.energy);
+        benchmark::DoNotOptimize(frame.scalars.energy);
     }
 }
 
