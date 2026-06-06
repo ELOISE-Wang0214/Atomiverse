@@ -233,8 +233,24 @@ int main(int argc, char** argv) {
         mode = "strong";
     }
 
-    cpu::Frame frame = make_sc_lj_total(n_total);
-    const int n_actual = frame.atoms.size();
+    // Global atom count (cube-rounded, identical to make_sc_lj_total).
+    const int cube = std::max(
+        1, static_cast<int>(std::cbrt(static_cast<double>(n_total)) + 0.5));
+    const int n_actual = cube * cube * cube;
+
+    // Distributed construction: build the full global frame on rank 0 ONLY,
+    // then scatter each atom to its owning rank's subdomain. Every rank holding
+    // the global frame (the old replicated pattern) allocates O(global-N) per
+    // rank and OUT-OF-MEMORYs the node at 256+ ranks weak scaling (e.g. 4M
+    // atoms x 256 ranks/node). This is the canonical distributed init (cf.
+    // LAMMPS read_data on proc 0 + comm scatter). Single-rank keeps the frame.
+    cpu::Frame frame =
+        (world_size == 1 || my_rank == 0) ? make_sc_lj_total(n_total)
+                                          : cpu::Frame(0);
+#ifdef ATV_HAS_MPI
+    if (world_size > 1)
+        cpu::comm::scatter_atoms_from_root(frame); // broadcasts box too
+#endif
 
     if (my_rank == 0 && args.csv_header) {
         std::printf("ranks,atoms,steps,time_total_s,time_per_step_ms,atoms_per_"
