@@ -8,7 +8,8 @@ criteria:
       reverse/forward halo packs xyz/forces into a single P2P buffer; bonded
       kernels carry __launch_bounds__; the re-materialize/tag-map path does no
       per-step cudaMalloc/Free (buffers reused).
-    status: pending
+    status: verified
+    last_checked: 2026-06-06
   - id: ac-002
     summary: correctness unchanged after optimization
     type: scientific
@@ -16,7 +17,8 @@ criteria:
     pass_when: |
       The -02..-04 correctness tests (energy/force parity, ΣF≈0) remain green
       after the optimizations.
-    status: pending
+    status: verified
+    last_checked: 2026-06-06
   - id: ac-003
     summary: measured multi-GPU PE step-time speedup
     type: performance
@@ -24,7 +26,8 @@ criteria:
     pass_when: |
       Multi-GPU PE step-time improves measurably over the first correct version
       (-04), reported with before/after numbers and the GPU count.
-    status: pending
+    status: verified
+    last_checked: 2026-06-06
 ---
 
 # Acceptance criteria
