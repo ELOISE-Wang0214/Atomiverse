@@ -11,6 +11,7 @@
 #include <cuda_runtime.h>
 #include <set>
 #include <stdexcept>
+#include <type_traits>
 #include <vector>
 
 namespace ATV {
@@ -78,7 +79,7 @@ __global__ void gather_cluster_pos(const int* __restrict__ orig_index,
 /// complete without writing its neighbors; energy and virial are halved to
 /// undo the double count. kClusterSize is the neighbor list's fixed cluster
 /// width; pad slots carry a negative orig_index sentinel.
-template <bool Ortho>
+template <bool Ortho, bool Virial>
 __global__ __launch_bounds__(ATV::cuda::kDefaultBlock, 4) void
 lj_force_cluster(real_t* __restrict__ fx, real_t* __restrict__ fy,
                  real_t* __restrict__ fz, prec_t* __restrict__ energy,
@@ -168,12 +169,14 @@ lj_force_cluster(real_t* __restrict__ fx, real_t* __restrict__ fy,
                     real_t e_pair =
                         scale * (real_t(4) * eps_r * (sr12 - sr6) - vshift_r);
                     my_energy += work_t(0.5) * work_t(e_pair);
-                    my_vxx += work_t(0.5) * work_t(dx * (f_over_r * dx));
-                    my_vyy += work_t(0.5) * work_t(dy * (f_over_r * dy));
-                    my_vzz += work_t(0.5) * work_t(dz * (f_over_r * dz));
-                    my_vxy += work_t(0.5) * work_t(dx * (f_over_r * dy));
-                    my_vxz += work_t(0.5) * work_t(dx * (f_over_r * dz));
-                    my_vyz += work_t(0.5) * work_t(dy * (f_over_r * dz));
+                    if constexpr (Virial) {
+                        my_vxx += work_t(0.5) * work_t(dx * (f_over_r * dx));
+                        my_vyy += work_t(0.5) * work_t(dy * (f_over_r * dy));
+                        my_vzz += work_t(0.5) * work_t(dz * (f_over_r * dz));
+                        my_vxy += work_t(0.5) * work_t(dx * (f_over_r * dy));
+                        my_vxz += work_t(0.5) * work_t(dx * (f_over_r * dz));
+                        my_vyz += work_t(0.5) * work_t(dy * (f_over_r * dz));
+                    }
                 }
             }
             // Single non-atomic accumulate: this thread uniquely owns atom ai
@@ -194,17 +197,27 @@ lj_force_cluster(real_t* __restrict__ fx, real_t* __restrict__ fy,
     // (cuda-md-review-cleanup-05-reductions-and-atomics).
     extern __shared__ work_t warp_scratch[]; // per-warp staging cells
 
-    work_t my_vals[7] = {my_energy, my_vxx, my_vyy, my_vzz,
-                         my_vxy,    my_vxz, my_vyz};
-    work_t out[7];
-    block_reduce_sum_n<7>(my_vals, warp_scratch, out);
-    if (threadIdx.x == 0) {
-        atomicAdd(energy, static_cast<prec_t>(out[0]));
-        if (stress != nullptr) {
+    if constexpr (Virial) {
+        work_t my_vals[7] = {my_energy, my_vxx, my_vyy, my_vzz,
+                             my_vxy,    my_vxz, my_vyz};
+        work_t out[7];
+        block_reduce_sum_n<7>(my_vals, warp_scratch, out);
+        if (threadIdx.x == 0) {
+            atomicAdd(energy, static_cast<prec_t>(out[0]));
+            if (stress != nullptr) {
 #pragma unroll
-            for (int c = 0; c < 6; ++c)
-                atomicAdd(&stress[c], static_cast<prec_t>(out[c + 1]));
+                for (int c = 0; c < 6; ++c)
+                    atomicAdd(&stress[c], static_cast<prec_t>(out[c + 1]));
+            }
         }
+    } else {
+        // Virial gated off: reduce energy alone; the my_v* accumulators stay
+        // 0 and are dead-code-eliminated, freeing their registers.
+        work_t my_vals[1] = {my_energy};
+        work_t out[1];
+        block_reduce_sum_n<1>(my_vals, warp_scratch, out);
+        if (threadIdx.x == 0)
+            atomicAdd(energy, static_cast<prec_t>(out[0]));
     }
 }
 
@@ -246,6 +259,16 @@ PairLJCut PairLJCut::set_special_bonds(double s12, double s13,
     // yields a movable rvalue (not a dangling lvalue reference to a
     // temporary). cf. `cpu::PairLJCut::set_special_bonds(…) &&`.
     this->set_special_bonds(s12, s13, s14);
+    return std::move(*this);
+}
+
+PairLJCut& PairLJCut::set_compute_stress(bool on) & {
+    compute_stress_ = on;
+    return *this;
+}
+
+PairLJCut PairLJCut::set_compute_stress(bool on) && {
+    compute_stress_ = on;
     return std::move(*this);
 }
 
@@ -387,22 +410,33 @@ void PairLJCut::compute(const LaunchContext& ctx) {
         static_cast<work_t>(kernels::kMinPairDist)
         * static_cast<work_t>(kernels::kMinPairDist);
     cuda::Box box = ctx.runtime.host_box;
+    // When stress is gated off, pass a null stress pointer and select the
+    // Virial=false kernel template (skips the 6 inner-loop virial products
+    // and the stress reduction; frees the accumulator registers).
+    prec_t* stress_ptr = compute_stress_ ? &frame.scalars->stress[0] : nullptr;
+    auto launch = [&](auto ortho_tag, auto virial_tag) {
+        constexpr bool Ortho = decltype(ortho_tag)::value;
+        constexpr bool Virial = decltype(virial_tag)::value;
+        kernels::lj_force_cluster<Ortho, Virial><<<grid, block, shmem, stream>>>(
+            frame.atoms.fx, frame.atoms.fy, frame.atoms.fz,
+            &frame.scalars->energy, stress_ptr, spx_, spy_, spz_,
+            pairs->cl_row_ptr, pairs->cl_col_idx, pairs->cl_orig_index,
+            pairs->num_clusters, box, /*periodic=*/true, epsilon_, sigma_sq,
+            cutoff_sq, min_pair_dist_sq, v_shift_, excl_off, excl_par,
+            static_cast<work_t>(s_excl_));
+    };
+    using T = std::true_type;
+    using F = std::false_type;
     if (box.ortho) {
-        kernels::lj_force_cluster<true><<<grid, block, shmem, stream>>>(
-            frame.atoms.fx, frame.atoms.fy, frame.atoms.fz,
-            &frame.scalars->energy, &frame.scalars->stress[0], spx_, spy_, spz_,
-            pairs->cl_row_ptr, pairs->cl_col_idx, pairs->cl_orig_index,
-            pairs->num_clusters, box, /*periodic=*/true, epsilon_, sigma_sq,
-            cutoff_sq, min_pair_dist_sq, v_shift_, excl_off, excl_par,
-            static_cast<work_t>(s_excl_));
+        if (compute_stress_)
+            launch(T{}, T{});
+        else
+            launch(T{}, F{});
     } else {
-        kernels::lj_force_cluster<false><<<grid, block, shmem, stream>>>(
-            frame.atoms.fx, frame.atoms.fy, frame.atoms.fz,
-            &frame.scalars->energy, &frame.scalars->stress[0], spx_, spy_, spz_,
-            pairs->cl_row_ptr, pairs->cl_col_idx, pairs->cl_orig_index,
-            pairs->num_clusters, box, /*periodic=*/true, epsilon_, sigma_sq,
-            cutoff_sq, min_pair_dist_sq, v_shift_, excl_off, excl_par,
-            static_cast<work_t>(s_excl_));
+        if (compute_stress_)
+            launch(F{}, T{});
+        else
+            launch(F{}, F{});
     }
 }
 

@@ -554,6 +554,11 @@ void MultiGpu::setup_force_engine(double cutoff, double epsilon, double sigma,
         ctx_[s].flat_pairs_requested = false;
         nlist_[s] = std::make_unique<cuda::NeighborList>(cutoff, force_skin_);
         pair_[s] = std::make_unique<cuda::PairLJCut>(epsilon, sigma, cutoff);
+        // This force engine drives only the NVE neighbor-list path
+        // (run_nve_nlist), which never consumes the pair virial. Gate it off
+        // (LAMMPS-style vflag): skips the 6 inner-loop virial products and
+        // frees their registers under the kernel's launch-bounds budget.
+        pair_[s]->set_compute_stress(false);
     }
     nlist_cap_.assign(N, 0); // built lazily in reneighbor() at ~1.3x n_all
     engine_ready_ = true;

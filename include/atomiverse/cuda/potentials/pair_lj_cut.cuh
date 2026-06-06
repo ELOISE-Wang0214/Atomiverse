@@ -63,6 +63,18 @@ class PairLJCut : public Pair {
     PairLJCut& set_special_bonds(double s12, double s13, double s14) &;
     PairLJCut set_special_bonds(double s12, double s13, double s14) &&;
 
+    /// @brief Enable/disable per-pair virial (stress) accumulation.
+    ///
+    /// The pair virial (6 Voigt components, double accumulators) feeds the
+    /// pressure / barostat path only; a plain NVE run never consumes it.
+    /// Disabling it selects a kernel template that skips the 6 inner-loop
+    /// virial products AND frees their registers (relieving the spill the
+    /// `__launch_bounds__(256,4)` budget otherwise forces) and drops the
+    /// per-block stress reduction. Mirrors LAMMPS per-step `vflag` gating;
+    /// forces and energy are unaffected. Default: enabled.
+    PairLJCut& set_compute_stress(bool on) &;
+    PairLJCut set_compute_stress(bool on) &&;
+
     void build(const BuildContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;
 
@@ -82,6 +94,11 @@ class PairLJCut : public Pair {
     double s12_ = 1.0, s13_ = 1.0, s14_ = 1.0;
     double s_excl_ = 1.0; ///< Single scale used by kernel when collapsed.
     bool has_exclusions_ = false;
+
+    /// When false, the force kernel skips the 6-component pair virial and
+    /// the stress reduction (LAMMPS-style vflag gating). Forces/energy are
+    /// unchanged. Default true to preserve behavior for pressure/NPT runs.
+    bool compute_stress_ = true;
 
     // Device CSR — d_excl_offsets_[n_atoms+1], d_excl_partners_[n_excl_total_].
     // Both `nullptr` when has_exclusions_ is false (kernel fast path).
