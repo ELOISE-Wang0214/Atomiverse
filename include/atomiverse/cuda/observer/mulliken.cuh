@@ -27,7 +27,6 @@
 /// @endcode
 #pragma once
 
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -52,9 +51,11 @@ namespace cuda {
 /// @brief Mulliken population observer for the CUDA RHF SCF pipeline.
 ///
 /// Header-only — no .cu needed.  Pure observer (stores charges, no I/O).
-/// Shares the pure C++ Mulliken implementation with the CPU path; the
-/// only CUDA-specific responsibility is bringing the device density
-/// matrix back to host via the async D2H bridge.
+/// Shares the pure C++ Mulliken implementation with the CPU path; the only
+/// CUDA-specific responsibility is freezing the device density matrix into a
+/// device-ring slot on the compute stream (before a subsequent SCF solve in an
+/// AIMD loop could overwrite it) and bringing it back to host via the async D2H
+/// bridge.
 class MullikenObs : public AsyncBridge {
   public:
     /// @brief Construct a Mulliken observer.
@@ -81,47 +82,64 @@ class MullikenObs : public AsyncBridge {
   protected:
     void on_build(const BuildContext&) override {
         n_basis_ = evaluator_->workspace().n;
-        cudaMallocHost(&h_P_, n_basis_ * n_basis_ * sizeof(double));
-        cudaMallocHost(&h_energy_, sizeof(double));
-        *h_energy_ = 0.0;
+        const std::size_t n2 =
+            static_cast<std::size_t>(n_basis_) * static_cast<std::size_t>(n_basis_);
+        for (int i = 0; i < kRingDepth; ++i) {
+            cudaMalloc(&d_P_[i], n2 * sizeof(double));   // device-ring slot
+            cudaMalloc(&d_energy_[i], sizeof(double));
+            cudaMallocHost(&h_P_[i], n2 * sizeof(double)); // pinned host slot
+            cudaMallocHost(&h_energy_[i], sizeof(double));
+            *h_energy_[i] = 0.0;
+        }
     }
 
     bool can_run(const LaunchContext&) const override {
         return evaluator_->workspace().P != nullptr;
     }
 
-    void issue_d2h(const LaunchContext& ctx) override {
-        auto ds = static_cast<cudaStream_t>(ctx.runtime.defer_stream);
+    void freeze_slot(const LaunchContext& ctx, int slot) override {
+        // D2D freeze of the converged density + energy on the compute stream,
+        // before a subsequent (AIMD) SCF solve overwrites the workspace.
+        auto ms = static_cast<cudaStream_t>(ctx.runtime.stream);
         auto& f = ctx.frame;
-        const int n2 = n_basis_ * n_basis_;
-        cudaMemcpyAsync(h_P_, evaluator_->workspace().P, n2 * sizeof(double),
-                        cudaMemcpyDeviceToHost, ds);
+        const std::size_t n2 =
+            static_cast<std::size_t>(n_basis_) * static_cast<std::size_t>(n_basis_);
+        cudaMemcpyAsync(d_P_[slot], evaluator_->workspace().P,
+                        n2 * sizeof(double), cudaMemcpyDeviceToDevice, ms);
         if (f.scalars)
-            cudaMemcpyAsync(h_energy_, &f.scalars->energy, sizeof(double),
-                            cudaMemcpyDeviceToHost, ds);
+            cudaMemcpyAsync(d_energy_[slot], &f.scalars->energy, sizeof(double),
+                            cudaMemcpyDeviceToDevice, ms);
     }
 
-    void on_data_ready(const LaunchContext&) override {
-        // Adapt the pinned host buffer as a non-owning xtensor view.
+    void d2h_slot(const LaunchContext& ctx, int slot) override {
+        auto ds = static_cast<cudaStream_t>(ctx.runtime.defer_stream);
+        const std::size_t n2 =
+            static_cast<std::size_t>(n_basis_) * static_cast<std::size_t>(n_basis_);
+        cudaMemcpyAsync(h_P_[slot], d_P_[slot], n2 * sizeof(double),
+                        cudaMemcpyDeviceToHost, ds);
+        cudaMemcpyAsync(h_energy_[slot], d_energy_[slot], sizeof(double),
+                        cudaMemcpyDeviceToHost, ds);
+    }
+
+    void on_data_ready(const LaunchContext&, int slot) override {
+        // Adapt the pinned host slot as a non-owning xtensor view.
         const std::size_t nb = static_cast<std::size_t>(n_basis_);
-        auto P_view = xt::adapt(h_P_, nb * nb, xt::no_ownership(),
+        auto P_view = xt::adapt(h_P_[slot], nb * nb, xt::no_ownership(),
                                 std::vector<std::size_t>{nb, nb});
         const xt::xtensor<double, 2> P = P_view;
 
         charges_ = cpu::mulliken_charge(integrals_, P);
-        energy_val_ = *h_energy_;
+        energy_val_ = *h_energy_[slot];
         iterations_ = evaluator_->workspace().iteration;
         n_occ_ = static_cast<int>(evaluator_->workspace().n_occ);
     }
 
     void on_destroy(const DestroyContext&) override {
-        if (h_P_) {
-            cudaFreeHost(h_P_);
-            h_P_ = nullptr;
-        }
-        if (h_energy_) {
-            cudaFreeHost(h_energy_);
-            h_energy_ = nullptr;
+        for (int i = 0; i < kRingDepth; ++i) {
+            if (d_P_[i]) { cudaFree(d_P_[i]); d_P_[i] = nullptr; }
+            if (d_energy_[i]) { cudaFree(d_energy_[i]); d_energy_[i] = nullptr; }
+            if (h_P_[i]) { cudaFreeHost(h_P_[i]); h_P_[i] = nullptr; }
+            if (h_energy_[i]) { cudaFreeHost(h_energy_[i]); h_energy_[i] = nullptr; }
         }
     }
 
@@ -137,8 +155,10 @@ class MullikenObs : public AsyncBridge {
     int n_occ_ = 0;
 
     int n_basis_ = 0;
-    double* h_P_ = nullptr;
-    double* h_energy_ = nullptr;
+    double* d_P_[kRingDepth] = {};      ///< device-ring frozen density matrix
+    double* d_energy_[kRingDepth] = {}; ///< device-ring frozen energy [eV]
+    double* h_P_[kRingDepth] = {};      ///< pinned host density matrix
+    double* h_energy_[kRingDepth] = {}; ///< pinned host energy [eV]
 };
 
 #endif // ATV_HAS_RHF

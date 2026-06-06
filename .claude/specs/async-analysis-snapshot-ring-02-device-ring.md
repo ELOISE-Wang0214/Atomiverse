@@ -1,6 +1,6 @@
 ---
 title: CUDA device-side snapshot ring + compute-stream freeze (async-analysis link 2/3)
-status: approved
+status: code-complete
 created: 2026-06-06
 ---
 
@@ -8,7 +8,7 @@ created: 2026-06-06
 
 ## Summary
 
-修复 CUDA 快照撕裂（tearing）缺陷：当前 `cuda::AsyncBridge` 仅做单向跨流定序（`cudaEventRecord(main)` → `cudaStreamWaitEvent(defer)`），随后在 defer 流上从**活跃设备指针**做 D2H，而主流的第 N+1 步不会等待该 D2H 完成——main 与 defer 并发执行，构成跨流的 read-after-write 竞争，产生被错误标记为第 N 步的撕裂快照。本链路新增 `cuda::DevicePublish`：在**会改写 frame 的计算/主流上**用一个 D2D pack kernel 把静态联合字段冻结进设备环 `device_ring[slot]`（在第 N 步之后、第 N+1 步之前完成——这是修复的核心），记录 `pack_done_event`，再在 defer 流上把该 slot 异步 D2H 进 link 01 已有的共享 CPU 主机 `FrameSnapshot` 环，并提交到共享 `AnalysisExecutor` 工作线程池。同时为 `AsyncRecordBase` 增加设备环（单 buffer → `device_ring[K]`），并把四个 `AsyncBridge` 子类改为消费冻结后的设备环 slot 而非活跃设备指针。终态与 CPU 路径对称：联合冻结进环 + drop_oldest + 全局 K + 共享 CPU 工作池。
+修复 CUDA 快照撕裂（tearing）缺陷：原 `cuda::AsyncBridge` 仅做单向跨流定序（`cudaEventRecord(main)` → `cudaStreamWaitEvent(defer)`），随后在 defer 流上从**活跃设备指针**做 D2H，而主流的第 N+1 步不会等待该 D2H 完成——main 与 defer 并发执行，构成跨流的 read-after-write 竞争，产生被错误标记为第 N 步的撕裂快照。修复把"在改写 frame 的计算/主流上把 payload D2D 冻结进设备环、再从冻结槽 D2H"直接做进 `AsyncBridge` 基类（freeze 排在第 N 步之后、第 N+1 步之前——这是修复核心），覆盖全部五个 `AsyncBridge` 子类；并给 `AsyncRecordBase` 加内部设备环 + drop_oldest 背压。**设计修正**（见 Design）：原计划的 `cuda::DevicePublish` + 共享 `cpu::AnalysisExecutor` + 主机 `FrameSnapshot` 环不适配 Thermo/RDF/Mulliken/Density（它们捕获标量/pair 距离/密度矩阵，非 FrameSnapshot 字段），故落点改为 `AsyncBridge` 基类，无需 `DevicePublish`/`Context.executor`/后端集成。冻结-再分发不变量与 link 01 一致。
 
 ## Domain basis
 
@@ -16,41 +16,44 @@ created: 2026-06-06
 
 ## Design
 
-- **新组件 `cuda::DevicePublish`**（镜像 `cpu::Publish`），绑定于 `md::Phase::end_of_step @ +10`（紧随每步归约、先于订阅者）：
-  - `build()`：从 `ctx.runtime.executor`（共享 `AnalysisExecutor`，由 link 01 引入）解析主机环；`cudaMalloc` 设备环 `device_ring_`（K 个 `Snapshot` 槽）；创建 `pack_done_event_`、`copy_done_event_`（`cudaEventDisableTiming`，owning）；从 `ctx.runtime.stream` / `ctx.runtime.defer_stream` 捕获计算流与 defer 流（non-owning）。
-  - `launch()`：① 在计算/主流上启动 D2D pack kernel，把静态联合 mask 字段冻结进 `device_ring_[slot]`（slot 由共享 executor 的 `acquire_slot()` 决定，drop_oldest，全局 K）；② 在计算流上 `cudaEventRecord(pack_done_event_)`；③ defer 流 `cudaStreamWaitEvent(pack_done_event_)` 后，把 `device_ring_[slot]` 异步 D2H 进主机环对应 slot；④ `cudaEventRecord(copy_done_event_, defer)`，提交 (订阅者, slot) 给共享工作池。`launch()` 不在 caller 线程做任何 `cudaStreamSynchronize`。
-  - `destroy()`：释放 `device_ring_`、销毁两个 event、置空句柄。worker 池由共享 executor 负责 drain/join，不在此处。
-- **设备环所有权与生命周期**：`device_ring_` 由 `DevicePublish` 拥有（`build` 分配 / `destroy` 释放）；主机环、worker 池复用 link 01 的共享设施，GPU 侧只新增设备环。环大小 K 取共享 executor 的 `ring_capacity()`，保证设备环与主机环一一对应、深度一致。
-- **`cuda::Context` 新增 `executor` 句柄**：当前 `cuda::Context` 无 `executor` 字段；按 `cpu::Context` 镜像，新增 `cpu::AnalysisExecutor* executor = nullptr`，由后端在 init 时发布，使 `DevicePublish` / 改造后的订阅者可从任意 `BuildContext` 解析共享池。
-- **`AsyncRecordBase<Snapshot>` 改造**：`device_snapshot_`（单 buffer，行 ~255）→ `device_ring_[K]`；保留其计算流 pack + `pack_done_event_` 定序；`submit_async` 按 round-robin 写入 `device_ring_[slot]`，避免 back-to-back 捕获覆盖仍在 D2H 中的 in-flight 快照；仅 drop_oldest、全局 K（无 per-component 背压）。
-- **四个 `AsyncBridge` 子类改造**（`recorder.cuh` / `thermo.cuh` / `observer/rdf.cuh` / `observer/mulliken.cuh`）：`issue_d2h` 不再从活跃设备指针（`ctx.frame.atoms.x` / `&ctx.frame.scalars->energy` / `pairs->...` / `workspace().P`）读取，改为消费 `DevicePublish` 冻结后的设备环 slot；折叠到 `DevicePublish` + `AnalysisExecutor`。CPU 侧消费逻辑（`cpu::thermo_print` / `cpu::trajectory_append` / `cpu::rdf_accumulate` / `cpu::mulliken_charge`）已共享，保持不变。
+> **设计修正（实现期，已在 GH200 验证）。** 原方案拟新增 `cuda::DevicePublish` 把所有组件经 `cpu::AnalysisExecutor` + 主机 `FrameSnapshot` 环统一。实现时发现该机制只适配 `Recorder`（位置）——而 `Thermo` 捕获 `scalars->energy/kinetic`、`RDF` 捕获 pair 距离、`Mulliken`/`DensityRecorder` 捕获 SCF 密度矩阵，这些都**不是** `FrameSnapshot` 字段，强行塞入需给 `FrameSnapshot` 挂任意 payload 或改变各自的计算口径。由于这五个组件都派生自 `AsyncBridge`，正确且最小的修复是把"计算流冻结进环"直接做进 `AsyncBridge` 基类——于是**无需** `DevicePublish`、**无需** `cuda::Context.executor`、**无需** CUDA 后端集成。冻结-再分发的不变量与 link 01 完全一致，只是落点在 `AsyncBridge` 而非新组件。
+
+- **`AsyncBridge` 基类新增设备环冻结（撕裂修复核心）。** 每个子类自带一个 K 深设备环（K=`kRingDepth`=3，与 CPU 主机环默认一致）。`launch()` 改为：
+  1. `slot = ring_head_++ % K`；
+  2. `freeze_slot(ctx, slot)`：子类在**计算/主流**（`ctx.runtime.stream`）上把所需 payload D2D 冻结进自己的 `device_ring[slot]`——排在本步物理之后、下一步改写 frame 之前，这一步关闭跨流 read-after-write；
+  3. `cudaEventRecord(pack_events_[slot], main)` → `cudaStreamWaitEvent(defer, pack_events_[slot])`；
+  4. `d2h_slot(ctx, slot)`：子类在 defer 流把**冻结后的** `device_ring[slot]` 拷进 pinned host slot（绝不读活跃 frame）；
+  5. `cudaLaunchHostFunc(defer, cuda_callback_)`，回调在 CUDA worker 线程上以 slot 为参调用 `on_data_ready(ctx, slot)`。
+  `launch()` 不做任何 `cudaStreamSynchronize`。子类钩子由 `issue_d2h`/`on_data_ready(ctx)` 改为 `freeze_slot` + `d2h_slot` + `on_data_ready(ctx, slot)`。
+- **五个 `AsyncBridge` 子类改造**（`recorder.cuh` 位置 / `thermo.cuh` 标量 / `observer/rdf.cuh` pair 距离 / `observer/mulliken.cuh` 密度 / `recorder/density_recorder.cuh` 密度）：各自分配 K 个设备环槽 + K 个 pinned host 槽，实现 `freeze_slot`（D2D 活跃→环槽，main 流）+ `d2h_slot`（环槽→pinned，defer 流）+ `on_data_ready(slot)`。CPU 侧消费逻辑（`cpu::thermo_print` / `cpu::trajectory_append` / `cpu::rdf_accumulate` / `cpu::mulliken_charge` / `cpu::eval_density_grid`）已共享，保持不变。
+- **`AsyncRecordBase<Snapshot>` 改造**：`device_snapshot_`（单 buffer）保留为子类暂存目标（**子类 API 不变**），基类内部新增 `device_ring_[K]` + `host_ring_[K]` + 每槽 event；`submit_async` 把 `device_snapshot_` D2D 冻结进环槽再 D2H。**关键**：`HostWorker` 队列无界，热循环可领先消费者远超 K 步，故加 **drop_oldest 背压**——每槽 `slot_busy_` 标志，若目标槽仍在途则丢弃本次捕获（计入 `n_dropped()`），绝不阻塞热循环、绝不投递被覆盖的快照。（`AsyncBridge` 经 `cudaLaunchHostFunc` 天然回压主机入队线程，热循环不会领先 defer 超过 K 步，故无需显式丢弃。）
 
 ## Files to create or modify
 
-- `include/atomiverse/cuda/device_publish.cuh` (new) — `cuda::DevicePublish` 组件声明，设备环成员，Doxygen（含单位）。
-- `src/cuda/device_publish.cu` (new) — D2D pack kernel + `build`/`launch`/`destroy` 实现。
-- `include/atomiverse/cuda/context.cuh` — 新增 `cpu::AnalysisExecutor* executor` 字段（镜像 `cpu::Context`）。
-- `include/atomiverse/cuda/async/record_base.cuh` — `device_snapshot_` → `device_ring_[K]`；`submit_async` round-robin。
-- `src/cuda/async/record_base.cu` — 环分配/释放与 round-robin 实现配合。
-- `include/atomiverse/cuda/recorder/recorder.cuh` — 消费设备环 slot 取代活跃 `frame.atoms.x/y/z`。
-- `include/atomiverse/cuda/recorder/thermo.cuh` — 消费设备环 slot 取代活跃 `frame.scalars->energy/kinetic`。
-- `include/atomiverse/cuda/observer/rdf.cuh` — 消费设备环 slot 取代活跃 `pairs->*` 指针。
-- `include/atomiverse/cuda/observer/mulliken.cuh` — 消费设备环 slot 取代活跃 `workspace().P` / `scalars->energy`。
-- `tests/cuda/async/test_async_record_correctness.cu` — 新增设备环撕裂回归用例（解析轨迹，覆盖坐标路径与 thermo 能量竞争）。
-- `tests/cuda/async/test_hot_path_no_sync.cu` — 扩展覆盖 `DevicePublish`/设备环路径 0 sync。
+- `include/atomiverse/cuda/async_bridge.cuh` — 基类设备环冻结 API：`kRingDepth`、`pack_events_[K]`、`ring_head_`，钩子 `freeze_slot`/`d2h_slot`/`on_data_ready(ctx,slot)`，Doxygen（含单位）。
+- `src/cuda/async_bridge.cu` — `launch()` 重排为 freeze→event→wait→d2h→`cudaLaunchHostFunc(slot)`；`CallbackPayload` 带 slot。
+- `include/atomiverse/cuda/recorder/recorder.cuh` — K 设备环 + pinned 槽，冻结/拷回位置。
+- `include/atomiverse/cuda/recorder/thermo.cuh` — 冻结 `scalars->energy/kinetic`（先于次步 `ZeroEnergy`）。
+- `include/atomiverse/cuda/recorder/density_recorder.cuh` — 冻结 SCF 密度矩阵（RHF-gated）。
+- `include/atomiverse/cuda/observer/rdf.cuh` — 冻结 pair 距离/计数。
+- `include/atomiverse/cuda/observer/mulliken.cuh` — 冻结密度矩阵 + 能量（RHF-gated）。
+- `include/atomiverse/cuda/async/record_base.cuh` — 内部 `device_ring_[K]`+`host_ring_[K]`+每槽 event + `slot_busy_` drop_oldest + `n_dropped()`（子类 API 不变）。
+- `tests/cuda/async/test_async_bridge_tearing.cu` (new) — 解析轨迹撕裂回归（AsyncBridge）+ AsyncRecordBase no-in-flight-overwrite + 0-sync 断言。
+- `tests/cuda/async/CMakeLists.txt` — 注册 benchmark-independent 测试（hot_path + tearing）无条件，benchmark-dependent 测试内部 gate。
+- `tests/CMakeLists.txt` — `add_subdirectory(cuda/async)` 不再被 `ATV_BUILD_BENCHMARKS` 全量 gate。
 
 ## Tasks
 
-- [ ] Write failing CUDA tearing regression for DevicePublish device-ring over analytic trajectory, covering recorder position path AND thermo scalars->energy race (tests/cuda/async/test_async_record_correctness.cu)
-- [ ] Write failing back-to-back-capture test asserting AsyncRecordBase device_ring[K] never overwrites an in-flight snapshot (tests/cuda/async/test_async_record_correctness.cu)
-- [ ] Extend failing hot-path no-sync test to assert DevicePublish device-ring path adds ZERO cuda::stream_synchronize on the step loop (tests/cuda/async/test_hot_path_no_sync.cu)
-- [ ] Implement cuda::DevicePublish (compute-stream D2D pack kernel into device_ring + pack_done_event + defer-stream D2H into shared host ring + executor submit) in include/atomiverse/cuda/device_publish.cuh and src/cuda/device_publish.cu
-- [ ] Add executor handle to cuda::Context in include/atomiverse/cuda/context.cuh (mirror cpu::Context)
-- [ ] Retrofit AsyncRecordBase device_snapshot_ to device_ring_[K] with round-robin submit_async in include/atomiverse/cuda/async/record_base.cuh and src/cuda/async/record_base.cu
-- [ ] Retrofit recorder.cuh, thermo.cuh, observer/rdf.cuh, observer/mulliken.cuh to consume the frozen device-ring slot instead of live device pointers
-- [ ] Add Doxygen with units to DevicePublish, device_ring, and the pack kernel per project doc style
-- [ ] Verify analytic-trajectory snapshot-consistency invariant + zero-sync on the GH200 node (operator-action; ATV_BUILD_CUDA=ON)
-- [ ] Run full check + CUDA ctest suite on the GH200 node (operator-action)
+- [x] Write CUDA tearing regression over analytic trajectory x_i=tag_i+step covering recorder position path (tests/cuda/async/test_async_bridge_tearing.cu)
+- [x] Write AsyncRecordBase no-in-flight-overwrite test (analytic per-step value + lagging worker) (tests/cuda/async/test_async_bridge_tearing.cu)
+- [x] Assert the device-ring freeze path adds ZERO cuda::stream_synchronize on the step loop (tearing test + test_hot_path_no_sync.cu)
+- [x] Implement AsyncBridge device-ring freeze: freeze_slot/d2h_slot/on_data_ready(slot) + per-slot pack events + launch reorder (include/atomiverse/cuda/async_bridge.cuh, src/cuda/async_bridge.cu)
+- [x] Retrofit the 5 AsyncBridge subclasses to freeze on the compute stream and D2H the frozen slot (recorder.cuh, thermo.cuh, density_recorder.cuh, observer/rdf.cuh, observer/mulliken.cuh)
+- [x] Retrofit AsyncRecordBase to an internal device_ring_[K]+host_ring_[K] with drop_oldest slot-busy backpressure (include/atomiverse/cuda/async/record_base.cuh)
+- [x] Un-gate the benchmark-independent async tests so the tearing + zero-sync gates build without benchmarks (tests/CMakeLists.txt, tests/cuda/async/CMakeLists.txt)
+- [x] Add Doxygen with units to the AsyncBridge ring API, the subclass ring buffers, and the AsyncRecordBase ring
+- [x] Verify tearing + no-overwrite + zero-sync on the GH200 node (jobs 9586/9590; ATV_BUILD_CUDA=ON)
+- [x] Run full CUDA ctest on the GH200 node: normal config 102/102 green (job 9609) + RHF=ON build green / retrofits compile (job 9613). Benchmarks-ON path deferred — bench_scf/bench_rhf have a pre-existing unrelated cpu::Frame::energy break (→ /mol:fix)
 
 ## Testing strategy
 
@@ -63,6 +66,6 @@ created: 2026-06-06
 ## Out of scope
 
 - link 01（简化版 `AnalysisExecutor`、静态 mask、共享主机 `FrameSnapshot` 环）与 link 03（最终统一/收尾）的内容；本链路假定 link 01 已落地。
-- `AsyncBridge` 基类本身的废弃/删除（终态收敛由 link 03 处理）；本链路仅把四个子类折叠到 `DevicePublish` + executor。
+- `AsyncBridge` 基类本身的废弃/删除（终态收敛由 link 03 处理）；本链路只在基类内加设备环冻结并改造五个子类。
 - 任何 `block` / `grow` 背压策略或 per-component 背压——本链路仅 drop_oldest + 全局 K（已与备选方案对比后排除，理由是与 CPU 路径对称且 hot-path 最廉价）。
 - CPU 侧消费函数（`cpu::thermo_print` / `trajectory_append` / `rdf_accumulate` / `mulliken_charge`）的任何改动——它们已共享且保持不变。
