@@ -1,6 +1,6 @@
 ---
 title: Multi-GPU bonded — Angle + Dihedral cross-GPU + special-bonds exclusion
-status: in-progress
+status: code-complete
 created: 2026-06-06
 chain: multigpu-bonded
 link: 4
@@ -32,8 +32,8 @@ angle/dihedral 局域多体力,各由唯一 owner 卡持有。special-bonds 排�
 ## Tasks
 - [x] **P4.1** Angle cross-GPU (re-materialized tuples + reverse_comm)
 - [x] **P4.2** Dihedral cross-GPU
-- [ ] **P4.3** special-bonds cross-domain exclusion in multi-GPU PairLJCut (resolve excluded tags incl. ghosts)
-- [ ] **P4.4** RED→GREEN: full PE (LJ+bonded+exclusions) 2/4-GPU == single == CPU
+- [x] **P4.3** special-bonds cross-domain exclusion in multi-GPU PairLJCut (resolve excluded tags incl. ghosts)
+- [x] **P4.4** RED→GREEN: full PE (LJ+bonded+exclusions) 2/4-GPU == single == CPU
 
 ## Testing
 - Full-PE energy decomposition + forces parity 2/4-GPU vs single vs CPU; special-bonds-excluded pairs verified; ΣF≈0.

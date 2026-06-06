@@ -140,6 +140,18 @@ class MultiGpu {
     /// across subdomains; each bond counted once on its owner GPU).
     double bonded_energy() const { return bonded_energy_; }
 
+    /// Enable special-bonds exclusion (1-2/1-3/1-4 fully excluded) on every
+    /// subdomain's PairLJCut. The exclusion CSR is (re)built from the
+    /// re-materialized topology each `rebuild_bonded_tuples`, so excluded
+    /// partners resolve to local OR ghost rows. Call after `setup_bonded`.
+    void enable_special_bonds();
+
+    /// Combined per-step force: zero owned+ghost, LJ over each subdomain's
+    /// neighbor list (owned, full, special-bonds-excluded) + bonded
+    /// (bond/angle/dihedral, owned+ghost), then a single `reverse_comm`. Owned
+    /// forces are then complete (LJ + bonded). Requires a prior `reneighbor`.
+    void compute_forces();
+
     /// Merge all subdomains' owned atoms back into one cpu::Frame (positions /
     /// velocities by tag order matching the original global frame size). Used
     /// to validate partition round-trips and, later, full multi-GPU runs.
@@ -262,6 +274,7 @@ class MultiGpu {
     std::vector<std::unique_ptr<cuda::AngleHarmonic>> angle_;
     std::vector<std::unique_ptr<cuda::DihedralMultiHarmonic>> dihedral_;
     double bonded_energy_ = 0.0;
+    bool special_bonds_ = false; // rebuild PairLJCut exclusions each reneighbor
 };
 
 } // namespace md

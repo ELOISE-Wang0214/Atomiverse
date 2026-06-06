@@ -8,7 +8,8 @@ criteria:
       MultiGpu runs harmonic_angle_k and multi_harmonic_dihedral_k over the
       re-materialized per-GPU tuples (deposit on all members incl. ghosts) with
       reverse_comm bringing ghost forces home.
-    status: pending
+    status: verified
+    last_checked: 2026-06-06
   - id: ac-002
     summary: special-bonds cross-domain exclusion enabled on multi-GPU
     type: code
@@ -16,7 +17,8 @@ criteria:
       multi-GPU setup_force_engine calls set_special_bonds and the exclusion list
       resolves excluded partner tags (including ghosts) to local rows, rebuilt
       each reneighbor.
-    status: pending
+    status: verified
+    last_checked: 2026-06-06
   - id: ac-003
     summary: full PE energy + forces match single-GPU and CPU within tolerance
     type: scientific
@@ -26,12 +28,14 @@ criteria:
       (E_pair/E_bond/E_angle/E_dihedral) and per-atom forces match single-GPU and
       --backend cpu within tolerance; special-bonds-excluded pairs contribute
       identically; ΣF≈0 each step.
-    status: pending
+    status: verified
+    last_checked: 2026-06-06
   - id: ac-004
     summary: LJ multi-GPU tests stay green
     type: code
     pass_when: test_cuda_multi_gpu (LJ, 13/13) remains green.
-    status: pending
+    status: verified
+    last_checked: 2026-06-06
 ---
 
 # Acceptance criteria

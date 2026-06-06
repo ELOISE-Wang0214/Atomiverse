@@ -401,10 +401,20 @@ PairLJCut PairLJCut::set_compute_stress(bool on) && {
 }
 
 void PairLJCut::build(const BuildContext& ctx) {
-    if (!has_exclusions_) {
-        n_excl_total_ = 0;
-        return;
+    // Re-callable: the multi-GPU bonded path rebuilds the exclusion CSR every
+    // reneighbor (the flat topology's local indices change as ghosts move), so
+    // free any prior CSR first to avoid leaking on repeated build().
+    if (d_excl_offsets_) {
+        cudaFree(d_excl_offsets_);
+        d_excl_offsets_ = nullptr;
     }
+    if (d_excl_partners_) {
+        cudaFree(d_excl_partners_);
+        d_excl_partners_ = nullptr;
+    }
+    n_excl_total_ = 0;
+    if (!has_exclusions_)
+        return;
     auto& f = ctx.frame;
     int n = f.n_atoms();
     int n_b = f.n_bonds();

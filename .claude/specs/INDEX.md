@@ -3,7 +3,7 @@
 - [multigpu-bonded-01-reverse-halo](multigpu-bonded-01-reverse-halo.md) — reverse force halo (reverse_comm) over NVLink P2P; foundation for cross-GPU bonded forces [code-complete: ac-001/002 verified, GH200 13/13, commit bdc1645]
 - [multigpu-bonded-02-topology-tagmap](multigpu-bonded-02-topology-tagmap.md) — per-atom bonded SoA on cuda::Frame + migrate carries it + device tag→local map + per-reneighbor tuple re-materialization with drop tally [code-complete: P2.1-P2.6 done, GH200 15/15 incl. 2 bonded tests]
 - [multigpu-bonded-03-bond](multigpu-bonded-03-bond.md) — cross-GPU BondHarmonic over re-materialized tuples + reverse_comm; 2/4-GPU bond energy==single==CPU, ΣF≈0 [code-complete: GH200 16/16, bond force+energy parity vs single-GPU]
-- [multigpu-bonded-04-angle-dihedral](multigpu-bonded-04-angle-dihedral.md) — Angle+Dihedral cross-GPU + special-bonds cross-domain exclusion; full-PE parity [approved]
+- [multigpu-bonded-04-angle-dihedral](multigpu-bonded-04-angle-dihedral.md) — Angle+Dihedral cross-GPU + special-bonds cross-domain exclusion; full-PE parity [code-complete: GH200 17/17, full-PE (LJ+bonded+special) parity vs single-GPU]
 - [multigpu-bonded-05-optimize](multigpu-bonded-05-optimize.md) — P2P batching, launch bounds, owner-grouped atomics, no per-step alloc; before/after multi-GPU PE step-time [approved]
 - [benchmark-matrix](benchmark-matrix.md) — complete AV-vs-LAMMPS matrix (CPU/GPU × LJ/PE × single/multi × weak/strong/size), 3 reps/point → mean±std + outlier rule; unified figure with error bars. G5/G6 depend on multigpu-bonded [approved]
 

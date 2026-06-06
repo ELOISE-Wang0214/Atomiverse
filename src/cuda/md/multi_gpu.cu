@@ -972,6 +972,14 @@ void MultiGpu::rebuild_bonded_tuples() {
         F.n_angles_ = nan;
         F.n_dihedrals_ = nd;
         cudaFree(d_drop);
+        // Rebuild the LJ special-bonds exclusion CSR from the fresh flat lists
+        // (local/ghost indices), so 1-2/1-3/1-4 partners — including cross-GPU
+        // ghosts — are excluded from the pair force this interval.
+        if (special_bonds_ && s < static_cast<int>(pair_.size()) && pair_[s]) {
+            F.n_atoms_ = na;
+            cuda::BuildContext bc{ctx_[s], F};
+            pair_[s]->build(bc);
+        }
     }
 }
 
@@ -1058,6 +1066,65 @@ void MultiGpu::compute_bonded_forces() {
     // Sum the per-subdomain bond energy (each bond owned by one GPU → no double
     // count) into the host-side total.
     bonded_energy_ = 0.0;
+    for (int s = 0; s < N; ++s) {
+        dm_.set_device(s);
+        SystemScalars sc{};
+        CKM(cudaMemcpy(&sc, frames_[s].scalars, sizeof(SystemScalars),
+                       cudaMemcpyDeviceToHost));
+        bonded_energy_ += static_cast<double>(sc.energy);
+    }
+}
+
+void MultiGpu::enable_special_bonds() {
+    const int N = count();
+    if (static_cast<int>(pair_.size()) != N)
+        throw std::runtime_error(
+            "MultiGpu::enable_special_bonds: call setup_force_engine first");
+    for (int s = 0; s < N; ++s)
+        pair_[s]->set_special_bonds(0.0, 0.0, 0.0); // full 1-2/1-3/1-4 exclusion
+    special_bonds_ = true; // rebuild_bonded_tuples will (re)build the CSR
+}
+
+void MultiGpu::compute_forces() {
+    const int N = count();
+    if (!engine_ready_ || static_cast<int>(bond_.size()) != N)
+        throw std::runtime_error(
+            "MultiGpu::compute_forces: call setup_force_engine + setup_bonded");
+    // Zero owned+ghost forces + scalars once; LJ writes owned (full), bonded
+    // deposits owned+ghost, then one reverse_comm brings ghost contributions
+    // home. (LJ leaves ghost forces zero, so only bonded ghost forces travel.)
+    for (int s = 0; s < N; ++s) {
+        const int na = frames_[s].n_local_ + frames_[s].n_ghost_;
+        dm_.set_device(s);
+        auto& a = frames_[s].atoms;
+        if (na > 0) {
+            CKM(cudaMemset(a.fx, 0, na * sizeof(real_t)));
+            CKM(cudaMemset(a.fy, 0, na * sizeof(real_t)));
+            CKM(cudaMemset(a.fz, 0, na * sizeof(real_t)));
+        }
+        CKM(cudaMemset(frames_[s].scalars, 0, sizeof(SystemScalars)));
+    }
+    for (int s = 0; s < N; ++s) {
+        const int na = frames_[s].n_local_ + frames_[s].n_ghost_;
+        if (na == 0)
+            continue;
+        dm_.set_device(s);
+        frames_[s].n_atoms_ = na;
+        cuda::LaunchContext lc{ctx_[s], frames_[s]};
+        nlist_[s]->launch(lc); // skin-gated CSR refresh
+        pair_[s]->launch(lc);  // LJ on owned (full), special-bonds-excluded
+        bond_[s]->launch(lc);
+        if (angle_[s])
+            angle_[s]->launch(lc);
+        if (dihedral_[s])
+            dihedral_[s]->launch(lc);
+    }
+    for (int s = 0; s < N; ++s) {
+        dm_.set_device(s);
+        CKM(cudaDeviceSynchronize());
+    }
+    reverse_comm();
+    bonded_energy_ = 0.0; // here: total PE (LJ + bonded), summed across subdomains
     for (int s = 0; s < N; ++s) {
         dm_.set_device(s);
         SystemScalars sc{};

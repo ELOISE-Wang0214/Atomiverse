@@ -237,6 +237,47 @@ TEST(MultiGpu, BondForceParityVsSingleGpu) {
     }
 }
 
+// multigpu-bonded-04 P4.3/P4.4: full PE = LJ (special-bonds excluded) + bonded.
+// The combined per-atom force and total energy on 2/4 GPUs must match a 1-GPU
+// run — exercises cross-GPU special-bonds exclusion (1-2 partner is a ghost on
+// the owner) together with the cross-GPU bonded forces.
+TEST(MultiGpu, FullPotentialParityVsSingleGpu) {
+    cuda::md::MultiGpu mg;
+    if (mg.count() < 2)
+        GTEST_SKIP() << "needs >=2 GPUs for cross-boundary topology";
+    auto g = make_bonded_grid(12.0);
+    const std::vector<double> K{100.0}, r0{2.0};
+    const std::vector<double> aK{50.0}, aT{109.5};
+    const std::vector<std::array<double, 5>> dC{{1.0, 0.5, -0.3, 0.2, 0.1}};
+
+    auto run = [&](cuda::md::MultiGpu& m, cpu::Frame& out, double& e) {
+        m.partition(g);
+        m.setup_force_engine(5.0, 0.1, 2.0); // real LJ; halo 5.0+skin covers bonds
+        m.setup_bonded(K, r0, aK, aT, dC);
+        m.enable_special_bonds();
+        m.reneighbor();      // halo + re-materialize + exclusion CSR + nlist
+        m.compute_forces();  // LJ (excluded) + bonded, single reverse_comm
+        m.gather_forces(out);
+        e = m.bonded_energy(); // total PE here
+    };
+
+    cpu::Frame fmulti(g.atoms.size()), fref(g.atoms.size());
+    double emulti = 0, eref = 0;
+    run(mg, fmulti, emulti);
+    {
+        cuda::md::MultiGpu mg1(1);
+        run(mg1, fref, eref);
+    }
+
+    std::cerr << "[diag] full PE: multi=" << emulti << " ref=" << eref << "\n";
+    EXPECT_NEAR(emulti, eref, 1e-3 * std::abs(eref) + 1e-3);
+    for (int i = 0; i < g.atoms.size(); ++i) {
+        EXPECT_NEAR(fmulti.atoms.fx[i], fref.atoms.fx[i], 0.5) << "fx atom " << i;
+        EXPECT_NEAR(fmulti.atoms.fy[i], fref.atoms.fy[i], 0.5) << "fy atom " << i;
+        EXPECT_NEAR(fmulti.atoms.fz[i], fref.atoms.fz[i], 0.5) << "fz atom " << i;
+    }
+}
+
 TEST(MultiGpu, PartitionGatherRoundTrip) {
     auto g = make_grid(12.0);
     cuda::md::MultiGpu mg;
