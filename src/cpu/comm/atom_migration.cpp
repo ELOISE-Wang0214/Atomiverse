@@ -339,33 +339,42 @@ void scatter_atoms_from_root(cpu::Frame& frame) {
         by_dest[static_cast<std::size_t>(dest)].push_back(i);
     }
 
-    // 4. Pack per destination (fixed stride) + Alltoallv.
+    // 4. Pack per destination (fixed stride) + Alltoallv. Counts/displacements
+    //    are in ATOMS (via a per-atom MPI datatype), NOT bytes: rank 0 holds
+    //    the whole system, so a byte-count displacement (`int`) overflows 2 GB
+    //    at large N (4M atoms x payload > 2 GB → negative displ → segfault at
+    //    256+ ranks). Atom counts stay < 2^31 for any realistic system.
+    MPI_Datatype atom_t;
+    MPI_Type_contiguous(kAtomPayloadBytes, MPI_BYTE, &atom_t);
+    MPI_Type_commit(&atom_t);
     std::vector<int> sc(world_size, 0), sd(world_size, 0), rc(world_size, 0),
         rd(world_size, 0);
-    std::size_t tot_send = 0;
+    std::size_t tot_send = 0; // in atoms
     for (int r = 0; r < world_size; ++r) {
         sd[r] = static_cast<int>(tot_send);
-        sc[r] = static_cast<int>(by_dest[r].size() * kAtomPayloadBytes);
-        tot_send += by_dest[r].size() * kAtomPayloadBytes;
+        sc[r] = static_cast<int>(by_dest[r].size());
+        tot_send += by_dest[r].size();
     }
-    std::vector<char> sbuf(tot_send);
+    std::vector<char> sbuf(tot_send * kAtomPayloadBytes);
     std::size_t off = 0;
     for (int r = 0; r < world_size; ++r)
         for (int idx : by_dest[static_cast<std::size_t>(r)])
             off = pack_atom(sbuf, off, frame, idx);
 
     MPI_Alltoall(sc.data(), 1, MPI_INT, rc.data(), 1, MPI_INT, MPI_COMM_WORLD);
-    std::size_t tot_recv = 0;
+    std::size_t tot_recv = 0; // in atoms
     for (int r = 0; r < world_size; ++r) {
         rd[r] = static_cast<int>(tot_recv);
         tot_recv += static_cast<std::size_t>(rc[r]);
     }
-    std::vector<char> rbuf(tot_recv);
-    MPI_Alltoallv(sbuf.data(), sc.data(), sd.data(), MPI_BYTE, rbuf.data(),
-                  rc.data(), rd.data(), MPI_BYTE, MPI_COMM_WORLD);
+    std::vector<char> rbuf(tot_recv * kAtomPayloadBytes);
+    MPI_Alltoallv(sbuf.data(), sc.data(), sd.data(), atom_t, rbuf.data(),
+                  rc.data(), rd.data(), atom_t, MPI_COMM_WORLD);
+    MPI_Type_free(&atom_t);
 
     // 5. Land received atoms in [0, n_recv); size to owned + ghost headroom.
-    const int n_recv = static_cast<int>(tot_recv / kAtomPayloadBytes);
+    //    `tot_recv` is already in atoms (the Alltoallv used a per-atom type).
+    const int n_recv = static_cast<int>(tot_recv);
     frame.atoms.set_capacity(n_recv + std::max(n_recv, 16384));
     std::size_t r_off = 0;
     for (int k = 0; k < n_recv; ++k)
