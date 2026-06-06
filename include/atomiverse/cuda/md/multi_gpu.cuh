@@ -229,11 +229,12 @@ class MultiGpu {
         int* d_src_idx = nullptr;          // [cnt] src-array indices (owned OR
                                            // prior-axis ghost) on src device
         real_t *d_sx = nullptr, *d_sy = nullptr, *d_sz = nullptr; // [cnt] send bufs
-        // Reverse (force) halo: dst-device buffers that gather this transfer's
-        // ghost-row forces for P2P shipment back to src; the src-device d_sx/sy/sz
-        // are reused as the receive buffer (forward/reverse never overlap in a
-        // step). Allocated on the dst device by build_halo.
-        real_t *d_fx_dst = nullptr, *d_fy_dst = nullptr, *d_fz_dst = nullptr;
+        // Reverse (force) halo, packed: ghost-row forces are gathered into one
+        // contiguous [3*cnt] buffer on the dst device (x|y|z blocks) and shipped
+        // back to the src device in a SINGLE cudaMemcpyPeer (vs three). Allocated
+        // by build_halo on their respective devices.
+        real_t* d_frev_dst = nullptr; // [3*cnt] dst-device gather buffer
+        real_t* d_srev_src = nullptr; // [3*cnt] src-device receive buffer
     };
 
   private:

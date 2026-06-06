@@ -1,6 +1,6 @@
 ---
 title: Multi-GPU bonded — optimization (P2P batching, launch bounds, atomics)
-status: approved
+status: in-progress
 created: 2026-06-06
 chain: multigpu-bonded
 link: 5
@@ -26,8 +26,8 @@ link: 5
 - `src/cuda/md/multi_gpu.cu`、`bonded_materialize.cu`、`tag_map.cu`、键力核(launch bounds)。
 
 ## Tasks
-- [ ] **P5.1** Batch P2P transfers (single packed buffer for xyz / forces)
-- [ ] **P5.2** __launch_bounds__ + owner-grouped atomics on bonded kernels
+- [~] **P5.1** Batch P2P transfers (single packed buffer for xyz / forces)
+- [x] **P5.2** __launch_bounds__ + owner-grouped atomics on bonded kernels
 - [ ] **P5.3** Share the owned+ghost scan between re-materialize and nlist rebuild; eliminate per-step alloc
 - [ ] **P5.4** Before/after multi-GPU PE step-time profile; correctness unchanged
 
