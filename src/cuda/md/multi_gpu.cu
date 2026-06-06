@@ -12,6 +12,7 @@
 #include <cuda_runtime.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -27,6 +28,35 @@ namespace md {
             throw std::runtime_error(std::string("MultiGpu CUDA: ") + #x        \
                                      + ": " + cudaGetErrorString(e_));          \
     } while (0)
+
+namespace {
+// Stream-ordered POOLED allocation. The per-reneighbor halo/migrate scratch was
+// the multi-GPU bottleneck: ~1000 cudaMalloc/cudaFree calls/run = ~600 ms of
+// host time (nsys). cudaMallocAsync/cudaFreeAsync use the device's default
+// memory pool, which (with the release threshold raised — see
+// set_pool_retain) RETAINS freed blocks, so after the first reneighbor these
+// allocations hit the pool and are nearly free. Templated wrapper so the
+// existing `&typed_ptr` call sites need no void** casts.
+template <class T> inline cudaError_t mallocp(T** p, size_t bytes) {
+    return cudaMallocAsync(reinterpret_cast<void**>(p), bytes, cudaStream_t{0});
+}
+inline void freep(void* p) {
+    if (p)
+        cudaFreeAsync(p, cudaStream_t{0});
+}
+// Raise the default mem-pool release threshold on every visible device so freed
+// async blocks stay in the pool (default threshold 0 returns them to the OS on
+// the next sync, defeating reuse). Idempotent; called from setup_force_engine.
+inline void set_pool_retain(const DeviceManager& dm) {
+    for (int i = 0; i < dm.count(); ++i) {
+        cudaMemPool_t pool;
+        if (cudaDeviceGetDefaultMemPool(&pool, dm.device_id(i)) != cudaSuccess)
+            continue;
+        std::uint64_t thr = ~0ull;
+        cudaMemPoolSetAttribute(pool, cudaMemPoolAttrReleaseThreshold, &thr);
+    }
+}
+} // namespace
 
 MultiGpu::MultiGpu(int n_gpus) : dm_(n_gpus) {}
 
@@ -107,12 +137,19 @@ __global__ void gather_positions(const real_t* __restrict__ x,
 void MultiGpu::destroy_halo_plan() {
     for (auto& p : halo_plan_) {
         dm_.set_device(p.src);
-        cudaFree(p.d_src_idx);
-        cudaFree(p.d_sx);
-        cudaFree(p.d_sy);
-        cudaFree(p.d_sz);
+        freep(p.d_src_idx);
+        freep(p.d_sx);
+        freep(p.d_sy);
+        freep(p.d_sz);
     }
     halo_plan_.clear();
+    // The freep's above are stream-ordered (cudaFreeAsync). Drain them so a
+    // following teardown / next MultiGpu (the per-device pool is shared across
+    // instances) can't reuse a block whose async free is still in flight.
+    for (int s = 0; s < count(); ++s) {
+        dm_.set_device(s);
+        cudaDeviceSynchronize();
+    }
 }
 
 void MultiGpu::build_halo(double cutoff) {
@@ -146,13 +183,13 @@ void MultiGpu::build_halo(double cutoff) {
             real_t *sx, *sy, *sz;
             std::int64_t* stag;
             int *stype, *sidx, *scnt;
-            CKM(cudaMalloc(&sx, ns * sizeof(real_t)));
-            CKM(cudaMalloc(&sy, ns * sizeof(real_t)));
-            CKM(cudaMalloc(&sz, ns * sizeof(real_t)));
-            CKM(cudaMalloc(&stag, ns * sizeof(std::int64_t)));
-            CKM(cudaMalloc(&stype, ns * sizeof(int)));
-            CKM(cudaMalloc(&sidx, ns * sizeof(int)));
-            CKM(cudaMalloc(&scnt, sizeof(int)));
+            CKM(mallocp(&sx, ns * sizeof(real_t)));
+            CKM(mallocp(&sy, ns * sizeof(real_t)));
+            CKM(mallocp(&sz, ns * sizeof(real_t)));
+            CKM(mallocp(&stag, ns * sizeof(std::int64_t)));
+            CKM(mallocp(&stype, ns * sizeof(int)));
+            CKM(mallocp(&sidx, ns * sizeof(int)));
+            CKM(mallocp(&scnt, sizeof(int)));
             auto& a = frames_[src].atoms;
             const auto lo = dd_->sublo(src);
             const auto hi = dd_->subhi(src);
@@ -222,10 +259,10 @@ void MultiGpu::build_halo(double cutoff) {
                 p.axis = axis;
                 p.cnt = cnt;
                 p.base = base;
-                CKM(cudaMalloc(&p.d_src_idx, cnt * sizeof(int)));
-                CKM(cudaMalloc(&p.d_sx, cnt * sizeof(real_t)));
-                CKM(cudaMalloc(&p.d_sy, cnt * sizeof(real_t)));
-                CKM(cudaMalloc(&p.d_sz, cnt * sizeof(real_t)));
+                CKM(mallocp(&p.d_src_idx, cnt * sizeof(int)));
+                CKM(mallocp(&p.d_sx, cnt * sizeof(real_t)));
+                CKM(mallocp(&p.d_sy, cnt * sizeof(real_t)));
+                CKM(mallocp(&p.d_sz, cnt * sizeof(real_t)));
                 CKM(cudaMemcpy(p.d_src_idx, sidx, cnt * sizeof(int),
                                cudaMemcpyDeviceToDevice));
                 CKM(cudaMemcpy(p.d_sx, sx, cnt * sizeof(real_t),
@@ -240,13 +277,13 @@ void MultiGpu::build_halo(double cutoff) {
                 frames_[dst].n_ghost_ = goff[dst];
             }
             cudaSetDevice(dm_.device_id(src));
-            cudaFree(sx);
-            cudaFree(sy);
-            cudaFree(sz);
-            cudaFree(stag);
-            cudaFree(stype);
-            cudaFree(sidx);
-            cudaFree(scnt);
+            freep(sx);
+            freep(sy);
+            freep(sz);
+            freep(stag);
+            freep(stype);
+            freep(sidx);
+            freep(scnt);
         }
         // Barrier between axes: received ghosts must be visible (and their
         // positions settled) before the next axis packs from them.
@@ -539,6 +576,9 @@ void MultiGpu::setup_force_engine(double cutoff, double epsilon, double sigma,
                                   double skin) {
     destroy_force_engine();
     const int N = count();
+    // Retain freed pool blocks so the per-reneighbor halo/migrate async
+    // allocations are reused instead of round-tripping to the OS.
+    set_pool_retain(dm_);
     force_cutoff_ = cutoff;
     force_skin_ = (skin < 0) ? 0.3 * cutoff : skin;
     const cuda::Box box = make_ortho_box(box_L_);
@@ -588,7 +628,12 @@ void MultiGpu::reneighbor() {
                 cuda::DestroyContext dc{ctx_[s], frames_[s]};
                 nlist_[s]->destroy(dc);
             }
-            int want = static_cast<int>(na * 1.3) + 64;
+            // Single GPU has no ghosts and a fixed owned count, so size the
+            // neighbor-list buffers (incl. the per-atom Verlet list) at exactly
+            // na — the 1.3x ghost-fluctuation headroom is pure VRAM waste there.
+            // Multi-GPU keeps the headroom so ghost-count drift between
+            // reneighbor intervals rarely forces a costly rebuild.
+            int want = (count() == 1) ? na : (static_cast<int>(na * 1.3) + 64);
             if (want > frames_[s].capacity_)
                 want = frames_[s].capacity_;
             frames_[s].n_atoms_ = want;
@@ -754,28 +799,28 @@ struct MigBuf {
     std::int64_t* tag;
 };
 void mig_alloc(MigBuf& b, int m) {
-    CKM(cudaMalloc(&b.x, m * sizeof(real_t)));
-    CKM(cudaMalloc(&b.y, m * sizeof(real_t)));
-    CKM(cudaMalloc(&b.z, m * sizeof(real_t)));
-    CKM(cudaMalloc(&b.vx, m * sizeof(real_t)));
-    CKM(cudaMalloc(&b.vy, m * sizeof(real_t)));
-    CKM(cudaMalloc(&b.vz, m * sizeof(real_t)));
-    CKM(cudaMalloc(&b.mass, m * sizeof(real_t)));
-    CKM(cudaMalloc(&b.charge, m * sizeof(real_t)));
-    CKM(cudaMalloc(&b.type, m * sizeof(int)));
-    CKM(cudaMalloc(&b.tag, m * sizeof(std::int64_t)));
+    CKM(mallocp(&b.x, m * sizeof(real_t)));
+    CKM(mallocp(&b.y, m * sizeof(real_t)));
+    CKM(mallocp(&b.z, m * sizeof(real_t)));
+    CKM(mallocp(&b.vx, m * sizeof(real_t)));
+    CKM(mallocp(&b.vy, m * sizeof(real_t)));
+    CKM(mallocp(&b.vz, m * sizeof(real_t)));
+    CKM(mallocp(&b.mass, m * sizeof(real_t)));
+    CKM(mallocp(&b.charge, m * sizeof(real_t)));
+    CKM(mallocp(&b.type, m * sizeof(int)));
+    CKM(mallocp(&b.tag, m * sizeof(std::int64_t)));
 }
 void mig_free(MigBuf& b) {
-    cudaFree(b.x);
-    cudaFree(b.y);
-    cudaFree(b.z);
-    cudaFree(b.vx);
-    cudaFree(b.vy);
-    cudaFree(b.vz);
-    cudaFree(b.mass);
-    cudaFree(b.charge);
-    cudaFree(b.type);
-    cudaFree(b.tag);
+    freep(b.x);
+    freep(b.y);
+    freep(b.z);
+    freep(b.vx);
+    freep(b.vy);
+    freep(b.vz);
+    freep(b.mass);
+    freep(b.charge);
+    freep(b.type);
+    freep(b.tag);
 }
 } // namespace
 
@@ -785,20 +830,18 @@ void MultiGpu::migrate() {
         return; // single GPU: every atom already owned here
     const auto dims = dd_->dims();
 
-    // Phase 1 — per source: classify owners, counting-sort owned indices by
-    // destination into `order` (group dst at [boff[dst], boff[dst]+cnt[dst])).
-    std::vector<int*> d_order(N, nullptr);
+    // Phase 1a — per source: classify owners + per-destination COUNTS only
+    // (cheap; the counting-sort `order` is deferred to phase 1b so the common
+    // no-migration case skips it entirely). `owner` is retained for phase 1b.
+    std::vector<int*> d_owner(N, nullptr);
     std::vector<std::vector<int>> cnt(N, std::vector<int>(N, 0)); // cnt[src][dst]
     std::vector<std::vector<int>> boff(N, std::vector<int>(N, 0));
     for (int s = 0; s < N; ++s) {
         const int nl = frames_[s].n_local_;
         dm_.set_device(s);
-        int *owner, *dcnt, *order, *dfill, *dboff;
-        CKM(cudaMalloc(&owner, std::max(1, nl) * sizeof(int)));
-        CKM(cudaMalloc(&order, std::max(1, nl) * sizeof(int)));
-        CKM(cudaMalloc(&dcnt, N * sizeof(int)));
-        CKM(cudaMalloc(&dfill, N * sizeof(int)));
-        CKM(cudaMalloc(&dboff, N * sizeof(int)));
+        int *owner, *dcnt;
+        CKM(mallocp(&owner, std::max(1, nl) * sizeof(int)));
+        CKM(mallocp(&dcnt, N * sizeof(int)));
         CKM(cudaMemset(dcnt, 0, N * sizeof(int)));
         if (nl > 0) {
             auto& a = frames_[s].atoms;
@@ -815,19 +858,57 @@ void MultiGpu::migrate() {
         for (int d = 1; d < N; ++d)
             hb[d] = hb[d - 1] + hc[d - 1];
         boff[s] = hb;
-        CKM(cudaMemcpy(dboff, hb.data(), N * sizeof(int),
+        d_owner[s] = owner;
+        freep(dcnt);
+        CKM(cudaDeviceSynchronize()); // counts (and owner[]) ready
+    }
+
+    // Fast path: if every owned atom stayed on its current subdomain
+    // (cnt[s][s] == n_local[s] for all s), there is nothing to move — skip the
+    // counting sort, gather, per-(src,dst) P2P and publish entirely. In a stable
+    // run atoms cross a boundary only rarely, so the common reneighbor does just
+    // the cheap classify above. build_halo() rebuilds ghosts regardless.
+    {
+        bool any_move = false;
+        for (int s = 0; s < N; ++s)
+            if (cnt[s][s] != frames_[s].n_local_) {
+                any_move = true;
+                break;
+            }
+        if (!any_move) {
+            for (int s = 0; s < N; ++s) {
+                dm_.set_device(s);
+                freep(d_owner[s]);
+            }
+            for (int s = 0; s < N; ++s) {
+                dm_.set_device(s);
+                CKM(cudaDeviceSynchronize());
+            }
+            return; // owned sets unchanged; ghosts rebuilt by build_halo()
+        }
+    }
+
+    // Phase 1b — atoms DID move: build the counting-sort order per source.
+    std::vector<int*> d_order(N, nullptr);
+    for (int s = 0; s < N; ++s) {
+        const int nl = frames_[s].n_local_;
+        dm_.set_device(s);
+        int *order, *dfill, *dboff;
+        CKM(mallocp(&order, std::max(1, nl) * sizeof(int)));
+        CKM(mallocp(&dfill, N * sizeof(int)));
+        CKM(mallocp(&dboff, N * sizeof(int)));
+        CKM(cudaMemcpy(dboff, boff[s].data(), N * sizeof(int),
                        cudaMemcpyHostToDevice));
         CKM(cudaMemset(dfill, 0, N * sizeof(int)));
         if (nl > 0) {
             int blk = 256, grd = (nl + blk - 1) / blk;
-            scatter_order<<<grd, blk>>>(owner, nl, dboff, dfill, order);
+            scatter_order<<<grd, blk>>>(d_owner[s], nl, dboff, dfill, order);
             CKM(cudaGetLastError());
         }
         d_order[s] = order;
-        cudaFree(owner);
-        cudaFree(dcnt);
-        cudaFree(dfill);
-        cudaFree(dboff);
+        freep(d_owner[s]);
+        freep(dfill);
+        freep(dboff);
         CKM(cudaDeviceSynchronize()); // order[] ready for cross-device gather
     }
 
@@ -918,7 +999,7 @@ void MultiGpu::migrate() {
         n_local_[dst] = m;
         frames_[dst].n_ghost_ = 0;
         mig_free(stg[dst]);
-        cudaFree(d_order[dst]);
+        freep(d_order[dst]);
     }
     for (int s = 0; s < N; ++s) {
         dm_.set_device(s);

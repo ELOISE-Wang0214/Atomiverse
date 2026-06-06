@@ -1,0 +1,36 @@
+# LJ strong-throughput deck matching the Atomiverse CUDA LJ benchmark
+# (benchmarks/bench_multi_gpu_scaling.cu / scaling.cpp). Reduced LJ units:
+#   sigma = epsilon = 1, simple-cubic rho* = 0.712, cutoff = 2 sigma,
+#   skin = 0.6 sigma (= AV's 0.3*cutoff auto-skin), reneighbor every 20.
+# The reduced system has the same neighbors/atom (~24) as the AV runs, so
+# Matom-step/s is directly comparable. Run with KOKKOS/CUDA:
+#   lmp -k on g <ngpu> -sf kk -pk kokkos -in in.lj_kk -v cells <L> -v steps <S>
+# Atom count = cells^3.
+variable        cells index 64
+variable        steps index 100
+
+units           lj
+atom_style      atomic
+lattice         sc 0.712
+region          box block 0 ${cells} 0 ${cells} 0 ${cells}
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+velocity        all create 1.0 12345 loop geom
+
+pair_style      lj/cut 2.0
+pair_coeff      1 1 1.0 1.0
+
+neighbor        0.6 bin
+neigh_modify    every 20 delay 0 check no
+
+fix             1 all nve
+timestep        0.005
+
+# Warm up (untimed): pays first neighbor build / JIT.
+run             10 post no
+reset_timestep  0
+
+run             ${steps} post no
+# Throughput is parsed by the runner from LAMMPS's standard
+# "Loop time of <t> on <P> procs for <steps> steps with <atoms> atoms" line.

@@ -1,0 +1,4 @@
+atoms_total,gpus,atoms_per_gpu,matom_step_s,per_gpu_msps,peak_vram_mb,status
+47832147,1,47832147,1633.9,1633.9,21145,ok
+96071912,2,48035956,1382.4,691.2,43354,ok
+192100033,4,48025008,1505.1,376.3,81931,ok
