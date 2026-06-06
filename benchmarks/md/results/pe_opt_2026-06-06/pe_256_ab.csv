@@ -1,0 +1,7 @@
+# PE-melt 256 cores (1 node), 2.048M atoms (80x80x16 grid, 20-atom chains), 8000/rank, 1000 steps, stage:1 NVE+Langevin
+# same node, OMP=1, srun --mpi=pmi2; LAMMPS pe_80x80x16.data via lammps_bench.in
+config,total_s,Pair_s,Bonded_s,Neigh_s,Comm_s,Reduce_s,matom_step_s,vs_lammps
+av_baseline,9.673,4.341,1.307,1.670,1.365,0.385,211.7,0.92
+av_force_directwrite,8.914,4.220,0.900,1.642,1.228,0.336,229.8,1.004
+av_force_plus_reducegate,8.683,4.264,0.889,1.643,1.267,0.027,235.9,1.031
+lammps,8.954,4.905,0.755,1.940,0.710,0.000,228.7,1.00
