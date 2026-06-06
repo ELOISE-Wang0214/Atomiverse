@@ -90,6 +90,18 @@ class MultiGpu {
     /// skin since `build_halo` (the reneighbor cadence guarantees that).
     void forward_comm();
 
+    /// Reverse halo (force communicate): the adjoint of `build_halo`/`forward_comm`.
+    /// Replays the recorded `HaloPlan` transfers in REVERSE cascade order
+    /// (z, then y, then x): for each transfer, gather the destination's ghost-row
+    /// forces, ship them back over NVLink, and scatter-add them into the source's
+    /// owned (or prior-axis ghost) rows. After this, any force a force kernel
+    /// deposited onto a ghost row (e.g. a bonded partner owned on another GPU) has
+    /// been accumulated onto its true owner. The LJ path computes the full force
+    /// on owned atoms directly (ghost forces stay zero) and so does NOT need this;
+    /// the cross-GPU bonded path does. Reverse-once invariant: call exactly once
+    /// per step, after all force kernels, mirroring the single forward halo.
+    void reverse_comm();
+
     /// Merge all subdomains' owned atoms back into one cpu::Frame (positions /
     /// velocities by tag order matching the original global frame size). Used
     /// to validate partition round-trips and, later, full multi-GPU runs.
@@ -167,6 +179,11 @@ class MultiGpu {
         int* d_src_idx = nullptr;          // [cnt] src-array indices (owned OR
                                            // prior-axis ghost) on src device
         real_t *d_sx = nullptr, *d_sy = nullptr, *d_sz = nullptr; // [cnt] send bufs
+        // Reverse (force) halo: dst-device buffers that gather this transfer's
+        // ghost-row forces for P2P shipment back to src; the src-device d_sx/sy/sz
+        // are reused as the receive buffer (forward/reverse never overlap in a
+        // step). Allocated on the dst device by build_halo.
+        real_t *d_fx_dst = nullptr, *d_fy_dst = nullptr, *d_fz_dst = nullptr;
     };
 
   private:

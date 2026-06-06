@@ -132,6 +132,45 @@ __global__ void gather_positions(const real_t* __restrict__ x,
     oy[k] = y[i];
     oz[k] = z[i];
 }
+
+// Reverse halo (force) — gather a destination's ghost-row forces [base,base+cnt)
+// into a contiguous buffer for P2P shipment back to the owner subdomain. Mirror
+// of gather_positions but reading the (contiguous) ghost force rows by offset.
+__global__ void gather_ghost_forces(const real_t* __restrict__ fx,
+                                    const real_t* __restrict__ fy,
+                                    const real_t* __restrict__ fz, int base,
+                                    int cnt, real_t* __restrict__ ofx,
+                                    real_t* __restrict__ ofy,
+                                    real_t* __restrict__ ofz) {
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= cnt)
+        return;
+    ofx[k] = fx[base + k];
+    ofy[k] = fy[base + k];
+    ofz[k] = fz[base + k];
+}
+
+// Reverse halo (force) — scatter-add received ghost forces into the source
+// subdomain's owned (or prior-axis ghost) rows named by `idx` (the same src
+// indices recorded for the forward position gather). atomicAdd because several
+// transfers may target the same owned row, and because a prior-axis ghost row
+// can receive contributions from multiple later-axis plans before being
+// reversed further down the cascade.
+__global__ void scatter_add_forces(real_t* __restrict__ fx,
+                                   real_t* __restrict__ fy,
+                                   real_t* __restrict__ fz,
+                                   const int* __restrict__ idx, int cnt,
+                                   const real_t* __restrict__ ifx,
+                                   const real_t* __restrict__ ify,
+                                   const real_t* __restrict__ ifz) {
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= cnt)
+        return;
+    int i = idx[k];
+    atomicAdd(&fx[i], ifx[k]);
+    atomicAdd(&fy[i], ify[k]);
+    atomicAdd(&fz[i], ifz[k]);
+}
 } // namespace
 
 void MultiGpu::destroy_halo_plan() {
@@ -141,6 +180,11 @@ void MultiGpu::destroy_halo_plan() {
         freep(p.d_sx);
         freep(p.d_sy);
         freep(p.d_sz);
+        // Reverse-halo gather buffers were allocated on the dst device.
+        dm_.set_device(p.dst);
+        freep(p.d_fx_dst);
+        freep(p.d_fy_dst);
+        freep(p.d_fz_dst);
     }
     halo_plan_.clear();
     // The freep's above are stream-ordered (cudaFreeAsync). Drain them so a
@@ -271,6 +315,14 @@ void MultiGpu::build_halo(double cutoff) {
                                cudaMemcpyDeviceToDevice));
                 CKM(cudaMemcpy(p.d_sz, sz, cnt * sizeof(real_t),
                                cudaMemcpyDeviceToDevice));
+                // Reverse-halo gather buffers live on the DST device (where the
+                // ghost forces are read); allocate them there, then restore the
+                // src device for the rest of this source's loop.
+                dm_.set_device(dst);
+                CKM(mallocp(&p.d_fx_dst, cnt * sizeof(real_t)));
+                CKM(mallocp(&p.d_fy_dst, cnt * sizeof(real_t)));
+                CKM(mallocp(&p.d_fz_dst, cnt * sizeof(real_t)));
+                dm_.set_device(src);
                 halo_plan_.push_back(p);
 
                 goff[dst] += cnt;
@@ -320,6 +372,55 @@ void MultiGpu::forward_comm() {
             CKM(cudaMemcpyPeer(da.z + p.base, dd_id, p.d_sz, sd,
                                p.cnt * sizeof(real_t)));
         }
+        if (any)
+            for (int s = 0; s < count(); ++s) {
+                dm_.set_device(s);
+                cudaDeviceSynchronize();
+            }
+    }
+}
+
+void MultiGpu::reverse_comm() {
+    // Adjoint of forward_comm: replay the cascade in REVERSE axis order
+    // (z, then y, then x) so a ghost force lands on its forwarding row before
+    // that row is itself reversed one axis down. For each transfer: gather the
+    // dst's ghost-row forces [base, base+cnt), P2P them back to the src device
+    // (reusing the src-side d_s{x,y,z} buffers as the receive buffer), then
+    // scatter-add into the src rows named by d_src_idx.
+    for (int axis = 2; axis >= 0; --axis) {
+        bool any = false;
+        for (auto& p : halo_plan_) {
+            if (p.axis != axis || p.cnt <= 0)
+                continue;
+            any = true;
+            const int sd = dm_.device_id(p.src), dd_id = dm_.device_id(p.dst);
+            int block = 256, grid = (p.cnt + block - 1) / block;
+
+            // Gather the dst's ghost-row forces into the dst-device buffer.
+            dm_.set_device(p.dst);
+            auto& da = frames_[p.dst].atoms;
+            gather_ghost_forces<<<grid, block>>>(da.fx, da.fy, da.fz, p.base,
+                                                 p.cnt, p.d_fx_dst, p.d_fy_dst,
+                                                 p.d_fz_dst);
+            CKM(cudaGetLastError());
+
+            // Ship dst → src (into the reused src-side receive buffers).
+            CKM(cudaMemcpyPeer(p.d_sx, sd, p.d_fx_dst, dd_id,
+                               p.cnt * sizeof(real_t)));
+            CKM(cudaMemcpyPeer(p.d_sy, sd, p.d_fy_dst, dd_id,
+                               p.cnt * sizeof(real_t)));
+            CKM(cudaMemcpyPeer(p.d_sz, sd, p.d_fz_dst, dd_id,
+                               p.cnt * sizeof(real_t)));
+
+            // Scatter-add into the src owned (or prior-axis ghost) rows.
+            dm_.set_device(p.src);
+            auto& a = frames_[p.src].atoms;
+            scatter_add_forces<<<grid, block>>>(a.fx, a.fy, a.fz, p.d_src_idx,
+                                                p.cnt, p.d_sx, p.d_sy, p.d_sz);
+            CKM(cudaGetLastError());
+        }
+        // Barrier between axes: this axis's scatter-adds into prior-axis ghost
+        // rows must be visible before the next (lower) axis gathers from them.
         if (any)
             for (int s = 0; s < count(); ++s) {
                 dm_.set_device(s);
