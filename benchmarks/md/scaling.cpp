@@ -59,6 +59,8 @@ struct Args {
     int warmup = 10;             ///< unrecorded warmup steps before timing
     double cutoff = 5.0;         ///< LJ cutoff (= 2*sigma, matches GPU bench)
     double skin = 0.6;           ///< Verlet skin [A] — matches LAMMPS lj.in
+    int reneigh = 1;             ///< halo full-rebuild cadence (steps)
+    int migrate = 0;             ///< migrate cadence (0 = follow reneigh)
     double dt = 1.0;             ///< Time step [fs]
     bool csv_header = false;     ///< print CSV header to stdout (rank 0 only)
     bool quiet = false;          ///< suppress one-line per-rank reports
@@ -114,6 +116,10 @@ bool parse_args(int argc, char** argv, Args& a) {
         if (take_d("--cutoff", a.cutoff))
             continue;
         if (take_d("--skin", a.skin))
+            continue;
+        if (take("--reneigh", a.reneigh))
+            continue;
+        if (take("--migrate", a.migrate))
             continue;
         if (take_d("--dt", a.dt))
             continue;
@@ -235,16 +241,23 @@ int main(int argc, char** argv) {
     // Without this the decomposition corrupts over a run and the neighbor
     // list degrades toward O(N^2). Migrate also bumps neighbor_generation,
     // which triggers the halo full-rebuild on migration steps.
-    sim.add(cpu::comm::Migrate{20});
-    // HaloSend `every=1` forces a full halo rebuild (count exchange) every
-    // step. This is a WORKAROUND for a real bug: the halo's position-only
-    // refresh path (cached per-face counts between full rebuilds) desyncs the
-    // ranks on a bondless run — they drift apart until a Waitall can't be
-    // matched and they deadlock (PE-melt masks it; pure LJ exposes it). Forcing
-    // per-step full rebuild keeps the counts fresh and the ranks in lockstep.
-    // The proper fix belongs in halo_exchange.cpp's position-only branch.
+    sim.add(cpu::comm::Migrate{args.migrate > 0 ? args.migrate : args.reneigh});
+    // HaloSend `every=N`: full halo rebuild (count exchange + slot reassign)
+    // every N steps; position-only ghost refresh in between. The neighbor list
+    // (coupled via dd->halo_generation) then rebuilds only on full-rebuild
+    // steps, not every step — that 48%-of-multi-rank-time Neigh + 41% Comm is
+    // the scaling bottleneck.
+    //
+    // DEFAULT reneigh=1 (full rebuild every step). reneigh>1 currently exposes
+    // a real bug in the position-only path: when Migrate does NOT run every
+    // step, an owned atom drifts and the full-rebuild cascade later leaves a
+    // ghost slot UNINITIALISED (garbage ~1.8e10 position), spiking a force and
+    // hanging one rank in PairLJCut while the others block in HaloRecv. Repro:
+    // `--reneigh 20 --migrate 20` (n>=8); `--reneigh 20 --migrate 1` works.
+    // Fixing the cascade ghost-slot accounting unlocks reneigh>1 and is the key
+    // to beating LAMMPS on multi-core. See note atomiverse-cpu-mpi-desync-hang.
     sim.on(ATV::md::Phase::pre_force)
-        .add(cpu::comm::HaloSend{args.cutoff, 1}, -20);
+        .add(cpu::comm::HaloSend{args.cutoff, args.reneigh}, -20);
     sim.on(ATV::md::Phase::post_force)
         .add(cpu::comm::HaloRecv{}, -1000);
     sim.on(ATV::md::Phase::force)
@@ -253,10 +266,18 @@ int main(int argc, char** argv) {
     // (LAMMPS-style vflag gating) — ~20-25% off the LJ inner loop.
     sim.on(ATV::md::Phase::force)
         .add(cpu::md::LJ{1.0, 2.5, args.cutoff}.set_compute_stress(false));
+    // Opt-in per-component timing (ATV_TIMER[_VERBOSE]) — splits the per-step
+    // wall into force / neighbor / integrate / Comm(halo+migrate) to expose
+    // the multi-rank scaling bottleneck. Harmless when the env var is unset.
+    const bool do_timing = std::getenv("ATV_TIMER") != nullptr;
+    if (do_timing)
+        sim.enable_timing(true);
     sim.build();
 
     if (args.warmup > 0)
         sim.run(frame, args.warmup);
+    if (do_timing)
+        sim.reset_timing();
 
 #ifdef ATV_HAS_MPI
     MPI_Barrier(MPI_COMM_WORLD);
@@ -267,6 +288,9 @@ int main(int argc, char** argv) {
     MPI_Barrier(MPI_COMM_WORLD);
 #endif
     const double t1 = now_seconds();
+
+    if (do_timing)
+        sim.emit_timing("bench");
 
     const double total_s = t1 - t0;
     const double per_step_ms = 1000.0 * total_s / std::max(1, args.steps);
