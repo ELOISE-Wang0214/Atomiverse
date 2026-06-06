@@ -22,8 +22,12 @@
 #include "atomiverse/cuda/device_manager.cuh"
 #include "atomiverse/cuda/domain_decomposition.cuh"
 #include "atomiverse/cuda/frame.cuh"
+#include <array>
+
 #include "atomiverse/cuda/neighbor_list.cuh"
+#include "atomiverse/cuda/potentials/angle_harmonic.cuh"
 #include "atomiverse/cuda/potentials/bond_harmonic.cuh"
+#include "atomiverse/cuda/potentials/dihedral_multi_harmonic.cuh"
 #include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 
 namespace ATV {
@@ -115,8 +119,14 @@ class MultiGpu {
     /// Set up the per-subdomain cross-GPU bonded force engine. Call after
     /// `setup_force_engine` (it reuses the per-GPU Context's box/stream). One
     /// `cuda::BondHarmonic` per subdomain, built with the given per-type spring
-    /// constants `bond_K` [eV/Å²] and equilibria `bond_r0` [Å].
-    void setup_bonded(std::vector<double> bond_K, std::vector<double> bond_r0);
+    /// constants `bond_K` [eV/Å²] and equilibria `bond_r0` [Å]. Angle
+    /// (`angle_K` [eV/rad²], `angle_theta0` [deg]) and dihedral
+    /// (`dihedral_C`, per-type 5-coeff multi/harmonic) components are created
+    /// only when their coefficient lists are non-empty.
+    void setup_bonded(std::vector<double> bond_K, std::vector<double> bond_r0,
+                      std::vector<double> angle_K = {},
+                      std::vector<double> angle_theta0 = {},
+                      std::vector<std::array<double, 5>> dihedral_C = {});
 
     /// Compute cross-GPU bonded forces: zero each subdomain's owned+ghost force
     /// rows, run BondHarmonic over the re-materialized per-GPU bond tuples
@@ -247,8 +257,10 @@ class MultiGpu {
     std::vector<std::int64_t*> tagmap_tag_; // [capacity] sorted global tags, per slot
     std::vector<int*> tagmap_idx_;          // [capacity] parallel local indices, per slot
 
-    // Cross-GPU bonded force engine (one BondHarmonic per subdomain).
+    // Cross-GPU bonded force engine (one component per subdomain per type).
     std::vector<std::unique_ptr<cuda::BondHarmonic>> bond_;
+    std::vector<std::unique_ptr<cuda::AngleHarmonic>> angle_;
+    std::vector<std::unique_ptr<cuda::DihedralMultiHarmonic>> dihedral_;
     double bonded_energy_ = 0.0;
 };
 

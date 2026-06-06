@@ -824,15 +824,22 @@ void MultiGpu::destroy_force_engine() {
     // Bonded components destroy unconditionally (built in setup_bonded, not gated
     // on the neighbor-list build cadence) — free each BondHarmonic's K/r0.
     for (int s = 0; s < static_cast<int>(bond_.size()); ++s) {
-        if (bond_[s] && s < static_cast<int>(ctx_.size())) {
-            dm_.set_device(s);
-            cuda::DestroyContext dc{ctx_[s], frames_[s]};
+        if (s >= static_cast<int>(ctx_.size()))
+            continue;
+        dm_.set_device(s);
+        cuda::DestroyContext dc{ctx_[s], frames_[s]};
+        if (bond_[s])
             bond_[s]->destroy(dc);
-        }
+        if (s < static_cast<int>(angle_.size()) && angle_[s])
+            angle_[s]->destroy(dc);
+        if (s < static_cast<int>(dihedral_.size()) && dihedral_[s])
+            dihedral_[s]->destroy(dc);
     }
     nlist_.clear();
     pair_.clear();
     bond_.clear();
+    angle_.clear();
+    dihedral_.clear();
     ctx_.clear();
     nlist_built_.clear();
     engine_ready_ = false;
@@ -979,17 +986,32 @@ void MultiGpu::destroy_tag_maps() {
 }
 
 void MultiGpu::setup_bonded(std::vector<double> bond_K,
-                            std::vector<double> bond_r0) {
+                            std::vector<double> bond_r0,
+                            std::vector<double> angle_K,
+                            std::vector<double> angle_theta0,
+                            std::vector<std::array<double, 5>> dihedral_C) {
     if (!engine_ready_)
         throw std::runtime_error(
             "MultiGpu::setup_bonded: call setup_force_engine first");
     const int N = count();
     bond_.resize(N);
+    angle_.resize(N);
+    dihedral_.resize(N);
+    const bool do_angle = !angle_K.empty();
+    const bool do_dih = !dihedral_C.empty();
     for (int s = 0; s < N; ++s) {
         dm_.set_device(s);
-        bond_[s] = std::make_unique<cuda::BondHarmonic>(bond_K, bond_r0);
         cuda::BuildContext bc{ctx_[s], frames_[s]};
-        bond_[s]->build(bc); // uploads per-type K/r0 to this device
+        bond_[s] = std::make_unique<cuda::BondHarmonic>(bond_K, bond_r0);
+        bond_[s]->build(bc);
+        if (do_angle) {
+            angle_[s] = std::make_unique<cuda::AngleHarmonic>(angle_K, angle_theta0);
+            angle_[s]->build(bc);
+        }
+        if (do_dih) {
+            dihedral_[s] = std::make_unique<cuda::DihedralMultiHarmonic>(dihedral_C);
+            dihedral_[s]->build(bc);
+        }
     }
 }
 
@@ -1022,6 +1044,10 @@ void MultiGpu::compute_bonded_forces() {
         frames_[s].n_atoms_ = na;
         cuda::LaunchContext lc{ctx_[s], frames_[s]};
         bond_[s]->launch(lc);
+        if (angle_[s])
+            angle_[s]->launch(lc);
+        if (dihedral_[s])
+            dihedral_[s]->launch(lc);
     }
     for (int s = 0; s < N; ++s) {
         dm_.set_device(s);

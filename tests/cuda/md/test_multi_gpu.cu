@@ -55,6 +55,10 @@ cpu::Frame make_bonded_grid(double L) {
             for (int ix = 1; ix < s - 1; ++ix)
                 f.atoms.add_angle(tag_of(ix - 1, iy, iz), tag_of(ix, iy, iz),
                                   tag_of(ix + 1, iy, iz), 0);
+            for (int ix = 1; ix < s - 2; ++ix)
+                f.atoms.add_dihedral(tag_of(ix - 1, iy, iz), tag_of(ix, iy, iz),
+                                     tag_of(ix + 1, iy, iz),
+                                     tag_of(ix + 2, iy, iz), 0);
         }
     f.atoms.build_special_list();
     return f;
@@ -191,21 +195,24 @@ TEST(MultiGpu, MigratePreservesBondedTopology) {
     EXPECT_EQ(got, ref); // per-atom bonded topology preserved across migration
 }
 
-// multigpu-bonded-03: cross-GPU BondHarmonic. The bond force on each owned atom
-// (and on ghost bond partners, then reverse_comm'd home) must match a single-GPU
-// run of the same bonds. Drives BondHarmonic over the re-materialized per-GPU
-// tuples; cross-GPU bonds exercise the ghost-deposit + reverse_comm path.
+// multigpu-bonded-03/04: cross-GPU BondHarmonic + AngleHarmonic +
+// DihedralMultiHarmonic. The total bonded force on each owned atom (and on ghost
+// partners, then reverse_comm'd home) plus the total bonded energy must match a
+// single-GPU run. Cross-GPU bonds/angles/dihedrals exercise the ghost-deposit +
+// reverse_comm path for all three tuple types.
 TEST(MultiGpu, BondForceParityVsSingleGpu) {
     cuda::md::MultiGpu mg; // all visible GPUs
     if (mg.count() < 2)
         GTEST_SKIP() << "needs >=2 GPUs for cross-boundary bonds";
     auto g = make_bonded_grid(12.0); // x-bond length 3.0
     const std::vector<double> K{100.0}, r0{2.0}; // stretched (force nonzero)
+    const std::vector<double> aK{50.0}, aT{109.5};
+    const std::vector<std::array<double, 5>> dC{{1.0, 0.5, -0.3, 0.2, 0.1}};
 
     auto run = [&](cuda::md::MultiGpu& m, cpu::Frame& out, double& e) {
         m.partition(g);
         m.setup_force_engine(3.5, 0.0, 1.0); // ctx box/stream; LJ unused (eps 0)
-        m.setup_bonded(K, r0);
+        m.setup_bonded(K, r0, aK, aT, dC);
         m.build_halo(3.5);          // ghosts cover the 3.0 bond
         m.rebuild_bonded_tuples();  // resolve partners to local/ghost rows
         m.compute_bonded_forces();  // zero → bond (owned+ghost) → reverse_comm
