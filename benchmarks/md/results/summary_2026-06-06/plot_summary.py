@@ -1,107 +1,94 @@
 #!/usr/bin/env python3
-"""Atomiverse vs LAMMPS — consolidated benchmark summary (2026-06-06).
-
-One 2x2 master figure pulling the LATEST data from the sibling result dirs:
-  (a) CPU multicore weak-scaling throughput  (LJ + PE)   <- ../pe_opt_2026-06-06
-  (b) CPU peak per-rank memory               (LJ + PE)   <- ../pe_opt_2026-06-06
-  (c) single-GPU throughput vs system size   (LJ)        <- ../gpu_scaling_optimized
-  (d) multi-GPU throughput @ 64M atoms       (LJ)        <- ../gpu_scaling_optimized
-CPU: EPYC, OMP=1, srun --mpi=pmi2, fair /usr/bin/time -v RSS for both codes.
-GPU: GH200, AV single-process multi-GPU (NVLink) vs LAMMPS-KOKKOS/CUDA."""
+"""Atomiverse vs LAMMPS — consolidated benchmark summary (2026-06-06)."""
 import csv, os
 import numpy as np
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import scienceplots  # noqa
 plt.style.use(["science", "no-latex", "grid"])
-matplotlib.rcParams.update({"font.size": 8.5, "axes.titlesize": 9.5,
-    "axes.labelsize": 8.5, "xtick.labelsize": 7.0, "ytick.labelsize": 7.5,
-    "legend.fontsize": 7.0, "lines.linewidth": 1.6, "lines.markersize": 5})
-HERE = os.path.dirname(os.path.abspath(__file__))
-RES = os.path.dirname(HERE)
+matplotlib.rcParams.update({"font.size": 14, "axes.titlesize": 15,
+    "axes.labelsize": 14, "xtick.labelsize": 12, "ytick.labelsize": 12,
+    "legend.fontsize": 11, "lines.linewidth": 2.4, "lines.markersize": 7})
+HERE = os.path.dirname(os.path.abspath(__file__)); RES = os.path.dirname(HERE)
 C_AV, C_LMP = "#0C5DA5", "#FF2C00"
 
-def load(path, predicate=lambda r: True):
-    with open(path) as fh:
-        return [r for r in csv.DictReader(l for l in fh if not l.startswith("#"))
-                if predicate(r)]
+def load(p):
+    with open(p) as fh:
+        return list(csv.DictReader(l for l in fh if not l.startswith("#")))
 
-# ---- CPU multicore (LJ + PE) ----
 CPU = load(os.path.join(RES, "pe_opt_2026-06-06", "lj_pe_weak_matched.csv"))
-def cpu_series(system, code, col):
+def cser(system, code, col):
     d = {int(r["ranks"]): float(r[col]) for r in CPU
-         if r["system"] == system and r["code"] == code and r[col] not in ("NA", "")}
+         if r["system"] == system and r["code"] == code}
+    x = np.array(sorted(d)); return x, np.array([d[k] for k in x])
+def catoms(system):
+    d = {int(r["ranks"]): int(r["atoms"]) for r in CPU if r["system"] == system}
     x = np.array(sorted(d)); return x, np.array([d[k] for k in x])
 
-# ---- GPU single + multi (LJ) ----
-GS_AV  = load(os.path.join(RES, "gpu_scaling_optimized", "av_single.csv"))
-GS_LMP = load(os.path.join(RES, "gpu_scaling_optimized", "lmp_single.csv"))
-GM_AV  = load(os.path.join(RES, "gpu_scaling_optimized", "av_multi.csv"))
-GM_LMP = load(os.path.join(RES, "gpu_scaling_optimized", "lmp_multi.csv"))
+GSA = load(os.path.join(RES, "gpu_scaling_optimized", "av_single.csv"))
+GSL = load(os.path.join(RES, "gpu_scaling_optimized", "lmp_single.csv"))
+GMA = load(os.path.join(RES, "gpu_scaling_optimized", "av_multi.csv"))
+GML = load(os.path.join(RES, "gpu_scaling_optimized", "lmp_multi.csv"))
 
-fig, ((axA, axB), (axC, axD)) = plt.subplots(2, 2, figsize=(10.4, 8.4))
-CORES = [1,2,4,8,16,32,64,128,256,512,1024]
+def human(n):
+    return f"{n/1e6:.0f}M" if n >= 1e6 else (f"{n/1e3:.0f}k" if n >= 1e3 else str(n))
 
-# (a) CPU multicore weak throughput — LJ + PE
-for sysn, mk, ls in (("lj", "o", "-"), ("pe", "^", "--")):
-    x, av = cpu_series(sysn, "av", "matom_step_s")
-    _, lm = cpu_series(sysn, "lammps", "matom_step_s")
-    axA.plot(x, av, mk + ls, color=C_AV, label=f"AV ({sysn.upper()})")
-    axA.plot(x, lm, mk + ls, color=C_LMP, mfc="none", label=f"LAMMPS ({sysn.upper()})")
-axA.set_title("(a) CPU multicore — weak-scaling throughput")
-axA.set_xlabel("MPI ranks (cores)"); axA.set_ylabel("Matom-step / s")
-axA.set_xscale("log", base=2); axA.set_yscale("log")
-axA.set_xticks(CORES); axA.set_xticklabels([str(c) for c in CORES], rotation=40)
-axA.axvspan(256, 1100, color="0.85", alpha=0.5, zorder=0)
-axA.legend(loc="upper left", ncol=2)
+fig, ((axA, axB), (axC, axD)) = plt.subplots(2, 2, figsize=(9.2, 7.6))
+CORES = [1,4,16,64,256,1024]
 
-# (b) CPU peak memory per rank — LJ + PE
-for sysn, mk, ls in (("lj", "o", "-"), ("pe", "^", "--")):
-    x, av = cpu_series(sysn, "av", "maxrss_mb")
-    _, lm = cpu_series(sysn, "lammps", "maxrss_mb")
-    axB.plot(x, av, mk + ls, color=C_AV, label=f"AV ({sysn.upper()})")
-    axB.plot(x, lm, mk + ls, color=C_LMP, mfc="none", label=f"LAMMPS ({sysn.upper()})")
-axB.set_title("(b) CPU multicore — peak memory / rank")
-axB.set_xlabel("MPI ranks (cores)"); axB.set_ylabel("max RSS / rank [MB]")
-axB.set_xscale("log", base=2); axB.set_yscale("log")
-axB.set_xticks(CORES); axB.set_xticklabels([str(c) for c in CORES], rotation=40)
-axB.axvspan(256, 1100, color="0.85", alpha=0.5, zorder=0)
-axB.legend(loc="upper left", ncol=2)
+def cpu_panel(ax, system, title):
+    x, av = cser(system, "av", "matom_step_s"); _, lm = cser(system, "lammps", "matom_step_s")
+    ax.plot(x, av, "o-", color=C_AV, label="Atomiverse")
+    ax.plot(x, lm, "s-", color=C_LMP, label="LAMMPS")
+    ax.set_title(title); ax.set_xlabel("cores"); ax.set_ylabel("Matom-step / s")
+    ax.set_xscale("log", base=2); ax.set_yscale("log")
+    ax.set_xticks(CORES); ax.set_xticklabels([str(c) for c in CORES])
+    xr, ar = catoms(system)
+    top = ax.secondary_xaxis("top"); top.set_xscale("log", base=2)
+    top.set_xticks(CORES); top.set_xticklabels(
+        [human(dict(zip(xr, ar))[c]) for c in CORES])
+    top.set_xlabel("atoms")
+    ax.legend(loc="upper left")
 
-# (c) single-GPU throughput vs system size
-xa = np.array([int(r["atoms"]) for r in GS_AV]);  ya = np.array([float(r["matom_step_s"]) for r in GS_AV])
-xl = np.array([int(r["atoms"]) for r in GS_LMP]); yl = np.array([float(r["matom_step_s"]) for r in GS_LMP])
-axC.plot(xa, ya, "o-", color=C_AV, label="Atomiverse")
-axC.plot(xl, yl, "s-", color=C_LMP, label="LAMMPS-KOKKOS")
-axC.set_title("(c) single-GPU throughput vs system size (GH200)")
-axC.set_xlabel("atoms"); axC.set_ylabel("Matom-step / s")
-axC.set_xscale("log")
-for a, ya_, yl_ in zip(xa, ya, np.interp(xa, xl, yl)):
-    if a in (1000000, 8000000, 32768000):
-        axC.annotate(f"{ya_/yl_:.2f}x", (a, ya_), fontsize=6.5, color=C_AV,
-                     xytext=(0, 6), textcoords="offset points", ha="center")
-axC.legend(loc="lower right")
+cpu_panel(axA, "lj", "(a) CPU — LJ (weak)")
+cpu_panel(axB, "pe", "(b) CPU — PE-melt (weak)")
 
-# (d) multi-GPU throughput @ 64M atoms
-def at(rows, n): return float([r for r in rows if int(r["atoms"]) == 64000000
-                               and int(r["gpus"]) == n][0]["matom_step_s"])
+# (c) single-GPU: throughput (left) + VRAM (right)
+xa = np.array([int(r["atoms"]) for r in GSA]); ya = np.array([float(r["matom_step_s"]) for r in GSA])
+va = np.array([float(r["peak_vram_mb"]) for r in GSA]) / 1024
+xl = np.array([int(r["atoms"]) for r in GSL]); yl = np.array([float(r["matom_step_s"]) for r in GSL])
+vl = np.array([float(r["peak_vram_mb"]) for r in GSL]) / 1024
+axC.plot(xa, ya, "o-", color=C_AV, label="AV speed")
+axC.plot(xl, yl, "s-", color=C_LMP, label="LAMMPS speed")
+axC.set_title("(c) single-GPU — speed + VRAM"); axC.set_xlabel("atoms")
+axC.set_ylabel("Matom-step / s"); axC.set_xscale("log")
+axR = axC.twinx()
+axR.plot(xa, va, "o--", color=C_AV, alpha=0.55, mfc="none", label="AV VRAM")
+axR.plot(xl, vl, "s--", color=C_LMP, alpha=0.55, mfc="none", label="LAMMPS VRAM")
+axR.set_ylabel("peak VRAM [GB]")
+h1, l1 = axC.get_legend_handles_labels(); h2, l2 = axR.get_legend_handles_labels()
+axC.legend(h1 + h2, l1 + l2, loc="lower right", fontsize=9.5)
+
+# (d) multi-GPU @ 64M atoms: throughput bars + VRAM/GPU labels
+def row(rows, n): return [r for r in rows if int(r["atoms"]) == 64000000 and int(r["gpus"]) == n][0]
 G = [1, 2, 4]
-av = [at(GM_AV, n) for n in G]; lm = [at(GM_LMP, n) for n in G]
-w = 0.35; xi = np.arange(len(G))
+av = [float(row(GMA, n)["matom_step_s"]) for n in G]
+lm = [float(row(GML, n)["matom_step_s"]) for n in G]
+avv = [float(row(GMA, n)["peak_vram_mb"]) / 1024 for n in G]
+lmv = [float(row(GML, n)["peak_vram_mb"]) / 1024 for n in G]
+xi = np.arange(len(G)); w = 0.38
 axD.bar(xi - w/2, av, w, color=C_AV, label="Atomiverse")
-axD.bar(xi + w/2, lm, w, color=C_LMP, label="LAMMPS-KOKKOS")
-for i, (a, l) in enumerate(zip(av, lm)):
-    axD.text(i - w/2, a, f"{a/l:.1f}x", ha="center", va="bottom", fontsize=6.5, color=C_AV)
-axD.set_title("(d) multi-GPU throughput @ 64M atoms (GH200, NVLink)")
-axD.set_xlabel("GPUs"); axD.set_ylabel("Matom-step / s")
-axD.set_xticks(xi); axD.set_xticklabels([str(g) for g in G])
-axD.legend(loc="upper left")
+axD.bar(xi + w/2, lm, w, color=C_LMP, label="LAMMPS")
+for i in range(len(G)):
+    axD.text(i - w/2, av[i], f"{avv[i]:.0f}GB", ha="center", va="bottom", fontsize=9, color=C_AV)
+    axD.text(i + w/2, lm[i], f"{lmv[i]:.0f}GB", ha="center", va="bottom", fontsize=9, color=C_LMP)
+axD.set_title("(d) multi-GPU @ 64M atoms (VRAM/GPU labeled)")
+axD.set_xlabel("GPUs  (64M / N atoms per GPU)"); axD.set_ylabel("Matom-step / s")
+axD.set_xticks(xi); axD.set_xticklabels([f"{n}\n{human(64000000//n)}/GPU" for n in G])
+axD.set_ylim(0, max(av) * 1.18); axD.legend(loc="upper left")
 
-fig.suptitle("Atomiverse vs LAMMPS — benchmark summary (2026-06-06).  "
-             "CPU: AV leads at every core count (LJ 1.2-3.0x, PE 1.02-1.06x).  "
-             "GPU: AV leads at large N single-GPU (~1.15x) and multi-GPU (up to 2.2x @4).",
-             fontsize=8.8, y=1.005)
-fig.tight_layout(rect=[0, 0, 1, 0.98])
+fig.suptitle("Atomiverse vs LAMMPS  (2026-06-06)", fontsize=15, y=1.0)
+fig.tight_layout(rect=[0, 0, 1, 0.97])
 out = os.path.join(HERE, "benchmark_summary.png")
 fig.savefig(out, dpi=200, bbox_inches="tight"); fig.savefig(out.replace(".png", ".pdf"), bbox_inches="tight")
 print("wrote", out)
