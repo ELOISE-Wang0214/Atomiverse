@@ -1188,6 +1188,79 @@ void mig_free(MigBuf& b) {
     freep(b.type);
     freep(b.tag);
 }
+
+// Per-atom bonded topology carried alongside the core MigBuf when the system
+// has bonds (multigpu-bonded P2.3). Row widths mirror cpu::Atom; partners are
+// global tags (resolved to local rows on the new owner each reneighbor).
+struct MigBondedBuf {
+    int *num_bond, *bond_type, *num_angle, *angle_type, *num_dihedral,
+        *dihedral_type, *nspecial;
+    std::int64_t *bond_atom, *angle_atom, *dihedral_atom, *special;
+};
+void migb_alloc(MigBondedBuf& b, int m) {
+    const int MB = cpu::Atom::kMaxBondPerAtom, MA = cpu::Atom::kMaxAnglePerAtom,
+              MD = cpu::Atom::kMaxDihedralPerAtom, MS = cpu::Atom::kMaxSpecial;
+    CKM(mallocp(&b.num_bond, m * sizeof(int)));
+    CKM(mallocp(&b.bond_atom, m * MB * sizeof(std::int64_t)));
+    CKM(mallocp(&b.bond_type, m * MB * sizeof(int)));
+    CKM(mallocp(&b.num_angle, m * sizeof(int)));
+    CKM(mallocp(&b.angle_atom, m * 2 * MA * sizeof(std::int64_t)));
+    CKM(mallocp(&b.angle_type, m * MA * sizeof(int)));
+    CKM(mallocp(&b.num_dihedral, m * sizeof(int)));
+    CKM(mallocp(&b.dihedral_atom, m * 3 * MD * sizeof(std::int64_t)));
+    CKM(mallocp(&b.dihedral_type, m * MD * sizeof(int)));
+    CKM(mallocp(&b.nspecial, m * 3 * sizeof(int)));
+    CKM(mallocp(&b.special, m * MS * sizeof(std::int64_t)));
+}
+void migb_free(MigBondedBuf& b) {
+    freep(b.num_bond);
+    freep(b.bond_atom);
+    freep(b.bond_type);
+    freep(b.num_angle);
+    freep(b.angle_atom);
+    freep(b.angle_type);
+    freep(b.num_dihedral);
+    freep(b.dihedral_atom);
+    freep(b.dihedral_type);
+    freep(b.nspecial);
+    freep(b.special);
+}
+
+// Gather the per-atom bonded SoA rows of `cnt` atoms named by idx[] into
+// contiguous send buffers (one row per atom, fixed widths). Mirrors gather_state.
+__global__ void gather_bonded_state(
+    const int* __restrict__ idx, int cnt, int MB, int MA, int MD, int MS,
+    const int* num_bond, const std::int64_t* bond_atom, const int* bond_type,
+    const int* num_angle, const std::int64_t* angle_atom, const int* angle_type,
+    const int* num_dihedral, const std::int64_t* dihedral_atom,
+    const int* dihedral_type, const int* nspecial, const std::int64_t* special,
+    int* onb, std::int64_t* oba, int* obt, int* ona, std::int64_t* oaa,
+    int* oat, int* ond, std::int64_t* oda, int* odt, int* ons,
+    std::int64_t* osp) {
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= cnt)
+        return;
+    int i = idx[k];
+    onb[k] = num_bond[i];
+    for (int w = 0; w < MB; ++w) {
+        oba[k * MB + w] = bond_atom[i * MB + w];
+        obt[k * MB + w] = bond_type[i * MB + w];
+    }
+    ona[k] = num_angle[i];
+    for (int w = 0; w < 2 * MA; ++w)
+        oaa[k * 2 * MA + w] = angle_atom[i * 2 * MA + w];
+    for (int w = 0; w < MA; ++w)
+        oat[k * MA + w] = angle_type[i * MA + w];
+    ond[k] = num_dihedral[i];
+    for (int w = 0; w < 3 * MD; ++w)
+        oda[k * 3 * MD + w] = dihedral_atom[i * 3 * MD + w];
+    for (int w = 0; w < MD; ++w)
+        odt[k * MD + w] = dihedral_type[i * MD + w];
+    for (int w = 0; w < 3; ++w)
+        ons[k * 3 + w] = nspecial[i * 3 + w];
+    for (int w = 0; w < MS; ++w)
+        osp[k * MS + w] = special[i * MS + w];
+}
 } // namespace
 
 void MultiGpu::migrate() {
@@ -1297,9 +1370,12 @@ void MultiGpu::migrate() {
     // Phase 3 — staging owned arrays per dst (avoids read/write hazard on the
     // live frame arrays while peers write into them).
     std::vector<MigBuf> stg(N);
+    std::vector<MigBondedBuf> stgb(N); // per-atom bonded SoA staging (if bonded_)
     for (int dst = 0; dst < N; ++dst) {
         dm_.set_device(dst);
         mig_alloc(stg[dst], std::max(1, new_nl[dst]));
+        if (bonded_)
+            migb_alloc(stgb[dst], std::max(1, new_nl[dst]));
     }
 
     // Phase 4 — per (src,dst): gather state on src, P2P copy to dst staging.
@@ -1336,6 +1412,50 @@ void MultiGpu::migrate() {
             CKM(cudaMemcpyPeer(D.type + o, dd_id, sb.type, sd, c * sizeof(int)));
             CKM(cudaMemcpyPeer(D.tag + o, dd_id, sb.tag, sd,
                                c * sizeof(std::int64_t)));
+            if (bonded_) {
+                // Carry the per-atom bonded SoA rows for these atoms too.
+                const int MB = cpu::Atom::kMaxBondPerAtom,
+                          MA = cpu::Atom::kMaxAnglePerAtom,
+                          MD = cpu::Atom::kMaxDihedralPerAtom,
+                          MS = cpu::Atom::kMaxSpecial;
+                MigBondedBuf sbb;
+                migb_alloc(sbb, c);
+                gather_bonded_state<<<grd, blk>>>(
+                    idx, c, MB, MA, MD, MS, a.num_bond, a.bond_atom, a.bond_type,
+                    a.num_angle, a.angle_atom, a.angle_type, a.num_dihedral,
+                    a.dihedral_atom, a.dihedral_type, a.nspecial, a.special,
+                    sbb.num_bond, sbb.bond_atom, sbb.bond_type, sbb.num_angle,
+                    sbb.angle_atom, sbb.angle_type, sbb.num_dihedral,
+                    sbb.dihedral_atom, sbb.dihedral_type, sbb.nspecial,
+                    sbb.special);
+                CKM(cudaGetLastError());
+                MigBondedBuf& DB = stgb[dst];
+                auto peer_i = [&](int* dstp, int* srcp, int width) {
+                    CKM(cudaMemcpyPeer(dstp + static_cast<std::size_t>(o) * width,
+                                       dd_id, srcp, sd,
+                                       static_cast<std::size_t>(c) * width
+                                           * sizeof(int)));
+                };
+                auto peer_t = [&](std::int64_t* dstp, std::int64_t* srcp,
+                                  int width) {
+                    CKM(cudaMemcpyPeer(dstp + static_cast<std::size_t>(o) * width,
+                                       dd_id, srcp, sd,
+                                       static_cast<std::size_t>(c) * width
+                                           * sizeof(std::int64_t)));
+                };
+                peer_i(DB.num_bond, sbb.num_bond, 1);
+                peer_t(DB.bond_atom, sbb.bond_atom, MB);
+                peer_i(DB.bond_type, sbb.bond_type, MB);
+                peer_i(DB.num_angle, sbb.num_angle, 1);
+                peer_t(DB.angle_atom, sbb.angle_atom, 2 * MA);
+                peer_i(DB.angle_type, sbb.angle_type, MA);
+                peer_i(DB.num_dihedral, sbb.num_dihedral, 1);
+                peer_t(DB.dihedral_atom, sbb.dihedral_atom, 3 * MD);
+                peer_i(DB.dihedral_type, sbb.dihedral_type, MD);
+                peer_i(DB.nspecial, sbb.nspecial, 3);
+                peer_t(DB.special, sbb.special, MS);
+                migb_free(sbb);
+            }
             mig_free(sb); // cudaMemcpyPeer is synchronous; safe to free
         }
     }
@@ -1360,11 +1480,44 @@ void MultiGpu::migrate() {
                            cudaMemcpyDeviceToDevice));
             CKM(cudaMemcpy(a.tag, stg[dst].tag, m * sizeof(std::int64_t),
                            cudaMemcpyDeviceToDevice));
+            if (bonded_) {
+                const int MB = cpu::Atom::kMaxBondPerAtom,
+                          MA = cpu::Atom::kMaxAnglePerAtom,
+                          MD = cpu::Atom::kMaxDihedralPerAtom,
+                          MS = cpu::Atom::kMaxSpecial;
+                MigBondedBuf& B = stgb[dst];
+                auto d2d_i = [&](int* dstp, int* srcp, int width) {
+                    CKM(cudaMemcpy(dstp, srcp,
+                                   static_cast<std::size_t>(m) * width
+                                       * sizeof(int),
+                                   cudaMemcpyDeviceToDevice));
+                };
+                auto d2d_t = [&](std::int64_t* dstp, std::int64_t* srcp,
+                                 int width) {
+                    CKM(cudaMemcpy(dstp, srcp,
+                                   static_cast<std::size_t>(m) * width
+                                       * sizeof(std::int64_t),
+                                   cudaMemcpyDeviceToDevice));
+                };
+                d2d_i(a.num_bond, B.num_bond, 1);
+                d2d_t(a.bond_atom, B.bond_atom, MB);
+                d2d_i(a.bond_type, B.bond_type, MB);
+                d2d_i(a.num_angle, B.num_angle, 1);
+                d2d_t(a.angle_atom, B.angle_atom, 2 * MA);
+                d2d_i(a.angle_type, B.angle_type, MA);
+                d2d_i(a.num_dihedral, B.num_dihedral, 1);
+                d2d_t(a.dihedral_atom, B.dihedral_atom, 3 * MD);
+                d2d_i(a.dihedral_type, B.dihedral_type, MD);
+                d2d_i(a.nspecial, B.nspecial, 3);
+                d2d_t(a.special, B.special, MS);
+            }
         }
         frames_[dst].n_local_ = m;
         n_local_[dst] = m;
         frames_[dst].n_ghost_ = 0;
         mig_free(stg[dst]);
+        if (bonded_)
+            migb_free(stgb[dst]);
         freep(d_order[dst]);
     }
     for (int s = 0; s < N; ++s) {

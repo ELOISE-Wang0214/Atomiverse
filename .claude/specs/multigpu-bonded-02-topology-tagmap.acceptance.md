@@ -9,7 +9,8 @@ criteria:
       angle_atom/angle_type, num_dihedral/dihedral_atom/dihedral_type, nspecial/
       special; they are allocated to capacity_ on the multi-GPU bonded path and
       freed in destroy. The single-GPU flat path leaves them null and is unchanged.
-    status: pending
+    status: verified
+    last_checked: 2026-06-06
   - id: ac-002
     summary: migrate carries per-atom bonded topology to the new owner
     type: scientific
@@ -18,7 +19,8 @@ criteria:
       After an atom changes owner GPU via migrate, its num_bond/bond_atom(tags)/
       angle/dihedral/special arrays are present and identical (tag-wise) on the
       new owner — verified by a migrate-then-readback test.
-    status: pending
+    status: verified
+    last_checked: 2026-06-06
   - id: ac-003
     summary: device tag->local map resolves owned+ghost, -1 for absent
     type: code
@@ -26,7 +28,8 @@ criteria:
       The per-subdomain tag->local map (built over [0, n_local+n_ghost) after the
       halo) resolves a known owned tag and a known ghost tag to their correct
       local rows and returns -1 for a tag not present on the subdomain (unit test).
-    status: pending
+    status: verified
+    last_checked: 2026-06-06
   - id: ac-004
     summary: re-materialized flat tuples match single-GPU set on 2 GPUs (no dup/loss)
     type: scientific
@@ -37,14 +40,16 @@ criteria:
       single-GPU materialized tuple set; each tuple is owned by exactly one GPU
       (bond=min-tag, angle=center, dihedral=2nd atom); drop tally is 0 with an
       adequate halo cutoff.
-    status: pending
+    status: verified
+    last_checked: 2026-06-06
   - id: ac-005
     summary: existing LJ multi-GPU tests stay green
     type: code
     pass_when: |
       test_cuda_multi_gpu (LJ, 13/13) remains green; the per-atom bonded SoA does
       not perturb the single-GPU or LJ multi-GPU paths.
-    status: pending
+    status: verified
+    last_checked: 2026-06-06
 ---
 
 # Acceptance criteria

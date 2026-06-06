@@ -1,6 +1,6 @@
 ---
 title: Multi-GPU bonded — per-atom topology on device + tag→local map + re-materialization
-status: in-progress
+status: code-complete
 created: 2026-06-06
 chain: multigpu-bonded
 link: 2
@@ -53,7 +53,7 @@ link: 2
 ## Tasks
 - [x] **P2.1** Add per-atom bonded SoA to `cuda::Frame::Atoms` + allocate/free by capacity (single-GPU path unaffected) — GH200 build green, LJ 13/13
 - [x] **P2.2** Materialize owner-filtered per-atom topology (partner=global tag) on each subdomain at `partition` (`materialize_per_atom_bonded`, gated on `has_bonded`) — GH200 build green, LJ 13/13 (fill correctness validated once observable via re-materialize, P2.5)
-- [ ] **P2.3** Extend `migrate` (`MigBuf`/`gather_state`) to carry the per-atom bonded arrays to the new owner
+- [x] **P2.3** Extend `migrate` (`MigBondedBuf`/`gather_bonded_state`) to carry the per-atom bonded arrays to the new owner — GH200 verified (MigratePreservesBondedTopology, sum(num_bond)=48, set==ref)
 - [x] **P2.4** Device tag→local map (sorted tags + binary-search resolve over owned+ghost), rebuilt each reneighbor — GH200 verified
 - [x] **P2.5** Re-materialize flat tuple lists from per-atom topology with tag→local resolve + drop tally; wired into `reneighbor`/`partition` — GH200 verified
 - [x] **P2.6** test `PartitionRematerializesBondedTopology`: 2-GPU re-materialized bond set == single-GPU set (ref=48 got=48), full suite 14/14

@@ -1,7 +1,7 @@
 # Spec Index
 
 - [multigpu-bonded-01-reverse-halo](multigpu-bonded-01-reverse-halo.md) — reverse force halo (reverse_comm) over NVLink P2P; foundation for cross-GPU bonded forces [code-complete: ac-001/002 verified, GH200 13/13, commit bdc1645]
-- [multigpu-bonded-02-topology-tagmap](multigpu-bonded-02-topology-tagmap.md) — per-atom bonded SoA on cuda::Frame + migrate carries it + device tag→local map + per-reneighbor tuple re-materialization with drop tally [approved]
+- [multigpu-bonded-02-topology-tagmap](multigpu-bonded-02-topology-tagmap.md) — per-atom bonded SoA on cuda::Frame + migrate carries it + device tag→local map + per-reneighbor tuple re-materialization with drop tally [code-complete: P2.1-P2.6 done, GH200 15/15 incl. 2 bonded tests]
 - [multigpu-bonded-03-bond](multigpu-bonded-03-bond.md) — cross-GPU BondHarmonic over re-materialized tuples + reverse_comm; 2/4-GPU bond energy==single==CPU, ΣF≈0 [approved]
 - [multigpu-bonded-04-angle-dihedral](multigpu-bonded-04-angle-dihedral.md) — Angle+Dihedral cross-GPU + special-bonds cross-domain exclusion; full-PE parity [approved]
 - [multigpu-bonded-05-optimize](multigpu-bonded-05-optimize.md) — P2P batching, launch bounds, owner-grouped atomics, no per-step alloc; before/after multi-GPU PE step-time [approved]

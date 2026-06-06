@@ -128,6 +128,69 @@ TEST(MultiGpu, PartitionRematerializesBondedTopology) {
     EXPECT_EQ(got, ref); // no dropped cross-GPU bonds, no duplicates
 }
 
+// multigpu-bonded P2.3: per-atom bonded topology must travel with an atom when
+// migrate() re-homes it to another GPU. Drive migrations with a rigid x-drift
+// (every atom the same velocity → all bond lengths preserved, so partners stay
+// inside the halo) under negligible LJ (tiny eps) so motion is ~ballistic;
+// reneigh_every=1 migrates + re-materializes every step. The re-materialized
+// bond set (by global tags) must remain the full global set — any atom whose
+// topology was lost in migration would drop its bonds.
+TEST(MultiGpu, MigratePreservesBondedTopology) {
+    cuda::md::MultiGpu mg;
+    if (mg.count() < 2)
+        GTEST_SKIP() << "needs >=2 GPUs to migrate between subdomains";
+    auto g = make_bonded_grid(12.0);
+    for (int i = 0; i < g.atoms.size(); ++i) {
+        g.atoms.vx[i] = 2.0; // rigid translation along x
+        g.atoms.vy[i] = 0.0;
+        g.atoms.vz[i] = 0.0;
+    }
+    std::set<std::pair<long long, long long>> ref;
+    for (int i = 0; i < g.atoms.size(); ++i)
+        for (int m = 0; m < g.atoms.num_bond[i]; ++m) {
+            long long a = g.atoms.tag[i], b = g.atoms.bond_atom(i, m);
+            ref.insert({std::min(a, b), std::max(a, b)});
+        }
+    ASSERT_FALSE(ref.empty());
+
+    mg.partition(g);
+    mg.setup_force_engine(3.5, 1e-12, 1.0); // halo 3.5 covers the 3.0 bond; eps≈0
+    // ~4 A of rigid drift over 20 steps → atoms cross subdomain boundaries;
+    // migrate (carrying topology) runs every step (reneigh_every=1).
+    mg.run_nve_nlist(20, 0.1, 3.5, 1e-12, 1.0, 0.5, 1);
+
+    // Validate TRANSPORT fidelity: reconstruct the bond set straight from each
+    // owned atom's migrated per-atom SoA (num_bond + bond_atom GLOBAL TAGS) — no
+    // tag→local resolve, so this is independent of the halo/PBC (the resolve
+    // path is covered by the static Partition test). If migrate lost or
+    // corrupted any atom's topology, a bond would be missing or wrong here.
+    const int MB = cpu::Atom::kMaxBondPerAtom;
+    std::set<std::pair<long long, long long>> got;
+    for (int s = 0; s < mg.count(); ++s) {
+        const int nl = mg.n_local(s);
+        if (nl == 0)
+            continue;
+        const auto& F = mg.frame(s);
+        std::vector<int> nbv(nl);
+        std::vector<long long> ba(static_cast<std::size_t>(nl) * MB), tags(nl);
+        cudaMemcpy(nbv.data(), F.atoms.num_bond, nl * sizeof(int),
+                   cudaMemcpyDefault);
+        cudaMemcpy(ba.data(), F.atoms.bond_atom,
+                   static_cast<std::size_t>(nl) * MB * sizeof(long long),
+                   cudaMemcpyDefault);
+        cudaMemcpy(tags.data(), F.atoms.tag, nl * sizeof(long long),
+                   cudaMemcpyDefault);
+        for (int k = 0; k < nl; ++k)
+            for (int m = 0; m < nbv[k]; ++m) {
+                long long a = tags[k], b = ba[static_cast<std::size_t>(k) * MB + m];
+                got.insert({std::min(a, b), std::max(a, b)});
+            }
+    }
+    std::cerr << "[diag] migrate: ref=" << ref.size() << " got=" << got.size()
+              << "\n";
+    EXPECT_EQ(got, ref); // per-atom bonded topology preserved across migration
+}
+
 TEST(MultiGpu, PartitionGatherRoundTrip) {
     auto g = make_grid(12.0);
     cuda::md::MultiGpu mg;
