@@ -181,6 +181,91 @@ cpu::Frame make_sc_lj_total(int n_target) {
     return frame;
 }
 
+#ifdef ATV_HAS_MPI
+// Build ONLY this rank's owned atoms of the same global simple-cubic LJ lattice
+// as make_sc_lj_total — no rank ever holds the global frame (cf. LAMMPS
+// create_atoms, which fills each proc's subdomain locally). This is the memory
+// fix: the old "rank 0 builds global + scatter" path peaked at O(global-N) on
+// rank 0 (5.9 GB at 256 ranks weak, 23 GB at 1024 → the dominant per-rank RSS).
+//
+// Ownership MUST match DomainDecomposition exactly or the first partition_atoms
+// drops boundary atoms: same MPI_Dims_create / ATV_FORCE_DIMS, same rank index
+// convention (ix*dy*dz + iy*dz + iz), same rank_along_dim = clamp(int(q*d/L)).
+// Global atom index `idx` (lattice order) drives the identical jitter, velocity
+// and tag, so the distributed system is bit-identical to the single-rank one.
+cpu::Frame make_sc_lj_local(int n_target, int my_rank, int world_size) {
+    const double sigma = 2.5;
+    const double spacing = 1.12 * sigma;
+    const int cells = std::max(
+        1, static_cast<int>(std::cbrt(static_cast<double>(n_target)) + 0.5));
+    const double L = cells * spacing;
+
+    int dims[3] = {0, 0, 0};
+    if (const char* env = std::getenv("ATV_FORCE_DIMS")) {
+        int dx, dy, dz;
+        if (std::sscanf(env, "%d,%d,%d", &dx, &dy, &dz) == 3
+            && dx * dy * dz == world_size) {
+            dims[0] = dx; dims[1] = dy; dims[2] = dz;
+        }
+    }
+    if (dims[0] == 0)
+        MPI_Dims_create(world_size, 3, dims);
+    const int coords[3] = {my_rank / (dims[1] * dims[2]),
+                           (my_rank / dims[2]) % dims[1], my_rank % dims[2]};
+
+    auto owner = [&](double q, int d) {
+        q -= L * std::floor(q / L); // wrap to [0, L) like partition_atoms
+        if (d <= 1)
+            return 0;
+        return std::max(0, std::min(d - 1,
+                                    static_cast<int>(q * d / L)));
+    };
+    // Local lattice-index window (+/-2 margin covers the 0.1-A jitter).
+    auto lo = [&](int c, int d) {
+        return std::max(0, static_cast<int>(static_cast<double>(c) * cells / d) - 2);
+    };
+    auto hi = [&](int c, int d) {
+        return std::min(cells, static_cast<int>(
+                                   static_cast<double>(c + 1) * cells / d) + 2);
+    };
+
+    std::vector<double> px, py, pz, vx, vy, vz;
+    std::vector<std::int64_t> tg;
+    for (int ix = lo(coords[0], dims[0]); ix < hi(coords[0], dims[0]); ++ix)
+        for (int iy = lo(coords[1], dims[1]); iy < hi(coords[1], dims[1]); ++iy)
+            for (int iz = lo(coords[2], dims[2]); iz < hi(coords[2], dims[2]);
+                 ++iz) {
+                const std::int64_t idx =
+                    (static_cast<std::int64_t>(ix) * cells + iy) * cells + iz;
+                const double x = (ix + 0.5) * spacing + 0.1 * std::sin(0.7 * idx);
+                const double y = (iy + 0.5) * spacing + 0.1 * std::sin(1.3 * idx);
+                const double z = (iz + 0.5) * spacing + 0.1 * std::sin(1.9 * idx);
+                if (owner(x, dims[0]) != coords[0] || owner(y, dims[1]) != coords[1]
+                    || owner(z, dims[2]) != coords[2])
+                    continue;
+                px.push_back(x); py.push_back(y); pz.push_back(z);
+                vx.push_back(0.01 * std::sin(0.5 * idx));
+                vy.push_back(0.01 * std::sin(0.9 * idx));
+                vz.push_back(0.01 * std::sin(1.1 * idx));
+                tg.push_back(idx);
+            }
+
+    const int n = static_cast<int>(px.size());
+    cpu::Frame frame(n);
+    for (int i = 0; i < n; ++i) {
+        frame.atoms.x[i] = px[i]; frame.atoms.y[i] = py[i]; frame.atoms.z[i] = pz[i];
+        frame.atoms.vx[i] = vx[i]; frame.atoms.vy[i] = vy[i]; frame.atoms.vz[i] = vz[i];
+        frame.atoms.mass[i] = 1.0; frame.atoms.type[i] = 0;
+        frame.atoms.tag[i] = tg[i]; // GLOBAL tag (ctor default is local row i)
+    }
+    frame.atoms.nlocal = n;
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, n);
+    frame.box = Mat3::cubic(L);
+    return frame;
+}
+#endif
+
 double now_seconds() {
 #ifdef ATV_HAS_MPI
     return MPI_Wtime();
@@ -238,18 +323,17 @@ int main(int argc, char** argv) {
         1, static_cast<int>(std::cbrt(static_cast<double>(n_total)) + 0.5));
     const int n_actual = cube * cube * cube;
 
-    // Distributed construction: build the full global frame on rank 0 ONLY,
-    // then scatter each atom to its owning rank's subdomain. Every rank holding
-    // the global frame (the old replicated pattern) allocates O(global-N) per
-    // rank and OUT-OF-MEMORYs the node at 256+ ranks weak scaling (e.g. 4M
-    // atoms x 256 ranks/node). This is the canonical distributed init (cf.
-    // LAMMPS read_data on proc 0 + comm scatter). Single-rank keeps the frame.
-    cpu::Frame frame =
-        (world_size == 1 || my_rank == 0) ? make_sc_lj_total(n_total)
-                                          : cpu::Frame(0);
+    // Distributed construction: each rank builds ONLY its own subdomain's atoms
+    // (make_sc_lj_local), so no rank ever materializes the global frame. The
+    // old "rank 0 builds global + scatter" peaked at O(global-N) on rank 0
+    // (5.9 GB @256 ranks weak, 23 GB @1024 — the dominant per-rank RSS, and an
+    // eventual OOM). Single-rank keeps the simple full build.
 #ifdef ATV_HAS_MPI
-    if (world_size > 1)
-        cpu::comm::scatter_atoms_from_root(frame); // broadcasts box too
+    cpu::Frame frame = (world_size == 1)
+                           ? make_sc_lj_total(n_total)
+                           : make_sc_lj_local(n_total, my_rank, world_size);
+#else
+    cpu::Frame frame = make_sc_lj_total(n_total);
 #endif
 
     if (my_rank == 0 && args.csv_header) {
