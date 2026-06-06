@@ -67,6 +67,29 @@ struct NListBuffers {
     // future periodic-skip optimization, see cuda-md-review-cleanup-05*).
     DeviceVector<int> dirty_flags;
 
+    // Per-atom Verlet neighbor list (the force path). Column-major:
+    // verlet_nbr[k * verlet_stride + i] is atom i's k-th neighbor (global atom
+    // index), for k < verlet_cnt[i]. Built once per rebuild from the cluster
+    // CSR at rc+skin. verlet_stride is the build-time atom count (stable
+    // addressing across set_active_count). verlet_overflow[0] holds the max
+    // per-atom count (atomicMax), read back to detect kMaxVerletNeigh overflow.
+    DeviceVector<int> verlet_nbr;
+    DeviceVector<int> verlet_cnt;
+    DeviceVector<int> verlet_overflow;
+    int verlet_stride = 0;
+    int verlet_max = kMaxVerletNeigh; ///< per-atom column capacity (auto-sized)
+
+    /// Size the per-atom Verlet list: stride = n (build-time atom count),
+    /// column capacity = max_neigh (density-derived in NeighborList::build so it
+    /// adapts to LJ vs the much denser PE-melt neighbor shell).
+    void resize_verlet(int n, int max_neigh) {
+        verlet_stride = n;
+        verlet_max = max_neigh;
+        verlet_cnt.resize(n);
+        verlet_nbr.resize(static_cast<std::size_t>(n) * max_neigh);
+        verlet_overflow.resize(1);
+    }
+
     void resize_atoms(int n, int n_clusters) {
         morton_codes.resize(n);
         atom_indices.resize(n);
@@ -295,6 +318,30 @@ void launch_smart_rolling_prune(
     const int* flat_ci, const int* flat_cj, const int* num_flat_pairs_device,
     int pair_capacity, const int* dirty_flags, work_t cutoff_sq,
     ATV::cuda::Box box, uint64_t* flat_mask, int prune_step, int prune_period,
+    cudaStream_t stream = 0);
+
+// Full (no half-Newton) per-cluster-pair interaction mask at the search radius
+// (rc+skin) for the atom-centric force kernel. Computed once per rebuild; the
+// force kernel iterates only masked-in j-slots. See fused_search.cu.
+template <typename work_t>
+void launch_compute_force_mask(const real_t* cluster_x, const real_t* cluster_y,
+                              const real_t* cluster_z, const int* flat_ci,
+                              const int* flat_cj,
+                              const int* num_flat_pairs_device, int pair_count,
+                              work_t search_sq, ATV::cuda::Box box,
+                              uint64_t* flat_mask, cudaStream_t stream = 0);
+
+// Build the per-atom Verlet list (column-major, stride=num_atoms) from the
+// cluster CSR + sorted cluster positions at the search radius (rc+skin). One
+// thread per cluster slot; writes neighbor global indices into
+// verlet_nbr[k*stride + ai] and the count into verlet_cnt[ai]. atomicMax's the
+// max count into overflow[0]. Run once per rebuild. See fused_search.cu.
+template <typename work_t>
+void launch_build_verlet_list(
+    const real_t* cluster_x, const real_t* cluster_y, const real_t* cluster_z,
+    const int* row_ptr, const int* col_idx, const int* original_index,
+    int num_clusters, int stride, int max_neigh, work_t search_sq,
+    ATV::cuda::Box box, int* verlet_nbr, int* verlet_cnt, int* overflow,
     cudaStream_t stream = 0);
 
 // --- GPU-side setup (setup.cu) ---

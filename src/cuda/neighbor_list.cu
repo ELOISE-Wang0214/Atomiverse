@@ -189,6 +189,16 @@ void NeighborList::build(const BuildContext& ctx) {
 
     // Allocate ALL internal buffers
     s.buf.resize_atoms(n, nc);
+
+    // Per-atom Verlet column capacity: start at kMaxVerletNeigh (covers an LJ
+    // liquid's ~101 measured max). A density estimate is intentionally NOT used —
+    // for a multi-GPU subdomain n is owned+ghost but box_vol is the GLOBAL cell,
+    // so n/box_vol underestimates the local density and would undersize the cap.
+    // Instead launch() self-heals: if any atom's neighbor count exceeds the
+    // current capacity it grows the buffer and rebuilds, so the denser PE-melt
+    // shell (~400) is handled automatically with no hand-tuned constant.
+    s.buf.resize_verlet(n, kMaxVerletNeigh);
+
     s.buf.resize_displacement(nc);
     s.buf.resize_grid(ncells);
     int pc = s.pair_capacity;
@@ -295,7 +305,19 @@ void NeighborList::build(const BuildContext& ctx) {
     pairs_.cl_row_ptr = s.buf.row_ptr.data();
     pairs_.cl_col_idx = s.buf.col_idx.data();
     pairs_.cl_orig_index = s.buf.original_index.data();
+    // flat_mask is reused as the force-path interaction mask (1:1 with col_idx,
+    // since csr_to_flat preserves CSR ordering); the address is stable, so
+    // publish it here. Populated on each rebuild by launch_compute_force_mask.
+    pairs_.cl_mask = s.buf.flat_mask.data();
     pairs_.num_clusters = nc;
+
+    // Per-atom Verlet list (the force path). Addresses are stable across the
+    // run; contents rebuilt in place each skin-gated rebuild. vl_stride is the
+    // build-time atom count (column stride); vl_max the column capacity.
+    pairs_.vl_nbr = s.buf.verlet_nbr.data();
+    pairs_.vl_cnt = s.buf.verlet_cnt.data();
+    pairs_.vl_stride = s.buf.verlet_stride;
+    pairs_.vl_max = s.buf.verlet_max;
 
     // Publish the pair list to the execution context for downstream
     // consumers (LJ, RDF), mirroring cpu::md::NeighborList.
@@ -444,8 +466,8 @@ void NeighborList::launch(const LaunchContext& ctx) {
         // otherwise an undershoot would silently corrupt the CSR. Cheap: one
         // 4-byte blocking D2H per rebuild (rebuilds are skin-gated, not every
         // step). Fail loud rather than corrupt.
+        int total_cluster_pairs = 0;
         {
-            int total_cluster_pairs = 0;
             cudaMemcpy(&total_cluster_pairs, s.buf.row_ptr_upper.data() + nc,
                        sizeof(int), cudaMemcpyDeviceToHost);
             if (total_cluster_pairs > s.pair_capacity) {
@@ -496,6 +518,53 @@ void NeighborList::launch(const LaunchContext& ctx) {
                            s.buf.interaction_mask.data(), nc,
                            s.buf.flat_ci.data(), s.buf.flat_cj.data(),
                            s.buf.flat_mask.data(), stream);
+
+        // Build the tight per-atom Verlet list from the cluster CSR at the
+        // search radius (rc+skin). The per-step force kernel then iterates this
+        // list (one thread per atom, ~52 neighbors) instead of re-walking the
+        // cluster CSR with 8 redundant threads per cluster — which left only
+        // ~7/32 warp lanes active (ncu) and made the cluster force kernel the
+        // dominant cost. Valid for the whole reneighbor interval (the skin
+        // bounds inter-rebuild drift). Overflow (any atom > kMaxVerletNeigh) is
+        // checked below and throws — never silently drops neighbors.
+        cudaMemsetAsync(s.buf.verlet_overflow.data(), 0, sizeof(int), stream);
+        launch_build_verlet_list<work_t>(
+            s.buf.cluster_x.data(), s.buf.cluster_y.data(),
+            s.buf.cluster_z.data(), s.buf.row_ptr.data(), s.buf.col_idx.data(),
+            s.buf.original_index.data(), nc, s.buf.verlet_stride,
+            s.buf.verlet_max, s.cut_skin_sq, ctx.runtime.host_box,
+            s.buf.verlet_nbr.data(), s.buf.verlet_cnt.data(),
+            s.buf.verlet_overflow.data(), stream);
+        {
+            int max_nbr = 0;
+            cudaMemcpyAsync(&max_nbr, s.buf.verlet_overflow.data(), sizeof(int),
+                            cudaMemcpyDeviceToHost, stream);
+            cudaStreamSynchronize(stream);
+            if (max_nbr > s.buf.verlet_max) {
+                // The fixed initial cap was too small for this density (denser
+                // system / different cutoff). Grow the column capacity with
+                // headroom and rebuild ONCE — self-healing, so no atom silently
+                // loses neighbors. Rare (only the first rebuild of a dense
+                // system); the grown buffer is kept for subsequent rebuilds.
+                s.buf.resize_verlet(s.buf.verlet_stride,
+                                    static_cast<int>(max_nbr * 1.3) + 32);
+                // Buffer addresses changed — re-publish to the pair list.
+                pairs_.vl_nbr = s.buf.verlet_nbr.data();
+                pairs_.vl_cnt = s.buf.verlet_cnt.data();
+                pairs_.vl_max = s.buf.verlet_max;
+                cudaMemsetAsync(s.buf.verlet_overflow.data(), 0, sizeof(int),
+                                stream);
+                launch_build_verlet_list<work_t>(
+                    s.buf.cluster_x.data(), s.buf.cluster_y.data(),
+                    s.buf.cluster_z.data(), s.buf.row_ptr.data(),
+                    s.buf.col_idx.data(), s.buf.original_index.data(), nc,
+                    s.buf.verlet_stride, s.buf.verlet_max, s.cut_skin_sq,
+                    ctx.runtime.host_box, s.buf.verlet_nbr.data(),
+                    s.buf.verlet_cnt.data(), s.buf.verlet_overflow.data(),
+                    stream);
+                cudaStreamSynchronize(stream);
+            }
+        }
 
         // Snapshot current per-atom positions as the new reference for
         // the next step's displacement check. Done inside the rebuild

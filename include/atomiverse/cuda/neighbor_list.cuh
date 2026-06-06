@@ -11,6 +11,7 @@
 /// CUDA-free header.
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -57,7 +58,27 @@ struct PairList {
     const int* cl_row_ptr = nullptr;    ///< [num_clusters+1] CSR row offsets.
     const int* cl_col_idx = nullptr;    ///< neighbor cluster indices (full).
     const int* cl_orig_index = nullptr; ///< cluster slot -> global atom index.
+    /// Per-CSR-entry 64-bit interaction mask, bit[i*8+j]=1 if atoms (slot i of
+    /// this cluster, slot j of col_idx[p]) are within the search radius
+    /// (rc+skin) at the last rebuild. Aligned 1:1 with cl_col_idx. The
+    /// atom-centric force kernel iterates only masked-in j-slots instead of all
+    /// kClusterSize candidates — the search-radius mask is a valid superset of
+    /// the cutoff neighbors for the whole reneighbor interval. Null until the
+    /// first rebuild publishes it.
+    const uint64_t* cl_mask = nullptr;
     int num_clusters = 0;               ///< cluster count (host scalar).
+
+    // ── Per-atom Verlet list (the force path) ────────────────────────────
+    // Tight per-atom neighbor list built once per rebuild from the cluster CSR
+    // at the search radius (rc+skin). Column-major: vl_nbr[k*vl_stride + i] is
+    // atom i's k-th neighbor (global atom index), for k < vl_cnt[i]. A
+    // one-thread-per-atom force kernel iterates this directly — no cluster
+    // indirection, no gather, ~full warp utilization. Null until the first
+    // rebuild publishes them.
+    const int* vl_nbr = nullptr; ///< [vl_max * vl_stride] column-major neighbors.
+    const int* vl_cnt = nullptr; ///< [num atoms] per-atom neighbor count.
+    int vl_stride = 0;           ///< column stride (build-time atom count).
+    int vl_max = 0;              ///< max neighbors per atom (column capacity).
 };
 
 /// @brief Cluster-based neighbor list builder.

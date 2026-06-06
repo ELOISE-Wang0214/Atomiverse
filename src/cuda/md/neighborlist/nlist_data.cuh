@@ -15,6 +15,19 @@ namespace ATV::cuda::md::nlist {
 /// @brief Number of atoms per cluster (fixed for warp-friendly sizing).
 inline constexpr int kClusterSize = 8;
 
+/// @brief Per-atom Verlet-list column capacity (max neighbors within rc+skin).
+///
+/// The force path builds a tight per-atom neighbor list once per rebuild and a
+/// one-thread-per-atom kernel iterates it — far less warp divergence and no
+/// 8×-per-cluster redundancy vs walking the cluster CSR. At LJ-liquid density
+/// (rho* ~0.71, rc+skin ~2.6 sigma) the measured max per-atom count within the
+/// search shell is ~101 (cutoff-shell neighbors that carry no force but must be
+/// listed for the skin interval); 128 covers that with headroom while keeping
+/// the list footprint tight. A device counter (atomicMax of each atom's count)
+/// is read back at rebuild and the build throws if any atom exceeds this — fail
+/// loud rather than silently drop neighbors (raise this for denser systems).
+inline constexpr int kMaxVerletNeigh = 128;
+
 /// @brief Per-cluster atom data in SoA layout.
 /// @note Non-owning view; lifetime managed by NListBuffers.
 template <typename work_t>

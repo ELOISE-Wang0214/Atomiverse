@@ -166,7 +166,7 @@ void launch_cluster_displacement(
 // path is 12 muls + 6 adds + 3 nearbyint + back-multiply — saving
 // ~4-5× FLOPS per pair × kClusterSize lanes × inner loop
 // (cuda-md-review-cleanup-04-box-by-value-pbc).
-template <bool Ortho, typename work_t>
+template <bool Ortho, bool HalfNewton, typename work_t>
 __global__ __launch_bounds__(ATV::cuda::kDefaultBlock) void smart_rolling_prune(
     const real_t* __restrict__ cluster_x, const real_t* __restrict__ cluster_y,
     const real_t* __restrict__ cluster_z, const int* __restrict__ flat_ci,
@@ -226,10 +226,15 @@ __global__ __launch_bounds__(ATV::cuda::kDefaultBlock) void smart_rolling_prune(
         }
     }
 
-    // Half-Newton exclusion for diagonal pairs
-    if (ci == cj) {
-        uint8_t upper = static_cast<uint8_t>(0xFFu << (i_lane + 1));
-        my_bits &= upper;
+    // Half-Newton exclusion for diagonal pairs (flat/export path only). The
+    // atom-centric force kernel consumes a FULL list (each pair owned by both
+    // endpoints, energy halved), so its mask must keep both directions —
+    // HalfNewton=false leaves the diagonal symmetric.
+    if constexpr (HalfNewton) {
+        if (ci == cj) {
+            uint8_t upper = static_cast<uint8_t>(0xFFu << (i_lane + 1));
+            my_bits &= upper;
+        }
     }
 
     uint64_t new_mask = 0;
@@ -266,15 +271,51 @@ void launch_smart_rolling_prune(
     // Dispatch the kernel templated on `box.ortho` so the dead branch
     // is compile-time eliminated.
     if (box.ortho) {
-        smart_rolling_prune<true, work_t><<<grid, block, 0, stream>>>(
+        smart_rolling_prune<true, true, work_t><<<grid, block, 0, stream>>>(
             cluster_x, cluster_y, cluster_z, flat_ci, flat_cj,
             num_flat_pairs_device, dirty_flags, cutoff_sq, box, flat_mask,
             prune_step, prune_period);
     } else {
-        smart_rolling_prune<false, work_t><<<grid, block, 0, stream>>>(
+        smart_rolling_prune<false, true, work_t><<<grid, block, 0, stream>>>(
             cluster_x, cluster_y, cluster_z, flat_ci, flat_cj,
             num_flat_pairs_device, dirty_flags, cutoff_sq, box, flat_mask,
             prune_step, prune_period);
+    }
+    ATV_CUDA_CHECK(cudaGetLastError());
+}
+
+// ---------------------------------------------------------------------------
+// Force-path interaction mask: full (no half-Newton) per-cluster-pair mask at
+// the SEARCH radius (rc+skin), computed once per rebuild. The atom-centric LJ
+// force kernel reads it to iterate only the in-range j-slots of each neighbor
+// cluster (≈ the real neighbor count) instead of all kClusterSize candidates —
+// the dominant cost of the cluster-CSR force traversal. Reuses the
+// smart_rolling_prune kernel body with HalfNewton=false. Valid for the whole
+// reneighbor interval because the Verlet skin bounds inter-rebuild drift.
+// ---------------------------------------------------------------------------
+template <typename work_t>
+void launch_compute_force_mask(const real_t* cluster_x, const real_t* cluster_y,
+                              const real_t* cluster_z, const int* flat_ci,
+                              const int* flat_cj,
+                              const int* num_flat_pairs_device, int pair_count,
+                              work_t search_sq, cuda::Box box,
+                              uint64_t* flat_mask, cudaStream_t stream) {
+    if (pair_count <= 0)
+        return;
+    long long threads_needed =
+        static_cast<long long>(pair_count) * kClusterSize;
+    int block = ATV::cuda::kDefaultBlock;
+    int grid = static_cast<int>((threads_needed + block - 1) / block);
+    if (box.ortho) {
+        smart_rolling_prune<true, false, work_t><<<grid, block, 0, stream>>>(
+            cluster_x, cluster_y, cluster_z, flat_ci, flat_cj,
+            num_flat_pairs_device, /*dirty_flags=*/nullptr, search_sq, box,
+            flat_mask, /*prune_step=*/0, /*prune_period=*/1);
+    } else {
+        smart_rolling_prune<false, false, work_t><<<grid, block, 0, stream>>>(
+            cluster_x, cluster_y, cluster_z, flat_ci, flat_cj,
+            num_flat_pairs_device, /*dirty_flags=*/nullptr, search_sq, box,
+            flat_mask, /*prune_step=*/0, /*prune_period=*/1);
     }
     ATV_CUDA_CHECK(cudaGetLastError());
 }
@@ -284,6 +325,100 @@ void launch_smart_rolling_prune(
 
 
 
+
+// ---------------------------------------------------------------------------
+// Kernel: build per-atom Verlet list from the cluster CSR
+//
+// One thread per cluster slot owns atom ai = original_index[ci*CS + slot]. It
+// walks ci's neighbor-cluster CSR row and tests every neighbor-cluster atom
+// against ai at the search radius (rc+skin), appending in-range global indices
+// column-major into verlet_nbr[k*stride + ai]. Distances use the sorted cluster
+// positions captured at this rebuild — the same data the CSR was built from, so
+// the resulting list is a valid superset of cutoff neighbors for the whole
+// reneighbor interval. Runs once per rebuild; the per-step force kernel then
+// iterates this tight list (one thread per atom) instead of re-walking the
+// cluster CSR with 8 redundant threads — the divergence/redundancy that made
+// lj_force_cluster spend ~7/32 lanes active.
+// ---------------------------------------------------------------------------
+template <bool Ortho, typename work_t>
+__global__ __launch_bounds__(ATV::cuda::kDefaultBlock) void build_verlet_list(
+    const real_t* __restrict__ cluster_x, const real_t* __restrict__ cluster_y,
+    const real_t* __restrict__ cluster_z, const int* __restrict__ row_ptr,
+    const int* __restrict__ col_idx, const int* __restrict__ original_index,
+    int num_clusters, int stride, int max_neigh, work_t search_sq,
+    cuda::Box box, int* __restrict__ verlet_nbr, int* __restrict__ verlet_cnt,
+    int* __restrict__ overflow) {
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    int ci = tid / kClusterSize;
+    int slot = tid % kClusterSize;
+    if (ci >= num_clusters)
+        return;
+    int ai = original_index[ci * kClusterSize + slot];
+    if (ai < 0)
+        return;
+
+    work_t xi = cluster_x[ci * kClusterSize + slot];
+    work_t yi = cluster_y[ci * kClusterSize + slot];
+    work_t zi = cluster_z[ci * kClusterSize + slot];
+
+    int cnt = 0;
+    int rstart = row_ptr[ci], rend = row_ptr[ci + 1];
+    for (int p = rstart; p < rend; ++p) {
+        int cj = col_idx[p];
+#pragma unroll
+        for (int sj = 0; sj < kClusterSize; ++sj) {
+            int aj = original_index[cj * kClusterSize + sj];
+            if (aj < 0 || aj == ai)
+                continue;
+            work_t dx = cluster_x[cj * kClusterSize + sj] - xi;
+            work_t dy = cluster_y[cj * kClusterSize + sj] - yi;
+            work_t dz = cluster_z[cj * kClusterSize + sj] - zi;
+            if constexpr (Ortho) {
+                dx -= work_t(box.cell[0]) * nearbyint(dx * work_t(box.inv_l[0]));
+                dy -= work_t(box.cell[4]) * nearbyint(dy * work_t(box.inv_l[1]));
+                dz -= work_t(box.cell[8]) * nearbyint(dz * work_t(box.inv_l[2]));
+            } else {
+                box.min_image(dx, dy, dz);
+            }
+            work_t r2 = dx * dx + dy * dy + dz * dz;
+            if (r2 < search_sq) {
+                if (cnt < max_neigh)
+                    verlet_nbr[static_cast<std::size_t>(cnt) * stride + ai] = aj;
+                ++cnt;
+            }
+        }
+    }
+    verlet_cnt[ai] = cnt;
+    atomicMax(overflow, cnt);
+}
+
+template <typename work_t>
+void launch_build_verlet_list(const real_t* cluster_x, const real_t* cluster_y,
+                             const real_t* cluster_z, const int* row_ptr,
+                             const int* col_idx, const int* original_index,
+                             int num_clusters, int stride, int max_neigh,
+                             work_t search_sq, cuda::Box box, int* verlet_nbr,
+                             int* verlet_cnt, int* overflow,
+                             cudaStream_t stream) {
+    if (num_clusters <= 0)
+        return;
+    long long threads_needed =
+        static_cast<long long>(num_clusters) * kClusterSize;
+    int block = ATV::cuda::kDefaultBlock;
+    int grid = static_cast<int>((threads_needed + block - 1) / block);
+    if (box.ortho) {
+        build_verlet_list<true, work_t><<<grid, block, 0, stream>>>(
+            cluster_x, cluster_y, cluster_z, row_ptr, col_idx, original_index,
+            num_clusters, stride, max_neigh, search_sq, box, verlet_nbr,
+            verlet_cnt, overflow);
+    } else {
+        build_verlet_list<false, work_t><<<grid, block, 0, stream>>>(
+            cluster_x, cluster_y, cluster_z, row_ptr, col_idx, original_index,
+            num_clusters, stride, max_neigh, search_sq, box, verlet_nbr,
+            verlet_cnt, overflow);
+    }
+    ATV_CUDA_CHECK(cudaGetLastError());
+}
 
 // ---------------------------------------------------------------------------
 // Kernel: Per-atom displacement vs ref_{x,y,z}, atomicMax rebuild_flag
@@ -378,6 +513,10 @@ namespace {
     reinterpret_cast<const void*>(&launch_cluster_displacement<work_t>);
 [[maybe_unused]] const void* _inst_launch_smart_rolling_prune =
     reinterpret_cast<const void*>(&launch_smart_rolling_prune<work_t>);
+[[maybe_unused]] const void* _inst_launch_compute_force_mask =
+    reinterpret_cast<const void*>(&launch_compute_force_mask<work_t>);
+[[maybe_unused]] const void* _inst_launch_build_verlet_list =
+    reinterpret_cast<const void*>(&launch_build_verlet_list<work_t>);
 [[maybe_unused]] const void* _inst_launch_atom_displacement_max =
     reinterpret_cast<const void*>(&launch_atom_displacement_max<work_t>);
 } // namespace
