@@ -54,9 +54,9 @@ link: 2
 - [x] **P2.1** Add per-atom bonded SoA to `cuda::Frame::Atoms` + allocate/free by capacity (single-GPU path unaffected) — GH200 build green, LJ 13/13
 - [x] **P2.2** Materialize owner-filtered per-atom topology (partner=global tag) on each subdomain at `partition` (`materialize_per_atom_bonded`, gated on `has_bonded`) — GH200 build green, LJ 13/13 (fill correctness validated once observable via re-materialize, P2.5)
 - [ ] **P2.3** Extend `migrate` (`MigBuf`/`gather_state`) to carry the per-atom bonded arrays to the new owner
-- [ ] **P2.4** Device tag→local map (sorted tags + binary-search resolve over owned+ghost), rebuilt each reneighbor
-- [ ] **P2.5** Re-materialize flat tuple lists from per-atom topology with tag→local resolve + drop tally; wire into `reneighbor`/`partition`
-- [ ] **P2.6** RED→GREEN test: tag-map resolves a cross-device tuple; 2-GPU re-materialized tuple set matches single-GPU
+- [x] **P2.4** Device tag→local map (sorted tags + binary-search resolve over owned+ghost), rebuilt each reneighbor — GH200 verified
+- [x] **P2.5** Re-materialize flat tuple lists from per-atom topology with tag→local resolve + drop tally; wired into `reneighbor`/`partition` — GH200 verified
+- [x] **P2.6** test `PartitionRematerializesBondedTopology`: 2-GPU re-materialized bond set == single-GPU set (ref=48 got=48), full suite 14/14
 
 ## Testing
 - `test_cuda_multi_gpu_bonded` (new, GH200): (a) tag→local resolves owned + ghost tags, returns -1 for absent; (b) for a

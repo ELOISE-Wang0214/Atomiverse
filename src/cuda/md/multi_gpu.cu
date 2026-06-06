@@ -65,12 +65,14 @@ MultiGpu::~MultiGpu() { destroy_frames(); }
 void MultiGpu::destroy_frames() {
     destroy_force_engine(); // frees per-subdomain NeighborList buffers (needs frames_)
     destroy_halo_plan();
+    destroy_tag_maps(); // bonded tag→local maps (sized to frame capacity)
     for (int s = 0; s < static_cast<int>(frames_.size()); ++s) {
         dm_.set_device(s);
         cuda::destroy(frames_[s]);
     }
     frames_.clear();
     n_local_.clear();
+    bonded_ = false;
 }
 
 int MultiGpu::n_local(int slot) const { return n_local_[slot]; }
@@ -170,6 +172,114 @@ __global__ void scatter_add_forces(real_t* __restrict__ fx,
     atomicAdd(&fx[i], ifx[k]);
     atomicAdd(&fy[i], ify[k]);
     atomicAdd(&fz[i], ifz[k]);
+}
+
+// ── Cross-GPU bonded re-materialization (multigpu-bonded P2.4/P2.5) ──────────
+// Resolve a global tag to a local row via binary search over the per-subdomain
+// sorted (tag → local-index) map covering owned+ghost. -1 if absent.
+__device__ inline int resolve_tag_bsearch(const std::int64_t* __restrict__ st,
+                                          const int* __restrict__ si, int n,
+                                          std::int64_t tag) {
+    int lo = 0, hi = n - 1;
+    while (lo <= hi) {
+        int mid = (lo + hi) >> 1;
+        std::int64_t v = st[mid];
+        if (v == tag)
+            return si[mid];
+        if (v < tag)
+            lo = mid + 1;
+        else
+            hi = mid - 1;
+    }
+    return -1;
+}
+
+// One thread per owned atom (the min-tag bond owner). Emit (i_local, j_local,
+// type) into the flat BondList, resolving the partner global tag → local row
+// (owned or ghost). Unresolvable partner (halo too thin) → drop + count.
+__global__ void rematerialize_bonds_k(
+    const int* __restrict__ num_bond, const std::int64_t* __restrict__ bond_atom,
+    const int* __restrict__ bond_type, int MB, int n_local,
+    const std::int64_t* __restrict__ st, const int* __restrict__ si, int nmap,
+    int* __restrict__ oi, int* __restrict__ oj, int* __restrict__ ot,
+    int* __restrict__ counter, int* __restrict__ dropped) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n_local)
+        return;
+    const int nb = num_bond[i];
+    for (int m = 0; m < nb; ++m) {
+        int j = resolve_tag_bsearch(st, si, nmap, bond_atom[i * MB + m]);
+        if (j < 0) {
+            atomicAdd(dropped, 1);
+            continue;
+        }
+        int slot = atomicAdd(counter, 1);
+        oi[slot] = i;
+        oj[slot] = j;
+        ot[slot] = bond_type[i * MB + m];
+    }
+}
+
+// One thread per owned center atom (angle owner). angle_atom(j, 2m+0/1) hold the
+// i- and k-partner tags; the center j is the local owned row.
+__global__ void rematerialize_angles_k(
+    const int* __restrict__ num_angle,
+    const std::int64_t* __restrict__ angle_atom,
+    const int* __restrict__ angle_type, int MA, int n_local,
+    const std::int64_t* __restrict__ st, const int* __restrict__ si, int nmap,
+    int* __restrict__ oi, int* __restrict__ oj, int* __restrict__ ok,
+    int* __restrict__ ot, int* __restrict__ counter, int* __restrict__ dropped) {
+    int j = blockIdx.x * blockDim.x + threadIdx.x;
+    if (j >= n_local)
+        return;
+    const int na = num_angle[j];
+    for (int m = 0; m < na; ++m) {
+        int ai = resolve_tag_bsearch(st, si, nmap, angle_atom[j * 2 * MA + 2 * m]);
+        int ak = resolve_tag_bsearch(st, si, nmap,
+                                     angle_atom[j * 2 * MA + 2 * m + 1]);
+        if (ai < 0 || ak < 0) {
+            atomicAdd(dropped, 1);
+            continue;
+        }
+        int slot = atomicAdd(counter, 1);
+        oi[slot] = ai;
+        oj[slot] = j;
+        ok[slot] = ak;
+        ot[slot] = angle_type[j * MA + m];
+    }
+}
+
+// One thread per owned atom-2 (dihedral owner). dihedral_atom(j, 3m+0/1/2) hold
+// the i-, k-, l-partner tags; the owner j is the local owned row (atom 2 of 4).
+__global__ void rematerialize_dihedrals_k(
+    const int* __restrict__ num_dihedral,
+    const std::int64_t* __restrict__ dihedral_atom,
+    const int* __restrict__ dihedral_type, int MD, int n_local,
+    const std::int64_t* __restrict__ st, const int* __restrict__ si, int nmap,
+    int* __restrict__ oi, int* __restrict__ oj, int* __restrict__ ok,
+    int* __restrict__ ol, int* __restrict__ ot, int* __restrict__ counter,
+    int* __restrict__ dropped) {
+    int j = blockIdx.x * blockDim.x + threadIdx.x;
+    if (j >= n_local)
+        return;
+    const int nd = num_dihedral[j];
+    for (int m = 0; m < nd; ++m) {
+        int di = resolve_tag_bsearch(st, si, nmap, dihedral_atom[j * 3 * MD + 3 * m]);
+        int dk = resolve_tag_bsearch(st, si, nmap,
+                                     dihedral_atom[j * 3 * MD + 3 * m + 1]);
+        int dl = resolve_tag_bsearch(st, si, nmap,
+                                     dihedral_atom[j * 3 * MD + 3 * m + 2]);
+        if (di < 0 || dk < 0 || dl < 0) {
+            atomicAdd(dropped, 1);
+            continue;
+        }
+        int slot = atomicAdd(counter, 1);
+        oi[slot] = di;
+        oj[slot] = j;
+        ok[slot] = dk;
+        ol[slot] = dl;
+        ot[slot] = dihedral_type[j * MD + m];
+    }
 }
 } // namespace
 
@@ -528,6 +638,9 @@ void MultiGpu::partition(const cpu::Frame& global, double ghost_headroom) {
         if (has_bonded)
             cuda::materialize_per_atom_bonded(frames_[s], sub);
     }
+    // Remember whether to drive the cross-GPU bonded re-materialization each
+    // reneighbor (set after the per-subdomain SoA fill; destroy_frames resets it).
+    bonded_ = has_bonded;
 }
 
 namespace {
@@ -747,6 +860,114 @@ void MultiGpu::setup_force_engine(double cutoff, double epsilon, double sigma,
     engine_ready_ = true;
 }
 
+void MultiGpu::build_tag_maps() {
+    const int N = count();
+    if (static_cast<int>(tagmap_tag_.size()) != N) {
+        tagmap_tag_.assign(N, nullptr);
+        tagmap_idx_.assign(N, nullptr);
+    }
+    for (int s = 0; s < N; ++s) {
+        const int na = frames_[s].n_local_ + frames_[s].n_ghost_;
+        dm_.set_device(s);
+        if (!tagmap_tag_[s]) {
+            CKM(cudaMalloc(&tagmap_tag_[s],
+                           frames_[s].capacity_ * sizeof(std::int64_t)));
+            CKM(cudaMalloc(&tagmap_idx_[s], frames_[s].capacity_ * sizeof(int)));
+        }
+        if (na <= 0)
+            continue;
+        // D2H the owned+ghost tags, sort indices by tag on the host, H2D the
+        // sorted (tag, local-index) arrays. Reneighbor-cadence, correctness-first
+        // (the D2H/sort can move on-device in the optimize link).
+        std::vector<std::int64_t> tags(na);
+        CKM(cudaMemcpy(tags.data(), frames_[s].atoms.tag,
+                       na * sizeof(std::int64_t), cudaMemcpyDeviceToHost));
+        std::vector<int> idx(na);
+        for (int k = 0; k < na; ++k)
+            idx[k] = k;
+        std::sort(idx.begin(), idx.end(),
+                  [&](int a, int b) { return tags[a] < tags[b]; });
+        std::vector<std::int64_t> stag(na);
+        for (int k = 0; k < na; ++k)
+            stag[k] = tags[idx[k]];
+        CKM(cudaMemcpy(tagmap_tag_[s], stag.data(), na * sizeof(std::int64_t),
+                       cudaMemcpyHostToDevice));
+        CKM(cudaMemcpy(tagmap_idx_[s], idx.data(), na * sizeof(int),
+                       cudaMemcpyHostToDevice));
+    }
+}
+
+void MultiGpu::rebuild_bonded_tuples() {
+    if (!bonded_)
+        return;
+    build_tag_maps();
+    const int N = count();
+    constexpr int MB = cpu::Atom::kMaxBondPerAtom;
+    constexpr int MA = cpu::Atom::kMaxAnglePerAtom;
+    constexpr int MD = cpu::Atom::kMaxDihedralPerAtom;
+    for (int s = 0; s < N; ++s) {
+        const int nl = frames_[s].n_local_;
+        const int na = nl + frames_[s].n_ghost_;
+        dm_.set_device(s);
+        auto& a = frames_[s].atoms;
+        auto& F = frames_[s];
+        int* d_drop = nullptr;
+        CKM(cudaMalloc(&d_drop, sizeof(int)));
+        CKM(cudaMemset(d_drop, 0, sizeof(int)));
+        const int block = 256, grid = (nl + block - 1) / block;
+        // Each tuple type's flat arrays + count cell exist only if that subdomain
+        // owns ≥1 such tuple (to_cuda allocates them from the owned count). Guard
+        // on the count pointer; the device count cell doubles as the append
+        // counter (memset 0 → atomicAdd in the kernel → host-cached count).
+        int nb = 0, nan = 0, nd = 0;
+        if (nl > 0 && F.bonds.n_bonds) {
+            CKM(cudaMemset(F.bonds.n_bonds, 0, sizeof(int)));
+            rematerialize_bonds_k<<<grid, block>>>(
+                a.num_bond, a.bond_atom, a.bond_type, MB, nl, tagmap_tag_[s],
+                tagmap_idx_[s], na, F.bonds.atomi, F.bonds.atomj, F.bonds.type,
+                F.bonds.n_bonds, d_drop);
+            CKM(cudaGetLastError());
+            CKM(cudaMemcpy(&nb, F.bonds.n_bonds, sizeof(int),
+                           cudaMemcpyDeviceToHost));
+        }
+        if (nl > 0 && F.angles.n_angles) {
+            CKM(cudaMemset(F.angles.n_angles, 0, sizeof(int)));
+            rematerialize_angles_k<<<grid, block>>>(
+                a.num_angle, a.angle_atom, a.angle_type, MA, nl, tagmap_tag_[s],
+                tagmap_idx_[s], na, F.angles.atomi, F.angles.atomj,
+                F.angles.atomk, F.angles.type, F.angles.n_angles, d_drop);
+            CKM(cudaGetLastError());
+            CKM(cudaMemcpy(&nan, F.angles.n_angles, sizeof(int),
+                           cudaMemcpyDeviceToHost));
+        }
+        if (nl > 0 && F.dihedrals.n_dihedrals) {
+            CKM(cudaMemset(F.dihedrals.n_dihedrals, 0, sizeof(int)));
+            rematerialize_dihedrals_k<<<grid, block>>>(
+                a.num_dihedral, a.dihedral_atom, a.dihedral_type, MD, nl,
+                tagmap_tag_[s], tagmap_idx_[s], na, F.dihedrals.atomi,
+                F.dihedrals.atomj, F.dihedrals.atomk, F.dihedrals.atoml,
+                F.dihedrals.type, F.dihedrals.n_dihedrals, d_drop);
+            CKM(cudaGetLastError());
+            CKM(cudaMemcpy(&nd, F.dihedrals.n_dihedrals, sizeof(int),
+                           cudaMemcpyDeviceToHost));
+        }
+        F.n_bonds_ = nb;
+        F.n_angles_ = nan;
+        F.n_dihedrals_ = nd;
+        cudaFree(d_drop);
+    }
+}
+
+void MultiGpu::destroy_tag_maps() {
+    for (std::size_t s = 0; s < tagmap_tag_.size(); ++s) {
+        dm_.set_device(static_cast<int>(s));
+        cudaFree(tagmap_tag_[s]);
+        cudaFree(tagmap_idx_[s]);
+    }
+    tagmap_tag_.clear();
+    tagmap_idx_.clear();
+}
+
 void MultiGpu::reneighbor() {
     if (!engine_ready_)
         throw std::runtime_error(
@@ -757,6 +978,8 @@ void MultiGpu::reneighbor() {
     // Halo over cutoff+skin so ghosts cover the skin region — no cross-boundary
     // neighbor can appear before the next reneighbor.
     build_halo(force_cutoff_ + force_skin_);
+    // Resolve cross-GPU bonded tuples against the fresh owned+ghost set.
+    rebuild_bonded_tuples();
     const int N = count();
     for (int s = 0; s < N; ++s) {
         const int na = frames_[s].n_local_ + frames_[s].n_ghost_;

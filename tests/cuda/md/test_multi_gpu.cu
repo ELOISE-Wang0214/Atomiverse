@@ -3,7 +3,12 @@
 ///        back; atom conservation and position round-trip.
 
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <cmath>
+#include <cuda_runtime.h>
+#include <set>
+#include <utility>
+#include <vector>
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame.h"
@@ -33,6 +38,27 @@ cpu::Frame make_grid(double L) {
             }
     return f;
 }
+
+// 4x4x4 grid + bonds & angles along each x-row (x-adjacent atoms). Bonds run
+// along x, so any x-direction domain split makes some of them cross-GPU — the
+// case the re-materialization tag→local resolve must handle.
+cpu::Frame make_bonded_grid(double L) {
+    cpu::Frame f = make_grid(L);
+    const int s = 4;
+    // add_bond/add_angle resolve tags through the tag→local map; build it first.
+    f.atoms.map_set(0, f.atoms.size());
+    auto tag_of = [&](int ix, int iy, int iz) { return (ix * s + iy) * s + iz; };
+    for (int iy = 0; iy < s; ++iy)
+        for (int iz = 0; iz < s; ++iz) {
+            for (int ix = 0; ix < s - 1; ++ix)
+                f.atoms.add_bond(tag_of(ix, iy, iz), tag_of(ix + 1, iy, iz), 0);
+            for (int ix = 1; ix < s - 1; ++ix)
+                f.atoms.add_angle(tag_of(ix - 1, iy, iz), tag_of(ix, iy, iz),
+                                  tag_of(ix + 1, iy, iz), 0);
+        }
+    f.atoms.build_special_list();
+    return f;
+}
 } // namespace
 
 TEST(MultiGpu, PartitionConservesAtoms) {
@@ -43,6 +69,63 @@ TEST(MultiGpu, PartitionConservesAtoms) {
     for (int s = 0; s < mg.count(); ++s)
         total += mg.n_local(s);
     EXPECT_EQ(total, g.atoms.size()); // every atom owned by exactly one GPU
+}
+
+// multigpu-bonded P2.4/P2.5: after partition + halo, the per-subdomain flat
+// bond lists re-materialized from per-atom topology (partner tags resolved to
+// local/ghost rows) must, mapped back to global tags, exactly reproduce the
+// single global bond set — each bond owned by exactly one GPU, none dropped.
+TEST(MultiGpu, PartitionRematerializesBondedTopology) {
+    cuda::md::MultiGpu mg;
+    if (mg.count() < 2)
+        GTEST_SKIP() << "needs >=2 GPUs for cross-boundary bonds";
+    auto g = make_bonded_grid(12.0); // x-bond length = spacing 3.0
+    mg.partition(g);
+    mg.build_halo(3.5);              // ghost shell covers the 3.0 cross-split bond
+    mg.rebuild_bonded_tuples();
+
+    // Reference: every bond once, from the global owner-filtered per-atom store.
+    std::set<std::pair<long long, long long>> ref;
+    for (int i = 0; i < g.atoms.size(); ++i)
+        for (int m = 0; m < g.atoms.num_bond[i]; ++m) {
+            long long a = g.atoms.tag[i], b = g.atoms.bond_atom(i, m);
+            ref.insert({std::min(a, b), std::max(a, b)});
+        }
+    ASSERT_FALSE(ref.empty());
+
+    // Union over GPUs of re-materialized bonds, local rows mapped back to tags.
+    std::set<std::pair<long long, long long>> got;
+    for (int s = 0; s < mg.count(); ++s) {
+        const auto& F = mg.frame(s);
+        const int nb = F.n_bonds();
+        const int nall = mg.n_local(s) + mg.n_ghost(s);
+        if (nb == 0)
+            continue;
+        std::vector<int> ai(nb), aj(nb);
+        std::vector<long long> tags(nall);
+        // UVA (cudaMemcpyDefault) infers the owning device — no set_device.
+        cudaMemcpy(ai.data(), F.bonds.atomi, nb * sizeof(int), cudaMemcpyDefault);
+        cudaMemcpy(aj.data(), F.bonds.atomj, nb * sizeof(int), cudaMemcpyDefault);
+        cudaMemcpy(tags.data(), F.atoms.tag, nall * sizeof(long long),
+                   cudaMemcpyDefault);
+        for (int k = 0; k < nb; ++k) {
+            long long a = tags[ai[k]], b = tags[aj[k]];
+            got.insert({std::min(a, b), std::max(a, b)});
+        }
+    }
+    // Diagnostics: report set sizes + a few mismatches before the hard check.
+    std::cerr << "[diag] ref=" << ref.size() << " got=" << got.size() << "\n";
+    int shown = 0;
+    for (const auto& p : ref)
+        if (!got.count(p) && shown++ < 8)
+            std::cerr << "[diag] in ref, MISSING from got: (" << p.first << ","
+                      << p.second << ")\n";
+    shown = 0;
+    for (const auto& p : got)
+        if (!ref.count(p) && shown++ < 8)
+            std::cerr << "[diag] in got, EXTRA vs ref: (" << p.first << ","
+                      << p.second << ")\n";
+    EXPECT_EQ(got, ref); // no dropped cross-GPU bonds, no duplicates
 }
 
 TEST(MultiGpu, PartitionGatherRoundTrip) {

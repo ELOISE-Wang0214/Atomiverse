@@ -102,6 +102,15 @@ class MultiGpu {
     /// per step, after all force kernels, mirroring the single forward halo.
     void reverse_comm();
 
+    /// Rebuild the per-subdomain flat bonded tuple lists (BondList/AngleList/
+    /// DihedralList) from the per-atom bonded topology (global tags), resolving
+    /// each partner tag → local (owned or ghost) row via a freshly built device
+    /// tag→local map over the current owned+ghost set. A reneighbor-cadence
+    /// operation (call after `build_halo`); no-op if the system has no bonded
+    /// topology. Unresolvable partners (halo too thin) are dropped and counted.
+    /// Public so multi-GPU bonded force paths and tests can drive it explicitly.
+    void rebuild_bonded_tuples();
+
     /// Merge all subdomains' owned atoms back into one cpu::Frame (positions /
     /// velocities by tag order matching the original global frame size). Used
     /// to validate partition round-trips and, later, full multi-GPU runs.
@@ -190,6 +199,10 @@ class MultiGpu {
     void destroy_frames();
     void destroy_halo_plan();
     void destroy_force_engine();
+    // Build the per-subdomain device tag→local map over owned+ghost (sorted
+    // tags + parallel local-index array), used by rebuild_bonded_tuples.
+    void build_tag_maps();
+    void destroy_tag_maps();
 
     DeviceManager dm_;
     std::unique_ptr<DomainDecomposition> dd_;
@@ -207,6 +220,13 @@ class MultiGpu {
     std::vector<int> nlist_cap_;    // per-slot: atom count the nlist buffers were built for
     bool engine_ready_ = false;
     double force_cutoff_ = 0, force_skin_ = 0;
+
+    // Cross-GPU bonded topology (multigpu-bonded). `bonded_` is set by
+    // partition when the system carries bonded topology (per-atom SoA filled).
+    // The tag→local maps are rebuilt each reneighbor over owned+ghost.
+    bool bonded_ = false;
+    std::vector<std::int64_t*> tagmap_tag_; // [capacity] sorted global tags, per slot
+    std::vector<int*> tagmap_idx_;          // [capacity] parallel local indices, per slot
 };
 
 } // namespace md
