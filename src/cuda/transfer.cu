@@ -287,6 +287,60 @@ void to_cpu(const Frame& d, cpu::Frame& frame) {
     }
 }
 
+void materialize_per_atom_bonded(Frame& d, const cpu::Frame& src) {
+    const int n = src.atoms.nlocal;
+    const int cap = d.capacity_;
+    constexpr int MB = cpu::Atom::kMaxBondPerAtom;
+    constexpr int MA = cpu::Atom::kMaxAnglePerAtom;
+    constexpr int MD = cpu::Atom::kMaxDihedralPerAtom;
+    constexpr int MS = cpu::Atom::kMaxSpecial;
+    auto alloc_i = [](int*& p, std::size_t rows) {
+        cudaMalloc(&p, rows * sizeof(int));
+        cudaMemset(p, 0, rows * sizeof(int));
+    };
+    auto alloc_t = [](std::int64_t*& p, std::size_t rows) {
+        cudaMalloc(&p, rows * sizeof(std::int64_t));
+        cudaMemset(p, 0, rows * sizeof(std::int64_t));
+    };
+    // Allocate to capacity (+ zero) so ghost/headroom rows are inert (num_*=0)
+    // until a halo/migrate fills them. Per-atom storage is row-major [cap, cols].
+    const std::size_t c = static_cast<std::size_t>(cap);
+    alloc_i(d.atoms.num_bond, c);
+    alloc_t(d.atoms.bond_atom, c * MB);
+    alloc_i(d.atoms.bond_type, c * MB);
+    alloc_i(d.atoms.num_angle, c);
+    alloc_t(d.atoms.angle_atom, c * 2 * MA);
+    alloc_i(d.atoms.angle_type, c * MA);
+    alloc_i(d.atoms.num_dihedral, c);
+    alloc_t(d.atoms.dihedral_atom, c * 3 * MD);
+    alloc_i(d.atoms.dihedral_type, c * MD);
+    alloc_i(d.atoms.nspecial, c * 3);
+    alloc_t(d.atoms.special, c * MS);
+    if (n <= 0)
+        return;
+    // The source CPU per-atom arrays are row-major [nlocal, cols]; copy the
+    // owned rows into the device array's leading [0, n) rows (same column
+    // count, so each is one contiguous block).
+    const std::size_t un = static_cast<std::size_t>(n);
+    auto h2d_i = [](int* dst, const int* s, std::size_t cnt) {
+        cudaMemcpy(dst, s, cnt * sizeof(int), cudaMemcpyHostToDevice);
+    };
+    auto h2d_t = [](std::int64_t* dst, const std::int64_t* s, std::size_t cnt) {
+        cudaMemcpy(dst, s, cnt * sizeof(std::int64_t), cudaMemcpyHostToDevice);
+    };
+    h2d_i(d.atoms.num_bond, src.atoms.num_bond.data(), un);
+    h2d_t(d.atoms.bond_atom, src.atoms.bond_atom.data(), un * MB);
+    h2d_i(d.atoms.bond_type, src.atoms.bond_type.data(), un * MB);
+    h2d_i(d.atoms.num_angle, src.atoms.num_angle.data(), un);
+    h2d_t(d.atoms.angle_atom, src.atoms.angle_atom.data(), un * 2 * MA);
+    h2d_i(d.atoms.angle_type, src.atoms.angle_type.data(), un * MA);
+    h2d_i(d.atoms.num_dihedral, src.atoms.num_dihedral.data(), un);
+    h2d_t(d.atoms.dihedral_atom, src.atoms.dihedral_atom.data(), un * 3 * MD);
+    h2d_i(d.atoms.dihedral_type, src.atoms.dihedral_type.data(), un * MD);
+    h2d_i(d.atoms.nspecial, src.atoms.nspecial.data(), un * 3);
+    h2d_t(d.atoms.special, src.atoms.special.data(), un * MS);
+}
+
 void destroy(Frame& d) {
     cudaFree(d.atoms.x);
     cudaFree(d.atoms.y);
@@ -323,6 +377,19 @@ void destroy(Frame& d) {
     cudaFree(d.dihedrals.atoml);
     cudaFree(d.dihedrals.type);
     cudaFree(d.dihedrals.n_dihedrals);
+
+    // Multi-GPU per-atom bonded SoA (null on single-GPU frames; cudaFree(0) ok).
+    cudaFree(d.atoms.num_bond);
+    cudaFree(d.atoms.bond_atom);
+    cudaFree(d.atoms.bond_type);
+    cudaFree(d.atoms.num_angle);
+    cudaFree(d.atoms.angle_atom);
+    cudaFree(d.atoms.angle_type);
+    cudaFree(d.atoms.num_dihedral);
+    cudaFree(d.atoms.dihedral_atom);
+    cudaFree(d.atoms.dihedral_type);
+    cudaFree(d.atoms.nspecial);
+    cudaFree(d.atoms.special);
 
     d = {};
 }

@@ -33,5 +33,17 @@ void to_cpu(const Frame& src, cpu::Frame& dst);
 /// @param frame CUDA Frame to free (zeroed after this call).
 void destroy(Frame& frame);
 
+/// @brief Allocate + fill the multi-GPU per-atom bonded SoA on `d` from the
+/// owner-filtered per-atom topology in `src` (partners stored as GLOBAL TAGS).
+///
+/// Used only by the multi-GPU `MultiGpu::partition` path: the single-GPU /
+/// standard `cpu::to_cuda` leaves these arrays null (the single-GPU bonded
+/// kernels read the flat BondList/AngleList/DihedralList instead). Arrays are
+/// sized to `d.capacity_` (ghost headroom) and zeroed; the first
+/// `src.atoms.nlocal` rows are copied from `src`. The device frame must already
+/// be materialized (so `d.capacity_` is set). Caps mirror `cpu::Atom`.
+/// `destroy()` frees these (null-safe), so no separate teardown is needed.
+void materialize_per_atom_bonded(Frame& d, const cpu::Frame& src);
+
 } // namespace cuda
 } // namespace ATV

@@ -51,8 +51,8 @@ link: 2
 - `tests/cuda/md/test_cuda_multi_gpu_bonded.cu` (new) — tag map 解析 + 2-GPU 重展开等价单测(GH200)。
 
 ## Tasks
-- [ ] **P2.1** Add per-atom bonded SoA to `cuda::Frame::Atoms` + allocate/free by capacity (single-GPU path unaffected)
-- [ ] **P2.2** Materialize owner-filtered per-atom topology (partner=global tag) on each subdomain at `partition`
+- [x] **P2.1** Add per-atom bonded SoA to `cuda::Frame::Atoms` + allocate/free by capacity (single-GPU path unaffected) — GH200 build green, LJ 13/13
+- [x] **P2.2** Materialize owner-filtered per-atom topology (partner=global tag) on each subdomain at `partition` (`materialize_per_atom_bonded`, gated on `has_bonded`) — GH200 build green, LJ 13/13 (fill correctness validated once observable via re-materialize, P2.5)
 - [ ] **P2.3** Extend `migrate` (`MigBuf`/`gather_state`) to carry the per-atom bonded arrays to the new owner
 - [ ] **P2.4** Device tag→local map (sorted tags + binary-search resolve over owned+ghost), rebuilt each reneighbor
 - [ ] **P2.5** Re-materialize flat tuple lists from per-atom topology with tag→local resolve + drop tally; wire into `reneighbor`/`partition`

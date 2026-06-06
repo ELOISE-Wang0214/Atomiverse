@@ -452,6 +452,17 @@ void MultiGpu::partition(const cpu::Frame& global, double ghost_headroom) {
         buckets[owner].push_back(i);
     }
 
+    // Detect bonded topology once: only then do we carry per-atom bonded SoA to
+    // each subdomain (so a pure-LJ system keeps the device SoA null — the
+    // single-GPU/LJ path is byte-unchanged).
+    bool has_bonded = false;
+    for (int i = 0; i < ng; ++i)
+        if (global.atoms.num_bond[i] || global.atoms.num_angle[i]
+            || global.atoms.num_dihedral[i]) {
+            has_bonded = true;
+            break;
+        }
+
     frames_.resize(N);
     n_local_.assign(N, 0);
     for (int s = 0; s < N; ++s) {
@@ -477,6 +488,33 @@ void MultiGpu::partition(const cpu::Frame& global, double ghost_headroom) {
             sub.atoms.charge[k] = global.atoms.charge[g];
             sub.atoms.type[k] = global.atoms.type[g];
             sub.atoms.tag[k] = global.atoms.tag[g];
+
+            // Owner-filtered per-atom bonded topology, partners as GLOBAL TAGS
+            // (resolved to local rows each reneighbor via the tag→local map).
+            if (has_bonded) {
+                sub.atoms.num_bond[k] = global.atoms.num_bond[g];
+                for (int m = 0; m < cpu::Atom::kMaxBondPerAtom; ++m) {
+                    sub.atoms.bond_atom(k, m) = global.atoms.bond_atom(g, m);
+                    sub.atoms.bond_type(k, m) = global.atoms.bond_type(g, m);
+                }
+                sub.atoms.num_angle[k] = global.atoms.num_angle[g];
+                for (int m = 0; m < cpu::Atom::kMaxAnglePerAtom; ++m) {
+                    sub.atoms.angle_atom(k, 2 * m) = global.atoms.angle_atom(g, 2 * m);
+                    sub.atoms.angle_atom(k, 2 * m + 1) = global.atoms.angle_atom(g, 2 * m + 1);
+                    sub.atoms.angle_type(k, m) = global.atoms.angle_type(g, m);
+                }
+                sub.atoms.num_dihedral[k] = global.atoms.num_dihedral[g];
+                for (int m = 0; m < cpu::Atom::kMaxDihedralPerAtom; ++m) {
+                    sub.atoms.dihedral_atom(k, 3 * m) = global.atoms.dihedral_atom(g, 3 * m);
+                    sub.atoms.dihedral_atom(k, 3 * m + 1) = global.atoms.dihedral_atom(g, 3 * m + 1);
+                    sub.atoms.dihedral_atom(k, 3 * m + 2) = global.atoms.dihedral_atom(g, 3 * m + 2);
+                    sub.atoms.dihedral_type(k, m) = global.atoms.dihedral_type(g, m);
+                }
+                for (int t = 0; t < 3; ++t)
+                    sub.atoms.nspecial(k, t) = global.atoms.nspecial(g, t);
+                for (int t = 0; t < cpu::Atom::kMaxSpecial; ++t)
+                    sub.atoms.special(k, t) = global.atoms.special(g, t);
+            }
         }
 
         // Materialize on this slot's GPU with ghost headroom so the halo can
@@ -485,6 +523,10 @@ void MultiGpu::partition(const cpu::Frame& global, double ghost_headroom) {
         const int extra = std::max(64, static_cast<int>(cnt * ghost_headroom));
         dm_.set_device(s);
         frames_[s] = cpu::to_cuda(sub, cnt + extra);
+        // Carry owner-filtered per-atom bonded topology onto the device (global
+        // tags); the single-GPU flat lists from to_cuda are unused on this path.
+        if (has_bonded)
+            cuda::materialize_per_atom_bonded(frames_[s], sub);
     }
 }
 
