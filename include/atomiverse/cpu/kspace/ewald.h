@@ -28,7 +28,7 @@
 
 #include "atomiverse/core/binding.h"
 #include "atomiverse/core/real.h"
-#include "atomiverse/cpu/component.h"
+#include "atomiverse/cpu/kspace/kspace.h"
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
 
@@ -36,7 +36,7 @@ namespace ATV {
 namespace cpu {
 
 /// @brief Reciprocal-space Ewald summation for periodic electrostatics.
-class KSpaceEwald : public cpu::ComponentBase {
+class KSpaceEwald : public cpu::KSpace {
   public:
     /// @param alpha    Ewald splitting parameter α [1/Å]. Must match the
     ///                 real-space `CoulLong` α.
@@ -49,7 +49,6 @@ class KSpaceEwald : public cpu::ComponentBase {
     static double recommend_alpha(double cutoff, double accuracy = 1e-5);
 
     std::string name() const override { return "ewald"; }
-    ComponentRole role() const override { return ComponentRole::Evaluator; }
     Capability capabilities() const override {
         return Capability::Energy | Capability::Force | Capability::Stress;
     }
@@ -58,7 +57,9 @@ class KSpaceEwald : public cpu::ComponentBase {
     }
 
     void build(const BuildContext& ctx) override;
-    void launch(const LaunchContext& ctx) override;
+
+  protected:
+    void compute(const LaunchContext& ctx) override;
 
   private:
     /// @brief Rebuild the reciprocal-vector tables if the cell changed.

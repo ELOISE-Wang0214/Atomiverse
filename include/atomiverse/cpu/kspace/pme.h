@@ -27,7 +27,7 @@
 
 #include "atomiverse/core/binding.h"
 #include "atomiverse/core/real.h"
-#include "atomiverse/cpu/component.h"
+#include "atomiverse/cpu/kspace/kspace.h"
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
 
@@ -35,7 +35,7 @@ namespace ATV {
 namespace cpu {
 
 /// @brief Smooth Particle-Mesh Ewald reciprocal-space electrostatics.
-class KSpacePME : public cpu::ComponentBase {
+class KSpacePME : public cpu::KSpace {
   public:
     /// @param alpha        Ewald splitting parameter α [1/Å]. Must match the
     ///                     real-space `CoulLong` α.
@@ -47,7 +47,6 @@ class KSpacePME : public cpu::ComponentBase {
     ~KSpacePME() override;
 
     std::string name() const override { return "pme"; }
-    ComponentRole role() const override { return ComponentRole::Evaluator; }
     Capability capabilities() const override {
         return Capability::Energy | Capability::Force | Capability::Stress;
     }
@@ -56,8 +55,10 @@ class KSpacePME : public cpu::ComponentBase {
     }
 
     void build(const BuildContext& ctx) override;
-    void launch(const LaunchContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;
+
+  protected:
+    void compute(const LaunchContext& ctx) override;
 
   private:
     void ensure_grid(const cpu::Frame& frame);

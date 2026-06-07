@@ -143,7 +143,7 @@ void KSpaceEwald::build(const BuildContext& ctx) {
     cudaMemcpy(d_kw_, kw.data(), bytes, cudaMemcpyHostToDevice);
 }
 
-void KSpaceEwald::launch(const LaunchContext& ctx) {
+void KSpaceEwald::compute(const LaunchContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& frame = ctx.frame;
     const int n = frame.n_local();

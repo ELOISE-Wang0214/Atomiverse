@@ -11,13 +11,13 @@
 #include <array>
 #include <string>
 
-#include "atomiverse/cuda/component.cuh"
+#include "atomiverse/cuda/kspace/kspace.cuh"
 
 namespace ATV {
 namespace cuda {
 
 /// @brief Smooth Particle-Mesh Ewald reciprocal electrostatics (CUDA).
-class KSpacePME : public ComponentBase {
+class KSpacePME : public KSpace {
   public:
     /// @param alpha        Ewald splitting parameter α [1/Å] (match CoulLong).
     /// @param grid_spacing Target real-space grid spacing [Å]. Default 1.0.
@@ -26,14 +26,15 @@ class KSpacePME : public ComponentBase {
     ~KSpacePME() override;
 
     std::string name() const override { return "pme"; }
-    ComponentRole role() const override { return ComponentRole::Evaluator; }
     Capability capabilities() const override {
         return Capability::Energy | Capability::Force;
     }
 
     void build(const BuildContext& ctx) override;
-    void launch(const LaunchContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;
+
+  protected:
+    void compute(const LaunchContext& ctx) override;
 
   private:
     double alpha_;

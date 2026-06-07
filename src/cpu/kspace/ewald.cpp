@@ -91,7 +91,7 @@ void KSpaceEwald::ensure_kvectors(const cpu::Frame& frame) {
 
 void KSpaceEwald::build(const BuildContext& ctx) { ensure_kvectors(ctx.frame); }
 
-void KSpaceEwald::launch(const LaunchContext& ctx) {
+void KSpaceEwald::compute(const LaunchContext& ctx) {
     auto& f = ctx.frame;
     ensure_kvectors(f);
     const int ng = static_cast<int>(kx_.size());

@@ -13,13 +13,13 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cuda/component.cuh"
+#include "atomiverse/cuda/kspace/kspace.cuh"
 
 namespace ATV {
 namespace cuda {
 
 /// @brief Reciprocal-space Ewald summation for periodic electrostatics (CUDA).
-class KSpaceEwald : public ComponentBase {
+class KSpaceEwald : public KSpace {
   public:
     /// @param alpha    Ewald splitting parameter α [1/Å] (match CoulLong).
     /// @param accuracy Relative accuracy target (sets the k-vector cutoff).
@@ -27,14 +27,15 @@ class KSpaceEwald : public ComponentBase {
     ~KSpaceEwald() override;
 
     std::string name() const override { return "ewald"; }
-    ComponentRole role() const override { return ComponentRole::Evaluator; }
     Capability capabilities() const override {
         return Capability::Energy | Capability::Force;
     }
 
     void build(const BuildContext& ctx) override;
-    void launch(const LaunchContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;
+
+  protected:
+    void compute(const LaunchContext& ctx) override;
 
   private:
     double alpha_;

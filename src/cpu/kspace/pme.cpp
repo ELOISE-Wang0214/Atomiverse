@@ -158,7 +158,7 @@ void KSpacePME::ensure_grid(const cpu::Frame& frame) {
 
 void KSpacePME::build(const BuildContext& ctx) { ensure_grid(ctx.frame); }
 
-void KSpacePME::launch(const LaunchContext& ctx) {
+void KSpacePME::compute(const LaunchContext& ctx) {
     auto& f = ctx.frame;
     ensure_grid(f);
 
