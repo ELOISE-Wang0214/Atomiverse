@@ -1,6 +1,6 @@
 ---
 title: Force infra — generic per-atom comm contract (charge + arbitrary fields), kill the Allgatherv hack
-status: approved
+status: in-progress
 created: 2026-06-07
 chain: force-infra
 link: 2
@@ -17,10 +17,11 @@ link: 2
 - CUDA `MultiGpu` 根本没传电荷，故多卡跑不了 `CoulLong`/`Ewald`。
 
 本环照搬 **LAMMPS 通用通信契约**（`src/comm.h`、`src/comm_brick.cpp:910-982`、`src/pair.h:50-52,207-210`）：
-`ComponentBase` 声明每原子通信宽度 + 实现 pack/unpack 回调，halo 服务遍历**注册的通信参与者**而非硬编码字段。
-现有位置-正向 / 力-反向退化为两个内置参与者（行为不变）；**电荷**成为第三个内置正向字段——
-正是 LAMMPS 里电荷随原子边界自动到 ghost 的等价物（`src/verlet.cpp` borders；Pair 实空间库仑读 `q[j]`，
-j 可为 ghost，`pair_lj_cut_coul_long.cpp:118-141`）。`CoulLong` 改读 ghost 电荷、删掉 Allgatherv。
+`ComponentBase` 声明每原子通信宽度 + 实现 pack/unpack 回调，halo 服务遍历**注册的额外字段参与者**。
+**按 LAMMPS 真实架构**（见下 Design decision）：位置-正向 / 力-反向**保持内置、逐步不变**（proven path），
+**电荷随 build-time border 消息**到 ghost（每次 reneighbor 一次，点电荷恒定）——正是 LAMMPS `borders()`/AtomVec
+携带 `q` 的等价物（Pair 实空间库仑读 `q[j]`，j 可为 ghost，`pair_lj_cut_coul_long.cpp:118-141`）。参与者契约
+专供**额外**每步字段（EAM `fp`/`rho`）。`CoulLong` 改读 ghost 电荷、删掉 Allgatherv。
 
 LAMMPS 契约（直接对标）：
 ```cpp
@@ -37,16 +38,29 @@ virtual void unpack_reverse_comm(int n,int*list,double*buf);          // pair.h:
 （同一物理，换通信通道）。契约对任意每原子字段通用（宽度由组件声明），为后续 kspace 电荷同步与多体中间场
 （如 EAM 密度）预留通道——但本环不实现任何新势。
 
+## Design decision (2026-06-07, user: cleanest/most-maintainable/extensible/performant)
+Re-examining LAMMPS settles the architecture: `comm->forward_comm()` carries **positions**
+intrinsically, `reverse_comm()` carries **forces** intrinsically, **charge rides the
+`borders()`/AtomVec path** (sent once per reneighbor — point charges are static), and
+`comm->forward_comm(Pair*)` packs only **extra per-step fields** (e.g. EAM `fp`). So the
+LAMMPS-faithful = cleanest = lowest-risk shape is **intrinsic core + participant extras**,
+NOT "everything is a participant". pos/force stay on the proven per-step path; charge joins
+the build-time border message; the participant pack/unpack contract is for EXTRA fields.
+
 ## Design
-- `ComponentBase`（`include/atomiverse/cpu/component.h` + `include/atomiverse/cuda/component.cuh`）增通信契约
-  （默认 size=0 / no-op，旧组件零改动）：标量 `comm_forward/comm_reverse` + 四个 pack/unpack 回调（贴合 LAMMPS 签名；
-  CUDA 侧为设备 gather/scatter 包装）。
-- CPU `halo_exchange`、CUDA `MultiGpu::forward_comm/reverse_comm` 改为遍历注册参与者，缓冲区按 Σ(width)·cnt。
-  内置参与者：① position-forward ② force-reverse ③ **charge-forward**。
-- `CoulLong`（CPU）注册 charge-forward 需求（或直接消费内置电荷字段），删除 `tag_charge_` Allgatherv 路径
-  （`coul_long.h:55-71` 的 `use_charge_map_`/`refresh_charge_map`）。
-- 不引入 Kokkos；不新增 potential。kspace 倒空间的 S(k) 归约 / PME 网格通信是**另一种机制**，不在本环
-  （留 -04）；本环只管原子级 forward/reverse + 电荷。
+- `ComponentBase` (`cpu/component.h` + `cuda/component.cuh`): add the **extra-field**
+  participant contract (default 0 / no-op, old components unchanged): `comm_forward()` /
+  `comm_reverse()` widths + pack/unpack. CPU = LAMMPS-style host `double*` callbacks; CUDA =
+  device field descriptor (per-atom device ptr + width) consumed by MultiGpu's gather/scatter.
+- **Charge → build-time border set** (not a per-step participant): CPU `build_halo` ghost
+  message becomes `x,y,z,tag,q`; CUDA `build_halo` ghost data carries `q`. Sent once per
+  reneighbor (mirrors LAMMPS `borders()`/AtomVec carrying `q`). Per-step forward (positions) /
+  reverse (forces) are **intrinsic and unchanged** (proven path, no churn).
+- Halo iterates registered **extra-field** participants, batched into the per-swap buffer
+  (Σ extra widths) after the intrinsic positions (forward) / before forces (reverse).
+- `CoulLong` (CPU) reads ghost `q` from the border set; delete the `tag_charge_` Allgatherv
+  path (`coul_long.h:55-71` `use_charge_map_`/`refresh_charge_map`).
+- 不引入 Kokkos；不新增 potential。kspace 倒空间的 S(k) 归约 / PME 网格通信是**另一种机制**，留 -04。
 
 ## Files to create or modify
 - `include/atomiverse/cpu/component.h`、`include/atomiverse/cuda/component.cuh`（契约）。
@@ -56,11 +70,11 @@ virtual void unpack_reverse_comm(int n,int*list,double*buf);          // pair.h:
 - 测试：`test_comm_contract`（合成字段 round-trip）+ CoulLong 多 rank/多卡等价回归。
 
 ## Tasks
-- [ ] **P2.1** Add `comm_forward`/`comm_reverse` + pack/unpack forward/reverse to CPU & CUDA `ComponentBase` (default no-op)
-- [ ] **P2.2** Refactor CPU `halo_exchange` to iterate participants; built-ins position-forward + force-reverse + charge-forward (behavior-preserving for pos/force)
-- [ ] **P2.3** Refactor CUDA `MultiGpu` forward/reverse to iterate participants; buffer sized by Σ(width); add charge-forward built-in
-- [ ] **P2.4** Port CPU `CoulLong` onto ghost-charge from the contract; delete the MPI_Allgatherv tag→charge map
-- [ ] **P2.5** RED→GREEN: synthetic 1-wide forward + 1-wide reverse-accumulate field round-trips exactly (CPU n8 + CUDA multi-GPU); CoulLong multi-rank == single == pre-change
+- [x] **P2.1** Add the extra-field participant contract to CPU & CUDA `ComponentBase` (default 0/no-op): `comm_forward()`/`comm_reverse()` widths + pack/unpack (CPU host `double*`; CUDA device field descriptor)
+- [ ] **P2.2** CPU: carry charge `q` in the `build_halo` border message (x,y,z,tag,q); per-step pos-forward/force-reverse unchanged; iterate extra-field participants in forward/reverse (batched buffer)
+- [ ] **P2.3** CUDA: carry `q` in `build_halo` ghost data; `MultiGpu` forward/reverse iterate extra-field participants into the combined Σ(width) staging; per-step pos/force unchanged
+- [ ] **P2.4** Port CPU `CoulLong` onto ghost `q` from the border set; delete the MPI_Allgatherv tag→charge map
+- [ ] **P2.5** RED→GREEN: synthetic 1-wide forward + 1-wide reverse-accumulate participant round-trips exactly (CPU n8 + CUDA multi-GPU); CoulLong multi-rank == single == pre-change
 - [ ] **P2.6** Verify position/force halo bit-identical (CPU n1/n8, CUDA 1/2/4-GPU)
 
 ## Testing

@@ -131,6 +131,35 @@ class ComponentBase {
     ///
     /// @param ctx Destroy context containing the CPU runtime and frame.
     virtual void destroy(const DestroyContext& ctx) {}
+
+    // ── Extra-field halo participant contract (force-infra-02) ─────────────
+    // LAMMPS comm_forward/comm_reverse pattern (src/pair.h:50-52,207-210). A
+    // component needing per-step ghost data beyond the intrinsic positions
+    // (forward) / forces (reverse) declares how many doubles/atom it sends and
+    // implements pack/unpack; `halo_exchange` iterates registered participants.
+    // Default 0 / no-op — most components communicate nothing extra.
+
+    /// @brief Doubles per atom this component forwards (owner→ghost). 0 = none.
+    virtual int comm_forward() const { return 0; }
+    /// @brief Doubles per atom this component reverses (ghost→owner, summed).
+    virtual int comm_reverse() const { return 0; }
+
+    /// @brief Pack `comm_forward()` doubles/atom for the `n` atoms in `idx` into
+    ///        `buf`; return the number of doubles written.
+    virtual int pack_forward(int /*n*/, const int* /*idx*/, double* /*buf*/) const {
+        return 0;
+    }
+    /// @brief Unpack forwarded values into the `n` contiguous ghost rows starting
+    ///        at `first`.
+    virtual void unpack_forward(int /*n*/, int /*first*/, const double* /*buf*/) {}
+    /// @brief Pack `comm_reverse()` doubles/atom for the `n` contiguous ghost
+    ///        rows starting at `first`; return the number of doubles written.
+    virtual int pack_reverse(int /*n*/, int /*first*/, double* /*buf*/) const {
+        return 0;
+    }
+    /// @brief Unpack reversed values and ACCUMULATE onto the `n` owner rows in
+    ///        `idx`.
+    virtual void unpack_reverse(int /*n*/, const int* /*idx*/, const double* /*buf*/) {}
 };
 
 } // namespace cpu

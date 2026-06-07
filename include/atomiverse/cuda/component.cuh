@@ -168,6 +168,22 @@ class ComponentBase {
     ///
     /// @param ctx Destroy context with Runtime and DeviceFrame references.
     virtual void destroy(const DestroyContext& ctx) {}
+
+    // ── Extra-field halo participant contract (force-infra-02) ─────────────
+    /// A per-atom DEVICE field a component needs communicated across subdomains
+    /// beyond the intrinsic positions (forward) / forces (reverse). The
+    /// multi-GPU halo gathers these into its combined P2P staging buffer.
+    struct CommField {
+        real_t* data = nullptr; ///< per-atom device array (owned+ghost capacity)
+        int width = 1;          ///< components per atom (packed contiguously)
+    };
+    /// @brief Extra per-atom fields to forward (owner→ghost) each step, e.g. an
+    ///        EAM embedding derivative. Default: none. The halo refreshes ghost
+    ///        rows of each field after positions.
+    virtual std::vector<CommField> comm_forward_fields() const { return {}; }
+    /// @brief Extra per-atom fields to reverse (ghost→owner, ACCUMULATED) each
+    ///        step, e.g. an EAM density partial sum. Default: none.
+    virtual std::vector<CommField> comm_reverse_fields() const { return {}; }
 };
 
 } // namespace cuda
