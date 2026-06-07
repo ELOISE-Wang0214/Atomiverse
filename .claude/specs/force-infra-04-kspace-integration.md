@@ -53,9 +53,11 @@ Ewald 理论：E = Σ_i F_i(实空间 erfc) + 倒空间 Σ_k A(k)|S(k)|² + 自�
 
 ## Tasks
 - [ ] **P4.1** Formalize real/reciprocal split: real-space coulomb is the -03 pair-kernel; KSpace family owns reciprocal; engine is the single source of g_ewald/α (kspace-before-pair)
+- [ ] **P4.1b** (carried from -02) CUDA: carry `q` to ghosts in `MultiGpu::build_halo` ghost data — the per-atom charge prerequisite for multi-GPU real-space Coulomb (the -02 atom comm contract is in place on `cuda::ComponentBase`; this wires its first CUDA consumer)
+- [ ] **P4.1c** (carried from -02) Generic per-step extra-field participant ITERATION: CPU `halo_exchange` iterates registered `comm_forward`/`comm_reverse` participants (batched buffer); `MultiGpu` forward/reverse iterate held components' `CommField`s into the combined Σ(width) staging. RED→GREEN synthetic 1-wide forward + 1-wide reverse-accumulate round-trip (CPU n8 + CUDA multi-GPU) — the deferred -02 ac-004. Consumed by EAM (`fp` forward / `rho` reverse) in -04 proper.
 - [ ] **P4.2** Define the KSpace comm contract (global structure-factor reduction for Ewald; grid forward/reverse hooks for PME) — distinct from the -02 atom comm
 - [ ] **P4.3** CUDA Ewald cross-GPU S(k) reduction via NCCL (single-GPU = no-op); add the missing net-charge correction
-- [ ] **P4.4** Register KSpaceEwald on `MultiGpu` (charge already supplied by -02); run force phase pair→bonded→kspace
+- [ ] **P4.4** Register KSpaceEwald on `MultiGpu` (charge supplied by P4.1b); run force phase pair→bonded→kspace
 - [ ] **P4.5** RED→GREEN: single-GPU/CPU Ewald+Coul unchanged; multi-GPU Ewald total electrostatic energy + per-atom force == single-GPU == CPU within tol
 - [ ] **P4.6** PME: define grid-comm interface + keep current single-GPU/replicated-grid behavior; document multi-GPU distributed-grid PME as a follow-up (no silent gap)
 
