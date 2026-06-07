@@ -422,6 +422,17 @@ void PairLJCut::build(const BuildContext& ctx) {
         ctx.runtime.s_excl = 1.0;
         return;
     }
+    // Fast path: if the per-atom special SoA is on-device, NeighborList bakes
+    // 1-2/1-3/1-4 exclusions directly from it (find_special at build) — skip the
+    // O(N) host std::set exclusion-CSR rebuild entirely (its per-reneighbor cost
+    // was the dominant multi-GPU bottleneck). Just publish the scale; the force
+    // kernel reads exclusions_baked and drops its per-pair scan.
+    if (ctx.frame.atoms.special != nullptr) {
+        ctx.runtime.excl_offsets = nullptr;
+        ctx.runtime.excl_partners = nullptr;
+        ctx.runtime.s_excl = s_excl_;
+        return;
+    }
     auto& f = ctx.frame;
     int n = f.n_atoms();
     int n_b = f.n_bonds();

@@ -242,9 +242,10 @@ void launch_build_verlet_direct(
     const real_t* x, const real_t* y, const real_t* z, int n, ATV::cuda::Box box,
     int dx, int dy, int dz, bool periodic, const int* sdx, const int* sdy,
     const int* sdz, const int* n_stencil_ptr, const int* bincount,
-    const int* bins, int bin_cap, work_t rsq_search, const int* excl_offsets,
-    const int* excl_partners, int* vl_nbr, int* vl_cnt, int vl_stride,
-    int vl_max, int* overflow, cudaStream_t stream = 0);
+    const int* bins, int bin_cap, work_t rsq_search, const std::int64_t* tag,
+    const int* nspecial, const std::int64_t* special, int max_special,
+    int* vl_nbr, int* vl_cnt, int vl_stride, int vl_max, int* overflow,
+    cudaStream_t stream = 0);
 
 // Write row_ptr[N] = row_ptr[N-1] + pair_counts[N-1] on device (avoids D→H readback)
 void launch_write_row_ptr_sentinel(int* row_ptr, const int* pair_counts,

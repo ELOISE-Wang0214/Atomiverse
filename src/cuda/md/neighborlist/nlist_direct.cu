@@ -69,10 +69,10 @@ __global__ void build_verlet_direct_k(
     bool periodic, const int* __restrict__ sdx, const int* __restrict__ sdy,
     const int* __restrict__ sdz, const int* __restrict__ n_stencil_ptr,
     const int* __restrict__ bincount, const int* __restrict__ bins, int bin_cap,
-    work_t rsq_search, const int* __restrict__ excl_offsets,
-    const int* __restrict__ excl_partners, int* __restrict__ vl_nbr,
-    int* __restrict__ vl_cnt, int vl_stride, int vl_max,
-    int* __restrict__ overflow) {
+    work_t rsq_search, const std::int64_t* __restrict__ tag,
+    const int* __restrict__ nspecial, const std::int64_t* __restrict__ special,
+    int max_special, int* __restrict__ vl_nbr, int* __restrict__ vl_cnt,
+    int vl_stride, int vl_max, int* __restrict__ overflow) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n)
         return;
@@ -83,12 +83,25 @@ __global__ void build_verlet_direct_k(
     const int nst = *n_stencil_ptr;
     const int ncells_yz = dy * dz;
     const work_t rsq = rsq_search;
-    // LAMMPS-style special-bonds baking: drop 1-2/1-3/1-4 partners of i here
-    // (build time) so the force kernel needs no per-pair exclusion scan. Only
-    // reached when the caller enables it (excl_offsets != nullptr, s_excl == 0).
-    const bool has_excl = (excl_offsets != nullptr);
-    const int ex_beg = has_excl ? excl_offsets[i] : 0;
-    const int ex_end = has_excl ? excl_offsets[i + 1] : 0;
+    // LAMMPS-style special-bonds baking (find_special at build time): drop atom
+    // i's 1-2/1-3/1-4 partners directly from its neighbor list so the force
+    // kernel needs zero per-pair exclusion work. Uses the on-device per-atom
+    // special SoA (GLOBAL partner tags) — no host-built exclusion CSR. Enabled
+    // when `special != nullptr` (caller passes it only for full exclusion,
+    // s_excl == 0). nspecial[i*3+2] is the total #special partners for atom i;
+    // special[i*max_special + k] are their global tags.
+    const bool has_excl = (special != nullptr);
+    // Clamp the per-atom special count to [0, max_special]. Owned atoms have a
+    // real count <= max_special; multi-GPU GHOST rows (i >= n_local) carry an
+    // uninitialized SoA (build_halo copies positions/tags, not the special SoA),
+    // so clamping guards against an OOB scan. Ghost neighbor lists are never
+    // consumed by the force kernel (it forces owned atoms only), so a possibly
+    // wrong ghost exclusion here is harmless.
+    int nsp = has_excl ? nspecial[i * 3 + 2] : 0;
+    if (nsp < 0)
+        nsp = 0;
+    else if (nsp > max_special)
+        nsp = max_special;
     int cnt = 0;
     for (int s = 0; s < nst; ++s) {
         int ncx = cx + sdx[s], ncy = cy + sdy[s], ncz = cz + sdz[s];
@@ -125,13 +138,15 @@ __global__ void build_verlet_direct_k(
             }
             work_t r2 = ddx * ddx + ddy * ddy + ddz * ddz;
             if (r2 < rsq) {
-                // Skip excluded (special-bonds) partners: short linear scan of
-                // i's exclusion list (~6 entries for a chain) — done once per
-                // rebuild here instead of every step in the force kernel.
+                // Skip excluded special-bonds partners: short scan (~6 entries)
+                // of i's special tag list against j's global tag — at build
+                // time, not every step in the force kernel.
                 if (has_excl) {
+                    const std::int64_t jt = tag[j];
                     bool excluded = false;
-                    for (int e = ex_beg; e < ex_end; ++e)
-                        if (excl_partners[e] == j) {
+                    for (int e = 0; e < nsp; ++e)
+                        if (special[static_cast<std::size_t>(i) * max_special + e]
+                            == jt) {
                             excluded = true;
                             break;
                         }
@@ -169,9 +184,10 @@ void launch_build_verlet_direct(
     const real_t* x, const real_t* y, const real_t* z, int n, ATV::cuda::Box box,
     int dx, int dy, int dz, bool periodic, const int* sdx, const int* sdy,
     const int* sdz, const int* n_stencil_ptr, const int* bincount,
-    const int* bins, int bin_cap, work_t rsq_search, const int* excl_offsets,
-    const int* excl_partners, int* vl_nbr, int* vl_cnt, int vl_stride,
-    int vl_max, int* overflow, cudaStream_t stream) {
+    const int* bins, int bin_cap, work_t rsq_search, const std::int64_t* tag,
+    const int* nspecial, const std::int64_t* special, int max_special,
+    int* vl_nbr, int* vl_cnt, int vl_stride, int vl_max, int* overflow,
+    cudaStream_t stream) {
     if (n <= 0)
         return;
     int block = ATV::cuda::kDefaultBlock;
@@ -179,13 +195,13 @@ void launch_build_verlet_direct(
     if (box.ortho) {
         build_verlet_direct_k<true, work_t><<<grid, block, 0, stream>>>(
             x, y, z, n, box, dx, dy, dz, periodic, sdx, sdy, sdz, n_stencil_ptr,
-            bincount, bins, bin_cap, rsq_search, excl_offsets, excl_partners,
-            vl_nbr, vl_cnt, vl_stride, vl_max, overflow);
+            bincount, bins, bin_cap, rsq_search, tag, nspecial, special,
+            max_special, vl_nbr, vl_cnt, vl_stride, vl_max, overflow);
     } else {
         build_verlet_direct_k<false, work_t><<<grid, block, 0, stream>>>(
             x, y, z, n, box, dx, dy, dz, periodic, sdx, sdy, sdz, n_stencil_ptr,
-            bincount, bins, bin_cap, rsq_search, excl_offsets, excl_partners,
-            vl_nbr, vl_cnt, vl_stride, vl_max, overflow);
+            bincount, bins, bin_cap, rsq_search, tag, nspecial, special,
+            max_special, vl_nbr, vl_cnt, vl_stride, vl_max, overflow);
     }
     ATV_CUDA_CHECK(cudaGetLastError());
 }

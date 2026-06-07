@@ -22,6 +22,7 @@
 ///     LAMMPS / GROMACS use the same 1-step-lag pattern.
 
 #include "atomiverse/cuda/neighbor_list.cuh"
+#include "atomiverse/cpu/atom.h" // cpu::Atom::kMaxSpecial (special-SoA stride)
 #include "md/neighborlist/nlist_impl.cuh"
 
 #include <algorithm>
@@ -446,15 +447,18 @@ void NeighborList::launch(const LaunchContext& ctx) {
                 break;
             s.buf.resize_bins(ncells, static_cast<int>(bin_max * 1.3) + 16);
         }
-        // LAMMPS-style special-bonds baking: when PairLJCut published an
-        // exclusion CSR with full exclusion (s_excl == 0), drop those partners
-        // here so the force kernel skips the per-pair scan. (Scaled exclusions,
-        // s_excl != 0, keep the force-kernel path.) Published at reneighbor by
-        // PairLJCut::build, before this launch.
-        const bool bake_excl = (ctx.runtime.excl_offsets != nullptr
+        // LAMMPS-style special-bonds baking (find_special at build time): when
+        // full exclusion is active (s_excl == 0, published by PairLJCut::build)
+        // and the per-atom special SoA is on-device, drop 1-2/1-3/1-4 partners
+        // straight from the neighbor list — the force kernel then needs zero
+        // per-pair exclusion work AND we avoid rebuilding any host-side
+        // exclusion CSR (the dominant multi-GPU per-reneighbor cost). Scaled
+        // exclusions (s_excl != 0) fall back to the force-kernel scan.
+        const bool bake_excl = (frame.atoms.special != nullptr
                                 && ctx.runtime.s_excl == 0.0);
-        const int* bake_off = bake_excl ? ctx.runtime.excl_offsets : nullptr;
-        const int* bake_par = bake_excl ? ctx.runtime.excl_partners : nullptr;
+        const std::int64_t* bake_tag = bake_excl ? frame.atoms.tag : nullptr;
+        const int* bake_nsp = bake_excl ? frame.atoms.nspecial : nullptr;
+        const std::int64_t* bake_sp = bake_excl ? frame.atoms.special : nullptr;
         ctx.runtime.exclusions_baked = bake_excl;
         for (int attempt = 0; attempt < 6; ++attempt) {
             cudaMemsetAsync(s.buf.verlet_overflow.data(), 0, sizeof(int),
@@ -464,8 +468,9 @@ void NeighborList::launch(const LaunchContext& ctx) {
                 ctx.runtime.host_box, s.dims_x, s.dims_y, s.dims_z, s.periodic,
                 s.stencil_dx.data(), s.stencil_dy.data(), s.stencil_dz.data(),
                 s.d_n_stencil.data(), s.buf.atom_bincount.data(),
-                s.buf.atom_bins.data(), s.buf.bin_cap, s.cut_skin_sq, bake_off,
-                bake_par, s.buf.verlet_nbr.data(), s.buf.verlet_cnt.data(),
+                s.buf.atom_bins.data(), s.buf.bin_cap, s.cut_skin_sq, bake_tag,
+                bake_nsp, bake_sp, cpu::Atom::kMaxSpecial,
+                s.buf.verlet_nbr.data(), s.buf.verlet_cnt.data(),
                 s.buf.verlet_stride, s.buf.verlet_max,
                 s.buf.verlet_overflow.data(), stream);
             int v_max = 0;
