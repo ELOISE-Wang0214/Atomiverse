@@ -25,9 +25,49 @@
 #include <string>
 #include <vector>
 
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <map>
+
 namespace ATV {
 namespace cuda {
 namespace md {
+
+// Env-gated (AV_MG_PROFILE) per-phase wall-clock profiler for run_nve_pe.
+// Off by default (zero overhead — no device syncs added). When on, each timed
+// phase syncs all devices before/after so the accumulated time is the true
+// device-inclusive cost of that phase; totals print to stderr at program exit.
+namespace {
+struct MgPhaseProf {
+    bool on;
+    std::map<std::string, double> sec;
+    std::map<std::string, long> calls;
+    MgPhaseProf() : on(std::getenv("AV_MG_PROFILE") != nullptr) {}
+    void add(const char* k, double s) {
+        sec[k] += s;
+        calls[k] += 1;
+    }
+    ~MgPhaseProf() {
+        if (!on)
+            return;
+        double tot = 0;
+        for (auto& kv : sec)
+            tot += kv.second;
+        std::fprintf(stderr, "\n=== MultiGpu run_nve_pe phase profile ===\n");
+        for (auto& kv : sec)
+            std::fprintf(stderr, "  %-22s %9.4f s  %5.1f%%  (%ld)\n",
+                         kv.first.c_str(), kv.second,
+                         tot > 0 ? 100.0 * kv.second / tot : 0.0,
+                         calls[kv.first]);
+        std::fprintf(stderr, "  %-22s %9.4f s\n", "TOTAL(timed)", tot);
+    }
+};
+inline MgPhaseProf& mg_prof() {
+    static MgPhaseProf p;
+    return p;
+}
+} // namespace
 
 #define CKM(x)                                                                  \
     do {                                                                        \
@@ -1243,14 +1283,35 @@ void MultiGpu::reneighbor() {
     if (!engine_ready_)
         throw std::runtime_error(
             "MultiGpu::reneighbor: call setup_force_engine first");
+    auto timed = [&](const char* name, auto&& fn) {
+        auto& P = mg_prof();
+        if (!P.on) {
+            fn();
+            return;
+        }
+        for (int s = 0; s < count(); ++s) {
+            dm_.set_device(s);
+            cudaDeviceSynchronize();
+        }
+        auto t0 = std::chrono::steady_clock::now();
+        fn();
+        for (int s = 0; s < count(); ++s) {
+            dm_.set_device(s);
+            cudaDeviceSynchronize();
+        }
+        P.add(name, std::chrono::duration<double>(
+                        std::chrono::steady_clock::now() - t0)
+                        .count());
+    };
     // Atoms that drifted out of their subdomain change owner GPU first, THEN
     // the halo is rebuilt around the updated owned sets.
-    migrate();
+    timed("R_migrate", [&] { migrate(); });
     // Halo over cutoff+skin so ghosts cover the skin region — no cross-boundary
     // neighbor can appear before the next reneighbor.
-    build_halo(force_cutoff_ + force_skin_);
+    timed("R_build_halo", [&] { build_halo(force_cutoff_ + force_skin_); });
     // Resolve cross-GPU bonded tuples against the fresh owned+ghost set.
-    rebuild_bonded_tuples();
+    timed("R_rebuild_bonded", [&] { rebuild_bonded_tuples(); });
+    auto t_nlist0 = std::chrono::steady_clock::now();
     const int N = count();
     for (int s = 0; s < N; ++s) {
         const int na = frames_[s].n_local_ + frames_[s].n_ghost_;
@@ -1267,10 +1328,15 @@ void MultiGpu::reneighbor() {
             }
             // Single GPU has no ghosts and a fixed owned count, so size the
             // neighbor-list buffers (incl. the per-atom Verlet list) at exactly
-            // na — the 1.3x ghost-fluctuation headroom is pure VRAM waste there.
-            // Multi-GPU keeps the headroom so ghost-count drift between
-            // reneighbor intervals rarely forces a costly rebuild.
-            int want = (count() == 1) ? na : (static_cast<int>(na * 1.3) + 64);
+            // na. Multi-GPU keeps a small headroom so ghost-count drift between
+            // reneighbor intervals rarely forces a costly rebuild — but the
+            // ghost set is only ~2% of owned and fluctuates <1%, so the old
+            // 1.3x (30% over-allocation of the single largest buffer, the
+            // per-atom Verlet list) was pure waste that inflated the multi-GPU
+            // footprint to ~3.9 GB/Matom and OOM'd large per-GPU systems. 1.08x
+            // covers the observed fluctuation with ~25% less neighbor-list VRAM.
+            int want =
+                (count() == 1) ? na : (static_cast<int>(na * 1.08) + 64);
             if (want > frames_[s].capacity_)
                 want = frames_[s].capacity_;
             frames_[s].n_atoms_ = want;
@@ -1285,6 +1351,38 @@ void MultiGpu::reneighbor() {
     for (int s = 0; s < N; ++s) {
         dm_.set_device(s);
         CKM(cudaDeviceSynchronize());
+    }
+    // Cap the retained-pool ratchet. migrate()/build_halo() allocate large
+    // transient scratch (incl. packing per-atom bonded arrays) via
+    // cudaMallocAsync; with the release threshold pinned at ~0ull
+    // (set_pool_retain) the pool's reserved size climbs to the PEAK transient —
+    // where old + new buffers briefly coexist — and never shrinks, so VRAM
+    // ratcheted to ~2x the steady footprint and OOM'd large per-GPU systems
+    // (e.g. 31->61 GB at 12M atoms/GPU, constant atom counts). The frees above
+    // are complete after the sync, so release that unused excess back to the OS
+    // now, keeping a small reserve for intra-interval reuse. Per-step (non-
+    // reneighbor) allocations still hit the warm pool; only the once-per-
+    // interval transient peak is reclaimed.
+    constexpr std::size_t kPoolKeepBytes = std::size_t(256) << 20; // 256 MiB
+    for (int s = 0; s < N; ++s) {
+        cudaMemPool_t pool;
+        if (cudaDeviceGetDefaultMemPool(&pool, dm_.device_id(s)) == cudaSuccess)
+            cudaMemPoolTrimTo(pool, kPoolKeepBytes);
+    }
+    if (mg_prof().on) {
+        mg_prof().add("R_nlist", std::chrono::duration<double>(
+                                     std::chrono::steady_clock::now() - t_nlist0)
+                                     .count());
+        for (int s = 0; s < N; ++s) {
+            dm_.set_device(s);
+            size_t fr = 0, tt = 0;
+            cudaMemGetInfo(&fr, &tt);
+            std::fprintf(stderr,
+                         "[MG_VRAM] reneigh dev%d used=%.1f/%.1f GB "
+                         "n_local=%d n_ghost=%d nlist_cap=%d\n",
+                         s, (tt - fr) / 1e9, tt / 1e9, frames_[s].n_local_,
+                         frames_[s].n_ghost_, nlist_cap_[s]);
+        }
     }
 }
 
@@ -1377,7 +1475,30 @@ void MultiGpu::run_nve_pe(int steps, double dt, int reneigh_every) {
     constexpr work_t kNveLimitXmax = work_t(0.05); // Å, == `fix nve/limit 0.05`
     if (reneigh_every < 1)
         reneigh_every = 1;
+    // Phase timer (no-op unless AV_MG_PROFILE is set): syncs all devices around
+    // the phase so the recorded time is device-inclusive.
+    auto timed = [&](const char* name, auto&& fn) {
+        auto& P = mg_prof();
+        if (!P.on) {
+            fn();
+            return;
+        }
+        for (int s = 0; s < count(); ++s) {
+            dm_.set_device(s);
+            cudaDeviceSynchronize();
+        }
+        auto t0 = std::chrono::steady_clock::now();
+        fn();
+        for (int s = 0; s < count(); ++s) {
+            dm_.set_device(s);
+            cudaDeviceSynchronize();
+        }
+        P.add(name, std::chrono::duration<double>(
+                        std::chrono::steady_clock::now() - t0)
+                        .count());
+    };
     for (int step = 0; step < steps; ++step) {
+      timed("1_integrate_first", [&] {
         for (int s = 0; s < count(); ++s) {
             const int nl = frames_[s].n_local_;
             if (nl == 0)
@@ -1398,11 +1519,14 @@ void MultiGpu::run_nve_pe(int steps, double dt, int reneigh_every) {
                                      kNveLimitXmax, nl, st);
             CKM(cudaGetLastError());
         }
+      });
         if ((step + 1) % reneigh_every == 0)
-            reneighbor();
+            timed("2_reneighbor", [&] { reneighbor(); });
         else
-            forward_comm();
-        compute_forces(/*read_energy=*/false); // LJ + bond/angle/dihedral
+            timed("2_forward_comm", [&] { forward_comm(); });
+        timed("3_compute_forces",
+              [&] { compute_forces(/*read_energy=*/false); });
+      timed("4_integrate_final", [&] {
         for (int s = 0; s < count(); ++s) {
             const int nl = frames_[s].n_local_;
             if (nl == 0)
@@ -1415,6 +1539,7 @@ void MultiGpu::run_nve_pe(int steps, double dt, int reneigh_every) {
                                    dtw, kNveLimitXmax, nl, st);
             CKM(cudaGetLastError());
         }
+      });
     }
     for (int s = 0; s < count(); ++s) {
         dm_.set_device(s);
