@@ -10,6 +10,7 @@
 #include "atomiverse/cuda/transfer.cuh"
 #include "atomiverse/cuda/types.cuh"
 
+#include <cub/cub.cuh>
 #include <cuda_runtime.h>
 
 #include <algorithm>
@@ -179,6 +180,13 @@ __global__ void scatter_add_forces_packed(real_t* __restrict__ fx,
     atomicAdd(&fx[i], in3[k]);
     atomicAdd(&fy[i], in3[cnt + k]);
     atomicAdd(&fz[i], in3[2 * cnt + k]);
+}
+
+// Fill idx[k] = k for k in [0, n) — the values-in array for the CUB tag sort.
+__global__ void iota_k(int* __restrict__ idx, int n) {
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k < n)
+        idx[k] = k;
 }
 
 // ── Cross-GPU bonded re-materialization (multigpu-bonded P2.4/P2.5) ──────────
@@ -882,36 +890,46 @@ void MultiGpu::build_tag_maps() {
         tagmap_tag_.assign(N, nullptr);
         tagmap_idx_.assign(N, nullptr);
         drop_ctr_.assign(N, nullptr);
+        tagmap_iota_.assign(N, nullptr);
+        tagmap_tmp_.assign(N, nullptr);
+        tagmap_tmp_sz_.assign(N, 0);
     }
     for (int s = 0; s < N; ++s) {
         const int na = frames_[s].n_local_ + frames_[s].n_ghost_;
         dm_.set_device(s);
         if (!tagmap_tag_[s]) {
-            CKM(cudaMalloc(&tagmap_tag_[s],
-                           frames_[s].capacity_ * sizeof(std::int64_t)));
-            CKM(cudaMalloc(&tagmap_idx_[s], frames_[s].capacity_ * sizeof(int)));
+            const int cap = frames_[s].capacity_;
+            CKM(cudaMalloc(&tagmap_tag_[s], cap * sizeof(std::int64_t)));
+            CKM(cudaMalloc(&tagmap_idx_[s], cap * sizeof(int)));
+            CKM(cudaMalloc(&tagmap_iota_[s], cap * sizeof(int)));
             CKM(cudaMalloc(&drop_ctr_[s], sizeof(int))); // persistent, reused each rebuild
+            // Size the CUB temp storage once for the full capacity (the query is
+            // a no-op that only computes bytes); reuse the blob every reneighbor.
+            std::size_t need = 0;
+            cub::DeviceRadixSort::SortPairs(
+                nullptr, need, tagmap_tag_[s], tagmap_tag_[s], tagmap_iota_[s],
+                tagmap_idx_[s], cap);
+            CKM(cudaMalloc(&tagmap_tmp_[s], need));
+            tagmap_tmp_sz_[s] = need;
         }
         if (na <= 0)
             continue;
-        // D2H the owned+ghost tags, sort indices by tag on the host, H2D the
-        // sorted (tag, local-index) arrays. Reneighbor-cadence, correctness-first
-        // (the D2H/sort can move on-device in the optimize link).
-        std::vector<std::int64_t> tags(na);
-        CKM(cudaMemcpy(tags.data(), frames_[s].atoms.tag,
-                       na * sizeof(std::int64_t), cudaMemcpyDeviceToHost));
-        std::vector<int> idx(na);
-        for (int k = 0; k < na; ++k)
-            idx[k] = k;
-        std::sort(idx.begin(), idx.end(),
-                  [&](int a, int b) { return tags[a] < tags[b]; });
-        std::vector<std::int64_t> stag(na);
-        for (int k = 0; k < na; ++k)
-            stag[k] = tags[idx[k]];
-        CKM(cudaMemcpy(tagmap_tag_[s], stag.data(), na * sizeof(std::int64_t),
-                       cudaMemcpyHostToDevice));
-        CKM(cudaMemcpy(tagmap_idx_[s], idx.data(), na * sizeof(int),
-                       cudaMemcpyHostToDevice));
+        // Build the sorted (tag → local-index) map fully on device: iota the
+        // value array, then CUB radix-sort pairs (keys = owned+ghost tags,
+        // values = local indices). No D2H/host-sort/H2D round-trip — the host
+        // sort was the dominant multi-GPU per-reneighbor overhead. Runs on the
+        // default stream (0), same as the rematerialize kernels that consume the
+        // map in rebuild_bonded_tuples — so stream ordering carries the
+        // dependency with no extra host sync.
+        const cudaStream_t st = cudaStream_t(0);
+        const int block = 256, grid = (na + block - 1) / block;
+        iota_k<<<grid, block, 0, st>>>(tagmap_iota_[s], na);
+        CKM(cudaGetLastError());
+        std::size_t avail = tagmap_tmp_sz_[s];
+        cub::DeviceRadixSort::SortPairs(
+            tagmap_tmp_[s], avail, frames_[s].atoms.tag, tagmap_tag_[s],
+            tagmap_iota_[s], tagmap_idx_[s], na, 0, sizeof(std::int64_t) * 8, st);
+        CKM(cudaGetLastError());
     }
 }
 
@@ -995,11 +1013,18 @@ void MultiGpu::destroy_tag_maps() {
         dm_.set_device(static_cast<int>(s));
         cudaFree(tagmap_tag_[s]);
         cudaFree(tagmap_idx_[s]);
+        if (s < tagmap_iota_.size())
+            cudaFree(tagmap_iota_[s]);
+        if (s < tagmap_tmp_.size())
+            cudaFree(tagmap_tmp_[s]);
         if (s < drop_ctr_.size())
             cudaFree(drop_ctr_[s]);
     }
     tagmap_tag_.clear();
     tagmap_idx_.clear();
+    tagmap_iota_.clear();
+    tagmap_tmp_.clear();
+    tagmap_tmp_sz_.clear();
     drop_ctr_.clear();
 }
 

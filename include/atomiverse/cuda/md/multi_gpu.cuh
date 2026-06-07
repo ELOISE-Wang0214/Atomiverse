@@ -281,6 +281,12 @@ class MultiGpu {
     std::vector<std::int64_t*> tagmap_tag_; // [capacity] sorted global tags, per slot
     std::vector<int*> tagmap_idx_;          // [capacity] parallel local indices, per slot
     std::vector<int*> drop_ctr_;            // [1] persistent dropped-tuple counter, per slot
+    // GPU tag-map sort scratch (CUB DeviceRadixSort SortPairs): per slot, an
+    // iota value buffer [capacity] and a persistent CUB temp-storage blob. The
+    // sort runs fully on device — no D2H/host-sort/H2D round-trip per reneighbor.
+    std::vector<int*> tagmap_iota_;         // [capacity] 0..na-1 (sort values-in)
+    std::vector<void*> tagmap_tmp_;         // CUB temp storage, per slot
+    std::vector<std::size_t> tagmap_tmp_sz_; // bytes of tagmap_tmp_[s]
 
     // Cross-GPU bonded force engine (one component per subdomain per type).
     std::vector<std::unique_ptr<cuda::BondHarmonic>> bond_;
