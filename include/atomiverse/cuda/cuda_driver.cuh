@@ -99,6 +99,15 @@ class CUDADriver : public Driver<PhaseEnum, cuda::device_tag> {
             fn(*pb.component);
     }
 
+    /// @brief Mutable variant of for_each_pending — visitor may mutate the
+    /// component (e.g. `install_infra_` gating per-step virial via
+    /// `set_stress_required`). @tparam Fn Callable `fn(cuda::ComponentBase&)`.
+    template <typename Fn>
+    void for_each_pending_mut(Fn&& fn) {
+        for (auto& pb : this->pending_)
+            fn(*pb.component);
+    }
+
     // ── Driver loop helpers (protected — subclasses only) ──────────
 
     /// @brief One-time setup — backend init, plan load, H2D materialize,

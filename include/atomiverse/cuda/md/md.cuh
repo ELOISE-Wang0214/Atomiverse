@@ -300,6 +300,23 @@ class MD : public cuda::DynamicsDriver {
             this->on(ATV::md::Phase::post_force).add(cuda::Virial{}, -50);
         }
 
+        // Per-run virial gating: tell every virial-producing evaluator whether
+        // its stress/virial contribution is consumed downstream. The pair virial
+        // is needed iff either (a) some component reads stress directly (barostat
+        // / NPT — `needs_stress_input`), or (b) a `cuda::Virial` observer is
+        // present (`has_stress_producer`): that observer AGGREGATES the pair
+        // virial into the reported stress tensor, so its presence — whether
+        // user-added or auto-injected above — means the pair must produce it.
+        // In a plain NVE plan (neither holds) this disables the pair kernel's
+        // virial path: skips 6 inner-loop products + the stress reduction and
+        // frees the accumulator registers (ncu: ~80M->0 spill requests; measured
+        // +8% @1M / +33% @4M atoms on a single GH200). Mirrors the multi-GPU NVE
+        // path, which already gates its default pair off.
+        const bool stress_consumed = needs_stress_input || has_stress_producer;
+        this->for_each_pending_mut([&](cuda::ComponentBase& c) {
+            c.set_stress_required(stress_consumed);
+        });
+
         if (!pair_evaluator_name.empty() && !has_neighbor_list) {
             throw std::runtime_error(
                 std::string("cuda::md::MD::build(): component '")

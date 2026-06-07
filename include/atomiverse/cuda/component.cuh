@@ -109,6 +109,21 @@ class ComponentBase {
     /// @see facade/component_role.h
     virtual Capability reads() const { return Capability::None; }
 
+    /// @brief Per-run hint: does any component downstream consume this
+    ///        evaluator's stress/virial contribution?
+    ///
+    /// `cuda::md::MD::install_infra_` calls this on every pending component
+    /// with the plan-level verdict (`needs_stress_input` — true iff some
+    /// component declares `reads() & Stress`). Virial-producing evaluators
+    /// (pair / bonded) override it to gate their per-step virial accumulation:
+    /// in a plain NVE run (no barostat/stress observer) the pair kernel then
+    /// skips the 6 inner-loop virial products and the stress reduction, and
+    /// frees the accumulator registers under its launch-bounds budget. Default
+    /// no-op: components that produce no virial ignore it. Capability-typed,
+    /// no `dynamic_cast` / `name()` matching — same pattern as `reads()`.
+    /// @param required true iff a downstream consumer needs the virial.
+    virtual void set_stress_required(bool /*required*/) {}
+
     /// @brief Whether this component requires a `cuda::NeighborList` in
     ///        the same plan.
     ///

@@ -42,8 +42,12 @@ __device__ inline bool pc_excl_contains(const int* __restrict__ partners,
     return false;
 }
 
+// Virial path needs ~7 extra accumulators; capping at 6 resident blocks/SM
+// starved it of registers (ncu: ~80M local-memory spill requests at 1M atoms).
+// Give the virial instantiation more registers (min 4 blocks/SM) while keeping
+// the lean no-virial path dense (6 blocks/SM).
 template <bool Ortho, bool Virial, class Kernel>
-__global__ __launch_bounds__(ATV::cuda::kDefaultBlock, 6) void pair_compute_verlet(
+__global__ __launch_bounds__(ATV::cuda::kDefaultBlock, Virial ? 4 : 6) void pair_compute_verlet(
     real_t* __restrict__ fx, real_t* __restrict__ fy, real_t* __restrict__ fz,
     prec_t* __restrict__ energy, prec_t* __restrict__ stress,
     const real_t* __restrict__ x, const real_t* __restrict__ y,

@@ -75,6 +75,12 @@ class PairLJCut : public Pair {
     PairLJCut& set_compute_stress(bool on) &;
     PairLJCut set_compute_stress(bool on) &&;
 
+    /// @brief `ComponentBase` hook — the driver gates per-step virial on
+    ///        whether any downstream component consumes stress. Equivalent to
+    ///        `set_compute_stress(required)`; lets the MD driver disable the
+    ///        virial path for plain NVE plans without name matching.
+    void set_stress_required(bool required) override { compute_stress_ = required; }
+
     /// @brief `cuda::Pair` hook — enables full (0,0,0) special-bonds
     ///        exclusions, equivalent to `set_special_bonds(0,0,0)`. Lets the
     ///        multi-GPU engine request exclusions through a `Pair*`.
