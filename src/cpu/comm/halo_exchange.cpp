@@ -256,20 +256,22 @@ void rebuild_send_lists_for_axis(const Frame& frame, md::mpi::DomainDecompositio
     }
 }
 
-/// @brief Pack packed positions + tag for face `f` into a contiguous buffer.
+/// @brief Pack the border message (positions + tag + charge) for face `f`.
 ///
-/// Layout: `[x0, y0, z0, tag0, x1, y1, z1, tag1, ...]` -- 4 doubles per
-/// atom. Tag is cast to double; atom counts up to 2^53 are exact. Applies
-/// the per-face PBC shift to the packed coordinate for atoms whose owner
+/// Layout: `[x0, y0, z0, tag0, q0, x1, ...]` -- 5 doubles per atom. Sent only at
+/// full rebuilds (reneighbor), mirroring LAMMPS `borders()`/AtomVec carrying `q`
+/// to ghosts: charge is static per run, so ghosts get it once and the per-step
+/// forward refresh stays positions-only. Tag is cast to double (exact to 2^53).
+/// Applies the per-face PBC shift to the packed coordinate for atoms whose owner
 /// sits on the periodic edge along the send direction.
-constexpr int kPosTagDoublesPerAtom = 4;
+constexpr int kBorderDoublesPerAtom = 5; // x, y, z, tag, q
 constexpr int kPosOnlyDoublesPerAtom = 3;
 
 void pack_positions_for_face(const Frame& frame, const md::mpi::DomainDecomposition& dd,
                              int f, std::vector<double>& buf) {
     const auto& list = dd.send_lists[f];
     const int n = static_cast<int>(list.size());
-    buf.resize(static_cast<std::size_t>(n) * kPosTagDoublesPerAtom);
+    buf.resize(static_cast<std::size_t>(n) * kBorderDoublesPerAtom);
 
     const int dim = face_dim(f);
     const double shift = pbc_shift_for_face(dd, f, frame.box.length(dim));
@@ -278,6 +280,7 @@ void pack_positions_for_face(const Frame& frame, const md::mpi::DomainDecomposit
     const double* y = frame.atoms.y.data();
     const double* z = frame.atoms.z.data();
     const std::int64_t* tag = frame.atoms.tag.data();
+    const double* q = frame.atoms.charge.data();
 
     for (int k = 0; k < n; ++k) {
         const int i = list[static_cast<std::size_t>(k)];
@@ -289,11 +292,12 @@ void pack_positions_for_face(const Frame& frame, const md::mpi::DomainDecomposit
         else if (dim == 2)
             zi += shift;
         const std::size_t off =
-            static_cast<std::size_t>(k) * kPosTagDoublesPerAtom;
+            static_cast<std::size_t>(k) * kBorderDoublesPerAtom;
         buf[off + 0] = xi;
         buf[off + 1] = yi;
         buf[off + 2] = zi;
         buf[off + 3] = static_cast<double>(tag[i]);
+        buf[off + 4] = q[i]; // static per run; carried to ghosts at reneighbor
     }
 }
 
@@ -334,12 +338,12 @@ void pack_positions_only_for_face(const Frame& frame,
 void prealloc_bufs(FaceBufs& b, int initial_cap) {
     for (int f = 0; f < 6; ++f) {
         // Conservative: each face could ship up to `initial_cap` atoms.
-        // Forward sends 4 doubles per atom (xyz + tag). Reverse sends 3
-        // doubles per atom (force). ~0.3 KB per ghost slot -- trivial.
+        // Border (full-rebuild) sends 5 doubles per atom (xyz + tag + q); the
+        // per-step forward sends 3 (xyz). Reverse sends 3 (force). Trivial.
         b.send_pos[f].reserve(static_cast<std::size_t>(initial_cap)
-                              * kPosTagDoublesPerAtom);
+                              * kBorderDoublesPerAtom);
         b.recv_pos[f].reserve(static_cast<std::size_t>(initial_cap)
-                              * kPosTagDoublesPerAtom);
+                              * kBorderDoublesPerAtom);
         b.send_force[f].reserve(static_cast<std::size_t>(initial_cap) * 3);
         b.recv_force[f].reserve(static_cast<std::size_t>(initial_cap) * 3);
     }
@@ -448,7 +452,7 @@ inline void forward_axis_stage(Frame& frame, md::mpi::DomainDecomposition& dd,
     }
 
     const int per_atom_doubles =
-        full_rebuild ? kPosTagDoublesPerAtom : kPosOnlyDoublesPerAtom;
+        full_rebuild ? kBorderDoublesPerAtom : kPosOnlyDoublesPerAtom;
 
     for (int s = 0; s < 2; ++s) {
         const int face_s = (s == 0) ? f_lo : f_hi;
@@ -526,13 +530,14 @@ inline void forward_axis_stage(Frame& frame, md::mpi::DomainDecomposition& dd,
         if (full_rebuild) {
             for (int k = 0; k < n; ++k) {
                 const std::size_t off =
-                    static_cast<std::size_t>(k) * kPosTagDoublesPerAtom;
+                    static_cast<std::size_t>(k) * kBorderDoublesPerAtom;
                 frame.atoms.x[slot] = rbuf[off + 0];
                 frame.atoms.y[slot] = rbuf[off + 1];
                 frame.atoms.z[slot] = rbuf[off + 2];
                 const std::int64_t tag =
                     static_cast<std::int64_t>(rbuf[off + 3]);
                 frame.atoms.tag[slot] = tag;
+                frame.atoms.charge[slot] = rbuf[off + 4]; // ghost charge (border)
                 dd.tag_to_local[tag] = slot;
                 dd.ghost_tags.push_back(tag);
                 ++slot;

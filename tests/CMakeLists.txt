@@ -135,6 +135,13 @@ if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
     atv_add_mpi_run(test_mpi_lj_energy_bruteforce_n8
                     test_mpi_lj_energy_bruteforce 8)
 
+    atv_add_mpi_exec(test_mpi_coul_energy_bruteforce
+                     mpi/test_coul_energy_bruteforce.cpp)
+    atv_add_mpi_run(test_mpi_coul_energy_bruteforce_n1
+                    test_mpi_coul_energy_bruteforce 1)
+    atv_add_mpi_run(test_mpi_coul_energy_bruteforce_n8
+                    test_mpi_coul_energy_bruteforce 8)
+
     atv_add_mpi_exec(test_mpi_bonded_energy_bruteforce
                      mpi/test_bonded_energy_bruteforce.cpp)
     atv_add_mpi_run(test_mpi_bonded_energy_bruteforce_n1

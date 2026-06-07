@@ -17,8 +17,6 @@
 /// `runtime.pair_list` built by `NeighborList`.
 #pragma once
 
-#include <cstdint>
-#include <unordered_map>
 #include <vector>
 
 #include "atomiverse/core/real.h"
@@ -52,23 +50,15 @@ class CoulLong : public cpu::ComponentBase {
     void destroy(const DestroyContext& ctx) override;
 
   private:
-    /// @brief Rebuild the global tag→charge table (MPI only). Ghost atoms
-    /// receive only (x, y, z, tag) from the halo exchange — never charge —
-    /// so a neighbor `j` that is a ghost must look its charge up by tag.
-    void refresh_charge_map(const LaunchContext& ctx);
-
     double alpha_;
     double cutoff_, cutoff_sq_;
 
     // Per-thread force reduction buffers (Newton's 3rd law), mirroring
-    // PairLJCut. Index range covers owned + ghost atoms under MPI.
+    // PairLJCut. Index range covers owned + ghost atoms under MPI. Ghost
+    // charges arrive via the build_halo border message (x,y,z,tag,q), so
+    // f.atoms.charge[j] is valid for ghost j — no tag→charge lookup table.
     int n_threads_ = 1;
     std::vector<std::vector<double>> fx_thr_, fy_thr_, fz_thr_;
-
-    // tag→charge table for ghost-atom charge lookup under MPI. Empty (and
-    // unused) on a single rank, where every neighbor index is owned.
-    std::unordered_map<std::int64_t, double> tag_charge_;
-    bool use_charge_map_ = false;
 };
 
 } // namespace cpu

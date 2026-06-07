@@ -15,9 +15,7 @@
 #endif
 
 #ifdef ATV_HAS_MPI
-#include <mpi.h>
-
-#include "atomiverse/cpu/md/mpi/domain.h"
+#include "atomiverse/cpu/md/mpi/domain.h" // DomainDecomposition (dd->n_local/n_ghost)
 #endif
 
 namespace ATV {
@@ -43,43 +41,6 @@ void CoulLong::build(const BuildContext& ctx) {
     fx_thr_.assign(n_threads_, std::vector<double>(n, 0.0));
     fy_thr_.assign(n_threads_, std::vector<double>(n, 0.0));
     fz_thr_.assign(n_threads_, std::vector<double>(n, 0.0));
-    use_charge_map_ = ctx.runtime.mpi_size > 1;
-    tag_charge_.clear();
-}
-
-void CoulLong::refresh_charge_map(const LaunchContext& ctx) {
-#ifdef ATV_HAS_MPI
-    // Charges are static, so the global tag→charge table is built once and
-    // reused across migrations. Each rank contributes its owned atoms; the
-    // Allgatherv assembles the complete table on every rank.
-    const auto& at = ctx.frame.atoms;
-    const auto* dd = ctx.runtime.dd;
-    const int n_local = dd ? dd->n_local : at.size();
-    std::vector<double> send(2 * n_local);
-    for (int i = 0; i < n_local; ++i) {
-        send[2 * i] = static_cast<double>(at.tag[i]);
-        send[2 * i + 1] = at.charge[i];
-    }
-    MPI_Comm comm = dd->cart_comm;
-    int size = ctx.runtime.mpi_size;
-    std::vector<int> counts(size), displs(size);
-    int my_count = 2 * n_local;
-    MPI_Allgather(&my_count, 1, MPI_INT, counts.data(), 1, MPI_INT, comm);
-    int total = 0;
-    for (int r = 0; r < size; ++r) {
-        displs[r] = total;
-        total += counts[r];
-    }
-    std::vector<double> recv(total);
-    MPI_Allgatherv(send.data(), my_count, MPI_DOUBLE, recv.data(),
-                   counts.data(), displs.data(), MPI_DOUBLE, comm);
-    tag_charge_.clear();
-    tag_charge_.reserve(total / 2);
-    for (int k = 0; k < total; k += 2)
-        tag_charge_[static_cast<std::int64_t>(recv[k])] = recv[k + 1];
-#else
-    (void)ctx;
-#endif
 }
 
 void CoulLong::launch(const LaunchContext& ctx) {
@@ -94,11 +55,10 @@ void CoulLong::launch(const LaunchContext& ctx) {
 
     const auto* dd = ctx.runtime.dd;
     const bool mpi = dd && ctx.runtime.mpi_size > 1;
-    const int n_local = mpi ? dd->n_local : f.atoms.size();
     const int n_force = mpi ? dd->n_local + dd->n_ghost : f.atoms.size();
 
-    if (use_charge_map_ && tag_charge_.empty())
-        refresh_charge_map(ctx);
+    // Ghost charges arrive via the build_halo border message (x,y,z,tag,q), so
+    // f.atoms.charge[j] is valid for ghost rows too — no global tag→charge map.
 
     // Grow per-thread force arenas to cover the ghost region if needed.
     if (static_cast<int>(fx_thr_.empty() ? 0 : fx_thr_[0].size()) < n_force) {
@@ -122,7 +82,6 @@ void CoulLong::launch(const LaunchContext& ctx) {
     const double* __restrict y_ptr = f.atoms.y.data();
     const double* __restrict z_ptr = f.atoms.z.data();
     const double* __restrict q_ptr = f.atoms.charge.data();
-    const std::int64_t* __restrict tag_ptr = f.atoms.tag.data();
 
     const double alpha = alpha_;
     const double rc_sq = cutoff_sq_;
@@ -177,11 +136,9 @@ void CoulLong::launch(const LaunchContext& ctx) {
                 const double r2 = dx * dx + dy * dy + dz * dz;
                 if (r2 >= rc_sq || r2 == 0.0)
                     continue;
-                double qj;
-                if (use_charge_map_ && j >= n_local)
-                    qj = tag_charge_[tag_ptr[j]];
-                else
-                    qj = q_ptr[j];
+                // Ghost charge is carried in f.atoms.charge by the border halo,
+                // so a single read covers both owned and ghost j.
+                const double qj = q_ptr[j];
                 if (qj == 0.0)
                     continue;
 
@@ -243,7 +200,6 @@ void CoulLong::destroy(const DestroyContext&) {
     fx_thr_.clear();
     fy_thr_.clear();
     fz_thr_.clear();
-    tag_charge_.clear();
 }
 
 } // namespace cpu

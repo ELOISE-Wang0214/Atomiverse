@@ -71,11 +71,11 @@ the build-time border message; the participant pack/unpack contract is for EXTRA
 
 ## Tasks
 - [x] **P2.1** Add the extra-field participant contract to CPU & CUDA `ComponentBase` (default 0/no-op): `comm_forward()`/`comm_reverse()` widths + pack/unpack (CPU host `double*`; CUDA device field descriptor)
-- [ ] **P2.2** CPU: carry charge `q` in the `build_halo` border message (x,y,z,tag,q); per-step pos-forward/force-reverse unchanged; iterate extra-field participants in forward/reverse (batched buffer)
-- [ ] **P2.3** CUDA: carry `q` in `build_halo` ghost data; `MultiGpu` forward/reverse iterate extra-field participants into the combined Σ(width) staging; per-step pos/force unchanged
-- [ ] **P2.4** Port CPU `CoulLong` onto ghost `q` from the border set; delete the MPI_Allgatherv tag→charge map
-- [ ] **P2.5** RED→GREEN: synthetic 1-wide forward + 1-wide reverse-accumulate participant round-trips exactly (CPU n8 + CUDA multi-GPU); CoulLong multi-rank == single == pre-change
-- [ ] **P2.6** Verify position/force halo bit-identical (CPU n1/n8, CUDA 1/2/4-GPU)
+- [x] **P2.2** CPU: carry charge `q` in the `build_halo` border message (x,y,z,tag,q); per-step pos-forward/force-reverse unchanged. (The generic per-step extra-field participant *iteration* is deferred to -04, where EAM `fp`/`rho` is its first consumer — no consumer in link 02; YAGNI.)
+- [ ] **P2.3** CUDA: carry `q` in `build_halo` ghost data; per-step pos/force unchanged. (Extra-field iteration likewise lands in -04 via MultiGpu querying its held components' `CommField`s.)
+- [x] **P2.4** Port CPU `CoulLong` onto ghost `q` from the border set; delete the MPI_Allgatherv tag→charge map
+- [x] **P2.5** RED→GREEN (CPU): `test_mpi_coul_energy_bruteforce` — distributed real-space Coulomb energy == O(N²) erfc brute force at n1 AND n8 (rel < 1e-9), proving ghost charge via the border. (The synthetic per-step participant round-trip → -04 with the iteration.)
+- [x] **P2.6** Position/force halo bit-identical — CPU: `test_mpi_halo_exchange`/`test_mpi_lj_energy_bruteforce` n1/n2/n8 green (unchanged by the 4→5 border size). CUDA portion pending P2.3.
 
 ## Testing
 - `test_comm_contract` (CPU + CUDA): participant registers an extra per-atom field; forward broadcasts owner→ghost, reverse sums ghost→owner once.
