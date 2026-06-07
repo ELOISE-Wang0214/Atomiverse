@@ -46,14 +46,14 @@ __device__ inline bool pc_excl_contains(const int* __restrict__ partners,
 // starved it of registers (ncu: ~80M local-memory spill requests at 1M atoms).
 // Give the virial instantiation more registers (min 4 blocks/SM) while keeping
 // the lean no-virial path dense (6 blocks/SM).
-template <bool Ortho, bool Virial, class Kernel>
+template <bool Ortho, bool Virial, bool Periodic, bool HasExcl, class Kernel>
 __global__ __launch_bounds__(ATV::cuda::kDefaultBlock, Virial ? 4 : 6) void pair_compute_verlet(
     real_t* __restrict__ fx, real_t* __restrict__ fy, real_t* __restrict__ fz,
     prec_t* __restrict__ energy, prec_t* __restrict__ stress,
     const real_t* __restrict__ x, const real_t* __restrict__ y,
     const real_t* __restrict__ z, const real_t* __restrict__ q,
     const int* __restrict__ vl_nbr, const int* __restrict__ vl_cnt,
-    int vl_stride, int n_atoms, cuda::Box box, bool periodic, Kernel kernel,
+    int vl_stride, int n_atoms, cuda::Box box, Kernel kernel,
     work_t cutoff_sq, work_t min_pair_dist_sq,
     const int* __restrict__ excl_offsets, const int* __restrict__ excl_partners,
     work_t s_excl) {
@@ -73,9 +73,11 @@ __global__ __launch_bounds__(ATV::cuda::kDefaultBlock, Virial ? 4 : 6) void pair
         real_t qi = real_t(0);
         if constexpr (Kernel::needs_charge)
             qi = q[i];
-        const bool has_excl = (excl_offsets != nullptr);
-        const int beg_excl = has_excl ? excl_offsets[i] : 0;
-        const int end_excl = has_excl ? excl_offsets[i + 1] : 0;
+        int beg_excl = 0, end_excl = 0;
+        if constexpr (HasExcl) {
+            beg_excl = excl_offsets[i];
+            end_excl = excl_offsets[i + 1];
+        }
 
         const int cnt = vl_cnt[i];
         for (int k = 0; k < cnt; ++k) {
@@ -83,7 +85,7 @@ __global__ __launch_bounds__(ATV::cuda::kDefaultBlock, Virial ? 4 : 6) void pair
             real_t dx = x[aj] - xi;
             real_t dy = y[aj] - yi;
             real_t dz = z[aj] - zi;
-            if (periodic) {
+            if constexpr (Periodic) {
                 if constexpr (Ortho) {
                     dx -= box.cell[0] * nearbyintf(dx * box.inv_l[0]);
                     dy -= box.cell[4] * nearbyintf(dy * box.inv_l[1]);
@@ -96,11 +98,13 @@ __global__ __launch_bounds__(ATV::cuda::kDefaultBlock, Virial ? 4 : 6) void pair
             if (r2 >= cut_r || r2 < minr_r)
                 continue;
             real_t scale = real_t(1);
-            if (has_excl && end_excl > beg_excl
-                && pc_excl_contains(excl_partners, beg_excl, end_excl, aj)) {
-                if (sexcl_r == real_t(0))
-                    continue;
-                scale = sexcl_r;
+            if constexpr (HasExcl) {
+                if (end_excl > beg_excl
+                    && pc_excl_contains(excl_partners, beg_excl, end_excl, aj)) {
+                    if (sexcl_r == real_t(0))
+                        continue;
+                    scale = sexcl_r;
+                }
             }
             real_t qj = real_t(0);
             if constexpr (Kernel::needs_charge)
@@ -169,27 +173,45 @@ void launch_pair_compute(const Kernel& kernel, real_t* fx, real_t* fy,
     const int grid = grid_size(n_atoms);
     const int shmem = warps_per_block(block) * sizeof(work_t);
     const bool virial = (stress != nullptr);
-    auto go = [&](auto ortho_tag, auto virial_tag) {
-        constexpr bool O = decltype(ortho_tag)::value;
-        constexpr bool V = decltype(virial_tag)::value;
-        pair_compute_verlet<O, V, Kernel><<<grid, block, shmem, stream>>>(
+    const bool has_excl = (excl_offsets != nullptr);
+    // Compile-time specialize on box-orthogonality, virial, periodicity, and
+    // presence of an exclusion CSR. Templating Periodic/HasExcl lets the
+    // compiler drop the per-pair min-image / partner-lookup branches and the
+    // associated dead code + registers (the common path is Periodic, no-excl).
+    auto go = [&](auto O_t, auto V_t, auto P_t, auto E_t) {
+        constexpr bool O = decltype(O_t)::value;
+        constexpr bool V = decltype(V_t)::value;
+        constexpr bool P = decltype(P_t)::value;
+        constexpr bool E = decltype(E_t)::value;
+        pair_compute_verlet<O, V, P, E, Kernel><<<grid, block, shmem, stream>>>(
             fx, fy, fz, energy, stress, x, y, z, q, vl_nbr, vl_cnt, vl_stride,
-            n_atoms, box, periodic, kernel, cutoff_sq, min_pair_dist_sq,
-            excl_offsets, excl_partners, s_excl);
+            n_atoms, box, kernel, cutoff_sq, min_pair_dist_sq, excl_offsets,
+            excl_partners, s_excl);
     };
     using T = std::true_type;
     using F = std::false_type;
-    if (box.ortho) {
-        if (virial)
-            go(T{}, T{});
+    auto pick_excl = [&](auto O_t, auto V_t, auto P_t) {
+        if (has_excl)
+            go(O_t, V_t, P_t, T{});
         else
-            go(T{}, F{});
-    } else {
-        if (virial)
-            go(F{}, T{});
+            go(O_t, V_t, P_t, F{});
+    };
+    auto pick_periodic = [&](auto O_t, auto V_t) {
+        if (periodic)
+            pick_excl(O_t, V_t, T{});
         else
-            go(F{}, F{});
-    }
+            pick_excl(O_t, V_t, F{});
+    };
+    auto pick_virial = [&](auto O_t) {
+        if (virial)
+            pick_periodic(O_t, T{});
+        else
+            pick_periodic(O_t, F{});
+    };
+    if (box.ortho)
+        pick_virial(T{});
+    else
+        pick_virial(F{});
 }
 
 } // namespace md
