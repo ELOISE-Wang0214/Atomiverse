@@ -66,6 +66,21 @@ struct Context {
     /// from this field at launch — no per-step D2H of box[0,4,8]
     /// (cuda-md-review-cleanup-04-box-by-value-pbc).
     cuda::Box host_box;
+
+    /// @brief Special-bonds exclusion CSR (per-atom, LOCAL indices), published
+    ///        by `PairLJCut::build` and consumed by `NeighborList::launch` to
+    ///        bake exclusions directly into the per-atom Verlet list (LAMMPS
+    ///        style — find_special at build time, not per pair at force time).
+    ///
+    /// `excl_offsets[i]..excl_offsets[i+1]` index `excl_partners` for atom i.
+    /// `s_excl` is the single special-bonds scale (set_special_bonds requires
+    /// all tiers equal). When `s_excl == 0` and the neighbor list bakes the
+    /// exclusions (sets `exclusions_baked`), the force kernel skips the per-pair
+    /// exclusion scan entirely. Null/false on configs without special bonds.
+    const int* excl_offsets = nullptr;
+    const int* excl_partners = nullptr;
+    double s_excl = 1.0;
+    bool exclusions_baked = false;
 };
 
 } // namespace cuda

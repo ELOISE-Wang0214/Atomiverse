@@ -242,6 +242,7 @@ inline bool dump_global(int my_rank, const ATV::cpu::Frame& frame,
 #include "atomiverse/cuda/md/fix_langevin.cuh"
 #include "atomiverse/cuda/md/init.cuh"
 #include "atomiverse/cuda/md/md.cuh"
+#include "atomiverse/cuda/md/multi_gpu.cuh"
 #include "atomiverse/cuda/md/nose_hoover_npt.cuh"
 #include "atomiverse/cuda/md/nve_limit.cuh"
 #include "atomiverse/cuda/neighbor_list.cuh"
@@ -307,6 +308,8 @@ struct Args {
     double scale = 1.0;        ///< multiplier on each stage's steps
 
     int print_every = 100;
+    int gpus = 0; ///< >=1: drive cuda::md::MultiGpu over N GPUs (multi-GPU PE
+                  ///< throughput); 0: legacy single-GPU run_cuda_pipeline.
     int chains_per_axis = 4;
     int n_atoms_per_chain = 18;
     double box_len = 60.0;
@@ -495,6 +498,8 @@ bool parse_args(int argc, char** argv, Args& a) {
         if (take_d("--scale", a.scale))
             continue;
         if (take_i("--print-every", a.print_every))
+            continue;
+        if (take_i("--gpus", a.gpus))
             continue;
         if (take_i("--chains-per-axis", a.chains_per_axis))
             continue;
@@ -1339,6 +1344,50 @@ class CudaCsvRecorder
 ///        each per-stage driver materializes to device on `run()` and
 ///        syncs back when it returns, exactly the pattern used in
 ///        `tests/cuda/md/test_md.cu`.
+// Multi-GPU PE throughput: partition the gen_pe melt across `a.gpus` GPUs and
+// run a stage-1-shaped NVE loop through cuda::md::MultiGpu (cross-GPU LJ + bonded
+// + special-bonds), timing steps/s. Writes the same stage_timing.csv schema as
+// the single-GPU pipeline so the bench harness reads it uniformly. NVE here is
+// plain velocity-Verlet (no Langevin/NVELimit) — throughput is dominated by the
+// force + halo path, so this is a faithful steps/s proxy for the LAMMPS-KOKKOS
+// (-sf kk, MPI-per-GPU) comparison.
+void run_cuda_multigpu(const Args& a, cpu::Frame& frame, bool quiet) {
+    const int steps = scaled_steps(a.stage1_steps, a.scale);
+    cuda::md::MultiGpu mg(a.gpus);
+    mg.partition(frame);
+    // Verlet skin: LAMMPS-style small skin. With reneigh every 10 steps and the
+    // NVELimit 0.05 Å/step displacement cap, the max single-atom drift per
+    // interval is ~0.5 Å, so skin = 1.0 Å (> 2×0.5) keeps the list valid while
+    // keeping the search sphere tight (r_search 11.5 vs the old 0.3·cutoff=3.15
+    // → ~40% fewer neighbors AND build candidates). The old default bloated both
+    // the force kernel and the neighbor build.
+    mg.setup_force_engine(kLjCutoff, lj_eps_eV(), kLjSigma, /*skin=*/1.0);
+    auto Cn = dihedral_Cn_eV();
+    std::vector<std::array<double, 5>> cuda_Cn{
+        {Cn[0], Cn[1], Cn[2], Cn[3], Cn[4]}};
+    mg.setup_bonded({bond_k_eV()}, {kBondR0}, {angle_k_eV()}, {kAngleTheta0},
+                    cuda_Cn);
+    mg.enable_special_bonds();
+
+    const double t0 = now_seconds();
+    mg.run_nve_pe(steps, a.dt_stage1, /*reneigh_every=*/10);
+    const double wall = now_seconds() - t0;
+    const double sps = (wall > 0) ? steps / wall : 0.0;
+    const double ns_per_day =
+        (wall > 0) ? (double(steps) * a.dt_stage1 * 1e-6) * (86400.0 / wall) : 0;
+
+    std::ofstream timing(a.out_dir + "/stage_timing.csv");
+    timing << "stage,steps,dt_fs,wall_seconds,steps_per_second,ns_per_day\n";
+    timing << "1," << steps << "," << a.dt_stage1 << "," << wall << "," << sps
+           << "," << ns_per_day << "\n";
+    timing.flush();
+    if (!quiet)
+        std::fprintf(stderr,
+                     "  multi-GPU PE: %d GPU(s), %d atoms, %d steps, wall=%.3fs, "
+                     "%.1f step/s\n",
+                     mg.count(), frame.atoms.size(), steps, wall, sps);
+}
+
 void run_cuda_pipeline(const Args& a, cpu::Frame& frame,
                        std::ofstream& thermo_csv, std::ofstream& stress_csv,
                        int n_global_dof, double box_x0, bool quiet) {
@@ -1732,8 +1781,11 @@ int main(int argc, char** argv) {
 #ifdef ATV_BUILD_CUDA
         if (my_rank == 0) {
             try {
-                run_cuda_pipeline(a, frame, thermo_csv, stress_csv,
-                                  n_global_dof, box_x0, a.quiet);
+                if (a.gpus >= 1)
+                    run_cuda_multigpu(a, frame, a.quiet); // multi-GPU PE throughput
+                else
+                    run_cuda_pipeline(a, frame, thermo_csv, stress_csv,
+                                      n_global_dof, box_x0, a.quiet);
             } catch (const std::exception& e) {
                 std::fprintf(stderr,
                              "polyethylene_tension: CUDA pipeline threw: %s\n",

@@ -6,13 +6,33 @@
 #include <string>
 #include <vector>
 
+#include "atomiverse/cuda/box.cuh"
 #include "atomiverse/cuda/component.cuh"
+#include "atomiverse/cuda/types.cuh"
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
+
+#include <cuda_runtime.h>
 
 namespace ATV {
 namespace cuda {
 namespace md {
+
+/// Raw launch wrappers for the NVE/limit half-steps, callable outside the
+/// Component/LaunchContext path (used by the multi-GPU PE driver, which owns
+/// raw per-subdomain SoA pointers rather than a single Frame). `xmax` is the
+/// per-step displacement cap [Å]; `vmax = xmax/dt` is computed internally.
+/// These mirror LAMMPS `fix nve/limit` exactly (kFtm2v units, Euclidean speed
+/// cap, orthorhombic PBC wrap on the position update).
+void launch_nve_limit_initial(real_t* x, real_t* y, real_t* z, real_t* vx,
+                              real_t* vy, real_t* vz, const real_t* fx,
+                              const real_t* fy, const real_t* fz,
+                              const real_t* mass, cuda::Box box, work_t dt,
+                              work_t xmax, int n, cudaStream_t stream = 0);
+void launch_nve_limit_final(real_t* vx, real_t* vy, real_t* vz,
+                            const real_t* fx, const real_t* fy,
+                            const real_t* fz, const real_t* mass, work_t dt,
+                            work_t xmax, int n, cudaStream_t stream = 0);
 
 /// @brief CUDA sibling of `cpu::md::NVELimit` — velocity Verlet with a
 ///        per-step displacement cap. Mirrors LAMMPS `fix nve/limit xmax`.

@@ -244,6 +244,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cuda/md/neighborlist/grid.cu
             src/cuda/md/neighborlist/pair_search.cu
             src/cuda/md/neighborlist/fused_search.cu
+            src/cuda/md/neighborlist/nlist_direct.cu
             src/cuda/md/neighborlist/setup.cu
             src/cuda/md/neighborlist/export_pairs.cu
             src/cuda/minimizer/sd.cu

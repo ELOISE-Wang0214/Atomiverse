@@ -134,6 +134,15 @@ class AsyncBridge : public ComponentBase {
     /// @brief Per-slot CUDA events (cudaEvent_t as void*) owned by this base;
     ///        record freeze completion on the compute stream.
     void* pack_events_[kRingDepth] = {};
+    /// @brief Per-slot D2H-completion events recorded on the defer stream. The
+    ///        compute stream waits on a slot's D2H-done event before the next
+    ///        freeze overwrites it — backpressure that prevents a fast hot loop
+    ///        from lapping the ring and tearing an in-flight D2H. Device-side
+    ///        wait only (cudaStreamWaitEvent), so the hot path adds no host sync.
+    void* d2h_events_[kRingDepth] = {};
+    /// @brief Whether slot @p i has a recorded D2H-done event yet (false until
+    ///        its first capture, so the first kRingDepth freezes don't wait).
+    bool d2h_recorded_[kRingDepth] = {};
     /// @brief Round-robin device-ring slot index, advanced once per launch.
     int ring_head_ = 0;
 

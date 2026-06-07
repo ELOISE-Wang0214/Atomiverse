@@ -46,11 +46,17 @@ setup_cell_body(real_t* __restrict__ d_cell, real_t* __restrict__ d_inv_cell,
         widths[2] = volume / cross_norm(0, 1);
     }
 
-    // Grid dimensions
+    // Grid dimensions. Bin size = 0.5·(cutoff+skin), matching LAMMPS' default
+    // (neigh_modify binsize = 0.5·cutneighmax). Finer cells than the search
+    // radius mean far fewer wasted distance checks per atom in the FULL
+    // neighbor build: ~density·(0.5·rs)³ atoms/cell over a tighter stencil sphere
+    // vs ~8× as many atoms/cell at cell=rs. The stencil range below is derived
+    // from rs and these dims, so it auto-expands to still cover the full radius.
     work_t rs = cutoff_plus_skin;
-    int dx = max(3, int(widths[0] / rs));
-    int dy = max(3, int(widths[1] / rs));
-    int dz = max(3, int(widths[2] / rs));
+    work_t binsize = work_t(0.5) * rs;
+    int dx = max(3, int(widths[0] / binsize));
+    int dy = max(3, int(widths[1] / binsize));
+    int dz = max(3, int(widths[2] / binsize));
     d_dims[0] = dx;
     d_dims[1] = dy;
     d_dims[2] = dz;

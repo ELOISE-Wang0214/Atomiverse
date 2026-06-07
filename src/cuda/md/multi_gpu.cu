@@ -6,6 +6,7 @@
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/transfer.h"
 #include "atomiverse/cuda/box.cuh"
+#include "atomiverse/cuda/md/nve_limit.cuh"
 #include "atomiverse/cuda/transfer.cuh"
 #include "atomiverse/cuda/types.cuh"
 
@@ -257,7 +258,10 @@ __global__ __launch_bounds__(256, 4) void rematerialize_angles_k(
 
 // One thread per owned atom-2 (dihedral owner). dihedral_atom(j, 3m+0/1/2) hold
 // the i-, k-, l-partner tags; the owner j is the local owned row (atom 2 of 4).
-__global__ __launch_bounds__(256, 4) void rematerialize_dihedrals_k(
+// NOTE: no __launch_bounds__ — this kernel's register footprint (3 binary
+// searches + 5 stores) can exceed what (256,4) permits; an over-tight bound
+// made the 256-thread launch fail with cudaErrorInvalidValue on sm_90/CUDA 13.
+__global__ void rematerialize_dihedrals_k(
     const int* __restrict__ num_dihedral,
     const std::int64_t* __restrict__ dihedral_atom,
     const int* __restrict__ dihedral_type, int MD, int n_local,
@@ -630,6 +634,7 @@ void MultiGpu::partition(const cpu::Frame& global, double ghost_headroom) {
     // Remember whether to drive the cross-GPU bonded re-materialization each
     // reneighbor (set after the per-subdomain SoA fill; destroy_frames resets it).
     bonded_ = has_bonded;
+    bonded_static_built_ = false; // force a first build on the next reneighbor
 }
 
 namespace {
@@ -908,6 +913,12 @@ void MultiGpu::build_tag_maps() {
 void MultiGpu::rebuild_bonded_tuples() {
     if (!bonded_)
         return;
+    // Single-GPU: tags, owned set, and ghost set (none) never change, so the
+    // tag→local map, bonded tuples, and special-bonds CSR are identical every
+    // reneighbor. Build once; skip the per-reneighbor host-side tag sort +
+    // rematerialize + CSR rebuild (the dominant single-GPU host cost).
+    if (count() == 1 && bonded_static_built_)
+        return;
     build_tag_maps();
     const int N = count();
     constexpr int MB = cpu::Atom::kMaxBondPerAtom;
@@ -971,6 +982,7 @@ void MultiGpu::rebuild_bonded_tuples() {
             pair_[s]->build(bc);
         }
     }
+    bonded_static_built_ = true; // single-GPU: skip subsequent rebuilds
 }
 
 void MultiGpu::destroy_tag_maps() {
@@ -1078,7 +1090,7 @@ void MultiGpu::enable_special_bonds() {
     special_bonds_ = true; // rebuild_bonded_tuples will (re)build the CSR
 }
 
-void MultiGpu::compute_forces() {
+void MultiGpu::compute_forces(bool read_energy) {
     const int N = count();
     if (!engine_ready_ || static_cast<int>(bond_.size()) != N)
         throw std::runtime_error(
@@ -1086,16 +1098,19 @@ void MultiGpu::compute_forces() {
     // Zero owned+ghost forces + scalars once; LJ writes owned (full), bonded
     // deposits owned+ghost, then one reverse_comm brings ghost contributions
     // home. (LJ leaves ghost forces zero, so only bonded ghost forces travel.)
+    // ASYNC memset on each subdomain's stream — synchronous cudaMemset here
+    // stalled the host 4×/step (the dominant per-step single-GPU overhead).
     for (int s = 0; s < N; ++s) {
         const int na = frames_[s].n_local_ + frames_[s].n_ghost_;
         dm_.set_device(s);
         auto& a = frames_[s].atoms;
+        auto st = static_cast<cudaStream_t>(ctx_[s].stream);
         if (na > 0) {
-            CKM(cudaMemset(a.fx, 0, na * sizeof(real_t)));
-            CKM(cudaMemset(a.fy, 0, na * sizeof(real_t)));
-            CKM(cudaMemset(a.fz, 0, na * sizeof(real_t)));
+            CKM(cudaMemsetAsync(a.fx, 0, na * sizeof(real_t), st));
+            CKM(cudaMemsetAsync(a.fy, 0, na * sizeof(real_t), st));
+            CKM(cudaMemsetAsync(a.fz, 0, na * sizeof(real_t), st));
         }
-        CKM(cudaMemset(frames_[s].scalars, 0, sizeof(SystemScalars)));
+        CKM(cudaMemsetAsync(frames_[s].scalars, 0, sizeof(SystemScalars), st));
     }
     for (int s = 0; s < N; ++s) {
         const int na = frames_[s].n_local_ + frames_[s].n_ghost_;
@@ -1104,7 +1119,7 @@ void MultiGpu::compute_forces() {
         dm_.set_device(s);
         frames_[s].n_atoms_ = na;
         cuda::LaunchContext lc{ctx_[s], frames_[s]};
-        nlist_[s]->launch(lc); // skin-gated CSR refresh
+        nlist_[s]->launch(lc); // skin-gated neighbor refresh
         pair_[s]->launch(lc);  // LJ on owned (full), special-bonds-excluded
         bond_[s]->launch(lc);
         if (angle_[s])
@@ -1112,18 +1127,31 @@ void MultiGpu::compute_forces() {
         if (dihedral_[s])
             dihedral_[s]->launch(lc);
     }
-    for (int s = 0; s < N; ++s) {
-        dm_.set_device(s);
-        CKM(cudaDeviceSynchronize());
+    // Multi-GPU: sync all subdomains, then bring ghost (bonded) forces home.
+    // Single-GPU has no ghosts (reverse_comm is a no-op) and runs the integrator
+    // on the same stream as the force kernels, so no per-step host sync is
+    // needed — stream ordering carries forces into the next vv_second. Dropping
+    // this per-step cudaDeviceSynchronize is the last big single-GPU host win.
+    if (N > 1) {
+        for (int s = 0; s < N; ++s) {
+            dm_.set_device(s);
+            CKM(cudaDeviceSynchronize());
+        }
+        reverse_comm();
     }
-    reverse_comm();
-    bonded_energy_ = 0.0; // here: total PE (LJ + bonded), summed across subdomains
-    for (int s = 0; s < N; ++s) {
-        dm_.set_device(s);
-        SystemScalars sc{};
-        CKM(cudaMemcpy(&sc, frames_[s].scalars, sizeof(SystemScalars),
-                       cudaMemcpyDeviceToHost));
-        bonded_energy_ += static_cast<double>(sc.energy);
+    if (read_energy) {
+        // Energy readback syncs implicitly (blocking D2H); ensure single-GPU
+        // force kernels are done first.
+        if (N == 1)
+            CKM(cudaDeviceSynchronize());
+        bonded_energy_ = 0.0; // total PE (LJ + bonded), summed across subdomains
+        for (int s = 0; s < N; ++s) {
+            dm_.set_device(s);
+            SystemScalars sc{};
+            CKM(cudaMemcpy(&sc, frames_[s].scalars, sizeof(SystemScalars),
+                           cudaMemcpyDeviceToHost));
+            bonded_energy_ += static_cast<double>(sc.energy);
+        }
     }
 }
 
@@ -1239,6 +1267,68 @@ void MultiGpu::run_nve_nlist(int steps, double dt, double cutoff,
             int block = 256, grid = (nl + block - 1) / block;
             vv_second<<<grid, block>>>(a.vx, a.vy, a.vz, a.fx, a.fy, a.fz,
                                        a.mass, nl, dtr);
+            CKM(cudaGetLastError());
+        }
+    }
+    for (int s = 0; s < count(); ++s) {
+        dm_.set_device(s);
+        CKM(cudaDeviceSynchronize());
+    }
+}
+
+void MultiGpu::run_nve_pe(int steps, double dt, int reneigh_every) {
+    if (!engine_ready_ || bond_.empty())
+        throw std::runtime_error(
+            "MultiGpu::run_nve_pe: call setup_force_engine + setup_bonded first");
+    reneighbor();      // migrate + halo + re-materialize topology + nlist
+    compute_forces(/*read_energy=*/false); // initial LJ + bonded force
+    const work_t dtw = static_cast<work_t>(dt);
+    // The MSU PE stage-1 deck integrates the UNRELAXED amorphous start-state
+    // (E_pair ~3.4e8) with LAMMPS `fix nve/limit 0.05` — a per-step
+    // displacement cap that tames the severe initial atom overlap. Plain
+    // velocity-Verlet diverges within a few steps here: atoms accelerate under
+    // the overlap force spikes, the system clumps, and the neighbor count grows
+    // without bound until it overflows int32 at ~1M atoms. Match LAMMPS:
+    // displacement-capped integration (kFtm2v units + orthorhombic PBC wrap).
+    constexpr work_t kNveLimitXmax = work_t(0.05); // Å, == `fix nve/limit 0.05`
+    if (reneigh_every < 1)
+        reneigh_every = 1;
+    for (int step = 0; step < steps; ++step) {
+        for (int s = 0; s < count(); ++s) {
+            const int nl = frames_[s].n_local_;
+            if (nl == 0)
+                continue;
+            dm_.set_device(s);
+            auto& a = frames_[s].atoms;
+            // Stream choice: single-GPU runs the integrator on the SAME stream
+            // as the force kernels (ctx_[s].stream) so compute_forces needs no
+            // per-step host sync — stream ordering carries forces → vv_second.
+            // Multi-GPU must use the per-device default stream (0): migrate() /
+            // forward_comm() read these positions on the default stream, so the
+            // integrator shares it (else the position write races the migrate
+            // read — a Heisenbug that vanishes under compute-sanitizer).
+            auto st = (count() == 1) ? static_cast<cudaStream_t>(ctx_[s].stream)
+                                     : cudaStream_t(0);
+            launch_nve_limit_initial(a.x, a.y, a.z, a.vx, a.vy, a.vz, a.fx, a.fy,
+                                     a.fz, a.mass, ctx_[s].host_box, dtw,
+                                     kNveLimitXmax, nl, st);
+            CKM(cudaGetLastError());
+        }
+        if ((step + 1) % reneigh_every == 0)
+            reneighbor();
+        else
+            forward_comm();
+        compute_forces(/*read_energy=*/false); // LJ + bond/angle/dihedral
+        for (int s = 0; s < count(); ++s) {
+            const int nl = frames_[s].n_local_;
+            if (nl == 0)
+                continue;
+            dm_.set_device(s);
+            auto& a = frames_[s].atoms;
+            auto st = (count() == 1) ? static_cast<cudaStream_t>(ctx_[s].stream)
+                                     : cudaStream_t(0);
+            launch_nve_limit_final(a.vx, a.vy, a.vz, a.fx, a.fy, a.fz, a.mass,
+                                   dtw, kNveLimitXmax, nl, st);
             CKM(cudaGetLastError());
         }
     }
@@ -1535,6 +1625,17 @@ void MultiGpu::migrate() {
         mig_alloc(stg[dst], std::max(1, new_nl[dst]));
         if (bonded_)
             migb_alloc(stgb[dst], std::max(1, new_nl[dst]));
+    }
+    // These staging buffers come from cudaMallocAsync on each dst's stream 0
+    // (stream-ordered). Phase 4 writes into them from a DIFFERENT device via
+    // cudaMemcpyPeer, which carries no ordering against dst's pending async
+    // allocation — using the memory before the alloc completes on dst's stream
+    // is undefined (manifests as a Heisenbug "invalid argument" that vanishes
+    // under compute-sanitizer's serialization). Drain every dst's stream so the
+    // allocations are real before any cross-device peer write touches them.
+    for (int dst = 0; dst < N; ++dst) {
+        dm_.set_device(dst);
+        CKM(cudaDeviceSynchronize());
     }
 
     // Phase 4 — per (src,dst): gather state on src, P2P copy to dst staging.

@@ -150,7 +150,11 @@ class MultiGpu {
     /// neighbor list (owned, full, special-bonds-excluded) + bonded
     /// (bond/angle/dihedral, owned+ghost), then a single `reverse_comm`. Owned
     /// forces are then complete (LJ + bonded). Requires a prior `reneighbor`.
-    void compute_forces();
+    /// @param read_energy  If true, D2H the per-subdomain energy scalar and sum
+    ///        into bonded_energy() (a host sync). The integration loop passes
+    ///        false to skip this per-step readback (throughput); callers that
+    ///        need the energy (tests, thermo) pass true.
+    void compute_forces(bool read_energy = true);
 
     /// Merge all subdomains' owned atoms back into one cpu::Frame (positions /
     /// velocities by tag order matching the original global frame size). Used
@@ -215,6 +219,14 @@ class MultiGpu {
     void run_nve_nlist(int steps, double dt, double cutoff, double epsilon,
                        double sigma, double skin = -1.0, int reneigh_every = 10);
 
+    /// Velocity-Verlet NVE using the combined LJ + bonded force path
+    /// (compute_forces). Requires setup_force_engine + setup_bonded (and, for a
+    /// physical PE run, enable_special_bonds) to have been called first. Every
+    /// `reneigh_every` steps does a full migrate + halo + topology
+    /// re-materialize + neighbor rebuild; intervening steps forward-communicate
+    /// ghost positions. The multi-GPU equivalent of the single-GPU PE NVE step.
+    void run_nve_pe(int steps, double dt, int reneigh_every = 10);
+
     /// One recorded P2P ghost transfer (one src subdomain → one dst face
     /// neighbor). `d_src_idx` (on the src device) lists the owned-atom indices
     /// selected at build_halo; their current positions are gathered into
@@ -276,6 +288,12 @@ class MultiGpu {
     std::vector<std::unique_ptr<cuda::DihedralMultiHarmonic>> dihedral_;
     double bonded_energy_ = 0.0;
     bool special_bonds_ = false; // rebuild PairLJCut exclusions each reneighbor
+    // Single-GPU (count()==1) has no migration and no ghosts, so the tag→local
+    // map, the rematerialized bonded tuples, and the special-bonds exclusion CSR
+    // are INVARIANT across the run. Build them once and skip the per-reneighbor
+    // rebuild (which D2H-sorts every tag on the host — the dominant single-GPU
+    // overhead). Reset on partition(). Multi-GPU rebuilds every reneighbor.
+    bool bonded_static_built_ = false;
 };
 
 } // namespace md

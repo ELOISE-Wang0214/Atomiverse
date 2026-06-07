@@ -127,6 +127,20 @@ struct NListBuffers {
         histogram.resize(ncells);
     }
 
+    // ── Direct per-atom cell binning (LAMMPS-style nbin) ──────────────────
+    // atom_bincount[cell] = #atoms in cell; atom_bins[cell*bin_cap + slot] =
+    // atom index. bin_cap auto-grows on overflow (mirrors LAMMPS atoms_per_bin).
+    DeviceVector<int> atom_bincount; // [ncells]
+    DeviceVector<int> atom_bins;     // [ncells * bin_cap]
+    int bin_cap = 0;
+    int bin_ncells = 0;
+    void resize_bins(int ncells, int cap) {
+        bin_cap = cap;
+        bin_ncells = ncells;
+        atom_bincount.resize(ncells);
+        atom_bins.resize(static_cast<std::size_t>(ncells) * cap);
+    }
+
     void resize_pairs(int num_pairs) {
         col_idx.resize(num_pairs);
         interaction_mask.resize(num_pairs);
@@ -184,15 +198,6 @@ void launch_assign_clusters_to_cells(
     const real_t* inv_cell, int dims_x, int dims_y, int dims_z, bool periodic,
     int* cluster_cell_idx, cudaStream_t stream = 0);
 
-// Coarse count: upper-bound pair count per cluster (no AABB, O(stencil) per ci)
-void launch_coarse_count_pairs(const int* cell_start,
-                               const int* cluster_cell_idx, int dims_x,
-                               int dims_y, int dims_z, const int* stencil_dx,
-                               const int* stencil_dy, const int* stencil_dz,
-                               const int* num_stencil_ptr, int num_clusters,
-                               bool periodic, int* pair_counts,
-                               cudaStream_t stream = 0);
-
 // Single-pass AABB fill: writes pairs at row_ptr_upper offsets, outputs
 // actual pair_counts. Launcher dispatches on `box.ortho` so the
 // per-pair min-image check is template-specialized at compile time
@@ -208,6 +213,38 @@ void launch_fill_cluster_pairs(
     const real_t* aabb_max_z, int num_clusters, bool periodic,
     work_t cutoff_plus_skin_sq, ATV::cuda::Box box, const int* row_ptr_upper,
     int* col_idx, int* pair_counts, cudaStream_t stream = 0);
+
+// Exact-count pre-pass: identical AABB-filtered stencil walk as the fill but
+// writes only pair_counts (no col_idx). Its prefix sum is the EXACT pair total
+// the fill emits — replaces the unfiltered coarse counter, whose loose upper
+// bound overflowed int32 and over-allocated the CSR at large dense systems.
+template <typename work_t>
+void launch_count_cluster_pairs(
+    const int* cell_start, const int* cell_clusters,
+    const int* cluster_cell_idx, int dims_x, int dims_y, int dims_z,
+    const int* stencil_dx, const int* stencil_dy, const int* stencil_dz,
+    const int* num_stencil_ptr, const real_t* aabb_min_x,
+    const real_t* aabb_min_y, const real_t* aabb_min_z,
+    const real_t* aabb_max_x, const real_t* aabb_max_y,
+    const real_t* aabb_max_z, int num_clusters, bool periodic,
+    work_t cutoff_plus_skin_sq, ATV::cuda::Box box, int* pair_counts,
+    cudaStream_t stream = 0);
+
+// ── Direct cell-bin FULL per-atom Verlet build (nlist_direct.cu) ──────────
+// Replaces the cluster-CSR → build_verlet_list pipeline. `box` is by value.
+void launch_bin_atoms(const real_t* x, const real_t* y, const real_t* z, int n,
+                      ATV::cuda::Box box, int dx, int dy, int dz, bool periodic,
+                      int* bincount, int* bins, int bin_cap, int* overflow,
+                      cudaStream_t stream = 0);
+
+template <typename work_t>
+void launch_build_verlet_direct(
+    const real_t* x, const real_t* y, const real_t* z, int n, ATV::cuda::Box box,
+    int dx, int dy, int dz, bool periodic, const int* sdx, const int* sdy,
+    const int* sdz, const int* n_stencil_ptr, const int* bincount,
+    const int* bins, int bin_cap, work_t rsq_search, const int* excl_offsets,
+    const int* excl_partners, int* vl_nbr, int* vl_cnt, int vl_stride,
+    int vl_max, int* overflow, cudaStream_t stream = 0);
 
 // Write row_ptr[N] = row_ptr[N-1] + pair_counts[N-1] on device (avoids D→H readback)
 void launch_write_row_ptr_sentinel(int* row_ptr, const int* pair_counts,

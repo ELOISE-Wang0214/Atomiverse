@@ -53,6 +53,10 @@ void AsyncBridge::build(const BuildContext& ctx) {
         cudaEvent_t ev;
         cudaEventCreateWithFlags(&ev, cudaEventDisableTiming);
         pack_events_[i] = ev;
+        cudaEvent_t dv;
+        cudaEventCreateWithFlags(&dv, cudaEventDisableTiming);
+        d2h_events_[i] = dv;
+        d2h_recorded_[i] = false;
     }
     ring_head_ = 0;
     on_build(ctx);
@@ -68,6 +72,16 @@ void AsyncBridge::launch(const LaunchContext& ctx) {
     auto main_stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto defer_stream = static_cast<cudaStream_t>(ctx.runtime.defer_stream);
     auto pack_event = static_cast<cudaEvent_t>(pack_events_[slot]);
+    auto d2h_event = static_cast<cudaEvent_t>(d2h_events_[slot]);
+
+    // 0. Slot-reuse backpressure: make the COMPUTE stream wait for this slot's
+    //    PRIOR D2H (defer stream) to finish before the freeze below overwrites
+    //    it. Without this, a hot loop faster than the consumer laps the K-deep
+    //    ring and a freeze clobbers a slot whose D2H is still draining -> torn
+    //    snapshot. Device-side wait only (no host sync): the hot path simply
+    //    throttles to the drain rate once K captures are in flight.
+    if (d2h_recorded_[slot])
+        cudaStreamWaitEvent(main_stream, d2h_event, 0);
 
     // 1. Freeze the captured payload into the device-ring slot on the COMPUTE
     //    stream. Ordered after this step's physics kernels and before the next
@@ -80,6 +94,11 @@ void AsyncBridge::launch(const LaunchContext& ctx) {
 
     // 3. D2H the FROZEN slot (never the live frame) on the defer stream.
     d2h_slot(ctx, slot);
+
+    // 3b. Record this slot's D2H-completion on the defer stream so a later
+    //     freeze into the same slot (step + kRingDepth) waits at step 0 above.
+    cudaEventRecord(d2h_event, defer_stream);
+    d2h_recorded_[slot] = true;
 
     // 4. Snapshot boundary: enqueue a host callback that runs after the D2H
     //    above completes. The callback fires on a CUDA worker thread; the main
@@ -102,6 +121,10 @@ void AsyncBridge::destroy(const DestroyContext& ctx) {
         if (pack_events_[i]) {
             cudaEventDestroy(static_cast<cudaEvent_t>(pack_events_[i]));
             pack_events_[i] = nullptr;
+        }
+        if (d2h_events_[i]) {
+            cudaEventDestroy(static_cast<cudaEvent_t>(d2h_events_[i]));
+            d2h_events_[i] = nullptr;
         }
     }
 }

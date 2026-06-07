@@ -173,14 +173,23 @@ cuda::Frame to_cuda(const Frame& frame, int capacity) {
             box_data[i * 3 + j] = static_cast<prec_t>(frame.box(i, j));
     cudaMemcpy(d.box, box_data, 9 * sizeof(prec_t), cudaMemcpyHostToDevice);
 
+    // Allocation headroom for the flat bonded arrays. The multi-GPU path
+    // rebuilds these per reneighbor via rematerialize_*_k, whose resolved tuple
+    // count can exceed this partition-time count by a few near subdomain
+    // boundaries (cross-GPU partners resolving against shifting ghosts).
+    // Over-allocating is always safe (n_*_ stays the real count); it prevents
+    // the rematerialize write from overrunning the array. Single-GPU is
+    // unaffected (it reads n_*_, never rewrites these arrays).
+    auto bond_cap = [](int c) { return c + c / 8 + 64; };
+
     // Bond topology — copy from the flattened host buffers built above.
     int nb = d.n_bonds_;
     if (nb > 0) {
         cudaMalloc(&d.bonds.n_bonds, sizeof(int));
         cudaMemcpy(d.bonds.n_bonds, &nb, sizeof(int), cudaMemcpyHostToDevice);
-        cudaMalloc(&d.bonds.atomi, nb * sizeof(int));
-        cudaMalloc(&d.bonds.atomj, nb * sizeof(int));
-        cudaMalloc(&d.bonds.type, nb * sizeof(int));
+        cudaMalloc(&d.bonds.atomi, bond_cap(nb) * sizeof(int));
+        cudaMalloc(&d.bonds.atomj, bond_cap(nb) * sizeof(int));
+        cudaMalloc(&d.bonds.type, bond_cap(nb) * sizeof(int));
         cudaMemcpy(d.bonds.atomi, flat_bond_i.data(), nb * sizeof(int),
                    cudaMemcpyHostToDevice);
         cudaMemcpy(d.bonds.atomj, flat_bond_j.data(), nb * sizeof(int),
@@ -194,10 +203,10 @@ cuda::Frame to_cuda(const Frame& frame, int capacity) {
     if (na > 0) {
         cudaMalloc(&d.angles.n_angles, sizeof(int));
         cudaMemcpy(d.angles.n_angles, &na, sizeof(int), cudaMemcpyHostToDevice);
-        cudaMalloc(&d.angles.atomi, na * sizeof(int));
-        cudaMalloc(&d.angles.atomj, na * sizeof(int));
-        cudaMalloc(&d.angles.atomk, na * sizeof(int));
-        cudaMalloc(&d.angles.type, na * sizeof(int));
+        cudaMalloc(&d.angles.atomi, bond_cap(na) * sizeof(int));
+        cudaMalloc(&d.angles.atomj, bond_cap(na) * sizeof(int));
+        cudaMalloc(&d.angles.atomk, bond_cap(na) * sizeof(int));
+        cudaMalloc(&d.angles.type, bond_cap(na) * sizeof(int));
         cudaMemcpy(d.angles.atomi, flat_ang_i.data(), na * sizeof(int),
                    cudaMemcpyHostToDevice);
         cudaMemcpy(d.angles.atomj, flat_ang_j.data(), na * sizeof(int),
@@ -214,11 +223,11 @@ cuda::Frame to_cuda(const Frame& frame, int capacity) {
         cudaMalloc(&d.dihedrals.n_dihedrals, sizeof(int));
         cudaMemcpy(d.dihedrals.n_dihedrals, &nd, sizeof(int),
                    cudaMemcpyHostToDevice);
-        cudaMalloc(&d.dihedrals.atomi, nd * sizeof(int));
-        cudaMalloc(&d.dihedrals.atomj, nd * sizeof(int));
-        cudaMalloc(&d.dihedrals.atomk, nd * sizeof(int));
-        cudaMalloc(&d.dihedrals.atoml, nd * sizeof(int));
-        cudaMalloc(&d.dihedrals.type, nd * sizeof(int));
+        cudaMalloc(&d.dihedrals.atomi, bond_cap(nd) * sizeof(int));
+        cudaMalloc(&d.dihedrals.atomj, bond_cap(nd) * sizeof(int));
+        cudaMalloc(&d.dihedrals.atomk, bond_cap(nd) * sizeof(int));
+        cudaMalloc(&d.dihedrals.atoml, bond_cap(nd) * sizeof(int));
+        cudaMalloc(&d.dihedrals.type, bond_cap(nd) * sizeof(int));
         cudaMemcpy(d.dihedrals.atomi, flat_dih_i.data(),
                    nd * sizeof(int), cudaMemcpyHostToDevice);
         cudaMemcpy(d.dihedrals.atomj, flat_dih_j.data(),

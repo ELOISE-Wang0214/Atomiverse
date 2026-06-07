@@ -92,6 +92,35 @@ __global__ void final_integrate_limit(
 
 } // anonymous namespace
 
+void launch_nve_limit_initial(real_t* x, real_t* y, real_t* z, real_t* vx,
+                              real_t* vy, real_t* vz, const real_t* fx,
+                              const real_t* fy, const real_t* fz,
+                              const real_t* mass, cuda::Box box, work_t dt,
+                              work_t xmax, int n, cudaStream_t stream) {
+    if (n <= 0)
+        return;
+    int block = cuda::kDefaultBlock;
+    int grid = cuda::grid_size(n);
+    work_t vmax = xmax / dt;
+    work_t vmax_sq = vmax * vmax;
+    initial_integrate_limit<<<grid, block, 0, stream>>>(
+        x, y, z, vx, vy, vz, fx, fy, fz, mass, box, dt, vmax, vmax_sq, n);
+}
+
+void launch_nve_limit_final(real_t* vx, real_t* vy, real_t* vz,
+                            const real_t* fx, const real_t* fy,
+                            const real_t* fz, const real_t* mass, work_t dt,
+                            work_t xmax, int n, cudaStream_t stream) {
+    if (n <= 0)
+        return;
+    int block = cuda::kDefaultBlock;
+    int grid = cuda::grid_size(n);
+    work_t vmax = xmax / dt;
+    work_t vmax_sq = vmax * vmax;
+    final_integrate_limit<<<grid, block, 0, stream>>>(
+        vx, vy, vz, fx, fy, fz, mass, dt, vmax, vmax_sq, n);
+}
+
 void NVELimit::launch(const LaunchContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& frame = ctx.frame;

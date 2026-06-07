@@ -57,72 +57,6 @@ __device__ work_t min_aabb_dist_sq(
 }
 
 // ---------------------------------------------------------------------------
-// Kernel: Coarse pair count (no AABB check — just count stencil-cell clusters)
-//
-// One thread per i-cluster.  Much cheaper than the full AABB-based count
-// because it only reads cell_start[] values, not AABB coordinates.
-// Produces an upper-bound pair_counts for pre-allocation.
-// ---------------------------------------------------------------------------
-
-__global__ void coarse_count_pairs(const int* __restrict__ cell_start,
-                                   const int* __restrict__ cluster_cell_idx,
-                                   int dims_x, int dims_y, int dims_z,
-                                   const int* __restrict__ stencil_dx,
-                                   const int* __restrict__ stencil_dy,
-                                   const int* __restrict__ stencil_dz,
-                                   const int* __restrict__ num_stencil_ptr,
-                                   int num_clusters, bool periodic,
-                                   int* __restrict__ pair_counts) {
-    int ci = blockIdx.x * blockDim.x + threadIdx.x;
-    if (ci >= num_clusters)
-        return;
-
-    int num_stencil = *num_stencil_ptr;
-    int home = cluster_cell_idx[ci];
-    int ncells_yz = dims_y * dims_z;
-    int hx = home / ncells_yz;
-    int hy = (home / dims_z) % dims_y;
-    int hz = home % dims_z;
-
-    int count = 0;
-    for (int s = 0; s < num_stencil; ++s) {
-        int nx = hx + stencil_dx[s];
-        int ny = hy + stencil_dy[s];
-        int nz = hz + stencil_dz[s];
-        if (periodic) {
-            nx = ((nx % dims_x) + dims_x) % dims_x;
-            ny = ((ny % dims_y) + dims_y) % dims_y;
-            nz = ((nz % dims_z) + dims_z) % dims_z;
-        } else {
-            if (nx < 0 || nx >= dims_x || ny < 0 || ny >= dims_y || nz < 0
-                || nz >= dims_z)
-                continue;
-        }
-        int cell_idx = nx * ncells_yz + ny * dims_z + nz;
-        count += cell_start[cell_idx + 1] - cell_start[cell_idx];
-    }
-    pair_counts[ci] = count;
-}
-
-void launch_coarse_count_pairs(const int* cell_start,
-                               const int* cluster_cell_idx, int dims_x,
-                               int dims_y, int dims_z, const int* stencil_dx,
-                               const int* stencil_dy, const int* stencil_dz,
-                               const int* num_stencil_ptr, int num_clusters,
-                               bool periodic, int* pair_counts,
-                               cudaStream_t stream) {
-    if (num_clusters == 0)
-        return;
-    int block = ATV::cuda::kDefaultBlock;
-    int grid = (num_clusters + block - 1) / block;
-    coarse_count_pairs<<<grid, block, 0, stream>>>(
-        cell_start, cluster_cell_idx, dims_x, dims_y, dims_z, stencil_dx,
-        stencil_dy, stencil_dz, num_stencil_ptr, num_clusters, periodic,
-        pair_counts);
-    ATV_CUDA_CHECK(cudaGetLastError());
-}
-
-// ---------------------------------------------------------------------------
 // Kernel: Fill cluster pairs (single AABB pass)
 //
 // Writes pairs at row_ptr_upper[ci] offsets (pre-allocated from coarse count).
@@ -132,7 +66,15 @@ void launch_coarse_count_pairs(const int* cell_start,
 
 // Templated on `bool Ortho` — propagates through to `min_aabb_dist_sq`
 // so the triclinic branch dead-eliminates in the ortho specialization.
-template <bool Ortho, typename work_t>
+// Templated on `bool CountOnly`: when true the kernel runs the identical
+// AABB-filtered stencil walk but writes ONLY pair_counts[ci] (no col_idx /
+// row_ptr_upper touched) — the exact-count pre-pass that sizes the CSR.
+// Running the SAME predicate in both passes guarantees the fill pass writes
+// exactly row_ptr_upper[ci+1]-row_ptr_upper[ci] entries per cluster, so the
+// CSR can never overflow. (The old coarse counter was an unfiltered
+// stencil-cell sum — a wildly loose upper bound that overflowed int32 and
+// wasted gigabytes at ~1M dense atoms.)
+template <bool Ortho, bool CountOnly, typename work_t>
 __global__ __launch_bounds__(ATV::cuda::kDefaultBlock) void fill_pairs(
     const int* __restrict__ cell_start, const int* __restrict__ cell_clusters,
     const int* __restrict__ cluster_cell_idx, int dims_x, int dims_y,
@@ -164,7 +106,7 @@ __global__ __launch_bounds__(ATV::cuda::kDefaultBlock) void fill_pairs(
     int hy = (home / dims_z) % dims_y;
     int hz = home % dims_z;
 
-    int write_offset = row_ptr_upper[ci];
+    int write_offset = CountOnly ? 0 : row_ptr_upper[ci];
     int count = 0;
 
     for (int s = 0; s < num_stencil; ++s) {
@@ -210,14 +152,15 @@ __global__ __launch_bounds__(ATV::cuda::kDefaultBlock) void fill_pairs(
             }
 
             unsigned ballot = __ballot_sync(0xFFFFFFFF, passes);
-            int prefix = __popc(ballot & ((1u << lane) - 1));
-
-            if (passes) {
-                col_idx[write_offset + prefix] = cj_val;
-            }
-
             int batch_count = __popc(ballot);
-            write_offset += batch_count;
+
+            if (!CountOnly) {
+                int prefix = __popc(ballot & ((1u << lane) - 1));
+                if (passes) {
+                    col_idx[write_offset + prefix] = cj_val;
+                }
+                write_offset += batch_count;
+            }
             count += batch_count;
         }
     }
@@ -244,19 +187,56 @@ void launch_fill_cluster_pairs(
     int block = ATV::cuda::kDefaultBlock;
     int grid = (threads_needed + block - 1) / block;
     if (box.ortho) {
-        fill_pairs<true, work_t><<<grid, block, 0, stream>>>(
+        fill_pairs<true, false, work_t><<<grid, block, 0, stream>>>(
             cell_start, cell_clusters, cluster_cell_idx, dims_x, dims_y, dims_z,
             stencil_dx, stencil_dy, stencil_dz, num_stencil_ptr, aabb_min_x,
             aabb_min_y, aabb_min_z, aabb_max_x, aabb_max_y, aabb_max_z,
             num_clusters, periodic, cutoff_plus_skin_sq, box, row_ptr_upper,
             col_idx, pair_counts);
     } else {
-        fill_pairs<false, work_t><<<grid, block, 0, stream>>>(
+        fill_pairs<false, false, work_t><<<grid, block, 0, stream>>>(
             cell_start, cell_clusters, cluster_cell_idx, dims_x, dims_y, dims_z,
             stencil_dx, stencil_dy, stencil_dz, num_stencil_ptr, aabb_min_x,
             aabb_min_y, aabb_min_z, aabb_max_x, aabb_max_y, aabb_max_z,
             num_clusters, periodic, cutoff_plus_skin_sq, box, row_ptr_upper,
             col_idx, pair_counts);
+    }
+    ATV_CUDA_CHECK(cudaGetLastError());
+}
+
+// Exact-count pre-pass: same AABB-filtered stencil walk as the fill, writing
+// only pair_counts[ci]. Its prefix sum (row_ptr_upper) is therefore the EXACT
+// number of pairs the fill will emit — never an overflowing loose bound.
+template <typename work_t>
+void launch_count_cluster_pairs(
+    const int* cell_start, const int* cell_clusters,
+    const int* cluster_cell_idx, int dims_x, int dims_y, int dims_z,
+    const int* stencil_dx, const int* stencil_dy, const int* stencil_dz,
+    const int* num_stencil_ptr, const real_t* aabb_min_x,
+    const real_t* aabb_min_y, const real_t* aabb_min_z,
+    const real_t* aabb_max_x, const real_t* aabb_max_y,
+    const real_t* aabb_max_z, int num_clusters, bool periodic,
+    work_t cutoff_plus_skin_sq, cuda::Box box, int* pair_counts,
+    cudaStream_t stream) {
+    if (num_clusters == 0)
+        return;
+    int threads_needed = num_clusters * 32;
+    int block = ATV::cuda::kDefaultBlock;
+    int grid = (threads_needed + block - 1) / block;
+    if (box.ortho) {
+        fill_pairs<true, true, work_t><<<grid, block, 0, stream>>>(
+            cell_start, cell_clusters, cluster_cell_idx, dims_x, dims_y, dims_z,
+            stencil_dx, stencil_dy, stencil_dz, num_stencil_ptr, aabb_min_x,
+            aabb_min_y, aabb_min_z, aabb_max_x, aabb_max_y, aabb_max_z,
+            num_clusters, periodic, cutoff_plus_skin_sq, box, /*row_ptr_upper*/
+            nullptr, /*col_idx*/ nullptr, pair_counts);
+    } else {
+        fill_pairs<false, true, work_t><<<grid, block, 0, stream>>>(
+            cell_start, cell_clusters, cluster_cell_idx, dims_x, dims_y, dims_z,
+            stencil_dx, stencil_dy, stencil_dz, num_stencil_ptr, aabb_min_x,
+            aabb_min_y, aabb_min_z, aabb_max_x, aabb_max_y, aabb_max_z,
+            num_clusters, periodic, cutoff_plus_skin_sq, box, /*row_ptr_upper*/
+            nullptr, /*col_idx*/ nullptr, pair_counts);
     }
     ATV_CUDA_CHECK(cudaGetLastError());
 }
@@ -337,6 +317,8 @@ void launch_compact_pairs(int* col_idx, const int* row_ptr_upper,
 namespace {
 [[maybe_unused]] const void* _inst_launch_fill_cluster_pairs =
     reinterpret_cast<const void*>(&launch_fill_cluster_pairs<work_t>);
+[[maybe_unused]] const void* _inst_launch_count_cluster_pairs =
+    reinterpret_cast<const void*>(&launch_count_cluster_pairs<work_t>);
 } // namespace
 
 } // namespace ATV::cuda::md::nlist

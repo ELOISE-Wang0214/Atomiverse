@@ -26,6 +26,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -153,9 +155,10 @@ void NeighborList::build(const BuildContext& ctx) {
     // sees ~density*sphere_vol(r_search) atoms => /kClusterSize neighbor
     // clusters. The 6x factor absorbs the cluster's spatial extent (a cluster's
     // atoms reach a shell ~one cluster-diameter beyond r_search) plus
-    // inhomogeneity; launch() additionally GUARDS against undershoot (throws
-    // if the counted total exceeds capacity) so this can never silently
-    // corrupt the CSR. Clamped to [min(dense, nc*64), dense upper bound].
+    // inhomogeneity. This is only an INITIAL guess: launch() measures the exact
+    // cluster-pair count each rebuild and SELF-HEALS (grows the CSR buffers and
+    // continues) if the guess undershoots, so a wrong estimate can never
+    // corrupt the CSR — it just triggers a one-time grow. Clamped to int range.
     // NOTE: the all-pairs figure nc*(nc+1)/2 is NOT a valid upper bound and is
     // deliberately NOT used as a clamp. Under PBC a cluster can interact with
     // periodic IMAGES of another cluster (and of itself), so for boxes that are
@@ -166,20 +169,24 @@ void NeighborList::build(const BuildContext& ctx) {
     //        nc * 12 * (density * sphere(r_search)/kClusterSize)  (large melts) )
     // The 12x absorbs the cubic-cell-stencil over-count vs a sphere plus the
     // cluster's spatial extent (~7-8x measured; 1.5x margin). launch()'s
-    // overflow guard turns any residual undershoot into a loud throw, never
-    // silent CSR corruption.
+    // self-heal grows the CSR on any residual undershoot, so this guess only
+    // affects how often the one-time grow fires, never correctness.
     const double kPi = 3.141592653589793;
-    long long cluster_cap_ll = static_cast<long long>(nc) * 128;
+    long long cluster_cap_ll = static_cast<long long>(nc) * 64;
     if (box_vol > 0.0 && n > 0) {
         double density = double(n) / box_vol;
         double rs = double(r_search);
         double sphere = (4.0 / 3.0) * kPi * rs * rs * rs;
         double neigh_clusters = density * sphere / double(kClusterSize);
-        // 24x (was 12x): the cluster list is now FULL (every neighbor cluster,
-        // both directions) for the atomic-free atom-centric force kernel, ~2x
-        // the old half-list count. Absorbs cubic-stencil over-count + cluster
-        // extent with ~1.5x margin; the launch() guard catches any undershoot.
-        double per_cluster = std::max(128.0, 24.0 * neigh_clusters);
+        // Now that launch() sizes the CSR from an EXACT AABB-filtered count
+        // (and self-heals on undershoot), this is only an initial allocation
+        // hint — sized to the realistic neighbor-cluster count, not a loose
+        // over-bound. 8x absorbs the cluster's spatial extent (a cluster's
+        // atoms reach ~one cluster-diameter past r_search) + the full
+        // (both-direction) list; any residual undershoot just triggers a
+        // one-time grow. Keeps the initial footprint ~density-proportional
+        // instead of the old 24x loose-bound allocation (gigabytes at ~1M).
+        double per_cluster = std::max(64.0, 8.0 * neigh_clusters);
         cluster_cap_ll = std::max(
             cluster_cap_ll, static_cast<long long>(double(nc) * per_cluster));
     }
@@ -410,169 +417,168 @@ void NeighborList::launch(const LaunchContext& ctx) {
             s.d_n_stencil.data(), s.d_ncells.data(), r_search, s.periodic,
             kMaxStencil, stream);
 
-        // K1: Morton codes
-        launch_compute_morton<work_t>(
-            frame.atoms.x, frame.atoms.y, frame.atoms.z, n, s.d_inv_cell.data(),
-            s.periodic, s.buf.morton_codes.data(), s.buf.atom_indices.data(),
-            stream);
-
-        // K2: Radix sort
-        launch_radix_sort(s.buf.morton_codes.data(), s.buf.morton_sorted.data(),
-                          s.buf.atom_indices.data(),
-                          s.buf.indices_sorted.data(), n, s.buf.sort_temp,
-                          stream);
-
-        // K3: Fused scatter + AABB
-        launch_scatter_and_aabb<work_t>(
-            s.buf.indices_sorted.data(), frame.atoms.x, frame.atoms.y,
-            frame.atoms.z, n, nc, s.buf.cluster_x.data(),
-            s.buf.cluster_y.data(), s.buf.cluster_z.data(),
-            s.buf.original_index.data(), s.buf.cluster_count.data(),
-            s.buf.aabb_min_x.data(), s.buf.aabb_min_y.data(),
-            s.buf.aabb_min_z.data(), s.buf.aabb_max_x.data(),
-            s.buf.aabb_max_y.data(), s.buf.aabb_max_z.data(), stream);
-
-        // K4: Assign clusters to grid cells
-        launch_assign_clusters_to_cells<work_t>(
-            s.buf.aabb_min_x.data(), s.buf.aabb_min_y.data(),
-            s.buf.aabb_min_z.data(), s.buf.aabb_max_x.data(),
-            s.buf.aabb_max_y.data(), s.buf.aabb_max_z.data(), nc,
-            s.d_inv_cell.data(), s.dims_x, s.dims_y, s.dims_z, s.periodic,
-            s.buf.cluster_cell_idx.data(), stream);
-
-        // K5: Build grid CSR
+        // ── LAMMPS-style direct cell-bin FULL per-atom neighbor list ──────
+        // One pass: bin atoms into cells, then one thread per atom scans the
+        // stencil cells and appends every neighbor within (cutoff+skin) into
+        // the per-atom Verlet list. Replaces the cluster-CSR machinery
+        // (Morton sort → scatter+AABB → grid CSR → count/fill → csr_to_flat →
+        // build_verlet_list), which spent ~65% of GPU time building a
+        // redundant second neighbor structure. Both bins and the Verlet list
+        // auto-grow on overflow (LAMMPS resize-and-rebuild).
         int ncells = s.dims_x * s.dims_y * s.dims_z;
-        launch_build_grid_csr(s.buf.cluster_cell_idx.data(), nc, ncells,
-                              s.buf.cell_start.data(),
-                              s.buf.cell_clusters.data(),
-                              s.buf.histogram.data(), s.buf.scan_temp, stream);
-
-        // K6: Pair search pipeline
-        launch_coarse_count_pairs(
-            s.buf.cell_start.data(), s.buf.cluster_cell_idx.data(), s.dims_x,
-            s.dims_y, s.dims_z, s.stencil_dx.data(), s.stencil_dy.data(),
-            s.stencil_dz.data(), s.d_n_stencil.data(), nc, s.periodic,
-            s.buf.pair_counts.data(), stream);
-
-        launch_exclusive_sum(s.buf.pair_counts.data(),
-                             s.buf.row_ptr_upper.data(), nc, s.buf.prefix_temp,
-                             stream);
-        launch_write_row_ptr_sentinel(s.buf.row_ptr_upper.data(),
-                                      s.buf.pair_counts.data(), nc, stream);
-
-        // Overflow guard: row_ptr_upper[nc] now holds the exact total cluster-
-        // pair count. pair_capacity is a density estimate (see build()), so
-        // verify the count fits BEFORE fill_cluster_pairs writes col_idx —
-        // otherwise an undershoot would silently corrupt the CSR. Cheap: one
-        // 4-byte blocking D2H per rebuild (rebuilds are skin-gated, not every
-        // step). Fail loud rather than corrupt.
-        int total_cluster_pairs = 0;
-        {
-            cudaMemcpy(&total_cluster_pairs, s.buf.row_ptr_upper.data() + nc,
-                       sizeof(int), cudaMemcpyDeviceToHost);
-            if (total_cluster_pairs > s.pair_capacity) {
-                throw std::runtime_error(
-                    "cuda::NeighborList: cluster-pair count " +
-                    std::to_string(total_cluster_pairs) +
-                    " exceeds capacity " + std::to_string(s.pair_capacity) +
-                    " (density estimate too low — raise the safety factor in "
-                    "NeighborList::build()).");
-            }
-        }
-
-        launch_fill_cluster_pairs<work_t>(
-            s.buf.cell_start.data(), s.buf.cell_clusters.data(),
-            s.buf.cluster_cell_idx.data(), s.dims_x, s.dims_y, s.dims_z,
-            s.stencil_dx.data(), s.stencil_dy.data(), s.stencil_dz.data(),
-            s.d_n_stencil.data(), s.buf.aabb_min_x.data(),
-            s.buf.aabb_min_y.data(), s.buf.aabb_min_z.data(),
-            s.buf.aabb_max_x.data(), s.buf.aabb_max_y.data(),
-            s.buf.aabb_max_z.data(), nc, s.periodic, s.cut_skin_sq,
-            ctx.runtime.host_box, s.buf.row_ptr_upper.data(),
-            s.buf.col_idx.data(), s.buf.pair_counts.data(), stream);
-
-        launch_exclusive_sum(s.buf.pair_counts.data(), s.buf.row_ptr.data(), nc,
-                             s.buf.prefix_temp, stream);
-        launch_write_row_ptr_sentinel(s.buf.row_ptr.data(),
-                                      s.buf.pair_counts.data(), nc, stream);
-
-        launch_compact_pairs(s.buf.col_idx.data(), s.buf.row_ptr_upper.data(),
-                             s.buf.row_ptr.data(), s.buf.pair_counts.data(),
-                             nc, stream);
-
-        // Masks + flatten. Memset of `interaction_mask` is intentionally
-        // inside the rebuild branch — the all-ones initial value is only
-        // meaningful as input to csr_to_flat (which overwrites with the
-        // real per-pair mask via `mask_in[p]`). When we skip rebuild,
-        // the existing flat_mask from the prior rebuild stays valid;
-        // smart_rolling_prune will refresh it from current cluster
-        // positions before the export emits atom pairs.
-        int mask_size = std::max(s.pair_capacity, 1);
-        cudaMemsetAsync(s.buf.interaction_mask.data(), 0xFF,
-                        mask_size * sizeof(uint64_t), stream);
-
-        cudaMemcpyAsync(s.buf.flat_pair_counter.data(),
-                        s.buf.row_ptr.data() + nc, sizeof(int),
-                        cudaMemcpyDeviceToDevice, stream);
-        launch_csr_to_flat(s.buf.row_ptr.data(), s.buf.col_idx.data(),
-                           s.buf.interaction_mask.data(), nc,
-                           s.buf.flat_ci.data(), s.buf.flat_cj.data(),
-                           s.buf.flat_mask.data(), stream);
-
-        // Build the tight per-atom Verlet list from the cluster CSR at the
-        // search radius (rc+skin). The per-step force kernel then iterates this
-        // list (one thread per atom, ~52 neighbors) instead of re-walking the
-        // cluster CSR with 8 redundant threads per cluster — which left only
-        // ~7/32 warp lanes active (ncu) and made the cluster force kernel the
-        // dominant cost. Valid for the whole reneighbor interval (the skin
-        // bounds inter-rebuild drift). Overflow (any atom > kMaxVerletNeigh) is
-        // checked below and throws — never silently drops neighbors.
-        cudaMemsetAsync(s.buf.verlet_overflow.data(), 0, sizeof(int), stream);
-        launch_build_verlet_list<work_t>(
-            s.buf.cluster_x.data(), s.buf.cluster_y.data(),
-            s.buf.cluster_z.data(), s.buf.row_ptr.data(), s.buf.col_idx.data(),
-            s.buf.original_index.data(), nc, s.buf.verlet_stride,
-            s.buf.verlet_max, s.cut_skin_sq, ctx.runtime.host_box,
-            s.buf.verlet_nbr.data(), s.buf.verlet_cnt.data(),
-            s.buf.verlet_overflow.data(), stream);
-        {
-            int max_nbr = 0;
-            cudaMemcpyAsync(&max_nbr, s.buf.verlet_overflow.data(), sizeof(int),
+        if (s.buf.bin_ncells != ncells || s.buf.bin_cap < 16)
+            s.buf.resize_bins(ncells, 32);
+        for (int attempt = 0; attempt < 6; ++attempt) {
+            cudaMemsetAsync(s.buf.atom_bincount.data(), 0,
+                            ncells * sizeof(int), stream);
+            cudaMemsetAsync(s.buf.verlet_overflow.data(), 0, sizeof(int),
+                            stream); // reused as bin-overflow probe
+            launch_bin_atoms(frame.atoms.x, frame.atoms.y, frame.atoms.z, n,
+                             ctx.runtime.host_box, s.dims_x, s.dims_y, s.dims_z,
+                             s.periodic, s.buf.atom_bincount.data(),
+                             s.buf.atom_bins.data(), s.buf.bin_cap,
+                             s.buf.verlet_overflow.data(), stream);
+            int bin_max = 0;
+            cudaMemcpyAsync(&bin_max, s.buf.verlet_overflow.data(), sizeof(int),
                             cudaMemcpyDeviceToHost, stream);
             cudaStreamSynchronize(stream);
-            if (max_nbr > s.buf.verlet_max) {
-                // The fixed initial cap was too small for this density (denser
-                // system / different cutoff). Grow the column capacity with
-                // headroom and rebuild ONCE — self-healing, so no atom silently
-                // loses neighbors. Rare (only the first rebuild of a dense
-                // system); the grown buffer is kept for subsequent rebuilds.
-                s.buf.resize_verlet(s.buf.verlet_stride,
-                                    static_cast<int>(max_nbr * 1.3) + 32);
-                // Buffer addresses changed — re-publish to the pair list.
-                pairs_.vl_nbr = s.buf.verlet_nbr.data();
-                pairs_.vl_cnt = s.buf.verlet_cnt.data();
-                pairs_.vl_max = s.buf.verlet_max;
-                cudaMemsetAsync(s.buf.verlet_overflow.data(), 0, sizeof(int),
-                                stream);
-                launch_build_verlet_list<work_t>(
-                    s.buf.cluster_x.data(), s.buf.cluster_y.data(),
-                    s.buf.cluster_z.data(), s.buf.row_ptr.data(),
-                    s.buf.col_idx.data(), s.buf.original_index.data(), nc,
-                    s.buf.verlet_stride, s.buf.verlet_max, s.cut_skin_sq,
-                    ctx.runtime.host_box, s.buf.verlet_nbr.data(),
-                    s.buf.verlet_cnt.data(), s.buf.verlet_overflow.data(),
-                    stream);
-                cudaStreamSynchronize(stream);
-            }
+            if (bin_max <= s.buf.bin_cap)
+                break;
+            s.buf.resize_bins(ncells, static_cast<int>(bin_max * 1.3) + 16);
+        }
+        // LAMMPS-style special-bonds baking: when PairLJCut published an
+        // exclusion CSR with full exclusion (s_excl == 0), drop those partners
+        // here so the force kernel skips the per-pair scan. (Scaled exclusions,
+        // s_excl != 0, keep the force-kernel path.) Published at reneighbor by
+        // PairLJCut::build, before this launch.
+        const bool bake_excl = (ctx.runtime.excl_offsets != nullptr
+                                && ctx.runtime.s_excl == 0.0);
+        const int* bake_off = bake_excl ? ctx.runtime.excl_offsets : nullptr;
+        const int* bake_par = bake_excl ? ctx.runtime.excl_partners : nullptr;
+        ctx.runtime.exclusions_baked = bake_excl;
+        for (int attempt = 0; attempt < 6; ++attempt) {
+            cudaMemsetAsync(s.buf.verlet_overflow.data(), 0, sizeof(int),
+                            stream);
+            launch_build_verlet_direct<work_t>(
+                frame.atoms.x, frame.atoms.y, frame.atoms.z, n,
+                ctx.runtime.host_box, s.dims_x, s.dims_y, s.dims_z, s.periodic,
+                s.stencil_dx.data(), s.stencil_dy.data(), s.stencil_dz.data(),
+                s.d_n_stencil.data(), s.buf.atom_bincount.data(),
+                s.buf.atom_bins.data(), s.buf.bin_cap, s.cut_skin_sq, bake_off,
+                bake_par, s.buf.verlet_nbr.data(), s.buf.verlet_cnt.data(),
+                s.buf.verlet_stride, s.buf.verlet_max,
+                s.buf.verlet_overflow.data(), stream);
+            int v_max = 0;
+            cudaMemcpyAsync(&v_max, s.buf.verlet_overflow.data(), sizeof(int),
+                            cudaMemcpyDeviceToHost, stream);
+            cudaStreamSynchronize(stream);
+            if (v_max <= s.buf.verlet_max)
+                break;
+            s.buf.resize_verlet(s.buf.verlet_stride,
+                                static_cast<int>(v_max * 1.3) + 32);
+            pairs_.vl_nbr = s.buf.verlet_nbr.data();
+            pairs_.vl_cnt = s.buf.verlet_cnt.data();
+            pairs_.vl_max = s.buf.verlet_max;
         }
 
-        // Snapshot current per-atom positions as the new reference for
-        // the next step's displacement check. Done inside the rebuild
-        // branch so ref_x/y/z always matches the cluster_x/y/z layout
-        // used by the just-built neighbor list.
+        // Snapshot current per-atom positions as the new reference for the
+        // next step's Verlet-skin displacement check.
         launch_snapshot_ref_atoms(frame.atoms.x, frame.atoms.y, frame.atoms.z,
                                   s.buf.ref_x.data(), s.buf.ref_y.data(),
                                   s.buf.ref_z.data(), n, stream);
+
+        // Cluster CSR + flat (i,j) pair list — ONLY for the opt-in flat-pair
+        // export (cuda::RDF). The MD force path uses the per-atom Verlet list
+        // built above; this whole block is dead for it. (RDF migration to the
+        // Verlet list is a follow-up.)
+        if (ctx.runtime.flat_pairs_requested) {
+            launch_compute_morton<work_t>(
+                frame.atoms.x, frame.atoms.y, frame.atoms.z, n,
+                s.d_inv_cell.data(), s.periodic, s.buf.morton_codes.data(),
+                s.buf.atom_indices.data(), stream);
+            launch_radix_sort(s.buf.morton_codes.data(),
+                              s.buf.morton_sorted.data(),
+                              s.buf.atom_indices.data(),
+                              s.buf.indices_sorted.data(), n, s.buf.sort_temp,
+                              stream);
+            launch_scatter_and_aabb<work_t>(
+                s.buf.indices_sorted.data(), frame.atoms.x, frame.atoms.y,
+                frame.atoms.z, n, nc, s.buf.cluster_x.data(),
+                s.buf.cluster_y.data(), s.buf.cluster_z.data(),
+                s.buf.original_index.data(), s.buf.cluster_count.data(),
+                s.buf.aabb_min_x.data(), s.buf.aabb_min_y.data(),
+                s.buf.aabb_min_z.data(), s.buf.aabb_max_x.data(),
+                s.buf.aabb_max_y.data(), s.buf.aabb_max_z.data(), stream);
+            launch_assign_clusters_to_cells<work_t>(
+                s.buf.aabb_min_x.data(), s.buf.aabb_min_y.data(),
+                s.buf.aabb_min_z.data(), s.buf.aabb_max_x.data(),
+                s.buf.aabb_max_y.data(), s.buf.aabb_max_z.data(), nc,
+                s.d_inv_cell.data(), s.dims_x, s.dims_y, s.dims_z, s.periodic,
+                s.buf.cluster_cell_idx.data(), stream);
+            launch_build_grid_csr(s.buf.cluster_cell_idx.data(), nc, ncells,
+                                  s.buf.cell_start.data(),
+                                  s.buf.cell_clusters.data(),
+                                  s.buf.histogram.data(), s.buf.scan_temp,
+                                  stream);
+            launch_count_cluster_pairs<work_t>(
+                s.buf.cell_start.data(), s.buf.cell_clusters.data(),
+                s.buf.cluster_cell_idx.data(), s.dims_x, s.dims_y, s.dims_z,
+                s.stencil_dx.data(), s.stencil_dy.data(), s.stencil_dz.data(),
+                s.d_n_stencil.data(), s.buf.aabb_min_x.data(),
+                s.buf.aabb_min_y.data(), s.buf.aabb_min_z.data(),
+                s.buf.aabb_max_x.data(), s.buf.aabb_max_y.data(),
+                s.buf.aabb_max_z.data(), nc, s.periodic, s.cut_skin_sq,
+                ctx.runtime.host_box, s.buf.pair_counts.data(), stream);
+            launch_exclusive_sum(s.buf.pair_counts.data(),
+                                 s.buf.row_ptr_upper.data(), nc,
+                                 s.buf.prefix_temp, stream);
+            launch_write_row_ptr_sentinel(s.buf.row_ptr_upper.data(),
+                                          s.buf.pair_counts.data(), nc, stream);
+            int total_cluster_pairs = 0;
+            cudaMemcpy(&total_cluster_pairs, s.buf.row_ptr_upper.data() + nc,
+                       sizeof(int), cudaMemcpyDeviceToHost);
+            if (total_cluster_pairs > s.pair_capacity) {
+                long long want =
+                    static_cast<long long>(total_cluster_pairs) * 13 / 10 + 4096;
+                int new_cap = static_cast<int>(
+                    std::min(want, static_cast<long long>(
+                                       std::numeric_limits<int>::max())));
+                s.pair_capacity = new_cap;
+                s.buf.col_idx.resize(new_cap);
+                s.buf.interaction_mask.resize(new_cap);
+                s.buf.resize_flat_pairs(new_cap);
+                pairs_.cl_col_idx = s.buf.col_idx.data();
+                pairs_.cl_mask = s.buf.flat_mask.data();
+            }
+            launch_fill_cluster_pairs<work_t>(
+                s.buf.cell_start.data(), s.buf.cell_clusters.data(),
+                s.buf.cluster_cell_idx.data(), s.dims_x, s.dims_y, s.dims_z,
+                s.stencil_dx.data(), s.stencil_dy.data(), s.stencil_dz.data(),
+                s.d_n_stencil.data(), s.buf.aabb_min_x.data(),
+                s.buf.aabb_min_y.data(), s.buf.aabb_min_z.data(),
+                s.buf.aabb_max_x.data(), s.buf.aabb_max_y.data(),
+                s.buf.aabb_max_z.data(), nc, s.periodic, s.cut_skin_sq,
+                ctx.runtime.host_box, s.buf.row_ptr_upper.data(),
+                s.buf.col_idx.data(), s.buf.pair_counts.data(), stream);
+            launch_exclusive_sum(s.buf.pair_counts.data(), s.buf.row_ptr.data(),
+                                 nc, s.buf.prefix_temp, stream);
+            launch_write_row_ptr_sentinel(s.buf.row_ptr.data(),
+                                          s.buf.pair_counts.data(), nc, stream);
+            launch_compact_pairs(s.buf.col_idx.data(),
+                                 s.buf.row_ptr_upper.data(),
+                                 s.buf.row_ptr.data(), s.buf.pair_counts.data(),
+                                 nc, stream);
+            int mask_size = std::max(s.pair_capacity, 1);
+            cudaMemsetAsync(s.buf.interaction_mask.data(), 0xFF,
+                            mask_size * sizeof(uint64_t), stream);
+            cudaMemcpyAsync(s.buf.flat_pair_counter.data(),
+                            s.buf.row_ptr.data() + nc, sizeof(int),
+                            cudaMemcpyDeviceToDevice, stream);
+            launch_csr_to_flat(s.buf.row_ptr.data(), s.buf.col_idx.data(),
+                               s.buf.interaction_mask.data(), nc,
+                               s.buf.flat_ci.data(), s.buf.flat_cj.data(),
+                               s.buf.flat_mask.data(), stream);
+        }
     }
 
     // ── Per-step prune + flat-pair export: OPT-IN ───────────────────────

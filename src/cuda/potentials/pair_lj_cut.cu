@@ -13,6 +13,8 @@
 #include <cuda_runtime.h>
 #include <set>
 #include <stdexcept>
+#include <string>
+#include <stdexcept>
 #include <type_traits>
 #include <vector>
 
@@ -413,8 +415,13 @@ void PairLJCut::build(const BuildContext& ctx) {
         d_excl_partners_ = nullptr;
     }
     n_excl_total_ = 0;
-    if (!has_exclusions_)
+    if (!has_exclusions_) {
+        // No special bonds: publish "nothing to bake".
+        ctx.runtime.excl_offsets = nullptr;
+        ctx.runtime.excl_partners = nullptr;
+        ctx.runtime.s_excl = 1.0;
         return;
+    }
     auto& f = ctx.frame;
     int n = f.n_atoms();
     int n_b = f.n_bonds();
@@ -478,6 +485,11 @@ void PairLJCut::build(const BuildContext& ctx) {
         cudaMemcpy(d_excl_partners_, partners.data(),
                    n_excl_total_ * sizeof(int), cudaMemcpyHostToDevice);
     }
+    // Publish the CSR so NeighborList::launch can bake exclusions into the
+    // per-atom Verlet list (skipping the per-pair scan in the force kernel).
+    ctx.runtime.excl_offsets = d_excl_offsets_;
+    ctx.runtime.excl_partners = d_excl_partners_;
+    ctx.runtime.s_excl = s_excl_;
 }
 
 void PairLJCut::destroy(const DestroyContext& /*ctx*/) {
@@ -521,10 +533,14 @@ void PairLJCut::compute(const LaunchContext& ctx) {
     int grid = grid_size(n_atoms);
     int shmem = warps_per_block(block) * sizeof(work_t);
 
-    // Pass nullptr for exclusion CSR when none configured — kernel takes
-    // fast path and avoids the partner lookup overhead entirely.
-    const int* excl_off = (has_exclusions_) ? d_excl_offsets_ : nullptr;
-    const int* excl_par = (has_exclusions_) ? d_excl_partners_ : nullptr;
+    // Pass nullptr for exclusion CSR when none configured — kernel takes the
+    // fast path and avoids the partner lookup overhead entirely. ALSO pass
+    // nullptr when NeighborList already baked the exclusions into the per-atom
+    // Verlet list (excluded partners simply aren't in it): the force kernel then
+    // does zero per-pair exclusion work — the LAMMPS layout.
+    const bool baked = ctx.runtime.exclusions_baked;
+    const int* excl_off = (has_exclusions_ && !baked) ? d_excl_offsets_ : nullptr;
+    const int* excl_par = (has_exclusions_ && !baked) ? d_excl_partners_ : nullptr;
     const work_t cutoff_sq = static_cast<work_t>(cutoff_)
                              * static_cast<work_t>(cutoff_);
     const work_t sigma_sq = static_cast<work_t>(sigma_)
