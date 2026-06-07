@@ -1,6 +1,6 @@
 ---
 title: Force infra — engine composes force families by base pointer (Pair/Bond/…/KSpace), de-hardcode
-status: in-progress
+status: code-complete
 created: 2026-06-07
 chain: force-infra
 link: 1
@@ -51,8 +51,8 @@ CPU 驱动已经是模板化 `set_pair<P>` 持基类 + `on(force).add(KSpace…)
 - [x] **P1.1** Introduce/confirm a `KSpace` base (cpu+cuda) with virtual build/launch; `KSpaceEwald`/`KSpacePME` inherit it
 - [x] **P1.2** `MultiGpu` holds `Pair/Bond/Angle/Dihedral/KSpace` base pointers; `compute_forces`/`destroy_force_engine` dispatch virtually
 - [x] **P1.3** Add factory seam to `setup_force_engine` (Pair/KSpace/bonded factories); default = LJ + harmonic, no kspace (behavior-preserving)
-- [ ] **P1.4** Single source for g_ewald/α: engine sets it on KSpace then Pair (LAMMPS init order); remove the duplicated α constructor args as the authoritative source
-- [ ] **P1.5** RED→GREEN: custom factory injects a stub `Pair` + stub `KSpace`, asserts both dispatched; existing LJ/PE bit-identical; existing single-GPU/CPU Ewald+Coul unchanged
+- [~] **P1.4** ~~Single source for g_ewald/α~~ — **moved to force-infra-04 ac-001**. Redundant here (that link already specifies "engine sets g_ewald/α once, kspace-before-pair"), and link 01's multi-GPU engine has no Coul/Ewald to share α with yet (no consumer until -04 wires kspace into MultiGpu).
+- [x] **P1.5** RED→GREEN: custom factory injects a stub `Pair` + stub `KSpace`, asserts both dispatched (`ForceFamilyFactoryDispatch`); existing LJ/PE bit-identical; existing single-GPU/CPU Ewald+Coul unchanged
 
 ## Testing
 - Custom-factory test: stub `Pair` and stub `KSpace` are launched on each subdomain (polymorphic compose).

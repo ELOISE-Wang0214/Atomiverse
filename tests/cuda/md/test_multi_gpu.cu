@@ -13,11 +13,46 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame.h"
+#include "atomiverse/cuda/kspace/kspace.cuh"
 #include "atomiverse/cuda/md/multi_gpu.cuh"
+#include "atomiverse/cuda/potentials/pair.cuh"
 
 using namespace ATV;
 
 namespace {
+
+// ── Stub force families for the factory-dispatch test (force-infra-01 P1.5) ──
+// Minimal cuda::Pair / cuda::KSpace subclasses that do no physics, only count
+// how many times the engine dispatches their compute() — proving MultiGpu drives
+// arbitrary force families polymorphically through the factory seam.
+struct StubLaunchCounts {
+    static int pair;
+    static int kspace;
+    static void reset() { pair = 0; kspace = 0; }
+};
+int StubLaunchCounts::pair = 0;
+int StubLaunchCounts::kspace = 0;
+
+class StubPair : public cuda::Pair {
+  public:
+    StubPair() : cuda::Pair(1.0) {}
+    std::string name() const override { return "stub-pair"; }
+
+  protected:
+    void compute(const cuda::LaunchContext&) override { ++StubLaunchCounts::pair; }
+};
+
+class StubKSpace : public cuda::KSpace {
+  public:
+    StubKSpace() = default;
+    std::string name() const override { return "stub-kspace"; }
+
+  protected:
+    void compute(const cuda::LaunchContext&) override {
+        ++StubLaunchCounts::kspace;
+    }
+};
+
 // 4x4x4 grid of atoms in a cubic box, deterministic tags 0..63.
 cpu::Frame make_grid(double L) {
     const int s = 4, n = s * s * s;
@@ -277,6 +312,32 @@ TEST(MultiGpu, FullPotentialParityVsSingleGpu) {
         EXPECT_NEAR(fmulti.atoms.fy[i], fref.atoms.fy[i], 0.5) << "fy atom " << i;
         EXPECT_NEAR(fmulti.atoms.fz[i], fref.atoms.fz[i], 0.5) << "fz atom " << i;
     }
+}
+
+// force-infra-01 P1.5: the engine composes force families by abstract base via
+// caller-injected factories. Inject a stub cuda::Pair and a stub cuda::KSpace
+// and assert compute_forces() dispatches each once per subdomain — proving
+// MultiGpu is potential-agnostic (no hardcoded PairLJCut, and a KSpace slot).
+TEST(MultiGpu, ForceFamilyFactoryDispatch) {
+    cuda::md::MultiGpu mg; // works on any GPU count (single-GPU included)
+    auto g = make_bonded_grid(12.0);
+    const std::vector<double> K{100.0}, r0{2.0};
+
+    mg.partition(g);
+    // Custom pair factory (stub) instead of the default PairLJCut.
+    mg.setup_force_engine(3.5, 0.1, 2.0, -1.0,
+                          [] { return std::make_unique<StubPair>(); });
+    // Optional reciprocal family: a stub KSpace per subdomain.
+    mg.set_kspace([] { return std::make_unique<StubKSpace>(); });
+    mg.setup_bonded(K, r0); // real harmonic bond (exercises the rest of the path)
+    mg.reneighbor();
+
+    StubLaunchCounts::reset();
+    mg.compute_forces();
+
+    // One stub-pair and one stub-kspace launch per subdomain.
+    EXPECT_EQ(StubLaunchCounts::pair, mg.count());
+    EXPECT_EQ(StubLaunchCounts::kspace, mg.count());
 }
 
 // multigpu-bonded-05 P5.4: per-step hot-path timing (forward_comm + the combined
