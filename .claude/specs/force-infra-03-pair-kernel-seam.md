@@ -55,10 +55,10 @@ CUDA 列主序 Verlet），对标 LAMMPS-KOKKOS `PairComputeFunctor` + 每势仅
 ## Tasks
 - [x] **P3.1** Define the backend-agnostic `PairKernel` concept + multi-contribution type (templated scalar `T`); no LJ in the interface name/shape
 - [x] **P3.2** Express existing LJ and Coulomb-real-space math as kernel instances
-- [ ] **P3.3** CUDA `pair_compute<Kernel>` launcher over the Verlet list; port `PairLJCut` + `CoulLong`
+- [~] **P3.3** CUDA `pair_compute<Kernel>` launcher (`pair_compute.cuh`) over the Verlet list; **`PairLJCut` ported** (hand `lj_force_verlet` deleted), GH200 27/27 + racecheck clean. CoulLong CUDA port still pending (it's a `Pair` cluster style; port with the CPU CoulLong in P3.4).
 - [ ] **P3.4** CPU `pair_compute<Kernel>` launcher over the xsimd ket-loop; port `PairLJCut` + `CoulLong`; unify the CPU/CUDA CoulLong base asymmetry
-- [ ] **P3.5** RED→GREEN: kernel vs analytic (LJ + coul); combined-kernel force == LJ-run + Coul-run (superposition); migrated LJ/Coul bit-identical to baseline
-- [ ] **P3.6** Perf-neutrality: single-GPU 1M PE + CPU per-core LJ within tolerance of recorded AV baseline (no regression vs hand-written kernels)
+- [x] **P3.5** kernel vs analytic (LJ + coul) + combined-kernel == LJ+Coul superposition + batch==scalar: `test_cpu_pair_kernel` green. Migrated CUDA `PairLJCut` bit-identical (GH200 27/27 incl. multi_gpu/PE). CPU-migration parity pends P3.4.
+- [x] **P3.6** Perf: single-GPU 1M PE = **331 step/s vs ~340 hand-kernel baseline (−2.7%); still 1.15× over LAMMPS (288)**. User-accepted (2026-06-07): the generality/maintainability win is the chain's purpose; small regression documented, perf follow-up (functor param-cast hoist via `kernel.prepare<real_t>()`) deferred. CPU per-core LJ pends P3.4.
 
 ## Testing
 - `test_pair_kernel`: LJ and coul kernels return correct f_over_r/energy vs analytic.

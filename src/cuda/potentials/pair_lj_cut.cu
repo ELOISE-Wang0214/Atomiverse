@@ -6,8 +6,10 @@
 #include "atomiverse/cuda/launch.cuh"
 #include "atomiverse/cuda/neighbor_list.cuh"
 #include "atomiverse/cuda/potentials/lj_kernel.cuh"
+#include "atomiverse/cuda/potentials/pair_compute.cuh"
 #include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 #include "atomiverse/cuda/types.cuh"
+#include "atomiverse/potentials/pair_kernel.h"
 #include <cstddef>
 #include <cstdint>
 #include <cuda_runtime.h>
@@ -235,122 +237,6 @@ lj_force_cluster(real_t* __restrict__ fx, real_t* __restrict__ fy,
     }
 }
 
-/// @brief Per-atom Verlet-list LJ force. One thread per atom iterates its tight
-///        neighbor list (NeighborList::PairList vl_nbr/vl_cnt, built once per
-///        rebuild at rc+skin) and reads neighbor positions directly from the
-///        frame's current x/y/z. Replaces lj_force_cluster's 8-threads-per-
-///        cluster CSR walk, which left only ~7/32 warp lanes active (ncu) from
-///        divergent per-cluster work. The list is FULL (each pair appears in
-///        both endpoints' lists), so each interaction is computed twice and the
-///        energy/virial are halved — same atomic-free ownership as before
-///        (thread i uniquely writes fx[i]). Memory is far from saturated
-///        (~19% on GH200), so the scattered x[j] neighbor reads are cheap.
-template <bool Ortho, bool Virial>
-__global__ __launch_bounds__(ATV::cuda::kDefaultBlock, 6) void
-lj_force_verlet(real_t* __restrict__ fx, real_t* __restrict__ fy,
-                real_t* __restrict__ fz, prec_t* __restrict__ energy,
-                prec_t* __restrict__ stress, const real_t* __restrict__ x,
-                const real_t* __restrict__ y, const real_t* __restrict__ z,
-                const int* __restrict__ vl_nbr, const int* __restrict__ vl_cnt,
-                int vl_stride, int n_atoms, cuda::Box box, bool periodic,
-                work_t epsilon, work_t sigma_sq, work_t cutoff_sq,
-                work_t min_pair_dist_sq, work_t v_shift,
-                const int* __restrict__ excl_offsets,
-                const int* __restrict__ excl_partners, work_t s_excl) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-
-    work_t my_energy = work_t(0);
-    work_t my_vxx = work_t(0), my_vyy = work_t(0), my_vzz = work_t(0);
-    work_t my_vxy = work_t(0), my_vxz = work_t(0), my_vyz = work_t(0);
-
-    const real_t eps_r = real_t(epsilon);
-    const real_t sigsq_r = real_t(sigma_sq);
-    const real_t cut_r = real_t(cutoff_sq);
-    const real_t minr_r = real_t(min_pair_dist_sq);
-    const real_t vshift_r = real_t(v_shift);
-    const real_t sexcl_r = real_t(s_excl);
-
-    if (i < n_atoms) {
-        real_t xi = x[i], yi = y[i], zi = z[i];
-        real_t fxi = real_t(0), fyi = real_t(0), fzi = real_t(0);
-        const bool has_excl = (excl_offsets != nullptr);
-        int beg_excl = has_excl ? excl_offsets[i] : 0;
-        int end_excl = has_excl ? excl_offsets[i + 1] : 0;
-
-        int cnt = vl_cnt[i];
-        for (int k = 0; k < cnt; ++k) {
-            int aj = vl_nbr[static_cast<std::size_t>(k) * vl_stride + i];
-            real_t dx = x[aj] - xi;
-            real_t dy = y[aj] - yi;
-            real_t dz = z[aj] - zi;
-            if (periodic) {
-                if constexpr (Ortho) {
-                    dx -= box.cell[0] * nearbyintf(dx * box.inv_l[0]);
-                    dy -= box.cell[4] * nearbyintf(dy * box.inv_l[1]);
-                    dz -= box.cell[8] * nearbyintf(dz * box.inv_l[2]);
-                } else {
-                    box.min_image(dx, dy, dz);
-                }
-            }
-            real_t r2 = dx * dx + dy * dy + dz * dz;
-            if (r2 >= cut_r || r2 < minr_r)
-                continue;
-            real_t scale = real_t(1);
-            if (has_excl && end_excl > beg_excl
-                && excl_contains(excl_partners, beg_excl, end_excl, aj)) {
-                if (sexcl_r == real_t(0))
-                    continue;
-                scale = sexcl_r;
-            }
-            real_t inv_r2 = real_t(1) / r2;
-            real_t sr2 = sigsq_r * inv_r2;
-            real_t sr6 = sr2 * sr2 * sr2;
-            real_t sr12 = sr6 * sr6;
-            real_t f_over_r =
-                scale * real_t(24) * eps_r * (real_t(2) * sr12 - sr6) * inv_r2;
-            fxi += -f_over_r * dx;
-            fyi += -f_over_r * dy;
-            fzi += -f_over_r * dz;
-            real_t e_pair =
-                scale * (real_t(4) * eps_r * (sr12 - sr6) - vshift_r);
-            my_energy += work_t(0.5) * work_t(e_pair);
-            if constexpr (Virial) {
-                my_vxx += work_t(0.5) * work_t(dx * (f_over_r * dx));
-                my_vyy += work_t(0.5) * work_t(dy * (f_over_r * dy));
-                my_vzz += work_t(0.5) * work_t(dz * (f_over_r * dz));
-                my_vxy += work_t(0.5) * work_t(dx * (f_over_r * dy));
-                my_vxz += work_t(0.5) * work_t(dx * (f_over_r * dz));
-                my_vyz += work_t(0.5) * work_t(dy * (f_over_r * dz));
-            }
-        }
-        fx[i] += fxi;
-        fy[i] += fyi;
-        fz[i] += fzi;
-    }
-
-    extern __shared__ work_t warp_scratch[];
-    if constexpr (Virial) {
-        work_t my_vals[7] = {my_energy, my_vxx, my_vyy, my_vzz,
-                             my_vxy,    my_vxz, my_vyz};
-        work_t out[7];
-        block_reduce_sum_n<7>(my_vals, warp_scratch, out);
-        if (threadIdx.x == 0) {
-            atomicAdd(energy, static_cast<prec_t>(out[0]));
-            if (stress != nullptr) {
-#pragma unroll
-                for (int c = 0; c < 6; ++c)
-                    atomicAdd(&stress[c], static_cast<prec_t>(out[c + 1]));
-            }
-        }
-    } else {
-        work_t my_vals[1] = {my_energy};
-        work_t out[1];
-        block_reduce_sum_n<1>(my_vals, warp_scratch, out);
-        if (threadIdx.x == 0)
-            atomicAdd(energy, static_cast<prec_t>(out[0]));
-    }
-}
-
 } // namespace kernels
 } // namespace cuda
 
@@ -542,12 +428,9 @@ void PairLJCut::compute(const LaunchContext& ctx) {
     if (pairs->vl_nbr == nullptr || pairs->vl_cnt == nullptr
         || pairs->vl_stride <= 0)
         return;
-    int block = kDefaultBlock;
     int n_atoms = frame.n_atoms(); // active owned(+ghost) count this launch
     if (n_atoms <= 0)
         return;
-    int grid = grid_size(n_atoms);
-    int shmem = warps_per_block(block) * sizeof(work_t);
 
     // Pass nullptr for exclusion CSR when none configured — kernel takes the
     // fast path and avoids the partner lookup overhead entirely. ALSO pass
@@ -565,34 +448,23 @@ void PairLJCut::compute(const LaunchContext& ctx) {
         static_cast<work_t>(kernels::kMinPairDist)
         * static_cast<work_t>(kernels::kMinPairDist);
     cuda::Box box = ctx.runtime.host_box;
-    // When stress is gated off, pass a null stress pointer and select the
-    // Virial=false kernel template (skips the 6 inner-loop virial products
-    // and the stress reduction; frees the accumulator registers).
+    // When stress is gated off, pass a null stress pointer (the launcher selects
+    // the Virial=false template, skipping the 6 inner-loop virial products and
+    // the stress reduction; frees the accumulator registers).
     prec_t* stress_ptr = compute_stress_ ? &frame.scalars->stress[0] : nullptr;
-    auto launch = [&](auto ortho_tag, auto virial_tag) {
-        constexpr bool Ortho = decltype(ortho_tag)::value;
-        constexpr bool Virial = decltype(virial_tag)::value;
-        kernels::lj_force_verlet<Ortho, Virial><<<grid, block, shmem, stream>>>(
-            frame.atoms.fx, frame.atoms.fy, frame.atoms.fz,
-            &frame.scalars->energy, stress_ptr, frame.atoms.x, frame.atoms.y,
-            frame.atoms.z, pairs->vl_nbr, pairs->vl_cnt, pairs->vl_stride,
-            n_atoms, box, /*periodic=*/true, epsilon_, sigma_sq, cutoff_sq,
-            min_pair_dist_sq, v_shift_, excl_off, excl_par,
-            static_cast<work_t>(s_excl_));
-    };
-    using T = std::true_type;
-    using F = std::false_type;
-    if (box.ortho) {
-        if (compute_stress_)
-            launch(T{}, T{});
-        else
-            launch(T{}, F{});
-    } else {
-        if (compute_stress_)
-            launch(F{}, T{});
-        else
-            launch(F{}, F{});
-    }
+    // LJ force math via the backend-agnostic PairKernel seam (force-infra-03).
+    // Instantiated at real_t inside the launcher → identical float-math path as
+    // the prior hand-written lj_force_verlet. LJ is charge-free (q = nullptr).
+    const ATV::potentials::LJKernel lj{
+        static_cast<double>(epsilon_), static_cast<double>(sigma_sq),
+        static_cast<double>(cutoff_sq), static_cast<double>(v_shift_)};
+    md::launch_pair_compute(
+        lj, frame.atoms.fx, frame.atoms.fy, frame.atoms.fz,
+        &frame.scalars->energy, stress_ptr, frame.atoms.x, frame.atoms.y,
+        frame.atoms.z, /*q=*/nullptr, pairs->vl_nbr, pairs->vl_cnt,
+        pairs->vl_stride, n_atoms, box, /*periodic=*/true, cutoff_sq,
+        min_pair_dist_sq, excl_off, excl_par, static_cast<work_t>(s_excl_),
+        stream);
 }
 
 } // namespace cuda

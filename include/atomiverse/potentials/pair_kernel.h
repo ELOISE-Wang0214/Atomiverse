@@ -123,16 +123,33 @@ struct LJKernel {
     double cutoff_sq = 0.0;
     double v_shift = 0.0;
 
+    /// LJ is charge-independent — lets the launcher skip per-pair charge reads.
+    static constexpr bool needs_charge = false;
+
+    /// Outer cutoff² for the launcher's pre-skip.
+    ATV_PAIR_HD double cutoff() const { return cutoff_sq; }
+
+    /// Unmasked evaluation — the caller (single-kernel launcher) guarantees
+    /// `r2 < cutoff()`, so no per-pair mask is computed (perf-parity with the
+    /// hand-written kernel).
     template <class T>
-    ATV_PAIR_HD PairContribution<T> operator()(T r2, T /*qi*/, T /*qj*/) const {
+    ATV_PAIR_HD PairContribution<T> raw(T r2, T /*qi*/, T /*qj*/) const {
         const T inv_r2 = T(1.0) / r2;
         const T sr2 = T(sigma_sq) * inv_r2;
         const T sr6 = sr2 * sr2 * sr2;
         const T sr12 = sr6 * sr6;
-        const T inside = pair_inside(r2, T(cutoff_sq));
         const T fpair = T(24.0) * T(eps) * (T(2.0) * sr12 - sr6) * inv_r2;
         const T energy = T(4.0) * T(eps) * (sr12 - sr6) - T(v_shift);
-        return {fpair * inside, energy * inside};
+        return {fpair, energy};
+    }
+
+    /// Masked evaluation — zeroes the contribution beyond the LJ cutoff. Used
+    /// when composed (SumKernel) where `r2` may exceed this term's cutoff.
+    template <class T>
+    ATV_PAIR_HD PairContribution<T> operator()(T r2, T qi, T qj) const {
+        const PairContribution<T> c = raw(r2, qi, qj);
+        const T inside = pair_inside(r2, T(cutoff_sq));
+        return {c.fpair * inside, c.energy * inside};
     }
 };
 
@@ -145,8 +162,12 @@ struct CoulKernel {
     double cutoff_sq = 0.0;
     static constexpr double kEwaldF = 1.1283791670955126; // 2/sqrt(pi)
 
+    static constexpr bool needs_charge = true;
+
+    ATV_PAIR_HD double cutoff() const { return cutoff_sq; }
+
     template <class T>
-    ATV_PAIR_HD PairContribution<T> operator()(T r2, T qi, T qj) const {
+    ATV_PAIR_HD PairContribution<T> raw(T r2, T qi, T qj) const {
         const T inv_r2 = T(1.0) / r2;
         const T r = av_sqrt(r2);
         const T grij = T(alpha) * r;
@@ -154,8 +175,14 @@ struct CoulKernel {
         const T erfcv = av_erfc(grij);
         const T prefactor = T(qqr2e) * qi * qj / r;
         const T forcecoul = prefactor * (erfcv + T(kEwaldF) * grij * expm2);
+        return {forcecoul * inv_r2, prefactor * erfcv};
+    }
+
+    template <class T>
+    ATV_PAIR_HD PairContribution<T> operator()(T r2, T qi, T qj) const {
+        const PairContribution<T> c = raw(r2, qi, qj);
         const T inside = pair_inside(r2, T(cutoff_sq));
-        return {forcecoul * inv_r2 * inside, prefactor * erfcv * inside};
+        return {c.fpair * inside, c.energy * inside};
     }
 };
 
@@ -164,11 +191,26 @@ struct CoulKernel {
 template <class A, class B> struct SumKernel {
     A a;
     B b;
+    static constexpr bool needs_charge = A::needs_charge || B::needs_charge;
+
+    /// Outer cutoff² = the larger of the two terms' cutoffs (the launcher
+    /// pre-skips beyond it; each term still masks its own cutoff internally).
+    ATV_PAIR_HD double cutoff() const {
+        const double ca = a.cutoff(), cb = b.cutoff();
+        return ca > cb ? ca : cb;
+    }
+
+    /// Within the outer cutoff a pair may still exceed one term's cutoff, so
+    /// raw() sums the per-term MASKED contributions (a()/b()).
     template <class T>
-    ATV_PAIR_HD PairContribution<T> operator()(T r2, T qi, T qj) const {
+    ATV_PAIR_HD PairContribution<T> raw(T r2, T qi, T qj) const {
         const PairContribution<T> ca = a(r2, qi, qj);
         const PairContribution<T> cb = b(r2, qi, qj);
         return {ca.fpair + cb.fpair, ca.energy + cb.energy};
+    }
+    template <class T>
+    ATV_PAIR_HD PairContribution<T> operator()(T r2, T qi, T qj) const {
+        return raw(r2, qi, qj);
     }
 };
 
