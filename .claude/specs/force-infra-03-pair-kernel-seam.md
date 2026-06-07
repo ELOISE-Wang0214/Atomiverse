@@ -1,6 +1,6 @@
 ---
 title: Force infra — generic multi-term pair-kernel seam + shared per-backend traversal
-status: approved
+status: in-progress
 created: 2026-06-07
 chain: force-infra
 link: 3
@@ -53,8 +53,8 @@ CUDA 列主序 Verlet），对标 LAMMPS-KOKKOS `PairComputeFunctor` + 每势仅
 - 测试：`test_pair_kernel`（kernel vs 解析）+ 组合叠加等价 + LJ/Coul 移植 parity。
 
 ## Tasks
-- [ ] **P3.1** Define the backend-agnostic `PairKernel` concept + multi-contribution type (templated scalar `T`); no LJ in the interface name/shape
-- [ ] **P3.2** Express existing LJ and Coulomb-real-space math as kernel instances
+- [x] **P3.1** Define the backend-agnostic `PairKernel` concept + multi-contribution type (templated scalar `T`); no LJ in the interface name/shape
+- [x] **P3.2** Express existing LJ and Coulomb-real-space math as kernel instances
 - [ ] **P3.3** CUDA `pair_compute<Kernel>` launcher over the Verlet list; port `PairLJCut` + `CoulLong`
 - [ ] **P3.4** CPU `pair_compute<Kernel>` launcher over the xsimd ket-loop; port `PairLJCut` + `CoulLong`; unify the CPU/CUDA CoulLong base asymmetry
 - [ ] **P3.5** RED→GREEN: kernel vs analytic (LJ + coul); combined-kernel force == LJ-run + Coul-run (superposition); migrated LJ/Coul bit-identical to baseline
