@@ -32,6 +32,14 @@ class Pair : public ComponentBase {
     /// per-type tables.
     double pair_cutoff() const { return cutoff_; }
 
+    /// @brief Engine-facing hook: enable full 1-2/1-3/1-4 special-bonds
+    ///        exclusions (s12=s13=s14=0). Default no-op so the force engine
+    ///        (`cuda::md::MultiGpu`) can request exclusions on any `Pair`
+    ///        without knowing its concrete type. A distinct name from the
+    ///        derived ref-qualified `set_special_bonds(…)` setters (which a
+    ///        non-ref-qualified base virtual could not override).
+    virtual void enable_full_exclusions() {}
+
   protected:
     explicit Pair(double cutoff) : cutoff_(cutoff) {}
 

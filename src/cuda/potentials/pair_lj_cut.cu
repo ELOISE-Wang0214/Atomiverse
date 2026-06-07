@@ -392,6 +392,11 @@ PairLJCut PairLJCut::set_special_bonds(double s12, double s13,
     return std::move(*this);
 }
 
+void PairLJCut::enable_full_exclusions() {
+    // cuda::Pair hook: full 1-2/1-3/1-4 exclusion is set_special_bonds(0,0,0).
+    set_special_bonds(0.0, 0.0, 0.0);
+}
+
 PairLJCut& PairLJCut::set_compute_stress(bool on) & {
     compute_stress_ = on;
     return *this;

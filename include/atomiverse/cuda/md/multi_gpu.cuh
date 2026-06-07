@@ -15,6 +15,7 @@
 /// side cross-GPU reduction of energy/virial (gather is host-side) and bonded
 /// interactions across subdomain boundaries.
 
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -25,10 +26,14 @@
 #include <array>
 
 #include "atomiverse/cuda/neighbor_list.cuh"
-#include "atomiverse/cuda/potentials/angle_harmonic.cuh"
-#include "atomiverse/cuda/potentials/bond_harmonic.cuh"
-#include "atomiverse/cuda/potentials/dihedral_multi_harmonic.cuh"
-#include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
+// Force families are composed by abstract base pointer + factory (de-hardcoded
+// from PairLJCut/BondHarmonic/...); concrete styles are pulled in only by the
+// default factories in multi_gpu.cu, not by this header.
+#include "atomiverse/cuda/kspace/kspace.cuh"
+#include "atomiverse/cuda/potentials/angle.cuh"
+#include "atomiverse/cuda/potentials/bond.cuh"
+#include "atomiverse/cuda/potentials/dihedral.cuh"
+#include "atomiverse/cuda/potentials/pair.cuh"
 
 namespace ATV {
 namespace cpu {
@@ -116,6 +121,17 @@ class MultiGpu {
     /// Public so multi-GPU bonded force paths and tests can drive it explicitly.
     void rebuild_bonded_tuples();
 
+    // ── Force-family factories (de-hardcoded composition) ─────────────────
+    // The engine composes force families by abstract base; the concrete style
+    // is chosen by a caller-supplied factory (one instance built PER subdomain,
+    // so each GPU owns its own component). An empty factory selects the
+    // built-in default (LJ pair / harmonic bonded), preserving prior behavior.
+    using PairFactory = std::function<std::unique_ptr<cuda::Pair>()>;
+    using KSpaceFactory = std::function<std::unique_ptr<cuda::KSpace>()>;
+    using BondFactory = std::function<std::unique_ptr<cuda::Bond>()>;
+    using AngleFactory = std::function<std::unique_ptr<cuda::Angle>()>;
+    using DihedralFactory = std::function<std::unique_ptr<cuda::Dihedral>()>;
+
     /// Set up the per-subdomain cross-GPU bonded force engine. Call after
     /// `setup_force_engine` (it reuses the per-GPU Context's box/stream). One
     /// `cuda::BondHarmonic` per subdomain, built with the given per-type spring
@@ -123,10 +139,19 @@ class MultiGpu {
     /// (`angle_K` [eV/rad²], `angle_theta0` [deg]) and dihedral
     /// (`dihedral_C`, per-type 5-coeff multi/harmonic) components are created
     /// only when their coefficient lists are non-empty.
+    ///
+    /// The optional factories override the concrete bonded styles (default:
+    /// harmonic bond/angle + multi/harmonic dihedral from the coefficient
+    /// lists). A non-empty `angle_K` / `dihedral_C` selects whether the angle /
+    /// dihedral family is created at all (unchanged); the factories only change
+    /// WHICH concrete style is built.
     void setup_bonded(std::vector<double> bond_K, std::vector<double> bond_r0,
                       std::vector<double> angle_K = {},
                       std::vector<double> angle_theta0 = {},
-                      std::vector<std::array<double, 5>> dihedral_C = {});
+                      std::vector<std::array<double, 5>> dihedral_C = {},
+                      BondFactory bond_factory = {},
+                      AngleFactory angle_factory = {},
+                      DihedralFactory dihedral_factory = {});
 
     /// Compute cross-GPU bonded forces: zero each subdomain's owned+ghost force
     /// rows, run BondHarmonic over the re-materialized per-GPU bond tuples
@@ -187,12 +212,22 @@ class MultiGpu {
     // steps (with a fresh halo over cutoff+skin); intervening steps just
     // forward_comm ghost positions and let the Verlet skin-gating reuse the CSR.
 
-    /// Construct the per-subdomain force engine (Context + NeighborList +
-    /// PairLJCut). Call once after `partition`. `skin` < 0 ⇒ auto (0.3*cutoff).
+    /// Construct the per-subdomain force engine (Context + NeighborList + a
+    /// `cuda::Pair`). Call once after `partition`. `skin` < 0 ⇒ auto (0.3*cutoff).
     /// The halo is built over `cutoff + skin` so ghosts cover the skin region
     /// and no cross-boundary neighbor appears mid-interval.
+    ///
+    /// `pair_factory` builds the pair style per subdomain; when empty, the
+    /// default builds `PairLJCut(epsilon, sigma, cutoff)` with stress gated off
+    /// (the prior hardcoded behavior). A custom factory ignores epsilon/sigma.
     void setup_force_engine(double cutoff, double epsilon, double sigma,
-                            double skin = -1.0);
+                            double skin = -1.0, PairFactory pair_factory = {});
+
+    /// Attach a reciprocal-space `cuda::KSpace` component per subdomain (built
+    /// by `kspace_factory` and `build()`-initialized). Optional; call after
+    /// `setup_force_engine`. The reciprocal sum needs a cross-GPU structure-
+    /// factor reduction on >1 GPU (force-infra-04) — single-GPU only today.
+    void set_kspace(KSpaceFactory kspace_factory);
 
     /// Reneighbor step: migrate atoms that crossed subdomain boundaries to
     /// their new owner GPU, rebuild the halo (cutoff+skin), and rebuild the
@@ -268,7 +303,11 @@ class MultiGpu {
     // Cluster force engine (one per subdomain); built by setup_force_engine.
     std::vector<cuda::Context> ctx_;
     std::vector<std::unique_ptr<cuda::NeighborList>> nlist_;
-    std::vector<std::unique_ptr<cuda::PairLJCut>> pair_;
+    // Force families held by ABSTRACT BASE pointer (de-hardcoded): any
+    // cuda::Pair / KSpace / Bond / Angle / Dihedral subclass, built by the
+    // factories passed to setup_force_engine / set_kspace / setup_bonded.
+    std::vector<std::unique_ptr<cuda::Pair>> pair_;
+    std::vector<std::unique_ptr<cuda::KSpace>> kspace_; // reciprocal (optional)
     std::vector<char> nlist_built_; // per-slot: NeighborList::build called (vector<bool> avoided)
     std::vector<int> nlist_cap_;    // per-slot: atom count the nlist buffers were built for
     bool engine_ready_ = false;
@@ -289,9 +328,9 @@ class MultiGpu {
     std::vector<std::size_t> tagmap_tmp_sz_; // bytes of tagmap_tmp_[s]
 
     // Cross-GPU bonded force engine (one component per subdomain per type).
-    std::vector<std::unique_ptr<cuda::BondHarmonic>> bond_;
-    std::vector<std::unique_ptr<cuda::AngleHarmonic>> angle_;
-    std::vector<std::unique_ptr<cuda::DihedralMultiHarmonic>> dihedral_;
+    std::vector<std::unique_ptr<cuda::Bond>> bond_;
+    std::vector<std::unique_ptr<cuda::Angle>> angle_;
+    std::vector<std::unique_ptr<cuda::Dihedral>> dihedral_;
     double bonded_energy_ = 0.0;
     bool special_bonds_ = false; // rebuild PairLJCut exclusions each reneighbor
     // Single-GPU (count()==1) has no migration and no ghosts, so the tag→local

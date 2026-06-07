@@ -9,6 +9,12 @@
 #include "atomiverse/cuda/md/nve_limit.cuh"
 #include "atomiverse/cuda/transfer.cuh"
 #include "atomiverse/cuda/types.cuh"
+// Concrete force styles built by the default factories (the header now carries
+// only the abstract bases — Pair/Bond/Angle/Dihedral/KSpace).
+#include "atomiverse/cuda/potentials/angle_harmonic.cuh"
+#include "atomiverse/cuda/potentials/bond_harmonic.cuh"
+#include "atomiverse/cuda/potentials/dihedral_multi_harmonic.cuh"
+#include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 
 #include <cub/cub.cuh>
 #include <cuda_runtime.h>
@@ -837,8 +843,18 @@ void MultiGpu::destroy_force_engine() {
         if (s < static_cast<int>(dihedral_.size()) && dihedral_[s])
             dihedral_[s]->destroy(dc);
     }
+    // KSpace destroys independently of the bonded cadence (built in set_kspace,
+    // which needs neither setup_bonded nor a neighbor-list build).
+    for (int s = 0; s < static_cast<int>(kspace_.size()); ++s) {
+        if (s >= static_cast<int>(ctx_.size()) || !kspace_[s])
+            continue;
+        dm_.set_device(s);
+        cuda::DestroyContext dc{ctx_[s], frames_[s]};
+        kspace_[s]->destroy(dc);
+    }
     nlist_.clear();
     pair_.clear();
+    kspace_.clear();
     bond_.clear();
     angle_.clear();
     dihedral_.clear();
@@ -848,7 +864,7 @@ void MultiGpu::destroy_force_engine() {
 }
 
 void MultiGpu::setup_force_engine(double cutoff, double epsilon, double sigma,
-                                  double skin) {
+                                  double skin, PairFactory pair_factory) {
     destroy_force_engine();
     const int N = count();
     // Retain freed pool blocks so the per-reneighbor halo/migrate async
@@ -860,7 +876,18 @@ void MultiGpu::setup_force_engine(double cutoff, double epsilon, double sigma,
     ctx_.resize(N);
     nlist_.resize(N);
     pair_.resize(N);
+    kspace_.resize(N); // optional reciprocal-space family (set_kspace fills it)
     nlist_built_.assign(N, 0);
+    // Default pair factory: LJ with the per-step vflag gated off. This force
+    // engine drives only the NVE neighbor-list path (run_nve_nlist), which never
+    // consumes the pair virial; gating it skips the 6 inner-loop virial products
+    // and frees their registers under the kernel's launch-bounds budget. A
+    // caller-supplied pair_factory replaces this wholesale (ignores eps/sigma).
+    auto default_pair = [epsilon, sigma, cutoff]() -> std::unique_ptr<cuda::Pair> {
+        auto p = std::make_unique<cuda::PairLJCut>(epsilon, sigma, cutoff);
+        p->set_compute_stress(false);
+        return p;
+    };
     for (int s = 0; s < N; ++s) {
         ctx_[s].stream = dm_.stream(s);
         ctx_[s].defer_stream = dm_.defer_stream(s);
@@ -873,15 +900,25 @@ void MultiGpu::setup_force_engine(double cutoff, double epsilon, double sigma,
         // it is redundant here and false-fires on ghost rows, causing ~4x the
         // necessary neighbor rebuilds (the dominant multi-GPU cost).
         nlist_[s]->set_rebuild_on_request(true);
-        pair_[s] = std::make_unique<cuda::PairLJCut>(epsilon, sigma, cutoff);
-        // This force engine drives only the NVE neighbor-list path
-        // (run_nve_nlist), which never consumes the pair virial. Gate it off
-        // (LAMMPS-style vflag): skips the 6 inner-loop virial products and
-        // frees their registers under the kernel's launch-bounds budget.
-        pair_[s]->set_compute_stress(false);
+        pair_[s] = pair_factory ? pair_factory() : default_pair();
     }
     nlist_cap_.assign(N, 0); // built lazily in reneighbor() at ~1.3x n_all
     engine_ready_ = true;
+}
+
+void MultiGpu::set_kspace(KSpaceFactory kspace_factory) {
+    const int N = count();
+    if (!engine_ready_ || static_cast<int>(kspace_.size()) != N)
+        throw std::runtime_error(
+            "MultiGpu::set_kspace: call setup_force_engine first");
+    if (!kspace_factory)
+        return;
+    for (int s = 0; s < N; ++s) {
+        dm_.set_device(s);
+        kspace_[s] = kspace_factory();
+        cuda::BuildContext bc{ctx_[s], frames_[s]};
+        kspace_[s]->build(bc);
+    }
 }
 
 void MultiGpu::build_tag_maps() {
@@ -1032,7 +1069,9 @@ void MultiGpu::setup_bonded(std::vector<double> bond_K,
                             std::vector<double> bond_r0,
                             std::vector<double> angle_K,
                             std::vector<double> angle_theta0,
-                            std::vector<std::array<double, 5>> dihedral_C) {
+                            std::vector<std::array<double, 5>> dihedral_C,
+                            BondFactory bond_factory, AngleFactory angle_factory,
+                            DihedralFactory dihedral_factory) {
     if (!engine_ready_)
         throw std::runtime_error(
             "MultiGpu::setup_bonded: call setup_force_engine first");
@@ -1042,17 +1081,28 @@ void MultiGpu::setup_bonded(std::vector<double> bond_K,
     dihedral_.resize(N);
     const bool do_angle = !angle_K.empty();
     const bool do_dih = !dihedral_C.empty();
+    // Default bonded factories: harmonic bond/angle + multi/harmonic dihedral
+    // from the coefficient lists. A caller factory overrides the concrete style.
+    auto default_bond = [&bond_K, &bond_r0]() -> std::unique_ptr<cuda::Bond> {
+        return std::make_unique<cuda::BondHarmonic>(bond_K, bond_r0);
+    };
+    auto default_angle = [&angle_K, &angle_theta0]() -> std::unique_ptr<cuda::Angle> {
+        return std::make_unique<cuda::AngleHarmonic>(angle_K, angle_theta0);
+    };
+    auto default_dih = [&dihedral_C]() -> std::unique_ptr<cuda::Dihedral> {
+        return std::make_unique<cuda::DihedralMultiHarmonic>(dihedral_C);
+    };
     for (int s = 0; s < N; ++s) {
         dm_.set_device(s);
         cuda::BuildContext bc{ctx_[s], frames_[s]};
-        bond_[s] = std::make_unique<cuda::BondHarmonic>(bond_K, bond_r0);
+        bond_[s] = bond_factory ? bond_factory() : default_bond();
         bond_[s]->build(bc);
         if (do_angle) {
-            angle_[s] = std::make_unique<cuda::AngleHarmonic>(angle_K, angle_theta0);
+            angle_[s] = angle_factory ? angle_factory() : default_angle();
             angle_[s]->build(bc);
         }
         if (do_dih) {
-            dihedral_[s] = std::make_unique<cuda::DihedralMultiHarmonic>(dihedral_C);
+            dihedral_[s] = dihedral_factory ? dihedral_factory() : default_dih();
             dihedral_[s]->build(bc);
         }
     }
@@ -1116,7 +1166,7 @@ void MultiGpu::enable_special_bonds() {
         throw std::runtime_error(
             "MultiGpu::enable_special_bonds: call setup_force_engine first");
     for (int s = 0; s < N; ++s)
-        pair_[s]->set_special_bonds(0.0, 0.0, 0.0); // full 1-2/1-3/1-4 exclusion
+        pair_[s]->enable_full_exclusions(); // full 1-2/1-3/1-4 exclusion (Pair hook)
     special_bonds_ = true; // rebuild_bonded_tuples will (re)build the CSR
 }
 
@@ -1150,12 +1200,16 @@ void MultiGpu::compute_forces(bool read_energy) {
         frames_[s].n_atoms_ = na;
         cuda::LaunchContext lc{ctx_[s], frames_[s]};
         nlist_[s]->launch(lc); // neighbor refresh (driver-cadence rebuild)
-        pair_[s]->launch(lc);  // LJ on owned (full), special-bonds-excluded
+        pair_[s]->launch(lc);  // short-range (owned, full, special-bonds-excluded)
         bond_[s]->launch(lc);
         if (angle_[s])
             angle_[s]->launch(lc);
         if (dihedral_[s])
             dihedral_[s]->launch(lc);
+        // Reciprocal-space (LAMMPS order: pair → bonded → kspace). Optional;
+        // single-GPU only until force-infra-04 adds the cross-GPU S(k) reduce.
+        if (kspace_[s])
+            kspace_[s]->launch(lc);
     }
     // Multi-GPU: sync all subdomains, then bring ghost (bonded) forces home.
     // Single-GPU has no ghosts (reverse_comm is a no-op) and runs the integrator

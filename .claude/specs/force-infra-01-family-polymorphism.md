@@ -49,8 +49,8 @@ CPU 驱动已经是模板化 `set_pair<P>` 持基类 + `on(force).add(KSpace…)
 
 ## Tasks
 - [x] **P1.1** Introduce/confirm a `KSpace` base (cpu+cuda) with virtual build/launch; `KSpaceEwald`/`KSpacePME` inherit it
-- [ ] **P1.2** `MultiGpu` holds `Pair/Bond/Angle/Dihedral/KSpace` base pointers; `compute_forces`/`destroy_force_engine` dispatch virtually
-- [ ] **P1.3** Add factory seam to `setup_force_engine` (Pair/KSpace/bonded factories); default = LJ + harmonic, no kspace (behavior-preserving)
+- [x] **P1.2** `MultiGpu` holds `Pair/Bond/Angle/Dihedral/KSpace` base pointers; `compute_forces`/`destroy_force_engine` dispatch virtually
+- [x] **P1.3** Add factory seam to `setup_force_engine` (Pair/KSpace/bonded factories); default = LJ + harmonic, no kspace (behavior-preserving)
 - [ ] **P1.4** Single source for g_ewald/α: engine sets it on KSpace then Pair (LAMMPS init order); remove the duplicated α constructor args as the authoritative source
 - [ ] **P1.5** RED→GREEN: custom factory injects a stub `Pair` + stub `KSpace`, asserts both dispatched; existing LJ/PE bit-identical; existing single-GPU/CPU Ewald+Coul unchanged
 

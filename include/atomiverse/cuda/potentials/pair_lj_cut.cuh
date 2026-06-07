@@ -75,6 +75,11 @@ class PairLJCut : public Pair {
     PairLJCut& set_compute_stress(bool on) &;
     PairLJCut set_compute_stress(bool on) &&;
 
+    /// @brief `cuda::Pair` hook — enables full (0,0,0) special-bonds
+    ///        exclusions, equivalent to `set_special_bonds(0,0,0)`. Lets the
+    ///        multi-GPU engine request exclusions through a `Pair*`.
+    void enable_full_exclusions() override;
+
     void build(const BuildContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;
 
