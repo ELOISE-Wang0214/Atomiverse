@@ -35,6 +35,21 @@ ctest --test-dir build --output-on-failure
 
 Requires: C++17, CMake ≥ 3.18, CUDA toolkit, Rust toolchain (for molrs), xtensor (auto-fetched).
 
+### Toolchain via modules — never hardcode library paths
+
+Use **Lmod modules**, not hardcoded `/software/...` paths. Run everything in a **login shell** (`bash -l`) so Lmod is defined and the build env auto-loads:
+
+- **CPU (x86_64/epyc login node):** `buildenv-gcc/2026.03` auto-loads in a login shell (GCC 14.3 + OpenBLAS/LAPACK/ScaLAPACK).
+- **GPU (aarch64/GH200 node):** `module load GPU/buildenv-gcccuda/2026.03-cu13.0` (GCC 14.3, CUDA 13.0, GPU-aware MPICH, NCCL, cuFFT, FFTW, OpenBLAS).
+
+**Runtime gotcha (the #1 source of `libopenblas.so.0` / `GLIBCXX_3.4.32 not found` at test time):** the buildenv module sets `LIBRARY_PATH` + `*_ROOT` (link time) but **not** `LD_LIBRARY_PATH` (runtime). Before `ctest` / running any binary, mirror it:
+
+```bash
+bash -lc 'export LD_LIBRARY_PATH="$LIBRARY_PATH:$LD_LIBRARY_PATH"; ctest --test-dir build --output-on-failure'
+```
+
+This resolves OpenBLAS + the GCC-14 libstdc++ with **zero hardcoded paths**, on both the login node and the GPU node. CMake BLAS discovery uses `$OPENBLAS_ROOT` (module-provided); pass `-DBLA_VENDOR=OpenBLAS`.
+
 ### GPU node (CUDA build & test on Arrhenius)
 
 The **login nodes are x86_64 with no CUDA toolkit** — the CUDA backend (`ATV_BUILD_CUDA=ON`, any `.cu`) can only be built and tested on the **aarch64 Grace/GH200 GPU node**. The CPU backend builds fine on the login node with `-DATV_BUILD_CUDA=OFF`.
