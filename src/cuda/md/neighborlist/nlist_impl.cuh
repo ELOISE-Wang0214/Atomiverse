@@ -131,7 +131,12 @@ struct NListBuffers {
     // atom_bincount[cell] = #atoms in cell; atom_bins[cell*bin_cap + slot] =
     // atom index. bin_cap auto-grows on overflow (mirrors LAMMPS atoms_per_bin).
     DeviceVector<int> atom_bincount; // [ncells]
-    DeviceVector<int> atom_bins;     // [ncells * bin_cap]
+    DeviceVector<int> atom_bins;     // [ncells * bin_cap] — atom index per slot
+    // Per-slot packed positions (x,y,z), co-located with atom_bins. The Verlet
+    // build reads candidate coords from here — ONE coalesced 16B load per
+    // candidate — instead of three scattered SoA gathers x[j]/y[j]/z[j] (the
+    // L1/TEX-pipe-saturating access that dominated build_verlet_direct_k, ncu).
+    DeviceVector<float4> atom_bin_pos; // [ncells * bin_cap]
     int bin_cap = 0;
     int bin_ncells = 0;
     void resize_bins(int ncells, int cap) {
@@ -139,6 +144,7 @@ struct NListBuffers {
         bin_ncells = ncells;
         atom_bincount.resize(ncells);
         atom_bins.resize(static_cast<std::size_t>(ncells) * cap);
+        atom_bin_pos.resize(static_cast<std::size_t>(ncells) * cap);
     }
 
     void resize_pairs(int num_pairs) {
@@ -234,18 +240,18 @@ void launch_count_cluster_pairs(
 // Replaces the cluster-CSR → build_verlet_list pipeline. `box` is by value.
 void launch_bin_atoms(const real_t* x, const real_t* y, const real_t* z, int n,
                       ATV::cuda::Box box, int dx, int dy, int dz, bool periodic,
-                      int* bincount, int* bins, int bin_cap, int* overflow,
-                      cudaStream_t stream = 0);
+                      int* bincount, int* bins, float4* bin_pos, int bin_cap,
+                      int* overflow, cudaStream_t stream = 0);
 
 template <typename work_t>
 void launch_build_verlet_direct(
     const real_t* x, const real_t* y, const real_t* z, int n, ATV::cuda::Box box,
     int dx, int dy, int dz, bool periodic, const int* sdx, const int* sdy,
     const int* sdz, const int* n_stencil_ptr, const int* bincount,
-    const int* bins, int bin_cap, work_t rsq_search, const std::int64_t* tag,
-    const int* nspecial, const std::int64_t* special, int max_special,
-    int* vl_nbr, int* vl_cnt, int vl_stride, int vl_max, int* overflow,
-    cudaStream_t stream = 0);
+    const int* bins, const float4* bin_pos, int bin_cap, work_t rsq_search,
+    const std::int64_t* tag, const int* nspecial, const std::int64_t* special,
+    int max_special, int* vl_nbr, int* vl_cnt, int vl_stride, int vl_max,
+    int* overflow, cudaStream_t stream = 0);
 
 // Write row_ptr[N] = row_ptr[N-1] + pair_counts[N-1] on device (avoids D→H readback)
 void launch_write_row_ptr_sentinel(int* row_ptr, const int* pair_counts,
