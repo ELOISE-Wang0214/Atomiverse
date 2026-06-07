@@ -27,8 +27,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
-#include <cstdlib>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -400,6 +398,11 @@ void NeighborList::launch(const LaunchContext& ctx) {
     if (s.first_launch) {
         rebuild_needed = true;
         s.first_launch = false;
+    } else if (rebuild_on_request_) {
+        // Driver-owned cadence (multi-GPU): rebuild only when set_active_count
+        // re-arms first_launch; never via the per-step skin auto-gate (which
+        // false-fires on cross-GPU ghost rows). No displacement readback needed.
+        rebuild_needed = false;
     } else {
         cudaEventSynchronize(s.rebuild_flag_event);
         rebuild_needed = (*s.h_rebuild_flag != 0);

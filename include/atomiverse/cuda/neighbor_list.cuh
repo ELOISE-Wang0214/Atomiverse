@@ -153,6 +153,16 @@ class NeighborList : public ComponentBase {
     /// @param n_active Current active atom count (<= build-time capacity).
     void set_active_count(int n_active);
 
+    /// @brief Rebuild the list ONLY on explicit request (first launch after a
+    ///        set_active_count), never via the per-step Verlet-skin auto-gate.
+    ///
+    /// The multi-GPU driver reneighbors on a fixed cadence (every N steps) and
+    /// owns the rebuild trigger, so the skin auto-gate is redundant — and it
+    /// false-fires on ghost rows (refreshed cross-GPU each step, ref mismatch),
+    /// causing many spurious rebuilds. Single-GPU leaves this false and keeps
+    /// the displacement-driven gate.
+    void set_rebuild_on_request(bool on) { rebuild_on_request_ = on; }
+
     /// @brief Free the owned PairList + all internal buffers.
     /// @param ctx Destroy context with Runtime and DeviceFrame.
     void destroy(const DestroyContext& ctx) override;
@@ -182,6 +192,7 @@ class NeighborList : public ComponentBase {
   private:
     double cutoff_; ///< Interaction cutoff [Angstrom].
     double skin_;   ///< Verlet skin width [Angstrom].
+    bool rebuild_on_request_ = false; ///< Skip the skin auto-gate (multi-GPU).
     PairList pairs_; ///< Owned device pair list (allocated in build()).
     struct State;   ///< Opaque GPU state (pimpl, defined in .cu).
     std::unique_ptr<State> state_; ///< Internal GPU buffers.

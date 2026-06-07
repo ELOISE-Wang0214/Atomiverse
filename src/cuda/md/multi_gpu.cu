@@ -860,6 +860,11 @@ void MultiGpu::setup_force_engine(double cutoff, double epsilon, double sigma,
         ctx_[s].pair_list = nullptr;
         ctx_[s].flat_pairs_requested = false;
         nlist_[s] = std::make_unique<cuda::NeighborList>(cutoff, force_skin_);
+        // This driver reneighbors on a fixed cadence (reneigh_every) and re-arms
+        // the list via set_active_count, so disable the per-step skin auto-gate:
+        // it is redundant here and false-fires on ghost rows, causing ~4x the
+        // necessary neighbor rebuilds (the dominant multi-GPU cost).
+        nlist_[s]->set_rebuild_on_request(true);
         pair_[s] = std::make_unique<cuda::PairLJCut>(epsilon, sigma, cutoff);
         // This force engine drives only the NVE neighbor-list path
         // (run_nve_nlist), which never consumes the pair virial. Gate it off
@@ -1119,7 +1124,7 @@ void MultiGpu::compute_forces(bool read_energy) {
         dm_.set_device(s);
         frames_[s].n_atoms_ = na;
         cuda::LaunchContext lc{ctx_[s], frames_[s]};
-        nlist_[s]->launch(lc); // skin-gated neighbor refresh
+        nlist_[s]->launch(lc); // neighbor refresh (driver-cadence rebuild)
         pair_[s]->launch(lc);  // LJ on owned (full), special-bonds-excluded
         bond_[s]->launch(lc);
         if (angle_[s])
