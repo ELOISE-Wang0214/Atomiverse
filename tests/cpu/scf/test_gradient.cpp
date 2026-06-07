@@ -3,8 +3,8 @@
 
 #include <cmath>
 #include <gtest/gtest.h>
-#include <xtensor/xio.hpp>
-#include <xtensor/xmath.hpp>
+#include <xtensor/io/xio.hpp>
+#include <xtensor/core/xmath.hpp>
 
 #include "atomiverse/core/constants.h"
 #include "atomiverse/core/gto.h"

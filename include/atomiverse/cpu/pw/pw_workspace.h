@@ -8,7 +8,7 @@
 #include <complex>
 #include <memory>
 #include <vector>
-#include <xtensor/xarray.hpp>
+#include <xtensor/containers/xarray.hpp>
 
 namespace ATV {
 namespace cpu {

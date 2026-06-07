@@ -8,7 +8,7 @@
 #include <type_traits>
 
 #include <xtensor-blas/xlinalg.hpp>
-#include <xtensor/xview.hpp>
+#include <xtensor/views/xview.hpp>
 
 #include "atomiverse/core/device.h"
 #include "atomiverse/cpu/scf/integrals.h"

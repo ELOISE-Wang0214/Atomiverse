@@ -59,7 +59,7 @@ if(NOT ATV_DOCS_ONLY)
     FetchContent_Declare(
         xtl
         GIT_REPOSITORY https://github.com/xtensor-stack/xtl.git
-        GIT_TAG 0.8.1
+        GIT_TAG 0.8.2
     )
     FetchContent_Declare(
         xtensor
@@ -69,17 +69,17 @@ if(NOT ATV_DOCS_ONLY)
     FetchContent_Declare(
         xtensor-blas
         GIT_REPOSITORY https://github.com/xtensor-stack/xtensor-blas.git
-        GIT_TAG 0.21.0
+        GIT_TAG 0.23.0
     )
     FetchContent_Declare(
         spdlog
         GIT_REPOSITORY https://github.com/gabime/spdlog.git
-        GIT_TAG v1.15.0
+        GIT_TAG v1.17.0
     )
     FetchContent_Declare(
         xsimd
         GIT_REPOSITORY https://github.com/xtensor-stack/xsimd.git
-        GIT_TAG 13.2.0
+        GIT_TAG 14.2.0
     )
     FetchContent_MakeAvailable(xtl xtensor xtensor-blas spdlog xsimd)
 
@@ -93,34 +93,6 @@ if(NOT ATV_DOCS_ONLY)
             "${spdlog_SOURCE_DIR}/include/spdlog/fmt/bundled/base.h"
         )
     endif()
-
-    # ── xtensor 0.27.1 compatibility shim for xtensor-blas 0.21.0 ──────
-    # xtensor 0.27.1 moved flat headers into subdirectories. xtensor-blas
-    # still uses old paths (e.g. <xtensor/xtensor.hpp>). Generate forwarding
-    # headers and prepend the compat dir to atomiverse's BUILD_INTERFACE so
-    # that xtensor-blas transitive includes resolve correctly at compile time.
-    set(_xt_compat "${CMAKE_BINARY_DIR}/xtensor-compat")
-    foreach(_old_new
-        "xtensor.hpp:containers/xtensor.hpp"
-        "xarray.hpp:containers/xarray.hpp"
-        "xstorage.hpp:containers/xstorage.hpp"
-        "xview.hpp:views/xview.hpp"
-        "xstrided_view.hpp:views/xstrided_view.hpp"
-        "xnorm.hpp:reducers/xnorm.hpp"
-        "xio.hpp:io/xio.hpp"
-        "xeval.hpp:core/xeval.hpp"
-        "xnoalias.hpp:core/xnoalias.hpp"
-        "xcomplex.hpp:misc/xcomplex.hpp"
-        "xmanipulation.hpp:misc/xmanipulation.hpp"
-        "xutils.hpp:utils/xutils.hpp"
-        "xmath.hpp:core/xmath.hpp"
-    )
-        string(REPLACE ":" ";" _pair "${_old_new}")
-        list(GET _pair 0 _old)
-        list(GET _pair 1 _new)
-        file(WRITE "${_xt_compat}/xtensor/${_old}"
-             "#pragma once\n#include <xtensor/${_new}>\n")
-    endforeach()
 
     # ── Library ──
 
@@ -449,10 +421,6 @@ if(NOT ATV_DOCS_ONLY)
         target_include_directories(atomiverse PRIVATE src/cuda/md/neighborlist)
     endif()
     target_include_directories(atomiverse PUBLIC include)
-    # xtensor-blas 0.21.0 uses old-style flat headers; prepend compat shim.
-    # BUILD_INTERFACE: only applies at build time, not to install paths.
-    target_include_directories(atomiverse PUBLIC
-        $<BUILD_INTERFACE:${_xt_compat}>)
     target_link_libraries(atomiverse PUBLIC xtensor xtensor-blas xsimd spdlog::spdlog ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES})
     # xsimd is linked for direct use in native_integrals.cpp ERI hot loops.
     # XTENSOR_USE_XSIMD is NOT set globally: enabling it triggers SIMD-backed
