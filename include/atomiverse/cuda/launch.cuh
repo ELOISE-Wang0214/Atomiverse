@@ -109,6 +109,14 @@ __device__ __forceinline__ T block_reduce_sum(T value, T* warp_scratch) {
         T v = (lane < n_warps) ? warp_scratch[lane] : T(0);
         block_sum = cg::reduce(tile, v, cg::plus<T>{});
     }
+    // Barrier before returning: warp 0's read of warp_scratch above must
+    // complete on ALL lanes before any warp overwrites the scratch. Without
+    // it, a repeated-use caller (block_reduce_sum_n loops over N scalars
+    // reusing this same buffer) lets a non-zero warp race ahead to the next
+    // scalar's `warp_scratch[warp_id] = ...` write while warp 0 is still
+    // reading the previous scalar's partials — a write-after-read hazard that
+    // corrupts the reduced energy/stress/virial (compute-sanitizer racecheck).
+    __syncthreads();
     return block_sum;
 }
 
@@ -116,9 +124,10 @@ __device__ __forceinline__ T block_reduce_sum(T value, T* warp_scratch) {
 ///
 /// Loops over scalars; each call shares the same `warp_scratch` buffer
 /// (one cell per warp) and the final results land in `out[i]` on thread 0.
-/// The `__syncthreads()` inside each `block_reduce_sum` runs once per
-/// scalar (cost: N barriers, vs N × log₂(blockDim) barriers if each
-/// scalar did its own shared-mem tree reduction).
+/// Each `block_reduce_sum` runs two `__syncthreads()` (one staging the
+/// per-warp partials, one fencing the scratch read before the next scalar
+/// reuses the buffer) — cost: 2N barriers, still far below the
+/// N × log₂(blockDim) of a per-scalar shared-mem tree reduction.
 ///
 /// @tparam N Compile-time number of scalars.
 /// @tparam T Scalar type.
