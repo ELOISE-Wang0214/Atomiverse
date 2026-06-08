@@ -125,6 +125,16 @@ class PairLJCut : public Pair {
     real_t* spy_ = nullptr;
     real_t* spz_ = nullptr;
     int spos_cap_ = 0;
+
+    // AoS [x,y,z,_] packed positions, re-packed each compute() from the frame's
+    // current x/y/z. The per-atom Verlet force kernel gathers neighbour
+    // positions as one packed float4 per neighbour (a single ≤16-byte
+    // transaction) instead of three scattered SoA loads — ncu showed the SoA
+    // gather L2-bandwidth-bound (23.8 sectors/req, 5.3 useful bytes/sector) at
+    // large multi-GPU subdomain sizes. Sized to n_atoms; grown as needed; freed
+    // in destroy(). Runtime container — not part of the frame.
+    float4* pos4_ = nullptr;
+    int pos4_cap_ = 0;
 };
 
 } // namespace cuda

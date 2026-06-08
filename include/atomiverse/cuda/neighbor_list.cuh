@@ -163,6 +163,31 @@ class NeighborList : public ComponentBase {
     /// the displacement-driven gate.
     void set_rebuild_on_request(bool on) { rebuild_on_request_ = on; }
 
+    /// @brief Multi-GPU concurrent reneighbor — phase 1: ISSUE the full
+    ///        cell/bin/Verlet rebuild on this device's stream with **no host
+    ///        sync**, copying the bin/Verlet overflow probes to pinned host.
+    ///
+    /// The single-device rebuild (inside `launch()`) has two
+    /// `cudaStreamSynchronize` overflow checks. When the driver rebuilds every
+    /// GPU in a host loop, those syncs serialize the GPUs — at ~3M atoms/GPU
+    /// this was the dominant per-interval multi-GPU cost (~75 ms/GPU × N, all
+    /// serial). This split lets the driver issue the rebuild on every GPU, then
+    /// block on a SINGLE cross-device barrier, so the builds overlap. Requires
+    /// `rebuild_on_request_` (driver-owned cadence) and a prior
+    /// `set_active_count`. Pair-list pointers are republished; `first_launch` is
+    /// cleared so the following `launch()` republishes only (no second rebuild).
+    void rebuild_issue(const LaunchContext& ctx);
+
+    /// @brief Multi-GPU concurrent reneighbor — phase 2: after the driver's
+    ///        cross-device barrier, read the (now-settled) overflow probes.
+    ///
+    /// On overflow (rare: first interval, or a density change) the bin/Verlet
+    /// buffers are grown and `first_launch` is re-armed so the next `launch()`
+    /// does one synchronous rebuild for THIS device only (the tested fallback).
+    /// Otherwise the Verlet-skin reference is snapshotted. @return true iff a
+    /// resize/re-arm happened.
+    bool finalize_rebuild(const LaunchContext& ctx);
+
     /// @brief Free the owned PairList + all internal buffers.
     /// @param ctx Destroy context with Runtime and DeviceFrame.
     void destroy(const DestroyContext& ctx) override;

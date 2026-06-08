@@ -85,6 +85,14 @@ struct NeighborList::State {
     // flat_pair_counter. cudaMallocHost'd in build(), freed in destroy().
     int* h_rebuild_flag = nullptr;
     int* h_flat_pair_count = nullptr;
+    // Multi-GPU concurrent reneighbor (rebuild_issue/finalize_rebuild): separate
+    // pinned overflow probes for the bin and Verlet passes (both in flight when
+    // the rebuild is issued without an intervening sync) + the ncells the
+    // in-flight rebuild used (for the rare resize in finalize_rebuild).
+    DeviceVector<int> d_bin_overflow{1};
+    int* h_bin_overflow = nullptr;
+    int* h_vl_overflow = nullptr;
+    int rebuild_ncells = 0;
     cudaEvent_t rebuild_flag_event = nullptr;
     cudaEvent_t flat_pair_count_event = nullptr;
     bool flat_pair_count_event_valid = false;
@@ -301,6 +309,10 @@ void NeighborList::build(const BuildContext& ctx) {
     *s.h_rebuild_flag = 0;
     cudaMallocHost(&s.h_flat_pair_count, sizeof(int));
     *s.h_flat_pair_count = 0;
+    cudaMallocHost(&s.h_bin_overflow, sizeof(int));
+    *s.h_bin_overflow = 0;
+    cudaMallocHost(&s.h_vl_overflow, sizeof(int));
+    *s.h_vl_overflow = 0;
     cudaEventCreateWithFlags(&s.rebuild_flag_event, cudaEventDisableTiming);
     cudaEventCreateWithFlags(&s.flat_pair_count_event, cudaEventDisableTiming);
 
@@ -657,6 +669,15 @@ void NeighborList::launch(const LaunchContext& ctx) {
     // Clear device flag, run per-atom displacement vs ref_x/y/z, issue
     // async D2H of the result + event. The next launch() call will
     // synchronize on this event before reading the pinned host int.
+    //
+    // Driver-owned cadence (rebuild_on_request_, multi-GPU): the per-step skin
+    // auto-gate is never consulted (the driver reneighbors on a fixed interval),
+    // so computing the flag is pure waste — a memset + an all-atom displacement
+    // kernel + a D2H + an event record EVERY step. At ~3M atoms/GPU this
+    // displacement kernel dominated the per-step neighbor-launch host time
+    // (~30 ms/step over the non-rebuild steps). Skip it entirely in that mode.
+    if (rebuild_on_request_)
+        return;
     cudaMemsetAsync(s.d_rebuild_flag.data(), 0, sizeof(int), stream);
     launch_atom_displacement_max<work_t>(
         frame.atoms.x, frame.atoms.y, frame.atoms.z, s.buf.ref_x.data(),
@@ -665,6 +686,116 @@ void NeighborList::launch(const LaunchContext& ctx) {
     cudaMemcpyAsync(s.h_rebuild_flag, s.d_rebuild_flag.data(), sizeof(int),
                     cudaMemcpyDeviceToHost, stream);
     cudaEventRecord(s.rebuild_flag_event, stream);
+}
+
+// ============================================================================
+// rebuild_issue() / finalize_rebuild() — multi-GPU concurrent reneighbor
+// ============================================================================
+//
+// Split of the launch() rebuild into an ISSUE pass (no host sync) and a
+// FINALIZE pass (after the driver's single cross-device barrier). The MD force
+// path never requests the flat (i,j) export, so this is the Verlet-list build
+// only — none of launch()'s `flat_pairs_requested` CSR machinery.
+
+void NeighborList::rebuild_issue(const LaunchContext& ctx) {
+    auto& s = *state_;
+    auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
+    auto& frame = ctx.frame;
+    ctx.runtime.pair_list = &pairs_;
+    int n = s.num_atoms;
+    pairs_.num_clusters = s.num_clusters;
+    work_t r_search = cutoff_ + skin_;
+    s.rebuild_count++;
+
+    // Cell/stencil setup (box is fixed for NVE/NVT, so the host dims cached in
+    // build() stay valid — no D2H read of dims needed here).
+    launch_setup_cell_device(frame.box, s.d_cell.data(), s.d_inv_cell.data(),
+                             s.d_dims.data(), s.stencil_dx.data(),
+                             s.stencil_dy.data(), s.stencil_dz.data(),
+                             s.d_n_stencil.data(), s.d_ncells.data(), r_search,
+                             s.periodic, kMaxStencil, stream);
+    int ncells = s.dims_x * s.dims_y * s.dims_z;
+    s.rebuild_ncells = ncells;
+    if (s.buf.bin_ncells != ncells || s.buf.bin_cap < 16)
+        s.buf.resize_bins(ncells, 32);
+
+    // Bin (single pass, no sync) → bin overflow probe to its OWN pinned int.
+    cudaMemsetAsync(s.buf.atom_bincount.data(), 0, ncells * sizeof(int), stream);
+    cudaMemsetAsync(s.d_bin_overflow.data(), 0, sizeof(int), stream);
+    launch_bin_atoms(frame.atoms.x, frame.atoms.y, frame.atoms.z, n,
+                     ctx.runtime.host_box, s.dims_x, s.dims_y, s.dims_z,
+                     s.periodic, s.buf.atom_bincount.data(),
+                     s.buf.atom_bins.data(), s.buf.atom_bin_pos.data(),
+                     s.buf.bin_cap, s.d_bin_overflow.data(), stream);
+    cudaMemcpyAsync(s.h_bin_overflow, s.d_bin_overflow.data(), sizeof(int),
+                    cudaMemcpyDeviceToHost, stream);
+
+    // Verlet build (single pass, no sync) → Verlet overflow probe to its pinned
+    // int. Same special-bonds baking as launch().
+    const bool bake_excl = (frame.atoms.special != nullptr
+                            && ctx.runtime.s_excl == 0.0);
+    const std::int64_t* bake_tag = bake_excl ? frame.atoms.tag : nullptr;
+    const int* bake_nsp = bake_excl ? frame.atoms.nspecial : nullptr;
+    const std::int64_t* bake_sp = bake_excl ? frame.atoms.special : nullptr;
+    ctx.runtime.exclusions_baked = bake_excl;
+    cudaMemsetAsync(s.buf.verlet_overflow.data(), 0, sizeof(int), stream);
+    launch_build_verlet_direct<work_t>(
+        frame.atoms.x, frame.atoms.y, frame.atoms.z, n, ctx.runtime.host_box,
+        s.dims_x, s.dims_y, s.dims_z, s.periodic, s.stencil_dx.data(),
+        s.stencil_dy.data(), s.stencil_dz.data(), s.d_n_stencil.data(),
+        s.buf.atom_bincount.data(), s.buf.atom_bins.data(),
+        s.buf.atom_bin_pos.data(), s.buf.bin_cap, s.cut_skin_sq, bake_tag,
+        bake_nsp, bake_sp, cpu::Atom::kMaxSpecial, s.buf.verlet_nbr.data(),
+        s.buf.verlet_cnt.data(), s.buf.verlet_stride, s.buf.verlet_max,
+        s.buf.verlet_overflow.data(), stream);
+    cudaMemcpyAsync(s.h_vl_overflow, s.buf.verlet_overflow.data(), sizeof(int),
+                    cudaMemcpyDeviceToHost, stream);
+
+    // Republish the Verlet pointers (stable unless a prior interval resized) and
+    // clear the flat-pair count — the force path consumes only the Verlet list.
+    pairs_.vl_nbr = s.buf.verlet_nbr.data();
+    pairs_.vl_cnt = s.buf.verlet_cnt.data();
+    pairs_.vl_stride = s.buf.verlet_stride;
+    pairs_.vl_max = s.buf.verlet_max;
+    cudaMemsetAsync(pairs_.n_pairs, 0, sizeof(int), stream);
+
+    // Rebuild done for the common (no-overflow) case → the next launch()
+    // republishes only. finalize_rebuild re-arms first_launch iff it overflowed.
+    s.first_launch = false;
+}
+
+bool NeighborList::finalize_rebuild(const LaunchContext& ctx) {
+    auto& s = *state_;
+    auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
+    auto& frame = ctx.frame;
+    const int bo = *s.h_bin_overflow; // settled by the driver's cross-device barrier
+    const int vo = *s.h_vl_overflow;
+    bool grew = false;
+    if (bo > s.buf.bin_cap) {
+        s.buf.resize_bins(s.rebuild_ncells, static_cast<int>(bo * 1.3) + 16);
+        grew = true;
+    }
+    if (vo > s.buf.verlet_max) {
+        s.buf.resize_verlet(s.buf.verlet_stride,
+                            static_cast<int>(vo * 1.3) + 32);
+        pairs_.vl_nbr = s.buf.verlet_nbr.data();
+        pairs_.vl_cnt = s.buf.verlet_cnt.data();
+        pairs_.vl_max = s.buf.verlet_max;
+        grew = true;
+    }
+    if (grew) {
+        // Overflow (rare: first interval / density change). The Verlet list from
+        // rebuild_issue may be truncated — re-arm a synchronous rebuild so the
+        // following launch() rebuilds THIS device correctly (and only this one).
+        s.first_launch = true;
+        return true;
+    }
+    // Snapshot the skin reference (kept for parity even though the driver-owned
+    // cadence never consults the skin gate).
+    launch_snapshot_ref_atoms(frame.atoms.x, frame.atoms.y, frame.atoms.z,
+                              s.buf.ref_x.data(), s.buf.ref_y.data(),
+                              s.buf.ref_z.data(), s.num_atoms, stream);
+    return false;
 }
 
 // ============================================================================
@@ -702,6 +833,14 @@ void NeighborList::destroy(const DestroyContext& ctx) {
         if (s.h_flat_pair_count) {
             cudaFreeHost(s.h_flat_pair_count);
             s.h_flat_pair_count = nullptr;
+        }
+        if (s.h_bin_overflow) {
+            cudaFreeHost(s.h_bin_overflow);
+            s.h_bin_overflow = nullptr;
+        }
+        if (s.h_vl_overflow) {
+            cudaFreeHost(s.h_vl_overflow);
+            s.h_vl_overflow = nullptr;
         }
     }
 

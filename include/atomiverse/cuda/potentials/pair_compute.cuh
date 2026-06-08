@@ -46,12 +46,37 @@ __device__ inline bool pc_excl_contains(const int* __restrict__ partners,
 // starved it of registers (ncu: ~80M local-memory spill requests at 1M atoms).
 // Give the virial instantiation more registers (min 4 blocks/SM) while keeping
 // the lean no-virial path dense (6 blocks/SM).
+/// Pack SoA positions into an AoS float4 [x,y,z,_]. The neighbor-position
+/// gather in pair_compute_verlet reads one packed float4 per neighbor (a single
+/// ≤16-byte transaction) instead of three scattered 4-byte loads from separate
+/// x/y/z arrays. ncu measured the SoA gather at 23.8 sectors/request and 5.3
+/// useful bytes/sector (L2-bandwidth-bound) for large multi-GPU subdomains;
+/// the packed gather roughly triples bytes/sector. The pack itself is a fully
+/// coalesced one-pass copy.
+static __global__ void pack_pos4(const real_t* __restrict__ x,
+                                 const real_t* __restrict__ y,
+                                 const real_t* __restrict__ z,
+                                 float4* __restrict__ out, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n)
+        out[i] = make_float4(x[i], y[i], z[i], 0.0f);
+}
+
+/// Launch the SoA→AoS position pack (coalesced one-pass copy).
+inline void launch_pack_pos4(const real_t* x, const real_t* y, const real_t* z,
+                             float4* out, int n, cudaStream_t stream) {
+    if (n <= 0)
+        return;
+    const int block = kDefaultBlock;
+    const int grid = (n + block - 1) / block;
+    pack_pos4<<<grid, block, 0, stream>>>(x, y, z, out, n);
+}
+
 template <bool Ortho, bool Virial, bool Periodic, bool HasExcl, class Kernel>
 __global__ __launch_bounds__(ATV::cuda::kDefaultBlock, Virial ? 4 : 6) void pair_compute_verlet(
     real_t* __restrict__ fx, real_t* __restrict__ fy, real_t* __restrict__ fz,
     prec_t* __restrict__ energy, prec_t* __restrict__ stress,
-    const real_t* __restrict__ x, const real_t* __restrict__ y,
-    const real_t* __restrict__ z, const real_t* __restrict__ q,
+    const float4* __restrict__ pos4, const real_t* __restrict__ q,
     const int* __restrict__ vl_nbr, const int* __restrict__ vl_cnt,
     int vl_stride, int n_atoms, cuda::Box box, Kernel kernel,
     work_t cutoff_sq, work_t min_pair_dist_sq,
@@ -68,7 +93,8 @@ __global__ __launch_bounds__(ATV::cuda::kDefaultBlock, Virial ? 4 : 6) void pair
     const real_t sexcl_r = real_t(s_excl);
 
     if (i < n_atoms) {
-        const real_t xi = x[i], yi = y[i], zi = z[i];
+        const float4 pi = pos4[i];
+        const real_t xi = pi.x, yi = pi.y, zi = pi.z;
         real_t fxi = real_t(0), fyi = real_t(0), fzi = real_t(0);
         real_t qi = real_t(0);
         if constexpr (Kernel::needs_charge)
@@ -82,9 +108,10 @@ __global__ __launch_bounds__(ATV::cuda::kDefaultBlock, Virial ? 4 : 6) void pair
         const int cnt = vl_cnt[i];
         for (int k = 0; k < cnt; ++k) {
             const int aj = vl_nbr[static_cast<std::size_t>(k) * vl_stride + i];
-            real_t dx = x[aj] - xi;
-            real_t dy = y[aj] - yi;
-            real_t dz = z[aj] - zi;
+            const float4 pj = pos4[aj];
+            real_t dx = pj.x - xi;
+            real_t dy = pj.y - yi;
+            real_t dz = pj.z - zi;
             if constexpr (Periodic) {
                 if constexpr (Ortho) {
                     dx -= box.cell[0] * nearbyintf(dx * box.inv_l[0]);
@@ -161,12 +188,12 @@ __global__ __launch_bounds__(ATV::cuda::kDefaultBlock, Virial ? 4 : 6) void pair
 template <class Kernel>
 void launch_pair_compute(const Kernel& kernel, real_t* fx, real_t* fy,
                          real_t* fz, prec_t* energy, prec_t* stress,
-                         const real_t* x, const real_t* y, const real_t* z,
-                         const real_t* q, const int* vl_nbr, const int* vl_cnt,
-                         int vl_stride, int n_atoms, cuda::Box box,
-                         bool periodic, work_t cutoff_sq, work_t min_pair_dist_sq,
-                         const int* excl_offsets, const int* excl_partners,
-                         work_t s_excl, cudaStream_t stream) {
+                         const float4* pos4, const real_t* q, const int* vl_nbr,
+                         const int* vl_cnt, int vl_stride, int n_atoms,
+                         cuda::Box box, bool periodic, work_t cutoff_sq,
+                         work_t min_pair_dist_sq, const int* excl_offsets,
+                         const int* excl_partners, work_t s_excl,
+                         cudaStream_t stream) {
     if (n_atoms <= 0)
         return;
     const int block = kDefaultBlock;
@@ -184,7 +211,7 @@ void launch_pair_compute(const Kernel& kernel, real_t* fx, real_t* fy,
         constexpr bool P = decltype(P_t)::value;
         constexpr bool E = decltype(E_t)::value;
         pair_compute_verlet<O, V, P, E, Kernel><<<grid, block, shmem, stream>>>(
-            fx, fy, fz, energy, stress, x, y, z, q, vl_nbr, vl_cnt, vl_stride,
+            fx, fy, fz, energy, stress, pos4, q, vl_nbr, vl_cnt, vl_stride,
             n_atoms, box, kernel, cutoff_sq, min_pair_dist_sq, excl_offsets,
             excl_partners, s_excl);
     };

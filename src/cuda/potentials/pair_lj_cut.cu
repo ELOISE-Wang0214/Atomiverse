@@ -411,6 +411,11 @@ void PairLJCut::destroy(const DestroyContext& /*ctx*/) {
         spx_ = spy_ = spz_ = nullptr;
         spos_cap_ = 0;
     }
+    if (pos4_) {
+        cudaFree(pos4_);
+        pos4_ = nullptr;
+        pos4_cap_ = 0;
+    }
 }
 
 void PairLJCut::compute(const LaunchContext& ctx) {
@@ -431,6 +436,18 @@ void PairLJCut::compute(const LaunchContext& ctx) {
     int n_atoms = frame.n_atoms(); // active owned(+ghost) count this launch
     if (n_atoms <= 0)
         return;
+
+    // Pack the frame's current positions into AoS float4 so the force kernel's
+    // neighbour-position gather is one ≤16-byte transaction per neighbour
+    // (coalesced pack, then an efficient gather) — see pos4_ doc / pack_pos4.
+    if (n_atoms > pos4_cap_) {
+        if (pos4_)
+            cudaFree(pos4_);
+        cudaMalloc(&pos4_, static_cast<std::size_t>(n_atoms) * sizeof(float4));
+        pos4_cap_ = n_atoms;
+    }
+    md::launch_pack_pos4(frame.atoms.x, frame.atoms.y, frame.atoms.z, pos4_,
+                         n_atoms, stream);
 
     // Pass nullptr for exclusion CSR when none configured — kernel takes the
     // fast path and avoids the partner lookup overhead entirely. ALSO pass
@@ -460,11 +477,10 @@ void PairLJCut::compute(const LaunchContext& ctx) {
         static_cast<double>(cutoff_sq), static_cast<double>(v_shift_)};
     md::launch_pair_compute(
         lj, frame.atoms.fx, frame.atoms.fy, frame.atoms.fz,
-        &frame.scalars->energy, stress_ptr, frame.atoms.x, frame.atoms.y,
-        frame.atoms.z, /*q=*/nullptr, pairs->vl_nbr, pairs->vl_cnt,
-        pairs->vl_stride, n_atoms, box, /*periodic=*/true, cutoff_sq,
-        min_pair_dist_sq, excl_off, excl_par, static_cast<work_t>(s_excl_),
-        stream);
+        &frame.scalars->energy, stress_ptr, pos4_, /*q=*/nullptr, pairs->vl_nbr,
+        pairs->vl_cnt, pairs->vl_stride, n_atoms, box, /*periodic=*/true,
+        cutoff_sq, min_pair_dist_sq, excl_off, excl_par,
+        static_cast<work_t>(s_excl_), stream);
 }
 
 } // namespace cuda

@@ -15,6 +15,7 @@
 #include "atomiverse/cuda/potentials/bond_harmonic.cuh"
 #include "atomiverse/cuda/potentials/dihedral_multi_harmonic.cuh"
 #include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
+#include "neighborlist/atom_cell_sort.cuh"
 
 #include <cub/cub.cuh>
 #include <cuda_runtime.h>
@@ -120,6 +121,7 @@ void MultiGpu::destroy_frames() {
     }
     frames_.clear();
     n_local_.clear();
+    sort_buf_.clear(); // free reused cell-sort scratch with the frames
     bonded_ = false;
 }
 
@@ -1239,6 +1241,10 @@ void MultiGpu::compute_forces(bool read_energy) {
         dm_.set_device(s);
         frames_[s].n_atoms_ = na;
         cuda::LaunchContext lc{ctx_[s], frames_[s]};
+        // Multi-GPU: the neighbor list was rebuilt CONCURRENTLY in reneighbor()
+        // (rebuild_issue/finalize), so first_launch is cleared and this launch
+        // only republishes the pair list — no per-step rebuild here (which, in
+        // this per-device loop, would serialize the GPUs on its overflow syncs).
         nlist_[s]->launch(lc); // neighbor refresh (driver-cadence rebuild)
         pair_[s]->launch(lc);  // short-range (owned, full, special-bonds-excluded)
         bond_[s]->launch(lc);
@@ -1257,11 +1263,23 @@ void MultiGpu::compute_forces(bool read_energy) {
     // needed — stream ordering carries forces into the next vv_second. Dropping
     // this per-step cudaDeviceSynchronize is the last big single-GPU host win.
     if (N > 1) {
+        auto tk0 = std::chrono::steady_clock::now();
         for (int s = 0; s < N; ++s) {
             dm_.set_device(s);
             CKM(cudaDeviceSynchronize());
         }
-        reverse_comm();
+        if (mg_prof().on)
+            mg_prof().add("C_force_kernels",
+                          std::chrono::duration<double>(
+                              std::chrono::steady_clock::now() - tk0)
+                              .count());
+        auto tr0 = std::chrono::steady_clock::now();
+        reverse_comm(); // internally syncs per axis
+        if (mg_prof().on)
+            mg_prof().add("C_reverse_comm",
+                          std::chrono::duration<double>(
+                              std::chrono::steady_clock::now() - tr0)
+                              .count());
     }
     if (read_energy) {
         // Energy readback syncs implicitly (blocking D2H); ensure single-GPU
@@ -1306,6 +1324,62 @@ void MultiGpu::reneighbor() {
     // Atoms that drifted out of their subdomain change owner GPU first, THEN
     // the halo is rebuilt around the updated owned sets.
     timed("R_migrate", [&] { migrate(); });
+    // Cell-sort each subdomain's OWNED atoms by neighbor-grid cell index so a
+    // warp's atoms share cells — coalesces the Verlet build's bin_pos scan and
+    // the force gather (the multi-GPU even-count memory cliff). Runs BEFORE
+    // build_halo so HaloPlan (built against owned), build_tag_maps, and
+    // rebuild_bonded_tuples all see the sorted owned set. Grid dims mirror
+    // nlist setup_cell_body: binsize = 0.5*(cutoff+skin), dims=max(3,L/binsize).
+    // Beneficial-or-skip gate: single GPU has no halo/ghost gather and never
+    // hits the multi-GPU build cliff, so the sort is pure overhead — skip it.
+    // (Tiny multi-GPU subdomains below the cache cliff are handled by the
+    // per-GPU size guard below.) Reused per-slot buffers => no per-reneighbor
+    // cudaMalloc/Free in steady state.
+    if (count() > 1) {
+        timed("R_cell_sort", [&] {
+            const double rs = force_cutoff_ + force_skin_;
+            const double binsize = 0.5 * rs;
+            if (static_cast<int>(sort_buf_.size()) != count()) {
+                sort_buf_.clear();
+                sort_buf_.resize(count());
+                for (auto& p : sort_buf_)
+                    p = std::make_unique<nlist::AtomCellSortBuffers>();
+            }
+            // Skip when the largest subdomain is below the cliff threshold:
+            // the uncoalesced-build penalty only bites large per-GPU counts;
+            // small systems (e.g. the parity tests) don't benefit and the sort
+            // would just cost. ~2M owned atoms/GPU is well below the ~8M+ where
+            // the cliff appears.
+            int max_nl = 0;
+            for (int s = 0; s < count(); ++s)
+                max_nl = std::max(max_nl, frames_[s].n_local_);
+            constexpr int kCellSortMinOwned = 2'000'000;
+            // AV_CELL_SORT_FORCE bypasses the size gate so the parity suite can
+            // exercise the (otherwise large-system-only) sort path on small
+            // test frames.
+            if (std::getenv("AV_CELL_SORT_OFF") != nullptr)
+                return; // A/B kill-switch (regression measurement)
+            if (max_nl < kCellSortMinOwned && std::getenv("AV_CELL_SORT_FORCE") == nullptr)
+                return;
+            for (int s = 0; s < count(); ++s) {
+                if (frames_[s].n_local_ <= 0)
+                    continue;
+                dm_.set_device(s);
+                const int dx = std::max(3, static_cast<int>(box_L_[0] / binsize));
+                const int dy = std::max(3, static_cast<int>(box_L_[1] / binsize));
+                const int dz = std::max(3, static_cast<int>(box_L_[2] / binsize));
+                nlist::cell_sort_owned(
+                    frames_[s], static_cast<real_t>(box_L_[0]),
+                    static_cast<real_t>(box_L_[1]),
+                    static_cast<real_t>(box_L_[2]), dx, dy, dz, /*periodic=*/true,
+                    *sort_buf_[s], static_cast<cudaStream_t>(ctx_[s].stream));
+            }
+            for (int s = 0; s < count(); ++s) {
+                dm_.set_device(s);
+                CKM(cudaDeviceSynchronize());
+            }
+        });
+    }
     // Halo over cutoff+skin so ghosts cover the skin region — no cross-boundary
     // neighbor can appear before the next reneighbor.
     timed("R_build_halo", [&] { build_halo(force_cutoff_ + force_skin_); });
@@ -1351,6 +1425,40 @@ void MultiGpu::reneighbor() {
     for (int s = 0; s < N; ++s) {
         dm_.set_device(s);
         CKM(cudaDeviceSynchronize());
+    }
+    // Multi-GPU: rebuild every subdomain's neighbor list CONCURRENTLY. The
+    // per-device launch() rebuild has two internal cudaStreamSynchronize
+    // overflow checks; letting compute_forces' per-device launch loop trigger
+    // the rebuild (via set_active_count → first_launch) serialized the GPUs —
+    // each device's ~75 ms build ran one-after-another (the dominant per-
+    // interval multi-GPU cost, ~N× the single-GPU build). Instead: ISSUE the
+    // rebuild on every GPU (no host sync), block on ONE cross-device barrier,
+    // then FINALIZE (handle the rare overflow). The builds now overlap, so the
+    // wall cost is ~one build regardless of N. compute_forces' following
+    // launch() sees first_launch cleared and republishes only. (Single-GPU
+    // keeps the launch()-driven rebuild: first_launch stays armed here.)
+    if (N > 1) {
+        for (int s = 0; s < N; ++s) {
+            const int na = frames_[s].n_local_ + frames_[s].n_ghost_;
+            if (na == 0)
+                continue;
+            dm_.set_device(s);
+            frames_[s].n_atoms_ = na;
+            cuda::LaunchContext lc{ctx_[s], frames_[s], 0, 0};
+            nlist_[s]->rebuild_issue(lc);
+        }
+        for (int s = 0; s < N; ++s) {
+            dm_.set_device(s);
+            CKM(cudaDeviceSynchronize());
+        }
+        for (int s = 0; s < N; ++s) {
+            const int na = frames_[s].n_local_ + frames_[s].n_ghost_;
+            if (na == 0)
+                continue;
+            dm_.set_device(s);
+            cuda::LaunchContext lc{ctx_[s], frames_[s], 0, 0};
+            nlist_[s]->finalize_rebuild(lc);
+        }
     }
     // Cap the retained-pool ratchet. migrate()/build_halo() allocate large
     // transient scratch (incl. packing per-atom bonded arrays) via
@@ -1569,16 +1677,29 @@ __device__ inline int dev_owner(double x, double y, double z, int d0, int d1,
     return (ci[2] * dims[1] + ci[1]) * dims[0] + ci[0];
 }
 
+// Per-block shared-memory partial counts: every atom atomicAdds into a block-
+// local s_cnt[owner], then each block contributes ONE global atomicAdd per
+// destination slot. Cuts global-atomic traffic from O(n) (all n atoms hammering
+// the few cnt[] counters — the dominant migrate cost at ~16M atoms/GPU) to
+// O(blocks * n_slots). n_slots is tiny (= #subdomains), so the shared array fits.
 __global__ void classify_owner(const real_t* x, const real_t* y,
                                const real_t* z, int n, int d0, int d1, int d2,
                                double Lx, double Ly, double Lz, int* owner,
-                               int* cnt) {
+                               int* cnt, int n_slots) {
+    extern __shared__ int s_cnt[];
+    for (int t = threadIdx.x; t < n_slots; t += blockDim.x)
+        s_cnt[t] = 0;
+    __syncthreads();
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n)
-        return;
-    int o = dev_owner(x[i], y[i], z[i], d0, d1, d2, Lx, Ly, Lz);
-    owner[i] = o;
-    atomicAdd(&cnt[o], 1);
+    if (i < n) {
+        int o = dev_owner(x[i], y[i], z[i], d0, d1, d2, Lx, Ly, Lz);
+        owner[i] = o;
+        atomicAdd(&s_cnt[o], 1);
+    }
+    __syncthreads();
+    for (int t = threadIdx.x; t < n_slots; t += blockDim.x)
+        if (s_cnt[t] != 0)
+            atomicAdd(&cnt[t], s_cnt[t]);
 }
 
 // Stable counting-sort scatter: group owned indices by destination owner.
@@ -1733,31 +1854,45 @@ void MultiGpu::migrate() {
     std::vector<int*> d_owner(N, nullptr);
     std::vector<std::vector<int>> cnt(N, std::vector<int>(N, 0)); // cnt[src][dst]
     std::vector<std::vector<int>> boff(N, std::vector<int>(N, 0));
+    // ISSUE the classify on every GPU first (no host sync), then COLLECT the
+    // per-destination counts. The previous per-device "classify → blocking D2H
+    // → sync" loop serialized the GPUs (each D2H stalled the host until that
+    // device's classify finished); on the common no-migration reneighbor this
+    // was pure serial overhead × N. Splitting the issue from the collect lets
+    // the N classifies overlap; the collect-loop D2H then waits on
+    // already-finished kernels.
+    std::vector<int*> d_dcnt(N, nullptr);
     for (int s = 0; s < N; ++s) {
         const int nl = frames_[s].n_local_;
         dm_.set_device(s);
         int *owner, *dcnt;
         CKM(mallocp(&owner, std::max(1, nl) * sizeof(int)));
         CKM(mallocp(&dcnt, N * sizeof(int)));
-        CKM(cudaMemset(dcnt, 0, N * sizeof(int)));
+        CKM(cudaMemsetAsync(dcnt, 0, N * sizeof(int),
+                            static_cast<cudaStream_t>(0)));
         if (nl > 0) {
             auto& a = frames_[s].atoms;
             int blk = 256, grd = (nl + blk - 1) / blk;
-            classify_owner<<<grd, blk>>>(a.x, a.y, a.z, nl, dims[0], dims[1],
-                                         dims[2], box_L_[0], box_L_[1],
-                                         box_L_[2], owner, dcnt);
+            const int nslots = dims[0] * dims[1] * dims[2]; // == N
+            classify_owner<<<grd, blk, nslots * sizeof(int)>>>(
+                a.x, a.y, a.z, nl, dims[0], dims[1], dims[2], box_L_[0],
+                box_L_[1], box_L_[2], owner, dcnt, nslots);
             CKM(cudaGetLastError());
         }
+        d_owner[s] = owner;
+        d_dcnt[s] = dcnt;
+    }
+    for (int s = 0; s < N; ++s) {
+        dm_.set_device(s);
         std::vector<int> hc(N, 0);
-        CKM(cudaMemcpy(hc.data(), dcnt, N * sizeof(int), cudaMemcpyDeviceToHost));
+        CKM(cudaMemcpy(hc.data(), d_dcnt[s], N * sizeof(int),
+                       cudaMemcpyDeviceToHost)); // blocks on s's classify only
         cnt[s] = hc;
         std::vector<int> hb(N, 0);
         for (int d = 1; d < N; ++d)
             hb[d] = hb[d - 1] + hc[d - 1];
         boff[s] = hb;
-        d_owner[s] = owner;
-        freep(dcnt);
-        CKM(cudaDeviceSynchronize()); // counts (and owner[]) ready
+        freep(d_dcnt[s]);
     }
 
     // Fast path: if every owned atom stayed on its current subdomain

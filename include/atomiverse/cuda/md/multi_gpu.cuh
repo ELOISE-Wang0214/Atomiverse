@@ -42,6 +42,10 @@ class Frame;
 namespace cuda {
 namespace md {
 
+namespace nlist {
+struct AtomCellSortBuffers; // reused per-slot cell-sort scratch (impl detail)
+}
+
 class MultiGpu {
   public:
     /// @param n_gpus  Subdomains / GPUs to use (<=0 ⇒ all visible).
@@ -310,6 +314,10 @@ class MultiGpu {
     std::vector<std::unique_ptr<cuda::KSpace>> kspace_; // reciprocal (optional)
     std::vector<char> nlist_built_; // per-slot: NeighborList::build called (vector<bool> avoided)
     std::vector<int> nlist_cap_;    // per-slot: atom count the nlist buffers were built for
+    // Reused per-slot cell-sort scratch (cell-key/perm/cub-temp/staging) so the
+    // per-reneighbor owned-atom cell-sort does NO cudaMalloc/Free in steady
+    // state. unique_ptr to a forward-declared impl struct (defined in the .cu).
+    std::vector<std::unique_ptr<nlist::AtomCellSortBuffers>> sort_buf_;
     bool engine_ready_ = false;
     double force_cutoff_ = 0, force_skin_ = 0;
 
