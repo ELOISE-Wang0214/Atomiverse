@@ -1,0 +1,11 @@
+{
+  "system": "pe",
+  "av_git_sha": "c73d896",
+  "av_git_subject": "bench(md): canonical GPU scan data at 0d3635c (post memory-opt)",
+  "date": "2026-06-08",
+  "host": "n518",
+  "gpu": "NVIDIA GH200 120GB",
+  "module": "GPU/buildenv-gcccuda/2026.03-cu13.0",
+  "lammps": "/home/jicli594/work/lammps/build-kk-mpi-mixed/lmp",
+  "ngs": "1 2 3 4", "steps": 200, "reneigh": 10, "reps": 3
+}
