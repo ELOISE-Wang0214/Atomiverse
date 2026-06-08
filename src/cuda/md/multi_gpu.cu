@@ -354,8 +354,12 @@ void MultiGpu::destroy_halo_plan() {
         dm_.set_device(p.src);
         freep(p.d_src_idx);
         freep(p.d_pack_src); // packed forward/reverse staging on src
+        if (p.ev_src)
+            cudaEventDestroy(p.ev_src);
         dm_.set_device(p.dst);
         freep(p.d_pack_dst); // packed forward/reverse staging on dst
+        if (p.ev_dst)
+            cudaEventDestroy(p.ev_dst);
     }
     halo_plan_.clear();
     // The freep's above are stream-ordered (cudaFreeAsync). Drain them so a
@@ -481,8 +485,16 @@ void MultiGpu::build_halo(double cutoff) {
                 // reverse (forces): one buffer on the SRC device + one on the DST
                 // device, so each per-step exchange is a single P2P (vs three).
                 CKM(mallocp(&p.d_pack_src, 3 * cnt * sizeof(real_t)));
+                // Forward copy-done event on the SRC device (recorded on src's
+                // stream after the forward P2P; dst waits before unpacking).
+                CKM(cudaEventCreateWithFlags(&p.ev_src,
+                                             cudaEventDisableTiming));
                 dm_.set_device(dst);
                 CKM(mallocp(&p.d_pack_dst, 3 * cnt * sizeof(real_t)));
+                // Reverse copy-done event on the DST device (recorded on dst's
+                // stream after the reverse P2P; src waits before scatter-add).
+                CKM(cudaEventCreateWithFlags(&p.ev_dst,
+                                             cudaEventDisableTiming));
                 dm_.set_device(src);
                 halo_plan_.push_back(p);
 
@@ -520,21 +532,31 @@ void MultiGpu::forward_comm() {
             any = true;
             const int sd = dm_.device_id(p.src), dd_id = dm_.device_id(p.dst);
             int block = 256, grid = (p.cnt + block - 1) / block;
-            // Gather positions into the packed src buffer, ship in ONE P2P,
-            // unpack into the dst ghost rows.
+            // Gather positions into the packed src buffer, ship in ONE async P2P,
+            // unpack into the dst ghost rows. All on the per-device default
+            // stream (0): gather→copy→record are ordered on the src stream;
+            // dst's unpack waits on the src copy-done event. Async (vs the prior
+            // host-blocking cudaMemcpyPeer) so the axis's independent plans —
+            // distinct (src,dst) device pairs — overlap rather than serialize.
             dm_.set_device(p.src);
             auto& a = frames_[p.src].atoms;
             gather_positions_packed<<<grid, block>>>(a.x, a.y, a.z, p.d_src_idx,
                                                      p.cnt, p.d_pack_src);
             CKM(cudaGetLastError());
-            CKM(cudaMemcpyPeer(p.d_pack_dst, dd_id, p.d_pack_src, sd,
-                               3 * p.cnt * sizeof(real_t)));
+            CKM(cudaMemcpyPeerAsync(p.d_pack_dst, dd_id, p.d_pack_src, sd,
+                                    3 * p.cnt * sizeof(real_t), 0));
+            CKM(cudaEventRecord(p.ev_src, 0));
             dm_.set_device(p.dst);
+            CKM(cudaStreamWaitEvent(0, p.ev_src, 0));
             auto& da = frames_[p.dst].atoms;
             unpack_positions_packed<<<grid, block>>>(da.x, da.y, da.z, p.base,
                                                      p.cnt, p.d_pack_dst);
             CKM(cudaGetLastError());
         }
+        // Barrier between axes: this axis's unpacks into ghost rows must complete
+        // before the next axis gathers from them (cascade). The async P2P above
+        // already lets the axis's independent plans overlap; this only bounds the
+        // axis, so the host blocks once per axis instead of once per plan.
         if (any)
             for (int s = 0; s < count(); ++s) {
                 dm_.set_device(s);
@@ -559,20 +581,24 @@ void MultiGpu::reverse_comm() {
             const int sd = dm_.device_id(p.src), dd_id = dm_.device_id(p.dst);
             int block = 256, grid = (p.cnt + block - 1) / block;
 
-            // Gather the dst's ghost-row forces into ONE packed [3*cnt] buffer.
+            // Gather the dst's ghost-row forces into ONE packed [3*cnt] buffer,
+            // ship dst→src in a single async P2P, scatter-add into the src rows.
+            // gather→copy→record on the dst default stream; src's scatter-add
+            // waits on the dst copy-done event. Async so the axis's independent
+            // plans overlap instead of host-serializing (adjoint of forward_comm).
             dm_.set_device(p.dst);
             auto& da = frames_[p.dst].atoms;
             gather_ghost_forces_packed<<<grid, block>>>(da.fx, da.fy, da.fz,
                                                         p.base, p.cnt,
                                                         p.d_pack_dst);
             CKM(cudaGetLastError());
-
-            // Ship dst → src in a single P2P (3*cnt contiguous).
-            CKM(cudaMemcpyPeer(p.d_pack_src, sd, p.d_pack_dst, dd_id,
-                               3 * p.cnt * sizeof(real_t)));
+            CKM(cudaMemcpyPeerAsync(p.d_pack_src, sd, p.d_pack_dst, dd_id,
+                                    3 * p.cnt * sizeof(real_t), 0));
+            CKM(cudaEventRecord(p.ev_dst, 0));
 
             // Scatter-add into the src owned (or prior-axis ghost) rows.
             dm_.set_device(p.src);
+            CKM(cudaStreamWaitEvent(0, p.ev_dst, 0));
             auto& a = frames_[p.src].atoms;
             scatter_add_forces_packed<<<grid, block>>>(
                 a.fx, a.fy, a.fz, p.d_src_idx, p.cnt, p.d_pack_src);
@@ -580,6 +606,8 @@ void MultiGpu::reverse_comm() {
         }
         // Barrier between axes: this axis's scatter-adds into prior-axis ghost
         // rows must be visible before the next (lower) axis gathers from them.
+        // The async P2P above overlaps the axis's independent plans; this bounds
+        // the axis (one host block per axis instead of per plan).
         if (any)
             for (int s = 0; s < count(); ++s) {
                 dm_.set_device(s);

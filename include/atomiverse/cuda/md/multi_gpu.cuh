@@ -285,6 +285,16 @@ class MultiGpu {
         // cudaMemcpyPeer (x|y|z blocks) instead of three. Allocated by build_halo.
         real_t* d_pack_src = nullptr; // [3*cnt] src device (forward send / reverse recv)
         real_t* d_pack_dst = nullptr; // [3*cnt] dst device (forward recv / reverse gather)
+        // Copy-done events for async P2P ordering across devices. forward_comm /
+        // reverse_comm issue cudaMemcpyPeerAsync (non-blocking) so the independent
+        // plans within one cascade axis overlap instead of serializing on the
+        // host; the consuming kernel on the OTHER device waits on the event.
+        // `ev_src` lives on the src device (records the forward position copy);
+        // `ev_dst` lives on the dst device (records the reverse force copy) —
+        // cudaEventRecord requires the event's device be current. Created with
+        // cudaEventDisableTiming (sync-only). Allocated by build_halo.
+        cudaEvent_t ev_src = nullptr; // src-device: forward copy-done
+        cudaEvent_t ev_dst = nullptr; // dst-device: reverse copy-done
     };
 
   private:
