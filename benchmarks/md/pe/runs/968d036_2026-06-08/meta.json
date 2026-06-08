@@ -1,0 +1,11 @@
+{
+  "system": "pe",
+  "av_git_sha": "968d036",
+  "av_git_subject": "perf(md): cut per-atom memory (GPU bins+verlet, CPU lazy bonded)",
+  "date": "2026-06-08",
+  "host": "n555",
+  "gpu": "NVIDIA GH200 120GB",
+  "module": "GPU/buildenv-gcccuda/2026.03-cu13.0",
+  "lammps": "/home/jicli594/work/lammps/build-kk-mpi-mixed/lmp",
+  "ngs": "1 2 3 4", "steps": 200, "reneigh": 10, "reps": 3
+}

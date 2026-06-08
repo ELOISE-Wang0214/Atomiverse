@@ -98,7 +98,15 @@ def main():
             axr.set_ylabel(mlab, color="gray"); axr.set_ylim(bottom=0)
             axr.tick_params(axis="y", colors="gray")
             if ref:
-                xs = sorted(ref); ax.set_xticks(xs)
+                xs = sorted(ref)
+                # Wide rank sweeps (CPU 1..1024) span >1 decade — a log x-axis
+                # keeps the low end legible; GPU 1..4 stays linear.
+                if a.backend == "cpu" and xs and xs[-1] / max(xs[0], 1) >= 16:
+                    import matplotlib.ticker as mt
+                    ax.set_xscale("log", base=2)
+                    ax.xaxis.set_major_formatter(mt.ScalarFormatter())
+                    ax.xaxis.set_minor_locator(mt.NullLocator())
+                ax.set_xticks(xs); ax.set_xticklabels([str(x) for x in xs])
                 sec = ax.secondary_xaxis("top")
                 sec.set_xticks(xs)
                 sec.set_xticklabels([fmt_atoms(ref[n][4]) for n in xs])
@@ -111,7 +119,7 @@ def main():
                 ax.plot([], [], "ks--", alpha=0.5, label="memory (R)")
                 ax.legend(fontsize=8, loc="upper left")
     sub = "  |  ".join(f"{s}: {ids[s]}" for s in ids if ids[s])
-    hw = "GH200" if a.backend == "gpu" else "1 node, MPI ranks"
+    hw = "GH200" if a.backend == "gpu" else "MPI ranks, up to 4 nodes"
     fig.suptitle(f"AV vs LAMMPS-KOKKOS — {a.backend.upper()} scaling ({hw})\n{sub}",
                  fontsize=13, y=1.0)
     fig.tight_layout(rect=[0.03, 0, 1, 1]); fig.savefig(out, dpi=130, bbox_inches="tight")
