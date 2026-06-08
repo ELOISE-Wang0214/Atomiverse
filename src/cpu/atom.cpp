@@ -71,21 +71,28 @@ void Atom::grow(int target_nmax) {
 
     resize2d(image, 3);
 
+    // Count arrays stay allocated-and-zeroed always (cheap, ~24 B/atom) so
+    // every reader bounded by them is a safe no-op on a bonded-free system.
+    // (resize2d zeroes the tail [nmax, new), so these run while nmax is still
+    // the OLD capacity — nmax is updated last.)
     resize1d(num_bond);
-    resize2d(bond_atom, static_cast<std::size_t>(kMaxBondPerAtom));
-    resize2d(bond_type, static_cast<std::size_t>(kMaxBondPerAtom));
-
     resize1d(num_angle);
-    resize2d(angle_atom, static_cast<std::size_t>(2 * kMaxAnglePerAtom));
-    resize2d(angle_type, static_cast<std::size_t>(kMaxAnglePerAtom));
-
     resize1d(num_dihedral);
-    resize2d(dihedral_atom,
-             static_cast<std::size_t>(3 * kMaxDihedralPerAtom));
-    resize2d(dihedral_type, static_cast<std::size_t>(kMaxDihedralPerAtom));
-
     resize2d(nspecial, 3);
-    resize2d(special, static_cast<std::size_t>(kMaxSpecial));
+
+    // The wide partner/type/special arrays (~0.5 KB/atom) are grown only once
+    // bonded topology exists (lazy atom_style molecular). A bonded-free system
+    // leaves them empty and pays nothing.
+    if (has_bonded_topology_) {
+        resize2d(bond_atom, static_cast<std::size_t>(kMaxBondPerAtom));
+        resize2d(bond_type, static_cast<std::size_t>(kMaxBondPerAtom));
+        resize2d(angle_atom, static_cast<std::size_t>(2 * kMaxAnglePerAtom));
+        resize2d(angle_type, static_cast<std::size_t>(kMaxAnglePerAtom));
+        resize2d(dihedral_atom,
+                 static_cast<std::size_t>(3 * kMaxDihedralPerAtom));
+        resize2d(dihedral_type, static_cast<std::size_t>(kMaxDihedralPerAtom));
+        resize2d(special, static_cast<std::size_t>(kMaxSpecial));
+    }
 
     nmax = new_nmax;
 }
@@ -138,19 +145,44 @@ void Atom::set_capacity(int new_nmax) {
     for (std::size_t i = keep; i < n; ++i)
         tag(i) = static_cast<std::int64_t>(i);
     realloc2d(image, 3);
+    // Count arrays always present; wide bonded arrays only when topology exists.
     realloc1d(num_bond);
-    realloc2d(bond_atom, static_cast<std::size_t>(kMaxBondPerAtom));
-    realloc2d(bond_type, static_cast<std::size_t>(kMaxBondPerAtom));
     realloc1d(num_angle);
-    realloc2d(angle_atom, static_cast<std::size_t>(2 * kMaxAnglePerAtom));
-    realloc2d(angle_type, static_cast<std::size_t>(kMaxAnglePerAtom));
     realloc1d(num_dihedral);
-    realloc2d(dihedral_atom, static_cast<std::size_t>(3 * kMaxDihedralPerAtom));
-    realloc2d(dihedral_type, static_cast<std::size_t>(kMaxDihedralPerAtom));
     realloc2d(nspecial, 3);
-    realloc2d(special, static_cast<std::size_t>(kMaxSpecial));
+    if (has_bonded_topology_) {
+        realloc2d(bond_atom, static_cast<std::size_t>(kMaxBondPerAtom));
+        realloc2d(bond_type, static_cast<std::size_t>(kMaxBondPerAtom));
+        realloc2d(angle_atom, static_cast<std::size_t>(2 * kMaxAnglePerAtom));
+        realloc2d(angle_type, static_cast<std::size_t>(kMaxAnglePerAtom));
+        realloc2d(dihedral_atom,
+                  static_cast<std::size_t>(3 * kMaxDihedralPerAtom));
+        realloc2d(dihedral_type, static_cast<std::size_t>(kMaxDihedralPerAtom));
+        realloc2d(special, static_cast<std::size_t>(kMaxSpecial));
+    }
 
     nmax = new_nmax;
+}
+
+void Atom::ensure_bonded_storage() {
+    if (has_bonded_topology_)
+        return;
+    has_bonded_topology_ = true;
+    // Allocate the wide arrays to the current capacity, zero-filled. No prior
+    // data to preserve (they were never written while bonded was off).
+    if (nmax <= 0)
+        return; // sized by the next grow()/set_capacity() once atoms exist
+    const std::size_t n = static_cast<std::size_t>(nmax);
+    bond_atom = xt::zeros<std::int64_t>({n, static_cast<std::size_t>(kMaxBondPerAtom)});
+    bond_type = xt::zeros<int>({n, static_cast<std::size_t>(kMaxBondPerAtom)});
+    angle_atom = xt::zeros<std::int64_t>(
+        {n, static_cast<std::size_t>(2 * kMaxAnglePerAtom)});
+    angle_type = xt::zeros<int>({n, static_cast<std::size_t>(kMaxAnglePerAtom)});
+    dihedral_atom = xt::zeros<std::int64_t>(
+        {n, static_cast<std::size_t>(3 * kMaxDihedralPerAtom)});
+    dihedral_type =
+        xt::zeros<int>({n, static_cast<std::size_t>(kMaxDihedralPerAtom)});
+    special = xt::zeros<std::int64_t>({n, static_cast<std::size_t>(kMaxSpecial)});
 }
 
 void Atom::map_set(int begin, int end) {
@@ -174,6 +206,7 @@ namespace {
 } // namespace
 
 void Atom::add_bond(std::int64_t ti, std::int64_t tj, int type) {
+    ensure_bonded_storage(); // lazy atom_style molecular on first topology
     // LAMMPS Newton bond ON: smaller-tag atom owns. Bond appears once.
     const std::int64_t owner_tag = std::min(ti, tj);
     const std::int64_t partner_tag = std::max(ti, tj);
@@ -191,6 +224,7 @@ void Atom::add_bond(std::int64_t ti, std::int64_t tj, int type) {
 
 void Atom::add_angle(std::int64_t ti, std::int64_t tj, std::int64_t tk,
                      int type) {
+    ensure_bonded_storage();
     // Center atom (tj) owns.
     auto it = map.find(tj);
     if (it == map.end())
@@ -207,6 +241,7 @@ void Atom::add_angle(std::int64_t ti, std::int64_t tj, std::int64_t tk,
 
 void Atom::add_dihedral(std::int64_t ti, std::int64_t tj, std::int64_t tk,
                         std::int64_t tl, int type) {
+    ensure_bonded_storage();
     // Atom-j (tj, the 2nd atom) owns.
     auto it = map.find(tj);
     if (it == map.end())
@@ -348,6 +383,10 @@ void Atom::build_special_list() {
 }
 
 void Atom::reshuffle_topology_to_tags() {
+    // Bonded-free system: counts are all zero and the wide arrays are empty —
+    // nothing to reorder (and the snapshot below would index empty arrays).
+    if (!has_bonded_topology_)
+        return;
     // Snapshot the current per-atom topology, indexed by row.
     const int n = nlocal;
     std::vector<int> snap_num_bond(static_cast<std::size_t>(n));

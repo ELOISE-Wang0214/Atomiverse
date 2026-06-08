@@ -47,7 +47,7 @@ __global__ void bin_atoms_k(const real_t* __restrict__ x,
                             const real_t* __restrict__ y,
                             const real_t* __restrict__ z, int n, cuda::Box box,
                             int dx, int dy, int dz, bool periodic,
-                            int* __restrict__ bincount, int* __restrict__ bins,
+                            int* __restrict__ bincount,
                             float4* __restrict__ bin_pos, int bin_cap,
                             int* __restrict__ overflow) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -60,9 +60,11 @@ __global__ void bin_atoms_k(const real_t* __restrict__ x,
     int slot = atomicAdd(&bincount[cell], 1);
     if (slot < bin_cap) {
         const std::size_t off = static_cast<std::size_t>(cell) * bin_cap + slot;
-        bins[off] = i;
-        // Co-locate the position so the Verlet build reads it coalesced.
-        bin_pos[off] = make_float4(float(xi), float(yi), float(zi), 0.0f);
+        // Co-locate position + atom index so the Verlet build reads BOTH from
+        // one coalesced 16B load. .w carries the index via bit-exact cast
+        // (__int_as_float is a reinterpret, lossless for any int32).
+        bin_pos[off] = make_float4(float(xi), float(yi), float(zi),
+                                   __int_as_float(i));
     } else {
         atomicMax(overflow, slot + 1);
     }
@@ -74,7 +76,7 @@ __global__ void build_verlet_direct_k(
     const real_t* __restrict__ z, int n, cuda::Box box, int dx, int dy, int dz,
     bool periodic, const int* __restrict__ sdx, const int* __restrict__ sdy,
     const int* __restrict__ sdz, const int* __restrict__ n_stencil_ptr,
-    const int* __restrict__ bincount, const int* __restrict__ bins,
+    const int* __restrict__ bincount,
     const float4* __restrict__ bin_pos, int bin_cap,
     work_t rsq_search, const std::int64_t* __restrict__ tag,
     const int* __restrict__ nspecial, const std::int64_t* __restrict__ special,
@@ -126,12 +128,13 @@ __global__ void build_verlet_direct_k(
             bc = bin_cap;
         const std::size_t cbase = static_cast<std::size_t>(ncell) * bin_cap;
         for (int t = 0; t < bc; ++t) {
-            int j = bins[cbase + t];
+            // Coalesced 16B load of the candidate's position AND index (.w) —
+            // vs 3 scattered x[j]/y[j]/z[j] SoA gathers plus a separate bins[]
+            // read; this single load was the build's dominant memory cost.
+            const float4 pj = bin_pos[cbase + t];
+            const int j = __float_as_int(pj.w);
             if (j == i)
                 continue;
-            // Coalesced 16B load of the candidate's position (vs 3 scattered
-            // x[j]/y[j]/z[j] SoA gathers — the build's dominant memory cost).
-            const float4 pj = bin_pos[cbase + t];
             work_t ddx = work_t(pj.x) - work_t(xi);
             work_t ddy = work_t(pj.y) - work_t(yi);
             work_t ddz = work_t(pj.z) - work_t(zi);
@@ -178,14 +181,14 @@ __global__ void build_verlet_direct_k(
 
 void launch_bin_atoms(const real_t* x, const real_t* y, const real_t* z, int n,
                       ATV::cuda::Box box, int dx, int dy, int dz, bool periodic,
-                      int* bincount, int* bins, float4* bin_pos, int bin_cap,
+                      int* bincount, float4* bin_pos, int bin_cap,
                       int* overflow, cudaStream_t stream) {
     if (n <= 0)
         return;
     int block = ATV::cuda::kDefaultBlock;
     int grid = (n + block - 1) / block;
     bin_atoms_k<<<grid, block, 0, stream>>>(x, y, z, n, box, dx, dy, dz,
-                                            periodic, bincount, bins, bin_pos,
+                                            periodic, bincount, bin_pos,
                                             bin_cap, overflow);
     ATV_CUDA_CHECK(cudaGetLastError());
 }
@@ -195,7 +198,7 @@ void launch_build_verlet_direct(
     const real_t* x, const real_t* y, const real_t* z, int n, ATV::cuda::Box box,
     int dx, int dy, int dz, bool periodic, const int* sdx, const int* sdy,
     const int* sdz, const int* n_stencil_ptr, const int* bincount,
-    const int* bins, const float4* bin_pos, int bin_cap, work_t rsq_search,
+    const float4* bin_pos, int bin_cap, work_t rsq_search,
     const std::int64_t* tag, const int* nspecial, const std::int64_t* special,
     int max_special, int* vl_nbr, int* vl_cnt, int vl_stride, int vl_max,
     int* overflow, cudaStream_t stream) {
@@ -206,12 +209,12 @@ void launch_build_verlet_direct(
     if (box.ortho) {
         build_verlet_direct_k<true, work_t><<<grid, block, 0, stream>>>(
             x, y, z, n, box, dx, dy, dz, periodic, sdx, sdy, sdz, n_stencil_ptr,
-            bincount, bins, bin_pos, bin_cap, rsq_search, tag, nspecial, special,
+            bincount, bin_pos, bin_cap, rsq_search, tag, nspecial, special,
             max_special, vl_nbr, vl_cnt, vl_stride, vl_max, overflow);
     } else {
         build_verlet_direct_k<false, work_t><<<grid, block, 0, stream>>>(
             x, y, z, n, box, dx, dy, dz, periodic, sdx, sdy, sdz, n_stencil_ptr,
-            bincount, bins, bin_pos, bin_cap, rsq_search, tag, nspecial, special,
+            bincount, bin_pos, bin_cap, rsq_search, tag, nspecial, special,
             max_special, vl_nbr, vl_cnt, vl_stride, vl_max, overflow);
     }
     ATV_CUDA_CHECK(cudaGetLastError());

@@ -22,11 +22,14 @@ inline constexpr int kClusterSize = 8;
 /// 8×-per-cluster redundancy vs walking the cluster CSR. At LJ-liquid density
 /// (rho* ~0.71, rc+skin ~2.6 sigma) the measured max per-atom count within the
 /// search shell is ~101 (cutoff-shell neighbors that carry no force but must be
-/// listed for the skin interval); 128 covers that with headroom while keeping
-/// the list footprint tight. A device counter (atomicMax of each atom's count)
-/// is read back at rebuild and the build throws if any atom exceeds this — fail
-/// loud rather than silently drop neighbors (raise this for denser systems).
-inline constexpr int kMaxVerletNeigh = 128;
+/// listed for the skin interval); 116 covers that with ~15% headroom while
+/// keeping the list footprint tight (each column is 4 B/atom of VRAM, so the
+/// old loose 128 wasted ~48 B/atom on LJ). This is only the STARTING capacity:
+/// a device counter (atomicMax of each atom's count) is read back at every
+/// rebuild and launch() grows the buffer and rebuilds if any atom exceeds it,
+/// so the much denser PE-melt shell (~400) is reached automatically by
+/// self-heal and 116 never silently drops neighbors.
+inline constexpr int kMaxVerletNeigh = 116;
 
 /// @brief Per-cluster atom data in SoA layout.
 /// @note Non-owning view; lifetime managed by NListBuffers.

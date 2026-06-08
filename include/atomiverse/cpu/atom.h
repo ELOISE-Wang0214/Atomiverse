@@ -202,6 +202,28 @@ class Atom {
     /// pair evaluators for non-bonded exclusion (`special_bonds`).
     xt::xtensor<std::int64_t, 2> special;
 
+    // ── Lazy bonded storage (LAMMPS atom_style atomic vs molecular) ────────
+    //
+    // The wide per-bond/angle/dihedral/special partner+type arrays above
+    // (bond_atom..special, ~0.5 KB/atom for kMax{6,6,8,16}) are allocated ONLY
+    // for systems that actually carry bonded topology. A pure-LJ system (no
+    // bonds) keeps them empty and pays nothing — closing the per-atom WEAK
+    // memory gap vs LAMMPS, which likewise allocates none of this for
+    // atom_style atomic. The small COUNT arrays (num_bond/num_angle/
+    // num_dihedral/nspecial) stay allocated-and-zeroed always, so every reader
+    // that loops `for m in [0, num_bond[i])` is a no-op on an LJ system and
+    // needs no guard; the wide arrays are touched only after a bond is added.
+    bool has_bonded_topology_ = false;
+
+    /// @brief Whether the wide bonded arrays are allocated (topology present).
+    bool has_bonded() const noexcept { return has_bonded_topology_; }
+
+    /// @brief Allocate the wide bonded arrays to the current `nmax` (zeroed) and
+    /// mark the atom_style molecular. Idempotent. Called automatically by the
+    /// first `add_bond/add_angle/add_dihedral`; subsequent `grow`/`set_capacity`
+    /// then keep them sized. Safe to call before any atoms exist.
+    void ensure_bonded_storage();
+
     // ── Global tag → local row index map (LAMMPS Atom::map) ────────────────
 
     /// @brief Tag-to-local-row map. Owners-only after `Comm::exchange`;

@@ -144,22 +144,24 @@ struct NListBuffers {
     }
 
     // ── Direct per-atom cell binning (LAMMPS-style nbin) ──────────────────
-    // atom_bincount[cell] = #atoms in cell; atom_bins[cell*bin_cap + slot] =
-    // atom index. bin_cap auto-grows on overflow (mirrors LAMMPS atoms_per_bin).
-    DeviceVector<int> atom_bincount; // [ncells]
-    DeviceVector<int> atom_bins;     // [ncells * bin_cap] — atom index per slot
-    // Per-slot packed positions (x,y,z), co-located with atom_bins. The Verlet
-    // build reads candidate coords from here — ONE coalesced 16B load per
-    // candidate — instead of three scattered SoA gathers x[j]/y[j]/z[j] (the
-    // L1/TEX-pipe-saturating access that dominated build_verlet_direct_k, ncu).
-    DeviceVector<float4> atom_bin_pos; // [ncells * bin_cap]
+    // atom_bincount[cell] = #atoms in cell. Per-slot packed positions
+    // atom_bin_pos[cell*bin_cap + slot] = (x, y, z, __int_as_float(atom_index)):
+    // xyz feed the Verlet build's distance test as ONE coalesced 16B load per
+    // candidate (vs three scattered SoA gathers x[j]/y[j]/z[j] — the
+    // L1/TEX-pipe-saturating access that dominated build_verlet_direct_k, ncu),
+    // and the .w lane carries the atom index, so the build reads BOTH the
+    // candidate's coords and its global index from a single load. This folds the
+    // former separate `atom_bins` int array (ncells*bin_cap*4B) into the unused
+    // 4th float lane — frees that storage AND removes one bins[] load from the
+    // build's inner loop. bin_cap auto-grows on overflow (LAMMPS atoms_per_bin).
+    DeviceVector<int> atom_bincount;   // [ncells]
+    DeviceVector<float4> atom_bin_pos; // [ncells * bin_cap] (xyz, idx in .w)
     int bin_cap = 0;
     int bin_ncells = 0;
     void resize_bins(int ncells, int cap) {
         bin_cap = cap;
         bin_ncells = ncells;
         atom_bincount.resize(ncells);
-        atom_bins.resize(static_cast<std::size_t>(ncells) * cap);
         atom_bin_pos.resize(static_cast<std::size_t>(ncells) * cap);
     }
 
@@ -256,7 +258,7 @@ void launch_count_cluster_pairs(
 // Replaces the cluster-CSR → build_verlet_list pipeline. `box` is by value.
 void launch_bin_atoms(const real_t* x, const real_t* y, const real_t* z, int n,
                       ATV::cuda::Box box, int dx, int dy, int dz, bool periodic,
-                      int* bincount, int* bins, float4* bin_pos, int bin_cap,
+                      int* bincount, float4* bin_pos, int bin_cap,
                       int* overflow, cudaStream_t stream = 0);
 
 template <typename work_t>
@@ -264,7 +266,7 @@ void launch_build_verlet_direct(
     const real_t* x, const real_t* y, const real_t* z, int n, ATV::cuda::Box box,
     int dx, int dy, int dz, bool periodic, const int* sdx, const int* sdy,
     const int* sdz, const int* n_stencil_ptr, const int* bincount,
-    const int* bins, const float4* bin_pos, int bin_cap, work_t rsq_search,
+    const float4* bin_pos, int bin_cap, work_t rsq_search,
     const std::int64_t* tag, const int* nspecial, const std::int64_t* special,
     int max_special, int* vl_nbr, int* vl_cnt, int vl_stride, int vl_max,
     int* overflow, cudaStream_t stream = 0);

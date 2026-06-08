@@ -337,17 +337,25 @@ void materialize_per_atom_bonded(Frame& d, const cpu::Frame& src) {
     auto h2d_t = [](std::int64_t* dst, const std::int64_t* s, std::size_t cnt) {
         cudaMemcpy(dst, s, cnt * sizeof(std::int64_t), cudaMemcpyHostToDevice);
     };
+    // Count arrays are always host-allocated (zeroed when bonded-free).
     h2d_i(d.atoms.num_bond, src.atoms.num_bond.data(), un);
-    h2d_t(d.atoms.bond_atom, src.atoms.bond_atom.data(), un * MB);
-    h2d_i(d.atoms.bond_type, src.atoms.bond_type.data(), un * MB);
     h2d_i(d.atoms.num_angle, src.atoms.num_angle.data(), un);
-    h2d_t(d.atoms.angle_atom, src.atoms.angle_atom.data(), un * 2 * MA);
-    h2d_i(d.atoms.angle_type, src.atoms.angle_type.data(), un * MA);
     h2d_i(d.atoms.num_dihedral, src.atoms.num_dihedral.data(), un);
-    h2d_t(d.atoms.dihedral_atom, src.atoms.dihedral_atom.data(), un * 3 * MD);
-    h2d_i(d.atoms.dihedral_type, src.atoms.dihedral_type.data(), un * MD);
     h2d_i(d.atoms.nspecial, src.atoms.nspecial.data(), un * 3);
-    h2d_t(d.atoms.special, src.atoms.special.data(), un * MS);
+    // The wide partner/type/special arrays are host-allocated ONLY for
+    // atom_style-molecular systems (cpu::Atom lazy bonded storage). For a
+    // bonded-free system they are empty host-side; the device arrays stay
+    // allocated-and-zeroed and the counts above are 0, so the GPU never reads
+    // them. Copy only when the host actually has the data.
+    if (src.atoms.has_bonded()) {
+        h2d_t(d.atoms.bond_atom, src.atoms.bond_atom.data(), un * MB);
+        h2d_i(d.atoms.bond_type, src.atoms.bond_type.data(), un * MB);
+        h2d_t(d.atoms.angle_atom, src.atoms.angle_atom.data(), un * 2 * MA);
+        h2d_i(d.atoms.angle_type, src.atoms.angle_type.data(), un * MA);
+        h2d_t(d.atoms.dihedral_atom, src.atoms.dihedral_atom.data(), un * 3 * MD);
+        h2d_i(d.atoms.dihedral_type, src.atoms.dihedral_type.data(), un * MD);
+        h2d_t(d.atoms.special, src.atoms.special.data(), un * MS);
+    }
 }
 
 void destroy(Frame& d) {

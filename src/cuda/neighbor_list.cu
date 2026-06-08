@@ -492,7 +492,7 @@ void NeighborList::launch(const LaunchContext& ctx) {
             launch_bin_atoms(frame.atoms.x, frame.atoms.y, frame.atoms.z, n,
                              ctx.runtime.host_box, s.dims_x, s.dims_y, s.dims_z,
                              s.periodic, s.buf.atom_bincount.data(),
-                             s.buf.atom_bins.data(), s.buf.atom_bin_pos.data(),
+                             s.buf.atom_bin_pos.data(),
                              s.buf.bin_cap, s.buf.verlet_overflow.data(), stream);
             int bin_max = 0;
             cudaMemcpyAsync(&bin_max, s.buf.verlet_overflow.data(), sizeof(int),
@@ -523,7 +523,7 @@ void NeighborList::launch(const LaunchContext& ctx) {
                 ctx.runtime.host_box, s.dims_x, s.dims_y, s.dims_z, s.periodic,
                 s.stencil_dx.data(), s.stencil_dy.data(), s.stencil_dz.data(),
                 s.d_n_stencil.data(), s.buf.atom_bincount.data(),
-                s.buf.atom_bins.data(), s.buf.atom_bin_pos.data(), s.buf.bin_cap,
+                s.buf.atom_bin_pos.data(), s.buf.bin_cap,
                 s.cut_skin_sq, bake_tag,
                 bake_nsp, bake_sp, cpu::Atom::kMaxSpecial,
                 s.buf.verlet_nbr.data(), s.buf.verlet_cnt.data(),
@@ -781,7 +781,7 @@ void NeighborList::rebuild_issue(const LaunchContext& ctx) {
     launch_bin_atoms(frame.atoms.x, frame.atoms.y, frame.atoms.z, n,
                      ctx.runtime.host_box, s.dims_x, s.dims_y, s.dims_z,
                      s.periodic, s.buf.atom_bincount.data(),
-                     s.buf.atom_bins.data(), s.buf.atom_bin_pos.data(),
+                     s.buf.atom_bin_pos.data(),
                      s.buf.bin_cap, s.d_bin_overflow.data(), stream);
     cudaMemcpyAsync(s.h_bin_overflow, s.d_bin_overflow.data(), sizeof(int),
                     cudaMemcpyDeviceToHost, stream);
@@ -799,7 +799,7 @@ void NeighborList::rebuild_issue(const LaunchContext& ctx) {
         frame.atoms.x, frame.atoms.y, frame.atoms.z, n, ctx.runtime.host_box,
         s.dims_x, s.dims_y, s.dims_z, s.periodic, s.stencil_dx.data(),
         s.stencil_dy.data(), s.stencil_dz.data(), s.d_n_stencil.data(),
-        s.buf.atom_bincount.data(), s.buf.atom_bins.data(),
+        s.buf.atom_bincount.data(),
         s.buf.atom_bin_pos.data(), s.buf.bin_cap, s.cut_skin_sq, bake_tag,
         bake_nsp, bake_sp, cpu::Atom::kMaxSpecial, s.buf.verlet_nbr.data(),
         s.buf.verlet_cnt.data(), s.buf.verlet_stride, s.buf.verlet_max,

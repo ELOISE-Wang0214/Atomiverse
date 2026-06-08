@@ -52,6 +52,9 @@ cpu::Frame make_bonded_lattice(int n_side, double spacing) {
 
     cpu::Frame frame(n);
     auto& a = frame.atoms;
+    // This fixture populates the wide bonded SoA directly (not via add_bond),
+    // so opt the frame into atom_style-molecular storage before writing.
+    a.ensure_bonded_storage();
     int idx = 0;
     for (int ix = 0; ix < n_side; ++ix)
         for (int iy = 0; iy < n_side; ++iy)

@@ -675,6 +675,12 @@ void MultiGpu::partition(const cpu::Frame& global, double ghost_headroom) {
         cpu::Frame sub(cnt > 0 ? cnt : 1);
         sub.atoms.nlocal = cnt;
         sub.box = global.box;
+        // The partition writes the wide bonded arrays directly (not via
+        // add_bond), so explicitly allocate them on the fresh sub frame when the
+        // system carries topology — otherwise the lazy atom_style-molecular
+        // storage stays empty and the per-atom writes below run out of bounds.
+        if (has_bonded)
+            sub.atoms.ensure_bonded_storage();
         for (int k = 0; k < cnt; ++k) {
             const int g = idx[k];
             sub.atoms.x[k] = global.atoms.x[g];

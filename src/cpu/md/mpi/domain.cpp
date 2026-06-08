@@ -266,25 +266,28 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
         if (oi == ni)
             continue;
         a.num_bond(ni) = a.num_bond(oi);
-        for (int m = 0; m < cpu::Atom::kMaxBondPerAtom; ++m) {
-            a.bond_atom(ni, m) = a.bond_atom(oi, m);
-            a.bond_type(ni, m) = a.bond_type(oi, m);
-        }
         a.num_angle(ni) = a.num_angle(oi);
-        for (int m = 0; m < 2 * cpu::Atom::kMaxAnglePerAtom; ++m)
-            a.angle_atom(ni, m) = a.angle_atom(oi, m);
-        for (int m = 0; m < cpu::Atom::kMaxAnglePerAtom; ++m)
-            a.angle_type(ni, m) = a.angle_type(oi, m);
         a.num_dihedral(ni) = a.num_dihedral(oi);
-        for (int m = 0; m < 3 * cpu::Atom::kMaxDihedralPerAtom; ++m)
-            a.dihedral_atom(ni, m) = a.dihedral_atom(oi, m);
-        for (int m = 0; m < cpu::Atom::kMaxDihedralPerAtom; ++m)
-            a.dihedral_type(ni, m) = a.dihedral_type(oi, m);
         a.nspecial(ni, 0) = a.nspecial(oi, 0);
         a.nspecial(ni, 1) = a.nspecial(oi, 1);
         a.nspecial(ni, 2) = a.nspecial(oi, 2);
-        for (int m = 0; m < cpu::Atom::kMaxSpecial; ++m)
-            a.special(ni, m) = a.special(oi, m);
+        // Wide arrays exist only for atom_style-molecular (lazy bonded storage).
+        if (a.has_bonded()) {
+            for (int m = 0; m < cpu::Atom::kMaxBondPerAtom; ++m) {
+                a.bond_atom(ni, m) = a.bond_atom(oi, m);
+                a.bond_type(ni, m) = a.bond_type(oi, m);
+            }
+            for (int m = 0; m < 2 * cpu::Atom::kMaxAnglePerAtom; ++m)
+                a.angle_atom(ni, m) = a.angle_atom(oi, m);
+            for (int m = 0; m < cpu::Atom::kMaxAnglePerAtom; ++m)
+                a.angle_type(ni, m) = a.angle_type(oi, m);
+            for (int m = 0; m < 3 * cpu::Atom::kMaxDihedralPerAtom; ++m)
+                a.dihedral_atom(ni, m) = a.dihedral_atom(oi, m);
+            for (int m = 0; m < cpu::Atom::kMaxDihedralPerAtom; ++m)
+                a.dihedral_type(ni, m) = a.dihedral_type(oi, m);
+            for (int m = 0; m < cpu::Atom::kMaxSpecial; ++m)
+                a.special(ni, m) = a.special(oi, m);
+        }
     }
 
 

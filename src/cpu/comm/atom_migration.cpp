@@ -145,27 +145,31 @@ void move_row(Frame& frame, int ni, int oi) {
     a.image(ni, 1) = a.image(oi, 1);
     a.image(ni, 2) = a.image(oi, 2);
 
-    // Per-atom topology — must follow the row.
+    // Per-atom topology — must follow the row. Count arrays are always present;
+    // the wide partner/type/special arrays exist only for atom_style-molecular
+    // systems (lazy bonded storage), so guard their row-move on has_bonded().
     a.num_bond(ni) = a.num_bond(oi);
-    for (int m = 0; m < cpu::Atom::kMaxBondPerAtom; ++m) {
-        a.bond_atom(ni, m) = a.bond_atom(oi, m);
-        a.bond_type(ni, m) = a.bond_type(oi, m);
-    }
     a.num_angle(ni) = a.num_angle(oi);
-    for (int m = 0; m < 2 * cpu::Atom::kMaxAnglePerAtom; ++m)
-        a.angle_atom(ni, m) = a.angle_atom(oi, m);
-    for (int m = 0; m < cpu::Atom::kMaxAnglePerAtom; ++m)
-        a.angle_type(ni, m) = a.angle_type(oi, m);
     a.num_dihedral(ni) = a.num_dihedral(oi);
-    for (int m = 0; m < 3 * cpu::Atom::kMaxDihedralPerAtom; ++m)
-        a.dihedral_atom(ni, m) = a.dihedral_atom(oi, m);
-    for (int m = 0; m < cpu::Atom::kMaxDihedralPerAtom; ++m)
-        a.dihedral_type(ni, m) = a.dihedral_type(oi, m);
     a.nspecial(ni, 0) = a.nspecial(oi, 0);
     a.nspecial(ni, 1) = a.nspecial(oi, 1);
     a.nspecial(ni, 2) = a.nspecial(oi, 2);
-    for (int m = 0; m < cpu::Atom::kMaxSpecial; ++m)
-        a.special(ni, m) = a.special(oi, m);
+    if (a.has_bonded()) {
+        for (int m = 0; m < cpu::Atom::kMaxBondPerAtom; ++m) {
+            a.bond_atom(ni, m) = a.bond_atom(oi, m);
+            a.bond_type(ni, m) = a.bond_type(oi, m);
+        }
+        for (int m = 0; m < 2 * cpu::Atom::kMaxAnglePerAtom; ++m)
+            a.angle_atom(ni, m) = a.angle_atom(oi, m);
+        for (int m = 0; m < cpu::Atom::kMaxAnglePerAtom; ++m)
+            a.angle_type(ni, m) = a.angle_type(oi, m);
+        for (int m = 0; m < 3 * cpu::Atom::kMaxDihedralPerAtom; ++m)
+            a.dihedral_atom(ni, m) = a.dihedral_atom(oi, m);
+        for (int m = 0; m < cpu::Atom::kMaxDihedralPerAtom; ++m)
+            a.dihedral_type(ni, m) = a.dihedral_type(oi, m);
+        for (int m = 0; m < cpu::Atom::kMaxSpecial; ++m)
+            a.special(ni, m) = a.special(oi, m);
+    }
 }
 
 } // namespace
