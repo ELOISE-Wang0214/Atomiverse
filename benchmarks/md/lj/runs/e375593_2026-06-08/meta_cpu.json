@@ -1,0 +1,2 @@
+{ "system":"lj","av_git_sha":"e375593","date":"2026-06-08","host":"n215",
+  "backend":"cpu","cores":"1 2 8 32 128 256","steps":50,"lammps":"/home/jicli594/work/lammps/build/lmp" }

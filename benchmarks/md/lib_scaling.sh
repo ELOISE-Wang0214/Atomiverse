@@ -10,6 +10,13 @@ pv(){ local f; f=$(mktemp); ( while :; do nvidia-smi --query-gpu=memory.used \
       sleep 0.3; done ) & local p=$!; "$@" >/dev/null 2>&1; kill "$p" 2>/dev/null; \
       awk 'BEGIN{m=0}{if($1>m)m=$1}END{printf "%.2f",m/1024}' "$f"; rm -f "$f"; }
 
+# peak job RSS [GB] over the run of "$@" — node used-memory delta (the CPU
+# analog of pv; run on an --exclusive node so the delta is this job).
+pv_cpu(){ local f base; f=$(mktemp); base=$(free -m|awk '/^Mem:/{print $3}'); \
+  ( while :; do free -m|awk '/^Mem:/{print $3}'>>"$f"; sleep 0.5; done ) & local p=$!; \
+  "$@" >/dev/null 2>&1; kill "$p" 2>/dev/null; \
+  awk -v b="$base" 'BEGIN{m=0}{if($1>m)m=$1}END{printf "%.2f",(m-b)/1024}' "$f"; rm -f "$f"; }
+
 # Parse the PRODUCTION "Loop time" from a LAMMPS log (the LAST one — the deck
 # does an untimed warmup `run` first, then the timed `run`). Echoes
 # "matom_step_s atoms" or nothing on failure.

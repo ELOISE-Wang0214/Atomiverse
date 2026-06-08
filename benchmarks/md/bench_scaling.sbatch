@@ -28,7 +28,7 @@ source "$BD/$SYS/config.sh"
 
 SHA=$(git rev-parse --short HEAD); DATE=$(date +%F)
 RUN="$BD/$SYS/runs/${SHA}_${DATE}"; L="$RUN/logs"; mkdir -p "$L"
-CSV="$RUN/results.csv"; echo "engine,system,mode,ng,atoms,matom_step_s,vram_gb" > "$CSV"
+CSV="$RUN/results_gpu.csv"; echo "engine,system,mode,ng,atoms,matom_step_s,vram_gb" > "$CSV"
 
 echo "== build committed HEAD ($SHA) =="
 cmake --build build-cuda -j 32 --target bench_multi_gpu_scaling polyethylene_tension 2>&1 | tail -2

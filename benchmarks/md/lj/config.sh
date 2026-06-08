@@ -11,3 +11,8 @@ STEPS=200
 RENEIGH=20
 WEAK_PER_GPU=8000000      # weak: this many atoms per GPU (totals = N* * ng)
 STRONG_TOTAL=32000000     # strong: fixed total, split across ng GPUs
+
+# --- CPU scaling (cores) ---
+CPU_CORES="1 2 8 32 128 256"
+CPU_WEAK_PER_CORE=200000      # weak: atoms per rank
+CPU_STRONG_TOTAL=8000000      # strong: fixed total
