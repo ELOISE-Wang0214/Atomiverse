@@ -227,8 +227,8 @@ void NeighborList::build(const BuildContext& ctx) {
         cluster_cap_ll, static_cast<long long>(std::numeric_limits<int>::max()));
     s.pair_capacity = static_cast<int>(cluster_cap_ll);
 
-    // Allocate ALL internal buffers
-    s.buf.resize_atoms(n, nc);
+    // Always-needed per-atom buffers (Verlet-skin reference positions).
+    s.buf.resize_atoms(n);
 
     // Per-atom Verlet column capacity: start at kMaxVerletNeigh (covers an LJ
     // liquid's ~101 measured max). A density estimate is intentionally NOT used —
@@ -239,30 +239,44 @@ void NeighborList::build(const BuildContext& ctx) {
     // shell (~400) is handled automatically with no hand-tuned constant.
     s.buf.resize_verlet(n, kMaxVerletNeigh);
 
-    s.buf.resize_displacement(nc);
-    s.buf.resize_grid(ncells);
-    int pc = s.pair_capacity;
-    s.buf.row_ptr_upper.resize(nc + 1);
-    s.buf.row_ptr.resize(nc + 1);
-    s.buf.col_idx.resize(pc > 0 ? pc : 1);
-    int ms = pc > 0 ? pc : 1;
-    s.buf.interaction_mask.resize(ms);
-    s.buf.resize_flat_pairs(ms);
+    // Cluster-CSR + grid + flat (i,j) pair machinery is consumed ONLY by the
+    // opt-in flat-pair export (cuda::RDF) and Coulomb; the MD force path uses
+    // the per-atom Verlet list built in launch(). It is ~115 B/atom (Morton +
+    // cluster SoA + AABB + CSR col_idx/mask + flat arrays + CUB temps), so for
+    // any flat=false run (all multi-GPU MD — multi_gpu.cu forces it false — and
+    // plain single-GPU MD) it is pure dead weight. Allocate it only when flat
+    // pairs are requested; otherwise keep size-1 placeholders and pair_capacity
+    // = 1 so launch()'s lazy path grows everything the first time RDF turns the
+    // flag on (its on_build may run after this build()).
+    if (ctx.runtime.flat_pairs_requested) {
+        s.buf.resize_cluster_csr(n, nc);
+        s.buf.resize_displacement(nc);
+        s.buf.resize_grid(ncells);
+        int pc = s.pair_capacity > 0 ? s.pair_capacity : 1;
+        s.buf.col_idx.resize(pc);
+        s.buf.interaction_mask.resize(pc);
+        s.buf.resize_flat_pairs(pc);
 
-    // Pre-size CUB sort + scan temp storage so launch() never resizes
-    // (and never cudaMalloc's via DeviceVector::resize).
-    CubTempBytes cub_bytes = query_cub_temp_bytes(n, nc);
-    if (cub_bytes.sort_bytes > 0)
-        s.buf.sort_temp.resize(cub_bytes.sort_bytes);
-    // launch() runs `launch_exclusive_sum` over `pair_counts[nc]` via
-    // both `prefix_temp` (post-fill) and the previous `scan_temp` for
-    // grid CSR (over `ncells`). Size to the larger of the two.
-    std::size_t scan_max =
-        std::max(cub_bytes.scan_bytes_clusters,
-                 cub_bytes.scan_bytes_atoms); // atoms covers ncells too
-    if (scan_max > 0) {
-        s.buf.scan_temp.resize(scan_max);
-        s.buf.prefix_temp.resize(scan_max);
+        // Pre-size CUB sort + scan temp storage so launch() never resizes
+        // (and never cudaMalloc's via DeviceVector::resize).
+        CubTempBytes cub_bytes = query_cub_temp_bytes(n, nc);
+        if (cub_bytes.sort_bytes > 0)
+            s.buf.sort_temp.resize(cub_bytes.sort_bytes);
+        // launch() runs `launch_exclusive_sum` over `pair_counts[nc]` via
+        // both `prefix_temp` (post-fill) and the previous `scan_temp` for
+        // grid CSR (over `ncells`). Size to the larger of the two.
+        std::size_t scan_max =
+            std::max(cub_bytes.scan_bytes_clusters,
+                     cub_bytes.scan_bytes_atoms); // atoms covers ncells too
+        if (scan_max > 0) {
+            s.buf.scan_temp.resize(scan_max);
+            s.buf.prefix_temp.resize(scan_max);
+        }
+    } else {
+        s.buf.col_idx.resize(1);
+        s.buf.interaction_mask.resize(1);
+        s.buf.resize_flat_pairs(1);
+        s.pair_capacity = 1; // lazy grow in launch() sizes up if flat turns on
     }
 
     // Allocate the owned PairList.
@@ -539,6 +553,22 @@ void NeighborList::launch(const LaunchContext& ctx) {
         // built above; this whole block is dead for it. (RDF migration to the
         // Verlet list is a follow-up.)
         if (ctx.runtime.flat_pairs_requested) {
+            // Lazily allocate the cluster-CSR pipeline if build() skipped it
+            // (flat pairs were requested only after that build — RDF's on_build
+            // can run later). col_idx/mask/flat then grow below via the
+            // total_cluster_pairs path (pair_capacity is 1); the CUB temp
+            // DeviceVectors self-size in their launch_* wrappers.
+            if (!s.buf.cluster_ready(n)) {
+                s.buf.resize_cluster_csr(n, nc);
+                s.buf.resize_displacement(nc);
+                s.buf.resize_grid(ncells);
+                // Re-publish the cluster pointers build() left null (it ran with
+                // flat off); col_idx/mask are re-published again on the grow.
+                pairs_.cl_row_ptr = s.buf.row_ptr.data();
+                pairs_.cl_col_idx = s.buf.col_idx.data();
+                pairs_.cl_orig_index = s.buf.original_index.data();
+                pairs_.cl_mask = s.buf.flat_mask.data();
+            }
             launch_compute_morton<work_t>(
                 frame.atoms.x, frame.atoms.y, frame.atoms.z, n,
                 s.d_inv_cell.data(), s.periodic, s.buf.morton_codes.data(),

@@ -90,7 +90,20 @@ struct NListBuffers {
         verlet_overflow.resize(1);
     }
 
-    void resize_atoms(int n, int n_clusters) {
+    // Always-needed per-atom buffers: the reference positions for the
+    // Verlet-skin rebuild check. (The cluster-CSR pipeline below is opt-in.)
+    void resize_atoms(int n) {
+        ref_x.resize(n);
+        ref_y.resize(n);
+        ref_z.resize(n);
+    }
+
+    // The Morton/cluster/AABB/CSR pipeline — consumed ONLY by the opt-in
+    // flat-pair export (cuda::RDF) and Coulomb, NOT by the per-atom Verlet MD
+    // force path. Allocated only when flat pairs are requested (build(), or
+    // lazily in launch() if RDF attaches after the first build). `cluster_ready`
+    // lets callers detect whether these are live.
+    void resize_cluster_csr(int n, int n_clusters) {
         morton_codes.resize(n);
         atom_indices.resize(n);
         morton_sorted.resize(n);
@@ -116,10 +129,13 @@ struct NListBuffers {
         row_ptr.resize(n_clusters + 1);
         row_ptr_upper.resize(n_clusters + 1);
 
-        ref_x.resize(n);
-        ref_y.resize(n);
-        ref_z.resize(n);
+        cluster_csr_atoms = n;
     }
+
+    // n the cluster pipeline was last sized for (0 = not allocated). Used by
+    // launch() to lazily allocate when flat pairs turn on after build().
+    int cluster_csr_atoms = 0;
+    bool cluster_ready(int n) const { return cluster_csr_atoms == n; }
 
     void resize_grid(int ncells) {
         cell_start.resize(ncells + 1);
