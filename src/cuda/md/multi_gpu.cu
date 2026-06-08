@@ -96,12 +96,24 @@ inline void freep(void* p) {
 // Raise the default mem-pool release threshold on every visible device so freed
 // async blocks stay in the pool (default threshold 0 returns them to the OS on
 // the next sync, defeating reuse). Idempotent; called from setup_force_engine.
+//
+// CAPPED (not ~0ull/unbounded): a per-reneighbor migrate/halo working set is a
+// few hundred MB, so retaining ~1 GB keeps every common reallocation a pool hit
+// (the malloc/free-avoidance win) while letting anything larger return to the
+// OS instead of permanently inflating the footprint. Unbounded retention made
+// nvidia-smi "used" grow ~2x at 4 GPUs (freed-but-retained reneighbor scratch),
+// which capped the addressable atom count. Override via AV_MG_POOL_RETAIN_MB.
 inline void set_pool_retain(const DeviceManager& dm) {
+    std::uint64_t thr = 1024ull * 1024 * 1024; // 1 GB default
+    if (const char* e = std::getenv("AV_MG_POOL_RETAIN_MB")) {
+        const long mb = std::atol(e);
+        if (mb >= 0)
+            thr = static_cast<std::uint64_t>(mb) * 1024 * 1024;
+    }
     for (int i = 0; i < dm.count(); ++i) {
         cudaMemPool_t pool;
         if (cudaDeviceGetDefaultMemPool(&pool, dm.device_id(i)) != cudaSuccess)
             continue;
-        std::uint64_t thr = ~0ull;
         cudaMemPoolSetAttribute(pool, cudaMemPoolAttrReleaseThreshold, &thr);
     }
 }

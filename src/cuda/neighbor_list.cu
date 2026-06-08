@@ -45,6 +45,32 @@ using cuda::prec_t;
 using cuda::real_t;
 using cuda::work_t;
 
+// Right-size the per-cell bin capacity to the actual cell occupancy. binsize is
+// 0.5*(cutoff+skin) (setup.cu), so cells are fine: ~1.5 atoms/cell for an LJ
+// liquid, ~5 for the PE melt. A fixed cap of 32 therefore left ~95% of every
+// cell's slots empty — and atom_bin_pos is a float4 per slot, the single
+// largest neighbor-list allocation (~410 B/atom for LJ). Start near the
+// expected peak occupancy (mean + headroom); the per-build overflow probe grows
+// it on the rare dense-cell overflow, and the grown cap then sticks for the run
+// (the resize gate keys on cell-count change only, so it never re-shrinks and
+// thrashes). Clamped to [8, 256].
+static inline int bin_cap_for(int n, int ncells) {
+    if (ncells <= 0 || n <= 0)
+        return 16;
+    const int mean = (n + ncells - 1) / ncells; // ceil(n / ncells)
+    int cap = mean * 2 + 8;                      // headroom over the mean
+    if (cap < 8)
+        cap = 8;
+    if (cap > 256)
+        cap = 256;
+    return cap;
+}
+
+// Tight regrow target after a bin overflow: the observed max occupancy `bo`
+// plus 50% headroom. Replaces the prior `bo*1.3 + 16`, whose +16 floor jumped a
+// 12-slot cap back to ~30 (re-introducing the waste) on a single overflow.
+static inline int bin_cap_grow(int bo) { return static_cast<int>(bo * 1.5) + 2; }
+
 // ============================================================================
 // State
 // ============================================================================
@@ -442,8 +468,8 @@ void NeighborList::launch(const LaunchContext& ctx) {
         // redundant second neighbor structure. Both bins and the Verlet list
         // auto-grow on overflow (LAMMPS resize-and-rebuild).
         int ncells = s.dims_x * s.dims_y * s.dims_z;
-        if (s.buf.bin_ncells != ncells || s.buf.bin_cap < 16)
-            s.buf.resize_bins(ncells, 32);
+        if (s.buf.bin_ncells != ncells)
+            s.buf.resize_bins(ncells, bin_cap_for(n, ncells));
         for (int attempt = 0; attempt < 6; ++attempt) {
             cudaMemsetAsync(s.buf.atom_bincount.data(), 0,
                             ncells * sizeof(int), stream);
@@ -460,7 +486,7 @@ void NeighborList::launch(const LaunchContext& ctx) {
             cudaStreamSynchronize(stream);
             if (bin_max <= s.buf.bin_cap)
                 break;
-            s.buf.resize_bins(ncells, static_cast<int>(bin_max * 1.3) + 16);
+            s.buf.resize_bins(ncells, bin_cap_grow(bin_max));
         }
         // LAMMPS-style special-bonds baking (find_special at build time): when
         // full exclusion is active (s_excl == 0, published by PairLJCut::build)
@@ -716,8 +742,8 @@ void NeighborList::rebuild_issue(const LaunchContext& ctx) {
                              s.periodic, kMaxStencil, stream);
     int ncells = s.dims_x * s.dims_y * s.dims_z;
     s.rebuild_ncells = ncells;
-    if (s.buf.bin_ncells != ncells || s.buf.bin_cap < 16)
-        s.buf.resize_bins(ncells, 32);
+    if (s.buf.bin_ncells != ncells)
+        s.buf.resize_bins(ncells, bin_cap_for(n, ncells));
 
     // Bin (single pass, no sync) → bin overflow probe to its OWN pinned int.
     cudaMemsetAsync(s.buf.atom_bincount.data(), 0, ncells * sizeof(int), stream);
@@ -772,7 +798,7 @@ bool NeighborList::finalize_rebuild(const LaunchContext& ctx) {
     const int vo = *s.h_vl_overflow;
     bool grew = false;
     if (bo > s.buf.bin_cap) {
-        s.buf.resize_bins(s.rebuild_ncells, static_cast<int>(bo * 1.3) + 16);
+        s.buf.resize_bins(s.rebuild_ncells, bin_cap_grow(bo));
         grew = true;
     }
     if (vo > s.buf.verlet_max) {
