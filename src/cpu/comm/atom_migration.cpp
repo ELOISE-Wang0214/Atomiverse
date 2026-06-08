@@ -172,6 +172,114 @@ void move_row(Frame& frame, int ni, int oi) {
     }
 }
 
+// Append owned atom `i`'s fixed-stride payload to the back of `buf`.
+inline void pack_to(std::vector<char>& buf, const Frame& frame, int i) {
+    const std::size_t off = buf.size();
+    buf.resize(off + kAtomPayloadBytes);
+    double* dst = reinterpret_cast<double*>(buf.data() + off);
+    std::memset(dst, 0, kAtomPayloadBytes);
+    comm::pack_exchange(frame.atoms, i, dst);
+}
+
+// Staged nearest-neighbor owner exchange along one Cartesian axis (LAMMPS
+// comm_brick::exchange style). Owned atoms whose `dim` coordinate falls outside
+// [sublo, subhi) are shipped to the lo/hi FACE NEIGHBOR; the loop forwards
+// multi-subdomain movers (and the rare PBC wrap-around atom) one hop per round
+// until no rank has any in-flight atom. Uses only nearest-neighbor Sendrecv +
+// a single-int Allreduce per round — O(1) point-to-point + O(log P) reduce
+// fabric state, versus MPI_Alltoallv's O(world) per-peer state that made AV's
+// cross-node RSS blow up (3.16x LAMMPS at 1024 ranks). Positions are already
+// wrapped into [0, L) by the integrator's wrap_orthorhombic, so a raw
+// coord-vs-slab compare matches the old dest_rank_for binning exactly.
+void exchange_along_dim(Frame& frame, md::mpi::DomainDecomposition* dd, int dim) {
+    if (dd->dims[dim] <= 1)
+        return; // not decomposed along this axis — nothing leaves via it
+    const int lo_nbr = dd->face_neighbors[static_cast<std::size_t>(2 * dim)];
+    const int hi_nbr = dd->face_neighbors[static_cast<std::size_t>(2 * dim + 1)];
+    const double sublo = dd->sublo[dim];
+    const double subhi = dd->subhi[dim];
+    MPI_Comm comm = dd->cart_comm;
+
+    std::vector<char> send_lo, send_hi, recv_lo, recv_hi;
+    while (true) {
+        // Re-fetch each round: set_capacity below may have reallocated the SoA.
+        const double* q = (dim == 0)   ? frame.atoms.x.data()
+                          : (dim == 1) ? frame.atoms.y.data()
+                                       : frame.atoms.z.data();
+        send_lo.clear();
+        send_hi.clear();
+        int keep = 0;
+        for (int i = 0; i < dd->n_local; ++i) {
+            const double qi = q[i];
+            if (qi < sublo) {
+                pack_to(send_lo, frame, i); // exits the −dim face
+            } else if (qi >= subhi) {
+                pack_to(send_hi, frame, i); // exits the +dim face
+            } else {
+                move_row(frame, keep, i); // stays; compact to front
+                ++keep;
+            }
+        }
+        dd->n_local = keep;
+        frame.atoms.nlocal = keep;
+
+        const int n_send_lo =
+            static_cast<int>(send_lo.size() / kAtomPayloadBytes);
+        const int n_send_hi =
+            static_cast<int>(send_hi.size() / kAtomPayloadBytes);
+        int local_out = n_send_lo + n_send_hi;
+        int global_out = 0;
+        MPI_Allreduce(&local_out, &global_out, 1, MPI_INT, MPI_SUM, comm);
+        if (global_out == 0)
+            return; // every rank's atoms are within their slab in this dim
+
+        // Two independent streams (distinct tags so they never collide even
+        // when dims[dim]==2 and lo_nbr==hi_nbr): +dim atoms go to hi_nbr and
+        // arrive from lo_nbr; −dim atoms go to lo_nbr and arrive from hi_nbr.
+        int n_recv_lo = 0, n_recv_hi = 0; // +dim from lo, −dim from hi
+        MPI_Status st;
+        MPI_Sendrecv(&n_send_hi, 1, MPI_INT, hi_nbr, 0, &n_recv_lo, 1, MPI_INT,
+                     lo_nbr, 0, comm, &st);
+        MPI_Sendrecv(&n_send_lo, 1, MPI_INT, lo_nbr, 1, &n_recv_hi, 1, MPI_INT,
+                     hi_nbr, 1, comm, &st);
+
+        recv_lo.assign(static_cast<std::size_t>(n_recv_lo) * kAtomPayloadBytes,
+                       0);
+        recv_hi.assign(static_cast<std::size_t>(n_recv_hi) * kAtomPayloadBytes,
+                       0);
+        MPI_Sendrecv(send_hi.data(), n_send_hi * kAtomPayloadBytes, MPI_BYTE,
+                     hi_nbr, 2, recv_lo.data(),
+                     n_recv_lo * kAtomPayloadBytes, MPI_BYTE, lo_nbr, 2, comm,
+                     &st);
+        MPI_Sendrecv(send_lo.data(), n_send_lo * kAtomPayloadBytes, MPI_BYTE,
+                     lo_nbr, 3, recv_hi.data(),
+                     n_recv_hi * kAtomPayloadBytes, MPI_BYTE, hi_nbr, 3, comm,
+                     &st);
+
+        const int n_recv = n_recv_lo + n_recv_hi;
+        const int n_needed = dd->n_local + n_recv;
+        if (n_needed > frame.atoms.nmax) {
+            frame.atoms.set_capacity(n_needed + n_needed / 2 + 1024);
+            dd->capacity = frame.atoms.nmax;
+        }
+        int slot = dd->n_local;
+        std::size_t o = 0;
+        for (int k = 0; k < n_recv_lo; ++k, o += kAtomPayloadBytes)
+            comm::unpack_exchange(
+                frame.atoms, slot++,
+                reinterpret_cast<const double*>(recv_lo.data() + o));
+        o = 0;
+        for (int k = 0; k < n_recv_hi; ++k, o += kAtomPayloadBytes)
+            comm::unpack_exchange(
+                frame.atoms, slot++,
+                reinterpret_cast<const double*>(recv_hi.data() + o));
+        dd->n_local = slot;
+        frame.atoms.nlocal = slot;
+        // Loop: freshly received atoms are re-classified and may forward
+        // another hop (multi-subdomain drift / PBC wrap-around).
+    }
+}
+
 } // namespace
 
 void Migrate::launch(const cpu::LaunchContext& ctx) {
@@ -185,7 +293,6 @@ void Migrate::launch(const cpu::LaunchContext& ctx) {
 
     int my_rank = 0;
     MPI_Comm_rank(dd->cart_comm, &my_rank);
-    const int world_size = dd->dims[0] * dd->dims[1] * dd->dims[2];
 
     const bool first_launch = last_observed_generation_ == ~std::uint64_t{0};
     const bool generation_changed =
@@ -194,27 +301,18 @@ void Migrate::launch(const cpu::LaunchContext& ctx) {
         return;
     }
 
-    // Classify each owner. `keep_indices` holds the local rows to compact
-    // down; `migrate_indices_by_rank[r]` holds rows we'll ship to rank `r`.
-    std::vector<int> keep_indices;
-    keep_indices.reserve(static_cast<std::size_t>(dd->n_local));
-    std::vector<std::vector<int>> migrate_indices_by_rank(
-        static_cast<std::size_t>(world_size));
-
-    int n_to_migrate = 0;
+    // Quick global early-out: if no rank has any atom outside its 3D slab,
+    // skip the exchange entirely (cheap 1-int LOR Allreduce). dest_rank_for
+    // wraps defensively, matching the per-dim [sublo,subhi) classification.
+    int any_local = 0;
     for (int i = 0; i < dd->n_local; ++i) {
-        const int dest = dest_rank_for(*dd, frame.atoms.x[i], frame.atoms.y[i],
-                                       frame.atoms.z[i], frame.box);
-        if (dest == my_rank) {
-            keep_indices.push_back(i);
-        } else {
-            migrate_indices_by_rank[static_cast<std::size_t>(dest)].push_back(
-                i);
-            ++n_to_migrate;
+        if (dest_rank_for(*dd, frame.atoms.x[i], frame.atoms.y[i],
+                          frame.atoms.z[i], frame.box)
+            != my_rank) {
+            any_local = 1;
+            break;
         }
     }
-
-    int any_local = (n_to_migrate > 0) ? 1 : 0;
     int any_global = 0;
     MPI_Allreduce(&any_local, &any_global, 1, MPI_INT, MPI_LOR, dd->cart_comm);
     if (any_global == 0) {
@@ -222,70 +320,14 @@ void Migrate::launch(const cpu::LaunchContext& ctx) {
         return;
     }
 
-    std::vector<int> send_counts(static_cast<std::size_t>(world_size), 0);
-    std::vector<int> send_displs(static_cast<std::size_t>(world_size), 0);
-    std::vector<int> recv_counts(static_cast<std::size_t>(world_size), 0);
-    std::vector<int> recv_displs(static_cast<std::size_t>(world_size), 0);
+    // Staged nearest-neighbor exchange x → y → z. After all three axes every
+    // owned atom lies within [sublo,subhi) on every axis, i.e. on the rank
+    // dest_rank_for would assign it — identical end state to the old
+    // MPI_Alltoallv, but with O(1)/O(log P) fabric state instead of O(world).
+    exchange_along_dim(frame, dd, 0);
+    exchange_along_dim(frame, dd, 1);
+    exchange_along_dim(frame, dd, 2);
 
-    std::size_t total_send_bytes = 0;
-    for (int r = 0; r < world_size; ++r) {
-        const std::size_t n =
-            migrate_indices_by_rank[static_cast<std::size_t>(r)].size();
-        send_displs[static_cast<std::size_t>(r)] =
-            static_cast<int>(total_send_bytes);
-        send_counts[static_cast<std::size_t>(r)] =
-            static_cast<int>(n * kAtomPayloadBytes);
-        total_send_bytes += n * kAtomPayloadBytes;
-    }
-
-    std::vector<char> send_buf(total_send_bytes);
-    std::size_t off = 0;
-    for (int r = 0; r < world_size; ++r) {
-        for (int idx : migrate_indices_by_rank[static_cast<std::size_t>(r)]) {
-            off = pack_atom(send_buf, off, frame, idx);
-        }
-    }
-
-    MPI_Alltoall(send_counts.data(), 1, MPI_INT, recv_counts.data(), 1, MPI_INT,
-                 dd->cart_comm);
-
-    std::size_t total_recv_bytes = 0;
-    for (int r = 0; r < world_size; ++r) {
-        recv_displs[static_cast<std::size_t>(r)] =
-            static_cast<int>(total_recv_bytes);
-        total_recv_bytes +=
-            static_cast<std::size_t>(recv_counts[static_cast<std::size_t>(r)]);
-    }
-
-    std::vector<char> recv_buf(total_recv_bytes);
-
-    MPI_Alltoallv(send_buf.data(), send_counts.data(), send_displs.data(),
-                  MPI_BYTE, recv_buf.data(), recv_counts.data(),
-                  recv_displs.data(), MPI_BYTE, dd->cart_comm);
-
-    const int new_n_kept = static_cast<int>(keep_indices.size());
-    for (int ni = 0; ni < new_n_kept; ++ni) {
-        const int oi = keep_indices[static_cast<std::size_t>(ni)];
-        if (oi != ni)
-            move_row(frame, ni, oi);
-    }
-
-    const int n_received =
-        static_cast<int>(total_recv_bytes / kAtomPayloadBytes);
-    // Grow on demand: ranks no longer hold the global-N backing store, so an
-    // influx that exceeds capacity must enlarge the arrays — never silently
-    // drop incoming owners (that would lose atoms and corrupt conservation).
-    const int n_needed = new_n_kept + n_received;
-    if (n_needed > frame.atoms.nmax) {
-        frame.atoms.set_capacity(n_needed + n_needed / 2 + 1024);
-        dd->capacity = frame.atoms.nmax;
-    }
-    std::size_t r_off = 0;
-    for (int k = 0; k < n_received; ++k) {
-        r_off = unpack_atom(recv_buf, r_off, frame, new_n_kept + k);
-    }
-
-    dd->n_local = new_n_kept + n_received;
     dd->n_ghost = 0;
     ++dd->neighbor_generation;
 
