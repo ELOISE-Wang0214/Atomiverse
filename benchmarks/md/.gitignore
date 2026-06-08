@@ -1,0 +1,4 @@
+# scaling-benchmark scratch — keep results.csv + meta.json (committed), drop the rest
+.scanout/
+*/runs/*/logs/
+*.png
