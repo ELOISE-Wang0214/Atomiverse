@@ -8,7 +8,7 @@
 #SBATCH -J av_scan_cpu
 #SBATCH -p cpu
 #SBATCH -A naiss2026-3-381-cpu
-#SBATCH -N 1
+#SBATCH -N 4
 #SBATCH --exclusive
 #SBATCH -t 3:00:00
 #SBATCH -o /home/jicli594/work/molcrafts/Atomiverse/benchmarks/md/.scanout/scancpu_%j.out
@@ -49,7 +49,7 @@ if [ "$SYS" = lj ]; then
     echo "AV,LJ,$mode,$p,$at,$mas,$(awk -v r=$rss 'BEGIN{printf "%.2f",r/1048576}'),$REP">>"$CSV"
     echo "AV LJ $mode p=$p rep=$REP -> $mas Matom/s"; }
   lmplj(){ local mode=$1 p=$2 cells=$3; local log="$L/cpu_lmp_${mode}_${p}_r${REP}.log"
-    local rss; rss=$(pv_cpu srun --mpi=pmi2 -n $p -c 1 $LMP -in $BD/lj/in.lj_kk -v cells $cells -v steps $CPU_STEPS -log $log)
+    local rss; rss=$(rss_hwm_gb srun --mpi=pmi2 -n $p -c 1 /usr/bin/time -v $LMP -in $BD/lj/in.lj_kk -v cells $cells -v steps $CPU_STEPS -log $log)
     local r; r=$(lmp_throughput "$log") || { echo "LAMMPS LJ $mode p=$p rep=$REP FAILED"; return; }
     echo "LAMMPS,LJ,$mode,$p,$(echo $r|cut -d' ' -f2),$(echo $r|cut -d' ' -f1),$rss,$REP">>"$CSV"
     echo "LAMMPS LJ $mode p=$p rep=$REP -> $(echo $r|cut -d' ' -f1) Matom/s ${rss}GB"; }
@@ -61,13 +61,13 @@ if [ "$SYS" = lj ]; then
 elif [ "$SYS" = pe ]; then
   PESC=$(awk -v s=$CPU_STEPS 'BEGIN{printf "%.4f", s/10000}')
   avpe(){ local mode=$1 p=$2 grid=$3 atoms=$4; local rd="$L/cpu_av_${mode}_${p}_r${REP}"; mkdir -p "$rd"
-    local rss; rss=$(pv_cpu srun --mpi=pmi2 -n $p -c 1 $AVPE --backend cpu --pe-melt-grid "$grid" --mode stage:1 --scale $PESC --out-dir "$rd" --quiet)
+    local rss; rss=$(rss_hwm_gb srun --mpi=pmi2 -n $p -c 1 /usr/bin/time -v $AVPE --backend cpu --pe-melt-grid "$grid" --mode stage:1 --scale $PESC --out-dir "$rd" --quiet)
     local f="$rd/stage_component_timing.csv"; [ -f "$f" ] || { echo "AV PE $mode p=$p rep=$REP FAILED"; return; }
     local ts=$(tail -1 "$f"|awk -F, '{print $4}') st=$(tail -1 "$f"|awk -F, '{print $3}')
     local mas=$(awk -v a=$atoms -v s=$st -v t=$ts 'BEGIN{if(t>0)printf "%.1f",a*s/t/1e6}')
     echo "AV,PE,$mode,$p,$atoms,$mas,$rss,$REP">>"$CSV"; echo "AV PE $mode p=$p rep=$REP -> $mas Matom/s ${rss}GB"; }
   lmppe(){ local mode=$1 p=$2 nx=$3 ny=$4 nz=$5 atoms=$6; local log="$L/cpu_lmp_${mode}_${p}_r${REP}.log"
-    local rss; rss=$( cd "$BD/pe" && pv_cpu srun --mpi=pmi2 -n $p -c 1 $LMP -in in.pe_kk -v nx $nx -v ny $ny -v nz $nz -v steps $CPU_STEPS -log $log )
+    local rss; rss=$( cd "$BD/pe" && rss_hwm_gb srun --mpi=pmi2 -n $p -c 1 /usr/bin/time -v $LMP -in in.pe_kk -v nx $nx -v ny $ny -v nz $nz -v steps $CPU_STEPS -log $log )
     local r; r=$(lmp_throughput "$log") || { echo "LAMMPS PE $mode p=$p rep=$REP FAILED"; return; }
     echo "LAMMPS,PE,$mode,$p,$atoms,$(echo $r|cut -d' ' -f1),$rss,$REP">>"$CSV"
     echo "LAMMPS PE $mode p=$p rep=$REP -> $(echo $r|cut -d' ' -f1) Matom/s ${rss}GB"; }

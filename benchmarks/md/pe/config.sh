@@ -20,8 +20,9 @@ PE_WEAK_GRID_4="96 96 96";  PE_WEAK_ATOMS_4=15925248
 # strong: fixed total (96^3 ~ 16M) across ng GPUs
 PE_STRONG_GRID="96 96 96";  PE_STRONG_ATOMS=15925248
 
-# --- CPU scaling (cores). weak grids ~73728 atoms/core (4096 chains/core) ---
-CPU_CORES="1 2 8 32 128 256"
-declare -A PE_CPU_WEAK_GRID=( [1]="16 16 16" [2]="16 16 32" [8]="32 32 32" [32]="32 64 64" [128]="64 64 128" [256]="64 128 128" )
-declare -A PE_CPU_WEAK_ATOMS=( [1]=73728 [2]=147456 [8]=589824 [32]=2359296 [128]=9437184 [256]=18874368 )
+# --- CPU scaling (cores). weak grids ~73728 atoms/core (4096 chains/core).
+#     512/1024 span 2/4 nodes (256 cores/node). ---
+CPU_CORES="1 8 32 128 256 512 1024"
+declare -A PE_CPU_WEAK_GRID=( [1]="16 16 16" [8]="32 32 32" [32]="32 64 64" [128]="64 64 128" [256]="64 128 128" [512]="128 128 128" [1024]="128 128 256" )
+declare -A PE_CPU_WEAK_ATOMS=( [1]=73728 [8]=589824 [32]=2359296 [128]=9437184 [256]=18874368 [512]=37748736 [1024]=75497472 )
 PE_CPU_STRONG_GRID="38 38 38"; PE_CPU_STRONG_ATOMS=987696
