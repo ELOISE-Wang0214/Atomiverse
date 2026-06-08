@@ -13,7 +13,7 @@ pv(){ local f; f=$(mktemp); ( while :; do nvidia-smi --query-gpu=memory.used \
 # Parse the PRODUCTION "Loop time" from a LAMMPS log (the LAST one — the deck
 # does an untimed warmup `run` first, then the timed `run`). Echoes
 # "matom_step_s atoms" or nothing on failure.
-lmp_throughput(){ local log="$1"; local ln; ln=$(grep "Loop time of" "$log"|tail -1); \
+lmp_throughput(){ local log="$1"; local ln; ln=$(grep "^Loop time of" "$log"|tail -1); \
   [ -z "$ln" ] && return 1; \
   awk -v ln="$ln" 'BEGIN{n=split(ln,a," "); t=a[4]; s=a[9]; at=a[12]; \
     if(t>0) printf "%.1f %d", at*s/t/1e6, at}'; }
