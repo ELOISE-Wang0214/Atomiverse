@@ -80,10 +80,20 @@ TEST(DomainDecomposition, SendListsEmpty) {
 }
 
 // ── identity tag→local map ───────────────────────────────────────────
+//
+// The tag→local map exists solely for bonded-tuple resolution, so it is
+// maintained ONLY for frames carrying bonded topology. Two cases:
+// bonded frame → identity map; bare frame → map stays empty (and the
+// per-atom hash-node memory is never paid).
 
 TEST(DomainDecomposition, TagToLocalIdentityMap) {
     const int n = 48;
     auto frame = make_small_frame(n);
+    // Give the frame bonded topology so the map is maintained.
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, n);
+    for (int i = 0; i + 1 < n; i += 2)
+        frame.atoms.add_bond(i, i + 1, 0);
     auto backend = make_backend_for(frame);
 
     cpu::Context& ctx = backend.context();
@@ -96,6 +106,19 @@ TEST(DomainDecomposition, TagToLocalIdentityMap) {
             << "tag " << frame.atoms.tag(i) << " missing from tag_to_local";
         EXPECT_EQ(it->second, i);
     }
+}
+
+TEST(DomainDecomposition, TagToLocalSkippedWithoutBondedTopology) {
+    auto frame = make_small_frame(48);
+    auto backend = make_backend_for(frame);
+
+    cpu::Context& ctx = backend.context();
+    ASSERT_NE(ctx.dd, nullptr);
+    EXPECT_TRUE(ctx.dd->tag_to_local.empty())
+        << "tag_to_local must not be populated for a frame without "
+           "bonded topology";
+    EXPECT_TRUE(frame.atoms.map.empty())
+        << "atoms.map must be released for a frame without bonded topology";
 }
 
 // ── mpi_rank / mpi_size set in Context ───────────────────────────────

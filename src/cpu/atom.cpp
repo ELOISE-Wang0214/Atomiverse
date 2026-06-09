@@ -19,12 +19,21 @@ void Atom::grow(int target_nmax) {
     if (target_nmax <= nmax)
         return;
 
-    // LAMMPS DELTA growth: double the capacity until we cover the target.
-    // Floor at 64 to avoid the degenerate first-call-with-1 path. The
-    // resulting `new_nmax` is always >= target_nmax and >= 2 * nmax.
-    int new_nmax = (nmax > 0) ? nmax : 64;
-    while (new_nmax < target_nmax)
-        new_nmax *= 2;
+    // LAMMPS DELTA-style chunked growth. The first allocation is exact
+    // (callers size the initial frame to their atom count); subsequent
+    // grows step by max(nmax/8, 4096) rows. Doubling here (the previous
+    // policy) left up to 100% dead headroom on EVERY per-atom array —
+    // and the cell list, force scratch, and halo lists all size off this
+    // capacity, so the waste multiplied: measured ~2x per-atom RSS vs
+    // LAMMPS in multi-rank runs whose ghost influx (~20-35% of owners)
+    // pushed the frame just past its initial exact capacity.
+    int new_nmax;
+    if (nmax == 0) {
+        new_nmax = std::max(target_nmax, 64);
+    } else {
+        const int step = std::max(nmax / 8, 4096);
+        new_nmax = std::max(target_nmax, nmax + step);
+    }
 
     const std::size_t n = static_cast<std::size_t>(new_nmax);
 

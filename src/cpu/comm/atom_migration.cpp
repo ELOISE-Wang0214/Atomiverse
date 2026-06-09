@@ -333,10 +333,13 @@ void Migrate::launch(const cpu::LaunchContext& ctx) {
 
     // Rebuild tag → local index map. Bonded indices that key off `tag_to_local`
     // re-resolve through this map on the next neighbor / bonded build.
+    // Pure pairwise systems never query it — skip the rebuild entirely.
     dd->tag_to_local.clear();
-    dd->tag_to_local.reserve(static_cast<std::size_t>(dd->n_local));
-    for (int i = 0; i < dd->n_local; ++i) {
-        dd->tag_to_local.emplace(frame.atoms.tag[i], i);
+    if (frame.atoms.has_bonded()) {
+        dd->tag_to_local.reserve(static_cast<std::size_t>(dd->n_local));
+        for (int i = 0; i < dd->n_local; ++i) {
+            dd->tag_to_local.emplace(frame.atoms.tag[i], i);
+        }
     }
 
     // Also clear `ghost_tags`. The previous step's ghost-tag log is now
@@ -421,7 +424,10 @@ void scatter_atoms_from_root(cpu::Frame& frame) {
     // 5. Land received atoms in [0, n_recv); size to owned + ghost headroom.
     //    `tot_recv` is already in atoms (the Alltoallv used a per-atom type).
     const int n_recv = static_cast<int>(tot_recv);
-    frame.atoms.set_capacity(n_recv + std::max(n_recv, 16384));
+    // Ghost headroom: 25% (typical halo influx is 20-35% of owners; the
+    // chunked Atom::grow covers thin-subdomain outliers). The previous
+    // `max(n_recv, 16384)` headroom doubled every per-atom array.
+    frame.atoms.set_capacity(n_recv + std::max(n_recv / 4, 16384));
     std::size_t r_off = 0;
     for (int k = 0; k < n_recv; ++k)
         r_off = unpack_atom(rbuf, r_off, frame, k);

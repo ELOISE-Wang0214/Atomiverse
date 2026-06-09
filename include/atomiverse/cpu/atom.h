@@ -239,6 +239,14 @@ class Atom {
     /// @brief Empty the map. LAMMPS `Atom::map_clear` equivalent.
     void map_clear() { map.clear(); }
 
+    /// @brief Empty the map AND free its bucket storage. Used at run
+    /// setup for systems with no bonded topology: the map exists solely
+    /// so the `add_bond/add_angle/add_dihedral` loaders and bonded force
+    /// kernels can resolve global tags, and costs ~50 B/atom of hash-node
+    /// heap when populated (e.g. ~400 MB dead weight on an 8M-atom LJ
+    /// run). `map_clear()` alone keeps the bucket array alive.
+    void map_release() { std::unordered_map<std::int64_t, int>{}.swap(map); }
+
     /// @brief Rebuild the map for rows `[begin, end)` from current
     /// `tag` values. LAMMPS `Atom::map_set` equivalent. Inserts (not
     /// replaces) -- callers typically call `map_clear()` first.

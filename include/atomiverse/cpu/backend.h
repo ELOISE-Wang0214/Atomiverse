@@ -72,6 +72,12 @@ class Backend {
     /// @param frame Host-side system state.
     void set_frame(cpu::Frame& frame);
 
+    /// @brief Free `atoms.map` and `dd->tag_to_local` when the frame has
+    /// no bonded topology (nothing resolves global tags at run time —
+    /// they cost ~50 B/atom each when populated). Called from
+    /// `set_frame()` after the DD bind/partition.
+    void release_tag_maps_if_unused(cpu::Frame& frame);
+
     /// @brief Build all components in Plan order.
     void build_components();
 

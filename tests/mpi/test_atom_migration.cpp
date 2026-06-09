@@ -119,9 +119,19 @@ TEST(Migrate, AtomDriftsAcrossPosXBoundary) {
                   MPI_COMM_WORLD);
     EXPECT_EQ(global_count, 8) << "atom count must be globally conserved";
 
-    // The migrated tag must now appear in exactly one rank's tag_to_local.
-    int i_have_it =
-        (dd->tag_to_local.find(moved_tag) != dd->tag_to_local.end()) ? 1 : 0;
+    // The migrated tag must now be OWNED by exactly one rank. Scan the
+    // owned rows directly: `tag_to_local` is maintained only for frames
+    // with bonded topology (it exists solely for bonded-tuple
+    // resolution), and this frame has none — assert that contract too.
+    EXPECT_TRUE(dd->tag_to_local.empty())
+        << "tag_to_local must stay empty for a frame without bonded topology";
+    int i_have_it = 0;
+    for (int i = 0; i < dd->n_local; ++i) {
+        if (frame.atoms.tag[i] == moved_tag) {
+            i_have_it = 1;
+            break;
+        }
+    }
     int total_owners_of_tag = 0;
     MPI_Allreduce(&i_have_it, &total_owners_of_tag, 1, MPI_INT, MPI_SUM,
                   MPI_COMM_WORLD);

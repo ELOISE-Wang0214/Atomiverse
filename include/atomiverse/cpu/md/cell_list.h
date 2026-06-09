@@ -24,6 +24,10 @@ namespace ATV {
 namespace cpu {
 namespace md {
 
+namespace mpi {
+struct DomainDecomposition;
+} // namespace mpi
+
 /// @brief Cell list spatial index -- LAMMPS bin style.
 ///
 /// Algorithm:
@@ -43,18 +47,29 @@ class CellList {
     /// @param cutoff_skin Interaction cutoff plus Verlet skin [Angstrom].
     void init(const cpu::Frame& frame, double cutoff_skin);
 
-    /// @brief One-time setup (multi-rank): grid is widened by `cutoff_skin`
-    /// on each side along every axis `d` with `dims[d] > 1`. Ghost atoms
-    /// whose positions lie outside the box are binned into the halo cells
-    /// without PBC wrap-around. Single-rank axes (`dims[d] == 1`) keep the
+    /// @brief One-time setup (multi-rank): along every axis `d` with
+    /// `dims[d] > 1` the grid covers only THIS RANK's subdomain plus a
+    /// `cutoff_skin` halo margin on each side — `[sublo[d] - cutoff_skin,
+    /// subhi[d] + cutoff_skin)` — not the global box. Ghost atoms (PBC
+    /// pre-shifted by `HaloSend`) bin into the halo cells without
+    /// wrap-around. Single-rank axes (`dims[d] == 1`) keep the global
     /// `[0, L)` range and are wrapped during binning.
+    ///
+    /// Sizing the grid to the subdomain keeps both the cell arrays and the
+    /// per-rebuild cell loops O(local atoms): the previous global-box grid
+    /// cost every rank O(N_total) cells — ~0.3 MB and three full sweeps per
+    /// added rank at 200k atoms/rank, the dominant per-rank RSS growth and
+    /// the multi-node rebuild bottleneck at 512-1024 ranks.
     /// @param frame Frame whose box defines the grid.
     /// @param cutoff_skin Interaction cutoff plus Verlet skin [Angstrom].
-    /// @param dims MPI Cartesian dimensions per axis (≥1).
+    /// @param dd Domain decomposition (dims + this rank's sublo/subhi).
+    ///        Borrowed pointer; must outlive this CellList's use. The grid
+    ///        re-derives itself from `dd->sublo/subhi` whenever they move
+    ///        (NPT rescale, RCB rebalance).
     /// @param capacity Maximum number of active atoms (owners + ghost slack);
     ///        per-atom bookkeeping arrays are sized to this.
     void init_extended(const cpu::Frame& frame, double cutoff_skin,
-                       const int dims[3], int capacity);
+                       const mpi::DomainDecomposition* dd, int capacity);
 
     /// @brief Full rebuild: bin atoms, build stencil.
     /// @param frame Frame to bin.
@@ -160,6 +175,16 @@ class CellList {
     /// `n_active` ever passed.
     int capacity_ = 0;
 
+    /// @brief Domain decomposition (multi-rank only; nullptr single-rank).
+    /// Extended axes derive the grid extent from `dd_->sublo/subhi`.
+    const mpi::DomainDecomposition* dd_ = nullptr;
+
+    /// @brief `dd_->sublo/subhi` captured at the last `compute_grid()`.
+    /// `grid_stale()` compares against the live values so NPT rescaling
+    /// and RCB rebalancing both trigger a grid re-derivation.
+    double sublo_at_grid_[3] = {0.0, 0.0, 0.0};
+    double subhi_at_grid_[3] = {0.0, 0.0, 0.0};
+
     // Binning
     xt::xtensor<int, 1> atom_cell_;    ///< Atom -> cell index [capacity].
     xt::xtensor<int, 1> cell_count_;   ///< Atoms per cell [total_cells].
@@ -230,6 +255,9 @@ class CellList {
     std::vector<int> bin_write_ptr_;
 
     void compute_grid(const cpu::Frame& frame);
+    /// @brief True when the grid extents no longer match the live box /
+    /// subdomain bounds (NPT rescale or RCB rebalance since last build).
+    bool grid_stale(const cpu::Frame& frame) const;
     void bin_atoms(const cpu::Frame& frame, int n_active);
     void build_stencil();
     void save_positions(const cpu::Frame& frame, int n_active);

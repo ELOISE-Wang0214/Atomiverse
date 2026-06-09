@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "atomiverse/cpu/md/force_scratch.h"
+#include "atomiverse/cpu/md/bonded_cache.h"
 #include "atomiverse/cpu/potentials/bond.h"
 
 namespace ATV {
@@ -39,6 +40,8 @@ class BondHarmonic : public Bond {
 
     md::BondedForceScratch scratch_;
     md::DropTally drops_;
+    /// @brief Resolved-tuple cache; rebuilt on migration / halo full rebuild.
+    md::BondedTupleCache cache_;
 };
 
 } // namespace cpu

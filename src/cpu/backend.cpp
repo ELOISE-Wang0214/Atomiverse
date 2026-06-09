@@ -189,11 +189,28 @@ void Backend::set_frame(cpu::Frame& frame) {
             if (frame.atoms.size() > dd_->capacity)
                 dd_->capacity = frame.atoms.size();
         }
+        release_tag_maps_if_unused(frame);
         return;
     }
 #endif
     dd_->bind(frame);
     dd_->compute_sublo_subhi(frame.box);
+    release_tag_maps_if_unused(frame);
+}
+
+void Backend::release_tag_maps_if_unused(cpu::Frame& frame) {
+    if (frame.atoms.has_bonded())
+        return;
+    // No bonded topology → nothing resolves global tags at run time
+    // (ResolveView and the add_* topology loaders are the only readers).
+    // The loaders may have populated `atoms.map` before topology turned
+    // out to be empty (materialize / lammps_data / benches call map_set
+    // unconditionally); drop it and the DD mirror. ~50 B/atom each —
+    // ~400 MB dead weight on an 8M-atom single-rank LJ run.
+    frame.atoms.map_release();
+    if (dd_) {
+        std::unordered_map<std::int64_t, int>{}.swap(dd_->tag_to_local);
+    }
 }
 
 void Backend::build_components() {

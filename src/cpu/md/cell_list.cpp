@@ -4,6 +4,7 @@
 #include "atomiverse/cpu/md/cell_list.h"
 #include "atomiverse/core/log.h"
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/cpu/md/mpi/domain.h"
 
 #include <algorithm>
 #include <cmath>
@@ -27,6 +28,7 @@ CellList::CellList(double cutoff, double skin)
 void CellList::init(const cpu::Frame& frame, double /*cutoff_skin*/) {
     cutoff_skin_ = cutoff_ + skin_;
     // Single-rank: no axis extension; whole-box grid; ghosts wrap into [0, L).
+    dd_ = nullptr;
     for (int d = 0; d < 3; ++d) {
         axis_extended_[d] = false;
         origin_[d] = 0.0;
@@ -43,12 +45,16 @@ void CellList::init(const cpu::Frame& frame, double /*cutoff_skin*/) {
 }
 
 void CellList::init_extended(const cpu::Frame& frame, double /*cutoff_skin*/,
-                             const int dims[3], int capacity) {
+                             const mpi::DomainDecomposition* dd,
+                             int capacity) {
     cutoff_skin_ = cutoff_ + skin_;
-    // Multi-rank: extend each axis with dims>1 to cover ghost halo.
+    // Multi-rank: every decomposed axis bins only this rank's subdomain
+    // plus a cutoff_skin halo margin (extent + origin derived from
+    // dd->sublo/subhi inside compute_grid).
+    dd_ = dd;
     for (int d = 0; d < 3; ++d) {
-        axis_extended_[d] = (dims[d] > 1);
-        origin_[d] = axis_extended_[d] ? -cutoff_skin_ : 0.0;
+        axis_extended_[d] = (dd != nullptr && dd->dims[d] > 1);
+        origin_[d] = 0.0; // set per-axis by compute_grid()
     }
     capacity_ = capacity;
     compute_grid(frame);
@@ -62,32 +68,78 @@ void CellList::init_extended(const cpu::Frame& frame, double /*cutoff_skin*/,
 }
 
 void CellList::compute_grid(const cpu::Frame& frame) {
-    // Per-axis effective grid length: box edge plus halo skin on each
-    // extended side. Single-rank axes use the box edge as-is.
-    double lx_eff =
-        frame.box.length(0)
-        + (axis_extended_[0] ? double(2) * cutoff_skin_ : double(0));
-    double ly_eff =
-        frame.box.length(1)
-        + (axis_extended_[1] ? double(2) * cutoff_skin_ : double(0));
-    double lz_eff =
-        frame.box.length(2)
-        + (axis_extended_[2] ? double(2) * cutoff_skin_ : double(0));
+    // Per-axis grid extent. Extended (decomposed) axes cover only this
+    // rank's subdomain plus a cutoff_skin halo margin on each side, so
+    // both the cell arrays and every per-rebuild cell sweep stay
+    // O(local atoms) instead of O(global box). Non-extended axes use the
+    // global box edge as-is (positions wrap into [0, L) during binning).
+    //
+    // CRITICAL: the local window is a slice of the GLOBAL bin lattice —
+    // the cell size comes from the global box edge and the origin snaps
+    // to an integer multiple of it (LAMMPS Neighbor::setup_bins does the
+    // same). The owner-ghost Newton dedup in refresh_half classifies a
+    // pair as home-cell (tag tie-break on both ranks) or forward-cell
+    // (exactly one rank scans it) from CELL INDices; that classification
+    // is only rank-symmetric when cell boundaries coincide across ranks.
+    // A free-floating origin (sublo - cutoff_skin, not lattice-aligned)
+    // lets the same boundary pair land home-cell on one rank and
+    // forward-cell on the other → double-counted or dropped pair forces
+    // (measured: +2.5% step-1 pressure error on the 8-rank NPT gate).
+    // PBC ghost pre-shifts (±L) preserve lattice alignment because L is
+    // an exact integer multiple of the cell size by construction.
+    int nc[3];
+    double cs[3];
+    for (int d = 0; d < 3; ++d) {
+        const double L = frame.box.length(d);
+        const int nc_global = std::max(
+            int(1), static_cast<int>(std::floor(L / cutoff_skin_)));
+        const double cs_d = L / nc_global;
+        if (axis_extended_[d]) {
+            // Lattice-aligned local window covering
+            // [sublo - cutoff_skin, subhi + cutoff_skin].
+            const int lo_bin = static_cast<int>(
+                std::floor((dd_->sublo[d] - cutoff_skin_) / cs_d));
+            const int hi_bin = static_cast<int>(
+                std::floor((dd_->subhi[d] + cutoff_skin_) / cs_d));
+            nc[d] = hi_bin - lo_bin + 1;
+            cs[d] = cs_d;
+            origin_[d] = lo_bin * cs_d;
+            sublo_at_grid_[d] = dd_->sublo[d];
+            subhi_at_grid_[d] = dd_->subhi[d];
+        } else {
+            nc[d] = nc_global;
+            cs[d] = cs_d;
+            origin_[d] = 0.0;
+            sublo_at_grid_[d] = 0.0;
+            subhi_at_grid_[d] = L;
+        }
+    }
 
-    ncx_ =
-        std::max(int(1), static_cast<int>(std::floor(lx_eff / cutoff_skin_)));
-    ncy_ =
-        std::max(int(1), static_cast<int>(std::floor(ly_eff / cutoff_skin_)));
-    ncz_ =
-        std::max(int(1), static_cast<int>(std::floor(lz_eff / cutoff_skin_)));
-
-    csx_ = lx_eff / ncx_;
-    csy_ = ly_eff / ncy_;
-    csz_ = lz_eff / ncz_;
+    ncx_ = nc[0];
+    ncy_ = nc[1];
+    ncz_ = nc[2];
+    csx_ = cs[0];
+    csy_ = cs[1];
+    csz_ = cs[2];
 
     total_cells_ = ncx_ * ncy_ * ncz_;
     cell_count_ = xt::zeros<int>({total_cells_});
     cell_offset_ = xt::zeros<int>({total_cells_});
+}
+
+bool CellList::grid_stale(const cpu::Frame& frame) const {
+    if (frame.box.length(0) != box_at_last_build_)
+        return true;
+    if (dd_ != nullptr) {
+        for (int d = 0; d < 3; ++d) {
+            if (!axis_extended_[d])
+                continue;
+            if (dd_->sublo[d] != sublo_at_grid_[d]
+                || dd_->subhi[d] != subhi_at_grid_[d])
+                return true;
+        }
+    }
+    return false;
 }
 
 void CellList::build_stencil() {
@@ -208,8 +260,11 @@ void CellList::build(const cpu::Frame& frame, int n_active) {
     // are silently dropped — the pair virial then decays toward zero
     // and an NPT run inflates without bound (see
     // tests/cpu/md/test_lammps_npt_parity.cpp). Resize the grid
-    // whenever the box edge has moved since the last build.
-    if (frame.box.length(0) != box_at_last_build_) {
+    // whenever the box edge has moved since the last build — and, for the
+    // subdomain-local multi-rank grid, whenever this rank's sublo/subhi
+    // moved (RCB rebalance, or NPT rescale propagated through
+    // compute_sublo_subhi).
+    if (grid_stale(frame)) {
         compute_grid(frame);
         build_stencil();
     }
@@ -231,9 +286,9 @@ bool CellList::needs_rebuild(const cpu::Frame& frame, int n_active) const {
     if (n != n_at_last_build_)
         return true;
 
-    // NPT: barostat may have scaled the box, invalidating the cell grid
-    // (`csx_/csy_/csz_` were sized for the old box edge). Force a rebuild.
-    if (frame.box.length(0) != box_at_last_build_)
+    // NPT: barostat may have scaled the box (or RCB moved this rank's
+    // subdomain bounds), invalidating the cell grid. Force a rebuild.
+    if (grid_stale(frame))
         return true;
 
     double max_disp_sq = 0;

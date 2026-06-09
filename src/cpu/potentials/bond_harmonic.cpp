@@ -43,16 +43,35 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
     const int nlocal = rv.n_local();
     const int n_force = rv.n_force();
 
-    // Quick exit if no bonds anywhere on this rank.
-    int max_nb = 0;
-    for (int i = 0; i < nlocal; ++i)
-        max_nb = std::max(max_nb, a.num_bond[i]);
-    if (max_nb == 0)
+    // Tuple cache: tag→local hash resolution happens only when row
+    // indices may have moved (migration / halo full rebuild), not every
+    // step. Layout: {i, j, type} per bond.
+    if (cache_.stale(ctx)) {
+        cache_.flat.clear();
+        cache_.dropped_at_build = 0;
+        for (int i = 0; i < nlocal; ++i) {
+            const int nb = a.num_bond[i];
+            for (int m = 0; m < nb; ++m) {
+                const int j = rv.resolve(a.bond_atom(i, m));
+                if (j < 0) {
+                    ++cache_.dropped_at_build;
+                    continue;
+                }
+                cache_.flat.push_back(i);
+                cache_.flat.push_back(j);
+                cache_.flat.push_back(a.bond_type(i, m));
+            }
+        }
+        cache_.mark_built(ctx);
+        drops_.dropped += cache_.dropped_at_build;
+    }
+    const int n_tuples = static_cast<int>(cache_.flat.size()) / 3;
+    if (n_tuples == 0)
         return;
+    const int* __restrict tup = cache_.flat.data();
 
     double energy_total = 0;
     md::Voigt6 vir;
-    std::uint64_t dropped = 0, evaluated = 0;
 
     const double* __restrict x_ptr = a.x.data();
     const double* __restrict y_ptr = a.y.data();
@@ -63,7 +82,7 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
 // a critical section (once per thread per step) — an OMP user-defined
 // reduction on Voigt6 would heap-allocate per step, violating the
 // "no allocation in launch()" invariant.
-#pragma omp parallel reduction(+ : energy_total, dropped, evaluated)
+#pragma omp parallel reduction(+ : energy_total)
     {
         int tid = 0;
 #ifdef _OPENMP
@@ -72,46 +91,38 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
         const md::ThreadForce tf = scratch_.begin_thread(tid, n_force, f);
         md::Voigt6 vir_local;
 
-        // LAMMPS-style per-atom iteration: each owned atom `i` iterates its
-        // own bond list (Newton-bond-ON: only bonds where `i` is the
-        // smaller-tag owner). Partner `j` may be an owner or a ghost; ghost
-        // force halves ship home via HaloRecv.
+        // Hot loop over pre-resolved tuples (Newton-bond-ON: each bond is
+        // owned by its smaller-tag atom, stored once). Partner `j` may be
+        // an owner or a ghost; ghost force halves ship home via HaloRecv.
 #pragma omp for schedule(static)
-        for (int i = 0; i < nlocal; ++i) {
-            const int nb = a.num_bond[i];
-            for (int m = 0; m < nb; ++m) {
-                const int j = rv.resolve(a.bond_atom(i, m));
-                if (j < 0) {
-                    ++dropped; // partner not resolvable on this rank
-                    continue;
-                }
-                ++evaluated;
-                const int type = a.bond_type(i, m);
+        for (int t = 0; t < n_tuples; ++t) {
+            const int i = tup[3 * t + 0];
+            const int j = tup[3 * t + 1];
+            const int type = tup[3 * t + 2];
 
-                double dx = x_ptr[i] - x_ptr[j];
-                double dy = y_ptr[i] - y_ptr[j];
-                double dz = z_ptr[i] - z_ptr[j];
-                f.box.min_image(dx, dy, dz);
+            double dx = x_ptr[i] - x_ptr[j];
+            double dy = y_ptr[i] - y_ptr[j];
+            double dz = z_ptr[i] - z_ptr[j];
+            f.box.min_image(dx, dy, dz);
 
-                const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
-                const double dr = r - r0_[type];
+            const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
+            const double dr = r - r0_[type];
 
-                energy_total += K_[type] * dr * dr;
+            energy_total += K_[type] * dr * dr;
 
-                const double fpair = -double(2) * K_[type] * dr / r;
-                const double fx_val = fpair * dx;
-                const double fy_val = fpair * dy;
-                const double fz_val = fpair * dz;
+            const double fpair = -double(2) * K_[type] * dr / r;
+            const double fx_val = fpair * dx;
+            const double fy_val = fpair * dy;
+            const double fz_val = fpair * dz;
 
-                tf.fx[i] += fx_val;
-                tf.fx[j] -= fx_val;
-                tf.fy[i] += fy_val;
-                tf.fy[j] -= fy_val;
-                tf.fz[i] += fz_val;
-                tf.fz[j] -= fz_val;
+            tf.fx[i] += fx_val;
+            tf.fx[j] -= fx_val;
+            tf.fy[i] += fy_val;
+            tf.fy[j] -= fy_val;
+            tf.fz[i] += fz_val;
+            tf.fz[j] -= fz_val;
 
-                vir_local.add_pair(dx, dy, dz, fx_val, fy_val, fz_val);
-            }
+            vir_local.add_pair(dx, dy, dz, fx_val, fy_val, fz_val);
         }
 #pragma omp critical
         vir += vir_local;
@@ -123,13 +134,13 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
     f.scalars.energy_bond += energy_total;
     vir.flush_to(f.scalars);
 
-    drops_.dropped += dropped;
-    drops_.evaluated += evaluated;
+    drops_.evaluated += static_cast<std::uint64_t>(n_tuples);
 }
 
 void BondHarmonic::destroy(const DestroyContext& /*ctx*/) {
     drops_.report("BondHarmonic");
     drops_.reset();
+    cache_.clear();
     scratch_.clear();
     // Owned-tuple cache is owned by the cpu::Bond base; nothing to clear here.
 }

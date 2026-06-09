@@ -26,9 +26,16 @@ void DomainDecomposition::bind(const Frame& frame) {
     capacity = n;
 
     tag_to_local.clear();
-    tag_to_local.reserve(static_cast<std::size_t>(n));
-    for (int i = 0; i < n; ++i) {
-        tag_to_local.emplace(frame.atoms.tag(i), i);
+    // The tag→local map exists solely for bonded-tuple resolution; pure
+    // pairwise systems never query it. Skipping the fill (and freeing any
+    // prior buckets) saves ~50 B/atom of hash-node heap.
+    if (frame.atoms.has_bonded()) {
+        tag_to_local.reserve(static_cast<std::size_t>(n));
+        for (int i = 0; i < n; ++i) {
+            tag_to_local.emplace(frame.atoms.tag(i), i);
+        }
+    } else {
+        std::unordered_map<std::int64_t, int>{}.swap(tag_to_local);
     }
 }
 
@@ -300,7 +307,11 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
     // bound only needs to cover the common (roughly cubic subdomain) case;
     // ghost shells run ~n_local for a compact subdomain.
     {
-        const int headroom = std::max(n_local, 16384);
+        // 25% ghost headroom (typical halo influx is 20-35% of owners;
+        // halo_exchange grows on demand for thin-subdomain outliers). The
+        // previous max(n_local, 16384) headroom doubled every per-atom
+        // array for the whole run.
+        const int headroom = std::max(n_local / 4, 16384);
         const int new_cap = n_local + headroom;
         if (new_cap < frame.atoms.nmax) {
             frame.atoms.set_capacity(new_cap);
@@ -309,9 +320,14 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
     }
 
     tag_to_local.clear();
-    tag_to_local.reserve(static_cast<std::size_t>(n_local));
-    for (int i = 0; i < n_local; ++i) {
-        tag_to_local.emplace(frame.atoms.tag(i), i);
+    // Bonded-resolution map only — pure pairwise systems skip it (see bind()).
+    if (frame.atoms.has_bonded()) {
+        tag_to_local.reserve(static_cast<std::size_t>(n_local));
+        for (int i = 0; i < n_local; ++i) {
+            tag_to_local.emplace(frame.atoms.tag(i), i);
+        }
+    } else {
+        std::unordered_map<std::int64_t, int>{}.swap(tag_to_local);
     }
 
     // No topology filter at partition. Each rank keeps the FULL frame.bonds

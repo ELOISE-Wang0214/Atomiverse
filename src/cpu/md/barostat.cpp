@@ -93,6 +93,16 @@ void Barostat::launch(const cpu::LaunchContext& ctx) {
             f.atoms.z[i] *= mu;
         }
     }
+
+    // Keep this rank's slab bounds in lockstep with the rescaled box —
+    // same as NoseHooverNPT. Migration classifies owners against
+    // `sublo/subhi` (absolute) while `dest_rank_for` uses box-length
+    // fractions, and the subdomain-local cell grid derives its extents
+    // from these bounds; letting them go stale degrades both as the box
+    // breathes.
+    if (ctx.runtime.dd && ctx.runtime.mpi_size > 1) {
+        ctx.runtime.dd->compute_sublo_subhi(f.box);
+    }
 }
 
 } // namespace md

@@ -225,7 +225,7 @@ class NeighborList : public cpu::ComponentBase {
     /// the cell-grid sizing is stale.
     void reinit_strategy(const cpu::Context& rt, cpu::Frame& f) {
         if (is_multi_rank(rt)) {
-            strategy_.init_extended(f, cutoff_, rt.dd->dims, rt.dd->capacity);
+            strategy_.init_extended(f, cutoff_, rt.dd, rt.dd->capacity);
         } else {
             strategy_.init(f, cutoff_);
         }

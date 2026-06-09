@@ -284,8 +284,13 @@ TEST_F(CpuMdTest, CellListExtendedGridBoxChange) {
     const int n_total = frame.atoms.size();
 
     cpu::md::CellList cl(kCutoff);
-    int dims[3] = {2, 1, 1};
-    cl.init_extended(frame, kCutoff, dims, /*capacity=*/n_total);
+    cpu::md::mpi::DomainDecomposition dd;
+    dd.dims[0] = 2;
+    for (int d = 0; d < 3; ++d) {
+        dd.sublo[d] = 0.0;
+        dd.subhi[d] = frame.box.length(d);
+    }
+    cl.init_extended(frame, kCutoff, &dd, /*capacity=*/n_total);
 
     cl.build(frame, n_total);
     auto pairs0 = cl.build_half(frame, n_total);
@@ -329,8 +334,13 @@ TEST_F(CpuMdTest, CellListMultiRankMigrationCycle) {
     const int N = frame.atoms.size();
 
     cpu::md::CellList cl(kCutoff);
-    int dims[3] = {2, 1, 1};
-    cl.init_extended(frame, kCutoff, dims, /*capacity=*/N);
+    cpu::md::mpi::DomainDecomposition dd;
+    dd.dims[0] = 2;
+    for (int d = 0; d < 3; ++d) {
+        dd.sublo[d] = 0.0;
+        dd.subhi[d] = frame.box.length(d);
+    }
+    cl.init_extended(frame, kCutoff, &dd, /*capacity=*/N);
 
     const int n_owners = N / 2;
     const int n_with_ghost = n_owners + N / 4;

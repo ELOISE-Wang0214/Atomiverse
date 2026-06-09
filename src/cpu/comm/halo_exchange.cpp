@@ -395,9 +395,13 @@ void HaloSend::build(const cpu::BuildContext& ctx) {
 
     if (!bufs_)
         bufs_ = std::make_unique<detail::FaceBufs>();
-    prealloc_bufs(*bufs_, dd->capacity);
+    // Each face ships only the boundary layer (cutoff-deep slab, typically
+    // 5-15% of owners; the cascade re-forwarding adds a little). A quarter
+    // of capacity is generous; std::vector growth covers outliers.
+    const int face_cap = dd->capacity / 4 + 1024;
+    prealloc_bufs(*bufs_, face_cap);
     for (int f = 0; f < 6; ++f)
-        dd->send_lists[f].reserve(static_cast<std::size_t>(dd->capacity));
+        dd->send_lists[f].reserve(static_cast<std::size_t>(face_cap));
 }
 
 // Per-axis sub-stage helper for the forward path. Both `full_rebuild` and
@@ -541,6 +545,12 @@ inline void forward_axis_stage(Frame& frame, md::mpi::DomainDecomposition& dd,
     // unpack order ALSO defines the slot layout that `Reverse` mirrors
     // via `dd->recv_counts`.
     int slot = slot_in_out;
+    // Ghost tag→slot tracking exists solely for bonded-tuple resolution
+    // (ResolveView / select_owned_tuples). Pure pairwise systems never
+    // query ghost tags, so skip the per-ghost hash inserts and the
+    // companion ghost_tags log entirely — the map stays empty (~50 B per
+    // ghost saved, plus the per-rebuild insert/erase churn).
+    const bool track_tags = frame.atoms.has_bonded();
     for (int s = 0; s < 2; ++s) {
         const int face_s = (s == 0) ? f_lo : f_hi;
         const int n = recv_counts[s];
@@ -556,8 +566,10 @@ inline void forward_axis_stage(Frame& frame, md::mpi::DomainDecomposition& dd,
                     static_cast<std::int64_t>(rbuf[off + 3]);
                 frame.atoms.tag[slot] = tag;
                 frame.atoms.charge[slot] = rbuf[off + 4]; // ghost charge (border)
-                dd.tag_to_local[tag] = slot;
-                dd.ghost_tags.push_back(tag);
+                if (track_tags) {
+                    dd.tag_to_local[tag] = slot;
+                    dd.ghost_tags.push_back(tag);
+                }
                 ++slot;
             }
             dd.recv_counts[static_cast<std::size_t>(face_s)] = n;

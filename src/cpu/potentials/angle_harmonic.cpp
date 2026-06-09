@@ -34,15 +34,36 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
     const int nlocal = rv.n_local();
     const int n_force = rv.n_force();
 
-    // Quick exit if no angles anywhere.
-    int max_na = 0;
-    for (int i = 0; i < nlocal; ++i)
-        max_na = std::max(max_na, a.num_angle[i]);
-    if (max_na == 0)
+    // Tuple cache: tag→local hash resolution happens only when row
+    // indices may have moved (migration / halo full rebuild), not every
+    // step. Layout: {i, j, k, type} per angle (j = centre/owner).
+    if (cache_.stale(ctx)) {
+        cache_.flat.clear();
+        cache_.dropped_at_build = 0;
+        for (int j = 0; j < nlocal; ++j) {
+            const int na = a.num_angle[j];
+            for (int m = 0; m < na; ++m) {
+                const int i = rv.resolve(a.angle_atom(j, 2 * m + 0));
+                const int k = rv.resolve(a.angle_atom(j, 2 * m + 1));
+                if (i < 0 || k < 0) {
+                    ++cache_.dropped_at_build;
+                    continue;
+                }
+                cache_.flat.push_back(i);
+                cache_.flat.push_back(j);
+                cache_.flat.push_back(k);
+                cache_.flat.push_back(a.angle_type(j, m));
+            }
+        }
+        cache_.mark_built(ctx);
+        drops_.dropped += cache_.dropped_at_build;
+    }
+    const int n_tuples = static_cast<int>(cache_.flat.size()) / 4;
+    if (n_tuples == 0)
         return;
+    const int* __restrict tup = cache_.flat.data();
 
     double energy_total = 0;
-    std::uint64_t dropped = 0, evaluated = 0;
     // Angle virial: Σ d_ji ⊗ F_i + d_jk ⊗ F_k (centre force cancels by
     // Newton's 3rd, so this is translation-invariant and PBC-safe).
     md::Voigt6 vir;
@@ -53,7 +74,7 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
 
 // Thread-private virial combined under a critical section (no per-step heap
 // alloc, unlike an OMP user-defined reduction on Voigt6).
-#pragma omp parallel reduction(+ : energy_total, dropped, evaluated)
+#pragma omp parallel reduction(+ : energy_total)
     {
         int tid = 0;
 #ifdef _OPENMP
@@ -62,21 +83,15 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
         const md::ThreadForce tf = scratch_.begin_thread(tid, n_force, f);
         md::Voigt6 vir_local;
 
-        // LAMMPS-style per-atom iteration: each owned atom `j` (centre) owns
-        // the angles where it sits in the middle. The two non-centre partners
-        // (i, k) are stored at angle_atom(j, 2*m + 0/1).
+        // Hot loop over pre-resolved tuples: centre atom `j` owns the
+        // angle; partners (i, k) may be owners or ghosts.
 #pragma omp for schedule(static)
-        for (int j = 0; j < nlocal; ++j) {
-            const int na = a.num_angle[j];
-            for (int m = 0; m < na; ++m) {
-                const int i = rv.resolve(a.angle_atom(j, 2 * m + 0));
-                const int k = rv.resolve(a.angle_atom(j, 2 * m + 1));
-                if (i < 0 || k < 0) {
-                    ++dropped;
-                    continue;
-                }
-                ++evaluated;
-                const int type = a.angle_type(j, m);
+        for (int t = 0; t < n_tuples; ++t) {
+            {
+                const int i = tup[4 * t + 0];
+                const int j = tup[4 * t + 1];
+                const int k = tup[4 * t + 2];
+                const int type = tup[4 * t + 3];
 
                 const double ri[3] = {x_ptr[i], y_ptr[i], z_ptr[i]};
                 const double rj[3] = {x_ptr[j], y_ptr[j], z_ptr[j]};
@@ -155,13 +170,13 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
     f.scalars.energy_angle += energy_total;
     vir.flush_to(f.scalars);
 
-    drops_.dropped += dropped;
-    drops_.evaluated += evaluated;
+    drops_.evaluated += static_cast<std::uint64_t>(n_tuples);
 }
 
 void AngleHarmonic::destroy(const DestroyContext& /*ctx*/) {
     drops_.report("AngleHarmonic");
     drops_.reset();
+    cache_.clear();
     scratch_.clear();
     // Owned-tuple cache is owned by the cpu::Angle base.
 }

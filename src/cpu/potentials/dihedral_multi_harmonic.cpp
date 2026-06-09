@@ -44,14 +44,38 @@ void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
     const int nlocal = rv.n_local();
     const int n_force = rv.n_force();
 
-    int max_nd = 0;
-    for (int i = 0; i < nlocal; ++i)
-        max_nd = std::max(max_nd, a.num_dihedral[i]);
-    if (max_nd == 0)
+    // Tuple cache: tag→local hash resolution happens only when row
+    // indices may have moved (migration / halo full rebuild), not every
+    // step. Layout: {i1, i2, i3, i4, type} per dihedral (i2 = owner).
+    if (cache_.stale(ctx)) {
+        cache_.flat.clear();
+        cache_.dropped_at_build = 0;
+        for (int i2 = 0; i2 < nlocal; ++i2) {
+            const int nd = a.num_dihedral[i2];
+            for (int m = 0; m < nd; ++m) {
+                const int i1 = rv.resolve(a.dihedral_atom(i2, 3 * m + 0));
+                const int i3 = rv.resolve(a.dihedral_atom(i2, 3 * m + 1));
+                const int i4 = rv.resolve(a.dihedral_atom(i2, 3 * m + 2));
+                if (i1 < 0 || i3 < 0 || i4 < 0) {
+                    ++cache_.dropped_at_build;
+                    continue;
+                }
+                cache_.flat.push_back(i1);
+                cache_.flat.push_back(i2);
+                cache_.flat.push_back(i3);
+                cache_.flat.push_back(i4);
+                cache_.flat.push_back(a.dihedral_type(i2, m));
+            }
+        }
+        cache_.mark_built(ctx);
+        drops_.dropped += cache_.dropped_at_build;
+    }
+    const int n_tuples = static_cast<int>(cache_.flat.size()) / 5;
+    if (n_tuples == 0)
         return;
+    const int* __restrict tup = cache_.flat.data();
 
     double energy_total = 0;
-    std::uint64_t dropped = 0, evaluated = 0;
     // Dihedral virial = (-b1)⊗F1 + b2⊗(F3+F4) + b3⊗F4 (with i2 as the
     // reference atom and Newton's 3rd F2 = -(F1+F3+F4)) — translation/PBC
     // invariant. Each term is one Voigt6::add_pair.
@@ -63,7 +87,7 @@ void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
 
 // Thread-private virial combined under a critical section (no per-step heap
 // alloc, unlike an OMP user-defined reduction on Voigt6).
-#pragma omp parallel reduction(+ : energy_total, dropped, evaluated)
+#pragma omp parallel reduction(+ : energy_total)
     {
         int tid = 0;
 #ifdef _OPENMP
@@ -72,22 +96,16 @@ void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
         const md::ThreadForce tf = scratch_.begin_thread(tid, n_force, f);
         md::Voigt6 vir_local;
 
-        // LAMMPS-style per-atom iteration: each owned atom `i2` (2nd atom of
-        // the i-j-k-l quadruple) owns its dihedrals; partners (i1,i3,i4) are
-        // at dihedral_atom(i2, 3*m + 0/1/2).
+        // Hot loop over pre-resolved tuples: atom `i2` (2nd of the
+        // i-j-k-l quadruple) owns the dihedral; partners may be ghosts.
 #pragma omp for schedule(static)
-        for (int i2 = 0; i2 < nlocal; ++i2) {
-            const int nd = a.num_dihedral[i2];
-            for (int m = 0; m < nd; ++m) {
-                const int i1 = rv.resolve(a.dihedral_atom(i2, 3 * m + 0));
-                const int i3 = rv.resolve(a.dihedral_atom(i2, 3 * m + 1));
-                const int i4 = rv.resolve(a.dihedral_atom(i2, 3 * m + 2));
-                if (i1 < 0 || i3 < 0 || i4 < 0) {
-                    ++dropped;
-                    continue;
-                }
-                ++evaluated;
-                const int type = a.dihedral_type(i2, m);
+        for (int t = 0; t < n_tuples; ++t) {
+            {
+                const int i1 = tup[5 * t + 0];
+                const int i2 = tup[5 * t + 1];
+                const int i3 = tup[5 * t + 2];
+                const int i4 = tup[5 * t + 3];
+                const int type = tup[5 * t + 4];
 
                 const double r1[3] = {x_ptr[i1], y_ptr[i1], z_ptr[i1]};
                 const double r2[3] = {x_ptr[i2], y_ptr[i2], z_ptr[i2]};
@@ -218,13 +236,13 @@ void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
     f.scalars.energy_dihedral += energy_total;
     vir.flush_to(f.scalars);
 
-    drops_.dropped += dropped;
-    drops_.evaluated += evaluated;
+    drops_.evaluated += static_cast<std::uint64_t>(n_tuples);
 }
 
 void DihedralMultiHarmonic::destroy(const DestroyContext& /*ctx*/) {
     drops_.report("DihedralMultiHarmonic");
     drops_.reset();
+    cache_.clear();
     scratch_.clear();
     // Owned-tuple cache is owned by the cpu::Dihedral base.
 }
