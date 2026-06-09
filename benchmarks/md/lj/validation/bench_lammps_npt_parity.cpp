@@ -5,7 +5,7 @@
 ///        validation benchmark, not a ctest gate.
 ///
 /// Reference run (LAMMPS `units metal`):
-///   benchmarks/md/validation/lammps_npt/in.npt
+///   benchmarks/md/lj/validation/reference/lammps_npt/in.npt
 ///
 /// System / settings (both engines):
 ///   * 256 LJ atoms on a 4³ FCC lattice, a = 5.3 Å, mass = 39.948 amu.

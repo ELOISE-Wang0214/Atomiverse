@@ -5,7 +5,7 @@
 ///        validation benchmark, not a ctest gate.
 ///
 /// Reference run (LAMMPS `units metal`):
-///   benchmarks/md/validation/lammps_langevin_nvt/in.langevin_nvt
+///   benchmarks/md/lj/validation/reference/lammps_langevin_nvt/in.langevin_nvt
 ///
 /// Both engines:
 ///   * 256 LJ atoms on a 4³ FCC lattice, a = 5.79 Å.
