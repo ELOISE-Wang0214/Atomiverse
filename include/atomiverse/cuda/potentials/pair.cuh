@@ -40,6 +40,16 @@ class Pair : public ComponentBase {
     ///        non-ref-qualified base virtual could not override).
     virtual void enable_full_exclusions() {}
 
+    /// @brief Whether `compute()` honors `Context::n_force_rows` /
+    ///        `force_rows` (the multi-GPU owned-row restriction and
+    ///        interior/boundary split). The engine consults this before
+    ///        issuing split (two-launch) pair calls — a style that ignores
+    ///        the row fields would otherwise compute every row twice.
+    ///        Default false: the engine then issues ONE full launch (the
+    ///        historical behavior). Styles that implement the row fields
+    ///        (PairLJCut) override to true.
+    virtual bool supports_force_rows() const { return false; }
+
   protected:
     explicit Pair(double cutoff) : cutoff_(cutoff) {}
 

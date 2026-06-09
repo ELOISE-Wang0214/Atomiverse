@@ -1433,7 +1433,10 @@ void MultiGpu::compute_forces(bool read_energy) {
             // deposits may travel home.
             auto st = static_cast<cudaStream_t>(ctx_[s].stream);
             const int nl = frames_[s].n_local_;
-            const bool split = !rows_.empty() && rows_[s]
+            // A style that ignores the row fields must get exactly ONE full
+            // launch (a split would compute every row twice).
+            const bool rows_ok = pair_[s]->supports_force_rows();
+            const bool split = rows_ok && !rows_.empty() && rows_[s]
                                && n_interior_[s] >= 0;
             if (split) {
                 // Interior rows (no ghost neighbor): launch BEFORE waiting on
@@ -1447,8 +1450,10 @@ void MultiGpu::compute_forces(bool read_energy) {
                 pair_[s]->launch(lc); // boundary rows — need landed ghosts
             } else {
                 CKM(cudaStreamWaitEvent(st, ev_ghosts_[s], 0));
-                ctx_[s].n_force_rows = nl; // owned prefix, no split available
-                ctx_[s].force_rows = nullptr;
+                if (rows_ok) {
+                    ctx_[s].n_force_rows = nl; // owned prefix, no split known
+                    ctx_[s].force_rows = nullptr;
+                }
                 pair_[s]->launch(lc);
             }
             ctx_[s].n_force_rows = -1;
@@ -1551,6 +1556,13 @@ void MultiGpu::classify_force_rows() {
         CKM(cudaMemcpy(&nsel, row_nsel_[s], sizeof(int),
                        cudaMemcpyDeviceToHost));
         n_interior_[s] = nsel;
+        if (mg_prof().on)
+            std::fprintf(stderr,
+                         "[MG_ROWS] dev%d interior=%d/%d (%.1f%%)\n", s, nsel,
+                         frames_[s].n_local_,
+                         frames_[s].n_local_ > 0
+                             ? 100.0 * nsel / frames_[s].n_local_
+                             : 0.0);
     }
 }
 
@@ -1796,7 +1808,8 @@ void MultiGpu::compute_lj_nlist() {
             // wait for the ghost positions via ev_ghosts_ (stream-level, no
             // host sync anywhere in the steady step). See compute_forces.
             const int nl = frames_[s].n_local_;
-            const bool split = !rows_.empty() && rows_[s]
+            const bool rows_ok = pair_[s]->supports_force_rows();
+            const bool split = rows_ok && !rows_.empty() && rows_[s]
                                && n_interior_[s] >= 0;
             if (split) {
                 ctx_[s].n_force_rows = n_interior_[s];
@@ -1808,8 +1821,10 @@ void MultiGpu::compute_lj_nlist() {
                 pair_[s]->launch(lc);
             } else {
                 CKM(cudaStreamWaitEvent(st, ev_ghosts_[s], 0));
-                ctx_[s].n_force_rows = nl;
-                ctx_[s].force_rows = nullptr;
+                if (rows_ok) {
+                    ctx_[s].n_force_rows = nl;
+                    ctx_[s].force_rows = nullptr;
+                }
                 pair_[s]->launch(lc);
             }
             ctx_[s].n_force_rows = -1;
@@ -1829,11 +1844,35 @@ void MultiGpu::run_nve_nlist(int steps, double dt, double cutoff,
     const real_t dtr = static_cast<real_t>(dt);
     if (reneigh_every < 1)
         reneigh_every = 1;
+    // Phase timer (no-op unless AV_MG_PROFILE): device-inclusive per-phase
+    // cost, same shape as run_nve_pe. Profiling mode serializes the async
+    // pipeline by design — phase shares, not absolute overlap, are the signal.
+    auto timed = [&](const char* name, auto&& fn) {
+        auto& P = mg_prof();
+        if (!P.on) {
+            fn();
+            return;
+        }
+        for (int s = 0; s < count(); ++s) {
+            dm_.set_device(s);
+            cudaDeviceSynchronize();
+        }
+        auto t0 = std::chrono::steady_clock::now();
+        fn();
+        for (int s = 0; s < count(); ++s) {
+            dm_.set_device(s);
+            cudaDeviceSynchronize();
+        }
+        P.add(name, std::chrono::duration<double>(
+                        std::chrono::steady_clock::now() - t0)
+                        .count());
+    };
     for (int step = 0; step < steps; ++step) {
         // Integrate on the per-device CTX stream (same stream as the force
         // kernels → forces are stream-ordered into vv_first with no host
         // sync). Multi-GPU records ev_pos_ so the comm-stream halo gathers
         // wait on the fresh positions (the steady step loop is sync-free).
+      timed("1_vv_first", [&] {
         for (int s = 0; s < count(); ++s) {
             const int nl = frames_[s].n_local_;
             if (nl == 0)
@@ -1848,11 +1887,13 @@ void MultiGpu::run_nve_nlist(int steps, double dt, double cutoff,
             if (count() > 1)
                 CKM(cudaEventRecord(ev_pos_[s], st));
         }
+      });
         if ((step + 1) % reneigh_every == 0)
-            reneighbor();          // re-select ghosts + rebuild neighbor list
+            timed("2_reneighbor", [&] { reneighbor(); });
         else
-            forward_comm_async();  // ghost positions, comm streams, no sync
-        compute_lj_nlist();        // interior overlaps the halo; no host sync
+            timed("2_forward_comm", [&] { forward_comm_async(); });
+        timed("3_force", [&] { compute_lj_nlist(); });
+      timed("4_vv_second", [&] {
         for (int s = 0; s < count(); ++s) {
             const int nl = frames_[s].n_local_;
             if (nl == 0)
@@ -1865,6 +1906,7 @@ void MultiGpu::run_nve_nlist(int steps, double dt, double cutoff,
                                               a.fz, a.mass, nl, dtr);
             CKM(cudaGetLastError());
         }
+      });
     }
     for (int s = 0; s < count(); ++s) {
         dm_.set_device(s);
