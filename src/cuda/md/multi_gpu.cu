@@ -19,6 +19,7 @@
 
 #include <cub/cub.cuh>
 #include <cuda_runtime.h>
+#include <thrust/iterator/counting_iterator.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -249,12 +250,14 @@ __global__ void scatter_add_forces_packed(real_t* __restrict__ fx,
 // cutoff+skin superset). O(neighbors) once per reneighbor.
 __global__ void flag_interior_rows(const int* __restrict__ vl_nbr,
                                    const int* __restrict__ vl_cnt,
-                                   int vl_stride, int n_local,
+                                   int vl_stride, int vl_max, int n_local,
                                    unsigned char* __restrict__ flags) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n_local)
         return;
-    const int cnt = vl_cnt[i];
+    // Clamp: on a truncated (overflowed) build vl_cnt may exceed the stored
+    // column capacity. The driver discards the classification for that slot.
+    const int cnt = min(vl_cnt[i], vl_max);
     unsigned char interior = 1;
     for (int k = 0; k < cnt; ++k)
         if (vl_nbr[static_cast<std::size_t>(k) * vl_stride + i] >= n_local) {
@@ -1521,7 +1524,7 @@ void MultiGpu::classify_force_rows() {
             CKM(cudaMalloc(&row_nsel_[s], sizeof(int)));
             // Size the CUB temp blob once for full capacity (bytes query).
             std::size_t need = 0;
-            cub::CountingInputIterator<int> cit(0);
+            thrust::counting_iterator<int> cit(0);
             cub::DevicePartition::Flagged(nullptr, need, cit, row_flags_[s],
                                           rows_[s], row_nsel_[s], cap);
             CKM(cudaMalloc(&row_tmp_[s], need));
@@ -1530,10 +1533,11 @@ void MultiGpu::classify_force_rows() {
         auto st = static_cast<cudaStream_t>(ctx_[s].stream);
         const int block = 256, grid = (nl + block - 1) / block;
         flag_interior_rows<<<grid, block, 0, st>>>(
-            pl->vl_nbr, pl->vl_cnt, pl->vl_stride, nl, row_flags_[s]);
+            pl->vl_nbr, pl->vl_cnt, pl->vl_stride, pl->vl_max, nl,
+            row_flags_[s]);
         CKM(cudaGetLastError());
         std::size_t avail = row_tmp_sz_[s];
-        cub::CountingInputIterator<int> cit(0);
+        thrust::counting_iterator<int> cit(0);
         CKM(cub::DevicePartition::Flagged(row_tmp_[s], avail, cit,
                                           row_flags_[s], rows_[s], row_nsel_[s],
                                           nl, st));
@@ -1713,17 +1717,24 @@ void MultiGpu::reneighbor() {
             dm_.set_device(s);
             CKM(cudaDeviceSynchronize());
         }
+        std::vector<char> vl_ok(N, 1);
         for (int s = 0; s < N; ++s) {
             const int na = frames_[s].n_local_ + frames_[s].n_ghost_;
             if (na == 0)
                 continue;
             dm_.set_device(s);
             cuda::LaunchContext lc{ctx_[s], frames_[s], 0, 0};
-            nlist_[s]->finalize_rebuild(lc);
+            // true ⇒ buffers grew: the issued build was truncated and the
+            // next launch() re-runs it synchronously — this interval's Verlet
+            // rows are not classifiable on that slot.
+            vl_ok[s] = nlist_[s]->finalize_rebuild(lc) ? 0 : 1;
         }
         // Partition owned rows by ghost dependence over the fresh Verlet
         // lists (interior pair force overlaps the next intervals' halos).
         timed("R_classify_rows", [&] { classify_force_rows(); });
+        for (int s = 0; s < N; ++s)
+            if (!vl_ok[s])
+                n_interior_[s] = -1; // overflowed slot: owned-prefix fallback
     }
     // Cap the retained-pool ratchet. migrate()/build_halo() allocate large
     // transient scratch (incl. packing per-atom bonded arrays) via
