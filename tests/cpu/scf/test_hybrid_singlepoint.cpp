@@ -10,7 +10,7 @@
 ///   - ac-006: b3lyp_config / pbe0_config set xc_type + alpha_hf.
 ///
 /// Ground truth is genuine PySCF 2.13.0 `RKS(mol, xc=...)` at 6-31G*,
-/// checked into the per-molecule JSON files under `benchmarks/qc/reference/`
+/// checked into the per-molecule JSON files under `benchmarks/qc/validation/reference/`
 /// (keyed `b3lyp` / `pbe0` blocks, each carrying `pyscf_version`). The
 /// geometries below are copied verbatim from `benchmarks/qc/molecules/*.xyz`,
 /// the exact geometries those PySCF runs used.
@@ -55,7 +55,7 @@ constexpr double kHartreeToEV = 27.211386245988;
 
 std::string read_reference_file(const std::string& stem) {
     const std::string path = std::string(ATV_SOURCE_DIR)
-                             + "/benchmarks/qc/reference/" + stem + ".json";
+                             + "/benchmarks/qc/validation/reference/" + stem + ".json";
     std::ifstream in(path);
     if (!in)
         throw std::runtime_error("cannot open reference JSON: " + path);

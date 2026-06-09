@@ -9,7 +9,8 @@
 /// A deterministically-perturbed all-trans C20H42 united-atom chain is
 /// the single source of truth: the 20×3 coordinates embedded below as
 /// `kCoords` are byte-for-byte the coordinates in
-/// `benchmarks/md/reference/polyethylene/c20h42_chain.data`, so both
+/// the reference C20H42 chain data (see
+/// `benchmarks/md/pe/validation/reference/SOURCES.md`), so both
 /// engines evaluate identical geometry. A perfect-equilibrium chain
 /// would give E_bond = E_angle = 0; the perturbation makes every term
 /// non-trivial so the kernels are actually exercised.
@@ -24,8 +25,8 @@
 /// dihedral φ-sign convention is irrelevant (pure polynomial in cos φ).
 ///
 /// LAMMPS reference: `lmp_serial -in in.c20h42_energy` (LAMMPS
-/// 22 Jul 2025, `run 0`). See `benchmarks/md/reference/polyethylene/
-/// SOURCES.md` for full provenance + regeneration commands.
+/// 22 Jul 2025, `run 0`). See `benchmarks/md/pe/validation/
+/// reference/SOURCES.md` for full provenance + regeneration commands.
 
 #include <gtest/gtest.h>
 
@@ -76,7 +77,7 @@ inline constexpr double kRefAngleKcal = 30.774982565814;
 inline constexpr double kRefDihedKcal = 3.5122664779742;
 
 // ── Perturbed C20H42 geometry — single source of truth ───────────────
-// Byte-identical to benchmarks/md/reference/polyethylene/c20h42_chain.data.
+// Byte-identical to the reference chain data (SOURCES.md provenance).
 // All-trans zigzag (r0=1.53 Å, θ0=109.5°) + per-atom displacement
 // 0.10 Å·(sin(2.4i+0.7), sin(3.1i+1.3), sin(1.7i+2.1)). See SOURCES.md.
 constexpr int kN = 20;

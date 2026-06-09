@@ -86,7 +86,7 @@ ASPC commonly cuts the SCF iteration count by 30–50%, bringing the per-MD-step
 cost within roughly $1.2\times$ a single fresh SCF. For very small systems
 the picture flips: each SCF converges so quickly that ASPC's bookkeeping
 overhead exceeds the savings. The
-`benchmarks/bench_aimd_step.cpp` benchmark prints both costs and the
+an ASPC-on vs ASPC-off comparison run prints both costs and the
 ratio so you can see the trade-off on your machine for whatever system
 you are studying.
 

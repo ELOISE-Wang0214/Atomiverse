@@ -1,14 +1,14 @@
 /// @file tests/cpu/md/test_pe_ff_constants.cpp
 /// @brief Canonical Dreiding-UA polyethylene FF constants pin test.
 ///
-/// `benchmarks/md/reference/polyethylene/lammps_msu_paper.in` is the
+/// the published MSU LAMMPS deck (`lammps_msu_paper.in`) is the
 /// ground truth. This file states the same values in C++ form and
 /// asserts they are what we think they are. Any future drift back to
 /// OPLS-like values (θ₀ = 112.7° / k = 58.35 / OPLS dihedral) must
 /// touch this file, forcing a code-review conversation.
 ///
 /// Cross-file consistency between this canonical block and the 15
-/// `benchmarks/md/{polyethylene_tension,pe_profile_single}.cpp` +
+/// `benchmarks/md/pe/performance/polyethylene_tension.cpp` +
 /// `tests/{cpu,mpi}/test_pe_*.cpp` files is **not** enforced here —
 /// each of those files carries its own constants block (the
 /// well-known smell). The deduplication refactor is `pe-ff-
@@ -26,7 +26,7 @@
 namespace {
 
 // ── Dreiding-UA polyethylene FF (Tschopp 2010, MSU CAVS ICME) ────────
-// Verbatim from benchmarks/md/reference/polyethylene/lammps_msu_paper.in:
+// Verbatim from the published MSU deck (lammps_msu_paper.in):
 //   bond_coeff      1  350     1.53
 //   angle_coeff     1   60   109.5
 //   dihedral_coeff  1  1.73 -4.49 0.776 6.99 0.0

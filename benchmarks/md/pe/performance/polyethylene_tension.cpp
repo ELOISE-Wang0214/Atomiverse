@@ -3,7 +3,7 @@
 ///
 /// Drives the 5-stage MSU equilibration + uniaxial-tension protocol so
 /// that each stage uses the *exact* integrator, ensemble and timestep of
-/// the matching stage in `benchmarks/md/reference/polyethylene/lammps.in`.
+/// the matching stage of the published MSU five-stage LAMMPS protocol.
 /// The benchmark mirrors the LAMMPS deck stage-for-stage — it is the
 /// precondition for the Phase D cross-engine comparison to be meaningful.
 ///
@@ -65,7 +65,7 @@
 /// Both optional outputs default off, so a plain run is byte-identical
 /// to the pre-flag CSV-only behaviour.
 ///
-/// @see benchmarks/md/reference/polyethylene/lammps.in  (the reference deck)
+/// @see benchmarks/md/pe/validation/reference/SOURCES.md  (protocol provenance)
 /// @see .claude/specs/msu-pe-align-02-benchmark-protocol.md
 /// @see .claude/specs/msu-pe-validation.md   Phase D
 

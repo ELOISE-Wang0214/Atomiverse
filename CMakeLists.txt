@@ -466,7 +466,7 @@ if(NOT ATV_DOCS_ONLY)
     #   - Integrator translation units (`src/cpu/md/velocity_verlet.cpp`,
     #     `src/cpu/md/nose_hoover.cpp`, `src/cpu/md/init.cpp`) MUST NOT
     #     be in any per-file opt-in list. Document any opt-in here and
-    #     in `benchmarks/md/reference/polyethylene/scaling_report.md`
+    #     in the relevant run's notes under `benchmarks/md/<sys>/performance/runs/`
     #     with the exact compiler + flag string used to produce the
     #     reported `bench_md_step` numbers (ac-022).
     #

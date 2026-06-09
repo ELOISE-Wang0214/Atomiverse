@@ -2,10 +2,10 @@
 # ONE canonical multi-GPU scaling scan (AV vs LAMMPS-KOKKOS, GH200). Run per
 # system; reuse this exact script every time so runs are comparable.
 #
-#   sbatch benchmarks/md/bench_scaling.sbatch lj      # or: pe
+#   sbatch benchmarks/md/common/bench_scaling.sbatch lj      # or: pe
 #
 # Builds the CURRENT committed Atomiverse, then writes
-#   benchmarks/md/<system>/runs/<git-sha>_<date>/{results.csv, meta.json, logs/}
+#   benchmarks/md/<system>/performance/runs/<git-sha>_<date>/{results.csv, meta.json, logs/}
 # results.csv schema: engine,system,mode,ng,atoms,matom_step_s,vram_gb
 # Plot with plot_scaling.py. See README.md.
 #SBATCH -J av_scan
@@ -24,11 +24,11 @@ export LD_LIBRARY_PATH="$LIBRARY_PATH:$LD_LIBRARY_PATH"
 export MPIR_CVAR_CH4_IPC_GPU_HANDLE_CACHE=generic
 REPO=/home/jicli594/work/molcrafts/Atomiverse
 BD="$REPO/benchmarks/md"; cd "$REPO"
-source "$BD/lib_scaling.sh"
-source "$BD/$SYS/config.sh"
+source "$BD/common/lib_scaling.sh"
+source "$BD/$SYS/performance/config.sh"
 
 SHA=$(git rev-parse --short HEAD); DATE=$(date +%F)
-RUN="$BD/$SYS/runs/${SHA}_${DATE}"; L="$RUN/logs"; mkdir -p "$L"
+RUN="$BD/$SYS/performance/runs/${SHA}_${DATE}"; L="$RUN/logs"; mkdir -p "$L"
 CSV="$RUN/results_gpu.csv"; echo "engine,system,mode,ng,atoms,matom_step_s,vram_gb,rep" > "$CSV"
 
 echo "== build committed HEAD ($SHA) =="
@@ -59,7 +59,7 @@ if [ "$SYS" = lj ]; then
     echo "AV,LJ,$mode,$ng,$(echo $l|cut -d, -f2),$(echo $l|cut -d, -f7),$(echo $l|awk -F, '{printf "%.2f",$9/1024}'),$REP">>"$CSV"
     echo "AV LJ $mode ng=$ng rep=$REP -> $(echo $l|cut -d, -f7) Matom/s"; }
   lmplj(){ local mode=$1 ng=$2 cells=$3; local log="$L/lmp_${mode}_${ng}_r${REP}.log"
-    local vr; vr=$(pv srun --mpi=pmi2 -n $ng $LMP -k on g $ng -sf kk -pk kokkos gpu/aware on -in $BD/lj/in.lj_kk -v cells $cells -v steps $STEPS -log $log)
+    local vr; vr=$(pv srun --mpi=pmi2 -n $ng $LMP -k on g $ng -sf kk -pk kokkos gpu/aware on -in $BD/lj/performance/in.lj_kk -v cells $cells -v steps $STEPS -log $log)
     local r; r=$(lmp_throughput "$log") || { echo "LAMMPS LJ $mode ng=$ng rep=$REP FAILED"; tail -3 "$log"; return; }
     echo "LAMMPS,LJ,$mode,$ng,$(echo $r|cut -d' ' -f2),$(echo $r|cut -d' ' -f1),$vr,$REP">>"$CSV"
     echo "LAMMPS LJ $mode ng=$ng rep=$REP -> $(echo $r|cut -d' ' -f1) Matom/s ${vr}GB"; }
@@ -75,7 +75,7 @@ elif [ "$SYS" = pe ]; then
     echo "AV,PE,$mode,$ng,$atoms,$(awk -v a=$atoms -v s=$sps 'BEGIN{printf "%.1f",a*s/1e6}'),$vr,$REP">>"$CSV"
     echo "AV PE $mode ng=$ng rep=$REP -> $(awk -v a=$atoms -v s=$sps 'BEGIN{printf "%.1f",a*s/1e6}') Matom/s ${vr}GB"; }
   lmppe(){ local mode=$1 ng=$2 nx=$3 ny=$4 nz=$5 atoms=$6; local log="$L/lmp_${mode}_${ng}_r${REP}.log"
-    local vr; vr=$( cd "$BD/pe" && pv srun --mpi=pmi2 -n $ng $LMP -k on g $ng -sf kk -pk kokkos gpu/aware on -in in.pe_kk -v nx $nx -v ny $ny -v nz $nz -v steps $STEPS -log $log )
+    local vr; vr=$( cd "$BD/pe/performance" && pv srun --mpi=pmi2 -n $ng $LMP -k on g $ng -sf kk -pk kokkos gpu/aware on -in in.pe_kk -v nx $nx -v ny $ny -v nz $nz -v steps $STEPS -log $log )
     local r; r=$(lmp_throughput "$log") || { echo "LAMMPS PE $mode ng=$ng rep=$REP FAILED"; tail -3 "$log"; return; }
     echo "LAMMPS,PE,$mode,$ng,$atoms,$(echo $r|cut -d' ' -f1),$vr,$REP">>"$CSV"
     echo "LAMMPS PE $mode ng=$ng rep=$REP -> $(echo $r|cut -d' ' -f1) Matom/s ${vr}GB"; }

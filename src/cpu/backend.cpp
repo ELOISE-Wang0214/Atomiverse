@@ -70,7 +70,7 @@ void Backend::init() {
                     "[atv] warning: OMP_PROC_BIND is unset and "
                     "n_threads=%d > 1; consider 'export OMP_PROC_BIND=close "
                     "OMP_PLACES=cores' for stable hot-path throughput "
-                    "(see benchmarks/md/reference/polyethylene/README.md "
+                    "(see benchmarks/md/pe/validation/reference/SOURCES.md "
                     "'Thread binding').\n",
                     context_.n_threads);
                 std::fflush(stderr);

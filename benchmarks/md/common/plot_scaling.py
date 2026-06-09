@@ -7,7 +7,7 @@ PLOT CONVENTION (fixed — do not change; mirrored in bench_scaling.README.md):
   left y-axis   = throughput [Matom-step/s] (AV vs LAMMPS, solid, value-labelled)
   right y-axis  = peak memory [GB] (dashed; VRAM for gpu, RSS for cpu)
 
-  python plot_scaling.py --backend gpu     # reads <sys>/runs/<latest>/results_gpu.csv
+  python plot_scaling.py --backend gpu     # reads <sys>/performance/runs/<latest>/results_gpu.csv
   python plot_scaling.py --backend cpu
   python plot_scaling.py --backend gpu --id <sha>_<date> --out f.png
 """
@@ -15,11 +15,13 @@ import argparse, csv, glob, os, collections, statistics
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-BD = os.path.dirname(os.path.abspath(__file__))
+# This script lives in benchmarks/md/common/; systems live one level up
+# at benchmarks/md/<sys>/performance/runs/.
+BD = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SYS_DESC = {"LJ": "Lennard-Jones (argon)", "PE": "polyethylene melt (UA)"}
 
 def latest_run(system, backend):
-    g = sorted(d for d in glob.glob(os.path.join(BD, system, "runs", "*"))
+    g = sorted(d for d in glob.glob(os.path.join(BD, system, "performance", "runs", "*"))
                if os.path.exists(os.path.join(d, f"results_{backend}.csv")))
     return os.path.basename(g[-1]) if g else None
 
@@ -37,7 +39,7 @@ def load(system, run_id, backend):
     """Aggregate repeats: rows sharing (mode,engine,ng) are pooled into
     mean ± sample-std. Schema is rep-aware but back-compatible — a CSV with no
     `rep` column (one row per key) yields std 0."""
-    path = os.path.join(BD, system, "runs", run_id, f"results_{backend}.csv")
+    path = os.path.join(BD, system, "performance", "runs", run_id, f"results_{backend}.csv")
     acc = collections.defaultdict(lambda: collections.defaultdict(
         lambda: {"thr": [], "mem": [], "atoms": None}))  # (mode,eng)->n->lists
     if run_id and os.path.exists(path):

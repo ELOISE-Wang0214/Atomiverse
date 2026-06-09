@@ -1,14 +1,14 @@
 #!/bin/bash -l
 # CPU MD weak+strong scaling sweep: Atomiverse vs (optional) LAMMPS, 1..N MPI ranks.
 #
-#   sbatch benchmarks/md/bench_scaling_cpu.sbatch          # LJ, AV only
-#   LMP=/path/to/lmp sbatch benchmarks/md/bench_scaling_cpu.sbatch        # + LAMMPS
-#   SYS=pe CORES="1 8 32" sbatch benchmarks/md/bench_scaling_cpu.sbatch   # PE, fewer ranks
+#   sbatch benchmarks/md/common/bench_scaling_cpu.sbatch          # LJ, AV only
+#   LMP=/path/to/lmp sbatch benchmarks/md/common/bench_scaling_cpu.sbatch        # + LAMMPS
+#   SYS=pe CORES="1 8 32" sbatch benchmarks/md/common/bench_scaling_cpu.sbatch   # PE, fewer ranks
 #
 # Everything is an env-overridable variable in the CONFIG block below — no
 # hardcoded repo / LAMMPS / output paths, no meta.json, no REPS loop.
 # Writes plot_scaling.py-compatible results to
-#   benchmarks/md/<sys>/runs/<sha>_<date>/results_cpu.csv
+#   benchmarks/md/<sys>/performance/runs/<sha>_<date>/results_cpu.csv
 # (schema engine,system,mode,ng,atoms,matom_step_s,vram_gb[=RSS],rep) so the
 # figure is one command away — the script prints it at the end.
 #SBATCH -J av_scan_cpu
@@ -33,7 +33,7 @@ LMP="${LMP:-}"                              # path to LAMMPS 'lmp'; empty ⇒ AV
 # Under sbatch the script is copied to a spool dir, so $0 is NOT the repo path.
 # SLURM_SUBMIT_DIR is the directory sbatch was invoked from — resolve the repo
 # root from there (works for a normal checkout or a git worktree). Submit from
-# inside the repo:  cd <repo> && sbatch benchmarks/md/bench_scaling_cpu.sbatch
+# inside the repo:  cd <repo> && sbatch benchmarks/md/common/bench_scaling_cpu.sbatch
 REPO="$(cd "${SLURM_SUBMIT_DIR:-$PWD}" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null)"
 REPO="${REPO:-${SLURM_SUBMIT_DIR:-$PWD}}"
 cd "$REPO"
@@ -46,7 +46,7 @@ SYSU=$(echo "$SYS" | tr a-z A-Z)
 # plot_scaling.py reads <sys>/runs/<id>/results_cpu.csv and picks the latest id;
 # keep the <sha>_<date> run dir so the figure regenerates with one command.
 RUN_ID="$(git rev-parse --short HEAD 2>/dev/null || echo local)_$(date +%F)"
-OUT="$REPO/benchmarks/md/$SYS/runs/$RUN_ID/results_cpu.csv"
+OUT="$REPO/benchmarks/md/$SYS/performance/runs/$RUN_ID/results_cpu.csv"
 mkdir -p "$(dirname "$OUT")"
 echo "engine,system,mode,ng,atoms,matom_step_s,vram_gb,rep" | tee "$OUT"
 
@@ -84,12 +84,12 @@ av_pe(){ local mode=$1 p=$2 grid=$3 atoms=$4 rd; rd=$(mktemp -d)
 
 # ── LAMMPS runners (only when $LMP set) ────────────────────────────────────
 lmp_lj(){ [ -n "$LMP" ] || return 0; local mode=$1 p=$2 cells=$3 log; log=$(mktemp)
-  local rss; rss=$(lmp_rss $SR -n $p /usr/bin/time -v "$LMP" -in "$REPO/benchmarks/md/lj/in.lj_kk" -v cells $cells -v steps $STEPS -log "$log")
+  local rss; rss=$(lmp_rss $SR -n $p /usr/bin/time -v "$LMP" -in "$REPO/benchmarks/md/lj/performance/in.lj_kk" -v cells $cells -v steps $STEPS -log "$log")
   local r; r=$(lmp_tput "$log"); rm -f "$log"; [ -n "$r" ] || return 0
   echo "LAMMPS,$SYSU,$mode,$p,$(echo $r|cut -d' ' -f2),$(echo $r|cut -d' ' -f1),$rss,1" | tee -a "$OUT"; }
 
 lmp_pe(){ [ -n "$LMP" ] || return 0; local mode=$1 p=$2 nx=$3 ny=$4 nz=$5 atoms=$6 log; log=$(mktemp)
-  local rss; rss=$(cd "$REPO/benchmarks/md/pe" && lmp_rss $SR -n $p /usr/bin/time -v "$LMP" -in in.pe_kk -v nx $nx -v ny $ny -v nz $nz -v steps $STEPS -log "$log")
+  local rss; rss=$(cd "$REPO/benchmarks/md/pe/performance" && lmp_rss $SR -n $p /usr/bin/time -v "$LMP" -in in.pe_kk -v nx $nx -v ny $ny -v nz $nz -v steps $STEPS -log "$log")
   local r; r=$(lmp_tput "$log"); rm -f "$log"; [ -n "$r" ] || return 0
   echo "LAMMPS,$SYSU,$mode,$p,$atoms,$(echo $r|cut -d' ' -f1),$rss,1" | tee -a "$OUT"; }
 
@@ -116,7 +116,7 @@ echo "=== wrote $OUT ==="
 # if absent, run the printed command on the login node.
 PLOT="$REPO/benchmarks/md/$SYS/scaling_cpu.png"
 if python3 -c "import matplotlib" 2>/dev/null; then
-  python3 "$REPO/benchmarks/md/plot_scaling.py" --backend cpu --id "$RUN_ID" --out "$PLOT" \
+  python3 "$REPO/benchmarks/md/common/plot_scaling.py" --backend cpu --id "$RUN_ID" --out "$PLOT" \
     && echo "=== wrote figure $PLOT ===" || echo "(plot failed; run the command below on the login node)"
 fi
-echo "=== plot:  python3 benchmarks/md/plot_scaling.py --backend cpu --id $RUN_ID --out scaling_cpu.png ==="
+echo "=== plot:  python3 benchmarks/md/common/plot_scaling.py --backend cpu --id $RUN_ID --out scaling_cpu.png ==="
