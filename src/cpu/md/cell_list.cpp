@@ -895,6 +895,27 @@ PairList CellList::build_full(const cpu::Frame& frame, int n_active) const {
     return out;
 }
 
+std::size_t CellList::bytes() const {
+    auto xt_bytes = [](const auto& a) {
+        return a.size()
+               * sizeof(typename std::decay_t<decltype(a)>::value_type);
+    };
+    std::size_t n = xt_bytes(atom_cell_) + xt_bytes(binned_atoms_)
+                    + xt_bytes(cell_count_) + xt_bytes(cell_offset_)
+                    + xt_bytes(x_save_) + xt_bytes(y_save_) + xt_bytes(z_save_);
+    // `size()` (live elements) ≈ resident pages; reserved slack is lazily
+    // mapped and not resident, so this subtracts cleanly against peak RSS.
+    n += (half_stencil_.size() + full_stencil_.size()) * sizeof(StencilOffset);
+    n += csr_write_cursor_.size() * sizeof(int);
+    n += bin_write_ptr_.size() * sizeof(int);
+    // Multi-thread scratch: per-thread (i,j) pair buffers + visited-cell lists.
+    for (const auto& tp : thread_pairs_)
+        n += tp.size() * sizeof(std::pair<int, int>);
+    for (const auto& tv : thread_visited_)
+        n += tv.size() * sizeof(int);
+    return n;
+}
+
 } // namespace md
 } // namespace cpu
 } // namespace ATV

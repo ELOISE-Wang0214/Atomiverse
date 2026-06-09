@@ -106,6 +106,16 @@ class ComponentBase {
     /// @return Step stride. `0` means launch on every step.
     virtual int frequency() const { return 0; }
 
+    /// @brief Heap bytes this component owns (workspaces, neighbor lists,
+    /// per-thread buffers, comm buffers). Used by the built-in end-of-run
+    /// driver summary to attribute peak memory to a category (the component's
+    /// `name()` classifies it, mirroring the timing breakdown). Default 0 for
+    /// stateless components (integrators, Zero*, …). Override to report owned
+    /// allocations; sum the `capacity()` of every persistent buffer so the
+    /// figure tracks the resident footprint. Frame / per-atom storage is
+    /// accounted separately by the driver, not here.
+    virtual std::size_t memory_bytes() const { return 0; }
+
     /// @brief Default stage bindings. Empty = must bind explicitly via on().add().
     /// @return Zero or more `(phase, order)` bindings for `Driver::add()`.
     virtual std::vector<DefaultBinding> default_bindings() const { return {}; }

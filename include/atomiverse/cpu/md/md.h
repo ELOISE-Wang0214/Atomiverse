@@ -210,6 +210,25 @@ class MD : public DynamicsDriver {
             cpu::md::emit_timing_csv(rep, *csv, stage);
     }
 
+    /// @brief Built-in end-of-run summary: the LAMMPS-style time breakdown
+    /// (Pair/Bonded/Neigh/Comm/Reduce/Other + Loop, min/avg/max across ranks)
+    /// AND a memory breakdown (Atoms/Pair/Bonded/Neigh/Comm/Other + AV-accounted
+    /// vs runtime/MPI vs peak RSS). Always emitted at the end of every `run()`;
+    /// disable the underlying timing with ATV_TIMER=0. Collective (the reduces
+    /// run on all ranks); rendered on rank 0.
+    void emit_run_summary(std::string_view stage) override {
+        // On by default; ATV_TIMER=0 / enable_timing(false) opts out (and makes
+        // the one-time report allocation-free for hot-loop micro-benchmarks).
+        if (!this->backend_ || !this->backend_->timing().enabled())
+            return;
+        const auto t = cpu::md::reduce_timing(this->backend_->timing());
+        cpu::md::emit_timing_table(t, stage);
+        const auto m = cpu::md::reduce_memory(
+            this->backend_->collect_component_memory(),
+            cpu::md::read_peak_rss_kb());
+        cpu::md::emit_memory_table(m, stage);
+    }
+
   protected:
     void install_defaults() override {
         const auto s = this->scan_pending_infra_();

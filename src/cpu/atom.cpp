@@ -477,5 +477,22 @@ void Atom::reshuffle_topology_to_tags() {
     }
 }
 
+std::size_t Atom::memory_bytes() const {
+    auto xb = [](const auto& a) {
+        return a.size()
+               * sizeof(typename std::decay_t<decltype(a)>::value_type);
+    };
+    std::size_t n = xb(x) + xb(y) + xb(z) + xb(vx) + xb(vy) + xb(vz) + xb(fx)
+                    + xb(fy) + xb(fz) + xb(mass) + xb(charge) + xb(type)
+                    + xb(tag) + xb(image) + xb(num_bond) + xb(num_angle)
+                    + xb(num_dihedral) + xb(nspecial);
+    // Lazily-allocated wide bonded arrays (zero on a pure-pairwise system).
+    n += xb(bond_atom) + xb(bond_type) + xb(angle_atom) + xb(angle_type)
+         + xb(dihedral_atom) + xb(dihedral_type) + xb(special);
+    // tag → local map: bucket array + node payload (key+val+ptr, ~32 B/node).
+    n += map.size() * 32 + map.bucket_count() * sizeof(void*);
+    return n;
+}
+
 } // namespace cpu
 } // namespace ATV

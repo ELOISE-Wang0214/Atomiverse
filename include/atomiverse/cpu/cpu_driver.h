@@ -42,6 +42,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 
@@ -163,6 +164,13 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
 
     /// @brief Single iteration through the compiled Plan.
     void step_once(int iter_index) { this->backend_->step(iter_index); }
+
+    /// @brief Emit the built-in end-of-run summary — the LAMMPS-style time +
+    /// memory breakdown every driver reports. Called by the category driver's
+    /// `run()` after the loop (all ranks, in lockstep — the reduction is
+    /// collective). Default no-op; concrete drivers override to render their
+    /// own category taxonomy. @see cpu/md/timing_report.h
+    virtual void emit_run_summary(std::string_view /*stage*/) {}
 
     /// @brief Tear down — destroy components + shut down backend.
     void teardown_pass() {

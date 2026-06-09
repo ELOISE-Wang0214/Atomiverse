@@ -698,5 +698,26 @@ void PairLJCut::destroy(const DestroyContext& ctx) {
     any_excl_ = false;
 }
 
+std::size_t PairLJCut::memory_bytes() const {
+    // `size()` (live elements) ≈ resident pages — see PairList::bytes.
+    std::size_t n = 0;
+    for (const auto& v : fx_thr_)
+        n += v.size() * sizeof(double);
+    for (const auto& v : fy_thr_)
+        n += v.size() * sizeof(double);
+    for (const auto& v : fz_thr_)
+        n += v.size() * sizeof(double);
+    n += (filtered_neighbors_.size() + filtered_numneigh_.size()
+          + filtered_firstneigh_.size())
+         * sizeof(int);
+    n += (filtered_shift_x_.size() + filtered_shift_y_.size()
+          + filtered_shift_z_.size())
+         * sizeof(double);
+    // Exclusion map (special-bonds only): rough node payload + partner lists.
+    for (const auto& kv : excluded_by_tag_)
+        n += 48 + kv.second.size() * sizeof(std::int64_t);
+    return n;
+}
+
 } // namespace cpu
 } // namespace ATV

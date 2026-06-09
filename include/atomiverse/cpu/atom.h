@@ -122,6 +122,11 @@ class Atom {
     /// C++ container-API analogue.
     int size() const noexcept { return nlocal; }
 
+    /// @brief Resident heap bytes of all per-atom SoA arrays (sized to `nmax`),
+    /// the lazily-allocated bonded topology arrays, and the `tag → local` map.
+    /// Consumed by the built-in driver memory summary ("Atoms" category).
+    std::size_t memory_bytes() const;
+
     // ── SoA per-atom fields (all sized to `nmax`) ──────────────────────────
 
     xt::xtensor<double, 1> x;       ///< x positions [Angstrom].

@@ -7,11 +7,13 @@
 #include "atomiverse/cpu/md/mpi/domain.h"
 #include "atomiverse/cpu/md/step_timing.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <utility>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -103,13 +105,20 @@ void Backend::init() {
     ATV_INFO("CPU backend initialized: {} threads", context_.n_threads);
 #endif
 
-    // Opt-in per-component timing (default off, near-zero overhead). Enabled
-    // via ATV_TIMER=1 or programmatically via Backend::enable_timing(true) /
-    // MD::enable_timing(true). Publish the registry so components can record
+    // Per-component timing is ON BY DEFAULT (near-zero overhead: a couple of
+    // clock reads per component per step) so every driver can emit the built-in
+    // end-of-run time+memory summary, the way LAMMPS always reports its loop
+    // breakdown. Opt OUT with ATV_TIMER=0/off for the rare latency-critical
+    // micro-measurement. Publish the registry so components can record
     // sub-scopes through Context::timer.
+    // Re-apply the remembered preference (default true) so a pre-run
+    // enable_timing(false) sticks across this init; ATV_TIMER overrides.
+    timing_.set_enabled(timing_pref_);
     if (const char* tv = std::getenv("ATV_TIMER")) {
         const std::string v = tv;
-        if (v == "1" || v == "true" || v == "TRUE" || v == "on")
+        if (v == "0" || v == "false" || v == "FALSE" || v == "off")
+            timing_.set_enabled(false);
+        else if (v == "1" || v == "true" || v == "TRUE" || v == "on")
             timing_.set_enabled(true);
     }
     context_.timer = &timing_;
@@ -251,6 +260,39 @@ void Backend::run(int n_steps) {
 void Backend::drain_analysis() {
     if (executor_)
         executor_->quiesce();
+}
+
+std::vector<std::pair<std::string, std::size_t>>
+Backend::collect_component_memory() const {
+    std::vector<std::pair<std::string, std::size_t>> out;
+    // Unique components across all plan slots (a component may bind to several
+    // phases) — dedup by pointer so its memory is counted once.
+    if (plan_) {
+        std::vector<const cpu::ComponentBase*> seen;
+        for (const auto& slot : plan_->slots) {
+            for (const auto& op : slot.ops) {
+                const cpu::ComponentBase* c = op.component;
+                if (!c
+                    || std::find(seen.begin(), seen.end(), c) != seen.end())
+                    continue;
+                seen.push_back(c);
+                const std::size_t b = c->memory_bytes();
+                if (b)
+                    out.emplace_back(c->name(), b);
+            }
+        }
+    }
+    // Per-atom SoA + topology + tag map (the dominant "Atoms" bucket).
+    if (frame_)
+        out.emplace_back("[atoms]", frame_->atoms.memory_bytes());
+    // Domain-decomposition tag→local map + ghost-tag list (Comm bucket).
+    if (dd_) {
+        std::size_t b = dd_->tag_to_local.size() * 32
+                        + dd_->tag_to_local.bucket_count() * sizeof(void*)
+                        + dd_->ghost_tags.capacity() * sizeof(std::int64_t);
+        out.emplace_back("[domain]", b);
+    }
+    return out;
 }
 
 void Backend::destroy_components() {

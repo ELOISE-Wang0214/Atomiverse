@@ -8,7 +8,10 @@
 /// @see Driver for the user-facing facade that delegates to Backend
 #pragma once
 
+#include <cstddef>
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "atomiverse/core/timer.h"
@@ -106,9 +109,22 @@ class Backend {
     TimerRegistry& timing() { return timing_; }
     const TimerRegistry& timing() const { return timing_; }
 
-    /// @brief Enable/disable per-launch timing (default off; also set from the
-    /// `ATV_TIMER` env var in `init()`).
-    void enable_timing(bool on) { timing_.set_enabled(on); }
+    /// @brief Per-(unique-)component owned heap bytes for the built-in driver
+    /// memory summary: each registered component's `memory_bytes()` keyed by
+    /// `name()`, plus synthetic entries `[atoms]` (per-atom SoA + tag map) and
+    /// `[domain]` (decomposition maps). The MD layer classifies the names into
+    /// categories and reduces across ranks. @see cpu/md/timing_report.h
+    std::vector<std::pair<std::string, std::size_t>>
+    collect_component_memory() const;
+
+    /// @brief Enable/disable per-launch timing. Default ON (so every driver
+    /// emits the built-in end-of-run summary). The preference is remembered and
+    /// re-applied by `init()`, so calling this BEFORE the first `run()` sticks;
+    /// the `ATV_TIMER` env var (`0`/`off`) still overrides in `init()`.
+    void enable_timing(bool on) {
+        timing_pref_ = on;
+        timing_.set_enabled(on);
+    }
 
     /// @brief Clear accumulated step timing (e.g. between protocol stages).
     void reset_timing() { timing_.reset(); }
@@ -144,6 +160,9 @@ class Backend {
     std::unique_ptr<AnalysisExecutor> executor_;
 
     TimerRegistry timing_{};
+    /// @brief Desired timing-enabled state, re-applied by `init()`. Default
+    /// true (built-in summary always-on); `enable_timing()` updates it.
+    bool timing_pref_ = true;
     /// Per-slot, per-op dense timing handles into `timing_`, precomputed in
     /// `build_components()` so the hot `step()` loop never calls
     /// `component->name()`. Mirrors `plan_->slots[s].ops` order.

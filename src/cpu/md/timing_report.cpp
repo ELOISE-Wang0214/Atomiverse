@@ -4,6 +4,7 @@
 #include "atomiverse/cpu/md/timing_report.h"
 
 #include <array>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -122,6 +123,132 @@ void emit_timing_csv(const ReducedReport& rep, report::Csv& csv,
     for (std::size_t c = 0; c < kN; ++c)
         r += "," + report::fmt(rep.sections[c].pct_total, 6);
     csv.row(r);
+}
+
+// ── Memory breakdown ─────────────────────────────────────────────────────
+
+std::size_t read_peak_rss_kb() {
+    std::FILE* f = std::fopen("/proc/self/status", "r");
+    if (!f)
+        return 0;
+    char line[256];
+    std::size_t kb = 0;
+    while (std::fgets(line, sizeof(line), f)) {
+        if (std::sscanf(line, "VmHWM: %zu kB", &kb) == 1)
+            break;
+    }
+    std::fclose(f);
+    return kb;
+}
+
+namespace {
+// Map a component name to a memory category index into MemReport::kNames
+// {Atoms, Pair, Bonded, Neigh, Comm, Other}.
+int mem_category(const std::string& name) {
+    if (name == "[atoms]")
+        return 0; // Atoms
+    if (name == "[domain]")
+        return 4; // Comm
+    switch (StepTiming::classify(name)) {
+    case StepTiming::Pair:   return 1;
+    case StepTiming::Bonded: return 2;
+    case StepTiming::Neigh:  return 3;
+    case StepTiming::Comm:   return 4;
+    default:                 return 5; // Reduce/Other → Other
+    }
+}
+} // namespace
+
+MemReport
+reduce_memory(const std::vector<std::pair<std::string, std::size_t>>& local,
+              std::size_t peak_rss_kb) {
+    MemReport rep;
+    std::array<double, MemReport::kNumCat> cat{};
+    for (const auto& [name, bytes] : local)
+        cat[static_cast<std::size_t>(mem_category(name))] +=
+            static_cast<double>(bytes);
+
+    double rss_mb = static_cast<double>(peak_rss_kb) / 1024.0;
+    std::array<double, MemReport::kNumCat> csum = cat;
+    double rss_min = rss_mb, rss_max = rss_mb, rss_sum = rss_mb;
+    int ranks = 1;
+#ifdef ATV_HAS_MPI
+    int inited = 0;
+    MPI_Initialized(&inited);
+    if (inited) {
+        MPI_Comm_size(MPI_COMM_WORLD, &ranks);
+        if (ranks > 1) {
+            MPI_Allreduce(cat.data(), csum.data(), MemReport::kNumCat,
+                          MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+            MPI_Allreduce(&rss_mb, &rss_min, 1, MPI_DOUBLE, MPI_MIN,
+                          MPI_COMM_WORLD);
+            MPI_Allreduce(&rss_mb, &rss_max, 1, MPI_DOUBLE, MPI_MAX,
+                          MPI_COMM_WORLD);
+            MPI_Allreduce(&rss_mb, &rss_sum, 1, MPI_DOUBLE, MPI_SUM,
+                          MPI_COMM_WORLD);
+        }
+    }
+#endif
+    rep.ranks = ranks;
+    std::size_t acc = 0;
+    for (int c = 0; c < MemReport::kNumCat; ++c) {
+        rep.cat_bytes[static_cast<std::size_t>(c)] =
+            static_cast<std::size_t>(csum[static_cast<std::size_t>(c)]);
+        acc += rep.cat_bytes[static_cast<std::size_t>(c)];
+    }
+    rep.accounted_bytes = acc;
+    rep.rss_sum_mb = rss_sum;
+    rep.rss_min_mb = rss_min;
+    rep.rss_avg_mb = rss_sum / ranks;
+    rep.rss_max_mb = rss_max;
+    return rep;
+}
+
+void emit_memory_table(const MemReport& rep, std::string_view stage) {
+    const double gb = 1024.0 * 1024.0 * 1024.0;
+    const double rss_sum_b = rep.rss_sum_mb * 1024.0 * 1024.0;
+    const double acc = static_cast<double>(rep.accounted_bytes);
+    // "Allocated" = the capacity AV's data structures requested; the % column
+    // is share of that AV total (NOT of RSS — allocated capacity includes
+    // reserved-but-untouched slack, so it can exceed resident RSS).
+    report::Table t("Memory breakdown [" + std::string(stage)
+                        + "]  ranks=" + std::to_string(rep.ranks)
+                        + "  (AV-allocated, summed over ranks)",
+                    {{"Section", 14, report::Align::Left},
+                     {"alloc(GB)"},
+                     {"%AV"}});
+    for (int c = 0; c < MemReport::kNumCat; ++c) {
+        const double b = static_cast<double>(rep.cat_bytes[static_cast<std::size_t>(c)]);
+        t.row({std::string(MemReport::kNames[static_cast<std::size_t>(c)]),
+               report::fmt(b / gb, 3),
+               report::fmt(acc > 0 ? 100.0 * b / acc : 0.0, 1)});
+    }
+    t.row({"AV total", report::fmt(acc / gb, 3), "100.0"});
+    t.emit();
+
+    // Resident footprint vs AV-allocated. When RSS > AV alloc, the remainder is
+    // runtime / MPI library state / allocator overhead / libs (not AV data) —
+    // the dominant term at high rank counts. When AV alloc > RSS, AV reserved
+    // capacity it has not yet touched (lazy pages).
+    report::Table pr("Peak RSS (resident) vs AV-allocated [" + std::string(stage)
+                         + "]",
+                     {{"metric", 18, report::Align::Left},
+                      {"sum(GB)"},
+                      {"per-rank avg(MB)"}});
+    pr.row({"peak RSS (resident)", report::fmt(rss_sum_b / gb, 3),
+            report::fmt(rep.rss_avg_mb, 1)});
+    pr.row({"AV-allocated", report::fmt(acc / gb, 3),
+            report::fmt(rep.ranks ? acc / gb * 1024.0 / rep.ranks : 0.0, 1)});
+    const double delta = rss_sum_b - acc;
+    pr.row({delta >= 0 ? "runtime/MPI/libs" : "AV reserved (untouched)",
+            report::fmt((delta >= 0 ? delta : -delta) / gb, 3),
+            report::fmt((delta >= 0 ? delta : -delta) / gb * 1024.0
+                            / (rep.ranks ? rep.ranks : 1),
+                        1)});
+    pr.row({"RSS min/max (MB)",
+            report::fmt(rep.rss_min_mb, 1) + " / " + report::fmt(rep.rss_max_mb, 1),
+            ""});
+    pr.emit();
 }
 
 void emit_per_component(const TimerRegistry& reg, std::string_view stage) {

@@ -139,6 +139,15 @@ TEST(MdNoAlloc, InnerLoopAfterWarmupAllocatesNothing) {
     // Warm-up: lets NeighborList/halo arenas reach steady state.
     sim.run(frame, /*n_steps=*/100);
 
+    // This test asserts the STEADY-STATE INNER LOOP allocates nothing. The
+    // built-in end-of-run summary (time + memory breakdown) is a one-time
+    // report at the end of run() and does allocate (report tables, MPI reduce
+    // buffers) — exactly like LAMMPS's end-of-run Finish. Turn timing OFF so
+    // the summary is skipped and only the hot loop is under the counter.
+    // Done AFTER warm-up so the first run's setup_pass (which re-inits the
+    // backend with timing on by default) cannot clobber it.
+    sim.enable_timing(false);
+
     // Arm the counter.
     alloc_count().store(0, std::memory_order_relaxed);
     alloc_count_armed() = true;

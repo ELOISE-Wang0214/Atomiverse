@@ -189,6 +189,12 @@ class NeighborList : public cpu::ComponentBase {
     /// @brief Access the underlying strategy.
     const Strategy& strategy() const { return strategy_; }
 
+    /// @brief Resident heap bytes: the CSR neighbor list + the spatial index.
+    /// Classified under the "Neighbor" category by the driver memory summary.
+    std::size_t memory_bytes() const override {
+        return pairs_.bytes() + strategy_.bytes();
+    }
+
   private:
     /// @brief True when running with multiple MPI ranks (and the DD struct
     /// is available). Single-rank or null-`dd` returns false.

@@ -84,15 +84,30 @@ TEST(StepTiming, ClassifyKnownComponentNames) {
     EXPECT_EQ(StepTiming::classify("kinetic_energy"), StepTiming::Other);
 }
 
-// ── opt-in: timing off by default => registry stays empty ──────────────
-TEST(StepTiming, OptInDisabledByDefault) {
+// ── always-on: timing is ENABLED by default so every driver emits the
+// built-in end-of-run summary (LAMMPS-style). (Was OptInDisabledByDefault
+// before the summary became a mandatory built-in driver feature.)
+TEST(StepTiming, OnByDefault) {
     auto frame = make_chain(50, 100.0);
     cpu::md::MD sim;
     configure_sim(sim);
     sim.build();
     sim.run(frame, 20);
     const TimerRegistry* reg = sim.timing();
-    // Either no backend timing yet, or enabled==false with zero steps.
+    ASSERT_NE(reg, nullptr);
+    EXPECT_TRUE(reg->enabled());
+    EXPECT_EQ(reg->steps(), 20u);
+}
+
+// ── opt-out still works: enable_timing(false) leaves the registry empty ──
+TEST(StepTiming, OptOutLeavesRegistryEmpty) {
+    auto frame = make_chain(50, 100.0);
+    cpu::md::MD sim;
+    configure_sim(sim);
+    sim.enable_timing(false);
+    sim.build();
+    sim.run(frame, 20);
+    const TimerRegistry* reg = sim.timing();
     if (reg)
         EXPECT_EQ(reg->steps(), 0u);
 }

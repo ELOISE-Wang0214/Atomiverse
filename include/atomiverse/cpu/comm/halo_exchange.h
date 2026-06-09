@@ -145,6 +145,10 @@ class HaloSend : public cpu::ComponentBase {
     /// buffers are per-instance rather than a process-global static.
     std::size_t send_buf_capacity_for_test() const;
 
+    /// @brief Resident heap bytes of the per-face send/recv ghost buffers.
+    /// Classified under the "Comm" category by the driver memory summary.
+    std::size_t memory_bytes() const override;
+
   private:
     double cutoff_ = 0.0;
     double bonded_extension_ = 0.0;
@@ -218,6 +222,10 @@ class HaloRecv : public cpu::ComponentBase {
     /// accumulate into owner force arrays.
     /// @param ctx Launch context.
     void launch(const cpu::LaunchContext& ctx) override;
+
+    /// @brief Resident heap bytes of the per-face reverse-comm buffers.
+    /// Classified under the "Comm" category by the driver memory summary.
+    std::size_t memory_bytes() const override;
 
   private:
     std::unique_ptr<detail::FaceBufs> bufs_;

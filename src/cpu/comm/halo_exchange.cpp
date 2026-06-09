@@ -80,6 +80,24 @@ std::size_t HaloSend::send_buf_capacity_for_test() const {
     return bufs_ ? bufs_->send_pos[0].capacity() : 0;
 }
 
+namespace {
+// Resident bytes of a FaceBufs (4 arrays × 6 per-face double vectors).
+std::size_t facebufs_bytes(const detail::FaceBufs* b) {
+    if (!b)
+        return 0;
+    // size() (live elements) ≈ resident; reserved slack is lazily mapped.
+    std::size_t n = 0;
+    for (int f = 0; f < 6; ++f)
+        n += (b->send_pos[f].size() + b->recv_pos[f].size()
+              + b->send_force[f].size() + b->recv_force[f].size())
+             * sizeof(double);
+    return n;
+}
+} // namespace
+
+std::size_t HaloSend::memory_bytes() const { return facebufs_bytes(bufs_.get()); }
+std::size_t HaloRecv::memory_bytes() const { return facebufs_bytes(bufs_.get()); }
+
 // ── Topology-scan helpers (available with or without MPI) ────────────
 
 namespace {

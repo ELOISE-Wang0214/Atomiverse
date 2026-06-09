@@ -61,6 +61,11 @@ class PairLJCut : public Pair {
     void build(const BuildContext& ctx) override;
     void destroy(const DestroyContext& ctx) override;
 
+    /// @brief Resident heap bytes: per-thread force accumulators (OMP>1 only)
+    /// plus the exclusion map + filtered neighbor list (special-bonds runs).
+    /// Classified under the "Pair" category by the driver memory summary.
+    std::size_t memory_bytes() const override;
+
   protected:
     void compute(const LaunchContext& ctx) override;
 

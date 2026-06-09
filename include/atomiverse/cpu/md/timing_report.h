@@ -8,8 +8,12 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
+#include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "atomiverse/core/report.h"
 #include "atomiverse/core/timer.h"
@@ -51,6 +55,40 @@ void emit_timing_table(const ReducedReport& rep, std::string_view stage);
 /// the given Csv sink (metrics file, rank 0).
 void emit_timing_csv(const ReducedReport& rep, report::Csv& csv,
                      std::string_view stage);
+
+// ── Memory breakdown (built-in driver summary, peer of the timing table) ─────
+
+/// @brief Process peak resident set size [kB] (Linux `/proc/self/status`
+/// VmHWM). 0 if unavailable. The true high-water mark, not the current RSS.
+std::size_t read_peak_rss_kb();
+
+/// @brief Cross-rank-reduced memory breakdown for one run/stage. Categories
+/// mirror the timing taxonomy plus an `Atoms` bucket for per-atom storage;
+/// each `cat_bytes` entry is SUMMED across ranks (total footprint), while the
+/// peak-RSS stats are per-rank min/avg/max + sum.
+struct MemReport {
+    static constexpr int kNumCat = 6; ///< Atoms, Pair, Bonded, Neigh, Comm, Other
+    static constexpr std::array<std::string_view, kNumCat> kNames{
+        "Atoms", "Pair", "Bonded", "Neigh", "Comm", "Other"};
+    std::array<std::size_t, kNumCat> cat_bytes{}; ///< per-category, summed over ranks
+    std::size_t accounted_bytes = 0;              ///< Σ cat_bytes (AV-attributed resident)
+    double rss_sum_mb = 0.0;                      ///< Σ per-rank peak RSS
+    double rss_min_mb = 0.0, rss_avg_mb = 0.0, rss_max_mb = 0.0;
+    int ranks = 1;
+};
+
+/// @brief Reduce per-rank `(component-name, owned-bytes)` pairs (from
+/// `Backend::collect_component_memory`) + this rank's peak RSS into a
+/// `MemReport`. Names are classified into categories (`[atoms]`→Atoms,
+/// `[domain]`→Comm, else `StepTiming::classify`). MPI-summed when initialized.
+MemReport
+reduce_memory(const std::vector<std::pair<std::string, std::size_t>>& local,
+              std::size_t peak_rss_kb);
+
+/// @brief Emit the human-readable memory table (console, rank 0): per-category
+/// total + %RSS, the AV-accounted total, the unaccounted remainder
+/// (runtime / MPI / allocator), and per-rank peak-RSS min/avg/max.
+void emit_memory_table(const MemReport& rep, std::string_view stage);
 
 /// @brief Diagnostic: emit per-component (per-name) max-over-ranks wall time —
 /// splits the category rollup (e.g. Comm) into its constituent components

@@ -137,6 +137,12 @@ class CellList {
     /// energy jumps into the NPT extended Hamiltonian).
     double skin() const { return skin_; }
 
+    /// @brief Resident heap bytes owned by the cell index (per-atom bin
+    /// bookkeeping, the cell count/offset arrays, displacement-save arrays,
+    /// stencils, and the multi-thread scratch). Consumed by the built-in
+    /// driver memory summary (the "Neighbor" category, with the CSR PairList).
+    std::size_t bytes() const;
+
   private:
     double cutoff_, skin_, cutoff_skin_;
 

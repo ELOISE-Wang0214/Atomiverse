@@ -85,6 +85,10 @@ class DynamicsDriver : public CPUDriver<ATV::md::Phase> {
         // per-call teardown used to do this; continuation defers full
         // teardown, so the barrier is made explicit here.
         this->backend_->drain_analysis();
+
+        // Built-in end-of-run report (time + memory breakdown), like LAMMPS's
+        // loop summary. Collective + rank-0 render; always emitted.
+        this->emit_run_summary("md");
     }
 
     /// @brief User-facing entry — advance the system stored in a molrs.Frame.

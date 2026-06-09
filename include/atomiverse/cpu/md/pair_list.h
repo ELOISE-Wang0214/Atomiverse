@@ -58,6 +58,19 @@ struct PairList {
     /// Zero at `NeighborList::build`; never reset.
     unsigned long long version = 0;
 
+    /// @brief Resident heap bytes owned by this CSR. Uses `size()` (live,
+    /// written elements ≈ resident pages) rather than `capacity()` — reserved-
+    /// but-unwritten slack is lazily mapped and not resident, so `size()` is
+    /// the figure that subtracts cleanly against peak RSS in the driver memory
+    /// summary.
+    std::size_t bytes() const {
+        return (ilist.size() + numneigh.size() + firstneigh.size()
+                + neighbors.size())
+                   * sizeof(int)
+               + (shift_x.size() + shift_y.size() + shift_z.size())
+                     * sizeof(double);
+    }
+
     /// @brief Zero-overhead pair iteration (half list).
     /// @tparam F Callable with signature void(int i, int j).
     template <typename F>
