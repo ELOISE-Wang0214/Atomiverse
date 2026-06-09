@@ -10,16 +10,6 @@ pv(){ local f; f=$(mktemp); ( while :; do nvidia-smi --query-gpu=memory.used \
       sleep 0.3; done ) & local p=$!; "$@" >/dev/null 2>&1; kill "$p" 2>/dev/null; \
       awk 'BEGIN{m=0}{if($1>m)m=$1}END{printf "%.2f",m/1024}' "$f"; rm -f "$f"; }
 
-# peak job RSS [GB] over the run of "$@" — node used-memory delta (the CPU
-# analog of pv; run on an --exclusive node so the delta is this job).
-# DEPRECATED for AV-vs-LAMMPS comparison: the node-delta under-counts LAMMPS to
-# ~0 (it reuses/pre-touches differently), so AV's true RSS got compared against
-# LAMMPS's spurious near-zero → a bogus ~12x. Use rss_hwm_gb instead.
-pv_cpu(){ local f base; f=$(mktemp); base=$(free -m|awk '/^Mem:/{print $3}'); \
-  ( while :; do free -m|awk '/^Mem:/{print $3}'>>"$f"; sleep 0.5; done ) & local p=$!; \
-  "$@" >/dev/null 2>&1; kill "$p" 2>/dev/null; \
-  awk -v b="$base" 'BEGIN{m=0}{if($1>m)m=$1}END{printf "%.2f",(m-b)/1024}' "$f"; rm -f "$f"; }
-
 # Sum of per-rank peak VmHWM [GB] for an srun job whose ranks are EACH wrapped in
 # `/usr/bin/time -v` (so every rank prints "Maximum resident set size (kbytes)").
 # This is the SAME metric AV's `scaling` binary self-reports as peak_rss_total_kb

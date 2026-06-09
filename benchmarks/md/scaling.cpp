@@ -364,12 +364,29 @@ int main(int argc, char** argv) {
         .add(cpu::comm::HaloSend{args.cutoff + args.skin, args.reneigh}, -20);
     sim.on(ATV::md::Phase::post_force)
         .add(cpu::comm::HaloRecv{}, -1000);
+    // Adaptive Verlet rebuild (LAMMPS `neigh_modify check yes`): re-enumerate
+    // the list only when an atom has drifted more than skin/2, not on a fixed
+    // cadence. The per-step skin scan is far cheaper than a full rebuild, so
+    // for systems that move less than skin/2 over `reneigh` steps this does
+    // fewer rebuilds than a fixed `every N` would — a legitimate AV speedup
+    // over the deck's `every 20 check no`, kept because it is a general,
+    // physics-correct optimisation (a stale list is impossible by construction).
     sim.on(ATV::md::Phase::force)
         .add(cpu::md::NeighborList<>{args.cutoff, args.skin}, -10);
     // Plain NVE: no barostat / pressure consumer, so skip the pair virial
     // (LAMMPS-style vflag gating) — ~20-25% off the LJ inner loop.
     sim.on(ATV::md::Phase::force)
         .add(cpu::md::LJ{1.0, 2.5, args.cutoff}.set_compute_stress(false));
+    // Match the LAMMPS deck, which has no `thermo N` → it computes/reduces
+    // global energy only at run start + end, NOT every step. AV's default
+    // reduces an 18-double MPI_Allreduce EVERY step; that latency-bound
+    // collective is invisible at low rank counts but dominates the per-step
+    // cost at 1024 ranks (it is the documented weak-scaling-efficiency leak).
+    // This run is plain NVE with no per-step consumer of the global scalars
+    // (the only reader is the end-of-run correctness oracle, which does its
+    // own final reduce below), so align the reduce cadence with the
+    // reneighbor stride. General NVE optimisation, not benchmark-specific.
+    sim.set_scalar_reduce_every(args.reneigh);
     // Opt-in per-component timing (ATV_TIMER[_VERBOSE]) — splits the per-step
     // wall into force / neighbor / integrate / Comm(halo+migrate) to expose
     // the multi-rank scaling bottleneck. Harmless when the env var is unset.

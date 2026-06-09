@@ -70,11 +70,16 @@ class DynamicsDriver : public CPUDriver<ATV::md::Phase> {
         }
         for (int s = 0; s < n_steps; ++s) {
             mutable_outer_status().reset();
+            // Flag the final step so cadence-gated end-of-step collectives
+            // (mpi::Reduce under set_scalar_reduce_every > 1) always publish
+            // globally-reduced scalars before run() returns.
+            this->backend_->context().is_last_step = (s == n_steps - 1);
             step_once(step_counter_++);
             if (outer_status().stop_requested)
                 break;
             // Dynamics deliberately ignores outer_status().converged.
         }
+        this->backend_->context().is_last_step = false;
         // Drain async-analysis workers so every snapshot from this
         // segment reaches its subscribers before `run()` returns — the
         // per-call teardown used to do this; continuation defers full

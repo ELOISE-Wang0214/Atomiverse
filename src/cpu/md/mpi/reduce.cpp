@@ -30,13 +30,17 @@ void Reduce::launch(const cpu::LaunchContext& ctx) {
     if (!dd || dd->cart_comm == MPI_COMM_NULL)
         return;
 
-    // Cadence gate (see Reduce doc): with every_ > 1, fire only on step 0 and
-    // every every_-th step. Gated on the all-ranks-identical ctx.step so the
-    // collective is still entered in lockstep — no rank-divergent skip, hence
-    // no deadlock. every_ == 1 (default) reduces every step, byte-identical to
-    // before; the larger cadence is opt-in via MD::set_scalar_reduce_every and
-    // only valid when no per-step consumer reads the global scalars.
-    if (every_ > 1 && ctx.step != 0 && (ctx.step % every_) != 0)
+    // Cadence gate (see Reduce doc): with every_ > 1, fire only on step 0, the
+    // final step of the run, and every every_-th step. Gated on the
+    // all-ranks-identical ctx.step / is_last_step so the collective is still
+    // entered in lockstep — no rank-divergent skip, hence no deadlock.
+    // every_ == 1 (default) reduces every step, byte-identical to before; the
+    // larger cadence is opt-in via MD::set_scalar_reduce_every. Always firing
+    // on the last step keeps the globally-reduced scalars valid for the common
+    // "read frame.scalars after run()" pattern, so the cadence is safe whenever
+    // no *per-step* consumer reads them.
+    if (every_ > 1 && !ctx.runtime.is_last_step && ctx.step != 0
+        && (ctx.step % every_) != 0)
         return;
 
     auto& f = ctx.frame;

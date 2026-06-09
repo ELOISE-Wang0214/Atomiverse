@@ -64,6 +64,15 @@ struct Context {
     /// default so timing is opt-in and zero-cost when off. @see core/timer.h
     ATV::TimerRegistry* timer = nullptr;
 
+    /// @brief True only while the final step of the current `run(n_steps)`
+    /// call is executing. Set by the Dynamics driver loop before the last
+    /// `step_once`, cleared otherwise. Lets cadence-gated end-of-step
+    /// collectives (e.g. `mpi::Reduce` under `set_scalar_reduce_every > 1`)
+    /// guarantee the globally-reduced scalars are valid when `run()` returns —
+    /// so a large reduce cadence stays safe for the common "read scalars after
+    /// the run" pattern without forcing a per-step collective.
+    bool is_last_step = false;
+
     /// @brief Outer-driver-loop status — owned by the category driver
     ///        (Evaluate / Dynamics / Optimize), reset before each iteration,
     ///        consulted at the end of each iteration to decide early stop.
