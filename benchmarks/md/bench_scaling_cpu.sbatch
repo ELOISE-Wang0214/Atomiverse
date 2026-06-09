@@ -12,13 +12,16 @@
 # (schema engine,system,mode,ng,atoms,matom_step_s,vram_gb[=RSS],rep) so the
 # figure is one command away — the script prints it at the end.
 #SBATCH -J av_scan_cpu
+#SBATCH -p cpu
+#SBATCH -A naiss2026-3-381-cpu
 #SBATCH -N 4
 #SBATCH --exclusive
 #SBATCH -t 2:00:00
+# Override account/partition on the command line, e.g.:
+#   sbatch -A other-proj -p other-part benchmarks/md/bench_scaling_cpu.sbatch
 set -e
 
 # ── CONFIG (override via env) ──────────────────────────────────────────────
-ACCOUNT="${ACCOUNT:-naiss2026-3-381-cpu}"   # SLURM -A; "" to omit
 SYS="${SYS:-lj}"                            # lj | pe
 CORES="${CORES:-1 8 32 128 256 512 1024}"   # MPI rank counts to sweep
 STEPS="${STEPS:-50}"                        # timed MD steps
@@ -27,13 +30,18 @@ STRONG_TOTAL="${STRONG_TOTAL:-8000000}"     # strong scaling: fixed total atoms
 LMP="${LMP:-}"                              # path to LAMMPS 'lmp'; empty ⇒ AV only
 
 # ── ENV (auto-derived; portable) ───────────────────────────────────────────
-REPO="$(cd "$(dirname "$0")/../.." && pwd)"
+# Under sbatch the script is copied to a spool dir, so $0 is NOT the repo path.
+# SLURM_SUBMIT_DIR is the directory sbatch was invoked from — resolve the repo
+# root from there (works for a normal checkout or a git worktree). Submit from
+# inside the repo:  cd <repo> && sbatch benchmarks/md/bench_scaling_cpu.sbatch
+REPO="$(cd "${SLURM_SUBMIT_DIR:-$PWD}" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null)"
+REPO="${REPO:-${SLURM_SUBMIT_DIR:-$PWD}}"
 cd "$REPO"
 module load buildenv-gcc/2026.03 2>/dev/null || true
 export LD_LIBRARY_PATH="$LIBRARY_PATH:$LD_LIBRARY_PATH"
 export OMP_NUM_THREADS=1
 AV="$REPO/build-cpu/benchmarks/scaling"
-SR="srun --mpi=pmi2 ${ACCOUNT:+-A $ACCOUNT} -c 1"
+SR="srun --mpi=pmi2 -c 1"   # account/partition inherited from the SBATCH allocation
 SYSU=$(echo "$SYS" | tr a-z A-Z)
 # plot_scaling.py reads <sys>/runs/<id>/results_cpu.csv and picks the latest id;
 # keep the <sha>_<date> run dir so the figure regenerates with one command.
@@ -103,4 +111,12 @@ for p in $CORES; do
   fi
 done
 echo "=== wrote $OUT ==="
+# Always plot (per project convention: throughput on left-y, MEMORY on the
+# right-y, TOTAL ATOMS on the top-x). Best-effort — needs python+matplotlib;
+# if absent, run the printed command on the login node.
+PLOT="$REPO/benchmarks/md/$SYS/scaling_cpu.png"
+if python3 -c "import matplotlib" 2>/dev/null; then
+  python3 "$REPO/benchmarks/md/plot_scaling.py" --backend cpu --id "$RUN_ID" --out "$PLOT" \
+    && echo "=== wrote figure $PLOT ===" || echo "(plot failed; run the command below on the login node)"
+fi
 echo "=== plot:  python3 benchmarks/md/plot_scaling.py --backend cpu --id $RUN_ID --out scaling_cpu.png ==="

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """2x2 scaling figure from per-system run dirs (bench_scaling*.sbatch).
 Rows = system (LJ, PE); cols = weak, strong.
+
+PLOT CONVENTION (fixed — do not change; mirrored in bench_scaling.README.md):
   bottom x-axis = device count;  TOP x-axis = total atoms at that point
   left y-axis   = throughput [Matom-step/s] (AV vs LAMMPS, solid, value-labelled)
   right y-axis  = peak memory [GB] (dashed; VRAM for gpu, RSS for cpu)

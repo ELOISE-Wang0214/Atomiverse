@@ -28,6 +28,28 @@ python benchmarks/md/plot_scaling.py --out scaling_2x2_gpu_errorbar.png --md tab
 python benchmarks/md/plot_scaling.py --id <sha>_<date>   # pin a specific run
 ```
 
+**CPU (1–1024 cores):** the simplified self-contained submit script —
+```bash
+cd <repo>                                                    # submit from inside the repo
+LMP=/path/to/lmp sbatch benchmarks/md/bench_scaling_cpu.sbatch          # LJ (omit LMP ⇒ AV only)
+SYS=pe LMP=/path/to/lmp sbatch benchmarks/md/bench_scaling_cpu.sbatch   # PE
+# overrides: CORES="1 8 32 ..."  STEPS=  WEAK_PER_RANK=  STRONG_TOTAL=
+# account/partition:  sbatch -A <proj> -p <part> ...
+```
+It writes the same `runs/<sha>_<date>/results_cpu.csv` layout and **auto-plots**
+at the end (then prints the `plot_scaling.py` command to re-plot on the login node).
+
+## Plot convention (every scaling figure — `plot_scaling.py`)
+**Always** rendered the same way, do not change:
+- **left y-axis** = throughput [Matom·step/s] (solid, value-labelled), AV vs LAMMPS.
+- **right y-axis** = peak memory (dashed) — RSS [GB] for CPU, VRAM [GB] for GPU.
+- **bottom x-axis** = device count (MPI ranks / GPUs); **top x-axis** = total atoms
+  at that point.
+
+`plot_scaling.py` implements this (`twinx()` for the right memory axis,
+`secondary_xaxis("top")` for the atom-count axis); the CPU sbatch invokes it on
+every run. Any new plotter must follow the same convention.
+
 ## Why this is auditable + comparable (可审计 / 可环比)
 - **One code set:** `bench_scaling.sbatch`/`plot_scaling.py`/`lib_scaling.sh` are
   committed once and reused; no per-date duplicates.
