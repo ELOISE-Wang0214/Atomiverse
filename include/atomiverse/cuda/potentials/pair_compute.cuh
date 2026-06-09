@@ -78,11 +78,16 @@ __global__ __launch_bounds__(ATV::cuda::kDefaultBlock, Virial ? 4 : 6) void pair
     prec_t* __restrict__ energy, prec_t* __restrict__ stress,
     const float4* __restrict__ pos4, const real_t* __restrict__ q,
     const int* __restrict__ vl_nbr, const int* __restrict__ vl_cnt,
-    int vl_stride, int n_atoms, cuda::Box box, Kernel kernel,
-    work_t cutoff_sq, work_t min_pair_dist_sq,
+    int vl_stride, int n_rows, const int* __restrict__ rows, cuda::Box box,
+    Kernel kernel, work_t cutoff_sq, work_t min_pair_dist_sq,
     const int* __restrict__ excl_offsets, const int* __restrict__ excl_partners,
     work_t s_excl) {
-    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    // Row indirection (multi-GPU): thread t computes force row i = rows[t]
+    // (an owned-atom subset — interior or boundary), or i = t when rows is
+    // null (the full/prefix launch). Neighbor positions still come from the
+    // whole owned+ghost pos4 either way.
+    const int t = blockIdx.x * blockDim.x + threadIdx.x;
+    const int i = (t < n_rows) ? (rows ? rows[t] : t) : -1;
 
     work_t my_energy = work_t(0);
     work_t my_vxx = work_t(0), my_vyy = work_t(0), my_vzz = work_t(0);
@@ -92,7 +97,7 @@ __global__ __launch_bounds__(ATV::cuda::kDefaultBlock, Virial ? 4 : 6) void pair
     const real_t minr_r = real_t(min_pair_dist_sq);
     const real_t sexcl_r = real_t(s_excl);
 
-    if (i < n_atoms) {
+    if (i >= 0) {
         const float4 pi = pos4[i];
         const real_t xi = pi.x, yi = pi.y, zi = pi.z;
         real_t fxi = real_t(0), fyi = real_t(0), fzi = real_t(0);
@@ -185,19 +190,24 @@ __global__ __launch_bounds__(ATV::cuda::kDefaultBlock, Virial ? 4 : 6) void pair
 
 /// @brief Host launcher: Ortho/Virial dispatch + geometry, mirroring the prior
 ///        PairLJCut::compute. `stress != nullptr` selects the virial template.
+///
+/// `n_rows`/`rows` select which force rows the kernel computes: `rows ==
+/// nullptr` ⇒ the prefix [0, n_rows) (n_rows == n_atoms reproduces the
+/// historical full launch); non-null `rows` ⇒ the explicit owned-atom subset
+/// `rows[0..n_rows)` (multi-GPU interior/boundary split).
 template <class Kernel>
 void launch_pair_compute(const Kernel& kernel, real_t* fx, real_t* fy,
                          real_t* fz, prec_t* energy, prec_t* stress,
                          const float4* pos4, const real_t* q, const int* vl_nbr,
-                         const int* vl_cnt, int vl_stride, int n_atoms,
-                         cuda::Box box, bool periodic, work_t cutoff_sq,
-                         work_t min_pair_dist_sq, const int* excl_offsets,
-                         const int* excl_partners, work_t s_excl,
-                         cudaStream_t stream) {
-    if (n_atoms <= 0)
+                         const int* vl_cnt, int vl_stride, int n_rows,
+                         const int* rows, cuda::Box box, bool periodic,
+                         work_t cutoff_sq, work_t min_pair_dist_sq,
+                         const int* excl_offsets, const int* excl_partners,
+                         work_t s_excl, cudaStream_t stream) {
+    if (n_rows <= 0)
         return;
     const int block = kDefaultBlock;
-    const int grid = grid_size(n_atoms);
+    const int grid = grid_size(n_rows);
     const int shmem = warps_per_block(block) * sizeof(work_t);
     const bool virial = (stress != nullptr);
     const bool has_excl = (excl_offsets != nullptr);
@@ -212,8 +222,8 @@ void launch_pair_compute(const Kernel& kernel, real_t* fx, real_t* fy,
         constexpr bool E = decltype(E_t)::value;
         pair_compute_verlet<O, V, P, E, Kernel><<<grid, block, shmem, stream>>>(
             fx, fy, fz, energy, stress, pos4, q, vl_nbr, vl_cnt, vl_stride,
-            n_atoms, box, kernel, cutoff_sq, min_pair_dist_sq, excl_offsets,
-            excl_partners, s_excl);
+            n_rows, rows, box, kernel, cutoff_sq, min_pair_dist_sq,
+            excl_offsets, excl_partners, s_excl);
     };
     using T = std::true_type;
     using F = std::false_type;

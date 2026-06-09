@@ -314,6 +314,49 @@ TEST(MultiGpu, FullPotentialParityVsSingleGpu) {
     }
 }
 
+// Owned-row pair gating: ghost rows must carry ONLY bonded deposits when
+// reverse_comm ships them home. With zero-strength bonds the total energy is
+// pure LJ and every cross-boundary pair is live, exposing the historical
+// double-count (ghost-row LJ forces scatter-added onto owners ≈ 2x boundary
+// force; cross-boundary pair energy counted on both GPUs). The bonded-grid
+// FullPotentialParity test cannot see this — its bond energy dominates the
+// 1e-3 relative band — so this one pins the LJ-only parity TIGHT.
+TEST(MultiGpu, LJOwnedRowParityVsSingleGpu) {
+    cuda::md::MultiGpu mg;
+    if (mg.count() < 2)
+        GTEST_SKIP() << "needs >=2 GPUs for cross-boundary pairs";
+    auto g = make_bonded_grid(12.0);
+    const std::vector<double> K{0.0}, r0{2.0}; // zero bonds ⇒ energy is pure LJ
+
+    auto run = [&](cuda::md::MultiGpu& m, cpu::Frame& out, double& e) {
+        m.partition(g);
+        m.setup_force_engine(5.0, 0.1, 2.0); // spacing-3.0 grid: many live pairs
+        m.setup_bonded(K, r0);               // no special bonds: LJ unexcluded
+        m.reneighbor();
+        m.compute_forces(); // LJ owned-rows + (zero) bonded + reverse_comm
+        m.gather_forces(out);
+        e = m.bonded_energy(); // total PE — here pure LJ
+    };
+
+    cpu::Frame fmulti(g.atoms.size()), fref(g.atoms.size());
+    double emulti = 0, eref = 0;
+    run(mg, fmulti, emulti);
+    {
+        cuda::md::MultiGpu mg1(1); // no ghosts → trusted reference
+        run(mg1, fref, eref);
+    }
+
+    std::cerr << "[diag] pure-LJ PE: multi=" << emulti << " ref=" << eref
+              << "\n";
+    ASSERT_NE(eref, 0.0);
+    EXPECT_NEAR(emulti, eref, 1e-5 * std::abs(eref));
+    for (int i = 0; i < g.atoms.size(); ++i) {
+        EXPECT_NEAR(fmulti.atoms.fx[i], fref.atoms.fx[i], 2e-3) << "fx atom " << i;
+        EXPECT_NEAR(fmulti.atoms.fy[i], fref.atoms.fy[i], 2e-3) << "fy atom " << i;
+        EXPECT_NEAR(fmulti.atoms.fz[i], fref.atoms.fz[i], 2e-3) << "fz atom " << i;
+    }
+}
+
 // force-infra-01 P1.5: the engine composes force families by abstract base via
 // caller-injected factories. Inject a stub cuda::Pair and a stub cuda::KSpace
 // and assert compute_forces() dispatches each once per subdomain — proving

@@ -242,6 +242,28 @@ __global__ void scatter_add_forces_packed(real_t* __restrict__ fx,
     atomicAdd(&fz[i], in3[2 * cnt + k]);
 }
 
+// Flag each OWNED atom interior (1) when its per-atom Verlet row holds no
+// ghost index (>= n_local): its pair force depends only on local positions,
+// so it can be computed BEFORE the forward halo lands — the comm/compute
+// overlap split. Valid for the whole reneighbor interval (the row is a fixed
+// cutoff+skin superset). O(neighbors) once per reneighbor.
+__global__ void flag_interior_rows(const int* __restrict__ vl_nbr,
+                                   const int* __restrict__ vl_cnt,
+                                   int vl_stride, int n_local,
+                                   unsigned char* __restrict__ flags) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n_local)
+        return;
+    const int cnt = vl_cnt[i];
+    unsigned char interior = 1;
+    for (int k = 0; k < cnt; ++k)
+        if (vl_nbr[static_cast<std::size_t>(k) * vl_stride + i] >= n_local) {
+            interior = 0;
+            break;
+        }
+    flags[i] = interior;
+}
+
 // Fill idx[k] = k for k in [0, n) — the values-in array for the CUB tag sort.
 __global__ void iota_k(int* __restrict__ idx, int n) {
     int k = blockIdx.x * blockDim.x + threadIdx.x;
@@ -368,10 +390,14 @@ void MultiGpu::destroy_halo_plan() {
         freep(p.d_pack_src); // packed forward/reverse staging on src
         if (p.ev_src)
             cudaEventDestroy(p.ev_src);
+        if (p.ev_rev_done)
+            cudaEventDestroy(p.ev_rev_done);
         dm_.set_device(p.dst);
         freep(p.d_pack_dst); // packed forward/reverse staging on dst
         if (p.ev_dst)
             cudaEventDestroy(p.ev_dst);
+        if (p.ev_fwd_done)
+            cudaEventDestroy(p.ev_fwd_done);
     }
     halo_plan_.clear();
     // The freep's above are stream-ordered (cudaFreeAsync). Drain them so a
@@ -501,11 +527,19 @@ void MultiGpu::build_halo(double cutoff) {
                 // stream after the forward P2P; dst waits before unpacking).
                 CKM(cudaEventCreateWithFlags(&p.ev_src,
                                              cudaEventDisableTiming));
+                // Reverse buffer-release handshake (src device): scatter-add
+                // done — the next reverse P2P may overwrite d_pack_src.
+                CKM(cudaEventCreateWithFlags(&p.ev_rev_done,
+                                             cudaEventDisableTiming));
                 dm_.set_device(dst);
                 CKM(mallocp(&p.d_pack_dst, 3 * cnt * sizeof(real_t)));
                 // Reverse copy-done event on the DST device (recorded on dst's
                 // stream after the reverse P2P; src waits before scatter-add).
                 CKM(cudaEventCreateWithFlags(&p.ev_dst,
+                                             cudaEventDisableTiming));
+                // Forward buffer-release handshake (dst device): unpack done —
+                // the next forward P2P may overwrite d_pack_dst.
+                CKM(cudaEventCreateWithFlags(&p.ev_fwd_done,
                                              cudaEventDisableTiming));
                 dm_.set_device(src);
                 halo_plan_.push_back(p);
@@ -531,100 +565,146 @@ void MultiGpu::build_halo(double cutoff) {
     }
 }
 
-void MultiGpu::forward_comm() {
-    // Replay the cascade IN AXIS ORDER with a barrier between axes: a y-axis
-    // plan may gather from x-ghost slots, whose positions the x-axis plans must
-    // have refreshed first. Plans were recorded axis-major, but barrier on the
-    // axis boundary explicitly rather than rely on push order.
+void MultiGpu::forward_comm_async() {
+    // Replay the cascade in AXIS ORDER on each device's COMM stream (the
+    // defer stream), zero host syncs. Ordering, entirely stream/event-borne:
+    //  - within one device: every comm op (gather / P2P / unpack) is issued
+    //    on its single comm stream in axis order, so a y-axis gather from an
+    //    x-ghost slot is ordered after the x-axis unpack that wrote it;
+    //  - across devices: dst's unpack waits the src copy-done event (ev_src);
+    //  - against the integrator: each comm stream first waits ev_pos_[src]
+    //    (positions current — a no-op when the event was never recorded,
+    //    e.g. standalone calls outside the step loop);
+    //  - toward the force path: each device records ev_ghosts_[s] when its
+    //    comm-stream work is issued, so ghost-dependent (boundary) kernels
+    //    can wait on it without blocking the host.
+    const int N = count();
+    auto comm = [&](int s) {
+        return static_cast<cudaStream_t>(dm_.defer_stream(s));
+    };
+    if (!ev_pos_.empty())
+        for (int s = 0; s < N; ++s) {
+            dm_.set_device(s);
+            // No-op if ev_pos_[s] was never recorded (standalone callers).
+            CKM(cudaStreamWaitEvent(comm(s), ev_pos_[s], 0));
+        }
     for (int axis = 0; axis < 3; ++axis) {
-        bool any = false;
         for (auto& p : halo_plan_) {
             if (p.axis != axis || p.cnt <= 0)
                 continue;
-            any = true;
             const int sd = dm_.device_id(p.src), dd_id = dm_.device_id(p.dst);
             int block = 256, grid = (p.cnt + block - 1) / block;
-            // Gather positions into the packed src buffer, ship in ONE async P2P,
-            // unpack into the dst ghost rows. All on the per-device default
-            // stream (0): gather→copy→record are ordered on the src stream;
-            // dst's unpack waits on the src copy-done event. Async (vs the prior
-            // host-blocking cudaMemcpyPeer) so the axis's independent plans —
-            // distinct (src,dst) device pairs — overlap rather than serialize.
             dm_.set_device(p.src);
             auto& a = frames_[p.src].atoms;
-            gather_positions_packed<<<grid, block>>>(a.x, a.y, a.z, p.d_src_idx,
-                                                     p.cnt, p.d_pack_src);
+            gather_positions_packed<<<grid, block, 0, comm(p.src)>>>(
+                a.x, a.y, a.z, p.d_src_idx, p.cnt, p.d_pack_src);
             CKM(cudaGetLastError());
+            // Buffer-release handshake: don't overwrite d_pack_dst until the
+            // PREVIOUS step's unpack on dst released it (no-op first time).
+            CKM(cudaStreamWaitEvent(comm(p.src), p.ev_fwd_done, 0));
             CKM(cudaMemcpyPeerAsync(p.d_pack_dst, dd_id, p.d_pack_src, sd,
-                                    3 * p.cnt * sizeof(real_t), 0));
-            CKM(cudaEventRecord(p.ev_src, 0));
+                                    3 * p.cnt * sizeof(real_t), comm(p.src)));
+            CKM(cudaEventRecord(p.ev_src, comm(p.src)));
             dm_.set_device(p.dst);
-            CKM(cudaStreamWaitEvent(0, p.ev_src, 0));
+            CKM(cudaStreamWaitEvent(comm(p.dst), p.ev_src, 0));
             auto& da = frames_[p.dst].atoms;
-            unpack_positions_packed<<<grid, block>>>(da.x, da.y, da.z, p.base,
-                                                     p.cnt, p.d_pack_dst);
+            unpack_positions_packed<<<grid, block, 0, comm(p.dst)>>>(
+                da.x, da.y, da.z, p.base, p.cnt, p.d_pack_dst);
             CKM(cudaGetLastError());
+            CKM(cudaEventRecord(p.ev_fwd_done, comm(p.dst)));
         }
-        // Barrier between axes: this axis's unpacks into ghost rows must complete
-        // before the next axis gathers from them (cascade). The async P2P above
-        // already lets the axis's independent plans overlap; this only bounds the
-        // axis, so the host blocks once per axis instead of once per plan.
-        if (any)
-            for (int s = 0; s < count(); ++s) {
-                dm_.set_device(s);
-                cudaDeviceSynchronize();
-            }
+    }
+    if (!ev_ghosts_.empty())
+        for (int s = 0; s < N; ++s) {
+            dm_.set_device(s);
+            CKM(cudaEventRecord(ev_ghosts_[s], comm(s)));
+        }
+}
+
+void MultiGpu::forward_comm() {
+    // Synchronous contract for external callers (tests, the brute-force NVE
+    // path): barrier on entry — callers may have written positions on any
+    // stream, and the comm-stream gathers are not implicitly ordered behind
+    // that the way the old stream-0 implementation was — then the async
+    // cascade, then a barrier so ghosts are materialized on return.
+    for (int s = 0; s < count(); ++s) {
+        dm_.set_device(s);
+        cudaDeviceSynchronize();
+    }
+    forward_comm_async();
+    for (int s = 0; s < count(); ++s) {
+        dm_.set_device(s);
+        cudaDeviceSynchronize();
     }
 }
 
-void MultiGpu::reverse_comm() {
-    // Adjoint of forward_comm: replay the cascade in REVERSE axis order
-    // (z, then y, then x) so a ghost force lands on its forwarding row before
-    // that row is itself reversed one axis down. For each transfer: gather the
-    // dst's ghost-row forces [base, base+cnt), P2P them back to the src device
-    // (reusing the src-side d_s{x,y,z} buffers as the receive buffer), then
-    // scatter-add into the src rows named by d_src_idx.
+void MultiGpu::reverse_comm_async() {
+    // Adjoint of forward_comm_async: replay the cascade in REVERSE axis order
+    // (z, then y, then x) on the per-device comm streams, zero host syncs.
+    // A ghost force lands (scatter-add) on its forwarding row before that row
+    // is itself gathered one axis down, because both ops sit on that device's
+    // single comm stream in issue order; cross-device copy→scatter edges use
+    // the per-plan ev_dst events. Each comm stream first waits ev_force_[s]
+    // (ghost-row deposits final — no-op when never recorded) and finally
+    // records ev_rev_[s], which the second integrator half-kick waits on.
+    const int N = count();
+    auto comm = [&](int s) {
+        return static_cast<cudaStream_t>(dm_.defer_stream(s));
+    };
+    if (!ev_force_.empty())
+        for (int s = 0; s < N; ++s) {
+            dm_.set_device(s);
+            CKM(cudaStreamWaitEvent(comm(s), ev_force_[s], 0));
+        }
     for (int axis = 2; axis >= 0; --axis) {
-        bool any = false;
         for (auto& p : halo_plan_) {
             if (p.axis != axis || p.cnt <= 0)
                 continue;
-            any = true;
             const int sd = dm_.device_id(p.src), dd_id = dm_.device_id(p.dst);
             int block = 256, grid = (p.cnt + block - 1) / block;
-
-            // Gather the dst's ghost-row forces into ONE packed [3*cnt] buffer,
-            // ship dst→src in a single async P2P, scatter-add into the src rows.
-            // gather→copy→record on the dst default stream; src's scatter-add
-            // waits on the dst copy-done event. Async so the axis's independent
-            // plans overlap instead of host-serializing (adjoint of forward_comm).
+            // Gather the dst's ghost-row forces into ONE packed [3*cnt]
+            // buffer, ship dst→src in a single async P2P, scatter-add into
+            // the src rows named by d_src_idx.
             dm_.set_device(p.dst);
             auto& da = frames_[p.dst].atoms;
-            gather_ghost_forces_packed<<<grid, block>>>(da.fx, da.fy, da.fz,
-                                                        p.base, p.cnt,
-                                                        p.d_pack_dst);
+            gather_ghost_forces_packed<<<grid, block, 0, comm(p.dst)>>>(
+                da.fx, da.fy, da.fz, p.base, p.cnt, p.d_pack_dst);
             CKM(cudaGetLastError());
+            // Buffer-release handshake: don't overwrite d_pack_src until the
+            // PREVIOUS step's scatter-add on src released it (no-op at first).
+            CKM(cudaStreamWaitEvent(comm(p.dst), p.ev_rev_done, 0));
             CKM(cudaMemcpyPeerAsync(p.d_pack_src, sd, p.d_pack_dst, dd_id,
-                                    3 * p.cnt * sizeof(real_t), 0));
-            CKM(cudaEventRecord(p.ev_dst, 0));
-
-            // Scatter-add into the src owned (or prior-axis ghost) rows.
+                                    3 * p.cnt * sizeof(real_t), comm(p.dst)));
+            CKM(cudaEventRecord(p.ev_dst, comm(p.dst)));
             dm_.set_device(p.src);
-            CKM(cudaStreamWaitEvent(0, p.ev_dst, 0));
+            CKM(cudaStreamWaitEvent(comm(p.src), p.ev_dst, 0));
             auto& a = frames_[p.src].atoms;
-            scatter_add_forces_packed<<<grid, block>>>(
+            scatter_add_forces_packed<<<grid, block, 0, comm(p.src)>>>(
                 a.fx, a.fy, a.fz, p.d_src_idx, p.cnt, p.d_pack_src);
             CKM(cudaGetLastError());
+            CKM(cudaEventRecord(p.ev_rev_done, comm(p.src)));
         }
-        // Barrier between axes: this axis's scatter-adds into prior-axis ghost
-        // rows must be visible before the next (lower) axis gathers from them.
-        // The async P2P above overlaps the axis's independent plans; this bounds
-        // the axis (one host block per axis instead of per plan).
-        if (any)
-            for (int s = 0; s < count(); ++s) {
-                dm_.set_device(s);
-                cudaDeviceSynchronize();
-            }
+    }
+    if (!ev_rev_.empty())
+        for (int s = 0; s < N; ++s) {
+            dm_.set_device(s);
+            CKM(cudaEventRecord(ev_rev_[s], comm(s)));
+        }
+}
+
+void MultiGpu::reverse_comm() {
+    // Synchronous contract for external callers (compute_bonded_forces,
+    // tests): barrier on entry (force kernels may have run on any stream;
+    // the comm-stream gathers are not implicitly ordered behind them), the
+    // async cascade, then a barrier so all scatter-adds have landed on return.
+    for (int s = 0; s < count(); ++s) {
+        dm_.set_device(s);
+        cudaDeviceSynchronize();
+    }
+    reverse_comm_async();
+    for (int s = 0; s < count(); ++s) {
+        dm_.set_device(s);
+        cudaDeviceSynchronize();
     }
 }
 
@@ -940,6 +1020,36 @@ void MultiGpu::destroy_force_engine() {
         cuda::DestroyContext dc{ctx_[s], frames_[s]};
         kspace_[s]->destroy(dc);
     }
+    // Async-pipeline state: events + owned-row partition buffers. Drain each
+    // device first — events may still be queued on in-flight comm streams.
+    for (int s = 0; s < static_cast<int>(ev_pos_.size()); ++s) {
+        dm_.set_device(s);
+        cudaDeviceSynchronize();
+        if (ev_pos_[s])
+            cudaEventDestroy(ev_pos_[s]);
+        if (ev_ghosts_[s])
+            cudaEventDestroy(ev_ghosts_[s]);
+        if (ev_force_[s])
+            cudaEventDestroy(ev_force_[s]);
+        if (ev_rev_[s])
+            cudaEventDestroy(ev_rev_[s]);
+        if (s < static_cast<int>(rows_.size()) && rows_[s]) {
+            cudaFree(rows_[s]);
+            cudaFree(row_flags_[s]);
+            cudaFree(row_nsel_[s]);
+            cudaFree(row_tmp_[s]);
+        }
+    }
+    ev_pos_.clear();
+    ev_ghosts_.clear();
+    ev_force_.clear();
+    ev_rev_.clear();
+    rows_.clear();
+    row_flags_.clear();
+    row_nsel_.clear();
+    row_tmp_.clear();
+    row_tmp_sz_.clear();
+    n_interior_.clear();
     nlist_.clear();
     pair_.clear();
     kspace_.clear();
@@ -976,6 +1086,25 @@ void MultiGpu::setup_force_engine(double cutoff, double epsilon, double sigma,
         p->set_compute_stress(false);
         return p;
     };
+    ev_pos_.assign(N, nullptr);
+    ev_ghosts_.assign(N, nullptr);
+    ev_force_.assign(N, nullptr);
+    ev_rev_.assign(N, nullptr);
+    rows_.assign(N, nullptr);
+    row_flags_.assign(N, nullptr);
+    row_nsel_.assign(N, nullptr);
+    row_tmp_.assign(N, nullptr);
+    row_tmp_sz_.assign(N, 0);
+    n_interior_.assign(N, -1);
+    for (int s = 0; s < N; ++s) {
+        dm_.set_device(s);
+        // Sync-only events for the per-step async pipeline (no host syncs in
+        // the steady step loop): see the ev_* member docs in multi_gpu.cuh.
+        CKM(cudaEventCreateWithFlags(&ev_pos_[s], cudaEventDisableTiming));
+        CKM(cudaEventCreateWithFlags(&ev_ghosts_[s], cudaEventDisableTiming));
+        CKM(cudaEventCreateWithFlags(&ev_force_[s], cudaEventDisableTiming));
+        CKM(cudaEventCreateWithFlags(&ev_rev_[s], cudaEventDisableTiming));
+    }
     for (int s = 0; s < N; ++s) {
         ctx_[s].stream = dm_.stream(s);
         ctx_[s].defer_stream = dm_.defer_stream(s);
@@ -1292,41 +1421,65 @@ void MultiGpu::compute_forces(bool read_energy) {
         // only republishes the pair list — no per-step rebuild here (which, in
         // this per-device loop, would serialize the GPUs on its overflow syncs).
         nlist_[s]->launch(lc); // neighbor refresh (driver-cadence rebuild)
-        pair_[s]->launch(lc);  // short-range (owned, full, special-bonds-excluded)
-        bond_[s]->launch(lc);
-        if (angle_[s])
-            angle_[s]->launch(lc);
-        if (dihedral_[s])
-            dihedral_[s]->launch(lc);
-        // Reciprocal-space (LAMMPS order: pair → bonded → kspace). Optional;
-        // single-GPU only until force-infra-04 adds the cross-GPU S(k) reduce.
-        if (kspace_[s])
-            kspace_[s]->launch(lc);
-    }
-    // Multi-GPU: sync all subdomains, then bring ghost (bonded) forces home.
-    // Single-GPU has no ghosts (reverse_comm is a no-op) and runs the integrator
-    // on the same stream as the force kernels, so no per-step host sync is
-    // needed — stream ordering carries forces into the next vv_second. Dropping
-    // this per-step cudaDeviceSynchronize is the last big single-GPU host win.
-    if (N > 1) {
-        auto tk0 = std::chrono::steady_clock::now();
-        for (int s = 0; s < N; ++s) {
-            dm_.set_device(s);
-            CKM(cudaDeviceSynchronize());
+        if (N > 1) {
+            // Pair force over OWNED rows only. Ghost pair rows are (a) wasted
+            // work — each owned atom's pair force is already complete from
+            // its own full Verlet row — and (b) WRONG to reverse-communicate:
+            // the pair part would double onto the owner, and ghost-row energy
+            // double-counts every cross-boundary pair. Only bonded ghost
+            // deposits may travel home.
+            auto st = static_cast<cudaStream_t>(ctx_[s].stream);
+            const int nl = frames_[s].n_local_;
+            const bool split = !rows_.empty() && rows_[s]
+                               && n_interior_[s] >= 0;
+            if (split) {
+                // Interior rows (no ghost neighbor): launch BEFORE waiting on
+                // the halo — this is the comm/compute overlap.
+                ctx_[s].n_force_rows = n_interior_[s];
+                ctx_[s].force_rows = rows_[s];
+                pair_[s]->launch(lc);
+                CKM(cudaStreamWaitEvent(st, ev_ghosts_[s], 0));
+                ctx_[s].n_force_rows = nl - n_interior_[s];
+                ctx_[s].force_rows = rows_[s] + n_interior_[s];
+                pair_[s]->launch(lc); // boundary rows — need landed ghosts
+            } else {
+                CKM(cudaStreamWaitEvent(st, ev_ghosts_[s], 0));
+                ctx_[s].n_force_rows = nl; // owned prefix, no split available
+                ctx_[s].force_rows = nullptr;
+                pair_[s]->launch(lc);
+            }
+            ctx_[s].n_force_rows = -1;
+            ctx_[s].force_rows = nullptr;
+            // Bonded kernels read ghost POSITIONS and deposit on ghost rows —
+            // ordered after the ghost wait by the ctx stream.
+            bond_[s]->launch(lc);
+            if (angle_[s])
+                angle_[s]->launch(lc);
+            if (dihedral_[s])
+                dihedral_[s]->launch(lc);
+            if (kspace_[s])
+                kspace_[s]->launch(lc);
+            // Ghost-row deposits final: the reverse halo gathers wait on this.
+            CKM(cudaEventRecord(ev_force_[s], st));
+        } else {
+            pair_[s]->launch(lc); // single-GPU: every row, original path
+            bond_[s]->launch(lc);
+            if (angle_[s])
+                angle_[s]->launch(lc);
+            if (dihedral_[s])
+                dihedral_[s]->launch(lc);
+            // Reciprocal-space (LAMMPS order: pair → bonded → kspace).
+            if (kspace_[s])
+                kspace_[s]->launch(lc);
         }
-        if (mg_prof().on)
-            mg_prof().add("C_force_kernels",
-                          std::chrono::duration<double>(
-                              std::chrono::steady_clock::now() - tk0)
-                              .count());
-        auto tr0 = std::chrono::steady_clock::now();
-        reverse_comm(); // internally syncs per axis
-        if (mg_prof().on)
-            mg_prof().add("C_reverse_comm",
-                          std::chrono::duration<double>(
-                              std::chrono::steady_clock::now() - tr0)
-                              .count());
     }
+    // Multi-GPU: bring ghost (bonded) forces home — fully async on the comm
+    // streams (waits ev_force_, records ev_rev_; the integrator's second
+    // half-kick waits ev_rev_). Single-GPU has no ghosts and runs the
+    // integrator on the same stream as the force kernels, so no per-step sync
+    // is needed — stream ordering carries forces into the next vv_second.
+    if (N > 1)
+        reverse_comm_async();
     if (read_energy) {
         // Energy readback syncs implicitly (blocking D2H); ensure single-GPU
         // force kernels are done first.
@@ -1340,6 +1493,60 @@ void MultiGpu::compute_forces(bool read_energy) {
                            cudaMemcpyDeviceToHost));
             bonded_energy_ += static_cast<double>(sc.energy);
         }
+    }
+}
+
+void MultiGpu::classify_force_rows() {
+    // Partition each subdomain's OWNED rows into [interior | boundary] by
+    // ghost dependence (see flag_interior_rows). Interior pair forces launch
+    // before the forward halo lands — the comm/compute overlap. CUB
+    // DevicePartition keeps interior rows in ascending order (boundary rows
+    // land reversed at the tail — order is irrelevant for correctness and
+    // they stay contiguous for coalescing). Reneighbor-cadence.
+    const int N = count();
+    if (N <= 1 || rows_.empty())
+        return;
+    std::vector<char> issued(N, 0);
+    for (int s = 0; s < N; ++s) {
+        n_interior_[s] = -1;
+        const int nl = frames_[s].n_local_;
+        const cuda::PairList* pl = ctx_[s].pair_list;
+        if (nl <= 0 || !pl || !pl->vl_nbr || !pl->vl_cnt || pl->vl_stride <= 0)
+            continue;
+        dm_.set_device(s);
+        if (!rows_[s]) {
+            const int cap = frames_[s].capacity_;
+            CKM(cudaMalloc(&rows_[s], cap * sizeof(int)));
+            CKM(cudaMalloc(&row_flags_[s], cap * sizeof(unsigned char)));
+            CKM(cudaMalloc(&row_nsel_[s], sizeof(int)));
+            // Size the CUB temp blob once for full capacity (bytes query).
+            std::size_t need = 0;
+            cub::CountingInputIterator<int> cit(0);
+            cub::DevicePartition::Flagged(nullptr, need, cit, row_flags_[s],
+                                          rows_[s], row_nsel_[s], cap);
+            CKM(cudaMalloc(&row_tmp_[s], need));
+            row_tmp_sz_[s] = need;
+        }
+        auto st = static_cast<cudaStream_t>(ctx_[s].stream);
+        const int block = 256, grid = (nl + block - 1) / block;
+        flag_interior_rows<<<grid, block, 0, st>>>(
+            pl->vl_nbr, pl->vl_cnt, pl->vl_stride, nl, row_flags_[s]);
+        CKM(cudaGetLastError());
+        std::size_t avail = row_tmp_sz_[s];
+        cub::CountingInputIterator<int> cit(0);
+        CKM(cub::DevicePartition::Flagged(row_tmp_[s], avail, cit,
+                                          row_flags_[s], rows_[s], row_nsel_[s],
+                                          nl, st));
+        issued[s] = 1;
+    }
+    for (int s = 0; s < N; ++s) {
+        if (!issued[s])
+            continue;
+        dm_.set_device(s);
+        int nsel = 0; // blocking D2H — orders behind the partition kernel
+        CKM(cudaMemcpy(&nsel, row_nsel_[s], sizeof(int),
+                       cudaMemcpyDeviceToHost));
+        n_interior_[s] = nsel;
     }
 }
 
@@ -1367,6 +1574,15 @@ void MultiGpu::reneighbor() {
                         std::chrono::steady_clock::now() - t0)
                         .count());
     };
+    // Drain the async step pipeline first: migrate()/build_halo() read other
+    // devices' memory via P2P copies that are NOT ordered behind those
+    // devices' ctx/comm streams, so every in-flight integrator/comm op must
+    // have landed. One barrier per reneighbor interval — the steady step
+    // loop itself never host-syncs.
+    for (int s = 0; s < count(); ++s) {
+        dm_.set_device(s);
+        CKM(cudaDeviceSynchronize());
+    }
     // Atoms that drifted out of their subdomain change owner GPU first, THEN
     // the halo is rebuilt around the updated owned sets.
     timed("R_migrate", [&] { migrate(); });
@@ -1505,6 +1721,9 @@ void MultiGpu::reneighbor() {
             cuda::LaunchContext lc{ctx_[s], frames_[s], 0, 0};
             nlist_[s]->finalize_rebuild(lc);
         }
+        // Partition owned rows by ghost dependence over the fresh Verlet
+        // lists (interior pair force overlaps the next intervals' halos).
+        timed("R_classify_rows", [&] { classify_force_rows(); });
     }
     // Cap the retained-pool ratchet. migrate()/build_halo() allocate large
     // transient scratch (incl. packing per-atom bonded arrays) via
@@ -1553,18 +1772,40 @@ void MultiGpu::compute_lj_nlist() {
         dm_.set_device(s);
         auto& a = frames_[s].atoms;
         cudaStream_t st = static_cast<cudaStream_t>(ctx_[s].stream);
-        // The cluster kernel accumulates (fx[ai] += ...) over owned AND ghost
-        // slots, so zero the whole owned+ghost range first.
+        // The force kernel accumulates (fx[i] += ...), so zero first. Ghost
+        // rows stay zero on multi-GPU (owned-row launches below).
         CKM(cudaMemsetAsync(a.fx, 0, na * sizeof(real_t), st));
         CKM(cudaMemsetAsync(a.fy, 0, na * sizeof(real_t), st));
         CKM(cudaMemsetAsync(a.fz, 0, na * sizeof(real_t), st));
         cuda::LaunchContext lc{ctx_[s], frames_[s]};
-        nlist_[s]->launch(lc); // skin-gated CSR rebuild + republish pair_list
-        pair_[s]->launch(lc);  // atom-centric cluster LJ force (calls compute)
-    }
-    for (int s = 0; s < N; ++s) {
-        dm_.set_device(s);
-        CKM(cudaDeviceSynchronize());
+        nlist_[s]->launch(lc); // skin-gated rebuild + republish pair_list
+        if (N > 1) {
+            // Owned rows only, interior/boundary split when available —
+            // interior LJ overlaps the in-flight forward halo; boundary rows
+            // wait for the ghost positions via ev_ghosts_ (stream-level, no
+            // host sync anywhere in the steady step). See compute_forces.
+            const int nl = frames_[s].n_local_;
+            const bool split = !rows_.empty() && rows_[s]
+                               && n_interior_[s] >= 0;
+            if (split) {
+                ctx_[s].n_force_rows = n_interior_[s];
+                ctx_[s].force_rows = rows_[s];
+                pair_[s]->launch(lc);
+                CKM(cudaStreamWaitEvent(st, ev_ghosts_[s], 0));
+                ctx_[s].n_force_rows = nl - n_interior_[s];
+                ctx_[s].force_rows = rows_[s] + n_interior_[s];
+                pair_[s]->launch(lc);
+            } else {
+                CKM(cudaStreamWaitEvent(st, ev_ghosts_[s], 0));
+                ctx_[s].n_force_rows = nl;
+                ctx_[s].force_rows = nullptr;
+                pair_[s]->launch(lc);
+            }
+            ctx_[s].n_force_rows = -1;
+            ctx_[s].force_rows = nullptr;
+        } else {
+            pair_[s]->launch(lc); // single-GPU: every row, original path
+        }
     }
 }
 
@@ -1578,31 +1819,39 @@ void MultiGpu::run_nve_nlist(int steps, double dt, double cutoff,
     if (reneigh_every < 1)
         reneigh_every = 1;
     for (int step = 0; step < steps; ++step) {
+        // Integrate on the per-device CTX stream (same stream as the force
+        // kernels → forces are stream-ordered into vv_first with no host
+        // sync). Multi-GPU records ev_pos_ so the comm-stream halo gathers
+        // wait on the fresh positions (the steady step loop is sync-free).
         for (int s = 0; s < count(); ++s) {
             const int nl = frames_[s].n_local_;
             if (nl == 0)
                 continue;
             dm_.set_device(s);
             auto& a = frames_[s].atoms;
+            auto st = static_cast<cudaStream_t>(ctx_[s].stream);
             int block = 256, grid = (nl + block - 1) / block;
-            vv_first<<<grid, block>>>(a.x, a.y, a.z, a.vx, a.vy, a.vz, a.fx,
-                                      a.fy, a.fz, a.mass, nl, dtr);
+            vv_first<<<grid, block, 0, st>>>(a.x, a.y, a.z, a.vx, a.vy, a.vz,
+                                             a.fx, a.fy, a.fz, a.mass, nl, dtr);
             CKM(cudaGetLastError());
+            if (count() > 1)
+                CKM(cudaEventRecord(ev_pos_[s], st));
         }
         if ((step + 1) % reneigh_every == 0)
-            reneighbor();    // re-select ghosts + rebuild neighbor list
+            reneighbor();          // re-select ghosts + rebuild neighbor list
         else
-            forward_comm();  // refresh ghost positions only
-        compute_lj_nlist();
+            forward_comm_async();  // ghost positions, comm streams, no sync
+        compute_lj_nlist();        // interior overlaps the halo; no host sync
         for (int s = 0; s < count(); ++s) {
             const int nl = frames_[s].n_local_;
             if (nl == 0)
                 continue;
             dm_.set_device(s);
             auto& a = frames_[s].atoms;
+            auto st = static_cast<cudaStream_t>(ctx_[s].stream);
             int block = 256, grid = (nl + block - 1) / block;
-            vv_second<<<grid, block>>>(a.vx, a.vy, a.vz, a.fx, a.fy, a.fz,
-                                       a.mass, nl, dtr);
+            vv_second<<<grid, block, 0, st>>>(a.vx, a.vy, a.vz, a.fx, a.fy,
+                                              a.fz, a.mass, nl, dtr);
             CKM(cudaGetLastError());
         }
     }
@@ -1659,25 +1908,24 @@ void MultiGpu::run_nve_pe(int steps, double dt, int reneigh_every) {
                 continue;
             dm_.set_device(s);
             auto& a = frames_[s].atoms;
-            // Stream choice: single-GPU runs the integrator on the SAME stream
-            // as the force kernels (ctx_[s].stream) so compute_forces needs no
-            // per-step host sync — stream ordering carries forces → vv_second.
-            // Multi-GPU must use the per-device default stream (0): migrate() /
-            // forward_comm() read these positions on the default stream, so the
-            // integrator shares it (else the position write races the migrate
-            // read — a Heisenbug that vanishes under compute-sanitizer).
-            auto st = (count() == 1) ? static_cast<cudaStream_t>(ctx_[s].stream)
-                                     : cudaStream_t(0);
+            // Integrate on the CTX stream (same stream as the force kernels →
+            // forces stream-order into the half-kick, no host sync). The comm
+            // streams' halo gathers wait on ev_pos_; reneighbor() (whose
+            // migrate() does cross-device P2P reads that streams cannot
+            // order) drains all devices at entry instead.
+            auto st = static_cast<cudaStream_t>(ctx_[s].stream);
             launch_nve_limit_initial(a.x, a.y, a.z, a.vx, a.vy, a.vz, a.fx, a.fy,
                                      a.fz, a.mass, ctx_[s].host_box, dtw,
                                      kNveLimitXmax, nl, st);
             CKM(cudaGetLastError());
+            if (count() > 1)
+                CKM(cudaEventRecord(ev_pos_[s], st));
         }
       });
         if ((step + 1) % reneigh_every == 0)
             timed("2_reneighbor", [&] { reneighbor(); });
         else
-            timed("2_forward_comm", [&] { forward_comm(); });
+            timed("2_forward_comm", [&] { forward_comm_async(); });
         timed("3_compute_forces",
               [&] { compute_forces(/*read_energy=*/false); });
       timed("4_integrate_final", [&] {
@@ -1687,8 +1935,11 @@ void MultiGpu::run_nve_pe(int steps, double dt, int reneigh_every) {
                 continue;
             dm_.set_device(s);
             auto& a = frames_[s].atoms;
-            auto st = (count() == 1) ? static_cast<cudaStream_t>(ctx_[s].stream)
-                                     : cudaStream_t(0);
+            auto st = static_cast<cudaStream_t>(ctx_[s].stream);
+            // Multi-GPU: forces on owned rows are final only after the
+            // reverse halo's scatter-adds (comm stream) — wait its event.
+            if (count() > 1)
+                CKM(cudaStreamWaitEvent(st, ev_rev_[s], 0));
             launch_nve_limit_final(a.vx, a.vy, a.vz, a.fx, a.fy, a.fz, a.mass,
                                    dtw, kNveLimitXmax, nl, st);
             CKM(cudaGetLastError());
