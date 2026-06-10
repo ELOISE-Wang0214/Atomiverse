@@ -166,6 +166,15 @@ void apply_hamiltonian(const PWWorkspace& ws, const std::complex<Real>* psi_g,
 
 } // namespace
 
+void pw_apply_h_for_tests(const PWWorkspace& ws,
+                          const std::complex<Real>* psi_g,
+                          std::complex<Real>* hpsi_g) {
+    auto* buf = static_cast<fftw_complex*>(
+        fftw_malloc(sizeof(fftw_complex) * static_cast<size_t>(ws.nr)));
+    apply_hamiltonian(ws, psi_g, hpsi_g, buf);
+    fftw_free(buf);
+}
+
 // ── Public interface ──
 
 void PW_Davidson::build(const cpu::BuildContext& ctx) {

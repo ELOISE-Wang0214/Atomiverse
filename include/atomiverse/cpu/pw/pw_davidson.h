@@ -10,6 +10,12 @@ namespace ATV {
 namespace cpu {
 namespace pw {
 
+/// @brief Test hook: one H·ψ application on the bound k-sphere of `ws`
+/// (same code path PW_Davidson uses). For validation oracles only.
+void pw_apply_h_for_tests(const PWWorkspace& ws,
+                          const std::complex<Real>* psi_g,
+                          std::complex<Real>* hpsi_g);
+
 class PW_Davidson : public cpu::ComponentBase {
     PWWorkspace* ws_ = nullptr;
     int n_bands_ = 4;

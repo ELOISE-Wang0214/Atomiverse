@@ -260,13 +260,13 @@ void setup_kb_projectors(std::vector<std::vector<PWWorkspace::KBProjG>>& out,
                 vecs[0] = Real(1);
             } else {
                 Real a = D_sub[0], b = D_sub[1], c = D_sub[2], d = D_sub[3];
-                Real tr = a + d, det = a * d - b * c,
-                     disc =
-                         std::sqrt(std::max(Real(0), tr * tr - Real(4) * det));
-                eig[0] = Real(0.5) * (tr - disc);
-                eig[1] = Real(0.5) * (tr + disc);
-                // Eigenvectors for symmetric 2×2, column-major: vecs[i + nl*k]
                 if (std::abs(b) > Real(1e-16)) {
+                    Real tr = a + d, det = a * d - b * c,
+                         disc = std::sqrt(
+                             std::max(Real(0), tr * tr - Real(4) * det));
+                    eig[0] = Real(0.5) * (tr - disc);
+                    eig[1] = Real(0.5) * (tr + disc);
+                    // Eigenvectors, column-major: vecs[i + nl*k]
                     Real n0 = std::sqrt(b * b + (eig[0] - a) * (eig[0] - a));
                     vecs[0 * nl + 0] = (eig[0] - a) / n0;
                     vecs[1 * nl + 0] = b / n0; // col 0
@@ -274,6 +274,14 @@ void setup_kb_projectors(std::vector<std::vector<PWWorkspace::KBProjG>>& out,
                     vecs[0 * nl + 1] = (eig[1] - a) / n1;
                     vecs[1 * nl + 1] = b / n1; // col 1
                 } else {
+                    // Already diagonal: keep the ORIGINAL pairing. The old
+                    // code sorted the eigenvalues here while leaving the
+                    // eigenvectors as identity, swapping each projector's
+                    // strength with its partner whenever D11 > D22 (true
+                    // for the ONCV s and p channels — the l=2 block
+                    // happened to be ascending and masked the bug).
+                    eig[0] = a;
+                    eig[1] = d;
                     vecs[0] = 1;
                     vecs[1] = 0;
                     vecs[2] = 0;
@@ -465,7 +473,13 @@ void setup_pw_problem(const cpu::Frame& frame, const std::string& upf_path,
               << std::endl;
 
     // === G-vectors ===
-    out.gv0 = internal::enumerate_g_vectors(box_bohr, ecut_ht, Vec3::zeros());
+    // gv0 is the DENSITY sphere: ρ = |ψ|² has spectral content out to
+    // 2·G_max(wfc), i.e. ecutrho = 4·ecut (QE default). All density-side
+    // quantities (ρ, V_H, V_xc, V_loc, V_eff, mixing, energy sums) live
+    // on this sphere; the per-k wavefunction spheres stay at ecut.
+    out.gv0 =
+        internal::enumerate_g_vectors(box_bohr, Real(4) * ecut_ht,
+                                      Vec3::zeros());
     auto& gv0 = out.gv0;
     std::cout << "\n--- G-vectors ---" << std::endl;
     std::cout << "  N_G=" << gv0.count()
@@ -545,10 +559,11 @@ void setup_pw_problem(const cpu::Frame& frame, const std::string& upf_path,
         ws.rho_G[0] = std::complex<Real>(Real(n_elec) / vol_bohr, 0);
     }
 
-    // Density FFT grid: QE default ecutrho = 4*ecutwfc
-    ws.fft_nx = 4 * gv0.nx;
-    ws.fft_ny = 4 * gv0.ny;
-    ws.fft_nz = 4 * gv0.nz;
+    // Density FFT grid: gv0 is already the ecutrho = 4·ecut sphere, so
+    // 2× its index extent covers it (equals the old 4× wfc-sphere grid).
+    ws.fft_nx = 2 * gv0.nx;
+    ws.fft_ny = 2 * gv0.ny;
+    ws.fft_nz = 2 * gv0.nz;
     if (ws.fft_nx % 2)
         ++ws.fft_nx;
     if (ws.fft_ny % 2)
@@ -744,12 +759,18 @@ void pulay_mix(PWWorkspace& ws) {
 Real report_iteration_energy(const PWWorkspace& ws, Real e_band, Real ew_total,
                              Real vol_bohr, int iter, int n_bands) {
     // Energy decomposition
-    Real e_h = 0, e_xc_int = 0;
+    // Parseval: ∫ρ(r)v(r)d³r = Ω·Σ_G Re[ρ*(G)·v(G)] — both real AND
+    // imaginary parts contribute (ρ_G is complex for any cell without
+    // inversion symmetry about the origin; taking Re·Re only silently
+    // dropped the Im·Im half and tilted E(V)).
+    Real e_h = 0, e_xc_int = 0, e_loc = 0;
     for (int i = 0; i < ws.n_g; ++i) {
-        Real rh = ws.rho_G[i].real();
-        e_h += Real(0.5) * rh * ws.V_H_G[i].real();
-        e_xc_int += rh * ws.V_xc_G[i].real();
+        std::complex<Real> rh = ws.rho_G[i];
+        e_h += Real(0.5) * std::real(std::conj(rh) * ws.V_H_G[i]);
+        e_xc_int += std::real(std::conj(rh) * ws.V_xc_G[i]);
+        e_loc += std::real(std::conj(rh) * ws.V_loc_G[i]);
     }
+    e_loc *= vol_bohr;
     e_h *= vol_bohr;
     e_xc_int *= vol_bohr;
 
@@ -763,6 +784,9 @@ Real report_iteration_energy(const PWWorkspace& ws, Real e_band, Real ew_total,
               << e_one << " Ha (" << e_one * 2.0 << " Ry)" << std::endl;
     std::cout << "  Hartree      = " << std::setw(12) << e_h << " Ha ("
               << e_h * 2.0 << " Ry)" << std::endl;
+    std::cout << "  E_loc(rho)   = " << std::setw(12) << e_loc << " Ha ("
+              << e_loc * 2.0 << " Ry)  [T+E_NL = "
+              << (e_one - e_loc) << " Ha]" << std::endl;
     std::cout << "  XC           = " << std::setw(12) << ws.E_xc << " Ha ("
               << ws.E_xc * 2.0 << " Ry)" << std::endl;
     std::cout << "  Ewald        = " << std::setw(12) << ew_total << " Ha ("
