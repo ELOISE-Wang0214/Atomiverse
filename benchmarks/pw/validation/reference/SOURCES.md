@@ -27,12 +27,27 @@ both retrieved from <https://github.com/cp2k/cp2k> (master,
 `cp2k/eos_reference.csv`; official static binaries are at
 <https://github.com/cp2k/cp2k/releases>.
 
-## Literature LDA fallback (used until eos_reference.csv exists)
+## Same-pseudo ABINIT reference (used until eos_reference.csv exists)
 
-LDA equilibrium properties of Si (diamond structure):
-a0 ≈ 5.40 Å, B0 ≈ 96 GPa — e.g. R. J. Needs & A. Mujica,
-*Phys. Rev. B* **51**, 9652 (1995) (a0 = 5.396 Å, B0 = 95.9 GPa);
-experimental: a0 = 5.431 Å, B0 = 98.8 GPa.
+The PseudoDojo `Si.djrepo` ships a deltafactor EOS computed with
+ABINIT using THIS exact pseudopotential (diamond Si, 2 sites):
+v0 = 20.434 Å³/atom → a0 = 5.469 Å, B0 = 90.0 GPa, B1 = 4.46,
+E_min = −230.158 eV per cell (−16.916 Ry). Source:
+<https://github.com/PseudoDojo/ONCVPSP-LDA-SR-noCCv0.4> (Si/Si.djrepo).
+For orientation, generic LDA-PZ Si: a0 ≈ 5.40 Å, B0 ≈ 96 GPa
+(R. J. Needs & A. Mujica, PRB 51, 9652 (1995)); experiment:
+a0 = 5.431 Å, B0 = 98.8 GPa.
+
+## pw_si_atom_oracle.py
+
+Dense-diagonalization numpy plane-wave DFT for a single Si atom in a
+cubic box, mirroring the cpu::pw conventions term by term (erf-split
+V_loc, jellium G=0 handling, KB projectors, Slater+PW92 LDA). Run
+`python3 pw_si_atom_oracle.py <L_angstrom> <ecut_ry>` from the repo
+root; the converged total should approach the ONCVPSP pseudoatom
+reference (−7.5004 Ry, `total_psenergy` in the UPF header). Used to
+pin down Hamiltonian-level bugs (it found the cross-paired KB
+projector strengths); kept as an independent validation oracle.
 
 ## Comparability notes
 

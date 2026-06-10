@@ -24,17 +24,24 @@ enough to catch real physics bugs (wrong Ewald, broken k-sampling,
 XC/Hartree double counting all shift a0/B0 far more).
 
 ```bash
-./bench_pw_si_cp2k_eos                  # CPU, ecut 30 Ry, 2x2x2 MP
-./bench_pw_si_cp2k_eos --backend cuda   # same scan on the GPU
-./bench_pw_si_cp2k_eos --ecut 40 --kmesh 4   # convergence study
+./bench_pw_si_cp2k_eos                  # CPU, ecut 30 Ry, 2x2x2 MP (smoke)
+./bench_pw_si_cp2k_eos --backend cuda --ecut 60 --kmesh 4   # production
 ```
+
+Production settings are `--ecut 60 --kmesh 4`: the ONCV pseudo needs
+~60 Ry for sub-mRy total-energy convergence, and the 2×2×2 mesh leaves
+several-percent a0 errors. On the GH200 the production scan takes
+~15 min; on a single CPU core it is hours — run the science part on
+the cuda backend (the parity test guarantees both backends produce
+identical energies).
 
 The CP2K side is generated once per machine with
 `validation/reference/cp2k/run_eos.sh /path/to/cp2k.ssmp` (any recent
 CP2K; the deck inlines basis + pseudopotential, so no data directory
-is required). Until that CSV exists the bench compares against
-literature LDA values (see `validation/reference/SOURCES.md`) and
-prints a notice.
+is required). Until that CSV exists the bench compares against the
+same-pseudopotential ABINIT deltafactor reference (a0 = 5.469 Å,
+B0 = 90 GPa — see `validation/reference/SOURCES.md`) and prints a
+notice.
 
 Why these observables: total energies are not comparable across codes
 (different pseudopotentials/discretizations); a0 and B0 are the

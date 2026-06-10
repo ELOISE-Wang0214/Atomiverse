@@ -10,8 +10,9 @@
 /// Absolute energies are NOT comparable across codes (different
 /// pseudopotentials and discretizations); EOS-derived observables are.
 /// If the CP2K reference CSV has not been generated yet
-/// (reference/cp2k/eos_reference.csv), falls back to literature LDA
-/// values (a0 = 5.40 Å, B0 = 96 GPa) with a notice.
+/// (reference/cp2k/eos_reference.csv), falls back to the
+/// same-pseudopotential ABINIT deltafactor values (a0 = 5.469 Å,
+/// B0 = 90 GPa, PseudoDojo Si.djrepo) with a notice.
 ///
 /// Usage: bench_pw_si_cp2k_eos [--ecut RY] [--kmesh N] [--backend cpu|cuda]
 ///                             [--out csv_path]
@@ -268,12 +269,14 @@ int main(int argc, char** argv) {
             return 1;
         }
     } else {
-        // Literature LDA: a0 ≈ 5.40 Å, B0 ≈ 96 GPa (see SOURCES.md).
-        ref.a0 = 5.40;
-        ref.b0 = 96.0;
+        // Same-pseudopotential ABINIT reference (PseudoDojo deltafactor,
+        // Si.djrepo): v0 = 20.434 Å³/atom → a0 = 5.469 Å, B0 = 90.0 GPa.
+        // See SOURCES.md. Used until the CP2K CSV is generated.
+        ref.a0 = 5.469;
+        ref.b0 = 90.0;
         ref.ok = true;
-        ref_name = "literature LDA (CP2K CSV not generated yet — run "
-                   "reference/cp2k/run_eos.sh)";
+        ref_name = "ABINIT deltafactor, same ONCV pseudo (CP2K CSV not "
+                   "generated yet — run reference/cp2k/run_eos.sh)";
         tol_a0 = 0.10;
         tol_b0 = 30.0;
     }
