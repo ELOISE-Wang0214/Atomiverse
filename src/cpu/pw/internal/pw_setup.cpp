@@ -455,12 +455,17 @@ void setup_pw_problem(const cpu::Frame& frame, const std::string& upf_path,
     internal::EwaldSummation ewald(pos_ang, ewald_charges, box_ang, ecut_ht);
     Real ew_total = ewald.total_energy();
 
-    // QE Ewald G=0 term: ewaldg = -charge²/(4*alpha) * (2π/Ω)  (ewald.f90:112,129)
+    // Charged-system / jellium G=0 term: -π Q² / (2 α² Ω). NB: QE's
+    // ewald.f90 writes -charge²/(4·alpha)·(2π/Ω), but QE's `alpha` is the
+    // Gaussian exponent η² — our EwaldSummation::alpha() is η, so the
+    // denominator needs α². (With α¹ the term acquires a spurious
+    // cell-size dependence that tilted the Si E(V) curve by ~0.04 Ry
+    // across the EOS scan — comparable to the entire physical span.)
     Real ew_charge = 0;
     for (auto& z : ewald_charges)
         ew_charge += z;
     Real ew_alpha = ewald.alpha();
-    Real ew_g0 = -ew_charge * ew_charge / (Real(4) * ew_alpha)
+    Real ew_g0 = -ew_charge * ew_charge / (Real(4) * ew_alpha * ew_alpha)
                  * Real(2.0 * M_PI) / vol_bohr;
     ew_total += ew_g0;
     out.ew_total = ew_total;
