@@ -375,3 +375,10 @@ if(ATV_BUILD_TORCH)
     atv_add_test(test_torch_harmonic_bond  torch/test_harmonic_bond.cu)
     atv_add_test(test_torch_neighbor_list  torch/test_neighbor_list.cu)
 endif()
+
+# Diagnostic helper (not registered as a test): fixed-V_eff band parity.
+if(ATV_BUILD_CUDA AND ATV_BUILD_PW)
+    add_executable(diag_band_parity cuda/pw/diag_band_parity.cu)
+    target_link_libraries(diag_band_parity PRIVATE atomiverse)
+    set_target_properties(diag_band_parity PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+endif()

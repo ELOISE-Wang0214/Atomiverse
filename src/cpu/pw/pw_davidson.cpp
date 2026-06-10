@@ -193,7 +193,6 @@ void PW_Davidson::launch(const cpu::LaunchContext&) {
 
     // ── Davidson iteration ──
     int max_david = std::min(max_iter_, 20);
-    Real tol_sq = Real(1e-16); // very tight, always add residuals
 
     for (int idavid = 0; idavid < max_david; ++idavid) {
         // Compute H·v_j for new subspace vectors
@@ -275,8 +274,10 @@ void PW_Davidson::launch(const cpu::LaunchContext&) {
                     res_norm += std::norm(R[ig]);
                 }
 
-                if (res_norm < tol_sq)
-                    continue; // already converged
+                // Converged band: appending its residual would only
+                // inject rounding noise into the subspace.
+                if (res_norm < Real(1e-12)) // ||R|| < 1e-6
+                    continue;
 
                 // Precondition: δ(G) = -R(G) / (T(G) - ε). The clamp keeps
                 // the T(G) ≈ ε crossing from amplifying residual noise by
@@ -292,24 +293,37 @@ void PW_Davidson::launch(const cpu::LaunchContext&) {
                     delta[ig] = -R[ig] / denom;
                 }
 
-                // Orthogonalize against existing subspace
-                for (int mu = 0; mu < n_sub; ++mu) {
-                    std::complex<Real> ovlp(0, 0);
-                    for (int ig = 0; ig < ng; ++ig)
-                        ovlp +=
-                            std::conj(sub_vectors[mu * ng + ig]) * delta[ig];
-                    for (int ig = 0; ig < ng; ++ig)
-                        delta[ig] -= ovlp * sub_vectors[mu * ng + ig];
+                // Normalize first so the drop threshold below is
+                // scale-free, then orthogonalize with TWO Gram-Schmidt
+                // passes ("twice is enough"): a single pass loses
+                // orthogonality once the subspace is large, and the
+                // standard Rayleigh-Ritz then drifts unboundedly below
+                // the true eigenvalues.
+                Real pre_norm = 0;
+                for (int ig = 0; ig < ng; ++ig)
+                    pre_norm += std::norm(delta[ig]);
+                if (pre_norm < Real(1e-24))
+                    continue;
+                Real inv_pre = Real(1) / std::sqrt(pre_norm);
+                for (int ig = 0; ig < ng; ++ig)
+                    delta[ig] *= inv_pre;
+                for (int pass = 0; pass < 2; ++pass) {
+                    for (int mu = 0; mu < n_sub; ++mu) {
+                        std::complex<Real> ovlp(0, 0);
+                        for (int ig = 0; ig < ng; ++ig)
+                            ovlp += std::conj(sub_vectors[mu * ng + ig])
+                                    * delta[ig];
+                        for (int ig = 0; ig < ng; ++ig)
+                            delta[ig] -= ovlp * sub_vectors[mu * ng + ig];
+                    }
                 }
 
-                // Normalize. A post-orthogonalization norm at rounding
-                // level means the direction is already spanned —
-                // normalizing it would inject pure noise into the
-                // subspace and put a floor under the eigenvalues.
+                // Drop only true rounding-level remainders (the 2-pass
+                // CGS makes small-but-genuine new directions accurate).
                 Real delta_norm = 0;
                 for (int ig = 0; ig < ng; ++ig)
                     delta_norm += std::norm(delta[ig]);
-                if (delta_norm < Real(1e-12))
+                if (delta_norm < Real(1e-24))
                     continue;
                 Real inv_norm = Real(1) / std::sqrt(delta_norm);
                 for (int ig = 0; ig < ng; ++ig)

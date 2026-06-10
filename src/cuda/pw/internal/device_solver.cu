@@ -499,7 +499,6 @@ void DeviceBandSolver::solve(cpu::pw::PWWorkspace& ws, Real /*tol*/,
 
     const cuDoubleComplex c_one{1.0, 0.0}, c_zero{0.0, 0.0},
         c_mone{-1.0, 0.0};
-    const double tol_sq = 1e-16; // CPU policy: effectively always add
 
     std::vector<std::complex<double>> hs_host;
     std::vector<Real> hs_real, sub_eig, sub_vecs;
@@ -594,30 +593,54 @@ void DeviceBandSolver::solve(cpu::pw::PWWorkspace& ws, Real /*tol*/,
                         reinterpret_cast<const cuDoubleComplex*>(d_work_), 1,
                         &rnorm),
                     "Dznrm2 residual");
-                if (rnorm * rnorm < tol_sq)
-                    continue; // already converged
+                // Converged band: appending its residual would only
+                // inject rounding noise into the subspace.
+                if (rnorm < 1e-6)
+                    continue;
 
                 k_precondition<<<n_blocks(ng), kBlock>>>(d_work_, d_tg_, eps,
                                                          ng);
                 ATV_CUDA_CHECK(cudaGetLastError());
 
-                // Orthogonalize δ against the current subspace
+                // Normalize first (scale-free drop threshold), then TWO
+                // Gram-Schmidt passes — same policy as the CPU solver:
+                // one pass loses orthogonality at large n_sub and the
+                // standard Rayleigh-Ritz drifts below the spectrum.
+                double pre_norm = 0;
                 check_cublas(
-                    cublasZgemv(
-                        blas_, CUBLAS_OP_C, ng, n_sub, &c_one,
-                        reinterpret_cast<const cuDoubleComplex*>(d_sub_), ng,
+                    cublasDznrm2(
+                        blas_, ng,
                         reinterpret_cast<const cuDoubleComplex*>(d_work_), 1,
-                        &c_zero, reinterpret_cast<cuDoubleComplex*>(d_ovlp_),
-                        1),
-                    "Zgemv ovlp");
+                        &pre_norm),
+                    "Dznrm2 pre");
+                if (pre_norm * pre_norm < 1e-24)
+                    continue;
+                double inv_pre = 1.0 / pre_norm;
                 check_cublas(
-                    cublasZgemv(
-                        blas_, CUBLAS_OP_N, ng, n_sub, &c_mone,
-                        reinterpret_cast<const cuDoubleComplex*>(d_sub_), ng,
-                        reinterpret_cast<const cuDoubleComplex*>(d_ovlp_), 1,
-                        &c_one, reinterpret_cast<cuDoubleComplex*>(d_work_),
-                        1),
-                    "Zgemv project-out");
+                    cublasZdscal(blas_, ng, &inv_pre,
+                                 reinterpret_cast<cuDoubleComplex*>(d_work_),
+                                 1),
+                    "Zdscal pre");
+                for (int pass = 0; pass < 2; ++pass) {
+                    check_cublas(
+                        cublasZgemv(
+                            blas_, CUBLAS_OP_C, ng, n_sub, &c_one,
+                            reinterpret_cast<const cuDoubleComplex*>(d_sub_),
+                            ng,
+                            reinterpret_cast<const cuDoubleComplex*>(d_work_),
+                            1, &c_zero,
+                            reinterpret_cast<cuDoubleComplex*>(d_ovlp_), 1),
+                        "Zgemv ovlp");
+                    check_cublas(
+                        cublasZgemv(
+                            blas_, CUBLAS_OP_N, ng, n_sub, &c_mone,
+                            reinterpret_cast<const cuDoubleComplex*>(d_sub_),
+                            ng,
+                            reinterpret_cast<const cuDoubleComplex*>(d_ovlp_),
+                            1, &c_one,
+                            reinterpret_cast<cuDoubleComplex*>(d_work_), 1),
+                        "Zgemv project-out");
+                }
 
                 double dnorm = 0;
                 check_cublas(
@@ -626,9 +649,8 @@ void DeviceBandSolver::solve(cpu::pw::PWWorkspace& ws, Real /*tol*/,
                         reinterpret_cast<const cuDoubleComplex*>(d_work_), 1,
                         &dnorm),
                     "Dznrm2 delta");
-                // Rounding-level norm after orthogonalization = direction
-                // already spanned; normalizing would inject pure noise.
-                if (dnorm * dnorm < 1e-12)
+                // Drop only true rounding-level remainders.
+                if (dnorm * dnorm < 1e-24)
                     continue;
                 double inv = 1.0 / dnorm;
                 check_cublas(
@@ -649,6 +671,20 @@ void DeviceBandSolver::solve(cpu::pw::PWWorkspace& ws, Real /*tol*/,
                 break; // all bands converged / spanned — done
         }
     }
+}
+
+void DeviceBandSolver::apply_h_host(const std::complex<Real>* psi,
+                                    std::complex<Real>* hpsi) {
+    ensure_subspace_capacity(ng_, 2);
+    ATV_CUDA_CHECK(cudaMemcpy(d_sub_, psi,
+                              static_cast<size_t>(ng_)
+                                  * sizeof(cufftDoubleComplex),
+                              cudaMemcpyHostToDevice));
+    apply_h(d_sub_, d_hsub_);
+    ATV_CUDA_CHECK(cudaMemcpy(hpsi, d_hsub_,
+                              static_cast<size_t>(ng_)
+                                  * sizeof(cufftDoubleComplex),
+                              cudaMemcpyDeviceToHost));
 }
 
 void DeviceBandSolver::zero_density() {

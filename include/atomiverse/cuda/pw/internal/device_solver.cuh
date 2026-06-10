@@ -73,6 +73,12 @@ class DeviceBandSolver {
     void fetch_density_g(const cpu::pw::internal::GVectorList& gv0,
                          std::complex<Real>* rho_g);
 
+    /// @brief Test hook: H·ψ for one host vector on the bound k-point
+    /// (H2D → apply_h → D2H). Used by the band-parity diagnostics to
+    /// compute residual norms of candidate eigenpairs.
+    void apply_h_host(const std::complex<Real>* psi,
+                      std::complex<Real>* hpsi);
+
   private:
     /// H·ψ for one device vector (cuFFT + V_eff + KB projectors).
     void apply_h(const cufftDoubleComplex* psi, cufftDoubleComplex* hpsi);
