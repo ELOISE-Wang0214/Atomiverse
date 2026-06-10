@@ -1,6 +1,0 @@
-polyethylene_tension: CUDA pipeline threw: MultiGpu::build_halo: ghost capacity exceeded on slot 1 (raise ghost_headroom)
-
-=== MultiGpu run_nve_pe phase profile ===
-  R_cell_sort               0.0000 s    0.0%  (1)
-  R_migrate                 0.0407 s  100.0%  (1)
-  TOTAL(timed)              0.0407 s
