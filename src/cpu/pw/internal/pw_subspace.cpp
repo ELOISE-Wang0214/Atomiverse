@@ -108,6 +108,24 @@ void jacobi_eigh(int n, Real* A, Real* eig, Real* vecs, int max_sweep) {
     }
     for (int i = 0; i < n; ++i)
         eig[i] = A[i * n + i];
+
+    // Sort eigenpairs ascending: callers take the first n_bands columns
+    // as the occupied bands, which is only correct in ascending order.
+    std::vector<int> order(n);
+    for (int i = 0; i < n; ++i)
+        order[i] = i;
+    std::sort(order.begin(), order.end(),
+              [&](int a, int b) { return eig[a] < eig[b]; });
+    std::vector<Real> eig_s(n), vecs_s(static_cast<size_t>(n) * n);
+    for (int k = 0; k < n; ++k) {
+        eig_s[k] = eig[order[k]];
+        for (int i = 0; i < n; ++i)
+            vecs_s[i * n + k] = vecs[i * n + order[k]];
+    }
+    for (int i = 0; i < n; ++i)
+        eig[i] = eig_s[i];
+    for (size_t i = 0; i < vecs_s.size(); ++i)
+        vecs[i] = vecs_s[i];
 }
 
 int init_subspace(const PWWorkspace& ws, int n_bands,
@@ -200,6 +218,63 @@ int init_subspace(const PWWorkspace& ws, int n_bands,
                                                ? std::complex<Real>(1, 0)
                                                : std::complex<Real>(0, 0);
         }
+    }
+
+    // ── Orthonormalize (modified Gram-Schmidt, drop dependent columns) ──
+    // The Davidson Rayleigh-Ritz treats the subspace as orthonormal; the
+    // atomic-wavefunction guess is strongly non-orthogonal for multi-atom
+    // cells (bonding/antibonding overlap), which biases the eigenpairs and
+    // puts a noise floor under the SCF density. Plane-wave columns pass
+    // through unchanged.
+    int kept = 0;
+    for (int j = 0; j < n_sub; ++j) {
+        auto* vj = &sub_vectors[static_cast<size_t>(j) * ng];
+        for (int pass = 0; pass < 2; ++pass) {
+            for (int k = 0; k < kept; ++k) {
+                const auto* vk = &sub_vectors[static_cast<size_t>(k) * ng];
+                std::complex<Real> ov(0, 0);
+                for (int ig = 0; ig < ng; ++ig)
+                    ov += std::conj(vk[ig]) * vj[ig];
+                for (int ig = 0; ig < ng; ++ig)
+                    vj[ig] -= ov * vk[ig];
+            }
+        }
+        Real nrm2 = 0;
+        for (int ig = 0; ig < ng; ++ig)
+            nrm2 += std::norm(vj[ig]);
+        if (nrm2 < Real(1e-12))
+            continue; // linearly dependent — drop
+        Real inv = Real(1) / std::sqrt(nrm2);
+        auto* vk = &sub_vectors[static_cast<size_t>(kept) * ng];
+        for (int ig = 0; ig < ng; ++ig)
+            vk[ig] = vj[ig] * inv;
+        ++kept;
+    }
+    n_sub = kept;
+
+    // Top up with lowest-T(G) plane waves if drops left fewer than nb.
+    for (int d = 0; n_sub < nb && d < ng; ++d) {
+        auto* vj = &sub_vectors[static_cast<size_t>(n_sub) * ng];
+        for (int ig = 0; ig < ng; ++ig)
+            vj[ig] = std::complex<Real>(0, 0);
+        vj[diag[d].idx] = std::complex<Real>(1, 0);
+        for (int k = 0; k < n_sub; ++k) {
+            const auto* vk = &sub_vectors[static_cast<size_t>(k) * ng];
+            std::complex<Real> ov(0, 0);
+            for (int ig = 0; ig < ng; ++ig)
+                ov += std::conj(vk[ig]) * vj[ig];
+            for (int ig = 0; ig < ng; ++ig)
+                vj[ig] -= ov * vk[ig];
+        }
+        Real nrm2 = 0;
+        for (int ig = 0; ig < ng; ++ig)
+            nrm2 += std::norm(vj[ig]);
+        if (nrm2 < Real(1e-6))
+            continue;
+        Real inv = Real(1) / std::sqrt(nrm2);
+        for (int ig = 0; ig < ng; ++ig)
+            vj[ig] *= inv;
+        ++n_sub;
     }
     return n_sub;
 }

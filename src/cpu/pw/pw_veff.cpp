@@ -17,7 +17,7 @@ void PW_Veff::launch(const cpu::LaunchContext&) {
 
     // Assemble in G-space
     for (int i = 0; i < ng; ++i)
-        ws_->V_eff_G[i] = ws_->V_loc_G_real[i] + ws_->V_H_G[i] + ws_->V_xc_G[i];
+        ws_->V_eff_G[i] = ws_->V_loc_G[i] + ws_->V_H_G[i] + ws_->V_xc_G[i];
 
     // FFT V_eff(G) → V_eff(r) for use in FFT-based H·ψ
     if (ws_->fft && ws_->nr > 0) {

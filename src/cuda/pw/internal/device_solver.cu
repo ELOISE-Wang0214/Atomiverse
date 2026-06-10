@@ -3,7 +3,7 @@
 ///
 /// Mirrors cpu/pw/pw_davidson.cpp step for step: same subspace
 /// initialization (shared host helper), same Jacobi subspace eigensolver
-/// (shared host helper, eigenvalues deliberately unsorted), same
+/// (shared host helper, eigenpairs sorted ascending), same
 /// preconditioner and residual policy. The per-G hot loops run as CUDA
 /// kernels; subspace algebra runs as cuBLAS ZGEMM/ZGEMV on column-major
 /// matrices whose column j is subspace vector j.
@@ -137,8 +137,9 @@ __global__ void k_precondition(cufftDoubleComplex* __restrict__ r,
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < ng) {
         double denom = tg[i] - eps;
-        if (fabs(denom) < 1e-6)
-            denom = (denom >= 0 ? 1e-6 : -1e-6);
+        // Clamp keeps the T(G) ~ eps crossing from amplifying noise.
+        if (fabs(denom) < 1e-2)
+            denom = (denom >= 0 ? 1e-2 : -1e-2);
         double inv = -1.0 / denom;
         r[i].x *= inv;
         r[i].y *= inv;
@@ -577,6 +578,7 @@ void DeviceBandSolver::solve(cpu::pw::PWWorkspace& ws, Real /*tol*/,
 
         // Append preconditioned residuals (same policy/order as CPU).
         if (idavid < max_david - 1 && n_sub < ng - 1) {
+            int n_added = 0;
             for (int b = 0; b < nb && n_sub < ng && n_sub < cap_sub_; ++b) {
                 double eps = static_cast<double>(sub_eig[b]);
                 k_residual<<<n_blocks(ng), kBlock>>>(
@@ -623,7 +625,9 @@ void DeviceBandSolver::solve(cpu::pw::PWWorkspace& ws, Real /*tol*/,
                         reinterpret_cast<const cuDoubleComplex*>(d_work_), 1,
                         &dnorm),
                     "Dznrm2 delta");
-                if (dnorm * dnorm < 1e-30)
+                // Rounding-level norm after orthogonalization = direction
+                // already spanned; normalizing would inject pure noise.
+                if (dnorm * dnorm < 1e-12)
                     continue;
                 double inv = 1.0 / dnorm;
                 check_cublas(
@@ -638,7 +642,10 @@ void DeviceBandSolver::solve(cpu::pw::PWWorkspace& ws, Real /*tol*/,
                                cudaMemcpyDeviceToDevice));
                 h_computed.push_back(false);
                 ++n_sub;
+                ++n_added;
             }
+            if (n_added == 0)
+                break; // all bands converged / spanned — done
         }
     }
 }

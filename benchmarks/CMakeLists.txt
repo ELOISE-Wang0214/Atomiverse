@@ -126,3 +126,28 @@ if(ATV_BUILD_RHF)
     atv_add_cpp_bench(bench_native qc/performance/bench_native.cpp)
     atv_add_cpp_bench(bench_libcint qc/performance/bench_libcint.cpp)
 endif()
+
+# ════════════════════════════════════════════════════════════════════
+# pw — plane-wave DFT (bulk Si vs CP2K)
+# ════════════════════════════════════════════════════════════════════
+
+if(ATV_BUILD_PW)
+    # validation: Si fcc equation of state (a0, B0) vs CP2K reference.
+    atv_add_plain_bench(bench_pw_si_cp2k_eos
+                        pw/validation/bench_pw_si_cp2k_eos.cpp)
+    # performance: SCF time-to-solution CSV (cpu/cuda rows; the cp2k
+    # rows come from pw/performance/cp2k/run_perf.sh).
+    atv_add_plain_bench(bench_pw_scf_perf
+                        pw/performance/bench_pw_scf_perf.cpp)
+    foreach(name bench_pw_si_cp2k_eos bench_pw_scf_perf)
+        # Absolute path so the binaries locate the checked-in UPF and
+        # CP2K reference CSV regardless of cwd.
+        target_compile_definitions(${name} PRIVATE
+            ATV_PW_DATA_DIR="${CMAKE_SOURCE_DIR}/benchmarks/pw/validation/reference")
+        # The #ifdef-gated `--backend cuda` path reaches cuda::pw::pw_scf
+        # compiled into the atomiverse library.
+        if(ATV_BUILD_CUDA)
+            target_compile_definitions(${name} PRIVATE ATV_BUILD_CUDA)
+        endif()
+    endforeach()
+endif()

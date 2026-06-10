@@ -32,7 +32,8 @@ struct PWWorkspace {
     xt::xarray<Real> V_xc_r;                  // real-space XC potential
     xt::xarray<Real> T_G;                     // kinetic energy diagonal
     xt::xarray<Real> eigenvalues;             // per-band eigenvalues
-    xt::xarray<Real> V_loc_G_real;            // local PP in G-space (real part)
+    // Local PP in G-space, incl. structure factor Σ_a e^{-iG·R_a}.
+    xt::xarray<std::complex<Real>> V_loc_G;
     xt::xarray<Real> V_eff_r; // V_eff on real-space grid [Hartree]
     xt::xarray<Real> exc_r;   // real-space XC energy density ε_xc(r)
 

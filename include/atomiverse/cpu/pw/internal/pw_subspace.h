@@ -23,8 +23,8 @@ void compute_ylm(Real x, Real y, Real z, Real r, int l, Real* out);
 
 /// @brief Cyclic Jacobi eigensolver for small dense symmetric matrices.
 ///
-/// Destroys `A`; eigenvalues are NOT sorted (they come out in the order
-/// the rotations converge to, which both band solvers rely on matching).
+/// Destroys `A`; eigenpairs are returned sorted ascending — both band
+/// solvers take the first n_bands columns as the occupied bands.
 void jacobi_eigh(int n, Real* A, Real* eig, Real* vecs, int max_sweep = 20);
 
 /// @brief Build the initial Davidson subspace for the current k-point.

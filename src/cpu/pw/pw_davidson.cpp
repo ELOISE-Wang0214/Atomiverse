@@ -257,6 +257,7 @@ void PW_Davidson::launch(const cpu::LaunchContext&) {
 
         // Add preconditioned residuals for unconverged bands
         if (idavid < max_david - 1 && n_sub < ng - 1) {
+            int n_added = 0;
             for (int b = 0; b < nb && n_sub < ng; ++b) {
                 // Compute residual R = H·ψ - ε·ψ
                 std::vector<std::complex<Real>> Hpsi(ng);
@@ -272,15 +273,17 @@ void PW_Davidson::launch(const cpu::LaunchContext&) {
                 if (res_norm < tol_sq)
                     continue; // already converged
 
-                // Precondition: δ(G) = -R(G) / (T(G) - ε)
+                // Precondition: δ(G) = -R(G) / (T(G) - ε). The clamp keeps
+                // the T(G) ≈ ε crossing from amplifying residual noise by
+                // orders of magnitude (the preconditioner only needs to be
+                // roughly right for Davidson to converge).
                 std::vector<std::complex<Real>> delta(ng);
                 Real eps = sub_eig[b];
                 for (int ig = 0; ig < ng; ++ig) {
                     Real denom = ws_->T_G[ig] - eps;
-                    // Damp near-degenerate contributions
                     Real damp = std::abs(denom);
-                    if (damp < Real(1e-6))
-                        denom = (denom >= 0 ? Real(1e-6) : Real(-1e-6));
+                    if (damp < Real(1e-2))
+                        denom = (denom >= 0 ? Real(1e-2) : Real(-1e-2));
                     delta[ig] = -R[ig] / denom;
                 }
 
@@ -294,11 +297,14 @@ void PW_Davidson::launch(const cpu::LaunchContext&) {
                         delta[ig] -= ovlp * sub_vectors[mu * ng + ig];
                 }
 
-                // Normalize
+                // Normalize. A post-orthogonalization norm at rounding
+                // level means the direction is already spanned —
+                // normalizing it would inject pure noise into the
+                // subspace and put a floor under the eigenvalues.
                 Real delta_norm = 0;
                 for (int ig = 0; ig < ng; ++ig)
                     delta_norm += std::norm(delta[ig]);
-                if (delta_norm < Real(1e-30))
+                if (delta_norm < Real(1e-12))
                     continue;
                 Real inv_norm = Real(1) / std::sqrt(delta_norm);
                 for (int ig = 0; ig < ng; ++ig)
@@ -310,11 +316,14 @@ void PW_Davidson::launch(const cpu::LaunchContext&) {
                 for (int ig = 0; ig < ng; ++ig)
                     sub_vectors[j * ng + ig] = delta[ig];
                 H_computed.push_back(false);
+                ++n_added;
             }
             // Resize arrays
             sub_vectors.resize(static_cast<size_t>(n_sub) * ng);
             H_sub_vectors.resize(static_cast<size_t>(n_sub) * ng);
             H_computed.resize(n_sub, false);
+            if (n_added == 0)
+                break; // all bands converged / spanned — done
         }
     }
 

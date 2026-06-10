@@ -53,15 +53,20 @@ PWResult pw_scf(const cpu::Frame& frame, const std::string& upf_path,
     cpu::BuildContext bctx{ctx, mutable_frame, &ws};
 
     // === SCF loop ===
+    // Built once, launched per iteration (lifecycle rule); the
+    // PW_Convergence warmup counter must persist across iterations.
+    cpw::PW_Poisson po;
+    po.build(bctx);
+    cpw::PW_LDA lda;
+    lda.build(bctx);
+    cpw::PW_Veff v;
+    v.build(bctx);
+    cpw::PW_Convergence conv{Real(tol), 2};
+    conv.build(bctx);
+
     for (int iter = 0; iter < max_iter; ++iter) {
-        cpw::PW_Poisson po;
-        po.build(bctx);
         po.launch({ctx, mutable_frame, 0, iter});
-        cpw::PW_LDA lda;
-        lda.build(bctx);
         lda.launch({ctx, mutable_frame, 0, iter});
-        cpw::PW_Veff v;
-        v.build(bctx);
         v.launch({ctx, mutable_frame, 0, iter});
 
         solver.set_veff(ws.V_eff_r.data());
@@ -98,8 +103,6 @@ PWResult pw_scf(const cpu::Frame& frame, const std::string& upf_path,
         solver.fetch_density_g(gv0, ws.rho_G.data());
         cpw::internal::pulay_mix(ws);
 
-        cpw::PW_Convergence conv{Real(tol), 2};
-        conv.build(bctx);
         conv.launch({ctx, mutable_frame, 3, iter});
 
         result.iterations = iter + 1;

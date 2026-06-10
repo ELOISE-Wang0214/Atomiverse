@@ -45,15 +45,22 @@ PWResult pw_scf(const cpu::Frame& frame, const std::string& upf_path,
     cpu::BuildContext bctx{ctx, mutable_frame, &ws};
 
     // === SCF loop ===
+    // Components are built once and launched per iteration (lifecycle
+    // rule). PW_Convergence in particular carries its warmup counter
+    // across iterations — constructing it inside the loop (as the code
+    // originally did) resets the counter and the check never fires.
+    PW_Poisson po;
+    po.build(bctx);
+    PW_LDA lda;
+    lda.build(bctx);
+    PW_Veff v;
+    v.build(bctx);
+    PW_Convergence conv{Real(tol), 2};
+    conv.build(bctx);
+
     for (int iter = 0; iter < max_iter; ++iter) {
-        PW_Poisson po;
-        po.build(bctx);
         po.launch({ctx, mutable_frame, 0, iter});
-        PW_LDA lda;
-        lda.build(bctx);
         lda.launch({ctx, mutable_frame, 0, iter});
-        PW_Veff v;
-        v.build(bctx);
         v.launch({ctx, mutable_frame, 0, iter});
 
         // Accumulate density over k-points in real space
@@ -161,8 +168,6 @@ PWResult pw_scf(const cpu::Frame& frame, const std::string& upf_path,
         }
         fftw_free(rho_r_kpt);
 
-        PW_Convergence conv{Real(tol), 2};
-        conv.build(bctx);
         conv.launch({ctx, mutable_frame, 3, iter});
 
         result.iterations = iter + 1;

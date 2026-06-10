@@ -77,7 +77,7 @@ struct PWFixture {
         ws.V_H_G.resize({ng});
         ws.V_xc_G.resize({ng});
         ws.V_eff_G.resize({ng});
-        ws.V_loc_G_real.resize({ng});
+        ws.V_loc_G.resize({ng});
         ws.rho_r.resize({nr_sz});
         ws.V_xc_r.resize({nr_sz});
         ws.V_eff_r.resize({nr_sz});
@@ -87,7 +87,7 @@ struct PWFixture {
             ws.rho_G[i] = (i == 0)
                               ? std::complex<Real>(Real(4) / box.volume(), 0)
                               : std::complex<Real>(0, 0);
-            ws.V_loc_G_real[i] = (i == 0) ? Real(-0.5) : Real(0);
+            ws.V_loc_G[i] = (i == 0) ? Real(-0.5) : Real(0);
         }
         for (int i = 0; i < ws.nr; ++i)
             ws.V_eff_r[i] = Real(0);
@@ -118,7 +118,7 @@ TEST(PWComponents, VeffAssembly) {
     v.build(f.bctx);
     v.launch(f.lctx);
     for (int i = 0; i < f.ws.n_g; ++i) {
-        Real expected = f.ws.V_loc_G_real[i] + Real(0.1) + Real(-0.05);
+        Real expected = f.ws.V_loc_G[i].real() + Real(0.1) + Real(-0.05);
         EXPECT_NEAR(f.ws.V_eff_G[i].real(), expected, Real(1e-12));
     }
 }

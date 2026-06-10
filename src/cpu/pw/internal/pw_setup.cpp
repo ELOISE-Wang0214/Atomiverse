@@ -21,6 +21,17 @@ namespace internal {
 
 namespace {
 
+/// Radial → G-space transform of the local pseudopotential, QE-style
+/// (vloc_mod.f90): V_loc(r) → −Z/r at large r, so the bare integrand
+/// r²·V·j0(Gr) does not decay and the quadrature diverges. Add and
+/// subtract an erf-screened Coulomb: the difference V + Z·erf(r)/r
+/// decays like erfc, and the screened Coulomb has the analytic
+/// transform −(4πZ/ΩG²)·exp(−G²/4).
+///
+/// The G=0 element gets the finite part only (QE's "αZ" term):
+/// V(0) = (4π/Ω)∫ r²(V(r) + Z/r) dr — the divergent jellium piece is
+/// cancelled against the Ewald/Hartree G=0 conventions exactly as for
+/// the toy potential. All outputs in Hartree.
 std::vector<Real> upf_vloc_to_gspace(const internal::UPFData& upf,
                                      const internal::GVectorList& gv,
                                      Real omega) {
@@ -29,20 +40,36 @@ std::vector<Real> upf_vloc_to_gspace(const internal::UPFData& upf,
     const auto& vl = upf.v_loc;
     Real inv_omega = Real(1) / omega;
     Real ry_to_ha = Real(0.5); // UPF stores V_loc in Ry
+    Real z = static_cast<Real>(upf.z_val);
 
     for (int ig = 0; ig < gv.count(); ++ig) {
         Real G = std::sqrt(gv.g[ig].norm_squared());
+        Real g2 = gv.g[ig].norm_squared();
+        bool g_zero = g2 < Real(1e-16);
         Real sum = 0;
         for (size_t ir = 1; ir < r.size(); ++ir) {
             Real r_mid = Real(0.5) * (r[ir] + r[ir - 1]);
             Real dr = r[ir] - r[ir - 1];
             Real v_mid = Real(0.5) * (vl[ir] + vl[ir - 1]) * ry_to_ha;
-            Real Gr = G * r_mid;
-            Real j0 = (Gr < Real(1e-8)) ? Real(1) - Gr * Gr / Real(6)
-                                        : std::sin(Gr) / Gr;
-            sum += r_mid * r_mid * v_mid * j0 * dr;
+            if (r_mid < Real(1e-12)) {
+                continue; // r²·(V + Z/r) → 0 at the origin
+            }
+            if (g_zero) {
+                // r²(V + Z/r): exactly zero beyond the core radius.
+                sum += r_mid * (r_mid * v_mid + z) * dr;
+            } else {
+                Real Gr = G * r_mid;
+                Real j0 = (Gr < Real(1e-8)) ? Real(1) - Gr * Gr / Real(6)
+                                            : std::sin(Gr) / Gr;
+                Real v_scr = r_mid * v_mid + z * std::erf(r_mid);
+                sum += r_mid * v_scr * j0 * dr;
+            }
         }
-        vg[ig] = Real(4.0 * M_PI) * sum * inv_omega;
+        if (g_zero)
+            vg[ig] = Real(4.0 * M_PI) * sum * inv_omega;
+        else
+            vg[ig] = Real(4.0 * M_PI) * inv_omega
+                     * (sum - z * std::exp(-g2 / Real(4)) / g2);
     }
     return vg;
 }
@@ -50,9 +77,21 @@ std::vector<Real> upf_vloc_to_gspace(const internal::UPFData& upf,
 void setup_upf_vloc(PWWorkspace& ws, const internal::GVectorList& gv,
                     const internal::UPFData& upf, Real omega) {
     auto vg = upf_vloc_to_gspace(upf, gv, omega);
-    for (int i = 0; i < ws.n_g; ++i)
-        ws.V_loc_G_real[i] = vg[i];
-    ws.V_loc_G_real[0] = Real(0); // G=0 cancelled against Ewald
+    // Atom form factor × structure factor Σ_a e^{-iG·R_a}.
+    // vg[0] already holds only the finite part (QE "αZ" term); the
+    // divergent −4πZ/ΩG² jellium piece is cancelled against the
+    // Ewald/Hartree G=0 conventions, exactly as for the toy potential.
+    const auto& pos = ws.atom_pos_bohr;
+    for (int ig = 0; ig < ws.n_g; ++ig) {
+        Real s_re = 0, s_im = 0;
+        for (size_t ia = 0; ia < pos.size(); ++ia) {
+            Real phase = gv.g[ig][0] * pos[ia][0] + gv.g[ig][1] * pos[ia][1]
+                         + gv.g[ig][2] * pos[ia][2];
+            s_re += std::cos(phase);
+            s_im -= std::sin(phase);
+        }
+        ws.V_loc_G[ig] = vg[ig] * std::complex<Real>(s_re, s_im);
+    }
 }
 
 void setup_toy_vloc(PWWorkspace& ws, const internal::GVectorList& gv,
@@ -62,16 +101,18 @@ void setup_toy_vloc(PWWorkspace& ws, const internal::GVectorList& gv,
         Real g2 = gv.g[ig].norm_squared();
         Vec3 gvec = gv.g[ig];
         if (g2 < Real(1e-16)) {
-            ws.V_loc_G_real[ig] = Real(0);
+            ws.V_loc_G[ig] = Real(0);
         } else {
-            Real s_real = 0;
+            Real s_re = 0, s_im = 0;
             for (size_t ia = 0; ia < charges.size(); ++ia) {
                 Real phase = gvec[0] * positions[ia][0]
                              + gvec[1] * positions[ia][1]
                              + gvec[2] * positions[ia][2];
-                s_real += charges[ia] * std::cos(phase);
+                s_re += charges[ia] * std::cos(phase);
+                s_im -= charges[ia] * std::sin(phase);
             }
-            ws.V_loc_G_real[ig] = Real(-4.0 * M_PI) * s_real / (omega * g2);
+            ws.V_loc_G[ig] = Real(-4.0 * M_PI) / (omega * g2)
+                             * std::complex<Real>(s_re, s_im);
         }
     }
 }
@@ -452,7 +493,7 @@ void setup_pw_problem(const cpu::Frame& frame, const std::string& upf_path,
     ws.V_H_G.resize({ng});
     ws.V_xc_G.resize({ng});
     ws.V_eff_G.resize({ng});
-    ws.V_loc_G_real.resize({ng});
+    ws.V_loc_G.resize({ng});
     ws.T_G.resize({ng});
     ws.mix_beta = Real(0.7); // QE default: mixing_beta = 0.7
     ws.omega = vol_bohr;     // cell volume for real-space integration
@@ -469,7 +510,9 @@ void setup_pw_problem(const cpu::Frame& frame, const std::string& upf_path,
 
     if (has_upf && !upf.rho_atom.empty()
         && upf.rho_atom.size() == upf.r.size()) {
-        // G-space transform of atomic pseudocharge: rho_atom(G) = 4π ∫ r² ρ(r) j₀(Gr) dr
+        // G-space transform of the atomic pseudocharge. UPF PP_RHOATOM
+        // stores 4πr²ρ(r) (integrates to Z_val with plain dr), so
+        // ρ_atom(G) = (1/Ω) ∫ PP_RHOATOM(r) j₀(Gr) dr.
         for (int ig = 0; ig < ws.n_g; ++ig) {
             Real G = std::sqrt(gv0.g[ig].norm_squared());
             Real sum = 0;
@@ -481,18 +524,19 @@ void setup_pw_problem(const cpu::Frame& frame, const std::string& upf_path,
                 Real Gr = G * r_mid;
                 Real j0 = (Gr < Real(1e-8)) ? Real(1) - Gr * Gr / Real(6)
                                             : std::sin(Gr) / Gr;
-                sum += r_mid * r_mid * rho_mid * j0 * dr;
+                sum += rho_mid * j0 * dr;
             }
-            Real rho_g_atom = Real(4.0 * M_PI) * sum / vol_bohr;
-            // Structure factor: sum over atoms exp(-i G·R_a)
-            Real s_real = 0;
+            Real rho_g_atom = sum / vol_bohr;
+            // Structure factor: Σ_a exp(-i G·R_a)
+            Real s_re = 0, s_im = 0;
             for (int ia = 0; ia < n_atoms; ++ia) {
                 Real phase = gv0.g[ig][0] * pos_bohr[ia][0]
                              + gv0.g[ig][1] * pos_bohr[ia][1]
                              + gv0.g[ig][2] * pos_bohr[ia][2];
-                s_real += std::cos(phase);
+                s_re += std::cos(phase);
+                s_im -= std::sin(phase);
             }
-            ws.rho_G[ig] = std::complex<Real>(rho_g_atom * s_real, Real(0));
+            ws.rho_G[ig] = rho_g_atom * std::complex<Real>(s_re, s_im);
         }
         // Renormalize: total charge must be n_elec
         Real total_charge = ws.rho_G[0].real() * vol_bohr;
@@ -540,15 +584,15 @@ void setup_pw_problem(const cpu::Frame& frame, const std::string& upf_path,
         ws.n_proj_total = upf.n_proj();
         ws.aug_form_factor_G.resize({static_cast<std::size_t>(ws.n_g)});
         if (!upf.rho_atom.empty() && upf.rho_atom.size() == upf.r.size()) {
+            // PP_RHOATOM stores 4πr²ρ(r): Q = ∫ PP_RHOATOM dr,
+            // form factor (G) = (1/ΩQ) ∫ PP_RHOATOM j₀(Gr) dr.
             Real Q_atom = 0;
             for (size_t ir = 1; ir < upf.r.size(); ++ir) {
-                Real r_mid = Real(0.5) * (upf.r[ir] + upf.r[ir - 1]);
                 Real dr = upf.r[ir] - upf.r[ir - 1];
                 Real rho_mid =
                     Real(0.5) * (upf.rho_atom[ir] + upf.rho_atom[ir - 1]);
-                Q_atom += r_mid * r_mid * rho_mid * dr;
+                Q_atom += rho_mid * dr;
             }
-            Q_atom *= Real(4.0 * M_PI);
             Real inv_Q =
                 (std::abs(Q_atom) > Real(1e-16)) ? Real(1) / Q_atom : Real(0);
             for (int ig = 0; ig < ws.n_g; ++ig) {
@@ -562,10 +606,9 @@ void setup_pw_problem(const cpu::Frame& frame, const std::string& upf_path,
                     Real Gr = G * r_mid;
                     Real j0 = (Gr < Real(1e-8)) ? Real(1) - Gr * Gr / Real(6)
                                                 : std::sin(Gr) / Gr;
-                    sum += r_mid * r_mid * rho_mid * j0 * dr;
+                    sum += rho_mid * j0 * dr;
                 }
-                ws.aug_form_factor_G[ig] =
-                    Real(4.0 * M_PI) * sum * inv_Q / vol_bohr;
+                ws.aug_form_factor_G[ig] = sum * inv_Q / vol_bohr;
             }
         } else {
             for (int ig = 0; ig < ws.n_g; ++ig)
@@ -574,8 +617,8 @@ void setup_pw_problem(const cpu::Frame& frame, const std::string& upf_path,
     } else {
         setup_toy_vloc(ws, gv0, pos_bohr, valence_charges, vol_bohr);
     }
-    std::cout << "  V_loc(G) [1]=" << ws.V_loc_G_real[1]
-              << " [10]=" << ws.V_loc_G_real[10] << std::endl;
+    std::cout << "  V_loc(G) [1]=" << ws.V_loc_G[1].real()
+              << " [10]=" << ws.V_loc_G[10].real() << std::endl;
 
     // Pre-compute k-point G-vectors
     out.gv_k.clear();
