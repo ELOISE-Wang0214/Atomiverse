@@ -22,6 +22,9 @@ benchmarks/md/
 │   ├── validation/              7 LAMMPS API-alignment / ensemble-parity benches
 │   └── performance/             scaling.cpp (CPU MPI), bench_md_step.cu,
 │                                bench_multi_gpu_scaling.cu, bench_torch.cu,
+│                                bench_minimize.cu + in.lj_min_kk (CUDA
+│                                minimizer CG/LBFGS vs LAMMPS minimize on
+│                                identical coordinates via data-file handoff),
 │                                in.lj_kk, config.sh, runs/
 └── pe/                          polyethylene melt (Dreiding-UA)
     ├── validation/              bench_pe_bonded_lammps_xcheck (C20H42 vs

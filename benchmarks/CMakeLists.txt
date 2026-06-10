@@ -79,6 +79,13 @@ if(ATV_BUILD_CUDA)
     target_link_libraries(bench_multi_gpu_scaling PRIVATE atomiverse)
     set_target_properties(bench_multi_gpu_scaling PROPERTIES
         CUDA_SEPARABLE_COMPILATION ON)
+    # performance: single-GPU CUDA minimizer (CG / LBFGS) vs LAMMPS
+    # `minimize` (deck in.lj_min_kk); also emits the LAMMPS data file so
+    # both engines relax the IDENTICAL configuration.
+    add_executable(bench_minimize md/lj/performance/bench_minimize.cu)
+    target_link_libraries(bench_minimize PRIVATE atomiverse)
+    set_target_properties(bench_minimize PROPERTIES
+        CUDA_SEPARABLE_COMPILATION ON)
 endif()
 
 if(ATV_BUILD_TORCH)
