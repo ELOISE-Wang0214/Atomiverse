@@ -1,0 +1,11 @@
+{
+  "system": "lj",
+  "av_git_sha": "422715f",
+  "av_git_subject": "chore: untrack session job scaffolding (jobs/) — scratch, not source",
+  "date": "2026-06-10",
+  "host": "n503",
+  "gpu": "NVIDIA GH200 120GB",
+  "module": "GPU/buildenv-gcccuda/2026.03-cu13.0",
+  "lammps": "/home/jicli594/work/lammps/build-kk-mpi-mixed/lmp",
+  "ngs": "1 2 3 4", "steps": 200, "reneigh": 20, "reps": 3
+}
