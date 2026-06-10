@@ -221,6 +221,9 @@ if(NOT ATV_DOCS_ONLY)
             src/cuda/md/neighborlist/setup.cu
             src/cuda/md/neighborlist/export_pairs.cu
             src/cuda/minimizer/sd.cu
+            src/cuda/minimizer/cg.cu
+            src/cuda/minimizer/lbfgs.cu
+            src/cuda/minimizer/conv_check.cu
             src/cuda/md/nose_hoover.cu
             src/cuda/md/deform.cu
             src/cuda/md/barostat.cu
