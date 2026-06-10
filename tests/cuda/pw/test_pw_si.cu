@@ -6,6 +6,7 @@
 #include "atomiverse/cuda/pw/pw_scf.cuh"
 #include <cmath>
 #include <gtest/gtest.h>
+#include <string>
 
 using namespace ATV;
 
@@ -46,12 +47,18 @@ TEST(CudaPWScf, RunsAndFinite) {
     EXPECT_GT(r.iterations, 0);
 }
 
+// Parity runs on the real ONCV pseudopotential: the toy potential has a
+// near-degenerate band-4/5 manifold at every k (gaps down to ~4 mHa), so
+// which states the occupied cut selects — and hence the SCF fixed point —
+// is rounding-sensitive and not comparable across backends. The LDA Si
+// pseudo has a clean gap at the sampled k-points.
 TEST(CudaPWScf, MatchesCpu) {
     auto frame = make_si_fcc(5.43);
-    auto r_cpu = cpu::pw::pw_scf(frame, "", 10.0, 2, 1e-6, 30);
-    auto r_cuda = cuda::pw::pw_scf(frame, "", 10.0, 2, 1e-6, 30);
-    ASSERT_TRUE(std::isfinite(r_cpu.energy));
-    ASSERT_TRUE(std::isfinite(r_cuda.energy));
+    const std::string upf = ATV_PW_UPF_PATH;
+    auto r_cpu = cpu::pw::pw_scf(frame, upf, 12.0, 2, 1e-6, 30);
+    auto r_cuda = cuda::pw::pw_scf(frame, upf, 12.0, 2, 1e-6, 30);
+    ASSERT_TRUE(r_cpu.converged);
+    ASSERT_TRUE(r_cuda.converged);
     // Same SCF fixed point: backends differ only in Davidson arithmetic
     // order and the random 1e-4 startingwfc perturbation.
     EXPECT_NEAR(r_cpu.energy, r_cuda.energy, 1e-3)
