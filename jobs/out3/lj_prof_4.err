@@ -1,0 +1,70 @@
+[MG_ROWS] dev0 interior=7517972/7963754 (94.4%)
+[MG_ROWS] dev1 interior=7517972/7963756 (94.4%)
+[MG_ROWS] dev2 interior=7517972/7963751 (94.4%)
+[MG_ROWS] dev3 interior=7517972/7963752 (94.4%)
+[MG_VRAM] reneigh dev0 used=12.2/102.0 GB n_local=7963754 n_ghost=458619 nlist_cap=9096226
+[MG_VRAM] reneigh dev1 used=12.2/102.0 GB n_local=7963756 n_ghost=458617 nlist_cap=9096226
+[MG_VRAM] reneigh dev2 used=12.2/102.0 GB n_local=7963751 n_ghost=458622 nlist_cap=9096226
+[MG_VRAM] reneigh dev3 used=12.2/102.0 GB n_local=7963752 n_ghost=458621 nlist_cap=9096226
+[MG_ROWS] dev0 interior=7517972/7963754 (94.4%)
+[MG_ROWS] dev1 interior=7517972/7963756 (94.4%)
+[MG_ROWS] dev2 interior=7517972/7963751 (94.4%)
+[MG_ROWS] dev3 interior=7517972/7963752 (94.4%)
+[MG_VRAM] reneigh dev0 used=12.2/102.0 GB n_local=7963754 n_ghost=458619 nlist_cap=9096226
+[MG_VRAM] reneigh dev1 used=12.2/102.0 GB n_local=7963756 n_ghost=458617 nlist_cap=9096226
+[MG_VRAM] reneigh dev2 used=12.2/102.0 GB n_local=7963751 n_ghost=458622 nlist_cap=9096226
+[MG_VRAM] reneigh dev3 used=12.2/102.0 GB n_local=7963752 n_ghost=458621 nlist_cap=9096226
+[MG_ROWS] dev0 interior=7517972/7963757 (94.4%)
+[MG_ROWS] dev1 interior=7517972/7963753 (94.4%)
+[MG_ROWS] dev2 interior=7517972/7963750 (94.4%)
+[MG_ROWS] dev3 interior=7517972/7963753 (94.4%)
+[MG_VRAM] reneigh dev0 used=14.9/102.0 GB n_local=7963757 n_ghost=458616 nlist_cap=9096226
+[MG_VRAM] reneigh dev1 used=12.3/102.0 GB n_local=7963753 n_ghost=458620 nlist_cap=9096226
+[MG_VRAM] reneigh dev2 used=12.3/102.0 GB n_local=7963750 n_ghost=458623 nlist_cap=9096226
+[MG_VRAM] reneigh dev3 used=14.8/102.0 GB n_local=7963753 n_ghost=458620 nlist_cap=9096226
+[MG_ROWS] dev0 interior=7517972/7963753 (94.4%)
+[MG_ROWS] dev1 interior=7517972/7963755 (94.4%)
+[MG_ROWS] dev2 interior=7517972/7963751 (94.4%)
+[MG_ROWS] dev3 interior=7517972/7963754 (94.4%)
+[MG_VRAM] reneigh dev0 used=14.9/102.0 GB n_local=7963753 n_ghost=458620 nlist_cap=9096226
+[MG_VRAM] reneigh dev1 used=12.3/102.0 GB n_local=7963755 n_ghost=458618 nlist_cap=9096226
+[MG_VRAM] reneigh dev2 used=12.3/102.0 GB n_local=7963751 n_ghost=458622 nlist_cap=9096226
+[MG_VRAM] reneigh dev3 used=14.8/102.0 GB n_local=7963754 n_ghost=458619 nlist_cap=9096226
+[MG_ROWS] dev0 interior=7517972/7963755 (94.4%)
+[MG_ROWS] dev1 interior=7517972/7963754 (94.4%)
+[MG_ROWS] dev2 interior=7517972/7963749 (94.4%)
+[MG_ROWS] dev3 interior=7517972/7963755 (94.4%)
+[MG_VRAM] reneigh dev0 used=14.9/102.0 GB n_local=7963755 n_ghost=458618 nlist_cap=9096226
+[MG_VRAM] reneigh dev1 used=12.3/102.0 GB n_local=7963754 n_ghost=458619 nlist_cap=9096226
+[MG_VRAM] reneigh dev2 used=12.3/102.0 GB n_local=7963749 n_ghost=458624 nlist_cap=9096226
+[MG_VRAM] reneigh dev3 used=14.8/102.0 GB n_local=7963755 n_ghost=458618 nlist_cap=9096226
+[MG_ROWS] dev0 interior=7517972/7963752 (94.4%)
+[MG_ROWS] dev1 interior=7517972/7963755 (94.4%)
+[MG_ROWS] dev2 interior=7517972/7963754 (94.4%)
+[MG_ROWS] dev3 interior=7517972/7963752 (94.4%)
+[MG_VRAM] reneigh dev0 used=14.9/102.0 GB n_local=7963752 n_ghost=458621 nlist_cap=9096226
+[MG_VRAM] reneigh dev1 used=12.3/102.0 GB n_local=7963755 n_ghost=458618 nlist_cap=9096226
+[MG_VRAM] reneigh dev2 used=14.8/102.0 GB n_local=7963754 n_ghost=458619 nlist_cap=9096226
+[MG_VRAM] reneigh dev3 used=14.8/102.0 GB n_local=7963752 n_ghost=458621 nlist_cap=9096226
+[MG_ROWS] dev0 interior=7517972/7963746 (94.4%)
+[MG_ROWS] dev1 interior=7517972/7963753 (94.4%)
+[MG_ROWS] dev2 interior=7517972/7963764 (94.4%)
+[MG_ROWS] dev3 interior=7517972/7963750 (94.4%)
+[MG_VRAM] reneigh dev0 used=14.9/102.0 GB n_local=7963746 n_ghost=458627 nlist_cap=9096226
+[MG_VRAM] reneigh dev1 used=12.3/102.0 GB n_local=7963753 n_ghost=458620 nlist_cap=9096226
+[MG_VRAM] reneigh dev2 used=14.8/102.0 GB n_local=7963764 n_ghost=458609 nlist_cap=9096226
+[MG_VRAM] reneigh dev3 used=14.8/102.0 GB n_local=7963750 n_ghost=458623 nlist_cap=9096226
+
+=== MultiGpu run_nve_pe phase profile ===
+  1_vv_first                0.0193 s    1.6%  (105)
+  2_forward_comm            0.0397 s    3.3%  (100)
+  2_reneighbor              0.3101 s   26.1%  (5)
+  3_force                   0.2108 s   17.7%  (105)
+  4_vv_second               0.0121 s    1.0%  (105)
+  R_build_halo              0.0087 s    0.7%  (7)
+  R_cell_sort               0.0841 s    7.1%  (7)
+  R_classify_rows           0.0108 s    0.9%  (7)
+  R_migrate                 0.2350 s   19.8%  (7)
+  R_nlist                   0.2588 s   21.8%  (7)
+  R_rebuild_bonded          0.0001 s    0.0%  (7)
+  TOTAL(timed)              1.1895 s

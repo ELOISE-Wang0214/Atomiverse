@@ -112,33 +112,7 @@ TEST(StepTiming, OptOutLeavesRegistryEmpty) {
         EXPECT_EQ(reg->steps(), 0u);
 }
 
-// ── capture: per-category sum within +/-5% of total step-loop wall ─────
-TEST(StepTiming, SumWithinFivePercentOfTotal) {
-    auto frame = make_chain(500, 200.0);
-    cpu::md::MD sim;
-    configure_sim(sim);
-    sim.enable_timing(true);
-    sim.build();
-
-    constexpr int kSteps = 300;
-    sim.run(frame, kSteps);
-
-    const TimerRegistry* reg = sim.timing();
-    ASSERT_NE(reg, nullptr);
-    EXPECT_TRUE(reg->enabled());
-    EXPECT_EQ(reg->steps(), static_cast<std::uint64_t>(kSteps));
-    EXPECT_GT(reg->loop_seconds(), 0.0);
-
-    const auto roll = reg->rollup_by_category();
-    ASSERT_GE(roll.size(), static_cast<std::size_t>(StepTiming::Other) + 1);
-    EXPECT_GT(roll[StepTiming::Bonded].total_s, 0.0);
-    EXPECT_GT(roll[StepTiming::Other].total_s, 0.0);
-
-    double sum = 0.0;
-    for (const auto& s : roll)
-        sum += s.total_s;
-    const double frac = sum / reg->loop_seconds();
-    EXPECT_LE(frac, 1.0 + 1e-6) << "component sum exceeds loop wall";
-    EXPECT_GE(frac, 0.95)
-        << "instrumentation captured only " << (100.0 * frac) << "%";
-}
+// The wall-clock-fraction capture gate (per-category sum within ±5% of the
+// step-loop wall) is a PERFORMANCE assertion and lives in
+// benchmarks/md/pe/validation/bench_timing_capture.cpp — unit tests assert
+// code correctness only (classifier mapping + on/off plumbing above).

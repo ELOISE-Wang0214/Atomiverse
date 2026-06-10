@@ -7,6 +7,18 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(googletest)
 
+# Unit tests assert CODE CORRECTNESS on tiny systems (tens to hundreds of
+# atoms); performance and LAMMPS-reference validation live in benchmarks/.
+# On many-core nodes the OpenMP default (= all hardware threads, e.g. 288 on
+# a GH200 node) makes those tiny systems WALL-DOMINATED by fork/join barriers
+# — 20-atom 5000-step runs took minutes, and `ctest -j` multiplied the
+# oversubscription. Cap every test's default; a test that genuinely needs a
+# specific thread count can still call omp_set_num_threads itself.
+set(ATV_TEST_OMP_THREADS 8 CACHE STRING
+    "OMP_NUM_THREADS for single-process unit tests")
+set(ATV_TEST_MPI_OMP_THREADS 4 CACHE STRING
+    "OMP_NUM_THREADS per rank for MPI unit tests")
+
 # CUDA test: compiled as .cu with separable compilation.
 function(atv_add_test name)
     add_executable(${name} ${ARGN})
@@ -14,6 +26,8 @@ function(atv_add_test name)
     set_target_properties(${name} PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
     target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     add_test(NAME ${name} COMMAND ${name})
+    set_tests_properties(${name} PROPERTIES
+        ENVIRONMENT "OMP_NUM_THREADS=${ATV_TEST_OMP_THREADS}")
 endfunction()
 
 # C++ test: compiled as .cpp, no CUDA required.
@@ -23,6 +37,8 @@ function(atv_add_cpp_test name)
     set_target_properties(${name} PROPERTIES CXX_STANDARD 17)
     target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     add_test(NAME ${name} COMMAND ${name})
+    set_tests_properties(${name} PROPERTIES
+        ENVIRONMENT "OMP_NUM_THREADS=${ATV_TEST_OMP_THREADS}")
 endfunction()
 
 # MPI test executable: one build target, can be launched at multiple rank
@@ -47,6 +63,7 @@ function(atv_add_mpi_run test_name target_name n)
         LABELS "mpi"
         RUN_SERIAL TRUE
         RESOURCE_LOCK "mpi_singleton"
+        ENVIRONMENT "OMP_NUM_THREADS=${ATV_TEST_MPI_OMP_THREADS}"
         PASS_REGULAR_EXPRESSION "PASSED[^a-zA-Z]"
         FAIL_REGULAR_EXPRESSION "FAILED[^a-zA-Z]")
 endfunction()
@@ -212,6 +229,8 @@ if(ATV_BUILD_PW)
     set_target_properties(test_fft PROPERTIES CXX_STANDARD 17)
     target_include_directories(test_fft PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     add_test(NAME test_fft COMMAND test_fft)
+    set_tests_properties(test_fft PROPERTIES
+        ENVIRONMENT "OMP_NUM_THREADS=${ATV_TEST_OMP_THREADS}")
 endif()
 
 # ── RHF/SCF tests ─────────────────────────────────────────────────────

@@ -95,6 +95,12 @@ atv_add_plain_bench(bench_pe_bonded_lammps_xcheck
                     md/pe/validation/bench_pe_bonded_lammps_xcheck.cpp)
 target_include_directories(bench_pe_bonded_lammps_xcheck PRIVATE md/common)
 
+# validation: timer-instrumentation capture gate (per-category rollup >= 95%
+# of step-loop wall). A wall-clock-fraction PERF assertion — lives here, not
+# in the unit-test suite (UTs assert code correctness only).
+atv_add_plain_bench(bench_timing_capture
+                    md/pe/validation/bench_timing_capture.cpp)
+
 # performance: PE melt MSU-protocol stages (CPU MPI + optional CUDA
 # backend; run by the md/common scan drivers; emits stage timing CSV).
 atv_add_plain_bench(polyethylene_tension
@@ -106,6 +112,15 @@ endif()
 # components compiled into the atomiverse library.
 if(ATV_BUILD_CUDA)
     target_compile_definitions(polyethylene_tension PRIVATE ATV_BUILD_CUDA)
+
+    # performance: 25× recorder-frequency wall-clock overhead gate (< 5%).
+    # Shells out to polyethylene_tension --backend cuda; non-zero exit on
+    # violation. Moved from the unit-test suite (perf gates live here).
+    atv_add_plain_bench(bench_async_record_overhead
+                        md/pe/performance/bench_async_record_overhead.cpp)
+    target_compile_definitions(bench_async_record_overhead PRIVATE
+        ATV_PE_TENSION_BIN="$<TARGET_FILE:polyethylene_tension>")
+    add_dependencies(bench_async_record_overhead polyethylene_tension)
 endif()
 
 # ════════════════════════════════════════════════════════════════════
