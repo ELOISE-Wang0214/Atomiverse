@@ -83,6 +83,7 @@ class DeviceBandSolver {
     int ng_ = 0;        ///< G-sphere size of the bound k-point.
     int n_proj_ = 0;    ///< KB projector columns (Σ_atoms Σ_proj (2l+1)).
     int cap_sub_ = 0;   ///< Allocated subspace capacity (vectors).
+    int ng_cap_ = 0;    ///< Allocated per-vector length (G-sphere size).
     double omega_ = 0;  ///< Cell volume of the bound workspace [Bohr³].
 
     cufftHandle fft_plan_ = 0;

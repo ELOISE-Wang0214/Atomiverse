@@ -404,7 +404,9 @@ void DeviceBandSolver::set_kpoint(const cpu::pw::PWWorkspace& ws) {
 }
 
 void DeviceBandSolver::ensure_subspace_capacity(int ng, int cap) {
-    if (cap <= cap_sub_ && d_sub_ != nullptr)
+    // Per-vector length must cover the largest k-sphere bound so far —
+    // k-spheres differ in size, so growth in EITHER dimension reallocates.
+    if (cap <= cap_sub_ && ng <= ng_cap_ && d_sub_ != nullptr)
         return;
     device_free(d_sub_);
     device_free(d_hsub_);
@@ -414,8 +416,10 @@ void DeviceBandSolver::ensure_subspace_capacity(int ng, int cap) {
     device_free(d_x_);
     device_free(d_work_);
     device_free(d_ovlp_);
-    cap_sub_ = cap;
-    size_t ngs = static_cast<size_t>(ng);
+    cap_sub_ = std::max(cap, cap_sub_);
+    ng_cap_ = std::max(ng, ng_cap_);
+    cap = cap_sub_;
+    size_t ngs = static_cast<size_t>(ng_cap_);
     d_sub_ = device_alloc<cufftDoubleComplex>(ngs * cap);
     d_hsub_ = device_alloc<cufftDoubleComplex>(ngs * cap);
     d_ritz_ = device_alloc<cufftDoubleComplex>(ngs * n_bands_);
