@@ -335,6 +335,21 @@ if(NOT ATV_DOCS_ONLY)
         endif()
         target_link_libraries(atomiverse PUBLIC fftw3_stub)
         target_compile_definitions(atomiverse PUBLIC ATV_HAS_PW)
+
+        # CUDA plane-wave backend — device-resident kernels mirroring the CPU
+        # pw module: the cuFFT FFT layer, the G-space Hartree (Poisson) solver,
+        # and the sparse-G ↔ dense half-complex grid bridge (shared by the LDA /
+        # Veff / density stages). Only built when CUDA is also enabled.
+        if(ATV_BUILD_CUDA)
+            target_sources(atomiverse PRIVATE
+                src/cuda/pw/internal/fft.cu
+                src/cuda/pw/internal/poisson.cu
+                src/cuda/pw/internal/grid_map.cu
+                src/cuda/pw/internal/xc_lda.cu
+                src/cuda/pw/internal/veff.cu
+            )
+            target_link_libraries(atomiverse PUBLIC CUDA::cufft)
+        endif()
     endif()
 
     if(ATV_BUILD_KSPACE)
