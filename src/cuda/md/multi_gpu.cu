@@ -2052,17 +2052,6 @@ __global__ void classify_owner(const real_t* x, const real_t* y,
             atomicAdd(&cnt[t], s_cnt[t]);
 }
 
-// Stable counting-sort scatter: group owned indices by destination owner.
-__global__ void scatter_order(const int* owner, int n, const int* boff,
-                              int* fill, int* order) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n)
-        return;
-    int o = owner[i];
-    int pos = boff[o] + atomicAdd(&fill[o], 1);
-    order[pos] = i;
-}
-
 // Gather full per-atom state of `cnt` atoms named by idx[] into contiguous
 // send buffers (one P2P hop to the new owner).
 __global__ void gather_state(
@@ -2190,6 +2179,97 @@ __global__ void gather_bonded_state(
     for (int w = 0; w < MS; ++w)
         osp[k * MS + w] = special[i * MS + w];
 }
+
+// LEAVER-only counting-sort scatter: group the indices of atoms whose owner
+// is another subdomain by destination, skipping the (dominant) owner==self
+// population entirely — order[] is sized n_leave, not n_local.
+__global__ void scatter_order_leavers(const int* owner, int n, int self,
+                                      const int* boff, int* fill, int* order) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n)
+        return;
+    int o = owner[i];
+    if (o == self)
+        return;
+    order[boff[o] + atomicAdd(&fill[o], 1)] = i;
+}
+
+// Hole-fill compaction worklists: after the leavers depart, the owned range
+// shrinks to [0, n_keep). A "hole" is a leaver row inside the keep prefix; a
+// "filler" is a keeper row in the tail. #holes == #fillers by counting (the
+// tail holds n_leave slots, of which the non-fillers are exactly the leavers
+// that are not holes). Append order is arbitrary — any bijection is valid.
+__global__ void build_holes_fillers(const int* owner, int self, int n_keep,
+                                    int n_local, int* holes, int* h_ctr,
+                                    int* fillers, int* f_ctr) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n_local)
+        return;
+    if (i < n_keep) {
+        if (owner[i] != self)
+            holes[atomicAdd(h_ctr, 1)] = i;
+    } else if (owner[i] == self) {
+        fillers[atomicAdd(f_ctr, 1)] = i;
+    }
+}
+
+// Copy the 10 migrated per-atom fields filler-row → hole-row. `m_ctr` is the
+// device hole count (== filler count); grid is sized to the n_leave upper
+// bound so no D2H of the exact count is needed.
+__global__ void fill_holes(const int* holes, const int* fillers,
+                           const int* m_ctr, real_t* x, real_t* y, real_t* z,
+                           real_t* vx, real_t* vy, real_t* vz, real_t* mass,
+                           real_t* charge, int* type, std::int64_t* tag) {
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= *m_ctr)
+        return;
+    int h = holes[k], f = fillers[k];
+    x[h] = x[f];
+    y[h] = y[f];
+    z[h] = z[f];
+    vx[h] = vx[f];
+    vy[h] = vy[f];
+    vz[h] = vz[f];
+    mass[h] = mass[f];
+    charge[h] = charge[f];
+    type[h] = type[f];
+    tag[h] = tag[f];
+}
+
+// Bonded twin of fill_holes: copy the wide per-atom bonded SoA rows.
+__global__ void fill_holes_bonded(const int* holes, const int* fillers,
+                                  const int* m_ctr, int MB, int MA, int MD,
+                                  int MS, int* num_bond,
+                                  std::int64_t* bond_atom, int* bond_type,
+                                  int* num_angle, std::int64_t* angle_atom,
+                                  int* angle_type, int* num_dihedral,
+                                  std::int64_t* dihedral_atom,
+                                  int* dihedral_type, int* nspecial,
+                                  std::int64_t* special) {
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= *m_ctr)
+        return;
+    int h = holes[k], f = fillers[k];
+    num_bond[h] = num_bond[f];
+    for (int w = 0; w < MB; ++w) {
+        bond_atom[h * MB + w] = bond_atom[f * MB + w];
+        bond_type[h * MB + w] = bond_type[f * MB + w];
+    }
+    num_angle[h] = num_angle[f];
+    for (int w = 0; w < 2 * MA; ++w)
+        angle_atom[h * 2 * MA + w] = angle_atom[f * 2 * MA + w];
+    for (int w = 0; w < MA; ++w)
+        angle_type[h * MA + w] = angle_type[f * MA + w];
+    num_dihedral[h] = num_dihedral[f];
+    for (int w = 0; w < 3 * MD; ++w)
+        dihedral_atom[h * 3 * MD + w] = dihedral_atom[f * 3 * MD + w];
+    for (int w = 0; w < MD; ++w)
+        dihedral_type[h * MD + w] = dihedral_type[f * MD + w];
+    for (int w = 0; w < 3; ++w)
+        nspecial[h * 3 + w] = nspecial[f * 3 + w];
+    for (int w = 0; w < MS; ++w)
+        special[h * MS + w] = special[f * MS + w];
+}
 } // namespace
 
 void MultiGpu::migrate() {
@@ -2203,7 +2283,6 @@ void MultiGpu::migrate() {
     // no-migration case skips it entirely). `owner` is retained for phase 1b.
     std::vector<int*> d_owner(N, nullptr);
     std::vector<std::vector<int>> cnt(N, std::vector<int>(N, 0)); // cnt[src][dst]
-    std::vector<std::vector<int>> boff(N, std::vector<int>(N, 0));
     // ISSUE the classify on every GPU first (no host sync), then COLLECT the
     // per-destination counts. The previous per-device "classify → blocking D2H
     // → sync" loop serialized the GPUs (each D2H stalled the host until that
@@ -2238,10 +2317,6 @@ void MultiGpu::migrate() {
         CKM(cudaMemcpy(hc.data(), d_dcnt[s], N * sizeof(int),
                        cudaMemcpyDeviceToHost)); // blocks on s's classify only
         cnt[s] = hc;
-        std::vector<int> hb(N, 0);
-        for (int d = 1; d < N; ++d)
-            hb[d] = hb[d - 1] + hc[d - 1];
-        boff[s] = hb;
         freep(d_dcnt[s]);
     }
 
@@ -2270,36 +2345,71 @@ void MultiGpu::migrate() {
         }
     }
 
-    // Phase 1b — atoms DID move: build the counting-sort order per source.
-    std::vector<int*> d_order(N, nullptr);
+    // Atoms DID move. O(migrants) exchange (LAMMPS-style): only LEAVERS
+    // travel; each source compacts in place by filling leaver holes inside
+    // the keep prefix with keeper rows from the tail; receivers append into
+    // their (dead, ghosts-dropped) tail rows directly. The previous
+    // implementation re-staged EVERY device's ENTIRE owned set — a full
+    // gather + 10 synchronous per-array cudaMemcpyPeer per (src,dst) pair
+    // INCLUDING the diagonal, then a full publish copy back — O(n_local)
+    // traffic per reneighbor. At 2x2x1 dims (16 host-serialized sync-copy
+    // groups) that was 5.7x the 3x1x1 cost at equal per-card load: the
+    // dominant term of the 4-GPU throughput collapse.
+
+    // Phase 1b — per source: group LEAVER indices by destination (order[] is
+    // sized n_leave, not n_local) and build the hole/filler compaction
+    // worklists. d_owner stays alive for the fill kernels.
+    std::vector<int*> d_order(N, nullptr); // [n_leave] leaver rows, dst-grouped
+    std::vector<int*> d_holes(N, nullptr); // [m | m | 2] holes, fillers, ctrs
+    std::vector<int> n_leave(N, 0);
+    std::vector<std::vector<int>> boff_x(N, std::vector<int>(N, 0));
     for (int s = 0; s < N; ++s) {
         const int nl = frames_[s].n_local_;
+        n_leave[s] = nl - cnt[s][s];
+        int off = 0; // leaver-group offsets, diagonal excluded
+        for (int d = 0; d < N; ++d) {
+            boff_x[s][d] = off;
+            if (d != s)
+                off += cnt[s][d];
+        }
         dm_.set_device(s);
-        int *order, *dfill, *dboff;
-        CKM(mallocp(&order, std::max(1, nl) * sizeof(int)));
-        CKM(mallocp(&dfill, N * sizeof(int)));
+        const int m = std::max(1, n_leave[s]);
+        int *order, *holes, *dboff, *dfill;
+        CKM(mallocp(&order, m * sizeof(int)));
+        CKM(mallocp(&holes, (2 * m + 2) * sizeof(int)));
         CKM(mallocp(&dboff, N * sizeof(int)));
-        CKM(cudaMemcpy(dboff, boff[s].data(), N * sizeof(int),
-                       cudaMemcpyHostToDevice));
-        CKM(cudaMemset(dfill, 0, N * sizeof(int)));
-        if (nl > 0) {
+        CKM(mallocp(&dfill, N * sizeof(int)));
+        CKM(cudaMemcpyAsync(dboff, boff_x[s].data(), N * sizeof(int),
+                            cudaMemcpyHostToDevice, cudaStream_t(0)));
+        CKM(cudaMemsetAsync(dfill, 0, N * sizeof(int), cudaStream_t(0)));
+        CKM(cudaMemsetAsync(holes + 2 * m, 0, 2 * sizeof(int),
+                            cudaStream_t(0)));
+        if (nl > 0 && n_leave[s] > 0) {
             int blk = 256, grd = (nl + blk - 1) / blk;
-            scatter_order<<<grd, blk>>>(d_owner[s], nl, dboff, dfill, order);
+            scatter_order_leavers<<<grd, blk>>>(d_owner[s], nl, s, dboff,
+                                                dfill, order);
+            CKM(cudaGetLastError());
+            build_holes_fillers<<<grd, blk>>>(d_owner[s], s, cnt[s][s], nl,
+                                              holes, holes + 2 * m, holes + m,
+                                              holes + 2 * m + 1);
             CKM(cudaGetLastError());
         }
         d_order[s] = order;
-        freep(d_owner[s]);
+        d_holes[s] = holes;
+        freep(dboff); // stream-ordered: frees after the kernels above
         freep(dfill);
-        freep(dboff);
-        CKM(cudaDeviceSynchronize()); // order[] ready for cross-device gather
     }
 
-    // Phase 2 — new owned counts + per-(src) receive offsets on each dst.
+    // Phase 2 — new owned counts: keepers stay in place, received leavers
+    // append after the keep region. recv_off[src][dst] = absolute row where
+    // src's leavers land on dst.
     std::vector<int> new_nl(N, 0);
     std::vector<std::vector<int>> recv_off(N, std::vector<int>(N, 0));
     for (int dst = 0; dst < N; ++dst) {
-        int off = 0;
+        int off = cnt[dst][dst];
         for (int src = 0; src < N; ++src) {
+            if (src == dst)
+                continue;
             recv_off[src][dst] = off;
             off += cnt[src][dst];
         }
@@ -2310,170 +2420,151 @@ void MultiGpu::migrate() {
                                      + " (raise ghost_headroom)");
     }
 
-    // Phase 3 — staging owned arrays per dst (avoids read/write hazard on the
-    // live frame arrays while peers write into them).
-    std::vector<MigBuf> stg(N);
-    std::vector<MigBondedBuf> stgb(N); // per-atom bonded SoA staging (if bonded_)
-    for (int dst = 0; dst < N; ++dst) {
-        dm_.set_device(dst);
-        mig_alloc(stg[dst], std::max(1, new_nl[dst]));
-        if (bonded_)
-            migb_alloc(stgb[dst], std::max(1, new_nl[dst]));
-    }
-    // These staging buffers come from cudaMallocAsync on each dst's stream 0
-    // (stream-ordered). Phase 4 writes into them from a DIFFERENT device via
-    // cudaMemcpyPeer, which carries no ordering against dst's pending async
-    // allocation — using the memory before the alloc completes on dst's stream
-    // is undefined (manifests as a Heisenbug "invalid argument" that vanishes
-    // under compute-sanitizer's serialization). Drain every dst's stream so the
-    // allocations are real before any cross-device peer write touches them.
-    for (int dst = 0; dst < N; ++dst) {
-        dm_.set_device(dst);
-        CKM(cudaDeviceSynchronize());
-    }
-
-    // Phase 4 — per (src,dst): gather state on src, P2P copy to dst staging.
+    // Phase 3 — per (src,dst≠src): gather the leaver group into a contiguous
+    // send buffer (BEFORE compaction overwrites leaver rows), then compact
+    // the source in place. Same-device stream order (stream 0) sequences
+    // gathers before the fill kernels.
+    const int MB = cpu::Atom::kMaxBondPerAtom, MA = cpu::Atom::kMaxAnglePerAtom,
+              MD = cpu::Atom::kMaxDihedralPerAtom, MS = cpu::Atom::kMaxSpecial;
+    std::vector<std::vector<MigBuf>> sb(N, std::vector<MigBuf>(N));
+    std::vector<std::vector<MigBondedBuf>> sbb(N, std::vector<MigBondedBuf>(N));
     for (int src = 0; src < N; ++src) {
         dm_.set_device(src);
         auto& a = frames_[src].atoms;
-        const int sd = dm_.device_id(src);
         for (int dst = 0; dst < N; ++dst) {
             const int c = cnt[src][dst];
-            if (c <= 0)
+            if (dst == src || c <= 0)
                 continue;
-            MigBuf sb;
-            mig_alloc(sb, c);
+            mig_alloc(sb[src][dst], c);
             int blk = 256, grd = (c + blk - 1) / blk;
-            const int* idx = d_order[src] + boff[src][dst];
+            const int* idx = d_order[src] + boff_x[src][dst];
+            MigBuf& B = sb[src][dst];
             gather_state<<<grd, blk>>>(idx, c, a.x, a.y, a.z, a.vx, a.vy, a.vz,
-                                       a.mass, a.charge, a.type, a.tag, sb.x,
-                                       sb.y, sb.z, sb.vx, sb.vy, sb.vz, sb.mass,
-                                       sb.charge, sb.type, sb.tag);
+                                       a.mass, a.charge, a.type, a.tag, B.x,
+                                       B.y, B.z, B.vx, B.vy, B.vz, B.mass,
+                                       B.charge, B.type, B.tag);
             CKM(cudaGetLastError());
-            const int dd_id = dm_.device_id(dst);
-            const int o = recv_off[src][dst];
-            MigBuf& D = stg[dst];
-            CKM(cudaMemcpyPeer(D.x + o, dd_id, sb.x, sd, c * sizeof(real_t)));
-            CKM(cudaMemcpyPeer(D.y + o, dd_id, sb.y, sd, c * sizeof(real_t)));
-            CKM(cudaMemcpyPeer(D.z + o, dd_id, sb.z, sd, c * sizeof(real_t)));
-            CKM(cudaMemcpyPeer(D.vx + o, dd_id, sb.vx, sd, c * sizeof(real_t)));
-            CKM(cudaMemcpyPeer(D.vy + o, dd_id, sb.vy, sd, c * sizeof(real_t)));
-            CKM(cudaMemcpyPeer(D.vz + o, dd_id, sb.vz, sd, c * sizeof(real_t)));
-            CKM(cudaMemcpyPeer(D.mass + o, dd_id, sb.mass, sd,
-                               c * sizeof(real_t)));
-            CKM(cudaMemcpyPeer(D.charge + o, dd_id, sb.charge, sd,
-                               c * sizeof(real_t)));
-            CKM(cudaMemcpyPeer(D.type + o, dd_id, sb.type, sd, c * sizeof(int)));
-            CKM(cudaMemcpyPeer(D.tag + o, dd_id, sb.tag, sd,
-                               c * sizeof(std::int64_t)));
             if (bonded_) {
-                // Carry the per-atom bonded SoA rows for these atoms too.
-                const int MB = cpu::Atom::kMaxBondPerAtom,
-                          MA = cpu::Atom::kMaxAnglePerAtom,
-                          MD = cpu::Atom::kMaxDihedralPerAtom,
-                          MS = cpu::Atom::kMaxSpecial;
-                MigBondedBuf sbb;
-                migb_alloc(sbb, c);
+                migb_alloc(sbb[src][dst], c);
+                MigBondedBuf& BB = sbb[src][dst];
                 gather_bonded_state<<<grd, blk>>>(
                     idx, c, MB, MA, MD, MS, a.num_bond, a.bond_atom, a.bond_type,
                     a.num_angle, a.angle_atom, a.angle_type, a.num_dihedral,
                     a.dihedral_atom, a.dihedral_type, a.nspecial, a.special,
-                    sbb.num_bond, sbb.bond_atom, sbb.bond_type, sbb.num_angle,
-                    sbb.angle_atom, sbb.angle_type, sbb.num_dihedral,
-                    sbb.dihedral_atom, sbb.dihedral_type, sbb.nspecial,
-                    sbb.special);
+                    BB.num_bond, BB.bond_atom, BB.bond_type, BB.num_angle,
+                    BB.angle_atom, BB.angle_type, BB.num_dihedral,
+                    BB.dihedral_atom, BB.dihedral_type, BB.nspecial,
+                    BB.special);
                 CKM(cudaGetLastError());
-                MigBondedBuf& DB = stgb[dst];
+            }
+        }
+        if (n_leave[src] > 0 && frames_[src].n_local_ > 0) {
+            const int m = std::max(1, n_leave[src]);
+            int blk = 256, grd = (n_leave[src] + blk - 1) / blk;
+            fill_holes<<<grd, blk>>>(d_holes[src], d_holes[src] + m,
+                                     d_holes[src] + 2 * m, a.x, a.y, a.z, a.vx,
+                                     a.vy, a.vz, a.mass, a.charge, a.type,
+                                     a.tag);
+            CKM(cudaGetLastError());
+            if (bonded_) {
+                fill_holes_bonded<<<grd, blk>>>(
+                    d_holes[src], d_holes[src] + m, d_holes[src] + 2 * m, MB,
+                    MA, MD, MS, a.num_bond, a.bond_atom, a.bond_type,
+                    a.num_angle, a.angle_atom, a.angle_type, a.num_dihedral,
+                    a.dihedral_atom, a.dihedral_type, a.nspecial, a.special);
+                CKM(cudaGetLastError());
+            }
+        }
+    }
+    // Drain: gathers + compactions complete before peers overwrite the (now
+    // dead) tails, and before send buffers are read cross-device.
+    for (int s = 0; s < N; ++s) {
+        dm_.set_device(s);
+        CKM(cudaDeviceSynchronize());
+    }
+
+    // Phase 4 — async P2P append of each (src,dst) leaver group DIRECTLY into
+    // dst's frame rows [recv_off, recv_off+c). Distinct pairs overlap (issued
+    // on each src's stream 0); writers never overlap (disjoint row ranges).
+    for (int src = 0; src < N; ++src) {
+        dm_.set_device(src);
+        const int sd = dm_.device_id(src);
+        for (int dst = 0; dst < N; ++dst) {
+            const int c = cnt[src][dst];
+            if (dst == src || c <= 0)
+                continue;
+            const int dd_id = dm_.device_id(dst);
+            const int o = recv_off[src][dst];
+            auto& da = frames_[dst].atoms;
+            MigBuf& B = sb[src][dst];
+            auto peer = [&](void* dstp, const void* srcp, std::size_t bytes) {
+                CKM(cudaMemcpyPeerAsync(dstp, dd_id, srcp, sd, bytes,
+                                        cudaStream_t(0)));
+            };
+            peer(da.x + o, B.x, c * sizeof(real_t));
+            peer(da.y + o, B.y, c * sizeof(real_t));
+            peer(da.z + o, B.z, c * sizeof(real_t));
+            peer(da.vx + o, B.vx, c * sizeof(real_t));
+            peer(da.vy + o, B.vy, c * sizeof(real_t));
+            peer(da.vz + o, B.vz, c * sizeof(real_t));
+            peer(da.mass + o, B.mass, c * sizeof(real_t));
+            peer(da.charge + o, B.charge, c * sizeof(real_t));
+            peer(da.type + o, B.type, c * sizeof(int));
+            peer(da.tag + o, B.tag, c * sizeof(std::int64_t));
+            if (bonded_) {
+                MigBondedBuf& BB = sbb[src][dst];
                 auto peer_i = [&](int* dstp, int* srcp, int width) {
-                    CKM(cudaMemcpyPeer(dstp + static_cast<std::size_t>(o) * width,
-                                       dd_id, srcp, sd,
-                                       static_cast<std::size_t>(c) * width
-                                           * sizeof(int)));
+                    peer(dstp + static_cast<std::size_t>(o) * width, srcp,
+                         static_cast<std::size_t>(c) * width * sizeof(int));
                 };
                 auto peer_t = [&](std::int64_t* dstp, std::int64_t* srcp,
                                   int width) {
-                    CKM(cudaMemcpyPeer(dstp + static_cast<std::size_t>(o) * width,
-                                       dd_id, srcp, sd,
-                                       static_cast<std::size_t>(c) * width
-                                           * sizeof(std::int64_t)));
+                    peer(dstp + static_cast<std::size_t>(o) * width, srcp,
+                         static_cast<std::size_t>(c) * width
+                             * sizeof(std::int64_t));
                 };
-                peer_i(DB.num_bond, sbb.num_bond, 1);
-                peer_t(DB.bond_atom, sbb.bond_atom, MB);
-                peer_i(DB.bond_type, sbb.bond_type, MB);
-                peer_i(DB.num_angle, sbb.num_angle, 1);
-                peer_t(DB.angle_atom, sbb.angle_atom, 2 * MA);
-                peer_i(DB.angle_type, sbb.angle_type, MA);
-                peer_i(DB.num_dihedral, sbb.num_dihedral, 1);
-                peer_t(DB.dihedral_atom, sbb.dihedral_atom, 3 * MD);
-                peer_i(DB.dihedral_type, sbb.dihedral_type, MD);
-                peer_i(DB.nspecial, sbb.nspecial, 3);
-                peer_t(DB.special, sbb.special, MS);
-                migb_free(sbb);
+                peer_i(da.num_bond, BB.num_bond, 1);
+                peer_t(da.bond_atom, BB.bond_atom, MB);
+                peer_i(da.bond_type, BB.bond_type, MB);
+                peer_i(da.num_angle, BB.num_angle, 1);
+                peer_t(da.angle_atom, BB.angle_atom, 2 * MA);
+                peer_i(da.angle_type, BB.angle_type, MA);
+                peer_i(da.num_dihedral, BB.num_dihedral, 1);
+                peer_t(da.dihedral_atom, BB.dihedral_atom, 3 * MD);
+                peer_i(da.dihedral_type, BB.dihedral_type, MD);
+                peer_i(da.nspecial, BB.nspecial, 3);
+                peer_t(da.special, BB.special, MS);
             }
-            mig_free(sb); // cudaMemcpyPeer is synchronous; safe to free
         }
     }
 
-    // Phase 5 — publish staging into the frame arrays, set new owned counts,
-    // drop ghosts (rebuilt by the following build_halo).
-    for (int dst = 0; dst < N; ++dst) {
-        dm_.set_device(dst);
-        auto& a = frames_[dst].atoms;
-        const int m = new_nl[dst];
-        if (m > 0) {
-            const size_t r = m * sizeof(real_t);
-            CKM(cudaMemcpy(a.x, stg[dst].x, r, cudaMemcpyDeviceToDevice));
-            CKM(cudaMemcpy(a.y, stg[dst].y, r, cudaMemcpyDeviceToDevice));
-            CKM(cudaMemcpy(a.z, stg[dst].z, r, cudaMemcpyDeviceToDevice));
-            CKM(cudaMemcpy(a.vx, stg[dst].vx, r, cudaMemcpyDeviceToDevice));
-            CKM(cudaMemcpy(a.vy, stg[dst].vy, r, cudaMemcpyDeviceToDevice));
-            CKM(cudaMemcpy(a.vz, stg[dst].vz, r, cudaMemcpyDeviceToDevice));
-            CKM(cudaMemcpy(a.mass, stg[dst].mass, r, cudaMemcpyDeviceToDevice));
-            CKM(cudaMemcpy(a.charge, stg[dst].charge, r, cudaMemcpyDeviceToDevice));
-            CKM(cudaMemcpy(a.type, stg[dst].type, m * sizeof(int),
-                           cudaMemcpyDeviceToDevice));
-            CKM(cudaMemcpy(a.tag, stg[dst].tag, m * sizeof(std::int64_t),
-                           cudaMemcpyDeviceToDevice));
-            if (bonded_) {
-                const int MB = cpu::Atom::kMaxBondPerAtom,
-                          MA = cpu::Atom::kMaxAnglePerAtom,
-                          MD = cpu::Atom::kMaxDihedralPerAtom,
-                          MS = cpu::Atom::kMaxSpecial;
-                MigBondedBuf& B = stgb[dst];
-                auto d2d_i = [&](int* dstp, int* srcp, int width) {
-                    CKM(cudaMemcpy(dstp, srcp,
-                                   static_cast<std::size_t>(m) * width
-                                       * sizeof(int),
-                                   cudaMemcpyDeviceToDevice));
-                };
-                auto d2d_t = [&](std::int64_t* dstp, std::int64_t* srcp,
-                                 int width) {
-                    CKM(cudaMemcpy(dstp, srcp,
-                                   static_cast<std::size_t>(m) * width
-                                       * sizeof(std::int64_t),
-                                   cudaMemcpyDeviceToDevice));
-                };
-                d2d_i(a.num_bond, B.num_bond, 1);
-                d2d_t(a.bond_atom, B.bond_atom, MB);
-                d2d_i(a.bond_type, B.bond_type, MB);
-                d2d_i(a.num_angle, B.num_angle, 1);
-                d2d_t(a.angle_atom, B.angle_atom, 2 * MA);
-                d2d_i(a.angle_type, B.angle_type, MA);
-                d2d_i(a.num_dihedral, B.num_dihedral, 1);
-                d2d_t(a.dihedral_atom, B.dihedral_atom, 3 * MD);
-                d2d_i(a.dihedral_type, B.dihedral_type, MD);
-                d2d_i(a.nspecial, B.nspecial, 3);
-                d2d_t(a.special, B.special, MS);
-            }
-        }
-        frames_[dst].n_local_ = m;
-        n_local_[dst] = m;
-        frames_[dst].n_ghost_ = 0;
-        mig_free(stg[dst]);
-        if (bonded_)
-            migb_free(stgb[dst]);
-        freep(d_order[dst]);
+    // Drain the async P2P appends before the send buffers are freed and the
+    // new counts are published.
+    for (int s = 0; s < N; ++s) {
+        dm_.set_device(s);
+        CKM(cudaDeviceSynchronize());
     }
+
+    // Phase 5 — publish new owned counts, drop ghosts (rebuilt by the
+    // following build_halo), release the O(migrants) transients.
+    for (int s = 0; s < N; ++s) {
+        dm_.set_device(s);
+        frames_[s].n_local_ = new_nl[s];
+        n_local_[s] = new_nl[s];
+        frames_[s].n_ghost_ = 0;
+        freep(d_order[s]);
+        freep(d_holes[s]);
+        freep(d_owner[s]);
+        for (int dst = 0; dst < N; ++dst) {
+            if (dst == s || cnt[s][dst] <= 0)
+                continue;
+            mig_free(sb[s][dst]);
+            if (bonded_)
+                migb_free(sbb[s][dst]);
+        }
+    }
+    // Drain the stream-ordered frees (the per-device pool is shared across
+    // MultiGpu instances; see destroy_halo_plan).
     for (int s = 0; s < N; ++s) {
         dm_.set_device(s);
         CKM(cudaDeviceSynchronize());
