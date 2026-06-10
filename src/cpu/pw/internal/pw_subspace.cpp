@@ -174,8 +174,10 @@ int init_subspace(const PWWorkspace& ws, int n_bands,
                 int nm = 2 * l + 1;
                 for (int m = 0; m < nm && j < n_sub; ++m) {
                     for (int ig = 0; ig < ng; ++ig) {
-                        Real Gx = gv.g[ig][0], Gy = gv.g[ig][1],
-                             Gz = gv.g[ig][2];
+                        // Bloch states live on q = k+G.
+                        Real Gx = gv.g[ig][0] + gv.kvec[0],
+                             Gy = gv.g[ig][1] + gv.kvec[1],
+                             Gz = gv.g[ig][2] + gv.kvec[2];
                         Real Gr = std::sqrt(Gx * Gx + Gy * Gy + Gz * Gz);
                         Real chi = ws.atom_wfc[ia][iw].chi_G[ig];
                         if (std::abs(chi) < Real(1e-30)) {

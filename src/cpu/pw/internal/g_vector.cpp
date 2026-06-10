@@ -48,6 +48,7 @@ GVectorList enumerate_g_vectors(const ::ATV::Box& cell_bohr, Real ecut,
     });
 
     GVectorList result;
+    result.kvec = k;
     result.g.reserve(tmp.size());
     result.ekin.reserve(tmp.size());
     result.h.reserve(tmp.size());

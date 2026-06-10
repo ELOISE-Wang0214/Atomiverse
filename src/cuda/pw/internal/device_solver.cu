@@ -295,9 +295,10 @@ void DeviceBandSolver::set_kpoint(const cpu::pw::PWWorkspace& ws) {
         int iz = ((gv.l[ig] % nz_) + nz_) % nz_;
         idx[ig] = ix + nx_ * (iy + ny_ * iz);
         tg[ig] = static_cast<double>(ws.T_G[ig]);
-        gx[ig] = gv.g[ig][0];
-        gy[ig] = gv.g[ig][1];
-        gz[ig] = gv.g[ig][2];
+        // Bloch states live on q = k+G (Y_lm direction, phase).
+        gx[ig] = gv.g[ig][0] + gv.kvec[0];
+        gy[ig] = gv.g[ig][1] + gv.kvec[1];
+        gz[ig] = gv.g[ig][2] + gv.kvec[2];
     }
     device_free(d_idx_);
     device_free(d_tg_);

@@ -104,7 +104,10 @@ void apply_hamiltonian(const PWWorkspace& ws, const std::complex<Real>* psi_g,
             // β_lm(G) = (4π/√Ω)·(-i)^l·Y_lm(Ĝ)·f_l(G)·exp(-iG·R)
             std::vector<std::complex<Real>> c_lm(nm, std::complex<Real>(0, 0));
             for (int ig = 0; ig < ng; ++ig) {
-                Real Gx = gv.g[ig][0], Gy = gv.g[ig][1], Gz = gv.g[ig][2];
+                // Bloch states live on q = k+G.
+                Real Gx = gv.g[ig][0] + gv.kvec[0],
+                     Gy = gv.g[ig][1] + gv.kvec[1],
+                     Gz = gv.g[ig][2] + gv.kvec[2];
                 Real Gr = std::sqrt(Gx * Gx + Gy * Gy + Gz * Gz);
                 Real fl_val = atom_proj[ip].f_G[ig];
                 if (std::abs(fl_val) < Real(1e-30))
@@ -131,7 +134,9 @@ void apply_hamiltonian(const PWWorkspace& ws, const std::complex<Real>* psi_g,
 
             // Apply V_NL: Hψ(G) += Σ_m D·β_lm(G)·c_lm
             for (int ig = 0; ig < ng; ++ig) {
-                Real Gx = gv.g[ig][0], Gy = gv.g[ig][1], Gz = gv.g[ig][2];
+                Real Gx = gv.g[ig][0] + gv.kvec[0],
+                     Gy = gv.g[ig][1] + gv.kvec[1],
+                     Gz = gv.g[ig][2] + gv.kvec[2];
                 Real Gr = std::sqrt(Gx * Gx + Gy * Gy + Gz * Gz);
                 Real fl_val = atom_proj[ip].f_G[ig];
                 if (std::abs(fl_val) < Real(1e-30))

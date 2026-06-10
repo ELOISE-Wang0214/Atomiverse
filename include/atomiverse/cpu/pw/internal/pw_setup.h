@@ -32,6 +32,13 @@ struct PWProblem {
     int n_elec = 0;
     int n_bands = 0;
 
+    /// Per-k-point nonlocal projector / atomic-wfc tables, evaluated on
+    /// q = k+G of each sphere (size and values are k-dependent). The SCF
+    /// loop copies entry ik into ws.kb_proj / ws.atom_wfc before solving
+    /// that k-point. Empty for the toy potential.
+    std::vector<std::vector<std::vector<PWWorkspace::KBProjG>>> kb_proj_k;
+    std::vector<std::vector<std::vector<PWWorkspace::AtomWfc>>> atom_wfc_k;
+
     PWProblem() = default;
     PWProblem(const PWProblem&) = delete;
     PWProblem& operator=(const PWProblem&) = delete;

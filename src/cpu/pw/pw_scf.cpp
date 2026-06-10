@@ -75,6 +75,11 @@ PWResult pw_scf(const cpu::Frame& frame, const std::string& upf_path,
             auto* saved_gvec = ws.gvec;
             ws.gvec = &gv_k[ik];
             ws.n_g = n_g_k;
+            // Nonlocal/wfc tables live on q = k+G: bind this k's tables.
+            if (!prob.kb_proj_k.empty())
+                ws.kb_proj = prob.kb_proj_k[ik];
+            if (!prob.atom_wfc_k.empty())
+                ws.atom_wfc = prob.atom_wfc_k[ik];
             // T_G is resized + filled by PW_Hamiltonian::build below; the
             // old pre-fill here wrote past the Γ-sphere-sized buffer.
 

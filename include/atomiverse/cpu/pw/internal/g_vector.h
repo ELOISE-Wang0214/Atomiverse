@@ -18,6 +18,8 @@ struct GVectorList {
     std::vector<Real> ekin;   // kinetic energy 0.5*|k+G|^2 [Hartree]
     std::vector<int> h, k, l; // integer indices: G = h*b0 + k*b1 + l*b2
     int nx, ny, nz;           // FFT grid dimensions
+    Vec3 kvec{};              // k-point of this sphere [1/Bohr]; nonlocal
+                              // projectors and wfc live on q = k+G
 
     int count() const { return static_cast<int>(g.size()); }
 };

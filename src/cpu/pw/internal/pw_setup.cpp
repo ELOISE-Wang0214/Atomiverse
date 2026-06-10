@@ -184,17 +184,19 @@ SphBesselFn sph_bessel_for_l(int l) {
     }
 }
 
-/// Setup Kleinman-Bylander non-local projectors in G-space.
-void setup_kb_projectors(PWWorkspace& ws, const internal::GVectorList& gv,
+/// Build Kleinman-Bylander non-local projectors in G-space for one
+/// k-sphere. The radial table is evaluated at q = |k+G| — the projector
+/// of a Bloch state lives on k+G, so the table is k-dependent and must
+/// be rebuilt per k-point (size gv.count(), which also differs per k).
+void setup_kb_projectors(std::vector<std::vector<PWWorkspace::KBProjG>>& out,
+                         const internal::GVectorList& gv,
                          const internal::UPFData& upf,
-                         const std::vector<Vec3>& pos_bohr, Real omega) {
+                         const std::vector<Vec3>& pos_bohr) {
     int n_atoms = static_cast<int>(pos_bohr.size());
-    ws.kb_proj.resize(n_atoms);
+    int ng = gv.count();
+    out.assign(n_atoms, {});
 
-    std::cout << "  KB projectors: " << upf.kb.size() << " proj, " << n_atoms
-              << " atoms" << std::endl;
-
-    // Precompute f_l(G) for each projector (radial integral, same for all atoms)
+    // Precompute f_l(q) for each projector (radial integral, same for all atoms)
     int n_proj = upf.n_proj();
     std::vector<std::vector<Real>> fl_all(n_proj);
     std::vector<int> proj_l(n_proj);
@@ -202,18 +204,19 @@ void setup_kb_projectors(PWWorkspace& ws, const internal::GVectorList& gv,
         auto& kb = upf.kb[ip];
         proj_l[ip] = kb.l;
         auto j_l = sph_bessel_for_l(kb.l);
-        fl_all[ip].resize(ws.n_g, Real(0));
+        fl_all[ip].resize(ng, Real(0));
         const auto& r = upf.r;
         const auto& beta_r = kb.beta;
-        for (int ig = 0; ig < ws.n_g; ++ig) {
-            Real G = std::sqrt(gv.g[ig].norm_squared());
+        for (int ig = 0; ig < ng; ++ig) {
+            Vec3 q{gv.g[ig][0] + gv.kvec[0], gv.g[ig][1] + gv.kvec[1],
+                   gv.g[ig][2] + gv.kvec[2]};
+            Real Q = std::sqrt(q.norm_squared());
             Real sum = 0;
             for (size_t ir = 1; ir < r.size(); ++ir) {
                 Real r_mid = Real(0.5) * (r[ir] + r[ir - 1]);
                 Real dr = r[ir] - r[ir - 1];
                 Real b_mid = Real(0.5) * (beta_r[ir] + beta_r[ir - 1]);
-                Real Gr = G * r_mid;
-                sum += r_mid * b_mid * j_l(Gr) * dr;
+                sum += r_mid * b_mid * j_l(Q * r_mid) * dr;
             }
             fl_all[ip][ig] = sum;
         }
@@ -281,12 +284,12 @@ void setup_kb_projectors(PWWorkspace& ws, const internal::GVectorList& gv,
             // Transform f_l(G): f'_k(G) = Σ_i V_{i,k} * f_i(G)
             // Store in fl_trans
             for (int k = 0; k < nl; ++k) {
-                fl_trans[ip_out].resize(ws.n_g);
-                for (int ig = 0; ig < ws.n_g; ++ig)
+                fl_trans[ip_out].resize(ng);
+                for (int ig = 0; ig < ng; ++ig)
                     fl_trans[ip_out][ig] = Real(0);
                 for (int i = 0; i < nl; ++i) {
                     Real v = vecs[i * nl + k];
-                    for (int ig = 0; ig < ws.n_g; ++ig)
+                    for (int ig = 0; ig < ng; ++ig)
                         fl_trans[ip_out][ig] += v * fl_all[l_groups[l][i]][ig];
                 }
                 eff_D[ip_out] = eig[k] * Real(0.5); // Ry → Ha
@@ -296,36 +299,30 @@ void setup_kb_projectors(PWWorkspace& ws, const internal::GVectorList& gv,
         }
         // Update number of effective projectors
         n_proj = ip_out;
-        std::cout << "  D_ij diagonalized: " << n_proj << " eff proj (was "
-                  << upf.n_proj() << ")" << std::endl;
     }
 
-    auto ng_sz = static_cast<std::size_t>(ws.n_g);
+    auto ng_sz = static_cast<std::size_t>(ng);
     for (int ia = 0; ia < n_atoms; ++ia) {
-        ws.kb_proj[ia].resize(n_proj);
+        out[ia].resize(n_proj);
         for (int ip = 0; ip < n_proj; ++ip) {
-            ws.kb_proj[ia][ip].l = proj_l[ip];
-            ws.kb_proj[ia][ip].d = eff_D[ip];
-            ws.kb_proj[ia][ip].f_G.resize({ng_sz});
-            for (int ig = 0; ig < ws.n_g; ++ig)
-                ws.kb_proj[ia][ip].f_G[ig] = fl_trans[ip][ig];
+            out[ia][ip].l = proj_l[ip];
+            out[ia][ip].d = eff_D[ip];
+            out[ia][ip].f_G.resize({ng_sz});
+            for (int ig = 0; ig < ng; ++ig)
+                out[ia][ip].f_G[ig] = fl_trans[ip][ig];
         }
     }
 }
 
-/// Setup atomic wavefunctions in G-space for initial guess.
-/// Follows QE's atwfc_mod.f90: chi_G(G) = (4π/√Ω) * ∫ χ(r) * j_l(Gr) * r * dr
-void setup_atomic_wfc(PWWorkspace& ws, const internal::GVectorList& gv,
-                      const internal::UPFData& upf,
-                      const std::vector<Vec3>& pos_bohr, Real omega) {
-    int n_atoms = static_cast<int>(pos_bohr.size());
+/// Build atomic wavefunctions in G-space for the initial guess on one
+/// k-sphere; the radial transform is evaluated at q = |k+G|
+/// (QE atwfc_mod.f90: chi_G = (4π/√Ω) ∫ χ(r)·j_l(qr)·r dr).
+void setup_atomic_wfc(std::vector<std::vector<PWWorkspace::AtomWfc>>& out,
+                      const internal::GVectorList& gv,
+                      const internal::UPFData& upf, int n_atoms, Real omega) {
+    int ng = gv.count();
     Real pref = Real(4.0 * M_PI) / std::sqrt(omega);
 
-    std::cout << "  Atomic wfc: nwfc=" << upf.nwfc << " atoms=" << n_atoms
-              << std::endl;
-
-    // Precompute chi_G(G) for each atomic state (radial part, same for all atoms)
-    // chi_G(G) = (4π/√Ω) * ∫ χ(r) * j_l(Gr) * r * dr  (QE atwfc_mod.f90:113-116)
     std::vector<std::vector<Real>> chi_g_all(upf.nwfc);
     for (int iw = 0; iw < upf.nwfc; ++iw) {
         int l = upf.lchi[iw];
@@ -333,34 +330,32 @@ void setup_atomic_wfc(PWWorkspace& ws, const internal::GVectorList& gv,
         const auto& r = upf.r;
         const auto& chi_r = upf.chi[iw];
 
-        chi_g_all[iw].resize(ws.n_g, Real(0));
-        for (int ig = 0; ig < ws.n_g; ++ig) {
-            Real G = std::sqrt(gv.g[ig].norm_squared());
+        chi_g_all[iw].resize(ng, Real(0));
+        for (int ig = 0; ig < ng; ++ig) {
+            Vec3 q{gv.g[ig][0] + gv.kvec[0], gv.g[ig][1] + gv.kvec[1],
+                   gv.g[ig][2] + gv.kvec[2]};
+            Real Q = std::sqrt(q.norm_squared());
             Real sum = 0;
             for (size_t ir = 1; ir < r.size(); ++ir) {
                 Real r_mid = Real(0.5) * (r[ir] + r[ir - 1]);
                 Real dr = r[ir] - r[ir - 1];
                 Real chi_mid = Real(0.5) * (chi_r[ir] + chi_r[ir - 1]);
-                Real Gr = G * r_mid;
-                sum += chi_mid * j_l(Gr) * r_mid * dr;
+                sum += chi_mid * j_l(Q * r_mid) * r_mid * dr;
             }
             chi_g_all[iw][ig] = sum * pref;
         }
-        std::cout << "    wfc[" << iw << "] l=" << l
-                  << " chi_g[0]=" << chi_g_all[iw][0]
-                  << " chi_g[1]=" << chi_g_all[iw][1] << std::endl;
     }
 
-    // Store for each atom (radial part is the same, structure factor applied later)
-    ws.atom_wfc.resize(n_atoms);
-    auto ng_sz = static_cast<std::size_t>(ws.n_g);
+    // Store for each atom (radial part shared; structure factor applied later)
+    out.assign(n_atoms, {});
+    auto ng_sz = static_cast<std::size_t>(ng);
     for (int ia = 0; ia < n_atoms; ++ia) {
-        ws.atom_wfc[ia].resize(upf.nwfc);
+        out[ia].resize(upf.nwfc);
         for (int iw = 0; iw < upf.nwfc; ++iw) {
-            ws.atom_wfc[ia][iw].l = upf.lchi[iw];
-            ws.atom_wfc[ia][iw].chi_G.resize({ng_sz});
-            for (int ig = 0; ig < ws.n_g; ++ig)
-                ws.atom_wfc[ia][iw].chi_G[ig] = chi_g_all[iw][ig];
+            out[ia][iw].l = upf.lchi[iw];
+            out[ia][iw].chi_G.resize({ng_sz});
+            for (int ig = 0; ig < ng; ++ig)
+                out[ia][iw].chi_G[ig] = chi_g_all[iw][ig];
         }
     }
 }
@@ -575,9 +570,6 @@ void setup_pw_problem(const cpu::Frame& frame, const std::string& upf_path,
         std::cout << "\n--- UPF: Z_val=" << upf.z_val << " l_max=" << upf.l_max
                   << " n_proj=" << upf.kb.size() << " ---" << std::endl;
         setup_upf_vloc(ws, gv0, upf, vol_bohr);
-        setup_kb_projectors(ws, gv0, upf, pos_bohr, vol_bohr);
-        if (upf.nwfc > 0)
-            setup_atomic_wfc(ws, gv0, upf, pos_bohr, vol_bohr);
 
         // Setup augmentation form factor: rho_atom(G) / Q_atom
         ws.q_ij = upf.q_ij;
@@ -620,11 +612,30 @@ void setup_pw_problem(const cpu::Frame& frame, const std::string& upf_path,
     std::cout << "  V_loc(G) [1]=" << ws.V_loc_G[1].real()
               << " [10]=" << ws.V_loc_G[10].real() << std::endl;
 
-    // Pre-compute k-point G-vectors
+    // Pre-compute k-point G-vectors and the per-k nonlocal / wfc tables
+    // (radial parts live on q = k+G, so size and values are k-dependent).
     out.gv_k.clear();
     out.gv_k.reserve(out.kg.kpoints.size());
     for (auto& k : out.kg.kpoints)
         out.gv_k.push_back(internal::enumerate_g_vectors(box_bohr, ecut_ht, k));
+
+    out.kb_proj_k.clear();
+    out.atom_wfc_k.clear();
+    if (has_upf) {
+        auto n_k = out.gv_k.size();
+        out.kb_proj_k.resize(n_k);
+        out.atom_wfc_k.resize(n_k);
+        for (size_t ik = 0; ik < n_k; ++ik) {
+            setup_kb_projectors(out.kb_proj_k[ik], out.gv_k[ik], upf,
+                                pos_bohr);
+            if (upf.nwfc > 0)
+                setup_atomic_wfc(out.atom_wfc_k[ik], out.gv_k[ik], upf,
+                                 n_atoms, vol_bohr);
+        }
+        std::cout << "  KB projectors: " << upf.kb.size() << " proj, "
+                  << n_atoms << " atoms, " << n_k << " k-spheres"
+                  << " (atomic wfc: " << upf.nwfc << ")" << std::endl;
+    }
 }
 
 void pulay_mix(PWWorkspace& ws) {
