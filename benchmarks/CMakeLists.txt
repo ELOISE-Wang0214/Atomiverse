@@ -63,10 +63,14 @@ endforeach()
 
 # performance: CPU MPI weak/strong scaling (run by
 # md/common/bench_scaling_cpu.sbatch at 1..N ranks; emits CSV).
-atv_add_plain_bench(scaling md/lj/performance/scaling.cpp)
-if(ATV_USE_MPI AND TARGET MPI::MPI_CXX)
-    target_link_libraries(scaling PRIVATE MPI::MPI_CXX)
-endif()
+# `scaling` = MD (NVE), `minimize_scaling` = minimizer (CG/LBFGS, fixed
+# iteration budget); both share the sc-LJ system in sc_lj_system.h.
+foreach(name scaling minimize_scaling)
+    atv_add_plain_bench(${name} md/lj/performance/${name}.cpp)
+    if(ATV_USE_MPI AND TARGET MPI::MPI_CXX)
+        target_link_libraries(${name} PRIVATE MPI::MPI_CXX)
+    endif()
+endforeach()
 
 if(ATV_BUILD_CUDA)
     # performance: single-GPU MD step microbench (google-benchmark).

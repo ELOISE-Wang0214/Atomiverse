@@ -4,6 +4,7 @@
 #   sbatch benchmarks/md/common/bench_scaling_cpu.sbatch          # LJ, AV only
 #   LMP=/path/to/lmp sbatch benchmarks/md/common/bench_scaling_cpu.sbatch        # + LAMMPS
 #   SYS=pe CORES="1 8 32" sbatch benchmarks/md/common/bench_scaling_cpu.sbatch   # PE, fewer ranks
+#   SYS=min sbatch benchmarks/md/common/bench_scaling_cpu.sbatch  # LJ minimizer (CG; MIN_OPT=lbfgs)
 #
 # Everything is an env-overridable variable in the CONFIG block below — no
 # hardcoded repo / LAMMPS / output paths, no meta.json, no REPS loop.
@@ -22,12 +23,15 @@
 set -e
 
 # ── CONFIG (override via env) ──────────────────────────────────────────────
-SYS="${SYS:-lj}"                            # lj | pe
+SYS="${SYS:-lj}"                            # lj | pe | min (LJ minimizer)
 CORES="${CORES:-1 8 32 128 256 512 1024}"   # MPI rank counts to sweep
 STEPS="${STEPS:-50}"                        # timed MD steps
 WEAK_PER_RANK="${WEAK_PER_RANK:-200000}"    # weak scaling: atoms per rank
 STRONG_TOTAL="${STRONG_TOTAL:-8000000}"     # strong scaling: fixed total atoms
+MIN_ITERS="${MIN_ITERS:-100}"               # SYS=min: optimizer iterations
+MIN_OPT="${MIN_OPT:-cg}"                    # SYS=min: cg | lbfgs
 LMP="${LMP:-}"                              # path to LAMMPS 'lmp'; empty ⇒ AV only
+MOLRS="${MOLRS:-$HOME/work/molcrafts/molrs}" # molrs checkout (../molrs breaks from a worktree)
 
 # ── ENV (auto-derived; portable) ───────────────────────────────────────────
 # Under sbatch the script is copied to a spool dir, so $0 is NOT the repo path.
@@ -41,12 +45,17 @@ module load buildenv-gcc/2026.03 2>/dev/null || true
 export LD_LIBRARY_PATH="$LIBRARY_PATH:$LD_LIBRARY_PATH"
 export OMP_NUM_THREADS=1
 AV="$REPO/build-cpu/benchmarks/scaling"
+AVMIN="$REPO/build-cpu/benchmarks/minimize_scaling"
 SR="srun --mpi=pmi2 -c 1"   # account/partition inherited from the SBATCH allocation
 SYSU=$(echo "$SYS" | tr a-z A-Z)
 # plot_scaling.py reads <sys>/runs/<id>/results_cpu.csv and picks the latest id;
 # keep the <sha>_<date> run dir so the figure regenerates with one command.
+# SYS=min reuses the lj system dir but writes results_cpu_min.csv so the MD
+# plotter never pools minimizer rows with MD rows (it groups by mode,engine).
+SYSDIR="$SYS"; CSV="results_cpu.csv"
+[ "$SYS" = min ] && { SYSDIR=lj; CSV="results_cpu_min.csv"; }
 RUN_ID="$(git rev-parse --short HEAD 2>/dev/null || echo local)_$(date +%F)"
-OUT="$REPO/benchmarks/md/$SYS/performance/runs/$RUN_ID/results_cpu.csv"
+OUT="$REPO/benchmarks/md/$SYSDIR/performance/runs/$RUN_ID/$CSV"
 mkdir -p "$(dirname "$OUT")"
 echo "engine,system,mode,ng,atoms,matom_step_s,vram_gb,rep" | tee "$OUT"
 
@@ -56,8 +65,9 @@ if [ ! -x "$AV" ]; then
   # wrongly aarch64. Harmless if already correct.
   export RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-stable-x86_64-unknown-linux-gnu}"
   cmake -S . -B build-cpu -DATV_BUILD_CUDA=OFF -DATV_USE_MPI=ON \
-        -DATV_BUILD_BENCHMARKS=ON -DCMAKE_BUILD_TYPE=Release >/dev/null
-  cmake --build build-cpu -j --target scaling polyethylene_tension >/dev/null
+        -DATV_BUILD_BENCHMARKS=ON -DCMAKE_BUILD_TYPE=Release \
+        -DATV_MOLRS_PATH="$MOLRS" >/dev/null
+  cmake --build build-cpu -j --target scaling minimize_scaling polyethylene_tension >/dev/null
 fi
 
 # ── helpers ────────────────────────────────────────────────────────────────
@@ -75,6 +85,15 @@ av_lj(){ local mode=$1 p=$2 flag=$3 val=$4 row
   [ -n "$row" ] || return 0
   echo "AV,$SYSU,$mode,$p,$(echo $row|cut -d, -f2),$(awk -F, -v r="$row" 'BEGIN{split(r,a,",");printf "%.1f",a[2]*1000/a[5]/1e6}'),$(awk -F, -v r="$row" 'BEGIN{split(r,a,",");printf "%.2f",a[8]/1048576}'),1" | tee -a "$OUT"; }
 
+# Minimizer (SYS=min): CSV row is ranks,atoms,iters,total_s,per_iter_ms,
+# per_rank,mode,opt,rss_kb — same throughput formula as av_lj (col2 atoms,
+# col5 per-iter ms), RSS in col 9. Matom-iter/s == Matom-feval/s (fixed-alpha
+# optimizers do exactly 1 force evaluation per iteration).
+av_min(){ local mode=$1 p=$2 flag=$3 val=$4 row
+  row=$($SR -n $p $AVMIN $flag $val --iters $MIN_ITERS --opt $MIN_OPT --quiet | grep -E '^[0-9]+,' | tail -1) || return 0
+  [ -n "$row" ] || return 0
+  echo "AV,$SYSU,$mode,$p,$(echo $row|cut -d, -f2),$(awk -F, -v r="$row" 'BEGIN{split(r,a,",");printf "%.1f",a[2]*1000/a[5]/1e6}'),$(awk -F, -v r="$row" 'BEGIN{split(r,a,",");printf "%.2f",a[9]/1048576}'),1" | tee -a "$OUT"; }
+
 av_pe(){ local mode=$1 p=$2 grid=$3 atoms=$4 rd; rd=$(mktemp -d)
   local rss; rss=$(lmp_rss $SR -n $p /usr/bin/time -v "$REPO/build-cpu/benchmarks/polyethylene_tension" \
         --backend cpu --pe-melt-grid "$grid" --mode stage:1 --scale "$(awk -v s=$STEPS 'BEGIN{printf "%.4f",s/10000}')" --out-dir "$rd" --quiet)
@@ -86,6 +105,14 @@ av_pe(){ local mode=$1 p=$2 grid=$3 atoms=$4 rd; rd=$(mktemp -d)
 lmp_lj(){ [ -n "$LMP" ] || return 0; local mode=$1 p=$2 cells=$3 log; log=$(mktemp)
   local rss; rss=$(lmp_rss $SR -n $p /usr/bin/time -v "$LMP" -in "$REPO/benchmarks/md/lj/performance/in.lj_kk" -v cells $cells -v steps $STEPS -log "$log")
   local r; r=$(lmp_tput "$log"); rm -f "$log"; [ -n "$r" ] || return 0
+  echo "LAMMPS,$SYSU,$mode,$p,$(echo $r|cut -d' ' -f2),$(echo $r|cut -d' ' -f1),$rss,1" | tee -a "$OUT"; }
+
+# LAMMPS minimize: work unit is FORCE EVALUATIONS (min_style cg line-searches
+# ~2 fevals/iter), parsed from the minimize stats block; Matom-feval/s is the
+# number comparable to AV's Matom-iter/s.
+lmp_min(){ [ -n "$LMP" ] || return 0; local mode=$1 p=$2 cells=$3 log; log=$(mktemp)
+  local rss; rss=$(lmp_rss $SR -n $p /usr/bin/time -v "$LMP" -in "$REPO/benchmarks/md/lj/performance/in.lj_min_scale_kk" -v cells $cells -v iters $MIN_ITERS -log "$log")
+  local r; r=$(awk '/Iterations, force evaluations/{fe=$NF} /^Loop time of/{t=$4;a=$12} END{if(t>0&&fe>0)printf "%.1f %d",a*fe/t/1e6,a}' "$log"); rm -f "$log"; [ -n "$r" ] || return 0
   echo "LAMMPS,$SYSU,$mode,$p,$(echo $r|cut -d' ' -f2),$(echo $r|cut -d' ' -f1),$rss,1" | tee -a "$OUT"; }
 
 lmp_pe(){ [ -n "$LMP" ] || return 0; local mode=$1 p=$2 nx=$3 ny=$4 nz=$5 atoms=$6 log; log=$(mktemp)
@@ -104,6 +131,9 @@ for p in $CORES; do
   if [ "$SYS" = lj ]; then
     av_lj  weak   $p --atoms-per-rank $WEAK_PER_RANK; lmp_lj weak   $p "$(cbrt $((WEAK_PER_RANK*p)))"
     av_lj  strong $p --atoms          $STRONG_TOTAL ; lmp_lj strong $p "$(cbrt $STRONG_TOTAL)"
+  elif [ "$SYS" = min ]; then
+    av_min weak   $p --atoms-per-rank $WEAK_PER_RANK; lmp_min weak   $p "$(cbrt $((WEAK_PER_RANK*p)))"
+    av_min strong $p --atoms          $STRONG_TOTAL ; lmp_min strong $p "$(cbrt $STRONG_TOTAL)"
   else
     g=${PE_GRID[$p]}; a=${PE_AT[$p]}; [ -n "$g" ] || continue; set -- $g
     av_pe  weak   $p "$1,$2,$3" $a;                   lmp_pe weak   $p $1 $2 $3 $a
@@ -114,8 +144,10 @@ echo "=== wrote $OUT ==="
 # Always plot (per project convention: throughput on left-y, MEMORY on the
 # right-y, TOTAL ATOMS on the top-x). Best-effort — needs python+matplotlib;
 # if absent, run the printed command on the login node.
-PLOT="$REPO/benchmarks/md/$SYS/scaling_cpu.png"
-if python3 -c "import matplotlib" 2>/dev/null; then
+PLOT="$REPO/benchmarks/md/$SYSDIR/scaling_cpu.png"
+if [ "$SYS" = min ]; then
+  echo "=== SYS=min: no auto-plot (results_cpu_min.csv is analysed directly) ==="
+elif python3 -c "import matplotlib" 2>/dev/null; then
   python3 "$REPO/benchmarks/md/common/plot_scaling.py" --backend cpu --id "$RUN_ID" --out "$PLOT" \
     && echo "=== wrote figure $PLOT ===" || echo "(plot failed; run the command below on the login node)"
 fi

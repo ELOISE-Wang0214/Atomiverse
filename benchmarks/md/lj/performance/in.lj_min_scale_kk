@@ -1,0 +1,45 @@
+# LJ minimization SCALING deck matching the Atomiverse CPU minimizer
+# benchmark (benchmarks/md/lj/performance/minimize_scaling.cpp). Distinct
+# from in.lj_min_kk (single-GPU CONVERGENCE benchmark, fcc rho*=1.0, reads a
+# data file): this deck measures fixed-work throughput at 1..N MPI ranks.
+# Reduced LJ units:
+#   sigma = epsilon = 1, simple-cubic rho* = 0.712, cutoff = 2 sigma,
+#   skin = 0.6 sigma, ~0.04-lattice-unit random displacement (= AV's 0.1-A
+#   jitter at spacing 2.8 A) as the perturbation the minimizer relaxes.
+# LAMMPS-benchmark convention: etol = ftol = 0 so the iteration budget is
+# always exhausted — fixed work at every rank count. NB the sc rho*=0.712
+# lattice is mechanically unstable under FULL relaxation (it would collapse
+# toward fcc — see in.lj_min_kk); within the fixed 100-iteration budget the
+# displacements stay < 0.03 lattice units and the per-iteration work is
+# uniform, which is all a throughput benchmark needs. Run:
+#   mpirun -n <P> lmp -in in.lj_min_scale_kk -v cells <L> -v iters <N>
+# Atom count = cells^3.
+#
+# Work-unit note: LAMMPS min_style cg does a line search (typically ~2 force
+# evaluations per iteration); the AV optimizers are fixed-alpha (exactly 1
+# feval per iteration). Compare via Matom-FEVAL/s using the "Force
+# evaluations" count printed in the minimize stats block, not iterations.
+variable        cells index 64
+variable        iters index 100
+variable        evals equal 100*${iters}
+
+units           lj
+atom_style      atomic
+lattice         sc 0.712
+region          box block 0 ${cells} 0 ${cells} 0 ${cells}
+create_box      1 box
+create_atoms    1 box
+mass            1 1.0
+displace_atoms  all random 0.04 0.04 0.04 12345 units lattice
+
+pair_style      lj/cut 2.0
+pair_coeff      1 1 1.0 1.0
+
+neighbor        0.6 bin
+neigh_modify    every 1 delay 0 check yes
+
+min_style       cg
+minimize        0 0 ${iters} ${evals}
+# Throughput is parsed from LAMMPS's standard
+# "Loop time of <t> on <P> procs for <steps> steps with <atoms> atoms" line
+# plus the "Force evaluations" count in the minimize stats block.
