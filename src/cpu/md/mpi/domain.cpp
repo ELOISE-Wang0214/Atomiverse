@@ -280,19 +280,19 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
         a.nspecial(ni, 2) = a.nspecial(oi, 2);
         // Wide arrays exist only for atom_style-molecular (lazy bonded storage).
         if (a.has_bonded()) {
-            for (int m = 0; m < cpu::Atom::kMaxBondPerAtom; ++m) {
+            for (int m = 0; m < a.bond_per_atom; ++m) {
                 a.bond_atom(ni, m) = a.bond_atom(oi, m);
                 a.bond_type(ni, m) = a.bond_type(oi, m);
             }
-            for (int m = 0; m < 2 * cpu::Atom::kMaxAnglePerAtom; ++m)
+            for (int m = 0; m < 2 * a.angle_per_atom; ++m)
                 a.angle_atom(ni, m) = a.angle_atom(oi, m);
-            for (int m = 0; m < cpu::Atom::kMaxAnglePerAtom; ++m)
+            for (int m = 0; m < a.angle_per_atom; ++m)
                 a.angle_type(ni, m) = a.angle_type(oi, m);
-            for (int m = 0; m < 3 * cpu::Atom::kMaxDihedralPerAtom; ++m)
+            for (int m = 0; m < 3 * a.dihedral_per_atom; ++m)
                 a.dihedral_atom(ni, m) = a.dihedral_atom(oi, m);
-            for (int m = 0; m < cpu::Atom::kMaxDihedralPerAtom; ++m)
+            for (int m = 0; m < a.dihedral_per_atom; ++m)
                 a.dihedral_type(ni, m) = a.dihedral_type(oi, m);
-            for (int m = 0; m < cpu::Atom::kMaxSpecial; ++m)
+            for (int m = 0; m < a.maxspecial; ++m)
                 a.special(ni, m) = a.special(oi, m);
         }
     }

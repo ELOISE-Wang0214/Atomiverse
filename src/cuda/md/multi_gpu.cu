@@ -759,11 +759,14 @@ void MultiGpu::partition(const cpu::Frame& global, double ghost_headroom) {
         sub.atoms.nlocal = cnt;
         sub.box = global.box;
         // The partition writes the wide bonded arrays directly (not via
-        // add_bond), so explicitly allocate them on the fresh sub frame when the
-        // system carries topology — otherwise the lazy atom_style-molecular
-        // storage stays empty and the per-atom writes below run out of bounds.
+        // add_bond), so explicitly size them on the fresh sub frame to the
+        // global frame's runtime strides — otherwise the lazy
+        // atom_style-molecular storage stays empty (all strides 0) and the
+        // per-atom writes below run out of bounds.
         if (has_bonded)
-            sub.atoms.ensure_bonded_storage();
+            sub.atoms.reserve_topology(
+                global.atoms.bond_per_atom, global.atoms.angle_per_atom,
+                global.atoms.dihedral_per_atom, global.atoms.maxspecial);
         for (int k = 0; k < cnt; ++k) {
             const int g = idx[k];
             sub.atoms.x[k] = global.atoms.x[g];
@@ -781,18 +784,18 @@ void MultiGpu::partition(const cpu::Frame& global, double ghost_headroom) {
             // (resolved to local rows each reneighbor via the tag→local map).
             if (has_bonded) {
                 sub.atoms.num_bond[k] = global.atoms.num_bond[g];
-                for (int m = 0; m < cpu::Atom::kMaxBondPerAtom; ++m) {
+                for (int m = 0; m < global.atoms.bond_per_atom; ++m) {
                     sub.atoms.bond_atom(k, m) = global.atoms.bond_atom(g, m);
                     sub.atoms.bond_type(k, m) = global.atoms.bond_type(g, m);
                 }
                 sub.atoms.num_angle[k] = global.atoms.num_angle[g];
-                for (int m = 0; m < cpu::Atom::kMaxAnglePerAtom; ++m) {
+                for (int m = 0; m < global.atoms.angle_per_atom; ++m) {
                     sub.atoms.angle_atom(k, 2 * m) = global.atoms.angle_atom(g, 2 * m);
                     sub.atoms.angle_atom(k, 2 * m + 1) = global.atoms.angle_atom(g, 2 * m + 1);
                     sub.atoms.angle_type(k, m) = global.atoms.angle_type(g, m);
                 }
                 sub.atoms.num_dihedral[k] = global.atoms.num_dihedral[g];
-                for (int m = 0; m < cpu::Atom::kMaxDihedralPerAtom; ++m) {
+                for (int m = 0; m < global.atoms.dihedral_per_atom; ++m) {
                     sub.atoms.dihedral_atom(k, 3 * m) = global.atoms.dihedral_atom(g, 3 * m);
                     sub.atoms.dihedral_atom(k, 3 * m + 1) = global.atoms.dihedral_atom(g, 3 * m + 1);
                     sub.atoms.dihedral_atom(k, 3 * m + 2) = global.atoms.dihedral_atom(g, 3 * m + 2);
@@ -800,7 +803,7 @@ void MultiGpu::partition(const cpu::Frame& global, double ghost_headroom) {
                 }
                 for (int t = 0; t < 3; ++t)
                     sub.atoms.nspecial(k, t) = global.atoms.nspecial(g, t);
-                for (int t = 0; t < cpu::Atom::kMaxSpecial; ++t)
+                for (int t = 0; t < global.atoms.maxspecial; ++t)
                     sub.atoms.special(k, t) = global.atoms.special(g, t);
             }
         }
@@ -1201,14 +1204,14 @@ void MultiGpu::rebuild_bonded_tuples() {
         return;
     build_tag_maps();
     const int N = count();
-    constexpr int MB = cpu::Atom::kMaxBondPerAtom;
-    constexpr int MA = cpu::Atom::kMaxAnglePerAtom;
-    constexpr int MD = cpu::Atom::kMaxDihedralPerAtom;
     for (int s = 0; s < N; ++s) {
         const int nl = frames_[s].n_local_;
         const int na = nl + frames_[s].n_ghost_;
         dm_.set_device(s);
         auto& a = frames_[s].atoms;
+        const int MB = a.bond_per_atom;
+        const int MA = a.angle_per_atom;
+        const int MD = a.dihedral_per_atom;
         auto& F = frames_[s];
         int* d_drop = drop_ctr_[s]; // persistent (allocated in build_tag_maps)
         CKM(cudaMemset(d_drop, 0, sizeof(int)));
@@ -2108,27 +2111,44 @@ void mig_free(MigBuf& b) {
 }
 
 // Per-atom bonded topology carried alongside the core MigBuf when the system
-// has bonds (multigpu-bonded P2.3). Row widths mirror cpu::Atom; partners are
-// global tags (resolved to local rows on the new owner each reneighbor).
+// has bonds (multigpu-bonded P2.3). Row widths follow the frame's RUNTIME
+// topology strides (identical across subdomains — set from the one global
+// cpu::Frame at partition); partners are global tags (resolved to local rows
+// on the new owner each reneighbor).
 struct MigBondedBuf {
     int *num_bond, *bond_type, *num_angle, *angle_type, *num_dihedral,
         *dihedral_type, *nspecial;
     std::int64_t *bond_atom, *angle_atom, *dihedral_atom, *special;
 };
-void migb_alloc(MigBondedBuf& b, int m) {
-    const int MB = cpu::Atom::kMaxBondPerAtom, MA = cpu::Atom::kMaxAnglePerAtom,
-              MD = cpu::Atom::kMaxDihedralPerAtom, MS = cpu::Atom::kMaxSpecial;
-    CKM(mallocp(&b.num_bond, m * sizeof(int)));
-    CKM(mallocp(&b.bond_atom, m * MB * sizeof(std::int64_t)));
-    CKM(mallocp(&b.bond_type, m * MB * sizeof(int)));
-    CKM(mallocp(&b.num_angle, m * sizeof(int)));
-    CKM(mallocp(&b.angle_atom, m * 2 * MA * sizeof(std::int64_t)));
-    CKM(mallocp(&b.angle_type, m * MA * sizeof(int)));
-    CKM(mallocp(&b.num_dihedral, m * sizeof(int)));
-    CKM(mallocp(&b.dihedral_atom, m * 3 * MD * sizeof(std::int64_t)));
-    CKM(mallocp(&b.dihedral_type, m * MD * sizeof(int)));
-    CKM(mallocp(&b.nspecial, m * 3 * sizeof(int)));
-    CKM(mallocp(&b.special, m * MS * sizeof(std::int64_t)));
+void migb_alloc(MigBondedBuf& b, int m, int MB, int MA, int MD, int MS) {
+    // A stride may legitimately be 0 (e.g. bonds-only system: MA == MD == 0);
+    // leave that pointer null — every consumer loops `w < stride` so a null
+    // array is never dereferenced.
+    auto malloc_i = [](int*& p, std::size_t bytes) {
+        if (bytes == 0) {
+            p = nullptr;
+            return cudaSuccess;
+        }
+        return mallocp(&p, bytes);
+    };
+    auto malloc_t = [](std::int64_t*& p, std::size_t bytes) {
+        if (bytes == 0) {
+            p = nullptr;
+            return cudaSuccess;
+        }
+        return mallocp(&p, bytes);
+    };
+    CKM(malloc_i(b.num_bond, m * sizeof(int)));
+    CKM(malloc_t(b.bond_atom, m * MB * sizeof(std::int64_t)));
+    CKM(malloc_i(b.bond_type, m * MB * sizeof(int)));
+    CKM(malloc_i(b.num_angle, m * sizeof(int)));
+    CKM(malloc_t(b.angle_atom, m * 2 * MA * sizeof(std::int64_t)));
+    CKM(malloc_i(b.angle_type, m * MA * sizeof(int)));
+    CKM(malloc_i(b.num_dihedral, m * sizeof(int)));
+    CKM(malloc_t(b.dihedral_atom, m * 3 * MD * sizeof(std::int64_t)));
+    CKM(malloc_i(b.dihedral_type, m * MD * sizeof(int)));
+    CKM(malloc_i(b.nspecial, m * 3 * sizeof(int)));
+    CKM(malloc_t(b.special, m * MS * sizeof(std::int64_t)));
 }
 void migb_free(MigBondedBuf& b) {
     freep(b.num_bond);
@@ -2424,8 +2444,12 @@ void MultiGpu::migrate() {
     // send buffer (BEFORE compaction overwrites leaver rows), then compact
     // the source in place. Same-device stream order (stream 0) sequences
     // gathers before the fill kernels.
-    const int MB = cpu::Atom::kMaxBondPerAtom, MA = cpu::Atom::kMaxAnglePerAtom,
-              MD = cpu::Atom::kMaxDihedralPerAtom, MS = cpu::Atom::kMaxSpecial;
+    // Runtime topology strides — identical across subdomains (all set from
+    // the one global cpu::Frame at partition).
+    const int MB = frames_[0].atoms.bond_per_atom,
+              MA = frames_[0].atoms.angle_per_atom,
+              MD = frames_[0].atoms.dihedral_per_atom,
+              MS = frames_[0].atoms.maxspecial;
     std::vector<std::vector<MigBuf>> sb(N, std::vector<MigBuf>(N));
     std::vector<std::vector<MigBondedBuf>> sbb(N, std::vector<MigBondedBuf>(N));
     for (int src = 0; src < N; ++src) {
@@ -2445,7 +2469,7 @@ void MultiGpu::migrate() {
                                        B.charge, B.type, B.tag);
             CKM(cudaGetLastError());
             if (bonded_) {
-                migb_alloc(sbb[src][dst], c);
+                migb_alloc(sbb[src][dst], c, MB, MA, MD, MS);
                 MigBondedBuf& BB = sbb[src][dst];
                 gather_bonded_state<<<grd, blk>>>(
                     idx, c, MB, MA, MD, MS, a.num_bond, a.bond_atom, a.bond_type,

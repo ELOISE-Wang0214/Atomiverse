@@ -8,23 +8,18 @@
 
 #include "atom_cell_sort.cuh"
 
-#include "atomiverse/cpu/atom.h" // kMaxBondPerAtom / kMaxAnglePerAtom / ...
 #include "atomiverse/cuda/launch.cuh"
 #include "atomiverse/cuda/types.cuh"
 #include <cub/cub.cuh>
 #include <cuda_runtime.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 
 namespace ATV::cuda::md::nlist {
 
 namespace {
-
-constexpr int MB = cpu::Atom::kMaxBondPerAtom;
-constexpr int MA = cpu::Atom::kMaxAnglePerAtom;
-constexpr int MD = cpu::Atom::kMaxDihedralPerAtom;
-constexpr int MS = cpu::Atom::kMaxSpecial;
 
 // Identical to nlist_direct.cu::cell_of (same wrap + clamp + linearization:
 // cell = (cx*dy + cy)*dz + cz, cx slowest / cz fastest).
@@ -175,22 +170,25 @@ void apply_permutation_owned(Frame& frame, const int* order, int n,
     permute_i64(a.tag, order, n, 1, buf.stage_i64, stream);
     permute_i8(a.image, order, n, 3, buf.stage_i8, stream); // image[i*3+d]
 
-    // -- Bonded SoA (multi-GPU only; null on single-GPU). Strides mirror
-    //    transfer.cu::materialize_per_atom_bonded exactly. --
+    // -- Bonded SoA (multi-GPU only; null on single-GPU). Runtime strides
+    //    mirror transfer.cu::materialize_per_atom_bonded exactly. --
     permute_i(a.num_bond, order, n, 1, buf.stage_i, stream);
-    permute_i64(a.bond_atom, order, n, MB, buf.stage_i64, stream);
-    permute_i(a.bond_type, order, n, MB, buf.stage_i, stream);
+    permute_i64(a.bond_atom, order, n, a.bond_per_atom, buf.stage_i64, stream);
+    permute_i(a.bond_type, order, n, a.bond_per_atom, buf.stage_i, stream);
 
     permute_i(a.num_angle, order, n, 1, buf.stage_i, stream);
-    permute_i64(a.angle_atom, order, n, 2 * MA, buf.stage_i64, stream);
-    permute_i(a.angle_type, order, n, MA, buf.stage_i, stream);
+    permute_i64(a.angle_atom, order, n, 2 * a.angle_per_atom, buf.stage_i64,
+                stream);
+    permute_i(a.angle_type, order, n, a.angle_per_atom, buf.stage_i, stream);
 
     permute_i(a.num_dihedral, order, n, 1, buf.stage_i, stream);
-    permute_i64(a.dihedral_atom, order, n, 3 * MD, buf.stage_i64, stream);
-    permute_i(a.dihedral_type, order, n, MD, buf.stage_i, stream);
+    permute_i64(a.dihedral_atom, order, n, 3 * a.dihedral_per_atom,
+                buf.stage_i64, stream);
+    permute_i(a.dihedral_type, order, n, a.dihedral_per_atom, buf.stage_i,
+              stream);
 
     permute_i(a.nspecial, order, n, 3, buf.stage_i, stream);
-    permute_i64(a.special, order, n, MS, buf.stage_i64, stream);
+    permute_i64(a.special, order, n, a.maxspecial, buf.stage_i64, stream);
 }
 
 void cell_sort_owned(Frame& frame, real_t Lx, real_t Ly, real_t Lz, int dx,
@@ -202,9 +200,15 @@ void cell_sort_owned(Frame& frame, real_t Lx, real_t Ly, real_t Lz, int dx,
 
     buf.resize(n);
     // Pre-size both the int64 and int staging to the widest per-atom column we
-    // touch (dihedral_atom at 3*MD) so apply_permutation_owned never grows a
-    // stage mid-loop (a grow would force a device sync).
-    buf.resize_bonded(n, 3 * MD);
+    // touch so apply_permutation_owned never grows a stage mid-loop (a grow
+    // would force a device sync). Runtime strides; 3 covers image/nspecial.
+    const auto& a = frame.atoms;
+    int max_cols = 3;
+    max_cols = std::max(max_cols, a.bond_per_atom);
+    max_cols = std::max(max_cols, 2 * a.angle_per_atom);
+    max_cols = std::max(max_cols, 3 * a.dihedral_per_atom);
+    max_cols = std::max(max_cols, a.maxspecial);
+    buf.resize_bonded(n, max_cols);
 
     // 1. cell key + identity index per owned atom.
     {

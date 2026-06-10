@@ -204,13 +204,13 @@ TEST(MultiGpu, MigratePreservesBondedTopology) {
     // tag→local resolve, so this is independent of the halo/PBC (the resolve
     // path is covered by the static Partition test). If migrate lost or
     // corrupted any atom's topology, a bond would be missing or wrong here.
-    const int MB = cpu::Atom::kMaxBondPerAtom;
     std::set<std::pair<long long, long long>> got;
     for (int s = 0; s < mg.count(); ++s) {
         const int nl = mg.n_local(s);
         if (nl == 0)
             continue;
         const auto& F = mg.frame(s);
+        const int MB = F.atoms.bond_per_atom; // runtime stride (per frame)
         std::vector<int> nbv(nl);
         std::vector<long long> ba(static_cast<std::size_t>(nl) * MB), tags(nl);
         cudaMemcpy(nbv.data(), F.atoms.num_bond, nl * sizeof(int),

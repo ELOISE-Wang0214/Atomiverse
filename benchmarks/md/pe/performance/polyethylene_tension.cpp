@@ -705,6 +705,11 @@ cpu::Frame make_pe_box_local(int chains_per_axis, int n_carbons, double box_len,
     frame.atoms.nlocal = n;
     frame.atoms.map_clear();
     frame.atoms.map_set(0, n);
+    // The analytic special list below writes the wide `special` array
+    // directly (bypassing build_special_list), so size the runtime topology
+    // strides up front: linear chain = 1 owned bond/angle/dihedral per atom,
+    // up to 6 special partners (p±1, p±2, p±3).
+    frame.atoms.reserve_topology(1, 1, 1, 6);
     const int nc = n_carbons;
     for (int k = 0; k < n; ++k) {
         const std::int64_t t = TAG[k];
@@ -808,6 +813,9 @@ cpu::Frame make_pe_melt_local(int nx, int ny, int nz, int chain_len,
     frame.atoms.nlocal = n;
     frame.atoms.map_clear();
     frame.atoms.map_set(0, n);
+    // Direct wide-array special writes below — pre-size the runtime strides
+    // (see make_pe_melt above for the rationale).
+    frame.atoms.reserve_topology(1, 1, 1, 6);
     for (int q = 0; q < n; ++q) {
         const std::int64_t t = TAG[q];
         const int p = POS[q];

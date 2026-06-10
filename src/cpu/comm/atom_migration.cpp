@@ -5,7 +5,8 @@
 /// spatial slab, the atom (and all its per-atom fields) is shipped to the
 /// rank whose slab contains the new position. Implemented as a single
 /// `MPI_Alltoallv` over byte buffers so every world rank participates and
-/// either packs/unpacks zero bytes or some multiple of `kAtomPayloadBytes`.
+/// either packs/unpacks zero bytes or some multiple of the communicator-agreed
+/// per-atom payload size (`atom_payload_bytes`).
 ///
 /// Bonded-tuple migration is **not** handled here; that is tracked under
 /// See msu-pe-validation.md (MSU-PE multi-rank validation).
@@ -43,8 +44,16 @@ namespace {
 // special). Atoms with fewer bonds than the max simply leave the
 // trailing slots zero-padded — receiver reads `num_bond` first and
 // only consumes that many partner entries.
-constexpr int kAtomPayloadDoubles = comm::kMaxExchangeDoubles;
-constexpr int kAtomPayloadBytes = sizeof(double) * kAtomPayloadDoubles;
+//
+// The slot size follows the RUNTIME topology strides (PE: 39 doubles vs the
+// old compile-time worst case of 84), reduced MAX across the communicator so
+// every rank counts buffer atoms with the same divisor.
+int atom_payload_bytes(const cpu::Frame& frame, MPI_Comm comm) {
+    int local = comm::max_exchange_doubles(frame.atoms);
+    int global = local;
+    MPI_Allreduce(&local, &global, 1, MPI_INT, MPI_MAX, comm);
+    return static_cast<int>(sizeof(double)) * global;
+}
 
 inline int rank_along_dim(double q, double L, int dims_d) {
     if (dims_d <= 1)
@@ -100,26 +109,25 @@ inline int dest_rank_for(const md::mpi::DomainDecomposition& dd, double x, doubl
 
 // Pack one atom (full SoA + per-atom topology) into `buf` at `offset`.
 // Delegates to `comm::pack_exchange` for the payload layout; pads with
-// zeros up to the worst-case `kAtomPayloadDoubles` so every atom
+// zeros up to the communicator-agreed `payload_bytes` so every atom
 // occupies the same byte count on the wire (atom_migration's
 // `MPI_Alltoallv` needs uniform per-atom strides).
 std::size_t pack_atom(std::vector<char>& buf, std::size_t offset,
-                      const Frame& frame, int i) {
-    // pack_exchange writes between min and kMaxExchangeDoubles doubles.
+                      const Frame& frame, int i, std::size_t payload_bytes) {
     double* dst = reinterpret_cast<double*>(buf.data() + offset);
     // Zero-pad the slot first so the trailing topology entries don't
     // carry stale data.
-    std::memset(dst, 0, kAtomPayloadBytes);
+    std::memset(dst, 0, payload_bytes);
     comm::pack_exchange(frame.atoms, i, dst);
-    return offset + kAtomPayloadBytes;
+    return offset + payload_bytes;
 }
 
 std::size_t unpack_atom(const std::vector<char>& buf, std::size_t offset,
-                        Frame& frame, int slot) {
+                        Frame& frame, int slot, std::size_t payload_bytes) {
     const double* src =
         reinterpret_cast<const double*>(buf.data() + offset);
     comm::unpack_exchange(frame.atoms, slot, src);
-    return offset + kAtomPayloadBytes;
+    return offset + payload_bytes;
 }
 
 // Move owner row `oi` into slot `ni` (no-op when `oi == ni`). Handles
@@ -155,29 +163,30 @@ void move_row(Frame& frame, int ni, int oi) {
     a.nspecial(ni, 1) = a.nspecial(oi, 1);
     a.nspecial(ni, 2) = a.nspecial(oi, 2);
     if (a.has_bonded()) {
-        for (int m = 0; m < cpu::Atom::kMaxBondPerAtom; ++m) {
+        for (int m = 0; m < a.bond_per_atom; ++m) {
             a.bond_atom(ni, m) = a.bond_atom(oi, m);
             a.bond_type(ni, m) = a.bond_type(oi, m);
         }
-        for (int m = 0; m < 2 * cpu::Atom::kMaxAnglePerAtom; ++m)
+        for (int m = 0; m < 2 * a.angle_per_atom; ++m)
             a.angle_atom(ni, m) = a.angle_atom(oi, m);
-        for (int m = 0; m < cpu::Atom::kMaxAnglePerAtom; ++m)
+        for (int m = 0; m < a.angle_per_atom; ++m)
             a.angle_type(ni, m) = a.angle_type(oi, m);
-        for (int m = 0; m < 3 * cpu::Atom::kMaxDihedralPerAtom; ++m)
+        for (int m = 0; m < 3 * a.dihedral_per_atom; ++m)
             a.dihedral_atom(ni, m) = a.dihedral_atom(oi, m);
-        for (int m = 0; m < cpu::Atom::kMaxDihedralPerAtom; ++m)
+        for (int m = 0; m < a.dihedral_per_atom; ++m)
             a.dihedral_type(ni, m) = a.dihedral_type(oi, m);
-        for (int m = 0; m < cpu::Atom::kMaxSpecial; ++m)
+        for (int m = 0; m < a.maxspecial; ++m)
             a.special(ni, m) = a.special(oi, m);
     }
 }
 
 // Append owned atom `i`'s fixed-stride payload to the back of `buf`.
-inline void pack_to(std::vector<char>& buf, const Frame& frame, int i) {
+inline void pack_to(std::vector<char>& buf, const Frame& frame, int i,
+                    std::size_t payload_bytes) {
     const std::size_t off = buf.size();
-    buf.resize(off + kAtomPayloadBytes);
+    buf.resize(off + payload_bytes);
     double* dst = reinterpret_cast<double*>(buf.data() + off);
-    std::memset(dst, 0, kAtomPayloadBytes);
+    std::memset(dst, 0, payload_bytes);
     comm::pack_exchange(frame.atoms, i, dst);
 }
 
@@ -191,7 +200,8 @@ inline void pack_to(std::vector<char>& buf, const Frame& frame, int i) {
 // cross-node RSS blow up (3.16x LAMMPS at 1024 ranks). Positions are already
 // wrapped into [0, L) by the integrator's wrap_orthorhombic, so a raw
 // coord-vs-slab compare matches the old dest_rank_for binning exactly.
-void exchange_along_dim(Frame& frame, md::mpi::DomainDecomposition* dd, int dim) {
+void exchange_along_dim(Frame& frame, md::mpi::DomainDecomposition* dd, int dim,
+                        std::size_t payload_bytes) {
     if (dd->dims[dim] <= 1)
         return; // not decomposed along this axis — nothing leaves via it
     const int lo_nbr = dd->face_neighbors[static_cast<std::size_t>(2 * dim)];
@@ -212,9 +222,9 @@ void exchange_along_dim(Frame& frame, md::mpi::DomainDecomposition* dd, int dim)
         for (int i = 0; i < dd->n_local; ++i) {
             const double qi = q[i];
             if (qi < sublo) {
-                pack_to(send_lo, frame, i); // exits the −dim face
+                pack_to(send_lo, frame, i, payload_bytes); // exits −dim face
             } else if (qi >= subhi) {
-                pack_to(send_hi, frame, i); // exits the +dim face
+                pack_to(send_hi, frame, i, payload_bytes); // exits +dim face
             } else {
                 move_row(frame, keep, i); // stays; compact to front
                 ++keep;
@@ -224,9 +234,9 @@ void exchange_along_dim(Frame& frame, md::mpi::DomainDecomposition* dd, int dim)
         frame.atoms.nlocal = keep;
 
         const int n_send_lo =
-            static_cast<int>(send_lo.size() / kAtomPayloadBytes);
+            static_cast<int>(send_lo.size() / payload_bytes);
         const int n_send_hi =
-            static_cast<int>(send_hi.size() / kAtomPayloadBytes);
+            static_cast<int>(send_hi.size() / payload_bytes);
         int local_out = n_send_lo + n_send_hi;
         int global_out = 0;
         MPI_Allreduce(&local_out, &global_out, 1, MPI_INT, MPI_SUM, comm);
@@ -243,17 +253,14 @@ void exchange_along_dim(Frame& frame, md::mpi::DomainDecomposition* dd, int dim)
         MPI_Sendrecv(&n_send_lo, 1, MPI_INT, lo_nbr, 1, &n_recv_hi, 1, MPI_INT,
                      hi_nbr, 1, comm, &st);
 
-        recv_lo.assign(static_cast<std::size_t>(n_recv_lo) * kAtomPayloadBytes,
-                       0);
-        recv_hi.assign(static_cast<std::size_t>(n_recv_hi) * kAtomPayloadBytes,
-                       0);
-        MPI_Sendrecv(send_hi.data(), n_send_hi * kAtomPayloadBytes, MPI_BYTE,
-                     hi_nbr, 2, recv_lo.data(),
-                     n_recv_lo * kAtomPayloadBytes, MPI_BYTE, lo_nbr, 2, comm,
+        const int pb = static_cast<int>(payload_bytes);
+        recv_lo.assign(static_cast<std::size_t>(n_recv_lo) * payload_bytes, 0);
+        recv_hi.assign(static_cast<std::size_t>(n_recv_hi) * payload_bytes, 0);
+        MPI_Sendrecv(send_hi.data(), n_send_hi * pb, MPI_BYTE, hi_nbr, 2,
+                     recv_lo.data(), n_recv_lo * pb, MPI_BYTE, lo_nbr, 2, comm,
                      &st);
-        MPI_Sendrecv(send_lo.data(), n_send_lo * kAtomPayloadBytes, MPI_BYTE,
-                     lo_nbr, 3, recv_hi.data(),
-                     n_recv_hi * kAtomPayloadBytes, MPI_BYTE, hi_nbr, 3, comm,
+        MPI_Sendrecv(send_lo.data(), n_send_lo * pb, MPI_BYTE, lo_nbr, 3,
+                     recv_hi.data(), n_recv_hi * pb, MPI_BYTE, hi_nbr, 3, comm,
                      &st);
 
         const int n_recv = n_recv_lo + n_recv_hi;
@@ -264,12 +271,12 @@ void exchange_along_dim(Frame& frame, md::mpi::DomainDecomposition* dd, int dim)
         }
         int slot = dd->n_local;
         std::size_t o = 0;
-        for (int k = 0; k < n_recv_lo; ++k, o += kAtomPayloadBytes)
+        for (int k = 0; k < n_recv_lo; ++k, o += payload_bytes)
             comm::unpack_exchange(
                 frame.atoms, slot++,
                 reinterpret_cast<const double*>(recv_lo.data() + o));
         o = 0;
-        for (int k = 0; k < n_recv_hi; ++k, o += kAtomPayloadBytes)
+        for (int k = 0; k < n_recv_hi; ++k, o += payload_bytes)
             comm::unpack_exchange(
                 frame.atoms, slot++,
                 reinterpret_cast<const double*>(recv_hi.data() + o));
@@ -324,9 +331,11 @@ void Migrate::launch(const cpu::LaunchContext& ctx) {
     // owned atom lies within [sublo,subhi) on every axis, i.e. on the rank
     // dest_rank_for would assign it — identical end state to the old
     // MPI_Alltoallv, but with O(1)/O(log P) fabric state instead of O(world).
-    exchange_along_dim(frame, dd, 0);
-    exchange_along_dim(frame, dd, 1);
-    exchange_along_dim(frame, dd, 2);
+    const std::size_t payload_bytes =
+        static_cast<std::size_t>(atom_payload_bytes(frame, dd->cart_comm));
+    exchange_along_dim(frame, dd, 0, payload_bytes);
+    exchange_along_dim(frame, dd, 1, payload_bytes);
+    exchange_along_dim(frame, dd, 2, payload_bytes);
 
     dd->n_ghost = 0;
     ++dd->neighbor_generation;
@@ -393,8 +402,10 @@ void scatter_atoms_from_root(cpu::Frame& frame) {
     //    the whole system, so a byte-count displacement (`int`) overflows 2 GB
     //    at large N (4M atoms x payload > 2 GB → negative displ → segfault at
     //    256+ ranks). Atom counts stay < 2^31 for any realistic system.
+    const std::size_t payload_bytes =
+        static_cast<std::size_t>(atom_payload_bytes(frame, MPI_COMM_WORLD));
     MPI_Datatype atom_t;
-    MPI_Type_contiguous(kAtomPayloadBytes, MPI_BYTE, &atom_t);
+    MPI_Type_contiguous(static_cast<int>(payload_bytes), MPI_BYTE, &atom_t);
     MPI_Type_commit(&atom_t);
     std::vector<int> sc(world_size, 0), sd(world_size, 0), rc(world_size, 0),
         rd(world_size, 0);
@@ -404,11 +415,11 @@ void scatter_atoms_from_root(cpu::Frame& frame) {
         sc[r] = static_cast<int>(by_dest[r].size());
         tot_send += by_dest[r].size();
     }
-    std::vector<char> sbuf(tot_send * kAtomPayloadBytes);
+    std::vector<char> sbuf(tot_send * payload_bytes);
     std::size_t off = 0;
     for (int r = 0; r < world_size; ++r)
         for (int idx : by_dest[static_cast<std::size_t>(r)])
-            off = pack_atom(sbuf, off, frame, idx);
+            off = pack_atom(sbuf, off, frame, idx, payload_bytes);
 
     MPI_Alltoall(sc.data(), 1, MPI_INT, rc.data(), 1, MPI_INT, MPI_COMM_WORLD);
     std::size_t tot_recv = 0; // in atoms
@@ -416,7 +427,7 @@ void scatter_atoms_from_root(cpu::Frame& frame) {
         rd[r] = static_cast<int>(tot_recv);
         tot_recv += static_cast<std::size_t>(rc[r]);
     }
-    std::vector<char> rbuf(tot_recv * kAtomPayloadBytes);
+    std::vector<char> rbuf(tot_recv * payload_bytes);
     MPI_Alltoallv(sbuf.data(), sc.data(), sd.data(), atom_t, rbuf.data(),
                   rc.data(), rd.data(), atom_t, MPI_COMM_WORLD);
     MPI_Type_free(&atom_t);
@@ -430,7 +441,7 @@ void scatter_atoms_from_root(cpu::Frame& frame) {
     frame.atoms.set_capacity(n_recv + std::max(n_recv / 4, 16384));
     std::size_t r_off = 0;
     for (int k = 0; k < n_recv; ++k)
-        r_off = unpack_atom(rbuf, r_off, frame, k);
+        r_off = unpack_atom(rbuf, r_off, frame, k, payload_bytes);
     frame.atoms.nlocal = n_recv;
     frame.atoms.map_clear();
     frame.atoms.map_set(0, n_recv);
