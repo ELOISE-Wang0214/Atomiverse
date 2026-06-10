@@ -309,6 +309,22 @@ driver accepts either by adding the component.
 - **Gradients:** `scf_gradient(frame, integrals, result, config)` — unified analytic gradient (HF + KS)
 - **Utilities:** `basis_eval.h`, `grid.h`, `xc_functional.h`, `aspc_predictor.h`
 
+### Plane-wave SCF (requires `-DATV_BUILD_PW=ON`)
+- **CPU:** `cpu::pw::pw_scf(frame, upf_path, ecut_ry, k_mesh, tol, max_iter)`
+  — plane-wave LDA total energy (Ewald, KB pseudopotentials, block
+  Davidson, Pulay mixing, MP k-mesh; toy V_loc when `upf_path` empty).
+- **CUDA:** `cuda::pw::pw_scf(...)` (`cuda/pw/pw_scf.cuh`) — same
+  contract. The Davidson hot path (H·ψ via cuFFT Z2Z, KB projector
+  products and subspace algebra via cuBLAS, per-band density
+  accumulation) runs on device in
+  `cuda::pw::internal::DeviceBandSolver`; ALL other steps (problem
+  assembly, Poisson, LDA, V_eff, Pulay mixing, convergence, energy
+  report) reuse the CPU code via the shared
+  `cpu::pw::internal` helpers (`pw_setup.h`, `pw_subspace.h`) for
+  numerical parity (`tests/cuda/pw/test_pw_si.cu` asserts CPU/CUDA
+  energy agreement). Inner-solver contract: no Driver, no phase enum
+  in the CUDA tree (`test_cuda_scf_phase_scrub` enforces).
+
 ### Output (cross-driver)
 Thermo, Recorder (XYZ), RDF
 
