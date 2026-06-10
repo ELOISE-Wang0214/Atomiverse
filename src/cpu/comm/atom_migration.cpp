@@ -104,7 +104,7 @@ inline int dest_rank_for(const md::mpi::DomainDecomposition& dd, double x, doubl
     const int cx = axis_coord(0, x);
     const int cy = axis_coord(1, y);
     const int cz = axis_coord(2, z);
-    return cx * (dd.dims[1] * dd.dims[2]) + cy * dd.dims[2] + cz;
+    return dd.rank_of(cx, cy, cz);
 }
 
 // Pack one atom (full SoA + per-atom topology) into `buf` at `offset`.
@@ -385,7 +385,8 @@ void scatter_atoms_from_root(cpu::Frame& frame) {
     // 2. Topology identical to the DD the backend builds → ownership matches
     //    partition_atoms' uniform-Cartesian rule (cuts empty here).
     md::mpi::DomainDecomposition dd;
-    dd.init_topology(MPI_COMM_WORLD);
+    dd.init_topology(MPI_COMM_WORLD, frame.box.length(0),
+                     frame.box.length(1), frame.box.length(2));
     const int world_size = dd.dims[0] * dd.dims[1] * dd.dims[2];
 
     // 3. Bucket every locally-held atom by owner (rank 0: all; others: none).

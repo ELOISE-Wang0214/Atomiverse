@@ -176,6 +176,13 @@ void Backend::set_frame(cpu::Frame& frame) {
         // box-changed) current box and let the next Migrate absorb
         // any small drift exactly as it does mid-stage.
         if (dd_->n_local == 0) {
+            // Re-derive the processor grid box-aware now that the box is
+            // known (init() ran before any frame was bound, so dims were
+            // chosen for an unknown box). Must precede the initial
+            // partition: builder-side pre-filtered frames use the same
+            // `choose_dims`, and the two grids must agree on ownership.
+            dd_->init_topology(MPI_COMM_WORLD, frame.box.length(0),
+                               frame.box.length(1), frame.box.length(2));
             dd_->partition_atoms(frame);
         } else {
             dd_->compute_sublo_subhi(frame.box);

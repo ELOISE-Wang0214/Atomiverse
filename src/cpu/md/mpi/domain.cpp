@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 #include <unordered_set>
 
 #include "atomiverse/core/mat3.h"
@@ -64,7 +65,54 @@ void DomainDecomposition::release_comm(bool /*mpi_is_finalizing*/) {
     cart_comm = MPI_COMM_NULL;
 }
 
-void DomainDecomposition::init_topology(MPI_Comm world) {
+void DomainDecomposition::choose_dims(int world_size, double lx, double ly,
+                                      double lz, int dims_out[3]) {
+    // Env override first — shared by every caller (DD and builder-side
+    // pre-filtering must agree on the grid or atoms get dropped at the
+    // initial partition).
+    if (const char* env = std::getenv("ATV_FORCE_DIMS")) {
+        int dx, dy, dz;
+        if (std::sscanf(env, "%d,%d,%d", &dx, &dy, &dz) == 3
+            && dx * dy * dz == world_size) {
+            dims_out[0] = dx;
+            dims_out[1] = dy;
+            dims_out[2] = dz;
+            return;
+        }
+    }
+    if (!(lx > 0.0) || !(ly > 0.0) || !(lz > 0.0))
+        lx = ly = lz = 1.0; // box unknown: near-cubic factorization
+
+    // Enumerate every factor triple (dx, dy, dz) of P and minimize the
+    // per-rank half-surface wx*wy + wy*wz + wz*wx (wd = Ld/dd): the halo
+    // ghost volume each rank ships per step is proportional to it. Strict
+    // `<` with DESCENDING iteration keeps the choice deterministic AND
+    // makes equal-cost ties (e.g. any cubic box) resolve to the same
+    // descending-dims orientation `MPI_Dims_create` used to produce —
+    // cubic-box decompositions are bit-compatible with the old behavior.
+    double best = std::numeric_limits<double>::infinity();
+    for (int dx = world_size; dx >= 1; --dx) {
+        if (world_size % dx)
+            continue;
+        const int pyz = world_size / dx;
+        for (int dy = pyz; dy >= 1; --dy) {
+            if (pyz % dy)
+                continue;
+            const int dz = pyz / dy;
+            const double wx = lx / dx, wy = ly / dy, wz = lz / dz;
+            const double cost = wx * wy + wy * wz + wz * wx;
+            if (cost < best) {
+                best = cost;
+                dims_out[0] = dx;
+                dims_out[1] = dy;
+                dims_out[2] = dz;
+            }
+        }
+    }
+}
+
+void DomainDecomposition::init_topology(MPI_Comm world, double lx, double ly,
+                                        double lz) {
     int world_size = 0;
     int my_rank = 0;
     MPI_Comm_size(world, &world_size);
@@ -84,40 +132,25 @@ void DomainDecomposition::init_topology(MPI_Comm world) {
     // the OpenMPI bug entirely.
     cart_comm = world;
 
-    // `MPI_Dims_create` is safe -- it's a pure algorithm with no state.
-    // Optional env-var override `ATV_FORCE_DIMS=Nx,Ny,Nz` skips the
-    // automatic 3D decomposition and uses the given factorization. This
-    // is a diagnostic/workaround: the face-only halo exchange misses
-    // edge/corner ghosts in true 3D decompositions, so for
-    // bonded-heavy systems (e.g. PE chains in 2x2x2) a 1D `Nx,1,1`
-    // override produces correct multi-rank behavior at the cost of
-    // less-uniform slab geometry. See
-    // `.claude/notes/cpu_mpi_halo_edge_corner_bug_2026-05-27.md`.
-    dims[0] = dims[1] = dims[2] = 0;
-    if (const char* env = std::getenv("ATV_FORCE_DIMS")) {
-        int dx, dy, dz;
-        if (std::sscanf(env, "%d,%d,%d", &dx, &dy, &dz) == 3
-            && dx * dy * dz == world_size) {
-            dims[0] = dx;
-            dims[1] = dy;
-            dims[2] = dz;
-        }
-    }
-    if (dims[0] == 0) {
-        MPI_Dims_create(world_size, 3, dims);
-    }
+    // Box-aware processor grid (LAMMPS ProcMap::best_factors): more cuts
+    // along longer axes, minimizing per-rank halo surface. `choose_dims`
+    // honors the `ATV_FORCE_DIMS=Nx,Ny,Nz` diagnostic override and falls
+    // back to a near-cubic factorization when the box is not yet known
+    // (lx/ly/lz == 0, e.g. Backend::init before a frame is bound — the
+    // grid is re-derived box-aware in Backend::set_frame before the
+    // initial partition).
+    choose_dims(world_size, lx, ly, lz, dims);
 
-    // Convention: rank index = ix * (dy*dz) + iy * dz + iz.
-    coords[0] = my_rank / (dims[1] * dims[2]);
-    coords[1] = (my_rank / dims[2]) % dims[1];
-    coords[2] = my_rank % dims[2];
+    // Rank ↔ grid-coords mapping: see rank_of/coords_of (x-slowest
+    // row-major brick).
+    coords_of(my_rank, coords);
 
     auto rank_at = [&](int cx, int cy, int cz) {
         // Periodic wrap on all axes.
         cx = ((cx % dims[0]) + dims[0]) % dims[0];
         cy = ((cy % dims[1]) + dims[1]) % dims[1];
         cz = ((cz % dims[2]) + dims[2]) % dims[2];
-        return cx * (dims[1] * dims[2]) + cy * dims[2] + cz;
+        return rank_of(cx, cy, cz);
     };
 
     // Face order: -x, +x, -y, +y, -z, +z.
