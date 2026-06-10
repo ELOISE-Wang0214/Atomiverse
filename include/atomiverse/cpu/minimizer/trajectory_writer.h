@@ -33,7 +33,9 @@ namespace minimizer {
 /// and written one frame at a time through molrs. Respects `stride` to thin
 /// long trajectories.
 ///
-/// MPI-aware: only rank 0 writes.
+/// MPI-aware: under multi-rank every rank joins a collective owner gather
+/// (`md::mpi::gather_to_root`, tag-ordered) and only rank 0 writes the
+/// complete geometry.
 class TrajectoryWriter : public cpu::ComponentBase {
   public:
     /// @brief Construct.
@@ -43,6 +45,7 @@ class TrajectoryWriter : public cpu::ComponentBase {
     explicit TrajectoryWriter(std::string filename, int stride = 1);
 
     std::string name() const override { return "trajectory_writer"; }
+    ComponentRole role() const override { return ComponentRole::Recorder; }
 
     std::vector<DefaultBinding> default_bindings() const override {
         return {{static_cast<int>(ATV::minimizer::Phase::end_of_step), 0}};

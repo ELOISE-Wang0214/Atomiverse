@@ -247,6 +247,27 @@ GatheredFrame gather_to_root(const cpu::Frame& frame,
 
 #endif // ATV_HAS_MPI
 
+cpu::Frame to_frame(const GatheredFrame& g) {
+    const int n = static_cast<int>(g.x.size());
+    cpu::Frame f(n);
+    f.box.set_cell(g.box);
+    for (int i = 0; i < n; ++i) {
+        f.atoms.x[i] = g.x[i];
+        f.atoms.y[i] = g.y[i];
+        f.atoms.z[i] = g.z[i];
+        f.atoms.vx[i] = g.vx[i];
+        f.atoms.vy[i] = g.vy[i];
+        f.atoms.vz[i] = g.vz[i];
+        f.atoms.fx[i] = g.fx[i];
+        f.atoms.fy[i] = g.fy[i];
+        f.atoms.fz[i] = g.fz[i];
+        f.atoms.mass[i] = g.mass[i];
+        f.atoms.type[i] = g.type[i];
+        f.atoms.tag[i] = g.tag[i];
+    }
+    return f;
+}
+
 } // namespace mpi
 } // namespace md
 } // namespace cpu

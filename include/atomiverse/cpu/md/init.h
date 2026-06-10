@@ -1,6 +1,7 @@
 /// @file cpu/md/init.h
-/// @brief CPU MD infrastructure components: ZeroForces, ZeroEnergy, ZeroKinetic,
-///        KineticEnergy, InitVelocity.
+/// @brief CPU MD infrastructure components: KineticEnergy, InitVelocity,
+///        ZeroLinearMomentum (+ compatibility aliases for the backend-root
+///        Zero* components).
 #pragma once
 
 #include <string>
@@ -8,46 +9,21 @@
 
 #include "atomiverse/core/binding.h"
 #include "atomiverse/cpu/component.h"
+#include "atomiverse/cpu/zero.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
 namespace cpu {
 namespace md {
 
-/// @brief Zero all forces. Phase-agnostic — driver binds to its own phase.
-class ZeroForces : public cpu::ComponentBase {
-  public:
-    std::string name() const override { return "zero_forces"; }
-    ComponentRole role() const override { return ComponentRole::None; }
-    void launch(const cpu::LaunchContext& ctx) override;
-};
-
-/// @brief Zero potential energy. Phase-agnostic — driver binds to its own phase.
-class ZeroEnergy : public cpu::ComponentBase {
-  public:
-    std::string name() const override { return "zero_energy"; }
-    ComponentRole role() const override { return ComponentRole::None; }
-    void launch(const cpu::LaunchContext& ctx) override;
-};
-
-/// @brief Zero stress tensor. Phase-agnostic — driver binds to its own phase.
-///
-/// Stress accumulation by force kernels (LJ pair virial, future bonded
-/// virials) requires a clean baseline at the start of each step.
-class ZeroStress : public cpu::ComponentBase {
-  public:
-    std::string name() const override { return "zero_stress"; }
-    ComponentRole role() const override { return ComponentRole::None; }
-    void launch(const cpu::LaunchContext& ctx) override;
-};
-
-/// @brief Zero kinetic energy. Phase-agnostic — driver binds to its own phase.
-class ZeroKinetic : public cpu::ComponentBase {
-  public:
-    std::string name() const override { return "zero_kinetic"; }
-    ComponentRole role() const override { return ComponentRole::None; }
-    void launch(const cpu::LaunchContext& ctx) override;
-};
+// The phase-agnostic Zero* components are shared backend-root
+// infrastructure (used by MD, Minimize, and Evaluate) and live in
+// `cpu/zero.h`. These aliases keep the historical `cpu::md::Zero*`
+// spellings working for existing callers.
+using ZeroForces = cpu::ZeroForces;
+using ZeroEnergy = cpu::ZeroEnergy;
+using ZeroStress = cpu::ZeroStress;
+using ZeroKinetic = cpu::ZeroKinetic;
 
 /// @brief Compute kinetic energy at end_of_step phase.
 ///
