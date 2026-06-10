@@ -298,8 +298,13 @@ if(NOT ATV_DOCS_ONLY)
     endif()
 
     if(ATV_BUILD_PW)
-        find_library(FFTW3_LIB fftw3 HINTS /opt/homebrew/opt/fftw/lib /usr/local/lib)
-        find_path(FFTW3_INC fftw3.h HINTS /opt/homebrew/opt/fftw/include /usr/local/include)
+        # $FFTW3_ROOT / $FFTW_ROOT come from the HPC buildenv Lmod modules.
+        find_library(FFTW3_LIB fftw3 HINTS
+            $ENV{FFTW3_ROOT}/lib $ENV{FFTW_ROOT}/lib
+            /opt/homebrew/opt/fftw/lib /usr/local/lib)
+        find_path(FFTW3_INC fftw3.h HINTS
+            $ENV{FFTW3_ROOT}/include $ENV{FFTW_ROOT}/include
+            /opt/homebrew/opt/fftw/include /usr/local/include)
         if(NOT FFTW3_LIB OR NOT FFTW3_INC)
             message(FATAL_ERROR "FFTW3 required for ATV_BUILD_PW but not found. "
                                "Install via: brew install fftw")
@@ -314,6 +319,8 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/pw/internal/upf_reader.cpp
             src/cpu/pw/internal/kpoint.cpp
             src/cpu/pw/internal/ewald.cpp
+            src/cpu/pw/internal/pw_setup.cpp
+            src/cpu/pw/internal/pw_subspace.cpp
             src/cpu/pw/pw_poisson.cpp
             src/cpu/pw/pw_lda.cpp
             src/cpu/pw/pw_hamiltonian.cpp
@@ -331,13 +338,26 @@ if(NOT ATV_DOCS_ONLY)
         endif()
         target_link_libraries(atomiverse PUBLIC fftw3_stub)
         target_compile_definitions(atomiverse PUBLIC ATV_HAS_PW)
+        # CUDA plane-wave band solver (cuFFT + cuBLAS) — only when the
+        # CUDA backend is also enabled.
+        if(ATV_BUILD_CUDA)
+            target_sources(atomiverse PRIVATE
+                src/cuda/pw/internal/device_solver.cu
+                src/cuda/pw/pw_scf.cu
+            )
+            target_link_libraries(atomiverse PUBLIC CUDA::cufft)
+        endif()
     endif()
 
     if(ATV_BUILD_KSPACE)
         # CPU PME needs FFTW3 (shared `fftw3_stub` with the PW module).
         if(NOT TARGET fftw3_stub)
-            find_library(FFTW3_LIB fftw3 HINTS /opt/homebrew/opt/fftw/lib /usr/local/lib)
-            find_path(FFTW3_INC fftw3.h HINTS /opt/homebrew/opt/fftw/include /usr/local/include)
+            find_library(FFTW3_LIB fftw3 HINTS
+                $ENV{FFTW3_ROOT}/lib $ENV{FFTW_ROOT}/lib
+                /opt/homebrew/opt/fftw/lib /usr/local/lib)
+            find_path(FFTW3_INC fftw3.h HINTS
+                $ENV{FFTW3_ROOT}/include $ENV{FFTW_ROOT}/include
+                /opt/homebrew/opt/fftw/include /usr/local/include)
             if(NOT FFTW3_LIB OR NOT FFTW3_INC)
                 message(FATAL_ERROR "FFTW3 required for ATV_BUILD_KSPACE but not found.")
             endif()

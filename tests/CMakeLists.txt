@@ -341,6 +341,9 @@ if(ATV_BUILD_CUDA)
     atv_add_test(test_cuda_scf        cuda/scf/test_scf.cu)
     atv_add_test(test_cuda_scf_rhf    cuda/scf/test_rhf.cu)
     atv_add_test(test_cuda_scf_device_integrals cuda/scf/test_device_integrals.cu)
+    if(ATV_BUILD_PW)
+        atv_add_test(test_cuda_pw_si  cuda/pw/test_pw_si.cu)
+    endif()
     atv_add_test(test_cuda_driver_role_validation cuda/test_cuda_driver_role_validation.cu)
 
     # AsyncRecordBase / AsyncBridge contract guards. The subdir registers
