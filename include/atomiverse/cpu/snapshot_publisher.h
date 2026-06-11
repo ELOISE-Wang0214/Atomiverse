@@ -8,7 +8,7 @@
 /// the globally-reduced end-of-step state.
 ///
 /// The phase enum differs across drivers (`md::Phase::end_of_step` vs
-/// `minimizer::Phase::end_of_step` vs `scf::Phase::end_of_step`), so the
+/// `minimizer::Phase::end_of_step` vs `evaluate::Phase::finalize`), so the
 /// class declares **no default bindings**. Each driver wires it explicitly
 /// in its constructor via `on(<its_phase>::end_of_step).add(Publish{}, 10)`.
 ///

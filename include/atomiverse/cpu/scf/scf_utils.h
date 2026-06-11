@@ -8,11 +8,27 @@
 #pragma once
 
 #include <cmath>
+#include <stdexcept>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/containers/xtensor.hpp>
 #include <xtensor/views/xview.hpp>
+
+extern "C" {
+// Direct LAPACK binding for the generalized symmetric eigensolver. We do
+// NOT go through xt::linalg::eigh(F, S) here: its workspace query
+// (LWORK=-1) is broken in the LAPACK 3.12.1 bundled with OpenBLAS 0.3.32
+// (xSYGVD writes WORK(1)=0 on query, so the follow-up call aborts with
+// "parameter number 11 had an illegal value"). Passing the documented
+// workspace sizes explicitly sidesteps the query entirely.
+void dsygvd_(const int* itype, const char* jobz, const char* uplo,
+             const int* n, double* a, const int* lda, double* b,
+             const int* ldb, double* w, double* work, const int* lwork,
+             int* iwork, const int* liwork, int* info);
+}
 
 namespace ATV {
 namespace cpu {
@@ -70,7 +86,30 @@ inline std::pair<RealVector, RealMatrix> diagonalize_fock(const RealMatrix& F,
 /// @return (orbital energies [n], AO MO coefficient matrix [n x n]).
 inline std::pair<RealVector, RealMatrix>
 diagonalize_fock_generalized(const RealMatrix& F, const RealMatrix& S) {
-    auto [eig, C] = xt::linalg::eigh(F, S);
+    const int n = static_cast<int>(F.shape(0));
+    RealMatrix C = F;  // dsygvd overwrites A with the eigenvectors
+    RealMatrix B = S;  // ... and B with its Cholesky factor
+    RealVector eig = xt::zeros<double>({n});
+
+    // Documented minimum workspace for ITYPE=1, JOBZ='V' (LAPACK dsygvd):
+    // LWORK >= 1 + 6N + 2N^2, LIWORK >= 3 + 5N. Sized directly instead of
+    // via the LWORK=-1 query (broken in OpenBLAS 0.3.32 / LAPACK 3.12.1 —
+    // see the extern "C" note above).
+    const int itype = 1;
+    const char jobz = 'V';
+    const char uplo = 'L';
+    const int lwork = 1 + 6 * n + 2 * n * n;
+    const int liwork = 3 + 5 * n;
+    std::vector<double> work(static_cast<std::size_t>(lwork));
+    std::vector<int> iwork(static_cast<std::size_t>(liwork));
+    int info = 0;
+
+    dsygvd_(&itype, &jobz, &uplo, &n, C.data(), &n, B.data(), &n, eig.data(),
+            work.data(), &lwork, iwork.data(), &liwork, &info);
+    if (info != 0)
+        throw std::runtime_error(
+            "diagonalize_fock_generalized: dsygvd failed, info=" +
+            std::to_string(info));
     return {eig, C};
 }
 

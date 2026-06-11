@@ -97,39 +97,12 @@ inline std::vector<std::string> phase_names(Phase phase_tag) {
 
 } // namespace evaluate
 
-/// @brief Self-consistent field phases.
-///
-/// @note Phase enum for the CPU **plane-wave** SCF outer driver
-///       (`cpu::pw`), which runs as a `Driver<scf::Phase, cpu::device_tag>`
-///       and is its sole consumer: `src/cpu/driver.cpp` instantiates that
-///       driver and the `cpu::pw::PW_*` components return `DefaultBinding`
-///       values keyed on these phases.
-/// @note The Gaussian-basis CPU SCF (`cpu::scf::SCFSolver`) and the
-///       migrated CUDA SCF (`cuda::scf::SCFSolver`) are inner solvers,
-///       not Driver subclasses, and do **not** use this enum — they own
-///       their internal convergence directly.
-namespace scf {
-
-/// @brief Phase order for one SCF iteration.
-enum class Phase {
-    build_hamiltonian, ///< Construct effective Hamiltonian H(P) = H0 + alpha*P
-    diagonalize,       ///< Eigensolve H -> eigenvalues + eigenvectors
-    build_density,     ///< Rebuild density P = C_occ * C_occ^T
-    convergence_check, ///< Check ||P_new - P_old||_F < tol
-    end_of_step,       ///< Per-iteration observers, recorders
-    COUNT              ///< Sentinel -- total number of phases
-};
-
-/// @brief Human-readable names for the SCF phases.
-/// @param phase_tag Tag value used only for overload selection.
-/// @return Phase names in the same order as the enum values, excluding `COUNT`.
-inline std::vector<std::string> phase_names(Phase phase_tag) {
-    (void)phase_tag;
-    return {"build_hamiltonian", "diagonalize", "build_density",
-            "convergence_check", "end_of_step"};
-}
-
-} // namespace scf
+// NOTE: there is deliberately no `scf::Phase`. SCF — gaussian-basis
+// (`cpu::scf::SCFSolver`, `cuda::scf::SCFSolver`) and plane-wave
+// (`cpu::pw::PWSolver`) — is an *inner* solver behind an Evaluator
+// component, never an outer driver category, so it carries no outer
+// phase enum. The historical `scf::Phase` was deleted with the
+// `cpu::pw` migration onto the PWSolver/PWEvaluator shape.
 
 /// @brief Vibrational-analysis (Response category) phases.
 ///

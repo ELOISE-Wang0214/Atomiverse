@@ -8,7 +8,7 @@
 /// intermediate base class.
 ///
 /// This base class declares **no default bindings**. The phase enum
-/// (`md::Phase`, `minimizer::Phase`, `scf::Phase`) is driver-specific, so
+/// (`md::Phase`, `minimizer::Phase`, `evaluate::Phase`) is driver-specific, so
 /// hardcoding one here would silently misbind when reused across drivers.
 /// Users either:
 ///   - Bind explicitly: `sim.on(my_phase_enum::end_of_step).add(obs, 20);`

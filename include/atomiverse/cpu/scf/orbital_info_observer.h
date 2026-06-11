@@ -35,7 +35,7 @@ namespace scf {
 /// @brief Orbital-energy observer component.
 ///
 /// No default bindings: user chooses `end_of_step` of whichever driver hosts
-/// the SCFEvaluator (MD, minimizer, future SinglePoint).
+/// the SCFEvaluator (MD, Minimize, or Evaluate).
 class OrbitalInfoObserver : public cpu::ComponentBase {
   public:
     /// @brief Construct.

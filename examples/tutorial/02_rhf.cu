@@ -27,11 +27,8 @@
 #include "atomiverse/cpu/recorder/xyz.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/rhf_solve.h"
-#include "atomiverse/cuda/observer/mulliken.cuh"
-#include "atomiverse/cuda/recorder/thermo.cuh"
-#include "atomiverse/cuda/scf/rhf_density.cuh"
-#include "atomiverse/cuda/scf/rhf_fock.cuh"
-#include "atomiverse/cuda/scf/scf.cuh"
+#include "atomiverse/cuda/scf/scf_evaluator.cuh"
+#include "atomiverse/cuda/single_point.cuh"
 
 using namespace ATV;
 
@@ -116,45 +113,13 @@ int main() {
     cpu::XYZ("h2_rhf.xyz").write_ext(rec);
     std::cout << "  Wrote h2_rhf.xyz  (open in OVITO / Avogadro 2)\n";
 
-    // ── 4. CUDA RHF through Driver ────────────────────────────────────
-    std::cout << "\n=== CUDA RHF (scf::SCF Driver) ===\n";
-    MullikenObs mulliken_obs(integrals);
-    {
-        scf::SCF solver;
-        solver.add(scf::RHFFock{integrals});
-        solver.add(scf::EigenSolver{});
-        solver.add(scf::RHFDensity{integrals.n_occ()});
-        solver.add(scf::ConvergenceCheck{tol, false});
-        solver.on(scf::Phase::end_of_step).add(Thermo{1});
-        solver.on(scf::Phase::end_of_step)
-            .add(mulliken_obs); // async D2H -> CPU Mulliken
-
-        solver.enable_timing();
-        solver.build();
-        solver.run(frame, 100);
-
-        std::cout << "\n" << solver.summary();
-    }
-
-    // ── 5. CUDA Mulliken result (observer -> recorder separation) ──────
-    std::cout << "\n=== CUDA Mulliken (from MullikenObs) ===\n";
-    {
-        cpu::MolRec cuda_rec;
-        cuda_rec.set_geometry(frame);
-        cuda_rec.add_string("method", "RHF");
-        cuda_rec.add_scalar("energy", mulliken_obs.energy());
-        cuda_rec.add_scalar("iterations", double(mulliken_obs.iterations()));
-        cuda_rec.add_scalar("n_alpha", double(mulliken_obs.n_occ()));
-        cuda_rec.add_scalar("n_beta", double(mulliken_obs.n_occ()));
-        cuda_rec.add_scalar("spin_contamination", double(0));
-        cuda_rec.add_field("charge", mulliken_obs.charges());
-        cuda_rec.add_field("spin_density",
-                           std::vector<double>(frame.atoms.size(), double(0)));
-        cuda_rec.commit_frame();
-        cpu::print_summary(cuda_rec);
-        cpu::XYZ("h2_rhf_cuda.xyz").write_ext(cuda_rec);
-    }
-    std::cout << "  Wrote h2_rhf_cuda.xyz\n";
+    // ── 4. CUDA RHF — Evaluate + SCFEvaluator (inner-solver shape) ─────
+    // SCF is not a driver category: the CUDA SCF cycle runs inside
+    // cuda::scf::SCFSolver, owned by the SCFEvaluator component, driven
+    // by the one-pass cuda::Evaluate (here via the single_point helper).
+    std::cout << "\n=== CUDA RHF (cuda::Evaluate + scf::SCFEvaluator) ===\n";
+    cuda::scf::SCFEvaluator cuda_scf{integrals, tol, /*max_iter=*/100};
+    cuda::single_point(frame, cuda_scf); // frame.scalars.energy populated
 
     // ── 6. Compare ────────────────────────────────────────────────────
     std::cout << "\n=== Comparison ===\n"

@@ -524,9 +524,9 @@ TEST(RHF, SCFEvaluatorIsEnergyDensityOrbitalsOnly) {
 TEST(RHF, SCFSolverIsNotADriver) {
     // ac-002: the RHF inner solver is a low-level class, not a Driver<>.
     static_assert(
-        !std::is_base_of_v<Driver<ATV::scf::Phase, cuda::device_tag>,
+        !std::is_base_of_v<Driver<ATV::evaluate::Phase, cuda::device_tag>,
                            cuda::scf::SCFSolver>,
-        "cuda::scf::SCFSolver must not be a Driver<scf::Phase> subclass");
+        "cuda::scf::SCFSolver must not be a Driver<> subclass");
     SUCCEED();
 }
 

@@ -10,6 +10,15 @@ endif()
 find_package(Doxygen QUIET)
 
 if(NOT ATV_DOCS_ONLY)
+    # Default to an optimized build. An empty CMAKE_BUILD_TYPE compiles at
+    # -O0, which makes the ERI / SCF / PW hot paths 10-30x slower — easy to
+    # ship by accident since -march=native alone carries no -O level.
+    if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+        set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+        set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS
+                     Debug Release RelWithDebInfo MinSizeRel)
+    endif()
+
     set(CMAKE_CXX_STANDARD 17)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -298,8 +307,14 @@ if(NOT ATV_DOCS_ONLY)
     endif()
 
     if(ATV_BUILD_PW)
-        find_library(FFTW3_LIB fftw3 HINTS /opt/homebrew/opt/fftw/lib /usr/local/lib)
-        find_path(FFTW3_INC fftw3.h HINTS /opt/homebrew/opt/fftw/include /usr/local/include)
+        # $FFTW_ROOT comes from the buildenv Lmod module (no hardcoded paths);
+        # the homebrew/usr-local hints cover macOS dev machines.
+        find_library(FFTW3_LIB fftw3
+            HINTS $ENV{FFTW_ROOT}/lib $ENV{FFTW_ROOT}/lib64
+                  /opt/homebrew/opt/fftw/lib /usr/local/lib)
+        find_path(FFTW3_INC fftw3.h
+            HINTS $ENV{FFTW_ROOT}/include
+                  /opt/homebrew/opt/fftw/include /usr/local/include)
         if(NOT FFTW3_LIB OR NOT FFTW3_INC)
             message(FATAL_ERROR "FFTW3 required for ATV_BUILD_PW but not found. "
                                "Install via: brew install fftw")
@@ -314,13 +329,14 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/pw/internal/upf_reader.cpp
             src/cpu/pw/internal/kpoint.cpp
             src/cpu/pw/internal/ewald.cpp
-            src/cpu/pw/pw_poisson.cpp
-            src/cpu/pw/pw_lda.cpp
-            src/cpu/pw/pw_hamiltonian.cpp
-            src/cpu/pw/pw_veff.cpp
-            src/cpu/pw/pw_davidson.cpp
-            src/cpu/pw/pw_density.cpp
-            src/cpu/pw/pw_convergence.cpp
+            src/cpu/pw/internal/poisson.cpp
+            src/cpu/pw/internal/xc_builder.cpp
+            src/cpu/pw/internal/veff_builder.cpp
+            src/cpu/pw/internal/davidson.cpp
+            src/cpu/pw/internal/density_builder.cpp
+            src/cpu/pw/internal/convergence.cpp
+            src/cpu/pw/pw_solver.cpp
+            src/cpu/pw/pw_evaluator.cpp
             src/cpu/pw/pw_scf.cpp
         )
         if(NOT ATV_BUILD_RHF)

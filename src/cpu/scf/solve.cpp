@@ -12,6 +12,7 @@
 namespace ATV {
 namespace cpu {
 namespace scf {
+namespace toy {
 
 SCFResult solve(int n, int n_occ, double alpha, double tol, int max_iter) {
     // Build H0: deterministic diagonally-dominant symmetric matrix
@@ -64,6 +65,7 @@ SCFResult solve(int n, int n_occ, double alpha, double tol, int max_iter) {
     return result;
 }
 
+} // namespace toy
 } // namespace scf
 } // namespace cpu
 } // namespace ATV

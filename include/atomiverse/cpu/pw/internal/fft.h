@@ -3,7 +3,9 @@
 #pragma once
 
 #include "atomiverse/core/real.h"
+#include <cstddef>
 #include <fftw3.h>
+#include <new>
 #include <stdexcept>
 
 namespace ATV {
@@ -36,6 +38,56 @@ class FFTPlan3D {
     int nz() const { return nz_; }
     int nr() const { return nr_; }
     int nc() const { return nc_; }
+};
+
+/// @brief RAII `fftw_malloc` buffer (SIMD-aligned), for pre-allocated
+///        step-helper scratch. `resize()` is idempotent for equal sizes,
+///        so `prepare()` can be re-invoked across geometry changes without
+///        reallocating when the grid is unchanged.
+/// @tparam T Element type (`Real` or `fftw_complex`).
+template <typename T> class FFTWBuffer {
+    T* p_ = nullptr;
+    std::size_t n_ = 0;
+
+  public:
+    FFTWBuffer() = default;
+    explicit FFTWBuffer(std::size_t n) { resize(n); }
+    ~FFTWBuffer() {
+        if (p_)
+            fftw_free(p_);
+    }
+    FFTWBuffer(const FFTWBuffer&) = delete;
+    FFTWBuffer& operator=(const FFTWBuffer&) = delete;
+    FFTWBuffer(FFTWBuffer&& o) noexcept : p_(o.p_), n_(o.n_) {
+        o.p_ = nullptr;
+        o.n_ = 0;
+    }
+    FFTWBuffer& operator=(FFTWBuffer&& o) noexcept {
+        if (this != &o) {
+            if (p_)
+                fftw_free(p_);
+            p_ = o.p_;
+            n_ = o.n_;
+            o.p_ = nullptr;
+            o.n_ = 0;
+        }
+        return *this;
+    }
+
+    /// @brief Ensure capacity for `n` elements (no-op when unchanged).
+    void resize(std::size_t n) {
+        if (n == n_)
+            return;
+        if (p_)
+            fftw_free(p_);
+        p_ = static_cast<T*>(fftw_malloc(sizeof(T) * n));
+        if (!p_)
+            throw std::bad_alloc();
+        n_ = n;
+    }
+    T* data() { return p_; }
+    const T* data() const { return p_; }
+    std::size_t size() const { return n_; }
 };
 
 } // namespace internal

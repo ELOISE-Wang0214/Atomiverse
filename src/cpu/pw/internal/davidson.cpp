@@ -1,21 +1,21 @@
-/// @file cpu/pw/pw_davidson.cpp
+/// @file cpu/pw/internal/davidson.cpp
 /// @brief Iterative block Davidson with FFT-based H·ψ and KB non-local potential.
-#include "atomiverse/cpu/pw/pw_davidson.h"
+#include "atomiverse/cpu/pw/internal/davidson.h"
 #include <algorithm>
 #include <cmath>
 #include <complex>
-#include <cstdlib>
+#include <cstdint>
 #include <cstring>
-#include <fftw3.h>
-#include <xtensor-blas/xlinalg.hpp>
+#include <vector>
 
 namespace ATV {
 namespace cpu {
 namespace pw {
+namespace internal {
 
 namespace {
 
-// ── Real spherical harmonics Y_lm(Ĝ) ──
+// ── Real spherical harmonics Y_lm(Ĝ) ──
 
 Real y00(Real, Real, Real) { return Real(1) / std::sqrt(Real(4.0 * M_PI)); }
 
@@ -60,6 +60,20 @@ void compute_ylm(Real x, Real y, Real z, Real r, int l, Real* out) {
         break;
     }
 }
+
+/// Deterministic LCG in [-0.5, 0.5) for the atomic+random initial-guess
+/// perturbation. Seeded per subspace-vector index so the result is
+/// independent of which MPI rank handles which k-point (std::rand's
+/// global stream would make the wavefunction guess rank-layout
+/// dependent).
+struct TinyRng {
+    std::uint32_t state;
+    explicit TinyRng(std::uint32_t seed) : state(seed * 2654435761u + 1u) {}
+    Real next() {
+        state = state * 1664525u + 1013904223u;
+        return Real(state) / Real(4294967296.0) - Real(0.5);
+    }
+};
 
 // ── Subspace Jacobi diagonalization (for small matrices) ──
 
@@ -194,7 +208,7 @@ void apply_hamiltonian(const PWWorkspace& ws, const std::complex<Real>* psi_g,
             int nm = n_m_for_l(l);
 
             // Compute c_lm = ⟨β_lm^a|ψ⟩ and apply V_NL in one pass
-            // β_lm(G) = (4π/√Ω)·(-i)^l·Y_lm(Ĝ)·f_l(G)·exp(-iG·R)
+            // β_lm(G) = (4π/√Ω)·(-i)^l·Y_lm(Ĝ)·f_l(G)·exp(-iG·R)
             std::vector<std::complex<Real>> c_lm(nm, std::complex<Real>(0, 0));
             for (int ig = 0; ig < ng; ++ig) {
                 Real Gx = gv.g[ig][0], Gy = gv.g[ig][1], Gz = gv.g[ig][2];
@@ -256,22 +270,25 @@ void apply_hamiltonian(const PWWorkspace& ws, const std::complex<Real>* psi_g,
 
 // ── Public interface ──
 
-void PW_Davidson::build(const cpu::BuildContext& ctx) {
-    ws_ = static_cast<PWWorkspace*>(ctx.pw_workspace);
+void DavidsonSolver::prepare(const PWWorkspace& ws) {
+    if (ws.nr > 0)
+        work_buf_.resize(static_cast<std::size_t>(ws.nr));
 }
 
-void PW_Davidson::launch(const cpu::LaunchContext&) {
-    int ng = ws_->n_g;
+void DavidsonSolver::step(PWWorkspace& ws) {
+    int ng = ws.n_g;
     int nb = n_bands_;
-    int nr = ws_->nr;
+    int nr = ws.nr;
 
-    ws_->wfc.resize(
+    ws.wfc.resize(
         {static_cast<std::size_t>(nb), static_cast<std::size_t>(ng)});
-    ws_->eigenvalues.resize({static_cast<std::size_t>(nb)});
+    ws.eigenvalues.resize({static_cast<std::size_t>(nb)});
 
-    // Allocate work buffer for FFT-based H·ψ
-    auto* work_buf = static_cast<fftw_complex*>(
-        fftw_malloc(sizeof(fftw_complex) * static_cast<size_t>(nr)));
+    // FFT work buffer for H·ψ — pre-allocated in prepare(); guard against
+    // direct low-level use that skipped prepare().
+    if (work_buf_.size() < static_cast<std::size_t>(nr))
+        work_buf_.resize(static_cast<std::size_t>(nr));
+    auto* work_buf = work_buf_.data();
 
     // ── Initialize subspace: lowest T(G) plane waves ──
     struct DiagElem {
@@ -280,16 +297,16 @@ void PW_Davidson::launch(const cpu::LaunchContext&) {
     };
     std::vector<DiagElem> diag(ng);
     for (int i = 0; i < ng; ++i)
-        diag[i] = {ws_->T_G[i], i};
+        diag[i] = {ws.T_G[i], i};
     std::sort(
         diag.begin(), diag.end(),
         [](const DiagElem& a, const DiagElem& b) { return a.val < b.val; });
 
     // Count atomic wavefunction states: n_atoms × Σ (2l+1)
     int n_atom_states = 0;
-    for (size_t ia = 0; ia < ws_->atom_wfc.size(); ++ia)
-        for (size_t iw = 0; iw < ws_->atom_wfc[ia].size(); ++iw)
-            n_atom_states += 2 * ws_->atom_wfc[ia][iw].l + 1;
+    for (size_t ia = 0; ia < ws.atom_wfc.size(); ++ia)
+        for (size_t iw = 0; iw < ws.atom_wfc[ia].size(); ++iw)
+            n_atom_states += 2 * ws.atom_wfc[ia][iw].l + 1;
 
     int n_sub;
     if (n_atom_states >= nb) {
@@ -303,15 +320,15 @@ void PW_Davidson::launch(const cpu::LaunchContext&) {
 
     if (n_atom_states >= nb) {
         // Initialize subspace with atomic wavefunctions (QE atomic_wfc_mod.f90)
-        // ψ_{nlm}(G) = i^l · Y_lm(Ĝ) · chi_G(G) · exp(-iG·R)
+        // ψ_{nlm}(G) = i^l · Y_lm(Ĝ) · chi_G(G) · exp(-iG·R)
         int j = 0;
-        auto& gv = *ws_->gvec;
-        for (size_t ia = 0; ia < ws_->atom_wfc.size() && j < n_sub; ++ia) {
-            Real ax = ws_->atom_pos_bohr[ia][0], ay = ws_->atom_pos_bohr[ia][1],
-                 az = ws_->atom_pos_bohr[ia][2];
-            for (size_t iw = 0; iw < ws_->atom_wfc[ia].size() && j < n_sub;
+        auto& gv = *ws.gvec;
+        for (size_t ia = 0; ia < ws.atom_wfc.size() && j < n_sub; ++ia) {
+            Real ax = ws.atom_pos_bohr[ia][0], ay = ws.atom_pos_bohr[ia][1],
+                 az = ws.atom_pos_bohr[ia][2];
+            for (size_t iw = 0; iw < ws.atom_wfc[ia].size() && j < n_sub;
                  ++iw) {
-                int l = ws_->atom_wfc[ia][iw].l;
+                int l = ws.atom_wfc[ia][iw].l;
                 int nm = 2 * l + 1;
                 for (int m = 0; m < nm && j < n_sub; ++m) {
                     Real norm2 = 0;
@@ -319,7 +336,7 @@ void PW_Davidson::launch(const cpu::LaunchContext&) {
                         Real Gx = gv.g[ig][0], Gy = gv.g[ig][1],
                              Gz = gv.g[ig][2];
                         Real Gr = std::sqrt(Gx * Gx + Gy * Gy + Gz * Gz);
-                        Real chi = ws_->atom_wfc[ia][iw].chi_G[ig];
+                        Real chi = ws.atom_wfc[ia][iw].chi_G[ig];
                         if (std::abs(chi) < Real(1e-30)) {
                             sub_vectors[j * ng + ig] = std::complex<Real>(0, 0);
                             continue;
@@ -330,7 +347,7 @@ void PW_Davidson::launch(const cpu::LaunchContext&) {
                             il = std::complex<Real>(0, 1);
                         else if (l == 2)
                             il = std::complex<Real>(-1, 0);
-                        // Y_lm(Ĝ)
+                        // Y_lm(Ĝ)
                         std::vector<Real> ylm(nm);
                         compute_ylm(Gx, Gy, Gz, Gr, l, ylm.data());
                         // Structure factor S(G) = exp(-iG·R)
@@ -340,9 +357,10 @@ void PW_Davidson::launch(const cpu::LaunchContext&) {
                         norm2 += std::norm(sub_vectors[j * ng + ig]);
                     }
                     // QE startingwfc='atomic+random': add random perturbation
+                    // (deterministic per state index — see TinyRng).
+                    TinyRng rng(static_cast<std::uint32_t>(j + 1));
                     for (int ig = 0; ig < ng; ++ig) {
-                        Real rnd =
-                            Real(std::rand()) / Real(RAND_MAX) - Real(0.5);
+                        Real rnd = rng.next();
                         sub_vectors[j * ng + ig] +=
                             std::complex<Real>(rnd * Real(1e-4), Real(0));
                     }
@@ -371,7 +389,7 @@ void PW_Davidson::launch(const cpu::LaunchContext&) {
         for (int j = 0; j < n_sub; ++j) {
             if (H_computed[j])
                 continue;
-            apply_hamiltonian(*ws_, &sub_vectors[j * ng],
+            apply_hamiltonian(ws, &sub_vectors[j * ng],
                               &H_sub_vectors[j * ng], work_buf);
             H_computed[j] = true;
         }
@@ -408,7 +426,7 @@ void PW_Davidson::launch(const cpu::LaunchContext&) {
         for (int b = 0; b < nb; ++b) {
             // H·ψ_b
             std::vector<std::complex<Real>> Hpsi(ng);
-            apply_hamiltonian(*ws_, &ritz[b * ng], Hpsi.data(), work_buf);
+            apply_hamiltonian(ws, &ritz[b * ng], Hpsi.data(), work_buf);
 
             // R = H·ψ - ε·ψ
             Real res_norm = 0;
@@ -421,11 +439,11 @@ void PW_Davidson::launch(const cpu::LaunchContext&) {
                 max_res = res_norm;
 
             // Store eigenvalue
-            ws_->eigenvalues[b] = sub_eig[b];
+            ws.eigenvalues[b] = sub_eig[b];
 
             // Copy Ritz vector to wfc
             for (int ig = 0; ig < ng; ++ig)
-                ws_->wfc(b, ig) = ritz[b * ng + ig];
+                ws.wfc(b, ig) = ritz[b * ng + ig];
         }
 
         // Always add residuals to build crystal field (QE approach)
@@ -435,7 +453,7 @@ void PW_Davidson::launch(const cpu::LaunchContext&) {
             for (int b = 0; b < nb && n_sub < ng; ++b) {
                 // Compute residual R = H·ψ - ε·ψ
                 std::vector<std::complex<Real>> Hpsi(ng);
-                apply_hamiltonian(*ws_, &ritz[b * ng], Hpsi.data(), work_buf);
+                apply_hamiltonian(ws, &ritz[b * ng], Hpsi.data(), work_buf);
 
                 std::vector<std::complex<Real>> R(ng);
                 Real res_norm = 0;
@@ -451,7 +469,7 @@ void PW_Davidson::launch(const cpu::LaunchContext&) {
                 std::vector<std::complex<Real>> delta(ng);
                 Real eps = sub_eig[b];
                 for (int ig = 0; ig < ng; ++ig) {
-                    Real denom = ws_->T_G[ig] - eps;
+                    Real denom = ws.T_G[ig] - eps;
                     // Damp near-degenerate contributions
                     Real damp = std::abs(denom);
                     if (damp < Real(1e-6))
@@ -479,22 +497,23 @@ void PW_Davidson::launch(const cpu::LaunchContext&) {
                 for (int ig = 0; ig < ng; ++ig)
                     delta[ig] *= inv_norm;
 
-                // Add to subspace
+                // Add to subspace — grow the storage BEFORE writing the
+                // new column. (The historical PW_Davidson wrote slot
+                // n_sub first and resized afterwards: a heap-buffer
+                // overflow of one full column per expansion, latent
+                // until the allocator layout exposed it.)
                 int j = n_sub++;
+                sub_vectors.resize(static_cast<std::size_t>(n_sub) * ng);
+                H_sub_vectors.resize(static_cast<std::size_t>(n_sub) * ng);
                 for (int ig = 0; ig < ng; ++ig)
                     sub_vectors[j * ng + ig] = delta[ig];
                 H_computed.push_back(false);
             }
-            // Resize arrays
-            sub_vectors.resize(n_sub * ng);
-            H_sub_vectors.resize(n_sub * ng);
-            H_computed.resize(n_sub, false);
         }
     }
-
-    fftw_free(work_buf);
 }
 
+} // namespace internal
 } // namespace pw
 } // namespace cpu
 } // namespace ATV

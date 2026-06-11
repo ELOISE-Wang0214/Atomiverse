@@ -30,17 +30,27 @@
 /// @endcode
 #pragma once
 
+#include <memory>
+
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/internal/density_builder.h"
-#include "atomiverse/cpu/scf/internal/diis_mixer.h"
-#include "atomiverse/cpu/scf/internal/dual_convergence_check.h"
-#include "atomiverse/cpu/scf/internal/eigen_solver.h"
-#include "atomiverse/cpu/scf/internal/hamiltonian_builder.h"
 #include "atomiverse/cpu/scf/scf_solve.h" // SCFConfig, SCFInitialGuess, SCFResult
+#include "atomiverse/cpu/scf/scf_utils.h" // RealMatrix
 
 namespace ATV {
 namespace cpu {
 namespace scf {
+
+// Facade-private step helpers — forward-declared only. The definitions
+// live in include/atomiverse/cpu/scf/internal/ and are included from
+// scf_solver.cpp; this public header must not include internal/*.h
+// (enforced by test_cpu_scf_solver_internal_isolation).
+namespace internal {
+class HamiltonianBuilder;
+class EigenSolver;
+class DensityBuilder;
+class DIISMixer;
+class DualConvergenceCheck;
+} // namespace internal
 
 /// @brief Inner SCF self-consistency loop. Public low-level surface.
 ///
@@ -52,10 +62,18 @@ class SCFSolver {
     /// @param config  Method, spin, convergence, grid parameters.
     explicit SCFSolver(SCFConfig config);
 
-    /// @brief One-time setup: builds shell-pair lists, KS grid (if KS),
-    /// and the orthogonalization matrix X. Sized to `reference.n_basis`.
-    /// Subsequent `run()` calls assume the same n_basis (geometry may
-    /// change in-place; n_basis is fixed by the basis set).
+    ~SCFSolver();
+    SCFSolver(SCFSolver&&) noexcept;
+    SCFSolver& operator=(SCFSolver&&) noexcept;
+    SCFSolver(const SCFSolver&) = delete;
+    SCFSolver& operator=(const SCFSolver&) = delete;
+
+    /// @brief One-time setup: pre-allocates the n_basis-sized eigen /
+    /// density workspaces. Geometry-dependent structures (X = S^{-1/2},
+    /// shell-pair lists, KS grid) are deliberately rebuilt inside each
+    /// `run()` — atoms move during AIMD / geometry optimization, so they
+    /// must track the current positions. Subsequent `run()` calls assume
+    /// the same n_basis (fixed by the basis set).
     /// @param reference IntegralPack used to size internal workspaces.
     void build(const IntegralPack& reference);
 
@@ -80,12 +98,14 @@ class SCFSolver {
     // Per-build state.
     RealMatrix X_; ///< Orthogonalization matrix (S^{-1/2}). Owned.
 
-    // Internal SCF step helpers.
-    internal::HamiltonianBuilder hamiltonian_;
-    internal::EigenSolver eigen_;
-    internal::DensityBuilder density_;
-    internal::DIISMixer diis_;
-    internal::DualConvergenceCheck convergence_;
+    // Internal SCF step helpers. Held by pointer so this public header
+    // only needs the forward declarations above (the internal/*.h
+    // definitions stay facade-private).
+    std::unique_ptr<internal::HamiltonianBuilder> hamiltonian_;
+    std::unique_ptr<internal::EigenSolver> eigen_;
+    std::unique_ptr<internal::DensityBuilder> density_;
+    std::unique_ptr<internal::DIISMixer> diis_;
+    std::unique_ptr<internal::DualConvergenceCheck> convergence_;
 
     // Owned result buffer (returned by reference from run()).
     SCFResult result_;

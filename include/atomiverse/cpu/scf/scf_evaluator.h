@@ -194,10 +194,16 @@ class SCFEvaluator : public cpu::ComponentBase {
     xt::xtensor<double, 2> last_P_beta_;
 
     /// Pre-built inner SCF solver. Constructed in build() with a
-    /// representative IntegralPack so all per-iteration workspaces
-    /// (X, sp_block, sp, grid) are allocated once and reused across
-    /// every launch().
+    /// representative IntegralPack: the n_basis-sized eigen/density
+    /// workspaces are allocated once; geometry-dependent structures
+    /// (X, shell pairs, KS grid) are rebuilt inside each run() because
+    /// atoms move between launches.
     std::unique_ptr<SCFSolver> solver_;
+
+    /// Pre-built corrector solver for the ASPC path (tighter tol, capped
+    /// iterations — a different SCFConfig from solver_). Constructed in
+    /// build() when the predictor is enabled so launch() never allocates.
+    std::unique_ptr<SCFSolver> corrector_solver_;
 
     // Shared-pointer storage so observers can capture handles that stay valid
     // after the driver copies this evaluator into its owned-component list.

@@ -708,15 +708,37 @@ void becke_partition_weights_for_test(const native::Atom* atoms, int natm,
 // original_becke switching scheme.
 
 // get_smooth_function_derivative for the original_becke scheme: iterated
-// polynomial f(x) = (3 - x^2) x / 2 applied three times. Returns p3 (the
-// smoothed value) and t_uab = 27/8 (1-p2^2)(1-p1^2)(1-p0^2), i.e. dp3/dmu.
-static void get_smooth_function_derivative(double mu, double& p3,
-                                           double& t_uab) {
+// polynomial f(x) = (3 - x^2) x / 2 applied three times. Returns the two
+// half cell functions s_minus = (1 - p3)/2 and s_plus = (1 + p3)/2, and
+// t_uab = 27/8 (1-p2^2)(1-p1^2)(1-p0^2), i.e. dp3/dmu.
+//
+// s_minus / s_plus are computed through the cancellation-free recurrences
+//   1 - f(x) = (1-x)^2 (x+2)/2,    1 + f(x) = (1+x)^2 (2-x)/2,
+// NOT as 0.5*(1 -+ p3). The naive form is catastrophically unstable for
+// |mu| -> 1 (far-tail grid points): p3 rounds to exactly +-1, 1-p3
+// collapses to 0, and the caller's pt = -t/s ratio — whose mathematical
+// divergence is cancelled later by multiplying with pbecke ∝ s — blows up
+// against the 1e-200 floor instead, leaving ~1e150 garbage in the weight
+// derivative. (Observed at -O0 on znver5: dE_xc/dR ~ 4e149; -O2's FMA
+// happened to keep p3 at 1-1ulp, hiding the same defect.) The factored
+// recurrences keep s exact down to the denormal range, so t/s stays a
+// faithful log-derivative and the downstream cancellation is restored.
+static void get_smooth_function_derivative(double mu, double& s_minus,
+                                           double& s_plus, double& t_uab) {
     const double p0 = mu;
+    const double u0 = 1.0 - p0, v0 = 1.0 + p0;
     const double p1 = (3.0 - p0 * p0) * p0 * 0.5;
+    const double u1 = 0.5 * u0 * u0 * (p0 + 2.0);
+    const double v1 = 0.5 * v0 * v0 * (2.0 - p0);
     const double p2 = (3.0 - p1 * p1) * p1 * 0.5;
-    p3 = (3.0 - p2 * p2) * p2 * 0.5;
-    t_uab = 27.0 / 8.0 * (1.0 - p2 * p2) * (1.0 - p1 * p1) * (1.0 - p0 * p0);
+    const double u2 = 0.5 * u1 * u1 * (p1 + 2.0);
+    const double v2 = 0.5 * v1 * v1 * (2.0 - p1);
+    const double u3 = 0.5 * u2 * u2 * (p2 + 2.0);
+    const double v3 = 0.5 * v2 * v2 * (2.0 - p2);
+    // (1 - p_i^2) = u_i * v_i exactly in the factored form.
+    t_uab = 27.0 / 8.0 * (u2 * v2) * (u1 * v1) * (u0 * v0);
+    s_minus = 0.5 * u3;
+    s_plus = 0.5 * v3;
 }
 
 double becke_weight_derivative(const native::Atom* atoms, int natm, double rx,
@@ -791,12 +813,13 @@ double becke_weight_derivative(const native::Atom* atoms, int natm, double rx,
             const double g_adj = g + a_ij * (1.0 - g * g);
             const double gadj = 1.0 - 2.0 * a_ij * g;
 
-            double smoothed, t_uab;
-            get_smooth_function_derivative(g_adj, smoothed, t_uab);
+            double s_uab, s_uba, t_uab;
+            get_smooth_function_derivative(g_adj, s_uab, s_uba, t_uab);
             t_uab *= 0.5 * gadj;
-
-            const double s_uab = 0.5 * (1.0 - smoothed + 1e-200);
-            const double s_uba = 0.5 * (1.0 + smoothed + 1e-200);
+            // Guard only the exact-zero corner (g_adj == +-1, measure zero);
+            // the stable recurrences above make this floor otherwise inert.
+            s_uab += 1e-200;
+            s_uba += 1e-200;
             pbecke[ia] *= s_uab;
             pbecke[ib] *= s_uba;
             const double pt_uab = -t_uab / s_uab;

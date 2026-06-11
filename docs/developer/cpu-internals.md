@@ -229,9 +229,11 @@ do?" If you are adding a new category, write down the same row.
 
 ## Why SCF Is an Inner Solver, Not a Driver
 
-The current CUDA SCF is a `Driver<scf::Phase>` subclass. The current
-CPU SCF is *not*. This was the substantive design choice of the SCF
-driver-alignment work
+Neither backend implements SCF as a driver: CPU and CUDA both use the
+`scf::SCFSolver` inner-solver shape behind an `SCFEvaluator` component,
+and the CPU plane-wave SCF follows the same shape
+(`cpu::pw::PWSolver` + `PWEvaluator`). This was the substantive design
+choice of the SCF driver-alignment work
 (`.claude/specs/cpu-scf-driver-alignment.md`), and it is worth
 explaining because the asymmetry confuses new developers.
 
@@ -372,7 +374,7 @@ order" goes through these stages:
 A few sharp edges to know:
 
 - **Phases are strongly typed.** `md::Phase`, `minimizer::Phase`,
-  `evaluate::Phase`, and `scf::Phase` are independent enums. A
+  `evaluate::Phase`, and `vib::Phase` are independent enums. A
   component bound by `default_bindings()` to `md::Phase::pre_force`
   cannot accidentally end up in the minimizer's `force` phase — the
   enum types are different, and the driver template is parameterized

@@ -17,8 +17,13 @@
 namespace ATV {
 namespace cpu {
 namespace scf {
+namespace toy {
 
-/// @brief SCF solver result.
+/// @brief Toy SCF solver result (synthetic reference solver only).
+///
+/// Lives in `scf::toy` so it cannot collide with the production
+/// `ATV::cpu::scf::SCFResult` in `scf_solve.h` (same name in the same
+/// namespace would be an ODR violation across the library).
 struct SCFResult {
     bool converged = false; ///< Whether SCF converged within max_iter.
     int iterations = 0;     ///< Number of iterations performed.
@@ -45,6 +50,7 @@ struct SCFResult {
 /// @return SCFResult with convergence info, energy, eigenvalues, density.
 SCFResult solve(int n, int n_occ, double alpha, double tol, int max_iter);
 
+} // namespace toy
 } // namespace scf
 } // namespace cpu
 } // namespace ATV

@@ -88,10 +88,17 @@ void collect_offenders(const std::string& dir, std::vector<std::string>& bad) {
 }
 
 const char* find_repo_root() {
-    // The test binary is run from the repo root by ctest. Verify by
-    // probing for the canonical CLAUDE.md.
-    std::ifstream probe("CLAUDE.md");
+    // Compile-time repo root injected by tests/CMakeLists.txt — ctest runs
+    // from the build directory, so a cwd probe would always skip the gate.
+#ifdef ATV_REPO_ROOT
+    static const std::string root = ATV_REPO_ROOT;
+    std::ifstream probe(root + "/CLAUDE.md");
     if (probe.good())
+        return root.c_str();
+#endif
+    // Fallback: running from the repo root directly.
+    std::ifstream probe_cwd("CLAUDE.md");
+    if (probe_cwd.good())
         return ".";
     return nullptr;
 }
@@ -106,7 +113,7 @@ TEST(SCFSolverInternalIsolation, FacadePublicHeadersDoNotIncludeInternal) {
     }
 
     std::vector<std::string> bad;
-    collect_offenders("include/atomiverse", bad);
+    collect_offenders(std::string(root) + "/include/atomiverse", bad);
     EXPECT_TRUE(bad.empty())
         << "facade-public headers must not #include cpu/scf/internal/*.h. "
         << "Offending files:\n  " << ([&] {

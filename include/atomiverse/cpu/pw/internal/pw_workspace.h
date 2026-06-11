@@ -1,10 +1,18 @@
-/// @file cpu/pw/pw_workspace.h
-/// @brief Shared workspace for plane-wave SCF components.
+/// @file cpu/pw/internal/pw_workspace.h
+/// @brief PWWorkspace — facade-private scratch for the plane-wave SCF.
+///
+/// Owned by `cpu::pw::PWSolver` (the inner solver), never by `cpu::Frame`
+/// and never threaded through Build/Launch contexts. Mirrors the gaussian
+/// SCF precedent: the workspace is the solver's private state, and the
+/// step helpers (`internal::PoissonSolver`, `XCBuilder`, `VeffBuilder`,
+/// `DavidsonSolver`, `DensityBuilder`, `ConvergenceCheck`) receive it as
+/// an explicit parameter.
 #pragma once
 
 #include "atomiverse/core/real.h"
 #include "atomiverse/cpu/pw/internal/fft.h"
 #include "atomiverse/cpu/pw/internal/g_vector.h"
+#include "atomiverse/cpu/pw/internal/kpoint.h"
 #include <complex>
 #include <memory>
 #include <vector>
@@ -13,15 +21,23 @@
 namespace ATV {
 namespace cpu {
 namespace pw {
+namespace internal {
 
 struct PWWorkspace {
     int n_g = 0;
     int nr = 0, nc = 0; // real and complex FFT grid sizes
     int fft_nx = 0, fft_ny = 0, fft_nz = 0;
-    const internal::GVectorList* gvec = nullptr;
+    const GVectorList* gvec = nullptr; // current G-sphere (density or k)
+
+    // Owned G-vector storage the `gvec` pointer aliases into:
+    // the density sphere (Γ) plus one sphere per locally-owned k-point.
+    GVectorList gvec0;
+    KPointGrid kgrid;             // full Monkhorst-Pack mesh
+    std::vector<int> owned_k;     // global k indices this rank computes
+    std::vector<GVectorList> gvec_k; // spheres for owned_k (same order)
 
     // FFT plan for r2c / c2r transforms
-    std::unique_ptr<internal::FFTPlan3D> fft;
+    std::unique_ptr<FFTPlan3D> fft;
 
     xt::xarray<std::complex<Real>> rho_G;     // charge density in G-space
     xt::xarray<std::complex<Real>> rho_G_old; // previous iteration density
@@ -61,7 +77,10 @@ struct PWWorkspace {
     };
     std::vector<std::vector<AtomWfc>> atom_wfc; // [atom][iwfc]
 
-    // USPP augmentation: Q_ij matrix (n_proj × n_proj, row-major)
+    // USPP augmentation: Q_ij matrix (n_proj × n_proj, row-major).
+    // Parsed from the UPF and kept as fundamental pseudopotential data;
+    // the augmentation density is not yet applied by the solver, so
+    // E_aug stays 0 in the current implementation.
     std::vector<Real> q_ij;
     int n_proj_total = 0;
 
@@ -74,16 +93,14 @@ struct PWWorkspace {
     // Augmentation energy [Hartree] from current density
     Real E_aug = Real(0);
 
-    // Pulay mixer
+    // Pulay mixer history (managed by internal::DensityBuilder)
     std::vector<xt::xarray<std::complex<Real>>> pulay_res;
     std::vector<xt::xarray<std::complex<Real>>> pulay_rho;
     int pulay_depth = 5;
     Real mix_beta = Real(0.4);
-
-    bool converged = false;
-    Real total_energy = 0;
 };
 
+} // namespace internal
 } // namespace pw
 } // namespace cpu
 } // namespace ATV

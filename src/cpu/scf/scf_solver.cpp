@@ -19,6 +19,11 @@
 #include <xtensor/views/xview.hpp>
 
 #include "atomiverse/core/log.h"
+#include "atomiverse/cpu/scf/internal/density_builder.h"
+#include "atomiverse/cpu/scf/internal/diis_mixer.h"
+#include "atomiverse/cpu/scf/internal/dual_convergence_check.h"
+#include "atomiverse/cpu/scf/internal/eigen_solver.h"
+#include "atomiverse/cpu/scf/internal/hamiltonian_builder.h"
 #include "atomiverse/cpu/scf/minao.h"
 #include "atomiverse/cpu/scf/scf_utils.h"
 
@@ -27,18 +32,29 @@ namespace cpu {
 namespace scf {
 
 SCFSolver::SCFSolver(SCFConfig config)
-    : config_(std::move(config)), diis_(config_.diis_max_vectors),
-      convergence_(config_.tol, (config_.conv_tol_grad > 0)
-                                    ? config_.conv_tol_grad
-                                    : std::sqrt(config_.tol)) {}
+    : config_(std::move(config)),
+      hamiltonian_(std::make_unique<internal::HamiltonianBuilder>()),
+      eigen_(std::make_unique<internal::EigenSolver>()),
+      density_(std::make_unique<internal::DensityBuilder>()),
+      diis_(std::make_unique<internal::DIISMixer>(config_.diis_max_vectors)),
+      convergence_(std::make_unique<internal::DualConvergenceCheck>(
+          config_.tol, (config_.conv_tol_grad > 0)
+                           ? config_.conv_tol_grad
+                           : std::sqrt(config_.tol))) {}
+
+// Out-of-line where internal::* are complete types (required for the
+// unique_ptr members over forward-declared helpers).
+SCFSolver::~SCFSolver() = default;
+SCFSolver::SCFSolver(SCFSolver&&) noexcept = default;
+SCFSolver& SCFSolver::operator=(SCFSolver&&) noexcept = default;
 
 void SCFSolver::build(const IntegralPack& reference) {
     // Geometry-invariant pre-allocation only. Everything else (X = S^{-1/2},
     // shell-pair lists, KS grid) is geometry-dependent — atoms move during
     // geometry optimization / AIMD, so those structures are rebuilt per
     // run() to stay consistent with the scf_solve() functional contract.
-    eigen_.prepare(reference.n_basis);
-    density_.prepare(reference.n_basis);
+    eigen_->prepare(reference.n_basis);
+    density_->prepare(reference.n_basis);
     built_ = true;
 }
 
@@ -70,11 +86,11 @@ SCFResult& SCFSolver::run(const IntegralPack& integrals,
     // rebuilt each run(). (See build() — only n_basis-sized workspaces
     // are pre-allocated there.)
     X_ = build_orthogonalization_matrix(S_cm);
-    hamiltonian_.prepare(integrals, config_);
+    hamiltonian_->prepare(integrals, config_);
 
     // Reset stateful helpers for this run.
-    diis_.reset();
-    convergence_.reset();
+    diis_->reset();
+    convergence_->reset();
 
     // ── Initial guess ───────────────────────────────────────────────────
     auto [eig0, C0] = diagonalize_fock_generalized(Hcore_cm, S_cm);
@@ -119,11 +135,11 @@ SCFResult& SCFSolver::run(const IntegralPack& integrals,
             && !skip_mixing && n_alpha != n_beta) {
             RealMatrix C_alpha_init = C0;
             apply_homo_lumo_mixing(C_alpha_init, n_alpha, n);
-            P_alpha = density_.step(C_alpha_init, n_alpha, n);
-            P_beta = density_.step(C0, n_beta, n);
+            P_alpha = density_->step(C_alpha_init, n_alpha, n);
+            P_beta = density_->step(C0, n_beta, n);
         }
     } else if (restricted) {
-        P_alpha = density_.step(C0, n_alpha, n, double(2));
+        P_alpha = density_->step(C0, n_alpha, n, double(2));
         P_beta = P_alpha;
         ATV_INFO("[scf] initial guess source=hcore");
     } else {
@@ -132,8 +148,8 @@ SCFResult& SCFSolver::run(const IntegralPack& integrals,
         const bool skip_mixing = is_ks && (n_alpha == n_beta);
         if (n_alpha > 0 && n_beta > 0 && !skip_mixing)
             apply_homo_lumo_mixing(C_alpha_init, n_alpha, n);
-        P_alpha = density_.step(C_alpha_init, n_alpha, n);
-        P_beta = density_.step(C0, n_beta, n);
+        P_alpha = density_->step(C_alpha_init, n_alpha, n);
+        P_beta = density_->step(C0, n_beta, n);
         ATV_INFO("[scf] initial guess source=hcore");
     }
 
@@ -152,7 +168,7 @@ SCFResult& SCFSolver::run(const IntegralPack& integrals,
         const auto t_iter = LogClock::now();
 
         // 1. Build Fock (method-dispatched).
-        auto fock = hamiltonian_.step(integrals, config_, P_alpha, P_beta);
+        auto fock = hamiltonian_->step(integrals, config_, P_alpha, P_beta);
         RealMatrix& F_alpha = fock.F_alpha;
         RealMatrix& F_beta = fock.F_beta;
 
@@ -165,21 +181,21 @@ SCFResult& SCFSolver::run(const IntegralPack& integrals,
         bool diis_active = false;
         if (config_.use_diis && iter >= config_.diis_start_iter) {
             if (restricted) {
-                F_alpha = diis_.step(F_alpha, err_alpha);
+                F_alpha = diis_->step(F_alpha, err_alpha);
                 F_beta = F_alpha;
             } else {
                 auto [Fa_diis, Fb_diis] =
-                    diis_.step(F_alpha, err_alpha, F_beta, err_beta);
+                    diis_->step(F_alpha, err_alpha, F_beta, err_beta);
                 F_alpha = Fa_diis;
                 F_beta = Fb_diis;
             }
-            diis_active = (diis_.size() >= 2);
+            diis_active = (diis_->size() >= 2);
         }
 
         // 3. Diagonalize.
-        std::tie(eig_alpha, C_alpha) = eigen_.step(F_alpha, S_cm);
+        std::tie(eig_alpha, C_alpha) = eigen_->step(F_alpha, S_cm);
         if (!restricted) {
-            std::tie(eig_beta, C_beta) = eigen_.step(F_beta, S_cm);
+            std::tie(eig_beta, C_beta) = eigen_->step(F_beta, S_cm);
         } else {
             C_beta = C_alpha;
             eig_beta = eig_alpha;
@@ -188,11 +204,11 @@ SCFResult& SCFSolver::run(const IntegralPack& integrals,
         // 4. Build new density.
         RealMatrix P_alpha_new, P_beta_new;
         if (restricted) {
-            P_alpha_new = density_.step(C_alpha, n_alpha, n, double(2));
+            P_alpha_new = density_->step(C_alpha, n_alpha, n, double(2));
             P_beta_new = P_alpha_new;
         } else {
-            P_alpha_new = density_.step(C_alpha, n_alpha, n);
-            P_beta_new = density_.step(C_beta, n_beta, n);
+            P_alpha_new = density_->step(C_alpha, n_alpha, n);
+            P_beta_new = density_->step(C_beta, n_beta, n);
         }
 
         // 5. Damping (PySCF convention: damping = fraction of OLD retained).
@@ -251,7 +267,7 @@ SCFResult& SCFSolver::run(const IntegralPack& integrals,
         double residual = std::max(res_a, res_b);
 
         const RealMatrix* err_beta_ptr = restricted ? nullptr : &err_beta;
-        auto verdict = convergence_.step(E_total, err_alpha, err_beta_ptr);
+        auto verdict = convergence_->step(E_total, err_alpha, err_beta_ptr);
 
         P_alpha = P_alpha_next;
         P_beta = P_beta_next;

@@ -2,11 +2,14 @@
 /// @brief SCFEvaluator implementation — unified AIMD force component.
 ///
 /// As of driver-taxonomy phase 4, the SCF cycle runs through a
-/// pre-built `cpu::scf::SCFSolver` member: the orthogonalization matrix,
-/// shell-pair lists, and KS grid are allocated once in `build()` and
-/// reused across every `launch()`. The ASPC corrector path uses a
-/// transient solver because it needs a different (tighter `tol`,
-/// smaller `max_iter`) configuration; that's the rare warm-start path.
+/// pre-built `cpu::scf::SCFSolver` member: the n_basis-sized workspaces
+/// are allocated once in `build()`; geometry-dependent structures (X,
+/// shell-pair lists, KS grid) are rebuilt inside each `run()` because
+/// atoms move between launches. The ASPC corrector path runs through a
+/// second pre-built solver member (`corrector_solver_`) because it needs
+/// a different (tighter `tol`, capped `max_iter`) configuration — it is
+/// the steady-state AIMD path once the predictor history fills, so it
+/// must not allocate per launch().
 
 #include "atomiverse/cpu/scf/scf_evaluator.h"
 
@@ -20,9 +23,10 @@ namespace {
 
 /// @brief In-place minimum-image unwrap of an isolated molecule.
 ///
-/// Atom 0 is the anchor; every other atom i is shifted by a multiple
-/// of the (orthorhombic) box edges so that |x_i - x_0| ≤ L_d / 2 along
-/// each axis d. After this call, the atoms reassemble into a single
+/// Atom 0 is the anchor; every other atom i is mapped to its
+/// minimum-image position relative to atom 0 via `cpu::Box::min_image`
+/// (orthorhombic and triclinic cells). After this call, the atoms
+/// reassemble into a single
 /// physically connected fragment regardless of how the MD integrator
 /// wrapped each atom independently across the box.
 ///
@@ -52,21 +56,21 @@ WrappedPositionsSnapshot unwrap_for_scf(ATV::cpu::Frame& frame) {
     if (n <= 1)
         return snap;
 
-    const double lx = frame.box.length(0);
-    const double ly = frame.box.length(1);
-    const double lz = frame.box.length(2);
+    // Gas-phase frame (no/degenerate box): nothing to unwrap, and
+    // Box::min_image would divide by a zero edge length.
+    if (frame.box.length(0) <= 0.0 || frame.box.length(1) <= 0.0
+        || frame.box.length(2) <= 0.0)
+        return snap;
+
     const double x0 = frame.atoms.x(0);
     const double y0 = frame.atoms.y(0);
     const double z0 = frame.atoms.z(0);
 
-    auto min_image_shift = [](double delta, double L) {
-        return (L > 0.0) ? (delta - L * std::round(delta / L)) : delta;
-    };
-
     for (int i = 1; i < n; ++i) {
-        const double dx = min_image_shift(frame.atoms.x(i) - x0, lx);
-        const double dy = min_image_shift(frame.atoms.y(i) - y0, ly);
-        const double dz = min_image_shift(frame.atoms.z(i) - z0, lz);
+        double dx = frame.atoms.x(i) - x0;
+        double dy = frame.atoms.y(i) - y0;
+        double dz = frame.atoms.z(i) - z0;
+        frame.box.min_image(dx, dy, dz);
         frame.atoms.x(i) = x0 + dx;
         frame.atoms.y(i) = y0 + dy;
         frame.atoms.z(i) = z0 + dz;
@@ -151,6 +155,17 @@ void SCFEvaluator::build(const cpu::BuildContext& ctx) {
     solver_ = std::make_unique<SCFSolver>(config_);
     solver_->build(*last_integrals_);
 
+    if (use_predictor_) {
+        // The ASPC corrector runs every steady-state AIMD step once the
+        // predictor history fills — pre-build its solver here so launch()
+        // never constructs one.
+        SCFConfig corrector_config = config_;
+        corrector_config.tol = corrector_tol_;
+        corrector_config.max_iter = corrector_steps_;
+        corrector_solver_ = std::make_unique<SCFSolver>(corrector_config);
+        corrector_solver_->build(*last_integrals_);
+    }
+
     ATV_INFO("[scf_eval] build charge={} predictor={} compute_force={} "
              "basis={} n_basis={}",
              charge_, use_predictor_, compute_force_, basis_set_name(basis_),
@@ -196,18 +211,12 @@ void SCFEvaluator::launch(const cpu::LaunchContext& ctx) {
             density_guess.has_alpha = true;
             density_guess.has_beta = true;
 
-            // ASPC corrector run: tighter tol, fewer iterations, transient
-            // solver because the SCFConfig differs from the main one.
-            SCFConfig corrector_config = config_;
-            corrector_config.tol = corrector_tol_;
-            corrector_config.max_iter = corrector_steps_;
+            // ASPC corrector run: tighter tol, capped iterations — through
+            // the corrector solver pre-built in build() (no per-step
+            // allocation on this steady-state path).
             ATV_INFO("[scf_eval] step={} scf guess source=aspc_predictor",
                      ctx.step);
-            {
-                SCFSolver corrector{corrector_config};
-                corrector.build(integrals);
-                result = corrector.run(integrals, &density_guess);
-            }
+            result = corrector_solver_->run(integrals, &density_guess);
 
             if (!result.converged && fallback_full_scf_)
                 result = solver_->run(integrals, &density_guess);

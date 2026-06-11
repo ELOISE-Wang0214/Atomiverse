@@ -76,7 +76,7 @@ Pair each tutorial with one code-reading target:
 - after Tutorial 2, read [`IntegralPack`](../../include/atomiverse/cpu/scf/integrals.h) and [`rhf_solve`](../../include/atomiverse/cpu/scf/rhf_solve.h)
 - after Tutorial 3, read [`uhf_solve`](../../include/atomiverse/cpu/scf/uhf_solve.h)
 - after Tutorial 4, read [`uks_solve`](../../include/atomiverse/cpu/scf/uks_solve.h) and [`xc_functional.h`](../../include/atomiverse/cpu/scf/xc_functional.h)
-- after Tutorial 5, read [`solve_si.h`](../../include/atomiverse/cpu/pw/solve_si.h) and [`pw_workspace.h`](../../include/atomiverse/cpu/pw/pw_workspace.h)
+- after Tutorial 5, read [`pw_solver.h`](../../include/atomiverse/cpu/pw/pw_solver.h) and [`internal/pw_workspace.h`](../../include/atomiverse/cpu/pw/internal/pw_workspace.h)
 
 If you want to understand how the same ideas map onto the runtime system, then
 read the [Developer Manual](../developer/index.md) after finishing Tutorial 2.

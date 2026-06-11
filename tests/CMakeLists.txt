@@ -198,20 +198,30 @@ endif()
 # ── PW infrastructure tests (require ATV_BUILD_PW) ─────────────────────
 
 if(ATV_BUILD_PW)
-    atv_add_cpp_test(test_g_vector   cpu/pw/test_g_vector.cpp)
-    atv_add_cpp_test(test_upf        cpu/pw/test_upf.cpp)
-    atv_add_cpp_test(test_kpoint     cpu/pw/test_kpoint.cpp)
-    atv_add_cpp_test(test_crystal    cpu/pw/test_crystal.cpp)
-    atv_add_cpp_test(test_ewald      cpu/pw/test_ewald.cpp)
-    atv_add_cpp_test(test_pw_components cpu/pw/test_pw_components.cpp)
-    atv_add_cpp_test(test_pw_si      cpu/pw/test_pw_si.cpp)
+    # Naming convention: test_{backend}_{domain}_{component}.
+    atv_add_cpp_test(test_cpu_pw_g_vector   cpu/pw/test_g_vector.cpp)
+    atv_add_cpp_test(test_cpu_pw_upf        cpu/pw/test_upf.cpp)
+    atv_add_cpp_test(test_cpu_pw_kpoint     cpu/pw/test_kpoint.cpp)
+    atv_add_cpp_test(test_cpu_pw_crystal    cpu/pw/test_crystal.cpp)
+    atv_add_cpp_test(test_cpu_pw_ewald      cpu/pw/test_ewald.cpp)
+    atv_add_cpp_test(test_cpu_pw_components cpu/pw/test_pw_components.cpp)
+    atv_add_cpp_test(test_cpu_pw_si         cpu/pw/test_pw_si.cpp)
+    atv_add_cpp_test(test_cpu_pw_evaluator  cpu/pw/test_pw_evaluator.cpp)
 
     # FFT test needs FFTW3 linkage
-    add_executable(test_fft cpu/pw/test_fft.cpp)
-    target_link_libraries(test_fft PRIVATE atomiverse GTest::gtest_main fftw3_stub)
-    set_target_properties(test_fft PROPERTIES CXX_STANDARD 17)
-    target_include_directories(test_fft PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-    add_test(NAME test_fft COMMAND test_fft)
+    add_executable(test_cpu_pw_fft cpu/pw/test_fft.cpp)
+    target_link_libraries(test_cpu_pw_fft PRIVATE atomiverse GTest::gtest_main fftw3_stub)
+    set_target_properties(test_cpu_pw_fft PROPERTIES CXX_STANDARD 17)
+    target_include_directories(test_cpu_pw_fft PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    add_test(NAME test_cpu_pw_fft COMMAND test_cpu_pw_fft)
+
+    # MPI k-point parallel parity (launched under mpirun)
+    if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
+        atv_add_mpi_exec(test_mpi_pw_kpoint mpi/test_pw_kpoint.cpp)
+        atv_add_mpi_run(test_mpi_pw_kpoint_n1 test_mpi_pw_kpoint 1)
+        atv_add_mpi_run(test_mpi_pw_kpoint_n2 test_mpi_pw_kpoint 2)
+        atv_add_mpi_run(test_mpi_pw_kpoint_n4 test_mpi_pw_kpoint 4)
+    endif()
 endif()
 
 # ── RHF/SCF tests ─────────────────────────────────────────────────────
@@ -240,6 +250,9 @@ if(ATV_BUILD_RHF)
     set_tests_properties(test_cpu_scf_hybrid_singlepoint PROPERTIES TIMEOUT 3600)
     atv_add_cpp_test(test_cpu_scf_solver_internals cpu/scf/test_scf_solver_internals.cpp)
     atv_add_cpp_test(test_cpu_scf_solver_internal_isolation cpu/scf/test_scf_solver_internal_isolation.cpp)
+    # The grep gate needs the source tree — ctest runs from the build dir.
+    target_compile_definitions(test_cpu_scf_solver_internal_isolation
+        PRIVATE ATV_REPO_ROOT="${CMAKE_SOURCE_DIR}")
     atv_add_cpp_test(test_cpu_scf_evaluator_no_alloc cpu/scf/test_scf_evaluator_no_alloc.cpp)
     atv_add_cpp_test(test_cpu_evaluate_driver        cpu/test_evaluate_driver.cpp)
     atv_add_cpp_test(test_cpu_scf_minao         cpu/scf/test_minao.cpp)
@@ -348,15 +361,16 @@ if(ATV_BUILD_CUDA)
     # polyethylene_tension-dependent ones on ATV_BUILD_BENCHMARKS internally.
     add_subdirectory(cuda/async)
 
-    # Grep gate: the migrated CUDA tree must carry no `scf::Phase` token.
-    # CUDA SCF is the `cuda::scf::SCFSolver` inner solver — no CUDA driver
-    # is parameterized on `ATV::scf::Phase`. Scoped to cuda/ only; the CPU
-    # plane-wave SCF (`cpu::pw`) legitimately keeps the enum.
-    add_test(
-        NAME test_cuda_scf_phase_scrub
-        COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cuda/scf_phase_scrub.sh
-                ${CMAKE_SOURCE_DIR})
 endif()
+
+# Grep gate: no SCF phase-enum token anywhere in the tree. SCF (gaussian
+# or plane-wave, CPU or CUDA) is an inner solver behind an Evaluator
+# component — the enum itself was deleted with the cpu::pw migration.
+# Pure grep — runs in every build configuration.
+add_test(
+    NAME test_scf_phase_scrub
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cuda/scf_phase_scrub.sh
+            ${CMAKE_SOURCE_DIR})
 
 # ── Torch backend tests ─────────────────────────────────────────────
 

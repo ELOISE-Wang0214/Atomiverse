@@ -25,8 +25,6 @@ namespace cpu {
 struct BuildContext {
     cpu::Context& runtime; ///< CPU execution context.
     cpu::Frame& frame;     ///< Host-resident system state.
-    void* pw_workspace =
-        nullptr; ///< PWWorkspace* for plane-wave components (optional).
 };
 
 /// @brief Context for per-step computation on CPU.

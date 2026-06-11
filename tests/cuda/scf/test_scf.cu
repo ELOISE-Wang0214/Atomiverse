@@ -82,9 +82,9 @@ TEST(SCF, NoCudaScfSCFDriverClass) {
 TEST(SCF, SCFSolverIsNotADriver) {
     // ac-002: SCFSolver is an inner solver, NOT a Driver<> subclass.
     static_assert(
-        !std::is_base_of_v<Driver<ATV::scf::Phase, cuda::device_tag>,
+        !std::is_base_of_v<Driver<ATV::evaluate::Phase, cuda::device_tag>,
                            cuda::scf::SCFSolver>,
-        "cuda::scf::SCFSolver must not be a Driver<scf::Phase> subclass");
+        "cuda::scf::SCFSolver must not be a Driver<> subclass");
     SUCCEED();
 }
 
@@ -237,7 +237,7 @@ TEST(SCF, EvaluateRejectsFrameWithNoEvaluator) {
 TEST(SCF, CPUConvergence) {
     double cpu_tol =
         (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-8);
-    auto result = cpu::scf::solve(8, 3, double(0.1), cpu_tol, 200);
+    auto result = cpu::scf::toy::solve(8, 3, double(0.1), cpu_tol, 200);
     EXPECT_TRUE(result.converged);
     EXPECT_TRUE(std::isfinite(static_cast<double>(result.energy)));
     EXPECT_GT(result.energy, double(0));
@@ -248,7 +248,7 @@ TEST(SCF, CPUAlphaZero) {
     // alpha=0: no self-consistency, converges in 2 iterations
     double cpu_tol =
         (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
-    auto result = cpu::scf::solve(8, 3, double(0), cpu_tol, 50);
+    auto result = cpu::scf::toy::solve(8, 3, double(0), cpu_tol, 50);
     EXPECT_TRUE(result.converged);
     EXPECT_LE(result.iterations, 3); // 2 for double, possibly 3 for float
 }
@@ -256,8 +256,8 @@ TEST(SCF, CPUAlphaZero) {
 TEST(SCF, CPUReproducibility) {
     double cpu_tol =
         (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-8);
-    auto r1 = cpu::scf::solve(16, 4, double(0.1), cpu_tol, 100);
-    auto r2 = cpu::scf::solve(16, 4, double(0.1), cpu_tol, 100);
+    auto r1 = cpu::scf::toy::solve(16, 4, double(0.1), cpu_tol, 100);
+    auto r2 = cpu::scf::toy::solve(16, 4, double(0.1), cpu_tol, 100);
     EXPECT_DOUBLE_EQ(static_cast<double>(r1.energy),
                      static_cast<double>(r2.energy));
     EXPECT_EQ(r1.iterations, r2.iterations);
@@ -272,7 +272,7 @@ TEST(SCF, CPUCUDAParity) {
     double tol = double(1e-5);
 
     // CPU reference
-    auto cpu_result = cpu::scf::solve(n, n_occ, alpha, tol, 200);
+    auto cpu_result = cpu::scf::toy::solve(n, n_occ, alpha, tol, 200);
 
     // CUDA via SCFEvaluator + Evaluate
     auto frame = make_scf_system(n);
@@ -298,7 +298,7 @@ TEST(SCF, CPUCUDAParityN16) {
     double alpha = double(0.05);
     double tol = double(1e-5);
 
-    auto cpu_result = cpu::scf::solve(n, n_occ, alpha, tol, 200);
+    auto cpu_result = cpu::scf::toy::solve(n, n_occ, alpha, tol, 200);
 
     auto frame = make_scf_system(n);
     {

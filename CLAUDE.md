@@ -3,7 +3,7 @@ mol_project:
   name: atomiverse
   language: cpp
   build:
-    install: "cmake -B build -DATV_BUILD_TESTS=ON -DATV_BUILD_RHF=ON"
+    install: "cmake -B build -DCMAKE_BUILD_TYPE=Release -DATV_BUILD_TESTS=ON -DATV_BUILD_RHF=ON"
     check: "cmake --build build -j$(nproc)"
     test: "ctest --test-dir build --output-on-failure"
     test_single: "ctest --test-dir build -R {path} --output-on-failure"
@@ -26,7 +26,7 @@ mol_project:
 ## Build & Test
 
 ```bash
-cmake -B build -DATV_BUILD_TESTS=ON -DATV_BUILD_RHF=ON
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DATV_BUILD_TESTS=ON -DATV_BUILD_RHF=ON
 cmake --build build -j$(nproc)
 ctest --test-dir build --output-on-failure
 ./build/tests/test_md          # single test
@@ -87,6 +87,7 @@ Each backend (`cpu/`, `cuda/`, `torch/`) follows the same two-tier layout:
   molrec.h, transfer.h                              ← cross-domain utilities
   md/          ← domain: integrators, thermostats, neighbor lists
   scf/         ← domain: solvers, integrals, gradients, evaluators
+  pw/          ← domain: plane-wave DFT (PWSolver, PWEvaluator; CPU only)
   minimizer/   ← domain: SD, CG, L-BFGS
   observer/    ← domain: analysis (RDF, Mulliken, density)
   recorder/    ← domain: I/O (XYZ, Zarr, thermo output)
@@ -129,7 +130,19 @@ by `cpu::scf::SCFSolver` (a public low-level class, *not* a Driver
 subclass), used internally by force-providing evaluator components
 like `cpu::scf::SCFEvaluator`. Single-point energy in user code is
 `cpu::Evaluate + cpu::scf::SCFEvaluator`. There is no `SinglePoint`
-class.
+class. The CPU **plane-wave** SCF follows the identical shape:
+`cpu::pw::PWSolver` (inner solver owning `internal::PWWorkspace`)
+behind the `cpu::pw::PWEvaluator` Evaluator component
+(`Capability::Energy`, writes `frame.energy` in eV; Ry/Ha on
+`last_result()`); its step helpers (`PoissonSolver`, `XCBuilder`,
+`VeffBuilder`, `DavidsonSolver`, `DensityBuilder`, `ConvergenceCheck`)
+live in `cpu::pw::internal::` and are never Plan components. The
+historical `ATV::scf::Phase` enum is deleted — no SCF anywhere carries
+an outer phase enum (grep-gated by `test_scf_phase_scrub`). `pw_scf()`
+survives as a thin shim over a transient `PWSolver`. Under
+`ATV_HAS_MPI`, `PWSolver::run()` distributes k-points round-robin
+across `MPI_COMM_WORLD` and Allreduces the density / band-energy
+accumulations (parity gated by `test_mpi_pw_kpoint_n{1,2,4}`).
 
 CUDA mirrors the same three-category taxonomy. `cuda::Evaluate`,
 `cuda::md::MD`, and `cuda::minimizer::Minimize` are the three concrete
@@ -226,7 +239,7 @@ molrs (Rust) is a hard dependency for I/O. `cpu::MolRec` uses PIMPL — no `rust
 - **Component tagging:** `role()` returns `ComponentRole` (structural slot); `capabilities()` returns `Capability` bitset (frame fields written). Both default to `None`.
 - **No factory functions** — components are classes with constructors
 - **No fallback values** — lookup tables throw on unsupported input
-- **Phase naming:** Evaluate: `prepare, evaluate, finalize`. MD: LAMMPS-style. Minimizer: `search_direction, line_search, force, convergence_check, end_of_step`. SCF: `build_hamiltonian, diagonalize, build_density, convergence_check, end_of_step` — `ATV::scf::Phase` is the phase enum for the CPU **plane-wave** SCF outer driver (`cpu::pw`, a `Driver<scf::Phase, cpu::device_tag>`). Gaussian-basis CPU SCF (`cpu::scf::SCFSolver`) and the migrated CUDA SCF (`cuda::scf::SCFSolver`) are inner solvers and use no outer phase enum.
+- **Phase naming:** Evaluate: `prepare, evaluate, finalize`. MD: LAMMPS-style. Minimizer: `search_direction, line_search, force, convergence_check, end_of_step`. Vib: `setup, displace, force, accumulate, diagonalize, thermochem, end_of_step`. There is **no SCF phase enum** — gaussian (`cpu::scf::SCFSolver`, `cuda::scf::SCFSolver`) and plane-wave (`cpu::pw::PWSolver`) SCF are inner solvers with no outer phases (`ATV::scf::Phase` deleted; grep-gated).
 - **Units:** eV, Å, fs, amu, eV/Å, K. Conversion constants in `core/units.h`.
 - **Precision:** compile-time `Real` (`-DATV_REAL=float|double`), `Int` (`-DATV_INT=int|int64_t`)
 - **libxc:** when enabled, native XC must match libxc to 1e-12
@@ -308,6 +321,34 @@ driver accepts either by adding the component.
   by `rhf_solve` / `uhf_solve` / `uks_solve`.
 - **Gradients:** `scf_gradient(frame, integrals, result, config)` — unified analytic gradient (HF + KS)
 - **Utilities:** `basis_eval.h`, `grid.h`, `xc_functional.h`, `aspc_predictor.h`
+
+### CPU PW (requires `-DATV_BUILD_PW=ON`, FFTW3)
+- **Inner solver:** `cpu::pw::PWSolver` — public low-level class, NOT a
+  `Driver<>` subclass. Configured by `PWConfig` (upf_path, ecut_ry,
+  k_mesh, tol, max_iter, mix_beta, pulay_depth); owns the
+  facade-private `internal::PWWorkspace` and the SCF loop
+  (Poisson → XC → Veff → per-k Davidson → density build + Pulay mix →
+  convergence). `build()` parses the UPF; geometry-dependent setup
+  (Ewald, G-vectors, FFT plans, V_loc, KB projectors) is rebuilt per
+  `run()`, reusing grid-sized scratch when FFT dims are unchanged.
+- **Internal step helpers** (`cpu::pw::internal::`,
+  `include/atomiverse/cpu/pw/internal/`): `PoissonSolver`, `XCBuilder`,
+  `VeffBuilder`, `DavidsonSolver`, `DensityBuilder`,
+  `ConvergenceCheck` + numerics (`ewald`, `fft`, `g_vector`, `kpoint`,
+  `upf_reader`, `pw_workspace`). Owned by `PWSolver`, NOT
+  ComponentBase subclasses, NOT registered into any Plan; public
+  headers must not include them (tests may).
+- **Evaluator:** `cpu::pw::PWEvaluator` — `cpu::ComponentBase`,
+  `role()==Evaluator`, `capabilities()==Energy` (no PW forces yet).
+  Writes `frame.energy` [eV]; `last_result().energy` [Ry] /
+  `.energy_ha` [Ha]. Plugs into `cpu::Evaluate` via
+  `eval.on(evaluate::Phase::evaluate).add(pwe)`.
+- **`pw_scf(frame, upf, ecut, k, tol, max_iter)`** — thin shim over a
+  transient `PWSolver` (back-compat + scripting).
+- **MPI:** k-point round-robin over `MPI_COMM_WORLD` inside `run()`
+  (gated `ATV_HAS_MPI` + `MPI_Initialized`); density + band-energy
+  Allreduced per iteration; Davidson initial-guess noise seeded per
+  subspace index so results are rank-layout independent.
 
 ### Output (cross-driver)
 Thermo, Recorder (XYZ), RDF
