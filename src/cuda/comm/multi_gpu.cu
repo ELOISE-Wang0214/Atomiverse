@@ -15,7 +15,7 @@
 #include "atomiverse/cuda/potentials/bond_harmonic.cuh"
 #include "atomiverse/cuda/potentials/dihedral_multi_harmonic.cuh"
 #include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
-#include "neighborlist/atom_cell_sort.cuh"
+#include "atom_cell_sort.cuh"
 
 #include <cub/cub.cuh>
 #include <cuda_runtime.h>
