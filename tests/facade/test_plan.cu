@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <stdexcept>
 
-#include "atomiverse/cuda/component.cuh"
+#include "atomiverse/cuda/component/component.cuh"
 #include "atomiverse/facade/plan.h"
 #include "atomiverse/facade/stage.h"
 

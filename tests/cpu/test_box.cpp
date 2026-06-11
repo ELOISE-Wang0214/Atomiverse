@@ -12,8 +12,8 @@
 #include <cmath>
 #include <random>
 
-#include "atomiverse/cpu/box.h"
-#include "atomiverse/cpu/box_simd.h"
+#include "atomiverse/cpu/frame/box.h"
+#include "atomiverse/cpu/frame/box_simd.h"
 
 #include <xsimd/xsimd.hpp>
 

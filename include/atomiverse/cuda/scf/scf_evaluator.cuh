@@ -29,7 +29,7 @@
 #include <memory>
 #include <string>
 
-#include "atomiverse/cuda/component.cuh"
+#include "atomiverse/cuda/component/component.cuh"
 #include "atomiverse/cuda/scf/scf_solver.cuh"
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"

@@ -13,9 +13,9 @@
 /// accumulator on its post_force phase slot so KineticEnergy can
 /// atomic-add into a known-zero buffer at end_of_step.
 
-#include "atomiverse/cuda/launch.cuh"
+#include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/observer/stress.cuh"
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include <cuda_runtime.h>
 
 namespace ATV {

@@ -21,7 +21,7 @@ class or function name.
 
 Start with these types:
 
-- [`cpu::Frame`](../../include/atomiverse/cpu/frame.h)
+- [`cpu::Frame`](../../include/atomiverse/cpu/frame/frame.h)
 - [`Mat3`](../../include/atomiverse/core/mat3.h)
 - [`Real`](../../include/atomiverse/core/real.h)
 - [`Int`](../../include/atomiverse/core/int.h)
@@ -72,7 +72,7 @@ Start with these types:
 - [`Thermo`](../../include/atomiverse/cuda/recorder/thermo.cuh)
 - [`Recorder`](../../include/atomiverse/cuda/recorder/recorder.cuh)
 - [`RDF`](../../include/atomiverse/cuda/observer/rdf.cuh)
-- [`MolRec`](../../include/atomiverse/cpu/molrec.h)
+- [`MolRec`](../../include/atomiverse/cpu/io/molrec.h)
 - [`XYZ`](../../include/atomiverse/cpu/recorder/xyz.h)
 - [`mulliken_charge` and related helpers](../../include/atomiverse/cpu/observer/mulliken.h)
 - [`DensityGrid`](../../include/atomiverse/cpu/observer/density.h)

@@ -45,7 +45,7 @@ declare the default bindings, and override `launch`:
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/component.h"
+#include "atomiverse/cpu/component/component.h"
 #include "atomiverse/core/binding.h"
 #include "atomiverse/facade/stage.h"
 
@@ -141,7 +141,7 @@ the existing `LBFGS` and `CG` already do. Mirror their pattern:
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/component.h"
+#include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h"   // for OptRecord
 #include "atomiverse/facade/stage.h"
 

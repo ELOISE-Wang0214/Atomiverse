@@ -88,9 +88,9 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/report.h"
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/component.h"
-#include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/lammps_data.h"
+#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/io/lammps_data.h"
 #include "atomiverse/cpu/md/deform.h"
 #include "atomiverse/cpu/md/fix_langevin.h"
 #include "atomiverse/cpu/md/init.h"
@@ -104,7 +104,7 @@
 #include "atomiverse/cpu/potentials/angle_harmonic.h"
 #include "atomiverse/cpu/potentials/bond_harmonic.h"
 #include "atomiverse/cpu/potentials/dihedral_multi_harmonic.h"
-#include "atomiverse/cpu/molrec.h"
+#include "atomiverse/cpu/io/molrec.h"
 #include "atomiverse/cpu/recorder/trajectory.h"
 #include "atomiverse/cpu/recorder/xyz.h"
 #include "atomiverse/facade/stage.h"
@@ -251,7 +251,7 @@ inline bool dump_global(int my_rank, const ATV::cpu::Frame& frame,
 #include "atomiverse/cuda/potentials/bond_harmonic.cuh"
 #include "atomiverse/cuda/potentials/dihedral_multi_harmonic.cuh"
 #include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include <cuda_runtime.h>
 #endif
 

@@ -13,7 +13,7 @@
 #include <sstream>
 #include <string>
 
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/minimizer/final_geometry.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h"
 #include "atomiverse/cpu/minimizer/opt_log.h"

@@ -8,7 +8,7 @@
 /// reset the opt-in counter and assert it stays zero after the step. The
 /// counter only counts calls that go through `cuda::stream_synchronize` (the
 /// wrapper in `cuda/async/sync_guard.cuh`); backend-level slot-boundary syncs
-/// in `src/cuda/driver.cu` are deliberately excluded because they are not
+/// in `src/cuda/driver/driver.cu` are deliberately excluded because they are not
 /// user-component code and not what the spec is gating.
 
 #include <cstdint>
@@ -16,7 +16,7 @@
 #include <vector>
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cuda/async/record_base.cuh"
 #include "atomiverse/cuda/async/sync_guard.cuh"
 #include "atomiverse/cuda/md/init.cuh"

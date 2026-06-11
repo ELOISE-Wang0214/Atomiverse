@@ -7,16 +7,16 @@
 #include <string_view>
 #include <type_traits>
 
-#include "atomiverse/cpu/backend.h"
+#include "atomiverse/cpu/driver/backend.h"
 #include "atomiverse/cpu/recorder/timing_report.h"
-#include "atomiverse/cpu/dynamics_driver.h"
+#include "atomiverse/cpu/driver/dynamics_driver.h"
 #include "atomiverse/cpu/md/init.h"
 #include "atomiverse/cpu/comm/atom_migration.h"
 #include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/comm/halo_exchange.h"
 #include "atomiverse/cpu/comm/reduce.h"
 #include "atomiverse/cpu/observer/virial_stress.h"
-#include "atomiverse/cpu/pair_evaluator.h"
+#include "atomiverse/cpu/component/pair_evaluator.h"
 #include "atomiverse/cpu/async/snapshot_publisher.h"
 #include "atomiverse/facade/stage.h"
 

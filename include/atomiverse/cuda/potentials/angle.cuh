@@ -6,7 +6,7 @@
 #include <functional>
 #include <vector>
 
-#include "atomiverse/cuda/component.cuh"
+#include "atomiverse/cuda/component/component.cuh"
 
 namespace ATV {
 namespace cuda {

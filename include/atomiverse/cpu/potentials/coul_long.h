@@ -20,7 +20,7 @@
 #include <vector>
 
 #include "atomiverse/core/real.h"
-#include "atomiverse/cpu/component.h"
+#include "atomiverse/cpu/component/component.h"
 #include "atomiverse/facade/component_role.h"
 
 namespace ATV {

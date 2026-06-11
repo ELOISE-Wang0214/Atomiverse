@@ -24,9 +24,9 @@
 #include <vector>
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/evaluate.h"
-#include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/materialize.h"
+#include "atomiverse/cpu/driver/evaluate.h"
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/frame/materialize.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"

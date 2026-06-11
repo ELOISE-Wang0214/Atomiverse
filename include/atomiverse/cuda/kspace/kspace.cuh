@@ -14,7 +14,7 @@
 /// header except for the component base it extends.
 #pragma once
 
-#include "atomiverse/cuda/component.cuh"
+#include "atomiverse/cuda/component/component.cuh"
 
 namespace ATV {
 namespace cuda {

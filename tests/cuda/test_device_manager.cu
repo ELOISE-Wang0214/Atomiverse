@@ -3,7 +3,7 @@
 
 #include <gtest/gtest.h>
 
-#include "atomiverse/cuda/device_manager.cuh"
+#include "atomiverse/cuda/device/device_manager.cuh"
 
 using namespace ATV;
 

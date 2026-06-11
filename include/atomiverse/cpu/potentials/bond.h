@@ -5,7 +5,7 @@
 /// derive from this class and implement compute().
 #pragma once
 
-#include "atomiverse/cpu/component.h"
+#include "atomiverse/cpu/component/component.h"
 #include "atomiverse/facade/component_role.h"
 
 namespace ATV {

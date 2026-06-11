@@ -16,7 +16,7 @@
 #include <cmath>
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/scf_solve.h"

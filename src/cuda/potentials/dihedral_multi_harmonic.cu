@@ -1,10 +1,10 @@
 /// @file cuda/potentials/dihedral_multi_harmonic.cu
 /// @brief CUDA DihedralMultiHarmonic — V = Σₙ Cₙ cosⁿ(φ).
 
-#include "atomiverse/cuda/box.cuh"
-#include "atomiverse/cuda/launch.cuh"
+#include "atomiverse/cuda/frame/box.cuh"
+#include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/potentials/dihedral_multi_harmonic.cuh"
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include <cmath>
 #include <cuda_runtime.h>
 

@@ -1,11 +1,11 @@
 /// @file cuda/scf/hamiltonian.cu
 /// @brief internal::Hamiltonian: allocate SCF workspace + build H = H0 + alpha * P.
 
-#include "atomiverse/cuda/launch.cuh"
+#include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/scf/internal/hamiltonian.cuh"
 #include "cublas_dispatch.cuh"
 
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include <cuda_runtime.h>
 
 namespace ATV {

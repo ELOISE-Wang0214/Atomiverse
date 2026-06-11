@@ -8,7 +8,7 @@
 
 #include <string>
 
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/pw/pw_solver.h"
 
 namespace ATV {

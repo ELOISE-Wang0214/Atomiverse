@@ -11,7 +11,7 @@
 #include <type_traits>
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/potentials/pair_lj_cut.h" // legacy alias header
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"

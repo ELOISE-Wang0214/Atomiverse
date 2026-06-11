@@ -2,7 +2,7 @@
 /// @brief LAMMPS-style abstract base for bonded 4-body styles (CPU).
 #pragma once
 
-#include "atomiverse/cpu/component.h"
+#include "atomiverse/cpu/component/component.h"
 #include "atomiverse/facade/component_role.h"
 
 namespace ATV {

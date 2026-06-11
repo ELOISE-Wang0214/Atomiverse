@@ -18,7 +18,7 @@
 /// @see internal::DensityBuilder for the helper that produces P and P_old
 #pragma once
 
-#include "atomiverse/cuda/component.cuh"
+#include "atomiverse/cuda/component/component.cuh"
 #include "atomiverse/cuda/scf/scf_workspace.cuh"
 
 namespace ATV {

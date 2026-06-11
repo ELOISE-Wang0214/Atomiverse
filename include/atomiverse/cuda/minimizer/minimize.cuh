@@ -31,7 +31,7 @@
 #pragma once
 
 #include "atomiverse/cuda/md/init.cuh"
-#include "atomiverse/cuda/optimize_driver.cuh"
+#include "atomiverse/cuda/driver/optimize_driver.cuh"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {

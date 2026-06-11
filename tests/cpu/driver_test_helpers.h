@@ -25,8 +25,8 @@
 
 #include "atomiverse/core/binding.h"
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/component.h"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
 

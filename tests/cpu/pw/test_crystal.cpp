@@ -1,7 +1,7 @@
 /// @file test_crystal.cpp
 /// @brief Manual Frame construction for PW (no magic builders).
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include <cmath>
 #include <gtest/gtest.h>
 

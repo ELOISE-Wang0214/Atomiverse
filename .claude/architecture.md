@@ -32,18 +32,18 @@ _Generated 2026-05-06 by /mol:map._
 
 #### CPU pillar
 Backend root (shared infra):
-- `include/atomiverse/cpu/backend.h`, `backend_traits.h` → CPU backend wiring.
-- `include/atomiverse/cpu/frame.h` → `cpu::Frame` (xtensor SoA, atoms/bonds/angles/dihedrals + box + scalars).
-- `include/atomiverse/cpu/box.h`, `box_simd.h` → canonical `cpu::Box` (cell + cache + min-image; xsimd batch overload).
-- `include/atomiverse/cpu/context.h` → `cpu::Context` (runtime, `outer_status`).
-- `include/atomiverse/cpu/component.h` → `cpu::ComponentBase` + `BuildContext` / `LaunchContext` / `DestroyContext`.
-- `include/atomiverse/cpu/cpu_driver.h` → `cpu::CPUDriver<PhaseEnum>` (build / validate / install_infra hooks).
-- `include/atomiverse/cpu/evaluate_driver.h`, `dynamics_driver.h`, `optimize_driver.h` → three category bases.
-- `include/atomiverse/cpu/evaluate.h` → `cpu::Evaluate` user-facing one-pass driver.
-- `include/atomiverse/cpu/single_point.h` → `cpu::single_point()` shim (free function, not a class).
-- `include/atomiverse/cpu/transfer.h` → `cpu::to_cuda(Frame)`.
-- `include/atomiverse/cpu/molrec.h` → `cpu::MolRec` (PIMPL over molrs).
-- `include/atomiverse/cpu/pair_evaluator.h` → `cpu::PairEvaluator` interface.
+- `include/atomiverse/cpu/driver/backend.h`, `backend_traits.h` → CPU backend wiring.
+- `include/atomiverse/cpu/frame/frame.h` → `cpu::Frame` (xtensor SoA, atoms/bonds/angles/dihedrals + box + scalars).
+- `include/atomiverse/cpu/frame/box.h`, `box_simd.h` → canonical `cpu::Box` (cell + cache + min-image; xsimd batch overload).
+- `include/atomiverse/cpu/component/context.h` → `cpu::Context` (runtime, `outer_status`).
+- `include/atomiverse/cpu/component/component.h` → `cpu::ComponentBase` + `BuildContext` / `LaunchContext` / `DestroyContext`.
+- `include/atomiverse/cpu/driver/cpu_driver.h` → `cpu::CPUDriver<PhaseEnum>` (build / validate / install_infra hooks).
+- `include/atomiverse/cpu/driver/evaluate_driver.h`, `dynamics_driver.h`, `optimize_driver.h` → three category bases.
+- `include/atomiverse/cpu/driver/evaluate.h` → `cpu::Evaluate` user-facing one-pass driver.
+- `include/atomiverse/cpu/driver/single_point.h` → `cpu::single_point()` shim (free function, not a class).
+- `include/atomiverse/cpu/frame/transfer.h` → `cpu::to_cuda(Frame)`.
+- `include/atomiverse/cpu/io/molrec.h` → `cpu::MolRec` (PIMPL over molrs).
+- `include/atomiverse/cpu/component/pair_evaluator.h` → `cpu::PairEvaluator` interface.
 - `include/atomiverse/cpu/frame_snapshot.h`, `snapshot_publisher.h`, `async_component_base.h`, `analysis_executor.h` → async-observer plumbing.
 
 CPU md domain:
@@ -87,12 +87,12 @@ CPU scf domain (gated `ATV_BUILD_RHF`):
 
 #### CUDA pillar
 Backend root (shared infra):
-- `include/atomiverse/cuda/backend.cuh`, `backend_traits.cuh`, `context.cuh`, `error.cuh`, `launch.cuh`, `types.cuh`.
-- `include/atomiverse/cuda/frame.cuh` → `cuda::Frame` (device pointers + host-cached metadata + `SCFWorkspace`).
-- `include/atomiverse/cuda/box.cuh` → `cuda::Box` mirror.
-- `include/atomiverse/cuda/component.cuh` → `cuda::ComponentBase`.
-- `include/atomiverse/cuda/transfer.cuh` → `cuda::to_cpu(Frame)`.
-- `include/atomiverse/cuda/timer.cuh`, `log_callback.h`, `async_bridge.cuh` → telemetry + AsyncBridge for D2H+host callback.
+- `include/atomiverse/cuda/driver/backend.cuh`, `backend_traits.cuh`, `context.cuh`, `error.cuh`, `launch.cuh`, `types.cuh`.
+- `include/atomiverse/cuda/frame/frame.cuh` → `cuda::Frame` (device pointers + host-cached metadata + `SCFWorkspace`).
+- `include/atomiverse/cuda/frame/box.cuh` → `cuda::Box` mirror.
+- `include/atomiverse/cuda/component/component.cuh` → `cuda::ComponentBase`.
+- `include/atomiverse/cuda/frame/transfer.cuh` → `cuda::to_cpu(Frame)`.
+- `include/atomiverse/cuda/device/timer.cuh`, `log_callback.h`, `async_bridge.cuh` → telemetry + AsyncBridge for D2H+host callback.
 - `include/atomiverse/cuda/neighbor_list.cuh` → top-level CUDA neighbor list.
 
 CUDA md domain:
@@ -116,7 +116,7 @@ CUDA scf domain (gated `ATV_BUILD_RHF`):
 - `include/atomiverse/cuda/scf/{hamiltonian,eigen_solver,density_builder,convergence_check,rhf_fock,rhf_density,device_integrals}.cuh` → SCF step components.
 
 #### Torch pillar
-- `include/atomiverse/torch/frame.cuh` → `torch::Frame` (Tensor-backed system state).
+- `include/atomiverse/torch/frame/frame.cuh` → `torch::Frame` (Tensor-backed system state).
 - `include/atomiverse/torch/{context,neighbor_list,stream_guard,transfer}.cuh` → backend infra.
 - `include/atomiverse/torch/potentials/{lj,harmonic_bond}.cuh` → differentiable potentials (autograd).
 

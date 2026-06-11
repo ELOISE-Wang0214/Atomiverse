@@ -24,7 +24,7 @@
 #include <type_traits>
 #include <vector>
 
-#include "atomiverse/cpu/component.h"
+#include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/scf/internal/density_builder.h"
 #include "atomiverse/cpu/scf/internal/diis_mixer.h"
 #include "atomiverse/cpu/scf/internal/dual_convergence_check.h"

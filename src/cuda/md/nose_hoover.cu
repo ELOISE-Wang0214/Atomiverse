@@ -2,9 +2,9 @@
 /// @brief NoseHoover -- single-chain Nosé-Hoover thermostat.
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cuda/launch.cuh"
+#include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/md/nose_hoover.cuh"
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include "atomiverse/facade/stage.h"
 #include <cuda_runtime.h>
 

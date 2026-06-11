@@ -17,7 +17,7 @@
 #include <array>
 #include <vector>
 
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 
 namespace ATV {

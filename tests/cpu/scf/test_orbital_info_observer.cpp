@@ -8,7 +8,7 @@
 #include <string>
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h"
 #include "atomiverse/cpu/scf/orbital_info_observer.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"

@@ -1,8 +1,8 @@
 /// @file minimizer/cg.cu
 /// @brief Polak-Ribière+ CG kernels: device-resident β + fused step.
 
-#include "atomiverse/cuda/box.cuh"
-#include "atomiverse/cuda/launch.cuh"
+#include "atomiverse/cuda/frame/box.cuh"
+#include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/minimizer/cg.cuh"
 #include <cuda_runtime.h>
 

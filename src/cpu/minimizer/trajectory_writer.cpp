@@ -8,7 +8,7 @@
 
 #include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/comm/gather.h"
-#include "atomiverse/cpu/molrec.h"
+#include "atomiverse/cpu/io/molrec.h"
 #include "atomiverse/cpu/recorder/xyz.h"
 
 namespace ATV {

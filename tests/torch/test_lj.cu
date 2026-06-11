@@ -6,7 +6,7 @@
 #ifdef ATV_HAS_TORCH
 
 #include "atomiverse/torch/potentials/lj.cuh"
-#include "atomiverse/torch/transfer.cuh"
+#include "atomiverse/torch/frame/transfer.cuh"
 
 #include <cmath>
 #include <cuda_runtime.h>

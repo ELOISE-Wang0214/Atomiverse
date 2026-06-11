@@ -25,7 +25,7 @@
 #include <vector>
 
 #include "atomiverse/core/log.h"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 
 #ifdef _OPENMP
 #include <omp.h>

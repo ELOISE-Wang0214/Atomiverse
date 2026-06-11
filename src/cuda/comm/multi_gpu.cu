@@ -3,12 +3,12 @@
 
 #include "atomiverse/cuda/comm/multi_gpu.cuh"
 
-#include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/transfer.h"
-#include "atomiverse/cuda/box.cuh"
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/frame/transfer.h"
+#include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/md/nve_limit.cuh"
-#include "atomiverse/cuda/transfer.cuh"
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/transfer.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 // Concrete force styles built by the default factories (the header now carries
 // only the abstract bases — Pair/Bond/Angle/Dihedral/KSpace).
 #include "atomiverse/cuda/potentials/angle_harmonic.cuh"

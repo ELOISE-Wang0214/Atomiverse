@@ -33,8 +33,8 @@
 #include <memory>
 #include <string>
 
-#include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/response_driver.h"
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/driver/response_driver.h"
 #include "atomiverse/cpu/vib/displace_step.h"
 #include "atomiverse/cpu/vib/hessian_accumulator.h"
 #include "atomiverse/cpu/vib/hessian_result.h"

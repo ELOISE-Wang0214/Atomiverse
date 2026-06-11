@@ -5,7 +5,7 @@
 /// between CPU and CUDA potential layers; only the names match.
 #pragma once
 
-#include "atomiverse/cuda/component.cuh"
+#include "atomiverse/cuda/component/component.cuh"
 
 namespace ATV {
 namespace cuda {

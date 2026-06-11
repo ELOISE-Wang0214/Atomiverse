@@ -5,7 +5,7 @@
 #pragma once
 
 #include "atomiverse/core/real.h"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/pw/internal/g_vector.h"
 #include "atomiverse/cpu/pw/internal/kpoint.h"
 #include "atomiverse/cpu/pw/internal/pw_workspace.h"

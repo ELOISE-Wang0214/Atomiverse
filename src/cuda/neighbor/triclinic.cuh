@@ -16,7 +16,7 @@
 #include <cmath>
 #include <cstdint>
 
-#include "atomiverse/cuda/box.cuh"
+#include "atomiverse/cuda/frame/box.cuh"
 
 namespace ATV::cuda::md::nlist {
 

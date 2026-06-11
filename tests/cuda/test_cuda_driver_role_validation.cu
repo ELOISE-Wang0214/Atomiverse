@@ -16,10 +16,10 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cuda/component.cuh"
-#include "atomiverse/cuda/dynamics_driver.cuh"
-#include "atomiverse/cuda/evaluate_driver.cuh"
-#include "atomiverse/cuda/optimize_driver.cuh"
+#include "atomiverse/cuda/component/component.cuh"
+#include "atomiverse/cuda/driver/dynamics_driver.cuh"
+#include "atomiverse/cuda/driver/evaluate_driver.cuh"
+#include "atomiverse/cuda/driver/optimize_driver.cuh"
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
 

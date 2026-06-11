@@ -6,7 +6,7 @@
 #include "atomiverse/core/log.h"
 #include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/minimizer/global_reduce.h"
-#include "atomiverse/cpu/owned_range.h"
+#include "atomiverse/cpu/component/owned_range.h"
 
 #include <algorithm>
 #include <cmath>

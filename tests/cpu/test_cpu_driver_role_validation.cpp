@@ -10,9 +10,9 @@
 
 #include <string>
 
-#include "atomiverse/cpu/dynamics_driver.h"
-#include "atomiverse/cpu/evaluate_driver.h"
-#include "atomiverse/cpu/optimize_driver.h"
+#include "atomiverse/cpu/driver/dynamics_driver.h"
+#include "atomiverse/cpu/driver/evaluate_driver.h"
+#include "atomiverse/cpu/driver/optimize_driver.h"
 #include "atomiverse/facade/stage.h"
 
 #include "cpu/driver_test_helpers.h"

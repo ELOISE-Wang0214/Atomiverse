@@ -12,7 +12,7 @@
 
 #include <cstring>
 
-#include "atomiverse/cpu/materialize.h"
+#include "atomiverse/cpu/frame/materialize.h"
 #include "atomiverse/cpu/scf/gradient.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/scf_solve.h"

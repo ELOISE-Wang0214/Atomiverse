@@ -2,9 +2,9 @@
 /// @brief CUDA Langevin thermostat kernel.
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cuda/launch.cuh"
+#include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/md/fix_langevin.cuh"
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include "atomiverse/facade/stage.h"
 #include <cmath>
 #include <cstdint>

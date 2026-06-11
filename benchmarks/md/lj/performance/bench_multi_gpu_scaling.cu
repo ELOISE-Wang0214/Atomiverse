@@ -24,7 +24,7 @@
 #include <cstdlib>
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cuda/comm/multi_gpu.cuh"
 
 using namespace ATV;

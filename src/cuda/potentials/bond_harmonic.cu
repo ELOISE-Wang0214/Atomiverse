@@ -1,11 +1,11 @@
 /// @file cuda/potentials/bond_harmonic.cu
 /// @brief CUDA BondHarmonic — V = K(r − r₀)² (kernel + class).
 
-#include "atomiverse/cuda/box.cuh"
-#include "atomiverse/cuda/launch.cuh"
+#include "atomiverse/cuda/frame/box.cuh"
+#include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/potentials/bond_harmonic.cuh"
 #include "atomiverse/cuda/potentials/harmonic_bond_kernel.cuh"
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include <cmath>
 #include <cuda_runtime.h>
 

@@ -6,7 +6,7 @@
 /// Single source of truth for harmonic bond force+energy computation.
 #pragma once
 
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 
 namespace ATV {
 namespace cuda {

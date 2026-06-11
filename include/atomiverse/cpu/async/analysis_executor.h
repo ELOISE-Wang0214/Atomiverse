@@ -18,7 +18,7 @@
 #include <vector>
 
 #include "atomiverse/core/types.h"
-#include "atomiverse/cpu/context.h"
+#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/async/frame_snapshot.h"
 
 #ifdef ATV_HAS_MPI

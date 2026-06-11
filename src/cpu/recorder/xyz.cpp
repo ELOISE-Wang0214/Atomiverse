@@ -3,7 +3,7 @@
 
 #include "atomiverse/cpu/recorder/xyz.h"
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/molrs.hpp"
 
 #include <stdexcept>

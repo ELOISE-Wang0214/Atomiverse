@@ -19,8 +19,8 @@
 #include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/response_driver.h"
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/driver/response_driver.h"
 #include "atomiverse/cpu/scf/gradient.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"

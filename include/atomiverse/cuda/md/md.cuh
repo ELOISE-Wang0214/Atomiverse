@@ -96,7 +96,7 @@
 #include <type_traits>
 #include <utility>
 
-#include "atomiverse/cuda/dynamics_driver.cuh"
+#include "atomiverse/cuda/driver/dynamics_driver.cuh"
 #include "atomiverse/cuda/md/init.cuh"
 #include "atomiverse/cuda/md/kinetic_energy.cuh"
 #include "atomiverse/cuda/observer/stress.cuh"

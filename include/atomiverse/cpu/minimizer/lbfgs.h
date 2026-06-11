@@ -37,10 +37,10 @@
 #include <vector>
 
 #include "atomiverse/core/device.h"
-#include "atomiverse/cpu/backend_traits.h"
-#include "atomiverse/cpu/component.h"
+#include "atomiverse/cpu/driver/backend_traits.h"
+#include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/minimizer/minimize.h"
-#include "atomiverse/cpu/optimize_driver.h"
+#include "atomiverse/cpu/driver/optimize_driver.h"
 #include "atomiverse/cpu/async/snapshot_publisher.h"
 #include "atomiverse/facade/stage.h"
 

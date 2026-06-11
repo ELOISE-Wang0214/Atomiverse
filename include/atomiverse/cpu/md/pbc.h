@@ -9,7 +9,7 @@
 
 #include <cmath>
 
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 
 namespace ATV {
 namespace cpu {

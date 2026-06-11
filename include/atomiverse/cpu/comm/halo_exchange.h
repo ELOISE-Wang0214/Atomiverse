@@ -39,8 +39,8 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component.h"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {

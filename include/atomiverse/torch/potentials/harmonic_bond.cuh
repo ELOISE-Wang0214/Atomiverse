@@ -10,7 +10,7 @@
 
 #ifdef ATV_HAS_TORCH
 
-#include "atomiverse/torch/frame.cuh"
+#include "atomiverse/torch/frame/frame.cuh"
 
 namespace ATV {
 namespace torch {

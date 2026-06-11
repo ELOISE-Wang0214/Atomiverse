@@ -85,7 +85,7 @@ replacing the per-algorithm CUDA driver shape.
   - **05** (this link) — scrubbed the now-dangling CUDA references to
     `ATV::scf::Phase`: deleted the dead
     `Driver<scf::Phase, cuda::device_tag>` explicit instantiation in
-    `src/cuda/driver.cu` and re-pointed the surviving `@see` /
+    `src/cuda/driver/driver.cu` and re-pointed the surviving `@see` /
     usage-snippet doc-comments to the `cuda::scf::SCFSolver` API. A
     `tests/cuda/scf_phase_scrub.sh` grep gate (CTest
     `test_cuda_scf_phase_scrub`) now asserts no `scf::Phase` token
@@ -120,7 +120,7 @@ plan assumed `scf::Phase` (`facade/stage.h`) would be unreferenced once
 CUDA SCF became an inner solver and could be deleted. A tree-wide grep
 during link 05 drafting showed that is false: the CPU **plane-wave**
 SCF (`cpu::pw`) runs as a `Driver<scf::Phase, cpu::device_tag>`
-(`src/cpu/driver.cpp`) and seven `cpu::pw::PW_*` components return
+(`src/cpu/driver/driver.cpp`) and seven `cpu::pw::PW_*` components return
 `DefaultBinding` values keyed on `scf::Phase::*`. The enum and the CPU
 instantiation are kept; only the enum's doc-comment was corrected from
 the now-false "Legacy CUDA-only … will retire" to name `cpu::pw` as
@@ -149,7 +149,7 @@ not by algorithm):
 The underlying `Driver<PhaseEnum, DeviceTag>` template is now a private
 plan/dispatch primitive — user code subclasses one of the three
 category bases via `cpu::CPUDriver<PhaseEnum>` (the CPU backend
-layer, in `include/atomiverse/cpu/cpu_driver.h`). Subclassing
+layer, in `include/atomiverse/cpu/driver/cpu_driver.h`). Subclassing
 `Driver<>` directly is forbidden in CPU code. CUDA migration will
 add a parallel `cuda::CUDADriver<PhaseEnum>` sibling.
 

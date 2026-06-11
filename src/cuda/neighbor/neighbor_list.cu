@@ -30,7 +30,7 @@
 #include <stdexcept>
 #include <string>
 
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include <cuda_runtime.h>
 
 using namespace ATV::cuda::md::nlist;

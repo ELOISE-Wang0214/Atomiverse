@@ -17,7 +17,7 @@ to read alongside this chapter is
 ## What the Minimize Driver Actually Does
 
 `cpu::minimizer::Minimize` is a thin subclass of
-[`cpu::OptimizeDriver`](../../include/atomiverse/cpu/optimize_driver.h).
+[`cpu::OptimizeDriver`](../../include/atomiverse/cpu/driver/optimize_driver.h).
 The base class owns the loop:
 
 ```text

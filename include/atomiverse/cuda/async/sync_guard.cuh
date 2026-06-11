@@ -13,7 +13,7 @@
 /// API). See `tests/cuda/async/test_hot_path_no_sync.cu` for the gate.
 ///
 /// The counter is **opt-in**: only sync calls that go through this wrapper
-/// are counted. Backend-level slot-boundary syncs in `src/cuda/driver.cu`
+/// are counted. Backend-level slot-boundary syncs in `src/cuda/driver/driver.cu`
 /// continue to call `cudaStreamSynchronize` directly and are deliberately
 /// excluded from the count — they are not user-component code and are not
 /// what the spec is gating.

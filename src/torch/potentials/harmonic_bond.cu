@@ -3,7 +3,7 @@
 
 #ifdef ATV_HAS_TORCH
 
-#include "atomiverse/cuda/launch.cuh"
+#include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/potentials/harmonic_bond_kernel.cuh"
 #include "atomiverse/torch/potentials/harmonic_bond.cuh"
 

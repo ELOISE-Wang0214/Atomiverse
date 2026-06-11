@@ -9,7 +9,7 @@
 #include <type_traits>
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cuda/dynamics_driver.cuh"
+#include "atomiverse/cuda/driver/dynamics_driver.cuh"
 #include "atomiverse/cuda/md/init.cuh"
 #include "atomiverse/cuda/md/md.cuh"
 #include "atomiverse/cuda/md/velocity_verlet.cuh"

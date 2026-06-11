@@ -6,7 +6,7 @@
 #include <nanobind/stl/string.h>
 
 #ifdef ATV_HAS_PW
-#include "atomiverse/cpu/materialize.h"
+#include "atomiverse/cpu/frame/materialize.h"
 #include "atomiverse/cpu/pw/pw_scf.h"
 #endif
 

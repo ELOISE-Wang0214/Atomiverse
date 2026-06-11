@@ -3,7 +3,7 @@
 ///
 /// Backend-agnostic template: DeviceTag selects CPU or CUDA at compile time.
 /// All method bodies are defined inline (template class). Explicit
-/// instantiations live in src/cpu/driver.cpp and src/cuda/driver.cu.
+/// instantiations live in src/cpu/driver/driver.cpp and src/cuda/driver/driver.cu.
 #pragma once
 
 #include <memory>
@@ -15,8 +15,8 @@
 #include "atomiverse/core/backend_traits.h"
 #include "atomiverse/core/binding.h"
 #include "atomiverse/core/device.h"
-#include "atomiverse/cpu/frame.h"
-#include "atomiverse/cuda/timer.h"
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cuda/device/timer.h"
 #include "atomiverse/facade/plan.h"
 
 namespace ATV {
@@ -25,7 +25,7 @@ namespace ATV {
 ///
 /// `cuda::Timer` has a complete CUDA-free definition (`cuda/timer.h`)
 /// with all special members declared and defined out-of-line in
-/// `src/cuda/timer.cu`. This lets every translation unit — CUDA or not —
+/// `src/cuda/device/timer.cu`. This lets every translation unit — CUDA or not —
 /// hold and destroy a `std::unique_ptr<Timer>` member. On non-CUDA builds
 /// the profiler is simply never constructed (`enable_timing()` is a
 /// no-op for `cpu::device_tag`).

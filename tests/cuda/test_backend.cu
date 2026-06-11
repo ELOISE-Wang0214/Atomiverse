@@ -1,9 +1,9 @@
 #include <gtest/gtest.h>
 #include <vector>
 
-#include "atomiverse/cpu/frame.h"
-#include "atomiverse/cuda/backend.cuh"
-#include "atomiverse/cuda/transfer.cuh"
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cuda/driver/backend.cuh"
+#include "atomiverse/cuda/frame/transfer.cuh"
 #include "atomiverse/facade/stage.h"
 
 using namespace ATV;

@@ -5,4 +5,4 @@
 /// re-exports it into the nlist namespace for backward compatibility.
 #pragma once
 
-#include "atomiverse/cuda/error.cuh"
+#include "atomiverse/cuda/device/error.cuh"

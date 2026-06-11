@@ -15,7 +15,7 @@
 #include <vector>
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/box.h"
+#include "atomiverse/cpu/frame/box.h"
 
 namespace ATV {
 namespace cpu {

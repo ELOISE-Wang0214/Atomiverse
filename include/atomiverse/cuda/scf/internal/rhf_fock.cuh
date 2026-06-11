@@ -16,7 +16,7 @@
 
 #include <vector>
 
-#include "atomiverse/cuda/component.cuh"
+#include "atomiverse/cuda/component/component.cuh"
 #include "atomiverse/cuda/scf/scf_workspace.cuh"
 
 #ifdef ATV_HAS_RHF

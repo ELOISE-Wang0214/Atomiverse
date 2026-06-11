@@ -42,8 +42,8 @@
 #include <cstdlib>
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/dynamics_driver.h"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/driver/dynamics_driver.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"

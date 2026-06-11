@@ -43,7 +43,7 @@
 #include <memory>
 #include <vector>
 
-#include "atomiverse/cuda/component.cuh"
+#include "atomiverse/cuda/component/component.cuh"
 #include "atomiverse/cuda/scf/internal/convergence_check.cuh"
 #include "atomiverse/cuda/scf/internal/density_builder.cuh"
 #include "atomiverse/cuda/scf/internal/eigen_solver.cuh"

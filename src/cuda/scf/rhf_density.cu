@@ -7,7 +7,7 @@
 #include "atomiverse/cuda/scf/internal/rhf_density.cuh"
 #include "cublas_dispatch.cuh"
 
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include <cuda_runtime.h>
 
 namespace ATV {

@@ -6,9 +6,9 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cuda/box.cuh"
-#include "atomiverse/cuda/component.cuh"
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/box.cuh"
+#include "atomiverse/cuda/component/component.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
 

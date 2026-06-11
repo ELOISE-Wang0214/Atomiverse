@@ -22,7 +22,7 @@
 #include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 
 namespace ATV {
 namespace debug_amorphous {

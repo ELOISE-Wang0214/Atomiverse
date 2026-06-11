@@ -6,8 +6,8 @@
 #include <algorithm>
 #include <cmath>
 
-#include "atomiverse/cpu/atom.h"
-#include "atomiverse/cpu/box.h"
+#include "atomiverse/cpu/frame/atom.h"
+#include "atomiverse/cpu/frame/box.h"
 
 namespace ATV {
 namespace cpu {

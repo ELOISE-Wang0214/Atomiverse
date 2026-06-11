@@ -15,7 +15,7 @@
 
 #include <cuda_runtime.h>
 
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 
 namespace ATV {
 namespace cuda {

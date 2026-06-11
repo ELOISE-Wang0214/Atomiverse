@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h"
 #include "atomiverse/cpu/recorder/density_cube_writer.h"
 #include "atomiverse/cpu/recorder/orbital_cube_writer.h"

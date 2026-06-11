@@ -9,10 +9,10 @@
 #include <vector>
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cuda/box.cuh"
+#include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/kspace/pme.cuh"
-#include "atomiverse/cuda/launch.cuh"
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/device/launch.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 
 namespace ATV {
 

@@ -8,8 +8,8 @@
 
 #include "atom_cell_sort.cuh"
 
-#include "atomiverse/cuda/launch.cuh"
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/device/launch.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include <cub/cub.cuh>
 #include <cuda_runtime.h>
 

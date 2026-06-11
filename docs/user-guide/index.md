@@ -10,7 +10,7 @@ reading simple structs, loops, and function calls. All examples in this
 repository assume **C++17 or later**.
 
 Atomiverse has one central idea that makes the rest of the code easier to read:
-you always describe the system in a host-side [`cpu::Frame`](../../include/atomiverse/cpu/frame.h),
+you always describe the system in a host-side [`cpu::Frame`](../../include/atomiverse/cpu/frame/frame.h),
 and then you choose a driver that runs a staged workflow on either the CPU or
 the CUDA backend.
 

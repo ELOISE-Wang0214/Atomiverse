@@ -11,11 +11,11 @@
 #include <stdexcept>
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cuda/box.cuh"
-#include "atomiverse/cuda/launch.cuh"
+#include "atomiverse/cuda/frame/box.cuh"
+#include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/potentials/coul_long.cuh"
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 
 namespace ATV {
 

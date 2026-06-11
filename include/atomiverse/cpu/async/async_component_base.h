@@ -41,7 +41,7 @@
 
 #include "atomiverse/core/binding.h"
 #include "atomiverse/core/types.h"
-#include "atomiverse/cpu/component.h"
+#include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/async/frame_snapshot.h"
 
 namespace ATV {

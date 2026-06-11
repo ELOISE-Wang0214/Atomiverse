@@ -8,7 +8,7 @@
 #include <fstream>
 #include <string>
 
-#include "atomiverse/cpu/component.h"
+#include "atomiverse/cpu/component/component.h"
 
 namespace ATV {
 namespace cpu {

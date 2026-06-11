@@ -6,7 +6,7 @@
 #include "nlist_impl.cuh"
 #include "triclinic.cuh"
 
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include <cmath>
 #include <cuda_runtime.h>
 

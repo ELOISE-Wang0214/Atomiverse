@@ -3,8 +3,8 @@
 /// @file nlist_data.cuh
 /// @brief GPU data structures for the cluster-based neighbor list.
 
-#include "atomiverse/cuda/launch.cuh"
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/device/launch.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include "flat_pair_list.cuh"
 
 #include <cstddef>

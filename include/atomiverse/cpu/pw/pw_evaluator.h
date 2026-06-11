@@ -18,7 +18,7 @@
 /// @endcode
 #pragma once
 
-#include "atomiverse/cpu/component.h"
+#include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/pw/pw_solver.h"
 
 namespace ATV {

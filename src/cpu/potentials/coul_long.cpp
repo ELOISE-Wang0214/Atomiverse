@@ -6,8 +6,8 @@
 #include <stdexcept>
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/owned_range.h"
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/component/owned_range.h"
 #include "atomiverse/cpu/neighbor/pair_list.h"
 
 #ifdef _OPENMP

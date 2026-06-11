@@ -26,7 +26,7 @@
 #include <cstring>
 #include <vector>
 
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/comm/domain.h"
 
 namespace ATV {

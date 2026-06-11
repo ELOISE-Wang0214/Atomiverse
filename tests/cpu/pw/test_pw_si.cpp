@@ -1,7 +1,7 @@
 /// @file test_pw_si.cpp
 /// @brief Integration test for pw::pw_scf().
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/pw/pw_scf.h"
 #include <cmath>
 #include <gtest/gtest.h>

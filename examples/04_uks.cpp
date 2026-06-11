@@ -20,7 +20,7 @@
 #include <iomanip>
 #include <iostream>
 
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/uhf_solve.h"
 #include "atomiverse/cpu/scf/uks_solve.h"

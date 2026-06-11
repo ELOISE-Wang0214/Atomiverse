@@ -35,8 +35,8 @@
 
 #include <xtensor/containers/xtensor.hpp>
 
-#include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/molrec.h"
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/io/molrec.h"
 #include "atomiverse/cpu/observer/mulliken.h"
 #include "atomiverse/cpu/recorder/xyz.h"
 #include "atomiverse/cpu/scf/integrals.h"

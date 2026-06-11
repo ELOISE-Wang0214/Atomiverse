@@ -13,7 +13,7 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component.h"
+#include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/recorder/cube.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
 

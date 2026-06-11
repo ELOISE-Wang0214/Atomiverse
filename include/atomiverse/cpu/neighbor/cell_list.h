@@ -17,7 +17,7 @@
 #include <vector>
 #include <xtensor/containers/xtensor.hpp>
 
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/neighbor/pair_list.h"
 
 namespace ATV {

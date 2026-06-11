@@ -7,8 +7,8 @@
 /// the component path reproduces the `pw_scf()` shim bit-for-bit.
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/evaluate.h"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/driver/evaluate.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/pw/pw_evaluator.h"
 #include "atomiverse/cpu/pw/pw_scf.h"
 #include "atomiverse/facade/stage.h"

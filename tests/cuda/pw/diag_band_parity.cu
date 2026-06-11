@@ -3,7 +3,7 @@
 /// parity, CPU internal::DavidsonSolver vs cuda DeviceBandSolver, per
 /// k-point.
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/pw/internal/davidson.h"
 #include "atomiverse/cpu/pw/internal/poisson.h"
 #include "atomiverse/cpu/pw/internal/pw_setup.h"

@@ -9,7 +9,7 @@
 /// matrices whose column j is subspace vector j.
 
 #include "atomiverse/cpu/pw/internal/pw_subspace.h"
-#include "atomiverse/cuda/error.cuh"
+#include "atomiverse/cuda/device/error.cuh"
 #include "atomiverse/cuda/pw/internal/device_solver.cuh"
 #include <algorithm>
 #include <cmath>

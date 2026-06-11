@@ -15,8 +15,8 @@
 #include <memory>
 #include <string>
 
-#include "atomiverse/cuda/component.cuh"
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/component/component.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 
 namespace ATV {
 namespace cuda {

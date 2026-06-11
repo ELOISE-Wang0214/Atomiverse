@@ -23,7 +23,7 @@
 // overhead.
 #include <xsimd/xsimd.hpp>
 
-#include "atomiverse/cpu/box_simd.h"
+#include "atomiverse/cpu/frame/box_simd.h"
 
 namespace ATV {
 namespace cpu {

@@ -9,7 +9,7 @@
 #include <memory>
 #include <string>
 
-#include "atomiverse/cuda/component.cuh"
+#include "atomiverse/cuda/component/component.cuh"
 #include "atomiverse/facade/component_role.h"
 
 namespace ATV {

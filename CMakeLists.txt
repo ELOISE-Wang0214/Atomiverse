@@ -132,20 +132,20 @@ if(NOT ATV_DOCS_ONLY)
         # Cross-cutting core (logging registry, metrics)
         src/core/log.cpp
         src/cpu/scf/solve.cpp
-        src/cpu/molrec.cpp
-        src/cpu/lammps_data.cpp
+        src/cpu/io/molrec.cpp
+        src/cpu/io/lammps_data.cpp
         src/cpu/observer/rdf.cpp
         src/cpu/observer/density.cpp
         src/cpu/recorder/trajectory.cpp
         src/cpu/recorder/thermo.cpp
         src/cpu/recorder/xyz.cpp
         # CPU backend infrastructure
-        src/cpu/atom.cpp
-        src/cpu/backend.cpp
-        src/cpu/box.cpp
-        src/cpu/zero.cpp
-        src/cpu/materialize.cpp
-        src/cpu/driver.cpp
+        src/cpu/frame/atom.cpp
+        src/cpu/driver/backend.cpp
+        src/cpu/frame/box.cpp
+        src/cpu/component/zero.cpp
+        src/cpu/frame/materialize.cpp
+        src/cpu/driver/driver.cpp
         src/cpu/async/analysis_executor.cpp
         src/cpu/async/async_component_base.cpp
         src/cpu/async/snapshot_publisher.cpp
@@ -205,15 +205,15 @@ if(NOT ATV_DOCS_ONLY)
 
     if(ATV_BUILD_CUDA)
         list(APPEND ATOMIVERSE_SRCS
-            src/cuda/log_callback.cpp
-            src/cuda/device_manager.cu
+            src/cuda/device/log_callback.cpp
+            src/cuda/device/device_manager.cu
             src/cuda/comm/domain_decomposition.cu
             src/cuda/async/async_bridge.cu
             src/cuda/async/record_base.cu
-            src/cuda/transfer.cu
-            src/cuda/materialize.cu
-            src/cuda/timer.cu
-            src/cuda/driver.cu
+            src/cuda/frame/transfer.cu
+            src/cuda/frame/materialize.cu
+            src/cuda/device/timer.cu
+            src/cuda/driver/driver.cu
             src/cuda/comm/multi_gpu.cu
             src/cuda/md/velocity_verlet.cu
             src/cuda/md/nve_limit.cu
@@ -258,9 +258,9 @@ if(NOT ATV_DOCS_ONLY)
     else()
         # CUDA-free build still links against cuda::Timer (a CUDA-free PIMPL
         # facade held by std::unique_ptr in facade/driver.h). The full impl
-        # lives in src/cuda/timer.cu; substitute an inert stub so CPU
+        # lives in src/cuda/device/timer.cu; substitute an inert stub so CPU
         # Driver instantiations resolve their destructors.
-        list(APPEND ATOMIVERSE_SRCS src/cuda/timer_cpu_stub.cpp)
+        list(APPEND ATOMIVERSE_SRCS src/cuda/device/timer_cpu_stub.cpp)
     endif()
 
     add_library(atomiverse ${ATOMIVERSE_SRCS})
@@ -400,11 +400,11 @@ if(NOT ATV_DOCS_ONLY)
     if(ATV_BUILD_TORCH)
         find_package(Torch REQUIRED)
         target_sources(atomiverse PRIVATE
-            src/torch/transfer.cu
-            src/torch/materialize.cu
-            src/torch/stream_guard.cu
+            src/torch/frame/transfer.cu
+            src/torch/frame/materialize.cu
+            src/torch/device/stream_guard.cu
             src/torch/potentials/lj.cu
-            src/torch/neighbor_list.cu
+            src/torch/neighbor/neighbor_list.cu
             src/torch/potentials/harmonic_bond.cu
         )
         target_link_libraries(atomiverse PUBLIC ${TORCH_LIBRARIES})

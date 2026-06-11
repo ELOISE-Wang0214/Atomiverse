@@ -14,7 +14,7 @@
 #include <vector>
 #include <xtensor/containers/xtensor.hpp>
 
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 

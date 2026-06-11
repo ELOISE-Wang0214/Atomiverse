@@ -17,8 +17,8 @@
 #include <cmath>
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/context.h"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/component/context.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/vib/eigen_solver.h"
 #include "atomiverse/cpu/vib/hessian_workspace.h"
 #include "atomiverse/cpu/vib/mass_weighting.h"

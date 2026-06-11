@@ -19,7 +19,7 @@
 /// Exit code 0 = PASS, 1 = FAIL.
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/pw/pw_scf.h"
 #ifdef ATV_BUILD_CUDA
 #include "atomiverse/cuda/pw/pw_scf.cuh"

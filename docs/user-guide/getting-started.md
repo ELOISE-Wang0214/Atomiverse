@@ -70,7 +70,7 @@ Choose the example that matches the question you are trying to answer.
 
 Most beginner confusion comes from trying to track too many types at once. Start
 with one rule instead: the user-facing system description lives in
-[`cpu::Frame`](../../include/atomiverse/cpu/frame.h).
+[`cpu::Frame`](../../include/atomiverse/cpu/frame/frame.h).
 
 You fill that frame with atom positions, masses, atom types, and optionally
 topology such as bonds or angles. CPU workflows operate on it directly. CUDA

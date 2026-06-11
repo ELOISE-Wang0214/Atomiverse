@@ -65,11 +65,11 @@ The CPU side lives under [`include/atomiverse/cpu`](../../include/atomiverse/cpu
 and [`src/cpu`](../../src/cpu). It contains three distinct roles.
 
 First, it defines the user-facing host data model through
-[`cpu::Frame`](../../include/atomiverse/cpu/frame.h). This is the structure that
+[`cpu::Frame`](../../include/atomiverse/cpu/frame/frame.h). This is the structure that
 examples and users fill directly.
 
 Second, it provides a true CPU execution backend through
-[`cpu::Backend`](../../include/atomiverse/cpu/backend.h), which runs components
+[`cpu::Backend`](../../include/atomiverse/cpu/driver/backend.h), which runs components
 directly on that host frame with no transfer step.
 
 Third, it provides CPU-only utilities that are not part of the staged CUDA
@@ -125,11 +125,11 @@ dispatch, and the driver owns plan compilation.
 
 The project uses two separate frame types on purpose.
 
-[`cpu::Frame`](../../include/atomiverse/cpu/frame.h) stores host-resident data in
+[`cpu::Frame`](../../include/atomiverse/cpu/frame/frame.h) stores host-resident data in
 xtensor arrays. It is the natural type for examples, input preparation, CPU
 solvers, and final results.
 
-[`cuda::Frame`](../../include/atomiverse/cuda/frame.cuh) stores device pointers,
+[`cuda::Frame`](../../include/atomiverse/cuda/frame/frame.cuh) stores device pointers,
 device-only work buffers, and host-cached metadata such as atom counts. It is
 not meant to be edited directly by users.
 
@@ -140,10 +140,10 @@ implementations worse.
 
 The transfer boundary is explicit:
 
-- [`cpu::to_cuda`](../../include/atomiverse/cpu/transfer.h) allocates and uploads
+- [`cpu::to_cuda`](../../include/atomiverse/cpu/frame/transfer.h) allocates and uploads
   the device frame
-- [`cuda::to_cpu`](../../include/atomiverse/cuda/transfer.cuh) copies results back
-- [`cuda::destroy`](../../include/atomiverse/cuda/transfer.cuh) frees device data
+- [`cuda::to_cpu`](../../include/atomiverse/cuda/frame/transfer.cuh) copies results back
+- [`cuda::destroy`](../../include/atomiverse/cuda/frame/transfer.cuh) frees device data
 
 ## How Plans Are Built
 

@@ -28,7 +28,7 @@
 #include <vector>
 
 #include "atomiverse/core/log.h"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/comm/domain.h"
 
 #ifdef ATV_HAS_MPI

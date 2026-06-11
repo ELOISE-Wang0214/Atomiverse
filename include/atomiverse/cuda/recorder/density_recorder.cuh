@@ -13,7 +13,7 @@
 
 #include "atomiverse/cpu/observer/density.h"
 #include "atomiverse/cuda/async/async_bridge.cuh"
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 
 #ifdef ATV_HAS_ZARR
 #include "atomiverse/cpu/recorder/zarr.h"

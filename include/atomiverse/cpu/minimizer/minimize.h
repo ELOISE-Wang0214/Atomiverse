@@ -49,10 +49,10 @@
 #include "atomiverse/cpu/comm/atom_migration.h"
 #include "atomiverse/cpu/comm/halo_exchange.h"
 #include "atomiverse/cpu/comm/reduce.h"
-#include "atomiverse/cpu/optimize_driver.h"
-#include "atomiverse/cpu/pair_evaluator.h"
+#include "atomiverse/cpu/driver/optimize_driver.h"
+#include "atomiverse/cpu/component/pair_evaluator.h"
 #include "atomiverse/cpu/async/snapshot_publisher.h"
-#include "atomiverse/cpu/zero.h"
+#include "atomiverse/cpu/component/zero.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {

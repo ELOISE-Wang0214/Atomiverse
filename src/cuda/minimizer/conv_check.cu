@@ -3,8 +3,8 @@
 
 #include <cmath>
 
-#include "atomiverse/cuda/box.cuh"
-#include "atomiverse/cuda/launch.cuh"
+#include "atomiverse/cuda/frame/box.cuh"
+#include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/minimizer/conv_check.cuh"
 #include <cuda_runtime.h>
 

@@ -2,10 +2,10 @@
 /// @brief cuda::minimizer::SteepestDescent kernel: x += alpha * f / m * kFtm2v.
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cuda/box.cuh"
-#include "atomiverse/cuda/launch.cuh"
+#include "atomiverse/cuda/frame/box.cuh"
+#include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/minimizer/sd.cuh"
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include <cuda_runtime.h>
 
 namespace ATV {

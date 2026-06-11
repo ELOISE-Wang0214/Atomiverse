@@ -31,7 +31,7 @@
 #include <memory>
 #include <string>
 
-#include "atomiverse/cuda/component.cuh"
+#include "atomiverse/cuda/component/component.cuh"
 
 namespace ATV {
 namespace cuda {

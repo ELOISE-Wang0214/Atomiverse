@@ -5,7 +5,7 @@
 /// It accepts raw pointers so it can be called from any backend.
 #pragma once
 
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 
 namespace ATV {
 namespace cuda {

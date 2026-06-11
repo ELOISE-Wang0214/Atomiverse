@@ -133,7 +133,7 @@ slot does this fill? what fields does it write?
 ## The Component Lifecycle, Strictly
 
 The base class
-[`cpu::ComponentBase`](../../include/atomiverse/cpu/component.h) defines
+[`cpu::ComponentBase`](../../include/atomiverse/cpu/component/component.h) defines
 exactly three hooks:
 
 ```cpp
@@ -314,7 +314,7 @@ wrong everywhere outside MD.
 
 Every CPU file that loops over pairs of atoms, wraps a position into
 the cell, or applies the minimum-image convention reads
-[`cpu::Box`](../../include/atomiverse/cpu/box.h). The full set of
+[`cpu::Box`](../../include/atomiverse/cpu/frame/box.h). The full set of
 methods is:
 
 ```cpp
@@ -341,7 +341,7 @@ min-image branch instead of calling through `Box::min_image`. This is
 because member loads through `this` defeat the compiler's ability to
 hoist the per-axis $L^{-1}$ out of the loop, and the cost was measured
 at ~7% per MD step. The xsimd batch overload `min_image_batch<B>` in
-[`cpu/box_simd.h`](../../include/atomiverse/cpu/box_simd.h) gives non-LJ
+[`cpu/box_simd.h`](../../include/atomiverse/cpu/frame/box_simd.h) gives non-LJ
 SIMD callers a vectorized path without that landmine.
 
 The takeaway when adding new pair-loop code: prefer `cpu::Box`

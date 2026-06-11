@@ -6,7 +6,7 @@
 
 #include <gtest/gtest.h>
 
-#include "atomiverse/cpu/evaluate.h"
+#include "atomiverse/cpu/driver/evaluate.h"
 #include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/minimizer/cg.h"

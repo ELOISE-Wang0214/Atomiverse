@@ -1,7 +1,7 @@
 /// @file tests/cuda/pw/test_pw_si.cu
 /// @brief CPU/CUDA parity test for the plane-wave SCF on toy Si.
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/pw/pw_scf.h"
 #include "atomiverse/cuda/pw/pw_scf.cuh"
 #include <cmath>

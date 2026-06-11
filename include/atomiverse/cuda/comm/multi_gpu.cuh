@@ -19,10 +19,10 @@
 #include <memory>
 #include <vector>
 
-#include "atomiverse/cuda/context.cuh"
-#include "atomiverse/cuda/device_manager.cuh"
+#include "atomiverse/cuda/component/context.cuh"
+#include "atomiverse/cuda/device/device_manager.cuh"
 #include "atomiverse/cuda/comm/domain_decomposition.cuh"
-#include "atomiverse/cuda/frame.cuh"
+#include "atomiverse/cuda/frame/frame.cuh"
 #include <array>
 
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"

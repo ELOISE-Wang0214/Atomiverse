@@ -21,7 +21,7 @@ If you have not, see
 
 Every CPU simulation in Atomiverse begins and ends with a single host-side
 object,
-[`cpu::Frame`](../../include/atomiverse/cpu/frame.h). A frame holds:
+[`cpu::Frame`](../../include/atomiverse/cpu/frame/frame.h). A frame holds:
 
 - **per-atom arrays** — positions $x, y, z$, velocities $v_x, v_y, v_z$,
   forces $f_x, f_y, f_z$, masses, atom types, and global tags;
@@ -47,7 +47,7 @@ driver routes them in the right order.
 
 A **component** is one well-scoped piece of work that runs at a specific
 phase of one step of one driver. The base class
-[`cpu::ComponentBase`](../../include/atomiverse/cpu/component.h) defines
+[`cpu::ComponentBase`](../../include/atomiverse/cpu/component/component.h) defines
 exactly three lifecycle hooks:
 
 ```cpp
@@ -252,12 +252,12 @@ head — `cpu::Frame`, the driver class for your loop, and the components
 you add to it. There are two more types that show up so often it is
 worth naming them now.
 
-[`cpu::Box`](../../include/atomiverse/cpu/box.h) is the simulation cell.
+[`cpu::Box`](../../include/atomiverse/cpu/frame/box.h) is the simulation cell.
 It holds the cell matrix, plus a per-step-immutable cache of inverses
 and minimum-image helpers (`min_image`, `wrap_axis`, `length`,
 `volume`). For an orthorhombic box the helpers are branch-light scalar
 math; an `xsimd` batched overload (`min_image_batch<B>`) lives in
-[`cpu/box_simd.h`](../../include/atomiverse/cpu/box_simd.h) for hot pair
+[`cpu/box_simd.h`](../../include/atomiverse/cpu/frame/box_simd.h) for hot pair
 loops. You will rarely call these directly; force kernels and
 thermostats use them on your behalf.
 

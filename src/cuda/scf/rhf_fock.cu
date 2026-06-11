@@ -6,12 +6,12 @@
 
 #include "atomiverse/core/constants.h"
 #include "atomiverse/core/gto.h"
-#include "atomiverse/cuda/launch.cuh"
+#include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/scf/device_integrals.cuh"
 #include "atomiverse/cuda/scf/internal/rhf_fock.cuh"
 #include "cublas_dispatch.cuh"
 
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include <cmath>
 #include <cuda_runtime.h>
 #include <cusolverDn.h>

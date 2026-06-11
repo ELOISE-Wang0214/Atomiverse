@@ -16,7 +16,7 @@
 /// @see cuda::scf::SCFSolver for the inner solver that owns this workspace
 #pragma once
 
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 
 namespace ATV {
 namespace cuda {

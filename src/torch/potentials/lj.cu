@@ -3,7 +3,7 @@
 
 #ifdef ATV_HAS_TORCH
 
-#include "atomiverse/cuda/launch.cuh"
+#include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/potentials/lj_kernel.cuh"
 #include "atomiverse/torch/potentials/lj.cuh"
 

@@ -15,7 +15,7 @@
 /// @see internal::RHFFock for the Fock matrix builder
 #pragma once
 
-#include "atomiverse/cuda/component.cuh"
+#include "atomiverse/cuda/component/component.cuh"
 #include "atomiverse/cuda/scf/scf_workspace.cuh"
 
 namespace ATV {

@@ -11,9 +11,9 @@
 
 #include <gtest/gtest.h>
 
-#include "atomiverse/cpu/component.h"
-#include "atomiverse/cpu/dynamics_driver.h"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/driver/dynamics_driver.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
 

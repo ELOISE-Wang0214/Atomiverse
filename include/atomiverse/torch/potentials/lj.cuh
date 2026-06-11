@@ -16,8 +16,8 @@
 
 #ifdef ATV_HAS_TORCH
 
-#include "atomiverse/torch/frame.cuh"
-#include "atomiverse/torch/neighbor_list.cuh"
+#include "atomiverse/torch/frame/frame.cuh"
+#include "atomiverse/torch/neighbor/neighbor_list.cuh"
 
 namespace ATV {
 namespace torch {

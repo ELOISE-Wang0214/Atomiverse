@@ -14,7 +14,7 @@
 /// registration (see tests/cuda/scf_phase_scrub.sh).
 #pragma once
 
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/pw/pw_scf.h"
 #include <string>
 

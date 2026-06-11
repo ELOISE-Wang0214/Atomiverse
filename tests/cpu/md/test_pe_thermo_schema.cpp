@@ -13,10 +13,10 @@
 #include <gtest/gtest.h>
 
 #include "atomiverse/core/system_scalars.h"
-#include "atomiverse/cpu/component.h"
-#include "atomiverse/cpu/evaluate.h"
-#include "atomiverse/cpu/evaluate_driver.h"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/driver/evaluate.h"
+#include "atomiverse/cpu/driver/evaluate_driver.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/init.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"

@@ -14,8 +14,8 @@
 #include <vector>
 
 #include "atomiverse/molrs.hpp"
-#include "atomiverse/torch/frame.cuh"
-#include "atomiverse/torch/materialize.cuh"
+#include "atomiverse/torch/frame/frame.cuh"
+#include "atomiverse/torch/frame/materialize.cuh"
 
 namespace atorch = ATV::torch;
 

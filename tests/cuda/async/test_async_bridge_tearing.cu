@@ -27,7 +27,7 @@
 
 #include "atomiverse/core/binding.h"
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cuda/async/record_base.cuh"
 #include "atomiverse/cuda/async/sync_guard.cuh"
 #include "atomiverse/cuda/async/async_bridge.cuh"
@@ -36,7 +36,7 @@
 #include "atomiverse/cuda/md/velocity_verlet.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 
 using namespace ATV;
 

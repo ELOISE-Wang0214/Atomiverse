@@ -18,7 +18,7 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/async/analysis_executor.h"
 #include "atomiverse/cpu/async/async_component_base.h"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/async/frame_snapshot.h"
 #include "atomiverse/cpu/async/async_observer.h"
 #include "atomiverse/cpu/md/md.h"

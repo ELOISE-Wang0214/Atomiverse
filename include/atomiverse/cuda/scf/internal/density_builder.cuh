@@ -12,7 +12,7 @@
 /// @see internal::EigenSolver for the helper that produces eigenvectors C
 #pragma once
 
-#include "atomiverse/cuda/component.cuh"
+#include "atomiverse/cuda/component/component.cuh"
 #include "atomiverse/cuda/scf/scf_workspace.cuh"
 
 namespace ATV {

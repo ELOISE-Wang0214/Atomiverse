@@ -21,8 +21,8 @@
 #include <vector>
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/frame.h"
-#include "atomiverse/cuda/backend.cuh"
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cuda/driver/backend.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/facade/stage.h"
 

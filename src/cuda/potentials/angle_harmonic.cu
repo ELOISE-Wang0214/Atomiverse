@@ -1,10 +1,10 @@
 /// @file cuda/potentials/angle_harmonic.cu
 /// @brief CUDA AngleHarmonic — V = K(θ − θ₀)² (kernel + class).
 
-#include "atomiverse/cuda/box.cuh"
-#include "atomiverse/cuda/launch.cuh"
+#include "atomiverse/cuda/frame/box.cuh"
+#include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/potentials/angle_harmonic.cuh"
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include <cmath>
 #include <cuda_runtime.h>
 

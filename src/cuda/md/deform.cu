@@ -1,9 +1,9 @@
 /// @file md/deform.cu
 /// @brief Deform -- uniaxial constant-strain-rate deformation.
 
-#include "atomiverse/cuda/launch.cuh"
+#include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/md/deform.cuh"
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include "atomiverse/facade/stage.h"
 #include <cuda_runtime.h>
 

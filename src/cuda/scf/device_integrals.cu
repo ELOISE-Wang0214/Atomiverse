@@ -12,10 +12,10 @@
 ///   Ufimtsev & Martinez, JCTC 4(2), 222-231 (2008)
 
 #include "atomiverse/core/constants.h"
-#include "atomiverse/cuda/launch.cuh"
+#include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/scf/device_integrals.cuh"
 
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include <cmath>
 #include <cuda_runtime.h>
 

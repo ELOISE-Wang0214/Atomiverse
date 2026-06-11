@@ -1,11 +1,11 @@
 #include <cuda_runtime.h>
 #include <gtest/gtest.h>
 
-#include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/transfer.h"
-#include "atomiverse/cuda/backend.cuh"
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/frame/transfer.h"
+#include "atomiverse/cuda/driver/backend.cuh"
 #include "atomiverse/cuda/md/init.cuh"
-#include "atomiverse/cuda/transfer.cuh"
+#include "atomiverse/cuda/frame/transfer.cuh"
 #include "atomiverse/facade/stage.h"
 
 using namespace ATV;

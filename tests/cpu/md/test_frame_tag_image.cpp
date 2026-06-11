@@ -11,7 +11,7 @@
 #include <cstdint>
 #include <type_traits>
 
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;
 

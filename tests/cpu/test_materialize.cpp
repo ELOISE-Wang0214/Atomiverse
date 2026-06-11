@@ -17,8 +17,8 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/materialize.h"
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/frame/materialize.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"

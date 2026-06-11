@@ -17,7 +17,7 @@
 
 #include "atomiverse/core/report.h"
 #include "atomiverse/core/timer.h"
-#include "atomiverse/cpu/step_timing.h"
+#include "atomiverse/cpu/driver/step_timing.h"
 
 namespace ATV {
 namespace cpu {

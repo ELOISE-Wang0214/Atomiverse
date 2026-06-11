@@ -2,10 +2,10 @@
 /// @brief Initializer implementations: ZeroForces, ZeroEnergy, ZeroKinetic, InitVelocity.
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cuda/launch.cuh"
+#include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/md/init.cuh"
 
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 

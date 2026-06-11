@@ -42,7 +42,7 @@
 
 #include <string>
 
-#include "atomiverse/cpu/component.h"
+#include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/neighbor/cell_list.h"
 #include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/neighbor/pair_list.h"

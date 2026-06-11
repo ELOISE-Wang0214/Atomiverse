@@ -4,8 +4,8 @@
 #include <cmath>
 #include <gtest/gtest.h>
 
-#include "atomiverse/cpu/frame.h"
-#include "atomiverse/cuda/evaluate.cuh"
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cuda/driver/evaluate.cuh"
 #include "atomiverse/cuda/md/md.cuh"
 #include "atomiverse/cuda/md/velocity_verlet.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"

@@ -28,8 +28,8 @@
 #include <vector>
 
 #include "atomiverse/cpu/minimizer/lbfgs.h" // cpu::minimizer::OptRecord
-#include "atomiverse/cuda/component.cuh"
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/component/component.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 
 namespace ATV {
 namespace cuda {

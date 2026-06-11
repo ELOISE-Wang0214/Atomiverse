@@ -2,13 +2,13 @@
 /// @brief CUDA PairLJCut — Lennard-Jones 12-6 shifted (kernel + class).
 ///        Includes LAMMPS-style `special_bonds` 1-2/1-3/1-4 exclusions.
 
-#include "atomiverse/cuda/box.cuh"
-#include "atomiverse/cuda/launch.cuh"
+#include "atomiverse/cuda/frame/box.cuh"
+#include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/potentials/lj_kernel.cuh"
 #include "atomiverse/cuda/potentials/pair_compute.cuh"
 #include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include "atomiverse/potentials/pair_kernel.h"
 #include <cstddef>
 #include <cstdint>

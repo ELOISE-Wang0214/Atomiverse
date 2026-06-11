@@ -15,9 +15,9 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/component.h"
-#include "atomiverse/cpu/context.h"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/context.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
 

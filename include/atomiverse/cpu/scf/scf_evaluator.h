@@ -20,7 +20,7 @@
 #include <utility>
 #include <vector>
 
-#include "atomiverse/cpu/component.h"
+#include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/scf/aspc_predictor.h"
 #include "atomiverse/cpu/scf/basis_set.h"
 #include "atomiverse/cpu/scf/gradient.h"

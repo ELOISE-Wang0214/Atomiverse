@@ -49,7 +49,7 @@ target, so the best reading path is through the backend headers and tests:
 ## The Core Type: `torch::Frame`
 
 The defining type is
-[`include/atomiverse/torch/frame.cuh`](../../include/atomiverse/torch/frame.cuh).
+[`include/atomiverse/torch/frame/frame.cuh`](../../include/atomiverse/torch/frame/frame.cuh).
 Conceptually it mirrors `cpu::Frame` and `cuda::Frame`: positions, forces, pair
 lists, energy, box, and host-cached counts. The difference is only the storage
 container. In the torch backend those fields are tensors.
@@ -64,8 +64,8 @@ gradients with respect to the inputs that requested them.
 The following sketch matches the public API that exists today:
 
 ```cpp
-#include "atomiverse/torch/frame.cuh"
-#include "atomiverse/torch/neighbor_list.cuh"
+#include "atomiverse/torch/frame/frame.cuh"
+#include "atomiverse/torch/neighbor/neighbor_list.cuh"
 #include "atomiverse/torch/potentials/lj.cuh"
 
 namespace atorch = ATV::torch;
@@ -114,7 +114,7 @@ belongs to Atomiverse while the differentiation interface belongs to PyTorch.
 
 The backend follows the same explicit data-residency model as the rest of the
 project. The key functions are declared in
-[`include/atomiverse/torch/transfer.cuh`](../../include/atomiverse/torch/transfer.cuh).
+[`include/atomiverse/torch/frame/transfer.cuh`](../../include/atomiverse/torch/frame/transfer.cuh).
 
 `to_torch(const cuda::Frame&)` wraps an existing CUDA frame as tensors without a
 copy. `to_cuda(const torch::Frame&, cuda::Frame&)` extracts raw pointers from
@@ -136,9 +136,9 @@ pair membership changes discretely. That is why `neighbor_list` prepares the
 ## Where To Read Next
 
 If you want to understand the implementation, start with
-[`include/atomiverse/torch/frame.cuh`](../../include/atomiverse/torch/frame.cuh),
+[`include/atomiverse/torch/frame/frame.cuh`](../../include/atomiverse/torch/frame/frame.cuh),
 then read
-[`include/atomiverse/torch/transfer.cuh`](../../include/atomiverse/torch/transfer.cuh),
+[`include/atomiverse/torch/frame/transfer.cuh`](../../include/atomiverse/torch/frame/transfer.cuh),
 then
 [`include/atomiverse/torch/potentials/lj.cuh`](../../include/atomiverse/torch/potentials/lj.cuh)
 and

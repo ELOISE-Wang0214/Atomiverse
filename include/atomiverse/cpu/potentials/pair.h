@@ -11,7 +11,7 @@
 /// `CPUDriver::set_pair` `static_assert` keeps working unchanged.
 #pragma once
 
-#include "atomiverse/cpu/pair_evaluator.h"
+#include "atomiverse/cpu/component/pair_evaluator.h"
 #include "atomiverse/facade/component_role.h"
 
 namespace ATV {

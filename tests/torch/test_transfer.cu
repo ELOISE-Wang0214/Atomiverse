@@ -5,10 +5,10 @@
 
 #ifdef ATV_HAS_TORCH
 
-#include "atomiverse/cpu/transfer.h"
-#include "atomiverse/cuda/transfer.cuh"
-#include "atomiverse/torch/stream_guard.cuh"
-#include "atomiverse/torch/transfer.cuh"
+#include "atomiverse/cpu/frame/transfer.h"
+#include "atomiverse/cuda/frame/transfer.cuh"
+#include "atomiverse/torch/device/stream_guard.cuh"
+#include "atomiverse/torch/frame/transfer.cuh"
 
 #include <cuda_runtime.h>
 

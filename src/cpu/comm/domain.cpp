@@ -13,7 +13,7 @@
 #include <unordered_set>
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 
 namespace ATV {
 namespace cpu {

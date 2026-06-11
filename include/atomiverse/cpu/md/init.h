@@ -8,8 +8,8 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/component.h"
-#include "atomiverse/cpu/zero.h"
+#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/zero.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {

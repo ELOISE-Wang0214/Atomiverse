@@ -14,7 +14,7 @@
 /// halo (force-infra-04 formalizes that hook on this base).
 #pragma once
 
-#include "atomiverse/cpu/component.h"
+#include "atomiverse/cpu/component/component.h"
 
 namespace ATV {
 namespace cpu {

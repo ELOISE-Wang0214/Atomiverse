@@ -32,7 +32,7 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/component.h"
+#include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h" // for OptRecord
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"

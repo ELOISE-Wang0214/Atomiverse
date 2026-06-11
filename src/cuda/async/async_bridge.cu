@@ -14,7 +14,7 @@
 
 #include "atomiverse/cuda/async/async_bridge.cuh"
 
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include <cuda_runtime.h>
 
 namespace ATV {

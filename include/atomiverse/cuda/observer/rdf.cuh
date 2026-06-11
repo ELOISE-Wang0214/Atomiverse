@@ -17,7 +17,7 @@
 #include "atomiverse/cpu/observer/rdf.h"
 #include "atomiverse/cuda/async/async_bridge.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 
 namespace ATV {
 namespace cuda {

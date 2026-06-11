@@ -7,9 +7,9 @@
 ///        (cuda-md-review-cleanup-05-reductions-and-atomics).
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cuda/launch.cuh"
+#include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/md/kinetic_energy.cuh"
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include <cuda_runtime.h>
 
 namespace ATV {

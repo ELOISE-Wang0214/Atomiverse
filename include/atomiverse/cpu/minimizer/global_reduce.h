@@ -13,8 +13,8 @@
 /// never behind a rank-dependent branch.
 #pragma once
 
-#include "atomiverse/cpu/component.h"
-#include "atomiverse/cpu/context.h"
+#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/comm/domain.h"
 
 #ifdef ATV_HAS_MPI

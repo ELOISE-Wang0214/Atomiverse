@@ -32,8 +32,8 @@
 
 #include "nlist_memory.cuh"
 
-#include "atomiverse/cuda/frame.cuh"
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/frame.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include <cuda_runtime.h>
 
 #include <cstdint>

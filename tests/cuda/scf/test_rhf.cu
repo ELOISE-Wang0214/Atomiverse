@@ -13,10 +13,10 @@
 #include "atomiverse/core/device.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/rhf_solve.h"
-#include "atomiverse/cuda/evaluate.cuh"
+#include "atomiverse/cuda/driver/evaluate.cuh"
 #include "atomiverse/cuda/scf/scf_evaluator.cuh"
 #include "atomiverse/cuda/scf/scf_solver.cuh"
-#include "atomiverse/cuda/single_point.cuh"
+#include "atomiverse/cuda/driver/single_point.cuh"
 #include "atomiverse/facade/driver.h"
 #include "atomiverse/facade/stage.h"
 

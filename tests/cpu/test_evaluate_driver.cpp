@@ -20,14 +20,14 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/dynamics_driver.h"
-#include "atomiverse/cpu/evaluate.h"
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/driver/dynamics_driver.h"
+#include "atomiverse/cpu/driver/evaluate.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
 #include "atomiverse/cpu/scf/scf_solve.h"
 #include "atomiverse/cpu/scf/scf_solver.h"
-#include "atomiverse/cpu/single_point.h"
+#include "atomiverse/cpu/driver/single_point.h"
 
 using namespace ATV;
 

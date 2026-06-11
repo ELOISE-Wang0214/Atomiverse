@@ -10,8 +10,8 @@
 #include <fftw3.h>
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/owned_range.h"
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/component/owned_range.h"
 
 #ifdef _OPENMP
 #include <omp.h>

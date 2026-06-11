@@ -93,23 +93,34 @@ Dual-backend (CPU + CUDA) molecular simulation platform. Three pillars: **Driver
 
 ### Backend directory layering
 
-Each backend (`cpu/`, `cuda/`, `torch/`) follows the same layout: single-file
-shared infrastructure at the root, multi-file **infrastructure clusters**
-(`comm/`, `neighbor/`, `async/`), and **method domains**:
+Each backend (`cpu/`, `cuda/`, `torch/`) contains **directories only — no
+loose files at the backend root**. Every directory is one of: a pillar layer
+(Frame / Driver / Component), an infrastructure cluster, or a method domain
+(one class of components):
 
 ```
 <backend>/
-  frame.h, context.h, component.h, backend.h, box.h, ...      ← shared infrastructure
-  molrec.h, transfer.h, materialize.h, zero.h, owned_range.h,
-  step_timing.h                                               ← cross-domain utilities
-  comm/        ← infra: domain decomposition, halo exchange, migration, reductions
-                 (MPI on CPU; multi-GPU + NCCL on CUDA)
+  frame/       ← Frame pillar: device-resident state + residency ops
+                 (frame, atom, box(+box_simd), transfer, materialize)
+  driver/      ← Driver pillar: category bases (evaluate/dynamics/optimize/
+                 response_driver), concrete Evaluate + single_point, backend
+                 step executor, backend_traits, step-loop instrumentation
+  component/   ← Component pillar: ComponentBase, LaunchContext/Context,
+                 generic components (Zero*), shared bases (PairEvaluator)
+                 and helpers (owned_range)
+  io/          ← external formats / molrs bridge (molrec, lammps_data; CPU only)
+  device/      ← CUDA/torch runtime utilities (device_manager, error, launch,
+                 timer, log_callback / stream_guard)
+  comm/        ← infra: domain decomposition, halo exchange, migration,
+                 reductions (MPI on CPU; multi-GPU + NCCL on CUDA)
   neighbor/    ← infra: cell/Verlet neighbor structures + the published PairList
-  async/       ← infra: async analysis pipeline (snapshot ring, D2H bridge, executors)
+  async/       ← infra: async analysis pipeline (snapshot ring, D2H bridge,
+                 executors)
   md/          ← domain: time integration (integrators, thermostats, barostats,
                  deform, velocity init)
   minimizer/   ← domain: SD, CG, L-BFGS + opt recorders
-  scf/         ← domain: Gaussian-basis SCF (solver, integrals, gradients, evaluator)
+  scf/         ← domain: Gaussian-basis SCF (solver, integrals, gradients,
+                 evaluator)
   pw/          ← domain: plane-wave DFT (PWSolver, PWEvaluator)
   vib/         ← domain: finite-difference Hessian, thermochemistry (CPU only)
   kspace/      ← domain: reciprocal-space electrostatics (Ewald, PME)
@@ -119,18 +130,20 @@ shared infrastructure at the root, multi-file **infrastructure clusters**
 ```
 
 **Rules:**
-- Files at the backend root are **shared infrastructure** used by multiple
-  domains; a cohesive multi-file infra cluster gets its own root-level
-  directory (`comm/`, `neighbor/`, `async/`). Never park shared code inside a
-  domain subdirectory.
+- **No loose files at a backend root.** New shared code goes into the
+  matching pillar directory (`frame/`, `driver/`, `component/`, `io/`,
+  `device/`); a new cohesive multi-file infra cluster gets its own root-level
+  directory (like `comm/`, `neighbor/`, `async/`). Never park shared code
+  inside a domain subdirectory.
 - **Orthogonality: the same feature lives in the same directory on every
   backend.** Virial stress is `observer/`, neighbor structures are
   `neighbor/`, decomposition is `comm/` — on CPU and CUDA alike.
 - Electrostatics splits LAMMPS-style: real-space pair styles in
   `potentials/` (`coul_long`), reciprocal-space solvers in `kspace/`.
-- Namespaces are unchanged by the 2026-06 layout pass (`cpu::md::mpi::Reduce`
-  lives in `cpu/comm/`, `cpu::md::NeighborList` in `cpu/neighbor/`); aligning
-  namespaces to directories is a deliberate follow-up, not a drive-by.
+- Namespaces are unchanged by the 2026-06 layout passes (`cpu::md::mpi::Reduce`
+  lives in `cpu/comm/`, `cpu::md::NeighborList` in `cpu/neighbor/`,
+  `cpu::Frame` in `cpu/frame/`); aligning namespaces to directories is a
+  deliberate follow-up, not a drive-by.
 
 **Box** (`cpu::Box` in `cpu/box.h`, `cuda::Box` in `cuda/box.cuh`) is the canonical simulation-cell type at each backend root. It owns the cell matrix plus a per-step-immutable cache (`inv_cell`, per-axis `inv_L`, `half_L`, `bool ortho`) and exposes `length(d)`, `volume()`, `min_image(dx, dy, dz)`, `wrap_axis(q, d)`, `scale_diagonal/isotropic/axis`, `set_cell`. The CPU side adds an xsimd `min_image_batch<B>` overload in `cpu/box_simd.h` for SIMD callers. All scattered `Mat3 box(d, d)` reads and the duplicated `static inline minimum_image` / `wrap_to_box` helpers from potentials/, md/, observer/, scf/, and comm/ have been folded into Box; LJ keeps an inlined branchy min-image in its xsimd ket-loop because member-load-through-`this` defeats compiler hoisting in that hot path (~7% per-step cost).
 

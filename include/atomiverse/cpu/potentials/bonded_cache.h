@@ -28,8 +28,8 @@
 #include <cstdint>
 #include <vector>
 
-#include "atomiverse/cpu/component.h"
-#include "atomiverse/cpu/context.h"
+#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/comm/domain.h"
 
 namespace ATV {

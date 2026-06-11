@@ -7,7 +7,7 @@
 #include "nlist_memory.cuh"
 #include "triclinic.cuh"
 
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include <cuda_runtime.h>
 
 #include <cstddef>

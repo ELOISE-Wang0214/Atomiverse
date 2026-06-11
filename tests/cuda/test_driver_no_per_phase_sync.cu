@@ -3,7 +3,7 @@
 ///        ac-005: `Backend::step()` must contain zero per-phase
 ///        `cudaStreamSynchronize` calls inside the slot loop.
 ///
-/// Reads `src/cuda/driver.cu` and extracts `Backend::step()`. The
+/// Reads `src/cuda/driver/driver.cu` and extracts `Backend::step()`. The
 /// previous implementation issued `cudaStreamSynchronize(main_stream) +
 /// cudaStreamSynchronize(defer_stream)` per phase (~12 host blocks per
 /// step). The link-03 rewrite relies on intra-stream FIFO ordering +
@@ -100,7 +100,7 @@ int count_calls(const std::string& src, const std::string& fn) {
 
 TEST(DriverNoPerPhaseSync, StepHasZeroStreamSync) {
     const std::string path =
-        std::string(ATV_SOURCE_DIR) + "/src/cuda/driver.cu";
+        std::string(ATV_SOURCE_DIR) + "/src/cuda/driver/driver.cu";
     const std::string body = extract_step_body(read_file(path));
     ASSERT_FALSE(body.empty()) << "Backend::step() body extraction failed";
 

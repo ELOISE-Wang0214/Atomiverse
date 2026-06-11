@@ -16,8 +16,8 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cuda/materialize.cuh"
-#include "atomiverse/cuda/transfer.cuh"
+#include "atomiverse/cuda/frame/materialize.cuh"
+#include "atomiverse/cuda/frame/transfer.cuh"
 #include "atomiverse/molrs.hpp"
 
 using namespace ATV;

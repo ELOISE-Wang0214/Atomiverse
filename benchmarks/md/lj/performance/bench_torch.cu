@@ -15,17 +15,17 @@
 #include <cmath>
 #include <cuda_runtime.h>
 
-#include "atomiverse/torch/frame.cuh"
-#include "atomiverse/torch/neighbor_list.cuh"
+#include "atomiverse/torch/frame/frame.cuh"
+#include "atomiverse/torch/neighbor/neighbor_list.cuh"
 #include "atomiverse/torch/potentials/lj.cuh"
-#include "atomiverse/torch/transfer.cuh"
+#include "atomiverse/torch/frame/transfer.cuh"
 
-#include "atomiverse/cpu/transfer.h"
+#include "atomiverse/cpu/frame/transfer.h"
 #include "atomiverse/cuda/md/md.cuh"
 #include "atomiverse/cuda/md/velocity_verlet.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
-#include "atomiverse/cuda/transfer.cuh"
+#include "atomiverse/cuda/frame/transfer.cuh"
 
 using ATV::Mat3;
 namespace atorch = ATV::torch;

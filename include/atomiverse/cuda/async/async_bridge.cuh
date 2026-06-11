@@ -41,7 +41,7 @@
 /// @see .claude/specs/async-analysis-snapshot-ring-02-device-ring.md
 #pragma once
 
-#include "atomiverse/cuda/component.cuh"
+#include "atomiverse/cuda/component/component.cuh"
 
 namespace ATV {
 namespace cuda {

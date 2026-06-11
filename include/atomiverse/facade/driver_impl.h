@@ -4,7 +4,7 @@
 /// Uses if constexpr to branch by DeviceTag. Discarded branches are not
 /// instantiated, so backend-specific methods (materialize vs set_frame) are safe.
 ///
-/// Include this file in BOTH src/cpu/driver.cpp AND src/cuda/driver.cu,
+/// Include this file in BOTH src/cpu/driver/driver.cpp AND src/cuda/driver/driver.cu,
 /// then provide the explicit instantiations for the appropriate DeviceTag.
 #pragma once
 

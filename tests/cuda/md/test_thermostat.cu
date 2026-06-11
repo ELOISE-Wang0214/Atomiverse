@@ -4,7 +4,7 @@
 #include <cmath>
 #include <gtest/gtest.h>
 
-#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cuda/md/barostat.cuh"
 #include "atomiverse/cuda/md/deform.cuh"
 #include "atomiverse/cuda/md/init.cuh"

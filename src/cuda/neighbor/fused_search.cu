@@ -9,7 +9,7 @@
 #include "nlist_impl.cuh"
 #include "triclinic.cuh"
 
-#include "atomiverse/cuda/types.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include <cuda_runtime.h>
 
 #include <cstdint>

@@ -6,7 +6,7 @@
 
 #include <string>
 
-#include "atomiverse/cpu/molrec.h"
+#include "atomiverse/cpu/io/molrec.h"
 
 namespace ATV {
 namespace cpu {
