@@ -3,7 +3,7 @@
 
 Reads existing Atomiverse logs (log.atomiverse.np{1,2,4,8}.txt) and the LAMMPS
 logs in /tmp/atv_lammps_bench/ (log.lammps.np{1,2,4,8}.txt). Both ran the
-identical amourphous_short.in protocol on PE_nc10_cl1000.dat (10000 atoms,
+identical amorphous_short.in protocol on PE_nc10_cl1000.dat (10000 atoms,
 1000-step NVE/limit + Langevin then 2000-step NoseHooverNPT)."""
 
 import re

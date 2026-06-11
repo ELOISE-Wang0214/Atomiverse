@@ -2,7 +2,7 @@
 
 Reproduces the
 [MSU amorphous polyethylene tension protocol][msu] (Stages 1 + 2 from
-`amourphous.in`) on the Atomiverse CPU + MPI backend so the trajectories
+`amorphous.in`) on the Atomiverse CPU + MPI backend so the trajectories
 can be put next to LAMMPS line-by-line.
 
 [msu]: https://icme.hpc.msstate.edu/mediawiki/index.php/Deformation_of_Amorphous_Polyethylene.html
@@ -12,7 +12,7 @@ can be put next to LAMMPS line-by-line.
 | File | Role |
 |---|---|
 | `PE_nc10_cl1000.dat` | LAMMPS data file: 10 chains × 1000 united atoms, 80.06 Å³ box |
-| `amourphous.in` | LAMMPS input script (DREIDING-like force field, NVE/limit + Langevin Stage 1, NPT Stage 2) |
+| `amorphous.in` | LAMMPS input script (DREIDING-like force field, NVE/limit + Langevin Stage 1, NPT Stage 2) |
 | `log.PE_nc10_cl1000.txt` | LAMMPS reference log (Stages 1 + 2 already run) |
 | `lammps_loader.h` | C++ loader: LAMMPS data → `cpu::Frame` |
 | `gather_frame.h` | Inter-stage all-gather so Stage 2 can resume from Stage 1's multi-rank state |
@@ -60,16 +60,16 @@ cmake --build build --target run_atomiverse_amorphous -j
 
 ```bash
 # Smoke test (1 000 + 500 steps, 4 ranks)
-debug_amorphous/run.sh --np 4 --steps-stage1 1000 --steps-stage2 500
+tools/debug_amorphous/run.sh --np 4 --steps-stage1 1000 --steps-stage2 500
 
 # Full LAMMPS-equivalent protocol on 8 ranks (~5 minutes)
-debug_amorphous/run.sh --np 8
+tools/debug_amorphous/run.sh --np 8
 
 # Stage 1 only
-debug_amorphous/run.sh --np 4 --stage1-only --steps-stage1 10000
+tools/debug_amorphous/run.sh --np 4 --stage1-only --steps-stage1 10000
 
 # Single-rank reference
-debug_amorphous/run.sh --np 1
+tools/debug_amorphous/run.sh --np 1
 ```
 
 The runner writes thermo every 100 steps to `log.atomiverse.txt` in a
@@ -90,7 +90,7 @@ logs kcal/mol ('real' units); we log eV (`kKcalPerMolToEv = 1 /
 ## Compare
 
 ```bash
-python3 debug_amorphous/compare.py
+python3 tools/debug_amorphous/compare.py
 ```
 
 Output: `compare.png` with one row per observable, one column per

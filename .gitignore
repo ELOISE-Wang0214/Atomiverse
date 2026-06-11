@@ -157,7 +157,7 @@ pyrightconfig.json
 *.png
 *.xyz
 # …except the checked-in benchmark starting geometries
-!benchmarks/qc/molecules/*.xyz
+!benchmarks/qc/rhf/validation/molecules/*.xyz
 # …and the checked-in MSU-PE reference plots (Phase 5 acceptance artifacts)
 !benchmarks/md/reference/polyethylene/*.png
 
@@ -171,10 +171,10 @@ build_*/
 build-*/
 
 # Debug / run artifacts for debug_amorphous LAMMPS-comparison harness
-debug_amorphous/*.data
-debug_amorphous/*.dat
-debug_amorphous/restart.*
-debug_amorphous/log.*
+tools/debug_amorphous/*.data
+tools/debug_amorphous/*.dat
+tools/debug_amorphous/restart.*
+tools/debug_amorphous/log.*
 
 # Ad-hoc SCF debug dumps
 tools/*.npy

@@ -1,4 +1,4 @@
-/// @file debug_amorphous/gather_frame.h
+/// @file tools/debug_amorphous/gather_frame.h
 /// @brief Inter-stage all-gather for multi-rank Frame state.
 ///
 /// After a multi-rank `cpu::md::MD::run()`, every rank holds only the

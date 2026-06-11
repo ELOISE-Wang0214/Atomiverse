@@ -59,11 +59,11 @@ Choose the example that matches the question you are trying to answer.
 
 | Program | When to use it | What you learn |
 |---|---|---|
-| `examples/tutorial/01_scf.cpp` | You are completely new to SCF | The feedback loop without chemistry details |
-| `examples/tutorial/02_rhf.cpp` | You want the first real chemistry result | How RHF turns the SCF loop into a molecular calculation |
-| `examples/tutorial/02_rhf.cu` | You want one concrete CPU-to-CUDA translation | How the same RHF lesson is expressed on CUDA |
-| `examples/tutorial/03_uhf.cpp` | You want open-shell Hartree-Fock | How unrestricted spin channels change the solve |
-| `examples/tutorial/04_uks.cpp` | You want the first DFT example | How grid-based XC enters the same SCF loop |
+| `examples/01_scf.cpp` | You are completely new to SCF | The feedback loop without chemistry details |
+| `examples/02_rhf.cpp` | You want the first real chemistry result | How RHF turns the SCF loop into a molecular calculation |
+| `examples/02_rhf.cu` | You want one concrete CPU-to-CUDA translation | How the same RHF lesson is expressed on CUDA |
+| `examples/03_uhf.cpp` | You want open-shell Hartree-Fock | How unrestricted spin channels change the solve |
+| `examples/04_uks.cpp` | You want the first DFT example | How grid-based XC enters the same SCF loop |
 | `lj.cu` | You want a full molecular simulation workflow | Minimization, MD, thermo output, trajectory, and RDF |
 
 ## The One Data Structure To Remember

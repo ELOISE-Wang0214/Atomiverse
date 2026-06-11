@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate PySCF reference data for the QC benchmark suite.
 
-For each xyz file under ``benchmarks/qc/molecules/``, runs:
+For each xyz file under ``benchmarks/qc/rhf/validation/molecules/``, runs:
     1. RKS SCF at the target level of theory on the starting geometry
     2. geometric-based geometry optimization to convergence
     3. One more SCF on the optimized geometry to lock in the reference

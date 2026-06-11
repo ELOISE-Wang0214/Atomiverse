@@ -644,7 +644,7 @@ if(NOT ATV_DOCS_ONLY)
     option(ATV_BUILD_DEBUG_AMORPHOUS
         "Build debug_amorphous LAMMPS-comparison runner" OFF)
     if(ATV_BUILD_DEBUG_AMORPHOUS)
-        add_subdirectory(debug_amorphous)
+        add_subdirectory(tools/debug_amorphous)
     endif()
 endif()
 

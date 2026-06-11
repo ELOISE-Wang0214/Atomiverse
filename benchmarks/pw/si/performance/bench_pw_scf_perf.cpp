@@ -1,4 +1,4 @@
-/// @file benchmarks/pw/performance/bench_pw_scf_perf.cpp
+/// @file benchmarks/pw/si/performance/bench_pw_scf_perf.cpp
 /// @brief Plane-wave SCF time-to-solution: Atomiverse CPU/CUDA vs CP2K.
 ///
 /// Times full SCF runs of bulk Si (2-atom fcc primitive cell,

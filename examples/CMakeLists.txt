@@ -1,5 +1,13 @@
-function(atv_add_example name)
-    add_executable(${name} ${name}.cu)
+# ── Example layout ──────────────────────────────────────────────────
+# Flat, numbered tutorial sequence (see README.md):
+#   NN_topic.cpp   CPU canonical example — one concept per file
+#   NN_topic.cu    optional CUDA twin of the same number (target NN_topic_cuda)
+# Examples demonstrate API usage only; speed / science comparisons
+# live in benchmarks/.
+
+# CUDA example (source = <name>.cu, may carry an explicit target name).
+function(atv_add_cuda_example name src)
+    add_executable(${name} ${src})
     target_link_libraries(${name} PRIVATE atomiverse)
     set_target_properties(${name} PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
     if(ATV_USE_MATPLOT)
@@ -19,66 +27,26 @@ function(atv_add_cpp_example name)
     endif()
 endfunction()
 
-if(ATV_BUILD_CUDA)
-    atv_add_example(lj)
-endif()
-
-if(ATV_BUILD_PW)
-    atv_add_cpp_example(pw_bench)
-endif()
-
-if(ATV_BUILD_RHF)
-    if(ATV_BUILD_CUDA)
-        add_executable(02_rhf_cuda tutorial/02_rhf.cu)
-        target_link_libraries(02_rhf_cuda PRIVATE atomiverse)
-        set_target_properties(02_rhf_cuda PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-        if(ATV_USE_MATPLOT)
-            target_link_libraries(02_rhf_cuda PRIVATE Matplot++::matplot)
-            target_compile_definitions(02_rhf_cuda PRIVATE ATV_HAS_MATPLOT)
-        endif()
-
-        atv_add_example(rhf_multi)
-    endif()
-endif()
-
-# Standalone C++ tutorial examples
-add_executable(01_scf tutorial/01_scf.cpp)
+# 01 — bare SCF loop on xtensor only (intentionally does not link atomiverse).
+add_executable(01_scf 01_scf.cpp)
 target_link_libraries(01_scf PRIVATE xtensor xtensor-blas ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES})
 # xtensor-blas still uses old flat-header paths; route through the compat shim
-# that atomiverse also uses. 01_scf intentionally does not link atomiverse.
+# that atomiverse also uses.
 target_include_directories(01_scf PRIVATE $<BUILD_INTERFACE:${_xt_compat}>)
 set_target_properties(01_scf PROPERTIES CXX_STANDARD 17)
 
 if(ATV_BUILD_RHF)
-    add_executable(02_rhf tutorial/02_rhf.cpp)
-    target_link_libraries(02_rhf PRIVATE atomiverse)
-    set_target_properties(02_rhf PROPERTIES CXX_STANDARD 17)
-    if(ATV_USE_MATPLOT)
-        target_link_libraries(02_rhf PRIVATE Matplot++::matplot)
-        target_compile_definitions(02_rhf PRIVATE ATV_HAS_MATPLOT)
+    atv_add_cpp_example(02_rhf)
+    atv_add_cpp_example(03_uhf)
+    atv_add_cpp_example(04_uks)
+    atv_add_cpp_example(05_geom_opt)
+    atv_add_cpp_example(06_aimd)
+    if(ATV_BUILD_CUDA)
+        atv_add_cuda_example(02_rhf_cuda 02_rhf.cu)
+        atv_add_cuda_example(08_rhf_multi_gpu 08_rhf_multi_gpu.cu)
     endif()
+endif()
 
-    add_executable(03_uhf tutorial/03_uhf.cpp)
-    target_link_libraries(03_uhf PRIVATE atomiverse)
-    set_target_properties(03_uhf PROPERTIES CXX_STANDARD 17)
-    if(ATV_USE_MATPLOT)
-        target_link_libraries(03_uhf PRIVATE Matplot++::matplot)
-        target_compile_definitions(03_uhf PRIVATE ATV_HAS_MATPLOT)
-    endif()
-
-    add_executable(04_uks tutorial/04_uks.cpp)
-    target_link_libraries(04_uks PRIVATE atomiverse)
-    set_target_properties(04_uks PROPERTIES CXX_STANDARD 17)
-    if(ATV_USE_MATPLOT)
-        target_link_libraries(04_uks PRIVATE Matplot++::matplot)
-        target_compile_definitions(04_uks PRIVATE ATV_HAS_MATPLOT)
-    endif()
-
-    add_executable(05_geom_opt tutorial/05_geom_opt.cpp)
-    target_link_libraries(05_geom_opt PRIVATE atomiverse)
-    set_target_properties(05_geom_opt PROPERTIES CXX_STANDARD 17)
-
-    add_executable(06_aimd tutorial/06_aimd.cpp)
-    target_link_libraries(06_aimd PRIVATE atomiverse)
-    set_target_properties(06_aimd PROPERTIES CXX_STANDARD 17)
+if(ATV_BUILD_CUDA)
+    atv_add_cuda_example(07_md_lj 07_md_lj.cu)
 endif()

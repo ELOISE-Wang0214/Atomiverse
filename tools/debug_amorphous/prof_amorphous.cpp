@@ -1,4 +1,4 @@
-// @file debug_amorphous/prof_amorphous.cpp
+// @file tools/debug_amorphous/prof_amorphous.cpp
 // @brief Per-component profiling + NL internals breakdown for amorphous PE.
 #include <mpi.h>
 
@@ -240,7 +240,7 @@ int main(int argc, char** argv) {
     MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
 
     std::string data_path =
-        "/Users/roykid/work/molcrafts/Atomiverse/debug_amorphous/PE_nc10_cl1000.dat";
+        "/Users/roykid/work/molcrafts/Atomiverse/tools/debug_amorphous/PE_nc10_cl1000.dat";
     int n_steps = 200;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];

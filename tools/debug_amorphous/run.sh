@@ -7,9 +7,9 @@
 # full 10k+50k LAMMPS protocol runs (the latter takes a while on 8 ranks).
 #
 # Usage:
-#   debug_amorphous/run.sh                        # 8 ranks, full protocol
-#   debug_amorphous/run.sh --np 4 --short         # 4 ranks, 1k+2k steps
-#   debug_amorphous/run.sh --np 1                 # serial reference
+#   tools/debug_amorphous/run.sh                        # 8 ranks, full protocol
+#   tools/debug_amorphous/run.sh --np 4 --short         # 4 ranks, 1k+2k steps
+#   tools/debug_amorphous/run.sh --np 1                 # serial reference
 
 set -euo pipefail
 
@@ -17,7 +17,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 BUILD="${ATV_BUILD_DIR:-$ROOT/build}"
-BIN="$BUILD/debug_amorphous/run_atomiverse_amorphous"
+BIN="$BUILD/tools/debug_amorphous/run_atomiverse_amorphous"
 DATA="$HERE/PE_nc10_cl1000.dat"
 LOG="$HERE/log.atomiverse.txt"
 

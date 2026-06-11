@@ -10,9 +10,9 @@
 ///   - ac-006: b3lyp_config / pbe0_config set xc_type + alpha_hf.
 ///
 /// Ground truth is genuine PySCF 2.13.0 `RKS(mol, xc=...)` at 6-31G*,
-/// checked into the per-molecule JSON files under `benchmarks/qc/validation/reference/`
+/// checked into the per-molecule JSON files under `benchmarks/qc/rhf/validation/reference/`
 /// (keyed `b3lyp` / `pbe0` blocks, each carrying `pyscf_version`). The
-/// geometries below are copied verbatim from `benchmarks/qc/molecules/*.xyz`,
+/// geometries below are copied verbatim from `benchmarks/qc/rhf/validation/molecules/*.xyz`,
 /// the exact geometries those PySCF runs used.
 
 #ifdef ATV_HAS_RHF
@@ -55,7 +55,7 @@ constexpr double kHartreeToEV = 27.211386245988;
 
 std::string read_reference_file(const std::string& stem) {
     const std::string path = std::string(ATV_SOURCE_DIR)
-                             + "/benchmarks/qc/validation/reference/" + stem + ".json";
+                             + "/benchmarks/qc/rhf/validation/reference/" + stem + ".json";
     std::ifstream in(path);
     if (!in)
         throw std::runtime_error("cannot open reference JSON: " + path);
@@ -86,7 +86,7 @@ double json_value(const std::string& doc, const std::string& block,
     return std::stod(region.substr(vstart, vend - vstart));
 }
 
-// ── Molecule geometries (verbatim from benchmarks/qc/molecules/*.xyz) ────
+// ── Molecule geometries (verbatim from benchmarks/qc/rhf/validation/molecules/*.xyz) ────
 
 cpu::Frame make_h2o() {
     cpu::Frame f(3);

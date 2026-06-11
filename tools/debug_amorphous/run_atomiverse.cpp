@@ -1,9 +1,9 @@
-/// @file debug_amorphous/run_atomiverse.cpp
-/// @brief Reproduces the LAMMPS `amourphous.in` Stage 1 + Stage 2 runs on
+/// @file tools/debug_amorphous/run_atomiverse.cpp
+/// @brief Reproduces the LAMMPS `amorphous.in` Stage 1 + Stage 2 runs on
 ///        the Atomiverse CPU + MPI backend, with thermo output in the
 ///        same cadence as LAMMPS so the two logs can be diffed line by line.
 ///
-/// LAMMPS protocol (see debug_amorphous/amourphous.in):
+/// LAMMPS protocol (see tools/debug_amorphous/amorphous.in):
 ///   Stage 1: NVE/limit 0.05 + Langevin (T=500K), dt=1 fs, 10 000 steps.
 ///   Stage 2: NPT       (T=500K, P=0, drag=2),    dt=0.5 fs, 50 000 steps.
 ///
@@ -174,9 +174,9 @@ int main(int argc, char** argv) {
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 
     std::string data_path = "/Users/roykid/work/molcrafts/Atomiverse/"
-                            "debug_amorphous/PE_nc10_cl1000.dat";
+                            "tools/debug_amorphous/PE_nc10_cl1000.dat";
     std::string log_path = "/Users/roykid/work/molcrafts/Atomiverse/"
-                           "debug_amorphous/log.atomiverse.txt";
+                           "tools/debug_amorphous/log.atomiverse.txt";
     int n_steps_stage1 = 10000;
     int n_steps_stage2 = 50000;
     bool short_run = false;

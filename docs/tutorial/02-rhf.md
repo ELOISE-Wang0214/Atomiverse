@@ -7,11 +7,11 @@ minimal STO-3G basis. That problem is tiny enough to inspect by eye but rich
 enough to introduce every central object in closed-shell Hartree-Fock.
 
 The example to read while you work through this chapter is
-[`examples/tutorial/02_rhf.cpp`](../../examples/tutorial/02_rhf.cpp). It sets
+[`examples/02_rhf.cpp`](../../examples/02_rhf.cpp). It sets
 up $\mathrm{H}_2$ at a bond length of $0.74$ Angstrom and should converge to a
 total energy near $-1.1167$ Hartree. If you later want to see the same lesson
 expressed on CUDA, the companion file is
-[`examples/tutorial/02_rhf.cu`](../../examples/tutorial/02_rhf.cu), but the CPU
+[`examples/02_rhf.cu`](../../examples/02_rhf.cu), but the CPU
 example is the place to learn the method itself.
 
 ## What Changes When The Problem Becomes Molecular
@@ -64,7 +64,7 @@ orbitals; the occupied orbitals determine the next density.
 
 ## Reading The Example
 
-The setup in [`examples/tutorial/02_rhf.cpp`](../../examples/tutorial/02_rhf.cpp)
+The setup in [`examples/02_rhf.cpp`](../../examples/02_rhf.cpp)
 is intentionally short:
 
 ```cpp

@@ -7,7 +7,7 @@ solution, build a matrix from that guess, solve again, and repeat until the
 input and output agree. That feedback loop is what "self-consistent field" or
 SCF means.
 
-Open [`examples/tutorial/01_scf.cpp`](../../examples/tutorial/01_scf.cpp) while
+Open [`examples/01_scf.cpp`](../../examples/01_scf.cpp) while
 you read. The calculation in that file is deliberately stripped down, not
 because the code is the main point, but because a realistic molecular example
 would hide the SCF pattern under too many new ideas at once. Later chapters

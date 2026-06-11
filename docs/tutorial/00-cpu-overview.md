@@ -13,7 +13,7 @@ field. Each later chapter then drills into one of those loops with a
 concrete example.
 
 If you have already built the project, the example programs sitting under
-`examples/tutorial/` correspond one-to-one with the loops described here.
+`examples/` correspond one-to-one with the loops described here.
 If you have not, see
 [Getting Started](../user-guide/getting-started.md) first.
 
@@ -294,6 +294,6 @@ You can now read the rest of the manual without losing your bearings.
   full thermo / trajectory / RDF observer stack.
 
 If you only have time for one example to start with, build and run
-`examples/tutorial/01_scf.cpp` (the SCF toy) and read Chapter 1 next.
+`examples/01_scf.cpp` (the SCF toy) and read Chapter 1 next.
 Everything that follows reuses the same loop with progressively more
 realistic physics.

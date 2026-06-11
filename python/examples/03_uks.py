@@ -1,6 +1,6 @@
 """Example 03 — UKS-LSDA: Atomiverse vs PySCF
 
-Follows the C++ tutorial examples/tutorial/04_uks.cpp.
+Follows the C++ tutorial examples/04_uks.cpp.
 
 Demonstrates unrestricted Kohn-Sham DFT (LSDA = Slater + VWN5):
   1. H atom  (doublet)  — spin-polarized single electron

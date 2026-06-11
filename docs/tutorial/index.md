@@ -32,8 +32,8 @@ Geometry Minimization with L-BFGS or CG](08-geometry-minimization.md)
 both apply the SCF machinery to nuclear motion. They reuse the
 same `SCFEvaluator` component as a force provider — Tutorial 6 plugs it
 into `cpu::md::MD`, Tutorial 8 plugs it into `cpu::minimizer::Minimize`.
-Tutorial 8 is written around `examples/tutorial/05_geom_opt.cpp`;
-Tutorial 6 is written around `examples/tutorial/06_aimd.cpp`. The
+Tutorial 8 is written around `examples/05_geom_opt.cpp`;
+Tutorial 6 is written around `examples/06_aimd.cpp`. The
 recipe in both cases is "driver + SCFEvaluator at the force phase",
 which is the architecture paying off.
 
@@ -53,13 +53,13 @@ working mental model for both halves of the AIMD recipe.
 ## Reading Order
 
 Read each chapter with the matching numbered example open beside it.
-Tutorial 1 is written around `examples/tutorial/01_scf.cpp`. Tutorial 2
-is written around `examples/tutorial/02_rhf.cpp`, with
-`examples/tutorial/02_rhf.cu` as the optional CUDA translation of the
-same calculation. Tutorial 3 follows `examples/tutorial/03_uhf.cpp`,
-and Tutorial 4 follows `examples/tutorial/04_uks.cpp`. Tutorial 6
-follows `examples/tutorial/06_aimd.cpp`. Tutorial 8 follows
-`examples/tutorial/05_geom_opt.cpp`. Tutorial 7 currently has no
+Tutorial 1 is written around `examples/01_scf.cpp`. Tutorial 2
+is written around `examples/02_rhf.cpp`, with
+`examples/02_rhf.cu` as the optional CUDA translation of the
+same calculation. Tutorial 3 follows `examples/03_uhf.cpp`,
+and Tutorial 4 follows `examples/04_uks.cpp`. Tutorial 6
+follows `examples/06_aimd.cpp`. Tutorial 8 follows
+`examples/05_geom_opt.cpp`. Tutorial 7 currently has no
 dedicated example program; the snippets are written against the
 classical-MD test fixture in `tests/cpu/md/test_md.cpp`.
 

@@ -47,10 +47,10 @@ acceleration, k-point sampling, and Ewald summation.
 
 | Tutorial | Primary example | Why it matters |
 |---|---|---|
-| SCF introduction | `examples/tutorial/01_scf.cpp` | Learn the loop before learning chemistry |
-| RHF | `examples/tutorial/02_rhf.cpp` | First physically meaningful calculation |
-| UHF | `examples/tutorial/03_uhf.cpp` | Open-shell systems and spin contamination |
-| UKS | `examples/tutorial/04_uks.cpp` | DFT, grids, and exchange-correlation potentials |
+| SCF introduction | `examples/01_scf.cpp` | Learn the loop before learning chemistry |
+| RHF | `examples/02_rhf.cpp` | First physically meaningful calculation |
+| UHF | `examples/03_uhf.cpp` | Open-shell systems and spin contamination |
+| UKS | `examples/04_uks.cpp` | DFT, grids, and exchange-correlation potentials |
 | Plane-Wave DFT | `cpu::pw::solve_si` | Periodic systems, pseudopotentials, FFT acceleration |
 
 The examples are intentionally numbered to match the chapters. Read the theory

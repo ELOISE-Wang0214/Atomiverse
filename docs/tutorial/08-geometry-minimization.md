@@ -12,7 +12,7 @@ successive geometries fall below tolerance.
 This chapter walks through the full geometry-optimization recipe with
 an aspirin (acetylsalicylic acid) molecule at RHF / STO-3G. The example
 to read alongside this chapter is
-[`examples/tutorial/05_geom_opt.cpp`](../../examples/tutorial/05_geom_opt.cpp).
+[`examples/05_geom_opt.cpp`](../../examples/05_geom_opt.cpp).
 
 ## What the Minimize Driver Actually Does
 
@@ -172,7 +172,7 @@ see L-BFGS doing useful work.
 The setup, in full:
 
 ```cpp
-auto frame = make_aspirin();              // see examples/tutorial/05_geom_opt.cpp
+auto frame = make_aspirin();              // see examples/05_geom_opt.cpp
 
 auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
 auto config    = cpu::scf::default_config(integrals);

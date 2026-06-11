@@ -1,13 +1,15 @@
-# ── Benchmark layout ────────────────────────────────────────────────
-# Every benchmark system has exactly two parts:
-#   <system>/validation/   scientific correctness vs an external reference
-#                          (LAMMPS, PySCF, …) — plain executables, non-zero
-#                          exit on any failing case; run manually, not by CI.
-#   <system>/performance/  speed / scaling — plain executables or
-#                          google-benchmark, emitting CSV for the plotters.
-# Systems: md/lj (argon Lennard-Jones), md/pe (polyethylene Dreiding-UA),
-# qc (Gaussian-basis quantum chemistry). Shared MD infra (PASS/FAIL
-# harness, sbatch scan drivers, plotter) lives in md/common/.
+# ── Benchmark layout (see README.md) ────────────────────────────────
+# <domain>/<case>/{validation,performance} — every case has exactly two
+# parts:
+#   validation/   scientific correctness vs an external reference
+#                 (LAMMPS, PySCF, CP2K, …) — plain executables, non-zero
+#                 exit on any failing case; run manually, not by CI.
+#   performance/  speed / scaling — plain executables or
+#                 google-benchmark, emitting CSV for the plotters.
+# Cases: md/lj (argon LJ), md/pe (polyethylene Dreiding-UA),
+# qc/rhf (Gaussian-basis small-molecule suite), pw/si (bulk Si LDA).
+# Shared per-domain infra (PASS/FAIL harness, sbatch scan drivers,
+# plotter) lives in <domain>/common/.
 
 include(FetchContent)
 
@@ -140,17 +142,17 @@ endif()
 
 if(ATV_BUILD_RHF)
     # validation: Minimize + SCFEvaluator vs checked-in reference JSONs.
-    add_executable(bench_qc_suite qc/validation/bench_qc_suite.cpp)
+    add_executable(bench_qc_suite qc/rhf/validation/bench_qc_suite.cpp)
     target_link_libraries(bench_qc_suite PRIVATE atomiverse)
     set_target_properties(bench_qc_suite PROPERTIES CXX_STANDARD 17)
     # Absolute path so the binary locates the checked-in xyz geometries
     # and JSON references regardless of cwd.
     target_compile_definitions(bench_qc_suite PRIVATE
-        ATV_QC_DATA_DIR="${CMAKE_SOURCE_DIR}/benchmarks/qc/validation")
+        ATV_QC_DATA_DIR="${CMAKE_SOURCE_DIR}/benchmarks/qc/rhf/validation")
 
     # performance: native-kernel vs libcint ERI/integral speed.
-    atv_add_cpp_bench(bench_native qc/performance/bench_native.cpp)
-    atv_add_cpp_bench(bench_libcint qc/performance/bench_libcint.cpp)
+    atv_add_cpp_bench(bench_native qc/rhf/performance/bench_native.cpp)
+    atv_add_cpp_bench(bench_libcint qc/rhf/performance/bench_libcint.cpp)
 endif()
 
 # ════════════════════════════════════════════════════════════════════
@@ -160,16 +162,16 @@ endif()
 if(ATV_BUILD_PW)
     # validation: Si fcc equation of state (a0, B0) vs CP2K reference.
     atv_add_plain_bench(bench_pw_si_cp2k_eos
-                        pw/validation/bench_pw_si_cp2k_eos.cpp)
+                        pw/si/validation/bench_pw_si_cp2k_eos.cpp)
     # performance: SCF time-to-solution CSV (cpu/cuda rows; the cp2k
-    # rows come from pw/performance/cp2k/run_perf.sh).
+    # rows come from pw/si/performance/cp2k/run_perf.sh).
     atv_add_plain_bench(bench_pw_scf_perf
-                        pw/performance/bench_pw_scf_perf.cpp)
+                        pw/si/performance/bench_pw_scf_perf.cpp)
     foreach(name bench_pw_si_cp2k_eos bench_pw_scf_perf)
         # Absolute path so the binaries locate the checked-in UPF and
         # CP2K reference CSV regardless of cwd.
         target_compile_definitions(${name} PRIVATE
-            ATV_PW_DATA_DIR="${CMAKE_SOURCE_DIR}/benchmarks/pw/validation/reference")
+            ATV_PW_DATA_DIR="${CMAKE_SOURCE_DIR}/benchmarks/pw/si/validation/reference")
         # The #ifdef-gated `--backend cuda` path reaches cuda::pw::pw_scf
         # compiled into the atomiverse library.
         if(ATV_BUILD_CUDA)

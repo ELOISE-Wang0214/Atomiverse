@@ -14,9 +14,9 @@ when the eventual calculation runs on CUDA. The backend decision changes how
 the calculation is executed, not how the physical system is described.
 
 This is easiest to see in the RHF pair of examples. The CPU reference path is
-[`examples/tutorial/02_rhf.cpp`](../../examples/tutorial/02_rhf.cpp). The CUDA
+[`examples/02_rhf.cpp`](../../examples/02_rhf.cpp). The CUDA
 translation of the same problem is
-[`examples/tutorial/02_rhf.cu`](../../examples/tutorial/02_rhf.cu). Both begin
+[`examples/02_rhf.cu`](../../examples/02_rhf.cu). Both begin
 by constructing the same molecular geometry in `cpu::Frame`. The difference
 comes only after the integrals and workflow are chosen.
 
@@ -55,11 +55,11 @@ CUDA workflow.
 
 When you are building a new workflow or debugging a result, start on the CPU
 side first. The tutorial sequence is arranged that way on purpose:
-`examples/tutorial/01_scf.cpp`, `examples/tutorial/02_rhf.cpp`,
-`examples/tutorial/03_uhf.cpp`, and `examples/tutorial/04_uks.cpp` are all
+`examples/01_scf.cpp`, `examples/02_rhf.cpp`,
+`examples/03_uhf.cpp`, and `examples/04_uks.cpp` are all
 CPU-first examples. Once the result looks correct, move one representative case
 to CUDA. For RHF, that representative translation is
-`examples/tutorial/02_rhf.cu`.
+`examples/02_rhf.cu`.
 
 This progression keeps two concerns separate. First, you confirm that the
 method and the inputs are right. Second, you change the backend and check that

@@ -1,4 +1,4 @@
-/// @file debug_amorphous/lammps_loader.h
+/// @file tools/debug_amorphous/lammps_loader.h
 /// @brief Minimal LAMMPS "atom_style molecular" data file → cpu::Frame loader.
 ///
 /// Self-contained text parser. Reads the header (atom/bond/angle/dihedral
@@ -8,7 +8,7 @@
 /// dihedral atom indices are translated from LAMMPS 1-based atom-ids to
 /// 0-based local rows by `id - 1`.
 ///
-/// Shipped only with debug_amorphous/run_atomiverse — not part of the
+/// Shipped only with tools/debug_amorphous/run_atomiverse — not part of the
 /// installed library.
 #pragma once
 

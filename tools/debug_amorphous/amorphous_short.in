@@ -1,8 +1,8 @@
-# Short-run variant of amourphous.in for MPI scaling benchmarks.
+# Short-run variant of amorphous.in for MPI scaling benchmarks.
 # Stage 1: 1000 steps @ 1.0 fs, Stage 2: 2000 steps @ 0.5 fs — matches the
 # Atomiverse run.sh --short path so both codes do identical work. All
 # force-field / integrator / neighbor settings are copied verbatim from
-# the full amourphous.in; only `run` counts changed.
+# the full amorphous.in; only `run` counts changed.
 
 variable fname   index PE_nc10_cl1000.dat
 variable simname index PE_nc10_cl1000

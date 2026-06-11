@@ -8,7 +8,7 @@ smallest change that repairs it: allow the $\alpha$ and $\beta$ electrons
 to occupy different spatial orbitals.
 
 The example for this chapter is
-[`examples/tutorial/03_uhf.cpp`](../../examples/tutorial/03_uhf.cpp). That
+[`examples/03_uhf.cpp`](../../examples/03_uhf.cpp). That
 example is worth reading because it does not talk about UHF in the abstract. It
 runs three concrete cases: a hydrogen atom, equilibrium $\mathrm{H}_2$, and a
 stretched $\mathrm{H}_2$ bond scan where the restricted approximation finally

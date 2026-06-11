@@ -22,7 +22,7 @@
 ///   geom-opt: scipy.optimize.minimize(BFGS, gtol=1e-6) on PySCF E + grad,
 ///             converged to max|grad| = 2.7e-6 Ha/Bohr.
 ///
-/// Geometries are verbatim from `benchmarks/qc/molecules/*.xyz`, identical
+/// Geometries are verbatim from `benchmarks/qc/rhf/validation/molecules/*.xyz`, identical
 /// to the make_* fixtures in `test_hybrid_singlepoint.cpp` — the exact
 /// geometries the PySCF reference runs used.
 
@@ -60,7 +60,7 @@ inline double ev_a_to_ha_bohr(double f_ev_a) {
                           units::Force::HartreePerBohr);
 }
 
-// ── Molecule geometries (verbatim from benchmarks/qc/molecules/*.xyz) ────
+// ── Molecule geometries (verbatim from benchmarks/qc/rhf/validation/molecules/*.xyz) ────
 
 cpu::Frame make_h2o() {
     cpu::Frame f(3);

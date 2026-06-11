@@ -1,4 +1,4 @@
-/// @file benchmarks/pw/validation/bench_pw_si_cp2k_eos.cpp
+/// @file benchmarks/pw/si/validation/bench_pw_si_cp2k_eos.cpp
 /// @brief Scientific validation: Si fcc equation of state vs CP2K.
 ///
 /// Runs the plane-wave SCF over a lattice-constant scan of bulk Si

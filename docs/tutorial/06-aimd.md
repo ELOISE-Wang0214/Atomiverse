@@ -16,7 +16,7 @@ converged SCF at every nuclear configuration — is **Born-Oppenheimer MD
 (BOMD)**.
 
 The example to read alongside this chapter is
-[`examples/tutorial/06_aimd.cpp`](../../examples/tutorial/06_aimd.cpp).
+[`examples/06_aimd.cpp`](../../examples/06_aimd.cpp).
 It propagates $\mathrm{H}_2$ for 50 fs in the canonical (NVT) ensemble at
 100 K, using RHF/STO-3G forces and a Nose-Hoover thermostat.
 

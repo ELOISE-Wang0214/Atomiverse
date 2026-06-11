@@ -1,4 +1,4 @@
-/// @file benchmarks/qc/validation/bench_qc_suite.cpp
+/// @file benchmarks/qc/rhf/validation/bench_qc_suite.cpp
 /// @brief Phase 1.2 QC benchmark suite — Minimize + SCFEvaluator at PBE /
 ///        def2-SVP, Armijo backtracking on. Compared against
 ///        geomeTRIC-optimized PySCF references.
@@ -9,12 +9,12 @@
 ///     ./build/benchmarks/bench_qc_suite h2o nh3   # specific stems
 ///
 /// Reference generation:
-///     python benchmarks/qc/validation/reference/generate_references.py \
+///     python benchmarks/qc/rhf/validation/reference/generate_references.py \
 ///       --method rks --xc pbe --basis def2-svp
 ///
 /// Data-on-disk contract:
-///     benchmarks/qc/validation/molecules/<stem>.xyz          - starting geometry
-///     benchmarks/qc/validation/reference/<stem>.json         - PySCF reference (geom + E_opt)
+///     benchmarks/qc/rhf/validation/molecules/<stem>.xyz          - starting geometry
+///     benchmarks/qc/rhf/validation/reference/<stem>.json         - PySCF reference (geom + E_opt)
 ///
 /// Paths resolve relative to the binary's cwd unless overridden by the
 /// build system via `ATV_QC_DATA_DIR` (set by CMakeLists.txt).

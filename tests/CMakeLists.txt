@@ -397,7 +397,7 @@ if(ATV_BUILD_CUDA)
         # Parity needs a gapped system: uses the checked-in ONCV LDA Si
         # pseudopotential from the pw benchmark reference data.
         target_compile_definitions(test_cuda_pw_si PRIVATE
-            ATV_PW_UPF_PATH="${CMAKE_SOURCE_DIR}/benchmarks/pw/validation/reference/Si_lda_nc.upf")
+            ATV_PW_UPF_PATH="${CMAKE_SOURCE_DIR}/benchmarks/pw/si/validation/reference/Si_lda_nc.upf")
     endif()
     atv_add_test(test_cuda_driver_role_validation cuda/test_cuda_driver_role_validation.cu)
 

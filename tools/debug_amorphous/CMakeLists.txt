@@ -1,4 +1,4 @@
-# debug_amorphous/CMakeLists.txt
+# tools/debug_amorphous/CMakeLists.txt
 #
 # Builds the amorphous-PE LAMMPS-comparison runner. Pulled in from the
 # top-level CMakeLists.txt only when -DATV_BUILD_DEBUG_AMORPHOUS=ON is set.
@@ -7,7 +7,7 @@
 
 if(NOT ATV_USE_MPI)
     message(FATAL_ERROR
-        "debug_amorphous/run_atomiverse needs MPI. Configure with "
+        "tools/debug_amorphous/run_atomiverse needs MPI. Configure with "
         "-DATV_USE_MPI=ON.")
 endif()
 

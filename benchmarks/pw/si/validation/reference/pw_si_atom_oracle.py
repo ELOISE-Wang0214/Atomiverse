@@ -9,7 +9,7 @@ occupation (2 bands x 2). Gamma only.
 import math, re, sys
 import numpy as np
 
-UPF = 'benchmarks/pw/validation/reference/Si_lda_nc.upf'
+UPF = 'benchmarks/pw/si/validation/reference/Si_lda_nc.upf'
 L_ANG = float(sys.argv[1]) if len(sys.argv) > 1 else 8.0
 ECUT_RY = float(sys.argv[2]) if len(sys.argv) > 2 else 16.0
 A2B = 1.8897259886

@@ -1,6 +1,6 @@
 """Example 02 — H2 / STO-3G / UHF: Atomiverse vs PySCF
 
-Follows the C++ tutorial examples/tutorial/03_uhf.cpp.
+Follows the C++ tutorial examples/03_uhf.cpp.
 
 Three cases:
   1. H atom (n_alpha=1, n_beta=0) — only solvable with UHF
