@@ -147,7 +147,7 @@ void bind_md(nb::module_& m) {
              nb::arg("skin") = double(-1),
              "Construct with cutoff [A] and optional skin distance [A].");
 
-    nb::class_<cpu::BondHarmonic>(m, "cpu::BondHarmonic",
+    nb::class_<cpu::BondHarmonic>(m, "HarmonicBond",
                              "Harmonic bond potential V = K(r - r0)^2.")
         .def(nb::init<std::vector<double>, std::vector<double>>(), nb::arg("K"),
              nb::arg("r0"),
@@ -155,13 +155,13 @@ void bind_md(nb::module_& m) {
              "per bond type.");
 
     nb::class_<cpu::AngleHarmonic>(
-        m, "cpu::AngleHarmonic", "Harmonic angle potential V = K(theta - theta0)^2.")
+        m, "HarmonicAngle", "Harmonic angle potential V = K(theta - theta0)^2.")
         .def(nb::init<std::vector<double>, std::vector<double>>(), nb::arg("K"),
              nb::arg("theta0"),
              "Construct with force constants K and equilibrium angles theta0 "
              "per angle type.");
 
-    nb::class_<cpu::DihedralMultiHarmonic>(m, "cpu::DihedralMultiHarmonic",
+    nb::class_<cpu::DihedralMultiHarmonic>(m, "MultiHarmonicDihedral",
                                       "Multi-harmonic dihedral potential.")
         .def(nb::init<std::vector<std::vector<double>>>(), nb::arg("Cn"),
              "Construct with coefficients Cn per dihedral type.");
