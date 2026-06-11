@@ -19,6 +19,7 @@
 
 #include <cub/cub.cuh>
 #include <cuda_runtime.h>
+#include <thrust/iterator/counting_iterator.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -242,6 +243,30 @@ __global__ void scatter_add_forces_packed(real_t* __restrict__ fx,
     atomicAdd(&fz[i], in3[2 * cnt + k]);
 }
 
+// Flag each OWNED atom interior (1) when its per-atom Verlet row holds no
+// ghost index (>= n_local): its pair force depends only on local positions,
+// so it can be computed BEFORE the forward halo lands — the comm/compute
+// overlap split. Valid for the whole reneighbor interval (the row is a fixed
+// cutoff+skin superset). O(neighbors) once per reneighbor.
+__global__ void flag_interior_rows(const int* __restrict__ vl_nbr,
+                                   const int* __restrict__ vl_cnt,
+                                   int vl_stride, int vl_max, int n_local,
+                                   unsigned char* __restrict__ flags) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n_local)
+        return;
+    // Clamp: on a truncated (overflowed) build vl_cnt may exceed the stored
+    // column capacity. The driver discards the classification for that slot.
+    const int cnt = min(vl_cnt[i], vl_max);
+    unsigned char interior = 1;
+    for (int k = 0; k < cnt; ++k)
+        if (vl_nbr[static_cast<std::size_t>(k) * vl_stride + i] >= n_local) {
+            interior = 0;
+            break;
+        }
+    flags[i] = interior;
+}
+
 // Fill idx[k] = k for k in [0, n) — the values-in array for the CUB tag sort.
 __global__ void iota_k(int* __restrict__ idx, int n) {
     int k = blockIdx.x * blockDim.x + threadIdx.x;
@@ -368,10 +393,14 @@ void MultiGpu::destroy_halo_plan() {
         freep(p.d_pack_src); // packed forward/reverse staging on src
         if (p.ev_src)
             cudaEventDestroy(p.ev_src);
+        if (p.ev_rev_done)
+            cudaEventDestroy(p.ev_rev_done);
         dm_.set_device(p.dst);
         freep(p.d_pack_dst); // packed forward/reverse staging on dst
         if (p.ev_dst)
             cudaEventDestroy(p.ev_dst);
+        if (p.ev_fwd_done)
+            cudaEventDestroy(p.ev_fwd_done);
     }
     halo_plan_.clear();
     // The freep's above are stream-ordered (cudaFreeAsync). Drain them so a
@@ -501,11 +530,19 @@ void MultiGpu::build_halo(double cutoff) {
                 // stream after the forward P2P; dst waits before unpacking).
                 CKM(cudaEventCreateWithFlags(&p.ev_src,
                                              cudaEventDisableTiming));
+                // Reverse buffer-release handshake (src device): scatter-add
+                // done — the next reverse P2P may overwrite d_pack_src.
+                CKM(cudaEventCreateWithFlags(&p.ev_rev_done,
+                                             cudaEventDisableTiming));
                 dm_.set_device(dst);
                 CKM(mallocp(&p.d_pack_dst, 3 * cnt * sizeof(real_t)));
                 // Reverse copy-done event on the DST device (recorded on dst's
                 // stream after the reverse P2P; src waits before scatter-add).
                 CKM(cudaEventCreateWithFlags(&p.ev_dst,
+                                             cudaEventDisableTiming));
+                // Forward buffer-release handshake (dst device): unpack done —
+                // the next forward P2P may overwrite d_pack_dst.
+                CKM(cudaEventCreateWithFlags(&p.ev_fwd_done,
                                              cudaEventDisableTiming));
                 dm_.set_device(src);
                 halo_plan_.push_back(p);
@@ -531,100 +568,146 @@ void MultiGpu::build_halo(double cutoff) {
     }
 }
 
-void MultiGpu::forward_comm() {
-    // Replay the cascade IN AXIS ORDER with a barrier between axes: a y-axis
-    // plan may gather from x-ghost slots, whose positions the x-axis plans must
-    // have refreshed first. Plans were recorded axis-major, but barrier on the
-    // axis boundary explicitly rather than rely on push order.
+void MultiGpu::forward_comm_async() {
+    // Replay the cascade in AXIS ORDER on each device's COMM stream (the
+    // defer stream), zero host syncs. Ordering, entirely stream/event-borne:
+    //  - within one device: every comm op (gather / P2P / unpack) is issued
+    //    on its single comm stream in axis order, so a y-axis gather from an
+    //    x-ghost slot is ordered after the x-axis unpack that wrote it;
+    //  - across devices: dst's unpack waits the src copy-done event (ev_src);
+    //  - against the integrator: each comm stream first waits ev_pos_[src]
+    //    (positions current — a no-op when the event was never recorded,
+    //    e.g. standalone calls outside the step loop);
+    //  - toward the force path: each device records ev_ghosts_[s] when its
+    //    comm-stream work is issued, so ghost-dependent (boundary) kernels
+    //    can wait on it without blocking the host.
+    const int N = count();
+    auto comm = [&](int s) {
+        return static_cast<cudaStream_t>(dm_.defer_stream(s));
+    };
+    if (!ev_pos_.empty())
+        for (int s = 0; s < N; ++s) {
+            dm_.set_device(s);
+            // No-op if ev_pos_[s] was never recorded (standalone callers).
+            CKM(cudaStreamWaitEvent(comm(s), ev_pos_[s], 0));
+        }
     for (int axis = 0; axis < 3; ++axis) {
-        bool any = false;
         for (auto& p : halo_plan_) {
             if (p.axis != axis || p.cnt <= 0)
                 continue;
-            any = true;
             const int sd = dm_.device_id(p.src), dd_id = dm_.device_id(p.dst);
             int block = 256, grid = (p.cnt + block - 1) / block;
-            // Gather positions into the packed src buffer, ship in ONE async P2P,
-            // unpack into the dst ghost rows. All on the per-device default
-            // stream (0): gather→copy→record are ordered on the src stream;
-            // dst's unpack waits on the src copy-done event. Async (vs the prior
-            // host-blocking cudaMemcpyPeer) so the axis's independent plans —
-            // distinct (src,dst) device pairs — overlap rather than serialize.
             dm_.set_device(p.src);
             auto& a = frames_[p.src].atoms;
-            gather_positions_packed<<<grid, block>>>(a.x, a.y, a.z, p.d_src_idx,
-                                                     p.cnt, p.d_pack_src);
+            gather_positions_packed<<<grid, block, 0, comm(p.src)>>>(
+                a.x, a.y, a.z, p.d_src_idx, p.cnt, p.d_pack_src);
             CKM(cudaGetLastError());
+            // Buffer-release handshake: don't overwrite d_pack_dst until the
+            // PREVIOUS step's unpack on dst released it (no-op first time).
+            CKM(cudaStreamWaitEvent(comm(p.src), p.ev_fwd_done, 0));
             CKM(cudaMemcpyPeerAsync(p.d_pack_dst, dd_id, p.d_pack_src, sd,
-                                    3 * p.cnt * sizeof(real_t), 0));
-            CKM(cudaEventRecord(p.ev_src, 0));
+                                    3 * p.cnt * sizeof(real_t), comm(p.src)));
+            CKM(cudaEventRecord(p.ev_src, comm(p.src)));
             dm_.set_device(p.dst);
-            CKM(cudaStreamWaitEvent(0, p.ev_src, 0));
+            CKM(cudaStreamWaitEvent(comm(p.dst), p.ev_src, 0));
             auto& da = frames_[p.dst].atoms;
-            unpack_positions_packed<<<grid, block>>>(da.x, da.y, da.z, p.base,
-                                                     p.cnt, p.d_pack_dst);
+            unpack_positions_packed<<<grid, block, 0, comm(p.dst)>>>(
+                da.x, da.y, da.z, p.base, p.cnt, p.d_pack_dst);
             CKM(cudaGetLastError());
+            CKM(cudaEventRecord(p.ev_fwd_done, comm(p.dst)));
         }
-        // Barrier between axes: this axis's unpacks into ghost rows must complete
-        // before the next axis gathers from them (cascade). The async P2P above
-        // already lets the axis's independent plans overlap; this only bounds the
-        // axis, so the host blocks once per axis instead of once per plan.
-        if (any)
-            for (int s = 0; s < count(); ++s) {
-                dm_.set_device(s);
-                cudaDeviceSynchronize();
-            }
+    }
+    if (!ev_ghosts_.empty())
+        for (int s = 0; s < N; ++s) {
+            dm_.set_device(s);
+            CKM(cudaEventRecord(ev_ghosts_[s], comm(s)));
+        }
+}
+
+void MultiGpu::forward_comm() {
+    // Synchronous contract for external callers (tests, the brute-force NVE
+    // path): barrier on entry — callers may have written positions on any
+    // stream, and the comm-stream gathers are not implicitly ordered behind
+    // that the way the old stream-0 implementation was — then the async
+    // cascade, then a barrier so ghosts are materialized on return.
+    for (int s = 0; s < count(); ++s) {
+        dm_.set_device(s);
+        cudaDeviceSynchronize();
+    }
+    forward_comm_async();
+    for (int s = 0; s < count(); ++s) {
+        dm_.set_device(s);
+        cudaDeviceSynchronize();
     }
 }
 
-void MultiGpu::reverse_comm() {
-    // Adjoint of forward_comm: replay the cascade in REVERSE axis order
-    // (z, then y, then x) so a ghost force lands on its forwarding row before
-    // that row is itself reversed one axis down. For each transfer: gather the
-    // dst's ghost-row forces [base, base+cnt), P2P them back to the src device
-    // (reusing the src-side d_s{x,y,z} buffers as the receive buffer), then
-    // scatter-add into the src rows named by d_src_idx.
+void MultiGpu::reverse_comm_async() {
+    // Adjoint of forward_comm_async: replay the cascade in REVERSE axis order
+    // (z, then y, then x) on the per-device comm streams, zero host syncs.
+    // A ghost force lands (scatter-add) on its forwarding row before that row
+    // is itself gathered one axis down, because both ops sit on that device's
+    // single comm stream in issue order; cross-device copy→scatter edges use
+    // the per-plan ev_dst events. Each comm stream first waits ev_force_[s]
+    // (ghost-row deposits final — no-op when never recorded) and finally
+    // records ev_rev_[s], which the second integrator half-kick waits on.
+    const int N = count();
+    auto comm = [&](int s) {
+        return static_cast<cudaStream_t>(dm_.defer_stream(s));
+    };
+    if (!ev_force_.empty())
+        for (int s = 0; s < N; ++s) {
+            dm_.set_device(s);
+            CKM(cudaStreamWaitEvent(comm(s), ev_force_[s], 0));
+        }
     for (int axis = 2; axis >= 0; --axis) {
-        bool any = false;
         for (auto& p : halo_plan_) {
             if (p.axis != axis || p.cnt <= 0)
                 continue;
-            any = true;
             const int sd = dm_.device_id(p.src), dd_id = dm_.device_id(p.dst);
             int block = 256, grid = (p.cnt + block - 1) / block;
-
-            // Gather the dst's ghost-row forces into ONE packed [3*cnt] buffer,
-            // ship dst→src in a single async P2P, scatter-add into the src rows.
-            // gather→copy→record on the dst default stream; src's scatter-add
-            // waits on the dst copy-done event. Async so the axis's independent
-            // plans overlap instead of host-serializing (adjoint of forward_comm).
+            // Gather the dst's ghost-row forces into ONE packed [3*cnt]
+            // buffer, ship dst→src in a single async P2P, scatter-add into
+            // the src rows named by d_src_idx.
             dm_.set_device(p.dst);
             auto& da = frames_[p.dst].atoms;
-            gather_ghost_forces_packed<<<grid, block>>>(da.fx, da.fy, da.fz,
-                                                        p.base, p.cnt,
-                                                        p.d_pack_dst);
+            gather_ghost_forces_packed<<<grid, block, 0, comm(p.dst)>>>(
+                da.fx, da.fy, da.fz, p.base, p.cnt, p.d_pack_dst);
             CKM(cudaGetLastError());
+            // Buffer-release handshake: don't overwrite d_pack_src until the
+            // PREVIOUS step's scatter-add on src released it (no-op at first).
+            CKM(cudaStreamWaitEvent(comm(p.dst), p.ev_rev_done, 0));
             CKM(cudaMemcpyPeerAsync(p.d_pack_src, sd, p.d_pack_dst, dd_id,
-                                    3 * p.cnt * sizeof(real_t), 0));
-            CKM(cudaEventRecord(p.ev_dst, 0));
-
-            // Scatter-add into the src owned (or prior-axis ghost) rows.
+                                    3 * p.cnt * sizeof(real_t), comm(p.dst)));
+            CKM(cudaEventRecord(p.ev_dst, comm(p.dst)));
             dm_.set_device(p.src);
-            CKM(cudaStreamWaitEvent(0, p.ev_dst, 0));
+            CKM(cudaStreamWaitEvent(comm(p.src), p.ev_dst, 0));
             auto& a = frames_[p.src].atoms;
-            scatter_add_forces_packed<<<grid, block>>>(
+            scatter_add_forces_packed<<<grid, block, 0, comm(p.src)>>>(
                 a.fx, a.fy, a.fz, p.d_src_idx, p.cnt, p.d_pack_src);
             CKM(cudaGetLastError());
+            CKM(cudaEventRecord(p.ev_rev_done, comm(p.src)));
         }
-        // Barrier between axes: this axis's scatter-adds into prior-axis ghost
-        // rows must be visible before the next (lower) axis gathers from them.
-        // The async P2P above overlaps the axis's independent plans; this bounds
-        // the axis (one host block per axis instead of per plan).
-        if (any)
-            for (int s = 0; s < count(); ++s) {
-                dm_.set_device(s);
-                cudaDeviceSynchronize();
-            }
+    }
+    if (!ev_rev_.empty())
+        for (int s = 0; s < N; ++s) {
+            dm_.set_device(s);
+            CKM(cudaEventRecord(ev_rev_[s], comm(s)));
+        }
+}
+
+void MultiGpu::reverse_comm() {
+    // Synchronous contract for external callers (compute_bonded_forces,
+    // tests): barrier on entry (force kernels may have run on any stream;
+    // the comm-stream gathers are not implicitly ordered behind them), the
+    // async cascade, then a barrier so all scatter-adds have landed on return.
+    for (int s = 0; s < count(); ++s) {
+        dm_.set_device(s);
+        cudaDeviceSynchronize();
+    }
+    reverse_comm_async();
+    for (int s = 0; s < count(); ++s) {
+        dm_.set_device(s);
+        cudaDeviceSynchronize();
     }
 }
 
@@ -676,11 +759,14 @@ void MultiGpu::partition(const cpu::Frame& global, double ghost_headroom) {
         sub.atoms.nlocal = cnt;
         sub.box = global.box;
         // The partition writes the wide bonded arrays directly (not via
-        // add_bond), so explicitly allocate them on the fresh sub frame when the
-        // system carries topology — otherwise the lazy atom_style-molecular
-        // storage stays empty and the per-atom writes below run out of bounds.
+        // add_bond), so explicitly size them on the fresh sub frame to the
+        // global frame's runtime strides — otherwise the lazy
+        // atom_style-molecular storage stays empty (all strides 0) and the
+        // per-atom writes below run out of bounds.
         if (has_bonded)
-            sub.atoms.ensure_bonded_storage();
+            sub.atoms.reserve_topology(
+                global.atoms.bond_per_atom, global.atoms.angle_per_atom,
+                global.atoms.dihedral_per_atom, global.atoms.maxspecial);
         for (int k = 0; k < cnt; ++k) {
             const int g = idx[k];
             sub.atoms.x[k] = global.atoms.x[g];
@@ -698,18 +784,18 @@ void MultiGpu::partition(const cpu::Frame& global, double ghost_headroom) {
             // (resolved to local rows each reneighbor via the tag→local map).
             if (has_bonded) {
                 sub.atoms.num_bond[k] = global.atoms.num_bond[g];
-                for (int m = 0; m < cpu::Atom::kMaxBondPerAtom; ++m) {
+                for (int m = 0; m < global.atoms.bond_per_atom; ++m) {
                     sub.atoms.bond_atom(k, m) = global.atoms.bond_atom(g, m);
                     sub.atoms.bond_type(k, m) = global.atoms.bond_type(g, m);
                 }
                 sub.atoms.num_angle[k] = global.atoms.num_angle[g];
-                for (int m = 0; m < cpu::Atom::kMaxAnglePerAtom; ++m) {
+                for (int m = 0; m < global.atoms.angle_per_atom; ++m) {
                     sub.atoms.angle_atom(k, 2 * m) = global.atoms.angle_atom(g, 2 * m);
                     sub.atoms.angle_atom(k, 2 * m + 1) = global.atoms.angle_atom(g, 2 * m + 1);
                     sub.atoms.angle_type(k, m) = global.atoms.angle_type(g, m);
                 }
                 sub.atoms.num_dihedral[k] = global.atoms.num_dihedral[g];
-                for (int m = 0; m < cpu::Atom::kMaxDihedralPerAtom; ++m) {
+                for (int m = 0; m < global.atoms.dihedral_per_atom; ++m) {
                     sub.atoms.dihedral_atom(k, 3 * m) = global.atoms.dihedral_atom(g, 3 * m);
                     sub.atoms.dihedral_atom(k, 3 * m + 1) = global.atoms.dihedral_atom(g, 3 * m + 1);
                     sub.atoms.dihedral_atom(k, 3 * m + 2) = global.atoms.dihedral_atom(g, 3 * m + 2);
@@ -717,7 +803,7 @@ void MultiGpu::partition(const cpu::Frame& global, double ghost_headroom) {
                 }
                 for (int t = 0; t < 3; ++t)
                     sub.atoms.nspecial(k, t) = global.atoms.nspecial(g, t);
-                for (int t = 0; t < cpu::Atom::kMaxSpecial; ++t)
+                for (int t = 0; t < global.atoms.maxspecial; ++t)
                     sub.atoms.special(k, t) = global.atoms.special(g, t);
             }
         }
@@ -940,6 +1026,36 @@ void MultiGpu::destroy_force_engine() {
         cuda::DestroyContext dc{ctx_[s], frames_[s]};
         kspace_[s]->destroy(dc);
     }
+    // Async-pipeline state: events + owned-row partition buffers. Drain each
+    // device first — events may still be queued on in-flight comm streams.
+    for (int s = 0; s < static_cast<int>(ev_pos_.size()); ++s) {
+        dm_.set_device(s);
+        cudaDeviceSynchronize();
+        if (ev_pos_[s])
+            cudaEventDestroy(ev_pos_[s]);
+        if (ev_ghosts_[s])
+            cudaEventDestroy(ev_ghosts_[s]);
+        if (ev_force_[s])
+            cudaEventDestroy(ev_force_[s]);
+        if (ev_rev_[s])
+            cudaEventDestroy(ev_rev_[s]);
+        if (s < static_cast<int>(rows_.size()) && rows_[s]) {
+            cudaFree(rows_[s]);
+            cudaFree(row_flags_[s]);
+            cudaFree(row_nsel_[s]);
+            cudaFree(row_tmp_[s]);
+        }
+    }
+    ev_pos_.clear();
+    ev_ghosts_.clear();
+    ev_force_.clear();
+    ev_rev_.clear();
+    rows_.clear();
+    row_flags_.clear();
+    row_nsel_.clear();
+    row_tmp_.clear();
+    row_tmp_sz_.clear();
+    n_interior_.clear();
     nlist_.clear();
     pair_.clear();
     kspace_.clear();
@@ -976,6 +1092,25 @@ void MultiGpu::setup_force_engine(double cutoff, double epsilon, double sigma,
         p->set_compute_stress(false);
         return p;
     };
+    ev_pos_.assign(N, nullptr);
+    ev_ghosts_.assign(N, nullptr);
+    ev_force_.assign(N, nullptr);
+    ev_rev_.assign(N, nullptr);
+    rows_.assign(N, nullptr);
+    row_flags_.assign(N, nullptr);
+    row_nsel_.assign(N, nullptr);
+    row_tmp_.assign(N, nullptr);
+    row_tmp_sz_.assign(N, 0);
+    n_interior_.assign(N, -1);
+    for (int s = 0; s < N; ++s) {
+        dm_.set_device(s);
+        // Sync-only events for the per-step async pipeline (no host syncs in
+        // the steady step loop): see the ev_* member docs in multi_gpu.cuh.
+        CKM(cudaEventCreateWithFlags(&ev_pos_[s], cudaEventDisableTiming));
+        CKM(cudaEventCreateWithFlags(&ev_ghosts_[s], cudaEventDisableTiming));
+        CKM(cudaEventCreateWithFlags(&ev_force_[s], cudaEventDisableTiming));
+        CKM(cudaEventCreateWithFlags(&ev_rev_[s], cudaEventDisableTiming));
+    }
     for (int s = 0; s < N; ++s) {
         ctx_[s].stream = dm_.stream(s);
         ctx_[s].defer_stream = dm_.defer_stream(s);
@@ -1069,14 +1204,14 @@ void MultiGpu::rebuild_bonded_tuples() {
         return;
     build_tag_maps();
     const int N = count();
-    constexpr int MB = cpu::Atom::kMaxBondPerAtom;
-    constexpr int MA = cpu::Atom::kMaxAnglePerAtom;
-    constexpr int MD = cpu::Atom::kMaxDihedralPerAtom;
     for (int s = 0; s < N; ++s) {
         const int nl = frames_[s].n_local_;
         const int na = nl + frames_[s].n_ghost_;
         dm_.set_device(s);
         auto& a = frames_[s].atoms;
+        const int MB = a.bond_per_atom;
+        const int MA = a.angle_per_atom;
+        const int MD = a.dihedral_per_atom;
         auto& F = frames_[s];
         int* d_drop = drop_ctr_[s]; // persistent (allocated in build_tag_maps)
         CKM(cudaMemset(d_drop, 0, sizeof(int)));
@@ -1292,41 +1427,70 @@ void MultiGpu::compute_forces(bool read_energy) {
         // only republishes the pair list — no per-step rebuild here (which, in
         // this per-device loop, would serialize the GPUs on its overflow syncs).
         nlist_[s]->launch(lc); // neighbor refresh (driver-cadence rebuild)
-        pair_[s]->launch(lc);  // short-range (owned, full, special-bonds-excluded)
-        bond_[s]->launch(lc);
-        if (angle_[s])
-            angle_[s]->launch(lc);
-        if (dihedral_[s])
-            dihedral_[s]->launch(lc);
-        // Reciprocal-space (LAMMPS order: pair → bonded → kspace). Optional;
-        // single-GPU only until force-infra-04 adds the cross-GPU S(k) reduce.
-        if (kspace_[s])
-            kspace_[s]->launch(lc);
-    }
-    // Multi-GPU: sync all subdomains, then bring ghost (bonded) forces home.
-    // Single-GPU has no ghosts (reverse_comm is a no-op) and runs the integrator
-    // on the same stream as the force kernels, so no per-step host sync is
-    // needed — stream ordering carries forces into the next vv_second. Dropping
-    // this per-step cudaDeviceSynchronize is the last big single-GPU host win.
-    if (N > 1) {
-        auto tk0 = std::chrono::steady_clock::now();
-        for (int s = 0; s < N; ++s) {
-            dm_.set_device(s);
-            CKM(cudaDeviceSynchronize());
+        if (N > 1) {
+            // Pair force over OWNED rows only. Ghost pair rows are (a) wasted
+            // work — each owned atom's pair force is already complete from
+            // its own full Verlet row — and (b) WRONG to reverse-communicate:
+            // the pair part would double onto the owner, and ghost-row energy
+            // double-counts every cross-boundary pair. Only bonded ghost
+            // deposits may travel home.
+            auto st = static_cast<cudaStream_t>(ctx_[s].stream);
+            const int nl = frames_[s].n_local_;
+            // A style that ignores the row fields must get exactly ONE full
+            // launch (a split would compute every row twice).
+            const bool rows_ok = pair_[s]->supports_force_rows();
+            const bool split = rows_ok && !rows_.empty() && rows_[s]
+                               && n_interior_[s] >= 0;
+            if (split) {
+                // Interior rows (no ghost neighbor): launch BEFORE waiting on
+                // the halo — this is the comm/compute overlap.
+                ctx_[s].n_force_rows = n_interior_[s];
+                ctx_[s].force_rows = rows_[s];
+                pair_[s]->launch(lc);
+                CKM(cudaStreamWaitEvent(st, ev_ghosts_[s], 0));
+                ctx_[s].n_force_rows = nl - n_interior_[s];
+                ctx_[s].force_rows = rows_[s] + n_interior_[s];
+                pair_[s]->launch(lc); // boundary rows — need landed ghosts
+            } else {
+                CKM(cudaStreamWaitEvent(st, ev_ghosts_[s], 0));
+                if (rows_ok) {
+                    ctx_[s].n_force_rows = nl; // owned prefix, no split known
+                    ctx_[s].force_rows = nullptr;
+                }
+                pair_[s]->launch(lc);
+            }
+            ctx_[s].n_force_rows = -1;
+            ctx_[s].force_rows = nullptr;
+            // Bonded kernels read ghost POSITIONS and deposit on ghost rows —
+            // ordered after the ghost wait by the ctx stream.
+            bond_[s]->launch(lc);
+            if (angle_[s])
+                angle_[s]->launch(lc);
+            if (dihedral_[s])
+                dihedral_[s]->launch(lc);
+            if (kspace_[s])
+                kspace_[s]->launch(lc);
+            // Ghost-row deposits final: the reverse halo gathers wait on this.
+            CKM(cudaEventRecord(ev_force_[s], st));
+        } else {
+            pair_[s]->launch(lc); // single-GPU: every row, original path
+            bond_[s]->launch(lc);
+            if (angle_[s])
+                angle_[s]->launch(lc);
+            if (dihedral_[s])
+                dihedral_[s]->launch(lc);
+            // Reciprocal-space (LAMMPS order: pair → bonded → kspace).
+            if (kspace_[s])
+                kspace_[s]->launch(lc);
         }
-        if (mg_prof().on)
-            mg_prof().add("C_force_kernels",
-                          std::chrono::duration<double>(
-                              std::chrono::steady_clock::now() - tk0)
-                              .count());
-        auto tr0 = std::chrono::steady_clock::now();
-        reverse_comm(); // internally syncs per axis
-        if (mg_prof().on)
-            mg_prof().add("C_reverse_comm",
-                          std::chrono::duration<double>(
-                              std::chrono::steady_clock::now() - tr0)
-                              .count());
     }
+    // Multi-GPU: bring ghost (bonded) forces home — fully async on the comm
+    // streams (waits ev_force_, records ev_rev_; the integrator's second
+    // half-kick waits ev_rev_). Single-GPU has no ghosts and runs the
+    // integrator on the same stream as the force kernels, so no per-step sync
+    // is needed — stream ordering carries forces into the next vv_second.
+    if (N > 1)
+        reverse_comm_async();
     if (read_energy) {
         // Energy readback syncs implicitly (blocking D2H); ensure single-GPU
         // force kernels are done first.
@@ -1340,6 +1504,68 @@ void MultiGpu::compute_forces(bool read_energy) {
                            cudaMemcpyDeviceToHost));
             bonded_energy_ += static_cast<double>(sc.energy);
         }
+    }
+}
+
+void MultiGpu::classify_force_rows() {
+    // Partition each subdomain's OWNED rows into [interior | boundary] by
+    // ghost dependence (see flag_interior_rows). Interior pair forces launch
+    // before the forward halo lands — the comm/compute overlap. CUB
+    // DevicePartition keeps interior rows in ascending order (boundary rows
+    // land reversed at the tail — order is irrelevant for correctness and
+    // they stay contiguous for coalescing). Reneighbor-cadence.
+    const int N = count();
+    if (N <= 1 || rows_.empty())
+        return;
+    std::vector<char> issued(N, 0);
+    for (int s = 0; s < N; ++s) {
+        n_interior_[s] = -1;
+        const int nl = frames_[s].n_local_;
+        const cuda::PairList* pl = ctx_[s].pair_list;
+        if (nl <= 0 || !pl || !pl->vl_nbr || !pl->vl_cnt || pl->vl_stride <= 0)
+            continue;
+        dm_.set_device(s);
+        if (!rows_[s]) {
+            const int cap = frames_[s].capacity_;
+            CKM(cudaMalloc(&rows_[s], cap * sizeof(int)));
+            CKM(cudaMalloc(&row_flags_[s], cap * sizeof(unsigned char)));
+            CKM(cudaMalloc(&row_nsel_[s], sizeof(int)));
+            // Size the CUB temp blob once for full capacity (bytes query).
+            std::size_t need = 0;
+            thrust::counting_iterator<int> cit(0);
+            cub::DevicePartition::Flagged(nullptr, need, cit, row_flags_[s],
+                                          rows_[s], row_nsel_[s], cap);
+            CKM(cudaMalloc(&row_tmp_[s], need));
+            row_tmp_sz_[s] = need;
+        }
+        auto st = static_cast<cudaStream_t>(ctx_[s].stream);
+        const int block = 256, grid = (nl + block - 1) / block;
+        flag_interior_rows<<<grid, block, 0, st>>>(
+            pl->vl_nbr, pl->vl_cnt, pl->vl_stride, pl->vl_max, nl,
+            row_flags_[s]);
+        CKM(cudaGetLastError());
+        std::size_t avail = row_tmp_sz_[s];
+        thrust::counting_iterator<int> cit(0);
+        CKM(cub::DevicePartition::Flagged(row_tmp_[s], avail, cit,
+                                          row_flags_[s], rows_[s], row_nsel_[s],
+                                          nl, st));
+        issued[s] = 1;
+    }
+    for (int s = 0; s < N; ++s) {
+        if (!issued[s])
+            continue;
+        dm_.set_device(s);
+        int nsel = 0; // blocking D2H — orders behind the partition kernel
+        CKM(cudaMemcpy(&nsel, row_nsel_[s], sizeof(int),
+                       cudaMemcpyDeviceToHost));
+        n_interior_[s] = nsel;
+        if (mg_prof().on)
+            std::fprintf(stderr,
+                         "[MG_ROWS] dev%d interior=%d/%d (%.1f%%)\n", s, nsel,
+                         frames_[s].n_local_,
+                         frames_[s].n_local_ > 0
+                             ? 100.0 * nsel / frames_[s].n_local_
+                             : 0.0);
     }
 }
 
@@ -1367,6 +1593,15 @@ void MultiGpu::reneighbor() {
                         std::chrono::steady_clock::now() - t0)
                         .count());
     };
+    // Drain the async step pipeline first: migrate()/build_halo() read other
+    // devices' memory via P2P copies that are NOT ordered behind those
+    // devices' ctx/comm streams, so every in-flight integrator/comm op must
+    // have landed. One barrier per reneighbor interval — the steady step
+    // loop itself never host-syncs.
+    for (int s = 0; s < count(); ++s) {
+        dm_.set_device(s);
+        CKM(cudaDeviceSynchronize());
+    }
     // Atoms that drifted out of their subdomain change owner GPU first, THEN
     // the halo is rebuilt around the updated owned sets.
     timed("R_migrate", [&] { migrate(); });
@@ -1497,14 +1732,24 @@ void MultiGpu::reneighbor() {
             dm_.set_device(s);
             CKM(cudaDeviceSynchronize());
         }
+        std::vector<char> vl_ok(N, 1);
         for (int s = 0; s < N; ++s) {
             const int na = frames_[s].n_local_ + frames_[s].n_ghost_;
             if (na == 0)
                 continue;
             dm_.set_device(s);
             cuda::LaunchContext lc{ctx_[s], frames_[s], 0, 0};
-            nlist_[s]->finalize_rebuild(lc);
+            // true ⇒ buffers grew: the issued build was truncated and the
+            // next launch() re-runs it synchronously — this interval's Verlet
+            // rows are not classifiable on that slot.
+            vl_ok[s] = nlist_[s]->finalize_rebuild(lc) ? 0 : 1;
         }
+        // Partition owned rows by ghost dependence over the fresh Verlet
+        // lists (interior pair force overlaps the next intervals' halos).
+        timed("R_classify_rows", [&] { classify_force_rows(); });
+        for (int s = 0; s < N; ++s)
+            if (!vl_ok[s])
+                n_interior_[s] = -1; // overflowed slot: owned-prefix fallback
     }
     // Cap the retained-pool ratchet. migrate()/build_halo() allocate large
     // transient scratch (incl. packing per-atom bonded arrays) via
@@ -1553,18 +1798,43 @@ void MultiGpu::compute_lj_nlist() {
         dm_.set_device(s);
         auto& a = frames_[s].atoms;
         cudaStream_t st = static_cast<cudaStream_t>(ctx_[s].stream);
-        // The cluster kernel accumulates (fx[ai] += ...) over owned AND ghost
-        // slots, so zero the whole owned+ghost range first.
+        // The force kernel accumulates (fx[i] += ...), so zero first. Ghost
+        // rows stay zero on multi-GPU (owned-row launches below).
         CKM(cudaMemsetAsync(a.fx, 0, na * sizeof(real_t), st));
         CKM(cudaMemsetAsync(a.fy, 0, na * sizeof(real_t), st));
         CKM(cudaMemsetAsync(a.fz, 0, na * sizeof(real_t), st));
         cuda::LaunchContext lc{ctx_[s], frames_[s]};
-        nlist_[s]->launch(lc); // skin-gated CSR rebuild + republish pair_list
-        pair_[s]->launch(lc);  // atom-centric cluster LJ force (calls compute)
-    }
-    for (int s = 0; s < N; ++s) {
-        dm_.set_device(s);
-        CKM(cudaDeviceSynchronize());
+        nlist_[s]->launch(lc); // skin-gated rebuild + republish pair_list
+        if (N > 1) {
+            // Owned rows only, interior/boundary split when available —
+            // interior LJ overlaps the in-flight forward halo; boundary rows
+            // wait for the ghost positions via ev_ghosts_ (stream-level, no
+            // host sync anywhere in the steady step). See compute_forces.
+            const int nl = frames_[s].n_local_;
+            const bool rows_ok = pair_[s]->supports_force_rows();
+            const bool split = rows_ok && !rows_.empty() && rows_[s]
+                               && n_interior_[s] >= 0;
+            if (split) {
+                ctx_[s].n_force_rows = n_interior_[s];
+                ctx_[s].force_rows = rows_[s];
+                pair_[s]->launch(lc);
+                CKM(cudaStreamWaitEvent(st, ev_ghosts_[s], 0));
+                ctx_[s].n_force_rows = nl - n_interior_[s];
+                ctx_[s].force_rows = rows_[s] + n_interior_[s];
+                pair_[s]->launch(lc);
+            } else {
+                CKM(cudaStreamWaitEvent(st, ev_ghosts_[s], 0));
+                if (rows_ok) {
+                    ctx_[s].n_force_rows = nl;
+                    ctx_[s].force_rows = nullptr;
+                }
+                pair_[s]->launch(lc);
+            }
+            ctx_[s].n_force_rows = -1;
+            ctx_[s].force_rows = nullptr;
+        } else {
+            pair_[s]->launch(lc); // single-GPU: every row, original path
+        }
     }
 }
 
@@ -1577,34 +1847,69 @@ void MultiGpu::run_nve_nlist(int steps, double dt, double cutoff,
     const real_t dtr = static_cast<real_t>(dt);
     if (reneigh_every < 1)
         reneigh_every = 1;
+    // Phase timer (no-op unless AV_MG_PROFILE): device-inclusive per-phase
+    // cost, same shape as run_nve_pe. Profiling mode serializes the async
+    // pipeline by design — phase shares, not absolute overlap, are the signal.
+    auto timed = [&](const char* name, auto&& fn) {
+        auto& P = mg_prof();
+        if (!P.on) {
+            fn();
+            return;
+        }
+        for (int s = 0; s < count(); ++s) {
+            dm_.set_device(s);
+            cudaDeviceSynchronize();
+        }
+        auto t0 = std::chrono::steady_clock::now();
+        fn();
+        for (int s = 0; s < count(); ++s) {
+            dm_.set_device(s);
+            cudaDeviceSynchronize();
+        }
+        P.add(name, std::chrono::duration<double>(
+                        std::chrono::steady_clock::now() - t0)
+                        .count());
+    };
     for (int step = 0; step < steps; ++step) {
+        // Integrate on the per-device CTX stream (same stream as the force
+        // kernels → forces are stream-ordered into vv_first with no host
+        // sync). Multi-GPU records ev_pos_ so the comm-stream halo gathers
+        // wait on the fresh positions (the steady step loop is sync-free).
+      timed("1_vv_first", [&] {
         for (int s = 0; s < count(); ++s) {
             const int nl = frames_[s].n_local_;
             if (nl == 0)
                 continue;
             dm_.set_device(s);
             auto& a = frames_[s].atoms;
+            auto st = static_cast<cudaStream_t>(ctx_[s].stream);
             int block = 256, grid = (nl + block - 1) / block;
-            vv_first<<<grid, block>>>(a.x, a.y, a.z, a.vx, a.vy, a.vz, a.fx,
-                                      a.fy, a.fz, a.mass, nl, dtr);
+            vv_first<<<grid, block, 0, st>>>(a.x, a.y, a.z, a.vx, a.vy, a.vz,
+                                             a.fx, a.fy, a.fz, a.mass, nl, dtr);
             CKM(cudaGetLastError());
+            if (count() > 1)
+                CKM(cudaEventRecord(ev_pos_[s], st));
         }
+      });
         if ((step + 1) % reneigh_every == 0)
-            reneighbor();    // re-select ghosts + rebuild neighbor list
+            timed("2_reneighbor", [&] { reneighbor(); });
         else
-            forward_comm();  // refresh ghost positions only
-        compute_lj_nlist();
+            timed("2_forward_comm", [&] { forward_comm_async(); });
+        timed("3_force", [&] { compute_lj_nlist(); });
+      timed("4_vv_second", [&] {
         for (int s = 0; s < count(); ++s) {
             const int nl = frames_[s].n_local_;
             if (nl == 0)
                 continue;
             dm_.set_device(s);
             auto& a = frames_[s].atoms;
+            auto st = static_cast<cudaStream_t>(ctx_[s].stream);
             int block = 256, grid = (nl + block - 1) / block;
-            vv_second<<<grid, block>>>(a.vx, a.vy, a.vz, a.fx, a.fy, a.fz,
-                                       a.mass, nl, dtr);
+            vv_second<<<grid, block, 0, st>>>(a.vx, a.vy, a.vz, a.fx, a.fy,
+                                              a.fz, a.mass, nl, dtr);
             CKM(cudaGetLastError());
         }
+      });
     }
     for (int s = 0; s < count(); ++s) {
         dm_.set_device(s);
@@ -1659,25 +1964,24 @@ void MultiGpu::run_nve_pe(int steps, double dt, int reneigh_every) {
                 continue;
             dm_.set_device(s);
             auto& a = frames_[s].atoms;
-            // Stream choice: single-GPU runs the integrator on the SAME stream
-            // as the force kernels (ctx_[s].stream) so compute_forces needs no
-            // per-step host sync — stream ordering carries forces → vv_second.
-            // Multi-GPU must use the per-device default stream (0): migrate() /
-            // forward_comm() read these positions on the default stream, so the
-            // integrator shares it (else the position write races the migrate
-            // read — a Heisenbug that vanishes under compute-sanitizer).
-            auto st = (count() == 1) ? static_cast<cudaStream_t>(ctx_[s].stream)
-                                     : cudaStream_t(0);
+            // Integrate on the CTX stream (same stream as the force kernels →
+            // forces stream-order into the half-kick, no host sync). The comm
+            // streams' halo gathers wait on ev_pos_; reneighbor() (whose
+            // migrate() does cross-device P2P reads that streams cannot
+            // order) drains all devices at entry instead.
+            auto st = static_cast<cudaStream_t>(ctx_[s].stream);
             launch_nve_limit_initial(a.x, a.y, a.z, a.vx, a.vy, a.vz, a.fx, a.fy,
                                      a.fz, a.mass, ctx_[s].host_box, dtw,
                                      kNveLimitXmax, nl, st);
             CKM(cudaGetLastError());
+            if (count() > 1)
+                CKM(cudaEventRecord(ev_pos_[s], st));
         }
       });
         if ((step + 1) % reneigh_every == 0)
             timed("2_reneighbor", [&] { reneighbor(); });
         else
-            timed("2_forward_comm", [&] { forward_comm(); });
+            timed("2_forward_comm", [&] { forward_comm_async(); });
         timed("3_compute_forces",
               [&] { compute_forces(/*read_energy=*/false); });
       timed("4_integrate_final", [&] {
@@ -1687,8 +1991,11 @@ void MultiGpu::run_nve_pe(int steps, double dt, int reneigh_every) {
                 continue;
             dm_.set_device(s);
             auto& a = frames_[s].atoms;
-            auto st = (count() == 1) ? static_cast<cudaStream_t>(ctx_[s].stream)
-                                     : cudaStream_t(0);
+            auto st = static_cast<cudaStream_t>(ctx_[s].stream);
+            // Multi-GPU: forces on owned rows are final only after the
+            // reverse halo's scatter-adds (comm stream) — wait its event.
+            if (count() > 1)
+                CKM(cudaStreamWaitEvent(st, ev_rev_[s], 0));
             launch_nve_limit_final(a.vx, a.vy, a.vz, a.fx, a.fy, a.fz, a.mass,
                                    dtw, kNveLimitXmax, nl, st);
             CKM(cudaGetLastError());
@@ -1748,17 +2055,6 @@ __global__ void classify_owner(const real_t* x, const real_t* y,
             atomicAdd(&cnt[t], s_cnt[t]);
 }
 
-// Stable counting-sort scatter: group owned indices by destination owner.
-__global__ void scatter_order(const int* owner, int n, const int* boff,
-                              int* fill, int* order) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n)
-        return;
-    int o = owner[i];
-    int pos = boff[o] + atomicAdd(&fill[o], 1);
-    order[pos] = i;
-}
-
 // Gather full per-atom state of `cnt` atoms named by idx[] into contiguous
 // send buffers (one P2P hop to the new owner).
 __global__ void gather_state(
@@ -1815,27 +2111,44 @@ void mig_free(MigBuf& b) {
 }
 
 // Per-atom bonded topology carried alongside the core MigBuf when the system
-// has bonds (multigpu-bonded P2.3). Row widths mirror cpu::Atom; partners are
-// global tags (resolved to local rows on the new owner each reneighbor).
+// has bonds (multigpu-bonded P2.3). Row widths follow the frame's RUNTIME
+// topology strides (identical across subdomains — set from the one global
+// cpu::Frame at partition); partners are global tags (resolved to local rows
+// on the new owner each reneighbor).
 struct MigBondedBuf {
     int *num_bond, *bond_type, *num_angle, *angle_type, *num_dihedral,
         *dihedral_type, *nspecial;
     std::int64_t *bond_atom, *angle_atom, *dihedral_atom, *special;
 };
-void migb_alloc(MigBondedBuf& b, int m) {
-    const int MB = cpu::Atom::kMaxBondPerAtom, MA = cpu::Atom::kMaxAnglePerAtom,
-              MD = cpu::Atom::kMaxDihedralPerAtom, MS = cpu::Atom::kMaxSpecial;
-    CKM(mallocp(&b.num_bond, m * sizeof(int)));
-    CKM(mallocp(&b.bond_atom, m * MB * sizeof(std::int64_t)));
-    CKM(mallocp(&b.bond_type, m * MB * sizeof(int)));
-    CKM(mallocp(&b.num_angle, m * sizeof(int)));
-    CKM(mallocp(&b.angle_atom, m * 2 * MA * sizeof(std::int64_t)));
-    CKM(mallocp(&b.angle_type, m * MA * sizeof(int)));
-    CKM(mallocp(&b.num_dihedral, m * sizeof(int)));
-    CKM(mallocp(&b.dihedral_atom, m * 3 * MD * sizeof(std::int64_t)));
-    CKM(mallocp(&b.dihedral_type, m * MD * sizeof(int)));
-    CKM(mallocp(&b.nspecial, m * 3 * sizeof(int)));
-    CKM(mallocp(&b.special, m * MS * sizeof(std::int64_t)));
+void migb_alloc(MigBondedBuf& b, int m, int MB, int MA, int MD, int MS) {
+    // A stride may legitimately be 0 (e.g. bonds-only system: MA == MD == 0);
+    // leave that pointer null — every consumer loops `w < stride` so a null
+    // array is never dereferenced.
+    auto malloc_i = [](int*& p, std::size_t bytes) {
+        if (bytes == 0) {
+            p = nullptr;
+            return cudaSuccess;
+        }
+        return mallocp(&p, bytes);
+    };
+    auto malloc_t = [](std::int64_t*& p, std::size_t bytes) {
+        if (bytes == 0) {
+            p = nullptr;
+            return cudaSuccess;
+        }
+        return mallocp(&p, bytes);
+    };
+    CKM(malloc_i(b.num_bond, m * sizeof(int)));
+    CKM(malloc_t(b.bond_atom, m * MB * sizeof(std::int64_t)));
+    CKM(malloc_i(b.bond_type, m * MB * sizeof(int)));
+    CKM(malloc_i(b.num_angle, m * sizeof(int)));
+    CKM(malloc_t(b.angle_atom, m * 2 * MA * sizeof(std::int64_t)));
+    CKM(malloc_i(b.angle_type, m * MA * sizeof(int)));
+    CKM(malloc_i(b.num_dihedral, m * sizeof(int)));
+    CKM(malloc_t(b.dihedral_atom, m * 3 * MD * sizeof(std::int64_t)));
+    CKM(malloc_i(b.dihedral_type, m * MD * sizeof(int)));
+    CKM(malloc_i(b.nspecial, m * 3 * sizeof(int)));
+    CKM(malloc_t(b.special, m * MS * sizeof(std::int64_t)));
 }
 void migb_free(MigBondedBuf& b) {
     freep(b.num_bond);
@@ -1886,6 +2199,97 @@ __global__ void gather_bonded_state(
     for (int w = 0; w < MS; ++w)
         osp[k * MS + w] = special[i * MS + w];
 }
+
+// LEAVER-only counting-sort scatter: group the indices of atoms whose owner
+// is another subdomain by destination, skipping the (dominant) owner==self
+// population entirely — order[] is sized n_leave, not n_local.
+__global__ void scatter_order_leavers(const int* owner, int n, int self,
+                                      const int* boff, int* fill, int* order) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n)
+        return;
+    int o = owner[i];
+    if (o == self)
+        return;
+    order[boff[o] + atomicAdd(&fill[o], 1)] = i;
+}
+
+// Hole-fill compaction worklists: after the leavers depart, the owned range
+// shrinks to [0, n_keep). A "hole" is a leaver row inside the keep prefix; a
+// "filler" is a keeper row in the tail. #holes == #fillers by counting (the
+// tail holds n_leave slots, of which the non-fillers are exactly the leavers
+// that are not holes). Append order is arbitrary — any bijection is valid.
+__global__ void build_holes_fillers(const int* owner, int self, int n_keep,
+                                    int n_local, int* holes, int* h_ctr,
+                                    int* fillers, int* f_ctr) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n_local)
+        return;
+    if (i < n_keep) {
+        if (owner[i] != self)
+            holes[atomicAdd(h_ctr, 1)] = i;
+    } else if (owner[i] == self) {
+        fillers[atomicAdd(f_ctr, 1)] = i;
+    }
+}
+
+// Copy the 10 migrated per-atom fields filler-row → hole-row. `m_ctr` is the
+// device hole count (== filler count); grid is sized to the n_leave upper
+// bound so no D2H of the exact count is needed.
+__global__ void fill_holes(const int* holes, const int* fillers,
+                           const int* m_ctr, real_t* x, real_t* y, real_t* z,
+                           real_t* vx, real_t* vy, real_t* vz, real_t* mass,
+                           real_t* charge, int* type, std::int64_t* tag) {
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= *m_ctr)
+        return;
+    int h = holes[k], f = fillers[k];
+    x[h] = x[f];
+    y[h] = y[f];
+    z[h] = z[f];
+    vx[h] = vx[f];
+    vy[h] = vy[f];
+    vz[h] = vz[f];
+    mass[h] = mass[f];
+    charge[h] = charge[f];
+    type[h] = type[f];
+    tag[h] = tag[f];
+}
+
+// Bonded twin of fill_holes: copy the wide per-atom bonded SoA rows.
+__global__ void fill_holes_bonded(const int* holes, const int* fillers,
+                                  const int* m_ctr, int MB, int MA, int MD,
+                                  int MS, int* num_bond,
+                                  std::int64_t* bond_atom, int* bond_type,
+                                  int* num_angle, std::int64_t* angle_atom,
+                                  int* angle_type, int* num_dihedral,
+                                  std::int64_t* dihedral_atom,
+                                  int* dihedral_type, int* nspecial,
+                                  std::int64_t* special) {
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= *m_ctr)
+        return;
+    int h = holes[k], f = fillers[k];
+    num_bond[h] = num_bond[f];
+    for (int w = 0; w < MB; ++w) {
+        bond_atom[h * MB + w] = bond_atom[f * MB + w];
+        bond_type[h * MB + w] = bond_type[f * MB + w];
+    }
+    num_angle[h] = num_angle[f];
+    for (int w = 0; w < 2 * MA; ++w)
+        angle_atom[h * 2 * MA + w] = angle_atom[f * 2 * MA + w];
+    for (int w = 0; w < MA; ++w)
+        angle_type[h * MA + w] = angle_type[f * MA + w];
+    num_dihedral[h] = num_dihedral[f];
+    for (int w = 0; w < 3 * MD; ++w)
+        dihedral_atom[h * 3 * MD + w] = dihedral_atom[f * 3 * MD + w];
+    for (int w = 0; w < MD; ++w)
+        dihedral_type[h * MD + w] = dihedral_type[f * MD + w];
+    for (int w = 0; w < 3; ++w)
+        nspecial[h * 3 + w] = nspecial[f * 3 + w];
+    for (int w = 0; w < MS; ++w)
+        special[h * MS + w] = special[f * MS + w];
+}
 } // namespace
 
 void MultiGpu::migrate() {
@@ -1899,7 +2303,6 @@ void MultiGpu::migrate() {
     // no-migration case skips it entirely). `owner` is retained for phase 1b.
     std::vector<int*> d_owner(N, nullptr);
     std::vector<std::vector<int>> cnt(N, std::vector<int>(N, 0)); // cnt[src][dst]
-    std::vector<std::vector<int>> boff(N, std::vector<int>(N, 0));
     // ISSUE the classify on every GPU first (no host sync), then COLLECT the
     // per-destination counts. The previous per-device "classify → blocking D2H
     // → sync" loop serialized the GPUs (each D2H stalled the host until that
@@ -1934,10 +2337,6 @@ void MultiGpu::migrate() {
         CKM(cudaMemcpy(hc.data(), d_dcnt[s], N * sizeof(int),
                        cudaMemcpyDeviceToHost)); // blocks on s's classify only
         cnt[s] = hc;
-        std::vector<int> hb(N, 0);
-        for (int d = 1; d < N; ++d)
-            hb[d] = hb[d - 1] + hc[d - 1];
-        boff[s] = hb;
         freep(d_dcnt[s]);
     }
 
@@ -1966,36 +2365,71 @@ void MultiGpu::migrate() {
         }
     }
 
-    // Phase 1b — atoms DID move: build the counting-sort order per source.
-    std::vector<int*> d_order(N, nullptr);
+    // Atoms DID move. O(migrants) exchange (LAMMPS-style): only LEAVERS
+    // travel; each source compacts in place by filling leaver holes inside
+    // the keep prefix with keeper rows from the tail; receivers append into
+    // their (dead, ghosts-dropped) tail rows directly. The previous
+    // implementation re-staged EVERY device's ENTIRE owned set — a full
+    // gather + 10 synchronous per-array cudaMemcpyPeer per (src,dst) pair
+    // INCLUDING the diagonal, then a full publish copy back — O(n_local)
+    // traffic per reneighbor. At 2x2x1 dims (16 host-serialized sync-copy
+    // groups) that was 5.7x the 3x1x1 cost at equal per-card load: the
+    // dominant term of the 4-GPU throughput collapse.
+
+    // Phase 1b — per source: group LEAVER indices by destination (order[] is
+    // sized n_leave, not n_local) and build the hole/filler compaction
+    // worklists. d_owner stays alive for the fill kernels.
+    std::vector<int*> d_order(N, nullptr); // [n_leave] leaver rows, dst-grouped
+    std::vector<int*> d_holes(N, nullptr); // [m | m | 2] holes, fillers, ctrs
+    std::vector<int> n_leave(N, 0);
+    std::vector<std::vector<int>> boff_x(N, std::vector<int>(N, 0));
     for (int s = 0; s < N; ++s) {
         const int nl = frames_[s].n_local_;
+        n_leave[s] = nl - cnt[s][s];
+        int off = 0; // leaver-group offsets, diagonal excluded
+        for (int d = 0; d < N; ++d) {
+            boff_x[s][d] = off;
+            if (d != s)
+                off += cnt[s][d];
+        }
         dm_.set_device(s);
-        int *order, *dfill, *dboff;
-        CKM(mallocp(&order, std::max(1, nl) * sizeof(int)));
-        CKM(mallocp(&dfill, N * sizeof(int)));
+        const int m = std::max(1, n_leave[s]);
+        int *order, *holes, *dboff, *dfill;
+        CKM(mallocp(&order, m * sizeof(int)));
+        CKM(mallocp(&holes, (2 * m + 2) * sizeof(int)));
         CKM(mallocp(&dboff, N * sizeof(int)));
-        CKM(cudaMemcpy(dboff, boff[s].data(), N * sizeof(int),
-                       cudaMemcpyHostToDevice));
-        CKM(cudaMemset(dfill, 0, N * sizeof(int)));
-        if (nl > 0) {
+        CKM(mallocp(&dfill, N * sizeof(int)));
+        CKM(cudaMemcpyAsync(dboff, boff_x[s].data(), N * sizeof(int),
+                            cudaMemcpyHostToDevice, cudaStream_t(0)));
+        CKM(cudaMemsetAsync(dfill, 0, N * sizeof(int), cudaStream_t(0)));
+        CKM(cudaMemsetAsync(holes + 2 * m, 0, 2 * sizeof(int),
+                            cudaStream_t(0)));
+        if (nl > 0 && n_leave[s] > 0) {
             int blk = 256, grd = (nl + blk - 1) / blk;
-            scatter_order<<<grd, blk>>>(d_owner[s], nl, dboff, dfill, order);
+            scatter_order_leavers<<<grd, blk>>>(d_owner[s], nl, s, dboff,
+                                                dfill, order);
+            CKM(cudaGetLastError());
+            build_holes_fillers<<<grd, blk>>>(d_owner[s], s, cnt[s][s], nl,
+                                              holes, holes + 2 * m, holes + m,
+                                              holes + 2 * m + 1);
             CKM(cudaGetLastError());
         }
         d_order[s] = order;
-        freep(d_owner[s]);
+        d_holes[s] = holes;
+        freep(dboff); // stream-ordered: frees after the kernels above
         freep(dfill);
-        freep(dboff);
-        CKM(cudaDeviceSynchronize()); // order[] ready for cross-device gather
     }
 
-    // Phase 2 — new owned counts + per-(src) receive offsets on each dst.
+    // Phase 2 — new owned counts: keepers stay in place, received leavers
+    // append after the keep region. recv_off[src][dst] = absolute row where
+    // src's leavers land on dst.
     std::vector<int> new_nl(N, 0);
     std::vector<std::vector<int>> recv_off(N, std::vector<int>(N, 0));
     for (int dst = 0; dst < N; ++dst) {
-        int off = 0;
+        int off = cnt[dst][dst];
         for (int src = 0; src < N; ++src) {
+            if (src == dst)
+                continue;
             recv_off[src][dst] = off;
             off += cnt[src][dst];
         }
@@ -2006,170 +2440,155 @@ void MultiGpu::migrate() {
                                      + " (raise ghost_headroom)");
     }
 
-    // Phase 3 — staging owned arrays per dst (avoids read/write hazard on the
-    // live frame arrays while peers write into them).
-    std::vector<MigBuf> stg(N);
-    std::vector<MigBondedBuf> stgb(N); // per-atom bonded SoA staging (if bonded_)
-    for (int dst = 0; dst < N; ++dst) {
-        dm_.set_device(dst);
-        mig_alloc(stg[dst], std::max(1, new_nl[dst]));
-        if (bonded_)
-            migb_alloc(stgb[dst], std::max(1, new_nl[dst]));
-    }
-    // These staging buffers come from cudaMallocAsync on each dst's stream 0
-    // (stream-ordered). Phase 4 writes into them from a DIFFERENT device via
-    // cudaMemcpyPeer, which carries no ordering against dst's pending async
-    // allocation — using the memory before the alloc completes on dst's stream
-    // is undefined (manifests as a Heisenbug "invalid argument" that vanishes
-    // under compute-sanitizer's serialization). Drain every dst's stream so the
-    // allocations are real before any cross-device peer write touches them.
-    for (int dst = 0; dst < N; ++dst) {
-        dm_.set_device(dst);
-        CKM(cudaDeviceSynchronize());
-    }
-
-    // Phase 4 — per (src,dst): gather state on src, P2P copy to dst staging.
+    // Phase 3 — per (src,dst≠src): gather the leaver group into a contiguous
+    // send buffer (BEFORE compaction overwrites leaver rows), then compact
+    // the source in place. Same-device stream order (stream 0) sequences
+    // gathers before the fill kernels.
+    // Runtime topology strides — identical across subdomains (all set from
+    // the one global cpu::Frame at partition).
+    const int MB = frames_[0].atoms.bond_per_atom,
+              MA = frames_[0].atoms.angle_per_atom,
+              MD = frames_[0].atoms.dihedral_per_atom,
+              MS = frames_[0].atoms.maxspecial;
+    std::vector<std::vector<MigBuf>> sb(N, std::vector<MigBuf>(N));
+    std::vector<std::vector<MigBondedBuf>> sbb(N, std::vector<MigBondedBuf>(N));
     for (int src = 0; src < N; ++src) {
         dm_.set_device(src);
         auto& a = frames_[src].atoms;
-        const int sd = dm_.device_id(src);
         for (int dst = 0; dst < N; ++dst) {
             const int c = cnt[src][dst];
-            if (c <= 0)
+            if (dst == src || c <= 0)
                 continue;
-            MigBuf sb;
-            mig_alloc(sb, c);
+            mig_alloc(sb[src][dst], c);
             int blk = 256, grd = (c + blk - 1) / blk;
-            const int* idx = d_order[src] + boff[src][dst];
+            const int* idx = d_order[src] + boff_x[src][dst];
+            MigBuf& B = sb[src][dst];
             gather_state<<<grd, blk>>>(idx, c, a.x, a.y, a.z, a.vx, a.vy, a.vz,
-                                       a.mass, a.charge, a.type, a.tag, sb.x,
-                                       sb.y, sb.z, sb.vx, sb.vy, sb.vz, sb.mass,
-                                       sb.charge, sb.type, sb.tag);
+                                       a.mass, a.charge, a.type, a.tag, B.x,
+                                       B.y, B.z, B.vx, B.vy, B.vz, B.mass,
+                                       B.charge, B.type, B.tag);
             CKM(cudaGetLastError());
-            const int dd_id = dm_.device_id(dst);
-            const int o = recv_off[src][dst];
-            MigBuf& D = stg[dst];
-            CKM(cudaMemcpyPeer(D.x + o, dd_id, sb.x, sd, c * sizeof(real_t)));
-            CKM(cudaMemcpyPeer(D.y + o, dd_id, sb.y, sd, c * sizeof(real_t)));
-            CKM(cudaMemcpyPeer(D.z + o, dd_id, sb.z, sd, c * sizeof(real_t)));
-            CKM(cudaMemcpyPeer(D.vx + o, dd_id, sb.vx, sd, c * sizeof(real_t)));
-            CKM(cudaMemcpyPeer(D.vy + o, dd_id, sb.vy, sd, c * sizeof(real_t)));
-            CKM(cudaMemcpyPeer(D.vz + o, dd_id, sb.vz, sd, c * sizeof(real_t)));
-            CKM(cudaMemcpyPeer(D.mass + o, dd_id, sb.mass, sd,
-                               c * sizeof(real_t)));
-            CKM(cudaMemcpyPeer(D.charge + o, dd_id, sb.charge, sd,
-                               c * sizeof(real_t)));
-            CKM(cudaMemcpyPeer(D.type + o, dd_id, sb.type, sd, c * sizeof(int)));
-            CKM(cudaMemcpyPeer(D.tag + o, dd_id, sb.tag, sd,
-                               c * sizeof(std::int64_t)));
             if (bonded_) {
-                // Carry the per-atom bonded SoA rows for these atoms too.
-                const int MB = cpu::Atom::kMaxBondPerAtom,
-                          MA = cpu::Atom::kMaxAnglePerAtom,
-                          MD = cpu::Atom::kMaxDihedralPerAtom,
-                          MS = cpu::Atom::kMaxSpecial;
-                MigBondedBuf sbb;
-                migb_alloc(sbb, c);
+                migb_alloc(sbb[src][dst], c, MB, MA, MD, MS);
+                MigBondedBuf& BB = sbb[src][dst];
                 gather_bonded_state<<<grd, blk>>>(
                     idx, c, MB, MA, MD, MS, a.num_bond, a.bond_atom, a.bond_type,
                     a.num_angle, a.angle_atom, a.angle_type, a.num_dihedral,
                     a.dihedral_atom, a.dihedral_type, a.nspecial, a.special,
-                    sbb.num_bond, sbb.bond_atom, sbb.bond_type, sbb.num_angle,
-                    sbb.angle_atom, sbb.angle_type, sbb.num_dihedral,
-                    sbb.dihedral_atom, sbb.dihedral_type, sbb.nspecial,
-                    sbb.special);
+                    BB.num_bond, BB.bond_atom, BB.bond_type, BB.num_angle,
+                    BB.angle_atom, BB.angle_type, BB.num_dihedral,
+                    BB.dihedral_atom, BB.dihedral_type, BB.nspecial,
+                    BB.special);
                 CKM(cudaGetLastError());
-                MigBondedBuf& DB = stgb[dst];
+            }
+        }
+        if (n_leave[src] > 0 && frames_[src].n_local_ > 0) {
+            const int m = std::max(1, n_leave[src]);
+            int blk = 256, grd = (n_leave[src] + blk - 1) / blk;
+            fill_holes<<<grd, blk>>>(d_holes[src], d_holes[src] + m,
+                                     d_holes[src] + 2 * m, a.x, a.y, a.z, a.vx,
+                                     a.vy, a.vz, a.mass, a.charge, a.type,
+                                     a.tag);
+            CKM(cudaGetLastError());
+            if (bonded_) {
+                fill_holes_bonded<<<grd, blk>>>(
+                    d_holes[src], d_holes[src] + m, d_holes[src] + 2 * m, MB,
+                    MA, MD, MS, a.num_bond, a.bond_atom, a.bond_type,
+                    a.num_angle, a.angle_atom, a.angle_type, a.num_dihedral,
+                    a.dihedral_atom, a.dihedral_type, a.nspecial, a.special);
+                CKM(cudaGetLastError());
+            }
+        }
+    }
+    // Drain: gathers + compactions complete before peers overwrite the (now
+    // dead) tails, and before send buffers are read cross-device.
+    for (int s = 0; s < N; ++s) {
+        dm_.set_device(s);
+        CKM(cudaDeviceSynchronize());
+    }
+
+    // Phase 4 — async P2P append of each (src,dst) leaver group DIRECTLY into
+    // dst's frame rows [recv_off, recv_off+c). Distinct pairs overlap (issued
+    // on each src's stream 0); writers never overlap (disjoint row ranges).
+    for (int src = 0; src < N; ++src) {
+        dm_.set_device(src);
+        const int sd = dm_.device_id(src);
+        for (int dst = 0; dst < N; ++dst) {
+            const int c = cnt[src][dst];
+            if (dst == src || c <= 0)
+                continue;
+            const int dd_id = dm_.device_id(dst);
+            const int o = recv_off[src][dst];
+            auto& da = frames_[dst].atoms;
+            MigBuf& B = sb[src][dst];
+            auto peer = [&](void* dstp, const void* srcp, std::size_t bytes) {
+                CKM(cudaMemcpyPeerAsync(dstp, dd_id, srcp, sd, bytes,
+                                        cudaStream_t(0)));
+            };
+            peer(da.x + o, B.x, c * sizeof(real_t));
+            peer(da.y + o, B.y, c * sizeof(real_t));
+            peer(da.z + o, B.z, c * sizeof(real_t));
+            peer(da.vx + o, B.vx, c * sizeof(real_t));
+            peer(da.vy + o, B.vy, c * sizeof(real_t));
+            peer(da.vz + o, B.vz, c * sizeof(real_t));
+            peer(da.mass + o, B.mass, c * sizeof(real_t));
+            peer(da.charge + o, B.charge, c * sizeof(real_t));
+            peer(da.type + o, B.type, c * sizeof(int));
+            peer(da.tag + o, B.tag, c * sizeof(std::int64_t));
+            if (bonded_) {
+                MigBondedBuf& BB = sbb[src][dst];
                 auto peer_i = [&](int* dstp, int* srcp, int width) {
-                    CKM(cudaMemcpyPeer(dstp + static_cast<std::size_t>(o) * width,
-                                       dd_id, srcp, sd,
-                                       static_cast<std::size_t>(c) * width
-                                           * sizeof(int)));
+                    peer(dstp + static_cast<std::size_t>(o) * width, srcp,
+                         static_cast<std::size_t>(c) * width * sizeof(int));
                 };
                 auto peer_t = [&](std::int64_t* dstp, std::int64_t* srcp,
                                   int width) {
-                    CKM(cudaMemcpyPeer(dstp + static_cast<std::size_t>(o) * width,
-                                       dd_id, srcp, sd,
-                                       static_cast<std::size_t>(c) * width
-                                           * sizeof(std::int64_t)));
+                    peer(dstp + static_cast<std::size_t>(o) * width, srcp,
+                         static_cast<std::size_t>(c) * width
+                             * sizeof(std::int64_t));
                 };
-                peer_i(DB.num_bond, sbb.num_bond, 1);
-                peer_t(DB.bond_atom, sbb.bond_atom, MB);
-                peer_i(DB.bond_type, sbb.bond_type, MB);
-                peer_i(DB.num_angle, sbb.num_angle, 1);
-                peer_t(DB.angle_atom, sbb.angle_atom, 2 * MA);
-                peer_i(DB.angle_type, sbb.angle_type, MA);
-                peer_i(DB.num_dihedral, sbb.num_dihedral, 1);
-                peer_t(DB.dihedral_atom, sbb.dihedral_atom, 3 * MD);
-                peer_i(DB.dihedral_type, sbb.dihedral_type, MD);
-                peer_i(DB.nspecial, sbb.nspecial, 3);
-                peer_t(DB.special, sbb.special, MS);
-                migb_free(sbb);
+                peer_i(da.num_bond, BB.num_bond, 1);
+                peer_t(da.bond_atom, BB.bond_atom, MB);
+                peer_i(da.bond_type, BB.bond_type, MB);
+                peer_i(da.num_angle, BB.num_angle, 1);
+                peer_t(da.angle_atom, BB.angle_atom, 2 * MA);
+                peer_i(da.angle_type, BB.angle_type, MA);
+                peer_i(da.num_dihedral, BB.num_dihedral, 1);
+                peer_t(da.dihedral_atom, BB.dihedral_atom, 3 * MD);
+                peer_i(da.dihedral_type, BB.dihedral_type, MD);
+                peer_i(da.nspecial, BB.nspecial, 3);
+                peer_t(da.special, BB.special, MS);
             }
-            mig_free(sb); // cudaMemcpyPeer is synchronous; safe to free
         }
     }
 
-    // Phase 5 — publish staging into the frame arrays, set new owned counts,
-    // drop ghosts (rebuilt by the following build_halo).
-    for (int dst = 0; dst < N; ++dst) {
-        dm_.set_device(dst);
-        auto& a = frames_[dst].atoms;
-        const int m = new_nl[dst];
-        if (m > 0) {
-            const size_t r = m * sizeof(real_t);
-            CKM(cudaMemcpy(a.x, stg[dst].x, r, cudaMemcpyDeviceToDevice));
-            CKM(cudaMemcpy(a.y, stg[dst].y, r, cudaMemcpyDeviceToDevice));
-            CKM(cudaMemcpy(a.z, stg[dst].z, r, cudaMemcpyDeviceToDevice));
-            CKM(cudaMemcpy(a.vx, stg[dst].vx, r, cudaMemcpyDeviceToDevice));
-            CKM(cudaMemcpy(a.vy, stg[dst].vy, r, cudaMemcpyDeviceToDevice));
-            CKM(cudaMemcpy(a.vz, stg[dst].vz, r, cudaMemcpyDeviceToDevice));
-            CKM(cudaMemcpy(a.mass, stg[dst].mass, r, cudaMemcpyDeviceToDevice));
-            CKM(cudaMemcpy(a.charge, stg[dst].charge, r, cudaMemcpyDeviceToDevice));
-            CKM(cudaMemcpy(a.type, stg[dst].type, m * sizeof(int),
-                           cudaMemcpyDeviceToDevice));
-            CKM(cudaMemcpy(a.tag, stg[dst].tag, m * sizeof(std::int64_t),
-                           cudaMemcpyDeviceToDevice));
-            if (bonded_) {
-                const int MB = cpu::Atom::kMaxBondPerAtom,
-                          MA = cpu::Atom::kMaxAnglePerAtom,
-                          MD = cpu::Atom::kMaxDihedralPerAtom,
-                          MS = cpu::Atom::kMaxSpecial;
-                MigBondedBuf& B = stgb[dst];
-                auto d2d_i = [&](int* dstp, int* srcp, int width) {
-                    CKM(cudaMemcpy(dstp, srcp,
-                                   static_cast<std::size_t>(m) * width
-                                       * sizeof(int),
-                                   cudaMemcpyDeviceToDevice));
-                };
-                auto d2d_t = [&](std::int64_t* dstp, std::int64_t* srcp,
-                                 int width) {
-                    CKM(cudaMemcpy(dstp, srcp,
-                                   static_cast<std::size_t>(m) * width
-                                       * sizeof(std::int64_t),
-                                   cudaMemcpyDeviceToDevice));
-                };
-                d2d_i(a.num_bond, B.num_bond, 1);
-                d2d_t(a.bond_atom, B.bond_atom, MB);
-                d2d_i(a.bond_type, B.bond_type, MB);
-                d2d_i(a.num_angle, B.num_angle, 1);
-                d2d_t(a.angle_atom, B.angle_atom, 2 * MA);
-                d2d_i(a.angle_type, B.angle_type, MA);
-                d2d_i(a.num_dihedral, B.num_dihedral, 1);
-                d2d_t(a.dihedral_atom, B.dihedral_atom, 3 * MD);
-                d2d_i(a.dihedral_type, B.dihedral_type, MD);
-                d2d_i(a.nspecial, B.nspecial, 3);
-                d2d_t(a.special, B.special, MS);
-            }
-        }
-        frames_[dst].n_local_ = m;
-        n_local_[dst] = m;
-        frames_[dst].n_ghost_ = 0;
-        mig_free(stg[dst]);
-        if (bonded_)
-            migb_free(stgb[dst]);
-        freep(d_order[dst]);
+    // Drain the async P2P appends before the send buffers are freed and the
+    // new counts are published.
+    for (int s = 0; s < N; ++s) {
+        dm_.set_device(s);
+        CKM(cudaDeviceSynchronize());
     }
+
+    // Phase 5 — publish new owned counts, drop ghosts (rebuilt by the
+    // following build_halo), release the O(migrants) transients.
+    for (int s = 0; s < N; ++s) {
+        dm_.set_device(s);
+        frames_[s].n_local_ = new_nl[s];
+        n_local_[s] = new_nl[s];
+        frames_[s].n_ghost_ = 0;
+        freep(d_order[s]);
+        freep(d_holes[s]);
+        freep(d_owner[s]);
+        for (int dst = 0; dst < N; ++dst) {
+            if (dst == s || cnt[s][dst] <= 0)
+                continue;
+            mig_free(sb[s][dst]);
+            if (bonded_)
+                migb_free(sbb[s][dst]);
+        }
+    }
+    // Drain the stream-ordered frees (the per-device pool is shared across
+    // MultiGpu instances; see destroy_halo_plan).
     for (int s = 0; s < N; ++s) {
         dm_.set_device(s);
         CKM(cudaDeviceSynchronize());

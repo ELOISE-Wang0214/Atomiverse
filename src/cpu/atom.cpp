@@ -4,7 +4,6 @@
 #include "atomiverse/cpu/atom.h"
 
 #include <algorithm>
-#include <cstdio>
 #include <stdexcept>
 
 namespace ATV {
@@ -93,14 +92,14 @@ void Atom::grow(int target_nmax) {
     // bonded topology exists (lazy atom_style molecular). A bonded-free system
     // leaves them empty and pays nothing.
     if (has_bonded_topology_) {
-        resize2d(bond_atom, static_cast<std::size_t>(kMaxBondPerAtom));
-        resize2d(bond_type, static_cast<std::size_t>(kMaxBondPerAtom));
-        resize2d(angle_atom, static_cast<std::size_t>(2 * kMaxAnglePerAtom));
-        resize2d(angle_type, static_cast<std::size_t>(kMaxAnglePerAtom));
+        resize2d(bond_atom, static_cast<std::size_t>(bond_per_atom));
+        resize2d(bond_type, static_cast<std::size_t>(bond_per_atom));
+        resize2d(angle_atom, static_cast<std::size_t>(2 * angle_per_atom));
+        resize2d(angle_type, static_cast<std::size_t>(angle_per_atom));
         resize2d(dihedral_atom,
-                 static_cast<std::size_t>(3 * kMaxDihedralPerAtom));
-        resize2d(dihedral_type, static_cast<std::size_t>(kMaxDihedralPerAtom));
-        resize2d(special, static_cast<std::size_t>(kMaxSpecial));
+                 static_cast<std::size_t>(3 * dihedral_per_atom));
+        resize2d(dihedral_type, static_cast<std::size_t>(dihedral_per_atom));
+        resize2d(special, static_cast<std::size_t>(maxspecial));
     }
 
     nmax = new_nmax;
@@ -160,38 +159,100 @@ void Atom::set_capacity(int new_nmax) {
     realloc1d(num_dihedral);
     realloc2d(nspecial, 3);
     if (has_bonded_topology_) {
-        realloc2d(bond_atom, static_cast<std::size_t>(kMaxBondPerAtom));
-        realloc2d(bond_type, static_cast<std::size_t>(kMaxBondPerAtom));
-        realloc2d(angle_atom, static_cast<std::size_t>(2 * kMaxAnglePerAtom));
-        realloc2d(angle_type, static_cast<std::size_t>(kMaxAnglePerAtom));
+        realloc2d(bond_atom, static_cast<std::size_t>(bond_per_atom));
+        realloc2d(bond_type, static_cast<std::size_t>(bond_per_atom));
+        realloc2d(angle_atom, static_cast<std::size_t>(2 * angle_per_atom));
+        realloc2d(angle_type, static_cast<std::size_t>(angle_per_atom));
         realloc2d(dihedral_atom,
-                  static_cast<std::size_t>(3 * kMaxDihedralPerAtom));
-        realloc2d(dihedral_type, static_cast<std::size_t>(kMaxDihedralPerAtom));
-        realloc2d(special, static_cast<std::size_t>(kMaxSpecial));
+                  static_cast<std::size_t>(3 * dihedral_per_atom));
+        realloc2d(dihedral_type, static_cast<std::size_t>(dihedral_per_atom));
+        realloc2d(special, static_cast<std::size_t>(maxspecial));
     }
 
     nmax = new_nmax;
 }
 
 void Atom::ensure_bonded_storage() {
-    if (has_bonded_topology_)
-        return;
+    // The wide arrays themselves are sized by the stride growers — at this
+    // point every stride may still be 0 (empty arrays). Just flip the flag so
+    // grow()/set_capacity() keep whatever the growers allocate.
     has_bonded_topology_ = true;
-    // Allocate the wide arrays to the current capacity, zero-filled. No prior
-    // data to preserve (they were never written while bonded was off).
-    if (nmax <= 0)
-        return; // sized by the next grow()/set_capacity() once atoms exist
-    const std::size_t n = static_cast<std::size_t>(nmax);
-    bond_atom = xt::zeros<std::int64_t>({n, static_cast<std::size_t>(kMaxBondPerAtom)});
-    bond_type = xt::zeros<int>({n, static_cast<std::size_t>(kMaxBondPerAtom)});
-    angle_atom = xt::zeros<std::int64_t>(
-        {n, static_cast<std::size_t>(2 * kMaxAnglePerAtom)});
-    angle_type = xt::zeros<int>({n, static_cast<std::size_t>(kMaxAnglePerAtom)});
-    dihedral_atom = xt::zeros<std::int64_t>(
-        {n, static_cast<std::size_t>(3 * kMaxDihedralPerAtom)});
-    dihedral_type =
-        xt::zeros<int>({n, static_cast<std::size_t>(kMaxDihedralPerAtom)});
-    special = xt::zeros<std::int64_t>({n, static_cast<std::size_t>(kMaxSpecial)});
+}
+
+namespace {
+
+// Re-stride a wide per-atom 2D array from `unit * old_cols` to
+// `unit * new_cols` columns, preserving each row's prefix (`unit` is the
+// entries-per-slot multiplier: 1 for bond/type arrays, 2 for angle_atom,
+// 3 for dihedral_atom). Trailing entries are zero-filled.
+template <typename T>
+void re_stride(xt::xtensor<T, 2>& arr, std::size_t rows, std::size_t unit,
+               std::size_t old_cols, std::size_t new_cols) {
+    xt::xtensor<T, 2> fresh = xt::zeros<T>({rows, unit * new_cols});
+    const std::size_t old_w = unit * old_cols;
+    const std::size_t new_w = unit * new_cols;
+    const T* src = arr.data();
+    T* dst = fresh.data();
+    for (std::size_t i = 0; i < rows; ++i)
+        for (std::size_t m = 0; m < old_w; ++m)
+            dst[i * new_w + m] = src[i * old_w + m];
+    arr = std::move(fresh);
+}
+
+} // namespace
+
+void Atom::grow_bond_per_atom(int target) {
+    if (target <= bond_per_atom)
+        return;
+    ensure_bonded_storage();
+    const std::size_t n = static_cast<std::size_t>(std::max(nmax, 0));
+    re_stride(bond_atom, n, 1, static_cast<std::size_t>(bond_per_atom),
+              static_cast<std::size_t>(target));
+    re_stride(bond_type, n, 1, static_cast<std::size_t>(bond_per_atom),
+              static_cast<std::size_t>(target));
+    bond_per_atom = target;
+}
+
+void Atom::grow_angle_per_atom(int target) {
+    if (target <= angle_per_atom)
+        return;
+    ensure_bonded_storage();
+    const std::size_t n = static_cast<std::size_t>(std::max(nmax, 0));
+    re_stride(angle_atom, n, 2, static_cast<std::size_t>(angle_per_atom),
+              static_cast<std::size_t>(target));
+    re_stride(angle_type, n, 1, static_cast<std::size_t>(angle_per_atom),
+              static_cast<std::size_t>(target));
+    angle_per_atom = target;
+}
+
+void Atom::grow_dihedral_per_atom(int target) {
+    if (target <= dihedral_per_atom)
+        return;
+    ensure_bonded_storage();
+    const std::size_t n = static_cast<std::size_t>(std::max(nmax, 0));
+    re_stride(dihedral_atom, n, 3, static_cast<std::size_t>(dihedral_per_atom),
+              static_cast<std::size_t>(target));
+    re_stride(dihedral_type, n, 1, static_cast<std::size_t>(dihedral_per_atom),
+              static_cast<std::size_t>(target));
+    dihedral_per_atom = target;
+}
+
+void Atom::grow_maxspecial(int target) {
+    if (target <= maxspecial)
+        return;
+    ensure_bonded_storage();
+    const std::size_t n = static_cast<std::size_t>(std::max(nmax, 0));
+    re_stride(special, n, 1, static_cast<std::size_t>(maxspecial),
+              static_cast<std::size_t>(target));
+    maxspecial = target;
+}
+
+void Atom::reserve_topology(int bond, int angle, int dihedral, int special_n) {
+    ensure_bonded_storage();
+    grow_bond_per_atom(bond);
+    grow_angle_per_atom(angle);
+    grow_dihedral_per_atom(dihedral);
+    grow_maxspecial(special_n);
 }
 
 void Atom::map_set(int begin, int end) {
@@ -200,19 +261,6 @@ void Atom::map_set(int begin, int end) {
         map.emplace(tag[i], i);
     }
 }
-
-namespace {
-
-[[noreturn]] void atom_topology_overflow(const char* what, int slot,
-                                         int cap, std::int64_t tag) {
-    char msg[256];
-    std::snprintf(msg, sizeof(msg),
-                  "cpu::Atom topology overflow: tag %lld atom %s slot %d >= cap %d",
-                  static_cast<long long>(tag), what, slot, cap);
-    throw std::runtime_error(msg);
-}
-
-} // namespace
 
 void Atom::add_bond(std::int64_t ti, std::int64_t tj, int type) {
     ensure_bonded_storage(); // lazy atom_style molecular on first topology
@@ -224,8 +272,7 @@ void Atom::add_bond(std::int64_t ti, std::int64_t tj, int type) {
         return; // not on this rank
     const int i = it->second;
     const int slot = num_bond[i];
-    if (slot >= kMaxBondPerAtom)
-        atom_topology_overflow("bond", slot, kMaxBondPerAtom, owner_tag);
+    grow_bond_per_atom(slot + 1); // no-op unless this is the widest atom yet
     bond_atom(i, slot) = partner_tag;
     bond_type(i, slot) = type;
     num_bond[i] = slot + 1;
@@ -240,8 +287,7 @@ void Atom::add_angle(std::int64_t ti, std::int64_t tj, std::int64_t tk,
         return;
     const int i = it->second;
     const int slot = num_angle[i];
-    if (slot >= kMaxAnglePerAtom)
-        atom_topology_overflow("angle", slot, kMaxAnglePerAtom, tj);
+    grow_angle_per_atom(slot + 1);
     angle_atom(i, 2 * slot + 0) = ti;
     angle_atom(i, 2 * slot + 1) = tk;
     angle_type(i, slot) = type;
@@ -257,8 +303,7 @@ void Atom::add_dihedral(std::int64_t ti, std::int64_t tj, std::int64_t tk,
         return;
     const int i = it->second;
     const int slot = num_dihedral[i];
-    if (slot >= kMaxDihedralPerAtom)
-        atom_topology_overflow("dihedral", slot, kMaxDihedralPerAtom, tj);
+    grow_dihedral_per_atom(slot + 1);
     dihedral_atom(i, 3 * slot + 0) = ti;
     dihedral_atom(i, 3 * slot + 1) = tk;
     dihedral_atom(i, 3 * slot + 2) = tl;
@@ -285,8 +330,7 @@ void Atom::build_special_list() {
     auto append_special = [&](int i, std::int64_t partner_tag,
                               int& count_slot) {
         const int slot = count_slot;
-        if (slot >= kMaxSpecial)
-            return; // silently truncate (rare in practice)
+        grow_maxspecial(slot + 1); // runtime stride: never truncates
         // Skip duplicates.
         for (int s = 0; s < slot; ++s)
             if (special(i, s) == partner_tag)
@@ -347,8 +391,7 @@ void Atom::build_special_list() {
                     }
                 if (found)
                     continue;
-                if (n13 >= kMaxSpecial)
-                    break;
+                grow_maxspecial(n13 + 1);
                 special(i, n13++) = tk;
             }
         }
@@ -382,8 +425,7 @@ void Atom::build_special_list() {
                     }
                 if (found)
                     continue;
-                if (n14 >= kMaxSpecial)
-                    break;
+                grow_maxspecial(n14 + 1);
                 special(i, n14++) = tk;
             }
         }
@@ -398,53 +440,57 @@ void Atom::reshuffle_topology_to_tags() {
         return;
     // Snapshot the current per-atom topology, indexed by row.
     const int n = nlocal;
+    const int MB = bond_per_atom;
+    const int MA = angle_per_atom;
+    const int MD = dihedral_per_atom;
+    const int MS = maxspecial;
     std::vector<int> snap_num_bond(static_cast<std::size_t>(n));
     std::vector<int> snap_num_angle(static_cast<std::size_t>(n));
     std::vector<int> snap_num_dihedral(static_cast<std::size_t>(n));
     std::vector<std::int64_t> snap_bond_atom(
-        static_cast<std::size_t>(n) * kMaxBondPerAtom);
+        static_cast<std::size_t>(n) * MB);
     std::vector<int> snap_bond_type(static_cast<std::size_t>(n)
-                                    * kMaxBondPerAtom);
+                                    * MB);
     std::vector<std::int64_t> snap_angle_atom(
-        static_cast<std::size_t>(n) * 2 * kMaxAnglePerAtom);
+        static_cast<std::size_t>(n) * 2 * MA);
     std::vector<int> snap_angle_type(static_cast<std::size_t>(n)
-                                     * kMaxAnglePerAtom);
+                                     * MA);
     std::vector<std::int64_t> snap_dihedral_atom(
-        static_cast<std::size_t>(n) * 3 * kMaxDihedralPerAtom);
+        static_cast<std::size_t>(n) * 3 * MD);
     std::vector<int> snap_dihedral_type(static_cast<std::size_t>(n)
-                                        * kMaxDihedralPerAtom);
+                                        * MD);
     std::vector<int> snap_nspecial(static_cast<std::size_t>(n) * 3);
     std::vector<std::int64_t> snap_special(static_cast<std::size_t>(n)
-                                           * kMaxSpecial);
+                                           * MS);
 
     for (int i = 0; i < n; ++i) {
         snap_num_bond[static_cast<std::size_t>(i)] = num_bond[i];
         snap_num_angle[static_cast<std::size_t>(i)] = num_angle[i];
         snap_num_dihedral[static_cast<std::size_t>(i)] = num_dihedral[i];
-        for (int m = 0; m < kMaxBondPerAtom; ++m) {
-            snap_bond_atom[static_cast<std::size_t>(i) * kMaxBondPerAtom + m] =
+        for (int m = 0; m < MB; ++m) {
+            snap_bond_atom[static_cast<std::size_t>(i) * MB + m] =
                 bond_atom(i, m);
-            snap_bond_type[static_cast<std::size_t>(i) * kMaxBondPerAtom + m] =
+            snap_bond_type[static_cast<std::size_t>(i) * MB + m] =
                 bond_type(i, m);
         }
-        for (int m = 0; m < 2 * kMaxAnglePerAtom; ++m)
-            snap_angle_atom[static_cast<std::size_t>(i) * 2 * kMaxAnglePerAtom
+        for (int m = 0; m < 2 * MA; ++m)
+            snap_angle_atom[static_cast<std::size_t>(i) * 2 * MA
                             + m] = angle_atom(i, m);
-        for (int m = 0; m < kMaxAnglePerAtom; ++m)
-            snap_angle_type[static_cast<std::size_t>(i) * kMaxAnglePerAtom + m] =
+        for (int m = 0; m < MA; ++m)
+            snap_angle_type[static_cast<std::size_t>(i) * MA + m] =
                 angle_type(i, m);
-        for (int m = 0; m < 3 * kMaxDihedralPerAtom; ++m)
+        for (int m = 0; m < 3 * MD; ++m)
             snap_dihedral_atom[static_cast<std::size_t>(i) * 3
-                                   * kMaxDihedralPerAtom
+                                   * MD
                                + m] = dihedral_atom(i, m);
-        for (int m = 0; m < kMaxDihedralPerAtom; ++m)
-            snap_dihedral_type[static_cast<std::size_t>(i) * kMaxDihedralPerAtom
+        for (int m = 0; m < MD; ++m)
+            snap_dihedral_type[static_cast<std::size_t>(i) * MD
                                + m] = dihedral_type(i, m);
         for (int m = 0; m < 3; ++m)
             snap_nspecial[static_cast<std::size_t>(i) * 3 + m] =
                 nspecial(i, m);
-        for (int m = 0; m < kMaxSpecial; ++m)
-            snap_special[static_cast<std::size_t>(i) * kMaxSpecial + m] =
+        for (int m = 0; m < MS; ++m)
+            snap_special[static_cast<std::size_t>(i) * MS + m] =
                 special(i, m);
     }
 
@@ -464,25 +510,25 @@ void Atom::reshuffle_topology_to_tags() {
         num_bond[i] = snap_num_bond[src];
         num_angle[i] = snap_num_angle[src];
         num_dihedral[i] = snap_num_dihedral[src];
-        for (int m = 0; m < kMaxBondPerAtom; ++m) {
-            bond_atom(i, m) = snap_bond_atom[src * kMaxBondPerAtom + m];
-            bond_type(i, m) = snap_bond_type[src * kMaxBondPerAtom + m];
+        for (int m = 0; m < MB; ++m) {
+            bond_atom(i, m) = snap_bond_atom[src * MB + m];
+            bond_type(i, m) = snap_bond_type[src * MB + m];
         }
-        for (int m = 0; m < 2 * kMaxAnglePerAtom; ++m)
+        for (int m = 0; m < 2 * MA; ++m)
             angle_atom(i, m) =
-                snap_angle_atom[src * 2 * kMaxAnglePerAtom + m];
-        for (int m = 0; m < kMaxAnglePerAtom; ++m)
-            angle_type(i, m) = snap_angle_type[src * kMaxAnglePerAtom + m];
-        for (int m = 0; m < 3 * kMaxDihedralPerAtom; ++m)
+                snap_angle_atom[src * 2 * MA + m];
+        for (int m = 0; m < MA; ++m)
+            angle_type(i, m) = snap_angle_type[src * MA + m];
+        for (int m = 0; m < 3 * MD; ++m)
             dihedral_atom(i, m) =
-                snap_dihedral_atom[src * 3 * kMaxDihedralPerAtom + m];
-        for (int m = 0; m < kMaxDihedralPerAtom; ++m)
+                snap_dihedral_atom[src * 3 * MD + m];
+        for (int m = 0; m < MD; ++m)
             dihedral_type(i, m) =
-                snap_dihedral_type[src * kMaxDihedralPerAtom + m];
+                snap_dihedral_type[src * MD + m];
         for (int m = 0; m < 3; ++m)
             nspecial(i, m) = snap_nspecial[src * 3 + m];
-        for (int m = 0; m < kMaxSpecial; ++m)
-            special(i, m) = snap_special[src * kMaxSpecial + m];
+        for (int m = 0; m < MS; ++m)
+            special(i, m) = snap_special[src * MS + m];
     }
 }
 

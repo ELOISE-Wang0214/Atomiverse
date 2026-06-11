@@ -92,6 +92,13 @@ struct GatheredFrame {
 GatheredFrame gather_to_root(const cpu::Frame& frame,
                              const DomainDecomposition& dd, int root = 0);
 
+/// @brief Materialize a `GatheredFrame` into a host `cpu::Frame` (root-side
+/// I/O convenience for recorders that consume `Frame`-shaped geometry, e.g.
+/// `MolRec::set_geometry`). Copies positions, velocities, forces, mass,
+/// type, and tag in the gathered (global-tag) order and sets the box.
+/// Called on a non-root rank (empty buffers) it returns a 0-atom Frame.
+cpu::Frame to_frame(const GatheredFrame& gathered);
+
 } // namespace mpi
 } // namespace md
 } // namespace cpu

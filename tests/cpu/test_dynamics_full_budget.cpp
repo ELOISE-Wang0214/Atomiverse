@@ -52,10 +52,14 @@ struct StopAtStep : ATV::cpu::ComponentBase {
 
 TEST(DynamicsFullBudget, IgnoresConvergedFlag) {
     using namespace ATV;
-    cpu::DynamicsDriver d;
+    // Components BEFORE the driver: DynamicsDriver is continuable, so the
+    // component destroy() pass is deferred to ~DynamicsDriver — the driver
+    // must be destroyed first (declared last), else its destructor calls
+    // virtuals on already-destructed stack components (pure-virtual abort).
     StubIntegrator integ;
     StubForceEvaluator force;
     AlwaysConverged conv;
+    cpu::DynamicsDriver d;
 
     d.on(md::Phase::initial_integrate).add(integ);
     d.on(md::Phase::force).add(force);
@@ -70,10 +74,11 @@ TEST(DynamicsFullBudget, IgnoresConvergedFlag) {
 
 TEST(DynamicsFullBudget, BreaksOnStopRequested) {
     using namespace ATV;
-    cpu::DynamicsDriver d;
+    // Components before the driver — see IgnoresConvergedFlag.
     StubIntegrator integ;
     StubForceEvaluator force;
     StopAtStep stopper{/*stop_at=*/3};
+    cpu::DynamicsDriver d;
 
     d.on(md::Phase::initial_integrate).add(integ);
     d.on(md::Phase::force).add(force);

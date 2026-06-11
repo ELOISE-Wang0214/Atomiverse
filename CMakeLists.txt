@@ -134,6 +134,7 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/atom.cpp
         src/cpu/backend.cpp
         src/cpu/box.cpp
+        src/cpu/zero.cpp
         src/cpu/materialize.cpp
         src/cpu/driver.cpp
         src/cpu/analysis_executor.cpp
@@ -221,6 +222,9 @@ if(NOT ATV_DOCS_ONLY)
             src/cuda/md/neighborlist/setup.cu
             src/cuda/md/neighborlist/export_pairs.cu
             src/cuda/minimizer/sd.cu
+            src/cuda/minimizer/cg.cu
+            src/cuda/minimizer/lbfgs.cu
+            src/cuda/minimizer/conv_check.cu
             src/cuda/md/nose_hoover.cu
             src/cuda/md/deform.cu
             src/cuda/md/barostat.cu
@@ -338,10 +342,18 @@ if(NOT ATV_DOCS_ONLY)
         endif()
         target_link_libraries(atomiverse PUBLIC fftw3_stub)
         target_compile_definitions(atomiverse PUBLIC ATV_HAS_PW)
-        # CUDA plane-wave band solver (cuFFT + cuBLAS) — only when the
-        # CUDA backend is also enabled.
+
+        # CUDA plane-wave backend — device-resident kernels mirroring the CPU
+        # pw module (cuFFT FFT layer, G-space Hartree solver, sparse-G ↔ dense
+        # grid bridge, LDA/Veff stages) plus the full pw SCF band solver
+        # (cuFFT + cuBLAS Davidson). Only built when CUDA is also enabled.
         if(ATV_BUILD_CUDA)
             target_sources(atomiverse PRIVATE
+                src/cuda/pw/internal/fft.cu
+                src/cuda/pw/internal/poisson.cu
+                src/cuda/pw/internal/grid_map.cu
+                src/cuda/pw/internal/xc_lda.cu
+                src/cuda/pw/internal/veff.cu
                 src/cuda/pw/internal/device_solver.cu
                 src/cuda/pw/pw_scf.cu
             )

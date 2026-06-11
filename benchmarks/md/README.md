@@ -22,6 +22,9 @@ benchmarks/md/
 │   ├── validation/              7 LAMMPS API-alignment / ensemble-parity benches
 │   └── performance/             scaling.cpp (CPU MPI), bench_md_step.cu,
 │                                bench_multi_gpu_scaling.cu, bench_torch.cu,
+│                                bench_minimize.cu + in.lj_min_kk (CUDA
+│                                minimizer CG/LBFGS vs LAMMPS minimize on
+│                                identical coordinates via data-file handoff),
 │                                in.lj_kk, config.sh, runs/
 └── pe/                          polyethylene melt (Dreiding-UA)
     ├── validation/              bench_pe_bonded_lammps_xcheck (C20H42 vs
@@ -61,7 +64,8 @@ gtest.
 cd <repo>     # submit from inside the repo (worktrees work too)
 LMP=/path/to/lmp sbatch benchmarks/md/common/bench_scaling_cpu.sbatch          # LJ
 SYS=pe LMP=/path/to/lmp sbatch benchmarks/md/common/bench_scaling_cpu.sbatch   # PE
-# overrides: CORES="1 8 32 ..." STEPS= WEAK_PER_RANK= STRONG_TOTAL=
+SYS=min sbatch benchmarks/md/common/bench_scaling_cpu.sbatch                   # LJ minimizer
+# overrides: CORES="1 8 32 ..." STEPS= WEAK_PER_RANK= STRONG_TOTAL= MIN_ITERS= MIN_OPT=cg|lbfgs
 
 # GPU (GH200, 1–4 GPUs):
 sbatch benchmarks/md/common/bench_scaling.sbatch lj
@@ -82,6 +86,18 @@ python3 benchmarks/md/common/plot_scaling.py --backend cpu --id <sha>_<date> --m
 
 - **LJ:** AV `scaling` (sc ρ\*=0.712, rc=2σ) vs LAMMPS `lj/performance/in.lj_kk`
   (`lattice sc 0.712`, `lj/cut 2.0`). CPU weak = 200k atoms/rank, strong = 8M total.
+- **LJ minimizer (`SYS=min`):** AV `minimize_scaling` (same sc-LJ system; the
+  0.1-Å lattice jitter is the perturbation; CG/LBFGS, all tolerances 0 so the
+  `MIN_ITERS` budget is always exhausted — fixed work per rank count) vs
+  LAMMPS `lj/performance/in.lj_min_scale_kk` (`min_style cg`, `minimize 0 0 N M`;
+  the sibling `in.lj_min_kk` is the single-GPU convergence deck for
+  `bench_minimize.cu` — fcc ρ\*=1.0, since sc ρ\*=0.712 is mechanically
+  unstable under FULL relaxation; the fixed 100-iter budget here moves atoms
+  < 0.03 lattice units, so the throughput measurement is unaffected).
+  Work unit is FORCE EVALUATIONS: AV fixed-alpha = exactly 1 feval/iter;
+  LAMMPS CG line-search ≈ 2 fevals/iter (parsed from the minimize stats).
+  Results go to `lj/performance/runs/<id>/results_cpu_min.csv` (system=MIN)
+  so the MD plotter never pools them with MD rows.
 - **PE:** AV `polyethylene_tension --pe-melt-grid` (lj/cut 10.5 + harmonic
   bond/angle + multi/harmonic dihedral, special_bonds 0 0 0) vs LAMMPS
   `pe/performance/in.pe_kk` (**same grid as AV** → identical structures),
@@ -91,6 +107,28 @@ python3 benchmarks/md/common/plot_scaling.py --backend cpu --id <sha>_<date> --m
   wrapped in `/usr/bin/time -v` (`lib_scaling.sh::rss_hwm_gb`).
 - **GPU memory:** VRAM = peak summed `nvidia-smi memory.used` over the GPUs used.
 - LAMMPS throughput uses the **production** `Loop time` (untimed warmup first).
+
+## Minimizer CPU results — run `aa762cb_2026-06-10` (1–1024 ranks, CG, 100 iters)
+
+First `SYS=min` sweep (same sc-LJ system as MD; weak 200k atoms/rank,
+strong 8M total; Matom·iter/s, 1 force-eval per iteration):
+
+| ranks | weak | strong | weak eff | strong speedup | vs MD (weak/strong) |
+|---|---|---|---|---|---|
+| 1    | 13.3   | 12.9   | 100% | 1.0×  | 94% / 93% |
+| 8    | 75.5   | 80.3   | 71%  | 6.2×  | 99% / 83% |
+| 32   | 255.0  | 262.5  | 60%  | 20.3× | 88% / 78% |
+| 128  | 667.6  | 774.6  | 39%  | 60.0× | 87% / 73% |
+| 256  | 949.5  | 1198.9 | 28%  | 92.9× | 83% / 57% |
+| 512  | 1855.7 | 2512.2 | 27%  | 195×  | 81% / 63% |
+| 1024 | 3280.0 | 2680.1 | 24%  | 208×  | 81% / 56% |
+
+The minimizer tracks MD weak scaling at a steady ~80% of MD throughput
+(optimizer O(N) loops + per-iteration collectives). Strong scaling
+saturates between 512 and 1024 ranks (7.8k atoms/rank): CG's ~6
+latency-bound Allreduces per iteration dominate where MD (reduce every
+20 steps) keeps climbing. LAMMPS columns pending a cluster `lmp` build
+(`in.lj_min_scale_kk` deck is checked in).
 
 ## Latest CPU results — run `2bca215_2026-06-09` (1–1024 ranks)
 

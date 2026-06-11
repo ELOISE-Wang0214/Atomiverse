@@ -182,3 +182,4 @@ tools/dump_*.txt
 # LAMMPS run artifacts (regenerable — see benchmarks/.../SOURCES.md)
 log.lammps
 **/log.lammps
+jobs/

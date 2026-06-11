@@ -53,6 +53,24 @@ struct DomainDecomposition {
     /// @brief This rank's coords in the Cartesian grid. Single-rank: {0,0,0}.
     int coords[3] = {0, 0, 0};
 
+    /// @brief Rank owning grid cell (cx, cy, cz): x-slowest row-major brick
+    /// (periodic wrap NOT applied — caller wraps). The single source of
+    /// truth for the rank ↔ coords convention; `dest_rank_for` and the
+    /// benchmark-side ownership pre-filters use it. (A LAMMPS-twolevel
+    /// node-aware mapping was evaluated here and measured indistinguishable
+    /// from row-major on this fabric at 1024 ranks — latency-bound, not
+    /// inter-node-bandwidth-bound — so the simple mapping stays.)
+    int rank_of(int cx, int cy, int cz) const noexcept {
+        return cx * (dims[1] * dims[2]) + cy * dims[2] + cz;
+    }
+
+    /// @brief Inverse of `rank_of`: grid coords of `rank`.
+    void coords_of(int rank, int out[3]) const noexcept {
+        out[0] = rank / (dims[1] * dims[2]);
+        out[1] = (rank / dims[2]) % dims[1];
+        out[2] = rank % dims[2];
+    }
+
     /// @brief Periodic flags per dimension (1=periodic, 0=non-periodic).
     int periods[3] = {1, 1, 1};
 
@@ -196,7 +214,34 @@ struct DomainDecomposition {
     /// Calling this twice is allowed; the existing `cart_comm` (if any)
     /// is freed before the new one is created.
     /// @param world Parent communicator (typically `MPI_COMM_WORLD`).
-    void init_topology(MPI_Comm world);
+    /// @param lx Box edge along x [Angstrom]; pass 0 when the box is not
+    ///        yet known (falls back to a near-cubic factorization).
+    /// @param ly Box edge along y [Angstrom].
+    /// @param lz Box edge along z [Angstrom].
+    void init_topology(MPI_Comm world, double lx = 0.0, double ly = 0.0,
+                       double lz = 0.0);
+
+    /// @brief Pick the processor grid `dims_out[3]` (product == world_size)
+    /// that minimizes the per-rank halo surface for a box of edge lengths
+    /// `lx, ly, lz` — LAMMPS ProcMap-style: more cuts along longer axes.
+    /// With `MPI_Dims_create`-style blind factorization an anisotropic box
+    /// (e.g. the PE melt at 1:1:4) gets its finest cuts on the SHORTEST
+    /// axis, producing sub-cutoff-thin slabs whose ghost shells dominate
+    /// the step at high rank counts (measured: PE strong-1024 Comm 63% of
+    /// the loop, negative 512→1024 scaling).
+    ///
+    /// Honors the `ATV_FORCE_DIMS=Nx,Ny,Nz` env override (shared by every
+    /// caller so builder-side pre-filtering and the DD always agree).
+    /// Non-positive lengths fall back to a cube (near-cubic factorization,
+    /// equivalent to `MPI_Dims_create`). Pure function of its arguments —
+    /// every rank computes the identical grid.
+    /// @param world_size Total rank count P.
+    /// @param lx Box edge along x [Angstrom] (0 = unknown).
+    /// @param ly Box edge along y [Angstrom].
+    /// @param lz Box edge along z [Angstrom].
+    /// @param dims_out Chosen factorization {dx, dy, dz}, dx*dy*dz == P.
+    static void choose_dims(int world_size, double lx, double ly, double lz,
+                            int dims_out[3]);
 
     /// @brief Partition atoms across ranks by spatial position.
     ///

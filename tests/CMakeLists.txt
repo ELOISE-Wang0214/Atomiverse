@@ -7,6 +7,18 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(googletest)
 
+# Unit tests assert CODE CORRECTNESS on tiny systems (tens to hundreds of
+# atoms); performance and LAMMPS-reference validation live in benchmarks/.
+# On many-core nodes the OpenMP default (= all hardware threads, e.g. 288 on
+# a GH200 node) makes those tiny systems WALL-DOMINATED by fork/join barriers
+# — 20-atom 5000-step runs took minutes, and `ctest -j` multiplied the
+# oversubscription. Cap every test's default; a test that genuinely needs a
+# specific thread count can still call omp_set_num_threads itself.
+set(ATV_TEST_OMP_THREADS 8 CACHE STRING
+    "OMP_NUM_THREADS for single-process unit tests")
+set(ATV_TEST_MPI_OMP_THREADS 4 CACHE STRING
+    "OMP_NUM_THREADS per rank for MPI unit tests")
+
 # CUDA test: compiled as .cu with separable compilation.
 function(atv_add_test name)
     add_executable(${name} ${ARGN})
@@ -14,6 +26,8 @@ function(atv_add_test name)
     set_target_properties(${name} PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
     target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     add_test(NAME ${name} COMMAND ${name})
+    set_tests_properties(${name} PROPERTIES
+        ENVIRONMENT "OMP_NUM_THREADS=${ATV_TEST_OMP_THREADS}")
 endfunction()
 
 # C++ test: compiled as .cpp, no CUDA required.
@@ -23,6 +37,8 @@ function(atv_add_cpp_test name)
     set_target_properties(${name} PROPERTIES CXX_STANDARD 17)
     target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     add_test(NAME ${name} COMMAND ${name})
+    set_tests_properties(${name} PROPERTIES
+        ENVIRONMENT "OMP_NUM_THREADS=${ATV_TEST_OMP_THREADS}")
 endfunction()
 
 # MPI test executable: one build target, can be launched at multiple rank
@@ -47,6 +63,7 @@ function(atv_add_mpi_run test_name target_name n)
         LABELS "mpi"
         RUN_SERIAL TRUE
         RESOURCE_LOCK "mpi_singleton"
+        ENVIRONMENT "OMP_NUM_THREADS=${ATV_TEST_MPI_OMP_THREADS}"
         PASS_REGULAR_EXPRESSION "PASSED[^a-zA-Z]"
         FAIL_REGULAR_EXPRESSION "FAILED[^a-zA-Z]")
 endfunction()
@@ -150,6 +167,11 @@ if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
     atv_add_mpi_run(test_mpi_atom_migration_n1 test_mpi_atom_migration 1)
     atv_add_mpi_run(test_mpi_atom_migration_n2 test_mpi_atom_migration 2)
 
+    atv_add_mpi_exec(test_mpi_minimize_lj mpi/test_minimize_lj.cpp)
+    atv_add_mpi_run(test_mpi_minimize_lj_n1 test_mpi_minimize_lj 1)
+    atv_add_mpi_run(test_mpi_minimize_lj_n2 test_mpi_minimize_lj 2)
+    atv_add_mpi_run(test_mpi_minimize_lj_n8 test_mpi_minimize_lj 8)
+
     atv_add_mpi_exec(test_mpi_pe_chains_multirank mpi/test_pe_chains_multirank.cpp)
     atv_add_mpi_run(test_mpi_pe_chains_multirank_n2 test_mpi_pe_chains_multirank 2)
 
@@ -212,6 +234,8 @@ if(ATV_BUILD_PW)
     set_target_properties(test_fft PROPERTIES CXX_STANDARD 17)
     target_include_directories(test_fft PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     add_test(NAME test_fft COMMAND test_fft)
+    set_tests_properties(test_fft PROPERTIES
+        ENVIRONMENT "OMP_NUM_THREADS=${ATV_TEST_OMP_THREADS}")
 endif()
 
 # ── RHF/SCF tests ─────────────────────────────────────────────────────
@@ -337,7 +361,21 @@ if(ATV_BUILD_CUDA)
     if(ATV_BUILD_KSPACE)
         atv_add_test(test_cuda_pme_coul cuda/kspace/test_pme_coul.cu)
     endif()
+    if(ATV_BUILD_PW)
+        atv_add_test(test_cuda_pw_fft cuda/pw/test_fft.cu)
+        target_link_libraries(test_cuda_pw_fft PRIVATE CUDA::cufft)
+        atv_add_test(test_cuda_pw_poisson cuda/pw/test_poisson.cu)
+        target_link_libraries(test_cuda_pw_poisson PRIVATE CUDA::cufft)
+        atv_add_test(test_cuda_pw_grid_map cuda/pw/test_grid_map.cu)
+        target_link_libraries(test_cuda_pw_grid_map PRIVATE CUDA::cufft)
+        atv_add_test(test_cuda_pw_xc_lda cuda/pw/test_xc_lda.cu)
+        target_link_libraries(test_cuda_pw_xc_lda PRIVATE CUDA::cufft)
+        atv_add_test(test_cuda_pw_veff cuda/pw/test_veff.cu)
+        target_link_libraries(test_cuda_pw_veff PRIVATE CUDA::cufft)
+    endif()
     atv_add_test(test_cuda_minimizer_sd cuda/minimizer/test_sd.cu)
+    atv_add_test(test_cuda_minimizer_cg cuda/minimizer/test_cg.cu)
+    atv_add_test(test_cuda_minimizer_lbfgs cuda/minimizer/test_lbfgs.cu)
     atv_add_test(test_cuda_scf        cuda/scf/test_scf.cu)
     atv_add_test(test_cuda_scf_rhf    cuda/scf/test_rhf.cu)
     atv_add_test(test_cuda_scf_device_integrals cuda/scf/test_device_integrals.cu)

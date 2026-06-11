@@ -1,17 +1,19 @@
-/// @file tests/cuda/async/test_async_record_perf.cu
-/// @brief 25× recorder-frequency wall-clock overhead gate.
+/// @file benchmarks/md/pe/performance/bench_async_record_overhead.cpp
+/// @brief 25× recorder-frequency wall-clock overhead gate (moved out of the
+/// unit-test suite: UTs assert code correctness only; performance gates live
+/// in benchmarks/<system>/performance).
 ///
 /// Runs `polyethylene_tension --backend cuda --mode stage:2 --scale 0.005`
 /// with `--print-every 25` (control) and `--print-every 1` (high-frequency)
 /// five times each, takes the median wall-clock per configuration, and
-/// asserts `wall_high / wall_low - 1 < 0.05`. Failure indicates a missed
-/// sync somewhere on the AsyncRecordBase hot path.
+/// requires `wall_high / wall_low - 1 < 0.05`. Failure (non-zero exit)
+/// indicates a missed sync somewhere on the AsyncRecordBase hot path.
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
-#include <gtest/gtest.h>
 #include <string>
 #include <vector>
 
@@ -23,7 +25,7 @@ namespace {
 
 /// @brief Time one polyethylene_tension run end-to-end.
 /// @param print_every Value of `--print-every`.
-/// @return Wall-clock seconds.
+/// @return Wall-clock seconds (negative on a failed run).
 double time_pe_tension(int print_every) {
     static int run_id = 0;
     ++run_id;
@@ -42,7 +44,10 @@ double time_pe_tension(int print_every) {
     auto t0 = std::chrono::steady_clock::now();
     int rc = std::system(cmd.c_str());
     auto t1 = std::chrono::steady_clock::now();
-    EXPECT_EQ(rc, 0) << "polyethylene_tension exited non-zero: " << rc;
+    if (rc != 0) {
+        std::fprintf(stderr, "polyethylene_tension exited non-zero: %d\n", rc);
+        return -1.0;
+    }
     return std::chrono::duration<double>(t1 - t0).count();
 }
 
@@ -53,7 +58,7 @@ double median(std::vector<double> v) {
 
 } // namespace
 
-TEST(CudaAsyncRecordPerf, FrequencyOverheadUnder5Percent) {
+int main() {
     constexpr int kReps = 5;
     std::vector<double> wall_low, wall_high;
     wall_low.reserve(kReps);
@@ -61,8 +66,12 @@ TEST(CudaAsyncRecordPerf, FrequencyOverheadUnder5Percent) {
     // Interleave the runs so transient host load is averaged across the
     // two configurations.
     for (int r = 0; r < kReps; ++r) {
-        wall_low.push_back(time_pe_tension(25));
-        wall_high.push_back(time_pe_tension(1));
+        const double lo = time_pe_tension(25);
+        const double hi = time_pe_tension(1);
+        if (lo < 0.0 || hi < 0.0)
+            return 2;
+        wall_low.push_back(lo);
+        wall_high.push_back(hi);
     }
     const double med_low = median(wall_low);
     const double med_high = median(wall_high);
@@ -71,7 +80,13 @@ TEST(CudaAsyncRecordPerf, FrequencyOverheadUnder5Percent) {
         "[perf] median wall: print-every 25 = %.3fs, print-every 1 = %.3fs, "
         "overhead = %.2f%%\n",
         med_low, med_high, 100.0 * overhead);
-    EXPECT_LT(overhead, 0.05)
-        << "25x recorder frequency overhead is " << 100.0 * overhead
-        << "% (limit 5%) — async hot path is being blocked";
+    if (overhead >= 0.05) {
+        std::fprintf(stderr,
+                     "FAIL: 25x recorder frequency overhead is %.2f%% (limit "
+                     "5%%) — async hot path is being blocked\n",
+                     100.0 * overhead);
+        return 1;
+    }
+    std::printf("PASS\n");
+    return 0;
 }

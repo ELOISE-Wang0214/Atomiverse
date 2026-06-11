@@ -7,23 +7,26 @@
 /// `validate_components()` contract (≥ 1 `Optimizer`-role component and
 /// ≥ 1 `Evaluator` carrying `Capability::Energy` or `Capability::Force`).
 ///
-/// Algorithms are hot-swappable components, not driver subclasses: the
-/// steepest-descent step is the `cuda::minimizer::SteepestDescent`
-/// Optimizer component, plugged in via `add()`. This mirrors
-/// `cpu::minimizer::Minimize`, which accepts `cpu::minimizer::LBFGS` /
-/// `CG` the same way.
+/// Algorithms are hot-swappable components, not driver subclasses:
+/// `cuda::minimizer::SteepestDescent`, `cuda::minimizer::CG` and
+/// `cuda::minimizer::LBFGS` are Optimizer components plugged in via
+/// `add()`. This mirrors `cpu::minimizer::Minimize`, which accepts
+/// `cpu::minimizer::LBFGS` / `CG` the same way.
 ///
 /// The constructor adds only infrastructure components — it contributes
 /// no runtime behaviour beyond the base. The phase-agnostic `Zero*`
 /// initializers (`cuda/md/init.cuh`) are bound explicitly to
 /// `minimizer::Phase` via `on(phase).add()`.
 ///
-/// CUDA has no `ConvergenceCheck` component yet, so `Minimize` runs the
-/// full `max_iter` budget every time (`outer_status.converged` is never
-/// set) — identical to the behaviour of the removed `SD` driver.
+/// Early stop: `CG` and `LBFGS` bind the `convergence_check` phase and
+/// set `outer_status.converged` under the shared five-criteria rule
+/// (`cuda::minimizer::ConvCheck`), so `run()` returns as soon as the
+/// system is converged. `SteepestDescent` carries no convergence check
+/// and runs the full `max_iter` budget.
 ///
 /// @see cuda::OptimizeDriver for the inherited loop + validation
 /// @see cuda::minimizer::SteepestDescent for the steepest-descent Optimizer
+/// @see cuda::minimizer::CG / cuda::minimizer::LBFGS for converging Optimizers
 /// @see minimizer::Phase for the minimizer phase sequence
 #pragma once
 

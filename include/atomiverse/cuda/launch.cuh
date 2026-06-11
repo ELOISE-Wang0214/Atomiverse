@@ -120,6 +120,59 @@ __device__ __forceinline__ T block_reduce_sum(T value, T* warp_scratch) {
     return block_sum;
 }
 
+/// @brief Max-reduce one scalar across all threads in a thread block.
+///
+/// Same warp-shuffle shape as `block_reduce_sum`, with `cg::greater`
+/// in place of `cg::plus`. Returns the block-wide maximum on thread 0;
+/// undefined on other threads. Out-of-range threads should contribute
+/// the identity for the caller's domain (0 for magnitudes).
+///
+/// @tparam T Scalar type (typically `work_t`).
+/// @param value Per-thread contribution.
+/// @param warp_scratch Per-warp shared-memory scratch
+///                     (≥ blockDim.x / 32 cells, reusable across calls).
+/// @return Block-wide maximum (valid only on thread 0).
+template <typename T>
+__device__ __forceinline__ T block_reduce_max(T value, T* warp_scratch) {
+    namespace cg = cooperative_groups;
+    auto tile = cg::tiled_partition<kWarpSize>(cg::this_thread_block());
+    T warp_max = cg::reduce(tile, value, cg::greater<T>{});
+
+    int lane = tile.thread_rank();
+    int warp_id = threadIdx.x / kWarpSize;
+    if (lane == 0)
+        warp_scratch[warp_id] = warp_max;
+    __syncthreads();
+
+    T block_max = T(0);
+    if (warp_id == 0) {
+        int n_warps = warps_per_block(blockDim.x);
+        T v = (lane < n_warps) ? warp_scratch[lane] : T(0);
+        block_max = cg::reduce(tile, v, cg::greater<T>{});
+    }
+    // Same write-after-read fence as block_reduce_sum: warp 0 must finish
+    // reading warp_scratch before a repeated-use caller overwrites it.
+    __syncthreads();
+    return block_max;
+}
+
+/// @brief Atomic max for NON-NEGATIVE floating-point accumulators.
+///
+/// CUDA has no native floating-point `atomicMax`; for non-negative
+/// values the IEEE-754 bit pattern is monotonic under integer
+/// comparison, so the integer `atomicMax` on the reinterpreted bits is
+/// exact. Callers must guarantee `val >= 0` and that the accumulator
+/// was initialized to a non-negative value (a zeroed buffer is fine).
+__device__ __forceinline__ void atomic_max_nonneg(double* addr, double val) {
+    atomicMax(reinterpret_cast<unsigned long long*>(addr),
+              static_cast<unsigned long long>(__double_as_longlong(val)));
+}
+
+/// @overload
+__device__ __forceinline__ void atomic_max_nonneg(float* addr, float val) {
+    atomicMax(reinterpret_cast<unsigned int*>(addr), __float_as_uint(val));
+}
+
 /// @brief Sum-reduce N scalars across all threads in a thread block.
 ///
 /// Loops over scalars; each call shares the same `warp_scratch` buffer

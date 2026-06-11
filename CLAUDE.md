@@ -84,7 +84,7 @@ Each backend (`cpu/`, `cuda/`, `torch/`) follows the same two-tier layout:
 ```
 <backend>/
   frame.h, context.h, component.h, backend.h, ...  ← shared infrastructure (root = common)
-  molrec.h, transfer.h                              ← cross-domain utilities
+  molrec.h, transfer.h, zero.h, owned_range.h       ← cross-domain utilities
   md/          ← domain: integrators, thermostats, neighbor lists
   scf/         ← domain: solvers, integrals, gradients, evaluators
   minimizer/   ← domain: SD, CG, L-BFGS
@@ -176,9 +176,13 @@ Thermostat / Barostat components plugged into `MD`.
 **Iteration status channel** (`facade/iteration_status.h`).
 `cpu::Context::outer_status` is a `{converged, stop_requested,
 reason}` struct, owned by the category driver, reset before each
-iteration. `ConvergenceCheck`-tagged components write it; SCF
-internals never touch it (they manage their own internal convergence
-inside `SCFSolver`).
+iteration. The Optimizer components write it during their
+`convergence_check`-phase binding (LBFGS / CG own their stopping
+criteria — there is no separate ConvergenceCheck-tagged component;
+the `ComponentRole::ConvergenceCheck` tag is reserved for future
+standalone checks such as a NaN/blow-up detector). SCF internals
+never touch it (they manage their own internal convergence inside
+`SCFSolver`).
 
 **Rules:**
 - **Driver owns the loop.** Force evaluators, integrators, thermostats are Components — never standalone classes with their own loops.
@@ -263,9 +267,22 @@ cpu::single_point(frame, scf);
 VelocityVerlet (Integrator), NVELimit (Integrator), InitVelocity, NoseHoover (Thermostat), NoseHooverNPT (Integrator — also acts as thermostat + barostat), FixLangevin (Thermostat, also Force-capable), Barostat (Barostat — Berendsen), Deform, NeighborList, LJ (Evaluator: Energy|Force|Stress), HarmonicBond / HarmonicAngle / MultiHarmonicDihedral (Evaluator: Energy|Force), VirialStress
 
 ### Minimizer components
-LBFGS (Optimizer — was `LBFGSStep`), CG (Optimizer — Polak-Ribière+).
+LBFGS (Optimizer — was `LBFGSStep`), CG (Optimizer — Polak-Ribière+),
+OptLog / TrajectoryWriter / FinalGeometry (Recorder).
 Optimizer choice is hot-swappable: the same `cpu::minimizer::Minimize`
 driver accepts either by adding the component.
+
+**MPI:** `Minimize::install_defaults()` mirrors MD's auto-injection,
+folded into the `force` phase (Migrate @ -50, HaloSend @ -30 /
+HaloRecv @ +10 when a pair evaluator is set, `md::mpi::Reduce` @ +20
+so the optimizer reads globally-summed energy before
+`convergence_check`). LBFGS / CG are DD-aware: owned-row loops,
+globally-reduced inner products / step caps / convergence metrics, and
+curvature-history reset on every `dd->neighbor_generation` bump
+(migration reshuffles local rows). Recorders are DD-correct:
+TrajectoryWriter / FinalGeometry gather owners to rank 0
+(`md::mpi::gather_to_root`) before writing; OptLog reduces its metrics
+across ranks.
 
 ### CUDA SCF (requires `-DATV_BUILD_RHF=ON`)
 - **Inner solver:** `cuda::scf::SCFSolver` — public low-level class,
@@ -368,17 +385,20 @@ npt.build();        // VirialStress injected at post_force @ -50 automatically
 npt.run(frame, 1000);
 
 // AIMD (Dynamics + SCFEvaluator as ForceProvider)
-// SCFEvaluator does not yet have a categorical setter; use add().
+// cpu::scf::SCFEvaluator has no categorical setter and no
+// default_bindings() (it serves three driver categories, so the phase
+// cannot be a component-level default) — bind it explicitly with
+// on(<driver's force phase>).add(...). A bare add() throws.
 cpu::md::MD aimd;
 aimd.set_integrator(cpu::md::VelocityVerlet{0.5});
-aimd.add(cpu::scf::SCFEvaluator{rhf_config});
+aimd.on(md::Phase::force).add(cpu::scf::SCFEvaluator{rhf_config});
 aimd.build();
 aimd.run(frame, 100);
 
-// Geometry optimization
+// Geometry optimization (same explicit binding rule as AIMD)
 cpu::minimizer::Minimize opt;
 opt.set_optimizer(cpu::minimizer::LBFGS{5, 0.01, 0.05});
-opt.add(cpu::scf::SCFEvaluator{config});
+opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
 opt.build();
 opt.run(frame, /*max_iter=*/100);
 

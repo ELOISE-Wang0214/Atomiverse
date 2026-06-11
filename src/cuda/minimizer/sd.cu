@@ -2,6 +2,7 @@
 /// @brief cuda::minimizer::SteepestDescent kernel: x += alpha * f / m * kFtm2v.
 
 #include "atomiverse/core/units.h"
+#include "atomiverse/cuda/box.cuh"
 #include "atomiverse/cuda/launch.cuh"
 #include "atomiverse/cuda/minimizer/sd.cuh"
 #include "atomiverse/cuda/types.cuh"
@@ -9,7 +10,6 @@
 
 namespace ATV {
 
-using cuda::prec_t;
 using cuda::real_t;
 using cuda::work_t;
 
@@ -29,8 +29,8 @@ __global__ void sd_step(real_t* __restrict__ x, real_t* __restrict__ y,
                         real_t* __restrict__ z, const real_t* __restrict__ fx,
                         const real_t* __restrict__ fy,
                         const real_t* __restrict__ fz,
-                        const real_t* __restrict__ mass,
-                        const prec_t* __restrict__ box, work_t alpha, int n) {
+                        const real_t* __restrict__ mass, cuda::Box box,
+                        work_t alpha, int n) {
 
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n)
@@ -46,11 +46,12 @@ __global__ void sd_step(real_t* __restrict__ x, real_t* __restrict__ y,
     z[i] = static_cast<real_t>(static_cast<work_t>(z[i])
                                + alpha * static_cast<work_t>(fz[i]) * inv_m
                                      * kFtm2v);
-    // PBC wrapping
-    work_t Lx = static_cast<work_t>(box[0]), Ly = static_cast<work_t>(box[4]),
-           Lz = static_cast<work_t>(box[8]);
-    work_t inv_Lx = work_t(1) / Lx, inv_Ly = work_t(1) / Ly,
-           inv_Lz = work_t(1) / Lz;
+    // PBC wrap via cached inv_l on the by-value Box — same form as the
+    // MD integrators (cuda-md-review-cleanup-04-box-by-value-pbc).
+    work_t Lx = work_t(box.cell[0]), Ly = work_t(box.cell[4]),
+           Lz = work_t(box.cell[8]);
+    work_t inv_Lx = work_t(box.inv_l[0]), inv_Ly = work_t(box.inv_l[1]),
+           inv_Lz = work_t(box.inv_l[2]);
     work_t x_w = static_cast<work_t>(x[i]);
     work_t y_w = static_cast<work_t>(y[i]);
     work_t z_w = static_cast<work_t>(z[i]);
@@ -69,7 +70,8 @@ void SteepestDescent::launch(const LaunchContext& ctx) {
     int grid = cuda::grid_size(static_cast<int>(n));
     sd_step<<<grid, block, 0, stream>>>(
         frame.atoms.x, frame.atoms.y, frame.atoms.z, frame.atoms.fx,
-        frame.atoms.fy, frame.atoms.fz, frame.atoms.mass, frame.box, alpha_, n);
+        frame.atoms.fy, frame.atoms.fz, frame.atoms.mass,
+        ctx.runtime.host_box, alpha_, n);
 }
 
 } // namespace minimizer

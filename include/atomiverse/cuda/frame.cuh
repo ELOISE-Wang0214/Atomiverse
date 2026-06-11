@@ -102,20 +102,31 @@ struct Frame {
         // responsible for, with partners stored as GLOBAL TAGS (not local rows).
         // This lets `migrate` move topology with the atom and lets each
         // reneighbor RE-materialize the flat tuple lists by resolving partner
-        // tags → local (owned or ghost) rows via the device tag→local map. Caps
-        // mirror cpu/atom.h (kMaxBond=6, kMaxAngle=6, kMaxDihedral=8,
-        // kMaxSpecial=16); arrays are sized to `capacity` rows (ghost headroom).
+        // tags → local (owned or ghost) rows via the device tag→local map.
+        // Strides mirror the SOURCE cpu::Atom's runtime topology strides
+        // (`bond_per_atom` / `angle_per_atom` / `dihedral_per_atom` /
+        // `maxspecial`), captured below at materialize time; arrays are sized
+        // to `capacity` rows (ghost headroom).
         int* num_bond = nullptr;            ///< [capacity] owner-filtered bond count.
-        std::int64_t* bond_atom = nullptr;  ///< [capacity*kMaxBond] partner GLOBAL tags.
-        int* bond_type = nullptr;           ///< [capacity*kMaxBond] bond type ids.
+        std::int64_t* bond_atom = nullptr;  ///< [capacity*bond_per_atom] partner GLOBAL tags.
+        int* bond_type = nullptr;           ///< [capacity*bond_per_atom] bond type ids.
         int* num_angle = nullptr;           ///< [capacity] owner(center)-filtered angle count.
-        std::int64_t* angle_atom = nullptr; ///< [capacity*2*kMaxAngle] non-center tags.
-        int* angle_type = nullptr;          ///< [capacity*kMaxAngle] angle type ids.
+        std::int64_t* angle_atom = nullptr; ///< [capacity*2*angle_per_atom] non-center tags.
+        int* angle_type = nullptr;          ///< [capacity*angle_per_atom] angle type ids.
         int* num_dihedral = nullptr;        ///< [capacity] owner(2nd-atom)-filtered count.
-        std::int64_t* dihedral_atom = nullptr; ///< [capacity*3*kMaxDihedral] non-owner tags.
-        int* dihedral_type = nullptr;       ///< [capacity*kMaxDihedral] dihedral type ids.
+        std::int64_t* dihedral_atom = nullptr; ///< [capacity*3*dihedral_per_atom] non-owner tags.
+        int* dihedral_type = nullptr;       ///< [capacity*dihedral_per_atom] dihedral type ids.
         int* nspecial = nullptr;            ///< [capacity*3] special-bond tier prefix counts.
-        std::int64_t* special = nullptr;    ///< [capacity*kMaxSpecial] special-bond partner tags.
+        std::int64_t* special = nullptr;    ///< [capacity*maxspecial] special-bond partner tags.
+
+        // Host-cached runtime strides of the wide arrays above (copied from
+        // the source cpu::Atom at materialize time; 0 until then). Kernel
+        // launches and D2D/peer copies must use these, never a compile-time
+        // constant.
+        int bond_per_atom = 0;     ///< Columns of bond_atom / bond_type.
+        int angle_per_atom = 0;    ///< angle_atom has 2x this; angle_type this.
+        int dihedral_per_atom = 0; ///< dihedral_atom has 3x this; dihedral_type this.
+        int maxspecial = 0;        ///< Columns of special.
     } atoms;
 
     // -- System scalars (device-resident SystemScalars) --

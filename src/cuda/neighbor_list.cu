@@ -22,7 +22,6 @@
 ///     LAMMPS / GROMACS use the same 1-step-lag pattern.
 
 #include "atomiverse/cuda/neighbor_list.cuh"
-#include "atomiverse/cpu/atom.h" // cpu::Atom::kMaxSpecial (special-SoA stride)
 #include "md/neighborlist/nlist_impl.cuh"
 
 #include <algorithm>
@@ -525,7 +524,7 @@ void NeighborList::launch(const LaunchContext& ctx) {
                 s.d_n_stencil.data(), s.buf.atom_bincount.data(),
                 s.buf.atom_bin_pos.data(), s.buf.bin_cap,
                 s.cut_skin_sq, bake_tag,
-                bake_nsp, bake_sp, cpu::Atom::kMaxSpecial,
+                bake_nsp, bake_sp, frame.atoms.maxspecial,
                 s.buf.verlet_nbr.data(), s.buf.verlet_cnt.data(),
                 s.buf.verlet_stride, s.buf.verlet_max,
                 s.buf.verlet_overflow.data(), stream);
@@ -801,7 +800,7 @@ void NeighborList::rebuild_issue(const LaunchContext& ctx) {
         s.stencil_dy.data(), s.stencil_dz.data(), s.d_n_stencil.data(),
         s.buf.atom_bincount.data(),
         s.buf.atom_bin_pos.data(), s.buf.bin_cap, s.cut_skin_sq, bake_tag,
-        bake_nsp, bake_sp, cpu::Atom::kMaxSpecial, s.buf.verlet_nbr.data(),
+        bake_nsp, bake_sp, frame.atoms.maxspecial, s.buf.verlet_nbr.data(),
         s.buf.verlet_cnt.data(), s.buf.verlet_stride, s.buf.verlet_max,
         s.buf.verlet_overflow.data(), stream);
     cudaMemcpyAsync(s.h_vl_overflow, s.buf.verlet_overflow.data(), sizeof(int),

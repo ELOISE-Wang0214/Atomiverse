@@ -93,6 +93,10 @@ class PairLJCut : public Pair {
     double sigma() const { return sigma_; }
     double cutoff() const { return cutoff_; }
 
+    /// @brief `compute()` honors `Context::n_force_rows`/`force_rows` (the
+    ///        multi-GPU owned-row restriction + interior/boundary split).
+    bool supports_force_rows() const override { return true; }
+
   protected:
     void compute(const LaunchContext& ctx) override;
 

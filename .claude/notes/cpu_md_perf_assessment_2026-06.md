@@ -88,3 +88,55 @@ Realistic target after 1–3: ~1.2–1.4× of LAMMPS single-node throughput (fro
   healthy nodes. Login-node test runs need `FI_PROVIDER=tcp` (see build memory).
 - Instrumentation is additive (timing only); physics unchanged by construction
   (ac-005) — thermo on every run reproduced the expected T/stage behaviour.
+
+---
+
+## [2026-06-10 update] PE 1–1024 standings after topology strides + box-aware grid
+
+Two optimization rounds landed since the assessment above (commits `59e830b`,
+`47fec61`; data `benchmarks/md/pe/performance/runs/47fec61_2026-06-10/`):
+
+1. **Runtime adaptive per-atom topology strides** — `cpu::Atom`'s compile-time
+   `kMax{Bond,Angle,Dihedral,Special}` became per-instance strides grown on
+   demand (PE chain: {1,1,1,6} = 132 B/atom, was 568). Anyone writing the wide
+   arrays DIRECTLY (not via `add_*`) must `reserve_topology()` first — the old
+   code only worked because `add_bond` lazily allocated full-width arrays.
+2. **Box-aware processor grid** — `DomainDecomposition::choose_dims` implements
+   LAMMPS `ProcMap::best_factors` (per-rank halo half-surface, verified against
+   `lammps/src/procmap.cpp`). Descending enumeration keeps cubic-box ties
+   bit-compatible with `MPI_Dims_create` (tests assume x-split on cubic boxes).
+   Builder-side ownership pre-filters must use the same `choose_dims` as the DD
+   or atoms are silently dropped at the initial partition.
+
+**Current standings (PE melt, vs LAMMPS same nodes):**
+
+| metric | AV | LAMMPS | ratio |
+|---|---|---|---|
+| weak-1024 throughput | 1005 Matom·step/s | 692 | **1.45×** |
+| weak-1024 sum-RSS | 232 GB | 225 GB | 1.03× |
+| strong-1024 throughput | 373 (3-rep median) | 493 | 0.76× |
+| strong 512→1024 slope | −7% (was −13%) | +55% | |
+
+**Negative results worth not repeating:** LAMMPS-twolevel node-aware rank
+mapping implemented + same-allocation 3-rep A/B → indistinguishable on this
+fabric (latency-bound, not inter-node-bandwidth-bound); dropped. Node-allocation
+noise is ±7% at strong-1024 — never compare single runs across jobs; use
+same-allocation multi-rep A/B (`ATV_FORCE_DIMS` switches mapping in-job).
+
+## TODO — next levers (ranked)
+
+1. **Halo message mechanics at strong scale** — the remaining strong-1024 gap
+   (373 vs 493). Comm is ~60% of the step at 964 atoms/rank; ±15% nlocal
+   imbalance is absorbed into the 12-message staged Sendrecv chain
+   (fwd 6 + rev 6). Candidates: async Irecv/Isend overlap of the three axis
+   stages, pack/unpack fusion, folding the per-launch `Migrate` collectives
+   into existing reductions. Profile artifacts:
+   `~jicli594/.claude/jobs/5802c383/tmp/pe_strong_prof*.log`.
+2. **PME distributed FFT** — k-space still replicated grid + per-step O(K³)
+   Allreduce (`kspace/pme.h`); blocks charged systems at scale.
+3. **`test_mpi_npt_multirank_n8` fixture** — lands at P_initial ≈ 4.7e-05
+   (essentially zero), so the `|P_final| < |P_initial|` assertion is a coin
+   flip; fails identically on every build since ≤aa762cb. Re-compress the
+   fixture so P_initial ≫ 0, or assert on volume response instead.
+4. **`Reduce` cadence** — the batched 18-double Allreduce runs every step but
+   thermo consumes it only every `print_every`; ~2–4% of the strong-1024 step.

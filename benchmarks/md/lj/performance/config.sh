@@ -16,3 +16,9 @@ STRONG_TOTAL=32000000     # strong: fixed total, split across ng GPUs
 CPU_CORES="1 8 32 128 256 512 1024"
 CPU_WEAK_PER_CORE=200000      # weak: atoms per rank
 CPU_STRONG_TOTAL=8000000      # strong: fixed total
+
+# --- CPU minimizer scaling (SYS=min; same system + sizes as MD above). ---
+# AV minimize_scaling (CG/LBFGS, tolerances 0 -> fixed MIN_ITERS budget,
+# 1 force-eval/iter) vs LAMMPS in.lj_min_scale_kk (min_style cg, Matom-feval/s).
+MIN_ITERS=100
+MIN_OPT=cg

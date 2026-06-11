@@ -11,6 +11,7 @@
 /// @endcode
 #pragma once
 
+#include <cstdint>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -28,6 +29,11 @@ namespace minimizer {
 /// Reads forces and positions directly from `frame.atoms.{fx,fy,fz,x,y,z}`,
 /// so it works with any force evaluator (classical, SCF-based, ...).
 /// Computes step_norm = ||x - x_prev|| between successive launches.
+///
+/// MPI-aware: every rank computes owned-row partials and joins the
+/// cross-rank reduction (the launch is collective under multi-rank);
+/// only rank 0 writes the file / stdout row. After an atom-migration
+/// reshuffle the step_norm reference is invalid and the row reports 0.
 class OptLog : public cpu::ComponentBase {
   public:
     /// @brief Construct.
@@ -36,6 +42,7 @@ class OptLog : public cpu::ComponentBase {
     explicit OptLog(std::string filename, bool also_stdout = false);
 
     std::string name() const override { return "opt_log"; }
+    ComponentRole role() const override { return ComponentRole::Recorder; }
 
     std::vector<DefaultBinding> default_bindings() const override {
         return {{static_cast<int>(ATV::minimizer::Phase::end_of_step), 0}};
@@ -57,6 +64,8 @@ class OptLog : public cpu::ComponentBase {
     std::vector<double> z_prev_;
     bool has_prev_ = false;
     int n_rows_ = 0;
+    /// @brief Last observed `dd->neighbor_generation` (row-reshuffle signal).
+    std::uint64_t last_generation_ = ~std::uint64_t{0};
 };
 
 } // namespace minimizer

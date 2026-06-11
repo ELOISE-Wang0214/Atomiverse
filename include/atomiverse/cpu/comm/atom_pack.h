@@ -107,8 +107,7 @@ void unpack_border(Atom& atom, int n, int first, const double* buf);
 /// @param atom Source atom container.
 /// @param i Owner row index to pack.
 /// @param buf Output buffer (must be sized large enough for the worst-case
-///            payload — typically `kMaxExchangeDoubles` per atom; see
-///            `exchange_doubles_for(atom, i)` for the exact count).
+///            payload — `max_exchange_doubles(atom)` per atom).
 /// @return Number of doubles written.
 int pack_exchange(const Atom& atom, int i, double* buf);
 
@@ -119,15 +118,13 @@ int pack_exchange(const Atom& atom, int i, double* buf);
 /// @return Number of doubles read.
 int unpack_exchange(Atom& atom, int slot, const double* buf);
 
-/// @brief Worst-case doubles for a single `pack_exchange` payload. Used
-/// to size send/recv buffers conservatively.
-inline constexpr int kMaxExchangeDoubles =
-    11               // positions / velocities / forces / mass / charge
-    + 5              // type + tag + image[3]
-    + 1 + 6 + 6      // num_bond + bond_atom (kMax=6) + bond_type
-    + 1 + 12 + 6     // num_angle + angle_atom (2 * kMax=6) + angle_type
-    + 1 + 24 + 8     // num_dihedral + dihedral_atom (3 * kMax=8) + dihedral_type
-    + 3 + 16;        // nspecial[3] + special (kMax=16)
+/// @brief Worst-case doubles for a single `pack_exchange` payload at the
+/// container's CURRENT runtime topology strides. Used to size send/recv
+/// buffers conservatively. Multi-rank callers must reduce with
+/// `MPI_Allreduce(MAX)` so sender and receiver agree on the wire slot size
+/// (strides converge to identical values at load time; the reduce is
+/// belt-and-braces).
+int max_exchange_doubles(const Atom& atom);
 
 // ── Bonded skin extent ────────────────────────────────────────────────────
 
