@@ -43,7 +43,6 @@ if(ATV_BUILD_RHF)
     atv_add_cpp_example(06_aimd)
     if(ATV_BUILD_CUDA)
         atv_add_cuda_example(02_rhf_cuda 02_rhf.cu)
-        atv_add_cuda_example(08_rhf_multi_gpu 08_rhf_multi_gpu.cu)
     endif()
 endif()
 

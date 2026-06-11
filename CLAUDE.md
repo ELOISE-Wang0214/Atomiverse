@@ -488,7 +488,7 @@ opt.run(frame, /*max_iter=*/100);
 cuda::Evaluate ceval;
 ceval.add(cuda::scf::SCFEvaluator{integrals, tol, /*max_iter=*/100});
 ceval.build();
-ceval.run(frame);            // frame.energy populated
+ceval.run(frame);            // frame.scalars.energy populated
 // or the free-function helper:
 cuda::scf::SCFEvaluator cscf{integrals, tol, 100};
 cuda::single_point(frame, cscf);

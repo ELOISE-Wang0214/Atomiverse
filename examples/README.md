@@ -13,7 +13,9 @@ order.
 | 05 | `05_geom_opt.cpp` | Geometry optimization: `Minimize + LBFGS + SCFEvaluator` | `ATV_BUILD_RHF` |
 | 06 | `06_aimd.cpp` | Ab-initio MD: `MD + VelocityVerlet + SCFEvaluator` | `ATV_BUILD_RHF` |
 | 07 | `07_md_lj.cu` | Classical CUDA MD: `cuda::md::MD + NeighborList + PairLJCut` | `ATV_BUILD_CUDA` |
-| 08 | `08_rhf_multi_gpu.cu` | Multi-GPU RHF | `ATV_BUILD_RHF` + `ATV_BUILD_CUDA` |
+
+(The former multi-GPU RHF example targeted the deleted Plan-based CUDA SCF
+API and was removed; a future `08` should drive `cuda::scf::SCFSolver`.)
 
 ## Rules for adding an example
 

@@ -22,6 +22,7 @@
 #include <iostream>
 #include <vector>
 
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/molrec.h"
 #include "atomiverse/cpu/observer/mulliken.h"
 #include "atomiverse/cpu/recorder/xyz.h"
@@ -126,10 +127,13 @@ int main() {
               << std::fixed << std::setprecision(10)
               << "CPU  energy: " << static_cast<double>(cpu_result.energy)
               << " Hartree\n"
-              << "CUDA energy: " << static_cast<double>(frame.energy)
+              << "CUDA energy: "
+              << static_cast<double>(frame.scalars.energy * units::kEvInHartree)
               << " Hartree\n"
               << "Difference:  " << std::scientific << std::setprecision(2)
-              << static_cast<double>(std::abs(frame.energy - cpu_result.energy))
+              << static_cast<double>(std::abs(
+                     frame.scalars.energy * units::kEvInHartree -
+                     cpu_result.energy))
               << "\n"
               << "Textbook:    -1.1167 Hartree (approx)\n";
 

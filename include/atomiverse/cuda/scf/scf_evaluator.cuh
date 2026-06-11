@@ -19,7 +19,7 @@
 ///   cuda::Evaluate eval;
 ///   eval.add(cuda::scf::SCFEvaluator{integrals, tol, max_iter});
 ///   eval.build();
-///   eval.run(frame);            // frame.energy populated
+///   eval.run(frame);            // frame.scalars.energy populated
 /// @endcode
 ///
 /// @see cuda::scf::SCFSolver for the inner SCF self-consistency loop
