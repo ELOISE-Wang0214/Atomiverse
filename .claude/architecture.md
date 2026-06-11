@@ -51,10 +51,10 @@ CPU md domain:
 - `include/atomiverse/cpu/md/init.h` → `ZeroForces`, `ZeroEnergy`, `ZeroStress`, `ZeroKinetic`, `KineticEnergy`, `InitVelocity`.
 - `include/atomiverse/cpu/md/velocity_verlet.h`, `nve_limit.h` → integrators.
 - `include/atomiverse/cpu/md/nose_hoover.h`, `nose_hoover_npt.h`, `fix_langevin.h`, `barostat.h` → thermostats / barostats.
-- `include/atomiverse/cpu/md/lj.h` → `cpu::md::LJ` pair evaluator.
-- `include/atomiverse/cpu/md/neighbor_list.h`, `cell_list.h`, `pair_list.h`, `pbc.h`, `owned_range.h` → neighbor infrastructure.
-- `include/atomiverse/cpu/md/virial_stress.h`, `deform.h`, `async_observer.h` → stress accumulator, deformations, async hook.
-- `include/atomiverse/cpu/md/mpi/{domain,halo_exchange,atom_migration,gather,reduce,rcb}.h` → MPI domain decomposition (gated `ATV_BUILD_MPI`).
+- `include/atomiverse/cpu/potentials/pair_lj_cut.h` → `cpu::PairLJCut` pair evaluator (LAMMPS-style canonical name).
+- `include/atomiverse/cpu/neighbor/{neighbor_list,cell_list,pair_list}.h` → neighbor infrastructure (`pbc.h` stays in md/, `owned_range.h` at the backend root).
+- `include/atomiverse/cpu/observer/virial_stress.h`, `md/deform.h`, `async/async_observer.h` → stress accumulator, deformations, async hook.
+- `include/atomiverse/cpu/comm/{domain,halo_exchange,atom_migration,gather,reduce,rcb}.h` → MPI domain decomposition (gated `ATV_BUILD_MPI`).
 
 CPU bonded domain:
 - `include/atomiverse/cpu/bonded/{harmonic_bond,harmonic_angle,multi_harmonic_dihedral}.h` → bonded evaluators.
@@ -265,7 +265,7 @@ Public `atomiverse` surface (re-exported in `__init__.py`):
 - `facade/` — `Driver<PhaseEnum, DeviceTag>` plan / dispatch primitive, `Plan` / `PlanBuilder` / `PhaseBuilder` / `StageSlot`, phase enums (`md` / `minimizer` / `evaluate` / `scf`), `ComponentRole` + `Capability` bitset, `IterationStatus`. CUDA-free.
 - `cpu/` (root) — shared CPU infrastructure: `Frame`, `Box` + `box_simd`, `Context`, `ComponentBase` + `*Context`, `CPUDriver<PhaseEnum>`, `EvaluateDriver` / `DynamicsDriver` / `OptimizeDriver` category bases, `Evaluate` driver + `single_point()` shim, `to_cuda` transfer, `PairEvaluator` interface, `MolRec` PIMPL, async-analysis plumbing (`FrameSnapshot`, `SnapshotPublisher`, `AsyncComponentBase`, `AnalysisExecutor`).
 - `cpu/md/` — Integrator / Thermostat / Barostat / Evaluator components for classical MD; the `cpu::md::MD` user-facing DynamicsDriver lives here; pair-list / cell-list / PBC machinery; LJ pair evaluator; Zero* and KineticEnergy infrastructure components; `VirialStress`.
-- `cpu/md/mpi/` — distributed extensions (RCB partitioner, halo-exchange forward + reverse, atom migration, gather, energy reduce). Single-rank no-ops in Phase 1, gated on `ATV_BUILD_MPI` (a.k.a. `ATV_USE_MPI` / `ATV_HAS_MPI`).
+- `cpu/comm/` — distributed extensions (RCB partitioner, halo-exchange forward + reverse, atom migration, gather, energy reduce). Single-rank no-ops in Phase 1, gated on `ATV_BUILD_MPI` (a.k.a. `ATV_USE_MPI` / `ATV_HAS_MPI`).
 - `cpu/bonded/` — bonded interactions (HarmonicBond, HarmonicAngle, MultiHarmonicDihedral). CPU-only domain; CUDA bonded variants live under `cuda/potentials/` rather than a `cuda/bonded/`.
 - `cpu/minimizer/` — `Minimize` user-facing OptimizeDriver, `LBFGS` / `CG` Optimizer components, minimizer-bound Zero* infra, optimization recorders (TrajectoryWriter, OptLog, FinalGeometry).
 - `cpu/observer/` — pure compute observers (RDF, Mulliken, density helpers, thermo_component).

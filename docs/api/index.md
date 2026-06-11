@@ -40,8 +40,8 @@ Start with these CUDA-side driver and component headers:
 
 - [`md::MD`](../../include/atomiverse/cuda/md/md.cuh)
 - [`VelocityVerlet`](../../include/atomiverse/cuda/md/velocity_verlet.cuh)
-- [`NeighborList`](../../include/atomiverse/cuda/md/neighbor_list.cuh)
-- [`LJ`](../../include/atomiverse/cuda/md/lj.cuh)
+- [`NeighborList`](../../include/atomiverse/cuda/neighbor/neighbor_list.cuh)
+- [`PairLJCut`](../../include/atomiverse/cuda/potentials/pair_lj_cut.cuh)
 - [`minimizer::SD`](../../include/atomiverse/cuda/minimizer/sd.cuh)
 
 ### Run electronic-structure calculations on the CPU

@@ -73,43 +73,80 @@ The **login nodes are x86_64 with no CUDA toolkit** — the CUDA backend (`ATV_B
 - On the GPU node the **default rustup toolchain (aarch64) is correct** — do NOT set `RUSTUP_TOOLCHAIN` (that override is only needed on the x86_64 login node, whose default is wrongly aarch64).
 - cuFFT-backed PME and other `ATV_BUILD_KSPACE` CUDA code link `CUDA::cufft` automatically; FFTW/cuFFT are on `CPATH`/`LIBRARY_PATH` after the module load.
 
+## Repository layout
+
+```
+include/atomiverse/ + src/   mirrored header/impl trees (layout below)
+tests/                       unit tests — fast correctness only; never timing or
+                             external-engine comparison (those are benchmarks)
+benchmarks/                  <domain>/<case>/{validation,performance} — see benchmarks/README.md
+examples/                    flat numbered tutorial sequence — see examples/README.md
+tools/                       data generators (gen_basis_data.py, gen_minao_data.py)
+                             and debug harnesses (debug_amorphous/)
+python/                      scikit-build-core + nanobind wheel (drives root CMake)
+docs/, cmake/                narrative docs; CMake helper modules
+```
+
 ## Architecture
 
 Dual-backend (CPU + CUDA) molecular simulation platform. Three pillars: **Driver** (owns loop), **Component** (single-step operation), **Frame** (device-resident state).
 
 ### Backend directory layering
 
-Each backend (`cpu/`, `cuda/`, `torch/`) follows the same two-tier layout:
+Each backend (`cpu/`, `cuda/`, `torch/`) follows the same layout: single-file
+shared infrastructure at the root, multi-file **infrastructure clusters**
+(`comm/`, `neighbor/`, `async/`), and **method domains**:
 
 ```
 <backend>/
-  frame.h, context.h, component.h, backend.h, ...  ← shared infrastructure (root = common)
-  molrec.h, transfer.h, zero.h, owned_range.h       ← cross-domain utilities
-  md/          ← domain: integrators, thermostats, neighbor lists
-  scf/         ← domain: solvers, integrals, gradients, evaluators
-  pw/          ← domain: plane-wave DFT (PWSolver, PWEvaluator; CPU only)
-  minimizer/   ← domain: SD, CG, L-BFGS
-  observer/    ← domain: analysis (RDF, Mulliken, density)
-  recorder/    ← domain: I/O (XYZ, Zarr, thermo output)
-  potentials/  ← domain: force-field evaluators (LJ, bonds, angles)
-  bonded/      ← domain: bonded interactions (CPU only)
+  frame.h, context.h, component.h, backend.h, box.h, ...      ← shared infrastructure
+  molrec.h, transfer.h, materialize.h, zero.h, owned_range.h,
+  step_timing.h                                               ← cross-domain utilities
+  comm/        ← infra: domain decomposition, halo exchange, migration, reductions
+                 (MPI on CPU; multi-GPU + NCCL on CUDA)
+  neighbor/    ← infra: cell/Verlet neighbor structures + the published PairList
+  async/       ← infra: async analysis pipeline (snapshot ring, D2H bridge, executors)
+  md/          ← domain: time integration (integrators, thermostats, barostats,
+                 deform, velocity init)
+  minimizer/   ← domain: SD, CG, L-BFGS + opt recorders
+  scf/         ← domain: Gaussian-basis SCF (solver, integrals, gradients, evaluator)
+  pw/          ← domain: plane-wave DFT (PWSolver, PWEvaluator)
+  vib/         ← domain: finite-difference Hessian, thermochemistry (CPU only)
+  kspace/      ← domain: reciprocal-space electrostatics (Ewald, PME)
+  potentials/  ← domain: real-space force-field evaluators (pair + bonded styles)
+  observer/    ← domain: derived quantities (RDF, virial stress, Mulliken, density)
+  recorder/    ← domain: I/O (XYZ, cube, thermo, timing report)
 ```
 
-**Rule:** Files at the backend root are **shared infrastructure** used by multiple domains. Domain subdirectories hold domain-specific code. When adding new shared code (data models, utilities, base classes), place it at the root — never inside a domain subdirectory.
+**Rules:**
+- Files at the backend root are **shared infrastructure** used by multiple
+  domains; a cohesive multi-file infra cluster gets its own root-level
+  directory (`comm/`, `neighbor/`, `async/`). Never park shared code inside a
+  domain subdirectory.
+- **Orthogonality: the same feature lives in the same directory on every
+  backend.** Virial stress is `observer/`, neighbor structures are
+  `neighbor/`, decomposition is `comm/` — on CPU and CUDA alike.
+- Electrostatics splits LAMMPS-style: real-space pair styles in
+  `potentials/` (`coul_long`), reciprocal-space solvers in `kspace/`.
+- Namespaces are unchanged by the 2026-06 layout pass (`cpu::md::mpi::Reduce`
+  lives in `cpu/comm/`, `cpu::md::NeighborList` in `cpu/neighbor/`); aligning
+  namespaces to directories is a deliberate follow-up, not a drive-by.
 
-**Box** (`cpu::Box` in `cpu/box.h`, `cuda::Box` in `cuda/box.cuh`) is the canonical simulation-cell type at each backend root. It owns the cell matrix plus a per-step-immutable cache (`inv_cell`, per-axis `inv_L`, `half_L`, `bool ortho`) and exposes `length(d)`, `volume()`, `min_image(dx, dy, dz)`, `wrap_axis(q, d)`, `scale_diagonal/isotropic/axis`, `set_cell`. The CPU side adds an xsimd `min_image_batch<B>` overload in `cpu/box_simd.h` for SIMD callers. All scattered `Mat3 box(d, d)` reads and the duplicated `static inline minimum_image` / `wrap_to_box` helpers from bonded/, md/, observer/, scf/, and mpi/ have been folded into Box; LJ keeps an inlined branchy min-image in its xsimd ket-loop because member-load-through-`this` defeats compiler hoisting in that hot path (~7% per-step cost).
+**Box** (`cpu::Box` in `cpu/box.h`, `cuda::Box` in `cuda/box.cuh`) is the canonical simulation-cell type at each backend root. It owns the cell matrix plus a per-step-immutable cache (`inv_cell`, per-axis `inv_L`, `half_L`, `bool ortho`) and exposes `length(d)`, `volume()`, `min_image(dx, dy, dz)`, `wrap_axis(q, d)`, `scale_diagonal/isotropic/axis`, `set_cell`. The CPU side adds an xsimd `min_image_batch<B>` overload in `cpu/box_simd.h` for SIMD callers. All scattered `Mat3 box(d, d)` reads and the duplicated `static inline minimum_image` / `wrap_to_box` helpers from potentials/, md/, observer/, scf/, and comm/ have been folded into Box; LJ keeps an inlined branchy min-image in its xsimd ket-loop because member-load-through-`this` defeats compiler hoisting in that hot path (~7% per-step cost).
 
 ### Facade (CUDA-free)
 
 ```
 core/        ← Real, Int, Mat3, units, constants, device tags, backend_traits
 facade/      ← Driver<PhaseEnum, DeviceTag>, Plan, Stage (phase enums)
+potentials/  ← backend-agnostic pair force/energy kernels (LJKernel, CoulKernel,
+               SumKernel + width-agnostic math) shared by CPU/CUDA evaluators
 molrs.hpp    ← stable CXX FFI header
 ```
 
 ### Driver taxonomy
 
-CPU has three **outer task category** drivers, each subclassing
+CPU has four **outer task category** drivers, each subclassing
 `CPUDriver<PhaseEnum>` which itself wraps the underlying
 `Driver<PhaseEnum, DeviceTag>` template. The category is decided by
 **termination semantics**, not by algorithm:
@@ -119,11 +156,11 @@ CPU has three **outer task category** drivers, each subclassing
 | `cpu::EvaluateDriver` | `evaluate::Phase` | exactly one pass | `cpu::Evaluate` |
 | `cpu::DynamicsDriver` | `md::Phase` | full step budget; honours `outer_status.stop_requested` | `cpu::md::MD` |
 | `cpu::OptimizeDriver` | `minimizer::Phase` | early stop on `outer_status.converged` | `cpu::minimizer::Minimize` |
+| `cpu::ResponseDriver` | `vib::Phase` | fixed 6N displacement budget + one finalize pass; no early stop, no `outer_status` | `cpu::vib::Hessian` |
 
-Adding a fourth user-facing category requires a genuinely distinct
-outer-loop semantic (e.g. Sampling for MC/HMC/REMD, Path for NEB,
-Response for finite-difference Hessian). Never to wrap an algorithm
-under a new class name.
+Adding a fifth user-facing category requires a genuinely distinct
+outer-loop semantic (e.g. Sampling for MC/HMC/REMD, Path for NEB).
+Never to wrap an algorithm under a new class name.
 
 **SCF is *not* an outer category.** It is an inner solver represented
 by `cpu::scf::SCFSolver` (a public low-level class, *not* a Driver
@@ -199,7 +236,7 @@ never touch it (they manage their own internal convergence inside
 
 **Rules:**
 - **Driver owns the loop.** Force evaluators, integrators, thermostats are Components — never standalone classes with their own loops.
-- **Three current outer driver categories.** Adding a fourth requires a distinct outer-loop semantic, never an algorithm wrapper.
+- **Four current outer driver categories** (Evaluate / Dynamics / Optimize / Response). Adding a fifth requires a distinct outer-loop semantic, never an algorithm wrapper.
 - **Algorithm = component.** LBFGS/CG/FIRE are Optimizer components, never driver subclasses. Same for Thermostat / Barostat policies.
 - **Capability over role for evaluator validation.** `EvaluateDriver` accepts any component with `role()==Evaluator` and non-empty `capabilities()`. `DynamicsDriver` requires any component (any role) with `Capability::Force`. `OptimizeDriver` requires any Energy/Force-capable evaluator + an Optimizer component.
 - **No duplication across methods.** Shared algorithmic skeletons (gradient assembly, FD validation) are single parameterized functions.
@@ -238,7 +275,7 @@ molrs (Rust) is a hard dependency for I/O. `cpu::MolRec` uses PIMPL — no `rust
 ## Conventions
 
 - **Namespace:** `ATV`. Sub: `ATV::cpu`, `ATV::cuda`, `ATV::md`, `ATV::minimizer`, `ATV::scf`, `ATV::evaluate`. SCF internals: `ATV::cpu::scf::internal` and `ATV::cuda::scf::internal`. Inner SCF solvers: `ATV::cpu::scf::SCFSolver`, `ATV::cuda::scf::SCFSolver`.
-- **File extensions:** CPU `.h`/`.cpp`, CUDA `.cuh`/`.cu`, facade/core `.h`
+- **File extensions:** CPU `.h`/`.cpp`, CUDA `.cuh`/`.cu`, facade/core `.h`. Documented exceptions: deliberately CUDA-free bridge headers under `cuda/` keep `.h` (`cuda/log_callback.h`, `cuda/timer.h`).
 - **Driver template:** `Driver<PhaseEnum, DeviceTag>` is the underlying primitive. User-facing CPU code subclasses one of `cpu::EvaluateDriver` / `DynamicsDriver` / `OptimizeDriver`, and CUDA code one of `cuda::EvaluateDriver` / `DynamicsDriver` / `OptimizeDriver`, not `Driver<>` directly. CPU/CUDA driver subclass headers must include the matching `backend_traits.h`.
 - **Component tagging:** `role()` returns `ComponentRole` (structural slot); `capabilities()` returns `Capability` bitset (frame fields written). Both default to `None`.
 - **No factory functions** — components are classes with constructors
@@ -247,7 +284,7 @@ molrs (Rust) is a hard dependency for I/O. `cpu::MolRec` uses PIMPL — no `rust
 - **Units:** eV, Å, fs, amu, eV/Å, K. Conversion constants in `core/units.h`.
 - **Precision:** compile-time `Real` (`-DATV_REAL=float|double`), `Int` (`-DATV_INT=int|int64_t`)
 - **libxc:** when enabled, native XC must match libxc to 1e-12
-- **ERI performance:** `-march=native` is required for CPU SCF. xsimd 11.2.0 is linked directly to `atomiverse` for use in `native_integrals.cpp`. Do NOT set `XTENSOR_USE_XSIMD` as a compile definition globally — it activates SIMD-backed xtensor storage which breaks `reshape_view` in `xc_grid_engine.h`. `eri_block()` dispatches by **Ltot** (A.l+B.l+C.l+D.l) to a compile-time-Ltot template; ss|ss case uses xsimd ket-loop vectorization. See `.claude/specs/eri-hpc-opt.md`.
+- **ERI performance:** `-march=native` is required for CPU SCF. xsimd 11.2.0 is linked directly to `atomiverse` for use in `native_integrals.cpp`. Do NOT set `XTENSOR_USE_XSIMD` as a compile definition globally — it activates SIMD-backed xtensor storage which breaks `reshape_view` in `xc_grid_engine.h`. `eri_block()` dispatches by **Ltot** (A.l+B.l+C.l+D.l) to a compile-time-Ltot template; ss|ss case uses xsimd ket-loop vectorization.
 - **Doxygen:** every public symbol needs `@brief`, `@param` with units, `@return`
 
 ## Implemented components
@@ -259,6 +296,7 @@ molrs (Rust) is a hard dependency for I/O. `cpu::MolRec` uses PIMPL — no `rust
 | `cpu::Evaluate` | CPU | `EvaluateDriver` | `evaluate::Phase` |
 | `cpu::md::MD` | CPU | `DynamicsDriver` | `md::Phase` |
 | `cpu::minimizer::Minimize` | CPU | `OptimizeDriver` | `minimizer::Phase` |
+| `cpu::vib::Hessian` | CPU | `ResponseDriver` | `vib::Phase` |
 | `cuda::Evaluate` | CUDA | `EvaluateDriver` | `evaluate::Phase` |
 | `cuda::md::MD` | CUDA | `DynamicsDriver` | `md::Phase` |
 | `cuda::minimizer::Minimize` | CUDA | `OptimizeDriver` | `minimizer::Phase` |
@@ -277,7 +315,7 @@ cpu::single_point(frame, scf);
 ```
 
 ### MD components
-VelocityVerlet (Integrator), NVELimit (Integrator), InitVelocity, NoseHoover (Thermostat), NoseHooverNPT (Integrator — also acts as thermostat + barostat), FixLangevin (Thermostat, also Force-capable), Barostat (Barostat — Berendsen), Deform, NeighborList, LJ (Evaluator: Energy|Force|Stress), HarmonicBond / HarmonicAngle / MultiHarmonicDihedral (Evaluator: Energy|Force), VirialStress
+VelocityVerlet (Integrator), NVELimit (Integrator), InitVelocity, NoseHoover (Thermostat), NoseHooverNPT (Integrator — also acts as thermostat + barostat), FixLangevin (Thermostat, also Force-capable), Barostat (Barostat — Berendsen), Deform, NeighborList, PairLJCut (Evaluator: Energy|Force|Stress), BondHarmonic / AngleHarmonic / DihedralMultiHarmonic (Evaluator: Energy|Force), VirialStress. LAMMPS-style names are canonical — the 2026-05 `LJ` / `HarmonicBond` / `HarmonicAngle` / `MultiHarmonicDihedral` alias headers are deleted (torch backend keeps its own `LJ` / `HarmonicBond` names).
 
 ### Minimizer components
 LBFGS (Optimizer — was `LBFGSStep`), CG (Optimizer — Polak-Ribière+),
@@ -400,7 +438,7 @@ when `set_pair` is called; `VirialStress` auto-injects when an
 NPT / Berendsen barostat declares `reads()==Stress`. The
 underlying `add()` and `on(phase).add()` are still public — use
 them to register user-defined hooks the categorical API does not
-yet have a slot for. See `.claude/specs/driver-infra-auto-injection.md`.
+yet have a slot for.
 
 ```cpp
 // Single-point SCF energy + density (no forces)
@@ -412,7 +450,7 @@ double E_Ha = scf.last_result().energy;
 
 // Classical MD (Dynamics) — categorical setters
 cpu::md::MD sim;
-sim.set_pair(cpu::md::LJ{0.0104, 3.4, 6.8});
+sim.set_pair(cpu::PairLJCut{0.0104, 3.4, 6.8});
 sim.set_neighbor(cpu::md::NeighborList<>{6.8, /*skin=*/0.3});
 sim.set_integrator(cpu::md::VelocityVerlet{0.01});
 sim.set_thermo(100);
@@ -421,7 +459,7 @@ sim.run(frame, 1000);
 
 // NPT MD — VirialStress auto-injected via reads()==Stress
 cpu::md::MD npt;
-npt.set_pair(cpu::md::LJ{0.0104, 3.4, 6.8});
+npt.set_pair(cpu::PairLJCut{0.0104, 3.4, 6.8});
 npt.set_neighbor(cpu::md::NeighborList<>{6.8, 0.3});
 npt.set_integrator(cpu::md::NoseHooverNPT{
     {.T_target=300.0, .tau_T=100.0, .P_target=0.0, .tau_P=1000.0, .dt=0.5}});
@@ -459,7 +497,7 @@ cuda::single_point(frame, cscf);
 cuda::md::MD csim;
 csim.on(md::Phase::force)
     .add(cuda::NeighborList{6.8}, -10)
-    .add(cuda::LJ{0.0104, 3.4, 6.8});
+    .add(cuda::PairLJCut{0.0104, 3.4, 6.8});
 csim.add(cuda::md::VelocityVerlet{0.01});
 csim.build();
 csim.run(frame, 1000);
@@ -476,4 +514,5 @@ General workflow skills (impl / fix / debug / refactor / review / docs / test / 
 Each delegates to a paired Atomiverse-specific agent (`av-architect`, `av-cuda`, `av-hpc`, `av-optimizer`) that encodes Atomiverse-only knowledge: CUDA execution-model classification, xsimd 11.2.0 / xtensor 0.25.0 compatibility constraints, ERI shell-block dispatch + `-march=native` requirement, Frame purity rules, and hot-path anti-patterns specific to the dual-backend layout.
 
 Knowledge flow: `.claude/NOTES.md` (evolving) → CLAUDE.md (stable) ← agents (read-only).
-Specs: `.claude/specs/INDEX.md` with lifecycle tracking.
+Specs live under `.claude/specs/` while in flight and are deleted at `done`
+(completed-spec history is the git log).
