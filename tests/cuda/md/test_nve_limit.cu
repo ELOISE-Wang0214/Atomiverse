@@ -19,8 +19,8 @@
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cuda/md/md.cuh"
 #include "atomiverse/cuda/md/nve_limit.cuh"
-#include "atomiverse/cuda/neighbor_list.cuh"
-#include "atomiverse/cuda/potentials/lj.cuh"
+#include "atomiverse/cuda/neighbor/neighbor_list.cuh"
+#include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 
 using namespace ATV;
 
@@ -92,7 +92,7 @@ TEST(CudaNVELimit, CapClampsSingleAtom) {
     // disposable LJ + NeighborList that won't trigger meaningful force
     // on the single isolated atom.
     sim.on(ATV::md::Phase::force).add(cuda::NeighborList{3.0}, -10);
-    sim.on(ATV::md::Phase::force).add(cuda::LJ{1.0, 1.0, 3.0});
+    sim.on(ATV::md::Phase::force).add(cuda::PairLJCut{1.0, 1.0, 3.0});
     sim.build();
     sim.run(frame, 1);
     const double dx = std::fabs(frame.atoms.x[0] - x0);
@@ -110,7 +110,7 @@ TEST(CudaNVELimit, SurvivesHugeForcesNoNaN) {
     cuda::md::MD sim;
     sim.add(cuda::md::NVELimit{1.0, 0.05});
     sim.on(ATV::md::Phase::force).add(cuda::NeighborList{cutoff}, -10);
-    sim.on(ATV::md::Phase::force).add(cuda::LJ{1.0, 1.0, cutoff});
+    sim.on(ATV::md::Phase::force).add(cuda::PairLJCut{1.0, 1.0, cutoff});
     sim.build();
     sim.run(frame, 100);
     for (int i = 0; i < frame.atoms.size(); ++i) {

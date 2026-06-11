@@ -7,15 +7,15 @@
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/md/owned_range.h"
-#include "atomiverse/cpu/md/pair_list.h"
+#include "atomiverse/cpu/owned_range.h"
+#include "atomiverse/cpu/neighbor/pair_list.h"
 
 #ifdef _OPENMP
 #include <omp.h>
 #endif
 
 #ifdef ATV_HAS_MPI
-#include "atomiverse/cpu/md/mpi/domain.h" // DomainDecomposition (dd->n_local/n_ghost)
+#include "atomiverse/cpu/comm/domain.h" // DomainDecomposition (dd->n_local/n_ghost)
 #endif
 
 namespace ATV {

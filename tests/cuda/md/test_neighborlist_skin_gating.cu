@@ -23,7 +23,7 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cuda/backend.cuh"
-#include "atomiverse/cuda/neighbor_list.cuh"
+#include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/facade/stage.h"
 
 using namespace ATV;

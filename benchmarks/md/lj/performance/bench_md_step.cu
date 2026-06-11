@@ -5,11 +5,11 @@
 
 #include "atomiverse/cuda/md/md.cuh"
 #include "atomiverse/cuda/md/velocity_verlet.cuh"
-#include "atomiverse/cuda/neighbor_list.cuh"
-#include "atomiverse/cuda/potentials/lj.cuh"
+#include "atomiverse/cuda/neighbor/neighbor_list.cuh"
+#include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 
 using namespace ATV;
-// `cuda::md::MD`, `cuda::NeighborList`, `cuda::LJ` are fully qualified
+// `cuda::md::MD`, `cuda::NeighborList`, `cuda::PairLJCut` are fully qualified
 // below to avoid an `md` ambiguity between `ATV::md` (phase enum) and
 // `ATV::cuda::md` (driver namespace).
 
@@ -32,7 +32,7 @@ static void BM_MDStep(benchmark::State& state) {
     sim.add(cuda::md::VelocityVerlet{double(0.001)});
     sim.on(ATV::md::Phase::force)
         .add(cuda::NeighborList{cutoff}, -10)
-        .add(cuda::LJ{double(1.0), double(1.0), cutoff});
+        .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
 
     sim.build();
     sim.run(frame, 10); // warm up
@@ -84,7 +84,7 @@ static void BM_MDStepFCC(benchmark::State& state) {
     sim.add(cuda::md::VelocityVerlet{double(0.001)});
     sim.on(ATV::md::Phase::force)
         .add(cuda::NeighborList{cutoff}, -10)
-        .add(cuda::LJ{double(1.0), double(1.0), cutoff});
+        .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
     // No barostat / stress observer → the driver auto-gates the pair virial off
     // (NVE fast path). This is the steady-state kernel that matters.
 

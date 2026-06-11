@@ -1,5 +1,5 @@
 /// @file test_md.cu
-/// @brief Integration test: NVE MD with cuda::LJ + output components.
+/// @brief Integration test: NVE MD with cuda::PairLJCut + output components.
 
 #include <cmath>
 #include <cstdlib>
@@ -13,9 +13,9 @@
 #include "atomiverse/cuda/md/init.cuh"
 #include "atomiverse/cuda/md/md.cuh"
 #include "atomiverse/cuda/md/velocity_verlet.cuh"
-#include "atomiverse/cuda/neighbor_list.cuh"
+#include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/observer/rdf.cuh"
-#include "atomiverse/cuda/potentials/lj.cuh"
+#include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 #include "atomiverse/cuda/recorder/recorder.cuh"
 #include "atomiverse/cuda/recorder/thermo.cuh"
 
@@ -23,7 +23,7 @@ using namespace ATV;
 
 namespace {
 
-/// Create a simple cubic lattice of cuda::LJ particles.
+/// Create a simple cubic lattice of cuda::PairLJCut particles.
 cpu::Frame make_lj_system(int n_side, double density) {
     int n = n_side * n_side * n_side;
     double box_len = std::cbrt(double(n) / density);
@@ -104,7 +104,7 @@ TEST(MDTaxonomy, ThrowsOnMissingIntegrator) {
     cuda::md::MD sim;
     sim.on(md::Phase::force)
         .add(cuda::NeighborList{cutoff}, -10)
-        .add(cuda::LJ{double(1.0), double(1.0), cutoff});
+        .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
     EXPECT_THROW(sim.build(), std::runtime_error);
 }
 
@@ -127,7 +127,7 @@ TEST(MD, NVEEnergyConservation) {
         sim.add(cuda::md::VelocityVerlet{double(0.001)});
         sim.on(md::Phase::force)
             .add(cuda::NeighborList{cutoff}, -10)
-            .add(cuda::LJ{double(1.0), double(1.0), cutoff});
+            .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
         sim.build();
         sim.run(frame1, 1);
     }
@@ -140,7 +140,7 @@ TEST(MD, NVEEnergyConservation) {
         sim.add(cuda::md::VelocityVerlet{double(0.001)});
         sim.on(md::Phase::force)
             .add(cuda::NeighborList{cutoff}, -10)
-            .add(cuda::LJ{double(1.0), double(1.0), cutoff});
+            .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
         sim.build();
         sim.run(frame2, 100);
     }
@@ -164,7 +164,7 @@ TEST(MD, ThermoOutput) {
     sim.add(cuda::md::VelocityVerlet{double(0.001)});
     sim.on(md::Phase::force)
         .add(cuda::NeighborList{cutoff}, -10)
-        .add(cuda::LJ{double(1.0), double(1.0), cutoff});
+        .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
     sim.on(md::Phase::end_of_step).add(cuda::Thermo{5});
     sim.build();
 
@@ -189,7 +189,7 @@ TEST(MD, RecorderXYZ) {
         sim.add(cuda::md::VelocityVerlet{double(0.001)});
         sim.on(md::Phase::force)
             .add(cuda::NeighborList{cutoff}, -10)
-            .add(cuda::LJ{double(1.0), double(1.0), cutoff});
+            .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
         sim.on(md::Phase::end_of_step).add(cuda::Recorder{filename, 3});
         sim.build();
         sim.run(frame, 9);
@@ -224,7 +224,7 @@ TEST(MD, RDFOutput) {
         sim.add(cuda::md::VelocityVerlet{double(0.001)});
         sim.on(md::Phase::force)
             .add(cuda::NeighborList{cutoff}, -10)
-            .add(cuda::LJ{double(1.0), double(1.0), cutoff});
+            .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
         sim.on(md::Phase::end_of_step).add(cuda::RDF{cutoff, 50, filename});
         sim.build();
         sim.run(frame, 5);
@@ -281,7 +281,7 @@ TEST(MD, InitVelocity) {
         sim.add(cuda::md::VelocityVerlet{double(0.001)});
         sim.on(md::Phase::force)
             .add(cuda::NeighborList{cutoff}, -10)
-            .add(cuda::LJ{double(1.0), double(1.0), cutoff});
+            .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
         sim.build();
         sim.run(frame, 1);
     }

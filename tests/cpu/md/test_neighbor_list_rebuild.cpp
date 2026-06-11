@@ -12,9 +12,9 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/md/lj.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/md/neighbor_list.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 
 using namespace ATV;
@@ -78,7 +78,7 @@ TEST(NeighborListRebuild, DelayGateHonoured) {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{0.5});
-    sim.set_pair(cpu::md::LJ{0.0104, 3.4, cutoff});
+    sim.set_pair(cpu::PairLJCut{0.0104, 3.4, cutoff});
     sim.set_neighbor(nl); // lvalue → non-owning pointer
     sim.build();
 
@@ -114,7 +114,7 @@ TEST(NeighborListRebuild, EveryGateReducesChecks) {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{0.5});
-    sim.set_pair(cpu::md::LJ{0.0104, 3.4, cutoff});
+    sim.set_pair(cpu::PairLJCut{0.0104, 3.4, cutoff});
     sim.set_neighbor(nl);
     sim.build();
 
@@ -147,7 +147,7 @@ TEST(NeighborListRebuild, DelayZeroAllowsImmediateRebuild) {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{0.5});
-    sim.set_pair(cpu::md::LJ{0.0104, 3.4, cutoff});
+    sim.set_pair(cpu::PairLJCut{0.0104, 3.4, cutoff});
     sim.set_neighbor(nl);
     sim.build();
 
@@ -182,7 +182,7 @@ TEST(NeighborListRebuild, NveDriftWithinTolerance) {
 
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{0.5});
-    sim.set_pair(cpu::md::LJ{0.0104, 3.4, cutoff});
+    sim.set_pair(cpu::PairLJCut{0.0104, 3.4, cutoff});
     sim.set_neighbor(nl);
     sim.build();
 

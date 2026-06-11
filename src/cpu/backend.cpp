@@ -3,9 +3,9 @@
 
 #include "atomiverse/cpu/backend.h"
 #include "atomiverse/core/log.h"
-#include "atomiverse/cpu/analysis_executor.h"
-#include "atomiverse/cpu/md/mpi/domain.h"
-#include "atomiverse/cpu/md/step_timing.h"
+#include "atomiverse/cpu/async/analysis_executor.h"
+#include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/step_timing.h"
 
 #include <algorithm>
 #include <chrono>

@@ -183,8 +183,8 @@ class HaloSend : public cpu::ComponentBase {
 /// silently discarded by this pass:
 ///
 ///   * Pair forces (`LJ`, future Coulomb) write to `fx/fy/fz`. ✓ shipped.
-///   * Bonded forces (`HarmonicBond`, `HarmonicAngle`,
-///     `MultiHarmonicDihedral`) write to `fx/fy/fz`. ✓ shipped.
+///   * Bonded forces (`BondHarmonic`, `AngleHarmonic`,
+///     `DihedralMultiHarmonic`) write to `fx/fy/fz`. ✓ shipped.
 ///   * Per-atom virial / stress contributions are *accumulated globally*
 ///     via `frame.stress[6]` (a per-rank scalar tally) and reduced by
 ///     `Reduce` at `end_of_step @ -50`. They are not stored per

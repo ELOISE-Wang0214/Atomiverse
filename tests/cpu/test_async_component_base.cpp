@@ -16,11 +16,11 @@
 #include <thread>
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/analysis_executor.h"
-#include "atomiverse/cpu/async_component_base.h"
+#include "atomiverse/cpu/async/analysis_executor.h"
+#include "atomiverse/cpu/async/async_component_base.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/frame_snapshot.h"
-#include "atomiverse/cpu/md/async_observer.h"
+#include "atomiverse/cpu/async/frame_snapshot.h"
+#include "atomiverse/cpu/async/async_observer.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 

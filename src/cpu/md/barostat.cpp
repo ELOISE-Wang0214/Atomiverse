@@ -4,8 +4,8 @@
 #include "atomiverse/cpu/md/barostat.h"
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/md/mpi/domain.h"
-#include "atomiverse/cpu/md/owned_range.h"
+#include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/owned_range.h"
 
 #include <algorithm>
 #include <cmath>

@@ -77,7 +77,7 @@
 /// Usage:
 /// @code{.cpp}
 /// cuda::md::MD sim;
-/// sim.set_pair(cuda::LJ{1.0, 1.0, 3.0});
+/// sim.set_pair(cuda::PairLJCut{1.0, 1.0, 3.0});
 /// sim.set_neighbor(cuda::NeighborList{3.0});
 /// sim.set_integrator(cuda::md::VelocityVerlet{0.001});
 /// sim.set_thermo(5);
@@ -134,7 +134,7 @@ class MD : public cuda::DynamicsDriver {
 
     /// @brief Configure the pair-cutoff force evaluator (LAMMPS
     ///        `pair_style`). Bound at `md::Phase::force @ 0`.
-    /// @tparam P Pair evaluator type (e.g. `cuda::LJ`).
+    /// @tparam P Pair evaluator type (e.g. `cuda::PairLJCut`).
     /// @param p Pair evaluator (passed by forwarding reference).
     template <typename P>
     MD& set_pair(P&& p) {

@@ -2,7 +2,7 @@
 /// @brief CPU BondHarmonic — V = K(r − r₀)² implementation.
 
 #include "atomiverse/cpu/potentials/bond_harmonic.h"
-#include "atomiverse/cpu/md/resolve_view.h"
+#include "atomiverse/cpu/potentials/resolve_view.h"
 
 #include <algorithm>
 #include <cmath>

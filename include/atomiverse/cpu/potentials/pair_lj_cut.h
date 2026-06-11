@@ -1,9 +1,7 @@
 /// @file cpu/potentials/pair_lj_cut.h
 /// @brief LAMMPS-style PairLJCut — 12-6 with shifted potential (CPU).
 ///
-/// Was `ATV::cpu::md::LJ` before the LAMMPS-naming refactor. The legacy
-/// header `cpu/md/lj.h` provides `using LJ = PairLJCut;` so user code
-/// (`sim.set_pair(cpu::md::LJ{...})`) compiles unchanged.
+/// Was `ATV::cpu::md::LJ` before the LAMMPS-naming refactor.
 #pragma once
 
 #include <cstdint>
@@ -11,7 +9,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "atomiverse/cpu/md/pair_list.h"
+#include "atomiverse/cpu/neighbor/pair_list.h"
 #include "atomiverse/cpu/potentials/pair.h"
 
 namespace ATV {
@@ -42,7 +40,7 @@ class PairLJCut : public Pair {
     std::string name() const override { return "lj"; }
 
     /// @brief Enable/disable LAMMPS-style "special bonds" exclusions.
-    /// See pre-refactor `cpu::md::LJ::set_special_bonds` for full
+    /// See pre-refactor `cpu::PairLJCut::set_special_bonds` for full
     /// semantics — unchanged by the rename.
     PairLJCut& set_special_bonds(double s12, double s13, double s14) &;
     PairLJCut set_special_bonds(double s12, double s13, double s14) &&;

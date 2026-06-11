@@ -26,19 +26,19 @@ struct SystemScalars {
 
     /// @brief Bond (2-body bonded) potential energy [eV].
     ///
-    /// Accumulated by `cpu::HarmonicBond` (and any future bond evaluator)
+    /// Accumulated by `cpu::BondHarmonic` (and any future bond evaluator)
     /// alongside `energy`. Mirrors LAMMPS `thermo_style ebond`.
     double energy_bond = 0;
 
     /// @brief Angle (3-body bonded) potential energy [eV].
     ///
-    /// Accumulated by `cpu::HarmonicAngle` (and any future angle evaluator)
+    /// Accumulated by `cpu::AngleHarmonic` (and any future angle evaluator)
     /// alongside `energy`. Mirrors LAMMPS `thermo_style eangle`.
     double energy_angle = 0;
 
     /// @brief Dihedral (4-body bonded) potential energy [eV].
     ///
-    /// Accumulated by `cpu::MultiHarmonicDihedral` (and any future dihedral
+    /// Accumulated by `cpu::DihedralMultiHarmonic` (and any future dihedral
     /// evaluator) alongside `energy`. Mirrors LAMMPS `thermo_style edihed`.
     ///
     /// Invariant: `energy ≈ energy_pair + energy_bond + energy_angle +

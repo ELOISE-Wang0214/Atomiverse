@@ -38,18 +38,18 @@
 #include "atomiverse/cpu/md/barostat.h"
 #include "atomiverse/cpu/md/fix_langevin.h"
 #include "atomiverse/cpu/md/init.h"
-#include "atomiverse/cpu/md/lj.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/md/mpi/halo_exchange.h"
-#include "atomiverse/cpu/md/neighbor_list.h"
+#include "atomiverse/cpu/comm/halo_exchange.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/nose_hoover.h"
 #include "atomiverse/cpu/md/nose_hoover_npt.h"
 #include "atomiverse/cpu/md/nve_limit.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/cpu/md/virial_stress.h"
-#include "atomiverse/cpu/potentials/harmonic_angle.h"
-#include "atomiverse/cpu/potentials/harmonic_bond.h"
-#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
+#include "atomiverse/cpu/observer/virial_stress.h"
+#include "atomiverse/cpu/potentials/angle_harmonic.h"
+#include "atomiverse/cpu/potentials/bond_harmonic.h"
+#include "atomiverse/cpu/potentials/dihedral_multi_harmonic.h"
 
 #include "gather_frame.h"
 #include "lammps_loader.h"
@@ -295,11 +295,11 @@ int main(int argc, char** argv) {
         sim.on(ATV::md::Phase::force)
             .add(cpu::md::NeighborList<>{lj_cut, /*skin=*/0.4, /*every=*/10},
                  -10)
-            .add(cpu::md::LJ{lj_eps_ev, lj_sig, lj_cut}.set_special_bonds(
+            .add(cpu::PairLJCut{lj_eps_ev, lj_sig, lj_cut}.set_special_bonds(
                 0.0, 0.0, 0.0))
-            .add(HarmonicBond{{bond_K_ev}, {bond_r0}})
-            .add(HarmonicAngle{{angle_K_ev}, {angle_theta0}})
-            .add(MultiHarmonicDihedral{{dihedral_ev}});
+            .add(cpu::BondHarmonic{{bond_K_ev}, {bond_r0}})
+            .add(cpu::AngleHarmonic{{angle_K_ev}, {angle_theta0}})
+            .add(cpu::DihedralMultiHarmonic{{dihedral_ev}});
         sim.add(cpu::md::VirialStress{});
 
         ThermoPrinter thermo{100, rank == 0 ? log_stream : std::cout,
@@ -384,11 +384,11 @@ int main(int argc, char** argv) {
         sim.on(ATV::md::Phase::force)
             .add(cpu::md::NeighborList<>{lj_cut, /*skin=*/0.4, /*every=*/10},
                  -10)
-            .add(cpu::md::LJ{lj_eps_ev, lj_sig, lj_cut}.set_special_bonds(
+            .add(cpu::PairLJCut{lj_eps_ev, lj_sig, lj_cut}.set_special_bonds(
                 0.0, 0.0, 0.0))
-            .add(HarmonicBond{{bond_K_ev}, {bond_r0}})
-            .add(HarmonicAngle{{angle_K_ev}, {angle_theta0}})
-            .add(MultiHarmonicDihedral{{dihedral_ev}});
+            .add(cpu::BondHarmonic{{bond_K_ev}, {bond_r0}})
+            .add(cpu::AngleHarmonic{{angle_K_ev}, {angle_theta0}})
+            .add(cpu::DihedralMultiHarmonic{{dihedral_ev}});
         sim.add(cpu::md::VirialStress{});
 
         ThermoPrinter thermo{100, rank == 0 ? log_stream : std::cout,

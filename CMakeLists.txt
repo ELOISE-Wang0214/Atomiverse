@@ -146,21 +146,21 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/zero.cpp
         src/cpu/materialize.cpp
         src/cpu/driver.cpp
-        src/cpu/analysis_executor.cpp
-        src/cpu/async_component_base.cpp
-        src/cpu/snapshot_publisher.cpp
+        src/cpu/async/analysis_executor.cpp
+        src/cpu/async/async_component_base.cpp
+        src/cpu/async/snapshot_publisher.cpp
         # CPU MD components
-        src/cpu/md/cell_list.cpp
+        src/cpu/neighbor/cell_list.cpp
         src/cpu/md/init.cpp
         src/cpu/md/velocity_verlet.cpp
         src/cpu/md/nve_limit.cpp
         src/cpu/md/nose_hoover.cpp
         src/cpu/md/nose_hoover_npt.cpp
         src/cpu/md/fix_langevin.cpp
-        src/cpu/md/virial_stress.cpp
+        src/cpu/observer/virial_stress.cpp
         src/cpu/md/barostat.cpp
         src/cpu/md/deform.cpp
-        src/cpu/md/timing_report.cpp
+        src/cpu/recorder/timing_report.cpp
         # CPU vibrational-analysis (Response category) driver
         src/cpu/vib/hessian.cpp
         src/cpu/vib/mass_weighting.cpp
@@ -181,10 +181,10 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/comm/halo_exchange.cpp
         src/cpu/comm/atom_migration.cpp
         # CPU MD MPI infrastructure (single-rank stubs in Phase 1)
-        src/cpu/md/mpi/domain.cpp
-        src/cpu/md/mpi/reduce.cpp
-        src/cpu/md/mpi/gather.cpp
-        src/cpu/md/mpi/rcb.cpp
+        src/cpu/comm/domain.cpp
+        src/cpu/comm/reduce.cpp
+        src/cpu/comm/gather.cpp
+        src/cpu/comm/rcb.cpp
     )
     # CPU potentials sources — globbed so new pair/bond/angle/dihedral
     # styles (e.g. PairMorse, BondFENE) drop in with no CMake edit.
@@ -207,29 +207,29 @@ if(NOT ATV_DOCS_ONLY)
         list(APPEND ATOMIVERSE_SRCS
             src/cuda/log_callback.cpp
             src/cuda/device_manager.cu
-            src/cuda/domain_decomposition.cu
-            src/cuda/async_bridge.cu
+            src/cuda/comm/domain_decomposition.cu
+            src/cuda/async/async_bridge.cu
             src/cuda/async/record_base.cu
             src/cuda/transfer.cu
             src/cuda/materialize.cu
             src/cuda/timer.cu
             src/cuda/driver.cu
-            src/cuda/md/multi_gpu.cu
+            src/cuda/comm/multi_gpu.cu
             src/cuda/md/velocity_verlet.cu
             src/cuda/md/nve_limit.cu
             src/cuda/md/fix_langevin.cu
             src/cuda/md/nose_hoover_npt.cu
             src/cuda/md/init.cu
             src/cuda/md/kinetic_energy.cu
-            src/cuda/neighbor_list.cu
-            src/cuda/md/neighborlist/sort_and_cluster.cu
-            src/cuda/md/neighborlist/grid.cu
-            src/cuda/md/neighborlist/pair_search.cu
-            src/cuda/md/neighborlist/fused_search.cu
-            src/cuda/md/neighborlist/nlist_direct.cu
-            src/cuda/md/neighborlist/atom_cell_sort.cu
-            src/cuda/md/neighborlist/setup.cu
-            src/cuda/md/neighborlist/export_pairs.cu
+            src/cuda/neighbor/neighbor_list.cu
+            src/cuda/neighbor/sort_and_cluster.cu
+            src/cuda/neighbor/grid.cu
+            src/cuda/neighbor/pair_search.cu
+            src/cuda/neighbor/fused_search.cu
+            src/cuda/neighbor/nlist_direct.cu
+            src/cuda/neighbor/atom_cell_sort.cu
+            src/cuda/neighbor/setup.cu
+            src/cuda/neighbor/export_pairs.cu
             src/cuda/minimizer/sd.cu
             src/cuda/minimizer/cg.cu
             src/cuda/minimizer/lbfgs.cu
@@ -463,7 +463,7 @@ if(NOT ATV_DOCS_ONLY)
     find_package(LAPACK REQUIRED)
 
     if(ATV_BUILD_CUDA)
-        target_include_directories(atomiverse PRIVATE src/cuda/md/neighborlist)
+        target_include_directories(atomiverse PRIVATE src/cuda/neighbor)
     endif()
     target_include_directories(atomiverse PUBLIC include)
     target_link_libraries(atomiverse PUBLIC xtensor xtensor-blas xsimd spdlog::spdlog ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES})

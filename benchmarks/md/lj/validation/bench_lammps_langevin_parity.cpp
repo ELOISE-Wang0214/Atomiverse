@@ -42,9 +42,9 @@
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/fix_langevin.h"
 #include "atomiverse/cpu/md/init.h"
-#include "atomiverse/cpu/md/lj.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/md/neighbor_list.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 
 #include <cmath>
@@ -128,7 +128,7 @@ BENCH_CASE(LammpsParity_Slow_LangevinNvtMatchesLammpsEnsembleAverages) {
     sim.add(cpu::md::FixLangevin{T_target, /*T_stop=*/T_target, damp, dt,
                                  /*seed=*/904297u});
     sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
-    sim.set_pair(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
+    sim.set_pair(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
 
     sim.build();
     sim.run(frame, burn_in_steps);

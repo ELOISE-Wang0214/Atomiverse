@@ -1,16 +1,14 @@
 /// @file cpu/potentials/bond_harmonic.h
 /// @brief LAMMPS-style BondHarmonic — V = K(r − r₀)² (CPU).
 ///
-/// Was `ATV::HarmonicBond` before the LAMMPS-naming refactor. The legacy
-/// header `cpu/potentials/harmonic_bond.h` provides
-/// `using HarmonicBond = BondHarmonic` so user code compiles unchanged.
+/// Was `ATV::HarmonicBond` before the LAMMPS-naming refactor.
 #pragma once
 
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/md/force_scratch.h"
-#include "atomiverse/cpu/md/bonded_cache.h"
+#include "atomiverse/cpu/potentials/force_scratch.h"
+#include "atomiverse/cpu/potentials/bonded_cache.h"
 #include "atomiverse/cpu/potentials/bond.h"
 
 namespace ATV {

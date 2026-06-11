@@ -11,9 +11,9 @@
 #include "atomiverse/cuda/md/md.cuh"
 #include "atomiverse/cuda/md/nose_hoover.cuh"
 #include "atomiverse/cuda/md/velocity_verlet.cuh"
-#include "atomiverse/cuda/neighbor_list.cuh"
+#include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/observer/stress.cuh"
-#include "atomiverse/cuda/potentials/lj.cuh"
+#include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 
 using namespace ATV;
 
@@ -35,7 +35,7 @@ static cpu::Frame make_cubic(int n_side, double spacing) {
 }
 
 TEST(NoseHoover, TemperatureControl) {
-    // Minimal: 8 atoms, well-separated, weak cuda::LJ, small dt
+    // Minimal: 8 atoms, well-separated, weak cuda::PairLJCut, small dt
     auto frame = make_cubic(2, 5.0); // 8 atoms
 
     double dt = 0.001;
@@ -45,7 +45,7 @@ TEST(NoseHoover, TemperatureControl) {
     sim.add(cuda::md::InitVelocity{50.0, 42});
     sim.on(md::Phase::force)
         .add(cuda::NeighborList{8.0}, -10)
-        .add(cuda::LJ{0.01, 3.4, 8.0});
+        .add(cuda::PairLJCut{0.01, 3.4, 8.0});
     sim.build();
     sim.run(frame, 50);
 
@@ -68,7 +68,7 @@ TEST(Deform, BoxGrows) {
     sim.add(cuda::md::Deform{0, rate, dt});
     sim.on(md::Phase::force)
         .add(cuda::NeighborList{10.0}, -10)
-        .add(cuda::LJ{0.01, 3.4, 10.0});
+        .add(cuda::PairLJCut{0.01, 3.4, 10.0});
     sim.build();
     sim.run(frame, n_steps);
 
@@ -85,7 +85,7 @@ TEST(Virial, FiniteStress) {
     sim.add(cuda::md::InitVelocity{50.0, 42});
     sim.on(md::Phase::force)
         .add(cuda::NeighborList{8.0}, -10)
-        .add(cuda::LJ{0.01, 3.4, 8.0});
+        .add(cuda::PairLJCut{0.01, 3.4, 8.0});
     sim.on(md::Phase::post_force).add(cuda::Virial{});
     sim.build();
     sim.run(frame, 10);
@@ -108,7 +108,7 @@ TEST(Barostat, FiniteResults) {
     sim.add(cuda::md::Barostat{0.0, 500.0, dt});
     sim.on(md::Phase::force)
         .add(cuda::NeighborList{8.0}, -10)
-        .add(cuda::LJ{0.01, 3.4, 8.0});
+        .add(cuda::PairLJCut{0.01, 3.4, 8.0});
     sim.on(md::Phase::post_force).add(cuda::Virial{});
     sim.build();
     sim.run(frame, 50);

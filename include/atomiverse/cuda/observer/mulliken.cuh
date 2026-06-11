@@ -36,7 +36,7 @@
 #include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/cpu/observer/mulliken.h"
-#include "atomiverse/cuda/async_bridge.cuh"
+#include "atomiverse/cuda/async/async_bridge.cuh"
 
 #ifdef ATV_HAS_RHF
 #include "atomiverse/cpu/scf/integrals.h"

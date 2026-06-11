@@ -5,7 +5,7 @@
 #include <gtest/gtest.h>
 #include <set>
 
-#include "atomiverse/cuda/domain_decomposition.cuh"
+#include "atomiverse/cuda/comm/domain_decomposition.cuh"
 
 using namespace ATV;
 using DD = cuda::DomainDecomposition;

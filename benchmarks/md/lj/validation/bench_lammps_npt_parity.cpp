@@ -58,11 +58,11 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/init.h"
-#include "atomiverse/cpu/md/lj.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/md/neighbor_list.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/nose_hoover_npt.h"
-#include "atomiverse/cpu/md/virial_stress.h"
+#include "atomiverse/cpu/observer/virial_stress.h"
 
 #include <cmath>
 #include <iostream>
@@ -162,7 +162,7 @@ BENCH_CASE(LammpsParity_Slow_NptMatchesLammpsEnsembleAverages) {
                                                .tau_P = tau_P,
                                                .dt = dt}});
     sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
-    sim.set_pair(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
+    sim.set_pair(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
 
     sim.build();
     sim.run(frame, burn_in_steps);
@@ -230,7 +230,7 @@ BENCH_CASE(LammpsParity_Slow_NptConservesExtendedHamiltonian) {
                                                .tau_P = 1000.0,
                                                .dt = dt}});
     sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
-    sim.set_pair(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
+    sim.set_pair(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
     sim.build();
 
     // One step to populate frame.scalars.conserved, then take that as H(0).
@@ -293,7 +293,7 @@ BENCH_CASE(LammpsParity_Slow_AnisoNptIsotropicDefaultMatchesLammps) {
                                 .couple_axis = {true, true, true},
                                 .T_stop = T_target}});
     sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
-    sim.set_pair(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
+    sim.set_pair(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
 
     sim.build();
     sim.run(frame, burn_in_steps);
@@ -361,7 +361,7 @@ BENCH_CASE(LammpsParity_Slow_AnisoNptFixedXAxisHoldsXEdge) {
          .couple_axis = {false, true, true}, // x rigid; y,z barostatted
          .T_stop = T_target}});
     sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
-    sim.set_pair(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
+    sim.set_pair(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
     sim.build();
 
     sim.run(frame, 5000);
@@ -421,7 +421,7 @@ BENCH_CASE(LammpsParity_Slow_AnisoNptConservesExtendedHamiltonian) {
          .couple_axis = {true, false, false}, // only x barostatted
          .T_stop = T_target}});
     sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
-    sim.set_pair(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
+    sim.set_pair(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
     sim.build();
 
     // Burn in past the violent first-relaxation transient of the
@@ -504,7 +504,7 @@ BENCH_CASE(LammpsParity_Slow_NptTemperatureRampTracksSetpoint) {
     npt.set_run_span(0, total_steps);
     sim.set_integrator(std::move(npt));
     sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
-    sim.set_pair(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
+    sim.set_pair(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
 
     sim.build();
 

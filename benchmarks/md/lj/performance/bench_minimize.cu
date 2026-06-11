@@ -14,7 +14,7 @@
 ///
 /// Optionally writes the initial configuration as a LAMMPS data file so
 /// a LAMMPS `minimize` run (deck in.lj_min_kk, with `pair_modify shift
-/// yes` to match the cutoff-shifted cuda::LJ) starts from the IDENTICAL
+/// yes` to match the cutoff-shifted cuda::PairLJCut) starts from the IDENTICAL
 /// coordinates — initial energies must then agree to output precision.
 ///
 /// Usage:
@@ -45,8 +45,8 @@
 #include "atomiverse/cuda/minimizer/cg.cuh"
 #include "atomiverse/cuda/minimizer/lbfgs.cuh"
 #include "atomiverse/cuda/minimizer/minimize.cuh"
-#include "atomiverse/cuda/neighbor_list.cuh"
-#include "atomiverse/cuda/potentials/lj.cuh"
+#include "atomiverse/cuda/neighbor/neighbor_list.cuh"
+#include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 #include "atomiverse/facade/stage.h"
 
 using namespace ATV;
@@ -125,7 +125,7 @@ RunResult run_minimize(Opt& opt, cpu::Frame& frame, double cutoff,
     min.add(opt);
     min.on(ATV::minimizer::Phase::force)
         .add(cuda::NeighborList{cutoff}, -10)
-        .add(cuda::LJ{1.0, 1.0, cutoff});
+        .add(cuda::PairLJCut{1.0, 1.0, cutoff});
     min.build();
 
     auto t0 = std::chrono::high_resolution_clock::now();

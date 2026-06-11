@@ -27,9 +27,9 @@
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/init.h"
-#include "atomiverse/cpu/md/lj.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/md/neighbor_list.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 
 using namespace ATV;
@@ -111,7 +111,7 @@ BENCH_CASE(SetupLammpsAlign_CheckNoRebuildsEveryEligibleStep) {
         cpu::md::NeighborList<> nl{cutoff, skin, every, delay, /*check=*/true};
         cpu::md::MD sim;
         sim.set_integrator(cpu::md::VelocityVerlet{0.5});
-        sim.set_pair(cpu::md::LJ{0.0104, 3.4, cutoff});
+        sim.set_pair(cpu::PairLJCut{0.0104, 3.4, cutoff});
         sim.set_neighbor(nl);
         sim.build();
         sim.run(frame, n_steps);
@@ -125,7 +125,7 @@ BENCH_CASE(SetupLammpsAlign_CheckNoRebuildsEveryEligibleStep) {
         cpu::md::NeighborList<> nl{cutoff, skin, every, delay, /*check=*/false};
         cpu::md::MD sim;
         sim.set_integrator(cpu::md::VelocityVerlet{0.5});
-        sim.set_pair(cpu::md::LJ{0.0104, 3.4, cutoff});
+        sim.set_pair(cpu::PairLJCut{0.0104, 3.4, cutoff});
         sim.set_neighbor(nl);
         sim.build();
         sim.run(frame, n_steps);
@@ -161,7 +161,7 @@ BENCH_CASE(SetupLammpsAlign_CheckNoHonoursEveryAndDelayGates) {
     cpu::md::NeighborList<> nl{cutoff, skin, every, delay, /*check=*/false};
     cpu::md::MD sim;
     sim.set_integrator(cpu::md::VelocityVerlet{0.5});
-    sim.set_pair(cpu::md::LJ{0.0104, 3.4, cutoff});
+    sim.set_pair(cpu::PairLJCut{0.0104, 3.4, cutoff});
     sim.set_neighbor(nl);
     sim.build();
     sim.run(frame, n_steps);
@@ -180,7 +180,7 @@ BENCH_CASE(SetupLammpsAlign_CheckNoHonoursEveryAndDelayGates) {
 void build_with_init(cpu::md::MD& sim, cpu::md::InitVelocity init) {
     constexpr double cutoff = 6.8;
     sim.set_integrator(cpu::md::VelocityVerlet{0.5});
-    sim.set_pair(cpu::md::LJ{0.0104, 3.4, cutoff});
+    sim.set_pair(cpu::PairLJCut{0.0104, 3.4, cutoff});
     sim.set_neighbor(cpu::md::NeighborList<>{cutoff});
     sim.add(init);
     sim.build();

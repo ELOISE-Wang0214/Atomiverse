@@ -27,7 +27,7 @@
 #include <vector>
 
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/md/mpi/domain.h"
+#include "atomiverse/cpu/comm/domain.h"
 
 namespace ATV {
 namespace debug_amorphous {

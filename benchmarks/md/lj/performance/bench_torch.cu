@@ -2,7 +2,7 @@
 /// @brief LibTorch backend benchmarks: LJ forward/backward, transfer round-trip.
 ///
 /// Compares the torch backend against the native CUDA backend for:
-///   1. LJ forward: cuda::LJ (via MD Driver) vs ATV::torch::lj
+///   1. LJ forward: cuda::PairLJCut (via MD Driver) vs ATV::torch::lj
 ///   2. LJ backward: torch::lj forward + backward cost
 ///   3. Transfer round-trip: from_cpu + to_cpu for varying atom counts
 ///
@@ -23,8 +23,8 @@
 #include "atomiverse/cpu/transfer.h"
 #include "atomiverse/cuda/md/md.cuh"
 #include "atomiverse/cuda/md/velocity_verlet.cuh"
-#include "atomiverse/cuda/neighbor_list.cuh"
-#include "atomiverse/cuda/potentials/lj.cuh"
+#include "atomiverse/cuda/neighbor/neighbor_list.cuh"
+#include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 #include "atomiverse/cuda/transfer.cuh"
 
 using ATV::Mat3;

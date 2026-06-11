@@ -12,7 +12,7 @@
 #include <vector>
 
 #include "atomiverse/core/binding.h"
-#include "atomiverse/cpu/async_component_base.h"
+#include "atomiverse/cpu/async/async_component_base.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {

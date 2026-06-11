@@ -2,7 +2,7 @@
 /// @brief CPU AngleHarmonic — V = K(θ − θ₀)² implementation.
 
 #include "atomiverse/cpu/potentials/angle_harmonic.h"
-#include "atomiverse/cpu/md/resolve_view.h"
+#include "atomiverse/cpu/potentials/resolve_view.h"
 
 #include <algorithm>
 #include <cmath>

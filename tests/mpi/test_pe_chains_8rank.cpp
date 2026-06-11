@@ -5,8 +5,8 @@
 /// Builds 8 PE chains, one centred inside each rank's slab in a 2×2×2
 /// Cartesian partition, each chain laid along y so it fits inside a single
 /// `slab_y` extent without straddling a rank boundary. Drives 1000
-/// VelocityVerlet steps with HarmonicBond + HarmonicAngle +
-/// MultiHarmonicDihedral and asserts the **globally** allreduced total
+/// VelocityVerlet steps with cpu::BondHarmonic + cpu::AngleHarmonic +
+/// cpu::DihedralMultiHarmonic and asserts the **globally** allreduced total
 /// energy drifts by less than 1e-3 over the run.
 ///
 /// Per-chain dynamics are decoupled (no LJ, no inter-chain bonded), so
@@ -29,9 +29,9 @@
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/cpu/potentials/harmonic_angle.h"
-#include "atomiverse/cpu/potentials/harmonic_bond.h"
-#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
+#include "atomiverse/cpu/potentials/angle_harmonic.h"
+#include "atomiverse/cpu/potentials/bond_harmonic.h"
+#include "atomiverse/cpu/potentials/dihedral_multi_harmonic.h"
 
 using namespace ATV;
 
@@ -156,9 +156,9 @@ TEST(PeChains8Rank, BondedNveConservation) {
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{0.5});
     sim.on(ATV::md::Phase::force)
-        .add(HarmonicBond{{bond_K_eV()}, {kBondR0}})
-        .add(HarmonicAngle{{angle_K_eV()}, {kAngleTheta0}})
-        .add(MultiHarmonicDihedral{{dihedral_Cn_eV()}});
+        .add(cpu::BondHarmonic{{bond_K_eV()}, {kBondR0}})
+        .add(cpu::AngleHarmonic{{angle_K_eV()}, {kAngleTheta0}})
+        .add(cpu::DihedralMultiHarmonic{{dihedral_Cn_eV()}});
     sim.build();
 
     sim.run(frame, 1);

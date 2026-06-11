@@ -38,8 +38,8 @@
 #include <cstring>
 #include <string>
 
-#include "atomiverse/cpu/md/lj.h"
-#include "atomiverse/cpu/md/neighbor_list.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/minimizer/cg.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h"
 #include "atomiverse/cpu/minimizer/minimize.h"
@@ -210,7 +210,7 @@ int main(int argc, char** argv) {
     // No barostat / stress consumer in a plain minimization: skip the pair
     // virial (same vflag gating as the MD benchmark, ~20-25% off the LJ
     // inner loop).
-    opt.set_pair(cpu::md::LJ{1.0, 2.5, args.cutoff}.set_compute_stress(false));
+    opt.set_pair(cpu::PairLJCut{1.0, 2.5, args.cutoff}.set_compute_stress(false));
     opt.set_neighbor(cpu::md::NeighborList<>{args.cutoff, args.skin});
     // All five convergence tolerances = 0: no criterion can ever be met, so
     // run() exhausts the full --iters budget — fixed work per rank count,

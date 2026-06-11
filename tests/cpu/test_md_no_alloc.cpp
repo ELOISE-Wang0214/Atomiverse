@@ -28,12 +28,12 @@
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/init.h"
-#include "atomiverse/cpu/md/lj.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/md/neighbor_list.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/nose_hoover.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/cpu/potentials/harmonic_bond.h"
+#include "atomiverse/cpu/potentials/bond_harmonic.h"
 
 #if defined(__GLIBC__) && defined(__linux__)
 #define ATV_TEST_HAVE_MALLOC_HOOK 1
@@ -133,7 +133,7 @@ TEST(MdNoAlloc, InnerLoopAfterWarmupAllocatesNothing) {
     sim.add(cpu::md::NoseHoover{300.0, 100.0, 0.5});
     sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{5.0}, -10);
     sim.on(ATV::md::Phase::force)
-        .add(HarmonicBond{{kBondK_kcal * kKcalPerMolToEv}, {kBondR0}});
+        .add(cpu::BondHarmonic{{kBondK_kcal * kKcalPerMolToEv}, {kBondR0}});
     sim.build();
 
     // Warm-up: lets NeighborList/halo arenas reach steady state.

@@ -22,12 +22,12 @@
 #include <utility>
 #include <vector>
 
-#include "atomiverse/cpu/md/lj.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/md/neighbor_list.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/nose_hoover_npt.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/cpu/md/virial_stress.h"
+#include "atomiverse/cpu/observer/virial_stress.h"
 #include "atomiverse/facade/stage.h"
 
 namespace {
@@ -71,13 +71,13 @@ std::string render(const PlanSig& s) {
 TEST(MDPlanEquivalence, NVELJSetApiMatchesRawAddPath) {
     using namespace ATV;
     cpu::md::MD via_setters;
-    via_setters.set_pair(cpu::md::LJ{kEps, kSigma, kCutoff});
+    via_setters.set_pair(cpu::PairLJCut{kEps, kSigma, kCutoff});
     via_setters.set_neighbor(cpu::md::NeighborList<>{kCutoff, kSkin});
     via_setters.set_integrator(cpu::md::VelocityVerlet{kDt});
     via_setters.build();
 
     cpu::md::MD via_raw;
-    via_raw.on(md::Phase::force).add(cpu::md::LJ{kEps, kSigma, kCutoff}, 0);
+    via_raw.on(md::Phase::force).add(cpu::PairLJCut{kEps, kSigma, kCutoff}, 0);
     // set_neighbor binds at the dedicated `neighbor` phase @ -10 (the
     // LAMMPS-granular skeleton), so the raw mirror must too.
     via_raw.on(md::Phase::neighbor)
@@ -101,7 +101,7 @@ TEST(MDPlanEquivalence, NPTSetApiMatchesRawAddPathWithExplicitVirialStress) {
     // Virial because NoseHooverNPT::reads()==Stress and no
     // explicit Virial was registered.
     cpu::md::MD via_setters;
-    via_setters.set_pair(cpu::md::LJ{kEps, kSigma, kCutoff});
+    via_setters.set_pair(cpu::PairLJCut{kEps, kSigma, kCutoff});
     via_setters.set_neighbor(cpu::md::NeighborList<>{kCutoff, kSkin});
     via_setters.set_integrator(cpu::md::NoseHooverNPT{{.T_target = 300.0,
                                                        .tau_T = 100.0,
@@ -113,7 +113,7 @@ TEST(MDPlanEquivalence, NPTSetApiMatchesRawAddPathWithExplicitVirialStress) {
     // The raw path adds Virial explicitly — what existing
     // tests-mpi/* tests do today.
     cpu::md::MD via_raw;
-    via_raw.on(md::Phase::force).add(cpu::md::LJ{kEps, kSigma, kCutoff}, 0);
+    via_raw.on(md::Phase::force).add(cpu::PairLJCut{kEps, kSigma, kCutoff}, 0);
     via_raw.on(md::Phase::neighbor)
         .add(cpu::md::NeighborList<>{kCutoff, kSkin}, -10);
     via_raw.add(cpu::md::VelocityVerlet{
@@ -121,7 +121,7 @@ TEST(MDPlanEquivalence, NPTSetApiMatchesRawAddPathWithExplicitVirialStress) {
     // Actually, swap in NPT — we mirror the via_setters integrator.
     // Reconstructing because VV was added above for clarity.
     cpu::md::MD via_raw2;
-    via_raw2.on(md::Phase::force).add(cpu::md::LJ{kEps, kSigma, kCutoff}, 0);
+    via_raw2.on(md::Phase::force).add(cpu::PairLJCut{kEps, kSigma, kCutoff}, 0);
     via_raw2.on(md::Phase::neighbor)
         .add(cpu::md::NeighborList<>{kCutoff, kSkin}, -10);
     via_raw2.add(cpu::md::NoseHooverNPT{{.T_target = 300.0,
@@ -152,7 +152,7 @@ class CustomEndOfStepHook : public ATV::cpu::ComponentBase {
 TEST(MDPlanEquivalence, CustomHookViaOnAddCoexistsWithSetters) {
     using namespace ATV;
     cpu::md::MD sim;
-    sim.set_pair(cpu::md::LJ{kEps, kSigma, kCutoff});
+    sim.set_pair(cpu::PairLJCut{kEps, kSigma, kCutoff});
     sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, kSkin});
     sim.set_integrator(cpu::md::VelocityVerlet{kDt});
     // User-defined hook through the public escape hatch:

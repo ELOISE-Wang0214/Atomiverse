@@ -2,8 +2,8 @@
 /// @brief Finite-difference consistency check for each bonded force kernel.
 ///
 /// For a perturbed C4 backbone (so every kernel sees a non-trivial geometry),
-/// compare the analytic force returned by HarmonicBond, HarmonicAngle and
-/// MultiHarmonicDihedral against a central-difference gradient of the same
+/// compare the analytic force returned by cpu::BondHarmonic, cpu::AngleHarmonic and
+/// cpu::DihedralMultiHarmonic against a central-difference gradient of the same
 /// kernel's energy. Mismatch pinpoints which kernel's force formula is bad.
 
 #include <gtest/gtest.h>
@@ -16,9 +16,9 @@
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/context.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/potentials/harmonic_angle.h"
-#include "atomiverse/cpu/potentials/harmonic_bond.h"
-#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
+#include "atomiverse/cpu/potentials/angle_harmonic.h"
+#include "atomiverse/cpu/potentials/bond_harmonic.h"
+#include "atomiverse/cpu/potentials/dihedral_multi_harmonic.h"
 
 using namespace ATV;
 
@@ -118,14 +118,14 @@ void check_kernel(const std::string& label,
 
 } // namespace
 
-TEST(PeFdForce, HarmonicBond) {
+TEST(PeFdForce, cpu::BondHarmonic) {
     check_kernel(
-        "HarmonicBond",
+        "cpu::BondHarmonic",
         [](cpu::Frame& f) {
             cpu::Context ctx;
             cpu::BuildContext bctx{ctx, f};
             cpu::LaunchContext lctx{ctx, f, 0, 0};
-            HarmonicBond c({1.0}, {1.5});
+            cpu::BondHarmonic c({1.0}, {1.5});
             c.build(bctx);
             c.launch(lctx);
             c.destroy({ctx, f});
@@ -133,14 +133,14 @@ TEST(PeFdForce, HarmonicBond) {
         1e-6);
 }
 
-TEST(PeFdForce, HarmonicAngle) {
+TEST(PeFdForce, cpu::AngleHarmonic) {
     check_kernel(
-        "HarmonicAngle",
+        "cpu::AngleHarmonic",
         [](cpu::Frame& f) {
             cpu::Context ctx;
             cpu::BuildContext bctx{ctx, f};
             cpu::LaunchContext lctx{ctx, f, 0, 0};
-            HarmonicAngle c({1.0}, {2.0}); // K=1, theta0=2 rad
+            cpu::AngleHarmonic c({1.0}, {2.0}); // K=1, theta0=2 rad
             c.build(bctx);
             c.launch(lctx);
             c.destroy({ctx, f});
@@ -148,14 +148,14 @@ TEST(PeFdForce, HarmonicAngle) {
         1e-6);
 }
 
-TEST(PeFdForce, MultiHarmonicDihedral) {
+TEST(PeFdForce, cpu::DihedralMultiHarmonic) {
     check_kernel(
-        "MultiHarmonicDihedral",
+        "cpu::DihedralMultiHarmonic",
         [](cpu::Frame& f) {
             cpu::Context ctx;
             cpu::BuildContext bctx{ctx, f};
             cpu::LaunchContext lctx{ctx, f, 0, 0};
-            MultiHarmonicDihedral c({{0.1, -0.2, 0.05, 0.3, -0.1}});
+            cpu::DihedralMultiHarmonic c({{0.1, -0.2, 0.05, 0.3, -0.1}});
             c.build(bctx);
             c.launch(lctx);
             c.destroy({ctx, f});

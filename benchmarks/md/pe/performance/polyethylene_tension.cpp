@@ -94,16 +94,16 @@
 #include "atomiverse/cpu/md/deform.h"
 #include "atomiverse/cpu/md/fix_langevin.h"
 #include "atomiverse/cpu/md/init.h"
-#include "atomiverse/cpu/md/lj.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/md/mpi/domain.h"
-#include "atomiverse/cpu/md/neighbor_list.h"
+#include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/nose_hoover_npt.h"
 #include "atomiverse/cpu/md/nve_limit.h"
 #include "atomiverse/cpu/observer/rdf.h"
-#include "atomiverse/cpu/potentials/harmonic_angle.h"
-#include "atomiverse/cpu/potentials/harmonic_bond.h"
-#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
+#include "atomiverse/cpu/potentials/angle_harmonic.h"
+#include "atomiverse/cpu/potentials/bond_harmonic.h"
+#include "atomiverse/cpu/potentials/dihedral_multi_harmonic.h"
 #include "atomiverse/cpu/molrec.h"
 #include "atomiverse/cpu/recorder/trajectory.h"
 #include "atomiverse/cpu/recorder/xyz.h"
@@ -242,10 +242,10 @@ inline bool dump_global(int my_rank, const ATV::cpu::Frame& frame,
 #include "atomiverse/cuda/md/fix_langevin.cuh"
 #include "atomiverse/cuda/md/init.cuh"
 #include "atomiverse/cuda/md/md.cuh"
-#include "atomiverse/cuda/md/multi_gpu.cuh"
+#include "atomiverse/cuda/comm/multi_gpu.cuh"
 #include "atomiverse/cuda/md/nose_hoover_npt.cuh"
 #include "atomiverse/cuda/md/nve_limit.cuh"
-#include "atomiverse/cuda/neighbor_list.cuh"
+#include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/observer/stress.cuh"
 #include "atomiverse/cuda/potentials/angle_harmonic.cuh"
 #include "atomiverse/cuda/potentials/bond_harmonic.cuh"
@@ -1125,10 +1125,10 @@ bool parse_rdf_spec(const std::string& spec, double& r_max, int& bins,
 /// driver rebuilds.
 struct SharedComponents {
     cpu::md::NeighborList<> nl;
-    cpu::md::LJ lj;
-    HarmonicBond hb;
-    HarmonicAngle ha;
-    MultiHarmonicDihedral hd;
+    cpu::PairLJCut lj;
+    cpu::BondHarmonic hb;
+    cpu::AngleHarmonic ha;
+    cpu::DihedralMultiHarmonic hd;
     CsvRecorder* rec;
     TrajectoryRecorder* trec;
     RDF* rdf; ///< nullptr when --rdf is off
@@ -1732,12 +1732,12 @@ int main(int argc, char** argv) {
     // scanned per LJ step, which alone accounted for most of the per-step
     // wall-time gap against LAMMPS on this deck.
     cpu::md::NeighborList<> nl{kLjCutoff, /*skin=*/0.4, /*every=*/10};
-    cpu::md::LJ lj =
-        cpu::md::LJ{lj_eps_eV(), kLjSigma, kLjCutoff}.set_special_bonds(
+    cpu::PairLJCut lj =
+        cpu::PairLJCut{lj_eps_eV(), kLjSigma, kLjCutoff}.set_special_bonds(
             0.0, 0.0, 0.0);
-    HarmonicBond hb{{bond_k_eV()}, {kBondR0}};
-    HarmonicAngle ha{{angle_k_eV()}, {kAngleTheta0}};
-    MultiHarmonicDihedral hd{{dihedral_Cn_eV()}};
+    cpu::BondHarmonic hb{{bond_k_eV()}, {kBondR0}};
+    cpu::AngleHarmonic ha{{angle_k_eV()}, {kAngleTheta0}};
+    cpu::DihedralMultiHarmonic hd{{dihedral_Cn_eV()}};
     CsvRecorder rec{&thermo_csv, &stress_csv, a.print_every, n_global_dof,
                     box_x0};
     TrajectoryRecorder trec{&traj_xyz, std::max(1, a.traj_every)};

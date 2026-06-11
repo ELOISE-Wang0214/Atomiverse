@@ -11,8 +11,8 @@
 #include "atomiverse/core/log.h"
 #include "atomiverse/core/report.h"
 #include "atomiverse/core/timer.h"
-#include "atomiverse/cpu/md/step_timing.h"
-#include "atomiverse/cpu/md/timing_report.h"
+#include "atomiverse/cpu/step_timing.h"
+#include "atomiverse/cpu/recorder/timing_report.h"
 
 using namespace ATV;
 using cpu::md::StepTiming;

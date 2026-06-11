@@ -4,8 +4,8 @@
 #include "atomiverse/cpu/md/nose_hoover.h"
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/md/mpi/domain.h"
-#include "atomiverse/cpu/md/owned_range.h"
+#include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/owned_range.h"
 #include "atomiverse/facade/stage.h"
 
 #include <algorithm>

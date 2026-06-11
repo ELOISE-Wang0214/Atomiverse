@@ -8,16 +8,16 @@
 #include <type_traits>
 
 #include "atomiverse/cpu/backend.h"
-#include "atomiverse/cpu/md/timing_report.h"
+#include "atomiverse/cpu/recorder/timing_report.h"
 #include "atomiverse/cpu/dynamics_driver.h"
 #include "atomiverse/cpu/md/init.h"
 #include "atomiverse/cpu/comm/atom_migration.h"
-#include "atomiverse/cpu/md/mpi/domain.h"
+#include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/comm/halo_exchange.h"
-#include "atomiverse/cpu/md/mpi/reduce.h"
-#include "atomiverse/cpu/md/virial_stress.h"
+#include "atomiverse/cpu/comm/reduce.h"
+#include "atomiverse/cpu/observer/virial_stress.h"
 #include "atomiverse/cpu/pair_evaluator.h"
-#include "atomiverse/cpu/snapshot_publisher.h"
+#include "atomiverse/cpu/async/snapshot_publisher.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -66,7 +66,7 @@ namespace md {
 /// Usage (LAMMPS-shaped):
 /// @code{.cpp}
 /// cpu::md::MD sim;
-/// sim.set_pair(cpu::md::LJ{0.0104, 3.4, 6.8});
+/// sim.set_pair(cpu::PairLJCut{0.0104, 3.4, 6.8});
 /// sim.set_neighbor(cpu::md::NeighborList<>{6.8, 0.3});
 /// sim.set_integrator(cpu::md::VelocityVerlet{0.001});
 /// sim.set_thermo(100);

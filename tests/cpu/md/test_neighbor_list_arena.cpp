@@ -20,8 +20,8 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/md/cell_list.h"
-#include "atomiverse/cpu/md/pair_list.h"
+#include "atomiverse/cpu/neighbor/cell_list.h"
+#include "atomiverse/cpu/neighbor/pair_list.h"
 
 using namespace ATV;
 

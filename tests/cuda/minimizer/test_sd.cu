@@ -1,5 +1,5 @@
 /// @file test_sd.cu
-/// @brief Integration test: steepest-descent minimization of a cuda::LJ
+/// @brief Integration test: steepest-descent minimization of a cuda::PairLJCut
 ///        system through the migrated `Minimize + SteepestDescent` shape.
 ///
 /// Post driver-taxonomy migration the CUDA minimizer is a single
@@ -15,10 +15,10 @@
 
 #include "atomiverse/cuda/minimizer/minimize.cuh"
 #include "atomiverse/cuda/minimizer/sd.cuh"
-#include "atomiverse/cuda/neighbor_list.cuh"
+#include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/optimize_driver.cuh"
 #include "atomiverse/facade/component_role.h"
-#include "atomiverse/cuda/potentials/lj.cuh"
+#include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 #include "atomiverse/cuda/recorder/thermo.cuh"
 
 using namespace ATV;
@@ -95,7 +95,7 @@ TEST(Minimizer, SDEnergyDecreases) {
         min.add(cuda::minimizer::SteepestDescent{double(0.01)});
         min.on(minimizer::Phase::force)
             .add(cuda::NeighborList{cutoff}, -10)
-            .add(cuda::LJ{double(1.0), double(1.0), cutoff});
+            .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
         min.build();
         min.run(
             frame_init,
@@ -110,7 +110,7 @@ TEST(Minimizer, SDEnergyDecreases) {
         min.add(cuda::minimizer::SteepestDescent{double(0.01)});
         min.on(minimizer::Phase::force)
             .add(cuda::NeighborList{cutoff}, -10)
-            .add(cuda::LJ{double(1.0), double(1.0), cutoff});
+            .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
         min.build();
         min.run(frame_min, 50);
     }
@@ -128,7 +128,7 @@ TEST(Minimizer, SDWithThermo) {
     min.add(cuda::minimizer::SteepestDescent{double(0.01)});
     min.on(minimizer::Phase::force)
         .add(cuda::NeighborList{cutoff}, -10)
-        .add(cuda::LJ{double(1.0), double(1.0), cutoff});
+        .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
     min.on(minimizer::Phase::end_of_step).add(cuda::Thermo{10});
     min.build();
 
@@ -154,6 +154,6 @@ TEST(Minimizer, BuildThrowsWithoutOptimizer) {
     cuda::minimizer::Minimize min;
     min.on(minimizer::Phase::force)
         .add(cuda::NeighborList{cutoff}, -10)
-        .add(cuda::LJ{double(1.0), double(1.0), cutoff});
+        .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
     EXPECT_THROW(min.build(), std::runtime_error);
 }

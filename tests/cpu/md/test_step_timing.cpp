@@ -14,11 +14,11 @@
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/md/step_timing.h"
+#include "atomiverse/cpu/step_timing.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/cpu/potentials/harmonic_angle.h"
-#include "atomiverse/cpu/potentials/harmonic_bond.h"
-#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
+#include "atomiverse/cpu/potentials/angle_harmonic.h"
+#include "atomiverse/cpu/potentials/bond_harmonic.h"
+#include "atomiverse/cpu/potentials/dihedral_multi_harmonic.h"
 
 using namespace ATV;
 using cpu::md::StepTiming;
@@ -57,9 +57,9 @@ cpu::Frame make_chain(int n, double box_len) {
 void configure_sim(cpu::md::MD& sim) {
     sim.add(cpu::md::VelocityVerlet{0.5});
     sim.on(ATV::md::Phase::force)
-        .add(HarmonicBond{{268.0 * kKcalToEv}, {1.53}})
-        .add(HarmonicAngle{{60.0 * kKcalToEv}, {109.5 * kPI / 180.0}})
-        .add(MultiHarmonicDihedral{{{1.73 * kKcalToEv, -4.49 * kKcalToEv,
+        .add(cpu::BondHarmonic{{268.0 * kKcalToEv}, {1.53}})
+        .add(cpu::AngleHarmonic{{60.0 * kKcalToEv}, {109.5 * kPI / 180.0}})
+        .add(cpu::DihedralMultiHarmonic{{{1.73 * kKcalToEv, -4.49 * kKcalToEv,
                                      0.776 * kKcalToEv, 6.99 * kKcalToEv, 0.0}}});
 }
 

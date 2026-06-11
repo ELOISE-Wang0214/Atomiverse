@@ -4,7 +4,7 @@
 
 #include "atomiverse/cuda/box.cuh"
 #include "atomiverse/cuda/launch.cuh"
-#include "atomiverse/cuda/neighbor_list.cuh"
+#include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/potentials/lj_kernel.cuh"
 #include "atomiverse/cuda/potentials/pair_compute.cuh"
 #include "atomiverse/cuda/potentials/pair_lj_cut.cuh"

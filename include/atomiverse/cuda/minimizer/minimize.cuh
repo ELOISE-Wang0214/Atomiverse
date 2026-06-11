@@ -57,7 +57,7 @@ namespace minimizer {
 /// min.add(cuda::minimizer::SteepestDescent{0.01});
 /// min.on(minimizer::Phase::force)
 ///    .add(cuda::NeighborList{3.0}, -10)
-///    .add(cuda::LJ{1.0, 1.0, 3.0});
+///    .add(cuda::PairLJCut{1.0, 1.0, 3.0});
 /// min.build();          // validate_components() then compile the Plan
 /// min.run(frame, 500);
 /// @endcode

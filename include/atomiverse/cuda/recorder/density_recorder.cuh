@@ -12,7 +12,7 @@
 #include <cuda_runtime.h>
 
 #include "atomiverse/cpu/observer/density.h"
-#include "atomiverse/cuda/async_bridge.cuh"
+#include "atomiverse/cuda/async/async_bridge.cuh"
 #include "atomiverse/cuda/types.cuh"
 
 #ifdef ATV_HAS_ZARR

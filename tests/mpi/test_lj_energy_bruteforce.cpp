@@ -30,10 +30,10 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/md/lj.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/comm/halo_exchange.h"
-#include "atomiverse/cpu/md/neighbor_list.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 
 using namespace ATV;
@@ -136,7 +136,7 @@ TEST(LjEnergyBruteForce, GlobalEnergyMatchesBruteForce) {
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{0.0}); // dt = 0 → positions frozen
     sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{cutoff}, -10);
-    sim.on(ATV::md::Phase::force).add(cpu::md::LJ{eps, sigma, cutoff});
+    sim.on(ATV::md::Phase::force).add(cpu::PairLJCut{eps, sigma, cutoff});
     sim.on(ATV::md::Phase::pre_force)
         .add(cpu::comm::HaloSend{cutoff}, -20);
     sim.on(ATV::md::Phase::post_force)

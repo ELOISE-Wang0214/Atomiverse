@@ -9,7 +9,7 @@
 ///     atomic-adds it into `frame.scalars->stress_kinetic[6]` via the
 ///     packed warp-shuffle reduction it does for KE (one fused kernel
 ///     since cuda-md-review-cleanup-05).
-///   - Pair / bonded virial → `cuda::PairLJCut`, `cuda::HarmonicBond`,
+///   - Pair / bonded virial → `cuda::PairLJCut`, `cuda::BondHarmonic`,
 ///     etc. atomic-add into `frame.scalars->stress[6]` from their own
 ///     force kernels.
 ///   - Volume division → the consumer (`cuda::md::NoseHooverNPT`,

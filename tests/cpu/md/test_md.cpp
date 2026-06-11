@@ -9,17 +9,17 @@
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/fix_langevin.h"
 #include "atomiverse/cpu/md/init.h"
-#include "atomiverse/cpu/md/lj.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/comm/halo_exchange.h"
-#include "atomiverse/cpu/md/neighbor_list.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/nose_hoover.h"
 #include "atomiverse/cpu/md/nose_hoover_npt.h"
 #include "atomiverse/cpu/md/nve_limit.h"
-#include "atomiverse/cpu/md/pair_list.h"
+#include "atomiverse/cpu/neighbor/pair_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/cpu/md/virial_stress.h"
-#include "atomiverse/cpu/potentials/harmonic_bond.h"
+#include "atomiverse/cpu/observer/virial_stress.h"
+#include "atomiverse/cpu/potentials/bond_harmonic.h"
 #include "atomiverse/cpu/recorder/thermo.h"
 
 using namespace ATV;
@@ -138,7 +138,7 @@ TEST_F(CpuMdTest, LjAnalyticForce) {
     nlist.build(bctx);
     nlist.launch(lctx);
 
-    cpu::md::LJ lj(epsilon, sigma, cutoff);
+    cpu::PairLJCut lj(epsilon, sigma, cutoff);
     lj.build(bctx);
     lj.launch(lctx);
 
@@ -174,7 +174,7 @@ TEST_F(CpuMdTest, ForceSumZero) {
     cpu::LaunchContext lctx{ctx, frame, 0, 0};
     nlist.launch(lctx);
 
-    cpu::md::LJ lj(kEpsilon, kSigma, kCutoff);
+    cpu::PairLJCut lj(kEpsilon, kSigma, kCutoff);
     lj.build(bctx);
     lj.launch(lctx);
 
@@ -452,7 +452,7 @@ TEST_F(CpuMdTest, NveEnergyConservation) {
         sim.add(cpu::md::InitVelocity{double(50.0), 42});
         sim.on(ATV::md::Phase::force)
             .add(cpu::md::NeighborList<>{kCutoff}, -10)
-            .add(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
+            .add(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
         sim.build();
         sim.run(frame, 100);
     }
@@ -464,7 +464,7 @@ TEST_F(CpuMdTest, NveEnergyConservation) {
         sim.add(cpu::md::VelocityVerlet{dt});
         sim.on(ATV::md::Phase::force)
             .add(cpu::md::NeighborList<>{kCutoff}, -10)
-            .add(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
+            .add(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
         sim.build();
         sim.run(frame, 100);
     }
@@ -503,7 +503,7 @@ TEST_F(CpuMdTest, BondedForce) {
     double K = double(100.0);
     double r0 = double(1.0);
 
-    HarmonicBond bond({K}, {r0});
+    cpu::BondHarmonic bond({K}, {r0});
     cpu::Context ctx;
     cpu::BuildContext bctx{ctx, frame};
     bond.build(bctx);
@@ -629,7 +629,7 @@ TEST_F(CpuMdTest, NoseHooverNptRelaxesPressure) {
     sim.add(
         cpu::md::NoseHooverNPT{{T_tgt, tau_T, /*P_target=*/0.0, tau_P, dt}});
     sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{kCutoff}, -10);
-    sim.on(ATV::md::Phase::force).add(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
+    sim.on(ATV::md::Phase::force).add(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
     sim.add(cpu::md::Virial{});
     sim.build();
 

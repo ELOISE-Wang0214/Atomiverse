@@ -13,7 +13,7 @@
 #include "atomiverse/cpu/backend.h"
 #include "atomiverse/cpu/context.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/md/mpi/domain.h"
+#include "atomiverse/cpu/comm/domain.h"
 
 using namespace ATV;
 

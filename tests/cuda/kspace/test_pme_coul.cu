@@ -11,7 +11,7 @@
 #include "atomiverse/cuda/kspace/pme.cuh"
 #include "atomiverse/cuda/md/md.cuh"
 #include "atomiverse/cuda/md/velocity_verlet.cuh"
-#include "atomiverse/cuda/neighbor_list.cuh"
+#include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/potentials/coul_long.cuh"
 
 using namespace ATV;

@@ -31,12 +31,12 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/barostat.h"
-#include "atomiverse/cpu/md/lj.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/md/neighbor_list.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/nose_hoover_npt.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/cpu/md/virial_stress.h"
+#include "atomiverse/cpu/observer/virial_stress.h"
 
 #include <cmath>
 
@@ -138,7 +138,7 @@ BENCH_CASE(PressureLammpsAlign_BarostatExpandsOverCompressedBox) {
     sim.add(cpu::md::VelocityVerlet{dt});
     sim.on(ATV::md::Phase::force)
         .add(cpu::md::NeighborList<>{6.0}, -10)
-        .add(cpu::md::LJ{0.0104, 3.4, 6.0});
+        .add(cpu::PairLJCut{0.0104, 3.4, 6.0});
     sim.add(cpu::md::Virial{});
     sim.add(cpu::md::Barostat{0.0, /*tau_P=*/200.0, dt});
     sim.build();
@@ -177,7 +177,7 @@ BENCH_CASE(PressureLammpsAlign_BulkModulusScalesRelaxationRate) {
         sim.add(cpu::md::VelocityVerlet{dt});
         sim.on(ATV::md::Phase::force)
             .add(cpu::md::NeighborList<>{6.0}, -10)
-            .add(cpu::md::LJ{0.0104, 3.4, 6.0});
+            .add(cpu::PairLJCut{0.0104, 3.4, 6.0});
         sim.add(cpu::md::Virial{});
         sim.add(cpu::md::Barostat{0.0, /*tau_P=*/200.0, dt, bulk_modulus});
         sim.build();
@@ -218,7 +218,7 @@ BENCH_CASE(PressureLammpsAlign_NptAndBarostatRelaxToSameDensity) {
         sim.add(cpu::md::VelocityVerlet{dt});
         sim.on(ATV::md::Phase::force)
             .add(cpu::md::NeighborList<>{6.0}, -10)
-            .add(cpu::md::LJ{0.0104, 3.4, 6.0});
+            .add(cpu::PairLJCut{0.0104, 3.4, 6.0});
         sim.add(cpu::md::Virial{});
         sim.add(cpu::md::Barostat{P_target, /*tau_P=*/100.0, dt});
         sim.build();
@@ -242,7 +242,7 @@ BENCH_CASE(PressureLammpsAlign_NptAndBarostatRelaxToSameDensity) {
         cpu::md::MD sim;
         sim.on(ATV::md::Phase::force)
             .add(cpu::md::NeighborList<>{6.0}, -10)
-            .add(cpu::md::LJ{0.0104, 3.4, 6.0});
+            .add(cpu::PairLJCut{0.0104, 3.4, 6.0});
         sim.add(cpu::md::Virial{});
         sim.set_integrator(cpu::md::NoseHooverNPT{{.T_target = 30.0,
                                                    .tau_T = 100.0,

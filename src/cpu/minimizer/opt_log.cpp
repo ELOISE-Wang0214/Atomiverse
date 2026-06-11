@@ -4,7 +4,7 @@
 
 #include "atomiverse/cpu/minimizer/opt_log.h"
 
-#include "atomiverse/cpu/md/mpi/domain.h"
+#include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/minimizer/global_reduce.h"
 #include "atomiverse/cpu/owned_range.h"
 

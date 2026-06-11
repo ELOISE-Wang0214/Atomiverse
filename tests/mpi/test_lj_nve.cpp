@@ -28,10 +28,10 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/backend.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/md/lj.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/comm/halo_exchange.h"
-#include "atomiverse/cpu/md/neighbor_list.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 
 using namespace ATV;
@@ -105,7 +105,7 @@ TEST(LjNve, EnergyConservationSingleRank) {
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{1.0}); // dt = 1 fs
     sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{6.0}, -10);
-    sim.on(ATV::md::Phase::force).add(cpu::md::LJ{0.0104, 3.4, 6.0});
+    sim.on(ATV::md::Phase::force).add(cpu::PairLJCut{0.0104, 3.4, 6.0});
     sim.on(ATV::md::Phase::pre_force)
         .add(cpu::comm::HaloSend{6.0}, -20);
     sim.on(ATV::md::Phase::post_force)
@@ -141,7 +141,7 @@ TEST(LjNve, EnergyConservationMultiRank) {
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{1.0});
     sim.on(ATV::md::Phase::force).add(cpu::md::NeighborList<>{6.0}, -10);
-    sim.on(ATV::md::Phase::force).add(cpu::md::LJ{0.0104, 3.4, 6.0});
+    sim.on(ATV::md::Phase::force).add(cpu::PairLJCut{0.0104, 3.4, 6.0});
     sim.on(ATV::md::Phase::pre_force)
         .add(cpu::comm::HaloSend{6.0}, -20);
     sim.on(ATV::md::Phase::post_force)

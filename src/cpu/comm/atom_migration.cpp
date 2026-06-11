@@ -24,7 +24,7 @@
 
 #include "atomiverse/cpu/comm/atom_pack.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/md/mpi/domain.h"
+#include "atomiverse/cpu/comm/domain.h"
 
 #ifdef ATV_HAS_MPI
 #include <mpi.h>

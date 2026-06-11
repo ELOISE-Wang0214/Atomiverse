@@ -18,10 +18,10 @@
 #include <thread>
 #include <vector>
 
-#include "atomiverse/cpu/analysis_executor.h"
-#include "atomiverse/cpu/async_component_base.h"
+#include "atomiverse/cpu/async/analysis_executor.h"
+#include "atomiverse/cpu/async/async_component_base.h"
 #include "atomiverse/cpu/context.h"
-#include "atomiverse/cpu/frame_snapshot.h"
+#include "atomiverse/cpu/async/frame_snapshot.h"
 
 using namespace ATV;
 

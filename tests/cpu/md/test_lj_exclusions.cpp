@@ -18,8 +18,8 @@
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/context.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/md/lj.h"
-#include "atomiverse/cpu/md/neighbor_list.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 
 using namespace ATV;
 
@@ -72,7 +72,7 @@ double evaluate_lj_only(cpu::Frame& frame, double eps, double sig,
     nlist.build(bctx);
     nlist.launch(lctx);
 
-    cpu::md::LJ lj(eps, sig, cutoff);
+    cpu::PairLJCut lj(eps, sig, cutoff);
     lj.set_special_bonds(s12, s13, s14);
     lj.build(bctx);
 

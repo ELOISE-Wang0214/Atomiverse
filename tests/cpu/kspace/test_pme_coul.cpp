@@ -16,7 +16,7 @@
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/kspace/ewald.h"
 #include "atomiverse/cpu/kspace/pme.h"
-#include "atomiverse/cpu/md/pair_list.h"
+#include "atomiverse/cpu/neighbor/pair_list.h"
 #include "atomiverse/cpu/potentials/coul_long.h"
 
 using namespace ATV;

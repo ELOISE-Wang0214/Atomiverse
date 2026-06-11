@@ -17,9 +17,9 @@
 #include "atomiverse/cpu/evaluate.h"
 #include "atomiverse/cpu/evaluate_driver.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/md/lj.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/init.h"
-#include "atomiverse/cpu/md/neighbor_list.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/potentials/angle_harmonic.h"
 #include "atomiverse/cpu/potentials/bond_harmonic.h"
 #include "atomiverse/cpu/potentials/dihedral_multi_harmonic.h"
@@ -135,10 +135,10 @@ TEST(PeThermoSchema, PerTermEnergiesSumToTotalPotentialEnergy) {
     std::vector<double> dih_C = {0.5, 0.0, 0.0, 0.0, 0.0};
 
     cpu::md::NeighborList<> nl{lj_cut};
-    cpu::md::LJ lj =
-        cpu::md::LJ{lj_eps, lj_sigma, lj_cut}.set_special_bonds(0.0, 0.0, 0.0);
+    cpu::PairLJCut lj =
+        cpu::PairLJCut{lj_eps, lj_sigma, lj_cut}.set_special_bonds(0.0, 0.0, 0.0);
     // Canonical names: cpu::BondHarmonic / cpu::AngleHarmonic /
-    // cpu::DihedralMultiHarmonic (the bare `HarmonicBond` symbol is an
+    // cpu::DihedralMultiHarmonic (the bare `cpu::BondHarmonic` symbol is an
     // ATV-namespace alias for back-compat; we use canonical names here).
     cpu::BondHarmonic hb{{bond_k_eV}, {bond_r0}};
     cpu::AngleHarmonic ha{{angle_k_eV}, {angle_th0}};

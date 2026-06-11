@@ -3,8 +3,8 @@
 
 #include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/md/mpi/domain.h"
-#include "atomiverse/cpu/md/pair_list.h"
+#include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/neighbor/pair_list.h"
 
 #include <algorithm>
 #include <cmath>

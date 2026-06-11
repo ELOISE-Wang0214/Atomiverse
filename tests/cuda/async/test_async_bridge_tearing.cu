@@ -30,12 +30,12 @@
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cuda/async/record_base.cuh"
 #include "atomiverse/cuda/async/sync_guard.cuh"
-#include "atomiverse/cuda/async_bridge.cuh"
+#include "atomiverse/cuda/async/async_bridge.cuh"
 #include "atomiverse/cuda/md/init.cuh"
 #include "atomiverse/cuda/md/md.cuh"
 #include "atomiverse/cuda/md/velocity_verlet.cuh"
-#include "atomiverse/cuda/neighbor_list.cuh"
-#include "atomiverse/cuda/potentials/lj.cuh"
+#include "atomiverse/cuda/neighbor/neighbor_list.cuh"
+#include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 #include "atomiverse/cuda/types.cuh"
 
 using namespace ATV;
@@ -188,7 +188,7 @@ TEST(CudaAsyncBridgeTearing, DeliveredSnapshotsAreSingleStep) {
         cuda::md::MD sim;
         sim.on(md::Phase::force)
             .add(cuda::NeighborList{2.5}, -10)
-            .add(cuda::LJ{1.0, 1.0, 2.5});
+            .add(cuda::PairLJCut{1.0, 1.0, 2.5});
         sim.add(cuda::md::VelocityVerlet{0.001});
         sim.add(cuda::md::InitVelocity{1.0, 12345ULL});
         sim.add(StampPositions{});
@@ -269,7 +269,7 @@ TEST(CudaAsyncRecordRing, NoInFlightOverwrite) {
         cuda::md::MD sim;
         sim.on(md::Phase::force)
             .add(cuda::NeighborList{2.5}, -10)
-            .add(cuda::LJ{1.0, 1.0, 2.5});
+            .add(cuda::PairLJCut{1.0, 1.0, 2.5});
         sim.add(cuda::md::VelocityVerlet{0.001});
         sim.add(cuda::md::InitVelocity{1.0, 12345ULL});
         sim.add(rec);

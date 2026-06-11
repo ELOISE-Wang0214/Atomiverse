@@ -21,12 +21,12 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/context.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/md/lj.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/comm/atom_migration.h"
 #include "atomiverse/cpu/comm/halo_exchange.h"
-#include "atomiverse/cpu/md/mpi/reduce.h"
-#include "atomiverse/cpu/md/neighbor_list.h"
+#include "atomiverse/cpu/comm/reduce.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/facade/stage.h"
 
@@ -127,7 +127,7 @@ TEST(MpiStubBindings, SingleRankLaunchNoOp) {
         cpu::md::MD sim;
         const double zero_force_cut = 3.0;
         sim.set_integrator(cpu::md::VelocityVerlet{1e-6}); // negligible dt
-        sim.set_pair(cpu::md::LJ{1e-12, 3.4, zero_force_cut});
+        sim.set_pair(cpu::PairLJCut{1e-12, 3.4, zero_force_cut});
         sim.set_neighbor(cpu::md::NeighborList<>{zero_force_cut, /*skin=*/0.1});
         sim.add(cpu::comm::HaloSend{});
         sim.add(cpu::comm::HaloRecv{});

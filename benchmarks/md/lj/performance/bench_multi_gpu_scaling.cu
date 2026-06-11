@@ -25,7 +25,7 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/cuda/md/multi_gpu.cuh"
+#include "atomiverse/cuda/comm/multi_gpu.cuh"
 
 using namespace ATV;
 

@@ -12,19 +12,19 @@
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/md/cell_list.h"
+#include "atomiverse/cpu/neighbor/cell_list.h"
 #include "atomiverse/cpu/md/fix_langevin.h"
 #include "atomiverse/cpu/md/init.h"
-#include "atomiverse/cpu/md/lj.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/md/neighbor_list.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/nve_limit.h"
-#include "atomiverse/cpu/md/pair_list.h"
+#include "atomiverse/cpu/neighbor/pair_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/cpu/md/virial_stress.h"
-#include "atomiverse/cpu/potentials/harmonic_angle.h"
-#include "atomiverse/cpu/potentials/harmonic_bond.h"
-#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
+#include "atomiverse/cpu/observer/virial_stress.h"
+#include "atomiverse/cpu/potentials/angle_harmonic.h"
+#include "atomiverse/cpu/potentials/bond_harmonic.h"
+#include "atomiverse/cpu/potentials/dihedral_multi_harmonic.h"
 
 #include "lammps_loader.h"
 
@@ -211,17 +211,17 @@ void run_scenario(const std::string& data_path, int n_steps, Mode mode,
         raw_nl = std::make_unique<InstrNeighborList>(params::lj_cut, 0.4, 10);
     sim.add(*raw_nl);
 
-    auto lj = timed(cpu::md::LJ{lj_eps_ev, params::lj_sig, params::lj_cut}
+    auto lj = timed(cpu::PairLJCut{lj_eps_ev, params::lj_sig, params::lj_cut}
                        .set_special_bonds(0.0, 0.0, 0.0),
                     "lj_pair", ph_force, 0);
     sim.add(*lj);
-    auto hb = timed(HarmonicBond{{bond_K_ev}, {params::bond_r0}},
+    auto hb = timed(cpu::BondHarmonic{{bond_K_ev}, {params::bond_r0}},
                     "harm_bond", ph_force, 1);
     sim.add(*hb);
-    auto ha = timed(HarmonicAngle{{angle_K_ev}, {angle_theta0}},
+    auto ha = timed(cpu::AngleHarmonic{{angle_K_ev}, {angle_theta0}},
                     "harm_angle", ph_force, 2);
     sim.add(*ha);
-    auto hd = timed(MultiHarmonicDihedral{{dihedral_ev}},
+    auto hd = timed(cpu::DihedralMultiHarmonic{{dihedral_ev}},
                     "dihedral", ph_force, 3);
     sim.add(*hd);
 

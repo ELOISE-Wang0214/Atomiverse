@@ -17,8 +17,8 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/backend.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/md/mpi/domain.h"
-#include "atomiverse/cpu/md/mpi/gather.h"
+#include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/comm/gather.h"
 
 using namespace ATV;
 

@@ -23,9 +23,9 @@
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/nose_hoover.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/cpu/potentials/harmonic_angle.h"
-#include "atomiverse/cpu/potentials/harmonic_bond.h"
-#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
+#include "atomiverse/cpu/potentials/angle_harmonic.h"
+#include "atomiverse/cpu/potentials/bond_harmonic.h"
+#include "atomiverse/cpu/potentials/dihedral_multi_harmonic.h"
 
 using namespace ATV;
 
@@ -126,9 +126,9 @@ TEST(PeNvtMultiRank, NoseHooverHoldsGlobalTemperature) {
     sim.add(cpu::md::InitVelocity{T_target, /*seed=*/4242});
     sim.add(cpu::md::NoseHoover{T_target, tau_T, dt});
     sim.on(ATV::md::Phase::force)
-        .add(HarmonicBond{{bond_K_eV()}, {kBondR0}})
-        .add(HarmonicAngle{{angle_K_eV()}, {kAngleTheta0}})
-        .add(MultiHarmonicDihedral{{dihedral_Cn_eV()}});
+        .add(cpu::BondHarmonic{{bond_K_eV()}, {kBondR0}})
+        .add(cpu::AngleHarmonic{{angle_K_eV()}, {kAngleTheta0}})
+        .add(cpu::DihedralMultiHarmonic{{dihedral_Cn_eV()}});
     sim.build();
 
     sim.run(frame, 5000);

@@ -10,7 +10,7 @@
 ///   - Future Monte Carlo / WIDOM / replica-exchange drivers — same
 ///     pair-cutoff abstraction, different outer loop.
 ///
-/// Concrete subclasses (today: `cpu::md::LJ`) live in their domain
+/// Concrete subclasses (today: `cpu::PairLJCut`) live in their domain
 /// directory; only the abstraction is at root.
 ///
 /// `needs_neighbor_list()` is forced to `true` here so subclasses

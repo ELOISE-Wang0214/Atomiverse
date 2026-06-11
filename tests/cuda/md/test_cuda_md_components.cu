@@ -20,9 +20,9 @@
 #include "atomiverse/cuda/md/init.cuh"
 #include "atomiverse/cuda/md/md.cuh"
 #include "atomiverse/cuda/md/velocity_verlet.cuh"
-#include "atomiverse/cuda/neighbor_list.cuh"
+#include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/observer/stress.cuh"
-#include "atomiverse/cuda/potentials/lj.cuh"
+#include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 
 using namespace ATV;
 
@@ -114,7 +114,7 @@ TEST(CudaMdCategoricalApi, PluralAppendsBuildSucceeds) {
     const double cutoff = 3.0;
     cuda::md::MD sim;
     sim.set_neighbor(cuda::NeighborList{cutoff});
-    sim.set_pair(cuda::LJ{1.0, 1.0, cutoff});
+    sim.set_pair(cuda::PairLJCut{1.0, 1.0, cutoff});
     sim.set_integrator(cuda::md::VelocityVerlet{0.001});
     // Two plural-setter calls — each must append cleanly. Use
     // components that carry default_bindings (KineticEnergy at
@@ -136,7 +136,7 @@ TEST(CudaMdCategoricalApi, VirialAutoInjectedOnBarostat) {
     const double cutoff = 3.0;
     cuda::md::MD sim;
     sim.set_neighbor(cuda::NeighborList{cutoff});
-    sim.set_pair(cuda::LJ{1.0, 1.0, cutoff});
+    sim.set_pair(cuda::PairLJCut{1.0, 1.0, cutoff});
     sim.set_integrator(cuda::md::VelocityVerlet{0.001});
     sim.set_barostat(cuda::md::Barostat{0.0, 100.0, 0.001});
     EXPECT_NO_THROW(sim.build());
@@ -154,7 +154,7 @@ TEST(CudaMdCategoricalApi, VirialDedupedWhenExplicit) {
     const double cutoff = 3.0;
     cuda::md::MD sim;
     sim.set_neighbor(cuda::NeighborList{cutoff});
-    sim.set_pair(cuda::LJ{1.0, 1.0, cutoff});
+    sim.set_pair(cuda::PairLJCut{1.0, 1.0, cutoff});
     sim.set_integrator(cuda::md::VelocityVerlet{0.001});
     // cuda::Virial has no default_bindings(), so explicit binding
     // is required (same slot install_infra_() would auto-inject into).
@@ -172,7 +172,7 @@ TEST(CudaMdCategoricalApi, NoAutoInjectWithoutBarostat) {
     const double cutoff = 3.0;
     cuda::md::MD sim;
     sim.set_neighbor(cuda::NeighborList{cutoff});
-    sim.set_pair(cuda::LJ{1.0, 1.0, cutoff});
+    sim.set_pair(cuda::PairLJCut{1.0, 1.0, cutoff});
     sim.set_integrator(cuda::md::VelocityVerlet{0.001});
     EXPECT_NO_THROW(sim.build());
     EXPECT_NO_THROW(sim.run(frame, 1));
@@ -182,7 +182,7 @@ TEST(CudaMdCategoricalApi, NoAutoInjectWithoutBarostat) {
 
 TEST(CudaMdCategoricalApi, MissingNeighborThrows) {
     cuda::md::MD sim;
-    sim.set_pair(cuda::LJ{1.0, 1.0, 3.0});
+    sim.set_pair(cuda::PairLJCut{1.0, 1.0, 3.0});
     sim.set_integrator(cuda::md::VelocityVerlet{0.001});
     EXPECT_THROW(
         {
@@ -207,7 +207,7 @@ TEST(CudaMdCategoricalApi, SmokeAllSetters) {
     auto frame = make_lj_system(4, 0.8); // 64 atoms
     const double cutoff = 3.0;
     cuda::md::MD sim;
-    sim.set_pair(cuda::LJ{1.0, 1.0, cutoff});
+    sim.set_pair(cuda::PairLJCut{1.0, 1.0, cutoff});
     sim.set_neighbor(cuda::NeighborList{cutoff});
     sim.set_integrator(cuda::md::VelocityVerlet{0.001});
     sim.set_thermo(5);

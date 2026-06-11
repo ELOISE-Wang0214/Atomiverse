@@ -23,8 +23,8 @@
 #include "atomiverse/cuda/md/md.cuh"
 #include "atomiverse/cuda/md/nose_hoover_npt.cuh"
 #include "atomiverse/cuda/md/velocity_verlet.cuh"
-#include "atomiverse/cuda/neighbor_list.cuh"
-#include "atomiverse/cuda/potentials/lj.cuh"
+#include "atomiverse/cuda/neighbor/neighbor_list.cuh"
+#include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 
 #include <cuda_runtime.h>
 
@@ -96,7 +96,7 @@ TEST(CudaAsyncHotPathNoSync, ZeroSyncOver100Steps) {
     cuda::md::MD sim;
     sim.on(md::Phase::force)
         .add(cuda::NeighborList{2.5}, -10)
-        .add(cuda::LJ{1.0, 1.0, 2.5});
+        .add(cuda::PairLJCut{1.0, 1.0, 2.5});
     sim.add(cuda::md::VelocityVerlet{0.001});
     sim.add(cuda::md::InitVelocity{1.0, 12345ULL});
     sim.add(rec);
@@ -122,7 +122,7 @@ TEST(CudaAsyncHotPathNoSync, ZeroSyncOverNPTLoop) {
     cuda::md::MD sim;
     sim.on(md::Phase::force)
         .add(cuda::NeighborList{2.5}, -10)
-        .add(cuda::LJ{1.0, 1.0, 2.5});
+        .add(cuda::PairLJCut{1.0, 1.0, 2.5});
     sim.add(cuda::md::InitVelocity{1.0, 12345ULL});
     sim.set_integrator(cuda::md::NoseHooverNPT{
         {/*T_target=*/1.0,
@@ -149,7 +149,7 @@ TEST(CudaAsyncHotPathNoSync, LifecycleRoundTrip) {
         cuda::md::MD sim;
         sim.on(md::Phase::force)
             .add(cuda::NeighborList{2.5}, -10)
-            .add(cuda::LJ{1.0, 1.0, 2.5});
+            .add(cuda::PairLJCut{1.0, 1.0, 2.5});
         sim.add(cuda::md::VelocityVerlet{0.001});
         sim.add(cuda::md::InitVelocity{1.0, 12345ULL});
         sim.add(rec);

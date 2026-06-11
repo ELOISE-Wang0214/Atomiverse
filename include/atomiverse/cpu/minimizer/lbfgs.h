@@ -41,7 +41,7 @@
 #include "atomiverse/cpu/component.h"
 #include "atomiverse/cpu/minimizer/minimize.h"
 #include "atomiverse/cpu/optimize_driver.h"
-#include "atomiverse/cpu/snapshot_publisher.h"
+#include "atomiverse/cpu/async/snapshot_publisher.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {

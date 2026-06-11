@@ -31,11 +31,11 @@
 #include <cstring>
 #include <string>
 
-#include "atomiverse/cpu/md/lj.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/comm/atom_migration.h"
 #include "atomiverse/cpu/comm/halo_exchange.h"
-#include "atomiverse/cpu/md/neighbor_list.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 
 #include "sc_lj_system.h"
@@ -236,7 +236,7 @@ int main(int argc, char** argv) {
     // Plain NVE: no barostat / pressure consumer, so skip the pair virial
     // (LAMMPS-style vflag gating) — ~20-25% off the LJ inner loop.
     sim.on(ATV::md::Phase::force)
-        .add(cpu::md::LJ{1.0, 2.5, args.cutoff}.set_compute_stress(false));
+        .add(cpu::PairLJCut{1.0, 2.5, args.cutoff}.set_compute_stress(false));
     // Match the LAMMPS deck, which has no `thermo N` → it computes/reduces
     // global energy only at run start + end, NOT every step. AV's default
     // reduces an 18-double MPI_Allreduce EVERY step; that latency-bound

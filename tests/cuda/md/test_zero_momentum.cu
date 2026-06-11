@@ -15,8 +15,8 @@
 #include "atomiverse/cuda/md/init.cuh"
 #include "atomiverse/cuda/md/md.cuh"
 #include "atomiverse/cuda/md/velocity_verlet.cuh"
-#include "atomiverse/cuda/neighbor_list.cuh"
-#include "atomiverse/cuda/potentials/lj.cuh"
+#include "atomiverse/cuda/neighbor/neighbor_list.cuh"
+#include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 
 using namespace ATV;
 
@@ -94,7 +94,7 @@ TEST(ZeroMomentum, ZeroesUniformCOMDriftAfterOneStep) {
     sim.add(cuda::md::VelocityVerlet{1e-6}); // tiny dt — preserve velocity bias
     sim.on(ATV::md::Phase::force)
         .add(cuda::NeighborList{cutoff}, -10)
-        .add(cuda::LJ{1.0, 1.0, cutoff});
+        .add(cuda::PairLJCut{1.0, 1.0, cutoff});
     sim.add(cuda::md::ZeroMomentum{1});
     sim.build();
     sim.run(frame, 1);

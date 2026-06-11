@@ -13,7 +13,7 @@
 #include <cuda_runtime.h>
 
 #include "atomiverse/cpu/recorder/trajectory.h"
-#include "atomiverse/cuda/async_bridge.cuh"
+#include "atomiverse/cuda/async/async_bridge.cuh"
 #include "atomiverse/cuda/types.cuh"
 
 namespace ATV {

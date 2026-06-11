@@ -9,7 +9,7 @@
 
 #include "atomiverse/cpu/transfer.h"
 #include "atomiverse/cuda/component.cuh"
-#include "atomiverse/cuda/neighbor_list.cuh"
+#include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/transfer.cuh"
 #include "atomiverse/torch/neighbor_list.cuh"
 #include "atomiverse/torch/transfer.cuh"

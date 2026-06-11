@@ -11,7 +11,7 @@
 #include <cuda_runtime.h>
 
 #include "atomiverse/cpu/recorder/thermo.h"
-#include "atomiverse/cuda/async_bridge.cuh"
+#include "atomiverse/cuda/async/async_bridge.cuh"
 
 namespace ATV {
 namespace cuda {

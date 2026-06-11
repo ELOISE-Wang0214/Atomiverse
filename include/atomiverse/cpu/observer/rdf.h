@@ -16,8 +16,8 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cpu/frame_snapshot.h"
-#include "atomiverse/cpu/md/async_observer.h"
+#include "atomiverse/cpu/async/frame_snapshot.h"
+#include "atomiverse/cpu/async/async_observer.h"
 
 namespace ATV {
 
@@ -31,7 +31,7 @@ namespace ATV {
 /// cpu::md::MD sim;
 /// sim.add(cpu::md::VelocityVerlet{0.001});
 /// sim.on(md::Phase::force).add(cpu::md::NeighborList{6.0}, -10);
-/// sim.on(md::Phase::force).add(cpu::md::LJ{0.0104, 3.4, 6.8});
+/// sim.on(md::Phase::force).add(cpu::PairLJCut{0.0104, 3.4, 6.8});
 ///
 /// RDF rdf{5.5, 200, 100, "rdf.dat"};  // r_max, bins, freq
 /// sim.add(rdf);

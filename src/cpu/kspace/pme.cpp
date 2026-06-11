@@ -11,7 +11,7 @@
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/md/owned_range.h"
+#include "atomiverse/cpu/owned_range.h"
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -20,7 +20,7 @@
 #ifdef ATV_HAS_MPI
 #include <mpi.h>
 
-#include "atomiverse/cpu/md/mpi/domain.h"
+#include "atomiverse/cpu/comm/domain.h"
 #endif
 
 namespace ATV {

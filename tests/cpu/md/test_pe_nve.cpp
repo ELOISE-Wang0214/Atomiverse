@@ -3,7 +3,7 @@
 ///
 /// Runs an all-trans C20H42 chain with a deterministic, tiny initial-velocity
 /// kick for 1000 Velocity-Verlet steps at Δt = 0.5 fs. The three bonded
-/// potentials (HarmonicBond, HarmonicAngle, MultiHarmonicDihedral) are on;
+/// potentials (cpu::BondHarmonic, cpu::AngleHarmonic, cpu::DihedralMultiHarmonic) are on;
 /// LJ is intentionally off so this test isolates the integrator × bonded
 /// pipeline. With dihedral forces fixed (see phase-A.2 commit), NVE drift
 /// should stay below 1e-4 relative to the initial total energy over 500 fs.
@@ -18,9 +18,9 @@
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/cpu/potentials/harmonic_angle.h"
-#include "atomiverse/cpu/potentials/harmonic_bond.h"
-#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
+#include "atomiverse/cpu/potentials/angle_harmonic.h"
+#include "atomiverse/cpu/potentials/bond_harmonic.h"
+#include "atomiverse/cpu/potentials/dihedral_multi_harmonic.h"
 
 using namespace ATV;
 
@@ -104,9 +104,9 @@ TEST(PeNve, EnergyConserves1000Steps) {
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{0.5}); // Δt = 0.5 fs
     sim.on(ATV::md::Phase::force)
-        .add(HarmonicBond{{bond_K_eV()}, {kBondR0}})
-        .add(HarmonicAngle{{angle_K_eV()}, {kAngleTheta0}})
-        .add(MultiHarmonicDihedral{{dihedral_Cn_eV()}});
+        .add(cpu::BondHarmonic{{bond_K_eV()}, {kBondR0}})
+        .add(cpu::AngleHarmonic{{angle_K_eV()}, {kAngleTheta0}})
+        .add(cpu::DihedralMultiHarmonic{{dihedral_Cn_eV()}});
     sim.build();
 
     sim.run(frame, 1);

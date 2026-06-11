@@ -33,7 +33,7 @@
 ///
 ///   // Force-field force evaluation (LAMMPS-shaped)
 ///   cpu::Evaluate eval2;
-///   eval2.set_pair(cpu::md::LJ{eps, sigma, cutoff});
+///   eval2.set_pair(cpu::PairLJCut{eps, sigma, cutoff});
 ///   eval2.set_neighbor(cpu::md::NeighborList<>{cutoff, skin});
 ///   eval2.build();
 ///   eval2.run(frame);

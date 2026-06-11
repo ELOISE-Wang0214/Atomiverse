@@ -25,9 +25,9 @@
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/fix_langevin.h"
 #include "atomiverse/cpu/md/init.h"
-#include "atomiverse/cpu/md/lj.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/md/neighbor_list.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/nose_hoover.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 
@@ -218,7 +218,7 @@ BENCH_CASE(ThermostatLammpsAlign_NoseHooverTemperatureRampTracksSetpoint) {
     sim.add(cpu::md::InitVelocity{T_start, /*seed=*/4242u});
     sim.add(nh); // lvalue → non-owning storage
     sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
-    sim.set_pair(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
+    sim.set_pair(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
     sim.build();
 
     constexpr int n_windows = 6;
@@ -262,7 +262,7 @@ BENCH_CASE(ThermostatLammpsAlign_NoseHooverTauIsTimeConstant) {
         sim.add(cpu::md::InitVelocity{T_init, /*seed=*/909u});
         sim.add(cpu::md::NoseHoover{T_target, tau_T, dt});
         sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
-        sim.set_pair(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
+        sim.set_pair(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
         sim.build();
         sim.run(frame, relax_steps);
         return instantaneous_T(frame);
@@ -300,7 +300,7 @@ BENCH_CASE(ThermostatLammpsAlign_NoseHooverHoldsMeanTemperature) {
     sim.add(cpu::md::InitVelocity{T_target, /*seed=*/2024u});
     sim.add(cpu::md::NoseHoover{T_target, tau_T, dt});
     sim.set_neighbor(cpu::md::NeighborList<>{kCutoff, /*skin=*/0.3});
-    sim.set_pair(cpu::md::LJ{kEpsilon, kSigma, kCutoff});
+    sim.set_pair(cpu::PairLJCut{kEpsilon, kSigma, kCutoff});
     sim.build();
     sim.run(frame, 2000); // burn-in
 

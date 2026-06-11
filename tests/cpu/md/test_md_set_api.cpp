@@ -22,12 +22,12 @@
 #include <string>
 
 #include "atomiverse/cpu/md/barostat.h"
-#include "atomiverse/cpu/md/lj.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/md/neighbor_list.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/nose_hoover_npt.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/cpu/md/virial_stress.h"
+#include "atomiverse/cpu/observer/virial_stress.h"
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
 
@@ -75,7 +75,7 @@ TEST(MDSetApi, BarostatReadsStress) {
 }
 
 TEST(MDSetApi, LJNeedsNeighborList) {
-    ATV::cpu::md::LJ lj(kEps, kSigma, kCutoff);
+    ATV::cpu::PairLJCut lj(kEps, kSigma, kCutoff);
     EXPECT_TRUE(lj.needs_neighbor_list());
 }
 
@@ -93,9 +93,9 @@ TEST(MDSetApi, NPTReportsPairCutoffNothing) {
 
 TEST(MDSetApi, SetPairTwiceWithSameTypeIsIdempotent) {
     ATV::cpu::md::MD sim;
-    EXPECT_NO_THROW(sim.set_pair(ATV::cpu::md::LJ{kEps, kSigma, kCutoff}));
+    EXPECT_NO_THROW(sim.set_pair(ATV::cpu::PairLJCut{kEps, kSigma, kCutoff}));
     // Same component class — idempotent (no second registration).
-    EXPECT_NO_THROW(sim.set_pair(ATV::cpu::md::LJ{kEps, kSigma, kCutoff}));
+    EXPECT_NO_THROW(sim.set_pair(ATV::cpu::PairLJCut{kEps, kSigma, kCutoff}));
 }
 
 // (Different-name re-call test deferred until a second pair evaluator
@@ -132,7 +132,7 @@ TEST(MDSetApi, SetIntegratorRejectsDifferentTypeAfterFirst) {
 
 TEST(MDSetApi, NPTAutoInjectsVirialStress) {
     IntrospectMD sim;
-    sim.set_pair(ATV::cpu::md::LJ{kEps, kSigma, kCutoff});
+    sim.set_pair(ATV::cpu::PairLJCut{kEps, kSigma, kCutoff});
     sim.set_neighbor(ATV::cpu::md::NeighborList<>{kCutoff, kSkin});
     sim.set_integrator(ATV::cpu::md::NoseHooverNPT{{.T_target = kT,
                                                     .tau_T = 100.0,
@@ -146,7 +146,7 @@ TEST(MDSetApi, NPTAutoInjectsVirialStress) {
 
 TEST(MDSetApi, ExplicitVirialStressSuppressesAutoInject) {
     IntrospectMD sim;
-    sim.set_pair(ATV::cpu::md::LJ{kEps, kSigma, kCutoff});
+    sim.set_pair(ATV::cpu::PairLJCut{kEps, kSigma, kCutoff});
     sim.set_neighbor(ATV::cpu::md::NeighborList<>{kCutoff, kSkin});
     sim.set_integrator(ATV::cpu::md::NoseHooverNPT{{.T_target = kT,
                                                     .tau_T = 100.0,
@@ -161,7 +161,7 @@ TEST(MDSetApi, ExplicitVirialStressSuppressesAutoInject) {
 
 TEST(MDSetApi, NoStressReadsLeavesVirialStressOut) {
     IntrospectMD sim;
-    sim.set_pair(ATV::cpu::md::LJ{kEps, kSigma, kCutoff});
+    sim.set_pair(ATV::cpu::PairLJCut{kEps, kSigma, kCutoff});
     sim.set_neighbor(ATV::cpu::md::NeighborList<>{kCutoff, kSkin});
     sim.set_integrator(
         ATV::cpu::md::VelocityVerlet{kDt}); // NVE — no stress dep
@@ -174,7 +174,7 @@ TEST(MDSetApi, NoStressReadsLeavesVirialStressOut) {
 
 TEST(MDSetApi, PairWithoutNeighborListThrowsAtBuild) {
     ATV::cpu::md::MD sim;
-    sim.set_pair(ATV::cpu::md::LJ{kEps, kSigma, kCutoff});
+    sim.set_pair(ATV::cpu::PairLJCut{kEps, kSigma, kCutoff});
     sim.set_integrator(ATV::cpu::md::VelocityVerlet{kDt});
     // No set_neighbor → install_infra throws naming the offending evaluator.
     try {
@@ -190,7 +190,7 @@ TEST(MDSetApi, PairWithoutNeighborListThrowsAtBuild) {
 
 TEST(MDSetApi, PairWithNeighborListBuildsClean) {
     ATV::cpu::md::MD sim;
-    sim.set_pair(ATV::cpu::md::LJ{kEps, kSigma, kCutoff});
+    sim.set_pair(ATV::cpu::PairLJCut{kEps, kSigma, kCutoff});
     sim.set_neighbor(ATV::cpu::md::NeighborList<>{kCutoff, kSkin});
     sim.set_integrator(ATV::cpu::md::VelocityVerlet{kDt});
     EXPECT_NO_THROW(sim.build());

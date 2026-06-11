@@ -1,9 +1,7 @@
 /// @file cuda/potentials/pair_lj_cut.cuh
 /// @brief LAMMPS-style PairLJCut — 12-6 with shifted potential (CUDA).
 ///
-/// Was `ATV::LJ` before the LAMMPS-naming refactor. The legacy header
-/// `lj.cuh` provides `using LJ = PairLJCut;` so existing user code
-/// compiles unchanged.
+/// Was `ATV::cuda::LJ` before the LAMMPS-naming refactor.
 #pragma once
 
 #include <string>

@@ -190,7 +190,7 @@ the CUDA backend, those components run on a defer stream that can wait on the
 main stream and then perform side work.
 
 This is the purpose of
-[`AsyncBridge`](../../include/atomiverse/cuda/async_bridge.cuh). It is the base
+[`AsyncBridge`](../../include/atomiverse/cuda/async/async_bridge.cuh). It is the base
 class for CUDA observers and recorders such as:
 
 - `Thermo`

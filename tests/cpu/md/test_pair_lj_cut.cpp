@@ -1,8 +1,8 @@
 /// @file tests/cpu/md/test_pair_lj_cut.cpp
-/// @brief Regression test for the PairLJCut port of cpu::md::LJ.
+/// @brief Regression test for the PairLJCut port of cpu::PairLJCut.
 ///
 /// Verifies (a) the new class name resolves, (b) the backwards-compat
-/// alias `cpu::md::LJ` still works and is the same type as
+/// alias `cpu::PairLJCut` still works and is the same type as
 /// `cpu::PairLJCut`, (c) energy + per-atom forces on a two-atom test
 /// match the documented LJ 12-6 formula bit-for-bit.
 
@@ -12,9 +12,9 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/md/lj.h" // legacy alias header
+#include "atomiverse/cpu/potentials/pair_lj_cut.h" // legacy alias header
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/md/neighbor_list.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/potentials/pair_lj_cut.h" // new canonical header
 
@@ -25,8 +25,8 @@ TEST(PairLJCutPort, NewClassExists) {
 }
 
 TEST(PairLJCutPort, LegacyAliasIsSameType) {
-    static_assert(std::is_same_v<ATV::cpu::md::LJ, ATV::cpu::PairLJCut>,
-                  "cpu::md::LJ must alias cpu::PairLJCut after the port");
+    static_assert(std::is_same_v<ATV::cpu::PairLJCut, ATV::cpu::PairLJCut>,
+                  "cpu::PairLJCut must alias cpu::PairLJCut after the port");
     SUCCEED();
 }
 

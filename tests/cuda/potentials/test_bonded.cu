@@ -1,5 +1,5 @@
 /// @file test_bonded.cu
-/// @brief Tests for bonded interactions: cuda::HarmonicBond, cuda::HarmonicAngle, cuda::MultiHarmonicDihedral.
+/// @brief Tests for bonded interactions: cuda::BondHarmonic, cuda::AngleHarmonic, cuda::DihedralMultiHarmonic.
 
 #include <cmath>
 #include <gtest/gtest.h>
@@ -8,16 +8,16 @@
 #include "atomiverse/cuda/evaluate.cuh"
 #include "atomiverse/cuda/md/md.cuh"
 #include "atomiverse/cuda/md/velocity_verlet.cuh"
-#include "atomiverse/cuda/neighbor_list.cuh"
-#include "atomiverse/cuda/potentials/harmonic_angle.cuh"
-#include "atomiverse/cuda/potentials/harmonic_bond.cuh"
-#include "atomiverse/cuda/potentials/multi_harmonic_dihedral.cuh"
+#include "atomiverse/cuda/neighbor/neighbor_list.cuh"
+#include "atomiverse/cuda/potentials/angle_harmonic.cuh"
+#include "atomiverse/cuda/potentials/bond_harmonic.cuh"
+#include "atomiverse/cuda/potentials/dihedral_multi_harmonic.cuh"
 
 using namespace ATV;
 
-// ── cuda::HarmonicBond ───────────────────────────────────────────────────
+// ── cuda::BondHarmonic ───────────────────────────────────────────────────
 
-TEST(HarmonicBond, DimerAtEquilibrium) {
+TEST(BondHarmonic, DimerAtEquilibrium) {
     // 2-atom system at r0 → V=0, F=0
     cpu::Frame frame(2);
     frame.atoms.x = xt::xtensor<double, 1>({0.0, 1.53});
@@ -33,7 +33,7 @@ TEST(HarmonicBond, DimerAtEquilibrium) {
     // Single-pass force evaluation -> use cuda::Evaluate (no Integrator
     // required, unlike cuda::md::MD which validates one in build()).
     cuda::Evaluate sim;
-    sim.on(evaluate::Phase::evaluate).add(cuda::HarmonicBond{{350.0}, {1.53}});
+    sim.on(evaluate::Phase::evaluate).add(cuda::BondHarmonic{{350.0}, {1.53}});
     sim.build();
     sim.run(frame);
 
@@ -45,7 +45,7 @@ TEST(HarmonicBond, DimerAtEquilibrium) {
     EXPECT_NEAR(frame.atoms.fx[1], 0.0, 1e-3);
 }
 
-TEST(HarmonicBond, DimerDisplaced) {
+TEST(BondHarmonic, DimerDisplaced) {
     // 2-atom system at r != r0 → V > 0
     cpu::Frame frame(2);
     double r = 1.60;
@@ -62,7 +62,7 @@ TEST(HarmonicBond, DimerDisplaced) {
     double K = 350.0, r0 = 1.53;
 
     cuda::Evaluate sim;
-    sim.on(evaluate::Phase::evaluate).add(cuda::HarmonicBond{{K}, {r0}});
+    sim.on(evaluate::Phase::evaluate).add(cuda::BondHarmonic{{K}, {r0}});
     sim.build();
     sim.run(frame);
 
@@ -77,9 +77,9 @@ TEST(HarmonicBond, DimerDisplaced) {
     EXPECT_NEAR(frame.atoms.fx[0] + frame.atoms.fx[1], 0.0, 1e-10);
 }
 
-// ── cuda::HarmonicAngle ──────────────────────────────────────────────────
+// ── cuda::AngleHarmonic ──────────────────────────────────────────────────
 
-TEST(HarmonicAngle, AtEquilibrium) {
+TEST(AngleHarmonic, AtEquilibrium) {
     // 3-atom system at θ0=109.5° → V=0, F=0
     cpu::Frame frame(3);
     double theta0_deg = 109.5;
@@ -99,20 +99,20 @@ TEST(HarmonicAngle, AtEquilibrium) {
     frame.atoms.add_angle(0, 1, 2, 0);
 
     // AngleHarmonic API contract: theta0 is in RADIANS, matching the CPU
-    // sibling (cpu::HarmonicAngle uses theta0_[type] directly in
+    // sibling (cpu::AngleHarmonic uses theta0_[type] directly in
     // `theta - theta0_[type]`) and the polyethylene_tension benchmark
     // (passes `109.5° · π/180`). Pass `theta0` in radians here.
     cuda::Evaluate sim;
-    sim.on(evaluate::Phase::evaluate).add(cuda::HarmonicAngle{{60.0}, {theta0}});
+    sim.on(evaluate::Phase::evaluate).add(cuda::AngleHarmonic{{60.0}, {theta0}});
     sim.build();
     sim.run(frame);
 
     EXPECT_NEAR(frame.scalars.energy, 0.0, 1e-6);
 }
 
-// ── cuda::MultiHarmonicDihedral ──────────────────────────────────────────
+// ── cuda::DihedralMultiHarmonic ──────────────────────────────────────────
 
-TEST(MultiHarmonicDihedral, PerpendicularProducesForce) {
+TEST(DihedralMultiHarmonic, PerpendicularProducesForce) {
     // φ = 90° dihedral — chosen deliberately to be OFF the V(φ) extrema so
     // BOTH the energy and the torsional force are decisively nonzero. (The
     // earlier "trans" geometry sat at φ=180°, an extremum where dV/dφ=0 and
@@ -135,7 +135,7 @@ TEST(MultiHarmonicDihedral, PerpendicularProducesForce) {
     std::array<double, 5> C = {1.73, -4.49, 0.776, 6.99, 0.0};
 
     cuda::Evaluate sim;
-    sim.on(evaluate::Phase::evaluate).add(cuda::MultiHarmonicDihedral{{C}});
+    sim.on(evaluate::Phase::evaluate).add(cuda::DihedralMultiHarmonic{{C}});
     sim.build();
     sim.run(frame);
 
@@ -182,7 +182,7 @@ TEST(Bonded, ChainWithLJ) {
 
     cuda::md::MD sim;
     sim.add(cuda::md::VelocityVerlet{0.1});
-    sim.on(md::Phase::force).add(cuda::HarmonicBond{{350.0}, {1.53}});
+    sim.on(md::Phase::force).add(cuda::BondHarmonic{{350.0}, {1.53}});
     sim.build();
     sim.run(frame, 10);
 

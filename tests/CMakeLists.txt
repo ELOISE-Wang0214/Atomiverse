@@ -356,9 +356,9 @@ if(ATV_BUILD_CUDA)
     atv_add_test(test_cuda_install_infra_capability cuda/md/test_install_infra_capability.cu)
     atv_add_test(test_cuda_neighborlist_skin_gating cuda/md/test_neighborlist_skin_gating.cu)
     atv_add_test(test_cuda_atom_cell_sort cuda/md/test_atom_cell_sort.cu)
-    # Pulls in the private primitive header src/cuda/md/neighborlist/atom_cell_sort.cuh
+    # Pulls in the private primitive header src/cuda/neighbor/atom_cell_sort.cuh
     target_include_directories(test_cuda_atom_cell_sort PRIVATE
-        ${CMAKE_SOURCE_DIR}/src/cuda/md/neighborlist)
+        ${CMAKE_SOURCE_DIR}/src/cuda/neighbor)
     atv_add_test(test_cuda_pair_lj_no_d2h cuda/test_pair_lj_no_d2h.cu)
     target_compile_definitions(test_cuda_pair_lj_no_d2h PRIVATE
         ATV_SOURCE_DIR="${CMAKE_SOURCE_DIR}")

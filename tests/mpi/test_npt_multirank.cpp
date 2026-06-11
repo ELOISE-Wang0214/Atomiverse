@@ -19,12 +19,12 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/md/barostat.h"
-#include "atomiverse/cpu/md/lj.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/comm/halo_exchange.h"
-#include "atomiverse/cpu/md/neighbor_list.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/cpu/md/virial_stress.h"
+#include "atomiverse/cpu/observer/virial_stress.h"
 
 using namespace ATV;
 
@@ -98,7 +98,7 @@ TEST(NptMultiRank, BarostatRelaxesOverPressure) {
         .add(cpu::comm::HaloRecv{}, -1000);
     sim.on(ATV::md::Phase::force)
         .add(cpu::md::NeighborList<>{lj_cut}, -10)
-        .add(cpu::md::LJ{lj_eps, lj_sig, lj_cut});
+        .add(cpu::PairLJCut{lj_eps, lj_sig, lj_cut});
     sim.add(cpu::md::Virial{});
     sim.add(cpu::md::Barostat{0.0, /*tau_P=*/200.0, dt}); // P_target = 0
     sim.build();

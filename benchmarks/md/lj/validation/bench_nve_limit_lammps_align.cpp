@@ -31,7 +31,7 @@
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/nve_limit.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/cpu/potentials/harmonic_bond.h"
+#include "atomiverse/cpu/potentials/bond_harmonic.h"
 
 using namespace ATV;
 
@@ -228,7 +228,7 @@ BENCH_CASE(NveLimitLammpsAlign_LargeXmaxReducesToVelocityVerlet) {
     {
         cpu::md::MD sim;
         sim.add(cpu::md::VelocityVerlet{dt});
-        sim.on(ATV::md::Phase::force).add(HarmonicBond{{K}, {r0}});
+        sim.on(ATV::md::Phase::force).add(cpu::BondHarmonic{{K}, {r0}});
         sim.build();
         sim.run(frame_vv, steps);
     }
@@ -238,7 +238,7 @@ BENCH_CASE(NveLimitLammpsAlign_LargeXmaxReducesToVelocityVerlet) {
         cpu::md::MD sim;
         // xmax = 100 Å — far beyond any per-step displacement here.
         sim.add(cpu::md::NVELimit{dt, 100.0});
-        sim.on(ATV::md::Phase::force).add(HarmonicBond{{K}, {r0}});
+        sim.on(ATV::md::Phase::force).add(cpu::BondHarmonic{{K}, {r0}});
         sim.build();
         sim.run(frame_lim, steps);
     }
@@ -283,7 +283,7 @@ BENCH_CASE(NveLimitLammpsAlign_VelocityVerletConservesEnergy) {
     const double dt = 0.1;
     cpu::md::MD sim;
     sim.add(cpu::md::VelocityVerlet{dt});
-    sim.on(ATV::md::Phase::force).add(HarmonicBond{{20.0}, {1.53}});
+    sim.on(ATV::md::Phase::force).add(cpu::BondHarmonic{{20.0}, {1.53}});
     sim.build();
 
     sim.run(frame, 1);
@@ -335,7 +335,7 @@ BENCH_CASE(NveLimitLammpsAlign_FarFromEquilibriumDisplacementBounded) {
     cpu::md::MD sim;
     sim.add(cpu::md::NVELimit{dt, xmax});
     // r0 far from the 0.02 Å start → enormous restoring force.
-    sim.on(ATV::md::Phase::force).add(HarmonicBond{{500.0}, {1.53}});
+    sim.on(ATV::md::Phase::force).add(cpu::BondHarmonic{{500.0}, {1.53}});
     sim.build();
 
     double prev_x0 = frame.atoms.x[0], prev_y0 = frame.atoms.y[0],

@@ -10,9 +10,9 @@
 
 #include "atomiverse/cuda/minimizer/lbfgs.cuh"
 #include "atomiverse/cuda/minimizer/minimize.cuh"
-#include "atomiverse/cuda/neighbor_list.cuh"
+#include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/optimize_driver.cuh"
-#include "atomiverse/cuda/potentials/lj.cuh"
+#include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 #include "atomiverse/facade/component_role.h"
 
 using namespace ATV;
@@ -62,7 +62,7 @@ double initial_energy(const cpu::Frame& frame, double cutoff) {
     min.add(cuda::minimizer::LBFGS{});
     min.on(minimizer::Phase::force)
         .add(cuda::NeighborList{cutoff}, -10)
-        .add(cuda::LJ{double(1.0), double(1.0), cutoff});
+        .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
     min.build();
     min.run(f, 1);
     return f.scalars.energy;
@@ -103,7 +103,7 @@ TEST(MinimizerLBFGS, EnergyDecreases) {
                                    double(1e-12)});
     min.on(minimizer::Phase::force)
         .add(cuda::NeighborList{cutoff}, -10)
-        .add(cuda::LJ{double(1.0), double(1.0), cutoff});
+        .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
     min.build();
     min.run(frame, 50);
 
@@ -124,7 +124,7 @@ TEST(MinimizerLBFGS, ConvergesAndStopsEarly) {
     min.add(lbfgs);
     min.on(minimizer::Phase::force)
         .add(cuda::NeighborList{cutoff}, -10)
-        .add(cuda::LJ{double(1.0), double(1.0), cutoff});
+        .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
     min.build();
     int iters = min.run(frame, 200);
 
@@ -148,7 +148,7 @@ TEST(MinimizerLBFGS, ArmijoLineSearchEnergyDecreases) {
     min.add(std::move(step));
     min.on(minimizer::Phase::force)
         .add(cuda::NeighborList{cutoff}, -10)
-        .add(cuda::LJ{double(1.0), double(1.0), cutoff});
+        .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
     min.build();
     min.run(frame, 80);
 

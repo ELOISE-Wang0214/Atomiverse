@@ -20,7 +20,7 @@
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/materialize.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/md/neighbor_list.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/molrs.hpp"

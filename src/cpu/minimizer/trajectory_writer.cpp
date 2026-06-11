@@ -6,8 +6,8 @@
 
 #include <cstdio>
 
-#include "atomiverse/cpu/md/mpi/domain.h"
-#include "atomiverse/cpu/md/mpi/gather.h"
+#include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/comm/gather.h"
 #include "atomiverse/cpu/molrec.h"
 #include "atomiverse/cpu/recorder/xyz.h"
 

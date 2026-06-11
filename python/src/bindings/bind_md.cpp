@@ -7,14 +7,14 @@
 #include <nanobind/stl/vector.h>
 
 #include "atomiverse/cpu/md/init.h"
-#include "atomiverse/cpu/md/lj.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/md/neighbor_list.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/nose_hoover.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/cpu/potentials/harmonic_angle.h"
-#include "atomiverse/cpu/potentials/harmonic_bond.h"
-#include "atomiverse/cpu/potentials/multi_harmonic_dihedral.h"
+#include "atomiverse/cpu/potentials/angle_harmonic.h"
+#include "atomiverse/cpu/potentials/bond_harmonic.h"
+#include "atomiverse/cpu/potentials/dihedral_multi_harmonic.h"
 #include "atomiverse/cpu/recorder/thermo.h"
 #include "atomiverse/facade/stage.h"
 
@@ -85,7 +85,7 @@ void bind_md(nb::module_& m) {
                              "Fluent builder for explicit phase binding.")
         .def(
             "add_lj",
-            [](PhaseBuilder& self, cpu::md::LJ comp, int order)
+            [](PhaseBuilder& self, cpu::PairLJCut comp, int order)
                 -> PhaseBuilder& { return self.add(std::move(comp), order); },
             nb::arg("comp"), nb::arg("order") = 0, nb::rv_policy::reference)
         .def(
@@ -95,17 +95,17 @@ void bind_md(nb::module_& m) {
             nb::arg("comp"), nb::arg("order") = 0, nb::rv_policy::reference)
         .def(
             "add_harmonic_bond",
-            [](PhaseBuilder& self, HarmonicBond comp, int order)
+            [](PhaseBuilder& self, cpu::BondHarmonic comp, int order)
                 -> PhaseBuilder& { return self.add(std::move(comp), order); },
             nb::arg("comp"), nb::arg("order") = 0, nb::rv_policy::reference)
         .def(
             "add_harmonic_angle",
-            [](PhaseBuilder& self, HarmonicAngle comp, int order)
+            [](PhaseBuilder& self, cpu::AngleHarmonic comp, int order)
                 -> PhaseBuilder& { return self.add(std::move(comp), order); },
             nb::arg("comp"), nb::arg("order") = 0, nb::rv_policy::reference)
         .def(
             "add_multi_harmonic_dihedral",
-            [](PhaseBuilder& self, MultiHarmonicDihedral comp, int order)
+            [](PhaseBuilder& self, cpu::DihedralMultiHarmonic comp, int order)
                 -> PhaseBuilder& { return self.add(std::move(comp), order); },
             nb::arg("comp"), nb::arg("order") = 0, nb::rv_policy::reference)
         .def(
@@ -136,7 +136,7 @@ void bind_md(nb::module_& m) {
 
     // ── Potentials ──
 
-    nb::class_<cpu::md::LJ>(m, "LJ", "Lennard-Jones 12-6 pair potential.")
+    nb::class_<cpu::PairLJCut>(m, "LJ", "Lennard-Jones 12-6 pair potential.")
         .def(nb::init<double, double, double>(), nb::arg("epsilon"),
              nb::arg("sigma"), nb::arg("cutoff"),
              "Construct with epsilon [eV], sigma [A], and cutoff [A].");
@@ -147,21 +147,21 @@ void bind_md(nb::module_& m) {
              nb::arg("skin") = double(-1),
              "Construct with cutoff [A] and optional skin distance [A].");
 
-    nb::class_<HarmonicBond>(m, "HarmonicBond",
+    nb::class_<cpu::BondHarmonic>(m, "cpu::BondHarmonic",
                              "Harmonic bond potential V = K(r - r0)^2.")
         .def(nb::init<std::vector<double>, std::vector<double>>(), nb::arg("K"),
              nb::arg("r0"),
              "Construct with force constants K and equilibrium distances r0 "
              "per bond type.");
 
-    nb::class_<HarmonicAngle>(
-        m, "HarmonicAngle", "Harmonic angle potential V = K(theta - theta0)^2.")
+    nb::class_<cpu::AngleHarmonic>(
+        m, "cpu::AngleHarmonic", "Harmonic angle potential V = K(theta - theta0)^2.")
         .def(nb::init<std::vector<double>, std::vector<double>>(), nb::arg("K"),
              nb::arg("theta0"),
              "Construct with force constants K and equilibrium angles theta0 "
              "per angle type.");
 
-    nb::class_<MultiHarmonicDihedral>(m, "MultiHarmonicDihedral",
+    nb::class_<cpu::DihedralMultiHarmonic>(m, "cpu::DihedralMultiHarmonic",
                                       "Multi-harmonic dihedral potential.")
         .def(nb::init<std::vector<std::vector<double>>>(), nb::arg("Cn"),
              "Construct with coefficients Cn per dihedral type.");

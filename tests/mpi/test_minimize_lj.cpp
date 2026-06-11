@@ -31,8 +31,8 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame.h"
-#include "atomiverse/cpu/md/lj.h"
-#include "atomiverse/cpu/md/neighbor_list.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/minimizer/cg.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h"
 #include "atomiverse/cpu/minimizer/minimize.h"
@@ -95,7 +95,7 @@ cpu::Frame make_fcc_argon(double perturb_amp) {
 double reference_energy() {
     cpu::Frame frame = make_fcc_argon(/*perturb_amp=*/0.0);
     cpu::minimizer::Minimize opt;
-    opt.set_pair(cpu::md::LJ{kEps, kSigma, kCut});
+    opt.set_pair(cpu::PairLJCut{kEps, kSigma, kCut});
     opt.set_neighbor(cpu::md::NeighborList<>{kCut, 0.3});
     opt.set_optimizer(cpu::minimizer::LBFGS{});
     opt.build();
@@ -112,7 +112,7 @@ TEST(MinimizeLj, LbfgsRelaxesPerturbedLatticeAnyRankCount) {
     cpu::Frame frame = make_fcc_argon(/*perturb_amp=*/0.08);
 
     cpu::minimizer::Minimize opt;
-    opt.set_pair(cpu::md::LJ{kEps, kSigma, kCut});
+    opt.set_pair(cpu::PairLJCut{kEps, kSigma, kCut});
     opt.set_neighbor(cpu::md::NeighborList<>{kCut, 0.3});
     cpu::minimizer::LBFGS lbfgs{}; // lvalue: post-run trace stays readable
     opt.set_optimizer(lbfgs);
@@ -143,7 +143,7 @@ TEST(MinimizeLj, CgRelaxesPerturbedLatticeAnyRankCount) {
     cpu::Frame frame = make_fcc_argon(/*perturb_amp=*/0.05);
 
     cpu::minimizer::Minimize opt;
-    opt.set_pair(cpu::md::LJ{kEps, kSigma, kCut});
+    opt.set_pair(cpu::PairLJCut{kEps, kSigma, kCut});
     opt.set_neighbor(cpu::md::NeighborList<>{kCut, 0.3});
     cpu::minimizer::CG cg{};
     opt.set_optimizer(cg);

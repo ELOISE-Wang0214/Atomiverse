@@ -21,8 +21,8 @@
 #include "atomiverse/cpu/backend.h"
 #include "atomiverse/cpu/frame.h"
 #include "atomiverse/cpu/comm/atom_migration.h"
-#include "atomiverse/cpu/md/mpi/domain.h"
-#include "atomiverse/cpu/md/mpi/rcb.h"
+#include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/comm/rcb.h"
 
 using namespace ATV;
 

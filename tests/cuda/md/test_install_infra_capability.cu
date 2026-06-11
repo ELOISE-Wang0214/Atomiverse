@@ -30,9 +30,9 @@
 #include "atomiverse/cuda/md/md.cuh"
 #include "atomiverse/cuda/md/nose_hoover_npt.cuh"
 #include "atomiverse/cuda/md/velocity_verlet.cuh"
-#include "atomiverse/cuda/neighbor_list.cuh"
+#include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/observer/stress.cuh"
-#include "atomiverse/cuda/potentials/lj.cuh"
+#include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 #include "atomiverse/facade/component_role.h"
 
 using namespace ATV;
@@ -102,11 +102,11 @@ TEST(InstallInfraCapability, ComponentBaseDefaultsAreNone) {
 }
 
 TEST(InstallInfraCapability, PairDeclaresNeedsNeighborList) {
-    // PairLJCut (cuda::LJ) inherits from cuda::Pair, which overrides
+    // PairLJCut (cuda::PairLJCut) inherits from cuda::Pair, which overrides
     // needs_neighbor_list()==true. The OLD behavior was to detect pair
     // styles via dynamic_cast<const cuda::Pair*>; the new behavior is
     // a typed virtual on ComponentBase.
-    cuda::LJ lj{1.0, 1.0, 3.0};
+    cuda::PairLJCut lj{1.0, 1.0, 3.0};
     EXPECT_TRUE(lj.needs_neighbor_list());
 }
 
@@ -140,7 +140,7 @@ TEST(InstallInfraCapability, NPTAutoInjectsVirial) {
     const double cutoff = 3.0;
     cuda::md::MD sim;
     sim.set_neighbor(cuda::NeighborList{cutoff});
-    sim.set_pair(cuda::LJ{1.0, 1.0, cutoff});
+    sim.set_pair(cuda::PairLJCut{1.0, 1.0, cutoff});
     sim.set_integrator(cuda::md::NoseHooverNPT{default_npt_cfg()});
     EXPECT_NO_THROW(sim.build());
     EXPECT_NO_THROW(sim.run(frame, 1));
@@ -154,7 +154,7 @@ TEST(InstallInfraCapability, MissingNeighborThrowsViaTypedQuery) {
     // ComponentBase::needs_neighbor_list(). Behavior is identical;
     // this test guards the typed contract.
     cuda::md::MD sim;
-    sim.set_pair(cuda::LJ{1.0, 1.0, 3.0});
+    sim.set_pair(cuda::PairLJCut{1.0, 1.0, 3.0});
     sim.set_integrator(cuda::md::VelocityVerlet{0.001});
     EXPECT_THROW(
         {
