@@ -118,7 +118,7 @@ void check_kernel(const std::string& label,
 
 } // namespace
 
-TEST(PeFdForce, cpu::BondHarmonic) {
+TEST(PeFdForce, BondHarmonic) {
     check_kernel(
         "cpu::BondHarmonic",
         [](cpu::Frame& f) {
@@ -133,7 +133,7 @@ TEST(PeFdForce, cpu::BondHarmonic) {
         1e-6);
 }
 
-TEST(PeFdForce, cpu::AngleHarmonic) {
+TEST(PeFdForce, AngleHarmonic) {
     check_kernel(
         "cpu::AngleHarmonic",
         [](cpu::Frame& f) {
@@ -148,7 +148,7 @@ TEST(PeFdForce, cpu::AngleHarmonic) {
         1e-6);
 }
 
-TEST(PeFdForce, cpu::DihedralMultiHarmonic) {
+TEST(PeFdForce, DihedralMultiHarmonic) {
     check_kernel(
         "cpu::DihedralMultiHarmonic",
         [](cpu::Frame& f) {
