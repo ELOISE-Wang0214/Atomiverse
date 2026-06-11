@@ -183,3 +183,6 @@ tools/dump_*.txt
 log.lammps
 **/log.lammps
 jobs/
+
+# SLURM job logs
+slurm-*.out
