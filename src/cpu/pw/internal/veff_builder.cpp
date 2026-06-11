@@ -18,7 +18,7 @@ void VeffBuilder::step(PWWorkspace& ws) {
 
     // Assemble in G-space
     for (int i = 0; i < ng; ++i)
-        ws.V_eff_G[i] = ws.V_loc_G_real[i] + ws.V_H_G[i] + ws.V_xc_G[i];
+        ws.V_eff_G[i] = ws.V_loc_G[i] + ws.V_H_G[i] + ws.V_xc_G[i];
 
     // FFT V_eff(G) → V_eff(r) for use in FFT-based H·ψ
     if (ws.fft && ws.nr > 0) {

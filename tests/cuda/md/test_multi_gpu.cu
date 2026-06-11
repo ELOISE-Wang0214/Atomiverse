@@ -204,13 +204,13 @@ TEST(MultiGpu, MigratePreservesBondedTopology) {
     // tag→local resolve, so this is independent of the halo/PBC (the resolve
     // path is covered by the static Partition test). If migrate lost or
     // corrupted any atom's topology, a bond would be missing or wrong here.
-    const int MB = cpu::Atom::kMaxBondPerAtom;
     std::set<std::pair<long long, long long>> got;
     for (int s = 0; s < mg.count(); ++s) {
         const int nl = mg.n_local(s);
         if (nl == 0)
             continue;
         const auto& F = mg.frame(s);
+        const int MB = F.atoms.bond_per_atom; // runtime stride (per frame)
         std::vector<int> nbv(nl);
         std::vector<long long> ba(static_cast<std::size_t>(nl) * MB), tags(nl);
         cudaMemcpy(nbv.data(), F.atoms.num_bond, nl * sizeof(int),
@@ -311,6 +311,49 @@ TEST(MultiGpu, FullPotentialParityVsSingleGpu) {
         EXPECT_NEAR(fmulti.atoms.fx[i], fref.atoms.fx[i], 0.5) << "fx atom " << i;
         EXPECT_NEAR(fmulti.atoms.fy[i], fref.atoms.fy[i], 0.5) << "fy atom " << i;
         EXPECT_NEAR(fmulti.atoms.fz[i], fref.atoms.fz[i], 0.5) << "fz atom " << i;
+    }
+}
+
+// Owned-row pair gating: ghost rows must carry ONLY bonded deposits when
+// reverse_comm ships them home. With zero-strength bonds the total energy is
+// pure LJ and every cross-boundary pair is live, exposing the historical
+// double-count (ghost-row LJ forces scatter-added onto owners ≈ 2x boundary
+// force; cross-boundary pair energy counted on both GPUs). The bonded-grid
+// FullPotentialParity test cannot see this — its bond energy dominates the
+// 1e-3 relative band — so this one pins the LJ-only parity TIGHT.
+TEST(MultiGpu, LJOwnedRowParityVsSingleGpu) {
+    cuda::md::MultiGpu mg;
+    if (mg.count() < 2)
+        GTEST_SKIP() << "needs >=2 GPUs for cross-boundary pairs";
+    auto g = make_bonded_grid(12.0);
+    const std::vector<double> K{0.0}, r0{2.0}; // zero bonds ⇒ energy is pure LJ
+
+    auto run = [&](cuda::md::MultiGpu& m, cpu::Frame& out, double& e) {
+        m.partition(g);
+        m.setup_force_engine(5.0, 0.1, 2.0); // spacing-3.0 grid: many live pairs
+        m.setup_bonded(K, r0);               // no special bonds: LJ unexcluded
+        m.reneighbor();
+        m.compute_forces(); // LJ owned-rows + (zero) bonded + reverse_comm
+        m.gather_forces(out);
+        e = m.bonded_energy(); // total PE — here pure LJ
+    };
+
+    cpu::Frame fmulti(g.atoms.size()), fref(g.atoms.size());
+    double emulti = 0, eref = 0;
+    run(mg, fmulti, emulti);
+    {
+        cuda::md::MultiGpu mg1(1); // no ghosts → trusted reference
+        run(mg1, fref, eref);
+    }
+
+    std::cerr << "[diag] pure-LJ PE: multi=" << emulti << " ref=" << eref
+              << "\n";
+    ASSERT_NE(eref, 0.0);
+    EXPECT_NEAR(emulti, eref, 1e-5 * std::abs(eref));
+    for (int i = 0; i < g.atoms.size(); ++i) {
+        EXPECT_NEAR(fmulti.atoms.fx[i], fref.atoms.fx[i], 2e-3) << "fx atom " << i;
+        EXPECT_NEAR(fmulti.atoms.fy[i], fref.atoms.fy[i], 2e-3) << "fy atom " << i;
+        EXPECT_NEAR(fmulti.atoms.fz[i], fref.atoms.fz[i], 2e-3) << "fz atom " << i;
     }
 }
 

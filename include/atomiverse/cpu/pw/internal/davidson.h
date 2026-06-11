@@ -12,6 +12,12 @@ namespace cpu {
 namespace pw {
 namespace internal {
 
+/// @brief Test hook: one H·ψ application on the bound k-sphere of `ws`
+/// (same code path DavidsonSolver uses). For validation oracles only.
+void pw_apply_h_for_tests(const PWWorkspace& ws,
+                          const std::complex<Real>* psi_g,
+                          std::complex<Real>* hpsi_g);
+
 /// @brief Block Davidson with FFT-based H·ψ and KB non-local potential.
 ///
 /// Diagonalizes the current-k-point Hamiltonian (T_G diagonal +

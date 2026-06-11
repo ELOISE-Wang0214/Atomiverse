@@ -48,6 +48,21 @@ bool tag_close(const std::string& line, const std::string& tag) {
     return line.find("</" + tag) != std::string::npos;
 }
 
+// UPF v2 writers (ONCVPSP, pslibrary) put one attribute per line in the
+// opening tag. Join lines until the '>' that ends the opening tag so
+// attribute extraction sees the full tag and value parsing starts after
+// it. Single-line tags pass through unchanged.
+std::string join_open_tag(std::istream& in, std::string line) {
+    while (line.find('>') == std::string::npos) {
+        std::string next;
+        if (!std::getline(in, next))
+            break;
+        line += ' ';
+        line += next;
+    }
+    return line;
+}
+
 std::vector<Real> parse_values(std::istream& in, const std::string& end_tag) {
     std::vector<Real> vals;
     std::string line;
@@ -81,6 +96,7 @@ UPFData read_upf_v1(const std::string& path) {
     while (std::getline(f, line)) {
         // PP_HEADER
         if (line.find("<PP_HEADER") != std::string::npos) {
+            line = join_open_tag(f, line);
             auto zv = extract_attr(line, "z_valence");
             auto lm = extract_attr(line, "l_max");
             if (!zv.empty())
@@ -119,6 +135,7 @@ UPFData read_upf_v1(const std::string& path) {
                     break;
                 // Read PP_BETA sections
                 if (tag_open(line, "PP_BETA")) {
+                    line = join_open_tag(f, line);
                     int l = 0;
                     auto lang = extract_attr(line, "angular_momentum");
                     if (!lang.empty())
@@ -153,6 +170,7 @@ UPFData read_upf_v1(const std::string& path) {
 
         // PP_CHI (atomic wavefunctions, top-level outside PP_NONLOCAL)
         if (tag_open(line, "PP_CHI")) {
+            line = join_open_tag(f, line);
             int l_chi = 0;
             Real occ = 0;
             auto lang = extract_attr(line, "l");

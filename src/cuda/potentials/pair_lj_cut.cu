@@ -475,11 +475,18 @@ void PairLJCut::compute(const LaunchContext& ctx) {
     const ATV::potentials::LJKernel lj{
         static_cast<double>(epsilon_), static_cast<double>(sigma_sq),
         static_cast<double>(cutoff_sq), static_cast<double>(v_shift_)};
+    // Force-row selection: the multi-GPU engine restricts force rows to owned
+    // atoms (ghost pair rows are wrong to reverse-communicate and waste work)
+    // and may pass an explicit interior/boundary subset. Default (-1): every
+    // atom row, the single-GPU behavior.
+    const int n_rows = (ctx.runtime.n_force_rows >= 0)
+                           ? ctx.runtime.n_force_rows
+                           : n_atoms;
     md::launch_pair_compute(
         lj, frame.atoms.fx, frame.atoms.fy, frame.atoms.fz,
         &frame.scalars->energy, stress_ptr, pos4_, /*q=*/nullptr, pairs->vl_nbr,
-        pairs->vl_cnt, pairs->vl_stride, n_atoms, box, /*periodic=*/true,
-        cutoff_sq, min_pair_dist_sq, excl_off, excl_par,
+        pairs->vl_cnt, pairs->vl_stride, n_rows, ctx.runtime.force_rows, box,
+        /*periodic=*/true, cutoff_sq, min_pair_dist_sq, excl_off, excl_par,
         static_cast<work_t>(s_excl_), stream);
 }
 

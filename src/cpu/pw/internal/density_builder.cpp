@@ -1,6 +1,7 @@
 /// @file cpu/pw/internal/density_builder.cpp
 /// @brief Build charge density from wavefunctions using FFT + Pulay mixing.
 #include "atomiverse/cpu/pw/internal/density_builder.h"
+#include "atomiverse/cpu/pw/internal/pw_setup.h"
 #include <algorithm>
 #include <cmath>
 #include <vector>
@@ -102,91 +103,12 @@ void DensityBuilder::finish(PWWorkspace& ws) {
             ws.rho_G[ig] = std::complex<Real>(0, 0);
     }
 
-    // ── Pulay/DIIS mixing (QE's Anderson/Broyden simplified) ──
-    // Store residual F = ρ_out - ρ_in; keep a sliding window of the
-    // newest `pulay_depth_` entries.
-    xt::xarray<std::complex<Real>> F = ws.rho_G - ws.rho_G_old;
-    ws.pulay_res.push_back(F);
-    ws.pulay_rho.push_back(ws.rho_G_old);
-    while (static_cast<int>(ws.pulay_res.size()) > pulay_depth_) {
-        ws.pulay_res.erase(ws.pulay_res.begin());
-        ws.pulay_rho.erase(ws.pulay_rho.begin());
-    }
-    int depth = static_cast<int>(ws.pulay_res.size());
-
-    if (depth >= 2) {
-        // Build B_{ij} = ⟨F_i|F_j⟩
-        std::vector<Real> B(depth * depth, Real(0));
-        for (int i = 0; i < depth; ++i) {
-            for (int j = i; j < depth; ++j) {
-                Real dot = 0;
-                for (int ig = 0; ig < ws.n_g; ++ig) {
-                    auto& fi = ws.pulay_res[i];
-                    auto& fj = ws.pulay_res[j];
-                    dot += fi[ig].real() * fj[ig].real()
-                           + fi[ig].imag() * fj[ig].imag();
-                }
-                B[i * depth + j] = B[j * depth + i] = dot;
-            }
-        }
-        // Solve B·c = 1 (with constraint Σc=1 via Lagrangian)
-        // Augmented system: [B  1] [c] = [0]
-        //                    [1  0] [λ]   [1]
-        int n = depth + 1;
-        std::vector<Real> A(n * n, Real(0));
-        for (int i = 0; i < depth; ++i)
-            for (int j = 0; j < depth; ++j)
-                A[i * n + j] = B[i * depth + j];
-        for (int i = 0; i < depth; ++i)
-            A[i * n + depth] = A[depth * n + i] = Real(1);
-
-        std::vector<Real> rhs(n, Real(0));
-        rhs[depth] = Real(1);
-
-        // Solve via Gaussian elimination with partial pivoting
-        std::vector<Real> c(n, Real(0));
-        auto aug = A;
-        auto b = rhs;
-        for (int k = 0; k < n; ++k) {
-            int imax = k;
-            for (int i = k + 1; i < n; ++i)
-                if (std::abs(aug[i * n + k]) > std::abs(aug[imax * n + k]))
-                    imax = i;
-            if (imax != k) {
-                for (int j = 0; j < n; ++j)
-                    std::swap(aug[k * n + j], aug[imax * n + j]);
-                std::swap(b[k], b[imax]);
-            }
-            if (std::abs(aug[k * n + k]) < Real(1e-14))
-                continue;
-            for (int i = k + 1; i < n; ++i) {
-                Real factor = aug[i * n + k] / aug[k * n + k];
-                for (int j = k; j < n; ++j)
-                    aug[i * n + j] -= factor * aug[k * n + j];
-                b[i] -= factor * b[k];
-            }
-        }
-        for (int k = n - 1; k >= 0; --k) {
-            Real sum = b[k];
-            for (int j = k + 1; j < n; ++j)
-                sum -= aug[k * n + j] * c[j];
-            if (std::abs(aug[k * n + k]) > Real(1e-14))
-                c[k] = sum / aug[k * n + k];
-        }
-        // Build mixed density: ρ_new = Σ c_i (ρ_in^(i) + α·F^(i))
-        Real alpha = mix_beta_;
-        for (int ig = 0; ig < ws.n_g; ++ig)
-            ws.rho_G[ig] = std::complex<Real>(0, 0);
-        for (int i = 0; i < depth; ++i) {
-            for (int ig = 0; ig < ws.n_g; ++ig)
-                ws.rho_G[ig] +=
-                    c[i] * (ws.pulay_rho[i][ig] + alpha * ws.pulay_res[i][ig]);
-        }
-    } else {
-        // Simple linear mixing for the first iteration
-        for (int i = 0; i < ws.n_g; ++i)
-            ws.rho_G[i] = ws.rho_G_old[i] + mix_beta_ * F[i];
-    }
+    // ── Pulay/DIIS mixing — the shared CPU/CUDA implementation in
+    // internal::pulay_mix (pw_setup.cpp), driven by this builder's
+    // configured beta / history depth.
+    ws.mix_beta = mix_beta_;
+    ws.pulay_depth = pulay_depth_;
+    internal::pulay_mix(ws);
 }
 
 } // namespace internal

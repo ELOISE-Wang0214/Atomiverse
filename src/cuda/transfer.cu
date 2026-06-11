@@ -299,15 +299,29 @@ void to_cpu(const Frame& d, cpu::Frame& frame) {
 void materialize_per_atom_bonded(Frame& d, const cpu::Frame& src) {
     const int n = src.atoms.nlocal;
     const int cap = d.capacity_;
-    constexpr int MB = cpu::Atom::kMaxBondPerAtom;
-    constexpr int MA = cpu::Atom::kMaxAnglePerAtom;
-    constexpr int MD = cpu::Atom::kMaxDihedralPerAtom;
-    constexpr int MS = cpu::Atom::kMaxSpecial;
+    // Adopt the source cpu::Atom's runtime topology strides; downstream
+    // kernel launches and migration copies read them back off d.atoms.
+    const int MB = src.atoms.bond_per_atom;
+    const int MA = src.atoms.angle_per_atom;
+    const int MD = src.atoms.dihedral_per_atom;
+    const int MS = src.atoms.maxspecial;
+    d.atoms.bond_per_atom = MB;
+    d.atoms.angle_per_atom = MA;
+    d.atoms.dihedral_per_atom = MD;
+    d.atoms.maxspecial = MS;
     auto alloc_i = [](int*& p, std::size_t rows) {
+        if (rows == 0) {
+            p = nullptr; // stride 0 (bonded-free): no wide array to allocate
+            return;
+        }
         cudaMalloc(&p, rows * sizeof(int));
         cudaMemset(p, 0, rows * sizeof(int));
     };
     auto alloc_t = [](std::int64_t*& p, std::size_t rows) {
+        if (rows == 0) {
+            p = nullptr;
+            return;
+        }
         cudaMalloc(&p, rows * sizeof(std::int64_t));
         cudaMemset(p, 0, rows * sizeof(std::int64_t));
     };

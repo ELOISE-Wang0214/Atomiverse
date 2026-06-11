@@ -9,6 +9,10 @@
 /// @note Single-frame by design. For a per-step trajectory, use
 ///       `cpu::minimizer::TrajectoryWriter`.
 ///
+/// MPI-aware: under multi-rank every rank joins a collective owner gather
+/// (`md::mpi::gather_to_root`, tag-ordered) and only rank 0 writes the
+/// complete geometry.
+///
 /// Usage:
 /// @code
 ///   opt.on(minimizer::Phase::end_of_step)
@@ -35,6 +39,7 @@ class FinalGeometry : public cpu::ComponentBase {
     explicit FinalGeometry(std::string filename);
 
     std::string name() const override { return "final_geometry"; }
+    ComponentRole role() const override { return ComponentRole::Recorder; }
 
     std::vector<DefaultBinding> default_bindings() const override {
         // Run late in end_of_step so that converged-step forces/energy have

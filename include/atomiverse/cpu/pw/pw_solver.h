@@ -42,8 +42,6 @@ namespace pw {
 // included from pw_solver.cpp; this public header must not include
 // internal/*.h.
 namespace internal {
-struct PWWorkspace;
-struct UPFData;
 class PoissonSolver;
 class XCBuilder;
 class VeffBuilder;
@@ -119,10 +117,10 @@ class PWSolver {
     PWConfig config_;
     bool built_ = false;
 
-    // UPF data + workspace + step helpers — held by pointer so this
-    // public header only needs the forward declarations above.
-    std::unique_ptr<internal::UPFData> upf_;
-    std::unique_ptr<internal::PWWorkspace> ws_;
+    // Step helpers — held by pointer so this public header only needs
+    // the forward declarations above. The per-run problem (workspace,
+    // G-spheres, k-mesh, projector tables) is assembled inside run()
+    // by the shared internal::setup_pw_problem().
     std::unique_ptr<internal::PoissonSolver> poisson_;
     std::unique_ptr<internal::XCBuilder> xc_;
     std::unique_ptr<internal::VeffBuilder> veff_;

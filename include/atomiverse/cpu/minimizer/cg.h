@@ -28,6 +28,7 @@
 ///   Nocedal & Wright, Numerical Optimization, Ch. 5
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -79,10 +80,20 @@ class CG : public cpu::ComponentBase {
     std::vector<double> g_prev_;
     std::vector<double> d_prev_; ///< Previous CG search direction.
     bool has_prev_ = false;
+    bool x_prev_valid_ = false; ///< False after migration reshuffles rows.
     bool converged_ = false;
     double max_force_ = 0;
     double energy_prev_ = 0;
     int step_ = 0;
+
+    // Per-step workspaces, sized once in build() — no launch() allocation.
+    std::vector<double> x_ws_;
+    std::vector<double> g_ws_;
+    std::vector<double> d_ws_;
+
+    /// @brief Last observed `dd->neighbor_generation`; a bump means atom
+    /// migration reshuffled local rows → previous-step state is discarded.
+    std::uint64_t last_generation_ = ~std::uint64_t{0};
 
     std::vector<OptRecord> trace_;
 };

@@ -169,7 +169,12 @@ int unpack_exchange(Atom& atom, int slot, const double* buf) {
     atom.image(slot, 1) = static_cast<std::int8_t>(buf[m++]);
     atom.image(slot, 2) = static_cast<std::int8_t>(buf[m++]);
 
+    // Defensive stride growth: strides converge to identical values on every
+    // rank at load time (each rank scans the full global topology), so these
+    // are no-ops in practice — they only fire if a frame was populated
+    // rank-locally with heterogeneous valence.
     const int nb = static_cast<int>(buf[m++]);
+    atom.grow_bond_per_atom(nb);
     atom.num_bond[slot] = nb;
     for (int b = 0; b < nb; ++b) {
         atom.bond_atom(slot, b) = static_cast<std::int64_t>(buf[m++]);
@@ -177,6 +182,7 @@ int unpack_exchange(Atom& atom, int slot, const double* buf) {
     }
 
     const int na = static_cast<int>(buf[m++]);
+    atom.grow_angle_per_atom(na);
     atom.num_angle[slot] = na;
     for (int a = 0; a < na; ++a) {
         atom.angle_atom(slot, 2 * a + 0) =
@@ -187,6 +193,7 @@ int unpack_exchange(Atom& atom, int slot, const double* buf) {
     }
 
     const int nd = static_cast<int>(buf[m++]);
+    atom.grow_dihedral_per_atom(nd);
     atom.num_dihedral[slot] = nd;
     for (int d = 0; d < nd; ++d) {
         atom.dihedral_atom(slot, 3 * d + 0) =
@@ -201,6 +208,7 @@ int unpack_exchange(Atom& atom, int slot, const double* buf) {
     const int ns0 = static_cast<int>(buf[m++]);
     const int ns1 = static_cast<int>(buf[m++]);
     const int ns2 = static_cast<int>(buf[m++]);
+    atom.grow_maxspecial(ns2);
     atom.nspecial(slot, 0) = ns0;
     atom.nspecial(slot, 1) = ns1;
     atom.nspecial(slot, 2) = ns2;
@@ -208,6 +216,15 @@ int unpack_exchange(Atom& atom, int slot, const double* buf) {
         atom.special(slot, s) = static_cast<std::int64_t>(buf[m++]);
     }
     return m;
+}
+
+int max_exchange_doubles(const Atom& atom) {
+    return 11                            // x/y/z, v, f, mass, charge
+           + 5                           // type + tag + image[3]
+           + 1 + 2 * atom.bond_per_atom  // num_bond + (partner, type) pairs
+           + 1 + 3 * atom.angle_per_atom // num_angle + (i, k, type) triples
+           + 1 + 4 * atom.dihedral_per_atom // num_dihedral + (i,k,l,type)
+           + 3 + atom.maxspecial;        // nspecial[3] + special list
 }
 
 double compute_bonded_extension_local(const Atom& atom, const Box& box) {

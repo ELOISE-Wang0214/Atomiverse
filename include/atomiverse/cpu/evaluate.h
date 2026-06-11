@@ -41,8 +41,8 @@
 #pragma once
 
 #include "atomiverse/cpu/evaluate_driver.h"
-#include "atomiverse/cpu/md/init.h"
 #include "atomiverse/cpu/pair_evaluator.h"
+#include "atomiverse/cpu/zero.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -56,9 +56,9 @@ class Evaluate : public EvaluateDriver {
   public:
     Evaluate() {
         this->on(ATV::evaluate::Phase::prepare)
-            .add(cpu::md::ZeroForces{}, -1000);
+            .add(cpu::ZeroForces{}, -1000);
         this->on(ATV::evaluate::Phase::prepare)
-            .add(cpu::md::ZeroEnergy{}, -999);
+            .add(cpu::ZeroEnergy{}, -999);
     }
 
   protected:

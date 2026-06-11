@@ -13,7 +13,7 @@
 /// copy lives on `cuda::Context::host_box`, populated by
 /// `Backend::materialize()` and mutated by box-changing components
 /// (currently `cuda::md::NoseHooverNPT`; `cuda::md::Deform`,
-/// `cuda::md::Barostat`, `cuda::minimizer::SD` are open follow-ups).
+/// `cuda::md::Barostat` are open follow-ups).
 /// Integrator + bonded + neighbor-list-pair kernels take `cuda::Box` by
 /// value at launch and route PBC through `box.min_image(dx, dy, dz)`.
 ///

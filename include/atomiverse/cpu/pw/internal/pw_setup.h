@@ -1,0 +1,101 @@
+/// @file cpu/pw/internal/pw_setup.h
+/// @brief Host-side plane-wave SCF problem assembly and density mixing,
+///        shared by the CPU (`cpu::pw::pw_scf`) and CUDA
+///        (`cuda::pw::pw_scf`) drivers.
+#pragma once
+
+#include "atomiverse/core/real.h"
+#include "atomiverse/cpu/frame.h"
+#include "atomiverse/cpu/pw/internal/g_vector.h"
+#include "atomiverse/cpu/pw/internal/kpoint.h"
+#include "atomiverse/cpu/pw/internal/pw_workspace.h"
+#include <string>
+#include <vector>
+
+namespace ATV {
+namespace cpu {
+namespace pw {
+namespace internal {
+
+/// @brief Fully-assembled plane-wave SCF problem: workspace, G-spheres,
+///        k-mesh and the density-independent Ewald energy.
+///
+/// Non-copyable: `ws.gvec` points at `gv0`, so the object must stay put
+/// after `setup_pw_problem()` fills it.
+struct PWProblem {
+    PWWorkspace ws;
+    GVectorList gv0;               ///< Γ-centred G-sphere at ecut.
+    std::vector<GVectorList> gv_k; ///< Per-k-point G-spheres.
+    KPointGrid kg;
+    Real ew_total = 0; ///< Ewald energy incl. QE G=0 term [Hartree].
+    Real vol_bohr = 0; ///< Cell volume [Bohr³].
+    int n_elec = 0;
+    int n_bands = 0;
+
+    /// Per-k-point nonlocal projector / atomic-wfc tables, evaluated on
+    /// q = k+G of each sphere (size and values are k-dependent). The SCF
+    /// loop copies entry ik into ws.kb_proj / ws.atom_wfc before solving
+    /// that k-point. Empty for the toy potential.
+    std::vector<std::vector<std::vector<PWWorkspace::KBProjG>>> kb_proj_k;
+    std::vector<std::vector<std::vector<PWWorkspace::AtomWfc>>> atom_wfc_k;
+
+    PWProblem() = default;
+    PWProblem(const PWProblem&) = delete;
+    PWProblem& operator=(const PWProblem&) = delete;
+};
+
+/// @brief Number of valence electrons assumed for nuclear charge `z`
+///        (H..Ar) when no UPF pseudopotential supplies it.
+int valence_from_z(int z);
+
+/// @brief Assemble the complete SCF problem from a Frame: Ewald energy,
+///        G-vectors, k-mesh, FFT grids, V_loc (UPF or toy), KB projectors,
+///        atomic wavefunctions and the initial density.
+///
+/// This is the entire pre-loop section of the original `pw_scf()`; both
+/// backends call it and then run their own SCF loop.
+///
+/// @param frame    Input structure (positions in Å, type = Z).
+/// @param upf_path UPF pseudopotential file ("" = toy V_loc).
+/// @param ecut_ry  Plane-wave cutoff [Ry].
+/// @param k_mesh   Monkhorst-Pack mesh size per dimension.
+/// @param out      Problem to fill (must outlive the SCF loop).
+void setup_pw_problem(const cpu::Frame& frame, const std::string& upf_path,
+                      double ecut_ry, int k_mesh, PWProblem& out);
+
+/// @brief Pulay/DIIS density mixing on the G-sphere.
+///
+/// Expects `ws.rho_G` = output density of the current iteration and
+/// `ws.rho_G_old` = input density; replaces `ws.rho_G` with the mixed
+/// density and updates the Pulay history.
+void pulay_mix(PWWorkspace& ws);
+
+/// @brief Per-iteration SCF energy decomposition [Hartree].
+///
+/// Parseval contractions use the full Re[conj(rho_G)*V_G] product (both
+/// real and imaginary parts of rho contribute for cells without
+/// inversion symmetry about the origin).
+struct PWEnergyTerms {
+    Real e_one = 0;    ///< One-electron energy (band - 2*E_H - rho*Vxc).
+    Real e_h = 0;      ///< Hartree energy.
+    Real e_xc_int = 0; ///< Integral of rho * V_xc (decomposition term).
+    Real e_loc = 0;    ///< Integral of rho * V_loc (diagnostic only).
+    Real total = 0;    ///< Total energy incl. E_xc, Ewald, augmentation.
+};
+
+/// @brief Compute the per-iteration energy decomposition (no I/O).
+PWEnergyTerms iteration_energy(const PWWorkspace& ws, Real e_band,
+                               Real ew_total, Real vol_bohr);
+
+/// @brief Per-iteration energy decomposition with stdout report
+///        (identical to the original `pw_scf()` log; used by the CUDA
+///        driver).
+/// @return Total energy [Hartree].
+Real report_iteration_energy(const PWWorkspace& ws, Real e_band,
+                             Real ew_total, Real vol_bohr, int iter,
+                             int n_bands);
+
+} // namespace internal
+} // namespace pw
+} // namespace cpu
+} // namespace ATV

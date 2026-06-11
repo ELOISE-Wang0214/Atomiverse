@@ -143,6 +143,7 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/atom.cpp
         src/cpu/backend.cpp
         src/cpu/box.cpp
+        src/cpu/zero.cpp
         src/cpu/materialize.cpp
         src/cpu/driver.cpp
         src/cpu/analysis_executor.cpp
@@ -230,6 +231,9 @@ if(NOT ATV_DOCS_ONLY)
             src/cuda/md/neighborlist/setup.cu
             src/cuda/md/neighborlist/export_pairs.cu
             src/cuda/minimizer/sd.cu
+            src/cuda/minimizer/cg.cu
+            src/cuda/minimizer/lbfgs.cu
+            src/cuda/minimizer/conv_check.cu
             src/cuda/md/nose_hoover.cu
             src/cuda/md/deform.cu
             src/cuda/md/barostat.cu
@@ -307,14 +311,15 @@ if(NOT ATV_DOCS_ONLY)
     endif()
 
     if(ATV_BUILD_PW)
-        # $FFTW_ROOT comes from the buildenv Lmod module (no hardcoded paths);
-        # the homebrew/usr-local hints cover macOS dev machines.
-        find_library(FFTW3_LIB fftw3
-            HINTS $ENV{FFTW_ROOT}/lib $ENV{FFTW_ROOT}/lib64
-                  /opt/homebrew/opt/fftw/lib /usr/local/lib)
-        find_path(FFTW3_INC fftw3.h
-            HINTS $ENV{FFTW_ROOT}/include
-                  /opt/homebrew/opt/fftw/include /usr/local/include)
+        # $FFTW3_ROOT / $FFTW_ROOT come from the HPC buildenv Lmod modules
+        # (no hardcoded paths); homebrew/usr-local hints cover macOS.
+        find_library(FFTW3_LIB fftw3 HINTS
+            $ENV{FFTW3_ROOT}/lib $ENV{FFTW3_ROOT}/lib64
+            $ENV{FFTW_ROOT}/lib $ENV{FFTW_ROOT}/lib64
+            /opt/homebrew/opt/fftw/lib /usr/local/lib)
+        find_path(FFTW3_INC fftw3.h HINTS
+            $ENV{FFTW3_ROOT}/include $ENV{FFTW_ROOT}/include
+            /opt/homebrew/opt/fftw/include /usr/local/include)
         if(NOT FFTW3_LIB OR NOT FFTW3_INC)
             message(FATAL_ERROR "FFTW3 required for ATV_BUILD_PW but not found. "
                                "Install via: brew install fftw")
@@ -329,6 +334,8 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/pw/internal/upf_reader.cpp
             src/cpu/pw/internal/kpoint.cpp
             src/cpu/pw/internal/ewald.cpp
+            src/cpu/pw/internal/pw_setup.cpp
+            src/cpu/pw/internal/pw_subspace.cpp
             src/cpu/pw/internal/poisson.cpp
             src/cpu/pw/internal/xc_builder.cpp
             src/cpu/pw/internal/veff_builder.cpp
@@ -347,13 +354,34 @@ if(NOT ATV_DOCS_ONLY)
         endif()
         target_link_libraries(atomiverse PUBLIC fftw3_stub)
         target_compile_definitions(atomiverse PUBLIC ATV_HAS_PW)
+
+        # CUDA plane-wave backend — device-resident kernels mirroring the CPU
+        # pw module (cuFFT FFT layer, G-space Hartree solver, sparse-G ↔ dense
+        # grid bridge, LDA/Veff stages) plus the full pw SCF band solver
+        # (cuFFT + cuBLAS Davidson). Only built when CUDA is also enabled.
+        if(ATV_BUILD_CUDA)
+            target_sources(atomiverse PRIVATE
+                src/cuda/pw/internal/fft.cu
+                src/cuda/pw/internal/poisson.cu
+                src/cuda/pw/internal/grid_map.cu
+                src/cuda/pw/internal/xc_lda.cu
+                src/cuda/pw/internal/veff.cu
+                src/cuda/pw/internal/device_solver.cu
+                src/cuda/pw/pw_scf.cu
+            )
+            target_link_libraries(atomiverse PUBLIC CUDA::cufft)
+        endif()
     endif()
 
     if(ATV_BUILD_KSPACE)
         # CPU PME needs FFTW3 (shared `fftw3_stub` with the PW module).
         if(NOT TARGET fftw3_stub)
-            find_library(FFTW3_LIB fftw3 HINTS /opt/homebrew/opt/fftw/lib /usr/local/lib)
-            find_path(FFTW3_INC fftw3.h HINTS /opt/homebrew/opt/fftw/include /usr/local/include)
+            find_library(FFTW3_LIB fftw3 HINTS
+                $ENV{FFTW3_ROOT}/lib $ENV{FFTW_ROOT}/lib
+                /opt/homebrew/opt/fftw/lib /usr/local/lib)
+            find_path(FFTW3_INC fftw3.h HINTS
+                $ENV{FFTW3_ROOT}/include $ENV{FFTW_ROOT}/include
+                /opt/homebrew/opt/fftw/include /usr/local/include)
             if(NOT FFTW3_LIB OR NOT FFTW3_INC)
                 message(FATAL_ERROR "FFTW3 required for ATV_BUILD_KSPACE but not found.")
             endif()

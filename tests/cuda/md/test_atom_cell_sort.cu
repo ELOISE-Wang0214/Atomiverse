@@ -37,10 +37,12 @@ using ATV::cuda::md::nlist::apply_permutation_owned;
 
 namespace {
 
-constexpr int MB = cpu::Atom::kMaxBondPerAtom;
-constexpr int MA = cpu::Atom::kMaxAnglePerAtom;
-constexpr int MD = cpu::Atom::kMaxDihedralPerAtom;
-constexpr int MS = cpu::Atom::kMaxSpecial;
+// Fixture topology strides — set on the frame via reserve_topology (the
+// cpu::Atom strides are runtime values now, sized to the actual topology).
+constexpr int MB = 6;
+constexpr int MA = 6;
+constexpr int MD = 8;
+constexpr int MS = 16;
 
 /// A cubic lattice of n_side^3 atoms in a box split into dim^3 cells, with a
 /// fully populated per-atom bonded SoA whose entries are a deterministic
@@ -53,8 +55,8 @@ cpu::Frame make_bonded_lattice(int n_side, double spacing) {
     cpu::Frame frame(n);
     auto& a = frame.atoms;
     // This fixture populates the wide bonded SoA directly (not via add_bond),
-    // so opt the frame into atom_style-molecular storage before writing.
-    a.ensure_bonded_storage();
+    // so size the atom_style-molecular storage explicitly before writing.
+    a.reserve_topology(MB, MA, MD, MS);
     int idx = 0;
     for (int ix = 0; ix < n_side; ++ix)
         for (int iy = 0; iy < n_side; ++iy)

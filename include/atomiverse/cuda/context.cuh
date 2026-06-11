@@ -81,6 +81,27 @@ struct Context {
     const int* excl_partners = nullptr;
     double s_excl = 1.0;
     bool exclusions_baked = false;
+
+    /// @brief Pair-force row restriction (multi-GPU owned/ghost split).
+    ///
+    /// A pair style computes one force row per atom. On a multi-GPU subdomain
+    /// the frame's atom range is [owned | ghost]; ghost rows must NOT be
+    /// computed: each owned atom's force is already complete from its own
+    /// full neighbor list, so a ghost row's pair force is (a) wasted work and
+    /// (b) WRONG when `reverse_comm` later ships ghost rows home — the pair
+    /// part would double onto the owner (only bonded ghost deposits may
+    /// travel). It also double-counts cross-boundary pair energy (each
+    /// half-pair contribution appears on both GPUs).
+    ///
+    /// `n_force_rows < 0` (default): compute every atom row (single-GPU /
+    /// driver path — unchanged). `n_force_rows >= 0` with `force_rows ==
+    /// nullptr`: compute the owned prefix [0, n_force_rows). With
+    /// `force_rows != nullptr`: compute the explicit row subset
+    /// `force_rows[0..n_force_rows)` — the multi-GPU interior/boundary split
+    /// that overlaps interior force with the halo exchange. Neighbor
+    /// POSITIONS are always read from the full owned+ghost set regardless.
+    int n_force_rows = -1;
+    const int* force_rows = nullptr;
 };
 
 } // namespace cuda

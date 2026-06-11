@@ -3,18 +3,27 @@
 ///
 /// `OptimizeDriver` is the only current category that treats convergence
 /// as the normal successful termination path. It iterates up to
-/// `max_iter` times and breaks when `outer_status.converged` is set by
-/// a `ConvergenceCheck`-tagged component (or when `stop_requested` is
-/// set by error / interrupt).
+/// `max_iter` times and breaks when `outer_status.converged` is set —
+/// in practice by the Optimizer component itself during the
+/// `convergence_check` phase (LBFGS / CG own their stopping criteria;
+/// there is no separate ConvergenceCheck-tagged component) — or when
+/// `stop_requested` is set by error / interrupt.
+///
+/// Unlike `DynamicsDriver::run` (continuable: consecutive calls extend
+/// one trajectory), each `run()` here is a complete, self-contained
+/// optimization: `setup_pass` re-runs component `build()`, wiping the
+/// optimizer's curvature history and step counter, and `teardown_pass`
+/// runs before returning. That is deliberate — a converged geometry has
+/// no useful "continuation state": re-running means re-optimizing
+/// (possibly after the caller perturbed the system), so stale L-BFGS
+/// history would be wrong to keep.
 ///
 /// Validation rule (build-time):
 ///   - ≥ 1 component with `role()==Optimizer`
 ///   - ≥ 1 component with `role()==Evaluator` AND `capabilities()` carrying
 ///     either `Capability::Energy` or `Capability::Force`.
 ///
-/// Concrete user-facing class: `cpu::minimizer::Minimize` (Phase 2
-/// renames the existing `cpu::minimizer::LBFGS` driver to this and
-/// extracts LBFGS / CG / FIRE as `Optimizer` components).
+/// Concrete user-facing class: `cpu::minimizer::Minimize`.
 #pragma once
 
 #include "atomiverse/cpu/component.h"

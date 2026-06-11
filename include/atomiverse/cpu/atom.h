@@ -45,23 +45,52 @@ namespace cpu {
 /// per-atom array indexing and has nowhere else sensible to live).
 class Atom {
   public:
-    // ── Per-atom topology bounds (compile-time) ────────────────────────────
+    // ── Per-atom topology strides (runtime, LAMMPS Atom::bond_per_atom) ────
+    //
+    // Column widths of the wide bonded arrays below. All start at 0 and grow
+    // on demand as topology is loaded (`add_bond` / `add_angle` /
+    // `add_dihedral` / `build_special_list`), so each system pays exactly its
+    // own valence: a linear PE chain sizes to {2, 1, 1, 6} instead of a
+    // compile-time worst case — ~3.5x less topology memory per atom.
+    // Stride growth re-strides the whole array (O(nmax) copy) and only ever
+    // happens at topology-load time; the strides are then fixed for the run.
+    // MPI note: every rank loads the full global topology before partitioning
+    // (add_* self-filters via `map`), so strides converge to identical values
+    // on all ranks; `unpack_exchange` additionally grows defensively if a
+    // migrating atom arrives with more entries than the local stride.
 
-    /// @brief Maximum bonds per atom. PE/Dreiding: 2; SAFE/CL polymers: 4.
-    /// A runtime assertion in the materialization scatter loop catches
-    /// over-valent atoms before they corrupt the per-atom storage at
-    /// migration time.
-    static constexpr int kMaxBondPerAtom = 6;
+    /// @brief Columns of `bond_atom` / `bond_type` (max bonds owned per atom).
+    int bond_per_atom = 0;
 
-    /// @brief Maximum angles per atom (center-atom-owned).
-    static constexpr int kMaxAnglePerAtom = 6;
+    /// @brief Max angles owned per atom; `angle_atom` has `2 *` this columns.
+    int angle_per_atom = 0;
 
-    /// @brief Maximum dihedrals per atom (atom-j-owned, i.e. atom 2 of 4).
-    static constexpr int kMaxDihedralPerAtom = 8;
+    /// @brief Max dihedrals owned per atom; `dihedral_atom` has `3 *` this.
+    int dihedral_per_atom = 0;
 
-    /// @brief Maximum 1-2 + 1-3 + 1-4 special-neighbor tags per atom.
-    /// Used by pair evaluators for non-bonded exclusion.
-    static constexpr int kMaxSpecial = 16;
+    /// @brief Columns of `special` (max 1-2 + 1-3 + 1-4 partners per atom).
+    int maxspecial = 0;
+
+    /// @brief Grow `bond_per_atom` to at least `target` (no-op if already
+    /// wide enough), re-striding `bond_atom` / `bond_type` in place.
+    void grow_bond_per_atom(int target);
+
+    /// @brief Grow `angle_per_atom` to at least `target`, re-striding
+    /// `angle_atom` / `angle_type`.
+    void grow_angle_per_atom(int target);
+
+    /// @brief Grow `dihedral_per_atom` to at least `target`, re-striding
+    /// `dihedral_atom` / `dihedral_type`.
+    void grow_dihedral_per_atom(int target);
+
+    /// @brief Grow `maxspecial` to at least `target`, re-striding `special`.
+    void grow_maxspecial(int target);
+
+    /// @brief Grow all four topology strides to at least the given values and
+    /// mark the atom_style molecular. Use when the per-atom valence is known
+    /// up front (avoids the incremental re-strides) or when populating the
+    /// wide arrays directly instead of via `add_bond` / `add_angle` / ....
+    void reserve_topology(int bond, int angle, int dihedral, int special_n);
 
     // ── Construction ───────────────────────────────────────────────────────
 
@@ -159,13 +188,13 @@ class Atom {
     /// with the smaller tag.
     xt::xtensor<int, 1> num_bond;
 
-    /// @brief Partner global tag for each bond, shape `[nmax, kMaxBondPerAtom]`.
+    /// @brief Partner global tag for each bond, shape `[nmax, bond_per_atom]`.
     /// `bond_atom(i, m)` is the global tag of the partner of atom `i`'s
     /// `m`-th bond. The partner's local row index is resolved per-call
     /// via `map[bond_atom(i, m)]`.
     xt::xtensor<std::int64_t, 2> bond_atom;
 
-    /// @brief Bond type index, shape `[nmax, kMaxBondPerAtom]`.
+    /// @brief Bond type index, shape `[nmax, bond_per_atom]`.
     xt::xtensor<int, 2> bond_type;
 
     /// @brief Number of angles atom `i` is the center of (owner convention:
@@ -173,13 +202,13 @@ class Atom {
     xt::xtensor<int, 1> num_angle;
 
     /// @brief Non-center partner tags for each angle, shape
-    /// `[nmax, 2 * kMaxAnglePerAtom]`. For atom `i`'s `m`-th angle:
+    /// `[nmax, 2 * angle_per_atom]`. For atom `i`'s `m`-th angle:
     /// `angle_atom(i, 2*m + 0)` is the i-partner tag (atom 0 of the
     /// `i-j-k` triple), `angle_atom(i, 2*m + 1)` is the k-partner tag.
     /// Atom `i` itself is the center `j`.
     xt::xtensor<std::int64_t, 2> angle_atom;
 
-    /// @brief Angle type index, shape `[nmax, kMaxAnglePerAtom]`.
+    /// @brief Angle type index, shape `[nmax, angle_per_atom]`.
     xt::xtensor<int, 2> angle_type;
 
     /// @brief Number of dihedrals atom `i` is the j (second) atom of.
@@ -187,12 +216,12 @@ class Atom {
     xt::xtensor<int, 1> num_dihedral;
 
     /// @brief Non-j partner tags for each dihedral, shape
-    /// `[nmax, 3 * kMaxDihedralPerAtom]`. For atom `i`'s `m`-th dihedral
+    /// `[nmax, 3 * dihedral_per_atom]`. For atom `i`'s `m`-th dihedral
     /// (where `i` is atom `j`): `dihedral_atom(i, 3*m + 0/1/2)` are the
     /// `i`, `k`, `l` partner tags (the dihedral's atom 0, 2, 3).
     xt::xtensor<std::int64_t, 2> dihedral_atom;
 
-    /// @brief Dihedral type index, shape `[nmax, kMaxDihedralPerAtom]`.
+    /// @brief Dihedral type index, shape `[nmax, dihedral_per_atom]`.
     xt::xtensor<int, 2> dihedral_type;
 
     /// @brief 1-2 / 1-3 / 1-4 neighbor counts, shape `[nmax, 3]`.
@@ -201,7 +230,7 @@ class Atom {
     /// includes 1-4 (through dihedral). Cumulative counts.
     xt::xtensor<int, 2> nspecial;
 
-    /// @brief Special-neighbor tag list, shape `[nmax, kMaxSpecial]`.
+    /// @brief Special-neighbor tag list, shape `[nmax, maxspecial]`.
     /// `special(i, 0 .. nspecial(i, 0))` are 1-2 partners; the next
     /// `nspecial(i, 1) - nspecial(i, 0)` are 1-3; and so on. Used by
     /// pair evaluators for non-bonded exclusion (`special_bonds`).
@@ -210,11 +239,10 @@ class Atom {
     // ── Lazy bonded storage (LAMMPS atom_style atomic vs molecular) ────────
     //
     // The wide per-bond/angle/dihedral/special partner+type arrays above
-    // (bond_atom..special, ~0.5 KB/atom for kMax{6,6,8,16}) are allocated ONLY
-    // for systems that actually carry bonded topology. A pure-LJ system (no
-    // bonds) keeps them empty and pays nothing — closing the per-atom WEAK
-    // memory gap vs LAMMPS, which likewise allocates none of this for
-    // atom_style atomic. The small COUNT arrays (num_bond/num_angle/
+    // (bond_atom..special) are allocated ONLY for systems that actually carry
+    // bonded topology, at the runtime strides above. A pure-LJ system (no
+    // bonds) keeps them empty (all strides 0) and pays nothing — matching
+    // LAMMPS atom_style atomic. The small COUNT arrays (num_bond/num_angle/
     // num_dihedral/nspecial) stay allocated-and-zeroed always, so every reader
     // that loops `for m in [0, num_bond[i])` is a no-op on an LJ system and
     // needs no guard; the wide arrays are touched only after a bond is added.
@@ -223,10 +251,10 @@ class Atom {
     /// @brief Whether the wide bonded arrays are allocated (topology present).
     bool has_bonded() const noexcept { return has_bonded_topology_; }
 
-    /// @brief Allocate the wide bonded arrays to the current `nmax` (zeroed) and
-    /// mark the atom_style molecular. Idempotent. Called automatically by the
-    /// first `add_bond/add_angle/add_dihedral`; subsequent `grow`/`set_capacity`
-    /// then keep them sized. Safe to call before any atoms exist.
+    /// @brief Mark the atom_style molecular. Idempotent. Called automatically
+    /// by the first `add_bond/add_angle/add_dihedral`. The wide arrays
+    /// themselves are sized by the stride growers (`grow_bond_per_atom`/...
+    /// or `reserve_topology`); `grow`/`set_capacity` then keep them sized.
     void ensure_bonded_storage();
 
     // ── Global tag → local row index map (LAMMPS Atom::map) ────────────────

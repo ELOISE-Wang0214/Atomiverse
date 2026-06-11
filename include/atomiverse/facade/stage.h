@@ -50,9 +50,15 @@ inline std::vector<std::string> phase_names(Phase phase_tag) {
 namespace minimizer {
 
 /// @brief Phase order for one minimization iteration.
+///
+/// @note `line_search` is a reserved slot with no current binder: the
+///       built-in optimizers (LBFGS Armijo backtracking) implement their
+///       line search inline across successive driver iterations, because
+///       each trial energy needs a full `force` pass. The slot stays for
+///       future exact / dedicated line-search components.
 enum class Phase {
     search_direction,  ///< Compute descent direction
-    line_search,       ///< Line search along descent direction
+    line_search,       ///< Line search along descent direction (reserved)
     force,             ///< Force evaluation (shared with MD evaluators)
     convergence_check, ///< Check stopping criteria
     end_of_step,       ///< Per-iteration observers, recorders

@@ -104,6 +104,20 @@ class MultiGpu {
     /// skin since `build_halo` (the reneighbor cadence guarantees that).
     void forward_comm();
 
+    /// Fully asynchronous forward halo: identical data movement to
+    /// `forward_comm()` but issued on each device's COMM stream (the
+    /// DeviceManager defer stream) with pure event ordering — zero host sync.
+    /// Cascade ordering holds because each device's comm ops are issued on
+    /// its single comm stream in axis order, and cross-device copy→unpack
+    /// edges use the per-plan `ev_src` events. On entry each comm stream
+    /// waits `ev_pos_[s]` (positions current — recorded by the step loop
+    /// after the first integrator half-kick); on exit each device's comm
+    /// stream records `ev_ghosts_[s]` (ghost positions landed), which the
+    /// force path waits on before launching ghost-dependent (boundary)
+    /// kernels. External callers that need completed ghosts on return should
+    /// call `forward_comm()` (== this + one device barrier).
+    void forward_comm_async();
+
     /// Reverse halo (force communicate): the adjoint of `build_halo`/`forward_comm`.
     /// Replays the recorded `HaloPlan` transfers in REVERSE cascade order
     /// (z, then y, then x): for each transfer, gather the destination's ghost-row
@@ -111,10 +125,20 @@ class MultiGpu {
     /// owned (or prior-axis ghost) rows. After this, any force a force kernel
     /// deposited onto a ghost row (e.g. a bonded partner owned on another GPU) has
     /// been accumulated onto its true owner. The LJ path computes the full force
-    /// on owned atoms directly (ghost forces stay zero) and so does NOT need this;
+    /// on owned atoms directly (its force kernel computes OWNED rows only, so
+    /// ghost rows carry nothing but bonded deposits) and so does NOT need this;
     /// the cross-GPU bonded path does. Reverse-once invariant: call exactly once
     /// per step, after all force kernels, mirroring the single forward halo.
     void reverse_comm();
+
+    /// Fully asynchronous reverse halo (comm streams + events, zero host
+    /// sync), the adjoint of `forward_comm_async`. On entry each comm stream
+    /// waits `ev_force_[s]` (ghost-row bonded deposits final — recorded by
+    /// `compute_forces` after its force kernels); on exit each device's comm
+    /// stream records `ev_rev_[s]` (scatter-adds into its owned rows landed),
+    /// which the integrator's second half-kick waits on. External callers
+    /// that need completed forces on return should call `reverse_comm()`.
+    void reverse_comm_async();
 
     /// Rebuild the per-subdomain flat bonded tuple lists (BondList/AngleList/
     /// DihedralList) from the per-atom bonded topology (global tags), resolving
@@ -295,12 +319,22 @@ class MultiGpu {
         // cudaEventDisableTiming (sync-only). Allocated by build_halo.
         cudaEvent_t ev_src = nullptr; // src-device: forward copy-done
         cudaEvent_t ev_dst = nullptr; // dst-device: reverse copy-done
+        // Buffer-release handshakes for the sync-free step pipeline: with no
+        // host barrier between steps, step N+1's forward P2P (issued on the
+        // SRC comm stream) could overwrite d_pack_dst while dst's step-N
+        // unpack still reads it — and symmetrically for the reverse staging.
+        // The consumer records "buffer free", the next producer waits on it.
+        cudaEvent_t ev_fwd_done = nullptr; // dst-device: forward unpack done
+        cudaEvent_t ev_rev_done = nullptr; // src-device: reverse scatter done
     };
 
   private:
     void destroy_frames();
     void destroy_halo_plan();
     void destroy_force_engine();
+    // Partition each subdomain's OWNED rows by ghost dependence (interior =
+    // no ghost in the atom's Verlet row) into rows_[s]; reneighbor-cadence.
+    void classify_force_rows();
     // Build the per-subdomain device tag→local map over owned+ghost (sorted
     // tags + parallel local-index array), used by rebuild_bonded_tuples.
     void build_tag_maps();
@@ -330,6 +364,31 @@ class MultiGpu {
     std::vector<std::unique_ptr<nlist::AtomCellSortBuffers>> sort_buf_;
     bool engine_ready_ = false;
     double force_cutoff_ = 0, force_skin_ = 0;
+
+    // ── Async per-step pipeline (multi-GPU comm/compute overlap) ──────────
+    // Per-device events (created by setup_force_engine, DisableTiming).
+    // Per-step ordering is carried ENTIRELY by streams + these events — the
+    // steady step loop performs no host synchronization. Compute/integration
+    // run on ctx_[s].stream; halo traffic runs on the device's comm stream
+    // (DeviceManager defer stream). Both are created with cudaStreamCreate
+    // (legacy-blocking), so they overlap with each other as long as no
+    // per-step work lands on stream 0 — which this pipeline guarantees.
+    std::vector<cudaEvent_t> ev_pos_;    // ctx: vv_first done, positions current
+    std::vector<cudaEvent_t> ev_ghosts_; // comm: forward unpacks landed here
+    std::vector<cudaEvent_t> ev_force_;  // ctx: force kernels done (ghost rows final)
+    std::vector<cudaEvent_t> ev_rev_;    // comm: reverse scatter-adds landed here
+    // Owned-row partition by ghost dependence, rebuilt each reneighbor:
+    // rows_[s][0..n_interior_[s]) = owned atoms whose Verlet row holds no
+    // ghost index (force computable before the halo lands — overlapped with
+    // the forward comm); rows_[s][n_interior_[s]..n_local) = boundary atoms
+    // (launched after ev_ghosts_[s]). n_interior_[s] < 0 ⇒ no valid split
+    // (fall back to one owned-prefix launch after the ghost wait).
+    std::vector<int*> rows_;                // [capacity] partitioned owned rows
+    std::vector<unsigned char*> row_flags_; // [capacity] interior flags
+    std::vector<int*> row_nsel_;            // [1] device interior count
+    std::vector<void*> row_tmp_;            // CUB DevicePartition temp storage
+    std::vector<std::size_t> row_tmp_sz_;
+    std::vector<int> n_interior_;
 
     // Cross-GPU bonded topology (multigpu-bonded). `bonded_` is set by
     // partition when the system carries bonded topology (per-atom SoA filled).

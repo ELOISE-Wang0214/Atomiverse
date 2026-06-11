@@ -20,8 +20,9 @@
 ///   angle_atom [cap * 2*MA]   angle_type    [cap * MA]
 ///   dihedral_atom [cap * 3*MD] dihedral_type[cap * MD]
 ///   nspecial   [cap * 3]      special       [cap * MS]
-/// where MB=kMaxBondPerAtom, MA=kMaxAnglePerAtom, MD=kMaxDihedralPerAtom,
-/// MS=kMaxSpecial (cpu::Atom). image is [3 * cap] row-major image[i*3+d].
+/// where MB/MA/MD/MS are the frame's RUNTIME topology strides
+/// (`Frame::atoms.bond_per_atom` / `angle_per_atom` / `dihedral_per_atom` /
+/// `maxspecial`). image is [3 * cap] row-major image[i*3+d].
 ///
 /// The bonded SoA pointers may be null (single-GPU `to_cuda` leaves them
 /// null); they are skipped when null. Ghosts ([n_local, n_all)) are never

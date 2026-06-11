@@ -1,0 +1,81 @@
+# CP2K Quickstep reference deck for bulk Si — LDA (PADE), GTH-PADE-q4,
+# DZVP-GTH, 2-atom fcc primitive cell, 4x4x4 Monkhorst-Pack.
+# Self-contained: basis set and pseudopotential are inlined, so any
+# CP2K binary works without a data directory.
+#
+# Placeholders substituted by run_eos.sh / run_perf.sh:
+#   @A@ = fcc lattice constant [Å], @H@ = A/2, @Q@ = A/4,
+#   @CUTOFF@ = density-grid cutoff [Ry], @PROJECT@ = project name.
+&GLOBAL
+  PROJECT @PROJECT@
+  RUN_TYPE ENERGY
+  PRINT_LEVEL LOW
+&END GLOBAL
+&FORCE_EVAL
+  METHOD Quickstep
+  &DFT
+    &QS
+      EPS_DEFAULT 1.0E-12
+    &END QS
+    &MGRID
+      CUTOFF @CUTOFF@
+      REL_CUTOFF 60
+    &END MGRID
+    &SCF
+      SCF_GUESS ATOMIC
+      EPS_SCF 1.0E-7
+      MAX_SCF 100
+      ADDED_MOS 8
+      &DIAGONALIZATION
+        ALGORITHM STANDARD
+      &END DIAGONALIZATION
+      &MIXING
+        METHOD BROYDEN_MIXING
+        ALPHA 0.4
+      &END MIXING
+    &END SCF
+    &XC
+      &XC_FUNCTIONAL PADE
+      &END XC_FUNCTIONAL
+    &END XC
+    &KPOINTS
+      SCHEME MONKHORST-PACK 4 4 4
+    &END KPOINTS
+  &END DFT
+  &SUBSYS
+    &CELL
+      A 0.0 @H@ @H@
+      B @H@ 0.0 @H@
+      C @H@ @H@ 0.0
+      PERIODIC XYZ
+    &END CELL
+    &COORD
+      Si 0.0 0.0 0.0
+      Si @Q@ @Q@ @Q@
+    &END COORD
+    &KIND Si
+      BASIS_SET DZVP-GTH-q4
+      POTENTIAL GTH-PADE-q4
+      # Inlined from cp2k/data GTH_BASIS_SETS (Si DZVP-GTH-q4).
+      &BASIS
+  2
+  3  0  1  4  2  2
+        1.2032403600   0.3290356759   0.0000000000   0.0474536439   0.0000000000
+        0.4688385970  -0.2533162616   0.0000000000  -0.2594495462   0.0000000000
+        0.1679853910  -0.7870936517   0.0000000000  -0.5440932235   0.0000000000
+        0.0575616890  -0.1909870193   1.0000000000  -0.3623984652   1.0000000000
+  3  2  2  1  1
+        0.2750000000   1.0000000000
+      &END BASIS
+      # Inlined from cp2k/data GTH_POTENTIALS (Si GTH-PADE-q4).
+      &POTENTIAL
+    2    2
+     0.44000000    1    -7.33610297
+    2
+     0.42273813    2     5.90692831    -1.26189397
+                                        3.25819622
+     0.48427842    1     2.72701346
+      &END POTENTIAL
+    &END KIND
+  &END SUBSYS
+&END FORCE_EVAL

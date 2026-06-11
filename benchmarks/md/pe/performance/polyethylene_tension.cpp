@@ -651,18 +651,15 @@ cpu::Frame make_pe_box_local(int chains_per_axis, int n_carbons, double box_len,
     const double cell = box_len / chains_per_axis;
     const double L = box_len;
 
-    int dims[3] = {0, 0, 0};
-    if (const char* env = std::getenv("ATV_FORCE_DIMS")) {
-        int dx, dy, dz;
-        if (std::sscanf(env, "%d,%d,%d", &dx, &dy, &dz) == 3
-            && dx * dy * dz == world_size) {
-            dims[0] = dx; dims[1] = dy; dims[2] = dz;
-        }
-    }
-    if (dims[0] == 0)
-        MPI_Dims_create(world_size, 3, dims);
-    const int coords[3] = {my_rank / (dims[1] * dims[2]),
-                           (my_rank / dims[2]) % dims[1], my_rank % dims[2]};
+    // Same box-aware grid as the DD will pick in Backend::set_frame —
+    // ownership pre-filtering below must agree with partition_atoms
+    // exactly (choose_dims also honors ATV_FORCE_DIMS).
+    cpu::md::mpi::DomainDecomposition grid_map;
+    cpu::md::mpi::DomainDecomposition::choose_dims(world_size, L, L, L,
+                                                   grid_map.dims);
+    int* dims = grid_map.dims;
+    int coords[3];
+    grid_map.coords_of(my_rank, coords);
     auto own = [&](double q, int d) {
         q -= L * std::floor(q / L);
         if (d <= 1) return 0;
@@ -705,6 +702,11 @@ cpu::Frame make_pe_box_local(int chains_per_axis, int n_carbons, double box_len,
     frame.atoms.nlocal = n;
     frame.atoms.map_clear();
     frame.atoms.map_set(0, n);
+    // The analytic special list below writes the wide `special` array
+    // directly (bypassing build_special_list), so size the runtime topology
+    // strides up front: linear chain = 1 owned bond/angle/dihedral per atom,
+    // up to 6 special partners (p±1, p±2, p±3).
+    frame.atoms.reserve_topology(1, 1, 1, 6);
     const int nc = n_carbons;
     for (int k = 0; k < n; ++k) {
         const std::int64_t t = TAG[k];
@@ -750,16 +752,15 @@ cpu::Frame make_pe_melt_local(int nx, int ny, int nz, int chain_len,
     const double Lx = nx * cell, Ly = ny * cell, Lz = nz * cz;
     const double Lax[3] = {Lx, Ly, Lz};
 
-    int dims[3] = {0, 0, 0};
-    if (const char* env = std::getenv("ATV_FORCE_DIMS")) {
-        int a, b, c;
-        if (std::sscanf(env, "%d,%d,%d", &a, &b, &c) == 3
-            && a * b * c == world_size) { dims[0]=a; dims[1]=b; dims[2]=c; }
-    }
-    if (dims[0] == 0)
-        MPI_Dims_create(world_size, 3, dims);
-    const int coords[3] = {my_rank / (dims[1] * dims[2]),
-                           (my_rank / dims[2]) % dims[1], my_rank % dims[2]};
+    // Same box-aware grid as the DD will pick in Backend::set_frame (more
+    // cuts along the long chain axis z) — pre-filter ownership must agree
+    // with partition_atoms exactly (choose_dims honors ATV_FORCE_DIMS).
+    cpu::md::mpi::DomainDecomposition grid_map;
+    cpu::md::mpi::DomainDecomposition::choose_dims(world_size, Lx, Ly, Lz,
+                                                   grid_map.dims);
+    int* dims = grid_map.dims;
+    int coords[3];
+    grid_map.coords_of(my_rank, coords);
     auto own = [&](double q, int axis) {
         const double Lq = Lax[axis];
         q -= Lq * std::floor(q / Lq);
@@ -808,6 +809,9 @@ cpu::Frame make_pe_melt_local(int nx, int ny, int nz, int chain_len,
     frame.atoms.nlocal = n;
     frame.atoms.map_clear();
     frame.atoms.map_set(0, n);
+    // Direct wide-array special writes below — pre-size the runtime strides
+    // (see make_pe_melt above for the rationale).
+    frame.atoms.reserve_topology(1, 1, 1, 6);
     for (int q = 0; q < n; ++q) {
         const std::int64_t t = TAG[q];
         const int p = POS[q];

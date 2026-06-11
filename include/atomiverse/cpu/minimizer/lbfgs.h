@@ -1,11 +1,21 @@
 /// @file cpu/minimizer/lbfgs.h
-/// @brief minimizer::LBFGS Optimizer component + minimizer::Minimize driver.
+/// @brief minimizer::LBFGS — L-BFGS Optimizer component for the
+///        `cpu::minimizer::Minimize` driver (declared in `minimize.h`).
 ///
 /// Two-loop L-BFGS recursion with optional Armijo line search.
 /// `Minimize` is the OptimizeDriver subclass; `LBFGS` is the Optimizer
-/// component plugged into it. (Prior to Phase 2 of the driver-taxonomy
-/// rewrite, the names were swapped — `LBFGS` was the driver class and
-/// `LBFGSStep` was the algorithm component.)
+/// component plugged into it.
+///
+/// **MPI / domain decomposition.** Under multi-rank the component
+/// operates on the owned rows `[0, dd->n_local)` only; every inner
+/// product of the two-loop recursion, the step-size cap, the Armijo
+/// directional derivative, and the convergence metrics are reduced
+/// across ranks (`minimizer/global_reduce.h`), so all ranks take the
+/// identical step and reach the identical convergence verdict. Atom
+/// migration reshuffles local row indexing, so on every
+/// `dd->neighbor_generation` bump the curvature history and the
+/// displacement reference are discarded (the next step restarts as
+/// steepest descent) — convergence is unaffected, only its rate.
 ///
 /// Usage:
 /// @code
@@ -22,6 +32,7 @@
 ///   Nocedal & Wright, Numerical Optimization, Ch. 7
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -139,6 +150,18 @@ class LBFGS : public cpu::ComponentBase {
     std::vector<double> g_prev_;
     std::vector<double> direction_; // search direction
     bool has_prev_ = false;
+    bool x_prev_valid_ = false; ///< False after migration reshuffles rows.
+
+    // Per-step workspaces, sized once in build() — no launch() allocation.
+    std::vector<double> x_ws_;
+    std::vector<double> g_ws_;
+    std::vector<double> q_ws_;
+    std::vector<double> r_ws_;
+    std::vector<double> alpha_ws_;
+
+    /// @brief Last observed `dd->neighbor_generation`; a bump means atom
+    /// migration reshuffled local rows → history must be discarded.
+    std::uint64_t last_generation_ = ~std::uint64_t{0};
     bool converged_ = false;
     double max_force_ = 0;
     double energy_prev_ = 0;
