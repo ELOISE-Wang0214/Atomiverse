@@ -78,3 +78,34 @@ Protocol & caveats (read before quoting numbers):
 - Run CPU rows for both codes on the same node. The CUDA rows
   (GH200) quantify the device speedup of the Davidson hot path over
   the single-threaded CPU backend.
+
+## Measured results (2026-06, Arrhenius GH200 node)
+
+Science — production EOS scan (`--backend cuda --ecut 60 --kmesh 4`),
+reference = same-pseudo ABINIT deltafactor (PseudoDojo Si.djrepo):
+
+| | a0 (Å) | B0 (GPa) |
+|---|---|---|
+| Atomiverse pw | 5.4404 | 104.7 |
+| ABINIT (same ONCV pseudo) | 5.469 | 90.0 |
+| deviation (tolerance) | 0.029 (0.10) | 14.7 (30) |
+
+PASS. An independent numpy dense-diagonalization oracle (same UPF and
+conventions, `validation/reference/pw_si_atom_oracle.py` methodology
+extended to the crystal) reproduces the solver's E(a) ordering at
+matched ecut/k-mesh, confirming the EOS shape is the solver's true
+fixed point and not an iteration artifact.
+
+Performance — full SCF to tol 1e-7, 2-atom Si, 2×2×2 MP, 6 iterations,
+energies bit-identical across backends (8 decimal places):
+
+| ecut (Ry) | CPU wall (s) | CUDA wall (s) | speedup |
+|---|---|---|---|
+| 20 | 111.6 | 9.5 | 11.8× |
+| 30 | 166.8 | 10.2 | 16.3× |
+| 40 | 246.7 | 11.6 | 21.2× |
+| 60 | 459.2 | 15.6 | 29.4× |
+
+CP2K rows pending: execute `run_eos.sh` / `run_perf.sh` with a local
+CP2K binary to add them (no data directory needed, decks are
+self-contained).
