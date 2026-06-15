@@ -39,6 +39,7 @@
 #include "atomiverse/core/device.h"
 #include "atomiverse/cpu/driver/backend_traits.h"
 #include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/minimizer/line_search.h"
 #include "atomiverse/cpu/minimizer/minimize.h"
 #include "atomiverse/cpu/driver/optimize_driver.h"
 #include "atomiverse/cpu/async/snapshot_publisher.h"
@@ -90,22 +91,28 @@ class LBFGS : public cpu::ComponentBase {
           int max_ls = 10, double rms_ftol = 0.03, double max_dtol = 0.002,
           double rms_dtol = 0.001, double etol = 1e-5);
 
-    /// @brief Enable the backtracking line search (Armijo condition).
+    /// @brief Select the line-search policy used at the `line_search` phase.
     ///
-    /// When enabled, each driver step that fails `E_{k+1} - E_k <= c1 * alpha_k
-    /// * g_k.d_k` is *rolled back*: the positions return to `x_k`, alpha is
-    /// scaled by `contract`, and the trial is re-taken from `x_k` along the
-    /// same direction. History (s, y pairs) is only updated on accepted
-    /// trials. `min_alpha` caps the shrink to avoid infinite loops.
+    /// In `StrongWolfe` (default) and `Armijo` modes, each optimization step
+    /// performs an in-step line search along the quasi-Newton direction
+    /// `p = -H g`: trial geometries `x_k + alpha p` are evaluated by replaying
+    /// the force phase through `Context::reeval_forces`, and `alpha` is the
+    /// dimensionless multiplier on `p` (initial trial 1.0). `StrongWolfe`
+    /// enforces N&W conditions 3.7a+3.7b (so `yᵀs > 0` is automatic and every
+    /// stored curvature pair is valid); `Armijo` enforces only 3.6a (energy
+    /// per trial, no gradient). `Fixed` reproduces the legacy step
+    /// `x -= min(alpha0, cap)·(-p)` with no trial evaluation.
     ///
-    /// Must be called before `opt.build()` for the setting to take effect.
-    /// @param c1         Armijo constant in (0, 1) (default 1e-4).
-    /// @param contract   Backtracking contraction factor (default 0.5).
-    /// @param min_alpha  Minimum alpha before accepting the trial even on
-    ///                   Armijo failure (default 1e-6).
+    /// Must be called before `opt.build()`.
+    /// @param mode      Fixed / Armijo / StrongWolfe (default StrongWolfe).
+    /// @param c1        Sufficient-decrease constant in (0,1) (default 1e-4).
+    /// @param c2        Wolfe curvature constant, c1<c2<1 (default 0.9).
+    /// @param max_step  Max trial displacement [Å]; caps alpha (default 0.2).
+    /// @param min_alpha Alpha floor before giving up (default 1e-8).
     /// @return Reference to self for chaining.
-    LBFGS& line_search(double c1 = 1e-4, double contract = 0.5,
-                       double min_alpha = 1e-6);
+    LBFGS& line_search(LineSearchMode mode = LineSearchMode::StrongWolfe,
+                       double c1 = 1e-4, double c2 = 0.9, double max_step = 0.2,
+                       double min_alpha = 1e-8);
 
     std::string name() const override { return "lbfgs"; }
     ComponentRole role() const override { return ComponentRole::Optimizer; }
@@ -113,6 +120,7 @@ class LBFGS : public cpu::ComponentBase {
     std::vector<DefaultBinding> default_bindings() const override {
         return {
             {static_cast<int>(ATV::minimizer::Phase::search_direction), 0},
+            {static_cast<int>(ATV::minimizer::Phase::line_search), 0},
             {static_cast<int>(ATV::minimizer::Phase::convergence_check), 0}};
     }
 
@@ -167,15 +175,18 @@ class LBFGS : public cpu::ComponentBase {
     double energy_prev_ = 0;
     int step_ = 0;
 
-    // Line search (optional; off by default to preserve legacy behaviour).
-    bool line_search_enabled_ = false;
-    double ls_c1_ = 1e-4;         // Armijo constant.
-    double ls_contract_ = 0.5;    // Backtracking factor.
-    double ls_min_alpha_ = 1e-6;  // Floor on alpha.
-    double ls_alpha_ = 0;         // Alpha chosen for the most recent trial.
-    double ls_gd_ = 0;            // g_k · d_k at the trial's origin point.
-    double ls_origin_energy_ = 0; // E at the trial's origin (x_prev_).
-    bool ls_had_trial_ = false;
+    // Line search. Default StrongWolfe; `line_search()` overrides.
+    LineSearchMode ls_mode_ = LineSearchMode::StrongWolfe;
+    double ls_c1_ = 1e-4;        // Sufficient-decrease constant (3.6a/3.7a).
+    double ls_c2_ = 0.9;         // Wolfe curvature constant (3.7b); 0.9 for QN.
+    double ls_contract_ = 0.5;   // Armijo backtracking factor.
+    double ls_max_step_ = 0.2;   // Max trial displacement [Å] (caps alpha).
+    double ls_min_alpha_ = 1e-8; // Alpha floor.
+    // Carry-over from the search_direction phase to the line_search phase
+    // within a single optimization step (all globally reduced under MPI):
+    double ls_phi0_ = 0;   // phi(0) = energy at x_prev_ [eV].
+    double ls_gd0_ = 0;    // phi'(0) = g . direction (< 0 on descent).
+    double ls_dir_max_ = 0; // global max|direction| component, for the cap.
 
     // Optimization trace
     std::vector<OptRecord> trace_;

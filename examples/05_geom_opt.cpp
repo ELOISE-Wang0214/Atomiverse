@@ -121,24 +121,25 @@ int main() {
     config.max_iter = 200;
     config.force_native_two_electron_deriv = true;
 
-    // Set up L-BFGS optimizer.
-    // Note: line search is not yet implemented, so displacement tolerances must
-    // be loose enough for the fixed-step regime (0.05–0.2 Å per step near min).
-    // Convergence requires ALL criteria simultaneously; set them consistently:
-    //   ftol=0.05 eV/Å  (max force)   — typical quantum-chemistry threshold
+    // Set up L-BFGS optimizer. L-BFGS uses a strong-Wolfe line search by
+    // default (the quasi-Newton step length is chosen to satisfy the Wolfe
+    // conditions), so the displacement tolerances can be tight — they no
+    // longer have to absorb a fixed step size. Convergence requires ALL
+    // criteria simultaneously:
+    //   ftol=0.05 eV/Å   (max force)   — typical quantum-chemistry threshold
     //   rms_ftol=0.03    (RMS force)
-    //   max_dtol=0.1 Å   (max disp)   — matches fixed-alpha step size
-    //   rms_dtol=0.05 Å  (RMS disp)
+    //   max_dtol=0.05 Å  (max disp)
+    //   rms_dtol=0.02 Å  (RMS disp)
     //   etol=1e-3 eV     (energy diff)
     cpu::minimizer::Minimize opt;
     opt.add(cpu::minimizer::LBFGS{
         5,            // memory
-        double(0.01), // alpha0 [Å²/eV]
+        double(0.01), // alpha0 [Å²/eV] (only the Fixed-mode / step-0 fallback)
         double(0.05), // ftol [eV/Å]
-        10,           // max_ls (reserved; line search not yet active)
+        20,           // max_ls (line-search trial cap)
         double(0.03), // rms_ftol [eV/Å]
-        double(0.1),  // max_dtol [Å]
-        double(0.05), // rms_dtol [Å]
+        double(0.05), // max_dtol [Å]
+        double(0.02), // rms_dtol [Å]
         double(1e-3)  // etol [eV]
     });
     opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});

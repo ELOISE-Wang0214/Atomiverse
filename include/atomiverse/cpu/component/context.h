@@ -3,6 +3,8 @@
 /// (MD-only) spatial-decomposition awareness.
 #pragma once
 
+#include <functional>
+
 #include "atomiverse/facade/iteration_status.h"
 
 namespace ATV {
@@ -72,6 +74,29 @@ struct Context {
     /// so a large reduce cadence stays safe for the common "read scalars after
     /// the run" pattern without forcing a per-step collective.
     bool is_last_step = false;
+
+    /// @brief Re-entrant force re-evaluation handle (Optimize drivers only).
+    ///
+    /// Published by `cpu::OptimizeDriver::run` after `setup_pass`; null on
+    /// every other driver. Invoking it re-runs the driver's force-phase
+    /// bindings (ZeroForces/ZeroEnergy → evaluator → MPI reduce) on the
+    /// frame's *current* geometry, updating `frame.scalars.energy` and
+    /// `frame.atoms.f*`. An Optimizer component calls it during the
+    /// `line_search` phase to evaluate trial geometries `x + alpha p` without
+    /// owning a loop — the Driver still owns the outer loop. `need_grad` is
+    /// reserved for a future energy-only fast path; the current force
+    /// evaluators always produce energy and forces together. Always check for
+    /// non-null before calling (only set under OptimizeDriver).
+    std::function<void(bool need_grad)> reeval_forces = nullptr;
+
+    /// @brief True while an Optimizer is evaluating line-search trial
+    /// geometries via `reeval_forces`. Migration-type components
+    /// (`comm::Migrate`) skip when set: the optimizer's per-row buffers are
+    /// keyed to the current owned-row order, so reshuffling rows mid-search
+    /// would corrupt it. Halo exchange still runs, keeping trial forces
+    /// correct for the bounded step. Cleared before the optimizer commits the
+    /// accepted geometry, so the driver's normal force phase migrates as usual.
+    bool line_search_trial = false;
 
     /// @brief Outer-driver-loop status — owned by the category driver
     ///        (Evaluate / Dynamics / Optimize), reset before each iteration,

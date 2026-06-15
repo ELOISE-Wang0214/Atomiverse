@@ -292,6 +292,15 @@ void exchange_along_dim(Frame& frame, md::mpi::DomainDecomposition* dd, int dim,
 void Migrate::launch(const cpu::LaunchContext& ctx) {
     if (ctx.runtime.mpi_size <= 1)
         return;
+    // Skip migration during a line-search trial re-evaluation: the optimizer
+    // is replaying the force phase at a trial geometry x_prev + alpha*p, and
+    // its x_prev_/direction_ buffers are keyed to the *current* owned-row
+    // order. Migrating mid-search would reshuffle those rows and corrupt the
+    // search. Halo exchange still refreshes ghosts, so forces stay correct for
+    // the bounded trial step; real migration resumes when the driver's force
+    // phase runs at the committed geometry.
+    if (ctx.runtime.line_search_trial)
+        return;
     auto* dd = ctx.runtime.dd;
     if (!dd || dd->cart_comm == MPI_COMM_NULL)
         return;

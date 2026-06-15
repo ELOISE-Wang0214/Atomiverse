@@ -85,6 +85,18 @@ class Backend {
     /// @param step_idx Zero-based step index.
     void step(int step_idx);
 
+    /// @brief Re-run only the bindings of a single phase on the current frame.
+    ///
+    /// Used for line-search trial evaluations: an Optimizer component, mid
+    /// `launch()`, writes a trial geometry into the frame and calls this to
+    /// recompute energy/forces by replaying the force phase (ZeroForces →
+    /// evaluator → MPI reduce). Every op in matching slots is launched
+    /// unconditionally (frequency gating is bypassed — a trial is not a step)
+    /// and timing is not recorded (this runs re-entrantly inside `step()`).
+    /// @param phase_value Phase index to replay (e.g. minimizer force phase).
+    /// @param step_idx    Step index forwarded to the LaunchContext.
+    void run_phase(int phase_value, int step_idx);
+
     /// @brief Execute multiple simulation steps.
     /// @param n_steps Number of steps to execute.
     void run(int n_steps);

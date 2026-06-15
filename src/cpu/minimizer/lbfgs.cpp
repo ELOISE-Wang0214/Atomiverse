@@ -1,13 +1,14 @@
 /// @file cpu/minimizer/lbfgs.cpp
-/// @brief L-BFGS step implementation: two-loop recursion + multi-criteria
-///        convergence. MPI-aware: owned-row loops + cross-rank reductions.
+/// @brief L-BFGS step implementation: two-loop recursion + in-step line
+///        search + multi-criteria convergence. MPI-aware: owned-row loops +
+///        cross-rank reductions.
 
 #include "atomiverse/cpu/minimizer/lbfgs.h"
 #include "atomiverse/core/log.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/comm/domain.h"
-#include "atomiverse/cpu/minimizer/global_reduce.h"
 #include "atomiverse/cpu/component/owned_range.h"
+#include "atomiverse/cpu/minimizer/global_reduce.h"
 
 #include <algorithm>
 #include <cmath>
@@ -37,10 +38,12 @@ LBFGS::LBFGS(int memory, double alpha0, double ftol, int max_ls,
       rms_ftol_(rms_ftol), max_dtol_(max_dtol), rms_dtol_(rms_dtol),
       etol_(etol) {}
 
-LBFGS& LBFGS::line_search(double c1, double contract, double min_alpha) {
-    line_search_enabled_ = true;
+LBFGS& LBFGS::line_search(LineSearchMode mode, double c1, double c2,
+                          double max_step, double min_alpha) {
+    ls_mode_ = mode;
     ls_c1_ = c1;
-    ls_contract_ = contract;
+    ls_c2_ = c2;
+    ls_max_step_ = max_step;
     ls_min_alpha_ = min_alpha;
     return *this;
 }
@@ -77,17 +80,22 @@ void LBFGS::build(const cpu::BuildContext& ctx) {
     converged_ = false;
     energy_prev_ = 0;
     step_ = 0;
-    ls_had_trial_ = false;
-    ls_alpha_ = 0;
-    ls_gd_ = 0;
+    ls_phi0_ = 0;
+    ls_gd0_ = 0;
+    ls_dir_max_ = 0;
     last_generation_ = ~std::uint64_t{0};
     trace_.clear();
 
+    const char* mode_name = (ls_mode_ == LineSearchMode::StrongWolfe)
+                                ? "strong_wolfe"
+                                : (ls_mode_ == LineSearchMode::Armijo)
+                                      ? "armijo"
+                                      : "fixed";
     ATV_INFO(
         "[lbfgs] build memory={} alpha0={:.6f} ftol={:.6f} rms_ftol={:.6f} "
         "max_dtol={:.4f} rms_dtol={:.4f} etol={:.6e} line_search={}",
         memory_, alpha0_, ftol_, rms_ftol_, max_dtol_, rms_dtol_, etol_,
-        line_search_enabled_ ? "armijo_backtrack" : "off");
+        mode_name);
 }
 
 void LBFGS::launch(const cpu::LaunchContext& ctx) {
@@ -111,13 +119,10 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
         r_ws_.resize(dim, 0);
     }
 
-    // Atom migration reshuffles local row indexing: curvature history,
-    // previous-step state, and the in-flight line-search trial all key off
-    // row order and must be discarded. `neighbor_generation` is bumped in
-    // lockstep on every rank (Migrate gates the exchange on a global
-    // allreduce), so this reset — and everything downstream of it — stays
-    // rank-uniform. Single-rank: generation never changes after the first
-    // observation.
+    // Atom migration reshuffles local row indexing: curvature history and
+    // previous-step state key off row order and must be discarded.
+    // `neighbor_generation` is bumped in lockstep on every rank (Migrate gates
+    // the exchange on a global allreduce), so this reset stays rank-uniform.
     {
         const auto* dd = ctx.runtime.dd;
         const std::uint64_t gen =
@@ -128,7 +133,6 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
                 oldest_ = 0;
                 has_prev_ = false;
                 x_prev_valid_ = false;
-                ls_had_trial_ = false;
                 ATV_DEBUG("[lbfgs] migration detected (gen {}) — history "
                           "reset, restarting as steepest descent",
                           gen);
@@ -141,7 +145,6 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
 
     // ── Convergence check phase ──────────────────────────────────────
     if (phase == static_cast<int>(ATV::minimizer::Phase::convergence_check)) {
-        // Per-rank force partials over owned rows.
         double local_max_force = 0;
         double sum_f2 = 0;
 #pragma omp parallel for schedule(static) reduction(+ : sum_f2)                \
@@ -154,10 +157,6 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
             local_max_force = std::max(local_max_force, std::sqrt(f2));
         }
 
-        // Displacement partials relative to pre-step positions (x_prev_ is
-        // saved in search_direction before the step is applied). Invalid on
-        // the first step and right after a migration reshuffle — the
-        // criteria are then skipped exactly like step 0.
         const bool disp_valid = step_ > 0 && x_prev_valid_;
         double local_max_disp = 0;
         double sum_d2 = 0;
@@ -175,9 +174,6 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
             }
         }
 
-        // Two batched collectives: SUM{Σf², Σd², n_owned} + MAX{f, d}.
-        // Entered by every rank unconditionally (disp partials are zero
-        // when invalid), so the collectives stay in lockstep.
         double sums[3] = {sum_f2, sum_d2, static_cast<double>(n)};
         global_sum(ctx, sums, 3);
         double maxs[2] = {local_max_force, local_max_disp};
@@ -189,14 +185,11 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
         const double max_disp = maxs[1];
         const double rms_disp =
             disp_valid ? std::sqrt(sums[1] / (3 * n_global)) : double(0);
-        // frame.scalars.energy is the globally-reduced total (mpi::Reduce
-        // runs at force @ +20, before this phase).
         const double energy_change = (step_ > 0)
                                          ? std::abs(f.scalars.energy
                                                     - energy_prev_)
                                          : double(1e30);
 
-        // Record trace
         OptRecord rec;
         rec.step = step_;
         rec.energy = f.scalars.energy;
@@ -207,8 +200,6 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
         rec.energy_change = energy_change;
         trace_.push_back(rec);
 
-        // All-criteria convergence (skip step 0 for displacement/energy
-        // criteria; skip displacement criteria while x_prev_ is invalid).
         converged_ = (max_force_ < ftol_) && (rms_force < rms_ftol_)
                      && (step_ == 0 || !disp_valid || max_disp < max_dtol_)
                      && (step_ == 0 || !disp_valid || rms_disp < rms_dtol_)
@@ -220,9 +211,6 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
                  step_, f.scalars.energy, max_force_, rms_force, max_disp,
                  rms_disp, energy_change, converged_);
 
-        // Report convergence to the outer OptimizeDriver loop so it can
-        // break early. All ranks computed identical global metrics, so the
-        // verdict — and the driver's early break — is rank-uniform.
         if (converged_) {
             ctx.runtime.outer_status.converged = true;
             ctx.runtime.outer_status.reason =
@@ -233,9 +221,98 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
         return;
     }
 
-    // ── Search direction phase ───────────────────────────────────────
+    // ── Line-search phase ────────────────────────────────────────────
+    //
+    // search_direction (run first this step) has already stored `direction_`,
+    // the descent slope `ls_gd0_ = g.direction`, the origin energy `ls_phi0_`,
+    // and the global `ls_dir_max_`. Here we choose the step length and write
+    // the accepted geometry x_prev_ + alpha*direction_. The driver's force
+    // phase (next) recomputes forces/energy at that geometry for the
+    // convergence check, so we do not re-evaluate after committing alpha.
+    if (phase == static_cast<int>(ATV::minimizer::Phase::line_search)) {
+        // Displacement cap: bound the trial step so a wild move cannot blow up
+        // an expensive (SCF) evaluator. alpha is dimensionless on direction_.
+        const double cap =
+            (ls_dir_max_ > 1e-20) ? ls_max_step_ / ls_dir_max_ : 1.0;
 
-    // Gradient = -force (we minimize energy, force = -grad E)
+        // Fixed mode (or no re-eval handle available): legacy single step.
+        if (ls_mode_ == LineSearchMode::Fixed || !ctx.runtime.reeval_forces) {
+            double alpha = alpha0_;
+            if (ls_dir_max_ > 1e-20)
+                alpha = std::min(alpha0_, 0.1 / ls_dir_max_); // legacy 0.1 Å cap
+#pragma omp parallel for schedule(static)
+            for (int i = 0; i < n; ++i) {
+                f.atoms.x(i) = x_prev_[i * 3 + 0] + alpha * direction_[i * 3 + 0];
+                f.atoms.y(i) = x_prev_[i * 3 + 1] + alpha * direction_[i * 3 + 1];
+                f.atoms.z(i) = x_prev_[i * 3 + 2] + alpha * direction_[i * 3 + 2];
+            }
+            return;
+        }
+
+        // No descent (step 0, or degenerate): leave the geometry unchanged;
+        // the convergence check decides whether we are already at a minimum.
+        if (!(ls_gd0_ < 0))
+            return;
+
+        // phi(alpha) writes the trial geometry, replays the force phase via
+        // the driver's re-eval handle, and returns the globally-reduced
+        // energy and directional derivative g(x+alpha p).p.
+        auto phi = [&](double alpha, bool need_slope) -> LsSample {
+#pragma omp parallel for schedule(static)
+            for (int i = 0; i < n; ++i) {
+                f.atoms.x(i) = x_prev_[i * 3 + 0] + alpha * direction_[i * 3 + 0];
+                f.atoms.y(i) = x_prev_[i * 3 + 1] + alpha * direction_[i * 3 + 1];
+                f.atoms.z(i) = x_prev_[i * 3 + 2] + alpha * direction_[i * 3 + 2];
+            }
+            ctx.runtime.reeval_forces(need_slope);
+            LsSample s;
+            s.f = f.scalars.energy; // globally reduced by md::mpi::Reduce
+            double gd_local = 0;
+#pragma omp parallel for schedule(static) reduction(+ : gd_local)
+            for (int i = 0; i < n; ++i) {
+                gd_local += -f.atoms.fx(i) * direction_[i * 3 + 0]
+                            + -f.atoms.fy(i) * direction_[i * 3 + 1]
+                            + -f.atoms.fz(i) * direction_[i * 3 + 2];
+            }
+            s.dphi = global_sum(ctx, gd_local);
+            return s;
+        };
+
+        const double alpha_max = std::max(cap, ls_min_alpha_);
+        const double alpha_init = std::min(1.0, alpha_max);
+        LineSearchResult lr;
+        // Suppress migration while trials replay the force phase (see
+        // Context::line_search_trial); halo exchange still refreshes ghosts.
+        ctx.runtime.line_search_trial = true;
+        if (ls_mode_ == LineSearchMode::StrongWolfe)
+            lr = strong_wolfe(phi, ls_phi0_, ls_gd0_, alpha_init, ls_c1_, ls_c2_,
+                              max_ls_, alpha_max);
+        else // Armijo
+            lr = armijo_backtrack(phi, ls_phi0_, ls_gd0_, alpha_init, ls_c1_,
+                                  ls_contract_, max_ls_, ls_min_alpha_);
+        ctx.runtime.line_search_trial = false;
+
+        // Commit the accepted geometry (the last trial may have been a
+        // different alpha). On a failed search (e.g. machine-flat near the
+        // minimum) lr.alpha may be ~0 → effectively no move, which the
+        // convergence check then resolves.
+        const double alpha = lr.alpha;
+#pragma omp parallel for schedule(static)
+        for (int i = 0; i < n; ++i) {
+            f.atoms.x(i) = x_prev_[i * 3 + 0] + alpha * direction_[i * 3 + 0];
+            f.atoms.y(i) = x_prev_[i * 3 + 1] + alpha * direction_[i * 3 + 1];
+            f.atoms.z(i) = x_prev_[i * 3 + 2] + alpha * direction_[i * 3 + 2];
+        }
+        ATV_DEBUG("[lbfgs] line_search step={} mode={} alpha={:.6e} ok={} "
+                  "n_eval={}",
+                  step_, static_cast<int>(ls_mode_), alpha, lr.ok,
+                  lr.n_value_evals);
+        return;
+    }
+
+    // ── Search-direction phase ───────────────────────────────────────
+
+    // Gradient = -force (we minimize energy, force = -grad E).
     auto& x = x_ws_;
     auto& g = g_ws_;
 #pragma omp parallel for schedule(static)
@@ -248,79 +325,56 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
         g[i * 3 + 2] = -f.atoms.fz(i);
     }
 
-    // ── Armijo line-search rejection & rollback ──────────────────────
-    //
-    // On step k > 0 we evaluate the trial taken during step k-1's
-    // search_direction: x_k = x_{k-1} + alpha * d_{k-1}, E_k is now in
-    // f.scalars.energy (globally reduced by mpi::Reduce). Armijo requires
-    // E_k - E_{k-1} <= c1 * alpha * (g_{k-1} . d_{k-1}); `ls_gd_` was
-    // globally summed when the trial was taken, so accept/reject is
-    // rank-uniform.
-    //
-    // On rejection we roll back to x_{k-1}, scale alpha by `contract`,
-    // re-take the step, and return without updating L-BFGS history. The
-    // driver's next force phase will evaluate the shrunk trial, so the
-    // full backtracking loop plays out over successive driver steps.
-    if (line_search_enabled_ && ls_had_trial_) {
-        const double armijo_rhs = ls_c1_ * ls_alpha_ * ls_gd_; // < 0 on descent
-        const double dE = f.scalars.energy - ls_origin_energy_;
-        const bool armijo_ok = (dE <= armijo_rhs);
-        if (!armijo_ok && ls_alpha_ > ls_min_alpha_) {
-            ls_alpha_ *= ls_contract_;
-#pragma omp parallel for schedule(static)
-            for (int i = 0; i < n; ++i) {
-                f.atoms.x(i) =
-                    x_prev_[i * 3 + 0] + ls_alpha_ * direction_[i * 3 + 0];
-                f.atoms.y(i) =
-                    x_prev_[i * 3 + 1] + ls_alpha_ * direction_[i * 3 + 1];
-                f.atoms.z(i) =
-                    x_prev_[i * 3 + 2] + ls_alpha_ * direction_[i * 3 + 2];
-            }
-            ATV_DEBUG("[lbfgs] armijo reject step={} dE={:.3e} rhs={:.3e} "
-                      "new_alpha={:.3e}",
-                      step_, dE, armijo_rhs, ls_alpha_);
-            return; // history update + new direction happen on the next accepted trial
-        }
-    }
-
     ATV_DEBUG("[lbfgs] search_direction step={} stored_history={}", step_,
               n_stored_);
 
-    // Update L-BFGS history with previous step's data. The candidate (s, y)
-    // pair is written straight into its history slot; the slot is only
-    // committed (counters advanced) when the globally-summed curvature
-    // condition holds, otherwise the next candidate overwrites it.
+    // Update L-BFGS history with the previous step's accepted move. The
+    // strong-Wolfe line search guarantees y^T s > 0 automatically (N&W §3.1);
+    // we still assert it before committing the pair so a degenerate step
+    // (Armijo/Fixed mode, or a search that bailed) cannot push a non-positive
+    // curvature pair that would break the inverse-Hessian update.
     if (has_prev_) {
         const int idx = (n_stored_ < memory_) ? n_stored_ : oldest_;
         auto& s = s_history_[idx];
         auto& y = y_history_[idx];
         double ys_local = 0;
-#pragma omp parallel for schedule(static) reduction(+ : ys_local)
+        double ss_local = 0;
+        double yy_local = 0;
+#pragma omp parallel for schedule(static)                                      \
+    reduction(+ : ys_local, ss_local, yy_local)
         for (int j = 0; j < dim; ++j) {
             s[j] = x[j] - x_prev_[j];
             y[j] = g[j] - g_prev_[j];
             ys_local += y[j] * s[j];
+            ss_local += s[j] * s[j];
+            yy_local += y[j] * y[j];
         }
-        const double ys = global_sum(ctx, ys_local);
+        double red[3] = {ys_local, ss_local, yy_local};
+        global_sum(ctx, red, 3);
+        const double ys = red[0];
+        const double snorm = std::sqrt(red[1]);
+        const double ynorm = std::sqrt(red[2]);
 
-        // Only store if curvature condition is satisfied
-        if (ys > double(1e-10)) {
+        // Curvature condition y^T s > eps*||s||*||y|| keeps H positive definite.
+        if (ys > double(1e-12) * snorm * ynorm && ys > double(0)) {
             rho_history_[idx] = double(1) / ys;
-            if (n_stored_ < memory_) {
+            if (n_stored_ < memory_)
                 ++n_stored_;
-            } else {
+            else
                 oldest_ = (oldest_ + 1) % memory_;
-            }
+        } else {
+            ATV_DEBUG("[lbfgs] skipped curvature pair step={} ys={:.3e} "
+                      "(non-positive — keeps H PD)",
+                      step_, ys);
         }
     }
 
-    // Two-loop recursion to compute search direction. Every inner product
-    // is a per-rank partial reduced with global_sum so all ranks share the
-    // identical direction for their owned rows.
+    // Two-loop recursion → direction = -H g. Each inner product is a per-rank
+    // partial reduced with global_sum so every rank shares the identical
+    // direction for its owned rows.
     auto& q = q_ws_;
     std::copy(g.begin(), g.begin() + dim, q.begin());
 
-    // Backward pass: from newest to oldest
     for (int k = n_stored_ - 1; k >= 0; --k) {
         const int idx = (oldest_ + k) % memory_;
         const double sq = global_sum(ctx, dot_local(s_history_[idx], q, dim));
@@ -332,7 +386,6 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
             q[j] -= a * yk[j];
     }
 
-    // Initial Hessian approximation: H0 = gamma * I
     double gamma = 1;
     if (n_stored_ > 0) {
         const int newest = (oldest_ + n_stored_ - 1) % memory_;
@@ -347,7 +400,6 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
     for (int j = 0; j < dim; ++j)
         r[j] = gamma * q[j];
 
-    // Forward pass: from oldest to newest
     for (int k = 0; k < n_stored_; ++k) {
         const int idx = (oldest_ + k) % memory_;
         const double yr = global_sum(ctx, dot_local(y_history_[idx], r, dim));
@@ -359,49 +411,38 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
             r[j] += sk[j] * coeff;
     }
 
-    // direction = -H * g (descent direction)
+    // direction = -H g (descent direction).
 #pragma omp parallel for schedule(static)
     for (int j = 0; j < dim; ++j)
         direction_[j] = -r[j];
 
-    // Save current state for next step's history update
+    // Save the pre-step state for the next history update.
     std::copy(x.begin(), x.begin() + dim, x_prev_.begin());
     std::copy(g.begin(), g.begin() + dim, g_prev_.begin());
     has_prev_ = true;
     x_prev_valid_ = true;
 
-    // Apply step: x_new = x + alpha * direction
-    double alpha = alpha0_;
+    // Descent precheck (N&W §3.1 / Alg PR+): the quasi-Newton direction is a
+    // descent direction iff g.p < 0. A bad (s,y) history or numerical noise
+    // can violate it; reset to steepest descent so the line search is
+    // well-posed. The dot products are globally reduced for rank-uniformity.
+    double gd0 = global_sum(ctx, dot_local(g, direction_, dim));
+    if (!(gd0 < 0)) {
+#pragma omp parallel for schedule(static)
+        for (int j = 0; j < dim; ++j)
+            direction_[j] = -g[j];
+        gd0 = -global_sum(ctx, dot_local(g, g, dim));
+        ATV_DEBUG("[lbfgs] non-descent direction step={} — reset to -g", step_);
+    }
 
-    // Scale step by inverse max-force to keep steps reasonable. The cap
-    // must be computed from the GLOBAL direction maximum — a per-rank cap
-    // would make ranks step with different alphas and tear the geometry.
+    // Global max|direction| component for the line-search displacement cap.
     double dir_max = 0;
 #pragma omp parallel for schedule(static) reduction(max : dir_max)
     for (int j = 0; j < dim; ++j)
         dir_max = std::max(dir_max, std::abs(direction_[j]));
-    dir_max = global_max(ctx, dir_max);
-    if (dir_max > double(1e-20))
-        alpha =
-            std::min(alpha, double(0.1) / dir_max); // cap step at 0.1 Angstrom
-
-    // Remember the trial so the next step's search_direction can test Armijo.
-    if (line_search_enabled_) {
-        ls_alpha_ = alpha;
-        ls_gd_ = global_sum(ctx, dot_local(g, direction_, dim));
-        ls_origin_energy_ = f.scalars.energy; // energy at x_prev_ (pre-step)
-        ls_had_trial_ = true;
-    }
-
-#pragma omp parallel for schedule(static)
-    for (int i = 0; i < n; ++i) {
-        f.atoms.x(i) += alpha * direction_[i * 3 + 0];
-        f.atoms.y(i) += alpha * direction_[i * 3 + 1];
-        f.atoms.z(i) += alpha * direction_[i * 3 + 2];
-    }
-
-    ATV_DEBUG("[lbfgs] applied step={} alpha={:.6e} dir_max={:.6e}", step_,
-              alpha, dir_max);
+    ls_dir_max_ = global_max(ctx, dir_max);
+    ls_gd0_ = gd0;
+    ls_phi0_ = f.scalars.energy; // energy at x_prev_ (pre-step, this geometry)
 
     ++step_;
 }
