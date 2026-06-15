@@ -1,6 +1,6 @@
 # Tutorials
 
-These chapters are written as a short book. They are organized in two
+These chapters are written as a short book. They are organized in three
 arcs that share the same `cpu::Frame` data model, the same
 Driver/Component vocabulary, and the same units (eV, Å, fs, amu).
 
@@ -40,7 +40,19 @@ which is the architecture paying off.
 If you want a one-page map of the SCF arc before opening the first
 chapter, read [SCF Learning Path](../user-guide/scf-roadmap.md).
 
-## Arc 2: Classical Molecular Dynamics (Chapter 7)
+## Arc 2: Periodic Systems with Plane Waves (Chapter 5)
+
+The molecular SCF arc uses atom-centered Gaussian basis functions.
+[Tutorial 5: Plane-Wave DFT for Periodic Systems](05-pw.md) switches to the
+other major basis family — plane waves — which is the natural choice for
+crystals, surfaces, and bulk materials. It keeps the same SCF *shape*
+(build effective Hamiltonian → diagonalize → rebuild density → check) but
+introduces pseudopotentials, G-vectors, k-point sampling, FFT-accelerated
+Hartree/XC potentials, the Davidson diagonalizer, and Ewald ion-ion energy.
+It is written around `examples/08_pw.cpp` (bulk silicon) and needs FFTW3
+(`-DATV_BUILD_PW=ON`).
+
+## Arc 3: Classical Molecular Dynamics (Chapter 7)
 
 [Tutorial 7: Classical Molecular Dynamics on the CPU](07-classical-md.md)
 walks through a complete classical-MD setup — pair potential, bonded
@@ -57,11 +69,14 @@ Tutorial 1 is written around `examples/01_scf.cpp`. Tutorial 2
 is written around `examples/02_rhf.cpp`, with
 `examples/02_rhf.cu` as the optional CUDA translation of the
 same calculation. Tutorial 3 follows `examples/03_uhf.cpp`,
-and Tutorial 4 follows `examples/04_uks.cpp`. Tutorial 6
-follows `examples/06_aimd.cpp`. Tutorial 8 follows
-`examples/05_geom_opt.cpp`. Tutorial 7 currently has no
-dedicated example program; the snippets are written against the
-classical-MD test fixture in `tests/cpu/md/test_md.cpp`.
+and Tutorial 4 follows `examples/04_uks.cpp`. Tutorial 5 follows
+`examples/08_pw.cpp`. Tutorial 6 follows `examples/06_aimd.cpp`. Tutorial 7
+follows `examples/07_md_lj.cpp` (CPU; the CUDA twin is `examples/07_md_lj.cu`).
+Tutorial 8 follows `examples/05_geom_opt.cpp`.
+
+(Note: example numbers do not line up with tutorial numbers — the example files
+have their own order. Follow the file named in each chapter rather than assuming
+the numbers match.)
 
 If you are deciding which chapter to start with: if quantum chemistry
 is what brought you here, start at Tutorial 1. If classical force

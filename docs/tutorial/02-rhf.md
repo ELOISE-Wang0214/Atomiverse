@@ -69,10 +69,10 @@ is intentionally short:
 
 ```cpp
 cpu::Frame frame(2);
-frame.x[0] = Real(0);     frame.y[0] = Real(0); frame.z[0] = Real(0);
-frame.x[1] = Real(0.74);  frame.y[1] = Real(0); frame.z[1] = Real(0);
-frame.type_id[0] = 1;
-frame.type_id[1] = 1;
+frame.atoms.x[0] = Real(0);     frame.atoms.y[0] = Real(0); frame.atoms.z[0] = Real(0);
+frame.atoms.x[1] = Real(0.74);  frame.atoms.y[1] = Real(0); frame.atoms.z[1] = Real(0);
+frame.atoms.type[0] = 1;
+frame.atoms.type[1] = 1;
 frame.box = Mat3::cubic(100.0);
 ```
 
@@ -82,9 +82,14 @@ calculation therefore has two electrons to place into molecular orbitals. Once
 the geometry is defined, the rest of the file follows the RHF logic directly:
 
 ```cpp
-auto integrals = cpu::scf::build_integrals_sto3g(frame);
+auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
 auto result = cpu::scf::rhf_solve(integrals, tol, 100);
 ```
+
+> **Element coverage:** the STO-3G integral path supports elements **H through
+> O (Z = 1–8)**. Atoms with higher atomic number throw at `build_integrals`
+> rather than returning a wrong answer (there are "no fallback values" by
+> design). Heavier-element basis sets are a planned extension.
 
 The first line prepares the fixed molecular quantities: overlap, one-electron
 terms, electron-electron repulsion, and nuclear repulsion. The second line
@@ -110,7 +115,7 @@ you have just read to a real molecular energy that matches expectation.
 Build and run it with
 
 ```bash
-cmake -B build -DATV_BUILD_RHF=ON -DATV_BUILD_EXAMPLES=ON
+cmake -B build -DATV_BUILD_CUDA=OFF -DATV_BUILD_RHF=ON -DATV_BUILD_EXAMPLES=ON
 cmake --build build --target 02_rhf
 ./build/examples/02_rhf
 ```

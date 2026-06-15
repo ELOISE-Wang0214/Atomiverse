@@ -9,14 +9,25 @@ list, integrator, thermostat, barostat, and observers. By the end you
 will have built every layer of an LAMMPS-style script, but in C++, in
 about thirty lines.
 
-The CPU MD test suite
-([`tests/cpu/md/test_md.cpp`](../../tests/cpu/md/test_md.cpp)) is the
-single best place to read working classical-MD code right now. The
-snippets below are written against that test's FCC-Argon fixture so you
-can see the same wiring exercised under regression. There is no
-dedicated tutorial program for classical CPU MD yet — `examples/lj.cu`
-is CUDA-flavoured, and the CPU tutorials so far have all gone through
-SCF. The pattern is identical regardless.
+The runnable example for this chapter is
+[`examples/07_md_lj.cpp`](../../examples/07_md_lj.cpp) — a complete NVE
+Lennard-Jones argon run on the CPU using the categorical setters
+(`set_pair` / `set_neighbor` / `set_integrator` / `set_thermo`). Build and run
+it with:
+
+```bash
+cmake -B build -DATV_BUILD_EXAMPLES=ON
+cmake --build build --target 07_md_lj
+./build/examples/07_md_lj
+```
+
+It reports the total-energy drift over 1000 steps, which should be tiny
+(NVE conserves energy). The CUDA twin of the same lesson is
+`examples/07_md_lj.cu` (target `07_md_lj_cuda`). For more wiring — thermostats,
+barostats, bonded terms — the CPU MD test suite
+([`tests/cpu/md/test_md.cpp`](../../tests/cpu/md/test_md.cpp)) exercises every
+component under regression; some snippets below are written against its
+FCC-argon fixture.
 
 ## What "Classical" Means in This Code
 
@@ -32,20 +43,20 @@ works for both regimes. In a classical run, the components bound at the
 `force` phase are pair potentials and bonded-energy terms; in AIMD the
 same phase holds an `SCFEvaluator`. The integrator, thermostat,
 barostat, kinetic-energy accumulator, and recorder all read and write
-the same `frame.atoms.fx/fy/fz` and `frame.energy` fields irrespective
+the same `frame.atoms.fx/fy/fz` and `frame.scalars.energy` fields irrespective
 of who produced the forces.
 
 Concretely, a "classical" force in Atomiverse is any
 `cpu::ComponentBase`-derived class whose `role()` is `Evaluator` and
 whose `capabilities()` advertises at least `Capability::Force`. The
-shipped set under `cpu/md/` and `cpu/bonded/` is:
+shipped set under `cpu/potentials/` is:
 
 | Component | Functional form | Capabilities |
 |---|---|---|
-| `cpu::md::LJ` | $4\varepsilon[(\sigma/r)^{12} - (\sigma/r)^6]$, shifted | Energy &#124; Force &#124; Stress |
-| `cpu::bonded::HarmonicBond` | $K(r - r_0)^2$ | Energy &#124; Force &#124; Stress |
-| `cpu::bonded::HarmonicAngle` | $K(\theta - \theta_0)^2$ | Energy &#124; Force |
-| `cpu::bonded::MultiHarmonicDihedral` | $\sum_n a_n \cos^n\phi$ | Energy &#124; Force |
+| `cpu::PairLJCut` | $4\varepsilon[(\sigma/r)^{12} - (\sigma/r)^6]$, shifted | Energy &#124; Force &#124; Stress |
+| `cpu::BondHarmonic` | $K(r - r_0)^2$ | Energy &#124; Force &#124; Stress |
+| `cpu::AngleHarmonic` | $K(\theta - \theta_0)^2$ | Energy &#124; Force |
+| `cpu::DihedralMultiHarmonic` | $\sum_n a_n \cos^n\phi$ | Energy &#124; Force |
 
 They share the same lifecycle, the same OpenMP per-thread force
 reduction buffer pattern, and the same cell-list-driven neighbor-list
@@ -101,7 +112,7 @@ sim.add(cpu::md::VelocityVerlet{/*dt_fs=*/4.0});
 sim.on(md::Phase::pre_force).add(
     cpu::md::NeighborList<>{/*cutoff=*/6.8});
 sim.on(md::Phase::force).add(
-    cpu::md::LJ{/*eps=*/0.0104, /*sig=*/3.4, /*cutoff=*/6.8});
+    cpu::PairLJCut{/*eps=*/0.0104, /*sig=*/3.4, /*cutoff=*/6.8});
 sim.build();
 sim.run(frame, 10000);
 ```
@@ -127,7 +138,7 @@ appear:
    skin; the rebuild cadence follows LAMMPS's `neigh_modify every 1
    delay 0 check yes` discipline. On non-rebuild steps the cost
    collapses to a single $O(N)$ skin scan.
-4. **`LJ`** binds explicitly at `force`. The constructor takes
+4. **`PairLJCut`** binds explicitly at `force`. The constructor takes
    $\varepsilon$ in eV, $\sigma$ in Å, and a cutoff in Å. The cutoff
    choice has to match — or be larger than — the neighbor-list cutoff;
    the test suite uses $6.8 \approx 2\sigma$ for Argon. Energy is
@@ -141,7 +152,7 @@ The driver's auto-added infrastructure — `ZeroForces`, `ZeroEnergy`,
 `end_of_step @ -100`, `ZeroKinetic` at `end_of_step @ -1000`,
 `SnapshotPublisher` at `end_of_step @ +10` — is wired by `cpu::md::MD`'s
 constructor before the user code runs. You almost never have to think
-about them, but if you ever wonder why `frame.energy` is zero before the
+about them, but if you ever wonder why `frame.scalars.energy` is zero before the
 first force component runs each step, that is why.
 
 ## Adding a Thermostat (NVT)
@@ -196,7 +207,7 @@ sim.add(cpu::md::NoseHoover{T_target, tau_T, dt});
 sim.add(cpu::md::Barostat {P_target, tau_P, dt});
 ```
 
-`Barostat` reads the global virial sum from `frame.stress`, computes the
+`Barostat` reads the global virial sum from `frame.scalars.stress`, computes the
 instantaneous pressure $P = -(\sigma_{xx} + \sigma_{yy} + \sigma_{zz})/(3V)$,
 and rescales the box edge length and every owned atom's position by
 $\mu = (1 - (\Delta t/\tau_P)(P - P_{\mathrm{target}}))^{1/3}$. It is bound at
@@ -224,11 +235,11 @@ straightforward `Evaluator` components.
 A typical OPLS-style snippet looks like:
 
 ```cpp
-sim.on(md::Phase::force).add(cpu::md::LJ{eps, sigma, cutoff});
+sim.on(md::Phase::force).add(cpu::PairLJCut{eps, sigma, cutoff});
 sim.on(md::Phase::force).add(
-    cpu::bonded::HarmonicBond{ {bond_K},  {bond_r0} });
+    cpu::BondHarmonic{ {bond_K},  {bond_r0} });
 sim.on(md::Phase::force).add(
-    cpu::bonded::HarmonicAngle{{angle_K}, {angle_t0}});
+    cpu::AngleHarmonic{{angle_K}, {angle_t0}});
 ```
 
 Each constructor takes a `std::vector` indexed by *bond type* (or angle
@@ -236,13 +247,13 @@ type, or dihedral type) — the type indices are what you store in
 `frame.bonds.type`, `frame.angles.type`, etc. when you assemble the
 topology.
 
-A subtle detail that is easy to miss: by default, `LJ` does *not* know
+A subtle detail that is easy to miss: by default, `PairLJCut` does *not* know
 about your topology. If you want LAMMPS-style "special bonds" — i.e.
 skip the LJ pair on 1–2 (bonded), 1–3 (across an angle vertex), or 1–4
 (across a dihedral) atom pairs — you must opt in:
 
 ```cpp
-auto lj = cpu::md::LJ{eps, sigma, cutoff}
+auto lj = cpu::PairLJCut{eps, sigma, cutoff}
             .set_special_bonds(/*s12=*/0.0, /*s13=*/0.0, /*s14=*/0.0);
 sim.on(md::Phase::force).add(std::move(lj));
 ```
@@ -262,12 +273,12 @@ had its second half-kick, and the kinetic energy has been recomputed.
 
 The auto-added components in `cpu::md::MD` are, in order:
 
-1. `ZeroKinetic` (-1000) — clear `frame.kinetic` so KE is reaccumulated
+1. `ZeroKinetic` (-1000) — clear `frame.scalars.kinetic` so KE is reaccumulated
    from current velocities each step.
 2. `KineticEnergy` (-100) — sum $\frac{1}{2} \sum_i m_i v_i^2$ with OpenMP
    reduction.
 3. `ReduceEnergy` (-50) — single-rank no-op; multi-rank
-   `MPI_Allreduce` for `frame.energy`, `frame.kinetic`, and the stress
+   `MPI_Allreduce` for `frame.scalars.energy`, `frame.scalars.kinetic`, and the stress
    components so every rank sees the same global totals.
 4. `SnapshotPublisher` (+10) — publishes a `FrameSnapshot` to async
    observers (zero-cost early return when no observer is subscribed).
@@ -318,7 +329,7 @@ code:
   helper reads `cpu::Box`. An uninitialized box means
   zero-length edges, infinite densities, and segfaults inside cell-list
   setup. Always set `frame.box = Mat3::cubic(L)` before `sim.build()`.
-- **Cutoff vs neighbor-list-cutoff.** `LJ{eps, sigma, cutoff}` defines
+- **Cutoff vs neighbor-list-cutoff.** `PairLJCut{eps, sigma, cutoff}` defines
   the physical cutoff. `NeighborList<>{cutoff}` defines the search
   cutoff. They must agree (or the neighbor-list cutoff is larger by the
   Verlet skin). Mismatch silently truncates the pair list.

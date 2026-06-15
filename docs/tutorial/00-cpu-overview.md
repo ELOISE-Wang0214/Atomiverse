@@ -151,7 +151,7 @@ differ called out.
 loop for n_steps:
     initial_integrate  ← VelocityVerlet first half-kick + drift
     pre_force          ← NeighborList rebuild
-    force              ← LJ / HarmonicBond / HarmonicAngle / …
+    force              ← PairLJCut / BondHarmonic / AngleHarmonic / …
     post_force         ← (constraints, long-range corrections)
     final_integrate    ← VelocityVerlet second half-kick
     end_of_step        ← KineticEnergy, Thermo, Recorder, RDF observer
@@ -168,7 +168,7 @@ evolution does not "succeed" and "fail", it just runs.
 loop until converged or max_iter:
     search_direction   ← LBFGS / CG computes a descent direction
     line_search        ← (optional Armijo backtracking)
-    force              ← LJ / SCFEvaluator / … (same evaluators as MD!)
+    force              ← PairLJCut / SCFEvaluator / … (same evaluators as MD!)
     convergence_check  ← LBFGS / CG: did force + displacement + ΔE meet tolerance?
     end_of_step        ← OptLog, FinalGeometry, TrajectoryWriter
 ```
@@ -184,7 +184,7 @@ all the user has to add to wire optimization end to end.
 ```text
 exactly once:
     prepare    ← ZeroForces, ZeroEnergy
-    evaluate   ← SCFEvaluator / LJ / HarmonicBond / …
+    evaluate   ← SCFEvaluator / PairLJCut / BondHarmonic / …
     finalize   ← (recorders that read the final state)
 ```
 
@@ -212,14 +212,14 @@ capabilities `Energy | DensityMatrix | Orbitals` (and `Force` when
 gradient computation is enabled). Inside its `launch()` it builds the
 integrals at the current geometry, calls into a pre-built `SCFSolver`,
 optionally computes the analytic nuclear gradient, and writes
-`frame.energy` and (when applicable) the force arrays.
+`frame.scalars.energy` and (when applicable) the force arrays.
 
 That is why one and the same component is the right answer for three
 very different workflows:
 
 - **Single-point energy.** `cpu::Evaluate + SCFEvaluator{cfg}.with_gradient(false)`
 - **Geometry optimization.** `cpu::minimizer::Minimize + LBFGS + SCFEvaluator{cfg}` (the example in
-  [Tutorial 5](#tutorial-5-where-to-go-next))
+  [Tutorial 8](08-geometry-minimization.md))
 - **Ab initio molecular dynamics.** `cpu::md::MD + VelocityVerlet + NoseHoover + SCFEvaluator{cfg}.predictor(3)`
   (the example in [Tutorial 6](06-aimd.md))
 
@@ -232,12 +232,12 @@ mental model, is that the three loops compose by *swapping force
 providers*, not by writing a new driver.
 
 ```text
-cpu::md::MD        + LJ                                = classical MD
-cpu::md::MD        + SCFEvaluator                      = AIMD
-cpu::minimizer::Minimize + LBFGS + LJ                  = classical relaxation
-cpu::minimizer::Minimize + LBFGS + SCFEvaluator        = ab initio geometry opt
-cpu::Evaluate      + LJ                                = classical single-point
-cpu::Evaluate      + SCFEvaluator                      = quantum single-point
+cpu::md::MD        + PairLJCut                          = classical MD
+cpu::md::MD        + SCFEvaluator                        = AIMD
+cpu::minimizer::Minimize + LBFGS + PairLJCut             = classical relaxation
+cpu::minimizer::Minimize + LBFGS + SCFEvaluator          = ab initio geometry opt
+cpu::Evaluate      + PairLJCut                           = classical single-point
+cpu::Evaluate      + SCFEvaluator                        = quantum single-point
 ```
 
 The driver code does not know whether the force is empirical or
@@ -283,15 +283,15 @@ You can now read the rest of the manual without losing your bearings.
   polarization. Same driver, different `SCFConfig`.
 - **Chapter 4 — Unrestricted Kohn-Sham DFT (UKS).** Adds the XC grid.
   Same driver, same evaluator class, different `SCFConfig`.
-- **Chapter 5 — Geometry Minimization.** Switches the driver to
-  `cpu::minimizer::Minimize`, swaps `LBFGS` and `CG` as the optimizer
-  component, keeps the `SCFEvaluator` at the force phase.
 - **Chapter 6 — *Ab Initio* Molecular Dynamics.** Switches the driver to
   `cpu::md::MD`, adds an integrator and a thermostat, keeps the
   `SCFEvaluator` at the force phase.
 - **Chapter 7 — Classical Molecular Dynamics.** Replaces the
-  `SCFEvaluator` with `LJ` and bonded force-field components. Shows the
+  `SCFEvaluator` with `PairLJCut` and bonded force-field components. Shows the
   full thermo / trajectory / RDF observer stack.
+- **Chapter 8 — Geometry Minimization.** Switches the driver to
+  `cpu::minimizer::Minimize`, swaps `LBFGS` and `CG` as the optimizer
+  component, keeps the `SCFEvaluator` at the force phase.
 
 If you only have time for one example to start with, build and run
 `examples/01_scf.cpp` (the SCF toy) and read Chapter 1 next.

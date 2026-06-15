@@ -51,10 +51,13 @@ acceleration, k-point sampling, and Ewald summation.
 | RHF | `examples/02_rhf.cpp` | First physically meaningful calculation |
 | UHF | `examples/03_uhf.cpp` | Open-shell systems and spin contamination |
 | UKS | `examples/04_uks.cpp` | DFT, grids, and exchange-correlation potentials |
-| Plane-Wave DFT | `cpu::pw::solve_si` | Periodic systems, pseudopotentials, FFT acceleration |
+| Plane-Wave DFT | `examples/08_pw.cpp` | Periodic systems, pseudopotentials, FFT acceleration |
 
-The examples are intentionally numbered to match the chapters. Read the theory
-and the matching code side by side.
+Note: tutorial numbers and example numbers do **not** line up. The example
+files are numbered in their own pedagogical order (so plane-wave DFT, which
+comes last among the example programs, is `examples/08_pw.cpp` even though it is
+Tutorial 5). Always follow the "Primary example" column above rather than
+assuming the numbers match. Read the theory and the matching code side by side.
 
 ## When To Use CPU Solvers Versus CUDA SCF Components
 

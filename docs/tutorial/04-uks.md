@@ -119,7 +119,7 @@ In [`examples/04_uks.cpp`](../../examples/04_uks.cpp), the
 basic call looks like this:
 
 ```cpp
-auto ints = cpu::scf::build_integrals_sto3g(frame);
+auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
 auto uks = cpu::scf::uks_solve(
     ints,
     n_alpha,
@@ -130,6 +130,10 @@ auto uks = cpu::scf::uks_solve(
     tol,
     max_iter);
 ```
+
+> **Element coverage:** like the other Gaussian-basis tutorials, STO-3G here
+> supports elements **H through O (Z = 1–8)**; heavier atoms throw at
+> `build_integrals` by design rather than returning a wrong number.
 
 The spin counts play the same role they did in UHF. The new ingredient is the
 choice of exchange-correlation functional and the numerical grid used to

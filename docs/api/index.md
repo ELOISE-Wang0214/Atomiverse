@@ -36,42 +36,44 @@ Start with these facade headers:
 
 ### Run molecular dynamics and minimization
 
-Start with these CUDA-side driver and component headers:
+Start with these CPU driver and component headers (the ones the tutorials
+use; each has a CUDA counterpart under `cuda/` with the same name):
 
-- [`md::MD`](../../include/atomiverse/cuda/md/md.cuh)
-- [`VelocityVerlet`](../../include/atomiverse/cuda/md/velocity_verlet.cuh)
-- [`NeighborList`](../../include/atomiverse/cuda/neighbor/neighbor_list.cuh)
-- [`PairLJCut`](../../include/atomiverse/cuda/potentials/pair_lj_cut.cuh)
-- [`minimizer::SD`](../../include/atomiverse/cuda/minimizer/sd.cuh)
+- [`cpu::md::MD`](../../include/atomiverse/cpu/md/md.h)
+- [`cpu::md::VelocityVerlet`](../../include/atomiverse/cpu/md/velocity_verlet.h)
+- [`cpu::md::NeighborList`](../../include/atomiverse/cpu/neighbor/neighbor_list.h)
+- [`cpu::PairLJCut`](../../include/atomiverse/cpu/potentials/pair_lj_cut.h)
+- [`cpu::minimizer::Minimize`](../../include/atomiverse/cpu/minimizer/minimize.h) + `LBFGS` / `CG`
+
+The CUDA equivalents are `cuda::md::MD` (`cuda/md/md.cuh`),
+`cuda::PairLJCut`, `cuda::minimizer::Minimize`, etc. — same API, GPU-resident.
 
 ### Run electronic-structure calculations on the CPU
 
 Start with these CPU headers:
 
-- [`IntegralPack` and `build_integrals_sto3g`](../../include/atomiverse/cpu/scf/integrals.h)
+- [`IntegralPack` and `build_integrals`](../../include/atomiverse/cpu/scf/integrals.h)
 - [`rhf_solve`](../../include/atomiverse/cpu/scf/rhf_solve.h)
 - [`uhf_solve`](../../include/atomiverse/cpu/scf/uhf_solve.h)
 - [`uks_solve`](../../include/atomiverse/cpu/scf/uks_solve.h)
 
-### Run staged SCF workflows on the CUDA backend
+### Run SCF workflows on the CUDA backend
 
-Start with these headers:
+CUDA SCF is an inner solver (`cuda::scf::SCFSolver`) wrapped by an evaluator
+component, not a staged driver. Start with these headers:
 
-- [`scf::SCF`](../../include/atomiverse/cuda/scf/scf.cuh)
-- [`Hamiltonian`](../../include/atomiverse/cuda/scf/hamiltonian.cuh)
-- [`EigenSolver`](../../include/atomiverse/cuda/scf/eigen_solver.cuh)
-- [`DensityBuilder`](../../include/atomiverse/cuda/scf/density_builder.cuh)
-- [`RHFFock`](../../include/atomiverse/cuda/scf/rhf_fock.cuh)
-- [`RHFDensity`](../../include/atomiverse/cuda/scf/rhf_density.cuh)
-- [`ConvergenceCheck`](../../include/atomiverse/cuda/scf/convergence_check.cuh)
+- [`cuda::scf::SCFEvaluator`](../../include/atomiverse/cuda/scf/scf_evaluator.cuh)
+- [`cuda::scf::SCFSolver`](../../include/atomiverse/cuda/scf/scf_solver.cuh)
+- [`cuda::Evaluate`](../../include/atomiverse/cuda/driver/evaluate.cuh)
+- [`cuda::single_point`](../../include/atomiverse/cuda/driver/single_point.cuh)
 
 ### Record output and analyze results
 
 Start with these types:
 
-- [`Thermo`](../../include/atomiverse/cuda/recorder/thermo.cuh)
-- [`Recorder`](../../include/atomiverse/cuda/recorder/recorder.cuh)
-- [`RDF`](../../include/atomiverse/cuda/observer/rdf.cuh)
+- [`cpu::Thermo`](../../include/atomiverse/cpu/recorder/thermo.h)
+- [`cpu::Trajectory` / `cpu::XYZ`](../../include/atomiverse/cpu/recorder/trajectory.h)
+- [`cpu::RDF`](../../include/atomiverse/cpu/observer/rdf.h)
 - [`MolRec`](../../include/atomiverse/cpu/io/molrec.h)
 - [`XYZ`](../../include/atomiverse/cpu/recorder/xyz.h)
 - [`mulliken_charge` and related helpers](../../include/atomiverse/cpu/observer/mulliken.h)

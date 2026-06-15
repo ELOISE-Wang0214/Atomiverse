@@ -175,7 +175,8 @@ The setup, in full:
 auto frame = make_aspirin();              // see examples/05_geom_opt.cpp
 
 auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
-auto config    = cpu::scf::default_config(integrals);
+auto config    = cpu::scf::rhf_config(integrals);   // RHF: no XC grid, fast
+                                                    // (default_config => KS/PBE)
 config.tol     = 1e-6;                    // Hartree
 config.max_iter = 200;
 config.force_native_two_electron_deriv = true;
@@ -308,8 +309,8 @@ there.
 
 The exact same recipe — `Minimize` driver, `SCFEvaluator` at force
 phase, optimizer component at `search_direction` — also drives
-classical relaxation. Replace the SCFEvaluator with `cpu::md::LJ` and
-`cpu::bonded::HarmonicBond`, and you have a force-field minimization.
+classical relaxation. Replace the SCFEvaluator with `cpu::PairLJCut` and
+`cpu::BondHarmonic`, and you have a force-field minimization.
 The optimizer does not know the difference, and the convergence
 tolerances stay in the same units.
 

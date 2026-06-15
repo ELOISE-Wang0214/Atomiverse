@@ -176,8 +176,8 @@ Two practical consequences:
   `aspc_alpha_` / `aspc_beta_` members. Drivers and the Frame stay
   stateless across iterations.
 - **The Frame is the *only* shared mutable state.** Components
-  communicate by reading and writing `frame.atoms.*`, `frame.energy`,
-  `frame.kinetic`, and `frame.stress`. There is no driver-side scratch
+  communicate by reading and writing `frame.atoms.*`, `frame.scalars.energy`,
+  `frame.scalars.kinetic`, and `frame.scalars.stress`. There is no driver-side scratch
   buffer that a downstream component is supposed to read. If you find
   yourself wanting one, you have a layering problem; either lift it
   onto the Frame as a fundamental field, or own it inside the

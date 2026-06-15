@@ -35,11 +35,18 @@ computational-chemistry tutorial.
 
 ## What Atomiverse Can Do Today
 
-Atomiverse currently exposes three major workflow families.
+Every method below runs on the **CPU backend** (the focus of these docs); most
+have a CUDA counterpart with the same API for GPU execution.
 
-- Molecular dynamics through staged CUDA drivers such as `md::MD`
-- Energy minimization through staged CUDA drivers such as `minimizer::SD`
-- Electronic-structure workflows through CPU solvers and CUDA SCF components
+- **Classical molecular dynamics** — `cpu::md::MD` with `cpu::PairLJCut` +
+  bonded styles, NVE/NVT/NPT.
+- **Geometry optimization** — `cpu::minimizer::Minimize` with `LBFGS` / `CG`.
+- **Gaussian-basis SCF** — RHF / UHF / Kohn-Sham DFT for molecules
+  (`cpu::scf`).
+- **Plane-wave DFT** — Kohn-Sham LDA for periodic crystals (`cpu::pw`).
+- **Ab-initio MD** — `cpu::md::MD` driven by `cpu::scf::SCFEvaluator` forces.
+- **Vibrational analysis** — `cpu::vib::Hessian` (finite-difference Hessian +
+  thermochemistry).
 
 If you only need one mental model, use this one:
 

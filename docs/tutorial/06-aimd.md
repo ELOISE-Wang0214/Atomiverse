@@ -143,7 +143,7 @@ The tutorial example prints two summary lines:
 ```
 
 `PE_eV` is the SCF total electronic energy plus nuclear-nuclear
-repulsion, in eV (the same number you would read from `frame.energy`).
+repulsion, in eV (the same number you would read from `frame.scalars.energy`).
 `KE_eV` is the classical kinetic energy of the nuclei, computed by the
 auto-added `KineticEnergy` component at `end_of_step`. `T_K` is the
 instantaneous kinetic temperature derived from $T = 2 E_{\mathrm{kin}} /

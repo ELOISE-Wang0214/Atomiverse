@@ -79,7 +79,7 @@ instead of one occupation pattern, you now choose one for each spin channel.
 In the example, that choice appears directly in calls such as
 
 ```cpp
-auto ints = cpu::scf::build_integrals_sto3g(frame);
+auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
 auto result = cpu::scf::uhf_solve(ints, n_alpha, n_beta, tol, max_iter);
 ```
 
