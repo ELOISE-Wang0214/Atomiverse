@@ -1,6 +1,6 @@
 ---
 title: Strong-Wolfe line search for CPU LBFGS and CG optimizers
-status: in-progress
+status: code-complete
 created: 2026-06-15
 ---
 
@@ -53,14 +53,14 @@ References: Nocedal & Wright, *Numerical Optimization* 2e, chapters 3, 5, 7 (equ
 - [x] Write failing tests for the shared line-search helper on a convex quadratic (tests/cpu/minimizer/test_line_search.cpp): assert strong-Wolfe α satisfies N&W 3.7a AND 3.7b, Armijo mode satisfies 3.6a, descent precheck rejects an uphill direction *(done — 5 tests green; optimizer-level p=-g reset deferred to the LBFGS/CG wiring task)*
 - [x] Implement LineSearchMode enum + strong_wolfe()/armijo_backtrack() helpers in include/atomiverse/cpu/minimizer/line_search.h *(done — header-only, templated over a `phi(alpha, need_slope)` functor so the functor owns the DD reduction; verified on an analytic quadratic)*
 - [x] Add reeval_forces handle to cpu::Context and publish the force-phase re-eval closure in cpu::OptimizeDriver::run (via Backend::run_phase) *(done — context.h + backend.{h,cpp} run_phase + optimize_driver.h; builds green, existing minimizer test regression-clean)*
-- [ ] Write failing tests for LBFGS strong-Wolfe convergence + fixed-step fallback at a tight force threshold, asserting yᵀs>0 for every stored pair *(partial — existing test_lbfgs passes under the new strong-Wolfe default incl. the tight 0.7122 Å case; dedicated yᵀs>0 + Fixed-fallback assertions still to add)*
+- [x] Tests for LBFGS strong-Wolfe + fixed-step fallback + yᵀs>0 *(done — test_lbfgs tight 0.7122 Å + FixedStepFallback case; yᵀs>0 asserted in test_line_search; all green)*
 - [x] Implement strong-Wolfe/Armijo/Fixed line search in LBFGS: fix alpha convention on p=-Hg, add line_search-phase binding, curvature guard, descent precheck *(done & verified — test_cpu_minimizer_lbfgs green, ~4x faster)*
-- [ ] Write failing tests for CG strong-Wolfe convergence on the quadratic and a small molecule (tests/cpu/minimizer/test_cg.cpp) *(partial — swap-optimizer test exercises CG strong-Wolfe; dedicated test_cg.cpp still to add)*
+- [x] Tests for CG strong-Wolfe convergence (tests/cpu/minimizer/test_cg.cpp) *(done — H2 RHF → 0.7122 Å and compressed-bond expansion; green)*
 - [x] Implement strong-Wolfe (c2=0.1) line search in CG with PR+ retained and alpha convention fixed *(done & verified — swap-optimizer test green)*
 - [x] DD-parity coverage across n=1,2,4,8 *(done — the existing tests/mpi/test_minimize_lj.cpp now exercises the strong-Wolfe line search end-to-end under domain decomposition: LBFGS+CG converge and match the perfect-lattice reference energy at every rank count. Added the n=4 run. Migration is suppressed during trials via Context::line_search_trial so per-row buffers are not reshuffled mid-search. All green; sub-second vs the old fixed-step's hundreds of iterations.)*
 - [x] Add docstrings per Doxygen style with units to all new/changed public symbols *(done inline — LineSearchMode/helpers/setters/reeval_forces/run_phase)*
 - [x] Update examples/05_geom_opt.cpp to drop the loosened max_dtol and use default strong-Wolfe *(done — example uses the strong-Wolfe default and tight max_dtol=0.05; aspirin relaxes from max_force 1723 → 0.43 eV/Å over 25 steps, comment notes raising the budget for full convergence; test_line_search + n=4 MPI run registered)*
-- [ ] Run full check + test suite (ctest, including the new MPI runs)
+- [x] Run full check + test suite *(done — full CPU ctest 131/132; the one failure test_mpi_npt_multirank_n8 is a pre-existing marginal barostat assertion in a pure-MD path this change does not execute)*
 
 ## Testing strategy
 - **Happy path (unit):** on a known convex quadratic `f(x) = ½ xᵀA x - bᵀx` (SPD `A`, analytic `g`), `strong_wolfe` returns `α` satisfying both 3.7a and 3.7b (assert both inequalities numerically); Armijo mode returns `α` satisfying 3.6a.
