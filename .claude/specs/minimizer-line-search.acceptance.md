@@ -25,7 +25,8 @@ criteria:
       A test injects a direction with gᵀp ≥ 0; the optimizer/helper
       replaces it with p=-g (gᵀp < 0) before searching, asserted by
       test_cpu_minimizer_line_search, and the test passes.
-    status: pending
+    status: verified
+    last_checked: 2026-06-15
   - id: ac-004
     summary: Every stored L-BFGS (s,y) pair satisfies yᵀs > 0
     type: scientific
@@ -42,7 +43,8 @@ criteria:
       OptimizeDriver::setup_pass binds a non-null closure that, when
       invoked, updates frame.energy (and frame.force when need_grad) for
       the frame's current geometry, exercised by a line-search unit test.
-    status: pending
+    status: verified
+    last_checked: 2026-06-15
   - id: ac-006
     summary: LBFGS reaches max-force < 0.01 eV/Å with strong-Wolfe enabled
     type: scientific
@@ -78,7 +80,8 @@ criteria:
       With LineSearchMode::Fixed selected, the optimizer reproduces the
       pre-change fixed-step trajectory (regression assertion in
       test_cpu_minimizer_lbfgs) and the test passes.
-    status: pending
+    status: verified
+    last_checked: 2026-06-15
   - id: ac-010
     summary: Line search makes identical decisions and final energy across MPI ranks
     type: scientific
@@ -94,7 +97,8 @@ criteria:
       examples/05_geom_opt.cpp no longer sets a loosened max_dtol, builds,
       and runs to convergence at the tight force threshold; the full
       check + test suite (ctest) passes.
-    status: pending
+    status: verified
+    last_checked: 2026-06-15
   - id: ac-012
     summary: All new/changed public symbols carry Doxygen with units
     type: docs

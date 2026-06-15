@@ -106,6 +106,26 @@ TEST(LineSearch, StrongWolfeCGConstant) {
     EXPECT_LE(std::abs(at.dphi), c2 * std::abs(dphi0) + 1e-9);
 }
 
+// ac-004: a strong-Wolfe step yields a positive curvature pair yᵀs > 0,
+// which is what keeps the L-BFGS inverse-Hessian update positive definite.
+TEST(LineSearch, StrongWolfeGivesPositiveCurvaturePair) {
+    const Vec x0 = {{4.0, -3.0, 2.0}};
+    const Vec g0 = grad(x0);
+    const Vec p = {{-g0[0], -g0[1], -g0[2]}};
+    const double phi0 = energy(x0);
+    const double dphi0 = dot(g0, p);
+
+    auto r = strong_wolfe(Phi{x0, p}, phi0, dphi0, 1.0, 1e-4, 0.9, 30, 10.0);
+    ASSERT_TRUE(r.ok);
+
+    // s = alpha*p, y = grad(x0 + s) - grad(x0); assert yᵀs > 0.
+    const Vec s = {{r.alpha * p[0], r.alpha * p[1], r.alpha * p[2]}};
+    const Vec x1 = {{x0[0] + s[0], x0[1] + s[1], x0[2] + s[2]}};
+    const Vec g1 = grad(x1);
+    const Vec y = {{g1[0] - g0[0], g1[1] - g0[1], g1[2] - g0[2]}};
+    EXPECT_GT(dot(y, s), 0.0);
+}
+
 // ac-002: Armijo backtracking returns alpha satisfying 3.6a.
 TEST(LineSearch, ArmijoSatisfiesSufficientDecrease) {
     const Vec x0 = {{3.0, 3.0, 3.0}};

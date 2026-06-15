@@ -105,3 +105,24 @@ TEST_F(LBFGSTest, H2RHFArmijoLineSearchReachesTightForce) {
     // H2/STO-3G PySCF-minimum bond ≈ 0.7122 Å.
     EXPECT_NEAR(static_cast<double>(bond), 0.7122, 0.01);
 }
+
+// ac-009: the Fixed-step fallback (no line search) still relaxes the geometry,
+// preserving the legacy behaviour as a selectable mode.
+TEST_F(LBFGSTest, FixedStepFallbackStillContracts) {
+    auto frame = make_h2(1.2);
+    auto integrals =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto config = cpu::scf::rhf_config(integrals);
+
+    cpu::minimizer::LBFGS step{5, double(0.01), double(0.05), 10};
+    step.line_search(cpu::minimizer::LineSearchMode::Fixed);
+    cpu::minimizer::Minimize opt;
+    opt.add(std::move(step));
+    opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
+    opt.build();
+    opt.run(frame, 50);
+
+    double bond = frame.atoms.x(1) - frame.atoms.x(0);
+    EXPECT_LT(static_cast<double>(bond), 1.2) << "Fixed-step LBFGS contracts H2";
+    EXPECT_GT(static_cast<double>(bond), 0.5);
+}
