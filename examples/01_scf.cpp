@@ -1,4 +1,4 @@
-/// @file examples/tutorial/01_scf.cpp
+/// @file examples/01_scf.cpp
 /// @brief Standalone SCF introduction example.
 ///
 /// Shows the complete SCF algorithm in xtensor code:

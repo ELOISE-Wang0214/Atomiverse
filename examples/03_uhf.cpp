@@ -1,4 +1,4 @@
-/// @file examples/tutorial/03_uhf.cpp
+/// @file examples/03_uhf.cpp
 /// @brief Tutorial example for unrestricted Hartree-Fock.
 ///
 /// Demonstrates the unrestricted Hartree-Fock capability on three cases:

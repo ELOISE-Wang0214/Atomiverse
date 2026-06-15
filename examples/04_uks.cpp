@@ -1,4 +1,4 @@
-/// @file examples/tutorial/04_uks.cpp
+/// @file examples/04_uks.cpp
 /// @brief Tutorial example for unrestricted Kohn-Sham DFT.
 ///
 /// Demonstrates:

@@ -1,4 +1,4 @@
-/// @file examples/tutorial/06_aimd.cpp
+/// @file examples/06_aimd.cpp
 /// @brief Tutorial example for ab initio molecular dynamics on H2.
 ///
 /// AIMD = Born-Oppenheimer molecular dynamics. The classical MD loop runs
@@ -6,7 +6,7 @@
 /// `cpu::scf::SCFEvaluator` (a self-consistent SCF + analytic gradient)
 /// instead of a classical pair potential. This is the same Driver/Component
 /// composition that drives geometry optimization in
-/// `examples/tutorial/05_geom_opt.cpp`, only with the integration loop
+/// `examples/05_geom_opt.cpp`, only with the integration loop
 /// (`cpu::md::MD`) instead of the optimization loop (`cpu::minimizer::
 /// Minimize`).
 ///

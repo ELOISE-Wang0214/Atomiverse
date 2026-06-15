@@ -1,4 +1,4 @@
-/// @file examples/tutorial/05_geom_opt.cpp
+/// @file examples/05_geom_opt.cpp
 /// @brief Tutorial: Geometry optimization of aspirin with L-BFGS + RHF/STO-3G.
 ///
 /// Demonstrates:
@@ -96,7 +96,7 @@ int main() {
     ATV::log_init(spdlog::level::debug);
     ATV_INFO("=== Atomiverse: Aspirin Geometry Optimization ===");
     ATV_INFO("    Molecule: C9H8O4 (acetylsalicylic acid)");
-    ATV_INFO("    Method:   PBE / STO-3G (default_config)");
+    ATV_INFO("    Method:   RHF / STO-3G (rhf_config)");
     ATV_INFO("    Optimizer: L-BFGS (memory=5)");
 
     auto frame = make_aspirin();
@@ -111,9 +111,12 @@ int main() {
     ATV_INFO("[example] initial integrals done basis={} electrons={}",
              integrals.n_basis, integrals.n_electrons);
 
-    // Locked production defaults: restricted Kohn–Sham / PBE with MINAO
-    // initial guess. Override select fields for the tutorial's turnaround.
-    auto config = cpu::scf::default_config(integrals);
+    // Restricted Hartree-Fock with the MINAO initial guess. RHF needs no
+    // exchange-correlation grid, so each optimization step (a full SCF +
+    // analytic gradient on all 21 atoms) is fast enough for a tutorial. For
+    // DFT, swap in cpu::scf::default_config(integrals) (Restricted KS / PBE)
+    // — correct but much heavier because of the dense XC grid.
+    auto config = cpu::scf::rhf_config(integrals);
     config.tol = double(1e-6);
     config.max_iter = 200;
     config.force_native_two_electron_deriv = true;
@@ -143,8 +146,12 @@ int main() {
     opt.build();
     ATV_INFO("[example] optimizer build done");
 
-    ATV_INFO("[example] optimization start max_steps=100");
-    opt.run(frame, 100);
+    // 25 steps keeps this tutorial short: each step is a full RHF/STO-3G SCF
+    // + analytic gradient on all 21 atoms, so the cost is dominated by the
+    // electronic-structure work, not the optimizer. The energy drops
+    // steadily; raise the budget for tighter convergence.
+    ATV_INFO("[example] optimization start max_steps=25");
+    opt.run(frame, 25);
 
     // Report final state
     // Compute final max force

@@ -46,6 +46,14 @@ if(ATV_BUILD_RHF)
     endif()
 endif()
 
+# 07 — classical MD. CPU .cpp is the canonical lesson (always built);
+# the .cu is the CUDA twin (target 07_md_lj_cuda).
+atv_add_cpp_example(07_md_lj)
 if(ATV_BUILD_CUDA)
-    atv_add_cuda_example(07_md_lj 07_md_lj.cu)
+    atv_add_cuda_example(07_md_lj_cuda 07_md_lj.cu)
+endif()
+
+# 08 — plane-wave DFT (periodic silicon); needs the PW module (FFTW3).
+if(ATV_BUILD_PW)
+    atv_add_cpp_example(08_pw)
 endif()

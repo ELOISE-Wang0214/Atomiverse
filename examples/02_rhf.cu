@@ -1,4 +1,4 @@
-/// @file examples/tutorial/02_rhf.cu
+/// @file examples/02_rhf.cu
 /// @brief CUDA translation of the RHF tutorial example.
 ///
 /// Demonstrates the full Atomiverse RHF workflow:
@@ -51,9 +51,12 @@ int main() {
     std::cout << "=== H2/STO-3G/RHF (CPU and CUDA) ===\n"
               << "Geometry: H-H at 0.74 Angstrom\n\n";
 
-    // ── 2. Compute integrals on CPU (libcint) ─────────────────────────
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    // ── 2. Compute integrals on CPU (native C++ kernels) ──────────────
+    // compute_eri=true stores the full two-electron tensor: the CUDA
+    // RHFFock kernel uploads integrals.ERI to the device, and we also print
+    // a few values below. (The CPU rhf_solve path does not need it.)
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G,
+                                               /*charge=*/0, /*compute_eri=*/true);
     std::cout << "Basis functions: " << integrals.n_basis << "\n"
               << "Electrons:       " << integrals.n_electrons << "\n"
               << "Occupied MOs:    " << integrals.n_occ() << "\n"

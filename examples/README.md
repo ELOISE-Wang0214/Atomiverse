@@ -7,15 +7,13 @@ order.
 | # | File | Concept | Requires |
 |---|------|---------|----------|
 | 01 | `01_scf.cpp` | The bare SCF loop on raw xtensor arrays (no atomiverse link) | — |
-| 02 | `02_rhf.cpp` / `02_rhf.cu` | First real chemistry: RHF single-point via `Evaluate + scf::SCFEvaluator` (CUDA twin shows the same lesson on device) | `ATV_BUILD_RHF` (+`ATV_BUILD_CUDA` for the twin) |
-| 03 | `03_uhf.cpp` | Open-shell UHF | `ATV_BUILD_RHF` |
-| 04 | `04_uks.cpp` | DFT (UKS) with the native XC stack | `ATV_BUILD_RHF` |
-| 05 | `05_geom_opt.cpp` | Geometry optimization: `Minimize + LBFGS + SCFEvaluator` | `ATV_BUILD_RHF` |
-| 06 | `06_aimd.cpp` | Ab-initio MD: `MD + VelocityVerlet + SCFEvaluator` | `ATV_BUILD_RHF` |
-| 07 | `07_md_lj.cu` | Classical CUDA MD: `cuda::md::MD + NeighborList + PairLJCut` | `ATV_BUILD_CUDA` |
-
-(The former multi-GPU RHF example targeted the deleted Plan-based CUDA SCF
-API and was removed; a future `08` should drive `cuda::scf::SCFSolver`.)
+| 02 | `02_rhf.cpp` / `02_rhf.cu` | First real chemistry: RHF single-point (CPU via `scf::rhf_solve`; CUDA twin via `single_point + cuda::scf::SCFEvaluator`) | `ATV_BUILD_RHF` (+`ATV_BUILD_CUDA` for the twin) |
+| 03 | `03_uhf.cpp` | Open-shell UHF (`scf::uhf_solve`) + spin contamination | `ATV_BUILD_RHF` |
+| 04 | `04_uks.cpp` | DFT (UKS-LSDA) with the native XC stack (`scf::uks_solve`) | `ATV_BUILD_RHF` |
+| 05 | `05_geom_opt.cpp` | Geometry optimization: `Minimize + LBFGS + scf::SCFEvaluator` (DFT/PBE forces) | `ATV_BUILD_RHF` |
+| 06 | `06_aimd.cpp` | Ab-initio MD: `MD + VelocityVerlet + NoseHoover + scf::SCFEvaluator` | `ATV_BUILD_RHF` |
+| 07 | `07_md_lj.cpp` / `07_md_lj.cu` | Classical MD (NVE LJ argon): `md::MD + NeighborList + PairLJCut` (CPU canonical; CUDA twin = `07_md_lj_cuda`) | — (`.cu` needs `ATV_BUILD_CUDA`) |
+| 08 | `08_pw.cpp` | Plane-wave DFT for a periodic crystal: `Evaluate + pw::PWEvaluator` (silicon) | `ATV_BUILD_PW` |
 
 ## Rules for adding an example
 
@@ -23,8 +21,8 @@ API and was removed; a future `08` should drive `cuda::scf::SCFSolver`.)
 2. **Numbered, flat, ordered.** Pick the next free number in the pedagogical
    order; no subdirectories.
 3. **CPU `.cpp` is the canonical lesson.** A CUDA `.cu` twin reuses the same
-   number and gets a `_cuda`-suffixed target (`02_rhf.cu` → `02_rhf_cuda`)
-   unless the concept itself is CUDA-only (07, 08).
+   number and gets a `_cuda`-suffixed target (`02_rhf.cu` → `02_rhf_cuda`,
+   `07_md_lj.cu` → `07_md_lj_cuda`).
 4. **Examples are not benchmarks.** Anything that measures speed or compares
    against LAMMPS / PySCF / QE belongs in `benchmarks/<domain>/<case>/`.
 5. Register the target in `CMakeLists.txt` behind the narrowest option gate

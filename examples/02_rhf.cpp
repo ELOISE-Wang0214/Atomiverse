@@ -1,4 +1,4 @@
-/// @file examples/tutorial/02_rhf.cpp
+/// @file examples/02_rhf.cpp
 /// @brief Tutorial example for restricted Hartree-Fock on molecular hydrogen.
 ///
 /// End-to-end RHF workflow on CPU:
@@ -8,7 +8,7 @@
 ///   4. Print results and compare with textbook
 ///
 /// The matching CUDA translation of the same tutorial is
-/// examples/tutorial/02_rhf.cu.
+/// examples/02_rhf.cu.
 ///
 /// Build:
 ///   cmake -B build -DATV_BUILD_RHF=ON -DATV_BUILD_EXAMPLES=ON
@@ -51,14 +51,21 @@ int main() {
 
     // ── 2. Compute molecular integrals ────────────────────────────────
     //
-    // build_integrals() calls libcint internally:
+    // build_integrals() evaluates, with native C++ integral kernels:
     //   - Overlap S, kinetic T, nuclear attraction V -> Hcore = T + V
     //   - Two-electron repulsion integrals ERI (chemist's notation)
     //   - Nuclear repulsion V_nuc = Z_A * Z_B / R_AB
     //
+    // compute_eri=true forces the full O(n^4) two-electron tensor onto
+    // integrals.ERI. build_integrals() omits it by default because
+    // rhf_solve() builds the Fock matrix directly without the dense tensor;
+    // we request it here only so this tutorial can print individual ERI
+    // values below. Reading integrals.ERI without this flag is an
+    // out-of-bounds access on an empty tensor.
+    //
     // All matrices are xtensor arrays. No CUDA involved.
-    auto integrals =
-        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G,
+                                               /*charge=*/0, /*compute_eri=*/true);
 
     std::cout << "Basis functions: " << integrals.n_basis << "\n"
               << "Electrons:       " << integrals.n_electrons << "\n"
