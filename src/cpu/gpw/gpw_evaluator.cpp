@@ -59,6 +59,15 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
 
     last_ = gpw_scf(atoms, cfg);
     frame.scalars.energy = last_.e_total * ATV::kHartree2eV;
+
+    if (config_.compute_forces) {
+        const auto F = gpw_forces_fd(atoms, cfg, config_.fd_step); // [Hartree/Bohr]
+        for (int i = 0; i < n; ++i) {
+            frame.atoms.fx(i) = F[static_cast<std::size_t>(i)][0] * ATV::kForceAU2Metal;
+            frame.atoms.fy(i) = F[static_cast<std::size_t>(i)][1] * ATV::kForceAU2Metal;
+            frame.atoms.fz(i) = F[static_cast<std::size_t>(i)][2] * ATV::kForceAU2Metal;
+        }
+    }
 }
 
 } // namespace gpw

@@ -38,6 +38,8 @@ struct GpwEvaluatorConfig {
     double mix = 0.3;
     XcKind xc = XcKind::PADE;
     bool nonperiodic = false;
+    bool compute_forces = false;      ///< also compute finite-difference forces.
+    double fd_step = 1e-3;            ///< FD displacement [Bohr] for forces.
     std::vector<GpwElement> elements; ///< one per distinct element in the system.
 };
 
@@ -48,7 +50,10 @@ class GPWEvaluator : public cpu::ComponentBase {
 
     std::string name() const override { return "gpw_evaluator"; }
     ComponentRole role() const override { return ComponentRole::Evaluator; }
-    Capability capabilities() const override { return Capability::Energy; }
+    Capability capabilities() const override {
+        return config_.compute_forces ? (Capability::Energy | Capability::Force)
+                                      : Capability::Energy;
+    }
 
     void build(const cpu::BuildContext& ctx) override;
     void launch(const cpu::LaunchContext& ctx) override;
