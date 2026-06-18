@@ -1,0 +1,64 @@
+/// @file cpu/gpw/gpw_solver.h
+/// @brief Self-contained GPW (Gaussian and Plane Waves) closed-shell SCF solver.
+///
+/// Structurally parallel to `cpu::scf::SCFSolver` and `cpu::pw::PWSolver`: a
+/// self-contained inner solver for one electronic-structure method. The Kohn-Sham
+/// problem is solved in the contracted Gaussian AO basis (small dense generalized
+/// eigenproblem H C = S C ε), while the Hartree + XC + long-range local
+/// pseudopotential are evaluated on a uniform real-space grid (collocate / FFT
+/// Poisson / integrate). It reuses only shared *physics/algebra* from public
+/// headers — `cpu::scf::scf_utils` (generalized eigensolve, density build) and
+/// `cpu::xc::pade` (functional) — never another domain's `internal`.
+///
+/// Scope: closed-shell, Gamma point, LDA (PADE). Periodic neutral electrostatics
+/// via the GTH Gaussian core charge. Forces / GGA / nonlocal-for-all-l and full
+/// CP2K bit-parity are follow-on milestones.
+#pragma once
+
+#include <vector>
+
+#include "atomiverse/cpu/gpw/internal/collocate.h"
+#include "atomiverse/cpu/gpw/internal/cp2k_io.h" // GthNonlocalChannel
+
+namespace ATV {
+namespace cpu {
+namespace gpw {
+
+/// @brief One atom's GPW data: valence charge, basis, and GTH pseudopotential.
+struct GpwAtom {
+    double z_val = 0.0;                       ///< valence charge (electrons it contributes).
+    double pos[3] = {0, 0, 0};                ///< position [Bohr].
+    std::vector<GridBasisFunction> basis;     ///< contracted GTOs, already centered at pos.
+    double rloc = 0.0;                        ///< GTH local radius.
+    std::vector<double> cloc;                 ///< GTH local short-range C coefficients.
+    std::vector<GthNonlocalChannel> nonlocal; ///< GTH nonlocal projector channels.
+};
+
+/// @brief GPW SCF configuration.
+struct GpwConfig {
+    double cell[3] = {0, 0, 0}; ///< orthorhombic box lengths [Bohr].
+    double cutoff_ry = 300.0;   ///< density grid cutoff [Ry].
+    int n_occ = 0;              ///< number of doubly-occupied orbitals (N_elec / 2).
+    int max_iter = 100;         ///< max SCF iterations.
+    double tol = 1e-8;          ///< SCF energy convergence [Hartree].
+    double mix = 0.5;           ///< linear density-mixing factor.
+};
+
+/// @brief GPW SCF result with an energy decomposition.
+struct GpwResult {
+    double e_total = 0.0;   ///< total energy [Hartree].
+    double e_kinetic = 0.0; ///< Tr(P T).
+    double e_loc_sr = 0.0;  ///< Tr(P V_loc^sr).
+    double e_nonlocal = 0.0;///< Tr(P V_nl).
+    double e_es = 0.0;      ///< total electrostatic (Hartree + e-ion-lr + ion-ion).
+    double e_xc = 0.0;      ///< XC energy.
+    bool converged = false;
+    int iters = 0;
+};
+
+/// @brief Run the closed-shell GPW SCF for a set of atoms.
+GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg);
+
+} // namespace gpw
+} // namespace cpu
+} // namespace ATV

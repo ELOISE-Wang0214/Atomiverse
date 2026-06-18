@@ -118,6 +118,7 @@ if(ATV_BUILD_GPW)
     if(ATV_BUILD_PW)  # FFT-backed pieces
         atv_add_cpp_test(test_cpu_gpw_poisson_fft  cpu/gpw/test_cpu_gpw_poisson_fft.cpp)
         atv_add_cpp_test(test_cpu_gpw_hartree_grid cpu/gpw/test_cpu_gpw_hartree_grid.cpp)
+        atv_add_cpp_test(test_cpu_gpw_solver       cpu/gpw/test_cpu_gpw_solver.cpp)
     endif()
 endif()
 atv_add_cpp_test(test_cpu_md_pair_morse_smoke     cpu/md/test_pair_morse_smoke.cpp)

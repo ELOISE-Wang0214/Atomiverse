@@ -40,7 +40,8 @@ BUILD=build-cpu-gpw
 "$CMAKE" --build "$BUILD" -j"$(nproc)" \
     --target test_cpu_gpw_cp2k_io test_cpu_gpw_basis test_cpu_gpw_gth_integrals \
             test_cpu_gpw_collocate test_cpu_gpw_xc_grid test_cpu_gpw_one_electron \
-            test_cpu_gpw_poisson_fft test_cpu_gpw_hartree_grid test_cpu_xc_pade
+            test_cpu_gpw_poisson_fft test_cpu_gpw_hartree_grid test_cpu_gpw_solver \
+            test_cpu_xc_pade
 
 export LD_LIBRARY_PATH="${LIBRARY_PATH:-}:${LD_LIBRARY_PATH:-}"
 "$CTEST" --test-dir "$BUILD" -R "test_cpu_(gpw_|xc_pade)" --output-on-failure
