@@ -234,11 +234,12 @@ Edit:
       term sub-mHa). TODO: exact erf-screened MT for bit-parity.
 - [x] **Phase 7 (D7):** native XC — done via [[native-xc-libxc-parity]] (PADE +
       libxc-parity PBE); no runtime libxc dependency shipped.
-- [~] **Phase 8 (D8, M4):** finite-difference forces (`gpw_forces_fd`,
-      `test_cpu_gpw_forces`): clean equal/opposite restoring bond force; off-axis
-      egg-box artifact bounded (single-grid limitation). TODO: analytic forces
-      (speed) + multigrid to kill the egg-box, then wire Force into GPWEvaluator
-      for the geom-opt/MD tutorials.
+- [x] **Phase 8 (D8, M4):** finite-difference forces (`gpw_forces_fd`) wired into
+      `GPWEvaluator` (Capability::Force). **All three tutorial paths run via GPW:**
+      single-point (`h2o`), geometry optimization (`test_cpu_gpw_geoopt`, H2
+      relaxes toward equilibrium via Minimize+LBFGS), and AIMD
+      (`test_cpu_gpw_aimd`, H2 NVE via the MD driver). TODO (optimization, not a
+      gap): analytic forces (speed) + multigrid to suppress the off-axis egg-box.
 - [ ] **Phase 9 (M5):** migrate tutorial + benchmark into `benchmarks/gpw/`;
       `SOURCES.md`; comparison harness vs CP2K reference CSV.
 
