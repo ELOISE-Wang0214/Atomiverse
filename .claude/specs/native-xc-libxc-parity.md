@@ -139,8 +139,13 @@ Edit / migrate:
       matches the Padé formula + CP2K's −0.8097 at ρ=1 (`test_cpu_xc_pade`).
       Full bit-parity vs CP2K `Ar.inp`/`H2.inp` deferred to GPW M1.
 - [ ] **X3:** vendor libxc `GGA_X_PBE` + `GGA_C_PBE` polarized; sweep passes.
-- [ ] **X4:** module at `cpu/xc/`, repoint `cpu::scf` + `cpu::gpw` callers;
-      relicense Atomiverse to GPL-2.0 (`LICENSE`/`README`) in this step.
+- [~] **X4:** `cpu/xc/` is the designated shared XC module. **Seeded:** `cpu/xc/pade`
+      (CP2K-native). **Pending:** migrate the libxc-routed functionals
+      `cpu/scf/xc_functional`+`xc_gga` into `cpu/xc/` (namespace `cpu::scf`→`cpu::xc`)
+      and repoint scf/pw/gpw callers — the same lift just done for the shared LA
+      (`cpu/scf/scf_utils.h` → `cpu/linalg/dense.h`, full suite 112/112). NOTE: the
+      XC move spans ~35 files INCLUDING the CUDA backend (`cuda/pw/internal/xc_lda`),
+      so it needs a GPU-validated PR, not a CPU-only change. Relicense GPL-2.0 here.
 - [ ] **X5:** wire into GPW M1 (PADE) and M3 (PBE) parity gates of
       [[gpw-gaussian-plane-wave]].
 
