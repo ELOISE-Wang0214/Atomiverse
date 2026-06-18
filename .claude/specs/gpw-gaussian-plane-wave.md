@@ -187,8 +187,11 @@ Edit:
 > bites at Phase 3 (M1 needs PADE) and Phase 5/6 (PBE), by which time XC tracks
 > X2/X3 should be landing.
 
-- [ ] **Phase 0 (D1):** GTH potential + MOLOPT basis parsers; unit-test against
+- [~] **Phase 0 (D1):** GTH potential + MOLOPT basis parsers; unit-test against
       hand-checked Ar/H/O entries from CP2K `data/`.
+      - [x] GTH potential parser (`cpu/gpw/internal/cp2k_io`) — H GTH-PBE-q1,
+            O GTH-PBE-q6, Ar GTH-PADE-q8 verified via Slurm (`test_cpu_gpw_cp2k_io`).
+      - [ ] GTH/MOLOPT Gaussian basis parser (`DZVP-GTH-PADE`, `DZVP-MOLOPT-GTH`).
 - [ ] **Phase 1 (D2):** uniform-grid collocation + integration with
       CUTOFF/REL_CUTOFF multigrid; RED test: collocated ρ integrates to N_el; round
       trip `integrate(collocate())` vs analytic overlap within grid tolerance.
