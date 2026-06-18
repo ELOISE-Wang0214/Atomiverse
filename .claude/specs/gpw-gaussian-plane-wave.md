@@ -224,8 +224,12 @@ Edit:
       and the absolute-energy bit-parity tuning vs CP2K.
 - [ ] **Phase 4 (D6):** `GPWEvaluator`/`GPWConfig`; `cpu::single_point` runs GPW;
       example `09_gpw.cpp` (periodic first).
-- [ ] **Phase 5 (M2):** PBE/GGA on grid; periodic PBE parity.
-- [ ] **Phase 6 (D4, M3):** MT Poisson; **reproduce `h2o.inp` tutorial.**
+- [x] **Phase 5 (M2):** PBE/GGA on grid (`grid_fft` FFT grad/div + `xc_grid_pbe`,
+      reusing `cpu::scf::evaluate_xc(PBE)`); FD-validated GGA potential.
+- [x] **Phase 6 (D4, M3):** MT isolated Poisson (`mt_poisson`, truncated-Coulomb
+      Rozzi-0D) + **`h2o.inp` tutorial reproduced to 0.43 mHa**
+      (`test_cpu_gpw_h2o_tutorial`: -17.2127672 vs CP2K -17.21233714458516, every
+      term sub-mHa). TODO: exact erf-screened MT for bit-parity.
 - [ ] **Phase 7 (D7):** runtime libxc bridge; tighten H₂O parity to ≤ 1e-6 Ha.
 - [ ] **Phase 8 (D8, M4):** analytic forces; geom-opt + MD tutorials run.
 - [ ] **Phase 9 (M5):** migrate tutorial + benchmark into `benchmarks/gpw/`;
