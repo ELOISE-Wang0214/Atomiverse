@@ -119,15 +119,33 @@ double trace_product(const RealMatrix& P, const RealMatrix& M, int n) {
 
 } // namespace
 
+namespace {
+// One Cartesian term of a real solid harmonic: powers + weight.
+struct CartTerm {
+    int l[3];
+    double w;
+};
+// Real solid harmonics as Cartesian combinations, per angular momentum.
+// s: 1; p: 3 (x,y,z); d: 5 spherical (xy, yz, xz, x^2-y^2, 2z^2-x^2-y^2) so the
+// spanned space matches CP2K (Cartesian d would add a spurious s-like 6th).
+// Internal relative weights matter (they define each function); the overall
+// scale of each function is irrelevant to the energy (basis-norm invariance).
+const std::vector<std::vector<std::vector<CartTerm>>>& harmonics() {
+    static const std::vector<std::vector<std::vector<CartTerm>>> H = {
+        {{{{0, 0, 0}, 1.0}}},
+        {{{{1, 0, 0}, 1.0}}, {{{0, 1, 0}, 1.0}}, {{{0, 0, 1}, 1.0}}},
+        {{{{1, 1, 0}, 1.0}},
+         {{{0, 1, 1}, 1.0}},
+         {{{1, 0, 1}, 1.0}},
+         {{{2, 0, 0}, 1.0}, {{0, 2, 0}, -1.0}},
+         {{{0, 0, 2}, 2.0}, {{2, 0, 0}, -1.0}, {{0, 2, 0}, -1.0}}},
+    };
+    return H;
+}
+} // namespace
+
 GpwAtom make_gpw_atom(const double pos[3], const GaussianBasis& basis,
                       const GthPotential& pot) {
-    // Cartesian components for each angular momentum.
-    static const std::vector<std::vector<std::array<int, 3>>> kCart = {
-        {{{0, 0, 0}}},
-        {{{1, 0, 0}}, {{0, 1, 0}}, {{0, 0, 1}}},
-        {{{2, 0, 0}}, {{0, 2, 0}}, {{0, 0, 2}}, {{1, 1, 0}}, {{1, 0, 1}}, {{0, 1, 1}}},
-    };
-
     GpwAtom atom;
     atom.z_val = static_cast<double>(pot.zion);
     atom.pos[0] = pos[0];
@@ -142,7 +160,7 @@ GpwAtom make_gpw_atom(const double pos[3], const GaussianBasis& basis,
         for (int l = set.lmin; l <= set.lmax; ++l) {
             const int L = l;
             for (int sh = 0; sh < set.nshell_l(l); ++sh, ++col) {
-                for (const auto& cart : kCart[static_cast<std::size_t>(L)]) {
+                for (const auto& harm : harmonics()[static_cast<std::size_t>(L)]) {
                     GridBasisFunction bf;
                     for (int e = 0; e < set.nexp(); ++e) {
                         const double a = set.exps[static_cast<std::size_t>(e)];
@@ -152,16 +170,18 @@ GpwAtom make_gpw_atom(const double pos[3], const GaussianBasis& basis,
                         // the spanned space to CP2K's; constant factors cancel.
                         const double norm =
                             std::pow(2.0 * a / M_PI, 0.75) * std::pow(4.0 * a, 0.5 * L);
-                        GridPrimitive p;
-                        p.alpha = a;
-                        p.center[0] = pos[0];
-                        p.center[1] = pos[1];
-                        p.center[2] = pos[2];
-                        p.l[0] = cart[0];
-                        p.l[1] = cart[1];
-                        p.l[2] = cart[2];
-                        p.coeff = c * norm;
-                        bf.push_back(p);
+                        for (const auto& term : harm) {
+                            GridPrimitive p;
+                            p.alpha = a;
+                            p.center[0] = pos[0];
+                            p.center[1] = pos[1];
+                            p.center[2] = pos[2];
+                            p.l[0] = term.l[0];
+                            p.l[1] = term.l[1];
+                            p.l[2] = term.l[2];
+                            p.coeff = c * norm * term.w;
+                            bf.push_back(p);
+                        }
                     }
                     if (!bf.empty()) atom.basis.push_back(std::move(bf));
                 }
