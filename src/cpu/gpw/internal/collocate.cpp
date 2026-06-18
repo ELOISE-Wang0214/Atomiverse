@@ -64,6 +64,7 @@ std::vector<double> eval_basis_on_grid(const UniformGrid& grid,
     const long ng = grid.npts();
     const int nb = static_cast<int>(basis.size());
     std::vector<double> phi(static_cast<std::size_t>(ng) * nb);
+#pragma omp parallel for schedule(static)
     for (long g = 0; g < ng; ++g) {
         double r[3];
         grid.point(g, r);
@@ -93,7 +94,10 @@ std::vector<double> collocate_density(const UniformGrid& grid,
                                       const std::vector<double>& P,
                                       const std::vector<long>& active) {
     std::vector<double> rho(static_cast<std::size_t>(grid.npts()), 0.0);
-    for (long g : active) {
+    const long na = static_cast<long>(active.size());
+#pragma omp parallel for schedule(static)
+    for (long i = 0; i < na; ++i) {
+        const long g = active[static_cast<std::size_t>(i)];
         const double* row = &phi[static_cast<std::size_t>(g) * nb];
         double acc = 0.0;
         for (int u = 0; u < nb; ++u) {

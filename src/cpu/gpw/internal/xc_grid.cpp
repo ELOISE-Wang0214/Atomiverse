@@ -15,6 +15,7 @@ XcOnGrid xc_grid_pade(const UniformGrid& grid, const std::vector<double>& rho_r)
     XcOnGrid out;
     out.vxc_r.assign(static_cast<std::size_t>(ng), 0.0);
     double e = 0.0;
+#pragma omp parallel for reduction(+ : e) schedule(static)
     for (long g = 0; g < ng; ++g) {
         const double rho = rho_r[g];
         // Spin-unpolarized: split evenly. pade_lsd applies its own low-density

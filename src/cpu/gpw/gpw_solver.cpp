@@ -24,6 +24,11 @@
 #include "atomiverse/cpu/gpw/internal/xc_grid_gga.h"
 #include "atomiverse/cpu/scf/scf_utils.h" // shared public LA: eigensolve, density
 
+#ifdef ATV_GPW_FFTW_THREADS
+#include <fftw3.h>
+#include <omp.h>
+#endif
+
 namespace ATV {
 namespace cpu {
 namespace gpw {
@@ -77,6 +82,7 @@ std::vector<double> ionic_density(const UniformGrid& grid,
                                   const std::vector<GpwAtom>& atoms) {
     const long ng = grid.npts();
     std::vector<double> n(static_cast<std::size_t>(ng), 0.0);
+#pragma omp parallel for schedule(static)
     for (long g = 0; g < ng; ++g) {
         double r[3];
         grid.point(g, r);
@@ -194,6 +200,13 @@ GpwAtom make_gpw_atom(const double pos[3], const GaussianBasis& basis,
 }
 
 GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
+#ifdef ATV_GPW_FFTW_THREADS
+    // One-time global FFTW threading init; fftw_plan_with_nthreads is a global
+    // setting, so every FFT plan created downstream (Poisson, GGA grad/div, MT)
+    // runs multithreaded. The density-grid FFTs dominate GPW's wall time.
+    static const int kFftwThreadsOk = fftw_init_threads();
+    if (kFftwThreadsOk) fftw_plan_with_nthreads(omp_get_max_threads());
+#endif
     const std::vector<GridBasisFunction> basis = global_basis(atoms);
     const int nb = static_cast<int>(basis.size());
     UniformGrid grid = make_uniform_grid(cfg.cell, cfg.cutoff_ry);

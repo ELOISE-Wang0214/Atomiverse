@@ -32,6 +32,7 @@ XcOnGrid xc_grid_pbe(const UniformGrid& grid, const std::vector<double>& rho_r) 
     for (int d = 0; d < 3; ++d) flux[d].assign(static_cast<std::size_t>(ng), 0.0);
 
     double e = 0.0;
+#pragma omp parallel for reduction(+ : e) schedule(static)
     for (long g = 0; g < ng; ++g) {
         const double rho = rho_r[g];
         const double gx = grad[0][g], gy = grad[1][g], gz = grad[2][g];
