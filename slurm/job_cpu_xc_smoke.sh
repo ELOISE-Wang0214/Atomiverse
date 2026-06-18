@@ -44,6 +44,7 @@ BUILD=build-cpu-xc
 
 "$CMAKE" -B "$BUILD" \
     -DCMAKE_BUILD_TYPE=Release \
+    -DATV_BUILD_CUDA=OFF \
     -DATV_BUILD_TESTS=ON \
     -DATV_BUILD_RHF=ON \
     -DATV_BUILD_XC_ORACLE=ON \
