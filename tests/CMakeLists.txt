@@ -140,6 +140,9 @@ if(ATV_BUILD_GPW)
         atv_add_cpp_test(test_cpu_gpw_geoopt       cpu/gpw/test_cpu_gpw_geoopt.cpp)
         target_compile_definitions(test_cpu_gpw_geoopt
             PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
+        atv_add_cpp_test(test_cpu_gpw_aimd         cpu/gpw/test_cpu_gpw_aimd.cpp)
+        target_compile_definitions(test_cpu_gpw_aimd
+            PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
     endif()
 endif()
 atv_add_cpp_test(test_cpu_md_pair_morse_smoke     cpu/md/test_pair_morse_smoke.cpp)
