@@ -272,6 +272,33 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
     return res;
 }
 
+namespace {
+// Displace an atom (its position AND all its basis-function centers) by d.
+GpwAtom displaced(GpwAtom a, int axis, double d) {
+    a.pos[axis] += d;
+    for (auto& bf : a.basis)
+        for (auto& p : bf) p.center[axis] += d;
+    return a;
+}
+} // namespace
+
+std::vector<std::array<double, 3>>
+gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg, double h) {
+    const int na = static_cast<int>(atoms.size());
+    std::vector<std::array<double, 3>> forces(na, {0.0, 0.0, 0.0});
+    for (int a = 0; a < na; ++a) {
+        for (int k = 0; k < 3; ++k) {
+            std::vector<GpwAtom> plus = atoms, minus = atoms;
+            plus[a] = displaced(atoms[a], k, +h);
+            minus[a] = displaced(atoms[a], k, -h);
+            const double e_plus = gpw_scf(plus, cfg).e_total;
+            const double e_minus = gpw_scf(minus, cfg).e_total;
+            forces[a][k] = -(e_plus - e_minus) / (2.0 * h); // F = -dE/dR
+        }
+    }
+    return forces;
+}
+
 } // namespace gpw
 } // namespace cpu
 } // namespace ATV

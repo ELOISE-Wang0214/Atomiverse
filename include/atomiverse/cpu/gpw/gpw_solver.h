@@ -15,6 +15,7 @@
 /// CP2K bit-parity are follow-on milestones.
 #pragma once
 
+#include <array>
 #include <vector>
 
 #include "atomiverse/cpu/gpw/internal/collocate.h"
@@ -76,6 +77,15 @@ GpwAtom make_gpw_atom(const double pos[3], const GaussianBasis& basis,
 
 /// @brief Run the closed-shell GPW SCF for a set of atoms.
 GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg);
+
+/// @brief Finite-difference forces F_a = -dE/dR_a via central differences.
+///
+/// Runs `gpw_scf` at +/- h displacements of each atom along each axis
+/// (6*N_atoms SCF solves). Correct but expensive; analytic GPW forces are a
+/// follow-on. Returns forces [Hartree/Bohr], one xyz triple per atom.
+/// @param h Displacement step [Bohr].
+std::vector<std::array<double, 3>>
+gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg, double h = 1e-3);
 
 } // namespace gpw
 } // namespace cpu

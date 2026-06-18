@@ -134,6 +134,9 @@ if(ATV_BUILD_GPW)
         atv_add_cpp_test(test_cpu_gpw_evaluator    cpu/gpw/test_cpu_gpw_evaluator.cpp)
         target_compile_definitions(test_cpu_gpw_evaluator
             PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
+        atv_add_cpp_test(test_cpu_gpw_forces       cpu/gpw/test_cpu_gpw_forces.cpp)
+        target_compile_definitions(test_cpu_gpw_forces
+            PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
     endif()
 endif()
 atv_add_cpp_test(test_cpu_md_pair_morse_smoke     cpu/md/test_pair_morse_smoke.cpp)
