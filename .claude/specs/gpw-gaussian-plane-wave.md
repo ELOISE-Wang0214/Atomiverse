@@ -215,8 +215,13 @@ Edit:
       closed-form validated (`test_cpu_gpw_gth_integrals`). TODO: contraction over
       shells, l>=2 projectors, and CP2K sign/normalization-convention parity
       (deferred to M1 validation).
-- [ ] **Phase 3 (D5 + periodic Poisson):** GPW SCF orchestrator; **M1 gate** —
-      match `Ar.inp` and `H2.inp` to ≤ 1e-6 Ha.
+- [~] **Phase 3 (D5 + periodic Poisson):** GPW SCF orchestrator
+      (`cpu/gpw/gpw_solver`, self-contained in `cpu::gpw`, reuses public
+      `cpu::scf::scf_utils` LA). First end-to-end self-consistency green: minimal
+      H2 converges (`test_cpu_gpw_solver`). TODO for the **M1 gate** (`Ar.inp`,
+      `H2.inp` to ≤1e-6 Ha): real DZVP basis (not single-s), exact GTH params via
+      the parsers, erf-vs-point ion-ion / self-energy electrostatic corrections,
+      and the absolute-energy bit-parity tuning vs CP2K.
 - [ ] **Phase 4 (D6):** `GPWEvaluator`/`GPWConfig`; `cpu::single_point` runs GPW;
       example `09_gpw.cpp` (periodic first).
 - [ ] **Phase 5 (M2):** PBE/GGA on grid; periodic PBE parity.
