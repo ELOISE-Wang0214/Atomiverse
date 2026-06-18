@@ -93,6 +93,18 @@ atv_add_cpp_test(test_cpu_ewald_coul              cpu/kspace/test_ewald_coul.cpp
 if(ATV_BUILD_KSPACE)
     atv_add_cpp_test(test_cpu_pme_coul            cpu/kspace/test_pme_coul.cpp)
 endif()
+
+# GPW module tests. The CP2K data-file readers validate against the actual
+# GTH_POTENTIALS / POTENTIAL files shipped with CP2K; point ATV_CP2K_DATA_DIR
+# at a CP2K `data/` directory (default: the local Arrhenius checkout).
+if(ATV_BUILD_GPW)
+    set(ATV_CP2K_DATA_DIR
+        "/nobackup/proj/disk/teoroo/personal/jicli594/work/cp2k/data"
+        CACHE PATH "CP2K data/ directory with GTH_POTENTIALS, POTENTIAL, BASIS_* files")
+    atv_add_cpp_test(test_cpu_gpw_cp2k_io          cpu/gpw/test_cpu_gpw_cp2k_io.cpp)
+    target_compile_definitions(test_cpu_gpw_cp2k_io
+        PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
+endif()
 atv_add_cpp_test(test_cpu_md_pair_morse_smoke     cpu/md/test_pair_morse_smoke.cpp)
 atv_add_cpp_test(test_cpu_md_pe_ff_constants      cpu/md/test_pe_ff_constants.cpp)
 atv_add_cpp_test(test_cpu_md_pe_energy_xcheck     cpu/md/test_pe_energy_xcheck.cpp)

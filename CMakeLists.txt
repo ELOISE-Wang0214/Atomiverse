@@ -47,6 +47,7 @@ if(NOT ATV_DOCS_ONLY)
 
     option(ATV_BUILD_RHF "Build RHF electronic structure code" OFF)
     option(ATV_BUILD_PW "Build plane-wave DFT module (requires FFTW3)" OFF)
+    option(ATV_BUILD_GPW "Build GPW DFT module (Gaussian + uniform-grid Hartree/XC + GTH PP)" OFF)
     option(ATV_BUILD_KSPACE "Build Particle-Mesh Ewald (PME) electrostatics (CPU: FFTW3, CUDA: cuFFT)" OFF)
     option(ATV_BUILD_TORCH "Build LibTorch backend (requires LibTorch)" OFF)
     option(ATV_BUILD_LIBCINT "Fetch libcint for integral validation tests" OFF)
@@ -308,6 +309,18 @@ if(NOT ATV_DOCS_ONLY)
             )
         endif()
         target_compile_definitions(atomiverse PUBLIC ATV_HAS_RHF)
+    endif()
+
+    if(ATV_BUILD_GPW)
+        # GPW = Gaussian basis + density collocated on a uniform FFT grid +
+        # analytic GTH pseudopotentials, targeting CP2K Quickstep parity.
+        # Incremental build-out: the CP2K data-file readers come first
+        # (dependency-free, std-only); grid collocation / GTH integrals / MT
+        # Poisson / SCF land in later tasks.
+        target_sources(atomiverse PRIVATE
+            src/cpu/gpw/internal/cp2k_io.cpp
+        )
+        target_compile_definitions(atomiverse PUBLIC ATV_HAS_GPW)
     endif()
 
     if(ATV_BUILD_PW)
