@@ -121,17 +121,21 @@ Directly reusable, verified present in the codebase:
   (`cpu/gpw/internal/mt_poisson.*`): reciprocal-space MT decoupling for isolated
   systems (`PSOLVER MT`, `PERIODIC NONE`). Required for the H₂O tutorial.
   Periodic Poisson is reused from `cpu/pw`.
-- **D5 — GPW SCF orchestrator** (`cpu/gpw/gpw_solver.*`): the SCF *loop* is NOT
-  new — **reuse the Gaussian SCF machinery in `cpu/scf`** (`build_orthogonalization_matrix`
-  = X=S^{-1/2}, `diagonalize_fock_generalized` = FC=SCε, `internal::DIISMixer`,
-  `internal::DensityBuilder`, `internal::DualConvergenceCheck`). These are
-  method-agnostic. GPW differs from `cpu::scf` ONLY in KS-matrix construction:
-  swap the analytic-ERI Coulomb + atom-centered-Becke-grid XC for the grid-based
-  pieces already built — `one_electron` (T,S), `gth_integrals` (V_loc^sr, V_nl),
-  `hartree_grid` (J), `xc_grid` (V_xc) — plus the GTH long-range core-charge
-  electrostatics. The genuinely-new code is the KS assembly + electrostatics, not
-  the iteration. (The plane-wave `cpu::pw` solver is a different method — Davidson
-  on plane-wave wavefunctions — and is NOT reused: GPW's eigenproblem is the small
+- **D5 — GPW SCF orchestrator** (`cpu/gpw/gpw_solver.*` + `cpu/gpw/internal/*`):
+  follow the codebase's actual design — each ES method is a **self-contained domain
+  that mirrors its siblings** (`cpu::pw` has its own `internal/{convergence,
+  density_builder,...}`; `cpu::scf` has its own; neither reaches into the other's
+  `internal`). So GPW gets its OWN thin loop helpers under `cpu::gpw::internal`
+  (mixing, convergence, density-from-MO, and a generalized-eigensolve wrapper
+  calling xtensor-blas directly) — structurally parallel to `cpu::scf::SCFSolver`,
+  NOT reaching into `scf::internal`. The only cross-domain reuse is **shared
+  physics via public headers**: the XC functional — `cpu::xc::pade` (and
+  `cpu::scf::evaluate_xc` for PBE), exactly as `cpu::pw` reuses
+  `cpu::scf::evaluate_xc`. KS matrix is built from the GPW grid/analytic pieces
+  already done: `one_electron` (T,S), `gth_integrals` (V_loc^sr, V_nl),
+  `hartree_grid` (J), `xc_grid` (V_xc), plus the GTH long-range core-charge
+  electrostatics. (The plane-wave `cpu::pw` solver is a different method — Davidson
+  on plane-wave wavefunctions — and is not reused: GPW's eigenproblem is the small
   dense generalized one in the AO basis, and CP2K=GPW≠pure-PW.)
 - **D6 — GPWEvaluator + GPWConfig** (`cpu/gpw/gpw_evaluator.*`,
   `cpu/gpw/gpw_config.h`): `role()=Evaluator`,
