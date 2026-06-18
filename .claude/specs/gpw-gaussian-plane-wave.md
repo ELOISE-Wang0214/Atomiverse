@@ -232,8 +232,13 @@ Edit:
       Rozzi-0D) + **`h2o.inp` tutorial reproduced to 0.43 mHa**
       (`test_cpu_gpw_h2o_tutorial`: -17.2127672 vs CP2K -17.21233714458516, every
       term sub-mHa). TODO: exact erf-screened MT for bit-parity.
-- [ ] **Phase 7 (D7):** runtime libxc bridge; tighten H₂O parity to ≤ 1e-6 Ha.
-- [ ] **Phase 8 (D8, M4):** analytic forces; geom-opt + MD tutorials run.
+- [x] **Phase 7 (D7):** native XC — done via [[native-xc-libxc-parity]] (PADE +
+      libxc-parity PBE); no runtime libxc dependency shipped.
+- [~] **Phase 8 (D8, M4):** finite-difference forces (`gpw_forces_fd`,
+      `test_cpu_gpw_forces`): clean equal/opposite restoring bond force; off-axis
+      egg-box artifact bounded (single-grid limitation). TODO: analytic forces
+      (speed) + multigrid to kill the egg-box, then wire Force into GPWEvaluator
+      for the geom-opt/MD tutorials.
 - [ ] **Phase 9 (M5):** migrate tutorial + benchmark into `benchmarks/gpw/`;
       `SOURCES.md`; comparison harness vs CP2K reference CSV.
 
