@@ -130,15 +130,26 @@ std::vector<double> integrate_potential(const UniformGrid& grid,
                                         const std::vector<double>& V_r,
                                         const std::vector<long>& active) {
     const double w = grid.weight();
-    std::vector<double> V(static_cast<std::size_t>(nb) * nb, 0.0);
-    for (long g : active) {
-        const double* row = &phi[static_cast<std::size_t>(g) * nb];
-        const double vw = V_r[g] * w;
-        for (int u = 0; u < nb; ++u) {
-            const double fu = row[u] * vw;
-            double* Vu = &V[static_cast<std::size_t>(u) * nb];
-            for (int v = 0; v < nb; ++v) Vu[v] += fu * row[v];
+    const long na = static_cast<long>(active.size());
+    const std::size_t nn = static_cast<std::size_t>(nb) * nb;
+    std::vector<double> V(nn, 0.0);
+    // Per-thread partial KS blocks, merged at the end (V is a shared reduction).
+#pragma omp parallel
+    {
+        std::vector<double> Vloc(nn, 0.0);
+#pragma omp for schedule(static) nowait
+        for (long i = 0; i < na; ++i) {
+            const long g = active[static_cast<std::size_t>(i)];
+            const double* row = &phi[static_cast<std::size_t>(g) * nb];
+            const double vw = V_r[g] * w;
+            for (int u = 0; u < nb; ++u) {
+                const double fu = row[u] * vw;
+                double* Vu = &Vloc[static_cast<std::size_t>(u) * nb];
+                for (int v = 0; v < nb; ++v) Vu[v] += fu * row[v];
+            }
         }
+#pragma omp critical
+        for (std::size_t k = 0; k < nn; ++k) V[k] += Vloc[k];
     }
     return V;
 }
