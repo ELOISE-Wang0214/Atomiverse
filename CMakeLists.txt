@@ -327,7 +327,14 @@ if(NOT ATV_DOCS_ONLY)
             # GPW examples; lives under cpu/xc/, built with the GPW module until
             # a dedicated ATV_BUILD_XC flag exists.
             src/cpu/xc/pade.cpp
+            src/cpu/gpw/internal/one_electron.cpp
         )
+        # FFT Poisson needs FFTW, supplied by the ATV_BUILD_PW block (fftw3_stub
+        # is linked into atomiverse there, so the fftw3.h include propagates).
+        if(ATV_BUILD_PW)
+            target_sources(atomiverse PRIVATE src/cpu/gpw/internal/poisson_fft.cpp)
+            target_compile_definitions(atomiverse PUBLIC ATV_GPW_HAS_FFT)
+        endif()
         target_compile_definitions(atomiverse PUBLIC ATV_HAS_GPW)
     endif()
 
