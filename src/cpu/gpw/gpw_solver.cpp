@@ -17,9 +17,11 @@
 
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h"
 #include "atomiverse/cpu/gpw/internal/hartree_grid.h"
+#include "atomiverse/cpu/gpw/internal/mt_poisson.h"
 #include "atomiverse/cpu/gpw/internal/one_electron.h"
 #include "atomiverse/cpu/gpw/internal/poisson_fft.h"
 #include "atomiverse/cpu/gpw/internal/xc_grid.h"
+#include "atomiverse/cpu/gpw/internal/xc_grid_gga.h"
 #include "atomiverse/cpu/scf/scf_utils.h" // shared public LA: eigensolve, density
 
 namespace ATV {
@@ -227,9 +229,11 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
         std::vector<double> n_tot(rho.size());
         for (std::size_t g = 0; g < rho.size(); ++g) n_tot[g] = rho[g] - n_ion[g];
 
-        // Electrostatics (one Poisson) and XC.
-        const PoissonResult es = solve_poisson(grid, n_tot);
-        const XcOnGrid xc = xc_grid_pade(grid, rho);
+        // Electrostatics (one Poisson) and XC — periodic or isolated, LDA or GGA.
+        const PoissonResult es =
+            cfg.nonperiodic ? solve_poisson_mt(grid, n_tot) : solve_poisson(grid, n_tot);
+        const XcOnGrid xc =
+            cfg.xc == XcKind::PBE ? xc_grid_pbe(grid, rho) : xc_grid_pade(grid, rho);
 
         std::vector<double> veff(rho.size());
         for (std::size_t g = 0; g < rho.size(); ++g) veff[g] = es.v_r[g] + xc.vxc_r[g];

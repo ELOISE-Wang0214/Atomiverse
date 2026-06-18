@@ -335,6 +335,9 @@ if(NOT ATV_DOCS_ONLY)
             target_sources(atomiverse PRIVATE
                 src/cpu/gpw/internal/poisson_fft.cpp
                 src/cpu/gpw/internal/hartree_grid.cpp
+                src/cpu/gpw/internal/grid_fft.cpp
+                src/cpu/gpw/internal/xc_grid_gga.cpp
+                src/cpu/gpw/internal/mt_poisson.cpp
                 src/cpu/gpw/gpw_solver.cpp
             )
             target_compile_definitions(atomiverse PUBLIC ATV_GPW_HAS_FFT)

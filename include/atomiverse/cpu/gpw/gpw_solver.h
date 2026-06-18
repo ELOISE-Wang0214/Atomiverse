@@ -35,6 +35,9 @@ struct GpwAtom {
     std::vector<GthNonlocalChannel> nonlocal; ///< GTH nonlocal projector channels.
 };
 
+/// @brief Exchange-correlation functional选择.
+enum class XcKind { PADE, PBE };
+
 /// @brief GPW SCF configuration.
 struct GpwConfig {
     double cell[3] = {0, 0, 0}; ///< orthorhombic box lengths [Bohr].
@@ -43,6 +46,8 @@ struct GpwConfig {
     int max_iter = 100;         ///< max SCF iterations.
     double tol = 1e-8;          ///< SCF energy convergence [Hartree].
     double mix = 0.5;           ///< linear density-mixing factor.
+    XcKind xc = XcKind::PADE;   ///< LDA (PADE) or GGA (PBE).
+    bool nonperiodic = false;   ///< use the isolated (MT) Poisson solver.
 };
 
 /// @brief GPW SCF result with an energy decomposition.
