@@ -42,7 +42,8 @@ BUILD=build-cpu-gpw
             test_cpu_gpw_collocate test_cpu_gpw_xc_grid test_cpu_gpw_one_electron \
             test_cpu_gpw_poisson_fft test_cpu_gpw_hartree_grid test_cpu_gpw_solver \
             test_cpu_gpw_grid_fft test_cpu_gpw_xc_grid_gga test_cpu_gpw_mt_poisson \
-            test_cpu_gpw_h2_cp2k test_cpu_gpw_ar_cp2k test_cpu_gpw_h2o_tutorial test_cpu_xc_pade
+            test_cpu_gpw_h2_cp2k test_cpu_gpw_ar_cp2k test_cpu_gpw_h2o_tutorial \
+            test_cpu_gpw_evaluator test_cpu_xc_pade
 
 export LD_LIBRARY_PATH="${LIBRARY_PATH:-}:${LD_LIBRARY_PATH:-}"
 "$CTEST" --test-dir "$BUILD" -R "test_cpu_(gpw_|xc_pade)" --output-on-failure
