@@ -34,7 +34,7 @@
 
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/scf_solve.h" // SCFConfig, SCFInitialGuess, SCFResult
-#include "atomiverse/cpu/scf/scf_linalg.h" // RealMatrix
+#include "atomiverse/cpu/scf/dense_matrix.h" // RealMatrix
 
 namespace ATV {
 namespace cpu {

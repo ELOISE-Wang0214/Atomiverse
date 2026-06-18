@@ -13,7 +13,7 @@
 #include "atomiverse/cpu/scf/grid.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/scf_solve.h" // SCFConfig, MeanFieldType, SpinType
-#include "atomiverse/cpu/scf/scf_linalg.h"
+#include "atomiverse/cpu/scf/dense_matrix.h"
 #include "atomiverse/cpu/scf/shell_pair.h"
 
 namespace ATV {

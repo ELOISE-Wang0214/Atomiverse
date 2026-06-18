@@ -22,7 +22,9 @@
 #include "atomiverse/cpu/gpw/internal/poisson_fft.h"
 #include "atomiverse/cpu/gpw/internal/xc_grid.h"
 #include "atomiverse/cpu/gpw/internal/xc_grid_gga.h"
-#include "atomiverse/cpu/linalg/dense.h" // shared dense LA: eigensolve, density
+#include "atomiverse/cpu/linalg/density.h"    // build_density_matrix
+#include "atomiverse/cpu/linalg/eigensolve.h"  // diagonalize_fock_generalized
+#include "atomiverse/cpu/linalg/matrix.h"      // RealMatrix
 
 #ifdef ATV_GPW_FFTW_THREADS
 #include <fftw3.h>

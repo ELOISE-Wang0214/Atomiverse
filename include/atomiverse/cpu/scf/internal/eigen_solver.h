@@ -11,7 +11,8 @@
 
 #include <utility>
 
-#include "atomiverse/cpu/scf/scf_linalg.h"
+#include "atomiverse/cpu/linalg/eigensolve.h" // diagonalize_fock_generalized
+#include "atomiverse/cpu/scf/dense_matrix.h"
 
 namespace ATV {
 namespace cpu {
@@ -31,7 +32,7 @@ class EigenSolver {
     /// @return (eigenvalues [n], eigenvectors [n×n]).
     std::pair<RealVector, RealMatrix> step(const RealMatrix& F,
                                            const RealMatrix& S) const {
-        return diagonalize_fock_generalized(F, S);
+        return linalg::diagonalize_fock_generalized(F, S);
     }
 };
 

@@ -8,7 +8,8 @@
 /// workspace; the public surface stays the same.
 #pragma once
 
-#include "atomiverse/cpu/scf/scf_linalg.h"
+#include "atomiverse/cpu/linalg/density.h" // build_density_matrix
+#include "atomiverse/cpu/scf/dense_matrix.h"
 
 namespace ATV {
 namespace cpu {
@@ -31,7 +32,7 @@ class DensityBuilder {
     /// @return Density matrix [n × n].
     RealMatrix step(const RealMatrix& C, int n_occ, int n_basis,
                     double factor = 1.0) const {
-        return build_density_matrix(C, n_occ, n_basis, factor);
+        return linalg::build_density_matrix(C, n_occ, n_basis, factor);
     }
 };
 

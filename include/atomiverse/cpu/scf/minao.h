@@ -12,7 +12,7 @@
 #pragma once
 
 #include "atomiverse/cpu/scf/integrals.h"
-#include "atomiverse/cpu/scf/scf_linalg.h"
+#include "atomiverse/cpu/scf/dense_matrix.h"
 
 namespace ATV {
 namespace cpu {

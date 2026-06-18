@@ -25,7 +25,10 @@
 #include "atomiverse/cpu/scf/internal/eigen_solver.h"
 #include "atomiverse/cpu/scf/internal/hamiltonian_builder.h"
 #include "atomiverse/cpu/scf/minao.h"
-#include "atomiverse/cpu/scf/scf_linalg.h"
+#include "atomiverse/cpu/linalg/eigensolve.h"   // build_orthogonalization_matrix, diagonalize
+#include "atomiverse/cpu/scf/dense_matrix.h"
+#include "atomiverse/cpu/scf/scf_guess.h"        // apply_homo_lumo_mixing
+#include "atomiverse/cpu/scf/spin_analysis.h"    // compute_spin_contamination
 
 namespace ATV {
 namespace cpu {
@@ -85,7 +88,7 @@ SCFResult& SCFSolver::run(const IntegralPack& integrals,
     // lists, KS grid. All depend on current atom positions and so are
     // rebuilt each run(). (See build() — only n_basis-sized workspaces
     // are pre-allocated there.)
-    X_ = build_orthogonalization_matrix(S_cm);
+    X_ = linalg::build_orthogonalization_matrix(S_cm);
     hamiltonian_->prepare(integrals, config_);
 
     // Reset stateful helpers for this run.
@@ -93,7 +96,7 @@ SCFResult& SCFSolver::run(const IntegralPack& integrals,
     convergence_->reset();
 
     // ── Initial guess ───────────────────────────────────────────────────
-    auto [eig0, C0] = diagonalize_fock_generalized(Hcore_cm, S_cm);
+    auto [eig0, C0] = linalg::diagonalize_fock_generalized(Hcore_cm, S_cm);
 
     RealMatrix P_alpha, P_beta;
     const bool valid_guess_alpha =

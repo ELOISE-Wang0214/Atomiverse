@@ -11,7 +11,7 @@
 /// are thin wrappers around scf_solve() that preset the matching SCFConfig
 /// and repack into the method-specific result struct.
 ///
-/// @see cpu/scf/scf_linalg.h and cpu/linalg/dense.h for shared LA
+/// @see cpu/linalg/{eigensolve,density}.h + cpu/scf/{scf_guess,spin_analysis}.h
 /// @see cpu::scf::operators.h for J/K operator builders
 /// @see cpu::scf::diis.h for DIIS accelerator
 #pragma once

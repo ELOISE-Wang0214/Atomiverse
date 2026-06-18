@@ -17,7 +17,7 @@
 #include "atomiverse/cpu/scf/internal/density_builder.h"
 #include "atomiverse/cpu/scf/internal/dual_convergence_check.h"
 #include "atomiverse/cpu/scf/internal/eigen_solver.h"
-#include "atomiverse/cpu/scf/scf_linalg.h"
+#include "atomiverse/cpu/scf/dense_matrix.h"
 
 using namespace ATV::cpu::scf;
 using namespace ATV::cpu::scf::internal;
