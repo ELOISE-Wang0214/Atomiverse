@@ -121,10 +121,18 @@ Directly reusable, verified present in the codebase:
   (`cpu/gpw/internal/mt_poisson.*`): reciprocal-space MT decoupling for isolated
   systems (`PSOLVER MT`, `PERIODIC NONE`). Required for the H₂O tutorial.
   Periodic Poisson is reused from `cpu/pw`.
-- **D5 — GPW SCF orchestrator** (`cpu/gpw/gpw_solver.*`): assemble `H_KS`
-  (analytic hard part + grid soft part), generalized eigensolve in AO basis,
-  density build, DIIS mixing, convergence, CP2K-matching total-energy expression.
-  Reuses D-LA/DIIS/density modules above.
+- **D5 — GPW SCF orchestrator** (`cpu/gpw/gpw_solver.*`): the SCF *loop* is NOT
+  new — **reuse the Gaussian SCF machinery in `cpu/scf`** (`build_orthogonalization_matrix`
+  = X=S^{-1/2}, `diagonalize_fock_generalized` = FC=SCε, `internal::DIISMixer`,
+  `internal::DensityBuilder`, `internal::DualConvergenceCheck`). These are
+  method-agnostic. GPW differs from `cpu::scf` ONLY in KS-matrix construction:
+  swap the analytic-ERI Coulomb + atom-centered-Becke-grid XC for the grid-based
+  pieces already built — `one_electron` (T,S), `gth_integrals` (V_loc^sr, V_nl),
+  `hartree_grid` (J), `xc_grid` (V_xc) — plus the GTH long-range core-charge
+  electrostatics. The genuinely-new code is the KS assembly + electrostatics, not
+  the iteration. (The plane-wave `cpu::pw` solver is a different method — Davidson
+  on plane-wave wavefunctions — and is NOT reused: GPW's eigenproblem is the small
+  dense generalized one in the AO basis, and CP2K=GPW≠pure-PW.)
 - **D6 — GPWEvaluator + GPWConfig** (`cpu/gpw/gpw_evaluator.*`,
   `cpu/gpw/gpw_config.h`): `role()=Evaluator`,
   `capabilities()=Energy|Force|DensityMatrix|Orbitals`; plugs into `Evaluate`,
@@ -193,9 +201,11 @@ Edit:
             O GTH-PBE-q6, Ar GTH-PADE-q8 verified via Slurm (`test_cpu_gpw_cp2k_io`).
       - [x] GTH/MOLOPT Gaussian basis parser (`cpu/gpw/internal/cp2k_basis`) —
             DZVP-GTH-PADE + DZVP-MOLOPT-GTH verified (`test_cpu_gpw_basis`).
-- [ ] **Phase 1 (D2):** uniform-grid collocation + integration with
-      CUTOFF/REL_CUTOFF multigrid; RED test: collocated ρ integrates to N_el; round
-      trip `integrate(collocate())` vs analytic overlap within grid tolerance.
+- [~] **Phase 1 (D2):** uniform-grid collocation + integration
+      (`cpu/gpw/internal/collocate`) — single grid validated: `integrate(V≡1)`
+      recovers analytic overlap S and `∫ρ = Tr(P S)` to 1e-4
+      (`test_cpu_gpw_collocate`). TODO: CUTOFF/REL_CUTOFF multigrid, periodic image
+      sums, FFT Poisson on this grid.
 - [~] **Phase 2 (D3):** analytic GTH local-sr + nonlocal projector integrals
       (`cpu/gpw/internal/gth_integrals`) — primitive Cartesian Gaussians, s/p,
       closed-form validated (`test_cpu_gpw_gth_integrals`). TODO: contraction over
