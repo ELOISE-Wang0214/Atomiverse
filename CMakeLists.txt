@@ -332,7 +332,10 @@ if(NOT ATV_DOCS_ONLY)
         # FFT Poisson needs FFTW, supplied by the ATV_BUILD_PW block (fftw3_stub
         # is linked into atomiverse there, so the fftw3.h include propagates).
         if(ATV_BUILD_PW)
-            target_sources(atomiverse PRIVATE src/cpu/gpw/internal/poisson_fft.cpp)
+            target_sources(atomiverse PRIVATE
+                src/cpu/gpw/internal/poisson_fft.cpp
+                src/cpu/gpw/internal/hartree_grid.cpp
+            )
             target_compile_definitions(atomiverse PUBLIC ATV_GPW_HAS_FFT)
         endif()
         target_compile_definitions(atomiverse PUBLIC ATV_HAS_GPW)
