@@ -37,11 +37,11 @@ BUILD=build-cpu-gpw
     -DATV_MOLRS_PATH="$MOLRS"
 
 "$CMAKE" --build "$BUILD" -j"$(nproc)" \
-    --target test_cpu_gpw_cp2k_io test_cpu_gpw_basis \
-            test_cpu_gpw_gth_integrals test_cpu_gpw_collocate test_cpu_xc_pade
+    --target test_cpu_gpw_cp2k_io test_cpu_gpw_basis test_cpu_gpw_gth_integrals \
+            test_cpu_gpw_collocate test_cpu_gpw_xc_grid test_cpu_xc_pade
 
 export LD_LIBRARY_PATH="${LIBRARY_PATH:-}:${LD_LIBRARY_PATH:-}"
 "$CTEST" --test-dir "$BUILD" \
-    -R "test_cpu_(gpw_cp2k_io|gpw_basis|gpw_gth_integrals|gpw_collocate|xc_pade)" \
+    -R "test_cpu_(gpw_cp2k_io|gpw_basis|gpw_gth_integrals|gpw_collocate|gpw_xc_grid|xc_pade)" \
     --output-on-failure
 echo "=== JOB DONE rc=$? ==="
