@@ -321,6 +321,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/gpw/internal/cp2k_io.cpp
             src/cpu/gpw/internal/cp2k_basis.cpp
             src/cpu/gpw/internal/gth_integrals.cpp
+            src/cpu/gpw/internal/collocate.cpp
             # PADE (GTH Padé) LDA XC — CP2K-native functional used by the first
             # GPW examples; lives under cpu/xc/, built with the GPW module until
             # a dedicated ATV_BUILD_XC flag exists.
