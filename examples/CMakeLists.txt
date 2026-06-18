@@ -57,3 +57,8 @@ endif()
 if(ATV_BUILD_PW)
     atv_add_cpp_example(08_pw)
 endif()
+
+# 09 — GPW DFT (isolated water, PBE + MT); needs the GPW module (RHF + PW/FFTW3).
+if(ATV_BUILD_GPW AND ATV_BUILD_PW)
+    atv_add_cpp_example(09_gpw)
+endif()
