@@ -222,8 +222,10 @@ Edit:
       `H2.inp` to ≤1e-6 Ha): real DZVP basis (not single-s), exact GTH params via
       the parsers, erf-vs-point ion-ion / self-energy electrostatic corrections,
       and the absolute-energy bit-parity tuning vs CP2K.
-- [ ] **Phase 4 (D6):** `GPWEvaluator`/`GPWConfig`; `cpu::single_point` runs GPW;
-      example `09_gpw.cpp` (periodic first).
+- [~] **Phase 4 (D6):** `GPWEvaluator` (`cpu/gpw/gpw_evaluator`, role=Evaluator,
+      cap=Energy) runs via `cpu::single_point` (`test_cpu_gpw_evaluator`); builds
+      atoms from the Frame (Å→Bohr) + per-element basis/PP, derives n_occ, writes
+      eV. TODO: example `09_gpw.cpp`.
 - [x] **Phase 5 (M2):** PBE/GGA on grid (`grid_fft` FFT grad/div + `xc_grid_pbe`,
       reusing `cpu::scf::evaluate_xc(PBE)`); FD-validated GGA potential.
 - [x] **Phase 6 (D4, M3):** MT isolated Poisson (`mt_poisson`, truncated-Coulomb
