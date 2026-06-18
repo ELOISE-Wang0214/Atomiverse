@@ -74,11 +74,9 @@ std::vector<double> eval_basis_on_grid(const UniformGrid& grid,
 }
 
 std::vector<double> collocate_density(const UniformGrid& grid,
-                                      const std::vector<GridBasisFunction>& basis,
+                                      const std::vector<double>& phi, int nb,
                                       const std::vector<double>& P) {
     const long ng = grid.npts();
-    const int nb = static_cast<int>(basis.size());
-    const std::vector<double> phi = eval_basis_on_grid(grid, basis);
     std::vector<double> rho(static_cast<std::size_t>(ng), 0.0);
     std::vector<double> pv(nb); // P * phi_row
     for (long g = 0; g < ng; ++g) {
@@ -96,13 +94,18 @@ std::vector<double> collocate_density(const UniformGrid& grid,
     return rho;
 }
 
+std::vector<double> collocate_density(const UniformGrid& grid,
+                                      const std::vector<GridBasisFunction>& basis,
+                                      const std::vector<double>& P) {
+    return collocate_density(grid, eval_basis_on_grid(grid, basis),
+                             static_cast<int>(basis.size()), P);
+}
+
 std::vector<double> integrate_potential(const UniformGrid& grid,
-                                        const std::vector<GridBasisFunction>& basis,
+                                        const std::vector<double>& phi, int nb,
                                         const std::vector<double>& V_r) {
     const long ng = grid.npts();
-    const int nb = static_cast<int>(basis.size());
     const double w = grid.weight();
-    const std::vector<double> phi = eval_basis_on_grid(grid, basis);
     std::vector<double> V(static_cast<std::size_t>(nb) * nb, 0.0);
     for (long g = 0; g < ng; ++g) {
         const double* row = &phi[static_cast<std::size_t>(g) * nb];
@@ -114,6 +117,13 @@ std::vector<double> integrate_potential(const UniformGrid& grid,
         }
     }
     return V;
+}
+
+std::vector<double> integrate_potential(const UniformGrid& grid,
+                                        const std::vector<GridBasisFunction>& basis,
+                                        const std::vector<double>& V_r) {
+    return integrate_potential(grid, eval_basis_on_grid(grid, basis),
+                               static_cast<int>(basis.size()), V_r);
 }
 
 } // namespace gpw

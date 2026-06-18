@@ -65,12 +65,27 @@ std::vector<double> collocate_density(const UniformGrid& grid,
                                       const std::vector<GridBasisFunction>& basis,
                                       const std::vector<double>& P);
 
+/// @brief Collocate density from a precomputed basis-on-grid matrix `phi`
+///        (row-major npts x nbasis, from `eval_basis_on_grid`). The grid and
+///        basis are geometry-fixed, so caching `phi` across SCF iterations avoids
+///        recomputing every Gaussian at every point.
+std::vector<double> collocate_density(const UniformGrid& grid,
+                                      const std::vector<double>& phi, int nbasis,
+                                      const std::vector<double>& P);
+
 /// @brief Integrate a grid potential into KS matrix elements
 ///        V_uv = Σ_g w φ_u(r_g) V(r_g) φ_v(r_g).
 /// @param V_r Potential sampled on the grid, length npts.
 /// @return Row-major nbasis x nbasis matrix.
 std::vector<double> integrate_potential(const UniformGrid& grid,
                                         const std::vector<GridBasisFunction>& basis,
+                                        const std::vector<double>& V_r);
+
+/// @brief Integrate a grid potential into KS matrix elements using a precomputed
+///        basis-on-grid matrix `phi` (row-major npts x nbasis). See the cached
+///        `collocate_density` overload.
+std::vector<double> integrate_potential(const UniformGrid& grid,
+                                        const std::vector<double>& phi, int nbasis,
                                         const std::vector<double>& V_r);
 
 } // namespace gpw

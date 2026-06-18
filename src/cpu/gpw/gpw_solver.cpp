@@ -220,12 +220,16 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
     auto [eig0, C0] = scf::diagonalize_fock_generalized(H0, S);
     RealMatrix P = scf::build_density_matrix(C0, cfg.n_occ, nb, 2.0);
 
+    // Basis-on-grid is geometry-fixed: evaluate the Gaussians once and reuse
+    // across all SCF iterations (the dominant cost without this cache).
+    const std::vector<double> phi = eval_basis_on_grid(grid, basis);
+
     GpwResult res;
     double e_prev = 0.0;
     for (int iter = 0; iter < cfg.max_iter; ++iter) {
         // Density on the grid and the neutral total charge.
         const std::vector<double> Pvec = mat_to_vec(P, nb);
-        std::vector<double> rho = collocate_density(grid, basis, Pvec);
+        std::vector<double> rho = collocate_density(grid, phi, nb, Pvec);
         std::vector<double> n_tot(rho.size());
         for (std::size_t g = 0; g < rho.size(); ++g) n_tot[g] = rho[g] - n_ion[g];
 
@@ -237,7 +241,7 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
 
         std::vector<double> veff(rho.size());
         for (std::size_t g = 0; g < rho.size(); ++g) veff[g] = es.v_r[g] + xc.vxc_r[g];
-        const RealMatrix Vgrid = vec_to_mat(integrate_potential(grid, basis, veff), nb);
+        const RealMatrix Vgrid = vec_to_mat(integrate_potential(grid, phi, nb, veff), nb);
 
         const RealMatrix H = H0 + Vgrid;
 
