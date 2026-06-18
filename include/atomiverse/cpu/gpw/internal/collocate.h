@@ -73,6 +73,19 @@ std::vector<double> collocate_density(const UniformGrid& grid,
                                       const std::vector<double>& phi, int nbasis,
                                       const std::vector<double>& P);
 
+/// @brief Grid-point indices where any basis function exceeds `eps` in magnitude.
+///        The molecule occupies a small part of a large box, so collocation /
+///        integration over just these "active" points skips the empty vacuum.
+std::vector<long> active_grid_points(const std::vector<double>& phi, long npts,
+                                     int nbasis, double eps = 1e-12);
+
+/// @brief Cached + screened collocation: precompute `phi` and `active` once
+///        (both geometry-fixed) and reuse across SCF iterations.
+std::vector<double> collocate_density(const UniformGrid& grid,
+                                      const std::vector<double>& phi, int nbasis,
+                                      const std::vector<double>& P,
+                                      const std::vector<long>& active);
+
 /// @brief Integrate a grid potential into KS matrix elements
 ///        V_uv = Σ_g w φ_u(r_g) V(r_g) φ_v(r_g).
 /// @param V_r Potential sampled on the grid, length npts.
@@ -87,6 +100,12 @@ std::vector<double> integrate_potential(const UniformGrid& grid,
 std::vector<double> integrate_potential(const UniformGrid& grid,
                                         const std::vector<double>& phi, int nbasis,
                                         const std::vector<double>& V_r);
+
+/// @brief Cached + screened integration over `active` grid points.
+std::vector<double> integrate_potential(const UniformGrid& grid,
+                                        const std::vector<double>& phi, int nbasis,
+                                        const std::vector<double>& V_r,
+                                        const std::vector<long>& active);
 
 } // namespace gpw
 } // namespace cpu

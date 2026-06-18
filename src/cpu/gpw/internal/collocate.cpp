@@ -73,15 +73,28 @@ std::vector<double> eval_basis_on_grid(const UniformGrid& grid,
     return phi;
 }
 
-std::vector<double> collocate_density(const UniformGrid& grid,
-                                      const std::vector<double>& phi, int nb,
-                                      const std::vector<double>& P) {
-    const long ng = grid.npts();
-    std::vector<double> rho(static_cast<std::size_t>(ng), 0.0);
-    std::vector<double> pv(nb); // P * phi_row
+std::vector<long> active_grid_points(const std::vector<double>& phi, long ng,
+                                     int nb, double eps) {
+    std::vector<long> active;
     for (long g = 0; g < ng; ++g) {
         const double* row = &phi[static_cast<std::size_t>(g) * nb];
-        // pv_u = sum_v P_uv phi_v ; rho = sum_u phi_u pv_u
+        for (int u = 0; u < nb; ++u) {
+            if (std::fabs(row[u]) > eps) {
+                active.push_back(g);
+                break;
+            }
+        }
+    }
+    return active;
+}
+
+std::vector<double> collocate_density(const UniformGrid& grid,
+                                      const std::vector<double>& phi, int nb,
+                                      const std::vector<double>& P,
+                                      const std::vector<long>& active) {
+    std::vector<double> rho(static_cast<std::size_t>(grid.npts()), 0.0);
+    for (long g : active) {
+        const double* row = &phi[static_cast<std::size_t>(g) * nb];
         double acc = 0.0;
         for (int u = 0; u < nb; ++u) {
             double s = 0.0;
@@ -95,6 +108,13 @@ std::vector<double> collocate_density(const UniformGrid& grid,
 }
 
 std::vector<double> collocate_density(const UniformGrid& grid,
+                                      const std::vector<double>& phi, int nb,
+                                      const std::vector<double>& P) {
+    return collocate_density(grid, phi, nb, P,
+                             active_grid_points(phi, grid.npts(), nb));
+}
+
+std::vector<double> collocate_density(const UniformGrid& grid,
                                       const std::vector<GridBasisFunction>& basis,
                                       const std::vector<double>& P) {
     return collocate_density(grid, eval_basis_on_grid(grid, basis),
@@ -103,11 +123,11 @@ std::vector<double> collocate_density(const UniformGrid& grid,
 
 std::vector<double> integrate_potential(const UniformGrid& grid,
                                         const std::vector<double>& phi, int nb,
-                                        const std::vector<double>& V_r) {
-    const long ng = grid.npts();
+                                        const std::vector<double>& V_r,
+                                        const std::vector<long>& active) {
     const double w = grid.weight();
     std::vector<double> V(static_cast<std::size_t>(nb) * nb, 0.0);
-    for (long g = 0; g < ng; ++g) {
+    for (long g : active) {
         const double* row = &phi[static_cast<std::size_t>(g) * nb];
         const double vw = V_r[g] * w;
         for (int u = 0; u < nb; ++u) {
@@ -117,6 +137,13 @@ std::vector<double> integrate_potential(const UniformGrid& grid,
         }
     }
     return V;
+}
+
+std::vector<double> integrate_potential(const UniformGrid& grid,
+                                        const std::vector<double>& phi, int nb,
+                                        const std::vector<double>& V_r) {
+    return integrate_potential(grid, phi, nb, V_r,
+                               active_grid_points(phi, grid.npts(), nb));
 }
 
 std::vector<double> integrate_potential(const UniformGrid& grid,
