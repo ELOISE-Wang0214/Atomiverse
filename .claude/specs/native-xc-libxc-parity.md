@@ -135,7 +135,9 @@ Edit / migrate:
 
 - [ ] **X0:** oracle wrapper + sweep generator (regression guard).
 - [ ] **X1:** vendor libxc `LDA_X`, `LDA_C_PW`, `LDA_C_VWN` + adapt; sweep passes.
-- [ ] **X2:** port `xc_pade.F`→C++; validate `E_xc` vs CP2K `Ar.inp`/`H2.inp`.
+- [x] **X2:** port `xc_pade.F`→C++ (`cpu/xc/pade`); FD-validated potential, exc
+      matches the Padé formula + CP2K's −0.8097 at ρ=1 (`test_cpu_xc_pade`).
+      Full bit-parity vs CP2K `Ar.inp`/`H2.inp` deferred to GPW M1.
 - [ ] **X3:** vendor libxc `GGA_X_PBE` + `GGA_C_PBE` polarized; sweep passes.
 - [ ] **X4:** module at `cpu/xc/`, repoint `cpu::scf` + `cpu::gpw` callers;
       relicense Atomiverse to GPL-2.0 (`LICENSE`/`README`) in this step.

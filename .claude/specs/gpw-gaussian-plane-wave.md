@@ -191,12 +191,16 @@ Edit:
       hand-checked Ar/H/O entries from CP2K `data/`.
       - [x] GTH potential parser (`cpu/gpw/internal/cp2k_io`) — H GTH-PBE-q1,
             O GTH-PBE-q6, Ar GTH-PADE-q8 verified via Slurm (`test_cpu_gpw_cp2k_io`).
-      - [ ] GTH/MOLOPT Gaussian basis parser (`DZVP-GTH-PADE`, `DZVP-MOLOPT-GTH`).
+      - [x] GTH/MOLOPT Gaussian basis parser (`cpu/gpw/internal/cp2k_basis`) —
+            DZVP-GTH-PADE + DZVP-MOLOPT-GTH verified (`test_cpu_gpw_basis`).
 - [ ] **Phase 1 (D2):** uniform-grid collocation + integration with
       CUTOFF/REL_CUTOFF multigrid; RED test: collocated ρ integrates to N_el; round
       trip `integrate(collocate())` vs analytic overlap within grid tolerance.
-- [ ] **Phase 2 (D3):** analytic GTH local-sr + nonlocal projector integrals;
-      test vs CP2K single-atom PP matrix elements.
+- [~] **Phase 2 (D3):** analytic GTH local-sr + nonlocal projector integrals
+      (`cpu/gpw/internal/gth_integrals`) — primitive Cartesian Gaussians, s/p,
+      closed-form validated (`test_cpu_gpw_gth_integrals`). TODO: contraction over
+      shells, l>=2 projectors, and CP2K sign/normalization-convention parity
+      (deferred to M1 validation).
 - [ ] **Phase 3 (D5 + periodic Poisson):** GPW SCF orchestrator; **M1 gate** —
       match `Ar.inp` and `H2.inp` to ≤ 1e-6 Ha.
 - [ ] **Phase 4 (D6):** `GPWEvaluator`/`GPWConfig`; `cpu::single_point` runs GPW;
