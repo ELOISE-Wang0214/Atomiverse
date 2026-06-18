@@ -22,7 +22,7 @@
 #include "atomiverse/cpu/gpw/internal/poisson_fft.h"
 #include "atomiverse/cpu/gpw/internal/xc_grid.h"
 #include "atomiverse/cpu/gpw/internal/xc_grid_gga.h"
-#include "atomiverse/cpu/scf/scf_utils.h" // shared public LA: eigensolve, density
+#include "atomiverse/cpu/linalg/dense.h" // shared dense LA: eigensolve, density
 
 #ifdef ATV_GPW_FFTW_THREADS
 #include <fftw3.h>
@@ -35,7 +35,7 @@ namespace gpw {
 
 namespace {
 
-using ATV::cpu::scf::RealMatrix;
+using ATV::cpu::linalg::RealMatrix;
 
 // Flatten all atoms' basis functions into one global list.
 std::vector<GridBasisFunction> global_basis(const std::vector<GpwAtom>& atoms) {
@@ -230,8 +230,8 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
     for (const auto& a : atoms) e_self += core_self_energy(a);
 
     // Core (H0) initial guess.
-    auto [eig0, C0] = scf::diagonalize_fock_generalized(H0, S);
-    RealMatrix P = scf::build_density_matrix(C0, cfg.n_occ, nb, 2.0);
+    auto [eig0, C0] = linalg::diagonalize_fock_generalized(H0, S);
+    RealMatrix P = linalg::build_density_matrix(C0, cfg.n_occ, nb, 2.0);
 
     // Basis-on-grid is geometry-fixed: evaluate the Gaussians once and reuse
     // across all SCF iterations. The molecule fills a small part of the box, so
@@ -271,8 +271,8 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
         const double e_total = res.e_kinetic + res.e_loc_sr + res.e_es + res.e_xc;
 
         // New density.
-        auto [eig, C] = scf::diagonalize_fock_generalized(H, S);
-        RealMatrix P_new = scf::build_density_matrix(C, cfg.n_occ, nb, 2.0);
+        auto [eig, C] = linalg::diagonalize_fock_generalized(H, S);
+        RealMatrix P_new = linalg::build_density_matrix(C, cfg.n_occ, nb, 2.0);
 
         res.iters = iter + 1;
         res.e_total = e_total;

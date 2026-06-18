@@ -25,7 +25,7 @@
 #include "atomiverse/cpu/scf/internal/eigen_solver.h"
 #include "atomiverse/cpu/scf/internal/hamiltonian_builder.h"
 #include "atomiverse/cpu/scf/minao.h"
-#include "atomiverse/cpu/scf/scf_utils.h"
+#include "atomiverse/cpu/scf/scf_linalg.h"
 
 namespace ATV {
 namespace cpu {

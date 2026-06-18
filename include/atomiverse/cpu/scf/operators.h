@@ -17,7 +17,7 @@
 
 #include <xtensor/containers/xtensor.hpp>
 
-#include "atomiverse/cpu/scf/scf_utils.h"
+#include "atomiverse/cpu/scf/scf_linalg.h"
 #include "atomiverse/cpu/scf/shell_pair.h"
 
 namespace ATV {

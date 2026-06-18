@@ -11,7 +11,7 @@
 
 #include <utility>
 
-#include "atomiverse/cpu/scf/scf_utils.h"
+#include "atomiverse/cpu/scf/scf_linalg.h"
 
 namespace ATV {
 namespace cpu {

@@ -20,7 +20,7 @@
 #include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/containers/xtensor.hpp>
 
-#include "atomiverse/cpu/scf/scf_utils.h"
+#include "atomiverse/cpu/scf/scf_linalg.h"
 
 namespace ATV {
 namespace cpu {

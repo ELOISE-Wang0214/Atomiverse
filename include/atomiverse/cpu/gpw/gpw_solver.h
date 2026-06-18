@@ -7,7 +7,7 @@
 /// eigenproblem H C = S C ε), while the Hartree + XC + long-range local
 /// pseudopotential are evaluated on a uniform real-space grid (collocate / FFT
 /// Poisson / integrate). It reuses only shared *physics/algebra* from public
-/// headers — `cpu::scf::scf_utils` (generalized eigensolve, density build) and
+/// headers — `cpu::linalg` (generalized eigensolve, density build) and
 /// `cpu::xc::pade` (functional) — never another domain's `internal`.
 ///
 /// Scope: closed-shell, Gamma point, LDA (PADE). Periodic neutral electrostatics
