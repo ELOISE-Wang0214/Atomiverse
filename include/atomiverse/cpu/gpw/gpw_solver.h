@@ -18,7 +18,8 @@
 #include <vector>
 
 #include "atomiverse/cpu/gpw/internal/collocate.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_io.h" // GthNonlocalChannel
+#include "atomiverse/cpu/gpw/internal/cp2k_basis.h" // GaussianBasis
+#include "atomiverse/cpu/gpw/internal/cp2k_io.h"    // GthPotential, GthNonlocalChannel
 
 namespace ATV {
 namespace cpu {
@@ -55,6 +56,18 @@ struct GpwResult {
     bool converged = false;
     int iters = 0;
 };
+
+/// @brief Build a GpwAtom from parsed CP2K data (basis + GTH potential).
+///
+/// Converts each contracted shell of `basis` into Cartesian GridBasisFunctions
+/// centered at `pos`, folding the per-primitive Gaussian normalization
+/// N(alpha,L) = (2 alpha/pi)^{3/4} (4 alpha)^{L/2} into the coefficient (the L
+/// alpha-power is what fixes the spanned space to match CP2K; the constant
+/// factor is irrelevant to the energy). s and p are exact; Cartesian d (6
+/// components) differs from CP2K's spherical d (5) — a documented TODO for Ar.
+/// @param pos Atom position [Bohr]; z_val is taken from `pot.zion`.
+GpwAtom make_gpw_atom(const double pos[3], const GaussianBasis& basis,
+                      const GthPotential& pot);
 
 /// @brief Run the closed-shell GPW SCF for a set of atoms.
 GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg);

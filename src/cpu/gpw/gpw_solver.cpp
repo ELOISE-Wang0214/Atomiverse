@@ -11,6 +11,7 @@
 
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 
+#include <array>
 #include <cmath>
 #include <vector>
 
@@ -117,6 +118,58 @@ double trace_product(const RealMatrix& P, const RealMatrix& M, int n) {
 }
 
 } // namespace
+
+GpwAtom make_gpw_atom(const double pos[3], const GaussianBasis& basis,
+                      const GthPotential& pot) {
+    // Cartesian components for each angular momentum.
+    static const std::vector<std::vector<std::array<int, 3>>> kCart = {
+        {{{0, 0, 0}}},
+        {{{1, 0, 0}}, {{0, 1, 0}}, {{0, 0, 1}}},
+        {{{2, 0, 0}}, {{0, 2, 0}}, {{0, 0, 2}}, {{1, 1, 0}}, {{1, 0, 1}}, {{0, 1, 1}}},
+    };
+
+    GpwAtom atom;
+    atom.z_val = static_cast<double>(pot.zion);
+    atom.pos[0] = pos[0];
+    atom.pos[1] = pos[1];
+    atom.pos[2] = pos[2];
+    atom.rloc = pot.rloc;
+    atom.cloc = pot.cloc;
+    atom.nonlocal = pot.channels;
+
+    for (const auto& set : basis.sets) {
+        int col = 0;
+        for (int l = set.lmin; l <= set.lmax; ++l) {
+            const int L = l;
+            for (int sh = 0; sh < set.nshell_l(l); ++sh, ++col) {
+                for (const auto& cart : kCart[static_cast<std::size_t>(L)]) {
+                    GridBasisFunction bf;
+                    for (int e = 0; e < set.nexp(); ++e) {
+                        const double a = set.exps[static_cast<std::size_t>(e)];
+                        const double c = set.coef_at(e, col);
+                        if (c == 0.0) continue;
+                        // N(a,L) = (2a/pi)^{3/4} (4a)^{L/2}: the L alpha-power fixes
+                        // the spanned space to CP2K's; constant factors cancel.
+                        const double norm =
+                            std::pow(2.0 * a / M_PI, 0.75) * std::pow(4.0 * a, 0.5 * L);
+                        GridPrimitive p;
+                        p.alpha = a;
+                        p.center[0] = pos[0];
+                        p.center[1] = pos[1];
+                        p.center[2] = pos[2];
+                        p.l[0] = cart[0];
+                        p.l[1] = cart[1];
+                        p.l[2] = cart[2];
+                        p.coeff = c * norm;
+                        bf.push_back(p);
+                    }
+                    if (!bf.empty()) atom.basis.push_back(std::move(bf));
+                }
+            }
+        }
+    }
+    return atom;
+}
 
 GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
     const std::vector<GridBasisFunction> basis = global_basis(atoms);
