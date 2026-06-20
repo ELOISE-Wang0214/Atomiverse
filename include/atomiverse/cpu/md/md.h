@@ -11,6 +11,10 @@
 #include "atomiverse/cpu/recorder/timing_report.h"
 #include "atomiverse/cpu/driver/dynamics_driver.h"
 #include "atomiverse/cpu/md/init.h"
+#include "atomiverse/cpu/md/nvt.h"
+#include "atomiverse/cpu/md/velocity_verlet.h"
+#include "atomiverse/cpu/md/nose_hoover.h"
+#include "atomiverse/cpu/md/fix_csvr.h"
 #include "atomiverse/cpu/comm/atom_migration.h"
 #include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/comm/halo_exchange.h"
@@ -123,6 +127,37 @@ class MD : public DynamicsDriver {
     template <typename Bs>
     MD& set_barostat(Bs&& b) {
         this->add(std::forward<Bs>(b));
+        return *this;
+    }
+
+    /// @brief Configure a canonical (NVT) ensemble in one call — LAMMPS
+    /// `fix nvt` style: velocity-Verlet integration bundled with a selectable
+    /// thermostat (Nose-Hoover or CSVR), instead of a separate
+    /// `set_integrator` + `set_thermostat`.
+    ///
+    /// Expands the `NVT` config into the existing `VelocityVerlet` integrator
+    /// plus the chosen thermostat, each registered with its own validated phase
+    /// bindings (Nose-Hoover half-steps on initial/final integrate; CSVR rescale
+    /// on end_of_step). Equivalent to the explicit two-call form, so it composes
+    /// with `set_pair`/`set_neighbor`/`on(force).add(<DFT evaluator>)` exactly as
+    /// before.
+    ///
+    /// @param cfg NVT configuration (dt, T, tau, thermostat kind, seed, ramp).
+    MD& set_nvt(const NVT& cfg) {
+        this->set_integrator(VelocityVerlet{cfg.dt});
+        if (cfg.thermo == NVT::Thermostat::CSVR) {
+            FixCSVR th{cfg.T, cfg.tau, cfg.dt, cfg.seed};
+            if (cfg.has_ramp())
+                th.set_T_stop(cfg.T_stop).set_run_span(cfg.ramp_first,
+                                                       cfg.ramp_last);
+            this->add(std::move(th));
+        } else {
+            NoseHoover th{cfg.T, cfg.tau, cfg.dt};
+            if (cfg.has_ramp())
+                th.set_T_stop(cfg.T_stop).set_run_span(cfg.ramp_first,
+                                                       cfg.ramp_last);
+            this->add(std::move(th));
+        }
         return *this;
     }
 
