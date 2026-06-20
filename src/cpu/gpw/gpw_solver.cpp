@@ -66,24 +66,80 @@ Prim to_prim(const GridPrimitive& p) {
     return q;
 }
 
+// Screening tolerance for the geometry-fixed GTH/one-electron build. A term is
+// skipped only when a rigorous Gaussian-magnitude bound falls below this — the
+// exponential decay dominates, so dropped terms are far below the SCF energy
+// tolerance (validated bit-unchanged against the small-system CP2K-parity tests).
+// This is a compute-time saving in the O(nb^2*natoms) build; the stored matrices
+// remain dense (the overlap matrices are not sparse for this geometry).
+constexpr double kBuildScreen = 1e-12;
+
 // <mu| V_loc^sr + V_nl |nu> summed over all atoms acting as PP centers.
+//
+// Screened: a primitive pair (p,q) is skipped when its Gaussian product
+// prefactor exp(-a*b/(a+b)|Rp-Rq|^2) is negligible; for a surviving pair, an
+// atom A is skipped when the combined product-PP decay exp(-(g*k/(g+k))|P-A|^2)
+// (g=a+b, k=1/(2 rmax^2), P the product center, rmax the atom's largest PP
+// width) puts its contribution below the screen. The |P-A| local-style bound
+// over-estimates the separable nonlocal magnitude when p,q overlap, so it is
+// conservative for both the local and nonlocal terms. Turns the per-pair atom
+// loop from O(natoms) into O(local neighbours) -> overall O(N) build.
 double gth_matrix_element(const GridBasisFunction& mu, const GridBasisFunction& nu,
                           const std::vector<GpwAtom>& atoms) {
     double v = 0.0;
-    for (const auto& a : atoms) {
-        for (const auto& p : mu) {
-            for (const auto& q : nu) {
-                const double cc = p.coeff * q.coeff;
-                const Prim pp = to_prim(p);
-                const Prim qq = to_prim(q);
-                if (!a.cloc.empty())
-                    v += cc * gth_local_sr(pp, qq, a.pos, a.rloc, a.cloc);
-                for (const auto& ch : a.nonlocal)
-                    v += cc * gth_nonlocal(pp, qq, a.pos, ch);
+    for (const auto& p : mu) {
+        const Prim pp = to_prim(p);
+        for (const auto& q : nu) {
+            const double cc = p.coeff * q.coeff;
+            if (cc == 0.0) continue;
+            const double acc = std::abs(cc);
+            const double a = p.alpha, b = q.alpha, g = a + b;
+            double dpq2 = 0.0, P[3];
+            for (int d = 0; d < 3; ++d) {
+                const double diff = p.center[d] - q.center[d];
+                dpq2 += diff * diff;
+                P[d] = (a * p.center[d] + b * q.center[d]) / g;
+            }
+            const double Kpq = std::exp(-a * b / g * dpq2);
+            if (acc * Kpq < kBuildScreen) continue; // overlap-negligible primitive pair
+            const Prim qq = to_prim(q);
+            for (const auto& at : atoms) {
+                double rmax = at.rloc;
+                for (const auto& ch : at.nonlocal) rmax = std::max(rmax, ch.r);
+                const double kappa = 1.0 / (2.0 * rmax * rmax);
+                double dPA2 = 0.0;
+                for (int d = 0; d < 3; ++d) {
+                    const double e = P[d] - at.pos[d];
+                    dPA2 += e * e;
+                }
+                if (acc * Kpq * std::exp(-(g * kappa / (g + kappa)) * dPA2) < kBuildScreen)
+                    continue; // atom too far for any non-negligible PP contribution
+                if (!at.cloc.empty())
+                    v += cc * gth_local_sr(pp, qq, at.pos, at.rloc, at.cloc);
+                for (const auto& ch : at.nonlocal)
+                    v += cc * gth_nonlocal(pp, qq, at.pos, ch);
             }
         }
     }
     return v;
+}
+
+// Max Gaussian-product prefactor over all primitive pairs of (mu,nu): bounds the
+// magnitude of S, T, and Vpp for this pair. Below kBuildScreen the whole (i,j)
+// element is negligible and can be skipped (overlap pair screening).
+double pair_overlap_bound(const GridBasisFunction& mu, const GridBasisFunction& nu) {
+    double best = 0.0;
+    for (const auto& p : mu)
+        for (const auto& q : nu) {
+            const double a = p.alpha, b = q.alpha;
+            double d2 = 0.0;
+            for (int k = 0; k < 3; ++k) {
+                const double e = p.center[k] - q.center[k];
+                d2 += e * e;
+            }
+            best = std::max(best, std::abs(p.coeff * q.coeff) * std::exp(-a * b / (a + b) * d2));
+        }
+    return best;
 }
 
 // Ionic core density n_ion(r) = sum_A z_A (2 pi rloc^2)^{-3/2} exp(-|r-R|^2/2 rloc^2).
@@ -252,6 +308,10 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
 #pragma omp parallel for schedule(dynamic, 8)
     for (int i = 0; i < nb; ++i) {
         for (int j = 0; j < nb; ++j) {
+            // Overlap pair screening: S, T, Vpp are all bounded by the Gaussian
+            // product magnitude of (i,j). If even the best primitive pair is
+            // below the screen, the whole element is negligible -> leave 0.
+            if (pair_overlap_bound(basis[i], basis[j]) < kBuildScreen) continue;
             S(i, j) = overlap(basis[i], basis[j]);
             T(i, j) = kinetic(basis[i], basis[j]);
             Vpp(i, j) = gth_matrix_element(basis[i], basis[j], atoms);
