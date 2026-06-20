@@ -64,7 +64,26 @@ builds_on: gpw-gaussian-plane-wave
 
 **M4 — CSVR / Bussi 恒温器。** 新增 `cpu::md::FixCSVR`（镜像 `cpu/md/fix_langevin.h`、`nose_hoover.h`；Thermostat 角色）。按 Domain basis 的 α² 传播子；`v ← αv`；累积守恒量记账（H̃，无漂移诊断）；`τ = TIMECON`；`N_f` 记账扣除 COM/约束自由度。先在便宜的经典 MD 系统上验证正则动能分布，再接入 GPW-AIMD。
 
-**M5 — 周期性大系统规模/性能 + 收官运行。** GPW 最大测过 N=3；1214 原子周期性 CPU 的正确性、性能、内存均未测。**前置(M2 发现)**：GPW 求解器只有线性混合,Zn 体系已需 mix=0.1/~157 迭代;1214 原子靠线性混合不会收敛 —— 收官前必须先给 GPWSolver 加 DIIS/Pulay 混合(`cpu::scf` 已有 DIIS 可参考)。用 OpenMP（在既有 GPW/PW MPI 模式允许处加 MPI）剖析并并行 GPW 热点（collocation/integration、FFT、KS 构建、新解析力遍历）。收官验收：读 `final_frame.xyz`，配置 GPW（PBE、五个 GTH-PBE 赝势、DZVP-MOLOPT-SR-GTH、合适 CUTOFF）、CSVR NVT、dt 0.5 fs，跑几步短轨迹，逐步能量+受力在容差内匹配 CP2K 参考，并产出全系统 wall-time/内存画像。
+**M5 — 周期性大系统规模/性能 + 收官运行。** GPW 最大测过 N=3；1214 原子周期性 CPU 的正确性、性能、内存均未测。
+
+> **DISCOVERED (2026-06-20, M5 规模估算)：稠密对角化 O(N³) 规模墙。** DZVP-MOLOPT-SR-GTH 基组规模:Zn 25 / O 13 / H 5 / Na 9 / Cl 13 收缩函数 → 全 1214 原子体系 ≈ **13,700 基函数**,n_occ ≈ 2888(5776 价电子)。GPW 现用稠密 `diagonalize_fock_generalized`:单次对角化 ~17 min × ~16 SCF 迭代 ≈ **~4.5 h/SCF**,稠密矩阵 ~10 GB。**全体系 MD 不可行**。
+>
+> **决策(用户)：实现 OT(轨道变换,VandeVondele-Hutter JCP 118, 4365 (2003))** 替换对角化——直接在正交约束 CᵀSC=I 下最小化 E[C],梯度 O(nb²·n_occ) 取代 O(nb³),预条件 CG 最小化。这是 CP2K 跑此规模的方法,也是本 spec 之前列为 "future" 的项,现提升为 M5 核心。
+>
+> **稀疏性警告(诚实记录)**:稠密 OT 仅降一个量级(O(nb²·n_occ) vs O(nb³));CP2K 真正的大规模来自 **OT + 稀疏 S/H/P**(atomiverse GPW 当前全稠密)。OT 是必要且正确的第一步,先在小体系验证 OT 收敛到与对角化**相同**能量,再实测 1214 原子是否需后续稀疏化。
+
+**前置(M2 发现,已完成)**：GPWSolver 已加 DIIS/Pulay 混合(见上,`diis.{h,cpp}`)。OT 自带其最小化器(预条件 CG),独立于密度混合。
+
+> **OT 设计(scientist,据 CP2K Quickstep Kühne 2020 §VII C Eqs.85–104 + 内联推导)。** 新 `cpu/gpw/internal/ot.{h,cpp}`,在 GPW SCF 内替换 `diagonalize_fock_generalized`:
+> - 参数化:`C(x)=C0·cosU + x·U⁻¹sinU`,`U=(xᵀSx)^½`;`cosU/sincU` 经 `xᵀSx`(no×no)对称本征分解,`sinc(0)=1`(Taylor guard)。`C(x)ᵀSC(x)=I` 对任意切空间 `x`(`xᵀSC0=0`)精确。
+> - 梯度(闭壳 `P=2CCᵀ`,GPW `build_density_matrix` factor=2.0):`g=(I−S C0 C0ᵀ)(4 H C0)`。S-投影子(**非 S⁻¹**),保持切空间。O(nb²·no),无 O(nb³)。
+> - 最小化:预条件非线性 CG(Polak-Ribière+,β=max(...,0)),沿测地线抛物线线搜索,每步后 rotate `C0←C(α*d)` + reset `x=0`(绕开 general-x 梯度)。先做预条件最速下降(最简、基态正确)再加 CG。
+> - 预条件子:FULL_KINETIC `M=T+S`(几何固定,Cholesky 一次摊销)起步;FULL_SINGLE_INVERSE 更优。
+> - 收敛:投影梯度范数 `‖g‖ < 1e-6…1e-7`(= SCF 误差)。**有 HOMO-LUMO gap 假设**(无分数占据/金属)。
+> - 等价性验证(铁律):小体系 H2/ZnO,OT 总能/密度对 `diagonalize_fock_generalized` 一致到 1e-8;FD 梯度检查(查 factor-4/符号/投影子);全 GPW 套件启用 OT 后能量不变。
+> - 致命约定:factor 4HC0、S-投影子、sinc(0)=1。
+> - 规模诚实:稠密 OT 预条件求解仍 O(nb³)(FULL_KINETIC 的 Cholesky 每几何一次);给单点/短轨迹 capstone 够用,全 MD 仍需稀疏化(future)。
+> 参考:Kühne 等 JCP 152,194103 (2020) DOI 10.1063/5.0007045(fetched);VandeVondele-Hutter JCP 118,4365 (2003) DOI 10.1063/1.1543154(凭记忆,docstring 前核实)。用 OpenMP（在既有 GPW/PW MPI 模式允许处加 MPI）剖析并并行 GPW 热点（collocation/integration、FFT、KS 构建、新解析力遍历）。收官验收：读 `final_frame.xyz`，配置 GPW（PBE、五个 GTH-PBE 赝势、DZVP-MOLOPT-SR-GTH、合适 CUTOFF）、CSVR NVT、dt 0.5 fs，跑几步短轨迹，逐步能量+受力在容差内匹配 CP2K 参考，并产出全系统 wall-time/内存画像。
 
 **M6 — DFT-D3 色散（PBE-D3，后续/低优先）。** 加 D3(BJ)（CP2K PBE 默认）。作为力场式修正，置于可复用组件（`potentials/` 或小型 `cpu/dispersion` 模块），供 MD evaluators 复用。明确关键路径外：AIMD 可不带它启动（物理略有差异）。
 

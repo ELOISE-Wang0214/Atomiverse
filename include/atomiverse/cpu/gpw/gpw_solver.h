@@ -51,6 +51,11 @@ struct GpwConfig {
     int diis_depth = 6;         ///< Pulay DIIS history depth; 0 disables DIIS (falls back to linear `mix`).
     XcKind xc = XcKind::PADE;   ///< LDA (PADE) or GGA (PBE).
     bool nonperiodic = false;   ///< use the isolated (MT) Poisson solver.
+    /// @brief Use the OT (orbital transformation) minimizer instead of dense
+    /// diagonalization. Diagonalization-free SCF (gradient O(nb²·n_occ)); the
+    /// path to large systems where the O(nb³) eigensolve is prohibitive.
+    /// Converges to the same gapped ground state as the diagonalization path.
+    bool use_ot = false;
 };
 
 /// @brief GPW SCF result with an energy decomposition.

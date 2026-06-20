@@ -21,6 +21,7 @@
 #include "atomiverse/cpu/gpw/internal/hartree_grid.h"
 #include "atomiverse/cpu/gpw/internal/mt_poisson.h"
 #include "atomiverse/cpu/gpw/internal/one_electron.h"
+#include "atomiverse/cpu/gpw/internal/ot.h"
 #include "atomiverse/cpu/gpw/internal/poisson_fft.h"
 #include "atomiverse/cpu/gpw/internal/real_harmonics.h"
 #include "atomiverse/cpu/gpw/internal/xc_grid.h"
@@ -28,6 +29,9 @@
 #include "atomiverse/cpu/linalg/density.h"    // build_density_matrix
 #include "atomiverse/cpu/linalg/eigensolve.h"  // diagonalize_fock_generalized
 #include "atomiverse/cpu/linalg/matrix.h"      // RealMatrix
+
+#include <xtensor-blas/xlinalg.hpp>
+#include <xtensor/views/xview.hpp>
 
 #ifdef ATV_GPW_FFTW_THREADS
 #include <fftw3.h>
@@ -280,34 +284,104 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
     // stable energy and a near-zero [H,P]_S residual (guards against declaring
     // convergence on an energy plateau before self-consistency).
     constexpr double kDiisErrTol = 1e-5;
+    // OT convergence: max element of the projected gradient (the SCF error
+    // vector). Paired with the energy-stability test for a tight fixed point.
+    constexpr double kOtGradTol = 1e-6;
 
-    for (int iter = 0; iter < cfg.max_iter; ++iter) {
-        // Density on the grid and the neutral total charge.
-        const std::vector<double> Pvec = mat_to_vec(P, nb);
+    // KS matrix + total energy from a density matrix P (collocate -> Poisson +
+    // XC -> integrate). Fills res's energy terms; shared by the diagonalization
+    // and OT paths.
+    auto build_H_and_energy = [&](const RealMatrix& Pin) -> std::pair<RealMatrix, double> {
+        const std::vector<double> Pvec = mat_to_vec(Pin, nb);
         std::vector<double> rho = collocate_density(grid, phi, nb, Pvec, active);
         std::vector<double> n_tot(rho.size());
         for (std::size_t g = 0; g < rho.size(); ++g) n_tot[g] = rho[g] - n_ion[g];
-
-        // Electrostatics (one Poisson) and XC — periodic or isolated, LDA or GGA.
         const PoissonResult es =
             cfg.nonperiodic ? solve_poisson_mt(grid, n_tot) : solve_poisson(grid, n_tot);
         const XcOnGrid xc =
             cfg.xc == XcKind::PBE ? xc_grid_pbe(grid, rho) : xc_grid_pade(grid, rho);
-
         std::vector<double> veff(rho.size());
         for (std::size_t g = 0; g < rho.size(); ++g) veff[g] = es.v_r[g] + xc.vxc_r[g];
-        const RealMatrix Vgrid = vec_to_mat(integrate_potential(grid, phi, nb, veff, active), nb);
-
+        const RealMatrix Vgrid =
+            vec_to_mat(integrate_potential(grid, phi, nb, veff, active), nb);
         const RealMatrix H = H0 + Vgrid;
-
-        // Energy (e_es already holds E_H + E_ext^lr + E_ii^smeared; remove the
-        // spurious Gaussian self-energy of the cores).
-        res.e_kinetic = trace_product(P, T, nb);
+        res.e_kinetic = trace_product(Pin, T, nb);
         res.e_nonlocal = 0.0; // folded into e_loc_sr below for the first cut
-        res.e_loc_sr = trace_product(P, Vpp, nb);
+        res.e_loc_sr = trace_product(Pin, Vpp, nb);
         res.e_es = es.e_hartree - e_self;
         res.e_xc = xc.e_xc;
-        const double e_total = res.e_kinetic + res.e_loc_sr + res.e_es + res.e_xc;
+        return {H, res.e_kinetic + res.e_loc_sr + res.e_es + res.e_xc};
+    };
+
+    // ── OT (orbital transformation) path ────────────────────────────────────
+    // Diagonalization-free SCF: each outer step rebuilds H, then takes one
+    // preconditioned-CG step on the OT manifold (gradient O(nb²·n_occ), no
+    // O(nb³) eigensolve). Converges to the same gapped ground state as the
+    // diagonalization path. The line search uses the frozen-H band energy
+    // 2 Tr(CᵀHC) (matrix-only); self-consistency comes from the H rebuild.
+    if (cfg.use_ot) {
+        RealMatrix Cocc = internal::ot_orthonormalize(
+            RealMatrix(xt::view(C0, xt::all(), xt::range(0, cfg.n_occ))), S);
+        const internal::OtPrecond precond(T, S);
+        auto frob = [](const RealMatrix& a, const RealMatrix& b) {
+            return xt::sum(a * b)();
+        };
+        RealMatrix d, pz_prev;
+        double denom_prev = 1.0;
+        bool have_prev = false;
+        for (int iter = 0; iter < cfg.max_iter; ++iter) {
+            P = linalg::build_density_matrix(Cocc, cfg.n_occ, nb, 2.0); // 2 Cocc Coccᵀ
+            auto [H, e_total] = build_H_and_energy(P);
+            res.iters = iter + 1;
+            res.e_total = e_total;
+
+            const RealMatrix g = internal::ot_gradient(H, S, Cocc);
+            double gnorm = 0.0;
+            for (double v : g) gnorm = std::max(gnorm, std::abs(v));
+            if (iter > 0 && gnorm < kOtGradTol && std::abs(e_total - e_prev) < cfg.tol) {
+                res.converged = true;
+                store_converged_state(res, H, S, cfg.n_occ, nb);
+                break;
+            }
+            e_prev = e_total;
+
+            const RealMatrix pz = internal::ot_tangent(Cocc, S, precond.apply(g));
+            if (!have_prev) {
+                d = -pz;
+            } else {
+                const double beta = std::max(0.0, frob(g, pz - pz_prev) / denom_prev);
+                d = internal::ot_tangent(Cocc, S, -pz + beta * d);
+            }
+            pz_prev = pz;
+            denom_prev = frob(g, pz);
+            have_prev = true;
+
+            // Parabolic line search on the frozen-H band energy 2 Tr(CᵀHC).
+            auto band = [&](const RealMatrix& C) { return 2.0 * frob(C, xt::linalg::dot(H, C)); };
+            const double E0 = band(Cocc);
+            const double slope = frob(g, d);
+            double alpha;
+            if (slope >= 0.0) {
+                d = -pz;
+                alpha = 0.3;
+            } else {
+                const double at = 1.0;
+                const double Et = band(internal::ot_parameterize(Cocc, at * d, S));
+                const double denom = 2.0 * (Et - E0 - slope * at);
+                alpha = denom > 1e-300 ? -slope * at * at / denom : at;
+                for (int bt = 0; bt < 40; ++bt) {
+                    if (band(internal::ot_parameterize(Cocc, alpha * d, S)) < E0) break;
+                    alpha *= 0.5;
+                }
+            }
+            Cocc = internal::ot_orthonormalize(
+                internal::ot_parameterize(Cocc, alpha * d, S), S);
+        }
+        return res;
+    }
+
+    for (int iter = 0; iter < cfg.max_iter; ++iter) {
+        const auto [H, e_total] = build_H_and_energy(P);
 
         res.iters = iter + 1;
         res.e_total = e_total;
