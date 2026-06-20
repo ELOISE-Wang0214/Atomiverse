@@ -97,7 +97,7 @@ criteria:
       distribution matches the canonical (Maxwell-Boltzmann) distribution
       within the test's statistical tolerance, and N_f correctly excludes
       COM degrees of freedom.
-    status: pending
+    status: verified
 
   - id: ac-009
     summary: FixCSVR conserved-quantity diagnostic is drift-free
@@ -106,7 +106,7 @@ criteria:
       The CSVR effective-energy bookkeeping term H-tilde shows no secular
       drift over the test trajectory (drift below the test's tolerance),
       confirming Eq.15 bookkeeping is accumulated correctly.
-    status: pending
+    status: verified
 
   - id: ac-010
     summary: Capstone — load final_frame.xyz and run short GPW-CSVR NVT with CP2K parity

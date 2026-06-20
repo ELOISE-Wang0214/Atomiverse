@@ -159,6 +159,7 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/md/nose_hoover.cpp
         src/cpu/md/nose_hoover_npt.cpp
         src/cpu/md/fix_langevin.cpp
+        src/cpu/md/fix_csvr.cpp
         src/cpu/observer/virial_stress.cpp
         src/cpu/md/barostat.cpp
         src/cpu/md/deform.cpp

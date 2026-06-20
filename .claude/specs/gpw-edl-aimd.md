@@ -118,8 +118,8 @@ M6（关键路径外）：
 - [x] Write tests for analytic GPW forces vs 6N+1 FD oracle (tests/cpu/gpw/test_cpu_gpw_forces.cpp): H2 max|dF|=2e-6, ZnO (d-proj+f-basis+GGA) max|dF|=2.7e-5 Ha/Bohr — both within the 5e-5 gate. CP2K force ref (ac-006) deferred — FD oracle is the term-complete correctness gate.
 - [x] Implement analytic GPW forces with W-matrix, HF/Pulay/grid/nonlocal/Ewald terms (cpu/gpw/internal/gpw_forces.{h,cpp}); built on derivative-Gaussian (∂φ=2αφ_{l+1}-lφ_{l-1}) reuse of existing integral/collocate kernels; gpw_scf extended to expose converged C/eps/P for W=Σ2ε_i c_i c_i†
 - [x] Wire FD-to-analytic force switch into GPWEvaluator (gpw_evaluator.cpp: gpw_forces_fd → gpw_forces_analytic). geoopt + aimd now run on analytic forces (1 SCF + gradient vs 6N+1); full GPW suite green.
-- [ ] Write failing tests for FixCSVR canonical kinetic-energy distribution (tests/cpu/md/test_cpu_md_csvr.cpp)
-- [ ] Implement cpu::md::FixCSVR thermostat with H-tilde bookkeeping (include/atomiverse/cpu/md/fix_csvr.h, src/cpu/md/fix_csvr.cpp)
+- [x] Write tests for FixCSVR canonical kinetic-energy distribution (tests/cpu/md/test_cpu_md_csvr.cpp): 256-atom Ar, Var(K)/<K>²=2.47e-3 vs canonical 2/N_f=2.61e-3 (ratio 0.94); H̃ drift 1.5e-4
+- [x] Implement cpu::md::FixCSVR thermostat with H-tilde bookkeeping (include/atomiverse/cpu/md/fix_csvr.h, src/cpu/md/fix_csvr.cpp): Bussi α² propagator, χ²(N_f-1)=Gamma((N_f-1)/2,2) draw, reproducible per-(seed,step) RNG, end_of_step binding, set_thermostat-compatible
 - [ ] Add Doxygen with units to all new public symbols (extxyz, gpw_forces, FixCSVR)
 - [ ] Write failing capstone test loading final_frame.xyz, running short GPW-CSVR NVT trajectory vs CP2K per-step parity (tests/cpu/gpw/test_cpu_gpw_znoedl.cpp)
 - [ ] Profile and parallelize GPW hot paths (collocate/grid_fft/KS/force) with OpenMP/MPI; add benchmark + example (benchmarks/gpw/znoedl/validation, examples/10_gpw_znoedl.cpp)
