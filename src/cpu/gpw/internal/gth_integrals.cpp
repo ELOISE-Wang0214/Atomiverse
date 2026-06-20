@@ -18,6 +18,8 @@
 #include <cmath>
 #include <vector>
 
+#include "atomiverse/cpu/gpw/internal/real_harmonics.h"
+
 namespace ATV {
 namespace cpu {
 namespace gpw {
@@ -124,6 +126,20 @@ double gth_norm(int l, int iproj, double r_l) {
     return std::sqrt(2.0) / (std::pow(r_l, e) * std::sqrt(std::tgamma(e)));
 }
 
+/// Cached L2(S^2)-normalized real spherical harmonics (r^l Y_lm) for any l.
+/// Indexed [l][m]; m in [0, 2l]. Built once (thread-safe static init).
+constexpr int kProjLMax = 6;
+const std::vector<std::vector<RealHarmonic>>& normalized_harmonics() {
+    static const std::vector<std::vector<RealHarmonic>> H = [] {
+        std::vector<std::vector<RealHarmonic>> t;
+        t.reserve(kProjLMax + 1);
+        for (int l = 0; l <= kProjLMax; ++l)
+            t.push_back(real_spherical_harmonics_normalized(l));
+        return t;
+    }();
+    return H;
+}
+
 } // namespace
 
 double gth_local_sr(const Prim& a, const Prim& b, const double pp_center[3],
@@ -144,29 +160,23 @@ double gth_projector_overlap(const Prim& g, const double pp_center[3], int l,
     const double beta = 1.0 / (2.0 * r_l * r_l);
     const int k = iproj - 1; // radial power r^{2(i-1)} (times r^l from angular part)
     const double N = gth_norm(l, iproj, r_l);
-
-    if (l == 0) {
-        const double y00 = 1.0 / std::sqrt(4.0 * kPi);
-        const int no_extra[3] = {0, 0, 0};
-        return N * y00 * moment3d(g, nullptr, pp_center, beta, k, no_extra);
+    // r^l Y_lm as a normalized Cartesian polynomial (Use B); the degree-l monomials
+    // are the "extra" D-centered powers, the radial r^{2(i-1)} comes from k. Sum
+    // moment3d over the polynomial terms — exact for any l.
+    const auto& harm = normalized_harmonics()[static_cast<std::size_t>(l)]
+                                             [static_cast<std::size_t>(m)];
+    double total = 0.0;
+    for (const auto& t : harm) {
+        const int extra[3] = {t.lx, t.ly, t.lz};
+        total += t.coeff * moment3d(g, nullptr, pp_center, beta, k, extra);
     }
-    if (l == 1) {
-        // r Y_1m = sqrt(3/4pi) * {z, x, y} for m = {0, 1, 2}; one extra Cartesian
-        // power in the corresponding dimension on the D-centered factor.
-        const double y1 = std::sqrt(3.0 / (4.0 * kPi));
-        int extra[3] = {0, 0, 0};
-        const int dim = (m == 0) ? 2 : (m == 1) ? 0 : 1;
-        extra[dim] = 1;
-        return N * y1 * moment3d(g, nullptr, pp_center, beta, k, extra);
-    }
-    return 0.0; // TODO: l >= 2 projectors (need higher real solid harmonics).
+    return N * total;
 }
 
 double gth_nonlocal(const Prim& a, const Prim& b, const double pp_center[3],
                     const GthNonlocalChannel& ch) {
     if (ch.nproj == 0) return 0.0;
-    const int n_m = (ch.l == 0) ? 1 : (ch.l == 1 ? 3 : 0);
-    if (n_m == 0) return 0.0; // TODO: l >= 2.
+    const int n_m = 2 * ch.l + 1; // all m-components of the l-channel (any l).
 
     double total = 0.0;
     for (int m = 0; m < n_m; ++m) {

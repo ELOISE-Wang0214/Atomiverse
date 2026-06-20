@@ -109,8 +109,15 @@ if(ATV_BUILD_GPW)
     target_compile_definitions(test_cpu_gpw_basis
         PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
 
+    # ZnO EDL heavy elements (gpw-edl-aimd M2, ac-003): Zn/Na/Cl GTH-PBE +
+    # DZVP-MOLOPT-SR-GTH ingest, incl. the Zn d/f channels.
+    atv_add_cpp_test(test_cpu_gpw_heavy_elements   cpu/gpw/test_cpu_gpw_heavy_elements.cpp)
+    target_compile_definitions(test_cpu_gpw_heavy_elements
+        PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
+
     # Pure-math tests (no CP2K data files needed).
     atv_add_cpp_test(test_cpu_gpw_gth_integrals    cpu/gpw/test_cpu_gpw_gth_integrals.cpp)
+    atv_add_cpp_test(test_cpu_gpw_real_harmonics   cpu/gpw/test_cpu_gpw_real_harmonics.cpp)
     atv_add_cpp_test(test_cpu_gpw_collocate        cpu/gpw/test_cpu_gpw_collocate.cpp)
     atv_add_cpp_test(test_cpu_gpw_xc_grid          cpu/gpw/test_cpu_gpw_xc_grid.cpp)
     atv_add_cpp_test(test_cpu_gpw_one_electron     cpu/gpw/test_cpu_gpw_one_electron.cpp)
@@ -130,6 +137,15 @@ if(ATV_BUILD_GPW)
             PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
         atv_add_cpp_test(test_cpu_gpw_h2o_tutorial cpu/gpw/test_cpu_gpw_h2o_tutorial.cpp)
         target_compile_definitions(test_cpu_gpw_h2o_tutorial
+            PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
+        atv_add_cpp_test(test_cpu_gpw_zno_cp2k     cpu/gpw/test_cpu_gpw_zno_cp2k.cpp)
+        target_compile_definitions(test_cpu_gpw_zno_cp2k
+            PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
+        atv_add_cpp_test(test_cpu_gpw_diis         cpu/gpw/test_cpu_gpw_diis.cpp)
+        target_compile_definitions(test_cpu_gpw_diis
+            PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
+        atv_add_cpp_test(test_cpu_gpw_nacl_cp2k    cpu/gpw/test_cpu_gpw_nacl_cp2k.cpp)
+        target_compile_definitions(test_cpu_gpw_nacl_cp2k
             PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
         atv_add_cpp_test(test_cpu_gpw_evaluator    cpu/gpw/test_cpu_gpw_evaluator.cpp)
         target_compile_definitions(test_cpu_gpw_evaluator
@@ -175,6 +191,15 @@ atv_add_cpp_test(test_cpu_md_set_api                      cpu/md/test_md_set_api
 atv_add_cpp_test(test_cpu_md_plan_equivalence             cpu/md/test_md_plan_equivalence.cpp)
 atv_add_cpp_test(test_cpu_minimize_evaluate_set_api       cpu/test_minimize_evaluate_set_api.cpp)
 atv_add_cpp_test(test_cpu_materialize                     cpu/test_materialize.cpp)
+
+# ExtXYZ loading through molrs (gpw-edl-aimd M1). The real ZnO EDL frame path
+# is injected as a compile definition; the test self-skips that case if unset.
+set(ATV_FINAL_FRAME_XYZ
+    "/nobackup/proj/disk/teoroo/personal/jicli594/work/molpack-paper/figures/prior_packing/final_frame.xyz"
+    CACHE FILEPATH "Reference 1214-atom ZnO electric-double-layer ExtXYZ frame")
+atv_add_cpp_test(test_cpu_io_extxyz                       cpu/io/test_cpu_io_extxyz.cpp)
+target_compile_definitions(test_cpu_io_extxyz
+    PRIVATE ATV_FINAL_FRAME_XYZ="${ATV_FINAL_FRAME_XYZ}")
 
 # ── MPI tests (launched under `mpirun`) ─────────────────────────────────
 

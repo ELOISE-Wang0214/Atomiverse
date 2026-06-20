@@ -46,7 +46,8 @@ struct GpwConfig {
     int n_occ = 0;              ///< number of doubly-occupied orbitals (N_elec / 2).
     int max_iter = 100;         ///< max SCF iterations.
     double tol = 1e-8;          ///< SCF energy convergence [Hartree].
-    double mix = 0.5;           ///< linear density-mixing factor.
+    double mix = 0.5;           ///< linear density-mixing factor (used only when diis_depth == 0).
+    int diis_depth = 6;         ///< Pulay DIIS history depth; 0 disables DIIS (falls back to linear `mix`).
     XcKind xc = XcKind::PADE;   ///< LDA (PADE) or GGA (PBE).
     bool nonperiodic = false;   ///< use the isolated (MT) Poisson solver.
 };
@@ -69,8 +70,8 @@ struct GpwResult {
 /// centered at `pos`, folding the per-primitive Gaussian normalization
 /// N(alpha,L) = (2 alpha/pi)^{3/4} (4 alpha)^{L/2} into the coefficient (the L
 /// alpha-power is what fixes the spanned space to match CP2K; the constant
-/// factor is irrelevant to the energy). s and p are exact; Cartesian d (6
-/// components) differs from CP2K's spherical d (5) — a documented TODO for Ar.
+/// factor is irrelevant to the energy). Angular functions are the (2L+1)
+/// pure-spherical real solid harmonics from real_solid_harmonics(L), for any L.
 /// @param pos Atom position [Bohr]; z_val is taken from `pot.zion`.
 GpwAtom make_gpw_atom(const double pos[3], const GaussianBasis& basis,
                       const GthPotential& pot);

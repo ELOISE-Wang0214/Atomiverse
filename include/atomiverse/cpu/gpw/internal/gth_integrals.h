@@ -61,15 +61,15 @@ double gth_local_sr(const Prim& a, const Prim& b, const double pp_center[3],
 /// @brief Overlap <g | P_{i l m}> of a primitive Gaussian with one GTH projector.
 ///
 /// P_{ilm}(r) = p_i^l(|r-D|) Y_lm(widehat{r-D}) with the GTH-normalized radial part.
-/// Implemented for l = 0 (m ignored) and l = 1 (m in {0,1,2} -> z, x, y solid
-/// harmonic component). Higher l is a documented TODO.
+/// General l: the angular factor is the L2(S^2)-normalized real spherical harmonic
+/// from real_spherical_harmonics_normalized(l), summed over its Cartesian terms.
 ///
 /// @param g        Primitive Gaussian.
 /// @param pp_center Projector/atom center D [Bohr].
-/// @param l        Projector angular momentum (0 or 1).
+/// @param l        Projector angular momentum (l >= 0).
 /// @param iproj    1-based projector index within the channel (1, 2, ...).
 /// @param r_l      Projector radius [Bohr].
-/// @param m        0-based real-harmonic component (used only for l >= 1).
+/// @param m        0-based real-harmonic component, m in [0, 2l].
 /// @return <g | P_{ilm}>.
 double gth_projector_overlap(const Prim& g, const double pp_center[3], int l,
                              int iproj, double r_l, int m);

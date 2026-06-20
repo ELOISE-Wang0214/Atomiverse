@@ -135,6 +135,7 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/scf/solve.cpp
         src/cpu/io/molrec.cpp
         src/cpu/io/lammps_data.cpp
+        src/cpu/io/extxyz.cpp
         src/cpu/observer/rdf.cpp
         src/cpu/observer/density.cpp
         src/cpu/recorder/trajectory.cpp
@@ -321,6 +322,8 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/gpw/internal/cp2k_io.cpp
             src/cpu/gpw/internal/cp2k_basis.cpp
             src/cpu/gpw/internal/gth_integrals.cpp
+            src/cpu/gpw/internal/real_harmonics.cpp
+            src/cpu/gpw/internal/diis.cpp
             src/cpu/gpw/internal/collocate.cpp
             src/cpu/gpw/internal/xc_grid.cpp
             # PADE (GTH Padé) LDA XC — CP2K-native functional used by the first
