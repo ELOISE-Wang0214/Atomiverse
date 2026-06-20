@@ -21,6 +21,7 @@
 #include "atomiverse/cpu/gpw/internal/collocate.h"
 #include "atomiverse/cpu/gpw/internal/cp2k_basis.h" // GaussianBasis
 #include "atomiverse/cpu/gpw/internal/cp2k_io.h"    // GthPotential, GthNonlocalChannel
+#include "atomiverse/cpu/linalg/matrix.h"           // RealMatrix
 
 namespace ATV {
 namespace cpu {
@@ -62,6 +63,16 @@ struct GpwResult {
     double e_xc = 0.0;      ///< XC energy.
     bool converged = false;
     int iters = 0;
+
+    /// @name Converged wavefunction (populated on convergence; empty otherwise).
+    /// Consistent set from a final diagonalization of the converged KS matrix:
+    /// `P == build_density_matrix(C, n_occ)`. Used to assemble analytic forces
+    /// (energy-weighted density matrix W = Σ_i 2 ε_i c_i c_iᵀ).
+    /// @{
+    linalg::RealMatrix C;      ///< MO coefficients, columns = orbitals (nb×nb).
+    linalg::RealMatrix P;      ///< Converged density matrix (nb×nb).
+    std::vector<double> eps;   ///< Orbital energies ε_i [Hartree], length nb.
+    /// @}
 };
 
 /// @brief Build a GpwAtom from parsed CP2K data (basis + GTH potential).

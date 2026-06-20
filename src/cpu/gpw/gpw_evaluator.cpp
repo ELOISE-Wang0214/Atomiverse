@@ -7,6 +7,7 @@
 #include <stdexcept>
 
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 
 namespace ATV {
 namespace cpu {
@@ -61,7 +62,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     frame.scalars.energy = last_.e_total * ATV::kHartree2eV;
 
     if (config_.compute_forces) {
-        const auto F = gpw_forces_fd(atoms, cfg, config_.fd_step); // [Hartree/Bohr]
+        const auto F = gpw_forces_analytic(atoms, cfg); // [Hartree/Bohr]; one SCF + gradient (was 6N+1 FD)
         for (int i = 0; i < n; ++i) {
             frame.atoms.fx(i) = F[static_cast<std::size_t>(i)][0] * ATV::kForceAU2Metal;
             frame.atoms.fy(i) = F[static_cast<std::size_t>(i)][1] * ATV::kForceAU2Metal;

@@ -130,6 +130,18 @@ double trace_product(const RealMatrix& P, const RealMatrix& M, int n) {
     return t;
 }
 
+// On convergence, diagonalize the converged KS matrix once more to record a
+// self-consistent (C, eps, P) triple in the result (P == density(C)). This is
+// what the analytic-force assembly needs to build the energy-weighted density
+// matrix W = Σ_i 2 ε_i c_i c_iᵀ.
+void store_converged_state(GpwResult& res, const RealMatrix& H, const RealMatrix& S,
+                           int n_occ, int nb) {
+    auto [eig, C] = linalg::diagonalize_fock_generalized(H, S);
+    res.C = C;
+    res.eps.assign(eig.begin(), eig.end());
+    res.P = linalg::build_density_matrix(C, n_occ, nb, 2.0);
+}
+
 } // namespace
 
 namespace {
@@ -311,6 +323,7 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
             if (iter > 0 && std::abs(e_total - e_prev) < cfg.tol &&
                 err_norm < kDiisErrTol) {
                 res.converged = true;
+                store_converged_state(res, H, S, cfg.n_occ, nb);
                 break;
             }
             e_prev = e_total;
@@ -324,6 +337,7 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
             RealMatrix P_new = linalg::build_density_matrix(C, cfg.n_occ, nb, 2.0);
             if (iter > 0 && std::abs(e_total - e_prev) < cfg.tol) {
                 res.converged = true;
+                store_converged_state(res, H, S, cfg.n_occ, nb);
                 break;
             }
             e_prev = e_total;

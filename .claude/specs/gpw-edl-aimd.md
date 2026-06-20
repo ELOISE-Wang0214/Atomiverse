@@ -115,9 +115,9 @@ M6（关键路径外）：
 - [x] DISCOVERED: l=2 (d) GTH nonlocal projector — folded into the above (gth_projector_overlap/gth_nonlocal now n_m=2l+1 any l; TODO lines gone)
 - [x] Downstream kernels confirmed general (Hermite/monomial); ZnO rung GREEN vs CP2K (|dE|=0.10 mHa, mix=0.1, ~157 iters); NaCl + H2O rungs still pending
 - [x] DISCOVERED (ZnO convergence): added GPW Pulay/DIIS — new cpu/gpw/internal/diis.{h,cpp} (single-channel, GPW-local, no scf::internal include; X=S^{-1/2} via cpu::linalg, computed once; KS-matrix extrapolation + commutator-residual convergence). GpwConfig.diis_depth=6 default (0=legacy linear). H2 49→5, ZnO 157→16 iters; energies bit-unchanged; suite 60s→8.7s. Removes the M5 linear-mixing blocker (still to prove at 1214-atom scale).
-- [ ] Write failing tests for analytic GPW forces vs 6N+1 FD oracle and CP2K reference (tests/cpu/gpw/test_cpu_gpw_forces.cpp)
-- [ ] Implement analytic GPW forces with W-matrix, HF/Pulay/nonlocal/grid/Ewald terms (include/atomiverse/cpu/gpw/internal/gpw_forces.h, src/cpu/gpw/internal/gpw_forces.cpp)
-- [ ] Wire FD-to-analytic force switch into GPWEvaluator (include/atomiverse/cpu/gpw/gpw_evaluator.h)
+- [x] Write tests for analytic GPW forces vs 6N+1 FD oracle (tests/cpu/gpw/test_cpu_gpw_forces.cpp): H2 max|dF|=2e-6, ZnO (d-proj+f-basis+GGA) max|dF|=2.7e-5 Ha/Bohr — both within the 5e-5 gate. CP2K force ref (ac-006) deferred — FD oracle is the term-complete correctness gate.
+- [x] Implement analytic GPW forces with W-matrix, HF/Pulay/grid/nonlocal/Ewald terms (cpu/gpw/internal/gpw_forces.{h,cpp}); built on derivative-Gaussian (∂φ=2αφ_{l+1}-lφ_{l-1}) reuse of existing integral/collocate kernels; gpw_scf extended to expose converged C/eps/P for W=Σ2ε_i c_i c_i†
+- [x] Wire FD-to-analytic force switch into GPWEvaluator (gpw_evaluator.cpp: gpw_forces_fd → gpw_forces_analytic). geoopt + aimd now run on analytic forces (1 SCF + gradient vs 6N+1); full GPW suite green.
 - [ ] Write failing tests for FixCSVR canonical kinetic-energy distribution (tests/cpu/md/test_cpu_md_csvr.cpp)
 - [ ] Implement cpu::md::FixCSVR thermostat with H-tilde bookkeeping (include/atomiverse/cpu/md/fix_csvr.h, src/cpu/md/fix_csvr.cpp)
 - [ ] Add Doxygen with units to all new public symbols (extxyz, gpw_forces, FixCSVR)
