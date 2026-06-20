@@ -243,6 +243,13 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
     RealMatrix S = xt::zeros<double>({nb, nb});
     RealMatrix T = xt::zeros<double>({nb, nb});
     RealMatrix Vpp = xt::zeros<double>({nb, nb}); // V_loc^sr + V_nl
+    // The geometry-fixed one-electron / GTH matrices dominate the GPW SCF wall
+    // time at scale (profiled: ~75-80% for hundreds of atoms; the eigensolve is
+    // <2%). Each (i,j) is an independent primitive contraction → parallelize the
+    // outer index. NOTE: gth_matrix_element still loops ALL atoms per pair
+    // (O(nb²·natoms)); spatial screening of that atom loop is the next, larger
+    // algorithmic win (the PP contribution is local).
+#pragma omp parallel for schedule(dynamic, 8)
     for (int i = 0; i < nb; ++i) {
         for (int j = 0; j < nb; ++j) {
             S(i, j) = overlap(basis[i], basis[j]);
