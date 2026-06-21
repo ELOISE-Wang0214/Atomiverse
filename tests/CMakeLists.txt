@@ -200,7 +200,7 @@ atv_add_cpp_test(test_cpu_materialize                     cpu/test_materialize.c
 # ExtXYZ loading through molrs (gpw-edl-aimd M1). The real ZnO EDL frame path
 # is injected as a compile definition; the test self-skips that case if unset.
 set(ATV_FINAL_FRAME_XYZ
-    "/nobackup/proj/disk/teoroo/personal/jicli594/work/molpack-paper/figures/prior_packing/final_frame.xyz"
+    "/nobackup/proj/disk/teoroo/personal/jicli594/work/molpack-paper/figures/final_frame.xyz"
     CACHE FILEPATH "Reference 1214-atom ZnO electric-double-layer ExtXYZ frame")
 atv_add_cpp_test(test_cpu_io_extxyz                       cpu/io/test_cpu_io_extxyz.cpp)
 target_compile_definitions(test_cpu_io_extxyz

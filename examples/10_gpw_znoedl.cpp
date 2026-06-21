@@ -47,7 +47,7 @@ namespace {
 
 const char* kDefaultFrame =
     "/nobackup/proj/disk/teoroo/personal/jicli594/work/molpack-paper/figures/"
-    "prior_packing/final_frame.xyz";
+    "final_frame.xyz";
 
 /// @brief Keep only atoms whose z (Å) is in [z_lo, z_hi]; preserves the box.
 cpu::Frame z_slab(const cpu::Frame& src, double z_lo, double z_hi) {
