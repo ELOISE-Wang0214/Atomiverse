@@ -1,3 +1,5 @@
+#include <cstdio>
+#include <cstdlib>
 /// @file src/cpu/gpw/gpw_solver.cpp
 /// @brief Implementation of the closed-shell GPW SCF (see header).
 ///
@@ -143,8 +145,10 @@ double pair_overlap_bound(const GridBasisFunction& mu, const GridBasisFunction& 
 }
 
 // Ionic core density n_ion(r) = sum_A z_A (2 pi rloc^2)^{-3/2} exp(-|r-R|^2/2 rloc^2).
+// Periodic: minimum-image displacement so unwrapped slab cores collocate through
+// their nearest image (matching the electron-density collocation in collocate.cpp).
 std::vector<double> ionic_density(const UniformGrid& grid,
-                                  const std::vector<GpwAtom>& atoms) {
+                                  const std::vector<GpwAtom>& atoms, bool periodic) {
     const long ng = grid.npts();
     std::vector<double> n(static_cast<std::size_t>(ng), 0.0);
 #pragma omp parallel for schedule(static)
@@ -155,7 +159,12 @@ std::vector<double> ionic_density(const UniformGrid& grid,
         for (const auto& a : atoms) {
             const double s2 = a.rloc * a.rloc;
             const double norm = a.z_val * std::pow(2.0 * M_PI * s2, -1.5);
-            const double dx = r[0] - a.pos[0], dy = r[1] - a.pos[1], dz = r[2] - a.pos[2];
+            double dx = r[0] - a.pos[0], dy = r[1] - a.pos[1], dz = r[2] - a.pos[2];
+            if (periodic) {
+                dx -= grid.L[0] * std::nearbyint(dx / grid.L[0]);
+                dy -= grid.L[1] * std::nearbyint(dy / grid.L[1]);
+                dz -= grid.L[2] * std::nearbyint(dz / grid.L[2]);
+            }
             s += norm * std::exp(-(dx * dx + dy * dy + dz * dz) / (2.0 * s2));
         }
         n[g] = s;
@@ -320,7 +329,7 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
     const RealMatrix H0 = T + Vpp;
 
     // Geometry-fixed ionic density and the constant self-energy to remove.
-    const std::vector<double> n_ion = ionic_density(grid, atoms);
+    const std::vector<double> n_ion = ionic_density(grid, atoms, !cfg.nonperiodic);
     double e_self = 0.0;
     for (const auto& a : atoms) e_self += core_self_energy(a);
 
@@ -332,7 +341,7 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
     // across all SCF iterations. The molecule fills a small part of the box, so
     // also precompute the "active" grid points (where any basis function is
     // non-negligible) and collocate/integrate only over those.
-    const std::vector<double> phi = eval_basis_on_grid(grid, basis);
+    const std::vector<double> phi = eval_basis_on_grid(grid, basis, !cfg.nonperiodic);
     const std::vector<long> active = active_grid_points(phi, grid.npts(), nb);
 
     GpwResult res;
@@ -389,7 +398,6 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
     if (cfg.use_ot) {
         RealMatrix Cocc = internal::ot_orthonormalize(
             RealMatrix(xt::view(C0, xt::all(), xt::range(0, cfg.n_occ))), S);
-        const internal::OtPrecond precond(T, S);
         auto frob = [](const RealMatrix& a, const RealMatrix& b) {
             return xt::sum(a * b)();
         };
@@ -405,6 +413,12 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
             const RealMatrix g = internal::ot_gradient(H, S, Cocc);
             double gnorm = 0.0;
             for (double v : g) gnorm = std::max(gnorm, std::abs(v));
+            if (std::getenv("ATV_GPW_TRACE"))
+                std::fprintf(stderr,
+                             "[gpw OT %2d] E=%.8f  T=%.4f loc=%.4f es=%.4f xc=%.4f  "
+                             "dE=%.2e gnorm=%.2e\n",
+                             iter, e_total, res.e_kinetic, res.e_loc_sr, res.e_es,
+                             res.e_xc, std::abs(e_total - e_prev), gnorm);
             if (iter > 0 && gnorm < kOtGradTol && std::abs(e_total - e_prev) < cfg.tol) {
                 res.converged = true;
                 store_converged_state(res, H, S, cfg.n_occ, nb);
@@ -412,6 +426,10 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
             }
             e_prev = e_total;
 
+            // FULL_SINGLE_INVERSE preconditioner: H-aware, rebuilt each step
+            // (CP2K's default for gapped systems; FULL_KINETIC T+S was too weak
+            // and OT crawled). M = H + a S with a below the spectrum -> SPD.
+            const internal::OtPrecondSingleInverse precond(H, S, Cocc);
             const RealMatrix pz = internal::ot_tangent(Cocc, S, precond.apply(g));
             if (!have_prev) {
                 d = -pz;
@@ -423,26 +441,42 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
             denom_prev = frob(g, pz);
             have_prev = true;
 
-            // Parabolic line search on the frozen-H band energy 2 Tr(CᵀHC).
-            auto band = [&](const RealMatrix& C) { return 2.0 * frob(C, xt::linalg::dot(H, C)); };
-            const double E0 = band(Cocc);
-            const double slope = frob(g, d);
-            double alpha;
-            if (slope >= 0.0) {
-                d = -pz;
-                alpha = 0.3;
-            } else {
-                const double at = 1.0;
-                const double Et = band(internal::ot_parameterize(Cocc, at * d, S));
-                const double denom = 2.0 * (Et - E0 - slope * at);
-                alpha = denom > 1e-300 ? -slope * at * at / denom : at;
-                for (int bt = 0; bt < 40; ++bt) {
-                    if (band(internal::ot_parameterize(Cocc, alpha * d, S)) < E0) break;
-                    alpha *= 0.5;
-                }
+            // Monotonic line search on the SCF TOTAL energy E[rho(C)]. The
+            // frozen-H band energy 2 Tr(CᵀHC) is only the local quadratic model;
+            // minimizing *it* overshoots the self-consistent E and let OT wander
+            // (descend then drift up). Armijo backtracking on the rebuilt-H total
+            // energy enforces monotonic descent — every accepted step lowers E.
+            auto etot = [&](const RealMatrix& C) {
+                return build_H_and_energy(
+                           linalg::build_density_matrix(C, cfg.n_occ, nb, 2.0))
+                    .second;
+            };
+            double slope = frob(g, d);
+            if (slope >= 0.0) { // not a descent direction -> restart to (precond) SD
+                d = internal::ot_tangent(Cocc, S, -pz);
+                slope = frob(g, d);
             }
-            Cocc = internal::ot_orthonormalize(
-                internal::ot_parameterize(Cocc, alpha * d, S), S);
+            // Curvature-aware initial step from the frozen-H band energy (cheap,
+            // no grid), then Armijo-backtrack on the rebuilt-H total energy. The
+            // band parabola gives a near-optimal first alpha so backtracking
+            // (each trial = a full grid build) is rare.
+            auto band = [&](const RealMatrix& C) {
+                return 2.0 * frob(C, xt::linalg::dot(H, C));
+            };
+            const double Eb0 = band(Cocc);
+            const double Ebt = band(internal::ot_parameterize(Cocc, d, S));
+            const double curv = 2.0 * (Ebt - Eb0 - slope); // parabola curvature
+            double alpha = (curv > 1e-300) ? -slope / curv : 1.0; // vertex
+            if (!(alpha > 0.0)) alpha = 1.0;
+            alpha = std::min(alpha, 2.0);
+            constexpr double c1 = 1e-4;
+            RealMatrix Cnew = internal::ot_parameterize(Cocc, alpha * d, S);
+            for (int bt = 0; bt < 50; ++bt) {
+                if (etot(Cnew) <= e_total + c1 * alpha * slope) break;
+                alpha *= 0.5;
+                Cnew = internal::ot_parameterize(Cocc, alpha * d, S);
+            }
+            Cocc = internal::ot_orthonormalize(Cnew, S);
         }
         return res;
     }
@@ -461,7 +495,15 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
             double err_norm = 0.0;
             for (const double v : err) err_norm = std::max(err_norm, std::abs(v));
 
-            if (iter > 0 && std::abs(e_total - e_prev) < cfg.tol &&
+            if (std::getenv("ATV_GPW_TRACE"))
+                std::fprintf(stderr,
+                             "[gpw it %2d] E=%.8f  T=%.4f loc=%.4f es=%.4f xc=%.4f  "
+                             "dE=%.2e err=%.2e\n",
+                             iter, e_total, res.e_kinetic, res.e_loc_sr, res.e_es,
+                             res.e_xc, std::abs(e_total - e_prev), err_norm);
+
+            const bool no_stop = std::getenv("ATV_GPW_NOSTOP") != nullptr;
+            if (!no_stop && iter > 0 && std::abs(e_total - e_prev) < cfg.tol &&
                 err_norm < kDiisErrTol) {
                 res.converged = true;
                 store_converged_state(res, H, S, cfg.n_occ, nb);

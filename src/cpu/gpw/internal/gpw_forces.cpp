@@ -128,11 +128,13 @@ gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
     UniformGrid grid = make_uniform_grid(cfg.cell, cfg.cutoff_ry);
     const long ng = grid.npts();
     const double wgt = grid.weight();
-    const std::vector<double> phi = eval_basis_on_grid(grid, basis);
+    const std::vector<double> phi = eval_basis_on_grid(grid, basis, !cfg.nonperiodic);
     const std::vector<long> active = active_grid_points(phi, ng, nb);
 
     // Ionic core density n_c(r) = Σ_A z_A (2π s_A²)^{-3/2} exp(-|r-R_A|²/2 s_A²),
-    // matching gpw_solver::ionic_density (no min-image; Gaussians well inside box).
+    // matching gpw_solver::ionic_density. Periodic: minimum-image displacement so
+    // unwrapped slab cores collocate through their nearest image.
+    const bool periodic = !cfg.nonperiodic;
     std::vector<double> n_ion(static_cast<std::size_t>(ng), 0.0);
     for (long g = 0; g < ng; ++g) {
         double r[3];
@@ -141,7 +143,12 @@ gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
         for (const auto& a : atoms) {
             const double s2 = a.rloc * a.rloc;
             const double norm = a.z_val * std::pow(2.0 * M_PI * s2, -1.5);
-            const double dx = r[0] - a.pos[0], dy = r[1] - a.pos[1], dz = r[2] - a.pos[2];
+            double dx = r[0] - a.pos[0], dy = r[1] - a.pos[1], dz = r[2] - a.pos[2];
+            if (periodic) {
+                dx -= grid.L[0] * std::nearbyint(dx / grid.L[0]);
+                dy -= grid.L[1] * std::nearbyint(dy / grid.L[1]);
+                dz -= grid.L[2] * std::nearbyint(dz / grid.L[2]);
+            }
             s += norm * std::exp(-(dx * dx + dy * dy + dz * dz) / (2.0 * s2));
         }
         n_ion[static_cast<std::size_t>(g)] = s;
@@ -207,7 +214,8 @@ gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
             // --- Grid term: -2 Σ_{μ∈A} Σ_g w dφ_μ(g) V_eff(g) (Σ_ν P_μν φ_ν(g)) ---
             for (int mu = atom_off[A]; mu < atom_off[A + 1]; ++mu) {
                 const std::vector<double> dmu_g =
-                    eval_basis_on_grid(grid, {dphi[mu][k]}); // length ng (nbasis=1)
+                    eval_basis_on_grid(grid, {dphi[mu][k]},
+                                       !cfg.nonperiodic); // length ng (nbasis=1)
                 double acc = 0.0;
                 for (std::size_t ai = 0; ai < nact; ++ai) {
                     const long g = active[ai];

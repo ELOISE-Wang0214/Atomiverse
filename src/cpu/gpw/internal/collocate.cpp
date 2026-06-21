@@ -38,11 +38,26 @@ UniformGrid make_uniform_grid(const double cell_abc[3], double cutoff_ry) {
 
 namespace {
 
-/// @brief Evaluate one primitive Gaussian at a point.
-inline double eval_primitive(const GridPrimitive& p, const double r[3]) {
-    const double dx = r[0] - p.center[0];
-    const double dy = r[1] - p.center[1];
-    const double dz = r[2] - p.center[2];
+/// @brief Evaluate one primitive Gaussian at a grid point.
+///
+/// For a periodic cell the displacement r - center is taken as the
+/// **minimum image** per axis (disp -= L * round(disp/L)), so a Gaussian
+/// centered outside [0,L) (an unwrapped EDL slab atom) contributes its density
+/// to the grid through its nearest periodic image — matching CP2K's periodic
+/// collocation. Atom positions are left untouched (wrapping them would overlap
+/// the oxide bilayer). For an orthorhombic cell per-axis min-image is exact when
+/// the Gaussian extent < L/2. Non-periodic (Martyna-Tuckerman / isolated) keeps
+/// the raw displacement.
+inline double eval_primitive(const GridPrimitive& p, const double r[3],
+                             const double L[3], bool periodic) {
+    double dx = r[0] - p.center[0];
+    double dy = r[1] - p.center[1];
+    double dz = r[2] - p.center[2];
+    if (periodic) {
+        dx -= L[0] * std::nearbyint(dx / L[0]);
+        dy -= L[1] * std::nearbyint(dy / L[1]);
+        dz -= L[2] * std::nearbyint(dz / L[2]);
+    }
     const double r2 = dx * dx + dy * dy + dz * dz;
     double v = p.coeff * std::exp(-p.alpha * r2);
     for (int i = 0; i < p.l[0]; ++i) v *= dx;
@@ -51,16 +66,18 @@ inline double eval_primitive(const GridPrimitive& p, const double r[3]) {
     return v;
 }
 
-inline double eval_basis_function(const GridBasisFunction& bf, const double r[3]) {
+inline double eval_basis_function(const GridBasisFunction& bf, const double r[3],
+                                  const double L[3], bool periodic) {
     double v = 0.0;
-    for (const auto& p : bf) v += eval_primitive(p, r);
+    for (const auto& p : bf) v += eval_primitive(p, r, L, periodic);
     return v;
 }
 
 } // namespace
 
 std::vector<double> eval_basis_on_grid(const UniformGrid& grid,
-                                       const std::vector<GridBasisFunction>& basis) {
+                                       const std::vector<GridBasisFunction>& basis,
+                                       bool periodic) {
     const long ng = grid.npts();
     const int nb = static_cast<int>(basis.size());
     std::vector<double> phi(static_cast<std::size_t>(ng) * nb);
@@ -69,7 +86,8 @@ std::vector<double> eval_basis_on_grid(const UniformGrid& grid,
         double r[3];
         grid.point(g, r);
         double* row = &phi[static_cast<std::size_t>(g) * nb];
-        for (int u = 0; u < nb; ++u) row[u] = eval_basis_function(basis[u], r);
+        for (int u = 0; u < nb; ++u)
+            row[u] = eval_basis_function(basis[u], r, grid.L, periodic);
     }
     return phi;
 }

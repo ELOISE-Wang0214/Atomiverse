@@ -99,6 +99,32 @@ class OtPrecond {
     RealMatrix m_inv_; ///< Dense `(T+S)^{-1}` [nb x nb].
 };
 
+/// @brief FULL_SINGLE_INVERSE-style OT preconditioner `M = H + a S`, `M^{-1}`.
+///
+/// CP2K's default OT preconditioner for gapped systems: H-aware (unlike the
+/// geometry-fixed FULL_KINETIC `T+S`), so the orbitals near the band gap are
+/// most active and convergence is far faster on hard condensed systems. The
+/// level shift `a = -lambda_lo + margin` (lambda_lo = lowest occupied orbital
+/// energy from the small `C^T H C` block) puts the occupied region at `~margin`
+/// in the S-metric, keeping `M` positive-definite so `M^{-1} g` is a descent
+/// direction. Rebuilt each OT step from the current `H, C` (dense `O(nb^3)`
+/// per step — the documented dense-OT cost; sparse is a later optimization).
+class OtPrecondSingleInverse {
+  public:
+    /// @brief Build `M^{-1}` from the current KS matrix, overlap, and occupied set.
+    /// @param H KS matrix [nb x nb].
+    /// @param S Overlap matrix [nb x nb].
+    /// @param C Occupied coefficients [nb x no], `C^T S C = I`.
+    OtPrecondSingleInverse(const RealMatrix& H, const RealMatrix& S,
+                           const RealMatrix& C);
+
+    /// @brief Apply the preconditioner: `z = M^{-1} g`.
+    RealMatrix apply(const RealMatrix& g) const;
+
+  private:
+    RealMatrix m_inv_; ///< Dense `(H + a S)^{-1}` [nb x nb].
+};
+
 /// @brief Result of the fixed-H OT minimization (decoupled unit-test entry).
 struct OtFixedResult {
     RealMatrix C;          ///< Converged occupied coefficients [nb x no].

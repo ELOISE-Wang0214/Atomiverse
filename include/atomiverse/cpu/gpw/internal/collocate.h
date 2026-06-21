@@ -54,9 +54,14 @@ struct UniformGrid {
 UniformGrid make_uniform_grid(const double cell_abc[3], double cutoff_ry);
 
 /// @brief Evaluate every basis function at every grid point.
+/// @param periodic When true, the Gaussian-to-grid displacement uses the
+///        minimum image per axis, so atoms outside [0,L) (unwrapped periodic
+///        slab atoms) collocate through their nearest image. False = isolated
+///        (Martyna-Tuckerman); raw displacement, Gaussians assumed inside the box.
 /// @return Row-major (npts x nbasis) matrix Phi, Phi[g*nbasis + u] = φ_u(r_g).
 std::vector<double> eval_basis_on_grid(const UniformGrid& grid,
-                                       const std::vector<GridBasisFunction>& basis);
+                                       const std::vector<GridBasisFunction>& basis,
+                                       bool periodic = false);
 
 /// @brief Collocate the electron density ρ(r) = Σ_uv P_uv φ_u(r) φ_v(r).
 /// @param P Symmetric density matrix, row-major nbasis x nbasis.

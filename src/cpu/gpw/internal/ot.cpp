@@ -84,6 +84,30 @@ OtPrecond::OtPrecond(const RealMatrix& T, const RealMatrix& S) {
 
 RealMatrix OtPrecond::apply(const RealMatrix& g) const { return dot(m_inv_, g); }
 
+OtPrecondSingleInverse::OtPrecondSingleInverse(const RealMatrix& H,
+                                               const RealMatrix& S,
+                                               const RealMatrix& C) {
+    // Lowest occupied orbital energy from the small no x no Rayleigh block
+    // eps = C^T H C (its eigenvalues are the occupied orbital energies at
+    // self-consistency; the minimum is the most negative (H,S) eigenvalue for
+    // a gapped system).
+    const RealMatrix eps = dot(xt::transpose(C), dot(H, C));
+    auto [theta, V] = xt::linalg::eigh(eps);
+    double lambda_lo = theta(0);
+    for (double t : theta) lambda_lo = std::min(lambda_lo, t);
+    // Shift so M = H + a S has the occupied region at ~+margin in the S-metric
+    // (positive-definite -> M^{-1} g is a descent direction). margin = 1 Ha.
+    const double a = -lambda_lo + 1.0;
+    const RealMatrix M = H + a * S;
+    // M^{-1} via the symmetric eigendecomposition; guard tiny/negative ordinary
+    // eigenvalues (PSD pseudo-inverse) so a stray mode can't flip the direction.
+    m_inv_ = sym_function(M, [](double t) { return t > 1e-8 ? 1.0 / t : 0.0; });
+}
+
+RealMatrix OtPrecondSingleInverse::apply(const RealMatrix& g) const {
+    return dot(m_inv_, g);
+}
+
 OtFixedResult ot_minimize_fixed(const RealMatrix& H, const RealMatrix& S,
                                 const RealMatrix& T, const RealMatrix& C0,
                                 double tol, int max_iter) {

@@ -4,6 +4,7 @@
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
 
 #include <cmath>
+#include <cstdlib>
 #include <stdexcept>
 
 #include "atomiverse/core/units.h"
@@ -57,6 +58,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     cfg.mix = config_.mix;
     cfg.xc = config_.xc;
     cfg.nonperiodic = config_.nonperiodic;
+    if (std::getenv("ATV_GPW_OT")) cfg.use_ot = true; // diagnostic: force OT path
 
     last_ = gpw_scf(atoms, cfg);
     frame.scalars.energy = last_.e_total * ATV::kHartree2eV;
