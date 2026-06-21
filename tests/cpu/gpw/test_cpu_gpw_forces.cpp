@@ -27,14 +27,13 @@ TEST(GpwForces, H2FiniteDifference) {
 
     // H2 compressed to 1.0 Bohr (equilibrium ~1.4): expect a restoring force
     // that pushes the atoms apart along x.
-    const double rA[3] = {3.5, 2.0, 2.0};
-    const double rB[3] = {4.5, 2.0, 2.0};
+    const double rA[3] = {5.5, 6.0, 6.0};
+    const double rB[3] = {6.5, 6.0, 6.0};
     std::vector<GpwAtom> atoms = {make_gpw_atom(rA, basis, pot),
                                   make_gpw_atom(rB, basis, pot)};
 
     GpwConfig cfg;
-    cfg.cell[0] = 8.0;
-    cfg.cell[1] = cfg.cell[2] = 4.0;
+    cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 12.0; // enlarged + centered: keep R_cut < L/2 (no min-image kink)
     cfg.cutoff_ry = 140.0;
     cfg.n_occ = 1;
     cfg.tol = 1e-8;
@@ -69,8 +68,7 @@ TEST(GpwForces, H2AnalyticVsFiniteDifference) {
                                   make_gpw_atom(rB, basis, pot)};
 
     GpwConfig cfg;
-    cfg.cell[0] = 8.0;
-    cfg.cell[1] = cfg.cell[2] = 4.0;
+    cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 12.0; // enlarged: keep R_cut < L/2 (no min-image kink)
     cfg.cutoff_ry = 140.0;
     cfg.n_occ = 1;
     cfg.tol = 1e-10;
@@ -100,8 +98,7 @@ TEST(GpwForces, H2PbeAnalyticVsFiniteDifference) {
     std::vector<GpwAtom> atoms = {make_gpw_atom(rA, basis, pot),
                                   make_gpw_atom(rB, basis, pot)};
     GpwConfig cfg;
-    cfg.cell[0] = 8.0;
-    cfg.cell[1] = cfg.cell[2] = 4.0;
+    cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 12.0; // enlarged: keep R_cut < L/2 (no min-image kink)
     cfg.cutoff_ry = 200.0;
     cfg.n_occ = 1;
     cfg.tol = 1e-10;
@@ -129,13 +126,13 @@ TEST(GpwForces, ZnOAnalyticVsFiniteDifference) {
     const auto pZn = parse_gth_potential(kData + "/GTH_POTENTIALS", "Zn", "GTH-PBE-q12");
     const auto pO = parse_gth_potential(kData + "/GTH_POTENTIALS", "O", "GTH-PBE-q6");
 
-    const double rZn[3] = {4.0 * kAng, 4.0 * kAng, 4.0 * kAng};
-    const double rO[3] = {4.15 * kAng, 4.1 * kAng, 5.6 * kAng}; // off-axis bond
+    const double rZn[3] = {7.0 * kAng, 7.0 * kAng, 7.0 * kAng};
+    const double rO[3] = {7.15 * kAng, 7.1 * kAng, 8.6 * kAng}; // off-axis bond
     std::vector<GpwAtom> atoms = {make_gpw_atom(rZn, bZn, pZn),
                                   make_gpw_atom(rO, bO, pO)};
 
     GpwConfig cfg;
-    cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 8.0 * kAng;
+    cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 14.0 * kAng; // enlarged: R_cut < L/2 (no min-image kink)
     cfg.cutoff_ry = 120.0; // coarse: consistency holds at any grid; keeps FD sweep cheap
     cfg.n_occ = 9;
     cfg.tol = 1e-9;
