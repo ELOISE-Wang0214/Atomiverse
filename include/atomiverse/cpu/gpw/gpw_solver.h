@@ -43,7 +43,9 @@ enum class XcKind { PADE, PBE };
 /// @brief GPW SCF configuration.
 struct GpwConfig {
     double cell[3] = {0, 0, 0}; ///< orthorhombic box lengths [Bohr].
-    double cutoff_ry = 300.0;   ///< density grid cutoff [Ry].
+    double cutoff_ry = 300.0;   ///< density grid cutoff [Ry] (finest multigrid level).
+    int ngrids = 1;             ///< CP2K multigrid levels; 1 = single grid (default, bit-identical).
+    double rel_cutoff = 0.0;    ///< CP2K REL_CUTOFF [Ry]; exponent->level map when ngrids>1.
     int n_occ = 0;              ///< number of doubly-occupied orbitals (N_elec / 2).
     int max_iter = 100;         ///< max SCF iterations.
     double tol = 1e-8;          ///< SCF energy convergence [Hartree].
