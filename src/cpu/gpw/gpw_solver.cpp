@@ -1,3 +1,4 @@
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 /// @file src/cpu/gpw/gpw_solver.cpp
@@ -404,11 +405,19 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
         RealMatrix d, pz_prev;
         double denom_prev = 1.0;
         bool have_prev = false;
+        const bool prof = std::getenv("ATV_GPW_OT_PROF") != nullptr;
+        using Clk = std::chrono::steady_clock;
+        auto ms = [](Clk::time_point a, Clk::time_point b) {
+            return std::chrono::duration<double, std::milli>(b - a).count();
+        };
         for (int iter = 0; iter < cfg.max_iter; ++iter) {
+            auto tA = Clk::now();
             P = linalg::build_density_matrix(Cocc, cfg.n_occ, nb, 2.0); // 2 Cocc Coccᵀ
             auto [H, e_total] = build_H_and_energy(P);
+            auto tB = Clk::now();
             res.iters = iter + 1;
             res.e_total = e_total;
+            int ls_rebuilds = 0;
 
             const RealMatrix g = internal::ot_gradient(H, S, Cocc);
             double gnorm = 0.0;
@@ -431,6 +440,7 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
             // and OT crawled). M = H + a S with a below the spectrum -> SPD.
             const internal::OtPrecondSingleInverse precond(H, S, Cocc);
             const RealMatrix pz = internal::ot_tangent(Cocc, S, precond.apply(g));
+            auto tC = Clk::now();
             if (!have_prev) {
                 d = -pz;
             } else {
@@ -472,11 +482,20 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
             constexpr double c1 = 1e-4;
             RealMatrix Cnew = internal::ot_parameterize(Cocc, alpha * d, S);
             for (int bt = 0; bt < 50; ++bt) {
+                ++ls_rebuilds;
                 if (etot(Cnew) <= e_total + c1 * alpha * slope) break;
                 alpha *= 0.5;
                 Cnew = internal::ot_parameterize(Cocc, alpha * d, S);
             }
             Cocc = internal::ot_orthonormalize(Cnew, S);
+            if (prof) {
+                auto tD = Clk::now();
+                std::fprintf(stderr,
+                             "[OT prof %2d] H_grad=%.0fms precond=%.0fms "
+                             "linesearch=%.0fms (%d rebuilds) | total=%.0fms\n",
+                             iter, ms(tA, tB), ms(tB, tC), ms(tC, tD), ls_rebuilds,
+                             ms(tA, tD));
+            }
         }
         return res;
     }
