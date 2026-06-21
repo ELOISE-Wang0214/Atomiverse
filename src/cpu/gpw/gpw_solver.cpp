@@ -342,8 +342,12 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
     // across all SCF iterations. The molecule fills a small part of the box, so
     // also precompute the "active" grid points (where any basis function is
     // non-negligible) and collocate/integrate only over those.
-    const std::vector<double> phi = eval_basis_on_grid(grid, basis, !cfg.nonperiodic);
-    const std::vector<long> active = active_grid_points(phi, grid.npts(), nb);
+    // Compact-support basis-on-grid: each Gaussian touches only the grid points
+    // within its radius (CSR-by-point), built once. Replaces the dense
+    // npts x nb matrix — prohibitive in memory at scale (ngrid*nb*8 bytes) and
+    // O(na*nb^2) per iter; the compact path is O(sum_g k_g^2), k_g << nb.
+    const CompactBasisGrid cbg =
+        build_compact_basis_grid(grid, basis, !cfg.nonperiodic);
 
     GpwResult res;
     double e_prev = 0.0;
@@ -370,7 +374,7 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
     // and OT paths.
     auto build_H_and_energy = [&](const RealMatrix& Pin) -> std::pair<RealMatrix, double> {
         const std::vector<double> Pvec = mat_to_vec(Pin, nb);
-        std::vector<double> rho = collocate_density(grid, phi, nb, Pvec, active);
+        std::vector<double> rho = collocate_density(cbg, nb, Pvec);
         std::vector<double> n_tot(rho.size());
         for (std::size_t g = 0; g < rho.size(); ++g) n_tot[g] = rho[g] - n_ion[g];
         const PoissonResult es =
@@ -380,7 +384,7 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
         std::vector<double> veff(rho.size());
         for (std::size_t g = 0; g < rho.size(); ++g) veff[g] = es.v_r[g] + xc.vxc_r[g];
         const RealMatrix Vgrid =
-            vec_to_mat(integrate_potential(grid, phi, nb, veff, active), nb);
+            vec_to_mat(integrate_potential(cbg, nb, veff), nb);
         const RealMatrix H = H0 + Vgrid;
         res.e_kinetic = trace_product(Pin, T, nb);
         res.e_nonlocal = 0.0; // folded into e_loc_sr below for the first cut

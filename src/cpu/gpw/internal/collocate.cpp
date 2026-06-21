@@ -3,7 +3,12 @@
 
 #include "atomiverse/cpu/gpw/internal/collocate.h"
 
+#include <algorithm>
 #include <cmath>
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 namespace ATV {
 namespace cpu {
@@ -74,6 +79,192 @@ inline double eval_basis_function(const GridBasisFunction& bf, const double r[3]
 }
 
 } // namespace
+
+namespace {
+
+// Radius beyond which a contracted Gaussian basis function is below `eps`.
+// Per primitive solve |coeff| r^l exp(-alpha r^2) = eps; the r^l growth is folded
+// in via one fixed-point correction on the pure-Gaussian root, then a generous
+// margin so no real contribution is dropped (correctness over tightness).
+double basis_cutoff_radius(const GridBasisFunction& bf, double eps) {
+    double rc = 0.0;
+    const double leps = std::log(eps);
+    for (const auto& p : bf) {
+        if (p.coeff == 0.0 || p.alpha <= 0.0) continue;
+        const int l = p.l[0] + p.l[1] + p.l[2];
+        const double lc = std::log(std::abs(p.coeff));
+        double r2 = std::max(0.0, (lc - leps) / p.alpha); // pure-Gaussian root^2
+        // One correction for the r^l factor: ln|c| + l ln r - alpha r^2 = ln eps.
+        for (int it = 0; it < 3; ++it) {
+            const double r = std::sqrt(std::max(r2, 1e-12));
+            r2 = std::max(0.0, (lc + l * std::log(r) - leps) / p.alpha);
+        }
+        rc = std::max(rc, std::sqrt(r2));
+    }
+    return rc;
+}
+
+} // namespace
+
+CompactBasisGrid build_compact_basis_grid(const UniformGrid& grid,
+                                          const std::vector<GridBasisFunction>& basis,
+                                          bool periodic, double eps) {
+    const int nb = static_cast<int>(basis.size());
+    const long n0 = grid.n[0], n1 = grid.n[1], n2 = grid.n[2];
+    const double dx0 = grid.L[0] / n0, dx1 = grid.L[1] / n1, dx2 = grid.L[2] / n2;
+
+    struct Triple { long g; int u; double v; };
+    std::vector<std::vector<Triple>> per_thread;
+#ifdef _OPENMP
+    per_thread.resize(static_cast<std::size_t>(omp_get_max_threads()));
+#else
+    per_thread.resize(1);
+#endif
+
+#pragma omp parallel
+    {
+#ifdef _OPENMP
+        std::vector<Triple>& out = per_thread[static_cast<std::size_t>(omp_get_thread_num())];
+#else
+        std::vector<Triple>& out = per_thread[0];
+#endif
+#pragma omp for schedule(dynamic, 8)
+        for (int u = 0; u < nb; ++u) {
+            const double rc = basis_cutoff_radius(basis[u], eps);
+            const double c[3] = {basis[u][0].center[0], basis[u][0].center[1],
+                                 basis[u][0].center[2]};
+            // wrapped index center + integer half-width per axis
+            const long n[3] = {n0, n1, n2};
+            const double dx[3] = {dx0, dx1, dx2};
+            long lo[3], hi[3];
+            bool full[3];
+            for (int d = 0; d < 3; ++d) {
+                const long ih = static_cast<long>(std::ceil(rc / dx[d]));
+                if (2 * ih + 1 >= n[d] || !periodic) {
+                    // whole axis (periodic, large box) or clamp (non-periodic)
+                    if (periodic) { lo[d] = 0; hi[d] = n[d] - 1; full[d] = true; }
+                    else {
+                        double cw = c[d];
+                        long ic = static_cast<long>(std::floor(cw / dx[d]));
+                        lo[d] = std::max(0L, ic - ih);
+                        hi[d] = std::min(n[d] - 1, ic + ih);
+                        full[d] = false;
+                    }
+                } else {
+                    double cw = c[d] - grid.L[d] * std::floor(c[d] / grid.L[d]);
+                    long ic = static_cast<long>(std::floor(cw / dx[d]));
+                    lo[d] = ic - ih;
+                    hi[d] = ic + ih;
+                    full[d] = false;
+                }
+            }
+            for (long i = lo[0]; i <= hi[0]; ++i) {
+                const long ii = full[0] ? i : ((i % n0) + n0) % n0;
+                for (long j = lo[1]; j <= hi[1]; ++j) {
+                    const long jj = full[1] ? j : ((j % n1) + n1) % n1;
+                    const long base = (ii * n1 + jj) * n2;
+                    for (long k = lo[2]; k <= hi[2]; ++k) {
+                        const long kk = full[2] ? k : ((k % n2) + n2) % n2;
+                        const long g = base + kk;
+                        double r[3];
+                        grid.point(g, r);
+                        const double val = eval_basis_function(basis[u], r, grid.L, periodic);
+                        if (std::fabs(val) > eps) out.push_back({g, u, val});
+                    }
+                }
+            }
+        }
+    }
+
+    // Concatenate, then bucket by grid point via counting sort (O(nnz+ngrid),
+    // no comparison sort) into the CSR-by-point layout.
+    std::size_t total = 0;
+    for (const auto& v : per_thread) total += v.size();
+    std::vector<Triple> all;
+    all.reserve(total);
+    for (auto& v : per_thread) {
+        all.insert(all.end(), v.begin(), v.end());
+        std::vector<Triple>().swap(v);
+    }
+
+    const long ng = grid.npts();
+    std::vector<long> cnt(static_cast<std::size_t>(ng), 0);
+    for (const auto& t : all) ++cnt[static_cast<std::size_t>(t.g)];
+
+    CompactBasisGrid cbg;
+    cbg.npts = ng;
+    cbg.weight = grid.weight();
+    // Active points = grid points with >=1 nonzero; assign each an index and its
+    // CSR offset (prefix sum of counts over active points only).
+    std::vector<long> g2a(static_cast<std::size_t>(ng), -1);
+    cbg.off.push_back(0);
+    std::size_t run = 0;
+    for (long g = 0; g < ng; ++g) {
+        if (cnt[static_cast<std::size_t>(g)] == 0) continue;
+        g2a[static_cast<std::size_t>(g)] = static_cast<long>(cbg.gidx.size());
+        cbg.gidx.push_back(g);
+        run += static_cast<std::size_t>(cnt[static_cast<std::size_t>(g)]);
+        cbg.off.push_back(run);
+    }
+    cbg.fu.resize(run);
+    cbg.fv.resize(run);
+    std::vector<std::size_t> cur(cbg.gidx.size(), 0);
+    for (const auto& t : all) {
+        const long a = g2a[static_cast<std::size_t>(t.g)];
+        const std::size_t pos = cbg.off[static_cast<std::size_t>(a)] +
+                                cur[static_cast<std::size_t>(a)]++;
+        cbg.fu[pos] = t.u;
+        cbg.fv[pos] = t.v;
+    }
+    return cbg;
+}
+
+std::vector<double> collocate_density(const CompactBasisGrid& cbg, int nbasis,
+                                      const std::vector<double>& P) {
+    std::vector<double> rho(static_cast<std::size_t>(cbg.npts), 0.0);
+    const long na = static_cast<long>(cbg.gidx.size());
+#pragma omp parallel for schedule(dynamic, 64)
+    for (long a = 0; a < na; ++a) {
+        const std::size_t s = cbg.off[static_cast<std::size_t>(a)];
+        const std::size_t e = cbg.off[static_cast<std::size_t>(a) + 1];
+        double acc = 0.0;
+        for (std::size_t ia = s; ia < e; ++ia) {
+            const double* Pu = &P[static_cast<std::size_t>(cbg.fu[ia]) * nbasis];
+            const double va = cbg.fv[ia];
+            double s2 = 0.0;
+            for (std::size_t ib = s; ib < e; ++ib) s2 += Pu[cbg.fu[ib]] * cbg.fv[ib];
+            acc += va * s2;
+        }
+        rho[cbg.gidx[static_cast<std::size_t>(a)]] = acc;
+    }
+    return rho;
+}
+
+std::vector<double> integrate_potential(const CompactBasisGrid& cbg, int nbasis,
+                                        const std::vector<double>& V_r) {
+    const std::size_t nn = static_cast<std::size_t>(nbasis) * nbasis;
+    std::vector<double> V(nn, 0.0);
+    const long na = static_cast<long>(cbg.gidx.size());
+    const double w = cbg.weight;
+#pragma omp parallel
+    {
+        std::vector<double> Vloc(nn, 0.0);
+#pragma omp for schedule(dynamic, 64) nowait
+        for (long a = 0; a < na; ++a) {
+            const std::size_t s = cbg.off[static_cast<std::size_t>(a)];
+            const std::size_t e = cbg.off[static_cast<std::size_t>(a) + 1];
+            const double vw = V_r[cbg.gidx[static_cast<std::size_t>(a)]] * w;
+            for (std::size_t ia = s; ia < e; ++ia) {
+                const double fu = cbg.fv[ia] * vw;
+                double* Vu = &Vloc[static_cast<std::size_t>(cbg.fu[ia]) * nbasis];
+                for (std::size_t ib = s; ib < e; ++ib) Vu[cbg.fu[ib]] += fu * cbg.fv[ib];
+            }
+        }
+#pragma omp critical
+        for (std::size_t kk = 0; kk < nn; ++kk) V[kk] += Vloc[kk];
+    }
+    return V;
+}
 
 std::vector<double> eval_basis_on_grid(const UniformGrid& grid,
                                        const std::vector<GridBasisFunction>& basis,

@@ -53,6 +53,44 @@ struct UniformGrid {
 /// @param cutoff_ry Density grid cutoff [Ry].
 UniformGrid make_uniform_grid(const double cell_abc[3], double cutoff_ry);
 
+/// @brief Compact (per-grid-point) basis representation for collocation.
+///
+/// Each Gaussian basis function is non-negligible only within a finite radius of
+/// its center, so at any grid point only a handful of functions are nonzero. This
+/// stores, per ACTIVE grid point (any function above `eps`), the list of
+/// (function index, value) pairs — a CSR-by-point layout. It replaces the dense
+/// `npts x nbasis` matrix (which is O(ngrid*nbasis) in both memory — prohibitive
+/// at scale — and per-iter work O(na*nbasis^2)). Collocation/integration over it
+/// cost O(sum_g k_g^2) with k_g = nonzero functions at point g, not nbasis^2.
+/// Built once per geometry; the min-image periodic wrap (and the non-periodic
+/// raw-displacement path) match `eval_basis_on_grid`.
+struct CompactBasisGrid {
+    std::vector<long> gidx;        ///< active grid-point linear indices (length na).
+    std::vector<std::size_t> off;  ///< CSR offsets into fu/fv (length na+1).
+    std::vector<int> fu;           ///< function index per nonzero (length nnz).
+    std::vector<double> fv;        ///< φ_fu(r_g) value per nonzero (length nnz).
+    long npts = 0;                 ///< total grid points (for output sizing).
+    double weight = 0.0;           ///< grid integration weight per point.
+};
+
+/// @brief Build the compact per-point basis representation from per-Gaussian
+///        bounding boxes (no dense npts x nbasis matrix is ever formed).
+/// @param eps drop a function at a point when |φ| <= eps; chosen tight enough
+///        (default 1e-12) that the dropped Gaussian tails are below the SCF
+///        energy tolerance, so collocation/integration are bit-equivalent to the
+///        dense path. @param periodic see `eval_basis_on_grid`.
+CompactBasisGrid build_compact_basis_grid(const UniformGrid& grid,
+                                          const std::vector<GridBasisFunction>& basis,
+                                          bool periodic, double eps = 1e-12);
+
+/// @brief Collocate ρ(r) = Σ_uv P_uv φ_u(r) φ_v(r) over the compact representation.
+std::vector<double> collocate_density(const CompactBasisGrid& cbg, int nbasis,
+                                      const std::vector<double>& P);
+
+/// @brief Integrate V_uv = Σ_g w φ_u(g) V(g) φ_v(g) over the compact representation.
+std::vector<double> integrate_potential(const CompactBasisGrid& cbg, int nbasis,
+                                        const std::vector<double>& V_r);
+
 /// @brief Evaluate every basis function at every grid point.
 /// @param periodic When true, the Gaussian-to-grid displacement uses the
 ///        minimum image per axis, so atoms outside [0,L) (unwrapped periodic
