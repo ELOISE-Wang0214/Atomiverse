@@ -61,4 +61,6 @@ endif()
 # 09 — GPW DFT (isolated water, PBE + MT); needs the GPW module (RHF + PW/FFTW3).
 if(ATV_BUILD_GPW AND ATV_BUILD_PW)
     atv_add_cpp_example(09_gpw)
+    # 10 — GPW DFT for the full 1214-atom ZnO-EDL slab (gpw-edl-aimd capstone).
+    atv_add_cpp_example(10_gpw_znoedl)
 endif()
