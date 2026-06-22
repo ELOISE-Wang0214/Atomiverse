@@ -299,13 +299,119 @@ double gth_matrix_element(const GridBasisFunction& mu, const GridBasisFunction& 
                                 return; // atom too far for any PP contribution
                             if (!at.cloc.empty())
                                 v += cc * gth_local_sr(pp, qq, apos, at.rloc, at.cloc);
-                            for (const auto& ch : at.nonlocal)
-                                v += cc * gth_nonlocal(pp, qq, apos, ch);
+                            // V_nl (nonlocal) is built separately by add_nonlocal_kb
+                            // in the separable Kleinman-Bylander form: recomputing
+                            // the projector overlaps per basis PAIR here is O(nb²·proj)
+                            // and was the GPW setup bottleneck (hundreds-× vs CP2K).
                         });
                     }
         }
     }
     return v;
+}
+
+// Separable periodic Kleinman-Bylander assembly of the GTH nonlocal matrix V_nl.
+//   V_nl(μ,ν) = Σ_{A in cell} Σ_{ch,m} Σ_{ij} Oμ[A,ch,m,i] h^ch_ij Oν[A,ch,m,j],
+//   Oμ[A,ch,m,i] = <φ_μ^Γ | proj_{A,ch,m,i}>  (Bloch sum over μ-images reaching A).
+// Each Oμ is computed ONCE per (μ, atom) — vs the old gth_nonlocal recomputing
+// the projector overlaps for every basis PAIR. That per-pair recomputation was
+// O(nb²·prim²·proj·moment3d); this is O(nb·prim·proj·moment3d) projector
+// precompute + cheap O(pairs·proj²) scalar assembly. This is CP2K's GPW form and
+// the fix for the hundreds-× setup gap. The atom loop is parallel; pair writes go
+// through omp atomic (two atoms can both contribute to one (μ,ν)).
+void add_nonlocal_kb(RealMatrix& Vpp, const std::vector<GridBasisFunction>& basis,
+                     const std::vector<GpwAtom>& atoms, const std::vector<double>& radii,
+                     const double L[3], const int mimg[3], const BasisCells& bcells) {
+    const int natoms = static_cast<int>(atoms.size());
+    double rad_max = 0.0;
+    for (double r : radii) rad_max = std::max(rad_max, r);
+    const double proj_eps = std::sqrt(2.0 * std::log(1.0 / kBuildScreen));
+#pragma omp parallel for schedule(dynamic, 1)
+    for (int ai = 0; ai < natoms; ++ai) {
+        const GpwAtom& at = atoms[static_cast<std::size_t>(ai)];
+        if (at.nonlocal.empty()) continue;
+        double rmax_ch = 0.0;
+        for (const auto& ch : at.nonlocal) rmax_ch = std::max(rmax_ch, ch.r);
+        const double proj_reach = rmax_ch * proj_eps;
+        // Flat slot layout over (channel, m, iproj); per-channel base offsets.
+        int nslot = 0;
+        std::vector<int> choff(at.nonlocal.size());
+        for (std::size_t c = 0; c < at.nonlocal.size(); ++c) {
+            choff[c] = nslot;
+            nslot += (2 * at.nonlocal[c].l + 1) * at.nonlocal[c].nproj;
+        }
+        const double* A = at.pos;
+        // Gather basis funcs reaching A. The periodic cell-list query around A
+        // already accounts for A's images relative to the (home) basis centres.
+        std::vector<int> mus;
+        std::vector<std::vector<double>> Ov, hOv;
+        bcells.query(A, rad_max + proj_reach, [&](int mu) {
+            const GridBasisFunction& bf = basis[static_cast<std::size_t>(mu)];
+            if (bf.empty()) return;
+            const double reach = radii[static_cast<std::size_t>(mu)] + proj_reach;
+            const double reach2 = reach * reach;
+            std::vector<double> o(static_cast<std::size_t>(nslot), 0.0);
+            bool any = false;
+            for (const auto& p : bf) {
+                if (p.coeff == 0.0) continue;
+                // Bloch sum: every μ-image whose centre reaches A contributes.
+                for (int tx = -mimg[0]; tx <= mimg[0]; ++tx)
+                    for (int ty = -mimg[1]; ty <= mimg[1]; ++ty)
+                        for (int tz = -mimg[2]; tz <= mimg[2]; ++tz) {
+                            Prim g = to_prim(p);
+                            g.center[0] += tx * L[0];
+                            g.center[1] += ty * L[1];
+                            g.center[2] += tz * L[2];
+                            const double dx = g.center[0] - A[0], dy = g.center[1] - A[1],
+                                         dz = g.center[2] - A[2];
+                            if (dx * dx + dy * dy + dz * dz > reach2) continue;
+                            for (std::size_t c = 0; c < at.nonlocal.size(); ++c) {
+                                const auto& ch = at.nonlocal[c];
+                                const int nm = 2 * ch.l + 1;
+                                for (int mm = 0; mm < nm; ++mm)
+                                    for (int ip = 0; ip < ch.nproj; ++ip)
+                                        o[static_cast<std::size_t>(choff[c] + mm * ch.nproj + ip)] +=
+                                            p.coeff * gth_projector_overlap(g, A, ch.l, ip + 1,
+                                                                            ch.r, mm);
+                            }
+                            any = true;
+                        }
+            }
+            if (!any) return;
+            // Apply the channel coupling once: hO[i] = Σ_j h_ij O[j] within (ch,m).
+            std::vector<double> ho(static_cast<std::size_t>(nslot), 0.0);
+            for (std::size_t c = 0; c < at.nonlocal.size(); ++c) {
+                const auto& ch = at.nonlocal[c];
+                const int nm = 2 * ch.l + 1;
+                for (int mm = 0; mm < nm; ++mm) {
+                    const int base = choff[c] + mm * ch.nproj;
+                    for (int i = 0; i < ch.nproj; ++i) {
+                        double s = 0.0;
+                        for (int j = 0; j < ch.nproj; ++j)
+                            s += ch.hij(i, j) * o[static_cast<std::size_t>(base + j)];
+                        ho[static_cast<std::size_t>(base + i)] = s;
+                    }
+                }
+            }
+            mus.push_back(mu);
+            Ov.push_back(std::move(o));
+            hOv.push_back(std::move(ho));
+        });
+        // V_nl(μ,ν) += Oμ · (h Oν), full double loop fills both off-diagonals.
+        const int ng = static_cast<int>(mus.size());
+        for (int k1 = 0; k1 < ng; ++k1)
+            for (int k2 = 0; k2 < ng; ++k2) {
+                double s = 0.0;
+                const std::vector<double>& o1 = Ov[static_cast<std::size_t>(k1)];
+                const std::vector<double>& h2 = hOv[static_cast<std::size_t>(k2)];
+                for (int t = 0; t < nslot; ++t)
+                    s += o1[static_cast<std::size_t>(t)] * h2[static_cast<std::size_t>(t)];
+                if (s == 0.0) continue;
+                double& dst = Vpp(mus[static_cast<std::size_t>(k1)], mus[static_cast<std::size_t>(k2)]);
+#pragma omp atomic
+                dst += s;
+            }
+    }
 }
 
 // Max Gaussian-product prefactor over all primitive pairs of (mu,nu): bounds the
@@ -575,6 +681,9 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
                                            cfg.cell, mimg, reach);
         });
     }
+    // GTH nonlocal V_nl via the separable Kleinman-Bylander form (projectors
+    // computed once per (basis,atom), not per basis pair) — adds onto Vpp.
+    add_nonlocal_kb(Vpp, basis, atoms, radii, cfg.cell, mimg, bcells);
     const RealMatrix H0 = T + Vpp;
     smark("STVpp_build");
 
