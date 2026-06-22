@@ -146,6 +146,76 @@ struct AtomCells {
     }
 };
 
+// Spatial bin list of basis-function CENTERS, so the geometry-fixed S/T/Vpp
+// build visits only the O(neighbours) pairs (i,j) whose supports can overlap
+// instead of all nb² — turning the outer build loop from O(nb²) (every pair
+// screened) into O(nb·neighbours). Periodic orthorhombic; query returns each
+// basis index once. Conservative: a surviving pair has centres within
+// radii[i]+radii[j] ≤ radii[i]+rad_max (min-image), so querying that radius
+// misses none; the exact pair_overlap_bound screen then filters → bit-identical.
+struct BasisCells {
+    double L[3] = {0, 0, 0};
+    int nc[3] = {1, 1, 1};
+    double cs[3] = {1, 1, 1};
+    bool periodic = true;
+    std::vector<std::vector<int>> bins;
+
+    void build(const std::vector<GridBasisFunction>& basis, const double cell[3],
+               double target_cs, bool per) {
+        periodic = per;
+        long ntot = 1;
+        for (int d = 0; d < 3; ++d) {
+            L[d] = cell[d];
+            nc[d] = std::max(1, static_cast<int>(std::floor(L[d] / target_cs)));
+            cs[d] = L[d] / nc[d];
+            ntot *= nc[d];
+        }
+        bins.assign(static_cast<std::size_t>(ntot), {});
+        for (int b = 0; b < static_cast<int>(basis.size()); ++b) {
+            if (basis[static_cast<std::size_t>(b)].empty()) continue;
+            const double* ctr = basis[static_cast<std::size_t>(b)][0].center;
+            int c[3];
+            for (int d = 0; d < 3; ++d) {
+                double x = ctr[d];
+                if (periodic && L[d] > 0.0) x -= L[d] * std::floor(x / L[d]);
+                c[d] = std::min(nc[d] - 1, std::max(0, static_cast<int>(x / cs[d])));
+            }
+            bins[static_cast<std::size_t>((c[0] * nc[1] + c[1]) * nc[2] + c[2])]
+                .push_back(b);
+        }
+    }
+
+    // Visit every basis index whose bin lies within radius R of P (each once).
+    template <typename Visit>
+    void query(const double P[3], double R, Visit visit) const {
+        int cells[3][256];
+        int len[3];
+        for (int d = 0; d < 3; ++d) {
+            double x = P[d];
+            if (periodic && L[d] > 0.0) x -= L[d] * std::floor(x / L[d]);
+            const int pc = std::min(nc[d] - 1, std::max(0, static_cast<int>(x / cs[d])));
+            const int span = static_cast<int>(std::ceil(R / cs[d])) + 1;
+            int n = 0;
+            if (!periodic) {
+                for (int c = std::max(0, pc - span); c <= std::min(nc[d] - 1, pc + span); ++c)
+                    if (n < 256) cells[d][n++] = c;
+            } else if (2 * span + 1 >= nc[d]) {
+                for (int c = 0; c < nc[d] && n < 256; ++c) cells[d][n++] = c;
+            } else {
+                for (int t = -span; t <= span && n < 256; ++t)
+                    cells[d][n++] = ((pc + t) % nc[d] + nc[d]) % nc[d];
+            }
+            len[d] = n;
+        }
+        for (int i = 0; i < len[0]; ++i)
+            for (int j = 0; j < len[1]; ++j) {
+                const int base = (cells[0][i] * nc[1] + cells[1][j]) * nc[2];
+                for (int k = 0; k < len[2]; ++k)
+                    for (int b : bins[static_cast<std::size_t>(base + cells[2][k])]) visit(b);
+            }
+    }
+};
+
 // <mu| V_loc^sr + V_nl |nu> summed over all atoms acting as PP centers.
 //
 // Screened: a primitive pair (p,q) is skipped when its Gaussian product
@@ -470,9 +540,8 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
     // The geometry-fixed one-electron / GTH matrices dominate the GPW SCF wall
     // time at scale (profiled: ~75-80% for hundreds of atoms; the eigensolve is
     // <2%). Each (i,j) is an independent primitive contraction → parallelize the
-    // outer index. NOTE: gth_matrix_element still loops ALL atoms per pair
-    // (O(nb²·natoms)); spatial screening of that atom loop is the next, larger
-    // algorithmic win (the PP contribution is local).
+    // outer index. The atom loop inside gth is cell-list screened (acells), and
+    // the outer pair loop is cell-list screened (bcells, below) → O(nb·neigh).
     const bool sprof = std::getenv("ATV_GPW_PROF") != nullptr;
     auto sclk = std::chrono::steady_clock::now();
     auto smark = [&](const char* what) {
@@ -482,21 +551,29 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
                      std::chrono::duration<double, std::milli>(now - sclk).count());
         sclk = now;
     };
+    // Basis-center cell list: the outer S/T/Vpp build is O(nb²) only because every
+    // pair is screened; the overlaps are short-ranged, so visit only neighbours.
+    // ATV_GPW_NOCELLS forces one giant cell (query returns all j) for A/B bit-id.
+    BasisCells bcells;
+    bcells.build(basis, cfg.cell, std::getenv("ATV_GPW_NOCELLS") ? 1e30 : rmax, periodic);
 #pragma omp parallel for schedule(dynamic, 8)
     for (int i = 0; i < nb; ++i) {
-        for (int j = 0; j < nb; ++j) {
+        if (basis[i].empty()) continue;
+        const double* ci = basis[i][0].center;
+        const double Rq = radii[static_cast<std::size_t>(i)] + rmax; // conservative
+        bcells.query(ci, Rq, [&](int j) {
             // Overlap pair screening: S, T, Vpp are all bounded by the Gaussian
             // product magnitude of (i,j). If even the best primitive pair is
             // below the screen, the whole element is negligible -> leave 0.
             if (pair_overlap_bound(basis[i], basis[j], cfg.cell, periodic) < kBuildScreen)
-                continue;
+                return;
             const double reach = radii[static_cast<std::size_t>(i)] +
                                  radii[static_cast<std::size_t>(j)];
             S(i, j) = overlap(basis[i], basis[j], cfg.cell, mimg, reach);
             T(i, j) = kinetic(basis[i], basis[j], cfg.cell, mimg, reach);
             Vpp(i, j) = gth_matrix_element(basis[i], basis[j], atoms, acells, rmax_pp,
                                            cfg.cell, mimg, reach);
-        }
+        });
     }
     const RealMatrix H0 = T + Vpp;
     smark("STVpp_build");
