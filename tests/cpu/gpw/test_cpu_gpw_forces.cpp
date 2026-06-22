@@ -159,3 +159,50 @@ TEST(GpwForces, ZnOAnalyticVsFiniteDifference) {
     std::printf("[GPW F ZnO] max|F|=%.6f  max|dF|=%.3e Ha/Bohr\n", max_abs, max_err);
     EXPECT_LT(max_err, 5e-5) << "ZnO analytic vs FD mismatch (GGA/d-proj/f-basis)";
 }
+
+// PERIODIC analytic forces: H2O (DZVP-MOLOPT-SR-GTH, the EDL water basis) in a
+// tight cubic box where the Γ-point lattice images are active (m>=1). Closed
+// shell, converges cleanly. The analytic forces must reproduce the periodic
+// finite-difference oracle (gpw_scf at +/-h, itself lattice-sum periodic) — i.e.
+// the force is image-consistent with the energy (the AIMD requirement).
+TEST(GpwForces, H2OPeriodicAnalyticVsFiniteDifference) {
+    constexpr double kAng = 1.8897259885789;
+    const auto bO = parse_gth_basis(kData + "/BASIS_MOLOPT", "O", "DZVP-MOLOPT-SR-GTH");
+    const auto bH = parse_gth_basis(kData + "/BASIS_MOLOPT", "H", "DZVP-MOLOPT-SR-GTH");
+    const auto pO = parse_gth_potential(kData + "/GTH_POTENTIALS", "O", "GTH-PBE-q6");
+    const auto pH = parse_gth_potential(kData + "/GTH_POTENTIALS", "H", "GTH-PBE-q1");
+
+    // Bent water, off-centre, so every component is nonzero.
+    const double rO[3] = {2.6 * kAng, 2.5 * kAng, 2.4 * kAng};
+    const double rH1[3] = {3.16 * kAng, 2.5 * kAng, 2.9 * kAng};
+    const double rH2[3] = {2.1 * kAng, 2.5 * kAng, 2.95 * kAng};
+    std::vector<GpwAtom> atoms = {make_gpw_atom(rO, bO, pO),
+                                  make_gpw_atom(rH1, bH, pH),
+                                  make_gpw_atom(rH2, bH, pH)};
+
+    GpwConfig cfg;
+    cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 5.0 * kAng; // ~9.4 Bohr: images active
+    cfg.cutoff_ry = 120.0;
+    cfg.n_occ = 4; // 8 valence electrons (O q6 + 2 H q1)
+    cfg.max_iter = 200;
+    cfg.tol = 1e-9;
+    cfg.xc = XcKind::PBE;
+    cfg.nonperiodic = false; // PERIODIC: exercises the lattice-sum force path
+
+    const auto Fa = gpw_forces_analytic(atoms, cfg);
+    const auto Ffd = gpw_forces_fd(atoms, cfg, 1e-3);
+
+    double max_abs = 0.0, max_err = 0.0;
+    for (int a = 0; a < 3; ++a)
+        for (int k = 0; k < 3; ++k) {
+            max_abs = std::max(max_abs, std::abs(Ffd[a][k]));
+            max_err = std::max(max_err, std::abs(Fa[a][k] - Ffd[a][k]));
+            std::printf("[GPW F H2O-per] atom %d axis %d  analytic % .8f  fd % .8f  d % .2e\n",
+                        a, k, Fa[a][k], Ffd[a][k], Fa[a][k] - Ffd[a][k]);
+        }
+    std::printf("[GPW F H2O-per] max|F|=%.6f  max|dF|=%.3e Ha/Bohr\n", max_abs, max_err);
+    // Periodic multi-image collocation carries a slightly larger egg-box residual
+    // than the enlarged-box cases; gate at 1e-3 (the analytic/FD agreement that
+    // confirms image consistency, well below physical force magnitudes ~0.1).
+    EXPECT_LT(max_err, 1e-3) << "H2O periodic analytic vs FD mismatch";
+}
