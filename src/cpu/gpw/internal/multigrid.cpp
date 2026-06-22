@@ -585,7 +585,8 @@ std::vector<double> collocate_products(const UniformGrid& grid,
                                        const std::vector<GridProduct>& prods,
                                        int nb, const std::vector<double>& P,
                                        double eps) {
-    std::vector<double> rho(static_cast<std::size_t>(grid.npts()), 0.0);
+    const std::size_t npts = static_cast<std::size_t>(grid.npts());
+    std::vector<double> rho(npts, 0.0);
     const long np = static_cast<long>(prods.size());
     if (std::getenv("ATV_GPW_PROF")) {
         static long printed = 0;
@@ -594,10 +595,17 @@ std::vector<double> collocate_products(const UniformGrid& grid,
             ++printed;
         }
     }
+    // Per-thread scatter buffers, then a PARALLEL reduction over grid points
+    // (the old #pragma omp critical merged all buffers single-threaded — that
+    // serial pass became the bottleneck once exp-recurrence cut the compute).
+    const int nt = omp_get_max_threads();
+    std::vector<std::vector<double>> tl(static_cast<std::size_t>(nt));
 #pragma omp parallel
     {
-        std::vector<double> loc(static_cast<std::size_t>(grid.npts()), 0.0);
-#pragma omp for schedule(dynamic, 64) nowait
+        const int tid = omp_get_thread_num();
+        tl[static_cast<std::size_t>(tid)].assign(npts, 0.0); // first-touch on owner
+        std::vector<double>& loc = tl[static_cast<std::size_t>(tid)];
+#pragma omp for schedule(dynamic, 64)
         for (long ip = 0; ip < np; ++ip) {
             const GridProduct& prod = prods[static_cast<std::size_t>(ip)];
             const double w =
@@ -606,8 +614,15 @@ std::vector<double> collocate_products(const UniformGrid& grid,
             collocate_one(grid, prod, eps,
                           [&](long g, double v) { loc[static_cast<std::size_t>(g)] += w * v; });
         }
-#pragma omp critical
-        for (std::size_t g = 0; g < rho.size(); ++g) rho[g] += loc[g];
+    }
+#pragma omp parallel for schedule(static)
+    for (long g = 0; g < static_cast<long>(npts); ++g) {
+        double s = 0.0;
+        for (int t = 0; t < nt; ++t) { // skip slots whose thread never ran (dynamic team)
+            const std::vector<double>& b = tl[static_cast<std::size_t>(t)];
+            if (!b.empty()) s += b[static_cast<std::size_t>(g)];
+        }
+        rho[static_cast<std::size_t>(g)] = s;
     }
     return rho;
 }
@@ -620,10 +635,14 @@ std::vector<double> integrate_products(const UniformGrid& grid,
     std::vector<double> V(nn, 0.0);
     const double w = grid.weight();
     const long np = static_cast<long>(prods.size());
+    const int nt = omp_get_max_threads();
+    std::vector<std::vector<double>> tl(static_cast<std::size_t>(nt));
 #pragma omp parallel
     {
-        std::vector<double> Vloc(nn, 0.0);
-#pragma omp for schedule(dynamic, 64) nowait
+        const int tid = omp_get_thread_num();
+        tl[static_cast<std::size_t>(tid)].assign(nn, 0.0);
+        std::vector<double>& Vloc = tl[static_cast<std::size_t>(tid)];
+#pragma omp for schedule(dynamic, 64)
         for (long ip = 0; ip < np; ++ip) {
             const GridProduct& prod = prods[static_cast<std::size_t>(ip)];
             double acc = 0.0;
@@ -633,8 +652,15 @@ std::vector<double> integrate_products(const UniformGrid& grid,
             Vloc[static_cast<std::size_t>(prod.mu) * nb + prod.nu] +=
                 prod.gweight * w * acc;
         }
-#pragma omp critical
-        for (std::size_t kk = 0; kk < nn; ++kk) V[kk] += Vloc[kk];
+    }
+#pragma omp parallel for schedule(static)
+    for (long kk = 0; kk < static_cast<long>(nn); ++kk) {
+        double s = 0.0;
+        for (int t = 0; t < nt; ++t) {
+            const std::vector<double>& b = tl[static_cast<std::size_t>(t)];
+            if (!b.empty()) s += b[static_cast<std::size_t>(kk)];
+        }
+        V[static_cast<std::size_t>(kk)] = s;
     }
     return V;
 }
