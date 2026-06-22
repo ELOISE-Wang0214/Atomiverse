@@ -117,6 +117,12 @@ if(ATV_BUILD_GPW)
     target_compile_definitions(test_cpu_gpw_heavy_elements
         PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
 
+    # Grimme DFT-D3 dispersion (zero damping, PBE) — standalone correction,
+    # validated against CP2K's "Dispersion energy" and FD forces.
+    atv_add_cpp_test(test_cpu_gpw_dftd3            cpu/gpw/test_cpu_gpw_dftd3.cpp)
+    target_compile_definitions(test_cpu_gpw_dftd3
+        PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
+
     # Pure-math tests (no CP2K data files needed).
     atv_add_cpp_test(test_cpu_gpw_gth_integrals    cpu/gpw/test_cpu_gpw_gth_integrals.cpp)
     atv_add_cpp_test(test_cpu_gpw_real_harmonics   cpu/gpw/test_cpu_gpw_real_harmonics.cpp)

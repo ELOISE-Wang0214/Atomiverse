@@ -334,6 +334,10 @@ if(NOT ATV_DOCS_ONLY)
             # a dedicated ATV_BUILD_XC flag exists.
             src/cpu/xc/pade.cpp
             src/cpu/gpw/internal/one_electron.cpp
+            # Grimme DFT-D3 dispersion (zero damping, PBE) — additive,
+            # FFT-free; a standalone correction over the GPW DFT.
+            src/cpu/gpw/internal/dftd3_params.cpp
+            src/cpu/gpw/internal/dftd3.cpp
         )
         # FFT Poisson needs FFTW, supplied by the ATV_BUILD_PW block (fftw3_stub
         # is linked into atomiverse there, so the fftw3.h include propagates).
