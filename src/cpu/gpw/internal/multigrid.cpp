@@ -6,6 +6,8 @@
 #include "atomiverse/cpu/gpw/internal/multigrid.h"
 
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <cmath>
 #include <complex>
 
@@ -566,6 +568,13 @@ std::vector<double> collocate_products(const UniformGrid& grid,
                                        double eps) {
     std::vector<double> rho(static_cast<std::size_t>(grid.npts()), 0.0);
     const long np = static_cast<long>(prods.size());
+    if (std::getenv("ATV_GPW_PROF")) {
+        static long printed = 0;
+        if (printed < 5) {
+            std::fprintf(stderr, "[mg coll] level npts=%ld  products=%ld\n", grid.npts(), np);
+            ++printed;
+        }
+    }
 #pragma omp parallel
     {
         std::vector<double> loc(static_cast<std::size_t>(grid.npts()), 0.0);
