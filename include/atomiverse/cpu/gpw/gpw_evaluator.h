@@ -40,6 +40,8 @@ struct GpwEvaluatorConfig {
     bool nonperiodic = false;
     bool compute_forces = false;      ///< also compute finite-difference forces.
     double fd_step = 1e-3;            ///< FD displacement [Bohr] for forces.
+    bool d3 = false;                  ///< add Grimme DFT-D3 (zero damping, PBE) dispersion.
+    std::string d3_param_file;        ///< path to CP2K's dftd3.dat (required when d3 == true).
     std::vector<GpwElement> elements; ///< one per distinct element in the system.
 };
 

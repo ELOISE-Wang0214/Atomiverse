@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "atomiverse/cpu/gpw/internal/collocate.h"
+#include "atomiverse/cpu/gpw/internal/dftd3.h"
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h"
 #include "atomiverse/cpu/gpw/internal/mt_poisson.h"
 #include "atomiverse/cpu/gpw/internal/one_electron.h"
@@ -318,6 +319,21 @@ gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
             for (int k = 0; k < 3; ++k) acc[k] += vg * d[k];
         }
         for (int k = 0; k < 3; ++k) forces[A][k] += wgt * acc[k];
+    }
+
+    // Grimme DFT-D3 dispersion forces (additive, geometry-only).
+    if (cfg.d3) {
+        std::vector<int> Z(static_cast<std::size_t>(na));
+        std::vector<std::array<double, 3>> pos(static_cast<std::size_t>(na));
+        for (int i = 0; i < na; ++i) {
+            Z[static_cast<std::size_t>(i)] = atoms[static_cast<std::size_t>(i)].z;
+            pos[static_cast<std::size_t>(i)] = {atoms[static_cast<std::size_t>(i)].pos[0],
+                                                atoms[static_cast<std::size_t>(i)].pos[1],
+                                                atoms[static_cast<std::size_t>(i)].pos[2]};
+        }
+        const D3Result d3 = dftd3_pbe(Z, pos, cfg.cell, periodic, cfg.d3_param_file);
+        for (int i = 0; i < na; ++i)
+            for (int k = 0; k < 3; ++k) forces[i][k] += d3.forces[static_cast<std::size_t>(i)][k];
     }
 
     return forces;

@@ -43,7 +43,7 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     for (int i = 0; i < n; ++i) {
         const GpwElement& e = find_element(config_.elements, a.type(i));
         const double pos[3] = {a.x(i) * kAng2Bohr, a.y(i) * kAng2Bohr, a.z(i) * kAng2Bohr};
-        atoms.push_back(make_gpw_atom(pos, e.basis, e.pot));
+        atoms.push_back(make_gpw_atom(pos, e.basis, e.pot, a.type(i)));
         z_val_total += static_cast<double>(e.pot.zion);
     }
 
@@ -58,6 +58,8 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     cfg.mix = config_.mix;
     cfg.xc = config_.xc;
     cfg.nonperiodic = config_.nonperiodic;
+    cfg.d3 = config_.d3;
+    cfg.d3_param_file = config_.d3_param_file;
     if (std::getenv("ATV_GPW_OT")) cfg.use_ot = true; // diagnostic: force OT path
 
     last_ = gpw_scf(atoms, cfg);

@@ -17,6 +17,9 @@
 
 #include <gtest/gtest.h>
 
+#include "atomiverse/cpu/gpw/gpw_solver.h"
+#include "atomiverse/cpu/gpw/internal/cp2k_basis.h"
+#include "atomiverse/cpu/gpw/internal/cp2k_io.h"
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
 #include "atomiverse/cpu/gpw/internal/dftd3_params.h"
 
@@ -120,4 +123,40 @@ TEST(GpwDftD3, PeriodicEnergyAndForces) {
     }
     std::printf("[D3] periodic max |F_analytic - F_fd| = %.2e Ha/Bohr\n", max_err);
     EXPECT_LT(max_err, 1e-7);
+}
+
+// Integration: GpwConfig.d3 must add exactly the standalone D3 energy/force to
+// the GPW result. Uses a fast H2 (MOLOPT-SR/PBE) so the SCF is cheap; the d3-on
+// minus d3-off difference must equal dftd3_pbe() to machine precision.
+TEST(GpwDftD3, IntegratedIntoGpwScf) {
+    using namespace ATV::cpu::gpw;
+    constexpr double kAng = 1.8897259885789;
+    const auto bH = parse_gth_basis(kData + "/BASIS_MOLOPT", "H", "DZVP-MOLOPT-SR-GTH");
+    const auto pH = parse_gth_potential(kData + "/GTH_POTENTIALS", "H", "GTH-PBE-q1");
+    const double rA[3] = {4.0, 4.0, 4.0};
+    const double rB[3] = {4.0, 4.0, 4.0 + 1.6 * kAng};
+    std::vector<GpwAtom> atoms = {make_gpw_atom(rA, bH, pH, 1),
+                                  make_gpw_atom(rB, bH, pH, 1)};
+
+    GpwConfig cfg;
+    cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 8.0 * kAng;
+    cfg.cutoff_ry = 200.0;
+    cfg.n_occ = 1;
+    cfg.tol = 1e-9;
+    cfg.xc = XcKind::PBE;
+    cfg.nonperiodic = true;
+
+    const double e_off = gpw_scf(atoms, cfg).e_total;
+    cfg.d3 = true;
+    cfg.d3_param_file = kData + "/dftd3.dat";
+    const double e_on = gpw_scf(atoms, cfg).e_total;
+
+    const std::vector<int> Z = {1, 1};
+    const std::vector<std::array<double, 3>> pos = {{rA[0], rA[1], rA[2]},
+                                                    {rB[0], rB[1], rB[2]}};
+    const double ed3 =
+        dftd3_pbe(Z, pos, cfg.cell, false, cfg.d3_param_file).energy;
+    std::printf("[D3 integ] e_on-e_off=%.10f  standalone=%.10f\n", e_on - e_off, ed3);
+    EXPECT_NEAR(e_on - e_off, ed3, 1e-9) << "GpwConfig.d3 did not add the D3 energy";
+    EXPECT_LT(ed3, 0.0); // dispersion is attractive
 }

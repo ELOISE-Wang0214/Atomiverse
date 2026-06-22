@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "atomiverse/cpu/gpw/internal/diis.h"
+#include "atomiverse/cpu/gpw/internal/dftd3.h"
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h"
 #include "atomiverse/cpu/gpw/internal/hartree_grid.h"
 #include "atomiverse/cpu/gpw/internal/mt_poisson.h"
@@ -283,9 +284,10 @@ const std::vector<std::vector<std::vector<CartTerm>>>& harmonics() {
 } // namespace
 
 GpwAtom make_gpw_atom(const double pos[3], const GaussianBasis& basis,
-                      const GthPotential& pot) {
+                      const GthPotential& pot, int z) {
     GpwAtom atom;
     atom.z_val = static_cast<double>(pot.zion);
+    atom.z = z;
     atom.pos[0] = pos[0];
     atom.pos[1] = pos[1];
     atom.pos[2] = pos[2];
@@ -355,6 +357,19 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
     }
     int mimg[3];
     image_counts(cfg.cell, periodic, 2.0 * rmax, mimg);
+
+    // Grimme DFT-D3 (zero damping, PBE) dispersion — a geometry-only additive
+    // correction (independent of the SCF), folded into the final total energy.
+    double e_d3 = 0.0;
+    if (cfg.d3) {
+        std::vector<int> Z(atoms.size());
+        std::vector<std::array<double, 3>> pos(Z.size());
+        for (std::size_t i = 0; i < Z.size(); ++i) {
+            Z[i] = atoms[i].z;
+            pos[i] = {atoms[i].pos[0], atoms[i].pos[1], atoms[i].pos[2]};
+        }
+        e_d3 = dftd3_pbe(Z, pos, cfg.cell, periodic, cfg.d3_param_file).energy;
+    }
 
     // Geometry-fixed matrices.
     RealMatrix S = xt::zeros<double>({nb, nb});
@@ -555,6 +570,7 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
                              ms(tA, tD));
             }
         }
+        res.e_total += e_d3;
         return res;
     }
 
@@ -604,6 +620,7 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
             P = (1.0 - cfg.mix) * P + cfg.mix * P_new;
         }
     }
+    res.e_total += e_d3;
     return res;
 }
 

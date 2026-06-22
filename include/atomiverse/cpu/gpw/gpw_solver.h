@@ -16,6 +16,7 @@
 #pragma once
 
 #include <array>
+#include <string>
 #include <vector>
 
 #include "atomiverse/cpu/gpw/internal/collocate.h"
@@ -30,6 +31,7 @@ namespace gpw {
 /// @brief One atom's GPW data: valence charge, basis, and GTH pseudopotential.
 struct GpwAtom {
     double z_val = 0.0;                       ///< valence charge (electrons it contributes).
+    int z = 0;                                ///< atomic number Z (for DFT-D3; 0 = unset).
     double pos[3] = {0, 0, 0};                ///< position [Bohr].
     std::vector<GridBasisFunction> basis;     ///< contracted GTOs, already centered at pos.
     double rloc = 0.0;                        ///< GTH local radius.
@@ -55,6 +57,9 @@ struct GpwConfig {
     int diis_depth = 6;         ///< Pulay DIIS history depth; 0 disables DIIS (falls back to linear `mix`).
     XcKind xc = XcKind::PADE;   ///< LDA (PADE) or GGA (PBE).
     bool nonperiodic = false;   ///< use the isolated (MT) Poisson solver.
+    bool d3 = false;            ///< add Grimme DFT-D3 (zero damping, PBE) dispersion
+                                ///< to the energy and forces (requires GpwAtom.z set).
+    std::string d3_param_file;  ///< path to CP2K's dftd3.dat (required when d3 == true).
     /// @brief Use the OT (orbital transformation) minimizer instead of dense
     /// diagonalization. Diagonalization-free SCF (gradient O(nb²·n_occ)); the
     /// path to large systems where the O(nb³) eigensolve is prohibitive.
@@ -93,8 +98,9 @@ struct GpwResult {
 /// factor is irrelevant to the energy). Angular functions are the (2L+1)
 /// pure-spherical real solid harmonics from real_solid_harmonics(L), for any L.
 /// @param pos Atom position [Bohr]; z_val is taken from `pot.zion`.
+/// @param z   Atomic number Z (optional; needed only for DFT-D3, GpwConfig.d3).
 GpwAtom make_gpw_atom(const double pos[3], const GaussianBasis& basis,
-                      const GthPotential& pot);
+                      const GthPotential& pot, int z = 0);
 
 /// @brief Run the closed-shell GPW SCF for a set of atoms.
 GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg);
