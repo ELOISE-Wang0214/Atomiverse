@@ -471,16 +471,19 @@ namespace {
 // the product center, evaluate at the UNWRAPPED real position (image offset in r,
 // no min-image), wrap the storage index, accumulate. `add(g, value)` receives the
 // wrapped linear index and the product value (poly·exp) at that point.
+// SEPARABLE collocation: the product Gaussian factorizes as
+//   exp(-p|r-P|²)·(r-ra)^la·(r-rb)^lb = Fx(x)·Fy(y)·Fz(z),
+// so the per-axis factor (Gaussian × 1D polynomial) is precomputed ONCE over the
+// 1D window (exp evaluated O(window) times, not O(window³)) and the 3D window is
+// filled by the outer product — no per-point exp, no gather, vectorizable inner.
 template <typename Add>
 inline void collocate_one(const UniformGrid& grid, const GridProduct& prod,
                           double eps, Add add) {
-    const long n0 = grid.n[0], n1 = grid.n[1], n2 = grid.n[2];
-    const double dx0 = grid.L[0] / n0, dx1 = grid.L[1] / n1, dx2 = grid.L[2] / n2;
+    const long n[3] = {grid.n[0], grid.n[1], grid.n[2]};
+    const double dx[3] = {grid.L[0] / n[0], grid.L[1] / n[1], grid.L[2] / n[2]};
     const int Ltot = prod.la[0] + prod.la[1] + prod.la[2] + prod.lb[0] +
                      prod.lb[1] + prod.lb[2];
     const double rc = product_radius(prod.gweight, prod.p, Ltot, eps);
-    const long n[3] = {n0, n1, n2};
-    const double dx[3] = {dx0, dx1, dx2};
     long lo[3], hi[3];
     for (int d = 0; d < 3; ++d) {
         const long ih = static_cast<long>(std::ceil(rc / dx[d]));
@@ -488,32 +491,52 @@ inline void collocate_one(const UniformGrid& grid, const GridProduct& prod,
         lo[d] = ic - ih;
         hi[d] = ic + ih;
     }
-    for (long i = lo[0]; i <= hi[0]; ++i) {
-        const long ii = ((i % n0) + n0) % n0;
-        const double r0 = grid.origin[0] + grid.L[0] * static_cast<double>(i) / n0;
-        for (long j = lo[1]; j <= hi[1]; ++j) {
-            const long jj = ((j % n1) + n1) % n1;
-            const double r1 = grid.origin[1] + grid.L[1] * static_cast<double>(j) / n1;
-            const long base = (ii * n1 + jj) * n2;
-            for (long k = lo[2]; k <= hi[2]; ++k) {
-                const long kk = ((k % n2) + n2) % n2;
-                const double r2 = grid.origin[2] + grid.L[2] * static_cast<double>(k) / n2;
-                // Gaussian centered at the product center (unwrapped position).
-                const double ex = r0 - prod.pc[0], ey = r1 - prod.pc[1],
-                             ez = r2 - prod.pc[2];
-                double val = std::exp(-prod.p * (ex * ex + ey * ey + ez * ez));
-                // Polynomial (r-ra)^la (r-rb)^lb at the unwrapped position.
-                const double ax = r0 - prod.ra[0], ay = r1 - prod.ra[1],
-                             az = r2 - prod.ra[2];
-                const double bx = r0 - prod.rb[0], by = r1 - prod.rb[1],
-                             bz = r2 - prod.rb[2];
-                for (int e = 0; e < prod.la[0]; ++e) val *= ax;
-                for (int e = 0; e < prod.la[1]; ++e) val *= ay;
-                for (int e = 0; e < prod.la[2]; ++e) val *= az;
-                for (int e = 0; e < prod.lb[0]; ++e) val *= bx;
-                for (int e = 0; e < prod.lb[1]; ++e) val *= by;
-                for (int e = 0; e < prod.lb[2]; ++e) val *= bz;
-                if (val != 0.0) add(base + kk, val);
+    // Per-axis 1D factor F_d[t] (t = index − lo[d]) = exp(-p (r−Pc)²) (r−ra)^la (r−rb)^lb,
+    // and the wrapped storage index w_d[t]. Small scratch (window widths).
+    const int la[3] = {prod.la[0], prod.la[1], prod.la[2]};
+    const int lb[3] = {prod.lb[0], prod.lb[1], prod.lb[2]};
+    double* F[3];
+    long* W[3];
+    int len[3];
+    // Stack-ish scratch sized to the (capped) windows; fall back to heap if huge.
+    std::vector<double> fbuf;
+    std::vector<long> wbuf;
+    int total = 0;
+    for (int d = 0; d < 3; ++d) { len[d] = static_cast<int>(hi[d] - lo[d] + 1); total += len[d]; }
+    fbuf.resize(static_cast<std::size_t>(total));
+    wbuf.resize(static_cast<std::size_t>(total));
+    int off = 0;
+    for (int d = 0; d < 3; ++d) {
+        F[d] = &fbuf[static_cast<std::size_t>(off)];
+        W[d] = &wbuf[static_cast<std::size_t>(off)];
+        off += len[d];
+        for (int t = 0; t < len[d]; ++t) {
+            const long idx = lo[d] + t;
+            const double r = grid.origin[d] + grid.L[d] * static_cast<double>(idx) / n[d];
+            const double e = r - prod.pc[d];
+            double v = std::exp(-prod.p * e * e);
+            const double a = r - prod.ra[d], b = r - prod.rb[d];
+            for (int q = 0; q < la[d]; ++q) v *= a;
+            for (int q = 0; q < lb[d]; ++q) v *= b;
+            F[d][t] = v;
+            W[d][t] = ((idx % n[d]) + n[d]) % n[d];
+        }
+    }
+    // Outer-product fill. The Gaussian is already factored, so the inner loop is a
+    // single multiply per point (no exp, no gather).
+    for (int ti = 0; ti < len[0]; ++ti) {
+        const double fx = F[0][ti];
+        if (fx == 0.0) continue;
+        const long ii = W[0][ti];
+        for (int tj = 0; tj < len[1]; ++tj) {
+            const double fxy = fx * F[1][tj];
+            if (fxy == 0.0) continue;
+            const long base = (ii * n[1] + W[1][tj]) * n[2];
+            const double* Fz = F[2];
+            const long* Wz = W[2];
+            for (int tk = 0; tk < len[2]; ++tk) {
+                const double v = fxy * Fz[tk];
+                if (v != 0.0) add(base + Wz[tk], v);
             }
         }
     }

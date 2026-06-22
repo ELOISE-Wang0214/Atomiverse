@@ -382,6 +382,15 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
     // outer index. NOTE: gth_matrix_element still loops ALL atoms per pair
     // (O(nb²·natoms)); spatial screening of that atom loop is the next, larger
     // algorithmic win (the PP contribution is local).
+    const bool sprof = std::getenv("ATV_GPW_PROF") != nullptr;
+    auto sclk = std::chrono::steady_clock::now();
+    auto smark = [&](const char* what) {
+        if (!sprof) return;
+        auto now = std::chrono::steady_clock::now();
+        std::fprintf(stderr, "[gpw setup] %-14s %.0f ms\n", what,
+                     std::chrono::duration<double, std::milli>(now - sclk).count());
+        sclk = now;
+    };
 #pragma omp parallel for schedule(dynamic, 8)
     for (int i = 0; i < nb; ++i) {
         for (int j = 0; j < nb; ++j) {
@@ -398,15 +407,18 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
         }
     }
     const RealMatrix H0 = T + Vpp;
+    smark("STVpp_build");
 
     // Geometry-fixed ionic density and the constant self-energy to remove.
     const std::vector<double> n_ion = ionic_density(grid, atoms, !cfg.nonperiodic);
     double e_self = 0.0;
     for (const auto& a : atoms) e_self += core_self_energy(a);
+    smark("ionic_density");
 
     // Core (H0) initial guess.
     auto [eig0, C0] = linalg::diagonalize_fock_generalized(H0, S);
     RealMatrix P = linalg::build_density_matrix(C0, cfg.n_occ, nb, 2.0);
+    smark("init_eigensolve");
 
     // Basis-on-grid is geometry-fixed: evaluate the Gaussians once and reuse
     // across all SCF iterations. The molecule fills a small part of the box, so
@@ -418,6 +430,7 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
     // O(na*nb^2) per iter; the compact path is O(sum_g k_g^2), k_g << nb.
     const CompactBasisGrid cbg =
         build_compact_basis_grid(grid, basis, periodic, eps_default);
+    smark("cbg_build");
 
     // CP2K-style REL_CUTOFF multigrid (gated on ngrids>1 && rel_cutoff>0). Each
     // primitive-pair product of the density is assigned (by its combined exponent)
