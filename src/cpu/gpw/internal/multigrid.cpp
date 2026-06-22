@@ -515,11 +515,30 @@ inline void collocate_one(const UniformGrid& grid, const GridProduct& prod,
         E2[d] = &ebuf[static_cast<std::size_t>(off)];
         W[d] = &wbuf[static_cast<std::size_t>(off)];
         off += len[d];
-        for (int t = 0; t < len[d]; ++t) {
+        // Gaussian via exp recurrence (CP2K), propagated OUTWARD from the centre so
+        // it stays bounded (starting at an edge would overflow B=exp(-2p e dx) for
+        // sharp functions): exp(-p(e±dx)²)=exp(-p e²)·B^{±}·A, A=exp(-p dx²),
+        // B^{±}=exp(∓2p e dx), advanced by ·A². 3 exps/axis instead of len[d].
+        const double dxd = grid.L[d] / n[d];
+        const double A = std::exp(-prod.p * dxd * dxd);
+        const double A2 = A * A;
+        const int tc = (len[d] - 1) / 2; // centre offset (window is 2·ih+1, odd)
+        const double rc_ = grid.origin[d] + grid.L[d] * static_cast<double>(lo[d] + tc) / n[d];
+        const double ec = rc_ - prod.pc[d];
+        F[d][tc] = std::exp(-prod.p * ec * ec); // centre Gaussian (ec sub-grid, small)
+        { // outward to the right (e increasing)
+            double g = F[d][tc], B = std::exp(-2.0 * prod.p * ec * dxd);
+            for (int t = tc + 1; t < len[d]; ++t) { g *= B * A; F[d][t] = g; B *= A2; }
+        }
+        { // outward to the left (e decreasing)
+            double g = F[d][tc], C = std::exp(2.0 * prod.p * ec * dxd);
+            for (int t = tc - 1; t >= 0; --t) { g *= C * A; F[d][t] = g; C *= A2; }
+        }
+        for (int t = 0; t < len[d]; ++t) { // polynomial, |r-Pc|², wrapped index
             const long idx = lo[d] + t;
             const double r = grid.origin[d] + grid.L[d] * static_cast<double>(idx) / n[d];
             const double e = r - prod.pc[d];
-            double v = std::exp(-prod.p * e * e);
+            double v = F[d][t];
             const double a = r - prod.ra[d], b = r - prod.rb[d];
             for (int q = 0; q < la[d]; ++q) v *= a;
             for (int q = 0; q < lb[d]; ++q) v *= b;
