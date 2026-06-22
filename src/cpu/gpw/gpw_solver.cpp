@@ -80,6 +80,72 @@ Prim to_prim(const GridPrimitive& p) {
 // remain dense (the overlap matrices are not sparse for this geometry).
 constexpr double kBuildScreen = 1e-12;
 
+// Spatial bin list of atom positions for O(1)-per-query neighbour lookup, so the
+// GTH atom loop (PP is short-ranged) visits only atoms near a basis-pair product
+// centre instead of all N — turning the O(nb²·natoms) build into O(nb²). Periodic
+// orthorhombic; query returns each atom once (gth applies its own min-image).
+struct AtomCells {
+    double L[3] = {0, 0, 0};
+    int nc[3] = {1, 1, 1};
+    double cs[3] = {1, 1, 1};
+    bool periodic = true;
+    std::vector<std::vector<int>> bins;
+
+    void build(const std::vector<GpwAtom>& atoms, const double cell[3],
+               double target_cs, bool per) {
+        periodic = per;
+        long ntot = 1;
+        for (int d = 0; d < 3; ++d) {
+            L[d] = cell[d];
+            nc[d] = std::max(1, static_cast<int>(std::floor(L[d] / target_cs)));
+            cs[d] = L[d] / nc[d];
+            ntot *= nc[d];
+        }
+        bins.assign(static_cast<std::size_t>(ntot), {});
+        for (int a = 0; a < static_cast<int>(atoms.size()); ++a) {
+            int c[3];
+            for (int d = 0; d < 3; ++d) {
+                double x = atoms[a].pos[d];
+                if (periodic && L[d] > 0.0) x -= L[d] * std::floor(x / L[d]);
+                c[d] = std::min(nc[d] - 1, std::max(0, static_cast<int>(x / cs[d])));
+            }
+            bins[static_cast<std::size_t>((c[0] * nc[1] + c[1]) * nc[2] + c[2])].push_back(a);
+        }
+    }
+
+    // Visit every atom whose bin lies within radius R of P (each atom once).
+    template <typename Visit>
+    void query(const double P[3], double R, Visit visit) const {
+        int cells[3][256];
+        int len[3];
+        for (int d = 0; d < 3; ++d) {
+            double x = P[d];
+            if (periodic && L[d] > 0.0) x -= L[d] * std::floor(x / L[d]);
+            const int pc = std::min(nc[d] - 1, std::max(0, static_cast<int>(x / cs[d])));
+            // +1 guards the floor slop: an atom within R can land one cell beyond
+            // ceil(R/cs) from pc, so visit that extra layer (no neighbour missed).
+            const int span = static_cast<int>(std::ceil(R / cs[d])) + 1;
+            int n = 0;
+            if (!periodic) {
+                for (int c = std::max(0, pc - span); c <= std::min(nc[d] - 1, pc + span); ++c)
+                    if (n < 256) cells[d][n++] = c;
+            } else if (2 * span + 1 >= nc[d]) {
+                for (int c = 0; c < nc[d] && n < 256; ++c) cells[d][n++] = c; // whole axis
+            } else {
+                for (int t = -span; t <= span && n < 256; ++t)
+                    cells[d][n++] = ((pc + t) % nc[d] + nc[d]) % nc[d];
+            }
+            len[d] = n;
+        }
+        for (int i = 0; i < len[0]; ++i)
+            for (int j = 0; j < len[1]; ++j) {
+                const int base = (cells[0][i] * nc[1] + cells[1][j]) * nc[2];
+                for (int k = 0; k < len[2]; ++k)
+                    for (int a : bins[static_cast<std::size_t>(base + cells[2][k])]) visit(a);
+            }
+    }
+};
+
 // <mu| V_loc^sr + V_nl |nu> summed over all atoms acting as PP centers.
 //
 // Screened: a primitive pair (p,q) is skipped when its Gaussian product
@@ -98,12 +164,18 @@ constexpr double kBuildScreen = 1e-12;
 // contributes — taken by min-image, no atom-image loop. `m` (from image_counts)
 // must match the basis-collocation / overlap image set for consistency.
 double gth_matrix_element(const GridBasisFunction& mu, const GridBasisFunction& nu,
-                          const std::vector<GpwAtom>& atoms, const double L[3],
-                          const int m[3], double reach) {
+                          const std::vector<GpwAtom>& atoms, const AtomCells& cells,
+                          double rmax_global, const double L[3], const int m[3],
+                          double reach) {
     if (mu.empty() || nu.empty()) return 0.0;
     const double* muc = mu[0].center;
     const double* nuc = nu[0].center;
     const double reach2 = reach * reach;
+    const bool per = m[0] || m[1] || m[2];
+    // Widest PP across all atoms → smallest κ → largest possible screen reach;
+    // used to size the spatial query conservatively (the exact per-atom screen
+    // below is unchanged, so results are bit-identical to the all-atoms loop).
+    const double kappa_min = 1.0 / (2.0 * rmax_global * rmax_global);
     double v = 0.0;
     for (const auto& p : mu) {
         const Prim pp = to_prim(p);
@@ -134,27 +206,32 @@ double gth_matrix_element(const GridBasisFunction& mu, const GridBasisFunction& 
                         const double Kpq = std::exp(-a * b / g * dpq2);
                         if (acc * Kpq < kBuildScreen) continue; // image too far
                         const Prim qq = to_prim(q);
-                        for (const auto& at : atoms) {
+                        // Query radius: dPA² where the (conservative, widest-PP)
+                        // screen reaches kBuildScreen — atoms beyond it can't pass.
+                        const double Rq = std::sqrt(std::max(
+                            0.0, std::log(acc * Kpq / kBuildScreen) *
+                                     (g + kappa_min) / (g * kappa_min)));
+                        cells.query(P, Rq, [&](int ai) {
+                            const GpwAtom& at = atoms[static_cast<std::size_t>(ai)];
                             double rmax = at.rloc;
                             for (const auto& ch : at.nonlocal) rmax = std::max(rmax, ch.r);
                             const double kappa = 1.0 / (2.0 * rmax * rmax);
-                            // nearest periodic image of this atom to the product center
                             double apos[3], dPA2 = 0.0;
                             for (int d = 0; d < 3; ++d) {
                                 apos[d] = at.pos[d];
-                                if (L[d] > 0.0 && (m[0] || m[1] || m[2]))
+                                if (L[d] > 0.0 && per)
                                     apos[d] -= L[d] * std::nearbyint((at.pos[d] - P[d]) / L[d]);
                                 const double e = P[d] - apos[d];
                                 dPA2 += e * e;
                             }
                             if (acc * Kpq * std::exp(-(g * kappa / (g + kappa)) * dPA2) <
                                 kBuildScreen)
-                                continue; // atom too far for any PP contribution
+                                return; // atom too far for any PP contribution
                             if (!at.cloc.empty())
                                 v += cc * gth_local_sr(pp, qq, apos, at.rloc, at.cloc);
                             for (const auto& ch : at.nonlocal)
                                 v += cc * gth_nonlocal(pp, qq, apos, ch);
-                        }
+                        });
                     }
         }
     }
@@ -359,6 +436,19 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
     int mimg[3];
     image_counts(cfg.cell, periodic, 2.0 * rmax, mimg);
 
+    // Atom cell list + widest PP width, for the O(nb²) (was O(nb²·natoms)) GTH
+    // build: each basis-pair queries only atoms near its product centre.
+    double rmax_pp = 0.0;
+    for (const auto& at : atoms) {
+        double r = at.rloc;
+        for (const auto& ch : at.nonlocal) r = std::max(r, ch.r);
+        rmax_pp = std::max(rmax_pp, r);
+    }
+    AtomCells acells;
+    // ATV_GPW_NOCELLS forces one giant cell (query returns all atoms) — the
+    // pre-cell-list path, for bit-identity A/B verification.
+    acells.build(atoms, cfg.cell, std::getenv("ATV_GPW_NOCELLS") ? 1e30 : 3.0, periodic);
+
     // Grimme DFT-D3 (zero damping, PBE) dispersion — a geometry-only additive
     // correction (independent of the SCF), folded into the final total energy.
     double e_d3 = 0.0;
@@ -403,7 +493,8 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
                                  radii[static_cast<std::size_t>(j)];
             S(i, j) = overlap(basis[i], basis[j], cfg.cell, mimg, reach);
             T(i, j) = kinetic(basis[i], basis[j], cfg.cell, mimg, reach);
-            Vpp(i, j) = gth_matrix_element(basis[i], basis[j], atoms, cfg.cell, mimg, reach);
+            Vpp(i, j) = gth_matrix_element(basis[i], basis[j], atoms, acells, rmax_pp,
+                                           cfg.cell, mimg, reach);
         }
     }
     const RealMatrix H0 = T + Vpp;
@@ -470,8 +561,12 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
     // transition-metal / semicore systems (Zn-q12, Na-q9) that linear mixing
     // stalls on, and is the prerequisite for scaling to large cells.
     const bool use_diis = cfg.diis_depth > 0;
-    const RealMatrix X =
-        use_diis ? linalg::build_orthogonalization_matrix(S) : RealMatrix{};
+    // X = S^{-1/2} is only used by the DIIS loop. The OT path never reaches it, so
+    // skip the O(nb³) build entirely when OT is selected (a per-step saving that
+    // grows as N³ — at the EDL scale this was tens of seconds of wasted work).
+    const RealMatrix X = (use_diis && !cfg.use_ot)
+                             ? linalg::build_orthogonalization_matrix(S)
+                             : RealMatrix{};
     internal::GpwDiis diis(use_diis ? cfg.diis_depth : 1);
     // DIIS commutator-residual threshold: a converged step must have both a
     // stable energy and a near-zero [H,P]_S residual (guards against declaring
