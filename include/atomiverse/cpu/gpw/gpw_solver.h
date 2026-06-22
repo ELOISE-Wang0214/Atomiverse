@@ -103,7 +103,13 @@ GpwAtom make_gpw_atom(const double pos[3], const GaussianBasis& basis,
                       const GthPotential& pot, int z = 0);
 
 /// @brief Run the closed-shell GPW SCF for a set of atoms.
-GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg);
+/// @param guess_C Optional warm-start MO coefficients (nb×nb, occupied in the
+///        first n_occ columns — e.g. a previous step's GpwResult::C, or an ASPC
+///        extrapolation). When given, the O(nb³) core-Hamiltonian initial
+///        diagonalization is skipped and the SCF starts from this guess, cutting
+///        the iteration count for AIMD/geometry sweeps. nullptr = cold start.
+GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
+                  const linalg::RealMatrix* guess_C = nullptr);
 
 /// @brief Finite-difference forces F_a = -dE/dR_a via central differences.
 ///

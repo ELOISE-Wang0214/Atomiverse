@@ -409,7 +409,8 @@ GpwAtom make_gpw_atom(const double pos[3], const GaussianBasis& basis,
     return atom;
 }
 
-GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
+GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
+                  const RealMatrix* guess_C) {
 #ifdef ATV_GPW_FFTW_THREADS
     // One-time global FFTW threading init; fftw_plan_with_nthreads is a global
     // setting, so every FFT plan created downstream (Poisson, GGA grad/div, MT)
@@ -507,7 +508,15 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
     smark("ionic_density");
 
     // Core (H0) initial guess.
-    auto [eig0, C0] = linalg::diagonalize_fock_generalized(H0, S);
+    // Warm start: use the supplied guess (skip the O(nb³) core diagonalization);
+    // cold start falls back to diagonalizing the core Hamiltonian H0.
+    RealMatrix C0;
+    if (guess_C != nullptr && static_cast<int>(guess_C->shape(0)) == nb &&
+        static_cast<int>(guess_C->shape(1)) == nb) {
+        C0 = *guess_C;
+    } else {
+        C0 = std::get<1>(linalg::diagonalize_fock_generalized(H0, S));
+    }
     RealMatrix P = linalg::build_density_matrix(C0, cfg.n_occ, nb, 2.0);
     smark("init_eigensolve");
 
@@ -773,6 +782,14 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
                              iter, ms(tA, tB), ms(tB, tC), ms(tC, tD), ls_rebuilds,
                              ms(tA, tD));
             }
+        }
+        // Always expose the final occupied orbitals as res.C (first n_occ columns),
+        // so the next step / an ASPC predictor can warm-start even if this solve
+        // plateaued short of the tolerance.
+        if (static_cast<int>(res.C.shape(0)) != nb) {
+            res.C = xt::zeros<double>({nb, nb});
+            for (int u = 0; u < nb; ++u)
+                for (int i = 0; i < cfg.n_occ; ++i) res.C(u, i) = Cocc(u, i);
         }
         res.e_total += e_d3;
         return res;

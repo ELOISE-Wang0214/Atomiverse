@@ -101,4 +101,27 @@ TEST(GpwEdlFrag, PeriodicEnergyVsCp2k) {
     std::printf("[EDL] conv=%d iters=%d  E_total=%.6f Ha  (CP2K -1702.32)\n", r.converged,
                 r.iters, r.e_total);
     EXPECT_TRUE(std::isfinite(r.e_total));
+
+    // Warm-start demo (ATV_EDL_WARMDEMO): emulate one AIMD step — nudge every atom
+    // by ~0.05 Bohr, then solve the new geometry COLD vs WARM (from the previous
+    // converged orbitals, as ASPC would supply). Warm should converge in far fewer
+    // iterations to the same energy: the per-MD-step SCF cost the dynamics sees.
+    if (std::getenv("ATV_EDL_WARMDEMO")) {
+        std::vector<GpwAtom> moved = atoms;
+        for (std::size_t i = 0; i < moved.size(); ++i) {
+            const double s = (i % 2 ? 0.05 : -0.05);
+            moved[i].pos[0] += s;
+            moved[i].pos[1] -= s;
+            moved[i].pos[2] += 0.5 * s;
+        }
+        // Fixed small SCF budget (one AIMD step's worth): the warm run, starting
+        // from the previous geometry's orbitals (as ASPC would supply), should be
+        // far closer to the self-consistent energy than the cold run.
+        GpwConfig step = cfg;
+        step.max_iter = std::getenv("ATV_EDL_STEPIT") ? std::atoi(std::getenv("ATV_EDL_STEPIT")) : 8;
+        const GpwResult cold = gpw_scf(moved, step);
+        const GpwResult warm = gpw_scf(moved, step, &r.C);
+        std::printf("[EDL warm] %d-iter budget | cold E=%.6f | warm E=%.6f | warm−cold=%.4f Ha\n",
+                    step.max_iter, cold.e_total, warm.e_total, warm.e_total - cold.e_total);
+    }
 }
