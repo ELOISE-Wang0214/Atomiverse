@@ -528,8 +528,19 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
     // within its radius (CSR-by-point), built once. Replaces the dense
     // npts x nb matrix — prohibitive in memory at scale (ngrid*nb*8 bytes) and
     // O(na*nb^2) per iter; the compact path is O(sum_g k_g^2), k_g << nb.
+    // Multigrid (ngrids>1 && rel_cutoff>0) collocates per-level products; the
+    // single grid uses the cbg gather path. (Single-grid products lost an A/B —
+    // cbg pre-contracts primitives into χ_u once, products redo primitive work
+    // each iter — so products serve only the genuine multigrid.)
+    const bool use_mg = cfg.ngrids > 1 && cfg.rel_cutoff > 0.0;
+    const bool use_prod = use_mg;
+    // Only the single-grid path uses cbg; the multigrid path collocates per-level
+    // products instead. Building cbg on the fine grid is prohibitive at production
+    // cutoff (CUTOFF 320 → ~8M points × diffuse functions = >100 GB of triples), so
+    // skip it entirely under multigrid.
     const CompactBasisGrid cbg =
-        build_compact_basis_grid(grid, basis, periodic, eps_default);
+        use_prod ? CompactBasisGrid{}
+                 : build_compact_basis_grid(grid, basis, periodic, eps_default);
     smark("cbg_build");
 
     // CP2K-style REL_CUTOFF multigrid (gated on ngrids>1 && rel_cutoff>0). Each
@@ -540,11 +551,6 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
     // restricted back to each level to integrate the KS matrix. ngrids==1 leaves
     // the single-grid path above untouched (bit-identical). The product list is
     // geometry-fixed (excludes P); P is applied per SCF iteration.
-    const bool use_mg = cfg.ngrids > 1 && cfg.rel_cutoff > 0.0;
-    // The single-grid product path lost an A/B to the cbg gather path (the cbg
-    // pre-contracts primitives into χ_u once; products redo primitive work every
-    // iteration), so products are used only for the genuine multigrid (ngrids>1).
-    const bool use_prod = use_mg;
     MultiGrid mg;
     ProductSet products;
     // Inter-level transfer is spectral (band-limited FFT interpolation): a diffuse
