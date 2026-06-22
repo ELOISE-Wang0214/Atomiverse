@@ -492,22 +492,25 @@ inline void collocate_one(const UniformGrid& grid, const GridProduct& prod,
         hi[d] = ic + ih;
     }
     // Per-axis 1D factor F_d[t] (t = index − lo[d]) = exp(-p (r−Pc)²) (r−ra)^la (r−rb)^lb,
-    // and the wrapped storage index w_d[t]. Small scratch (window widths).
+    // the squared distance E2_d[t] = (r−Pc)² (for the sphere cull), and the wrapped
+    // storage index w_d[t]. Small scratch (window widths).
     const int la[3] = {prod.la[0], prod.la[1], prod.la[2]};
     const int lb[3] = {prod.lb[0], prod.lb[1], prod.lb[2]};
     double* F[3];
+    double* E2[3];
     long* W[3];
     int len[3];
-    // Stack-ish scratch sized to the (capped) windows; fall back to heap if huge.
-    std::vector<double> fbuf;
+    std::vector<double> fbuf, ebuf;
     std::vector<long> wbuf;
     int total = 0;
     for (int d = 0; d < 3; ++d) { len[d] = static_cast<int>(hi[d] - lo[d] + 1); total += len[d]; }
     fbuf.resize(static_cast<std::size_t>(total));
+    ebuf.resize(static_cast<std::size_t>(total));
     wbuf.resize(static_cast<std::size_t>(total));
     int off = 0;
     for (int d = 0; d < 3; ++d) {
         F[d] = &fbuf[static_cast<std::size_t>(off)];
+        E2[d] = &ebuf[static_cast<std::size_t>(off)];
         W[d] = &wbuf[static_cast<std::size_t>(off)];
         off += len[d];
         for (int t = 0; t < len[d]; ++t) {
@@ -519,22 +522,36 @@ inline void collocate_one(const UniformGrid& grid, const GridProduct& prod,
             for (int q = 0; q < la[d]; ++q) v *= a;
             for (int q = 0; q < lb[d]; ++q) v *= b;
             F[d][t] = v;
+            E2[d][t] = e * e;
             W[d][t] = ((idx % n[d]) + n[d]) % n[d];
         }
     }
-    // Outer-product fill. The Gaussian is already factored, so the inner loop is a
-    // single multiply per point (no exp, no gather).
+    // SPHERE-screened outer-product fill (CP2K-style): the product Gaussian is
+    // negligible outside radius rc, so skip the cube corners — for each (i,j)
+    // column only the z-range with (x−Px)²+(y−Py)²+(z−Pz)² ≤ rc² is collocated
+    // (~2× fewer points than the cube). Dropped points have value < eps already.
+    const double rc2 = rc * rc;
+    const double invdz = static_cast<double>(n[2]) / grid.L[2]; // grid-index per Bohr, z
     for (int ti = 0; ti < len[0]; ++ti) {
-        const double fx = F[0][ti];
-        if (fx == 0.0) continue;
+        const double fx = F[0][ti], ex2 = E2[0][ti];
+        if (fx == 0.0 || ex2 > rc2) continue;
         const long ii = W[0][ti];
         for (int tj = 0; tj < len[1]; ++tj) {
+            const double r2xy = ex2 + E2[1][tj];
+            if (r2xy > rc2) continue;
             const double fxy = fx * F[1][tj];
             if (fxy == 0.0) continue;
             const long base = (ii * n[1] + W[1][tj]) * n[2];
+            const double zr = std::sqrt(rc2 - r2xy);
+            long klo = static_cast<long>(
+                           std::ceil((prod.pc[2] - zr - grid.origin[2]) * invdz)) - lo[2];
+            long khi = static_cast<long>(
+                           std::floor((prod.pc[2] + zr - grid.origin[2]) * invdz)) - lo[2];
+            if (klo < 0) klo = 0;
+            if (khi > static_cast<long>(len[2]) - 1) khi = len[2] - 1;
             const double* Fz = F[2];
             const long* Wz = W[2];
-            for (int tk = 0; tk < len[2]; ++tk) {
+            for (long tk = klo; tk <= khi; ++tk) {
                 const double v = fxy * Fz[tk];
                 if (v != 0.0) add(base + Wz[tk], v);
             }
