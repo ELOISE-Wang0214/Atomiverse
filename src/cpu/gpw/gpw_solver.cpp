@@ -441,6 +441,10 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
     // the single-grid path above untouched (bit-identical). The product list is
     // geometry-fixed (excludes P); P is applied per SCF iteration.
     const bool use_mg = cfg.ngrids > 1 && cfg.rel_cutoff > 0.0;
+    // The single-grid product path lost an A/B to the cbg gather path (the cbg
+    // pre-contracts primitives into χ_u once; products redo primitive work every
+    // iteration), so products are used only for the genuine multigrid (ngrids>1).
+    const bool use_prod = use_mg;
     MultiGrid mg;
     ProductSet products;
     // Inter-level transfer is spectral (band-limited FFT interpolation): a diffuse
@@ -450,10 +454,11 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
     // (the G=0 mode is preserved) and restrict_fft is its exact adjoint, so the KS
     // integration stays the exact gradient of the collocated energy and the SCF is
     // variational — no per-level mass-conservation correction is needed.
-    if (use_mg) {
-        mg = make_multigrid(cfg.cell, cfg.cutoff_ry, cfg.ngrids, cfg.rel_cutoff);
-        products = build_products(mg, basis, cfg.cell, cfg.rel_cutoff, eps_default,
-                                  periodic);
+    if (use_prod) {
+        const int nlev = use_mg ? cfg.ngrids : 1;
+        const double rcut = use_mg ? cfg.rel_cutoff : cfg.cutoff_ry; // 1 level → all products on it
+        mg = make_multigrid(cfg.cell, cfg.cutoff_ry, nlev, rcut);
+        products = build_products(mg, basis, cfg.cell, rcut, eps_default, periodic);
     }
 
     GpwResult res;
@@ -490,7 +495,7 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
         // Density on the finest grid. Single-grid: direct compact collocation.
         // Multigrid: collocate each level's products, prolong to the fine grid.
         std::vector<double> rho;
-        if (use_mg) {
+        if (use_prod) {
             rho.assign(static_cast<std::size_t>(mg.levels[0].npts()), 0.0);
             for (std::size_t l = 0; l < mg.levels.size(); ++l) {
                 std::vector<double> rho_l = collocate_products(
@@ -530,7 +535,7 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
         // integrate each level's products — the adjoint of the density assembly,
         // so the KS matrix stays the exact gradient of the collocated energy.
         RealMatrix Vgrid;
-        if (use_mg) {
+        if (use_prod) {
             std::vector<double> V_ks(static_cast<std::size_t>(nb) * nb, 0.0);
             for (std::size_t l = 0; l < mg.levels.size(); ++l) {
                 std::vector<double> V_l;
