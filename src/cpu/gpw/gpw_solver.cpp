@@ -24,6 +24,7 @@
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h"
 #include "atomiverse/cpu/gpw/internal/hartree_grid.h"
 #include "atomiverse/cpu/gpw/internal/mt_poisson.h"
+#include "atomiverse/cpu/gpw/internal/multigrid.h"
 #include "atomiverse/cpu/gpw/internal/one_electron.h"
 #include "atomiverse/cpu/gpw/internal/ot.h"
 #include "atomiverse/cpu/gpw/internal/periodic.h"
@@ -418,6 +419,30 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
     const CompactBasisGrid cbg =
         build_compact_basis_grid(grid, basis, periodic, eps_default);
 
+    // CP2K-style REL_CUTOFF multigrid (gated on ngrids>1 && rel_cutoff>0). Each
+    // primitive-pair product of the density is assigned (by its combined exponent)
+    // to the coarsest grid level that resolves it; diffuse products collocate on a
+    // coarse grid (far fewer points). The per-level densities are prolonged to the
+    // finest grid for the (nonlinear) Hartree+XC, and the fine potential is
+    // restricted back to each level to integrate the KS matrix. ngrids==1 leaves
+    // the single-grid path above untouched (bit-identical). The product list is
+    // geometry-fixed (excludes P); P is applied per SCF iteration.
+    const bool use_mg = cfg.ngrids > 1 && cfg.rel_cutoff > 0.0;
+    MultiGrid mg;
+    ProductSet products;
+    // Inter-level transfer is spectral (band-limited FFT interpolation): a diffuse
+    // density collocated on a coarse level is embedded into the fine grid's Fourier
+    // spectrum at the same physical frequencies and zero-padded above the coarse
+    // Nyquist (shape-exact, unlike trilinear). prolong_fft conserves mass natively
+    // (the G=0 mode is preserved) and restrict_fft is its exact adjoint, so the KS
+    // integration stays the exact gradient of the collocated energy and the SCF is
+    // variational — no per-level mass-conservation correction is needed.
+    if (use_mg) {
+        mg = make_multigrid(cfg.cell, cfg.cutoff_ry, cfg.ngrids, cfg.rel_cutoff);
+        products = build_products(mg, basis, cfg.cell, cfg.rel_cutoff, eps_default,
+                                  periodic);
+    }
+
     GpwResult res;
     double e_prev = 0.0;
 
@@ -443,7 +468,33 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
     // and OT paths.
     auto build_H_and_energy = [&](const RealMatrix& Pin) -> std::pair<RealMatrix, double> {
         const std::vector<double> Pvec = mat_to_vec(Pin, nb);
-        std::vector<double> rho = collocate_density(cbg, nb, Pvec);
+        // Density on the finest grid. Single-grid: direct compact collocation.
+        // Multigrid: collocate each level's products, prolong to the fine grid.
+        std::vector<double> rho;
+        if (use_mg) {
+            rho.assign(static_cast<std::size_t>(mg.levels[0].npts()), 0.0);
+            for (std::size_t l = 0; l < mg.levels.size(); ++l) {
+                std::vector<double> rho_l = collocate_products(
+                    mg.levels[l], products.by_level[l], nb, Pvec, eps_default);
+                if (l == 0) {
+                    rho = std::move(rho_l); // finest level is the reference grid
+                } else {
+                    // Spectral (band-limited) prolongation to the fine grid:
+                    // shape-exact and mass-conserving (no D_l correction).
+                    const std::vector<double> up = prolong_fft(
+                        mg.levels[l], mg.levels[0], rho_l, periodic);
+                    for (std::size_t g = 0; g < rho.size(); ++g) rho[g] += up[g];
+                }
+            }
+        } else {
+            rho = collocate_density(cbg, nb, Pvec);
+        }
+        if (use_mg && std::getenv("ATV_GPW_MG_TRACE")) {
+            double qe = 0.0;
+            for (double v : rho) qe += v;
+            qe *= grid.weight();
+            std::fprintf(stderr, "[gpw mg] int rho_fine = %.10f (Tr(P S) check)\n", qe);
+        }
         std::vector<double> n_tot(rho.size());
         for (std::size_t g = 0; g < rho.size(); ++g) n_tot[g] = rho[g] - n_ion[g];
         const PoissonResult es =
@@ -452,8 +503,32 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
             cfg.xc == XcKind::PBE ? xc_grid_pbe(grid, rho) : xc_grid_pade(grid, rho);
         std::vector<double> veff(rho.size());
         for (std::size_t g = 0; g < rho.size(); ++g) veff[g] = es.v_r[g] + xc.vxc_r[g];
-        const RealMatrix Vgrid =
-            vec_to_mat(integrate_potential(cbg, nb, veff), nb);
+        // KS grid matrix. Single-grid: integrate veff directly. Multigrid:
+        // restrict the fine potential to each level (the transpose of prolong) and
+        // integrate each level's products — the adjoint of the density assembly,
+        // so the KS matrix stays the exact gradient of the collocated energy.
+        RealMatrix Vgrid;
+        if (use_mg) {
+            std::vector<double> V_ks(static_cast<std::size_t>(nb) * nb, 0.0);
+            for (std::size_t l = 0; l < mg.levels.size(); ++l) {
+                std::vector<double> V_l;
+                if (l == 0) {
+                    V_l = veff;
+                } else {
+                    // Exact adjoint of the spectral prolongation used for the
+                    // density: restrict the fine potential by spectral truncation,
+                    // so the KS matrix is the exact gradient of the collocated
+                    // energy (variational SCF).
+                    V_l = restrict_fft(mg.levels[0], mg.levels[l], veff, periodic);
+                }
+                const std::vector<double> Vl_ks = integrate_products(
+                    mg.levels[l], products.by_level[l], nb, V_l, eps_default);
+                for (std::size_t kk = 0; kk < V_ks.size(); ++kk) V_ks[kk] += Vl_ks[kk];
+            }
+            Vgrid = vec_to_mat(V_ks, nb);
+        } else {
+            Vgrid = vec_to_mat(integrate_potential(cbg, nb, veff), nb);
+        }
         const RealMatrix H = H0 + Vgrid;
         res.e_kinetic = trace_product(Pin, T, nb);
         res.e_nonlocal = 0.0; // folded into e_loc_sr below for the first cut

@@ -74,6 +74,129 @@ std::vector<double> restrict_transpose(const UniformGrid& fine,
                                        const std::vector<double>& f_fine,
                                        bool periodic);
 
+/// @brief Prolong (interpolate) a coarse-grid field onto the fine grid by
+///        SPECTRAL (band-limited / Fourier) interpolation — the shape-exact
+///        replacement for `prolong_trilinear`.
+///
+/// Forward-FFT @p f_coarse on the coarse grid, copy every coarse Fourier mode to
+/// the SAME physical frequency on the fine grid (zero-padding the higher fine
+/// frequencies), then inverse-FFT on the fine grid. Because the coarse and fine
+/// grids share the box `L`, integer mode `m` maps to the same physical frequency
+/// `G = 2π m / L` on both, so the embedding is a copy by mode index. The
+/// normalization (×N_fine/N_coarse on each mode) preserves VALUES (a field
+/// band-limited below the coarse Nyquist is reproduced exactly at every fine
+/// point) and conserves mass (∫prolong(f) = ∫f). Coarse Nyquist modes (index
+/// ±n_c/2 on any axis) are split half/half between +n_c/2 and −n_c/2 on the fine
+/// grid so the interpolant stays real and Hermitian.
+///
+/// Orthorhombic + periodic only (the production multigrid case). For
+/// `periodic == false` it falls back to `prolong_trilinear`.
+/// @param coarse Source grid.
+/// @param fine Target grid (sizes even, n_fine >= n_coarse per axis, same L).
+/// @param f_coarse Coarse-grid field, length coarse.npts().
+/// @param periodic When false, defers to `prolong_trilinear`.
+/// @return Fine-grid field, length fine.npts().
+std::vector<double> prolong_fft(const UniformGrid& coarse, const UniformGrid& fine,
+                                const std::vector<double>& f_coarse, bool periodic);
+
+/// @brief Restrict a fine-grid field onto the coarse grid as the EXACT ADJOINT
+///        of `prolong_fft` w.r.t. the grid integration inner products:
+///        ⟨V_fine, prolong_fft(g)⟩_fine = ⟨restrict_fft(V_fine), g⟩_coarse.
+///
+/// In G-space this is the transpose of the zero-pad embedding: forward-FFT
+/// @p f_fine on the fine grid, TRUNCATE to the coarse modes (the transpose of
+/// zero-padding; Nyquist modes summed back from their split halves with the same
+/// half/half weights as `prolong_fft`), inverse-FFT on the coarse grid with the
+/// transpose normalization (×N_coarse/N_fine on each mode). Adjointness keeps the
+/// integrated KS matrix the exact gradient of the collocated energy, so the
+/// multigrid SCF stays variational.
+///
+/// Orthorhombic + periodic only. For `periodic == false` it falls back to
+/// `restrict_transpose`.
+/// @param fine Source grid.
+/// @param coarse Target grid (sizes even, n_coarse <= n_fine per axis, same L).
+/// @param f_fine Fine-grid field, length fine.npts().
+/// @param periodic When false, defers to `restrict_transpose`.
+/// @return Coarse-grid field, length coarse.npts().
+std::vector<double> restrict_fft(const UniformGrid& fine, const UniformGrid& coarse,
+                                 const std::vector<double>& f_fine, bool periodic);
+
+/// @brief One primitive-pair PRODUCT Gaussian, assigned to a grid level.
+///
+/// The density ρ = Σ_μν P_μν χ_μ χ_ν is a sum of primitive-pair products. For a
+/// primitive a∈μ (exponent α_a, Cartesian powers la, center r_a) and b∈ν
+/// (α_b, lb, r_b), the product is a single Gaussian of exponent p = α_a+α_b
+/// centered at P_ab = (α_a r_a + α_b r_b)/p, with the Gaussian-product prefactor
+/// K = exp(−α_a α_b/p |r_a−r_b|²) folded into `gweight`, times the polynomial
+/// (r−r_a)^la (r−r_b)^lb. Periodic images of the two factors are expanded as
+/// separate products (each carries its own shifted centers `ra`/`rb`), exactly
+/// reproducing the cross-image Γ-point product Σ_{T,T'} φ_μ(r−T) φ_ν(r−T').
+///
+/// `gweight` is geometry-fixed (it excludes P_μν); the per-SCF density weight is
+/// P[mu*nb+nu]·gweight, applied at collocation time. The KS scatter target is the
+/// (mu,nu) element.
+struct GridProduct {
+    int mu = 0, nu = 0;        ///< basis-function indices (KS scatter target).
+    double p = 0.0;            ///< combined exponent α_a + α_b.
+    double pc[3] = {0, 0, 0};  ///< product center P_ab [Bohr].
+    double ra[3] = {0, 0, 0};  ///< bra primitive center (shifted image) [Bohr].
+    double rb[3] = {0, 0, 0};  ///< ket primitive center (shifted image) [Bohr].
+    int la[3] = {0, 0, 0};     ///< bra Cartesian powers.
+    int lb[3] = {0, 0, 0};     ///< ket Cartesian powers.
+    double gweight = 0.0;      ///< c_a·c_b·K (geometry-fixed; excludes P_μν).
+    int level = 0;             ///< assigned grid level (index into MultiGrid::levels).
+};
+
+/// @brief A product list partitioned by grid level: `by_level[l]` holds every
+///        primitive-pair product assigned to `MultiGrid::levels[l]`.
+struct ProductSet {
+    std::vector<std::vector<GridProduct>> by_level; ///< products per level.
+};
+
+/// @brief Build the geometry-fixed primitive-pair product list (the product-based
+///        density expansion), assigning each product to the coarsest grid level
+///        whose cutoff resolves its combined exponent p (mirrors `assign_levels`
+///        with the exponent = p). Periodic image pairs are expanded so the
+///        collocated density reproduces the Γ-point cross-image product.
+/// @param mg The multigrid (levels finest-first).
+/// @param basis Global contracted-Gaussian basis.
+/// @param L Box lengths [Bohr].
+/// @param rel_cutoff CP2K REL_CUTOFF [Ry] — exponent→level calibration.
+/// @param eps Gaussian-tail screening tolerance (drops negligible product
+///        prefactors and bounds the per-product collocation window).
+/// @param periodic When true, expand lattice images of both factors; false
+///        (isolated) uses the single in-box pair.
+ProductSet build_products(const MultiGrid& mg,
+                          const std::vector<GridBasisFunction>& basis,
+                          const double L[3], double rel_cutoff, double eps,
+                          bool periodic);
+
+/// @brief Collocate every product assigned to one level into ρ_level, weighted by
+///        the density matrix: ρ_level(r) += Σ_prod P[mu*nb+nu]·gweight·poly·
+///        exp(−p|r−P_ab|²). Uses the same unwrapped-window + wrap-index + sum
+///        convention as `build_compact_basis_grid` so the periodic product
+///        density matches the single-grid path.
+/// @param grid The level's uniform grid.
+/// @param prods Products assigned to this level (from `ProductSet::by_level[l]`).
+/// @param nb Basis size (row stride of `P`).
+/// @param P Density matrix, row-major nb×nb.
+/// @param eps Collocation-window screening tolerance.
+std::vector<double> collocate_products(const UniformGrid& grid,
+                                       const std::vector<GridProduct>& prods,
+                                       int nb, const std::vector<double>& P,
+                                       double eps);
+
+/// @brief Integrate a level potential against every product on that level and
+///        scatter into the KS matrix — the EXACT transpose of
+///        `collocate_products`: V[mu*nb+nu] += Σ_g w·gweight·poly(r_g)·
+///        exp(−p|r_g−P_ab|²)·V_level(r_g). Adjointness keeps the KS matrix the
+///        exact gradient of the collocated energy.
+/// @return Row-major nb×nb KS contribution from this level.
+std::vector<double> integrate_products(const UniformGrid& grid,
+                                       const std::vector<GridProduct>& prods,
+                                       int nb, const std::vector<double>& V_level,
+                                       double eps);
+
 } // namespace gpw
 } // namespace cpu
 } // namespace ATV

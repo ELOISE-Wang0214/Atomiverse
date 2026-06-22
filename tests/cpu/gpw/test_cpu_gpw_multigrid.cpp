@@ -109,3 +109,90 @@ TEST(GpwMultigrid, ProlongConstantIsExact) {
     auto Pg = prolong_trilinear(coarse, fine, g, true);
     for (double v : Pg) EXPECT_NEAR(v, 2.5, 1e-10);
 }
+
+#ifdef ATV_GPW_HAS_FFT
+#include <cmath>
+using ATV::cpu::gpw::prolong_fft;
+using ATV::cpu::gpw::restrict_fft;
+
+namespace {
+std::vector<double> fill_rand(long n, unsigned seed) {
+    std::vector<double> v(static_cast<std::size_t>(n));
+    unsigned s = seed;
+    for (auto& x : v) { s = s * 1664525u + 1013904223u; x = (s >> 8) / 16777216.0 - 0.5; }
+    return v;
+}
+} // namespace
+
+// THE load-bearing property for the FFT transfer: restrict_fft is the EXACT
+// adjoint of prolong_fft w.r.t. the grid integration inner products.
+// <V_fine, prolong_fft(g)>_fine == <restrict_fft(V_fine), g>_coarse.
+TEST(GpwMultigridFFT, ProlongRestrictAreAdjoint) {
+    const double cell[3] = {8.0, 9.0, 10.0};
+    UniformGrid fine = ATV::cpu::gpw::make_uniform_grid(cell, 200.0);
+    UniformGrid coarse = ATV::cpu::gpw::make_uniform_grid(cell, 50.0);
+
+    std::vector<double> V = fill_rand(fine.npts(), 7u);
+    std::vector<double> g = fill_rand(coarse.npts(), 13u);
+
+    std::vector<double> Pg = prolong_fft(coarse, fine, g, /*periodic=*/true);
+    std::vector<double> RV = restrict_fft(fine, coarse, V, /*periodic=*/true);
+
+    double lhs = 0.0; // <V, Pg>_fine
+    for (long i = 0; i < fine.npts(); ++i) lhs += fine.weight() * V[i] * Pg[i];
+    double rhs = 0.0; // <RV, g>_coarse
+    for (long i = 0; i < coarse.npts(); ++i) rhs += coarse.weight() * RV[i] * g[i];
+
+    EXPECT_NEAR(lhs, rhs, 1e-9 * (std::abs(lhs) + 1.0))
+        << "restrict_fft is not the exact adjoint of prolong_fft";
+}
+
+// Mass conservation: ∫prolong(f) dr == ∫f dr (spectral interpolation preserves
+// the G=0 mode), i.e. sum(Pf)*w_fine == sum(f)*w_coarse.
+TEST(GpwMultigridFFT, ProlongConservesMass) {
+    const double cell[3] = {8.0, 9.0, 10.0};
+    UniformGrid fine = ATV::cpu::gpw::make_uniform_grid(cell, 200.0);
+    UniformGrid coarse = ATV::cpu::gpw::make_uniform_grid(cell, 50.0);
+
+    std::vector<double> f = fill_rand(coarse.npts(), 21u);
+    std::vector<double> Pf = prolong_fft(coarse, fine, f, /*periodic=*/true);
+
+    double m_coarse = 0.0;
+    for (double v : f) m_coarse += v;
+    m_coarse *= coarse.weight();
+    double m_fine = 0.0;
+    for (double v : Pf) m_fine += v;
+    m_fine *= fine.weight();
+
+    EXPECT_NEAR(m_fine, m_coarse, 1e-9 * (std::abs(m_coarse) + 1.0))
+        << "prolong_fft does not conserve mass";
+}
+
+// Exactness: a band-limited cosine resolvable on the coarse grid is reproduced
+// EXACTLY at the fine grid points (this is what trilinear cannot do).
+TEST(GpwMultigridFFT, ProlongLowFreqIsExact) {
+    const double cell[3] = {8.0, 9.0, 10.0};
+    UniformGrid fine = ATV::cpu::gpw::make_uniform_grid(cell, 200.0);
+    UniformGrid coarse = ATV::cpu::gpw::make_uniform_grid(cell, 50.0);
+
+    // A few low-frequency modes well below the coarse Nyquist along each axis.
+    auto field = [&](const double r[3]) {
+        const double kx = 2.0 * M_PI / cell[0];
+        const double ky = 2.0 * M_PI / cell[1];
+        const double kz = 2.0 * M_PI / cell[2];
+        return 0.3 + 0.7 * std::cos(kx * r[0]) * std::cos(2.0 * ky * r[1]) +
+               0.5 * std::sin(kz * r[2]);
+    };
+    std::vector<double> fc(static_cast<std::size_t>(coarse.npts()));
+    for (long i = 0; i < coarse.npts(); ++i) {
+        double r[3]; coarse.point(i, r); fc[static_cast<std::size_t>(i)] = field(r);
+    }
+    std::vector<double> Pf = prolong_fft(coarse, fine, fc, /*periodic=*/true);
+    double max_err = 0.0;
+    for (long i = 0; i < fine.npts(); ++i) {
+        double r[3]; fine.point(i, r);
+        max_err = std::max(max_err, std::abs(Pf[static_cast<std::size_t>(i)] - field(r)));
+    }
+    EXPECT_LT(max_err, 1e-8) << "band-limited field not reproduced at fine points";
+}
+#endif // ATV_GPW_HAS_FFT

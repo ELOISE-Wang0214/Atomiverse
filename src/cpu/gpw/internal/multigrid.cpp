@@ -7,6 +7,15 @@
 
 #include <algorithm>
 #include <cmath>
+#include <complex>
+
+#ifdef ATV_GPW_HAS_FFT
+#include <fftw3.h>
+#endif
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 namespace ATV {
 namespace cpu {
@@ -150,6 +159,416 @@ std::vector<double> restrict_transpose(const UniformGrid& fine,
                 }
     }
     return out;
+}
+
+#ifdef ATV_GPW_HAS_FFT
+namespace {
+
+// Forward complex DFT (FFTW c2c, FFTW_FORWARD: F(m) = Σ_r f(r) e^{-iG·r}) of a
+// real field laid out as nx*ny*nz row-major (z fastest).
+std::vector<std::complex<double>> fwd_dft(const std::vector<double>& f,
+                                          const int n[3]) {
+    const long ntot = static_cast<long>(n[0]) * n[1] * n[2];
+    fftw_complex* in = static_cast<fftw_complex*>(fftw_malloc(sizeof(fftw_complex) * ntot));
+    fftw_complex* out = static_cast<fftw_complex*>(fftw_malloc(sizeof(fftw_complex) * ntot));
+    for (long i = 0; i < ntot; ++i) { in[i][0] = f[static_cast<std::size_t>(i)]; in[i][1] = 0.0; }
+    fftw_plan p = fftw_plan_dft_3d(n[0], n[1], n[2], in, out, FFTW_FORWARD, FFTW_ESTIMATE);
+    fftw_execute(p);
+    std::vector<std::complex<double>> F(static_cast<std::size_t>(ntot));
+    for (long i = 0; i < ntot; ++i) F[static_cast<std::size_t>(i)] = {out[i][0], out[i][1]};
+    fftw_destroy_plan(p);
+    fftw_free(in);
+    fftw_free(out);
+    return F;
+}
+
+// Inverse complex DFT (FFTW c2c, FFTW_BACKWARD: g(r) = Σ_m F(m) e^{+iG·r}); FFTW
+// does NOT normalize, so this returns the UNnormalized sum (caller divides by N).
+// Returns the real part (the spectra here are Hermitian by construction).
+std::vector<double> inv_dft_real(const std::vector<std::complex<double>>& F,
+                                 const int n[3]) {
+    const long ntot = static_cast<long>(n[0]) * n[1] * n[2];
+    fftw_complex* in = static_cast<fftw_complex*>(fftw_malloc(sizeof(fftw_complex) * ntot));
+    fftw_complex* out = static_cast<fftw_complex*>(fftw_malloc(sizeof(fftw_complex) * ntot));
+    for (long i = 0; i < ntot; ++i) {
+        in[i][0] = F[static_cast<std::size_t>(i)].real();
+        in[i][1] = F[static_cast<std::size_t>(i)].imag();
+    }
+    fftw_plan p = fftw_plan_dft_3d(n[0], n[1], n[2], in, out, FFTW_BACKWARD, FFTW_ESTIMATE);
+    fftw_execute(p);
+    std::vector<double> g(static_cast<std::size_t>(ntot));
+    for (long i = 0; i < ntot; ++i) g[static_cast<std::size_t>(i)] = out[i][0];
+    fftw_destroy_plan(p);
+    fftw_free(in);
+    fftw_free(out);
+    return g;
+}
+
+// Per-axis mapping of a COARSE c2c frequency index `ic` (in [0,nc)) to the set of
+// FINE frequency indices that carry the SAME physical frequency G = 2π m / L
+// (signed m). At most two destinations: a Nyquist coarse mode (|m| == nc/2)
+// splits half/half between the +nc/2 and -nc/2 fine bins so the interpolant stays
+// real; every other mode maps one-to-one. Writes (fine_index, weight) into out
+// and returns the count (1 or 2). Requires nf >= nc, both even.
+inline int axis_coarse_to_fine(int ic, int nc, int nf, int dst[2], double wt[2]) {
+    const int m = (ic <= nc / 2) ? ic : ic - nc;  // signed coarse frequency
+    if (std::abs(m) == nc / 2) {
+        // Nyquist of the coarse grid: split into +nc/2 and -nc/2 on the fine grid.
+        dst[0] = nc / 2;            // +nc/2 (in [0,nf), since nf>=nc)
+        dst[1] = nf - nc / 2;       // -nc/2
+        wt[0] = 0.5;
+        wt[1] = 0.5;
+        return 2;
+    }
+    dst[0] = (m >= 0) ? m : nf + m; // same signed frequency on the fine grid
+    wt[0] = 1.0;
+    return 1;
+}
+
+} // namespace
+
+std::vector<double> prolong_fft(const UniformGrid& coarse, const UniformGrid& fine,
+                                const std::vector<double>& f_coarse, bool periodic) {
+    if (!periodic) return prolong_trilinear(coarse, fine, f_coarse, periodic);
+    const int nc[3] = {coarse.n[0], coarse.n[1], coarse.n[2]};
+    const int nf[3] = {fine.n[0], fine.n[1], fine.n[2]};
+    const long ntot_f = fine.npts();
+    const double Nc = static_cast<double>(coarse.npts());
+    const double Nf = static_cast<double>(ntot_f);
+
+    // Forward DFT on the coarse grid.
+    const std::vector<std::complex<double>> Fc = fwd_dft(f_coarse, nc);
+
+    // Embed each coarse mode into the fine spectrum at the same physical
+    // frequency, scaled by Nf/Nc so values (and ∫) are preserved on inversion.
+    std::vector<std::complex<double>> Ff(static_cast<std::size_t>(ntot_f),
+                                         std::complex<double>(0.0, 0.0));
+    const double scale = Nf / Nc;
+    for (int i0 = 0; i0 < nc[0]; ++i0) {
+        int d0[2]; double w0[2];
+        const int c0 = axis_coarse_to_fine(i0, nc[0], nf[0], d0, w0);
+        for (int i1 = 0; i1 < nc[1]; ++i1) {
+            int d1[2]; double w1[2];
+            const int c1 = axis_coarse_to_fine(i1, nc[1], nf[1], d1, w1);
+            for (int i2 = 0; i2 < nc[2]; ++i2) {
+                int d2[2]; double w2[2];
+                const int c2 = axis_coarse_to_fine(i2, nc[2], nf[2], d2, w2);
+                const std::complex<double> v =
+                    scale * Fc[(static_cast<std::size_t>(i0) * nc[1] + i1) * nc[2] + i2];
+                for (int a = 0; a < c0; ++a)
+                    for (int b = 0; b < c1; ++b)
+                        for (int c = 0; c < c2; ++c) {
+                            const long idx =
+                                (static_cast<long>(d0[a]) * nf[1] + d1[b]) * nf[2] + d2[c];
+                            Ff[static_cast<std::size_t>(idx)] +=
+                                (w0[a] * w1[b] * w2[c]) * v;
+                        }
+            }
+        }
+    }
+
+    // Inverse DFT on the fine grid (FFTW unnormalized -> divide by Nf).
+    std::vector<double> g = inv_dft_real(Ff, nf);
+    const double inv_nf = 1.0 / Nf;
+    for (auto& x : g) x *= inv_nf;
+    return g;
+}
+
+std::vector<double> restrict_fft(const UniformGrid& fine, const UniformGrid& coarse,
+                                 const std::vector<double>& f_fine, bool periodic) {
+    if (!periodic) return restrict_transpose(fine, coarse, f_fine, periodic);
+    const int nc[3] = {coarse.n[0], coarse.n[1], coarse.n[2]};
+    const int nf[3] = {fine.n[0], fine.n[1], fine.n[2]};
+    const long ntot_c = coarse.npts();
+    const double Nc = static_cast<double>(ntot_c);
+    const double Nf = static_cast<double>(fine.npts());
+
+    // Forward DFT on the fine grid.
+    const std::vector<std::complex<double>> Ff = fwd_dft(f_fine, nf);
+
+    // Transpose of the prolong embedding: each coarse mode GATHERS the fine modes
+    // it scattered to (same (index,weight) map). Adjointness w.r.t. the grid inner
+    // products fixes the overall scalar: with P_{rc} = (1/Nc) Σ E_{m'm} e^{iG'r}
+    // e^{-iGc}, R = (w_f/w_c) Pᵀ, and w_f/w_c = Nc/Nf (same box), the coarse field
+    // is (1/Nf)·IDFT_coarse(gather(FV)) — i.e. a plain 1/Nf normalization on the
+    // unnormalized inverse DFT (NO extra Nf/Nc spectral factor here; that factor
+    // lives only on prolong's forward path).
+    std::vector<std::complex<double>> Fc(static_cast<std::size_t>(ntot_c),
+                                         std::complex<double>(0.0, 0.0));
+    for (int i0 = 0; i0 < nc[0]; ++i0) {
+        int d0[2]; double w0[2];
+        const int c0 = axis_coarse_to_fine(i0, nc[0], nf[0], d0, w0);
+        for (int i1 = 0; i1 < nc[1]; ++i1) {
+            int d1[2]; double w1[2];
+            const int c1 = axis_coarse_to_fine(i1, nc[1], nf[1], d1, w1);
+            for (int i2 = 0; i2 < nc[2]; ++i2) {
+                int d2[2]; double w2[2];
+                const int c2 = axis_coarse_to_fine(i2, nc[2], nf[2], d2, w2);
+                std::complex<double> acc(0.0, 0.0);
+                for (int a = 0; a < c0; ++a)
+                    for (int b = 0; b < c1; ++b)
+                        for (int c = 0; c < c2; ++c) {
+                            const long idx =
+                                (static_cast<long>(d0[a]) * nf[1] + d1[b]) * nf[2] + d2[c];
+                            acc += (w0[a] * w1[b] * w2[c]) *
+                                   Ff[static_cast<std::size_t>(idx)];
+                        }
+                Fc[(static_cast<std::size_t>(i0) * nc[1] + i1) * nc[2] + i2] = acc;
+            }
+        }
+    }
+
+    // Inverse DFT on the coarse grid; the adjoint normalization is 1/Nf (see
+    // above), NOT the usual 1/Nc, because w_f/w_c = Nc/Nf cancels the 1/Nc.
+    std::vector<double> g = inv_dft_real(Fc, nc);
+    const double inv_nf = 1.0 / Nf;
+    for (auto& x : g) x *= inv_nf;
+    (void)Nc;
+    return g;
+}
+#endif // ATV_GPW_HAS_FFT
+
+namespace {
+
+// Coarsest level whose cutoff resolves a Gaussian of (density) exponent need.
+// Mirrors assign_levels: a product Gaussian of combined exponent p needs an
+// effective cutoff rel_cutoff*p; pick the coarsest level meeting it, clamp finest.
+int level_for_exponent(const MultiGrid& mg, double rel_cutoff, double p) {
+    const int nlev = static_cast<int>(mg.levels.size());
+    const double need = rel_cutoff * p;
+    int lev = 0;
+    for (int l = nlev - 1; l >= 0; --l) {
+        if (mg.level_cutoff_ry[static_cast<std::size_t>(l)] >= need) { lev = l; break; }
+    }
+    return lev;
+}
+
+// Radius [Bohr] beyond which |gw·r^(la+lb)·exp(-p r²)| < eps for a product
+// Gaussian. Same fixed-point root as basis_function_radius, with the combined
+// polynomial order L = |la|+|lb| and prefactor magnitude |gw|.
+double product_radius(double gw, double p, int Ltot, double eps) {
+    if (gw == 0.0 || p <= 0.0) return 0.0;
+    const double leps = std::log(eps);
+    const double lc = std::log(std::abs(gw));
+    double r2 = std::max(0.0, (lc - leps) / p);
+    for (int it = 0; it < 3; ++it) {
+        const double r = std::sqrt(std::max(r2, 1e-12));
+        r2 = std::max(0.0, (lc + Ltot * std::log(r) - leps) / p);
+    }
+    return std::sqrt(r2);
+}
+
+} // namespace
+
+ProductSet build_products(const MultiGrid& mg,
+                          const std::vector<GridBasisFunction>& basis,
+                          const double L[3], double rel_cutoff, double eps,
+                          bool periodic) {
+    const int nb = static_cast<int>(basis.size());
+    const int nlev = static_cast<int>(mg.levels.size());
+
+    // Per-function radius (single image) to bound the image expansion: two factors
+    // can overlap only if their (shifted) centers are within ra_μ + ra_ν.
+    std::vector<double> fr(static_cast<std::size_t>(nb), 0.0);
+    for (int u = 0; u < nb; ++u) fr[static_cast<std::size_t>(u)] = basis_function_radius(basis[u], eps);
+
+    std::vector<std::vector<std::vector<GridProduct>>> per_thread; // [thread][level]
+#ifdef _OPENMP
+    per_thread.resize(static_cast<std::size_t>(omp_get_max_threads()));
+#else
+    per_thread.resize(1);
+#endif
+    for (auto& t : per_thread) t.resize(static_cast<std::size_t>(nlev));
+
+#pragma omp parallel
+    {
+#ifdef _OPENMP
+        auto& out = per_thread[static_cast<std::size_t>(omp_get_thread_num())];
+#else
+        auto& out = per_thread[0];
+#endif
+#pragma omp for schedule(dynamic, 4)
+        for (int mu = 0; mu < nb; ++mu) {
+            const double* muc = basis[mu].empty() ? nullptr : basis[mu][0].center;
+            if (!muc) continue;
+            for (int nu = 0; nu < nb; ++nu) {
+                if (basis[nu].empty()) continue;
+                const double* nuc = basis[nu][0].center;
+                // Reach over which the two image-summed functions can overlap.
+                const double reach = fr[static_cast<std::size_t>(mu)] +
+                                     fr[static_cast<std::size_t>(nu)];
+                // Image shifts of the KET (nu) relative to the (single-image) bra
+                // — mirrors the single-grid χ_μ χ_ν cross-image product where each
+                // function is independently image-summed. The bra is kept in its
+                // home cell and the ket ranges over images; together with the
+                // collocation window's own wrapping this enumerates all (T,T')
+                // pairs that fall within `reach` (the only ones that overlap).
+                int m[3] = {0, 0, 0};
+                if (periodic)
+                    for (int d = 0; d < 3; ++d)
+                        m[d] = (L[d] > 0.0)
+                                   ? static_cast<int>(std::ceil(reach / L[d] - 1e-12))
+                                   : 0;
+                for (const auto& a : basis[mu]) {
+                    for (const auto& b0 : basis[nu]) {
+                        const double cc = a.coeff * b0.coeff;
+                        if (cc == 0.0) continue;
+                        const double pa = a.alpha, pb = b0.alpha, p = pa + pb;
+                        for (int tx = -m[0]; tx <= m[0]; ++tx)
+                            for (int ty = -m[1]; ty <= m[1]; ++ty)
+                                for (int tz = -m[2]; tz <= m[2]; ++tz) {
+                                    const double tL[3] = {tx * L[0], ty * L[1], tz * L[2]};
+                                    // Skip image pairs whose shifted centers cannot
+                                    // overlap (no product contribution).
+                                    const double sx = muc[0] - nuc[0] - tL[0];
+                                    const double sy = muc[1] - nuc[1] - tL[1];
+                                    const double sz = muc[2] - nuc[2] - tL[2];
+                                    if (sx * sx + sy * sy + sz * sz > reach * reach) continue;
+                                    double rb[3], dpq2 = 0.0, P[3];
+                                    for (int d = 0; d < 3; ++d) {
+                                        rb[d] = b0.center[d] + tL[d];
+                                        const double diff = a.center[d] - rb[d];
+                                        dpq2 += diff * diff;
+                                        P[d] = (pa * a.center[d] + pb * rb[d]) / p;
+                                    }
+                                    const double K = std::exp(-pa * pb / p * dpq2);
+                                    const double gw = cc * K;
+                                    if (std::abs(gw) < eps) continue; // negligible pair
+                                    GridProduct prod;
+                                    prod.mu = mu; prod.nu = nu;
+                                    prod.p = p;
+                                    for (int d = 0; d < 3; ++d) {
+                                        prod.pc[d] = P[d];
+                                        prod.ra[d] = a.center[d];
+                                        prod.rb[d] = rb[d];
+                                        prod.la[d] = a.l[d];
+                                        prod.lb[d] = b0.l[d];
+                                    }
+                                    prod.gweight = gw;
+                                    prod.level = level_for_exponent(mg, rel_cutoff, p);
+                                    out[static_cast<std::size_t>(prod.level)].push_back(prod);
+                                }
+                    }
+                }
+            }
+        }
+    }
+
+    ProductSet ps;
+    ps.by_level.resize(static_cast<std::size_t>(nlev));
+    for (auto& t : per_thread)
+        for (int l = 0; l < nlev; ++l) {
+            auto& dst = ps.by_level[static_cast<std::size_t>(l)];
+            auto& src = t[static_cast<std::size_t>(l)];
+            dst.insert(dst.end(), src.begin(), src.end());
+        }
+    return ps;
+}
+
+namespace {
+// Accumulate one product over an unwrapped window into a per-point sink `sink`,
+// matching build_compact_basis_grid: window [ic-ih, ic+ih] in grid cells around
+// the product center, evaluate at the UNWRAPPED real position (image offset in r,
+// no min-image), wrap the storage index, accumulate. `add(g, value)` receives the
+// wrapped linear index and the product value (poly·exp) at that point.
+template <typename Add>
+inline void collocate_one(const UniformGrid& grid, const GridProduct& prod,
+                          double eps, Add add) {
+    const long n0 = grid.n[0], n1 = grid.n[1], n2 = grid.n[2];
+    const double dx0 = grid.L[0] / n0, dx1 = grid.L[1] / n1, dx2 = grid.L[2] / n2;
+    const int Ltot = prod.la[0] + prod.la[1] + prod.la[2] + prod.lb[0] +
+                     prod.lb[1] + prod.lb[2];
+    const double rc = product_radius(prod.gweight, prod.p, Ltot, eps);
+    const long n[3] = {n0, n1, n2};
+    const double dx[3] = {dx0, dx1, dx2};
+    long lo[3], hi[3];
+    for (int d = 0; d < 3; ++d) {
+        const long ih = static_cast<long>(std::ceil(rc / dx[d]));
+        const long ic = static_cast<long>(std::floor(prod.pc[d] / dx[d]));
+        lo[d] = ic - ih;
+        hi[d] = ic + ih;
+    }
+    for (long i = lo[0]; i <= hi[0]; ++i) {
+        const long ii = ((i % n0) + n0) % n0;
+        const double r0 = grid.origin[0] + grid.L[0] * static_cast<double>(i) / n0;
+        for (long j = lo[1]; j <= hi[1]; ++j) {
+            const long jj = ((j % n1) + n1) % n1;
+            const double r1 = grid.origin[1] + grid.L[1] * static_cast<double>(j) / n1;
+            const long base = (ii * n1 + jj) * n2;
+            for (long k = lo[2]; k <= hi[2]; ++k) {
+                const long kk = ((k % n2) + n2) % n2;
+                const double r2 = grid.origin[2] + grid.L[2] * static_cast<double>(k) / n2;
+                // Gaussian centered at the product center (unwrapped position).
+                const double ex = r0 - prod.pc[0], ey = r1 - prod.pc[1],
+                             ez = r2 - prod.pc[2];
+                double val = std::exp(-prod.p * (ex * ex + ey * ey + ez * ez));
+                // Polynomial (r-ra)^la (r-rb)^lb at the unwrapped position.
+                const double ax = r0 - prod.ra[0], ay = r1 - prod.ra[1],
+                             az = r2 - prod.ra[2];
+                const double bx = r0 - prod.rb[0], by = r1 - prod.rb[1],
+                             bz = r2 - prod.rb[2];
+                for (int e = 0; e < prod.la[0]; ++e) val *= ax;
+                for (int e = 0; e < prod.la[1]; ++e) val *= ay;
+                for (int e = 0; e < prod.la[2]; ++e) val *= az;
+                for (int e = 0; e < prod.lb[0]; ++e) val *= bx;
+                for (int e = 0; e < prod.lb[1]; ++e) val *= by;
+                for (int e = 0; e < prod.lb[2]; ++e) val *= bz;
+                if (val != 0.0) add(base + kk, val);
+            }
+        }
+    }
+}
+} // namespace
+
+std::vector<double> collocate_products(const UniformGrid& grid,
+                                       const std::vector<GridProduct>& prods,
+                                       int nb, const std::vector<double>& P,
+                                       double eps) {
+    std::vector<double> rho(static_cast<std::size_t>(grid.npts()), 0.0);
+    const long np = static_cast<long>(prods.size());
+#pragma omp parallel
+    {
+        std::vector<double> loc(static_cast<std::size_t>(grid.npts()), 0.0);
+#pragma omp for schedule(dynamic, 64) nowait
+        for (long ip = 0; ip < np; ++ip) {
+            const GridProduct& prod = prods[static_cast<std::size_t>(ip)];
+            const double w =
+                P[static_cast<std::size_t>(prod.mu) * nb + prod.nu] * prod.gweight;
+            if (w == 0.0) continue;
+            collocate_one(grid, prod, eps,
+                          [&](long g, double v) { loc[static_cast<std::size_t>(g)] += w * v; });
+        }
+#pragma omp critical
+        for (std::size_t g = 0; g < rho.size(); ++g) rho[g] += loc[g];
+    }
+    return rho;
+}
+
+std::vector<double> integrate_products(const UniformGrid& grid,
+                                       const std::vector<GridProduct>& prods,
+                                       int nb, const std::vector<double>& V_level,
+                                       double eps) {
+    const std::size_t nn = static_cast<std::size_t>(nb) * nb;
+    std::vector<double> V(nn, 0.0);
+    const double w = grid.weight();
+    const long np = static_cast<long>(prods.size());
+#pragma omp parallel
+    {
+        std::vector<double> Vloc(nn, 0.0);
+#pragma omp for schedule(dynamic, 64) nowait
+        for (long ip = 0; ip < np; ++ip) {
+            const GridProduct& prod = prods[static_cast<std::size_t>(ip)];
+            double acc = 0.0;
+            collocate_one(grid, prod, eps, [&](long g, double v) {
+                acc += V_level[static_cast<std::size_t>(g)] * v;
+            });
+            Vloc[static_cast<std::size_t>(prod.mu) * nb + prod.nu] +=
+                prod.gweight * w * acc;
+        }
+#pragma omp critical
+        for (std::size_t kk = 0; kk < nn; ++kk) V[kk] += Vloc[kk];
+    }
+    return V;
 }
 
 } // namespace gpw
