@@ -89,6 +89,66 @@ double kinetic(const GridBasisFunction& a, const GridBasisFunction& b) {
     return t;
 }
 
+namespace {
+// True if the image-shifted center of `b` is within `reach` of `a`'s center, so
+// some primitive pair can contribute. `ac`/`bc` are the function centers.
+inline bool image_in_reach(const double ac[3], const double bc[3],
+                           const double T[3], double reach2) {
+    const double dx = ac[0] - bc[0] - T[0];
+    const double dy = ac[1] - bc[1] - T[1];
+    const double dz = ac[2] - bc[2] - T[2];
+    return dx * dx + dy * dy + dz * dz <= reach2;
+}
+} // namespace
+
+double overlap(const GridBasisFunction& a, const GridBasisFunction& b,
+               const double L[3], const int m[3], double reach) {
+    if (a.empty() || b.empty()) return 0.0;
+    const double* ac = a[0].center;
+    const double* bc = b[0].center;
+    const double reach2 = reach * reach;
+    double s = 0.0;
+    for (int tx = -m[0]; tx <= m[0]; ++tx)
+        for (int ty = -m[1]; ty <= m[1]; ++ty)
+            for (int tz = -m[2]; tz <= m[2]; ++tz) {
+                const double T[3] = {tx * L[0], ty * L[1], tz * L[2]};
+                if (!image_in_reach(ac, bc, T, reach2)) continue;
+                for (const auto& pa : a)
+                    for (const auto& pb : b) {
+                        GridPrimitive q = pb; // image of b: center += T
+                        q.center[0] += T[0];
+                        q.center[1] += T[1];
+                        q.center[2] += T[2];
+                        s += prim_overlap(pa, q);
+                    }
+            }
+    return s;
+}
+
+double kinetic(const GridBasisFunction& a, const GridBasisFunction& b,
+               const double L[3], const int m[3], double reach) {
+    if (a.empty() || b.empty()) return 0.0;
+    const double* ac = a[0].center;
+    const double* bc = b[0].center;
+    const double reach2 = reach * reach;
+    double t = 0.0;
+    for (int tx = -m[0]; tx <= m[0]; ++tx)
+        for (int ty = -m[1]; ty <= m[1]; ++ty)
+            for (int tz = -m[2]; tz <= m[2]; ++tz) {
+                const double T[3] = {tx * L[0], ty * L[1], tz * L[2]};
+                if (!image_in_reach(ac, bc, T, reach2)) continue;
+                for (const auto& pa : a)
+                    for (const auto& pb : b) {
+                        GridPrimitive q = pb;
+                        q.center[0] += T[0];
+                        q.center[1] += T[1];
+                        q.center[2] += T[2];
+                        t += prim_kinetic(pa, q);
+                    }
+            }
+    return t;
+}
+
 } // namespace gpw
 } // namespace cpu
 } // namespace ATV

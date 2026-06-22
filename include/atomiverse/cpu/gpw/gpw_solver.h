@@ -49,6 +49,8 @@ struct GpwConfig {
     int n_occ = 0;              ///< number of doubly-occupied orbitals (N_elec / 2).
     int max_iter = 100;         ///< max SCF iterations.
     double tol = 1e-8;          ///< SCF energy convergence [Hartree].
+    double eps_default = 1e-8;  ///< CP2K EPS_DEFAULT: Gaussian-tail cutoff driving the
+                                ///< collocation window and the Γ-point lattice-image count.
     double mix = 0.5;           ///< linear density-mixing factor (used only when diis_depth == 0).
     int diis_depth = 6;         ///< Pulay DIIS history depth; 0 disables DIIS (falls back to linear `mix`).
     XcKind xc = XcKind::PADE;   ///< LDA (PADE) or GGA (PBE).

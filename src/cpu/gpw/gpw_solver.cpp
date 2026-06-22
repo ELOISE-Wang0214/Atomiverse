@@ -25,6 +25,7 @@
 #include "atomiverse/cpu/gpw/internal/mt_poisson.h"
 #include "atomiverse/cpu/gpw/internal/one_electron.h"
 #include "atomiverse/cpu/gpw/internal/ot.h"
+#include "atomiverse/cpu/gpw/internal/periodic.h"
 #include "atomiverse/cpu/gpw/internal/poisson_fft.h"
 #include "atomiverse/cpu/gpw/internal/real_harmonics.h"
 #include "atomiverse/cpu/gpw/internal/xc_grid.h"
@@ -87,41 +88,72 @@ constexpr double kBuildScreen = 1e-12;
 // over-estimates the separable nonlocal magnitude when p,q overlap, so it is
 // conservative for both the local and nonlocal terms. Turns the per-pair atom
 // loop from O(natoms) into O(local neighbours) -> overall O(N) build.
+// Γ-point periodic GTH pseudopotential matrix element. The basis is diffuse
+// (reach > L/2 in a thin cell), so the bra φ_ν is summed over its lattice images
+// T_ν (outer loop, screened by the Gaussian-product prefactor K_pq). The GTH
+// potential itself is short-ranged (rloc / projector radii ~0.3-0.5 Bohr ≪ L/2),
+// so for each atom only its single nearest periodic image to the product center P
+// contributes — taken by min-image, no atom-image loop. `m` (from image_counts)
+// must match the basis-collocation / overlap image set for consistency.
 double gth_matrix_element(const GridBasisFunction& mu, const GridBasisFunction& nu,
-                          const std::vector<GpwAtom>& atoms) {
+                          const std::vector<GpwAtom>& atoms, const double L[3],
+                          const int m[3], double reach) {
+    if (mu.empty() || nu.empty()) return 0.0;
+    const double* muc = mu[0].center;
+    const double* nuc = nu[0].center;
+    const double reach2 = reach * reach;
     double v = 0.0;
     for (const auto& p : mu) {
         const Prim pp = to_prim(p);
-        for (const auto& q : nu) {
-            const double cc = p.coeff * q.coeff;
+        for (const auto& q0 : nu) {
+            const double cc = p.coeff * q0.coeff;
             if (cc == 0.0) continue;
             const double acc = std::abs(cc);
-            const double a = p.alpha, b = q.alpha, g = a + b;
-            double dpq2 = 0.0, P[3];
-            for (int d = 0; d < 3; ++d) {
-                const double diff = p.center[d] - q.center[d];
-                dpq2 += diff * diff;
-                P[d] = (a * p.center[d] + b * q.center[d]) / g;
-            }
-            const double Kpq = std::exp(-a * b / g * dpq2);
-            if (acc * Kpq < kBuildScreen) continue; // overlap-negligible primitive pair
-            const Prim qq = to_prim(q);
-            for (const auto& at : atoms) {
-                double rmax = at.rloc;
-                for (const auto& ch : at.nonlocal) rmax = std::max(rmax, ch.r);
-                const double kappa = 1.0 / (2.0 * rmax * rmax);
-                double dPA2 = 0.0;
-                for (int d = 0; d < 3; ++d) {
-                    const double e = P[d] - at.pos[d];
-                    dPA2 += e * e;
-                }
-                if (acc * Kpq * std::exp(-(g * kappa / (g + kappa)) * dPA2) < kBuildScreen)
-                    continue; // atom too far for any non-negligible PP contribution
-                if (!at.cloc.empty())
-                    v += cc * gth_local_sr(pp, qq, at.pos, at.rloc, at.cloc);
-                for (const auto& ch : at.nonlocal)
-                    v += cc * gth_nonlocal(pp, qq, at.pos, ch);
-            }
+            const double a = p.alpha, b = q0.alpha, g = a + b;
+            for (int tx = -m[0]; tx <= m[0]; ++tx)
+                for (int ty = -m[1]; ty <= m[1]; ++ty)
+                    for (int tz = -m[2]; tz <= m[2]; ++tz) {
+                        // Skip ν-images whose shifted center cannot overlap μ:
+                        // no μ-ν overlap ⇒ no 3-centre PP contribution.
+                        const double sx = muc[0] - nuc[0] - tx * L[0];
+                        const double sy = muc[1] - nuc[1] - ty * L[1];
+                        const double sz = muc[2] - nuc[2] - tz * L[2];
+                        if (sx * sx + sy * sy + sz * sz > reach2) continue;
+                        GridPrimitive q = q0; // image T_ν of the bra primitive
+                        q.center[0] += tx * L[0];
+                        q.center[1] += ty * L[1];
+                        q.center[2] += tz * L[2];
+                        double dpq2 = 0.0, P[3];
+                        for (int d = 0; d < 3; ++d) {
+                            const double diff = p.center[d] - q.center[d];
+                            dpq2 += diff * diff;
+                            P[d] = (a * p.center[d] + b * q.center[d]) / g;
+                        }
+                        const double Kpq = std::exp(-a * b / g * dpq2);
+                        if (acc * Kpq < kBuildScreen) continue; // image too far
+                        const Prim qq = to_prim(q);
+                        for (const auto& at : atoms) {
+                            double rmax = at.rloc;
+                            for (const auto& ch : at.nonlocal) rmax = std::max(rmax, ch.r);
+                            const double kappa = 1.0 / (2.0 * rmax * rmax);
+                            // nearest periodic image of this atom to the product center
+                            double apos[3], dPA2 = 0.0;
+                            for (int d = 0; d < 3; ++d) {
+                                apos[d] = at.pos[d];
+                                if (L[d] > 0.0 && (m[0] || m[1] || m[2]))
+                                    apos[d] -= L[d] * std::nearbyint((at.pos[d] - P[d]) / L[d]);
+                                const double e = P[d] - apos[d];
+                                dPA2 += e * e;
+                            }
+                            if (acc * Kpq * std::exp(-(g * kappa / (g + kappa)) * dPA2) <
+                                kBuildScreen)
+                                continue; // atom too far for any PP contribution
+                            if (!at.cloc.empty())
+                                v += cc * gth_local_sr(pp, qq, apos, at.rloc, at.cloc);
+                            for (const auto& ch : at.nonlocal)
+                                v += cc * gth_nonlocal(pp, qq, apos, ch);
+                        }
+                    }
         }
     }
     return v;
@@ -130,14 +162,18 @@ double gth_matrix_element(const GridBasisFunction& mu, const GridBasisFunction& 
 // Max Gaussian-product prefactor over all primitive pairs of (mu,nu): bounds the
 // magnitude of S, T, and Vpp for this pair. Below kBuildScreen the whole (i,j)
 // element is negligible and can be skipped (overlap pair screening).
-double pair_overlap_bound(const GridBasisFunction& mu, const GridBasisFunction& nu) {
+double pair_overlap_bound(const GridBasisFunction& mu, const GridBasisFunction& nu,
+                          const double L[3], bool periodic) {
     double best = 0.0;
     for (const auto& p : mu)
         for (const auto& q : nu) {
             const double a = p.alpha, b = q.alpha;
             double d2 = 0.0;
             for (int k = 0; k < 3; ++k) {
-                const double e = p.center[k] - q.center[k];
+                double e = p.center[k] - q.center[k];
+                // Min-image: a pair straddling a periodic boundary is a true near
+                // neighbour through its nearest image — keep it past the screen.
+                if (periodic && L[k] > 0.0) e -= L[k] * std::nearbyint(e / L[k]);
                 d2 += e * e;
             }
             best = std::max(best, std::abs(p.coeff * q.coeff) * std::exp(-a * b / (a + b) * d2));
@@ -305,6 +341,21 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
     const int nb = static_cast<int>(basis.size());
     UniformGrid grid = make_uniform_grid(cfg.cell, cfg.cutoff_ry);
 
+    // Γ-point lattice-image extent, shared by the analytic S/T/Vpp lattice sums
+    // and the grid collocation. A Gaussian *pair* reaches up to twice the largest
+    // single-function radius; images within that distance contribute. EPS_DEFAULT
+    // sets the radius (CP2K's Gaussian-tail tolerance).
+    const bool periodic = !cfg.nonperiodic;
+    const double eps_default = cfg.eps_default;
+    std::vector<double> radii(static_cast<std::size_t>(nb));
+    double rmax = 0.0;
+    for (int i = 0; i < nb; ++i) {
+        radii[static_cast<std::size_t>(i)] = basis_function_radius(basis[i], eps_default);
+        rmax = std::max(rmax, radii[static_cast<std::size_t>(i)]);
+    }
+    int mimg[3];
+    image_counts(cfg.cell, periodic, 2.0 * rmax, mimg);
+
     // Geometry-fixed matrices.
     RealMatrix S = xt::zeros<double>({nb, nb});
     RealMatrix T = xt::zeros<double>({nb, nb});
@@ -321,10 +372,13 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
             // Overlap pair screening: S, T, Vpp are all bounded by the Gaussian
             // product magnitude of (i,j). If even the best primitive pair is
             // below the screen, the whole element is negligible -> leave 0.
-            if (pair_overlap_bound(basis[i], basis[j]) < kBuildScreen) continue;
-            S(i, j) = overlap(basis[i], basis[j]);
-            T(i, j) = kinetic(basis[i], basis[j]);
-            Vpp(i, j) = gth_matrix_element(basis[i], basis[j], atoms);
+            if (pair_overlap_bound(basis[i], basis[j], cfg.cell, periodic) < kBuildScreen)
+                continue;
+            const double reach = radii[static_cast<std::size_t>(i)] +
+                                 radii[static_cast<std::size_t>(j)];
+            S(i, j) = overlap(basis[i], basis[j], cfg.cell, mimg, reach);
+            T(i, j) = kinetic(basis[i], basis[j], cfg.cell, mimg, reach);
+            Vpp(i, j) = gth_matrix_element(basis[i], basis[j], atoms, cfg.cell, mimg, reach);
         }
     }
     const RealMatrix H0 = T + Vpp;
@@ -347,7 +401,7 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
     // npts x nb matrix — prohibitive in memory at scale (ngrid*nb*8 bytes) and
     // O(na*nb^2) per iter; the compact path is O(sum_g k_g^2), k_g << nb.
     const CompactBasisGrid cbg =
-        build_compact_basis_grid(grid, basis, !cfg.nonperiodic);
+        build_compact_basis_grid(grid, basis, periodic, eps_default);
 
     GpwResult res;
     double e_prev = 0.0;

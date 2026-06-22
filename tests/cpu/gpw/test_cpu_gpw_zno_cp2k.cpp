@@ -13,6 +13,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -55,6 +56,9 @@ TEST(GpwZnOCP2K, PeriodicDiatomicPbe) {
     GpwConfig cfg;
     cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 8.0 * kAng;
     cfg.cutoff_ry = 600.0;
+    if (const char* b = std::getenv("ATV_ZNO_BOX"))
+        cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = std::atof(b) * kAng;
+    if (const char* c = std::getenv("ATV_ZNO_CUT")) cfg.cutoff_ry = std::atof(c);
     cfg.n_occ = 9; // 18 valence electrons (Zn q12 + O q6)
     cfg.max_iter = 400;
     cfg.tol = 1e-7;

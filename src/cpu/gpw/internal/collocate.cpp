@@ -80,13 +80,11 @@ inline double eval_basis_function(const GridBasisFunction& bf, const double r[3]
 
 } // namespace
 
-namespace {
-
 // Radius beyond which a contracted Gaussian basis function is below `eps`.
 // Per primitive solve |coeff| r^l exp(-alpha r^2) = eps; the r^l growth is folded
 // in via one fixed-point correction on the pure-Gaussian root, then a generous
 // margin so no real contribution is dropped (correctness over tightness).
-double basis_cutoff_radius(const GridBasisFunction& bf, double eps) {
+double basis_function_radius(const GridBasisFunction& bf, double eps) {
     double rc = 0.0;
     const double leps = std::log(eps);
     for (const auto& p : bf) {
@@ -103,8 +101,6 @@ double basis_cutoff_radius(const GridBasisFunction& bf, double eps) {
     }
     return rc;
 }
-
-} // namespace
 
 CompactBasisGrid build_compact_basis_grid(const UniformGrid& grid,
                                           const std::vector<GridBasisFunction>& basis,
@@ -130,45 +126,45 @@ CompactBasisGrid build_compact_basis_grid(const UniformGrid& grid,
 #endif
 #pragma omp for schedule(dynamic, 8)
         for (int u = 0; u < nb; ++u) {
-            const double rc = basis_cutoff_radius(basis[u], eps);
+            const double rc = basis_function_radius(basis[u], eps);
             const double c[3] = {basis[u][0].center[0], basis[u][0].center[1],
                                  basis[u][0].center[2]};
-            // wrapped index center + integer half-width per axis
+            // Γ-point periodic image sum χ_u(r) = Σ_T φ_u(r − T): enumerate the
+            // UNWRAPPED window [ic−ih, ic+ih] of grid cells within rc of the
+            // center, evaluate each at its true (unwrapped) coordinate — so the
+            // image offset is carried by the raw displacement — then wrap the
+            // storage index into [0,n). When the window is wider than the box
+            // (2·rc ≥ L, e.g. a thin cell) multiple unwrapped cells map to the
+            // same grid point; the duplicate (g,u) triples sum correctly in the
+            // density/integration double loop, giving the multi-image χ_u.
             const long n[3] = {n0, n1, n2};
             const double dx[3] = {dx0, dx1, dx2};
             long lo[3], hi[3];
-            bool full[3];
             for (int d = 0; d < 3; ++d) {
                 const long ih = static_cast<long>(std::ceil(rc / dx[d]));
-                if (2 * ih + 1 >= n[d] || !periodic) {
-                    // whole axis (periodic, large box) or clamp (non-periodic)
-                    if (periodic) { lo[d] = 0; hi[d] = n[d] - 1; full[d] = true; }
-                    else {
-                        double cw = c[d];
-                        long ic = static_cast<long>(std::floor(cw / dx[d]));
-                        lo[d] = std::max(0L, ic - ih);
-                        hi[d] = std::min(n[d] - 1, ic + ih);
-                        full[d] = false;
-                    }
-                } else {
-                    double cw = c[d] - grid.L[d] * std::floor(c[d] / grid.L[d]);
-                    long ic = static_cast<long>(std::floor(cw / dx[d]));
-                    lo[d] = ic - ih;
-                    hi[d] = ic + ih;
-                    full[d] = false;
+                const long ic = static_cast<long>(std::floor(c[d] / dx[d]));
+                lo[d] = ic - ih;
+                hi[d] = ic + ih;
+                if (!periodic) { // isolated: clamp to the box, no wrap
+                    lo[d] = std::max(0L, lo[d]);
+                    hi[d] = std::min(n[d] - 1, hi[d]);
                 }
             }
             for (long i = lo[0]; i <= hi[0]; ++i) {
-                const long ii = full[0] ? i : ((i % n0) + n0) % n0;
+                const long ii = ((i % n0) + n0) % n0;
+                const double r0 = grid.origin[0] + grid.L[0] * static_cast<double>(i) / n0;
                 for (long j = lo[1]; j <= hi[1]; ++j) {
-                    const long jj = full[1] ? j : ((j % n1) + n1) % n1;
+                    const long jj = ((j % n1) + n1) % n1;
+                    const double r1 = grid.origin[1] + grid.L[1] * static_cast<double>(j) / n1;
                     const long base = (ii * n1 + jj) * n2;
                     for (long k = lo[2]; k <= hi[2]; ++k) {
-                        const long kk = full[2] ? k : ((k % n2) + n2) % n2;
+                        const long kk = ((k % n2) + n2) % n2;
+                        const double r2 = grid.origin[2] + grid.L[2] * static_cast<double>(k) / n2;
                         const long g = base + kk;
-                        double r[3];
-                        grid.point(g, r);
-                        const double val = eval_basis_function(basis[u], r, grid.L, periodic);
+                        // Raw displacement to the UNWRAPPED window position (the
+                        // image offset is in r, so no min-image here).
+                        const double r[3] = {r0, r1, r2};
+                        const double val = eval_basis_function(basis[u], r, grid.L, false);
                         if (std::fabs(val) > eps) out.push_back({g, u, val});
                     }
                 }

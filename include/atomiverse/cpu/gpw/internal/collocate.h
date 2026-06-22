@@ -73,6 +73,13 @@ struct CompactBasisGrid {
     double weight = 0.0;           ///< grid integration weight per point.
 };
 
+/// @brief Radius [Bohr] beyond which a contracted Gaussian basis function is
+///        below `eps` in magnitude. Solves |coeff| r^l exp(-alpha r^2) = eps per
+///        primitive (the r^l growth folded in by a fixed-point correction) and
+///        returns the max over primitives. Drives both the collocation window and
+///        the analytic lattice-sum image count (`image_counts`) from one cutoff.
+double basis_function_radius(const GridBasisFunction& bf, double eps);
+
 /// @brief Build the compact per-point basis representation from per-Gaussian
 ///        bounding boxes (no dense npts x nbasis matrix is ever formed).
 /// @param eps drop a function at a point when |φ| <= eps; chosen tight enough
