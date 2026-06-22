@@ -466,7 +466,13 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
     // KS matrix + total energy from a density matrix P (collocate -> Poisson +
     // XC -> integrate). Fills res's energy terms; shared by the diagonalization
     // and OT paths.
+    const bool prof = std::getenv("ATV_GPW_PROF") != nullptr;
+    using ProfClk = std::chrono::steady_clock;
+    auto pms = [](ProfClk::time_point a, ProfClk::time_point b) {
+        return std::chrono::duration<double, std::milli>(b - a).count();
+    };
     auto build_H_and_energy = [&](const RealMatrix& Pin) -> std::pair<RealMatrix, double> {
+        auto t0p = ProfClk::now();
         const std::vector<double> Pvec = mat_to_vec(Pin, nb);
         // Density on the finest grid. Single-grid: direct compact collocation.
         // Multigrid: collocate each level's products, prolong to the fine grid.
@@ -489,6 +495,7 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
         } else {
             rho = collocate_density(cbg, nb, Pvec);
         }
+        auto t1p = ProfClk::now();
         if (use_mg && std::getenv("ATV_GPW_MG_TRACE")) {
             double qe = 0.0;
             for (double v : rho) qe += v;
@@ -499,8 +506,10 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
         for (std::size_t g = 0; g < rho.size(); ++g) n_tot[g] = rho[g] - n_ion[g];
         const PoissonResult es =
             cfg.nonperiodic ? solve_poisson_mt(grid, n_tot) : solve_poisson(grid, n_tot);
+        auto t2p = ProfClk::now();
         const XcOnGrid xc =
             cfg.xc == XcKind::PBE ? xc_grid_pbe(grid, rho) : xc_grid_pade(grid, rho);
+        auto t3p = ProfClk::now();
         std::vector<double> veff(rho.size());
         for (std::size_t g = 0; g < rho.size(); ++g) veff[g] = es.v_r[g] + xc.vxc_r[g];
         // KS grid matrix. Single-grid: integrate veff directly. Multigrid:
@@ -529,6 +538,13 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
         } else {
             Vgrid = vec_to_mat(integrate_potential(cbg, nb, veff), nb);
         }
+        auto t4p = ProfClk::now();
+        if (prof)
+            std::fprintf(stderr,
+                         "[gpw prof] collocate=%.0f poisson=%.0f xc=%.0f integrate=%.0f ms "
+                         "(ngrid=%ld)\n",
+                         pms(t0p, t1p), pms(t1p, t2p), pms(t2p, t3p), pms(t3p, t4p),
+                         grid.npts());
         const RealMatrix H = H0 + Vgrid;
         res.e_kinetic = trace_product(Pin, T, nb);
         res.e_nonlocal = 0.0; // folded into e_loc_sr below for the first cut

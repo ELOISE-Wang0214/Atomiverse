@@ -223,13 +223,16 @@ std::vector<double> collocate_density(const CompactBasisGrid& cbg, int nbasis,
     for (long a = 0; a < na; ++a) {
         const std::size_t s = cbg.off[static_cast<std::size_t>(a)];
         const std::size_t e = cbg.off[static_cast<std::size_t>(a) + 1];
+        // ρ(g) = Σ_uv P_uv χ_u χ_v with P symmetric → diagonal + 2×upper triangle,
+        // halving the inner work (exact; P = 2 C_occ C_occᵀ is symmetric).
         double acc = 0.0;
         for (std::size_t ia = s; ia < e; ++ia) {
             const double* Pu = &P[static_cast<std::size_t>(cbg.fu[ia]) * nbasis];
             const double va = cbg.fv[ia];
+            acc += va * va * Pu[cbg.fu[ia]]; // diagonal
             double s2 = 0.0;
-            for (std::size_t ib = s; ib < e; ++ib) s2 += Pu[cbg.fu[ib]] * cbg.fv[ib];
-            acc += va * s2;
+            for (std::size_t ib = ia + 1; ib < e; ++ib) s2 += Pu[cbg.fu[ib]] * cbg.fv[ib];
+            acc += 2.0 * va * s2; // upper triangle counted twice
         }
         rho[cbg.gidx[static_cast<std::size_t>(a)]] = acc;
     }

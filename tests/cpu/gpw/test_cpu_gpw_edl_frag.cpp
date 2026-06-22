@@ -87,6 +87,8 @@ TEST(GpwEdlFrag, PeriodicEnergyVsCp2k) {
     cfg.cell[1] = 10.582 * kAng;
     cfg.cell[2] = 47.05377225 * kAng;
     cfg.cutoff_ry = std::getenv("ATV_EDL_CUT") ? std::atof(std::getenv("ATV_EDL_CUT")) : 120.0;
+    if (std::getenv("ATV_EDL_NGRIDS")) cfg.ngrids = std::atoi(std::getenv("ATV_EDL_NGRIDS"));
+    if (std::getenv("ATV_EDL_RELCUT")) cfg.rel_cutoff = std::atof(std::getenv("ATV_EDL_RELCUT"));
     cfg.n_occ = nval / 2;
     cfg.max_iter = std::getenv("ATV_EDL_ITERS") ? std::atoi(std::getenv("ATV_EDL_ITERS")) : 100;
     cfg.tol = 1e-6;
