@@ -136,21 +136,44 @@ std::vector<double> restrict_fft(const UniformGrid& fine, const UniformGrid& coa
 /// P[mu*nb+nu]·gweight, applied at collocation time. The KS scatter target is the
 /// (mu,nu) element.
 struct GridProduct {
-    int mu = 0, nu = 0;        ///< basis-function indices (KS scatter target).
     double p = 0.0;            ///< combined exponent α_a + α_b.
     double pc[3] = {0, 0, 0};  ///< product center P_ab [Bohr].
     double ra[3] = {0, 0, 0};  ///< bra primitive center (shifted image) [Bohr].
     double rb[3] = {0, 0, 0};  ///< ket primitive center (shifted image) [Bohr].
     int la[3] = {0, 0, 0};     ///< bra Cartesian powers.
     int lb[3] = {0, 0, 0};     ///< ket Cartesian powers.
-    double gweight = 0.0;      ///< c_a·c_b·K (geometry-fixed; excludes P_μν).
+    double k = 0.0;            ///< Gaussian product prefactor exp(−α_a α_b/p |r_a−r_b|²).
+    int ua = 0, ub = 0;        ///< indices into ProductSet::prims (bra, ket cartesian prim).
     int level = 0;             ///< assigned grid level (index into MultiGrid::levels).
 };
 
-/// @brief A product list partitioned by grid level: `by_level[l]` holds every
-///        primitive-pair product assigned to `MultiGrid::levels[l]`.
+/// @brief One spherical basis function μ that a cartesian primitive feeds, with
+///        its real-solid-harmonic expansion coefficient.
+struct PrimContrib {
+    int mu = 0;        ///< basis-function index (KS row/col target).
+    double coeff = 0.0;///< harmonic·contraction coefficient of this cartesian term in μ.
+};
+
+/// @brief A UNIQUE cartesian primitive (α, center, Cartesian powers l) shared by
+///        every spherical basis function whose expansion contains it. Collocating
+///        the product between two of these once — then scattering to all (μ,ν)
+///        contributor pairs — removes the spherical→cartesian redundancy (the same
+///        monomial recurs across d_z²/d_x²-y², etc.) and the per-monomial window
+///        recompute. Mirrors CP2K's primitive-cartesian collocation.
+struct PrimRef {
+    double alpha = 0.0;          ///< Gaussian exponent.
+    double center[3] = {0, 0, 0};///< home-cell center [Bohr].
+    int l[3] = {0, 0, 0};        ///< Cartesian powers.
+    int cbeg = 0, cn = 0;        ///< contributor slice [cbeg, cbeg+cn) in ProductSet::contribs.
+    double maxc = 0.0;           ///< max |coeff| over contributors (for the build screen).
+};
+
+/// @brief Products partitioned by grid level, plus the unique cartesian-primitive
+///        table and the flat contributor pool the products index into.
 struct ProductSet {
-    std::vector<std::vector<GridProduct>> by_level; ///< products per level.
+    std::vector<std::vector<GridProduct>> by_level; ///< products per level (index ua/ub into prims).
+    std::vector<PrimRef> prims;                     ///< unique cartesian primitives.
+    std::vector<PrimContrib> contribs;              ///< flat contributor pool (sliced by PrimRef).
 };
 
 /// @brief Build the geometry-fixed primitive-pair product list (the product-based
@@ -183,6 +206,8 @@ ProductSet build_products(const MultiGrid& mg,
 /// @param eps Collocation-window screening tolerance.
 std::vector<double> collocate_products(const UniformGrid& grid,
                                        const std::vector<GridProduct>& prods,
+                                       const std::vector<PrimRef>& prims,
+                                       const std::vector<PrimContrib>& contribs,
                                        int nb, const std::vector<double>& P,
                                        double eps);
 
@@ -194,6 +219,8 @@ std::vector<double> collocate_products(const UniformGrid& grid,
 /// @return Row-major nb×nb KS contribution from this level.
 std::vector<double> integrate_products(const UniformGrid& grid,
                                        const std::vector<GridProduct>& prods,
+                                       const std::vector<PrimRef>& prims,
+                                       const std::vector<PrimContrib>& contribs,
                                        int nb, const std::vector<double>& V_level,
                                        double eps);
 

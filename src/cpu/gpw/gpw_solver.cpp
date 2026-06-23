@@ -795,7 +795,8 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
             rho.assign(static_cast<std::size_t>(mg.levels[0].npts()), 0.0);
             for (std::size_t l = 0; l < mg.levels.size(); ++l) {
                 std::vector<double> rho_l = collocate_products(
-                    mg.levels[l], products.by_level[l], nb, Pvec, eps_default);
+                    mg.levels[l], products.by_level[l], products.prims,
+                    products.contribs, nb, Pvec, eps_default);
                 if (l == 0) {
                     rho = std::move(rho_l); // finest level is the reference grid
                 } else {
@@ -845,7 +846,8 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
                     V_l = restrict_fft(mg.levels[0], mg.levels[l], veff, periodic);
                 }
                 const std::vector<double> Vl_ks = integrate_products(
-                    mg.levels[l], products.by_level[l], nb, V_l, eps_default);
+                    mg.levels[l], products.by_level[l], products.prims,
+                    products.contribs, nb, V_l, eps_default);
                 for (std::size_t kk = 0; kk < V_ks.size(); ++kk) V_ks[kk] += Vl_ks[kk];
             }
             Vgrid = vec_to_mat(V_ks, nb);

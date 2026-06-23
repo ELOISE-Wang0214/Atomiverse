@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <cmath>
 #include <complex>
+#include <unordered_map>
 
 #ifdef ATV_GPW_HAS_FFT
 #include <fftw3.h>
@@ -369,11 +370,73 @@ ProductSet build_products(const MultiGrid& mg,
     const int nb = static_cast<int>(basis.size());
     const int nlev = static_cast<int>(mg.levels.size());
 
-    // Per-function radius (single image) to bound the image expansion: two factors
-    // can overlap only if their (shifted) centers are within ra_μ + ra_ν.
-    std::vector<double> fr(static_cast<std::size_t>(nb), 0.0);
-    for (int u = 0; u < nb; ++u) fr[static_cast<std::size_t>(u)] = basis_function_radius(basis[u], eps);
+    ProductSet ps;
+    ps.by_level.resize(static_cast<std::size_t>(nlev));
 
+    // ---- 1. Deduplicate cartesian primitives -------------------------------
+    // Each spherical basis function μ is stored as its real-solid-harmonic
+    // cartesian expansion, so the SAME (α, center, l) primitive recurs across the
+    // shell (e.g. x² in both d_z² and d_x²-y²). Collapse to UNIQUE cartesian
+    // primitives, each tagged with the (μ, coeff) spherical functions it feeds, so
+    // a product between two unique primitives is collocated ONCE and scattered to
+    // all contributor (μ,ν) pairs — no per-monomial window recompute, no sort.
+    struct PrimKey {
+        double a, cx, cy, cz; int lx, ly, lz;
+        bool operator==(const PrimKey& o) const {
+            return a == o.a && cx == o.cx && cy == o.cy && cz == o.cz &&
+                   lx == o.lx && ly == o.ly && lz == o.lz;
+        }
+    };
+    struct KeyHash {
+        std::size_t operator()(const PrimKey& k) const {
+            std::size_t h = std::hash<double>()(k.a);
+            auto mix = [&h](std::size_t x) { h ^= x + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2); };
+            mix(std::hash<double>()(k.cx)); mix(std::hash<double>()(k.cy));
+            mix(std::hash<double>()(k.cz)); mix(std::hash<int>()(k.lx));
+            mix(std::hash<int>()(k.ly)); mix(std::hash<int>()(k.lz));
+            return h;
+        }
+    };
+    std::unordered_map<PrimKey, int, KeyHash> uniq;
+    std::vector<std::vector<PrimContrib>> tmp_contribs;
+    for (int mu = 0; mu < nb; ++mu) {
+        for (const auto& p : basis[static_cast<std::size_t>(mu)]) {
+            if (p.coeff == 0.0) continue;
+            PrimKey key{p.alpha, p.center[0], p.center[1], p.center[2], p.l[0], p.l[1], p.l[2]};
+            auto it = uniq.find(key);
+            int pi;
+            if (it == uniq.end()) {
+                pi = static_cast<int>(ps.prims.size());
+                PrimRef pr;
+                pr.alpha = p.alpha;
+                for (int d = 0; d < 3; ++d) { pr.center[d] = p.center[d]; pr.l[d] = p.l[d]; }
+                ps.prims.push_back(pr);
+                tmp_contribs.emplace_back();
+                uniq.emplace(key, pi);
+            } else {
+                pi = it->second;
+            }
+            tmp_contribs[static_cast<std::size_t>(pi)].push_back({mu, p.coeff});
+        }
+    }
+    const int nprim = static_cast<int>(ps.prims.size());
+    // Flatten contributors; per-prim max|coeff| (build screen) and support radius.
+    std::vector<double> prad(static_cast<std::size_t>(nprim), 0.0);
+    for (int pi = 0; pi < nprim; ++pi) {
+        PrimRef& pr = ps.prims[static_cast<std::size_t>(pi)];
+        pr.cbeg = static_cast<int>(ps.contribs.size());
+        pr.cn = static_cast<int>(tmp_contribs[static_cast<std::size_t>(pi)].size());
+        double mc = 0.0;
+        for (const auto& c : tmp_contribs[static_cast<std::size_t>(pi)]) {
+            ps.contribs.push_back(c);
+            mc = std::max(mc, std::abs(c.coeff));
+        }
+        pr.maxc = mc;
+        const int Lsum = pr.l[0] + pr.l[1] + pr.l[2];
+        prad[static_cast<std::size_t>(pi)] = product_radius(mc, pr.alpha, Lsum, eps);
+    }
+
+    // ---- 2. Generate UNIQUE-shape products over cartesian-primitive pairs ----
     std::vector<std::vector<std::vector<GridProduct>>> per_thread; // [thread][level]
 #ifdef _OPENMP
     per_thread.resize(static_cast<std::size_t>(omp_get_max_threads()));
@@ -390,74 +453,58 @@ ProductSet build_products(const MultiGrid& mg,
         auto& out = per_thread[0];
 #endif
 #pragma omp for schedule(dynamic, 4)
-        for (int mu = 0; mu < nb; ++mu) {
-            const double* muc = basis[mu].empty() ? nullptr : basis[mu][0].center;
-            if (!muc) continue;
-            for (int nu = 0; nu < nb; ++nu) {
-                if (basis[nu].empty()) continue;
-                const double* nuc = basis[nu][0].center;
-                // Reach over which the two image-summed functions can overlap.
-                const double reach = fr[static_cast<std::size_t>(mu)] +
-                                     fr[static_cast<std::size_t>(nu)];
-                // Image shifts of the KET (nu) relative to the (single-image) bra
-                // — mirrors the single-grid χ_μ χ_ν cross-image product where each
-                // function is independently image-summed. The bra is kept in its
-                // home cell and the ket ranges over images; together with the
-                // collocation window's own wrapping this enumerates all (T,T')
-                // pairs that fall within `reach` (the only ones that overlap).
+        for (int ua = 0; ua < nprim; ++ua) {
+            const PrimRef& A = ps.prims[static_cast<std::size_t>(ua)];
+            for (int ub = 0; ub < nprim; ++ub) {
+                const PrimRef& B = ps.prims[static_cast<std::size_t>(ub)];
+                const double reach = prad[static_cast<std::size_t>(ua)] +
+                                     prad[static_cast<std::size_t>(ub)];
+                const double pa = A.alpha, pb = B.alpha, p = pa + pb;
+                const double mc = A.maxc * B.maxc;
+                // Image shifts of the KET prim (B); the bra A stays home (mirrors
+                // the Γ-point cross-image product Σ_T φ_A φ_B(·−T)).
                 int m[3] = {0, 0, 0};
                 if (periodic)
                     for (int d = 0; d < 3; ++d)
                         m[d] = (L[d] > 0.0)
                                    ? static_cast<int>(std::ceil(reach / L[d] - 1e-12))
                                    : 0;
-                for (const auto& a : basis[mu]) {
-                    for (const auto& b0 : basis[nu]) {
-                        const double cc = a.coeff * b0.coeff;
-                        if (cc == 0.0) continue;
-                        const double pa = a.alpha, pb = b0.alpha, p = pa + pb;
-                        for (int tx = -m[0]; tx <= m[0]; ++tx)
-                            for (int ty = -m[1]; ty <= m[1]; ++ty)
-                                for (int tz = -m[2]; tz <= m[2]; ++tz) {
-                                    const double tL[3] = {tx * L[0], ty * L[1], tz * L[2]};
-                                    // Skip image pairs whose shifted centers cannot
-                                    // overlap (no product contribution).
-                                    const double sx = muc[0] - nuc[0] - tL[0];
-                                    const double sy = muc[1] - nuc[1] - tL[1];
-                                    const double sz = muc[2] - nuc[2] - tL[2];
-                                    if (sx * sx + sy * sy + sz * sz > reach * reach) continue;
-                                    double rb[3], dpq2 = 0.0, P[3];
-                                    for (int d = 0; d < 3; ++d) {
-                                        rb[d] = b0.center[d] + tL[d];
-                                        const double diff = a.center[d] - rb[d];
-                                        dpq2 += diff * diff;
-                                        P[d] = (pa * a.center[d] + pb * rb[d]) / p;
-                                    }
-                                    const double K = std::exp(-pa * pb / p * dpq2);
-                                    const double gw = cc * K;
-                                    if (std::abs(gw) < eps) continue; // negligible pair
-                                    GridProduct prod;
-                                    prod.mu = mu; prod.nu = nu;
-                                    prod.p = p;
-                                    for (int d = 0; d < 3; ++d) {
-                                        prod.pc[d] = P[d];
-                                        prod.ra[d] = a.center[d];
-                                        prod.rb[d] = rb[d];
-                                        prod.la[d] = a.l[d];
-                                        prod.lb[d] = b0.l[d];
-                                    }
-                                    prod.gweight = gw;
-                                    prod.level = level_for_exponent(mg, rel_cutoff, p);
-                                    out[static_cast<std::size_t>(prod.level)].push_back(prod);
-                                }
-                    }
-                }
+                for (int tx = -m[0]; tx <= m[0]; ++tx)
+                    for (int ty = -m[1]; ty <= m[1]; ++ty)
+                        for (int tz = -m[2]; tz <= m[2]; ++tz) {
+                            const double tL[3] = {tx * L[0], ty * L[1], tz * L[2]};
+                            const double sx = A.center[0] - B.center[0] - tL[0];
+                            const double sy = A.center[1] - B.center[1] - tL[1];
+                            const double sz = A.center[2] - B.center[2] - tL[2];
+                            if (sx * sx + sy * sy + sz * sz > reach * reach) continue;
+                            double rb[3], dpq2 = 0.0, P[3];
+                            for (int d = 0; d < 3; ++d) {
+                                rb[d] = B.center[d] + tL[d];
+                                const double diff = A.center[d] - rb[d];
+                                dpq2 += diff * diff;
+                                P[d] = (pa * A.center[d] + pb * rb[d]) / p;
+                            }
+                            const double K = std::exp(-pa * pb / p * dpq2);
+                            if (mc * K < eps) continue; // no contributor pair survives
+                            GridProduct prod;
+                            prod.p = p;
+                            prod.k = K;
+                            prod.ua = ua;
+                            prod.ub = ub;
+                            for (int d = 0; d < 3; ++d) {
+                                prod.pc[d] = P[d];
+                                prod.ra[d] = A.center[d];
+                                prod.rb[d] = rb[d];
+                                prod.la[d] = A.l[d];
+                                prod.lb[d] = B.l[d];
+                            }
+                            prod.level = level_for_exponent(mg, rel_cutoff, p);
+                            out[static_cast<std::size_t>(prod.level)].push_back(prod);
+                        }
             }
         }
     }
 
-    ProductSet ps;
-    ps.by_level.resize(static_cast<std::size_t>(nlev));
     for (auto& t : per_thread)
         for (int l = 0; l < nlev; ++l) {
             auto& dst = ps.by_level[static_cast<std::size_t>(l)];
@@ -588,6 +635,8 @@ inline void collocate_one(const UniformGrid& grid, const GridProduct& prod,
 
 std::vector<double> collocate_products(const UniformGrid& grid,
                                        const std::vector<GridProduct>& prods,
+                                       const std::vector<PrimRef>& prims,
+                                       const std::vector<PrimContrib>& contribs,
                                        int nb, const std::vector<double>& P,
                                        double eps) {
     const std::size_t npts = static_cast<std::size_t>(grid.npts());
@@ -613,10 +662,24 @@ std::vector<double> collocate_products(const UniformGrid& grid,
 #pragma omp for schedule(dynamic, 64)
         for (long ip = 0; ip < np; ++ip) {
             const GridProduct& prod = prods[static_cast<std::size_t>(ip)];
-            const double w =
-                P[static_cast<std::size_t>(prod.mu) * nb + prod.nu] * prod.gweight;
+            // Net density weight over all (μ,ν) spherical pairs sharing this shape:
+            // w = K · Σ_{μ∈A} Σ_{ν∈B} P[μ,ν]·coeff_μ·coeff_ν.
+            const PrimRef& A = prims[static_cast<std::size_t>(prod.ua)];
+            const PrimRef& B = prims[static_cast<std::size_t>(prod.ub)];
+            double s = 0.0;
+            for (int i = 0; i < A.cn; ++i) {
+                const PrimContrib& ca = contribs[static_cast<std::size_t>(A.cbeg + i)];
+                const std::size_t row = static_cast<std::size_t>(ca.mu) * nb;
+                double rs = 0.0;
+                for (int j = 0; j < B.cn; ++j) {
+                    const PrimContrib& cb = contribs[static_cast<std::size_t>(B.cbeg + j)];
+                    rs += P[row + static_cast<std::size_t>(cb.mu)] * cb.coeff;
+                }
+                s += ca.coeff * rs;
+            }
+            const double w = s * prod.k;
             const double aw = std::abs(w);
-            if (aw < eps) continue; // whole per-iter contribution below threshold
+            if (aw < eps) continue; // net per-iter contribution below threshold
             collocate_one(grid, prod, aw, eps,
                           [&](long g, double v) { loc[static_cast<std::size_t>(g)] += w * v; });
         }
@@ -635,6 +698,8 @@ std::vector<double> collocate_products(const UniformGrid& grid,
 
 std::vector<double> integrate_products(const UniformGrid& grid,
                                        const std::vector<GridProduct>& prods,
+                                       const std::vector<PrimRef>& prims,
+                                       const std::vector<PrimContrib>& contribs,
                                        int nb, const std::vector<double>& V_level,
                                        double eps) {
     const std::size_t nn = static_cast<std::size_t>(nb) * nb;
@@ -651,14 +716,25 @@ std::vector<double> integrate_products(const UniformGrid& grid,
 #pragma omp for schedule(dynamic, 64)
         for (long ip = 0; ip < np; ++ip) {
             const GridProduct& prod = prods[static_cast<std::size_t>(ip)];
+            const PrimRef& A = prims[static_cast<std::size_t>(prod.ua)];
+            const PrimRef& B = prims[static_cast<std::size_t>(prod.ub)];
+            // Integrate the shape ONCE (density-independent KS build); the window is
+            // sized by the run's largest geometric magnitude max|coeff|·K.
             double acc = 0.0;
-            // Potential integral builds the (density-independent) KS matrix, so the
-            // window is sized by the geometric coefficient gweight, not P_μν.
-            collocate_one(grid, prod, std::abs(prod.gweight), eps, [&](long g, double v) {
+            collocate_one(grid, prod, A.maxc * B.maxc * prod.k, eps, [&](long g, double v) {
                 acc += V_level[static_cast<std::size_t>(g)] * v;
             });
-            Vloc[static_cast<std::size_t>(prod.mu) * nb + prod.nu] +=
-                prod.gweight * w * acc;
+            // Scatter K·∫ to every (μ,ν) contributor pair's KS element.
+            const double sw = prod.k * w * acc;
+            for (int i = 0; i < A.cn; ++i) {
+                const PrimContrib& ca = contribs[static_cast<std::size_t>(A.cbeg + i)];
+                const std::size_t row = static_cast<std::size_t>(ca.mu) * nb;
+                const double cas = ca.coeff * sw;
+                for (int j = 0; j < B.cn; ++j) {
+                    const PrimContrib& cb = contribs[static_cast<std::size_t>(B.cbeg + j)];
+                    Vloc[row + static_cast<std::size_t>(cb.mu)] += cas * cb.coeff;
+                }
+            }
         }
     }
 #pragma omp parallel for schedule(static)
