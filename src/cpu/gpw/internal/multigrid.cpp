@@ -478,14 +478,19 @@ namespace {
 // so the per-axis factor (Gaussian × 1D polynomial) is precomputed ONCE over the
 // 1D window (exp evaluated O(window) times, not O(window³)) and the 3D window is
 // filled by the outer product — no per-point exp, no gather, vectorizable inner.
+// `mag` is the EFFECTIVE magnitude that sizes the window: the build coefficient
+// gweight for the potential integral, but the per-iter weight |P_μν·gweight| for
+// the density collocation — the latter is often ≪ gweight (small density-matrix
+// element), so sizing by it shrinks the window to where the actual contribution
+// exceeds eps (CP2K's density screening), instead of the build-time worst case.
 template <typename Add>
 inline void collocate_one(const UniformGrid& grid, const GridProduct& prod,
-                          double eps, Add add) {
+                          double mag, double eps, Add add) {
     const long n[3] = {grid.n[0], grid.n[1], grid.n[2]};
     const double dx[3] = {grid.L[0] / n[0], grid.L[1] / n[1], grid.L[2] / n[2]};
     const int Ltot = prod.la[0] + prod.la[1] + prod.la[2] + prod.lb[0] +
                      prod.lb[1] + prod.lb[2];
-    const double rc = product_radius(prod.gweight, prod.p, Ltot, eps);
+    const double rc = product_radius(mag, prod.p, Ltot, eps);
     long lo[3], hi[3];
     for (int d = 0; d < 3; ++d) {
         const long ih = static_cast<long>(std::ceil(rc / dx[d]));
@@ -610,8 +615,9 @@ std::vector<double> collocate_products(const UniformGrid& grid,
             const GridProduct& prod = prods[static_cast<std::size_t>(ip)];
             const double w =
                 P[static_cast<std::size_t>(prod.mu) * nb + prod.nu] * prod.gweight;
-            if (w == 0.0) continue;
-            collocate_one(grid, prod, eps,
+            const double aw = std::abs(w);
+            if (aw < eps) continue; // whole per-iter contribution below threshold
+            collocate_one(grid, prod, aw, eps,
                           [&](long g, double v) { loc[static_cast<std::size_t>(g)] += w * v; });
         }
     }
@@ -646,7 +652,9 @@ std::vector<double> integrate_products(const UniformGrid& grid,
         for (long ip = 0; ip < np; ++ip) {
             const GridProduct& prod = prods[static_cast<std::size_t>(ip)];
             double acc = 0.0;
-            collocate_one(grid, prod, eps, [&](long g, double v) {
+            // Potential integral builds the (density-independent) KS matrix, so the
+            // window is sized by the geometric coefficient gweight, not P_μν.
+            collocate_one(grid, prod, std::abs(prod.gweight), eps, [&](long g, double v) {
                 acc += V_level[static_cast<std::size_t>(g)] * v;
             });
             Vloc[static_cast<std::size_t>(prod.mu) * nb + prod.nu] +=
