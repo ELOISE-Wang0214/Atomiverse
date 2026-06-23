@@ -464,6 +464,40 @@ std::vector<double> ionic_density(const UniformGrid& grid,
     return n;
 }
 
+// GTH local short-range pseudopotential on the real-space grid:
+//   V_loc^SR(r) = Σ_A exp(−t/2) Σ_i C_i^A t^i,  t = |r−R_A|²/rloc_A².
+// This is the SAME short-range form gth_local_sr integrates analytically (per
+// basis pair, O(nb²·natoms) — 57% of the STVpp build). CP2K instead collocates it
+// onto the grid (here) and folds it into V_eff, so the integral against the
+// density is shared with the Hartree/XC potential — O(grid), not O(nb²). Geometry-
+// fixed: built once and added to V_eff every SCF step.
+std::vector<double> local_pp_grid(const UniformGrid& grid,
+                                  const std::vector<GpwAtom>& atoms, bool periodic) {
+    const long ng = grid.npts();
+    std::vector<double> v(static_cast<std::size_t>(ng), 0.0);
+#pragma omp parallel for schedule(static)
+    for (long g = 0; g < ng; ++g) {
+        double r[3];
+        grid.point(g, r);
+        double s = 0.0;
+        for (const auto& a : atoms) {
+            if (a.cloc.empty()) continue;
+            double dx = r[0] - a.pos[0], dy = r[1] - a.pos[1], dz = r[2] - a.pos[2];
+            if (periodic) {
+                dx -= grid.L[0] * std::nearbyint(dx / grid.L[0]);
+                dy -= grid.L[1] * std::nearbyint(dy / grid.L[1]);
+                dz -= grid.L[2] * std::nearbyint(dz / grid.L[2]);
+            }
+            const double t = (dx * dx + dy * dy + dz * dz) / (a.rloc * a.rloc);
+            double poly = 0.0, tp = 1.0;
+            for (double c : a.cloc) { poly += c * tp; tp *= t; }
+            s += std::exp(-0.5 * t) * poly;
+        }
+        v[static_cast<std::size_t>(g)] = s;
+    }
+    return v;
+}
+
 // Analytic Hartree self-energy of one normalized Gaussian core of charge z and
 // width rloc: 1/2 integral rho V[rho] = z^2 / (2 rloc sqrt(pi)).
 double core_self_energy(const GpwAtom& a) {
@@ -662,6 +696,10 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
     // ATV_GPW_NOCELLS forces one giant cell (query returns all j) for A/B bit-id.
     BasisCells bcells;
     bcells.build(basis, cfg.cell, std::getenv("ATV_GPW_NOCELLS") ? 1e30 : rmax, periodic);
+    // Local short-range PP: by default collocated on the grid (local_pp_grid +
+    // V_eff, O(grid)); ATV_GPW_ANALYTIC_LOC forces the legacy per-pair analytic
+    // gth_local_sr (O(nb²·natoms)) — kept for grid-vs-analytic energy validation.
+    const bool grid_loc = std::getenv("ATV_GPW_ANALYTIC_LOC") == nullptr;
 #pragma omp parallel for schedule(dynamic, 8)
     for (int i = 0; i < nb; ++i) {
         if (basis[i].empty()) continue;
@@ -677,8 +715,9 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
                                  radii[static_cast<std::size_t>(j)];
             S(i, j) = overlap(basis[i], basis[j], cfg.cell, mimg, reach);
             T(i, j) = kinetic(basis[i], basis[j], cfg.cell, mimg, reach);
-            Vpp(i, j) = gth_matrix_element(basis[i], basis[j], atoms, acells, rmax_pp,
-                                           cfg.cell, mimg, reach);
+            if (!grid_loc) // analytic local PP only when grid path is disabled
+                Vpp(i, j) = gth_matrix_element(basis[i], basis[j], atoms, acells, rmax_pp,
+                                               cfg.cell, mimg, reach);
         });
     }
     // GTH nonlocal V_nl via the separable Kleinman-Bylander form (projectors
@@ -692,6 +731,12 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
     double e_self = 0.0;
     for (const auto& a : atoms) e_self += core_self_energy(a);
     smark("ionic_density");
+
+    // Geometry-fixed local short-range PP on the grid (added to V_eff each step);
+    // empty when the analytic per-pair path is selected.
+    const std::vector<double> v_locsr =
+        grid_loc ? local_pp_grid(grid, atoms, !cfg.nonperiodic) : std::vector<double>{};
+    smark("local_pp_grid");
 
     // Core (H0) initial guess.
     // Warm start: use the supplied guess (skip the O(nb³) core diagonalization);
@@ -827,6 +872,17 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
         auto t3p = ProfClk::now();
         std::vector<double> veff(rho.size());
         for (std::size_t g = 0; g < rho.size(); ++g) veff[g] = es.v_r[g] + xc.vxc_r[g];
+        // Add the geometry-fixed local short-range PP and its energy ∫ρ·V_loc^SR
+        // (the grid form of the analytic Tr(P·V_loc^SR)).
+        double e_locgrid = 0.0;
+        if (!v_locsr.empty()) {
+            const double gw = grid.weight();
+            for (std::size_t g = 0; g < rho.size(); ++g) {
+                veff[g] += v_locsr[g];
+                e_locgrid += rho[g] * v_locsr[g];
+            }
+            e_locgrid *= gw;
+        }
         // KS grid matrix. Single-grid: integrate veff directly. Multigrid:
         // restrict the fine potential to each level (the transpose of prolong) and
         // integrate each level's products — the adjoint of the density assembly,
@@ -864,7 +920,11 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
         const RealMatrix H = H0 + Vgrid;
         res.e_kinetic = trace_product(Pin, T, nb);
         res.e_nonlocal = 0.0; // folded into e_loc_sr below for the first cut
-        res.e_loc_sr = trace_product(Pin, Vpp, nb);
+        // Vpp holds the analytic PP terms still computed per pair: V_nl (always)
+        // plus V_loc^SR when grid_loc is off. The grid local-PP energy e_locgrid
+        // (zero when analytic) is the ∫ρ·V_loc^SR that Tr(P·Vpp) would otherwise
+        // carry — together they total the full short-range PP energy.
+        res.e_loc_sr = trace_product(Pin, Vpp, nb) + e_locgrid;
         res.e_es = es.e_hartree - e_self;
         res.e_xc = xc.e_xc;
         return {H, res.e_kinetic + res.e_loc_sr + res.e_es + res.e_xc};
