@@ -19,27 +19,26 @@ matrix means physically.
 
 Read these chapters in order:
 
-1. [Tutorial 1: SCF From First Principles](../tutorial/01-scf.md)
-2. [Tutorial 2: Restricted Hartree-Fock (RHF)](../tutorial/02-rhf.md)
-3. [Tutorial 3: Unrestricted Hartree-Fock (UHF)](../tutorial/03-uhf.md)
-4. [Tutorial 4: Unrestricted Kohn-Sham DFT (UKS)](../tutorial/04-uks.md)
-5. [Tutorial 5: Plane-Wave DFT for Periodic Systems](../tutorial/05-pw.md)
+1. [Chapter 2: Atomic Orbitals to Single-Point RHF](../tutorial/ch02-rhf.md)
+2. [Chapter 3: Unrestricted Hartree-Fock (UHF)](../tutorial/ch03-open-shell.md)
+3. [Chapter 5: Unrestricted Kohn-Sham DFT (UKS)](../tutorial/ch05-kohn-sham-dft.md)
+4. [Chapter 8: Plane-Wave DFT for Periodic Systems](../tutorial/ch08-plane-wave.md)
 
 Each chapter adds exactly one new idea.
 
-Tutorial 1 teaches feedback and convergence with a matrix model that has almost
+Chapter 2 teaches feedback and convergence with a matrix model that has almost
 no chemistry in it.
 
-Tutorial 2 replaces the toy matrix with real molecular integrals and introduces
+Chapter 2 replaces the toy matrix with real molecular integrals and introduces
 the RHF closed-shell approximation.
 
-Tutorial 3 removes the "same spatial orbital for both spins" restriction and
+Chapter 3 removes the "same spatial orbital for both spins" restriction and
 shows how open-shell systems require separate alpha and beta channels.
 
-Tutorial 4 keeps the spin-resolved structure of UHF but replaces explicit
+Chapter 5 keeps the spin-resolved structure of UHF but replaces explicit
 Hartree-Fock exchange with exchange-correlation functionals evaluated on a grid.
 
-Tutorial 5 moves from molecules to periodic solids, replacing atom-centered
+Chapter 8 moves from molecules to periodic solids, replacing atom-centered
 Gaussian basis sets with plane waves and introducing pseudopotentials, FFT
 acceleration, k-point sampling, and Ewald summation.
 
@@ -56,7 +55,7 @@ acceleration, k-point sampling, and Ewald summation.
 Note: tutorial numbers and example numbers do **not** line up. The example
 files are numbered in their own pedagogical order (so plane-wave DFT, which
 comes last among the example programs, is `examples/08_pw.cpp` even though it is
-Tutorial 5). Always follow the "Primary example" column above rather than
+Chapter 8). Always follow the "Primary example" column above rather than
 assuming the numbers match. Read the theory and the matching code side by side.
 
 ## When To Use CPU Solvers Versus CUDA SCF Components
@@ -75,13 +74,13 @@ by one or more components.
 
 Pair each tutorial with one code-reading target:
 
-- after Tutorial 1, read [`cpu::scf::solve`](../../include/atomiverse/cpu/scf/solve.h)
-- after Tutorial 2, read [`IntegralPack`](../../include/atomiverse/cpu/scf/integrals.h) and [`rhf_solve`](../../include/atomiverse/cpu/scf/rhf_solve.h)
-- after Tutorial 3, read [`uhf_solve`](../../include/atomiverse/cpu/scf/uhf_solve.h)
-- after Tutorial 4, read [`uks_solve`](../../include/atomiverse/cpu/scf/uks_solve.h) and [`xc_functional.h`](../../include/atomiverse/cpu/scf/xc_functional.h)
-- after Tutorial 5, read [`pw_solver.h`](../../include/atomiverse/cpu/pw/pw_solver.h) and [`internal/pw_workspace.h`](../../include/atomiverse/cpu/pw/internal/pw_workspace.h)
+- after Chapter 2, read [`cpu::scf::solve`](../../include/atomiverse/cpu/scf/solve.h)
+- after Chapter 2, read [`IntegralPack`](../../include/atomiverse/cpu/scf/integrals.h) and [`rhf_solve`](../../include/atomiverse/cpu/scf/rhf_solve.h)
+- after Chapter 3, read [`uhf_solve`](../../include/atomiverse/cpu/scf/uhf_solve.h)
+- after Chapter 5, read [`uks_solve`](../../include/atomiverse/cpu/scf/uks_solve.h) and [`xc_functional.h`](../../include/atomiverse/cpu/scf/xc_functional.h)
+- after Chapter 8, read [`pw_solver.h`](../../include/atomiverse/cpu/pw/pw_solver.h) and [`internal/pw_workspace.h`](../../include/atomiverse/cpu/pw/internal/pw_workspace.h)
 
 If you want to understand how the same ideas map onto the runtime system, then
-read the [Developer Manual](../developer/index.md) after finishing Tutorial 2.
+read the [Developer Manual](../developer/index.md) after finishing Chapter 2.
 That is usually the point where `Driver`, `Plan`, and `Component` start to make
 sense instead of feeling abstract.

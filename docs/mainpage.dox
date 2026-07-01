@@ -37,7 +37,7 @@ different kind of question.
 If you are new to Atomiverse, read these pages first:
 
 1. [Getting Started](user-guide/getting-started.md)
-2. [Tutorial 0: A Tour of the CPU Backend](tutorial/00-cpu-overview.md)
+2. [Chapter 0: A Tour of the CPU Backend](tutorial/ch00-architecture.md)
 3. [Tutorials Index](tutorial/index.md)
 
 The tutorial track is organised in two arcs. The SCF arc (Chapters 1-4,

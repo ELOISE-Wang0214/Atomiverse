@@ -100,7 +100,7 @@ The total energy is the sum of the electronic energy and the nuclear-repulsion
 energy, and it matches the published value. That is a full electronic-structure
 calculation: atomic coordinates in, total energy out. The matching theory and a
 line-by-line walk-through are in
-[Tutorial 2: Restricted Hartree-Fock](../tutorial/02-rhf.md).
+[Chapter 2: Restricted Hartree-Fock](../tutorial/ch02-rhf.md).
 
 ## 5. Which example next?
 
@@ -135,14 +135,14 @@ not manage GPU memory by hand for a standard run.
 ## 7. Recommended reading order
 
 1. This page.
-2. [Tutorial 0: A Tour of the CPU Backend](../tutorial/00-cpu-overview.md) —
+2. [Chapter 0: A Tour of the CPU Backend](../tutorial/ch00-architecture.md) —
    the Driver / Component / Frame vocabulary.
-3. [Tutorial 1 → 4](../tutorial/01-scf.md): SCF → RHF → UHF → UKS (the quantum
+3. [Chapter 2 → 5](../tutorial/ch02-rhf.md): SCF → RHF → UHF → UKS (the quantum
    chemistry arc).
-4. [Tutorial 5: Plane-Wave DFT](../tutorial/05-pw.md) for periodic systems.
-5. [Tutorial 7: Classical MD](../tutorial/07-classical-md.md),
-   [Tutorial 6: AIMD](../tutorial/06-aimd.md), and
-   [Tutorial 8: Geometry Minimization](../tutorial/08-geometry-minimization.md).
+4. [Chapter 8: Plane-Wave DFT](../tutorial/ch08-plane-wave.md) for periodic systems.
+5. [Chapter 10: Classical MD](../tutorial/ch10-classical-md.md),
+   [Chapter 15: AIMD](../tutorial/ch15-cross-method.md), and
+   [Chapter 12: Geometry Minimization](../tutorial/ch12-geometry-optimization.md).
 
-If classical force fields are what brought you here, start at Tutorial 7
-instead; if electronic structure is, start at Tutorial 1.
+If classical force fields are what brought you here, start at Chapter 10
+instead; if electronic structure is, start at Chapter 2.

@@ -1,10 +1,10 @@
 # Chapter 9: Gaussian and Plane Waves (GPW)
 
 The manual has now presented the two great basis families of electronic
-structure. The molecular chapters ([Tutorial 2](02-rhf.md) through
+structure. The molecular chapters ([Chapter 2](ch02-rhf.md) through
 [Chapter 6](ch06-hybrid-dft.md)) used **atom-centered Gaussians** — compact,
 few functions per atom, but the two-electron Coulomb term costs formally
-$\mathcal{O}(N^4)$ integrals. [Tutorial 5](05-pw.md) used **plane waves** —
+$\mathcal{O}(N^4)$ integrals. [Chapter 8](ch08-plane-wave.md) used **plane waves** —
 a uniform basis that makes the Hartree potential an $\mathcal{O}(N \log N)$ FFT,
 but needs hundreds of functions per atom.
 
@@ -14,9 +14,9 @@ reproduces its numbers for the same input.
 
 > **The GPW idea.** Keep the *wavefunction* in a small Gaussian basis, but
 > represent the *density* on a uniform real-space grid. The Kohn-Sham matrix is
-> built in the Gaussian basis (like [Chapter 5](04-uks.md)); the Hartree and
+> built in the Gaussian basis (like [Chapter 5](ch05-kohn-sham-dft.md)); the Hartree and
 > exchange-correlation potentials are evaluated on the grid by FFT (like
-> [Chapter 8](05-pw.md)). A dual representation, bridged by mapping the Gaussian
+> [Chapter 8](ch08-plane-wave.md)). A dual representation, bridged by mapping the Gaussian
 > density onto the grid and back.
 
 You will learn:
@@ -41,7 +41,7 @@ The Kohn-Sham energy has terms that live most naturally in *different* bases.
 
 The **kinetic energy** and the **short-range pseudopotential** are cheap and
 accurate in a small Gaussian basis — a handful of contracted functions per atom,
-exactly as in the molecular DFT of [Chapter 5](04-uks.md). But the **Hartree
+exactly as in the molecular DFT of [Chapter 5](ch05-kohn-sham-dft.md). But the **Hartree
 term** — the classical electron-electron Coulomb repulsion — is the expensive
 one for Gaussians, because it couples every basis-function pair to every other.
 
@@ -73,8 +73,8 @@ AIMD on thousands of atoms.
 GPW follows the exact architecture of the other electronic-structure methods in
 this manual. The SCF machinery is an **inner solver** — `cpu::gpw::gpw_scf`,
 driven by `cpu::gpw::GPWEvaluator` — and it is *not* a `Driver` subclass, just
-as [Gaussian SCF is an inner solver](01-scf.md) behind `SCFEvaluator` and
-[plane-wave DFT](05-pw.md) is one behind `PWEvaluator`.
+as [Gaussian SCF is an inner solver](ch02-rhf.md) behind `SCFEvaluator` and
+[plane-wave DFT](ch08-plane-wave.md) is one behind `PWEvaluator`.
 
 `GPWEvaluator` reports `role() == Evaluator` and `capabilities() == Energy`
 (plus `Force` when finite-difference forces are enabled). Its `build()` records
@@ -192,8 +192,8 @@ Stand back and count the electronic-structure evaluators this manual now has:
 
 | evaluator | basis | electrostatics | chapter |
 |---|---|---|---|
-| `SCFEvaluator` | Gaussian | analytic ERIs | [2](02-rhf.md)–[6](ch06-hybrid-dft.md) |
-| `PWEvaluator` | plane wave | reciprocal-space FFT | [8](05-pw.md) |
+| `SCFEvaluator` | Gaussian | analytic ERIs | [2](ch02-rhf.md)–[6](ch06-hybrid-dft.md) |
+| `PWEvaluator` | plane wave | reciprocal-space FFT | [8](ch08-plane-wave.md) |
 | `GPWEvaluator` | Gaussian + grid | grid FFT (Poisson) | 9 (this) |
 
 All three are `role() == Evaluator`, `capabilities() == Energy`, and all three
@@ -222,8 +222,8 @@ GPW is **experimental**. Be precise about what works today:
   under `cpu/gpw/internal/` and are not yet a frozen public interface.
 
 For the periodic plane-wave method GPW builds on, see
-[Tutorial 5](05-pw.md); for the molecular Gaussian DFT it shares a basis with,
-see [Chapter 5](04-uks.md).
+[Chapter 8](ch08-plane-wave.md); for the molecular Gaussian DFT it shares a basis with,
+see [Chapter 5](ch05-kohn-sham-dft.md).
 
 ## Validation Reference
 

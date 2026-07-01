@@ -1,4 +1,4 @@
-# Tutorial 7: Classical Molecular Dynamics on the CPU
+# Chapter 10: Classical Molecular Dynamics on the CPU
 
 The previous chapters introduced the SCF machinery and showed that the
 same `cpu::md::MD` driver that ran *ab initio* MD will also run classical
@@ -312,7 +312,7 @@ Everything above uses classical force evaluators at the `force` phase.
 Replace them with `cpu::scf::SCFEvaluator{config}.predictor(3)` and
 nothing else changes — the integrator, thermostat, barostat, and
 observers all keep working. That is the AIMD recipe of [Tutorial
-6](06-aimd.md), and it is *the* reason the project has only one MD
+6](ch15-cross-method.md), and it is *the* reason the project has only one MD
 driver.
 
 A practical corollary: when you debug an AIMD setup, isolating the
@@ -361,7 +361,7 @@ discussed in detail here:
   multi-rank API is described in `.claude/specs/parallel-md-engine.md`.
 
 The next chapter
-([Geometry Minimization](08-geometry-minimization.md)) reuses the same
+([Geometry Minimization](ch12-geometry-optimization.md)) reuses the same
 force evaluators under a different driver — `cpu::minimizer::Minimize`
 — and shows how the SCFEvaluator pattern that anchored the AIMD chapter
 also anchors *ab initio* geometry optimization. From a wiring

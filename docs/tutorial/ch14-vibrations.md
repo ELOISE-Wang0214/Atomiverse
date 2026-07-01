@@ -1,6 +1,6 @@
 # Chapter 14: Vibrational Analysis and Thermochemistry
 
-A geometry optimization ([Tutorial 8](08-geometry-minimization.md)) finds a
+A geometry optimization ([Chapter 12](ch12-geometry-optimization.md)) finds a
 stationary point on the potential-energy surface, but it cannot tell you
 *what kind* of stationary point it is, nor what the molecule's thermodynamic
 properties are at finite temperature. Both answers come from the same object:
@@ -138,7 +138,7 @@ H.is_linear;      // true ⇒ 3N−5 modes
 Two API details that decide whether your result is meaningful:
 
 - **Start from an optimized geometry.** The harmonic expansion is only valid
-  at a stationary point. Run [Tutorial 8](08-geometry-minimization.md)'s
+  at a stationary point. Run [Chapter 12](ch12-geometry-optimization.md)'s
   minimizer first, at the *same* level of theory you will use for the Hessian.
   A Hessian at a non-stationary geometry has spurious low frequencies from the
   residual gradient.
@@ -243,8 +243,8 @@ others only by its termination semantics — a fixed $6N$-displacement budget
 with no early stop — yet it consumes the *identical* `SCFEvaluator{config}`
 that:
 
-- MD ([Tutorial 6](06-aimd.md)) plugs into `cpu::md::MD` for AIMD,
-- the minimizer ([Tutorial 8](08-geometry-minimization.md)) plugs into
+- MD ([Chapter 15](ch15-cross-method.md)) plugs into `cpu::md::MD` for AIMD,
+- the minimizer ([Chapter 12](ch12-geometry-optimization.md)) plugs into
   `cpu::minimizer::Minimize` for geometry optimization,
 - and the hybrid-DFT chapter ([Chapter 6](ch06-hybrid-dft.md)) feeds it a
   `b3lyp_config` for hybrid forces.

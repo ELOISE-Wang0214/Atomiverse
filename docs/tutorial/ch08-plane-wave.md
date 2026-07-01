@@ -1,8 +1,8 @@
-# Tutorial 5: Plane-Wave DFT for Periodic Systems
+# Chapter 8: Plane-Wave DFT for Periodic Systems
 
 This tutorial assumes you have read
-[Tutorial 1: SCF from First Principles](01-scf.md) and
-[Tutorial 4: Unrestricted Kohn-Sham DFT](04-uks.md).
+[Chapter 2: Atomic Orbitals to Single-Point RHF](ch02-rhf.md) and
+[Chapter 5: Unrestricted Kohn-Sham DFT](ch05-kohn-sham-dft.md).
 
 The first four tutorials covered **molecular** electronic structure with
 atom-centered Gaussian basis sets. This tutorial moves to **periodic** systems —
@@ -107,7 +107,7 @@ against the uniform neutralizing background).
 **2. Exchange-correlation (real space, via FFT).**
 \f$\rho(\mathbf{r}) = \mathrm{FFT}^{-1}[\rho(\mathbf{G})]\f$, evaluate
 \f$V_{\mathrm{xc}}(\mathbf{r}) = \delta E_{\mathrm{xc}}/\delta\rho\f$
-pointwise (the same LDA functional family as Tutorial 4), then FFT back to
+pointwise (the same LDA functional family as Chapter 5), then FFT back to
 \f$V_{\mathrm{xc}}(\mathbf{G})\f$.
 
 **3. Effective potential.**

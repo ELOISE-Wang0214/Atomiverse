@@ -1,6 +1,6 @@
 # Chapter 6: Hybrid Functionals and Analytic Gradients
 
-[Tutorial 4](04-uks.md) introduced Kohn-Sham DFT with the pure functionals
+[Chapter 5](ch05-kohn-sham-dft.md) introduced Kohn-Sham DFT with the pure functionals
 LSDA and PBE, where the exchange-correlation energy is a semi-local integral
 over the density on a grid. This chapter adds the two most widely used
 **global hybrid** functionals — B3LYP and PBE0 — which mix a fixed fraction
@@ -237,7 +237,7 @@ opt.run(frame, /*max_iter=*/100);
 ```
 
 The same `SCFEvaluator{b3lyp_config(...)}` drops into `cpu::md::MD` for
-hybrid-functional AIMD ([Tutorial 6](06-aimd.md)) and into `cpu::vib::Hessian`
+hybrid-functional AIMD ([Chapter 15](ch15-cross-method.md)) and into `cpu::vib::Hessian`
 for hybrid vibrational frequencies ([Chapter 14](ch14-vibrations.md)). One
 gradient routine, one evaluator component, three drivers — the "swap the
 evaluator, keep the driver" architecture that

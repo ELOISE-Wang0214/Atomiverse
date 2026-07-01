@@ -10,7 +10,7 @@ is that you can understand the whole timestep by reading one enum and one
 table, without chasing call sites.
 
 It assumes the user-level mental model from the
-[CPU overview tutorial](../tutorial/00-cpu-overview.md) — `Frame` (the system
+[CPU overview tutorial](../tutorial/ch00-architecture.md) — `Frame` (the system
 state), `Component` (one unit of work), `Driver` (the loop) — and the
 [CPU Backend Internals](cpu-internals.md) chapter (why there are three driver
 categories). Here we zoom into *one step of the MD driver*.

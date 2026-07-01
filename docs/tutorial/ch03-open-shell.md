@@ -1,4 +1,4 @@
-# Tutorial 3: Unrestricted Hartree-Fock
+# Chapter 3: Unrestricted Hartree-Fock
 
 Restricted Hartree-Fock is a good first model because it explains molecular
 orbitals, density matrices, and self-consistency with the least amount of
@@ -157,4 +157,4 @@ even if the function call name says `uhf_solve`.
 The next chapter keeps the spin-resolved structure of UHF but changes the mean
 field itself. Instead of explicit Hartree-Fock exchange, it uses an
 exchange-correlation functional evaluated on a real-space grid:
-[Tutorial 4: Unrestricted Kohn-Sham DFT (UKS)](04-uks.md).
+[Chapter 5: Unrestricted Kohn-Sham DFT (UKS)](ch05-kohn-sham-dft.md).

@@ -1,8 +1,8 @@
 # Chapter 7: Beyond Mean Field — Correlation Methods
 
 Every electronic-structure method in the previous chapters — Hartree-Fock
-([Tutorial 2](02-rhf.md), [Tutorial 3](03-uhf.md)) and Kohn-Sham DFT
-([Tutorial 4](04-uks.md), [Chapter 6](ch06-hybrid-dft.md)) — is a **mean-field**
+([Chapter 2](ch02-rhf.md), [Chapter 3](ch03-open-shell.md)) and Kohn-Sham DFT
+([Chapter 5](ch05-kohn-sham-dft.md), [Chapter 6](ch06-hybrid-dft.md)) — is a **mean-field**
 theory. Each electron moves in the *average* field of all the others. That
 averaging is what makes the SCF loop tractable, and it is also its central
 approximation: real electrons avoid each other instantaneously, and mean-field
@@ -143,4 +143,4 @@ points to.
 For the methods Atomiverse *does* provide as its route to correlation, return to
 [Chapter 6: Hybrid Functionals and Analytic Gradients](ch06-hybrid-dft.md). For
 the periodic counterpart of the electronic-structure problem, continue to
-[Tutorial 5: Plane-Wave DFT for Periodic Systems](05-pw.md).
+[Chapter 8: Plane-Wave DFT for Periodic Systems](ch08-plane-wave.md).

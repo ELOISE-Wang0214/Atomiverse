@@ -1,6 +1,6 @@
 # Chapter 11: Ensembles — Thermostats and Barostats
 
-[Tutorial 7](07-classical-md.md) built a complete classical MD run and, at
+[Chapter 10](ch10-classical-md.md) built a complete classical MD run and, at
 the end, added a thermostat and a barostat almost in passing. This chapter
 takes ensembles seriously. An MD trajectory does not just "run" — it samples
 a *statistical ensemble*, and which ensemble you sample (microcanonical NVE,
@@ -23,7 +23,7 @@ The six questions:
    initio* MD by swapping only the force provider.
 
 This chapter assumes the FCC-argon setup and the `cpu::md::MD` categorical
-setters from [Tutorial 7](07-classical-md.md); code below reuses its
+setters from [Chapter 10](ch10-classical-md.md); code below reuses its
 `make_fcc_argon(n_cells, a)` helper.
 
 ## The Concept: A Trajectory Samples an Ensemble
@@ -92,7 +92,7 @@ The categorical setters on `cpu::md::MD` are the primary API:
 
 ### NVE — the baseline
 
-No thermostat, no barostat. This is [Tutorial 7](07-classical-md.md)'s run,
+No thermostat, no barostat. This is [Chapter 10](ch10-classical-md.md)'s run,
 restated as the reference point:
 
 ```cpp
@@ -261,7 +261,7 @@ A correctly thermostatted run has two signatures, and both matter:
   a spread that *shrinks* as $1/\sqrt{N}$ — for 256 argon atoms the swings
   are modest; for a 3-atom molecule they are enormous and *correct* (a small
   system genuinely has large relative energy fluctuations; see
-  [Tutorial 6](06-aimd.md)). A thermostat that pins $T$ dead-flat is a red
+  [Chapter 15](ch15-cross-method.md)). A thermostat that pins $T$ dead-flat is a red
   flag, not a success.
 
 For the deterministic thermostats there is a third, sharper check: the
@@ -311,7 +311,7 @@ aimd.run(frame, n_steps);
 The thermostat does not know, and does not care, whether the forces it is
 regulating came from a Lennard-Jones cutoff or a converged Kohn-Sham
 calculation. This is the same "swap the evaluator, keep the loop" invariant
-that unifies the whole engine — [Tutorial 6](06-aimd.md) runs it end-to-end,
+that unifies the whole engine — [Chapter 15](ch15-cross-method.md) runs it end-to-end,
 and [Chapter 15](ch15-cross-method.md) makes the pattern explicit as a design
 principle. Learn the ensembles once, on cheap classical forces; apply them
 unchanged to any level of theory.

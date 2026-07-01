@@ -392,9 +392,9 @@ When you ship a new component, update at least three places:
    tree.
 3. A reference in the relevant tutorial. If you add FIRE, the
    geometry-optimization tutorial
-   ([Tutorial 8](../tutorial/08-geometry-minimization.md)) gains a
+   ([Chapter 12](../tutorial/ch12-geometry-optimization.md)) gains a
    sentence or two about it. If you add ADIIS, the SCF tutorial chain
-   ([01-scf.md](../tutorial/01-scf.md) onward) gets a footnote on the
+   ([ch02-rhf.md](../tutorial/ch02-rhf.md) onward) gets a footnote on the
    alternate accelerator.
 
 The tutorial reference is what users see first; the CLAUDE.md table is

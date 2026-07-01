@@ -1,4 +1,4 @@
-# Tutorial 4: Unrestricted Kohn-Sham DFT (UKS)
+# Chapter 5: Unrestricted Kohn-Sham DFT (UKS)
 
 The move from RHF to UHF changed the spin structure of the SCF problem but kept
 the Hartree-Fock mean field. The move from UHF to UKS changes something deeper:

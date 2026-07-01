@@ -23,7 +23,7 @@ The six questions this book asks of every topic apply here too:
    independent check" discipline reappears in every method chapter.
 
 If the architecture (Driver / Component / Frame) is new to you, read
-[Tutorial 0: A Tour of the CPU Backend](00-cpu-overview.md) first. This
+[Chapter 0: A Tour of the CPU Backend](ch00-architecture.md) first. This
 chapter assumes you know that a `cpu::Frame` is the shared state object and
 picks up from there.
 
@@ -117,7 +117,7 @@ For an isolated molecule the box only has to be large enough that periodic
 images do not interact; `Mat3::cubic(100.0)` is the idiom used across the
 SCF tests. For condensed-phase MD the box is the physical cell and its
 minimum-image helper (`min_image`) is on the hot path — see
-[Tutorial 7](07-classical-md.md).
+[Chapter 10](ch10-classical-md.md).
 
 ### Units are eV / Å / fs / amu — with one explicit bridge to Hartree/Bohr
 
@@ -279,9 +279,9 @@ manual:
 - **Frequencies** ([Chapter 14](ch14-vibrations.md)): the finite-difference
   Hessian *is* the independent check on the analytic gradient, then compared
   against PySCF's analytic Hessian.
-- **XC functionals** ([Tutorial 4](04-uks.md)): the native implementation vs
+- **XC functionals** ([Chapter 5](ch05-kohn-sham-dft.md)): the native implementation vs
   libxc to 1e-12.
-- **Energy conservation** ([Tutorial 7](07-classical-md.md)): an NVE
+- **Energy conservation** ([Chapter 10](ch10-classical-md.md)): an NVE
   trajectory that keeps total energy flat is the integrator's own
   self-check.
 - **Backends**: CPU is the reference; CUDA is *compared*, not assumed

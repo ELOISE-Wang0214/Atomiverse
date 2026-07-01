@@ -1,4 +1,4 @@
-# Tutorial 0: A Tour of the CPU Backend
+# Chapter 0: A Tour of the CPU Backend
 
 If you arrived at Atomiverse looking for "how do I run a simulation?" the
 honest answer is: it depends on what you mean by *run*. Three different
@@ -219,9 +219,9 @@ very different workflows:
 
 - **Single-point energy.** `cpu::Evaluate + SCFEvaluator{cfg}.with_gradient(false)`
 - **Geometry optimization.** `cpu::minimizer::Minimize + LBFGS + SCFEvaluator{cfg}` (the example in
-  [Tutorial 8](08-geometry-minimization.md))
+  [Chapter 12](ch12-geometry-optimization.md))
 - **Ab initio molecular dynamics.** `cpu::md::MD + VelocityVerlet + NoseHoover + SCFEvaluator{cfg}.predictor(3)`
-  (the example in [Tutorial 6](06-aimd.md))
+  (the example in [Chapter 15](ch15-cross-method.md))
 
 Same evaluator. Three different drivers. Same `cpu::Frame`.
 

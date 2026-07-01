@@ -1,4 +1,4 @@
-# Tutorial 8: Geometry Minimization with L-BFGS or CG
+# Chapter 12: Geometry Minimization with L-BFGS or CG
 
 The `cpu::minimizer::Minimize` driver answers a different question from
 the MD chapters. Instead of "how does the system evolve in time?" it
@@ -297,7 +297,7 @@ an optimizer bug. Either the SCF tolerance is set too loose
 initial guess is poor (try MINAO via `default_config`), or you are
 running the wrong method for the chemistry (e.g. RHF on a singlet
 biradical, or a small basis on an anion). The
-[SCF tutorials](01-scf.md) cover these cases.
+[SCF tutorials](ch02-rhf.md) cover these cases.
 
 If forces, energy, and SCF are all healthy but the geometry will not
 move, you may be at a saddle point. None of the shipped optimizers
@@ -314,7 +314,7 @@ classical relaxation. Replace the SCFEvaluator with `cpu::PairLJCut` and
 The optimizer does not know the difference, and the convergence
 tolerances stay in the same units.
 
-If you came here from [Tutorial 6: AIMD](06-aimd.md), the symmetry is
+If you came here from [Chapter 15: AIMD](ch15-cross-method.md), the symmetry is
 worth pausing on. The same `SCFEvaluator{config}` instance plugs into
 either driver:
 

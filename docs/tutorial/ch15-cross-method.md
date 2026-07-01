@@ -164,10 +164,83 @@ this chapter is really about:
   `Evaluate` context.
 - **`predictor(order)`** — the ASPC density predictor-corrector. For MD it
   extrapolates the density matrix from previous steps, cutting the SCF
-  iteration count by 30–50% on production-scale systems (see
-  [Tutorial 6](06-aimd.md)). It is a *dynamics* optimization — meaningful only
-  when the geometry changes smoothly step to step, which is exactly the MD
-  case.
+  iteration count by 30–50% on production-scale systems (see the AIMD deep-dive
+  below). It is a *dynamics* optimization — meaningful only when the geometry
+  changes smoothly step to step, which is exactly the MD case.
+
+## Ab Initio MD in Practice: ASPC, Output, and Pitfalls
+
+The MD row above is the single most consequential cell in the grid — *ab initio*
+molecular dynamics (AIMD), where a fully converged SCF supplies the forces at
+every time step. The most common variant, running a converged SCF at each
+nuclear configuration, is **Born-Oppenheimer MD (BOMD)**. The runnable companion
+is [`examples/06_aimd.cpp`](../../examples/06_aimd.cpp), which propagates H₂ for
+50 fs of NVT at 100 K on RHF/STO-3G forces. Nothing in the loop "knows" the
+forces are quantum mechanical: the `SCFEvaluator` advertises `Capability::Force`
+and the driver treats it like any other force provider. But four practical
+points separate a toy run from a production one.
+
+**ASPC makes BOMD affordable.** A naive BOMD runs a full SCF every step from a
+generic guess. For H₂ that converges in two or three iterations, but a
+hundred-atom system in a polarized basis can take 15–30 iterations per step,
+making a 10 ps trajectory prohibitive. The Always Stable Predictor-Corrector
+(ASPC) of Kolafa exploits the smoothness of nuclear motion: because the density
+matrix changes slowly between adjacent steps, a Lagrange extrapolation from the
+last $K$ steps is a far better SCF guess than a generic one. In Atomiverse it is
+one method call with a full signature:
+
+```cpp
+scf.predictor(/*order=*/3, /*corrector_steps=*/2,
+              /*corrector_tol=*/1e-4, /*fallback=*/true);
+```
+
+On production-scale AIMD (water, peptides, transition-metal complexes), ASPC
+commonly cuts the SCF iteration count by 30–50%, bringing the per-step cost to
+roughly $1.2\times$ a single fresh SCF. For very small systems the picture
+flips — each SCF converges so fast that ASPC's bookkeeping overhead exceeds the
+savings — so treat `predictor(order)` as a production lever, not a universal win.
+
+**Reading the output.** A typical AIMD run prints:
+
+```text
+[aimd] step=1   PE_eV=  -30.3887  KE_eV=  0.0129  T_K=  99.61
+[aimd] step=100 PE_eV=  -30.1052  KE_eV=  0.0242  T_K= 186.94
+```
+
+`PE_eV` is the SCF total electronic energy plus nuclear repulsion (the same value
+`frame.scalars.energy` carries). `KE_eV` is the classical nuclear kinetic energy
+from the auto-added kinetic component at `end_of_step`. `T_K` is the
+instantaneous kinetic temperature, $T = 2 E_{\mathrm{kin}} / (N_{\mathrm{dof}}
+k_B)$ with $N_{\mathrm{dof}} = 3N - 3$ (centre of mass removed).
+
+**Small-system fluctuations are huge — and correct.** H₂ has only three degrees
+of freedom after centre-of-mass removal, so its instantaneous temperature can
+swing between 50 K and 700 K even when the ensemble average is 100 K. This is
+correct equilibrium thermodynamics for a tiny system, not a thermostat bug: trust
+ensemble averages over many trajectories, never a single short one. (This is the
+analysis-side lesson of [Chapter 13](ch13-observables.md): an observable is a
+trajectory average, not an instantaneous reading.)
+
+**A design note that shaped `SCFEvaluator::launch`.** `VelocityVerlet` wraps
+atoms through periodic boundaries, but the SCF integral builder is not
+minimum-image aware. If a boundary atom wrapped across the cell, the next SCF
+would see the molecule ~one box length apart and collapse onto the unphysical
+RHF ionic limit. To close that trap, `SCFEvaluator::launch` reassembles the
+molecule by minimum image relative to atom 0 before each integral build, then
+restores the wrapped positions before returning — so any geometry inside the cell
+is acceptable and you never have to centre atoms yourself. (The anchor-on-atom-0
+scheme assumes a single isolated fragment per SCF call, matching the current
+scope of CPU SCF.)
+
+**Choose the method for the temperature.** RHF cannot describe homolytic bond
+cleavage: the closed-shell ansatz forces both electrons into one spatial orbital,
+giving an unphysical H⁺ + H⁻ admixture at large separation, a wrong dissociation
+curve, and wrong-sign forces in an intermediate range. In a hot RHF trajectory
+the molecule appears to "fly apart" once thermal motion samples that region. The
+example runs at 100 K, well below where the RHF curve fails; for hot AIMD, swap
+the SCF configuration to UKS with a GGA functional
+([Chapter 5](ch05-kohn-sham-dft.md)) — *the same code path, one config different*,
+which is exactly this chapter's thesis applied to a physics decision.
 
 ## The Expected Result: Same Structure, Divergent Cost
 
@@ -220,8 +293,8 @@ integration test that the *whole* architecture, not any one component, does
 what the manual claims.
 
 Underneath, each half of the swap stands on its own validated foundation: the
-classical forces against LAMMPS ([Tutorial 7](07-classical-md.md)), the
-quantum forces against PySCF (Chapters [2](02-rhf.md), [6](ch06-hybrid-dft.md),
+classical forces against LAMMPS ([Chapter 10](ch10-classical-md.md)), the
+quantum forces against PySCF (Chapters [2](ch02-rhf.md), [6](ch06-hybrid-dft.md),
 [14](ch14-vibrations.md)). Cross-method validation does not re-derive those; it
 certifies that *composing* them changes nothing about either.
 

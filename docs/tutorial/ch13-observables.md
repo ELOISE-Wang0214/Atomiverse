@@ -2,8 +2,8 @@
 
 Every previous chapter produced a *trajectory* — a sequence of frames from an
 integrator ([Chapter 11](ch11-ensembles.md)), an optimizer
-([Tutorial 8](08-geometry-minimization.md)), or an AIMD run
-([Tutorial 6](06-aimd.md)). A trajectory by itself is not a scientific result.
+([Chapter 12](ch12-geometry-optimization.md)), or an AIMD run
+([Chapter 15](ch15-cross-method.md)). A trajectory by itself is not a scientific result.
 The result is an **observable**: a number or a curve you extract from the
 trajectory and compare against experiment or a reference calculation — a
 diffusion coefficient, a radial distribution function, a vibrational density of
@@ -292,7 +292,7 @@ Observables are where that pattern pays off a second time.
 An observer never asks *how* the trajectory was produced. It subscribes to the
 snapshot ring, receives `positions` and/or `velocities`, and computes. So the
 exact same `ATV::MSD` measures self-diffusion whether the forces came from
-`PairLJCut` (classical MD), an `SCFEvaluator` (AIMD, [Tutorial 6](06-aimd.md)),
+`PairLJCut` (classical MD), an `SCFEvaluator` (AIMD, [Chapter 15](ch15-cross-method.md)),
 or a plane-wave evaluator — and whether the loop ran on the CPU or, after an
 asynchronous device-to-host copy, on a GPU. The snapshot ring is the universal
 seam between *producing* state and *analysing* it, exactly as the `Force`

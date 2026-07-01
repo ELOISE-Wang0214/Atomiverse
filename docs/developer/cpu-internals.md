@@ -8,7 +8,7 @@ contract — and needs to understand why the layering is what it is. The
 across CPU and CUDA; this page zooms into the CPU half.
 
 The chapter assumes you have read the
-[CPU overview tutorial](../tutorial/00-cpu-overview.md). The user-level
+[CPU overview tutorial](../tutorial/ch00-architecture.md). The user-level
 mental model — Frame, Component, Driver — is repeated here only when
 the developer-level rules require it.
 

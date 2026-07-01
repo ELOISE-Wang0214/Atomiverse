@@ -1,6 +1,6 @@
 # Chapter 4: Gaussian Basis Sets and Convergence
 
-[Tutorial 2](02-rhf.md) computed an RHF energy for H₂ in the minimal STO-3G
+[Chapter 2](ch02-rhf.md) computed an RHF energy for H₂ in the minimal STO-3G
 basis and quietly accepted whatever number came out. This chapter goes back
 to that one line —
 
@@ -110,7 +110,7 @@ evaluation), so treat it as experimental for KS-DFT.
 
 ## The C++ API: One SCF, Swept Across a Series
 
-The mechanical recipe from [Tutorial 2](02-rhf.md) is unchanged; only the
+The mechanical recipe from [Chapter 2](ch02-rhf.md) is unchanged; only the
 `BasisSet` argument moves. A convergence study is therefore a loop over the
 enum:
 
@@ -209,10 +209,10 @@ discretization is not, and you converge the discretization until the answer
 stops moving.**
 
 - **Gaussian basis** (this chapter): converge the AO set STO-3G → def2-SVP.
-- **Plane-wave DFT** ([Tutorial 5](05-pw.md)): converge the kinetic-energy
+- **Plane-wave DFT** ([Chapter 8](ch08-plane-wave.md)): converge the kinetic-energy
   cutoff `ecut` and the k-point mesh — a plane-wave basis is just a
   *different* finite window, converged with a single knob.
-- **DFT XC grid** ([Tutorial 4](04-uks.md)): converge the radial/angular
+- **DFT XC grid** ([Chapter 5](ch05-kohn-sham-dft.md)): converge the radial/angular
   grid until the integrated electron count and `E_xc` stabilize.
 
 In each case the discipline is identical: pick the knob, run a short series,
