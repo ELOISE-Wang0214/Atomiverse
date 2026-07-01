@@ -129,5 +129,15 @@ void print_summary(const MolRec& rec) {
         *static_cast<const molrs::AtvMolRec*>(rec.ffi_handle()));
 }
 
+std::vector<double> compute_vacf(const std::vector<double>& velocities,
+                                 int n_frames, int n_dof, double dt,
+                                 int resolution) {
+    rust::Vec<double> out = molrs::analyze_vacf(
+        {velocities.data(), velocities.size()},
+        static_cast<std::int64_t>(n_frames), static_cast<std::int64_t>(n_dof),
+        dt, static_cast<std::int64_t>(resolution));
+    return std::vector<double>(out.begin(), out.end());
+}
+
 } // namespace cpu
 } // namespace ATV

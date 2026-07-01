@@ -155,6 +155,7 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/io/extxyz.cpp
         src/cpu/observer/rdf.cpp
         src/cpu/observer/msd.cpp
+        src/cpu/observer/vacf.cpp
         src/cpu/observer/density.cpp
         src/cpu/recorder/trajectory.cpp
         src/cpu/recorder/thermo.cpp

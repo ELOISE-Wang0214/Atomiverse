@@ -203,6 +203,7 @@ atv_add_cpp_test(test_cpu_snapshot_publisher      cpu/test_snapshot_publisher.cp
 atv_add_cpp_test(test_cpu_async_component_base    cpu/test_async_component_base.cpp)
 atv_add_cpp_test(test_cpu_observer_rdf_async      cpu/observer/test_rdf_observer.cpp)
 atv_add_cpp_test(test_cpu_observer_msd            cpu/observer/test_msd.cpp)
+atv_add_cpp_test(test_cpu_observer_vacf           cpu/observer/test_vacf.cpp)
 atv_add_cpp_test(test_cpu_md_no_alloc              cpu/test_md_no_alloc.cpp)
 atv_add_cpp_test(test_cpu_driver_role_validation cpu/test_cpu_driver_role_validation.cpp)
 atv_add_cpp_test(test_cpu_evaluate_driver_capabilities    cpu/test_evaluate_driver_capabilities.cpp)

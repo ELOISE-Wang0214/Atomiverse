@@ -106,5 +106,16 @@ class MolRec {
 /// @brief Print a human-readable summary of the latest frame to stdout.
 void print_summary(const MolRec& rec);
 
+/// @brief DOF-averaged velocity autocorrelation function.
+///
+/// Delegates to molrs `compute::VACF` (FFT-ACF). @param velocities row-major
+/// `[n_frames, n_dof]` flat buffer (`n_dof = 3 * n_atoms`). @param dt time
+/// between frames. @param resolution max lag (caps the curve length). @return
+/// the VACF curve (index 0 = zero lag); empty on fewer than two frames. No
+/// analysis math runs in C++.
+std::vector<double> compute_vacf(const std::vector<double>& velocities,
+                                 int n_frames, int n_dof, double dt,
+                                 int resolution);
+
 } // namespace cpu
 } // namespace ATV
