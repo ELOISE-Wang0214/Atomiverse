@@ -107,6 +107,12 @@ migration (they are not yet renumbered — follow the filename, not the number).
 - [Chapter 11: Ensembles — Thermostats & Barostats](ch11-ensembles.md) — NVT/NPT
   with Nosé-Hoover, Langevin, CSVR, and Berendsen.
 
+**Analysis & observables**
+- [Chapter 13: Observables & Trajectory Analysis](ch13-observables.md) — energy
+  conservation, the radial distribution function (`ATV::RDF`), and transport via
+  `ATV::MSD` (Einstein self-diffusion) and `ATV::VACF` (Green-Kubo / VDOS). The
+  engine measures through an async snapshot ring; molrs owns the analysis math.
+
 **Response & cross-method**
 - [Chapter 14: Vibrational Analysis & Thermochemistry](ch14-vibrations.md) — the
   finite-difference Hessian (`cpu::vib::Hessian`) and thermochemistry.
