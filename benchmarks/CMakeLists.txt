@@ -99,6 +99,19 @@ if(ATV_BUILD_TORCH)
     atv_add_cuda_bench(bench_torch md/lj/performance/bench_torch.cu)
 endif()
 
+# backend-consistency: CPU (all-double reference) writes an energy/force golden;
+# CUDA (mixed precision) replays the IDENTICAL config and asserts per-quantity
+# tolerances sized to the float-storage floor (NOT bitwise). See
+# md/lj/consistency/README.md. CUDA half is nightly/GPU-only.
+atv_add_plain_bench(bench_lj_consistency_cpu md/lj/consistency/cpu_reference.cpp)
+if(ATV_BUILD_CUDA)
+    add_executable(bench_lj_consistency_cuda md/lj/consistency/cuda_compare.cu)
+    target_link_libraries(bench_lj_consistency_cuda PRIVATE atomiverse)
+    set_target_properties(bench_lj_consistency_cuda PROPERTIES
+        CUDA_SEPARABLE_COMPILATION ON)
+    target_compile_definitions(bench_lj_consistency_cuda PRIVATE ATV_BUILD_CUDA)
+endif()
+
 # ════════════════════════════════════════════════════════════════════
 # md/pe — polyethylene melt (Dreiding-UA)
 # ════════════════════════════════════════════════════════════════════
@@ -153,6 +166,10 @@ if(ATV_BUILD_RHF)
     # performance: native-kernel vs libcint ERI/integral speed.
     atv_add_cpp_bench(bench_native qc/rhf/performance/bench_native.cpp)
     atv_add_cpp_bench(bench_libcint qc/rhf/performance/bench_libcint.cpp)
+
+    # convergence: RHF energy vs basis set (variational monotone decrease).
+    atv_add_plain_bench(bench_qc_basis_convergence
+                        qc/rhf/convergence/bench_basis_convergence.cpp)
 endif()
 
 # ════════════════════════════════════════════════════════════════════
@@ -178,4 +195,13 @@ if(ATV_BUILD_PW)
             target_compile_definitions(${name} PRIVATE ATV_BUILD_CUDA)
         endif()
     endforeach()
+
+    # convergence: Si energy vs ecut & k-mesh (variational / shrinking-delta).
+    atv_add_plain_bench(bench_pw_convergence
+                        pw/si/convergence/bench_ecut_kmesh_convergence.cpp)
+    target_compile_definitions(bench_pw_convergence PRIVATE
+        ATV_PW_DATA_DIR="${CMAKE_SOURCE_DIR}/benchmarks/pw/si/validation/reference")
+    if(ATV_BUILD_CUDA)
+        target_compile_definitions(bench_pw_convergence PRIVATE ATV_BUILD_CUDA)
+    endif()
 endif()

@@ -260,7 +260,7 @@ an extension surface.
 
 #include <xtensor/containers/xtensor.hpp>
 
-#include "atomiverse/cpu/scf/scf_utils.h"
+#include "atomiverse/cpu/scf/dense_matrix.h"
 
 namespace ATV { namespace cpu { namespace scf { namespace internal {
 
@@ -342,7 +342,7 @@ small molecule (H2O, STO-3G) once with each variant, and checks that
 both reach the same converged total energy to $10^{-9}$ Hartree.
 
 Because the helper is in the `internal::` namespace, *production*
-facade-public headers (`cpu/evaluate.h`, `cpu/single_point.h`,
+facade-public headers (`cpu/driver/evaluate.h`, `cpu/driver/single_point.h`,
 `cpu/md/md.h`, `cpu/minimizer/lbfgs.h`) must not include from
 `cpu/scf/internal/`. Tests can include these headers directly. The
 boundary keeps `internal::` types from leaking into user-visible APIs.

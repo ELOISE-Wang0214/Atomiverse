@@ -103,7 +103,7 @@ pre_neighbor      :  halo_send(0)
 neighbor          :  neighbor_list(-10)
 pre_force         :  zero_forces(-1000), zero_energy(-999), zero_stress(-998)
 force             :  pair(0)                  lj | morse
-                     bonded(0)                bond_harmonic | angle_harmonic | dihedral
+                     bonded(0)                harmonic_bond | harmonic_angle | multi_harmonic_dihedral
 post_force        :  halo_recv(-1000), virial(-50)
 final_integrate   :  integrator(0)            (same component, second half)
 end_of_step       :  zero_kinetic(-1000), kinetic_energy(-100), reduce(-50),
@@ -127,7 +127,7 @@ analogue of a LAMMPS `Fix` or `Pair`:
 ```cpp
 std::string name() const;                        // identity / timing key, snake_case
 ComponentRole role() const;                      // Integrator | Evaluator | None | ...
-Capabilities capabilities() const;               // Force | Energy | Stress | ...
+Capability capabilities() const;                 // Force | Energy | Stress | ...
 std::vector<DefaultBinding> default_bindings();   // {(phase, order), ...}
 void build(const BuildContext&);                 // one-time allocation (NOT per step)
 void launch(const LaunchContext&);               // per-step work (NO allocation)

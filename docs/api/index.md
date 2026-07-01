@@ -72,10 +72,10 @@ component, not a staged driver. Start with these headers:
 Start with these types:
 
 - [`cpu::Thermo`](../../include/atomiverse/cpu/recorder/thermo.h)
-- [`cpu::Trajectory` / `cpu::XYZ`](../../include/atomiverse/cpu/recorder/trajectory.h)
-- [`cpu::RDF`](../../include/atomiverse/cpu/observer/rdf.h)
+- [`trajectory_append` (plain-XYZ helper)](../../include/atomiverse/cpu/recorder/trajectory.h)
+- [`ATV::RDF`](../../include/atomiverse/cpu/observer/rdf.h)
 - [`MolRec`](../../include/atomiverse/cpu/io/molrec.h)
-- [`XYZ`](../../include/atomiverse/cpu/recorder/xyz.h)
+- [`cpu::XYZ`](../../include/atomiverse/cpu/recorder/xyz.h)
 - [`mulliken_charge` and related helpers](../../include/atomiverse/cpu/observer/mulliken.h)
 - [`DensityGrid`](../../include/atomiverse/cpu/observer/density.h)
 

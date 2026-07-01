@@ -40,20 +40,19 @@ The wrong reflex is to subclass `Driver<>` for every algorithm
 implement the algorithm as a Component and plug it into the existing
 `Minimize` driver. The CPU codebase already paid this price once when
 the original `cpu::minimizer::LBFGS` *driver class* was renamed to
-`Minimize`, and `LBFGSStep` became `LBFGS`. The migration spec is
-preserved at `.claude/specs/cuda-driver-taxonomy.md`.
+`Minimize`, and `LBFGSStep` became `LBFGS`.
 
 ## The Hierarchy in One Diagram
 
 ```text
 Driver<PhaseEnum, DeviceTag>            facade/driver.h — Plan/Backend ownership
-    └─ cpu::CPUDriver<PhaseEnum>        cpu/cpu_driver.h — CPU backend layer
-         ├─ cpu::EvaluateDriver         cpu/evaluate_driver.h
-         │     └─ cpu::Evaluate         cpu/evaluate.h
-         ├─ cpu::DynamicsDriver         cpu/dynamics_driver.h
+    └─ cpu::CPUDriver<PhaseEnum>        cpu/driver/cpu_driver.h — CPU backend layer
+         ├─ cpu::EvaluateDriver         cpu/driver/evaluate_driver.h
+         │     └─ cpu::Evaluate         cpu/driver/evaluate.h
+         ├─ cpu::DynamicsDriver         cpu/driver/dynamics_driver.h
          │     └─ cpu::md::MD           cpu/md/md.h
-         └─ cpu::OptimizeDriver         cpu/optimize_driver.h
-               └─ cpu::minimizer::Minimize  cpu/minimizer/lbfgs.h
+         └─ cpu::OptimizeDriver         cpu/driver/optimize_driver.h
+               └─ cpu::minimizer::Minimize  cpu/minimizer/minimize.h
 ```
 
 `Driver<>` is the underlying primitive — it owns the `Plan` and the
@@ -232,10 +231,9 @@ do?" If you are adding a new category, write down the same row.
 Neither backend implements SCF as a driver: CPU and CUDA both use the
 `scf::SCFSolver` inner-solver shape behind an `SCFEvaluator` component,
 and the CPU plane-wave SCF follows the same shape
-(`cpu::pw::PWSolver` + `PWEvaluator`). This was the substantive design
-choice of the SCF driver-alignment work
-(`.claude/specs/cpu-scf-driver-alignment.md`), and it is worth
-explaining because the asymmetry confuses new developers.
+(`cpu::pw::PWSolver` + `PWEvaluator`). This was a substantive design
+choice, and it is worth explaining because the asymmetry confuses new
+developers.
 
 There are two reasons CPU SCF is implemented as
 `cpu::scf::SCFSolver` (a public low-level class) rather than as a
@@ -322,7 +320,7 @@ double length(int d)        const;   // edge length along axis d
 double volume()             const;
 void   min_image(double& dx, double& dy, double& dz) const;
 double wrap_axis(double q, int d) const;
-void   scale_diagonal(double mu);
+void   scale_diagonal(double sx, double sy, double sz);
 void   scale_isotropic(double mu);
 void   scale_axis(int d, double mu);
 void   set_cell(const Mat3& M);
@@ -336,12 +334,12 @@ their own `static inline minimum_image()` helper have been folded into
 this single class.
 
 There is one deliberate exception: the Lennard-Jones xsimd ket-loop
-(`cpu/md/lj.cpp`, vectorized inner loop) inlines the orthorhombic
-min-image branch instead of calling through `Box::min_image`. This is
-because member loads through `this` defeat the compiler's ability to
+(`src/cpu/potentials/pair_lj_cut.cpp`, vectorized inner loop) inlines the
+orthorhombic min-image branch instead of calling through `Box::min_image`. This
+is because member loads through `this` defeat the compiler's ability to
 hoist the per-axis $L^{-1}$ out of the loop, and the cost was measured
 at ~7% per MD step. The xsimd batch overload `min_image_batch<B>` in
-[`cpu/box_simd.h`](../../include/atomiverse/cpu/frame/box_simd.h) gives non-LJ
+[`cpu/frame/box_simd.h`](../../include/atomiverse/cpu/frame/box_simd.h) gives non-LJ
 SIMD callers a vectorized path without that landmine.
 
 The takeaway when adding new pair-loop code: prefer `cpu::Box`
@@ -427,10 +425,6 @@ will plug into them automatically.
   allocation in `launch()`".
 - `tests/cpu/scf/test_aimd_conservation.cpp` — energy / momentum /
   bond-oscillation conservation under composed `MD + SCFEvaluator`.
-- `.claude/specs/cpu-driver-taxonomy.md` — the spec that defined the
-  three-category structure.
-- `.claude/specs/cpu-scf-driver-alignment.md` — the spec that decided
-  SCF would be an inner solver, not a driver.
 - [Extending CPU Subsystems](extending-cpu-subsystems.md) — the
   practical recipe for adding new components in each of MD, SCF, and
   the minimizer.

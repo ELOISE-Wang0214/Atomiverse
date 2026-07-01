@@ -82,3 +82,34 @@ If you are deciding which chapter to start with: if quantum chemistry
 is what brought you here, start at Tutorial 1. If classical force
 fields and ensemble simulation are what brought you here, start at
 Tutorial 7.
+
+## New Chapters (roadmap expansion)
+
+The manual is being expanded toward the full progression in
+[`.claude/specs/manual-system.md`](../../.claude/specs/manual-system.md). These
+new chapters use `chNN` filenames keyed to that roadmap; the legacy `00`–`08`
+files above will be consolidated into the same numbering as part of the docs
+migration (they are not yet renumbered — follow the filename, not the number).
+
+**Foundations**
+- [Chapter 1: Systems, Units, Precision & Validation](ch01-foundations.md) — the
+  `cpu::Box`/`Atom`/units model, the LAMMPS-style tiered precision
+  (`StorageReal`/`WorkReal`/`AccReal`, `LocalInt`/`TagInt`/`ImageInt`/`BigInt`),
+  and finite-difference gradient validation. Read this before the physics arcs.
+
+**Extending the SCF/DFT arc**
+- [Chapter 4: Gaussian Basis Sets & Convergence](ch04-basis-sets.md) — STO-3G →
+  def2-SVP and how the energy converges.
+- [Chapter 6: Hybrid Functionals & Analytic Gradients](ch06-hybrid-dft.md) —
+  B3LYP/PBE0 exact-exchange admixture and `scf_gradient`.
+
+**Extending classical simulation**
+- [Chapter 11: Ensembles — Thermostats & Barostats](ch11-ensembles.md) — NVT/NPT
+  with Nosé-Hoover, Langevin, CSVR, and Berendsen.
+
+**Response & cross-method**
+- [Chapter 14: Vibrational Analysis & Thermochemistry](ch14-vibrations.md) — the
+  finite-difference Hessian (`cpu::vib::Hessian`) and thermochemistry.
+- [Chapter 15: Cross-Method Workflows](ch15-cross-method.md) — the "swap the
+  evaluator" story that ties classical MD, AIMD, optimization, and vibrations
+  into one architecture.

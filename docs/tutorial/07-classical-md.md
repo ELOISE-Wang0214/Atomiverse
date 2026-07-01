@@ -178,7 +178,7 @@ combined drag + kick satisfies the fluctuation–dissipation theorem;
 velocity-Verlet integration of the augmented force gives canonical NVT.
 
 ```cpp
-sim.add(cpu::md::FixLangevin{/*T_target=*/100.0,
+sim.add(cpu::md::FixLangevin{/*T_start=*/100.0, /*T_stop=*/100.0,
                               /*damp=*/100.0, /*dt=*/4.0,
                               /*seed=*/0xDEADBEEFu});
 ```
@@ -287,12 +287,12 @@ User-side, the canonical first additions are:
 
 ```cpp
 sim.add(cpu::Thermo{/*every=*/100});
-sim.observer(cpu::observer::RDF{/*r_max=*/5.5, /*n_bins=*/200,
-                                /*freq=*/100, "rdf.dat"});
+sim.set_observer(ATV::RDF{/*r_max=*/5.5, /*n_bins=*/200,
+                          /*freq=*/100, "rdf.dat"});
 ```
 
 `cpu::Thermo` prints the LAMMPS-style "step PE KE T" line synchronously
-on rank 0. `cpu::observer::RDF` is an async observer — it inherits
+on rank 0. `ATV::RDF` is an async observer — it inherits
 `cpu::md::AsyncObserver`, runs on a background thread, and accumulates a
 half-list pair-distance histogram from the published snapshots. At the
 end of the run its `finalize()` writes the normalized $g(r)$ to disk.
@@ -300,7 +300,7 @@ end of the run its `finalize()` writes the normalized $g(r)$ to disk.
 For per-frame trajectory output, append a writer at `end_of_step`:
 
 ```cpp
-sim.on(md::Phase::end_of_step).add(cpu::recorder::XYZ{"traj.xyz"});
+sim.on(md::Phase::end_of_step).add(cpu::XYZ{"traj.xyz"});
 ```
 
 (The exact recorder API is still consolidating — see `cpu/recorder/`

@@ -31,11 +31,34 @@ Current cases:
 | `qc` | `rhf` | small-molecule suite (Gaussian basis) | PySCF / libcint |
 | `pw` | `si` | bulk Si (plane-wave LDA) | CP2K / QE |
 
+### Extended studies (beyond validation/performance)
+
+Some cases carry an optional **third** part for a study that is neither a
+single external-reference check nor a raw speed measurement:
+
+| Path | Study | Reference |
+|------|-------|-----------|
+| `md/lj/consistency/` | cpu↔cuda backend parity (mixed precision) | CPU golden (internal) |
+| `qc/rhf/convergence/` | RHF energy vs basis set (variational) | monotone trend (internal) |
+| `pw/si/convergence/` | PW energy vs ecut & k-mesh | monotone trend (internal) |
+
+These realize the manual-system §5 result classes `backend-dependent`
+(consistency) and `physical approximation` (convergence): the reference is an
+*internal* golden / trend, not an external engine, so — unlike `validation/`
+reference data — the golden is **regenerated, not committed** (a fabricated
+internal reference would defeat the check). Each has its own README.
+
+The auditable per-run performance archive under `*/performance/runs/` is gated
+against regression by the design in [`REGRESSION.md`](REGRESSION.md).
+
 ## Rules
 
-1. **Two parts per case, exactly.** `validation/` proves the science,
+1. **Two mandatory parts per case.** `validation/` proves the science,
    `performance/` proves the speed. A perf gate that asserts a wall-clock
-   fraction is still `performance/` — never a unit test.
+   fraction is still `performance/` — never a unit test. An *optional* third
+   part (`consistency/` for backend parity, `convergence/` for a
+   basis/cutoff study) may be added when a case needs it — see "Extended
+   studies" above.
 2. **Always `<domain>/<case>/`.** Even a domain with a single case keeps the
    case level (`pw/si/`), so adding the second case never reshuffles paths.
 3. **Reference data is checked in** under `validation/reference/` together

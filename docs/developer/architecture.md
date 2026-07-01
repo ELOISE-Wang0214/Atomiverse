@@ -54,7 +54,7 @@ define the public execution skeleton:
 - `Driver` owns user-registered components
 - `PhaseBuilder` supports the fluent `.on(phase).add(...)` syntax
 - `PlanBuilder` compiles unordered registrations into a sorted execution plan
-- `stage.h` defines the phase order for MD, minimization, and SCF
+- `stage.h` defines the phase order for each driver category (MD, minimization, evaluation, and vibrational analysis)
 
 The facade is deliberately CUDA-free. Its job is to collect intent, not to run
 the algorithm itself.
@@ -206,43 +206,52 @@ finally calls a CPU helper that owns the actual formatting or analysis logic.
 This separation keeps file I/O and host-side post-processing out of the hot GPU
 components while still letting simulations produce usable output.
 
-## How The Three Driver Families Fit Together
+## How The Driver Families Fit Together
 
-Atomiverse uses one execution model for three different workflow families.
+Atomiverse uses one execution model for several workflow families, each
+distinguished by its *termination rule* rather than its algorithm.
 
 ### Molecular dynamics
 
-`md::MD` defines a LAMMPS-like phase order:
+`md::MD` defines a LAMMPS-like phase order. The full `ATV::md::Phase` enum has
+ten phases:
 
-`initial_integrate -> pre_force -> force -> post_force -> final_integrate -> end_of_step`
+`initial_integrate -> post_integrate -> pre_exchange -> pre_neighbor -> neighbor -> pre_force -> force -> post_force -> final_integrate -> end_of_step`
 
 It auto-adds zeroing and kinetic-energy infrastructure, while components such as
-`VelocityVerlet`, `NeighborList`, `LJ`, `NoseHoover`, and `Barostat` fill in the
-actual physics.
+`VelocityVerlet`, `NeighborList`, `PairLJCut`, `NoseHoover`, and `Barostat` fill
+in the actual physics.
 
 ### Minimization
 
-The minimizer drivers reuse the same staged idea with a different phase order:
+The minimizer driver reuses the same staged idea with a different phase order:
 
 `search_direction -> line_search -> force -> convergence_check -> end_of_step`
 
 That lets the project share force-evaluation components with MD while changing
 only the orchestration logic.
 
-### SCF
+### Single-point evaluation and electronic structure
 
-`scf::SCF` uses the phase order:
+`cpu::Evaluate` runs a `prepare -> evaluate -> finalize` pass exactly once — the
+home of single-point energy and force calculations.
 
-`build_hamiltonian -> diagonalize -> build_density -> convergence_check -> end_of_step`
+**SCF is not a driver family.** Both Gaussian-basis SCF and plane-wave DFT are
+*inner solvers* — plain low-level classes, not `Driver` subclasses. Gaussian SCF
+is `cpu::scf::SCFSolver` (and `cuda::scf::SCFSolver`), wrapped by the
+`cpu::scf::SCFEvaluator` / `cuda::scf::SCFEvaluator` component; plane-wave DFT is
+`cpu::pw::PWSolver` behind `cpu::pw::PWEvaluator`. The evaluator carries the
+`Energy` capability (plus `Force` / `DensityMatrix` / `Orbitals` where
+applicable) and plugs into the *same* Evaluate, MD, and Minimize drivers — the
+"swap the evaluator, keep the driver" pattern that gives AIMD and *ab initio*
+geometry optimization for free.
 
-This is the most important bridge between the tutorials and the architecture.
-The SCF loop is not implemented as one giant monolithic function on the CUDA
-side. Instead, it is decomposed into components such as `Hamiltonian`,
-`EigenSolver`, `DensityBuilder`, `RHFFock`, `RHFDensity`, and
-`ConvergenceCheck`.
-
-That design is why the same facade pattern can express both a toy SCF model and
-a more realistic RHF workflow.
+The SCF cycle (Hamiltonian build → diagonalize → density → DIIS → convergence)
+is decomposed into `internal::` helpers — `HamiltonianBuilder`, `EigenSolver`,
+`DensityBuilder`, `DIISMixer`, `DualConvergenceCheck` — owned as direct members
+of `SCFSolver`. None inherit from `ComponentBase`, none are registered into a
+Plan, and there is deliberately **no `scf::Phase` enum**. That is why the SCF
+loop is neither a monolithic function nor a user-pluggable phase order.
 
 ## Why CPU SCF Solvers Still Exist
 

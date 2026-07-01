@@ -8,6 +8,8 @@ Atomiverse is a C++/CUDA molecular-simulation engine. One shared
 - **Gaussian-basis SCF** — restricted/unrestricted Hartree-Fock (RHF/UHF) and
   Kohn-Sham DFT (UKS) for molecules.
 - **Plane-wave DFT** — Kohn-Sham LDA for periodic crystals.
+- **Gaussian-and-plane-waves (GPW) DFT** — Gaussian-basis Kohn-Sham with
+  grid-based Hartree/XC and GTH pseudopotentials (experimental).
 - **Ab-initio molecular dynamics** — the MD loop driven by SCF forces.
 
 Everything in this README and in `docs/` targets the **C++ API**. (A Python
@@ -73,8 +75,10 @@ read in order. Each tutorial chapter is written around the matching example.
 | 04 | `examples/04_uks.cpp` | Kohn-Sham DFT (UKS-LSDA) | `ATV_BUILD_RHF` |
 | 05 | `examples/05_geom_opt.cpp` | Geometry optimization (L-BFGS + DFT) | `ATV_BUILD_RHF` |
 | 06 | `examples/06_aimd.cpp` | Ab-initio MD (NVT) | `ATV_BUILD_RHF` |
-| 07 | `examples/07_md_lj.cu` | Classical CUDA MD (argon) | `ATV_BUILD_CUDA` |
+| 07 | `examples/07_md_lj.cpp` | Classical MD (argon, LJ) | — (CUDA twin `07_md_lj.cu`: `ATV_BUILD_CUDA`) |
 | 08 | `examples/08_pw.cpp` | Plane-wave DFT (silicon) | `ATV_BUILD_PW` |
+| 09 | `examples/09_gpw.cpp` | GPW DFT (water) | `ATV_BUILD_GPW` (needs `ATV_BUILD_PW`) |
+| 10 | `examples/10_gpw_znoedl.cpp` | GPW DFT (1214-atom ZnO EDL slab) | `ATV_BUILD_GPW` (needs `ATV_BUILD_PW`) |
 
 See [`examples/README.md`](examples/README.md) for the full table and the rules
 for adding new examples.

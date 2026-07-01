@@ -92,9 +92,10 @@ The CPU side uses `cpu::minimizer::Minimize`, an `OptimizeDriver`
 subclass that takes any `Optimizer`-role component (`LBFGS`, `CG`,
 …) plus an `Evaluator` at the force phase. The same wiring drives
 classical relaxation (`PairLJCut` at force) and *ab initio* geometry
-optimization (`SCFEvaluator` at force). The CUDA side keeps the
-older `minimizer::SD` / `minimizer::CG` per-algorithm drivers pending
-migration to the same three-category taxonomy.
+optimization (`SCFEvaluator` at force). The CUDA side mirrors this
+exactly: `cuda::minimizer::Minimize` is a `cuda::OptimizeDriver` that
+takes `SteepestDescent`, `CG`, or `LBFGS` Optimizer components — the
+same three-category taxonomy as the CPU backend.
 
 @subsection workflows_scf Electronic Structure
 
@@ -118,8 +119,11 @@ Representative entry points:
 - `examples/04_uks.cpp` -- UKS / LSDA examples
 - `examples/05_geom_opt.cpp` -- L-BFGS aspirin geometry optimization
 - `examples/06_aimd.cpp` -- ab initio molecular dynamics on H2 (NVT)
-- `examples/07_md_lj.cu` -- classical Lennard-Jones MD on CUDA
+- `examples/07_md_lj.cpp` -- classical Lennard-Jones MD (CPU, argon)
+- `examples/07_md_lj.cu` -- CUDA twin of the same classical-MD lesson
 - `examples/08_pw.cpp` -- plane-wave DFT for a periodic solid
+- `examples/09_gpw.cpp` -- GPW DFT single point (water)
+- `examples/10_gpw_znoedl.cpp` -- GPW DFT for a 1214-atom ZnO EDL slab
 
 @section docsbuild Building The Docs
 

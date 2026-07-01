@@ -119,7 +119,7 @@ Better for getting out of metastable wells; trajectories from different
 seeds are independent samples.
 
 ```cpp
-sim.add(cpu::md::FixLangevin{T_target, damp, dt, seed});
+sim.add(cpu::md::FixLangevin{T_target, T_target, damp, dt, seed});
 ```
 
 **NPT (Berendsen barostat).** Couples the box edge length to a target
