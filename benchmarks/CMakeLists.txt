@@ -21,7 +21,34 @@ FetchContent_Declare(
 set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googlebenchmark)
 
+# GoogleTest for the relocated end-to-end / parity validation binaries (moved
+# out of the fast unit-test gate — see the fast-gate note in tests/CMakeLists.txt).
+# Idempotent with the tests/ fetch when both are built.
+FetchContent_Declare(
+    googletest
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG v1.14.0
+)
+FetchContent_MakeAvailable(googletest)
+
 # ── helpers ─────────────────────────────────────────────────────────
+
+# A gtest-based validation binary: scientific correctness vs an external
+# reference (PySCF, libcint, …), registered as a ctest test. These are the
+# relocated end-to-end checks — they read as small, orthogonal, learnable
+# examples of one capability each, run only under -DATV_BUILD_BENCHMARKS=ON,
+# never in the fast unit gate. `src` is relative to this dir; the source file's
+# own directory is on the include path so a co-located `reference/` header
+# resolves. (validation/ convention is plain executables; these gtest binaries
+# are the exception for the relocated suites.)
+function(atv_add_validation name src)
+    add_executable(${name} ${src})
+    target_link_libraries(${name} PRIVATE atomiverse GTest::gtest_main)
+    get_filename_component(_dir "${CMAKE_CURRENT_SOURCE_DIR}/${src}" DIRECTORY)
+    target_include_directories(${name} PRIVATE "${_dir}")
+    set_target_properties(${name} PROPERTIES CXX_STANDARD 17)
+    add_test(NAME ${name} COMMAND ${name})
+endfunction()
 
 # CUDA google-benchmark executable (source path relative to this dir).
 function(atv_add_cuda_bench name src)
@@ -170,6 +197,18 @@ if(ATV_BUILD_RHF)
     # convergence: RHF energy vs basis set (variational monotone decrease).
     atv_add_plain_bench(bench_qc_basis_convergence
                         qc/rhf/convergence/bench_basis_convergence.cpp)
+
+    # validation: vibrational analysis (finite-difference Hessian) — relocated
+    # from the unit-test gate (too slow: each is many displaced SCF solves).
+    # Each is an orthogonal learnable check of one vib capability: the FD-Hessian
+    # Response driver, mass-weighting, translation/rotation projection, harmonic
+    # frequencies vs PySCF, and thermochemistry vs PySCF.
+    atv_add_validation(val_vib_numerical_hessian  qc/vib/validation/test_numerical_hessian.cpp)
+    atv_add_validation(val_vib_mass_weighting     qc/vib/validation/test_mass_weighting.cpp)
+    atv_add_validation(val_vib_tr_projection      qc/vib/validation/test_tr_projection.cpp)
+    atv_add_validation(val_vib_frequencies_vs_pyscf qc/vib/validation/test_frequencies_vs_pyscf.cpp)
+    atv_add_validation(val_vib_thermochem_vs_pyscf  qc/vib/validation/test_thermochem_vs_pyscf.cpp)
+    atv_add_validation(val_vib_output_components   qc/vib/validation/test_vib_output_components.cpp)
 endif()
 
 # ════════════════════════════════════════════════════════════════════

@@ -707,6 +707,12 @@ if(NOT ATV_DOCS_ONLY)
         install(TARGETS _atomiverse LIBRARY DESTINATION atomiverse)
     endif()
 
+    # ctest is used by both the unit-test suite and the benchmark validation
+    # binaries (relocated end-to-end / parity checks); enable it for either.
+    if(ATV_BUILD_TESTS OR ATV_BUILD_BENCHMARKS)
+        enable_testing()
+    endif()
+
     if(ATV_BUILD_TESTS)
         # Surface the build option as a compile definition so library code
         # that wants to enable test-only hooks (e.g. the
@@ -715,7 +721,6 @@ if(NOT ATV_DOCS_ONLY)
         # compile in those hooks. PUBLIC so test executables that link
         # atomiverse pick up the same definition.
         target_compile_definitions(atomiverse PUBLIC ATV_BUILD_TESTS)
-        enable_testing()
         add_subdirectory(tests)
     endif()
 

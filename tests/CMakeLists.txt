@@ -411,32 +411,9 @@ if(ATV_BUILD_RHF)
     atv_add_cpp_test(test_cpu_minimizer_recorders cpu/minimizer/test_trajectory_writer.cpp)
     atv_add_cpp_test(test_cpu_minimize_driver_swap_optimizer cpu/test_minimize_driver_swap_optimizer.cpp)
     atv_add_cpp_test(test_cpu_scf_orbital_info_observer cpu/scf/test_orbital_info_observer.cpp)
-    # Numerical Hessian — Response driver category + finite-difference
-    # Hessian (spec phase4-vibrations-01). The ac-004 oracle runs many
-    # displaced SCFs, so allow a generous CTest ceiling.
-    atv_add_cpp_test(test_cpu_vib_numerical_hessian cpu/vib/test_numerical_hessian.cpp)
-    set_tests_properties(test_cpu_vib_numerical_hessian PROPERTIES TIMEOUT 1800)
-    # Normal-mode frequencies — mass-weighting, TR projection,
-    # diagonalization (spec phase4-vibrations-02). The PySCF parity test
-    # runs three full numerical-Hessian SCF sweeps, so allow a generous
-    # CTest ceiling.
-    atv_add_cpp_test(test_cpu_vib_mass_weighting cpu/vib/test_mass_weighting.cpp)
-    atv_add_cpp_test(test_cpu_vib_tr_projection  cpu/vib/test_tr_projection.cpp)
-    atv_add_cpp_test(test_cpu_vib_frequencies_vs_pyscf
-                     cpu/vib/test_frequencies_vs_pyscf.cpp)
-    set_tests_properties(test_cpu_vib_frequencies_vs_pyscf
-                         PROPERTIES TIMEOUT 5400)
-    # Harmonic thermochemistry + output components (spec
-    # phase4-vibrations-03). The thermochem parity test runs three full
-    # numerical-Hessian SCF sweeps, so allow a generous CTest ceiling.
-    atv_add_cpp_test(test_cpu_vib_thermochem_vs_pyscf
-                     cpu/vib/test_thermochem_vs_pyscf.cpp)
-    set_tests_properties(test_cpu_vib_thermochem_vs_pyscf
-                         PROPERTIES TIMEOUT 5400)
-    atv_add_cpp_test(test_cpu_vib_output_components
-                     cpu/vib/test_vib_output_components.cpp)
-    set_tests_properties(test_cpu_vib_output_components
-                         PROPERTIES TIMEOUT 5400)
+    # Vibrational analysis (finite-difference Hessian) is an end-to-end /
+    # PySCF-parity suite — too slow for the unit gate. RELOCATED to
+    # benchmarks/qc/vib/validation/ (run under -DATV_BUILD_BENCHMARKS=ON).
     atv_add_cpp_test(test_cpu_recorder_density_cube cpu/recorder/test_density_cube.cpp)
     atv_add_cpp_test(test_xc_reference         test_xc_reference.cpp)
     # libxc test oracle (sub-spec 02 of libxc-xc-fix creates the oracle/
@@ -570,11 +547,7 @@ if(NOT ATV_RUN_E2E_TESTS)
         test_cpu_scf_basis_eval_dshell
         test_cpu_scf_basis_vs_pyscf          # parity
         test_cpu_scf_aimd_conservation
-        # Vibrations: finite-difference Hessian (6N solves) + thermochem parity
-        test_cpu_vib_numerical_hessian
-        test_cpu_vib_output_components
-        test_cpu_vib_frequencies_vs_pyscf    # parity
-        test_cpu_vib_thermochem_vs_pyscf     # parity
+        # (Vibrations relocated to benchmarks/qc/vib/validation/)
         # Classical MD / minimization run to a step budget / convergence
         test_cpu_md
         test_cpu_md_nvt

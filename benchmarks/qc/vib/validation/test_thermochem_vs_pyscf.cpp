@@ -29,7 +29,7 @@
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
 
-#include "cpu/vib/reference/pyscf_thermo_data.h"
+#include "reference/pyscf_thermo_data.h"
 
 using namespace ATV;
 
