@@ -139,8 +139,13 @@ Performance: `-march=native` is required for the CPU SCF ERI kernels.
 
 ```
 include/atomiverse/ + src/   mirrored header/impl trees (architecture below)
-tests/                       unit tests — fast correctness only; never timing or
-                             external-engine comparison (those are benchmarks)
+tests/                       unit tests — fast correctness only (ms-scale); never
+                             timing or external-engine comparison (those are
+                             benchmarks). Slow end-to-end / parity tests (full
+                             SCF/MD/vib solves, PySCF/libcint parity) are DISABLED
+                             from the default `ctest` (~16 s gate) and re-enabled
+                             with `-DATV_RUN_E2E_TESTS=ON` (CI sets it); the list
+                             is at the tail of tests/CMakeLists.txt.
 benchmarks/                  <domain>/<case>/{validation,performance} — see benchmarks/README.md
 examples/                    flat numbered tutorial sequence — see examples/README.md
 docs/                        narrative docs (user-guide / tutorial / developer / api)

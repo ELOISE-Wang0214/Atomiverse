@@ -19,6 +19,17 @@ set(ATV_TEST_OMP_THREADS 8 CACHE STRING
 set(ATV_TEST_MPI_OMP_THREADS 4 CACHE STRING
     "OMP_NUM_THREADS per rank for MPI unit tests")
 
+# Fast-gate discipline: the ctest suite must stay millisecond-scale so local
+# edit->build->test iteration is cheap. A handful of tests instead run a full
+# SCF/MD/vib solve or an external-engine parity check to convergence (seconds to
+# minutes each; test_cpu_scf_hybrid_singlepoint alone is ~14 min). They are true
+# end-to-end/validation checks whose proper home is benchmarks/<domain>/validation.
+# Until that physical move, they stay COMPILED (for coverage) but are DISABLED
+# from the default ctest run; -DATV_RUN_E2E_TESTS=ON re-enables them (CI sets it).
+option(ATV_RUN_E2E_TESTS
+       "Run the slow end-to-end / parity tests in the ctest gate (OFF keeps local iteration fast; CI = ON)"
+       OFF)
+
 # CUDA test: compiled as .cu with separable compilation.
 function(atv_add_test name)
     add_executable(${name} ${ARGN})
@@ -537,4 +548,43 @@ if(ATV_BUILD_CUDA AND ATV_BUILD_PW)
     add_executable(diag_band_parity cuda/pw/diag_band_parity.cu)
     target_link_libraries(diag_band_parity PRIVATE atomiverse)
     set_target_properties(diag_band_parity PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+endif()
+
+# ── End-to-end / parity tests: disabled from the default fast gate ────────────
+# These run a full solve/sim to convergence or an external-engine (PySCF/libcint)
+# parity check — the entire multi-minute cost of the suite. Disabled unless
+# -DATV_RUN_E2E_TESTS=ON. Guarded by if(TEST ...) so it is a no-op when the
+# owning module (RHF / MPI) is not built. See the fast-gate note at the top.
+if(NOT ATV_RUN_E2E_TESTS)
+    set(ATV_E2E_TESTS
+        # Gaussian SCF full solves / analytic gradients / grids / f-shell ERI
+        test_cpu_scf_hybrid_singlepoint
+        test_cpu_scf_ks_dshell_gradient
+        test_cpu_scf_ks_grid_response_gradient
+        test_cpu_scf_hybrid_gradient
+        test_cpu_scf_def2svp_gradient
+        test_cpu_scf_gradient
+        test_cpu_scf_gradient_vs_libcint     # parity
+        test_cpu_scf_grid
+        test_cpu_scf_rys_eri_fshell
+        test_cpu_scf_basis_eval_dshell
+        test_cpu_scf_basis_vs_pyscf          # parity
+        test_cpu_scf_aimd_conservation
+        # Vibrations: finite-difference Hessian (6N solves) + thermochem parity
+        test_cpu_vib_numerical_hessian
+        test_cpu_vib_output_components
+        test_cpu_vib_frequencies_vs_pyscf    # parity
+        test_cpu_vib_thermochem_vs_pyscf     # parity
+        # Classical MD / minimization run to a step budget / convergence
+        test_cpu_md
+        test_cpu_md_nvt
+        test_cpu_md_csvr
+        test_cpu_md_pe_nvt
+        test_cpu_minimizer_lbfgs
+        test_mpi_pe_nvt_multirank_n8)
+    foreach(t IN LISTS ATV_E2E_TESTS)
+        if(TEST ${t})
+            set_tests_properties(${t} PROPERTIES DISABLED TRUE)
+        endif()
+    endforeach()
 endif()
