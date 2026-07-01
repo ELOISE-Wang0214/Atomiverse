@@ -90,6 +90,14 @@ foreach(name
     target_include_directories(${name} PRIVATE md/common)
 endforeach()
 
+# validation (gtest): Atomiverse's own thermostat correctness — relocated from
+# the unit gate (each runs a full equilibration to a temperature setpoint:
+# seconds). Orthogonal to the LAMMPS-parity benches above (those assert *parity*
+# vs a LAMMPS log; these assert Atomiverse's *self-consistency* — that NVT and
+# CSVR reach and hold their own setpoint / conserve the canonical quantity).
+atv_add_validation(val_md_nvt  md/lj/validation/test_md_nvt.cpp)
+atv_add_validation(val_md_csvr md/lj/validation/test_md_csvr.cpp)
+
 # performance: CPU MPI weak/strong scaling (run by
 # md/common/bench_scaling_cpu.sbatch at 1..N ranks; emits CSV).
 # `scaling` = MD (NVE), `minimize_scaling` = minimizer (CG/LBFGS, fixed
@@ -153,6 +161,12 @@ target_include_directories(bench_pe_bonded_lammps_xcheck PRIVATE md/common)
 # in the unit-test suite (UTs assert code correctness only).
 atv_add_plain_bench(bench_timing_capture
                     md/pe/validation/bench_timing_capture.cpp)
+
+# validation (gtest): Nosé–Hoover holds the target temperature on the bonded
+# PE melt — relocated from the unit gate (a full NVT equilibration). Distinct
+# from the LJ thermostat check above: exercises the thermostat on a *molecular*
+# (bonded) system where the DOF count excludes constraints.
+atv_add_validation(val_md_pe_nvt md/pe/validation/test_md_pe_nvt.cpp)
 
 # performance: PE melt MSU-protocol stages (CPU MPI + optional CUDA
 # backend; run by the md/common scan drivers; emits stage timing CSV).
@@ -225,6 +239,14 @@ if(ATV_BUILD_RHF)
     # hybrid_singlepoint locates its molecule battery relative to the source tree.
     target_compile_definitions(val_scf_hybrid_singlepoint PRIVATE
         ATV_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+
+    # validation (gtest): LBFGS geometry optimization driven by the SCF force
+    # provider — relocated from the unit gate (each case is a full H2 geometry
+    # optimization to a tight-force stationary point via repeated SCF solves).
+    # Orthogonal learnable check of the Optimize driver + SCFEvaluator(with
+    # gradient) closing the loop: RHF and LSDA bond-length relaxation, a
+    # compressed bond expanding, and an Armijo line-search reaching tight force.
+    atv_add_validation(val_min_lbfgs_geoopt qc/rhf/validation/test_lbfgs_geoopt.cpp)
 endif()
 
 # ════════════════════════════════════════════════════════════════════

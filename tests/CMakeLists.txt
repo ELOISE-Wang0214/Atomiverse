@@ -93,8 +93,8 @@ atv_add_cpp_test(test_cpu_md cpu/md/test_md.cpp)
 atv_add_cpp_test(test_cpu_md_pe_thermo_schema cpu/md/test_pe_thermo_schema.cpp)
 atv_add_cpp_test(test_cpu_md_pe_single_chain cpu/md/test_pe_single_chain.cpp)
 atv_add_cpp_test(test_cpu_md_pe_nve               cpu/md/test_pe_nve.cpp)
-atv_add_cpp_test(test_cpu_md_csvr                 cpu/md/test_cpu_md_csvr.cpp)
-atv_add_cpp_test(test_cpu_md_nvt                  cpu/md/test_cpu_md_nvt.cpp)
+# test_cpu_md_csvr / test_cpu_md_nvt relocated to benchmarks/md/lj/validation/
+# (val_md_csvr / val_md_nvt) — full thermostat equilibrations, not ms unit tests.
 atv_add_cpp_test(test_cpu_md_step_timing          cpu/md/test_step_timing.cpp)
 atv_add_cpp_test(test_cpu_md_timing_report        cpu/md/test_timing_report.cpp)
 atv_add_cpp_test(test_cpu_md_pe_fd_force          cpu/md/test_pe_fd_force.cpp)
@@ -205,7 +205,8 @@ target_compile_definitions(test_cpu_md_pe_tension_protocol PRIVATE
 # with -DATV_BUILD_BENCHMARKS=ON.
 atv_add_cpp_test(test_cpu_md_neighbor_list_arena  cpu/md/test_neighbor_list_arena.cpp)
 atv_add_cpp_test(test_cpu_md_neighbor_list_rebuild  cpu/md/test_neighbor_list_rebuild.cpp)
-atv_add_cpp_test(test_cpu_md_pe_nvt               cpu/md/test_pe_nvt.cpp)
+# test_cpu_md_pe_nvt relocated to benchmarks/md/pe/validation/ (val_md_pe_nvt) —
+# a full NVT equilibration of the bonded PE melt, not a ms unit test.
 atv_add_cpp_test(test_cpu_md_frame_tag_image      cpu/md/test_frame_tag_image.cpp)
 atv_add_cpp_test(test_cpu_md_domain_decomposition cpu/md/test_domain_decomposition.cpp)
 atv_add_cpp_test(test_cpu_md_mpi_stubs            cpu/md/test_mpi_stubs.cpp)
@@ -385,7 +386,8 @@ if(ATV_BUILD_RHF)
     atv_add_cpp_test(test_cpu_evaluate_driver        cpu/test_evaluate_driver.cpp)
     atv_add_cpp_test(test_cpu_scf_minao         cpu/scf/test_minao.cpp)
     atv_add_cpp_test(test_cpu_scf_rys_eri_deriv cpu/scf/test_rys_eri_deriv.cpp)
-    atv_add_cpp_test(test_cpu_minimizer_lbfgs   cpu/minimizer/test_lbfgs.cpp)
+    # test_cpu_minimizer_lbfgs relocated to benchmarks/qc/rhf/validation/
+    # (val_min_lbfgs_geoopt) — full SCF-driven H2 geometry optimizations.
     atv_add_cpp_test(test_cpu_minimizer_recorders cpu/minimizer/test_trajectory_writer.cpp)
     atv_add_cpp_test(test_cpu_minimize_driver_swap_optimizer cpu/test_minimize_driver_swap_optimizer.cpp)
     atv_add_cpp_test(test_cpu_scf_orbital_info_observer cpu/scf/test_orbital_info_observer.cpp)
@@ -506,19 +508,21 @@ if(ATV_BUILD_CUDA AND ATV_BUILD_PW)
 endif()
 
 # ── End-to-end / parity tests: disabled from the default fast gate ────────────
-# These run a full solve/sim to convergence or an external-engine (PySCF/libcint)
-# parity check — the entire multi-minute cost of the suite. Disabled unless
-# -DATV_RUN_E2E_TESTS=ON. Guarded by if(TEST ...) so it is a no-op when the
-# owning module (RHF / MPI) is not built. See the fast-gate note at the top.
+# The former multi-minute offenders (Gaussian SCF, vibrations) and the slower
+# classical-MD equilibrations have been *physically relocated* to
+# benchmarks/{qc,md}/**/validation/ as orthogonal, learnable validations
+# (val_scf_*, val_vib_*, val_md_*, val_min_lbfgs_geoopt) built with
+# -DATV_BUILD_BENCHMARKS=ON. The unit gate keeps only ms-scale correctness
+# checks — e.g. test_cpu_md now runs its 20 fast unit tests (cell list, halo,
+# analytic force) in ~0.03 s; its two thermostat/barostat equilibration
+# subtests are the sole ~2 s cost and are a documented split follow-up.
+#
+# The one entry left here is the MPI multi-rank run: it needs 8 processes under
+# mpirun (not a ms unit test), and benchmarks/ has no gtest+MPI run harness yet.
+# It is guarded by if(TEST ...) so this is a no-op when MPI is not built.
+# Relocating it awaits an MPI-run helper on the benchmark side.
 if(NOT ATV_RUN_E2E_TESTS)
     set(ATV_E2E_TESTS
-        # (Gaussian SCF + vibrations relocated to benchmarks/qc/{rhf,vib}/validation/)
-        # Classical MD / minimization run to a step budget / convergence
-        test_cpu_md
-        test_cpu_md_nvt
-        test_cpu_md_csvr
-        test_cpu_md_pe_nvt
-        test_cpu_minimizer_lbfgs
         test_mpi_pe_nvt_multirank_n8)
     foreach(t IN LISTS ATV_E2E_TESTS)
         if(TEST ${t})
