@@ -369,24 +369,13 @@ if(ATV_BUILD_RHF)
     atv_add_cpp_test(test_cpu_scf_uhf_solve    cpu/scf/test_uhf_solve.cpp)
     atv_add_cpp_test(test_cpu_scf_uks_solve    cpu/scf/test_uks_solve.cpp)
     atv_add_cpp_test(test_cpu_scf_xc_functional cpu/scf/test_xc_functional.cpp)
-    atv_add_cpp_test(test_cpu_scf_grid          cpu/scf/test_grid.cpp)
-    atv_add_cpp_test(test_cpu_scf_gradient      cpu/scf/test_gradient.cpp)
     atv_add_cpp_test(test_cpu_scf_evaluator     cpu/scf/test_scf_evaluator.cpp)
-    atv_add_cpp_test(test_cpu_scf_aimd_conservation cpu/scf/test_aimd_conservation.cpp)
     atv_add_cpp_test(test_cpu_scf_integrals     cpu/scf/test_integrals.cpp)
     atv_add_cpp_test(test_cpu_scf_rys_roots     cpu/scf/test_rys_roots.cpp)
     atv_add_cpp_test(test_cpu_scf_rys_eri       cpu/scf/test_rys_eri.cpp)
-    atv_add_cpp_test(test_cpu_scf_rys_eri_fshell cpu/scf/test_rys_eri_fshell.cpp)
     atv_add_cpp_test(test_cpu_scf_primitives    cpu/scf/test_primitives.cpp)
     atv_add_cpp_test(test_cpu_scf_accelerators  cpu/scf/test_accelerators.cpp)
     atv_add_cpp_test(test_cpu_scf_solver        cpu/scf/test_scf_solver.cpp)
-    atv_add_cpp_test(test_cpu_scf_hybrid_singlepoint cpu/scf/test_hybrid_singlepoint.cpp)
-    target_compile_definitions(test_cpu_scf_hybrid_singlepoint PRIVATE
-        ATV_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-    # Hybrid SCF runs B3LYP/PBE0 single points on five molecules up to
-    # benzene/glycine at 6-31G*; K-heavy and grid-heavy. Allow a generous
-    # ceiling so a cold run does not trip the default CTest timeout.
-    set_tests_properties(test_cpu_scf_hybrid_singlepoint PROPERTIES TIMEOUT 3600)
     atv_add_cpp_test(test_cpu_scf_solver_internals cpu/scf/test_scf_solver_internals.cpp)
     atv_add_cpp_test(test_cpu_scf_solver_internal_isolation cpu/scf/test_scf_solver_internal_isolation.cpp)
     # The grep gate needs the source tree — ctest runs from the build dir.
@@ -395,18 +384,7 @@ if(ATV_BUILD_RHF)
     atv_add_cpp_test(test_cpu_scf_evaluator_no_alloc cpu/scf/test_scf_evaluator_no_alloc.cpp)
     atv_add_cpp_test(test_cpu_evaluate_driver        cpu/test_evaluate_driver.cpp)
     atv_add_cpp_test(test_cpu_scf_minao         cpu/scf/test_minao.cpp)
-    atv_add_cpp_test(test_cpu_scf_gradient_vs_libcint cpu/scf/test_gradient_vs_libcint.cpp)
     atv_add_cpp_test(test_cpu_scf_rys_eri_deriv cpu/scf/test_rys_eri_deriv.cpp)
-    atv_add_cpp_test(test_cpu_scf_basis_vs_pyscf cpu/scf/test_basis_vs_pyscf.cpp)
-    atv_add_cpp_test(test_cpu_scf_def2svp_gradient cpu/scf/test_def2svp_gradient.cpp)
-    atv_add_cpp_test(test_cpu_scf_basis_eval_dshell cpu/scf/test_basis_eval_dshell.cpp)
-    atv_add_cpp_test(test_cpu_scf_ks_dshell_gradient cpu/scf/test_ks_dshell_gradient.cpp)
-    atv_add_cpp_test(test_cpu_scf_ks_grid_response_gradient cpu/scf/test_ks_grid_response_gradient.cpp)
-    atv_add_cpp_test(test_cpu_scf_hybrid_gradient cpu/scf/test_hybrid_gradient.cpp)
-    # B3LYP/PBE0 analytic gradient + geometry optimization at 6-31G*. The
-    # hybrid K-derivative re-walks every shell quartet and the moving-grid
-    # FD oracle runs many displaced SCFs, so allow a generous CTest ceiling.
-    set_tests_properties(test_cpu_scf_hybrid_gradient PROPERTIES TIMEOUT 5400)
     atv_add_cpp_test(test_cpu_minimizer_lbfgs   cpu/minimizer/test_lbfgs.cpp)
     atv_add_cpp_test(test_cpu_minimizer_recorders cpu/minimizer/test_trajectory_writer.cpp)
     atv_add_cpp_test(test_cpu_minimize_driver_swap_optimizer cpu/test_minimize_driver_swap_optimizer.cpp)
@@ -534,20 +512,7 @@ endif()
 # owning module (RHF / MPI) is not built. See the fast-gate note at the top.
 if(NOT ATV_RUN_E2E_TESTS)
     set(ATV_E2E_TESTS
-        # Gaussian SCF full solves / analytic gradients / grids / f-shell ERI
-        test_cpu_scf_hybrid_singlepoint
-        test_cpu_scf_ks_dshell_gradient
-        test_cpu_scf_ks_grid_response_gradient
-        test_cpu_scf_hybrid_gradient
-        test_cpu_scf_def2svp_gradient
-        test_cpu_scf_gradient
-        test_cpu_scf_gradient_vs_libcint     # parity
-        test_cpu_scf_grid
-        test_cpu_scf_rys_eri_fshell
-        test_cpu_scf_basis_eval_dshell
-        test_cpu_scf_basis_vs_pyscf          # parity
-        test_cpu_scf_aimd_conservation
-        # (Vibrations relocated to benchmarks/qc/vib/validation/)
+        # (Gaussian SCF + vibrations relocated to benchmarks/qc/{rhf,vib}/validation/)
         # Classical MD / minimization run to a step budget / convergence
         test_cpu_md
         test_cpu_md_nvt

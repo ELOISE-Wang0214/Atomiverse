@@ -209,6 +209,22 @@ if(ATV_BUILD_RHF)
     atv_add_validation(val_vib_frequencies_vs_pyscf qc/vib/validation/test_frequencies_vs_pyscf.cpp)
     atv_add_validation(val_vib_thermochem_vs_pyscf  qc/vib/validation/test_thermochem_vs_pyscf.cpp)
     atv_add_validation(val_vib_output_components   qc/vib/validation/test_vib_output_components.cpp)
+
+    # validation: Gaussian SCF end-to-end / parity — relocated from the unit gate
+    # (each runs a full SCF solve / analytic-gradient FD sweep / f-shell ERI /
+    # grid build to convergence: seconds to ~14 min). Orthogonal learnable checks
+    # of one capability each: hybrid single-point, analytic gradients (RKS d-shell,
+    # KS grid-response, hybrid, def2-SVP, unified), gradient-vs-libcint, XC grid,
+    # f-shell ERI, d-shell basis eval, energy-vs-PySCF, AIMD energy conservation.
+    foreach(v
+        hybrid_singlepoint ks_dshell_gradient ks_grid_response_gradient
+        hybrid_gradient def2svp_gradient gradient gradient_vs_libcint
+        grid rys_eri_fshell basis_eval_dshell basis_vs_pyscf aimd_conservation)
+        atv_add_validation(val_scf_${v} qc/rhf/validation/test_${v}.cpp)
+    endforeach()
+    # hybrid_singlepoint locates its molecule battery relative to the source tree.
+    target_compile_definitions(val_scf_hybrid_singlepoint PRIVATE
+        ATV_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 endif()
 
 # ════════════════════════════════════════════════════════════════════
