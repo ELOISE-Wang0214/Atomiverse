@@ -33,6 +33,8 @@
 #include <xtensor/containers/xtensor.hpp>
 #include <xtensor/generators/xbuilder.hpp>
 
+#include "atomiverse/core/precision.h"
+
 namespace ATV {
 namespace cpu {
 
@@ -157,19 +159,26 @@ class Atom {
     std::size_t memory_bytes() const;
 
     // ── SoA per-atom fields (all sized to `nmax`) ──────────────────────────
+    //
+    // Precision tiers (core/precision.h): forces are `AccReal` (they are `+=`
+    // accumulators — never economized, LAMMPS double-accumulation rule). The
+    // storage fields x/y/z, v*, mass, charge are `StorageReal` *candidates* but
+    // remain `double` pending the Phase-2 migration (they have `double*`-typed
+    // SIMD / gather / halo / snapshot consumers that must be made tier-aware +
+    // an NVE energy-conservation test) — see .claude/specs/precision-migration.md.
 
-    xt::xtensor<double, 1> x;       ///< x positions [Angstrom].
-    xt::xtensor<double, 1> y;       ///< y positions [Angstrom].
-    xt::xtensor<double, 1> z;       ///< z positions [Angstrom].
-    xt::xtensor<double, 1> vx;      ///< x velocities [Angstrom/fs].
-    xt::xtensor<double, 1> vy;      ///< y velocities [Angstrom/fs].
-    xt::xtensor<double, 1> vz;      ///< z velocities [Angstrom/fs].
-    xt::xtensor<double, 1> fx;      ///< x forces [eV/Angstrom].
-    xt::xtensor<double, 1> fy;      ///< y forces [eV/Angstrom].
-    xt::xtensor<double, 1> fz;      ///< z forces [eV/Angstrom].
-    xt::xtensor<double, 1> mass;    ///< Masses [amu].
-    xt::xtensor<double, 1> charge;  ///< Partial charges [elementary charge].
-    xt::xtensor<int, 1>    type;    ///< Atom type indices.
+    xt::xtensor<double, 1> x;       ///< x positions [Angstrom]. (StorageReal, Phase 2)
+    xt::xtensor<double, 1> y;       ///< y positions [Angstrom]. (StorageReal, Phase 2)
+    xt::xtensor<double, 1> z;       ///< z positions [Angstrom]. (StorageReal, Phase 2)
+    xt::xtensor<double, 1> vx;      ///< x velocities [Angstrom/fs]. (StorageReal, Phase 2)
+    xt::xtensor<double, 1> vy;      ///< y velocities [Angstrom/fs]. (StorageReal, Phase 2)
+    xt::xtensor<double, 1> vz;      ///< z velocities [Angstrom/fs]. (StorageReal, Phase 2)
+    xt::xtensor<AccReal, 1> fx;     ///< x forces [eV/Angstrom]. AccReal (accumulator).
+    xt::xtensor<AccReal, 1> fy;     ///< y forces [eV/Angstrom]. AccReal (accumulator).
+    xt::xtensor<AccReal, 1> fz;     ///< z forces [eV/Angstrom]. AccReal (accumulator).
+    xt::xtensor<double, 1> mass;    ///< Masses [amu]. (StorageReal, Phase 2)
+    xt::xtensor<double, 1> charge;  ///< Partial charges [e]. (StorageReal, Phase 2)
+    xt::xtensor<int, 1>    type;    ///< Atom type indices. (LocalInt, Phase 3)
 
     /// @brief Global atom identity, persistent across migration and restart.
     /// Default-initialized to identity (`tag(i) == i`) on `grow()`.
