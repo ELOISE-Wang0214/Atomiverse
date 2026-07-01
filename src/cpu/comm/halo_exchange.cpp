@@ -297,7 +297,7 @@ void pack_positions_for_face(const Frame& frame, const md::mpi::DomainDecomposit
     const auto* x = frame.atoms.x.data();
     const auto* y = frame.atoms.y.data();
     const auto* z = frame.atoms.z.data();
-    const std::int64_t* tag = frame.atoms.tag.data();
+    const auto* tag = frame.atoms.tag.data();
     const auto* q = frame.atoms.charge.data();
 
     for (int k = 0; k < n; ++k) {

@@ -14,6 +14,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "atomiverse/core/precision.h" // TagInt
+
 #ifdef ATV_HAS_MPI
 #include <mpi.h>
 #endif
@@ -141,7 +143,7 @@ struct DomainDecomposition {
     /// `Migrate`. Ghost entries are appended by `HaloSend`
     /// and erased back out at the start of the next halo via the
     /// companion `ghost_tags` log.
-    std::unordered_map<std::int64_t, int> tag_to_local;
+    std::unordered_map<TagInt, int> tag_to_local;
 
     /// @brief Tags of the ghost atoms that `HaloSend` last
     /// inserted into `tag_to_local`, in slot order. Used to roll back

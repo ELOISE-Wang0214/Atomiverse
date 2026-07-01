@@ -216,7 +216,7 @@ void Backend::release_tag_maps_if_unused(cpu::Frame& frame) {
     // ~400 MB dead weight on an 8M-atom single-rank LJ run.
     frame.atoms.map_release();
     if (dd_) {
-        std::unordered_map<std::int64_t, int>{}.swap(dd_->tag_to_local);
+        std::unordered_map<TagInt, int>{}.swap(dd_->tag_to_local);
     }
 }
 

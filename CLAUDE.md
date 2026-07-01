@@ -131,7 +131,7 @@ runs fine on the login node with `-DATV_BUILD_CUDA=OFF`.
 | `ATV_BUILD_TESTS` / `ATV_BUILD_BENCHMARKS` / `ATV_BUILD_EXAMPLES` | OFF | test / benchmark / example targets |
 | `ATV_USE_MATPLOT` | OFF | plot generation in selected examples (needs gnuplot) |
 | `ATV_REAL_STORAGE` / `ATV_REAL_WORK` | `double` / `double` | LAMMPS-style real tiers (`float`\|`double`): per-atom storage / kernel-work precision. Accumulators (`AccReal`) are always `double`. |
-| `ATV_ID_SIZE` | `smallbig` | integer-ID width: `smallbig` (32-bit `TagInt`/`ImageInt`) or `bigbig` (64-bit). `BigInt` global counts always 64-bit. |
+| `ATV_ID_SIZE` | `bigbig` | integer-ID width: `bigbig` (64-bit `TagInt`, default — preserves legacy int64 tags) or `smallbig` (32-bit, LAMMPS/molrs-aligned memory opt-in). `BigInt` global counts always 64-bit. |
 
 Performance: `-march=native` is required for the CPU SCF ERI kernels.
 

@@ -72,7 +72,7 @@ public:
     }
 
 private:
-    const std::unordered_map<std::int64_t, int>* map_;
+    const std::unordered_map<TagInt, int>* map_;
     int n_local_;
     int n_force_;
 };

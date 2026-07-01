@@ -56,7 +56,10 @@ if(NOT ATV_DOCS_ONLY)
     set(ATV_REAL_WORK "double" CACHE STRING "Transient kernel-work real precision (float or double)")
     set_property(CACHE ATV_REAL_WORK PROPERTY STRINGS float double)
 
-    set(ATV_ID_SIZE "smallbig" CACHE STRING "Global-ID integer width: smallbig (32-bit IDs) or bigbig (64-bit IDs)")
+    # Default bigbig (64-bit IDs) preserves the legacy always-int64 tag width, so
+    # the default build is byte-identical to pre-migration. smallbig (32-bit IDs,
+    # the LAMMPS default + molrs's on-disk tag width) is the memory-saving opt-in.
+    set(ATV_ID_SIZE "bigbig" CACHE STRING "Global-ID integer width: bigbig (64-bit IDs, default) or smallbig (32-bit IDs)")
     set_property(CACHE ATV_ID_SIZE PROPERTY STRINGS smallbig bigbig)
 
     option(ATV_BUILD_RHF "Build RHF electronic structure code" OFF)

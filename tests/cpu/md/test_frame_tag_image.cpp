@@ -41,11 +41,13 @@ TEST(FrameTagImage, DefaultConstructZerosImage) {
 
 // ── tag value_type is int64_t ────────────────────────────────────────
 
-TEST(FrameTagImage, TagDtypeIsInt64) {
+TEST(FrameTagImage, TagDtypeIsTagInt) {
     cpu::Frame frame(4);
     using tag_t = typename std::decay_t<decltype(frame.atoms.tag)>::value_type;
-    static_assert(std::is_same_v<tag_t, std::int64_t>,
-                  "Frame::Atoms::tag must be xtensor<int64_t, 1>");
+    // tag is the TagInt tier (int64 under bigbig, int32 under smallbig), not a
+    // hardcoded int64 — see core/precision.h.
+    static_assert(std::is_same_v<tag_t, ATV::TagInt>,
+                  "Frame::Atoms::tag must be xtensor<TagInt, 1>");
     SUCCEED();
 }
 

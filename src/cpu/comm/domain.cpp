@@ -36,7 +36,7 @@ void DomainDecomposition::bind(const Frame& frame) {
             tag_to_local.emplace(frame.atoms.tag(i), i);
         }
     } else {
-        std::unordered_map<std::int64_t, int>{}.swap(tag_to_local);
+        std::unordered_map<TagInt, int>{}.swap(tag_to_local);
     }
 }
 
@@ -267,7 +267,9 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
                 arr(ni) = arr(oi);
         }
     };
-    auto compact_1d_i64 = [&](xt::xtensor<std::int64_t, 1>& arr) {
+    // Generic over the tag tier (TagInt is int32 under smallbig, int64 under
+    // bigbig); the element move is type-agnostic.
+    auto compact_1d_i64 = [&](auto& arr) {
         for (int ni = 0; ni < n_local; ++ni) {
             const int oi = owned_indices[static_cast<std::size_t>(ni)];
             if (oi != ni)
@@ -362,7 +364,7 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
             tag_to_local.emplace(frame.atoms.tag(i), i);
         }
     } else {
-        std::unordered_map<std::int64_t, int>{}.swap(tag_to_local);
+        std::unordered_map<TagInt, int>{}.swap(tag_to_local);
     }
 
     // No topology filter at partition. Each rank keeps the FULL frame.bonds

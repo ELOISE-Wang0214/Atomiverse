@@ -75,7 +75,7 @@ void Atom::grow(int target_nmax) {
     // for rows they touch.
     resize1d(tag);
     for (std::size_t i = static_cast<std::size_t>(nmax); i < n; ++i)
-        tag[i] = static_cast<std::int64_t>(i);
+        tag[i] = static_cast<TagInt>(i);
 
     resize2d(image, 3);
 
@@ -151,7 +151,7 @@ void Atom::set_capacity(int new_nmax) {
     realloc1d(tag);
     // tag default = identity for any newly-added rows (matches grow()).
     for (std::size_t i = keep; i < n; ++i)
-        tag(i) = static_cast<std::int64_t>(i);
+        tag(i) = static_cast<TagInt>(i);
     realloc2d(image, 3);
     // Count arrays always present; wide bonded arrays only when topology exists.
     realloc1d(num_bond);
@@ -262,11 +262,11 @@ void Atom::map_set(int begin, int end) {
     }
 }
 
-void Atom::add_bond(std::int64_t ti, std::int64_t tj, int type) {
+void Atom::add_bond(TagInt ti, TagInt tj, int type) {
     ensure_bonded_storage(); // lazy atom_style molecular on first topology
     // LAMMPS Newton bond ON: smaller-tag atom owns. Bond appears once.
-    const std::int64_t owner_tag = std::min(ti, tj);
-    const std::int64_t partner_tag = std::max(ti, tj);
+    const TagInt owner_tag = std::min(ti, tj);
+    const TagInt partner_tag = std::max(ti, tj);
     auto it = map.find(owner_tag);
     if (it == map.end())
         return; // not on this rank
@@ -278,7 +278,7 @@ void Atom::add_bond(std::int64_t ti, std::int64_t tj, int type) {
     num_bond[i] = slot + 1;
 }
 
-void Atom::add_angle(std::int64_t ti, std::int64_t tj, std::int64_t tk,
+void Atom::add_angle(TagInt ti, TagInt tj, TagInt tk,
                      int type) {
     ensure_bonded_storage();
     // Center atom (tj) owns.
@@ -294,8 +294,8 @@ void Atom::add_angle(std::int64_t ti, std::int64_t tj, std::int64_t tk,
     num_angle[i] = slot + 1;
 }
 
-void Atom::add_dihedral(std::int64_t ti, std::int64_t tj, std::int64_t tk,
-                        std::int64_t tl, int type) {
+void Atom::add_dihedral(TagInt ti, TagInt tj, TagInt tk,
+                        TagInt tl, int type) {
     ensure_bonded_storage();
     // Atom-j (tj, the 2nd atom) owns.
     auto it = map.find(tj);
@@ -327,7 +327,7 @@ void Atom::build_special_list() {
         nspecial(i, 2) = 0;
     }
 
-    auto append_special = [&](int i, std::int64_t partner_tag,
+    auto append_special = [&](int i, TagInt partner_tag,
                               int& count_slot) {
         const int slot = count_slot;
         grow_maxspecial(slot + 1); // runtime stride: never truncates
@@ -341,10 +341,10 @@ void Atom::build_special_list() {
 
     // 1-2 list: scan owner bonds, reflect to both endpoints.
     for (int i = 0; i < nlocal; ++i) {
-        const std::int64_t ti = tag[i];
+        const TagInt ti = tag[i];
         const int nb = num_bond[i];
         for (int b = 0; b < nb; ++b) {
-            const std::int64_t tj = bond_atom(i, b);
+            const TagInt tj = bond_atom(i, b);
             // Append tj to i's special list.
             {
                 int c = nspecial(i, 0);
@@ -368,18 +368,18 @@ void Atom::build_special_list() {
 
     // 1-3 list: for each 1-2 neighbor's 1-2 neighbors, append if not in 1-2.
     for (int i = 0; i < nlocal; ++i) {
-        const std::int64_t ti = tag[i];
+        const TagInt ti = tag[i];
         const int n12 = nspecial(i, 0);
         int n13 = n12;
         for (int s = 0; s < n12; ++s) {
-            const std::int64_t tj = special(i, s);
+            const TagInt tj = special(i, s);
             auto it = map.find(tj);
             if (it == map.end())
                 continue;
             const int j = it->second;
             const int nj12 = nspecial(j, 0);
             for (int t = 0; t < nj12; ++t) {
-                const std::int64_t tk = special(j, t);
+                const TagInt tk = special(j, t);
                 if (tk == ti)
                     continue;
                 // Check not already in i's 1-2 list (would double-count).
@@ -402,19 +402,19 @@ void Atom::build_special_list() {
     // 1-4 list: for each 1-3 neighbor's 1-2 neighbors, append if not in
     // 1-2 / 1-3 yet.
     for (int i = 0; i < nlocal; ++i) {
-        const std::int64_t ti = tag[i];
+        const TagInt ti = tag[i];
         const int n12 = nspecial(i, 0);
         const int n13 = nspecial(i, 1);
         int n14 = n13;
         for (int s = n12; s < n13; ++s) {
-            const std::int64_t tj = special(i, s);
+            const TagInt tj = special(i, s);
             auto it = map.find(tj);
             if (it == map.end())
                 continue;
             const int j = it->second;
             const int nj12 = nspecial(j, 0);
             for (int t = 0; t < nj12; ++t) {
-                const std::int64_t tk = special(j, t);
+                const TagInt tk = special(j, t);
                 if (tk == ti)
                     continue;
                 bool found = false;
@@ -447,20 +447,20 @@ void Atom::reshuffle_topology_to_tags() {
     std::vector<int> snap_num_bond(static_cast<std::size_t>(n));
     std::vector<int> snap_num_angle(static_cast<std::size_t>(n));
     std::vector<int> snap_num_dihedral(static_cast<std::size_t>(n));
-    std::vector<std::int64_t> snap_bond_atom(
+    std::vector<TagInt> snap_bond_atom(
         static_cast<std::size_t>(n) * MB);
     std::vector<int> snap_bond_type(static_cast<std::size_t>(n)
                                     * MB);
-    std::vector<std::int64_t> snap_angle_atom(
+    std::vector<TagInt> snap_angle_atom(
         static_cast<std::size_t>(n) * 2 * MA);
     std::vector<int> snap_angle_type(static_cast<std::size_t>(n)
                                      * MA);
-    std::vector<std::int64_t> snap_dihedral_atom(
+    std::vector<TagInt> snap_dihedral_atom(
         static_cast<std::size_t>(n) * 3 * MD);
     std::vector<int> snap_dihedral_type(static_cast<std::size_t>(n)
                                         * MD);
     std::vector<int> snap_nspecial(static_cast<std::size_t>(n) * 3);
-    std::vector<std::int64_t> snap_special(static_cast<std::size_t>(n)
+    std::vector<TagInt> snap_special(static_cast<std::size_t>(n)
                                            * MS);
 
     for (int i = 0; i < n; ++i) {
@@ -499,7 +499,7 @@ void Atom::reshuffle_topology_to_tags() {
     // (and the populator assumed tag == row at populate time), the
     // source row is just `tag[i]`.
     for (int i = 0; i < n; ++i) {
-        const std::int64_t target_tag = tag[i];
+        const TagInt target_tag = tag[i];
         if (target_tag < 0 || target_tag >= n) {
             throw std::runtime_error(
                 "cpu::Atom::reshuffle_topology_to_tags: tag out of "

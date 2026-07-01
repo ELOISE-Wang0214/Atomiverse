@@ -1,7 +1,27 @@
 # Precision Migration — Atom/Frame to tiered types
 
-status: Phase 1 + Phase 2 done; Phase 3 (integers) pending
+status: Phase 1 + 2 + 3 (CPU) done; CUDA tier unification pending (GPU node)
 date: 2026-07-01
+
+## Phase 3 outcome (integers, done)
+
+`cpu::Atom` `tag` (and the bonded partner arrays `bond_atom`/`angle_atom`/
+`dihedral_atom`/`special`, and the `tag→local` map key) migrated `int64 → TagInt`.
+`-DATV_ID_SIZE=smallbig` gives **32-bit IDs** (LAMMPS default + molrs's on-disk tag
+width) — compiles + the tag/topology/comm/materialize tests pass; `bigbig` (64-bit,
+**the Atomiverse default**) is byte-identical to pre-migration.
+
+- **Default flipped to `bigbig`** so the default build preserves the legacy always-
+  int64 tag width (byte-identical), with `smallbig` as the memory-saving opt-in —
+  the same "wide default, narrow opt-in" shape as `float` storage. CI (which does
+  not set `ATV_ID_SIZE`) therefore stays on int64 tags, unchanged.
+- Same self-consistent recipe, no casts: `const auto*` tag pointers, templated
+  `copy_range_i64`, generic `compact_1d_i64` (`auto&`), `TagInt` field/param/map
+  types, one test static_assert made tier-aware (`is_same<tag_t, TagInt>`).
+- `type`/counts left as `int` (== `LocalInt`, byte-identical); `image` left as the
+  per-axis `int8` (not the LAMMPS packed `imageint`); global step counters were
+  already `int64_t` (BigInt-equivalent). CUDA `real_t/work_t/prec_t` + int tiers
+  unification is the only remaining piece — code-only, needs the GPU node.
 depends on: [[project-precision-tiered-lammps]] (core/precision.h foundation, committed)
 
 ## Outcome (Phase 2 done)

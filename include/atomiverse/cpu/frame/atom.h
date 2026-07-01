@@ -182,7 +182,7 @@ class Atom {
 
     /// @brief Global atom identity, persistent across migration and restart.
     /// Default-initialized to identity (`tag(i) == i`) on `grow()`.
-    xt::xtensor<std::int64_t, 1> tag;
+    xt::xtensor<TagInt, 1> tag;
 
     /// @brief Per-atom PBC crossing counts, shape `[nmax, 3]`.
     /// `image(i, d) += ±1` each time atom `i` crosses the box face along
@@ -201,7 +201,7 @@ class Atom {
     /// `bond_atom(i, m)` is the global tag of the partner of atom `i`'s
     /// `m`-th bond. The partner's local row index is resolved per-call
     /// via `map[bond_atom(i, m)]`.
-    xt::xtensor<std::int64_t, 2> bond_atom;
+    xt::xtensor<TagInt, 2> bond_atom;
 
     /// @brief Bond type index, shape `[nmax, bond_per_atom]`.
     xt::xtensor<int, 2> bond_type;
@@ -215,7 +215,7 @@ class Atom {
     /// `angle_atom(i, 2*m + 0)` is the i-partner tag (atom 0 of the
     /// `i-j-k` triple), `angle_atom(i, 2*m + 1)` is the k-partner tag.
     /// Atom `i` itself is the center `j`.
-    xt::xtensor<std::int64_t, 2> angle_atom;
+    xt::xtensor<TagInt, 2> angle_atom;
 
     /// @brief Angle type index, shape `[nmax, angle_per_atom]`.
     xt::xtensor<int, 2> angle_type;
@@ -228,7 +228,7 @@ class Atom {
     /// `[nmax, 3 * dihedral_per_atom]`. For atom `i`'s `m`-th dihedral
     /// (where `i` is atom `j`): `dihedral_atom(i, 3*m + 0/1/2)` are the
     /// `i`, `k`, `l` partner tags (the dihedral's atom 0, 2, 3).
-    xt::xtensor<std::int64_t, 2> dihedral_atom;
+    xt::xtensor<TagInt, 2> dihedral_atom;
 
     /// @brief Dihedral type index, shape `[nmax, dihedral_per_atom]`.
     xt::xtensor<int, 2> dihedral_type;
@@ -243,7 +243,7 @@ class Atom {
     /// `special(i, 0 .. nspecial(i, 0))` are 1-2 partners; the next
     /// `nspecial(i, 1) - nspecial(i, 0)` are 1-3; and so on. Used by
     /// pair evaluators for non-bonded exclusion (`special_bonds`).
-    xt::xtensor<std::int64_t, 2> special;
+    xt::xtensor<TagInt, 2> special;
 
     // ── Lazy bonded storage (LAMMPS atom_style atomic vs molecular) ────────
     //
@@ -271,7 +271,7 @@ class Atom {
     /// @brief Tag-to-local-row map. Owners-only after `Comm::exchange`;
     /// owners + ghosts after `Comm::borders`. Maintained by the comm
     /// components -- never written by force kernels.
-    std::unordered_map<std::int64_t, int> map;
+    std::unordered_map<TagInt, int> map;
 
     /// @brief Empty the map. LAMMPS `Atom::map_clear` equivalent.
     void map_clear() { map.clear(); }
@@ -282,7 +282,7 @@ class Atom {
     /// kernels can resolve global tags, and costs ~50 B/atom of hash-node
     /// heap when populated (e.g. ~400 MB dead weight on an 8M-atom LJ
     /// run). `map_clear()` alone keeps the bucket array alive.
-    void map_release() { std::unordered_map<std::int64_t, int>{}.swap(map); }
+    void map_release() { std::unordered_map<TagInt, int>{}.swap(map); }
 
     /// @brief Rebuild the map for rows `[begin, end)` from current
     /// `tag` values. LAMMPS `Atom::map_set` equivalent. Inserts (not
@@ -308,18 +308,18 @@ class Atom {
     /// the smaller-tag atom owns the bond; the bond appears only in that
     /// atom's `bond_atom` list. Partner force is gathered via reverse_comm
     /// when the partner is a ghost.
-    void add_bond(std::int64_t ti, std::int64_t tj, int type);
+    void add_bond(TagInt ti, TagInt tj, int type);
 
     /// @brief Add an angle (ti, tj, tk, type). Center atom `tj` owns the
     /// angle; the angle appears in `tj`'s `angle_atom` list with the two
     /// non-center partners (ti, tk) stored as a pair.
-    void add_angle(std::int64_t ti, std::int64_t tj, std::int64_t tk, int type);
+    void add_angle(TagInt ti, TagInt tj, TagInt tk, int type);
 
     /// @brief Add a dihedral (ti, tj, tk, tl, type). Atom-j (`tj`, the
     /// 2nd atom) owns the dihedral; the dihedral appears in `tj`'s
     /// `dihedral_atom` list with (ti, tk, tl) stored as a triple.
-    void add_dihedral(std::int64_t ti, std::int64_t tj, std::int64_t tk,
-                      std::int64_t tl, int type);
+    void add_dihedral(TagInt ti, TagInt tj, TagInt tk,
+                      TagInt tl, int type);
 
     /// @brief Build the 1-2 / 1-3 / 1-4 `nspecial` + `special` exclusion
     /// list by BFS over the per-atom bond graph.

@@ -61,13 +61,14 @@ void copy_range_int(std::vector<int>& out, const int* src, int n,
         out[static_cast<std::size_t>(i)] = src[i];
 }
 
-void copy_range_i64(std::vector<std::int64_t>& out, const std::int64_t* src,
-                    int n, bool capture) {
+template <class T>
+void copy_range_i64(std::vector<std::int64_t>& out, const T* src, int n,
+                    bool capture) {
     if (!capture)
         return;
 #pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i)
-        out[static_cast<std::size_t>(i)] = src[i];
+        out[static_cast<std::size_t>(i)] = src[i]; // widen tag tier to int64
 }
 
 } // namespace

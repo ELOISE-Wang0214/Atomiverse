@@ -195,7 +195,7 @@ void PairLJCut::rebuild_filtered_list(const Frame& f,
     const double* sx = filtered_has_shifts_ ? pairs.shift_x.data() : nullptr;
     const double* sy = filtered_has_shifts_ ? pairs.shift_y.data() : nullptr;
     const double* sz = filtered_has_shifts_ ? pairs.shift_z.data() : nullptr;
-    const std::int64_t* tag = f.atoms.tag.data();
+    const auto* tag = f.atoms.tag.data();
 
     for (int i = 0; i < n; ++i) {
         const std::int64_t i_tag = tag[i];

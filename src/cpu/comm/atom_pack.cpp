@@ -48,7 +48,7 @@ int pack_border(const Atom& atom, const int* sendlist, int n, double sx,
     const auto* x = atom.x.data();
     const auto* y = atom.y.data();
     const auto* z = atom.z.data();
-    const std::int64_t* tag = atom.tag.data();
+    const auto* tag = atom.tag.data();
     const int* type = atom.type.data();
 
     int m = 0;
@@ -70,7 +70,7 @@ void unpack_border(Atom& atom, int n, int first, const double* buf) {
     auto* x = atom.x.data();
     auto* y = atom.y.data();
     auto* z = atom.z.data();
-    std::int64_t* tag = atom.tag.data();
+    auto* tag = atom.tag.data();
     int* type = atom.type.data();
 
     int m = 0;

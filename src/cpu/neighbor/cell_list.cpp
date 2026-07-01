@@ -337,7 +337,7 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
     // pure local-index filter. `n_local >= 0` → owner-ghost pairs are
     // deduplicated by tag, mirroring LAMMPS `newton on` convention.
     const bool tag_dedup = (n_local >= 0);
-    const std::int64_t* __restrict tag_ptr =
+    const auto* __restrict tag_ptr =
         tag_dedup ? frame.atoms.tag.data() : nullptr;
     const double rc_sq = cutoff_skin_ * cutoff_skin_;
 

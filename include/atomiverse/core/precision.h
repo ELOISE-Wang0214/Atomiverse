@@ -23,12 +23,16 @@
 /// Each role is sized independently so 64-bit width is paid only where a count
 /// can actually overflow 32 bits.
 ///
-/// | tier        | role                                   | LAMMPS twin | SMALLBIG (default) | BIGBIG |
-/// |-------------|----------------------------------------|-------------|--------------------|--------|
-/// | `LocalInt`  | on-rank counts (nlocal, capacity, idx) | `smallint`  | int32              | int32  |
-/// | `ImageInt`  | periodic image flags                   | `imageint`  | int32              | int64  |
-/// | `TagInt`    | global atom / molecule IDs             | `tagint`    | int32              | int64  |
-/// | `BigInt`    | global totals (natoms, ntimestep)      | `bigint`    | int64              | int64  |
+/// | tier        | role                                   | LAMMPS twin | SMALLBIG | BIGBIG (default) |
+/// |-------------|----------------------------------------|-------------|----------|------------------|
+/// | `LocalInt`  | on-rank counts (nlocal, capacity, idx) | `smallint`  | int32    | int32            |
+/// | `ImageInt`  | periodic image flags                   | `imageint`  | int32    | int64            |
+/// | `TagInt`    | global atom / molecule IDs             | `tagint`    | int32    | int64            |
+/// | `BigInt`    | global totals (natoms, ntimestep)      | `bigint`    | int64    | int64            |
+///
+/// Atomiverse defaults to BIGBIG (64-bit IDs) to preserve the legacy always-int64
+/// tag width — a byte-identical default; SMALLBIG (32-bit IDs, the LAMMPS default)
+/// is the memory-saving opt-in.
 ///
 /// Configure at build time with `-DATV_REAL_STORAGE=float|double`,
 /// `-DATV_REAL_WORK=float|double`, and `-DATV_ID_SIZE=smallbig|bigbig`

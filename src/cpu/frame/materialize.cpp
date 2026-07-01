@@ -115,7 +115,7 @@ Frame materialize(const molrs::FrameRef& src) {
         auto tag = molrs::frame_column_i32(src, "atoms", "tag");
         if (static_cast<int>(tag.size()) == n) {
             for (int i = 0; i < n; ++i) {
-                frame.atoms.tag[i] = static_cast<std::int64_t>(tag[i]);
+                frame.atoms.tag[i] = static_cast<TagInt>(tag[i]);
             }
         }
     }
