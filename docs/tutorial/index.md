@@ -107,6 +107,13 @@ migration (they are not yet renumbered — follow the filename, not the number).
   hierarchy, why DFT is Atomiverse's practical answer, and an honest statement
   that wavefunction correlation methods are planned, not implemented.
 
+**Periodic & plane-wave electronic structure**
+- [Chapter 9: Gaussian and Plane Waves (GPW)](ch09-gpw.md) — CP2K Quickstep's
+  method: a Gaussian wavefunction with FFT-grid Hartree/XC and GTH
+  pseudopotentials (`cpu::gpw::GPWEvaluator`), validated to CP2K parity on
+  isolated H₂O and a periodic ZnO slab. Experimental (closed-shell, Γ-point,
+  PADE/PBE). Builds on [Tutorial 5](05-pw.md).
+
 **Extending classical simulation**
 - [Chapter 11: Ensembles — Thermostats & Barostats](ch11-ensembles.md) — NVT/NPT
   with Nosé-Hoover, Langevin, CSVR, and Berendsen.
