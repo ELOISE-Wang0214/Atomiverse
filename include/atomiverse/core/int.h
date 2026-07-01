@@ -1,21 +1,21 @@
 /// @file core/int.h
-/// @brief Compile-time integer precision, set by CMake -DATV_INT=int|int64_t.
+/// @brief Legacy project-wide integer type. Prefer the role-specific tiers in
+/// core/precision.h (::ATV::LocalInt / ::ATV::TagInt / ::ATV::ImageInt /
+/// ::ATV::BigInt).
 #pragma once
 
-#include <cstdint>
+#include "atomiverse/core/precision.h"
 
 namespace ATV {
 
-#ifndef ATV_INT_TYPE
-/// @brief Preprocessor-selected integer type used by Atomiverse when CMake does
-/// not override it.
-#define ATV_INT_TYPE int
-#endif
-
-/// @brief Project-wide signed integer type.
+/// @brief Project-wide signed integer type (legacy alias).
 ///
-/// Controlled at configure time through `-DATV_INT=int` or
-/// `-DATV_INT=int64_t`.
-using Int = ATV_INT_TYPE;
+/// Kept for backward compatibility: it aliases ::ATV::LocalInt (32-bit), the
+/// on-rank count/index tier. New code should choose an explicit tier from
+/// core/precision.h — ::ATV::LocalInt for local counts, ::ATV::TagInt for atom
+/// IDs, ::ATV::ImageInt for image flags, ::ATV::BigInt for global totals — so
+/// 64-bit width is spent only where a count can overflow. Precision is no
+/// longer a single global `-DATV_INT` switch; see core/precision.h.
+using Int = LocalInt;
 
 } // namespace ATV

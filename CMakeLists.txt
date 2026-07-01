@@ -45,6 +45,20 @@ if(NOT ATV_DOCS_ONLY)
     set(ATV_CUDA_PREC "double" CACHE STRING "CUDA accumulator/SCF precision (float or double)")
     set_property(CACHE ATV_CUDA_PREC PROPERTY STRINGS float double)
 
+    # CPU/shared numerical precision — LAMMPS-style tiered control (see
+    # include/atomiverse/core/precision.h). Storage and kernel-work reals may be
+    # lowered to float independently; accumulators stay double (never economized).
+    # Replaces the former single-switch -DATV_REAL / -DATV_INT, which were never
+    # wired and silently no-op'd.
+    set(ATV_REAL_STORAGE "double" CACHE STRING "Per-atom storage real precision (float or double)")
+    set_property(CACHE ATV_REAL_STORAGE PROPERTY STRINGS float double)
+
+    set(ATV_REAL_WORK "double" CACHE STRING "Transient kernel-work real precision (float or double)")
+    set_property(CACHE ATV_REAL_WORK PROPERTY STRINGS float double)
+
+    set(ATV_ID_SIZE "smallbig" CACHE STRING "Global-ID integer width: smallbig (32-bit IDs) or bigbig (64-bit IDs)")
+    set_property(CACHE ATV_ID_SIZE PROPERTY STRINGS smallbig bigbig)
+
     option(ATV_BUILD_RHF "Build RHF electronic structure code" OFF)
     option(ATV_BUILD_PW "Build plane-wave DFT module (requires FFTW3)" OFF)
     option(ATV_BUILD_GPW "Build GPW DFT module (Gaussian + uniform-grid Hartree/XC + GTH PP)" OFF)
@@ -137,6 +151,7 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/io/lammps_data.cpp
         src/cpu/io/extxyz.cpp
         src/cpu/observer/rdf.cpp
+        src/cpu/observer/msd.cpp
         src/cpu/observer/density.cpp
         src/cpu/recorder/trajectory.cpp
         src/cpu/recorder/thermo.cpp
@@ -586,6 +601,15 @@ if(NOT ATV_DOCS_ONLY)
         target_compile_definitions(atomiverse PUBLIC ATV_HAS_CUDA)
     endif()
     target_compile_definitions(atomiverse PUBLIC ATV_CUDA_REAL_TYPE=${ATV_CUDA_REAL} ATV_CUDA_WORK_TYPE=${ATV_CUDA_WORK} ATV_CUDA_PREC_TYPE=${ATV_CUDA_PREC})
+
+    # CPU/shared tiered precision (core/precision.h). Accumulators are always
+    # double and intentionally not configurable here.
+    target_compile_definitions(atomiverse PUBLIC
+        ATV_REAL_STORAGE_TYPE=${ATV_REAL_STORAGE}
+        ATV_REAL_WORK_TYPE=${ATV_REAL_WORK})
+    if(ATV_ID_SIZE STREQUAL "bigbig")
+        target_compile_definitions(atomiverse PUBLIC ATV_ID_BIGBIG)
+    endif()
 
     if(OpenMP_CXX_FOUND)
         target_link_libraries(atomiverse PUBLIC OpenMP::OpenMP_CXX)

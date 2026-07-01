@@ -86,6 +86,18 @@ void MolRec::add_string(const std::string& name, std::string value) {
                              {value.data(), value.size()});
 }
 
+void MolRec::stage_raw(const std::vector<std::int32_t>& type_id,
+                       const std::vector<double>& x, const std::vector<double>& y,
+                       const std::vector<double>& z,
+                       const std::array<double, 9>& box_mat) {
+    const size_t n = type_id.size();
+    std::vector<double> xb, yb, zb; // unused: snapshot data is already double
+    molrs::molrec_set_geometry(
+        *impl_->inner, {type_id.data(), type_id.size()},
+        as_f64(x.data(), n, xb), as_f64(y.data(), n, yb),
+        as_f64(z.data(), n, zb), {box_mat.data(), box_mat.size()});
+}
+
 void MolRec::commit_frame() { molrs::molrec_commit_frame(*impl_->inner); }
 
 int MolRec::n_frames() const {
@@ -94,6 +106,21 @@ int MolRec::n_frames() const {
 }
 
 void MolRec::clear() { molrs::molrec_clear(*impl_->inner); }
+
+// ── Trajectory analysis (delegates to molrs) ──────────────────────────────────
+
+std::vector<double> MolRec::compute_msd() const {
+    rust::Vec<double> out = molrs::analyze_msd(
+        *static_cast<const molrs::AtvMolRec*>(ffi_handle()));
+    return std::vector<double>(out.begin(), out.end());
+}
+
+double MolRec::compute_diffusion(double dt, int dims, double fit_lo,
+                                 double fit_hi) const {
+    return molrs::analyze_diffusion(
+        *static_cast<const molrs::AtvMolRec*>(ffi_handle()), dt, dims, fit_lo,
+        fit_hi);
+}
 
 // ── print_summary ────────────────────────────────────────────────────────────
 

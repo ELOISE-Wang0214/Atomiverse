@@ -100,9 +100,8 @@ endif()
 # GTH_POTENTIALS / POTENTIAL files shipped with CP2K; point ATV_CP2K_DATA_DIR
 # at a CP2K `data/` directory (default: the local Arrhenius checkout).
 if(ATV_BUILD_GPW)
-    set(ATV_CP2K_DATA_DIR
-        "/nobackup/proj/disk/teoroo/personal/jicli594/work/cp2k/data"
-        CACHE PATH "CP2K data/ directory with GTH_POTENTIALS, POTENTIAL, BASIS_* files")
+    set(ATV_CP2K_DATA_DIR ""
+        CACHE PATH "CP2K data/ directory with GTH_POTENTIALS, POTENTIAL, BASIS_* files (set to enable the CP2K-data GPW tests)")
     atv_add_cpp_test(test_cpu_gpw_cp2k_io          cpu/gpw/test_cpu_gpw_cp2k_io.cpp)
     target_compile_definitions(test_cpu_gpw_cp2k_io
         PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
@@ -203,6 +202,7 @@ atv_add_cpp_test(test_cpu_analysis_executor       cpu/test_analysis_executor.cpp
 atv_add_cpp_test(test_cpu_snapshot_publisher      cpu/test_snapshot_publisher.cpp)
 atv_add_cpp_test(test_cpu_async_component_base    cpu/test_async_component_base.cpp)
 atv_add_cpp_test(test_cpu_observer_rdf_async      cpu/observer/test_rdf_observer.cpp)
+atv_add_cpp_test(test_cpu_observer_msd            cpu/observer/test_msd.cpp)
 atv_add_cpp_test(test_cpu_md_no_alloc              cpu/test_md_no_alloc.cpp)
 atv_add_cpp_test(test_cpu_driver_role_validation cpu/test_cpu_driver_role_validation.cpp)
 atv_add_cpp_test(test_cpu_evaluate_driver_capabilities    cpu/test_evaluate_driver_capabilities.cpp)
@@ -214,14 +214,18 @@ atv_add_cpp_test(test_cpu_md_plan_equivalence             cpu/md/test_md_plan_eq
 atv_add_cpp_test(test_cpu_minimize_evaluate_set_api       cpu/test_minimize_evaluate_set_api.cpp)
 atv_add_cpp_test(test_cpu_materialize                     cpu/test_materialize.cpp)
 
-# ExtXYZ loading through molrs (gpw-edl-aimd M1). The real ZnO EDL frame path
-# is injected as a compile definition; the test self-skips that case if unset.
-set(ATV_FINAL_FRAME_XYZ
-    "/nobackup/proj/disk/teoroo/personal/jicli594/work/molpack-paper/figures/final_frame.xyz"
-    CACHE FILEPATH "Reference 1214-atom ZnO electric-double-layer ExtXYZ frame")
+# ExtXYZ loading through molrs (gpw-edl-aimd M1). The real ZnO EDL frame is a
+# large external data file, not vendored. Provide its path via
+# -DATV_FINAL_FRAME_XYZ=<file> to enable the full-frame load case; when unset
+# or the file is absent, the macro stays undefined and the test self-skips
+# that case (see the #ifdef in test_cpu_io_extxyz.cpp).
+set(ATV_FINAL_FRAME_XYZ ""
+    CACHE FILEPATH "Optional reference 1214-atom ZnO electric-double-layer ExtXYZ frame")
 atv_add_cpp_test(test_cpu_io_extxyz                       cpu/io/test_cpu_io_extxyz.cpp)
-target_compile_definitions(test_cpu_io_extxyz
-    PRIVATE ATV_FINAL_FRAME_XYZ="${ATV_FINAL_FRAME_XYZ}")
+if(ATV_FINAL_FRAME_XYZ AND EXISTS "${ATV_FINAL_FRAME_XYZ}")
+    target_compile_definitions(test_cpu_io_extxyz
+        PRIVATE ATV_FINAL_FRAME_XYZ="${ATV_FINAL_FRAME_XYZ}")
+endif()
 
 # ── MPI tests (launched under `mpirun`) ─────────────────────────────────
 

@@ -18,8 +18,11 @@ env:
 
 jobs:
   # ── CPU build + unit tests ────────────────────────────────────────────────
-  # float  -> core + MD (RHF off; SCF asserts double-precision tolerances)
-  # double -> full suite incl. SCF / hybrid DFT / vibrations (RHF on)
+  # Precision axis drives the storage tier (core/precision.h); accumulators stay
+  # double either way. float exercises the mixed-precision MD path, double the
+  # full-precision suite:
+  # float  -> ATV_REAL_STORAGE=float: core + MD (RHF off; SCF needs double storage)
+  # double -> ATV_REAL_STORAGE=double: full suite incl. SCF / hybrid DFT / vibrations
   cpu:
     name: CPU (${{ matrix.real }}, RHF ${{ matrix.rhf }})
     runs-on: ubuntu-24.04
@@ -62,7 +65,7 @@ jobs:
             -DATV_BUILD_TESTS=ON \
             -DATV_BUILD_EXAMPLES=ON \
             -DATV_BUILD_RHF=${{ matrix.rhf }} \
-            -DATV_REAL=${{ matrix.real }} \
+            -DATV_REAL_STORAGE=${{ matrix.real }} \
             -DATV_MOLRS_PATH=${{ github.workspace }}/molrs
 
       - name: Build

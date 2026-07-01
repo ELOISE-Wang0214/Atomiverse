@@ -130,7 +130,8 @@ runs fine on the login node with `-DATV_BUILD_CUDA=OFF`.
 | `ATV_BUILD_TORCH` | OFF | LibTorch backend; defines `ATV_HAS_TORCH` |
 | `ATV_BUILD_TESTS` / `ATV_BUILD_BENCHMARKS` / `ATV_BUILD_EXAMPLES` | OFF | test / benchmark / example targets |
 | `ATV_USE_MATPLOT` | OFF | plot generation in selected examples (needs gnuplot) |
-| `ATV_REAL` / `ATV_INT` | `double` / `int` | compile-time `Real` / `Int` precision |
+| `ATV_REAL_STORAGE` / `ATV_REAL_WORK` | `double` / `double` | LAMMPS-style real tiers (`float`\|`double`): per-atom storage / kernel-work precision. Accumulators (`AccReal`) are always `double`. |
+| `ATV_ID_SIZE` | `smallbig` | integer-ID width: `smallbig` (32-bit `TagInt`/`ImageInt`) or `bigbig` (64-bit). `BigInt` global counts always 64-bit. |
 
 Performance: `-march=native` is required for the CPU SCF ERI kernels.
 
@@ -354,7 +355,14 @@ CXX-generated code.
   diagonalize, thermochem, end_of_step`. **No SCF phase enum** anywhere.
 - **Units:** eV, Å, fs, amu, eV/Å, K. Conversions in `core/units.h`. SCF/PW
   report internally in Hartree/Ry and convert eV onto `frame.scalars.energy`.
-- **Precision:** compile-time `Real` (`-DATV_REAL`), `Int` (`-DATV_INT`).
+- **Precision:** LAMMPS-style tiered, in `core/precision.h`. Reals:
+  `StorageReal` (per-atom state) / `WorkReal` (kernel math) — lowerable to
+  `float` via `-DATV_REAL_STORAGE` / `-DATV_REAL_WORK`; `AccReal` (accumulators,
+  energy, virial, SCF) is **always** `double`. Integers by role (LAMMPS
+  `lmptype.h`): `LocalInt` (32-bit counts), `TagInt`/`ImageInt` (IDs/image flags,
+  32-bit under `-DATV_ID_SIZE=smallbig`, 64-bit under `bigbig`), `BigInt`
+  (global totals, always 64-bit). Legacy `Real`=`AccReal`, `Int`=`LocalInt`.
+  CUDA mirror: `real_t`/`work_t`/`prec_t` in `cuda/frame/types.cuh`.
 - **libxc:** when enabled, native XC must match libxc to 1e-12.
 - **ERI performance:** `-march=native` required. xsimd 11.2.0 linked directly to
   `atomiverse` for `native_integrals.cpp`. Do **not** set `XTENSOR_USE_XSIMD`
