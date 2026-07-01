@@ -171,10 +171,10 @@ void KSpacePME::compute(const LaunchContext& ctx) {
     const int ntot = K0 * K1 * K2;
     const int n = order_;
 
-    const double* __restrict x = f.atoms.x.data();
-    const double* __restrict y = f.atoms.y.data();
-    const double* __restrict z = f.atoms.z.data();
-    const double* __restrict q = f.atoms.charge.data();
+    const auto* __restrict x = f.atoms.x.data();
+    const auto* __restrict y = f.atoms.y.data();
+    const auto* __restrict z = f.atoms.z.data();
+    const auto* __restrict q = f.atoms.charge.data();
 
     const auto& ic = f.box.inv_cell(); // fractional coord: s_d = Σ_b ic(b,d) r_b
     const double vol = f.box.volume();

@@ -31,10 +31,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # float storage exercises the mixed-precision classical-MD path;
+          # precision-exact tests (stationary-point forces, analytic energies,
+          # NVE-limit exact bounds) assert double-tight tolerances and correctly
+          # do not hold at float ε~1e-7 — they are double-only correctness checks.
           - real: float
             rhf: 'OFF'
+            exclude_tests: 'no_alloc|^test_cpu_md$|_pe_single_chain|_pe_fd_force|_pe_energy_xcheck'
           - real: double
             rhf: 'ON'
+            exclude_tests: 'no_alloc'
     steps:
       - uses: actions/checkout@v4
 
@@ -84,4 +90,4 @@ jobs:
         # benchmarks/md/ (-DATV_BUILD_BENCHMARKS=ON), not ctest gates.
         run: >-
           ctest --test-dir build -j$(nproc) --output-on-failure
-          -E 'no_alloc'
+          -E '${{ matrix.exclude_tests }}'

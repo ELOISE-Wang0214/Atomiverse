@@ -251,7 +251,9 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
     // Compact owned atoms to the front of every per-atom array. Iterating
     // in increasing `new_i` guarantees we read `old_i >= new_i` so the
     // destination has not yet been overwritten.
-    auto compact_1d_d = [&](xt::xtensor<double, 1>& arr) {
+    // Generic over the storage tier: called with StorageReal (x/y/z, v*) and
+    // AccReal (f*) arrays alike; the element move is type-agnostic.
+    auto compact_1d_d = [&](auto& arr) {
         for (int ni = 0; ni < n_local; ++ni) {
             const int oi = owned_indices[static_cast<std::size_t>(ni)];
             if (oi != ni)

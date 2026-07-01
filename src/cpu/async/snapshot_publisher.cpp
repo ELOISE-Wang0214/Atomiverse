@@ -43,13 +43,13 @@ CaptureMask mask_union_all(const std::vector<AsyncComponentBase*>& subs) {
 }
 
 // Copy src[0..n) into out[0..n); vectors already sized by prealloc_slots().
-void copy_range(std::vector<double>& out, const double* src, int n,
-                bool capture) {
+template <class T>
+void copy_range(std::vector<double>& out, const T* src, int n, bool capture) {
     if (!capture)
         return; // leave pre-sized buffer untouched (consumer reads n_owned)
 #pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i)
-        out[static_cast<std::size_t>(i)] = src[i];
+        out[static_cast<std::size_t>(i)] = src[i]; // implicit widen to double
 }
 
 void copy_range_int(std::vector<int>& out, const int* src, int n,

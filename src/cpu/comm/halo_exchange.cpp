@@ -260,7 +260,7 @@ void rebuild_send_lists_for_axis(const Frame& frame, md::mpi::DomainDecompositio
     dd.send_lists[static_cast<std::size_t>(f_lo)].clear();
     dd.send_lists[static_cast<std::size_t>(f_hi)].clear();
 
-    const double* q = (dim == 0) ? frame.atoms.x.data()
+    const auto* q = (dim == 0) ? frame.atoms.x.data()
                       : (dim == 1) ? frame.atoms.y.data()
                                    : frame.atoms.z.data();
     const double lo = dd.sublo[dim];
@@ -294,11 +294,11 @@ void pack_positions_for_face(const Frame& frame, const md::mpi::DomainDecomposit
     const int dim = face_dim(f);
     const double shift = pbc_shift_for_face(dd, f, frame.box.length(dim));
 
-    const double* x = frame.atoms.x.data();
-    const double* y = frame.atoms.y.data();
-    const double* z = frame.atoms.z.data();
+    const auto* x = frame.atoms.x.data();
+    const auto* y = frame.atoms.y.data();
+    const auto* z = frame.atoms.z.data();
     const std::int64_t* tag = frame.atoms.tag.data();
-    const double* q = frame.atoms.charge.data();
+    const auto* q = frame.atoms.charge.data();
 
     for (int k = 0; k < n; ++k) {
         const int i = list[static_cast<std::size_t>(k)];
@@ -332,9 +332,9 @@ void pack_positions_only_for_face(const Frame& frame,
     const int dim = face_dim(f);
     const double shift = pbc_shift_for_face(dd, f, frame.box.length(dim));
 
-    const double* x = frame.atoms.x.data();
-    const double* y = frame.atoms.y.data();
-    const double* z = frame.atoms.z.data();
+    const auto* x = frame.atoms.x.data();
+    const auto* y = frame.atoms.y.data();
+    const auto* z = frame.atoms.z.data();
 
     for (int k = 0; k < n; ++k) {
         const int i = list[static_cast<std::size_t>(k)];

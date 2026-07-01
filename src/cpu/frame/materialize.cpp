@@ -46,14 +46,15 @@ namespace {
 // ── Optional-field copy helpers (silent zero on absent column) ──────────
 
 /// @brief Copy an optional f64 column into `dst[0..n)`; leave zeros if absent.
+template <class T>
 void copy_optional_f64(const molrs::FrameRef& src, const char* block,
-                       const char* col, xt::xtensor<double, 1>& dst, int n) {
+                       const char* col, xt::xtensor<T, 1>& dst, int n) {
     auto v = molrs::frame_column_f64(src, block, col);
     if (static_cast<int>(v.size()) != n) {
         return; // absent or shape mismatch -> keep the zero-initialized array
     }
     for (int i = 0; i < n; ++i) {
-        dst[i] = v[i];
+        dst[i] = v[i]; // implicit widen/narrow to the storage tier
     }
 }
 

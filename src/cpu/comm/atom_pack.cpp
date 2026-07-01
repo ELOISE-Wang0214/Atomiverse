@@ -15,9 +15,9 @@ namespace comm {
 
 int pack_comm(const Atom& atom, const int* sendlist, int n, double sx,
               double sy, double sz, double* buf) {
-    const double* x = atom.x.data();
-    const double* y = atom.y.data();
-    const double* z = atom.z.data();
+    const auto* x = atom.x.data();
+    const auto* y = atom.y.data();
+    const auto* z = atom.z.data();
 
     int m = 0;
     for (int k = 0; k < n; ++k) {
@@ -30,9 +30,9 @@ int pack_comm(const Atom& atom, const int* sendlist, int n, double sx,
 }
 
 void unpack_comm(Atom& atom, int n, int first, const double* buf) {
-    double* x = atom.x.data();
-    double* y = atom.y.data();
-    double* z = atom.z.data();
+    auto* x = atom.x.data();
+    auto* y = atom.y.data();
+    auto* z = atom.z.data();
 
     int m = 0;
     for (int k = 0; k < n; ++k) {
@@ -45,9 +45,9 @@ void unpack_comm(Atom& atom, int n, int first, const double* buf) {
 
 int pack_border(const Atom& atom, const int* sendlist, int n, double sx,
                 double sy, double sz, double* buf) {
-    const double* x = atom.x.data();
-    const double* y = atom.y.data();
-    const double* z = atom.z.data();
+    const auto* x = atom.x.data();
+    const auto* y = atom.y.data();
+    const auto* z = atom.z.data();
     const std::int64_t* tag = atom.tag.data();
     const int* type = atom.type.data();
 
@@ -67,9 +67,9 @@ int pack_border(const Atom& atom, const int* sendlist, int n, double sx,
 }
 
 void unpack_border(Atom& atom, int n, int first, const double* buf) {
-    double* x = atom.x.data();
-    double* y = atom.y.data();
-    double* z = atom.z.data();
+    auto* x = atom.x.data();
+    auto* y = atom.y.data();
+    auto* z = atom.z.data();
     std::int64_t* tag = atom.tag.data();
     int* type = atom.type.data();
 

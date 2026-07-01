@@ -101,10 +101,10 @@ void KSpaceEwald::compute(const LaunchContext& ctx) {
     const int n_local = mpi ? dd->n_local : f.atoms.size();
     const bool first_rank = !mpi || ctx.runtime.mpi_rank == 0;
 
-    const double* __restrict x = f.atoms.x.data();
-    const double* __restrict y = f.atoms.y.data();
-    const double* __restrict z = f.atoms.z.data();
-    const double* __restrict q = f.atoms.charge.data();
+    const auto* __restrict x = f.atoms.x.data();
+    const auto* __restrict y = f.atoms.y.data();
+    const auto* __restrict z = f.atoms.z.data();
+    const auto* __restrict q = f.atoms.charge.data();
 
     const double* __restrict kx = kx_.data();
     const double* __restrict ky = ky_.data();

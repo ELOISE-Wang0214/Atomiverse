@@ -73,9 +73,9 @@ void BondHarmonic::compute(const LaunchContext& ctx) {
     double energy_total = 0;
     md::Voigt6 vir;
 
-    const double* __restrict x_ptr = a.x.data();
-    const double* __restrict y_ptr = a.y.data();
-    const double* __restrict z_ptr = a.z.data();
+    const auto* __restrict x_ptr = a.x.data();
+    const auto* __restrict y_ptr = a.y.data();
+    const auto* __restrict z_ptr = a.z.data();
 
 // Stiff bonds contribute significantly to the stress tensor. The per-pair
 // virial accumulates into a thread-private `vir_local` and is combined under

@@ -23,9 +23,9 @@ void PairMorse::compute(const LaunchContext& ctx) {
     const int n = static_cast<int>(f.atoms.size());
 
     double energy = 0.0;
-    const double* __restrict x = f.atoms.x.data();
-    const double* __restrict y = f.atoms.y.data();
-    const double* __restrict z = f.atoms.z.data();
+    const auto* __restrict x = f.atoms.x.data();
+    const auto* __restrict y = f.atoms.y.data();
+    const auto* __restrict z = f.atoms.z.data();
     double* __restrict fx = f.atoms.fx.data();
     double* __restrict fy = f.atoms.fy.data();
     double* __restrict fz = f.atoms.fz.data();

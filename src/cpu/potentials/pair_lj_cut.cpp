@@ -361,9 +361,9 @@ void PairLJCut::compute(const LaunchContext& ctx) {
         // `operator[]` on xtensor goes through a strided stride check on
         // every access even for contiguous 1-D storage. `.data()` drops to
         // a plain `double*` the compiler keeps in a register.
-        const double* __restrict x_ptr = f.atoms.x.data();
-        const double* __restrict y_ptr = f.atoms.y.data();
-        const double* __restrict z_ptr = f.atoms.z.data();
+        const auto* __restrict x_ptr = f.atoms.x.data();
+        const auto* __restrict y_ptr = f.atoms.y.data();
+        const auto* __restrict z_ptr = f.atoms.z.data();
 
         // Track B.2 — xsimd ket-loop vectorization of the inner pair loop.
         //

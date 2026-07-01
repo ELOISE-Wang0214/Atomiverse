@@ -78,10 +78,10 @@ void CoulLong::launch(const LaunchContext& ctx) {
     const double* __restrict shy = has_shifts ? pairs.shift_y.data() : nullptr;
     const double* __restrict shz = has_shifts ? pairs.shift_z.data() : nullptr;
 
-    const double* __restrict x_ptr = f.atoms.x.data();
-    const double* __restrict y_ptr = f.atoms.y.data();
-    const double* __restrict z_ptr = f.atoms.z.data();
-    const double* __restrict q_ptr = f.atoms.charge.data();
+    const auto* __restrict x_ptr = f.atoms.x.data();
+    const auto* __restrict y_ptr = f.atoms.y.data();
+    const auto* __restrict z_ptr = f.atoms.z.data();
+    const auto* __restrict q_ptr = f.atoms.charge.data();
 
     const double alpha = alpha_;
     const double rc_sq = cutoff_sq_;

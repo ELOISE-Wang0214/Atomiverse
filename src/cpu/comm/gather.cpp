@@ -169,9 +169,13 @@ GatheredFrame gather_to_root(const cpu::Frame& frame,
         out.image.assign(static_cast<std::size_t>(3 * n_total), 0);
     }
 
-    // Helper: gather one per-atom double field.
-    auto gather_double = [&](const double* sendbuf, double* recvbuf) {
-        MPI_Gatherv(sendbuf, n_local, MPI_DOUBLE, recvbuf,
+    // Helper: gather one per-atom real field. `sendbuf` may be single-precision
+    // storage (StorageReal); widen to a double staging buffer so the gathered
+    // output is double regardless of the storage tier. Gather is a low-frequency
+    // output path (rank-0 collection), so the copy is negligible.
+    auto gather_double = [&](const auto* sendbuf, double* recvbuf) {
+        std::vector<double> send(sendbuf, sendbuf + n_local);
+        MPI_Gatherv(send.data(), n_local, MPI_DOUBLE, recvbuf,
                     my_rank == root ? recv_counts.data() : nullptr,
                     my_rank == root ? displs.data() : nullptr, MPI_DOUBLE, root,
                     dd.cart_comm);

@@ -68,9 +68,9 @@ void AngleHarmonic::compute(const LaunchContext& ctx) {
     // Newton's 3rd, so this is translation-invariant and PBC-safe).
     md::Voigt6 vir;
 
-    const double* __restrict x_ptr = a.x.data();
-    const double* __restrict y_ptr = a.y.data();
-    const double* __restrict z_ptr = a.z.data();
+    const auto* __restrict x_ptr = a.x.data();
+    const auto* __restrict y_ptr = a.y.data();
+    const auto* __restrict z_ptr = a.z.data();
 
 // Thread-private virial combined under a critical section (no per-step heap
 // alloc, unlike an OMP user-defined reduction on Voigt6).

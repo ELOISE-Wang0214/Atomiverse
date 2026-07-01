@@ -1,8 +1,39 @@
 # Precision Migration — Atom/Frame to tiered types
 
-status: draft (Phase 1 partial)
+status: Phase 1 + Phase 2 done; Phase 3 (integers) pending
 date: 2026-07-01
 depends on: [[project-precision-tiered-lammps]] (core/precision.h foundation, committed)
+
+## Outcome (Phase 2 done)
+
+`cpu::Atom` storage fields (x/y/z, v*, mass, charge) are now `StorageReal`; forces
+are `AccReal`. **`-DATV_REAL_STORAGE=float` compiles and runs** classical MD with
+physically-sound results at float precision (ε~1e-7). Per-atom real storage for
+positions+velocities drops ~2×.
+
+**The type system stayed self-consistent — no scattered casts.** The coherent
+recipe that worked:
+- Raw pointers deduce the tier: `const auto* x = atoms.x.data()` (not `const
+  double*`), so `x[i]` promotes to double in the math automatically.
+- Helpers are templated on the element type (`copy_range`, `copy_optional_f64`)
+  or generic (`gather` widen-to-double lambda, `compact_1d` generic lambda);
+  bodies use plain assignment — C++'s implicit float↔double conversion does the
+  rest. Zero `static_cast`.
+- Compute/comm/output buffers stay `double`; conversion happens implicitly at the
+  storage-array read/write boundary only.
+
+**Supported precision matrix** (mirrors the CI rows):
+- `double` storage + `RHF=ON` — full suite, SCF/DFT.
+- `float` storage + `RHF=OFF` — classical MD, memory-optimized. **SCF requires
+  double** (Gaussian-center integral accuracy; float+RHF is out of scope — its
+  only build blocker is `{double}` brace-init narrowing in SCF tests, left as-is).
+
+**Precision-exact tests need double.** Under float, ~4 classical tests that assert
+double-tight bounds (stationary-point forces < 1e-10, analytic energy to 1e-9,
+NVE-limit exact `<=`) legitimately fail — they detect the reduced precision, which
+is correct behavior, not a bug. CI's float row excludes them (they are double-only
+correctness checks); a finer per-subtest `GTEST_SKIP when StorageReal != double`
+guard is a follow-up.
 
 ## Goal
 

@@ -398,9 +398,9 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
         // no-op on owner-ghost pairs (multi-rank stays correct).
         result.has_shifts = false;
 
-        const double* __restrict x_ptr = frame.atoms.x.data();
-        const double* __restrict y_ptr = frame.atoms.y.data();
-        const double* __restrict z_ptr = frame.atoms.z.data();
+        const auto* __restrict x_ptr = frame.atoms.x.data();
+        const auto* __restrict y_ptr = frame.atoms.y.data();
+        const auto* __restrict z_ptr = frame.atoms.z.data();
         const double lx = frame.box.length(0);
         const double ly = frame.box.length(1);
         const double lz = frame.box.length(2);

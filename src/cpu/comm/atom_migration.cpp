@@ -213,7 +213,7 @@ void exchange_along_dim(Frame& frame, md::mpi::DomainDecomposition* dd, int dim,
     std::vector<char> send_lo, send_hi, recv_lo, recv_hi;
     while (true) {
         // Re-fetch each round: set_capacity below may have reallocated the SoA.
-        const double* q = (dim == 0)   ? frame.atoms.x.data()
+        const auto* q = (dim == 0)   ? frame.atoms.x.data()
                           : (dim == 1) ? frame.atoms.y.data()
                                        : frame.atoms.z.data();
         send_lo.clear();
