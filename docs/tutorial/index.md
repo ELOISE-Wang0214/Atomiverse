@@ -102,6 +102,10 @@ migration (they are not yet renumbered — follow the filename, not the number).
   def2-SVP and how the energy converges.
 - [Chapter 6: Hybrid Functionals & Analytic Gradients](ch06-hybrid-dft.md) —
   B3LYP/PBE0 exact-exchange admixture and `scf_gradient`.
+- [Chapter 7: Beyond Mean Field — Correlation Methods](ch07-correlation.md) — a
+  **status chapter**: the correlation energy, the MP2/CI/coupled-cluster
+  hierarchy, why DFT is Atomiverse's practical answer, and an honest statement
+  that wavefunction correlation methods are planned, not implemented.
 
 **Extending classical simulation**
 - [Chapter 11: Ensembles — Thermostats & Barostats](ch11-ensembles.md) — NVT/NPT
