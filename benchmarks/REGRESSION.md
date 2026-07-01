@@ -1,11 +1,14 @@
-# Performance-regression gate — design
+# Performance-regression gate — design + implementation
 
-**Status:** design / not yet wired. Addresses discovery §8 gap #3 — *"No
-automated perf-regression gate (perf CSVs are committed history)."* Today
+**Status:** implemented (CSV path), not yet wired into CI. The gate itself
+ships as `benchmarks/md/common/regression_gate.py` (stdlib-only, no pandas —
+see §5); §7 (where it runs) is still a TODO. Addresses discovery §8 gap #3 —
+*"No automated perf-regression gate (perf CSVs are committed history)."* Today
 `*/performance/runs/<sha>_<date>/results_*.csv` is an auditable **archive** of
 numbers vs code, but nothing compares a new run against the archive: a
 throughput regression only shows up if a human eyeballs `plot_scaling.py`. This
-document specifies the gate that closes that loop.
+document specifies the gate that closes that loop; the script implements the
+CSV half of it.
 
 ## 1. What we already commit (the raw material)
 
@@ -13,14 +16,21 @@ Every performance run is committed under its case's `performance/runs/`:
 
 ```
 benchmarks/md/lj/performance/runs/<sha>_<date>/
-  results_cpu.csv        engine,system,mode,ng,atoms,matom_step_s,vram_gb
+  results_cpu.csv        engine,system,mode,ng,atoms,matom_step_s,vram_gb,rep
   results_gpu.csv        (same schema; vram_gb = VRAM on GPU, RSS on CPU)
-  meta_cpu.json / meta.json
-      { system, av_git_sha, date, host, backend, cores, steps, lammps }
+  meta_cpu.json          { system, av_git_sha, date, host, backend, cores, steps, lammps }
+  meta.json  (GPU run)   { system, av_git_sha, date, host, gpu, module, steps, reps, ... }
 benchmarks/pw/si/performance/            (CSV emitted by bench_pw_scf_perf)
   backend,n_atoms,a_angstrom,ecut_ry,k_mesh,threads,iterations,converged,
   energy_ry,wall_s,s_per_iter
 ```
+
+The real committed CSVs carry a trailing **`rep`** column (repeat index); the
+gate reduces the per-key repeats to a **median** before comparing (it never
+re-times). The CPU meta is `meta_cpu.json` (carries an explicit `backend`); the
+GPU meta is `meta.json` (carries `gpu`/`module` and no `backend`, so the gate
+derives `gpu` from the `results_gpu.csv` filename). Some archived runs ship a
+CSV with no meta at all — pass `--host`/`--backend` for those.
 
 google-benchmark targets (`bench_md_step`, `bench_native`) instead emit JSON
 (`--benchmark_format=json`) with `real_time` / `items_per_second` / counters.
@@ -110,28 +120,49 @@ real regressions, not jitter.
   `n215/cpu`) to estimate real variance, and set `warn`/`fail` a comfortable
   margin above it. Bands are config, not code.
 
-## 5. The gate (algorithm)
+## 5. The gate (algorithm) — implemented
 
-Proposed tool: `benchmarks/md/common/regression_gate.py` (sibling to
-`plot_scaling.py`; reuse its CSV loader). Domain-agnostic — pass the CSV schema
-and metric.
+Tool: **`benchmarks/md/common/regression_gate.py`** (sibling to
+`plot_scaling.py`; stdlib-only, no pandas). Domain-agnostic — pass the metric
+column and, for anything but the known metrics, its polarity. A `--candidate`
+and a `--baseline` each accept either a `runs/<sha>_<date>/` **dir** (the gate
+picks `results_<backend>.csv` and the sibling meta) or a direct CSV path.
+Metric polarity is auto-resolved for the known columns (`matom_step_s`,
+`items_per_second` → higher-is-better; `s_per_iter`, `wall_s`, `real_time`,
+`vram_gb` → lower-is-better) and overridable with `--higher-is-better` /
+`--lower-is-better`. `--warn`/`--fail` are **fractions** (0.03/0.08 → 1.03/1.08
+bands).
 
 ```
-regression_gate.py --current runs/<sha>_<date>/results_cpu.csv
-                   --baseline auto|<run_id>|baseline.json
-                   --metric matom_step_s --higher-is-better
-                   --warn 0.03 --fail 0.08 [--memory-metric vram_gb]
+regression_gate.py --candidate runs/<sha>_<date>            # or .../results_cpu.csv
+                   --baseline  runs/<sha0>_<date0>          # dir or CSV
+                   --backend cpu|gpu|auto                   # default auto
+                   --metric matom_step_s                    # polarity auto-detected
+                   --warn 0.03 --fail 0.08
+                   [--memory-metric vram_gb --memory-fail 0.15]
+                   [--host <h>] [--min-fail-keys 2] [--warn-only]
+regression_gate.py --selftest        # inline helper unit tests (no deps)
 
-1. load current CSV + meta.json (host, backend)
-2. resolve baseline CSV for (host, backend)          # pin or rolling; skip if none
+1. load candidate CSV + meta (host, backend); reduce `rep` repeats to a median
+2. load baseline CSV + meta the same way            # pin/rolling resolution: TODO
 3. filter engine == AV on both
-4. inner-join on the key (§2); report keys present in one side only
-5. per key: ratio = worse-is-larger(current, baseline)
-6. classify each key PASS / WARN / FAIL against warn/fail bands
-7. aggregate: geomean ratio + count of FAIL keys → run verdict (§4)
-8. print a table (key, baseline, current, ratio, verdict) + PASS/WARN/FAIL
-9. exit non-zero iff run verdict == FAIL
+4. host guard: skip (exit 0) if both hosts known and differ — never cross-hardware
+5. inner-join on (backend, engine, system, mode, ng); report one-sided keys
+6. per key: ratio = worse-is-larger(candidate, baseline)  (throughput inverted)
+7. classify each key PASS / WARN / FAIL against the warn/fail bands
+8. aggregate: geomean ratio + count of FAIL keys → run verdict (§4)
+9. optional secondary memory gate (--memory-metric) with the looser band, folded
+   into the verdict as worst-of
+10. print per-key tables + geomean/warn/fail summary + PASS/WARN/FAIL
+11. exit non-zero iff run verdict == FAIL (unless --warn-only, §7)
 ```
+
+Implemented today: the CSV path (steps 1, 3–11) plus explicit `--candidate` /
+`--baseline` dir-or-CSV resolution. **TODO** (§3, §6): `--baseline auto` rolling
+median and `baseline.json`/`perf_baselines/*.json` pin resolution — for now name
+the baseline run dir explicitly. The pure helpers (`worse_ratio`,
+`classify_ratio`, `aggregate_verdict`, `geomean`, `median`) are exercised by
+`--selftest`.
 
 For the google-benchmark JSON targets (`bench_md_step`, `bench_native`), do
 **not** re-implement this — use upstream `benchmark/tools/compare.py`:

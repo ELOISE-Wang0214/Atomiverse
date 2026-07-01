@@ -79,8 +79,13 @@ manual-discovery §12).
    (snapshot lacks them — MVP validated on a non-wrapping trajectory).
 2. **RDF via molrs**: bridge `analyze_rdf`; validate against the existing C++ RDF
    on an identical trajectory (parity), then mark C++ RDF for deprecation.
-3. **VACF + Green-Kubo D**: bridge `analyze_vacf` + the fit; cross-check D against
-   the Einstein value (validation-class = physical consistency).
+3. ✅ **VACF** (done 2026-07-01): `analyze_vacf(velocities, n_frames, n_dof, dt,
+   resolution)` runs molrs `compute::VACF` (FFT-ACF, DOF-averaged) over a flat
+   velocity buffer (VACF takes velocities in Args, ignores frames). C++
+   `cpu::compute_vacf` + async `cpu::observer::VACF` (captures velocities from the
+   snapshot ring). Test `test_cpu_observer_vacf`. **Next for this line:**
+   Green-Kubo D (`fit::GreenKuboDiffusion` = running-integral of the VACF);
+   cross-check against the Einstein D.
 4. **Static structure factor** (Ch 13 stretch): bridge `analyze_structure_factor`.
 5. **Extra trajectory formats** (DCD/TRR/PDB already in molrs): bridge the readers
    the discovery listed as "missing in C++."

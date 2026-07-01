@@ -1,20 +1,49 @@
 # Upstream provenance of MSU paper-scale reference data
 
-Two files in this directory come from the Mississippi State CAVS ICME wiki
-and are the **canonical Tschopp 2010 / Hossain–Tschopp 2010 Polymer**
-reference inputs for amorphous-polyethylene uniaxial tension:
+## Status — what actually ships in this directory
 
-- `msu_pe.data` — original filename `PE_nc10_cl1000.dat`. Saved from
+**Only two files are committed here: this `SOURCES.md` and `mc_gen_robust.c`**
+(the upstream MSU amorphous-PE chain generator). *Every other file named in
+this document is **NOT COMMITTED*** — the reference data, LAMMPS decks, and the
+`tools/` run scripts were used to produce results but are not checked into the
+tree, and neither is the `mc_gen.input` that `mc_gen_robust.c` reads. This file
+is provenance + a regeneration recipe, **not** an index of present files.
+
+Regenerate before use — each absent artifact and its command:
+
+| Artifact (absent) | Regenerate via |
+|---|---|
+| `msu_pe.data` (`PE_nc10_cl1000.dat`) | re-download the CAVS URL below (strip the HTML wrapper), or build an equivalent amorphous config with `mc_gen_robust.c` + a `mc_gen.input` |
+| `lammps_msu_paper.in` (`in.deform_dreiding.txt`) | re-download / re-inline the `<pre>` block from the CAVS `amorphous.php` URL below (decode HTML entities) |
+| `mc_gen.input` | write the generator's parameter file (n_chains=10, c_length=1000, lattice/density/seed) per `mc_gen_robust.c`'s reader |
+| `c20h42_chain.data` | one-off script applying the perturbation formula in the C20H42 section below |
+| `in.c20h42_energy` | reconstruct from the FF table + geometry in the C20H42 section below |
+| `lammps.in` (Phase D deck) | `lammps_msu_paper.in` + the non-physics output hooks listed in the Phase D.1 section (verify with `tools/audit_lammps_deck.sh`) |
+| `thermo_{lammps,atomiverse}_<N>r.csv`, `stress_strain_{lammps,atomiverse}_<N>r.csv` | operator run (~24h) via `tools/run_msu_{lammps,atomiverse}.sh <N>` → `tools/canonicalize_msu_output.py` |
+| `runs/lammps_n8_paper/PE_nc10_cl1000.def1.txt` | operator LAMMPS run of the 8-rank paper deck |
+| `tools/run_msu_*.sh`, `tools/canonicalize_msu_output.py`, `tools/audit_lammps_deck.sh` | referenced tooling — also **not committed**; recreate per the Phase D.1 procedure below |
+
+The provenance, force field, protocol, and citation below remain authoritative
+for whatever you regenerate; ground truth still flows MSU → Atomiverse.
+
+## Canonical upstream inputs (NOT COMMITTED — see Status)
+
+The following two files are the **canonical Tschopp 2010 / Hossain–Tschopp 2010
+Polymer** reference inputs for amorphous-polyethylene uniaxial tension. They are
+**NOT COMMITTED** in this directory; regenerate per the Status table:
+
+- `msu_pe.data` — **NOT COMMITTED**. Original filename `PE_nc10_cl1000.dat`.
+  Saved from
   <https://www.cavs.msstate.edu/icme/code/lammps/atomistic_research/polymers/files/PE_nc10_cl1000.dat>
   on 2026-05-19. HTML wrapper stripped (lines bracketed by
   `<html><head>…</body></html>` removed); LAMMPS data payload is byte-
-  identical to the upstream content.
+  identical to the upstream content. Regenerate by re-downloading this URL.
 
-- `lammps_msu_paper.in` — original filename `in.deform_dreiding.txt`.
-  Inlined as a `<pre>` block on
+- `lammps_msu_paper.in` — **NOT COMMITTED**. Original filename
+  `in.deform_dreiding.txt`. Inlined as a `<pre>` block on
   <https://www.cavs.msstate.edu/icme/code/lammps/atomistic_research/polymers/amorphous.php>.
   HTML entities (`&#60;`, `&amp;`) decoded; tab/space whitespace
-  preserved.
+  preserved. Regenerate by re-inlining that `<pre>` block.
 
 ### System parameters (`msu_pe.data`)
 
@@ -97,9 +126,11 @@ Ground truth flows MSU → Atomiverse, never the other way.
 
 ## C20H42 bonded-energy cross-check reference (spec c20h42-energy-xcheck)
 
-`c20h42_chain.data` + `in.c20h42_energy` are the LAMMPS reference for the
+`c20h42_chain.data` + `in.c20h42_energy` (both **NOT COMMITTED** — regenerate
+per the Status table and the recipes below) are the LAMMPS reference for the
 single-chain bonded-energy cross-check test
-`tests/cpu/md/test_pe_energy_xcheck.cpp`.
+`tests/cpu/md/test_pe_energy_xcheck.cpp`. The reference energies below are the
+values that regeneration must reproduce.
 
 - **Geometry** — a 20-atom all-trans united-atom C20H42 zigzag
   (r0 = 1.53 Å, θ0 = 109.5°) with a closed-form deterministic per-atom
@@ -129,7 +160,8 @@ single-chain bonded-energy cross-check test
 
 ## Phase D.1 — Atomiverse-vs-LAMMPS comparison inputs (spec `msu-pe-phase-d-01-reference-runs`)
 
-`lammps.in` is the LAMMPS deck used for the Phase D quantitative
+`lammps.in` (**NOT COMMITTED** — regenerate per the Status table) is the LAMMPS
+deck used for the Phase D quantitative
 comparison. Its **physics — every fix, integrator, ensemble, timestep,
 force-field coefficient and neighbor setting — is byte-for-byte the
 canonical upstream deck `lammps_msu_paper.in`** (Tschopp 2010, kept as
@@ -180,10 +212,12 @@ step-counts above are the authoritative source. The full run is still
 
 ### Canonical reference artifacts (filename scheme)
 
-`tools/run_msu_lammps.sh` and `tools/run_msu_atomiverse.sh` publish their
-output as engine- and rank-suffixed CSVs directly under this directory:
+`tools/run_msu_lammps.sh` and `tools/run_msu_atomiverse.sh` (themselves **NOT
+COMMITTED** — recreate per the operator procedure) publish their output as
+engine- and rank-suffixed CSVs directly under this directory. **None of these
+output CSVs are committed** — they are regenerated by an operator run:
 
-| File | Producer |
+| File (NOT COMMITTED) | Producer |
 |---|---|
 | `thermo_lammps_<N>r.csv` | LAMMPS, N ranks |
 | `thermo_atomiverse_<N>r.csv` | Atomiverse, N ranks |
@@ -211,11 +245,12 @@ until Phase G.2 lands.
 
 ### Staged-landing decision (per spec `msu-pe-phase-d-01-reference-runs`)
 
-- **Now** — `stress_strain_lammps_8r.csv` is committed: it was produced by
-  `canonicalize_msu_output.py` from the already-completed 8-rank paper-deck
-  run in `runs/lammps_n8_paper/PE_nc10_cl1000.def1.txt`, giving
-  `msu-pe-phase-d-04`'s load-bearing stress-strain gate its first real
-  LAMMPS-side reference data without a re-run.
+- **Now** — none of these CSVs are committed. The earlier plan was that
+  `stress_strain_lammps_8r.csv` (produced by `canonicalize_msu_output.py` from
+  the 8-rank paper-deck run `runs/lammps_n8_paper/PE_nc10_cl1000.def1.txt`)
+  would land to give `msu-pe-phase-d-04`'s stress-strain gate its first real
+  LAMMPS-side reference. **That file — and the `runs/…def1.txt` it derives
+  from — are NOT COMMITTED**; regenerate via the operator procedure below.
 - **After the operator runs** — `thermo_lammps_<N>r.csv` and
   `stress_strain_lammps_<N>r.csv` (N ∈ {1,8}) from the four full PDC runs.
 - **After Phase G.2** — `thermo_atomiverse_<N>r.csv` /
