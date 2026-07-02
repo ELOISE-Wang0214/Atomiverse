@@ -301,6 +301,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/operators.cpp
             src/cpu/scf/internal/diis_mixer.cpp
             src/cpu/scf/internal/hamiltonian_builder.cpp
+            src/cpu/scf/internal/level_shift.cpp
             src/cpu/scf/scf_solver.cpp
             src/cpu/scf/minao_data.cpp
             src/cpu/scf/minao.cpp

@@ -104,6 +104,66 @@ form is more elaborate, but the logic is identical: the current density
 determines the next Fock matrix, which determines the next occupied orbitals,
 which determine the next density.
 
+## Why HF Becomes a Matrix Equation — and When the Basis Goes Bad
+
+**Concept.** The generalized eigenproblem $FC = SC\varepsilon$ exists because
+atomic-orbital basis functions overlap. Usually that overlap is benign. But
+nothing stops a basis from becoming *nearly redundant* — diffuse functions on
+neighboring atoms describing the same region of space, or two centers drifting
+close together during a scan or optimization. Then some linear combination of
+basis functions is almost the zero function, the overlap matrix $S$ acquires
+an eigenvalue near zero, and every solver that implicitly divides by those
+eigenvalues starts amplifying noise instead of describing physics.
+
+**Math.** Diagonalize the overlap, $S = U s U^\mathrm{T}$. Löwdin's symmetric
+orthogonalization $X = U s^{-1/2} U^\mathrm{T}$ turns Roothaan–Hall into an
+ordinary eigenproblem $F' C' = C' \varepsilon$ with $F' = X^\mathrm{T} F X$
+and $C = X C'$ — but $s^{-1/2}$ blows up exactly when $s_i \to 0$.
+*Canonical* orthogonalization instead **drops** the offending directions:
+keep only the eigenpairs with $s_i \ge \tau$ and form the rectangular
+
+$$ X = \tilde U \tilde s^{-1/2} \in \mathbb{R}^{n \times m}, \qquad
+   X^\mathrm{T} S X = I_m, \quad m \le n. $$
+
+The molecular-orbital count shrinks to $n_\mathrm{mo} = m$: the coefficient
+matrix $C = XC'$ becomes $n \times m$, while the density
+$P = 2 C_\mathrm{occ} C_\mathrm{occ}^\mathrm{T}$ stays $n \times n$. Nothing
+physical is lost — the dropped directions carried no independent basis
+content in the first place.
+
+**Algorithm.** Atomiverse exposes the threshold as
+`SCFConfig::lindep_threshold` (default $\tau = 10^{-8}$ on the raw $S$
+eigenvalues; PySCF ≥ 2.13 applies $10^{-6}$ by default). Each `run()` builds
+the orthogonalizer once: if nothing falls below $\tau$ the solver keeps its
+LAPACK `dsygvd` fast path — pre-existing results are bit-identical by
+construction — and only when columns are actually dropped does
+diagonalization switch to the two-step $X^\mathrm{T} F X$ path. Setting
+`lindep_threshold = 0` disables filtering entirely.
+
+A worked pathological case: H₂ at $0.7414$ Å plus a bare proton placed
+$10^{-5}$ Å from the first hydrogen (charge $+1$, 6-31G, $n_\mathrm{ao} = 6$).
+The two near-coincident centers make two overlap eigenvalues collapse to
+$\approx 3.5 \times 10^{-12}$ and $\approx 1.1 \times 10^{-10}$ — the next one
+up is a healthy $0.126$. With the default threshold the solver drops exactly
+those 2 directions ($n_\mathrm{mo} = 4$ of $6$), converges cleanly, and its
+electronic energy matches a PySCF 2.13.1 reference for the identical system
+to better than $10^{-6}$ Hartree. The clean H₂/6-31G energy
+($-1.1267339671$ Hartree) is untouched to the last bit.
+
+**Limitations.** Dropping directions makes the *energy* well-defined but the
+orbital count basis-dependent: downstream consumers must read
+$n_\mathrm{mo}$ from the result (`eigenvalues_alpha.size()`), not assume
+$n_\mathrm{ao}$. The threshold acts on raw eigenvalues — a deliberately
+simpler convention than PySCF's normalized-overlap variant — and analytic
+nuclear gradients through the filtered subspace are not yet validated.
+
+<!-- Every number quoted in this section (3.5e-12, 1.1e-10, 0.126, 2 dropped
+     columns, n_mo = 4 of 6, the 1e-6 Ha PySCF agreement, and the pinned
+     clean-H2 energy -1.1267339671 Ha) is regression-locked by
+     tests/cpu/scf/test_scf_lindep.cpp (test_cpu_scf_lindep) and
+     tests/cpu/linalg/test_canonical_orthogonalization.cpp
+     (test_cpu_linalg_canonical_orth). Change one side only in lockstep. -->
+
 ## Reading the RHF Example
 
 The setup in [`examples/02_rhf.cpp`](../../examples/02_rhf.cpp) is intentionally
@@ -165,6 +225,128 @@ cmake --build build --target 02_rhf
 A useful check after convergence is that the reported electron count stays
 consistent with the molecule you asked for: the density must still represent two
 electrons in a closed-shell state.
+
+## Closed-Shell Validity
+
+**Concept.** RHF is not a general-purpose method with occasional failures — it
+is a method whose derivation *assumes* a specific electronic structure: every
+occupied spatial orbital holds exactly two electrons of opposite spin. That
+assumption has two immediate consequences. The electron count $N_e$ must be
+even, and the spin multiplicity must be $M = 1$ (a singlet). Feed RHF anything
+else and the failure is not numerical noise; the ansatz itself no longer
+describes the state you asked for.
+
+**Math.** The closed-shell density is built from $N_e/2$ doubly-occupied
+orbitals:
+
+$$ P_{\mu\nu} = 2 \sum_{i=1}^{N_e/2} C_{\mu i} C_{\nu i}. $$
+
+For odd $N_e$, integer division silently truncates: $\lfloor 9/2 \rfloor = 4$
+doubly-occupied orbitals describe $8$ electrons — one electron simply
+disappears from the calculation. The resulting energy is perfectly convergent
+and perfectly meaningless.
+
+**Algorithm.** Atomiverse guards against this at the single choke point every
+Gaussian-SCF path passes through, the solver entry (`SCFSolver::run`). Before
+any allocation or iteration it checks that $n_\alpha \ge 0$, $n_\beta \ge 0$,
+$n_\alpha + n_\beta = N_e$, and $n_\alpha = n_\beta$ for a restricted spin
+treatment, and throws `std::invalid_argument` otherwise. The classic trap now
+fails loudly: water cation ($\mathrm{H_2O^+}$, $N_e = 9$) routed through
+`rhf_config` yields $n_\alpha = n_\beta = 4$, the sum $8 \ne 9$ trips the
+guard, and no SCF iteration ever runs.
+
+```cpp
+auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G,
+                                      /*charge=*/+1);   // H2O+, 9 electrons
+cpu::scf::rhf_solve(ints);   // throws std::invalid_argument — not silence
+```
+
+Because the guard is read-only and runs before any work, valid closed-shell
+runs are bit-identical to the unguarded solver — the neutral-water energy in
+this chapter is pinned to the pre-guard baseline at tolerance zero by the
+regression test.
+
+**Limitations.** The guard validates bookkeeping, not physics. A biradical
+singlet passes every check and still breaks the RHF ansatz; that failure mode
+needs the unrestricted treatment of
+[Chapter 3](ch03-open-shell.md), where the companion section "Charge and
+Multiplicity Conventions" gives the full $(N_e, M) \to (n_\alpha, n_\beta)$
+resolution rules.
+
+<!-- Every number and thrown case in this section is regression-locked by
+     tests/cpu/scf/test_spin_resolution.cpp (test_cpu_scf_spin_resolution):
+     H2O+ via rhf_config throws (OddElectronRhfThrows); the neutral-H2O
+     bit-identical pin is NeutralH2ORhfEnergyBitIdentical. Change one side
+     only in lockstep with the other. -->
+
+## SCF Convergence Is a Numerical Problem
+
+**Concept.** The SCF fixed-point iteration has no built-in guarantee of
+convergence. When the HOMO–LUMO gap is small — stretched bonds, transition
+metals, radicals — the bare iteration tends to *oscillate*: the occupied and
+virtual subspaces swap character between iterations, each density undoing the
+previous one. Convergence acceleration is therefore not a luxury bolted onto
+Hartree–Fock; it is part of what makes the method usable. Three tools cover
+most of practice: damping, DIIS, and the level shift.
+
+**Damping** mixes the new density with the old one,
+$P \leftarrow (1-\alpha) P_\mathrm{new} + \alpha P_\mathrm{old}$, trading
+speed for stability. One engine-specific convention to note: Atomiverse damps
+the **density after diagonalization** (`SCFConfig::damping_factor` = fraction
+of *old* density retained), whereas PySCF damps the **Fock matrix before
+DIIS**. Both act only while DIIS is inactive; the difference is deliberate
+and documented in the solver.
+
+**DIIS** (Pulay's Direct Inversion in the Iterative Subspace) extrapolates
+the Fock matrix from its recent history, choosing the combination that
+minimizes the commutator error $e = X^\mathrm{T}(FPS - SPF)X$ — zero exactly
+at self-consistency. It is the default accelerator (`SCFConfig::use_diis`)
+and usually converges equilibrium molecules in 10–20 iterations.
+
+**Level shift** (Saunders & Hillier, *Int. J. Quantum Chem.* **7**, 699
+(1973), DOI [10.1002/qua.560070407](https://doi.org/10.1002/qua.560070407))
+attacks the oscillation mechanism directly. Shifting the Fock matrix by
+
+$$ F' = F + \lambda\,(S - S\,D_\mathrm{occ}\,S), \qquad
+   D_\mathrm{occ} = C_\mathrm{occ} C_\mathrm{occ}^\mathrm{T}, $$
+
+raises every **virtual** orbital eigenvalue by exactly $\lambda$ (Hartree)
+while leaving the occupied ones untouched — the widened gap suppresses
+occupied/virtual swapping. Atomiverse applies it with PySCF `get_fock`
+ordering parity: damping → DIIS extrapolation of the *unshifted* Fock →
+level shift → diagonalize. Two consequences follow. The converged **energy**
+is $\lambda$-invariant (measured $|E_{\lambda=0.5} - E_{\lambda=0}| <
+10^{-9}$ Hartree on H₂O/6-31G; PySCF itself shows $2.8\times10^{-14}$), and
+after convergence one extra $\lambda = 0$ diagonalization removes the $+
+\lambda$ pollution from the reported virtual energies (final
+$\max_i|\Delta\varepsilon_i| \le 10^{-6}$ Hartree; PySCF measures
+$2.5\times10^{-7}$).
+
+**A hard case you can reproduce.** Stretch both O–H bonds of water to
+$1.7$ Å (6-31G RHF) and strip away every crutch: `init_guess = Hcore`,
+`use_diis = false`, `damping_factor = 0`. The bare iteration oscillates
+about $4.5$ Hartree above the true energy and is still not converged after
+100 iterations. Setting only `level_shift = 0.5` rescues it — convergence in
+**57 iterations** to the same energy a DIIS reference run reaches in 15
+($-75.6750348$ Hartree, agreement $< 10^{-8}$). The scan shows the
+practitioner's trade-off: $\lambda = 0.3$ needs 52 iterations, $0.5$ needs
+57, $1.0$ needs 105, $2.0$ needs 145 — too small fails to stabilize, too
+large over-damps and crawls.
+
+**Practice (Jensen's rule of thumb).** Start with the defaults (MINAO guess
++ DIIS). If SCF oscillates, add a level shift of $0.3$–$1.0$ Hartree to
+stabilize the early iterations, and let DIIS finish the job; for pathological
+cases combine a modest shift with damping. Remember that a level shift
+slows terminal convergence — it is a stabilizer, not an accelerator — and
+always check the *de-shifted* orbital energies, never the shifted ones.
+
+<!-- Every number in this section (the 1e-9 energy invariance, the 1e-6
+     de-shift bound, the 100-iteration divergence, λ=0.5 → 57 iterations,
+     the λ scan 52/57/105/145, and the <1e-8 DIIS-reference agreement) is
+     regression-locked by tests/cpu/scf/test_level_shift.cpp
+     (test_cpu_scf_level_shift) and the apply_level_shift unit tests in
+     tests/cpu/scf/test_accelerators.cpp. Change one side only in lockstep
+     with the other. -->
 
 ## What to Take Into Chapter 3
 

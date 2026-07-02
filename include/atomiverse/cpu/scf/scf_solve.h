@@ -16,6 +16,8 @@
 /// @see cpu::scf::diis.h for DIIS accelerator
 #pragma once
 
+#include <stdexcept>
+#include <string>
 #include <vector>
 #include <xtensor/containers/xtensor.hpp>
 
@@ -69,6 +71,31 @@ struct SCFConfig {
         0.5; ///< Linear mixing for pre-DIIS iterations. Auto-dropped
              ///< to 0 when MINAO guess is available (matches PySCF).
     InitGuess init_guess = InitGuess::MINAO; ///< Initial-density guess type.
+
+    /// @brief Virtual-orbital level shift λ [Hartree] (Saunders–Hillier).
+    ///        Applied inside the SCF loop with PySCF `get_fock` parity:
+    ///        damping → DIIS extrapolation of the UNSHIFTED Fock → shift
+    ///        F' = F + λ(S − S·D_occ·S) → diagonalize. Virtual eigenvalues
+    ///        shift up by λ, occupied ones stay put — widening the
+    ///        HOMO–LUMO gap to stabilize oscillating SCF. After
+    ///        convergence one extra λ=0 diagonalization restores unshifted
+    ///        reported orbital energies. |λ| <= 1e-4 is skipped entirely
+    ///        (PySCF rule). Default 0.0 — behavior identical to before the
+    ///        feature. Limitation: one scalar λ for both spin channels
+    ///        (PySCF also allows a per-spin (λα, λβ) pair).
+    double level_shift = 0.0;
+
+    /// @brief Linear-dependence threshold on the raw overlap eigenvalues
+    ///        (dimensionless). Eigen-directions of S with s_i below this
+    ///        are dropped via canonical orthogonalization and the SCF
+    ///        diagonalization switches to the two-step XᵀFX path
+    ///        (n_mo = m <= n_ao). `0` disables filtering and keeps the
+    ///        legacy Löwdin + dsygvd path bit-identical to prior behavior.
+    ///        Healthy bases (nothing dropped) also stay on the fast path.
+    ///        Note: PySCF >= 2.13 applies 1e-6 to the S eigenvalues by
+    ///        default; Atomiverse uses 1e-8 on the raw (un-normalized)
+    ///        eigenvalues.
+    double lindep_threshold = 1e-8;
 
     // Grid (KS only)
     /// @brief Named DFT integration-grid quality level.
@@ -155,15 +182,19 @@ struct SCFResult {
     int n_beta = 0;                ///< Number of beta electrons.
     double spin_contamination = 0; ///< <S^2> - S(S+1). Zero for restricted.
 
-    // Orbitals and densities (always spin-resolved)
+    // Orbitals and densities (always spin-resolved). When canonical
+    // orthogonalization drops near-linear-dependent overlap directions
+    // (SCFConfig::lindep_threshold), n_mo = m <= n_ao: the eigenvalue
+    // vectors have length m and the C matrices are rectangular n_ao × m.
+    // The density matrices stay n_ao × n_ao.
     xt::xtensor<double, 1>
-        eigenvalues_alpha; ///< Alpha orbital energies [Hartree].
+        eigenvalues_alpha; ///< Alpha orbital energies [Hartree], length n_mo.
     xt::xtensor<double, 1>
-        eigenvalues_beta;           ///< Beta orbital energies [Hartree].
-    xt::xtensor<double, 2> P_alpha; ///< Final alpha density matrix.
-    xt::xtensor<double, 2> P_beta;  ///< Final beta density matrix.
-    xt::xtensor<double, 2> C_alpha; ///< Final alpha MO coefficients.
-    xt::xtensor<double, 2> C_beta;  ///< Final beta MO coefficients.
+        eigenvalues_beta;           ///< Beta orbital energies [Hartree], length n_mo.
+    xt::xtensor<double, 2> P_alpha; ///< Final alpha density matrix (n_ao × n_ao).
+    xt::xtensor<double, 2> P_beta;  ///< Final beta density matrix (n_ao × n_ao).
+    xt::xtensor<double, 2> C_alpha; ///< Final alpha MO coefficients (n_ao × n_mo).
+    xt::xtensor<double, 2> C_beta;  ///< Final beta MO coefficients (n_ao × n_mo).
 
     // Diagnostics
     std::vector<IterationRecord> trace; ///< Per-iteration convergence trace.
@@ -173,7 +204,53 @@ struct SCFResult {
     double integrated_n_beta = 0;  ///< Grid-integrated beta electron count.
 };
 
+/// @brief Occupation resolver: (electron count, spin multiplicity) →
+///        (n_alpha, n_beta). Direct instantiation — no factory function.
+///
+/// Implements N_e = Σ_A Z_A − q (charge already folded into
+/// `IntegralPack::n_electrons` by `build_integrals`), M = 2S + 1:
+///   n_alpha = (N_e + M − 1) / 2,   n_beta = (N_e − M + 1) / 2.
+///
+/// Feed the resolved counts to the existing raw-count config builders:
+/// @code
+///   SpinResolution occ(ints.n_electrons, /*multiplicity=*/2);
+///   auto cfg = uhf_config(ints, occ.n_alpha, occ.n_beta);
+/// @endcode
+///
+/// Matches PySCF's convention contrast: PySCF's `mol.spin` is 2S =
+/// n_alpha − n_beta, NOT the multiplicity M.
+struct SpinResolution {
+    int n_alpha; ///< Alpha electrons (dimensionless count).
+    int n_beta;  ///< Beta electrons (dimensionless count).
+
+    /// @brief Resolve and validate the occupation split.
+    /// @param n_electrons Total electron count N_e (dimensionless, >= 0).
+    /// @param multiplicity Spin multiplicity M = 2S + 1 (dimensionless, >= 1).
+    /// @throws std::invalid_argument when n_electrons < 0, multiplicity < 1,
+    ///         N_e and M − 1 differ in parity (n_alpha/n_beta would be
+    ///         non-integer), or n_beta would be negative (M > N_e + 1).
+    SpinResolution(int n_electrons, int multiplicity) {
+        if (n_electrons < 0 || multiplicity < 1
+            || (n_electrons + multiplicity - 1) % 2 != 0
+            || n_electrons - multiplicity + 1 < 0) {
+            throw std::invalid_argument(
+                "SpinResolution: invalid electron count / multiplicity "
+                "combination (n_electrons=" + std::to_string(n_electrons)
+                + ", multiplicity=" + std::to_string(multiplicity)
+                + "): requires n_electrons >= 0, multiplicity >= 1, "
+                  "matching parity (even N_e with odd M or odd N_e with "
+                  "even M), and multiplicity <= n_electrons + 1");
+        }
+        n_alpha = (n_electrons + multiplicity - 1) / 2;
+        n_beta = (n_electrons - multiplicity + 1) / 2;
+    }
+};
+
 /// @brief Convenience: RHF configuration.
+/// @note Odd-electron packs are rejected at the solve entry:
+///       `SCFSolver::run` throws `std::invalid_argument` because
+///       `n_occ() = n_electrons / 2` truncates, so
+///       n_alpha + n_beta == n_electrons − 1 fails the occupation guard.
 /// @param ints Integral pack supplying electron count.
 /// @param tol Density convergence tolerance.
 /// @return `SCFConfig` initialized for restricted Hartree-Fock.
@@ -252,7 +329,10 @@ inline SCFConfig uks_config(const IntegralPack& ints, int n_alpha, int n_beta,
 /// for quick tests until the d-shell XC-grid basis_eval ships).
 ///
 /// Defaults:
-///   - spin: Restricted (closed-shell). Throws-via-solver if n_electrons is odd.
+///   - spin: Restricted (closed-shell). Odd-electron packs are rejected at
+///     the solve entry: `SCFSolver::run` throws `std::invalid_argument`
+///     when n_alpha + n_beta != n_electrons (the truncated
+///     `n_occ() = n_electrons / 2` sums to n_electrons − 1).
 ///   - method: KS (Kohn-Sham)
 ///   - xc_type: PBE
 ///   - init_guess: MINAO (PySCF-matching, zero damping)
@@ -267,7 +347,8 @@ inline SCFConfig uks_config(const IntegralPack& ints, int n_alpha, int n_beta,
 ///     via SCFConfig::grid_level.
 ///   - convergence: tol = 1e-9 Ha
 ///
-/// @param ints Integral pack supplying the electron count (assumed even).
+/// @param ints Integral pack supplying the electron count (must be even —
+///        odd counts throw `std::invalid_argument` from `SCFSolver::run`).
 /// @return SCFConfig ready to feed `scf_solve`.
 inline SCFConfig default_config(const IntegralPack& ints) {
     SCFConfig c;

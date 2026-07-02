@@ -101,6 +101,74 @@ with `n_alpha = 1`, `n_beta = 0`, and a total energy near the STO-3G reference
 of $-0.4666$ Hartree. A stretched $\mathrm{H}_2$ scan should show the
 $\alpha$ and $\beta$ channels separating as the bond length grows.
 
+## Charge and Multiplicity Conventions
+
+**Concept.** An open-shell calculation is specified by two user-visible
+integers: the molecular charge $q$ and the spin multiplicity $M$. Everything
+the solver needs — how many $\alpha$ and how many $\beta$ electrons to occupy
+— follows deterministically from those two numbers. Getting this translation
+wrong is the single most common way to converge cleanly to the wrong state,
+so Atomiverse makes it an explicit, validated step rather than a convention
+you must remember.
+
+**Math.** The electron count folds the charge in at integral-build time,
+
+$$ N_e = \sum_A Z_A - q, $$
+
+and the multiplicity $M = 2S + 1$ fixes the spin split through
+$n_\alpha - n_\beta = M - 1$:
+
+$$ n_\alpha = \frac{N_e + M - 1}{2}, \qquad
+   n_\beta = \frac{N_e - M + 1}{2}. $$
+
+These are integers only when $N_e$ and $M - 1$ have the same parity (even
+$N_e$ pairs with odd $M$, odd $N_e$ with even $M$), and $n_\beta \ge 0$
+requires $M \le N_e + 1$. Any violation means the requested state does not
+exist.
+
+**Algorithm.** The resolver is a struct you instantiate directly —
+construction computes and validates in one step, and the resolved counts feed
+the existing config builders:
+
+```cpp
+auto ints = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G,
+                                      /*charge=*/+1);       // H2O+, N_e = 9
+cpu::scf::SpinResolution occ(ints.n_electrons, /*multiplicity=*/2);
+auto cfg = cpu::scf::uhf_config(ints, occ.n_alpha, occ.n_beta);  // (5, 4)
+```
+
+Worked table (all rows are validated against PySCF 2.13.1 and
+regression-locked — see below):
+
+| System | charge | $M$ | $N_e$ | $n_\alpha$ | $n_\beta$ |
+|---|---|---|---|---|---|
+| $\mathrm{H_2O}$ | 0 | 1 | 10 | 5 | 5 |
+| $\mathrm{OH^-}$ | −1 | 1 | 10 | 5 | 5 |
+| $\mathrm{H_2O^+}$ | +1 | 2 | 9 | 5 | 4 |
+| O atom | 0 | 3 | 8 | 5 | 3 |
+
+Rejected combinations (the constructor throws `std::invalid_argument`):
+$\mathrm{H_2O}(0, 2)$ — even $N_e = 10$ with even $M$ breaks parity;
+$\mathrm{H_2O^+}(+1, 1)$ — odd $N_e = 9$ with odd $M$ breaks parity;
+$\mathrm{H}(0, 4)$ — $M = 4 > N_e + 1 = 2$ would need $n_\beta = -1$.
+
+One convention contrast worth memorizing: PySCF's `mol.spin` is **not** the
+multiplicity — it is $2S = n_\alpha - n_\beta = M - 1$. A PySCF doublet is
+`spin=1`; the same state here is `SpinResolution(N_e, /*multiplicity=*/2)`.
+
+**Limitations.** The resolver fixes bookkeeping only. It cannot tell you
+*which* multiplicity is the ground state (the O atom is a triplet because of
+Hund's rule, not because $M=3$ is the only valid input), and it does not
+protect against spin contamination — that diagnostic is the next section.
+
+<!-- Every (charge, M, n_alpha, n_beta) tuple and every rejected combination
+     in this section is regression-locked by
+     tests/cpu/scf/test_spin_resolution.cpp (test_cpu_scf_spin_resolution):
+     WorkedTableMatchesTutorialCh03, OhMinusChargeFoldsIntoElectronCount,
+     RejectsInvalidCombinations, FeedsUhfConfigRawCounts,
+     FeedsUksConfigRawCounts. Change one side only in lockstep with the
+     other. -->
+
 ## Spin Contamination: What It Means Here
 
 The price of unrestricted flexibility is that the UHF determinant is usually

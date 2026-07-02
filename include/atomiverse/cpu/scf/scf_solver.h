@@ -95,8 +95,12 @@ class SCFSolver {
     SCFConfig config_;
     bool built_ = false;
 
-    // Per-build state.
-    RealMatrix X_; ///< Orthogonalization matrix (S^{-1/2}). Owned.
+    // Per-run state (rebuilt each run(); geometry-dependent).
+    RealMatrix X_; ///< Orthogonalization matrix. Löwdin S^{-1/2} (n × n)
+                   ///< when the basis is healthy or lindep filtering is
+                   ///< disabled; rectangular canonical X (n × m, m < n)
+                   ///< when overlap eigen-directions were dropped. Owned.
+    int n_dropped_ = 0; ///< Overlap eigen-directions dropped this run.
 
     // Internal SCF step helpers. Held by pointer so this public header
     // only needs the forward declarations above (the internal/*.h

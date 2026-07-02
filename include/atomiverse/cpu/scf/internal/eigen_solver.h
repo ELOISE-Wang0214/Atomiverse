@@ -34,6 +34,18 @@ class EigenSolver {
                                            const RealMatrix& S) const {
         return linalg::diagonalize_fock_generalized(F, S);
     }
+
+    /// @brief Two-step path for a (possibly rectangular) orthogonalization
+    ///        matrix: F' = XᵀFX (m×m) → eigh → C = X C' (n×m). Used when
+    ///        canonical orthogonalization dropped near-linear-dependent
+    ///        columns and the dsygvd Cholesky path would be unstable.
+    /// @param F Fock matrix [Hartree], n × n.
+    /// @param X Orthogonalization transform (dimensionless), n × m.
+    /// @return (eigenvalues [m], AO MO coefficients [n×m]).
+    std::pair<RealVector, RealMatrix>
+    step_orthogonal(const RealMatrix& F, const RealMatrix& X) const {
+        return linalg::diagonalize_fock(F, X);
+    }
 };
 
 } // namespace internal

@@ -32,6 +32,55 @@ namespace ATV {
 namespace cpu {
 namespace linalg {
 
+/// @brief Canonical orthogonalization of an overlap matrix with
+///        eigenvalue thresholding. Direct instantiation — no factory
+///        function: construction performs the eigendecomposition.
+///
+/// Eigendecompose S = U s Uᵀ (dimensionless overlap eigenvalues,
+/// ascending), keep the directions with s_i >= tau, and form the
+/// rectangular transform X = Ũ s̃^{-1/2} (n × m, m <= n) satisfying
+/// XᵀSX = I_m. Near-linear-dependent directions (s_i → 0) are dropped
+/// instead of amplified, which is what keeps Roothaan–Hall solvable when
+/// the basis approaches linear dependence.
+struct CanonicalOrth {
+    RealMatrix X;      ///< n × m transform, XᵀSX = I_m (dimensionless).
+    int n_dropped = 0; ///< Number of eigen-directions dropped (s_i < tau).
+    double s_min = 0;  ///< Raw smallest eigenvalue of S, before filtering.
+
+    /// @brief Eigendecompose and threshold.
+    /// @param S   Symmetric overlap matrix (dimensionless), n × n. Read-only.
+    /// @param tau Keep-threshold on the raw S eigenvalues (dimensionless);
+    ///            s_i >= tau is kept. tau <= 0 disables filtering (all n
+    ///            columns kept). PySCF >= 2.13 uses 1e-6 on S eigenvalues;
+    ///            Atomiverse's SCF default is 1e-8 (SCFConfig::lindep_threshold).
+    /// @throws std::runtime_error when every column would be dropped
+    ///         (no fallback values).
+    CanonicalOrth(const RealMatrix& S, double tau) {
+        const int n = static_cast<int>(S.shape(0));
+        auto [s_eig, U] = xt::linalg::eigh(S); // ascending eigenvalues
+        s_min = s_eig(0);
+
+        int first_kept = 0;
+        if (tau > 0) {
+            while (first_kept < n && s_eig(first_kept) < tau) ++first_kept;
+        }
+        n_dropped = first_kept;
+        const int m = n - n_dropped;
+        if (m == 0)
+            throw std::runtime_error(
+                "CanonicalOrth: every overlap eigenvalue below tau="
+                + std::to_string(tau) + " (s_max="
+                + std::to_string(s_eig(n - 1)) + ") — no basis left");
+
+        X = xt::zeros<double>({n, m});
+        for (int j = 0; j < m; ++j) {
+            const double inv_sqrt = 1.0 / std::sqrt(s_eig(first_kept + j));
+            for (int i = 0; i < n; ++i)
+                X(i, j) = U(i, first_kept + j) * inv_sqrt;
+        }
+    }
+};
+
 /// @brief Build the symmetric (Löwdin) orthogonalization matrix X = S^{-1/2}.
 inline RealMatrix build_orthogonalization_matrix(const RealMatrix& S) {
     int n = static_cast<int>(S.shape(0));

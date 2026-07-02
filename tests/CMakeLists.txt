@@ -364,6 +364,13 @@ if(ATV_BUILD_PW)
     endif()
 endif()
 
+# ── Shared dense linear algebra (cpu/linalg) ──────────────────────────
+
+# Canonical orthogonalization with S-eigenvalue thresholding
+# (hf-robust-02). Header-only cpu/linalg/eigensolve.h — no RHF gate.
+atv_add_cpp_test(test_cpu_linalg_canonical_orth
+                 cpu/linalg/test_canonical_orthogonalization.cpp)
+
 # ── RHF/SCF tests ─────────────────────────────────────────────────────
 
 if(ATV_BUILD_RHF)
@@ -376,6 +383,15 @@ if(ATV_BUILD_RHF)
     atv_add_cpp_test(test_cpu_scf_rys_eri       cpu/scf/test_rys_eri.cpp)
     atv_add_cpp_test(test_cpu_scf_primitives    cpu/scf/test_primitives.cpp)
     atv_add_cpp_test(test_cpu_scf_accelerators  cpu/scf/test_accelerators.cpp)
+    # Charge/multiplicity resolver + SCFSolver::run validity guard
+    # (hf-robust-01); tutorial ch02/ch03 regression anchor.
+    atv_add_cpp_test(test_cpu_scf_spin_resolution cpu/scf/test_spin_resolution.cpp)
+    # SCF linear-dependence handling via canonical orthogonalization
+    # (hf-robust-02); tutorial ch02 regression anchor.
+    atv_add_cpp_test(test_cpu_scf_lindep         cpu/scf/test_scf_lindep.cpp)
+    # Virtual-orbital level shift, PySCF get_fock ordering parity
+    # (hf-robust-03); tutorial ch02 regression anchor.
+    atv_add_cpp_test(test_cpu_scf_level_shift    cpu/scf/test_level_shift.cpp)
     atv_add_cpp_test(test_cpu_scf_solver        cpu/scf/test_scf_solver.cpp)
     atv_add_cpp_test(test_cpu_scf_solver_internals cpu/scf/test_scf_solver_internals.cpp)
     atv_add_cpp_test(test_cpu_scf_solver_internal_isolation cpu/scf/test_scf_solver_internal_isolation.cpp)
