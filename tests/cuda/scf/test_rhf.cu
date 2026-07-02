@@ -283,6 +283,41 @@ TEST(RHF, CUDASinglePointEnergy) {
         << " does not match textbook";
 }
 
+TEST(RHF, CUDALevelShiftEnergyInvariant) {
+    // hf-robust-03 CUDA mirror: the virtual-orbital level shift is a pure
+    // convergence stabilizer — the converged energy must be λ-invariant.
+    // H2/STO-3G (n_occ=1, n_virt=1) exercises the full device shift path
+    // (diagonal +λ, −λ C'_occ C'_occ^T projector) and the post-convergence
+    // de-shift.
+    auto frame0 = make_h2();
+    auto frame5 = make_h2();
+    auto integrals0 =
+        cpu::scf::build_integrals(frame0, cpu::scf::BasisSet::STO3G, 0, true);
+    auto integrals5 =
+        cpu::scf::build_integrals(frame5, cpu::scf::BasisSet::STO3G, 0, true);
+
+    double tol =
+        (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
+
+    cuda::Evaluate eval0;
+    eval0.add(cuda::scf::SCFEvaluator{integrals0, tol, 100, /*level_shift=*/0.0});
+    eval0.build();
+    eval0.run(frame0);
+
+    cuda::Evaluate eval5;
+    eval5.add(cuda::scf::SCFEvaluator{integrals5, tol, 100, /*level_shift=*/0.5});
+    eval5.build();
+    eval5.run(frame5);
+
+    ASSERT_TRUE(std::isfinite(static_cast<double>(frame0.scalars.energy)));
+    ASSERT_TRUE(std::isfinite(static_cast<double>(frame5.scalars.energy)));
+    double bar = (sizeof(double) == sizeof(float)) ? 1e-4 : 1e-8;
+    EXPECT_NEAR(static_cast<double>(frame5.scalars.energy),
+                static_cast<double>(frame0.scalars.energy), bar)
+        << "level_shift=0.5 energy " << frame5.scalars.energy
+        << " must match level_shift=0 energy " << frame0.scalars.energy;
+}
+
 TEST(RHF, CUDASinglePointHelper) {
     // cuda::single_point produces the identical result as constructing
     // cuda::Evaluate and add()-ing the evaluator directly.

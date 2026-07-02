@@ -50,6 +50,13 @@ void RHFDensity::step(const LaunchContext& ctx, SCFWorkspace& ws) {
     // After EigenSolver: scf.C contains eigenvectors of F' (in orthogonal basis),
     // scf.eig contains eigenvalues. scf.work contains the real Fock matrix F.
 
+    // Snapshot the orthonormal-basis eigenvectors C' for the NEXT
+    // iteration's level-shift projector (hf-robust-03). scf.C still holds
+    // C' here (EigenSolver's output), before the back-transform below
+    // overwrites it with X·C'.
+    cudaMemcpyAsync(scf.C_prime, scf.C, nn * sizeof(prec_t),
+                    cudaMemcpyDeviceToDevice, stream);
+
     // Step 1: Back-transform C = X * C'
     // C' is in scf.C (from EigenSolver). We need C = X * C'.
     // Use d_HplusF_ as temp to hold C' before overwriting scf.C.

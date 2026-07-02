@@ -30,6 +30,15 @@ using cuda::work_t;
 namespace scf {
 namespace internal {
 
+// ── Kernel: add a scalar to a matrix diagonal ────────────────────────
+// M_ii += lambda, for the level shift F' += λ·I (col-major, n×n).
+__global__ void add_diagonal_kernel(prec_t* __restrict__ M, prec_t lambda,
+                                    int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n)
+        M[i + i * n] += lambda;
+}
+
 // ── Kernel: build G(P) from ERI ──────────────────────────────────────
 // G_ij = sum_kl P_kl * [(ij|kl) - 0.5*(ik|jl)]
 // P already includes factor 2 from RHF closed-shell occupancy.
@@ -70,6 +79,8 @@ void RHFFock::build(const BuildContext& ctx, SCFWorkspace& ws) {
     cudaMalloc(&scf.P, nn * sizeof(prec_t));
     cudaMalloc(&scf.P_old, nn * sizeof(prec_t));
     cudaMalloc(&scf.C, nn * sizeof(prec_t));
+    cudaMalloc(&scf.C_prime, nn * sizeof(prec_t));
+    cudaMemsetAsync(scf.C_prime, 0, nn * sizeof(prec_t), stream);
     cudaMalloc(&scf.eig, n * sizeof(prec_t));
     cudaMalloc(&scf.work, nn * sizeof(prec_t));
     cudaMalloc(&scf.Hcore, nn * sizeof(prec_t));
@@ -175,6 +186,27 @@ void RHFFock::step(const LaunchContext& ctx, SCFWorkspace& ws) {
     cudaMemcpyAsync(scf.H, scf.F_prime, nn * sizeof(prec_t),
                     cudaMemcpyDeviceToDevice, stream);
     // Now: scf.H = F' (for EigenSolver), scf.work = F (for energy in RHFDensity)
+
+    // ── Level shift (hf-robust-03 CUDA mirror) ────────────────────────
+    // In the orthonormal basis the Saunders–Hillier shift F + λ(S−SD S)
+    // becomes F' += λ(I − P'_occ), with P'_occ = C'_occ C'_occ^T the
+    // occupied projector from the PREVIOUS iteration's orthonormal
+    // eigenvectors (scf.C_prime). Applied to scf.H (what EigenSolver
+    // diagonalizes), never to scf.F_prime. Skipped on step 0 (density is
+    // zero, no previous C') and below the PySCF |λ| ≤ 1e-4 threshold — so
+    // λ = 0 is bit-identical to the pre-feature path.
+    if (std::abs(level_shift_) > 1e-4 && ctx.step > 0) {
+        const prec_t lambda = static_cast<prec_t>(level_shift_);
+        int dblocks = cuda::grid_size(n, cuda::kDefaultBlock);
+        add_diagonal_kernel<<<dblocks, cuda::kDefaultBlock, 0, stream>>>(
+            scf.H, lambda, n); // scf.H += λ·I
+        // scf.H += (−λ)·C'_occ C'_occ^T  (β=1 accumulate; first n_occ cols).
+        const work_t neg_lambda = static_cast<work_t>(-level_shift_);
+        const work_t one_b = work_t(1);
+        detail::gemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, n, n, scf.n_occ,
+                     &neg_lambda, scf.C_prime, n, scf.C_prime, n, &one_b,
+                     scf.H, n);
+    }
 }
 
 void RHFFock::destroy(const DestroyContext& /*ctx*/, SCFWorkspace& /*ws*/) {
@@ -316,6 +348,8 @@ void RHFFockDevice::build(const BuildContext& ctx, SCFWorkspace& ws) {
     cudaMalloc(&scf.P, nn * sizeof(prec_t));
     cudaMalloc(&scf.P_old, nn * sizeof(prec_t));
     cudaMalloc(&scf.C, nn * sizeof(prec_t));
+    cudaMalloc(&scf.C_prime, nn * sizeof(prec_t));
+    cudaMemsetAsync(scf.C_prime, 0, nn * sizeof(prec_t), stream);
     cudaMalloc(&scf.eig, n * sizeof(prec_t));
     cudaMalloc(&scf.work, nn * sizeof(prec_t));
     cudaMalloc(&scf.Hcore, nn * sizeof(prec_t));

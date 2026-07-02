@@ -13,16 +13,29 @@
 
 #include "atomiverse/cuda/scf/scf_solver.cuh"
 
+#include <cmath>
 #include <cuda_runtime.h>
 
 #include <stdexcept>
 #include <string>
 
+#include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
 
 namespace ATV {
 namespace cuda {
 namespace scf {
+
+// ── Kernel: de-shift the virtual orbital energies ────────────────────
+// The level shift raised every virtual eigenvalue by exactly λ and left
+// the occupied ones untouched; subtract λ back from eig[n_occ .. n-1] so
+// the reported orbital energies are shift-free (hf-robust-03 de-shift).
+__global__ void deshift_virtuals_kernel(prec_t* __restrict__ eig,
+                                        prec_t lambda, int n_occ, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x + n_occ;
+    if (i < n)
+        eig[i] -= lambda;
+}
 
 SCFSolver::SCFSolver(int n_occ, double alpha, double tol, int max_iter)
     : path_(Path::Synthetic), tol_(tol), max_iter_(max_iter) {
@@ -36,8 +49,9 @@ SCFSolver::SCFSolver(int n_occ, double alpha, double tol, int max_iter)
 #ifdef ATV_HAS_RHF
 
 SCFSolver::SCFSolver(const cpu::scf::IntegralPack& integrals, double tol,
-                     int max_iter)
-    : path_(Path::RHFHostIntegrals), tol_(tol), max_iter_(max_iter) {
+                     int max_iter, double level_shift)
+    : path_(Path::RHFHostIntegrals), tol_(tol), max_iter_(max_iter),
+      level_shift_(level_shift) {
     // Closed-shell validity guard (mirrors the CPU cpu::scf::SCFSolver::run
     // occupation guard, hf-robust-01). The CUDA solver is RHF closed-shell
     // only — n_occ = integrals.n_occ() = n_electrons / 2. An odd electron
@@ -59,7 +73,7 @@ SCFSolver::SCFSolver(const cpu::scf::IntegralPack& integrals, double tol,
     eigen_ = std::make_unique<internal::EigenSolver>();
     // RHF path: RHFDensity owns the energy; the checker is residual-only.
     convergence_ = std::make_unique<internal::ConvergenceCheck>(tol, false);
-    rhf_fock_ = std::make_unique<internal::RHFFock>(integrals);
+    rhf_fock_ = std::make_unique<internal::RHFFock>(integrals, level_shift_);
     rhf_density_ = std::make_unique<internal::RHFDensity>(integrals.n_occ());
 }
 
@@ -162,6 +176,19 @@ void SCFSolver::run(cuda::Context& runtime, cuda::Frame& frame) {
         ++iterations_;
         if (scf.converged)
             break;
+    }
+
+    // ── Post-convergence de-shift (hf-robust-03) ──────────────────────
+    // Reported orbital energies must not carry the +λ virtual pollution.
+    // At convergence the shift's spectral effect is exactly +λ on every
+    // virtual eigenvalue and 0 on occupied, so subtracting λ from the
+    // virtual block restores unshifted energies without a re-diagonalize.
+    if (scf.converged && std::abs(level_shift_) > 1e-4 && scf.n_occ < scf.n) {
+        const int n_virt = scf.n - scf.n_occ;
+        int blocks = cuda::grid_size(n_virt, cuda::kDefaultBlock);
+        deshift_virtuals_kernel<<<blocks, cuda::kDefaultBlock, 0, stream>>>(
+            scf.eig, static_cast<cuda::prec_t>(level_shift_), scf.n_occ,
+            scf.n);
     }
 }
 

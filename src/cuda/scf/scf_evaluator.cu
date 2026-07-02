@@ -20,8 +20,9 @@ SCFEvaluator::SCFEvaluator(int n_occ, double alpha, double tol, int max_iter)
 #ifdef ATV_HAS_RHF
 
 SCFEvaluator::SCFEvaluator(const cpu::scf::IntegralPack& integrals, double tol,
-                           int max_iter)
-    : solver_(std::make_unique<SCFSolver>(integrals, tol, max_iter)) {}
+                           int max_iter, double level_shift)
+    : solver_(std::make_unique<SCFSolver>(integrals, tol, max_iter,
+                                          level_shift)) {}
 
 SCFEvaluator::SCFEvaluator(int n_prim, const double* exponents,
                            const double* coefficients, int n_occ, double tol,

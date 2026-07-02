@@ -35,6 +35,11 @@ struct SCFWorkspace {
     prec_t* P_old = nullptr; ///< Previous density matrix [device, n*n].
     prec_t* C =
         nullptr; ///< Eigenvectors / MO coefficients [device, n*n, col-major].
+    prec_t* C_prime =
+        nullptr; ///< Previous-iteration orthonormal-basis eigenvectors C'
+                 ///< [device, n*n, col-major]. Snapshotted after each
+                 ///< diagonalize; the occupied block builds the level-shift
+                 ///< projector P'_occ = C'_occ C'_occ^T (hf-robust-03).
     prec_t* eig = nullptr;  ///< Eigenvalues / orbital energies [device, n].
     prec_t* work = nullptr; ///< Scratch buffer [device, n*n].
     int n = 0;              ///< Matrix dimension (host-cached).
