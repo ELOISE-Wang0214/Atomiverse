@@ -46,6 +46,13 @@ struct CanonicalOrth {
     RealMatrix X;      ///< n × m transform, XᵀSX = I_m (dimensionless).
     int n_dropped = 0; ///< Number of eigen-directions dropped (s_i < tau).
     double s_min = 0;  ///< Raw smallest eigenvalue of S, before filtering.
+    /// @brief Löwdin S^{-1/2} = U s^{-1/2} Uᵀ (n × n, dimensionless), built
+    ///        from the SAME eigendecomposition so callers that want the
+    ///        symmetric orthogonalizer on a healthy basis pay one eigh, not
+    ///        two. Populated only when n_dropped == 0 (empty otherwise —
+    ///        a filtered basis has no meaningful full-rank S^{-1/2}).
+    ///        Bit-identical to `build_orthogonalization_matrix(S)`.
+    RealMatrix lowdin;
 
     /// @brief Eigendecompose and threshold.
     /// @param S   Symmetric overlap matrix (dimensionless), n × n. Read-only.
@@ -78,6 +85,11 @@ struct CanonicalOrth {
             for (int i = 0; i < n; ++i)
                 X(i, j) = U(i, first_kept + j) * inv_sqrt;
         }
+        // Healthy basis: X == U s^{-1/2} (column scaling == the diagonal
+        // gemm, bitwise — one nonzero product per accumulator), so one
+        // more gemm yields the Löwdin matrix from the same factors.
+        if (n_dropped == 0)
+            lowdin = xt::linalg::dot(X, xt::transpose(U));
     }
 };
 

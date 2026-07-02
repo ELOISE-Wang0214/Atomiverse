@@ -128,10 +128,15 @@ SCFResult& SCFSolver::run(const IntegralPack& integrals,
                      "overlap eigen-directions (s_min={:.3e}, tau={:.1e})",
                      n_dropped_, n, ortho.s_min, config_.lindep_threshold);
             X_ = std::move(ortho.X);
+        } else {
+            // Löwdin from the same eigendecomposition — one eigh per run()
+            // instead of two, bit-identical to
+            // build_orthogonalization_matrix(S_cm).
+            X_ = std::move(ortho.lowdin);
         }
-    }
-    if (n_dropped_ == 0)
+    } else {
         X_ = linalg::build_orthogonalization_matrix(S_cm);
+    }
     hamiltonian_->prepare(integrals, config_);
 
     // Single diagonalization dispatch for every solve in this run: the

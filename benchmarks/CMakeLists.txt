@@ -208,6 +208,14 @@ if(ATV_BUILD_RHF)
     atv_add_cpp_bench(bench_native qc/rhf/performance/bench_native.cpp)
     atv_add_cpp_bench(bench_libcint qc/rhf/performance/bench_libcint.cpp)
 
+    # performance: full RHF single-point wall time on the real-molecule set
+    # (production defaults: MINAO + DIIS + occupation guard + lindep screen)
+    # plus per-run() orthogonalizer-build micro-benchmarks (hf-robust).
+    atv_add_cpp_bench(bench_scf_singlepoint
+                      qc/rhf/performance/bench_scf_singlepoint.cpp)
+    target_compile_definitions(bench_scf_singlepoint PRIVATE
+        ATV_QC_DATA_DIR="${CMAKE_SOURCE_DIR}/benchmarks/qc/rhf/validation")
+
     # convergence: RHF energy vs basis set (variational monotone decrease).
     atv_add_plain_bench(bench_qc_basis_convergence
                         qc/rhf/convergence/bench_basis_convergence.cpp)

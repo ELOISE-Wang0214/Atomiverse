@@ -234,6 +234,33 @@ TEST(CanonicalOrthogonalization, TauEqualToEigenvalueKeepsThatColumn) {
     EXPECT_EQ(r.n_dropped, 1);
 }
 
+// ── lowdin member (single-eigh optimization) ─────────────────────────
+
+// Healthy basis: the lowdin member must be BITWISE identical to
+// build_orthogonalization_matrix(S) — same eigendecomposition, same
+// operations — so SCFSolver can pay one eigh per run() instead of two
+// without moving any pre-existing result.
+TEST(CanonicalOrthogonalization, LowdinBitwiseMatchesLegacyBuilder) {
+    RealMatrix s = make_healthy_s();
+    CanonicalOrth r(s, kTau);
+    ASSERT_EQ(r.n_dropped, 0);
+    RealMatrix legacy = ATV::cpu::linalg::build_orthogonalization_matrix(s);
+    ASSERT_EQ(r.lowdin.shape(0), 4u);
+    ASSERT_EQ(r.lowdin.shape(1), 4u);
+    for (std::size_t i = 0; i < 4; ++i)
+        for (std::size_t j = 0; j < 4; ++j)
+            EXPECT_EQ(r.lowdin(i, j), legacy(i, j))
+                << "lowdin differs from build_orthogonalization_matrix at ("
+                << i << "," << j << ")";
+}
+
+// Filtered basis: no meaningful full-rank S^{-1/2} — lowdin stays empty.
+TEST(CanonicalOrthogonalization, LowdinEmptyWhenColumnsDropped) {
+    CanonicalOrth r(make_near_singular_s(), kTau);
+    ASSERT_EQ(r.n_dropped, 1);
+    EXPECT_EQ(r.lowdin.size(), 0u);
+}
+
 // ── purity / immutability ────────────────────────────────────────────
 
 // Immutability: the input overlap matrix is read-only — bitwise unchanged
