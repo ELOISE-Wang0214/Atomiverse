@@ -83,6 +83,11 @@ class SCFSolver {
     /// @param tol Convergence tolerance, Frobenius norm of P change
     ///        [dimensionless].
     /// @param max_iter Maximum number of SCF iterations [dimensionless].
+    /// @throws std::invalid_argument when `integrals.n_electrons` is odd or
+    ///         negative: closed-shell RHF requires an even electron count,
+    ///         and an odd count would silently truncate
+    ///         (n_occ = n_electrons / 2 drops an electron). Mirrors the CPU
+    ///         `cpu::scf::SCFSolver::run` occupation guard (hf-robust-01).
     SCFSolver(const cpu::scf::IntegralPack& integrals, double tol,
               int max_iter);
 
@@ -95,6 +100,7 @@ class SCFSolver {
     /// @param tol Convergence tolerance, Frobenius norm of P change
     ///        [dimensionless].
     /// @param max_iter Maximum number of SCF iterations [dimensionless].
+    /// @throws std::invalid_argument when `n_occ` is negative.
     SCFSolver(int n_prim, const double* exponents, const double* coefficients,
               int n_occ, double tol, int max_iter);
 #endif

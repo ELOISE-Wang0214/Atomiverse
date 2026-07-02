@@ -15,6 +15,9 @@
 
 #include <cuda_runtime.h>
 
+#include <stdexcept>
+#include <string>
+
 #include "atomiverse/cuda/frame/types.cuh"
 
 namespace ATV {
@@ -35,6 +38,24 @@ SCFSolver::SCFSolver(int n_occ, double alpha, double tol, int max_iter)
 SCFSolver::SCFSolver(const cpu::scf::IntegralPack& integrals, double tol,
                      int max_iter)
     : path_(Path::RHFHostIntegrals), tol_(tol), max_iter_(max_iter) {
+    // Closed-shell validity guard (mirrors the CPU cpu::scf::SCFSolver::run
+    // occupation guard, hf-robust-01). The CUDA solver is RHF closed-shell
+    // only — n_occ = integrals.n_occ() = n_electrons / 2. An odd electron
+    // count silently truncates (2 * n_occ = n_electrons - 1), describing one
+    // fewer electron; reject it at construction rather than converge to a
+    // physically wrong state. One descriptive throw per the repo
+    // "no fallback values" rule.
+    if (integrals.n_electrons < 0 || integrals.n_electrons % 2 != 0) {
+        throw std::invalid_argument(
+            "cuda::scf::SCFSolver: closed-shell RHF requires an even, "
+            "non-negative electron count (n_electrons="
+            + std::to_string(integrals.n_electrons)
+            + "); an odd count would truncate to "
+            + std::to_string(integrals.n_occ())
+            + " doubly-occupied orbitals and drop an electron. Check the "
+              "molecular charge, or use the CPU unrestricted path for "
+              "open-shell systems.");
+    }
     eigen_ = std::make_unique<internal::EigenSolver>();
     // RHF path: RHFDensity owns the energy; the checker is residual-only.
     convergence_ = std::make_unique<internal::ConvergenceCheck>(tol, false);
@@ -46,6 +67,14 @@ SCFSolver::SCFSolver(int n_prim, const double* exponents,
                      const double* coefficients, int n_occ, double tol,
                      int max_iter)
     : path_(Path::RHFDeviceIntegrals), tol_(tol), max_iter_(max_iter) {
+    // Device-integrals path takes n_occ directly (no electron count to
+    // cross-check), so the only meaningful guard is non-negativity — a
+    // negative occupied count is nonsense (mirrors the CPU n_occ >= 0 arm).
+    if (n_occ < 0) {
+        throw std::invalid_argument(
+            "cuda::scf::SCFSolver: n_occ must be non-negative (got "
+            + std::to_string(n_occ) + ").");
+    }
     eigen_ = std::make_unique<internal::EigenSolver>();
     convergence_ = std::make_unique<internal::ConvergenceCheck>(tol, false);
     rhf_fock_device_ = std::make_unique<internal::RHFFockDevice>(

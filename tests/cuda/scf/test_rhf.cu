@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <gtest/gtest.h>
+#include <stdexcept>
 #include <type_traits>
 
 #include <xtensor-blas/xlinalg.hpp>
@@ -36,6 +37,18 @@ cpu::Frame make_h2() {
     frame.atoms.mass[1] = double(1.008);
     frame.atoms.type[0] = 1;
     frame.atoms.type[1] = 1; // H: Z=1
+    frame.box = Mat3::cubic(100.0);
+    return frame;
+}
+
+// Lone hydrogen atom — one electron, odd count (open shell).
+cpu::Frame make_h_atom() {
+    cpu::Frame frame(1);
+    frame.atoms.x[0] = double(0);
+    frame.atoms.y[0] = double(0);
+    frame.atoms.z[0] = double(0);
+    frame.atoms.mass[0] = double(1.008);
+    frame.atoms.type[0] = 1; // H: Z=1, 1 electron
     frame.box = Mat3::cubic(100.0);
     return frame;
 }
@@ -206,6 +219,44 @@ TEST(RHF, CPUDensityTrace) {
     double trace_PS = xt::sum(result.P * integrals.S)();
     EXPECT_NEAR(static_cast<double>(trace_PS),
                 static_cast<double>(integrals.n_electrons), 0.01);
+}
+
+// ── Occupation guard (hf-robust-01 CUDA mirror) ──────────────────────
+// Host-side: the guard fires in the SCFSolver constructor before any
+// device work, so this runs without a GPU (like the CPU* tests above).
+
+TEST(RHF, OddElectronThrowsHostIntegrals) {
+    // Lone H atom / STO-3G: 1 electron. The host-integrals CUDA solver
+    // constructor must reject the odd count (closed-shell RHF cannot
+    // represent it; n_occ() = 0 would silently drop the electron) with
+    // std::invalid_argument — never a physically wrong converged state.
+    auto frame = make_h_atom();
+    auto integrals =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    ASSERT_EQ(integrals.n_electrons, 1);
+
+    EXPECT_THROW((cuda::scf::SCFSolver{integrals, 1e-10, 100}),
+                 std::invalid_argument);
+}
+
+TEST(RHF, EvenElectronConstructsHostIntegrals) {
+    // Neutral H2 (2 electrons) constructs without throwing — the guard is
+    // a strict no-op on the valid closed-shell path.
+    auto frame = make_h2();
+    auto integrals =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+    ASSERT_EQ(integrals.n_electrons, 2);
+
+    EXPECT_NO_THROW((cuda::scf::SCFSolver{integrals, 1e-10, 100}));
+}
+
+TEST(RHF, NegativeNoccThrowsDeviceIntegrals) {
+    // Device-integrals path guards only non-negativity of n_occ.
+    const double exps[3] = {3.42525091, 0.62391373, 0.16885540};
+    const double coefs[3] = {0.15432897, 0.53532814, 0.44463454};
+    EXPECT_THROW((cuda::scf::SCFSolver{/*n_prim=*/3, exps, coefs,
+                                       /*n_occ=*/-1, 1e-10, 100}),
+                 std::invalid_argument);
 }
 
 // ── CUDA RHF single-point tests (cuda::Evaluate + SCFEvaluator) ───────
