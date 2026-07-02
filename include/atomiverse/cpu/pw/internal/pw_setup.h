@@ -87,13 +87,19 @@ struct PWEnergyTerms {
 PWEnergyTerms iteration_energy(const PWWorkspace& ws, Real e_band,
                                Real ew_total, Real vol_bohr);
 
-/// @brief Per-iteration energy decomposition with stdout report
-///        (identical to the original `pw_scf()` log; used by the CUDA
-///        driver).
-/// @return Total energy [Hartree].
-Real report_iteration_energy(const PWWorkspace& ws, Real e_band,
-                             Real ew_total, Real vol_bohr, int iter,
-                             int n_bands);
+/// @brief Emit the per-iteration SCF energy summary as a rank-0-only
+///        ATV_DEBUG line — the single formatter path shared by the CPU
+///        (`PWSolver::run`) and CUDA (`cuda::pw::pw_scf`) SCF loops.
+///
+/// Host-compiled on purpose: `core/log.h` is CUDA-free, so `.cu` callers
+/// delegate their logging here instead of including spdlog directly.
+///
+/// @param terms    Energy decomposition from `iteration_energy()` [Hartree].
+/// @param ws       Workspace supplying the XC energy `E_xc` [Hartree].
+/// @param ew_total Ewald energy incl. the QE G=0 term [Hartree].
+/// @param iter     Zero-based SCF iteration index (logged as `iter + 1`).
+void log_iteration_energy(const PWEnergyTerms& terms, const PWWorkspace& ws,
+                          Real ew_total, int iter);
 
 } // namespace internal
 } // namespace pw

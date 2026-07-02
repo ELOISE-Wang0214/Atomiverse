@@ -4,14 +4,19 @@
 
 #include "atomiverse/cpu/pw/internal/pw_setup.h"
 #include "atomiverse/core/box.h"
+#include "atomiverse/core/log.h"
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
 #include "atomiverse/cpu/pw/internal/ewald.h"
 #include "atomiverse/cpu/pw/internal/upf_reader.h"
+
+#ifdef ATV_HAS_MPI
+#include <mpi.h>
+#endif
+
 #include <algorithm>
 #include <cmath>
 #include <complex>
-#include <iomanip>
-#include <iostream>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -22,6 +27,22 @@ namespace pw {
 namespace internal {
 
 namespace {
+
+/// True when this process should emit console logs — MPI rank 0, or any
+/// run where MPI is not built/initialized. Mirrors the explicit rank
+/// gate `PWSolver::run()` applies around its ATV_INFO/ATV_DEBUG calls.
+bool log_rank0() {
+#ifdef ATV_HAS_MPI
+    int initialized = 0;
+    MPI_Initialized(&initialized);
+    if (initialized) {
+        int rank = 0;
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        return rank == 0;
+    }
+#endif
+    return true;
+}
 
 /// Radial → G-space transform of the local pseudopotential, QE-style
 /// (vloc_mod.f90): V_loc(r) → −Z/r at large r, so the bare integrand
@@ -184,9 +205,9 @@ SphBesselFn sph_bessel_for_l(int l) {
     default:
         // No-fallback rule: silently substituting j0 for l > 2 would
         // produce a wrong (not failing) nonlocal potential.
-        throw std::invalid_argument(
-            "sph_bessel_for_l: angular momentum l=" + std::to_string(l)
-            + " not supported (l <= 2)");
+        throw std::invalid_argument("sph_bessel_for_l: angular momentum l="
+                                    + std::to_string(l)
+                                    + " not supported (l <= 2)");
     }
 }
 
@@ -447,11 +468,13 @@ void setup_pw_problem(const cpu::Frame& frame, const std::string& upf_path,
     out.n_bands = std::max(n_elec / 2, 1);
 
     bool has_upf = !upf_path.empty();
+    const bool rank0 = log_rank0();
 
-    std::cout << "\n========== PW SCF ==========" << std::endl;
-    std::cout << "Atoms:" << n_atoms << " Elec:" << n_elec
-              << " Bands:" << out.n_bands << " Ecut:" << ecut_ry << " Ry"
-              << (has_upf ? " UPF" : " toy") << std::endl;
+    if (rank0) {
+        ATV_INFO("[pw] ========== PW SCF ==========");
+        ATV_INFO("[pw] atoms={} elec={} bands={} ecut_ry={} {}", n_atoms,
+                 n_elec, out.n_bands, ecut_ry, has_upf ? "UPF" : "toy");
+    }
 
     // === Ewald ===
     std::vector<Vec3> pos_ang;
@@ -479,29 +502,28 @@ void setup_pw_problem(const cpu::Frame& frame, const std::string& upf_path,
     ew_total += ew_g0;
     out.ew_total = ew_total;
 
-    std::cout << "\n--- Ewald (Ha) ---" << std::endl;
-    std::cout << "  real=" << ewald.real_energy()
-              << " recip=" << ewald.recip_energy()
-              << " self=" << ewald.self_energy() << std::endl;
-    std::cout << "  total=" << ew_total << " Ha (" << ew_total * 2.0 << " Ry)"
-              << std::endl;
+    if (rank0) {
+        ATV_DEBUG("[pw] --- Ewald (Ha) ---");
+        ATV_DEBUG("[pw]   real={} recip={} self={}", ewald.real_energy(),
+                  ewald.recip_energy(), ewald.self_energy());
+        ATV_DEBUG("[pw]   total={} Ha ({} Ry)", ew_total, ew_total * 2.0);
+    }
 
     // === G-vectors ===
     // gv0 is the DENSITY sphere: ρ = |ψ|² has spectral content out to
     // 2·G_max(wfc), i.e. ecutrho = 4·ecut (QE default). All density-side
     // quantities (ρ, V_H, V_xc, V_loc, V_eff, mixing, energy sums) live
     // on this sphere; the per-k wavefunction spheres stay at ecut.
-    out.gv0 =
-        internal::enumerate_g_vectors(box_bohr, Real(4) * ecut_ht,
-                                      Vec3::zeros());
+    out.gv0 = internal::enumerate_g_vectors(box_bohr, Real(4) * ecut_ht,
+                                            Vec3::zeros());
     auto& gv0 = out.gv0;
-    std::cout << "\n--- G-vectors ---" << std::endl;
-    std::cout << "  N_G=" << gv0.count()
-              << " G_min=" << std::sqrt(gv0.g[1].norm_squared())
-              << " G_max=" << std::sqrt(gv0.g[gv0.count() - 1].norm_squared())
-              << std::endl;
-    std::cout << "  FFT dims(hkl): " << gv0.nx << "x" << gv0.ny << "x" << gv0.nz
-              << std::endl;
+    if (rank0) {
+        ATV_DEBUG("[pw] --- G-vectors ---");
+        ATV_DEBUG("[pw]   N_G={} G_min={} G_max={}", gv0.count(),
+                  std::sqrt(gv0.g[1].norm_squared()),
+                  std::sqrt(gv0.g[gv0.count() - 1].norm_squared()));
+        ATV_DEBUG("[pw]   FFT dims(hkl): {}x{}x{}", gv0.nx, gv0.ny, gv0.nz);
+    }
 
     // k-points
     out.kg = internal::generate_mp_mesh(k_mesh, k_mesh, k_mesh);
@@ -591,13 +613,15 @@ void setup_pw_problem(const cpu::Frame& frame, const std::string& upf_path,
     ws.fft =
         std::make_unique<internal::FFTPlan3D>(ws.fft_nx, ws.fft_ny, ws.fft_nz);
 
-    std::cout << "  Density FFT grid: " << ws.fft_nx << "x" << ws.fft_ny << "x"
-              << ws.fft_nz << " (nr=" << ws.nr << ")" << std::endl;
+    if (rank0)
+        ATV_DEBUG("[pw]   Density FFT grid: {}x{}x{} (nr={})", ws.fft_nx,
+                  ws.fft_ny, ws.fft_nz, ws.nr);
 
     // === V_loc ===
     if (has_upf) {
-        std::cout << "\n--- UPF: Z_val=" << upf.z_val << " l_max=" << upf.l_max
-                  << " n_proj=" << upf.kb.size() << " ---" << std::endl;
+        if (rank0)
+            ATV_DEBUG("[pw] --- UPF: Z_val={} l_max={} n_proj={} ---",
+                      upf.z_val, upf.l_max, upf.kb.size());
         setup_upf_vloc(ws, gv0, upf, vol_bohr);
 
         // Setup augmentation form factor: rho_atom(G) / Q_atom
@@ -638,8 +662,9 @@ void setup_pw_problem(const cpu::Frame& frame, const std::string& upf_path,
     } else {
         setup_toy_vloc(ws, gv0, pos_bohr, valence_charges, vol_bohr);
     }
-    std::cout << "  V_loc(G) [1]=" << ws.V_loc_G[1].real()
-              << " [10]=" << ws.V_loc_G[10].real() << std::endl;
+    if (rank0)
+        ATV_DEBUG("[pw]   V_loc(G) [1]={} [10]={}", ws.V_loc_G[1].real(),
+                  ws.V_loc_G[10].real());
 
     // Pre-compute k-point G-vectors and the per-k nonlocal / wfc tables
     // (radial parts live on q = k+G, so size and values are k-dependent).
@@ -650,12 +675,11 @@ void setup_pw_problem(const cpu::Frame& frame, const std::string& upf_path,
         // enumerate_g_vectors needs Cartesian [1/Bohr].
         auto recip = box_bohr.recip_cell();
         for (auto& kf : out.kg.kpoints) {
-            Vec3 kc{recip(0, 0) * kf[0] + recip(1, 0) * kf[1]
-                        + recip(2, 0) * kf[2],
-                    recip(0, 1) * kf[0] + recip(1, 1) * kf[1]
-                        + recip(2, 1) * kf[2],
-                    recip(0, 2) * kf[0] + recip(1, 2) * kf[1]
-                        + recip(2, 2) * kf[2]};
+            Vec3 kc{
+                recip(0, 0) * kf[0] + recip(1, 0) * kf[1] + recip(2, 0) * kf[2],
+                recip(0, 1) * kf[0] + recip(1, 1) * kf[1] + recip(2, 1) * kf[2],
+                recip(0, 2) * kf[0] + recip(1, 2) * kf[1]
+                    + recip(2, 2) * kf[2]};
             out.gv_k.push_back(
                 internal::enumerate_g_vectors(box_bohr, ecut_ht, kc));
         }
@@ -668,15 +692,15 @@ void setup_pw_problem(const cpu::Frame& frame, const std::string& upf_path,
         out.kb_proj_k.resize(n_k);
         out.atom_wfc_k.resize(n_k);
         for (size_t ik = 0; ik < n_k; ++ik) {
-            setup_kb_projectors(out.kb_proj_k[ik], out.gv_k[ik], upf,
-                                pos_bohr);
+            setup_kb_projectors(out.kb_proj_k[ik], out.gv_k[ik], upf, pos_bohr);
             if (upf.nwfc > 0)
-                setup_atomic_wfc(out.atom_wfc_k[ik], out.gv_k[ik], upf,
-                                 n_atoms, vol_bohr);
+                setup_atomic_wfc(out.atom_wfc_k[ik], out.gv_k[ik], upf, n_atoms,
+                                 vol_bohr);
         }
-        std::cout << "  KB projectors: " << upf.kb.size() << " proj, "
-                  << n_atoms << " atoms, " << n_k << " k-spheres"
-                  << " (atomic wfc: " << upf.nwfc << ")" << std::endl;
+        if (rank0)
+            ATV_DEBUG("[pw]   KB projectors: {} proj, {} atoms, {} k-spheres "
+                      "(atomic wfc: {})",
+                      upf.kb.size(), n_atoms, n_k, upf.nwfc);
     }
 }
 
@@ -798,35 +822,14 @@ PWEnergyTerms iteration_energy(const PWWorkspace& ws, Real e_band,
     return t;
 }
 
-Real report_iteration_energy(const PWWorkspace& ws, Real e_band, Real ew_total,
-                             Real vol_bohr, int iter, int n_bands) {
-    const PWEnergyTerms t =
-        iteration_energy(ws, e_band, ew_total, vol_bohr);
-    const Real e_one = t.e_one, e_h = t.e_h, e_loc = t.e_loc;
-    const Real e_total_ha = t.total;
-
-    std::cout << "\n-- iter " << (iter + 1) << " --" << std::endl;
-    std::cout << "  one-electron = " << std::setw(12) << std::setprecision(6)
-              << e_one << " Ha (" << e_one * 2.0 << " Ry)" << std::endl;
-    std::cout << "  Hartree      = " << std::setw(12) << e_h << " Ha ("
-              << e_h * 2.0 << " Ry)" << std::endl;
-    std::cout << "  E_loc(rho)   = " << std::setw(12) << e_loc << " Ha ("
-              << e_loc * 2.0 << " Ry)  [T+E_NL = "
-              << (e_one - e_loc) << " Ha]" << std::endl;
-    std::cout << "  XC           = " << std::setw(12) << ws.E_xc << " Ha ("
-              << ws.E_xc * 2.0 << " Ry)" << std::endl;
-    std::cout << "  Ewald        = " << std::setw(12) << ew_total << " Ha ("
-              << ew_total * 2.0 << " Ry)" << std::endl;
-    std::cout << "  Aug          = " << std::setw(12) << ws.E_aug << " Ha ("
-              << ws.E_aug * 2.0 << " Ry)" << std::endl;
-    std::cout << "  Total        = " << std::setw(12) << e_total_ha << " Ha ("
-              << e_total_ha * 2.0 << " Ry)" << std::endl;
-    std::cout << "  E_band=" << e_band << " Ha  eig:";
-    for (int b = 0; b < std::min(4, n_bands); ++b)
-        std::cout << " " << ws.eigenvalues[b];
-    std::cout << ")" << std::endl;
-
-    return e_total_ha;
+void log_iteration_energy(const PWEnergyTerms& terms, const PWWorkspace& ws,
+                          Real ew_total, int iter) {
+    if (!log_rank0())
+        return;
+    ATV_DEBUG("[pw] iter={} one_e={:.6f} hartree={:.6f} xc={:.6f} "
+              "ewald={:.6f} total_ha={:.8f} ({:.8f} Ry)",
+              iter + 1, terms.e_one, terms.e_h, ws.E_xc, ew_total, terms.total,
+              terms.total / kRy2Hartree);
 }
 
 } // namespace internal

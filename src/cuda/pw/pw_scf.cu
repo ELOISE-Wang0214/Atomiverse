@@ -6,7 +6,6 @@
 /// energy report) are the exact same code as the CPU backend; only the
 /// band solve + density accumulation are replaced by the device solver.
 
-#include "atomiverse/cuda/pw/pw_scf.cuh"
 #include "atomiverse/cpu/pw/internal/convergence.h"
 #include "atomiverse/cpu/pw/internal/g_vector.h"
 #include "atomiverse/cpu/pw/internal/poisson.h"
@@ -15,6 +14,7 @@
 #include "atomiverse/cpu/pw/internal/veff_builder.h"
 #include "atomiverse/cpu/pw/internal/xc_builder.h"
 #include "atomiverse/cuda/pw/internal/device_solver.cuh"
+#include "atomiverse/cuda/pw/pw_scf.cuh"
 #include <algorithm>
 #include <complex>
 #include <iostream>
@@ -43,8 +43,7 @@ PWResult pw_scf(const cpu::Frame& frame, const std::string& upf_path,
     std::cout << "  [cuda::pw] device band solver on " << ws.fft_nx << "x"
               << ws.fft_ny << "x" << ws.fft_nz << " grid" << std::endl;
 
-    internal::DeviceBandSolver solver(ws.fft_nx, ws.fft_ny, ws.fft_nz,
-                                      n_bands);
+    internal::DeviceBandSolver solver(ws.fft_nx, ws.fft_ny, ws.fft_nz, n_bands);
 
     // === SCF loop ===
     // The reused CPU host steps are the facade-private step helpers
@@ -106,9 +105,10 @@ PWResult pw_scf(const cpu::Frame& frame, const std::string& upf_path,
 
         result.iterations = iter + 1;
 
-        Real e_total_ha = cpw::internal::report_iteration_energy(
-            ws, e_band, prob.ew_total, vol_bohr, iter, n_bands);
-        result.energy = static_cast<double>(e_total_ha) * 2.0;
+        const auto terms = cpw::internal::iteration_energy(
+            ws, e_band, prob.ew_total, vol_bohr);
+        cpw::internal::log_iteration_energy(terms, ws, prob.ew_total, iter);
+        result.energy = static_cast<double>(terms.total) * 2.0;
 
         if (converged) {
             result.converged = true;

@@ -212,11 +212,8 @@ PWResult& PWSolver::run(const cpu::Frame& frame) {
         result_.energy_ha = static_cast<double>(terms.total);
         result_.energy = result_.energy_ha / kRy2Hartree;
 
-        if (log_rank0)
-            ATV_DEBUG("[pw] iter={} one_e={:.6f} hartree={:.6f} xc={:.6f} "
-                      "ewald={:.6f} total_ha={:.8f} ({:.8f} Ry)",
-                      iter + 1, terms.e_one, terms.e_h, ws.E_xc,
-                      prob.ew_total, terms.total, result_.energy);
+        // Shared rank-0-gated formatter (same line as the CUDA loop).
+        internal::log_iteration_energy(terms, ws, prob.ew_total, iter);
 
         if (converged) {
             result_.converged = true;
