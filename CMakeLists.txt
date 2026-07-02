@@ -150,14 +150,14 @@ if(NOT ATV_DOCS_ONLY)
         # Cross-cutting core (logging registry, metrics)
         src/core/log.cpp
         src/cpu/scf/solve.cpp
-        src/cpu/io/molrec.cpp
+        src/cpu/io/frame_writer.cpp
         src/cpu/io/lammps_data.cpp
         src/cpu/io/extxyz.cpp
         src/cpu/observer/rdf.cpp
+        src/cpu/observer/rdf_histogram.cpp
         src/cpu/observer/msd.cpp
         src/cpu/observer/vacf.cpp
-        src/cpu/observer/density.cpp
-        src/cpu/recorder/trajectory.cpp
+        src/cpu/observer/trajectory_metrics.cpp
         src/cpu/recorder/thermo.cpp
         src/cpu/recorder/xyz.cpp
         # CPU backend infrastructure
@@ -206,6 +206,7 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/comm/domain.cpp
         src/cpu/comm/reduce.cpp
         src/cpu/comm/gather.cpp
+        src/cpu/comm/gather_for_io.cpp
         src/cpu/comm/rcb.cpp
     )
     # CPU potentials sources — globbed so new pair/bond/angle/dihedral
@@ -321,6 +322,11 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/recorder/density_cube_writer.cpp
             src/cpu/recorder/orbital_cube_writer.cpp
             src/cpu/observer/mulliken.cpp
+            # eval_density_grid resolves shells via scf::build_shell_list
+            # (basis_set.cpp above), so it is gated with the SCF sources —
+            # same as the cube writers and mulliken. Its only consumer,
+            # cuda::DensityRecorder, is #ifdef ATV_HAS_RHF anyway.
+            src/cpu/observer/density.cpp
         )
         if(ATV_BUILD_CUDA)
             target_sources(atomiverse PRIVATE

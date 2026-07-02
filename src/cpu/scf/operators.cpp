@@ -5,10 +5,13 @@
 #include "atomiverse/cpu/scf/cart.h"
 #include "atomiverse/cpu/scf/native_integrals.h"
 
+#include <array>
 #include <cmath>
+#include <cstddef>
 #include <vector>
 
 #include <xtensor-blas/xlinalg.hpp>
+#include <xtensor/containers/xadapt.hpp>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -40,9 +43,13 @@ void build_coulomb_exchange_fused(const RealMatrix& P_total,
     const auto ns = static_cast<std::size_t>(n);
     const auto nn = ns * ns;
 
-    // J: single DGEMV
+    // J: single DGEMV. ERI is already contiguous row-major, so adapt its
+    // storage as an [n²×n²] matrix zero-copy — the previous
+    // `xt::eval(xt::reshape_view(...))` materialized the full n⁴ tensor
+    // (the 227 MB of the running example) on every SCF iteration.
     auto P_flat = xt::eval(xt::reshape_view(P_total, {nn}));
-    auto ERI_mat = xt::eval(xt::reshape_view(ERI, {nn, nn}));
+    auto ERI_mat = xt::adapt(ERI.data(), nn * nn, xt::no_ownership(),
+                             std::array<std::size_t, 2>{nn, nn});
     xt::xtensor<double, 1> J_flat = xt::linalg::dot(ERI_mat, P_flat);
 
     G = xt::reshape_view(J_flat, {ns, ns});

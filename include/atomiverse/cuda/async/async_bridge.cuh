@@ -37,7 +37,7 @@
 ///
 /// CPU-side logic MUST live in cpu/observer/ or cpu/recorder/ — not in subclasses.
 ///
-/// @see cpu/observer/rdf.h, cpu/recorder/thermo.h, cpu/recorder/trajectory.h
+/// @see cpu/observer/rdf.h, cpu/recorder/thermo.h, cpu/io/frame_writer.h
 /// @see .claude/specs/async-analysis-snapshot-ring-02-device-ring.md
 #pragma once
 

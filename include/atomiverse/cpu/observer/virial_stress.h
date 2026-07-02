@@ -56,6 +56,10 @@ class Virial : public cpu::ComponentBase {
   public:
     std::string name() const override { return "virial"; }
     ComponentRole role() const override { return ComponentRole::Observer; }
+    /// @brief Writes `frame.stress` / `frame.stress_kinetic` — the driver
+    /// infrastructure scan detects the canonical Stress provider via
+    /// `role()==Observer && capabilities()&Stress`, not via `name()`.
+    Capability capabilities() const override { return Capability::Stress; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {{static_cast<int>(ATV::md::Phase::post_force), -50}};
     }

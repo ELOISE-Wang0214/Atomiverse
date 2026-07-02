@@ -1,6 +1,6 @@
 /// @file cpu/observer/vacf.cpp
-/// @brief CPU async VACF observer — accumulates velocities, delegates the
-/// autocorrelation to molrs.
+/// @brief CPU async VACF observer — streams each snapshot into the molrs
+/// VACF accumulator (bounded memory; all autocorrelation math in molrs).
 
 #include "atomiverse/cpu/observer/vacf.h"
 
@@ -8,37 +8,41 @@
 #include <fstream>
 #include <utility>
 
-#include "atomiverse/cpu/io/molrec.h" // cpu::compute_vacf (molrs bridge)
+#include "atomiverse/core/log.h"
 
 namespace ATV {
 
 VACF::VACF(double dt, int resolution, int freq, std::string output_file)
     : dt_(dt), resolution_(resolution), freq_(freq),
-      output_file_(std::move(output_file)) {}
+      output_file_(std::move(output_file)), acc_(resolution) {}
 
 void VACF::on_snapshot(const cpu::FrameSnapshot& snap) {
     const int n = snap.n_owned;
-    if (n <= 0) return;
-    if (n_frames_ == 0) n_atoms_ = n;
-    if (n != n_atoms_) return; // constant atom count required (single-rank MVP)
+    if (n <= 0)
+        return;
+    if (!gate_.admit(n)) // constant atom count required (single-rank MVP)
+        return;
 
-    // Row-major [n_frames, 3*n_atoms], blocked per frame: vx[0..n) vy[..) vz[..).
     // Snapshot velocity fields are double (widened from StorageReal at capture).
-    vel_.insert(vel_.end(), snap.vx.begin(), snap.vx.begin() + n);
-    vel_.insert(vel_.end(), snap.vy.begin(), snap.vy.begin() + n);
-    vel_.insert(vel_.end(), snap.vz.begin(), snap.vz.begin() + n);
-    ++n_frames_;
+    cpu::pack_blocked(scratch_, snap.vx, snap.vy, snap.vz, n);
+    if (acc_.accumulate(scratch_))
+        ++n_frames_;
 }
 
 void VACF::finalize() {
-    if (n_frames_ < 2 || n_atoms_ <= 0) return;
-    const int n_dof = 3 * n_atoms_;
-    const int res = resolution_ > 0 ? resolution_ : (n_frames_ - 1);
-    vacf_curve_ = cpu::compute_vacf(vel_, n_frames_, n_dof, dt_, res); // molrs
+    if (gate_.dropped() > 0)
+        ATV_WARN("[vacf] dropped {} snapshot(s) with changed atom count "
+                 "(constant count required)",
+                 gate_.dropped());
+    if (n_frames_ < 2)
+        return;
+
+    vacf_curve_ = acc_.finalize(); // molrs (matches batch FFT-ACF)
 
     std::ofstream os(output_file_);
-    os << "# VACF via molrs compute::VACF (DOF-averaged, FFT-ACF)\n";
-    os << "# t[fs]  VACF   (frames=" << n_frames_ << ", atoms=" << n_atoms_
+    os << "# VACF via molrs VacfAccumulator (DOF-averaged, streaming)\n";
+    os << "# t[fs]  VACF   (frames=" << n_frames_
+       << ", atoms=" << gate_.n_atoms() << ", max_lag<=" << resolution_
        << ")\n";
     for (std::size_t i = 0; i < vacf_curve_.size(); ++i)
         os << (dt_ * static_cast<double>(i)) << "  " << vacf_curve_[i] << '\n';

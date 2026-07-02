@@ -1,12 +1,15 @@
 /// @file cpu/observer/vacf.h
-/// @brief CPU async velocity-autocorrelation-function observer.
+/// @brief CPU async velocity-autocorrelation-function observer (molrs-backed,
+/// streaming).
 ///
-/// The engine measures (accumulates per-frame velocities from the async snapshot
-/// ring); molrs analyzes (`compute::VACF`, FFT-ACF). No analysis math in C++.
-/// The VACF is the VDOS / Green-Kubo-diffusion input, complementing the Einstein
-/// route in cpu::MSD.
+/// The engine measures (each captured `FrameSnapshot`'s velocities are packed
+/// into a reusable scratch); molrs analyzes (`VacfAccumulator`: streaming
+/// lagged-product sums with exact mean-subtraction correction, matching the
+/// batch FFT-ACF to round-off). Memory is O(resolution · n_atoms) for the lag
+/// ring — never O(trajectory). No analysis math in C++. The VACF is the VDOS /
+/// Green-Kubo-diffusion input, complementing the Einstein route in cpu::MSD.
 ///
-/// @see cpu::MSD (observer/msd.h) for the async-observer pattern.
+/// @see cpu::MSD (observer/msd.h) for the streaming async-observer pattern.
 #pragma once
 
 #include <string>
@@ -14,22 +17,29 @@
 
 #include "atomiverse/cpu/async/async_observer.h"
 #include "atomiverse/cpu/async/frame_snapshot.h"
+#include "atomiverse/cpu/observer/constant_count_gate.h"
+#include "atomiverse/cpu/observer/trajectory_metrics.h"
 
 namespace ATV {
 
 /// @brief MD async velocity-autocorrelation observer.
 ///
-/// Accumulates velocities from each captured `FrameSnapshot` into a row-major
-/// `[n_frames, 3*n_atoms]` buffer; `finalize()` delegates to molrs `compute::VACF`
-/// and writes the DOF-averaged VACF(t). Requires a constant atom count across the
-/// captured window (single-rank / no migration).
+/// Streams velocities from each captured `FrameSnapshot` into the molrs
+/// `VacfAccumulator`; `finalize()` reads the DOF-averaged VACF(t) and writes
+/// it to file. Requires a constant atom count across the captured window
+/// (single-rank / no migration).
 class VACF : public cpu::md::AsyncObserver {
   public:
     /// @param dt         time between captured frames [fs].
-    /// @param resolution max lag (0 = full: n_frames - 1).
+    /// @param resolution max lag [captured frames]; bounds the velocity ring
+    ///                   to O(resolution · n_atoms) memory. Must be >= 1 — a
+    ///                   streaming accumulator cannot defer "full trajectory"
+    ///                   resolution (runs shorter than `resolution` frames
+    ///                   resolve every lag they contain).
     /// @param freq       capture every `freq` steps (0 = every snapshot).
     /// @param output_file VACF(t) output path.
-    explicit VACF(double dt, int resolution = 0, int freq = 0,
+    /// @throws std::invalid_argument when `resolution < 1`.
+    explicit VACF(double dt, int resolution = 256, int freq = 0,
                   std::string output_file = "vacf.dat");
 
     std::string name() const override { return "vacf_async"; }
@@ -54,9 +64,11 @@ class VACF : public cpu::md::AsyncObserver {
     int resolution_;
     int freq_;
     std::string output_file_;
+
+    cpu::ConstantCountGate gate_;       ///< constant-atom-count admission gate
+    std::vector<double> scratch_;       ///< reused blocked vx|vy|vz buffer
+    cpu::compute::VACFAccumulator acc_; ///< molrs streaming VACF state
     int n_frames_ = 0;
-    int n_atoms_ = 0;
-    std::vector<double> vel_; ///< flat [n_frames, 3*n_atoms], blocked vx|vy|vz.
     std::vector<double> vacf_curve_;
 };
 

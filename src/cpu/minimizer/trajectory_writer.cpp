@@ -4,19 +4,17 @@
 
 #include "atomiverse/cpu/minimizer/trajectory_writer.h"
 
-#include <cstdio>
+#include <spdlog/fmt/fmt.h>
 
-#include "atomiverse/cpu/comm/domain.h"
-#include "atomiverse/cpu/comm/gather.h"
-#include "atomiverse/cpu/io/molrec.h"
-#include "atomiverse/cpu/recorder/xyz.h"
+#include "atomiverse/cpu/comm/gather_for_io.h"
 
 namespace ATV {
 namespace cpu {
 namespace minimizer {
 
 TrajectoryWriter::TrajectoryWriter(std::string filename, int stride)
-    : filename_(std::move(filename)), stride_(stride < 1 ? 1 : stride) {}
+    : filename_(std::move(filename)), stride_(stride < 1 ? 1 : stride),
+      writer_(filename_) {}
 
 void TrajectoryWriter::launch(const cpu::LaunchContext& ctx) {
     // Stride gate first: ctx.step is identical on every rank, so the
@@ -24,37 +22,27 @@ void TrajectoryWriter::launch(const cpu::LaunchContext& ctx) {
     if ((ctx.step % stride_) != 0)
         return;
 
-    // Multi-rank: gather the owner rows to rank 0 (collective — every rank
-    // participates before the rank gate) so the written frame holds the
-    // complete tag-ordered geometry, not one rank's subdomain + stale tail.
-    const auto* dd = ctx.runtime.dd;
-    const bool multi = dd && ctx.runtime.mpi_size > 1;
-    cpu::Frame gathered{0};
-    const cpu::Frame* src = &ctx.frame;
-    if (multi) {
-        const auto g = md::mpi::gather_to_root(ctx.frame, *dd);
-        if (ctx.runtime.mpi_rank == 0) {
-            gathered = md::mpi::to_frame(g);
-            src = &gathered;
-        }
-    }
-    if (ctx.runtime.mpi_rank != 0)
+    // Multi-rank: collective owner gather (every rank participates before
+    // the rank gate) so the written frame holds the complete tag-ordered
+    // geometry; returns nullptr on non-root ranks.
+    const cpu::Frame* src =
+        md::mpi::gather_for_root_io(ctx.frame, ctx.runtime, gathered_);
+    if (!src)
         return;
 
-    // First write: truncate any pre-existing file so we do not append to it.
+    // Per-frame step + energy on the extxyz comment line (the pre-refactor
+    // MolRec scalars, restored through the molrs meta hook).
+    const cpu::XYZMeta meta{
+        {"step", std::to_string(ctx.step)},
+        {"energy_eV", fmt::format("{:.10g}", ctx.frame.scalars.energy)}};
+
+    // First write truncates any pre-existing file; later writes append.
     if (!truncated_) {
-        std::remove(filename_.c_str());
+        writer_.write(*src, meta);
         truncated_ = true;
+    } else {
+        writer_.append(*src, meta);
     }
-
-    MolRec rec;
-    rec.set_geometry(*src);
-    rec.add_scalar("step", static_cast<double>(ctx.step));
-    rec.add_scalar("energy_eV", ctx.frame.scalars.energy);
-    rec.commit_frame();
-
-    XYZ writer(filename_);
-    writer.append(rec);
     ++n_written_;
 }
 

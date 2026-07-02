@@ -36,7 +36,6 @@
 #include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/io/molrec.h"
 #include "atomiverse/cpu/observer/mulliken.h"
 #include "atomiverse/cpu/recorder/xyz.h"
 #include "atomiverse/cpu/scf/integrals.h"
@@ -223,21 +222,11 @@ int main() {
                   << std::setprecision(6) << "  Spin contam.:    "
                   << static_cast<double>(result.spin_contamination) << "\n";
 
-        cpu::MolRec rec;
-        rec.set_geometry(frame);
-        rec.add_string("method", "UHF");
-        rec.add_scalar("energy", result.energy);
-        rec.add_scalar("iterations", double(result.iterations));
-        rec.add_scalar("n_alpha", double(result.n_alpha));
-        rec.add_scalar("n_beta", double(result.n_beta));
-        rec.add_scalar("spin_contamination", result.spin_contamination);
         xt::xtensor<double, 2> P_total = result.P_alpha + result.P_beta;
-        rec.add_field("charge", cpu::mulliken_charge(ints, P_total));
-        rec.add_field("spin_density",
-                      cpu::mulliken_spin(ints, result.P_alpha, result.P_beta));
-        rec.commit_frame();
-        cpu::print_summary(rec);
-        cpu::XYZ("h_atom.xyz").write_ext(rec);
+        auto charge = cpu::mulliken_charge(ints, P_total);
+        std::cout << "  Mulliken q[0]:   " << static_cast<double>(charge[0])
+                  << "\n";
+        cpu::XYZ("h_atom.xyz").write(frame);
         std::cout << "  Wrote h_atom.xyz\n\n";
     }
 
@@ -261,39 +250,17 @@ int main() {
                   << " Ha  (should be ~0 at equilibrium)\n\n";
 
         {
-            cpu::MolRec rhf_rec;
-            rhf_rec.set_geometry(frame);
-            rhf_rec.add_string("method", "RHF");
-            rhf_rec.add_scalar("energy", rhf.energy);
-            rhf_rec.add_scalar("iterations", double(rhf.iterations));
-            rhf_rec.add_scalar("n_alpha", double(ints.n_occ()));
-            rhf_rec.add_scalar("n_beta", double(ints.n_occ()));
-            rhf_rec.add_scalar("spin_contamination", double(0));
-            rhf_rec.add_field("charge", cpu::mulliken_charge(ints, rhf.P));
-            rhf_rec.add_field(
-                "spin_density",
-                std::vector<double>(frame.atoms.size(), double(0)));
-            rhf_rec.commit_frame();
-            cpu::print_summary(rhf_rec);
-            cpu::XYZ("h2_eq_rhf.xyz").write_ext(rhf_rec);
+            auto rhf_charge = cpu::mulliken_charge(ints, rhf.P);
+            std::cout << "  RHF Mulliken q[0]: "
+                      << static_cast<double>(rhf_charge[0]) << "\n";
+            cpu::XYZ("h2_eq_rhf.xyz").write(frame);
         }
         {
-            cpu::MolRec uhf_rec;
-            uhf_rec.set_geometry(frame);
-            uhf_rec.add_string("method", "UHF");
-            uhf_rec.add_scalar("energy", uhf.energy);
-            uhf_rec.add_scalar("iterations", double(uhf.iterations));
-            uhf_rec.add_scalar("n_alpha", double(uhf.n_alpha));
-            uhf_rec.add_scalar("n_beta", double(uhf.n_beta));
-            uhf_rec.add_scalar("spin_contamination", uhf.spin_contamination);
             xt::xtensor<double, 2> P_total = uhf.P_alpha + uhf.P_beta;
-            uhf_rec.add_field("charge", cpu::mulliken_charge(ints, P_total));
-            uhf_rec.add_field(
-                "spin_density",
-                cpu::mulliken_spin(ints, uhf.P_alpha, uhf.P_beta));
-            uhf_rec.commit_frame();
-            cpu::print_summary(uhf_rec);
-            cpu::XYZ("h2_eq_uhf.xyz").write_ext(uhf_rec);
+            auto uhf_charge = cpu::mulliken_charge(ints, P_total);
+            std::cout << "  UHF Mulliken q[0]: "
+                      << static_cast<double>(uhf_charge[0]) << "\n";
+            cpu::XYZ("h2_eq_uhf.xyz").write(frame);
         }
         std::cout << "  Wrote h2_eq_rhf.xyz, h2_eq_uhf.xyz\n\n";
     }
@@ -313,7 +280,6 @@ int main() {
     std::vector<double> r_vals, e_rhf_vals, e_uhf_vals, spin_contam_vals;
     std::vector<double> q_rhf_a, q_uhf_a, spin_uhf_a; // Mulliken on atom 0
 
-    cpu::MolRec rhf_scan, uhf_scan;
     cpu::XYZ rhf_xyz("h2_scan_rhf.xyz");
     cpu::XYZ uhf_xyz("h2_scan_uhf.xyz");
 
@@ -323,36 +289,15 @@ int main() {
         auto rhf = cpu::scf::rhf_solve(ints, tol, 100);
         auto uhf = cpu::scf::uhf_solve(ints, 1, 1, tol, max_iter_scan);
 
-        // Build RHF frame and stream to XYZ
-        rhf_scan.set_geometry(frame);
-        rhf_scan.add_string("method", "RHF");
-        rhf_scan.add_scalar("energy", rhf.energy);
-        rhf_scan.add_scalar("iterations", double(rhf.iterations));
-        rhf_scan.add_scalar("n_alpha", double(ints.n_occ()));
-        rhf_scan.add_scalar("n_beta", double(ints.n_occ()));
-        rhf_scan.add_scalar("spin_contamination", double(0));
+        // RHF: Mulliken (for the table/plots) + stream geometry to XYZ.
         auto rhf_charge = cpu::mulliken_charge(ints, rhf.P);
-        rhf_scan.add_field("charge", rhf_charge);
-        rhf_scan.add_field("spin_density",
-                           std::vector<double>(frame.atoms.size(), double(0)));
-        rhf_scan.commit_frame();
-        rhf_xyz.append_ext(rhf_scan);
+        rhf_xyz.append(frame);
 
-        // Build UHF frame and stream to XYZ
+        // UHF: Mulliken (for the table/plots) + stream geometry to XYZ.
         xt::xtensor<double, 2> P_total = uhf.P_alpha + uhf.P_beta;
         auto uhf_charge = cpu::mulliken_charge(ints, P_total);
         auto uhf_spin = cpu::mulliken_spin(ints, uhf.P_alpha, uhf.P_beta);
-        uhf_scan.set_geometry(frame);
-        uhf_scan.add_string("method", "UHF");
-        uhf_scan.add_scalar("energy", uhf.energy);
-        uhf_scan.add_scalar("iterations", double(uhf.iterations));
-        uhf_scan.add_scalar("n_alpha", double(uhf.n_alpha));
-        uhf_scan.add_scalar("n_beta", double(uhf.n_beta));
-        uhf_scan.add_scalar("spin_contamination", uhf.spin_contamination);
-        uhf_scan.add_field("charge", uhf_charge);
-        uhf_scan.add_field("spin_density", uhf_spin);
-        uhf_scan.commit_frame();
-        uhf_xyz.append_ext(uhf_scan);
+        uhf_xyz.append(frame);
 
         double dE = static_cast<double>(rhf.energy - uhf.energy);
         double qr = static_cast<double>(rhf_charge[0]);

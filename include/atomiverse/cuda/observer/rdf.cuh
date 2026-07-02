@@ -4,7 +4,7 @@
 /// Accumulates pair distances into histogram bins over multiple steps.
 /// Normalization and file output happen in destroy() via cpu::rdf_write.
 ///
-/// @see cpu::rdf_accumulate, cpu::rdf_write (cpu/observer/rdf.h)
+/// @see cpu::rdf_accumulate, cpu::rdf_write (cpu/observer/rdf_histogram.h)
 #pragma once
 
 #include <cmath>
@@ -14,10 +14,10 @@
 
 #include <cuda_runtime.h>
 
-#include "atomiverse/cpu/observer/rdf.h"
+#include "atomiverse/cpu/observer/rdf_histogram.h"
 #include "atomiverse/cuda/async/async_bridge.cuh"
-#include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
+#include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 
 namespace ATV {
 namespace cuda {
@@ -121,8 +121,8 @@ class RDF : public AsyncBridge {
         cudaMemcpyAsync(h_n_pairs_[slot], d_np_[slot], sizeof(int),
                         cudaMemcpyDeviceToHost, ds);
         cudaMemcpyAsync(h_dist_sq_[slot], d_dsq_[slot],
-                        pair_capacity_ * sizeof(real_t),
-                        cudaMemcpyDeviceToHost, ds);
+                        pair_capacity_ * sizeof(real_t), cudaMemcpyDeviceToHost,
+                        ds);
     }
 
     void on_data_ready(const LaunchContext&, int slot) override {
@@ -146,10 +146,22 @@ class RDF : public AsyncBridge {
         cpu::rdf_write(filename_, histogram_, n_samples_, n_atoms_, box_vol_,
                        r_max_, n_bins_);
         for (int i = 0; i < kRingDepth; ++i) {
-            if (d_dsq_[i]) { cudaFree(d_dsq_[i]); d_dsq_[i] = nullptr; }
-            if (d_np_[i]) { cudaFree(d_np_[i]); d_np_[i] = nullptr; }
-            if (h_dist_sq_[i]) { cudaFreeHost(h_dist_sq_[i]); h_dist_sq_[i] = nullptr; }
-            if (h_n_pairs_[i]) { cudaFreeHost(h_n_pairs_[i]); h_n_pairs_[i] = nullptr; }
+            if (d_dsq_[i]) {
+                cudaFree(d_dsq_[i]);
+                d_dsq_[i] = nullptr;
+            }
+            if (d_np_[i]) {
+                cudaFree(d_np_[i]);
+                d_np_[i] = nullptr;
+            }
+            if (h_dist_sq_[i]) {
+                cudaFreeHost(h_dist_sq_[i]);
+                h_dist_sq_[i] = nullptr;
+            }
+            if (h_n_pairs_[i]) {
+                cudaFreeHost(h_n_pairs_[i]);
+                h_n_pairs_[i] = nullptr;
+            }
         }
     }
 
@@ -163,11 +175,11 @@ class RDF : public AsyncBridge {
     int n_samples_ = 0;
     int pair_capacity_ = 0;
     std::vector<long long> histogram_;
-    real_t* d_dsq_[kRingDepth] = {}; ///< device-ring frozen r² buffer
-    int* d_np_[kRingDepth] = {};     ///< device-ring frozen pair count
+    real_t* d_dsq_[kRingDepth] = {};     ///< device-ring frozen r² buffer
+    int* d_np_[kRingDepth] = {};         ///< device-ring frozen pair count
     real_t* h_dist_sq_[kRingDepth] = {}; ///< pinned host r² (sqrt at read time)
     int* h_n_pairs_[kRingDepth] = {};    ///< pinned host pair count
-    std::vector<double> dist_;       ///< widened-to-double sqrt(r²) for histogram
+    std::vector<double> dist_; ///< widened-to-double sqrt(r²) for histogram
 };
 
 } // namespace cuda

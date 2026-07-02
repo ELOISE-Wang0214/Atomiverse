@@ -1,10 +1,10 @@
 /// @file tests/cpu/observer/test_rdf_observer.cpp
-/// @brief Tests for `RDF` async observer (Phase 1.9 port).
+/// @brief Tests for `RDF` async observer (molrs-backed g(r)).
 ///
 /// Verifies:
 ///   - registration via `sim.add(rdf)` (uses cpu::md::AsyncObserver default binding)
-///   - histogram accumulates across snapshots
-///   - finalize() writes the configured output file
+///   - snapshots stage into the molrs trajectory (n_samples accrues)
+///   - finalize() computes a nonzero g(r) via molrs and writes the output file
 ///   - first g(r) peak position matches FCC nearest-neighbor distance
 ///   - frequency() respected
 
@@ -64,7 +64,7 @@ struct ScopedFile {
 
 } // namespace
 
-// ── histogram accumulates across snapshots ──────────────────────────────
+// ── snapshots stage into the trajectory; molrs yields a nonzero g(r) ─────
 
 TEST(RDFObserverAsync, AccumulatesAcrossSnapshots) {
     auto frame =
@@ -85,10 +85,11 @@ TEST(RDFObserverAsync, AccumulatesAcrossSnapshots) {
 
     EXPECT_GE(rdf.n_samples(), 1)
         << "RDF should have received at least one snapshot";
-    long long total = 0;
-    for (auto h : rdf.histogram())
-        total += h;
-    EXPECT_GT(total, 0) << "expected nonzero pair counts";
+    // finalize() (run at teardown) fills g(r) via molrs compute::RDF.
+    double total = 0.0;
+    for (double g : rdf.gr())
+        total += g;
+    EXPECT_GT(total, 0.0) << "expected a nonzero g(r) from molrs";
 }
 
 // ── finalize writes the output file with valid g(r) format ──────────────
@@ -146,15 +147,17 @@ TEST(RDFObserverAsync, FirstPeakNearFCCNearestNeighbor) {
         sim.run(frame, 3); // 2 firing snapshots
     }
 
-    // Find first nonzero bin away from r=0.
-    const auto& hist = rdf.histogram();
+    // Find the g(r) peak away from r=0 (molrs-normalized curve).
+    const auto& g = rdf.gr();
+    ASSERT_EQ(static_cast<int>(g.size()), n_bins)
+        << "molrs should return one g(r) value per bin";
     int peak_bin = -1;
-    long long peak_count = 0;
-    // Skip the lowest few bins (no atoms within < 1 Å of each other on FCC).
+    double peak_val = 0.0;
+    // Skip the lowest few bins (no atoms within < 2 Å of each other on FCC).
     const int start_bin = static_cast<int>(2.0 / bin_width);
     for (int i = start_bin; i < n_bins; ++i) {
-        if (hist[i] > peak_count) {
-            peak_count = hist[i];
+        if (g[i] > peak_val) {
+            peak_val = g[i];
             peak_bin = i;
         }
     }

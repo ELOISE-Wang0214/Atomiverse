@@ -42,7 +42,8 @@ Backend root (shared infra):
 - `include/atomiverse/cpu/driver/evaluate.h` → `cpu::Evaluate` user-facing one-pass driver.
 - `include/atomiverse/cpu/driver/single_point.h` → `cpu::single_point()` shim (free function, not a class).
 - `include/atomiverse/cpu/frame/transfer.h` → `cpu::to_cuda(Frame)`.
-- `include/atomiverse/cpu/io/molrec.h` → `cpu::MolRec` (PIMPL over molrs).
+- `include/atomiverse/cpu/io/frame_writer.h` → `cpu::write_frame_xyz` / `cpu::write_frame_zarr` (raw-array molrs writers; the former `cpu::MolRec` is deleted).
+- `include/atomiverse/cpu/observer/trajectory_metrics.h` → `cpu::compute::{MSD, EinsteinDiffusion, VACF, RDF}` batch computes + `cpu::compute::{RDFAccumulator, MSDAccumulator, VACFAccumulator}` streaming accumulators (PIMPL over molrs).
 - `include/atomiverse/cpu/component/pair_evaluator.h` → `cpu::PairEvaluator` interface.
 - `include/atomiverse/cpu/frame_snapshot.h`, `snapshot_publisher.h`, `async_component_base.h`, `analysis_executor.h` → async-observer plumbing.
 
@@ -163,7 +164,7 @@ CUDA scf domain (gated `ATV_BUILD_RHF`):
 - `ATV::cpu::Evaluate` (one-pass driver) + `ATV::cpu::single_point()` (free function).
 - `ATV::cpu::PairEvaluator`.
 - `ATV::cpu::to_cuda()`.
-- `ATV::cpu::MolRec`, `ATV::cpu::print_summary()`.
+- `ATV::cpu::write_frame_xyz()`, `ATV::cpu::write_frame_zarr()`, `ATV::cpu::compute::*` (molrs analysis/IO wrappers).
 - `ATV::cpu::FrameSnapshot`, `ATV::cpu::SnapshotPublisher`, `ATV::cpu::AsyncComponentBase`, `ATV::cpu::AnalysisExecutor`.
 
 #### CPU md
@@ -254,7 +255,7 @@ Public `atomiverse` surface (re-exported in `__init__.py`):
 - Auto-injection at `build()` (in `install_infra()`): NPT / Berendsen barostat declares `reads()==Stress` → `VirialStress` injected (deduped by canonical-provider name); when `ATV_BUILD_MPI` is on and a pair is `set_pair()`-registered, `mpi::HaloExchangeForward{cutoff}` + `mpi::HaloExchangeReverse{}` are injected; pair-cutoff evaluators with `needs_neighbor_list()==true` and no `set_neighbor()` cause a `build()`-time throw.
 - xsimd / xtensor compatibility: xsimd 13.2.0 (CMake declared; NOTES.md historically referenced 11.2.0) is `target_link_libraries`-linked directly to `atomiverse` for `native_integrals.cpp` ERI hot loops. `XTENSOR_USE_XSIMD` is deliberately NOT defined globally (it triggers SIMD-backed xtensor storage which breaks `reshape_view` in `xc_grid_engine.h`). xtensor 0.27.1 is used with a `xtensor-compat/` shim that forwards old flat headers (`xtensor.hpp`, `xarray.hpp`, `xview.hpp`, `xnorm.hpp`, …) to their new subdirectory locations for `xtensor-blas` 0.21.0 transitive includes.
 - `-march=native` is required for CPU SCF (`target_compile_options(atomiverse PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-march=native>)`, language-guarded so NVCC never sees it). `-ffast-math` is library-default OFF; per-file opt-in is allowed for force-field kernels but explicitly forbidden on integrator translation units (`velocity_verlet.cpp`, `nose_hoover.cpp`, `init.cpp`) to preserve time-reversibility and the conserved Nose-Hoover Hamiltonian.
-- molrs: hard dependency via Corrosion + cxx-bridge. `cpu::MolRec` is PIMPL — `rust/cxx.h` does not appear in any public header. `molrs.hpp` is the single CXX-FFI include; CXX-generated code reaches it through that one header.
+- molrs: hard dependency via Corrosion + cxx-bridge. The bridge is raw-array FFI wrappers (`cpu/io/frame_writer.h` per-frame writers; `cpu::compute::*` batch computes + streaming accumulators in `cpu/observer/trajectory_metrics.h`, PIMPL) — `rust/cxx.h` does not appear in any public header. `molrs.hpp` is the single CXX-FFI include; CXX-generated code reaches it through that one header.
 - Doxygen: every public symbol carries `@brief`, `@param` (with units), `@return`. Phase enums document the order of their members.
 - Error policy: no factory functions (components are classes with constructors), no fallback values (lookup tables throw on unsupported input — for instance MINAO falls back to Hcore only when an atom is missing from the table; SCFConfig has no silent defaults). `[[deprecated]]` shims are not used during refactors — full no-backwards-compat updates instead.
 - Spec / notes locations: `.claude/specs/INDEX.md` plus per-feature spec files (`cpu-driver-taxonomy.md`, `cuda-driver-taxonomy.md`, `parallel-md-engine.md`, `driver-infra-auto-injection.md`, `eri-hpc-opt.md`, `python-bindings.md`, `phase3-hybrid-dft.md`, `phase4-vibrations.md`, `frame-block-refactor.md`, `rust-frame-lowering.md`, `libxc-xc-fix.md`, `cpu-qc-product-roadmap.md`, `phase1-productization.md`, `msu-pe-validation.md`, `parallel-md-engine.acceptance.md`); `.claude/NOTES.md` for evolving architectural decisions.
@@ -263,7 +264,7 @@ Public `atomiverse` surface (re-exported in `__init__.py`):
 ### Layer roles
 - `core/` — primitives (`Real`, `Int`, `Mat3`), units, constants, device tags, `backend_traits`, `Scheduling`, `DefaultBinding`, log wrapper. CUDA-free.
 - `facade/` — `Driver<PhaseEnum, DeviceTag>` plan / dispatch primitive, `Plan` / `PlanBuilder` / `PhaseBuilder` / `StageSlot`, phase enums (`md` / `minimizer` / `evaluate` / `scf`), `ComponentRole` + `Capability` bitset, `IterationStatus`. CUDA-free.
-- `cpu/` (root) — shared CPU infrastructure: `Frame`, `Box` + `box_simd`, `Context`, `ComponentBase` + `*Context`, `CPUDriver<PhaseEnum>`, `EvaluateDriver` / `DynamicsDriver` / `OptimizeDriver` category bases, `Evaluate` driver + `single_point()` shim, `to_cuda` transfer, `PairEvaluator` interface, `MolRec` PIMPL, async-analysis plumbing (`FrameSnapshot`, `SnapshotPublisher`, `AsyncComponentBase`, `AnalysisExecutor`).
+- `cpu/` (root) — shared CPU infrastructure: `Frame`, `Box` + `box_simd`, `Context`, `ComponentBase` + `*Context`, `CPUDriver<PhaseEnum>`, `EvaluateDriver` / `DynamicsDriver` / `OptimizeDriver` category bases, `Evaluate` driver + `single_point()` shim, `to_cuda` transfer, `PairEvaluator` interface, molrs frame-writer/analysis wrappers, async-analysis plumbing (`FrameSnapshot`, `SnapshotPublisher`, `AsyncComponentBase`, `AnalysisExecutor`).
 - `cpu/md/` — Integrator / Thermostat / Barostat / Evaluator components for classical MD; the `cpu::md::MD` user-facing DynamicsDriver lives here; pair-list / cell-list / PBC machinery; LJ pair evaluator; Zero* and KineticEnergy infrastructure components; `VirialStress`.
 - `cpu/comm/` — distributed extensions (RCB partitioner, halo-exchange forward + reverse, atom migration, gather, energy reduce). Single-rank no-ops in Phase 1, gated on `ATV_BUILD_MPI` (a.k.a. `ATV_USE_MPI` / `ATV_HAS_MPI`).
 - `cpu/bonded/` — bonded interactions (HarmonicBond, HarmonicAngle, MultiHarmonicDihedral). CPU-only domain; CUDA bonded variants live under `cuda/potentials/` rather than a `cuda/bonded/`.

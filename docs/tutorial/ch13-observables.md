@@ -105,13 +105,17 @@ CPU-only and works identically whether the frames came from `cpu::md::MD`,
 "one loop, many physics" seam from [Chapter 15](ch15-cross-method.md), seen from
 the analysis side.
 
-Inside `on_snapshot`/`finalize`, the observer does **no analysis math**. It
-either accumulates raw state into a molrs-backed trajectory (`cpu::MolRec`) and
-calls a molrs `compute`, or it accumulates a buffer and hands it to molrs at the
-end. This is the [infrastructure-in-molrs policy](../../.claude/specs/molrs-analysis-ffi.md):
-molrs already ships a freud-class analysis library behind stateless `Compute`
-and `Fit` traits, validated by its own Rust test suite. Atomiverse exposes it
-through a thin CXX FFI bridge rather than porting the numerics.
+Inside `on_snapshot`/`finalize`, the observer does **no analysis math** and holds
+**no record type**. It packs each snapshot's raw numbers (positions for MSD/RDF,
+velocities for VACF) into a reusable scratch and *streams* the frame into a
+molrs accumulator (`cpu::compute::{RDFAccumulator, MSDAccumulator,
+VACFAccumulator}`); `finalize()` just reads the finished curve back. State stays
+bounded — O(bins) for g(r), O(window · n_atoms) for the correlation rings —
+never O(trajectory), so million-step runs stream at constant memory. This is
+the [infrastructure-in-molrs policy](../../.claude/specs/molrs-analysis-ffi.md):
+molrs already ships a freud-class analysis library, validated by its own Rust
+test suite (including streaming-equals-batch equivalence tests). Atomiverse
+exposes it through a thin CXX FFI bridge rather than porting the numerics.
 
 ## The C++ API: Attach an Observer, Read the Result
 
@@ -162,8 +166,9 @@ disk — the observable is computed as the run proceeds.
 
 ### Structure: the radial distribution function `ATV::RDF`
 
-`ATV::RDF` accumulates pair distances from each snapshot into a shared histogram
-and normalises it to g(r) at `finalize()`:
+`ATV::RDF` streams each snapshot's positions + cell into the molrs
+`RdfAccumulator` — pair binning (per-frame LinkCell) and ideal-gas shell-volume
+normalisation all live in molrs; the observer keeps only O(n_bins) state:
 
 ```cpp
 // r_max [Å], n_bins, capture frequency [steps], output file
@@ -171,7 +176,7 @@ ATV::RDF rdf{/*r_max=*/6.0, /*n_bins=*/200, /*freq=*/100, "rdf.dat"};
 sim.set_observer(rdf);
 sim.build();
 sim.run(frame, 1'000'000);
-// rdf.dat now holds two columns: r [Å], g(r)
+// rdf.dat now holds two columns: r [Å], g(r); rdf.gr() exposes the curve
 ```
 
 Choose `r_max` no larger than half the shortest box length (the minimum-image
@@ -179,17 +184,16 @@ convention), and enough bins that the first peak is well resolved. The output is
 a **physical** result: for the FCC argon system the first g(r) peak sits at the
 nearest-neighbour distance $a/\sqrt{2}$.
 
-> **Note.** `ATV::RDF` is currently a hand-rolled C++ histogram — the one piece
-> of analysis math that predates the molrs-first policy. It is scheduled to be
-> routed through molrs `compute::rdf` (validated for parity, then the C++
-> histogram is deprecated). The public API above does not change when that
-> happens.
+> **The engine measures, molrs analyses.** Like `ATV::MSD` and `ATV::VACF`
+> below, the C++ observer only *captures* state — every line of binning and
+> normalisation lives in molrs `compute::RDF`, reused verbatim across the
+> Python and WASM bindings. The engine holds no duplicate histogram.
 
 ### Transport, Einstein route: `ATV::MSD` and self-diffusion
 
-`ATV::MSD` stages positions into a molrs-backed trajectory and, at `finalize()`,
-calls molrs `compute::MSD` (Direct mode, first captured frame = reference) and
-`fit::EinsteinDiffusion` for $D$:
+`ATV::MSD` streams positions into the molrs `MsdAccumulator` (Direct mode,
+first captured frame = reference) and, at `finalize()`, reads the MSD(t) curve
+plus the Einstein $D$ from the windowed-MSD slope fit:
 
 ```cpp
 // dt between captured frames = timestep * freq = 4 fs * 25 = 100 fs
@@ -206,23 +210,31 @@ The `dt` you pass **must** equal `timestep * freq` — it is the physical time
 between captured frames, the abscissa of MSD(t). `diffusion()` returns the
 Einstein coefficient from a linear fit over the diffusive window (it is `NaN` if
 there are too few frames — a degenerate input never aborts across the FFI).
+The optional fourth constructor argument `window` (default 256) caps the lag
+range of the windowed-MSD fit; it also bounds the observer's memory to
+O(`window` · n_atoms), so arbitrarily long runs stream at constant footprint.
 Convert to laboratory units with $1\ \text{Å}^2/\text{fs} = 0.1\ \text{cm}^2/\text{s}$.
 
 ### Transport, Green-Kubo route: `ATV::VACF`
 
-`ATV::VACF` accumulates per-frame velocities into a flat `[n_frames,
-3·n_atoms]` buffer and, at `finalize()`, calls molrs `compute::VACF` (an
-FFT-based, DOF-averaged autocorrelation):
+`ATV::VACF` streams per-frame velocities into a molrs accumulator
+(lagged-product sums over a `resolution`-deep ring buffer — numerically
+identical to the FFT-based, DOF-averaged batch autocorrelation) and reads the
+curve at `finalize()`:
 
 ```cpp
-// dt [fs], resolution (max lag; 0 = full), freq [steps], output
-ATV::VACF vacf{/*dt=*/100.0, /*resolution=*/0, /*freq=*/25, "vacf.dat"};
+// dt [fs], resolution (max lag in captured frames, >= 1), freq [steps], output
+ATV::VACF vacf{/*dt=*/100.0, /*resolution=*/256, /*freq=*/25, "vacf.dat"};
 sim.set_observer(vacf);
 sim.build();
 sim.run(frame, 2'000'000);
 
 const std::vector<double>& c = vacf.curve();   // VACF(t), c[0] == ⟨v²⟩
 ```
+
+`resolution` bounds both the max lag of the curve and the observer's memory
+(O(`resolution` · n_atoms)); runs shorter than `resolution` frames resolve
+every lag they contain.
 
 The VACF requires a constant atom count over the captured window (single rank,
 no domain migration). Its running time-integral is the Green-Kubo diffusion

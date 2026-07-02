@@ -74,7 +74,7 @@ directly on that host frame with no transfer step.
 
 Third, it provides CPU-only utilities that are not part of the staged CUDA
 component model, such as integral generation, RHF/UHF/UKS solvers, Mulliken
-analysis, density grids, `MolRec`, and XYZ writing.
+analysis, density grids, trajectory analysis, and XYZ writing.
 
 ### 4. CUDA backend and staged components
 

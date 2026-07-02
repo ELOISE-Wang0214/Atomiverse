@@ -171,15 +171,18 @@ directory is a pillar layer, an infrastructure cluster, or a method domain:
   driver/      Driver pillar: category bases, concrete Evaluate, single_point,
                step executor, backend_traits, step-loop instrumentation
   component/   Component pillar: ComponentBase, Launch/Context, generic + shared bases
-  io/          external formats / molrs bridge (molrec, lammps_data; CPU only)
+  io/          external formats / molrs bridge (extxyz, frame_writer, lammps_data; CPU only)
   device/      CUDA/torch runtime utilities (device_manager, error, launch, timer)
   comm/        infra: domain decomposition, halo exchange, migration, reductions
   neighbor/    infra: cell/Verlet neighbor structures + the published PairList
   async/       infra: async analysis pipeline (snapshot ring, D2H bridge, executors)
+  linalg/      infra: shared dense linear algebra (eigensolve, density build; CPU only)
   md/          domain: integrators, thermostats, barostats, deform, velocity init
   minimizer/   domain: SD, CG, L-BFGS + opt recorders
   scf/         domain: Gaussian-basis SCF (solver, integrals, gradients, evaluator)
   pw/          domain: plane-wave DFT (PWSolver, PWEvaluator)
+  gpw/         domain: Gaussian-and-plane-waves DFT (GPWSolver, GPWEvaluator; CPU only)
+  xc/          domain: shared exchange-correlation pieces (Padé LDA parameterization)
   vib/         domain: finite-difference Hessian, thermochemistry (CPU only)
   kspace/      domain: reciprocal-space electrostatics (Ewald, PME)
   potentials/  domain: real-space force-field evaluators (pair + bonded styles)
@@ -201,13 +204,13 @@ directory is a pillar layer, an infrastructure cluster, or a method domain:
   `cpu/comm/`, `cpu::Frame` in `cpu/frame/`); aligning them is a deliberate
   follow-up, not a drive-by.
 
-**Box** (`cpu::Box` in `cpu/box.h`, `cuda::Box` in `cuda/box.cuh`) is the
-canonical cell type at each backend root: owns the cell matrix plus a
-per-step-immutable cache (`inv_cell`, `inv_L`, `half_L`, `ortho`) and exposes
-`length(d)`, `volume()`, `min_image(...)`, `wrap_axis(...)`, `scale_*`,
-`set_cell`. CPU adds an xsimd `min_image_batch<B>` in `cpu/box_simd.h`. LJ keeps
-an inlined branchy min-image in its xsimd ket-loop because member-load-through-
-`this` defeats hoisting there (~7%/step).
+**Box** (`cpu::Box` in `cpu/frame/box.h`, `cuda::Box` in `cuda/frame/box.cuh`)
+is the canonical cell type in each backend's `frame/` layer: owns the cell
+matrix plus a per-step-immutable cache (`inv_cell`, `inv_L`, `half_L`, `ortho`)
+and exposes `length(d)`, `volume()`, `min_image(...)`, `wrap_axis(...)`,
+`scale_*`, `set_cell`. CPU adds an xsimd `min_image_batch<B>` in
+`cpu/frame/box_simd.h`. LJ keeps an inlined branchy min-image in its xsimd
+ket-loop because member-load-through-`this` defeats hoisting there (~7%/step).
 
 ### Facade (CUDA-free)
 
@@ -334,9 +337,12 @@ exception). See `.claude/NOTES.md` for the classification tables.
 
 ### molrs integration
 
-molrs (Rust) is a hard dependency for I/O. `cpu::MolRec` uses PIMPL — no
-`rust/cxx.h` in public headers. `molrs.hpp` is the only include for
-CXX-generated code.
+molrs (Rust) is a hard dependency for I/O and trajectory analysis. The engine
+*measures*; molrs *analyzes/stores*: bridge calls are raw-array FFI wrappers —
+per-frame writers in `cpu/io/frame_writer.h`, batch computes + streaming
+accumulators (`cpu::compute::*`) in `cpu/observer/trajectory_metrics.h`
+(PIMPL) — with no `rust/cxx.h` in public headers. `molrs.hpp` is the only
+include for CXX-generated code.
 
 ## Conventions
 

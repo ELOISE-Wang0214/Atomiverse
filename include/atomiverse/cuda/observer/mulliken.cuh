@@ -2,7 +2,7 @@
 /// @brief MullikenObs -- header-only Mulliken population observer (async D2H bridge).
 ///
 /// Pure observer: computes and stores per-atom charges.  Does NOT write to
-/// MolRec or any file format — that is the recorder's job.
+/// any file format — that is the recorder's job.
 ///
 /// Registers on a `cuda::Evaluate` driver alongside a
 /// `cuda::scf::SCFEvaluator`; it runs in the `evaluate::Phase::finalize`
@@ -82,10 +82,10 @@ class MullikenObs : public AsyncBridge {
   protected:
     void on_build(const BuildContext&) override {
         n_basis_ = evaluator_->workspace().n;
-        const std::size_t n2 =
-            static_cast<std::size_t>(n_basis_) * static_cast<std::size_t>(n_basis_);
+        const std::size_t n2 = static_cast<std::size_t>(n_basis_)
+                               * static_cast<std::size_t>(n_basis_);
         for (int i = 0; i < kRingDepth; ++i) {
-            cudaMalloc(&d_P_[i], n2 * sizeof(double));   // device-ring slot
+            cudaMalloc(&d_P_[i], n2 * sizeof(double)); // device-ring slot
             cudaMalloc(&d_energy_[i], sizeof(double));
             cudaMallocHost(&h_P_[i], n2 * sizeof(double)); // pinned host slot
             cudaMallocHost(&h_energy_[i], sizeof(double));
@@ -102,8 +102,8 @@ class MullikenObs : public AsyncBridge {
         // before a subsequent (AIMD) SCF solve overwrites the workspace.
         auto ms = static_cast<cudaStream_t>(ctx.runtime.stream);
         auto& f = ctx.frame;
-        const std::size_t n2 =
-            static_cast<std::size_t>(n_basis_) * static_cast<std::size_t>(n_basis_);
+        const std::size_t n2 = static_cast<std::size_t>(n_basis_)
+                               * static_cast<std::size_t>(n_basis_);
         cudaMemcpyAsync(d_P_[slot], evaluator_->workspace().P,
                         n2 * sizeof(double), cudaMemcpyDeviceToDevice, ms);
         if (f.scalars)
@@ -113,8 +113,8 @@ class MullikenObs : public AsyncBridge {
 
     void d2h_slot(const LaunchContext& ctx, int slot) override {
         auto ds = static_cast<cudaStream_t>(ctx.runtime.defer_stream);
-        const std::size_t n2 =
-            static_cast<std::size_t>(n_basis_) * static_cast<std::size_t>(n_basis_);
+        const std::size_t n2 = static_cast<std::size_t>(n_basis_)
+                               * static_cast<std::size_t>(n_basis_);
         cudaMemcpyAsync(h_P_[slot], d_P_[slot], n2 * sizeof(double),
                         cudaMemcpyDeviceToHost, ds);
         cudaMemcpyAsync(h_energy_[slot], d_energy_[slot], sizeof(double),
@@ -136,10 +136,22 @@ class MullikenObs : public AsyncBridge {
 
     void on_destroy(const DestroyContext&) override {
         for (int i = 0; i < kRingDepth; ++i) {
-            if (d_P_[i]) { cudaFree(d_P_[i]); d_P_[i] = nullptr; }
-            if (d_energy_[i]) { cudaFree(d_energy_[i]); d_energy_[i] = nullptr; }
-            if (h_P_[i]) { cudaFreeHost(h_P_[i]); h_P_[i] = nullptr; }
-            if (h_energy_[i]) { cudaFreeHost(h_energy_[i]); h_energy_[i] = nullptr; }
+            if (d_P_[i]) {
+                cudaFree(d_P_[i]);
+                d_P_[i] = nullptr;
+            }
+            if (d_energy_[i]) {
+                cudaFree(d_energy_[i]);
+                d_energy_[i] = nullptr;
+            }
+            if (h_P_[i]) {
+                cudaFreeHost(h_P_[i]);
+                h_P_[i] = nullptr;
+            }
+            if (h_energy_[i]) {
+                cudaFreeHost(h_energy_[i]);
+                h_energy_[i] = nullptr;
+            }
         }
     }
 

@@ -42,9 +42,9 @@
 
 #include <string>
 
+#include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/neighbor/cell_list.h"
-#include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/neighbor/pair_list.h"
 
 namespace ATV {
@@ -85,6 +85,10 @@ class NeighborList : public cpu::ComponentBase {
 
     std::string name() const override { return "neighbor_list"; }
 
+    /// @brief Supply side of the `needs_neighbor_list()` contract — the
+    /// driver infrastructure scan keys on this, not on `name()`.
+    bool provides_neighbor_list() const override { return true; }
+
     void build(const cpu::BuildContext& ctx) override {
         reinit_strategy(ctx.runtime, ctx.frame);
         const int n_active = active_count(ctx.runtime, ctx.frame);
@@ -95,10 +99,9 @@ class NeighborList : public cpu::ComponentBase {
         // the allocator. `pairs_.neighbors` is a `std::vector<int>` and
         // amortises growth itself -- leave it empty, the first refresh
         // reaches the correct size within one resize.
-        strategy_.refresh_half(ctx.frame, n_active, pairs_,
-                               is_multi_rank(ctx.runtime)
-                                   ? ctx.runtime.dd->n_local
-                                   : -1);
+        strategy_.refresh_half(
+            ctx.frame, n_active, pairs_,
+            is_multi_rank(ctx.runtime) ? ctx.runtime.dd->n_local : -1);
         ++pairs_.version;
         trim_inum_to_local(ctx.runtime, pairs_);
         ctx.runtime.pair_list = &pairs_;
@@ -141,7 +144,8 @@ class NeighborList : public cpu::ComponentBase {
         //   check yes:   max_disp * 2 > skin → rebuild (half-skin trigger)
         //   check no:    rebuild unconditionally once the every/delay gate opens
         const bool size_stale = n_active != strategy_.n_at_last_build();
-        const bool halo_stale = is_multi_rank(ctx.runtime)
+        const bool halo_stale =
+            is_multi_rank(ctx.runtime)
             && ctx.runtime.dd->halo_generation != last_halo_generation_;
         const bool delay_ok = ago_ >= delay_;
         const bool every_ok = (ago_ % every_) == 0;
@@ -153,10 +157,9 @@ class NeighborList : public cpu::ComponentBase {
             && (!check_ || strategy_.needs_rebuild(ctx.frame, n_active));
         if (size_stale || halo_stale || disp_rebuild) {
             strategy_.build(ctx.frame, n_active);
-            strategy_.refresh_half(ctx.frame, n_active, pairs_,
-                               is_multi_rank(ctx.runtime)
-                                   ? ctx.runtime.dd->n_local
-                                   : -1);
+            strategy_.refresh_half(
+                ctx.frame, n_active, pairs_,
+                is_multi_rank(ctx.runtime) ? ctx.runtime.dd->n_local : -1);
             ++pairs_.version;
             ago_ = 0;
             ++n_rebuilds_;

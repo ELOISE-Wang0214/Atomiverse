@@ -254,9 +254,10 @@ opt.on(minimizer::Phase::end_of_step)
    .add(cpu::minimizer::OptLog{"aspirin_opt.tsv", /*also_stdout=*/true});
 ```
 
-`FinalGeometry` overwrites a single XYZ file each step. After the run
-it holds the last-visited geometry — converged or not. Cheap to enable
-and ideal for "I just want the final coordinates":
+`FinalGeometry` writes a single-frame XYZ file exactly once, at the end
+of the run. After the run it holds the last-visited geometry — converged
+or not. Cheap to enable and ideal for "I just want the final
+coordinates":
 
 ```cpp
 opt.on(minimizer::Phase::end_of_step)

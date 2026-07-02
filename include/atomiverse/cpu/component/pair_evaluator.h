@@ -40,6 +40,10 @@ class PairEvaluator : public cpu::ComponentBase {
 
     /// @brief Pair-cutoff evaluators always need a neighbor list.
     bool needs_neighbor_list() const override { return true; }
+
+    /// @brief Surface `pair_cutoff()` to the driver infrastructure scan
+    /// (halo-exchange sizing) — capability-typed, no `dynamic_cast`.
+    Real neighbor_cutoff_hint() const override { return pair_cutoff(); }
 };
 
 } // namespace cpu

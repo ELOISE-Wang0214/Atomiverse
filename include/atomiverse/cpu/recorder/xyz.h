@@ -1,62 +1,63 @@
 /// @file cpu/recorder/xyz.h
-/// @brief XYZ, extxyz, and Zarr trajectory writers — all backed by molrs.
+/// @brief XYZ and Zarr trajectory writers/readers — all backed by molrs.
 ///
-/// @see cpu::MolRec (cpu/molrec.h)
+/// The writers take a `cpu::Frame` and hand its raw per-atom arrays to molrs one
+/// frame at a time (`cpu::write_frame_xyz`); there is no C++ record type.
+///
+/// @see cpu::write_frame_xyz / cpu::write_frame_zarr (cpu/io/frame_writer.h)
 #pragma once
 
 #include <string>
-
-#include "atomiverse/cpu/io/molrec.h"
+#include <utility>
+#include <vector>
 
 namespace ATV {
 namespace cpu {
 
-/// @brief XYZ and extxyz trajectory writer.
+class Frame; // fwd — CUDA-safe (this header is pulled by 02_rhf.cu)
+
+/// @brief Frame-level key=value metadata serialized into the extxyz comment
+/// line (values pre-formatted by the caller) — e.g. `step`, `energy_eV`.
+using XYZMeta = std::vector<std::pair<std::string, std::string>>;
+
+/// @brief XYZ trajectory writer (standard element + coordinates).
+///
+/// `write`/`append` write one frame's geometry through molrs. Extraction
+/// scratch is reused across calls, so per-frame appends on a long-lived
+/// writer do not reallocate on the steady-state path.
 class XYZ {
   public:
+    /// @brief Construct.
+    /// @param filename Output XYZ path.
     explicit XYZ(const std::string& filename);
-    ~XYZ();
-    XYZ(const XYZ&) = delete;
-    XYZ& operator=(const XYZ&) = delete;
 
-    void write(const MolRec& rec);
-    void write_ext(const MolRec& rec);
-    void append(const MolRec& rec);
-    void append_ext(const MolRec& rec);
+    void write(const Frame& frame);  ///< truncate/create, write one frame
+    void append(const Frame& frame); ///< append one frame
+
+    /// @brief truncate/create, write one frame + extxyz comment-line metadata.
+    void write(const Frame& frame, const XYZMeta& meta);
+    /// @brief append one frame + extxyz comment-line metadata.
+    void append(const Frame& frame, const XYZMeta& meta);
 
   private:
+    void write_impl(const Frame& frame, bool append, const XYZMeta& meta);
+
     std::string filename_;
+    std::vector<int> type_id_; ///< per-frame extraction scratch (reused)
+    std::vector<double> x_, y_, z_;
 };
 
-/// @brief Zarr V3 trajectory writer backed by molrs::MolRec::write_zarr.
-class ZarrWriter {
-  public:
-    explicit ZarrWriter(const std::string& path);
-    ~ZarrWriter();
-    ZarrWriter(const ZarrWriter&) = delete;
-    ZarrWriter& operator=(const ZarrWriter&) = delete;
-
-    /// @brief Write all committed frames to the Zarr store.
-    void write(const MolRec& rec);
-
-  private:
-    std::string path_;
-};
-
-class Frame; // fwd
-
-/// @brief Zarr V3 reader — loads the first frame of a Zarr-stored
-///        trajectory into a cpu::Frame.
+/// @brief Zarr V3 reader — loads the first frame of a Zarr-stored trajectory
+///        into a cpu::Frame.
 ///
-/// Companion to `ZarrWriter`. Used by checkpoint reload: stage 1 dumps
-/// its end-state via `ZarrWriter`, subsequent debug iterations call
-/// `ZarrReader::read_into(frame)` to skip stage 1.
+/// Used by checkpoint reload: a bench stage dumps its end-state via
+/// `cpu::write_frame_zarr`, subsequent debug iterations call
+/// `ZarrReader::read_into(frame)` to skip that stage.
 ///
 /// The reader expects per-atom columns `x, y, z, vx, vy, vz, mass, tag,
-/// image_x, image_y, image_z` (all f64) and an integer `type` column
-/// in the `atoms` block, plus a 9-element `simbox` (row-major
-/// h-matrix). These are exactly the fields `dump_frame_to_zarr()`
-/// writes — see benchmarks/md/polyethylene_tension.cpp.
+/// image_x, image_y, image_z` (all f64) and an f64 `type` column in the
+/// `atoms` block, plus a 9-element `simbox` (row-major h-matrix) — exactly the
+/// fields `dump_frame_to_zarr()` writes (benchmarks/md/pe/.../polyethylene_tension.cpp).
 class ZarrReader {
   public:
     explicit ZarrReader(const std::string& path);

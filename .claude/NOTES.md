@@ -240,6 +240,11 @@ RHFForce, UHFForce, KSForce bypass the Driver/Component model — each owns a ve
 
 ## [2026-04-04] molrs integration complete
 
+> **Superseded [2026-07-02]:** `cpu::MolRec` (and `io/molrec.{h,cpp}`) is
+> deleted — the bridge is now raw-array FFI wrappers (`cpu/io/frame_writer.h`
+> per-frame writers; `cpu::compute::*` batch computes + streaming accumulators
+> in `cpu/observer/trajectory_metrics.h`, PIMPL). See the 2026-07-02 entry.
+
 molrs CXX FFI integration is done. Key decisions that diverged from original spec:
 - No `MolFrame` type in C++ -- all frame data lives in `molrs::MolRec` on the Rust side
 - `cpu::MolRec` uses PIMPL (not direct `rust::Box`), keeping `rust/cxx.h` out of public headers

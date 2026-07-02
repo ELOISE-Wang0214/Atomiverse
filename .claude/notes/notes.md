@@ -127,3 +127,14 @@ over a 12-launch window.
 **Deferred:** Phase 5b IntegralPack/ShellList hot-path split, PW
 augmentation charges (E_aug = 0 for the norm-conserving UPF v1 path),
 PW forces (PWEvaluator is Energy-only).
+
+## [2026-07-02] Streaming molrs analysis accumulators + recorder/IO unification
+
+Post-review fixes on the observer/recorder/io refactor (multi-axis review, REQUEST CHANGES):
+- **Streaming accumulators** replace whole-trajectory buffering in the RDF/MSD/VACF observers. molrs core gains `compute::{RDFAccumulator, MSDAccumulator}` and `compute::fit::VACFAccumulator` (each unit-tested streaming==batch; RDF is bit-identical, VACF matches FFT to round-off); the batch `RDF::compute` is reimplemented ON the accumulator (one source of truth). FFI: `molrs::{rdf,msd,vacf}_accumulator_new` opaque types; C++ wrappers (PIMPL, CUDA-safe) in `cpu/observer/trajectory_metrics.h`. Memory: O(n_bins) for g(r), O(window·n_atoms) / O(resolution·n_atoms) for the correlation rings.
+- **API changes:** `ATV::MSD` gains `window` ctor param (default 256, caps the Einstein-D windowed fit lag); `ATV::VACF` `resolution` now must be >= 1 (default 256; `0 = full trajectory` is gone — impossible to stream). Both throw `std::invalid_argument` on bad values (no-fallback).
+- **Shared measure-side skeleton:** `cpu/observer/constant_count_gate.h` (`ConstantCountGate` + `pack_blocked`) replaces the triplicated on_snapshot boilerplate; dropped frames are counted and warned at finalize (no more silent data loss).
+- **One g(r) emitter:** `cpu::rdf_write_curve` in rdf_histogram.{h,cpp}; legacy `rdf_write` normalizes then delegates. Legacy histogram pair carries `TODO(roykid, 2026-07-02)` pending the CUDA observer's molrs migration.
+- **One XYZ emitter:** molrs `trajectory_append` FFI deleted (with recorder/trajectory.{h,cpp}); everything routes through `write_frame_xyz`. New `write_frame_xyz_meta` FFI serializes key=value pairs into the extxyz comment line — `TrajectoryWriter` re-attaches `step`/`energy_eV` through it (restores the pre-refactor MolRec scalars).
+- **Driver infra scan is capability-typed:** `scan_pending_infra_()` keys on `provides_neighbor_list()/provides_halo_send()/provides_halo_recv()/neighbor_cutoff_hint()` + `role()==Observer && capabilities()&Stress` — no `name()` matching, no `dynamic_cast` (mirrors `cuda::md::MD::install_infra_`). `cpu::md::Virial` now declares `capabilities()==Stress`.
+- **Stored-ERI RHF Fock:** `build_coulomb_exchange_fused` adapts the contiguous ERI storage zero-copy (`xt::adapt`) instead of materializing an n⁴ copy per SCF iteration.

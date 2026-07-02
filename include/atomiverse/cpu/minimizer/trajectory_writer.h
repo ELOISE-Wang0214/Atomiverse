@@ -21,6 +21,7 @@
 
 #include "atomiverse/core/binding.h"
 #include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/recorder/xyz.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -29,9 +30,10 @@ namespace minimizer {
 
 /// @brief Append the current geometry to an XYZ file each step.
 ///
-/// File is opened on first launch (or per-call if the backend is stateless)
-/// and written one frame at a time through molrs. Respects `stride` to thin
-/// long trajectories.
+/// The first launched step truncates any pre-existing file; every later
+/// step appends one frame through molrs. Respects `stride` to thin long
+/// trajectories. The gather scratch and the XYZ writer are members, reused
+/// across launches (no allocation on the steady-state path).
 ///
 /// MPI-aware: under multi-rank every rank joins a collective owner gather
 /// (`md::mpi::gather_to_root`, tag-ordered) and only rank 0 writes the
@@ -59,6 +61,8 @@ class TrajectoryWriter : public cpu::ComponentBase {
   private:
     std::string filename_;
     int stride_;
+    XYZ writer_;             ///< molrs-backed writer (reused every launch)
+    cpu::Frame gathered_{0}; ///< multi-rank gather scratch (rank 0 only)
     int n_written_ = 0;
     bool truncated_ = false;
 };

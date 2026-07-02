@@ -1,12 +1,10 @@
 /// @file cpu/minimizer/final_geometry.cpp
-/// @brief FinalGeometry -- rewrite a single-frame XYZ each step.
+/// @brief FinalGeometry -- write the final geometry once, at end of run.
 ///        MPI-aware: collective owner gather, rank-0 I/O.
 
 #include "atomiverse/cpu/minimizer/final_geometry.h"
 
-#include "atomiverse/cpu/comm/domain.h"
-#include "atomiverse/cpu/comm/gather.h"
-#include "atomiverse/cpu/io/molrec.h"
+#include "atomiverse/cpu/comm/gather_for_io.h"
 #include "atomiverse/cpu/recorder/xyz.h"
 
 namespace ATV {
@@ -16,34 +14,31 @@ namespace minimizer {
 FinalGeometry::FinalGeometry(std::string filename)
     : filename_(std::move(filename)) {}
 
-void FinalGeometry::launch(const cpu::LaunchContext& ctx) {
-    // Multi-rank: gather the owner rows to rank 0 (collective — every rank
-    // participates before the rank gate) so the snapshot holds the complete
-    // tag-ordered geometry, not one rank's subdomain + stale tail.
-    const auto* dd = ctx.runtime.dd;
-    const bool multi = dd && ctx.runtime.mpi_size > 1;
+void FinalGeometry::launch(const cpu::LaunchContext& /*ctx*/) {
+    // Record-only: the contract is "final geometry after run()", so the
+    // gather + write happens exactly once in destroy() (end-of-run hook)
+    // instead of re-gathering and rewriting the file every end_of_step.
+    write_pending_ = true;
+}
+
+void FinalGeometry::destroy(const cpu::DestroyContext& ctx) {
+    if (!write_pending_)
+        return;
+    write_pending_ = false;
+
+    // Multi-rank: collective owner gather (every rank enters, in lockstep
+    // because write_pending_ is set identically on all ranks); returns
+    // nullptr on non-root ranks.
     cpu::Frame gathered{0};
-    const cpu::Frame* src = &ctx.frame;
-    if (multi) {
-        const auto g = md::mpi::gather_to_root(ctx.frame, *dd);
-        if (ctx.runtime.mpi_rank == 0) {
-            gathered = md::mpi::to_frame(g);
-            src = &gathered;
-        }
-    }
-    if (ctx.runtime.mpi_rank != 0)
+    const cpu::Frame* src =
+        md::mpi::gather_for_root_io(ctx.frame, ctx.runtime, gathered);
+    if (!src)
         return;
 
-    MolRec rec;
-    rec.set_geometry(*src);
-    rec.add_scalar("step", static_cast<double>(ctx.step));
-    rec.add_scalar("energy_eV", ctx.frame.scalars.energy);
-    rec.commit_frame();
-
-    // XYZ::write truncates any existing file; every call replaces the prior
-    // contents with a single-frame snapshot.
+    // XYZ::write truncates any existing file: the result is a single-frame
+    // snapshot of the final geometry.
     XYZ writer(filename_);
-    writer.write(rec);
+    writer.write(*src);
     ++n_writes_;
 }
 

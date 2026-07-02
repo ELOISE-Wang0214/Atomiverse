@@ -99,6 +99,9 @@ class HaloSend : public cpu::ComponentBase {
     HaloSend& operator=(const HaloSend&) = delete;
 
     std::string name() const override { return "halo_send"; }
+    /// @brief Send half of the DD halo pair — the driver infrastructure
+    /// scan keys on this, not on `name()`.
+    bool provides_halo_send() const override { return true; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {{static_cast<int>(ATV::md::Phase::pre_neighbor), 0}};
     }
@@ -210,6 +213,9 @@ class HaloRecv : public cpu::ComponentBase {
     HaloRecv& operator=(const HaloRecv&) = delete;
 
     std::string name() const override { return "halo_recv"; }
+    /// @brief Receive half of the DD halo pair — the driver infrastructure
+    /// scan keys on this, not on `name()`.
+    bool provides_halo_recv() const override { return true; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {{static_cast<int>(ATV::md::Phase::post_force), -1000}};
     }

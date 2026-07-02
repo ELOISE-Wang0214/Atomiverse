@@ -23,13 +23,12 @@
 #include <vector>
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/io/molrec.h"
 #include "atomiverse/cpu/observer/mulliken.h"
 #include "atomiverse/cpu/recorder/xyz.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/rhf_solve.h"
-#include "atomiverse/cuda/scf/scf_evaluator.cuh"
 #include "atomiverse/cuda/driver/single_point.cuh"
+#include "atomiverse/cuda/scf/scf_evaluator.cuh"
 
 using namespace ATV;
 
@@ -55,8 +54,9 @@ int main() {
     // compute_eri=true stores the full two-electron tensor: the CUDA
     // RHFFock kernel uploads integrals.ERI to the device, and we also print
     // a few values below. (The CPU rhf_solve path does not need it.)
-    auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G,
-                                               /*charge=*/0, /*compute_eri=*/true);
+    auto integrals =
+        cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G,
+                                  /*charge=*/0, /*compute_eri=*/true);
     std::cout << "Basis functions: " << integrals.n_basis << "\n"
               << "Electrons:       " << integrals.n_electrons << "\n"
               << "Occupied MOs:    " << integrals.n_occ() << "\n"
@@ -100,21 +100,21 @@ int main() {
                   << static_cast<double>(cpu_result.eigenvalues(i));
     std::cout << "\n";
 
-    // Molecular record: Mulliken analysis + extxyz output
-    cpu::MolRec rec;
-    rec.set_geometry(frame);
-    rec.add_string("method", "RHF");
-    rec.add_scalar("energy", cpu_result.energy);
-    rec.add_scalar("iterations", double(cpu_result.iterations));
-    rec.add_scalar("n_alpha", double(integrals.n_occ()));
-    rec.add_scalar("n_beta", double(integrals.n_occ()));
-    rec.add_scalar("spin_contamination", double(0));
-    rec.add_field("charge", cpu::mulliken_charge(integrals, cpu_result.P));
-    rec.add_field("spin_density",
-                  std::vector<double>(frame.atoms.size(), double(0)));
-    rec.commit_frame();
-    cpu::print_summary(rec);
-    cpu::XYZ("h2_rhf.xyz").write_ext(rec);
+    // Molecular record: Mulliken analysis + extxyz output. molrs owns the
+    // record format; the example prints its own SCF summary and streams the
+    // geometry through the XYZ recorder.
+    auto charge = cpu::mulliken_charge(integrals, cpu_result.P);
+    std::cout << "\n--- RHF Molecular Record ---\n"
+              << "  Method:        RHF\n"
+              << std::fixed << std::setprecision(10)
+              << "  Energy:        " << static_cast<double>(cpu_result.energy)
+              << " Hartree\n"
+              << "  Iterations:    " << cpu_result.iterations << "\n"
+              << "  Electrons:     " << 2 * integrals.n_occ()
+              << "  (closed-shell)\n"
+              << std::setprecision(6)
+              << "  Mulliken q[0]: " << static_cast<double>(charge[0]) << "\n";
+    cpu::XYZ("h2_rhf.xyz").write(frame);
     std::cout << "  Wrote h2_rhf.xyz  (open in OVITO / Avogadro 2)\n";
 
     // ── 4. CUDA RHF — Evaluate + SCFEvaluator (inner-solver shape) ─────
@@ -134,9 +134,9 @@ int main() {
               << static_cast<double>(frame.scalars.energy * units::kEvInHartree)
               << " Hartree\n"
               << "Difference:  " << std::scientific << std::setprecision(2)
-              << static_cast<double>(std::abs(
-                     frame.scalars.energy * units::kEvInHartree -
-                     cpu_result.energy))
+              << static_cast<double>(
+                     std::abs(frame.scalars.energy * units::kEvInHartree
+                              - cpu_result.energy))
               << "\n"
               << "Textbook:    -1.1167 Hartree (approx)\n";
 

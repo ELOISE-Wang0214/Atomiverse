@@ -1,51 +1,66 @@
 /// @file cpu/recorder/xyz.cpp
-/// @brief XYZ, extxyz, and Zarr writers — all delegating to molrs FFI.
+/// @brief XYZ writer + Zarr reader — delegating to molrs FFI, one frame at a time.
 
 #include "atomiverse/cpu/recorder/xyz.h"
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/io/frame_writer.h"
 #include "atomiverse/molrs.hpp"
 
+#include <array>
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 namespace ATV {
 namespace cpu {
 
+namespace {
+/// Extract one frame's raw arrays (type_id, x, y, z, box) for the molrs writer.
+void extract(const Frame& frame, std::vector<int>& type_id,
+             std::vector<double>& x, std::vector<double>& y,
+             std::vector<double>& z, std::array<double, 9>& box) {
+    const int n = static_cast<int>(frame.atoms.size());
+    type_id.resize(n);
+    x.resize(n);
+    y.resize(n);
+    z.resize(n);
+    for (int i = 0; i < n; ++i) {
+        type_id[i] = static_cast<int>(frame.atoms.type[i]);
+        x[i] = static_cast<double>(frame.atoms.x[i]);
+        y[i] = static_cast<double>(frame.atoms.y[i]);
+        z[i] = static_cast<double>(frame.atoms.z[i]);
+    }
+    const auto& cell = frame.box.cell();
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+            box[static_cast<std::size_t>(i * 3 + j)] =
+                static_cast<double>(cell(i, j));
+}
+} // namespace
+
 // ── XYZ ──────────────────────────────────────────────────────────────────────
 
 XYZ::XYZ(const std::string& filename) : filename_(filename) {}
-XYZ::~XYZ() = default;
 
-void XYZ::write(const MolRec& rec) {
-    auto& h =
-        *static_cast<molrs::AtvMolRec*>(const_cast<MolRec&>(rec).ffi_handle());
-    molrs::xyz_write({filename_.data(), filename_.size()}, h);
+void XYZ::write(const Frame& frame) { write_impl(frame, /*append=*/false, {}); }
+void XYZ::append(const Frame& frame) { write_impl(frame, /*append=*/true, {}); }
+
+void XYZ::write(const Frame& frame, const XYZMeta& meta) {
+    write_impl(frame, /*append=*/false, meta);
 }
-void XYZ::write_ext(const MolRec& rec) {
-    auto& h =
-        *static_cast<molrs::AtvMolRec*>(const_cast<MolRec&>(rec).ffi_handle());
-    molrs::xyz_write_ext({filename_.data(), filename_.size()}, h);
-}
-void XYZ::append(const MolRec& rec) {
-    auto& h =
-        *static_cast<molrs::AtvMolRec*>(const_cast<MolRec&>(rec).ffi_handle());
-    molrs::xyz_append({filename_.data(), filename_.size()}, h);
-}
-void XYZ::append_ext(const MolRec& rec) {
-    auto& h =
-        *static_cast<molrs::AtvMolRec*>(const_cast<MolRec&>(rec).ffi_handle());
-    molrs::xyz_append_ext({filename_.data(), filename_.size()}, h);
+void XYZ::append(const Frame& frame, const XYZMeta& meta) {
+    write_impl(frame, /*append=*/true, meta);
 }
 
-// ── ZarrWriter ───────────────────────────────────────────────────────────────
-
-ZarrWriter::ZarrWriter(const std::string& path) : path_(path) {}
-ZarrWriter::~ZarrWriter() = default;
-
-void ZarrWriter::write(const MolRec& rec) {
-    auto& h =
-        *static_cast<molrs::AtvMolRec*>(const_cast<MolRec&>(rec).ffi_handle());
-    molrs::molrec_write_zarr({path_.data(), path_.size()}, h);
+void XYZ::write_impl(const Frame& frame, bool append, const XYZMeta& meta) {
+    std::array<double, 9> box{};
+    extract(frame, type_id_, x_, y_, z_, box);
+    if (meta.empty()) {
+        write_frame_xyz(filename_, type_id_, x_, y_, z_, box, append);
+    } else {
+        write_frame_xyz(filename_, type_id_, x_, y_, z_, box, append, meta);
+    }
 }
 
 // ── ZarrReader ───────────────────────────────────────────────────────────────
@@ -57,9 +72,8 @@ int ZarrReader::read_into(Frame& frame) {
     // Get the first frame of the Zarr store as a molrs FrameRef. Column
     // names follow the convention established by `dump_frame_to_zarr()`
     // in the polyethylene_tension bench: f64 columns for positions /
-    // velocities / mass / tag / image components, i32 column for type.
-    auto fref =
-        molrs::molrec_read_zarr_first_frame({path_.data(), path_.size()});
+    // velocities / mass / tag / image components, f64 column for type.
+    auto fref = molrs::read_frame_zarr_first({path_.data(), path_.size()});
     auto& fr = *fref;
 
     auto x = molrs::frame_column_f64(fr, "atoms", "x");
@@ -73,10 +87,6 @@ int ZarrReader::read_into(Frame& frame) {
     auto img_x = molrs::frame_column_f64(fr, "atoms", "image_x");
     auto img_y = molrs::frame_column_f64(fr, "atoms", "image_y");
     auto img_z = molrs::frame_column_f64(fr, "atoms", "image_z");
-    // `type` is stored as an f64 add_field (matches dump_frame_to_zarr).
-    // Set_geometry's "element" string column is also present but lossy
-    // for arbitrary integer types; the explicit "type" field is the
-    // authoritative source.
     auto type = molrs::frame_column_f64(fr, "atoms", "type");
     auto box_h = molrs::frame_simbox(fr);
 
@@ -84,10 +94,10 @@ int ZarrReader::read_into(Frame& frame) {
     if (n == 0)
         throw std::runtime_error("ZarrReader: empty Zarr at " + path_);
     if (n > frame.atoms.size())
-        throw std::runtime_error(
-            "ZarrReader: n_global=" + std::to_string(n)
-            + " > frame.atoms.size()=" + std::to_string(frame.atoms.size())
-            + " at " + path_);
+        throw std::runtime_error("ZarrReader: n_global=" + std::to_string(n)
+                                 + " > frame.atoms.size()="
+                                 + std::to_string(frame.atoms.size()) + " at "
+                                 + path_);
     if (box_h.size() != 9)
         throw std::runtime_error("ZarrReader: simbox.size != 9 at " + path_);
 

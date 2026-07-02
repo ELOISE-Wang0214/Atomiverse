@@ -59,7 +59,10 @@
 ///     E_kin_eV,box_x,box_y,box_z`. Pxx/Pyy/Pzz are genuine per-axis
 ///     virials [bar]; the 4 per-term energies decompose E_pot_eV.
 ///   * `stress_strain.csv`: `step,stage,strain,sigma_xx_eV_per_A3,sigma_xx_GPa`
-///   * `trajectory.xyz` (only with `--traj-every N`): plain-XYZ frames.
+///   * `trajectory.xyz` (only with `--traj-every N`): extended-XYZ frames
+///     via the molrs-backed `cpu::XYZ` writer. The species column is the
+///     element symbol derived from the LAMMPS type id interpreted as Z, so
+///     the united-atom CH2 bead (type 1) renders as "H".
 ///   * `rdf.dat` (only with `--rdf RMAX,BINS[,STRIDE]`): radial g(r).
 ///
 /// Both optional outputs default off, so a plain run is byte-identical
@@ -88,24 +91,23 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/report.h"
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/io/frame_writer.h"
 #include "atomiverse/cpu/io/lammps_data.h"
 #include "atomiverse/cpu/md/deform.h"
 #include "atomiverse/cpu/md/fix_langevin.h"
 #include "atomiverse/cpu/md/init.h"
-#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/comm/domain.h"
-#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/nose_hoover_npt.h"
 #include "atomiverse/cpu/md/nve_limit.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/observer/rdf.h"
 #include "atomiverse/cpu/potentials/angle_harmonic.h"
 #include "atomiverse/cpu/potentials/bond_harmonic.h"
 #include "atomiverse/cpu/potentials/dihedral_multi_harmonic.h"
-#include "atomiverse/cpu/io/molrec.h"
-#include "atomiverse/cpu/recorder/trajectory.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/recorder/xyz.h"
 #include "atomiverse/facade/stage.h"
 
@@ -131,13 +133,13 @@ inline bool parse_spec(const std::string& spec, int& stage_id,
 
 #ifdef ATV_HAS_MPI
 /// @brief Gather owned atoms from every rank to rank 0 and write a
-///        global Zarr checkpoint via cpu::ZarrWriter.
+///        global Zarr checkpoint via cpu::write_frame_zarr.
 ///
 /// Called at the end of stage N (after `preserved_dd = sim.release_dd()`)
 /// when `--ckpt-dump-after N:<path>` matches. Captures positions,
 /// velocities, mass, tag, type, image counts, and the simbox.
-inline bool dump_global(int my_rank, const ATV::cpu::Frame& frame,
-                        int n_local, const std::string& path) {
+inline bool dump_global(int my_rank, const ATV::cpu::Frame& frame, int n_local,
+                        const std::string& path) {
     int world_size = 1;
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 
@@ -155,9 +157,8 @@ inline bool dump_global(int my_rank, const ATV::cpu::Frame& frame,
     }
 
     auto gather_d = [&](const double* local) {
-        std::vector<double> out(my_rank == 0
-                                    ? static_cast<std::size_t>(n_global)
-                                    : 0);
+        std::vector<double> out(
+            my_rank == 0 ? static_cast<std::size_t>(n_global) : 0);
         MPI_Gatherv(local, n_local, MPI_DOUBLE,
                     my_rank == 0 ? out.data() : nullptr, n_locals.data(),
                     displs.data(), MPI_DOUBLE, 0, MPI_COMM_WORLD);
@@ -201,34 +202,34 @@ inline bool dump_global(int my_rank, const ATV::cpu::Frame& frame,
     if (my_rank != 0)
         return true;
 
-    // Build a global Frame on rank 0 and stage it through cpu::MolRec.
-    ATV::cpu::Frame global(n_global);
-    global.box = frame.box;
-    for (int i = 0; i < n_global; ++i) {
-        global.atoms.x[i] = gx[static_cast<std::size_t>(i)];
-        global.atoms.y[i] = gy[static_cast<std::size_t>(i)];
-        global.atoms.z[i] = gz[static_cast<std::size_t>(i)];
-        global.atoms.type[i] =
-            static_cast<int>(gtype[static_cast<std::size_t>(i)]);
-        global.atoms.tag[i] =
-            static_cast<std::int64_t>(gtag[static_cast<std::size_t>(i)]);
+    // Single-frame Zarr checkpoint from the gathered global arrays. Positions go
+    // in positionally; velocities / mass / tag / type / image counts as named
+    // per-atom fields (an explicit f64 "type" column so ZarrReader reads it back
+    // directly). molrs builds the Frame and writes it.
+    std::array<double, 9> box{};
+    {
+        const auto& cell = frame.box.cell();
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                box[static_cast<std::size_t>(i * 3 + j)] =
+                    static_cast<double>(cell(i, j));
     }
-    ATV::cpu::MolRec mr;
-    mr.set_geometry(global);
-    mr.add_field("vx", std::move(gvx));
-    mr.add_field("vy", std::move(gvy));
-    mr.add_field("vz", std::move(gvz));
-    mr.add_field("mass", std::move(gmass));
-    mr.add_field("tag", std::move(gtag));
-    // `set_geometry` stores type via the "element" symbol column, which
-    // round-trips lossily back to int. Keep an explicit numeric "type"
-    // copy so ZarrReader can read it directly as an f64 column and cast.
-    mr.add_field("type", std::move(gtype));
-    mr.add_field("image_x", std::move(gimx));
-    mr.add_field("image_y", std::move(gimy));
-    mr.add_field("image_z", std::move(gimz));
-    mr.commit_frame();
-    ATV::cpu::ZarrWriter(path).write(mr);
+    std::vector<int> type_id(static_cast<std::size_t>(n_global));
+    for (int i = 0; i < n_global; ++i)
+        type_id[static_cast<std::size_t>(i)] =
+            static_cast<int>(gtype[static_cast<std::size_t>(i)]);
+
+    const std::vector<std::string> field_names = {
+        "vx",   "vy",      "vz",      "mass",   "tag",
+        "type", "image_x", "image_y", "image_z"};
+    std::vector<double> field_data;
+    field_data.reserve(field_names.size() * static_cast<std::size_t>(n_global));
+    for (const auto* v :
+         {&gvx, &gvy, &gvz, &gmass, &gtag, &gtype, &gimx, &gimy, &gimz})
+        field_data.insert(field_data.end(), v->begin(), v->end());
+
+    ATV::cpu::write_frame_zarr(path, type_id, gx, gy, gz, box, field_names,
+                               field_data);
     return true;
 }
 #endif // ATV_HAS_MPI
@@ -238,11 +239,12 @@ inline bool dump_global(int my_rank, const ATV::cpu::Frame& frame,
 #ifdef ATV_BUILD_CUDA
 #include "atomiverse/core/system_scalars.h"
 #include "atomiverse/cuda/async/record_base.cuh"
+#include "atomiverse/cuda/comm/multi_gpu.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include "atomiverse/cuda/md/deform.cuh"
 #include "atomiverse/cuda/md/fix_langevin.cuh"
 #include "atomiverse/cuda/md/init.cuh"
 #include "atomiverse/cuda/md/md.cuh"
-#include "atomiverse/cuda/comm/multi_gpu.cuh"
 #include "atomiverse/cuda/md/nose_hoover_npt.cuh"
 #include "atomiverse/cuda/md/nve_limit.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
@@ -251,7 +253,6 @@ inline bool dump_global(int my_rank, const ATV::cpu::Frame& frame,
 #include "atomiverse/cuda/potentials/bond_harmonic.cuh"
 #include "atomiverse/cuda/potentials/dihedral_multi_harmonic.cuh"
 #include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
-#include "atomiverse/cuda/frame/types.cuh"
 #include <cuda_runtime.h>
 #endif
 
@@ -328,24 +329,24 @@ struct Args {
     /// `timestep` budget: stages 1 and 5 at 1.0 fs, stages 2-4 at
     /// 0.5 fs. `dt` is fundamental to each integrator kernel (no
     /// setter), which is why every stage builds its own driver.
-    double dt_stage1 = 1.0;       ///< [fs] -- lammps.in `timestep 1`
-    double dt_stage2 = 0.5;       ///< [fs] -- lammps.in `timestep 0.5`
-    double dt_stage3 = 0.5;       ///< [fs] -- lammps.in `timestep 0.5`
-    double dt_stage4 = 0.5;       ///< [fs] -- lammps.in `timestep 0.5`
-    double dt_stage5 = 1.0;       ///< [fs] -- lammps.in `timestep 1`
-    double tau_T = 100.0;         ///< [fs]
-    double tau_P = 1000.0;        ///< [fs]
-    double langevin_damp = 10.0;  ///< [fs] stage-1 Langevin damp — matches
-                                  ///  lammps.in `fix langevin 500 500 10`.
-                                  ///  Was 100.0 (a weak-coupling default that
-                                  ///  doesn't match the reference). At T=500
-                                  ///  with NVELimit and 10000 atoms with
-                                  ///  initial LJ overlap, damp=100 left the
-                                  ///  Langevin too weak to absorb the
-                                  ///  repulsive transient and stage 1 blew
-                                  ///  up. damp=10 matches the LAMMPS GPU
-                                  ///  reference both numerically (Pearson
-                                  ///  block-average gate) and in stability.
+    double dt_stage1 = 1.0;      ///< [fs] -- lammps.in `timestep 1`
+    double dt_stage2 = 0.5;      ///< [fs] -- lammps.in `timestep 0.5`
+    double dt_stage3 = 0.5;      ///< [fs] -- lammps.in `timestep 0.5`
+    double dt_stage4 = 0.5;      ///< [fs] -- lammps.in `timestep 0.5`
+    double dt_stage5 = 1.0;      ///< [fs] -- lammps.in `timestep 1`
+    double tau_T = 100.0;        ///< [fs]
+    double tau_P = 1000.0;       ///< [fs]
+    double langevin_damp = 10.0; ///< [fs] stage-1 Langevin damp — matches
+                                 ///  lammps.in `fix langevin 500 500 10`.
+                                 ///  Was 100.0 (a weak-coupling default that
+                                 ///  doesn't match the reference). At T=500
+                                 ///  with NVELimit and 10000 atoms with
+                                 ///  initial LJ overlap, damp=100 left the
+                                 ///  Langevin too weak to absorb the
+                                 ///  repulsive transient and stage 1 blew
+                                 ///  up. damp=10 matches the LAMMPS GPU
+                                 ///  reference both numerically (Pearson
+                                 ///  block-average gate) and in stability.
     double strain_rate =
         1e-5; ///< 1/fs (stage 5) -- lammps.in `fix deform x erate 1e-5`
     std::string out_dir = ".";
@@ -364,10 +365,10 @@ struct Args {
     // re-running stage 1. `--ckpt-dump-after <N>:<path>` writes a global
     // (rank-0 gathered) Zarr at the end of stage N. `--ckpt-load-before
     // <N>:<path>` reads that Zarr into the frame at startup and skips
-    // stages < N. Both use molrs Zarr V3 via cpu::ZarrWriter /
+    // stages < N. Both use molrs Zarr V3 via cpu::write_frame_zarr /
     // cpu::ZarrReader; positions, velocities, mass, tag, image counts,
     // and the simbox round-trip exactly.
-    std::string ckpt_dump_after_stage; ///< "<N>:<path>"  (empty = off)
+    std::string ckpt_dump_after_stage;  ///< "<N>:<path>"  (empty = off)
     std::string ckpt_load_before_stage; ///< "<N>:<path>"  (empty = off)
     /// "<step>:<prefix>" — dump a global checkpoint at this *internal*
     /// step of stage 2 (i.e. ctx.step == N when stage 2's driver fires
@@ -413,9 +414,11 @@ void print_help() {
         "  --data PATH                 Load this LAMMPS data file as the\n"
         "                              initial system instead of generating a\n"
         "                              chain grid (e.g. the MSU PE deck).\n"
-        "  --traj-every N              Append a plain-XYZ trajectory frame to\n"
-        "                              <out-dir>/trajectory.xyz every N steps\n"
-        "                              (and always the first frame). 0 = off.\n"
+        "  --traj-every N              Append an extended-XYZ trajectory "
+        "frame\n"
+        "                              to <out-dir>/trajectory.xyz every N\n"
+        "                              steps (and always the first frame).\n"
+        "                              0 = off.\n"
         "  --rdf RMAX,BINS[,STRIDE]    Accumulate a radial distribution\n"
         "                              function into <out-dir>/rdf.dat. "
         "STRIDE\n"
@@ -463,7 +466,8 @@ bool parse_args(int argc, char** argv, Args& a) {
             else if (v == "cuda")
                 a.backend = Backend::cuda;
             else {
-                std::fprintf(stderr, "unknown backend: %s (expected cpu|cuda)\n",
+                std::fprintf(stderr,
+                             "unknown backend: %s (expected cpu|cuda)\n",
                              v.c_str());
                 return false;
             }
@@ -662,7 +666,8 @@ cpu::Frame make_pe_box_local(int chains_per_axis, int n_carbons, double box_len,
     grid_map.coords_of(my_rank, coords);
     auto own = [&](double q, int d) {
         q -= L * std::floor(q / L);
-        if (d <= 1) return 0;
+        if (d <= 1)
+            return 0;
         return std::max(0, std::min(d - 1, static_cast<int>(q * d / L)));
     };
 
@@ -683,10 +688,14 @@ cpu::Frame make_pe_box_local(int chains_per_axis, int n_carbons, double box_len,
                 for (int i = 0; i < n_carbons; ++i) {
                     const double y = y0 + i * dy_step;
                     const double z = z0 + (i % 2 == 0 ? 0.0 : dz_step);
-                    if (own(y, dims[1]) != coords[1] || own(z, dims[2]) != coords[2])
+                    if (own(y, dims[1]) != coords[1]
+                        || own(z, dims[2]) != coords[2])
                         continue;
-                    X.push_back(x); Y.push_back(y); Z.push_back(z);
-                    TAG.push_back(base * n_carbons + i); POS.push_back(i);
+                    X.push_back(x);
+                    Y.push_back(y);
+                    Z.push_back(z);
+                    TAG.push_back(base * n_carbons + i);
+                    POS.push_back(i);
                 }
             }
         }
@@ -695,8 +704,11 @@ cpu::Frame make_pe_box_local(int chains_per_axis, int n_carbons, double box_len,
     const int n = static_cast<int>(X.size());
     cpu::Frame frame(n);
     for (int k = 0; k < n; ++k) {
-        frame.atoms.x[k] = X[k]; frame.atoms.y[k] = Y[k]; frame.atoms.z[k] = Z[k];
-        frame.atoms.mass[k] = 14.027; frame.atoms.type[k] = 0;
+        frame.atoms.x[k] = X[k];
+        frame.atoms.y[k] = Y[k];
+        frame.atoms.z[k] = Z[k];
+        frame.atoms.mass[k] = 14.027;
+        frame.atoms.type[k] = 0;
         frame.atoms.tag[k] = TAG[k];
     }
     frame.atoms.nlocal = n;
@@ -711,19 +723,30 @@ cpu::Frame make_pe_box_local(int chains_per_axis, int n_carbons, double box_len,
     for (int k = 0; k < n; ++k) {
         const std::int64_t t = TAG[k];
         const int p = POS[k];
-        if (p < nc - 1) frame.atoms.add_bond(t, t + 1, 0);
-        if (p >= 1 && p <= nc - 2) frame.atoms.add_angle(t - 1, t, t + 1, 0);
+        if (p < nc - 1)
+            frame.atoms.add_bond(t, t + 1, 0);
+        if (p >= 1 && p <= nc - 2)
+            frame.atoms.add_angle(t - 1, t, t + 1, 0);
         if (p >= 1 && p <= nc - 3)
             frame.atoms.add_dihedral(t - 1, t, t + 1, t + 2, 0);
         // Analytic special list: chain neighbours p±1 (1-2), p±2 (1-3), p±3 (1-4).
         const std::int64_t cbase = t - p;
         int s = 0;
         auto add = [&](int q) {
-            if (q >= 0 && q < nc) { frame.atoms.special(k, s) = cbase + q; ++s; }
+            if (q >= 0 && q < nc) {
+                frame.atoms.special(k, s) = cbase + q;
+                ++s;
+            }
         };
-        add(p - 1); add(p + 1); const int n12 = s;
-        add(p - 2); add(p + 2); const int n13 = s;
-        add(p - 3); add(p + 3); const int n14 = s;
+        add(p - 1);
+        add(p + 1);
+        const int n12 = s;
+        add(p - 2);
+        add(p + 2);
+        const int n13 = s;
+        add(p - 3);
+        add(p + 3);
+        const int n14 = s;
         frame.atoms.nspecial(k, 0) = n12;
         frame.atoms.nspecial(k, 1) = n13;
         frame.atoms.nspecial(k, 2) = n14;
@@ -765,7 +788,8 @@ cpu::Frame make_pe_melt_local(int nx, int ny, int nz, int chain_len,
         const double Lq = Lax[axis];
         q -= Lq * std::floor(q / Lq);
         const int d = dims[axis];
-        if (d <= 1) return 0;
+        if (d <= 1)
+            return 0;
         return std::max(0, std::min(d - 1, static_cast<int>(q * d / Lq)));
     };
 
@@ -779,7 +803,8 @@ cpu::Frame make_pe_melt_local(int nx, int ny, int nz, int chain_len,
             continue; // x ~ fixed per chain (±dx/2)
         for (int j = 0; j < ny; ++j) {
             const double y0 = j * cell + cell / 2.0;
-            if (own(y0, 1) != coords[1]) continue;
+            if (own(y0, 1) != coords[1])
+                continue;
             for (int k = 0; k < nz; ++k) {
                 const double z0 = k * cz + gap_z / 2.0;
                 const std::int64_t base =
@@ -792,8 +817,11 @@ cpu::Frame make_pe_melt_local(int nx, int ny, int nz, int chain_len,
                     if (own(x, 0) != coords[0] || own(y, 1) != coords[1]
                         || own(z, 2) != coords[2])
                         continue;
-                    X.push_back(x); Y.push_back(y); Z.push_back(z);
-                    TAG.push_back(base * L + m); POS.push_back(m);
+                    X.push_back(x);
+                    Y.push_back(y);
+                    Z.push_back(z);
+                    TAG.push_back(base * L + m);
+                    POS.push_back(m);
                 }
             }
         }
@@ -802,8 +830,11 @@ cpu::Frame make_pe_melt_local(int nx, int ny, int nz, int chain_len,
     const int n = static_cast<int>(X.size());
     cpu::Frame frame(n);
     for (int q = 0; q < n; ++q) {
-        frame.atoms.x[q] = X[q]; frame.atoms.y[q] = Y[q]; frame.atoms.z[q] = Z[q];
-        frame.atoms.mass[q] = 14.02; frame.atoms.type[q] = 0;
+        frame.atoms.x[q] = X[q];
+        frame.atoms.y[q] = Y[q];
+        frame.atoms.z[q] = Z[q];
+        frame.atoms.mass[q] = 14.02;
+        frame.atoms.type[q] = 0;
         frame.atoms.tag[q] = TAG[q];
     }
     frame.atoms.nlocal = n;
@@ -815,18 +846,29 @@ cpu::Frame make_pe_melt_local(int nx, int ny, int nz, int chain_len,
     for (int q = 0; q < n; ++q) {
         const std::int64_t t = TAG[q];
         const int p = POS[q];
-        if (p < L - 1) frame.atoms.add_bond(t, t + 1, 0);
-        if (p >= 1 && p <= L - 2) frame.atoms.add_angle(t - 1, t, t + 1, 0);
+        if (p < L - 1)
+            frame.atoms.add_bond(t, t + 1, 0);
+        if (p >= 1 && p <= L - 2)
+            frame.atoms.add_angle(t - 1, t, t + 1, 0);
         if (p >= 1 && p <= L - 3)
             frame.atoms.add_dihedral(t - 1, t, t + 1, t + 2, 0);
         const std::int64_t cbase = t - p;
         int s = 0;
         auto add = [&](int r) {
-            if (r >= 0 && r < L) { frame.atoms.special(q, s) = cbase + r; ++s; }
+            if (r >= 0 && r < L) {
+                frame.atoms.special(q, s) = cbase + r;
+                ++s;
+            }
         };
-        add(p - 1); add(p + 1); const int n12 = s;
-        add(p - 2); add(p + 2); const int n13 = s;
-        add(p - 3); add(p + 3); const int n14 = s;
+        add(p - 1);
+        add(p + 1);
+        const int n12 = s;
+        add(p - 2);
+        add(p + 2);
+        const int n13 = s;
+        add(p - 3);
+        add(p + 3);
+        const int n14 = s;
         frame.atoms.nspecial(q, 0) = n12;
         frame.atoms.nspecial(q, 1) = n13;
         frame.atoms.nspecial(q, 2) = n14;
@@ -850,10 +892,10 @@ double pressure_eV_per_A3(const cpu::Frame& f) {
     // f.scalars.stress carries the pair+bonded virial; the kinetic part
     // (trace = 2·KE) lives in f.scalars.stress_kinetic. Barostat /
     // NoseHooverNPT already combine the two — this reporter must match.
-    const double trace =
-        f.scalars.stress[0] + f.scalars.stress[1] + f.scalars.stress[2]
-        + f.scalars.stress_kinetic[0] + f.scalars.stress_kinetic[1]
-        + f.scalars.stress_kinetic[2];
+    const double trace = f.scalars.stress[0] + f.scalars.stress[1]
+                         + f.scalars.stress[2] + f.scalars.stress_kinetic[0]
+                         + f.scalars.stress_kinetic[1]
+                         + f.scalars.stress_kinetic[2];
     return trace / (3.0 * V);
 }
 
@@ -872,8 +914,7 @@ void pressure_per_axis_bar(const cpu::Frame& f, double Pbar[3]) {
         return;
     }
     for (int k = 0; k < 3; ++k) {
-        const double t_axis =
-            f.scalars.stress[k] + f.scalars.stress_kinetic[k];
+        const double t_axis = f.scalars.stress[k] + f.scalars.stress_kinetic[k];
         Pbar[k] = (t_axis / V) * kEvPerA3ToBar;
     }
 }
@@ -949,21 +990,20 @@ class CsvRecorder : public cpu::ComponentBase {
             // interleave across step / phase / OMP boundaries on
             // shared-fs Lustre, producing ~0.8% malformed rows).
             std::ostringstream row;
-            row << abs_step << "," << current_stage_ << ","
-                << current_T_target_ << "," << T << "," << P_bar << ","
-                << Pbar[0] << "," << Pbar[1] << "," << Pbar[2] << ","
-                << f.scalars.energy << "," << f.scalars.energy_pair << ","
-                << f.scalars.energy_bond << "," << f.scalars.energy_angle
-                << "," << f.scalars.energy_dihedral << ","
-                << f.scalars.kinetic << "," << f.box(0, 0) << ","
+            row << abs_step << "," << current_stage_ << "," << current_T_target_
+                << "," << T << "," << P_bar << "," << Pbar[0] << "," << Pbar[1]
+                << "," << Pbar[2] << "," << f.scalars.energy << ","
+                << f.scalars.energy_pair << "," << f.scalars.energy_bond << ","
+                << f.scalars.energy_angle << "," << f.scalars.energy_dihedral
+                << "," << f.scalars.kinetic << "," << f.box(0, 0) << ","
                 << f.box(1, 1) << "," << f.box(2, 2) << ","
                 << f.scalars.conserved;
 #ifdef ATV_HAS_MPI
             if (ctx.runtime.dd) {
-                row << "," << ctx.runtime.dd->neighbor_generation
-                    << "," << ctx.runtime.dd->halo_generation
-                    << "," << ctx.runtime.dd->n_local
-                    << "," << ctx.runtime.dd->n_ghost;
+                row << "," << ctx.runtime.dd->neighbor_generation << ","
+                    << ctx.runtime.dd->halo_generation << ","
+                    << ctx.runtime.dd->n_local << ","
+                    << ctx.runtime.dd->n_ghost;
             } else {
                 row << ",0,0,0,0";
             }
@@ -991,9 +1031,9 @@ class CsvRecorder : public cpu::ComponentBase {
             // σ_xx by ~+0.05 GPa at 100 K (≈ NkT/V per axis), enough to
             // bias the small-strain elastic-modulus fit by several×.
             const double sigma_xx =
-                (V > 0.0) ? -(f.scalars.stress[0]
-                              + f.scalars.stress_kinetic[0]) / V
-                          : 0.0;
+                (V > 0.0)
+                    ? -(f.scalars.stress[0] + f.scalars.stress_kinetic[0]) / V
+                    : 0.0;
             const double strain = f.box(0, 0) / box_x0_ - 1.0;
             std::ostringstream row;
             row << abs_step << "," << current_stage_ << "," << strain << ","
@@ -1016,7 +1056,7 @@ class CsvRecorder : public cpu::ComponentBase {
     int stage_steps_so_far_ = 0;
 };
 
-/// @brief Inline observer: appends a plain-XYZ trajectory frame.
+/// @brief Inline recorder: appends an extended-XYZ trajectory frame.
 ///
 /// Writes the very first frame and then one frame every `traj_every`
 /// steps, so a run of *any* length yields at least one frame. Bound to
@@ -1024,10 +1064,20 @@ class CsvRecorder : public cpu::ComponentBase {
 /// geometry reflects the post-step box. Only rank 0 writes. Like
 /// `CsvRecorder`, this is a shared lvalue re-registered into every
 /// per-stage driver so the frame index is continuous.
+///
+/// Frames go through the molrs-backed `cpu::XYZ` writer (extended XYZ with
+/// a Lattice comment line). The species column is the element symbol
+/// derived from the LAMMPS type id interpreted as Z (united-atom CH2 bead,
+/// type 1, renders as "H"); the former integer-species `Step N` format is
+/// gone with the hand-rolled emitter it came from. The file is created
+/// lazily: the first written frame truncates any stale file.
 class TrajectoryRecorder : public cpu::ComponentBase {
   public:
-    TrajectoryRecorder(std::ofstream* xyz, int traj_every)
-        : xyz_(xyz), traj_every_(std::max(1, traj_every)) {}
+    /// @brief Construct.
+    /// @param path       Output XYZ path (written by rank 0 only).
+    /// @param traj_every Frame stride in steps (clamped to >= 1).
+    TrajectoryRecorder(const std::string& path, int traj_every)
+        : xyz_(path), traj_every_(std::max(1, traj_every)) {}
 
     std::string name() const override { return "trajectory_recorder"; }
     int frequency() const override { return 1; }
@@ -1039,19 +1089,20 @@ class TrajectoryRecorder : public cpu::ComponentBase {
         ++abs_step_;
         if (ctx.runtime.mpi_rank != 0)
             return;
-        if (!xyz_ || !xyz_->is_open())
-            return;
         if (abs_step_ != 1 && abs_step_ % traj_every_ != 0)
             return;
-        const auto& f = ctx.frame;
-        cpu::trajectory_append(*xyz_, f.atoms.type.data(), f.atoms.x.data(),
-                               f.atoms.y.data(), f.atoms.z.data(),
-                               f.atoms.size(), abs_step_);
+        if (!wrote_any_) {
+            xyz_.write(ctx.frame); // truncates any stale file
+            wrote_any_ = true;
+        } else {
+            xyz_.append(ctx.frame);
+        }
     }
 
   private:
-    std::ofstream* xyz_;
+    cpu::XYZ xyz_;
     int traj_every_;
+    bool wrote_any_ = false;
     int abs_step_ = 0;
 };
 
@@ -1202,8 +1253,7 @@ struct SystemScalarsSnapshot {
 /// legacy synchronous D2H path for the chain link 07 correctness test
 /// (`tests/cuda/async/test_async_record_correctness.cu`). Default is
 /// the async path.
-class CudaCsvRecorder
-    : public cuda::AsyncRecordBase<SystemScalarsSnapshot> {
+class CudaCsvRecorder : public cuda::AsyncRecordBase<SystemScalarsSnapshot> {
   public:
     CudaCsvRecorder(std::ofstream* thermo, std::ofstream* stress,
                     int print_every, int n_global_dof, double box_x_initial)
@@ -1259,8 +1309,7 @@ class CudaCsvRecorder
         // KineticEnergy, Virial, NoseHooverNPT integrator).
         // `stage_device_field` wraps the async D2D copy so the recorder
         // never names the CUDA runtime API directly.
-        auto compute_stream =
-            static_cast<cudaStream_t>(ctx.runtime.stream);
+        auto compute_stream = static_cast<cudaStream_t>(ctx.runtime.stream);
         stage_device_field(&device_snapshot_->scalars, ctx.frame.scalars,
                            sizeof(SystemScalars), compute_stream);
         // Box diagonal -- 3 separate prec_t fields; the strided source
@@ -1272,11 +1321,11 @@ class CudaCsvRecorder
                            sizeof(cuda::prec_t), compute_stream);
         stage_device_field(&device_snapshot_->box_z, &ctx.frame.box[8],
                            sizeof(cuda::prec_t), compute_stream);
-        submit_async(static_cast<std::int64_t>(abs_step),
-                     [this](const SystemScalarsSnapshot& snap,
-                            std::int64_t step) {
-                         write_csv_row(snap, static_cast<int>(step));
-                     });
+        submit_async(
+            static_cast<std::int64_t>(abs_step),
+            [this](const SystemScalarsSnapshot& snap, std::int64_t step) {
+                write_csv_row(snap, static_cast<int>(step));
+            });
     }
 
   private:
@@ -1288,10 +1337,10 @@ class CudaCsvRecorder
         const double box_y = static_cast<double>(snap.box_y);
         const double box_z = static_cast<double>(snap.box_z);
         const auto& s = snap.scalars;
-        const double T = (n_dof_ > 0)
-                             ? 2.0 * s.kinetic
-                                   / (static_cast<double>(n_dof_) * kBoltzmann)
-                             : 0.0;
+        const double T =
+            (n_dof_ > 0)
+                ? 2.0 * s.kinetic / (static_cast<double>(n_dof_) * kBoltzmann)
+                : 0.0;
         const double V = box_x * box_y * box_z;
         double P_bar = 0, Pxx = 0, Pyy = 0, Pzz = 0;
         if (V > 0.0) {
@@ -1339,7 +1388,8 @@ class CudaCsvRecorder
     bool strain_ref_set_ = false;
     int current_step_offset_ = 0;
     int stage_steps_so_far_ = 0;
-    std::mutex io_mtx_; ///< Guards thermo_ / stress_ streams across worker + main.
+    std::mutex
+        io_mtx_; ///< Guards thermo_ / stress_ streams across worker + main.
 };
 
 /// @brief Run the 5-stage MSU PE protocol on CUDA. Mirrors the CPU
@@ -1378,7 +1428,8 @@ void run_cuda_multigpu(const Args& a, cpu::Frame& frame, bool quiet) {
     const double wall = now_seconds() - t0;
     const double sps = (wall > 0) ? steps / wall : 0.0;
     const double ns_per_day =
-        (wall > 0) ? (double(steps) * a.dt_stage1 * 1e-6) * (86400.0 / wall) : 0;
+        (wall > 0) ? (double(steps) * a.dt_stage1 * 1e-6) * (86400.0 / wall)
+                   : 0;
 
     std::ofstream timing(a.out_dir + "/stage_timing.csv");
     timing << "stage,steps,dt_fs,wall_seconds,steps_per_second,ns_per_day\n";
@@ -1386,10 +1437,11 @@ void run_cuda_multigpu(const Args& a, cpu::Frame& frame, bool quiet) {
            << "," << ns_per_day << "\n";
     timing.flush();
     if (!quiet)
-        std::fprintf(stderr,
-                     "  multi-GPU PE: %d GPU(s), %d atoms, %d steps, wall=%.3fs, "
-                     "%.1f step/s\n",
-                     mg.count(), frame.atoms.size(), steps, wall, sps);
+        std::fprintf(
+            stderr,
+            "  multi-GPU PE: %d GPU(s), %d atoms, %d steps, wall=%.3fs, "
+            "%.1f step/s\n",
+            mg.count(), frame.atoms.size(), steps, wall, sps);
 }
 
 void run_cuda_pipeline(const Args& a, cpu::Frame& frame,
@@ -1410,15 +1462,15 @@ void run_cuda_pipeline(const Args& a, cpu::Frame& frame,
     // breakdown. One line per executed stage; columns mirror LAMMPS's
     // "Performance" line.
     std::ofstream timing_csv(a.out_dir + "/stage_timing.csv");
-    timing_csv << "stage,steps,dt_fs,wall_seconds,steps_per_second,ns_per_day\n";
+    timing_csv
+        << "stage,steps,dt_fs,wall_seconds,steps_per_second,ns_per_day\n";
     auto log_stage = [&](int stage_id, int steps, double dt_fs, double wall_s) {
         const double sps = (wall_s > 0.0) ? steps / wall_s : 0.0;
         const double ns_per_day =
-            (wall_s > 0.0)
-                ? (double(steps) * dt_fs * 1e-6) * (86400.0 / wall_s)
-                : 0.0;
-        timing_csv << stage_id << "," << steps << "," << dt_fs << ","
-                   << wall_s << "," << sps << "," << ns_per_day << "\n";
+            (wall_s > 0.0) ? (double(steps) * dt_fs * 1e-6) * (86400.0 / wall_s)
+                           : 0.0;
+        timing_csv << stage_id << "," << steps << "," << dt_fs << "," << wall_s
+                   << "," << sps << "," << ns_per_day << "\n";
         timing_csv.flush();
         if (!quiet)
             std::fprintf(stderr,
@@ -1448,13 +1500,13 @@ void run_cuda_pipeline(const Args& a, cpu::Frame& frame,
             sim.set_dihedral(cuda::DihedralMultiHarmonic{cuda_Cn});
         sim.set_integrator(cuda::md::NVELimit{a.dt_stage1, 0.05});
         if (!std::getenv("ATV_NO_INITVEL"))
-            sim.add(cuda::md::InitVelocity{a.T_hot,
-                                       static_cast<unsigned long long>(a.seed)});
+            sim.add(cuda::md::InitVelocity{
+                a.T_hot, static_cast<unsigned long long>(a.seed)});
         if (!a.disable_langevin)
             sim.set_thermostat(cuda::md::FixLangevin{
                 a.T_hot, a.T_hot, a.langevin_damp, a.dt_stage1,
                 static_cast<std::uint32_t>(a.seed + 1)});
-        sim.add(rec);  // uses default_bindings: end_of_step @ +20
+        sim.add(rec); // uses default_bindings: end_of_step @ +20
         sim.build();
         const double ts0 = now_seconds();
         sim.run(frame, steps);
@@ -1466,9 +1518,10 @@ void run_cuda_pipeline(const Args& a, cpu::Frame& frame,
         // from the LAST evaluated step.
         if (std::getenv("ATV_DUMP_FORCES")) {
             FILE* fp = std::fopen("/tmp/cuda_forces.dump", "w");
-            std::fprintf(fp, "ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n%d\n"
-                             "ITEM: BOX BOUNDS pp pp pp\n0 1\n0 1\n0 1\n"
-                             "ITEM: ATOMS id fx fy fz\n",
+            std::fprintf(fp,
+                         "ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n%d\n"
+                         "ITEM: BOX BOUNDS pp pp pp\n0 1\n0 1\n0 1\n"
+                         "ITEM: ATOMS id fx fy fz\n",
                          frame.atoms.size());
             for (int i = 0; i < frame.atoms.size(); ++i)
                 std::fprintf(fp, "%lld %.10e %.10e %.10e\n",
@@ -1480,8 +1533,7 @@ void run_cuda_pipeline(const Args& a, cpu::Frame& frame,
     }
 
     // Helper to build a per-stage NPT driver with the shared FF.
-    auto wire_npt_stage = [&](cuda::md::MD& sim,
-                              cuda::md::NoseHooverNPT& npt) {
+    auto wire_npt_stage = [&](cuda::md::MD& sim, cuda::md::NoseHooverNPT& npt) {
         sim.set_neighbor(cuda::NeighborList{kLjCutoff});
         if (!a.disable_lj)
             sim.set_pair(cuda::PairLJCut{lj_eps_eV(), kLjSigma, kLjCutoff}
@@ -1493,7 +1545,7 @@ void run_cuda_pipeline(const Args& a, cpu::Frame& frame,
         if (!a.disable_dihedral)
             sim.set_dihedral(cuda::DihedralMultiHarmonic{cuda_Cn});
         sim.set_integrator(npt);
-        sim.add(rec);  // uses default_bindings: end_of_step @ +20
+        sim.add(rec); // uses default_bindings: end_of_step @ +20
     };
 
     // Stage 2 — iso NoseHooverNPT @ T_hot.
@@ -1505,9 +1557,12 @@ void run_cuda_pipeline(const Args& a, cpu::Frame& frame,
                          "%d steps\n",
                          a.T_hot, a.dt_stage2, steps);
         rec.begin_stage(2, a.T_hot, /*record_strain=*/false);
-        cuda::md::NoseHooverNPT::Config cfg{
-            .T_target = a.T_hot, .tau_T = a.tau_T, .P_target = 0.0,
-            .tau_P = a.tau_P, .dt = a.dt_stage2, .drag = 2.0};  // LAMMPS `drag 2`
+        cuda::md::NoseHooverNPT::Config cfg{.T_target = a.T_hot,
+                                            .tau_T = a.tau_T,
+                                            .P_target = 0.0,
+                                            .tau_P = a.tau_P,
+                                            .dt = a.dt_stage2,
+                                            .drag = 2.0}; // LAMMPS `drag 2`
         cuda::md::MD sim;
         cuda::md::NoseHooverNPT npt{cfg};
         wire_npt_stage(sim, npt);
@@ -1527,10 +1582,13 @@ void run_cuda_pipeline(const Args& a, cpu::Frame& frame,
                          "dt=%.2f fs, %d steps\n",
                          a.T_hot, a.T_cold, a.dt_stage3, steps);
         rec.begin_stage(3, a.T_cold, /*record_strain=*/false);
-        cuda::md::NoseHooverNPT::Config cfg{
-            .T_target = a.T_hot, .tau_T = a.tau_T, .P_target = 0.0,
-            .tau_P = a.tau_P, .dt = a.dt_stage3, .drag = 2.0,
-            .T_stop = a.T_cold};
+        cuda::md::NoseHooverNPT::Config cfg{.T_target = a.T_hot,
+                                            .tau_T = a.tau_T,
+                                            .P_target = 0.0,
+                                            .tau_P = a.tau_P,
+                                            .dt = a.dt_stage3,
+                                            .drag = 2.0,
+                                            .T_stop = a.T_cold};
         cuda::md::MD sim;
         cuda::md::NoseHooverNPT npt{cfg};
         npt.set_run_span(0, std::max(0, steps - 1));
@@ -1551,9 +1609,12 @@ void run_cuda_pipeline(const Args& a, cpu::Frame& frame,
                          "%d steps\n",
                          a.T_cold, a.dt_stage4, steps);
         rec.begin_stage(4, a.T_cold, /*record_strain=*/false);
-        cuda::md::NoseHooverNPT::Config cfg{
-            .T_target = a.T_cold, .tau_T = a.tau_T, .P_target = 0.0,
-            .tau_P = a.tau_P, .dt = a.dt_stage4, .drag = 2.0};
+        cuda::md::NoseHooverNPT::Config cfg{.T_target = a.T_cold,
+                                            .tau_T = a.tau_T,
+                                            .P_target = 0.0,
+                                            .tau_P = a.tau_P,
+                                            .dt = a.dt_stage4,
+                                            .drag = 2.0};
         cuda::md::MD sim;
         cuda::md::NoseHooverNPT npt{cfg};
         wire_npt_stage(sim, npt);
@@ -1573,10 +1634,13 @@ void run_cuda_pipeline(const Args& a, cpu::Frame& frame,
                          "dt=%.2f fs, %d steps\n",
                          a.strain_rate, a.T_cold, a.dt_stage5, steps);
         rec.begin_stage(5, a.T_cold, /*record_strain=*/true);
-        cuda::md::NoseHooverNPT::Config cfg{
-            .T_target = a.T_cold, .tau_T = a.tau_T, .P_target = 0.0,
-            .tau_P = a.tau_P, .dt = a.dt_stage5, .drag = 2.0,
-            .couple_axis = {false, true, true}};
+        cuda::md::NoseHooverNPT::Config cfg{.T_target = a.T_cold,
+                                            .tau_T = a.tau_T,
+                                            .P_target = 0.0,
+                                            .tau_P = a.tau_P,
+                                            .dt = a.dt_stage5,
+                                            .drag = 2.0,
+                                            .couple_axis = {false, true, true}};
         cuda::md::MD sim;
         cuda::md::NoseHooverNPT npt{cfg};
         wire_npt_stage(sim, npt);
@@ -1627,24 +1691,24 @@ int main(int argc, char** argv) {
     // The --data / checkpoint paths still go rank-0 + scatter (a generic file
     // read isn't trivially per-rank: the special-list build needs the graph).
     const bool melt_gen = !a.pe_melt_grid.empty();
-    const bool local_gen = melt_gen
-                           || (distribute_load && a.data_path.empty());
+    const bool local_gen = melt_gen || (distribute_load && a.data_path.empty());
     if (melt_gen) {
         int nx = 0, ny = 0, nz = 0;
         std::sscanf(a.pe_melt_grid.c_str(), "%d,%d,%d", &nx, &ny, &nz);
-        frame = make_pe_melt_local(nx, ny, nz, a.n_atoms_per_chain, a.pe_spacing,
-                                   a.pe_gap_z, my_rank, world_size);
+        frame =
+            make_pe_melt_local(nx, ny, nz, a.n_atoms_per_chain, a.pe_spacing,
+                               a.pe_gap_z, my_rank, world_size);
     } else if (distribute_load) {
         frame = make_pe_box_local(a.chains_per_axis, a.n_atoms_per_chain,
                                   a.box_len, a.margin, my_rank, world_size);
     } else
 #endif
         if (my_rank == 0 || !distribute_load) {
-            frame = a.data_path.empty()
-                        ? make_pe_box(a.chains_per_axis, a.n_atoms_per_chain,
-                                      a.box_len, a.margin)
-                        : cpu::load_lammps_data(a.data_path);
-        }
+        frame = a.data_path.empty()
+                    ? make_pe_box(a.chains_per_axis, a.n_atoms_per_chain,
+                                  a.box_len, a.margin)
+                    : cpu::load_lammps_data(a.data_path);
+    }
 #ifdef ATV_HAS_MPI
     if (distribute_load && !local_gen)
         cpu::comm::scatter_atoms_from_root(frame);
@@ -1700,9 +1764,10 @@ int main(int argc, char** argv) {
     const int n_global_dof = 3 * n_atoms - 3;
     const double box_x0 = frame.box(0, 0);
 
-    // `traj_xyz` is opened only when --traj-every is set, so a default
-    // run leaves CSV-only output byte-identical to the pre-flag behaviour.
-    std::ofstream thermo_csv, stress_csv, traj_xyz;
+    // `trajectory.xyz` is created lazily by TrajectoryRecorder (registered
+    // only when --traj-every is set), so a default run leaves CSV-only
+    // output byte-identical to the pre-flag behaviour.
+    std::ofstream thermo_csv, stress_csv;
     if (my_rank == 0) {
         thermo_csv.open(a.out_dir + "/thermo.csv");
         stress_csv.open(a.out_dir + "/stress_strain.csv");
@@ -1718,9 +1783,6 @@ int main(int argc, char** argv) {
         }
         if (stress_csv.is_open()) {
             stress_csv << "step,stage,strain,sigma_xx_eV_per_A3,sigma_xx_GPa\n";
-        }
-        if (a.traj_every > 0) {
-            traj_xyz.open(a.out_dir + "/trajectory.xyz");
         }
     }
 
@@ -1740,7 +1802,8 @@ int main(int argc, char** argv) {
     cpu::DihedralMultiHarmonic hd{{dihedral_Cn_eV()}};
     CsvRecorder rec{&thermo_csv, &stress_csv, a.print_every, n_global_dof,
                     box_x0};
-    TrajectoryRecorder trec{&traj_xyz, std::max(1, a.traj_every)};
+    TrajectoryRecorder trec{a.out_dir + "/trajectory.xyz",
+                            std::max(1, a.traj_every)};
 
     // RDF observer (optional). Heap-allocated so it is conditionally
     // created yet still outlives every per-stage driver, which stores a
@@ -1786,7 +1849,8 @@ int main(int argc, char** argv) {
         if (my_rank == 0) {
             try {
                 if (a.gpus >= 1)
-                    run_cuda_multigpu(a, frame, a.quiet); // multi-GPU PE throughput
+                    run_cuda_multigpu(a, frame,
+                                      a.quiet); // multi-GPU PE throughput
                 else
                     run_cuda_pipeline(a, frame, thermo_csv, stress_csv,
                                       n_global_dof, box_x0, a.quiet);
@@ -1814,8 +1878,6 @@ int main(int argc, char** argv) {
                 thermo_csv.close();
             if (stress_csv.is_open())
                 stress_csv.close();
-            if (traj_xyz.is_open())
-                traj_xyz.close();
         }
 #ifdef ATV_HAS_MPI
         MPI_Finalize();
@@ -1848,13 +1910,12 @@ int main(int argc, char** argv) {
 #ifdef ATV_HAS_MPI
         if (ckpt_dump_stage != stage_id || ckpt_dump_path.empty())
             return;
-        const int n_local = preserved_dd
-                                ? preserved_dd->n_local
-                                : static_cast<int>(frame.atoms.size());
+        const int n_local = preserved_dd ? preserved_dd->n_local
+                                         : static_cast<int>(frame.atoms.size());
         ckpt::dump_global(my_rank, frame, n_local, ckpt_dump_path);
         if (my_rank == 0)
-            std::fprintf(stderr, "[ckpt] dumped stage %d → %s\n",
-                         stage_id, ckpt_dump_path.c_str());
+            std::fprintf(stderr, "[ckpt] dumped stage %d → %s\n", stage_id,
+                         ckpt_dump_path.c_str());
 #else
         (void)stage_id;
 #endif
@@ -2106,8 +2167,6 @@ int main(int argc, char** argv) {
             thermo_csv.close();
         if (stress_csv.is_open())
             stress_csv.close();
-        if (traj_xyz.is_open())
-            traj_xyz.close();
     }
 
 #ifdef ATV_HAS_MPI

@@ -96,6 +96,39 @@ class ComponentBase {
     /// Defaults to `false`.
     virtual bool needs_neighbor_list() const { return false; }
 
+    /// @brief Whether this component *is* a neighbor structure (the supply
+    /// side of the `needs_neighbor_list()` contract).
+    ///
+    /// Defaults to `false`. `cpu::NeighborList` overrides to `true`. Used
+    /// by `CPUDriver::scan_pending_infra_()` to detect a registered
+    /// neighbor structure without keying on `name() == "neighbor_list"` —
+    /// a user-supplied neighbor structure participates in auto-injection
+    /// by overriding this, whatever its `name()`. Mirrors
+    /// `cuda::ComponentBase::provides_neighbor_list()`.
+    virtual bool provides_neighbor_list() const { return false; }
+
+    /// @brief Whether this component is the send half of the DD halo
+    /// exchange (supply side of the auto-injected MPI halo pair).
+    ///
+    /// Defaults to `false`; `cpu::md::mpi::HaloSend` overrides to `true`.
+    /// Used by `scan_pending_infra_()` so a manually registered halo is
+    /// not double-injected, without `name()` string matching.
+    virtual bool provides_halo_send() const { return false; }
+
+    /// @brief Whether this component is the receive half of the DD halo
+    /// exchange. See `provides_halo_send()`.
+    virtual bool provides_halo_recv() const { return false; }
+
+    /// @brief Neighbor-interaction cutoff hint [Å] for driver auto-injection.
+    ///
+    /// Components that report `needs_neighbor_list()` may override this to
+    /// expose their interaction cutoff; the category drivers use it to size
+    /// the auto-injected MPI halo exchange (skin-padded). `cpu::PairEvaluator`
+    /// forwards its `pair_cutoff()`. Return `0` (the default) when the
+    /// component declares no cutoff — auto-injection then skips the halo.
+    /// Replaces the former `dynamic_cast<PairEvaluator*>` probe.
+    virtual Real neighbor_cutoff_hint() const { return Real(0); }
+
     /// @brief Scheduling trait (blocking or deferrable).
     /// @return `Scheduling::blocking` for CPU components unless overridden.
     virtual Scheduling scheduling() const { return Scheduling::blocking; }
@@ -154,12 +187,14 @@ class ComponentBase {
 
     /// @brief Pack `comm_forward()` doubles/atom for the `n` atoms in `idx` into
     ///        `buf`; return the number of doubles written.
-    virtual int pack_forward(int /*n*/, const int* /*idx*/, double* /*buf*/) const {
+    virtual int pack_forward(int /*n*/, const int* /*idx*/,
+                             double* /*buf*/) const {
         return 0;
     }
     /// @brief Unpack forwarded values into the `n` contiguous ghost rows starting
     ///        at `first`.
-    virtual void unpack_forward(int /*n*/, int /*first*/, const double* /*buf*/) {}
+    virtual void unpack_forward(int /*n*/, int /*first*/,
+                                const double* /*buf*/) {}
     /// @brief Pack `comm_reverse()` doubles/atom for the `n` contiguous ghost
     ///        rows starting at `first`; return the number of doubles written.
     virtual int pack_reverse(int /*n*/, int /*first*/, double* /*buf*/) const {
@@ -167,7 +202,8 @@ class ComponentBase {
     }
     /// @brief Unpack reversed values and ACCUMULATE onto the `n` owner rows in
     ///        `idx`.
-    virtual void unpack_reverse(int /*n*/, const int* /*idx*/, const double* /*buf*/) {}
+    virtual void unpack_reverse(int /*n*/, const int* /*idx*/,
+                                const double* /*buf*/) {}
 };
 
 } // namespace cpu
