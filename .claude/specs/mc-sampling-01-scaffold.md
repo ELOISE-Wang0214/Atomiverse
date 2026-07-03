@@ -1,8 +1,20 @@
 ---
 title: MC sampling scaffold — sampling::Phase, Mover role, Transaction, SamplingDriver
-status: approved
+status: in-progress
 created: 2026-07-03
 ---
+
+> **Impl note (2026-07-03):** all scaffold code is written and compiles cleanly
+> — the test TU `tests/cpu/test_mc_scaffold.cpp` front-end-compiles to an object
+> with the project's real flags (`-DATV_BUILD_TESTS`, xtensor/gtest includes),
+> exercising every new symbol incl. the `CPUDriver<sampling::Phase>` template
+> instantiation. The full build + `ctest` run is **blocked by a pre-existing
+> `dev`↔molrs bridge gap unrelated to this change**: `src/cpu/recorder/xyz.cpp`
+> and `src/cpu/observer/trajectory_metrics.cpp` call molrs symbols
+> (`read_frame_zarr_first`, `Impl::obj`) that exist in no molrs ref, so
+> `libatomiverse` will not link. Code-type criteria are verified by
+> inspection + isolated compile; runtime criteria stay pending until the molrs
+> bridge is available.
 
 # MC sampling scaffold — sampling::Phase, Mover role, Transaction, SamplingDriver
 
@@ -50,14 +62,14 @@ Five coordinated changes, all dormant until 02 supplies a `Mover` and a concrete
 
 ## Tasks
 
-- [ ] Write failing tests for the MC scaffold in `tests/cpu/test_mc_scaffold.cpp` (enum shape, Mover role, Transaction round-trip, Context pointers, `validate_components` throws twice) and register it in `tests/CMakeLists.txt`
-- [ ] Add `ATV::sampling::Phase` + `phase_names(Phase)` in `include/atomiverse/facade/stage.h` with per-value Doxygen and the no-`accept`-phase note
-- [ ] Add `ComponentRole::Mover` after `Barostat` in `include/atomiverse/facade/component_role.h` with its doc comment
-- [ ] Implement the pure-data `cpu::mc::Transaction` (validating constructor, no factory) in `include/atomiverse/cpu/mc/transaction.h` with Doxygen `@brief`/`@param` and units
-- [ ] Wire `mc::Transaction* proposal` and `std::mt19937_64* rng` (forward-declared `mc::Transaction`) into `cpu::Context` in `include/atomiverse/cpu/component/context.h`
-- [ ] Implement `cpu::SamplingDriver` in `include/atomiverse/cpu/driver/sampling_driver.h` — bootstrap-seeded fixed-budget `run()`, inline Metropolis commit/rollback, `// ponytail:` seam, and `validate_components()` requiring Mover + Capability::Energy
-- [ ] Add Doxygen `@brief`/`@param`/`@return` (with units) to every new public symbol and confirm the no-factory / Frame-purity constraints hold
-- [ ] Run full check + test suite
+- [x] Write failing tests for the MC scaffold in `tests/cpu/test_mc_scaffold.cpp` (enum shape, Mover role, Transaction round-trip, Context pointers, `validate_components` throws twice) and register it in `tests/CMakeLists.txt`
+- [x] Add `ATV::sampling::Phase` + `phase_names(Phase)` in `include/atomiverse/facade/stage.h` with per-value Doxygen and the no-`accept`-phase note
+- [x] Add `ComponentRole::Mover` after `Barostat` in `include/atomiverse/facade/component_role.h` with its doc comment
+- [x] Implement the pure-data `cpu::mc::Transaction` (validating constructor, no factory) in `include/atomiverse/cpu/mc/transaction.h` with Doxygen `@brief`/`@param` and units
+- [x] Wire `mc::Transaction* proposal` and `std::mt19937_64* rng` (forward-declared `mc::Transaction`) into `cpu::Context` in `include/atomiverse/cpu/component/context.h`
+- [x] Implement `cpu::SamplingDriver` in `include/atomiverse/cpu/driver/sampling_driver.h` — bootstrap-seeded fixed-budget `run()`, inline Metropolis commit/rollback, `// ponytail:` seam, and `validate_components()` requiring Mover + Capability::Energy
+- [x] Add Doxygen `@brief`/`@param`/`@return` (with units) to every new public symbol and confirm the no-factory / Frame-purity constraints hold
+- [ ] Run full check + test suite — **BLOCKED** by the pre-existing `dev`↔molrs bridge gap (see Impl note); isolated TU compile is green
 
 ## Testing strategy
 

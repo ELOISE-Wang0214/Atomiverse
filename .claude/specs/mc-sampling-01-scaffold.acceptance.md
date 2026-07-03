@@ -9,7 +9,8 @@ criteria:
       enum class Phase { propose, energy, end_of_step, COUNT } in that order
       and no `accept` value; a doc comment states accept/reject is driver
       outer-loop control, not a phase.
-    status: pending
+    status: verified
+    last_checked: 2026-07-03
   - id: ac-002
     summary: phase_names(sampling::Phase) matches the enum order and arity
     type: runtime
@@ -23,7 +24,8 @@ criteria:
     pass_when: |
       include/atomiverse/facade/component_role.h declares ComponentRole::Mover
       after Barostat with the "Proposes a trial state change ..." doc comment.
-    status: pending
+    status: verified
+    last_checked: 2026-07-03
   - id: ac-004
     summary: cpu::mc::Transaction is a documented pure-data struct with no factory
     type: code
@@ -33,7 +35,8 @@ criteria:
       x,y,z, has Doxygen @brief with units, a validating constructor, and no
       make_/resolve_/factory free function; grep of the repo shows Transaction
       is never a member of cpu::Frame.
-    status: pending
+    status: verified
+    last_checked: 2026-07-03
   - id: ac-005
     summary: Transaction round-trips move data and rejects mismatched lengths
     type: runtime
@@ -50,7 +53,8 @@ criteria:
       and adds `mc::Transaction* proposal = nullptr;` and
       `std::mt19937_64* rng = nullptr;` with pair_list-style doc comments; a
       default cpu::Context has both null (asserted in test_mc_scaffold).
-    status: pending
+    status: verified
+    last_checked: 2026-07-03
   - id: ac-007
     summary: SamplingDriver base compiles with bootstrap-seeded Metropolis run() and seam
     type: code
@@ -61,7 +65,8 @@ criteria:
       energy before the sweep loop and applies inline min(1,exp(-dE/(kB*T)))
       with commit/rollback; a `// ponytail:` seam comment marks the swappable
       acceptance-policy point; the header builds under -DATV_BUILD_TESTS=ON.
-    status: pending
+    status: verified
+    last_checked: 2026-07-03
   - id: ac-008
     summary: validate_components() throws without a Mover and without an Energy writer
     type: runtime
@@ -88,3 +93,14 @@ criteria:
 - **ac-007** pins the `SamplingDriver` base: bootstrap-seed invariant, inline Metropolis commit/rollback, the `// ponytail:` seam, and that the dormant header compiles.
 - **ac-008** pins the two-branch `validate_components()` gate using test-only stubs.
 - **ac-009** is the overall build + fast-gate `ctest` green bar.
+
+**Verification state (2026-07-03):** the 5 `code`-type criteria (ac-001, ac-003,
+ac-004, ac-006, ac-007) are `verified` — confirmed by source inspection and an
+isolated front-end compile of `tests/cpu/test_mc_scaffold.cpp` to an object with
+the project's real flags (all new symbols + the `CPUDriver<sampling::Phase>`
+instantiation compile clean). The 4 `runtime` criteria (ac-002, ac-005, ac-008,
+ac-009) remain `pending`: running them needs `libatomiverse` to link, which is
+**blocked by a pre-existing `dev`↔molrs bridge gap** (`src/cpu/recorder/xyz.cpp`
++ `src/cpu/observer/trajectory_metrics.cpp` call molrs symbols
+`read_frame_zarr_first` / `Impl::obj` present in no molrs ref). Unblock the molrs
+bridge, then re-run `/mol:impl mc-sampling-01-scaffold` to flip these to verified.

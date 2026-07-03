@@ -3,6 +3,8 @@
 /// (MD-only) spatial-decomposition awareness.
 #pragma once
 
+#include <random>
+
 #include "atomiverse/facade/iteration_status.h"
 
 namespace ATV {
@@ -19,6 +21,10 @@ namespace mpi {
 struct DomainDecomposition;
 } // namespace mpi
 } // namespace md
+
+namespace mc {
+struct Transaction;
+} // namespace mc
 
 /// @brief CPU execution context holding thread, MPI, and MD-DD configuration.
 ///
@@ -52,6 +58,20 @@ struct Context {
     /// `launch()` as a no-op refresh -- address is stable across the run).
     /// Null on drivers / configurations that don't carry a neighbor list.
     const md::PairList* pair_list = nullptr;
+
+    /// @brief Non-owning handle to the active MC trial-move changeset.
+    /// Published by `SamplingDriver::run()` during setup (address-stable for
+    /// the run); a `Mover` records its proposed displacement here each
+    /// `propose` phase, and the driver reads `old_*` to roll back a rejected
+    /// move. Null on non-sampling drivers, which simply ignore it (mirrors
+    /// `pair_list` — kept here rather than on `cpu::Frame` for Frame-purity).
+    mc::Transaction* proposal = nullptr;
+
+    /// @brief Non-owning handle to the sampling driver's single seeded RNG
+    /// stream. Published by `SamplingDriver::run()`; a `Mover` draws atom
+    /// picks and displacements from it so the whole trajectory is reproducible
+    /// from the driver's one seed. Null on non-sampling drivers.
+    std::mt19937_64* rng = nullptr;
 
     /// @brief Non-owning handle to the per-rank analysis executor.
     /// Allocated by `Backend::init()`; published so components can reach
