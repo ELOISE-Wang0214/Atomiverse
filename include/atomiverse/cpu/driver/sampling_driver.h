@@ -90,16 +90,36 @@ class SamplingDriver : public CPUDriver<ATV::sampling::Phase> {
             step_once(s); // propose (mutate + record) → energy (full recompute)
             const AccReal e_trial = frame.scalars.energy;
             const AccReal dE = e_trial - e_cur_;
+            ++n_attempts_;
             if (metropolis_accept_(dE)) {
                 e_cur_ = e_trial; // commit — frame already holds the move
+                ++n_accepts_;
             } else {
-                rollback_(frame); // restore moved atoms from proposal_.old_*
+                rollback_(frame);              // restore moved atoms
+                frame.scalars.energy = e_cur_; // frame reflects the restored state
             }
             if (outer_status().stop_requested)
                 break;
         }
 
         teardown_pass();
+    }
+
+    /// @brief Energy [eV] of the current (last-accepted) configuration —
+    ///        equals a fresh full-frame recompute of the current state.
+    AccReal current_energy() const { return e_cur_; }
+
+    /// @brief Total trial moves attempted across all `run()` calls.
+    long long attempts() const { return n_attempts_; }
+
+    /// @brief Total trial moves accepted across all `run()` calls.
+    long long accepts() const { return n_accepts_; }
+
+    /// @brief Accepted fraction of attempted moves (0 if none attempted yet).
+    double acceptance_ratio() const {
+        return n_attempts_ > 0
+                   ? static_cast<double>(n_accepts_) / static_cast<double>(n_attempts_)
+                   : 0.0;
     }
 
   protected:
@@ -167,6 +187,8 @@ class SamplingDriver : public CPUDriver<ATV::sampling::Phase> {
     std::mt19937_64 rng_;      ///< Single reproducible RNG stream.
     mc::Transaction proposal_; ///< Reused per-move changeset (published on Context).
     AccReal e_cur_ = 0;        ///< Cached energy of the last accepted state [eV].
+    long long n_attempts_ = 0; ///< Trial moves attempted (lifetime).
+    long long n_accepts_ = 0;  ///< Trial moves accepted (lifetime).
 };
 
 } // namespace cpu

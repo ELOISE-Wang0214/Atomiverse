@@ -167,6 +167,8 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/component/zero.cpp
         src/cpu/frame/materialize.cpp
         src/cpu/driver/driver.cpp
+        # CPU Monte Carlo (Sampling category)
+        src/cpu/mc/translate_move.cpp
         src/cpu/async/analysis_executor.cpp
         src/cpu/async/async_component_base.cpp
         src/cpu/async/snapshot_publisher.cpp

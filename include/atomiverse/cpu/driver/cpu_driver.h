@@ -100,6 +100,18 @@ struct CategoryTraits<ATV::vib::Phase> {
     static constexpr auto end_phase = ATV::vib::Phase::end_of_step;
 };
 
+/// Monte Carlo (Sampling category): the energy evaluator + neighbor list bind
+/// in the `energy` phase (the trial-state recompute), and thermo/observers in
+/// `end_of_step`. There is no separate neighbor phase, so it folds into
+/// `energy` just ahead of the evaluator (order -10, before ZeroEnergy at -999
+/// runs first and the evaluator at 0 last).
+template <>
+struct CategoryTraits<ATV::sampling::Phase> {
+    static constexpr auto eval_phase = ATV::sampling::Phase::energy;
+    static constexpr auto neighbor_phase = ATV::sampling::Phase::energy;
+    static constexpr auto end_phase = ATV::sampling::Phase::end_of_step;
+};
+
 /// @brief CPU-backend driver layer — shared by all three CPU category bases.
 template <typename PhaseEnum>
 class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {

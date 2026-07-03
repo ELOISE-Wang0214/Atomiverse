@@ -90,6 +90,7 @@ atv_add_cpp_test(test_units core/test_units.cpp)
 
 atv_add_cpp_test(test_cpu_box cpu/test_box.cpp)
 atv_add_cpp_test(test_cpu_mc_scaffold cpu/test_mc_scaffold.cpp)
+atv_add_cpp_test(test_cpu_mc_move cpu/mc/test_mc_move.cpp)
 atv_add_cpp_test(test_cpu_md cpu/md/test_md.cpp)
 atv_add_cpp_test(test_cpu_md_pe_thermo_schema cpu/md/test_pe_thermo_schema.cpp)
 atv_add_cpp_test(test_cpu_md_pe_single_chain cpu/md/test_pe_single_chain.cpp)
