@@ -70,24 +70,48 @@ class SamplingDriver : public CPUDriver<ATV::sampling::Phase> {
     /// `outer_status.converged` (Sampling has no convergence success path).
     /// @param frame Host-resident system state, updated in place.
     /// @param n_sweeps Number of trial moves to attempt.
+    /// @brief Flush component `destroy()` if a run is still live (continuation
+    ///        defers teardown to here so build→launch×N→destroy spans all
+    ///        `run()` calls, mirroring DynamicsDriver).
+    ~SamplingDriver() {
+        if (live_ && this->backend_)
+            this->backend_->destroy_components();
+    }
+
+    /// @brief Advance the system by `n_sweeps` Monte Carlo trial moves.
+    ///
+    /// **Continuable.** Consecutive calls on the same frame extend one Markov
+    /// chain — the standard `run(equilibrate); run(sample); …` pattern. Setup
+    /// (backend init + the `e_cur_` bootstrap) runs once on the first call; a
+    /// different frame restarts. Honours `outer_status.stop_requested`; ignores
+    /// `outer_status.converged` (Sampling has no convergence success path).
+    /// @param frame Host-resident system state, updated in place.
+    /// @param n_sweeps Number of trial moves to attempt.
     void run(cpu::Frame& frame, int n_sweeps) {
-        setup_pass(frame);
-
-        // Publish the per-move changeset + RNG so a Mover can reach them
-        // (mirrors NeighborList publishing pair_list). Addresses are stable
-        // for the whole run.
-        this->backend_->context().proposal = &proposal_;
-        this->backend_->context().rng = &rng_;
-
-        // Bootstrap invariant: seed e_cur_ from the initial configuration's
-        // energy BEFORE the first trial move. Step index < 0 is the energy-only
-        // bootstrap pass; a Mover proposes nothing on it (see TranslateMove).
-        step_once(kBootstrapStep);
-        e_cur_ = frame.scalars.energy;
+        // A different frame ⇒ an independent chain: tear down and restart.
+        if (live_ && frame_ptr_ != &frame) {
+            this->backend_->destroy_components();
+            live_ = false;
+        }
+        if (!live_) {
+            setup_pass(frame);
+            // Publish the per-move changeset + RNG so a Mover can reach them
+            // (mirrors NeighborList publishing pair_list). Addresses are stable.
+            this->backend_->context().proposal = &proposal_;
+            this->backend_->context().rng = &rng_;
+            // Bootstrap invariant: seed e_cur_ from the initial configuration's
+            // energy BEFORE the first trial move (step<0 = energy-only pass; the
+            // Mover proposes nothing on it).
+            step_once(kBootstrapStep);
+            e_cur_ = frame.scalars.energy;
+            frame_ptr_ = &frame;
+            sweep_counter_ = 0;
+            live_ = true;
+        }
 
         for (int s = 0; s < n_sweeps; ++s) {
             mutable_outer_status().reset();
-            step_once(s); // propose (mutate + record) → energy (full recompute)
+            step_once(sweep_counter_++); // propose (mutate+record) → energy
             const AccReal e_trial = frame.scalars.energy;
             const AccReal dE = e_trial - e_cur_;
             ++n_attempts_;
@@ -101,8 +125,6 @@ class SamplingDriver : public CPUDriver<ATV::sampling::Phase> {
             if (outer_status().stop_requested)
                 break;
         }
-
-        teardown_pass();
     }
 
     /// @brief Energy [eV] of the current (last-accepted) configuration —
@@ -189,6 +211,11 @@ class SamplingDriver : public CPUDriver<ATV::sampling::Phase> {
     AccReal e_cur_ = 0;        ///< Cached energy of the last accepted state [eV].
     long long n_attempts_ = 0; ///< Trial moves attempted (lifetime).
     long long n_accepts_ = 0;  ///< Trial moves accepted (lifetime).
+
+    // Continuation bookkeeping (mirrors DynamicsDriver).
+    bool live_ = false;                 ///< Backend live between first run() and destruction.
+    cpu::Frame* frame_ptr_ = nullptr;   ///< Frame bound by the live chain.
+    int sweep_counter_ = 0;             ///< Cumulative sweep index across run() calls.
 };
 
 } // namespace cpu

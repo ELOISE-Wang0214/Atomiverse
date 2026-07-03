@@ -43,22 +43,33 @@ void TranslateMove::launch(const cpu::LaunchContext& ctx) {
     const StorageReal ox = ctx.frame.atoms.x[i];
     const StorageReal oy = ctx.frame.atoms.y[i];
     const StorageReal oz = ctx.frame.atoms.z[i];
-    const StorageReal nx = ox + static_cast<StorageReal>(disp(*rng));
-    const StorageReal ny = oy + static_cast<StorageReal>(disp(*rng));
-    const StorageReal nz = oz + static_cast<StorageReal>(disp(*rng));
+    double nx = static_cast<double>(ox) + disp(*rng);
+    double ny = static_cast<double>(oy) + disp(*rng);
+    double nz = static_cast<double>(oz) + disp(*rng);
 
-    ctx.frame.atoms.x[i] = nx;
-    ctx.frame.atoms.y[i] = ny;
-    ctx.frame.atoms.z[i] = nz;
+    // Wrap the displaced atom back into the primary cell so coordinates stay
+    // bounded over long runs — the COM otherwise random-walks off to infinity
+    // (a displacement perpendicular to a pair bond is ΔE=0 and always accepted),
+    // which eventually drives an atom outside the box and blows up the cell
+    // list. Energy is unaffected: the evaluator uses the minimum image. A
+    // degenerate (zero-length) box is left as-is (wrap_axis is a no-op).
+    ctx.frame.box.wrap_into(nx, ny, nz);
+
+    const StorageReal wx = static_cast<StorageReal>(nx);
+    const StorageReal wy = static_cast<StorageReal>(ny);
+    const StorageReal wz = static_cast<StorageReal>(nz);
+    ctx.frame.atoms.x[i] = wx;
+    ctx.frame.atoms.y[i] = wy;
+    ctx.frame.atoms.z[i] = wz;
 
     txn->clear();
     txn->moved.push_back(static_cast<LocalInt>(i));
     txn->old_x.push_back(ox);
     txn->old_y.push_back(oy);
     txn->old_z.push_back(oz);
-    txn->new_x.push_back(nx);
-    txn->new_y.push_back(ny);
-    txn->new_z.push_back(nz);
+    txn->new_x.push_back(wx);
+    txn->new_y.push_back(wy);
+    txn->new_z.push_back(wz);
 }
 
 } // namespace mc

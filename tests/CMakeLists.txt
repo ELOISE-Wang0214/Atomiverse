@@ -97,6 +97,11 @@ atv_add_cpp_test(test_units core/test_units.cpp)
 atv_add_cpp_test(test_cpu_box cpu/test_box.cpp)
 atv_add_cpp_test(test_cpu_mc_scaffold cpu/test_mc_scaffold.cpp)
 atv_add_cpp_test(test_cpu_mc_move cpu/mc/test_mc_move.cpp)
+# MC physics-validation gates — e2e (drive MC::run over many sweeps), disabled
+# from the default fast gate below; run with -DATV_RUN_E2E_TESTS=ON.
+atv_add_cpp_test(test_cpu_mc_pair_distribution cpu/mc/test_mc_pair_distribution.cpp)
+atv_add_cpp_test(test_cpu_mc_acceptance_ratio cpu/mc/test_mc_acceptance_ratio.cpp)
+atv_add_cpp_test(test_cpu_mc_lj_nist cpu/mc/test_mc_lj_nist.cpp)
 atv_add_cpp_test(test_cpu_md cpu/md/test_md.cpp)
 atv_add_cpp_test(test_cpu_md_pe_thermo_schema cpu/md/test_pe_thermo_schema.cpp)
 atv_add_cpp_test(test_cpu_md_pe_single_chain cpu/md/test_pe_single_chain.cpp)
@@ -531,7 +536,10 @@ endif()
 # Relocating it awaits an MPI-run helper on the benchmark side.
 if(NOT ATV_RUN_E2E_TESTS)
     set(ATV_E2E_TESTS
-        test_mpi_pe_nvt_multirank_n8)
+        test_mpi_pe_nvt_multirank_n8
+        test_cpu_mc_pair_distribution
+        test_cpu_mc_acceptance_ratio
+        test_cpu_mc_lj_nist)
     foreach(t IN LISTS ATV_E2E_TESTS)
         if(TEST ${t})
             set_tests_properties(${t} PROPERTIES DISABLED TRUE)

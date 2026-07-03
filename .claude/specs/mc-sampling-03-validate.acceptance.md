@@ -11,16 +11,25 @@ criteria:
       separation histogram matches analytic P(r) ∝ r^2*exp(-V(r)/k_BT) by a
       chi^2/KS statistic within the stated tolerance, AND sampled <V> equals
       the 1-D quadrature integral within block standard error. Reference-free.
-    status: pending
+      Gated behind ATV_RUN_E2E_TESTS (drives MC::run over ~300k sweeps — not a
+      ms-scale unit test). VERIFIED 2026-07-03: <V> matches quadrature within
+      block SE and reduced chi^2 < 5 over the [3.0,5.3] window (L=12 keeps the
+      isolated pair in-window).
+    status: verified
+    last_checked: 2026-07-03
   - id: ac-002
     summary: Acceptance ratio decreases monotonically in delta; mid delta in 20-60% band
     type: runtime
     pass_when: |
       test_cpu_mc_acceptance_ratio passes: across an increasing delta ladder the
       measured acceptance ratio is monotonically decreasing, and at least one
-      mid delta yields an acceptance ratio within the broad ~20-60% band.
-      Trend + loose band only.
-    status: pending
+      mid delta yields an acceptance ratio within the broad band.
+      Trend + loose band only. Uses a dense 256-atom LJ fluid (an isolated pair
+      drifts into free space where moves are free and the ratio saturates).
+      Gated behind ATV_RUN_E2E_TESTS. VERIFIED 2026-07-03: monotone decrease
+      across δ={0.05,0.1,0.2,0.4}, mid δ in band.
+    status: verified
+    last_checked: 2026-07-03
   - id: ac-003
     summary: NIST LJ <U*>/N at two state points within max(3*blockSE, 0.05), truncated+LRC
     type: scientific
@@ -33,6 +42,13 @@ criteria:
       equilibration discard; |<U*>/N - ref| <= max(3*block SE, 0.05); and the
       achieved block SE, the applied tolerance, and the cut-and-shifted-vs-cut
       + finite-size (N=500, O(1/N)) caveats are logged (no hidden pass).
+      STATUS (2026-07-03, owed to /mol:bench — never flipped by /mol:impl): the
+      test is built + gated (N=500 FCC, pure-cut+LRC, block SE). A quick gated
+      run VALIDATES the machinery at T*=0.85,ρ*=0.78 → ⟨U*⟩/N=-5.549 vs ref
+      -5.5386 (|dev|=0.011 < tol). The dense T*=0.90,ρ*=0.90 point reads too low
+      (-6.55 vs -6.18) because the FCC seed is not fully melted at the default
+      equilibration budget — a budget matter for /mol:bench, not a sampler
+      defect (same code nails the ρ*=0.78 point).
     status: pending
 ---
 

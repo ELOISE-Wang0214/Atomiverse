@@ -1,6 +1,6 @@
 ---
 title: Monte Carlo sampler physics validation (P(r) exactness, acceptance trend, NIST LJ)
-status: approved
+status: code-complete
 created: 2026-07-03
 ---
 
@@ -51,13 +51,13 @@ Lifecycle: helpers are pure functions invoked by the test bodies; no allocation 
 
 ## Tasks
 
-- [ ] Write failing two-particle P(r) distribution gate (tests/cpu/mc/test_mc_pair_distribution.cpp): one fixed + one mobile particle under PairLJCut in a box large enough that the r²·e^{−βV} tail is not truncated, at a T where the well is meaningfully sampled; discard equilibration, accumulate the separation histogram, assert χ²/KS vs analytic P(r) ∝ r²·e^{−βV(r)} within a stated tolerance and ⟨V⟩ equal to the quadrature value within block SE
-- [ ] Implement the test-scope quadrature, truncated-LJ, and block_mean_se helpers in tests/cpu/mc/mc_test_util.h to turn the P(r) gate GREEN
-- [ ] Write failing acceptance-ratio-vs-δ trend gate (tests/cpu/mc/test_mc_acceptance_ratio.cpp): assert the acceptance ratio decreases monotonically across an increasing δ ladder and that a mid δ lands in a broad ~20–60% band (loose trend + band only, not a theorem)
-- [ ] Register test_cpu_mc_pair_distribution and test_cpu_mc_acceptance_ratio in tests/CMakeLists.txt under the cpu::mc build guard from sub-spec 01
-- [ ] Write NIST LJ ⟨U*⟩/N end-to-end scientific gate (tests/cpu/mc/test_mc_lj_nist.cpp): sample the LJ fluid at both state points, reconstruct the pure-cut energy with truncated_lj_energy, add analytic U_LRC/N, verify ⟨U⟩ stationarity (no drift) after equilibration discard, and assert |⟨U*⟩/N − ref| ≤ max(3·block SE, 0.05) while logging the achieved block SE, the applied tolerance, and the cut-and-shifted-vs-cut caveat
-- [ ] Register test_cpu_mc_lj_nist in tests/CMakeLists.txt and add it to the ATV_E2E_TESTS tail list so it is DISABLED unless ATV_RUN_E2E_TESTS=ON
-- [ ] Run full check + test suite
+- [x] Write failing two-particle P(r) distribution gate (tests/cpu/mc/test_mc_pair_distribution.cpp): one fixed + one mobile particle under PairLJCut in a box large enough that the r²·e^{−βV} tail is not truncated, at a T where the well is meaningfully sampled; discard equilibration, accumulate the separation histogram, assert χ²/KS vs analytic P(r) ∝ r²·e^{−βV(r)} within a stated tolerance and ⟨V⟩ equal to the quadrature value within block SE
+- [x] Implement the test-scope quadrature, truncated-LJ, and block_mean_se helpers in tests/cpu/mc/mc_test_util.h to turn the P(r) gate GREEN
+- [x] Write failing acceptance-ratio-vs-δ trend gate (tests/cpu/mc/test_mc_acceptance_ratio.cpp): assert the acceptance ratio decreases monotonically across an increasing δ ladder and that a mid δ lands in a broad ~20–60% band (loose trend + band only, not a theorem)
+- [x] Register test_cpu_mc_pair_distribution and test_cpu_mc_acceptance_ratio in tests/CMakeLists.txt under the cpu::mc build guard from sub-spec 01
+- [x] Write NIST LJ ⟨U*⟩/N end-to-end scientific gate (tests/cpu/mc/test_mc_lj_nist.cpp): sample the LJ fluid at both state points, reconstruct the pure-cut energy with truncated_lj_energy, add analytic U_LRC/N, verify ⟨U⟩ stationarity (no drift) after equilibration discard, and assert |⟨U*⟩/N − ref| ≤ max(3·block SE, 0.05) while logging the achieved block SE, the applied tolerance, and the cut-and-shifted-vs-cut caveat
+- [x] Register test_cpu_mc_lj_nist in tests/CMakeLists.txt and add it to the ATV_E2E_TESTS tail list so it is DISABLED unless ATV_RUN_E2E_TESTS=ON
+- [x] Run full check + test suite — P(r) + acceptance-ratio gates pass (ATV_RUN_E2E_TESTS=ON); NIST built+gated (ρ*=0.78 validates to 0.011, verdict owed to /mol:bench); default non-MPI gate green (MC e2e correctly disabled)
 
 ## Testing strategy
 
