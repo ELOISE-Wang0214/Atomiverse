@@ -16,7 +16,13 @@ FetchContent_MakeAvailable(googletest)
 # specific thread count can still call omp_set_num_threads itself.
 set(ATV_TEST_OMP_THREADS 8 CACHE STRING
     "OMP_NUM_THREADS for single-process unit tests")
-set(ATV_TEST_MPI_OMP_THREADS 4 CACHE STRING
+# MPI tests exercise multi-RANK behaviour (domain decomposition / halo), not
+# OpenMP — so 1 thread/rank is both sufficient and correct. An n8 run at 4
+# threads/rank spawns 8×4=32 contending threads, which on a shared login node
+# oversubscribes badly: test_mpi_npt_multirank_n8 took ~103 s AND its
+# thread-reduction-order-sensitive pressure check flaked. At 1 thread/rank it
+# passes deterministically in ~20 s.
+set(ATV_TEST_MPI_OMP_THREADS 1 CACHE STRING
     "OMP_NUM_THREADS per rank for MPI unit tests")
 
 # Fast-gate discipline: the ctest suite must stay millisecond-scale so local
