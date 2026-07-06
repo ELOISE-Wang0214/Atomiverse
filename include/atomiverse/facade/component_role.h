@@ -43,6 +43,7 @@ enum class ComponentRole : uint8_t {
     Optimizer,  ///< Optimization step (LBFGS, CG, FIRE, ...).
     Thermostat, ///< Temperature controller (NoseHoover, Langevin, ...).
     Barostat,   ///< Pressure controller (Berendsen, MTK, ...).
+    Mover,      ///< Proposes a trial state change for a sampling driver (TranslateMove, ...).
     ConvergenceCheck, ///< Reports loop convergence to the outer driver via outer_status.
     Recorder, ///< Writes I/O (XYZ, Zarr, thermo).
     Observer, ///< Computes derived diagnostics (RDF, density, orbital info).

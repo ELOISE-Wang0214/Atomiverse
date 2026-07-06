@@ -147,4 +147,39 @@ inline std::vector<std::string> phase_names(Phase phase_tag) {
 }
 
 } // namespace vib
+
+/// @brief Monte Carlo sampling phases (Sampling driver category).
+///
+/// Used by `cpu::SamplingDriver` / `cpu::mc::MC`. The Sampling category runs
+/// a fixed sweep budget of stochastic trial moves; each sweep walks
+/// `propose` → `energy` → `end_of_step`, and every phase is always walked
+/// (an empty phase is an explicit "nothing happens here", not an absence to
+/// infer). Within a phase, components order by a small integer as elsewhere.
+namespace sampling {
+
+/// @brief Phase order for one Monte Carlo sweep (one trial move).
+///
+/// @note There is deliberately **no** `accept` phase. Accept/reject is not a
+///       per-phase component slot but the driver's outer-loop control inside
+///       `SamplingDriver::run()` — the Metropolis test decides whether the
+///       proposed state survives — exactly as MD's step-budget termination is
+///       not a phase. See `cpu/driver/sampling_driver.h`.
+enum class Phase {
+    propose,     ///< Mover mutates the frame in place and records the changeset
+                 ///< into `Context::proposal`.
+    energy,      ///< Full-frame energy of the trial state (ZeroEnergy then the
+                 ///< registered `Capability::Energy` evaluator).
+    end_of_step, ///< Per-sweep observers / recorders / thermo.
+    COUNT        ///< Sentinel -- total number of phases.
+};
+
+/// @brief Human-readable names for the sampling phases.
+/// @param phase_tag Tag value used only for overload selection.
+/// @return Phase names in the same order as the enum values, excluding `COUNT`.
+inline std::vector<std::string> phase_names(Phase phase_tag) {
+    (void)phase_tag;
+    return {"propose", "energy", "end_of_step"};
+}
+
+} // namespace sampling
 } // namespace ATV
