@@ -1,6 +1,6 @@
 ---
 title: Canonical orthogonalization with overlap-eigenvalue thresholding for SCF
-status: approved
+status: code-complete
 created: 2026-07-02
 ---
 
@@ -20,6 +20,13 @@ created: 2026-07-02
 - 验证靶（PySCF 2.13.1，cart=True，本次生成）：H2/6-31G + 位于 (0, 0, 1e-5 Å) 的重复 6-31G 壳层中心 → n_ao = 6；S 最小本征值 3.53e-12、1.09e-10，其后 0.126；正则正交化恰好丢弃 2 列（X 形状 6×4）；带筛除的 RHF E = −1.1267347374 Ha，对照干净 H2/6-31G E = −1.1267339671 Ha（相差 8e-7）。H2 几何：H (0,0,0)、H (0,0,0.7414) Å。**注意**：该参考值是用零核电荷 ghost 中心生成的；本 spec 选定的 C++ 测试体系是 H2 + H⁺（真实质子，见 Design），核吸引势不同，参考能量必须按同一体系重新生成（见验收 ac-003）。丢弃列数 m = 4 仅取决于基函数重叠结构，与核电荷无关，可直接沿用。
 
 ## Design
+
+> **Design correction (2026-07-02, user directive — "no factory functions;
+> instantiate and use structs directly")**: 自由函数
+> `canonical_orthogonalization(S, tau)` 取消。`CanonicalOrth` 改为带计算
+> 构造函数的 struct：`CanonicalOrth(const RealMatrix& S, double tau)` 在构造
+> 时完成本征分解与阈值筛除；成员 `X / n_dropped / s_min` 不变；全列被筛除时
+> 构造函数抛 `std::runtime_error`。下文原文按此修正解读。
 
 **测试体系选型（显式决定）**：工程的基组表按 Z 索引（`basis_data/`），不支持零核电荷 ghost 原子。为避免引入 ghost 机制，线性相关测试体系选定为 **H2 + H⁺**：三个真实 H 中心 —— H (0,0,0)、H (0,0,0.7414 Å)、H (0,0,1e-5 Å)（与第一个中心近重合），`build_integrals(frame, BasisSet::Pople631G, /*charge=*/+1)` 使电子数保持 2。该体系 n_ao = 6，基组近简并结构与 ghost 版本相同（预期仍恰好丢 2 列，m = 4），但 PySCF 参考能量需对**完全相同**的几何/电荷/cart=True 重新生成并钉入测试。
 
@@ -54,15 +61,15 @@ created: 2026-07-02
 
 ## Tasks
 
-- [ ] Write failing tests for canonical_orthogonalization (tests/cpu/linalg/test_canonical_orthogonalization.cpp, new dir; register in tests/CMakeLists.txt): synthetic near-singular S → X shape n×m, ‖XᵀSX − I_m‖ < 1e-12, exact n_dropped/s_min; tau=0 keeps all n columns; all-dropped case throws
-- [ ] Implement CanonicalOrth + canonical_orthogonalization in include/atomiverse/cpu/linalg/eigensolve.h with Doxygen (@brief/@param/@return, units noted dimensionless)
-- [ ] Regenerate PySCF 2.13.1 reference (cart=True) for the chosen H2 + H⁺/6-31G system (H at 0,0,0; 0,0,0.7414; 0,0,1e-5 Å; charge=+1) and record E_ref, s_min spectrum, expected m=4 as constants in tests/cpu/scf/test_scf_lindep.cpp
-- [ ] Write failing tests for SCF linear-dependence handling (tests/cpu/scf/test_scf_lindep.cpp; register in tests/CMakeLists.txt): (i) clean H2/6-31G RHF energy unchanged vs current value to 1e-12 with default lindep_threshold; (ii) H2 + H⁺ near-duplicate converges with exactly 2 dropped columns and |E − E_ref| < 1e-6 Ha; (iii) lindep_threshold=0 on the clean system reproduces the current dsygvd result bitwise; (iv) tutorial-quoted numbers pinned
-- [ ] Implement SCFConfig::lindep_threshold (default 1e-8, 0 disables) in include/atomiverse/cpu/scf/scf_solve.h and document n_mo ≤ n_ao on SCFResult fields
-- [ ] Implement EigenSolver::step_orthogonal in include/atomiverse/cpu/scf/internal/eigen_solver.h and wire src/cpu/scf/scf_solver.cpp + include/atomiverse/cpu/scf/scf_solver.h: build X_ via canonical_orthogonalization, select two-step path only when n_dropped > 0 (SCF loop and initial Hcore diagonalization), keep dsygvd otherwise; verify DIIS error dimensions with rectangular X_
-- [ ] Write tutorial section "Why HF becomes a matrix equation — and when the basis goes bad" in docs/tutorial/ch02-rhf.md (English, Jensen-style: Roothaan–Hall, S^{−1/2} vs canonical orthogonalization, thresholds incl. PySCF ≥ 2.13 = 1e-6), quoting only numbers produced by test_scf_lindep.cpp
-- [ ] Verify no-regression: full existing cpu/scf test set passes untouched and both new tests complete within the default ctest gate (< 1 s each)
-- [ ] Run full check + test suite
+- [x] Write failing tests for canonical_orthogonalization (tests/cpu/linalg/test_canonical_orthogonalization.cpp, new dir; register in tests/CMakeLists.txt): synthetic near-singular S → X shape n×m, ‖XᵀSX − I_m‖ < 1e-12, exact n_dropped/s_min; tau=0 keeps all n columns; all-dropped case throws
+- [x] Implement CanonicalOrth + canonical_orthogonalization in include/atomiverse/cpu/linalg/eigensolve.h with Doxygen (@brief/@param/@return, units noted dimensionless)
+- [x] Regenerate PySCF 2.13.1 reference (cart=True) for the chosen H2 + H⁺/6-31G system (H at 0,0,0; 0,0,0.7414; 0,0,1e-5 Å; charge=+1) and record E_ref, s_min spectrum, expected m=4 as constants in tests/cpu/scf/test_scf_lindep.cpp
+- [x] Write failing tests for SCF linear-dependence handling (tests/cpu/scf/test_scf_lindep.cpp; register in tests/CMakeLists.txt): (i) clean H2/6-31G RHF energy unchanged vs current value to 1e-12 with default lindep_threshold; (ii) H2 + H⁺ near-duplicate converges with exactly 2 dropped columns and |E − E_ref| < 1e-6 Ha; (iii) lindep_threshold=0 on the clean system reproduces the current dsygvd result bitwise; (iv) tutorial-quoted numbers pinned
+- [x] Implement SCFConfig::lindep_threshold (default 1e-8, 0 disables) in include/atomiverse/cpu/scf/scf_solve.h and document n_mo ≤ n_ao on SCFResult fields
+- [x] Implement EigenSolver::step_orthogonal in include/atomiverse/cpu/scf/internal/eigen_solver.h and wire src/cpu/scf/scf_solver.cpp + include/atomiverse/cpu/scf/scf_solver.h: build X_ via canonical_orthogonalization, select two-step path only when n_dropped > 0 (SCF loop and initial Hcore diagonalization), keep dsygvd otherwise; verify DIIS error dimensions with rectangular X_
+- [x] Write tutorial section "Why HF becomes a matrix equation — and when the basis goes bad" in docs/tutorial/ch02-rhf.md (English, Jensen-style: Roothaan–Hall, S^{−1/2} vs canonical orthogonalization, thresholds incl. PySCF ≥ 2.13 = 1e-6), quoting only numbers produced by test_scf_lindep.cpp
+- [x] Verify no-regression: full existing cpu/scf test set passes untouched and both new tests complete within the default ctest gate (< 1 s each)
+- [x] Run full check + test suite
 
 ## Testing strategy
 

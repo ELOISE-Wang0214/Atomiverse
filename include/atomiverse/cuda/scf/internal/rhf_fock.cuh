@@ -38,8 +38,13 @@ class RHFFock {
   public:
     /// @brief Construct with precomputed CPU integrals.
     /// @param integrals Molecular integral pack (Hcore, ERI, S, V_nuc).
-    explicit RHFFock(const cpu::scf::IntegralPack& integrals)
-        : integrals_(integrals) {}
+    /// @param level_shift Virtual-orbital level shift λ [Hartree] applied in
+    ///        the orthonormal basis (F' += λ(I − P'_occ)); default 0.0 is a
+    ///        strict no-op. Mirrors the CPU SCFConfig::level_shift
+    ///        (hf-robust-03) for the CUDA RHF path.
+    explicit RHFFock(const cpu::scf::IntegralPack& integrals,
+                     double level_shift = 0.0)
+        : integrals_(integrals), level_shift_(level_shift) {}
 
     /// @brief Upload Hcore/ERI/X to device, allocate workspace.
     /// @param ctx Build context (CUDA stream + device frame).
@@ -58,6 +63,7 @@ class RHFFock {
 
   private:
     cpu::scf::IntegralPack integrals_; ///< Precomputed molecular integrals.
+    double level_shift_ = 0.0;         ///< Level shift λ [Hartree].
     void* cublas_handle_ = nullptr;    ///< cuBLAS handle.
     double* d_temp_ = nullptr;         ///< Scratch buffer [device, n*n].
 };

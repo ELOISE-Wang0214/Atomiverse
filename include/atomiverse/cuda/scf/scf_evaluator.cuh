@@ -64,8 +64,11 @@ class SCFEvaluator : public cuda::ComponentBase {
     /// @param tol Convergence tolerance, Frobenius norm of P change
     ///        [dimensionless].
     /// @param max_iter Maximum number of SCF iterations [dimensionless].
+    /// @param level_shift Virtual-orbital level shift λ [Hartree], default
+    ///        0.0 (no shift). Forwarded to the inner SCFSolver
+    ///        (hf-robust-03).
     SCFEvaluator(const cpu::scf::IntegralPack& integrals, double tol,
-                 int max_iter);
+                 int max_iter, double level_shift = 0.0);
 
     /// @brief Construct an RHF evaluator driven by GPU-native integrals.
     /// @param n_prim Primitives per shell (3 for STO-3G) [dimensionless].

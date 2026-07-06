@@ -13,13 +13,29 @@
 
 #include "atomiverse/cuda/scf/scf_solver.cuh"
 
+#include <cmath>
 #include <cuda_runtime.h>
 
+#include <stdexcept>
+#include <string>
+
+#include "atomiverse/cuda/device/launch.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
 
 namespace ATV {
 namespace cuda {
 namespace scf {
+
+// ── Kernel: de-shift the virtual orbital energies ────────────────────
+// The level shift raised every virtual eigenvalue by exactly λ and left
+// the occupied ones untouched; subtract λ back from eig[n_occ .. n-1] so
+// the reported orbital energies are shift-free (hf-robust-03 de-shift).
+__global__ void deshift_virtuals_kernel(prec_t* __restrict__ eig,
+                                        prec_t lambda, int n_occ, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x + n_occ;
+    if (i < n)
+        eig[i] -= lambda;
+}
 
 SCFSolver::SCFSolver(int n_occ, double alpha, double tol, int max_iter)
     : path_(Path::Synthetic), tol_(tol), max_iter_(max_iter) {
@@ -33,12 +49,31 @@ SCFSolver::SCFSolver(int n_occ, double alpha, double tol, int max_iter)
 #ifdef ATV_HAS_RHF
 
 SCFSolver::SCFSolver(const cpu::scf::IntegralPack& integrals, double tol,
-                     int max_iter)
-    : path_(Path::RHFHostIntegrals), tol_(tol), max_iter_(max_iter) {
+                     int max_iter, double level_shift)
+    : path_(Path::RHFHostIntegrals), tol_(tol), max_iter_(max_iter),
+      level_shift_(level_shift) {
+    // Closed-shell validity guard (mirrors the CPU cpu::scf::SCFSolver::run
+    // occupation guard, hf-robust-01). The CUDA solver is RHF closed-shell
+    // only — n_occ = integrals.n_occ() = n_electrons / 2. An odd electron
+    // count silently truncates (2 * n_occ = n_electrons - 1), describing one
+    // fewer electron; reject it at construction rather than converge to a
+    // physically wrong state. One descriptive throw per the repo
+    // "no fallback values" rule.
+    if (integrals.n_electrons < 0 || integrals.n_electrons % 2 != 0) {
+        throw std::invalid_argument(
+            "cuda::scf::SCFSolver: closed-shell RHF requires an even, "
+            "non-negative electron count (n_electrons="
+            + std::to_string(integrals.n_electrons)
+            + "); an odd count would truncate to "
+            + std::to_string(integrals.n_occ())
+            + " doubly-occupied orbitals and drop an electron. Check the "
+              "molecular charge, or use the CPU unrestricted path for "
+              "open-shell systems.");
+    }
     eigen_ = std::make_unique<internal::EigenSolver>();
     // RHF path: RHFDensity owns the energy; the checker is residual-only.
     convergence_ = std::make_unique<internal::ConvergenceCheck>(tol, false);
-    rhf_fock_ = std::make_unique<internal::RHFFock>(integrals);
+    rhf_fock_ = std::make_unique<internal::RHFFock>(integrals, level_shift_);
     rhf_density_ = std::make_unique<internal::RHFDensity>(integrals.n_occ());
 }
 
@@ -46,6 +81,14 @@ SCFSolver::SCFSolver(int n_prim, const double* exponents,
                      const double* coefficients, int n_occ, double tol,
                      int max_iter)
     : path_(Path::RHFDeviceIntegrals), tol_(tol), max_iter_(max_iter) {
+    // Device-integrals path takes n_occ directly (no electron count to
+    // cross-check), so the only meaningful guard is non-negativity — a
+    // negative occupied count is nonsense (mirrors the CPU n_occ >= 0 arm).
+    if (n_occ < 0) {
+        throw std::invalid_argument(
+            "cuda::scf::SCFSolver: n_occ must be non-negative (got "
+            + std::to_string(n_occ) + ").");
+    }
     eigen_ = std::make_unique<internal::EigenSolver>();
     convergence_ = std::make_unique<internal::ConvergenceCheck>(tol, false);
     rhf_fock_device_ = std::make_unique<internal::RHFFockDevice>(
@@ -133,6 +176,19 @@ void SCFSolver::run(cuda::Context& runtime, cuda::Frame& frame) {
         ++iterations_;
         if (scf.converged)
             break;
+    }
+
+    // ── Post-convergence de-shift (hf-robust-03) ──────────────────────
+    // Reported orbital energies must not carry the +λ virtual pollution.
+    // At convergence the shift's spectral effect is exactly +λ on every
+    // virtual eigenvalue and 0 on occupied, so subtracting λ from the
+    // virtual block restores unshifted energies without a re-diagonalize.
+    if (scf.converged && std::abs(level_shift_) > 1e-4 && scf.n_occ < scf.n) {
+        const int n_virt = scf.n - scf.n_occ;
+        int blocks = cuda::grid_size(n_virt, cuda::kDefaultBlock);
+        deshift_virtuals_kernel<<<blocks, cuda::kDefaultBlock, 0, stream>>>(
+            scf.eig, static_cast<cuda::prec_t>(level_shift_), scf.n_occ,
+            scf.n);
     }
 }
 

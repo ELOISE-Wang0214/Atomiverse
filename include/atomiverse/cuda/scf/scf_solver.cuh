@@ -83,8 +83,18 @@ class SCFSolver {
     /// @param tol Convergence tolerance, Frobenius norm of P change
     ///        [dimensionless].
     /// @param max_iter Maximum number of SCF iterations [dimensionless].
+    /// @param level_shift Virtual-orbital level shift λ [Hartree]
+    ///        (Saunders–Hillier), default 0.0 = no shift. Stabilizes SCF
+    ///        by widening the HOMO–LUMO gap; reported orbital energies are
+    ///        de-shifted after convergence. Mirrors CPU
+    ///        SCFConfig::level_shift (hf-robust-03).
+    /// @throws std::invalid_argument when `integrals.n_electrons` is odd or
+    ///         negative: closed-shell RHF requires an even electron count,
+    ///         and an odd count would silently truncate
+    ///         (n_occ = n_electrons / 2 drops an electron). Mirrors the CPU
+    ///         `cpu::scf::SCFSolver::run` occupation guard (hf-robust-01).
     SCFSolver(const cpu::scf::IntegralPack& integrals, double tol,
-              int max_iter);
+              int max_iter, double level_shift = 0.0);
 
     /// @brief Construct an RHF solver driven by GPU-native integral kernels.
     /// @param n_prim Primitives per shell (3 for STO-3G) [dimensionless].
@@ -95,6 +105,7 @@ class SCFSolver {
     /// @param tol Convergence tolerance, Frobenius norm of P change
     ///        [dimensionless].
     /// @param max_iter Maximum number of SCF iterations [dimensionless].
+    /// @throws std::invalid_argument when `n_occ` is negative.
     SCFSolver(int n_prim, const double* exponents, const double* coefficients,
               int n_occ, double tol, int max_iter);
 #endif
@@ -148,6 +159,7 @@ class SCFSolver {
     Path path_;     ///< Selected run path.
     double tol_;    ///< Convergence tolerance (Frobenius norm).
     int max_iter_;  ///< Maximum SCF iteration count.
+    double level_shift_ = 0.0; ///< Virtual level shift λ [Hartree] (RHF host).
     bool built_ = false;     ///< Whether build() has run.
     int iterations_ = 0;     ///< Iterations executed by the last run().
 

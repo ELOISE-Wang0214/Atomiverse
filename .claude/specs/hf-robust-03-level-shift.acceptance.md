@@ -9,7 +9,8 @@ criteria:
       (test_cpu_scf_solver, test_cpu_scf_accelerators, UHF/UKS tests) passes
       with zero edits to existing expected values, and the new anchor assert
       E(H2O/6-31G RHF, cart) = -75.9839744727 Ha holds to 1e-6 Ha at λ=0.
-    status: pending
+    status: verified
+    last_checked: 2026-07-02
   - id: ac-002
     summary: Unit test proves spectral effect — virtuals shift by λ, occupied unchanged
     type: code
@@ -20,7 +21,8 @@ criteria:
       eigenvalue shifted by exactly λ (tol 1e-12) and every occupied one
       unchanged (tol 1e-12); and apply_level_shift is an element-wise identity
       when |λ| <= 1e-4.
-    status: pending
+    status: verified
+    last_checked: 2026-07-02
   - id: ac-003
     summary: H2O/6-31G RHF energy invariant under λ=0.5 to 1e-9 Ha
     type: scientific
@@ -58,7 +60,8 @@ criteria:
       damping → DIIS → level shift → diagonalize and the density-damping vs
       PySCF-Fock-damping difference; grep finds no code path applying the
       shift before or inside DIIS.
-    status: pending
+    status: verified
+    last_checked: 2026-07-02
   - id: ac-007
     summary: Tutorial section exists and every cited number is regression-pinned
     type: docs
@@ -79,7 +82,8 @@ criteria:
       by this spec contribute < 2 s combined wall time (else the solver-level
       binary is listed in the ATV_RUN_E2E_TESTS-disabled block at the tail of
       tests/CMakeLists.txt and the default gate stays at its ~16 s scale).
-    status: pending
+    status: verified
+    last_checked: 2026-07-02
 ---
 
 # Acceptance criteria
@@ -90,3 +94,4 @@ criteria:
 - **ac-006 (code)** — the PySCF ordering (damping → DIIS on unshifted F → shift → diagonalize) is the parity-critical invariant; it is enforced structurally in the loop and documented, including the deliberate density-vs-Fock damping divergence kept out of scope.
 - **ac-007 (docs)** — tutorial content in English per request; numbers produced by the new code, not hand-copied.
 - **ac-008 (runtime)** — the ~16 s default ctest budget from `tests/` policy is preserved.
+- **ac-008 measurement (2026-07-02)**: default-gate additions `test_cpu_scf_level_shift` 0.36 s + LevelShift unit tests inside `test_cpu_scf_accelerators` (0.05 s total binary) = < 0.5 s combined, well under the 2 s bar; no E2E-tail entry needed.

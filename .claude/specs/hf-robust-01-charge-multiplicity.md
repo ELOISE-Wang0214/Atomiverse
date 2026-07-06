@@ -1,6 +1,6 @@
 ---
 title: Gaussian SCF charge/multiplicity resolver and closed-shell validity guard
-status: approved
+status: code-complete
 created: 2026-07-02
 ---
 
@@ -30,6 +30,14 @@ created: 2026-07-02
 - 单位：电子数/占据数为无量纲整数；SCF 能量内部单位 Hartree（本工作不触碰能量学）。
 
 ## Design
+
+> **Design correction (2026-07-02, user directive — "no factory functions;
+> instantiate and use structs directly")**: `resolve_occupations()` 自由函数与
+> `uhf_config`/`uks_config` 的 multiplicity 重载全部取消。取而代之：
+> `SpinResolution` 带校验构造函数（`SpinResolution(int n_electrons, int
+> multiplicity)`，非法组合抛 `std::invalid_argument`），用户直接实例化后把
+> `occ.n_alpha / occ.n_beta` 喂给**既有**的原始计数 config 构建器。以下原文
+> 中涉及 `resolve_occupations` 与重载的段落按此修正解读。
 
 全部改动落在 `cpu/scf` 配置/校验层与文档，不新建文件层级、不改 `SCFConfig` 结构体、不动求解循环。
 
@@ -71,15 +79,15 @@ created: 2026-07-02
 
 ## Tasks
 
-- [ ] Write failing tests for resolve_occupations acceptance table and the three rejection cases (tests/cpu/scf/test_spin_resolution.cpp, new; register test_cpu_scf_spin_resolution in tests/CMakeLists.txt)
-- [ ] Write failing tests for the SCFSolver::run validity guard — odd-electron RHF (H2O⁺ via rhf_config/rhf_solve) throws; Restricted with n_alpha≠n_beta throws; occupation-sum mismatch throws; neutral-H2O RHF energy unchanged (tests/cpu/scf/test_spin_resolution.cpp)
-- [ ] Implement SpinResolution and resolve_occupations with Doxygen @brief/@param/@return/@throws in include/atomiverse/cpu/scf/scf_solve.h
-- [ ] Implement multiplicity overloads of uhf_config and uks_config (delegating to resolve_occupations, raw-count overloads kept) in include/atomiverse/cpu/scf/scf_solve.h
-- [ ] Implement the configuration validity guard at the top of SCFSolver::run in src/cpu/scf/scf_solver.cpp, throwing one descriptive std::invalid_argument
-- [ ] Fix the false docstrings in include/atomiverse/cpu/scf/scf_solve.h (default_config :255 "Throws-via-solver", :270 "assumed even", rhf_config :180) to describe the now-real behavior
-- [ ] Write the tutorial sections — "Closed-shell validity" in docs/tutorial/ch02-rhf.md and "Charge and multiplicity conventions" in docs/tutorial/ch03-open-shell.md, Jensen-style, worked numbers taken from the validation table
-- [ ] Verify tutorial-regression linkage: every worked (charge, M, n_alpha, n_beta) tuple and every rejected combination in the tutorial sections appears as an assertion in tests/cpu/scf/test_spin_resolution.cpp, with cross-referencing comments on both sides
-- [ ] Run full check + test suite (default ctest gate stays within ~16 s budget)
+- [x] Write failing tests for the SpinResolution constructor acceptance table and the three rejection cases (tests/cpu/scf/test_spin_resolution.cpp, new; register test_cpu_scf_spin_resolution in tests/CMakeLists.txt)
+- [x] Write failing tests for the SCFSolver::run validity guard — odd-electron RHF (H2O⁺ via rhf_config/rhf_solve) throws; Restricted with n_alpha≠n_beta throws; occupation-sum mismatch throws; neutral-H2O RHF energy unchanged (tests/cpu/scf/test_spin_resolution.cpp)
+- [x] Implement SpinResolution with a validating constructor (throws std::invalid_argument) and Doxygen @brief/@param/@throws in include/atomiverse/cpu/scf/scf_solve.h
+- [x] Verify SpinResolution composes with the existing raw-count uhf_config/uks_config builders (no new overloads — user design directive; FeedsUhfConfigRawCounts / FeedsUksConfigRawCounts tests)
+- [x] Implement the configuration validity guard at the top of SCFSolver::run in src/cpu/scf/scf_solver.cpp, throwing one descriptive std::invalid_argument
+- [x] Fix the false docstrings in include/atomiverse/cpu/scf/scf_solve.h (default_config :255 "Throws-via-solver", :270 "assumed even", rhf_config :180) to describe the now-real behavior
+- [x] Write the tutorial sections — "Closed-shell validity" in docs/tutorial/ch02-rhf.md and "Charge and multiplicity conventions" in docs/tutorial/ch03-open-shell.md, Jensen-style, worked numbers taken from the validation table
+- [x] Verify tutorial-regression linkage: every worked (charge, M, n_alpha, n_beta) tuple and every rejected combination in the tutorial sections appears as an assertion in tests/cpu/scf/test_spin_resolution.cpp, with cross-referencing comments on both sides
+- [x] Run full check + test suite (default ctest gate stays within ~16 s budget)
 
 ## Testing strategy
 

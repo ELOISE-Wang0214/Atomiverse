@@ -10,6 +10,8 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <stdexcept>
+#include <string>
 #include <utility>
 
 #include <xtensor-blas/xlinalg.hpp>
@@ -24,6 +26,7 @@
 #include "atomiverse/cpu/scf/internal/dual_convergence_check.h"
 #include "atomiverse/cpu/scf/internal/eigen_solver.h"
 #include "atomiverse/cpu/scf/internal/hamiltonian_builder.h"
+#include "atomiverse/cpu/scf/internal/level_shift.h"
 #include "atomiverse/cpu/scf/minao.h"
 #include "atomiverse/cpu/linalg/eigensolve.h"   // build_orthogonalization_matrix, diagonalize
 #include "atomiverse/cpu/scf/dense_matrix.h"
@@ -63,6 +66,28 @@ void SCFSolver::build(const IntegralPack& reference) {
 
 SCFResult& SCFSolver::run(const IntegralPack& integrals,
                           const SCFInitialGuess* guess) {
+    // Configuration validity guard — read-only, before any allocation or
+    // iteration, so valid runs are bit-identical to the unguarded path.
+    // Catches the classic silent truncation: an odd-electron pack routed
+    // through a closed-shell config (n_occ() = n_electrons / 2) sums to
+    // n_electrons - 1. One descriptive throw per repo "no fallback values".
+    if (config_.n_alpha < 0 || config_.n_beta < 0
+        || config_.n_alpha + config_.n_beta != integrals.n_electrons
+        || (config_.spin == SpinType::Restricted
+            && config_.n_alpha != config_.n_beta)) {
+        throw std::invalid_argument(
+            "SCFSolver::run: inconsistent occupation configuration "
+            "(n_electrons=" + std::to_string(integrals.n_electrons)
+            + ", n_alpha=" + std::to_string(config_.n_alpha)
+            + ", n_beta=" + std::to_string(config_.n_beta) + ", spin="
+            + (config_.spin == SpinType::Restricted ? "Restricted"
+                                                    : "Unrestricted")
+            + "): requires n_alpha >= 0, n_beta >= 0, n_alpha + n_beta == "
+              "n_electrons, and n_alpha == n_beta when Restricted. Check "
+              "the molecular charge / spin multiplicity (see "
+              "SpinResolution).");
+    }
+
     const auto t_total = LogClock::now();
     const int n = integrals.n_basis;
     const RealMatrix S_cm = integrals.S;
@@ -88,15 +113,46 @@ SCFResult& SCFSolver::run(const IntegralPack& integrals,
     // lists, KS grid. All depend on current atom positions and so are
     // rebuilt each run(). (See build() — only n_basis-sized workspaces
     // are pre-allocated there.)
-    X_ = linalg::build_orthogonalization_matrix(S_cm);
+    //
+    // Linear-dependence handling (hf-robust-02): canonical orthogonalization
+    // drops overlap eigen-directions below config_.lindep_threshold. Only
+    // when columns are actually dropped does the solver leave the legacy
+    // path — a healthy basis (n_dropped == 0) keeps the exact Löwdin X_ and
+    // dsygvd diagonalization, so pre-existing results stay bit-identical.
+    n_dropped_ = 0;
+    if (config_.lindep_threshold > 0) {
+        linalg::CanonicalOrth ortho(S_cm, config_.lindep_threshold);
+        n_dropped_ = ortho.n_dropped;
+        if (n_dropped_ > 0) {
+            ATV_WARN("[scf] near-linear-dependent basis: dropped {} of {} "
+                     "overlap eigen-directions (s_min={:.3e}, tau={:.1e})",
+                     n_dropped_, n, ortho.s_min, config_.lindep_threshold);
+            X_ = std::move(ortho.X);
+        } else {
+            // Löwdin from the same eigendecomposition — one eigh per run()
+            // instead of two, bit-identical to
+            // build_orthogonalization_matrix(S_cm).
+            X_ = std::move(ortho.lowdin);
+        }
+    } else {
+        X_ = linalg::build_orthogonalization_matrix(S_cm);
+    }
     hamiltonian_->prepare(integrals, config_);
+
+    // Single diagonalization dispatch for every solve in this run: the
+    // two-step XᵀFX path only when canonical orthogonalization dropped
+    // columns; the dsygvd fast path (bit-identical legacy) otherwise.
+    auto diagonalize = [&](const RealMatrix& F) {
+        return (n_dropped_ > 0) ? eigen_->step_orthogonal(F, X_)
+                                : eigen_->step(F, S_cm);
+    };
 
     // Reset stateful helpers for this run.
     diis_->reset();
     convergence_->reset();
 
     // ── Initial guess ───────────────────────────────────────────────────
-    auto [eig0, C0] = linalg::diagonalize_fock_generalized(Hcore_cm, S_cm);
+    auto [eig0, C0] = diagonalize(Hcore_cm);
 
     RealMatrix P_alpha, P_beta;
     const bool valid_guess_alpha =
@@ -167,6 +223,17 @@ SCFResult& SCFSolver::run(const IntegralPack& integrals,
     result_.nuclear_repulsion = integrals.V_nuc;
 
     // ── SCF loop ────────────────────────────────────────────────────────
+    // Pipeline ordering (PySCF get_fock parity, hf.py):
+    //   build F → DIIS error from the UNSHIFTED F → DIIS extrapolate →
+    //   level shift (F' = F + λ(S − S·D_occ·S)) → diagonalize → density →
+    //   density damping (pre-DIIS iterations only).
+    // Deliberate divergence from PySCF: damping here linearly mixes the
+    // DENSITY after diagonalization (step 5, "fraction of old" convention),
+    // not the Fock before DIIS as PySCF does. Both act only while DIIS is
+    // inactive; switching to Fock damping would be a behavior change and is
+    // out of scope (hf-robust-03).
+    const bool shift_active =
+        std::abs(config_.level_shift) > internal::kLevelShiftSkipThreshold;
     for (int iter = 0; iter < config_.max_iter; ++iter) {
         const auto t_iter = LogClock::now();
 
@@ -195,10 +262,29 @@ SCFResult& SCFSolver::run(const IntegralPack& integrals,
             diis_active = (diis_->size() >= 2);
         }
 
+        // 2b. Level shift — strictly after DIIS (which extrapolated the
+        // unshifted Fock and built its error from it), strictly before
+        // diagonalization. Restricted D_occ = 0.5·P (occupancy-1
+        // convention, PySCF's dm*0.5); unrestricted P_sigma is per-spin
+        // idempotent already. One scalar λ for both channels.
+        if (shift_active) {
+            if (restricted) {
+                RealMatrix D_occ = 0.5 * P_alpha;
+                F_alpha = internal::apply_level_shift(F_alpha, S_cm, D_occ,
+                                                      config_.level_shift);
+                F_beta = F_alpha;
+            } else {
+                F_alpha = internal::apply_level_shift(F_alpha, S_cm, P_alpha,
+                                                      config_.level_shift);
+                F_beta = internal::apply_level_shift(F_beta, S_cm, P_beta,
+                                                     config_.level_shift);
+            }
+        }
+
         // 3. Diagonalize.
-        std::tie(eig_alpha, C_alpha) = eigen_->step(F_alpha, S_cm);
+        std::tie(eig_alpha, C_alpha) = diagonalize(F_alpha);
         if (!restricted) {
-            std::tie(eig_beta, C_beta) = eigen_->step(F_beta, S_cm);
+            std::tie(eig_beta, C_beta) = diagonalize(F_beta);
         } else {
             C_beta = C_alpha;
             eig_beta = eig_alpha;
@@ -311,6 +397,27 @@ SCFResult& SCFSolver::run(const IntegralPack& integrals,
                      iter + 1, E_total, verdict.dE, verdict.err_norm);
             break;
         }
+    }
+
+    // ── Post-SCF: de-shifted orbital energies ──────────────────────────
+    // PySCF parity (hf.py kernel tail): after convergence, diagonalize one
+    // unshifted Fock rebuilt from the converged density so the REPORTED
+    // eigenvalues/coefficients carry no +λ pollution on the virtuals. The
+    // energy is not recomputed — it was already evaluated from unshifted
+    // quantities and is λ-invariant at convergence.
+    if (result_.converged && shift_active) {
+        auto fock = hamiltonian_->step(integrals, config_, P_alpha, P_beta);
+        std::tie(eig_alpha, C_alpha) = diagonalize(fock.F_alpha);
+        if (restricted) {
+            eig_beta = eig_alpha;
+            C_beta = C_alpha;
+        } else {
+            std::tie(eig_beta, C_beta) = diagonalize(fock.F_beta);
+        }
+        result_.eigenvalues_alpha = eig_alpha;
+        result_.eigenvalues_beta = eig_beta;
+        result_.C_alpha = C_alpha;
+        result_.C_beta = restricted ? C_alpha : C_beta;
     }
 
     // ── Post-SCF: spin contamination ───────────────────────────────────

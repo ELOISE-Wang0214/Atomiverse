@@ -2,7 +2,7 @@
 slug: hf-robust-02-canonical-orthogonalization
 criteria:
   - id: ac-001
-    summary: canonical_orthogonalization unit-correct on synthetic near-singular S
+    summary: CanonicalOrth constructor unit-correct on synthetic near-singular S
     type: code
     pass_when: |
       tests/cpu/linalg/test_canonical_orthogonalization.cpp passes in the default
@@ -10,7 +10,8 @@ criteria:
       n×(n−1), max|XᵀSX − I| < 1e-12, n_dropped == 1, s_min matches the injected
       eigenvalue; tau=0 keeps all n columns; a tau dropping every column throws
       std::runtime_error.
-    status: pending
+    status: verified
+    last_checked: 2026-07-02
   - id: ac-002
     summary: Healthy-basis no-regression — dsygvd path and all existing values unmoved
     type: code
@@ -20,7 +21,8 @@ criteria:
       test_scf_lindep.cpp equals the pre-change value to 1e-12 Ha; with
       lindep_threshold=0 the clean-system result is bitwise identical to the
       current dsygvd output.
-    status: pending
+    status: verified
+    last_checked: 2026-07-02
   - id: ac-003
     summary: Near-degenerate H2+H+ system converges with m=4 and matches PySCF
     type: scientific
@@ -46,7 +48,7 @@ criteria:
     summary: New public symbols carry Doxygen with units
     type: docs
     pass_when: |
-      canonical_orthogonalization, CanonicalOrth, EigenSolver::step_orthogonal,
+      The CanonicalOrth validating constructor (no factory function -- 2026-07-02 user directive), EigenSolver::step_orthogonal,
       and SCFConfig::lindep_threshold each have @brief plus @param/@return
       (units stated; dimensionless where applicable), consistent with the
       repository Doxygen convention.
@@ -58,7 +60,8 @@ criteria:
       cmake --build build -j succeeds warning-clean for the touched files and
       ctest --test-dir build --output-on-failure passes with both new tests
       registered in the default (non-E2E) gate, each completing in < 1 s.
-    status: pending
+    status: verified
+    last_checked: 2026-07-02
 ---
 
 # Acceptance criteria
@@ -69,3 +72,4 @@ criteria:
 - **ac-006** protects the ~16 s default ctest budget; neither new test may land in the E2E-disabled tail of `tests/CMakeLists.txt`.
 
 All file paths verified against the repo (branch `dev`); `tests/cpu/linalg/` is a new directory. Key placement confirmations: `X_` lives at `include/atomiverse/cpu/scf/scf_solver.h:99`, the Löwdin build at `src/cpu/scf/scf_solver.cpp:91`, the dsygvd solve at lines 99 and 199–205, and a tutorial-regression precedent exists (`test_cpu_gpw_h2o_tutorial`, `tests/CMakeLists.txt:164`).
+- **ac-006 measurement (2026-07-02)**: build warning-clean for all touched files; `test_cpu_linalg_canonical_orth` 0.01 s, `test_cpu_scf_lindep` 0.02 s — both in the default (non-E2E) gate, each < 1 s.
