@@ -6,6 +6,7 @@
 #include "atomiverse/core/log.h"
 #include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/minimizer/global_reduce.h"
+#include "atomiverse/cpu/minimizer/line_search.h"
 #include "atomiverse/cpu/component/owned_range.h"
 
 #include <algorithm>
@@ -19,6 +20,16 @@ CG::CG(double alpha0, double ftol, double rms_ftol, double max_dtol,
        double rms_dtol, double etol)
     : alpha0_(alpha0), ftol_(ftol), rms_ftol_(rms_ftol), max_dtol_(max_dtol),
       rms_dtol_(rms_dtol), etol_(etol) {}
+
+CG& CG::line_search(LineSearchMode mode, double c1, double c2, double max_step,
+                    double min_alpha) {
+    ls_mode_ = mode;
+    ls_c1_ = c1;
+    ls_c2_ = c2;
+    ls_max_step_ = max_step;
+    ls_min_alpha_ = min_alpha;
+    return *this;
+}
 
 void CG::build(const cpu::BuildContext& ctx) {
     // Capacity-sized buffers (atoms.size() ≥ n_local under multi-rank) —
@@ -149,6 +160,72 @@ void CG::launch(const cpu::LaunchContext& ctx) {
         return;
     }
 
+    // ── Line-search phase ───────────────────────────────────────────────
+    //
+    // search_direction (this step) stored the PR+ direction in d_prev_, the
+    // origin geometry in x_prev_, and the descent slope/origin energy. Here we
+    // pick the step length and write x_prev_ + alpha*d_prev_; the driver's
+    // force phase (next) recomputes forces/energy at that geometry.
+    if (phase == static_cast<int>(ATV::minimizer::Phase::line_search)) {
+        const double cap =
+            (ls_dir_max_ > 1e-20) ? ls_max_step_ / ls_dir_max_ : 1.0;
+
+        // Fixed mode (or no re-eval handle): legacy single step x + alpha0*d.
+        if (ls_mode_ == LineSearchMode::Fixed || !ctx.runtime.reeval_forces) {
+#pragma omp parallel for schedule(static)
+            for (int i = 0; i < n; ++i) {
+                f.atoms.x(i) = x_prev_[i * 3 + 0] + alpha0_ * d_prev_[i * 3 + 0];
+                f.atoms.y(i) = x_prev_[i * 3 + 1] + alpha0_ * d_prev_[i * 3 + 1];
+                f.atoms.z(i) = x_prev_[i * 3 + 2] + alpha0_ * d_prev_[i * 3 + 2];
+            }
+            return;
+        }
+        if (!(ls_gd0_ < 0))
+            return; // step 0 / degenerate — leave geometry to the conv. check
+
+        auto phi = [&](double alpha, bool need_slope) -> LsSample {
+#pragma omp parallel for schedule(static)
+            for (int i = 0; i < n; ++i) {
+                f.atoms.x(i) = x_prev_[i * 3 + 0] + alpha * d_prev_[i * 3 + 0];
+                f.atoms.y(i) = x_prev_[i * 3 + 1] + alpha * d_prev_[i * 3 + 1];
+                f.atoms.z(i) = x_prev_[i * 3 + 2] + alpha * d_prev_[i * 3 + 2];
+            }
+            ctx.runtime.reeval_forces(need_slope);
+            LsSample s;
+            s.f = f.scalars.energy;
+            double gd_local = 0;
+#pragma omp parallel for schedule(static) reduction(+ : gd_local)
+            for (int i = 0; i < n; ++i) {
+                gd_local += -f.atoms.fx(i) * d_prev_[i * 3 + 0]
+                            + -f.atoms.fy(i) * d_prev_[i * 3 + 1]
+                            + -f.atoms.fz(i) * d_prev_[i * 3 + 2];
+            }
+            s.dphi = global_sum(ctx, gd_local);
+            return s;
+        };
+
+        const double alpha_max = std::max(cap, ls_min_alpha_);
+        const double alpha_init = std::min(1.0, alpha_max);
+        LineSearchResult lr;
+        ctx.runtime.line_search_trial = true; // suppress migration during trials
+        if (ls_mode_ == LineSearchMode::StrongWolfe)
+            lr = strong_wolfe(phi, ls_phi0_, ls_gd0_, alpha_init, ls_c1_, ls_c2_,
+                              /*max_evals=*/20, alpha_max);
+        else
+            lr = armijo_backtrack(phi, ls_phi0_, ls_gd0_, alpha_init, ls_c1_,
+                                  ls_contract_, /*max_evals=*/20, ls_min_alpha_);
+        ctx.runtime.line_search_trial = false;
+
+        const double alpha = lr.alpha;
+#pragma omp parallel for schedule(static)
+        for (int i = 0; i < n; ++i) {
+            f.atoms.x(i) = x_prev_[i * 3 + 0] + alpha * d_prev_[i * 3 + 0];
+            f.atoms.y(i) = x_prev_[i * 3 + 1] + alpha * d_prev_[i * 3 + 1];
+            f.atoms.z(i) = x_prev_[i * 3 + 2] + alpha * d_prev_[i * 3 + 2];
+        }
+        return;
+    }
+
     // ── Search direction (Polak-Ribière+) ──────────────────────────────
     auto& g = g_ws_;
     auto& x = x_ws_;
@@ -185,15 +262,36 @@ void CG::launch(const cpu::LaunchContext& ctx) {
             d[k] = -g[k] + beta * d_prev_[k];
     }
 
-    // Take the step: x_{k+1} = x + α · d
+    // Descent precheck: PR+ does not always yield a descent direction (N&W
+    // §5.2). Reset to steepest descent if g·d ≥ 0. Globally reduced.
+    double gd_local = 0;
+#pragma omp parallel for schedule(static) reduction(+ : gd_local)
+    for (int k = 0; k < dim; ++k)
+        gd_local += g[k] * d[k];
+    double gd0 = global_sum(ctx, gd_local);
+    if (!(gd0 < 0)) {
 #pragma omp parallel for schedule(static)
-    for (int i = 0; i < n; ++i) {
-        f.atoms.x(i) = x[i * 3 + 0] + alpha0_ * d[i * 3 + 0];
-        f.atoms.y(i) = x[i * 3 + 1] + alpha0_ * d[i * 3 + 1];
-        f.atoms.z(i) = x[i * 3 + 2] + alpha0_ * d[i * 3 + 2];
+        for (int k = 0; k < dim; ++k)
+            d[k] = -g[k];
+        double gg_local = 0;
+#pragma omp parallel for schedule(static) reduction(+ : gg_local)
+        for (int k = 0; k < dim; ++k)
+            gg_local += g[k] * g[k];
+        gd0 = -global_sum(ctx, gg_local);
     }
 
+    // Global max|d| for the displacement cap.
+    double dir_max = 0;
+#pragma omp parallel for schedule(static) reduction(max : dir_max)
+    for (int k = 0; k < dim; ++k)
+        dir_max = std::max(dir_max, std::abs(d[k]));
+    ls_dir_max_ = global_max(ctx, dir_max);
+    ls_gd0_ = gd0;
+    ls_phi0_ = f.scalars.energy;
+
     // Save state for next iteration (buffer swaps — no copies, no allocs).
+    // After the swap the current direction is in d_prev_ and the origin
+    // geometry in x_prev_, which the line_search phase reads.
     std::swap(x_prev_, x_ws_);
     std::swap(g_prev_, g_ws_);
     std::swap(d_prev_, d_ws_);

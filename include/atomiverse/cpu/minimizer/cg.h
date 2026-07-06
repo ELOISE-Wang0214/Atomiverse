@@ -55,12 +55,30 @@ class CG : public cpu::ComponentBase {
                 double rms_ftol = 0.03, double max_dtol = 0.002,
                 double rms_dtol = 0.001, double etol = 1e-5);
 
+    /// @brief Select the line-search policy used at the `line_search` phase.
+    ///
+    /// `StrongWolfe` (default) enforces N&W 3.7a+3.7b along the PR+ direction;
+    /// a small `c2` (0.1) keeps the conjugate direction a descent direction
+    /// (N&W §5.2). `Armijo` enforces only sufficient decrease; `Fixed`
+    /// reproduces the legacy `x += alpha0 * d` step. Must be called before
+    /// `opt.build()`.
+    /// @param mode      Fixed / Armijo / StrongWolfe (default StrongWolfe).
+    /// @param c1        Sufficient-decrease constant (default 1e-4).
+    /// @param c2        Wolfe curvature constant (default 0.1 for CG).
+    /// @param max_step  Max trial displacement [Å]; caps alpha (default 0.2).
+    /// @param min_alpha Alpha floor (default 1e-8).
+    /// @return Reference to self for chaining.
+    CG& line_search(LineSearchMode mode = LineSearchMode::StrongWolfe,
+                    double c1 = 1e-4, double c2 = 0.1, double max_step = 0.2,
+                    double min_alpha = 1e-8);
+
     std::string name() const override { return "cg"; }
     ComponentRole role() const override { return ComponentRole::Optimizer; }
 
     std::vector<DefaultBinding> default_bindings() const override {
         return {
             {static_cast<int>(ATV::minimizer::Phase::search_direction), 0},
+            {static_cast<int>(ATV::minimizer::Phase::line_search), 0},
             {static_cast<int>(ATV::minimizer::Phase::convergence_check), 0}};
     }
 
@@ -74,6 +92,19 @@ class CG : public cpu::ComponentBase {
   private:
     double alpha0_;
     double ftol_, rms_ftol_, max_dtol_, rms_dtol_, etol_;
+
+    // Line search. Default StrongWolfe (c2=0.1 for CG); `line_search()` overrides.
+    LineSearchMode ls_mode_ = LineSearchMode::StrongWolfe;
+    double ls_c1_ = 1e-4;        // Sufficient-decrease constant.
+    double ls_c2_ = 0.1;         // Wolfe curvature constant (small for CG).
+    double ls_contract_ = 0.5;   // Armijo backtracking factor.
+    double ls_max_step_ = 0.2;   // Max trial displacement [Å] (caps alpha).
+    double ls_min_alpha_ = 1e-8; // Alpha floor.
+    // Carry-over from search_direction → line_search within one step (the
+    // current direction lives in d_prev_, the origin in x_prev_):
+    double ls_phi0_ = 0;    // phi(0) = energy at x_prev_ [eV].
+    double ls_gd0_ = 0;     // phi'(0) = g . d (< 0 on descent).
+    double ls_dir_max_ = 0; // global max|d| component, for the cap.
 
     // Previous-step state.
     std::vector<double> x_prev_;

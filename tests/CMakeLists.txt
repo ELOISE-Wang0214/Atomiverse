@@ -299,6 +299,7 @@ if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
     atv_add_mpi_exec(test_mpi_minimize_lj mpi/test_minimize_lj.cpp)
     atv_add_mpi_run(test_mpi_minimize_lj_n1 test_mpi_minimize_lj 1)
     atv_add_mpi_run(test_mpi_minimize_lj_n2 test_mpi_minimize_lj 2)
+    atv_add_mpi_run(test_mpi_minimize_lj_n4 test_mpi_minimize_lj 4)
     atv_add_mpi_run(test_mpi_minimize_lj_n8 test_mpi_minimize_lj 8)
 
     atv_add_mpi_exec(test_mpi_pe_chains_multirank mpi/test_pe_chains_multirank.cpp)
@@ -417,6 +418,7 @@ if(ATV_BUILD_RHF)
     atv_add_cpp_test(test_cpu_scf_rys_eri_deriv cpu/scf/test_rys_eri_deriv.cpp)
     # test_cpu_minimizer_lbfgs relocated to benchmarks/qc/rhf/validation/
     # (val_min_lbfgs_geoopt) — full SCF-driven H2 geometry optimizations.
+    atv_add_cpp_test(test_cpu_minimizer_line_search cpu/minimizer/test_line_search.cpp)
     atv_add_cpp_test(test_cpu_minimizer_recorders cpu/minimizer/test_trajectory_writer.cpp)
     atv_add_cpp_test(test_cpu_minimize_driver_swap_optimizer cpu/test_minimize_driver_swap_optimizer.cpp)
     atv_add_cpp_test(test_cpu_scf_orbital_info_observer cpu/scf/test_orbital_info_observer.cpp)
