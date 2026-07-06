@@ -255,6 +255,11 @@ if(ATV_BUILD_RHF)
     # gradient) closing the loop: RHF and LSDA bond-length relaxation, a
     # compressed bond expanding, and an Armijo line-search reaching tight force.
     atv_add_validation(val_min_lbfgs_geoopt qc/rhf/validation/test_lbfgs_geoopt.cpp)
+
+    # validation (gtest): closed-shell MP2 correlation energy vs pinned PySCF
+    # 2.13.1 across {He,H2,H2O,NH3,CH4} x {STO-3G,6-31G} (external-engine parity,
+    # spec hf-ao2mo-mp2). Each case runs a full RHF solve + AO->MO transform.
+    atv_add_validation(val_mp2_vs_pyscf qc/mp2/validation/test_mp2_vs_pyscf.cpp)
 endif()
 
 # ════════════════════════════════════════════════════════════════════

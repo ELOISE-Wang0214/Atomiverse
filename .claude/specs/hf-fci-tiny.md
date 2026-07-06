@@ -11,7 +11,7 @@ acceptance: hf-fci-tiny.acceptance.md
 
 ## Summary
 
-为 Atomiverse 高斯基 SCF 域交付电子相关路线图的 Milestone 3：一个面向微小体系（H2/STO-3G、He/STO-3G 量级）的行列式基全组态相互作用（full CI）求解器 `fci_energy`，在给定有限基下给出**精确**的闭壳层相关能，用作 MP2 以及未来 CC/CI 方法的黄金参考。它是 `ATV::cpu::scf` 命名空间下的一个自由函数——与 `scf_gradient`、`mp2_energy` 同型的“SCF 结果的纯函数”，**不是** Driver、**不是** Component、不注册进任何 Plan，所有行列式 / Slater–Condon / CI 矩阵机制都封装在新建的 `fci.{h,cpp}` 内部（不新建 `cpu/ci/` 目录，以免违反后端支柱“一次性目录”规则）。本 spec 是 hf-ao2mo-mp2 的**硬链后继**（`builds_on: hf-ao2mo-mp2`）：FCI 的 Slater–Condon 规则跨越全部 MO 轨道对类别，需要一个完整的 (pq|rs) MO 张量与单电子 MO 矩阵 h_pq = Cᵀ·Hcore·C，而 hf-ao2mo-mp2 的 `ao2mo_ovov` 只产出 occ×vir×occ×vir 块——因此本 spec 在 `mp2.h`/`mp2.cpp`（AO→MO 变换族的自然归宿）中新增 `ao2mo_full` 与 `mo_hcore` 两个变换函数。因体系微小，构建 N_det×N_det 稠密 CI 矩阵后直接用 `xt::linalg::eigh` 取最低本征值即可。正确性以固定 PySCF 参考值为准：He/STO-3G 边界严格可推导（N_det=1 ⇒ FCI≡RHF ⇒ E_corr=0，无需 PySCF），H2/STO-3G 数字在实现时用 PySCF 再生并逐位钉死；默认测试层为毫秒级、E2E 层承载引擎自身 MO 积分喂入 `direct_spin1` 的交叉校验。配套 `examples/14_fci.cpp` 与在 ch07 相关能章中新增一节 FCI 教学。
+为 Atomiverse 高斯基 SCF 域交付电子相关路线图的 Milestone 3：一个面向微小体系（H2/STO-3G、He/STO-3G 量级）的行列式基全组态相互作用（full CI）求解器 `fci_energy`，在给定有限基下给出**精确**的闭壳层相关能，用作 MP2 以及未来 CC/CI 方法的黄金参考。它是 `ATV::cpu::scf` 命名空间下的一个自由函数——与 `scf_gradient`、`mp2_energy` 同型的“SCF 结果的纯函数”，**不是** Driver、**不是** Component、不注册进任何 Plan，所有行列式 / Slater–Condon / CI 矩阵机制都封装在新建的 `fci.{h,cpp}` 内部（不新建 `cpu/ci/` 目录，以免违反后端支柱“一次性目录”规则）。本 spec 是 hf-ao2mo-mp2 的**硬链后继**（`builds_on: hf-ao2mo-mp2`）：FCI 的 Slater–Condon 规则跨越全部 MO 轨道对类别，需要一个完整的 (pq|rs) MO 张量与单电子 MO 矩阵 h_pq = Cᵀ·Hcore·C，而 hf-ao2mo-mp2 的 `ao2mo_ovov` 只产出 occ×vir×occ×vir 块——因此本 spec 在 `mp2.h`/`mp2.cpp`（AO→MO 变换族的自然归宿）中新增 `ao2mo_full` 与 `mo_hcore` 两个变换函数。因体系微小，构建 N_det×N_det 稠密 CI 矩阵后直接用 `xt::linalg::eigh` 取最低本征值即可。正确性以固定 PySCF 参考值为准：He/STO-3G 边界严格可推导（N_det=1 ⇒ FCI≡RHF ⇒ E_corr=0，无需 PySCF），H2/STO-3G 数字在实现时用 PySCF 再生并逐位钉死；单元测试层为毫秒级结构不变量；所有 PySCF 平价（含引擎自身 MO 积分喂入 `direct_spin1` 的交叉校验）置于验证 benchmark `benchmarks/qc/fci/validation/`（E2E/外部平价属 benchmark，非 tests/）。配套 `examples/14_fci.cpp` 与在 ch07 相关能章中新增一节 FCI 教学。
 
 ## Domain basis
 
@@ -76,7 +76,7 @@ RHF 总能量锚点（复用 hf-koopmans 表，Ha）：He/STO-3G −2.8077839575
 
 **Oracle**：`tests/cpu/scf/pyscf_reference_fci.py`（新，仿 `pyscf_reference_koopmans.py` 模式）：`scf.RHF`, `cart=True`, `conv_tol=1e-12`，输出 `fci.FCI(mf).kernel()[0]` 与 `direct_spin1` 路径的 E_FCI/E_corr `constexpr` 块——实现时跑一次再生、把 H2/STO-3G TODO 单元格钉死。
 
-**测试**：`tests/cpu/scf/test_fci.cpp`，按命名约定注册为 `test_cpu_scf_fci`。默认 ~16 s 门槛层只跑毫秒级用例（He 边界、H2 平价、Hermiticity、行列式计数、守卫抛出、MP2-vs-FCI 二能级交叉校验）；`direct_spin1` 引擎-MO 交叉校验与任何更大的微小体系置于 `ATV_RUN_E2E_TESTS` 门后（沿用 `tests/CMakeLists.txt` 尾部 DISABLED 列表机制）。
+**测试与校验**：单元测试 `tests/cpu/scf/test_fci.cpp`（注册 `test_cpu_scf_fci`）只跑毫秒级**结构不变量**：He 边界（E_corr==0/finite/E_FCI==E_RHF）、Hermiticity、行列式计数、守卫抛出、变分与相关能符号——**不含任何外部引擎平价数字**。所有 PySCF 平价（H2/STO-3G 对 `fci.FCI`、`direct_spin1` 引擎-MO 交叉校验、MP2-vs-FCI 二能级对比、更大微小体系）属**验证 benchmark**：`benchmarks/qc/fci/validation/test_fci_vs_pyscf.cpp`，经 `atv_add_validation(val_fci_vs_pyscf ...)` 注册（`ATV_BUILD_BENCHMARKS`）。E2E/外部平价属 benchmark，非单元测试。
 
 ## Files to create or modify
 
@@ -85,18 +85,20 @@ RHF 总能量锚点（复用 hf-koopmans 表，Ha）：He/STO-3G −2.8077839575
 - `include/atomiverse/cpu/scf/mp2.h` — 新增 `ao2mo_full`、`mo_hcore` 声明 + Doxygen（与 `ao2mo_ovov` 并列）
 - `src/cpu/scf/mp2.cpp` — 实现 `ao2mo_full`、`mo_hcore`
 - `CMakeLists.txt` — 在 `ATV_BUILD_RHF` 源文件列表（约第 316 行 `src/cpu/scf/gradient.cpp` 旁）加入 `src/cpu/scf/fci.cpp`
-- `tests/cpu/scf/test_fci.cpp` (new) — 默认层 + E2E 层测试
-- `tests/cpu/scf/pyscf_reference_fci.py` (new) — PySCF oracle（FCI + direct_spin1）
-- `tests/CMakeLists.txt` — 注册 `test_cpu_scf_fci`；E2E 用例挂入 `ATV_RUN_E2E_TESTS` 门
+- `tests/cpu/scf/test_fci.cpp` (new) — 结构单元不变量（无外部平价数字）
+- `tests/CMakeLists.txt` — 注册 `test_cpu_scf_fci`
+- `benchmarks/qc/fci/validation/test_fci_vs_pyscf.cpp` (new) — PySCF 平价（fci.FCI + direct_spin1 交叉校验 + MP2-vs-FCI）
+- `benchmarks/qc/fci/validation/pyscf_reference_fci.py` (new) — PySCF oracle（FCI + direct_spin1）
+- `benchmarks/CMakeLists.txt` — `if(ATV_BUILD_RHF)` 块内 `atv_add_validation(val_fci_vs_pyscf qc/fci/validation/test_fci_vs_pyscf.cpp)`
 - `examples/14_fci.cpp` (new) — 打印 E_RHF / E_FCI / E_corr（H2/STO-3G）
 - `examples/CMakeLists.txt` — `if(ATV_BUILD_RHF)` 块内注册 `14_fci`
 - `docs/tutorial/ch07-correlation.md` — 新增 full-CI 教学一节
 
 ## Tasks
 
-- [ ] Write failing default-tier tests for fci_energy in tests/cpu/scf/test_fci.cpp: He/STO-3G e_corr == 0.0 exactly and std::isfinite, H2/STO-3G e_fci vs regenerated PySCF @1e-8 (TODO-pinned constant), H_CI Hermiticity @1e-12, N_det == C(n_mo,n_alpha)*C(n_mo,n_beta), guards throw (ERI absent / unconverged / open-shell / over TINY cap), and the MP2-vs-FCI two-level cross-check (e_corr_mp2 <= e_corr_fci < 0); register test_cpu_scf_fci in tests/CMakeLists.txt
-- [ ] Write failing E2E-tier tests in tests/cpu/scf/test_fci.cpp: the direct_spin1 engine-MO-integral cross-check and any larger tiny systems, gated behind ATV_RUN_E2E_TESTS in tests/CMakeLists.txt
-- [ ] Write oracle script tests/cpu/scf/pyscf_reference_fci.py (RHF cart=True conv_tol=1e-12; emits fci.FCI + direct_spin1 E_FCI/E_corr constexpr block; regenerate + pin the H2/STO-3G number at impl)
+- [ ] Write failing structural unit tests for fci_energy in tests/cpu/scf/test_fci.cpp: He/STO-3G e_corr == 0.0 exactly and std::isfinite and E_FCI==E_RHF @1e-10, H_CI Hermiticity @1e-12, N_det == C(n_mo,n_alpha)*C(n_mo,n_beta), guards throw (ERI absent / unconverged / open-shell / over TINY cap), variational e_fci <= e_rhf+1e-10 and e_corr <= 0; register test_cpu_scf_fci in tests/CMakeLists.txt. NO external-engine parity numbers in the unit gate.
+- [ ] Write the val_fci_vs_pyscf validation benchmark (benchmarks/qc/fci/validation/test_fci_vs_pyscf.cpp): H2/STO-3G e_fci vs regenerated PySCF fci.FCI @1e-8, the direct_spin1 engine-MO cross-check, the MP2-vs-FCI two-level cross-check (e_corr_mp2 <= e_corr_fci < 0), and any larger tiny systems; register via atv_add_validation in benchmarks/CMakeLists.txt (inside if(ATV_BUILD_RHF)). All PySCF parity lives here — not tests/.
+- [ ] Write oracle script benchmarks/qc/fci/validation/pyscf_reference_fci.py (RHF cart=True conv_tol=1e-12; emits fci.FCI + direct_spin1 E_FCI/E_corr constexpr block; regenerate + pin the H2/STO-3G number at impl)
 - [ ] Implement ao2mo_full + mo_hcore in include/atomiverse/cpu/scf/mp2.h + src/cpu/scf/mp2.cpp (full (pq|rs) MO tensor via four BLAS-shaped quarter transforms widened to 0..n_mo; h_pq = Cᵀ·Hcore·C via two gemms; AccReal=double, xt::linalg only)
 - [ ] Implement FCIResult + fci_energy in include/atomiverse/cpu/scf/fci.h + src/cpu/scf/fci.cpp (determinant bitstrings, Slater-Condon Case A-D H_CI build, Jordan-Wigner phase, xt::linalg::eigh → eig(0); n_mo = C_alpha.shape(1), E_nuc on each diagonal, invalid_argument guards + TINY cap n_mo<=14 / N_det<=2000); add src/cpu/scf/fci.cpp to the ATV_BUILD_RHF source list in CMakeLists.txt
 - [ ] Add docstring per doxygen style with units (Hartree) for every public symbol in fci.h (FCIResult + fields, fci_energy) and the two new mp2.h symbols (ao2mo_full, mo_hcore): @brief / @param / @return
@@ -111,7 +113,7 @@ RHF 总能量锚点（复用 hf-koopmans 表，Ha）：He/STO-3G −2.8077839575
 - **边界情形（默认层）**：He/STO-3G 无虚轨道（N_det=1）→ E_corr 严格 == 0.0 且 `std::isfinite`、E_FCI==E_RHF @1e-10（无虚轨道恒等式，兼作 E_nuc + H_00 接线烟测）；ERI 未物化 / SCF 未收敛 / 开壳层输入 / 超 TINY 封顶 → `std::invalid_argument`。
 - **单元不变量（默认层）**：H_CI 对角化前对称 ≤1e-12；N_det == C(n_mo,n_alpha)·C(n_mo,n_beta)；变分 E_FCI ≤ E_RHF + 1e-10；相关能符号 E_corr ≤ 0。
 - **交叉校验（默认层）**：二能级 H2/STO-3G 上 E_corr^MP2 ≤ E_corr^FCI < 0（MP2 过束缚，把 hf-ao2mo-mp2 与本 Milestone 绑定；🔴 绝不断言 |E_FCI| ≥ |E_MP2|）。
-- **领域验证（E2E 层，`ATV_RUN_E2E_TESTS=ON`）**：`direct_spin1` 喂入引擎自身 MO 积分（h1e=mo_hcore、h2e=ao2mo_full、ecore=V_nuc）与均场驱动路径对比 @1e-8 Ha（隔离 ao2mo bug 与 FCI bug）；任何更大的微小体系。
+- **领域验证（benchmark，`val_fci_vs_pyscf`）**：H2/STO-3G 对 `fci.FCI` @1e-8；`direct_spin1` 喂入引擎自身 MO 积分（h1e=mo_hcore、h2e=ao2mo_full、ecore=V_nuc）与均场驱动路径对比 @1e-8 Ha（隔离 ao2mo bug 与 FCI bug）；MP2-vs-FCI 二能级交叉校验；任何更大的微小体系。
 - **教程回归**：测试断言 ch07 新节引用的 E_FCI/E_corr 数字（与测试固定常量同源），防止文档与代码漂移。
 - **示例烟测**：`14_fci` 在 `ATV_BUILD_RHF=ON` 下编译并运行，输出含 E_RHF、E_FCI、E_corr，且 E_RHF + E_corr 在打印精度上等于 E_FCI。
 - **门槛保护**：默认 `ctest` 总时长维持 ~16 s 预算；新增默认层用例为毫秒级（体系微小、封顶保证）。

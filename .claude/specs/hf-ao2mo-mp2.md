@@ -69,32 +69,32 @@ $$ E_\mathrm{MP2} = \sum_{ij}^{\mathrm{occ}} \sum_{ab}^{\mathrm{vir}} \frac{(ia|
 - `include/atomiverse/cpu/scf/mp2.h` (new) — `ao2mo_ovov`、`MP2Result`、`mp2_energy` 声明 + Doxygen
 - `src/cpu/scf/mp2.cpp` (new) — 实现
 - `CMakeLists.txt` — 在 `ATV_BUILD_RHF` 源文件列表（约第 316 行 `src/cpu/scf/gradient.cpp` 旁）加入 `src/cpu/scf/mp2.cpp`
-- `tests/cpu/scf/test_mp2.cpp` (new) — 默认层 + E2E 层测试
-- `tests/CMakeLists.txt` — 注册 `test_cpu_scf_mp2`；E2E 扫描用例挂入 `ATV_RUN_E2E_TESTS` 门
+- `tests/cpu/scf/test_mp2.cpp` (new) — **结构单元不变量**（无虚轨道边界、(ia|jb) 对称性、守卫）；**不含任何外部引擎平价数字**
+- `tests/CMakeLists.txt` — 注册 `test_cpu_scf_mp2`
+- `benchmarks/qc/mp2/validation/test_mp2_vs_pyscf.cpp` (new) — PySCF 平价扫描（10 组 (体系,基组)）——E2E/平价属 benchmark，非单元测试
+- `benchmarks/CMakeLists.txt` — `if(ATV_BUILD_RHF)` 块内 `atv_add_validation(val_mp2_vs_pyscf qc/mp2/validation/test_mp2_vs_pyscf.cpp)`
 - `examples/13_mp2.cpp` (new) — 打印 E_HF / E_corr / E_MP2
 - `examples/CMakeLists.txt` — `if(ATV_BUILD_RHF)` 块内注册 `13_mp2`
 - `docs/tutorial/ch07-correlation.md` — 由状态章改写为实战章
 
 ## Tasks
 
-- [ ] Write failing tests for ao2mo_ovov + mp2_energy default tier (tests/cpu/scf/test_mp2.cpp): H2O/STO-3G E_corr = −0.0355456516 Ha @1e-8, He/STO-3G returns exactly 0.0 (finite, no NaN), (ia|jb)=(jb|ia) symmetry @1e-12, guard throws (ERI absent / unconverged / unrestricted); register `test_cpu_scf_mp2` in tests/CMakeLists.txt
-- [ ] Write failing E2E-tier sweep tests in tests/cpu/scf/test_mp2.cpp covering all 10 (system, basis) pairs from the Domain-basis table @1e-8 Ha, gated behind `ATV_RUN_E2E_TESTS` in tests/CMakeLists.txt
+- [ ] Write failing structural unit tests (tests/cpu/scf/test_mp2.cpp): He/STO-3G returns exactly 0.0 (finite, no NaN), (ia|jb)=(jb|ia) symmetry @1e-12, guard throws (ERI absent / unconverged / unrestricted); register `test_cpu_scf_mp2` in tests/CMakeLists.txt. NO external-engine parity numbers in the unit gate.
+- [ ] Write the val_mp2_vs_pyscf validation benchmark (benchmarks/qc/mp2/validation/test_mp2_vs_pyscf.cpp) covering all 10 (system, basis) pairs from the Domain-basis table @1e-8 Ha; register via `atv_add_validation` in benchmarks/CMakeLists.txt (inside `if(ATV_BUILD_RHF)`). This is where all PySCF parity lives — not tests/.
 - [ ] Implement ao2mo_ovov in include/atomiverse/cpu/scf/mp2.h + src/cpu/scf/mp2.cpp (four BLAS-shaped quarter transforms via xt::linalg, occupied indices first, ovov block only); add src/cpu/scf/mp2.cpp to the ATV_BUILD_RHF source list in CMakeLists.txt
 - [ ] Implement MP2Result + mp2_energy in include/atomiverse/cpu/scf/mp2.h + src/cpu/scf/mp2.cpp (n_mo = C_alpha.shape(1), n_occ = scf.n_alpha, denominator sign assert, n_vir==0 → 0.0, invalid_argument guards)
 - [ ] Add docstring per doxygen style with units (Hartree) for every public symbol in include/atomiverse/cpu/scf/mp2.h (`@brief`/`@param`/`@return`)
 - [ ] Implement examples/13_mp2.cpp printing E_HF, E_corr, E_MP2 for H2O/STO-3G and H2O/6-31G; register in examples/CMakeLists.txt under ATV_BUILD_RHF
 - [ ] Write the replacement chapter docs/tutorial/ch07-correlation.md ("Electron correlation beyond Hartree–Fock", Jensen-style, keeps chapter number, embeds the 13_mp2 walk-through, MP2 equation, both DOIs, and the pinned reference table)
-- [ ] Verify tutorial-regression coupling: assert in tests/cpu/scf/test_mp2.cpp the exact E_corr constants quoted in ch07 (H2O/STO-3G and H2O/6-31G) so chapter numbers cannot drift from code
-- [ ] Verify default ctest gate: measure `test_cpu_scf_mp2` default-tier runtime stays ms-scale and the default `ctest` wall time keeps the ~16 s budget; run E2E sweep once with `-DATV_RUN_E2E_TESTS=ON` (10/10 pass)
+- [ ] Verify tutorial-regression coupling: the exact E_corr constants quoted in ch07 (H2O/STO-3G and H2O/6-31G) equal those pinned in benchmarks/qc/mp2/validation/test_mp2_vs_pyscf.cpp so chapter numbers cannot drift from code
+- [ ] Verify gates: `test_cpu_scf_mp2` (unit) stays ms-scale and the default `ctest` keeps the ~16 s budget; run `val_mp2_vs_pyscf` once with `-DATV_BUILD_BENCHMARKS=ON` (9/10 pass; He/6-31G pending hf-koopmans He basis row)
 - [ ] Run full check + test suite
 
 ## Testing strategy
 
-- **主路径（默认层）**：H2O/STO-3G — `build_integrals(frame, BasisSet::STO3G, 0, /*compute_eri=*/true)` + `rhf_solve(ints, 1e-12, 100)` + `mp2_energy`，E_corr 对 PySCF 固定值 −0.0355456516 Ha 容差 1e-8；`e_tot == scf.energy + e_corr`。
-- **边界情形（默认层）**：He/STO-3G 无虚轨道 → E_corr 严格 == 0.0 且 `std::isfinite`（NaN 回归守卫）；ERI 未物化 / SCF 未收敛 / 非限制性输入 → `std::invalid_argument`。
-- **单元不变量（默认层）**：H2O/STO-3G 的 (ia|jb) 张量满足 (ia|jb) = (jb|ia)，逐元素 ≤ 1e-12；E_MP2 < 0（H2 以上体系）。
-- **领域验证（E2E 层，`ATV_RUN_E2E_TESTS=ON`）**：{He, H2, H2O, NH3, CH4} × {STO-3G, 6-31G} 全部 10 组对 Domain-basis 表中固定 PySCF 值 @1e-8 Ha。
-- **教程回归**：测试断言 ch07 章内引用的 E_corr 数字（与测试固定常量同源），防止文档与代码漂移。
+- **结构单元（tests/，默认层，毫秒级）**：He/STO-3G 无虚轨道 → E_corr 严格 == 0.0 且 `std::isfinite`（NaN 回归守卫）；ERI 未物化 / SCF 未收敛 / 非限制性输入 → `std::invalid_argument`；H2O/STO-3G 的 (ia|jb) 张量满足 (ia|jb) = (jb|ia) ≤ 1e-12。**单元层不含任何外部引擎平价数字。**
+- **平价校验（benchmarks/，`val_mp2_vs_pyscf`）**：{He, H2, H2O, NH3, CH4} × {STO-3G, 6-31G} 全部 10 组，用 `build_integrals(..., compute_eri=true)` + `scf_solve(ints, rhf_config(ints, 1e-12))` + `mp2_energy`，对 Domain-basis 表中固定 PySCF 值 @1e-8 Ha，且 `e_tot == scf.energy + e_corr`。E2E/外部平价属 benchmark，非单元测试。
+- **教程回归**：`val_mp2_vs_pyscf` 中固定的 E_corr 常量与 ch07 章内引用逐位同源，防止文档与代码漂移。
 - **示例烟测**：`13_mp2` 目标在 `ATV_BUILD_RHF=ON` 下编译并运行，输出含 E_HF、E_corr、E_MP2。
 - **门槛保护**：默认 `ctest` 总时长维持 ~16 s 预算；新增默认层用例为毫秒级。
 

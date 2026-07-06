@@ -11,13 +11,15 @@ criteria:
       |e_fci − scf.energy| <= 1e-10 Ha; case passes.
     status: pending
   - id: ac-002
-    summary: H2/STO-3G FCI energy matches pinned PySCF fci.FCI to 1e-8 Ha
+    summary: H2/STO-3G FCI energy matches pinned PySCF fci.FCI to 1e-8 Ha (validation benchmark)
     type: scientific
     pass_when: |
-      test_cpu_scf_fci (default tier) computes fci_energy for H2/STO-3G
-      (H 0 0 0 / H 0 0 0.7414 Å, rhf_solve tol 1e-12) and asserts
-      |e_fci − <pinned PySCF fci.FCI value>| <= 1e-8 Ha with the pinned
-      constant regenerated from tests/cpu/scf/pyscf_reference_fci.py; case passes.
+      The val_fci_vs_pyscf validation benchmark
+      (benchmarks/qc/fci/validation/test_fci_vs_pyscf.cpp, ATV_BUILD_BENCHMARKS)
+      computes fci_energy for H2/STO-3G (H 0 0 0 / H 0 0 0.7414 Å, scf_solve
+      rhf_config tol 1e-12) and asserts |e_fci − <pinned PySCF fci.FCI value>|
+      <= 1e-8 Ha with the pinned constant regenerated from a PySCF oracle; case
+      passes. (External-engine parity is a benchmark, not a unit test.)
     status: pending
   - id: ac-003
     summary: H_CI is Hermitian and determinant count equals the binomial product
@@ -64,13 +66,13 @@ criteria:
       symmetric to 1e-12; case passes.
     status: pending
   - id: ac-008
-    summary: E2E — direct_spin1 fed engine MO integrals matches the mean-field FCI path
+    summary: direct_spin1 fed engine MO integrals matches the mean-field FCI path (validation benchmark)
     type: scientific
     pass_when: |
-      With -DATV_RUN_E2E_TESTS=ON, test_cpu_scf_fci cross-checks fci_energy against
+      The val_fci_vs_pyscf validation benchmark cross-checks fci_energy against
       PySCF fci.direct_spin1.kernel(h1e, h2e, norb, nelec, ecore=V_nuc) fed the
       engine's own mo_hcore/ao2mo_full integrals to 1e-8 Ha, plus any larger tiny
-      systems; the E2E cases are absent from the default run and pass under the gate.
+      systems; runs under ATV_BUILD_BENCHMARKS, absent from the unit gate.
     status: pending
   - id: ac-009
     summary: Example 14_fci builds under ATV_BUILD_RHF and prints E_RHF, E_FCI, E_corr

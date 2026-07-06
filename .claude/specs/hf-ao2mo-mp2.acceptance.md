@@ -2,14 +2,15 @@
 slug: hf-ao2mo-mp2
 criteria:
   - id: ac-001
-    summary: H2O/STO-3G MP2 correlation energy matches pinned PySCF in default tier
+    summary: H2O/STO-3G MP2 correlation energy matches pinned PySCF (validation benchmark)
     type: scientific
     pass_when: |
-      test_cpu_scf_mp2 (default ctest tier, no ATV_RUN_E2E_TESTS) contains a
-      case computing mp2_energy for H2O/STO-3G (O 0 0 0.1173 / H 0 ±0.7572
-      −0.4692 Å, rhf_solve tol 1e-12) and asserts
+      The val_mp2_vs_pyscf validation benchmark
+      (benchmarks/qc/mp2/validation/test_mp2_vs_pyscf.cpp, built under
+      ATV_BUILD_BENCHMARKS) computes mp2_energy for H2O/STO-3G (O 0 0 0.1173 /
+      H 0 ±0.7572 −0.4692 Å, scf_solve rhf_config tol 1e-12) and asserts
       |e_corr − (−0.0355456516)| <= 1e-8 Ha and e_tot == scf.energy + e_corr;
-      case passes.
+      case passes. (External-engine parity is a benchmark, not a unit test.)
     status: pending
   - id: ac-002
     summary: He/STO-3G with zero virtuals returns exactly 0.0, never NaN
@@ -35,12 +36,13 @@ criteria:
       (3) unrestricted result (n_alpha != n_beta); all three cases pass.
     status: pending
   - id: ac-005
-    summary: E2E tier — all 10 (system, basis) pairs match pinned PySCF to 1e-8 Ha
+    summary: Validation benchmark — all 10 (system, basis) pairs match pinned PySCF to 1e-8 Ha
     type: scientific
     pass_when: |
-      With -DATV_RUN_E2E_TESTS=ON, test_cpu_scf_mp2 E2E cases pass for
-      {He, H2, H2O, NH3, CH4} × {STO-3G, 6-31G} against the pinned E_corr
-      table in the spec's Domain basis (tolerance 1e-8 Ha), 10/10.
+      The val_mp2_vs_pyscf validation benchmark passes for
+      {He, H2, H2O, NH3, CH4} × {STO-3G, 6-31G} against the pinned E_corr table
+      in the spec's Domain basis (tolerance 1e-8 Ha), 10/10. (He/6-31G depends
+      on the hf-koopmans He 6-31G basis row; 9/10 pass without it.)
     status: pending
   - id: ac-006
     summary: Example 13_mp2 builds under ATV_BUILD_RHF and prints E_HF, E_corr, E_MP2
@@ -72,9 +74,11 @@ criteria:
     summary: Default ctest gate preserved; full suite green
     type: runtime
     pass_when: |
-      Default-tier ctest (ATV_RUN_E2E_TESTS=OFF) passes with test_cpu_scf_mp2
-      included and total wall time within the ~16 s budget documented in
-      tests/CMakeLists.txt; the E2E sweep is absent from the default run.
+      Default-tier ctest passes with test_cpu_scf_mp2 (structural unit
+      invariants only — no external-engine parity) included and total wall time
+      within the ~16 s budget documented in tests/CMakeLists.txt; the PySCF
+      parity sweep lives in benchmarks (val_mp2_vs_pyscf), absent from the unit
+      gate.
     status: pending
 ---
 
