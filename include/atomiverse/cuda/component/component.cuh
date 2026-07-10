@@ -13,6 +13,7 @@
 /// CUDA-free header.
 #pragma once
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -24,6 +25,8 @@
 
 namespace ATV {
 namespace cuda {
+
+class HaloParticipant; // opt-in halo protocol (halo_participant.cuh)
 
 /// @brief Context for one-time component build (after Runtime + DeviceFrame exist).
 ///
@@ -184,21 +187,24 @@ class ComponentBase {
     /// @param ctx Destroy context with Runtime and DeviceFrame references.
     virtual void destroy(const DestroyContext& ctx) {}
 
-    // ── Extra-field halo participant contract (force-infra-02) ─────────────
-    /// A per-atom DEVICE field a component needs communicated across subdomains
-    /// beyond the intrinsic positions (forward) / forces (reverse). The
-    /// multi-GPU halo gathers these into its combined P2P staging buffer.
-    struct CommField {
-        real_t* data = nullptr; ///< per-atom device array (owned+ghost capacity)
-        int width = 1;          ///< components per atom (packed contiguously)
-    };
-    /// @brief Extra per-atom fields to forward (owner→ghost) each step, e.g. an
-    ///        EAM embedding derivative. Default: none. The halo refreshes ghost
-    ///        rows of each field after positions.
-    virtual std::vector<CommField> comm_forward_fields() const { return {}; }
-    /// @brief Extra per-atom fields to reverse (ghost→owner, ACCUMULATED) each
-    ///        step, e.g. an EAM density partial sum. Default: none.
-    virtual std::vector<CommField> comm_reverse_fields() const { return {}; }
+    /// @brief Typed accessor for the opt-in halo protocol (mirrors
+    ///        `cpu::ComponentBase::halo_participant()`). A participating
+    ///        component inherits `cuda::HaloParticipant` and overrides this
+    ///        to return `this`; probes stay free of `dynamic_cast` and
+    ///        `name()` matching. Default: not a participant.
+    /// @return The participant view of this component, or `nullptr`.
+    virtual HaloParticipant* halo_participant() { return nullptr; }
+
+    /// @brief Heap/device bytes this component owns (workspaces, rings,
+    ///        comm buffers). Mirrors `cpu::ComponentBase::memory_bytes()`
+    ///        so both backends expose the same core reporting set; the
+    ///        driver-side memory summary consumption lands with
+    ///        arch-refactor-04. Default 0 for stateless components.
+    virtual std::size_t memory_bytes() const { return 0; }
+
+    // The former in-vtable CommField trio moved to the opt-in
+    // `cuda::HaloParticipant` protocol (halo_participant.cuh), shared
+    // shape with the CPU backend. See arch-refactor-02-halo.
 };
 
 } // namespace cuda

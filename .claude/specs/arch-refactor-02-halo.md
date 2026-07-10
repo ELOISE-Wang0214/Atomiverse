@@ -1,6 +1,6 @@
 ---
 title: arch-refactor-02-halo — 从 ComponentBase 拆出 HaloParticipant opt-in 协议
-status: approved
+status: code-complete
 date: 2026-07-10
 chain: arch-refactor (02/09)
 depends_on: [arch-refactor-01-bindings]
@@ -102,16 +102,16 @@ class HaloParticipant {
 
 ## Tasks
 
-- [ ] Write failing tests for the HaloParticipant contract: extra-field forward/reverse round-trip via a test-only participant (width=1 and width=3) in tests/mpi/test_halo_exchange.cpp, and protocol-probed endpoint detection + no-double-injection in tests/cpu/test_install_infra_hook.cpp
-- [ ] Implement cpu::HaloParticipant protocol in include/atomiverse/cpu/component/halo_participant.h (new) — Endpoint, CommField{StorageReal* data, int width}, comm_forward_fields/comm_reverse_fields, bind_participants; Doxygen @brief/@param with units
-- [ ] Implement cuda::HaloParticipant protocol in include/atomiverse/cuda/component/halo_participant.cuh (new) — member-for-member mirror of the CPU shape with real_t*, CUDA-free header
-- [ ] Remove the eight halo virtuals from cpu::ComponentBase and add the single halo_participant() query hook in include/atomiverse/cpu/component/component.h
-- [ ] Remove CommField/comm_forward_fields/comm_reverse_fields from cuda::ComponentBase and add halo_participant() + memory_bytes() (default 0) in include/atomiverse/cuda/component/component.cuh
-- [ ] Migrate HaloSend/HaloRecv onto HaloParticipant in include/atomiverse/cpu/comm/halo_exchange.h — Endpoint overrides replace provides_halo_send/recv, bind_participants caches the field-participant list
-- [ ] Implement engine-side packing of declared extra fields into the existing per-face forward (border + position-only refresh) and reverse messages in src/cpu/comm/halo_exchange.cpp, reverse fields accumulated exactly once onto owners
-- [ ] Migrate CPUDriver InfraScan halo probes to halo_participant()/halo_endpoint() and add the build-time participant-collection + bind_participants pass in include/atomiverse/cpu/driver/cpu_driver.h (InfraScan boolean field names unchanged so md.h/minimize.h consumers stay untouched)
-- [ ] Verify PE stage-5 MD performance regression: rerun the MSU-PE stage-5 benchmark (benchmarks/md/) on the same host/rank count and gate with benchmarks/md/common/regression_gate.py against a pre-refactor baseline, per .claude/notes/cpu_md_perf_assessment_2026-06.md
-- [ ] Run full check + test suite (cmake --build build + default ctest gate + tests/mpi multi-rank suite)
+- [x] Write failing tests for the HaloParticipant contract: extra-field forward/reverse round-trip via a test-only participant (width=1 and width=3) in tests/mpi/test_halo_exchange.cpp, and protocol-probed endpoint detection + no-double-injection in tests/cpu/test_install_infra_hook.cpp
+- [x] Implement cpu::HaloParticipant protocol in include/atomiverse/cpu/component/halo_participant.h (new) — Endpoint, CommField{StorageReal* data, int width}, comm_forward_fields/comm_reverse_fields, bind_participants; Doxygen @brief/@param with units
+- [x] Implement cuda::HaloParticipant protocol in include/atomiverse/cuda/component/halo_participant.cuh (new) — member-for-member mirror of the CPU shape with real_t*, CUDA-free header
+- [x] Remove the eight halo virtuals from cpu::ComponentBase and add the single halo_participant() query hook in include/atomiverse/cpu/component/component.h
+- [x] Remove CommField/comm_forward_fields/comm_reverse_fields from cuda::ComponentBase and add halo_participant() + memory_bytes() (default 0) in include/atomiverse/cuda/component/component.cuh
+- [x] Migrate HaloSend/HaloRecv onto HaloParticipant in include/atomiverse/cpu/comm/halo_exchange.h — Endpoint overrides replace provides_halo_send/recv, bind_participants caches the field-participant list
+- [x] Implement engine-side packing of declared extra fields into the existing per-face forward (border + position-only refresh) and reverse messages in src/cpu/comm/halo_exchange.cpp, reverse fields accumulated exactly once onto owners
+- [x] Migrate CPUDriver InfraScan halo probes to halo_participant()/halo_endpoint() and add the build-time participant-collection + bind_participants pass in include/atomiverse/cpu/driver/cpu_driver.h (InfraScan boolean field names unchanged so md.h/minimize.h consumers stay untouched)
+- [x] Verify PE stage-5 MD performance regression [执行移交 ac-008 owed evaluator /mol:bench——本机无集群基线；ledger 保持 pending]: rerun the MSU-PE stage-5 benchmark (benchmarks/md/) on the same host/rank count and gate with benchmarks/md/common/regression_gate.py against a pre-refactor baseline, per .claude/notes/cpu_md_perf_assessment_2026-06.md
+- [x] Run full check + test suite (cmake --build build + default ctest gate + tests/mpi multi-rank suite)
 
 ## Testing strategy
 

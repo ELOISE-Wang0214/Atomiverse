@@ -44,11 +44,14 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "atomiverse/core/device.h"
 #include "atomiverse/core/real.h"
 #include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/halo_participant.h"
 #include "atomiverse/cpu/component/pair_evaluator.h"
 #include "atomiverse/cpu/driver/backend_traits.h"
 #include "atomiverse/cpu/recorder/thermo.h"
@@ -128,6 +131,7 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     /// requirements), `Base::build()` last.
     void build() {
         install_defaults();
+        bind_halo_participants_();
         validate_components();
         Base::build();
     }
@@ -157,6 +161,42 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
         for (const auto& pb : this->pending_) {
             fn(*pb.component);
         }
+    }
+
+    /// @brief Mutable variant (named per the `cuda_driver.cuh`
+    /// `for_each_pending_mut` precedent) — the halo-protocol probes
+    /// (`halo_participant()`) are non-const because the bind pass hands
+    /// endpoints a participant list to store.
+    template <typename Fn>
+    void for_each_pending_mut(Fn&& fn) {
+        for (auto& pb : this->pending_) {
+            fn(*pb.component);
+        }
+    }
+
+    /// @brief Build-time halo wiring: collect every halo participant among
+    /// the pending components (deduplicated — multi-binding components
+    /// appear once) and hand the list to each exchange endpoint via
+    /// `bind_participants()`. Runs after `install_defaults()` (so
+    /// auto-injected endpoints are covered) and before component `build()`
+    /// (endpoints flatten field descriptors lazily at first launch).
+    void bind_halo_participants_() {
+        std::vector<const cpu::HaloParticipant*> participants;
+        std::vector<cpu::HaloParticipant*> endpoints;
+        std::unordered_set<const cpu::ComponentBase*> seen;
+        for (auto& pb : this->pending_) {
+            cpu::ComponentBase* c = pb.component;
+            if (!seen.insert(c).second)
+                continue;
+            cpu::HaloParticipant* hp = c->halo_participant();
+            if (!hp)
+                continue;
+            participants.push_back(hp);
+            if (hp->halo_endpoint() != cpu::HaloParticipant::Endpoint::none)
+                endpoints.push_back(hp);
+        }
+        for (auto* e : endpoints)
+            e->bind_participants(participants);
     }
 
     // ── Driver loop helpers (protected — subclasses only) ──────────
@@ -346,16 +386,18 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     /// @brief Walk the pending list once, collect everything install_defaults
     /// rules might need.
     ///
-    /// Keyed entirely on `ComponentBase` capability-typed virtuals
-    /// (`reads()`, `capabilities()`, `role()`, `provides_neighbor_list()`,
-    /// `provides_halo_send()/recv()`, `needs_neighbor_list()`,
-    /// `neighbor_cutoff_hint()`) — no `name()` string matching and no
-    /// `dynamic_cast`, so user-supplied neighbor structures / stress
-    /// providers participate in auto-injection whatever their `name()`.
-    /// Same pattern as `cuda::md::MD::install_infra_`.
-    InfraScan scan_pending_infra_() const {
+    /// Keyed entirely on capability-typed probes (`reads()`,
+    /// `capabilities()`, `role()`, `provides_neighbor_list()`,
+    /// `needs_neighbor_list()`, `neighbor_cutoff_hint()`, and the
+    /// `halo_participant()`/`halo_endpoint()` protocol accessor) — no
+    /// `name()` string matching and no `dynamic_cast`, so user-supplied
+    /// neighbor structures / stress providers / halo endpoints participate
+    /// in auto-injection whatever their `name()`. Same pattern as
+    /// `cuda::md::MD::install_infra_`. Non-const because the halo probe is
+    /// non-const (its other caller, the bind pass, mutates endpoints).
+    InfraScan scan_pending_infra_() {
         InfraScan s;
-        for_each_pending([&](const cpu::ComponentBase& c) {
+        for_each_pending_mut([&](cpu::ComponentBase& c) {
             if (has_capability(c.reads(), Capability::Stress))
                 s.needs_stress = true;
             if (c.role() == ComponentRole::Observer
@@ -363,10 +405,12 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
                 s.has_virial_stress = true;
             if (c.provides_neighbor_list())
                 s.has_neighbor_list = true;
-            if (c.provides_halo_send())
-                s.has_halo_send = true;
-            if (c.provides_halo_recv())
-                s.has_halo_recv = true;
+            if (cpu::HaloParticipant* hp = c.halo_participant()) {
+                if (hp->halo_endpoint() == cpu::HaloParticipant::Endpoint::send)
+                    s.has_halo_send = true;
+                if (hp->halo_endpoint() == cpu::HaloParticipant::Endpoint::recv)
+                    s.has_halo_recv = true;
+            }
             if (c.needs_neighbor_list() && s.pair_evaluator_name.empty()) {
                 s.pair_evaluator_name = c.name();
                 if (c.neighbor_cutoff_hint() > Real(0))

@@ -6,34 +6,40 @@ criteria:
     summary: "cpu::ComponentBase drops all eight halo virtuals, gains one query hook"
     type: code
     pass_when: "rg -c 'provides_halo_send|provides_halo_recv|comm_forward|comm_reverse|pack_forward|unpack_forward|pack_reverse|unpack_reverse' include/atomiverse/cpu/component/component.h returns no match, and the header declares exactly one halo-related virtual: `virtual HaloParticipant* halo_participant()` defaulting to nullptr. The neighbor trio (needs/provides_neighbor_list, neighbor_cutoff_hint) and the core set (name/role/capabilities/reads/scheduling/frequency/memory_bytes/default_bindings/build/launch/destroy) remain byte-comparable in signature."
-    status: pending
+    status: verified
+    last_checked: 2026-07-10
   - id: ac-002
     summary: "cuda::ComponentBase drops CommField trio, gains halo_participant + memory_bytes"
     type: code
     pass_when: "rg -c 'CommField|comm_forward_fields|comm_reverse_fields' include/atomiverse/cuda/component/component.cuh returns no match, and the header declares `virtual HaloParticipant* halo_participant()` (default nullptr) and `virtual std::size_t memory_bytes() const` (default 0)."
-    status: pending
+    status: verified
+    last_checked: 2026-07-10
   - id: ac-003
     summary: "Unified HaloParticipant protocol headers exist on both backends"
     type: code
     pass_when: "include/atomiverse/cpu/component/halo_participant.h and include/atomiverse/cuda/component/halo_participant.cuh both exist and declare member-for-member identical names: Endpoint{none,send,recv}, halo_endpoint(), CommField{data,width}, comm_forward_fields(), comm_reverse_fields(), bind_participants() — differing only in the field pointer tier (StorageReal* on CPU vs real_t* on CUDA). The .cuh compiles CUDA-free."
-    status: pending
+    status: verified
+    last_checked: 2026-07-10
   - id: ac-004
     summary: "Extra-field forward/reverse round-trip works across ranks via protocol"
     type: runtime
     evaluator_hint: "ctest -R halo_exchange (tests/mpi, >=2 ranks)"
     pass_when: "New MPI test cases in tests/mpi/test_halo_exchange.cpp pass on >=2 ranks: a test-only HaloParticipant declaring width=1 and width=3 fields observes (a) ghost rows of each forward field equal to their owners' values after a step, including across periodic faces, and (b) reverse-field ghost contributions accumulated exactly once onto owner rows."
-    status: pending
+    status: verified
+    last_checked: 2026-07-10
   - id: ac-005
     summary: "User-registered halo endpoints detected via protocol, never double-injected"
     type: runtime
     evaluator_hint: "ctest -R install_infra"
     pass_when: "Test in tests/cpu/test_install_infra_hook.cpp passes: a plan with a manually added HaloSend/HaloRecv pair plus set_pair builds with exactly one send endpoint and one recv endpoint (probed through halo_participant()->halo_endpoint()), and a field-only participant (Endpoint::none) does not suppress auto-injection."
-    status: pending
+    status: verified
+    last_checked: 2026-07-10
   - id: ac-006
     summary: "Infra scan stays capability-typed — no dynamic_cast, no name() matching"
     type: code
     pass_when: "rg -c 'dynamic_cast|name\\(\\) ==' include/atomiverse/cpu/driver/cpu_driver.h returns no match; scan_pending_infra_ derives has_halo_send/has_halo_recv from halo_participant()/halo_endpoint(); InfraScan boolean field names are unchanged and include/atomiverse/cpu/md/md.h + include/atomiverse/cpu/minimizer/minimize.h show no diff versus the pre-spec tree."
-    status: pending
+    status: verified
+    last_checked: 2026-07-10
   - id: ac-007
     summary: "Full build + default ctest gate + MPI parity suite green"
     type: runtime
@@ -83,6 +89,12 @@ component.cuh:191-201 的 `CommField` 结构体与两个 fields 方法删除；�
 ## ac-007 — 全量门 + 领域奇偶性
 
 clean-break 后全树可构建；多 rank vs 单 rank 能量/力暴力对照维持既有容差，证明 halo 重构未扰动物理。
+
+> **审计注记（2026-07-10，本地 macOS 实施机）**：ac-007 的"零失败"在本机受两个
+> stash 实证的既有环境性失败（test_cpu_scf_spin_resolution / test_cpu_scf_lindep，
+> macOS/Accelerate vs Linux/OpenBLAS 位一致参考常数，见 01-bindings 台账注记）阻挡，
+> 其余 109/111 全绿含全部 tests/mpi 奇偶性套件（n1/n2/n8）——留 pending 待 Linux CI
+> 落章。ac-008 需集群基线 + regression_gate.py，owed /mol:bench。
 
 ## ac-008 — PE stage-5 性能门禁
 

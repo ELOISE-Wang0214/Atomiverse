@@ -28,8 +28,8 @@
 #include <vector>
 
 #include "atomiverse/core/log.h"
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/frame/frame.h"
 
 #ifdef ATV_HAS_MPI
 #include <mpi.h>
@@ -58,23 +58,35 @@ struct FaceBufs {
 
 } // namespace detail
 
+namespace {
+/// @brief Flatten the declared fields of every bound participant into
+/// `out`, skipping null/degenerate descriptors. One-time (first launch).
+void append_declared_fields(
+    const std::vector<const HaloParticipant*>& participants, bool forward,
+    std::vector<HaloParticipant::CommField>& out) {
+    for (const auto* p : participants) {
+        const auto fs =
+            forward ? p->comm_forward_fields() : p->comm_reverse_fields();
+        for (const auto& f : fs)
+            if (f.data && f.width > 0)
+                out.push_back(f);
+    }
+}
+} // namespace
+
 // ── Special members (defined here so the PIMPL dtor sees complete FaceBufs) ──
 
 HaloSend::HaloSend() = default;
 HaloSend::HaloSend(double cutoff, int every)
     : cutoff_(cutoff), every_(every < 1 ? 1 : every) {}
 HaloSend::~HaloSend() = default;
-HaloSend::HaloSend(HaloSend&&) noexcept =
-    default;
-HaloSend&
-HaloSend::operator=(HaloSend&&) noexcept = default;
+HaloSend::HaloSend(HaloSend&&) noexcept = default;
+HaloSend& HaloSend::operator=(HaloSend&&) noexcept = default;
 
 HaloRecv::HaloRecv() = default;
 HaloRecv::~HaloRecv() = default;
-HaloRecv::HaloRecv(HaloRecv&&) noexcept =
-    default;
-HaloRecv&
-HaloRecv::operator=(HaloRecv&&) noexcept = default;
+HaloRecv::HaloRecv(HaloRecv&&) noexcept = default;
+HaloRecv& HaloRecv::operator=(HaloRecv&&) noexcept = default;
 
 std::size_t HaloSend::send_buf_capacity_for_test() const {
     return bufs_ ? bufs_->send_pos[0].capacity() : 0;
@@ -95,8 +107,12 @@ std::size_t facebufs_bytes(const detail::FaceBufs* b) {
 }
 } // namespace
 
-std::size_t HaloSend::memory_bytes() const { return facebufs_bytes(bufs_.get()); }
-std::size_t HaloRecv::memory_bytes() const { return facebufs_bytes(bufs_.get()); }
+std::size_t HaloSend::memory_bytes() const {
+    return facebufs_bytes(bufs_.get());
+}
+std::size_t HaloRecv::memory_bytes() const {
+    return facebufs_bytes(bufs_.get());
+}
 
 // ── Topology-scan helpers (available with or without MPI) ────────────
 
@@ -253,16 +269,17 @@ inline double pbc_shift_for_face(const md::mpi::DomainDecomposition& dd, int f,
 ///
 /// `dd.send_lists[2*dim]` (= face `−dim`) and `dd.send_lists[2*dim+1]` (=
 /// face `+dim`) are cleared and refilled. Capacity is preserved.
-void rebuild_send_lists_for_axis(const Frame& frame, md::mpi::DomainDecomposition& dd,
-                                 int dim, int sources_end, double cutoff) {
+void rebuild_send_lists_for_axis(const Frame& frame,
+                                 md::mpi::DomainDecomposition& dd, int dim,
+                                 int sources_end, double cutoff) {
     const int f_lo = 2 * dim;
     const int f_hi = 2 * dim + 1;
     dd.send_lists[static_cast<std::size_t>(f_lo)].clear();
     dd.send_lists[static_cast<std::size_t>(f_hi)].clear();
 
-    const auto* q = (dim == 0) ? frame.atoms.x.data()
-                      : (dim == 1) ? frame.atoms.y.data()
-                                   : frame.atoms.z.data();
+    const auto* q = (dim == 0)   ? frame.atoms.x.data()
+                    : (dim == 1) ? frame.atoms.y.data()
+                                 : frame.atoms.z.data();
     const double lo = dd.sublo[dim];
     const double hi = dd.subhi[dim];
 
@@ -276,7 +293,8 @@ void rebuild_send_lists_for_axis(const Frame& frame, md::mpi::DomainDecompositio
 
 /// @brief Pack the border message (positions + tag + charge) for face `f`.
 ///
-/// Layout: `[x0, y0, z0, tag0, q0, x1, ...]` -- 5 doubles per atom. Sent only at
+/// Layout: `[x0, y0, z0, tag0, q0, <extra fields>, x1, ...]` --
+/// `kBorderDoublesPerAtom + Σ declared forward widths` doubles per atom. Sent only at
 /// full rebuilds (reneighbor), mirroring LAMMPS `borders()`/AtomVec carrying `q`
 /// to ghosts: charge is static per run, so ghosts get it once and the per-step
 /// forward refresh stays positions-only. Tag is cast to double (exact to 2^53).
@@ -284,12 +302,67 @@ void rebuild_send_lists_for_axis(const Frame& frame, md::mpi::DomainDecompositio
 /// sits on the periodic edge along the send direction.
 constexpr int kBorderDoublesPerAtom = 5; // x, y, z, tag, q
 constexpr int kPosOnlyDoublesPerAtom = 3;
+constexpr int kForceDoublesPerAtom = 3; // fx, fy, fz
 
-void pack_positions_for_face(const Frame& frame, const md::mpi::DomainDecomposition& dd,
-                             int f, std::vector<double>& buf) {
+using CommField = HaloParticipant::CommField;
+
+/// @brief Total per-atom doubles contributed by declared extra fields.
+int extra_width(const std::vector<CommField>& fields) {
+    int w = 0;
+    for (const auto& f : fields)
+        w += f.width;
+    return w;
+}
+
+/// @brief Append the declared extra fields for send-list atom `i` at
+/// `buf[off]` (contiguous, participant order). Returns doubles written.
+std::size_t pack_extra_fields(const std::vector<CommField>& fields, int i,
+                              std::vector<double>& buf, std::size_t off) {
+    for (const auto& f : fields) {
+        const std::size_t base =
+            static_cast<std::size_t>(i) * static_cast<std::size_t>(f.width);
+        for (int k = 0; k < f.width; ++k)
+            buf[off++] = static_cast<double>(f.data[base + k]);
+    }
+    return off;
+}
+
+/// @brief Write the extra-field payload at `rbuf[off]` into ghost row
+/// `slot` (forward: overwrite). Returns doubles consumed.
+std::size_t unpack_extra_fields(const std::vector<CommField>& fields, int slot,
+                                const std::vector<double>& rbuf,
+                                std::size_t off) {
+    for (const auto& f : fields) {
+        const std::size_t base =
+            static_cast<std::size_t>(slot) * static_cast<std::size_t>(f.width);
+        for (int k = 0; k < f.width; ++k)
+            f.data[base + k] = static_cast<StorageReal>(rbuf[off++]);
+    }
+    return off;
+}
+
+/// @brief ACCUMULATE the extra-field payload at `rbuf[off]` onto row `i`
+/// (reverse: exactly-once partial sums, mirroring the intrinsic forces).
+std::size_t accumulate_extra_fields(const std::vector<CommField>& fields, int i,
+                                    const std::vector<double>& rbuf,
+                                    std::size_t off) {
+    for (const auto& f : fields) {
+        const std::size_t base =
+            static_cast<std::size_t>(i) * static_cast<std::size_t>(f.width);
+        for (int k = 0; k < f.width; ++k)
+            f.data[base + k] += static_cast<StorageReal>(rbuf[off++]);
+    }
+    return off;
+}
+
+void pack_positions_for_face(const Frame& frame,
+                             const md::mpi::DomainDecomposition& dd, int f,
+                             std::vector<double>& buf,
+                             const std::vector<CommField>& xfields) {
     const auto& list = dd.send_lists[f];
     const int n = static_cast<int>(list.size());
-    buf.resize(static_cast<std::size_t>(n) * kBorderDoublesPerAtom);
+    const int per_atom = kBorderDoublesPerAtom + extra_width(xfields);
+    buf.resize(static_cast<std::size_t>(n) * per_atom);
 
     const int dim = face_dim(f);
     const double shift = pbc_shift_for_face(dd, f, frame.box.length(dim));
@@ -309,25 +382,28 @@ void pack_positions_for_face(const Frame& frame, const md::mpi::DomainDecomposit
             yi += shift;
         else if (dim == 2)
             zi += shift;
-        const std::size_t off =
-            static_cast<std::size_t>(k) * kBorderDoublesPerAtom;
+        std::size_t off = static_cast<std::size_t>(k) * per_atom;
         buf[off + 0] = xi;
         buf[off + 1] = yi;
         buf[off + 2] = zi;
         buf[off + 3] = static_cast<double>(tag[i]);
         buf[off + 4] = q[i]; // static per run; carried to ghosts at reneighbor
+        pack_extra_fields(xfields, i, buf, off + kBorderDoublesPerAtom);
     }
 }
 
-/// @brief Pack only `(x,y,z)` for face `f` (position-only refresh between
-/// reneighbor events). Ghost slot indices on the receiver stay fixed, so
-/// we do not re-send tags.
+/// @brief Pack `(x,y,z)` plus declared extra fields for face `f`
+/// (position-only refresh between reneighbor events). Ghost slot indices
+/// on the receiver stay fixed, so we do not re-send tags; extra forward
+/// fields refresh every step alongside positions.
 void pack_positions_only_for_face(const Frame& frame,
                                   const md::mpi::DomainDecomposition& dd, int f,
-                                  std::vector<double>& buf) {
+                                  std::vector<double>& buf,
+                                  const std::vector<CommField>& xfields) {
     const auto& list = dd.send_lists[f];
     const int n = static_cast<int>(list.size());
-    buf.resize(static_cast<std::size_t>(n) * kPosOnlyDoublesPerAtom);
+    const int per_atom = kPosOnlyDoublesPerAtom + extra_width(xfields);
+    buf.resize(static_cast<std::size_t>(n) * per_atom);
 
     const int dim = face_dim(f);
     const double shift = pbc_shift_for_face(dd, f, frame.box.length(dim));
@@ -345,19 +421,20 @@ void pack_positions_only_for_face(const Frame& frame,
             yi += shift;
         else if (dim == 2)
             zi += shift;
-        const std::size_t off =
-            static_cast<std::size_t>(k) * kPosOnlyDoublesPerAtom;
+        std::size_t off = static_cast<std::size_t>(k) * per_atom;
         buf[off + 0] = xi;
         buf[off + 1] = yi;
         buf[off + 2] = zi;
+        pack_extra_fields(xfields, i, buf, off + kPosOnlyDoublesPerAtom);
     }
 }
 
 void prealloc_bufs(FaceBufs& b, int initial_cap) {
     for (int f = 0; f < 6; ++f) {
         // Conservative: each face could ship up to `initial_cap` atoms.
-        // Border (full-rebuild) sends 5 doubles per atom (xyz + tag + q); the
-        // per-step forward sends 3 (xyz). Reverse sends 3 (force). Trivial.
+        // Border (full-rebuild) sends xyz + tag + q (+ declared forward
+        // fields); the per-step forward sends xyz (+ declared forward
+        // fields). Reverse sends fx,fy,fz (+ declared reverse fields).
         b.send_pos[f].reserve(static_cast<std::size_t>(initial_cap)
                               * kBorderDoublesPerAtom);
         b.recv_pos[f].reserve(static_cast<std::size_t>(initial_cap)
@@ -423,15 +500,15 @@ namespace {
 /// `!full_rebuild`, send lists and `recv_counts` are reused from the last
 /// rebuild and only positions get refreshed.
 ///
-/// Returns `true` on success, `false` on capacity overflow (the orchestrator
-/// is expected to have already triggered `MPI_Abort` in that case via its
-/// own logging, but the caller may want to short-circuit cleanup paths).
+/// `xfields` is the flattened list of declared extra forward fields; their
+/// payload rides both message shapes (border and position-only refresh)
+/// after the intrinsic columns.
 inline void forward_axis_stage(Frame& frame, md::mpi::DomainDecomposition& dd,
                                FaceBufs& bufs, int dim, int sources_end,
-                               double cutoff, bool full_rebuild,
-                               int& frame_cap, int my_rank,
-                               double bonded_extension_for_log,
-                               int& slot_in_out) {
+                               double cutoff, bool full_rebuild, int& frame_cap,
+                               int my_rank, double bonded_extension_for_log,
+                               int& slot_in_out,
+                               const std::vector<CommField>& xfields) {
     const int f_lo = 2 * dim;
     const int f_hi = 2 * dim + 1;
     const std::size_t fz_lo = static_cast<std::size_t>(f_lo);
@@ -474,7 +551,8 @@ inline void forward_axis_stage(Frame& frame, md::mpi::DomainDecomposition& dd,
     }
 
     const int per_atom_doubles =
-        full_rebuild ? kBorderDoublesPerAtom : kPosOnlyDoublesPerAtom;
+        (full_rebuild ? kBorderDoublesPerAtom : kPosOnlyDoublesPerAtom)
+        + extra_width(xfields);
 
     for (int s = 0; s < 2; ++s) {
         const int face_s = (s == 0) ? f_lo : f_hi;
@@ -484,9 +562,9 @@ inline void forward_axis_stage(Frame& frame, md::mpi::DomainDecomposition& dd,
         if (neighbor == MPI_PROC_NULL) {
             sbuf.clear();
         } else if (full_rebuild) {
-            pack_positions_for_face(frame, dd, face_s, sbuf);
+            pack_positions_for_face(frame, dd, face_s, sbuf, xfields);
         } else {
-            pack_positions_only_for_face(frame, dd, face_s, sbuf);
+            pack_positions_only_for_face(frame, dd, face_s, sbuf, xfields);
         }
         rbuf.assign(static_cast<std::size_t>(recv_counts[s])
                         * static_cast<std::size_t>(per_atom_doubles),
@@ -501,20 +579,20 @@ inline void forward_axis_stage(Frame& frame, md::mpi::DomainDecomposition& dd,
         if (neighbor == MPI_PROC_NULL || neighbor == my_rank)
             continue;
         if (send_counts[s] > 0) {
-            MPI_Isend(bufs.send_pos[static_cast<std::size_t>(face_s)].data(),
-                      static_cast<int>(
-                          bufs.send_pos[static_cast<std::size_t>(face_s)]
-                              .size()),
-                      MPI_DOUBLE, neighbor, 100 + face_s, dd.cart_comm,
-                      &pos_reqs[n_preqs++]);
+            MPI_Isend(
+                bufs.send_pos[static_cast<std::size_t>(face_s)].data(),
+                static_cast<int>(
+                    bufs.send_pos[static_cast<std::size_t>(face_s)].size()),
+                MPI_DOUBLE, neighbor, 100 + face_s, dd.cart_comm,
+                &pos_reqs[n_preqs++]);
         }
         if (recv_counts[s] > 0) {
-            MPI_Irecv(bufs.recv_pos[static_cast<std::size_t>(face_s)].data(),
-                      static_cast<int>(
-                          bufs.recv_pos[static_cast<std::size_t>(face_s)]
-                              .size()),
-                      MPI_DOUBLE, neighbor, 100 + opposite_face(face_s),
-                      dd.cart_comm, &pos_reqs[n_preqs++]);
+            MPI_Irecv(
+                bufs.recv_pos[static_cast<std::size_t>(face_s)].data(),
+                static_cast<int>(
+                    bufs.recv_pos[static_cast<std::size_t>(face_s)].size()),
+                MPI_DOUBLE, neighbor, 100 + opposite_face(face_s), dd.cart_comm,
+                &pos_reqs[n_preqs++]);
         }
     }
     if (n_preqs > 0)
@@ -558,14 +636,18 @@ inline void forward_axis_stage(Frame& frame, md::mpi::DomainDecomposition& dd,
         if (full_rebuild) {
             for (int k = 0; k < n; ++k) {
                 const std::size_t off =
-                    static_cast<std::size_t>(k) * kBorderDoublesPerAtom;
+                    static_cast<std::size_t>(k)
+                    * static_cast<std::size_t>(per_atom_doubles);
                 frame.atoms.x[slot] = rbuf[off + 0];
                 frame.atoms.y[slot] = rbuf[off + 1];
                 frame.atoms.z[slot] = rbuf[off + 2];
                 const std::int64_t tag =
                     static_cast<std::int64_t>(rbuf[off + 3]);
                 frame.atoms.tag[slot] = tag;
-                frame.atoms.charge[slot] = rbuf[off + 4]; // ghost charge (border)
+                frame.atoms.charge[slot] =
+                    rbuf[off + 4]; // ghost charge (border)
+                unpack_extra_fields(xfields, slot, rbuf,
+                                    off + kBorderDoublesPerAtom);
                 if (track_tags) {
                     dd.tag_to_local[tag] = slot;
                     dd.ghost_tags.push_back(tag);
@@ -576,10 +658,13 @@ inline void forward_axis_stage(Frame& frame, md::mpi::DomainDecomposition& dd,
         } else {
             for (int k = 0; k < n; ++k) {
                 const std::size_t off =
-                    static_cast<std::size_t>(k) * kPosOnlyDoublesPerAtom;
+                    static_cast<std::size_t>(k)
+                    * static_cast<std::size_t>(per_atom_doubles);
                 frame.atoms.x[slot] = rbuf[off + 0];
                 frame.atoms.y[slot] = rbuf[off + 1];
                 frame.atoms.z[slot] = rbuf[off + 2];
+                unpack_extra_fields(xfields, slot, rbuf,
+                                    off + kPosOnlyDoublesPerAtom);
                 ++slot;
             }
         }
@@ -592,13 +677,24 @@ inline void forward_axis_stage(Frame& frame, md::mpi::DomainDecomposition& dd,
 // rank); the force kernels accumulate into ghost rows, and HaloRecv
 // ships those contributions back to owners — so ghost forces must start each
 // step at zero. Called by HaloSend after the current n_ghost is set.
-void zero_ghost_forces(Frame& frame, const md::mpi::DomainDecomposition& dd) {
+void zero_ghost_forces(Frame& frame, const md::mpi::DomainDecomposition& dd,
+                       const std::vector<CommField>& reverse_fields) {
     const int lo = dd.n_local;
     const int hi = dd.n_local + dd.n_ghost;
     for (int i = lo; i < hi; ++i) {
         frame.atoms.fx[i] = 0.0;
         frame.atoms.fy[i] = 0.0;
         frame.atoms.fz[i] = 0.0;
+    }
+    // Reverse extra fields share the force semantics: ghost rows are
+    // partial-sum accumulators and must start each step at zero.
+    for (const auto& f : reverse_fields) {
+        for (int i = lo; i < hi; ++i) {
+            const std::size_t base =
+                static_cast<std::size_t>(i) * static_cast<std::size_t>(f.width);
+            for (int k = 0; k < f.width; ++k)
+                f.data[base + k] = StorageReal(0);
+        }
     }
 }
 
@@ -613,6 +709,15 @@ void HaloSend::launch(const cpu::LaunchContext& ctx) {
 
     Frame& frame = ctx.frame;
     FaceBufs& bufs = *bufs_;
+
+    // One-time flatten of bound participants' field declarations. Deferred
+    // to first launch (not build) because participant arrays are allocated
+    // in the participants' own build(), whose plan order may follow ours.
+    if (!fields_cached_) {
+        append_declared_fields(participants_, /*forward=*/true, fwd_fields_);
+        append_declared_fields(participants_, /*forward=*/false, rev_fields_);
+        fields_cached_ = true;
+    }
 
     // Decide whether this step needs a full rebuild of per-face send lists
     // and ghost-slot assignments. LAMMPS-style cadence: rebuild every
@@ -651,7 +756,7 @@ void HaloSend::launch(const cpu::LaunchContext& ctx) {
         for (int dim = 0; dim < 3; ++dim) {
             forward_axis_stage(frame, *dd, bufs, dim, slot, halo_cut,
                                /*full_rebuild=*/true, frame_cap, my_rank,
-                               bonded_extension_, slot);
+                               bonded_extension_, slot, fwd_fields_);
         }
         dd->n_ghost = slot - dd->n_local;
 
@@ -669,7 +774,7 @@ void HaloSend::launch(const cpu::LaunchContext& ctx) {
 
         ago_ = 0;
         last_rebuild_generation_ = dd->neighbor_generation;
-        zero_ghost_forces(frame, *dd);
+        zero_ghost_forces(frame, *dd, rev_fields_);
         return;
     }
 
@@ -681,9 +786,9 @@ void HaloSend::launch(const cpu::LaunchContext& ctx) {
     for (int dim = 0; dim < 3; ++dim) {
         forward_axis_stage(frame, *dd, bufs, dim, /*sources_end=*/0, halo_cut,
                            /*full_rebuild=*/false, frame_cap, my_rank,
-                           bonded_extension_, slot);
+                           bonded_extension_, slot, fwd_fields_);
     }
-    zero_ghost_forces(frame, *dd);
+    zero_ghost_forces(frame, *dd, rev_fields_);
 }
 
 void HaloRecv::build(const cpu::BuildContext& ctx) {
@@ -706,6 +811,15 @@ void HaloRecv::launch(const cpu::LaunchContext& ctx) {
 
     Frame& frame = ctx.frame;
     FaceBufs& bufs = *bufs_;
+
+    // One-time flatten of bound participants' reverse-field declarations
+    // (see HaloSend::launch for why this is deferred to first launch).
+    if (!fields_cached_) {
+        append_declared_fields(participants_, /*forward=*/false, rev_fields_);
+        fields_cached_ = true;
+    }
+    const int per_ghost_doubles =
+        kForceDoublesPerAtom + extra_width(rev_fields_);
 
     int my_rank = 0;
     MPI_Comm_rank(dd->cart_comm, &my_rank);
@@ -752,16 +866,23 @@ void HaloRecv::launch(const cpu::LaunchContext& ctx) {
             const int face_s = (s == 0) ? f_lo : f_hi;
             const int n = send_force_counts[s];
             auto& sbuf = bufs.send_force[static_cast<std::size_t>(face_s)];
-            sbuf.resize(static_cast<std::size_t>(n) * 3);
+            sbuf.resize(static_cast<std::size_t>(n)
+                        * static_cast<std::size_t>(per_ghost_doubles));
             int slot = slot_start[face_s];
             for (int k = 0; k < n; ++k) {
-                sbuf[static_cast<std::size_t>(3 * k + 0)] = frame.atoms.fx[slot];
-                sbuf[static_cast<std::size_t>(3 * k + 1)] = frame.atoms.fy[slot];
-                sbuf[static_cast<std::size_t>(3 * k + 2)] = frame.atoms.fz[slot];
+                std::size_t off = static_cast<std::size_t>(k)
+                                  * static_cast<std::size_t>(per_ghost_doubles);
+                sbuf[off + 0] = frame.atoms.fx[slot];
+                sbuf[off + 1] = frame.atoms.fy[slot];
+                sbuf[off + 2] = frame.atoms.fz[slot];
+                pack_extra_fields(rev_fields_, slot, sbuf,
+                                  off + kForceDoublesPerAtom);
                 ++slot;
             }
             bufs.recv_force[static_cast<std::size_t>(face_s)].assign(
-                static_cast<std::size_t>(recv_force_counts[s]) * 3, 0.0);
+                static_cast<std::size_t>(recv_force_counts[s])
+                    * static_cast<std::size_t>(per_ghost_doubles),
+                0.0);
         }
 
         MPI_Request reqs[4];
@@ -800,13 +921,27 @@ void HaloRecv::launch(const cpu::LaunchContext& ctx) {
         for (int s = 0; s < 2; ++s) {
             const int face_s = (s == 0) ? f_lo : f_hi;
             const auto& list = dd->send_lists[static_cast<std::size_t>(face_s)];
-            const auto& rbuf = bufs.recv_force[static_cast<std::size_t>(face_s)];
+            const auto& rbuf =
+                bufs.recv_force[static_cast<std::size_t>(face_s)];
             const int n = static_cast<int>(list.size());
             for (int k = 0; k < n; ++k) {
                 const int i = list[static_cast<std::size_t>(k)];
-                frame.atoms.fx[i] += rbuf[static_cast<std::size_t>(3 * k + 0)];
-                frame.atoms.fy[i] += rbuf[static_cast<std::size_t>(3 * k + 1)];
-                frame.atoms.fz[i] += rbuf[static_cast<std::size_t>(3 * k + 2)];
+                std::size_t off = static_cast<std::size_t>(k)
+                                  * static_cast<std::size_t>(per_ghost_doubles);
+                frame.atoms.fx[i] += rbuf[off + 0];
+                frame.atoms.fy[i] += rbuf[off + 1];
+                frame.atoms.fz[i] += rbuf[off + 2];
+                // Reverse extra fields: ACCUMULATE (exactly-once partial
+                // sums), mirroring the intrinsic force semantics.
+                off += 3;
+                for (const auto& f : rev_fields_) {
+                    const std::size_t base =
+                        static_cast<std::size_t>(i)
+                        * static_cast<std::size_t>(f.width);
+                    for (int c = 0; c < f.width; ++c)
+                        f.data[base + c] +=
+                            static_cast<StorageReal>(rbuf[off++]);
+                }
             }
         }
     }

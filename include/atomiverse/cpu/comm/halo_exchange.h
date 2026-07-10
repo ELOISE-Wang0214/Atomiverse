@@ -9,17 +9,20 @@
 ///   - `HaloRecv::launch` symmetrically reduces ghost-row
 ///     `fx/fy/fz` contributions back onto the owners.
 ///
-/// Both classes share a `HaloExchangeState` record (per-face send/recv
-/// indices, packed-position buffers, MPI request handles) held by
-/// `md::mpi::DomainDecomposition`. `HaloSend` is the producer (writes
-/// `state->recv_counts_per_face` and the ghost rows); `HaloRecv`
-/// is the consumer (uses the same per-face counts to know how many ghost
-/// forces to pack and where they go on the owner's side).
+/// Each endpoint owns its per-face MPI buffers (`detail::FaceBufs`,
+/// per-instance PIMPL); the shared per-face send lists and receive counts
+/// live on `md::mpi::DomainDecomposition` (`dd->send_lists`,
+/// `dd->recv_counts`). `HaloSend` is the producer (writes the counts and
+/// the ghost rows); `HaloRecv` is the consumer (uses the same counts to
+/// know how many ghost forces to pack and where they go on the owner's
+/// side).
 ///
 /// The default-constructed `HaloSend{}` (`cutoff = 0`) is a
-/// no-op sentinel. Real multi-rank runs add `HaloSend{cutoff_with_skin}`
-/// and a matching `HaloRecv{}` explicitly; `cpu::md::MD` does not
-/// auto-register halo components because reverse exchange must run exactly once.
+/// no-op sentinel. Under `ATV_BUILD_MPI`, `cpu::md::MD` auto-injects the
+/// `HaloSend{1.1 * pair_cutoff}` + `HaloRecv{}` pair when `set_pair` is
+/// called; a manually registered pair suppresses the injection (detected
+/// through the `halo_participant()` protocol probe — reverse exchange
+/// must run exactly once).
 ///
 /// **Bonded skin auto-extension** (spec A.5): `build()` scans
 /// `frame.bonds/angles/dihedrals` (tag-aware: multi-rank scans resolve
@@ -40,6 +43,7 @@
 
 #include "atomiverse/core/binding.h"
 #include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/halo_participant.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/facade/stage.h"
 
@@ -67,7 +71,7 @@ struct FaceBufs;
 /// corresponding face neighbor. PBC: atoms sent across the periodic edge of
 /// the global box are shifted by `±L_d` on the way out so the receiver sees
 /// them in its own coordinate frame.
-class HaloSend : public cpu::ComponentBase {
+class HaloSend : public cpu::ComponentBase, public cpu::HaloParticipant {
   public:
     /// @brief No-op default constructor (cutoff = 0).
     HaloSend();
@@ -100,8 +104,17 @@ class HaloSend : public cpu::ComponentBase {
 
     std::string name() const override { return "halo_send"; }
     /// @brief Send half of the DD halo pair — the driver infrastructure
-    /// scan keys on this, not on `name()`.
-    bool provides_halo_send() const override { return true; }
+    /// scan probes this typed accessor, not `name()`.
+    HaloParticipant* halo_participant() override { return this; }
+    /// @brief Forward exchange endpoint.
+    Endpoint halo_endpoint() const override { return Endpoint::send; }
+    /// @brief Receive the field-participant list from the driver's
+    /// build-time bind pass; field descriptors are flattened once at
+    /// first launch and cached.
+    void bind_participants(
+        const std::vector<const HaloParticipant*>& participants) override {
+        participants_ = participants;
+    }
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::pre_neighbor, 0)};
     }
@@ -156,6 +169,15 @@ class HaloSend : public cpu::ComponentBase {
     double cutoff_ = 0.0;
     double bonded_extension_ = 0.0;
     std::unique_ptr<detail::FaceBufs> bufs_;
+    /// Field participants bound by the driver (non-owning); their
+    /// `comm_forward_fields()` ride the per-face forward messages.
+    std::vector<const HaloParticipant*> participants_;
+    /// Flattened field descriptors, cached on first launch (participants'
+    /// arrays are allocated in their build(), which may run after ours).
+    std::vector<HaloParticipant::CommField> fwd_fields_;
+    /// Reverse fields cached for ghost-row zeroing (forces semantics).
+    std::vector<HaloParticipant::CommField> rev_fields_;
+    bool fields_cached_ = false;
 
     // Reneighboring cadence. On `ago_ >= every_` or when migration bumps
     // `dd->neighbor_generation`, the next `launch()` does a full rebuild
@@ -203,7 +225,7 @@ class HaloSend : public cpu::ComponentBase {
 /// must either (a) extend this payload list and update `pack_face`/
 /// `unpack_face` in `halo_exchange.cpp`, or (b) operate on owners only
 /// and reduce the per-rank totals globally via `Reduce`.
-class HaloRecv : public cpu::ComponentBase {
+class HaloRecv : public cpu::ComponentBase, public cpu::HaloParticipant {
   public:
     HaloRecv();
     ~HaloRecv() override;
@@ -214,8 +236,17 @@ class HaloRecv : public cpu::ComponentBase {
 
     std::string name() const override { return "halo_recv"; }
     /// @brief Receive half of the DD halo pair — the driver infrastructure
-    /// scan keys on this, not on `name()`.
-    bool provides_halo_recv() const override { return true; }
+    /// scan probes this typed accessor, not `name()`.
+    HaloParticipant* halo_participant() override { return this; }
+    /// @brief Reverse exchange endpoint.
+    Endpoint halo_endpoint() const override { return Endpoint::recv; }
+    /// @brief Receive the field-participant list from the driver's
+    /// build-time bind pass; reverse-field descriptors are flattened once
+    /// at first launch and cached.
+    void bind_participants(
+        const std::vector<const HaloParticipant*>& participants) override {
+        participants_ = participants;
+    }
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::post_force, -1000)};
     }
@@ -235,6 +266,12 @@ class HaloRecv : public cpu::ComponentBase {
 
   private:
     std::unique_ptr<detail::FaceBufs> bufs_;
+    /// Field participants bound by the driver (non-owning); their
+    /// `comm_reverse_fields()` ride the per-face reverse messages.
+    std::vector<const HaloParticipant*> participants_;
+    /// Flattened reverse-field descriptors, cached on first launch.
+    std::vector<HaloParticipant::CommField> rev_fields_;
+    bool fields_cached_ = false;
 };
 
 } // namespace comm
