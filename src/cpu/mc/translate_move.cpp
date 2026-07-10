@@ -25,8 +25,8 @@ void TranslateMove::launch(const cpu::LaunchContext& ctx) {
     if (ctx.step < 0)
         return;
 
-    std::mt19937_64* rng = ctx.runtime.rng;
-    mc::Transaction* txn = ctx.runtime.proposal;
+    std::mt19937_64* rng = ctx.runtime.mc.rng;
+    mc::Transaction* txn = ctx.runtime.mc.proposal;
     // Both are published by SamplingDriver::run(); a null here means the move
     // was driven outside a sampling driver, which is a usage error.
     if (rng == nullptr || txn == nullptr) {

@@ -999,11 +999,11 @@ class CsvRecorder : public cpu::ComponentBase {
                 << f.box(1, 1) << "," << f.box(2, 2) << ","
                 << f.scalars.conserved;
 #ifdef ATV_HAS_MPI
-            if (ctx.runtime.dd) {
-                row << "," << ctx.runtime.dd->neighbor_generation << ","
-                    << ctx.runtime.dd->halo_generation << ","
-                    << ctx.runtime.dd->n_local << ","
-                    << ctx.runtime.dd->n_ghost;
+            if (ctx.runtime.md.dd) {
+                row << "," << ctx.runtime.md.dd->neighbor_generation << ","
+                    << ctx.runtime.md.dd->halo_generation << ","
+                    << ctx.runtime.md.dd->n_local << ","
+                    << ctx.runtime.md.dd->n_ghost;
             } else {
                 row << ",0,0,0,0";
             }

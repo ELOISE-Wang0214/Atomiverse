@@ -95,6 +95,11 @@ atv_add_cpp_test(test_units core/test_units.cpp)
 # ── CPU backend tests (always available, no CUDA required) ──────────
 
 atv_add_cpp_test(test_cpu_box cpu/test_box.cpp)
+# Context service slices (arch-refactor-05-context): flat core fields + nested
+# md/mc/opt/analysis pure-aggregate slices, exact field mapping, all-null
+# defaults, trivially-copyable / non-polymorphic guards. Layout-only, no
+# physics.
+atv_add_cpp_test(test_cpu_component_context_slices cpu/component/test_context_slices.cpp)
 atv_add_cpp_test(test_cpu_mc_scaffold cpu/test_mc_scaffold.cpp)
 atv_add_cpp_test(test_cpu_mc_move cpu/mc/test_mc_move.cpp)
 # MC physics-validation gates — e2e (drive MC::run over many sweeps), disabled

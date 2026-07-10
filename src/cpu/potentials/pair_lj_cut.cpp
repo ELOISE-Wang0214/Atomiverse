@@ -104,10 +104,9 @@ void PairLJCut::build(const BuildContext& ctx) {
     excluded_by_tag_.clear();
     if (!any_excl_)
         return;
-    const auto* dd = ctx.runtime.dd;
-    const int n_owners = (dd && ctx.runtime.mpi_size > 1)
-                             ? dd->n_local
-                             : ctx.frame.atoms.nlocal;
+    const auto* dd = ctx.runtime.md.dd;
+    const int n_owners =
+        (dd && ctx.runtime.mpi_size > 1) ? dd->n_local : ctx.frame.atoms.nlocal;
     refresh_exclusion_map(ctx.frame, n_owners);
 }
 
@@ -228,15 +227,15 @@ void PairLJCut::rebuild_filtered_list(const Frame& f,
 
 void PairLJCut::compute(const LaunchContext& ctx) {
     auto& f = ctx.frame;
-    if (!ctx.runtime.pair_list) {
+    if (!ctx.runtime.md.pair_list) {
         throw std::runtime_error(
-            "PairLJCut::compute: runtime.pair_list is null. Did you add a "
+            "PairLJCut::compute: runtime.md.pair_list is null. Did you add a "
             "NeighborList component to the force phase ahead of LJ?");
     }
-    const auto& pairs = *ctx.runtime.pair_list;
+    const auto& pairs = *ctx.runtime.md.pair_list;
     const auto& box = f.box;
     int n_force = f.atoms.size();
-    const auto* dd = ctx.runtime.dd;
+    const auto* dd = ctx.runtime.md.dd;
     if (dd && ctx.runtime.mpi_size > 1) {
         n_force = dd->n_local + dd->n_ghost;
     }
@@ -247,8 +246,9 @@ void PairLJCut::compute(const LaunchContext& ctx) {
     // so the build-time size always dominated; with right-sized per-rank
     // storage that no longer holds, so grow here on demand (rare — only when
     // the ghost region expands; matches the neighbor-list growth contract).
-    if (n_threads_ > 1 &&
-        static_cast<int>(fx_thr_.empty() ? 0 : fx_thr_[0].size()) < n_force) {
+    if (n_threads_ > 1
+        && static_cast<int>(fx_thr_.empty() ? 0 : fx_thr_[0].size())
+               < n_force) {
         for (int t = 0; t < n_threads_; ++t) {
             fx_thr_[t].resize(n_force, double(0));
             fy_thr_[t].resize(n_force, double(0));
@@ -291,14 +291,17 @@ void PairLJCut::compute(const LaunchContext& ctx) {
     const bool k_has_shifts =
         (use_filtered ? filtered_has_shifts_ : pairs.has_shifts);
     const double* __restrict k_shift_x =
-        !k_has_shifts ? nullptr
-        : (use_filtered ? filtered_shift_x_.data() : pairs.shift_x.data());
+        !k_has_shifts
+            ? nullptr
+            : (use_filtered ? filtered_shift_x_.data() : pairs.shift_x.data());
     const double* __restrict k_shift_y =
-        !k_has_shifts ? nullptr
-        : (use_filtered ? filtered_shift_y_.data() : pairs.shift_y.data());
+        !k_has_shifts
+            ? nullptr
+            : (use_filtered ? filtered_shift_y_.data() : pairs.shift_y.data());
     const double* __restrict k_shift_z =
-        !k_has_shifts ? nullptr
-        : (use_filtered ? filtered_shift_z_.data() : pairs.shift_z.data());
+        !k_has_shifts
+            ? nullptr
+            : (use_filtered ? filtered_shift_z_.data() : pairs.shift_z.data());
 
     // Pair virial accumulators (Voigt order: xx yy zz xy xz yz). Reduced
     // across OpenMP threads via OMP reduction; cross-rank reduction is
@@ -487,30 +490,30 @@ void PairLJCut::compute(const LaunchContext& ctx) {
                     (void)v_half_lz;
                     (void)v_neg_half_lz;
                 } else {
-                // Branch-free minimum image: select(dx > +L/2, dx-L, dx);
-                // then select(dx < -L/2, dx+L, dx). Hoisted constants
-                // (v_lx, v_half_lx, ...) keep the compiler from reloading
-                // box members across the inner loop -- swapping this for
-                // box.min_image_batch costs ~7% per-step (member loads
-                // through `this` are not hoisted under aliasing analysis).
-                // Floor-form min-image (single shot, handles |Δ| up to
-                // any integer multiple of L). The legacy single-`select`
-                // pair form was correct for `|Δ| ≤ L` but silently left
-                // `|Δ| = L` for cross-PBC ghosts at ±2L (then the
-                // cutoff filter dropped legitimate pairs).
-                v_dx = v_dx - v_lx * xsimd::round(v_dx * v_inv_lx);
-                v_dy = v_dy - v_ly * xsimd::round(v_dy * v_inv_ly);
-                v_dz = v_dz - v_lz * xsimd::round(v_dz * v_inv_lz);
-                // Suppress unused-variable warnings for the legacy
-                // half-L locals which are now reserved for the v3
-                // hot-path microbench (`bench_md_step` v_half_*
-                // sensitivity).
-                (void)v_half_lx;
-                (void)v_neg_half_lx;
-                (void)v_half_ly;
-                (void)v_neg_half_ly;
-                (void)v_half_lz;
-                (void)v_neg_half_lz;
+                    // Branch-free minimum image: select(dx > +L/2, dx-L, dx);
+                    // then select(dx < -L/2, dx+L, dx). Hoisted constants
+                    // (v_lx, v_half_lx, ...) keep the compiler from reloading
+                    // box members across the inner loop -- swapping this for
+                    // box.min_image_batch costs ~7% per-step (member loads
+                    // through `this` are not hoisted under aliasing analysis).
+                    // Floor-form min-image (single shot, handles |Δ| up to
+                    // any integer multiple of L). The legacy single-`select`
+                    // pair form was correct for `|Δ| ≤ L` but silently left
+                    // `|Δ| = L` for cross-PBC ghosts at ±2L (then the
+                    // cutoff filter dropped legitimate pairs).
+                    v_dx = v_dx - v_lx * xsimd::round(v_dx * v_inv_lx);
+                    v_dy = v_dy - v_ly * xsimd::round(v_dy * v_inv_ly);
+                    v_dz = v_dz - v_lz * xsimd::round(v_dz * v_inv_lz);
+                    // Suppress unused-variable warnings for the legacy
+                    // half-L locals which are now reserved for the v3
+                    // hot-path microbench (`bench_md_step` v_half_*
+                    // sensitivity).
+                    (void)v_half_lx;
+                    (void)v_neg_half_lx;
+                    (void)v_half_ly;
+                    (void)v_neg_half_ly;
+                    (void)v_half_lz;
+                    (void)v_neg_half_lz;
                 }
 
                 // r2 with parenthesized addition tree to keep order

@@ -453,7 +453,7 @@ void HaloSend::build(const cpu::BuildContext& ctx) {
     // resolvable locally contribute nothing on this rank, and the global
     // max is reconciled with an `MPI_Allreduce(MAX)` below. Single-rank:
     // skip the allreduce; the local scan alone is the global answer.
-    auto* dd = ctx.runtime.dd;
+    auto* dd = ctx.runtime.md.dd;
     bonded_extension_ = compute_bonded_extension_local(ctx.frame, dd);
 
     if (cutoff_ <= 0.0)
@@ -703,7 +703,7 @@ void zero_ghost_forces(Frame& frame, const md::mpi::DomainDecomposition& dd,
 void HaloSend::launch(const cpu::LaunchContext& ctx) {
     if (ctx.runtime.mpi_size <= 1 || cutoff_ <= 0.0)
         return;
-    auto* dd = ctx.runtime.dd;
+    auto* dd = ctx.runtime.md.dd;
     if (!dd || dd->cart_comm == MPI_COMM_NULL)
         return;
 
@@ -792,7 +792,7 @@ void HaloSend::launch(const cpu::LaunchContext& ctx) {
 }
 
 void HaloRecv::build(const cpu::BuildContext& ctx) {
-    auto* dd = ctx.runtime.dd;
+    auto* dd = ctx.runtime.md.dd;
     if (!dd || ctx.runtime.mpi_size <= 1)
         return;
     if (!bufs_)
@@ -803,7 +803,7 @@ void HaloRecv::build(const cpu::BuildContext& ctx) {
 void HaloRecv::launch(const cpu::LaunchContext& ctx) {
     if (ctx.runtime.mpi_size <= 1)
         return;
-    auto* dd = ctx.runtime.dd;
+    auto* dd = ctx.runtime.md.dd;
     if (!dd || dd->cart_comm == MPI_COMM_NULL)
         return;
     if (dd->n_ghost == 0)

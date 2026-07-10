@@ -115,11 +115,11 @@ void NoseHooverNPT::build(const cpu::BuildContext& ctx) {
     // participates, contributing 0 to the sum so N stays the correct global
     // total. Gating this on `n_local > 0` deadlocked the stage-1->stage-2 NPT
     // rebuild at 64 ranks while 32 ranks (no empty cells) ran fine.
-    if (ctx.runtime.mpi_size > 1 && ctx.runtime.dd
-        && ctx.runtime.dd->cart_comm != MPI_COMM_NULL) {
-        const int n_local = ctx.runtime.dd->n_local;
+    if (ctx.runtime.mpi_size > 1 && ctx.runtime.md.dd
+        && ctx.runtime.md.dd->cart_comm != MPI_COMM_NULL) {
+        const int n_local = ctx.runtime.md.dd->n_local;
         MPI_Allreduce(&n_local, &N, 1, MPI_INT, MPI_SUM,
-                      ctx.runtime.dd->cart_comm);
+                      ctx.runtime.md.dd->cart_comm);
     }
 #endif
     n_dof_ = 3 * N - 3;
@@ -211,10 +211,10 @@ double NoseHooverNPT::compute_global_KE(const cpu::LaunchContext& ctx) const {
 
     double ke = ke_local;
 #ifdef ATV_HAS_MPI
-    if (ctx.runtime.mpi_size > 1 && ctx.runtime.dd
-        && ctx.runtime.dd->cart_comm != MPI_COMM_NULL) {
+    if (ctx.runtime.mpi_size > 1 && ctx.runtime.md.dd
+        && ctx.runtime.md.dd->cart_comm != MPI_COMM_NULL) {
         MPI_Allreduce(&ke_local, &ke, 1, MPI_DOUBLE, MPI_SUM,
-                      ctx.runtime.dd->cart_comm);
+                      ctx.runtime.md.dd->cart_comm);
     }
 #endif
     return ke;
@@ -236,11 +236,11 @@ NoseHooverNPT::compute_axis_KE(const cpu::LaunchContext& ctx) const {
     }
     double ke[3] = {0.5 * kMvv2e * kx, 0.5 * kMvv2e * ky, 0.5 * kMvv2e * kz};
 #ifdef ATV_HAS_MPI
-    if (ctx.runtime.mpi_size > 1 && ctx.runtime.dd
-        && ctx.runtime.dd->cart_comm != MPI_COMM_NULL) {
+    if (ctx.runtime.mpi_size > 1 && ctx.runtime.md.dd
+        && ctx.runtime.md.dd->cart_comm != MPI_COMM_NULL) {
         double local[3] = {ke[0], ke[1], ke[2]};
         MPI_Allreduce(local, ke, 3, MPI_DOUBLE, MPI_SUM,
-                      ctx.runtime.dd->cart_comm);
+                      ctx.runtime.md.dd->cart_comm);
     }
 #endif
     return {ke[0], ke[1], ke[2]};
@@ -470,11 +470,11 @@ void NoseHooverNPT::update_eps_dot(const cpu::LaunchContext& ctx,
     double vir[3] = {f.scalars.stress[0], f.scalars.stress[1],
                      f.scalars.stress[2]};
 #ifdef ATV_HAS_MPI
-    if (ctx.runtime.mpi_size > 1 && ctx.runtime.dd
-        && ctx.runtime.dd->cart_comm != MPI_COMM_NULL) {
+    if (ctx.runtime.mpi_size > 1 && ctx.runtime.md.dd
+        && ctx.runtime.md.dd->cart_comm != MPI_COMM_NULL) {
         double local[3] = {vir[0], vir[1], vir[2]};
         MPI_Allreduce(local, vir, 3, MPI_DOUBLE, MPI_SUM,
-                      ctx.runtime.dd->cart_comm);
+                      ctx.runtime.md.dd->cart_comm);
     }
 #endif
 
@@ -483,8 +483,7 @@ void NoseHooverNPT::update_eps_dot(const cpu::LaunchContext& ctx,
     // `pcouple==XYZ` case): every `p_current[i]` is set to the averaged
     // pressure, collapsing the three forces to one shared value so the
     // all-coupled path is bit-identical to the legacy scalar `G_ε`.
-    double diag[3] = {vir[0] + 2.0 * ke_axis[0],
-                      vir[1] + 2.0 * ke_axis[1],
+    double diag[3] = {vir[0] + 2.0 * ke_axis[0], vir[1] + 2.0 * ke_axis[1],
                       vir[2] + 2.0 * ke_axis[2]};
     if (pdim_ == 3) {
         const double ave = (1.0 / 3.0) * (diag[0] + diag[1] + diag[2]);
@@ -508,8 +507,7 @@ void NoseHooverNPT::update_eps_dot(const cpu::LaunchContext& ctx,
     const int N_atoms = (n_dof_ + 3) / 3;
     const double mtk_term =
         (pdim_ > 0)
-            ? 6.0 * mtk_active_ke
-                  / (static_cast<double>(pdim_) * N_atoms)
+            ? 6.0 * mtk_active_ke / (static_cast<double>(pdim_) * N_atoms)
             : 0.0;
 
     for (int a = 0; a < 3; ++a) {
@@ -550,10 +548,8 @@ void NoseHooverNPT::scale_v_by_baro(const cpu::LaunchContext& ctx,
             sum_eps_dot += eps_dot_[a];
     const int N_atoms = (n_dof_ + 3) / 3;
     const double mtk_term2 =
-        (pdim_ > 0)
-            ? sum_eps_dot
-                  / (static_cast<double>(pdim_) * N_atoms)
-            : 0.0;
+        (pdim_ > 0) ? sum_eps_dot / (static_cast<double>(pdim_) * N_atoms)
+                    : 0.0;
 
     const double sx = std::exp(-(eps_dot_[0] + mtk_term2) * half_dt);
     const double sy = std::exp(-(eps_dot_[1] + mtk_term2) * half_dt);
@@ -663,8 +659,8 @@ void NoseHooverNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
     // range and scales row-0 positions into a singularity that
     // catastrophically explodes LJ at the next force pass.
     int n_total = n;
-    if (ctx.runtime.dd && ctx.runtime.mpi_size > 1) {
-        n_total = ctx.runtime.dd->n_local + ctx.runtime.dd->n_ghost;
+    if (ctx.runtime.md.dd && ctx.runtime.mpi_size > 1) {
+        n_total = ctx.runtime.md.dd->n_local + ctx.runtime.md.dd->n_ghost;
     }
     if (n_total > n) {
 #pragma omp parallel for schedule(static)
@@ -703,8 +699,8 @@ void NoseHooverNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
     // valid on the standard LAMMPS-style cadence. Migration still fires
     // promptly whenever an owner crosses a slab boundary because the
     // refreshed `sublo/subhi` above feeds the next scheduled migration.
-    if (ctx.runtime.dd && ctx.runtime.mpi_size > 1) {
-        ctx.runtime.dd->compute_sublo_subhi(f.box);
+    if (ctx.runtime.md.dd && ctx.runtime.mpi_size > 1) {
+        ctx.runtime.md.dd->compute_sublo_subhi(f.box);
     }
 }
 

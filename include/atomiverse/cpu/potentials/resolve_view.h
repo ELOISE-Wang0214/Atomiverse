@@ -26,10 +26,10 @@
 #include <cstdint>
 #include <unordered_map>
 
+#include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/comm/domain.h"
 
 namespace ATV {
 namespace cpu {
@@ -38,9 +38,9 @@ namespace md {
 /// @brief Owned/ghost counts + bounded tag→local resolution for force
 ///        kernels. Cheap value type; build one per `compute()` call.
 class ResolveView {
-public:
+  public:
     explicit ResolveView(const cpu::LaunchContext& ctx) {
-        const auto* dd = ctx.runtime.dd;
+        const auto* dd = ctx.runtime.md.dd;
         if (dd != nullptr && ctx.runtime.mpi_size > 1) {
             map_ = &dd->tag_to_local;
             n_local_ = dd->n_local;
@@ -71,7 +71,7 @@ public:
         return (j >= 0 && j < n_force_) ? j : -1;
     }
 
-private:
+  private:
     const std::unordered_map<TagInt, int>* map_;
     int n_local_;
     int n_force_;

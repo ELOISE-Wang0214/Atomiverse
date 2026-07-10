@@ -100,8 +100,8 @@ void Barostat::launch(const cpu::LaunchContext& ctx) {
     // fractions, and the subdomain-local cell grid derives its extents
     // from these bounds; letting them go stale degrades both as the box
     // breathes.
-    if (ctx.runtime.dd && ctx.runtime.mpi_size > 1) {
-        ctx.runtime.dd->compute_sublo_subhi(f.box);
+    if (ctx.runtime.md.dd && ctx.runtime.mpi_size > 1) {
+        ctx.runtime.md.dd->compute_sublo_subhi(f.box);
     }
 }
 

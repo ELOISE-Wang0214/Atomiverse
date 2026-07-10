@@ -15,10 +15,10 @@
 #include <vector>
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/driver/backend.h"
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/comm/gather.h"
+#include "atomiverse/cpu/driver/backend.h"
+#include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;
 
@@ -63,7 +63,7 @@ TEST(Gather, SingleRankCopiesOwners) {
     backend.init();
     backend.set_frame(frame);
 
-    auto* dd = backend.context().dd;
+    auto* dd = backend.context().md.dd;
     ASSERT_NE(dd, nullptr);
 
     auto g = cpu::md::mpi::gather_to_root(frame, *dd);
@@ -90,7 +90,7 @@ TEST(Gather, MultiRankSortsByTag) {
     backend.init();
     backend.set_frame(frame);
 
-    auto* dd = backend.context().dd;
+    auto* dd = backend.context().md.dd;
     ASSERT_NE(dd, nullptr);
 
     int my_rank = 0;

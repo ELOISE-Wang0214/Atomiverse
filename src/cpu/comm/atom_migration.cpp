@@ -23,8 +23,8 @@
 #include <vector>
 
 #include "atomiverse/cpu/comm/atom_pack.h"
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/frame/frame.h"
 
 #ifdef ATV_HAS_MPI
 #include <mpi.h>
@@ -90,8 +90,8 @@ inline int slab_along_dim_from_cuts(double frac,
 // planes -- which guarantees the same rank assignment that
 // `md::mpi::DomainDecomposition::compute_sublo_subhi` would produce on the destination
 // side.
-inline int dest_rank_for(const md::mpi::DomainDecomposition& dd, double x, double y,
-                         double z, const cpu::Box& box) {
+inline int dest_rank_for(const md::mpi::DomainDecomposition& dd, double x,
+                         double y, double z, const cpu::Box& box) {
     auto axis_coord = [&](int d, double q) {
         const double L = box.length(d);
         const double wrapped = box.wrap_axis(q, d);
@@ -124,8 +124,7 @@ std::size_t pack_atom(std::vector<char>& buf, std::size_t offset,
 
 std::size_t unpack_atom(const std::vector<char>& buf, std::size_t offset,
                         Frame& frame, int slot, std::size_t payload_bytes) {
-    const double* src =
-        reinterpret_cast<const double*>(buf.data() + offset);
+    const double* src = reinterpret_cast<const double*>(buf.data() + offset);
     comm::unpack_exchange(frame.atoms, slot, src);
     return offset + payload_bytes;
 }
@@ -205,7 +204,8 @@ void exchange_along_dim(Frame& frame, md::mpi::DomainDecomposition* dd, int dim,
     if (dd->dims[dim] <= 1)
         return; // not decomposed along this axis — nothing leaves via it
     const int lo_nbr = dd->face_neighbors[static_cast<std::size_t>(2 * dim)];
-    const int hi_nbr = dd->face_neighbors[static_cast<std::size_t>(2 * dim + 1)];
+    const int hi_nbr =
+        dd->face_neighbors[static_cast<std::size_t>(2 * dim + 1)];
     const double sublo = dd->sublo[dim];
     const double subhi = dd->subhi[dim];
     MPI_Comm comm = dd->cart_comm;
@@ -214,8 +214,8 @@ void exchange_along_dim(Frame& frame, md::mpi::DomainDecomposition* dd, int dim,
     while (true) {
         // Re-fetch each round: set_capacity below may have reallocated the SoA.
         const auto* q = (dim == 0)   ? frame.atoms.x.data()
-                          : (dim == 1) ? frame.atoms.y.data()
-                                       : frame.atoms.z.data();
+                        : (dim == 1) ? frame.atoms.y.data()
+                                     : frame.atoms.z.data();
         send_lo.clear();
         send_hi.clear();
         int keep = 0;
@@ -233,10 +233,8 @@ void exchange_along_dim(Frame& frame, md::mpi::DomainDecomposition* dd, int dim,
         dd->n_local = keep;
         frame.atoms.nlocal = keep;
 
-        const int n_send_lo =
-            static_cast<int>(send_lo.size() / payload_bytes);
-        const int n_send_hi =
-            static_cast<int>(send_hi.size() / payload_bytes);
+        const int n_send_lo = static_cast<int>(send_lo.size() / payload_bytes);
+        const int n_send_hi = static_cast<int>(send_hi.size() / payload_bytes);
         int local_out = n_send_lo + n_send_hi;
         int global_out = 0;
         MPI_Allreduce(&local_out, &global_out, 1, MPI_INT, MPI_SUM, comm);
@@ -299,9 +297,9 @@ void Migrate::launch(const cpu::LaunchContext& ctx) {
     // search. Halo exchange still refreshes ghosts, so forces stay correct for
     // the bounded trial step; real migration resumes when the driver's force
     // phase runs at the committed geometry.
-    if (ctx.runtime.line_search_trial)
+    if (ctx.runtime.opt.line_search_trial)
         return;
-    auto* dd = ctx.runtime.dd;
+    auto* dd = ctx.runtime.md.dd;
     if (!dd || dd->cart_comm == MPI_COMM_NULL)
         return;
 
@@ -394,8 +392,8 @@ void scatter_atoms_from_root(cpu::Frame& frame) {
     // 2. Topology identical to the DD the backend builds → ownership matches
     //    partition_atoms' uniform-Cartesian rule (cuts empty here).
     md::mpi::DomainDecomposition dd;
-    dd.init_topology(MPI_COMM_WORLD, frame.box.length(0),
-                     frame.box.length(1), frame.box.length(2));
+    dd.init_topology(MPI_COMM_WORLD, frame.box.length(0), frame.box.length(1),
+                     frame.box.length(2));
     const int world_size = dd.dims[0] * dd.dims[1] * dd.dims[2];
 
     // 3. Bucket every locally-held atom by owner (rank 0: all; others: none).

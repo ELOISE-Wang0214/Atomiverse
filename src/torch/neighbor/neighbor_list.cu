@@ -9,10 +9,10 @@
 
 #include "atomiverse/cpu/frame/transfer.h"
 #include "atomiverse/cuda/component/component.cuh"
-#include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/frame/transfer.cuh"
-#include "atomiverse/torch/neighbor/neighbor_list.cuh"
+#include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/torch/frame/transfer.cuh"
+#include "atomiverse/torch/neighbor/neighbor_list.cuh"
 
 #include <c10/cuda/CUDAStream.h>
 #include <cuda_runtime.h>
@@ -53,7 +53,7 @@ void NeighborList::build(Frame& frame) {
     cframe_ = cpu::to_cuda(cpu_frame);
 
     // Create and build the CUDA NeighborList. build() allocates the
-    // component-owned cuda::PairList and publishes it to ctx_.pair_list.
+    // component-owned cuda::PairList and publishes it to ctx_.md.pair_list.
     nl_ = std::make_unique<ATV::NeighborList>(cutoff_, skin_);
     BuildContext bctx{ctx_, cframe_};
     nl_->build(bctx);
@@ -84,7 +84,7 @@ void NeighborList::update(Frame& frame) {
     }
 
     // Launch pair search. launch() re-publishes the owned pair list to
-    // ctx_.pair_list.
+    // ctx_.md.pair_list.
     LaunchContext lctx{ctx_, cframe_, 0, 0};
     nl_->launch(lctx);
 
@@ -111,16 +111,11 @@ void NeighborList::update(Frame& frame) {
             ::torch::TensorOptions().dtype(kIntDtype).device(::torch::kCUDA);
         int64_t np = static_cast<int64_t>(h_n_pairs);
 
-        pairs_.pair_i =
-            ::torch::from_blob(dpairs.i, {np}, int_opts).clone();
-        pairs_.pair_j =
-            ::torch::from_blob(dpairs.j, {np}, int_opts).clone();
-        pairs_.pair_dx =
-            ::torch::from_blob(dpairs.dx, {np}, real_opts).clone();
-        pairs_.pair_dy =
-            ::torch::from_blob(dpairs.dy, {np}, real_opts).clone();
-        pairs_.pair_dz =
-            ::torch::from_blob(dpairs.dz, {np}, real_opts).clone();
+        pairs_.pair_i = ::torch::from_blob(dpairs.i, {np}, int_opts).clone();
+        pairs_.pair_j = ::torch::from_blob(dpairs.j, {np}, int_opts).clone();
+        pairs_.pair_dx = ::torch::from_blob(dpairs.dx, {np}, real_opts).clone();
+        pairs_.pair_dy = ::torch::from_blob(dpairs.dy, {np}, real_opts).clone();
+        pairs_.pair_dz = ::torch::from_blob(dpairs.dz, {np}, real_opts).clone();
         pairs_.pair_dist =
             ::torch::from_blob(dpairs.dist, {np}, real_opts).clone();
     } else {

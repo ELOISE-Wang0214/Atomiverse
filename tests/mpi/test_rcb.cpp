@@ -18,11 +18,11 @@
 #include <vector>
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/driver/backend.h"
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/comm/atom_migration.h"
 #include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/comm/rcb.h"
+#include "atomiverse/cpu/driver/backend.h"
+#include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;
 
@@ -59,7 +59,7 @@ TEST(Rebalance, SingleRankIsNoOp) {
     backend.init();
     backend.set_frame(frame);
 
-    auto* dd = backend.context().dd;
+    auto* dd = backend.context().md.dd;
     const auto gen0 = dd->neighbor_generation;
 
     cpu::md::mpi::Rebalance rcb{};
@@ -87,7 +87,7 @@ TEST(Rebalance, RebalancesSkewedDistribution) {
     cpu::Backend backend;
     backend.init();
     backend.set_frame(frame);
-    auto* dd = backend.context().dd;
+    auto* dd = backend.context().md.dd;
     ASSERT_NE(dd, nullptr);
 
     int my_rank = 0;

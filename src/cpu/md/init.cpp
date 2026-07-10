@@ -61,12 +61,12 @@ void ZeroLinearMomentum::launch(const cpu::LaunchContext& ctx) {
     }
 
 #ifdef ATV_HAS_MPI
-    if (ctx.runtime.mpi_size > 1 && ctx.runtime.dd
-        && ctx.runtime.dd->cart_comm != MPI_COMM_NULL) {
+    if (ctx.runtime.mpi_size > 1 && ctx.runtime.md.dd
+        && ctx.runtime.md.dd->cart_comm != MPI_COMM_NULL) {
         double local[4] = {p[0], p[1], p[2], mtot};
         double global[4];
         MPI_Allreduce(local, global, 4, MPI_DOUBLE, MPI_SUM,
-                      ctx.runtime.dd->cart_comm);
+                      ctx.runtime.md.dd->cart_comm);
         p[0] = global[0];
         p[1] = global[1];
         p[2] = global[2];
@@ -168,15 +168,15 @@ void InitVelocity::build(const cpu::BuildContext& ctx) {
     }
     long long n_global = n;
 #ifdef ATV_HAS_MPI
-    if (ctx.runtime.mpi_size > 1 && ctx.runtime.dd
-        && ctx.runtime.dd->cart_comm != MPI_COMM_NULL) {
+    if (ctx.runtime.mpi_size > 1 && ctx.runtime.md.dd
+        && ctx.runtime.md.dd->cart_comm != MPI_COMM_NULL) {
         double local = sum_mv2, global = 0.0;
         MPI_Allreduce(&local, &global, 1, MPI_DOUBLE, MPI_SUM,
-                      ctx.runtime.dd->cart_comm);
+                      ctx.runtime.md.dd->cart_comm);
         sum_mv2 = global;
         long long n_local = n, ng = 0;
         MPI_Allreduce(&n_local, &ng, 1, MPI_LONG_LONG, MPI_SUM,
-                      ctx.runtime.dd->cart_comm);
+                      ctx.runtime.md.dd->cart_comm);
         n_global = ng;
     }
 #endif

@@ -57,7 +57,7 @@ class Backend {
     Backend& operator=(Backend&&) noexcept;
 
     /// @brief Configure OpenMP threads, detect MPI, allocate single-rank
-    /// DomainDecomposition, and publish it through `context().dd`.
+    /// DomainDecomposition, and publish it through `context().md.dd`.
     void init();
 
     /// @brief Bind a compiled Plan for execution.

@@ -112,7 +112,7 @@ class NeighborList : public ComponentBase, public NeighborProvider {
     }
 
     /// @brief Allocate the owned PairList + all internal GPU buffers, and
-    ///        publish the pair list to `ctx.runtime.pair_list`.
+    ///        publish the pair list to `ctx.runtime.md.pair_list`.
     ///
     /// Reads grid dimensions from device (build-time D2H allowed).
     /// Pair capacity is sized from physical density × cutoff sphere volume
@@ -138,7 +138,7 @@ class NeighborList : public ComponentBase, public NeighborProvider {
     /// `skin/2` width absorbs the extra step of motion (standard
     /// LAMMPS / GROMACS pattern).
     ///
-    /// Re-publishes the owned pair list to `ctx.runtime.pair_list`.
+    /// Re-publishes the owned pair list to `ctx.runtime.md.pair_list`.
     ///
     /// @param ctx Launch context with Runtime and DeviceFrame.
     void launch(const LaunchContext& ctx) override;

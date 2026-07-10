@@ -14,7 +14,7 @@
 /// This is a cross-driver force component (added via `.on(force).add()`),
 /// not a `set_pair` style, so it coexists with a Lennard-Jones (or other)
 /// `Pair` evaluator in the same force phase. It reads the shared
-/// `runtime.pair_list` built by `NeighborList`.
+/// `runtime.md.pair_list` built by `NeighborList`.
 #pragma once
 
 #include <vector>

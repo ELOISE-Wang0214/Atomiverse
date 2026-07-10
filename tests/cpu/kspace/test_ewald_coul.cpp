@@ -87,7 +87,7 @@ double electrostatic_energy(cpu::Frame& f, const cpu::md::PairList& pairs,
         f.scalars.stress[s] = 0;
 
     cpu::Context ctx;
-    ctx.pair_list = &pairs;
+    ctx.md.pair_list = &pairs;
     cpu::BuildContext bctx{ctx, f};
     cpu::LaunchContext lctx{ctx, f, 0, 0};
 
@@ -104,14 +104,14 @@ double electrostatic_energy(cpu::Frame& f, const cpu::md::PairList& pairs,
 } // namespace
 
 TEST(EwaldCoul, MadelungNaCl) {
-    const double d = 2.82;  // nearest-neighbor spacing [Å]
-    const int n = 4;        // 64 ions, so cutoff < L/2 = 2d is comfortable
+    const double d = 2.82; // nearest-neighbor spacing [Å]
+    const int n = 4;       // 64 ions, so cutoff < L/2 = 2d is comfortable
     auto frame = make_rocksalt(d, n);
     cpu::md::PairList pairs;
     build_full_halflist(frame, pairs);
 
-    const double cutoff = 1.9 * d;          // < L/2 = 2d
-    const double alpha = 5.0 / cutoff;       // erfc(α·cutoff) ≈ 1e-12
+    const double cutoff = 1.9 * d;     // < L/2 = 2d
+    const double alpha = 5.0 / cutoff; // erfc(α·cutoff) ≈ 1e-12
     const double e = electrostatic_energy(frame, pairs, alpha, cutoff, 1e-7);
 
     const int N = n * n * n;
@@ -128,8 +128,10 @@ TEST(EwaldCoul, AlphaIndependence) {
     build_full_halflist(frame, pairs);
 
     const double cutoff = 1.9 * d;
-    const double e1 = electrostatic_energy(frame, pairs, 4.0 / cutoff, cutoff, 1e-8);
-    const double e2 = electrostatic_energy(frame, pairs, 6.0 / cutoff, cutoff, 1e-8);
+    const double e1 =
+        electrostatic_energy(frame, pairs, 4.0 / cutoff, cutoff, 1e-8);
+    const double e2 =
+        electrostatic_energy(frame, pairs, 6.0 / cutoff, cutoff, 1e-8);
     EXPECT_NEAR(e1, e2, 1e-3) << "e1=" << e1 << " e2=" << e2;
 }
 
@@ -158,12 +160,12 @@ TEST(EwaldCoul, FiniteDifferenceForces) {
 
     auto force = [&](int a, int axis) {
         electrostatic_energy(frame, pairs, alpha, cutoff, acc);
-        return axis == 0 ? frame.atoms.fx[a]
+        return axis == 0   ? frame.atoms.fx[a]
                : axis == 1 ? frame.atoms.fy[a]
                            : frame.atoms.fz[a];
     };
     auto energy_at = [&](int a, int axis, double delta) {
-        auto& pos = axis == 0 ? frame.atoms.x
+        auto& pos = axis == 0   ? frame.atoms.x
                     : axis == 1 ? frame.atoms.y
                                 : frame.atoms.z;
         const double orig = pos[a];

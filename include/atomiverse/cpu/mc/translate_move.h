@@ -52,8 +52,8 @@ class TranslateMove : public cpu::ComponentBase {
     }
 
     /// @brief Propose one displacement (or nothing on the bootstrap pass).
-    /// @param ctx Launch context; reads `runtime.rng`, writes the frame and
-    ///        `runtime.proposal`.
+    /// @param ctx Launch context; reads `runtime.mc.rng`, writes the frame and
+    ///        `runtime.mc.proposal`.
     void launch(const cpu::LaunchContext& ctx) override;
 
   private:

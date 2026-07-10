@@ -97,8 +97,8 @@ class SamplingDriver : public CPUDriver<ATV::sampling::Phase> {
             setup_pass(frame);
             // Publish the per-move changeset + RNG so a Mover can reach them
             // (mirrors NeighborList publishing pair_list). Addresses are stable.
-            this->backend_->context().proposal = &proposal_;
-            this->backend_->context().rng = &rng_;
+            this->backend_->context().mc.proposal = &proposal_;
+            this->backend_->context().mc.rng = &rng_;
             // Bootstrap invariant: seed e_cur_ from the initial configuration's
             // energy BEFORE the first trial move (step<0 = energy-only pass; the
             // Mover proposes nothing on it).
@@ -119,8 +119,9 @@ class SamplingDriver : public CPUDriver<ATV::sampling::Phase> {
                 e_cur_ = e_trial; // commit — frame already holds the move
                 ++n_accepts_;
             } else {
-                rollback_(frame);              // restore moved atoms
-                frame.scalars.energy = e_cur_; // frame reflects the restored state
+                rollback_(frame); // restore moved atoms
+                frame.scalars.energy =
+                    e_cur_; // frame reflects the restored state
             }
             if (outer_status().stop_requested)
                 break;
@@ -139,9 +140,9 @@ class SamplingDriver : public CPUDriver<ATV::sampling::Phase> {
 
     /// @brief Accepted fraction of attempted moves (0 if none attempted yet).
     double acceptance_ratio() const {
-        return n_attempts_ > 0
-                   ? static_cast<double>(n_accepts_) / static_cast<double>(n_attempts_)
-                   : 0.0;
+        return n_attempts_ > 0 ? static_cast<double>(n_accepts_)
+                                     / static_cast<double>(n_attempts_)
+                               : 0.0;
     }
 
   protected:
@@ -205,17 +206,18 @@ class SamplingDriver : public CPUDriver<ATV::sampling::Phase> {
     /// @brief Reserved step index for the energy-only bootstrap pass.
     static constexpr int kBootstrapStep = -1;
 
-    AccReal temperature_;      ///< Ensemble temperature [K].
-    std::mt19937_64 rng_;      ///< Single reproducible RNG stream.
-    mc::Transaction proposal_; ///< Reused per-move changeset (published on Context).
-    AccReal e_cur_ = 0;        ///< Cached energy of the last accepted state [eV].
+    AccReal temperature_; ///< Ensemble temperature [K].
+    std::mt19937_64 rng_; ///< Single reproducible RNG stream.
+    mc::Transaction
+        proposal_;      ///< Reused per-move changeset (published on Context).
+    AccReal e_cur_ = 0; ///< Cached energy of the last accepted state [eV].
     long long n_attempts_ = 0; ///< Trial moves attempted (lifetime).
     long long n_accepts_ = 0;  ///< Trial moves accepted (lifetime).
 
     // Continuation bookkeeping (mirrors DynamicsDriver).
-    bool live_ = false;                 ///< Backend live between first run() and destruction.
-    cpu::Frame* frame_ptr_ = nullptr;   ///< Frame bound by the live chain.
-    int sweep_counter_ = 0;             ///< Cumulative sweep index across run() calls.
+    bool live_ = false; ///< Backend live between first run() and destruction.
+    cpu::Frame* frame_ptr_ = nullptr; ///< Frame bound by the live chain.
+    int sweep_counter_ = 0; ///< Cumulative sweep index across run() calls.
 };
 
 } // namespace cpu

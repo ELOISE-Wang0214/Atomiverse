@@ -13,9 +13,9 @@
 /// never behind a rank-dependent branch.
 #pragma once
 
+#include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/context.h"
-#include "atomiverse/cpu/comm/domain.h"
 
 #ifdef ATV_HAS_MPI
 #include <mpi.h>
@@ -28,8 +28,8 @@ namespace minimizer {
 namespace detail {
 #ifdef ATV_HAS_MPI
 inline bool multi_rank(const cpu::LaunchContext& ctx) {
-    return ctx.runtime.mpi_size > 1 && ctx.runtime.dd
-           && ctx.runtime.dd->cart_comm != MPI_COMM_NULL;
+    return ctx.runtime.mpi_size > 1 && ctx.runtime.md.dd
+           && ctx.runtime.md.dd->cart_comm != MPI_COMM_NULL;
 }
 #endif
 } // namespace detail
@@ -40,7 +40,7 @@ inline void global_sum(const cpu::LaunchContext& ctx, double* vals, int n) {
 #ifdef ATV_HAS_MPI
     if (detail::multi_rank(ctx))
         MPI_Allreduce(MPI_IN_PLACE, vals, n, MPI_DOUBLE, MPI_SUM,
-                      ctx.runtime.dd->cart_comm);
+                      ctx.runtime.md.dd->cart_comm);
 #else
     (void)ctx;
     (void)vals;
@@ -60,7 +60,7 @@ inline void global_max(const cpu::LaunchContext& ctx, double* vals, int n) {
 #ifdef ATV_HAS_MPI
     if (detail::multi_rank(ctx))
         MPI_Allreduce(MPI_IN_PLACE, vals, n, MPI_DOUBLE, MPI_MAX,
-                      ctx.runtime.dd->cart_comm);
+                      ctx.runtime.md.dd->cart_comm);
 #else
     (void)ctx;
     (void)vals;

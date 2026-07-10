@@ -16,10 +16,10 @@
 /// canonical non-owning pointer.
 #pragma once
 
+#include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/comm/domain.h"
 
 namespace ATV {
 namespace cpu {
@@ -28,7 +28,7 @@ namespace cpu {
 /// @param ctx Current launch context.
 /// @return `dd->n_local` under multi-rank, `ctx.frame.atoms.size()` otherwise.
 inline int owned_count(const cpu::LaunchContext& ctx) {
-    const auto* dd = ctx.runtime.dd;
+    const auto* dd = ctx.runtime.md.dd;
     if (dd && ctx.runtime.mpi_size > 1)
         return dd->n_local;
     return ctx.frame.atoms.size();
@@ -40,7 +40,7 @@ inline int owned_count(const cpu::LaunchContext& ctx) {
 /// @param ctx Current build context.
 /// @return `dd->n_local` under multi-rank, `ctx.frame.atoms.size()` otherwise.
 inline int owned_count(const cpu::BuildContext& ctx) {
-    const auto* dd = ctx.runtime.dd;
+    const auto* dd = ctx.runtime.md.dd;
     if (dd && ctx.runtime.mpi_size > 1)
         return dd->n_local;
     return ctx.frame.atoms.size();

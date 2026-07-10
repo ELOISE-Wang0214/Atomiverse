@@ -9,8 +9,8 @@
 
 #include "atomiverse/cpu/comm/reduce.h"
 
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/frame/frame.h"
 
 #ifdef ATV_HAS_MPI
 #include <mpi.h>
@@ -26,7 +26,7 @@ namespace mpi {
 void Reduce::launch(const cpu::LaunchContext& ctx) {
     if (ctx.runtime.mpi_size <= 1)
         return;
-    auto* dd = ctx.runtime.dd;
+    auto* dd = ctx.runtime.md.dd;
     if (!dd || dd->cart_comm == MPI_COMM_NULL)
         return;
 
@@ -39,7 +39,7 @@ void Reduce::launch(const cpu::LaunchContext& ctx) {
     // on the last step keeps the globally-reduced scalars valid for the common
     // "read frame.scalars after run()" pattern, so the cadence is safe whenever
     // no *per-step* consumer reads them.
-    if (every_ > 1 && !ctx.runtime.is_last_step && ctx.step != 0
+    if (every_ > 1 && !ctx.runtime.md.is_last_step && ctx.step != 0
         && (ctx.step % every_) != 0)
         return;
 

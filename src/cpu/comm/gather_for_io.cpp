@@ -15,7 +15,7 @@ namespace mpi {
 const cpu::Frame* gather_for_root_io(const cpu::Frame& frame,
                                      const cpu::Context& runtime,
                                      cpu::Frame& gathered) {
-    const auto* dd = runtime.dd;
+    const auto* dd = runtime.md.dd;
     const bool multi = dd && runtime.mpi_size > 1;
     if (!multi)
         return &frame;

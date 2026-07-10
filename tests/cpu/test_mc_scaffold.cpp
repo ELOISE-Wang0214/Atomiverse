@@ -90,8 +90,8 @@ TEST(MCScaffold, TransactionClearEmpties) {
 
 TEST(MCScaffold, ContextHandlesDefaultNull) {
     cpu::Context ctx;
-    EXPECT_EQ(ctx.proposal, nullptr);
-    EXPECT_EQ(ctx.rng, nullptr);
+    EXPECT_EQ(ctx.mc.proposal, nullptr);
+    EXPECT_EQ(ctx.mc.rng, nullptr);
 }
 
 // ── SamplingDriver::validate_components gate ───────────────────────────────
@@ -116,7 +116,8 @@ struct StubEnergy : cpu::ComponentBase {
 /// @brief Exposes the protected validate_components() for direct testing.
 class TestSampling : public cpu::SamplingDriver {
   public:
-    TestSampling() : cpu::SamplingDriver(/*temperature_K=*/300.0, /*seed=*/12345u) {}
+    TestSampling()
+        : cpu::SamplingDriver(/*temperature_K=*/300.0, /*seed=*/12345u) {}
     using cpu::SamplingDriver::validate_components;
 };
 
@@ -143,6 +144,11 @@ TEST(MCScaffold, ValidatePassesWithMoverAndEnergy) {
 
 TEST(MCScaffold, SamplingDriverRejectsNonPositiveTemperature) {
     EXPECT_THROW(
-        { struct D : cpu::SamplingDriver { D() : cpu::SamplingDriver(0.0, 1u) {} } d; (void)d; },
+        {
+            struct D : cpu::SamplingDriver {
+                D() : cpu::SamplingDriver(0.0, 1u) {}
+            } d;
+            (void)d;
+        },
         std::invalid_argument);
 }

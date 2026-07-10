@@ -47,10 +47,11 @@ class OptimizeDriver : public CPUDriver<ATV::minimizer::Phase> {
         // component can evaluate trial geometries during the line_search
         // phase. Replays the force phase (zeroing → evaluator → reduce) on
         // the frame's current geometry. Captures `this`; valid for the run.
-        this->backend_->context().reeval_forces = [this](bool /*need_grad*/) {
-            this->backend_->run_phase(static_cast<int>(Traits::eval_phase),
-                                      /*step_idx=*/0);
-        };
+        this->backend_->context().opt.reeval_forces =
+            [this](bool /*need_grad*/) {
+                this->backend_->run_phase(static_cast<int>(Traits::eval_phase),
+                                          /*step_idx=*/0);
+            };
         int iters = 0;
         for (int s = 0; s < max_iter; ++s) {
             mutable_outer_status().reset();

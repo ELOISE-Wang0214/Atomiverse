@@ -6,8 +6,8 @@
 #include <stdexcept>
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/component/owned_range.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/neighbor/pair_list.h"
 
 #ifdef _OPENMP
@@ -45,15 +45,15 @@ void CoulLong::build(const BuildContext& ctx) {
 
 void CoulLong::launch(const LaunchContext& ctx) {
     auto& f = ctx.frame;
-    if (!ctx.runtime.pair_list) {
-        throw std::runtime_error(
-            "CoulLong::launch: runtime.pair_list is null. Add a NeighborList "
-            "to the force phase ahead of CoulLong.");
+    if (!ctx.runtime.md.pair_list) {
+        throw std::runtime_error("CoulLong::launch: runtime.md.pair_list is "
+                                 "null. Add a NeighborList "
+                                 "to the force phase ahead of CoulLong.");
     }
-    const auto& pairs = *ctx.runtime.pair_list;
+    const auto& pairs = *ctx.runtime.md.pair_list;
     const auto& box = f.box;
 
-    const auto* dd = ctx.runtime.dd;
+    const auto* dd = ctx.runtime.md.dd;
     const bool mpi = dd && ctx.runtime.mpi_size > 1;
     const int n_force = mpi ? dd->n_local + dd->n_ghost : f.atoms.size();
 

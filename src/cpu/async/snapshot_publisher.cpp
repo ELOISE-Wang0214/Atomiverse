@@ -74,7 +74,7 @@ void copy_range_i64(std::vector<std::int64_t>& out, const T* src, int n,
 } // namespace
 
 void Publish::build(const BuildContext& ctx) {
-    exec_ = ctx.runtime.executor;
+    exec_ = ctx.runtime.analysis.executor;
     // Pre-sizing per mask happens inside `AsyncComponentBase::build()` for
     // each registered subscriber -- the publisher runs first in plan order
     // (lower order = earlier build), so `subscribers()` is still empty here.

@@ -46,8 +46,8 @@ TEST(TranslateMoveUnit, DisplacesOneAtomAndRecordsChangeset) {
     std::mt19937_64 rng(123u);
     cpu::mc::Transaction txn;
     cpu::Context ctx;
-    ctx.rng = &rng;
-    ctx.proposal = &txn;
+    ctx.mc.rng = &rng;
+    ctx.mc.proposal = &txn;
 
     cpu::mc::TranslateMove mv{0.5};
     cpu::LaunchContext lctx{ctx, frame, /*stage=*/0, /*step=*/0};
@@ -91,8 +91,8 @@ TEST(TranslateMoveUnit, BootstrapPassIsNoOp) {
     std::mt19937_64 rng(1u);
     cpu::mc::Transaction txn;
     cpu::Context ctx;
-    ctx.rng = &rng;
-    ctx.proposal = &txn;
+    ctx.mc.rng = &rng;
+    ctx.mc.proposal = &txn;
 
     cpu::mc::TranslateMove mv{0.5};
     cpu::LaunchContext lctx{ctx, frame, /*stage=*/0, /*step=*/-1}; // bootstrap

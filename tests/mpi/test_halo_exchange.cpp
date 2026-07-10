@@ -92,7 +92,7 @@ ForwardResult run_forward(double box_len, int n_per_side, double cutoff) {
     backend.init();
     backend.set_frame(frame);
 
-    auto* dd = backend.context().dd;
+    auto* dd = backend.context().md.dd;
 
     // Drive one Forward launch directly (without going through MD driver).
     cpu::comm::HaloSend fwd{cutoff};
@@ -163,7 +163,7 @@ TEST(HaloForward, RecvCountsConsistentWithSendLists) {
     cpu::Backend backend;
     backend.init();
     backend.set_frame(frame);
-    auto* dd = backend.context().dd;
+    auto* dd = backend.context().md.dd;
 
     cpu::comm::HaloSend fwd{2.0};
     cpu::BuildContext bctx{backend.context(), frame};
@@ -244,7 +244,7 @@ TEST(HaloReverse, ReverseAddsGhostForcesBackToOwners) {
     cpu::Backend backend;
     backend.init();
     backend.set_frame(frame);
-    auto* dd = backend.context().dd;
+    auto* dd = backend.context().md.dd;
 
     cpu::comm::HaloSend fwd{2.0};
     cpu::comm::HaloRecv rev{};
@@ -457,11 +457,11 @@ class FieldParticipant : public cpu::ComponentBase,
         fwd1_p_ = fwd1_.data();
         fwd3_p_ = fwd3_.data();
         rev_p_ = rev_.data();
-        write_owner_rows_(ctx.frame, ctx.runtime.dd);
+        write_owner_rows_(ctx.frame, ctx.runtime.md.dd);
     }
 
     void launch(const cpu::LaunchContext& ctx) override {
-        const auto* dd = ctx.runtime.dd;
+        const auto* dd = ctx.runtime.md.dd;
         const int n_local =
             dd ? dd->n_local : static_cast<int>(ctx.frame.atoms.size());
         const int n_ghost = dd ? dd->n_ghost : 0;

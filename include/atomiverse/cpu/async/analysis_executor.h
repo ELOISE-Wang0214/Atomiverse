@@ -18,8 +18,8 @@
 #include <vector>
 
 #include "atomiverse/core/types.h"
-#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/async/frame_snapshot.h"
+#include "atomiverse/cpu/component/context.h"
 
 #ifdef ATV_HAS_MPI
 #include <mpi.h>
@@ -81,7 +81,7 @@ class AnalysisExecutor {
 
     /// @brief Start worker threads and allocate the initial ring.
     ///
-    /// Publishes `this` into `ctx.executor` so components can reach the
+    /// Publishes `this` into `ctx.analysis.executor` so components can reach the
     /// executor from any `BuildContext` / `LaunchContext`. Safe to call
     /// once; a second call with an already-initialized executor is a no-op.
     /// @param cfg Runtime configuration (thread count, ring depth K).
@@ -192,7 +192,7 @@ class AnalysisExecutor {
     };
 
     void worker_loop(int worker_idx);
-    int acquire_slot_locked(); ///< implementation helper
+    int acquire_slot_locked();                  ///< implementation helper
     void apply_worker_affinity(int worker_idx); ///< Linux-only; no-op elsewhere
 
     bool initialized_ = false;

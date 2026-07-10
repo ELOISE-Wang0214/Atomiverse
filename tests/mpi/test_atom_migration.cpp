@@ -19,11 +19,11 @@
 #include <vector>
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/driver/backend.h"
-#include "atomiverse/cpu/component/context.h"
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/comm/atom_migration.h"
 #include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/component/context.h"
+#include "atomiverse/cpu/driver/backend.h"
+#include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;
 
@@ -63,7 +63,7 @@ TEST(Migrate, AtomDriftsAcrossPosXBoundary) {
     cpu::Backend backend;
     backend.init();
     backend.set_frame(frame);
-    auto* dd = backend.context().dd;
+    auto* dd = backend.context().md.dd;
     ASSERT_NE(dd, nullptr);
 
     int my_rank = 0;
@@ -161,7 +161,7 @@ TEST(Migrate, SingleRankIsNoOp) {
     backend.init();
     backend.set_frame(frame);
 
-    auto* dd = backend.context().dd;
+    auto* dd = backend.context().md.dd;
     const int n_before = dd->n_local;
     const std::uint64_t gen_before = dd->neighbor_generation;
 

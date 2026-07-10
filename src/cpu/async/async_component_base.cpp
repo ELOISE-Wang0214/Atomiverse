@@ -10,7 +10,7 @@ namespace ATV {
 namespace cpu {
 
 void AsyncComponentBase::build(const BuildContext& ctx) {
-    exec_ = ctx.runtime.executor;
+    exec_ = ctx.runtime.analysis.executor;
     if (!exec_)
         return;
     exec_->register_subscriber(this);

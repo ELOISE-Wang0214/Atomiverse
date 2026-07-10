@@ -10,8 +10,8 @@
 #include <fftw3.h>
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/component/owned_range.h"
+#include "atomiverse/cpu/frame/frame.h"
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -41,9 +41,9 @@ void bspline(double frac, int n, double* theta, double* dtheta) {
         const double div = 1.0 / (k - 1);
         theta[k - 1] = div * frac * theta[k - 2];
         for (int j = 1; j < k - 1; ++j)
-            theta[k - 1 - j] =
-                div * ((frac + j) * theta[k - 2 - j] +
-                       (k - j - frac) * theta[k - 1 - j]);
+            theta[k - 1 - j] = div
+                               * ((frac + j) * theta[k - 2 - j]
+                                  + (k - j - frac) * theta[k - 1 - j]);
         theta[0] = div * (1.0 - frac) * theta[0];
     }
     // Derivative taken from the order n-1 values.
@@ -54,8 +54,9 @@ void bspline(double frac, int n, double* theta, double* dtheta) {
     const double div = 1.0 / (n - 1);
     theta[n - 1] = div * frac * theta[n - 2];
     for (int j = 1; j < n - 1; ++j)
-        theta[n - 1 - j] = div * ((frac + j) * theta[n - 2 - j] +
-                                  (n - j - frac) * theta[n - 1 - j]);
+        theta[n - 1 - j] = div
+                           * ((frac + j) * theta[n - 2 - j]
+                              + (n - j - frac) * theta[n - 1 - j]);
     theta[0] = div * (1.0 - frac) * theta[0];
 }
 
@@ -162,7 +163,7 @@ void KSpacePME::compute(const LaunchContext& ctx) {
     auto& f = ctx.frame;
     ensure_grid(f);
 
-    const auto* dd = ctx.runtime.dd;
+    const auto* dd = ctx.runtime.md.dd;
     const bool mpi = dd && ctx.runtime.mpi_size > 1;
     const int n_local = mpi ? dd->n_local : f.atoms.size();
     const bool first_rank = !mpi || ctx.runtime.mpi_rank == 0;
@@ -176,7 +177,8 @@ void KSpacePME::compute(const LaunchContext& ctx) {
     const auto* __restrict z = f.atoms.z.data();
     const auto* __restrict q = f.atoms.charge.data();
 
-    const auto& ic = f.box.inv_cell(); // fractional coord: s_d = Σ_b ic(b,d) r_b
+    const auto& ic =
+        f.box.inv_cell(); // fractional coord: s_d = Σ_b ic(b,d) r_b
     const double vol = f.box.volume();
 
     // Per-atom spline tables (stencil offset + theta/dtheta per dimension).
@@ -335,8 +337,9 @@ void KSpacePME::compute(const LaunchContext& ctx) {
                       dd->cart_comm);
 #endif
     if (first_rank) {
-        const double e_net = -ATV::kCoulomb * ATV::kPI /
-                             (2.0 * vol * alpha_ * alpha_) * q_total * q_total;
+        const double e_net = -ATV::kCoulomb * ATV::kPI
+                             / (2.0 * vol * alpha_ * alpha_) * q_total
+                             * q_total;
         f.scalars.energy += e_recip + e_net;
         f.scalars.energy_pair += e_recip + e_net;
     }

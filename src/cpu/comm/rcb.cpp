@@ -28,8 +28,8 @@
 #include <cstdint>
 #include <vector>
 
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/frame/frame.h"
 
 #ifdef ATV_HAS_MPI
 #include <mpi.h>
@@ -160,7 +160,7 @@ void Rebalance::launch(const cpu::LaunchContext& ctx) {
         return;
     if (ctx.step <= 0)
         return; // skip step 0 -- positions are user-supplied, not equilibrated
-    auto* dd = ctx.runtime.dd;
+    auto* dd = ctx.runtime.md.dd;
     if (!dd || dd->cart_comm == MPI_COMM_NULL)
         return;
     if (dd->dims[0] <= 1 && dd->dims[1] <= 1 && dd->dims[2] <= 1)

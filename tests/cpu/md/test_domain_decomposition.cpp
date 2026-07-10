@@ -10,10 +10,10 @@
 #include <cstdint>
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/driver/backend.h"
-#include "atomiverse/cpu/component/context.h"
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/component/context.h"
+#include "atomiverse/cpu/driver/backend.h"
+#include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;
 
@@ -47,22 +47,22 @@ TEST(DomainDecomposition, SingleRankDefaults) {
     auto backend = make_backend_for(frame);
 
     cpu::Context& ctx = backend.context();
-    ASSERT_NE(ctx.dd, nullptr) << "Context::dd must be non-null after "
-                                  "Backend::init() even in single-rank mode";
+    ASSERT_NE(ctx.md.dd, nullptr) << "Context::dd must be non-null after "
+                                     "Backend::init() even in single-rank mode";
 
-    EXPECT_EQ(ctx.dd->dims[0], 1);
-    EXPECT_EQ(ctx.dd->dims[1], 1);
-    EXPECT_EQ(ctx.dd->dims[2], 1);
-    EXPECT_EQ(ctx.dd->coords[0], 0);
-    EXPECT_EQ(ctx.dd->coords[1], 0);
-    EXPECT_EQ(ctx.dd->coords[2], 0);
-    EXPECT_EQ(ctx.dd->periods[0], 1);
-    EXPECT_EQ(ctx.dd->periods[1], 1);
-    EXPECT_EQ(ctx.dd->periods[2], 1);
-    EXPECT_EQ(ctx.dd->n_local, frame.atoms.size());
-    EXPECT_EQ(ctx.dd->n_ghost, 0);
-    EXPECT_EQ(ctx.dd->capacity, frame.atoms.size());
-    EXPECT_EQ(ctx.dd->neighbor_generation, static_cast<std::uint64_t>(0));
+    EXPECT_EQ(ctx.md.dd->dims[0], 1);
+    EXPECT_EQ(ctx.md.dd->dims[1], 1);
+    EXPECT_EQ(ctx.md.dd->dims[2], 1);
+    EXPECT_EQ(ctx.md.dd->coords[0], 0);
+    EXPECT_EQ(ctx.md.dd->coords[1], 0);
+    EXPECT_EQ(ctx.md.dd->coords[2], 0);
+    EXPECT_EQ(ctx.md.dd->periods[0], 1);
+    EXPECT_EQ(ctx.md.dd->periods[1], 1);
+    EXPECT_EQ(ctx.md.dd->periods[2], 1);
+    EXPECT_EQ(ctx.md.dd->n_local, frame.atoms.size());
+    EXPECT_EQ(ctx.md.dd->n_ghost, 0);
+    EXPECT_EQ(ctx.md.dd->capacity, frame.atoms.size());
+    EXPECT_EQ(ctx.md.dd->neighbor_generation, static_cast<std::uint64_t>(0));
 }
 
 // ── send lists empty ─────────────────────────────────────────────────
@@ -72,9 +72,9 @@ TEST(DomainDecomposition, SendListsEmpty) {
     auto backend = make_backend_for(frame);
 
     cpu::Context& ctx = backend.context();
-    ASSERT_NE(ctx.dd, nullptr);
+    ASSERT_NE(ctx.md.dd, nullptr);
     for (int face = 0; face < 6; ++face) {
-        EXPECT_TRUE(ctx.dd->send_lists[face].empty())
+        EXPECT_TRUE(ctx.md.dd->send_lists[face].empty())
             << "send_lists[" << face << "] must be empty in single-rank mode";
     }
 }
@@ -97,12 +97,12 @@ TEST(DomainDecomposition, TagToLocalIdentityMap) {
     auto backend = make_backend_for(frame);
 
     cpu::Context& ctx = backend.context();
-    ASSERT_NE(ctx.dd, nullptr);
+    ASSERT_NE(ctx.md.dd, nullptr);
 
-    EXPECT_EQ(static_cast<int>(ctx.dd->tag_to_local.size()), n);
+    EXPECT_EQ(static_cast<int>(ctx.md.dd->tag_to_local.size()), n);
     for (int i = 0; i < n; ++i) {
-        auto it = ctx.dd->tag_to_local.find(frame.atoms.tag(i));
-        ASSERT_NE(it, ctx.dd->tag_to_local.end())
+        auto it = ctx.md.dd->tag_to_local.find(frame.atoms.tag(i));
+        ASSERT_NE(it, ctx.md.dd->tag_to_local.end())
             << "tag " << frame.atoms.tag(i) << " missing from tag_to_local";
         EXPECT_EQ(it->second, i);
     }
@@ -113,8 +113,8 @@ TEST(DomainDecomposition, TagToLocalSkippedWithoutBondedTopology) {
     auto backend = make_backend_for(frame);
 
     cpu::Context& ctx = backend.context();
-    ASSERT_NE(ctx.dd, nullptr);
-    EXPECT_TRUE(ctx.dd->tag_to_local.empty())
+    ASSERT_NE(ctx.md.dd, nullptr);
+    EXPECT_TRUE(ctx.md.dd->tag_to_local.empty())
         << "tag_to_local must not be populated for a frame without "
            "bonded topology";
     EXPECT_TRUE(frame.atoms.map.empty())

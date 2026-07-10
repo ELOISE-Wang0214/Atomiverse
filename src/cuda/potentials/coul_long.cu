@@ -11,11 +11,11 @@
 #include <stdexcept>
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/device/launch.cuh"
+#include "atomiverse/cuda/frame/box.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/potentials/coul_long.cuh"
-#include "atomiverse/cuda/frame/types.cuh"
 
 namespace ATV {
 
@@ -30,17 +30,15 @@ namespace kernels {
 __device__ constexpr work_t kEwaldF = work_t(1.1283791670955126);
 
 template <bool Ortho>
-__global__ __launch_bounds__(ATV::cuda::kDefaultBlock, 4) void
-coul_long_cluster(real_t* __restrict__ fx, real_t* __restrict__ fy,
-                  real_t* __restrict__ fz, prec_t* __restrict__ energy,
-                  prec_t* __restrict__ stress, const real_t* __restrict__ x,
-                  const real_t* __restrict__ y, const real_t* __restrict__ z,
-                  const real_t* __restrict__ q,
-                  const int* __restrict__ row_ptr,
-                  const int* __restrict__ col_idx,
-                  const int* __restrict__ orig_index, int num_clusters,
-                  cuda::Box box, bool periodic, work_t alpha, work_t cutoff_sq,
-                  work_t qqr2e) {
+__global__
+__launch_bounds__(ATV::cuda::kDefaultBlock, 4) void coul_long_cluster(
+    real_t* __restrict__ fx, real_t* __restrict__ fy, real_t* __restrict__ fz,
+    prec_t* __restrict__ energy, prec_t* __restrict__ stress,
+    const real_t* __restrict__ x, const real_t* __restrict__ y,
+    const real_t* __restrict__ z, const real_t* __restrict__ q,
+    const int* __restrict__ row_ptr, const int* __restrict__ col_idx,
+    const int* __restrict__ orig_index, int num_clusters, cuda::Box box,
+    bool periodic, work_t alpha, work_t cutoff_sq, work_t qqr2e) {
     constexpr int CS = 8; // kClusterSize
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     int ci = tid / CS;
@@ -137,7 +135,7 @@ CoulLong::CoulLong(double alpha, double cutoff) : Pair(cutoff), alpha_(alpha) {
 void CoulLong::compute(const LaunchContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& frame = ctx.frame;
-    const PairList* pairs = ctx.runtime.pair_list;
+    const PairList* pairs = ctx.runtime.md.pair_list;
     if (!pairs || pairs->cl_row_ptr == nullptr || pairs->num_clusters <= 0)
         return;
     constexpr int CS = 8;

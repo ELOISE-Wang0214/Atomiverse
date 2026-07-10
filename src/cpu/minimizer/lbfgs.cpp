@@ -88,9 +88,8 @@ void LBFGS::build(const cpu::BuildContext& ctx) {
 
     const char* mode_name = (ls_mode_ == LineSearchMode::StrongWolfe)
                                 ? "strong_wolfe"
-                                : (ls_mode_ == LineSearchMode::Armijo)
-                                      ? "armijo"
-                                      : "fixed";
+                            : (ls_mode_ == LineSearchMode::Armijo) ? "armijo"
+                                                                   : "fixed";
     ATV_INFO(
         "[lbfgs] build memory={} alpha0={:.6f} ftol={:.6f} rms_ftol={:.6f} "
         "max_dtol={:.4f} rms_dtol={:.4f} etol={:.6e} line_search={}",
@@ -124,7 +123,7 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
     // `neighbor_generation` is bumped in lockstep on every rank (Migrate gates
     // the exchange on a global allreduce), so this reset stays rank-uniform.
     {
-        const auto* dd = ctx.runtime.dd;
+        const auto* dd = ctx.runtime.md.dd;
         const std::uint64_t gen =
             (dd && ctx.runtime.mpi_size > 1) ? dd->neighbor_generation : 0;
         if (gen != last_generation_) {
@@ -185,10 +184,9 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
         const double max_disp = maxs[1];
         const double rms_disp =
             disp_valid ? std::sqrt(sums[1] / (3 * n_global)) : double(0);
-        const double energy_change = (step_ > 0)
-                                         ? std::abs(f.scalars.energy
-                                                    - energy_prev_)
-                                         : double(1e30);
+        const double energy_change =
+            (step_ > 0) ? std::abs(f.scalars.energy - energy_prev_)
+                        : double(1e30);
 
         OptRecord rec;
         rec.step = step_;
@@ -236,15 +234,20 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
             (ls_dir_max_ > 1e-20) ? ls_max_step_ / ls_dir_max_ : 1.0;
 
         // Fixed mode (or no re-eval handle available): legacy single step.
-        if (ls_mode_ == LineSearchMode::Fixed || !ctx.runtime.reeval_forces) {
+        if (ls_mode_ == LineSearchMode::Fixed
+            || !ctx.runtime.opt.reeval_forces) {
             double alpha = alpha0_;
             if (ls_dir_max_ > 1e-20)
-                alpha = std::min(alpha0_, 0.1 / ls_dir_max_); // legacy 0.1 Å cap
+                alpha =
+                    std::min(alpha0_, 0.1 / ls_dir_max_); // legacy 0.1 Å cap
 #pragma omp parallel for schedule(static)
             for (int i = 0; i < n; ++i) {
-                f.atoms.x(i) = x_prev_[i * 3 + 0] + alpha * direction_[i * 3 + 0];
-                f.atoms.y(i) = x_prev_[i * 3 + 1] + alpha * direction_[i * 3 + 1];
-                f.atoms.z(i) = x_prev_[i * 3 + 2] + alpha * direction_[i * 3 + 2];
+                f.atoms.x(i) =
+                    x_prev_[i * 3 + 0] + alpha * direction_[i * 3 + 0];
+                f.atoms.y(i) =
+                    x_prev_[i * 3 + 1] + alpha * direction_[i * 3 + 1];
+                f.atoms.z(i) =
+                    x_prev_[i * 3 + 2] + alpha * direction_[i * 3 + 2];
             }
             return;
         }
@@ -260,11 +263,14 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
         auto phi = [&](double alpha, bool need_slope) -> LsSample {
 #pragma omp parallel for schedule(static)
             for (int i = 0; i < n; ++i) {
-                f.atoms.x(i) = x_prev_[i * 3 + 0] + alpha * direction_[i * 3 + 0];
-                f.atoms.y(i) = x_prev_[i * 3 + 1] + alpha * direction_[i * 3 + 1];
-                f.atoms.z(i) = x_prev_[i * 3 + 2] + alpha * direction_[i * 3 + 2];
+                f.atoms.x(i) =
+                    x_prev_[i * 3 + 0] + alpha * direction_[i * 3 + 0];
+                f.atoms.y(i) =
+                    x_prev_[i * 3 + 1] + alpha * direction_[i * 3 + 1];
+                f.atoms.z(i) =
+                    x_prev_[i * 3 + 2] + alpha * direction_[i * 3 + 2];
             }
-            ctx.runtime.reeval_forces(need_slope);
+            ctx.runtime.opt.reeval_forces(need_slope);
             LsSample s;
             s.f = f.scalars.energy; // globally reduced by md::mpi::Reduce
             double gd_local = 0;
@@ -283,14 +289,14 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
         LineSearchResult lr;
         // Suppress migration while trials replay the force phase (see
         // Context::line_search_trial); halo exchange still refreshes ghosts.
-        ctx.runtime.line_search_trial = true;
+        ctx.runtime.opt.line_search_trial = true;
         if (ls_mode_ == LineSearchMode::StrongWolfe)
-            lr = strong_wolfe(phi, ls_phi0_, ls_gd0_, alpha_init, ls_c1_, ls_c2_,
-                              max_ls_, alpha_max);
+            lr = strong_wolfe(phi, ls_phi0_, ls_gd0_, alpha_init, ls_c1_,
+                              ls_c2_, max_ls_, alpha_max);
         else // Armijo
             lr = armijo_backtrack(phi, ls_phi0_, ls_gd0_, alpha_init, ls_c1_,
                                   ls_contract_, max_ls_, ls_min_alpha_);
-        ctx.runtime.line_search_trial = false;
+        ctx.runtime.opt.line_search_trial = false;
 
         // Commit the accepted geometry (the last trial may have been a
         // different alpha). On a failed search (e.g. machine-flat near the

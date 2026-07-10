@@ -20,10 +20,10 @@
 #include <vector>
 
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/driver/backend.h"
-#include "atomiverse/cpu/component/context.h"
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/component/context.h"
+#include "atomiverse/cpu/driver/backend.h"
+#include "atomiverse/cpu/frame/frame.h"
 
 using namespace ATV;
 
@@ -57,7 +57,7 @@ TEST(MpiTopology, CartCommAndDimsFactorWorld) {
     backend.init();
 
     auto& ctx = backend.context();
-    auto* dd = ctx.dd;
+    auto* dd = ctx.md.dd;
     ASSERT_NE(dd, nullptr);
 
     const int world_size = ctx.mpi_size;
@@ -81,7 +81,7 @@ TEST(MpiTopology, FaceNeighborsValidUnderPBC) {
     cpu::Backend backend;
     backend.init();
 
-    auto* dd = backend.context().dd;
+    auto* dd = backend.context().md.dd;
     ASSERT_NE(dd, nullptr);
 
     if (backend.context().mpi_size > 1) {
@@ -108,7 +108,7 @@ TEST(MpiTopology, PartitionConservesTotalAtomCount) {
     backend.init();
     backend.set_frame(frame); // runs partition_atoms on multi-rank
 
-    auto* dd = backend.context().dd;
+    auto* dd = backend.context().md.dd;
     const int n_local = dd->n_local;
 
     int global_n = 0;
@@ -131,7 +131,7 @@ TEST(MpiTopology, PartitionAssignsEveryTagOnce) {
     backend.init();
     backend.set_frame(frame);
 
-    auto* dd = backend.context().dd;
+    auto* dd = backend.context().md.dd;
 
     // Each rank reports which tags it owns.
     std::vector<int> tag_counts(static_cast<std::size_t>(n_total), 0);
@@ -164,7 +164,7 @@ TEST(MpiTopology, OwnedAtomsInSlab) {
     backend.init();
     backend.set_frame(frame);
 
-    auto* dd = backend.context().dd;
+    auto* dd = backend.context().md.dd;
 
     // For a uniform-grid initial placement, all atom positions are in
     // [0, box_len); no PBC-wrap is needed, so sublo <= pos < subhi must hold.

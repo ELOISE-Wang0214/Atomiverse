@@ -5,9 +5,9 @@
 #include "atomiverse/cpu/minimizer/cg.h"
 #include "atomiverse/core/log.h"
 #include "atomiverse/cpu/comm/domain.h"
+#include "atomiverse/cpu/component/owned_range.h"
 #include "atomiverse/cpu/minimizer/global_reduce.h"
 #include "atomiverse/cpu/minimizer/line_search.h"
-#include "atomiverse/cpu/component/owned_range.h"
 
 #include <algorithm>
 #include <cmath>
@@ -69,7 +69,7 @@ void CG::launch(const cpu::LaunchContext& ctx) {
     // dead indexing; restart as steepest descent. Rank-uniform: the
     // generation bump is gated on a global allreduce inside Migrate.
     {
-        const auto* dd = ctx.runtime.dd;
+        const auto* dd = ctx.runtime.md.dd;
         const std::uint64_t gen =
             (dd && ctx.runtime.mpi_size > 1) ? dd->neighbor_generation : 0;
         if (gen != last_generation_) {
@@ -171,12 +171,16 @@ void CG::launch(const cpu::LaunchContext& ctx) {
             (ls_dir_max_ > 1e-20) ? ls_max_step_ / ls_dir_max_ : 1.0;
 
         // Fixed mode (or no re-eval handle): legacy single step x + alpha0*d.
-        if (ls_mode_ == LineSearchMode::Fixed || !ctx.runtime.reeval_forces) {
+        if (ls_mode_ == LineSearchMode::Fixed
+            || !ctx.runtime.opt.reeval_forces) {
 #pragma omp parallel for schedule(static)
             for (int i = 0; i < n; ++i) {
-                f.atoms.x(i) = x_prev_[i * 3 + 0] + alpha0_ * d_prev_[i * 3 + 0];
-                f.atoms.y(i) = x_prev_[i * 3 + 1] + alpha0_ * d_prev_[i * 3 + 1];
-                f.atoms.z(i) = x_prev_[i * 3 + 2] + alpha0_ * d_prev_[i * 3 + 2];
+                f.atoms.x(i) =
+                    x_prev_[i * 3 + 0] + alpha0_ * d_prev_[i * 3 + 0];
+                f.atoms.y(i) =
+                    x_prev_[i * 3 + 1] + alpha0_ * d_prev_[i * 3 + 1];
+                f.atoms.z(i) =
+                    x_prev_[i * 3 + 2] + alpha0_ * d_prev_[i * 3 + 2];
             }
             return;
         }
@@ -190,7 +194,7 @@ void CG::launch(const cpu::LaunchContext& ctx) {
                 f.atoms.y(i) = x_prev_[i * 3 + 1] + alpha * d_prev_[i * 3 + 1];
                 f.atoms.z(i) = x_prev_[i * 3 + 2] + alpha * d_prev_[i * 3 + 2];
             }
-            ctx.runtime.reeval_forces(need_slope);
+            ctx.runtime.opt.reeval_forces(need_slope);
             LsSample s;
             s.f = f.scalars.energy;
             double gd_local = 0;
@@ -207,14 +211,17 @@ void CG::launch(const cpu::LaunchContext& ctx) {
         const double alpha_max = std::max(cap, ls_min_alpha_);
         const double alpha_init = std::min(1.0, alpha_max);
         LineSearchResult lr;
-        ctx.runtime.line_search_trial = true; // suppress migration during trials
+        ctx.runtime.opt.line_search_trial =
+            true; // suppress migration during trials
         if (ls_mode_ == LineSearchMode::StrongWolfe)
-            lr = strong_wolfe(phi, ls_phi0_, ls_gd0_, alpha_init, ls_c1_, ls_c2_,
-                              /*max_evals=*/20, alpha_max);
+            lr =
+                strong_wolfe(phi, ls_phi0_, ls_gd0_, alpha_init, ls_c1_, ls_c2_,
+                             /*max_evals=*/20, alpha_max);
         else
-            lr = armijo_backtrack(phi, ls_phi0_, ls_gd0_, alpha_init, ls_c1_,
-                                  ls_contract_, /*max_evals=*/20, ls_min_alpha_);
-        ctx.runtime.line_search_trial = false;
+            lr =
+                armijo_backtrack(phi, ls_phi0_, ls_gd0_, alpha_init, ls_c1_,
+                                 ls_contract_, /*max_evals=*/20, ls_min_alpha_);
+        ctx.runtime.opt.line_search_trial = false;
 
         const double alpha = lr.alpha;
 #pragma omp parallel for schedule(static)

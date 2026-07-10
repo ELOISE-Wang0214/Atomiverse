@@ -125,7 +125,7 @@ void Backend::init() {
 
     if (!dd_)
         dd_ = std::make_unique<md::mpi::DomainDecomposition>();
-    context_.dd = dd_.get();
+    context_.md.dd = dd_.get();
 
 #ifdef ATV_HAS_MPI
     if (context_.mpi_size > 1) {
@@ -142,14 +142,13 @@ void Backend::init() {
     }
 }
 
-void Backend::adopt_dd(
-    std::unique_ptr<md::mpi::DomainDecomposition> dd) {
+void Backend::adopt_dd(std::unique_ptr<md::mpi::DomainDecomposition> dd) {
     dd_ = std::move(dd);
-    context_.dd = dd_.get();
+    context_.md.dd = dd_.get();
 }
 
 std::unique_ptr<md::mpi::DomainDecomposition> Backend::release_dd() {
-    context_.dd = nullptr;
+    context_.md.dd = nullptr;
     return std::move(dd_);
 }
 
@@ -313,8 +312,7 @@ Backend::collect_component_memory() const {
         for (const auto& slot : plan_->slots) {
             for (const auto& op : slot.ops) {
                 const cpu::ComponentBase* c = op.component;
-                if (!c
-                    || std::find(seen.begin(), seen.end(), c) != seen.end())
+                if (!c || std::find(seen.begin(), seen.end(), c) != seen.end())
                     continue;
                 seen.push_back(c);
                 const std::size_t b = c->memory_bytes();
@@ -360,7 +358,7 @@ void Backend::shutdown() {
         executor_->shutdown(); // idempotent
         executor_.reset();
     }
-    context_.executor = nullptr;
+    context_.analysis.executor = nullptr;
 
 #ifdef ATV_HAS_MPI
     if (dd_) {

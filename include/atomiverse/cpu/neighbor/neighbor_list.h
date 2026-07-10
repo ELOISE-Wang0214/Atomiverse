@@ -104,10 +104,10 @@ class NeighborList : public cpu::ComponentBase, public cpu::NeighborProvider {
         // reaches the correct size within one resize.
         strategy_.refresh_half(
             ctx.frame, n_active, pairs_,
-            is_multi_rank(ctx.runtime) ? ctx.runtime.dd->n_local : -1);
+            is_multi_rank(ctx.runtime) ? ctx.runtime.md.dd->n_local : -1);
         ++pairs_.version;
         trim_inum_to_local(ctx.runtime, pairs_);
-        ctx.runtime.pair_list = &pairs_;
+        ctx.runtime.md.pair_list = &pairs_;
         ago_ = 0;
         n_rebuilds_ = 1; // initial enumeration counts as rebuild #1
         // Snapshot the halo generation so the first `launch()` doesn't
@@ -117,7 +117,7 @@ class NeighborList : public cpu::ComponentBase, public cpu::NeighborProvider {
         // launch before the first force eval, hence the
         // `is_multi_rank` guard.)
         if (is_multi_rank(ctx.runtime))
-            last_halo_generation_ = ctx.runtime.dd->halo_generation;
+            last_halo_generation_ = ctx.runtime.md.dd->halo_generation;
     }
 
     void launch(const cpu::LaunchContext& ctx) override {
@@ -149,7 +149,7 @@ class NeighborList : public cpu::ComponentBase, public cpu::NeighborProvider {
         const bool size_stale = n_active != strategy_.n_at_last_build();
         const bool halo_stale =
             is_multi_rank(ctx.runtime)
-            && ctx.runtime.dd->halo_generation != last_halo_generation_;
+            && ctx.runtime.md.dd->halo_generation != last_halo_generation_;
         const bool delay_ok = ago_ >= delay_;
         const bool every_ok = (ago_ % every_) == 0;
         // When the gate is open: check no → always rebuild; check yes →
@@ -162,19 +162,19 @@ class NeighborList : public cpu::ComponentBase, public cpu::NeighborProvider {
             strategy_.build(ctx.frame, n_active);
             strategy_.refresh_half(
                 ctx.frame, n_active, pairs_,
-                is_multi_rank(ctx.runtime) ? ctx.runtime.dd->n_local : -1);
+                is_multi_rank(ctx.runtime) ? ctx.runtime.md.dd->n_local : -1);
             ++pairs_.version;
             ago_ = 0;
             ++n_rebuilds_;
             if (is_multi_rank(ctx.runtime))
-                last_halo_generation_ = ctx.runtime.dd->halo_generation;
+                last_halo_generation_ = ctx.runtime.md.dd->halo_generation;
         }
 
         trim_inum_to_local(ctx.runtime, pairs_);
         // Re-publish defensively: the component that owns pairs_ is stable
         // across launches, but a subsequent Backend::build_components() cycle
         // (e.g. after a frame-resize) would reset the runtime pointer.
-        ctx.runtime.pair_list = &pairs_;
+        ctx.runtime.md.pair_list = &pairs_;
     }
 
     /// @brief Total rebuild count since construction (includes initial build()).
@@ -205,14 +205,14 @@ class NeighborList : public cpu::ComponentBase, public cpu::NeighborProvider {
     /// @brief True when running with multiple MPI ranks (and the DD struct
     /// is available). Single-rank or null-`dd` returns false.
     static bool is_multi_rank(const cpu::Context& rt) {
-        return rt.dd != nullptr && rt.mpi_size > 1;
+        return rt.md.dd != nullptr && rt.mpi_size > 1;
     }
 
     /// @brief Active atom count: owners + current ghosts under multi-rank,
     /// otherwise the full atom array (single-rank legacy).
     static int active_count(const cpu::Context& rt, const cpu::Frame& frame) {
         if (is_multi_rank(rt))
-            return rt.dd->n_local + rt.dd->n_ghost;
+            return rt.md.dd->n_local + rt.md.dd->n_ghost;
         return frame.atoms.size();
     }
 
@@ -221,7 +221,7 @@ class NeighborList : public cpu::ComponentBase, public cpu::NeighborProvider {
     /// ghost rows. Single-rank: no-op.
     static void trim_inum_to_local(const cpu::Context& rt, PairList& pl) {
         if (is_multi_rank(rt)) {
-            pl.inum = rt.dd->n_local;
+            pl.inum = rt.md.dd->n_local;
         }
     }
 
@@ -231,7 +231,7 @@ class NeighborList : public cpu::ComponentBase, public cpu::NeighborProvider {
     /// the cell-grid sizing is stale.
     void reinit_strategy(const cpu::Context& rt, cpu::Frame& f) {
         if (is_multi_rank(rt)) {
-            strategy_.init_extended(f, cutoff_, rt.dd, rt.dd->capacity);
+            strategy_.init_extended(f, cutoff_, rt.md.dd, rt.md.dd->capacity);
         } else {
             strategy_.init(f, cutoff_);
         }

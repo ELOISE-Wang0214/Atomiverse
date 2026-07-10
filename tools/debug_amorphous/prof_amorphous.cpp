@@ -91,14 +91,14 @@ class InstrNeighborList : public cpu::ComponentBase {
         strategy_.build(ctx.frame, ctx.frame.atoms.size());
         strategy_.refresh_half(ctx.frame, ctx.frame.atoms.size(), pairs_);
         ++pairs_.version;
-        ctx.runtime.pair_list = &pairs_;
+        ctx.runtime.md.pair_list = &pairs_;
         ago_ = 0;
     }
     void launch(const cpu::LaunchContext& ctx) override {
         const int n = ctx.frame.atoms.size();
         ++ago_;
         if (ago_ < every_) {
-            ctx.runtime.pair_list = &pairs_;
+            ctx.runtime.md.pair_list = &pairs_;
             return;
         }
         auto t0 = clock_t_::now();
@@ -119,7 +119,7 @@ class InstrNeighborList : public cpu::ComponentBase {
                    std::chrono::duration<double>(tc - tb).count());
             ago_ = 0;
         }
-        ctx.runtime.pair_list = &pairs_;
+        ctx.runtime.md.pair_list = &pairs_;
     }
 
   private:
@@ -145,7 +145,7 @@ class EagerNLInstr : public cpu::ComponentBase {
         strategy_.build(ctx.frame, ctx.frame.atoms.size());
         strategy_.refresh_half(ctx.frame, ctx.frame.atoms.size(), pairs_);
         ++pairs_.version;
-        ctx.runtime.pair_list = &pairs_;
+        ctx.runtime.md.pair_list = &pairs_;
     }
     void launch(const cpu::LaunchContext& ctx) override {
         const int n = ctx.frame.atoms.size();
@@ -160,7 +160,7 @@ class EagerNLInstr : public cpu::ComponentBase {
         record("eager.update", std::chrono::duration<double>(t1 - t0).count());
         record("eager.refresh_half",
                std::chrono::duration<double>(t2 - t1).count());
-        ctx.runtime.pair_list = &pairs_;
+        ctx.runtime.md.pair_list = &pairs_;
     }
 
   private:

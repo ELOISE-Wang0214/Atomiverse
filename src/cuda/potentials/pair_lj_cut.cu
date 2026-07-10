@@ -2,13 +2,13 @@
 /// @brief CUDA PairLJCut — Lennard-Jones 12-6 shifted (kernel + class).
 ///        Includes LAMMPS-style `special_bonds` 1-2/1-3/1-4 exclusions.
 
-#include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/device/launch.cuh"
+#include "atomiverse/cuda/frame/box.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/potentials/lj_kernel.cuh"
 #include "atomiverse/cuda/potentials/pair_compute.cuh"
 #include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
-#include "atomiverse/cuda/frame/types.cuh"
 #include "atomiverse/potentials/pair_kernel.h"
 #include <cstddef>
 #include <cstdint>
@@ -16,7 +16,6 @@
 #include <set>
 #include <stdexcept>
 #include <string>
-#include <stdexcept>
 #include <type_traits>
 #include <vector>
 
@@ -86,19 +85,17 @@ __global__ void gather_cluster_pos(const int* __restrict__ orig_index,
 /// undo the double count. kClusterSize is the neighbor list's fixed cluster
 /// width; pad slots carry a negative orig_index sentinel.
 template <bool Ortho, bool Virial>
-__global__ __launch_bounds__(ATV::cuda::kDefaultBlock, 4) void
-lj_force_cluster(real_t* __restrict__ fx, real_t* __restrict__ fy,
-                 real_t* __restrict__ fz, prec_t* __restrict__ energy,
-                 prec_t* __restrict__ stress, const real_t* __restrict__ spx,
-                 const real_t* __restrict__ spy, const real_t* __restrict__ spz,
-                 const int* __restrict__ row_ptr,
-                 const int* __restrict__ col_idx,
-                 const std::uint64_t* __restrict__ cl_mask,
-                 const int* __restrict__ orig_index, int num_clusters,
-                 cuda::Box box, bool periodic, work_t epsilon, work_t sigma_sq,
-                 work_t cutoff_sq, work_t min_pair_dist_sq, work_t v_shift,
-                 const int* __restrict__ excl_offsets,
-                 const int* __restrict__ excl_partners, work_t s_excl) {
+__global__ __launch_bounds__(ATV::cuda::kDefaultBlock, 4) void lj_force_cluster(
+    real_t* __restrict__ fx, real_t* __restrict__ fy, real_t* __restrict__ fz,
+    prec_t* __restrict__ energy, prec_t* __restrict__ stress,
+    const real_t* __restrict__ spx, const real_t* __restrict__ spy,
+    const real_t* __restrict__ spz, const int* __restrict__ row_ptr,
+    const int* __restrict__ col_idx, const std::uint64_t* __restrict__ cl_mask,
+    const int* __restrict__ orig_index, int num_clusters, cuda::Box box,
+    bool periodic, work_t epsilon, work_t sigma_sq, work_t cutoff_sq,
+    work_t min_pair_dist_sq, work_t v_shift,
+    const int* __restrict__ excl_offsets, const int* __restrict__ excl_partners,
+    work_t s_excl) {
     constexpr int CS = 8; // kClusterSize (neighbor-list cluster width)
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     int ci = tid / CS;
@@ -138,8 +135,8 @@ lj_force_cluster(real_t* __restrict__ fx, real_t* __restrict__ fy,
                 // 8-slot scan + per-slot distance prefilter — the dominant cost
                 // — with ≈ the real neighbor count. (All-ones when no real mask
                 // was computed ⇒ identical to the old full scan.)
-                unsigned mbyte = static_cast<unsigned>(
-                    (cl_mask[p] >> (slot * 8)) & 0xFFull);
+                unsigned mbyte =
+                    static_cast<unsigned>((cl_mask[p] >> (slot * 8)) & 0xFFull);
                 while (mbyte) {
                     int sj = __ffs(static_cast<int>(mbyte)) - 1;
                     mbyte &= mbyte - 1;
@@ -247,8 +244,7 @@ PairLJCut::PairLJCut(double epsilon, double sigma, double cutoff)
     v_shift_ = kernels::lj_shift(epsilon, sigma, cutoff);
 }
 
-PairLJCut& PairLJCut::set_special_bonds(double s12, double s13,
-                                        double s14) & {
+PairLJCut& PairLJCut::set_special_bonds(double s12, double s13, double s14) & {
     // Supported combinations: all equal (incl. (0,0,0)) or all 1.0.
     if (s12 == 1.0 && s13 == 1.0 && s14 == 1.0) {
         s12_ = s13_ = s14_ = 1.0;
@@ -268,8 +264,7 @@ PairLJCut& PairLJCut::set_special_bonds(double s12, double s13,
     return *this;
 }
 
-PairLJCut PairLJCut::set_special_bonds(double s12, double s13,
-                                       double s14) && {
+PairLJCut PairLJCut::set_special_bonds(double s12, double s13, double s14) && {
     // Rvalue overload: delegate to the lvalue body, then move-return so
     // the chained `cuda::PairLJCut{…}.set_special_bonds(…)` expression
     // yields a movable rvalue (not a dangling lvalue reference to a
@@ -308,9 +303,9 @@ void PairLJCut::build(const BuildContext& ctx) {
     n_excl_total_ = 0;
     if (!has_exclusions_) {
         // No special bonds: publish "nothing to bake".
-        ctx.runtime.excl_offsets = nullptr;
-        ctx.runtime.excl_partners = nullptr;
-        ctx.runtime.s_excl = 1.0;
+        ctx.runtime.md.excl_offsets = nullptr;
+        ctx.runtime.md.excl_partners = nullptr;
+        ctx.runtime.md.s_excl = 1.0;
         return;
     }
     // Fast path: if the per-atom special SoA is on-device, NeighborList bakes
@@ -319,9 +314,9 @@ void PairLJCut::build(const BuildContext& ctx) {
     // was the dominant multi-GPU bottleneck). Just publish the scale; the force
     // kernel reads exclusions_baked and drops its per-pair scan.
     if (ctx.frame.atoms.special != nullptr) {
-        ctx.runtime.excl_offsets = nullptr;
-        ctx.runtime.excl_partners = nullptr;
-        ctx.runtime.s_excl = s_excl_;
+        ctx.runtime.md.excl_offsets = nullptr;
+        ctx.runtime.md.excl_partners = nullptr;
+        ctx.runtime.md.s_excl = s_excl_;
         return;
     }
     auto& f = ctx.frame;
@@ -361,9 +356,12 @@ void PairLJCut::build(const BuildContext& ctx) {
             excl[b].insert(a);
         }
     };
-    for (int k = 0; k < n_b; ++k) add_pair(bi[k], bj[k]);
-    for (int k = 0; k < n_a; ++k) add_pair(ai[k], ak[k]);
-    for (int k = 0; k < n_d; ++k) add_pair(di[k], dl[k]);
+    for (int k = 0; k < n_b; ++k)
+        add_pair(bi[k], bj[k]);
+    for (int k = 0; k < n_a; ++k)
+        add_pair(ai[k], ak[k]);
+    for (int k = 0; k < n_d; ++k)
+        add_pair(di[k], dl[k]);
 
     // Pack into CSR.
     std::vector<int> offsets(n + 1, 0);
@@ -389,9 +387,9 @@ void PairLJCut::build(const BuildContext& ctx) {
     }
     // Publish the CSR so NeighborList::launch can bake exclusions into the
     // per-atom Verlet list (skipping the per-pair scan in the force kernel).
-    ctx.runtime.excl_offsets = d_excl_offsets_;
-    ctx.runtime.excl_partners = d_excl_partners_;
-    ctx.runtime.s_excl = s_excl_;
+    ctx.runtime.md.excl_offsets = d_excl_offsets_;
+    ctx.runtime.md.excl_partners = d_excl_partners_;
+    ctx.runtime.md.s_excl = s_excl_;
 }
 
 void PairLJCut::destroy(const DestroyContext& /*ctx*/) {
@@ -421,7 +419,7 @@ void PairLJCut::destroy(const DestroyContext& /*ctx*/) {
 void PairLJCut::compute(const LaunchContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& frame = ctx.frame;
-    const PairList* pairs = ctx.runtime.pair_list;
+    const PairList* pairs = ctx.runtime.md.pair_list;
     if (!pairs)
         return;
     // Per-atom Verlet-list path: one thread per atom iterates its tight
@@ -454,13 +452,15 @@ void PairLJCut::compute(const LaunchContext& ctx) {
     // nullptr when NeighborList already baked the exclusions into the per-atom
     // Verlet list (excluded partners simply aren't in it): the force kernel then
     // does zero per-pair exclusion work — the LAMMPS layout.
-    const bool baked = ctx.runtime.exclusions_baked;
-    const int* excl_off = (has_exclusions_ && !baked) ? d_excl_offsets_ : nullptr;
-    const int* excl_par = (has_exclusions_ && !baked) ? d_excl_partners_ : nullptr;
-    const work_t cutoff_sq = static_cast<work_t>(cutoff_)
-                             * static_cast<work_t>(cutoff_);
-    const work_t sigma_sq = static_cast<work_t>(sigma_)
-                            * static_cast<work_t>(sigma_);
+    const bool baked = ctx.runtime.md.exclusions_baked;
+    const int* excl_off =
+        (has_exclusions_ && !baked) ? d_excl_offsets_ : nullptr;
+    const int* excl_par =
+        (has_exclusions_ && !baked) ? d_excl_partners_ : nullptr;
+    const work_t cutoff_sq =
+        static_cast<work_t>(cutoff_) * static_cast<work_t>(cutoff_);
+    const work_t sigma_sq =
+        static_cast<work_t>(sigma_) * static_cast<work_t>(sigma_);
     const work_t min_pair_dist_sq =
         static_cast<work_t>(kernels::kMinPairDist)
         * static_cast<work_t>(kernels::kMinPairDist);
@@ -479,13 +479,13 @@ void PairLJCut::compute(const LaunchContext& ctx) {
     // atoms (ghost pair rows are wrong to reverse-communicate and waste work)
     // and may pass an explicit interior/boundary subset. Default (-1): every
     // atom row, the single-GPU behavior.
-    const int n_rows = (ctx.runtime.n_force_rows >= 0)
-                           ? ctx.runtime.n_force_rows
+    const int n_rows = (ctx.runtime.md.n_force_rows >= 0)
+                           ? ctx.runtime.md.n_force_rows
                            : n_atoms;
     md::launch_pair_compute(
         lj, frame.atoms.fx, frame.atoms.fy, frame.atoms.fz,
         &frame.scalars->energy, stress_ptr, pos4_, /*q=*/nullptr, pairs->vl_nbr,
-        pairs->vl_cnt, pairs->vl_stride, n_rows, ctx.runtime.force_rows, box,
+        pairs->vl_cnt, pairs->vl_stride, n_rows, ctx.runtime.md.force_rows, box,
         /*periodic=*/true, cutoff_sq, min_pair_dist_sq, excl_off, excl_par,
         static_cast<work_t>(s_excl_), stream);
 }

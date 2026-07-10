@@ -68,7 +68,7 @@ void AnalysisExecutor::init(const Config& cfg, Context& ctx) {
         workers_.emplace_back([this, i] { this->worker_loop(i); });
     }
 
-    ctx.executor = this;
+    ctx.analysis.executor = this;
     initialized_ = true;
 
     ATV_DEBUG("analysis_executor initialized: {} workers, ring {}", n_workers,

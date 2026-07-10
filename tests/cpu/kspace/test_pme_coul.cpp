@@ -76,7 +76,7 @@ double electrostatic_energy(cpu::Frame& f, const cpu::md::PairList& pairs,
     f.scalars.energy_pair = 0;
 
     cpu::Context ctx;
-    ctx.pair_list = &pairs;
+    ctx.md.pair_list = &pairs;
     cpu::BuildContext bctx{ctx, f};
     cpu::LaunchContext lctx{ctx, f, 0, 0};
 
@@ -100,7 +100,8 @@ TEST(PmeCoul, MadelungNaCl) {
     build_full_halflist(frame, pairs);
 
     const double cutoff = 1.9 * d;
-    const double alpha = 3.5 / cutoff; // moderate α so the grid resolves k-space
+    const double alpha =
+        3.5 / cutoff; // moderate α so the grid resolves k-space
     const double e = electrostatic_energy(frame, pairs, alpha, cutoff,
                                           cpu::KSpacePME(alpha, 0.5, 6));
 
@@ -119,8 +120,8 @@ TEST(PmeCoul, AgreesWithEwald) {
 
     const double cutoff = 1.9 * d;
     const double alpha = 3.5 / cutoff;
-    const double e_ewald = electrostatic_energy(
-        frame, pairs, alpha, cutoff, cpu::KSpaceEwald(alpha, 1e-8));
+    const double e_ewald = electrostatic_energy(frame, pairs, alpha, cutoff,
+                                                cpu::KSpaceEwald(alpha, 1e-8));
     const double e_pme = electrostatic_energy(frame, pairs, alpha, cutoff,
                                               cpu::KSpacePME(alpha, 0.5, 6));
     EXPECT_NEAR(e_pme / e_ewald, 1.0, 5e-4)
@@ -153,12 +154,12 @@ TEST(PmeCoul, FiniteDifferenceForces) {
     };
     auto force = [&](int a, int axis) {
         run();
-        return axis == 0 ? frame.atoms.fx[a]
+        return axis == 0   ? frame.atoms.fx[a]
                : axis == 1 ? frame.atoms.fy[a]
                            : frame.atoms.fz[a];
     };
     auto energy_at = [&](int a, int axis, double delta) {
-        auto& pos = axis == 0 ? frame.atoms.x
+        auto& pos = axis == 0   ? frame.atoms.x
                     : axis == 1 ? frame.atoms.y
                                 : frame.atoms.z;
         const double orig = pos[a];

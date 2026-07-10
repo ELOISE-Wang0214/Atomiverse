@@ -6,8 +6,8 @@
 #include <stdexcept>
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/component/owned_range.h"
+#include "atomiverse/cpu/frame/frame.h"
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -52,8 +52,8 @@ void KSpaceEwald::ensure_kvectors(const cpu::Frame& frame) {
         b[i][2] = tp * ic(2, i);
     }
     auto blen = [&](int i) {
-        return std::sqrt(b[i][0] * b[i][0] + b[i][1] * b[i][1] +
-                         b[i][2] * b[i][2]);
+        return std::sqrt(b[i][0] * b[i][0] + b[i][1] * b[i][1]
+                         + b[i][2] * b[i][2]);
     };
     const double gcut = 2.0 * alpha_ * std::sqrt(-std::log(accuracy_));
     const double gcut2 = gcut * gcut;
@@ -96,7 +96,7 @@ void KSpaceEwald::compute(const LaunchContext& ctx) {
     ensure_kvectors(f);
     const int ng = static_cast<int>(kx_.size());
 
-    const auto* dd = ctx.runtime.dd;
+    const auto* dd = ctx.runtime.md.dd;
     const bool mpi = dd && ctx.runtime.mpi_size > 1;
     const int n_local = mpi ? dd->n_local : f.atoms.size();
     const bool first_rank = !mpi || ctx.runtime.mpi_rank == 0;
@@ -163,7 +163,8 @@ void KSpaceEwald::compute(const LaunchContext& ctx) {
         qsq_local += q[i] * q[i];
         q_local += q[i];
     }
-    const double e_self = -ATV::kCoulomb * alpha_ / std::sqrt(ATV::kPI) * qsq_local;
+    const double e_self =
+        -ATV::kCoulomb * alpha_ / std::sqrt(ATV::kPI) * qsq_local;
     f.scalars.energy += e_self;
     f.scalars.energy_pair += e_self;
 
@@ -190,9 +191,9 @@ void KSpaceEwald::compute(const LaunchContext& ctx) {
             MPI_Allreduce(MPI_IN_PLACE, &q_total, 1, MPI_DOUBLE, MPI_SUM,
                           dd->cart_comm);
 #endif
-        const double e_net =
-            -ATV::kCoulomb * ATV::kPI / (2.0 * vol * alpha_ * alpha_) *
-            q_total * q_total;
+        const double e_net = -ATV::kCoulomb * ATV::kPI
+                             / (2.0 * vol * alpha_ * alpha_) * q_total
+                             * q_total;
 
         f.scalars.energy += e_recip + e_net;
         f.scalars.energy_pair += e_recip + e_net;

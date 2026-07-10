@@ -42,11 +42,11 @@ void NoseHoover::build(const cpu::BuildContext& ctx) {
     // it contributes 0 so n_global stays the correct global total. Gating on
     // `n_local > 0` caused a 64-rank stage-transition deadlock. See the twin
     // fix in nose_hoover_npt.cpp::build.
-    if (ctx.runtime.mpi_size > 1 && ctx.runtime.dd
-        && ctx.runtime.dd->cart_comm != MPI_COMM_NULL) {
-        const int n_local = ctx.runtime.dd->n_local;
+    if (ctx.runtime.mpi_size > 1 && ctx.runtime.md.dd
+        && ctx.runtime.md.dd->cart_comm != MPI_COMM_NULL) {
+        const int n_local = ctx.runtime.md.dd->n_local;
         MPI_Allreduce(&n_local, &n_global, 1, MPI_INT, MPI_SUM,
-                      ctx.runtime.dd->cart_comm);
+                      ctx.runtime.md.dd->cart_comm);
     }
 #endif
     n_dof_global_ = 3 * n_global - 3; // 3N - 3 (COM removal)
@@ -135,10 +135,10 @@ void NoseHoover::launch(const cpu::LaunchContext& ctx) {
         // double per call.
         double ke = ke_local;
 #ifdef ATV_HAS_MPI
-        if (ctx.runtime.mpi_size > 1 && ctx.runtime.dd
-            && ctx.runtime.dd->cart_comm != MPI_COMM_NULL) {
+        if (ctx.runtime.mpi_size > 1 && ctx.runtime.md.dd
+            && ctx.runtime.md.dd->cart_comm != MPI_COMM_NULL) {
             MPI_Allreduce(&ke_local, &ke, 1, MPI_DOUBLE, MPI_SUM,
-                          ctx.runtime.dd->cart_comm);
+                          ctx.runtime.md.dd->cart_comm);
         }
 #endif
 

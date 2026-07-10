@@ -31,8 +31,9 @@ namespace {
 /// so every MPI rank draws the identical `R₁` and `χ²` deviate and the
 /// trajectory is invariant to the rank count.
 std::uint64_t step_seed(std::uint32_t seed, std::int64_t step) {
-    std::uint64_t s = static_cast<std::uint64_t>(seed) * 0x9E3779B97F4A7C15ULL
-                      + static_cast<std::uint64_t>(step) * 0xBF58476D1CE4E5B9ULL;
+    std::uint64_t s =
+        static_cast<std::uint64_t>(seed) * 0x9E3779B97F4A7C15ULL
+        + static_cast<std::uint64_t>(step) * 0xBF58476D1CE4E5B9ULL;
     s = (s ^ (s >> 30)) * 0xBF58476D1CE4E5B9ULL;
     s = (s ^ (s >> 27)) * 0x94D049BB133111EBULL;
     return s ^ (s >> 31);
@@ -51,11 +52,11 @@ void FixCSVR::build(const cpu::BuildContext& ctx) {
     // global N by allreduce-summing dd->n_local (mirrors NoseHoover::build).
     int n_global = static_cast<int>(ctx.frame.atoms.size());
 #ifdef ATV_HAS_MPI
-    if (ctx.runtime.mpi_size > 1 && ctx.runtime.dd
-        && ctx.runtime.dd->cart_comm != MPI_COMM_NULL) {
-        const int n_local = ctx.runtime.dd->n_local;
+    if (ctx.runtime.mpi_size > 1 && ctx.runtime.md.dd
+        && ctx.runtime.md.dd->cart_comm != MPI_COMM_NULL) {
+        const int n_local = ctx.runtime.md.dd->n_local;
         MPI_Allreduce(&n_local, &n_global, 1, MPI_INT, MPI_SUM,
-                      ctx.runtime.dd->cart_comm);
+                      ctx.runtime.md.dd->cart_comm);
     }
 #endif
     n_dof_global_ = 3 * n_global - 3; // 3N - 3 (COM removal)
@@ -96,10 +97,10 @@ void FixCSVR::launch(const cpu::LaunchContext& ctx) {
 
     double ke = ke_local;
 #ifdef ATV_HAS_MPI
-    if (ctx.runtime.mpi_size > 1 && ctx.runtime.dd
-        && ctx.runtime.dd->cart_comm != MPI_COMM_NULL) {
+    if (ctx.runtime.mpi_size > 1 && ctx.runtime.md.dd
+        && ctx.runtime.md.dd->cart_comm != MPI_COMM_NULL) {
         MPI_Allreduce(&ke_local, &ke, 1, MPI_DOUBLE, MPI_SUM,
-                      ctx.runtime.dd->cart_comm);
+                      ctx.runtime.md.dd->cart_comm);
     }
 #endif
 
@@ -108,7 +109,8 @@ void FixCSVR::launch(const cpu::LaunchContext& ctx) {
     if (ke <= 0.0)
         return;
 
-    const double ke_bar = 0.5 * static_cast<double>(n_dof) * kBoltzmann * T_live_;
+    const double ke_bar =
+        0.5 * static_cast<double>(n_dof) * kBoltzmann * T_live_;
 
     // Two GLOBAL random draws, identical on every rank (seeded from step only).
     std::mt19937_64 rng(step_seed(seed_, ctx.step));
@@ -118,16 +120,18 @@ void FixCSVR::launch(const cpu::LaunchContext& ctx) {
     // Gamma((N_f-1)/2, scale 2). Drawn directly (Bussi's `sumnoises`).
     double sum_sq = 0.0;
     if (n_dof - 1 > 0) {
-        std::gamma_distribution<double> chi2(0.5 * static_cast<double>(n_dof - 1),
-                                             2.0);
+        std::gamma_distribution<double> chi2(
+            0.5 * static_cast<double>(n_dof - 1), 2.0);
         sum_sq = chi2(rng);
     }
 
     // Bussi Eq. A7 propagator for alpha^2.
     const double c1 = std::exp(-dt_ / tau_);
-    const double factor = (ke_bar / (static_cast<double>(n_dof) * ke)) * (1.0 - c1);
-    double alpha2 = c1 + factor * (r1 * r1 + sum_sq)
-                    + 2.0 * std::exp(-dt_ / (2.0 * tau_)) * std::sqrt(factor) * r1;
+    const double factor =
+        (ke_bar / (static_cast<double>(n_dof) * ke)) * (1.0 - c1);
+    double alpha2 =
+        c1 + factor * (r1 * r1 + sum_sq)
+        + 2.0 * std::exp(-dt_ / (2.0 * tau_)) * std::sqrt(factor) * r1;
     if (alpha2 < 0.0)
         alpha2 = 0.0; // numerical guard; analytically alpha^2 >= 0
     const double alpha = std::sqrt(alpha2);

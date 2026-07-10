@@ -23,7 +23,7 @@
 ///   - `finalize()` -- called exactly once by the executor during shutdown.
 ///
 /// Lifecycle and delivery:
-///   - `build()` resolves `ctx.runtime.executor`, registers as a subscriber,
+///   - `build()` resolves `ctx.runtime.analysis.executor`, registers as a subscriber,
 ///     pre-sizes ring slots for this observer's capture mask.
 ///   - `launch()` is a `final` thin dispatcher: skip on the `frequency()`
 ///     stride, else submit (this, current_slot) to the executor in ~30 ns.
@@ -41,8 +41,8 @@
 
 #include "atomiverse/core/binding.h"
 #include "atomiverse/core/types.h"
-#include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/async/frame_snapshot.h"
+#include "atomiverse/cpu/component/component.h"
 
 namespace ATV {
 namespace cpu {
@@ -63,7 +63,7 @@ class AsyncComponentBase : public cpu::ComponentBase {
     /// @brief Which frame fields the snapshot should carry for this subscriber.
     virtual CaptureMask capture_mask() const = 0;
 
-    /// @brief Register with the executor resolved from `ctx.runtime.executor`.
+    /// @brief Register with the executor resolved from `ctx.runtime.analysis.executor`.
     void build(const BuildContext& ctx) override;
 
     /// @brief Thin dispatcher: skip or submit. `final` to prevent subclasses

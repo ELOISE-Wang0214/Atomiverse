@@ -56,7 +56,7 @@ class RDF : public AsyncBridge {
         // force path no longer needs — request it so NeighborList re-enables
         // the per-step export. (All build()s run before any launch(), so this
         // is visible to NeighborList::launch from the first step.)
-        ctx.runtime.flat_pairs_requested = true;
+        ctx.runtime.md.flat_pairs_requested = true;
 
         // D2H box to compute volume (sync OK at build time).
         double box_data[9];
@@ -73,7 +73,7 @@ class RDF : public AsyncBridge {
         // D2H pair capacity to size device-ring + pinned buffers. The pair list
         // is owned by NeighborList and published on the context.
         int cap = 0;
-        const PairList* pairs = ctx.runtime.pair_list;
+        const PairList* pairs = ctx.runtime.md.pair_list;
         if (pairs && pairs->capacity) {
             cudaMemcpyAsync(&cap, pairs->capacity, sizeof(int),
                             cudaMemcpyDeviceToHost, stream);
@@ -99,7 +99,7 @@ class RDF : public AsyncBridge {
     }
 
     bool can_run(const LaunchContext& ctx) const override {
-        const PairList* pairs = ctx.runtime.pair_list;
+        const PairList* pairs = ctx.runtime.md.pair_list;
         return pairs != nullptr && pairs->n_pairs != nullptr
                && pair_capacity_ > 0;
     }
@@ -108,7 +108,7 @@ class RDF : public AsyncBridge {
         // D2D freeze of the step-N pair buffer on the compute stream, before
         // the next step's neighbor rebuild overwrites it.
         auto ms = static_cast<cudaStream_t>(ctx.runtime.stream);
-        const PairList* pairs = ctx.runtime.pair_list;
+        const PairList* pairs = ctx.runtime.md.pair_list;
         cudaMemcpyAsync(d_np_[slot], pairs->n_pairs, sizeof(int),
                         cudaMemcpyDeviceToDevice, ms);
         cudaMemcpyAsync(d_dsq_[slot], pairs->dist_sq,

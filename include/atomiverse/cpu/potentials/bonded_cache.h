@@ -28,9 +28,9 @@
 #include <cstdint>
 #include <vector>
 
+#include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/context.h"
-#include "atomiverse/cpu/comm/domain.h"
 
 namespace ATV {
 namespace cpu {
@@ -50,7 +50,7 @@ struct BondedTupleCache {
     /// @brief True when the cache must be rebuilt before use.
     /// @param ctx Launch context (reads `dd` generation counters).
     bool stale(const cpu::LaunchContext& ctx) const noexcept {
-        const auto* dd = ctx.runtime.dd;
+        const auto* dd = ctx.runtime.md.dd;
         if (!built_)
             return true;
         if (dd == nullptr)
@@ -62,7 +62,7 @@ struct BondedTupleCache {
     /// @brief Record the generation stamps of the build just performed.
     /// @param ctx Launch context (reads `dd` generation counters).
     void mark_built(const cpu::LaunchContext& ctx) noexcept {
-        const auto* dd = ctx.runtime.dd;
+        const auto* dd = ctx.runtime.md.dd;
         built_ = true;
         if (dd != nullptr) {
             neigh_gen_ = dd->neighbor_generation;

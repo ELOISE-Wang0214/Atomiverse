@@ -46,7 +46,7 @@ class CaptureNLocal : public cpu::ComponentBase {
         return {ATV::make_binding(ATV::md::Phase::end_of_step, 30)};
     }
     void launch(const cpu::LaunchContext& ctx) override {
-        const auto* dd = ctx.runtime.dd;
+        const auto* dd = ctx.runtime.md.dd;
         *sink_ = (dd && ctx.runtime.mpi_size > 1) ? dd->n_local
                                                   : ctx.frame.atoms.size();
     }

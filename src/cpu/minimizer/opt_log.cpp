@@ -5,8 +5,8 @@
 #include "atomiverse/cpu/minimizer/opt_log.h"
 
 #include "atomiverse/cpu/comm/domain.h"
-#include "atomiverse/cpu/minimizer/global_reduce.h"
 #include "atomiverse/cpu/component/owned_range.h"
+#include "atomiverse/cpu/minimizer/global_reduce.h"
 
 #include <cmath>
 #include <cstdio>
@@ -47,7 +47,7 @@ void OptLog::launch(const cpu::LaunchContext& ctx) {
 
     // Migration reshuffles local rows: the position reference is stale.
     {
-        const auto* dd = ctx.runtime.dd;
+        const auto* dd = ctx.runtime.md.dd;
         const std::uint64_t gen =
             (dd && ctx.runtime.mpi_size > 1) ? dd->neighbor_generation : 0;
         if (gen != last_generation_) {
