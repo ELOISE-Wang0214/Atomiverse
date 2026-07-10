@@ -12,9 +12,9 @@ The chapter assumes you have read the
 mental model — Frame, Component, Driver — is repeated here only when
 the developer-level rules require it.
 
-## Why Three Driver Categories Exist
+## Why Driver Categories Exist
 
-User-facing simulation in Atomiverse comes in three flavours, and the
+User-facing simulation in Atomiverse comes in five flavours, and the
 clean way to think about them is: **the algorithm does not pick the
 category — the termination rule does.**
 
@@ -23,17 +23,17 @@ category — the termination rule does.**
 | `cpu::EvaluateDriver` | exactly one pass | `cpu::Evaluate` |
 | `cpu::DynamicsDriver` | full step budget; honours `outer_status.stop_requested` | `cpu::md::MD` |
 | `cpu::OptimizeDriver` | early-stop when `outer_status.converged` | `cpu::minimizer::Minimize` |
+| `cpu::ResponseDriver` | fixed 6N-displacement budget, then finalize; no early stop | `cpu::vib::Hessian` |
+| `cpu::SamplingDriver` | trial-move budget with inline Metropolis accept/reject | `cpu::mc::MC` |
 
-If you ever want to add a fourth category, the test is whether the new
-loop has a *genuinely distinct* termination semantic. Sampling
-(MC / HMC / REMD) qualifies — the loop terminates after a target number
-of accepted moves, with mid-run rejection logic the existing categories
-don't model. NEB qualifies — the loop terminates when *every image* of
-a coupled chain has converged. Vibrational analysis using
-finite-differences qualifies — the loop terminates after a fixed
-displacement schedule with structured restarts. A new "molecular
-mechanics" driver, however, is *not* a new category — it is a Dynamics
-driver with a different evaluator at the force phase.
+If you ever want to add a new category, the test is whether the new
+loop has a *genuinely distinct* termination semantic. NEB qualifies —
+the loop terminates when *every image* of a coupled chain has
+converged, a coupled-convergence rule none of the existing categories
+model. Sampling and Response each earned their row exactly this way
+(mid-run rejection logic; a fixed displacement schedule). A new
+"molecular mechanics" driver, however, is *not* a new category — it is
+a Dynamics driver with a different evaluator at the force phase.
 
 The wrong reflex is to subclass `Driver<>` for every algorithm
 ("LBFGSDriver", "CGDriver", "FIREDriver"). The right reflex is to

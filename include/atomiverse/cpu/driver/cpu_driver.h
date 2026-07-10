@@ -8,16 +8,18 @@
 ///     ├─ cpu::CPUDriver<PhaseEnum>         ← CPU backend layer  (this file)
 ///     │    ├─ cpu::EvaluateDriver
 ///     │    ├─ cpu::DynamicsDriver
-///     │    └─ cpu::OptimizeDriver
-///     └─ cuda::CUDADriver<PhaseEnum>       ← CUDA backend layer (planned —
-///          ├─ cuda::EvaluateDriver           cuda-driver-taxonomy.md)
+///     │    ├─ cpu::OptimizeDriver
+///     │    ├─ cpu::ResponseDriver
+///     │    └─ cpu::SamplingDriver
+///     └─ cuda::CUDADriver<PhaseEnum>       ← CUDA backend layer
+///          ├─ cuda::EvaluateDriver           (cuda_driver.cuh)
 ///          ├─ cuda::DynamicsDriver
 ///          └─ cuda::OptimizeDriver
 /// @endcode
 ///
 /// `CPUDriver<P>` inherits the underlying `Driver<P, cpu::device_tag>`
 /// (which holds the Plan and Backend ownership) and adds the
-/// CPU-specific machinery the three category bases share:
+/// CPU-specific machinery the five category bases share:
 ///
 ///   1. A `build()` override that runs `validate_components()` before
 ///      the Plan is compiled. Subclasses override
@@ -34,9 +36,9 @@
 ///      set_dihedral, set_neighbor, set_observer, set_record, set_thermo)
 ///      shared across MD / Minimize / Evaluate via `CategoryTraits`.
 ///
-/// User code does not subclass this directly — the three concrete CPU
+/// User code does not subclass this directly — the five concrete CPU
 /// category bases (`cpu::EvaluateDriver` / `DynamicsDriver` /
-/// `OptimizeDriver`) do.
+/// `OptimizeDriver` / `ResponseDriver` / `SamplingDriver`) do.
 #pragma once
 
 #include <optional>

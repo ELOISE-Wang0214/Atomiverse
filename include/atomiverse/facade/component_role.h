@@ -22,6 +22,12 @@
 ///     advertises `Capability::Force`.
 ///   - `OptimizeDriver` requires ≥ 1 Optimizer AND ≥ 1 Evaluator that
 ///     advertises `Capability::Energy` or `Capability::Force`.
+///   - `ResponseDriver` requires ≥ 1 Evaluator that advertises
+///     `Capability::Force` (it fills finite-difference Hessian rows over a
+///     fixed 6N-displacement budget, no early stop).
+///   - `SamplingDriver` requires ≥ 1 component with role==Mover AND ≥ 1
+///     component advertising `Capability::Energy` (the trial-energy
+///     pipeline for the inline Metropolis test).
 ///
 /// @see cpu/cpu_driver.h (and the per-category bases under cpu/*_driver.h)
 #pragma once
@@ -43,7 +49,7 @@ enum class ComponentRole : uint8_t {
     Optimizer,  ///< Optimization step (LBFGS, CG, FIRE, ...).
     Thermostat, ///< Temperature controller (NoseHoover, Langevin, ...).
     Barostat,   ///< Pressure controller (Berendsen, MTK, ...).
-    Mover,      ///< Proposes a trial state change for a sampling driver (TranslateMove, ...).
+    Mover, ///< Proposes a trial state change for a sampling driver (TranslateMove, ...).
     ConvergenceCheck, ///< Reports loop convergence to the outer driver via outer_status.
     Recorder, ///< Writes I/O (XYZ, Zarr, thermo).
     Observer, ///< Computes derived diagnostics (RDF, density, orbital info).

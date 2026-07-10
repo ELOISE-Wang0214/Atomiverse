@@ -95,7 +95,16 @@ classical relaxation (`PairLJCut` at force) and *ab initio* geometry
 optimization (`SCFEvaluator` at force). The CUDA side mirrors this
 exactly: `cuda::minimizer::Minimize` is a `cuda::OptimizeDriver` that
 takes `SteepestDescent`, `CG`, or `LBFGS` Optimizer components — the
-same three-category taxonomy as the CPU backend.
+same category taxonomy as the CPU backend (which has five categories:
+Evaluate, Dynamics, Optimize, Response, Sampling; CUDA mirrors the
+first three).
+
+@subsection workflows_mc Monte Carlo Sampling
+
+The CPU side adds `cpu::mc::MC`, a `SamplingDriver` subclass: a Mover
+component (`TranslateMove`) proposes a trial move each sweep, the MD
+force pipeline recomputes the trial energy, and the driver applies the
+inline Metropolis accept/reject test.
 
 @subsection workflows_scf Electronic Structure
 

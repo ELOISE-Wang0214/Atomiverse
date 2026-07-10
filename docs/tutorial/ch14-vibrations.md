@@ -77,8 +77,9 @@ atoms that is $6N$ force evaluations plus one reference — a fixed budget with
 no convergence loop.
 
 That fixed-budget, no-early-stop structure is a *distinct* driver category.
-Alongside Evaluate (one pass), Dynamics (a step budget), and Optimize
-(early-stop on convergence), Atomiverse has a fourth category, **Response**,
+Alongside Evaluate (one pass), Dynamics (a step budget), Optimize
+(early-stop on convergence), and Sampling (trial moves with Metropolis
+accept/reject), Atomiverse has the **Response** category,
 whose loop runs a fixed number of displacement passes and then finalizes.
 Its concrete driver is
 [`cpu::vib::Hessian`](../../include/atomiverse/cpu/vib/hessian.h), which
@@ -234,11 +235,11 @@ Both suites also assert structural exactness (**exact** class): the projected
 mode count is exactly `3N−6` for a nonlinear molecule, a bit-precise property
 that no tolerance applies to.
 
-## The Recurring Pattern: A Fourth Category, Same Evaluator
+## The Recurring Pattern: Another Category, Same Evaluator
 
 Vibrational analysis is the clearest proof that Atomiverse's "swap the
 evaluator, keep the driver" architecture is not confined to MD. `cpu::vib::
-Hessian` is a *fourth* driver category (Response), distinguished from the
+Hessian` is its own driver category (Response), distinguished from the
 others only by its termination semantics — a fixed $6N$-displacement budget
 with no early stop — yet it consumes the *identical* `SCFEvaluator{config}`
 that:

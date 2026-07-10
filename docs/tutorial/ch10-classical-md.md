@@ -51,7 +51,7 @@ Concretely, a "classical" force in Atomiverse is any
 whose `capabilities()` advertises at least `Capability::Force`. The
 shipped set under `cpu/potentials/` is:
 
-| Component | Functional form | Capabilities |
+| Component | Functional form | Capability |
 |---|---|---|
 | `cpu::PairLJCut` | $4\varepsilon[(\sigma/r)^{12} - (\sigma/r)^6]$, shifted | Energy &#124; Force &#124; Stress |
 | `cpu::BondHarmonic` | $K(r - r_0)^2$ | Energy &#124; Force &#124; Stress |

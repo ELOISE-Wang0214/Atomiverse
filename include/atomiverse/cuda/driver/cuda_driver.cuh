@@ -8,7 +8,9 @@
 ///     ├─ cpu::CPUDriver<PhaseEnum>         ← CPU backend layer
 ///     │    ├─ cpu::EvaluateDriver
 ///     │    ├─ cpu::DynamicsDriver
-///     │    └─ cpu::OptimizeDriver
+///     │    ├─ cpu::OptimizeDriver
+///     │    ├─ cpu::ResponseDriver
+///     │    └─ cpu::SamplingDriver
 ///     └─ cuda::CUDADriver<PhaseEnum>       ← CUDA backend layer (this file)
 ///          ├─ cuda::EvaluateDriver
 ///          ├─ cuda::DynamicsDriver
@@ -17,7 +19,8 @@
 ///
 /// `CUDADriver<P>` inherits the underlying `Driver<P, cuda::device_tag>`
 /// (which holds the Plan and Backend ownership) and adds the
-/// CUDA-specific machinery the three category bases share:
+/// CUDA-specific machinery its category bases (Evaluate, Dynamics,
+/// Optimize — the CUDA-mirrored subset of the five CPU categories) share:
 ///
 ///   1. A `build()` override that runs `validate_components()` before the
 ///      Plan is compiled. Subclasses override `validate_components()` to
@@ -47,9 +50,9 @@
 
 #include "atomiverse/core/device.h"
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cuda/component/component.cuh"
 #include "atomiverse/cuda/driver/backend.cuh"
 #include "atomiverse/cuda/driver/backend_traits.cuh"
-#include "atomiverse/cuda/component/component.cuh"
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/driver.h"
 #include "atomiverse/facade/iteration_status.h"

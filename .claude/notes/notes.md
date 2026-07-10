@@ -138,3 +138,41 @@ Post-review fixes on the observer/recorder/io refactor (multi-axis review, REQUE
 - **One XYZ emitter:** molrs `trajectory_append` FFI deleted (with recorder/trajectory.{h,cpp}); everything routes through `write_frame_xyz`. New `write_frame_xyz_meta` FFI serializes key=value pairs into the extxyz comment line — `TrajectoryWriter` re-attaches `step`/`energy_eV` through it (restores the pre-refactor MolRec scalars).
 - **Driver infra scan is capability-typed:** `scan_pending_infra_()` keys on `provides_neighbor_list()/provides_halo_send()/provides_halo_recv()/neighbor_cutoff_hint()` + `role()==Observer && capabilities()&Stress` — no `name()` matching, no `dynamic_cast` (mirrors `cuda::md::MD::install_infra_`). `cpu::md::Virial` now declares `capabilities()==Stress`.
 - **Stored-ERI RHF Fock:** `build_coulomb_exchange_fused` adapts the contiguous ERI storage zero-copy (`xt::adapt`) instead of materializing an n⁴ copy per SCF iteration.
+
+## [2026-07-10] arch-refactor 链收口（01–09）
+
+九篇链一次过（用户裁决：**保留 Driver 命名**并在 harness 强化定位——Driver=任务类型，
+Gaussian job type 类比 SP/MD/Opt/Freq/MC；方法=inner Solver+Evaluator 组件，物性=Capability，
+永不上 Driver 层）。各篇一句：
+
+- **01-bindings**：`DefaultBinding` 加 `PhaseKind` 判别（`make_binding` 经 ADL `kind_of`），
+  driver 注册期校验 kind、跨 workflow 误绑定直接 throw 并点名两个 workflow。
+- **02-halo**：ComponentBase 的 8 个 halo 虚函数拆成 opt-in `HaloParticipant` 协议
+  （声明式 `CommField` + 引擎侧打包），`halo_participant()` 探测。
+- **03-neighbor**：`NeighborConsumer`/`NeighborProvider` 双协议（`as_*` 只读探测），
+  infra scan 去 `dynamic_cast`/`name()` 匹配。
+- **04-engines**：GPW 补齐 `GPWSolver` 类（build fail-fast/run 可重入），cuda SCF 解耦
+  driver Context → 窄 `SolverContext{stream, frame, step}`（shell 门禁）；
+  `eigen_solver`→`hessian_diagonalizer` 归位。
+- **05-context**：Context 分级——flat core + `ctx.md/mc/opt/analysis` service slice
+  （纯聚合、非多态，static_assert 锁定）。
+- **06-frame**：cpu::Frame 死 shim（flat Bonds/Angles/Dihedrals）删除；**write_back
+  round-trip 契约**钉死（x/v/f/charge/image/tag 回写、tag checked-i32、type/mass/topology/box
+  钦定 per-run 静态、scalars 只写通道），golden 双向断言。
+- **07-molrs**：cuda::RDF 迁移 molrs streaming accumulator（ring 冻结 positions+per-frame
+  cell，NPT-ready），全仓最后的手写分析数学 `rdf_histogram.{h,cpp}` 删除 + 双 grep 门。
+  **顺带实证既有隐患**：`CoulLong` 的 cluster CSR 只在 `flat_pairs_requested` 下填充，
+  而迁移后无人置位（此前唯一 setter 是旧 RDF）——Coulomb 路径需要独立的 CSR 请求
+  （TODO 已留 coul_long.cu / neighbor_list.cu，GPU 验证 owed）。
+- **08-python**：Python 假可用面清除（scf.py/optimizer.py/bind_scf/bind_optimizer/5 死
+  examples），canonical LAMMPS 名 clean-break（PairLJCut 等，无 alias），pw_scf fail-loud，
+  `test_surface.py` 钉契约（70 pass）。唯一全本地闭环 done 的一篇。
+- **09-harness**：CLAUDE.md Architecture 章重写（五类 taxonomy 表+Gaussian 类比列、方法
+  接入表、五协议 opt-in 表、Context 分层表、Frame 多后端规范章删 "identical field set"、
+  molrs 边界）；SamplingDriver/`cpu::mc::MC` 补录（此前实现了却缺席 harness）；
+  three-category/fourth-category 计数漂移全树归零；本条目即其归档交付。
+
+关键横向决策沉淀：PhaseKind 判别、opt-in 协议表（HaloParticipant/NeighborConsumer/
+NeighborProvider/PairEvaluator/AsyncComponentBase）、Context service 分组、write_back
+契约、cuda RDF 归 molrs（engine measures, molrs analyzes 两后端无例外）。
+GPU-owed 验证集中在 01–07 的台账（GH200 sbatch + Linux CI + /mol:bench）。

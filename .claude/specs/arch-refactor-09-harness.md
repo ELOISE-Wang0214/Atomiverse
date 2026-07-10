@@ -1,6 +1,6 @@
 ---
 title: arch-refactor-09-harness — 文档收口：CLAUDE.md 架构章重写 + 术语漂移修复 + canon/notes 同步
-status: approved
+status: code-complete
 date: 2026-07-10
 chain: arch-refactor (09/09)
 depends_on: [arch-refactor-01-bindings, arch-refactor-02-halo, arch-refactor-03-neighbor, arch-refactor-04-engines, arch-refactor-05-context, arch-refactor-06-frame, arch-refactor-07-molrs, arch-refactor-08-python]
@@ -47,15 +47,15 @@ depends_on: [arch-refactor-01-bindings, arch-refactor-02-halo, arch-refactor-03-
 
 ## Tasks
 
-- [ ] Rewrite CLAUDE.md `## Architecture` 章（scope a/c/d/e/f/g/h：三支柱+目录表刷新含 `mc/`+`semiempirical/`、方法接入模型 SCF/PW/GPW/NDDO-AM1=Solver+Evaluator 且物性=Capability、Component 核心集+五协议 opt-in 表+PhaseKind 强制 `.on()` 规则、Context `ctx.md/mc/opt/analysis` 分层表、Frame 多后端规范章并删除 "identical field set" 表述、molrs 边界、conventions 校正；顺手校正 frontmatter `notes_path` → `.claude/notes/notes.md`）(CLAUDE.md)
-- [ ] Update CLAUDE.md Driver 现状补录（scope b：taxonomy 表扩五行加 Gaussian job type 类比列、删 :239-242 Sampling 假设句改用 Path/NEB 举例、`### Drivers` 表加 `cpu::mc::MC` 行、`### MD components` 旁补 MC 组件段、Key APIs 补 MC snippet）(CLAUDE.md)
-- [ ] Fix 头文件 doc 注释计数漂移：`component_role.h:17-24` 校验列表扩为五类（补 ResponseDriver + SamplingDriver 规则，与 `sampling_driver.h:32-33` 一致）；`cpu_driver.h:20` 与 `cuda_driver.cuh:20` "three category bases" 改为如实计数 (include/atomiverse/facade/component_role.h, include/atomiverse/cpu/driver/cpu_driver.h, include/atomiverse/cuda/driver/cuda_driver.cuh)
-- [ ] Fix Doxygen mainpage：`mainpage.dox:96-98` "same three-category taxonomy" 改为按后端如实陈述 CPU 五类/CUDA 覆盖，并在 workflows 节补 Sampling/MC 一句 (docs/mainpage.dox)
-- [ ] Audit and fix manual-discovery §9 全部 8 条在 docs/ 的残留：`ch14-vibrations.md:81,237` 与 `cpu-internals.md:27` "fourth category" 计数更新、`ch10-classical-md.md:54` `Capabilities`→`Capability`、`architecture.md` 五类陈述核对；grep 确认条目 1/2/4/5/8（`cpu::observer::RDF`/`cpu::recorder::XYZ`/`cpu::Trajectory`/`scf::SCF` driver/`scf::Phase`）在 docs/+examples/+README.md 均无命中，有残留即修 (docs/developer/architecture.md, docs/developer/cpu-internals.md, docs/tutorial/ch14-vibrations.md, docs/tutorial/ch10-classical-md.md)
-- [ ] Extend manual-system.md §2 terminology canon：loop-owner 行补 `SamplingDriver`；新增 `PhaseKind`、`HaloParticipant`、`NeighborConsumer`/`NeighborProvider`、Context "service slice"（`ctx.md/mc/opt/analysis`）四行 (.claude/specs/manual-system.md)
-- [ ] Append notes 归档条目：`## [2026-07-10] arch-refactor 链收口` — 链摘要（01–08 一句一条）+ 关键决策（保留 Driver 命名、PhaseKind 判别、opt-in 协议表、Context service 分组、write_back 契约、cuda RDF 归 molrs）(.claude/notes/notes.md)
-- [ ] Verify CLAUDE.md 全部代码 snippet 有编译实体对应（仓库无 snippet 编译门禁，按替代验证：MD↔`examples/07_md_lj.cpp`、geom-opt↔`examples/05_geom_opt.cpp`、PW↔`examples/08_pw.cpp`、新 MC snippet↔`tests/cpu/mc/` 等；以 `-DATV_BUILD_EXAMPLES=ON -DATV_BUILD_TESTS=ON` 构建确认对应文件编译通过且 API 调用形式一致）(CLAUDE.md)
-- [ ] Run full check + test suite（`cmake --build build -j$(nproc)` + `ctest --test-dir build --output-on-failure`，确认头文件注释改动零行为影响）
+- [x] Rewrite CLAUDE.md `## Architecture` 章（scope a/c/d/e/f/g/h：三支柱+目录表刷新含 `mc/`+`semiempirical/`、方法接入模型 SCF/PW/GPW/NDDO-AM1=Solver+Evaluator 且物性=Capability、Component 核心集+五协议 opt-in 表+PhaseKind 强制 `.on()` 规则、Context `ctx.md/mc/opt/analysis` 分层表、Frame 多后端规范章并删除 "identical field set" 表述、molrs 边界、conventions 校正；顺手校正 frontmatter `notes_path` → `.claude/notes/notes.md`）(CLAUDE.md)
+- [x] Update CLAUDE.md Driver 现状补录（scope b：taxonomy 表扩五行加 Gaussian job type 类比列、删 :239-242 Sampling 假设句改用 Path/NEB 举例、`### Drivers` 表加 `cpu::mc::MC` 行、`### MD components` 旁补 MC 组件段、Key APIs 补 MC snippet）(CLAUDE.md)
+- [x] Fix 头文件 doc 注释计数漂移：`component_role.h:17-24` 校验列表扩为五类（补 ResponseDriver + SamplingDriver 规则，与 `sampling_driver.h:32-33` 一致）；`cpu_driver.h:20` 与 `cuda_driver.cuh:20` "three category bases" 改为如实计数 (include/atomiverse/facade/component_role.h, include/atomiverse/cpu/driver/cpu_driver.h, include/atomiverse/cuda/driver/cuda_driver.cuh)
+- [x] Fix Doxygen mainpage：`mainpage.dox:96-98` "same three-category taxonomy" 改为按后端如实陈述 CPU 五类/CUDA 覆盖，并在 workflows 节补 Sampling/MC 一句 (docs/mainpage.dox)
+- [x] Audit and fix manual-discovery §9 全部 8 条在 docs/ 的残留：`ch14-vibrations.md:81,237` 与 `cpu-internals.md:27` "fourth category" 计数更新、`ch10-classical-md.md:54` `Capabilities`→`Capability`、`architecture.md` 五类陈述核对；grep 确认条目 1/2/4/5/8（`cpu::observer::RDF`/`cpu::recorder::XYZ`/`cpu::Trajectory`/`scf::SCF` driver/`scf::Phase`）在 docs/+examples/+README.md 均无命中，有残留即修 (docs/developer/architecture.md, docs/developer/cpu-internals.md, docs/tutorial/ch14-vibrations.md, docs/tutorial/ch10-classical-md.md)
+- [x] Extend manual-system.md §2 terminology canon：loop-owner 行补 `SamplingDriver`；新增 `PhaseKind`、`HaloParticipant`、`NeighborConsumer`/`NeighborProvider`、Context "service slice"（`ctx.md/mc/opt/analysis`）四行 (.claude/specs/manual-system.md)
+- [x] Append notes 归档条目：`## [2026-07-10] arch-refactor 链收口` — 链摘要（01–08 一句一条）+ 关键决策（保留 Driver 命名、PhaseKind 判别、opt-in 协议表、Context service 分组、write_back 契约、cuda RDF 归 molrs）(.claude/notes/notes.md)
+- [x] Verify CLAUDE.md 全部代码 snippet 有编译实体对应（仓库无 snippet 编译门禁，按替代验证：MD↔`examples/07_md_lj.cpp`、geom-opt↔`examples/05_geom_opt.cpp`、PW↔`examples/08_pw.cpp`、新 MC snippet↔`tests/cpu/mc/` 等；以 `-DATV_BUILD_EXAMPLES=ON -DATV_BUILD_TESTS=ON` 构建确认对应文件编译通过且 API 调用形式一致）(CLAUDE.md)
+- [x] Run full check + test suite（`cmake --build build -j$(nproc)` + `ctest --test-dir build --output-on-failure`，确认头文件注释改动零行为影响）
 
 ## Testing strategy
 

@@ -33,7 +33,11 @@ Fix these names everywhere; a new chapter inherits whatever is written first.
 
 | concept | canonical name | NOT |
 |---|---|---|
-| loop owner | `Driver` / category base (`EvaluateDriver`, `DynamicsDriver`, `OptimizeDriver`, `ResponseDriver`) | "SinglePoint", "SCF driver" |
+| loop owner | `Driver` / category base (`EvaluateDriver`, `DynamicsDriver`, `OptimizeDriver`, `ResponseDriver`, `SamplingDriver`) | "SinglePoint", "SCF driver" |
+| binding discriminant | `PhaseKind` (`make_binding(Phase, order)` → `DefaultBinding{kind, phase, order}`) | raw `int` phase in a default binding |
+| halo protocol | `HaloParticipant` (opt-in; declarative `CommField`s, engine-side packing) | halo virtuals on `ComponentBase` |
+| neighbor protocols | `NeighborConsumer` / `NeighborProvider` (`as_neighbor_consumer()` / `as_neighbor_provider()`) | `name()`-matching, `dynamic_cast` infra scans |
+| per-workflow context state | Context "service slice" (`ctx.md` / `ctx.mc` / `ctx.opt` / `ctx.analysis`) | new flat fields on the Context core |
 | result bundle | `SystemScalars` (`frame.scalars`) | "output struct" |
 | radial distribution | `ATV::RDF` | `cpu::RDF`, `cpu::observer::RDF` |
 | XYZ recorder | `cpu::XYZ` | `cpu::recorder::XYZ` |

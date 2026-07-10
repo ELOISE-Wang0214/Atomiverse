@@ -54,7 +54,7 @@ define the public execution skeleton:
 - `Driver` owns user-registered components
 - `PhaseBuilder` supports the fluent `.on(phase).add(...)` syntax
 - `PlanBuilder` compiles unordered registrations into a sorted execution plan
-- `stage.h` defines the phase order for each driver category (MD, minimization, evaluation, and vibrational analysis)
+- `stage.h` defines the phase order for each driver category (MD, minimization, evaluation, vibrational analysis, and Monte Carlo sampling) plus the `kind_of(Phase)` overloads behind `make_binding`
 
 The facade is deliberately CUDA-free. Its job is to collect intent, not to run
 the algorithm itself.

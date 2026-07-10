@@ -17,16 +17,17 @@ mol_project:
     required: true
   ci:
     config: .github/workflows/ci.yml
-  notes_path: .claude/NOTES.md
+  notes_path: .claude/notes/notes.md
   specs_path: .claude/specs/
 ---
 
 # CLAUDE.md
 
 Atomiverse is a dual-backend (CPU + CUDA) molecular-simulation engine with one
-shared Driver/Component API spanning classical molecular dynamics, geometry
-optimization, vibrational analysis, and electronic structure (Gaussian-basis
-SCF and plane-wave DFT). C++17, `ATV::` namespace.
+shared Driver/Component API spanning classical molecular dynamics, Monte Carlo
+sampling, geometry optimization, vibrational analysis, and electronic
+structure (Gaussian-basis SCF, plane-wave DFT, Gaussian-and-plane-waves DFT,
+and NDDO/AM1 semiempirics). C++17, `ATV::` namespace.
 
 > **Branch note:** active development is on **`dev`**. `master` is a single
 > squashed snapshot with the *old* pre-2026 layout (`cpu/frame.h`, `cpu/md/lj.h`,
@@ -178,8 +179,12 @@ directory is a pillar layer, an infrastructure cluster, or a method domain:
   async/       infra: async analysis pipeline (snapshot ring, D2H bridge, executors)
   linalg/      infra: shared dense linear algebra (eigensolve, density build; CPU only)
   md/          domain: integrators, thermostats, barostats, deform, velocity init
+  mc/          domain: Monte Carlo — SamplingDriver's concrete MC, movers,
+               trial transaction (CPU only)
   minimizer/   domain: SD, CG, L-BFGS + opt recorders
   scf/         domain: Gaussian-basis SCF (solver, integrals, gradients, evaluator)
+  semiempirical/ domain: NDDO/AM1 semiempirical SCF (NDDOSolver, AM1Evaluator,
+               AM1-BCC charge assigner; CPU only)
   pw/          domain: plane-wave DFT (PWSolver, PWEvaluator)
   gpw/         domain: Gaussian-and-plane-waves DFT (GPWSolver, GPWEvaluator; CPU only)
   xc/          domain: shared exchange-correlation pieces (Padé LDA parameterization)
@@ -223,40 +228,53 @@ molrs.hpp    stable CXX FFI header
 
 ### Driver taxonomy
 
-CPU has four **outer task-category** drivers, each subclassing
-`CPUDriver<PhaseEnum>` (which wraps `Driver<PhaseEnum, DeviceTag>`). Category is
-decided by **termination semantics**, not algorithm:
+A Driver category is a **task type** — the analogue of a Gaussian job type
+(SP, Opt, Freq, …): what kind of calculation the user asked for. Category is
+decided by **termination semantics**, never by algorithm or method. CPU has
+five category bases, each subclassing `CPUDriver<PhaseEnum>` (which wraps
+`Driver<PhaseEnum, DeviceTag>`):
 
-| Category base | Phase enum | Termination | Concrete CPU driver |
-|---|---|---|---|
-| `cpu::EvaluateDriver` | `evaluate::Phase` | exactly one pass | `cpu::Evaluate` |
-| `cpu::DynamicsDriver` | `md::Phase` | full step budget; honours `outer_status.stop_requested` | `cpu::md::MD` |
-| `cpu::OptimizeDriver` | `minimizer::Phase` | early stop on `outer_status.converged` | `cpu::minimizer::Minimize` |
-| `cpu::ResponseDriver` | `vib::Phase` | fixed 6N-displacement budget + finalize; no early stop | `cpu::vib::Hessian` |
+| Category base | Gaussian analogue | Phase enum | Termination | Concrete CPU driver |
+|---|---|---|---|---|
+| `cpu::EvaluateDriver` | SP | `evaluate::Phase` | exactly one pass | `cpu::Evaluate` |
+| `cpu::DynamicsDriver` | MD | `md::Phase` | full step budget; honours `outer_status.stop_requested` | `cpu::md::MD` |
+| `cpu::OptimizeDriver` | Opt | `minimizer::Phase` | early stop on `outer_status.converged` | `cpu::minimizer::Minimize` |
+| `cpu::ResponseDriver` | Freq | `vib::Phase` | fixed 6N-displacement budget + finalize; no early stop | `cpu::vib::Hessian` |
+| `cpu::SamplingDriver` | MC | `sampling::Phase` | trial-move budget with inline Metropolis accept/reject; honours `stop_requested`, no convergence path | `cpu::mc::MC` |
 
 CUDA mirrors three of these: `cuda::Evaluate`, `cuda::md::MD`,
 `cuda::minimizer::Minimize`, each subclassing `cuda::CUDADriver<PhaseEnum>`.
 
-Adding a fifth user-facing category requires a genuinely distinct outer-loop
-semantic (e.g. Sampling for MC/HMC/REMD, Path for NEB) — never an algorithm
-wrapper.
+Adding a sixth user-facing category requires a genuinely distinct outer-loop
+semantic (e.g. Path for NEB — terminate when every image of a coupled chain
+has converged) — never an algorithm wrapper.
 
-**SCF is *not* an outer category.** Both Gaussian SCF and plane-wave DFT are
-*inner solvers* — public low-level classes, **not** `Driver` subclasses —
-driven by an Evaluator component:
+**Methods are never categories.** A *method* — how energy/forces are computed
+(Gaussian SCF, plane-wave DFT, GPW, NDDO/AM1) — enters the architecture as an
+**inner Solver** (a public low-level class that owns its iteration loop and
+workspace; **not** a `Driver` subclass) wrapped by an **Evaluator component**
+that any driver binds at its force/energy phase:
 
-- Gaussian: `cpu::scf::SCFSolver` / `cuda::scf::SCFSolver`, behind
-  `cpu::scf::SCFEvaluator` / `cuda::scf::SCFEvaluator`.
-- Plane-wave: `cpu::pw::PWSolver`, behind `cpu::pw::PWEvaluator`.
+| Method | Inner solver | Evaluator component |
+|---|---|---|
+| Gaussian SCF (RHF/UHF/UKS) | `cpu::scf::SCFSolver` / `cuda::scf::SCFSolver` | `cpu::scf::SCFEvaluator` / `cuda::scf::SCFEvaluator` |
+| Plane-wave DFT | `cpu::pw::PWSolver` | `cpu::pw::PWEvaluator` |
+| Gaussian-and-plane-waves DFT | `cpu::gpw::GPWSolver` | `cpu::gpw::GPWEvaluator` |
+| NDDO/AM1 semiempirics | `cpu::semiempirical::NDDOSolver` (AM1 parameterization) | `cpu::semiempirical::AM1Evaluator` |
+
+*Properties* (charges, dipoles, Mulliken populations, AM1-BCC charges, …) are
+component **Capabilities** — frame fields an Evaluator or Observer advertises
+and writes — and never appear at the Driver level: there is no "charge
+driver", only components with `Capability::Charge`.
 
 Single-point energy in user code is `Evaluate + <method>Evaluator` (or the
 `single_point` helper). There is **no `SinglePoint` class** and **no SCF phase
 enum** — `ATV::scf::Phase` is deleted and grep-gated (`test_scf_phase_scrub`,
-`test_cuda_scf_phase_scrub`). The `scf_solve()` / `pw_scf()` shims remain as
-thin functional wrappers over a transient solver. SCF/PW step helpers
-(`*::scf::internal::*`, `*::pw::internal::*`) are owned by the solver, never
-inherit `ComponentBase`, and are never registered into a Plan; facade-public
-headers must not include them (tests may).
+`test_cuda_scf_phase_scrub`). The `scf_solve()` / `pw_scf()` / `gpw_scf()`
+shims remain as thin functional wrappers over a transient solver. Solver step
+helpers (`*::scf::internal::*`, `*::pw::internal::*`) are owned by the solver,
+never inherit `ComponentBase`, and are never registered into a Plan;
+facade-public headers must not include them (tests may).
 
 ```
 CPUDriver<PhaseEnum>::run(frame, ...)
@@ -277,7 +295,7 @@ behaviour beyond the base.
 Two orthogonal axes (`facade/component_role.h`):
 - `ComponentRole role()` — structural slot: `Evaluator`, `Integrator`,
   `Optimizer`, `Thermostat`, `Barostat`, `ConvergenceCheck`, `Recorder`,
-  `Observer`, `None`.
+  `Observer`, `Mover`, `None`.
 - `Capability capabilities()` — bitset of frame fields `launch()` may write:
   `Energy`, `Force`, `Stress`, `Charge`, `Dipole`, `DensityMatrix`,
   `Orbitals`. Bitwise `|`/`&`/`has_capability`.
@@ -285,7 +303,31 @@ Two orthogonal axes (`facade/component_role.h`):
 **Algorithms are components, not driver subclasses.** `LBFGS`/`CG`/future
 `FIRE` are Optimizer components plugged into `Minimize`;
 `VelocityVerlet`/`NoseHoover`/`FixLangevin`/`Barostat` are
-Integrator/Thermostat/Barostat components plugged into `MD`.
+Integrator/Thermostat/Barostat components plugged into `MD`;
+`TranslateMove` is a Mover component plugged into `MC`.
+
+**PhaseKind-typed bindings** (`core/binding.h`, `facade/stage.h`): a
+`DefaultBinding` is `{PhaseKind kind, int phase, int order}` constructed via
+`make_binding(Phase, order)` — the `kind` discriminant tags which workflow's
+phase enum the raw `int` came from. Driver registration validates every
+binding's kind against the driver's own phase domain and throws naming both
+workflows (no silent cross-workflow misbinds). Components used in more than
+one workflow (NeighborList, pair/bonded styles, Thermo, …) must **not**
+declare `default_bindings()` — they are registered explicitly via
+`.on(phase).add(comp, order)` or a categorical setter, which binds them in
+the calling driver's own phase domain.
+
+**Opt-in protocols** — `ComponentBase` stays minimal; cross-cutting
+infrastructure needs are declared by implementing a protocol the engine
+probes for (no `dynamic_cast`, no dead default virtuals):
+
+| Protocol | Declares | Engine probe |
+|---|---|---|
+| `HaloParticipant` (`component/halo_participant.h`) | declarative halo `CommField`s + endpoints; engine-side packing in `comm::HaloSend/HaloRecv` | `halo_participant()` |
+| `NeighborConsumer` (`component/neighbor_protocol.h`) | `neighbor_cutoff()` the neighbor stage must cover | `as_neighbor_consumer()` |
+| `NeighborProvider` (same header) | this component builds/publishes the pair list | `as_neighbor_provider()` |
+| `PairEvaluator` (`component/pair_evaluator.h`) | shared non-bonded pair-style base (cutoff, special-bonds) | — |
+| `AsyncComponentBase` (`async/async_component_base.h`; CUDA analogue `AsyncBridge`) | deferred snapshot-ring analysis off the hot path | `scheduling() == deferrable` |
 
 **Iteration status channel** (`facade/iteration_status.h`):
 `Context::outer_status` is `{converged, stop_requested, reason}`, owned by the
@@ -311,22 +353,66 @@ during their `convergence_check`-phase binding. SCF/PW internals never touch it.
   positions, velocities, integrals, shell descriptors; never precomputed
   indices, caches, or derived maps. Consumers derive their own views.
 
-### Data residency
+### Context tiers
 
-The three frames carry an **identical field set** (atoms incl.
-`charge`/`tag`/`image`, bonds/angles/dihedrals, the `core/system_scalars.h`
-`SystemScalars` bundle, box) and differ only in device representation:
+`Context` (cpu `component/context.h`, cuda `component/context.cuh`) is a flat
+**core** plus per-workflow **service slices**. Core fields serve every
+workflow: threading/MPI topology (`n_threads`, `mpi_rank`, `mpi_size`), the
+timing registry, and `outer_status` (owned by the category driver). Workflow
+state lives in its slice — a component reaches only the slice of the workflow
+it serves:
 
-- `cpu::Frame` = xtensor on host. Zero-copy in Driver (no transfer).
-- `cuda::Frame` = device pointers. `cpu::to_cuda()` / `cuda::to_cpu()`.
-- `torch::Frame` = `at::Tensor` (autograd-capable). `torch::transfer` bridges.
-- `molrs.Frame` ⇄ a device frame via `materialize()` (H2D) / `write_back()`
-  (D2H), run once per `run()`.
+| Slice | Struct | Serves | Key fields (CPU) |
+|---|---|---|---|
+| `ctx.md` | `DynamicsServices` | Dynamics force pipeline | `dd` (domain decomposition), `pair_list`, halo/migration hooks |
+| `ctx.mc` | `SamplingServices` | Sampling | `proposal` (`mc::Transaction` — Mover writes, driver rolls back on reject) |
+| `ctx.opt` | `OptimizeServices` | Optimize | `reeval_forces` line-search callback, `line_search_trial` flag |
+| `ctx.analysis` | `AnalysisServices` | async observers/recorders | `executor` (snapshot-ring analysis) |
+
+Slices are plain aggregates and the Context stays non-polymorphic
+(static-asserted). Per-backend: `cuda::Context` carries streams + the `md`
+slice only (`cuda::DynamicsServices`: `pair_list`, `flat_pairs_requested`,
+exclusion CSR, …); the cuda SCF solver deliberately does **not** take the
+driver Context — it receives a narrow `SolverContext{stream, frame, step}`
+(`cuda/scf/internal/solver_context.cuh`, isolation grep-gated by
+`tests/cuda/scf_solver_isolation.sh`).
+
+### Frame — multi-backend design
+
+A Frame is the device-resident system state. The **semantic** field set is
+shared across backends (atoms incl. `charge`/`tag`/`image`, bonded topology,
+the `core/system_scalars.h` `SystemScalars` bundle, box) — but each backend
+owns its **representation**, and the differences are load-bearing:
+
+| Frame | Representation | Topology layout |
+|---|---|---|
+| `molrs.Frame` | flat Block columns — the exchange schema at the boundary | flat bonds/angles/dihedrals blocks |
+| `cpu::Frame` | xtensor SoA on host; zero-copy in Driver | per-atom LAMMPS layout (`num_bond`/`bond_atom` with global-tag partners) |
+| `cuda::Frame` | raw device pointers + host-cached counts | **dual**: single-GPU flat `BondList`/`AngleList`/`DihedralList` (kernels not yet ported to per-atom, so `cpu::to_cuda` re-flattens on every transfer); multi-GPU per-atom SoA with global-tag partners for migration |
+| `torch::Frame` | `at::Tensor` blocks (autograd-capable) | flat bonds/angles/dihedrals sub-structs |
+
+Conversion points, each owning exactly one boundary:
+
+- `materialize()` / `write_back()` (`cpu/frame/materialize.h`) — molrs.Frame ⇄
+  cpu::Frame, run once per `run()`, never in a step loop. `write_back`
+  follows a pinned round-trip contract (golden-tested in
+  `tests/cpu/test_materialize.cpp`): x/v/f, charge, image, and tag are
+  written back (tag with checked i32 narrowing — overflow throws, no silent
+  truncation); type, mass, topology, and box are per-run static inputs and
+  **not** written; scalars/stress are a write-only channel.
+- `cpu::to_cuda()` / `cuda::to_cpu()` — host ⇄ device; `cuda::write_back`
+  inherits the cpu contract via `to_cpu`.
+- `torch::transfer` — cpu ⇄ torch tensors.
+
+Precision tiers map 1:1 across backends: `core/precision.h`
+`StorageReal`/`WorkReal`/`AccReal` (accumulators always double) ⇄
+`cuda/frame/types.cuh` `real_t`/`work_t`/`prec_t`; integer IDs by LAMMPS
+lmptype role (`LocalInt`/`TagInt`/`ImageInt`/`BigInt`).
 
 Per the Frame-purity rule the frame holds **no** method-specific scratch: the
 SCF workspace is owned by `*::scf::SCFSolver`, the plane-wave workspace by
-`cpu::pw::PWSolver`, the neighbor pair list by `*::NeighborList` (published as a
-non-owning `Context::pair_list`). No implicit transfer in low-level operators;
+`cpu::pw::PWSolver`, the neighbor pair list by `*::NeighborList` (published as
+a non-owning `ctx.md.pair_list`). No implicit transfer in low-level operators;
 CUDA pipelines stay on device between explicit transfers.
 
 ### CUDA execution model
@@ -342,28 +428,35 @@ molrs (Rust) is a hard dependency for I/O and trajectory analysis. The engine
 per-frame writers in `cpu/io/frame_writer.h`, batch computes + streaming
 accumulators (`cpu::compute::*`) in `cpu/observer/trajectory_metrics.h`
 (PIMPL) — with no `rust/cxx.h` in public headers. `molrs.hpp` is the only
-include for CXX-generated code.
+include for CXX-generated code. **No analysis math lives in C++ on either
+backend**: both the CPU and CUDA RDF observers stream positions + per-frame
+cell into the molrs accumulator (binning + normalization are molrs-only,
+grep-gated by `test_cuda_rdf_molrs_migration`); the one g(r) file emitter is
+`cpu::rdf_write_curve` (`cpu/observer/rdf_curve.h`, CUDA-safe).
 
 ## Conventions
 
 - **Namespace:** `ATV`. Sub: `ATV::cpu`, `ATV::cuda`, `ATV::md`,
-  `ATV::minimizer`, `ATV::scf`, `ATV::pw`, `ATV::evaluate`. Inner solvers:
-  `ATV::cpu::scf::SCFSolver`, `ATV::cuda::scf::SCFSolver`,
-  `ATV::cpu::pw::PWSolver`. SCF/PW internals: `ATV::cpu::scf::internal` etc.
+  `ATV::minimizer`, `ATV::sampling`, `ATV::scf`, `ATV::pw`, `ATV::evaluate`.
+  Inner solvers: `ATV::cpu::scf::SCFSolver`, `ATV::cuda::scf::SCFSolver`,
+  `ATV::cpu::pw::PWSolver`, `ATV::cpu::gpw::GPWSolver`,
+  `ATV::cpu::semiempirical::NDDOSolver`. SCF/PW internals:
+  `ATV::cpu::scf::internal` etc.
 - **File extensions:** CPU `.h`/`.cpp`, CUDA `.cuh`/`.cu`, facade/core `.h`.
   Documented exceptions: deliberately CUDA-free bridge headers under `cuda/`
   keep `.h` (`cuda/log_callback.h`, `cuda/timer.h`).
 - **Driver template:** subclass a category base
-  (`cpu::EvaluateDriver`/`DynamicsDriver`/`OptimizeDriver`/`ResponseDriver` or
-  the CUDA equivalents), never `Driver<>` directly. Driver subclass headers
-  include the matching `backend_traits.h`.
+  (`cpu::EvaluateDriver`/`DynamicsDriver`/`OptimizeDriver`/`ResponseDriver`/
+  `SamplingDriver` or the CUDA equivalents), never `Driver<>` directly.
+  Driver subclass headers include the matching `backend_traits.h`.
 - **No factory functions** — components are classes with constructors.
 - **No fallback values** — lookup tables throw on unsupported input.
 - **Phase naming:** Evaluate `prepare, evaluate, finalize`; MD LAMMPS-style
   (`initial_integrate, pre_force, force, post_force, final_integrate,
   end_of_step`); Minimizer `search_direction, line_search, force,
   convergence_check, end_of_step`; Vib `setup, displace, force, accumulate,
-  diagonalize, thermochem, end_of_step`. **No SCF phase enum** anywhere.
+  diagonalize, thermochem, end_of_step`; Sampling `propose, energy,
+  end_of_step`. **No SCF phase enum** anywhere.
 - **Units:** eV, Å, fs, amu, eV/Å, K. Conversions in `core/units.h`. SCF/PW
   report internally in Hartree/Ry and convert eV onto `frame.scalars.energy`.
 - **Precision:** LAMMPS-style tiered, in `core/precision.h`. Reals:
@@ -409,10 +502,10 @@ include for CXX-generated code.
   (runs, unphysical). A real Si UPF ships at
   `benchmarks/pw/si/validation/reference/Si_lda_nc.upf`.
 - **Categorical setters** (LAMMPS-shaped, on `cpu::md::MD` /
-  `cpu::minimizer::Minimize`): `set_pair, set_bond, set_angle, set_dihedral,
-  set_neighbor, set_observer, set_record, set_thermo` (shared);
+  `cpu::minimizer::Minimize` / `cpu::mc::MC`): `set_pair, set_bond, set_angle,
+  set_dihedral, set_neighbor, set_observer, set_record, set_thermo` (shared);
   `set_integrator, set_thermostat, set_barostat` (MD); `set_optimizer`
-  (Minimize). NeighborList is user-set; halo exchange auto-injects under
+  (Minimize); `set_mover` (MC). NeighborList is user-set; halo exchange auto-injects under
   `ATV_BUILD_MPI` when `set_pair` is called; `VirialStress` auto-injects when an
   NPT/Berendsen barostat declares `reads()==Stress`. `add()` /
   `on(phase).add()` remain public for hooks the categorical API lacks.
@@ -442,6 +535,15 @@ opt.set_optimizer(cpu::minimizer::LBFGS{5, 0.01, 0.05});
 opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{cfg});
 opt.build();  opt.run(frame, 100);
 
+// Monte Carlo sampling (NVT Metropolis)
+cpu::mc::MC mc{/*T [K]=*/300.0, /*seed=*/12345u};
+mc.set_pair(cpu::PairLJCut{eps, sigma, cutoff});
+mc.set_neighbor(cpu::md::NeighborList<>{cutoff, skin, 1, 0, true});
+mc.set_mover(cpu::mc::TranslateMove{/*delta [Å]=*/0.2});
+mc.set_thermo(100);
+mc.build();  mc.run(frame, 100000);   // 100k trial moves
+double e = mc.current_energy();       // [eV]; mc.acceptance_ratio() in [0,1]
+
 // Plane-wave DFT single point
 cpu::pw::PWEvaluator pwe{cpu::pw::PWConfig{.ecut_ry = 30.0, .k_mesh = 4}};
 cpu::single_point(frame, pwe);   // frame.scalars.energy [eV]; pwe.last_result() [Ry/Ha]
@@ -457,8 +559,10 @@ cpu::single_point(frame, pwe);   // frame.scalars.energy [eV]; pwe.last_result()
 | `cpu::md::MD` / `cuda::md::MD` | CPU/CUDA | Dynamics | `md::Phase` |
 | `cpu::minimizer::Minimize` / `cuda::minimizer::Minimize` | CPU/CUDA | Optimize | `minimizer::Phase` |
 | `cpu::vib::Hessian` | CPU | Response | `vib::Phase` |
+| `cpu::mc::MC` | CPU | Sampling | `sampling::Phase` |
 
-SCF/PW are inner solvers (`*::scf::SCFSolver`, `cpu::pw::PWSolver`), not drivers.
+SCF/PW/GPW/NDDO are inner solvers (`*::scf::SCFSolver`, `cpu::pw::PWSolver`,
+`cpu::gpw::GPWSolver`, `cpu::semiempirical::NDDOSolver`), not drivers.
 
 ### MD components
 VelocityVerlet, NVELimit, InitVelocity, NoseHoover (Thermostat), NoseHooverNPT
@@ -468,6 +572,13 @@ BondHarmonic / AngleHarmonic / DihedralMultiHarmonic (Energy|Force),
 VirialStress. **LAMMPS-style names are canonical** — the old
 `LJ`/`HarmonicBond`/`HarmonicAngle`/`MultiHarmonicDihedral` CPU aliases are
 deleted (the torch backend keeps its own `LJ`/`HarmonicBond`).
+
+### MC components (CPU)
+`TranslateMove` (Mover — single-particle random displacement, max step δ [Å]);
+the trial changeset is `mc::Transaction`, published on `ctx.mc.proposal`
+(Mover writes the proposal, the driver commits or rolls back per the inline
+Metropolis test). Reuses the MD force pipeline for trial energies
+(`set_pair`/`set_neighbor`); `NeighborList` runs in always-rebuild mode.
 
 ### Minimizer components
 LBFGS, CG (Polak-Ribière+), OptLog / TrajectoryWriter / FinalGeometry

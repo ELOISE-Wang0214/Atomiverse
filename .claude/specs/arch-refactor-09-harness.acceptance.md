@@ -87,3 +87,25 @@ ac-001…ac-012 为 docs 型：每条都是"文档陈述 ↔ 代码事实"的单
 ac-013 为本篇唯一 runtime 判据：仓库现无 CLAUDE.md snippet 编译门禁，按 spec
 Testing strategy 的替代方案以 examples/tests 编译实体验证，同时确认三个头文件的
 纯注释改动零行为影响。
+
+> **审计注记（2026-07-10，本地 macOS）**：12 条 docs 判据未自行提升（evaluator-protocol：
+> docs → human reviewer / `/mol:close --manual`），但其全部 grep 门已本地机检为绿，供复核：
+> taxonomy 表 5 行含 `cpu::mc::MC`+`sampling::Phase`+五个 Gaussian 类比对；
+> `e.g. Sampling for MC/HMC/REMD` 0 命中（扩展指引改用 Path/NEB）；目录表补 `mc/`+
+> `semiempirical/` 且逐行对应磁盘；方法接入表 4 行（SCF/PW/GPW/NDDO-AM1 = Solver+Evaluator）
+> + "物性=Capability 永不上 Driver 层" 明示；五协议表 + PhaseKind `.on()` 规则 + role 含
+> Mover；Context 分层表 core+4 slice+per-backend（cuda md-only + SolverContext）；
+> `identical field set` 0 命中且 Frame 章四要素齐（表示表/转换点/契约表/精度映射）；
+> `three-category|three category bases`（docs/+include/+CLAUDE.md）与 `fourth categor`
+>（docs/）全部 0 命中；§9 token 集（cpu::observer::RDF|cpu::recorder::XYZ|cpu::Trajectory）
+> docs/+examples/+README 0 命中、docs 无 `Capabilities` 类型用法残留；manual-system §2
+> loop-owner 行含 SamplingDriver + 新增 PhaseKind/HaloParticipant/Neighbor 双协议/service
+> slice 四行；notes.md 2026-07-10 arch-refactor 归档条目含五项决策。frontmatter
+> `notes_path` 已顺手校正为 `.claude/notes/notes.md`。
+>
+> ac-013（唯一 runtime）：`-DATV_BUILD_EXAMPLES=ON` 全量构建通过（01_scf…10_gpw_znoedl
+> 全部编译），snippet↔实体对应全数核实（MD↔07_md_lj、geom-opt↔05_geom_opt、PW↔08_pw、
+> AIMD↔06_aimd、RHF↔01_scf/02_rhf、MC↔tests/cpu/mc/ 且 test_cpu_mc_move 实跑通过、
+> MC snippet 逐字取自 mc.h @code）；ctest 134/136——仅 2 个 stash 实证既有 macOS SCF
+> 环境失败（spin_resolution/lindep，Linux 参考常数），"0 失败" 字面判据 owed Linux CI
+> login 节点。头文件改动纯注释，与基线同绿。
