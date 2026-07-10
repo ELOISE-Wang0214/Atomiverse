@@ -32,11 +32,11 @@ _DRIVER_DISPATCH: dict[type, str] = {
 }
 
 _PHASE_DISPATCH: dict[type, str] = {
-    _cpp.LJ: "add_lj",
+    _cpp.PairLJCut: "add_pair_lj_cut",
     _cpp.NeighborList: "add_neighbor_list",
-    _cpp.HarmonicBond: "add_harmonic_bond",
-    _cpp.HarmonicAngle: "add_harmonic_angle",
-    _cpp.MultiHarmonicDihedral: "add_multi_harmonic_dihedral",
+    _cpp.BondHarmonic: "add_bond_harmonic",
+    _cpp.AngleHarmonic: "add_angle_harmonic",
+    _cpp.DihedralMultiHarmonic: "add_dihedral_multi_harmonic",
     _cpp.Thermo: "add_thermo",
 }
 
@@ -47,7 +47,7 @@ class PhaseBuilder:
     Example::
 
         sim.on("force").add(av.NeighborList(cutoff=8.5), order=-10) \\
-                       .add(av.LJ(epsilon=0.01, sigma=3.4, cutoff=8.5))
+                       .add(av.PairLJCut(epsilon=0.01, sigma=3.4, cutoff=8.5))
     """
 
     def __init__(self, cpp_builder: object) -> None:
@@ -90,7 +90,7 @@ class MD:
         sim = av.MD(dt=0.001)
         sim.add(av.InitVelocity(temperature=10.0, seed=42))
         sim.on("force").add(av.NeighborList(cutoff=8.5), order=-10)
-        sim.on("force").add(av.LJ(epsilon=0.01, sigma=3.4, cutoff=8.5))
+        sim.on("force").add(av.PairLJCut(epsilon=0.01, sigma=3.4, cutoff=8.5))
         sim.run(frame, 1000)
     """
 
@@ -132,9 +132,7 @@ class MD:
         cpp_phase = _PHASE_MAP.get(phase)
         if cpp_phase is None:
             valid = ", ".join(f'"{p}"' for p in _PHASE_MAP)
-            raise ValueError(
-                f"Unknown phase {phase!r}. Valid phases: {valid}"
-            )
+            raise ValueError(f"Unknown phase {phase!r}. Valid phases: {valid}")
         self._built = False
         return PhaseBuilder(self._cpp.on(cpp_phase))
 
@@ -187,9 +185,9 @@ class MD:
 VelocityVerlet = _cpp.VelocityVerlet
 InitVelocity = _cpp.InitVelocity
 NoseHoover = _cpp.NoseHoover
-LJ = _cpp.LJ
+PairLJCut = _cpp.PairLJCut
 NeighborList = _cpp.NeighborList
-HarmonicBond = _cpp.HarmonicBond
-HarmonicAngle = _cpp.HarmonicAngle
-MultiHarmonicDihedral = _cpp.MultiHarmonicDihedral
+BondHarmonic = _cpp.BondHarmonic
+AngleHarmonic = _cpp.AngleHarmonic
+DihedralMultiHarmonic = _cpp.DihedralMultiHarmonic
 Thermo = _cpp.Thermo

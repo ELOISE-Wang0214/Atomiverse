@@ -4,6 +4,21 @@ Atomiverse binds drivers and components only — it does not bind a Frame
 data type. Simulation state crosses the boundary as a ``molrs.Frame``;
 each driver ``run()`` borrows it and writes results back in place.
 
+Current surface (honest capability boundary)
+--------------------------------------------
+- **MD** — the ``MD`` driver plus its components, exported under the
+  canonical C++ names (LAMMPS-style): ``VelocityVerlet``, ``InitVelocity``,
+  ``NoseHoover``, ``PairLJCut``, ``NeighborList``, ``BondHarmonic``,
+  ``AngleHarmonic``, ``DihedralMultiHarmonic``, ``Thermo``.
+- **Plane-wave DFT** — ``pw_scf`` / ``PWResult`` (requires a wheel built
+  with ``ATV_BUILD_PW=ON``; calling it on a PW-less wheel raises a
+  ``RuntimeError`` with rebuild guidance).
+
+Roadmap: Gaussian-SCF and geometry-optimization bindings (the C++
+``SCFEvaluator`` family and the ``Minimize`` driver with ``LBFGS``/``CG``
+components) are future work with their own spec — they are deliberately
+NOT exposed here rather than exposed broken.
+
 Example — Molecular Dynamics::
 
     import numpy as np
@@ -21,6 +36,8 @@ Example — Molecular Dynamics::
 
     sim = av.MD(dt=0.001)
     sim.add(av.InitVelocity(10.0, 42))
+    sim.on("force").add(av.NeighborList(8.5), order=-10) \\
+                   .add(av.PairLJCut(0.0104, 3.4, 8.5))
     sim.run(frame, 100)
 
 Example — Plane-Wave DFT::
@@ -31,13 +48,13 @@ Example — Plane-Wave DFT::
 
 from atomiverse.md import (
     MD,
-    HarmonicAngle,
-    HarmonicBond,
+    AngleHarmonic,
+    BondHarmonic,
+    DihedralMultiHarmonic,
     InitVelocity,
-    LJ,
-    MultiHarmonicDihedral,
     NeighborList,
     NoseHoover,
+    PairLJCut,
     Thermo,
     VelocityVerlet,
 )
@@ -48,11 +65,11 @@ __all__ = [
     "VelocityVerlet",
     "InitVelocity",
     "NoseHoover",
-    "LJ",
+    "PairLJCut",
     "NeighborList",
-    "HarmonicBond",
-    "HarmonicAngle",
-    "MultiHarmonicDihedral",
+    "BondHarmonic",
+    "AngleHarmonic",
+    "DihedralMultiHarmonic",
     "Thermo",
     "pw_scf",
     "PWResult",

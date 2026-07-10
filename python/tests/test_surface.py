@@ -1,0 +1,294 @@
+"""Honest Python binding surface tests (spec: arch-refactor-08-python).
+
+The atomiverse wheel must expose exactly the honest MD + PW surface:
+
+* Canonical LAMMPS-style component names (``PairLJCut``, ``BondHarmonic``,
+  ``AngleHarmonic``, ``DihedralMultiHarmonic``) with no legacy aliases
+  (``LJ``, ``HarmonicBond``, ``HarmonicAngle``, ``MultiHarmonicDihedral``)
+  and no deprecation shims.
+* The dead SCF / geometry-optimizer facade is gone and FAILS LOUD:
+  ``atomiverse.scf`` / ``atomiverse.optimizer`` no longer import, dead
+  package attributes raise ``AttributeError``, and the ``_cpp`` extension
+  carries none of the never-bound SCF / minimizer symbols.
+* ``pw_scf`` is honest about build flags: when the extension lacks
+  ``pw_scf`` (``ATV_BUILD_PW=OFF``) calling it raises a guided
+  ``RuntimeError`` naming ATV_BUILD_PW — never a bare ``AttributeError``.
+* A tree grep gate keeps dead references from creeping back anywhere
+  under ``python/``. Forbidden tokens are assembled by string
+  concatenation so this file never contains one literally.
+
+Smoke parameters reuse the verified conftest values (Ar LJ
+epsilon=0.0104 eV, sigma=3.4 A, mass 39.948 amu; toy PW with empty
+upf_path: "runs, unphysical") — no new reference values are introduced.
+"""
+
+from __future__ import annotations
+
+import importlib
+import os
+from collections.abc import Iterator
+from pathlib import Path
+
+import numpy as np
+import pytest
+import molrs
+
+import atomiverse as av
+from atomiverse._binding import _cpp
+
+# ── Shared surface definitions ──────────────────────────────────────
+
+_CANONICAL_NEW_NAMES: tuple[str, ...] = (
+    "PairLJCut",
+    "BondHarmonic",
+    "AngleHarmonic",
+    "DihedralMultiHarmonic",
+)
+
+_CANONICAL_ALL: frozenset[str] = frozenset(
+    {
+        "MD",
+        "VelocityVerlet",
+        "InitVelocity",
+        "NoseHoover",
+        "PairLJCut",
+        "NeighborList",
+        "BondHarmonic",
+        "AngleHarmonic",
+        "DihedralMultiHarmonic",
+        "Thermo",
+        "pw_scf",
+        "PWResult",
+    }
+)
+
+_DEAD_PACKAGE_ATTRS: tuple[str, ...] = (
+    "SCF",
+    "RHF",
+    "UHF",
+    "UKS",
+    "GeometryOptimizer",
+    "Frame",
+    "LJ",
+    "HarmonicBond",
+    "HarmonicAngle",
+    "MultiHarmonicDihedral",
+)
+
+_DEAD_CPP_ATTRS: tuple[str, ...] = (
+    "LBFGS",
+    "LBFGSStep",
+    "MinimizerPhase",
+    "SCFConfig",
+    "SpinType",
+    "MeanFieldType",
+    "XCType",
+    "scf_solve",
+    "scf_gradient",
+    "build_integrals_sto3g",
+)
+
+_HAS_PW: bool = hasattr(_cpp, "pw_scf")
+
+
+# ── Fixtures ────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def canonical_lj_md() -> "av.MD":
+    """Canonical-name LJ MD: VelocityVerlet(dt) + InitVelocity +
+    NeighborList + PairLJCut on the force phase (conftest params)."""
+    cutoff = 8.5
+    sim = av.MD(dt=0.001)
+    sim.add(av.InitVelocity(10.0, 42))
+    sim.on("force").add(av.NeighborList(cutoff), order=-10).add(
+        av.PairLJCut(0.0104, 3.4, cutoff)
+    )
+    return sim
+
+
+@pytest.fixture
+def silicon_frame() -> "molrs.Frame":
+    """Tiny 2-atom Si molrs.Frame in a cubic cell (type = Z = 14)."""
+    a = 5.43  # Si lattice constant [A]
+    frame = molrs.Frame()
+    atoms = molrs.Block()
+    atoms.insert("x", np.array([0.0, a / 4.0], dtype=np.float64))
+    atoms.insert("y", np.array([0.0, a / 4.0], dtype=np.float64))
+    atoms.insert("z", np.array([0.0, a / 4.0], dtype=np.float64))
+    atoms.insert("mass", np.full(2, 28.0855, dtype=np.float64))
+    atoms.insert("type", np.full(2, 14, dtype=np.int32))
+    frame["atoms"] = atoms
+    frame.box = molrs.Box.cube(a)
+    return frame
+
+
+# ── Canonical-name surface ──────────────────────────────────────────
+
+
+class TestCanonicalSurface:
+    @pytest.mark.parametrize("name", _CANONICAL_NEW_NAMES)
+    def test_canonical_component_present(self, name: str) -> None:
+        """Each canonical LAMMPS-style component name is exported."""
+        assert hasattr(av, name), f"canonical component atomiverse.{name} is missing"
+
+    def test_all_is_exactly_the_honest_surface(self) -> None:
+        """__all__ equals exactly the honest MD + PW export set."""
+        assert set(av.__all__) == set(_CANONICAL_ALL)
+
+
+# ── MD LJ smoke on canonical names ──────────────────────────────────
+
+
+class TestCanonicalMDSmoke:
+    def test_positions_change(
+        self, argon_frame: "molrs.Frame", canonical_lj_md: "av.MD"
+    ) -> None:
+        """10 canonical-name LJ steps move the Ar atoms."""
+        x_before = np.asarray(argon_frame["atoms"]["x"]).copy()
+        canonical_lj_md.run(argon_frame, 10)
+        x_after = np.asarray(argon_frame["atoms"]["x"])
+        assert not np.allclose(x_before, x_after), (
+            "positions should evolve over 10 MD steps"
+        )
+
+    def test_energy_finite(
+        self, argon_frame: "molrs.Frame", canonical_lj_md: "av.MD"
+    ) -> None:
+        """Total energy written back to the molrs.Frame is finite."""
+        canonical_lj_md.run(argon_frame, 10)
+        assert "scalars" in argon_frame.keys()
+        energy = float(np.asarray(argon_frame["scalars"]["energy"])[0])
+        assert np.isfinite(energy)
+
+    def test_kinetic_positive(
+        self, argon_frame: "molrs.Frame", canonical_lj_md: "av.MD"
+    ) -> None:
+        """InitVelocity(10 K, seed 42) yields kinetic energy > 0."""
+        canonical_lj_md.run(argon_frame, 10)
+        kinetic = float(np.asarray(argon_frame["scalars"]["kinetic"])[0])
+        assert np.isfinite(kinetic)
+        assert kinetic > 0.0
+
+
+# ── Dead surface fails loud ─────────────────────────────────────────
+
+
+class TestDeadSurfaceFailsLoud:
+    def test_scf_module_gone(self) -> None:
+        """atomiverse.scf must not exist at all (not merely broken)."""
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module("atomiverse.scf")
+
+    def test_optimizer_module_gone(self) -> None:
+        """atomiverse.optimizer must not exist at all."""
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module("atomiverse.optimizer")
+
+    @pytest.mark.parametrize("name", _DEAD_PACKAGE_ATTRS)
+    def test_dead_package_attribute_raises(self, name: str) -> None:
+        """Legacy / never-working package attributes raise AttributeError."""
+        with pytest.raises(AttributeError):
+            getattr(av, name)
+
+    @pytest.mark.parametrize("name", _DEAD_CPP_ATTRS)
+    def test_dead_extension_symbol_absent(self, name: str) -> None:
+        """The compiled extension binds none of the dead SCF/minimizer
+        symbols the old facade pretended to call."""
+        assert not hasattr(_cpp, name)
+
+
+# ── PW gate ─────────────────────────────────────────────────────────
+
+
+class TestPWSurface:
+    @pytest.mark.skipif(not _HAS_PW, reason="extension built without ATV_BUILD_PW")
+    def test_pw_scf_toy_smoke(self, silicon_frame: "molrs.Frame") -> None:
+        """Toy local potential (empty upf_path) runs and returns a
+        finite energy [Ry] — 'runs, unphysical' contract, no new
+        reference values."""
+        result = av.pw_scf(silicon_frame, "", ecut_ry=8.0, k_mesh=1, max_iter=5)
+        assert result.iterations >= 1
+        assert isinstance(result.energy, float)
+        assert np.isfinite(result.energy)
+
+    @pytest.mark.skipif(_HAS_PW, reason="extension built with ATV_BUILD_PW")
+    def test_pw_scf_missing_fails_loud(self, silicon_frame: "molrs.Frame") -> None:
+        """Without the PW build, pw_scf raises a guided RuntimeError
+        naming ATV_BUILD_PW — never a bare AttributeError."""
+        with pytest.raises(RuntimeError, match="ATV_BUILD_PW"):
+            av.pw_scf(silicon_frame, "")
+
+
+# ── In-tree dead-reference grep gate ────────────────────────────────
+#
+# Forbidden tokens are assembled by concatenation so that this file
+# never contains one literally (the acceptance grep excludes this file;
+# the in-test scanner must not self-match either way).
+
+_PYTHON_ROOT: Path = Path(__file__).resolve().parent.parent
+_THIS_FILE: Path = Path(__file__).resolve()
+_SCAN_SUFFIXES: frozenset[str] = frozenset({".py", ".cpp", ".md"})
+_SKIP_DIR_NAMES: frozenset[str] = frozenset(
+    {"build", "_skbuild", "dist", "venv", "node_modules", "__pycache__"}
+)
+
+_DEAD_AV_ATTRS: tuple[str, ...] = (
+    "SCF",
+    "RHF",
+    "UHF",
+    "UKS",
+    "GeometryOptimizer",
+    "Frame",
+)
+
+
+def _forbidden_tokens() -> tuple[str, ...]:
+    """Dead-reference tokens, built without literal occurrence here."""
+    tokens = ["_cpp" + "." + name for name in _DEAD_CPP_ATTRS]
+    tokens.append("Cpu" + "Frame")
+    tokens.extend("av" + "." + name for name in _DEAD_AV_ATTRS)
+    return tuple(tokens)
+
+
+def _iter_scan_files() -> Iterator[Path]:
+    """Yield scannable files under python/ (excluding this test and
+    build artifacts / virtualenv / cache directories)."""
+    for dirpath, dirnames, filenames in os.walk(_PYTHON_ROOT):
+        dirnames[:] = sorted(
+            d
+            for d in dirnames
+            if not d.startswith(".")
+            and not d.endswith(".egg-info")
+            and d not in _SKIP_DIR_NAMES
+        )
+        for filename in sorted(filenames):
+            path = Path(dirpath) / filename
+            if path.suffix not in _SCAN_SUFFIXES:
+                continue
+            if path.resolve() == _THIS_FILE:
+                continue
+            yield path
+
+
+def _find_token(token: str) -> list[str]:
+    """Return 'relpath:lineno' hits for ``token`` under python/."""
+    hits: list[str] = []
+    for path in _iter_scan_files():
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if token not in text:
+            continue
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            if token in line:
+                hits.append(f"{path.relative_to(_PYTHON_ROOT)}:{lineno}")
+    return hits
+
+
+class TestDeadReferenceGrepGate:
+    @pytest.mark.parametrize("token", _forbidden_tokens())
+    def test_no_dead_reference_in_tree(self, token: str) -> None:
+        """No file under python/ references the dead symbol token."""
+        hits = _find_token(token)
+        assert not hits, (
+            f"forbidden dead-reference token {token!r} found in: " + ", ".join(hits)
+        )

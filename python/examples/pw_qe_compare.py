@@ -28,9 +28,9 @@ import re
 import subprocess
 import sys
 import tempfile
-import time
 from pathlib import Path
 
+import molrs
 import numpy as np
 
 # ── Paths ──
@@ -41,28 +41,29 @@ QE_BIN = "/tmp/qe-install/bin/pw.x"
 
 # ── Si diamond structure builder ──
 
-def build_si_diamond(a_lat: float = 5.43) -> "Frame":
-    """Build Si diamond conventional FCC cell (2 atoms)."""
-    import atomiverse as av
 
-    frame = av.Frame(2)
-    frame.set_type(np.array([14, 14], dtype=np.int32))
-    frame.set_mass(np.full(2, 28.0855))
-
+def build_si_diamond(a_lat: float = 5.43) -> "molrs.Frame":
+    """Build the Si diamond primitive FCC cell (2 atoms) as a molrs.Frame."""
     a4 = a_lat / 4.0
-    frame.set_positions(
-        np.array([0.0, a4]),
-        np.array([0.0, a4]),
-        np.array([0.0, a4]),
-    )
+    frame = molrs.Frame()
+    atoms = molrs.Block()
+    atoms.insert("x", np.array([0.0, a4]))
+    atoms.insert("y", np.array([0.0, a4]))
+    atoms.insert("z", np.array([0.0, a4]))
+    atoms.insert("type", np.array([14, 14], dtype=np.int32))
+    atoms.insert("mass", np.full(2, 28.0855))
+    frame["atoms"] = atoms
 
     h = a_lat / 2.0
-    box = np.array([
-        [0.0, h,   h  ],
-        [h,   0.0, h  ],
-        [h,   h,   0.0],
-    ])
-    frame.set_box(box)
+    frame.box = molrs.Box(
+        np.array(
+            [
+                [0.0, h, h],
+                [h, 0.0, h],
+                [h, h, 0.0],
+            ]
+        )
+    )
     return frame
 
 
@@ -99,8 +100,9 @@ K_POINTS automatic
 """
 
 
-def write_qe_input(path: str, *, a_lat: float, ecut_ry: float,
-                   kmesh: int, conv_thr: float = 1e-6) -> str:
+def write_qe_input(
+    path: str, *, a_lat: float, ecut_ry: float, kmesh: int, conv_thr: float = 1e-6
+) -> str:
     """Write a QE input file and return the outdir path."""
     alat_bohr = a_lat / 0.52917721092  # Angstrom → Bohr
     outdir = str(Path(path).parent / "qe_out")
@@ -122,7 +124,8 @@ def run_qe(input_path: str, outdir: str) -> dict | None:
     try:
         result = subprocess.run(
             [QE_BIN, "-i", input_path],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
             timeout=300,
             env={**os.environ, "TMPDIR": outdir},
         )
@@ -162,9 +165,15 @@ def run_qe(input_path: str, outdir: str) -> dict | None:
 
 # ── Atomiverse helpers ──
 
-def run_atomiverse(a_lat: float, ecut_ry: float, kmesh: int,
-                   tol: float = 1e-6, max_iter: int = 80,
-                   upf_path: str = "") -> dict:
+
+def run_atomiverse(
+    a_lat: float,
+    ecut_ry: float,
+    kmesh: int,
+    tol: float = 1e-6,
+    max_iter: int = 80,
+    upf_path: str = "",
+) -> dict:
     """Run Atomiverse pw_scf and return results."""
     import atomiverse as av
 
@@ -179,8 +188,10 @@ def run_atomiverse(a_lat: float, ecut_ry: float, kmesh: int,
 
 # ── Parameter sweep ──
 
-def sweep_ecut(skip_qe: bool = False, skip_av: bool = False,
-               upf: str = "") -> list[dict]:
+
+def sweep_ecut(
+    skip_qe: bool = False, skip_av: bool = False, upf: str = ""
+) -> list[dict]:
     """Energy vs plane-wave cutoff."""
     results = []
     ecuts = [10, 15, 20, 25, 30, 35, 40, 50, 60]
@@ -191,7 +202,9 @@ def sweep_ecut(skip_qe: bool = False, skip_av: bool = False,
         if not skip_av:
             av = run_atomiverse(5.43, ecut, 4, max_iter=80, upf_path=upf)
             point["atomiverse"] = av
-            print(f"  AV  ecut={ecut:3.0f} Ry  E={av['energy']:15.6f}  iters={av['iterations']}")
+            print(
+                f"  AV  ecut={ecut:3.0f} Ry  E={av['energy']:15.6f}  iters={av['iterations']}"
+            )
 
         if not skip_qe:
             with tempfile.TemporaryDirectory() as tmpdir:
@@ -201,15 +214,18 @@ def sweep_ecut(skip_qe: bool = False, skip_av: bool = False,
                 qe = run_qe(inp, outdir)
                 point["qe"] = qe
                 if qe:
-                    print(f"  QE  ecut={ecut:3.0f} Ry  E={qe['energy']:15.6f}  iters={qe['iterations']}")
+                    print(
+                        f"  QE  ecut={ecut:3.0f} Ry  E={qe['energy']:15.6f}  iters={qe['iterations']}"
+                    )
 
         results.append(point)
 
     return results
 
 
-def sweep_kmesh(skip_qe: bool = False, skip_av: bool = False,
-                upf: str = "") -> list[dict]:
+def sweep_kmesh(
+    skip_qe: bool = False, skip_av: bool = False, upf: str = ""
+) -> list[dict]:
     """Energy vs k-point mesh."""
     results = []
     kmeshes = [1, 2, 3, 4, 5, 6, 8]
@@ -230,15 +246,18 @@ def sweep_kmesh(skip_qe: bool = False, skip_av: bool = False,
                 qe = run_qe(inp, outdir)
                 point["qe"] = qe
                 if qe:
-                    print(f"  QE  kmesh={k}  E={qe['energy']:15.6f}  iters={qe['iterations']}")
+                    print(
+                        f"  QE  kmesh={k}  E={qe['energy']:15.6f}  iters={qe['iterations']}"
+                    )
 
         results.append(point)
 
     return results
 
 
-def sweep_alat(skip_qe: bool = False, skip_av: bool = False,
-               upf: str = "") -> list[dict]:
+def sweep_alat(
+    skip_qe: bool = False, skip_av: bool = False, upf: str = ""
+) -> list[dict]:
     """Energy vs lattice constant (EOS scan)."""
     results = []
     alats = [5.20, 5.30, 5.35, 5.40, 5.43, 5.45, 5.50, 5.55, 5.60, 5.70]
@@ -249,7 +268,9 @@ def sweep_alat(skip_qe: bool = False, skip_av: bool = False,
         if not skip_av:
             av = run_atomiverse(a, 30, 4, max_iter=80, upf_path=upf)
             point["atomiverse"] = av
-            print(f"  AV  alat={a:.2f} A  E={av['energy']:15.6f}  iters={av['iterations']}")
+            print(
+                f"  AV  alat={a:.2f} A  E={av['energy']:15.6f}  iters={av['iterations']}"
+            )
 
         if not skip_qe:
             with tempfile.TemporaryDirectory() as tmpdir:
@@ -259,7 +280,9 @@ def sweep_alat(skip_qe: bool = False, skip_av: bool = False,
                 qe = run_qe(inp, outdir)
                 point["qe"] = qe
                 if qe:
-                    print(f"  QE  alat={a:.2f} A  E={qe['energy']:15.6f}  iters={qe['iterations']}")
+                    print(
+                        f"  QE  alat={a:.2f} A  E={qe['energy']:15.6f}  iters={qe['iterations']}"
+                    )
 
         results.append(point)
 
@@ -268,9 +291,11 @@ def sweep_alat(skip_qe: bool = False, skip_av: bool = False,
 
 # ── Plotting ──
 
+
 def plot_comparison(results: dict, save_path: str = ""):
     """Generate multi-panel comparison plot."""
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
@@ -279,23 +304,37 @@ def plot_comparison(results: dict, save_path: str = ""):
 
     # Panel 1: Energy vs ecut
     ax = axes[0, 0]
-    _plot_compare(ax, results.get("ecut", []), "ecut", "ecut [Ry]", "E [Ry]",
-                  "Total energy vs PW cutoff")
+    _plot_compare(
+        ax,
+        results.get("ecut", []),
+        "ecut",
+        "ecut [Ry]",
+        "E [Ry]",
+        "Total energy vs PW cutoff",
+    )
 
     # Panel 2: Energy vs k-mesh
     ax = axes[0, 1]
-    _plot_compare(ax, results.get("kmesh", []), "kmesh", "k-mesh", "E [Ry]",
-                  "Total energy vs k-point mesh")
+    _plot_compare(
+        ax,
+        results.get("kmesh", []),
+        "kmesh",
+        "k-mesh",
+        "E [Ry]",
+        "Total energy vs k-point mesh",
+    )
 
     # Panel 3: Energy vs alat (EOS)
     ax = axes[1, 0]
-    _plot_compare(ax, results.get("alat", []), "alat", "a [Å]", "E [Ry]",
-                  "Equation of state")
+    _plot_compare(
+        ax, results.get("alat", []), "alat", "a [Å]", "E [Ry]", "Equation of state"
+    )
 
     # Panel 4: Energy difference
     ax = axes[1, 1]
-    _plot_difference(ax, results.get("ecut", []), "ecut", "ecut [Ry]",
-                     "ΔE [eV] | E_AV − E_QE |")
+    _plot_difference(
+        ax, results.get("ecut", []), "ecut", "ecut [Ry]", "ΔE [eV] | E_AV − E_QE |"
+    )
 
     plt.tight_layout()
 
@@ -351,15 +390,25 @@ def _plot_difference(ax, data, param, xlabel, ylabel):
 
 # ── Main ──
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="Compare Atomiverse PW-DFT vs Quantum ESPRESSO for Si diamond"
     )
     parser.add_argument("--skip-qe", action="store_true", help="Skip QE calculations")
-    parser.add_argument("--skip-av", "--skip-atomiverse", action="store_true",
-                        dest="skip_av", help="Skip Atomiverse calculations")
-    parser.add_argument("--sweep", choices=["ecut", "kmesh", "alat", "all"],
-                        default="all", help="Which sweep to run")
+    parser.add_argument(
+        "--skip-av",
+        "--skip-atomiverse",
+        action="store_true",
+        dest="skip_av",
+        help="Skip Atomiverse calculations",
+    )
+    parser.add_argument(
+        "--sweep",
+        choices=["ecut", "kmesh", "alat", "all"],
+        default="all",
+        help="Which sweep to run",
+    )
     parser.add_argument("--upf", default="", help="Path to Si UPF pseudopotential")
     parser.add_argument("--output", default="", help="Save plot to file")
     args = parser.parse_args()
@@ -411,7 +460,9 @@ def main():
     print(f"\nResults saved to: {out_file}")
 
     # Plot
-    plot_path = args.output.replace(".json", ".png") if args.output else "pw_qe_compare.png"
+    plot_path = (
+        args.output.replace(".json", ".png") if args.output else "pw_qe_compare.png"
+    )
     plot_comparison(results, save_path=plot_path)
 
 

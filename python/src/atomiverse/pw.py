@@ -58,10 +58,7 @@ class PWResult:
 
     def __repr__(self) -> str:
         conv = "converged" if self.converged else "NOT converged"
-        return (
-            f"PWResult({conv}, E={self.energy:.6f} Ry, "
-            f"iters={self.iterations})"
-        )
+        return f"PWResult({conv}, E={self.energy:.6f} Ry, iters={self.iterations})"
 
 
 def pw_scf(
@@ -96,7 +93,18 @@ def pw_scf(
     -------
     PWResult
         Result with ``.energy`` (Ry), ``.converged``, ``.iterations``.
+
+    Raises
+    ------
+    RuntimeError
+        If this wheel was built without the plane-wave backend
+        (``ATV_BUILD_PW=OFF``, the default).
     """
-    return PWResult(
-        _cpp.pw_scf(frame, upf_path, ecut_ry, k_mesh, tol, max_iter)
-    )
+    if not hasattr(_cpp, "pw_scf"):
+        raise RuntimeError(
+            "This atomiverse wheel was built without the plane-wave DFT "
+            "backend. Rebuild with ATV_BUILD_PW=ON (requires FFTW3), e.g.: "
+            "CMAKE_ARGS='-DATV_BUILD_PW=ON' "
+            "pip install --no-build-isolation -ve python/"
+        )
+    return PWResult(_cpp.pw_scf(frame, upf_path, ecut_ry, k_mesh, tol, max_iter))

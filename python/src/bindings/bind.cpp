@@ -18,6 +18,8 @@ NB_MODULE(_atomiverse, m) {
 
     bind_md(m);
     bind_pw(m);
-    // bind_scf, bind_optimizer remain disabled pending their own API
-    // migration; they no longer reference the removed CpuFrame type.
+    // SCF and geometry-optimization bindings are future work (their own
+    // spec): they will bind the Minimize driver + LBFGS/CG Optimizer
+    // components and the SCFEvaluator/build_integrals/rhf_solve family in
+    // the correct driver/component shape (arch-refactor-08 Out of scope).
 }

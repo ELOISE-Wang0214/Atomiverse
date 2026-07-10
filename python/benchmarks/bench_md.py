@@ -56,6 +56,7 @@ def make_fcc_frame(n_cells: int, a0: float = 5.26) -> "molrs.Frame":
 
 # ── MD configurations ─────────────────────────────────────────────────────────
 
+
 def build_bare_vv(dt: float = 0.001) -> av.MD:
     sim = av.MD(dt=dt)
     sim.add(av.InitVelocity(10.0, 42))
@@ -65,9 +66,9 @@ def build_bare_vv(dt: float = 0.001) -> av.MD:
 def build_lj_md(dt: float = 0.001, cutoff: float = 8.5) -> av.MD:
     sim = av.MD(dt=dt)
     sim.add(av.InitVelocity(10.0, 42))
-    sim.on("force") \
-       .add(av.NeighborList(cutoff), order=-10) \
-       .add(av.LJ(0.0104, 3.4, cutoff))
+    sim.on("force").add(av.NeighborList(cutoff), order=-10).add(
+        av.PairLJCut(0.0104, 3.4, cutoff)
+    )
     return sim
 
 
@@ -75,13 +76,14 @@ def build_nvt_md(dt: float = 0.001, cutoff: float = 8.5, T: float = 100.0) -> av
     sim = av.MD(dt=dt)
     sim.add(av.InitVelocity(T, 42))
     sim.add(av.NoseHoover(T, 100.0, dt))
-    sim.on("force") \
-       .add(av.NeighborList(cutoff), order=-10) \
-       .add(av.LJ(0.0104, 3.4, cutoff))
+    sim.on("force").add(av.NeighborList(cutoff), order=-10).add(
+        av.PairLJCut(0.0104, 3.4, cutoff)
+    )
     return sim
 
 
 # ── Timing helper ─────────────────────────────────────────────────────────────
+
 
 @dataclass
 class BenchResult:
@@ -121,6 +123,7 @@ def run_bench(
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+
 def n_cells_for(target: int) -> int:
     """Return smallest n_cells such that n_cells^3 * 4 >= target."""
     n = 1
@@ -132,7 +135,9 @@ def n_cells_for(target: int) -> int:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Atomiverse MD throughput benchmark")
     parser.add_argument(
-        "--sizes", nargs="+", type=int,
+        "--sizes",
+        nargs="+",
+        type=int,
         default=[108, 256, 500, 1372, 2048],
         help="Target atom counts (nearest FCC will be used)",
     )
@@ -145,8 +150,8 @@ def main() -> None:
 
     configs = [
         ("bare_vv", build_bare_vv),
-        ("lj_md",   build_lj_md),
-        ("nvt_md",  build_nvt_md),
+        ("lj_md", build_lj_md),
+        ("nvt_md", build_nvt_md),
     ]
 
     for target in args.sizes:
@@ -156,7 +161,9 @@ def main() -> None:
             # trajectory, and run() materializes a transient frame each call.
             frame = make_fcc_frame(nc)
             sim = builder()
-            result = run_bench(label, frame, sim, n_steps=args.steps, warmup=args.warmup)
+            result = run_bench(
+                label, frame, sim, n_steps=args.steps, warmup=args.warmup
+            )
             print(result)
         print()
 

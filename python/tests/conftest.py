@@ -54,10 +54,11 @@ def argon_frame(n_atoms: int) -> "molrs.Frame":
 
 @pytest.fixture
 def full_lj_md() -> av.MD:
-    """Full LJ MD: VelocityVerlet + InitVelocity + NeighborList + LJ."""
+    """Full LJ MD: VelocityVerlet + InitVelocity + NeighborList + PairLJCut."""
     cutoff = 8.5
     sim = av.MD(dt=0.001)
     sim.add(av.InitVelocity(10.0, 42))
-    sim.on("force").add(av.NeighborList(cutoff), order=-10) \
-                   .add(av.LJ(0.0104, 3.4, cutoff))
+    sim.on("force").add(av.NeighborList(cutoff), order=-10).add(
+        av.PairLJCut(0.0104, 3.4, cutoff)
+    )
     return sim
