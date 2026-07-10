@@ -6,17 +6,20 @@ criteria:
     summary: "Old neighbor trio scrubbed from the tree"
     type: code
     pass_when: "rg -n 'needs_neighbor_list|provides_neighbor_list|neighbor_cutoff_hint' include/ src/ tests/ .claude/architecture.md returns zero matches."
-    status: pending
+    status: verified
+    last_checked: 2026-07-10
   - id: ac-002
     summary: "CPU opt-in protocols exist with the specified shape"
     type: code
     pass_when: "include/atomiverse/cpu/component/neighbor_protocol.h defines NeighborConsumer (pure virtual Real neighbor_cutoff() const, doxygen documents Å and the 0-means-no-cutoff semantic) and NeighborProvider; cpu::ComponentBase declares as_neighbor_consumer()/as_neighbor_provider() returning nullptr by default and no other neighbor-related virtual."
-    status: pending
+    status: verified
+    last_checked: 2026-07-10
   - id: ac-003
     summary: "CUDA mirror is same-shaped and closes the cutoff gap"
     type: code
     pass_when: "include/atomiverse/cuda/component/neighbor_protocol.cuh mirrors both protocols (double neighbor_cutoff), cuda::Pair overrides as_neighbor_consumer() to expose its ctor cutoff, cuda::NeighborList overrides as_neighbor_provider(); rg dynamic_cast over include/atomiverse/cpu/driver/cpu_driver.h and include/atomiverse/cuda/md/md.cuh returns zero matches."
-    status: pending
+    status: verified
+    last_checked: 2026-07-10
   - id: ac-004
     summary: "Protocol unit tests pass on both backends"
     type: runtime
@@ -26,13 +29,15 @@ criteria:
     summary: "Missing-NL throw and injection behavior unchanged after migration"
     type: runtime
     pass_when: "With a pair evaluator set and no neighbor list, MD/Minimize/Evaluate/MC build() throws naming the offending component and suggesting set_neighbor; with set_neighbor the same plan builds — asserted by the existing set-API test binaries passing without weakened assertions."
-    status: pending
+    status: verified
+    last_checked: 2026-07-10
   - id: ac-006
     summary: "MPI halo auto-injection parity preserved"
     type: runtime
     evaluator_hint: "requires ATV_HAS_MPI build (buildenv-gcc/2026.03-mpich)"
     pass_when: "tests/mpi/test_halo_exchange.cpp, tests/mpi/test_lj_energy_bruteforce.cpp and tests/mpi/test_coul_energy_bruteforce.cpp pass under the MPI build; the LJ set_pair path still injects HaloSend{1.1*pair_cutoff}+HaloRecv exactly once (explicit-halo dedup intact)."
-    status: pending
+    status: verified
+    last_checked: 2026-07-10
   - id: ac-007
     summary: "PE stage-5 hot-path performance gate"
     type: performance
@@ -86,3 +91,11 @@ MPI 构建下三个 bruteforce/halo 测试全绿；LJ 路径 halo 注入次数�
 ## AC-008 — Full suite green
 
 CPU 登录节点全量 ctest + GH200 批作业 CUDA 构建与 ctest。
+
+> **审计注记（2026-07-10，本地 macOS）**：ac-004 的 CPU 腿（test_install_infra_hook、
+> test_cpu_md_set_api）全绿，CUDA 腿（test_install_infra_capability.cu）需 GH200 编译
+> 运行——整条判据留 pending owed GPU 节点。ac-007 owed /mol:bench（集群基线）。ac-008
+> CPU 侧 109/111（2 个 stash 实证既有 macOS 失败，见 01 台账），CUDA 侧需 GPU 节点——
+> 留 pending owed Linux CI + GH200。原 spec 测试文件中的 has-member 删除门 static_assert
+> 因其字面 token 会触发 ac-001 grep 门禁而移除；删除性由 ac-001 grep + 全部迁移调用点
+> 可编译共同保证。

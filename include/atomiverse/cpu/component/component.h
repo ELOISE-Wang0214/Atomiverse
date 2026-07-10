@@ -20,7 +20,9 @@
 namespace ATV {
 namespace cpu {
 
-class HaloParticipant; // opt-in halo protocol (halo_participant.h)
+class HaloParticipant;  // opt-in halo protocol (halo_participant.h)
+class NeighborConsumer; // opt-in neighbor protocols (neighbor_protocol.h)
+class NeighborProvider;
 
 /// @brief Context for one-time component build on CPU.
 /// @see cpu::ComponentBase::build()
@@ -87,27 +89,30 @@ class ComponentBase {
     /// @see facade/component_role.h
     virtual Capability reads() const { return Capability::None; }
 
-    /// @brief Whether this component requires a `NeighborList` upstream
-    /// in the same step.
+    /// @brief Typed accessor for the consumer side of the opt-in neighbor
+    /// protocol (neighbor_protocol.h).
     ///
-    /// Pair-cutoff evaluators (LJ, future Coulomb-real-space) override
-    /// to `true`. The category drivers throw at `build()` time if any
-    /// registered component reports `true` and no `NeighborList` was
-    /// set via `set_neighbor()` / `add()`. LAMMPS analogue: needing
-    /// `pair_style lj/cut` to be paired with a `neighbor` command.
-    /// Defaults to `false`.
-    virtual bool needs_neighbor_list() const { return false; }
+    /// A component that requires a neighbor list upstream in the same
+    /// step (LAMMPS analogue: `pair_style lj/cut` needing a `neighbor`
+    /// command) inherits `cpu::NeighborConsumer` and overrides this to
+    /// return `this` — `cpu::PairEvaluator` does so for every pair style.
+    /// The category drivers throw at `build()` when a consumer is
+    /// registered without a neighbor structure, and size the MPI halo
+    /// from the consumer's cutoff — no `dynamic_cast`, no `name()`
+    /// matching. Default: not a consumer.
+    /// @return The consumer view of this component, or `nullptr`.
+    virtual const NeighborConsumer* as_neighbor_consumer() const {
+        return nullptr;
+    }
 
-    /// @brief Whether this component *is* a neighbor structure (the supply
-    /// side of the `needs_neighbor_list()` contract).
-    ///
-    /// Defaults to `false`. `cpu::NeighborList` overrides to `true`. Used
-    /// by `CPUDriver::scan_pending_infra_()` to detect a registered
-    /// neighbor structure without keying on `name() == "neighbor_list"` —
-    /// a user-supplied neighbor structure participates in auto-injection
-    /// by overriding this, whatever its `name()`. Mirrors
-    /// `cuda::ComponentBase::provides_neighbor_list()`.
-    virtual bool provides_neighbor_list() const { return false; }
+    /// @brief Typed accessor for the supply side of the opt-in neighbor
+    /// protocol. The neighbor structure (`cpu::md::NeighborList`, or a
+    /// user-supplied equivalent, whatever its `name()`) overrides this to
+    /// return `this`. Default: not a provider.
+    /// @return The provider view of this component, or `nullptr`.
+    virtual const NeighborProvider* as_neighbor_provider() const {
+        return nullptr;
+    }
 
     /// @brief Typed accessor for the opt-in halo protocol.
     ///
@@ -120,16 +125,6 @@ class ComponentBase {
     /// no `name()` matching. Default: not a participant.
     /// @return The participant view of this component, or `nullptr`.
     virtual HaloParticipant* halo_participant() { return nullptr; }
-
-    /// @brief Neighbor-interaction cutoff hint [Å] for driver auto-injection.
-    ///
-    /// Components that report `needs_neighbor_list()` may override this to
-    /// expose their interaction cutoff; the category drivers use it to size
-    /// the auto-injected MPI halo exchange (skin-padded). `cpu::PairEvaluator`
-    /// forwards its `pair_cutoff()`. Return `0` (the default) when the
-    /// component declares no cutoff — auto-injection then skips the halo.
-    /// Replaces the former `dynamic_cast<PairEvaluator*>` probe.
-    virtual Real neighbor_cutoff_hint() const { return Real(0); }
 
     /// @brief Scheduling trait (blocking or deferrable).
     /// @return `Scheduling::blocking` for CPU components unless overridden.

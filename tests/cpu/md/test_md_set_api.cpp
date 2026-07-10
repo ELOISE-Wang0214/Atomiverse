@@ -3,7 +3,11 @@
 ///        cpu::md::MD + install_infra rules.
 ///
 /// Covers:
-///   - reads()/needs_neighbor_list() overrides on NoseHooverNPT, Barostat, LJ
+///   - reads() overrides on NoseHooverNPT, Barostat
+///   - the NeighborConsumer/NeighborProvider opt-in protocol
+///     (arch-refactor-03-neighbor): PairLJCut and CoulLong are consumers
+///     reporting their ctor cutoff [Å]; NeighborList is the provider;
+///     NoseHooverNPT is no consumer; PairMorse opts out (O(N²) demo)
 ///   - singular setters (set_pair, set_neighbor, set_integrator) reject
 ///     re-call with a different component
 ///   - append setters (set_thermostat, set_observer, set_record) accept
@@ -14,20 +18,25 @@
 ///   - install_infra: pair evaluator without set_neighbor throws at build
 ///
 /// Acceptance: T3 / T4 / T5 / T11 / T12 / T14 of
-/// `.claude/specs/driver-infra-auto-injection.md`.
+/// `.claude/specs/driver-infra-auto-injection.md`; protocol migration per
+/// `.claude/specs/arch-refactor-03-neighbor.md`.
 
 #include <gtest/gtest.h>
 
 #include <map>
 #include <string>
 
+#include "atomiverse/core/real.h"
+#include "atomiverse/cpu/component/neighbor_protocol.h"
 #include "atomiverse/cpu/md/barostat.h"
-#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/nose_hoover_npt.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/observer/virial_stress.h"
+#include "atomiverse/cpu/potentials/coul_long.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
+#include "atomiverse/cpu/potentials/pair_morse.h"
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
 
@@ -74,19 +83,58 @@ TEST(MDSetApi, BarostatReadsStress) {
     EXPECT_NE(static_cast<int>(baro.reads() & ATV::Capability::Stress), 0);
 }
 
-TEST(MDSetApi, LJNeedsNeighborList) {
+// ─── NeighborConsumer/NeighborProvider protocol (arch-refactor-03) ──
+
+TEST(MDSetApi, LJIsNeighborConsumerReportingCtorCutoff) {
+    // PairLJCut inherits cpu::PairEvaluator, which implements
+    // NeighborConsumer by forwarding pair_cutoff() — the consumer view
+    // must report exactly the cutoff passed at construction [Å].
     ATV::cpu::PairLJCut lj(kEps, kSigma, kCutoff);
-    EXPECT_TRUE(lj.needs_neighbor_list());
+    const ATV::cpu::NeighborConsumer* nc = lj.as_neighbor_consumer();
+    ASSERT_NE(nc, nullptr)
+        << "every cutoff-pair evaluator must opt into NeighborConsumer";
+    EXPECT_EQ(nc->neighbor_cutoff(), ATV::Real(kCutoff));
 }
 
-TEST(MDSetApi, NPTReportsPairCutoffNothing) {
-    // NPT is not a pair evaluator — needs_neighbor_list defaults false.
+TEST(MDSetApi, NPTIsNotANeighborConsumer) {
+    // NPT is not a pair evaluator — as_neighbor_consumer() defaults null.
     ATV::cpu::md::NoseHooverNPT npt({.T_target = kT,
                                      .tau_T = 100.0,
                                      .P_target = kP,
                                      .tau_P = 1000.0,
                                      .dt = kDt});
-    EXPECT_FALSE(npt.needs_neighbor_list());
+    EXPECT_EQ(npt.as_neighbor_consumer(), nullptr);
+}
+
+TEST(MDSetApi, NeighborListIsNeighborProvider) {
+    // Supply side of the protocol: the driver infrastructure scan keys on
+    // as_neighbor_provider(), not on name() == "neighbor_list".
+    ATV::cpu::md::NeighborList<> nl{kCutoff, kSkin};
+    const ATV::cpu::NeighborProvider* np = nl.as_neighbor_provider();
+    ASSERT_NE(np, nullptr);
+    EXPECT_EQ(np, static_cast<const ATV::cpu::NeighborProvider*>(&nl));
+}
+
+TEST(MDSetApi, PairMorseOptsOutOfNeighborConsumer) {
+    // The O(N²) all-pairs demo style opts out of the neighbor-list gate:
+    // as_neighbor_consumer() must return nullptr even though its
+    // PairEvaluator base opts in (opt-out overrides opt-in).
+    ATV::cpu::PairMorse morse(1.0, 2.0, 1.2, kCutoff);
+    EXPECT_EQ(morse.as_neighbor_consumer(), nullptr);
+}
+
+TEST(MDSetApi, CoulLongIsNeighborConsumerReportingCtorCutoff) {
+    // CoulLong previously joined the missing-NL gate without
+    // forwarding its cutoff — halo sizing silently skipped it. Under the
+    // protocol it must report its real-space ctor cutoff [Å] (deliberate
+    // behavior delta of arch-refactor-03-neighbor).
+    constexpr double kAlpha = 0.3;       // Ewald splitting [1/Å]
+    constexpr double kCoulCutoff = 10.0; // real-space cutoff [Å]
+    ATV::cpu::CoulLong coul(kAlpha, kCoulCutoff);
+    const ATV::cpu::NeighborConsumer* nc = coul.as_neighbor_consumer();
+    ASSERT_NE(nc, nullptr)
+        << "CoulLong must opt into NeighborConsumer (cutoff report fix)";
+    EXPECT_EQ(nc->neighbor_cutoff(), ATV::Real(kCoulCutoff));
 }
 
 // ─── Singular setter discipline ─────────────────────────────────────

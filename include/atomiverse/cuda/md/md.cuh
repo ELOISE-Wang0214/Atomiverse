@@ -52,7 +52,7 @@
 /// `CUDADriver::build()` chain (so auto-injected components reach
 /// `validate_components()`). Single-GPU subset of the CPU rules,
 /// keyed on capability-typed virtuals (no string proxies, no
-/// `dynamic_cast`):
+/// RTTI casts):
 ///
 /// - **Virial** — if any pending component declares
 ///   `(reads() & Capability::Stress) != None` and no pending component
@@ -62,7 +62,7 @@
 ///   (Berendsen, `role()==Barostat`) and `cuda::md::NoseHooverNPT`
 ///   (MTK NPT, `role()==Integrator`) uniformly via `reads()`.
 /// - **NeighborList missing** — if any pending component reports
-///   `needs_neighbor_list() == true` (pair-style evaluators do, via
+///   itself as a `NeighborConsumer` (pair-style evaluators do, via
 ///   `cuda::Pair`) without a registered `cuda::NeighborList`,
 ///   `build()` throws naming the offending evaluator.
 ///
@@ -259,34 +259,33 @@ class MD : public cuda::DynamicsDriver {
   protected:
     /// @brief Auto-injection pass — single-GPU subset of the CPU rules.
     ///
-    /// Two checks, both keyed on `ComponentBase` capability-typed
-    /// virtuals (`reads()`, `capabilities()`, `needs_neighbor_list()`,
-    /// `provides_neighbor_list()`) — no `name()` string matching,
-    /// no `dynamic_cast`:
+    /// Two checks, both keyed on capability-typed probes (`reads()`,
+    /// `capabilities()`, and the `as_neighbor_consumer()` /
+    /// `as_neighbor_provider()` protocol accessors) — no `name()`
+    /// string matching, no RTTI cast:
     ///   1. If any pending component declares `(reads() & Stress) != None`
     ///      AND no pending component already declares
     ///      `(capabilities() & Stress) != None && role()==Observer`,
     ///      add a fresh `cuda::Virial{}` at `post_force @ -50`.
-    ///   2. If any pending component reports
-    ///      `needs_neighbor_list() == true` without any pending component
-    ///      reporting `provides_neighbor_list() == true`, throw naming
+    ///   2. If any pending component is a `NeighborConsumer` without any
+    ///      pending component being a `NeighborProvider`, throw naming
     ///      the first offender.
     void install_infra_() {
         bool needs_stress_input = false;
         bool has_stress_producer = false;
         bool has_neighbor_list = false;
-        std::string pair_evaluator_name; // first needs_neighbor_list consumer
+        std::string neighbor_consumer_name; // first NeighborConsumer
         this->for_each_pending([&](const cuda::ComponentBase& c) {
             if ((c.reads() & Capability::Stress) != Capability::None)
                 needs_stress_input = true;
             if (c.role() == ComponentRole::Observer
                 && (c.capabilities() & Capability::Stress) != Capability::None)
                 has_stress_producer = true;
-            if (c.needs_neighbor_list()) {
-                if (pair_evaluator_name.empty())
-                    pair_evaluator_name = c.name();
+            if (c.as_neighbor_consumer()) {
+                if (neighbor_consumer_name.empty())
+                    neighbor_consumer_name = c.name();
             }
-            if (c.provides_neighbor_list())
+            if (c.as_neighbor_provider())
                 has_neighbor_list = true;
         });
 
@@ -317,10 +316,10 @@ class MD : public cuda::DynamicsDriver {
             c.set_stress_required(stress_consumed);
         });
 
-        if (!pair_evaluator_name.empty() && !has_neighbor_list) {
+        if (!neighbor_consumer_name.empty() && !has_neighbor_list) {
             throw std::runtime_error(
                 std::string("cuda::md::MD::build(): component '")
-                + pair_evaluator_name
+                + neighbor_consumer_name
                 + "' is a pair evaluator but no neighbor list was registered. "
                   "Add `sim.set_neighbor(cuda::NeighborList{cutoff})`.");
         }

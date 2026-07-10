@@ -6,12 +6,13 @@
 #pragma once
 
 #include "atomiverse/cuda/component/component.cuh"
+#include "atomiverse/cuda/component/neighbor_protocol.cuh"
 
 namespace ATV {
 namespace cuda {
 
 /// @brief Abstract base for non-bonded pair styles (CUDA backend).
-class Pair : public ComponentBase {
+class Pair : public ComponentBase, public NeighborConsumer {
   public:
     ~Pair() override = default;
 
@@ -22,7 +23,13 @@ class Pair : public ComponentBase {
     /// @brief Pair styles depend on a neighbor list — used by
     ///        `cuda::md::MD::install_infra_` to detect a missing
     ///        `cuda::NeighborList` registration without `dynamic_cast`.
-    bool needs_neighbor_list() const final { return true; }
+    const NeighborConsumer* as_neighbor_consumer() const final { return this; }
+
+    /// @brief The neighbor list must cover the pair interaction cutoff —
+    ///        the CUDA side now reports it through the protocol like the
+    ///        CPU `PairEvaluator` (closes the historical hint gap).
+    /// @return `pair_cutoff()` [Å].
+    double neighbor_cutoff() const final { return pair_cutoff(); }
 
     /// @brief Framework dispatch — `final`, calls `compute()`.
     void launch(const LaunchContext& ctx) final { compute(ctx); }

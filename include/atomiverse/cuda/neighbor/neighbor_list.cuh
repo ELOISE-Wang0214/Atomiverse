@@ -16,6 +16,7 @@
 #include <string>
 
 #include "atomiverse/cuda/component/component.cuh"
+#include "atomiverse/cuda/component/neighbor_protocol.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
 
 namespace ATV {
@@ -66,7 +67,7 @@ struct PairList {
     /// the cutoff neighbors for the whole reneighbor interval. Null until the
     /// first rebuild publishes it.
     const uint64_t* cl_mask = nullptr;
-    int num_clusters = 0;               ///< cluster count (host scalar).
+    int num_clusters = 0; ///< cluster count (host scalar).
 
     // ── Per-atom Verlet list (the force path) ────────────────────────────
     // Tight per-atom neighbor list built once per rebuild from the cluster CSR
@@ -75,7 +76,8 @@ struct PairList {
     // one-thread-per-atom force kernel iterates this directly — no cluster
     // indirection, no gather, ~full warp utilization. Null until the first
     // rebuild publishes them.
-    const int* vl_nbr = nullptr; ///< [vl_max * vl_stride] column-major neighbors.
+    const int* vl_nbr =
+        nullptr; ///< [vl_max * vl_stride] column-major neighbors.
     const int* vl_cnt = nullptr; ///< [num atoms] per-atom neighbor count.
     int vl_stride = 0;           ///< column stride (build-time atom count).
     int vl_max = 0;              ///< max neighbors per atom (column capacity).
@@ -88,7 +90,7 @@ struct PairList {
 /// and atom-level pair export.
 ///
 /// @see PairList for the output data structure
-class NeighborList : public ComponentBase {
+class NeighborList : public ComponentBase, public NeighborProvider {
   public:
     /// @brief Construct with cutoff and optional skin width.
     /// @param cutoff Interaction cutoff [Angstrom].
@@ -105,7 +107,9 @@ class NeighborList : public ComponentBase {
 
     /// @brief Identifies this component as the neighbor-list supplier
     ///        for `cuda::md::MD::install_infra_`'s typed query.
-    bool provides_neighbor_list() const override { return true; }
+    const NeighborProvider* as_neighbor_provider() const override {
+        return this;
+    }
 
     /// @brief Allocate the owned PairList + all internal GPU buffers, and
     ///        publish the pair list to `ctx.runtime.pair_list`.
@@ -215,11 +219,11 @@ class NeighborList : public ComponentBase {
     int rebuild_count() const noexcept;
 
   private:
-    double cutoff_; ///< Interaction cutoff [Angstrom].
-    double skin_;   ///< Verlet skin width [Angstrom].
+    double cutoff_;                   ///< Interaction cutoff [Angstrom].
+    double skin_;                     ///< Verlet skin width [Angstrom].
     bool rebuild_on_request_ = false; ///< Skip the skin auto-gate (multi-GPU).
     PairList pairs_; ///< Owned device pair list (allocated in build()).
-    struct State;   ///< Opaque GPU state (pimpl, defined in .cu).
+    struct State;    ///< Opaque GPU state (pimpl, defined in .cu).
     std::unique_ptr<State> state_; ///< Internal GPU buffers.
 };
 

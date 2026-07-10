@@ -13,15 +13,16 @@
 /// Concrete subclasses (today: `cpu::PairLJCut`) live in their domain
 /// directory; only the abstraction is at root.
 ///
-/// `needs_neighbor_list()` is forced to `true` here so subclasses
+/// The `NeighborConsumer` protocol is implemented here so subclasses
 /// don't have to remember it — every cutoff-pair force field needs
 /// a `NeighborList` upstream. The CPU category drivers throw at
-/// `build()` time when this returns true and no `set_neighbor()`
+/// `build()` time when a consumer is registered and no `set_neighbor()`
 /// was made.
 #pragma once
 
 #include "atomiverse/core/real.h"
 #include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/neighbor_protocol.h"
 
 namespace ATV {
 namespace cpu {
@@ -29,21 +30,25 @@ namespace cpu {
 /// @brief Backend-root base for cutoff-pair force fields.
 ///
 /// Subclasses must override `pair_cutoff()` to report the interaction
-/// cutoff in Ångströms. `needs_neighbor_list()` is always `true` for
-/// pair-cutoff evaluators.
-class PairEvaluator : public cpu::ComponentBase {
+/// cutoff in Ångströms; the base wires it into the `NeighborConsumer`
+/// protocol for every pair-cutoff evaluator.
+class PairEvaluator : public cpu::ComponentBase, public cpu::NeighborConsumer {
   public:
     /// @brief Pair interaction cutoff [Å]. Used by category drivers
     /// to size MPI halo exchange and surfaced in error messages when
     /// a `NeighborList` is missing.
     virtual Real pair_cutoff() const = 0;
 
-    /// @brief Pair-cutoff evaluators always need a neighbor list.
-    bool needs_neighbor_list() const override { return true; }
+    /// @brief Pair-cutoff evaluators are always neighbor consumers — the
+    /// driver scan probes this typed accessor (missing-NL gate + halo
+    /// sizing), no `dynamic_cast`.
+    const NeighborConsumer* as_neighbor_consumer() const override {
+        return this;
+    }
 
-    /// @brief Surface `pair_cutoff()` to the driver infrastructure scan
-    /// (halo-exchange sizing) — capability-typed, no `dynamic_cast`.
-    Real neighbor_cutoff_hint() const override { return pair_cutoff(); }
+    /// @brief The neighbor list must cover the pair interaction cutoff.
+    /// @return `pair_cutoff()` [Å].
+    Real neighbor_cutoff() const override { return pair_cutoff(); }
 };
 
 } // namespace cpu

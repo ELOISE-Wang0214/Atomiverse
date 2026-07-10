@@ -7,21 +7,21 @@
 #include <string_view>
 #include <type_traits>
 
-#include "atomiverse/cpu/driver/backend.h"
-#include "atomiverse/cpu/recorder/timing_report.h"
-#include "atomiverse/cpu/driver/dynamics_driver.h"
-#include "atomiverse/cpu/md/init.h"
-#include "atomiverse/cpu/md/nvt.h"
-#include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/cpu/md/nose_hoover.h"
-#include "atomiverse/cpu/md/fix_csvr.h"
+#include "atomiverse/cpu/async/snapshot_publisher.h"
 #include "atomiverse/cpu/comm/atom_migration.h"
 #include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/comm/halo_exchange.h"
 #include "atomiverse/cpu/comm/reduce.h"
-#include "atomiverse/cpu/observer/virial_stress.h"
 #include "atomiverse/cpu/component/pair_evaluator.h"
-#include "atomiverse/cpu/async/snapshot_publisher.h"
+#include "atomiverse/cpu/driver/backend.h"
+#include "atomiverse/cpu/driver/dynamics_driver.h"
+#include "atomiverse/cpu/md/fix_csvr.h"
+#include "atomiverse/cpu/md/init.h"
+#include "atomiverse/cpu/md/nose_hoover.h"
+#include "atomiverse/cpu/md/nvt.h"
+#include "atomiverse/cpu/md/velocity_verlet.h"
+#include "atomiverse/cpu/observer/virial_stress.h"
+#include "atomiverse/cpu/recorder/timing_report.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -42,9 +42,9 @@ namespace md {
 ///   - `#ifdef ATV_HAS_MPI` and a pair evaluator was set →
 ///     auto-injects `HaloSend{cutoff}` and
 ///     `HaloRecv{}` at the documented orders.
-///   - A pair evaluator with `needs_neighbor_list()==true` was
+///   - A `NeighborConsumer` (pair evaluator / real-space Coulomb) was
 ///     registered without a corresponding `set_neighbor()` →
-///     `build()` throws naming the offending evaluator.
+///     `build()` throws naming the offending component.
 ///
 /// Inheritance: MD → DynamicsDriver → CPUDriver<md::Phase> →
 /// Driver<md::Phase, cpu::device_tag>.
@@ -148,14 +148,14 @@ class MD : public DynamicsDriver {
         if (cfg.thermo == NVT::Thermostat::CSVR) {
             FixCSVR th{cfg.T, cfg.tau, cfg.dt, cfg.seed};
             if (cfg.has_ramp())
-                th.set_T_stop(cfg.T_stop).set_run_span(cfg.ramp_first,
-                                                       cfg.ramp_last);
+                th.set_T_stop(cfg.T_stop)
+                    .set_run_span(cfg.ramp_first, cfg.ramp_last);
             this->add(std::move(th));
         } else {
             NoseHoover th{cfg.T, cfg.tau, cfg.dt};
             if (cfg.has_ramp())
-                th.set_T_stop(cfg.T_stop).set_run_span(cfg.ramp_first,
-                                                       cfg.ramp_last);
+                th.set_T_stop(cfg.T_stop)
+                    .set_run_span(cfg.ramp_first, cfg.ramp_last);
             this->add(std::move(th));
         }
         return *this;
@@ -258,9 +258,9 @@ class MD : public DynamicsDriver {
             return;
         const auto t = cpu::md::reduce_timing(this->backend_->timing());
         cpu::md::emit_timing_table(t, stage);
-        const auto m = cpu::md::reduce_memory(
-            this->backend_->collect_component_memory(),
-            cpu::md::read_peak_rss_kb());
+        const auto m =
+            cpu::md::reduce_memory(this->backend_->collect_component_memory(),
+                                   cpu::md::read_peak_rss_kb());
         cpu::md::emit_memory_table(m, stage);
     }
 
@@ -276,7 +276,7 @@ class MD : public DynamicsDriver {
             this->add(Virial{});
 
 #ifdef ATV_HAS_MPI
-        if (s.pair_evaluator_cutoff) {
+        if (s.neighbor_consumer_cutoff) {
             // Halo cutoff must include a SKIN beyond the pair cutoff so
             // ghost atoms stay registered as they drift in/out of the
             // pair-cutoff zone between full halo rebuilds. Without the
@@ -304,7 +304,7 @@ class MD : public DynamicsDriver {
             // (Σ F ≠ 0) that pumps energy and blows the NVE trajectory up.
             // `reverse exchange must run exactly once` (see halo_exchange.h).
             const double halo_cut =
-                1.1 * static_cast<double>(*s.pair_evaluator_cutoff);
+                1.1 * static_cast<double>(*s.neighbor_consumer_cutoff);
             if (!s.has_halo_send)
                 this->add(comm::HaloSend{halo_cut});
             if (!s.has_halo_recv)

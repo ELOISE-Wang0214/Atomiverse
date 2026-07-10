@@ -46,13 +46,13 @@
 #include <string>
 #include <type_traits>
 
+#include "atomiverse/cpu/async/snapshot_publisher.h"
 #include "atomiverse/cpu/comm/atom_migration.h"
 #include "atomiverse/cpu/comm/halo_exchange.h"
 #include "atomiverse/cpu/comm/reduce.h"
-#include "atomiverse/cpu/driver/optimize_driver.h"
 #include "atomiverse/cpu/component/pair_evaluator.h"
-#include "atomiverse/cpu/async/snapshot_publisher.h"
 #include "atomiverse/cpu/component/zero.h"
+#include "atomiverse/cpu/driver/optimize_driver.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -80,8 +80,7 @@ class Minimize : public OptimizeDriver {
         this->on(ATV::minimizer::Phase::force)
             .add(cpu::ZeroForces{}, -1000)
             .add(cpu::ZeroEnergy{}, -999);
-        this->on(ATV::minimizer::Phase::end_of_step)
-            .add(cpu::Publish{}, 10);
+        this->on(ATV::minimizer::Phase::end_of_step).add(cpu::Publish{}, 10);
     }
 
     // ─── Minimizer-specific categorical setters ─────────────────────
@@ -122,7 +121,7 @@ class Minimize : public OptimizeDriver {
         this->on(ATV::minimizer::Phase::force).add(md::mpi::Reduce{}, +20);
 
 #ifdef ATV_HAS_MPI
-        if (s.pair_evaluator_cutoff) {
+        if (s.neighbor_consumer_cutoff) {
             // Same 10% skin rule as MD::install_defaults — ghosts must stay
             // registered as atoms drift between the every-10-step full halo
             // rebuilds. The minimizer's step cap (0.1 Å) keeps per-step
@@ -130,7 +129,7 @@ class Minimize : public OptimizeDriver {
             // suppress the auto-inject: the reverse exchange must run
             // exactly once (see halo_exchange.h).
             const double halo_cut =
-                1.1 * static_cast<double>(*s.pair_evaluator_cutoff);
+                1.1 * static_cast<double>(*s.neighbor_consumer_cutoff);
             if (!s.has_halo_send)
                 this->on(ATV::minimizer::Phase::force)
                     .add(comm::HaloSend{halo_cut}, -30);

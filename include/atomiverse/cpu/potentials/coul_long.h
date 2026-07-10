@@ -21,13 +21,14 @@
 
 #include "atomiverse/core/real.h"
 #include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/neighbor_protocol.h"
 #include "atomiverse/facade/component_role.h"
 
 namespace ATV {
 namespace cpu {
 
 /// @brief Real-space screened Coulomb force/energy (Ewald/PME real part).
-class CoulLong : public cpu::ComponentBase {
+class CoulLong : public cpu::ComponentBase, public cpu::NeighborConsumer {
   public:
     /// @param alpha  Ewald splitting parameter α [1/Å]. Must match the
     ///               reciprocal-space component.
@@ -40,7 +41,16 @@ class CoulLong : public cpu::ComponentBase {
     Capability capabilities() const override {
         return Capability::Energy | Capability::Force | Capability::Stress;
     }
-    bool needs_neighbor_list() const override { return true; }
+    /// @brief Real-space electrostatics is a neighbor consumer; reporting
+    /// through the protocol also fixes the former silent halo-sizing gap
+    /// (the pre-protocol cutoff hint was never overridden here).
+    const NeighborConsumer* as_neighbor_consumer() const override {
+        return this;
+    }
+
+    /// @brief The neighbor list must cover the real-space cutoff.
+    /// @return `cutoff_` [Å].
+    Real neighbor_cutoff() const override { return cutoff_; }
 
     /// @brief Real-space cutoff [Å] (mirrors `PairEvaluator::pair_cutoff`).
     Real pair_cutoff() const { return cutoff_; }

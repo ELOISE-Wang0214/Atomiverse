@@ -52,6 +52,7 @@
 #include "atomiverse/core/real.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/halo_participant.h"
+#include "atomiverse/cpu/component/neighbor_protocol.h"
 #include "atomiverse/cpu/component/pair_evaluator.h"
 #include "atomiverse/cpu/driver/backend_traits.h"
 #include "atomiverse/cpu/recorder/thermo.h"
@@ -377,20 +378,19 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
         bool has_neighbor_list = false; ///< NeighborList already there.
         bool has_halo_send = false;     ///< A HaloSend is already registered.
         bool has_halo_recv = false;     ///< A HaloRecv is already registered.
-        std::string
-            pair_evaluator_name; ///< First component reporting `needs_neighbor_list()`.
+        std::string neighbor_consumer_name; ///< First `NeighborConsumer`.
         std::optional<Real>
-            pair_evaluator_cutoff; ///< Set when the above is a `PairEvaluator`.
+            neighbor_consumer_cutoff; ///< Set when it declares a cutoff > 0.
     };
 
     /// @brief Walk the pending list once, collect everything install_defaults
     /// rules might need.
     ///
     /// Keyed entirely on capability-typed probes (`reads()`,
-    /// `capabilities()`, `role()`, `provides_neighbor_list()`,
-    /// `needs_neighbor_list()`, `neighbor_cutoff_hint()`, and the
+    /// `capabilities()`, `role()`, the `as_neighbor_consumer()` /
+    /// `as_neighbor_provider()` protocol accessors, and the
     /// `halo_participant()`/`halo_endpoint()` protocol accessor) — no
-    /// `name()` string matching and no `dynamic_cast`, so user-supplied
+    /// `name()` string matching and no RTTI cast, so user-supplied
     /// neighbor structures / stress providers / halo endpoints participate
     /// in auto-injection whatever their `name()`. Same pattern as
     /// `cuda::md::MD::install_infra_`. Non-const because the halo probe is
@@ -403,7 +403,7 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
             if (c.role() == ComponentRole::Observer
                 && has_capability(c.capabilities(), Capability::Stress))
                 s.has_virial_stress = true;
-            if (c.provides_neighbor_list())
+            if (c.as_neighbor_provider())
                 s.has_neighbor_list = true;
             if (cpu::HaloParticipant* hp = c.halo_participant()) {
                 if (hp->halo_endpoint() == cpu::HaloParticipant::Endpoint::send)
@@ -411,10 +411,12 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
                 if (hp->halo_endpoint() == cpu::HaloParticipant::Endpoint::recv)
                     s.has_halo_recv = true;
             }
-            if (c.needs_neighbor_list() && s.pair_evaluator_name.empty()) {
-                s.pair_evaluator_name = c.name();
-                if (c.neighbor_cutoff_hint() > Real(0))
-                    s.pair_evaluator_cutoff = c.neighbor_cutoff_hint();
+            if (const cpu::NeighborConsumer* nc = c.as_neighbor_consumer()) {
+                if (s.neighbor_consumer_name.empty()) {
+                    s.neighbor_consumer_name = c.name();
+                    if (nc->neighbor_cutoff() > Real(0))
+                        s.neighbor_consumer_cutoff = nc->neighbor_cutoff();
+                }
             }
         });
         return s;
@@ -427,12 +429,12 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     void throw_if_missing_neighbor_list_(const InfraScan& s,
                                          const char* driver_name,
                                          const char* setter_help) const {
-        if (!s.pair_evaluator_name.empty() && !s.has_neighbor_list) {
+        if (!s.neighbor_consumer_name.empty() && !s.has_neighbor_list) {
             throw std::runtime_error(std::string(driver_name)
                                      + "::build(): component '"
-                                     + s.pair_evaluator_name
-                                     + "' reports needs_neighbor_list()==true "
-                                       "but no neighbor list was registered. "
+                                     + s.neighbor_consumer_name
+                                     + "' is a NeighborConsumer but no "
+                                       "neighbor list was registered. "
                                      + setter_help);
         }
     }

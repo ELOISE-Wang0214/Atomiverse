@@ -44,6 +44,7 @@
 
 #include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/neighbor_protocol.h"
 #include "atomiverse/cpu/neighbor/cell_list.h"
 #include "atomiverse/cpu/neighbor/pair_list.h"
 
@@ -64,7 +65,7 @@ namespace md {
 /// single O(n) skin scan (or zero when `ago < every` or `ago < delay`).
 /// Defaults match LAMMPS: `every=1`, `delay=10`, `check=true` (`check yes`).
 template <typename Strategy = CellList>
-class NeighborList : public cpu::ComponentBase {
+class NeighborList : public cpu::ComponentBase, public cpu::NeighborProvider {
   public:
     /// @param cutoff Interaction cutoff [Angstrom].
     /// @param skin Verlet skin width [Angstrom]. Negative = auto (0.3 * cutoff).
@@ -85,9 +86,11 @@ class NeighborList : public cpu::ComponentBase {
 
     std::string name() const override { return "neighbor_list"; }
 
-    /// @brief Supply side of the `needs_neighbor_list()` contract — the
-    /// driver infrastructure scan keys on this, not on `name()`.
-    bool provides_neighbor_list() const override { return true; }
+    /// @brief Supply side of the neighbor contract — the driver
+    /// infrastructure scan probes this typed accessor, not `name()`.
+    const cpu::NeighborProvider* as_neighbor_provider() const override {
+        return this;
+    }
 
     void build(const cpu::BuildContext& ctx) override {
         reinit_strategy(ctx.runtime, ctx.frame);

@@ -38,8 +38,11 @@ class PairMorse : public Pair {
 
     std::string name() const override { return "morse"; }
 
-    /// @brief Demo uses O(N²) all-pairs; opt out of the neighbor-list gate.
-    bool needs_neighbor_list() const final { return false; }
+    /// @brief Demo uses O(N²) all-pairs; opt out of the neighbor-list gate
+    /// by withdrawing the consumer view the `PairEvaluator` base installs.
+    const NeighborConsumer* as_neighbor_consumer() const final {
+        return nullptr;
+    }
 
   protected:
     void compute(const LaunchContext& ctx) override;

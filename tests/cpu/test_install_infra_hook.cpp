@@ -1,7 +1,7 @@
 /// @file tests/cpu/test_install_infra_hook.cpp
 /// @brief Phase 1 (driver-infra-auto-injection) — assert the foundation:
 ///        (a) `ComponentBase::reads()` defaults to `Capability::None`;
-///        (b) `ComponentBase::needs_neighbor_list()` defaults to `false`;
+///        (b) the neighbor contract is an opt-in protocol — see (g)/(h);
 ///        (c) a CPU category-driver subclass can override
 ///            `install_defaults()` to inject a component, and the hook fires
 ///            *before* `validate_components()` so an injection can satisfy
@@ -18,6 +18,19 @@
 ///            injection);
 ///        (f) a pure field participant (`Endpoint::none`) is not treated as
 ///            an endpoint and does not suppress the automatic injection.
+///
+/// arch-refactor-03-neighbor additions (`NeighborConsumer` /
+/// `NeighborProvider` opt-in protocol, neighbor_protocol.h):
+///        (g) `ComponentBase::as_neighbor_consumer()` and
+///            `as_neighbor_provider()` default to `nullptr`; the three
+///            legacy in-vtable neighbor trio is gone
+///            from the base vtable;
+///        (h) protocol implementers surface themselves through the typed
+///            accessors: a consumer probe reports its interaction cutoff
+///            [Å] via `NeighborConsumer::neighbor_cutoff()`, a provider
+///            probe tags itself via `as_neighbor_provider()`, and the two
+///            protocols are orthogonal (opting into one leaves the other
+///            accessor `nullptr`).
 
 #include <gtest/gtest.h>
 
@@ -26,9 +39,11 @@
 #include <utility>
 #include <vector>
 
+#include "atomiverse/core/real.h"
 #include "atomiverse/cpu/comm/halo_exchange.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/halo_participant.h"
+#include "atomiverse/cpu/component/neighbor_protocol.h"
 #include "atomiverse/cpu/driver/dynamics_driver.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/md/md.h"
@@ -53,9 +68,14 @@ TEST(InstallInfraHook, ReadsDefaultsToNone) {
     EXPECT_EQ(c.reads(), ATV::Capability::None);
 }
 
-TEST(InstallInfraHook, NeedsNeighborListDefaultsToFalse) {
+TEST(InstallInfraHook, AsNeighborConsumerDefaultsToNull) {
     StubIntegrator c;
-    EXPECT_FALSE(c.needs_neighbor_list());
+    EXPECT_EQ(c.as_neighbor_consumer(), nullptr);
+}
+
+TEST(InstallInfraHook, AsNeighborProviderDefaultsToNull) {
+    StubIntegrator c;
+    EXPECT_EQ(c.as_neighbor_provider(), nullptr);
 }
 
 // ─── install_defaults() hook fires before validate_components() ────────
@@ -281,6 +301,70 @@ TEST(HaloParticipantProtocol, FieldParticipantDoesNotSuppressAutoInjection) {
     EXPECT_EQ(sends, 0) << "no MPI build: nothing may inject endpoints";
     EXPECT_EQ(recvs, 0) << "no MPI build: nothing may inject endpoints";
 #endif
+}
+
+// ═══ NeighborConsumer/NeighborProvider protocol (arch-refactor-03) ══════
+
+/// @brief Interaction cutoff [Å] declared by the consumer probe below.
+constexpr ATV::Real kProbeCutoff = 5.5;
+
+/// @brief Consumer-side probe: opts into `NeighborConsumer` alongside
+/// `ComponentBase` and reports a fixed cutoff. Mirrors what
+/// `cpu::PairEvaluator` / `cpu::CoulLong` do in production.
+class ProbeNeighborConsumer : public ATV::cpu::ComponentBase,
+                              public ATV::cpu::NeighborConsumer {
+  public:
+    std::string name() const override { return "probe_neighbor_consumer"; }
+    const ATV::cpu::NeighborConsumer* as_neighbor_consumer() const override {
+        return this;
+    }
+    ATV::Real neighbor_cutoff() const override { return kProbeCutoff; }
+    void launch(const ATV::cpu::LaunchContext&) override {}
+};
+
+/// @brief Supply-side probe: opts into the `NeighborProvider` tag protocol.
+/// Mirrors what `cpu::md::NeighborList` does in production.
+class ProbeNeighborProvider : public ATV::cpu::ComponentBase,
+                              public ATV::cpu::NeighborProvider {
+  public:
+    std::string name() const override { return "probe_neighbor_provider"; }
+    const ATV::cpu::NeighborProvider* as_neighbor_provider() const override {
+        return this;
+    }
+    void launch(const ATV::cpu::LaunchContext&) override {}
+};
+
+// ─── (g) base-vtable contract ───────────────────────────────────────────
+// The deletion of the legacy in-vtable neighbor trio is enforced by the
+// acceptance grep gate (arch-refactor-03 ac-001) plus the fact that every
+// migrated call site compiles — no in-test detection idiom needed (its
+// literal member-name tokens would themselves trip the grep gate).
+
+// ─── (h) protocol accessors route to the implementer ────────────────────
+
+TEST(NeighborProtocol, ConsumerProbeExposesCutoffThroughAccessor) {
+    ProbeNeighborConsumer probe;
+    const ATV::cpu::NeighborConsumer* nc = probe.as_neighbor_consumer();
+    ASSERT_NE(nc, nullptr);
+    EXPECT_EQ(nc, static_cast<const ATV::cpu::NeighborConsumer*>(&probe));
+    EXPECT_EQ(nc->neighbor_cutoff(), kProbeCutoff); // exact forwarding [Å]
+}
+
+TEST(NeighborProtocol, ProviderProbeExposesTagThroughAccessor) {
+    ProbeNeighborProvider probe;
+    const ATV::cpu::NeighborProvider* np = probe.as_neighbor_provider();
+    ASSERT_NE(np, nullptr);
+    EXPECT_EQ(np, static_cast<const ATV::cpu::NeighborProvider*>(&probe));
+}
+
+TEST(NeighborProtocol, ConsumerAndProviderProtocolsAreOrthogonal) {
+    // Opting into one side of the contract must not implicitly opt into
+    // the other — consumer groups (pair styles, CoulLong) and provider
+    // groups (NeighborList) are disjoint by design.
+    ProbeNeighborConsumer consumer;
+    ProbeNeighborProvider provider;
+    EXPECT_EQ(consumer.as_neighbor_provider(), nullptr);
+    EXPECT_EQ(provider.as_neighbor_consumer(), nullptr);
 }
 
 } // namespace

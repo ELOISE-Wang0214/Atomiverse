@@ -26,7 +26,9 @@
 namespace ATV {
 namespace cuda {
 
-class HaloParticipant; // opt-in halo protocol (halo_participant.cuh)
+class HaloParticipant;  // opt-in halo protocol (halo_participant.cuh)
+class NeighborConsumer; // opt-in neighbor protocols (neighbor_protocol.cuh)
+class NeighborProvider;
 
 /// @brief Context for one-time component build (after Runtime + DeviceFrame exist).
 ///
@@ -127,26 +129,25 @@ class ComponentBase {
     /// @param required true iff a downstream consumer needs the virial.
     virtual void set_stress_required(bool /*required*/) {}
 
-    /// @brief Whether this component requires a `cuda::NeighborList` in
-    ///        the same plan.
+    /// @brief Typed accessor for the consumer side of the opt-in
+    ///        neighbor protocol (mirrors
+    ///        `cpu::ComponentBase::as_neighbor_consumer()`).
     ///
-    /// Defaults to `false`. Pair evaluators (`cuda::Pair` subclasses)
-    /// override to return `true`; `cuda::md::MD::install_infra_` uses
-    /// this to detect missing neighbor lists and throws with the
-    /// offender's name.
-    /// @return true if this component needs a `cuda::NeighborList`
-    ///         registered in the same plan.
-    virtual bool needs_neighbor_list() const { return false; }
+    /// Pair evaluators (`cuda::Pair` subclasses) return `this`;
+    /// `cuda::md::MD::install_infra_` probes it for the missing-NL gate —
+    /// no `dynamic_cast`, no `name()` matching. Default: not a consumer.
+    /// @return The consumer view of this component, or `nullptr`.
+    virtual const NeighborConsumer* as_neighbor_consumer() const {
+        return nullptr;
+    }
 
-    /// @brief Whether this component *is* a neighbor list (the supply
-    ///        side of the `needs_neighbor_list()` contract).
-    ///
-    /// Defaults to `false`. `cuda::NeighborList` overrides to return
-    /// `true`. Used by `cuda::md::MD::install_infra_` to detect a
-    /// registered NeighborList without keying on `name() == "neighbor_list"`.
-    /// @return true if this component supplies the neighbor list to
-    ///         downstream consumers.
-    virtual bool provides_neighbor_list() const { return false; }
+    /// @brief Typed accessor for the supply side of the opt-in neighbor
+    ///        protocol. `cuda::NeighborList` returns `this`. Default:
+    ///        not a provider.
+    /// @return The provider view of this component, or `nullptr`.
+    virtual const NeighborProvider* as_neighbor_provider() const {
+        return nullptr;
+    }
 
     /// @brief Scheduling trait (blocking or deferrable).
     /// @return Scheduling::blocking (default) or Scheduling::deferrable.

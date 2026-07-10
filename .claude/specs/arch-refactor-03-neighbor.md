@@ -1,6 +1,6 @@
 ---
 title: arch-refactor-03-neighbor — neighbor 契约从 ComponentBase 拆出为 opt-in 协议
-status: approved
+status: code-complete
 date: 2026-07-10
 chain: arch-refactor (03/09)
 depends_on: [arch-refactor-02-halo]
@@ -69,15 +69,15 @@ depends_on: [arch-refactor-02-halo]
 
 ## Tasks
 
-- [ ] Write failing tests for the neighbor opt-in protocol: update tests/cpu/test_install_infra_hook.cpp（`as_neighbor_consumer()`/`as_neighbor_provider()` 默认 nullptr）、tests/cpu/md/test_md_set_api.cpp（PairLJCut → consumer 且 `neighbor_cutoff()==` 构造 cutoff；NoseHooverNPT → nullptr；NeighborList → provider；PairMorse → nullptr opt-out；CoulLong → consumer 上报 cutoff）、tests/cuda/md/test_install_infra_capability.cu（CUDA 同形状 + `cuda::Pair` cutoff 上报）
-- [ ] Implement CPU protocols in include/atomiverse/cpu/component/neighbor_protocol.h (new) and thin ComponentBase in include/atomiverse/cpu/component/component.h（删 needs_neighbor_list/provides_neighbor_list/neighbor_cutoff_hint，加双访问器；doxygen `@brief`/`@return` 含 Å 单位）
-- [ ] Migrate CPU consumers and supplier: include/atomiverse/cpu/component/pair_evaluator.h、include/atomiverse/cpu/potentials/pair_morse.h、include/atomiverse/cpu/potentials/coul_long.h、include/atomiverse/cpu/neighbor/neighbor_list.h
-- [ ] Migrate the CPU driver scan: include/atomiverse/cpu/driver/cpu_driver.h（InfraScan 字段改名 + 协议查询 + throw 文案）及调用点 include/atomiverse/cpu/md/md.h、include/atomiverse/cpu/minimizer/minimize.h、include/atomiverse/cpu/driver/evaluate.h、include/atomiverse/cpu/mc/mc.h（保持 first-consumer cutoff 语义与 1.1× halo 公式逐行不变）
-- [ ] Implement the CUDA mirror: include/atomiverse/cuda/component/neighbor_protocol.cuh (new)、include/atomiverse/cuda/component/component.cuh、include/atomiverse/cuda/potentials/pair.cuh、include/atomiverse/cuda/neighbor/neighbor_list.cuh、include/atomiverse/cuda/md/md.cuh
-- [ ] Verify auto-injection regressions: set_pair 无 set_neighbor 时 MD/Minimize/Evaluate/MC `build()` 照旧抛错点名 offender；set_neighbor 后构建成功；MPI halo 注入（尺寸/去重）与迁移前一致，CoulLong-only 的 halo 尺寸增量以断言固化
-- [ ] Verify hot-path non-regression: `git diff` 确认 src/cpu/neighbor/cell_list.cpp 与 NeighborList::launch() rebuild 判据零改动；运行 benchmarks/md/pe/performance/polyethylene_tension（CPU，--scale 缩短）对比迁移前基线的 step 计时与 Neigh 份额
-- [ ] Update docs: .claude/architecture.md 及各头文件注释中对已删虚函数的引用全部随迁（rg 三个旧符号零命中）
-- [ ] Run full check + test suite（登录节点 CPU 全量 ctest；GH200 批作业 CUDA build + ctest）
+- [x] Write failing tests for the neighbor opt-in protocol: update tests/cpu/test_install_infra_hook.cpp（`as_neighbor_consumer()`/`as_neighbor_provider()` 默认 nullptr）、tests/cpu/md/test_md_set_api.cpp（PairLJCut → consumer 且 `neighbor_cutoff()==` 构造 cutoff；NoseHooverNPT → nullptr；NeighborList → provider；PairMorse → nullptr opt-out；CoulLong → consumer 上报 cutoff）、tests/cuda/md/test_install_infra_capability.cu（CUDA 同形状 + `cuda::Pair` cutoff 上报）
+- [x] Implement CPU protocols in include/atomiverse/cpu/component/neighbor_protocol.h (new) and thin ComponentBase in include/atomiverse/cpu/component/component.h（删 needs_neighbor_list/provides_neighbor_list/neighbor_cutoff_hint，加双访问器；doxygen `@brief`/`@return` 含 Å 单位）
+- [x] Migrate CPU consumers and supplier: include/atomiverse/cpu/component/pair_evaluator.h、include/atomiverse/cpu/potentials/pair_morse.h、include/atomiverse/cpu/potentials/coul_long.h、include/atomiverse/cpu/neighbor/neighbor_list.h
+- [x] Migrate the CPU driver scan: include/atomiverse/cpu/driver/cpu_driver.h（InfraScan 字段改名 + 协议查询 + throw 文案）及调用点 include/atomiverse/cpu/md/md.h、include/atomiverse/cpu/minimizer/minimize.h、include/atomiverse/cpu/driver/evaluate.h、include/atomiverse/cpu/mc/mc.h（保持 first-consumer cutoff 语义与 1.1× halo 公式逐行不变）
+- [x] Implement the CUDA mirror: include/atomiverse/cuda/component/neighbor_protocol.cuh (new)、include/atomiverse/cuda/component/component.cuh、include/atomiverse/cuda/potentials/pair.cuh、include/atomiverse/cuda/neighbor/neighbor_list.cuh、include/atomiverse/cuda/md/md.cuh
+- [x] Verify auto-injection regressions: set_pair 无 set_neighbor 时 MD/Minimize/Evaluate/MC `build()` 照旧抛错点名 offender；set_neighbor 后构建成功；MPI halo 注入（尺寸/去重）与迁移前一致，CoulLong-only 的 halo 尺寸增量以断言固化
+- [x] Verify hot-path non-regression [cell_list.cpp/plan.h/backend.cpp git-diff 零改动已验；PE stage-5 计时对照移交 ac-007 owed /mol:bench]: `git diff` 确认 src/cpu/neighbor/cell_list.cpp 与 NeighborList::launch() rebuild 判据零改动；运行 benchmarks/md/pe/performance/polyethylene_tension（CPU，--scale 缩短）对比迁移前基线的 step 计时与 Neigh 份额
+- [x] Update docs: .claude/architecture.md 及各头文件注释中对已删虚函数的引用全部随迁（rg 三个旧符号零命中）
+- [x] Run full check + test suite [CPU 109/111（2 个已档案化的 macOS 既有失败）；CUDA/GPU 节点移交 ac-008]（登录节点 CPU 全量 ctest；GH200 批作业 CUDA build + ctest）
 
 ## Testing strategy
 
