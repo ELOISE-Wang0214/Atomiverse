@@ -21,8 +21,8 @@
 
 #include "atomiverse/cpu/gpw/internal/collocate.h"
 #include "atomiverse/cpu/gpw/internal/cp2k_basis.h" // GaussianBasis
-#include "atomiverse/cpu/gpw/internal/cp2k_io.h"    // GthPotential, GthNonlocalChannel
-#include "atomiverse/cpu/linalg/matrix.h"           // RealMatrix
+#include "atomiverse/cpu/gpw/internal/cp2k_io.h" // GthPotential, GthNonlocalChannel
+#include "atomiverse/cpu/linalg/matrix.h"        // RealMatrix
 
 namespace ATV {
 namespace cpu {
@@ -30,13 +30,15 @@ namespace gpw {
 
 /// @brief One atom's GPW data: valence charge, basis, and GTH pseudopotential.
 struct GpwAtom {
-    double z_val = 0.0;                       ///< valence charge (electrons it contributes).
-    int z = 0;                                ///< atomic number Z (for DFT-D3; 0 = unset).
-    double pos[3] = {0, 0, 0};                ///< position [Bohr].
-    std::vector<GridBasisFunction> basis;     ///< contracted GTOs, already centered at pos.
-    double rloc = 0.0;                        ///< GTH local radius.
-    std::vector<double> cloc;                 ///< GTH local short-range C coefficients.
-    std::vector<GthNonlocalChannel> nonlocal; ///< GTH nonlocal projector channels.
+    double z_val = 0.0;        ///< valence charge (electrons it contributes).
+    int z = 0;                 ///< atomic number Z (for DFT-D3; 0 = unset).
+    double pos[3] = {0, 0, 0}; ///< position [Bohr].
+    std::vector<GridBasisFunction>
+        basis;                ///< contracted GTOs, already centered at pos.
+    double rloc = 0.0;        ///< GTH local radius.
+    std::vector<double> cloc; ///< GTH local short-range C coefficients.
+    std::vector<GthNonlocalChannel>
+        nonlocal; ///< GTH nonlocal projector channels.
 };
 
 /// @brief Exchange-correlation functional选择.
@@ -45,21 +47,28 @@ enum class XcKind { PADE, PBE };
 /// @brief GPW SCF configuration.
 struct GpwConfig {
     double cell[3] = {0, 0, 0}; ///< orthorhombic box lengths [Bohr].
-    double cutoff_ry = 300.0;   ///< density grid cutoff [Ry] (finest multigrid level).
-    int ngrids = 1;             ///< CP2K multigrid levels; 1 = single grid (default, bit-identical).
-    double rel_cutoff = 0.0;    ///< CP2K REL_CUTOFF [Ry]; exponent->level map when ngrids>1.
-    int n_occ = 0;              ///< number of doubly-occupied orbitals (N_elec / 2).
-    int max_iter = 100;         ///< max SCF iterations.
-    double tol = 1e-8;          ///< SCF energy convergence [Hartree].
-    double eps_default = 1e-8;  ///< CP2K EPS_DEFAULT: Gaussian-tail cutoff driving the
-                                ///< collocation window and the Γ-point lattice-image count.
-    double mix = 0.5;           ///< linear density-mixing factor (used only when diis_depth == 0).
-    int diis_depth = 6;         ///< Pulay DIIS history depth; 0 disables DIIS (falls back to linear `mix`).
-    XcKind xc = XcKind::PADE;   ///< LDA (PADE) or GGA (PBE).
-    bool nonperiodic = false;   ///< use the isolated (MT) Poisson solver.
-    bool d3 = false;            ///< add Grimme DFT-D3 (zero damping, PBE) dispersion
-                                ///< to the energy and forces (requires GpwAtom.z set).
-    std::string d3_param_file;  ///< path to CP2K's dftd3.dat (required when d3 == true).
+    double cutoff_ry =
+        300.0; ///< density grid cutoff [Ry] (finest multigrid level).
+    int ngrids =
+        1; ///< CP2K multigrid levels; 1 = single grid (default, bit-identical).
+    double rel_cutoff =
+        0.0;       ///< CP2K REL_CUTOFF [Ry]; exponent->level map when ngrids>1.
+    int n_occ = 0; ///< number of doubly-occupied orbitals (N_elec / 2).
+    int max_iter = 100; ///< max SCF iterations.
+    double tol = 1e-8;  ///< SCF energy convergence [Hartree].
+    double eps_default =
+        1e-8; ///< CP2K EPS_DEFAULT: Gaussian-tail cutoff driving the
+              ///< collocation window and the Γ-point lattice-image count.
+    double mix =
+        0.5; ///< linear density-mixing factor (used only when diis_depth == 0).
+    int diis_depth =
+        6; ///< Pulay DIIS history depth; 0 disables DIIS (falls back to linear `mix`).
+    XcKind xc = XcKind::PADE; ///< LDA (PADE) or GGA (PBE).
+    bool nonperiodic = false; ///< use the isolated (MT) Poisson solver.
+    bool d3 = false; ///< add Grimme DFT-D3 (zero damping, PBE) dispersion
+                     ///< to the energy and forces (requires GpwAtom.z set).
+    std::string
+        d3_param_file; ///< path to CP2K's dftd3.dat (required when d3 == true).
     /// @brief Use the OT (orbital transformation) minimizer instead of dense
     /// diagonalization. Diagonalization-free SCF (gradient O(nb²·n_occ)); the
     /// path to large systems where the O(nb³) eigensolve is prohibitive.
@@ -69,12 +78,12 @@ struct GpwConfig {
 
 /// @brief GPW SCF result with an energy decomposition.
 struct GpwResult {
-    double e_total = 0.0;   ///< total energy [Hartree].
-    double e_kinetic = 0.0; ///< Tr(P T).
-    double e_loc_sr = 0.0;  ///< Tr(P V_loc^sr).
-    double e_nonlocal = 0.0;///< Tr(P V_nl).
-    double e_es = 0.0;      ///< total electrostatic (Hartree + e-ion-lr + ion-ion).
-    double e_xc = 0.0;      ///< XC energy.
+    double e_total = 0.0;    ///< total energy [Hartree].
+    double e_kinetic = 0.0;  ///< Tr(P T).
+    double e_loc_sr = 0.0;   ///< Tr(P V_loc^sr).
+    double e_nonlocal = 0.0; ///< Tr(P V_nl).
+    double e_es = 0.0; ///< total electrostatic (Hartree + e-ion-lr + ion-ion).
+    double e_xc = 0.0; ///< XC energy.
     bool converged = false;
     int iters = 0;
 
@@ -83,9 +92,9 @@ struct GpwResult {
     /// `P == build_density_matrix(C, n_occ)`. Used to assemble analytic forces
     /// (energy-weighted density matrix W = Σ_i 2 ε_i c_i c_iᵀ).
     /// @{
-    linalg::RealMatrix C;      ///< MO coefficients, columns = orbitals (nb×nb).
-    linalg::RealMatrix P;      ///< Converged density matrix (nb×nb).
-    std::vector<double> eps;   ///< Orbital energies ε_i [Hartree], length nb.
+    linalg::RealMatrix C;    ///< MO coefficients, columns = orbitals (nb×nb).
+    linalg::RealMatrix P;    ///< Converged density matrix (nb×nb).
+    std::vector<double> eps; ///< Orbital energies ε_i [Hartree], length nb.
     /// @}
 };
 
@@ -102,12 +111,69 @@ struct GpwResult {
 GpwAtom make_gpw_atom(const double pos[3], const GaussianBasis& basis,
                       const GthPotential& pot, int z = 0);
 
+/// @brief Inner GPW solver — the `*Solver` face of the GPW method
+///        (mirrors `cpu::pw::PWSolver` / `cpu::scf::SCFSolver`).
+///
+/// **NOT a `Driver<...>` subclass** — this is the inner solver behind
+/// `GPWEvaluator`. Construction fixes the configuration; `build()` runs
+/// the one-time fail-fast validation against a reference atom set (the
+/// no-fallback rule: invalid configuration throws instead of degrading);
+/// `run()` is re-entrant and rebuilds every geometry-dependent structure
+/// per call (grids, lattice images, S/T/Vpp — same policy as `PWSolver`).
+/// Move-only, like the sibling solvers.
+class GPWSolver {
+  public:
+    /// @brief Fix the GPW configuration for this solver.
+    /// @param config Grid/XC/electrostatics configuration (cell in [Bohr]).
+    explicit GPWSolver(GpwConfig config);
+
+    GPWSolver(const GPWSolver&) = delete;
+    GPWSolver& operator=(const GPWSolver&) = delete;
+    GPWSolver(GPWSolver&&) = default;
+    GPWSolver& operator=(GPWSolver&&) = default;
+
+    /// @brief One-time fail-fast validation against a reference system.
+    ///
+    /// @param reference Atoms the solver will be run on (used for
+    ///        structural validation only; `run()` takes the live set).
+    /// @throws std::invalid_argument when the atom set is empty, when
+    ///         `config.n_occ < 1`, when a periodic cell edge is
+    ///         non-positive, or when `config.d3` is set without a
+    ///         `d3_param_file` (no-fallback rule).
+    void build(const std::vector<GpwAtom>& reference);
+
+    /// @brief Run the closed-shell GPW SCF at the given geometry.
+    ///
+    /// Re-entrant: geometry-dependent structures are rebuilt per call.
+    /// @param atoms Atom set at the current geometry [Bohr].
+    /// @param guess_C Optional warm-start MO coefficients (see `gpw_scf`).
+    /// @return The owned result of this run (valid until the next `run()`).
+    /// @throws std::logic_error when called before `build()`.
+    GpwResult& run(const std::vector<GpwAtom>& atoms,
+                   const linalg::RealMatrix* guess_C = nullptr);
+
+    /// @brief Result of the most recent `run()` (default-constructed —
+    ///        `converged == false` — before the first run).
+    const GpwResult& last_result() const { return result_; }
+
+    /// @brief Configuration this solver was constructed with.
+    const GpwConfig& config() const { return config_; }
+
+  private:
+    GpwConfig config_;   ///< Fixed at construction.
+    GpwResult result_;   ///< Owned result buffer (last run).
+    bool built_ = false; ///< Whether build() validated the configuration.
+};
+
 /// @brief Run the closed-shell GPW SCF for a set of atoms.
 /// @param guess_C Optional warm-start MO coefficients (nb×nb, occupied in the
 ///        first n_occ columns — e.g. a previous step's GpwResult::C, or an ASPC
 ///        extrapolation). When given, the O(nb³) core-Hamiltonian initial
 ///        diagonalization is skipped and the SCF starts from this guess, cutting
 ///        the iteration count for AIMD/geometry sweeps. nullptr = cold start.
+///
+/// Thin shim over a transient `GPWSolver` (build + run), kept for the
+/// existing call sites — mirrors `scf_solve()` / `pw_scf()`.
 GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
                   const linalg::RealMatrix* guess_C = nullptr);
 
@@ -118,7 +184,8 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
 /// follow-on. Returns forces [Hartree/Bohr], one xyz triple per atom.
 /// @param h Displacement step [Bohr].
 std::vector<std::array<double, 3>>
-gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg, double h = 1e-3);
+gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
+              double h = 1e-3);
 
 } // namespace gpw
 } // namespace cpu

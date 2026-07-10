@@ -1,5 +1,5 @@
-/// @file src/cpu/vib/eigen_solver.cpp
-/// @brief cpu::vib::EigenSolver — verbatim port of PySCF
+/// @file src/cpu/vib/hessian_diagonalizer.cpp
+/// @brief cpu::vib::HessianDiagonalizer — verbatim port of PySCF
 ///        `pyscf/hessian/thermo.py::harmonic_analysis`.
 ///
 /// Reproduces `_get_TR`, `_get_rotor_type`, `rotation_const`, the QR
@@ -7,7 +7,7 @@
 /// the `freq_au -> cm^-1` conversion. The reference-port-fidelity rule
 /// applies: the numerics mirror PySCF, they are not paraphrased.
 
-#include "atomiverse/cpu/vib/eigen_solver.h"
+#include "atomiverse/cpu/vib/hessian_diagonalizer.h"
 
 #include <algorithm>
 #include <array>
@@ -179,7 +179,7 @@ std::array<std::vector<double>, 6> get_TR(const std::vector<double>& mass,
 
 } // namespace
 
-void EigenSolver::launch(const cpu::LaunchContext& ctx) {
+void HessianDiagonalizer::launch(const cpu::LaunchContext& ctx) {
     const int n = ws_->n_atoms;
     const int dim = 3 * n;
     if (ctx.step < 2 * dim)

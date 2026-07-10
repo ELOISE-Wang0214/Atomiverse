@@ -255,7 +255,7 @@ TEST(DriverBindingKind, HessianPlanShapeUnchanged) {
               (std::vector<std::string>{"vib_hessian_accumulator"}));
     EXPECT_EQ(slot_names(plan, static_cast<std::size_t>(P::diagonalize)),
               (std::vector<std::string>{"vib_symmetrize", "vib_mass_weighting",
-                                        "vib_eigen_solver"}));
+                                        "hessian_diagonalizer"}));
     EXPECT_EQ(slot_names(plan, static_cast<std::size_t>(P::thermochem)),
               (std::vector<std::string>{"vib_thermochem"}));
     EXPECT_EQ(slot_names(plan, static_cast<std::size_t>(P::end_of_step)),

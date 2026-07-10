@@ -18,8 +18,8 @@ namespace cuda {
 namespace scf {
 namespace internal {
 
-void EigenSolver::build(const BuildContext& ctx, SCFWorkspace& ws) {
-    auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
+void EigenSolver::build(const SolverContext& ctx, SCFWorkspace& ws) {
+    auto stream = static_cast<cudaStream_t>(ctx.stream);
     int n = ws.n;
 
     // Create cuSOLVER handle
@@ -42,12 +42,12 @@ void EigenSolver::build(const BuildContext& ctx, SCFWorkspace& ws) {
     cudaStreamSynchronize(stream);
 }
 
-void EigenSolver::step(const LaunchContext& ctx, SCFWorkspace& ws) {
+void EigenSolver::step(const SolverContext& ctx, SCFWorkspace& ws) {
     auto& scf = ws;
     if (scf.converged)
         return;
 
-    auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
+    auto stream = static_cast<cudaStream_t>(ctx.stream);
     auto handle = static_cast<cusolverDnHandle_t>(cusolver_handle_);
     int n = scf.n;
 
@@ -60,7 +60,7 @@ void EigenSolver::step(const LaunchContext& ctx, SCFWorkspace& ws) {
                   scf.C, n, scf.eig, d_work_, work_size_, d_info_);
 }
 
-void EigenSolver::destroy(const DestroyContext& /*ctx*/, SCFWorkspace& /*ws*/) {
+void EigenSolver::destroy(const SolverContext& /*ctx*/, SCFWorkspace& /*ws*/) {
     if (cusolver_handle_) {
         cusolverDnDestroy(static_cast<cusolverDnHandle_t>(cusolver_handle_));
         cusolver_handle_ = nullptr;

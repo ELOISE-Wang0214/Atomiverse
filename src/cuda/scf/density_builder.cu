@@ -18,8 +18,8 @@ namespace cuda {
 namespace scf {
 namespace internal {
 
-void DensityBuilder::build(const BuildContext& ctx, SCFWorkspace& /*ws*/) {
-    auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
+void DensityBuilder::build(const SolverContext& ctx, SCFWorkspace& /*ws*/) {
+    auto stream = static_cast<cudaStream_t>(ctx.stream);
 
     cublasHandle_t handle;
     cublasCreate(&handle);
@@ -27,12 +27,12 @@ void DensityBuilder::build(const BuildContext& ctx, SCFWorkspace& /*ws*/) {
     cublas_handle_ = handle;
 }
 
-void DensityBuilder::step(const LaunchContext& ctx, SCFWorkspace& ws) {
+void DensityBuilder::step(const SolverContext& ctx, SCFWorkspace& ws) {
     auto& scf = ws;
     if (scf.converged)
         return;
 
-    auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
+    auto stream = static_cast<cudaStream_t>(ctx.stream);
     auto handle = static_cast<cublasHandle_t>(cublas_handle_);
     int n = scf.n;
     int n_occ = scf.n_occ;
@@ -49,7 +49,7 @@ void DensityBuilder::step(const LaunchContext& ctx, SCFWorkspace& ws) {
                  scf.C, n, &zero, scf.P, n);
 }
 
-void DensityBuilder::destroy(const DestroyContext& /*ctx*/,
+void DensityBuilder::destroy(const SolverContext& /*ctx*/,
                              SCFWorkspace& /*ws*/) {
     if (cublas_handle_) {
         cublasDestroy(static_cast<cublasHandle_t>(cublas_handle_));

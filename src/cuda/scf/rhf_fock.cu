@@ -61,8 +61,8 @@ __global__ void build_G_kernel(prec_t* __restrict__ G,
     }
 }
 
-void RHFFock::build(const BuildContext& ctx, SCFWorkspace& ws) {
-    auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
+void RHFFock::build(const SolverContext& ctx, SCFWorkspace& ws) {
+    auto stream = static_cast<cudaStream_t>(ctx.stream);
     auto& scf = ws;
     int n = integrals_.n_basis;
     int nn = n * n;
@@ -136,12 +136,12 @@ void RHFFock::build(const BuildContext& ctx, SCFWorkspace& ws) {
     cudaStreamSynchronize(stream);
 }
 
-void RHFFock::step(const LaunchContext& ctx, SCFWorkspace& ws) {
+void RHFFock::step(const SolverContext& ctx, SCFWorkspace& ws) {
     auto& scf = ws;
     if (scf.converged)
         return;
 
-    auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
+    auto stream = static_cast<cudaStream_t>(ctx.stream);
     auto handle = static_cast<cublasHandle_t>(cublas_handle_);
     int n = scf.n;
     int nn = n * n;
@@ -204,12 +204,12 @@ void RHFFock::step(const LaunchContext& ctx, SCFWorkspace& ws) {
         const work_t neg_lambda = static_cast<work_t>(-level_shift_);
         const work_t one_b = work_t(1);
         detail::gemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, n, n, scf.n_occ,
-                     &neg_lambda, scf.C_prime, n, scf.C_prime, n, &one_b,
-                     scf.H, n);
+                     &neg_lambda, scf.C_prime, n, scf.C_prime, n, &one_b, scf.H,
+                     n);
     }
 }
 
-void RHFFock::destroy(const DestroyContext& /*ctx*/, SCFWorkspace& /*ws*/) {
+void RHFFock::destroy(const SolverContext& /*ctx*/, SCFWorkspace& /*ws*/) {
     if (cublas_handle_) {
         cublasDestroy(static_cast<cublasHandle_t>(cublas_handle_));
         cublas_handle_ = nullptr;
@@ -250,8 +250,8 @@ RHFFockDevice::RHFFockDevice(int n_prim, const double* exponents,
     : n_prim_(n_prim), n_occ_(n_occ), exponents_(exponents, exponents + n_prim),
       coefficients_(coefficients, coefficients + n_prim) {}
 
-void RHFFockDevice::build(const BuildContext& ctx, SCFWorkspace& ws) {
-    auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
+void RHFFockDevice::build(const SolverContext& ctx, SCFWorkspace& ws) {
+    auto stream = static_cast<cudaStream_t>(ctx.stream);
     auto& scf = ws;
     int natm = ctx.frame.n_atoms();
     int n = natm; // 1 basis function per atom (STO-3G 1s for H)
@@ -450,13 +450,13 @@ void RHFFockDevice::build(const BuildContext& ctx, SCFWorkspace& ws) {
     cudaStreamSynchronize(stream);
 }
 
-void RHFFockDevice::step(const LaunchContext& ctx, SCFWorkspace& ws) {
+void RHFFockDevice::step(const SolverContext& ctx, SCFWorkspace& ws) {
     // Identical to RHFFock::step — same Fock build logic
     auto& scf = ws;
     if (scf.converged)
         return;
 
-    auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
+    auto stream = static_cast<cudaStream_t>(ctx.stream);
     auto handle = static_cast<cublasHandle_t>(cublas_handle_);
     int n = scf.n;
     int nn = n * n;
@@ -483,7 +483,7 @@ void RHFFockDevice::step(const LaunchContext& ctx, SCFWorkspace& ws) {
                     cudaMemcpyDeviceToDevice, stream);
 }
 
-void RHFFockDevice::destroy(const DestroyContext& /*ctx*/,
+void RHFFockDevice::destroy(const SolverContext& /*ctx*/,
                             SCFWorkspace& /*ws*/) {
     if (cublas_handle_) {
         cublasDestroy(static_cast<cublasHandle_t>(cublas_handle_));

@@ -7,9 +7,11 @@
 /// of `cuda::Frame`) and passes it by reference into every helper call.
 /// It absorbs the former `ZeroDensity` infrastructure component: the
 /// density matrix is zeroed via `cudaMemsetAsync` as the first step of
-/// `run()`. The solver is not a `Driver` and carries no phase enum, and
-/// never touches `cuda::Context::outer_status` — it manages its own
-/// convergence internally via the workspace's `converged` flag.
+/// `run()`. The solver is not a `Driver`, carries no phase enum, and can
+/// no longer see any component-layer state — its whole external surface
+/// is `(void* stream, cuda::Frame&)`, so the old comment-level isolation
+/// promise is now enforced by the type system. Convergence is managed
+/// internally via the workspace's `converged` flag.
 
 #include "atomiverse/cuda/scf/scf_solver.cuh"
 
@@ -30,8 +32,8 @@ namespace scf {
 // The level shift raised every virtual eigenvalue by exactly λ and left
 // the occupied ones untouched; subtract λ back from eig[n_occ .. n-1] so
 // the reported orbital energies are shift-free (hf-robust-03 de-shift).
-__global__ void deshift_virtuals_kernel(prec_t* __restrict__ eig,
-                                        prec_t lambda, int n_occ, int n) {
+__global__ void deshift_virtuals_kernel(prec_t* __restrict__ eig, prec_t lambda,
+                                        int n_occ, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x + n_occ;
     if (i < n)
         eig[i] -= lambda;
@@ -98,8 +100,8 @@ SCFSolver::SCFSolver(int n_prim, const double* exponents,
 
 #endif // ATV_HAS_RHF
 
-void SCFSolver::build(cuda::Context& runtime, cuda::Frame& frame) {
-    BuildContext ctx{runtime, frame};
+void SCFSolver::build(void* stream, cuda::Frame& frame) {
+    internal::SolverContext ctx{stream, frame, 0};
 
     // The Fock/Hamiltonian builder allocates the SCF workspace (H, P, ...)
     // and must build first; the remaining helpers size off workspace_.n.
@@ -128,11 +130,11 @@ void SCFSolver::build(cuda::Context& runtime, cuda::Frame& frame) {
     built_ = true;
 }
 
-void SCFSolver::run(cuda::Context& runtime, cuda::Frame& frame) {
+void SCFSolver::run(void* stream, cuda::Frame& frame) {
     if (!built_)
-        build(runtime, frame);
+        build(stream, frame);
 
-    auto stream = static_cast<cudaStream_t>(runtime.stream);
+    auto cu_stream = static_cast<cudaStream_t>(stream);
     auto& scf = workspace_;
 
     // ── Absorbed ZeroDensity: zero P before the first iteration ───────
@@ -140,7 +142,7 @@ void SCFSolver::run(cuda::Context& runtime, cuda::Frame& frame) {
     scf.iteration = 0;
     if (scf.n > 0)
         cudaMemsetAsync(scf.P, 0, scf.n * scf.n * sizeof(cuda::prec_t),
-                        stream);
+                        cu_stream);
 
     // ── Internal SCF self-consistency loop ────────────────────────────
     // Fixed-order cycle: build Fock/Hamiltonian → diagonalize →
@@ -148,7 +150,7 @@ void SCFSolver::run(cuda::Context& runtime, cuda::Frame& frame) {
     // workspace_.converged is set; the loop also breaks early on it.
     iterations_ = 0;
     for (int iter = 0; iter < max_iter_; ++iter) {
-        LaunchContext ctx{runtime, frame, /*stage=*/0, /*step=*/iter};
+        internal::SolverContext ctx{stream, frame, /*step=*/iter};
 
         switch (path_) {
         case Path::Synthetic:
@@ -186,14 +188,13 @@ void SCFSolver::run(cuda::Context& runtime, cuda::Frame& frame) {
     if (scf.converged && std::abs(level_shift_) > 1e-4 && scf.n_occ < scf.n) {
         const int n_virt = scf.n - scf.n_occ;
         int blocks = cuda::grid_size(n_virt, cuda::kDefaultBlock);
-        deshift_virtuals_kernel<<<blocks, cuda::kDefaultBlock, 0, stream>>>(
-            scf.eig, static_cast<cuda::prec_t>(level_shift_), scf.n_occ,
-            scf.n);
+        deshift_virtuals_kernel<<<blocks, cuda::kDefaultBlock, 0, cu_stream>>>(
+            scf.eig, static_cast<cuda::prec_t>(level_shift_), scf.n_occ, scf.n);
     }
 }
 
-void SCFSolver::destroy(cuda::Context& runtime, cuda::Frame& frame) {
-    DestroyContext ctx{runtime, frame};
+void SCFSolver::destroy(void* stream, cuda::Frame& frame) {
+    internal::SolverContext ctx{stream, frame, 0};
 
     switch (path_) {
     case Path::Synthetic:

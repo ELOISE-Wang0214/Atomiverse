@@ -3,7 +3,7 @@
 ///        classification, genuine mode count, and imaginary-mode
 ///        handling (spec phase4-vibrations-02).
 ///
-/// These tests drive `cpu::vib::MassWeighting` + `cpu::vib::EigenSolver`
+/// These tests drive `cpu::vib::MassWeighting` + `cpu::vib::HessianDiagonalizer`
 /// directly on a hand-built Hessian via the shared `HessianWorkspace`,
 /// so they exercise the TR projector without an SCF run.
 ///
@@ -19,7 +19,7 @@
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/vib/eigen_solver.h"
+#include "atomiverse/cpu/vib/hessian_diagonalizer.h"
 #include "atomiverse/cpu/vib/hessian_workspace.h"
 #include "atomiverse/cpu/vib/mass_weighting.h"
 
@@ -27,7 +27,7 @@ using namespace ATV;
 
 namespace {
 
-/// @brief Run MassWeighting then EigenSolver on a workspace whose `r0`,
+/// @brief Run MassWeighting then HessianDiagonalizer on a workspace whose `r0`,
 ///        `hessian`, and atom types are pre-populated.
 ///
 /// @param frame Frame carrying atom types (atomic numbers).
@@ -37,7 +37,7 @@ void run_diagonalize(cpu::Frame& frame, cpu::vib::HessianWorkspace& ws) {
     const int dim = 3 * ws.n_atoms;
     cpu::LaunchContext ctx{runtime, frame, /*stage=*/0, /*step=*/2 * dim};
     cpu::vib::MassWeighting{&ws}.launch(ctx);
-    cpu::vib::EigenSolver{&ws}.launch(ctx);
+    cpu::vib::HessianDiagonalizer{&ws}.launch(ctx);
 }
 
 /// @brief Optimized-ish H2O geometry (nonlinear), Angstrom.

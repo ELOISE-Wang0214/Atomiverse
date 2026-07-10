@@ -1,5 +1,5 @@
-/// @file cpu/vib/eigen_solver.h
-/// @brief cpu::vib::EigenSolver — TR projection + diagonalization of the
+/// @file cpu/vib/hessian_diagonalizer.h
+/// @brief cpu::vib::HessianDiagonalizer — TR projection + diagonalization of the
 ///        mass-weighted Hessian into normal-mode frequencies.
 ///
 /// Bound at `vib::Phase::diagonalize` at order +1 (last), after link 1's
@@ -21,8 +21,8 @@
 ///      (negative for imaginary `lambda < 0`).
 ///   7. Lift the eigenvectors back to the full `3N` Cartesian basis.
 ///
-/// `cpu::vib::EigenSolver` is namespace-scoped — distinct from
-/// `cpu::scf::internal::EigenSolver` (a different namespace, no clash).
+/// `cpu::vib::HessianDiagonalizer` is namespace-scoped — distinct from
+/// `cpu::scf::internal::HessianDiagonalizer` (a different namespace, no clash).
 #pragma once
 
 #include <string>
@@ -42,13 +42,13 @@ namespace vib {
 ///
 /// `role() == None` and `capabilities()` empty — it writes the
 /// frequency fields of the shared workspace, not a `cpu::Frame` field.
-class EigenSolver : public cpu::ComponentBase {
+class HessianDiagonalizer : public cpu::ComponentBase {
   public:
     /// @brief Construct bound to a driver-owned workspace.
     /// @param ws Non-owning pointer to the shared Hessian workspace.
-    explicit EigenSolver(HessianWorkspace* ws) : ws_(ws) {}
+    explicit HessianDiagonalizer(HessianWorkspace* ws) : ws_(ws) {}
 
-    std::string name() const override { return "vib_eigen_solver"; }
+    std::string name() const override { return "hessian_diagonalizer"; }
     ComponentRole role() const override { return ComponentRole::None; }
 
     /// @brief Default binding: `vib::Phase::diagonalize` @ +1 (last).

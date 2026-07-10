@@ -18,8 +18,8 @@ namespace cuda {
 namespace scf {
 namespace internal {
 
-void ConvergenceCheck::build(const BuildContext& ctx, SCFWorkspace& /*ws*/) {
-    auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
+void ConvergenceCheck::build(const SolverContext& ctx, SCFWorkspace& /*ws*/) {
+    auto stream = static_cast<cudaStream_t>(ctx.stream);
 
     cublasHandle_t handle;
     cublasCreate(&handle);
@@ -27,12 +27,12 @@ void ConvergenceCheck::build(const BuildContext& ctx, SCFWorkspace& /*ws*/) {
     cublas_handle_ = handle;
 }
 
-void ConvergenceCheck::step(const LaunchContext& ctx, SCFWorkspace& ws) {
+void ConvergenceCheck::step(const SolverContext& ctx, SCFWorkspace& ws) {
     auto& scf = ws;
     if (scf.converged)
         return;
 
-    auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
+    auto stream = static_cast<cudaStream_t>(ctx.stream);
     auto handle = static_cast<cublasHandle_t>(cublas_handle_);
     int n = scf.n;
     int nn = n * n;
@@ -65,7 +65,7 @@ void ConvergenceCheck::step(const LaunchContext& ctx, SCFWorkspace& ws) {
     }
 }
 
-void ConvergenceCheck::destroy(const DestroyContext& /*ctx*/,
+void ConvergenceCheck::destroy(const SolverContext& /*ctx*/,
                                SCFWorkspace& /*ws*/) {
     if (cublas_handle_) {
         cublasDestroy(static_cast<cublasHandle_t>(cublas_handle_));

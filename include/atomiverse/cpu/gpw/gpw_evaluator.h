@@ -2,16 +2,22 @@
 /// @brief GPWEvaluator — GPW DFT energy component for CPU drivers.
 ///
 /// Mirrors `cpu::pw::PWEvaluator` / `cpu::scf::SCFEvaluator`: a self-contained
-/// Evaluator that wraps the inner `gpw_scf` solver. `build()` records the
-/// per-element basis/pseudopotential templates; each `launch()` assembles the
-/// atoms at the frame's current geometry (Angstrom -> Bohr), runs the GPW SCF,
-/// and writes the total energy to `frame.scalars.energy` [eV].
+/// Evaluator that wraps an owned inner `GPWSolver`. `build()` validates the
+/// per-element basis/pseudopotential templates, assembles the `GpwConfig`
+/// from the build-time frame (cell [Bohr], n_occ, the ATV_GPW_OT diagnostic
+/// switch) and builds the solver; each `launch()` assembles the atoms at the
+/// frame's current geometry (Angstrom -> Bohr), runs the solver, and writes
+/// the total energy to `frame.scalars.energy` [eV]. GPW does not support a
+/// variable cell: a `launch()` under a box that differs from the build-time
+/// cell throws `std::runtime_error`.
 ///
 /// `role() == Evaluator`, `capabilities() == Energy`. Plugs into the Evaluate /
 /// MD / Minimize drivers exactly like the other ES evaluators (forces are a
 /// later capability).
 #pragma once
 
+#include <array>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -25,9 +31,9 @@ namespace gpw {
 
 /// @brief Per-element basis + pseudopotential, keyed by atomic number.
 struct GpwElement {
-    int z = 0;            ///< atomic number, matched against frame.atoms.type.
-    GaussianBasis basis;  ///< contracted Gaussian basis for this element.
-    GthPotential pot;     ///< GTH pseudopotential for this element.
+    int z = 0;           ///< atomic number, matched against frame.atoms.type.
+    GaussianBasis basis; ///< contracted Gaussian basis for this element.
+    GthPotential pot;    ///< GTH pseudopotential for this element.
 };
 
 /// @brief Configuration for the GPW evaluator (grid/XC/electrostatics + elements).
@@ -38,17 +44,20 @@ struct GpwEvaluatorConfig {
     double mix = 0.3;
     XcKind xc = XcKind::PADE;
     bool nonperiodic = false;
-    bool compute_forces = false;      ///< also compute finite-difference forces.
-    double fd_step = 1e-3;            ///< FD displacement [Bohr] for forces.
-    bool d3 = false;                  ///< add Grimme DFT-D3 (zero damping, PBE) dispersion.
-    std::string d3_param_file;        ///< path to CP2K's dftd3.dat (required when d3 == true).
-    std::vector<GpwElement> elements; ///< one per distinct element in the system.
+    bool compute_forces = false; ///< also compute finite-difference forces.
+    double fd_step = 1e-3;       ///< FD displacement [Bohr] for forces.
+    bool d3 = false; ///< add Grimme DFT-D3 (zero damping, PBE) dispersion.
+    std::string
+        d3_param_file; ///< path to CP2K's dftd3.dat (required when d3 == true).
+    std::vector<GpwElement>
+        elements; ///< one per distinct element in the system.
 };
 
 /// @brief GPW total-energy evaluator component.
 class GPWEvaluator : public cpu::ComponentBase {
   public:
-    explicit GPWEvaluator(GpwEvaluatorConfig config) : config_(std::move(config)) {}
+    explicit GPWEvaluator(GpwEvaluatorConfig config)
+        : config_(std::move(config)) {}
 
     std::string name() const override { return "gpw_evaluator"; }
     ComponentRole role() const override { return ComponentRole::Evaluator; }
@@ -67,6 +76,8 @@ class GPWEvaluator : public cpu::ComponentBase {
   private:
     GpwEvaluatorConfig config_;
     GpwResult last_{};
+    std::unique_ptr<GPWSolver> solver_;  ///< Owned inner solver (built once).
+    std::array<double, 3> built_cell_{}; ///< Build-time cell [Bohr] (guard).
 };
 
 } // namespace gpw

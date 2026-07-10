@@ -3,7 +3,7 @@
 ///        thermochemistry, a faithful port of PySCF
 ///        `pyscf/hessian/thermo.py::thermo()`.
 ///
-/// Bound at `vib::Phase::thermochem`, after `EigenSolver` (which runs at
+/// Bound at `vib::Phase::thermochem`, after `HessianDiagonalizer` (which runs at
 /// `vib::Phase::diagonalize`) has populated the normal-mode frequencies.
 /// On the finalize pass it computes the electronic / translational /
 /// rotational / vibrational contributions to the zero-point energy,
@@ -84,7 +84,7 @@ class Thermochem : public cpu::ComponentBase {
     /// @brief Compute the harmonic thermochemistry.
     ///
     /// Active only on the finalize pass (`ctx.step >= 6N`), after
-    /// `EigenSolver` has produced the normal-mode frequencies. Writes
+    /// `HessianDiagonalizer` has produced the normal-mode frequencies. Writes
     /// `zpe`, `u_tot`, `h_tot`, `s_tot` and its components, `g_tot`,
     /// `g_thermal` into the shared workspace; `cpu::vib::Hessian::run()`
     /// copies them into `HessianResult`.

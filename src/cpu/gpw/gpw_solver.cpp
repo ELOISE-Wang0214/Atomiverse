@@ -17,10 +17,12 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
-#include "atomiverse/cpu/gpw/internal/diis.h"
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
+#include "atomiverse/cpu/gpw/internal/diis.h"
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h"
 #include "atomiverse/cpu/gpw/internal/hartree_grid.h"
 #include "atomiverse/cpu/gpw/internal/mt_poisson.h"
@@ -33,8 +35,8 @@
 #include "atomiverse/cpu/gpw/internal/xc_grid.h"
 #include "atomiverse/cpu/gpw/internal/xc_grid_gga.h"
 #include "atomiverse/cpu/linalg/density.h"    // build_density_matrix
-#include "atomiverse/cpu/linalg/eigensolve.h"  // diagonalize_fock_generalized
-#include "atomiverse/cpu/linalg/matrix.h"      // RealMatrix
+#include "atomiverse/cpu/linalg/eigensolve.h" // diagonalize_fock_generalized
+#include "atomiverse/cpu/linalg/matrix.h"     // RealMatrix
 
 #include <xtensor-blas/xlinalg.hpp>
 #include <xtensor/views/xview.hpp>
@@ -56,7 +58,8 @@ using ATV::cpu::linalg::RealMatrix;
 std::vector<GridBasisFunction> global_basis(const std::vector<GpwAtom>& atoms) {
     std::vector<GridBasisFunction> b;
     for (const auto& a : atoms)
-        for (const auto& bf : a.basis) b.push_back(bf);
+        for (const auto& bf : a.basis)
+            b.push_back(bf);
     return b;
 }
 
@@ -106,10 +109,13 @@ struct AtomCells {
             int c[3];
             for (int d = 0; d < 3; ++d) {
                 double x = atoms[a].pos[d];
-                if (periodic && L[d] > 0.0) x -= L[d] * std::floor(x / L[d]);
-                c[d] = std::min(nc[d] - 1, std::max(0, static_cast<int>(x / cs[d])));
+                if (periodic && L[d] > 0.0)
+                    x -= L[d] * std::floor(x / L[d]);
+                c[d] = std::min(nc[d] - 1,
+                                std::max(0, static_cast<int>(x / cs[d])));
             }
-            bins[static_cast<std::size_t>((c[0] * nc[1] + c[1]) * nc[2] + c[2])].push_back(a);
+            bins[static_cast<std::size_t>((c[0] * nc[1] + c[1]) * nc[2] + c[2])]
+                .push_back(a);
         }
     }
 
@@ -120,17 +126,22 @@ struct AtomCells {
         int len[3];
         for (int d = 0; d < 3; ++d) {
             double x = P[d];
-            if (periodic && L[d] > 0.0) x -= L[d] * std::floor(x / L[d]);
-            const int pc = std::min(nc[d] - 1, std::max(0, static_cast<int>(x / cs[d])));
+            if (periodic && L[d] > 0.0)
+                x -= L[d] * std::floor(x / L[d]);
+            const int pc =
+                std::min(nc[d] - 1, std::max(0, static_cast<int>(x / cs[d])));
             // +1 guards the floor slop: an atom within R can land one cell beyond
             // ceil(R/cs) from pc, so visit that extra layer (no neighbour missed).
             const int span = static_cast<int>(std::ceil(R / cs[d])) + 1;
             int n = 0;
             if (!periodic) {
-                for (int c = std::max(0, pc - span); c <= std::min(nc[d] - 1, pc + span); ++c)
-                    if (n < 256) cells[d][n++] = c;
+                for (int c = std::max(0, pc - span);
+                     c <= std::min(nc[d] - 1, pc + span); ++c)
+                    if (n < 256)
+                        cells[d][n++] = c;
             } else if (2 * span + 1 >= nc[d]) {
-                for (int c = 0; c < nc[d] && n < 256; ++c) cells[d][n++] = c; // whole axis
+                for (int c = 0; c < nc[d] && n < 256; ++c)
+                    cells[d][n++] = c; // whole axis
             } else {
                 for (int t = -span; t <= span && n < 256; ++t)
                     cells[d][n++] = ((pc + t) % nc[d] + nc[d]) % nc[d];
@@ -141,7 +152,9 @@ struct AtomCells {
             for (int j = 0; j < len[1]; ++j) {
                 const int base = (cells[0][i] * nc[1] + cells[1][j]) * nc[2];
                 for (int k = 0; k < len[2]; ++k)
-                    for (int a : bins[static_cast<std::size_t>(base + cells[2][k])]) visit(a);
+                    for (int a :
+                         bins[static_cast<std::size_t>(base + cells[2][k])])
+                        visit(a);
             }
     }
 };
@@ -160,8 +173,8 @@ struct BasisCells {
     bool periodic = true;
     std::vector<std::vector<int>> bins;
 
-    void build(const std::vector<GridBasisFunction>& basis, const double cell[3],
-               double target_cs, bool per) {
+    void build(const std::vector<GridBasisFunction>& basis,
+               const double cell[3], double target_cs, bool per) {
         periodic = per;
         long ntot = 1;
         for (int d = 0; d < 3; ++d) {
@@ -172,13 +185,16 @@ struct BasisCells {
         }
         bins.assign(static_cast<std::size_t>(ntot), {});
         for (int b = 0; b < static_cast<int>(basis.size()); ++b) {
-            if (basis[static_cast<std::size_t>(b)].empty()) continue;
+            if (basis[static_cast<std::size_t>(b)].empty())
+                continue;
             const double* ctr = basis[static_cast<std::size_t>(b)][0].center;
             int c[3];
             for (int d = 0; d < 3; ++d) {
                 double x = ctr[d];
-                if (periodic && L[d] > 0.0) x -= L[d] * std::floor(x / L[d]);
-                c[d] = std::min(nc[d] - 1, std::max(0, static_cast<int>(x / cs[d])));
+                if (periodic && L[d] > 0.0)
+                    x -= L[d] * std::floor(x / L[d]);
+                c[d] = std::min(nc[d] - 1,
+                                std::max(0, static_cast<int>(x / cs[d])));
             }
             bins[static_cast<std::size_t>((c[0] * nc[1] + c[1]) * nc[2] + c[2])]
                 .push_back(b);
@@ -192,15 +208,20 @@ struct BasisCells {
         int len[3];
         for (int d = 0; d < 3; ++d) {
             double x = P[d];
-            if (periodic && L[d] > 0.0) x -= L[d] * std::floor(x / L[d]);
-            const int pc = std::min(nc[d] - 1, std::max(0, static_cast<int>(x / cs[d])));
+            if (periodic && L[d] > 0.0)
+                x -= L[d] * std::floor(x / L[d]);
+            const int pc =
+                std::min(nc[d] - 1, std::max(0, static_cast<int>(x / cs[d])));
             const int span = static_cast<int>(std::ceil(R / cs[d])) + 1;
             int n = 0;
             if (!periodic) {
-                for (int c = std::max(0, pc - span); c <= std::min(nc[d] - 1, pc + span); ++c)
-                    if (n < 256) cells[d][n++] = c;
+                for (int c = std::max(0, pc - span);
+                     c <= std::min(nc[d] - 1, pc + span); ++c)
+                    if (n < 256)
+                        cells[d][n++] = c;
             } else if (2 * span + 1 >= nc[d]) {
-                for (int c = 0; c < nc[d] && n < 256; ++c) cells[d][n++] = c;
+                for (int c = 0; c < nc[d] && n < 256; ++c)
+                    cells[d][n++] = c;
             } else {
                 for (int t = -span; t <= span && n < 256; ++t)
                     cells[d][n++] = ((pc + t) % nc[d] + nc[d]) % nc[d];
@@ -211,7 +232,9 @@ struct BasisCells {
             for (int j = 0; j < len[1]; ++j) {
                 const int base = (cells[0][i] * nc[1] + cells[1][j]) * nc[2];
                 for (int k = 0; k < len[2]; ++k)
-                    for (int b : bins[static_cast<std::size_t>(base + cells[2][k])]) visit(b);
+                    for (int b :
+                         bins[static_cast<std::size_t>(base + cells[2][k])])
+                        visit(b);
             }
     }
 };
@@ -233,11 +256,13 @@ struct BasisCells {
 // so for each atom only its single nearest periodic image to the product center P
 // contributes — taken by min-image, no atom-image loop. `m` (from image_counts)
 // must match the basis-collocation / overlap image set for consistency.
-double gth_matrix_element(const GridBasisFunction& mu, const GridBasisFunction& nu,
-                          const std::vector<GpwAtom>& atoms, const AtomCells& cells,
-                          double rmax_global, const double L[3], const int m[3],
-                          double reach) {
-    if (mu.empty() || nu.empty()) return 0.0;
+double gth_matrix_element(const GridBasisFunction& mu,
+                          const GridBasisFunction& nu,
+                          const std::vector<GpwAtom>& atoms,
+                          const AtomCells& cells, double rmax_global,
+                          const double L[3], const int m[3], double reach) {
+    if (mu.empty() || nu.empty())
+        return 0.0;
     const double* muc = mu[0].center;
     const double* nuc = nu[0].center;
     const double reach2 = reach * reach;
@@ -251,7 +276,8 @@ double gth_matrix_element(const GridBasisFunction& mu, const GridBasisFunction& 
         const Prim pp = to_prim(p);
         for (const auto& q0 : nu) {
             const double cc = p.coeff * q0.coeff;
-            if (cc == 0.0) continue;
+            if (cc == 0.0)
+                continue;
             const double acc = std::abs(cc);
             const double a = p.alpha, b = q0.alpha, g = a + b;
             for (int tx = -m[0]; tx <= m[0]; ++tx)
@@ -262,7 +288,8 @@ double gth_matrix_element(const GridBasisFunction& mu, const GridBasisFunction& 
                         const double sx = muc[0] - nuc[0] - tx * L[0];
                         const double sy = muc[1] - nuc[1] - ty * L[1];
                         const double sz = muc[2] - nuc[2] - tz * L[2];
-                        if (sx * sx + sy * sy + sz * sz > reach2) continue;
+                        if (sx * sx + sy * sy + sz * sz > reach2)
+                            continue;
                         GridPrimitive q = q0; // image T_ν of the bra primitive
                         q.center[0] += tx * L[0];
                         q.center[1] += ty * L[1];
@@ -274,31 +301,40 @@ double gth_matrix_element(const GridBasisFunction& mu, const GridBasisFunction& 
                             P[d] = (a * p.center[d] + b * q.center[d]) / g;
                         }
                         const double Kpq = std::exp(-a * b / g * dpq2);
-                        if (acc * Kpq < kBuildScreen) continue; // image too far
+                        if (acc * Kpq < kBuildScreen)
+                            continue; // image too far
                         const Prim qq = to_prim(q);
                         // Query radius: dPA² where the (conservative, widest-PP)
                         // screen reaches kBuildScreen — atoms beyond it can't pass.
                         const double Rq = std::sqrt(std::max(
-                            0.0, std::log(acc * Kpq / kBuildScreen) *
-                                     (g + kappa_min) / (g * kappa_min)));
+                            0.0, std::log(acc * Kpq / kBuildScreen)
+                                     * (g + kappa_min) / (g * kappa_min)));
                         cells.query(P, Rq, [&](int ai) {
-                            const GpwAtom& at = atoms[static_cast<std::size_t>(ai)];
+                            const GpwAtom& at =
+                                atoms[static_cast<std::size_t>(ai)];
                             double rmax = at.rloc;
-                            for (const auto& ch : at.nonlocal) rmax = std::max(rmax, ch.r);
+                            for (const auto& ch : at.nonlocal)
+                                rmax = std::max(rmax, ch.r);
                             const double kappa = 1.0 / (2.0 * rmax * rmax);
                             double apos[3], dPA2 = 0.0;
                             for (int d = 0; d < 3; ++d) {
                                 apos[d] = at.pos[d];
                                 if (L[d] > 0.0 && per)
-                                    apos[d] -= L[d] * std::nearbyint((at.pos[d] - P[d]) / L[d]);
+                                    apos[d] -= L[d]
+                                               * std::nearbyint(
+                                                   (at.pos[d] - P[d]) / L[d]);
                                 const double e = P[d] - apos[d];
                                 dPA2 += e * e;
                             }
-                            if (acc * Kpq * std::exp(-(g * kappa / (g + kappa)) * dPA2) <
-                                kBuildScreen)
+                            if (acc * Kpq
+                                    * std::exp(-(g * kappa / (g + kappa))
+                                               * dPA2)
+                                < kBuildScreen)
                                 return; // atom too far for any PP contribution
                             if (!at.cloc.empty())
-                                v += cc * gth_local_sr(pp, qq, apos, at.rloc, at.cloc);
+                                v += cc
+                                     * gth_local_sr(pp, qq, apos, at.rloc,
+                                                    at.cloc);
                             // V_nl (nonlocal) is built separately by add_nonlocal_kb
                             // in the separable Kleinman-Bylander form: recomputing
                             // the projector overlaps per basis PAIR here is O(nb²·proj)
@@ -319,19 +355,24 @@ double gth_matrix_element(const GridBasisFunction& mu, const GridBasisFunction& 
 // precompute + cheap O(pairs·proj²) scalar assembly. This is CP2K's GPW form and
 // the fix for the hundreds-× setup gap. The atom loop is parallel; pair writes go
 // through omp atomic (two atoms can both contribute to one (μ,ν)).
-void add_nonlocal_kb(RealMatrix& Vpp, const std::vector<GridBasisFunction>& basis,
-                     const std::vector<GpwAtom>& atoms, const std::vector<double>& radii,
-                     const double L[3], const int mimg[3], const BasisCells& bcells) {
+void add_nonlocal_kb(RealMatrix& Vpp,
+                     const std::vector<GridBasisFunction>& basis,
+                     const std::vector<GpwAtom>& atoms,
+                     const std::vector<double>& radii, const double L[3],
+                     const int mimg[3], const BasisCells& bcells) {
     const int natoms = static_cast<int>(atoms.size());
     double rad_max = 0.0;
-    for (double r : radii) rad_max = std::max(rad_max, r);
+    for (double r : radii)
+        rad_max = std::max(rad_max, r);
     const double proj_eps = std::sqrt(2.0 * std::log(1.0 / kBuildScreen));
 #pragma omp parallel for schedule(dynamic, 1)
     for (int ai = 0; ai < natoms; ++ai) {
         const GpwAtom& at = atoms[static_cast<std::size_t>(ai)];
-        if (at.nonlocal.empty()) continue;
+        if (at.nonlocal.empty())
+            continue;
         double rmax_ch = 0.0;
-        for (const auto& ch : at.nonlocal) rmax_ch = std::max(rmax_ch, ch.r);
+        for (const auto& ch : at.nonlocal)
+            rmax_ch = std::max(rmax_ch, ch.r);
         const double proj_reach = rmax_ch * proj_eps;
         // Flat slot layout over (channel, m, iproj); per-channel base offsets.
         int nslot = 0;
@@ -347,13 +388,16 @@ void add_nonlocal_kb(RealMatrix& Vpp, const std::vector<GridBasisFunction>& basi
         std::vector<std::vector<double>> Ov, hOv;
         bcells.query(A, rad_max + proj_reach, [&](int mu) {
             const GridBasisFunction& bf = basis[static_cast<std::size_t>(mu)];
-            if (bf.empty()) return;
-            const double reach = radii[static_cast<std::size_t>(mu)] + proj_reach;
+            if (bf.empty())
+                return;
+            const double reach =
+                radii[static_cast<std::size_t>(mu)] + proj_reach;
             const double reach2 = reach * reach;
             std::vector<double> o(static_cast<std::size_t>(nslot), 0.0);
             bool any = false;
             for (const auto& p : bf) {
-                if (p.coeff == 0.0) continue;
+                if (p.coeff == 0.0)
+                    continue;
                 // Bloch sum: every μ-image whose centre reaches A contributes.
                 for (int tx = -mimg[0]; tx <= mimg[0]; ++tx)
                     for (int ty = -mimg[1]; ty <= mimg[1]; ++ty)
@@ -362,22 +406,28 @@ void add_nonlocal_kb(RealMatrix& Vpp, const std::vector<GridBasisFunction>& basi
                             g.center[0] += tx * L[0];
                             g.center[1] += ty * L[1];
                             g.center[2] += tz * L[2];
-                            const double dx = g.center[0] - A[0], dy = g.center[1] - A[1],
+                            const double dx = g.center[0] - A[0],
+                                         dy = g.center[1] - A[1],
                                          dz = g.center[2] - A[2];
-                            if (dx * dx + dy * dy + dz * dz > reach2) continue;
-                            for (std::size_t c = 0; c < at.nonlocal.size(); ++c) {
+                            if (dx * dx + dy * dy + dz * dz > reach2)
+                                continue;
+                            for (std::size_t c = 0; c < at.nonlocal.size();
+                                 ++c) {
                                 const auto& ch = at.nonlocal[c];
                                 const int nm = 2 * ch.l + 1;
                                 for (int mm = 0; mm < nm; ++mm)
                                     for (int ip = 0; ip < ch.nproj; ++ip)
-                                        o[static_cast<std::size_t>(choff[c] + mm * ch.nproj + ip)] +=
-                                            p.coeff * gth_projector_overlap(g, A, ch.l, ip + 1,
-                                                                            ch.r, mm);
+                                        o[static_cast<std::size_t>(
+                                            choff[c] + mm * ch.nproj + ip)] +=
+                                            p.coeff
+                                            * gth_projector_overlap(
+                                                g, A, ch.l, ip + 1, ch.r, mm);
                             }
                             any = true;
                         }
             }
-            if (!any) return;
+            if (!any)
+                return;
             // Apply the channel coupling once: hO[i] = Σ_j h_ij O[j] within (ch,m).
             std::vector<double> ho(static_cast<std::size_t>(nslot), 0.0);
             for (std::size_t c = 0; c < at.nonlocal.size(); ++c) {
@@ -388,7 +438,8 @@ void add_nonlocal_kb(RealMatrix& Vpp, const std::vector<GridBasisFunction>& basi
                     for (int i = 0; i < ch.nproj; ++i) {
                         double s = 0.0;
                         for (int j = 0; j < ch.nproj; ++j)
-                            s += ch.hij(i, j) * o[static_cast<std::size_t>(base + j)];
+                            s += ch.hij(i, j)
+                                 * o[static_cast<std::size_t>(base + j)];
                         ho[static_cast<std::size_t>(base + i)] = s;
                     }
                 }
@@ -402,12 +453,17 @@ void add_nonlocal_kb(RealMatrix& Vpp, const std::vector<GridBasisFunction>& basi
         for (int k1 = 0; k1 < ng; ++k1)
             for (int k2 = 0; k2 < ng; ++k2) {
                 double s = 0.0;
-                const std::vector<double>& o1 = Ov[static_cast<std::size_t>(k1)];
-                const std::vector<double>& h2 = hOv[static_cast<std::size_t>(k2)];
+                const std::vector<double>& o1 =
+                    Ov[static_cast<std::size_t>(k1)];
+                const std::vector<double>& h2 =
+                    hOv[static_cast<std::size_t>(k2)];
                 for (int t = 0; t < nslot; ++t)
-                    s += o1[static_cast<std::size_t>(t)] * h2[static_cast<std::size_t>(t)];
-                if (s == 0.0) continue;
-                double& dst = Vpp(mus[static_cast<std::size_t>(k1)], mus[static_cast<std::size_t>(k2)]);
+                    s += o1[static_cast<std::size_t>(t)]
+                         * h2[static_cast<std::size_t>(t)];
+                if (s == 0.0)
+                    continue;
+                double& dst = Vpp(mus[static_cast<std::size_t>(k1)],
+                                  mus[static_cast<std::size_t>(k2)]);
 #pragma omp atomic
                 dst += s;
             }
@@ -417,8 +473,9 @@ void add_nonlocal_kb(RealMatrix& Vpp, const std::vector<GridBasisFunction>& basi
 // Max Gaussian-product prefactor over all primitive pairs of (mu,nu): bounds the
 // magnitude of S, T, and Vpp for this pair. Below kBuildScreen the whole (i,j)
 // element is negligible and can be skipped (overlap pair screening).
-double pair_overlap_bound(const GridBasisFunction& mu, const GridBasisFunction& nu,
-                          const double L[3], bool periodic) {
+double pair_overlap_bound(const GridBasisFunction& mu,
+                          const GridBasisFunction& nu, const double L[3],
+                          bool periodic) {
     double best = 0.0;
     for (const auto& p : mu)
         for (const auto& q : nu) {
@@ -428,10 +485,12 @@ double pair_overlap_bound(const GridBasisFunction& mu, const GridBasisFunction& 
                 double e = p.center[k] - q.center[k];
                 // Min-image: a pair straddling a periodic boundary is a true near
                 // neighbour through its nearest image — keep it past the screen.
-                if (periodic && L[k] > 0.0) e -= L[k] * std::nearbyint(e / L[k]);
+                if (periodic && L[k] > 0.0)
+                    e -= L[k] * std::nearbyint(e / L[k]);
                 d2 += e * e;
             }
-            best = std::max(best, std::abs(p.coeff * q.coeff) * std::exp(-a * b / (a + b) * d2));
+            best = std::max(best, std::abs(p.coeff * q.coeff)
+                                      * std::exp(-a * b / (a + b) * d2));
         }
     return best;
 }
@@ -440,7 +499,8 @@ double pair_overlap_bound(const GridBasisFunction& mu, const GridBasisFunction& 
 // Periodic: minimum-image displacement so unwrapped slab cores collocate through
 // their nearest image (matching the electron-density collocation in collocate.cpp).
 std::vector<double> ionic_density(const UniformGrid& grid,
-                                  const std::vector<GpwAtom>& atoms, bool periodic) {
+                                  const std::vector<GpwAtom>& atoms,
+                                  bool periodic) {
     const long ng = grid.npts();
     std::vector<double> n(static_cast<std::size_t>(ng), 0.0);
 #pragma omp parallel for schedule(static)
@@ -451,7 +511,8 @@ std::vector<double> ionic_density(const UniformGrid& grid,
         for (const auto& a : atoms) {
             const double s2 = a.rloc * a.rloc;
             const double norm = a.z_val * std::pow(2.0 * M_PI * s2, -1.5);
-            double dx = r[0] - a.pos[0], dy = r[1] - a.pos[1], dz = r[2] - a.pos[2];
+            double dx = r[0] - a.pos[0], dy = r[1] - a.pos[1],
+                   dz = r[2] - a.pos[2];
             if (periodic) {
                 dx -= grid.L[0] * std::nearbyint(dx / grid.L[0]);
                 dy -= grid.L[1] * std::nearbyint(dy / grid.L[1]);
@@ -472,7 +533,8 @@ std::vector<double> ionic_density(const UniformGrid& grid,
 // density is shared with the Hartree/XC potential — O(grid), not O(nb²). Geometry-
 // fixed: built once and added to V_eff every SCF step.
 std::vector<double> local_pp_grid(const UniformGrid& grid,
-                                  const std::vector<GpwAtom>& atoms, bool periodic) {
+                                  const std::vector<GpwAtom>& atoms,
+                                  bool periodic) {
     const long ng = grid.npts();
     std::vector<double> v(static_cast<std::size_t>(ng), 0.0);
 #pragma omp parallel for schedule(static)
@@ -481,8 +543,10 @@ std::vector<double> local_pp_grid(const UniformGrid& grid,
         grid.point(g, r);
         double s = 0.0;
         for (const auto& a : atoms) {
-            if (a.cloc.empty()) continue;
-            double dx = r[0] - a.pos[0], dy = r[1] - a.pos[1], dz = r[2] - a.pos[2];
+            if (a.cloc.empty())
+                continue;
+            double dx = r[0] - a.pos[0], dy = r[1] - a.pos[1],
+                   dz = r[2] - a.pos[2];
             if (periodic) {
                 dx -= grid.L[0] * std::nearbyint(dx / grid.L[0]);
                 dy -= grid.L[1] * std::nearbyint(dy / grid.L[1]);
@@ -490,7 +554,10 @@ std::vector<double> local_pp_grid(const UniformGrid& grid,
             }
             const double t = (dx * dx + dy * dy + dz * dz) / (a.rloc * a.rloc);
             double poly = 0.0, tp = 1.0;
-            for (double c : a.cloc) { poly += c * tp; tp *= t; }
+            for (double c : a.cloc) {
+                poly += c * tp;
+                tp *= t;
+            }
             s += std::exp(-0.5 * t) * poly;
         }
         v[static_cast<std::size_t>(g)] = s;
@@ -507,21 +574,24 @@ double core_self_energy(const GpwAtom& a) {
 RealMatrix vec_to_mat(const std::vector<double>& v, int n) {
     RealMatrix m = xt::zeros<double>({n, n});
     for (int i = 0; i < n; ++i)
-        for (int j = 0; j < n; ++j) m(i, j) = v[static_cast<std::size_t>(i) * n + j];
+        for (int j = 0; j < n; ++j)
+            m(i, j) = v[static_cast<std::size_t>(i) * n + j];
     return m;
 }
 
 std::vector<double> mat_to_vec(const RealMatrix& m, int n) {
     std::vector<double> v(static_cast<std::size_t>(n) * n);
     for (int i = 0; i < n; ++i)
-        for (int j = 0; j < n; ++j) v[static_cast<std::size_t>(i) * n + j] = m(i, j);
+        for (int j = 0; j < n; ++j)
+            v[static_cast<std::size_t>(i) * n + j] = m(i, j);
     return v;
 }
 
 double trace_product(const RealMatrix& P, const RealMatrix& M, int n) {
     double t = 0.0;
     for (int i = 0; i < n; ++i)
-        for (int j = 0; j < n; ++j) t += P(i, j) * M(i, j);
+        for (int j = 0; j < n; ++j)
+            t += P(i, j) * M(i, j);
     return t;
 }
 
@@ -529,8 +599,8 @@ double trace_product(const RealMatrix& P, const RealMatrix& M, int n) {
 // self-consistent (C, eps, P) triple in the result (P == density(C)). This is
 // what the analytic-force assembly needs to build the energy-weighted density
 // matrix W = Σ_i 2 ε_i c_i c_iᵀ.
-void store_converged_state(GpwResult& res, const RealMatrix& H, const RealMatrix& S,
-                           int n_occ, int nb) {
+void store_converged_state(GpwResult& res, const RealMatrix& H,
+                           const RealMatrix& S, int n_occ, int nb) {
     auto [eig, C] = linalg::diagonalize_fock_generalized(H, S);
     res.C = C;
     res.eps.assign(eig.begin(), eig.end());
@@ -588,16 +658,18 @@ GpwAtom make_gpw_atom(const double pos[3], const GaussianBasis& basis,
         for (int l = set.lmin; l <= set.lmax; ++l) {
             const int L = l;
             for (int sh = 0; sh < set.nshell_l(l); ++sh, ++col) {
-                for (const auto& harm : harmonics()[static_cast<std::size_t>(L)]) {
+                for (const auto& harm :
+                     harmonics()[static_cast<std::size_t>(L)]) {
                     GridBasisFunction bf;
                     for (int e = 0; e < set.nexp(); ++e) {
                         const double a = set.exps[static_cast<std::size_t>(e)];
                         const double c = set.coef_at(e, col);
-                        if (c == 0.0) continue;
+                        if (c == 0.0)
+                            continue;
                         // N(a,L) = (2a/pi)^{3/4} (4a)^{L/2}: the L alpha-power fixes
                         // the spanned space to CP2K's; constant factors cancel.
-                        const double norm =
-                            std::pow(2.0 * a / M_PI, 0.75) * std::pow(4.0 * a, 0.5 * L);
+                        const double norm = std::pow(2.0 * a / M_PI, 0.75)
+                                            * std::pow(4.0 * a, 0.5 * L);
                         for (const auto& term : harm) {
                             GridPrimitive p;
                             p.alpha = a;
@@ -611,7 +683,8 @@ GpwAtom make_gpw_atom(const double pos[3], const GaussianBasis& basis,
                             bf.push_back(p);
                         }
                     }
-                    if (!bf.empty()) atom.basis.push_back(std::move(bf));
+                    if (!bf.empty())
+                        atom.basis.push_back(std::move(bf));
                 }
             }
         }
@@ -619,14 +692,19 @@ GpwAtom make_gpw_atom(const double pos[3], const GaussianBasis& basis,
     return atom;
 }
 
-GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
-                  const RealMatrix* guess_C) {
+/// The full GPW SCF implementation. `GPWSolver::run` is the owning entry
+/// point; the public `gpw_scf` free function is a thin shim over a
+/// transient solver.
+static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
+                                  const GpwConfig& cfg,
+                                  const RealMatrix* guess_C) {
 #ifdef ATV_GPW_FFTW_THREADS
     // One-time global FFTW threading init; fftw_plan_with_nthreads is a global
     // setting, so every FFT plan created downstream (Poisson, GGA grad/div, MT)
     // runs multithreaded. The density-grid FFTs dominate GPW's wall time.
     static const int kFftwThreadsOk = fftw_init_threads();
-    if (kFftwThreadsOk) fftw_plan_with_nthreads(omp_get_max_threads());
+    if (kFftwThreadsOk)
+        fftw_plan_with_nthreads(omp_get_max_threads());
 #endif
     const std::vector<GridBasisFunction> basis = global_basis(atoms);
     const int nb = static_cast<int>(basis.size());
@@ -641,7 +719,8 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
     std::vector<double> radii(static_cast<std::size_t>(nb));
     double rmax = 0.0;
     for (int i = 0; i < nb; ++i) {
-        radii[static_cast<std::size_t>(i)] = basis_function_radius(basis[i], eps_default);
+        radii[static_cast<std::size_t>(i)] =
+            basis_function_radius(basis[i], eps_default);
         rmax = std::max(rmax, radii[static_cast<std::size_t>(i)]);
     }
     int mimg[3];
@@ -652,13 +731,15 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
     double rmax_pp = 0.0;
     for (const auto& at : atoms) {
         double r = at.rloc;
-        for (const auto& ch : at.nonlocal) r = std::max(r, ch.r);
+        for (const auto& ch : at.nonlocal)
+            r = std::max(r, ch.r);
         rmax_pp = std::max(rmax_pp, r);
     }
     AtomCells acells;
     // ATV_GPW_NOCELLS forces one giant cell (query returns all atoms) — the
     // pre-cell-list path, for bit-identity A/B verification.
-    acells.build(atoms, cfg.cell, std::getenv("ATV_GPW_NOCELLS") ? 1e30 : 3.0, periodic);
+    acells.build(atoms, cfg.cell, std::getenv("ATV_GPW_NOCELLS") ? 1e30 : 3.0,
+                 periodic);
 
     // Grimme DFT-D3 (zero damping, PBE) dispersion — a geometry-only additive
     // correction (independent of the SCF), folded into the final total energy.
@@ -685,39 +766,46 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
     const bool sprof = std::getenv("ATV_GPW_PROF") != nullptr;
     auto sclk = std::chrono::steady_clock::now();
     auto smark = [&](const char* what) {
-        if (!sprof) return;
+        if (!sprof)
+            return;
         auto now = std::chrono::steady_clock::now();
-        std::fprintf(stderr, "[gpw setup] %-14s %.0f ms\n", what,
-                     std::chrono::duration<double, std::milli>(now - sclk).count());
+        std::fprintf(
+            stderr, "[gpw setup] %-14s %.0f ms\n", what,
+            std::chrono::duration<double, std::milli>(now - sclk).count());
         sclk = now;
     };
     // Basis-center cell list: the outer S/T/Vpp build is O(nb²) only because every
     // pair is screened; the overlaps are short-ranged, so visit only neighbours.
     // ATV_GPW_NOCELLS forces one giant cell (query returns all j) for A/B bit-id.
     BasisCells bcells;
-    bcells.build(basis, cfg.cell, std::getenv("ATV_GPW_NOCELLS") ? 1e30 : rmax, periodic);
+    bcells.build(basis, cfg.cell, std::getenv("ATV_GPW_NOCELLS") ? 1e30 : rmax,
+                 periodic);
     // Local short-range PP: by default collocated on the grid (local_pp_grid +
     // V_eff, O(grid)); ATV_GPW_ANALYTIC_LOC forces the legacy per-pair analytic
     // gth_local_sr (O(nb²·natoms)) — kept for grid-vs-analytic energy validation.
     const bool grid_loc = std::getenv("ATV_GPW_ANALYTIC_LOC") == nullptr;
 #pragma omp parallel for schedule(dynamic, 8)
     for (int i = 0; i < nb; ++i) {
-        if (basis[i].empty()) continue;
+        if (basis[i].empty())
+            continue;
         const double* ci = basis[i][0].center;
-        const double Rq = radii[static_cast<std::size_t>(i)] + rmax; // conservative
+        const double Rq =
+            radii[static_cast<std::size_t>(i)] + rmax; // conservative
         bcells.query(ci, Rq, [&](int j) {
             // Overlap pair screening: S, T, Vpp are all bounded by the Gaussian
             // product magnitude of (i,j). If even the best primitive pair is
             // below the screen, the whole element is negligible -> leave 0.
-            if (pair_overlap_bound(basis[i], basis[j], cfg.cell, periodic) < kBuildScreen)
+            if (pair_overlap_bound(basis[i], basis[j], cfg.cell, periodic)
+                < kBuildScreen)
                 return;
-            const double reach = radii[static_cast<std::size_t>(i)] +
-                                 radii[static_cast<std::size_t>(j)];
+            const double reach = radii[static_cast<std::size_t>(i)]
+                                 + radii[static_cast<std::size_t>(j)];
             S(i, j) = overlap(basis[i], basis[j], cfg.cell, mimg, reach);
             T(i, j) = kinetic(basis[i], basis[j], cfg.cell, mimg, reach);
             if (!grid_loc) // analytic local PP only when grid path is disabled
-                Vpp(i, j) = gth_matrix_element(basis[i], basis[j], atoms, acells, rmax_pp,
-                                               cfg.cell, mimg, reach);
+                Vpp(i, j) =
+                    gth_matrix_element(basis[i], basis[j], atoms, acells,
+                                       rmax_pp, cfg.cell, mimg, reach);
         });
     }
     // GTH nonlocal V_nl via the separable Kleinman-Bylander form (projectors
@@ -727,23 +815,26 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
     smark("STVpp_build");
 
     // Geometry-fixed ionic density and the constant self-energy to remove.
-    const std::vector<double> n_ion = ionic_density(grid, atoms, !cfg.nonperiodic);
+    const std::vector<double> n_ion =
+        ionic_density(grid, atoms, !cfg.nonperiodic);
     double e_self = 0.0;
-    for (const auto& a : atoms) e_self += core_self_energy(a);
+    for (const auto& a : atoms)
+        e_self += core_self_energy(a);
     smark("ionic_density");
 
     // Geometry-fixed local short-range PP on the grid (added to V_eff each step);
     // empty when the analytic per-pair path is selected.
     const std::vector<double> v_locsr =
-        grid_loc ? local_pp_grid(grid, atoms, !cfg.nonperiodic) : std::vector<double>{};
+        grid_loc ? local_pp_grid(grid, atoms, !cfg.nonperiodic)
+                 : std::vector<double>{};
     smark("local_pp_grid");
 
     // Core (H0) initial guess.
     // Warm start: use the supplied guess (skip the O(nb³) core diagonalization);
     // cold start falls back to diagonalizing the core Hamiltonian H0.
     RealMatrix C0;
-    if (guess_C != nullptr && static_cast<int>(guess_C->shape(0)) == nb &&
-        static_cast<int>(guess_C->shape(1)) == nb) {
+    if (guess_C != nullptr && static_cast<int>(guess_C->shape(0)) == nb
+        && static_cast<int>(guess_C->shape(1)) == nb) {
         C0 = *guess_C;
     } else {
         C0 = std::get<1>(linalg::diagonalize_fock_generalized(H0, S));
@@ -793,9 +884,12 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
     // variational — no per-level mass-conservation correction is needed.
     if (use_prod) {
         const int nlev = use_mg ? cfg.ngrids : 1;
-        const double rcut = use_mg ? cfg.rel_cutoff : cfg.cutoff_ry; // 1 level → all products on it
+        const double rcut = use_mg
+                                ? cfg.rel_cutoff
+                                : cfg.cutoff_ry; // 1 level → all products on it
         mg = make_multigrid(cfg.cell, cfg.cutoff_ry, nlev, rcut);
-        products = build_products(mg, basis, cfg.cell, rcut, eps_default, periodic);
+        products =
+            build_products(mg, basis, cfg.cell, rcut, eps_default, periodic);
     }
 
     GpwResult res;
@@ -830,7 +924,8 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
     auto pms = [](ProfClk::time_point a, ProfClk::time_point b) {
         return std::chrono::duration<double, std::milli>(b - a).count();
     };
-    auto build_H_and_energy = [&](const RealMatrix& Pin) -> std::pair<RealMatrix, double> {
+    auto build_H_and_energy =
+        [&](const RealMatrix& Pin) -> std::pair<RealMatrix, double> {
         auto t0p = ProfClk::now();
         const std::vector<double> Pvec = mat_to_vec(Pin, nb);
         // Density on the finest grid. Single-grid: direct compact collocation.
@@ -843,13 +938,15 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
                     mg.levels[l], products.by_level[l], products.prims,
                     products.contribs, nb, Pvec, eps_default);
                 if (l == 0) {
-                    rho = std::move(rho_l); // finest level is the reference grid
+                    rho =
+                        std::move(rho_l); // finest level is the reference grid
                 } else {
                     // Spectral (band-limited) prolongation to the fine grid:
                     // shape-exact and mass-conserving (no D_l correction).
                     const std::vector<double> up = prolong_fft(
                         mg.levels[l], mg.levels[0], rho_l, periodic);
-                    for (std::size_t g = 0; g < rho.size(); ++g) rho[g] += up[g];
+                    for (std::size_t g = 0; g < rho.size(); ++g)
+                        rho[g] += up[g];
                 }
             }
         } else {
@@ -858,20 +955,24 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
         auto t1p = ProfClk::now();
         if (use_mg && std::getenv("ATV_GPW_MG_TRACE")) {
             double qe = 0.0;
-            for (double v : rho) qe += v;
+            for (double v : rho)
+                qe += v;
             qe *= grid.weight();
-            std::fprintf(stderr, "[gpw mg] int rho_fine = %.10f (Tr(P S) check)\n", qe);
+            std::fprintf(stderr,
+                         "[gpw mg] int rho_fine = %.10f (Tr(P S) check)\n", qe);
         }
         std::vector<double> n_tot(rho.size());
-        for (std::size_t g = 0; g < rho.size(); ++g) n_tot[g] = rho[g] - n_ion[g];
-        const PoissonResult es =
-            cfg.nonperiodic ? solve_poisson_mt(grid, n_tot) : solve_poisson(grid, n_tot);
+        for (std::size_t g = 0; g < rho.size(); ++g)
+            n_tot[g] = rho[g] - n_ion[g];
+        const PoissonResult es = cfg.nonperiodic ? solve_poisson_mt(grid, n_tot)
+                                                 : solve_poisson(grid, n_tot);
         auto t2p = ProfClk::now();
-        const XcOnGrid xc =
-            cfg.xc == XcKind::PBE ? xc_grid_pbe(grid, rho) : xc_grid_pade(grid, rho);
+        const XcOnGrid xc = cfg.xc == XcKind::PBE ? xc_grid_pbe(grid, rho)
+                                                  : xc_grid_pade(grid, rho);
         auto t3p = ProfClk::now();
         std::vector<double> veff(rho.size());
-        for (std::size_t g = 0; g < rho.size(); ++g) veff[g] = es.v_r[g] + xc.vxc_r[g];
+        for (std::size_t g = 0; g < rho.size(); ++g)
+            veff[g] = es.v_r[g] + xc.vxc_r[g];
         // Add the geometry-fixed local short-range PP and its energy ∫ρ·V_loc^SR
         // (the grid form of the analytic Tr(P·V_loc^SR)).
         double e_locgrid = 0.0;
@@ -899,12 +1000,14 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
                     // density: restrict the fine potential by spectral truncation,
                     // so the KS matrix is the exact gradient of the collocated
                     // energy (variational SCF).
-                    V_l = restrict_fft(mg.levels[0], mg.levels[l], veff, periodic);
+                    V_l = restrict_fft(mg.levels[0], mg.levels[l], veff,
+                                       periodic);
                 }
                 const std::vector<double> Vl_ks = integrate_products(
                     mg.levels[l], products.by_level[l], products.prims,
                     products.contribs, nb, V_l, eps_default);
-                for (std::size_t kk = 0; kk < V_ks.size(); ++kk) V_ks[kk] += Vl_ks[kk];
+                for (std::size_t kk = 0; kk < V_ks.size(); ++kk)
+                    V_ks[kk] += Vl_ks[kk];
             }
             Vgrid = vec_to_mat(V_ks, nb);
         } else {
@@ -913,10 +1016,11 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
         auto t4p = ProfClk::now();
         if (prof)
             std::fprintf(stderr,
-                         "[gpw prof] collocate=%.0f poisson=%.0f xc=%.0f integrate=%.0f ms "
+                         "[gpw prof] collocate=%.0f poisson=%.0f xc=%.0f "
+                         "integrate=%.0f ms "
                          "(ngrid=%ld)\n",
-                         pms(t0p, t1p), pms(t1p, t2p), pms(t2p, t3p), pms(t3p, t4p),
-                         grid.npts());
+                         pms(t0p, t1p), pms(t1p, t2p), pms(t2p, t3p),
+                         pms(t3p, t4p), grid.npts());
         const RealMatrix H = H0 + Vgrid;
         res.e_kinetic = trace_product(Pin, T, nb);
         res.e_nonlocal = 0.0; // folded into e_loc_sr below for the first cut
@@ -952,7 +1056,8 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
         };
         for (int iter = 0; iter < cfg.max_iter; ++iter) {
             auto tA = Clk::now();
-            P = linalg::build_density_matrix(Cocc, cfg.n_occ, nb, 2.0); // 2 Cocc Coccᵀ
+            P = linalg::build_density_matrix(Cocc, cfg.n_occ, nb,
+                                             2.0); // 2 Cocc Coccᵀ
             auto [H, e_total] = build_H_and_energy(P);
             auto tB = Clk::now();
             res.iters = iter + 1;
@@ -961,14 +1066,17 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
 
             const RealMatrix g = internal::ot_gradient(H, S, Cocc);
             double gnorm = 0.0;
-            for (double v : g) gnorm = std::max(gnorm, std::abs(v));
+            for (double v : g)
+                gnorm = std::max(gnorm, std::abs(v));
             if (std::getenv("ATV_GPW_TRACE"))
-                std::fprintf(stderr,
-                             "[gpw OT %2d] E=%.8f  T=%.4f loc=%.4f es=%.4f xc=%.4f  "
-                             "dE=%.2e gnorm=%.2e\n",
-                             iter, e_total, res.e_kinetic, res.e_loc_sr, res.e_es,
-                             res.e_xc, std::abs(e_total - e_prev), gnorm);
-            if (iter > 0 && gnorm < kOtGradTol && std::abs(e_total - e_prev) < cfg.tol) {
+                std::fprintf(
+                    stderr,
+                    "[gpw OT %2d] E=%.8f  T=%.4f loc=%.4f es=%.4f xc=%.4f  "
+                    "dE=%.2e gnorm=%.2e\n",
+                    iter, e_total, res.e_kinetic, res.e_loc_sr, res.e_es,
+                    res.e_xc, std::abs(e_total - e_prev), gnorm);
+            if (iter > 0 && gnorm < kOtGradTol
+                && std::abs(e_total - e_prev) < cfg.tol) {
                 res.converged = true;
                 store_converged_state(res, H, S, cfg.n_occ, nb);
                 break;
@@ -979,12 +1087,14 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
             // (CP2K's default for gapped systems; FULL_KINETIC T+S was too weak
             // and OT crawled). M = H + a S with a below the spectrum -> SPD.
             const internal::OtPrecondSingleInverse precond(H, S, Cocc);
-            const RealMatrix pz = internal::ot_tangent(Cocc, S, precond.apply(g));
+            const RealMatrix pz =
+                internal::ot_tangent(Cocc, S, precond.apply(g));
             auto tC = Clk::now();
             if (!have_prev) {
                 d = -pz;
             } else {
-                const double beta = std::max(0.0, frob(g, pz - pz_prev) / denom_prev);
+                const double beta =
+                    std::max(0.0, frob(g, pz - pz_prev) / denom_prev);
                 d = internal::ot_tangent(Cocc, S, -pz + beta * d);
             }
             pz_prev = pz;
@@ -1002,7 +1112,8 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
                     .second;
             };
             double slope = frob(g, d);
-            if (slope >= 0.0) { // not a descent direction -> restart to (precond) SD
+            if (slope
+                >= 0.0) { // not a descent direction -> restart to (precond) SD
                 d = internal::ot_tangent(Cocc, S, -pz);
                 slope = frob(g, d);
             }
@@ -1017,13 +1128,15 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
             const double Ebt = band(internal::ot_parameterize(Cocc, d, S));
             const double curv = 2.0 * (Ebt - Eb0 - slope); // parabola curvature
             double alpha = (curv > 1e-300) ? -slope / curv : 1.0; // vertex
-            if (!(alpha > 0.0)) alpha = 1.0;
+            if (!(alpha > 0.0))
+                alpha = 1.0;
             alpha = std::min(alpha, 2.0);
             constexpr double c1 = 1e-4;
             RealMatrix Cnew = internal::ot_parameterize(Cocc, alpha * d, S);
             for (int bt = 0; bt < 50; ++bt) {
                 ++ls_rebuilds;
-                if (etot(Cnew) <= e_total + c1 * alpha * slope) break;
+                if (etot(Cnew) <= e_total + c1 * alpha * slope)
+                    break;
                 alpha *= 0.5;
                 Cnew = internal::ot_parameterize(Cocc, alpha * d, S);
             }
@@ -1033,8 +1146,8 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
                 std::fprintf(stderr,
                              "[OT prof %2d] H_grad=%.0fms precond=%.0fms "
                              "linesearch=%.0fms (%d rebuilds) | total=%.0fms\n",
-                             iter, ms(tA, tB), ms(tB, tC), ms(tC, tD), ls_rebuilds,
-                             ms(tA, tD));
+                             iter, ms(tA, tB), ms(tB, tC), ms(tC, tD),
+                             ls_rebuilds, ms(tA, tD));
             }
         }
         // Always expose the final occupied orbitals as res.C (first n_occ columns),
@@ -1043,7 +1156,8 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
         if (static_cast<int>(res.C.shape(0)) != nb) {
             res.C = xt::zeros<double>({nb, nb});
             for (int u = 0; u < nb; ++u)
-                for (int i = 0; i < cfg.n_occ; ++i) res.C(u, i) = Cocc(u, i);
+                for (int i = 0; i < cfg.n_occ; ++i)
+                    res.C(u, i) = Cocc(u, i);
         }
         res.e_total += e_d3;
         return res;
@@ -1061,18 +1175,20 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
             // mixing — DIIS does the averaging).
             const RealMatrix err = internal::gpw_diis_error(H, P, S, X);
             double err_norm = 0.0;
-            for (const double v : err) err_norm = std::max(err_norm, std::abs(v));
+            for (const double v : err)
+                err_norm = std::max(err_norm, std::abs(v));
 
             if (std::getenv("ATV_GPW_TRACE"))
-                std::fprintf(stderr,
-                             "[gpw it %2d] E=%.8f  T=%.4f loc=%.4f es=%.4f xc=%.4f  "
-                             "dE=%.2e err=%.2e\n",
-                             iter, e_total, res.e_kinetic, res.e_loc_sr, res.e_es,
-                             res.e_xc, std::abs(e_total - e_prev), err_norm);
+                std::fprintf(
+                    stderr,
+                    "[gpw it %2d] E=%.8f  T=%.4f loc=%.4f es=%.4f xc=%.4f  "
+                    "dE=%.2e err=%.2e\n",
+                    iter, e_total, res.e_kinetic, res.e_loc_sr, res.e_es,
+                    res.e_xc, std::abs(e_total - e_prev), err_norm);
 
             const bool no_stop = std::getenv("ATV_GPW_NOSTOP") != nullptr;
-            if (!no_stop && iter > 0 && std::abs(e_total - e_prev) < cfg.tol &&
-                err_norm < kDiisErrTol) {
+            if (!no_stop && iter > 0 && std::abs(e_total - e_prev) < cfg.tol
+                && err_norm < kDiisErrTol) {
                 res.converged = true;
                 store_converged_state(res, H, S, cfg.n_occ, nb);
                 break;
@@ -1085,7 +1201,8 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
         } else {
             // Legacy linear density mixing.
             auto [eig, C] = linalg::diagonalize_fock_generalized(H, S);
-            RealMatrix P_new = linalg::build_density_matrix(C, cfg.n_occ, nb, 2.0);
+            RealMatrix P_new =
+                linalg::build_density_matrix(C, cfg.n_occ, nb, 2.0);
             if (iter > 0 && std::abs(e_total - e_prev) < cfg.tol) {
                 res.converged = true;
                 store_converged_state(res, H, S, cfg.n_occ, nb);
@@ -1099,18 +1216,63 @@ GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
     return res;
 }
 
+// ── GPWSolver — the *Solver face over run_gpw_scf_impl ──────────────
+
+GPWSolver::GPWSolver(GpwConfig config) : config_(std::move(config)) {}
+
+void GPWSolver::build(const std::vector<GpwAtom>& reference) {
+    if (reference.empty())
+        throw std::invalid_argument(
+            "GPWSolver::build: empty atom set (nothing to solve)");
+    if (config_.n_occ < 1)
+        throw std::invalid_argument("GPWSolver::build: n_occ must be >= 1 (got "
+                                    + std::to_string(config_.n_occ) + ")");
+    if (!config_.nonperiodic) {
+        for (int d = 0; d < 3; ++d)
+            if (!(config_.cell[d] > 0.0))
+                throw std::invalid_argument(
+                    "GPWSolver::build: periodic cell edge " + std::to_string(d)
+                    + " must be > 0 Bohr (got "
+                    + std::to_string(config_.cell[d]) + ")");
+    }
+    if (config_.d3 && config_.d3_param_file.empty())
+        throw std::invalid_argument(
+            "GPWSolver::build: d3 == true requires d3_param_file "
+            "(no-fallback rule)");
+    built_ = true;
+}
+
+GpwResult& GPWSolver::run(const std::vector<GpwAtom>& atoms,
+                          const RealMatrix* guess_C) {
+    if (!built_)
+        throw std::logic_error(
+            "GPWSolver::run called before build() — validate the "
+            "configuration first (no silent auto-build)");
+    result_ = run_gpw_scf_impl(atoms, config_, guess_C);
+    return result_;
+}
+
+GpwResult gpw_scf(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
+                  const RealMatrix* guess_C) {
+    GPWSolver solver{cfg};
+    solver.build(atoms);
+    return solver.run(atoms, guess_C);
+}
+
 namespace {
 // Displace an atom (its position AND all its basis-function centers) by d.
 GpwAtom displaced(GpwAtom a, int axis, double d) {
     a.pos[axis] += d;
     for (auto& bf : a.basis)
-        for (auto& p : bf) p.center[axis] += d;
+        for (auto& p : bf)
+            p.center[axis] += d;
     return a;
 }
 } // namespace
 
 std::vector<std::array<double, 3>>
-gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg, double h) {
+gpw_forces_fd(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg,
+              double h) {
     const int na = static_cast<int>(atoms.size());
     std::vector<std::array<double, 3>> forces(na, {0.0, 0.0, 0.0});
     for (int a = 0; a < na; ++a) {

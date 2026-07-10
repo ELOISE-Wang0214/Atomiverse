@@ -3,8 +3,8 @@
 
 #include "atomiverse/cpu/vib/hessian.h"
 
-#include "atomiverse/cpu/vib/eigen_solver.h"
 #include "atomiverse/cpu/vib/frequency_report.h"
+#include "atomiverse/cpu/vib/hessian_diagonalizer.h"
 #include "atomiverse/cpu/vib/mass_weighting.h"
 #include "atomiverse/cpu/vib/normal_mode_writer.h"
 #include "atomiverse/cpu/vib/thermochem.h"
@@ -21,7 +21,7 @@ namespace {
 /// two frequency components, and the three thermochemistry-link
 /// components, all bound to the driver-owned shared workspace. On
 /// `vib::Phase::diagonalize` the ordering is Symmetrize (-1) ->
-/// MassWeighting (0) -> EigenSolver (+1); on `vib::Phase::thermochem`
+/// MassWeighting (0) -> HessianDiagonalizer (+1); on `vib::Phase::thermochem`
 /// the Thermochem Observer runs; on `vib::Phase::end_of_step` the
 /// FrequencyReport (0) and NormalModeWriter (+1) Recorders run.
 ///
@@ -38,7 +38,7 @@ void wire_full_chain(Driver& driver, HessianWorkspace* ws,
     driver.add(HessianAccumulator{ws});
     driver.add(Symmetrize{ws});
     driver.add(MassWeighting{ws});
-    driver.add(EigenSolver{ws});
+    driver.add(HessianDiagonalizer{ws});
     driver.add(Thermochem{ws, tc});
     driver.add(FrequencyReport{ws, out.frequency_tsv});
     driver.add(NormalModeWriter{ws, out.mode_xyz_prefix});
@@ -79,7 +79,7 @@ HessianResult Hessian::run(cpu::Frame& frame) {
     ResponseDriver::run(frame);
 
     // Publish the assembled, symmetrized Hessian, the vibrational
-    // frequencies (MassWeighting + EigenSolver), and the harmonic
+    // frequencies (MassWeighting + HessianDiagonalizer), and the harmonic
     // thermochemistry (Thermochem).
     last_result_.hessian = workspace_->hessian;
     last_result_.n_atoms = n_atoms;

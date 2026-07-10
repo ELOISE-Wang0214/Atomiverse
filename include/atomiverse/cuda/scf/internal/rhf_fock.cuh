@@ -16,7 +16,7 @@
 
 #include <vector>
 
-#include "atomiverse/cuda/component/component.cuh"
+#include "atomiverse/cuda/scf/internal/solver_context.cuh"
 #include "atomiverse/cuda/scf/scf_workspace.cuh"
 
 #ifdef ATV_HAS_RHF
@@ -49,17 +49,17 @@ class RHFFock {
     /// @brief Upload Hcore/ERI/X to device, allocate workspace.
     /// @param ctx Build context (CUDA stream + device frame).
     /// @param ws SCF electronic-structure workspace.
-    void build(const BuildContext& ctx, SCFWorkspace& ws);
+    void build(const SolverContext& ctx, SCFWorkspace& ws);
 
     /// @brief Build G(P), form F = Hcore + G, transform F' = X^T F X.
     /// @param ctx Launch context (CUDA stream + device frame + step index).
     /// @param ws SCF electronic-structure workspace.
-    void step(const LaunchContext& ctx, SCFWorkspace& ws);
+    void step(const SolverContext& ctx, SCFWorkspace& ws);
 
     /// @brief Free cuBLAS handle and scratch buffers.
     /// @param ctx Destroy context (CUDA stream + device frame).
     /// @param ws SCF electronic-structure workspace.
-    void destroy(const DestroyContext& ctx, SCFWorkspace& ws);
+    void destroy(const SolverContext& ctx, SCFWorkspace& ws);
 
   private:
     cpu::scf::IntegralPack integrals_; ///< Precomputed molecular integrals.
@@ -88,17 +88,17 @@ class RHFFockDevice {
     /// @brief Upload basis, launch GPU integral kernels, build Hcore + X.
     /// @param ctx Build context (CUDA stream + device frame).
     /// @param ws SCF electronic-structure workspace.
-    void build(const BuildContext& ctx, SCFWorkspace& ws);
+    void build(const SolverContext& ctx, SCFWorkspace& ws);
 
     /// @brief Build G(P), form F = Hcore + G, transform F' = X^T F X.
     /// @param ctx Launch context (CUDA stream + device frame + step index).
     /// @param ws SCF electronic-structure workspace.
-    void step(const LaunchContext& ctx, SCFWorkspace& ws);
+    void step(const SolverContext& ctx, SCFWorkspace& ws);
 
     /// @brief Free cuBLAS/cuSOLVER handles and scratch buffers.
     /// @param ctx Destroy context (CUDA stream + device frame).
     /// @param ws SCF electronic-structure workspace.
-    void destroy(const DestroyContext& ctx, SCFWorkspace& ws);
+    void destroy(const SolverContext& ctx, SCFWorkspace& ws);
 
   private:
     int n_prim_;                       ///< Primitives per shell.
@@ -108,9 +108,9 @@ class RHFFockDevice {
     void* cublas_handle_ = nullptr;    ///< cuBLAS handle.
     void* cusolver_handle_ = nullptr;  ///< cuSOLVER handle.
     double* d_temp_ = nullptr;         ///< Scratch buffer [device, n*n].
-    double* d_S_ = nullptr; ///< Overlap (device, for X computation).
-    double* d_T_ = nullptr; ///< Kinetic (device, temp).
-    double* d_V_ = nullptr; ///< Nuclear (device, temp).
+    double* d_S_ = nullptr;            ///< Overlap (device, for X computation).
+    double* d_T_ = nullptr;            ///< Kinetic (device, temp).
+    double* d_V_ = nullptr;            ///< Nuclear (device, temp).
 };
 
 #endif // ATV_HAS_RHF

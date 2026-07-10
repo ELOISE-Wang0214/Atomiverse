@@ -15,7 +15,7 @@
 /// @see internal::RHFFock for the Fock matrix builder
 #pragma once
 
-#include "atomiverse/cuda/component/component.cuh"
+#include "atomiverse/cuda/scf/internal/solver_context.cuh"
 #include "atomiverse/cuda/scf/scf_workspace.cuh"
 
 namespace ATV {
@@ -35,17 +35,17 @@ class RHFDensity {
     /// @brief Allocate cuBLAS handle and the Hcore+F scratch buffer.
     /// @param ctx Build context (CUDA stream + device frame).
     /// @param ws SCF electronic-structure workspace.
-    void build(const BuildContext& ctx, SCFWorkspace& ws);
+    void build(const SolverContext& ctx, SCFWorkspace& ws);
 
     /// @brief Back-transform C, rebuild P, compute and write RHF energy.
     /// @param ctx Launch context (CUDA stream + device frame + step index).
     /// @param ws SCF electronic-structure workspace.
-    void step(const LaunchContext& ctx, SCFWorkspace& ws);
+    void step(const SolverContext& ctx, SCFWorkspace& ws);
 
     /// @brief Free cuBLAS handle and scratch buffer.
     /// @param ctx Destroy context (CUDA stream + device frame).
     /// @param ws SCF electronic-structure workspace.
-    void destroy(const DestroyContext& ctx, SCFWorkspace& ws);
+    void destroy(const SolverContext& ctx, SCFWorkspace& ws);
 
   private:
     int n_occ_;                     ///< Doubly-occupied orbital count.

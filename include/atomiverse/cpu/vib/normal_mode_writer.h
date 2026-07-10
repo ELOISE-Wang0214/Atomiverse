@@ -2,7 +2,7 @@
 /// @brief cpu::vib::NormalModeWriter — per-mode XYZ-animation writer.
 ///
 /// Bound at `vib::Phase::end_of_step`, this Recorder fires once on the
-/// finalize pass (`ctx.step == 6N`), after `EigenSolver` has produced
+/// finalize pass (`ctx.step == 6N`), after `HessianDiagonalizer` has produced
 /// the normal modes. For each real vibrational mode it writes a
 /// multi-frame XYZ file animating the equilibrium geometry displaced
 /// along that normal-mode eigenvector through a sinusoidal sweep —
@@ -79,7 +79,7 @@ class NormalModeWriter : public cpu::ComponentBase {
     /// @brief Write the per-mode XYZ animations on the finalize pass.
     ///
     /// Gates on `ctx.step == 6N` so it fires exactly once, after
-    /// `EigenSolver` has run. One XYZ file per real mode; imaginary
+    /// `HessianDiagonalizer` has run. One XYZ file per real mode; imaginary
     /// modes are skipped.
     ///
     /// @param ctx Launch context; `ctx.step` is the displacement index.

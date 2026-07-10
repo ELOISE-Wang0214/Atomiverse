@@ -33,8 +33,8 @@
 #include <memory>
 #include <string>
 
-#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/driver/response_driver.h"
+#include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/vib/displace_step.h"
 #include "atomiverse/cpu/vib/hessian_accumulator.h"
 #include "atomiverse/cpu/vib/hessian_result.h"
@@ -72,7 +72,7 @@ class Hessian : public cpu::ResponseDriver {
     ///
     /// Auto-registers `ReferenceGeometry`, `DisplaceStep`,
     /// `HessianAccumulator`, `Symmetrize`, `MassWeighting`,
-    /// `EigenSolver`, plus the thermochemistry chain (`Thermochem`,
+    /// `HessianDiagonalizer`, plus the thermochemistry chain (`Thermochem`,
     /// `FrequencyReport`, `NormalModeWriter`), all bound to a
     /// driver-owned shared `HessianWorkspace`. The caller must still
     /// register a `Capability::Force` evaluator on `vib::Phase::force`.

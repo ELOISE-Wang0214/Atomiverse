@@ -52,36 +52,36 @@ struct HessianWorkspace {
 
     // ── Vibrational-frequency link (phase4-vibrations-02) ──────────────
     //
-    // The `MassWeighting` and `EigenSolver` components cooperate on the
+    // The `MassWeighting` and `HessianDiagonalizer` components cooperate on the
     // fields below during the finalize pass, after `Symmetrize`.
 
     /// @brief Mass-weighted Hessian `H^mw` in atomic units
     ///        (Hartree/Bohr^2/amu), shape `[3N,3N]`. `MassWeighting`
     ///        derives it from `hessian` without mutating `hessian` — so
     ///        `HessianResult.hessian` keeps the raw link-1 eV/Angstrom^2
-    ///        matrix. `EigenSolver` consumes this buffer.
+    ///        matrix. `HessianDiagonalizer` consumes this buffer.
     xt::xtensor<double, 2> hessian_mw;
 
     /// @brief True once `MassWeighting` has populated `hessian_mw`.
-    ///        Guards `EigenSolver` against running on an empty buffer.
+    ///        Guards `HessianDiagonalizer` against running on an empty buffer.
     bool mass_weighted = false;
 
     /// @brief Per-atom masses [amu] used for mass-weighting, length `N`.
     ///        Populated by `MassWeighting` from `mass_amu(frame type)`.
     std::vector<double> mass_amu;
 
-    /// @brief Vibrational wavenumbers [cm^-1] produced by `EigenSolver`,
+    /// @brief Vibrational wavenumbers [cm^-1] produced by `HessianDiagonalizer`,
     ///        length `3N-6` / `3N-5`. Negative for imaginary modes.
     xt::xtensor<double, 1> frequencies;
 
     /// @brief Normal-mode eigenvectors `[3N, n_modes]` produced by
-    ///        `EigenSolver` (columns lifted to the full Cartesian basis).
+    ///        `HessianDiagonalizer` (columns lifted to the full Cartesian basis).
     xt::xtensor<double, 2> normal_modes;
 
-    /// @brief Imaginary-mode count produced by `EigenSolver`.
+    /// @brief Imaginary-mode count produced by `HessianDiagonalizer`.
     int n_imaginary = 0;
 
-    /// @brief Linear-vs-nonlinear classification produced by `EigenSolver`.
+    /// @brief Linear-vs-nonlinear classification produced by `HessianDiagonalizer`.
     bool is_linear = false;
 
     // ── Thermochemistry link (phase4-vibrations-03) ────────────────────

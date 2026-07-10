@@ -92,7 +92,7 @@ setup → displace → force → accumulate → diagonalize → thermochem → e
 MD and minimization use, and auto-wires the surrounding machinery
 (`ReferenceGeometry` caches the equilibrium geometry, `DisplaceStep` applies
 the ±h shifts, `HessianAccumulator` builds the rows, `Symmetrize`,
-`MassWeighting`, `EigenSolver`, and the thermochemistry chain). The evaluator
+`MassWeighting`, `HessianDiagonalizer`, and the thermochemistry chain). The evaluator
 advertises `Capability::Force`; everything else the driver supplies. On return
 the frame carries the equilibrium geometry again — the displacements are
 transparent to the caller.

@@ -46,7 +46,7 @@ class MassWeighting : public cpu::ComponentBase {
 
     /// @brief Default binding: `vib::Phase::diagonalize` @ 0.
     ///
-    /// Runs after `Symmetrize` (@ -1) and before `EigenSolver` (@ +1).
+    /// Runs after `Symmetrize` (@ -1) and before `HessianDiagonalizer` (@ +1).
     /// @return Single binding placing this at the diagonalize phase.
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::vib::Phase::diagonalize, 0)};

@@ -528,6 +528,16 @@ add_test(
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cuda/scf_phase_scrub.sh
             ${CMAKE_SOURCE_DIR})
 
+# Grep gate: the CUDA SCF inner solver must not see the component layer
+# (arch-refactor-04-engines) — everything under cuda/scf/ except the
+# SCFEvaluator wrapper is component-free by construction; the solver's
+# only inputs are (void* stream, cuda::Frame&). Pure grep — runs in
+# every build configuration, no CUDA toolchain needed.
+add_test(
+    NAME test_cuda_scf_solver_isolation
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cuda/scf_solver_isolation.sh
+            ${CMAKE_SOURCE_DIR})
+
 # ── Torch backend tests ─────────────────────────────────────────────
 
 if(ATV_BUILD_TORCH)

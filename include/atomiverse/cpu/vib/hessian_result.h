@@ -38,7 +38,7 @@ struct HessianResult {
 
     // ── Vibrational-frequency link (phase4-vibrations-02) ──────────────
     //
-    // Populated by `cpu::vib::EigenSolver` after `cpu::vib::MassWeighting`
+    // Populated by `cpu::vib::HessianDiagonalizer` after `cpu::vib::MassWeighting`
     // has mass-weighted the Hessian. Empty until the frequency link runs.
 
     /// @brief Vibrational wavenumbers [cm^-1], length `3N-6` (nonlinear)

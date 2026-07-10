@@ -11,9 +11,11 @@
 /// CPU/CUDA parity). It owns its `internal::*` step helpers, each with a
 /// `build` / `step` / `destroy` lifecycle and pre-allocated device
 /// workspaces. The helpers are **not** registered into any `Driver` Plan,
-/// carry no phase enum, and do not touch `cuda::Context::outer_status`;
-/// `SCFSolver` drives them directly in a fixed order and owns its own
-/// internal convergence.
+/// carry no phase enum, and cannot touch any component-layer state — the
+/// solver's entire external surface is `(void* stream, cuda::Frame&)`,
+/// guaranteed by the type system (and the `test_cuda_scf_solver_isolation`
+/// grep gate) rather than by comment-level promise; `SCFSolver` drives
+/// them directly in a fixed order and owns its own internal convergence.
 ///
 /// Three run paths are surfaced as distinct constructors:
 ///  - **Synthetic** — `H(P) = H0 + alpha*P` toy self-consistency cycle.
@@ -25,8 +27,8 @@
 /// Usage (low-level direct SCF):
 /// @code
 ///   cuda::scf::SCFSolver solver{n_occ, alpha, tol, max_iter};
-///   solver.build(runtime, frame);
-///   solver.run(runtime, frame);
+///   solver.build(stream, frame);   // stream: void* (cudaStream_t)
+///   solver.run(stream, frame);
 ///   // solver.workspace().converged / .residual and frame.scalars->energy
 ///   // are populated.
 /// @endcode
@@ -43,7 +45,6 @@
 #include <memory>
 #include <vector>
 
-#include "atomiverse/cuda/component/component.cuh"
 #include "atomiverse/cuda/scf/internal/convergence_check.cuh"
 #include "atomiverse/cuda/scf/internal/density_builder.cuh"
 #include "atomiverse/cuda/scf/internal/eigen_solver.cuh"
@@ -112,9 +113,11 @@ class SCFSolver {
 
     /// @brief One-time setup: allocate device workspaces and build the
     ///        owned `internal::*` step helpers.
-    /// @param runtime CUDA execution context (streams).
+    /// @param stream CUDA stream (`cudaStream_t` passed as `void*` to keep
+    ///        the header CUDA-free; the component wrapper forwards
+    ///        `Context::stream`).
     /// @param frame Device-resident system state, sized at this call.
-    void build(cuda::Context& runtime, cuda::Frame& frame);
+    void build(void* stream, cuda::Frame& frame);
 
     /// @brief Execute the SCF self-consistency cycle on `frame`.
     ///
@@ -123,16 +126,16 @@ class SCFSolver {
     /// convergence check) up to `max_iter` iterations, breaking early when
     /// the owned workspace's `converged` flag is set. Performs no device
     /// allocation.
-    /// @param runtime CUDA execution context (streams).
+    /// @param stream CUDA stream (`cudaStream_t` as `void*`).
     /// @param frame Device-resident system state, updated in place.
-    void run(cuda::Context& runtime, cuda::Frame& frame);
+    void run(void* stream, cuda::Frame& frame);
 
     /// @brief Release the owned SCF workspace plus the cuBLAS/cuSOLVER
     ///        handles and per-helper scratch buffers held by the
     ///        `internal::*` step helpers.
-    /// @param runtime CUDA execution context (streams).
+    /// @param stream CUDA stream (`cudaStream_t` as `void*`).
     /// @param frame Device-resident system state.
-    void destroy(cuda::Context& runtime, cuda::Frame& frame);
+    void destroy(void* stream, cuda::Frame& frame);
 
     /// @brief Number of SCF iterations executed by the most recent `run()`.
     /// @return Iteration count [dimensionless].

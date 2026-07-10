@@ -15,7 +15,7 @@
 /// @see internal::Hamiltonian for the helper that builds H
 #pragma once
 
-#include "atomiverse/cuda/component/component.cuh"
+#include "atomiverse/cuda/scf/internal/solver_context.cuh"
 #include "atomiverse/cuda/scf/scf_workspace.cuh"
 
 namespace ATV {
@@ -33,17 +33,17 @@ class EigenSolver {
     /// @brief Allocate cuSOLVER handle and workspace.
     /// @param ctx Build context (CUDA stream + device frame).
     /// @param ws SCF electronic-structure workspace.
-    void build(const BuildContext& ctx, SCFWorkspace& ws);
+    void build(const SolverContext& ctx, SCFWorkspace& ws);
 
     /// @brief Diagonalize H: copy H -> C, solve C in-place, eigenvalues to eig.
     /// @param ctx Launch context (CUDA stream + device frame + step index).
     /// @param ws SCF electronic-structure workspace.
-    void step(const LaunchContext& ctx, SCFWorkspace& ws);
+    void step(const SolverContext& ctx, SCFWorkspace& ws);
 
     /// @brief Free cuSOLVER handle and workspace.
     /// @param ctx Destroy context (CUDA stream + device frame).
     /// @param ws SCF electronic-structure workspace.
-    void destroy(const DestroyContext& ctx, SCFWorkspace& ws);
+    void destroy(const SolverContext& ctx, SCFWorkspace& ws);
 
   private:
     void* cusolver_handle_ = nullptr; ///< cuSOLVER handle.

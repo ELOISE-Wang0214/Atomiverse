@@ -18,7 +18,7 @@
 /// @see internal::DensityBuilder for the helper that produces P and P_old
 #pragma once
 
-#include "atomiverse/cuda/component/component.cuh"
+#include "atomiverse/cuda/scf/internal/solver_context.cuh"
 #include "atomiverse/cuda/scf/scf_workspace.cuh"
 
 namespace ATV {
@@ -41,18 +41,18 @@ class ConvergenceCheck {
     /// @brief Allocate cuBLAS handle.
     /// @param ctx Build context (CUDA stream + device frame).
     /// @param ws SCF electronic-structure workspace.
-    void build(const BuildContext& ctx, SCFWorkspace& ws);
+    void build(const SolverContext& ctx, SCFWorkspace& ws);
 
     /// @brief Compute ||P - P_old||_F, check convergence, optionally compute
     ///        energy.
     /// @param ctx Launch context (CUDA stream + device frame + step index).
     /// @param ws SCF electronic-structure workspace.
-    void step(const LaunchContext& ctx, SCFWorkspace& ws);
+    void step(const SolverContext& ctx, SCFWorkspace& ws);
 
     /// @brief Free cuBLAS handle.
     /// @param ctx Destroy context (CUDA stream + device frame).
     /// @param ws SCF electronic-structure workspace.
-    void destroy(const DestroyContext& ctx, SCFWorkspace& ws);
+    void destroy(const SolverContext& ctx, SCFWorkspace& ws);
 
   private:
     double tol_;                    ///< Convergence tolerance (Frobenius norm).

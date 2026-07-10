@@ -20,8 +20,8 @@ namespace cuda {
 namespace scf {
 namespace internal {
 
-void RHFDensity::build(const BuildContext& ctx, SCFWorkspace& ws) {
-    auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
+void RHFDensity::build(const SolverContext& ctx, SCFWorkspace& ws) {
+    auto stream = static_cast<cudaStream_t>(ctx.stream);
     auto& scf = ws;
     int n = scf.n;
 
@@ -37,12 +37,12 @@ void RHFDensity::build(const BuildContext& ctx, SCFWorkspace& ws) {
     cublas_handle_ = handle;
 }
 
-void RHFDensity::step(const LaunchContext& ctx, SCFWorkspace& ws) {
+void RHFDensity::step(const SolverContext& ctx, SCFWorkspace& ws) {
     auto& scf = ws;
     if (scf.converged)
         return;
 
-    auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
+    auto stream = static_cast<cudaStream_t>(ctx.stream);
     auto handle = static_cast<cublasHandle_t>(cublas_handle_);
     int n = scf.n;
     int nn = n * n;
@@ -92,7 +92,7 @@ void RHFDensity::step(const LaunchContext& ctx, SCFWorkspace& ws) {
     cudaStreamSynchronize(stream);
 }
 
-void RHFDensity::destroy(const DestroyContext& /*ctx*/, SCFWorkspace& /*ws*/) {
+void RHFDensity::destroy(const SolverContext& /*ctx*/, SCFWorkspace& /*ws*/) {
     if (cublas_handle_) {
         cublasDestroy(static_cast<cublasHandle_t>(cublas_handle_));
         cublas_handle_ = nullptr;

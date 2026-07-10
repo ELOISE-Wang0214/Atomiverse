@@ -16,7 +16,7 @@
 /// @see internal::DensityBuilder for the helper that rebuilds P
 #pragma once
 
-#include "atomiverse/cuda/component/component.cuh"
+#include "atomiverse/cuda/scf/internal/solver_context.cuh"
 #include "atomiverse/cuda/scf/scf_workspace.cuh"
 
 namespace ATV {
@@ -39,17 +39,17 @@ class Hamiltonian {
     /// @brief Allocate SCF workspace and initialize H0 on device.
     /// @param ctx Build context (CUDA stream + device frame).
     /// @param ws SCF electronic-structure workspace.
-    void build(const BuildContext& ctx, SCFWorkspace& ws);
+    void build(const SolverContext& ctx, SCFWorkspace& ws);
 
     /// @brief Compute H = H0 + alpha * P via cuBLAS.
     /// @param ctx Launch context (CUDA stream + device frame + step index).
     /// @param ws SCF electronic-structure workspace.
-    void step(const LaunchContext& ctx, SCFWorkspace& ws);
+    void step(const SolverContext& ctx, SCFWorkspace& ws);
 
     /// @brief Free cuBLAS handle.
     /// @param ctx Destroy context (CUDA stream + device frame).
     /// @param ws SCF electronic-structure workspace.
-    void destroy(const DestroyContext& ctx, SCFWorkspace& ws);
+    void destroy(const SolverContext& ctx, SCFWorkspace& ws);
 
   private:
     int n_occ_;    ///< Number of occupied orbitals.

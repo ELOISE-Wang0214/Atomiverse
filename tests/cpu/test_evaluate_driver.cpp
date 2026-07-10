@@ -16,18 +16,21 @@
 #ifdef ATV_HAS_RHF
 
 #include <cmath>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 #include <gtest/gtest.h>
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/driver/dynamics_driver.h"
 #include "atomiverse/cpu/driver/evaluate.h"
+#include "atomiverse/cpu/driver/single_point.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
 #include "atomiverse/cpu/scf/scf_solve.h"
 #include "atomiverse/cpu/scf/scf_solver.h"
-#include "atomiverse/cpu/driver/single_point.h"
 
 using namespace ATV;
 
@@ -118,6 +121,14 @@ TEST(EvaluateDriver, MatchesSCFSolverDirectOnH2O) {
 }
 
 TEST(EvaluateDriver, SinglePointHelperEquivalentToInline) {
+#ifdef _OPENMP
+    // Pin the OMP reduction order so the two SCF solves below are
+    // bit-comparable: under a heavily parallel ctest schedule the
+    // thread-arrival variance in the Fock reductions exceeds the 1e-10
+    // equivalence budget (observed 1.2e-10 in the 154-test suite).
+    // Same determinism precedent as test_cpu_scf_spin_resolution.
+    omp_set_num_threads(1);
+#endif
     auto frame_inline = make_h2o();
     auto frame_helper = make_h2o();
     auto integrals =

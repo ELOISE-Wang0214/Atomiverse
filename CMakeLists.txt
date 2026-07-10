@@ -199,7 +199,7 @@ if(NOT ATV_DOCS_ONLY)
         # CPU vibrational-analysis (Response category) driver
         src/cpu/vib/hessian.cpp
         src/cpu/vib/mass_weighting.cpp
-        src/cpu/vib/eigen_solver.cpp
+        src/cpu/vib/hessian_diagonalizer.cpp
         src/cpu/vib/thermochem.cpp
         src/cpu/vib/frequency_report.cpp
         src/cpu/vib/normal_mode_writer.cpp
