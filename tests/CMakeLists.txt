@@ -481,6 +481,10 @@ if(ATV_BUILD_CUDA)
     atv_add_test(test_cuda_md_nve_limit cuda/md/test_nve_limit.cu)
     atv_add_test(test_cuda_md_fix_langevin cuda/md/test_fix_langevin.cu)
     atv_add_test(test_cuda_md_nose_hoover_npt cuda/md/test_cuda_nose_hoover_npt.cu)
+    # cuda::RDF on the molrs streaming accumulator (arch-refactor-07-molrs):
+    # static-trajectory g(r) parity vs a host-fed cpu::compute::RDFAccumulator
+    # + fail-fast ctor edges. Needs a GPU node (runs a cuda::md::MD).
+    atv_add_test(test_cuda_observer_rdf_molrs cuda/observer/test_rdf_molrs.cu)
     atv_add_test(test_cuda_pair_lj_special_bonds cuda/potentials/test_pair_lj_special_bonds.cu)
     atv_add_test(test_cuda_potentials_bonded cuda/potentials/test_bonded.cu)
     atv_add_test(test_cuda_ewald_coul cuda/kspace/test_ewald_coul.cu)
@@ -541,6 +545,16 @@ add_test(
 add_test(
     NAME test_cuda_scf_solver_isolation
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cuda/scf_solver_isolation.sh
+            ${CMAKE_SOURCE_DIR})
+
+# Grep gate: cuda::RDF must be migrated off the deleted legacy host histogram
+# helpers (arch-refactor-07-molrs) — rdf.cuh must consume
+# cpu::compute::RDFAccumulator via trajectory_metrics.h; only rdf_write_curve
+# (the one g(r) emitter) may remain. The forbidden-token list lives in the
+# gate script. Pure grep — runs in every build configuration, no CUDA needed.
+add_test(
+    NAME test_cuda_rdf_molrs_migration
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cuda/observer/rdf_molrs_migration.sh
             ${CMAKE_SOURCE_DIR})
 
 # ── Torch backend tests ─────────────────────────────────────────────

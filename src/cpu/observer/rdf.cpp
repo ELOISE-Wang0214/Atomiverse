@@ -7,7 +7,7 @@
 #include <array>
 
 #include "atomiverse/core/log.h"
-#include "atomiverse/cpu/observer/rdf_histogram.h" // rdf_write_curve
+#include "atomiverse/cpu/observer/rdf_curve.h"
 
 namespace ATV {
 

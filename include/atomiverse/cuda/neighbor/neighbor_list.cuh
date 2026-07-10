@@ -41,8 +41,8 @@ struct PairList {
     ///< Per cuda-md-review-cleanup-06-launch-config-streams, the
     ///< neighbor-list export stores r² rather than r — pair styles
     ///< need inv_r² for the LJ force calculation and can skip the
-    ///< sqrt entirely. Consumers that need r (e.g. cuda::RDF for
-    ///< histogram binning) take sqrt at read time.
+    ///< sqrt entirely. A consumer that needs r takes the sqrt at
+    ///< read time.
     int* n_pairs = nullptr;  ///< Current pair count [device, 1 element].
     int* capacity = nullptr; ///< Pre-allocated slot count [device, 1 element].
 

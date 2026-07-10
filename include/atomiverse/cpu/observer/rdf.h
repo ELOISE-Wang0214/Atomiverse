@@ -7,9 +7,9 @@
 /// *analyzes* (`RdfAccumulator`: per-frame LinkCell + ideal-gas shell-volume
 /// normalization, folded frame-by-frame). Memory is O(n_bins) — never
 /// O(trajectory) — so million-step runs stream through at constant footprint.
-/// No analysis math and no record type in C++. The legacy hand-rolled
-/// histogram (`rdf_accumulate`/`rdf_write`) lives in `observer/rdf_histogram.h`
-/// and serves only `cuda::RDF`.
+/// No analysis math and no record type in C++ — both backends' RDF observers
+/// stream through the molrs accumulator; the g(r) file format has one emitter
+/// (`rdf_write_curve` in observer/rdf_curve.h).
 ///
 /// @see cpu::VACF (observer/vacf.h) for the same streaming async pattern
 /// @see .claude/specs/parallel-md-engine.md  § B.4 (async observer pattern)

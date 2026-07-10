@@ -77,8 +77,13 @@ manual-discovery §12).
    enable `compute` feature, rebuild twice). **Next:** `fit_einstein_diffusion`
    (molrs `fit::EinsteinDiffusion`) for D; capture image flags for PBC unwrapping
    (snapshot lacks them — MVP validated on a non-wrapping trajectory).
-2. **RDF via molrs**: bridge `analyze_rdf`; validate against the existing C++ RDF
-   on an identical trajectory (parity), then mark C++ RDF for deprecation.
+2. ✅ **RDF via molrs** (closed 2026-07-10): landed as the *streaming* route
+   rather than batch-`analyze_rdf` — molrs `RdfAccumulator` behind
+   `cpu::compute::RDFAccumulator` (trajectory_metrics.h). CPU observer
+   migrated 2026-07-02; the CUDA tail (`cuda::RDF` + deletion of the last
+   hand-rolled histogram `rdf_histogram.{h,cpp}`) is closed by
+   **arch-refactor-07-molrs**. No g(r) analysis math remains in C++ on either
+   backend; the batch `analyze_rdf` bridge fn is no longer needed for this line.
 3. ✅ **VACF** (done 2026-07-01): `analyze_vacf(velocities, n_frames, n_dof, dt,
    resolution)` runs molrs `compute::VACF` (FFT-ACF, DOF-averaged) over a flat
    velocity buffer (VACF takes velocities in Args, ignores frames). C++
@@ -89,6 +94,17 @@ manual-discovery §12).
 4. **Static structure factor** (Ch 13 stretch): bridge `analyze_structure_factor`.
 5. **Extra trajectory formats** (DCD/TRR/PDB already in molrs): bridge the readers
    the discovery listed as "missing in C++."
+
+### Cross-repo note — lammps_data.cpp replacement preconditions (out of scope here and in arch-refactor-07)
+
+`src/cpu/io/lammps_data.cpp` (~259-line hand-written parser) is a **deliberate
+divergence**: molrs's LAMMPS reader atom-style auto-detection mis-routes MSU
+`atom_style=molecular` files onto the charge branch (mol_id read as type).
+Replacing it requires, in order: (1) molrs-side detection-heuristic fix,
+(2) a LAMMPS read FFI added to the bridge, (3) MSU PE benchmark regression in
+Atomiverse. Until all three land, the C++ parser stays. Structure factor
+(Task 4) and DCD/TRR/PDB (Task 5) also remain owned by this spec —
+arch-refactor-07 closed only Task 2's CUDA tail.
 
 ## Validation
 

@@ -246,15 +246,17 @@ void NeighborList::build(const BuildContext& ctx) {
     // shell (~400) is handled automatically with no hand-tuned constant.
     s.buf.resize_verlet(n, kMaxVerletNeigh);
 
-    // Cluster-CSR + grid + flat (i,j) pair machinery is consumed ONLY by the
-    // opt-in flat-pair export (cuda::RDF) and Coulomb; the MD force path uses
-    // the per-atom Verlet list built in launch(). It is ~115 B/atom (Morton +
-    // cluster SoA + AABB + CSR col_idx/mask + flat arrays + CUB temps), so for
-    // any flat=false run (all multi-GPU MD — multi_gpu.cu forces it false — and
-    // plain single-GPU MD) it is pure dead weight. Allocate it only when flat
-    // pairs are requested; otherwise keep size-1 placeholders and pair_capacity
-    // = 1 so launch()'s lazy path grows everything the first time RDF turns the
-    // flag on (its on_build may run after this build()).
+    // Cluster-CSR + grid + flat (i,j) pair machinery serves ONLY the opt-in
+    // flat-pair export; the MD force path uses the per-atom Verlet list built
+    // in launch(). It is ~115 B/atom (Morton + cluster SoA + AABB + CSR
+    // col_idx/mask + flat arrays + CUB temps), so for any flat=false run (all
+    // multi-GPU MD — multi_gpu.cu forces it false — and plain single-GPU MD)
+    // it is pure dead weight. Allocate it only when flat pairs are requested;
+    // otherwise keep size-1 placeholders and pair_capacity = 1 so launch()'s
+    // lazy path grows everything the first time a requester turns the flag on
+    // (a requester's build() may run after this build()). No in-tree
+    // component sets the flag today — the RDF observer streams positions into
+    // the molrs accumulator instead (arch-refactor-07).
     if (ctx.runtime.md.flat_pairs_requested) {
         s.buf.resize_cluster_csr(n, nc);
         s.buf.resize_displacement(nc);
@@ -328,13 +330,13 @@ void NeighborList::build(const BuildContext& ctx) {
     }
     atom_pair_cap = std::max(atom_pair_cap, std::max(1, n * 50));
     s.atom_pair_cap = atom_pair_cap;
-    // The flat (i,j,dx,dy,dz,r²) atom-pair arrays are consumed ONLY by the
-    // opt-in flat export (cuda::RDF). The atom-centric LJ force path reads the
-    // cluster CSR directly, so for it (and any flat=false run) these big arrays
-    // — n·max(100,…) entries × 24 B, e.g. ~2.4 GB per million atoms — are dead
-    // allocation. Allocate them lazily on the first export instead (build()
-    // can't rely on flat_pairs_requested being set yet, since RDF's on_build
-    // may run after NeighborList's). n_pairs/capacity are tiny and always live.
+    // The flat (i,j,dx,dy,dz,r²) atom-pair arrays exist ONLY for the opt-in
+    // flat export. The MD force path reads the per-atom Verlet list, so for
+    // it (and any flat=false run) these big arrays — n·max(100,…) entries ×
+    // 24 B, e.g. ~2.4 GB per million atoms — are dead allocation. Allocate
+    // them lazily on the first export instead (build() can't rely on
+    // flat_pairs_requested being set yet, since a requester's build() may run
+    // after NeighborList's). n_pairs/capacity are tiny and always live.
     if (ctx.runtime.md.flat_pairs_requested) {
         cudaMalloc(&pairs_.i, atom_pair_cap * sizeof(int));
         cudaMalloc(&pairs_.j, atom_pair_cap * sizeof(int));
@@ -363,16 +365,20 @@ void NeighborList::build(const BuildContext& ctx) {
     cudaEventCreateWithFlags(&s.rebuild_flag_event, cudaEventDisableTiming);
     cudaEventCreateWithFlags(&s.flat_pair_count_event, cudaEventDisableTiming);
 
-    // Publish the cluster CSR (full neighbor list) for the atom-centric,
-    // atomic-free force path. Buffer addresses are stable across the run
-    // (DeviceVector capacity is fixed at build); contents are refreshed in
-    // place on each skin-gated rebuild in launch().
+    // Publish the cluster CSR pointers. Buffer addresses are stable across
+    // the run (DeviceVector capacity is fixed at build), but the CONTENTS are
+    // only populated by the flat_pairs_requested rebuild block in launch() —
+    // with the flag off these point at never-filled size-1 placeholders.
+    // TODO(roykid, 2026-07-10): CoulLong's cluster kernels read cl_* yet
+    // nothing in-tree sets flat_pairs_requested since the RDF observer
+    // migrated to the molrs accumulator (arch-refactor-07) — the Coulomb
+    // path needs its own cluster-CSR request (GPU-node verification owed).
     pairs_.cl_row_ptr = s.buf.row_ptr.data();
     pairs_.cl_col_idx = s.buf.col_idx.data();
     pairs_.cl_orig_index = s.buf.original_index.data();
-    // flat_mask is reused as the force-path interaction mask (1:1 with col_idx,
-    // since csr_to_flat preserves CSR ordering); the address is stable, so
-    // publish it here. Populated on each rebuild by launch_compute_force_mask.
+    // flat_mask doubles as the interaction mask (1:1 with col_idx, since
+    // csr_to_flat preserves CSR ordering); the address is stable, so publish
+    // it here.
     pairs_.cl_mask = s.buf.flat_mask.data();
     pairs_.num_clusters = nc;
 
@@ -384,8 +390,9 @@ void NeighborList::build(const BuildContext& ctx) {
     pairs_.vl_stride = s.buf.verlet_stride;
     pairs_.vl_max = s.buf.verlet_max;
 
-    // Publish the pair list to the execution context for downstream
-    // consumers (LJ, RDF), mirroring cpu::md::NeighborList.
+    // Publish the pair list to the execution context for downstream pair
+    // styles (LJ via the per-atom Verlet list, Coulomb via the cluster CSR),
+    // mirroring cpu::md::NeighborList.
     ctx.runtime.md.pair_list = &pairs_;
 }
 
@@ -555,13 +562,14 @@ void NeighborList::launch(const LaunchContext& ctx) {
                                   s.buf.ref_z.data(), n, stream);
 
         // Cluster CSR + flat (i,j) pair list — ONLY for the opt-in flat-pair
-        // export (cuda::RDF). The MD force path uses the per-atom Verlet list
-        // built above; this whole block is dead for it. (RDF migration to the
-        // Verlet list is a follow-up.)
+        // export. The MD force path uses the per-atom Verlet list built
+        // above; this whole block is dead for it. No in-tree component
+        // requests the flat list today (the RDF observer streams positions
+        // into the molrs accumulator instead — arch-refactor-07).
         if (ctx.runtime.md.flat_pairs_requested) {
             // Lazily allocate the cluster-CSR pipeline if build() skipped it
-            // (flat pairs were requested only after that build — RDF's on_build
-            // can run later). col_idx/mask/flat then grow below via the
+            // (flat pairs were requested only after that build — a
+            // requester's build() can run later). col_idx/mask/flat then grow below via the
             // total_cluster_pairs path (pair_capacity is 1); the CUB temp
             // DeviceVectors self-size in their launch_* wrappers.
             if (!s.buf.cluster_ready(n)) {
@@ -663,17 +671,17 @@ void NeighborList::launch(const LaunchContext& ctx) {
     }
 
     // ── Per-step prune + flat-pair export: OPT-IN ───────────────────────
-    // The atom-centric LJ force kernel (PairLJCut) consumes the cluster CSR
-    // (row_ptr/col_idx/original_index) directly and computes distances from
-    // CURRENT positions, so the flat (i,j,dx,dy,dz,r²) PairList is dead work
-    // for force evaluation — skipped by default (this prune + export were
-    // ~60% of the per-step time). Only flat-list consumers (e.g. cuda::RDF)
-    // set ctx.runtime.md.flat_pairs_requested in build(), re-enabling them.
+    // The MD force kernel (PairLJCut) consumes the per-atom Verlet list and
+    // computes distances from CURRENT positions, so the flat (i,j,dx,dy,dz,r²)
+    // PairList is dead work for force evaluation — skipped by default (this
+    // prune + export were ~60% of the per-step time). A flat-list consumer
+    // would set ctx.runtime.md.flat_pairs_requested in build() to re-enable
+    // them; none exists in-tree today.
     if (!ctx.runtime.md.flat_pairs_requested) {
         cudaMemsetAsync(pairs_.n_pairs, 0, sizeof(int), stream);
     } else {
         // Lazy one-time allocation of the flat export arrays (see build()): a
-        // flat consumer (RDF) requested them, possibly after build() ran.
+        // flat consumer requested them, possibly after build() ran.
         if (pairs_.i == nullptr) {
             int cap = std::max(1, s.atom_pair_cap);
             cudaMalloc(&pairs_.i, cap * sizeof(int));

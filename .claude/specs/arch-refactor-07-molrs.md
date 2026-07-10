@@ -1,6 +1,6 @@
 ---
 title: "arch-refactor-07-molrs — cuda::RDF 迁移 molrs streaming accumulator，删除最后的 C++ 分析数学"
-status: approved
+status: code-complete
 date: 2026-07-10
 chain: arch-refactor (07/09)
 depends_on: [arch-refactor-02-halo]
@@ -137,7 +137,7 @@ molrs-cxxapi/src/bridge.rs:28,39 已声明、被
 
 ## Tasks
 
-- [ ] Write failing CUDA parity test for the migrated cuda::RDF
+- [x] Write failing CUDA parity test for the migrated cuda::RDF
       (tests/cuda/observer/test_rdf_molrs.cu (new)) and register it as
       test_cuda_observer_rdf_molrs in tests/CMakeLists.txt: LJ lattice +
       VelocityVerlet{0.0}（静止轨迹，每帧位置相同 → g(r) 与被接受帧数无关），
@@ -145,12 +145,12 @@ molrs-cxxapi/src/bridge.rs:28,39 已声明、被
       cpu::compute::RDFAccumulator 同一帧得到的参考曲线（|Δ| ≤ 1e-6，
       文件按 %.6f 格式化），并断言最近邻晶格距离所在 bin 非零；测试同时 grep
       断言 rdf.cuh 不再 include rdf_histogram.h，确保 RED
-- [ ] Implement include/atomiverse/cpu/observer/rdf_curve.h (new) +
+- [x] Implement include/atomiverse/cpu/observer/rdf_curve.h (new) +
       src/cpu/observer/rdf_curve.cpp (new): move rdf_write_curve verbatim out
       of rdf_histogram.{h,cpp}（std-only、CUDA-safe、Doxygen 带单位），update
       the include in src/cpu/observer/rdf.cpp and swap the source entry in
       CMakeLists.txt:157（rdf_histogram.cpp → rdf_curve.cpp）
-- [ ] Implement the cuda::RDF migration in
+- [x] Implement the cuda::RDF migration in
       include/atomiverse/cuda/observer/rdf.cuh: ring 冻结 positions x|y|z +
       per-frame cell（替代 pair dist²），on_data_ready 拓宽/打包后喂
       cpu::compute::RDFAccumulator，on_destroy 走 acc_.finalize() +
@@ -158,21 +158,21 @@ molrs-cxxapi/src/bridge.rs:28,39 已声明、被
       构造函数构造 accumulator（非法参数 fail-fast），删除
       flat_pairs_requested、pair-list can_run 依赖与 neighbor_list.cuh
       include，Doxygen per doc.style with units
-- [ ] Remove include/atomiverse/cpu/observer/rdf_histogram.h and
+- [x] Remove include/atomiverse/cpu/observer/rdf_histogram.h and
       src/cpu/observer/rdf_histogram.cpp, delete the legacy-histogram
       paragraph in include/atomiverse/cpu/observer/rdf.h, and verify the grep
       gate: `rg -n 'rdf_histogram|rdf_accumulate|\brdf_write\(' include src
       tests examples benchmarks CMakeLists.txt` returns nothing
-- [ ] Update stale flat-pair comments that name cuda::RDF as consumer
+- [x] Update stale flat-pair comments that name cuda::RDF as consumer
       (src/cuda/neighbor/neighbor_list.cu:242,324,551,665,
       src/cuda/neighbor/nlist_impl.cuh:102,
       include/atomiverse/cuda/neighbor/neighbor_list.cuh:43,
       include/atomiverse/cuda/component/context.cuh:42) to name Coulomb only
-- [ ] Add cross-annotations to .claude/specs/molrs-analysis-ffi.md: Task 2
+- [x] Add cross-annotations to .claude/specs/molrs-analysis-ffi.md: Task 2
       的 CUDA 尾巴由 arch-refactor-07-molrs 关闭；lammps_data.cpp 替换前置
       条件（molrs 修 atom-style 误检测 + 加 read FFI）显式记录，structure
       factor/DCD/TRR/PDB 仍留该 spec
-- [ ] Verify build/ governance: `git ls-files build/` 为空则在提交信息记录
+- [x] Verify build/ governance: `git ls-files build/` 为空则在提交信息记录
       澄清（.gitignore:40 已忽略；本地 corrosion bridge.h 过期 = 陈旧构建树，
       重新 configure+build 再生成）；若有 tracked 文件则
       `git rm -r --cached build/`（.gitignore 无需改动）
@@ -180,7 +180,7 @@ molrs-cxxapi/src/bridge.rs:28,39 已声明、被
       `#!/bin/bash -l` + `module load GPU/buildenv-gcccuda/2026.03-cu13.0`，
       build-cuda + `ctest --test-dir build-cuda --output-on-failure`，含新
       parity test 与既有 MD.RDFOutput）
-- [ ] Run full check + test suite（CPU login node，ATV_BUILD_CUDA=OFF，
+- [x] Run full check + test suite（CPU login node，ATV_BUILD_CUDA=OFF，
       `cmake --build build -j$(nproc)` + `ctest --test-dir build
       --output-on-failure`）
 

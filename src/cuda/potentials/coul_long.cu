@@ -135,6 +135,13 @@ CoulLong::CoulLong(double alpha, double cutoff) : Pair(cutoff), alpha_(alpha) {
 void CoulLong::compute(const LaunchContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& frame = ctx.frame;
+    // TODO(roykid, 2026-07-10): the cluster CSR read here is only POPULATED
+    // by NeighborList's flat_pairs_requested rebuild block, and nothing
+    // in-tree sets that flag since the RDF observer migrated to the molrs
+    // accumulator (arch-refactor-07). The pointers below are published
+    // unconditionally (they pass this guard) but point at never-filled
+    // placeholders unless a flat-pair requester is registered — the Coulomb
+    // path needs its own cluster-CSR request (GPU-node verification owed).
     const PairList* pairs = ctx.runtime.md.pair_list;
     if (!pairs || pairs->cl_row_ptr == nullptr || pairs->num_clusters <= 0)
         return;

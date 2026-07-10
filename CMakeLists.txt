@@ -154,7 +154,7 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/io/lammps_data.cpp
         src/cpu/io/extxyz.cpp
         src/cpu/observer/rdf.cpp
-        src/cpu/observer/rdf_histogram.cpp
+        src/cpu/observer/rdf_curve.cpp
         src/cpu/observer/msd.cpp
         src/cpu/observer/vacf.cpp
         src/cpu/observer/trajectory_metrics.cpp

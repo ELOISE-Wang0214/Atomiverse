@@ -99,10 +99,11 @@ struct NListBuffers {
     }
 
     // The Morton/cluster/AABB/CSR pipeline — consumed ONLY by the opt-in
-    // flat-pair export (cuda::RDF) and Coulomb, NOT by the per-atom Verlet MD
-    // force path. Allocated only when flat pairs are requested (build(), or
-    // lazily in launch() if RDF attaches after the first build). `cluster_ready`
-    // lets callers detect whether these are live.
+    // flat-pair export and the cluster-CSR Coulomb kernels, NOT by the
+    // per-atom Verlet MD force path. Allocated only when flat pairs are
+    // requested (build(), or lazily in launch() if a requester attaches after
+    // the first build). `cluster_ready` lets callers detect whether these
+    // are live.
     void resize_cluster_csr(int n, int n_clusters) {
         morton_codes.resize(n);
         atom_indices.resize(n);
@@ -263,10 +264,10 @@ void launch_bin_atoms(const real_t* x, const real_t* y, const real_t* z, int n,
 
 template <typename work_t>
 void launch_build_verlet_direct(
-    const real_t* x, const real_t* y, const real_t* z, int n, ATV::cuda::Box box,
-    int dx, int dy, int dz, bool periodic, const int* sdx, const int* sdy,
-    const int* sdz, const int* n_stencil_ptr, const int* bincount,
-    const float4* bin_pos, int bin_cap, work_t rsq_search,
+    const real_t* x, const real_t* y, const real_t* z, int n,
+    ATV::cuda::Box box, int dx, int dy, int dz, bool periodic, const int* sdx,
+    const int* sdy, const int* sdz, const int* n_stencil_ptr,
+    const int* bincount, const float4* bin_pos, int bin_cap, work_t rsq_search,
     const std::int64_t* tag, const int* nspecial, const std::int64_t* special,
     int max_special, int* vl_nbr, int* vl_cnt, int vl_stride, int vl_max,
     int* overflow, cudaStream_t stream = 0);
@@ -387,11 +388,11 @@ void launch_smart_rolling_prune(
 // force kernel iterates only masked-in j-slots. See fused_search.cu.
 template <typename work_t>
 void launch_compute_force_mask(const real_t* cluster_x, const real_t* cluster_y,
-                              const real_t* cluster_z, const int* flat_ci,
-                              const int* flat_cj,
-                              const int* num_flat_pairs_device, int pair_count,
-                              work_t search_sq, ATV::cuda::Box box,
-                              uint64_t* flat_mask, cudaStream_t stream = 0);
+                               const real_t* cluster_z, const int* flat_ci,
+                               const int* flat_cj,
+                               const int* num_flat_pairs_device, int pair_count,
+                               work_t search_sq, ATV::cuda::Box box,
+                               uint64_t* flat_mask, cudaStream_t stream = 0);
 
 // Build the per-atom Verlet list (column-major, stride=num_atoms) from the
 // cluster CSR + sorted cluster positions at the search radius (rc+skin). One
@@ -399,12 +400,13 @@ void launch_compute_force_mask(const real_t* cluster_x, const real_t* cluster_y,
 // verlet_nbr[k*stride + ai] and the count into verlet_cnt[ai]. atomicMax's the
 // max count into overflow[0]. Run once per rebuild. See fused_search.cu.
 template <typename work_t>
-void launch_build_verlet_list(
-    const real_t* cluster_x, const real_t* cluster_y, const real_t* cluster_z,
-    const int* row_ptr, const int* col_idx, const int* original_index,
-    int num_clusters, int stride, int max_neigh, work_t search_sq,
-    ATV::cuda::Box box, int* verlet_nbr, int* verlet_cnt, int* overflow,
-    cudaStream_t stream = 0);
+void launch_build_verlet_list(const real_t* cluster_x, const real_t* cluster_y,
+                              const real_t* cluster_z, const int* row_ptr,
+                              const int* col_idx, const int* original_index,
+                              int num_clusters, int stride, int max_neigh,
+                              work_t search_sq, ATV::cuda::Box box,
+                              int* verlet_nbr, int* verlet_cnt, int* overflow,
+                              cudaStream_t stream = 0);
 
 // --- GPU-side setup (setup.cu) ---
 
@@ -428,15 +430,12 @@ void launch_write_int(int* arr, int idx, int val, cudaStream_t stream = 0);
 
 // Launcher dispatches on `box.ortho` for compile-time PBC specialization
 // (cuda-md-review-cleanup-04-box-by-value-pbc).
-void launch_export_atom_pairs(const int* flat_ci, const int* flat_cj,
-                              const uint64_t* flat_mask,
-                              const int* num_flat_device, int n_flat,
-                              const int* original_index, const real_t* pos_x,
-                              const real_t* pos_y, const real_t* pos_z,
-                              bool periodic, ATV::cuda::Box box, int* out_i,
-                              int* out_j, real_t* out_dx, real_t* out_dy,
-                              real_t* out_dz, real_t* out_dist_sq,
-                              int* out_count, const int* capacity_ptr,
-                              cudaStream_t stream = 0);
+void launch_export_atom_pairs(
+    const int* flat_ci, const int* flat_cj, const uint64_t* flat_mask,
+    const int* num_flat_device, int n_flat, const int* original_index,
+    const real_t* pos_x, const real_t* pos_y, const real_t* pos_z,
+    bool periodic, ATV::cuda::Box box, int* out_i, int* out_j, real_t* out_dx,
+    real_t* out_dy, real_t* out_dz, real_t* out_dist_sq, int* out_count,
+    const int* capacity_ptr, cudaStream_t stream = 0);
 
 } // namespace ATV::cuda::md::nlist
