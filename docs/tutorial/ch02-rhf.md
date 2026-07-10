@@ -148,7 +148,7 @@ up is a healthy $0.126$. With the default threshold the solver drops exactly
 those 2 directions ($n_\mathrm{mo} = 4$ of $6$), converges cleanly, and its
 electronic energy matches a PySCF 2.13.1 reference for the identical system
 to better than $10^{-6}$ Hartree. The clean H₂/6-31G energy
-($-1.1267339671$ Hartree) is untouched to the last bit.
+($-1.1267339671$ Hartree) is untouched to within $10^{-8}$ Hartree.
 
 **Limitations.** Dropping directions makes the *energy* well-defined but the
 orbital count basis-dependent: downstream consumers must read
@@ -262,9 +262,11 @@ cpu::scf::rhf_solve(ints);   // throws std::invalid_argument — not silence
 ```
 
 Because the guard is read-only and runs before any work, valid closed-shell
-runs are bit-identical to the unguarded solver — the neutral-water energy in
-this chapter is pinned to the pre-guard baseline at tolerance zero by the
-regression test.
+runs take exactly the same code path as the unguarded solver — the
+neutral-water energy in this chapter is pinned to the pre-guard baseline at
+$10^{-8}$ Ha by the regression test. (The bar is not zero: the same source
+reassociates its BLAS reductions differently on x86_64 and aarch64, which
+moves the last digits by ~$10^{-12}$ Ha.)
 
 **Limitations.** The guard validates bookkeeping, not physics. A biradical
 singlet passes every check and still breaks the RHF ansatz; that failure mode
@@ -276,8 +278,8 @@ resolution rules.
 <!-- Every number and thrown case in this section is regression-locked by
      tests/cpu/scf/test_spin_resolution.cpp (test_cpu_scf_spin_resolution):
      H2O+ via rhf_config throws (OddElectronRhfThrows); the neutral-H2O
-     bit-identical pin is NeutralH2ORhfEnergyBitIdentical. Change one side
-     only in lockstep with the other. -->
+     baseline pin (1e-8 Ha) is NeutralH2ORhfEnergyMatchesBaseline. Change one
+     side only in lockstep with the other. -->
 
 ## SCF Convergence Is a Numerical Problem
 

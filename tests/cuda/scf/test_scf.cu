@@ -135,7 +135,7 @@ TEST(SCF, CUDAConvergence) {
 
     cuda::scf::SCFEvaluator scf{n_occ, double(0.1), double(1e-6), 200};
     cuda::Evaluate eval;
-    eval.add(std::move(scf));
+    eval.on(ATV::evaluate::Phase::evaluate).add(std::move(scf));
     eval.build();
     eval.run(frame);
 
@@ -219,7 +219,7 @@ TEST(SCF, CUDAMaxIterCap) {
 
     cuda::scf::SCFEvaluator scf{2, double(0.5), double(1e-12), /*max_iter=*/3};
     cuda::Evaluate eval;
-    eval.add(std::move(scf));
+    eval.on(ATV::evaluate::Phase::evaluate).add(std::move(scf));
     eval.build();
     eval.run(frame);
 
