@@ -14,7 +14,7 @@ molpy    = ["molpy"]
 torch    = ["torch"]
 dev      = ["pytest", "pytest-cov", "numpy"]
 docs     = ["sphinx>=7", "furo", "myst-parser", "sphinx-copybutton"]
-examples = ["matplotlib", "ase", "pyscf"]
+examples = ["matplotlib", "ase"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

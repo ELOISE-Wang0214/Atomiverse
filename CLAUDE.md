@@ -127,6 +127,8 @@ runs fine on the login node with `-DATV_BUILD_CUDA=OFF`.
 | `ATV_BUILD_CUDA` | ON | CUDA backend; defines `ATV_HAS_CUDA` |
 | `ATV_BUILD_RHF` | OFF | Gaussian SCF (RHF/UHF/UKS); defines `ATV_HAS_RHF` |
 | `ATV_BUILD_PW` | OFF | Plane-wave DFT (needs FFTW3) |
+| `ATV_BUILD_GPW` | OFF | Gaussian-and-plane-waves DFT (needs `ATV_BUILD_RHF` + `ATV_BUILD_PW`) |
+| `ATV_CP2K_DATA_DIR` | `""` | Path to an external CP2K `data/` dir. **Unset by default and must stay that way in CI**: it is the sole opt-in for the `tests/cpu/gpw/*` CP2K-data ingest tests. No CP2K file is vendored; nothing else in the tree reads a third-party package at build or test time. |
 | `ATV_BUILD_KSPACE` | OFF | Reciprocal-space electrostatics PME (needs FFTW3) |
 | `ATV_BUILD_TORCH` | OFF | LibTorch backend; defines `ATV_HAS_TORCH` |
 | `ATV_BUILD_TESTS` / `ATV_BUILD_BENCHMARKS` / `ATV_BUILD_EXAMPLES` | OFF | test / benchmark / example targets |
@@ -140,14 +142,16 @@ Performance: `-march=native` is required for the CPU SCF ERI kernels.
 
 ```
 include/atomiverse/ + src/   mirrored header/impl trees (architecture below)
-tests/                       unit tests — fast correctness only (ms-scale); never
-                             timing or external-engine comparison (those are
-                             benchmarks). Slow end-to-end / parity tests (full
-                             SCF/MD/vib solves, PySCF/libcint parity) are DISABLED
-                             from the default `ctest` (~16 s gate) and re-enabled
-                             with `-DATV_RUN_E2E_TESTS=ON` (CI sets it); the list
-                             is at the tail of tests/CMakeLists.txt.
+tests/                       unit tests ONLY — each exercises one function or
+                             method at ms-scale. No end-to-end runs (a full
+                             SCF/MD/vib solve or MC equilibration to
+                             convergence), no timing, no external-engine
+                             comparison, and no third-party package read at
+                             build or test time. There is no opt-in switch to
+                             run e2e from ctest: if it is registered, it runs.
 benchmarks/                  <domain>/<case>/{validation,performance} — see benchmarks/README.md
+                             Home of every e2e / parity check (val_*), run at
+                             acceptance time, never by ctest.
 examples/                    flat numbered tutorial sequence — see examples/README.md
 docs/                        narrative docs (user-guide / tutorial / developer / api)
 tools/                       data generators + debug harnesses

@@ -5,7 +5,8 @@ criteria:
     summary: Full 5×2 −ε_HOMO sweep matches pinned PySCF values to 1e-8 Ha (E2E tier)
     type: scientific
     pass_when: |
-      With -DATV_RUN_E2E_TESTS=ON, test_cpu_scf_koopmans_parity passes: for all
+      val_scf_koopmans_parity (benchmarks/qc/rhf/validation, built with
+      -DATV_BUILD_BENCHMARKS=ON) passes: for all
       10 (system, basis) pairs {He,H2,H2O,NH3,CH4} × {STO-3G, 6-31G} at the
       pinned geometries, |(−ε_HOMO)_engine − ref| < 1e-8 Ha against the pinned
       table (STO-3G: 0.87603551, 0.57797481, 0.39123677, 0.35252132,
@@ -27,7 +28,7 @@ criteria:
     summary: ≥3 anchor systems pass inside the default ctest gate
     type: code
     pass_when: |
-      A plain default-config ctest run (no ATV_RUN_E2E_TESTS) executes
+      A plain default-config ctest run executes
       test_cpu_scf_koopmans and it passes with at least the four anchors
       He/H2/H2O @ STO-3G and He @ 6-31G at 1e-8 Ha, including the
       lumo_eV()==homo_eV() no-virtuals assertion for He/STO-3G.
@@ -75,9 +76,9 @@ criteria:
     summary: Default ctest gate respected — parity test disabled by default
     type: runtime
     pass_when: |
-      In a default configure (ATV_RUN_E2E_TESTS=OFF), test_cpu_scf_koopmans_parity
-      is compiled but listed as Disabled by ctest (ATV_E2E_TESTS tail
-      mechanism), and the added default-gate wall time from
+      The 10-pair parity sweep is not a ctest target at all: it lives in
+      benchmarks/qc/rhf/validation as val_scf_koopmans_parity, so a default
+      configure never builds or runs it. The added default-gate wall time from
       test_cpu_scf_koopmans is under ~2 s.
     status: pending
 ---

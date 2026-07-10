@@ -25,16 +25,12 @@ set(ATV_TEST_OMP_THREADS 8 CACHE STRING
 set(ATV_TEST_MPI_OMP_THREADS 1 CACHE STRING
     "OMP_NUM_THREADS per rank for MPI unit tests")
 
-# Fast-gate discipline: the ctest suite must stay millisecond-scale so local
-# edit->build->test iteration is cheap. A handful of tests instead run a full
-# SCF/MD/vib solve or an external-engine parity check to convergence (seconds to
-# minutes each; test_cpu_scf_hybrid_singlepoint alone is ~14 min). They are true
-# end-to-end/validation checks whose proper home is benchmarks/<domain>/validation.
-# Until that physical move, they stay COMPILED (for coverage) but are DISABLED
-# from the default ctest run; -DATV_RUN_E2E_TESTS=ON re-enables them (CI sets it).
-option(ATV_RUN_E2E_TESTS
-       "Run the slow end-to-end / parity tests in the ctest gate (OFF keeps local iteration fast; CI = ON)"
-       OFF)
+# Fast-gate discipline: this suite is unit tests only — each exercises one
+# function or method at millisecond scale. End-to-end runs (a full SCF/MD/vib
+# solve to convergence, a multi-sweep MC equilibration, an external-engine
+# parity check) do not belong here at any granularity; their home is
+# benchmarks/<domain>/validation, run at acceptance time. There is deliberately
+# no opt-in switch to run e2e from ctest.
 
 # CUDA test: compiled as .cu with separable compilation.
 function(atv_add_test name)
@@ -102,11 +98,9 @@ atv_add_cpp_test(test_cpu_box cpu/test_box.cpp)
 atv_add_cpp_test(test_cpu_component_context_slices cpu/component/test_context_slices.cpp)
 atv_add_cpp_test(test_cpu_mc_scaffold cpu/test_mc_scaffold.cpp)
 atv_add_cpp_test(test_cpu_mc_move cpu/mc/test_mc_move.cpp)
-# MC physics-validation gates — e2e (drive MC::run over many sweeps), disabled
-# from the default fast gate below; run with -DATV_RUN_E2E_TESTS=ON.
-atv_add_cpp_test(test_cpu_mc_pair_distribution cpu/mc/test_mc_pair_distribution.cpp)
-atv_add_cpp_test(test_cpu_mc_acceptance_ratio cpu/mc/test_mc_acceptance_ratio.cpp)
-atv_add_cpp_test(test_cpu_mc_lj_nist cpu/mc/test_mc_lj_nist.cpp)
+# The MC physics-validation gates (pair_distribution / acceptance_ratio /
+# lj_nist) drive MC::run over many sweeps — e2e, not unit. They now live in
+# benchmarks/mc/lj/validation/ and run at acceptance time, never in ctest.
 atv_add_cpp_test(test_cpu_md cpu/md/test_md.cpp)
 atv_add_cpp_test(test_cpu_md_pe_thermo_schema cpu/md/test_pe_thermo_schema.cpp)
 atv_add_cpp_test(test_cpu_md_pe_single_chain cpu/md/test_pe_single_chain.cpp)
@@ -126,38 +120,19 @@ if(ATV_BUILD_KSPACE)
 endif()
 atv_add_cpp_test(test_cpu_am1_scaffold            cpu/semiempirical/test_am1_scaffold.cpp)
 
-# GPW module tests. The CP2K data-file readers validate against the actual
-# GTH_POTENTIALS / POTENTIAL files shipped with CP2K; point ATV_CP2K_DATA_DIR
-# at a CP2K `data/` directory (default: the local Arrhenius checkout).
+# GPW module tests. Split in two: the pure-math tests below run in the default
+# gate and touch no external package, while every test that ingests a CP2K data
+# file (GTH_POTENTIALS / POTENTIAL / BASIS_* / dftd3.dat) is registered ONLY when
+# ATV_CP2K_DATA_DIR points at an existing directory. Without the guard an unset
+# variable produced `cannot open file '/GTH_POTENTIALS'` hard failures instead of
+# skips. Same pattern as ATV_FINAL_FRAME_XYZ below.
 if(ATV_BUILD_GPW)
     set(ATV_CP2K_DATA_DIR ""
         CACHE PATH "CP2K data/ directory with GTH_POTENTIALS, POTENTIAL, BASIS_* files (set to enable the CP2K-data GPW tests)")
-    atv_add_cpp_test(test_cpu_gpw_cp2k_io          cpu/gpw/test_cpu_gpw_cp2k_io.cpp)
-    target_compile_definitions(test_cpu_gpw_cp2k_io
-        PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
-
-    atv_add_cpp_test(test_cpu_gpw_basis            cpu/gpw/test_cpu_gpw_basis.cpp)
-    target_compile_definitions(test_cpu_gpw_basis
-        PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
-
-    # ZnO EDL heavy elements (gpw-edl-aimd M2, ac-003): Zn/Na/Cl GTH-PBE +
-    # DZVP-MOLOPT-SR-GTH ingest, incl. the Zn d/f channels.
-    atv_add_cpp_test(test_cpu_gpw_heavy_elements   cpu/gpw/test_cpu_gpw_heavy_elements.cpp)
-    target_compile_definitions(test_cpu_gpw_heavy_elements
-        PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
-
-    # Grimme DFT-D3 dispersion (zero damping, PBE) — standalone correction,
-    # validated against CP2K's "Dispersion energy" and FD forces.
-    atv_add_cpp_test(test_cpu_gpw_dftd3            cpu/gpw/test_cpu_gpw_dftd3.cpp)
-    target_compile_definitions(test_cpu_gpw_dftd3
-        PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
 
     # Pure-math tests (no CP2K data files needed).
     atv_add_cpp_test(test_cpu_gpw_gth_integrals    cpu/gpw/test_cpu_gpw_gth_integrals.cpp)
     atv_add_cpp_test(test_cpu_gpw_real_harmonics   cpu/gpw/test_cpu_gpw_real_harmonics.cpp)
-    atv_add_cpp_test(test_cpu_gpw_ot               cpu/gpw/test_cpu_gpw_ot.cpp)
-    target_compile_definitions(test_cpu_gpw_ot
-        PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
     atv_add_cpp_test(test_cpu_gpw_collocate        cpu/gpw/test_cpu_gpw_collocate.cpp)
     atv_add_cpp_test(test_cpu_gpw_multigrid        cpu/gpw/test_cpu_gpw_multigrid.cpp)
     if(ATV_BUILD_PW)  # FFT transfer (prolong_fft / restrict_fft) needs FFTW3
@@ -174,42 +149,43 @@ if(ATV_BUILD_GPW)
         atv_add_cpp_test(test_cpu_gpw_xc_grid_gga  cpu/gpw/test_cpu_gpw_xc_grid_gga.cpp)
         atv_add_cpp_test(test_cpu_gpw_mt_poisson   cpu/gpw/test_cpu_gpw_mt_poisson.cpp)
         atv_add_cpp_test(test_cpu_gpw_solver       cpu/gpw/test_cpu_gpw_solver.cpp)
-        atv_add_cpp_test(test_cpu_gpw_h2_cp2k      cpu/gpw/test_cpu_gpw_h2_cp2k.cpp)
-        target_compile_definitions(test_cpu_gpw_h2_cp2k
-            PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
-        atv_add_cpp_test(test_cpu_gpw_ar_cp2k      cpu/gpw/test_cpu_gpw_ar_cp2k.cpp)
-        target_compile_definitions(test_cpu_gpw_ar_cp2k
-            PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
-        atv_add_cpp_test(test_cpu_gpw_h2o_tutorial cpu/gpw/test_cpu_gpw_h2o_tutorial.cpp)
-        target_compile_definitions(test_cpu_gpw_h2o_tutorial
-            PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
-        atv_add_cpp_test(test_cpu_gpw_zno_cp2k     cpu/gpw/test_cpu_gpw_zno_cp2k.cpp)
-        target_compile_definitions(test_cpu_gpw_zno_cp2k
-            PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
-        atv_add_cpp_test(test_cpu_gpw_edl_frag     cpu/gpw/test_cpu_gpw_edl_frag.cpp)
-        target_compile_definitions(test_cpu_gpw_edl_frag
-            PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
-        atv_add_cpp_test(test_cpu_gpw_diis         cpu/gpw/test_cpu_gpw_diis.cpp)
-        target_compile_definitions(test_cpu_gpw_diis
-            PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
-        atv_add_cpp_test(test_cpu_gpw_nacl_cp2k    cpu/gpw/test_cpu_gpw_nacl_cp2k.cpp)
-        target_compile_definitions(test_cpu_gpw_nacl_cp2k
-            PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
-        atv_add_cpp_test(test_cpu_gpw_evaluator    cpu/gpw/test_cpu_gpw_evaluator.cpp)
-        target_compile_definitions(test_cpu_gpw_evaluator
-            PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
-        atv_add_cpp_test(test_cpu_gpw_forces       cpu/gpw/test_cpu_gpw_forces.cpp)
-        target_compile_definitions(test_cpu_gpw_forces
-            PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
-        atv_add_cpp_test(test_cpu_gpw_geoopt       cpu/gpw/test_cpu_gpw_geoopt.cpp)
-        target_compile_definitions(test_cpu_gpw_geoopt
-            PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
-        atv_add_cpp_test(test_cpu_gpw_aimd         cpu/gpw/test_cpu_gpw_aimd.cpp)
-        target_compile_definitions(test_cpu_gpw_aimd
-            PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
-        atv_add_cpp_test(test_cpu_gpw_multigrid_scf cpu/gpw/test_cpu_gpw_multigrid_scf.cpp)
-        target_compile_definitions(test_cpu_gpw_multigrid_scf
-            PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
+    endif()
+
+    # CP2K-data ingest / parity tests — opt-in only.
+    if(ATV_CP2K_DATA_DIR AND EXISTS "${ATV_CP2K_DATA_DIR}")
+        set(_atv_cp2k_data_tests
+            test_cpu_gpw_cp2k_io        cpu/gpw/test_cpu_gpw_cp2k_io.cpp
+            test_cpu_gpw_basis          cpu/gpw/test_cpu_gpw_basis.cpp
+            # ZnO EDL heavy elements (gpw-edl-aimd M2, ac-003): Zn/Na/Cl GTH-PBE +
+            # DZVP-MOLOPT-SR-GTH ingest, incl. the Zn d/f channels.
+            test_cpu_gpw_heavy_elements cpu/gpw/test_cpu_gpw_heavy_elements.cpp
+            # Grimme DFT-D3 dispersion (zero damping, PBE) — standalone correction,
+            # validated against CP2K's "Dispersion energy" and FD forces.
+            test_cpu_gpw_dftd3          cpu/gpw/test_cpu_gpw_dftd3.cpp
+            test_cpu_gpw_ot             cpu/gpw/test_cpu_gpw_ot.cpp)
+        if(ATV_BUILD_PW)
+            list(APPEND _atv_cp2k_data_tests
+                test_cpu_gpw_h2_cp2k        cpu/gpw/test_cpu_gpw_h2_cp2k.cpp
+                test_cpu_gpw_ar_cp2k        cpu/gpw/test_cpu_gpw_ar_cp2k.cpp
+                test_cpu_gpw_h2o_tutorial   cpu/gpw/test_cpu_gpw_h2o_tutorial.cpp
+                test_cpu_gpw_zno_cp2k       cpu/gpw/test_cpu_gpw_zno_cp2k.cpp
+                test_cpu_gpw_edl_frag       cpu/gpw/test_cpu_gpw_edl_frag.cpp
+                test_cpu_gpw_diis           cpu/gpw/test_cpu_gpw_diis.cpp
+                test_cpu_gpw_nacl_cp2k      cpu/gpw/test_cpu_gpw_nacl_cp2k.cpp
+                test_cpu_gpw_evaluator      cpu/gpw/test_cpu_gpw_evaluator.cpp
+                test_cpu_gpw_forces         cpu/gpw/test_cpu_gpw_forces.cpp
+                test_cpu_gpw_geoopt         cpu/gpw/test_cpu_gpw_geoopt.cpp
+                test_cpu_gpw_aimd           cpu/gpw/test_cpu_gpw_aimd.cpp
+                test_cpu_gpw_multigrid_scf  cpu/gpw/test_cpu_gpw_multigrid_scf.cpp)
+        endif()
+        while(_atv_cp2k_data_tests)
+            list(POP_FRONT _atv_cp2k_data_tests _name _src)
+            atv_add_cpp_test(${_name} ${_src})
+            target_compile_definitions(${_name}
+                PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
+        endwhile()
+    else()
+        message(STATUS "ATV_CP2K_DATA_DIR unset — skipping CP2K-data GPW ingest/parity tests")
     endif()
 endif()
 atv_add_cpp_test(test_cpu_md_pair_morse_smoke     cpu/md/test_pair_morse_smoke.cpp)
@@ -316,9 +292,6 @@ if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
 
     atv_add_mpi_exec(test_mpi_pe_chains_8rank mpi/test_pe_chains_8rank.cpp)
     atv_add_mpi_run(test_mpi_pe_chains_8rank_n8 test_mpi_pe_chains_8rank 8)
-
-    atv_add_mpi_exec(test_mpi_pe_nvt_multirank mpi/test_pe_nvt_multirank.cpp)
-    atv_add_mpi_run(test_mpi_pe_nvt_multirank_n8 test_mpi_pe_nvt_multirank 8)
 
     atv_add_mpi_exec(test_mpi_nose_hoover_t_ramp mpi/test_nose_hoover_t_ramp.cpp)
     atv_add_mpi_run(test_mpi_nose_hoover_t_ramp_n2 test_mpi_nose_hoover_t_ramp 2)
@@ -575,29 +548,8 @@ if(ATV_BUILD_CUDA AND ATV_BUILD_PW)
     set_target_properties(diag_band_parity PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 endif()
 
-# ── End-to-end / parity tests: disabled from the default fast gate ────────────
-# The former multi-minute offenders (Gaussian SCF, vibrations) and the slower
-# classical-MD equilibrations have been *physically relocated* to
-# benchmarks/{qc,md}/**/validation/ as orthogonal, learnable validations
-# (val_scf_*, val_vib_*, val_md_*, val_min_lbfgs_geoopt) built with
-# -DATV_BUILD_BENCHMARKS=ON. The unit gate keeps only ms-scale correctness
-# checks — e.g. test_cpu_md now runs its 20 fast unit tests (cell list, halo,
-# analytic force) in ~0.03 s; its two thermostat/barostat equilibration
-# subtests are the sole ~2 s cost and are a documented split follow-up.
-#
-# The one entry left here is the MPI multi-rank run: it needs 8 processes under
-# mpirun (not a ms unit test), and benchmarks/ has no gtest+MPI run harness yet.
-# It is guarded by if(TEST ...) so this is a no-op when MPI is not built.
-# Relocating it awaits an MPI-run helper on the benchmark side.
-if(NOT ATV_RUN_E2E_TESTS)
-    set(ATV_E2E_TESTS
-        test_mpi_pe_nvt_multirank_n8
-        test_cpu_mc_pair_distribution
-        test_cpu_mc_acceptance_ratio
-        test_cpu_mc_lj_nist)
-    foreach(t IN LISTS ATV_E2E_TESTS)
-        if(TEST ${t})
-            set_tests_properties(${t} PROPERTIES DISABLED TRUE)
-        endif()
-    endforeach()
-endif()
+# Every end-to-end / parity check has been physically relocated to
+# benchmarks/{qc,md,mc,pw}/**/validation/ (val_scf_*, val_vib_*, val_md_*,
+# val_min_lbfgs_geoopt, val_md_pe_nvt_multirank, the MC physics gates), built
+# with -DATV_BUILD_BENCHMARKS=ON and run at acceptance time. Nothing is
+# disabled-but-compiled here any more: if it is registered above, it runs.

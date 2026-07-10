@@ -62,7 +62,7 @@ $$ E_\mathrm{MP2} = \sum_{ij}^{\mathrm{occ}} \sum_{ab}^{\mathrm{vir}} \frac{(ia|
 
 **教程**：重写 `docs/tutorial/ch07-correlation.md`（保留章号 7，英文内容）：替换现第 11–17、93–103、134–141 行等 "not implemented / status chapter" 叙述为真实章节——单行列式的局限 → 相关能定义（沿用现有开头）→ MP2 微扰推导概要与 (ia|jb) 变换 → 为何后 HF 质量取决于 HF 输出（轨道与轨道能是零阶量）→ 13_mp2 可运行示例与参考值表。章内引用的 E_corr 数字必须与测试中固定的常量逐位一致（教程回归）。
 
-**测试**：`tests/cpu/scf/test_mp2.cpp`，按命名约定注册为 `test_cpu_scf_mp2`。默认 ~16 s 门槛层只跑 H2O/STO-3G 平价 + He 边界 + (ia|jb) 对称性 + 守卫抛出（毫秒级）；全部 10 组 (体系, 基组) 扫描用 GoogleTest 独立测试用例置于 `ATV_RUN_E2E_TESTS` 门后（沿用 tests/CMakeLists.txt 尾部的 DISABLED 列表机制）。
+**测试**：`tests/cpu/scf/test_mp2.cpp`，按命名约定注册为 `test_cpu_scf_mp2`。默认 ~16 s 门槛层只跑 H2O/STO-3G 平价 + He 边界 + (ia|jb) 对称性 + 守卫抛出（毫秒级）；全部 10 组 (体系, 基组) 的 PySCF 平价扫描属 e2e，放 `benchmarks/qc/mp2/validation/`（`val_mp2_parity`，`-DATV_BUILD_BENCHMARKS=ON`），验收时跑；ctest 不注册。
 
 ## Files to create or modify
 

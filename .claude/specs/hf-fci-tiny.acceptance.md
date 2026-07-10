@@ -5,7 +5,7 @@ criteria:
     summary: He/STO-3G boundary — FCI equals RHF, e_corr exactly 0.0, never NaN
     type: scientific
     pass_when: |
-      test_cpu_scf_fci (default ctest tier, no ATV_RUN_E2E_TESTS) contains a
+      test_cpu_scf_fci (default ctest tier) contains a
       He/STO-3G case (He 0 0 0, rhf_solve tol 1e-12, compute_eri=true) asserting
       e_corr == 0.0 exactly, std::isfinite(e_fci), and
       |e_fci − scf.energy| <= 1e-10 Ha; case passes.
@@ -98,7 +98,7 @@ criteria:
     summary: Default ctest gate preserved; full suite green
     type: runtime
     pass_when: |
-      Default-tier ctest (ATV_RUN_E2E_TESTS=OFF) passes with test_cpu_scf_fci
+      Default-tier ctest passes with test_cpu_scf_fci
       included and total wall time within the ~16 s budget documented in
       tests/CMakeLists.txt; the direct_spin1 E2E cross-check is absent from the
       default run.

@@ -168,6 +168,18 @@ atv_add_plain_bench(bench_timing_capture
 # (bonded) system where the DOF count excludes constraints.
 atv_add_validation(val_md_pe_nvt md/pe/validation/test_md_pe_nvt.cpp)
 
+# validation (gtest + MPI): the same PE-melt NVT equilibration across 8 ranks —
+# domain decomposition, halo exchange and migration must reproduce the
+# single-rank ensemble. Relocated out of the unit gate: it needs `mpirun -n 8`,
+# so it is built as an executable and launched by hand / at acceptance time,
+# never registered as a ctest.
+if(ATV_USE_MPI AND TARGET MPI::MPI_CXX)
+    add_executable(val_md_pe_nvt_multirank md/pe/validation/val_md_pe_nvt_multirank.cpp)
+    target_link_libraries(val_md_pe_nvt_multirank
+                          PRIVATE atomiverse GTest::gtest_main MPI::MPI_CXX)
+    set_target_properties(val_md_pe_nvt_multirank PROPERTIES CXX_STANDARD 17)
+endif()
+
 # performance: PE melt MSU-protocol stages (CPU MPI + optional CUDA
 # backend; run by the md/common scan drivers; emits stage timing CSV).
 atv_add_plain_bench(polyethylene_tension
@@ -189,6 +201,19 @@ if(ATV_BUILD_CUDA)
         ATV_PE_TENSION_BIN="$<TARGET_FILE:polyethylene_tension>")
     add_dependencies(bench_async_record_overhead polyethylene_tension)
 endif()
+
+# ════════════════════════════════════════════════════════════════════
+# mc/lj — Metropolis Monte Carlo, Lennard-Jones
+# ════════════════════════════════════════════════════════════════════
+
+# validation (gtest): the MC physics gates. Each drives MC::run over 10^4–10^5
+# trial moves to an equilibrium distribution, so none is a unit test:
+#   pair_distribution — reference-free P(r) ∝ r² e^(−βV) Boltzmann-sampling proof
+#   acceptance_ratio  — acceptance vs step size δ trend
+#   lj_nist           — NIST SRSW ⟨U*⟩/N with pure-cut energy + LRC re-evaluation
+atv_add_validation(val_mc_pair_distribution mc/lj/validation/test_mc_pair_distribution.cpp)
+atv_add_validation(val_mc_acceptance_ratio  mc/lj/validation/test_mc_acceptance_ratio.cpp)
+atv_add_validation(val_mc_lj_nist           mc/lj/validation/test_mc_lj_nist.cpp)
 
 # ════════════════════════════════════════════════════════════════════
 # qc — Gaussian-basis quantum chemistry

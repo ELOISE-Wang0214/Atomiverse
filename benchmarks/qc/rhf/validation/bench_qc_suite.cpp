@@ -9,8 +9,9 @@
 ///     ./build/benchmarks/bench_qc_suite h2o nh3   # specific stems
 ///
 /// Reference generation:
-///     python benchmarks/qc/rhf/validation/reference/generate_references.py \
-///       --method rks --xc pbe --basis def2-svp
+///     None. The <stem>.json references are pinned from a one-off PySCF run
+///     (rks / pbe / def2-svp); the generator was removed so that no
+///     third-party quantum-chemistry package is ever invoked from this tree.
 ///
 /// Data-on-disk contract:
 ///     benchmarks/qc/rhf/validation/molecules/<stem>.xyz          - starting geometry

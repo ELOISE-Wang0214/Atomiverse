@@ -5,14 +5,14 @@ criteria:
     summary: Two-particle P(r) matches analytic r^2*exp(-bV) and <V> matches quadrature
     type: runtime
     pass_when: |
-      test_cpu_mc_pair_distribution passes: for a fixed+mobile PairLJCut pair
+      val_mc_pair_distribution (benchmarks/mc/lj/validation) passes: for a fixed+mobile PairLJCut pair
       in a box large enough not to truncate the r^2*e^{-bV} tail, at a T that
       meaningfully samples the well, after equilibration discard the sampled
       separation histogram matches analytic P(r) ∝ r^2*exp(-V(r)/k_BT) by a
       chi^2/KS statistic within the stated tolerance, AND sampled <V> equals
       the 1-D quadrature integral within block standard error. Reference-free.
-      Gated behind ATV_RUN_E2E_TESTS (drives MC::run over ~300k sweeps — not a
-      ms-scale unit test). VERIFIED 2026-07-03: <V> matches quadrature within
+      Lives in benchmarks/ (drives MC::run over ~300k sweeps — not a ms-scale unit
+      test); ctest never runs it. VERIFIED 2026-07-03: <V> matches quadrature within
       block SE and reduced chi^2 < 5 over the [3.0,5.3] window (L=12 keeps the
       isolated pair in-window).
     status: verified
@@ -21,12 +21,12 @@ criteria:
     summary: Acceptance ratio decreases monotonically in delta; mid delta in 20-60% band
     type: runtime
     pass_when: |
-      test_cpu_mc_acceptance_ratio passes: across an increasing delta ladder the
+      val_mc_acceptance_ratio (benchmarks/mc/lj/validation) passes: across an increasing delta ladder the
       measured acceptance ratio is monotonically decreasing, and at least one
       mid delta yields an acceptance ratio within the broad band.
       Trend + loose band only. Uses a dense 256-atom LJ fluid (an isolated pair
       drifts into free space where moves are free and the ratio saturates).
-      Gated behind ATV_RUN_E2E_TESTS. VERIFIED 2026-07-03: monotone decrease
+      Lives in benchmarks/; ctest never runs it. VERIFIED 2026-07-03: monotone decrease
       across δ={0.05,0.1,0.2,0.4}, mid δ in band.
     status: verified
     last_checked: 2026-07-03
@@ -35,7 +35,7 @@ criteria:
     type: scientific
     evaluator_hint: mol:bench
     pass_when: |
-      test_cpu_mc_lj_nist (ATV_RUN_E2E_TESTS=ON) passes at BOTH state points
+      val_mc_lj_nist (benchmarks/mc/lj/validation, -DATV_BUILD_BENCHMARKS=ON) passes at BOTH state points
       (T*=0.85,rho*=0.78 -> -5.5386; T*=0.90,rho*=0.90 -> -6.1773): energy is
       the pure-cut (unshifted) truncated energy re-evaluated at rc=3 sigma PLUS
       analytic U_LRC/N; <U> stationarity (no drift) is verified after

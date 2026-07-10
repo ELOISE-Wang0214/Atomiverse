@@ -15,7 +15,8 @@ criteria:
     summary: Full 5x2 sweep matches pinned PySCF (E2E tier)
     type: scientific
     pass_when: |
-      With -DATV_RUN_E2E_TESTS=ON, test_cpu_scf_delta_scf_sweep passes: all 10
+      val_scf_delta_scf_sweep (benchmarks/qc/rhf/validation,
+      -DATV_BUILD_BENCHMARKS=ON) passes: all 10
       (system, basis) pairs from delta_scf_reference.h satisfy the 1e-7 Ha
       energy and 1e-4 <S2> tolerances.
     status: pending
@@ -68,7 +69,7 @@ criteria:
     summary: Default ctest gate respected; sweep only under E2E flag
     type: runtime
     pass_when: |
-      Default configure (no ATV_RUN_E2E_TESTS) runs test_cpu_scf_delta_scf but
+      Default configure runs test_cpu_scf_delta_scf but
       reports test_cpu_scf_delta_scf_sweep as Disabled (listed in
       ATV_E2E_TESTS in tests/CMakeLists.txt), and the full suite
       `ctest --test-dir build --output-on-failure` passes in both

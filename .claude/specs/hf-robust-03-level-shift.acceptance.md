@@ -79,9 +79,8 @@ criteria:
     type: runtime
     pass_when: |
       ctest --test-dir build passes in full; tests added to the DEFAULT gate
-      by this spec contribute < 2 s combined wall time (else the solver-level
-      binary is listed in the ATV_RUN_E2E_TESTS-disabled block at the tail of
-      tests/CMakeLists.txt and the default gate stays at its ~16 s scale).
+      by this spec contribute < 2 s combined wall time (any solve-to-convergence
+      check belongs in benchmarks/<domain>/validation, not in ctest).
     status: verified
     last_checked: 2026-07-02
 ---

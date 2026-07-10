@@ -55,7 +55,7 @@ created: 2026-07-02
 
 **测试分层**（遵循 `tests/CMakeLists.txt` 现有 E2E 尾部 DISABLED 模式）：
 - 默认 ~16 s 闸门内：`test_cpu_scf_koopmans`（`tests/cpu/scf/test_koopmans.cpp`）— 4 个锚点：He/H₂/H₂O @ STO-3G + He @ 6-31G（后者同时端到端验证新基组行）。
-- E2E 层：`test_cpu_scf_koopmans_parity`（`tests/cpu/scf/test_koopmans_parity.cpp`）— 完整 5×2 扫描，−ε_HOMO 与 E_RHF 双断言到 1e-8 Ha；无条件加入 `ATV_E2E_TESTS` 尾部列表（编译保留、默认 DISABLED、CI 的 `-DATV_RUN_E2E_TESTS=ON` 启用）。
+- E2E 层：`val_scf_koopmans_parity`（`benchmarks/qc/rhf/validation/test_koopmans_parity.cpp`）— 完整 5×2 扫描，−ε_HOMO 与 E_RHF 双断言到 1e-8 Ha；`-DATV_BUILD_BENCHMARKS=ON` 构建，验收时跑，不进 ctest。
 - 钉死的参考表以 `constexpr` 结构写在 parity 测试中（单一事实来源），教程表格从它转抄；两侧互加注释交叉引用。
 
 **Oracle**：`tests/cpu/scf/pyscf_reference_koopmans.py`（新），仿照现有 `pyscf_reference.py` 模式：`scf.RHF`, `cart=True`, `conv_tol=1e-12`，输出 −ε_HOMO 与 E_RHF 的 constexpr 块。
@@ -82,7 +82,7 @@ created: 2026-07-02
 - [ ] Implement He (Z=2) row in `include/atomiverse/cpu/scf/basis_data/pople_631g.h` from PySCF `_basis` data (unnormalized-coefficient convention; update the Supported-elements doc line; note PySCF-2.13.1 provenance in the comment since `tools/gen_basis_data.py` is absent from the tree)
 - [ ] Implement `examples/11_koopmans.cpp` (Evaluate + SCFEvaluator + OrbitalInfoObserver at `evaluate::Phase::finalize`; prints system | basis | −ε_HOMO [Ha] | IP [eV] | experimental IP [eV] with adiabatic/vertical labels; He/STO-3G row shows no gap; Doxygen `@brief` file header with units); register in `examples/CMakeLists.txt` behind `ATV_BUILD_RHF` and add row 11 to `examples/README.md`
 - [ ] Write the Koopmans section in `docs/tutorial/ch02-rhf.md` (English; Jensen progression concept → math → approximation → algorithm → property → limitations; frozen-orbital derivation, error cancellation, adiabatic-vs-vertical distinction, H2O 10.6→13.6 eV basis sensitivity, Koopmans 1934 DOI; every number transcribed from the pinned table in `test_koopmans_parity.cpp`)
-- [ ] Verify tutorial-number regression and gate budget: every −ε_HOMO/IP value in the ch02 section appears in the pinned parity table; default `ctest` shows `test_cpu_scf_koopmans_parity` as Disabled without `-DATV_RUN_E2E_TESTS=ON` and the anchor test adds well under ~2 s
+- [ ] Verify tutorial-number regression and gate budget: every −ε_HOMO/IP value in the ch02 section appears in the pinned parity table; default `ctest` contains no parity sweep target at all and the anchor test adds well under ~2 s
 - [ ] Run full check + test suite
 
 ## Testing strategy
@@ -90,7 +90,7 @@ created: 2026-07-02
 - **正路**：4 个锚点（He/H₂/H₂O @ STO-3G，He @ 6-31G）在默认闸门中断言 −ε_HOMO 与钉死的 PySCF 值差 < 1e-8 Ha；E2E 层做完整 5×2 扫描并同时断言 RHF 总能量（护住"教程数字来自引擎"的锚）。
 - **边界**：He/STO-3G 无虚轨道 → 断言 `OrbitalInfoObserver::lumo_eV() == homo_eV()`（已实现的回退语义）且示例不打印该行 gap；He/6-31G 在基组行落地前必须抛出（无回退值规则）——即锚点测试先 RED。
 - **领域校验**（`science.required`）：eV 换算用 1 Ha = 27.211386245988 eV 显式断言一处；与实验 IP 仅定性对照（教程文字），测试不含实验数值容差；oracle 脚本可重跑再生全部钉死值（cart=True 与引擎笛卡尔 GTO 约定一致）。
-- **闸门纪律**：parity 测试编译保留但默认 DISABLED（`ATV_E2E_TESTS` 尾部机制），CI（`ATV_RUN_E2E_TESTS=ON`）启用。
+- **闸门纪律**：parity 测试不在 `tests/`，位于 `benchmarks/qc/rhf/validation/`，验收时运行。
 
 ## Out of scope
 

@@ -104,7 +104,7 @@ RHF 总能量锚点（复用 hf-koopmans 表，Ha）：He/STO-3G −2.8077839575
 - [ ] Add docstring per doxygen style with units (Hartree) for every public symbol in fci.h (FCIResult + fields, fci_energy) and the two new mp2.h symbols (ao2mo_full, mo_hcore): @brief / @param / @return
 - [ ] Implement examples/14_fci.cpp printing E_RHF, E_FCI, E_corr for H2/STO-3G; register in examples/CMakeLists.txt under ATV_BUILD_RHF
 - [ ] Write the full-CI section in docs/tutorial/ch07-correlation.md ("Exact correlation in a finite basis: full CI for tiny systems"; determinant expansion, correlation as excited-determinant mixing, exponential cost, reference-not-production; embeds the He/STO-3G E_corr=0 boundary and the pinned H2/STO-3G number, Slater/Condon + Knowles-Handy + Szabo-Ostlund refs)
-- [ ] Verify invariants + tutorial regression + gate: assert E_FCI <= E_RHF + 1e-10 (variational) and e_corr <= 0; assert ch07-quoted constants equal the test constants; measure default test_cpu_scf_fci stays ms-scale and default ctest keeps the ~16 s budget; run the E2E tier once with -DATV_RUN_E2E_TESTS=ON
+- [ ] Verify invariants + tutorial regression + gate: assert E_FCI <= E_RHF + 1e-10 (variational) and e_corr <= 0; assert ch07-quoted constants equal the test constants; measure default test_cpu_scf_fci stays ms-scale and default ctest keeps the ~16 s budget; run the benchmarks/ validation binaries once at acceptance
 - [ ] Run full check + test suite
 
 ## Testing strategy

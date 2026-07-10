@@ -8,7 +8,7 @@ created: 2026-07-02
 
 ## Summary
 
-本 spec 交付 ΔSCF 垂直电离能的完整教学工作流：新增算例 `examples/12_delta_scf.cpp`，对 He、H₂、H₂O、NH₃、CH₄（STO-3G 与 6-31G）在**中性几何**下分别求解中性 RHF 与阳离子 UHF，计算 I_ΔSCF = E_UHF(N−1) − E_RHF(N)，并与 Koopmans 定理的 −ε_HOMO 并排打印对比表（含轨道弛豫量）；在 `docs/tutorial/ch03-open-shell.md`（UHF 章）新增 Jensen 风格的 ΔSCF 小节，讲清为何 ΔSCF ≤ Koopmans（变分两行论证）、自旋记账、自旋污染与激发解两个陷阱，并交叉引用 ch02 的 Koopmans 小节；所有数字由引擎产生，并以 PySCF 2.13.1 钉死值（1e-7 Ha / ⟨S²⟩ 1e-4）做回归测试——引擎机制（`build_integrals` 的 `charge` 参数 + `uhf_solve`/`scf_solve`）已存在，本 spec 不改引擎，只补齐目前完全缺失的阳离子算例/测试覆盖。默认 ctest 门（~16 s）只保留 2+1 个锚点，完整 5×2 扫描置于 `ATV_RUN_E2E_TESTS` 之后。
+本 spec 交付 ΔSCF 垂直电离能的完整教学工作流：新增算例 `examples/12_delta_scf.cpp`，对 He、H₂、H₂O、NH₃、CH₄（STO-3G 与 6-31G）在**中性几何**下分别求解中性 RHF 与阳离子 UHF，计算 I_ΔSCF = E_UHF(N−1) − E_RHF(N)，并与 Koopmans 定理的 −ε_HOMO 并排打印对比表（含轨道弛豫量）；在 `docs/tutorial/ch03-open-shell.md`（UHF 章）新增 Jensen 风格的 ΔSCF 小节，讲清为何 ΔSCF ≤ Koopmans（变分两行论证）、自旋记账、自旋污染与激发解两个陷阱，并交叉引用 ch02 的 Koopmans 小节；所有数字由引擎产生，并以 PySCF 2.13.1 钉死值（1e-7 Ha / ⟨S²⟩ 1e-4）做回归测试——引擎机制（`build_integrals` 的 `charge` 参数 + `uhf_solve`/`scf_solve`）已存在，本 spec 不改引擎，只补齐目前完全缺失的阳离子算例/测试覆盖。默认 ctest 门（~16 s）只保留 2+1 个锚点（单元级）；完整 5×2 PySCF 平价扫描属 e2e，放 `benchmarks/qc/rhf/validation/`（`val_scf_delta_scf_sweep`），验收时跑。
 
 **依赖（链上游）：**
 - **hf-koopmans**（前一 spec）：ch02 的 Koopmans 小节与 `examples/11_koopmans.cpp` 编号；且 **6-31G 基组表当前无 He**（已核实 `pople_631g.h` 第 39 行 `Z=2 unsupported`）——He/6-31G 条目由 hf-koopmans 负责补表。本 spec 的 He⁺/6-31G 扫描项以此为前置；若 hf-koopmans 未落地，E2E 扫描暂时跳过 He/6-31G 并留 TODO。
@@ -72,7 +72,7 @@ created: 2026-07-02
 - [ ] Implement `examples/12_delta_scf.cpp` — neutral RHF + `SCFInitialGuess`-seeded cation UHF per system/basis, print Koopmans-vs-ΔSCF table (eV via `kHartree2eV`) with relaxation column and ⟨S²⟩
 - [ ] Register the example in `examples/CMakeLists.txt` (inside `ATV_BUILD_RHF`) and add its row to `examples/README.md`
 - [ ] Write the ΔSCF tutorial section in `docs/tutorial/ch03-open-shell.md` (variational argument, spin bookkeeping, warm-start, contamination + excited-solution caveats, He/H₂ teaching point, vertical-vs-experiment framing; cross-ref ch02 Koopmans; quote only pinned numbers)
-- [ ] Verify default ctest gate stays ~16 s with the sweep disabled and the sweep passes under `-DATV_RUN_E2E_TESTS=ON`
+- [ ] Verify default ctest gate stays ~16 s (the sweep is not a ctest target) and `val_scf_delta_scf_sweep` passes under `-DATV_BUILD_BENCHMARKS=ON`
 - [ ] Run full check + test suite
 
 ## Testing strategy
@@ -80,7 +80,7 @@ created: 2026-07-02
 - **正常路径**：锚点测试对 He⁺/H₂⁺/H₂O⁺（STO-3G）断言 `scf_solve` 收敛、能量与钉死值差 ≤ 1e-7 Ha、`spin_contamination + 0.75` 与钉死 ⟨S²⟩ 差 ≤ 1e-4；E2E 扫描对全部 10 对重复同一断言。
 - **领域验证**（`science.required`）：(a) 对每一对断言 I_ΔSCF ≤ −ε_HOMO（变分下界）；(b) He⁺/H₂⁺ STO-3G 断言 |I_ΔSCF − (−ε_HOMO)| ≤ 1e-9 Ha（单电子基组内精确 ⇒ 零弛豫）；(c) ⟨S²⟩ 回归本身即自旋污染的定量验证。
 - **边界**：热启动与 Hcore 冷启动收敛到同一能量（1e-8 Ha，锚点体系，防激发解回归）；`converged == true` 在所有断言之前显式检查。
-- **门控**：默认 `ctest` 不运行 sweep（`DISABLED TRUE`）；CI 的 `-DATV_RUN_E2E_TESTS=ON` 运行全量。
+- **门控**：sweep 不是 ctest 目标，位于 `benchmarks/`，验收时运行。
 - **docs 回归**：ch03 中引用的每个数值必须能在 `delta_scf_reference.h` 中逐字找到（评审时人工核对，acceptance ac-007）。
 
 ## Out of scope

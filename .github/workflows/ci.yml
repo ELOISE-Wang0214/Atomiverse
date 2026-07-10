@@ -69,7 +69,6 @@ jobs:
           cmake -B build \
             -DATV_BUILD_CUDA=OFF \
             -DATV_BUILD_TESTS=ON \
-            -DATV_RUN_E2E_TESTS=ON \
             -DATV_BUILD_EXAMPLES=ON \
             -DATV_BUILD_RHF=${{ matrix.rhf }} \
             -DATV_REAL_STORAGE=${{ matrix.real }} \
