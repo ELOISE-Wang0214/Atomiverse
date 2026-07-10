@@ -76,10 +76,9 @@ class CG : public cpu::ComponentBase {
     ComponentRole role() const override { return ComponentRole::Optimizer; }
 
     std::vector<DefaultBinding> default_bindings() const override {
-        return {
-            {static_cast<int>(ATV::minimizer::Phase::search_direction), 0},
-            {static_cast<int>(ATV::minimizer::Phase::line_search), 0},
-            {static_cast<int>(ATV::minimizer::Phase::convergence_check), 0}};
+        return {ATV::make_binding(ATV::minimizer::Phase::search_direction, 0),
+                ATV::make_binding(ATV::minimizer::Phase::line_search, 0),
+                ATV::make_binding(ATV::minimizer::Phase::convergence_check, 0)};
     }
 
     void build(const cpu::BuildContext& ctx) override;

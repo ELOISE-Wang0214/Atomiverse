@@ -85,9 +85,8 @@ class CG : public ComponentBase {
 
     /// @brief Default bindings: search_direction + convergence_check.
     std::vector<DefaultBinding> default_bindings() const override {
-        return {
-            {static_cast<int>(ATV::minimizer::Phase::search_direction), 0},
-            {static_cast<int>(ATV::minimizer::Phase::convergence_check), 0}};
+        return {ATV::make_binding(ATV::minimizer::Phase::search_direction, 0),
+                ATV::make_binding(ATV::minimizer::Phase::convergence_check, 0)};
     }
 
     /// @brief Allocate + zero the optimizer state buffers.
@@ -112,8 +111,8 @@ class CG : public ComponentBase {
     double alpha0_; ///< Step size [Angstrom^2/eV].
     ConvTols tols_; ///< Five-criteria convergence tolerances.
 
-    int n_ = 0;     ///< Atom count.
-    int step_ = 0;  ///< Optimizer step counter.
+    int n_ = 0;    ///< Atom count.
+    int step_ = 0; ///< Optimizer step counter.
     bool converged_ = false;
 
     // Planar [x:0..n, y:n..2n, z:2n..3n] device state, work_t precision

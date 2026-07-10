@@ -51,7 +51,7 @@ class KSpacePME : public cpu::KSpace {
         return Capability::Energy | Capability::Force | Capability::Stress;
     }
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::force), 100}};
+        return {ATV::make_binding(ATV::md::Phase::force, 100)};
     }
 
     void build(const BuildContext& ctx) override;

@@ -49,7 +49,7 @@ class MassWeighting : public cpu::ComponentBase {
     /// Runs after `Symmetrize` (@ -1) and before `EigenSolver` (@ +1).
     /// @return Single binding placing this at the diagonalize phase.
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::vib::Phase::diagonalize), 0}};
+        return {ATV::make_binding(ATV::vib::Phase::diagonalize, 0)};
     }
 
     /// @brief Convert the Hessian to atomic units and mass-weight it.

@@ -37,12 +37,12 @@
 #include <vector>
 
 #include "atomiverse/core/device.h"
-#include "atomiverse/cpu/driver/backend_traits.h"
+#include "atomiverse/cpu/async/snapshot_publisher.h"
 #include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/driver/backend_traits.h"
+#include "atomiverse/cpu/driver/optimize_driver.h"
 #include "atomiverse/cpu/minimizer/line_search.h"
 #include "atomiverse/cpu/minimizer/minimize.h"
-#include "atomiverse/cpu/driver/optimize_driver.h"
-#include "atomiverse/cpu/async/snapshot_publisher.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -118,10 +118,9 @@ class LBFGS : public cpu::ComponentBase {
     ComponentRole role() const override { return ComponentRole::Optimizer; }
 
     std::vector<DefaultBinding> default_bindings() const override {
-        return {
-            {static_cast<int>(ATV::minimizer::Phase::search_direction), 0},
-            {static_cast<int>(ATV::minimizer::Phase::line_search), 0},
-            {static_cast<int>(ATV::minimizer::Phase::convergence_check), 0}};
+        return {ATV::make_binding(ATV::minimizer::Phase::search_direction, 0),
+                ATV::make_binding(ATV::minimizer::Phase::line_search, 0),
+                ATV::make_binding(ATV::minimizer::Phase::convergence_check, 0)};
     }
 
     void build(const cpu::BuildContext& ctx) override;
@@ -184,8 +183,8 @@ class LBFGS : public cpu::ComponentBase {
     double ls_min_alpha_ = 1e-8; // Alpha floor.
     // Carry-over from the search_direction phase to the line_search phase
     // within a single optimization step (all globally reduced under MPI):
-    double ls_phi0_ = 0;   // phi(0) = energy at x_prev_ [eV].
-    double ls_gd0_ = 0;    // phi'(0) = g . direction (< 0 on descent).
+    double ls_phi0_ = 0;    // phi(0) = energy at x_prev_ [eV].
+    double ls_gd0_ = 0;     // phi'(0) = g . direction (< 0 on descent).
     double ls_dir_max_ = 0; // global max|direction| component, for the cap.
 
     // Optimization trace

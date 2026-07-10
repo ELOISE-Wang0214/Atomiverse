@@ -17,7 +17,7 @@
 ///
 /// @code{.cpp}
 ///   cuda::Evaluate eval;
-///   eval.add(cuda::scf::SCFEvaluator{integrals, tol, max_iter});
+///   eval.on(evaluate::Phase::evaluate).add(cuda::scf::SCFEvaluator{integrals, tol, max_iter});
 ///   eval.build();
 ///   eval.run(frame);            // frame.scalars.energy populated
 /// @endcode
@@ -32,7 +32,6 @@
 #include "atomiverse/cuda/component/component.cuh"
 #include "atomiverse/cuda/scf/scf_solver.cuh"
 #include "atomiverse/facade/component_role.h"
-#include "atomiverse/facade/stage.h"
 
 #ifdef ATV_HAS_RHF
 #include "atomiverse/cpu/scf/integrals.h"
@@ -45,8 +44,8 @@ namespace scf {
 /// @brief CUDA SCF energy/density evaluator component.
 ///
 /// Owns an `SCFSolver`, built once in `build()` and run in `launch()`.
-/// Three constructors map onto the three `SCFSolver` run paths. Binds to
-/// `evaluate::Phase::evaluate` by default.
+/// Three constructors map onto the three `SCFSolver` run paths. Declares no
+/// default bindings — attach explicitly with `.on(phase).add()`.
 class SCFEvaluator : public cuda::ComponentBase {
   public:
     /// @brief Construct a synthetic-path SCF evaluator `H(P) = H0 + alpha*P`.
@@ -100,11 +99,10 @@ class SCFEvaluator : public cuda::ComponentBase {
                | Capability::Orbitals;
     }
 
-    /// @brief Default binding: evaluate phase at order 0.
-    /// @return Single binding to `evaluate::Phase::evaluate`.
-    std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::evaluate::Phase::evaluate), 0}};
-    }
+    // Deliberately no default_bindings(): like the CPU SCFEvaluator, this
+    // evaluator is reusable across workflows (Evaluate, MD, Minimize), so
+    // the target phase must be chosen explicitly with .on(phase).add() — a
+    // hardcoded evaluate::Phase would misbind when added to another driver.
 
     /// @brief Build the owned `SCFSolver` (one-time device allocation).
     /// @param ctx Build context (CUDA stream + device frame).

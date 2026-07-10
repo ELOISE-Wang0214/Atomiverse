@@ -18,7 +18,7 @@
 /// cuda::scf::SCFEvaluator scf{integrals, tol, max_iter};
 /// MullikenObs mulliken(integrals, scf);
 /// cuda::Evaluate eval;
-/// eval.add(scf);                          // lvalue -> borrowed
+/// eval.on(evaluate::Phase::evaluate).add(scf);   // lvalue -> borrowed
 /// eval.on(evaluate::Phase::finalize).add(mulliken);
 /// eval.build();
 /// eval.run(frame);

@@ -42,7 +42,7 @@ class Symmetrize : public cpu::ComponentBase {
     ///        future diagonalizer at that phase).
     /// @return Single binding placing this at the diagonalize phase.
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::vib::Phase::diagonalize), -1}};
+        return {ATV::make_binding(ATV::vib::Phase::diagonalize, -1)};
     }
 
     /// @brief Replace the workspace Hessian with `(H + H^T) / 2`.

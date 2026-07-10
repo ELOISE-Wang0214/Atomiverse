@@ -121,7 +121,7 @@ class FixLangevin : public cpu::ComponentBase {
     /// contract.
     Capability capabilities() const override { return Capability::Force; }
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::post_force), +500}};
+        return {ATV::make_binding(ATV::md::Phase::post_force, +500)};
     }
     void launch(const cpu::LaunchContext& ctx) override;
 

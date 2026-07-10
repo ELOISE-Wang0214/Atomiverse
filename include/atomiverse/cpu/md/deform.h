@@ -83,7 +83,7 @@ class Deform : public cpu::ComponentBase {
     std::string name() const override { return "deform"; }
     ComponentRole role() const override { return ComponentRole::Integrator; }
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::initial_integrate), 200}};
+        return {ATV::make_binding(ATV::md::Phase::initial_integrate, 200)};
     }
 
     /// @brief Reset the `L0` snapshot / activation origin.

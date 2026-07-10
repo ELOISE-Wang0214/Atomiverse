@@ -59,8 +59,8 @@ public:
     ComponentRole role() const override   { return ComponentRole::Integrator; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {
-            {static_cast<int>(ATV::md::Phase::initial_integrate), 0},
-            {static_cast<int>(ATV::md::Phase::final_integrate),   0}
+            ATV::make_binding(ATV::md::Phase::initial_integrate, 0),
+            ATV::make_binding(ATV::md::Phase::final_integrate, 0)
         };
     }
     void build (const cpu::BuildContext&)  override;  // optional, for prev-force buffer
@@ -164,8 +164,8 @@ public:
     ComponentRole role() const override { return ComponentRole::Optimizer; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {
-            {static_cast<int>(ATV::minimizer::Phase::search_direction), 0},
-            {static_cast<int>(ATV::minimizer::Phase::convergence_check), 0}
+            ATV::make_binding(ATV::minimizer::Phase::search_direction, 0),
+            ATV::make_binding(ATV::minimizer::Phase::convergence_check, 0)
         };
     }
     void build (const cpu::BuildContext&)  override;

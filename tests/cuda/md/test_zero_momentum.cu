@@ -68,7 +68,8 @@ TEST(ZeroMomentum, RoleIsStructuralNone) {
     EXPECT_EQ(zm.name(), "zero_momentum");
     auto bindings = zm.default_bindings();
     ASSERT_EQ(bindings.size(), 1u);
-    EXPECT_EQ(bindings[0].phase, static_cast<int>(ATV::md::Phase::end_of_step));
+    EXPECT_EQ(bindings[0].phase,
+              ATV::make_binding(ATV::md::Phase::end_of_step).phase);
     EXPECT_EQ(bindings[0].order, 25);
 }
 

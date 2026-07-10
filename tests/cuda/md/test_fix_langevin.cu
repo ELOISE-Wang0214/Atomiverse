@@ -59,7 +59,8 @@ TEST(CudaFixLangevin, ContractRoleCapabilityBindings) {
     EXPECT_TRUE(has_capability(lang.capabilities(), Capability::Force));
     auto bindings = lang.default_bindings();
     ASSERT_EQ(bindings.size(), 1u);
-    EXPECT_EQ(bindings[0].phase, static_cast<int>(ATV::md::Phase::post_force));
+    EXPECT_EQ(bindings[0].phase,
+              ATV::make_binding(ATV::md::Phase::post_force).phase);
     EXPECT_EQ(bindings[0].order, 500);
 }
 
@@ -79,7 +80,8 @@ TEST(CudaFixLangevin, TemperatureRampHonouredAtMidpoint) {
     sim.add(cuda::md::NVELimit{1.0, 0.05}); // Integrator + Force-cap
     sim.add(lang);
     sim.build();
-    sim.run(frame, 50); // step 0..49 ⇒ T_live at step 49 = 200 + 49/100·300 ≈ 347
+    sim.run(frame,
+            50); // step 0..49 ⇒ T_live at step 49 = 200 + 49/100·300 ≈ 347
     // The integrator runs Langevin at each `post_force` step; after 50
     // steps the live setpoint should be near 347 K (delta = 50/100 = 0.5
     // at the start of step 50, but the LAST executed step is 49 with
@@ -132,7 +134,7 @@ TEST(CudaFixLangevin, RandomForceVarianceMatchesFDT) {
         double vx = frame.atoms.vx[i];
         double vy = frame.atoms.vy[i];
         double vz = frame.atoms.vz[i];
-        v2_sum += vx*vx + vy*vy + vz*vz;
+        v2_sum += vx * vx + vy * vy + vz * vz;
     }
     double v2_mean = v2_sum / (3 * n);
     // 1 step from rest with damp≫dt (drag negligible): only step 1's
@@ -141,7 +143,8 @@ TEST(CudaFixLangevin, RandomForceVarianceMatchesFDT) {
     //   = 0.25 · dt² · (2 m kBT / (damp dt mvv2e)) / ftm2v² · ftm2v² / m²
     //   = 0.5 · dt · kBT / (m · damp · mvv2e)
     double m_atom = 16.0;
-    double expected = 0.5 * dt * kBoltzmann * T_target / (m_atom * damp * kMvv2e);
+    double expected =
+        0.5 * dt * kBoltzmann * T_target / (m_atom * damp * kMvv2e);
     std::fprintf(stderr,
                  "[box-muller] ⟨v²⟩_mean=%.3e expected=%.3e ratio=%.3f\n",
                  v2_mean, expected, v2_mean / expected);
@@ -165,7 +168,7 @@ TEST(CudaFixLangevin, RandomForceVarianceMatchesFDT) {
 TEST(CudaFixLangevin, ThermalisesToTargetTemperature) {
     auto frame = make_thermal_box(6); // 216 atoms
     cuda::md::MD sim;
-    sim.add(cuda::md::VelocityVerlet{1.0}); // no cap
+    sim.add(cuda::md::VelocityVerlet{1.0});                       // no cap
     sim.add(cuda::md::FixLangevin{300.0, -1.0, 100.0, 1.0, 42u}); // damp=100
     sim.build();
 
@@ -202,17 +205,21 @@ TEST(CudaFixLangevin, ThermalisesToTargetTemperature) {
         vcm_x /= mtot;
         vcm_y /= mtot;
         vcm_z /= mtot;
-        double KE_COM = 0.5 * mtot * (vcm_x*vcm_x + vcm_y*vcm_y + vcm_z*vcm_z) * kMvv2e;
+        double KE_COM = 0.5 * mtot
+                        * (vcm_x * vcm_x + vcm_y * vcm_y + vcm_z * vcm_z)
+                        * kMvv2e;
         double T_thermal = 2.0 * (ke - KE_COM) / (ndof * kBoltzmann);
         T_sum += T;
         ++T_count;
         std::fprintf(stderr,
-                     "[therm] step=%d ke=%.3g KE_COM=%.3g T_full=%.1f T_thermal=%.1f K vcm=(%.4f,%.4f,%.4f)\n",
-                     warmup + (s + 1) * 100, ke, KE_COM, T, T_thermal,
-                     vcm_x, vcm_y, vcm_z);
+                     "[therm] step=%d ke=%.3g KE_COM=%.3g T_full=%.1f "
+                     "T_thermal=%.1f K vcm=(%.4f,%.4f,%.4f)\n",
+                     warmup + (s + 1) * 100, ke, KE_COM, T, T_thermal, vcm_x,
+                     vcm_y, vcm_z);
     }
     double T_mean = T_sum / T_count;
-    std::fprintf(stderr, "[therm] mean T over last %d steps: %.1f K (target 300K)\n",
+    std::fprintf(stderr,
+                 "[therm] mean T over last %d steps: %.1f K (target 300K)\n",
                  sample, T_mean);
     EXPECT_GT(T_mean, 270.0);
     EXPECT_LT(T_mean, 330.0);

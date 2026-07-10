@@ -48,7 +48,7 @@ class TranslateMove : public cpu::ComponentBase {
     /// @brief Default binding: the `propose` phase, order 0.
     /// @return One binding on `sampling::Phase::propose`.
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::sampling::Phase::propose), 0}};
+        return {ATV::make_binding(ATV::sampling::Phase::propose, 0)};
     }
 
     /// @brief Propose one displacement (or nothing on the bootstrap pass).

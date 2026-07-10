@@ -64,7 +64,7 @@ class Rebalance : public cpu::ComponentBase {
     /// @brief Default binding: `end_of_step @ +1000`.
     /// @return Binding tuple list.
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::end_of_step), 1000}};
+        return {ATV::make_binding(ATV::md::Phase::end_of_step, 1000)};
     }
 
     /// @brief Compute new cut planes and refresh this rank's slab.

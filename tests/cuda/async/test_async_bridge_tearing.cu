@@ -22,21 +22,21 @@
 #include <thread>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include <cuda_runtime.h>
+#include <gtest/gtest.h>
 
 #include "atomiverse/core/binding.h"
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cuda/async/async_bridge.cuh"
 #include "atomiverse/cuda/async/record_base.cuh"
 #include "atomiverse/cuda/async/sync_guard.cuh"
-#include "atomiverse/cuda/async/async_bridge.cuh"
+#include "atomiverse/cuda/frame/types.cuh"
 #include "atomiverse/cuda/md/init.cuh"
 #include "atomiverse/cuda/md/md.cuh"
 #include "atomiverse/cuda/md/velocity_verlet.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
 #include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
-#include "atomiverse/cuda/frame/types.cuh"
 
 using namespace ATV;
 
@@ -59,7 +59,7 @@ class StampPositions : public cuda::ComponentBase {
   public:
     std::string name() const override { return "stamp_positions"; }
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::end_of_step), 5}};
+        return {ATV::make_binding(ATV::md::Phase::end_of_step, 5)};
     }
     void launch(const cuda::LaunchContext& ctx) override {
         const int n = ctx.frame.n_atoms();
@@ -67,8 +67,8 @@ class StampPositions : public cuda::ComponentBase {
             return;
         int block = 128;
         int grid = (n + block - 1) / block;
-        stamp_positions_kernel<<<grid, block, 0,
-                                 static_cast<cudaStream_t>(ctx.runtime.stream)>>>(
+        stamp_positions_kernel<<<
+            grid, block, 0, static_cast<cudaStream_t>(ctx.runtime.stream)>>>(
             ctx.frame.atoms.x, ctx.frame.atoms.tag, n,
             static_cast<double>(ctx.step));
     }
@@ -81,9 +81,11 @@ class ConsistencyBridge : public cuda::AsyncBridge {
     std::string name() const override { return "consistency_bridge"; }
     int frequency() const override { return 1; }
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::end_of_step), 20}};
+        return {ATV::make_binding(ATV::md::Phase::end_of_step, 20)};
     }
-    bool consistent() const { return consistent_.load(std::memory_order_relaxed); }
+    bool consistent() const {
+        return consistent_.load(std::memory_order_relaxed);
+    }
     int handled() const { return handled_.load(std::memory_order_relaxed); }
 
   protected:
@@ -122,9 +124,10 @@ class ConsistencyBridge : public cuda::AsyncBridge {
         std::this_thread::sleep_for(std::chrono::milliseconds(3));
         bool ok = n_ > 0;
         for (int i = 0; i < n_; ++i) {
-            const double expected =
-                static_cast<double>(h_tag_[slot][i]) + static_cast<double>(ctx.step);
-            if (std::abs(static_cast<double>(h_x_[slot][i]) - expected) > 0.25) {
+            const double expected = static_cast<double>(h_tag_[slot][i])
+                                    + static_cast<double>(ctx.step);
+            if (std::abs(static_cast<double>(h_x_[slot][i]) - expected)
+                > 0.25) {
                 ok = false;
                 break;
             }
@@ -136,10 +139,22 @@ class ConsistencyBridge : public cuda::AsyncBridge {
 
     void on_destroy(const cuda::DestroyContext&) override {
         for (int i = 0; i < kRingDepth; ++i) {
-            if (d_x_[i]) { cudaFree(d_x_[i]); d_x_[i] = nullptr; }
-            if (d_tag_[i]) { cudaFree(d_tag_[i]); d_tag_[i] = nullptr; }
-            if (h_x_[i]) { cudaFreeHost(h_x_[i]); h_x_[i] = nullptr; }
-            if (h_tag_[i]) { cudaFreeHost(h_tag_[i]); h_tag_[i] = nullptr; }
+            if (d_x_[i]) {
+                cudaFree(d_x_[i]);
+                d_x_[i] = nullptr;
+            }
+            if (d_tag_[i]) {
+                cudaFree(d_tag_[i]);
+                d_tag_[i] = nullptr;
+            }
+            if (h_x_[i]) {
+                cudaFreeHost(h_x_[i]);
+                h_x_[i] = nullptr;
+            }
+            if (h_tag_[i]) {
+                cudaFreeHost(h_tag_[i]);
+                h_tag_[i] = nullptr;
+            }
         }
     }
 
@@ -230,7 +245,7 @@ class StepValRecorder : public cuda::AsyncRecordBase<StepVal> {
     std::string name() const override { return "stepval_recorder"; }
     int frequency() const override { return 1; }
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::end_of_step), 20}};
+        return {ATV::make_binding(ATV::md::Phase::end_of_step, 20)};
     }
 
     void launch(const cuda::LaunchContext& ctx) override {

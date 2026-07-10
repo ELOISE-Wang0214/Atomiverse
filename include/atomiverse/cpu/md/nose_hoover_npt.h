@@ -232,9 +232,9 @@ class NoseHooverNPT : public cpu::ComponentBase {
     /// stress provider is otherwise registered.
     Capability reads() const override { return Capability::Stress; }
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::initial_integrate), 0},
-                {static_cast<int>(ATV::md::Phase::final_integrate), 0},
-                {static_cast<int>(ATV::md::Phase::end_of_step), -40}};
+        return {ATV::make_binding(ATV::md::Phase::initial_integrate, 0),
+                ATV::make_binding(ATV::md::Phase::final_integrate, 0),
+                ATV::make_binding(ATV::md::Phase::end_of_step, -40)};
     }
     void build(const cpu::BuildContext& ctx) override;
     void launch(const cpu::LaunchContext& ctx) override;

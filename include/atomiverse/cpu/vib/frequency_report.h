@@ -53,7 +53,7 @@ class FrequencyReport : public cpu::ComponentBase {
     /// @brief Default binding: `vib::Phase::end_of_step` @ 0.
     /// @return Single binding placing this at the end-of-step phase.
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::vib::Phase::end_of_step), 0}};
+        return {ATV::make_binding(ATV::vib::Phase::end_of_step, 0)};
     }
 
     /// @brief Output TSV path.

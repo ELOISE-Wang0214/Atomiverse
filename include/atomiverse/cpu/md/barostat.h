@@ -94,7 +94,7 @@ class Barostat : public cpu::ComponentBase {
     /// stress provider is otherwise registered.
     Capability reads() const override { return Capability::Stress; }
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::end_of_step), -45}};
+        return {ATV::make_binding(ATV::md::Phase::end_of_step, -45)};
     }
     void launch(const cpu::LaunchContext& ctx) override;
 

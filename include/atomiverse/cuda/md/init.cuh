@@ -123,8 +123,7 @@ class ZeroMomentum : public ComponentBase {
     /// @brief Construct momentum-removal component.
     /// @param freq Subtract every `freq` `end_of_step` invocations
     ///        (LAMMPS default 1). `freq=0` is treated as 1.
-    explicit ZeroMomentum(int freq = 1)
-        : freq_(freq <= 0 ? 1 : freq) {}
+    explicit ZeroMomentum(int freq = 1) : freq_(freq <= 0 ? 1 : freq) {}
 
     /// @brief Component name.
     /// @return "zero_momentum".
@@ -140,7 +139,7 @@ class ZeroMomentum : public ComponentBase {
     ///        writers (`+20`) and the integrator's `end_of_step` slot.
     /// @return Single binding.
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::end_of_step), +25}};
+        return {ATV::make_binding(ATV::md::Phase::end_of_step, +25)};
     }
 
     /// @brief Allocate the 4 device scratch words `{px, py, pz, M_tot}`
@@ -209,7 +208,7 @@ class InitVelocity : public ComponentBase {
     /// @brief Default bindings: initial_integrate at order -2000 (before integrator).
     /// @return Single binding to initial_integrate.
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::initial_integrate), -2000}};
+        return {ATV::make_binding(ATV::md::Phase::initial_integrate, -2000)};
     }
 
     /// @brief Generate Maxwell-Boltzmann velocities on device, remove COM velocity.

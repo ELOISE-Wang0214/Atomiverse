@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "atomiverse/core/binding.h"
+
 namespace ATV {
 
 /// @brief MD simulation phases -- LAMMPS-style naming.
@@ -23,14 +25,14 @@ enum class Phase {
     initial_integrate, ///< First half-step: v += 0.5*dt*f/m, x += dt*v
     post_integrate,    ///< Hook right after kick/drift (usually empty)
     pre_exchange,      ///< Re-home atoms that left this rank (atom migration)
-    pre_neighbor,      ///< Build ghost atoms (halo send) before the neighbor list
-    neighbor,          ///< (Re)build the cell / pair neighbor list
-    pre_force,         ///< Zero force/energy/stress accumulators before eval
-    force,             ///< Force/energy/virial accumulation (pair + bonded)
-    post_force,        ///< Reverse ghost-force comm, virial finalize, constraints
-    final_integrate,   ///< Second half-step: v += 0.5*dt*f/m
-    end_of_step,       ///< Global reductions, thermostat/barostat, observers, I/O
-    COUNT              ///< Sentinel -- total number of phases
+    pre_neighbor,    ///< Build ghost atoms (halo send) before the neighbor list
+    neighbor,        ///< (Re)build the cell / pair neighbor list
+    pre_force,       ///< Zero force/energy/stress accumulators before eval
+    force,           ///< Force/energy/virial accumulation (pair + bonded)
+    post_force,      ///< Reverse ghost-force comm, virial finalize, constraints
+    final_integrate, ///< Second half-step: v += 0.5*dt*f/m
+    end_of_step,     ///< Global reductions, thermostat/barostat, observers, I/O
+    COUNT            ///< Sentinel -- total number of phases
 };
 
 /// @brief Human-readable names for the MD phases.
@@ -38,10 +40,18 @@ enum class Phase {
 /// @return Phase names in the same order as the enum values, excluding `COUNT`.
 inline std::vector<std::string> phase_names(Phase phase_tag) {
     (void)phase_tag;
-    return {"initial_integrate", "post_integrate", "pre_exchange",
-            "pre_neighbor",      "neighbor",       "pre_force",
-            "force",             "post_force",     "final_integrate",
-            "end_of_step"};
+    return {
+        "initial_integrate", "post_integrate", "pre_exchange", "pre_neighbor",
+        "neighbor",          "pre_force",      "force",        "post_force",
+        "final_integrate",   "end_of_step"};
+}
+
+/// @brief Workflow discriminant for `md::Phase` (ADL tag dispatch).
+/// @param phase_tag Tag value used only for overload selection.
+/// @return `PhaseKind::MD`.
+constexpr PhaseKind kind_of(Phase phase_tag) {
+    (void)phase_tag;
+    return PhaseKind::MD;
 }
 
 } // namespace md
@@ -74,6 +84,14 @@ inline std::vector<std::string> phase_names(Phase phase_tag) {
             "end_of_step"};
 }
 
+/// @brief Workflow discriminant for `minimizer::Phase` (ADL tag dispatch).
+/// @param phase_tag Tag value used only for overload selection.
+/// @return `PhaseKind::Minimizer`.
+constexpr PhaseKind kind_of(Phase phase_tag) {
+    (void)phase_tag;
+    return PhaseKind::Minimizer;
+}
+
 } // namespace minimizer
 
 /// @brief One-shot evaluation phases.
@@ -99,6 +117,14 @@ enum class Phase {
 inline std::vector<std::string> phase_names(Phase phase_tag) {
     (void)phase_tag;
     return {"prepare", "evaluate", "finalize"};
+}
+
+/// @brief Workflow discriminant for `evaluate::Phase` (ADL tag dispatch).
+/// @param phase_tag Tag value used only for overload selection.
+/// @return `PhaseKind::Evaluate`.
+constexpr PhaseKind kind_of(Phase phase_tag) {
+    (void)phase_tag;
+    return PhaseKind::Evaluate;
 }
 
 } // namespace evaluate
@@ -146,6 +172,14 @@ inline std::vector<std::string> phase_names(Phase phase_tag) {
             "diagonalize", "thermochem", "end_of_step"};
 }
 
+/// @brief Workflow discriminant for `vib::Phase` (ADL tag dispatch).
+/// @param phase_tag Tag value used only for overload selection.
+/// @return `PhaseKind::Vib`.
+constexpr PhaseKind kind_of(Phase phase_tag) {
+    (void)phase_tag;
+    return PhaseKind::Vib;
+}
+
 } // namespace vib
 
 /// @brief Monte Carlo sampling phases (Sampling driver category).
@@ -181,5 +215,32 @@ inline std::vector<std::string> phase_names(Phase phase_tag) {
     return {"propose", "energy", "end_of_step"};
 }
 
+/// @brief Workflow discriminant for `sampling::Phase` (ADL tag dispatch).
+/// @param phase_tag Tag value used only for overload selection.
+/// @return `PhaseKind::Sampling`.
+constexpr PhaseKind kind_of(Phase phase_tag) {
+    (void)phase_tag;
+    return PhaseKind::Sampling;
+}
+
 } // namespace sampling
+
+/// @brief Build a workflow-tagged DefaultBinding from a typed Phase value.
+///
+/// The single sanctioned way for a component to declare a default binding:
+/// the `PhaseKind` discriminant is derived from the enum type via ADL
+/// (`kind_of`), so it can never disagree with the phase index — hand-written
+/// `{kind, phase, order}` triples would reintroduce the transcription errors
+/// this helper exists to prevent.
+///
+/// @tparam PhaseEnum One of the five workflow Phase enums in this header.
+/// @param p Typed phase value the component wants to run in.
+/// @param order Ordering within the phase (lower runs earlier; negative =
+///        infrastructure, 0 = the op, positive = consumers).
+/// @return A DefaultBinding carrying the workflow discriminant of `PhaseEnum`.
+template <typename PhaseEnum>
+constexpr DefaultBinding make_binding(PhaseEnum p, int order = 0) {
+    return {kind_of(p), static_cast<int>(p), order};
+}
+
 } // namespace ATV

@@ -59,8 +59,7 @@ class SteepestDescent : public ComponentBase {
     /// @brief Default bindings: search_direction at order 0.
     /// @return Single binding to search_direction.
     std::vector<DefaultBinding> default_bindings() const override {
-        return {
-            {static_cast<int>(ATV::minimizer::Phase::search_direction), 0}};
+        return {ATV::make_binding(ATV::minimizer::Phase::search_direction, 0)};
     }
 
     /// @brief Launch the steepest-descent position-update kernel.

@@ -167,6 +167,17 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/component/zero.cpp
         src/cpu/frame/materialize.cpp
         src/cpu/driver/driver.cpp
+        src/cpu/semiempirical/am1_parameters.cpp
+        src/cpu/semiempirical/nddo_density.cpp
+        src/cpu/semiempirical/nddo_fock.cpp
+        src/cpu/semiempirical/nddo_hcore.cpp
+        src/cpu/semiempirical/nddo_matrix.cpp
+        src/cpu/semiempirical/nddo_overlap.cpp
+        src/cpu/semiempirical/nddo_system.cpp
+        src/cpu/semiempirical/nddo_two_electron.cpp
+        src/cpu/semiempirical/nddo_solver.cpp
+        src/cpu/semiempirical/am1_evaluator.cpp
+        src/cpu/semiempirical/am1_bcc_charge_assigner.cpp
         # CPU Monte Carlo (Sampling category)
         src/cpu/mc/translate_move.cpp
         src/cpu/async/analysis_executor.cpp

@@ -49,7 +49,7 @@ class NoOpForce : public ATV::cpu::ComponentBase {
         return ATV::Capability::Force;
     }
     std::vector<ATV::DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::force), 0}};
+        return {ATV::make_binding(ATV::md::Phase::force, 0)};
     }
     void launch(const ATV::cpu::LaunchContext&) override {}
 };

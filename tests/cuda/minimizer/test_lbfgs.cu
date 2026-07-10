@@ -5,13 +5,13 @@
 
 #include <cmath>
 #include <cstdlib>
-#include <type_traits>
 #include <gtest/gtest.h>
+#include <type_traits>
 
+#include "atomiverse/cuda/driver/optimize_driver.cuh"
 #include "atomiverse/cuda/minimizer/lbfgs.cuh"
 #include "atomiverse/cuda/minimizer/minimize.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
-#include "atomiverse/cuda/driver/optimize_driver.cuh"
 #include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 #include "atomiverse/facade/component_role.h"
 
@@ -85,9 +85,9 @@ TEST(MinimizerLBFGS, BindsSearchDirectionAndConvergenceCheck) {
     auto bindings = step.default_bindings();
     ASSERT_EQ(bindings.size(), 2u);
     EXPECT_EQ(bindings[0].phase,
-              static_cast<int>(minimizer::Phase::search_direction));
+              ATV::make_binding(minimizer::Phase::search_direction).phase);
     EXPECT_EQ(bindings[1].phase,
-              static_cast<int>(minimizer::Phase::convergence_check));
+              ATV::make_binding(minimizer::Phase::convergence_check).phase);
 }
 
 TEST(MinimizerLBFGS, EnergyDecreases) {
@@ -118,9 +118,14 @@ TEST(MinimizerLBFGS, ConvergesAndStopsEarly) {
     cuda::minimizer::Minimize min;
     // Loose tolerances trip the shared five-criteria rule well inside
     // the budget; lvalue registration keeps the component inspectable.
-    cuda::minimizer::LBFGS lbfgs{5,   double(0.01), /*ftol=*/10.0, 10,
-                                 /*rms_ftol=*/10.0, /*max_dtol=*/1.0,
-                                 /*rms_dtol=*/1.0,  /*etol=*/10.0};
+    cuda::minimizer::LBFGS lbfgs{5,
+                                 double(0.01),
+                                 /*ftol=*/10.0,
+                                 10,
+                                 /*rms_ftol=*/10.0,
+                                 /*max_dtol=*/1.0,
+                                 /*rms_dtol=*/1.0,
+                                 /*etol=*/10.0};
     min.add(lbfgs);
     min.on(minimizer::Phase::force)
         .add(cuda::NeighborList{cutoff}, -10)
@@ -139,8 +144,13 @@ TEST(MinimizerLBFGS, ArmijoLineSearchEnergyDecreases) {
     double cutoff = double(3.0);
     double e0 = initial_energy(frame, cutoff);
 
-    cuda::minimizer::LBFGS step{5, double(0.05), double(1e-8), 20,
-                                double(1e-8), double(1e-10), double(1e-10),
+    cuda::minimizer::LBFGS step{5,
+                                double(0.05),
+                                double(1e-8),
+                                20,
+                                double(1e-8),
+                                double(1e-10),
+                                double(1e-10),
                                 double(1e-12)};
     step.line_search(); // Armijo default constants.
 

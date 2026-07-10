@@ -78,7 +78,7 @@ class Thermochem : public cpu::ComponentBase {
     /// @brief Default binding: `vib::Phase::thermochem` @ 0.
     /// @return Single binding placing this at the thermochem phase.
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::vib::Phase::thermochem), 0}};
+        return {ATV::make_binding(ATV::vib::Phase::thermochem, 0)};
     }
 
     /// @brief Compute the harmonic thermochemistry.

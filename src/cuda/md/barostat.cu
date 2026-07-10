@@ -2,8 +2,8 @@
 /// @brief Barostat -- Berendsen isotropic pressure coupling.
 
 #include "atomiverse/cuda/device/launch.cuh"
-#include "atomiverse/cuda/md/barostat.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
+#include "atomiverse/cuda/md/barostat.cuh"
 #include "atomiverse/facade/stage.h"
 #include <cmath>
 #include <cuda_runtime.h>
@@ -36,7 +36,7 @@ std::vector<DefaultBinding> Barostat::default_bindings() const {
     // (end_of_step @ -100) so the instantaneous pressure the barostat reads
     // (virial + current kinetic) is complete — at final_integrate the kinetic
     // for this step is not yet accumulated, giving a stale pressure.
-    return {{static_cast<int>(ATV::md::Phase::end_of_step), -45}};
+    return {ATV::make_binding(ATV::md::Phase::end_of_step, -45)};
 }
 
 namespace {

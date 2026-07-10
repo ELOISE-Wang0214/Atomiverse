@@ -23,7 +23,7 @@
 ///
 /// @code{.cpp}
 ///   cuda::Evaluate eval;
-///   eval.add(cuda::scf::SCFEvaluator{integrals, tol, max_iter});
+///   eval.on(evaluate::Phase::evaluate).add(cuda::scf::SCFEvaluator{integrals, tol, max_iter});
 ///   eval.build();
 ///   eval.run(frame);            // frame.scalars.energy populated
 /// @endcode

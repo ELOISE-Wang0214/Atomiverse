@@ -54,7 +54,7 @@ class EigenSolver : public cpu::ComponentBase {
     /// @brief Default binding: `vib::Phase::diagonalize` @ +1 (last).
     /// @return Single binding placing this after `MassWeighting`.
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::vib::Phase::diagonalize), +1}};
+        return {ATV::make_binding(ATV::vib::Phase::diagonalize, +1)};
     }
 
     /// @brief Project out translations/rotations, diagonalize, convert.

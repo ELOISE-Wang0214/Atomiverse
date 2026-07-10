@@ -98,9 +98,8 @@ class LBFGS : public ComponentBase {
 
     /// @brief Default bindings: search_direction + convergence_check.
     std::vector<DefaultBinding> default_bindings() const override {
-        return {
-            {static_cast<int>(ATV::minimizer::Phase::search_direction), 0},
-            {static_cast<int>(ATV::minimizer::Phase::convergence_check), 0}};
+        return {ATV::make_binding(ATV::minimizer::Phase::search_direction, 0),
+                ATV::make_binding(ATV::minimizer::Phase::convergence_check, 0)};
     }
 
     /// @brief Allocate + zero history and scratch device buffers.
@@ -140,13 +139,13 @@ class LBFGS : public ComponentBase {
     work_t* d_s_ = nullptr;     ///< Position-difference ring (memory × 3N).
     work_t* d_y_ = nullptr;     ///< Gradient-difference ring (memory × 3N).
     work_t* d_q_ = nullptr;     ///< Two-loop scratch q → r (3N).
-    work_t* d_dir_ = nullptr;   ///< Search direction (3N, persists for rollback).
+    work_t* d_dir_ = nullptr; ///< Search direction (3N, persists for rollback).
     work_t* d_alpha_ = nullptr; ///< Two-loop a_k scalars (memory).
     work_t* d_dot_ = nullptr;   ///< Device {dot, dir_max} scratch scalars.
     work_t* d_ys_ = nullptr;    ///< Device curvature product y·s.
-    work_t* d_ls_ = nullptr;    ///< Device {applied α, g·d} line-search scalars.
-    work_t* h_ys_ = nullptr;    ///< Pinned mirror of d_ys_.
-    work_t* h_ls_ = nullptr;    ///< Pinned mirror of d_ls_.
+    work_t* d_ls_ = nullptr; ///< Device {applied α, g·d} line-search scalars.
+    work_t* h_ys_ = nullptr; ///< Pinned mirror of d_ys_.
+    work_t* h_ls_ = nullptr; ///< Pinned mirror of d_ls_.
 
     // Host-side circular-buffer bookkeeping (gates kernel-launch counts).
     std::vector<double> rho_; ///< 1 / (y·s) per stored pair.
@@ -161,9 +160,9 @@ class LBFGS : public ComponentBase {
     double ls_c1_ = 1e-4;
     double ls_contract_ = 0.5;
     double ls_min_alpha_ = 1e-6;
-    double ls_alpha_ = 0;          ///< α of the most recent trial (host copy).
-    double ls_gd_ = 0;             ///< g·d at the trial origin (host copy).
-    double ls_origin_energy_ = 0;  ///< Energy at the trial origin [eV].
+    double ls_alpha_ = 0;         ///< α of the most recent trial (host copy).
+    double ls_gd_ = 0;            ///< g·d at the trial origin (host copy).
+    double ls_origin_energy_ = 0; ///< Energy at the trial origin [eV].
     bool ls_had_trial_ = false;
     bool ls_fetch_pending_ = false; ///< D2H of {α, g·d} queued for next check.
 

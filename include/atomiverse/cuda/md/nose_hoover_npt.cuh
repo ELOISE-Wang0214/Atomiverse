@@ -89,9 +89,9 @@ class NoseHooverNPT : public ComponentBase {
     Capability reads() const override { return Capability::Stress; }
 
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::initial_integrate), 0},
-                {static_cast<int>(ATV::md::Phase::final_integrate), 0},
-                {static_cast<int>(ATV::md::Phase::end_of_step), -40}};
+        return {ATV::make_binding(ATV::md::Phase::initial_integrate, 0),
+                ATV::make_binding(ATV::md::Phase::final_integrate, 0),
+                ATV::make_binding(ATV::md::Phase::end_of_step, -40)};
     }
 
     void build(const BuildContext& ctx) override;
@@ -102,9 +102,11 @@ class NoseHooverNPT : public ComponentBase {
     // Sizes of the NPT-side device/host scratch buffers — pulled out
     // as constexpr so the alloc / zero / memcpy sites agree by name,
     // not by re-typed integer literal.
-    static constexpr int kNptScratchSize = 8; // ke[0..3] + stress[4..6] + energy[7]
-    static constexpr int kBoxDiagSize = 3;    // box[0], box[4], box[8]
-    static constexpr int kKineticConservedPinnedSize = 2; // [0]=kinetic, [1]=conserved
+    static constexpr int kNptScratchSize =
+        8; // ke[0..3] + stress[4..6] + energy[7]
+    static constexpr int kBoxDiagSize = 3; // box[0], box[4], box[8]
+    static constexpr int kKineticConservedPinnedSize =
+        2; // [0]=kinetic, [1]=conserved
 
     // Configuration
     double T_target_, T_stop_;
@@ -156,8 +158,8 @@ class NoseHooverNPT : public ComponentBase {
     // host blocks on cudaEventSynchronize (not cudaStreamSynchronize).
     double* h_npt_scratch_ = nullptr;
     double* h_box_diag_pinned_ = nullptr;
-    void* npt_scratch_event_ = nullptr;   // cudaEvent_t
-    void* box_diag_event_ = nullptr;      // cudaEvent_t
+    void* npt_scratch_event_ = nullptr; // cudaEvent_t
+    void* box_diag_event_ = nullptr;    // cudaEvent_t
     // Pinned scratch for the end-of-step H2D writes of KE_global_ and H
     // (cudaMemcpyAsync requires the host source to outlive the queued
     // copy; pinning a per-instance 2-double buffer is safer than passing

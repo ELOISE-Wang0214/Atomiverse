@@ -4,19 +4,19 @@
 ///        CPU/CUDA parity, and the structural migration guards.
 
 #include <cmath>
-#include <type_traits>
 #include <gtest/gtest.h>
+#include <type_traits>
 
 #include "atomiverse/cpu/scf/solve.h"
 #include "atomiverse/cuda/driver/evaluate.cuh"
 #include "atomiverse/cuda/driver/evaluate_driver.cuh"
+#include "atomiverse/cuda/driver/single_point.cuh"
 #include "atomiverse/cuda/scf/internal/convergence_check.cuh"
 #include "atomiverse/cuda/scf/internal/density_builder.cuh"
 #include "atomiverse/cuda/scf/internal/eigen_solver.cuh"
 #include "atomiverse/cuda/scf/internal/hamiltonian.cuh"
 #include "atomiverse/cuda/scf/scf_evaluator.cuh"
 #include "atomiverse/cuda/scf/scf_solver.cuh"
-#include "atomiverse/cuda/driver/single_point.cuh"
 #include "atomiverse/facade/driver.h"
 #include "atomiverse/facade/stage.h"
 
@@ -68,8 +68,7 @@ TEST(SCF, NoCudaScfSCFDriverClass) {
     // ac-001: `cuda::scf::SCF` resolves only to the test's sentinel — no
     // production driver class of that name survives the migration.
     static_assert(
-        std::is_same_v<cuda::scf::SCF,
-                       cuda::scf::migration_guard::SCFSentinel>,
+        std::is_same_v<cuda::scf::SCF, cuda::scf::migration_guard::SCFSentinel>,
         "cuda::scf::SCF driver class must not exist after migration");
     // ac-001: `cuda::scf::SinglePoint` resolves only to the sentinel.
     static_assert(
@@ -121,9 +120,9 @@ TEST(SCF, SCFEvaluatorRoleAndCapabilities) {
     cuda::scf::SCFEvaluator eval{/*n_occ=*/2, /*alpha=*/0.1, /*tol=*/1e-6,
                                  /*max_iter=*/50};
     EXPECT_EQ(eval.role(), ComponentRole::Evaluator);
-    EXPECT_EQ(eval.capabilities(),
-              Capability::Energy | Capability::DensityMatrix
-                  | Capability::Orbitals);
+    EXPECT_EQ(eval.capabilities(), Capability::Energy
+                                       | Capability::DensityMatrix
+                                       | Capability::Orbitals);
     EXPECT_FALSE(has_capability(eval.capabilities(), Capability::Force));
 }
 
@@ -153,7 +152,8 @@ TEST(SCF, CUDAReproducibility) {
 
     for (auto* f : {&frame1, &frame2}) {
         cuda::Evaluate eval;
-        eval.add(cuda::scf::SCFEvaluator{2, double(0.1), double(1e-7), 200});
+        eval.on(ATV::evaluate::Phase::evaluate)
+            .add(cuda::scf::SCFEvaluator{2, double(0.1), double(1e-7), 200});
         eval.build();
         eval.run(*f);
     }
@@ -171,7 +171,8 @@ TEST(SCF, CUDASinglePointHelper) {
 
     {
         cuda::Evaluate eval;
-        eval.add(cuda::scf::SCFEvaluator{2, double(0.1), double(1e-7), 200});
+        eval.on(ATV::evaluate::Phase::evaluate)
+            .add(cuda::scf::SCFEvaluator{2, double(0.1), double(1e-7), 200});
         eval.build();
         eval.run(frame_direct);
     }
@@ -191,13 +192,15 @@ TEST(SCF, CUDAAlphaEffect) {
 
     {
         cuda::Evaluate eval;
-        eval.add(cuda::scf::SCFEvaluator{2, double(0), double(1e-6), 50});
+        eval.on(ATV::evaluate::Phase::evaluate)
+            .add(cuda::scf::SCFEvaluator{2, double(0), double(1e-6), 50});
         eval.build();
         eval.run(frame_a0);
     }
     {
         cuda::Evaluate eval;
-        eval.add(cuda::scf::SCFEvaluator{2, double(0.5), double(1e-6), 200});
+        eval.on(ATV::evaluate::Phase::evaluate)
+            .add(cuda::scf::SCFEvaluator{2, double(0.5), double(1e-6), 200});
         eval.build();
         eval.run(frame_a1);
     }
@@ -278,7 +281,8 @@ TEST(SCF, CPUCUDAParity) {
     auto frame = make_scf_system(n);
     {
         cuda::Evaluate eval;
-        eval.add(cuda::scf::SCFEvaluator{n_occ, alpha, tol, 200});
+        eval.on(ATV::evaluate::Phase::evaluate)
+            .add(cuda::scf::SCFEvaluator{n_occ, alpha, tol, 200});
         eval.build();
         eval.run(frame);
     }
@@ -303,7 +307,8 @@ TEST(SCF, CPUCUDAParityN16) {
     auto frame = make_scf_system(n);
     {
         cuda::Evaluate eval;
-        eval.add(cuda::scf::SCFEvaluator{n_occ, alpha, tol, 200});
+        eval.on(ATV::evaluate::Phase::evaluate)
+            .add(cuda::scf::SCFEvaluator{n_occ, alpha, tol, 200});
         eval.build();
         eval.run(frame);
     }

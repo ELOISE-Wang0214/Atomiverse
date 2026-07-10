@@ -2,8 +2,8 @@
 /// @brief Deform -- uniaxial constant-strain-rate deformation.
 
 #include "atomiverse/cuda/device/launch.cuh"
-#include "atomiverse/cuda/md/deform.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
+#include "atomiverse/cuda/md/deform.cuh"
 #include "atomiverse/facade/stage.h"
 #include <cuda_runtime.h>
 
@@ -23,7 +23,7 @@ std::vector<DefaultBinding> Deform::default_bindings() const {
     // initial_integrate @ +200, matching cpu::md::Deform: the affine box
     // remap runs AFTER the integrator's kick/drift (order 0), so the deformed
     // box wraps the just-updated positions consistently across backends.
-    return {{static_cast<int>(ATV::md::Phase::initial_integrate), 200}};
+    return {ATV::make_binding(ATV::md::Phase::initial_integrate, 200)};
 }
 
 void Deform::build(const BuildContext& ctx) {

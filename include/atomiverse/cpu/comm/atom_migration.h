@@ -46,7 +46,7 @@ class Migrate : public cpu::ComponentBase {
 
     std::string name() const override { return "migrate"; }
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::pre_exchange), 0}};
+        return {ATV::make_binding(ATV::md::Phase::pre_exchange, 0)};
     }
     void launch(const cpu::LaunchContext& ctx) override;
 

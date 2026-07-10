@@ -39,13 +39,12 @@ struct MinimalSnapshot {
 
 /// @brief AsyncRecordBase-derived recorder that does nothing useful on the
 ///        host side. It exists only to exercise the submit_async path.
-class NoOpAsyncRecorder
-    : public cuda::AsyncRecordBase<MinimalSnapshot> {
+class NoOpAsyncRecorder : public cuda::AsyncRecordBase<MinimalSnapshot> {
   public:
     std::string name() const override { return "noop_async_recorder"; }
     int frequency() const override { return 1; }
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::end_of_step), 20}};
+        return {ATV::make_binding(ATV::md::Phase::end_of_step, 20)};
     }
 
     void launch(const cuda::LaunchContext& ctx) override {
@@ -53,9 +52,8 @@ class NoOpAsyncRecorder
         // SystemScalars.kinetic into device_snapshot_.kinetic. Both pointers
         // are device-resident, so this is a D2D copy on the compute stream
         // (zero hot-path block).
-        cudaMemcpyAsync(&device_snapshot_->kinetic,
-                        &ctx.frame.scalars->kinetic, sizeof(double),
-                        cudaMemcpyDeviceToDevice,
+        cudaMemcpyAsync(&device_snapshot_->kinetic, &ctx.frame.scalars->kinetic,
+                        sizeof(double), cudaMemcpyDeviceToDevice,
                         static_cast<cudaStream_t>(ctx.runtime.stream));
         submit_async(static_cast<std::int64_t>(ctx.step),
                      [](const MinimalSnapshot& /*s*/, std::int64_t /*step*/) {
@@ -124,12 +122,11 @@ TEST(CudaAsyncHotPathNoSync, ZeroSyncOverNPTLoop) {
         .add(cuda::NeighborList{2.5}, -10)
         .add(cuda::PairLJCut{1.0, 1.0, 2.5});
     sim.add(cuda::md::InitVelocity{1.0, 12345ULL});
-    sim.set_integrator(cuda::md::NoseHooverNPT{
-        {/*T_target=*/1.0,
-         /*tau_T=*/100.0,
-         /*P_target=*/0.0,
-         /*tau_P=*/1000.0,
-         /*dt=*/0.001}});
+    sim.set_integrator(cuda::md::NoseHooverNPT{{/*T_target=*/1.0,
+                                                /*tau_T=*/100.0,
+                                                /*P_target=*/0.0,
+                                                /*tau_P=*/1000.0,
+                                                /*dt=*/0.001}});
     sim.add(rec);
     sim.build();
 

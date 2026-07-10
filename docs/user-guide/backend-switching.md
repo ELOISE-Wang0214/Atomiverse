@@ -44,7 +44,7 @@ auto integrals = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
 cuda::scf::SCFEvaluator scf{integrals, tol, /*max_iter=*/100};
 
 cuda::Evaluate eval;
-eval.add(std::move(scf));
+eval.on(ATV::evaluate::Phase::evaluate).add(std::move(scf));
 eval.build();
 eval.run(frame);              // frame.scalars.energy populated
 ```

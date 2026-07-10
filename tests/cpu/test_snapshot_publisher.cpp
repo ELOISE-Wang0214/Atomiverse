@@ -20,15 +20,15 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/async/async_component_base.h"
-#include "atomiverse/cpu/driver/backend.h"
+#include "atomiverse/cpu/async/async_observer.h"
+#include "atomiverse/cpu/async/frame_snapshot.h"
+#include "atomiverse/cpu/async/snapshot_publisher.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/context.h"
+#include "atomiverse/cpu/driver/backend.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/async/frame_snapshot.h"
-#include "atomiverse/cpu/async/async_observer.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
-#include "atomiverse/cpu/async/snapshot_publisher.h"
 
 #include "cpu/driver_test_helpers.h"
 
@@ -91,14 +91,14 @@ class StepStamper : public cpu::ComponentBase {
     std::string name() const override { return "step_stamper"; }
     ComponentRole role() const override { return ComponentRole::Integrator; }
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::initial_integrate), 0}};
+        return {ATV::make_binding(ATV::md::Phase::initial_integrate, 0)};
     }
     void launch(const cpu::LaunchContext& ctx) override {
         auto& a = ctx.frame.atoms;
         const int n = a.size();
         for (int i = 0; i < n; ++i)
-            a.x[i] = static_cast<double>(a.tag[i])
-                     + static_cast<double>(ctx.step);
+            a.x[i] =
+                static_cast<double>(a.tag[i]) + static_cast<double>(ctx.step);
     }
 };
 
@@ -301,7 +301,8 @@ TEST(Publish, StaticMaskUnionAllSubscribers) {
     for (int i = 0; i < n; ++i) {
         EXPECT_NEAR(snap.vx[i], 100.0 + i, 1e-9)
             << "static capture-mask union must copy a non-firing subscriber's "
-               "fields (i=" << i << ")";
+               "fields (i="
+            << i << ")";
     }
 }
 

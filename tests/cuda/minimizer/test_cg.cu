@@ -6,14 +6,14 @@
 
 #include <cmath>
 #include <cstdlib>
-#include <type_traits>
 #include <gtest/gtest.h>
+#include <type_traits>
 
+#include "atomiverse/cuda/driver/optimize_driver.cuh"
 #include "atomiverse/cuda/minimizer/cg.cuh"
 #include "atomiverse/cuda/minimizer/lbfgs.cuh"
 #include "atomiverse/cuda/minimizer/minimize.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
-#include "atomiverse/cuda/driver/optimize_driver.cuh"
 #include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 #include "atomiverse/facade/component_role.h"
 
@@ -94,9 +94,9 @@ TEST(MinimizerCG, BindsSearchDirectionAndConvergenceCheck) {
     auto bindings = step.default_bindings();
     ASSERT_EQ(bindings.size(), 2u);
     EXPECT_EQ(bindings[0].phase,
-              static_cast<int>(minimizer::Phase::search_direction));
+              ATV::make_binding(minimizer::Phase::search_direction).phase);
     EXPECT_EQ(bindings[1].phase,
-              static_cast<int>(minimizer::Phase::convergence_check));
+              ATV::make_binding(minimizer::Phase::convergence_check).phase);
 }
 
 TEST(MinimizerCG, EnergyDecreases) {
@@ -128,8 +128,9 @@ TEST(MinimizerCG, ConvergesAndStopsEarly) {
     // and OptimizeDriver::run breaks early.
     // Lvalue registration stores a reference, so the component remains
     // inspectable after run() (the documented add() lvalue contract).
-    cuda::minimizer::CG cg{kStableAlpha, /*ftol=*/10.0, /*rms_ftol=*/10.0,
-                           /*max_dtol=*/1.0, /*rms_dtol=*/1.0,
+    cuda::minimizer::CG cg{kStableAlpha,      /*ftol=*/10.0,
+                           /*rms_ftol=*/10.0,
+                           /*max_dtol=*/1.0,  /*rms_dtol=*/1.0,
                            /*etol=*/10.0};
     min.add(cg);
     min.on(minimizer::Phase::force)

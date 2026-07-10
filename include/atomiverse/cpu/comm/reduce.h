@@ -47,7 +47,7 @@ class Reduce : public cpu::ComponentBase {
     explicit Reduce(int every) : every_(every < 1 ? 1 : every) {}
     std::string name() const override { return "reduce"; }
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::end_of_step), -50}};
+        return {ATV::make_binding(ATV::md::Phase::end_of_step, -50)};
     }
     void launch(const cpu::LaunchContext& ctx) override;
 

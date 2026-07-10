@@ -62,7 +62,7 @@ class NormalModeWriter : public cpu::ComponentBase {
     /// pass and are independent, but a stable order keeps logs tidy.
     /// @return Single binding placing this at the end-of-step phase.
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::vib::Phase::end_of_step), +1}};
+        return {ATV::make_binding(ATV::vib::Phase::end_of_step, +1)};
     }
 
     /// @brief Output path prefix.

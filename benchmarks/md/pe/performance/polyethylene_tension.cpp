@@ -941,7 +941,7 @@ class CsvRecorder : public cpu::ComponentBase {
     std::string name() const override { return "csv_recorder"; }
     int frequency() const override { return print_every_; }
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::end_of_step), 20}};
+        return {ATV::make_binding(ATV::md::Phase::end_of_step, 20)};
     }
 
     /// @brief Enter a new stage. Called before each per-stage `sim.run`.
@@ -1082,7 +1082,7 @@ class TrajectoryRecorder : public cpu::ComponentBase {
     std::string name() const override { return "trajectory_recorder"; }
     int frequency() const override { return 1; }
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::end_of_step), 25}};
+        return {ATV::make_binding(ATV::md::Phase::end_of_step, 25)};
     }
 
     void launch(const cpu::LaunchContext& ctx) override {
@@ -1267,7 +1267,7 @@ class CudaCsvRecorder : public cuda::AsyncRecordBase<SystemScalarsSnapshot> {
     std::string name() const override { return "cuda_csv_recorder"; }
     int frequency() const override { return print_every_; }
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::end_of_step), 20}};
+        return {ATV::make_binding(ATV::md::Phase::end_of_step, 20)};
     }
 
     /// @brief Enter a new stage. Mirrors `CsvRecorder::begin_stage`.

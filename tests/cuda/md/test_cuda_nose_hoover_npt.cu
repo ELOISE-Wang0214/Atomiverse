@@ -49,27 +49,33 @@ cpu::Frame make_lj_block(int n_side, double density) {
 } // namespace
 
 TEST(CudaNoseHooverNPT, ContractRoleBindings) {
-    cuda::md::NoseHooverNPT::Config cfg{
-        .T_target = 100.0, .tau_T = 100.0, .P_target = 0.0, .tau_P = 1000.0,
-        .dt = 0.001};
+    cuda::md::NoseHooverNPT::Config cfg{.T_target = 100.0,
+                                        .tau_T = 100.0,
+                                        .P_target = 0.0,
+                                        .tau_P = 1000.0,
+                                        .dt = 0.001};
     cuda::md::NoseHooverNPT npt{cfg};
     EXPECT_EQ(npt.role(), ComponentRole::Integrator);
     EXPECT_EQ(npt.name(), "nose_hoover_npt");
     auto bindings = npt.default_bindings();
     ASSERT_EQ(bindings.size(), 3u);
     EXPECT_EQ(bindings[0].phase,
-              static_cast<int>(ATV::md::Phase::initial_integrate));
+              ATV::make_binding(ATV::md::Phase::initial_integrate).phase);
     EXPECT_EQ(bindings[1].phase,
-              static_cast<int>(ATV::md::Phase::final_integrate));
-    EXPECT_EQ(bindings[2].phase, static_cast<int>(ATV::md::Phase::end_of_step));
+              ATV::make_binding(ATV::md::Phase::final_integrate).phase);
+    EXPECT_EQ(bindings[2].phase,
+              ATV::make_binding(ATV::md::Phase::end_of_step).phase);
     EXPECT_EQ(bindings[2].order, -40);
     EXPECT_DOUBLE_EQ(npt.T_target(), 100.0);
 }
 
 TEST(CudaNoseHooverNPT, ConfigTStopSentinelFoldsToTTarget) {
-    cuda::md::NoseHooverNPT::Config cfg{
-        .T_target = 300.0, .tau_T = 100.0, .P_target = 0.0, .tau_P = 1000.0,
-        .dt = 0.001, .T_stop = -1.0};
+    cuda::md::NoseHooverNPT::Config cfg{.T_target = 300.0,
+                                        .tau_T = 100.0,
+                                        .P_target = 0.0,
+                                        .tau_P = 1000.0,
+                                        .dt = 0.001,
+                                        .T_stop = -1.0};
     cuda::md::NoseHooverNPT npt{cfg};
     EXPECT_DOUBLE_EQ(npt.T_target(), 300.0);
 }
@@ -77,9 +83,11 @@ TEST(CudaNoseHooverNPT, ConfigTStopSentinelFoldsToTTarget) {
 TEST(CudaNoseHooverNPT, IsoNPTBuildsAndRunsFinite) {
     auto frame = make_lj_block(2, 0.8); // 8 atoms
     const double cutoff = 3.0;
-    cuda::md::NoseHooverNPT::Config cfg{
-        .T_target = 100.0, .tau_T = 100.0, .P_target = 0.0, .tau_P = 1000.0,
-        .dt = 0.001};
+    cuda::md::NoseHooverNPT::Config cfg{.T_target = 100.0,
+                                        .tau_T = 100.0,
+                                        .P_target = 0.0,
+                                        .tau_P = 1000.0,
+                                        .dt = 0.001};
     cuda::md::MD sim;
     sim.set_neighbor(cuda::NeighborList{cutoff});
     sim.set_pair(cuda::PairLJCut{1.0, 1.0, cutoff});
@@ -101,9 +109,11 @@ TEST(CudaNoseHooverNPT, AnisoYZKeepsXRigid) {
     auto frame = make_lj_block(2, 0.8);
     const double box_x_initial = frame.box(0, 0);
     const double cutoff = 3.0;
-    cuda::md::NoseHooverNPT::Config cfg{
-        .T_target = 100.0, .tau_T = 100.0, .P_target = 0.0, .tau_P = 1000.0,
-        .dt = 0.001};
+    cuda::md::NoseHooverNPT::Config cfg{.T_target = 100.0,
+                                        .tau_T = 100.0,
+                                        .P_target = 0.0,
+                                        .tau_P = 1000.0,
+                                        .dt = 0.001};
     cfg.couple_axis = {false, true, true}; // x rigid, y/z barostatted
     cuda::md::MD sim;
     sim.set_neighbor(cuda::NeighborList{cutoff});
@@ -127,9 +137,11 @@ TEST(CudaNoseHooverNPT, TemperatureRampSetpointAdvances) {
     // After 50 steps of a 100-step ramp 500→100 K, T_target() should be
     // near 300 K (midpoint).  Construct a fresh component lvalue, attach
     // by reference via add so we can read T_target() after run.
-    cuda::md::NoseHooverNPT::Config cfg{
-        .T_target = 500.0, .tau_T = 100.0, .P_target = 0.0, .tau_P = 1000.0,
-        .dt = 0.001};
+    cuda::md::NoseHooverNPT::Config cfg{.T_target = 500.0,
+                                        .tau_T = 100.0,
+                                        .P_target = 0.0,
+                                        .tau_P = 1000.0,
+                                        .dt = 0.001};
     cfg.T_stop = 100.0;
     cuda::md::NoseHooverNPT npt{cfg};
     npt.set_run_span(0, 99);
@@ -155,9 +167,11 @@ TEST(CudaNoseHooverNPT, WritesConservedHamiltonian) {
     // finite). The integrator writes it every end_of_step.
     auto frame = make_lj_block(2, 0.8);
     const double cutoff = 3.0;
-    cuda::md::NoseHooverNPT::Config cfg{
-        .T_target = 100.0, .tau_T = 100.0, .P_target = 0.0, .tau_P = 1000.0,
-        .dt = 0.001};
+    cuda::md::NoseHooverNPT::Config cfg{.T_target = 100.0,
+                                        .tau_T = 100.0,
+                                        .P_target = 0.0,
+                                        .tau_P = 1000.0,
+                                        .dt = 0.001};
     cuda::md::MD sim;
     sim.set_neighbor(cuda::NeighborList{cutoff});
     sim.set_pair(cuda::PairLJCut{1.0, 1.0, cutoff});

@@ -24,7 +24,7 @@
 /// Usage (single-point through the outer facade):
 /// @code
 ///   cpu::Evaluate eval;
-///   eval.add(cpu::scf::SCFEvaluator{config});  // owns an SCFSolver internally
+///   eval.on(evaluate::Phase::evaluate).add(cpu::scf::SCFEvaluator{config});  // owns an SCFSolver internally
 ///   eval.build();
 ///   eval.run(frame);
 /// @endcode
@@ -32,9 +32,9 @@
 
 #include <memory>
 
+#include "atomiverse/cpu/scf/dense_matrix.h" // RealMatrix
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/scf_solve.h" // SCFConfig, SCFInitialGuess, SCFResult
-#include "atomiverse/cpu/scf/dense_matrix.h" // RealMatrix
 
 namespace ATV {
 namespace cpu {
@@ -96,10 +96,10 @@ class SCFSolver {
     bool built_ = false;
 
     // Per-run state (rebuilt each run(); geometry-dependent).
-    RealMatrix X_; ///< Orthogonalization matrix. Löwdin S^{-1/2} (n × n)
-                   ///< when the basis is healthy or lindep filtering is
-                   ///< disabled; rectangular canonical X (n × m, m < n)
-                   ///< when overlap eigen-directions were dropped. Owned.
+    RealMatrix X_;      ///< Orthogonalization matrix. Löwdin S^{-1/2} (n × n)
+                        ///< when the basis is healthy or lindep filtering is
+                        ///< disabled; rectangular canonical X (n × m, m < n)
+                        ///< when overlap eigen-directions were dropped. Owned.
     int n_dropped_ = 0; ///< Overlap eigen-directions dropped this run.
 
     // Internal SCF step helpers. Held by pointer so this public header

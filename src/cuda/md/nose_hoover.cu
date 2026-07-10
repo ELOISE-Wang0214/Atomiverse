@@ -3,8 +3,8 @@
 
 #include "atomiverse/core/units.h"
 #include "atomiverse/cuda/device/launch.cuh"
-#include "atomiverse/cuda/md/nose_hoover.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
+#include "atomiverse/cuda/md/nose_hoover.cuh"
 #include "atomiverse/facade/stage.h"
 #include <cuda_runtime.h>
 
@@ -35,8 +35,8 @@ NoseHoover::NoseHoover(NoseHoover&&) noexcept = default;
 NoseHoover& NoseHoover::operator=(NoseHoover&&) noexcept = default;
 
 std::vector<DefaultBinding> NoseHoover::default_bindings() const {
-    return {{static_cast<int>(ATV::md::Phase::initial_integrate), 100},
-            {static_cast<int>(ATV::md::Phase::final_integrate), 100}};
+    return {ATV::make_binding(ATV::md::Phase::initial_integrate, 100),
+            ATV::make_binding(ATV::md::Phase::final_integrate, 100)};
 }
 
 namespace {

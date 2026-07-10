@@ -45,7 +45,7 @@ class DisplaceStep : public cpu::ComponentBase {
     /// @brief Default binding: `vib::Phase::displace` @ 0.
     /// @return Single binding placing this at the displace phase.
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::vib::Phase::displace), 0}};
+        return {ATV::make_binding(ATV::vib::Phase::displace, 0)};
     }
 
     /// @brief Set frame coordinates to `R0 +/- h*e_{i.alpha}` (or restore `R0`).

@@ -34,22 +34,22 @@
 #include <string>
 
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/comm/halo_exchange.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/md/barostat.h"
 #include "atomiverse/cpu/md/fix_langevin.h"
 #include "atomiverse/cpu/md/init.h"
-#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/comm/halo_exchange.h"
-#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/nose_hoover.h"
 #include "atomiverse/cpu/md/nose_hoover_npt.h"
 #include "atomiverse/cpu/md/nve_limit.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/observer/virial_stress.h"
 #include "atomiverse/cpu/potentials/angle_harmonic.h"
 #include "atomiverse/cpu/potentials/bond_harmonic.h"
 #include "atomiverse/cpu/potentials/dihedral_multi_harmonic.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 
 #include "gather_frame.h"
 #include "lammps_loader.h"
@@ -94,7 +94,7 @@ class ThermoPrinter : public cpu::ComponentBase {
 
     std::string name() const override { return "thermo_printer"; }
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::end_of_step), +20}};
+        return {ATV::make_binding(ATV::md::Phase::end_of_step, +20)};
     }
 
     void launch(const cpu::LaunchContext& ctx) override {

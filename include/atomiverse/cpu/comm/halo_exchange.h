@@ -103,7 +103,7 @@ class HaloSend : public cpu::ComponentBase {
     /// scan keys on this, not on `name()`.
     bool provides_halo_send() const override { return true; }
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::pre_neighbor), 0}};
+        return {ATV::make_binding(ATV::md::Phase::pre_neighbor, 0)};
     }
 
     void build(const cpu::BuildContext& ctx) override;
@@ -217,7 +217,7 @@ class HaloRecv : public cpu::ComponentBase {
     /// scan keys on this, not on `name()`.
     bool provides_halo_recv() const override { return true; }
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::post_force), -1000}};
+        return {ATV::make_binding(ATV::md::Phase::post_force, -1000)};
     }
 
     /// @brief Preallocate per-face buffers from `dd->capacity`.

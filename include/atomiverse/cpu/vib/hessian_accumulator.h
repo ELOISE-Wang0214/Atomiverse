@@ -50,7 +50,7 @@ class HessianAccumulator : public cpu::ComponentBase {
     /// @brief Default binding: `vib::Phase::accumulate` @ 0.
     /// @return Single binding placing this at the accumulate phase.
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::vib::Phase::accumulate), 0}};
+        return {ATV::make_binding(ATV::vib::Phase::accumulate, 0)};
     }
 
     /// @brief Store `+h` forces or write a central-difference Hessian row.

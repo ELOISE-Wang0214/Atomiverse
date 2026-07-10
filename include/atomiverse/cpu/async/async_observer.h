@@ -25,7 +25,7 @@ class AsyncObserver : public cpu::AsyncComponentBase {
   public:
     ComponentRole role() const override { return ComponentRole::Observer; }
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::end_of_step), 20}};
+        return {ATV::make_binding(ATV::md::Phase::end_of_step, 20)};
     }
 };
 

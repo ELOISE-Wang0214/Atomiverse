@@ -55,8 +55,8 @@ class VelocityVerlet : public ComponentBase {
     /// @brief Default bindings: initial_integrate (order 0) and final_integrate (order 0).
     /// @return Two DefaultBinding entries.
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::initial_integrate), 0},
-                {static_cast<int>(ATV::md::Phase::final_integrate), 0}};
+        return {ATV::make_binding(ATV::md::Phase::initial_integrate, 0),
+                ATV::make_binding(ATV::md::Phase::final_integrate, 0)};
     }
 
     /// @brief Per-step kernel launch (dispatches by phase).

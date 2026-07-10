@@ -50,7 +50,7 @@ class TrajectoryWriter : public cpu::ComponentBase {
     ComponentRole role() const override { return ComponentRole::Recorder; }
 
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::minimizer::Phase::end_of_step), 0}};
+        return {ATV::make_binding(ATV::minimizer::Phase::end_of_step, 0)};
     }
 
     void launch(const cpu::LaunchContext& ctx) override;

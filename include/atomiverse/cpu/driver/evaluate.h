@@ -27,7 +27,7 @@
 /// @code{.cpp}
 ///   // SCF energy + forces (default)
 ///   cpu::Evaluate eval;
-///   eval.add(cpu::scf::SCFEvaluator{cpu::scf::default_config(integrals)});
+///   eval.on(evaluate::Phase::evaluate).add(cpu::scf::SCFEvaluator{cpu::scf::default_config(integrals)});
 ///   eval.build();
 ///   eval.run(frame);
 ///
@@ -40,9 +40,9 @@
 /// @endcode
 #pragma once
 
-#include "atomiverse/cpu/driver/evaluate_driver.h"
 #include "atomiverse/cpu/component/pair_evaluator.h"
 #include "atomiverse/cpu/component/zero.h"
+#include "atomiverse/cpu/driver/evaluate_driver.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -55,10 +55,8 @@ namespace cpu {
 class Evaluate : public EvaluateDriver {
   public:
     Evaluate() {
-        this->on(ATV::evaluate::Phase::prepare)
-            .add(cpu::ZeroForces{}, -1000);
-        this->on(ATV::evaluate::Phase::prepare)
-            .add(cpu::ZeroEnergy{}, -999);
+        this->on(ATV::evaluate::Phase::prepare).add(cpu::ZeroForces{}, -1000);
+        this->on(ATV::evaluate::Phase::prepare).add(cpu::ZeroEnergy{}, -999);
     }
 
   protected:

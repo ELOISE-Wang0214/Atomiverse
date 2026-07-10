@@ -18,6 +18,7 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cuda/device/timer.h"
 #include "atomiverse/facade/plan.h"
+#include "atomiverse/facade/stage.h"
 
 namespace ATV {
 
@@ -143,6 +144,7 @@ class Driver {
                 throw std::runtime_error(
                     "Component '" + comp.name()
                     + "' has no default bindings. Use .on(phase).add().");
+            validate_binding_kinds_(comp.name(), bindings);
             for (auto& db : bindings)
                 pending_.push_back({db.phase, db.order, &comp});
         } else {
@@ -152,6 +154,7 @@ class Driver {
                 throw std::runtime_error(
                     "Component '" + ptr->name()
                     + "' has no default bindings. Use .on(phase).add().");
+            validate_binding_kinds_(ptr->name(), bindings);
             auto* raw = ptr.get();
             owned_components_.push_back(std::move(ptr));
             for (auto& db : bindings)
@@ -208,6 +211,39 @@ class Driver {
     Plan<Component> plan_;
     std::unique_ptr<BackendT> backend_;
     std::unique_ptr<Timer> timer_;
+
+  private:
+    /// @brief Registration-time gate: reject default bindings built from
+    ///        another workflow's Phase enum.
+    ///
+    /// The five Phase enums share overlapping numeric values (all start at
+    /// 0), so an unchecked cross-workflow binding lands on a syntactically
+    /// valid but semantically wrong slot (e.g. `evaluate::evaluate` == 1 ==
+    /// `md::post_integrate`) and runs silently in the wrong lifecycle
+    /// position. The `PhaseKind` discriminant carried by every binding (via
+    /// `ATV::make_binding`) makes the mismatch detectable exactly where the
+    /// user can fix it — the `add()` call.
+    ///
+    /// @param name Component name, for the error message.
+    /// @param bindings Bindings returned by the component's
+    ///        `default_bindings()`.
+    /// @throws std::runtime_error naming both workflows and pointing at
+    ///         `.on(phase).add()` when any binding's kind mismatches.
+    void
+    validate_binding_kinds_(const std::string& name,
+                            const std::vector<DefaultBinding>& bindings) const {
+        const PhaseKind expected = kind_of(PhaseEnum{});
+        for (const auto& db : bindings) {
+            if (db.kind != expected)
+                throw std::runtime_error(
+                    "Component '" + name
+                    + "' declares default bindings for the "
+                    + std::string(phase_kind_name(db.kind))
+                    + " workflow, but this driver executes "
+                    + std::string(phase_kind_name(expected))
+                    + " phases. Bind explicitly with .on(phase).add().");
+        }
+    }
 };
 
 } // namespace ATV

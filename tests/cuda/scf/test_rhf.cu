@@ -15,9 +15,9 @@
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/rhf_solve.h"
 #include "atomiverse/cuda/driver/evaluate.cuh"
+#include "atomiverse/cuda/driver/single_point.cuh"
 #include "atomiverse/cuda/scf/scf_evaluator.cuh"
 #include "atomiverse/cuda/scf/scf_solver.cuh"
-#include "atomiverse/cuda/driver/single_point.cuh"
 #include "atomiverse/facade/driver.h"
 #include "atomiverse/facade/stage.h"
 
@@ -273,7 +273,8 @@ TEST(RHF, CUDASinglePointEnergy) {
         (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
 
     cuda::Evaluate eval;
-    eval.add(cuda::scf::SCFEvaluator{integrals, tol, 100});
+    eval.on(ATV::evaluate::Phase::evaluate)
+        .add(cuda::scf::SCFEvaluator{integrals, tol, 100});
     eval.build();
     eval.run(frame);
 
@@ -300,12 +301,16 @@ TEST(RHF, CUDALevelShiftEnergyInvariant) {
         (sizeof(double) == sizeof(float)) ? double(1e-5) : double(1e-10);
 
     cuda::Evaluate eval0;
-    eval0.add(cuda::scf::SCFEvaluator{integrals0, tol, 100, /*level_shift=*/0.0});
+    eval0.on(ATV::evaluate::Phase::evaluate)
+        .add(
+            cuda::scf::SCFEvaluator{integrals0, tol, 100, /*level_shift=*/0.0});
     eval0.build();
     eval0.run(frame0);
 
     cuda::Evaluate eval5;
-    eval5.add(cuda::scf::SCFEvaluator{integrals5, tol, 100, /*level_shift=*/0.5});
+    eval5.on(ATV::evaluate::Phase::evaluate)
+        .add(
+            cuda::scf::SCFEvaluator{integrals5, tol, 100, /*level_shift=*/0.5});
     eval5.build();
     eval5.run(frame5);
 
@@ -332,7 +337,8 @@ TEST(RHF, CUDASinglePointHelper) {
 
     {
         cuda::Evaluate eval;
-        eval.add(cuda::scf::SCFEvaluator{integrals_d, tol, 100});
+        eval.on(ATV::evaluate::Phase::evaluate)
+            .add(cuda::scf::SCFEvaluator{integrals_d, tol, 100});
         eval.build();
         eval.run(frame_direct);
     }
@@ -360,7 +366,8 @@ TEST(RHF, CPUCUDAParity) {
 
     // CUDA via SCFEvaluator + Evaluate
     cuda::Evaluate eval;
-    eval.add(cuda::scf::SCFEvaluator{integrals, tol, 100});
+    eval.on(ATV::evaluate::Phase::evaluate)
+        .add(cuda::scf::SCFEvaluator{integrals, tol, 100});
     eval.build();
     eval.run(frame);
 
@@ -383,7 +390,8 @@ TEST(RHF, CUDAOnlyGPUIntegrals) {
 
     cuda::Evaluate eval;
     // n_prim=3, n_occ=1
-    eval.add(cuda::scf::SCFEvaluator{3, exp, coeff, 1, double(1e-5), 100});
+    eval.on(ATV::evaluate::Phase::evaluate)
+        .add(cuda::scf::SCFEvaluator{3, exp, coeff, 1, double(1e-5), 100});
     eval.build();
     eval.run(frame);
 
@@ -534,7 +542,8 @@ TEST(RHF, CUDAHeAtom) {
     auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);
 
     cuda::Evaluate eval;
-    eval.add(cuda::scf::SCFEvaluator{integrals, tol, 100});
+    eval.on(ATV::evaluate::Phase::evaluate)
+        .add(cuda::scf::SCFEvaluator{integrals, tol, 100});
     eval.build();
     eval.run(frame);
 
@@ -556,7 +565,8 @@ TEST(RHF, CUDALiH) {
     auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);
 
     cuda::Evaluate eval;
-    eval.add(cuda::scf::SCFEvaluator{integrals, tol, 100});
+    eval.on(ATV::evaluate::Phase::evaluate)
+        .add(cuda::scf::SCFEvaluator{integrals, tol, 100});
     eval.build();
     eval.run(frame);
 
@@ -578,7 +588,8 @@ TEST(RHF, CUDAHeHPlus) {
     auto cpu_result = cpu::scf::rhf_solve(integrals, tol, 100);
 
     cuda::Evaluate eval;
-    eval.add(cuda::scf::SCFEvaluator{integrals, tol, 100});
+    eval.on(ATV::evaluate::Phase::evaluate)
+        .add(cuda::scf::SCFEvaluator{integrals, tol, 100});
     eval.build();
     eval.run(frame);
 
@@ -601,9 +612,9 @@ TEST(RHF, SCFEvaluatorIsEnergyDensityOrbitalsOnly) {
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G, 0, true);
     cuda::scf::SCFEvaluator eval{integrals, double(1e-6), 100};
     EXPECT_EQ(eval.role(), ComponentRole::Evaluator);
-    EXPECT_EQ(eval.capabilities(),
-              Capability::Energy | Capability::DensityMatrix
-                  | Capability::Orbitals);
+    EXPECT_EQ(eval.capabilities(), Capability::Energy
+                                       | Capability::DensityMatrix
+                                       | Capability::Orbitals);
     EXPECT_FALSE(has_capability(eval.capabilities(), Capability::Force));
 }
 

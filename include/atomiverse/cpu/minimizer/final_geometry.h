@@ -46,7 +46,7 @@ class FinalGeometry : public cpu::ComponentBase {
     std::vector<DefaultBinding> default_bindings() const override {
         // Run late in end_of_step so that converged-step forces/energy have
         // already been written to the frame by earlier components.
-        return {{static_cast<int>(ATV::minimizer::Phase::end_of_step), 10}};
+        return {ATV::make_binding(ATV::minimizer::Phase::end_of_step, 10)};
     }
 
     void launch(const cpu::LaunchContext& ctx) override;

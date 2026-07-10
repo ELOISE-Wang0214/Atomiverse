@@ -119,6 +119,7 @@ atv_add_cpp_test(test_cpu_ewald_coul              cpu/kspace/test_ewald_coul.cpp
 if(ATV_BUILD_KSPACE)
     atv_add_cpp_test(test_cpu_pme_coul            cpu/kspace/test_pme_coul.cpp)
 endif()
+atv_add_cpp_test(test_cpu_am1_scaffold            cpu/semiempirical/test_am1_scaffold.cpp)
 
 # GPW module tests. The CP2K data-file readers validate against the actual
 # GTH_POTENTIALS / POTENTIAL files shipped with CP2K; point ATV_CP2K_DATA_DIR
@@ -231,6 +232,9 @@ atv_add_cpp_test(test_cpu_observer_msd            cpu/observer/test_msd.cpp)
 atv_add_cpp_test(test_cpu_observer_vacf           cpu/observer/test_vacf.cpp)
 atv_add_cpp_test(test_cpu_md_no_alloc              cpu/test_md_no_alloc.cpp)
 atv_add_cpp_test(test_cpu_driver_role_validation cpu/test_cpu_driver_role_validation.cpp)
+# Registration-time PhaseKind gate + five-driver plan-shape regression
+# (arch-refactor-01-bindings). Uses AM1Evaluator (unconditional, no RHF gate).
+atv_add_cpp_test(test_cpu_driver_binding_kind             cpu/test_driver_binding_kind.cpp)
 atv_add_cpp_test(test_cpu_evaluate_driver_capabilities    cpu/test_evaluate_driver_capabilities.cpp)
 atv_add_cpp_test(test_cpu_optimize_driver_early_stop      cpu/test_optimize_driver_early_stop.cpp)
 atv_add_cpp_test(test_cpu_dynamics_full_budget            cpu/test_dynamics_full_budget.cpp)
@@ -504,6 +508,9 @@ if(ATV_BUILD_CUDA)
             ATV_PW_UPF_PATH="${CMAKE_SOURCE_DIR}/benchmarks/pw/si/validation/reference/Si_lda_nc.upf")
     endif()
     atv_add_test(test_cuda_driver_role_validation cuda/test_cuda_driver_role_validation.cu)
+    # Registration-time PhaseKind gate, CUDA mirror
+    # (arch-refactor-01-bindings). add()-only — needs no CUDA device.
+    atv_add_test(test_cuda_driver_binding_kind cuda/test_driver_binding_kind.cu)
 
     # AsyncRecordBase / AsyncBridge contract guards. The subdir registers
     # benchmark-independent tests unconditionally and gates the

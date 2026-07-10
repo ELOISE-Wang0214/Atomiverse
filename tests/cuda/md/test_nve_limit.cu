@@ -73,9 +73,9 @@ TEST(CudaNVELimit, ContractRoleAndBindings) {
     auto bindings = nve.default_bindings();
     ASSERT_EQ(bindings.size(), 2u);
     EXPECT_EQ(bindings[0].phase,
-              static_cast<int>(ATV::md::Phase::initial_integrate));
+              ATV::make_binding(ATV::md::Phase::initial_integrate).phase);
     EXPECT_EQ(bindings[1].phase,
-              static_cast<int>(ATV::md::Phase::final_integrate));
+              ATV::make_binding(ATV::md::Phase::final_integrate).phase);
     EXPECT_EQ(bindings[0].order, 0);
     EXPECT_EQ(bindings[1].order, 0);
 }

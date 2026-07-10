@@ -19,15 +19,15 @@
 
 #include "atomiverse/core/binding.h"
 #include "atomiverse/core/mat3.h"
-#include "atomiverse/cpu/component/context.h"
-#include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/potentials/pair_lj_cut.h"
-#include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/comm/atom_migration.h"
 #include "atomiverse/cpu/comm/halo_exchange.h"
 #include "atomiverse/cpu/comm/reduce.h"
-#include "atomiverse/cpu/neighbor/neighbor_list.h"
+#include "atomiverse/cpu/component/context.h"
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/facade/stage.h"
 
 using namespace ATV;
@@ -59,11 +59,13 @@ cpu::Frame make_fcc_argon(int n_cells, double a) {
     return frame;
 }
 
-bool has_binding(const std::vector<DefaultBinding>& bindings, int phase,
-                 int order) {
+bool has_binding(const std::vector<DefaultBinding>& bindings,
+                 const DefaultBinding& expected) {
     if (bindings.size() != 1)
         return false;
-    return bindings[0].phase == phase && bindings[0].order == order;
+    return bindings[0].kind == expected.kind
+           && bindings[0].phase == expected.phase
+           && bindings[0].order == expected.order;
 }
 
 } // namespace
@@ -74,7 +76,7 @@ TEST(MpiStubBindings, HaloSendBindings) {
     cpu::comm::HaloSend hx{};
     auto b = hx.default_bindings();
     EXPECT_TRUE(
-        has_binding(b, static_cast<int>(ATV::md::Phase::pre_neighbor), 0))
+        has_binding(b, ATV::make_binding(ATV::md::Phase::pre_neighbor, 0)))
         << "HaloSend must bind pre_neighbor @ 0";
 }
 
@@ -82,7 +84,7 @@ TEST(MpiStubBindings, HaloRecvBindings) {
     cpu::comm::HaloRecv hx{};
     auto b = hx.default_bindings();
     EXPECT_TRUE(
-        has_binding(b, static_cast<int>(ATV::md::Phase::post_force), -1000))
+        has_binding(b, ATV::make_binding(ATV::md::Phase::post_force, -1000)))
         << "HaloRecv must bind post_force @ -1000";
 }
 
@@ -90,7 +92,7 @@ TEST(MpiStubBindings, MigrateBinding) {
     cpu::comm::Migrate am{};
     auto b = am.default_bindings();
     EXPECT_TRUE(
-        has_binding(b, static_cast<int>(ATV::md::Phase::pre_exchange), 0))
+        has_binding(b, ATV::make_binding(ATV::md::Phase::pre_exchange, 0)))
         << "Migrate must bind pre_exchange @ 0";
 }
 
@@ -98,7 +100,7 @@ TEST(MpiStubBindings, ReduceEnergyBinding) {
     cpu::md::mpi::Reduce re{};
     auto b = re.default_bindings();
     EXPECT_TRUE(
-        has_binding(b, static_cast<int>(ATV::md::Phase::end_of_step), -50))
+        has_binding(b, ATV::make_binding(ATV::md::Phase::end_of_step, -50)))
         << "Reduce must bind end_of_step @ -50";
 }
 
@@ -158,9 +160,7 @@ TEST(MpiStubBindings, ClassNamesAreDistinct) {
     const std::string n_rev = rev.name();
     EXPECT_NE(n_fwd, n_rev);
     EXPECT_NE(n_fwd.find("halo"), std::string::npos)
-        << "HaloSend::name() should contain 'halo': got '" << n_fwd
-        << "'";
+        << "HaloSend::name() should contain 'halo': got '" << n_fwd << "'";
     EXPECT_NE(n_rev.find("halo"), std::string::npos)
-        << "HaloRecv::name() should contain 'halo': got '" << n_rev
-        << "'";
+        << "HaloRecv::name() should contain 'halo': got '" << n_rev << "'";
 }

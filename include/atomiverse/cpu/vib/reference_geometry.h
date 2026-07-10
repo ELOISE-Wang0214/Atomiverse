@@ -36,7 +36,7 @@ class ReferenceGeometry : public cpu::ComponentBase {
     /// @brief Default binding: `vib::Phase::setup` @ 0.
     /// @return Single binding placing this at the setup phase.
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::vib::Phase::setup), 0}};
+        return {ATV::make_binding(ATV::vib::Phase::setup, 0)};
     }
 
     /// @brief Cache `R0` on the first pass; idempotent thereafter.

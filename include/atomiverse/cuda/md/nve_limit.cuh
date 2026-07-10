@@ -6,8 +6,8 @@
 #include <string>
 #include <vector>
 
-#include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/component/component.cuh"
+#include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
@@ -79,8 +79,8 @@ class NVELimit : public ComponentBase {
     ComponentRole role() const override { return ComponentRole::Integrator; }
 
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::initial_integrate), 0},
-                {static_cast<int>(ATV::md::Phase::final_integrate), 0}};
+        return {ATV::make_binding(ATV::md::Phase::initial_integrate, 0),
+                ATV::make_binding(ATV::md::Phase::final_integrate, 0)};
     }
 
     void launch(const LaunchContext& ctx) override;

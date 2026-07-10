@@ -61,7 +61,7 @@ class Virial : public cpu::ComponentBase {
     /// `role()==Observer && capabilities()&Stress`, not via `name()`.
     Capability capabilities() const override { return Capability::Stress; }
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::post_force), -50}};
+        return {ATV::make_binding(ATV::md::Phase::post_force, -50)};
     }
     void launch(const cpu::LaunchContext& ctx) override;
 };

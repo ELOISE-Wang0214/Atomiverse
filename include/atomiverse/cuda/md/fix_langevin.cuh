@@ -67,8 +67,7 @@ class FixLangevin : public ComponentBase {
     FixLangevin(double T_start, double T_stop, double damp, double dt,
                 std::uint32_t seed)
         : T_start_(T_start), T_stop_(T_stop < 0 ? T_start : T_stop),
-          damp_(damp), dt_(dt), seed_(seed),
-          T_live_(T_start) {}
+          damp_(damp), dt_(dt), seed_(seed), T_live_(T_start) {}
 
     /// @brief Set the temperature-ramp run span `[nfirst, nlast]`
     ///        (MD-step indices), mirroring LAMMPS
@@ -95,7 +94,7 @@ class FixLangevin : public ComponentBase {
     Capability capabilities() const override { return Capability::Force; }
 
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::post_force), +500}};
+        return {ATV::make_binding(ATV::md::Phase::post_force, +500)};
     }
 
     void launch(const LaunchContext& ctx) override;

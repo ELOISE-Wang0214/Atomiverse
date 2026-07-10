@@ -53,7 +53,7 @@ class FixCSVR : public cpu::ComponentBase {
     ComponentRole role() const override { return ComponentRole::Thermostat; }
     /// @brief Applied once per step, after the velocity-Verlet step.
     std::vector<DefaultBinding> default_bindings() const override {
-        return {{static_cast<int>(ATV::md::Phase::end_of_step), +100}};
+        return {ATV::make_binding(ATV::md::Phase::end_of_step, +100)};
     }
     void build(const cpu::BuildContext& ctx) override;
     void launch(const cpu::LaunchContext& ctx) override;
@@ -83,12 +83,12 @@ class FixCSVR : public cpu::ComponentBase {
     ///        returns `T_start_`), mirroring `NoseHoover::compute_temp_target`.
     double compute_temp_target(std::int64_t step) const;
 
-    double T_start_; ///< Ramp start / target temperature [K].
-    double T_stop_;  ///< Ramp end temperature [K].
-    double tau_;     ///< Coupling time constant [fs] (CP2K `TIMECON`).
-    double dt_;      ///< Timestep [fs].
-    std::uint32_t seed_;            ///< RNG seed (rank-count invariant).
-    int n_dof_global_ = 0;         ///< 3N − 3, cached at build().
+    double T_start_;       ///< Ramp start / target temperature [K].
+    double T_stop_;        ///< Ramp end temperature [K].
+    double tau_;           ///< Coupling time constant [fs] (CP2K `TIMECON`).
+    double dt_;            ///< Timestep [fs].
+    std::uint32_t seed_;   ///< RNG seed (rank-count invariant).
+    int n_dof_global_ = 0; ///< 3N − 3, cached at build().
     double thermostat_energy_ = 0; ///< Accumulated −Σ ΔK [eV] (Eq. 15).
 
     std::int64_t nfirst_ = 0; ///< First MD step of the run (ramp span).
