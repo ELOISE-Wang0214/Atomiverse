@@ -242,12 +242,16 @@ int main(int argc, char** argv) {
     if (rank == 0) {
         std::cerr << "[atomiverse] n_atoms     = " << frame.atoms.size()
                   << '\n';
-        std::cerr << "[atomiverse] n_bonds     = " << frame.bonds.size()
-                  << '\n';
-        std::cerr << "[atomiverse] n_angles    = " << frame.angles.size()
-                  << '\n';
-        std::cerr << "[atomiverse] n_dihedrals = " << frame.dihedrals.size()
-                  << '\n';
+        // Per-atom topology counts (the flat sub-structs are deleted).
+        long nb = 0, na = 0, nd = 0;
+        for (int i = 0; i < frame.atoms.nlocal; ++i) {
+            nb += frame.atoms.num_bond[i];
+            na += frame.atoms.num_angle[i];
+            nd += frame.atoms.num_dihedral[i];
+        }
+        std::cerr << "[atomiverse] n_bonds     = " << nb << '\n';
+        std::cerr << "[atomiverse] n_angles    = " << na << '\n';
+        std::cerr << "[atomiverse] n_dihedrals = " << nd << '\n';
         std::cerr << "[atomiverse] box (Å)     = " << frame.box(0, 0) << ' '
                   << frame.box(1, 1) << ' ' << frame.box(2, 2) << '\n';
     }
@@ -289,9 +293,8 @@ int main(int argc, char** argv) {
         sim.add(cpu::md::FixLangevin{T_tgt, /*T_stop=*/T_tgt, tau_lang, dt,
                                      /*seed=*/904297});
         sim.on(ATV::md::Phase::pre_force)
-            .add(cpu::md::mpi::HaloExchangeForward{lj_cut + 0.4}, -20);
-        sim.on(ATV::md::Phase::post_force)
-            .add(cpu::md::mpi::HaloExchangeReverse{}, -1000);
+            .add(cpu::comm::HaloSend{lj_cut + 0.4}, -20);
+        sim.on(ATV::md::Phase::post_force).add(cpu::comm::HaloRecv{}, -1000);
         sim.on(ATV::md::Phase::force)
             .add(cpu::md::NeighborList<>{lj_cut, /*skin=*/0.4, /*every=*/10},
                  -10)
@@ -300,7 +303,7 @@ int main(int argc, char** argv) {
             .add(cpu::BondHarmonic{{bond_K_ev}, {bond_r0}})
             .add(cpu::AngleHarmonic{{angle_K_ev}, {angle_theta0}})
             .add(cpu::DihedralMultiHarmonic{{dihedral_ev}});
-        sim.add(cpu::md::VirialStress{});
+        sim.add(cpu::md::Virial{});
 
         ThermoPrinter thermo{100, rank == 0 ? log_stream : std::cout,
                              n_atoms_global, total_mass_amu};
@@ -378,9 +381,8 @@ int main(int argc, char** argv) {
         // LAMMPS `fix momentum 1 linear 1 1 1` equivalent.
         sim.add(cpu::md::ZeroLinearMomentum{1});
         sim.on(ATV::md::Phase::pre_force)
-            .add(cpu::md::mpi::HaloExchangeForward{lj_cut + 0.4}, -20);
-        sim.on(ATV::md::Phase::post_force)
-            .add(cpu::md::mpi::HaloExchangeReverse{}, -1000);
+            .add(cpu::comm::HaloSend{lj_cut + 0.4}, -20);
+        sim.on(ATV::md::Phase::post_force).add(cpu::comm::HaloRecv{}, -1000);
         sim.on(ATV::md::Phase::force)
             .add(cpu::md::NeighborList<>{lj_cut, /*skin=*/0.4, /*every=*/10},
                  -10)
@@ -389,7 +391,7 @@ int main(int argc, char** argv) {
             .add(cpu::BondHarmonic{{bond_K_ev}, {bond_r0}})
             .add(cpu::AngleHarmonic{{angle_K_ev}, {angle_theta0}})
             .add(cpu::DihedralMultiHarmonic{{dihedral_ev}});
-        sim.add(cpu::md::VirialStress{});
+        sim.add(cpu::md::Virial{});
 
         ThermoPrinter thermo{100, rank == 0 ? log_stream : std::cout,
                              n_atoms_global, total_mass_amu};

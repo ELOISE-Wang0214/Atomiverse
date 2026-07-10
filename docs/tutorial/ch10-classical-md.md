@@ -244,7 +244,7 @@ sim.on(md::Phase::force).add(
 
 Each constructor takes a `std::vector` indexed by *bond type* (or angle
 type, or dihedral type) — the type indices are what you store in
-`frame.bonds.type`, `frame.angles.type`, etc. when you assemble the
+`frame.atoms (per-atom bonded topology).type`, `frame.atoms (per-atom angle topology).type`, etc. when you assemble the
 topology.
 
 A subtle detail that is easy to miss: by default, `PairLJCut` does *not* know

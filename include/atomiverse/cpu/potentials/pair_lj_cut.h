@@ -23,7 +23,7 @@ namespace cpu {
 /// Optional special-bonds exclusions (LAMMPS convention): pairs that are
 /// 1-2 (bonded), 1-3 (across an angle vertex) or 1-4 (across a dihedral)
 /// are skipped during the pair loop. Enable via `set_special_bonds()`.
-/// Lists are derived from `frame.bonds`/`frame.angles`/`frame.dihedrals`
+/// Lists are derived from `frame.atoms (per-atom bonded topology)`/`frame.atoms (per-atom angle topology)`/`frame.atoms (per-atom dihedral topology)`
 /// at `build()` time and consulted with a per-atom binary search at
 /// `compute()` time. Default: no exclusions.
 ///

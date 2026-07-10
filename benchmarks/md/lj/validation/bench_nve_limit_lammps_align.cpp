@@ -210,11 +210,12 @@ BENCH_CASE(NveLimitLammpsAlign_LargeXmaxReducesToVelocityVerlet) {
             f.atoms.type[i] = 0;
             f.atoms.vx[i] = f.atoms.vy[i] = f.atoms.vz[i] = 0.0;
         }
-        f.bonds.atomi = xt::zeros<int>({1});
-        f.bonds.atomj = xt::zeros<int>({1});
-        f.bonds.type = xt::zeros<int>({1});
-        f.bonds.atomi[0] = 0;
-        f.bonds.atomj[0] = 1;
+        // Per-atom topology: real bond forces now flow (the old flat fill
+        // wrote dead storage and left this case with zero bond force).
+        f.atoms.map_clear();
+        f.atoms.map_set(0, f.atoms.nlocal);
+        f.atoms.add_bond(0, 1, 0);
+        f.atoms.build_special_list();
         f.box = Mat3::cubic(1000.0);
         return f;
     };
@@ -270,11 +271,12 @@ BENCH_CASE(NveLimitLammpsAlign_VelocityVerletConservesEnergy) {
         frame.atoms.type[i] = 0;
         frame.atoms.vx[i] = frame.atoms.vy[i] = frame.atoms.vz[i] = 0.0;
     }
-    frame.bonds.atomi = xt::zeros<int>({1});
-    frame.bonds.atomj = xt::zeros<int>({1});
-    frame.bonds.type = xt::zeros<int>({1});
-    frame.bonds.atomi[0] = 0;
-    frame.bonds.atomj[0] = 1;
+    // Per-atom topology: real bond forces now flow (the old flat fill
+    // wrote dead storage and left this case with zero bond force).
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, frame.atoms.nlocal);
+    frame.atoms.add_bond(0, 1, 0);
+    frame.atoms.build_special_list();
     frame.box = Mat3::cubic(1000.0);
 
     // dt = 0.1 fs keeps the velocity-Verlet symplectic energy error
@@ -321,11 +323,12 @@ BENCH_CASE(NveLimitLammpsAlign_FarFromEquilibriumDisplacementBounded) {
         frame.atoms.type[i] = 0;
         frame.atoms.vx[i] = frame.atoms.vy[i] = frame.atoms.vz[i] = 0.0;
     }
-    frame.bonds.atomi = xt::zeros<int>({1});
-    frame.bonds.atomj = xt::zeros<int>({1});
-    frame.bonds.type = xt::zeros<int>({1});
-    frame.bonds.atomi[0] = 0;
-    frame.bonds.atomj[0] = 1;
+    // Per-atom topology: real bond forces now flow (the old flat fill
+    // wrote dead storage and left this case with zero bond force).
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, frame.atoms.nlocal);
+    frame.atoms.add_bond(0, 1, 0);
+    frame.atoms.build_special_list();
     frame.box = Mat3::cubic(1000.0);
 
     const double dt = 0.5;

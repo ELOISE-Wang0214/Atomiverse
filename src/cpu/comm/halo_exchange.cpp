@@ -219,7 +219,7 @@ double compute_bonded_extension_local(const Frame& frame,
 double HaloSend::compute_bonded_extension(const cpu::Frame& frame) {
     // Public, no-DD-provided variant: assumes `frame.atoms.tag(i) == i`
     // (the default layout produced by `Frame::Atoms`) so that tag values
-    // in `frame.bonds/angles/dihedrals` can be used as direct row indices
+    // in `frame.atoms per-atom topology` can be used as direct row indices
     // into `frame.atoms.x/y/z`. This holds for single-rank callers, for
     // pre-partition callers, and for all current unit tests. Rank-local
     // multi-rank scans must go through `compute_bonded_extension_local`

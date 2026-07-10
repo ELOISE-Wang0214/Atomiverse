@@ -5,12 +5,15 @@
 /// etc.) avoids D2H transfers during the simulation loop.
 /// CUDA-free header (contains only pointer declarations).
 ///
-/// Data is organized into sub-structs (atoms, bonds, angles, dihedrals)
-/// matching the molcrafts naming convention (molpy Block model). The field
-/// set mirrors `cpu::Frame` and `torch::Frame` exactly -- the three
-/// execution frames differ only in device representation (xtensor /
-/// raw device pointers / at::Tensor), never in which physical quantities
-/// they hold. Per the CLAUDE.md Frame purity rule the frame carries only
+/// The SEMANTIC field set mirrors `cpu::Frame` / `torch::Frame` (same
+/// physical quantities), but the topology REPRESENTATION is deliberately
+/// dual on this backend: the single-GPU path uses the flat
+/// `BondList/AngleList/DihedralList` device arrays (transfer-friendly;
+/// the CUDA kernels have not been ported to per-atom topology, so
+/// `cpu::to_cuda` re-flattens from the CPU per-atom layout on every
+/// H2D transfer), while the multi-GPU domain-decomposition path carries
+/// the per-atom SoA (global-tag partners) needed for migration. CPU is
+/// per-atom only. Per the CLAUDE.md Frame purity rule the frame carries only
 /// fundamental physical quantities: method-specific scratch (the SCF
 /// workspace, the neighbor pair list) is owned by the components that
 /// compute it, not by the frame.
@@ -69,18 +72,18 @@ struct Frame {
 
     /// @brief Per-atom data block matching molpy atoms namespace.
     struct Atoms {
-        real_t* x = nullptr;     ///< x positions [Angstrom, device].
-        real_t* y = nullptr;     ///< y positions [Angstrom, device].
-        real_t* z = nullptr;     ///< z positions [Angstrom, device].
-        real_t* vx = nullptr;    ///< x velocities [Angstrom/fs, device].
-        real_t* vy = nullptr;    ///< y velocities [Angstrom/fs, device].
-        real_t* vz = nullptr;    ///< z velocities [Angstrom/fs, device].
-        real_t* fx = nullptr;    ///< x forces [eV/Angstrom, device].
-        real_t* fy = nullptr;    ///< y forces [eV/Angstrom, device].
-        real_t* fz = nullptr;    ///< z forces [eV/Angstrom, device].
-        real_t* mass = nullptr;  ///< Masses [amu, device].
+        real_t* x = nullptr;      ///< x positions [Angstrom, device].
+        real_t* y = nullptr;      ///< y positions [Angstrom, device].
+        real_t* z = nullptr;      ///< z positions [Angstrom, device].
+        real_t* vx = nullptr;     ///< x velocities [Angstrom/fs, device].
+        real_t* vy = nullptr;     ///< y velocities [Angstrom/fs, device].
+        real_t* vz = nullptr;     ///< z velocities [Angstrom/fs, device].
+        real_t* fx = nullptr;     ///< x forces [eV/Angstrom, device].
+        real_t* fy = nullptr;     ///< y forces [eV/Angstrom, device].
+        real_t* fz = nullptr;     ///< z forces [eV/Angstrom, device].
+        real_t* mass = nullptr;   ///< Masses [amu, device].
         real_t* charge = nullptr; ///< Partial charges [e, device].
-        int* type = nullptr;     ///< Atom types [device].
+        int* type = nullptr;      ///< Atom types [device].
 
         /// @brief Global atom identity [device], persistent across MPI
         /// migration and restart. Mirrors `cpu::Frame::Atoms::tag`.
@@ -107,26 +110,36 @@ struct Frame {
         // (`bond_per_atom` / `angle_per_atom` / `dihedral_per_atom` /
         // `maxspecial`), captured below at materialize time; arrays are sized
         // to `capacity` rows (ghost headroom).
-        int* num_bond = nullptr;            ///< [capacity] owner-filtered bond count.
-        std::int64_t* bond_atom = nullptr;  ///< [capacity*bond_per_atom] partner GLOBAL tags.
-        int* bond_type = nullptr;           ///< [capacity*bond_per_atom] bond type ids.
-        int* num_angle = nullptr;           ///< [capacity] owner(center)-filtered angle count.
-        std::int64_t* angle_atom = nullptr; ///< [capacity*2*angle_per_atom] non-center tags.
-        int* angle_type = nullptr;          ///< [capacity*angle_per_atom] angle type ids.
-        int* num_dihedral = nullptr;        ///< [capacity] owner(2nd-atom)-filtered count.
-        std::int64_t* dihedral_atom = nullptr; ///< [capacity*3*dihedral_per_atom] non-owner tags.
-        int* dihedral_type = nullptr;       ///< [capacity*dihedral_per_atom] dihedral type ids.
-        int* nspecial = nullptr;            ///< [capacity*3] special-bond tier prefix counts.
-        std::int64_t* special = nullptr;    ///< [capacity*maxspecial] special-bond partner tags.
+        int* num_bond = nullptr; ///< [capacity] owner-filtered bond count.
+        std::int64_t* bond_atom =
+            nullptr; ///< [capacity*bond_per_atom] partner GLOBAL tags.
+        int* bond_type = nullptr; ///< [capacity*bond_per_atom] bond type ids.
+        int* num_angle =
+            nullptr; ///< [capacity] owner(center)-filtered angle count.
+        std::int64_t* angle_atom =
+            nullptr; ///< [capacity*2*angle_per_atom] non-center tags.
+        int* angle_type =
+            nullptr; ///< [capacity*angle_per_atom] angle type ids.
+        int* num_dihedral =
+            nullptr; ///< [capacity] owner(2nd-atom)-filtered count.
+        std::int64_t* dihedral_atom =
+            nullptr; ///< [capacity*3*dihedral_per_atom] non-owner tags.
+        int* dihedral_type =
+            nullptr; ///< [capacity*dihedral_per_atom] dihedral type ids.
+        int* nspecial =
+            nullptr; ///< [capacity*3] special-bond tier prefix counts.
+        std::int64_t* special =
+            nullptr; ///< [capacity*maxspecial] special-bond partner tags.
 
         // Host-cached runtime strides of the wide arrays above (copied from
         // the source cpu::Atom at materialize time; 0 until then). Kernel
         // launches and D2D/peer copies must use these, never a compile-time
         // constant.
-        int bond_per_atom = 0;     ///< Columns of bond_atom / bond_type.
-        int angle_per_atom = 0;    ///< angle_atom has 2x this; angle_type this.
-        int dihedral_per_atom = 0; ///< dihedral_atom has 3x this; dihedral_type this.
-        int maxspecial = 0;        ///< Columns of special.
+        int bond_per_atom = 0;  ///< Columns of bond_atom / bond_type.
+        int angle_per_atom = 0; ///< angle_atom has 2x this; angle_type this.
+        int dihedral_per_atom =
+            0;              ///< dihedral_atom has 3x this; dihedral_type this.
+        int maxspecial = 0; ///< Columns of special.
     } atoms;
 
     // -- System scalars (device-resident SystemScalars) --
@@ -145,8 +158,8 @@ struct Frame {
 
     // -- Topology sub-structures --
 
-    BondList bonds;     ///< Bond topology (transferred by cpu::to_cuda).
-    AngleList angles;   ///< Angle topology (transferred by cpu::to_cuda).
+    BondList bonds;   ///< Bond topology (transferred by cpu::to_cuda).
+    AngleList angles; ///< Angle topology (transferred by cpu::to_cuda).
     DihedralList
         dihedrals; ///< Dihedral topology (transferred by cpu::to_cuda).
 

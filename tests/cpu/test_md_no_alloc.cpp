@@ -28,12 +28,12 @@
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/md/init.h"
-#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/nose_hoover.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/potentials/bond_harmonic.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
 
 #if defined(__GLIBC__) && defined(__linux__)
 #define ATV_TEST_HAVE_MALLOC_HOOK 1
@@ -103,14 +103,13 @@ ATV::cpu::Frame make_small_chain(int n_carbons, double box_len) {
         frame.atoms.mass[i] = 14.027;
         frame.atoms.type[i] = 0;
     }
-    const int n_b = n_carbons - 1;
-    frame.bonds.atomi = xt::zeros<int>({n_b});
-    frame.bonds.atomj = xt::zeros<int>({n_b});
-    frame.bonds.type = xt::zeros<int>({n_b});
-    for (int k = 0; k < n_b; ++k) {
-        frame.bonds.atomi[k] = k;
-        frame.bonds.atomj[k] = k + 1;
-    }
+    // Per-atom topology (LAMMPS Atom layout): populate the tag map first
+    // so add_bond can resolve the owner row by global tag.
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, frame.atoms.nlocal);
+    for (int k = 0; k < n_carbons - 1; ++k)
+        frame.atoms.add_bond(k, k + 1, 0);
+    frame.atoms.build_special_list();
     frame.box = Mat3::cubic(box_len);
     return frame;
 }

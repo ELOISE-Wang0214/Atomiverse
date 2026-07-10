@@ -17,6 +17,13 @@
 /// @see cpu::materialize / cpu::write_back for the host-side bridge
 /// @see cuda::Frame for the CUDA execution frame
 /// @see molrs.hpp for the molrs CXX FFI bridge
+//
+// Contract inheritance: cuda::write_back == cuda::to_cpu into a transient
+// host frame + cpu::write_back, so it inherits the cpu round-trip field
+// contract (see cpu/frame/materialize.h). to_cpu's returned field set
+// (x/v/f/tag/charge/image/scalars/box) covers every contract-written
+// field; the transient host frame's type/mass are zero-valued, but the
+// contract does not write those back, so no garbage reaches molrs.
 #pragma once
 
 #include "atomiverse/cuda/frame/frame.cuh"

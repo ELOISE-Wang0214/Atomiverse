@@ -30,17 +30,21 @@ namespace debug_amorphous {
 inline ATV::cpu::Frame load_lammps_data(const std::string& path,
                                         double mass_amu = 14.02) {
     std::ifstream in(path);
-    if (!in) throw std::runtime_error("cannot open " + path);
+    if (!in)
+        throw std::runtime_error("cannot open " + path);
 
     auto next_line = [&](std::string& s) -> bool {
         while (std::getline(in, s)) {
             // Strip a trailing comment "# ..." but keep numeric content.
             const auto hash = s.find('#');
-            if (hash != std::string::npos) s.erase(hash);
+            if (hash != std::string::npos)
+                s.erase(hash);
             // Trim trailing whitespace.
-            while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back())))
+            while (!s.empty()
+                   && std::isspace(static_cast<unsigned char>(s.back())))
                 s.pop_back();
-            if (!s.empty()) return true;
+            if (!s.empty())
+                return true;
         }
         return false;
     };
@@ -55,22 +59,31 @@ inline ATV::cpu::Frame load_lammps_data(const std::string& path,
         // (after any leading whitespace). Tokenize and check the first one.
         std::istringstream is(s);
         std::string t;
-        if (!(is >> t)) return false;
+        if (!(is >> t))
+            return false;
         return std::isupper(static_cast<unsigned char>(t[0])) != 0;
     };
 
     std::string section;
     while (next_line(line)) {
-        if (starts_with_section(line)) { section = line; break; }
+        if (starts_with_section(line)) {
+            section = line;
+            break;
+        }
         std::istringstream is(line);
         long n;
         std::string a, b;
         is >> n >> a;
-        if (a == "atoms")     n_atoms = static_cast<int>(n);
-        else if (a == "bonds") n_bonds = static_cast<int>(n);
-        else if (a == "angles") n_angles = static_cast<int>(n);
-        else if (a == "dihedrals") n_dihedrals = static_cast<int>(n);
-        else if (a == "atom" || a == "bond" || a == "angle" || a == "dihedral") {
+        if (a == "atoms")
+            n_atoms = static_cast<int>(n);
+        else if (a == "bonds")
+            n_bonds = static_cast<int>(n);
+        else if (a == "angles")
+            n_angles = static_cast<int>(n);
+        else if (a == "dihedrals")
+            n_dihedrals = static_cast<int>(n);
+        else if (a == "atom" || a == "bond" || a == "angle"
+                 || a == "dihedral") {
             // "1 atom types" — ignored, we trust input file.
         } else {
             // Try box bounds: "<lo> <hi> xlo xhi" / "ylo yhi" / "zlo zhi"
@@ -78,9 +91,16 @@ inline ATV::cpu::Frame load_lammps_data(const std::string& path,
             double lo, hi;
             std::string tag1, tag2;
             if ((is2 >> lo >> hi >> tag1 >> tag2) && tag1.size() == 3) {
-                if      (tag1 == "xlo") { xlo = lo; xhi = hi; }
-                else if (tag1 == "ylo") { ylo = lo; yhi = hi; }
-                else if (tag1 == "zlo") { zlo = lo; zhi = hi; }
+                if (tag1 == "xlo") {
+                    xlo = lo;
+                    xhi = hi;
+                } else if (tag1 == "ylo") {
+                    ylo = lo;
+                    yhi = hi;
+                } else if (tag1 == "zlo") {
+                    zlo = lo;
+                    zhi = hi;
+                }
             }
         }
     }
@@ -102,39 +122,31 @@ inline ATV::cpu::Frame load_lammps_data(const std::string& path,
             s.pop_back();
     };
 
-    // Allocate topology arrays up front.
-    if (n_bonds > 0) {
-        frame.bonds.atomi = xt::zeros<int>({n_bonds});
-        frame.bonds.atomj = xt::zeros<int>({n_bonds});
-        frame.bonds.type  = xt::zeros<int>({n_bonds});
-    }
-    if (n_angles > 0) {
-        frame.angles.atomi = xt::zeros<int>({n_angles});
-        frame.angles.atomj = xt::zeros<int>({n_angles});
-        frame.angles.atomk = xt::zeros<int>({n_angles});
-        frame.angles.type  = xt::zeros<int>({n_angles});
-    }
-    if (n_dihedrals > 0) {
-        frame.dihedrals.atomi = xt::zeros<int>({n_dihedrals});
-        frame.dihedrals.atomj = xt::zeros<int>({n_dihedrals});
-        frame.dihedrals.atomk = xt::zeros<int>({n_dihedrals});
-        frame.dihedrals.atoml = xt::zeros<int>({n_dihedrals});
-        frame.dihedrals.type  = xt::zeros<int>({n_dihedrals});
-    }
+    // Per-atom topology (LAMMPS Atom layout): the tag map must be
+    // populated before the section handlers call add_bond/add_angle/
+    // add_dihedral (owner rows are resolved by global tag; the file's
+    // 1-based ids map to identity tags 0..n_atoms-1).
+    frame.atoms.map_clear();
+    frame.atoms.map_set(0, n_atoms);
 
     auto read_section = [&](const std::string& label, auto handler) {
         // Caller has already read the section header line into `section`.
-        if (section.find(label) == std::string::npos) return false;
+        if (section.find(label) == std::string::npos)
+            return false;
         while (next_line(line)) {
             trim_section(line);
-            if (starts_with_section(line)) { section = line; return true; }
+            if (starts_with_section(line)) {
+                section = line;
+                return true;
+            }
             handler(line);
         }
         section.clear();
         return true;
     };
 
-    int n_atoms_read = 0, n_bonds_read = 0, n_angles_read = 0, n_dihedrals_read = 0;
+    int n_atoms_read = 0, n_bonds_read = 0, n_angles_read = 0,
+        n_dihedrals_read = 0;
 
     auto consume_section = [&]() {
         if (section.find("Atoms") != std::string::npos) {
@@ -152,7 +164,7 @@ inline ATV::cpu::Frame load_lammps_data(const std::string& path,
                 frame.atoms.y[row] = y;
                 frame.atoms.z[row] = z;
                 frame.atoms.tag[row] = static_cast<std::int64_t>(row);
-                frame.atoms.type[row] = type - 1;  // LAMMPS 1-based → 0-based
+                frame.atoms.type[row] = type - 1; // LAMMPS 1-based → 0-based
                 ++n_atoms_read;
             });
         } else if (section.find("Masses") != std::string::npos) {
@@ -164,7 +176,8 @@ inline ATV::cpu::Frame load_lammps_data(const std::string& path,
                     // Apply the per-type mass to every atom of that type.
                     const int t0 = t - 1;
                     for (int i = 0; i < n_atoms; ++i)
-                        if (frame.atoms.type[i] == t0) frame.atoms.mass[i] = m;
+                        if (frame.atoms.type[i] == t0)
+                            frame.atoms.mass[i] = m;
                 }
             });
         } else if (section.find("Bonds") != std::string::npos) {
@@ -175,10 +188,9 @@ inline ATV::cpu::Frame load_lammps_data(const std::string& path,
                 long ai, aj;
                 if (!(is >> bid >> btype >> ai >> aj))
                     throw std::runtime_error("Bonds parse: " + l);
-                const int b = n_bonds_read++;
-                frame.bonds.atomi[b] = static_cast<int>(ai) - 1;
-                frame.bonds.atomj[b] = static_cast<int>(aj) - 1;
-                frame.bonds.type[b]  = btype - 1;
+                ++n_bonds_read;
+                frame.atoms.add_bond(static_cast<int>(ai) - 1,
+                                     static_cast<int>(aj) - 1, btype - 1);
             });
         } else if (section.find("Angles") != std::string::npos) {
             read_section("Angles", [&](const std::string& l) {
@@ -188,11 +200,10 @@ inline ATV::cpu::Frame load_lammps_data(const std::string& path,
                 long ai, aj, ak;
                 if (!(is >> aid >> atype >> ai >> aj >> ak))
                     throw std::runtime_error("Angles parse: " + l);
-                const int a = n_angles_read++;
-                frame.angles.atomi[a] = static_cast<int>(ai) - 1;
-                frame.angles.atomj[a] = static_cast<int>(aj) - 1;
-                frame.angles.atomk[a] = static_cast<int>(ak) - 1;
-                frame.angles.type[a]  = atype - 1;
+                ++n_angles_read;
+                frame.atoms.add_angle(static_cast<int>(ai) - 1,
+                                      static_cast<int>(aj) - 1,
+                                      static_cast<int>(ak) - 1, atype - 1);
             });
         } else if (section.find("Dihedrals") != std::string::npos) {
             read_section("Dihedrals", [&](const std::string& l) {
@@ -202,38 +213,40 @@ inline ATV::cpu::Frame load_lammps_data(const std::string& path,
                 long ai, aj, ak, al;
                 if (!(is >> did >> dtype >> ai >> aj >> ak >> al))
                     throw std::runtime_error("Dihedrals parse: " + l);
-                const int d = n_dihedrals_read++;
-                frame.dihedrals.atomi[d] = static_cast<int>(ai) - 1;
-                frame.dihedrals.atomj[d] = static_cast<int>(aj) - 1;
-                frame.dihedrals.atomk[d] = static_cast<int>(ak) - 1;
-                frame.dihedrals.atoml[d] = static_cast<int>(al) - 1;
-                frame.dihedrals.type[d]  = dtype - 1;
+                ++n_dihedrals_read;
+                frame.atoms.add_dihedral(static_cast<int>(ai) - 1,
+                                         static_cast<int>(aj) - 1,
+                                         static_cast<int>(ak) - 1,
+                                         static_cast<int>(al) - 1, dtype - 1);
             });
         } else {
             // Unrecognized section — drain it until next section or EOF.
             while (next_line(line)) {
                 trim_section(line);
-                if (starts_with_section(line)) { section = line; return; }
+                if (starts_with_section(line)) {
+                    section = line;
+                    return;
+                }
             }
             section.clear();
         }
     };
 
-    while (!section.empty()) consume_section();
+    while (!section.empty())
+        consume_section();
 
-    if (n_atoms_read != n_atoms ||
-        n_bonds_read != n_bonds ||
-        n_angles_read != n_angles ||
-        n_dihedrals_read != n_dihedrals) {
+    if (n_atoms_read != n_atoms || n_bonds_read != n_bonds
+        || n_angles_read != n_angles || n_dihedrals_read != n_dihedrals) {
         std::ostringstream os;
         os << "LAMMPS data: count mismatch  "
-           << "atoms " << n_atoms_read << "/" << n_atoms
-           << "  bonds " << n_bonds_read << "/" << n_bonds
-           << "  angles " << n_angles_read << "/" << n_angles
-           << "  dihedrals " << n_dihedrals_read << "/" << n_dihedrals;
+           << "atoms " << n_atoms_read << "/" << n_atoms << "  bonds "
+           << n_bonds_read << "/" << n_bonds << "  angles " << n_angles_read
+           << "/" << n_angles << "  dihedrals " << n_dihedrals_read << "/"
+           << n_dihedrals;
         throw std::runtime_error(os.str());
     }
 
+    frame.atoms.build_special_list();
     return frame;
 }
 

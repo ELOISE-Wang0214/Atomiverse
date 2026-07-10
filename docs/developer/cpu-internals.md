@@ -298,7 +298,7 @@ runtime context.
 
 This rule has bitten developers who tried to lift, e.g., a per-atom
 bond-exclusion list onto the Frame. The right place is on the LJ
-component (`excluded_by_tag_`, rebuilt from `frame.bonds` at `build()`
+component (`excluded_by_tag_`, rebuilt from `frame.atoms (per-atom bonded topology)` at `build()`
 time), not on the Frame. The Frame is the user-visible truth; derived
 maps are implementation details that can change with the algorithm.
 

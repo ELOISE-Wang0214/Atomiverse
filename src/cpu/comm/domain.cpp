@@ -334,7 +334,6 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
         }
     }
 
-
     // Release the global-N backing store. Each rank loaded the whole file
     // (load_lammps_data is called per-rank) but owns only `n_local`; the
     // arrays were left at global-N capacity "as slack for ghosts", which made
@@ -367,7 +366,7 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
         std::unordered_map<TagInt, int>{}.swap(tag_to_local);
     }
 
-    // No topology filter at partition. Each rank keeps the FULL frame.bonds
+    // No topology filter at partition. Each rank keeps the FULL frame.atoms (per-atom bonded topology)
     // / angles / dihedrals so that:
     //   * bonded force kernels can iterate all tuples and filter by their
     //     owner-tag (LAMMPS-style ownership rule) at force-eval time;

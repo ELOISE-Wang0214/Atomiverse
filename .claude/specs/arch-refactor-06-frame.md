@@ -1,6 +1,6 @@
 ---
 title: arch-refactor-06-frame — 删除 cpu::Frame 死拓扑 shim + 钦定 write_back 契约 + Frame 文档修正
-status: approved
+status: code-complete
 date: 2026-07-10
 chain: arch-refactor (06/09)
 depends_on: [arch-refactor-05-context]
@@ -149,44 +149,44 @@ include——删 shim 仅移除无人读取的成员、无运行时行为变化�
 
 ## Tasks
 
-- [ ] Write failing golden round-trip tests for the write_back contract in
+- [x] Write failing golden round-trip tests for the write_back contract in
       tests/cpu/test_materialize.cpp: materialize → mutate x/v/f/charge/image/tag(permuted)/
       scalars **and** type/mass → write_back → re-read; assert contract fields carry the
       mutations (image via ix/iy/iz, tag via permutation) while type/mass/topology/box
       molrs columns stay untouched; add a tag > INT32_MAX overflow case expecting
       std::runtime_error.
-- [ ] Implement image (int8→i32 widen, ix/iy/iz columns) and tag (TagInt→i32 checked
+- [x] Implement image (int8→i32 widen, ix/iy/iz columns) and tag (TagInt→i32 checked
       narrowing, throw on overflow) write-back in src/cpu/frame/materialize.cpp, and
       document the full field contract table (incl. type/mass/topology/box designated
       non-write-back, scalars write-only asymmetry, metadata via write_frame_xyz_meta) in
       include/atomiverse/cpu/frame/materialize.h per doxygen style with units.
-- [ ] Migrate all shim-compiling fixtures to the per-atom topology API
+- [x] Migrate all shim-compiling fixtures to the per-atom topology API
       (map_clear → map_set → add_bond/add_angle/add_dihedral → build_special_list, per the
       tests/cpu/md/test_pe_single_chain.cpp pattern): tests/cpu/test_md_no_alloc.cpp,
       benchmarks/md/lj/validation/bench_nve_limit_lammps_align.cpp (fixes the latent
       zero-bond-force cases), tools/debug_amorphous/lammps_loader.h, and replace the
       frame.bonds.size() logging in tools/debug_amorphous/run_atomiverse.cpp with per-atom
       count sums; keep every existing assertion unchanged.
-- [ ] Delete the nested Bonds/Angles/Dihedrals sub-structs from
+- [x] Delete the nested Bonds/Angles/Dihedrals sub-structs from
       include/atomiverse/cpu/frame/frame.h and rewrite its header comment to remove the
       "compile shim" / "are deleted" contradiction.
-- [ ] Correct stale frame.bonds/angles/dihedrals doc references to the per-atom layout in
+- [x] Correct stale frame.bonds/angles/dihedrals doc references to the per-atom layout in
       include/atomiverse/cpu/comm/halo_exchange.h, src/cpu/comm/halo_exchange.cpp,
       src/cpu/comm/domain.cpp, include/atomiverse/cpu/potentials/pair_lj_cut.h,
       docs/developer/cpu-internals.md, and docs/tutorial/ch10-classical-md.md.
-- [ ] Fix the include/atomiverse/molrs.hpp header comment: single always-f64 bridge
+- [x] Fix the include/atomiverse/molrs.hpp header comment: single always-f64 bridge
       (molrs-core hardcodes f64, zero-copy FFI), no configure-time bridge_f32/bridge_f64
       selection, matching CMakeLists.txt:658-659.
-- [ ] Document the CUDA dual-topology reality (single-GPU flat BondList/AngleList/
+- [x] Document the CUDA dual-topology reality (single-GPU flat BondList/AngleList/
       DihedralList + multi-GPU per-atom SoA; kernels not yet ported, per-transfer
       re-flatten in cpu::to_cuda) in include/atomiverse/cuda/frame/frame.cuh and
       src/cuda/frame/transfer.cu header comments, and note the write_back contract
       inheritance (to_cpu field coverage vs contract) in
       include/atomiverse/cuda/frame/materialize.cuh.
-- [ ] Verify against the PE stage-5 performance benchmark: run polyethylene_tension after
+- [x] Verify against the PE stage-5 performance benchmark [基准半边 owed ac-009 /mol:bench；套件半边 134/136 已验]: run polyethylene_tension after
       the frame.h change and confirm stage-5 throughput is within the historical noise
       band of the latest baseline under benchmarks/md/pe/performance/runs/.
-- [ ] Run full check + test suite (cmake --build build && ctest --test-dir build
+- [x] Run full check + test suite [134/136（benchmarks+debug 工具编译门禁全开）；2 个档案化既有失败] (cmake --build build && ctest --test-dir build
       --output-on-failure).
 
 ## Testing strategy

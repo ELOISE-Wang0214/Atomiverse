@@ -24,8 +24,9 @@
 /// through the `halo_participant()` protocol probe — reverse exchange
 /// must run exactly once).
 ///
-/// **Bonded skin auto-extension** (spec A.5): `build()` scans
-/// `frame.bonds/angles/dihedrals` (tag-aware: multi-rank scans resolve
+/// **Bonded skin auto-extension** (spec A.5): `build()` scans the
+/// per-atom bonded topology (`frame.atoms.num_bond / bond_atom / …`;
+/// tag-aware: multi-rank scans resolve
 /// atom tags through `dd->tag_to_local` and `MPI_Allreduce(MAX)` across
 /// ranks) to find the widest intra-tuple span. `launch()` uses
 /// `max(cutoff, bonded_extension)` as the effective halo width -- the
@@ -82,7 +83,7 @@ class HaloSend : public cpu::ComponentBase, public cpu::HaloParticipant {
     ///        pair potential cutoff. The effective halo width used at
     ///        `launch()` is `max(cutoff, bonded_extension)`, where
     ///        `bonded_extension` is the widest intra-tuple span in
-    ///        `frame.bonds/angles/dihedrals` computed once at `build()`.
+    ///        `frame.atoms per-atom topology` computed once at `build()`.
     ///        When `cutoff >= bonded_extension` the bonded scan has no
     ///        effect (pair cutoff already dominates).
     /// @param every Interval (in steps) between **full** rebuilds of
@@ -141,7 +142,7 @@ class HaloSend : public cpu::ComponentBase, public cpu::HaloParticipant {
 
     /// @brief Compute the bonded-skin extension from a frame's topology.
     ///
-    /// Scans `frame.bonds`, `frame.angles`, `frame.dihedrals` and returns
+    /// Scans the per-atom bonded topology (`frame.atoms.num_bond/bond_atom/…`) and returns
     /// the largest pairwise atom-to-atom distance found across any tuple.
     /// For an empty topology the result is `0.0`.
     ///

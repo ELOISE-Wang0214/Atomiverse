@@ -9,19 +9,28 @@
 ///             default to zero without throwing.
 ///   - ac-004: a cpu::Frame produced by cpu::materialize is runnable under
 ///             cpu::md::MD and yields a finite energy.
+///
+/// Plus the arch-refactor-06-frame Design §2 write_back field contract
+/// (golden round-trip): image (int8 -> i32 ix/iy/iz widen-back) and tag
+/// (TagInt -> i32 checked narrowing, overflow throws) ARE written back;
+/// type / mass / topology / box are designated non-write-back and must keep
+/// their pre-materialize molrs values.
 
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
+#include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/frame/materialize.h"
 #include "atomiverse/cpu/md/md.h"
-#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
 #include "atomiverse/cpu/potentials/pair_lj_cut.h"
 #include "atomiverse/molrs.hpp"
 
@@ -133,6 +142,46 @@ namespace {
     molrs::frame_set_simbox(*fr,
                             ::rust::Slice<const double>(h.data(), h.size()));
 
+    return fr;
+}
+
+// Extend the fully-populated frame with per-axis PBC image columns
+// (i32 in molrs, int8 [n,3] in cpu::Frame) for the write_back contract
+// tests. Values must fit int8 (|image| <= 127).
+::rust::Box<molrs::FrameRef> make_contract_frame() {
+    auto fr = make_full_frame();
+
+    const std::vector<std::int32_t> ix = {1, -1, 2};
+    const std::vector<std::int32_t> iy = {0, 3, -2};
+    const std::vector<std::int32_t> iz = {-1, 0, 4};
+    molrs::frame_set_column_i32(
+        *fr, "atoms", "ix",
+        ::rust::Slice<const std::int32_t>(ix.data(), ix.size()));
+    molrs::frame_set_column_i32(
+        *fr, "atoms", "iy",
+        ::rust::Slice<const std::int32_t>(iy.data(), iy.size()));
+    molrs::frame_set_column_i32(
+        *fr, "atoms", "iz",
+        ::rust::Slice<const std::int32_t>(iz.data(), iz.size()));
+
+    return fr;
+}
+
+// Minimal molrs frame: required columns only (x/y/z/type), no box, no
+// topology, no tag/image columns.
+::rust::Box<molrs::FrameRef> make_minimal_frame() {
+    auto fr = molrs::frame_new();
+    const std::vector<double> x = {0.0, 1.0};
+    const std::vector<std::int32_t> type = {1, 1};
+    molrs::frame_set_column_f64(
+        *fr, "atoms", "x", ::rust::Slice<const double>(x.data(), x.size()));
+    molrs::frame_set_column_f64(
+        *fr, "atoms", "y", ::rust::Slice<const double>(x.data(), x.size()));
+    molrs::frame_set_column_f64(
+        *fr, "atoms", "z", ::rust::Slice<const double>(x.data(), x.size()));
+    molrs::frame_set_column_i32(
+        *fr, "atoms", "type",
+        ::rust::Slice<const std::int32_t>(type.data(), type.size()));
     return fr;
 }
 
@@ -357,4 +406,181 @@ TEST(Materialize, MaterializedFrameIsRunnable) {
 
     EXPECT_TRUE(std::isfinite(cf.scalars.energy))
         << "MD run on a materialized frame must leave a finite energy";
+}
+
+// ── arch-refactor-06-frame §2: write_back field contract (golden) ────────
+
+// Contract fields (x/v/f/charge, image, tag, scalars/stress) mutated on the
+// cpu::Frame must reach the molrs.Frame through write_back. image goes back
+// through the same ix/iy/iz i32 columns materialize reads (int8 -> i32
+// widen); tag presents the permuted values (TagInt -> i32 narrowing).
+TEST(WriteBackContract, GoldenRoundTripContractFields) {
+    auto fr = make_contract_frame();
+
+    Frame cf = materialize(*fr);
+    ASSERT_EQ(cf.atoms.size(), 3);
+
+    // Anchor the materialize read side of the symmetric format first:
+    // ix/iy/iz i32 columns landed in the int8 [n,3] image array.
+    ASSERT_EQ(cf.atoms.image(0, 0), 1);
+    ASSERT_EQ(cf.atoms.image(1, 1), 3);
+    ASSERT_EQ(cf.atoms.image(2, 2), 4);
+    ASSERT_EQ(cf.atoms.tag[0], 10);
+    ASSERT_EQ(cf.atoms.tag[2], 12);
+
+    // Mutate every contract field so write_back has distinct values to carry.
+    cf.atoms.x[1] = 6.75;
+    cf.atoms.vy[0] = -3.5;
+    cf.atoms.fz[2] = 17.0;
+    cf.atoms.charge[1] = 0.125;
+    cf.atoms.image(0, 0) = 3;  // ix[0]: 1 -> 3
+    cf.atoms.image(1, 1) = -7; // iy[1]: 3 -> -7
+    cf.atoms.image(2, 2) = 90; // iz[2]: 4 -> 90
+    // Permute the tags (reverse): {10, 11, 12} -> {12, 11, 10}.
+    cf.atoms.tag[0] = 12;
+    cf.atoms.tag[2] = 10;
+    cf.scalars.energy = -77.25;
+    cf.scalars.kinetic = 5.5;
+
+    write_back(cf, *fr);
+
+    // Established write set still carries the mutations.
+    auto rx = molrs::frame_column_f64(*fr, "atoms", "x");
+    auto rvy = molrs::frame_column_f64(*fr, "atoms", "vy");
+    auto rfz = molrs::frame_column_f64(*fr, "atoms", "fz");
+    auto rq = molrs::frame_column_f64(*fr, "atoms", "charge");
+    ASSERT_EQ(rx.size(), 3u);
+    EXPECT_DOUBLE_EQ(rx[1], 6.75);
+    EXPECT_DOUBLE_EQ(rvy[0], -3.5);
+    EXPECT_DOUBLE_EQ(rfz[2], 17.0);
+    EXPECT_DOUBLE_EQ(rq[1], 0.125);
+
+    // NEW contract: image writes back through ix/iy/iz (int8 -> i32 widen,
+    // symmetric with the materialize read format).
+    auto rix = molrs::frame_column_i32(*fr, "atoms", "ix");
+    auto riy = molrs::frame_column_i32(*fr, "atoms", "iy");
+    auto riz = molrs::frame_column_i32(*fr, "atoms", "iz");
+    ASSERT_EQ(rix.size(), 3u);
+    ASSERT_EQ(riy.size(), 3u);
+    ASSERT_EQ(riz.size(), 3u);
+    EXPECT_EQ(rix[0], 3) << "mutated image(0,0) must reach molrs atoms.ix";
+    EXPECT_EQ(rix[1], -1);
+    EXPECT_EQ(rix[2], 2);
+    EXPECT_EQ(riy[0], 0);
+    EXPECT_EQ(riy[1], -7) << "mutated image(1,1) must reach molrs atoms.iy";
+    EXPECT_EQ(riy[2], -2);
+    EXPECT_EQ(riz[0], -1);
+    EXPECT_EQ(riz[1], 0);
+    EXPECT_EQ(riz[2], 90) << "mutated image(2,2) must reach molrs atoms.iz";
+
+    // NEW contract: tag writes back (TagInt -> i32 checked narrowing) and
+    // presents the permutation.
+    auto rtag = molrs::frame_column_i32(*fr, "atoms", "tag");
+    ASSERT_EQ(rtag.size(), 3u);
+    EXPECT_EQ(rtag[0], 12) << "permuted tag must reach molrs atoms.tag";
+    EXPECT_EQ(rtag[1], 11);
+    EXPECT_EQ(rtag[2], 10) << "permuted tag must reach molrs atoms.tag";
+
+    // Scalars stay a write channel.
+    auto se = molrs::frame_column_f64(*fr, "scalars", "energy");
+    auto sk = molrs::frame_column_f64(*fr, "scalars", "kinetic");
+    ASSERT_EQ(se.size(), 1u);
+    EXPECT_DOUBLE_EQ(se[0], -77.25);
+    EXPECT_DOUBLE_EQ(sk[0], 5.5);
+}
+
+// Non-contract fields (type / mass / topology blocks / box) are designated
+// non-write-back: mutating them on the cpu::Frame must NOT leak into the
+// molrs.Frame — every such column keeps its pre-materialize value.
+TEST(WriteBackContract, NonContractFieldsUntouched) {
+    auto fr = make_contract_frame();
+
+    Frame cf = materialize(*fr);
+    ASSERT_EQ(cf.atoms.size(), 3);
+
+    // Mutate NON-contract fields...
+    cf.atoms.type[0] = 99;
+    cf.atoms.mass[1] = 999.9;
+    cf.box.set_cell(ATV::Mat3::cubic(42.0));
+    // ...plus one contract sentinel proving write_back actually ran.
+    cf.atoms.x[0] = 8.5;
+
+    write_back(cf, *fr);
+
+    auto rx = molrs::frame_column_f64(*fr, "atoms", "x");
+    ASSERT_EQ(rx.size(), 3u);
+    ASSERT_DOUBLE_EQ(rx[0], 8.5) << "sentinel: write_back must have run";
+
+    // type / mass keep the make_full_frame originals.
+    auto rtype = molrs::frame_column_i32(*fr, "atoms", "type");
+    ASSERT_EQ(rtype.size(), 3u);
+    EXPECT_EQ(rtype[0], 1) << "atoms.type is non-write-back";
+    EXPECT_EQ(rtype[1], 2);
+    EXPECT_EQ(rtype[2], 3);
+    auto rmass = molrs::frame_column_f64(*fr, "atoms", "mass");
+    ASSERT_EQ(rmass.size(), 3u);
+    EXPECT_DOUBLE_EQ(rmass[0], 12.011);
+    EXPECT_DOUBLE_EQ(rmass[1], 1.008) << "atoms.mass is non-write-back";
+    EXPECT_DOUBLE_EQ(rmass[2], 15.999);
+
+    // Topology blocks stay exactly as materialized.
+    EXPECT_EQ(static_cast<int>(molrs::frame_block_nrows(*fr, "bonds")), 1);
+    EXPECT_EQ(static_cast<int>(molrs::frame_block_nrows(*fr, "angles")), 1);
+    EXPECT_EQ(static_cast<int>(molrs::frame_block_nrows(*fr, "dihedrals")), 1);
+    auto bi = molrs::frame_column_i32(*fr, "bonds", "atomi");
+    auto bj = molrs::frame_column_i32(*fr, "bonds", "atomj");
+    auto bt = molrs::frame_column_i32(*fr, "bonds", "type");
+    ASSERT_EQ(bi.size(), 1u);
+    EXPECT_EQ(bi[0], 10);
+    EXPECT_EQ(bj[0], 11);
+    EXPECT_EQ(bt[0], 1);
+    auto ak = molrs::frame_column_i32(*fr, "angles", "atomk");
+    ASSERT_EQ(ak.size(), 1u);
+    EXPECT_EQ(ak[0], 12);
+    auto dl = molrs::frame_column_i32(*fr, "dihedrals", "atoml");
+    ASSERT_EQ(dl.size(), 1u);
+    EXPECT_EQ(dl[0], 12);
+
+    // Box keeps the pre-materialize 20 A cube despite the cpu-side 42 A cell.
+    auto h = molrs::frame_simbox(*fr);
+    ASSERT_EQ(h.size(), 9u);
+    EXPECT_DOUBLE_EQ(h[0], 20.0) << "box is non-write-back";
+    EXPECT_DOUBLE_EQ(h[4], 20.0);
+    EXPECT_DOUBLE_EQ(h[8], 20.0);
+}
+
+// A tag that does not fit i32 must fail loud (std::runtime_error naming the
+// field), never narrow silently.
+TEST(WriteBackContract, TagOverflowThrows) {
+    if (sizeof(ATV::TagInt) < 8) {
+        GTEST_SKIP() << "TagInt is 32-bit under -DATV_ID_SIZE=smallbig; "
+                        "a tag > INT32_MAX is unrepresentable";
+    }
+
+    auto fr = make_minimal_frame();
+    Frame cf = materialize(*fr);
+    ASSERT_EQ(cf.atoms.size(), 2);
+
+    const std::int64_t over =
+        std::int64_t{std::numeric_limits<std::int32_t>::max()} + 1;
+    cf.atoms.tag[0] = static_cast<ATV::TagInt>(over);
+
+    try {
+        write_back(cf, *fr);
+        FAIL() << "write_back must throw std::runtime_error when a tag "
+                  "exceeds INT32_MAX instead of silently truncating";
+    } catch (const std::runtime_error& e) {
+        EXPECT_NE(std::string(e.what()).find("tag"), std::string::npos)
+            << "exception message must name the tag field: " << e.what();
+    }
+}
+
+// Boundary: a minimal frame (required columns only, no box / topology /
+// tag / image columns) survives write_back without throwing.
+TEST(WriteBackContract, MinimalFrameWriteBackDoesNotThrow) {
+    auto fr = make_minimal_frame();
+    Frame cf = materialize(*fr);
+    ASSERT_EQ(cf.atoms.size(), 2);
+
+    EXPECT_NO_THROW(write_back(cf, *fr));
 }

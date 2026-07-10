@@ -40,16 +40,38 @@ Frame materialize(const molrs::FrameRef& src);
 
 /// @brief Write a cpu::Frame's results back into an existing molrs.Frame.
 ///
-/// Overwrites the `atoms` block columns `x, y, z, vx, vy, vz, fx, fy, fz,
-/// charge`. The system scalars go into dedicated blocks: `energy`,
-/// `kinetic`, `conserved` as one-row columns of the `scalars` block, and
-/// the two 6-component Voigt tensors as a `value` column of their own
-/// `stress` / `stress_kinetic` blocks (a molrs block requires uniform
-/// column row counts). Topology and box are left untouched.
+/// Round-trip field contract (arch-refactor-06-frame; the golden test in
+/// tests/cpu/test_materialize.cpp asserts both directions):
+///
+/// | field | materialize (molrs→cpu) | write_back (cpu→molrs) |
+/// |---|---|---|
+/// | x/y/z [Å]              | required (throws)       | written |
+/// | vx/vy/vz, fx/fy/fz     | optional (zero default) | written |
+/// | charge [e]             | optional (zero default) | written |
+/// | image (ix/iy/iz)       | optional (i32→int8)     | written (int8→i32) |
+/// | tag                    | optional (i32→TagInt)   | written (checked i32 narrowing; overflow throws, no silent truncation) |
+/// | type                   | required                | NOT written (per-run immutable input) |
+/// | mass [amu]             | optional                | NOT written (per-run immutable input) |
+/// | bonds/angles/dihedrals | optional → per-atom     | NOT written (per-run static) |
+/// | box                    | optional                | NOT written (per-run static by contract) |
+/// | scalars/stress/stress_kinetic | NOT read (write-only channel) | written |
+///
+/// image evolves during MD (unwrapped-coordinate reconstruction) and tag
+/// is the identity anchor after multi-rank migration — both round-trip.
+/// Per-frame metadata (step, energy annotations) stays outside this
+/// contract: it travels through `write_frame_xyz_meta`
+/// (cpu/io/frame_writer.h), not through write_back.
+///
+/// The system scalars go into dedicated blocks: `energy`, `kinetic`,
+/// `conserved` as one-row columns of the `scalars` block, and the two
+/// 6-component Voigt tensors as a `value` column of their own `stress` /
+/// `stress_kinetic` blocks (a molrs block requires uniform column row
+/// counts).
 ///
 /// @param src cpu::Frame whose state is exported.
 /// @param dst molrs.Frame to update in place (must be the same frame that
 ///            was materialized, or any frame with a compatible atom count).
+/// @throws std::runtime_error when an atom tag does not fit i32.
 void write_back(const Frame& src, molrs::FrameRef& dst);
 
 } // namespace cpu

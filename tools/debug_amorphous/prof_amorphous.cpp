@@ -216,7 +216,7 @@ void run_scenario(const std::string& data_path, int n_steps, Mode mode,
     sim.add(cpu::md::NVELimit{1.0, 0.05});
     sim.add(cpu::md::InitVelocity{500.0, 1231});
     sim.add(cpu::md::FixLangevin{500.0, /*T_stop=*/500.0, 10.0, 1.0, 904297});
-    sim.add(cpu::md::VirialStress{});
+    sim.add(cpu::md::Virial{});
 
     const int ph_force = static_cast<int>(ATV::md::Phase::force);
 

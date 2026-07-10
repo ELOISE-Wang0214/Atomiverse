@@ -62,7 +62,8 @@ criteria:
     type: runtime
     evaluator_hint: "-DATV_BUILD_BENCHMARKS=ON build"
     pass_when: "`ctest -R 'val_vib_(tr_projection|frequencies_vs_pyscf|thermochem_vs_pyscf)'` passes with frequencies [cm^-1] and thermochemistry values unchanged within existing tolerances."
-    status: pending
+    status: verified
+    last_checked: 2026-07-10
   - id: ac-011
     summary: "full CPU build and test suite green"
     type: runtime
@@ -83,8 +84,8 @@ ac-001/-002/-003 钉住 CUDA SCFSolver 的类型级解耦与门禁（纯 grep �
 > **审计注记（2026-07-10，本地 macOS）**：ac-006 的位一致 parity 锚为 inline H2 系统
 >（-0.947147417833749 Ha，OMP 单线程钉死归约序）——CP2K 文件锚本机无数据（ATV_CP2K_DATA_DIR
 > 空）。ac-004 owed GH200；ac-008 owed 集群数据环境（14 个 GPW 数据依赖测试 + examples 09/10
-> 本机不可运行，dftd3/ot 两目标在 PW=ON 下已恢复可链接）；ac-010 owed -DATV_BUILD_BENCHMARKS
-> 构建（PySCF 参考校验）；ac-011 owed Linux CI（本机 2 个 stash 实证既有 SCF 失败，见 01 台账）。
+> 本机不可运行，dftd3/ot 两目标在 PW=ON 下已恢复可链接）；ac-010 已于 06 实施期间落章（-DATV_BUILD_BENCHMARKS=ON 全量跑：val_vib_tr_projection/
+> frequencies_vs_pyscf/thermochem_vs_pyscf 全 PASS，频率/热化学在既有容差内）；ac-011 owed Linux CI（本机 2 个 stash 实证既有 SCF 失败，见 01 台账）。
 > 顺带修复：test_evaluate_driver 的 SinglePointHelperEquivalentToInline 在重载并行套件下
 > OMP 归约序方差超 1e-10 容差（观测 1.16e-10）——按 test_cpu_scf_spin_resolution 先例加
 > omp_set_num_threads(1) 钉死（测试契约修正，非产品代码改动）。

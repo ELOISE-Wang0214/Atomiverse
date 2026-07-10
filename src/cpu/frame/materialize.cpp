@@ -2,6 +2,7 @@
 /// @brief Implementation of cpu::materialize / cpu::write_back.
 
 #include "atomiverse/cpu/frame/materialize.h"
+#include <limits>
 
 #include <cstdint>
 #include <stdexcept>
@@ -230,6 +231,42 @@ void write_back(const Frame& src, molrs::FrameRef& dst) {
     molrs::frame_set_column_f64(dst, "atoms", "fz", slice(src.atoms.fz));
     molrs::frame_set_column_f64(dst, "atoms", "charge",
                                 slice(src.atoms.charge));
+
+    // ── Per-atom identity + PBC crossing counts (contract fields) ──────
+    //
+    // image evolves during MD (unwrapped-coordinate reconstruction needs
+    // it) and tag is the only stable identity anchor once multi-rank
+    // migration reorders local rows — both must round-trip. int8 image
+    // widens to the i32 ix/iy/iz columns symmetric with materialize();
+    // TagInt narrows to i32 with an overflow check (no silent truncation).
+    {
+        std::vector<std::int32_t> ix(static_cast<std::size_t>(n));
+        std::vector<std::int32_t> iy(static_cast<std::size_t>(n));
+        std::vector<std::int32_t> iz(static_cast<std::size_t>(n));
+        std::vector<std::int32_t> tag(static_cast<std::size_t>(n));
+        for (int i = 0; i < n; ++i) {
+            ix[static_cast<std::size_t>(i)] = src.atoms.image(i, 0);
+            iy[static_cast<std::size_t>(i)] = src.atoms.image(i, 1);
+            iz[static_cast<std::size_t>(i)] = src.atoms.image(i, 2);
+            const auto t = src.atoms.tag[i];
+            if (t > std::numeric_limits<std::int32_t>::max()
+                || t < std::numeric_limits<std::int32_t>::min()) {
+                throw std::runtime_error(
+                    "write_back: atom tag " + std::to_string(t)
+                    + " does not fit the molrs i32 tag column "
+                      "(no silent truncation)");
+            }
+            tag[static_cast<std::size_t>(i)] = static_cast<std::int32_t>(t);
+        }
+        auto islice = [n](const std::vector<std::int32_t>& v) {
+            return ::rust::Slice<const std::int32_t>(
+                v.data(), static_cast<std::size_t>(n));
+        };
+        molrs::frame_set_column_i32(dst, "atoms", "ix", islice(ix));
+        molrs::frame_set_column_i32(dst, "atoms", "iy", islice(iy));
+        molrs::frame_set_column_i32(dst, "atoms", "iz", islice(iz));
+        molrs::frame_set_column_i32(dst, "atoms", "tag", islice(tag));
+    }
 
     // ── System scalars -> dedicated molrs blocks ───────────────────────
     //

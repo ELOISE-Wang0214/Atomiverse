@@ -5,6 +5,12 @@
 /// device storage type differs from the host Real type. The system scalars
 /// travel as a single device-resident `SystemScalars` struct.
 
+// NOTE (topology representation): CUDA kernels have not been ported to
+// per-atom topology — the single-GPU path consumes the flat
+// BondList/AngleList/DihedralList, so cpu::to_cuda re-flattens from the
+// CPU per-atom layout on every transfer. The multi-GPU path additionally
+// carries the per-atom SoA for migration. See cuda/frame/frame.cuh.
+
 #include "atomiverse/cpu/frame/transfer.h"
 #include "atomiverse/cuda/frame/transfer.cuh"
 #include "atomiverse/cuda/frame/types.cuh"
@@ -83,7 +89,8 @@ cuda::Frame to_cuda(const Frame& frame, int capacity) {
         const int nb = frame.atoms.num_bond[i];
         for (int m = 0; m < nb; ++m) {
             flat_bond_i.push_back(i);
-            flat_bond_j.push_back(static_cast<int>(frame.atoms.bond_atom(i, m)));
+            flat_bond_j.push_back(
+                static_cast<int>(frame.atoms.bond_atom(i, m)));
             flat_bond_t.push_back(frame.atoms.bond_type(i, m));
         }
         const int na = frame.atoms.num_angle[i];
@@ -228,16 +235,16 @@ cuda::Frame to_cuda(const Frame& frame, int capacity) {
         cudaMalloc(&d.dihedrals.atomk, bond_cap(nd) * sizeof(int));
         cudaMalloc(&d.dihedrals.atoml, bond_cap(nd) * sizeof(int));
         cudaMalloc(&d.dihedrals.type, bond_cap(nd) * sizeof(int));
-        cudaMemcpy(d.dihedrals.atomi, flat_dih_i.data(),
-                   nd * sizeof(int), cudaMemcpyHostToDevice);
-        cudaMemcpy(d.dihedrals.atomj, flat_dih_j.data(),
-                   nd * sizeof(int), cudaMemcpyHostToDevice);
-        cudaMemcpy(d.dihedrals.atomk, flat_dih_k.data(),
-                   nd * sizeof(int), cudaMemcpyHostToDevice);
-        cudaMemcpy(d.dihedrals.atoml, flat_dih_l.data(),
-                   nd * sizeof(int), cudaMemcpyHostToDevice);
-        cudaMemcpy(d.dihedrals.type, flat_dih_t.data(),
-                   nd * sizeof(int), cudaMemcpyHostToDevice);
+        cudaMemcpy(d.dihedrals.atomi, flat_dih_i.data(), nd * sizeof(int),
+                   cudaMemcpyHostToDevice);
+        cudaMemcpy(d.dihedrals.atomj, flat_dih_j.data(), nd * sizeof(int),
+                   cudaMemcpyHostToDevice);
+        cudaMemcpy(d.dihedrals.atomk, flat_dih_k.data(), nd * sizeof(int),
+                   cudaMemcpyHostToDevice);
+        cudaMemcpy(d.dihedrals.atoml, flat_dih_l.data(), nd * sizeof(int),
+                   cudaMemcpyHostToDevice);
+        cudaMemcpy(d.dihedrals.type, flat_dih_t.data(), nd * sizeof(int),
+                   cudaMemcpyHostToDevice);
     }
 
     return d;
@@ -366,7 +373,8 @@ void materialize_per_atom_bonded(Frame& d, const cpu::Frame& src) {
         h2d_i(d.atoms.bond_type, src.atoms.bond_type.data(), un * MB);
         h2d_t(d.atoms.angle_atom, src.atoms.angle_atom.data(), un * 2 * MA);
         h2d_i(d.atoms.angle_type, src.atoms.angle_type.data(), un * MA);
-        h2d_t(d.atoms.dihedral_atom, src.atoms.dihedral_atom.data(), un * 3 * MD);
+        h2d_t(d.atoms.dihedral_atom, src.atoms.dihedral_atom.data(),
+              un * 3 * MD);
         h2d_i(d.atoms.dihedral_type, src.atoms.dihedral_type.data(), un * MD);
         h2d_t(d.atoms.special, src.atoms.special.data(), un * MS);
     }
