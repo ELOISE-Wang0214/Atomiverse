@@ -230,18 +230,13 @@ TEST(GpwSolverClass, BuildRejectsZeroCellEdgeWhenPeriodic) {
     EXPECT_THROW(solver.build(atoms), std::invalid_argument);
 }
 
-// Edge case: build() rejects d3 == true with an empty d3_param_file (the
-// D3 tables cannot be defaulted — no-fallback rule).
-// D3 with no d3_param_file is the normal path: the in-tree table is the default
-// source. A path is only needed to widen coverage past the supported elements —
-// and an element the in-tree table does not cover THROWS rather than silently
-// contributing zero dispersion (no-fallback rule). The throw fires at solve time,
-// where the element set is known.
-TEST(GpwSolverClass, BuildAcceptsD3WithoutParamFile) {
+// D3 always draws from the in-tree tables (basis_data/dftd3_tables.h); an
+// element outside their coverage THROWS at solve time rather than silently
+// contributing zero dispersion (no-fallback rule).
+TEST(GpwSolverClass, BuildAcceptsD3) {
     const auto atoms = small_h2();
     GpwConfig cfg = small_cfg();
     cfg.d3 = true;
-    cfg.d3_param_file.clear();
     GPWSolver solver(cfg);
     EXPECT_NO_THROW(solver.build(atoms));
 }

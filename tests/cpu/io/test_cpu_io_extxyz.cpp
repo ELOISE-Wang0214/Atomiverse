@@ -1,20 +1,16 @@
 /// @file tests/cpu/io/test_cpu_io_extxyz.cpp
 /// @brief Tests for cpu::load_extxyz -- (ext)XYZ loading through molrs.
 ///
-/// Covers gpw-edl-aimd acceptance criteria:
-///   - ac-001: load the real 1214-atom final_frame.xyz; correct atom count,
-///             box from the Lattice= header, and per-atom type = Z for the
-///             five elements {H, O, Na, Cl, Zn}. Plus a small deterministic
-///             inline fixture (no external dependency).
-///   - ac-002: an ExtXYZ file lacking a Lattice= header throws a named
-///             exception -- no fallback box.
+/// Small deterministic inline fixtures only (no external file dependency):
+/// correct atom count / box from the Lattice= header / per-atom type = Z, and
+/// a file lacking a Lattice= header throws a named exception -- no fallback
+/// box.
 
 #include <gtest/gtest.h>
 
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
-#include <map>
 #include <stdexcept>
 #include <string>
 
@@ -37,15 +33,9 @@ std::string write_temp(const std::string& tag, const std::string& content) {
     return path;
 }
 
-std::map<int, int> type_histogram(const Frame& f) {
-    std::map<int, int> hist;
-    for (int i = 0; i < f.atoms.size(); ++i) hist[f.atoms.type[i]]++;
-    return hist;
-}
-
 } // namespace
 
-// ── ac-001: small deterministic inline fixture ─────────────────────────────
+// ── small deterministic inline fixture ─────────────────────────────────────
 TEST(CpuIoExtxyz, InlineFixtureLoadsAtomsBoxAndZ) {
     // 3 atoms (O, H, H) in an orthorhombic box via a Lattice= header.
     const std::string xyz =
@@ -73,7 +63,7 @@ TEST(CpuIoExtxyz, InlineFixtureLoadsAtomsBoxAndZ) {
     EXPECT_NEAR(f.atoms.y[2], 0.85, 1e-9);
 }
 
-// ── ac-002: missing Lattice header throws, no fallback box ─────────────────
+// ── missing Lattice header throws, no fallback box ─────────────────
 TEST(CpuIoExtxyz, MissingLatticeThrows) {
     const std::string xyz =
         "2\n"
@@ -86,25 +76,3 @@ TEST(CpuIoExtxyz, MissingLatticeThrows) {
     std::remove(path.c_str());
 }
 
-// ── ac-001: the real 1214-atom ZnO electric-double-layer frame ─────────────
-#ifdef ATV_FINAL_FRAME_XYZ
-TEST(CpuIoExtxyz, FinalFrameZnoEdlLoadsFully) {
-    Frame f = load_extxyz(ATV_FINAL_FRAME_XYZ);
-
-    ASSERT_EQ(f.atoms.size(), 1214);
-
-    // Box from Lattice="13.128 0 0  0 10.582 0  0 0 47.05377225".
-    EXPECT_NEAR(f.box.length(0), 13.128, 1e-6);
-    EXPECT_NEAR(f.box.length(1), 10.582, 1e-6);
-    EXPECT_NEAR(f.box.length(2), 47.05377225, 1e-6);
-
-    // Per-element Z counts: H=540, O=462, Na=10, Cl=10, Zn=192.
-    auto hist = type_histogram(f);
-    EXPECT_EQ(hist.size(), 5u);
-    EXPECT_EQ(hist[1], 540);  // H
-    EXPECT_EQ(hist[8], 462);  // O
-    EXPECT_EQ(hist[11], 10);  // Na
-    EXPECT_EQ(hist[17], 10);  // Cl
-    EXPECT_EQ(hist[30], 192); // Zn
-}
-#endif

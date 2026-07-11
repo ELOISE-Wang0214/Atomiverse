@@ -18,7 +18,7 @@ namespace md {
 ///
 /// Bussi, Donadio, Parrinello, "Canonical sampling through velocity
 /// rescaling", J. Chem. Phys. **126**, 014101 (2007), DOI 10.1063/1.2408420.
-/// The CP2K `&THERMOSTAT TYPE CSVR` used by the ZnO EDL deck.
+/// CP2K's `&THERMOSTAT TYPE CSVR`.
 ///
 /// Once per MD step the global kinetic energy `K` is stochastically driven
 /// toward the canonical target `K̄ = ½ N_f k_B T` and every velocity is

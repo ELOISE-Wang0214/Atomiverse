@@ -1,5 +1,5 @@
 /// @file tests/cpu/gpw/test_cpu_gpw_diis.cpp
-/// @brief Pulay/DIIS acceleration for the GPW SCF (gpw-edl-aimd, M5 prereq).
+/// @brief Pulay/DIIS acceleration for the GPW SCF (GPW SCF).
 ///
 /// Two guarantees:
 ///   1. DIIS and the legacy linear density mixing converge to the SAME fixed
@@ -16,18 +16,18 @@
 #include <gtest/gtest.h>
 
 #include "atomiverse/cpu/gpw/gpw_solver.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_basis.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_io.h"
-#include "atomiverse/cpu/gpw/basis_data/gpw_data.h"
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gth_potential.h"
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gth_potential.h"
 
 using ATV::cpu::gpw::GpwAtom;
 using ATV::cpu::gpw::GpwConfig;
 using ATV::cpu::gpw::GpwResult;
 using ATV::cpu::gpw::gpw_scf;
-using ATV::cpu::gpw::make_gpw_atom;
-using ATV::cpu::gpw::builtin_gth_basis;
-using ATV::cpu::gpw::builtin_gth_potential;
 using ATV::cpu::gpw::XcKind;
+using ATV::cpu::gpw::GaussianBasis;
+using ATV::cpu::gpw::GthPotential;
 
 namespace {
 constexpr double kAng = 1.8897259885789; // Angstrom -> Bohr
@@ -36,12 +36,12 @@ constexpr double kAng = 1.8897259885789; // Angstrom -> Bohr
 // DIIS must reach the SAME self-consistent energy as linear mixing, in no more
 // iterations. Cheap H2 (2 electrons) so both paths are fast.
 TEST(GpwDiis, MatchesLinearMixingOnH2) {
-    const auto basis = builtin_gth_basis("H", "DZV-GTH-PADE");
-    const auto pot = builtin_gth_potential("H", "GTH-PADE-q1");
+    const auto basis = GaussianBasis(ATV::Element::H, "DZV-GTH-PADE");
+    const auto pot = GthPotential(ATV::Element::H, "GTH-PADE-q1");
     const double rA[3] = {3.5, 2.0, 2.0};
     const double rB[3] = {4.5, 2.0, 2.0};
-    std::vector<GpwAtom> atoms = {make_gpw_atom(rA, basis, pot),
-                                  make_gpw_atom(rB, basis, pot)};
+    std::vector<GpwAtom> atoms = {GpwAtom(rA, basis, pot),
+                                  GpwAtom(rB, basis, pot)};
 
     GpwConfig base;
     base.cell[0] = 8.0;
@@ -78,18 +78,18 @@ TEST(GpwDiis, MatchesLinearMixingOnH2) {
 // CP2K energy. (ZnO diatomic, identical geometry to test_cpu_gpw_zno_cp2k.)
 TEST(GpwDiis, ZnOSemicoreConvergesFast) {
     const auto basis_Zn =
-        builtin_gth_basis("Zn", "DZVP-MOLOPT-SR-GTH");
+        GaussianBasis(ATV::Element::Zn, "DZVP-MOLOPT-SR-GTH");
     const auto basis_O =
-        builtin_gth_basis("O", "DZVP-MOLOPT-SR-GTH");
+        GaussianBasis(ATV::Element::O, "DZVP-MOLOPT-SR-GTH");
     const auto pot_Zn =
-        builtin_gth_potential("Zn", "GTH-PBE-q12");
+        GthPotential(ATV::Element::Zn, "GTH-PBE-q12");
     const auto pot_O =
-        builtin_gth_potential("O", "GTH-PBE-q6");
+        GthPotential(ATV::Element::O, "GTH-PBE-q6");
 
     const double Zn[3] = {4.0 * kAng, 4.0 * kAng, 4.0 * kAng};
     const double O[3] = {4.0 * kAng, 4.0 * kAng, 5.72 * kAng};
-    std::vector<GpwAtom> atoms = {make_gpw_atom(Zn, basis_Zn, pot_Zn),
-                                  make_gpw_atom(O, basis_O, pot_O)};
+    std::vector<GpwAtom> atoms = {GpwAtom(Zn, basis_Zn, pot_Zn),
+                                  GpwAtom(O, basis_O, pot_O)};
 
     GpwConfig cfg;
     cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 8.0 * kAng;

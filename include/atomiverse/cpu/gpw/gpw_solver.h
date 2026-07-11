@@ -20,8 +20,8 @@
 #include <vector>
 
 #include "atomiverse/cpu/gpw/internal/collocate.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_basis.h" // GaussianBasis
-#include "atomiverse/cpu/gpw/internal/cp2k_io.h" // GthPotential, GthNonlocalChannel
+#include "atomiverse/cpu/gpw/gaussian_basis.h" // GaussianBasis
+#include "atomiverse/cpu/gpw/gth_potential.h" // GthPotential, GthNonlocalChannel
 #include "atomiverse/cpu/linalg/matrix.h"        // RealMatrix
 
 namespace ATV {
@@ -39,9 +39,27 @@ struct GpwAtom {
     std::vector<double> cloc; ///< GTH local short-range C coefficients.
     std::vector<GthNonlocalChannel>
         nonlocal; ///< GTH nonlocal projector channels.
+
+    GpwAtom() = default;
+
+    /// @brief Construct from a contracted basis + GTH potential.
+    ///
+    /// Converts each contracted shell of `basis` into Cartesian
+    /// GridBasisFunctions centered at `pos`, folding the per-primitive Gaussian
+    /// normalization N(alpha,L) = (2 alpha/pi)^{3/4} (4 alpha)^{L/2} into the
+    /// coefficient (the L alpha-power is what fixes the spanned space to match
+    /// CP2K; the constant factor is irrelevant to the energy). Angular
+    /// functions are the (2L+1) pure-spherical real solid harmonics from
+    /// real_solid_harmonics(L), for any L.
+    /// @param pos   Atom position [Bohr]; z_val is taken from `pot.zion`.
+    /// @param basis Contracted Gaussian basis to center at `pos`.
+    /// @param pot   GTH pseudopotential (local + nonlocal channels).
+    /// @param z     Atomic number Z (needed only for DFT-D3, GpwConfig.d3).
+    GpwAtom(const double pos[3], const GaussianBasis& basis,
+            const GthPotential& pot, int z = 0);
 };
 
-/// @brief Exchange-correlation functional选择.
+/// @brief Exchange-correlation functional choice.
 enum class XcKind { PADE, PBE };
 
 /// @brief GPW SCF configuration.
@@ -68,7 +86,7 @@ struct GpwConfig {
     /// orthogonalization (dimensionless). Directions with s_i < this are DROPPED
     /// rather than amplified by 1/sqrt(s_i). Diffuse MOLOPT functions in a dense
     /// periodic cell drive S toward linear dependence — without this the raw
-    /// generalized solver fails outright (the 1214-atom EDL aborted with
+    /// generalized solver fails outright (a 13726-AO slab aborted with
     /// `dsygvd failed, info=20590`) and the SCF oscillates. Matches
     /// SCFConfig::lindep_threshold. 0 disables filtering.
     double lindep_threshold = 1e-8;
@@ -90,9 +108,9 @@ struct GpwConfig {
     /// internal/local_pp.h). Flip to false only to cross-check the two routes.
     bool local_pp_on_grid = true;
     bool d3 = false; ///< add Grimme DFT-D3 (zero damping, PBE) dispersion
-                     ///< to the energy and forces (requires GpwAtom.z set).
-    std::string
-        d3_param_file; ///< path to CP2K's dftd3.dat (required when d3 == true).
+                     ///< to the energy and forces (requires GpwAtom.z set);
+                     ///< parameters come from the in-tree tables
+                     ///< (basis_data/dftd3_tables.h).
     /// @brief Use the OT (orbital transformation) minimizer instead of dense
     /// diagonalization. Diagonalization-free SCF (gradient O(nb²·n_occ)); the
     /// path to large systems where the O(nb³) eigensolve is prohibitive.
@@ -122,19 +140,6 @@ struct GpwResult {
     /// @}
 };
 
-/// @brief Build a GpwAtom from parsed CP2K data (basis + GTH potential).
-///
-/// Converts each contracted shell of `basis` into Cartesian GridBasisFunctions
-/// centered at `pos`, folding the per-primitive Gaussian normalization
-/// N(alpha,L) = (2 alpha/pi)^{3/4} (4 alpha)^{L/2} into the coefficient (the L
-/// alpha-power is what fixes the spanned space to match CP2K; the constant
-/// factor is irrelevant to the energy). Angular functions are the (2L+1)
-/// pure-spherical real solid harmonics from real_solid_harmonics(L), for any L.
-/// @param pos Atom position [Bohr]; z_val is taken from `pot.zion`.
-/// @param z   Atomic number Z (optional; needed only for DFT-D3, GpwConfig.d3).
-GpwAtom make_gpw_atom(const double pos[3], const GaussianBasis& basis,
-                      const GthPotential& pot, int z = 0);
-
 /// @brief Inner GPW solver — the `*Solver` face of the GPW method
 ///        (mirrors `cpu::pw::PWSolver` / `cpu::scf::SCFSolver`).
 ///
@@ -161,9 +166,8 @@ class GPWSolver {
     /// @param reference Atoms the solver will be run on (used for
     ///        structural validation only; `run()` takes the live set).
     /// @throws std::invalid_argument when the atom set is empty, when
-    ///         `config.n_occ < 1`, when a periodic cell edge is
-    ///         non-positive, or when `config.d3` is set without a
-    ///         `d3_param_file` (no-fallback rule).
+    ///         `config.n_occ < 1`, or when a periodic cell edge is
+    ///         non-positive.
     void build(const std::vector<GpwAtom>& reference);
 
     /// @brief Run the closed-shell GPW SCF at the given geometry.

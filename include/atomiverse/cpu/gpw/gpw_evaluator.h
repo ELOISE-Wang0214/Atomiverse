@@ -11,9 +11,9 @@
 /// variable cell: a `launch()` under a box that differs from the build-time
 /// cell throws `std::runtime_error`.
 ///
-/// `role() == Evaluator`, `capabilities() == Energy`. Plugs into the Evaluate /
-/// MD / Minimize drivers exactly like the other ES evaluators (forces are a
-/// later capability).
+/// `role() == Evaluator`, `capabilities() == Energy` (plus `Force` with
+/// `compute_forces`). Plugs into the Evaluate / MD / Minimize drivers exactly
+/// like the other ES evaluators.
 #pragma once
 
 #include <array>
@@ -24,19 +24,36 @@
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/facade/component_role.h"
+#include "atomiverse/molrs.hpp"
 
 namespace ATV {
 namespace cpu {
 namespace gpw {
 
-/// @brief Per-element basis + pseudopotential, keyed by atomic number.
-struct GpwElement {
-    int z = 0;           ///< atomic number, matched against frame.atoms.type.
+/// @brief One element's basis + pseudopotential — CP2K's `&KIND` concept.
+///        The element identity is molrs's `Element` (see atomiverse/molrs.hpp).
+///        `Element` is an enum, so a Kind cannot inherit from it; the implicit
+///        conversion below gives the same is-a usage (a Kind IS its element
+///        wherever an Element is expected).
+struct Kind {
+    Element element{};   ///< chemical element, matched against frame.atoms.type (Z).
     GaussianBasis basis; ///< contracted Gaussian basis for this element.
     GthPotential pot;    ///< GTH pseudopotential for this element.
+
+    Kind() = default;
+
+    /// @brief One element's basis + potential in a single expression.
+    /// @param element Chemical element (molrs periodic-table enum).
+    /// @param basis   Contracted Gaussian basis for this element.
+    /// @param pot     GTH pseudopotential for this element.
+    Kind(Element element, GaussianBasis basis, GthPotential pot)
+        : element(element), basis(std::move(basis)), pot(std::move(pot)) {}
+
+    /// @brief A Kind is usable as its Element.
+    operator Element() const { return element; }
 };
 
-/// @brief Configuration for the GPW evaluator (grid/XC/electrostatics + elements).
+/// @brief Configuration for the GPW evaluator (grid/XC/electrostatics + kinds).
 struct GpwEvaluatorConfig {
     double cutoff_ry = 300.0;
     int max_iter = 200;
@@ -44,13 +61,12 @@ struct GpwEvaluatorConfig {
     double mix = 0.3;
     XcKind xc = XcKind::PADE;
     bool nonperiodic = false;
-    bool compute_forces = false; ///< also compute finite-difference forces.
+    bool compute_forces = false; ///< also compute analytic forces (one SCF + one gradient pass).
     double fd_step = 1e-3;       ///< FD displacement [Bohr] for forces.
-    bool d3 = false; ///< add Grimme DFT-D3 (zero damping, PBE) dispersion.
-    std::string
-        d3_param_file; ///< path to CP2K's dftd3.dat (required when d3 == true).
-    std::vector<GpwElement>
-        elements; ///< one per distinct element in the system.
+    bool d3 = false; ///< add Grimme DFT-D3 (zero damping, PBE) dispersion
+                     ///< from the in-tree tables (basis_data/dftd3_tables.h).
+    std::vector<Kind>
+        kinds; ///< one per distinct element in the system.
 };
 
 /// @brief GPW total-energy evaluator component.

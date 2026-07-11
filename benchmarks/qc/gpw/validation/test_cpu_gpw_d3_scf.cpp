@@ -18,17 +18,16 @@
 #include <gtest/gtest.h>
 
 #include "atomiverse/cpu/gpw/gpw_solver.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_basis.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_io.h"
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
 #include "atomiverse/cpu/gpw/internal/dftd3_params.h"
-#include "atomiverse/cpu/gpw/basis_data/gpw_data.h"
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gth_potential.h"
 
 using ATV::cpu::gpw::D3Params;
 using ATV::cpu::gpw::D3Result;
-using ATV::cpu::gpw::builtin_dftd3_params;
 using ATV::cpu::gpw::dftd3_pbe;
-using ATV::cpu::gpw::load_dftd3_params;
 
 namespace {
 
@@ -61,12 +60,12 @@ const std::vector<int> kZ = {8, 1, 1, 8, 1, 1};
 TEST(GpwDftD3, IntegratedIntoGpwScf) {
     using namespace ATV::cpu::gpw;
     constexpr double kAng = 1.8897259885789;
-    const auto bH = builtin_gth_basis("H", "DZVP-MOLOPT-SR-GTH");
-    const auto pH = builtin_gth_potential("H", "GTH-PBE-q1");
+    const auto bH = GaussianBasis(ATV::Element::H, "DZVP-MOLOPT-SR-GTH");
+    const auto pH = GthPotential(ATV::Element::H, "GTH-PBE-q1");
     const double rA[3] = {4.0, 4.0, 4.0};
     const double rB[3] = {4.0, 4.0, 4.0 + 1.6 * kAng};
-    std::vector<GpwAtom> atoms = {make_gpw_atom(rA, bH, pH, 1),
-                                  make_gpw_atom(rB, bH, pH, 1)};
+    std::vector<GpwAtom> atoms = {GpwAtom(rA, bH, pH, 1),
+                                  GpwAtom(rB, bH, pH, 1)};
 
     GpwConfig cfg;
     cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 8.0 * kAng;
@@ -84,7 +83,7 @@ TEST(GpwDftD3, IntegratedIntoGpwScf) {
     const std::vector<std::array<double, 3>> pos = {{rA[0], rA[1], rA[2]},
                                                     {rB[0], rB[1], rB[2]}};
     const double ed3 =
-        dftd3_pbe(Z, pos, cfg.cell, false, builtin_dftd3_params()).energy;
+        dftd3_pbe(Z, pos, cfg.cell, false, D3Params{}).energy;
     std::printf("[D3 integ] e_on-e_off=%.10f  standalone=%.10f\n", e_on - e_off, ed3);
     EXPECT_NEAR(e_on - e_off, ed3, 1e-9) << "GpwConfig.d3 did not add the D3 energy";
     EXPECT_LT(ed3, 0.0); // dispersion is attractive

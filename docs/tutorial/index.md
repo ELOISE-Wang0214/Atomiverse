@@ -65,9 +65,9 @@ split before any physics is introduced.
   (`examples/08_pw.cpp`; needs `-DATV_BUILD_PW=ON`).
 - [Chapter 9: Gaussian and Plane Waves (GPW)](ch09-gpw.md) — CP2K Quickstep's
   method: a Gaussian wavefunction with FFT-grid Hartree/XC and GTH
-  pseudopotentials, to CP2K parity on H₂O and a periodic ZnO slab
-  (`examples/09_gpw.cpp`, `examples/10_gpw_znoedl.cpp`; needs
-  `-DATV_BUILD_GPW=ON`). Experimental (closed-shell, Γ-point, PADE/PBE).
+  pseudopotentials, validated on H₂O and a small periodic wurtzite-ZnO cell
+  (`examples/09_gpw.cpp`; needs `-DATV_BUILD_GPW=ON`).
+  Experimental (closed-shell, Γ-point, PADE/PBE).
 
 ## VI. Classical Simulation
 

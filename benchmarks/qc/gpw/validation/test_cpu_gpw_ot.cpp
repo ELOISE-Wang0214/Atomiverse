@@ -17,10 +17,11 @@
 #include <xtensor/containers/xtensor.hpp>
 
 #include "atomiverse/cpu/gpw/gpw_solver.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_basis.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_io.h"
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/cpu/gpw/internal/ot.h"
-#include "atomiverse/cpu/gpw/basis_data/gpw_data.h"
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/cpu/linalg/density.h"
 #include "atomiverse/cpu/linalg/eigensolve.h"
 
@@ -137,18 +138,18 @@ namespace {
 using ATV::cpu::gpw::GpwConfig;
 using ATV::cpu::gpw::GpwResult;
 using ATV::cpu::gpw::gpw_scf;
-using ATV::cpu::gpw::make_gpw_atom;
-using ATV::cpu::gpw::builtin_gth_basis;
-using ATV::cpu::gpw::builtin_gth_potential;
+using ATV::cpu::gpw::GaussianBasis;
+using ATV::cpu::gpw::GpwAtom;
+using ATV::cpu::gpw::GthPotential;
 } // namespace
 
 TEST(GpwOtScf, H2MatchesDiagonalization) {
-    const auto basis = builtin_gth_basis("H", "DZV-GTH-PADE");
-    const auto pot = builtin_gth_potential("H", "GTH-PADE-q1");
+    const auto basis = GaussianBasis(ATV::Element::H, "DZV-GTH-PADE");
+    const auto pot = GthPotential(ATV::Element::H, "GTH-PADE-q1");
     const double rA[3] = {3.5, 2.0, 2.0};
     const double rB[3] = {4.5, 2.0, 2.0};
-    std::vector<ATV::cpu::gpw::GpwAtom> atoms = {make_gpw_atom(rA, basis, pot),
-                                                 make_gpw_atom(rB, basis, pot)};
+    std::vector<ATV::cpu::gpw::GpwAtom> atoms = {GpwAtom(rA, basis, pot),
+                                                 GpwAtom(rB, basis, pot)};
     GpwConfig cfg;
     cfg.cell[0] = 8.0; cfg.cell[1] = 4.0; cfg.cell[2] = 4.0;
     cfg.cutoff_ry = 140.0; cfg.n_occ = 1; cfg.max_iter = 300; cfg.tol = 1e-8;
@@ -165,14 +166,14 @@ TEST(GpwOtScf, H2MatchesDiagonalization) {
 
 TEST(GpwOtScf, ZnOMatchesDiagonalization) {
     constexpr double kAng = 1.8897259885789;
-    const auto bZn = builtin_gth_basis("Zn", "DZVP-MOLOPT-SR-GTH");
-    const auto bO = builtin_gth_basis("O", "DZVP-MOLOPT-SR-GTH");
-    const auto pZn = builtin_gth_potential("Zn", "GTH-PBE-q12");
-    const auto pO = builtin_gth_potential("O", "GTH-PBE-q6");
+    const auto bZn = GaussianBasis(ATV::Element::Zn, "DZVP-MOLOPT-SR-GTH");
+    const auto bO = GaussianBasis(ATV::Element::O, "DZVP-MOLOPT-SR-GTH");
+    const auto pZn = GthPotential(ATV::Element::Zn, "GTH-PBE-q12");
+    const auto pO = GthPotential(ATV::Element::O, "GTH-PBE-q6");
     const double rZn[3] = {4.0 * kAng, 4.0 * kAng, 4.0 * kAng};
     const double rO[3] = {4.0 * kAng, 4.0 * kAng, 5.72 * kAng};
-    std::vector<ATV::cpu::gpw::GpwAtom> atoms = {make_gpw_atom(rZn, bZn, pZn),
-                                                 make_gpw_atom(rO, bO, pO)};
+    std::vector<ATV::cpu::gpw::GpwAtom> atoms = {GpwAtom(rZn, bZn, pZn),
+                                                 GpwAtom(rO, bO, pO)};
     GpwConfig cfg;
     cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 8.0 * kAng;
     cfg.cutoff_ry = 120.0; // cheap grid (consistency, not absolute accuracy)

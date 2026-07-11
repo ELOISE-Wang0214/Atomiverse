@@ -32,7 +32,8 @@
 #include "atomiverse/cpu/driver/single_point.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
-#include "atomiverse/cpu/gpw/basis_data/gpw_data.h"
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gth_potential.h"
 
 using namespace ATV;
 
@@ -61,19 +62,18 @@ int main() {
 
     cpu::Frame frame = make_water();
 
-    cpu::gpw::GpwElement O, H;
-    O.z = 8;
-    O.basis = cpu::gpw::builtin_gth_basis("O", "DZVP-MOLOPT-GTH");
-    O.pot = cpu::gpw::builtin_gth_potential("O", "GTH-PBE-q6");
-    H.z = 1;
-    H.basis = cpu::gpw::builtin_gth_basis("H", "DZVP-MOLOPT-GTH");
-    H.pot = cpu::gpw::builtin_gth_potential("H", "GTH-PBE-q1");
+    const cpu::gpw::Kind O{ATV::Element::O,
+                           cpu::gpw::GaussianBasis(ATV::Element::O, "DZVP-MOLOPT-GTH"),
+                           cpu::gpw::GthPotential(ATV::Element::O, "GTH-PBE-q6")};
+    const cpu::gpw::Kind H{ATV::Element::H,
+                           cpu::gpw::GaussianBasis(ATV::Element::H, "DZVP-MOLOPT-GTH"),
+                           cpu::gpw::GthPotential(ATV::Element::H, "GTH-PBE-q1")};
 
     cpu::gpw::GpwEvaluatorConfig cfg;
     cfg.cutoff_ry = 400.0;
     cfg.xc = cpu::gpw::XcKind::PBE;
     cfg.nonperiodic = true; // isolated molecule (Martyna-Tuckerman)
-    cfg.elements = {O, H};
+    cfg.kinds = {O, H};
 
     cpu::gpw::GPWEvaluator eval(cfg);
     cpu::single_point(frame, eval);

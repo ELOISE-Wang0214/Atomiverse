@@ -598,15 +598,20 @@ diagonalize → density → DIIS → convergence; loop internal). Evaluators
 Gradients: `scf_gradient(frame, integrals, result, config)` (HF + KS).
 Utilities: `basis_eval.h`, `grid.h`, `xc_functional.h`, `aspc_predictor.h`.
 
-### GPW data (in-tree, no external package)
-GTH-PBE pseudopotentials, DZVP-MOLOPT-SR-GTH basis sets and the DFT-D3 reference
-C6 table are **compiled in** (`cpu/gpw/basis_data/gpw_data.h` →
-`builtin_gth_potential` / `builtin_gth_basis`; `internal/dftd3_params.h` →
-`builtin_dftd3_params`), transcribed once from the published tables (Krack 2005;
-VandeVondele-Hutter 2007; Grimme 2010). **Nothing in the tree reads a third-party
-data file at build or test time.** Unsupported element/name throws (no fallback).
-The `cp2k_io.h` / `cp2k_basis.h` file parsers remain as an optional ingest path
-for data outside the supported set, but no test or example depends on them.
+### GPW data (in-tree static `.h` tables, no parsing)
+GTH pseudopotentials, MOLOPT/PADE basis sets and the DFT-D3 reference tables
+are **static C++ data headers** (`cpu/gpw/basis_data/gpw_tables.h`,
+`basis_data/dftd3_tables.h`), transcribed once from the published tables
+(Krack 2005; VandeVondele-Hutter 2007; Grimme 2010; generator preserved at
+`tools/gen_gpw_tables.cpp`). Access is **OOP lookup constructors only**:
+`GthPotential(Element, name)` / `GaussianBasis(Element, name)`
+(`cpu/gpw/gth_potential.h`, `gaussian_basis.h`) and `D3Params{}`
+(`internal/dftd3_params.h`). `Element` is molrs's periodic-table enum
+(`atomiverse/molrs.hpp` aliases it as `ATV::Element`) — the single
+element-identity type everywhere; a GPW `Kind{element, basis, pot}`
+(CP2K's `&KIND`) pairs it with its data. **There are no parsers, no
+`builtin_*`/`make_*` factory functions, and nothing reads any data file at
+build, test or run time.** Unsupported element/name throws (no fallback).
 
 `GpwConfig.local_pp_on_grid` (default true) selects CP2K's route of collocating
 the GTH local short-range PP on the grid. **Energy and analytic force both read

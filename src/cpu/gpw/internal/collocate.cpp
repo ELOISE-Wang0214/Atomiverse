@@ -47,7 +47,7 @@ namespace {
 ///
 /// For a periodic cell the displacement r - center is taken as the
 /// **minimum image** per axis (disp -= L * round(disp/L)), so a Gaussian
-/// centered outside [0,L) (an unwrapped EDL slab atom) contributes its density
+/// centered outside [0,L) (an unwrapped slab atom) contributes its density
 /// to the grid through its nearest periodic image — matching CP2K's periodic
 /// collocation. Atom positions are left untouched (wrapping them would overlap
 /// the oxide bilayer). For an orthorhombic cell per-axis min-image is exact when

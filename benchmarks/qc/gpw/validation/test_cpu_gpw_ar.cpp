@@ -18,17 +18,17 @@
 #include <gtest/gtest.h>
 
 #include "atomiverse/cpu/gpw/gpw_solver.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_basis.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_io.h"
-#include "atomiverse/cpu/gpw/basis_data/gpw_data.h"
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gth_potential.h"
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gth_potential.h"
 
 using ATV::cpu::gpw::GpwAtom;
 using ATV::cpu::gpw::GpwConfig;
 using ATV::cpu::gpw::GpwResult;
 using ATV::cpu::gpw::gpw_scf;
-using ATV::cpu::gpw::make_gpw_atom;
-using ATV::cpu::gpw::builtin_gth_basis;
-using ATV::cpu::gpw::builtin_gth_potential;
+using ATV::cpu::gpw::GaussianBasis;
+using ATV::cpu::gpw::GthPotential;
 
 namespace {
 } // namespace
@@ -36,16 +36,16 @@ namespace {
 TEST(GpwArCP2K, NonlocalAndDConverges) {
     // SKIPPED by default: same DZVP-GTH-PADE/PADE-LDA limitation as the H2 test —
     // the diffuse PADE basis over-images in the tight 6x6x6 periodic box under the
-    // Γ-point lattice sum, plus a pre-existing PADE-path offset vs CP2K. The EDL
+    // Γ-point lattice sum, plus a pre-existing PADE-path offset vs CP2K. MOLOPT
     // (DZVP-MOLOPT-SR-GTH) is unaffected; periodic parity is covered by nacl/zno.
     // Set ATV_RUN_PADE=1 to run for investigation.
     if (!std::getenv("ATV_RUN_PADE"))
         GTEST_SKIP() << "PADE-path over-imaging / pre-existing offset; see gpw-periodic-lattice-sum";
-    const auto basis = builtin_gth_basis("Ar", "DZVP-GTH-PADE");
-    const auto pot = builtin_gth_potential("Ar", "GTH-PADE-q8");
+    const auto basis = GaussianBasis(ATV::Element::Ar, "DZVP-GTH-PADE");
+    const auto pot = GthPotential(ATV::Element::Ar, "GTH-PADE-q8");
 
     const double pos[3] = {3.0, 3.0, 3.0}; // box center (translation-invariant)
-    std::vector<GpwAtom> atoms = {make_gpw_atom(pos, basis, pot)};
+    std::vector<GpwAtom> atoms = {GpwAtom(pos, basis, pot)};
 
     GpwConfig cfg;
     cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 6.0;

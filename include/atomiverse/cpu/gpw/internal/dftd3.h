@@ -44,23 +44,13 @@ struct D3Result {
 /// @param cell_bohr Orthorhombic box lengths a,b,c [Bohr] (used iff periodic).
 /// @param periodic When true, sum over lattice images within `rcut_bohr`; when
 ///        false, a single isolated cluster (no images).
-/// @param params   Parsed D3 reference parameters (`load_dftd3_params`).
+/// @param params   D3 reference parameters (`D3Params{}`, in-tree tables).
 /// @param rcut_bohr Pair cutoff [Bohr]; CP2K default is 2*R_CUTOFF = 40.
 /// @return Energy [Hartree] and forces [Hartree/Bohr].
 D3Result dftd3_pbe(const std::vector<int>& Z,
                    const std::vector<std::array<double, 3>>& pos_bohr,
                    const double cell_bohr[3], bool periodic, const D3Params& params,
                    double rcut_bohr = 40.0);
-
-/// @brief Convenience overload that loads the parameters from `dftd3.dat`.
-///
-/// Parses `dftd3_dat_path` on every call; prefer the `D3Params` overload in a
-/// hot loop (e.g. AIMD) and cache the parameters.
-/// @param dftd3_dat_path Absolute path to CP2K's `dftd3.dat`.
-D3Result dftd3_pbe(const std::vector<int>& Z,
-                   const std::vector<std::array<double, 3>>& pos_bohr,
-                   const double cell_bohr[3], bool periodic,
-                   const std::string& dftd3_dat_path, double rcut_bohr = 40.0);
 
 } // namespace gpw
 } // namespace cpu

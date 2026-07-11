@@ -17,17 +17,17 @@
 #include <gtest/gtest.h>
 
 #include "atomiverse/cpu/gpw/gpw_solver.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_basis.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_io.h"
-#include "atomiverse/cpu/gpw/basis_data/gpw_data.h"
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gth_potential.h"
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gth_potential.h"
 
 using ATV::cpu::gpw::GpwAtom;
 using ATV::cpu::gpw::GpwConfig;
 using ATV::cpu::gpw::GpwResult;
 using ATV::cpu::gpw::gpw_scf;
-using ATV::cpu::gpw::make_gpw_atom;
-using ATV::cpu::gpw::builtin_gth_basis;
-using ATV::cpu::gpw::builtin_gth_potential;
+using ATV::cpu::gpw::GaussianBasis;
+using ATV::cpu::gpw::GthPotential;
 
 namespace {
 } // namespace
@@ -38,20 +38,20 @@ TEST(GpwH2CP2K, RealBasisConverges) {
     // regtest value, MAX_SCF 3 + IGNORE_CONVERGENCE_FAILURE; converged CP2K is
     // -1.11896 at 8x4x4, -1.10676 isolated). Its very diffuse primitive
     // (alpha=0.166, reach ~10 Bohr) also over-images in tight periodic boxes
-    // (8x4x4 -> -1.278). Neither affects the EDL target (DZVP-MOLOPT-SR-GTH is
+    // (8x4x4 -> -1.278). Neither affects the MOLOPT sets (DZVP-MOLOPT-SR-GTH is
     // confined); periodic GPW parity is covered by the MOLOPT nacl/zno tests.
     // Set ATV_RUN_PADE=1 to run for investigation (ATV_H2_BOX overrides the cell).
     if (!std::getenv("ATV_RUN_PADE"))
         GTEST_SKIP() << "PADE-path over-imaging / pre-existing offset; see gpw-periodic-lattice-sum";
-    const auto basis = builtin_gth_basis("H", "DZV-GTH-PADE");
-    const auto pot = builtin_gth_potential("H", "GTH-PADE-q1");
+    const auto basis = GaussianBasis(ATV::Element::H, "DZV-GTH-PADE");
+    const auto pot = GthPotential(ATV::Element::H, "GTH-PADE-q1");
 
     // CP2K H2.inp geometry, in the 8x4x4 box (place the molecule away from the
     // origin so it does not straddle the periodic boundary).
     const double rA[3] = {3.5, 2.0, 2.0};
     const double rB[3] = {4.5, 2.0, 2.0}; // 1.0 Bohr apart
-    std::vector<GpwAtom> atoms = {make_gpw_atom(rA, basis, pot),
-                                  make_gpw_atom(rB, basis, pot)};
+    std::vector<GpwAtom> atoms = {GpwAtom(rA, basis, pot),
+                                  GpwAtom(rB, basis, pot)};
 
     GpwConfig cfg;
     cfg.cell[0] = 8.0;

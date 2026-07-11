@@ -655,17 +655,16 @@ const std::vector<std::vector<std::vector<CartTerm>>>& harmonics() {
 }
 } // namespace
 
-GpwAtom make_gpw_atom(const double pos[3], const GaussianBasis& basis,
-                      const GthPotential& pot, int z) {
-    GpwAtom atom;
-    atom.z_val = static_cast<double>(pot.zion);
-    atom.z = z;
-    atom.pos[0] = pos[0];
-    atom.pos[1] = pos[1];
-    atom.pos[2] = pos[2];
-    atom.rloc = pot.rloc;
-    atom.cloc = pot.cloc;
-    atom.nonlocal = pot.channels;
+GpwAtom::GpwAtom(const double pos[3], const GaussianBasis& basis,
+                 const GthPotential& pot, int z) {
+    this->z_val = static_cast<double>(pot.zion);
+    this->z = z;
+    this->pos[0] = pos[0];
+    this->pos[1] = pos[1];
+    this->pos[2] = pos[2];
+    this->rloc = pot.rloc;
+    this->cloc = pot.cloc;
+    this->nonlocal = pot.channels;
 
     for (const auto& set : basis.sets) {
         int col = 0;
@@ -698,12 +697,11 @@ GpwAtom make_gpw_atom(const double pos[3], const GaussianBasis& basis,
                         }
                     }
                     if (!bf.empty())
-                        atom.basis.push_back(std::move(bf));
+                        this->basis.push_back(std::move(bf));
                 }
             }
         }
     }
-    return atom;
 }
 
 /// The full GPW SCF implementation. `GPWSolver::run` is the owning entry
@@ -765,20 +763,14 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
             Z[i] = atoms[i].z;
             pos[i] = {atoms[i].pos[0], atoms[i].pos[1], atoms[i].pos[2]};
         }
-        // Empty d3_param_file = the in-tree table (the default source). A path is
-        // only needed to widen coverage beyond the supported elements.
-        if (cfg.d3_param_file.empty()) {
-            for (int z : Z)
-                if (!dftd3_supports_element(z))
-                    throw std::invalid_argument(
-                        "GPWSolver: the in-tree D3 table does not cover Z = "
-                        + std::to_string(z)
-                        + "; supply d3_param_file to widen coverage "
-                          "(no-fallback rule)");
-            e_d3 = dftd3_pbe(Z, pos, cfg.cell, periodic, builtin_dftd3_params()).energy;
-        } else {
-            e_d3 = dftd3_pbe(Z, pos, cfg.cell, periodic, cfg.d3_param_file).energy;
-        }
+        // In-tree D3 tables only (basis_data/dftd3_tables.h) — coverage is the
+        // supported element set; anything outside it throws (no fallback).
+        for (int z : Z)
+            if (!D3Params::supports_element(z))
+                throw std::runtime_error(
+                    "GPW D3: element Z=" + std::to_string(z)
+                    + " is not in the in-tree D3 table (no fallback)");
+        e_d3 = dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{}).energy;
     }
 
     // Geometry-fixed matrices.
@@ -864,8 +856,8 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
     // CANONICAL orthogonalization, not the full-rank Löwdin S^{-1/2}. In a dense
     // periodic cell the diffuse MOLOPT functions drive S toward linear dependence:
     // its smallest eigenvalues go to ~0, Löwdin AMPLIFIES those directions by
-    // 1/sqrt(s), and the raw generalized solver (dsygvd) simply fails — the 1214-atom
-    // EDL single point aborted with `dsygvd failed, info=20590` (S not positive
+    // 1/sqrt(s), and the raw generalized solver (dsygvd) simply fails — a 13726-AO
+    // slab single point aborted with `dsygvd failed, info=20590` (S not positive
     // definite), and ZnO's diagonalization SCF oscillated for 400 iterations without
     // converging. CanonicalOrth drops the near-null directions (s_i < lindep_threshold)
     // instead of amplifying them, exactly as cpu/scf does (hf-robust-02).
@@ -883,7 +875,7 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
             // caught a real one: the pair lattice sum was missing its outermost image
             // shell (image_counts covers |T| <= rcut, but a pair screens on
             // |R_A - R_B - T| <= reach and two centers can be a full cell edge apart).
-            // The 1214-atom ZnO EDL overlap came out at s_min = -1.92 (unit-diagonal);
+            // A 13726-AO slab overlap came out at s_min = -1.92 (unit-diagonal);
             // with pair_image_counts it is -6.8e-14, and its spectrum now matches the
             // PySCF reference (s_max 19.65012 vs 19.650). See internal/periodic.h.
             //

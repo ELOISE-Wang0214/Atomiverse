@@ -290,14 +290,6 @@ D3Result dftd3_pbe(const std::vector<int>& Z,
     return res;
 }
 
-D3Result dftd3_pbe(const std::vector<int>& Z,
-                   const std::vector<std::array<double, 3>>& pos_bohr,
-                   const double cell_bohr[3], bool periodic,
-                   const std::string& dftd3_dat_path, double rcut_bohr) {
-    const D3Params params = load_dftd3_params(dftd3_dat_path);
-    return dftd3_pbe(Z, pos_bohr, cell_bohr, periodic, params, rcut_bohr);
-}
-
 } // namespace gpw
 } // namespace cpu
 } // namespace ATV

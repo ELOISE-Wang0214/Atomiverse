@@ -10,9 +10,11 @@
 
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_basis.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_io.h"
-#include "atomiverse/cpu/gpw/basis_data/gpw_data.h"
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gth_potential.h"
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gth_potential.h"
+#include "atomiverse/cpu/md/fix_csvr.h"
 #include "atomiverse/cpu/md/init.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
@@ -40,17 +42,17 @@ TEST(GpwAIMD, H2NveTrajectoryRuns) {
     frame.atoms.type(0) = frame.atoms.type(1) = 1;
     frame.atoms.mass(0) = frame.atoms.mass(1) = 1.008; // H [amu]
 
-    GpwElement H;
-    H.z = 1;
-    H.basis = builtin_gth_basis("H", "DZV-GTH-PADE");
-    H.pot = builtin_gth_potential("H", "GTH-PADE-q1");
+    Kind H;
+    H.element = ATV::Element::H;
+    H.basis = GaussianBasis(ATV::Element::H, "DZV-GTH-PADE");
+    H.pot = GthPotential(ATV::Element::H, "GTH-PADE-q1");
 
     GpwEvaluatorConfig cfg;
     cfg.cutoff_ry = 140.0;
     cfg.mix = 0.3;
     cfg.compute_forces = true;
     cfg.fd_step = 2e-3;
-    cfg.elements = {H};
+    cfg.kinds = {H};
 
     const double bond0 = bond_ang(frame);
 
@@ -65,4 +67,49 @@ TEST(GpwAIMD, H2NveTrajectoryRuns) {
     // nonzero velocity at 300 K, integrated by velocity-Verlet on GPW forces).
     EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.energy)));
     EXPECT_GT(std::abs(bond_ang(frame) - bond0), 1e-6) << "frame did not evolve";
+}
+
+// GPW-CSVR NVT: the same textbook H2, thermostatted by FixCSVR (Bussi). The
+// canonical-distribution and H-tilde drift statistics are proven on classical
+// Ar in benchmarks/md/lj/validation/test_md_csvr.cpp; this is the
+// integration gate — GPW forces + CSVR run together, the trajectory stays
+// physical and the Bussi conserved quantity is finite.
+TEST(GpwAIMD, H2CsvrNvtTrajectoryRuns) {
+    ATV::cpu::Frame frame(2);
+    frame.box = ATV::cpu::Box::orthorhombic(8.0 * kBohr2Ang, 4.0 * kBohr2Ang,
+                                            4.0 * kBohr2Ang);
+    frame.atoms.x(0) = 3.6 * kBohr2Ang;
+    frame.atoms.x(1) = 5.0 * kBohr2Ang;
+    frame.atoms.y(0) = frame.atoms.y(1) = 2.0 * kBohr2Ang;
+    frame.atoms.z(0) = frame.atoms.z(1) = 2.0 * kBohr2Ang;
+    frame.atoms.type(0) = frame.atoms.type(1) = 1;
+    frame.atoms.mass(0) = frame.atoms.mass(1) = 1.008;
+
+    Kind H;
+    H.element = ATV::Element::H;
+    H.basis = GaussianBasis(ATV::Element::H, "DZV-GTH-PADE");
+    H.pot = GthPotential(ATV::Element::H, "GTH-PADE-q1");
+
+    GpwEvaluatorConfig cfg;
+    cfg.cutoff_ry = 140.0;
+    cfg.mix = 0.3;
+    cfg.compute_forces = true;
+    cfg.fd_step = 2e-3;
+    cfg.kinds = {H};
+
+    const double dt = 0.0005; // 0.5 fs
+    ATV::cpu::md::MD sim;
+    sim.add(ATV::cpu::md::InitVelocity{330.0, /*seed=*/7u});
+    sim.add(ATV::cpu::md::VelocityVerlet{dt});
+    sim.set_thermostat(ATV::cpu::md::FixCSVR{330.0, /*tau [fs]=*/20.0, dt, 7u});
+    sim.on(ATV::md::Phase::force).add(GPWEvaluator{cfg});
+    sim.build();
+    sim.run(frame, 10);
+
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.energy)));
+    EXPECT_TRUE(std::isfinite(static_cast<double>(frame.scalars.conserved)))
+        << "Bussi H-tilde bookkeeping broke";
+    const double bond = bond_ang(frame);
+    EXPECT_GT(bond, 0.4);
+    EXPECT_LT(bond, 1.5) << "H2 dissociated in 10 NVT steps — unphysical";
 }

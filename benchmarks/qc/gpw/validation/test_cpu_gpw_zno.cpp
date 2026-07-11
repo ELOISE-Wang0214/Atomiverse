@@ -2,7 +2,7 @@
 /// @brief GPW vs CP2K parity for a periodic ZnO diatomic — the first
 ///        transition-metal validation (Zn GTH-PBE-q12 d-channel projector +
 ///        DZVP-MOLOPT-SR-GTH, which carries f-shells, lmax=3). Rung 1 of the
-///        gpw-edl-aimd per-element ladder (ac-004).
+///        GPW per-element anchor ladder.
 ///
 /// System: Zn at (4,4,4) Å, O at (4,4,5.72) Å (1.72 Å bond) in an 8 Å cubic
 /// PERIODIC XYZ box; PBE; CUTOFF 600 Ry; GTH-PBE-q12 (Zn) / GTH-PBE-q6 (O);
@@ -20,18 +20,18 @@
 #include <gtest/gtest.h>
 
 #include "atomiverse/cpu/gpw/gpw_solver.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_basis.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_io.h"
-#include "atomiverse/cpu/gpw/basis_data/gpw_data.h"
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gth_potential.h"
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gth_potential.h"
 
 using ATV::cpu::gpw::GpwAtom;
 using ATV::cpu::gpw::GpwConfig;
 using ATV::cpu::gpw::GpwResult;
 using ATV::cpu::gpw::gpw_scf;
-using ATV::cpu::gpw::make_gpw_atom;
-using ATV::cpu::gpw::builtin_gth_basis;
-using ATV::cpu::gpw::builtin_gth_potential;
 using ATV::cpu::gpw::XcKind;
+using ATV::cpu::gpw::GaussianBasis;
+using ATV::cpu::gpw::GthPotential;
 
 namespace {
 constexpr double kAng = 1.8897259885789; // Angstrom -> Bohr
@@ -39,19 +39,19 @@ constexpr double kAng = 1.8897259885789; // Angstrom -> Bohr
 
 TEST(GpwZnOCP2K, PeriodicDiatomicPbe) {
     const auto basis_Zn =
-        builtin_gth_basis("Zn", "DZVP-MOLOPT-SR-GTH");
+        GaussianBasis(ATV::Element::Zn, "DZVP-MOLOPT-SR-GTH");
     const auto basis_O =
-        builtin_gth_basis("O", "DZVP-MOLOPT-SR-GTH");
+        GaussianBasis(ATV::Element::O, "DZVP-MOLOPT-SR-GTH");
     const auto pot_Zn =
-        builtin_gth_potential("Zn", "GTH-PBE-q12");
+        GthPotential(ATV::Element::Zn, "GTH-PBE-q12");
     const auto pot_O =
-        builtin_gth_potential("O", "GTH-PBE-q6");
+        GthPotential(ATV::Element::O, "GTH-PBE-q6");
 
     const double Zn[3] = {4.0 * kAng, 4.0 * kAng, 4.0 * kAng};
     const double O[3] = {4.0 * kAng, 4.0 * kAng, 5.72 * kAng};
 
-    std::vector<GpwAtom> atoms = {make_gpw_atom(Zn, basis_Zn, pot_Zn),
-                                  make_gpw_atom(O, basis_O, pot_O)};
+    std::vector<GpwAtom> atoms = {GpwAtom(Zn, basis_Zn, pot_Zn),
+                                  GpwAtom(O, basis_O, pot_O)};
 
     GpwConfig cfg;
     cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 8.0 * kAng;

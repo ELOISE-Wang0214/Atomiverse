@@ -157,12 +157,10 @@ if(ATV_BUILD_GPW)
     # Minimal model system for the Γ-point lattice sum: S must be positive definite
     # at every cell size (Gram matrix). Pinned against PySCF.
     atv_add_cpp_test(test_cpu_gpw_periodic_overlap cpu/gpw/test_cpu_gpw_periodic_overlap.cpp)
-    atv_add_cpp_test(test_cpu_gpw_cp2k_io       cpu/gpw/test_cpu_gpw_cp2k_io.cpp)
-    atv_add_cpp_test(test_cpu_gpw_basis         cpu/gpw/test_cpu_gpw_basis.cpp)
-    # ZnO EDL heavy elements (gpw-edl-aimd ac-003): Zn/Na/Cl GTH-PBE +
+    # Heavy elements: Zn/Na/Cl GTH-PBE +
     # DZVP-MOLOPT-SR-GTH ingest, incl. the Zn d/f channels.
     atv_add_cpp_test(test_cpu_gpw_heavy_elements cpu/gpw/test_cpu_gpw_heavy_elements.cpp)
-    # Grimme DFT-D3 (ac-013): energy + analytic force incl. the CN-derivative
+    # Grimme DFT-D3 (D3): energy + analytic force incl. the CN-derivative
     # term, against a finite-difference check. Reference-free.
     atv_add_cpp_test(test_cpu_gpw_dftd3         cpu/gpw/test_cpu_gpw_dftd3.cpp)
 endif()
@@ -203,18 +201,8 @@ atv_add_cpp_test(test_cpu_md_plan_equivalence             cpu/md/test_md_plan_eq
 atv_add_cpp_test(test_cpu_minimize_evaluate_set_api       cpu/test_minimize_evaluate_set_api.cpp)
 atv_add_cpp_test(test_cpu_materialize                     cpu/test_materialize.cpp)
 
-# ExtXYZ loading through molrs (gpw-edl-aimd M1). The real ZnO EDL frame is a
-# large external data file, not vendored. Provide its path via
-# -DATV_FINAL_FRAME_XYZ=<file> to enable the full-frame load case; when unset
-# or the file is absent, the macro stays undefined and the test self-skips
-# that case (see the #ifdef in test_cpu_io_extxyz.cpp).
-set(ATV_FINAL_FRAME_XYZ ""
-    CACHE FILEPATH "Optional reference 1214-atom ZnO electric-double-layer ExtXYZ frame")
+# ExtXYZ loading through molrs — inline fixtures only, no external file.
 atv_add_cpp_test(test_cpu_io_extxyz                       cpu/io/test_cpu_io_extxyz.cpp)
-if(ATV_FINAL_FRAME_XYZ AND EXISTS "${ATV_FINAL_FRAME_XYZ}")
-    target_compile_definitions(test_cpu_io_extxyz
-        PRIVATE ATV_FINAL_FRAME_XYZ="${ATV_FINAL_FRAME_XYZ}")
-endif()
 
 # ── MPI tests (launched under `mpirun`) ─────────────────────────────────
 

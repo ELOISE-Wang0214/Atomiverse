@@ -362,9 +362,8 @@ if(NOT ATV_DOCS_ONLY)
         # Poisson / SCF land in later tasks.
         target_sources(atomiverse PRIVATE
             src/cpu/gpw/internal/local_pp.cpp
-            src/cpu/gpw/internal/cp2k_io.cpp
-            src/cpu/gpw/internal/cp2k_basis.cpp
-            src/cpu/gpw/basis_data/gpw_data.cpp
+            src/cpu/gpw/gaussian_basis.cpp
+            src/cpu/gpw/gth_potential.cpp
             src/cpu/gpw/internal/gth_integrals.cpp
             src/cpu/gpw/internal/real_harmonics.cpp
             src/cpu/gpw/internal/diis.cpp

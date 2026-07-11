@@ -16,9 +16,10 @@
 
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_basis.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_io.h"
-#include "atomiverse/cpu/gpw/basis_data/gpw_data.h"
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gth_potential.h"
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h"
 #include "atomiverse/cpu/minimizer/minimize.h"
 
@@ -49,17 +50,17 @@ TEST(GpwGeoOpt, H2RelaxesTowardEquilibrium) {
     frame.atoms.type(0) = 1;
     frame.atoms.type(1) = 1;
 
-    GpwElement H;
-    H.z = 1;
-    H.basis = builtin_gth_basis("H", "DZV-GTH-PADE");
-    H.pot = builtin_gth_potential("H", "GTH-PADE-q1");
+    Kind H;
+    H.element = ATV::Element::H;
+    H.basis = GaussianBasis(ATV::Element::H, "DZV-GTH-PADE");
+    H.pot = GthPotential(ATV::Element::H, "GTH-PADE-q1");
 
     GpwEvaluatorConfig cfg;
     cfg.cutoff_ry = 140.0;
     cfg.mix = 0.3;
     cfg.compute_forces = true;
     cfg.fd_step = 2e-3;
-    cfg.elements = {H};
+    cfg.kinds = {H};
 
     const double bond0 = bond_bohr(frame);
     ASSERT_NEAR(bond0, 1.0, 1e-6);

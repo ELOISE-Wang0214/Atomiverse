@@ -32,7 +32,7 @@
 
 #include <vector>
 
-#include "atomiverse/cpu/gpw/internal/cp2k_io.h" // GthNonlocalChannel
+#include "atomiverse/cpu/gpw/gth_potential.h" // GthNonlocalChannel
 
 namespace ATV {
 namespace cpu {

@@ -1,7 +1,7 @@
 /// @file tests/cpu/gpw/test_cpu_gpw_nacl_cp2k.cpp
 /// @brief GPW vs CP2K parity for a periodic NaCl diatomic — validates the last
-///        two un-tested EDL elements: Na GTH-PBE-q9 (semicore, 9 valence e-) and
-///        Cl GTH-PBE-q7. Rung 2 of the gpw-edl-aimd per-element ladder (ac-004).
+///        two heaviest supported elements: Na GTH-PBE-q9 (semicore, 9 valence e-) and
+///        Cl GTH-PBE-q7. Rung 2 of the GPW per-element anchor ladder.
 ///
 /// System: Na at (5,5,5) Å, Cl at (5,5,7.36) Å (2.36 Å bond) in a 10 Å cubic
 /// PERIODIC XYZ box; PBE; CUTOFF 600 Ry; GTH-PBE-q9 (Na) / GTH-PBE-q7 (Cl);
@@ -19,18 +19,18 @@
 #include <gtest/gtest.h>
 
 #include "atomiverse/cpu/gpw/gpw_solver.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_basis.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_io.h"
-#include "atomiverse/cpu/gpw/basis_data/gpw_data.h"
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gth_potential.h"
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gth_potential.h"
 
 using ATV::cpu::gpw::GpwAtom;
 using ATV::cpu::gpw::GpwConfig;
 using ATV::cpu::gpw::GpwResult;
 using ATV::cpu::gpw::gpw_scf;
-using ATV::cpu::gpw::make_gpw_atom;
-using ATV::cpu::gpw::builtin_gth_basis;
-using ATV::cpu::gpw::builtin_gth_potential;
 using ATV::cpu::gpw::XcKind;
+using ATV::cpu::gpw::GaussianBasis;
+using ATV::cpu::gpw::GthPotential;
 
 namespace {
 constexpr double kAng = 1.8897259885789; // Angstrom -> Bohr
@@ -38,19 +38,19 @@ constexpr double kAng = 1.8897259885789; // Angstrom -> Bohr
 
 TEST(GpwNaClCP2K, PeriodicDiatomicPbe) {
     const auto basis_Na =
-        builtin_gth_basis("Na", "DZVP-MOLOPT-SR-GTH");
+        GaussianBasis(ATV::Element::Na, "DZVP-MOLOPT-SR-GTH");
     const auto basis_Cl =
-        builtin_gth_basis("Cl", "DZVP-MOLOPT-SR-GTH");
+        GaussianBasis(ATV::Element::Cl, "DZVP-MOLOPT-SR-GTH");
     const auto pot_Na =
-        builtin_gth_potential("Na", "GTH-PBE-q9");
+        GthPotential(ATV::Element::Na, "GTH-PBE-q9");
     const auto pot_Cl =
-        builtin_gth_potential("Cl", "GTH-PBE-q7");
+        GthPotential(ATV::Element::Cl, "GTH-PBE-q7");
 
     const double Na[3] = {5.0 * kAng, 5.0 * kAng, 5.0 * kAng};
     const double Cl[3] = {5.0 * kAng, 5.0 * kAng, 7.36 * kAng};
 
-    std::vector<GpwAtom> atoms = {make_gpw_atom(Na, basis_Na, pot_Na),
-                                  make_gpw_atom(Cl, basis_Cl, pot_Cl)};
+    std::vector<GpwAtom> atoms = {GpwAtom(Na, basis_Na, pot_Na),
+                                  GpwAtom(Cl, basis_Cl, pot_Cl)};
 
     GpwConfig cfg;
     cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 10.0 * kAng;

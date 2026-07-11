@@ -25,7 +25,7 @@ You will learn:
    better than pure Gaussians for the electrostatics.
 2. **The representation** — a `gpw_solver` inner engine behind a
    `GPWEvaluator` component, the third member of the evaluator family.
-3. **The C++ API** — `GpwElement`, `GpwEvaluatorConfig`, and `single_point`,
+3. **The C++ API** — `Element`, `GpwEvaluatorConfig`, and `single_point`,
    walked through `examples/09_gpw.cpp` (an isolated water molecule).
 4. **The expected result** — CP2K Quickstep parity, to the sub-µHartree.
 5. **The validation** — against CP2K, and the honest experimental scope.
@@ -77,7 +77,7 @@ as [Gaussian SCF is an inner solver](ch02-rhf.md) behind `SCFEvaluator` and
 [plane-wave DFT](ch08-plane-wave.md) is one behind `PWEvaluator`.
 
 `GPWEvaluator` reports `role() == Evaluator` and `capabilities() == Energy`
-(plus `Force` when finite-difference forces are enabled). Its `build()` records
+(plus `Force` when analytic forces are enabled). Its `build()` records
 the per-element basis and pseudopotential templates; each `launch()` assembles
 the atoms at the frame's current geometry (converting Å → Bohr), runs the GPW
 SCF, and writes the total energy to `frame.scalars.energy` in eV — the same
@@ -107,20 +107,18 @@ for (int i = 0; i < 3; ++i) {
 f.box = cpu::Box::cubic(10.0);                      // 10 Å box
 ```
 
-**Step 2 — load the basis and pseudopotential per element.** GPW consumes
-CP2K-format data files (`BASIS_MOLOPT`, `GTH_POTENTIALS`), so a `GpwElement`
-pairs a contracted Gaussian basis with a GTH potential, keyed by $Z$:
+**Step 2 — declare a `Kind` per element.** A `cpu::gpw::Kind` is CP2K's
+`&KIND` concept: one chemical element (`ATV::Element`, the molrs
+periodic-table enum) paired with its contracted Gaussian basis and GTH
+pseudopotential, both from the in-tree data tables:
 
 ```cpp
-const std::string data = /* path to a CP2K data/ directory */;
-
-cpu::gpw::GpwElement O, H;
-O.z = 8;
-O.basis = cpu::gpw::parse_gth_basis(data + "/BASIS_MOLOPT", "O", "DZVP-MOLOPT-GTH");
-O.pot   = cpu::gpw::parse_gth_potential(data + "/GTH_POTENTIALS", "O", "GTH-PBE-q6");
-H.z = 1;
-H.basis = cpu::gpw::parse_gth_basis(data + "/BASIS_MOLOPT", "H", "DZVP-MOLOPT-GTH");
-H.pot   = cpu::gpw::parse_gth_potential(data + "/GTH_POTENTIALS", "H", "GTH-PBE-q1");
+const cpu::gpw::Kind O{ATV::Element::O,
+                       cpu::gpw::GaussianBasis(ATV::Element::O, "DZVP-MOLOPT-GTH"),
+                       cpu::gpw::GthPotential(ATV::Element::O, "GTH-PBE-q6")};
+const cpu::gpw::Kind H{ATV::Element::H,
+                       cpu::gpw::GaussianBasis(ATV::Element::H, "DZVP-MOLOPT-GTH"),
+                       cpu::gpw::GthPotential(ATV::Element::H, "GTH-PBE-q1")};
 ```
 
 The `q6`/`q1` suffixes are the valence electron counts the pseudopotential keeps
@@ -134,7 +132,7 @@ cpu::gpw::GpwEvaluatorConfig cfg;
 cfg.cutoff_ry  = 400.0;                     // real-space grid resolution [Ry]
 cfg.xc         = cpu::gpw::XcKind::PBE;      // PADE (LDA) or PBE (GGA)
 cfg.nonperiodic = true;                      // isolated: Martyna-Tuckerman electrostatics
-cfg.elements   = {O, H};
+cfg.kinds      = {O, H};
 
 cpu::gpw::GPWEvaluator eval(cfg);
 cpu::single_point(frame, eval);              // frame.scalars.energy now set [eV]
@@ -145,11 +143,10 @@ const int    n    = eval.last_result().iters;
 ```
 
 Set `cfg.nonperiodic = false` for a genuinely periodic system (a crystal or
-slab) — then the grid electrostatics are periodic, as in
-[`examples/10_gpw_znoedl.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/10_gpw_znoedl.cpp), which runs
-CP2K's periodic ZnO electric-double-layer slab. Optional knobs: `cfg.mix` (density
-mixing), `cfg.max_iter`, `cfg.tol`, `cfg.d3` (Grimme DFT-D3 dispersion, requires
-`cfg.d3_param_file`), and `cfg.compute_forces` (finite-difference forces — see
+slab) — then the grid electrostatics are periodic, as in the small wurtzite-ZnO
+cell of `benchmarks/qc/gpw/validation/test_cpu_gpw_zno.cpp`. Optional knobs: `cfg.mix` (density
+mixing), `cfg.max_iter`, `cfg.tol`, `cfg.d3` (Grimme DFT-D3 dispersion from the
+in-tree tables), and `cfg.compute_forces` (analytic forces — see
 the scope note below).
 
 ## The Expected Result: CP2K Quickstep Parity
@@ -178,11 +175,12 @@ Gaussian SCF chapters and ABINIT/CP2K for the plane-wave chapter. The validation
 strategy is CP2K parity on:
 
 - **Isolated molecules** (Martyna-Tuckerman) — the water single point above.
-- **Periodic systems** — the ZnO slab of `examples/10_gpw_znoedl.cpp`, matching
-  CP2K's `ZnO_MD.inp` electronic structure (DZVP-MOLOPT-SR-GTH, GTH-PBE, 320 Ry).
+- **Periodic systems** — the small wurtzite-ZnO cell of
+  `benchmarks/qc/gpw/validation/test_cpu_gpw_zno.cpp` (DZVP-MOLOPT-SR-GTH,
+  GTH-PBE), pinned against a constexpr anchor energy.
 
-A dedicated `benchmarks/gpw/` suite that pins these parities under CI is on the
-roadmap ([`.claude/specs/gpw-gaussian-plane-wave.md`](https://github.com/MolCrafts/Atomiverse/blob/dev/.claude/specs/gpw-gaussian-plane-wave.md));
+The full anchor suite lives in `benchmarks/qc/gpw/validation/`
+(H₂ / Ar / H₂O / ZnO / NaCl, plus forces, geoopt, AIMD and OT-vs-diag);
 until then the two examples are the executable checks, each printing its
 deviation from the CP2K reference.
 
@@ -214,12 +212,12 @@ GPW is **experimental**. Be precise about what works today:
 - **Γ-point only** — no k-point sampling; correct for large periodic cells where
   a single k-point suffices, not for small unit cells needing a k-mesh.
 - **XC:** PADE (LDA) and PBE (GGA). No hybrid functionals on the grid.
-- **Forces are finite-difference**, not analytic: `cfg.compute_forces = true`
-  displaces each atom by `cfg.fd_step` Bohr and differences the energy — correct
-  but expensive ($\mathcal{O}(N)$ extra SCF solves). Analytic GPW forces are a
-  later capability.
-- The CP2K-format I/O helpers (`parse_gth_basis`, `parse_gth_potential`) live
-  under `cpu/gpw/internal/` and are not yet a frozen public interface.
+- **Forces are analytic**: `cfg.compute_forces = true` runs one SCF plus one
+  gradient pass per evaluation, validated against the central finite-difference
+  oracle in `benchmarks/qc/gpw/validation/test_cpu_gpw_forces.cpp`.
+- All basis/pseudopotential/D3 data is compiled in as static `.h` tables
+  (`cpu/gpw/basis_data/`); there are no file parsers — an entry outside the
+  supported set throws.
 
 For the periodic plane-wave method GPW builds on, see
 [Chapter 8](ch08-plane-wave.md); for the molecular Gaussian DFT it shares a basis with,
@@ -227,16 +225,12 @@ see [Chapter 5](ch05-kohn-sham-dft.md).
 
 ## Validation Reference
 
-The two runnable GPW calculations each validate against a committed CP2K
-reference energy printed at the end of the run:
+The runnable GPW example validates against a pinned reference energy printed at
+the end of the run:
 
-- Isolated H₂O (PBE, DZVP-MOLOPT-GTH, Martyna-Tuckerman) vs CP2K
+- Isolated H₂O (PBE, DZVP-MOLOPT-GTH, Martyna-Tuckerman) vs the pinned anchor
   `-17.21233714` Ha: [`examples/09_gpw.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/09_gpw.cpp).
-- Periodic ZnO slab (CP2K `ZnO_MD.inp` electronic structure):
-  [`examples/10_gpw_znoedl.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/10_gpw_znoedl.cpp).
 
-The design, CP2K-parity targets, and planned `benchmarks/gpw/` migration are
-tracked in
-[`.claude/specs/gpw-gaussian-plane-wave.md`](https://github.com/MolCrafts/Atomiverse/blob/dev/.claude/specs/gpw-gaussian-plane-wave.md)
-and its production extension
-[`.claude/specs/gpw-edl-aimd.md`](https://github.com/MolCrafts/Atomiverse/blob/dev/.claude/specs/gpw-edl-aimd.md).
+The full anchor suite (H₂ / Ar / H₂O / ZnO / NaCl single points, forces vs the
+FD oracle, geoopt, AIMD, OT-vs-diag) lives in `benchmarks/qc/gpw/validation/` —
+every case is a minimal textbook system and runs in minutes.

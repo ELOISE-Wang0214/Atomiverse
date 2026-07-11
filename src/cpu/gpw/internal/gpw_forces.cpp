@@ -358,7 +358,7 @@ gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
                                                 atoms[static_cast<std::size_t>(i)].pos[1],
                                                 atoms[static_cast<std::size_t>(i)].pos[2]};
         }
-        const D3Result d3 = dftd3_pbe(Z, pos, cfg.cell, periodic, cfg.d3_param_file);
+        const D3Result d3 = dftd3_pbe(Z, pos, cfg.cell, periodic, D3Params{});
         for (int i = 0; i < na; ++i)
             for (int k = 0; k < 3; ++k) forces[i][k] += d3.forces[static_cast<std::size_t>(i)][k];
     }

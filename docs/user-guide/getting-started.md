@@ -119,7 +119,6 @@ with its tutorial chapter.
 | `07_md_lj_cuda` | the CUDA twin of `07_md_lj` | `ATV_BUILD_CUDA` |
 | `08_pw` | plane-wave DFT for a crystal | `ATV_BUILD_PW` |
 | `09_gpw` | GPW DFT (Gaussian + plane waves), H₂O | `ATV_BUILD_GPW` |
-| `10_gpw_znoedl` | GPW on a periodic 1214-atom ZnO slab | `ATV_BUILD_GPW` |
 
 ## 6. The one data structure to remember
 

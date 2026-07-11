@@ -25,9 +25,10 @@
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_basis.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_io.h"
-#include "atomiverse/cpu/gpw/basis_data/gpw_data.h"
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gth_potential.h"
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/facade/component_role.h"
 
 using namespace ATV::cpu::gpw;
@@ -41,9 +42,9 @@ constexpr double kAng2Bohr =
 // local pseudopotential — the minimal converging H2 system of
 // test_cpu_gpw_solver.cpp, expressed as the GaussianBasis/GthPotential structs
 // the evaluator consumes. No file parsing.
-GpwElement inline_hydrogen_element() {
+Kind inline_hydrogen_kind() {
     GaussianBasis basis;
-    basis.element = "H";
+    basis.element = ATV::Element::H;
     basis.name = "INLINE-S";
     GaussianBasisSet set;
     set.n = 1;
@@ -56,14 +57,14 @@ GpwElement inline_hydrogen_element() {
     basis.sets = {set};
 
     GthPotential pot;
-    pot.element = "H";
+    pot.element = ATV::Element::H;
     pot.name = "INLINE-q1";
     pot.zion = 1;
     pot.rloc = 0.2;
     pot.cloc = {-4.17890044, 0.72446331};
 
-    GpwElement e;
-    e.z = 1;
+    Kind e;
+    e.element = ATV::Element::H;
     e.basis = basis;
     e.pot = pot;
     return e;
@@ -94,7 +95,7 @@ GpwEvaluatorConfig inline_h2_evaluator_config() {
     cfg.mix = 0.5;
     cfg.xc = XcKind::PADE;
     cfg.nonperiodic = false;
-    cfg.elements = {inline_hydrogen_element()};
+    cfg.kinds = {inline_hydrogen_kind()};
     return cfg;
 }
 
@@ -123,17 +124,17 @@ TEST(GpwEvaluator, H2SinglePointThroughDriver) {
     frame.atoms.type(0) = 1; // H
     frame.atoms.type(1) = 1;
 
-    GpwElement H;
-    H.z = 1;
-    H.basis = builtin_gth_basis("H", "DZV-GTH-PADE");
-    H.pot = builtin_gth_potential("H", "GTH-PADE-q1");
+    Kind H;
+    H.element = ATV::Element::H;
+    H.basis = GaussianBasis(ATV::Element::H, "DZV-GTH-PADE");
+    H.pot = GthPotential(ATV::Element::H, "GTH-PADE-q1");
 
     GpwEvaluatorConfig cfg;
     cfg.cutoff_ry = 140.0;
     cfg.xc = XcKind::PADE;
     cfg.nonperiodic = false;
     cfg.mix = 0.3;
-    cfg.elements = {H};
+    cfg.kinds = {H};
 
     GPWEvaluator eval(cfg);
     ATV::cpu::single_point(frame, eval);
@@ -170,13 +171,13 @@ TEST(GpwEvaluatorSolver, InlineH2EnergyBitMatchesDirectSolve) {
     ASSERT_TRUE(eval.last_result().converged);
 
     // Reference: mirror the evaluator's own atom/config assembly bit-for-bit.
-    const GpwElement H = inline_hydrogen_element();
+    const Kind H = inline_hydrogen_kind();
     std::vector<GpwAtom> atoms;
     for (int i = 0; i < 2; ++i) {
         const double pos[3] = {frame.atoms.x(i) * kAng2Bohr,
                                frame.atoms.y(i) * kAng2Bohr,
                                frame.atoms.z(i) * kAng2Bohr};
-        atoms.push_back(make_gpw_atom(pos, H.basis, H.pot, 1));
+        atoms.push_back(GpwAtom(pos, H.basis, H.pot, 1));
     }
     GpwConfig cfg;
     cfg.cell[0] = frame.box.length(0) * kAng2Bohr;

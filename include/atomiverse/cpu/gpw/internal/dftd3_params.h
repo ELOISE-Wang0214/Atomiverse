@@ -1,11 +1,13 @@
 /// @file cpu/gpw/internal/dftd3_params.h
-/// @brief Grimme DFT-D3 reference parameter tables (zero-damping), parsed to
-///        match CP2K's `qs_dispersion_*` exactly.
+/// @brief Grimme DFT-D3 reference parameters (zero-damping), matching CP2K's
+///        `qs_dispersion_*` exactly. All data is in-tree static tables
+///        (basis_data/dftd3_tables.h) — nothing is parsed at build, test or
+///        run time.
 ///
-/// Three sources feed the D3 model (Grimme, Antony, Ehrlich, Krieg,
+/// Three tables feed the D3 model (Grimme, Antony, Ehrlich, Krieg,
 /// J. Chem. Phys. 132, 154104 (2010)):
-///   1. The tabulated, coordination-number-resolved reference C6 coefficients,
-///      read from CP2K's `dftd3.dat` (same file, same encoding as
+///   1. The tabulated, coordination-number-resolved reference C6 coefficients
+///      for the supported element set (same encoding as
 ///      `qs_dispersion_d3::dftd3_c6_param`).
 ///   2. The element covalent radii `rcov` (Pyykkö & Atsumi, Chem. Eur. J. 15,
 ///      2009, 188; metals reduced 10%), pre-scaled by k2 = 4/3 and converted to
@@ -14,12 +16,11 @@
 ///      `sqrt(0.5*r2r4_raw*sqrt(Z))` so that C8 = 3*C6*r2r4_A*r2r4_B, and the
 ///      packed lower-triangular `r0ab(za,zb)` cutoff-radius table [Bohr].
 ///
-/// All tables cover Z = 1..94 (`kMaxElem`). This header exposes the parsed,
-/// ready-to-use parameters; physics lives in `dftd3.h`.
+/// Element tables cover Z = 1..94 (`kMaxElem`); C6 records cover the supported
+/// GPW element set. Physics lives in `dftd3.h`.
 #pragma once
 
 #include <array>
-#include <string>
 #include <vector>
 
 namespace ATV {
@@ -50,38 +51,21 @@ struct D3Params {
     std::array<std::array<double, kMaxElem + 1>, kMaxElem + 1> r0ab{};
     /// @brief CN-resolved reference C6 states per ordered element pair.
     std::array<std::array<std::vector<D3C6Ref>, kMaxElem + 1>, kMaxElem + 1> c6ab{};
+
+    /// @brief Build the full parameter set from the in-tree tables.
+    ///
+    /// Radii [Bohr], C6 [Hartree*Bohr^6]. C6 records cover the supported GPW
+    /// element set only; an element outside it yields no C6 record and the
+    /// caller throws (no fallback value) — check `supports_element` first.
+    D3Params();
+
+    /// @brief Whether the in-tree C6 table covers atomic number `z`.
+    /// @param z Atomic number.
+    /// @return true iff `z` is one of the supported elements.
+    static bool supports_element(int z);
 };
 
-/// @brief Build the full D3 parameter set by parsing CP2K's `dftd3.dat`.
-///
-/// The covalent-radius, r2r4 and r0ab tables are compiled-in (identical to
-/// CP2K's `setrcov`/`setr0ab`); only the CN-resolved C6 coefficients are read
-/// from file. The file uses CP2K's encoding: a header line `nl nlines`, then
-/// `nlines` records of 5 reals `(C6, iat, jat, cnA, cnB)` where `iat`/`jat`
-/// encode `Z + 1000*(ref_index-1)` (the 1000-stride form used by all current
-/// `dftd3.dat`).
-///
-/// @param dftd3_dat_path Absolute path to CP2K's `dftd3.dat`.
-/// @return Fully populated `D3Params`.
-/// @throw std::runtime_error if the file cannot be opened or is malformed.
-D3Params load_dftd3_params(const std::string& dftd3_dat_path);
 
-/// @brief D3 reference parameters from the in-tree tables (no file read).
-///
-/// Covers the elements GPW supports — {H, O, Na, Cl, Ar, Zn} — with the
-/// CN-resolved reference C6 records transcribed from the published D3 table
-/// (Grimme et al., JCP 132, 154104 (2010)). This is the default source: it needs
-/// no external data file at build or test time. Use `dftd3_supports_element` to
-/// check coverage before calling; an unsupported element yields no C6 record and
-/// the caller throws (no fallback value).
-///
-/// @return Parameter set (radii [Bohr], C6 [Hartree*Bohr^6]).
-D3Params builtin_dftd3_params();
-
-/// @brief Whether the in-tree D3 table covers atomic number `z`.
-/// @param z Atomic number.
-/// @return true iff `z` is one of the supported elements.
-bool dftd3_supports_element(int z);
 
 } // namespace gpw
 } // namespace cpu

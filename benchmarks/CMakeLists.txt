@@ -33,21 +33,18 @@ FetchContent_MakeAvailable(googletest)
 
 # ── helpers ─────────────────────────────────────────────────────────
 
-# A gtest-based validation binary: scientific correctness vs an external
-# reference (PySCF, libcint, …), registered as a ctest test. These are the
-# relocated end-to-end checks — they read as small, orthogonal, learnable
-# examples of one capability each, run only under -DATV_BUILD_BENCHMARKS=ON,
-# never in the fast unit gate. `src` is relative to this dir; the source file's
-# own directory is on the include path so a co-located `reference/` header
-# resolves. (validation/ convention is plain executables; these gtest binaries
-# are the exception for the relocated suites.)
+# A gtest-based validation binary: scientific correctness vs a pinned external
+# reference. These are the relocated end-to-end checks — small, orthogonal,
+# learnable examples of one capability each, built only under
+# -DATV_BUILD_BENCHMARKS=ON. Deliberately NOT registered with add_test: e2e
+# never runs under ctest (repo rule — "if it is registered, it runs"); the
+# val_* binaries are executed directly at acceptance time.
 function(atv_add_validation name src)
     add_executable(${name} ${src})
     target_link_libraries(${name} PRIVATE atomiverse GTest::gtest_main)
     get_filename_component(_dir "${CMAKE_CURRENT_SOURCE_DIR}/${src}" DIRECTORY)
     target_include_directories(${name} PRIVATE "${_dir}")
     set_target_properties(${name} PROPERTIES CXX_STANDARD 17)
-    add_test(NAME ${name} COMMAND ${name})
 endfunction()
 
 # CUDA google-benchmark executable (source path relative to this dir).

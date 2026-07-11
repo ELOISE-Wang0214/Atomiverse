@@ -18,16 +18,16 @@
 #include <gtest/gtest.h>
 
 #include "atomiverse/cpu/gpw/gpw_solver.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_basis.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_io.h"
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
 #include "atomiverse/cpu/gpw/internal/dftd3_params.h"
-#include "atomiverse/cpu/gpw/basis_data/gpw_data.h"
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gth_potential.h"
 
 using ATV::cpu::gpw::D3Params;
 using ATV::cpu::gpw::D3Result;
 using ATV::cpu::gpw::dftd3_pbe;
-using ATV::cpu::gpw::builtin_dftd3_params;
 
 namespace {
 
@@ -55,7 +55,7 @@ const std::vector<int> kZ = {8, 1, 1, 8, 1, 1};
 
 // Energy must reproduce CP2K's printed "Dispersion energy" to ~1e-9 Hartree.
 TEST(GpwDftD3, WaterDimerEnergyMatchesCP2K) {
-    const D3Params params = builtin_dftd3_params();
+    const D3Params params{};
     const auto pos = water_dimer_bohr();
     const double cell[3] = {0.0, 0.0, 0.0}; // unused: isolated
 
@@ -69,7 +69,7 @@ TEST(GpwDftD3, WaterDimerEnergyMatchesCP2K) {
 
 // Analytic forces must match central finite differences of the same energy.
 TEST(GpwDftD3, AnalyticForcesMatchFiniteDifference) {
-    const D3Params params = builtin_dftd3_params();
+    const D3Params params{};
     auto pos = water_dimer_bohr();
     const double cell[3] = {0.0, 0.0, 0.0};
 
@@ -97,7 +97,7 @@ TEST(GpwDftD3, AnalyticForcesMatchFiniteDifference) {
 // energy than the isolated cluster (extra image pairs all contribute < 0), and
 // its forces must still match finite differences (CN images included).
 TEST(GpwDftD3, PeriodicEnergyAndForces) {
-    const D3Params params = builtin_dftd3_params();
+    const D3Params params{};
     auto pos = water_dimer_bohr();
     const double L = 8.0 * kAngToBohr;
     const double cell[3] = {L, L, L};

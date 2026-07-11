@@ -40,7 +40,7 @@ inline void image_counts(const double L[3], bool periodic, double rcut, int m[3]
 /// extra shell per axis covers that: m[d] = ceil(rcut/L[d]) + 1.
 ///
 /// Missing that shell truncates the Γ-point sum, and a truncated sum is not a Gram
-/// matrix: the 1214-atom ZnO EDL overlap came out with s_min = -1.92 (unit-diagonal;
+/// matrix: a 13726-AO slab overlap came out with s_min = -1.92 (unit-diagonal;
 /// PySCF's reference is +1.1e-13). It is invisible for a single atom at the origin,
 /// where R_A = R_B and the extra shell is empty — which is exactly why it survived
 /// the small-system tests.

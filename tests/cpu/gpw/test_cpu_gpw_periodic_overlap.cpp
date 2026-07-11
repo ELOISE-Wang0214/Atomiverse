@@ -15,7 +15,7 @@
 /// precision 1e-8, `cell.pbc_intor('int1e_ovlp')`; rcut = 25.69 Bohr at every L, i.e.
 /// the reference sums many images and stays PSD throughout). Compared on the
 /// UNIT-DIAGONAL overlap S̃_ij = S_ij/sqrt(S_ii·S_jj), because the two codes use
-/// different basis normalizations — make_gpw_atom folds N(α,L) into the coefficients
+/// different basis normalizations — the GpwAtom constructor folds N(α,L) into the coefficients
 /// and does not normalize the contraction, so our raw S has S_ii ≠ 1. That is a
 /// congruence S = D·S̃·D: it changes the eigenvalues but not the span and not the
 /// positive-definiteness, so S̃ is the normalization-invariant thing to pin.
@@ -40,7 +40,8 @@
 
 #include <xtensor-blas/xlinalg.hpp>
 
-#include "atomiverse/cpu/gpw/basis_data/gpw_data.h"
+#include "atomiverse/cpu/gpw/gaussian_basis.h"
+#include "atomiverse/cpu/gpw/gth_potential.h"
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/internal/one_electron.h"
 #include "atomiverse/cpu/gpw/internal/periodic.h"
@@ -62,8 +63,8 @@ RealMatrix gamma_overlap_h(double L_ang,
     std::vector<GpwAtom> atoms;
     for (const auto& f : frac) {
         const double p[3] = {f[0] * cellL, f[1] * cellL, f[2] * cellL};
-        atoms.push_back(make_gpw_atom(p, builtin_gth_basis("H", "DZVP-MOLOPT-SR-GTH"),
-                                      builtin_gth_potential("H", "GTH-PBE-q1"), 1));
+        atoms.push_back(GpwAtom(p, GaussianBasis(ATV::Element::H, "DZVP-MOLOPT-SR-GTH"),
+                                      GthPotential(ATV::Element::H, "GTH-PBE-q1"), 1));
     }
     std::vector<GridBasisFunction> basis;
     for (const auto& a : atoms)
@@ -143,7 +144,7 @@ TEST(GpwPeriodicOverlap, SingleHydrogenMatchesReferenceSpectrum) {
 // shell is empty and the missing images are invisible; put the second atom in the
 // opposite corner and the truncated sum stops being a Gram matrix.
 //
-// This is the shape of the bug that made the 1214-atom ZnO EDL overlap come out at
+// This is the shape of the bug that made a large elongated-slab overlap (13726 AOs) come out at
 // s_min = -1.92 (unit-diagonal) where the reference is +1.1e-13.
 // Multi-atom overlap vs PySCF — the check the single-atom case CANNOT make. On one
 // atom the p functions are orthogonal to s and to each other by symmetry, so the
@@ -188,9 +189,9 @@ TEST(GpwPeriodicOverlap, DenseHydrogenGridMatchesReference) {
 // The defect itself, as pure arithmetic: a PAIR sum screens on |R_A - R_B - T| <= reach,
 // so it needs |T| <= |R_A - R_B| + reach — and two centers can be a full cell edge
 // apart. `image_counts` only covers |T| <= rcut and is therefore one shell short for
-// every axis. This is what made the 1214-atom overlap non-Gram.
+// every axis. This is what made the large-slab overlap non-Gram.
 TEST(GpwPeriodicOverlap, PairImageCountCoversFullCenterSeparation) {
-    const double L[3] = {24.808, 19.997, 88.919}; // the ZnO EDL cell [Bohr]
+    const double L[3] = {24.808, 19.997, 88.919}; // elongated slab cell [Bohr]
     const double rcut = 33.3;                     // ~2*rmax for that basis
 
     int m_old[3], m_pair[3];
