@@ -148,11 +148,29 @@ criteria:
     status: pending
     note: |
       REPLACES the original ac-010, whose bar was per-step CP2K parity. The bar is now
-      "launches + completes + passes the reference-free gates" — which is what actually
-      proves the engine, and is reachable without an external engine. Blocked on ac-003
-      /ac-004 (data) and on the M5 gth_matrix_element atom screening (currently O(N³):
-      the unscreened atom loop is 81% of runtime at N=24 and projects to hundreds of
-      hours/SCF at N=1214).
+      "launches + completes + passes the reference-free gates" — reachable without an
+      external engine.
+
+      BLOCKER FOUND, and it is NOT what this spec previously claimed. The "O(N³)
+      unscreened gth_matrix_element atom loop" was already fixed (af60a63 gave it an
+      atom cell-list; 359643c made the nonlocal separable-KB) — that note was stale.
+      Running the real 1214-atom single point (examples/10_gpw_znoedl) exposed the
+      actual defect:
+
+        the Γ-point lattice sum for the OVERLAP matrix is TRUNCATED, so S is not a
+        Gram matrix. Measured: s_min = -1.057e+02 — a NEGATIVE overlap eigenvalue,
+        which is impossible for a true overlap. 6140 of 13726 directions are affected.
+        Raw dsygvd simply fails ("dsygvd failed, info=20590" = not positive definite).
+
+      Cause: the EDL cell is a thin slab (13.1 x 10.6 x 47.1 Å) and the diffuse MOLOPT
+      functions reach ~12-14 Å, i.e. FARTHER than half a cell edge — so image_counts()
+      does not cover every contributing periodic image and the partial sum is not PSD.
+      A guard now throws instead of orthogonalizing a non-Gram matrix (no silent
+      fallback); canonical orthogonalization must NOT be allowed to paper over it by
+      discarding 6140 directions, which would silently solve a different problem.
+
+      Fixing this = making the Γ-point image count cover the true basis reach for
+      cells thinner than 2·r_basis. That is the remaining capstone work.
 
   - id: ac-011
     summary: Full-system wall-time and memory profile documented
@@ -202,11 +220,20 @@ criteria:
       OT itself is sound (H2 OT-vs-diag agree to 2.6e-14; fixed-H ZnO to 4.4e-16;
       the OT gradient matches FD to 7.5e-11) — the defect is in the diagonalization
       SCF's convergence for a semicore, small-gap system, not in OT.
-    status: failed
+    status: verified
     note: |
-      Newly SURFACED by this refactor, not caused by it: this test was behind the
-      CP2K-data gate and had never run in CI. Recorded as a failure rather than
-      papered over — no tolerance or iteration count was bent to make it green.
+      SURFACED and FIXED. The test had never run in CI (it sat behind the CP2K-data
+      gate). Root cause: ZnO has a small HOMO-LUMO gap, so plain diagonalization swaps
+      occupied/virtual states between iterations and never settles — 400 iterations,
+      ~3 mHa above the minimum. Neither DIIS nor linear damping rescues it (and the
+      first damping attempt was a no-op: `mix` is only read when diis_depth == 0).
+
+      Fix: a virtual-orbital level shift inside the SCF's diagonalization
+      (GpwConfig.level_shift, default 0 = off), applied in the canonical-orthogonal
+      basis as λ(I − P'_occ) so only the virtual block moves. It biases the SCF PATH,
+      not the fixed point — proven by the test itself: with the shift, diag converges
+      in 47 iterations to within 4.5e-10 Ha of the energy OT reaches independently
+      (λ=0.2 → 19 iterations, same energy). A convergence aid, not a bent assertion.
 ---
 
 # Acceptance criteria — GPW EDL AIMD (refactored 2026-07-11)

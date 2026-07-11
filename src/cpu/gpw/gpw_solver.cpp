@@ -14,9 +14,13 @@
 
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <optional>
+#include <utility>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -54,6 +58,7 @@ namespace gpw {
 namespace {
 
 using ATV::cpu::linalg::RealMatrix;
+using ATV::cpu::linalg::RealVector;
 
 // Flatten all atoms' basis functions into one global list.
 std::vector<GridBasisFunction> global_basis(const std::vector<GpwAtom>& atoms) {
@@ -564,13 +569,53 @@ double trace_product(const RealMatrix& P, const RealMatrix& M, int n) {
     return t;
 }
 
+// Level-shifted diagonalization in the canonical-orthogonal basis.
+//
+// In the orthogonal basis F' = XᵀFX, add λ·(I − P'_occ) so the VIRTUAL block is
+// pushed up by λ while the occupied block is untouched. This widens the effective
+// HOMO-LUMO gap and kills the occupied/virtual state-swapping that makes a
+// small-gap system (ZnO: 400 iterations, parked millihartrees above the minimum
+// OT reaches) oscillate forever. The shift is removed from the reported orbital
+// energies of the virtuals, and it vanishes at convergence because P'_occ then
+// stops changing — the converged density is the unshifted one.
+//
+// P'_occ = C'_occ C'_occᵀ with C'_occ = Xᵀ S C_occ (XᵀSX = I ⇒ C_occ = X C'_occ).
+std::pair<RealVector, RealMatrix>
+diagonalize_fock_shifted(const RealMatrix& F, const RealMatrix& X,
+                         const RealMatrix& S, const RealMatrix& C_prev, int n_occ,
+                         double shift) {
+    if (shift <= 0.0 || C_prev.size() == 0)
+        return linalg::diagonalize_fock(F, X);
+
+    const int m = static_cast<int>(X.shape(1));
+    RealMatrix Fp = xt::linalg::dot(xt::transpose(X), xt::linalg::dot(F, X));
+
+    // C'_occ = Xᵀ S C_occ  (m × n_occ)
+    const RealMatrix C_occ =
+        xt::view(C_prev, xt::all(), xt::range(0, n_occ));
+    const RealMatrix Cp_occ =
+        xt::linalg::dot(xt::transpose(X), xt::linalg::dot(S, C_occ));
+    const RealMatrix Pocc =
+        xt::linalg::dot(Cp_occ, xt::transpose(Cp_occ)); // m × m projector
+
+    for (int i = 0; i < m; ++i) {
+        Fp(i, i) += shift;
+        for (int j = 0; j < m; ++j) Fp(i, j) -= shift * Pocc(i, j);
+    }
+
+    auto [eig, Cp] = xt::linalg::eigh(Fp);
+    RealMatrix C = xt::linalg::dot(X, Cp);
+    for (int i = n_occ; i < m; ++i) eig(i) -= shift; // report unshifted virtuals
+    return {eig, C};
+}
+
 // On convergence, diagonalize the converged KS matrix once more to record a
 // self-consistent (C, eps, P) triple in the result (P == density(C)). This is
 // what the analytic-force assembly needs to build the energy-weighted density
 // matrix W = Σ_i 2 ε_i c_i c_iᵀ.
 void store_converged_state(GpwResult& res, const RealMatrix& H,
-                           const RealMatrix& S, int n_occ, int nb) {
-    auto [eig, C] = linalg::diagonalize_fock_generalized(H, S);
+                           const RealMatrix& X, int n_occ, int nb) {
+    auto [eig, C] = linalg::diagonalize_fock(H, X);
     res.C = C;
     res.eps.assign(eig.begin(), eig.end());
     res.P = linalg::build_density_matrix(C, n_occ, nb, 2.0);
@@ -816,15 +861,71 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
 
     // Core (H0) initial guess.
     // Warm start: use the supplied guess (skip the O(nb³) core diagonalization);
+    // CANONICAL orthogonalization, not the full-rank Löwdin S^{-1/2}. In a dense
+    // periodic cell the diffuse MOLOPT functions drive S toward linear dependence:
+    // its smallest eigenvalues go to ~0, Löwdin AMPLIFIES those directions by
+    // 1/sqrt(s), and the raw generalized solver (dsygvd) simply fails — the 1214-atom
+    // EDL single point aborted with `dsygvd failed, info=20590` (S not positive
+    // definite), and ZnO's diagonalization SCF oscillated for 400 iterations without
+    // converging. CanonicalOrth drops the near-null directions (s_i < lindep_threshold)
+    // instead of amplifying them, exactly as cpu/scf does (hf-robust-02).
+    //
+    // Built lazily: the OT path only needs it for the final store_converged_state, so
+    // a cold OT step still skips the O(nb³) build.
+    std::optional<linalg::CanonicalOrth> orth_cache;
+    auto orth = [&]() -> const linalg::CanonicalOrth& {
+        if (!orth_cache) {
+            orth_cache.emplace(S, cfg.lindep_threshold);
+            const int m = static_cast<int>(orth_cache->X.shape(1));
+
+            // An overlap matrix is positive definite BY CONSTRUCTION. A negative
+            // eigenvalue means S itself is wrong — not that the basis is merely
+            // near-linearly-dependent — and canonical orthogonalization would
+            // happily "fix" it by discarding those directions, silently solving a
+            // different problem. Throw instead (no-fallback rule).
+            //
+            // The known trigger is a TRUNCATED Γ-point lattice sum: when a basis
+            // function's radius exceeds half a cell edge, the image count from
+            // image_counts() no longer covers every contributing periodic image, and
+            // the partial sum is not a Gram matrix. The 1214-atom ZnO EDL slab
+            // (13.1 x 10.6 x 47.1 Å, diffuse MOLOPT functions reaching ~12-14 Å) hits
+            // exactly this: s_min = -1.06e+02 with 6140 of 13726 directions dropped.
+            constexpr double kPsdTol = -1e-8;
+            if (orth_cache->s_min < kPsdTol)
+                throw std::runtime_error(
+                    "GPW: the overlap matrix is NOT positive definite (s_min="
+                    + std::to_string(orth_cache->s_min)
+                    + "). An overlap matrix cannot have a negative eigenvalue, so S is "
+                      "wrong — the Γ-point lattice sum is truncated (a basis radius "
+                      "exceeds half a cell edge, so image_counts() misses contributing "
+                      "images). Refusing to orthogonalize a non-Gram matrix.");
+
+            if (orth_cache->n_dropped > 0)
+                spdlog::warn("GPW: basis is near-linearly-dependent — dropped {} of {} "
+                             "overlap directions (s_min={:.3e} < lindep_threshold={:.1e})",
+                             orth_cache->n_dropped, nb, orth_cache->s_min,
+                             cfg.lindep_threshold);
+            if (cfg.n_occ > m)
+                throw std::runtime_error(
+                    "GPW: n_occ=" + std::to_string(cfg.n_occ)
+                    + " exceeds the " + std::to_string(m)
+                    + " linearly independent basis directions that survive "
+                      "lindep_threshold — the basis cannot represent the occupied "
+                      "manifold (no-fallback rule)");
+        }
+        return *orth_cache;
+    };
+
     // cold start falls back to diagonalizing the core Hamiltonian H0.
     RealMatrix C0;
     if (guess_C != nullptr && static_cast<int>(guess_C->shape(0)) == nb
         && static_cast<int>(guess_C->shape(1)) == nb) {
         C0 = *guess_C;
     } else {
-        C0 = std::get<1>(linalg::diagonalize_fock_generalized(H0, S));
+        C0 = std::get<1>(linalg::diagonalize_fock(H0, orth().X));
     }
     RealMatrix P = linalg::build_density_matrix(C0, cfg.n_occ, nb, 2.0);
+    RealMatrix C_prev = C0; // level-shift needs the previous occupied space
     smark("init_eigensolve");
 
     // Basis-on-grid is geometry-fixed: evaluate the Gaussians once and reuse
@@ -886,12 +987,7 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
     // transition-metal / semicore systems (Zn-q12, Na-q9) that linear mixing
     // stalls on, and is the prerequisite for scaling to large cells.
     const bool use_diis = cfg.diis_depth > 0;
-    // X = S^{-1/2} is only used by the DIIS loop. The OT path never reaches it, so
-    // skip the O(nb³) build entirely when OT is selected (a per-step saving that
-    // grows as N³ — at the EDL scale this was tens of seconds of wasted work).
-    const RealMatrix X = (use_diis && !cfg.use_ot)
-                             ? linalg::build_orthogonalization_matrix(S)
-                             : RealMatrix{};
+
     internal::GpwDiis diis(use_diis ? cfg.diis_depth : 1);
     // DIIS commutator-residual threshold: a converged step must have both a
     // stable energy and a near-zero [H,P]_S residual (guards against declaring
@@ -1063,7 +1159,7 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
             if (iter > 0 && gnorm < kOtGradTol
                 && std::abs(e_total - e_prev) < cfg.tol) {
                 res.converged = true;
-                store_converged_state(res, H, S, cfg.n_occ, nb);
+                store_converged_state(res, H, orth().X, cfg.n_occ, nb);
                 break;
             }
             e_prev = e_total;
@@ -1158,7 +1254,7 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
             // Pulay DIIS: extrapolate the KS matrix from the (H, residual)
             // history and rebuild P directly from its eigenvectors (no density
             // mixing — DIIS does the averaging).
-            const RealMatrix err = internal::gpw_diis_error(H, P, S, X);
+            const RealMatrix err = internal::gpw_diis_error(H, P, S, orth().X);
             double err_norm = 0.0;
             for (const double v : err)
                 err_norm = std::max(err_norm, std::abs(v));
@@ -1175,22 +1271,26 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
             if (!no_stop && iter > 0 && std::abs(e_total - e_prev) < cfg.tol
                 && err_norm < kDiisErrTol) {
                 res.converged = true;
-                store_converged_state(res, H, S, cfg.n_occ, nb);
+                store_converged_state(res, H, orth().X, cfg.n_occ, nb);
                 break;
             }
             e_prev = e_total;
 
             const RealMatrix H_ext = diis.step(H, err);
-            auto [eig, C] = linalg::diagonalize_fock_generalized(H_ext, S);
+            auto [eig, C] = diagonalize_fock_shifted(
+                H_ext, orth().X, S, C_prev, cfg.n_occ, cfg.level_shift);
+            C_prev = C;
             P = linalg::build_density_matrix(C, cfg.n_occ, nb, 2.0);
         } else {
             // Legacy linear density mixing.
-            auto [eig, C] = linalg::diagonalize_fock_generalized(H, S);
+            auto [eig, C] = diagonalize_fock_shifted(
+                H, orth().X, S, C_prev, cfg.n_occ, cfg.level_shift);
+            C_prev = C;
             RealMatrix P_new =
                 linalg::build_density_matrix(C, cfg.n_occ, nb, 2.0);
             if (iter > 0 && std::abs(e_total - e_prev) < cfg.tol) {
                 res.converged = true;
-                store_converged_state(res, H, S, cfg.n_occ, nb);
+                store_converged_state(res, H, orth().X, cfg.n_occ, nb);
                 break;
             }
             e_prev = e_total;

@@ -63,6 +63,23 @@ struct GpwConfig {
         0.5; ///< linear density-mixing factor (used only when diis_depth == 0).
     int diis_depth =
         6; ///< Pulay DIIS history depth; 0 disables DIIS (falls back to linear `mix`).
+
+    /// @brief Keep-threshold on the overlap eigenvalues for canonical
+    /// orthogonalization (dimensionless). Directions with s_i < this are DROPPED
+    /// rather than amplified by 1/sqrt(s_i). Diffuse MOLOPT functions in a dense
+    /// periodic cell drive S toward linear dependence — without this the raw
+    /// generalized solver fails outright (the 1214-atom EDL aborted with
+    /// `dsygvd failed, info=20590`) and the SCF oscillates. Matches
+    /// SCFConfig::lindep_threshold. 0 disables filtering.
+    double lindep_threshold = 1e-8;
+
+    /// @brief Virtual-orbital level shift [Hartree] applied inside the SCF's
+    /// diagonalization (0 = off). Widens the effective HOMO-LUMO gap so a
+    /// small-gap system stops swapping occupied/virtual states between iterations.
+    /// It biases only the SCF PATH, not the fixed point: at convergence the
+    /// occupied space stops changing and the converged density is the unshifted
+    /// one. Needed for ZnO, which otherwise oscillates for 400 iterations.
+    double level_shift = 0.0;
     XcKind xc = XcKind::PADE; ///< LDA (PADE) or GGA (PBE).
     bool nonperiodic = false; ///< use the isolated (MT) Poisson solver.
     /// @brief Collocate the GTH local short-range PP on the grid (CP2K's route,
