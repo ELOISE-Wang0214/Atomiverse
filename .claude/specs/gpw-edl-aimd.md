@@ -1,179 +1,164 @@
 ---
-title: GPW production bridge — CP2K ZnO electric-double-layer AIMD
+title: GPW production bridge — self-contained data + ZnO electric-double-layer AIMD
 slug: gpw-edl-aimd
 status: approved
 science_required: true
 created: 2026-06-20
+revised: 2026-07-11
 acceptance: gpw-edl-aimd.acceptance.md
-builds_on: gpw-gaussian-plane-wave
 ---
 
-# GPW 生产桥接 — CP2K ZnO 电双层 AIMD
+# GPW 生产桥接 — 树内数据 + ZnO 电双层 AIMD
 
 ## Summary
 
-本 spec 把已合并的 GPW 路径（[[gpw-gaussian-plane-wave]]，Phase 0–8 完成：GPW SCF、native PBE、MT Poisson、有限差分力、AIMD 接线、`examples/09_gpw`、`tests/cpu/gpw/`，但仅在 H/O/Ar ≤3 原子的微系统上验证）推到**生产可用**，目标是把 CP2K 的 `ZnO_MD.inp` 电双层 AIMD（1214 原子周期性 NVT：ZnO slab 192 Zn + 192 O、270 H₂O、10 NaCl 对；PBE；GTH-PBE 赝势；DZVP-MOLOPT-SR-GTH 基组；dt 0.5 fs；T 330 K；CSVR 恒温器；盒子 13.128×10.582×47.054 Å，PBC XYZ）在 Atomiverse 内启动。本 spec 兑现兄弟 spec 中延期的 Phase 8「解析力」和 Phase 9「benchmark 迁移」两个 TODO，并补齐剩余的生产缺口。最终用户可见结果：把 `final_frame.xyz` 读入一个 `cpu::Frame`，配置 GPW + CSVR NVT，跑出一条短轨迹，逐步能量与受力在容差内与 CP2K 参考一致，并产出全系统的 wall-time/内存画像。本 spec **不**复制兄弟 spec 已完成的工作。
+目标不变：把 GPW 路径推到生产可用，最终在 Atomiverse 内启动 1214 原子 ZnO 电双层
+周期性 NVT AIMD（PBE、GTH-PBE 赝势、DZVP-MOLOPT-SR-GTH、dt 0.5 fs、T 330 K、CSVR、
+盒子 13.128×10.582×47.054 Å，PBC XYZ）。
 
-整体按 M1–M6 里程碑组织，依赖顺序排列，镜像兄弟 spec 的 M/Phase 房屋风格。M6（DFT-D3）显式置于关键路径之外。
+**2026-07-11 重构。** 原 spec 无法完成，根因不是"物理没做完"，而是一处结构缺陷：
+
+> **GPW 的每一个真实物理测试都从 `$ATV_CP2K_DATA_DIR/{GTH_POTENTIALS,BASIS_MOLOPT}`
+> 读数据**（forces / evaluator / aimd / geoopt / diis / heavy_elements 及全部 parity
+> 测试，共 14 个，`tests/CMakeLists.txt` 的 `ATV_CP2K_DATA_DIR` 门控内）。不指向一个
+> **外部 CP2K 安装**，GPW 就只剩 12 个纯数学测试（积分、谐函数、collocate、FFT、
+> Poisson、XC 格点、玩具 H 求解器）—— **一个真实分子都跑不了，零力校验**。
+
+这与项目绑定约束直接冲突：**代码库不得出现、也不得调用任何第三方 package**，且
+`ATV_CP2K_DATA_DIR` 在 CI 中必须保持未设置。因此原 spec 的 4 条 CP2K 判据
+（ac-004/006/010/013）不是"暂时做不到"，而是**永远不该那样写**。
+
+重构后的路线：**同样的物理数值，树内的出处**。GTH-PBE 赝势参数与 MOLOPT 基组都是
+**已发表的表格**（CP2K 的数据文件本身就是这些论文的转录）；照 `cpu/scf/basis_data/`
+的既有模式（`pople_631g.h` 等 6 张 constexpr 表，数值一次跑出后钉死 + 出处注释）把
+它们做成树内数据。已跑出的 CP2K 能量/受力保留为 **constexpr 锚点常量**（钉死数值，
+不调用 CP2K）—— 这正是"跑完然后 hardcode"规则，与 `pople_631g.h` 钉 PySCF 数值同构。
+`dftd3_params.h` 已是树内参数表，先例俱在。
+
+**"对齐 CP2K"的绑定依然成立 —— 对齐的是数值，不是依赖。**
 
 ## Domain basis
 
 科学引用（`science_required: true`）。公开单位 eV/Å/fs；内部 Hartree/Bohr。
 
-**解析 GPW 力（M3 的核心）。** 总力按 CP2K Quickstep GPW 分解：
-`F_A = F_HF(loc) + F_Pulay + F_nl + F_grid(H/XC) + F_Ewald`。
-其中 Pulay 项 `F_Pulay = -Tr(P · dH_core/dR_A) + Tr(W · dS/dR_A)`，能量加权密度矩阵 `W = Σ_i f_i ε_i c_i c_i†`（由收敛后的 `C, ε, f` 构造）。`dT`、`dS`、`d⟨φ|V_loc|φ⟩` 经 Gaussian 递推解析求出。Hellmann–Feynman 项来自移动的 Gaussian 核电荷 `n_c^A` 与格点上的局域短程 `V_loc`。非局域 GTH 投影子导数需同时取 `⟨∂φ|p⟩` 与 `⟨φ|∂p⟩`，按牛顿第三定律 ±F 对称累加。
-参考：VandeVondele, Krack, Mohamed, Parrinello, Chassaing, Hutter, *Comput. Phys. Commun.* **167**, 103 (2005), DOI 10.1016/j.cpc.2004.12.014。验证基准：与中心有限差分（步长 1e-4 Bohr）逐分量比对。
-
-**GTH 赝势（M2 重元素路径）。** 局域部分
+**GTH 赝势数据（M0 的核心）。** 局域部分
 `V_loc(r) = -(Z_ion/r)·erf(r̄/√2) + exp(-r̄²/2)·Σ_k C_k r̄^{2(k-1)}`，`r̄ = r/r_loc`；
 投影子 `p_i^l(r) = N_i^l · r^{l+2(i-1)} · exp(-r²/2r_l²)`（HGH 归一化）；
-非局域 `V_nl = Σ_l Σ_ij h^l_ij |p_i^l⟩⟨p_j^l|`。Zn-q12 需要 `l = 0,1,2`（含 d 通道）。投影子数目必须从实际 CP2K `GTH_POTENTIALS` 条目读出，**不得硬编码**。XC=PBE 时使用 Krack PBE 优化参数集（非 HGH-LDA），逐字使用文件中的 `r_loc / C_i / {r_l, h^l_ij}` 以求 bit-parity。
-参考：Goedecker-Teter-Hutter, *PRB* **54**, 1703 (1996)；Hartwigsen-Goedecker-Hutter, *PRB* **58**, 3641 (1998)；Krack, *TCA* **114**, 145 (2005)。
+非局域 `V_nl = Σ_l Σ_ij h^l_ij |p_i^l⟩⟨p_j^l|`。PBE 用 Krack 优化参数集（非 HGH-LDA）。
+EDL 五元素所需通道：H-q1、O-q6、Zn-q12（l=0,1,2 含 d）、Na-q9（半芯）、Cl-q7。
+参考：Goedecker-Teter-Hutter *PRB* **54**, 1703 (1996)；Hartwigsen-Goedecker-Hutter
+*PRB* **58**, 3641 (1998)；**Krack, *TCA* **114**, 145 (2005)**（PBE 参数表出处）。
 
-**CSVR / Bussi 恒温器（M4）。** 随机速度重标 SDE
-`dK = (K̄-K)dt/τ + 2√(K·K̄/N_f)·dW/√τ`，离散传播子
-`α² = e^{-Δt/τ} + (K̄/(N_f K))(1-e^{-Δt/τ})(R₁² + Σ_{i≥2}R_i²) + 2 e^{-Δt/2τ} √((K̄/(N_f K))(1-e^{-Δt/τ})) R₁`，
-其中 `Σ_{i≥2}R_i²` 抽自 `Gamma((N_f-1)/2, 2)`；`v ← α v`；并累积守恒量记账项（有效能量 H̃，Eq.15，作无漂移诊断）。`τ = TIMECON`。`N_f` 记账须扣除 COM/约束自由度。
-参考：Bussi, Donadio, Parrinello, *JCP* **126**, 014101 (2007), DOI 10.1063/1.2408420。
+**MOLOPT 基组数据（M0）。** DZVP-MOLOPT-SR-GTH 收缩系数与指数。
+参考：**VandeVondele & Hutter, *JCP* **127**, 114105 (2007)**, DOI 10.1063/1.2770708。
 
-**DFT-D3(BJ)（M6，关键路径外）。**
-`E_disp = -Σ_{A<B} Σ_{n=6,8} s_n · C_n^AB / (R_AB^n + (a1·R0^AB + a2)^n)`，`R0^AB = √(C8/C6)`；
-配位数依赖的 `C6` 插值（k1=16, k2=4/3, k3=4）。解析力**必须**包含非局域 CN 导数的第二遍 `(∂E/∂C6)·(∂C6/∂CN)·(∂CN/∂R)`，否则受力静默错误。CP2K PBE-D3(BJ) 参数 `s6=1.0, a1=0.4289, s8=0.7875, a2=4.4407`（锁定前对照 CP2K `dftd3.dat` 核验）。
-参考：Grimme 等, *JCP* **132**, 154104 (2010)；Grimme-Ehrlich-Goerigk, *JCC* **32**, 1456 (2011)。
+**解析 GPW 力。** `F_A = F_HF(loc) + F_Pulay + F_nl + F_grid(H/XC) + F_Ewald`，
+`F_Pulay = -Tr(P·dH_core/dR_A) + Tr(W·dS/dR_A)`，`W = Σ_i f_i ε_i c_i c_i†`。
+参考：VandeVondele 等, *CPC* **167**, 103 (2005)。
+**唯一的正确性判据是中心有限差分 oracle（步长 1e-4 Bohr）逐分量比对 —— 无参考、
+自足、不需要任何外部引擎。** 这一直是项目内真正的力校验；CP2K 力参考从未增加过
+信息量，只增加了一个被禁的依赖。
+
+**CSVR / Bussi 恒温器。** 见 Bussi-Donadio-Parrinello *JCP* **126**, 014101 (2007)。
+（已实现并验证，M4 完成。）
+
+**DFT-D3(BJ)。** `E_disp = -Σ_{A<B} Σ_{n=6,8} s_n·C_n^AB / (R^n + (a1·R0+a2)^n)`；
+解析力必须含 CN 导数第二遍。PBE-D3(BJ) 参数 s6=1.0, a1=0.4289, s8=0.7875, a2=4.4407。
+参考：Grimme 等 *JCP* **132**, 154104 (2010)；Grimme-Ehrlich-Goerigk *JCC* **32**, 1456 (2011)。
+参数与 C6 表已在树内（`gpw/internal/dftd3_params.h`）。
 
 ## Design
 
-里程碑（依赖顺序），每个里程碑是可独立测试/合并的实现单元：
+**M0 — 树内 GTH + MOLOPT 数据（阻塞性前置，本次重构新增）。**
+新增 `include/atomiverse/cpu/gpw/basis_data/`，镜像 `cpu/scf/basis_data/` 的形态：
+- `gth_pbe.h` — 五元素 GTH-PBE 赝势 constexpr 表（Z_ion、r_loc、C_k、每 l 的 r_l 与
+  h^l_ij），出处注释指向 Krack 2005。
+- `molopt_dzvp.h` — DZVP-MOLOPT-SR-GTH 收缩 constexpr 表，出处注释指向
+  VandeVondele-Hutter 2007。
+- `gpw_data_table.h` — 按元素+名字查表的入口，**不支持的元素/通道抛异常（无回退）**。
 
-**M1 — 经 molrs 的 ExtXYZ 加载（不手写 C++ 解析器）。** 架构约束（用户绑定）：**所有 I/O 走 molrs**。molrs 核心已解析 ExtXYZ（`molrs::io::data::xyz::read_xyz_frame` / `read_xyz_traj` / `XYZReader`，`parse_simbox` 从 `Lattice="..."` 头构造 SimBox）。缺口仅在 CXX 桥未暴露读取：`molrs-cxxapi/src/lib.rs` 当前桥接写（`xyz_write`/`xyz_append`）与 Zarr 读（`molrec_read_zarr_first_frame -> Box<FrameRef>`）。交付：(a) 在 molrs-cxxapi 新增 `xyz_read_first_frame(path) -> Box<FrameRef>`（可选轨迹变体）包裹 `read_xyz_frame`；(b) atomiverse `cpu::io` 薄包装 `load_extxyz(path) -> Frame`，镜像 `cpu/io/lammps_data.h` 风格，复用既有 `cpu::materialize(const molrs::FrameRef&) -> cpu::Frame` 路径（`include/atomiverse/cpu/frame/materialize.h`），把 `Lattice` → `frame.box`（`Mat3`）、每原子 Z → `type`。molrs 是位于 `/nobackup/proj/disk/teoroo/personal/jicli594/work/molcrafts/molrs` 的独立仓库（corrosion 构建，CXX 头是 `include/atomiverse/molrs.hpp`）；桥接编辑落在 molrs，atomiverse 重新对其编译。
+`cp2k_io.h` / `cp2k_basis.h` 的**解析器保留**（它们元素无关且已验证），但测试与生产
+路径改走树内表；解析器降级为"可选摄入外部文件"的工具，不再是任何测试的前置。
+删除 `tests/CMakeLists.txt` 的 `ATV_CP2K_DATA_DIR` 门控与 CMake 选项；14 个被门控的
+测试按下述规则各归其位。
 
-**M2 — Zn/Na/Cl 重元素验证（GTH + MOLOPT）。** GTH/MOLOPT 解析器（`cpu/gpw/internal/cp2k_io`、`cp2k_basis`）元素无关但仅 H/O/Ar 验证过。摄入并验证 GTH-PBE-q12（Zn，需 l=0,1,2，d 通道；从实际 CP2K `GTH_POTENTIALS` 条目读取投影子数）、q9（Na，l=0,1 半芯）、q7（Cl，l=0,1），以及五元素的 DZVP-MOLOPT-SR-GTH 基组。门槛：用逐元素阶梯（ZnO → NaCl 离子对 → H₂O，每级单独对 CP2K 单点能）验证。
+**M0b — 测试归位（服从仓库铁律）。** `tests/` 只放单元测试（单函数/单方法，ms 级）；
+一切 e2e / 引擎间平价搬到 `benchmarks/qc/gpw/validation/`（acceptance 时跑，ctest 永不跑）。
+- 留在 `tests/`（单元）：`cp2k_io`、`basis`、`heavy_elements`（→ 改为对树内表断言）、
+  `real_harmonics`、`gth_integrals` 等纯数学项，以及 `forces` 的**小体系** FD 断言。
+- 迁往 `benchmarks/`：`h2_cp2k`、`ar_cp2k`、`h2o_tutorial`、`zno_cp2k`、`nacl_cp2k`、
+  `edl_frag`、`geoopt`、`aimd`、`multigrid_scf`（跑到收敛的完整 SCF/AIMD = e2e）。
+  改名去掉 `_cp2k` 后缀（数值是钉死的锚点，不是一次外部调用）。
 
-> **DISCOVERED (ac-004 rung-1 ZnO 验证，2026-06-20)：GPW core 角动量上限缺口（两处既有 TODO）。** 解析器无需改（ac-003 已 GREEN），但 ZnO 单点 **段错误**。根因:
-> 1. **基组 f 壳层缺失**:`gpw_solver.cpp` 的 `harmonics()` 实-球谐→笛卡尔表只到 d（l=2）。Zn DZVP-MOLOPT-SR-GTH 含 f（l=3），`harmonics()[3]` 越界。→ 需补 l=3 的 7 个实-球谐笛卡尔展开项。
-> 2. **d 非局域投影子缺失**:`gth_integrals.cpp` 的 `gth_projector_overlap`（`return 0.0; // TODO: l>=2`）与 `gth_nonlocal`（`n_m=(l==0)?1:(l==1?3:0)`）只支持 s/p 投影子。Zn-q12 有 l=2（d）投影子，当前被静默丢为 0 → 物理错误。→ 需补 l=2 投影子（5 个 m 分量的实 d 球谐 ⟨φ|p⟩，仿 l=1 路径）。
->
-> 范围：五元素中**只有 Zn** 触发这两处（O/Cl 是 d 基组走 `harmonics()[2]`，已支持;Na/Cl 投影子仅 s/p）。这是运行整个 ZnO 目标体系(192 Zn)的硬前置。
->
-> **下游已确认通用**(2026-06-20)：`overlap`/`kinetic`(Hermite 递推 `hermite_E`/`overlap_1d(i,j)`)、`collocate`(显式单项式循环)、`moment3d`(通用 `extra_dim`+`k`)均对任意笛卡尔角动量幂通用,**无需改动**。因此任意-l 支持只需泛化上述两处角动量生成器。
->
-> **决策(用户)：实现任意-l 通用**(非仅 f/d)。Use A=未归一化实-固体谐(基组,span 决定,常数抵消);Use B=归一化实球谐(投影子,Σ_m 不变性 ⇒ 任一正交约定皆可)。两者均锚定复现现有 l≤2 表项作单元校验。
+**M1–M4 — 已完成**（ExtXYZ molrs 桥、重元素摄入、任意-l 实谐函数与 d 投影子、
+DIIS、解析力、FixCSVR）。M0 完成后这些的验证不再依赖外部数据目录。
 
-**M3 — 解析 GPW 力（阻塞项）。** 现有 `gpw_forces_fd`（`cpu/gpw/gpw_solver.h`）为有限差分：每步 6N+1 次 SCF，在 1214 原子下不可行。实现解析力 `cpu/gpw/internal/gpw_forces.{h,cpp}`（+ src），一次 SCF + 一次梯度遍历。按 Domain basis 的五项分解；W 矩阵在 `gpw_solver` 中由收敛 `C,ε,f` 构造；`dT/dS/d⟨φ|V_loc|φ⟩` 复用 `cpu/scf` 单电子/Boys/Rys 原语与 `gth_integrals`。验证：对既有 6N+1 FD oracle ≤ 1e-5 eV/Å 且对 CP2K 力参考 ≤ 1e-4 Ha/bohr 逐分量。经 `GPWEvaluator`（已有 `Capability::Force`）从 FD 切换到解析。
+**M5 — 1214 原子规模。** 已实测定位真正的墙：`gth_matrix_element` 对每个 (μ,ν) 遍历
+所有原子无筛选 → O(N³)，N=24 时占 81%。已做：S/T/Vpp + ionic_density OpenMP → 11.8×。
+待做：**原子循环筛选**（GTH PP 局域 → 跳过远原子，~50–100×）+ 对循环重叠筛选（~3×）。
+（此前"稠密对角化是瓶颈"的判断已被实测推翻；稠密 OT 是性能倒退但正确，门控保留；
+稀疏 LA 因重叠密度 24–34% 被否决 —— 均为已记录的实测结论，不重做。）
 
-**M4 — CSVR / Bussi 恒温器。** 新增 `cpu::md::FixCSVR`（镜像 `cpu/md/fix_langevin.h`、`nose_hoover.h`；Thermostat 角色）。按 Domain basis 的 α² 传播子；`v ← αv`；累积守恒量记账（H̃，无漂移诊断）；`τ = TIMECON`；`N_f` 记账扣除 COM/约束自由度。先在便宜的经典 MD 系统上验证正则动能分布，再接入 GPW-AIMD。
+**M6 — DFT-D3(BJ) 接线。** 参数表已在树内；补解析力的 CN 导数第二遍 + FD 力自检。
 
-**M5 — 周期性大系统规模/性能 + 收官运行。** GPW 最大测过 N=3；1214 原子周期性 CPU 的正确性、性能、内存均未测。
-
-> **DISCOVERED (2026-06-20, M5 规模估算)：稠密对角化 O(N³) 规模墙。** DZVP-MOLOPT-SR-GTH 基组规模:Zn 25 / O 13 / H 5 / Na 9 / Cl 13 收缩函数 → 全 1214 原子体系 ≈ **13,700 基函数**,n_occ ≈ 2888(5776 价电子)。GPW 现用稠密 `diagonalize_fock_generalized`:单次对角化 ~17 min × ~16 SCF 迭代 ≈ **~4.5 h/SCF**,稠密矩阵 ~10 GB。**全体系 MD 不可行**。
->
-> **决策(用户)：实现 OT(轨道变换,VandeVondele-Hutter JCP 118, 4365 (2003))** 替换对角化——直接在正交约束 CᵀSC=I 下最小化 E[C],梯度 O(nb²·n_occ) 取代 O(nb³),预条件 CG 最小化。这是 CP2K 跑此规模的方法,也是本 spec 之前列为 "future" 的项,现提升为 M5 核心。
->
-> **稀疏性警告(诚实记录)**:稠密 OT 仅降一个量级(O(nb²·n_occ) vs O(nb³));CP2K 真正的大规模来自 **OT + 稀疏 S/H/P**(atomiverse GPW 当前全稠密)。OT 是必要且正确的第一步,先在小体系验证 OT 收敛到与对角化**相同**能量,再实测 1214 原子是否需后续稀疏化。
->
-> **DISCOVERED (2026-06-21, 两个实测推翻了规模假设)**:
-> 1. **稠密 OT 是性能倒退,不是改进**:OT 已实现且机器精度等价对角化(`ot.{h,cpp}`,H2 dE=3e-12 / ZnO dE=4e-13),但凝聚态 no∝nb → OT 单步 O(nb²·no)=O(nb³) 且常数更差 + ~3× 迭代;nb=2000 时整体 ~75× 慢于对角化。稠密 OT 解锁不了 capstone。
-> 2. **稀疏 LA 对本几何不划算(探针实测)**:归一化重叠密度 **24–34%**(avg nnz/行 ~3300–4600 / 13,726),且随 N 增长不饱和;耦合范围 ~11.5–13.8 Å **超过薄 slab 截面 13.1×10.6 Å**。稀疏 LA 需 <5% 才划算 → **放弃稀疏 LA 这条路**。
->
-> **CORRECTED (2026-06-21,实测分阶段计时推翻"本征是瓶颈")**:本征**根本不是瓶颈**(nb≈13,700 ~分钟级;探针 0.36s@nb=2000;N=24 时仅 0.006s/<2%)。真正的墙是**一电子/GTH 矩阵构建** `gth_matrix_element`(gpw_solver.cpp):对每个 (μ,ν) 对**遍历所有原子、无筛选** → O(nb²·natoms)=**O(N³)**,N=24 占 81%,投影 1214 是**数百小时/SCF**。之前"4.5h 本征墙"与据此选的 sparse/GPU/ScaLAPACK 弯路**全部不必要**。
-> - **已做**:S/T/Vpp + ionic_density 构建加 OpenMP → **11.8×**(48 线程,71.4s→6.07s),26 GPW 测试绿、能量逐位不变。
-> - **决定性下一步(算法)**:**筛选** `gth_matrix_element` 的原子循环(GTH PP 局域 → 跳过远原子,~50–100×)+ S/T/Vpp 对循环(跳过可忽略重叠,~3×),合计 ~150–300×,O(N³)→~O(N·neighbors·local) → 1214 单点单节点可行。注:这是**构建期算力节省**(矩阵存储仍稠密 24–34%,与稀疏发现一致;不是稀疏存储)。
-> - **不需要**:ScaLAPACK/GPU/稀疏 本征(<2%)。MPI 仅在内存/网格分解上有边际价值(10GB 单节点放得下)。
-> 稠密 OT 保留(正确、门控,但本体系用不上)。
-
-**前置(M2 发现,已完成)**：GPWSolver 已加 DIIS/Pulay 混合(见上,`diis.{h,cpp}`)。OT 自带其最小化器(预条件 CG),独立于密度混合。
-
-> **OT 设计(scientist,据 CP2K Quickstep Kühne 2020 §VII C Eqs.85–104 + 内联推导)。** 新 `cpu/gpw/internal/ot.{h,cpp}`,在 GPW SCF 内替换 `diagonalize_fock_generalized`:
-> - 参数化:`C(x)=C0·cosU + x·U⁻¹sinU`,`U=(xᵀSx)^½`;`cosU/sincU` 经 `xᵀSx`(no×no)对称本征分解,`sinc(0)=1`(Taylor guard)。`C(x)ᵀSC(x)=I` 对任意切空间 `x`(`xᵀSC0=0`)精确。
-> - 梯度(闭壳 `P=2CCᵀ`,GPW `build_density_matrix` factor=2.0):`g=(I−S C0 C0ᵀ)(4 H C0)`。S-投影子(**非 S⁻¹**),保持切空间。O(nb²·no),无 O(nb³)。
-> - 最小化:预条件非线性 CG(Polak-Ribière+,β=max(...,0)),沿测地线抛物线线搜索,每步后 rotate `C0←C(α*d)` + reset `x=0`(绕开 general-x 梯度)。先做预条件最速下降(最简、基态正确)再加 CG。
-> - 预条件子:FULL_KINETIC `M=T+S`(几何固定,Cholesky 一次摊销)起步;FULL_SINGLE_INVERSE 更优。
-> - 收敛:投影梯度范数 `‖g‖ < 1e-6…1e-7`(= SCF 误差)。**有 HOMO-LUMO gap 假设**(无分数占据/金属)。
-> - 等价性验证(铁律):小体系 H2/ZnO,OT 总能/密度对 `diagonalize_fock_generalized` 一致到 1e-8;FD 梯度检查(查 factor-4/符号/投影子);全 GPW 套件启用 OT 后能量不变。
-> - 致命约定:factor 4HC0、S-投影子、sinc(0)=1。
-> - 规模诚实:稠密 OT 预条件求解仍 O(nb³)(FULL_KINETIC 的 Cholesky 每几何一次);给单点/短轨迹 capstone 够用,全 MD 仍需稀疏化(future)。
-> 参考:Kühne 等 JCP 152,194103 (2020) DOI 10.1063/5.0007045(fetched);VandeVondele-Hutter JCP 118,4365 (2003) DOI 10.1063/1.1543154(凭记忆,docstring 前核实)。用 OpenMP（在既有 GPW/PW MPI 模式允许处加 MPI）剖析并并行 GPW 热点（collocation/integration、FFT、KS 构建、新解析力遍历）。收官验收：读 `final_frame.xyz`，配置 GPW（PBE、五个 GTH-PBE 赝势、DZVP-MOLOPT-SR-GTH、合适 CUTOFF）、CSVR NVT、dt 0.5 fs，跑几步短轨迹，逐步能量+受力在容差内匹配 CP2K 参考，并产出全系统 wall-time/内存画像。
-
-**M6 — DFT-D3 色散（PBE-D3，后续/低优先）。** 加 D3(BJ)（CP2K PBE 默认）。作为力场式修正，置于可复用组件（`potentials/` 或小型 `cpu/dispersion` 模块），供 MD evaluators 复用。明确关键路径外：AIMD 可不带它启动（物理略有差异）。
-
-约束（贯穿）：TDD（RED 测试引用 ac-NNN 在 GREEN 前）；公开符号 Doxygen（`@brief/@param`（带单位）/`@return`）；公开单位 eV/Å/fs，内部 Hartree/Bohr；无工厂函数；无回退值（查表对不支持输入抛异常）。
+约束（贯穿）：TDD；公开符号 Doxygen（`@brief`/`@param` 带单位/`@return`）；
+无工厂函数；无回退值；**树内不出现第三方 package，构建与测试期不读任何第三方文件**。
 
 ## Files to create or modify
 
-M1：
-- `/nobackup/proj/disk/teoroo/personal/jicli594/work/molcrafts/molrs/molrs-cxxapi/src/lib.rs` — 新增 `xyz_read_first_frame` CXX 桥接 fn（molrs 仓库）
-- `include/atomiverse/cpu/io/extxyz.h` (new) — `cpu::load_extxyz` 声明
-- `src/cpu/io/extxyz.cpp` (new) — 实现，复用 `cpu::materialize`
-- `tests/cpu/gpw/test_cpu_io_extxyz.cpp` (new)
+M0：
+- `include/atomiverse/cpu/gpw/basis_data/gth_pbe.h` (new)
+- `include/atomiverse/cpu/gpw/basis_data/molopt_dzvp.h` (new)
+- `include/atomiverse/cpu/gpw/basis_data/gpw_data_table.h` (new)
+- `tests/cpu/gpw/test_cpu_gpw_data_table.cpp` (new) — 树内表 vs 文献值 + 未支持元素抛异常
+- `tests/CMakeLists.txt` — 删 `ATV_CP2K_DATA_DIR` 门控
+- `CMakeLists.txt` — 删 `ATV_CP2K_DATA_DIR` 选项
+- `CLAUDE.md` — 删该选项行
 
-M2：
-- `tests/cpu/gpw/test_cpu_gpw_heavy_elements.cpp` (new) — Zn/Na/Cl GTH+MOLOPT 摄入 + ZnO+水团簇单点
-- `include/atomiverse/cpu/gpw/internal/cp2k_io.h` / `cp2k_basis.h` — 仅在 d 通道/半芯投影子计数需要修正时改
-
-M3：
-- `include/atomiverse/cpu/gpw/internal/gpw_forces.h` (new)
-- `src/cpu/gpw/internal/gpw_forces.cpp` (new)
-- `include/atomiverse/cpu/gpw/gpw_solver.h` — 暴露 W 矩阵构造 / 解析力入口
-- `include/atomiverse/cpu/gpw/gpw_evaluator.h` — FD→解析切换开关
-- `tests/cpu/gpw/test_cpu_gpw_forces.cpp` — 扩展：解析 vs FD oracle + CP2K 参考
-
-M4：
-- `include/atomiverse/cpu/md/fix_csvr.h` (new)
-- `src/cpu/md/fix_csvr.cpp` (new)
-- `tests/cpu/md/test_cpu_md_csvr.cpp` (new)
+M0b：
+- `benchmarks/qc/gpw/validation/` (new) — 迁入 9 个 e2e/锚点测试
+- `benchmarks/CMakeLists.txt` — 注册 `val_gpw_*`
+- `tests/cpu/gpw/test_cpu_gpw_{forces,heavy_elements}.cpp` — 改走树内表
 
 M5：
-- `include/atomiverse/cpu/gpw/internal/collocate.h`、`grid_fft.h` — OpenMP/MPI 热点并行
-- `benchmarks/gpw/znoedl/validation/` (new) — 收官参考夹具 + 运行（镜像 `benchmarks/pw/si/validation`）
-- `examples/10_gpw_znoedl.cpp` (new) — 加载 + 启动短轨迹示例
-- `tests/cpu/gpw/test_cpu_gpw_znoedl.cpp` (new) — 短轨迹 CP2K 逐步 parity
+- `src/cpu/gpw/gpw_solver.cpp` — `gth_matrix_element` 原子循环筛选
 
-M6（关键路径外）：
-- `include/atomiverse/cpu/dispersion/dftd3.h` (new)
-- `src/cpu/dispersion/dftd3.cpp` (new)
-- `tests/cpu/test_cpu_dftd3.cpp` (new)
+M6：
+- `src/cpu/gpw/internal/dftd3.cpp` — CN 导数力项
 
 ## Tasks
 
-- [x] Write failing tests for ExtXYZ molrs bridge + Frame load round-trip (tests/cpu/io/test_cpu_io_extxyz.cpp)
-- [x] Implement xyz_read_first_frame CXX bridge in molrs-cxxapi and cpu::load_extxyz wrapper reusing cpu::materialize (include/atomiverse/cpu/io/extxyz.h, src/cpu/io/extxyz.cpp) — also fixed truncated symbol_for_z (1-18 → 1-118)
-- [x] Write failing tests for Zn/Na/Cl GTH+MOLOPT ingest and per-element-ladder GPW single point vs CP2K — ingest (ac-003) GREEN; ladder (ac-004) GREEN: ZnO 0.10 mHa, NaCl 0.03 mHa, H2O 0.43 mHa (existing tutorial) vs CP2K. All 5 EDL elements {Zn,O,H,Na,Cl} validated. (test_cpu_gpw_zno_cp2k, test_cpu_gpw_nacl_cp2k)
-- [x] Implement heavy-element projector-count and d-channel ingest in cp2k_io / cp2k_basis — NO change needed; parsers already element-generic (Zn d/f + SR-MOLOPT verified by ac-003)
-- [x] DISCOVERED: arbitrary-l real harmonics — new cpu/gpw/internal/real_harmonics.{h,cpp} (`real_solid_harmonics`=Use A, `real_spherical_harmonics_normalized`=Use B via exact sphere monomial integral); wired into harmonics() + gth projector; l≤4 orthonormality + l≤3 forms unit-tested (test_cpu_gpw_real_harmonics); fixes Zn f-shell segfault + d-projector
-- [x] DISCOVERED: l=2 (d) GTH nonlocal projector — folded into the above (gth_projector_overlap/gth_nonlocal now n_m=2l+1 any l; TODO lines gone)
-- [x] Downstream kernels confirmed general (Hermite/monomial); ZnO rung GREEN vs CP2K (|dE|=0.10 mHa, mix=0.1, ~157 iters); NaCl + H2O rungs still pending
-- [x] DISCOVERED (ZnO convergence): added GPW Pulay/DIIS — new cpu/gpw/internal/diis.{h,cpp} (single-channel, GPW-local, no scf::internal include; X=S^{-1/2} via cpu::linalg, computed once; KS-matrix extrapolation + commutator-residual convergence). GpwConfig.diis_depth=6 default (0=legacy linear). H2 49→5, ZnO 157→16 iters; energies bit-unchanged; suite 60s→8.7s. Removes the M5 linear-mixing blocker (still to prove at 1214-atom scale).
-- [x] Write tests for analytic GPW forces vs 6N+1 FD oracle (tests/cpu/gpw/test_cpu_gpw_forces.cpp): H2 max|dF|=2e-6, ZnO (d-proj+f-basis+GGA) max|dF|=2.7e-5 Ha/Bohr — both within the 5e-5 gate. CP2K force ref (ac-006) deferred — FD oracle is the term-complete correctness gate.
-- [x] Implement analytic GPW forces with W-matrix, HF/Pulay/grid/nonlocal/Ewald terms (cpu/gpw/internal/gpw_forces.{h,cpp}); built on derivative-Gaussian (∂φ=2αφ_{l+1}-lφ_{l-1}) reuse of existing integral/collocate kernels; gpw_scf extended to expose converged C/eps/P for W=Σ2ε_i c_i c_i†
-- [x] Wire FD-to-analytic force switch into GPWEvaluator (gpw_evaluator.cpp: gpw_forces_fd → gpw_forces_analytic). geoopt + aimd now run on analytic forces (1 SCF + gradient vs 6N+1); full GPW suite green.
-- [x] Write tests for FixCSVR canonical kinetic-energy distribution (tests/cpu/md/test_cpu_md_csvr.cpp): 256-atom Ar, Var(K)/<K>²=2.47e-3 vs canonical 2/N_f=2.61e-3 (ratio 0.94); H̃ drift 1.5e-4
-- [x] Implement cpu::md::FixCSVR thermostat with H-tilde bookkeeping (include/atomiverse/cpu/md/fix_csvr.h, src/cpu/md/fix_csvr.cpp): Bussi α² propagator, χ²(N_f-1)=Gamma((N_f-1)/2,2) draw, reproducible per-(seed,step) RNG, end_of_step binding, set_thermostat-compatible
-- [ ] Add Doxygen with units to all new public symbols (extxyz, gpw_forces, FixCSVR)
-- [ ] Write failing capstone test loading final_frame.xyz, running short GPW-CSVR NVT trajectory vs CP2K per-step parity (tests/cpu/gpw/test_cpu_gpw_znoedl.cpp)
-- [ ] Profile and parallelize GPW hot paths (collocate/grid_fft/KS/force) with OpenMP/MPI; add benchmark + example (benchmarks/gpw/znoedl/validation, examples/10_gpw_znoedl.cpp)
-- [ ] Implement DFT-D3(BJ) dispersion component with CN-derivative force term (include/atomiverse/cpu/dispersion/dftd3.h, src/cpu/dispersion/dftd3.cpp) — out of critical path
-- [ ] Run full check + test suite
+- [x] M1 ExtXYZ molrs 桥 + `cpu::load_extxyz`
+- [x] M2 重元素摄入（Zn/Na/Cl GTH+MOLOPT）；任意-l 实谐函数 + l=2 d 投影子
+- [x] M2b GPW DIIS/Pulay（H2 49→5、ZnO 157→16 迭代）
+- [x] M3 解析 GPW 力（W 矩阵 + 五项分解），GPWEvaluator FD→解析
+- [x] M4 `cpu::md::FixCSVR`（Bussi α² 传播子 + H̃ 记账）
+- [ ] **M0 树内 GTH-PBE + DZVP-MOLOPT-SR-GTH 数据表（阻塞其余一切验证）**
+- [ ] **M0b 删 `ATV_CP2K_DATA_DIR` 门控；14 个测试按单元/e2e 归位**
+- [ ] M3b 解析力 FD oracle 在树内数据上重新绿（H2 + ZnO）
+- [ ] Doxygen（extxyz / gpw_forces / FixCSVR / 新数据表）
+- [ ] M5 `gth_matrix_element` 原子筛选 → 1214 原子单点可行
+- [ ] M5b EDL 收官：`final_frame.xyz` + GPW-CSVR NVT 短轨迹（能量守恒 + 无漂移诊断）
+- [ ] M5c 全系统 wall-time / 峰值内存画像（benchmarks）
+- [ ] M6 D3(BJ) CN 导数力项 + FD 自检
 
 ## Testing strategy
 
-- **Happy path（M1）**：`load_extxyz(final_frame.xyz)` 返回 1214 原子 Frame，盒子 = 13.128×10.582×47.054 Å，五种元素的 Z/type 正确，往返 atom count 一致。
-- **Happy path（M4）**：FixCSVR 接入经典 NVT，平均温度收敛到目标 T。
-- **Edge cases**：M1 缺 `Lattice` 头 → 命名异常（无回退）；M2 未支持元素/投影子计数缺失 → 查表抛异常；M4 `N_f` 在有 COM 移除时正确扣除；M3 单原子（无 Pulay 交叉项）退化情形受力为零。
-- **Domain validation（scientific）**：
-  - M2：ZnO+水团簇 GPW 单点能 ≤ ~1e-4 Ha（匹配 grid+basis+PP+XC）vs CP2K。
-  - M3：解析力对内部 6N+1 中心 FD ≤ 1e-5 eV/Å 逐分量，且对 CP2K 力参考 ≤ ~1e-4 Ha/bohr 逐分量。
-  - M4：CSVR 在便宜系统上的动能分布通过正则分布卡方/方差检验。
-  - M5：`final_frame.xyz` 短轨迹逐步能量与受力在容差内匹配 CP2K 参考。
-  - M6：D3(BJ) 能量与解析力（含 CN 导数）对 CP2K D3 数值 FD 一致（关键路径外）。
-- **Performance（M5）**：全系统单步 wall-time 与峰值内存记录入 benchmark 报告。
-- 完整 `cmake --build` + `ctest`（ATV_BUILD_GPW，含 ATV_BUILD_RHF+ATV_BUILD_PW+FFTW3）。
+- **单元（`tests/`，ms 级）**：树内数据表 vs 文献值、未支持元素抛异常、实谐函数正交性、
+  GTH 积分、collocate/FFT/Poisson/XC 格点、小体系解析力 vs FD 逐分量。
+- **e2e / 锚点（`benchmarks/qc/gpw/validation/`，仅 acceptance 跑）**：H2/Ar/H2O/ZnO/NaCl
+  单点能对**钉死的 constexpr 锚点**（一次性跑出、带出处注释，构建与测试期不调用任何外部
+  引擎）；geoopt / AIMD 短轨迹；EDL 收官。
+- **无参考的物理判据（最高价值）**：解析力 vs 6N+1 中心 FD oracle；AIMD 能量守恒 /
+  CSVR 的 H̃ 无漂移。这些不需要任何外部引擎，失败即为本仓库缺陷。
+- 完整 `cmake --build` + `ctest`（`ATV_BUILD_GPW`，含 RHF+PW+FFTW3），**且在
+  `ATV_CP2K_DATA_DIR` 不存在的情况下全绿**（这是本次重构的验收信号）。
 
 ## Out of scope
 
-- 完整 2000 步生产运行（下游使用，非代码交付物；门槛是「启动 + 短轨迹 parity + 全系统画像」）。
+- 完整 2000 步生产运行（下游使用，非代码交付物）。
 - GAPW、GPW 中的杂化/HFX、GPW k 点（仅 Γ）、CUDA GPW 后端、金属/展宽。
-- 通用 CP2K `.inp` 解析器（配置经 `GPWConfig` + 摄入的数据文件）。
-- 波函数重启/外推调优（超出 gpw-gaussian-plane-wave 已有的 ASPC）。
-- D3 之外的色散变体（仅 D3(BJ)，且 M6 置于关键路径外）。
-- 手写 C++ XYZ 解析器（绑定约束：所有 I/O 走 molrs）。
+- 通用 CP2K `.inp` 解析器。
+- 稀疏 LA（重叠密度 24–34%，实测不划算 —— 已否决，不重开）。
+- D3 之外的色散变体。
+- 手写 C++ XYZ 解析器（所有 I/O 走 molrs）。
