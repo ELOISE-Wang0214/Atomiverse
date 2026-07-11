@@ -67,7 +67,7 @@ interelectronic distance — out of scope here).
 ## The Representation: The Fock Builder Splits the Work
 
 Atomiverse selects a functional with the `XCType` enum
-([`xc_functional.h`](../../include/atomiverse/cpu/scf/xc_functional.h)):
+([`xc_functional.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/xc_functional.h)):
 
 ```cpp
 enum class XCType { LSDA, PBE, B3LYP, PBE0 };
@@ -95,7 +95,7 @@ self-interaction correction.
 ## The C++ API: Two Config Builders, Then Gradients
 
 The convenience builders in
-[`scf_solve.h`](../../include/atomiverse/cpu/scf/scf_solve.h) preset a
+[`scf_solve.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/scf_solve.h) preset a
 production-grade closed-shell hybrid configuration — restricted KS, the
 PySCF-matching `GridLevel::MatchPySCF` integration grid, MINAO initial guess,
 `tol = 1e-9`, DIIS on — and differ only in the functional:
@@ -120,7 +120,7 @@ production default. The hybrids use a GGA grid, so a polarized basis such as
 [Chapter 4](ch04-basis-sets.md).
 
 Forces come from a *separate* call on the converged result. From
-[`gradient.h`](../../include/atomiverse/cpu/scf/gradient.h):
+[`gradient.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/gradient.h):
 
 ```cpp
 cpu::scf::GradientResult grad =
@@ -247,11 +247,11 @@ in this chapter travels with the evaluator wherever forces are needed.
 ## Validation Reference
 
 Hybrid analytic gradients are validated in
-[`tests/cpu/scf/test_hybrid_gradient.cpp`](../../tests/cpu/scf/test_hybrid_gradient.cpp):
+[`tests/cpu/scf/test_hybrid_gradient.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/scf/test_hybrid_gradient.cpp):
 B3LYP and PBE0 forces vs PySCF `grad.RKS` (**≤ 1e-5 Ha/Bohr** on H₂O/CH₄/NH₃),
 vs moving-grid finite difference (**≤ 1e-5 Ha/Bohr**, an oracle independent of
 PySCF), translational invariance (`|Σ_A F_A| ≤ 1e-8 Ha/Bohr`), and a
 B3LYP/6-31G* geometry-optimization endpoint vs a PySCF-optimized reference.
 Hybrid single-point energies are pinned in
-[`tests/cpu/scf/test_hybrid_singlepoint.cpp`](../../tests/cpu/scf/test_hybrid_singlepoint.cpp),
+[`tests/cpu/scf/test_hybrid_singlepoint.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/scf/test_hybrid_singlepoint.cpp),
 and the semi-local XC parts vs libxc (1e-12) in `test_xc_vs_libxc`.

@@ -56,7 +56,7 @@ number read out of a `cpu::Frame` always means exactly one thing.
 ### The frame holds the system
 
 There is no separate "System" or "Molecule" class. The
-[`cpu::Frame`](../../include/atomiverse/cpu/frame/frame.h) *is* the system.
+[`cpu::Frame`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/frame/frame.h) *is* the system.
 You size it once with the atom count, fill the per-atom arrays, set the box,
 and hand it to a driver:
 
@@ -101,7 +101,7 @@ object: `frame.scalars.energy` (potential energy, eV) and the force arrays
 
 ### The box is `cpu::Box`
 
-The simulation cell is [`cpu::Box`](../../include/atomiverse/cpu/frame/box.h),
+The simulation cell is [`cpu::Box`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/frame/box.h),
 constructed most often from `Mat3::cubic(L)` (which `frame.box = ...` accepts
 directly). It owns the 3×3 cell matrix plus a per-step-immutable cache and
 exposes the queries force kernels need:
@@ -129,7 +129,7 @@ returning, so the frame you read is always in metal units.
 
 When you do need to cross the bridge — say to compare a force against a
 PySCF gradient reported in Hartree/Bohr — do it explicitly through
-[`core/units.h`](../../include/atomiverse/core/units.h), never with a
+[`core/units.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/core/units.h), never with a
 hand-typed magic number:
 
 ```cpp
@@ -150,7 +150,7 @@ available for the common conversions.
 
 A naïve engine picks one floating type — usually `double` — and uses it
 everywhere. Atomiverse instead follows LAMMPS and *tiers* precision by
-**role**, in [`core/precision.h`](../../include/atomiverse/core/precision.h).
+**role**, in [`core/precision.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/core/precision.h).
 The principle: the wide, safe type is the default; a narrower type is spent
 only at a deliberately chosen role, never at an accumulator where it would
 corrupt results.
@@ -210,7 +210,7 @@ correct.
 
 Atomiverse ships this oracle as a public function so you can validate any
 geometry yourself, using the same
-[`scf_gradient`](../../include/atomiverse/cpu/scf/gradient.h) /
+[`scf_gradient`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/gradient.h) /
 `scf_finite_difference_gradient` pair the test suite uses:
 
 ```cpp
@@ -295,13 +295,13 @@ mean something.
 ## Validation Reference
 
 The finite-difference gradient checker shown here is exercised in
-[`tests/cpu/scf/test_gradient.cpp`](../../tests/cpu/scf/test_gradient.cpp)
+[`tests/cpu/scf/test_gradient.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/scf/test_gradient.cpp)
 (RHF/UHF/KS analytic gradients vs central differences, STO-3G) and, for
 hybrids on a moving XC grid, in
-[`tests/cpu/scf/test_hybrid_gradient.cpp`](../../tests/cpu/scf/test_hybrid_gradient.cpp)
+[`tests/cpu/scf/test_hybrid_gradient.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/scf/test_hybrid_gradient.cpp)
 (analytic vs finite-difference to **1e-5 Ha/Bohr**, plus translational
 invariance `|Σ_A F_A| ≤ 1e-8 Ha/Bohr`). The tiered-precision types are
 defined and documented in
-[`include/atomiverse/core/precision.h`](../../include/atomiverse/core/precision.h);
+[`include/atomiverse/core/precision.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/core/precision.h);
 the unit registry in
-[`include/atomiverse/core/units.h`](../../include/atomiverse/core/units.h).
+[`include/atomiverse/core/units.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/core/units.h).

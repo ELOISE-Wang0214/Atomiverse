@@ -8,7 +8,7 @@ smallest change that repairs it: allow the $\alpha$ and $\beta$ electrons
 to occupy different spatial orbitals.
 
 The example for this chapter is
-[`examples/03_uhf.cpp`](../../examples/03_uhf.cpp). That
+[`examples/03_uhf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/03_uhf.cpp). That
 example is worth reading because it does not talk about UHF in the abstract. It
 runs three concrete cases: a hydrogen atom, equilibrium $\mathrm{H}_2$, and a
 stretched $\mathrm{H}_2$ bond scan where the restricted approximation finally
@@ -299,7 +299,7 @@ the pedagogy of relaxation, not for spectroscopic accuracy. Enlarging the basis
 (STO-3G → 6-31G) and, eventually, adding correlation (a later chapter) moves the
 numbers toward experiment; relaxing the cation geometry would convert vertical
 to adiabatic. The worked table for all five systems in both bases is
-[`examples/12_delta_scf.cpp`](../../examples/12_delta_scf.cpp).
+[`examples/12_delta_scf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/12_delta_scf.cpp).
 
 ## Running The Example
 

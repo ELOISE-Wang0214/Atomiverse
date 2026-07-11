@@ -12,12 +12,12 @@ successive geometries fall below tolerance.
 This chapter walks through the full geometry-optimization recipe with
 an aspirin (acetylsalicylic acid) molecule at RHF / STO-3G. The example
 to read alongside this chapter is
-[`examples/05_geom_opt.cpp`](../../examples/05_geom_opt.cpp).
+[`examples/05_geom_opt.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/05_geom_opt.cpp).
 
 ## What the Minimize Driver Actually Does
 
 `cpu::minimizer::Minimize` is a thin subclass of
-[`cpu::OptimizeDriver`](../../include/atomiverse/cpu/driver/optimize_driver.h).
+[`cpu::OptimizeDriver`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/driver/optimize_driver.h).
 The base class owns the loop:
 
 ```text
@@ -151,7 +151,7 @@ opt.add(cpu::minimizer::CG{/*alpha0=*/0.01, /*ftol=*/0.05,
 ```
 
 The rest of the driver setup is unchanged. The hot-swap is exercised in
-[`tests/cpu/test_minimize_driver_swap_optimizer.cpp`](../../tests/cpu/test_minimize_driver_swap_optimizer.cpp),
+[`tests/cpu/test_minimize_driver_swap_optimizer.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/test_minimize_driver_swap_optimizer.cpp),
 which builds the same molecule twice and checks that both optimizers
 report convergence under the same tolerances.
 
@@ -240,7 +240,7 @@ when you publish a geometry, not just the force tolerance.
 ## Recorders for the Optimization Trace
 
 Three recorder components live under
-[`include/atomiverse/cpu/minimizer/`](../../include/atomiverse/cpu/minimizer/)
+[`include/atomiverse/cpu/minimizer/`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/minimizer/)
 and are designed specifically for optimization runs.
 
 `OptLog` writes a tab-separated row per step with `step`, `E [eV]`,

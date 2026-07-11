@@ -112,7 +112,7 @@ molrs accumulator (`cpu::compute::{RDFAccumulator, MSDAccumulator,
 VACFAccumulator}`); `finalize()` just reads the finished curve back. State stays
 bounded — O(bins) for g(r), O(window · n_atoms) for the correlation rings —
 never O(trajectory), so million-step runs stream at constant memory. This is
-the [infrastructure-in-molrs policy](../../.claude/specs/molrs-analysis-ffi.md):
+the [infrastructure-in-molrs policy](https://github.com/MolCrafts/Atomiverse/blob/dev/.claude/specs/molrs-analysis-ffi.md):
 molrs already ships a freud-class analysis library, validated by its own Rust
 test suite (including streaming-equals-batch equivalence tests). Atomiverse
 exposes it through a thin CXX FFI bridge rather than porting the numerics.
@@ -127,7 +127,7 @@ construct an observer and call `set_observer`.
 ### The cheapest observable: energy conservation
 
 You do not need a component for this one. Every evaluator writes into the shared
-[`SystemScalars`](../../include/atomiverse/core/system_scalars.h) bundle on
+[`SystemScalars`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/core/system_scalars.h) bundle on
 `frame.scalars`, and the integrator writes the kinetic energy, so total energy
 is already available each step:
 
@@ -320,16 +320,16 @@ The three observers are exercised as fast, millisecond-scale unit tests that
 assert the molrs FFI round-trip and the observer plumbing:
 
 - MSD (analytic curve to `1e-9`, Einstein-D bridge, empty-on-degenerate):
-  [`tests/cpu/observer/test_msd.cpp`](../../tests/cpu/observer/test_msd.cpp)
+  [`tests/cpu/observer/test_msd.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/observer/test_msd.cpp)
 - VACF (FFI round-trip, buffer accumulation):
-  [`tests/cpu/observer/test_vacf.cpp`](../../tests/cpu/observer/test_vacf.cpp)
+  [`tests/cpu/observer/test_vacf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/observer/test_vacf.cpp)
 - RDF (histogram accumulation, first-peak position, output format, frequency):
-  [`tests/cpu/observer/test_rdf_observer.cpp`](../../tests/cpu/observer/test_rdf_observer.cpp)
+  [`tests/cpu/observer/test_rdf_observer.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/observer/test_rdf_observer.cpp)
 
 Energy conservation and ensemble-level observable averages are physical
-benchmark cases under [`benchmarks/md`](../../benchmarks/md) (the LJ and
+benchmark cases under [`benchmarks/md`](https://github.com/MolCrafts/Atomiverse/blob/dev/benchmarks/md) (the LJ and
 polyethylene validations), not unit tests. The molrs analysis kernels
 (`compute::MSD`/`RDF`/`VACF`, `fit::EinsteinDiffusion`) are validated by molrs's
 own Rust test suite, which is the source of truth for the analysis mathematics;
 the design and task status for the whole bridge live in
-[`.claude/specs/molrs-analysis-ffi.md`](../../.claude/specs/molrs-analysis-ffi.md).
+[`.claude/specs/molrs-analysis-ffi.md`](https://github.com/MolCrafts/Atomiverse/blob/dev/.claude/specs/molrs-analysis-ffi.md).

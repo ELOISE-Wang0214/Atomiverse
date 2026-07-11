@@ -82,7 +82,7 @@ Alongside Evaluate (one pass), Dynamics (a step budget), Optimize
 accept/reject), Atomiverse has the **Response** category,
 whose loop runs a fixed number of displacement passes and then finalizes.
 Its concrete driver is
-[`cpu::vib::Hessian`](../../include/atomiverse/cpu/vib/hessian.h), which
+[`cpu::vib::Hessian`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/vib/hessian.h), which
 subclasses `cpu::ResponseDriver`. Its phase order —
 
 ```text
@@ -124,7 +124,7 @@ cpu::vib::HessianResult H = driver.run(frame);   // 6N + 1 force evaluations
 ```
 
 `HessianResult`
-([`hessian_result.h`](../../include/atomiverse/cpu/vib/hessian_result.h))
+([`hessian_result.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/vib/hessian_result.h))
 carries the full analysis:
 
 ```cpp
@@ -276,11 +276,11 @@ empirical or quantum — which is exactly the invariant
 ## Validation Reference
 
 Vibrational frequencies are validated against PySCF's analytic Hessian in
-[`tests/cpu/vib/test_frequencies_vs_pyscf.cpp`](../../tests/cpu/vib/test_frequencies_vs_pyscf.cpp)
+[`tests/cpu/vib/test_frequencies_vs_pyscf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/vib/test_frequencies_vs_pyscf.cpp)
 (H₂O / NH₃ / CH₄ to **≤ 5 cm⁻¹**, plus the exact `3N−6` mode-count assertion),
 thermochemistry against PySCF `thermo()` in
-[`tests/cpu/vib/test_thermochem_vs_pyscf.cpp`](../../tests/cpu/vib/test_thermochem_vs_pyscf.cpp),
+[`tests/cpu/vib/test_thermochem_vs_pyscf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/vib/test_thermochem_vs_pyscf.cpp),
 the raw numerical Hessian and translation/rotation projection in
-[`tests/cpu/vib/test_numerical_hessian.cpp`](../../tests/cpu/vib/test_numerical_hessian.cpp)
+[`tests/cpu/vib/test_numerical_hessian.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/vib/test_numerical_hessian.cpp)
 and `test_tr_projection.cpp`. Reference data provenance is recorded alongside
 each generator under `tests/cpu/vib/reference/`.

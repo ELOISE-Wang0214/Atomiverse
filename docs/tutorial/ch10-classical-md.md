@@ -10,7 +10,7 @@ will have built every layer of an LAMMPS-style script, but in C++, in
 about thirty lines.
 
 The runnable example for this chapter is
-[`examples/07_md_lj.cpp`](../../examples/07_md_lj.cpp) — a complete NVE
+[`examples/07_md_lj.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/07_md_lj.cpp) — a complete NVE
 Lennard-Jones argon run on the CPU using the categorical setters
 (`set_pair` / `set_neighbor` / `set_integrator` / `set_thermo`). Build and run
 it with:
@@ -25,7 +25,7 @@ It reports the total-energy drift over 1000 steps, which should be tiny
 (NVE conserves energy). The CUDA twin of the same lesson is
 `examples/07_md_lj.cu` (target `07_md_lj_cuda`). For more wiring — thermostats,
 barostats, bonded terms — the CPU MD test suite
-([`tests/cpu/md/test_md.cpp`](../../tests/cpu/md/test_md.cpp)) exercises every
+([`tests/cpu/md/test_md.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/md/test_md.cpp)) exercises every
 component under regression; some snippets below are written against its
 FCC-argon fixture.
 

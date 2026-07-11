@@ -80,7 +80,7 @@ about whether the existing three already cover your case.
 
 The single biggest design decision in the component model is splitting
 *role* and *capability* into independent axes. The definitions are in
-[`facade/component_role.h`](../../include/atomiverse/facade/component_role.h):
+[`facade/component_role.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/component_role.h):
 
 ```cpp
 enum class ComponentRole : uint8_t {
@@ -132,7 +132,7 @@ slot does this fill? what fields does it write?
 ## The Component Lifecycle, Strictly
 
 The base class
-[`cpu::ComponentBase`](../../include/atomiverse/cpu/component/component.h) defines
+[`cpu::ComponentBase`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/component/component.h) defines
 exactly three hooks:
 
 ```cpp
@@ -187,7 +187,7 @@ Two practical consequences:
 
 `cpu::Context` carries one piece of structured cross-component state:
 `outer_status` of type `ATV::IterationStatus`
-([`facade/iteration_status.h`](../../include/atomiverse/facade/iteration_status.h)).
+([`facade/iteration_status.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/iteration_status.h)).
 
 ```cpp
 struct IterationStatus {
@@ -253,7 +253,7 @@ driver subclass:
    — are an implementation, not a pluggable extension surface.
 
 The SCF inner-step helpers therefore live in
-[`include/atomiverse/cpu/scf/internal/`](../../include/atomiverse/cpu/scf/internal/),
+[`include/atomiverse/cpu/scf/internal/`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/internal/),
 none of them inherit from `cpu::ComponentBase`, and none of them are
 registered into any Plan. They are owned by `SCFSolver` as direct
 members:
@@ -312,7 +312,7 @@ wrong everywhere outside MD.
 
 Every CPU file that loops over pairs of atoms, wraps a position into
 the cell, or applies the minimum-image convention reads
-[`cpu::Box`](../../include/atomiverse/cpu/frame/box.h). The full set of
+[`cpu::Box`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/frame/box.h). The full set of
 methods is:
 
 ```cpp
@@ -339,7 +339,7 @@ orthorhombic min-image branch instead of calling through `Box::min_image`. This
 is because member loads through `this` defeat the compiler's ability to
 hoist the per-axis $L^{-1}$ out of the loop, and the cost was measured
 at ~7% per MD step. The xsimd batch overload `min_image_batch<B>` in
-[`cpu/frame/box_simd.h`](../../include/atomiverse/cpu/frame/box_simd.h) gives non-LJ
+[`cpu/frame/box_simd.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/frame/box_simd.h) gives non-LJ
 SIMD callers a vectorized path without that landmine.
 
 The takeaway when adding new pair-loop code: prefer `cpu::Box`

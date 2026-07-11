@@ -738,7 +738,7 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
         rmax = std::max(rmax, radii[static_cast<std::size_t>(i)]);
     }
     int mimg[3];
-    image_counts(cfg.cell, periodic, 2.0 * rmax, mimg);
+    pair_image_counts(cfg.cell, periodic, 2.0 * rmax, mimg);
 
     // Atom cell list + widest PP width, for the O(nb²) (was O(nb²·natoms)) GTH
     // build: each basis-pair queries only atoms near its product centre.
@@ -878,27 +878,27 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
             orth_cache.emplace(S, cfg.lindep_threshold);
             const int m = static_cast<int>(orth_cache->X.shape(1));
 
-            // An overlap matrix is positive definite BY CONSTRUCTION. A negative
-            // eigenvalue means S itself is wrong — not that the basis is merely
-            // near-linearly-dependent — and canonical orthogonalization would
-            // happily "fix" it by discarding those directions, silently solving a
-            // different problem. Throw instead (no-fallback rule).
+            // An overlap matrix is positive definite BY CONSTRUCTION, so a negative
+            // eigenvalue means S is WRONG — not merely ill-conditioned. This guard
+            // caught a real one: the pair lattice sum was missing its outermost image
+            // shell (image_counts covers |T| <= rcut, but a pair screens on
+            // |R_A - R_B - T| <= reach and two centers can be a full cell edge apart).
+            // The 1214-atom ZnO EDL overlap came out at s_min = -1.92 (unit-diagonal);
+            // with pair_image_counts it is -6.8e-14, and its spectrum now matches the
+            // PySCF reference (s_max 19.65012 vs 19.650). See internal/periodic.h.
             //
-            // The known trigger is a TRUNCATED Γ-point lattice sum: when a basis
-            // function's radius exceeds half a cell edge, the image count from
-            // image_counts() no longer covers every contributing periodic image, and
-            // the partial sum is not a Gram matrix. The 1214-atom ZnO EDL slab
-            // (13.1 x 10.6 x 47.1 Å, diffuse MOLOPT functions reaching ~12-14 Å) hits
-            // exactly this: s_min = -1.06e+02 with 6140 of 13726 directions dropped.
+            // NOTE this is NOT the same thing as the basis being near-linearly-
+            // dependent, which for this system it genuinely is: PySCF puts 6761 of
+            // 13726 overlap eigenvalues below 1e-8. Dropping those directions
+            // (CanonicalOrth) is the correct physics, not a fallback.
             constexpr double kPsdTol = -1e-8;
             if (orth_cache->s_min < kPsdTol)
                 throw std::runtime_error(
                     "GPW: the overlap matrix is NOT positive definite (s_min="
                     + std::to_string(orth_cache->s_min)
                     + "). An overlap matrix cannot have a negative eigenvalue, so S is "
-                      "wrong — the Γ-point lattice sum is truncated (a basis radius "
-                      "exceeds half a cell edge, so image_counts() misses contributing "
-                      "images). Refusing to orthogonalize a non-Gram matrix.");
+                      "wrong — the lattice sum is incomplete. Refusing to orthogonalize "
+                      "a non-Gram matrix.");
 
             if (orth_cache->n_dropped > 0)
                 spdlog::warn("GPW: basis is near-linearly-dependent — dropped {} of {} "

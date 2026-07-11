@@ -65,7 +65,7 @@ Two practical facts follow:
 
 Atomiverse names each basis with an enum and resolves it to concrete shells
 inside `build_integrals`. From
-[`basis_set.h`](../../include/atomiverse/cpu/scf/basis_set.h):
+[`basis_set.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/basis_set.h):
 
 ```cpp
 enum class BasisSet {
@@ -226,7 +226,7 @@ Basis-set correctness is pinned by the RHF/DFT-vs-PySCF parity suite,
 `test_cpu_scf_basis_vs_pyscf` (Atomiverse energy vs a checked-in genuine
 PySCF reference at the same basis, **1e-7 Ha**), with the reference
 generators and provenance under
-[`benchmarks/qc/rhf`](../../benchmarks/qc/rhf). The basis-convergence
+[`benchmarks/qc/rhf`](https://github.com/MolCrafts/Atomiverse/blob/dev/benchmarks/qc/rhf). The basis-convergence
 benchmark case (energy series with committed near-CBS references) is part of
 the manual build-out plan; until it lands, the parity tests plus the sweep
 recipe above are the way to certify a convergence study.

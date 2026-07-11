@@ -32,6 +32,30 @@ inline void image_counts(const double L[3], bool periodic, double rcut, int m[3]
                    : 0;
 }
 
+/// @brief Image counts for a PAIR lattice sum over centers anywhere in the cell.
+///
+/// `image_counts` covers |T| <= rcut, which is right only when both centers sit at
+/// the same point. A pair sum screens on |R_A - R_B - T| <= reach, so it needs
+/// |T| <= |R_A - R_B| + reach — and two centers can be a full cell edge apart. One
+/// extra shell per axis covers that: m[d] = ceil(rcut/L[d]) + 1.
+///
+/// Missing that shell truncates the Γ-point sum, and a truncated sum is not a Gram
+/// matrix: the 1214-atom ZnO EDL overlap came out with s_min = -1.92 (unit-diagonal;
+/// PySCF's reference is +1.1e-13). It is invisible for a single atom at the origin,
+/// where R_A = R_B and the extra shell is empty — which is exactly why it survived
+/// the small-system tests.
+///
+/// @param L        Orthorhombic cell edges [Bohr].
+/// @param periodic false ⇒ all counts 0 (isolated).
+/// @param rcut     Largest pair reach [Bohr] (e.g. 2·rmax).
+/// @param m        Out: images to sum per axis.
+inline void pair_image_counts(const double L[3], bool periodic, double rcut, int m[3]) {
+    image_counts(L, periodic, rcut, m);
+    if (periodic)
+        for (int d = 0; d < 3; ++d)
+            if (L[d] > 0.0) m[d] += 1;
+}
+
 } // namespace gpw
 } // namespace cpu
 } // namespace ATV

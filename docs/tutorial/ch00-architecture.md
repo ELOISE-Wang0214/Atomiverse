@@ -21,7 +21,7 @@ If you have not, see
 
 Every CPU simulation in Atomiverse begins and ends with a single host-side
 object,
-[`cpu::Frame`](../../include/atomiverse/cpu/frame/frame.h). A frame holds:
+[`cpu::Frame`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/frame/frame.h). A frame holds:
 
 - **per-atom arrays** — positions $x, y, z$, velocities $v_x, v_y, v_z$,
   forces $f_x, f_y, f_z$, masses, atom types, and global tags;
@@ -47,7 +47,7 @@ driver routes them in the right order.
 
 A **component** is one well-scoped piece of work that runs at a specific
 phase of one step of one driver. The base class
-[`cpu::ComponentBase`](../../include/atomiverse/cpu/component/component.h) defines
+[`cpu::ComponentBase`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/component/component.h) defines
 exactly three lifecycle hooks:
 
 ```cpp
@@ -108,7 +108,7 @@ runtime needs to know structurally. The split keeps both clean.
 ## A Single Step, Phase by Phase
 
 Each driver category compiles its plan against a fixed, named **phase
-order** ([`facade/stage.h`](../../include/atomiverse/facade/stage.h)).
+order** ([`facade/stage.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/stage.h)).
 
 For `cpu::md::MD` the phase order matches LAMMPS:
 
@@ -206,7 +206,7 @@ those internals are registered into any outer Plan, and none inherit
 from `cpu::ComponentBase`.
 
 What plugs into a driver is a wrapper:
-[`cpu::scf::SCFEvaluator`](../../include/atomiverse/cpu/scf/scf_evaluator.h).
+[`cpu::scf::SCFEvaluator`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/scf_evaluator.h).
 The evaluator is a `cpu::ComponentBase` with role `Evaluator` and
 capabilities `Energy | DensityMatrix | Orbitals` (and `Force` when
 gradient computation is enabled). Inside its `launch()` it builds the
@@ -252,16 +252,16 @@ head — `cpu::Frame`, the driver class for your loop, and the components
 you add to it. There are two more types that show up so often it is
 worth naming them now.
 
-[`cpu::Box`](../../include/atomiverse/cpu/frame/box.h) is the simulation cell.
+[`cpu::Box`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/frame/box.h) is the simulation cell.
 It holds the cell matrix, plus a per-step-immutable cache of inverses
 and minimum-image helpers (`min_image`, `wrap_axis`, `length`,
 `volume`). For an orthorhombic box the helpers are branch-light scalar
 math; an `xsimd` batched overload (`min_image_batch<B>`) lives in
-[`cpu/box_simd.h`](../../include/atomiverse/cpu/frame/box_simd.h) for hot pair
+[`cpu/box_simd.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/frame/box_simd.h) for hot pair
 loops. You will rarely call these directly; force kernels and
 thermostats use them on your behalf.
 
-[`IterationStatus`](../../include/atomiverse/facade/iteration_status.h)
+[`IterationStatus`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/iteration_status.h)
 is the single channel through which inner components signal "stop the
 outer loop". It carries `converged`, `stop_requested`, and a
 human-readable `reason`. The driver category decides what to do with

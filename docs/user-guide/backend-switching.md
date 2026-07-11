@@ -14,9 +14,9 @@ when the eventual calculation runs on CUDA. The backend decision changes how
 the calculation is executed, not how the physical system is described.
 
 This is easiest to see in the RHF pair of examples. The CPU reference path is
-[`examples/02_rhf.cpp`](../../examples/02_rhf.cpp). The CUDA
+[`examples/02_rhf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/02_rhf.cpp). The CUDA
 translation of the same problem is
-[`examples/02_rhf.cu`](../../examples/02_rhf.cu). Both begin
+[`examples/02_rhf.cu`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/02_rhf.cu). Both begin
 by constructing the same molecular geometry in `cpu::Frame`. The difference
 comes only after the integrals and workflow are chosen.
 

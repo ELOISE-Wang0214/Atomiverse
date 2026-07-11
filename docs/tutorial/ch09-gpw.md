@@ -86,7 +86,7 @@ plugs into the `Evaluate`, `MD`, and `Minimize` drivers with no special support.
 
 ## The C++ API: Elements, Config, `single_point`
 
-The runnable companion is [`examples/09_gpw.cpp`](../../examples/09_gpw.cpp) —
+The runnable companion is [`examples/09_gpw.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/09_gpw.cpp) —
 an isolated water molecule, the electronic structure of CP2K's getting-started
 `h2o.inp`. Keep it open beside this text.
 
@@ -146,7 +146,7 @@ const int    n    = eval.last_result().iters;
 
 Set `cfg.nonperiodic = false` for a genuinely periodic system (a crystal or
 slab) — then the grid electrostatics are periodic, as in
-[`examples/10_gpw_znoedl.cpp`](../../examples/10_gpw_znoedl.cpp), which runs
+[`examples/10_gpw_znoedl.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/10_gpw_znoedl.cpp), which runs
 CP2K's periodic ZnO electric-double-layer slab. Optional knobs: `cfg.mix` (density
 mixing), `cfg.max_iter`, `cfg.tol`, `cfg.d3` (Grimme DFT-D3 dispersion, requires
 `cfg.d3_param_file`), and `cfg.compute_forces` (finite-difference forces — see
@@ -166,8 +166,8 @@ the energy decomposition — `e_kinetic`, `e_loc_sr` (short-range local PP),
 `e_nonlocal`, `e_es` (total electrostatic), `e_xc` — so you can check parity
 term by term, which is how you localise a discrepancy if the total drifts.
 
-This is a **numerical-tolerance** result against a reference *engine* (§5 of the
-[manual system spec](../../.claude/specs/manual-system.md)): the two codes
+This is a **numerical-tolerance** result against a reference *engine* (see the
+[benchmark validation policy](https://github.com/MolCrafts/Atomiverse/blob/dev/benchmarks/README.md)): the two codes
 implement the same equations, so agreement should be to the convergence
 threshold, not merely to chemical accuracy.
 
@@ -182,7 +182,7 @@ strategy is CP2K parity on:
   CP2K's `ZnO_MD.inp` electronic structure (DZVP-MOLOPT-SR-GTH, GTH-PBE, 320 Ry).
 
 A dedicated `benchmarks/gpw/` suite that pins these parities under CI is on the
-roadmap ([`.claude/specs/gpw-gaussian-plane-wave.md`](../../.claude/specs/gpw-gaussian-plane-wave.md));
+roadmap ([`.claude/specs/gpw-gaussian-plane-wave.md`](https://github.com/MolCrafts/Atomiverse/blob/dev/.claude/specs/gpw-gaussian-plane-wave.md));
 until then the two examples are the executable checks, each printing its
 deviation from the CP2K reference.
 
@@ -231,12 +231,12 @@ The two runnable GPW calculations each validate against a committed CP2K
 reference energy printed at the end of the run:
 
 - Isolated H₂O (PBE, DZVP-MOLOPT-GTH, Martyna-Tuckerman) vs CP2K
-  `-17.21233714` Ha: [`examples/09_gpw.cpp`](../../examples/09_gpw.cpp).
+  `-17.21233714` Ha: [`examples/09_gpw.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/09_gpw.cpp).
 - Periodic ZnO slab (CP2K `ZnO_MD.inp` electronic structure):
-  [`examples/10_gpw_znoedl.cpp`](../../examples/10_gpw_znoedl.cpp).
+  [`examples/10_gpw_znoedl.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/10_gpw_znoedl.cpp).
 
 The design, CP2K-parity targets, and planned `benchmarks/gpw/` migration are
 tracked in
-[`.claude/specs/gpw-gaussian-plane-wave.md`](../../.claude/specs/gpw-gaussian-plane-wave.md)
+[`.claude/specs/gpw-gaussian-plane-wave.md`](https://github.com/MolCrafts/Atomiverse/blob/dev/.claude/specs/gpw-gaussian-plane-wave.md)
 and its production extension
-[`.claude/specs/gpw-edl-aimd.md`](../../.claude/specs/gpw-edl-aimd.md).
+[`.claude/specs/gpw-edl-aimd.md`](https://github.com/MolCrafts/Atomiverse/blob/dev/.claude/specs/gpw-edl-aimd.md).

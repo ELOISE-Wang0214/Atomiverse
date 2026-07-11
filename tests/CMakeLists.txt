@@ -154,6 +154,9 @@ if(ATV_BUILD_GPW)
     # the D3 parameter tables. No SCF is run here — the converged-SCF checks that
     # used to live alongside these are now benchmarks/qc/gpw/validation.
     atv_add_cpp_test(test_cpu_gpw_data_table    cpu/gpw/test_cpu_gpw_data_table.cpp)
+    # Minimal model system for the Γ-point lattice sum: S must be positive definite
+    # at every cell size (Gram matrix). Pinned against PySCF.
+    atv_add_cpp_test(test_cpu_gpw_periodic_overlap cpu/gpw/test_cpu_gpw_periodic_overlap.cpp)
     atv_add_cpp_test(test_cpu_gpw_cp2k_io       cpu/gpw/test_cpu_gpw_cp2k_io.cpp)
     atv_add_cpp_test(test_cpu_gpw_basis         cpu/gpw/test_cpu_gpw_basis.cpp)
     # ZnO EDL heavy elements (gpw-edl-aimd ac-003): Zn/Na/Cl GTH-PBE +

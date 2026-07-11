@@ -124,7 +124,7 @@ with its tutorial chapter.
 ## 6. The one data structure to remember
 
 The user-facing description of your system lives in
-[`cpu::Frame`](../../include/atomiverse/cpu/frame/frame.h). You fill it with
+[`cpu::Frame`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/frame/frame.h). You fill it with
 atom positions, masses, atom types, the simulation box, and optionally topology
 (bonds/angles). Positions are in Ångström; energies come back on
 `frame.scalars.energy` in eV (the SCF/PW evaluators also report Hartree/Rydberg

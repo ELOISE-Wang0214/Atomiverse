@@ -55,7 +55,16 @@ Read it in this order:
 4. **[Developer manual](docs/developer/index.md)** — architecture and how to
    add new components (only needed if you are extending the code).
 
-Generate the HTML API reference (output in `docs/html/`):
+The docs site is built with [Zensical](https://zensical.org); `zensical.toml` at
+the repository root holds the configuration and navigation:
+
+```bash
+uv run --with zensical --with molcrafts-zensical-theme zensical serve   # live preview
+uv run --with zensical --with molcrafts-zensical-theme zensical build   # → site/
+```
+
+The C++ API reference is generated separately by Doxygen (output in
+`build/doxygen/html/`) and is not yet part of the site:
 
 ```bash
 cmake -B build/docs -DATV_DOCS_ONLY=ON

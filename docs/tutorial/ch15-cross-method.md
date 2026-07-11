@@ -174,7 +174,7 @@ The MD row above is the single most consequential cell in the grid — *ab initi
 molecular dynamics (AIMD), where a fully converged SCF supplies the forces at
 every time step. The most common variant, running a converged SCF at each
 nuclear configuration, is **Born-Oppenheimer MD (BOMD)**. The runnable companion
-is [`examples/06_aimd.cpp`](../../examples/06_aimd.cpp), which propagates H₂ for
+is [`examples/06_aimd.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/06_aimd.cpp), which propagates H₂ for
 50 fs of NVT at 100 K on RHF/STO-3G forces. Nothing in the loop "knows" the
 forces are quantum mechanical: the `SCFEvaluator` advertises `Capability::Force`
 and the driver treats it like any other force provider. But four practical
@@ -335,10 +335,10 @@ different from the one you already know.
 The evaluator-composition tests (SCFEvaluator coexisting with NVE/NVT/NPT
 integrators and both minimizers, plus the state-leakage single-point-vs-
 propagation check) live in
-[`tests/cpu/scf/test_scf_evaluator.cpp`](../../tests/cpu/scf/test_scf_evaluator.cpp)
+[`tests/cpu/scf/test_scf_evaluator.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/scf/test_scf_evaluator.cpp)
 and
-[`tests/cpu/scf/test_aimd_conservation.cpp`](../../tests/cpu/scf/test_aimd_conservation.cpp);
+[`tests/cpu/scf/test_aimd_conservation.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/scf/test_aimd_conservation.cpp);
 the optimizer hot-swap (LBFGS ↔ CG on one `Minimize` driver) in
-[`tests/cpu/test_minimize_driver_swap_optimizer.cpp`](../../tests/cpu/test_minimize_driver_swap_optimizer.cpp).
+[`tests/cpu/test_minimize_driver_swap_optimizer.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/test_minimize_driver_swap_optimizer.cpp).
 The end-to-end golden cross-method run is the designated integration
 validation for the "swap the evaluator" workflow.

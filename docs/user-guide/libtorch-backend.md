@@ -45,14 +45,14 @@ used to build Atomiverse.
 
 The repository does not currently ship a standalone `examples/torch_*.cpp`
 target, so the best reading path is through the library headers and tests:
-[`tests/torch/test_lj.cu`](../../tests/torch/test_lj.cu),
-[`tests/torch/test_transfer.cu`](../../tests/torch/test_transfer.cu), and
-[`tests/torch/test_neighbor_list.cu`](../../tests/torch/test_neighbor_list.cu).
+[`tests/torch/test_lj.cu`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/torch/test_lj.cu),
+[`tests/torch/test_transfer.cu`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/torch/test_transfer.cu), and
+[`tests/torch/test_neighbor_list.cu`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/torch/test_neighbor_list.cu).
 
 ## The Core Type: `torch::Frame`
 
 The defining type is
-[`include/atomiverse/torch/frame/frame.cuh`](../../include/atomiverse/torch/frame/frame.cuh).
+[`include/atomiverse/torch/frame/frame.cuh`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/torch/frame/frame.cuh).
 Conceptually it mirrors `cpu::Frame` and `cuda::Frame`: positions, forces, pair
 lists, energy, box, and host-cached counts. The difference is only the storage
 container. In the torch backend those fields are tensors.
@@ -117,7 +117,7 @@ belongs to Atomiverse while the differentiation interface belongs to PyTorch.
 
 The library follows the same explicit data-residency model as the rest of the
 project. The key functions are declared in
-[`include/atomiverse/torch/frame/transfer.cuh`](../../include/atomiverse/torch/frame/transfer.cuh).
+[`include/atomiverse/torch/frame/transfer.cuh`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/torch/frame/transfer.cuh).
 
 `to_torch(const cuda::Frame&)` wraps an existing CUDA frame as tensors without a
 copy. `to_cuda(const torch::Frame&, cuda::Frame&)` extracts raw pointers from
@@ -139,14 +139,14 @@ pair membership changes discretely. That is why `neighbor_list` prepares the
 ## Where To Read Next
 
 If you want to understand the implementation, start with
-[`include/atomiverse/torch/frame/frame.cuh`](../../include/atomiverse/torch/frame/frame.cuh),
+[`include/atomiverse/torch/frame/frame.cuh`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/torch/frame/frame.cuh),
 then read
-[`include/atomiverse/torch/frame/transfer.cuh`](../../include/atomiverse/torch/frame/transfer.cuh),
+[`include/atomiverse/torch/frame/transfer.cuh`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/torch/frame/transfer.cuh),
 then
-[`include/atomiverse/torch/potentials/lj.cuh`](../../include/atomiverse/torch/potentials/lj.cuh)
+[`include/atomiverse/torch/potentials/lj.cuh`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/torch/potentials/lj.cuh)
 and
-[`src/torch/potentials/lj.cu`](../../src/torch/potentials/lj.cu).
+[`src/torch/potentials/lj.cu`](https://github.com/MolCrafts/Atomiverse/blob/dev/src/torch/potentials/lj.cu).
 Finish with
-[`tests/torch/test_lj.cu`](../../tests/torch/test_lj.cu) and
-[`tests/torch/test_neighbor_list.cu`](../../tests/torch/test_neighbor_list.cu),
+[`tests/torch/test_lj.cu`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/torch/test_lj.cu) and
+[`tests/torch/test_neighbor_list.cu`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/torch/test_neighbor_list.cu),
 which show real calls and gradient checks against the current API.

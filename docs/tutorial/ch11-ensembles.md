@@ -319,13 +319,13 @@ unchanged to any level of theory.
 ## Validation Reference
 
 The thermostat and barostat components are exercised under regression in
-[`tests/cpu/md/test_md.cpp`](../../tests/cpu/md/test_md.cpp) (Nosé-Hoover NVT,
+[`tests/cpu/md/test_md.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/md/test_md.cpp) (Nosé-Hoover NVT,
 Berendsen barostat, `NoseHooverNPT`, CSVR, Langevin) and the categorical
 setter wiring — including the automatic `Virial` injection triggered by a
 barostat's `reads() == Stress` — in
-[`tests/cpu/md/test_md_set_api.cpp`](../../tests/cpu/md/test_md_set_api.cpp).
+[`tests/cpu/md/test_md_set_api.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/md/test_md_set_api.cpp).
 Multi-rank NPT correctness (box consistency across ranks) is covered by
-[`tests/mpi/test_nose_hoover_npt_multirank.cpp`](../../tests/mpi/test_nose_hoover_npt_multirank.cpp).
+[`tests/mpi/test_nose_hoover_npt_multirank.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/mpi/test_nose_hoover_npt_multirank.cpp).
 The ensemble-means-vs-LAMMPS benchmark is the designated external validation
 case, alongside the LJ and polyethylene cases under
-[`benchmarks/md`](../../benchmarks/md).
+[`benchmarks/md`](https://github.com/MolCrafts/Atomiverse/blob/dev/benchmarks/md).

@@ -1,0 +1,83 @@
+[project]
+site_name = "Atomiverse"
+site_description = "Dual-backend molecular-simulation engine: classical MD, Monte Carlo, optimization, vibrations, and electronic structure behind one Driver/Component API."
+site_author = "MolCrafts"
+site_url = "https://molcrafts.github.io/Atomiverse/"
+copyright = "Copyright &copy; 2026 MolCrafts"
+docs_dir = "docs"
+site_dir = "site"
+repo_url = "https://github.com/MolCrafts/Atomiverse"
+repo_name = "MolCrafts/Atomiverse"
+edit_uri = "edit/dev/docs/"
+
+nav = [
+  { "Home" = "index.md" },
+  { "User Guide" = [
+    "user-guide/index.md",
+    "user-guide/getting-started.md",
+    "user-guide/methods.md",
+    "user-guide/backend-switching.md",
+    "user-guide/libtorch-backend.md",
+    "user-guide/scf-roadmap.md",
+  ] },
+  { "Tutorial" = [
+    "tutorial/index.md",
+    "tutorial/ch00-architecture.md",
+    "tutorial/ch01-foundations.md",
+    "tutorial/ch02-rhf.md",
+    "tutorial/ch03-open-shell.md",
+    "tutorial/ch04-basis-sets.md",
+    "tutorial/ch05-kohn-sham-dft.md",
+    "tutorial/ch06-hybrid-dft.md",
+    "tutorial/ch07-correlation.md",
+    "tutorial/ch08-plane-wave.md",
+    "tutorial/ch09-gpw.md",
+    "tutorial/ch10-classical-md.md",
+    "tutorial/ch11-ensembles.md",
+    "tutorial/ch12-geometry-optimization.md",
+    "tutorial/ch13-observables.md",
+    "tutorial/ch14-vibrations.md",
+    "tutorial/ch15-cross-method.md",
+  ] },
+  { "Developer" = [
+    "developer/index.md",
+    "developer/architecture.md",
+    "developer/cpu-internals.md",
+    "developer/md-execution-model.md",
+    "developer/extending-components.md",
+    "developer/extending-cpu-subsystems.md",
+  ] },
+  { "Reference" = [
+    "api/index.md",
+  ] },
+]
+
+[project.theme]
+name = "molcrafts"
+
+[project.extra.molcrafts]
+product = "atomiverse"
+accent = "#7c3aed"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/github"
+link = "https://github.com/MolCrafts/Atomiverse"
+
+[project.markdown_extensions.admonition]
+[project.markdown_extensions.attr_list]
+[project.markdown_extensions.def_list]
+[project.markdown_extensions.md_in_html]
+[project.markdown_extensions.tables]
+[project.markdown_extensions.toc]
+permalink = true
+[project.markdown_extensions.pymdownx.arithmatex]
+generic = true
+[project.markdown_extensions.pymdownx.details]
+[project.markdown_extensions.pymdownx.highlight]
+anchor_linenums = true
+[project.markdown_extensions.pymdownx.inlinehilite]
+[project.markdown_extensions.pymdownx.superfences]
+[project.markdown_extensions.pymdownx.tabbed]
+alternate_style = true
+[project.markdown_extensions.pymdownx.tasklist]
+custom_checkbox = true

@@ -74,11 +74,11 @@ by one or more components.
 
 Pair each tutorial with one code-reading target:
 
-- after Chapter 2, read [`cpu::scf::solve`](../../include/atomiverse/cpu/scf/solve.h)
-- after Chapter 2, read [`IntegralPack`](../../include/atomiverse/cpu/scf/integrals.h) and [`rhf_solve`](../../include/atomiverse/cpu/scf/rhf_solve.h)
-- after Chapter 3, read [`uhf_solve`](../../include/atomiverse/cpu/scf/uhf_solve.h)
-- after Chapter 5, read [`uks_solve`](../../include/atomiverse/cpu/scf/uks_solve.h) and [`xc_functional.h`](../../include/atomiverse/cpu/scf/xc_functional.h)
-- after Chapter 8, read [`pw_solver.h`](../../include/atomiverse/cpu/pw/pw_solver.h) and [`internal/pw_workspace.h`](../../include/atomiverse/cpu/pw/internal/pw_workspace.h)
+- after Chapter 2, read [`cpu::scf::solve`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/solve.h)
+- after Chapter 2, read [`IntegralPack`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/integrals.h) and [`rhf_solve`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/rhf_solve.h)
+- after Chapter 3, read [`uhf_solve`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/uhf_solve.h)
+- after Chapter 5, read [`uks_solve`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/uks_solve.h) and [`xc_functional.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/xc_functional.h)
+- after Chapter 8, read [`pw_solver.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/pw/pw_solver.h) and [`internal/pw_workspace.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/pw/internal/pw_workspace.h)
 
 If you want to understand how the same ideas map onto the runtime system, then
 read the [Developer Manual](../developer/index.md) after finishing Chapter 2.

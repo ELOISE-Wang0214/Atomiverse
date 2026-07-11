@@ -7,7 +7,7 @@ This tutorial assumes you have read
 The first four tutorials covered **molecular** electronic structure with
 atom-centered Gaussian basis sets. This tutorial moves to **periodic** systems —
 crystals, surfaces, bulk materials — where the natural basis is **plane waves**.
-The runnable example is [`examples/08_pw.cpp`](../../examples/08_pw.cpp), which
+The runnable example is [`examples/08_pw.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/08_pw.cpp), which
 computes the energy of bulk silicon. Keep it open beside this text.
 
 The guiding question:
@@ -236,9 +236,9 @@ A GPU path exists: `cuda::pw::pw_scf` runs the Davidson hot path on the device
 
 ## Where to read the code
 
-1. [`include/atomiverse/cpu/pw/pw_evaluator.h`](../../include/atomiverse/cpu/pw/pw_evaluator.h) — the user-facing component
-2. [`include/atomiverse/cpu/pw/pw_solver.h`](../../include/atomiverse/cpu/pw/pw_solver.h) — `PWConfig`, `PWResult`, the inner solver
-3. [`include/atomiverse/cpu/pw/pw_scf.h`](../../include/atomiverse/cpu/pw/pw_scf.h) — the functional shim
+1. [`include/atomiverse/cpu/pw/pw_evaluator.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/pw/pw_evaluator.h) — the user-facing component
+2. [`include/atomiverse/cpu/pw/pw_solver.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/pw/pw_solver.h) — `PWConfig`, `PWResult`, the inner solver
+3. [`include/atomiverse/cpu/pw/pw_scf.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/pw/pw_scf.h) — the functional shim
 4. `include/atomiverse/cpu/pw/internal/` — the step helpers and numerics
    (`g_vector.h`, `fft.h`, `ewald.h`, `kpoint.h`, `upf_reader.h`, …)
 

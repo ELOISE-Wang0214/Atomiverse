@@ -14,7 +14,7 @@ If you have not built the project yet, start with
 brought you here, the natural entry point is **Chapter 2**; if classical force
 fields and ensemble simulation are what you want, start at **Chapter 10**. Read
 each chapter with the example named in its text open beside it — the example
-files under [`examples/`](../../examples/) have their own numbering (follow the
+files under [`examples/`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/) have their own numbering (follow the
 filename each chapter names, not the number).
 
 Completely new to the codebase? [Chapter 0](ch00-architecture.md) is the
@@ -101,7 +101,7 @@ split before any physics is introduced.
 
 ---
 
-The manual roadmap and validation policy live in
-[`.claude/specs/manual-system.md`](../../.claude/specs/manual-system.md). For a
+The validation policy — what each acceptance check proves, and against which reference engine — lives in
+[`benchmarks/README.md`](https://github.com/MolCrafts/Atomiverse/blob/dev/benchmarks/README.md). For a
 one-page map of the SCF arc, see the
 [SCF Learning Path](../user-guide/scf-roadmap.md).

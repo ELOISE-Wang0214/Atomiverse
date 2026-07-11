@@ -6,7 +6,7 @@ it keeps the same spin-resolved SCF skeleton, but it replaces explicit
 Hartree-Fock exchange with an exchange-correlation functional of the density.
 
 The example for this chapter is
-[`examples/04_uks.cpp`](../../examples/04_uks.cpp). That
+[`examples/04_uks.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/04_uks.cpp). That
 example runs a closed-shell helium atom, open-shell hydrogen and lithium atoms,
 and a small $\mathrm{H}_2$ dissociation comparison against UHF. It is a good
 bridge from the earlier chapters because it shows clearly what UKS keeps from
@@ -115,7 +115,7 @@ just Hartree-Fock with a different label.
 
 ## Reading The Example
 
-In [`examples/04_uks.cpp`](../../examples/04_uks.cpp), the
+In [`examples/04_uks.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/04_uks.cpp), the
 basic call looks like this:
 
 ```cpp
@@ -141,7 +141,7 @@ evaluate it. The example uses LSDA because it is the clearest first step.
 
 ## How To Read `examples/04_uks.cpp`
 
-[`examples/04_uks.cpp`](../../examples/04_uks.cpp) is a compact
+[`examples/04_uks.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/04_uks.cpp) is a compact
 survey of what this method changes. The helium atom shows that a closed-shell
 singlet fits naturally into the same framework. The hydrogen and lithium atoms
 show that the same code also handles open-shell occupations. The

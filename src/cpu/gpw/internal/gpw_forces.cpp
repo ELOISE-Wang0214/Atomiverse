@@ -162,7 +162,7 @@ gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
         rmax = std::max(rmax, radii[static_cast<std::size_t>(u)]);
     }
     int mimg[3];
-    image_counts(cfg.cell, periodic, 2.0 * rmax, mimg);
+    pair_image_counts(cfg.cell, periodic, 2.0 * rmax, mimg);
 
     const RealMatrix& P = scf.P;
     // Energy-weighted density matrix W_μν = Σ_i 2 ε_i C_μi C_νi (occupied).

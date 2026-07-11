@@ -151,26 +151,35 @@ criteria:
       "launches + completes + passes the reference-free gates" — reachable without an
       external engine.
 
-      BLOCKER FOUND, and it is NOT what this spec previously claimed. The "O(N³)
-      unscreened gth_matrix_element atom loop" was already fixed (af60a63 gave it an
-      atom cell-list; 359643c made the nonlocal separable-KB) — that note was stale.
-      Running the real 1214-atom single point (examples/10_gpw_znoedl) exposed the
-      actual defect:
+      BLOCKER FOUND AND FIXED (2026-07-11). It was NOT what this spec claimed. The
+      "O(N³) unscreened gth_matrix_element atom loop" note was STALE — af60a63 gave it
+      an atom cell-list and 359643c made the nonlocal separable-KB. Running the real
+      1214-atom single point exposed the actual defect:
 
-        the Γ-point lattice sum for the OVERLAP matrix is TRUNCATED, so S is not a
-        Gram matrix. Measured: s_min = -1.057e+02 — a NEGATIVE overlap eigenvalue,
-        which is impossible for a true overlap. 6140 of 13726 directions are affected.
-        Raw dsygvd simply fails ("dsygvd failed, info=20590" = not positive definite).
+        the Γ-point PAIR lattice sum was missing its outermost image shell.
+        `image_counts` covers |T| <= rcut, but a pair screens on |R_A - R_B - T| <=
+        reach and two centers can be a full cell edge apart, so it needs
+        |T| <= |R_A - R_B| + reach. One shell short per axis.
 
-      Cause: the EDL cell is a thin slab (13.1 x 10.6 x 47.1 Å) and the diffuse MOLOPT
-      functions reach ~12-14 Å, i.e. FARTHER than half a cell edge — so image_counts()
-      does not cover every contributing periodic image and the partial sum is not PSD.
-      A guard now throws instead of orthogonalizing a non-Gram matrix (no silent
-      fallback); canonical orthogonalization must NOT be allowed to paper over it by
-      discarding 6140 directions, which would silently solve a different problem.
+      A truncated sum is not a Gram matrix: the overlap came out at s_min = -1.92
+      (unit-diagonal) where an overlap CANNOT be negative, and raw dsygvd failed
+      outright ("info=20590"). Fixed by `pair_image_counts` (internal/periodic.h).
 
-      Fixing this = making the Γ-point image count cover the true basis reach for
-      cells thinner than 2·r_basis. That is the remaining capstone work.
+      Validated against PySCF 2.13.1 (pbc.gto, same cell/basis/pseudo — run externally,
+      numbers pinned, nothing added to the tree):
+                              s_min            s_max
+        PySCF (reference)   +1.13e-13         19.650
+        before               -1.92            19.635
+        after                -6.8e-14         19.65012
+      i.e. the periodic overlap now matches the reference to machine precision.
+
+      Two things this also settled:
+      - The basis really IS ~50% linearly dependent here (PySCF: 6761 of 13726 overlap
+        eigenvalues below 1e-8). CanonicalOrth dropping those directions is the CORRECT
+        physics for this system, not a fallback that hides a bug.
+      - It is invisible on small systems: the missing shell contributes ~1e-16, which
+        only matters when the true s_min is ~1e-13. That is why every unit-scale ladder
+        (H/O/Zn lattices to 5400 AOs, cubic and slab cells) stayed green.
 
   - id: ac-011
     summary: Full-system wall-time and memory profile documented

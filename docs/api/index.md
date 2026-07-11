@@ -21,29 +21,29 @@ class or function name.
 
 Start with these types:
 
-- [`cpu::Frame`](../../include/atomiverse/cpu/frame/frame.h)
-- [`Mat3`](../../include/atomiverse/core/mat3.h)
-- [`Real`](../../include/atomiverse/core/real.h)
-- [`Int`](../../include/atomiverse/core/int.h)
+- [`cpu::Frame`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/frame/frame.h)
+- [`Mat3`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/core/mat3.h)
+- [`Real`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/core/real.h)
+- [`Int`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/core/int.h)
 
 ### Build staged workflows
 
 Start with these facade headers:
 
-- [`Driver`](../../include/atomiverse/facade/driver.h)
-- [`Plan`](../../include/atomiverse/facade/plan.h)
-- [`Phase` enums](../../include/atomiverse/facade/stage.h)
+- [`Driver`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/driver.h)
+- [`Plan`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/plan.h)
+- [`Phase` enums](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/stage.h)
 
 ### Run molecular dynamics and minimization
 
 Start with these CPU driver and component headers (the ones the tutorials
 use; each has a CUDA counterpart under `cuda/` with the same name):
 
-- [`cpu::md::MD`](../../include/atomiverse/cpu/md/md.h)
-- [`cpu::md::VelocityVerlet`](../../include/atomiverse/cpu/md/velocity_verlet.h)
-- [`cpu::md::NeighborList`](../../include/atomiverse/cpu/neighbor/neighbor_list.h)
-- [`cpu::PairLJCut`](../../include/atomiverse/cpu/potentials/pair_lj_cut.h)
-- [`cpu::minimizer::Minimize`](../../include/atomiverse/cpu/minimizer/minimize.h) + `LBFGS` / `CG`
+- [`cpu::md::MD`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/md/md.h)
+- [`cpu::md::VelocityVerlet`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/md/velocity_verlet.h)
+- [`cpu::md::NeighborList`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/neighbor/neighbor_list.h)
+- [`cpu::PairLJCut`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/potentials/pair_lj_cut.h)
+- [`cpu::minimizer::Minimize`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/minimizer/minimize.h) + `LBFGS` / `CG`
 
 The CUDA equivalents are `cuda::md::MD` (`cuda/md/md.cuh`),
 `cuda::PairLJCut`, `cuda::minimizer::Minimize`, etc. — same API, GPU-resident.
@@ -52,32 +52,32 @@ The CUDA equivalents are `cuda::md::MD` (`cuda/md/md.cuh`),
 
 Start with these CPU headers:
 
-- [`IntegralPack` and `build_integrals`](../../include/atomiverse/cpu/scf/integrals.h)
-- [`rhf_solve`](../../include/atomiverse/cpu/scf/rhf_solve.h)
-- [`uhf_solve`](../../include/atomiverse/cpu/scf/uhf_solve.h)
-- [`uks_solve`](../../include/atomiverse/cpu/scf/uks_solve.h)
+- [`IntegralPack` and `build_integrals`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/integrals.h)
+- [`rhf_solve`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/rhf_solve.h)
+- [`uhf_solve`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/uhf_solve.h)
+- [`uks_solve`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/uks_solve.h)
 
 ### Run SCF workflows on the CUDA backend
 
 CUDA SCF is an inner solver (`cuda::scf::SCFSolver`) wrapped by an evaluator
 component, not a staged driver. Start with these headers:
 
-- [`cuda::scf::SCFEvaluator`](../../include/atomiverse/cuda/scf/scf_evaluator.cuh)
-- [`cuda::scf::SCFSolver`](../../include/atomiverse/cuda/scf/scf_solver.cuh)
-- [`cuda::Evaluate`](../../include/atomiverse/cuda/driver/evaluate.cuh)
-- [`cuda::single_point`](../../include/atomiverse/cuda/driver/single_point.cuh)
+- [`cuda::scf::SCFEvaluator`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cuda/scf/scf_evaluator.cuh)
+- [`cuda::scf::SCFSolver`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cuda/scf/scf_solver.cuh)
+- [`cuda::Evaluate`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cuda/driver/evaluate.cuh)
+- [`cuda::single_point`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cuda/driver/single_point.cuh)
 
 ### Record output and analyze results
 
 Start with these types:
 
-- [`cpu::Thermo`](../../include/atomiverse/cpu/recorder/thermo.h)
-- [`cpu::write_frame_xyz` / `cpu::write_frame_zarr` (molrs-backed frame writers)](../../include/atomiverse/cpu/io/frame_writer.h)
-- [`ATV::RDF`](../../include/atomiverse/cpu/observer/rdf.h)
-- [trajectory analysis (`cpu::compute::*` batch computes + streaming accumulators)](../../include/atomiverse/cpu/observer/trajectory_metrics.h)
-- [`cpu::XYZ`](../../include/atomiverse/cpu/recorder/xyz.h)
-- [`mulliken_charge` and related helpers](../../include/atomiverse/cpu/observer/mulliken.h)
-- [`DensityGrid`](../../include/atomiverse/cpu/observer/density.h)
+- [`cpu::Thermo`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/recorder/thermo.h)
+- [`cpu::write_frame_xyz` / `cpu::write_frame_zarr` (molrs-backed frame writers)](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/io/frame_writer.h)
+- [`ATV::RDF`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/observer/rdf.h)
+- [trajectory analysis (`cpu::compute::*` batch computes + streaming accumulators)](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/observer/trajectory_metrics.h)
+- [`cpu::XYZ`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/recorder/xyz.h)
+- [`mulliken_charge` and related helpers](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/observer/mulliken.h)
+- [`DensityGrid`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/observer/density.h)
 
 ## When To Leave The API Reference
 

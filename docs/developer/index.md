@@ -1,83 +1,80 @@
 # Developer Manual
 
-The developer manual explains how Atomiverse is put together internally. Read
-this part of the documentation when you want to change the codebase rather than
-just use it.
+This manual explains how Atomiverse is put together internally. Read it when you
+want to **change** the codebase rather than just use it. Code examples and
+contributor guidance assume **C++17 or later** throughout.
 
-This manual still assumes the reader may be new to computational chemistry.
-Where chemistry terms appear, the goal is to explain why the software is
-organized the way it is, not to assume prior domain knowledge. Code examples
-and contributor guidance use **C++17 or later** throughout.
+It still assumes the reader may be new to computational chemistry: where
+chemistry terms appear, the goal is to explain why the software is organized the
+way it is, not to assume domain knowledge.
 
-## What To Read
+## What to read
 
-Start with [Architecture](architecture.md). That chapter explains the main
-design choice of the repository: a unified facade API drives two different
-execution backends, while the user continues to work with a host-side
-`cpu::Frame`.
+- **[Architecture](architecture.md)** — start here. One facade API, two
+  execution backends, a host-side `cpu::Frame` throughout.
+- **[CPU Backend Internals](cpu-internals.md)** — *why* the CPU side is split
+  into driver categories, why role and capability are orthogonal axes, why SCF
+  is an inner solver rather than a driver subclass, and how the
+  iteration-status channel signals convergence.
+- **[MD Execution Model](md-execution-model.md)** — one timestep as a fixed
+  sequence of named **phases**, and the `(phase, order)` binding model a
+  component uses to attach to it. Read this before adding or moving any MD
+  component.
+- **[Extending Components](extending-components.md)** — the component lifecycle
+  (`build` → `launch` × N → `destroy`), the registration paths, and where tests
+  and examples go.
+- **[Extending CPU Subsystems](extending-cpu-subsystems.md)** — three case
+  studies (add an MD integrator, add a minimizer, add an SCF inner-step helper)
+  at the level of "what file do I create, what do I inherit, what does the test
+  look like?"
 
-Then read [Extending Components](extending-components.md). That page explains
-how to add a new component, how the lifecycle rules work, and where tests and
-examples should go.
-
-For CPU-specific work, two further pages drill into the details:
-[CPU Backend Internals](cpu-internals.md) explains *why* the CPU side
-is split into three driver categories, why role and capability are
-orthogonal axes, why SCF is an inner solver rather than a driver
-subclass, and how the iteration-status channel signals convergence.
-[Extending CPU Subsystems](extending-cpu-subsystems.md) is the
-companion handbook with three case studies — adding an MD integrator,
-adding a minimizer, and adding an SCF inner-step helper — at the level
-of "what file do I create, what do I inherit, what does the test look
-like?"
-
-For molecular dynamics specifically, [MD Execution Model](md-execution-model.md)
-is the Atomiverse counterpart of the LAMMPS *Developer flow* page: it walks one
-timestep as a fixed sequence of named **phases**, documents what each phase is
-responsible for (even when empty), and explains the `(phase, order)` binding
-model a component uses to attach itself to the step. Read it before adding or
-moving any MD component.
-
-## Codebase Map
-
-The repository is easier to navigate if you group it by responsibility instead
-of by file extension.
+## Codebase map
 
 | Directory | Role |
 |---|---|
-| `include/atomiverse/core` | Small shared vocabulary types such as `Real`, `Int`, `Mat3`, `Scheduling`, and device tags |
-| `include/atomiverse/facade` | Backend-agnostic orchestration types such as `Driver`, `Plan`, and phase enums |
-| `include/atomiverse/cpu`, `src/cpu` | CPU data structures, CPU backend, CPU SCF solvers, CPU-side analysis and output |
-| `include/atomiverse/cuda`, `src/cuda` | CUDA backend, staged components, transfers, and async observer bridges |
-| `examples` | End-to-end programs that show supported workflows |
-| `tests` | Regression tests for planning, backends, MD, SCF, RHF, UHF, UKS, and integrals |
-| `docs` | User guide, developer manual, API reference entry page, and tutorials |
+| `include/atomiverse/core` | shared vocabulary: `Real`, `Int`, `Mat3`, units, precision tiers, device tags |
+| `include/atomiverse/facade` | backend-agnostic orchestration: `Driver`, `Plan`, phase enums, roles/capabilities |
+| `include/atomiverse/cpu`, `src/cpu` | CPU backend — frame, drivers, MD, MC, minimizer, SCF, PW, GPW, semiempirics, observers |
+| `include/atomiverse/cuda`, `src/cuda` | CUDA backend — staged components, transfers, async observer bridges |
+| `tests` | **unit tests only** — one function or method each, at millisecond scale |
+| `benchmarks` | every end-to-end and external-parity check, run at acceptance time, never by `ctest` |
+| `examples` | the numbered tutorial programs |
+| `docs` | this site |
 
-## Development Mindset
+Each backend root holds **directories only** — one per pillar (`frame/`,
+`driver/`, `component/`), infrastructure cluster (`comm/`, `neighbor/`,
+`async/`), or method domain (`md/`, `mc/`, `scf/`, `pw/`, `gpw/`, …). The same
+feature lives in the same directory on every backend: virial stress is always
+`observer/`, neighbor structures always `neighbor/`.
 
-If you are deciding where a change belongs, ask these questions in order.
+## Where does my change belong?
 
-1. Is this a shared concept that both backends need to talk about? It probably belongs in `core` or `facade`.
-2. Is this algorithm CPU-only, especially xtensor-based linear algebra or post-processing? It probably belongs under `cpu`.
-3. Is this staged GPU execution, device memory management, or async host transfer? It probably belongs under `cuda`.
-4. Does this change need a runnable example or a regression test? In Atomiverse, the answer is usually yes.
+Ask in order:
 
-## Maintaining The Docs
+1. Is it a concept **both backends** must name? → `core` or `facade`.
+2. Is it CPU-only algorithm work (xtensor linear algebra, post-processing)? → `cpu`.
+3. Is it staged GPU execution, device memory, or async host transfer? → `cuda`.
+4. Is it a new **method** (a way to get energy and forces)? → an inner **solver**
+   plus an **Evaluator** component — never a new `Driver` subclass.
+5. Is it a new **algorithm** (integrator, optimizer, mover)? → a **Component**,
+   never a driver subclass.
+6. Does it need a test? Unit test in `tests/`; anything end-to-end or compared
+   against an external engine goes in `benchmarks/`. This split is a hard rule.
 
-The documentation now has three source-level entry points:
+## Maintaining these docs
 
-| Path | Purpose |
-|---|---|
-| `docs/user-guide` | task-oriented pages for users |
-| `docs/developer` | architecture and contributor guidance |
-| `docs/api` | landing page into generated API reference |
+The site is built with [Zensical](https://zensical.org) and the shared
+[MolCrafts theme](https://github.com/MolCrafts/molcrafts-zensical-theme).
+Configuration and navigation live in `zensical.toml` at the repository root.
 
-The generated reference site is assembled by Doxygen from `include/` and
-`docs/`. The main landing page lives in `docs/mainpage.dox`, and the navigation
-layout is configured in `docs/DoxygenLayout.xml`.
+```bash
+uv run --with zensical --with molcrafts-zensical-theme zensical serve   # live preview
+uv run --with zensical --with molcrafts-zensical-theme zensical build   # → site/
+```
 
-If you add or rename major documentation sections, update all three of these:
+Adding a page means two edits: the markdown file under `docs/`, and its entry in
+the `nav` table of `zensical.toml`. A page absent from `nav` is not published.
 
-1. the markdown page under `docs/...`
-2. the top-level landing page in `docs/mainpage.dox`
-3. the source documentation pointers in `README.md`
+The generated C++ API reference is still produced by Doxygen (`doxygen Doxyfile`
+→ `build/doxygen/html`) and is not yet part of this site; `docs/api/index.md` is
+the hand-written map into it.

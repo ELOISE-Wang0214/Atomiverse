@@ -239,7 +239,7 @@ standard Pulay DIIS for poorly-conditioned starts.
 from `cpu::ComponentBase`, it does not have `default_bindings()`, and
 it never gets registered into a Plan. It is an inner-step helper, and
 inner-step helpers live in
-[`include/atomiverse/cpu/scf/internal/`](../../include/atomiverse/cpu/scf/internal/)
+[`include/atomiverse/cpu/scf/internal/`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/scf/internal/)
 in the namespace `cpu::scf::internal`.
 
 The reason for this asymmetry — why optimizers are Components but
@@ -387,7 +387,7 @@ When you ship a new component, update at least three places:
    Per CLAUDE.md, every public symbol needs `@brief`, `@param` with
    units, and `@return`.
 2. The CLAUDE.md component table in
-   [`/CLAUDE.md`](../../CLAUDE.md) — under "Implemented components" —
+   [`/CLAUDE.md`](https://github.com/MolCrafts/Atomiverse/blob/dev/CLAUDE.md) — under "Implemented components" —
    so that downstream readers see the new option without searching the
    tree.
 3. A reference in the relevant tutorial. If you add FIRE, the

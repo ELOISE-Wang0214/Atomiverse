@@ -100,7 +100,7 @@ correlation methods as post-SCF pure functions:
   second-order correlation energy from the `(ia|jb)` MO integral block built by
   `ao2mo_ovov`. For water in STO-3G it recovers E_HF = −74.96302314 Ha →
   E_corr = −0.03554565 Ha → E_MP2 = −74.99856879 Ha (see
-  [`examples/13_mp2.cpp`](../../examples/13_mp2.cpp); every digit is pinned by
+  [`examples/13_mp2.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/13_mp2.cpp); every digit is pinned by
   `val_mp2_vs_pyscf`).
 - **Exact tiny full CI** — `cpu::scf::fci_energy(ints, scf)` gives the *exact*
   in-basis energy for a handful of orbitals (the "Exact correlation in a finite
@@ -208,8 +208,8 @@ Davidson/direct-CI machinery, deliberately: correctness over scale.
 
 **Status:** MP2 and tiny full CI are implemented and validated; coupled cluster,
 multi-reference, and large-scale CI remain out of scope. Runnable examples:
-[`examples/13_mp2.cpp`](../../examples/13_mp2.cpp) and
-[`examples/14_fci.cpp`](../../examples/14_fci.cpp). Validation benchmarks pin
+[`examples/13_mp2.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/13_mp2.cpp) and
+[`examples/14_fci.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/14_fci.cpp). Validation benchmarks pin
 every quoted number against reference values: `val_mp2_vs_pyscf` (MP2 across
 {He,H₂,H₂O,NH₃,CH₄}×{STO-3G,6-31G}) and `val_fci_vs_pyscf` (exact FCI +
 engine-MO self-consistency + the MP2-vs-FCI two-level cross-check).

@@ -33,7 +33,7 @@ The easiest way to understand the codebase is as four layers.
 
 ### 1. Core vocabulary
 
-The files under [`include/atomiverse/core`](../../include/atomiverse/core)
+The files under [`include/atomiverse/core`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/core)
 define the smallest shared concepts:
 
 - numeric aliases such as `Real` and `Int`
@@ -48,7 +48,7 @@ layout.
 
 ### 2. Facade and planning
 
-The files under [`include/atomiverse/facade`](../../include/atomiverse/facade)
+The files under [`include/atomiverse/facade`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade)
 define the public execution skeleton:
 
 - `Driver` owns user-registered components
@@ -61,15 +61,15 @@ the algorithm itself.
 
 ### 3. CPU backend and CPU analysis layer
 
-The CPU side lives under [`include/atomiverse/cpu`](../../include/atomiverse/cpu)
-and [`src/cpu`](../../src/cpu). It contains three distinct roles.
+The CPU side lives under [`include/atomiverse/cpu`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu)
+and [`src/cpu`](https://github.com/MolCrafts/Atomiverse/blob/dev/src/cpu). It contains three distinct roles.
 
 First, it defines the user-facing host data model through
-[`cpu::Frame`](../../include/atomiverse/cpu/frame/frame.h). This is the structure that
+[`cpu::Frame`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/frame/frame.h). This is the structure that
 examples and users fill directly.
 
 Second, it provides a true CPU execution backend through
-[`cpu::Backend`](../../include/atomiverse/cpu/driver/backend.h), which runs components
+[`cpu::Backend`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/driver/backend.h), which runs components
 directly on that host frame with no transfer step.
 
 Third, it provides CPU-only utilities that are not part of the staged CUDA
@@ -78,8 +78,8 @@ analysis, density grids, trajectory analysis, and XYZ writing.
 
 ### 4. CUDA backend and staged components
 
-The CUDA side lives under [`include/atomiverse/cuda`](../../include/atomiverse/cuda)
-and [`src/cuda`](../../src/cuda). This layer owns:
+The CUDA side lives under [`include/atomiverse/cuda`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cuda)
+and [`src/cuda`](https://github.com/MolCrafts/Atomiverse/blob/dev/src/cuda). This layer owns:
 
 - the device-side frame representation
 - transfer between host and device
@@ -125,11 +125,11 @@ dispatch, and the driver owns plan compilation.
 
 The project uses two separate frame types on purpose.
 
-[`cpu::Frame`](../../include/atomiverse/cpu/frame/frame.h) stores host-resident data in
+[`cpu::Frame`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/frame/frame.h) stores host-resident data in
 xtensor arrays. It is the natural type for examples, input preparation, CPU
 solvers, and final results.
 
-[`cuda::Frame`](../../include/atomiverse/cuda/frame/frame.cuh) stores device pointers,
+[`cuda::Frame`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cuda/frame/frame.cuh) stores device pointers,
 device-only work buffers, and host-cached metadata such as atom counts. It is
 not meant to be edited directly by users.
 
@@ -140,10 +140,10 @@ implementations worse.
 
 The transfer boundary is explicit:
 
-- [`cpu::to_cuda`](../../include/atomiverse/cpu/frame/transfer.h) allocates and uploads
+- [`cpu::to_cuda`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/frame/transfer.h) allocates and uploads
   the device frame
-- [`cuda::to_cpu`](../../include/atomiverse/cuda/frame/transfer.cuh) copies results back
-- [`cuda::destroy`](../../include/atomiverse/cuda/frame/transfer.cuh) frees device data
+- [`cuda::to_cpu`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cuda/frame/transfer.cuh) copies results back
+- [`cuda::destroy`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cuda/frame/transfer.cuh) frees device data
 
 ## How Plans Are Built
 
@@ -190,7 +190,7 @@ the CUDA backend, those components run on a defer stream that can wait on the
 main stream and then perform side work.
 
 This is the purpose of
-[`AsyncBridge`](../../include/atomiverse/cuda/async/async_bridge.cuh). It is the base
+[`AsyncBridge`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cuda/async/async_bridge.cuh). It is the base
 class for CUDA observers and recorders such as:
 
 - `Thermo`

@@ -8,8 +8,8 @@ diagonalization, so one solve is never enough. Then it replaces the abstract
 version of that loop with the smallest genuine molecular problem in the
 repository, closed-shell Restricted Hartree-Fock (RHF) on H₂.
 
-Keep two examples open as you read: [`examples/01_scf.cpp`](../../examples/01_scf.cpp)
-for the bare self-consistent loop, and [`examples/02_rhf.cpp`](../../examples/02_rhf.cpp)
+Keep two examples open as you read: [`examples/01_scf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/01_scf.cpp)
+for the bare self-consistent loop, and [`examples/02_rhf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/02_rhf.cpp)
 for the real RHF calculation the loop turns into.
 
 ## Why SCF Has to Iterate
@@ -42,7 +42,7 @@ orbitals that the solve itself produces.**
 
 ## Reading the Bare Loop
 
-[`examples/01_scf.cpp`](../../examples/01_scf.cpp) is deliberately stripped down
+[`examples/01_scf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/01_scf.cpp) is deliberately stripped down
 — a realistic molecular example would hide the SCF pattern under too many new
 ideas at once. It builds a fixed matrix $H_0$, sets the first density guess to
 zero, and then runs exactly the equations above: form $H^{(k)}$, diagonalize,
@@ -166,7 +166,7 @@ nuclear gradients through the filtered subspace are not yet validated.
 
 ## Reading the RHF Example
 
-The setup in [`examples/02_rhf.cpp`](../../examples/02_rhf.cpp) is intentionally
+The setup in [`examples/02_rhf.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/02_rhf.cpp) is intentionally
 short:
 
 ```cpp
@@ -201,7 +201,7 @@ $$ E_{\mathrm{RHF}} =
 \tfrac{1}{2}\mathrm{Tr}\!\left[P(H_{\mathrm{core}} + F)\right] + V_{\mathrm{nuc}}. $$
 
 If you want the same lesson expressed on CUDA, the companion file is
-[`examples/02_rhf.cu`](../../examples/02_rhf.cu), but the CPU example is the
+[`examples/02_rhf.cu`](https://github.com/MolCrafts/Atomiverse/blob/dev/examples/02_rhf.cu), but the CPU example is the
 place to learn the method itself.
 
 ## The Result That Convinces You
@@ -212,7 +212,7 @@ precision settings are normal; the point is that the example connects the
 equations you have just read to a real molecular energy that matches
 expectation. This is a **numerical-tolerance** result — the reference is the
 textbook/PySCF value, and the SCF benchmark suite pins Atomiverse's RHF energies
-against PySCF to `1e-7` (see the [validation policy](../../.claude/specs/manual-system.md)).
+against PySCF to `1e-7` (see the [benchmark validation policy](https://github.com/MolCrafts/Atomiverse/blob/dev/benchmarks/README.md)).
 
 Build and run:
 

@@ -13,7 +13,7 @@ dependencies = ["numpy"]
 molpy    = ["molpy"]
 torch    = ["torch"]
 dev      = ["pytest", "pytest-cov", "numpy"]
-docs     = ["sphinx>=7", "furo", "myst-parser", "sphinx-copybutton"]
+docs     = ["zensical>=0.0.45", "molcrafts-zensical-theme>=0.1.0"]
 examples = ["matplotlib", "ase"]
 
 [tool.pytest.ini_options]
