@@ -128,7 +128,6 @@ runs fine on the login node with `-DATV_BUILD_CUDA=OFF`.
 | `ATV_BUILD_RHF` | OFF | Gaussian SCF (RHF/UHF/UKS); defines `ATV_HAS_RHF` |
 | `ATV_BUILD_PW` | OFF | Plane-wave DFT (needs FFTW3) |
 | `ATV_BUILD_GPW` | OFF | Gaussian-and-plane-waves DFT (needs `ATV_BUILD_RHF` + `ATV_BUILD_PW`) |
-| `ATV_CP2K_DATA_DIR` | `""` | Path to an external CP2K `data/` dir. **Unset by default and must stay that way in CI**: it is the sole opt-in for the `tests/cpu/gpw/*` CP2K-data ingest tests. No CP2K file is vendored; nothing else in the tree reads a third-party package at build or test time. |
 | `ATV_BUILD_KSPACE` | OFF | Reciprocal-space electrostatics PME (needs FFTW3) |
 | `ATV_BUILD_TORCH` | OFF | LibTorch backend; defines `ATV_HAS_TORCH` |
 | `ATV_BUILD_TESTS` / `ATV_BUILD_BENCHMARKS` / `ATV_BUILD_EXAMPLES` | OFF | test / benchmark / example targets |
@@ -598,6 +597,22 @@ diagonalize → density → DIIS → convergence; loop internal). Evaluators
 `cuda::scf::SCFEvaluator` (energy/density only — no CUDA SCF gradient).
 Gradients: `scf_gradient(frame, integrals, result, config)` (HF + KS).
 Utilities: `basis_eval.h`, `grid.h`, `xc_functional.h`, `aspc_predictor.h`.
+
+### GPW data (in-tree, no external package)
+GTH-PBE pseudopotentials, DZVP-MOLOPT-SR-GTH basis sets and the DFT-D3 reference
+C6 table are **compiled in** (`cpu/gpw/basis_data/gpw_data.h` →
+`builtin_gth_potential` / `builtin_gth_basis`; `internal/dftd3_params.h` →
+`builtin_dftd3_params`), transcribed once from the published tables (Krack 2005;
+VandeVondele-Hutter 2007; Grimme 2010). **Nothing in the tree reads a third-party
+data file at build or test time.** Unsupported element/name throws (no fallback).
+The `cp2k_io.h` / `cp2k_basis.h` file parsers remain as an optional ingest path
+for data outside the supported set, but no test or example depends on them.
+
+`GpwConfig.local_pp_on_grid` (default true) selects CP2K's route of collocating
+the GTH local short-range PP on the grid. **Energy and analytic force both read
+it** — the gradient must be taken of the functional the SCF converged, or the two
+disagree by the grid discretization error of V_loc^SR (this was a real bug: ZnO
+analytic-vs-FD 0.53 Ha/Bohr). See `cpu/gpw/internal/local_pp.h`.
 
 ### Plane-wave DFT (`-DATV_BUILD_PW=ON`, FFTW3)
 Inner solver `cpu::pw::PWSolver` (Poisson → XC → Veff → per-k Davidson →
