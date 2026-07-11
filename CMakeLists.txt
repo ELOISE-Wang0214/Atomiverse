@@ -329,6 +329,7 @@ if(NOT ATV_DOCS_ONLY)
             src/cpu/scf/integral_derivatives.cpp
             src/cpu/scf/gradient.cpp
             src/cpu/scf/mp2.cpp
+            src/cpu/scf/fci.cpp
             src/cpu/scf/libcint_bridge.cpp
             src/cpu/scf/aspc_predictor.cpp
             src/cpu/scf/scf_evaluator.cpp

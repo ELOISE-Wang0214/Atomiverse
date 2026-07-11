@@ -285,6 +285,15 @@ if(ATV_BUILD_RHF)
     # 2.13.1 across {He,H2,H2O,NH3,CH4} x {STO-3G,6-31G} (external-engine parity,
     # spec hf-ao2mo-mp2). Each case runs a full RHF solve + AO->MO transform.
     atv_add_validation(val_mp2_vs_pyscf qc/mp2/validation/test_mp2_vs_pyscf.cpp)
+
+    # validation (gtest): Koopmans -eps_HOMO + E_RHF full 5x2 sweep (spec
+    # hf-koopmans); Delta-SCF ionization internal-physics sweep (spec
+    # hf-delta-scf); tiny full-CI vs pinned reference + engine-MO self-check +
+    # MP2-vs-FCI two-level cross-check (spec hf-fci-tiny). Pinned reference
+    # values carry PySCF provenance comments; no third-party package is called.
+    atv_add_validation(val_scf_koopmans_parity qc/rhf/validation/test_koopmans_parity.cpp)
+    atv_add_validation(val_delta_scf_sweep     qc/rhf/validation/test_delta_scf_sweep.cpp)
+    atv_add_validation(val_fci_vs_pyscf        qc/fci/validation/test_fci_vs_pyscf.cpp)
 endif()
 
 # ════════════════════════════════════════════════════════════════════

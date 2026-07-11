@@ -7,10 +7,14 @@
 /// convention (physical GTO normalization is applied by
 /// `build_shell_list`).
 ///
-/// Supported elements: H, C, N, O, F.
+/// Supported elements: H, He, C, N, O, F.
 ///
-/// Regenerate:
-///   python tools/gen_basis_data.py 6-31g pople_631g H C N O F
+/// The He (Z=2) row was pinned by hand from PySCF 2.13.1
+/// `gto.M(atom='He', basis='6-31g', cart=True)._basis` (raw unnormalized
+/// contraction convention, matching the rest of this table); the referenced
+/// `tools/gen_basis_data.py` generator is not vendored in this tree, so the
+/// provenance is the PySCF version + basis name recorded here rather than a
+/// rerun. Verified end-to-end: He/6-31G RHF total energy = -2.8551604262 Ha.
 #pragma once
 
 #include <vector>
@@ -36,7 +40,13 @@ inline const std::vector<AtomBasis>& pople_631g() {
                                 {0.0334946, 0.23472695, 0.81375733}},
                 ContractedShell{/*l=*/0 /* s */, {0.1612778}, {1.0}},
             }},
-            AtomBasis{}, // Z=2 unsupported
+            // Z=2 (He): 2 shells (PySCF 2.13.1 6-31g _basis, raw convention)
+            AtomBasis{{
+                ContractedShell{/*l=*/0 /* s */,
+                                {38.421634, 5.77803, 1.241774},
+                                {0.0237660, 0.1546790, 0.4696300}},
+                ContractedShell{/*l=*/0 /* s */, {0.297964}, {1.0}},
+            }},
             AtomBasis{}, // Z=3 unsupported
             AtomBasis{}, // Z=4 unsupported
             AtomBasis{}, // Z=5 unsupported

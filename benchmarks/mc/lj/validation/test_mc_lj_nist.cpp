@@ -49,19 +49,36 @@ Result run_state(double Tstar, double rho, double u_ref) {
     cpu::Frame frame = mctest::fcc(/*nc=*/5, rho, n); // 500 atoms
     const double T = Tstar / ATV::units::kB_ev_per_k; // ε=1 eV ⇒ kT[eV]=T*
 
+    // Melt-first for dense near-coexistence points: at ρ*≈0.9 single-particle
+    // MC at the target T melts the FCC seed prohibitively slowly, so residual
+    // crystalline order pins ⟨U⟩ well below the fluid reference (observed
+    // -6.57 vs -6.18). A short high-T pass (T*=1.5, deep in the LJ fluid, with a
+    // larger step for a healthy acceptance) disorders the lattice first; the
+    // subsequent target-T equilibration then relaxes within the fluid basin
+    // (ρ*=0.90,T*=0.90 sits just past the freezing density, so the fluid is the
+    // accessible phase). Low-density states start disordered enough to skip it.
+    if (rho >= 0.85) {
+        const double T_melt = 1.5 / ATV::units::kB_ev_per_k;
+        cpu::mc::MC melt{T_melt, 909090u};
+        melt.set_pair(cpu::PairLJCut{1.0, 1.0, kRc});
+        melt.set_neighbor(cpu::md::NeighborList<>{kRc, 0.3, 1, 0, true});
+        melt.set_mover(cpu::mc::TranslateMove{0.25});
+        melt.build();
+        melt.run(frame, 3000 * n); // disorder the crystal in the fluid regime
+    }
+
     cpu::mc::MC mc{T, 424242u};
     mc.set_pair(cpu::PairLJCut{1.0, 1.0, kRc});
     mc.set_neighbor(cpu::md::NeighborList<>{kRc, 0.3, 1, 0, true});
     mc.set_mover(cpu::mc::TranslateMove{0.12});
     mc.build();
 
-    // Equilibration budget: a dense near-coexistence point (ρ*≈0.9) must MELT
-    // the FCC seed before averaging — otherwise residual order pins ⟨U⟩ too low.
-    // ρ*=0.78 converges in a few hundred passes (validates the machinery);
-    // ρ*=0.90 needs far more. The /mol:bench evaluator owns the final budget +
-    // verdict (this scientific criterion is never flipped by /mol:impl); the
-    // default here is a compromise for a gated run.
-    const int passes_equil = 3000, passes_samp = 1000;
+    // Equilibration budget: after the optional melt, the target-T pass relaxes
+    // the fluid. ρ*=0.78 converges in a few hundred passes (validates the
+    // machinery); ρ*=0.90 needs far more even post-melt. The /mol:bench
+    // evaluator owns the final budget + verdict (this scientific criterion is
+    // never flipped by /mol:impl); the default here is a compromise gated run.
+    const int passes_equil = 5000, passes_samp = 1000;
     mc.run(frame, passes_equil * n); // equilibrate
 
     std::vector<double> u_series; // per-pass ⟨U_cut⟩/N samples

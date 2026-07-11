@@ -8,23 +8,26 @@ averaging is what makes the SCF loop tractable, and it is also its central
 approximation: real electrons avoid each other instantaneously, and mean-field
 theory does not fully capture that avoidance.
 
-This is a **status chapter**. It explains what mean-field theories miss, sketches
-the hierarchy of methods built to recover it, and states plainly where
-Atomiverse stands: these wavefunction correlation methods are **not implemented**
-— they are out of scope for the current engine, documented here so the manual's
-map of computational chemistry is complete and honest, not so you can run one
-today.
+This chapter explains what mean-field theories miss, sketches the hierarchy of
+methods built to recover it, and then puts two of them to work: Atomiverse
+implements **closed-shell MP2** (`cpu::scf::mp2_energy`) and an **exact tiny full
+CI** (`cpu::scf::fci_energy`) as post-SCF pure functions. Both consume a
+converged SCF result and return a correlation energy — real, runnable, and
+validated against reference values. What remains out of scope is the expensive
+tail of the hierarchy: coupled cluster, multi-reference, and large-scale CI. DFT
+([Chapter 6](ch06-hybrid-dft.md)) stays the engine's affordable workhorse for
+correlation at production scale; MP2 and full CI are the wavefunction reference
+points that let you *measure* it.
 
 You will learn:
 
 1. **The concept** of electron correlation and the correlation energy.
 2. **The hierarchy** — MP2, configuration interaction, coupled cluster — and the
    cost-versus-accuracy trade that orders them.
-3. **What Atomiverse provides today**: DFT as the practical, affordable route to
-   correlation, and why that is the engine's answer for now.
-4. **Where a correlation method would live** in the Driver/Component
-   architecture if it were added — which turns out to reinforce the same
-   pattern the rest of the book teaches.
+3. **What Atomiverse provides today**: DFT for production, plus MP2 and tiny full
+   CI as the implemented wavefunction reference methods.
+4. **Where correlation lives** in the Driver/Component architecture — as post-SCF
+   pure functions, reinforcing the same pattern the rest of the book teaches.
 
 ## The Concept: What Mean-Field Theory Misses
 
@@ -81,31 +84,39 @@ this book's job here is to place them on the map, not to teach how to run them.
 
 ## What Atomiverse Provides Today
 
-Atomiverse's answer to correlation is **density-functional theory**. A hybrid
-functional such as B3LYP or PBE0 ([Chapter 6](ch06-hybrid-dft.md)) delivers much
-of the accuracy of an MP2/CCSD calculation for a fraction of the cost, by
-approximating correlation inside the exchange-correlation functional rather than
-constructing it explicitly from excited determinants. For the great majority of
-ground-state structures, energies, and forces — and for every gradient-driven
-workflow in this manual (AIMD, geometry optimization, vibrations) — DFT is the
-method of choice, and it is what the engine is built around.
+For production-scale correlation, Atomiverse's answer is **density-functional
+theory**. A hybrid functional such as B3LYP or PBE0 ([Chapter 6](ch06-hybrid-dft.md))
+delivers much of the accuracy of an MP2/CCSD calculation for a fraction of the
+cost, by approximating correlation inside the exchange-correlation functional
+rather than constructing it explicitly from excited determinants. For the great
+majority of ground-state structures, energies, and forces — and for every
+gradient-driven workflow in this manual (AIMD, geometry optimization,
+vibrations) — DFT is the method of choice.
 
-What Atomiverse does **not** provide:
+On top of the SCF result, Atomiverse also implements two **wavefunction**
+correlation methods as post-SCF pure functions:
 
-- No MP2, no configuration interaction, no coupled cluster, no multi-reference
-  methods. There is no `mp2_solve`, no CC amplitude solver, no post-SCF
-  correlation module anywhere in the codebase.
-- Consequently, no systematically-improvable path to the exact energy, and no
-  first-principles treatment of static correlation.
+- **Closed-shell MP2** — `cpu::scf::mp2_energy(ints, scf)` returns the
+  second-order correlation energy from the `(ia|jb)` MO integral block built by
+  `ao2mo_ovov`. For water in STO-3G it recovers E_HF = −74.96302314 Ha →
+  E_corr = −0.03554565 Ha → E_MP2 = −74.99856879 Ha (see
+  [`examples/13_mp2.cpp`](../../examples/13_mp2.cpp); every digit is pinned by
+  `val_mp2_vs_pyscf`).
+- **Exact tiny full CI** — `cpu::scf::fci_energy(ints, scf)` gives the *exact*
+  in-basis energy for a handful of orbitals (the "Exact correlation in a finite
+  basis" section below); for H₂/STO-3G, E_FCI = −1.1372702 Ha.
 
-If your science *requires* CCSD(T)-quality correlation or a genuine
-multi-reference treatment, Atomiverse is not the right tool today, and this
-chapter is the honest place to say so.
+What remains out of scope is the expensive tail of the hierarchy: **no coupled
+cluster, no multi-reference, no large-scale (Davidson/direct) CI**. If your
+science *requires* CCSD(T)-quality correlation or a genuine multi-reference
+treatment at production scale, Atomiverse is not the right tool today — but MP2
+and full CI give you honest wavefunction reference points to calibrate against.
 
-## Where Correlation Would Live in the Architecture
+## Where Correlation Lives in the Architecture
 
-It is worth sketching where a correlation method *would* fit, because the answer
-reinforces the architectural through-line of the whole manual.
+It is worth seeing where a correlation method fits, because the answer
+reinforces the architectural through-line of the whole manual — and because
+`mp2_energy` and `fci_energy` occupy exactly this slot.
 
 A post-Hartree-Fock method is not a new kind of loop. It is a **post-SCF
 step**: it consumes the *converged* output of an SCF solve — the occupied and
@@ -128,19 +139,82 @@ and writes a corrected energy onto `frame.scalars`** — architecturally an
 would reuse the existing integral engine rather than introduce a parallel one,
 exactly as the hybrid-gradient routine in [Chapter 6](ch06-hybrid-dft.md) reuses
 the ERI machinery. "One loop, many physics" extends cleanly to "one SCF result,
-many post-processings" — the door is architecturally open even though nothing
-walks through it yet.
+many post-processings" — and `mp2_energy` / `fci_energy` are exactly that: free
+functions in `ATV::cpu::scf` that read a converged `SCFResult` and return a
+correlation energy, in the same family as `scf_gradient`, registered in no Plan.
+
+## Exact correlation in a finite basis: full CI for tiny systems
+
+There is one place where Atomiverse computes correlation *exactly* — not
+approximated by a functional, not truncated at second order, but the true
+lowest energy the basis can express. That is **full configuration interaction
+(full CI)**, available as a small post-SCF reference solver
+(`cpu::scf::fci_energy`) for *tiny* systems only.
+
+**The determinant expansion.** Hartree-Fock uses a single Slater determinant:
+each electron in its own molecular orbital, the occupied set fixed. Full CI
+lifts that restriction. Given `n_mo` molecular orbitals and `n_alpha`/`n_beta`
+electrons per spin, it writes the wavefunction as a linear combination of
+*every* determinant obtainable by distributing the electrons over the orbitals
+in all possible ways:
+
+$$ |\Psi_\text{FCI}\rangle = \sum_I c_I |D_I\rangle, \qquad
+   N_\text{det} = \binom{n_\text{mo}}{n_\alpha}\binom{n_\text{mo}}{n_\beta}. $$
+
+The reference determinant $|D_0\rangle$ is the RHF one; the rest are *excited*
+determinants that promote electrons into the virtual (empty) orbitals. The
+coefficients $c_I$ are the eigenvector components of the CI Hamiltonian
+$H_{IJ} = \langle D_I | \hat H | D_J\rangle$, whose matrix elements follow from
+the **Slater–Condon rules** (determinants differing by zero, one, or two
+spin-orbitals contribute; three or more give exactly zero). Diagonalizing that
+matrix and taking the lowest eigenvalue gives $E_\text{FCI}$; the correlation
+energy is $E_\text{corr} = E_\text{FCI} - E_\text{RHF} \le 0$, always negative
+because adding variational freedom can only lower the energy.
+
+**Correlation is excited-determinant mixing.** The physical picture is direct:
+the mean field misses the instantaneous avoidance of electrons, and full CI
+recovers it by *mixing in* determinants where electrons occupy different
+orbitals. When the reference already spans the whole space, there is nothing to
+mix and correlation vanishes identically. **He/STO-3G** is exactly that
+boundary — one basis function, one orbital, no virtuals, so
+$N_\text{det} = \binom{1}{1}\binom{1}{1} = 1$: full CI *is* RHF and
+$E_\text{corr} = 0$ to machine precision. **H2/STO-3G** is the smallest system
+with real correlation: two orbitals, $N_\text{det} = \binom{2}{1}\binom{2}{1}
+= 4$, with the reference $|1_\alpha 1_\beta\rangle$ coupling to the double
+$|2_\alpha 2_\beta\rangle$. The pinned reference energy is
+$E_\text{FCI} \approx -1.1372702\ \text{Hartree}$ (STO-3G, $R = 0.7414$ Å; the
+same constant the tests and `examples/14_fci.cpp` assert).
+
+A useful sanity check against [MP2](#the-hierarchy-mp2-ci-coupled-cluster):
+FCI is the exact in-basis ground state, so it recovers *at least as much*
+correlation as MP2 — $E_\text{corr}^\text{FCI} \le E_\text{corr}^\text{MP2} < 0$.
+For this two-electron minimal-basis target MP2 *under-binds*: its correlation is
+*less* negative than the exact value, so $E_\text{FCI} \le E_\text{MP2}$. (The
+tests encode this correct inequality.)
+
+**Why it is a reference, not a production method.** $N_\text{det}$ grows
+factorially with system size, and the dense $N_\text{det} \times N_\text{det}$
+eigenproblem grows as its cube. A handful of orbitals is already thousands of
+determinants; a real molecule is astronomically out of reach. Atomiverse
+therefore caps `fci_energy` at a hard TINY limit ($n_\text{mo} \le 14$,
+$N_\text{det} \le 2000$) and throws past it. Its job is to be *exactly right*
+on toy systems, as the golden yardstick that validates MP2 today and coupled
+cluster tomorrow — the same role Szabo & Ostlund's hand-worked H2 table plays
+in the textbook. For correlation at scale, use DFT (above) or MP2. This is
+Knowles & Handy's determinant-driven FCI in its simplest dense form, with no
+Davidson/direct-CI machinery, deliberately: correctness over scale.
 
 ## Status and Further Reading
 
-**Status:** planned / not implemented. This chapter documents intent and
-context only; there is no runnable example and no validation case, because there
-is no code to validate. When the manual's method-status matrix
-([`.claude/specs/manual-discovery.md`](../../.claude/specs/manual-discovery.md) §5)
-lists a correlation method as `absent (planned)`, this chapter is what that row
-points to.
+**Status:** MP2 and tiny full CI are implemented and validated; coupled cluster,
+multi-reference, and large-scale CI remain out of scope. Runnable examples:
+[`examples/13_mp2.cpp`](../../examples/13_mp2.cpp) and
+[`examples/14_fci.cpp`](../../examples/14_fci.cpp). Validation benchmarks pin
+every quoted number against reference values: `val_mp2_vs_pyscf` (MP2 across
+{He,H₂,H₂O,NH₃,CH₄}×{STO-3G,6-31G}) and `val_fci_vs_pyscf` (exact FCI +
+engine-MO self-consistency + the MP2-vs-FCI two-level cross-check).
 
-For the methods Atomiverse *does* provide as its route to correlation, return to
+For the production route to correlation, return to
 [Chapter 6: Hybrid Functionals and Analytic Gradients](ch06-hybrid-dft.md). For
 the periodic counterpart of the electronic-structure problem, continue to
 [Chapter 8: Plane-Wave DFT for Periodic Systems](ch08-plane-wave.md).

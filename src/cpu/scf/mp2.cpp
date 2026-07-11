@@ -51,6 +51,48 @@ xt::xtensor<double, 4> ao2mo_ovov(const xt::xtensor<double, 4>& ERI,
     return ovov;
 }
 
+xt::xtensor<double, 4> ao2mo_full(const xt::xtensor<double, 4>& ERI,
+                                  const xt::xtensor<double, 2>& C, int n_mo) {
+    const std::size_t n = ERI.shape(0);
+    const std::size_t m = static_cast<std::size_t>(n_mo);
+
+    // MO coefficient block, materialized [n_ao x m].
+    xt::xtensor<double, 2> Cm = xt::view(C, xt::all(), xt::range(0, n_mo));
+
+    // Quarter 1: mu -> p.  (mu | nu lam sig) -> (p | nu lam sig)
+    xt::xtensor<double, 2> eri2 = xt::reshape_view(ERI, {n, n * n * n});
+    xt::xtensor<double, 2> q1 = xt::linalg::dot(xt::transpose(Cm), eri2);
+    xt::xtensor<double, 4> q1r = xt::reshape_view(q1, {m, n, n, n}); // (p,nu,lam,sig)
+
+    // Quarter 2: nu -> q.  bring nu to the front, contract, restore.
+    xt::xtensor<double, 4> q1t = xt::transpose(q1r, {1, 0, 2, 3}); // (nu,p,lam,sig)
+    xt::xtensor<double, 2> q1tm = xt::reshape_view(q1t, {n, m * n * n});
+    xt::xtensor<double, 2> q2 = xt::linalg::dot(xt::transpose(Cm), q1tm);
+    xt::xtensor<double, 4> q2r = xt::reshape_view(q2, {m, m, n, n}); // (q,p,lam,sig)
+    xt::xtensor<double, 4> q2t = xt::transpose(q2r, {1, 0, 2, 3});   // (p,q,lam,sig)
+
+    // Quarter 3: lambda -> r.  bring lambda to the front.
+    xt::xtensor<double, 4> q2l = xt::transpose(q2t, {2, 0, 1, 3}); // (lam,p,q,sig)
+    xt::xtensor<double, 2> q2lm = xt::reshape_view(q2l, {n, m * m * n});
+    xt::xtensor<double, 2> q3 = xt::linalg::dot(xt::transpose(Cm), q2lm);
+    xt::xtensor<double, 4> q3r = xt::reshape_view(q3, {m, m, m, n}); // (r,p,q,sig)
+    xt::xtensor<double, 4> q3t = xt::transpose(q3r, {1, 2, 0, 3});   // (p,q,r,sig)
+
+    // Quarter 4: sigma -> s.  sigma is the trailing index already.
+    xt::xtensor<double, 2> q3m = xt::reshape_view(q3t, {m * m * m, n});
+    xt::xtensor<double, 2> q4 = xt::linalg::dot(q3m, Cm);
+    xt::xtensor<double, 4> full = xt::reshape_view(q4, {m, m, m, m}); // (p,q,r,s)
+    return full;
+}
+
+xt::xtensor<double, 2> mo_hcore(const xt::xtensor<double, 2>& Hcore,
+                                const xt::xtensor<double, 2>& C, int n_mo) {
+    // MO coefficient block, materialized [n_ao x n_mo].
+    xt::xtensor<double, 2> Cm = xt::view(C, xt::all(), xt::range(0, n_mo));
+    xt::xtensor<double, 2> tmp = xt::linalg::dot(Hcore, Cm);       // [n_ao x n_mo]
+    return xt::linalg::dot(xt::transpose(Cm), tmp);               // [n_mo x n_mo]
+}
+
 MP2Result mp2_energy(const IntegralPack& ints, const SCFResult& scf) {
     // No-fallback guards -- throw, never return a sentinel.
     if (ints.ERI.size() == 0) {

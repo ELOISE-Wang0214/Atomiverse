@@ -44,6 +44,35 @@ xt::xtensor<double, 4> ao2mo_ovov(const xt::xtensor<double, 4>& ERI,
                                   const xt::xtensor<double, 2>& C, int n_occ,
                                   int n_mo);
 
+/// @brief Transform AO two-electron integrals to the full (pq|rs) MO tensor.
+///
+/// Performs the same four sequential BLAS-backed quarter transforms as
+/// `ao2mo_ovov`, but with every index range widened to the full 0..n_mo span,
+/// yielding the complete chemists'-notation MO tensor (pq|rs). Full CI needs all
+/// MO orbital-pair categories (occupied and virtual on every index), so the full
+/// tensor IS its narrowest sufficient interface. Each quarter transform is a
+/// BLAS matrix product (real canonical orbitals); no scalar quadruple loop.
+///
+/// @param ERI  AO integrals (mu nu|lambda sigma) [n_ao,n_ao,n_ao,n_ao], Hartree.
+/// @param C    MO coefficients [n_ao, n_mo]; the first n_mo columns are used.
+/// @param n_mo Number of molecular orbitals to transform (dimensionless count).
+/// @return (pq|rs) tensor [n_mo, n_mo, n_mo, n_mo], Hartree.
+xt::xtensor<double, 4> ao2mo_full(const xt::xtensor<double, 4>& ERI,
+                                  const xt::xtensor<double, 2>& C, int n_mo);
+
+/// @brief Transform the AO core Hamiltonian to the MO basis: h_pq = C^T Hcore C.
+///
+/// Two BLAS gemms (`C^T (Hcore C)`); the one-electron companion to `ao2mo_full`
+/// for post-SCF methods (e.g. full CI) that assemble a many-electron Hamiltonian
+/// in the MO basis. Accumulation is in double precision (AccReal) throughout.
+///
+/// @param Hcore AO core Hamiltonian T + V [n_ao, n_ao], Hartree.
+/// @param C     MO coefficients [n_ao, n_mo]; the first n_mo columns are used.
+/// @param n_mo  Number of molecular orbitals to transform (dimensionless count).
+/// @return MO core Hamiltonian h_pq [n_mo, n_mo], Hartree.
+xt::xtensor<double, 2> mo_hcore(const xt::xtensor<double, 2>& Hcore,
+                                const xt::xtensor<double, 2>& C, int n_mo);
+
 /// @brief Closed-shell canonical MP2 energy.
 struct MP2Result {
     double e_corr; ///< MP2 correlation energy [Hartree] (<= 0).

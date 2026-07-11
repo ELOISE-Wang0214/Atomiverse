@@ -350,6 +350,124 @@ always check the *de-shifted* orbital energies, never the shifted ones.
      tests/cpu/scf/test_accelerators.cpp. Change one side only in lockstep
      with the other. -->
 
+## Koopmans' Theorem: An Orbital Energy That Predicts an Experiment
+
+**Concept.** So far the orbital energies $\varepsilon_i$ have been internal
+bookkeeping — the diagonal of the Fock matrix in the MO basis. Koopmans'
+theorem (T. Koopmans, *Physica* **1**, 104 (1934),
+DOI [10.1016/S0031-8914(34)90011-2](https://doi.org/10.1016/S0031-8914(34)90011-2))
+turns one of them into a measurable quantity. Ionizing a molecule means
+removing one electron; the energy it costs is the ionization potential (IP).
+Koopmans says the *vertical* IP — removal fast enough that the nuclei and the
+other electrons do not move — is simply the negative of the highest-occupied
+orbital energy:
+
+$$\mathrm{IP} \;\approx\; -\varepsilon_{\mathrm{HOMO}}.$$
+
+**The frozen-orbital math.** Why should a diagonal Fock element equal an
+ionization energy? Take a closed-shell RHF determinant with $N$ electrons and
+total energy
+
+$$E(N) \;=\; \sum_i 2 h_{ii} \;+\; \sum_{ij} \left(2 J_{ij} - K_{ij}\right),$$
+
+where $h_{ii}$ is the core (kinetic + nuclear-attraction) integral of orbital
+$i$, and $J_{ij}$, $K_{ij}$ are the Coulomb and exchange integrals between
+occupied orbitals $i$ and $j$. Now remove the electron in orbital $i$ **without
+letting any other orbital change** — the frozen-orbital approximation. The
+cation's energy $E_{\mathrm{frozen}}(N-1;\,\text{hole }i)$ loses exactly the
+terms that involved that one electron, and the difference telescopes into a
+single canonical orbital energy:
+
+$$E(N) - E_{\mathrm{frozen}}(N-1;\,\text{hole }i)
+  \;=\; h_{ii} + \sum_j \left(2 J_{ij} - K_{ij}\right)
+  \;=\; \varepsilon_i.$$
+
+That last equality is just the definition of the canonical Fock eigenvalue.
+Ionizing from the HOMO therefore costs $-\varepsilon_{\mathrm{HOMO}}$, and the
+same algebra gives $-\varepsilon_i$ for any occupied orbital.
+
+**The approximation — and why it works better than it should.** The derivation
+made two silent assumptions, and both introduce error:
+
+1. **No orbital relaxation.** The remaining $N-1$ electrons *do* relax inward
+   toward the extra positive charge, lowering the cation's true energy below
+   $E_{\mathrm{frozen}}$. Koopmans therefore **overestimates** the IP.
+2. **No electron correlation.** RHF misses correlation energy, and the neutral
+   (more electrons, more correlation) loses more of it than the cation. This
+   pushes the neutral up relative to the cation and **underestimates** the IP.
+
+The two errors have opposite sign. Near the Hartree-Fock basis-set limit they
+partially cancel, which is why $-\varepsilon_{\mathrm{HOMO}}$ lands within an eV
+or so of experiment for many small closed-shell molecules — better than either
+error term alone would suggest. In a minimal basis, basis-set incompleteness
+dominates and the cancellation argument no longer holds.
+
+**The algorithm.** Nothing new is required. A single RHF solve already returns
+the sorted orbital energies; the HOMO is the last occupied one:
+
+```cpp
+auto ints   = cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
+auto result = cpu::scf::rhf_solve(ints, 1e-10, 100);
+double eps_homo = result.eigenvalues(ints.n_occ() - 1);   // [Hartree]
+double ip_eV    = -eps_homo * 27.211386245988;            // 1 Ha = 27.211386245988 eV
+```
+
+For a component-based workflow, `cpu::scf::OrbitalInfoObserver` (bound at the
+`finalize` phase of a `cpu::Evaluate` driver and sharing the SCF state via
+`scf.result_handle()`) exposes `homo_eV()` / `lumo_eV()` directly. The worked
+sweep is `examples/11_koopmans.cpp`.
+
+**The property.** Running RHF single points on five closed-shell systems in two
+basis sets gives the Koopmans IP $= -\varepsilon_{\mathrm{HOMO}}$
+(eV column $= -\varepsilon_{\mathrm{HOMO}} \times 27.211386245988$):
+
+| system | STO-3G $-\varepsilon_{\mathrm{HOMO}}$ [Ha] | STO-3G IP [eV] | 6-31G $-\varepsilon_{\mathrm{HOMO}}$ [Ha] | 6-31G IP [eV] | exp. IP [eV] |
+|---|---|---|---|---|---|
+| He  | 0.87603551 | 23.84 | 0.91412663 | 24.87 | 24.59 (vertical) |
+| H₂  | 0.57797481 | 15.73 | 0.59539276 | 16.20 | 15.43 (adiabatic) |
+| H₂O | 0.39123677 | 10.65 | 0.50136813 | 13.64 | 12.62 (vertical) |
+| NH₃ | 0.35252132 |  9.59 | 0.41503216 | 11.29 | 10.8 (vertical) |
+| CH₄ | 0.51931445 | 14.13 | 0.54404220 | 14.80 | 13.6 (vertical, Jahn-Teller) |
+
+**Basis sensitivity.** Read the H₂O row across: the Koopmans IP moves from
+**10.65 eV** in STO-3G to **13.64 eV** in 6-31G — nearly 3 eV from a basis-set
+change alone (0.39123677 Ha → 0.50136813 Ha). The minimal STO-3G basis places
+the HOMO far too high; adding the split-valence flexibility of 6-31G pulls it
+down and *overshoots* experiment (12.62 eV). This is the error cancellation
+failing in the minimal basis and then over-correcting once relaxation is still
+neglected — a concrete reminder that a single Koopmans number without a basis
+qualifier is meaningless.
+
+**Adiabatic vs vertical.** Koopmans approximates the *vertical* IP: the nuclei
+are frozen at the neutral geometry. Experiments often report the *adiabatic*
+IP, measured to the relaxed cation minimum, which is lower. For He the two
+coincide (an atom has no geometry to relax). For H₂ the tabulated 15.43 eV is
+adiabatic; the vertical value is higher (~16 eV), closer to what Koopmans
+targets. For CH₄ the cation is Jahn-Teller distorted, so the vertical and
+adiabatic IPs differ substantially — comparison with the ~13.6 eV vertical
+value can only ever be qualitative.
+
+**Limitations.** Koopmans is a first estimate, not a converged property.
+Orbital relaxation and correlation are neglected; the error cancellation is
+fortuitous and fails in small bases and for core ionizations (deep orbitals
+relax the most). The theorem is derived for *canonical* Hartree-Fock orbitals —
+it does **not** transfer cleanly to Kohn-Sham DFT orbital energies (where
+$-\varepsilon_{\mathrm{HOMO}}$ is contaminated by the exchange-correlation
+derivative discontinuity) nor to open-shell / spin-unrestricted references.
+The electron affinity from $-\varepsilon_{\mathrm{LUMO}}$ is a far worse
+approximation still, because the virtual orbitals of a neutral RHF calculation
+feel the full $N$-electron potential rather than the $N$-electron one the extra
+electron would see. For quantitative IPs, use $\Delta$SCF (separate neutral and
+cation solves) or a correlated method — but as a zero-extra-cost readout of a
+number you already computed, Koopmans is hard to beat.
+
+<!-- Every −ε_HOMO value quoted in this section is transcribed from the pinned
+     PySCF 2.13.1 (cart=True, conv_tol=1e-12) table that is the single source
+     of truth in benchmarks/qc/rhf/validation/test_koopmans_parity.cpp; the
+     eV columns are those Ha values × 27.211386245988. The anchors in
+     tests/cpu/scf/test_koopmans.cpp lock He/H2/H2O @ STO-3G + He @ 6-31G in
+     the default gate. Change one side only in lockstep with the others. -->
+
 ## What to Take Into Chapter 3
 
 The mental shift is now complete. The iteration still has the same shape it had

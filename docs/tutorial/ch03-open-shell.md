@@ -192,6 +192,115 @@ is stretched, the unrestricted solution lowers the energy by letting the two
 spins localize differently. The growth of spin contamination is the visible
 trace of that symmetry breaking.
 
+## ΔSCF: Ionization Energies Beyond Koopmans
+
+The previous chapter's Koopmans section (see the Koopmans discussion in
+[Chapter 2: Restricted Hartree-Fock](ch02-rhf.md)) estimated the ionization
+energy of a closed-shell molecule as $I_K = -\varepsilon_\text{HOMO}$: the
+negative of the highest occupied orbital energy. That estimate is free — you
+already have the orbital energies once the neutral SCF converges — but it rests
+on a physical fiction. It assumes that when you remove an electron, the
+remaining electrons do not move. They do. ΔSCF is the honest alternative: solve
+the cation self-consistently and take an energy difference,
+
+$$ I_{\Delta\text{SCF}} = E^{+}(N-1) - E(N). $$
+
+Both energies are evaluated at the **same** geometry, basis, and convergence
+threshold. That makes this a *vertical* ionization energy — the nuclei are
+frozen at the neutral equilibrium while an electron is removed.
+
+### Why ΔSCF Is Always Lower Than Koopmans
+
+The relationship between the two estimates is not empirical; it is a two-line
+variational argument. Koopmans' $-\varepsilon_\text{HOMO}$ is exactly the energy
+of the $(N-1)$-electron determinant you get by deleting one electron from the
+neutral orbitals and **freezing everything else**. The ΔSCF cation energy
+$E^{+}$ is the result of variationally optimizing that same $(N-1)$-electron
+wavefunction over the same Hilbert space. A variational optimum can only lower
+the energy, so $E^{+} \le E_\text{frozen}$, and therefore
+
+$$ I_{\Delta\text{SCF}} \le I_K = -\varepsilon_\text{HOMO}. $$
+
+The gap between them, $I_K - I_{\Delta\text{SCF}} \ge 0$, is the **orbital
+relaxation energy**: how much the remaining electrons lower their energy by
+rearranging around the newly created hole. For a real molecule it is a fraction
+of an eV to a couple of eV, and the ΔSCF value is the better one.
+
+There is one clean teaching case where the two estimates are *exactly* equal.
+For He and H₂ in a minimal (STO-3G) basis the cation has a single electron in a
+spatial orbital that is fixed by symmetry — there is no second electron to
+relax and no other orbital of the right symmetry to mix in. The relaxation
+energy is identically zero, and the example prints $I_K = I_{\Delta\text{SCF}}$
+to solver precision. Watch that row: it is the boundary condition that makes the
+inequality meaningful everywhere else.
+
+### Spin Bookkeeping for the Cation
+
+Removing one electron from a closed-shell neutral turns an $N$-electron singlet
+into an $(N-1)$-electron doublet ($M = 2$). Using the charge/multiplicity rules
+from the section above, the electron count folds the $+1$ charge in at
+integral-build time ($N_e = N - 1$), and the doublet split is
+
+$$ n_\alpha = \frac{N}{2}, \qquad n_\beta = \frac{N}{2} - 1. $$
+
+Concretely: the neutral has $N/2$ doubly-occupied levels; the cation keeps all
+$N/2$ $\alpha$ orbitals and drops one $\beta$ electron. For H₂O ($N = 10$) that
+is $(n_\alpha, n_\beta) = (5, 4)$; for He and H₂ ($N = 2$) it is $(1, 0)$.
+
+### Warm-Starting the Cation
+
+An open-shell SCF can converge cleanly to the *wrong* state — a hole in a lower
+orbital rather than the HOMO, or an excited configuration. The defense is to
+warm-start the cation from the neutral density instead of from a bare Hcore
+guess. Atomiverse exposes this through `SCFInitialGuess`: seed both spin
+channels with half of the converged neutral density,
+
+```cpp
+auto ints_n  = cpu::scf::build_integrals(frame, basis, /*charge=*/0);
+auto neutral = cpu::scf::rhf_solve(ints_n, tol, max_iter);
+
+cpu::scf::SCFInitialGuess guess;
+guess.P_alpha = 0.5 * neutral.P;   // split the neutral density evenly
+guess.P_beta  = 0.5 * neutral.P;
+guess.has_alpha = guess.has_beta = true;
+
+auto ints_c = cpu::scf::build_integrals(frame, basis, /*charge=*/+1);
+auto cfg    = cpu::scf::uhf_config(ints_c, /*n_alpha=*/N/2, /*n_beta=*/N/2 - 1);
+auto cation = cpu::scf::scf_solve(ints_c, cfg, &guess);
+```
+
+A bare Hcore cold start converges to the same energy on these small systems —
+the example and its tests check that the two agree — but density warm-starting
+is the habit to build: on larger or near-degenerate cations it is the
+difference between the ground-state ion and a plausible-looking excited
+solution.
+
+### Monitoring Spin Contamination
+
+Because the cation is unrestricted, check its $\langle \hat S^2 \rangle$ the
+same way the previous section did. A clean doublet has
+
+$$ \langle \hat S^2 \rangle = S(S+1) = \tfrac{1}{2}\cdot\tfrac{3}{2} = 0.75, $$
+
+so `SCFResult::spin_contamination` (which reports $\langle \hat S^2 \rangle -
+S(S+1)$) should sit at ≈ 0. The example prints $\langle \hat S^2 \rangle =
+\text{spin\_contamination} + 0.75$ for every cation; values noticeably above
+0.75 warn that the unrestricted determinant has picked up higher-spin character
+and the ΔSCF number should be read with caution.
+
+### Vertical Versus Experiment
+
+These are *vertical* ionization energies at a fixed neutral geometry. A measured
+*adiabatic* ionization energy also lets the cation relax its geometry, which
+lowers $E^{+}$ further and makes the adiabatic value smaller than the vertical
+one. So even a well-converged ΔSCF number is only a semi-quantitative match to
+an experimental ionization energy in a small basis — useful for trends and for
+the pedagogy of relaxation, not for spectroscopic accuracy. Enlarging the basis
+(STO-3G → 6-31G) and, eventually, adding correlation (a later chapter) moves the
+numbers toward experiment; relaxing the cation geometry would convert vertical
+to adiabatic. The worked table for all five systems in both bases is
+[`examples/12_delta_scf.cpp`](../../examples/12_delta_scf.cpp).
+
 ## Running The Example
 
 The build path is straightforward:
