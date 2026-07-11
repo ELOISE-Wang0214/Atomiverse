@@ -46,7 +46,11 @@ GthPotential parse_gth_potential(const std::string& path, const std::string& ele
                                  const std::string& name) {
     std::ifstream in(path);
     if (!in) fail("cannot open file '" + path + "'");
+    return parse_gth_potential(in, element, name);
+}
 
+GthPotential parse_gth_potential(std::istream& in, const std::string& element,
+                                 const std::string& name) {
     std::string line;
     // Locate the header line: first token == element AND `name` is one of the
     // following (alias) tokens. Data lines start with a number, so they never
@@ -63,7 +67,7 @@ GthPotential parse_gth_potential(const std::string& path, const std::string& ele
         }
         if (found) break;
     }
-    if (!found) fail("no entry for element '" + element + "' name '" + name + "' in " + path);
+    if (!found) fail("no entry for element '" + element + "' name '" + name + "'");
 
     GthPotential pot;
     pot.element = element;

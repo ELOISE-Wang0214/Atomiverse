@@ -22,20 +22,20 @@
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/internal/cp2k_basis.h"
 #include "atomiverse/cpu/gpw/internal/cp2k_io.h"
+#include "atomiverse/cpu/gpw/basis_data/gpw_data.h"
 
 using namespace ATV::cpu::gpw;
 
 namespace {
-const std::string kData = ATV_CP2K_DATA_DIR;
 
 // Periodic water (DZVP-MOLOPT-SR-GTH / GTH-PBE) in a ~5 Å cubic box — the EDL
 // water basis, Γ-point images active. Closed shell, converges cleanly.
 std::vector<GpwAtom> make_water() {
     constexpr double kAng = 1.8897259885789; // Å -> Bohr
-    const auto bO = parse_gth_basis(kData + "/BASIS_MOLOPT", "O", "DZVP-MOLOPT-SR-GTH");
-    const auto bH = parse_gth_basis(kData + "/BASIS_MOLOPT", "H", "DZVP-MOLOPT-SR-GTH");
-    const auto pO = parse_gth_potential(kData + "/GTH_POTENTIALS", "O", "GTH-PBE-q6");
-    const auto pH = parse_gth_potential(kData + "/GTH_POTENTIALS", "H", "GTH-PBE-q1");
+    const auto bO = builtin_gth_basis("O", "DZVP-MOLOPT-SR-GTH");
+    const auto bH = builtin_gth_basis("H", "DZVP-MOLOPT-SR-GTH");
+    const auto pO = builtin_gth_potential("O", "GTH-PBE-q6");
+    const auto pH = builtin_gth_potential("H", "GTH-PBE-q1");
     const double rO[3] = {2.6 * kAng, 2.5 * kAng, 2.4 * kAng};
     const double rH1[3] = {3.16 * kAng, 2.5 * kAng, 2.9 * kAng};
     const double rH2[3] = {2.1 * kAng, 2.5 * kAng, 2.95 * kAng};

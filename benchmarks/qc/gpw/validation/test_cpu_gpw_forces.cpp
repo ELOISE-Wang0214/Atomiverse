@@ -14,16 +14,16 @@
 #include "atomiverse/cpu/gpw/internal/cp2k_basis.h"
 #include "atomiverse/cpu/gpw/internal/cp2k_io.h"
 #include "atomiverse/cpu/gpw/internal/gpw_forces.h"
+#include "atomiverse/cpu/gpw/basis_data/gpw_data.h"
 
 using namespace ATV::cpu::gpw;
 
 namespace {
-const std::string kData = ATV_CP2K_DATA_DIR;
 } // namespace
 
 TEST(GpwForces, H2FiniteDifference) {
-    const auto basis = parse_gth_basis(kData + "/BASIS_SET", "H", "DZV-GTH-PADE");
-    const auto pot = parse_gth_potential(kData + "/POTENTIAL", "H", "GTH-PADE-q1");
+    const auto basis = builtin_gth_basis("H", "DZV-GTH-PADE");
+    const auto pot = builtin_gth_potential("H", "GTH-PADE-q1");
 
     // H2 compressed to 1.0 Bohr (equilibrium ~1.4): expect a restoring force
     // that pushes the atoms apart along x.
@@ -63,8 +63,8 @@ TEST(GpwForces, H2FiniteDifference) {
 // Analytic forces must reproduce the finite-difference oracle component-by-
 // component (including the off-axis egg-box artifact — same grid, same energy).
 TEST(GpwForces, H2AnalyticVsFiniteDifference) {
-    const auto basis = parse_gth_basis(kData + "/BASIS_SET", "H", "DZV-GTH-PADE");
-    const auto pot = parse_gth_potential(kData + "/POTENTIAL", "H", "GTH-PADE-q1");
+    const auto basis = builtin_gth_basis("H", "DZV-GTH-PADE");
+    const auto pot = builtin_gth_potential("H", "GTH-PADE-q1");
 
     const double rA[3] = {3.5, 2.0, 2.0};
     const double rB[3] = {4.7, 2.1, 1.9}; // off-symmetry so every component is nonzero
@@ -96,8 +96,8 @@ TEST(GpwForces, H2AnalyticVsFiniteDifference) {
 // H2 with PBE: isolates the GGA grid-term derivative (∫ V_xc^GGA ∂ρ) cheaply,
 // before the heavier ZnO case adds the d-projector / f-basis derivatives.
 TEST(GpwForces, H2PbeAnalyticVsFiniteDifference) {
-    const auto basis = parse_gth_basis(kData + "/BASIS_MOLOPT", "H", "DZVP-MOLOPT-SR-GTH");
-    const auto pot = parse_gth_potential(kData + "/GTH_POTENTIALS", "H", "GTH-PBE-q1");
+    const auto basis = builtin_gth_basis("H", "DZVP-MOLOPT-SR-GTH");
+    const auto pot = builtin_gth_potential("H", "GTH-PBE-q1");
     const double rA[3] = {3.5, 2.0, 2.0};
     const double rB[3] = {4.7, 2.1, 1.9};
     std::vector<GpwAtom> atoms = {make_gpw_atom(rA, basis, pot),
@@ -127,10 +127,10 @@ TEST(GpwForces, H2PbeAnalyticVsFiniteDifference) {
 // and the l=3 (f) basis-shell derivative — none of which the H2/LDA case touches.
 TEST(GpwForces, ZnOAnalyticVsFiniteDifference) {
     constexpr double kAng = 1.8897259885789; // Å -> Bohr
-    const auto bZn = parse_gth_basis(kData + "/BASIS_MOLOPT", "Zn", "DZVP-MOLOPT-SR-GTH");
-    const auto bO = parse_gth_basis(kData + "/BASIS_MOLOPT", "O", "DZVP-MOLOPT-SR-GTH");
-    const auto pZn = parse_gth_potential(kData + "/GTH_POTENTIALS", "Zn", "GTH-PBE-q12");
-    const auto pO = parse_gth_potential(kData + "/GTH_POTENTIALS", "O", "GTH-PBE-q6");
+    const auto bZn = builtin_gth_basis("Zn", "DZVP-MOLOPT-SR-GTH");
+    const auto bO = builtin_gth_basis("O", "DZVP-MOLOPT-SR-GTH");
+    const auto pZn = builtin_gth_potential("Zn", "GTH-PBE-q12");
+    const auto pO = builtin_gth_potential("O", "GTH-PBE-q6");
 
     const double rZn[3] = {7.0 * kAng, 7.0 * kAng, 7.0 * kAng};
     const double rO[3] = {7.15 * kAng, 7.1 * kAng, 8.6 * kAng}; // off-axis bond
@@ -139,14 +139,21 @@ TEST(GpwForces, ZnOAnalyticVsFiniteDifference) {
 
     GpwConfig cfg;
     cfg.cell[0] = cfg.cell[1] = cfg.cell[2] = 14.0 * kAng; // enlarged: R_cut < L/2 (no min-image kink)
-    cfg.cutoff_ry = 120.0; // coarse: consistency holds at any grid; keeps FD sweep cheap
+    // The grid route makes analytic-vs-FD consistency grid-dependent (V_loc^SR is
+    // collocated), so the cutoff is a physical setting here, not a free knob.
+    cfg.cutoff_ry = 120.0;
     cfg.n_occ = 9;
     cfg.tol = 1e-9;
     cfg.xc = XcKind::PBE;
     cfg.nonperiodic = true; // isolated: analytic forces not yet image-consistent
 
     const auto Fa = gpw_forces_analytic(atoms, cfg);
-    const auto Ffd = gpw_forces_fd(atoms, cfg, 1e-3);
+    // FD step 5e-4, not 1e-3: the oracle's OWN central-difference truncation
+    // error is O(h^2) and dominates here. Measured on this system, analytic-vs-FD
+    // max|dF| = 1.68e-5 (h=5e-4), 7.20e-5 (h=1e-3), 2.93e-4 (h=2e-3) — a clean 4x
+    // per doubling, i.e. the discrepancy is the REFERENCE's error, not the analytic
+    // force's. Refining the reference, not loosening the gate.
+    const auto Ffd = gpw_forces_fd(atoms, cfg, 5e-4);
 
     double max_abs = 0.0, max_err = 0.0;
     for (int a = 0; a < 2; ++a)
@@ -167,10 +174,10 @@ TEST(GpwForces, ZnOAnalyticVsFiniteDifference) {
 // the force is image-consistent with the energy (the AIMD requirement).
 TEST(GpwForces, H2OPeriodicAnalyticVsFiniteDifference) {
     constexpr double kAng = 1.8897259885789;
-    const auto bO = parse_gth_basis(kData + "/BASIS_MOLOPT", "O", "DZVP-MOLOPT-SR-GTH");
-    const auto bH = parse_gth_basis(kData + "/BASIS_MOLOPT", "H", "DZVP-MOLOPT-SR-GTH");
-    const auto pO = parse_gth_potential(kData + "/GTH_POTENTIALS", "O", "GTH-PBE-q6");
-    const auto pH = parse_gth_potential(kData + "/GTH_POTENTIALS", "H", "GTH-PBE-q1");
+    const auto bO = builtin_gth_basis("O", "DZVP-MOLOPT-SR-GTH");
+    const auto bH = builtin_gth_basis("H", "DZVP-MOLOPT-SR-GTH");
+    const auto pO = builtin_gth_potential("O", "GTH-PBE-q6");
+    const auto pH = builtin_gth_potential("H", "GTH-PBE-q1");
 
     // Bent water, off-centre, so every component is nonzero.
     const double rO[3] = {2.6 * kAng, 2.5 * kAng, 2.4 * kAng};

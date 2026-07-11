@@ -17,6 +17,7 @@
 #include "atomiverse/cpu/gpw/internal/collocate.h"
 #include "atomiverse/cpu/gpw/internal/dftd3.h"
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h"
+#include "atomiverse/cpu/gpw/internal/local_pp.h"
 #include "atomiverse/cpu/gpw/internal/mt_poisson.h"
 #include "atomiverse/cpu/gpw/internal/one_electron.h"
 #include "atomiverse/cpu/gpw/internal/periodic.h"
@@ -75,9 +76,14 @@ GridBasisFunction deriv_bf(const GridBasisFunction& bf, int k) {
 // summed over its lattice images T (within `reach` of a), and each center C is
 // taken at its nearest image to the bra·ket product center. Matches the energy's
 // gth_matrix_element convention so the force derivative is consistent.
+/// @param with_local Include the analytic per-pair V_loc^SR. Must be false when
+///        the SCF put V_loc^SR on the grid (cfg.local_pp_on_grid): the grid
+///        V_eff term then already carries its basis-derivative part, and
+///        `add_local_pp_hf_forces` carries the operator-center part. Including it
+///        here as well double-counts and differentiates the wrong functional.
 double vpp_images(const GridBasisFunction& a, const GridBasisFunction& b,
                   const std::vector<const GpwAtom*>& centers, const double L[3],
-                  const int m[3], double reach) {
+                  const int m[3], double reach, bool with_local) {
     if (a.empty() || b.empty()) return 0.0;
     const double* ac = a[0].center;
     const double* bc = b[0].center;
@@ -114,7 +120,7 @@ double vpp_images(const GridBasisFunction& a, const GridBasisFunction& b,
                                 if (per && L[d] > 0.0)
                                     apos[d] -= L[d] * std::nearbyint((C.pos[d] - P[d]) / L[d]);
                             }
-                            if (!C.cloc.empty())
+                            if (with_local && !C.cloc.empty())
                                 v += cc * gth_local_sr(pp, qq, apos, C.rloc, C.cloc);
                             for (const auto& ch : C.nonlocal)
                                 v += cc * gth_nonlocal(pp, qq, apos, ch);
@@ -219,8 +225,21 @@ gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
     const XcOnGrid xc =
         cfg.xc == XcKind::PBE ? xc_grid_pbe(grid, rho) : xc_grid_pade(grid, rho);
     const std::vector<double>& v_es = es.v_r;
+    // V_eff must be the SAME one the SCF converged against. When the local
+    // short-range PP was collocated on the grid (the default), it is part of
+    // V_eff — and then the analytic per-pair route must be OFF in the Pulay terms
+    // (see internal/local_pp.h). Differentiating a different functional than the
+    // SCF converged was a real bug: ZnO analytic-vs-FD 0.53 Ha/Bohr.
+    const bool analytic_loc = !cfg.local_pp_on_grid;
+    const std::vector<double> v_locsr =
+        analytic_loc ? std::vector<double>()
+                     : local_pp_grid(grid, atoms, periodic);
+
     std::vector<double> veff(rho.size());
-    for (std::size_t g = 0; g < rho.size(); ++g) veff[g] = es.v_r[g] + xc.vxc_r[g];
+    for (std::size_t g = 0; g < rho.size(); ++g) {
+        veff[g] = es.v_r[g] + xc.vxc_r[g];
+        if (!v_locsr.empty()) veff[g] += v_locsr[g];
+    }
 
     // g -> active index into cbg (for the grid term's Pχ lookup).
     std::vector<long> g2a(static_cast<std::size_t>(ng), -1);
@@ -259,7 +278,8 @@ gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
                     f += 2.0 * W(mu, nu) * s;  // + W dS
                     f -= 2.0 * P(mu, nu) * t;  // - P dT
                     f -= 2.0 * P(mu, nu) *
-                         vpp_images(dmu, basis[nu], all, cfg.cell, mimg, reach); // - P dV_pp(basis)
+                         vpp_images(dmu, basis[nu], all, cfg.cell, mimg, reach,
+                                    analytic_loc); // - P dV_pp(basis)
                 }
             }
             // GTH operator-center derivative (∂_C, trans. inv.): +2 Σ_{μ,ν} P dμ·v_A·ν.
@@ -269,7 +289,8 @@ gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
                 for (int nu = 0; nu < nb; ++nu) {
                     const double reach = rdmu + radii[static_cast<std::size_t>(nu)];
                     f += 2.0 * P(mu, nu) *
-                         vpp_images(dmu, basis[nu], onlyA, cfg.cell, mimg, reach);
+                         vpp_images(dmu, basis[nu], onlyA, cfg.cell, mimg, reach,
+                                    analytic_loc);
                 }
             }
             forces[A][k] = f;
@@ -320,6 +341,12 @@ gpw_forces_analytic(const std::vector<GpwAtom>& atoms, const GpwConfig& cfg) {
         }
         for (int k = 0; k < 3; ++k) forces[A][k] += wgt * acc[k];
     }
+
+    // ── Local-PP Hellmann–Feynman: the grid V_loc^SR moves with its atom ───────
+    // The counterpart of dropping gth_local_sr from the Pulay terms. Only for the
+    // grid route: in the analytic route this contribution is already inside the
+    // per-pair operator-center derivative above.
+    if (!analytic_loc) add_local_pp_hf_forces(grid, atoms, periodic, rho, forces);
 
     // Grimme DFT-D3 dispersion forces (additive, geometry-only).
     if (cfg.d3) {

@@ -22,11 +22,11 @@
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/internal/cp2k_basis.h"
 #include "atomiverse/cpu/gpw/internal/cp2k_io.h"
+#include "atomiverse/cpu/gpw/basis_data/gpw_data.h"
 
 using namespace ATV::cpu::gpw;
 
 namespace {
-const std::string kData = ATV_CP2K_DATA_DIR;
 constexpr double kAng = 1.8897259885789; // Å -> Bohr
 
 struct Elem {
@@ -58,8 +58,8 @@ TEST(GpwEdlFrag, PeriodicEnergyVsCp2k) {
     std::map<std::string, GaussianBasis> basis;
     std::map<std::string, GthPotential> pot;
     for (const auto& [sym, e] : kEl) {
-        basis[sym] = parse_gth_basis(kData + "/BASIS_MOLOPT", e.sym, "DZVP-MOLOPT-SR-GTH");
-        pot[sym] = parse_gth_potential(kData + "/GTH_POTENTIALS", e.sym, e.pot);
+        basis[sym] = builtin_gth_basis(e.sym, "DZVP-MOLOPT-SR-GTH");
+        pot[sym] = builtin_gth_potential(e.sym, e.pot);
     }
 
     std::vector<GpwAtom> atoms;

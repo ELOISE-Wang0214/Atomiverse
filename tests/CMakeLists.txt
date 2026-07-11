@@ -120,17 +120,16 @@ if(ATV_BUILD_KSPACE)
 endif()
 atv_add_cpp_test(test_cpu_am1_scaffold            cpu/semiempirical/test_am1_scaffold.cpp)
 
-# GPW module tests. Split in two: the pure-math tests below run in the default
-# gate and touch no external package, while every test that ingests a CP2K data
-# file (GTH_POTENTIALS / POTENTIAL / BASIS_* / dftd3.dat) is registered ONLY when
-# ATV_CP2K_DATA_DIR points at an existing directory. Without the guard an unset
-# variable produced `cannot open file '/GTH_POTENTIALS'` hard failures instead of
-# skips. Same pattern as ATV_FINAL_FRAME_XYZ below.
+# GPW module tests. All of them run unconditionally on the in-tree GTH + MOLOPT +
+# D3 tables (cpu/gpw/basis_data/) — no external data directory is consulted at
+# build or test time. (Until 2026-07-11 the 14 tests that touched a real molecule
+# only registered when ATV_CP2K_DATA_DIR pointed at a CP2K install, so with the
+# gate off GPW had no real-molecule physics and no force validation at all.)
 if(ATV_BUILD_GPW)
-    set(ATV_CP2K_DATA_DIR ""
-        CACHE PATH "CP2K data/ directory with GTH_POTENTIALS, POTENTIAL, BASIS_* files (set to enable the CP2K-data GPW tests)")
-
-    # Pure-math tests (no CP2K data files needed).
+    # Every GPW test below runs on the in-tree data tables
+    # (cpu/gpw/basis_data/gpw_data.h) — no external data directory, no
+    # third-party file read. E2E (converged SCF / AIMD / geoopt / anchors) lives
+    # in benchmarks/qc/gpw/validation and never runs under ctest.
     atv_add_cpp_test(test_cpu_gpw_gth_integrals    cpu/gpw/test_cpu_gpw_gth_integrals.cpp)
     atv_add_cpp_test(test_cpu_gpw_real_harmonics   cpu/gpw/test_cpu_gpw_real_harmonics.cpp)
     atv_add_cpp_test(test_cpu_gpw_collocate        cpu/gpw/test_cpu_gpw_collocate.cpp)
@@ -151,42 +150,18 @@ if(ATV_BUILD_GPW)
         atv_add_cpp_test(test_cpu_gpw_solver       cpu/gpw/test_cpu_gpw_solver.cpp)
     endif()
 
-    # CP2K-data ingest / parity tests — opt-in only.
-    if(ATV_CP2K_DATA_DIR AND EXISTS "${ATV_CP2K_DATA_DIR}")
-        set(_atv_cp2k_data_tests
-            test_cpu_gpw_cp2k_io        cpu/gpw/test_cpu_gpw_cp2k_io.cpp
-            test_cpu_gpw_basis          cpu/gpw/test_cpu_gpw_basis.cpp
-            # ZnO EDL heavy elements (gpw-edl-aimd M2, ac-003): Zn/Na/Cl GTH-PBE +
-            # DZVP-MOLOPT-SR-GTH ingest, incl. the Zn d/f channels.
-            test_cpu_gpw_heavy_elements cpu/gpw/test_cpu_gpw_heavy_elements.cpp
-            # Grimme DFT-D3 dispersion (zero damping, PBE) — standalone correction,
-            # validated against CP2K's "Dispersion energy" and FD forces.
-            test_cpu_gpw_dftd3          cpu/gpw/test_cpu_gpw_dftd3.cpp
-            test_cpu_gpw_ot             cpu/gpw/test_cpu_gpw_ot.cpp)
-        if(ATV_BUILD_PW)
-            list(APPEND _atv_cp2k_data_tests
-                test_cpu_gpw_h2_cp2k        cpu/gpw/test_cpu_gpw_h2_cp2k.cpp
-                test_cpu_gpw_ar_cp2k        cpu/gpw/test_cpu_gpw_ar_cp2k.cpp
-                test_cpu_gpw_h2o_tutorial   cpu/gpw/test_cpu_gpw_h2o_tutorial.cpp
-                test_cpu_gpw_zno_cp2k       cpu/gpw/test_cpu_gpw_zno_cp2k.cpp
-                test_cpu_gpw_edl_frag       cpu/gpw/test_cpu_gpw_edl_frag.cpp
-                test_cpu_gpw_diis           cpu/gpw/test_cpu_gpw_diis.cpp
-                test_cpu_gpw_nacl_cp2k      cpu/gpw/test_cpu_gpw_nacl_cp2k.cpp
-                test_cpu_gpw_evaluator      cpu/gpw/test_cpu_gpw_evaluator.cpp
-                test_cpu_gpw_forces         cpu/gpw/test_cpu_gpw_forces.cpp
-                test_cpu_gpw_geoopt         cpu/gpw/test_cpu_gpw_geoopt.cpp
-                test_cpu_gpw_aimd           cpu/gpw/test_cpu_gpw_aimd.cpp
-                test_cpu_gpw_multigrid_scf  cpu/gpw/test_cpu_gpw_multigrid_scf.cpp)
-        endif()
-        while(_atv_cp2k_data_tests)
-            list(POP_FRONT _atv_cp2k_data_tests _name _src)
-            atv_add_cpp_test(${_name} ${_src})
-            target_compile_definitions(${_name}
-                PRIVATE ATV_CP2K_DATA_DIR="${ATV_CP2K_DATA_DIR}")
-        endwhile()
-    else()
-        message(STATUS "ATV_CP2K_DATA_DIR unset — skipping CP2K-data GPW ingest/parity tests")
-    endif()
+    # Data-table unit tests: grammar/ingest of the in-tree GTH + MOLOPT tables and
+    # the D3 parameter tables. No SCF is run here — the converged-SCF checks that
+    # used to live alongside these are now benchmarks/qc/gpw/validation.
+    atv_add_cpp_test(test_cpu_gpw_data_table    cpu/gpw/test_cpu_gpw_data_table.cpp)
+    atv_add_cpp_test(test_cpu_gpw_cp2k_io       cpu/gpw/test_cpu_gpw_cp2k_io.cpp)
+    atv_add_cpp_test(test_cpu_gpw_basis         cpu/gpw/test_cpu_gpw_basis.cpp)
+    # ZnO EDL heavy elements (gpw-edl-aimd ac-003): Zn/Na/Cl GTH-PBE +
+    # DZVP-MOLOPT-SR-GTH ingest, incl. the Zn d/f channels.
+    atv_add_cpp_test(test_cpu_gpw_heavy_elements cpu/gpw/test_cpu_gpw_heavy_elements.cpp)
+    # Grimme DFT-D3 (ac-013): energy + analytic force incl. the CN-derivative
+    # term, against a finite-difference check. Reference-free.
+    atv_add_cpp_test(test_cpu_gpw_dftd3         cpu/gpw/test_cpu_gpw_dftd3.cpp)
 endif()
 atv_add_cpp_test(test_cpu_md_pair_morse_smoke     cpu/md/test_pair_morse_smoke.cpp)
 atv_add_cpp_test(test_cpu_md_pe_ff_constants      cpu/md/test_pe_ff_constants.cpp)

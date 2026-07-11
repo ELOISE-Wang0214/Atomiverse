@@ -12,6 +12,7 @@
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
 #include "atomiverse/cpu/gpw/internal/cp2k_basis.h"
 #include "atomiverse/cpu/gpw/internal/cp2k_io.h"
+#include "atomiverse/cpu/gpw/basis_data/gpw_data.h"
 #include "atomiverse/cpu/md/init.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
@@ -19,7 +20,6 @@
 using namespace ATV::cpu::gpw;
 
 namespace {
-const std::string kData = ATV_CP2K_DATA_DIR;
 constexpr double kBohr2Ang = 1.0 / 1.8897259885789;
 
 double bond_ang(const ATV::cpu::Frame& f) {
@@ -42,8 +42,8 @@ TEST(GpwAIMD, H2NveTrajectoryRuns) {
 
     GpwElement H;
     H.z = 1;
-    H.basis = parse_gth_basis(kData + "/BASIS_SET", "H", "DZV-GTH-PADE");
-    H.pot = parse_gth_potential(kData + "/POTENTIAL", "H", "GTH-PADE-q1");
+    H.basis = builtin_gth_basis("H", "DZV-GTH-PADE");
+    H.pot = builtin_gth_potential("H", "GTH-PADE-q1");
 
     GpwEvaluatorConfig cfg;
     cfg.cutoff_ry = 140.0;

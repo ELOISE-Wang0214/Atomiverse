@@ -22,30 +22,30 @@
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/internal/cp2k_basis.h"
 #include "atomiverse/cpu/gpw/internal/cp2k_io.h"
+#include "atomiverse/cpu/gpw/basis_data/gpw_data.h"
 
 using ATV::cpu::gpw::GpwAtom;
 using ATV::cpu::gpw::GpwConfig;
 using ATV::cpu::gpw::GpwResult;
 using ATV::cpu::gpw::gpw_scf;
 using ATV::cpu::gpw::make_gpw_atom;
-using ATV::cpu::gpw::parse_gth_basis;
-using ATV::cpu::gpw::parse_gth_potential;
+using ATV::cpu::gpw::builtin_gth_basis;
+using ATV::cpu::gpw::builtin_gth_potential;
 using ATV::cpu::gpw::XcKind;
 
 namespace {
-const std::string kData = ATV_CP2K_DATA_DIR;
 constexpr double kAng = 1.8897259885789; // Angstrom -> Bohr
 } // namespace
 
 TEST(GpwZnOCP2K, PeriodicDiatomicPbe) {
     const auto basis_Zn =
-        parse_gth_basis(kData + "/BASIS_MOLOPT", "Zn", "DZVP-MOLOPT-SR-GTH");
+        builtin_gth_basis("Zn", "DZVP-MOLOPT-SR-GTH");
     const auto basis_O =
-        parse_gth_basis(kData + "/BASIS_MOLOPT", "O", "DZVP-MOLOPT-SR-GTH");
+        builtin_gth_basis("O", "DZVP-MOLOPT-SR-GTH");
     const auto pot_Zn =
-        parse_gth_potential(kData + "/GTH_POTENTIALS", "Zn", "GTH-PBE-q12");
+        builtin_gth_potential("Zn", "GTH-PBE-q12");
     const auto pot_O =
-        parse_gth_potential(kData + "/GTH_POTENTIALS", "O", "GTH-PBE-q6");
+        builtin_gth_potential("O", "GTH-PBE-q6");
 
     const double Zn[3] = {4.0 * kAng, 4.0 * kAng, 4.0 * kAng};
     const double O[3] = {4.0 * kAng, 4.0 * kAng, 5.72 * kAng};

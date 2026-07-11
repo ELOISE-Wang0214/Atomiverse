@@ -19,19 +19,19 @@
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/internal/cp2k_basis.h"
 #include "atomiverse/cpu/gpw/internal/cp2k_io.h"
+#include "atomiverse/cpu/gpw/basis_data/gpw_data.h"
 
 using namespace ATV::cpu::gpw;
 
 namespace {
-const std::string kData = ATV_CP2K_DATA_DIR;
 constexpr double kAng = 1.8897259885789; // Angstrom -> Bohr
 } // namespace
 
 TEST(GpwH2OTutorial, IsolatedPbeWater) {
-    const auto basis_O = parse_gth_basis(kData + "/BASIS_MOLOPT", "O", "DZVP-MOLOPT-GTH");
-    const auto basis_H = parse_gth_basis(kData + "/BASIS_MOLOPT", "H", "DZVP-MOLOPT-GTH");
-    const auto pot_O = parse_gth_potential(kData + "/GTH_POTENTIALS", "O", "GTH-PBE-q6");
-    const auto pot_H = parse_gth_potential(kData + "/GTH_POTENTIALS", "H", "GTH-PBE-q1");
+    const auto basis_O = builtin_gth_basis("O", "DZVP-MOLOPT-GTH");
+    const auto basis_H = builtin_gth_basis("H", "DZVP-MOLOPT-GTH");
+    const auto pot_O = builtin_gth_potential("O", "GTH-PBE-q6");
+    const auto pot_H = builtin_gth_potential("H", "GTH-PBE-q1");
 
     const double O[3] = {5.0 * kAng, 5.0 * kAng, 5.0 * kAng};
     const double H1[3] = {5.7586 * kAng, 5.0 * kAng, 5.5043 * kAng};

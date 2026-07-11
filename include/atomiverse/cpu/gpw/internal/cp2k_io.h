@@ -18,6 +18,7 @@
 ///       ...                               #   spread over nproj lines
 #pragma once
 
+#include <istream>
 #include <string>
 #include <vector>
 
@@ -61,6 +62,19 @@ struct GthPotential {
 /// @param name    Potential name/alias (e.g. "GTH-PBE-q6", "GTH-PADE-q8").
 /// @return Parsed GthPotential.
 GthPotential parse_gth_potential(const std::string& path, const std::string& element,
+                                 const std::string& name);
+
+/// @brief Parse one GTH potential entry from an already-open stream.
+///
+/// Same grammar and matching rules as the path overload. Used by the in-tree
+/// data tables (`cpu/gpw/basis_data/gpw_data.h`), which hold the entries as
+/// embedded text and therefore never touch the filesystem.
+///
+/// @param in      Stream positioned at the start of the data.
+/// @param element Chemical symbol (e.g. "O", "Ar", "H").
+/// @param name    Potential name/alias (e.g. "GTH-PBE-q6").
+/// @return Parsed GthPotential.
+GthPotential parse_gth_potential(std::istream& in, const std::string& element,
                                  const std::string& name);
 
 } // namespace gpw

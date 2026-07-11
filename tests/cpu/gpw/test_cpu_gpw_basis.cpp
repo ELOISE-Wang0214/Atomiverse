@@ -3,7 +3,6 @@
 ///        DZVP-GTH-PADE (Ar) and DZVP-MOLOPT-GTH (O, H) exactly.
 ///
 /// Reference numbers are read by hand from the CP2K data files at
-/// ATV_CP2K_DATA_DIR (set by CMake). Ar comes from BASIS_SET (used by
 /// tests/QS/regtest-gpw-1/Ar.inp); O/H from BASIS_MOLOPT (the H2O tutorial).
 
 #include <string>
@@ -11,20 +10,18 @@
 #include <gtest/gtest.h>
 
 #include "atomiverse/cpu/gpw/internal/cp2k_basis.h"
+#include "atomiverse/cpu/gpw/basis_data/gpw_data.h"
 
 using ATV::cpu::gpw::GaussianBasis;
-using ATV::cpu::gpw::parse_gth_basis;
+using ATV::cpu::gpw::builtin_gth_basis;
 
 namespace {
-const std::string kDataDir = ATV_CP2K_DATA_DIR;
-const std::string kBasisSet = kDataDir + "/BASIS_SET";
-const std::string kBasisMolopt = kDataDir + "/BASIS_MOLOPT";
 } // namespace
 
 // Ar DZVP-GTH-PADE: two sets. Set 0 is n=3, l=0..1, 4 exps, 2 s + 2 p shells
 // (4 coef columns ordered s1,s2,p1,p2). Set 1 is a single d shell.
 TEST(GthBasisParser, ArgonDzvpGthPade) {
-    GaussianBasis b = parse_gth_basis(kBasisSet, "Ar", "DZVP-GTH-PADE");
+    GaussianBasis b = builtin_gth_basis("Ar", "DZVP-GTH-PADE");
     ASSERT_EQ(b.sets.size(), 2u);
 
     const auto& s0 = b.sets[0];
@@ -60,7 +57,7 @@ TEST(GthBasisParser, ArgonDzvpGthPade) {
 // O DZVP-MOLOPT-GTH: single shared-exponent set, n=2, l=0..2, 7 exps,
 // 2 s + 2 p + 1 d shells (5 coef columns).
 TEST(GthBasisParser, OxygenDzvpMoloptGth) {
-    GaussianBasis b = parse_gth_basis(kBasisMolopt, "O", "DZVP-MOLOPT-GTH");
+    GaussianBasis b = builtin_gth_basis("O", "DZVP-MOLOPT-GTH");
     ASSERT_EQ(b.sets.size(), 1u);
     const auto& s = b.sets[0];
     EXPECT_EQ(s.n, 2);
@@ -82,7 +79,7 @@ TEST(GthBasisParser, OxygenDzvpMoloptGth) {
 
 // H DZVP-MOLOPT-GTH: single set, n=2, l=0..1, 7 exps, 2 s + 1 p (3 coef cols).
 TEST(GthBasisParser, HydrogenDzvpMoloptGth) {
-    GaussianBasis b = parse_gth_basis(kBasisMolopt, "H", "DZVP-MOLOPT-GTH");
+    GaussianBasis b = builtin_gth_basis("H", "DZVP-MOLOPT-GTH");
     ASSERT_EQ(b.sets.size(), 1u);
     const auto& s = b.sets[0];
     EXPECT_EQ(s.lmin, 0);
@@ -98,5 +95,5 @@ TEST(GthBasisParser, HydrogenDzvpMoloptGth) {
 }
 
 TEST(GthBasisParser, MissingEntryThrows) {
-    EXPECT_THROW(parse_gth_basis(kBasisSet, "Ar", "NO-SUCH-BASIS"), std::runtime_error);
+    EXPECT_THROW(builtin_gth_basis("Ar", "NO-SUCH-BASIS"), std::runtime_error);
 }

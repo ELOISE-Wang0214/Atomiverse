@@ -297,6 +297,36 @@ if(ATV_BUILD_RHF)
 endif()
 
 # ════════════════════════════════════════════════════════════════════
+# qc/gpw — Gaussian-and-plane-waves DFT (gpw-edl-aimd)
+# ════════════════════════════════════════════════════════════════════
+# Every check here runs a converged GPW SCF (or an AIMD / geometry-optimization
+# trajectory on top of one), which is e2e by the repo rule and therefore lives in
+# benchmarks, never in the ctest unit gate. All of them read the in-tree GTH +
+# MOLOPT tables (cpu/gpw/basis_data/) — no external data directory, no
+# third-party package is called at build or run time. Energy anchors are pinned
+# constants carrying provenance comments.
+#
+# The load-bearing one is val_gpw_forces: analytic forces vs the 6N+1
+# finite-difference oracle. It is reference-free and term-complete — a wrong
+# Pulay, projector-derivative or GGA-grid term cannot survive it.
+if(ATV_BUILD_GPW)
+    atv_add_validation(val_gpw_forces        qc/gpw/validation/test_cpu_gpw_forces.cpp)
+    atv_add_validation(val_gpw_ot            qc/gpw/validation/test_cpu_gpw_ot.cpp)
+    atv_add_validation(val_gpw_h2            qc/gpw/validation/test_cpu_gpw_h2.cpp)
+    atv_add_validation(val_gpw_ar            qc/gpw/validation/test_cpu_gpw_ar.cpp)
+    atv_add_validation(val_gpw_h2o_tutorial  qc/gpw/validation/test_cpu_gpw_h2o_tutorial.cpp)
+    atv_add_validation(val_gpw_zno           qc/gpw/validation/test_cpu_gpw_zno.cpp)
+    atv_add_validation(val_gpw_nacl          qc/gpw/validation/test_cpu_gpw_nacl.cpp)
+    atv_add_validation(val_gpw_edl_frag      qc/gpw/validation/test_cpu_gpw_edl_frag.cpp)
+    atv_add_validation(val_gpw_diis          qc/gpw/validation/test_cpu_gpw_diis.cpp)
+    atv_add_validation(val_gpw_evaluator     qc/gpw/validation/test_cpu_gpw_evaluator.cpp)
+    atv_add_validation(val_gpw_geoopt        qc/gpw/validation/test_cpu_gpw_geoopt.cpp)
+    atv_add_validation(val_gpw_aimd          qc/gpw/validation/test_cpu_gpw_aimd.cpp)
+    atv_add_validation(val_gpw_multigrid_scf qc/gpw/validation/test_cpu_gpw_multigrid_scf.cpp)
+    atv_add_validation(val_gpw_d3_scf        qc/gpw/validation/test_cpu_gpw_d3_scf.cpp)
+endif()
+
+# ════════════════════════════════════════════════════════════════════
 # pw — plane-wave DFT (bulk Si vs CP2K)
 # ════════════════════════════════════════════════════════════════════
 

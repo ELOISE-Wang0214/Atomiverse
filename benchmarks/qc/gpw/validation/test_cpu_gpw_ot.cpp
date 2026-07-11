@@ -20,6 +20,7 @@
 #include "atomiverse/cpu/gpw/internal/cp2k_basis.h"
 #include "atomiverse/cpu/gpw/internal/cp2k_io.h"
 #include "atomiverse/cpu/gpw/internal/ot.h"
+#include "atomiverse/cpu/gpw/basis_data/gpw_data.h"
 #include "atomiverse/cpu/linalg/density.h"
 #include "atomiverse/cpu/linalg/eigensolve.h"
 
@@ -133,18 +134,17 @@ TEST(GpwOt, FixedHReproducesDiagonalization) {
 
 // ── Self-consistent equivalence: full gpw_scf, OT vs diagonalization ────────
 namespace {
-const std::string kData = ATV_CP2K_DATA_DIR;
 using ATV::cpu::gpw::GpwConfig;
 using ATV::cpu::gpw::GpwResult;
 using ATV::cpu::gpw::gpw_scf;
 using ATV::cpu::gpw::make_gpw_atom;
-using ATV::cpu::gpw::parse_gth_basis;
-using ATV::cpu::gpw::parse_gth_potential;
+using ATV::cpu::gpw::builtin_gth_basis;
+using ATV::cpu::gpw::builtin_gth_potential;
 } // namespace
 
 TEST(GpwOtScf, H2MatchesDiagonalization) {
-    const auto basis = parse_gth_basis(kData + "/BASIS_SET", "H", "DZV-GTH-PADE");
-    const auto pot = parse_gth_potential(kData + "/POTENTIAL", "H", "GTH-PADE-q1");
+    const auto basis = builtin_gth_basis("H", "DZV-GTH-PADE");
+    const auto pot = builtin_gth_potential("H", "GTH-PADE-q1");
     const double rA[3] = {3.5, 2.0, 2.0};
     const double rB[3] = {4.5, 2.0, 2.0};
     std::vector<ATV::cpu::gpw::GpwAtom> atoms = {make_gpw_atom(rA, basis, pot),
@@ -165,10 +165,10 @@ TEST(GpwOtScf, H2MatchesDiagonalization) {
 
 TEST(GpwOtScf, ZnOMatchesDiagonalization) {
     constexpr double kAng = 1.8897259885789;
-    const auto bZn = parse_gth_basis(kData + "/BASIS_MOLOPT", "Zn", "DZVP-MOLOPT-SR-GTH");
-    const auto bO = parse_gth_basis(kData + "/BASIS_MOLOPT", "O", "DZVP-MOLOPT-SR-GTH");
-    const auto pZn = parse_gth_potential(kData + "/GTH_POTENTIALS", "Zn", "GTH-PBE-q12");
-    const auto pO = parse_gth_potential(kData + "/GTH_POTENTIALS", "O", "GTH-PBE-q6");
+    const auto bZn = builtin_gth_basis("Zn", "DZVP-MOLOPT-SR-GTH");
+    const auto bO = builtin_gth_basis("O", "DZVP-MOLOPT-SR-GTH");
+    const auto pZn = builtin_gth_potential("Zn", "GTH-PBE-q12");
+    const auto pO = builtin_gth_potential("O", "GTH-PBE-q6");
     const double rZn[3] = {4.0 * kAng, 4.0 * kAng, 4.0 * kAng};
     const double rO[3] = {4.0 * kAng, 4.0 * kAng, 5.72 * kAng};
     std::vector<ATV::cpu::gpw::GpwAtom> atoms = {make_gpw_atom(rZn, bZn, pZn),

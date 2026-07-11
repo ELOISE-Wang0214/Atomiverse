@@ -25,6 +25,7 @@
 #include "atomiverse/cpu/gpw/internal/diis.h"
 #include "atomiverse/cpu/gpw/internal/gth_integrals.h"
 #include "atomiverse/cpu/gpw/internal/hartree_grid.h"
+#include "atomiverse/cpu/gpw/internal/local_pp.h"
 #include "atomiverse/cpu/gpw/internal/mt_poisson.h"
 #include "atomiverse/cpu/gpw/internal/multigrid.h"
 #include "atomiverse/cpu/gpw/internal/one_electron.h"
@@ -532,38 +533,6 @@ std::vector<double> ionic_density(const UniformGrid& grid,
 // onto the grid (here) and folds it into V_eff, so the integral against the
 // density is shared with the Hartree/XC potential — O(grid), not O(nb²). Geometry-
 // fixed: built once and added to V_eff every SCF step.
-std::vector<double> local_pp_grid(const UniformGrid& grid,
-                                  const std::vector<GpwAtom>& atoms,
-                                  bool periodic) {
-    const long ng = grid.npts();
-    std::vector<double> v(static_cast<std::size_t>(ng), 0.0);
-#pragma omp parallel for schedule(static)
-    for (long g = 0; g < ng; ++g) {
-        double r[3];
-        grid.point(g, r);
-        double s = 0.0;
-        for (const auto& a : atoms) {
-            if (a.cloc.empty())
-                continue;
-            double dx = r[0] - a.pos[0], dy = r[1] - a.pos[1],
-                   dz = r[2] - a.pos[2];
-            if (periodic) {
-                dx -= grid.L[0] * std::nearbyint(dx / grid.L[0]);
-                dy -= grid.L[1] * std::nearbyint(dy / grid.L[1]);
-                dz -= grid.L[2] * std::nearbyint(dz / grid.L[2]);
-            }
-            const double t = (dx * dx + dy * dy + dz * dz) / (a.rloc * a.rloc);
-            double poly = 0.0, tp = 1.0;
-            for (double c : a.cloc) {
-                poly += c * tp;
-                tp *= t;
-            }
-            s += std::exp(-0.5 * t) * poly;
-        }
-        v[static_cast<std::size_t>(g)] = s;
-    }
-    return v;
-}
 
 // Analytic Hartree self-energy of one normalized Gaussian core of charge z and
 // width rloc: 1/2 integral rho V[rho] = z^2 / (2 rloc sqrt(pi)).
@@ -751,7 +720,20 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
             Z[i] = atoms[i].z;
             pos[i] = {atoms[i].pos[0], atoms[i].pos[1], atoms[i].pos[2]};
         }
-        e_d3 = dftd3_pbe(Z, pos, cfg.cell, periodic, cfg.d3_param_file).energy;
+        // Empty d3_param_file = the in-tree table (the default source). A path is
+        // only needed to widen coverage beyond the supported elements.
+        if (cfg.d3_param_file.empty()) {
+            for (int z : Z)
+                if (!dftd3_supports_element(z))
+                    throw std::invalid_argument(
+                        "GPWSolver: the in-tree D3 table does not cover Z = "
+                        + std::to_string(z)
+                        + "; supply d3_param_file to widen coverage "
+                          "(no-fallback rule)");
+            e_d3 = dftd3_pbe(Z, pos, cfg.cell, periodic, builtin_dftd3_params()).energy;
+        } else {
+            e_d3 = dftd3_pbe(Z, pos, cfg.cell, periodic, cfg.d3_param_file).energy;
+        }
     }
 
     // Geometry-fixed matrices.
@@ -781,9 +763,12 @@ static GpwResult run_gpw_scf_impl(const std::vector<GpwAtom>& atoms,
     bcells.build(basis, cfg.cell, std::getenv("ATV_GPW_NOCELLS") ? 1e30 : rmax,
                  periodic);
     // Local short-range PP: by default collocated on the grid (local_pp_grid +
-    // V_eff, O(grid)); ATV_GPW_ANALYTIC_LOC forces the legacy per-pair analytic
-    // gth_local_sr (O(nb²·natoms)) — kept for grid-vs-analytic energy validation.
-    const bool grid_loc = std::getenv("ATV_GPW_ANALYTIC_LOC") == nullptr;
+    // V_eff, O(grid)); local_pp_on_grid=false selects the per-pair analytic
+    // gth_local_sr (O(nb²·natoms)), kept for grid-vs-analytic energy validation.
+    // gpw_forces_analytic reads the SAME flag — the gradient must be taken of the
+    // functional the SCF actually converged, or the two disagree by the grid
+    // discretization error of V_loc^SR (see internal/local_pp.h).
+    const bool grid_loc = cfg.local_pp_on_grid;
 #pragma omp parallel for schedule(dynamic, 8)
     for (int i = 0; i < nb; ++i) {
         if (basis[i].empty())
@@ -1235,10 +1220,6 @@ void GPWSolver::build(const std::vector<GpwAtom>& reference) {
                     + " must be > 0 Bohr (got "
                     + std::to_string(config_.cell[d]) + ")");
     }
-    if (config_.d3 && config_.d3_param_file.empty())
-        throw std::invalid_argument(
-            "GPWSolver::build: d3 == true requires d3_param_file "
-            "(no-fallback rule)");
     built_ = true;
 }
 

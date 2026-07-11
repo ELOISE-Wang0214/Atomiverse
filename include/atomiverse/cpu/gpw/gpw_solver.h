@@ -65,6 +65,13 @@ struct GpwConfig {
         6; ///< Pulay DIIS history depth; 0 disables DIIS (falls back to linear `mix`).
     XcKind xc = XcKind::PADE; ///< LDA (PADE) or GGA (PBE).
     bool nonperiodic = false; ///< use the isolated (MT) Poisson solver.
+    /// @brief Collocate the GTH local short-range PP on the grid (CP2K's route,
+    /// O(grid)) rather than building it analytically per basis pair
+    /// (O(nb²·natoms)). Energy and analytic force BOTH read this flag: the
+    /// gradient must be taken of the functional the SCF converged, or the two
+    /// disagree by the grid discretization error of V_loc^SR (see
+    /// internal/local_pp.h). Flip to false only to cross-check the two routes.
+    bool local_pp_on_grid = true;
     bool d3 = false; ///< add Grimme DFT-D3 (zero damping, PBE) dispersion
                      ///< to the energy and forces (requires GpwAtom.z set).
     std::string

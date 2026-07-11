@@ -19,17 +19,17 @@
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/internal/cp2k_basis.h"
 #include "atomiverse/cpu/gpw/internal/cp2k_io.h"
+#include "atomiverse/cpu/gpw/basis_data/gpw_data.h"
 
 using ATV::cpu::gpw::GpwAtom;
 using ATV::cpu::gpw::GpwConfig;
 using ATV::cpu::gpw::GpwResult;
 using ATV::cpu::gpw::gpw_scf;
 using ATV::cpu::gpw::make_gpw_atom;
-using ATV::cpu::gpw::parse_gth_basis;
-using ATV::cpu::gpw::parse_gth_potential;
+using ATV::cpu::gpw::builtin_gth_basis;
+using ATV::cpu::gpw::builtin_gth_potential;
 
 namespace {
-const std::string kData = ATV_CP2K_DATA_DIR;
 } // namespace
 
 TEST(GpwH2CP2K, RealBasisConverges) {
@@ -43,8 +43,8 @@ TEST(GpwH2CP2K, RealBasisConverges) {
     // Set ATV_RUN_PADE=1 to run for investigation (ATV_H2_BOX overrides the cell).
     if (!std::getenv("ATV_RUN_PADE"))
         GTEST_SKIP() << "PADE-path over-imaging / pre-existing offset; see gpw-periodic-lattice-sum";
-    const auto basis = parse_gth_basis(kData + "/BASIS_SET", "H", "DZV-GTH-PADE");
-    const auto pot = parse_gth_potential(kData + "/POTENTIAL", "H", "GTH-PADE-q1");
+    const auto basis = builtin_gth_basis("H", "DZV-GTH-PADE");
+    const auto pot = builtin_gth_potential("H", "GTH-PADE-q1");
 
     // CP2K H2.inp geometry, in the 8x4x4 box (place the molecule away from the
     // origin so it does not straddle the periodic boundary).

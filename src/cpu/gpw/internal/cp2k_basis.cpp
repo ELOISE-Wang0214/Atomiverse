@@ -45,7 +45,11 @@ GaussianBasis parse_gth_basis(const std::string& path, const std::string& elemen
                               const std::string& name) {
     std::ifstream in(path);
     if (!in) fail("cannot open file '" + path + "'");
+    return parse_gth_basis(in, element, name);
+}
 
+GaussianBasis parse_gth_basis(std::istream& in, const std::string& element,
+                              const std::string& name) {
     std::string line;
     // Locate the header: first token == element AND `name` among the alias
     // tokens. Data lines start with a number, so they never match an element.
@@ -61,7 +65,7 @@ GaussianBasis parse_gth_basis(const std::string& path, const std::string& elemen
         }
         if (found) break;
     }
-    if (!found) fail("no entry for element '" + element + "' name '" + name + "' in " + path);
+    if (!found) fail("no entry for element '" + element + "' name '" + name + "'");
 
     GaussianBasis basis;
     basis.element = element;

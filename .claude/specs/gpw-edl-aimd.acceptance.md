@@ -34,7 +34,7 @@ criteria:
       to the digits printed there, with a provenance comment naming the source.
       Projector counts are derived from the table, not hardcoded at the call
       site. An unsupported element or channel THROWS (no fallback value).
-    status: pending
+    status: verified
     note: |
       REPLACES the original ac-003, which asserted the counts were "read from the
       CP2K GTH_POTENTIALS entry". Reading a third-party data file at test time is
@@ -49,7 +49,7 @@ criteria:
       BASIS_MOLOPT as a path to read. A grep gate over tests/ + src/ + include/
       finds no third-party package path. The full GPW suite configures, builds and
       passes with NO external data directory present anywhere on the machine.
-    status: pending
+    status: verified
     note: |
       This is the refactor's binding acceptance signal. Before it, 14 of the GPW
       tests (forces, evaluator, aimd, geoopt, diis, heavy_elements + all parity)
@@ -65,12 +65,26 @@ criteria:
       component-wise to <= 5e-5 Ha/Bohr on H2 AND on ZnO (which exercises the l=2
       d-projector derivative, the l=3 f-basis derivative and the GGA grid term),
       running on the in-tree data tables.
-    status: pending
+    status: verified
     note: |
-      Was `verified` (H2 2e-6, ZnO 2.7e-5 Ha/Bohr) — but that run read CP2K's data
-      files. Reset to pending: it must be re-proven on the in-tree tables, which is
-      also the sharpest check that those tables are transcribed correctly. This is
-      the reference-free correctness gate for forces and needs no external engine.
+      VERIFIED 2026-07-11 on the in-tree tables — and it earned its keep. Re-running
+      it exposed that the analytic forces had been BROKEN for 17 commits: H2 5.3e-3,
+      ZnO 0.534, periodic H2O 0.427 Ha/Bohr. The stale `verified` was 17 commits old
+      because the whole force test only ran behind the CP2K gate, i.e. never in CI.
+
+      Root cause (real bug, now fixed): the GPW perf campaign moved the GTH local
+      short-range PP onto the grid (V_eff), but the force assembly kept taking the
+      per-pair ANALYTIC dV_loc^SR — so it was differentiating a different functional
+      than the SCF converged. Fix: one shared kernel (internal/local_pp.{h,cpp}) —
+      V_eff carries V_loc^SR, the analytic per-pair term is dropped, and the missing
+      local-PP Hellmann-Feynman term is added. The hidden `ATV_GPW_ANALYTIC_LOC` env
+      switch became `GpwConfig.local_pp_on_grid`, read by energy AND force.
+
+      After the fix: H2 <1e-5, H2/PBE <1e-5, periodic H2O 6.8e-5 (gate 1e-3), ZnO
+      1.68e-5 (gate 5e-5). ZnO's residual is the ORACLE's own O(h^2) truncation, not
+      the analytic force: max|dF| = 1.68e-5 (h=5e-4) / 7.20e-5 (h=1e-3) / 2.93e-4
+      (h=2e-3) — a clean 4x per doubling, so the FD step was converged rather than
+      the tolerance loosened.
 
   - id: ac-006
     summary: Single-point energies match pinned literature/reference anchors
@@ -83,7 +97,7 @@ criteria:
       discretization residual). Anchors are hardcoded constants with a provenance
       comment — nothing is invoked at build or test time. E2E: benchmarks only,
       never ctest.
-    status: pending
+    status: verified
     note: |
       REPLACES the original ac-004 (CP2K single-point parity) AND the original
       ac-006 (CP2K force parity). The force-parity criterion is DELETED outright:
@@ -97,7 +111,7 @@ criteria:
       GPWEvaluator reports capabilities() including Capability::Force and populates
       frame forces via gpw_forces (analytic) with exactly one SCF + one gradient
       pass per launch (no 6N+1 re-solve), on the in-tree data tables.
-    status: pending
+    status: verified
     note: Was verified; reset with ac-005 — same reason (proven only on CP2K data).
 
   - id: ac-008
@@ -159,7 +173,7 @@ criteria:
       new in-tree data-table accessors each have @brief, @param (with eV/Å/fs units
       where applicable), and @return; the doc-coverage gate over the new/changed public
       headers passes.
-    status: pending
+    status: verified
 
   - id: ac-013
     summary: DFT-D3(BJ) energy and force (incl. CN-derivative) — reference-free FD gate
@@ -171,11 +185,28 @@ criteria:
       analytic force — INCLUDING the second-pass CN-derivative term — agrees with a
       central finite-difference force check component-wise within tolerance. Out of the
       AIMD launch critical path.
-    status: pending
+    status: verified
     note: |
       REPLACES the original ac-013, which required agreement with "CP2K's PBE-D3(BJ)
       numbers ... verified vs CP2K's dftd3.dat". The params are already in-tree and the
       FD check is what actually catches a missing CN-derivative term.
+
+  - id: ac-014
+    summary: GPW diagonalization SCF converges for ZnO (OT does; diag does not)
+    type: scientific
+    pass_when: |
+      benchmarks/qc/gpw/validation/val_gpw_ot passes: the ZnO diagonalization SCF
+      converges, so OT can be compared against it. Today it does NOT — it exhausts
+      max_iter=400 and parks ~3-4 mHa ABOVE the energy OT reaches in ~95 iterations
+      (diag -76.3972 vs OT -76.4012 Ha), and damping to mix=0.1 does not rescue it.
+      OT itself is sound (H2 OT-vs-diag agree to 2.6e-14; fixed-H ZnO to 4.4e-16;
+      the OT gradient matches FD to 7.5e-11) — the defect is in the diagonalization
+      SCF's convergence for a semicore, small-gap system, not in OT.
+    status: failed
+    note: |
+      Newly SURFACED by this refactor, not caused by it: this test was behind the
+      CP2K-data gate and had never run in CI. Recorded as a failure rather than
+      papered over — no tolerance or iteration count was bent to make it green.
 ---
 
 # Acceptance criteria — GPW EDL AIMD (refactored 2026-07-11)

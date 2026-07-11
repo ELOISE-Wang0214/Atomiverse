@@ -66,6 +66,23 @@ struct D3Params {
 /// @throw std::runtime_error if the file cannot be opened or is malformed.
 D3Params load_dftd3_params(const std::string& dftd3_dat_path);
 
+/// @brief D3 reference parameters from the in-tree tables (no file read).
+///
+/// Covers the elements GPW supports — {H, O, Na, Cl, Ar, Zn} — with the
+/// CN-resolved reference C6 records transcribed from the published D3 table
+/// (Grimme et al., JCP 132, 154104 (2010)). This is the default source: it needs
+/// no external data file at build or test time. Use `dftd3_supports_element` to
+/// check coverage before calling; an unsupported element yields no C6 record and
+/// the caller throws (no fallback value).
+///
+/// @return Parameter set (radii [Bohr], C6 [Hartree*Bohr^6]).
+D3Params builtin_dftd3_params();
+
+/// @brief Whether the in-tree D3 table covers atomic number `z`.
+/// @param z Atomic number.
+/// @return true iff `z` is one of the supported elements.
+bool dftd3_supports_element(int z);
+
 } // namespace gpw
 } // namespace cpu
 } // namespace ATV

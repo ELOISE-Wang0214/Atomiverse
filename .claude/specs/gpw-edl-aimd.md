@@ -133,11 +133,23 @@ M6：
 - [x] M2b GPW DIIS/Pulay（H2 49→5、ZnO 157→16 迭代）
 - [x] M3 解析 GPW 力（W 矩阵 + 五项分解），GPWEvaluator FD→解析
 - [x] M4 `cpu::md::FixCSVR`（Bussi α² 传播子 + H̃ 记账）
-- [ ] **M0 树内 GTH-PBE + DZVP-MOLOPT-SR-GTH 数据表（阻塞其余一切验证）**
-- [ ] **M0b 删 `ATV_CP2K_DATA_DIR` 门控；14 个测试按单元/e2e 归位**
-- [ ] M3b 解析力 FD oracle 在树内数据上重新绿（H2 + ZnO）
-- [ ] Doxygen（extxyz / gpw_forces / FixCSVR / 新数据表）
-- [ ] M5 `gth_matrix_element` 原子筛选 → 1214 原子单点可行
+- [x] M0 树内 GTH-PBE + DZVP-MOLOPT-SR-GTH + D3 数据表（`cpu/gpw/basis_data/`；
+      逐 token 对齐已发表参数表；未支持元素抛异常）
+- [x] M0b 删 `ATV_CP2K_DATA_DIR` 选项与门控；14 个测试按单元/e2e 归位
+      （4 个单元留 `tests/`，14 个 e2e 迁 `benchmarks/qc/gpw/validation/`）；
+      examples 09/10 也改走树内表。全树无第三方数据读取。
+- [x] **M3b 解析力 FD oracle 重新绿 —— 并揪出一个 17 个 commit 前就存在的真 bug**：
+      性能攻坚把局域赝势挪到格点，力却仍取逐对解析导数 → 在求一个和 SCF 收敛的
+      泛函不同的泛函的梯度（ZnO 0.534 Ha/Bohr）。修：共享内核
+      `internal/local_pp.{h,cpp}`（Veff 带 V_loc^SR + 补 HF 项 + 去掉重复解析项），
+      隐藏环境开关 `ATV_GPW_ANALYTIC_LOC` 升为 `GpwConfig.local_pp_on_grid`。
+      修后 H2 <1e-5、周期 H2O 6.8e-5、ZnO 1.7e-5（残差是 FD oracle 自身的 O(h²)
+      截断，实测 4×/倍步长）。
+- [x] Doxygen（extxyz / gpw_forces / FixCSVR / 新数据表 / local_pp）
+- [ ] **M5 `gth_matrix_element` 原子筛选 → 1214 原子单点可行**（阻塞收官）
+- [ ] **ZnO 对角化 SCF 不收敛**（ac-014）：400 步撞上限，且比 OT 的能量高 ~4 mHa；
+      mix=0.1 无效。OT 本身正常（H2 对角化一致到 2.6e-14）。这是新暴露的既有缺陷 ——
+      该测试此前挂在 CP2K 门控后，从未在 CI 跑过。
 - [ ] M5b EDL 收官：`final_frame.xyz` + GPW-CSVR NVT 短轨迹（能量守恒 + 无漂移诊断）
 - [ ] M5c 全系统 wall-time / 峰值内存画像（benchmarks）
 - [ ] M6 D3(BJ) CN 导数力项 + FD 自检

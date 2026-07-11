@@ -18,6 +18,7 @@
 #pragma once
 
 #include <cstddef>
+#include <istream>
 #include <string>
 #include <vector>
 
@@ -70,6 +71,19 @@ struct GaussianBasis {
 /// @param name    Basis name/alias (e.g. "DZVP-GTH-PADE", "DZVP-MOLOPT-GTH").
 /// @return Parsed GaussianBasis.
 GaussianBasis parse_gth_basis(const std::string& path, const std::string& element,
+                              const std::string& name);
+
+/// @brief Parse one Gaussian basis entry from an already-open stream.
+///
+/// Same grammar and matching rules as the path overload. Used by the in-tree
+/// data tables (`cpu/gpw/basis_data/gpw_data.h`), which hold the entries as
+/// embedded text and therefore never touch the filesystem.
+///
+/// @param in      Stream positioned at the start of the data.
+/// @param element Chemical symbol (e.g. "Ar", "O", "H").
+/// @param name    Basis name/alias (e.g. "DZVP-MOLOPT-SR-GTH").
+/// @return Parsed GaussianBasis.
+GaussianBasis parse_gth_basis(std::istream& in, const std::string& element,
                               const std::string& name);
 
 } // namespace gpw

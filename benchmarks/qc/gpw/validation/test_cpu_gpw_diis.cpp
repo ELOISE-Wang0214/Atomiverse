@@ -18,26 +18,26 @@
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/internal/cp2k_basis.h"
 #include "atomiverse/cpu/gpw/internal/cp2k_io.h"
+#include "atomiverse/cpu/gpw/basis_data/gpw_data.h"
 
 using ATV::cpu::gpw::GpwAtom;
 using ATV::cpu::gpw::GpwConfig;
 using ATV::cpu::gpw::GpwResult;
 using ATV::cpu::gpw::gpw_scf;
 using ATV::cpu::gpw::make_gpw_atom;
-using ATV::cpu::gpw::parse_gth_basis;
-using ATV::cpu::gpw::parse_gth_potential;
+using ATV::cpu::gpw::builtin_gth_basis;
+using ATV::cpu::gpw::builtin_gth_potential;
 using ATV::cpu::gpw::XcKind;
 
 namespace {
-const std::string kData = ATV_CP2K_DATA_DIR;
 constexpr double kAng = 1.8897259885789; // Angstrom -> Bohr
 } // namespace
 
 // DIIS must reach the SAME self-consistent energy as linear mixing, in no more
 // iterations. Cheap H2 (2 electrons) so both paths are fast.
 TEST(GpwDiis, MatchesLinearMixingOnH2) {
-    const auto basis = parse_gth_basis(kData + "/BASIS_SET", "H", "DZV-GTH-PADE");
-    const auto pot = parse_gth_potential(kData + "/POTENTIAL", "H", "GTH-PADE-q1");
+    const auto basis = builtin_gth_basis("H", "DZV-GTH-PADE");
+    const auto pot = builtin_gth_potential("H", "GTH-PADE-q1");
     const double rA[3] = {3.5, 2.0, 2.0};
     const double rB[3] = {4.5, 2.0, 2.0};
     std::vector<GpwAtom> atoms = {make_gpw_atom(rA, basis, pot),
@@ -78,13 +78,13 @@ TEST(GpwDiis, MatchesLinearMixingOnH2) {
 // CP2K energy. (ZnO diatomic, identical geometry to test_cpu_gpw_zno_cp2k.)
 TEST(GpwDiis, ZnOSemicoreConvergesFast) {
     const auto basis_Zn =
-        parse_gth_basis(kData + "/BASIS_MOLOPT", "Zn", "DZVP-MOLOPT-SR-GTH");
+        builtin_gth_basis("Zn", "DZVP-MOLOPT-SR-GTH");
     const auto basis_O =
-        parse_gth_basis(kData + "/BASIS_MOLOPT", "O", "DZVP-MOLOPT-SR-GTH");
+        builtin_gth_basis("O", "DZVP-MOLOPT-SR-GTH");
     const auto pot_Zn =
-        parse_gth_potential(kData + "/GTH_POTENTIALS", "Zn", "GTH-PBE-q12");
+        builtin_gth_potential("Zn", "GTH-PBE-q12");
     const auto pot_O =
-        parse_gth_potential(kData + "/GTH_POTENTIALS", "O", "GTH-PBE-q6");
+        builtin_gth_potential("O", "GTH-PBE-q6");
 
     const double Zn[3] = {4.0 * kAng, 4.0 * kAng, 4.0 * kAng};
     const double O[3] = {4.0 * kAng, 4.0 * kAng, 5.72 * kAng};

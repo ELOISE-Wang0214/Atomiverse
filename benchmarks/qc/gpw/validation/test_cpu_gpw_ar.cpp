@@ -20,17 +20,17 @@
 #include "atomiverse/cpu/gpw/gpw_solver.h"
 #include "atomiverse/cpu/gpw/internal/cp2k_basis.h"
 #include "atomiverse/cpu/gpw/internal/cp2k_io.h"
+#include "atomiverse/cpu/gpw/basis_data/gpw_data.h"
 
 using ATV::cpu::gpw::GpwAtom;
 using ATV::cpu::gpw::GpwConfig;
 using ATV::cpu::gpw::GpwResult;
 using ATV::cpu::gpw::gpw_scf;
 using ATV::cpu::gpw::make_gpw_atom;
-using ATV::cpu::gpw::parse_gth_basis;
-using ATV::cpu::gpw::parse_gth_potential;
+using ATV::cpu::gpw::builtin_gth_basis;
+using ATV::cpu::gpw::builtin_gth_potential;
 
 namespace {
-const std::string kData = ATV_CP2K_DATA_DIR;
 } // namespace
 
 TEST(GpwArCP2K, NonlocalAndDConverges) {
@@ -41,8 +41,8 @@ TEST(GpwArCP2K, NonlocalAndDConverges) {
     // Set ATV_RUN_PADE=1 to run for investigation.
     if (!std::getenv("ATV_RUN_PADE"))
         GTEST_SKIP() << "PADE-path over-imaging / pre-existing offset; see gpw-periodic-lattice-sum";
-    const auto basis = parse_gth_basis(kData + "/BASIS_SET", "Ar", "DZVP-GTH-PADE");
-    const auto pot = parse_gth_potential(kData + "/POTENTIAL", "Ar", "GTH-PADE-q8");
+    const auto basis = builtin_gth_basis("Ar", "DZVP-GTH-PADE");
+    const auto pot = builtin_gth_potential("Ar", "GTH-PADE-q8");
 
     const double pos[3] = {3.0, 3.0, 3.0}; // box center (translation-invariant)
     std::vector<GpwAtom> atoms = {make_gpw_atom(pos, basis, pot)};

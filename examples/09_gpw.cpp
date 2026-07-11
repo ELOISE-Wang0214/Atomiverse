@@ -18,8 +18,8 @@
 ///                  -DATV_BUILD_EXAMPLES=ON                 # needs FFTW3
 ///   cmake --build build --target 09_gpw
 ///
-/// Run (point at a CP2K data/ directory with BASIS_MOLOPT + GTH_POTENTIALS):
-///   ./build/examples/09_gpw /path/to/cp2k/data
+/// Run (no external data needed — the GTH/MOLOPT tables are in-tree):
+///   ./build/examples/09_gpw
 ///
 /// CP2K reference total energy for this input: -17.21233714 Hartree.
 
@@ -32,8 +32,7 @@
 #include "atomiverse/cpu/driver/single_point.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_basis.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_io.h"
+#include "atomiverse/cpu/gpw/basis_data/gpw_data.h"
 
 using namespace ATV;
 
@@ -58,20 +57,17 @@ cpu::Frame make_water() {
 
 } // namespace
 
-int main(int argc, char** argv) {
-    const std::string data = argc > 1 ? argv[1]
-                                      : "/nobackup/proj/disk/teoroo/personal/"
-                                        "jicli594/work/cp2k/data";
+int main() {
 
     cpu::Frame frame = make_water();
 
     cpu::gpw::GpwElement O, H;
     O.z = 8;
-    O.basis = cpu::gpw::parse_gth_basis(data + "/BASIS_MOLOPT", "O", "DZVP-MOLOPT-GTH");
-    O.pot = cpu::gpw::parse_gth_potential(data + "/GTH_POTENTIALS", "O", "GTH-PBE-q6");
+    O.basis = cpu::gpw::builtin_gth_basis("O", "DZVP-MOLOPT-GTH");
+    O.pot = cpu::gpw::builtin_gth_potential("O", "GTH-PBE-q6");
     H.z = 1;
-    H.basis = cpu::gpw::parse_gth_basis(data + "/BASIS_MOLOPT", "H", "DZVP-MOLOPT-GTH");
-    H.pot = cpu::gpw::parse_gth_potential(data + "/GTH_POTENTIALS", "H", "GTH-PBE-q1");
+    H.basis = cpu::gpw::builtin_gth_basis("H", "DZVP-MOLOPT-GTH");
+    H.pot = cpu::gpw::builtin_gth_potential("H", "GTH-PBE-q1");
 
     cpu::gpw::GpwEvaluatorConfig cfg;
     cfg.cutoff_ry = 400.0;

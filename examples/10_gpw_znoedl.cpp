@@ -22,9 +22,9 @@
 ///                  -DATV_BUILD_EXAMPLES=ON
 ///   cmake --build build --target 10_gpw_znoedl
 ///
-/// Run (args: [data_dir] [cutoff_ry] [z_lo z_hi] — the optional z-window in Å
+/// Run (args: [cutoff_ry] [z_lo z_hi] — the optional z-window in Å
 /// cuts a slab fragment for scaling studies; default = all 1214 atoms):
-///   ./build/examples/10_gpw_znoedl /path/to/cp2k/data 280
+///   ./build/examples/10_gpw_znoedl 280
 
 #include <chrono>
 #include <cmath>
@@ -37,8 +37,7 @@
 #include "atomiverse/cpu/driver/single_point.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/gpw/gpw_evaluator.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_basis.h"
-#include "atomiverse/cpu/gpw/internal/cp2k_io.h"
+#include "atomiverse/cpu/gpw/basis_data/gpw_data.h"
 #include "atomiverse/cpu/io/extxyz.h"
 
 using namespace ATV;
@@ -67,26 +66,22 @@ cpu::Frame z_slab(const cpu::Frame& src, double z_lo, double z_hi) {
 }
 
 /// @brief One GpwElement (Z, DZVP-MOLOPT-SR-GTH basis, GTH-PBE-q* potential).
-cpu::gpw::GpwElement element(const std::string& data, int z, const char* sym,
-                             const char* pot) {
+cpu::gpw::GpwElement element(int z, const char* sym, const char* pot) {
     cpu::gpw::GpwElement e;
     e.z = z;
-    e.basis = cpu::gpw::parse_gth_basis(data + "/BASIS_MOLOPT", sym,
-                                        "DZVP-MOLOPT-SR-GTH");
-    e.pot = cpu::gpw::parse_gth_potential(data + "/GTH_POTENTIALS", sym, pot);
+    e.basis = cpu::gpw::builtin_gth_basis(sym, "DZVP-MOLOPT-SR-GTH");
+    e.pot = cpu::gpw::builtin_gth_potential(sym, pot);
     return e;
 }
 
 } // namespace
 
 int main(int argc, char** argv) {
-    const std::string data =
-        argc > 1 ? argv[1]
-                 : "/nobackup/proj/disk/teoroo/personal/jicli594/work/cp2k/data";
-    const double cutoff = argc > 2 ? std::atof(argv[2]) : 280.0;
+    // No data-directory argument: the GTH/MOLOPT tables are in-tree.
+    const double cutoff = argc > 1 ? std::atof(argv[1]) : 280.0;
 
     cpu::Frame frame = cpu::load_extxyz(kDefaultFrame);
-    if (argc > 4) frame = z_slab(frame, std::atof(argv[3]), std::atof(argv[4]));
+    if (argc > 3) frame = z_slab(frame, std::atof(argv[2]), std::atof(argv[3]));
 
     std::cout << "ZnO-EDL GPW single point\n"
               << "  atoms   : " << frame.atoms.size() << "\n"
@@ -102,9 +97,9 @@ int main(int argc, char** argv) {
     cfg.max_iter = 100;
     cfg.tol = 1e-6;
     cfg.elements = {
-        element(data, 30, "Zn", "GTH-PBE-q12"), element(data, 8, "O", "GTH-PBE-q6"),
-        element(data, 1, "H", "GTH-PBE-q1"),    element(data, 11, "Na", "GTH-PBE-q9"),
-        element(data, 17, "Cl", "GTH-PBE-q7"),
+        element(30, "Zn", "GTH-PBE-q12"), element(8, "O", "GTH-PBE-q6"),
+        element(1, "H", "GTH-PBE-q1"),    element(11, "Na", "GTH-PBE-q9"),
+        element(17, "Cl", "GTH-PBE-q7"),
     };
 
     cpu::gpw::GPWEvaluator eval(cfg);
