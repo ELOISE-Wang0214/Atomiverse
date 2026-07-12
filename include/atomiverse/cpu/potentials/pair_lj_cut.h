@@ -15,6 +15,18 @@
 namespace ATV {
 namespace cpu {
 
+/// @brief One Lennard-Jones coefficient entry: the (i,j) type pair and its parameters.
+///
+/// The unit of configuration for a multi-element system. A `PairLJCut` is constructed
+/// from a list of these, so the object is fully specified the moment it exists — there
+/// is no half-built state in which it is constructible but not usable.
+struct LJTypeCoeff {
+    int type_i;      ///< first atom type (the frame's `atoms.type[i]` value)
+    int type_j;      ///< second atom type
+    double epsilon;  ///< well depth [eV]
+    double sigma;    ///< length scale [Angstrom]
+};
+
 /// @brief Lennard-Jones 12-6 with shifted potential.
 ///
 /// V(r) = 4ε[(σ/r)¹² − (σ/r)⁶] − V_shift
@@ -37,56 +49,57 @@ class PairLJCut : public Pair {
     /// @param cutoff  Cutoff distance [Å].
     PairLJCut(double epsilon, double sigma, double cutoff);
 
-    /// @brief Per-type mode: the coefficients come from `set_type_coeffs`.
+    /// @brief Per-type constructor: one Lennard-Jones system, fully specified.
     ///
-    /// Use this constructor when the system has more than one element. It takes NO
-    /// epsilon/sigma, because there is no such thing as a system-wide one — supplying
-    /// dummy values that the type table then overrides would be a fallback value, and
-    /// this engine does not have those. `build()` throws if no coefficients were set.
+    /// Use this whenever the system has more than one element. The coefficient table is
+    /// an argument, not something you attach afterwards, so the object is complete the
+    /// moment it is constructed — symmetric with the single-type constructor above, and
+    /// with no state in which a `PairLJCut` exists but cannot be used.
+    ///
+    /// It takes NO system-wide epsilon/sigma, because there is no such thing in a
+    /// multi-element system. Supplying dummy values for the table to override would be
+    /// a fallback value, and this engine does not have those.
+    ///
+    /// Entries you do NOT give are filled by **Lorentz-Berthelot** mixing from the
+    /// diagonal (arithmetic mean of sigma, geometric mean of epsilon), so listing the
+    /// like-pairs is usually enough. An explicit (i,j) entry overrides the mixed value.
+    /// A type with **no diagonal to mix from has no LJ site**: every pair involving it
+    /// gets epsilon = 0 and does not interact. That is deliberate — TIP3P's hydrogens
+    /// have no LJ site, and falling back to some other sigma would silently reintroduce
+    /// the bug this exists to fix.
     ///
     /// @code
     ///   // TIP3P: the LJ site is on oxygen only.
-    ///   sim.set_pair(cpu::PairLJCut{cutoff}
-    ///                    .set_type_coeffs(8, 8, eps_OO, sigma_OO));
-    ///   // Hydrogen has no diagonal, so (H,H) and (O,H) mix to eps = 0 and never
-    ///   // interact — which is exactly right, and is checked, not assumed.
+    ///   sim.set_pair(cpu::PairLJCut{{{8, 8, eps_OO, sigma_OO}}, cutoff});
+    ///
+    ///   // Cu-Ni alloy: give the like-pairs, let Lorentz-Berthelot mix the rest.
+    ///   sim.set_pair(cpu::PairLJCut{{{29, 29, eps_Cu, sig_Cu},
+    ///                               {28, 28, eps_Ni, sig_Ni}}, cutoff});
     /// @endcode
     ///
+    /// **Performance.** The single-type constructor keeps the hoisted xsimd ket loop —
+    /// the kernel benchmarked against LAMMPS. Per-type coefficients cannot hoist out of
+    /// the inner loop, so this constructor selects a SCALAR path. Correct, not fast;
+    /// vectorizing it needs a SIMD gather over the table, which nobody has needed yet.
+    ///
+    /// @param coeffs Type-pair coefficients; must not be empty.
     /// @param cutoff Interaction cutoff [Angstrom].
-    explicit PairLJCut(double cutoff);
+    /// @throws std::invalid_argument if `coeffs` is empty or a sigma/cutoff is <= 0.
+    PairLJCut(std::vector<LJTypeCoeff> coeffs, double cutoff);
 
-    /// @brief Set the LJ coefficients for one type pair (LAMMPS `pair_coeff i j`).
+    /// @brief Change ONE entry of the coefficient table after construction.
     ///
-    /// Without this, `PairLJCut` applies ONE epsilon/sigma to every atom in the system.
-    /// That is fine for argon and useless for anything with more than one element: in
-    /// TIP3P the Lennard-Jones site sits on oxygen only, so a single-sigma run forces
-    /// the hydrogens to wear the oxygen's sigma = 3.15 A, and at liquid density
-    /// neighbouring waters overlap so violently that no constraint solver can hold a
-    /// molecule together. (That is not a hypothetical either — it is why
-    /// regressions/md/rigid_water has to run dilute.)
-    ///
-    /// Types are the frame's `atoms.type[i]` values. Calling this at all switches the
-    /// component to the per-type table; the off-diagonal entries you do not set are
-    /// filled by **Lorentz-Berthelot** mixing from the diagonal:
-    ///
-    ///     sigma_ij = (sigma_ii + sigma_jj) / 2       eps_ij = sqrt(eps_ii * eps_jj)
-    ///
-    /// so setting only the like-pairs (i,i) is usually enough. An explicit (i,j) call
-    /// overrides the mixed value.
-    ///
-    /// **Performance note.** The single-epsilon path keeps the hoisted xsimd ket loop —
-    /// that is the kernel benchmarked against LAMMPS, and it is untouched. A per-type
-    /// table cannot hoist its coefficients out of the inner loop, so the multi-type
-    /// path is SCALAR. It is correct and it is not fast; vectorizing it needs a SIMD
-    /// gather over the coefficient table, which nobody has needed yet.
+    /// A mutator, not a builder step: the table already exists, this edits a cell of it.
+    /// Adding a type pair the constructor did not mention is allowed (the table grows),
+    /// which is what makes it useful for a parameter scan.
     ///
     /// @param type_i First atom type.
     /// @param type_j Second atom type.
     /// @param epsilon Well depth [eV].
     /// @param sigma Length scale [Angstrom].
-    PairLJCut& set_type_coeffs(int type_i, int type_j, double epsilon, double sigma) &;
-    PairLJCut set_type_coeffs(int type_i, int type_j, double epsilon,
-                              double sigma) &&;
+    /// @throws std::logic_error if this PairLJCut is single-type (there is no table).
+    PairLJCut& set_type_coeff(int type_i, int type_j, double epsilon, double sigma) &;
+    PairLJCut set_type_coeff(int type_i, int type_j, double epsilon, double sigma) &&;
 
     /// @brief True when a per-type coefficient table is active (scalar path).
     bool is_multi_type() const { return n_types_ > 0; }

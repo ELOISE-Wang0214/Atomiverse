@@ -41,23 +41,73 @@ PairLJCut::PairLJCut(double epsilon, double sigma, double cutoff)
     v_shift_ = double(4) * epsilon_ * (r6inv * r6inv - r6inv);
 }
 
-PairLJCut::PairLJCut(double cutoff)
+PairLJCut::PairLJCut(std::vector<LJTypeCoeff> coeffs, double cutoff)
     : Pair(static_cast<Real>(cutoff)), epsilon_(0.0), sigma_(0.0) {
     if (cutoff <= 0.0)
         throw std::invalid_argument("PairLJCut: cutoff must be positive");
-    // Per-type mode. epsilon_/sigma_ are never read — finalize_type_table_ fills every
-    // coefficient from the table, and build() throws if the table is empty. The point
-    // of this constructor is that there is nothing sensible to put in them.
-    //
-    // But the cutoff-derived caches ARE read, by the hot loop, and a constructor's job
-    // is to establish EVERY invariant of the object — not the ones it happens to care
-    // about. Forgetting cutoff_sq_ here left it at zero, so `r2 >= rc_sq` was true for
-    // every pair and the kernel silently computed nothing at all: every energy came
-    // back as 0.0.
+    if (coeffs.empty())
+        throw std::invalid_argument(
+            "PairLJCut: the per-type constructor needs at least one coefficient. There "
+            "is no system-wide epsilon/sigma to fall back on, deliberately.");
+
+    // epsilon_/sigma_ are never read on this path — every coefficient comes from the
+    // table. But the cutoff-derived caches ARE read by the hot loop, and a constructor
+    // establishes EVERY invariant of the object, not just the ones it is thinking
+    // about. (Leaving cutoff_sq_ at zero made `r2 >= rc_sq` true for every pair, so the
+    // kernel silently computed nothing and every energy came back exactly 0.0.)
     sigma6_ = 0.0;
     v_shift_ = 0.0;
     cutoff_sq_ = cutoff * cutoff;
     per_type_mode_ = true;
+
+    for (const LJTypeCoeff& c : coeffs)
+        set_type_coeff(c.type_i, c.type_j, c.epsilon, c.sigma);
+}
+
+PairLJCut& PairLJCut::set_type_coeff(int type_i, int type_j, double epsilon,
+                                     double sigma) & {
+    if (!per_type_mode_)
+        throw std::logic_error(
+            "PairLJCut::set_type_coeff: this PairLJCut was built with a single "
+            "epsilon/sigma and has no type table. Construct it from a coefficient list "
+            "instead.");
+    if (type_i < 0 || type_j < 0)
+        throw std::invalid_argument("PairLJCut::set_type_coeff: types must be >= 0");
+    if (sigma <= 0.0)
+        throw std::invalid_argument("PairLJCut::set_type_coeff: sigma must be > 0");
+
+    const int need = std::max(type_i, type_j) + 1;
+    if (need > n_types_) {
+        // Grow the square tables, preserving what is already set.
+        std::vector<double> e(static_cast<std::size_t>(need) * need, 0.0);
+        std::vector<double> s(static_cast<std::size_t>(need) * need, 0.0);
+        std::vector<char> f(static_cast<std::size_t>(need) * need, 0);
+        for (int a = 0; a < n_types_; ++a)
+            for (int b = 0; b < n_types_; ++b) {
+                const std::size_t old = static_cast<std::size_t>(a) * n_types_ + b;
+                const std::size_t nw = static_cast<std::size_t>(a) * need + b;
+                e[nw] = eps_tab_[old];
+                s[nw] = sigma_tab_[old];
+                f[nw] = set_tab_[old];
+            }
+        eps_tab_.swap(e);
+        sigma_tab_.swap(s);
+        set_tab_.swap(f);
+        n_types_ = need;
+    }
+
+    const std::size_t ij = static_cast<std::size_t>(type_i) * n_types_ + type_j;
+    const std::size_t ji = static_cast<std::size_t>(type_j) * n_types_ + type_i;
+    eps_tab_[ij] = eps_tab_[ji] = epsilon;
+    sigma_tab_[ij] = sigma_tab_[ji] = sigma;
+    set_tab_[ij] = set_tab_[ji] = 1;
+    return *this;
+}
+
+PairLJCut PairLJCut::set_type_coeff(int type_i, int type_j, double epsilon,
+                                    double sigma) && {
+    set_type_coeff(type_i, type_j, epsilon, sigma);
+    return std::move(*this);
 }
 
 PairLJCut& PairLJCut::set_special_bonds(double s12, double s13, double s14) & {
@@ -85,11 +135,9 @@ PairLJCut PairLJCut::set_compute_stress(bool on) && {
 }
 
 void PairLJCut::build(const BuildContext& ctx) {
-    if (per_type_mode_ && n_types_ == 0)
-        throw std::runtime_error(
-            "PairLJCut: constructed in per-type mode but no coefficients were set. "
-            "Call set_type_coeffs(i, j, epsilon, sigma) at least once — there is no "
-            "system-wide epsilon/sigma to fall back on, deliberately.");
+    // No "did you remember to set coefficients?" check is needed: the per-type
+    // constructor refuses an empty list, so a PairLJCut cannot exist in that state.
+    // That is the point of moving the table into the constructor.
     finalize_type_table_();
     n_threads_ = 1;
 #ifdef _OPENMP
@@ -260,47 +308,6 @@ inline void lorentz_berthelot(double eii, double sii, double ejj, double sjj,
     sij = 0.5 * (sii + sjj);
 }
 } // namespace
-
-PairLJCut& PairLJCut::set_type_coeffs(int type_i, int type_j, double epsilon,
-                                      double sigma) & {
-    if (type_i < 0 || type_j < 0)
-        throw std::invalid_argument("PairLJCut::set_type_coeffs: types must be >= 0");
-    if (sigma <= 0.0)
-        throw std::invalid_argument("PairLJCut::set_type_coeffs: sigma must be > 0");
-
-    const int need = std::max(type_i, type_j) + 1;
-    if (need > n_types_) {
-        // Grow the (square) tables, preserving what is already set.
-        std::vector<double> e(static_cast<std::size_t>(need) * need, 0.0);
-        std::vector<double> s(static_cast<std::size_t>(need) * need, 0.0);
-        std::vector<char> f(static_cast<std::size_t>(need) * need, 0);
-        for (int a = 0; a < n_types_; ++a)
-            for (int b = 0; b < n_types_; ++b) {
-                const std::size_t old = static_cast<std::size_t>(a) * n_types_ + b;
-                const std::size_t nw = static_cast<std::size_t>(a) * need + b;
-                e[nw] = eps_tab_[old];
-                s[nw] = sigma_tab_[old];
-                f[nw] = set_tab_[old];
-            }
-        eps_tab_.swap(e);
-        sigma_tab_.swap(s);
-        set_tab_.swap(f);
-        n_types_ = need;
-    }
-
-    const std::size_t ij = static_cast<std::size_t>(type_i) * n_types_ + type_j;
-    const std::size_t ji = static_cast<std::size_t>(type_j) * n_types_ + type_i;
-    eps_tab_[ij] = eps_tab_[ji] = epsilon;
-    sigma_tab_[ij] = sigma_tab_[ji] = sigma;
-    set_tab_[ij] = set_tab_[ji] = 1;
-    return *this;
-}
-
-PairLJCut PairLJCut::set_type_coeffs(int type_i, int type_j, double epsilon,
-                                     double sigma) && {
-    set_type_coeffs(type_i, type_j, epsilon, sigma);
-    return std::move(*this);
-}
 
 /// Fill the off-diagonal from the diagonal by Lorentz-Berthelot, and precompute
 /// sigma^6 and the per-pair energy shift. Called once, from build().

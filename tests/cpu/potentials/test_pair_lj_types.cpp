@@ -62,8 +62,7 @@ TEST(PairLJTypes, SingleTypeTableMatchesTheScalarPath) {
     const double e_plain = energy_of(f1, cpu::PairLJCut{eps, sigma, rc}, rc);
 
     cpu::Frame f2 = dimer(0, 0, r);
-    const double e_table = energy_of(
-        f2, cpu::PairLJCut{eps, sigma, rc}.set_type_coeffs(0, 0, eps, sigma), rc);
+    const double e_table = energy_of(f2, cpu::PairLJCut{{{0, 0, eps, sigma}}, rc}, rc);
 
     EXPECT_NEAR(e_plain, lj_ref(eps, sigma, r, rc), 1e-12);
     EXPECT_NEAR(e_table, e_plain, 1e-12)
@@ -77,10 +76,9 @@ TEST(PairLJTypes, UnlikePairsMixByLorentzBerthelot) {
     const double rc = 9.0, r = 4.2;
 
     // Only the like-pairs are given; the (0,1) entry must be mixed.
+    // Both like-pairs given at construction; the (0,1) entry must be mixed.
     auto make = [&]() {
-        return cpu::PairLJCut{rc}
-            .set_type_coeffs(0, 0, e1, s1)
-            .set_type_coeffs(1, 1, e2, s2);
+        return cpu::PairLJCut{{{0, 0, e1, s1}, {1, 1, e2, s2}}, rc};
     };
 
     cpu::Frame f = dimer(0, 1, r);
@@ -100,10 +98,10 @@ TEST(PairLJTypes, UnlikePairsMixByLorentzBerthelot) {
 /// An explicit off-diagonal overrides the mixed value.
 TEST(PairLJTypes, ExplicitCrossTermOverridesMixing) {
     const double rc = 9.0, r = 4.2;
-    auto pair = cpu::PairLJCut{rc}
-                    .set_type_coeffs(0, 0, 0.1, 3.0)
-                    .set_type_coeffs(1, 1, 0.4, 4.0)
-                    .set_type_coeffs(0, 1, 0.9, 5.0); // nothing like the mix
+    auto pair = cpu::PairLJCut{{{0, 0, 0.1, 3.0},
+                               {1, 1, 0.4, 4.0},
+                               {0, 1, 0.9, 5.0}}, // nothing like the mix
+                              rc};
 
     cpu::Frame f = dimer(0, 1, r);
     EXPECT_NEAR(energy_of(f, pair, rc), lj_ref(0.9, 5.0, r, rc), 1e-12);
@@ -118,7 +116,7 @@ TEST(PairLJTypes, TypeWithoutAnLJSiteDoesNotInteract) {
     const double rc = 9.0;
     // Type 8 = O carries the LJ site; type 1 = H has none.
     // Per-type mode: there IS no system-wide sigma to leak into the hydrogens.
-    auto pair = cpu::PairLJCut{rc}.set_type_coeffs(8, 8, 0.1521 * 0.04336, 3.1507);
+    auto pair = cpu::PairLJCut{{{8, 8, 0.1521 * 0.04336, 3.1507}}, rc};
 
     // H-H at 0.96 A — an intramolecular distance. Under the old single-sigma design
     // the hydrogens wore the oxygen's sigma = 3.15 A and this pair was a catastrophic
@@ -138,14 +136,26 @@ TEST(PairLJTypes, TypeWithoutAnLJSiteDoesNotInteract) {
     EXPECT_LT(energy_of(oo, pair, rc), 0.0) << "O-O should be bound at 3.5 A";
 }
 
-/// The cutoff-only constructor demands coefficients — it does not invent them.
-TEST(PairLJTypes, PerTypeModeThrowsIfNoCoefficientsWereSet) {
-    cpu::Frame f = dimer(0, 0, 4.0);
-    cpu::Evaluate eval;
-    eval.set_neighbor(cpu::md::NeighborList<>{8.0, 0.3, 1, 0, true});
-    eval.set_pair(cpu::PairLJCut{8.0}); // no set_type_coeffs call
-    eval.build();
-    // Component build() runs at setup_pass, i.e. inside run() — that is where the
-    // missing coefficients are caught.
-    EXPECT_THROW(eval.run(f), std::runtime_error);
+/// The per-type constructor refuses an empty table: a PairLJCut cannot EXIST in a
+/// state where it has no coefficients. That is why the table is a constructor argument
+/// and not something you attach afterwards.
+TEST(PairLJTypes, PerTypeConstructorRefusesAnEmptyTable) {
+    EXPECT_THROW(cpu::PairLJCut(std::vector<cpu::LJTypeCoeff>{}, 8.0),
+                 std::invalid_argument);
+}
+
+/// set_type_coeff edits ONE cell of an existing table — a mutator, not a builder step.
+TEST(PairLJTypes, SetTypeCoeffEditsOneEntry) {
+    const double rc = 9.0, r = 4.2;
+    auto pair = cpu::PairLJCut{{{0, 0, 0.1, 3.0}}, rc};
+    pair.set_type_coeff(0, 0, 0.7, 3.6); // overwrite it
+
+    cpu::Frame f = dimer(0, 0, r);
+    EXPECT_NEAR(energy_of(f, pair, rc), lj_ref(0.7, 3.6, r, rc), 1e-12);
+}
+
+/// A single-type PairLJCut has no table, and says so rather than growing one silently.
+TEST(PairLJTypes, SetTypeCoeffThrowsOnASingleTypePair) {
+    cpu::PairLJCut pair{0.0104, 3.4, 8.5};
+    EXPECT_THROW(pair.set_type_coeff(0, 0, 0.1, 3.0), std::logic_error);
 }
