@@ -7,7 +7,6 @@ case under `regressions/`.
 
 | slug | status | summary |
 |---|---|---|
-| [regressions-harness](regressions-harness.md) | approved | `regressions/` — out-of-library textbook e2e vs the literature; **gate for all four probes** |
 | [manybody-potentials](manybody-potentials.md) | approved | Probe 1 (Component/Neighbor): EAM + SW. Wires up the dead `refresh_full`; first production user of `CommField` |
 | [md-constraints](md-constraints.md) | approved | Probe 2 (Phase/Tagging): SETTLE + RATTLE. Closes the `Capability` write-set hole, adds `ComponentRole::Constraint`, gives Ndof one owner |
 | [path-driver-neb](path-driver-neb.md) | approved | Probe 3 (Driver taxonomy): CI-NEB + the 6th category. Extracts a reusable `ReplicaSet`; de-welds L-BFGS from the Frame |
@@ -16,9 +15,9 @@ case under `regressions/`.
 
 ## Ordering
 
+regressions/ harness: DONE (commit below) — the gate is open, seed case green.
+
 ```
-regressions-harness            (first — every probe's acceptance depends on it)
-      |
       +-- manybody-potentials  ─┐  both touch comm/halo + neighbor/
       +-- md-constraints       ─┘  → SERIALIZE these two, do not run in parallel
       |

@@ -10,7 +10,9 @@ criteria:
       regressions tree is not configured. `ctest` (default) registers ZERO
       regression cases — grep of the ctest test list shows no reg_* entry. This
       preserves CLAUDE.md's "tests/ is unit-only and if it is registered it runs".
-    status: pending
+    status: verified
+    note: |
+      ctest -N on a REGRESSIONS=ON build reports Total Tests: 0; regressions/CMakeLists.txt contains no add_test(). `--target regressions` builds and runs every case.
 
   - id: ac-002
     summary: Regression cases are out-of-library consumers of the public API only
@@ -21,7 +23,9 @@ criteria:
       relative-path include into src/ over regressions/ returns nothing. A case
       that cannot be written against the public API is reported as an API gap, not
       worked around by reaching into internals.
-    status: pending
+    status: verified
+    note: |
+      reg_lj_argon.cpp includes 8 public atomiverse/ headers and links only the atomiverse target; grep finds no internal/ or ../src reach-in.
 
   - id: ac-003
     summary: Every case cites a literature reference, not a self-generated golden value
@@ -31,7 +35,9 @@ criteria:
       (book/paper + section/equation/page), the expected value, and the physical
       justification for the tolerance. No expected value is a frozen snapshot of
       Atomiverse's own current output. Reviewed by reading REFERENCE.md.
-    status: pending
+    status: verified
+    note: |
+      REFERENCE.md cites Rahman 1964 (Phys. Rev. 136, A405) for the model and Frenkel&Smit / Allen&Tildesley / Hairer-Lubich-Wanner for the symplectic-conservation criterion. The tolerance is an envelope from theory, not a frozen snapshot of our output.
 
   - id: ac-004
     summary: Seed case — LJ argon NVE energy conservation — passes and is fast
@@ -42,7 +48,9 @@ criteria:
       and asserts total-energy drift stays below the documented bound over the run;
       exits non-zero on violation and prints got/want/tol. Wall time <= 60 s
       single-threaded CPU.
-    status: pending
+    status: verified
+    note: |
+      PASS. N=216 Rahman argon, dt=5 fs, 10 ps: worst |dE|/(N*eps) = 1.795e-04 vs bound 1e-2; second-half drift (1.707e-04) does not exceed the first (1.795e-04) => bounded and non-secular. Wall 0.11 s single-threaded (limit 60 s).
 
   - id: ac-005
     summary: The three-way tests / benchmarks / regressions split is documented
@@ -56,7 +64,9 @@ criteria:
       regressions/ = out-of-library end-to-end vs the LITERATURE, <= 60 s,
       and EVERY delivered feature ships exactly one.
       regressions/README.md carries the hard rules.
-    status: pending
+    status: verified
+    note: |
+      CLAUDE.md Repository layout now lists regressions/, and Conventions carries the 'Three test tiers, and they never mix' rule (tests/ = unit, seconds, e2e STRICTLY FORBIDDEN). regressions/README.md carries the six hard rules.
 
   - id: ac-006
     summary: Regression cases are flat main()s — no single-use helper functions
@@ -67,7 +77,9 @@ criteria:
       main(). It does NOT carve one-shot code into setup_frame() / run_md() /
       check_energy() helpers that each have exactly one call site. Reviewed by
       reading the files; a helper is only acceptable with >= 2 call sites.
-    status: pending
+    status: verified
+    note: |
+      reg_lj_argon.cpp is one flat main(): setup, run, and checks read top to bottom, with zero single-use helper functions.
 ---
 
 # Acceptance — regressions-harness

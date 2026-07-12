@@ -74,6 +74,8 @@ if(NOT ATV_DOCS_ONLY)
     set(ATV_MOLRS_PATH "${CMAKE_SOURCE_DIR}/../molrs" CACHE PATH "Path to molrs source tree")
     option(ATV_BUILD_PYTHON "Build Python bindings (nanobind)" OFF)
     option(ATV_BUILD_TESTS "Build tests" OFF)
+    option(ATV_BUILD_REGRESSIONS
+        "Build end-to-end textbook regression cases (regressions/)" OFF)
     option(ATV_BUILD_BENCHMARKS "Build benchmarks" OFF)
     option(ATV_BUILD_EXAMPLES "Build examples" OFF)
     option(ATV_USE_MATPLOT "Enable matplotplusplus for plotting in examples (requires gnuplot)" OFF)
@@ -745,6 +747,12 @@ if(NOT ATV_DOCS_ONLY)
         # atomiverse pick up the same definition.
         target_compile_definitions(atomiverse PUBLIC ATV_BUILD_TESTS)
         add_subdirectory(tests)
+    endif()
+
+    # End-to-end textbook regressions. Deliberately NOT registered with ctest —
+    # tests/ is unit-only and "if it is registered, it runs" (see CLAUDE.md).
+    if(ATV_BUILD_REGRESSIONS)
+        add_subdirectory(regressions)
     endif()
 
     if(ATV_BUILD_BENCHMARKS)
