@@ -486,3 +486,127 @@ without a fight; `potentials/` took EAM/SW without a fight. Both probes broke in
 and `neighbor/` — the *infrastructure* layers, which had been built against a single
 implicit consumer (pair forces, half list, positions forward, forces back) and quietly
 assumed it was the only one.
+
+---
+
+## Probe 3 verdict — Path driver + CI-NEB, 2026-07-12
+
+Breadth-first campaign, probe #3, and the one aimed straight at the Driver taxonomy.
+CLAUDE.md predicted this category ("Path for NEB — terminate when every image of a
+coupled chain has converged"). **The prediction was half right, and the half it got wrong
+is the finding.**
+
+### The taxonomy is two-dimensional
+
+CLAUDE.md: *"Category is decided by **termination semantics**, never by algorithm or
+method."* True, and incomplete. "N coupled replicas" is a **second axis, orthogonal to
+the first**:
+
+|                 | terminate on convergence | terminate on a budget          |
+|-----------------|--------------------------|--------------------------------|
+| **one Frame**   | `OptimizeDriver`         | `DynamicsDriver` / `Sampling`  |
+| **N replicas**  | **`PathDriver`** (NEB)   | REMD / PIMD / umbrella (later) |
+
+Read one-dimensionally — the way the doc reads today — REMD and PIMD each eventually
+demand *their own category*, and each re-implements ~90 % of the replica machinery NEB
+already needed. The bottom-right cell is not one category; it is a whole row that does
+not exist yet.
+
+So the replica machinery is **infrastructure** (`cpu/replica/`), not driver-private, and
+`PathDriver` contributes exactly one thing on top of it: the AND over per-replica
+convergence. A budget-terminating replica category reuses `ReplicaSet` unchanged and
+contributes *its* one thing (the exchange attempt). Whether that split was drawn in the
+right place is testable, and REMD is the test.
+
+### Replicas are generated, never supplied
+
+User directive, and it corrected the spec's original design: nobody hands REMD sixteen
+starting structures — they hand it one, plus a temperature ladder. So `ReplicaSet` is
+built from `(Frame, ReplicaExpansion&)`, never from a `vector<Frame>`, and the
+per-replica parameter (temperature / bias centre / bead index / path coordinate) belongs
+to the **expansion**, which is exactly the thing that would otherwise weld the category
+to NEB.
+
+`run()` still takes ONE Frame and writes ONE Frame back — for CI-NEB, the climbing image,
+i.e. the saddle configuration. **Frame in, Frame out** survives a category that internally
+runs N of them.
+
+Two expansions ship deliberately: `LinearInterpolation` (which owns the *product state*
+as its own config — so NEB's "two endpoints" never become a driver signature) and
+`IdentityReplication` (the PIMD/REMD shape, **with no in-tree user**). The second one is
+the evidence: an abstraction that only ever admits one implementation has not earned its
+indirection.
+
+### **Components cannot be cloned** — and that killed the spec's design
+
+The spec called for a Backend per replica (hence a Context, hence an `outer_status` per
+replica), which would have made collective termination free. **It is not implementable.**
+`Driver::add()` *moves* a component into `owned_components_`, and there is no `clone()`
+anywhere in the tree. N backends would need N independently-constructed component sets,
+reachable only by:
+
+- a user-supplied component **factory callback** — against the OOP style rule, and a
+  miserable API; or
+- a `clone()` virtual on `ComponentBase` — a dead interface on every component that will
+  never be in a band.
+
+So: **one** backend, one plan, and the band reached through a `ctx.path` slice (the same
+shape as `ctx.md.pair_list` / `ctx.mc.proposal`). The driver replays the `force` phase
+once per replica by re-pointing the backend's frame; the band-wide phases run once and
+see everything. Per-replica convergence lives on `ReplicaSet`, and the driver ANDs it.
+
+This is the same lesson as probe 2's `ac-008`: **a criterion that names a mechanism can
+only be satisfied by building the thing you already assumed.** Two probes running, two
+specs whose prescribed mechanism was wrong, both times because the requirement (rigidity
+across ranks; all-replicas-converged) was achievable another way. Write criteria as
+requirements.
+
+Known ceiling of the one-backend route: a force-phase component that caches per-frame
+state (a neighbor list's bins) is invalidated on every replica switch and rebuilds N times
+per iteration. Correct, but O(N) rebuilds. Müller-Brown has no neighbor list; a band of a
+real solid would want a per-replica neighbor cache — which is the point at which a
+component genuinely *would* need to be replica-aware, and the point at which the
+no-clone finding becomes a real design decision rather than a workaround.
+
+### The phase enum stays generic, on purpose
+
+`path::Phase` = `force, couple, search_direction, line_search, convergence_check,
+end_of_step`. **No `tangent`, no `spring`, no `climb`.** Those are components bound at
+`couple` — the same slot PIMD's ring-polymer spring will use (mathematically the identical
+k±1 harmonic coupling) and REMD's exchange operator. One NEB-shaped phase name would have
+welded the category to NEB and left the next method with nowhere to bind.
+
+### The L-BFGS Frame-welding debt, found and paid
+
+The two-loop recursion sat inline in `LBFGS::launch`, reading `ctx.frame` directly, with
+`global_sum(ctx, ...)` scattered through **every inner product** — that last part is what
+made it unextractable, not the frame access. A band optimizer could only have copy-pasted
+the algorithm.
+
+Now `minimizer::LbfgsHistory`: curvature history + recursion over a plain vector, with the
+all-reduce as an **injected `Reducer`**. `cpu::minimizer::LBFGS` passes its MPI
+all-reduce; `path::BandLBFGS`, whose vector is the whole band and already rank-complete,
+passes the identity. Behavior-preserving — every minimizer test, including the multi-rank
+ones, passes unchanged.
+
+This is the "extract at the second caller" rule's **positive case**. It was right to be
+inline while `Minimize` was the only caller.
+
+### Also worth knowing
+
+- Adding a 6th category touches: `core/binding.h` (`PhaseKind` + its name switch),
+  `facade/stage.h` (the phase namespace), `CategoryTraits<>` specialization in
+  `cpu_driver.h` (**without it the inherited categorical setters do not instantiate** —
+  a link error, not a compile error, and a confusing one), the explicit
+  `template class Driver<path::Phase, cpu::device_tag>;` in `driver.cpp`, the explicit
+  source list in `CMakeLists.txt` (cpu/ is not globbed), and the five-driver claims in
+  `tests/cpu/test_driver_binding_kind.cpp`.
+- **No concrete `PathDriver` subclass ships.** The other categories have one (`MD`, `MC`,
+  `Minimize`) because they auto-inject infrastructure — neighbor lists, halo exchange.
+  Path injects nothing, so a subclass would be pure boilerplate for the sake of symmetry.
+- The async snapshot ring is **not** reusable as image storage: it is a lossy POD subset
+  (no mass / charge / topology / scalars), write-only, and its slots are recycled.
+- MPI v1: the band is replicated on every rank, with spatial DD *inside* each image. A
+  LAMMPS-style one-partition-per-replica layout would **deadlock** today —
+  `minimizer/global_reduce.h` reduces over the spatial `cart_comm` and no replica
+  communicator exists anywhere in the tree.
