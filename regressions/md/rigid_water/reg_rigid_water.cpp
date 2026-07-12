@@ -1,0 +1,166 @@
+/// @file regressions/md/rigid_water/reg_rigid_water.cpp
+/// @brief END-TO-END REGRESSION: RATTLE rigid water — the geometry invariant and
+///        the equipartition theorem, which together pin the degree-of-freedom count.
+///
+/// See REFERENCE.md. Out-of-library consumer, one flat main().
+
+#include <cmath>
+#include <cstdio>
+
+#include "atomiverse/core/mat3.h"
+#include "atomiverse/core/units.h"
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/md/fix_csvr.h"
+#include "atomiverse/cpu/md/fix_rattle.h"
+#include "atomiverse/cpu/md/init.h"
+#include "atomiverse/cpu/md/md.h"
+#include "atomiverse/cpu/md/velocity_verlet.h"
+#include "atomiverse/cpu/neighbor/neighbor_list.h"
+#include "atomiverse/cpu/potentials/pair_lj_cut.h"
+
+using namespace ATV;
+
+int main() {
+    // TIP3P geometry (Jorgensen 1983): r(OH) = 0.9572 A, theta = 104.52 deg.
+    const double r_oh = 0.9572;
+    const double theta_deg = 104.52;
+    const double d_hh = 2.0 * r_oh * std::sin(0.5 * theta_deg * M_PI / 180.0);
+
+    const int n_side = 5;                       // 125 molecules
+    // Dilute, NOT liquid density — and that is forced on us, not chosen. PairLJCut
+    // carries a single eps/sigma for ALL atoms (no per-type mixing table), so the H
+    // atoms wear the O's sigma = 3.15 A. At liquid spacing (3.10 A) neighbouring
+    // molecules then overlap catastrophically and no constraint solver can hold them.
+    // A real TIP3P box is not expressible in the engine today. Equipartition — which
+    // is what this case actually pins — does not care about the density.
+    const double spacing = 4.6;
+    const double cutoff = 8.0, skin = 1.0;      // [A]
+    const double dt = 2.0;                      // [fs] — only a RIGID water survives this
+    const double t_target = 300.0;              // [K]
+    const int n_equil = 2000, n_prod = 3000, n_sample = 30;
+
+    const int n_mol = n_side * n_side * n_side;
+    const int n = 3 * n_mol;
+    const double box_len = n_side * spacing;
+    if (box_len <= 2.0 * cutoff) {
+        std::printf("FAIL: box %.2f A too small for cutoff %.2f A\n", box_len, cutoff);
+        return 1;
+    }
+
+    // Build the box of rigid-geometry waters.
+    cpu::Frame frame(n);
+    const double half = 0.5 * theta_deg * M_PI / 180.0;
+    int idx = 0, mol = 0;
+    for (int ix = 0; ix < n_side; ++ix)
+        for (int iy = 0; iy < n_side; ++iy)
+            for (int iz = 0; iz < n_side; ++iz) {
+                const double ox = (ix + 0.5) * spacing;
+                const double oy = (iy + 0.5) * spacing;
+                const double oz = (iz + 0.5) * spacing;
+                const double phi = 0.7 * double(mol); // stagger the orientations
+                const int o = idx, h1 = idx + 1, h2 = idx + 2;
+
+                frame.atoms.x[o] = ox; frame.atoms.y[o] = oy; frame.atoms.z[o] = oz;
+                frame.atoms.mass[o] = 15.9994; frame.atoms.type[o] = 8;
+
+                frame.atoms.x[h1] = ox + r_oh * std::sin(half) * std::cos(phi);
+                frame.atoms.y[h1] = oy + r_oh * std::sin(half) * std::sin(phi);
+                frame.atoms.z[h1] = oz + r_oh * std::cos(half);
+                frame.atoms.mass[h1] = 1.008; frame.atoms.type[h1] = 1;
+
+                frame.atoms.x[h2] = ox - r_oh * std::sin(half) * std::cos(phi);
+                frame.atoms.y[h2] = oy - r_oh * std::sin(half) * std::sin(phi);
+                frame.atoms.z[h2] = oz + r_oh * std::cos(half);
+                frame.atoms.mass[h2] = 1.008; frame.atoms.type[h2] = 1;
+
+                idx += 3;
+                ++mol;
+            }
+    frame.box = Mat3::cubic(box_len);
+    frame.atoms.map_set(0, n);
+    for (int m = 0; m < n_mol; ++m) {
+        const int o = 3 * m, h1 = o + 1, h2 = o + 2;
+        frame.atoms.add_bond(frame.atoms.tag(o), frame.atoms.tag(h1), 0);
+        frame.atoms.add_bond(frame.atoms.tag(o), frame.atoms.tag(h2), 0);
+        frame.atoms.add_angle(frame.atoms.tag(h1), frame.atoms.tag(o),
+                              frame.atoms.tag(h2), 0);
+    }
+    frame.atoms.build_special_list(); // intramolecular pairs are NOT LJ neighbours
+
+    cpu::md::MD sim;
+    sim.set_pair(cpu::PairLJCut{0.1521 * 0.04336, 3.1507, cutoff} // TIP3P O-O LJ
+                     .set_special_bonds(0.0, 0.0, 0.0));
+    sim.set_neighbor(cpu::md::NeighborList<>{cutoff, skin});
+    sim.set_integrator(cpu::md::VelocityVerlet{dt});
+    sim.set_thermostat(cpu::md::FixCSVR{t_target, 100.0, dt, 7777u});
+    sim.add(cpu::md::InitVelocity{t_target, 4242u});
+
+    cpu::md::FixRattle rattle{dt};
+    rattle.constrain_bond(0, r_oh);   // the two O-H bonds
+    rattle.constrain_angle(0, d_hh);  // the H-H distance IS the angle
+    sim.add(rattle);
+
+    sim.enable_timing(false);
+    sim.build();
+
+    sim.run(frame, n_equil);
+
+    // Sample the temperature, computed with the DOF count the engine published.
+    // Rigid water: 6 DOF per molecule (3 translation + 3 rotation), not 9.
+    const int ndof_rigid = 6 * n_mol - 3;
+    const int ndof_naive = 3 * n - 3; // what every consumer hardcoded before this work
+
+    double t_sum = 0.0, worst_geom = 0.0;
+    for (int s = 0; s < n_sample; ++s) {
+        sim.run(frame, n_prod / n_sample);
+
+        const double ke = frame.scalars.kinetic; // [eV]
+        t_sum += 2.0 * ke / (double(ndof_rigid) * units::kB_ev_per_k);
+
+        for (int m = 0; m < n_mol; ++m) {
+            const int o = 3 * m, h1 = o + 1, h2 = o + 2;
+            const int ii[3] = {o, o, h1};
+            const int jj[3] = {h1, h2, h2};
+            const double want[3] = {r_oh, r_oh, d_hh};
+            for (int c = 0; c < 3; ++c) {
+                double dx = frame.atoms.x[ii[c]] - frame.atoms.x[jj[c]];
+                double dy = frame.atoms.y[ii[c]] - frame.atoms.y[jj[c]];
+                double dz = frame.atoms.z[ii[c]] - frame.atoms.z[jj[c]];
+                frame.box.min_image(dx, dy, dz);
+                const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
+                worst_geom = std::fmax(worst_geom, std::fabs(r - want[c]) / want[c]);
+            }
+        }
+    }
+    const double t_mean = t_sum / double(n_sample);
+    // What the SAME trajectory would report if Ndof still ignored the constraints.
+    const double t_naive = t_mean * double(ndof_rigid) / double(ndof_naive);
+
+    const double geom_tol = 1e-8;
+    const double t_tol = 0.03; // 3% — a thermostatted mean over 6 ps
+    const double t_err = std::fabs(t_mean - t_target) / t_target;
+
+    std::printf("RATTLE rigid water: %d molecules, dt = %.1f fs, T_set = %.0f K\n",
+                n_mol, dt, t_target);
+    std::printf("  Ndof (rigid, 6/mol)  = %d      [naive 3N-3 would be %d]\n",
+                ndof_rigid, ndof_naive);
+    std::printf("  <T>                  = %.2f K   want %.0f K  (err %.2f%%, tol %.0f%%)\n",
+                t_mean, t_target, 100.0 * t_err, 100.0 * t_tol);
+    std::printf("  <T> with naive Ndof  = %.2f K   <- the bug this pins: %.0f%% cold\n",
+                t_naive, 100.0 * (1.0 - t_naive / t_mean));
+    std::printf("  worst |dr|/r         = %.2e   want <= %.0e   [rigid geometry]\n",
+                worst_geom, geom_tol);
+
+    bool ok = true;
+    if (!(worst_geom <= geom_tol)) {
+        std::printf("FAIL: the constrained geometry drifted\n");
+        ok = false;
+    }
+    if (!(t_err <= t_tol)) {
+        std::printf("FAIL: equipartition violated — <T> is %.2f%% off the setpoint. "
+                    "The DOF count is wrong.\n", 100.0 * t_err);
+        ok = false;
+    }
+    std::printf("%s\n", ok ? "PASS" : "FAIL");
+    return ok ? 0 : 1;
+}

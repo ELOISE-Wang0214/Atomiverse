@@ -138,6 +138,26 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
         install_defaults();
         bind_halo_participants_();
         validate_components();
+        // Capture the Constraint components NOW, while `pending_` still holds them:
+        // `Base::build()` consumes the pending list into the compiled Plan, so a scan
+        // in setup_pass() would find an empty list and publish Ndof = 3N-3 with zero
+        // constraints. That is not hypothetical — it shipped, and the rigid-water
+        // regression caught it: the geometry was rigid but the thermostat drove the
+        // system to the UNCONSTRAINED kinetic target, landing at 447 K against a
+        // 300 K setpoint. The count itself still has to wait for setup_pass, because
+        // it depends on the frame, which is not bound yet.
+        // Dedup by pointer: `for_each_pending` walks BINDINGS, not unique components,
+        // and FixRattle declares three (snapshot / positions / velocities). Counting
+        // it once per binding tripled the constraint count and made the driver throw
+        // "no degrees of freedom left" on a perfectly ordinary water box.
+        // `Backend::collect_component_memory` dedups the same way, for the same reason.
+        constraint_providers_.clear();
+        std::unordered_set<const cpu::ConstraintProvider*> seen;
+        for_each_pending([&](const cpu::ComponentBase& c) {
+            if (const cpu::ConstraintProvider* cp = c.as_constraint()) {
+                if (seen.insert(cp).second) constraint_providers_.push_back(cp);
+            }
+        });
         Base::build();
     }
 
@@ -435,12 +455,14 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     /// water reports T ~33 % low and every thermostat drives to the wrong setpoint.
     void publish_dof_(cpu::Frame& frame) {
         int n_con = 0;
-        for_each_pending([&](const cpu::ComponentBase& c) {
-            if (const cpu::ConstraintProvider* cp = c.as_constraint())
-                n_con += cp->n_constraints(frame);
-        });
+        for (const cpu::ConstraintProvider* cp : constraint_providers_)
+            n_con += cp->n_constraints(frame);
         cpu::publish_global_dof(this->backend_->context(), frame, n_con);
     }
+
+    /// Constraint components, captured at `build()` while the pending list still
+    /// exists. Non-owning: the Plan owns the components.
+    std::vector<const cpu::ConstraintProvider*> constraint_providers_;
 
     InfraScan scan_pending_infra_() {
         InfraScan s;
