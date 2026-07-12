@@ -177,6 +177,7 @@ target_compile_definitions(test_cpu_md_pe_tension_protocol PRIVATE
 atv_add_cpp_test(test_cpu_md_neighbor_list_arena  cpu/md/test_neighbor_list_arena.cpp)
 atv_add_cpp_test(test_cpu_md_neighbor_list_rebuild  cpu/md/test_neighbor_list_rebuild.cpp)
 atv_add_cpp_test(test_cpu_md_full_neighbor_list  cpu/md/test_full_neighbor_list.cpp)
+atv_add_cpp_test(test_cpu_eam  cpu/potentials/test_eam.cpp)
 # test_cpu_md_pe_nvt relocated to benchmarks/md/pe/validation/ (val_md_pe_nvt) —
 # a full NVT equilibration of the bonded PE melt, not a ms unit test.
 atv_add_cpp_test(test_cpu_md_frame_tag_image      cpu/md/test_frame_tag_image.cpp)

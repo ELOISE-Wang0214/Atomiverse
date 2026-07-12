@@ -203,20 +203,9 @@ class MD : public DynamicsDriver {
         return this->backend_->release_dd();
     }
 
-    /// @brief Enable/disable opt-in per-component timing for this run. Eagerly
-    /// creates the backend (like `adopt_dd`) so the flag survives into `run()`.
-    /// Call before `run()`. (Also enabled by the `ATV_TIMER` env var.)
-    void enable_timing(bool on = true) {
-        if (!this->backend_)
-            this->backend_ = std::make_unique<typename Base::BackendT>();
-        this->backend_->enable_timing(on);
-    }
-
-    /// @brief Reset the backend's accumulated step timing (e.g. per stage).
-    void reset_timing() {
-        if (this->backend_)
-            this->backend_->reset_timing();
-    }
+    // enable_timing() / reset_timing() are inherited from CPUDriver — the timing
+    // registry is Backend infrastructure that every category owns, not an MD
+    // privilege.
 
     /// @brief Raw access to the timing registry (null before the backend
     /// exists). @see core/timer.h

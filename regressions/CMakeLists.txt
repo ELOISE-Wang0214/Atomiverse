@@ -30,3 +30,4 @@ function(atv_add_regression domain case)
 endfunction()
 
 atv_add_regression(md lj_argon)
+atv_add_regression(md eam_cu)

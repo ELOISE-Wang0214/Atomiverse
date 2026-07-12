@@ -139,6 +139,28 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
         Base::build();
     }
 
+    /// @brief Enable/disable opt-in per-component timing for this run.
+    ///
+    /// Eagerly creates the backend so the flag survives into `run()`; call before
+    /// `run()`. Also enabled by the `ATV_TIMER` env var.
+    ///
+    /// Lives on the category base, not on one concrete driver: the timing registry
+    /// is Backend infrastructure and every category has one. (It sat on
+    /// `cpu::md::MD` alone until an out-of-library regression case needed to quiet
+    /// a chain of `Evaluate` single points and found it missing — the second caller
+    /// that justifies hoisting it.)
+    /// @param on True to record per-component timings.
+    void enable_timing(bool on = true) {
+        if (!this->backend_)
+            this->backend_ = std::make_unique<typename Base::BackendT>();
+        this->backend_->enable_timing(on);
+    }
+
+    /// @brief Reset the backend's accumulated step timing (e.g. per stage).
+    void reset_timing() {
+        if (this->backend_) this->backend_->reset_timing();
+    }
+
   protected:
     /// @brief Subclass hook — install opt-in infrastructure components
     /// derived from declared user state (e.g. `NoseHooverNPT::reads()
