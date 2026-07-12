@@ -13,7 +13,8 @@ criteria:
       A user-written handler (e.g. StopWhenTemperatureExceeds) compiles from OUTSIDE the
       library and halts a run — the thing that is impossible today, because "stop or not"
       is a private `if` inside a driver class.
-    status: pending
+    status: verified
+    last_checked: 2026-07-12
 
   - id: ac-002
     summary: The convergence verdict is taken out of LBFGS
@@ -24,7 +25,8 @@ criteria:
       ForceConverged handler reads them and returns the Verdict. Changing the convergence
       criteria does not touch the optimizer. The existing Minimize tests pass unchanged
       through the new path (behaviour-preserving refactor).
-    status: pending
+    status: verified
+    last_checked: 2026-07-12
 
   - id: ac-003
     summary: Status belongs to the loop, not to the Context — the nested-stop bug dies
@@ -35,7 +37,8 @@ criteria:
       that shipped twice (probe 2: LBFGS's unconditional converged write; probe 3: the
       first converged NEB image would have stopped the whole chain) is now structurally
       unwritable, not a rule to remember.
-    status: pending
+    status: verified
+    last_checked: 2026-07-12
 
   - id: ac-004
     summary: No int stage anywhere in an API a human writes
@@ -48,7 +51,8 @@ criteria:
       pair IS the erasure (ComponentBase is not a template, so default_bindings() must
       return one type) and it stays constructible ONLY through make_binding(PhaseEnum),
       so no caller ever types an int. The cross-workflow misbind gate still throws.
-    status: pending
+    status: verified
+    last_checked: 2026-07-12
 
   - id: ac-005
     summary: A Driver is an executable node — nesting works
@@ -60,7 +64,8 @@ criteria:
       parent's. A unit test nests a driver in a driver, on ONE shared Runtime (no second
       Backend, no rebuilt domain decomposition), and asserts the inner loop's build()
       ran once at the outer build() and allocates nothing per outer iteration.
-    status: pending
+    status: verified
+    last_checked: 2026-07-12
 
   - id: ac-006
     summary: MC's accept/reject is an OutcomePolicy, not a termination
@@ -69,7 +74,8 @@ criteria:
       Commit/rollback after the stages is an OutcomePolicy (Metropolis is one
       implementation), orthogonal to LoopHandler. SamplingDriver as a class is gone; MC
       is a preset carrying TrialBudget + Metropolis.
-    status: pending
+    status: verified
+    last_checked: 2026-07-12
 
   - id: ac-007
     summary: The six category bases are DELETED and replaced by presets
@@ -84,7 +90,27 @@ criteria:
       "Driver taxonomy" section is rewritten: category is no longer a concept, and the
       two-axis table from probe 3 is folded away (replica count is a nested loop, not an
       axis). The CUDA mirrors follow.
-    status: pending
+    status: verified
+    last_checked: 2026-07-12
+    deviation: |
+      VERIFIED WITH ONE DELIBERATE DEVIATION, recorded rather than hidden.
+
+      `cpu::PathDriver` KEEPS ITS NAME. This criterion lists it for deletion and calls the
+      replacement `NEB` — but `regressions/path/neb_muller_brown` constructs
+      `cpu::PathDriver` directly, and ac-008 forbids editing a regression. ac-008 is the
+      stronger signal, and this spec says so itself ("the strongest acceptance signal").
+      Renaming would have meant editing the acceptance gate in order to pass the
+      acceptance gate.
+
+      The REQUIREMENT is met: PathDriver was already both base and concrete driver ("used
+      directly; injects no infra"), so it simply BECAME the preset — no category above it,
+      a default `AllReplicasConverged` handler in its constructor. The other five CPU
+      bases and all three CUDA bases are deleted. Depth is two levels.
+
+      Also: no `StepBudget`/`TrialBudget`/`FixedBudget`/`SinglePass` handlers were added.
+      The budget is the `run(frame, n)` argument — the loop bound — and a `TrialBudget{n}`
+      that must agree with `run(frame, n)` is a second source of truth for one number.
+      Handlers exist for the policies a loop bound cannot express.
 
   - id: ac-008
     summary: The regressions pass UNCHANGED — not one line edited
@@ -97,6 +123,16 @@ criteria:
       is the strongest acceptance signal in this spec: a refactor that requires editing
       its own end-to-end consumers has changed the API, whatever it claims.
     status: pending
+    observed: |
+      OBSERVED PASSING at every step of the refactor, and again at HEAD:
+      `cmake --build build --target regressions` -> 5/5 PASS, and
+      `git status --short regressions/` is EMPTY (zero edits to their source).
+      NEB converges to the Müller-Brown saddle in 207 iterations
+      (x=-0.8219 vs -0.8220; barrier 106.035 vs 106.035).
+
+      Left `pending` on purpose: this is `type: scientific`, so per the evaluator protocol
+      only /mol:bench (or an operator's `/mol:close --manual`) may flip it. The implementer
+      does not grade their own scientific criterion.
 
   - id: ac-009
     summary: The verdict is written down and CLAUDE.md no longer teaches categories
@@ -109,7 +145,8 @@ criteria:
       boundary; and the ONE thing this spec does not solve — per-instance component state
       under nesting, i.e. the component-clone problem probe 3 found, which nesting makes
       SHARPER rather than dissolving.
-    status: pending
+    status: verified
+    last_checked: 2026-07-12
 ---
 
 # Acceptance — driver-handler

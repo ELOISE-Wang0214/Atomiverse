@@ -1,7 +1,7 @@
 ---
 title: Delete the Driver category — a Driver is a staged loop, termination is a Handler
 slug: driver-handler
-status: approved
+status: code-complete
 science_required: false
 created: 2026-07-12
 acceptance: driver-handler.acceptance.md
@@ -135,13 +135,26 @@ probe 3 那个"二维分类学"的发现一并折叠：**副本数根本不是 c
 
 **组件的每实例状态。** 同一个子 Driver body 在 N 个副本上跑，里面的组件就要 N 份独立状态（LBFGS 的曲率历史）—— 这**又回到 probe 3 撞到的"组件不能克隆"**。嵌套让这个问题**更尖锐**，没让它消失。三条出路都还没验：(i) 每副本一个子 Driver 实例（需要 `clone()`）；(ii) 组件状态按循环实例做键（脏）；(iii) 保持 band 级组件（NEB 今天的做法，能跑但没真正用上嵌套）。**本 spec 不裁决它**，只保证不把它变得更难。
 
-## 落地顺序（每步独立可验，每步跑全套）
+## 落地顺序（每步独立可验，每步跑全套）—— 全部落地
 
-- **① Runtime / Driver 分离** —— Driver 不再拥有 Backend；`run(runtime, frame)`。纯机械，无行为变化。
-- **② Handler + per-loop status** —— **最小、最独立、立刻验证设计是对的**：判据从 LBFGS 抽出来，probe 2/3 那个 bug 结构性消失。`Verdict` / `LoopHandler` / `LoopMetrics` / 组合规则 / MPI allreduce 契约。
-- **③ `run_stage(PhaseEnum)`** —— 堵上 int 洞（裁决 3）。
-- **④ Driver 成为可执行节点，允许嵌套** —— Plan slot 收 component | sub-driver。
-- **⑤ 六个 category 基类删除，preset 化**（裁决 1 + 2）。CUDA 的 3 个镜像同步。
+- **② Handler + per-loop status** —— `6d2d79b`. `Verdict` / `LoopHandler` / `LoopMetrics` /
+  组合规则 / MPI allreduce。LBFGS 不再裁决，只发布度量。
+- **③ `run_stage(PhaseEnum)`** —— `29572fc`. `Backend::run_phase(int)` 删除；`ATV::slot_of`
+  是全树唯一的 enum→int 转换，`test_stage_typing_scrub` 用 grep 钉死。
+- **⑤ 六个 category 基类删除，preset 化** —— `e041749`. CPU 5 个 + CUDA 3 个共 8 个类删除；
+  MC 的 accept/reject 变成 `OutcomePolicy`（`Metropolis`）。CUDA 在 GH200 上实测 167/167。
+- **① Runtime / Driver 分离 + ④ Driver 成为可执行节点** —— `0999a85`. `ctx.exec.runtime`；
+  `SubDriver` + `run_nested`；子循环改不到父循环的 status（sabotage 验证过：去掉那三行，
+  `test_sub_driver` 立刻红）。
+  **公开入口没变**：`run(frame, n)` 顶层自持 Runtime，嵌套时借用父亲的 —— 因为 ac-008
+  不许改 regressions（它们是 `run(frame, n)` 的库外消费者）。
+- **清理** —— `ae3b379`. 顺带修掉一个真 bug：LBFGS/CG 的五个 tolerance 参数在 ② 之后
+  已经**被静默忽略**（只进了一行日志），`examples/05` 就是活的受害者。tolerance 归 handler，
+  从算法上删除。
+
+**未做（诚实记录）**：`StepBudget`/`TrialBudget` 这类 handler 没做 —— budget 就是
+`run(frame, n)` 的循环上界，再造一个必须和它保持一致的 `n` 是第二个真相源。`cpu::PathDriver`
+保留原名（见 acceptance ac-007 的 deviation）。嵌套循环不计时（`op_handle_` 是按绑定 plan 稠密的）。
 
 ## Testing
 
