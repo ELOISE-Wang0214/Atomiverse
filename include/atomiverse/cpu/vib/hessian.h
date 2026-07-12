@@ -1,10 +1,10 @@
 /// @file cpu/vib/hessian.h
 /// @brief cpu::vib::Hessian — concrete numerical-Hessian driver.
 ///
-/// `cpu::vib::Hessian` is the user-facing CPU driver of the Response
-/// category. It auto-registers the four structural components that
-/// assemble a finite-difference (central-difference) molecular Hessian
-/// and exposes the result via `run()` / `last_result()`.
+/// `cpu::vib::Hessian` is the user-facing CPU numerical-Hessian preset. It
+/// auto-registers the four structural components that assemble a
+/// finite-difference (central-difference) molecular Hessian and exposes the
+/// result via `run()` / `last_result()`.
 ///
 /// Usage — register any `Capability::Force` evaluator on
 /// `vib::Phase::force` (an FF evaluator or `cpu::scf::SCFEvaluator`),
@@ -25,9 +25,6 @@
 /// evaluator is supplied entirely by user code through
 /// `on(vib::Phase::force).add(...)`; no domain-to-domain header edge is
 /// created.
-///
-/// Inheritance: Hessian → ResponseDriver → CPUDriver<vib::Phase> →
-/// Driver<vib::Phase, cpu::device_tag>.
 #pragma once
 
 #include <memory>
@@ -115,16 +112,16 @@ class Hessian : public CPUDriver<ATV::vib::Phase> {
     ///
     /// Registers only `ReferenceGeometry`, `DisplaceStep`, and
     /// `Symmetrize`. `build()` then throws from
-    /// `ResponseDriver::validate_components()` for the missing
+    /// `Hessian::validate_components()` for the missing
     /// `Capability::Hessian` component.
     /// @param tag Disambiguating tag (`WithoutAccumulator{}`).
     explicit Hessian(WithoutAccumulator tag);
 
     /// @brief Run the `6N`-displacement finite-difference Hessian assembly.
     ///
-    /// Sizes the shared workspace from `frame.atoms.size()`, runs the
-    /// Response-category loop (`6N` displacement passes + one finalize
-    /// pass), and returns the symmetrized Hessian. The result is also
+    /// Sizes the shared workspace from `frame.atoms.size()`, runs the fixed
+    /// budget (`6N` displacement passes + one finalize pass), and returns the
+    /// symmetrized Hessian. The result is also
     /// cached for `last_result()`. On return the frame carries the
     /// equilibrium geometry again.
     ///

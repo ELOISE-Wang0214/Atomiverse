@@ -12,8 +12,9 @@ table, without chasing call sites.
 It assumes the user-level mental model from the
 [CPU overview tutorial](../tutorial/ch00-architecture.md) — `Frame` (the system
 state), `Component` (one unit of work), `Driver` (the loop) — and the
-[CPU Backend Internals](cpu-internals.md) chapter (why there are three driver
-categories). Here we zoom into *one step of the MD driver*.
+[CPU Backend Internals](cpu-internals.md) chapter (why there is one loop node
+and a handful of presets, and why termination is a handler). Here we zoom into
+*one step of the MD driver*.
 
 The phase enum (`ATV::md::Phase`) is backend-agnostic, so this skeleton is
 shared: the CUDA single-GPU MD driver (`cuda::md::MD`) walks the same phases
@@ -24,7 +25,8 @@ empty — a concrete instance of the empty-phase principle below.
 
 ## The three-stage driver lifetime
 
-Every driver runs the same shape, inherited from `CPUDriver`:
+Every driver runs the same shape, composed from the loop primitives
+`CPUDriver` provides:
 
 ```
 run(frame, n_steps):
@@ -32,9 +34,15 @@ run(frame, n_steps):
         backend.init()               #   allocate backend + timer
         backend.load(plan)           #   the compiled Plan (phase-ordered slots)
         backend.set_frame(frame)     #   bind the frame; partition atoms (multi-rank)
+        ctx.loop = {&status_, &metrics_}   # the Context BORROWS this loop's status
         backend.build_components()   #   each component's build(): one-time allocation
     for s in [0, n_steps):           # the run loop
+        status_.reset()
         backend.step(s)              #   one full timestep (walks every phase)
+        poll_handlers_(s)            #   ask every LoopHandler; Stop > Converged > Continue
+        # MD attaches no handler by default, so a plain MD run simply exhausts
+        # its budget. Attach one (StopOnNaN, a `fix halt` analogue) and the same
+        # loop gains an early exit with no change to the driver.
     backend.drain_analysis()         # flush async observers
     # teardown happens on driver destruction or when a different frame is run
 ```

@@ -4,7 +4,9 @@
 /// Pluggable alternative to `cpu::minimizer::LBFGS` inside
 /// `cpu::minimizer::Minimize`. Same outer contract: binds
 /// `search_direction` (computes the step) and `convergence_check`
-/// (reports `outer_status.converged` to the driver).
+/// (publishes force / displacement / energy metrics onto `LoopMetrics`,
+/// where a `LoopHandler` — by default `cpu::ForceConverged` — judges them).
+/// The component measures; it never declares convergence.
 ///
 /// Algorithm (Polak-Ribière+):
 ///   d_0 = -g_0
@@ -18,10 +20,12 @@
 /// implementation — the Polak-Ribière+ projection onto non-negative β
 /// already handles ill-conditioned regions.
 ///
-/// Convergence rule mirrors `LBFGS` exactly (max/RMS force tolerances,
-/// max/RMS displacement tolerances, energy change). This makes the
-/// optimizer hot-swap test (`tests/cpu/test_minimize_driver_swap_optimizer.cpp`)
-/// meaningful: both classes report convergence under the same criteria.
+/// Convergence is not this class's business: `CG` and `LBFGS` publish the
+/// identical `LoopMetrics`, and one `LoopHandler` (`cpu::ForceConverged`)
+/// judges both. That is what makes the optimizer hot-swap test
+/// (`tests/cpu/test_minimize_driver_swap_optimizer.cpp`) meaningful — the two
+/// classes are judged by the same policy object, not by two copies of the same
+/// five tolerances.
 ///
 /// References:
 ///   Polak & Ribière, ESAIM Math. Modelling Numer. Anal. 3, 35 (1969)
@@ -45,15 +49,11 @@ namespace minimizer {
 class CG : public cpu::ComponentBase {
   public:
     /// @brief Construct CG optimizer.
+    ///
+    /// Convergence tolerances are **not** arguments here — they belong to the
+    /// `cpu::ForceConverged` handler (`opt.add_handler(...)`).
     /// @param alpha0    Step size [Å²/eV] (default 0.01).
-    /// @param ftol      Max force convergence tolerance [eV/Å] (default 0.05).
-    /// @param rms_ftol  RMS force tolerance [eV/Å] (default 0.03).
-    /// @param max_dtol  Max displacement tolerance [Å] (default 0.002).
-    /// @param rms_dtol  RMS displacement tolerance [Å] (default 0.001).
-    /// @param etol      Energy change tolerance [eV] (default 1e-5).
-    explicit CG(double alpha0 = 0.01, double ftol = 0.05,
-                double rms_ftol = 0.03, double max_dtol = 0.002,
-                double rms_dtol = 0.001, double etol = 1e-5);
+    explicit CG(double alpha0 = 0.01);
 
     /// @brief Select the line-search policy used at the `line_search` phase.
     ///
@@ -89,7 +89,6 @@ class CG : public cpu::ComponentBase {
 
   private:
     double alpha0_;
-    double ftol_, rms_ftol_, max_dtol_, rms_dtol_, etol_;
 
     // Line search. Default StrongWolfe (c2=0.1 for CG); `line_search()` overrides.
     LineSearchMode ls_mode_ = LineSearchMode::StrongWolfe;

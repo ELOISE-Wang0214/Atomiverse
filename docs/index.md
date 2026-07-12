@@ -60,7 +60,7 @@ Which methods are implemented, on which backend, and how far — that is the
    to a converged calculation.
 2. **[Methods](user-guide/methods.md)** — every method the engine ships, and
    which driver runs it.
-3. **[Tour of the backend](tutorial/ch00-architecture.md)** — driver categories,
+3. **[Tour of the backend](tutorial/ch00-architecture.md)** — drivers, handlers,
    roles, capabilities, phases.
 4. **[The tutorial book](tutorial/index.md)** — sixteen chapters, from atomic
    orbitals to ab-initio MD.

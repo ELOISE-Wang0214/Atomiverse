@@ -38,7 +38,9 @@ Backend root (shared infra):
 - `include/atomiverse/cpu/component/context.h` → `cpu::Context` (runtime, `outer_status`).
 - `include/atomiverse/cpu/component/component.h` → `cpu::ComponentBase` + `BuildContext` / `LaunchContext` / `DestroyContext`.
 - `include/atomiverse/cpu/driver/cpu_driver.h` → `cpu::CPUDriver<PhaseEnum>` (build / validate / install_infra hooks).
-- `include/atomiverse/cpu/driver/evaluate_driver.h`, `dynamics_driver.h`, `optimize_driver.h` → three category bases.
+- `include/atomiverse/cpu/driver/loop_handler.h` → `cpu::LoopHandler` + built-ins (`ForceConverged`, `AllReplicasConverged`, `StopOnNaN`) — termination as a policy object. There are **no category base classes**; the six presets derive `CPUDriver<Phase>` directly.
+- `include/atomiverse/cpu/driver/outcome_policy.h` → `cpu::OutcomePolicy` + `cpu::Metropolis` (per-iteration commit/rollback).
+- `include/atomiverse/cpu/driver/sub_driver.h` → `cpu::SubDriver` — a Driver in a Plan slot (nesting on one shared Runtime, via `Driver::run_nested`).
 - `include/atomiverse/cpu/driver/evaluate.h` → `cpu::Evaluate` user-facing one-pass driver.
 - `include/atomiverse/cpu/driver/single_point.h` → `cpu::single_point()` shim (free function, not a class).
 - `include/atomiverse/cpu/frame/transfer.h` → `cpu::to_cuda(Frame)`.
@@ -48,7 +50,7 @@ Backend root (shared infra):
 - `include/atomiverse/cpu/frame_snapshot.h`, `snapshot_publisher.h`, `async_component_base.h`, `analysis_executor.h` → async-observer plumbing.
 
 CPU md domain:
-- `include/atomiverse/cpu/md/md.h` → `cpu::md::MD` driver (DynamicsDriver) + LAMMPS-shaped setters.
+- `include/atomiverse/cpu/md/md.h` → `cpu::md::MD` preset (`CPUDriver<md::Phase>`; step-budget termination) + LAMMPS-shaped setters.
 - `include/atomiverse/cpu/md/init.h` → `ZeroForces`, `ZeroEnergy`, `ZeroStress`, `ZeroKinetic`, `KineticEnergy`, `InitVelocity`.
 - `include/atomiverse/cpu/md/velocity_verlet.h`, `nve_limit.h` → integrators.
 - `include/atomiverse/cpu/md/nose_hoover.h`, `nose_hoover_npt.h`, `fix_langevin.h`, `barostat.h` → thermostats / barostats.
@@ -61,7 +63,7 @@ CPU bonded domain:
 - `include/atomiverse/cpu/bonded/{harmonic_bond,harmonic_angle,multi_harmonic_dihedral}.h` → bonded evaluators.
 
 CPU minimizer domain:
-- `include/atomiverse/cpu/minimizer/minimize.h` → `cpu::minimizer::Minimize` driver (OptimizeDriver).
+- `include/atomiverse/cpu/minimizer/minimize.h` → `cpu::minimizer::Minimize` preset (`CPUDriver<minimizer::Phase>`; attaches `ForceConverged`).
 - `include/atomiverse/cpu/minimizer/lbfgs.h`, `cg.h` → Optimizer components (LBFGS, CG / Polak-Ribière+).
 - `include/atomiverse/cpu/minimizer/init.h` → minimizer-bound `ZeroForces` / `ZeroEnergy`.
 - `include/atomiverse/cpu/minimizer/{trajectory_writer,opt_log,final_geometry,async_observer}.h` → minimizer recorders/observers.
@@ -160,7 +162,7 @@ CUDA scf domain (gated `ATV_BUILD_RHF`):
 - `ATV::cpu::Frame` (with nested `Atoms` / `Bonds` / `Angles` / `Dihedrals`).
 - `ATV::cpu::Box`, `ATV::cpu::min_image_batch<B>` (in `box_simd.h`).
 - `ATV::cpu::Context`, `ATV::cpu::ComponentBase`, `ATV::cpu::BuildContext` / `LaunchContext` / `DestroyContext`.
-- `ATV::cpu::CPUDriver<PhaseEnum>`, `ATV::cpu::EvaluateDriver`, `ATV::cpu::DynamicsDriver`, `ATV::cpu::OptimizeDriver`.
+- `ATV::cpu::CPUDriver<PhaseEnum>` (the loop node), `ATV::cpu::LoopHandler`, `ATV::cpu::OutcomePolicy`, `ATV::cpu::SubDriver`.
 - `ATV::cpu::Evaluate` (one-pass driver) + `ATV::cpu::single_point()` (free function).
 - `ATV::cpu::PairEvaluator`.
 - `ATV::cpu::to_cuda()`.
@@ -247,7 +249,10 @@ Public `atomiverse` surface (re-exported in `__init__.py`):
 ### Style summary
 - File extensions: CPU `*.h` / `*.cpp`, CUDA `*.cuh` / `*.cu`, facade and core `*.h` (CUDA-free), Python `*.py` for the wrapper layer, nanobind `*.cpp` for bindings.
 - Namespace layout: top `ATV`; backends under `ATV::cpu`, `ATV::cuda`, `ATV::torch`; phase namespaces `ATV::md`, `ATV::minimizer`, `ATV::evaluate`, `ATV::scf`; SCF helpers in `ATV::cpu::scf` with private `ATV::cpu::scf::internal`; MPI in `ATV::cpu::md::mpi`. Note divergence: legacy CUDA components live under `ATV::md::*` / `ATV::minimizer::*` / `ATV::scf::*` (not `ATV::cuda::md::*`) until the cuda-driver-taxonomy migration lands.
-- Driver hierarchy: `Driver<PhaseEnum, DeviceTag>` is the underlying primitive (private to user code). `cpu::CPUDriver<PhaseEnum>` is the CPU backend layer; the three CPU category bases are `cpu::EvaluateDriver`, `cpu::DynamicsDriver`, `cpu::OptimizeDriver`. User-facing concrete CPU drivers are `cpu::Evaluate`, `cpu::md::MD`, `cpu::minimizer::Minimize`. CUDA still uses algorithm-as-driver (`md::MD`, `minimizer::CG`/`SD`, `scf::SCF` directly subclass `Driver<Phase>`).
+- Driver hierarchy (two levels, no category bases): `Driver<PhaseEnum, DeviceTag>` is the plan/dispatch primitive (user code does not subclass it). `cpu::CPUDriver<PhaseEnum>` / `cuda::CUDADriver<PhaseEnum>` is **the loop node**. The user-facing **presets** derive the loop node directly: `cpu::Evaluate`, `cpu::md::MD`, `cpu::minimizer::Minimize`, `cpu::vib::Hessian`, `cpu::mc::MC`, `cpu::PathDriver` (CUDA mirrors: `cuda::Evaluate`, `cuda::md::MD`, `cuda::minimizer::Minimize`). A preset is not an architectural layer — its constructor attaches the default handler + infrastructure, and a user can override every one of them.
+- Termination is a **policy object**, not a class: `cpu::LoopHandler` (`add_handler`, plural, composed by severity Stop > Converged > Continue) with built-ins `ForceConverged` / `AllReplicasConverged` / `StopOnNaN`. Optimizers **publish** `LoopMetrics`; a handler **judges** them. MC's accept/reject is an `OutcomePolicy` (`cpu::Metropolis`, `set_outcome`, singular).
+- `IterationStatus` + `LoopMetrics` are **owned by the loop node**; the Context only borrows them (`ctx.loop` = `LoopServices{status, metrics}`). A component can request a stop but cannot declare convergence, and a nested loop cannot stop its parent.
+- Nesting: `cpu::SubDriver` puts a Driver in a Plan slot; `Driver::run_nested` runs the child's Plan on the parent's Runtime (`ctx.exec.runtime`) — one Backend, however deep the tree.
 - Component model: `cpu::ComponentBase` / `cuda::ComponentBase` carry `name()`, `role()` (`ComponentRole`), `capabilities()` (`Capability` bitset), `reads()`, the opt-in protocol accessors (`as_neighbor_consumer()`/`as_neighbor_provider()`/`halo_participant()`), `scheduling()`, `frequency()`, `default_bindings()`, `build()` / `launch()` / `destroy()`. Allocation in `build()` only — `launch()` is steady-state.
 - Frame-as-data-bag: `cpu::Frame` is a passive xtensor SoA bag (atoms / bonds / angles / dihedrals + box + scalars `energy` / `kinetic` / `stress`); `cuda::Frame` is the device-pointer mirror with host-cached metadata. Drivers do not own a Frame; `run(frame, …)` borrows.
 - "Hot-path data structures carry only fundamental physical quantities": `cpu::Frame`, `IntegralPack`, `ShellList` store positions / velocities / integrals / shell descriptors only. Derived views (atom-of-AO maps, neighbor-of-shell tables) are computed by consumers, not cached on the data bag.
@@ -264,16 +269,16 @@ Public `atomiverse` surface (re-exported in `__init__.py`):
 ### Layer roles
 - `core/` — primitives (`Real`, `Int`, `Mat3`), units, constants, device tags, `backend_traits`, `Scheduling`, `DefaultBinding`, log wrapper. CUDA-free.
 - `facade/` — `Driver<PhaseEnum, DeviceTag>` plan / dispatch primitive, `Plan` / `PlanBuilder` / `PhaseBuilder` / `StageSlot`, phase enums (`md` / `minimizer` / `evaluate` / `scf`), `ComponentRole` + `Capability` bitset, `IterationStatus`. CUDA-free.
-- `cpu/` (root) — shared CPU infrastructure: `Frame`, `Box` + `box_simd`, `Context`, `ComponentBase` + `*Context`, `CPUDriver<PhaseEnum>`, `EvaluateDriver` / `DynamicsDriver` / `OptimizeDriver` category bases, `Evaluate` driver + `single_point()` shim, `to_cuda` transfer, `PairEvaluator` interface, molrs frame-writer/analysis wrappers, async-analysis plumbing (`FrameSnapshot`, `SnapshotPublisher`, `AsyncComponentBase`, `AnalysisExecutor`).
-- `cpu/md/` — Integrator / Thermostat / Barostat / Evaluator components for classical MD; the `cpu::md::MD` user-facing DynamicsDriver lives here; pair-list / cell-list / PBC machinery; LJ pair evaluator; Zero* and KineticEnergy infrastructure components; `VirialStress`.
+- `cpu/` (root) — shared CPU infrastructure: `Frame`, `Box` + `box_simd`, `Context`, `ComponentBase` + `*Context`, the `CPUDriver<PhaseEnum>` loop node, `LoopHandler` / `OutcomePolicy` / `SubDriver`, `Evaluate` preset + `single_point()` shim, `to_cuda` transfer, `PairEvaluator` interface, molrs frame-writer/analysis wrappers, async-analysis plumbing (`FrameSnapshot`, `SnapshotPublisher`, `AsyncComponentBase`, `AnalysisExecutor`).
+- `cpu/md/` — Integrator / Thermostat / Barostat / Evaluator components for classical MD; the `cpu::md::MD` user-facing preset lives here; pair-list / cell-list / PBC machinery; LJ pair evaluator; Zero* and KineticEnergy infrastructure components; `VirialStress`.
 - `cpu/comm/` — distributed extensions (RCB partitioner, halo-exchange forward + reverse, atom migration, gather, energy reduce). Single-rank no-ops in Phase 1, gated on `ATV_BUILD_MPI` (a.k.a. `ATV_USE_MPI` / `ATV_HAS_MPI`).
 - `cpu/bonded/` — bonded interactions (HarmonicBond, HarmonicAngle, MultiHarmonicDihedral). CPU-only domain; CUDA bonded variants live under `cuda/potentials/` rather than a `cuda/bonded/`.
-- `cpu/minimizer/` — `Minimize` user-facing OptimizeDriver, `LBFGS` / `CG` Optimizer components, minimizer-bound Zero* infra, optimization recorders (TrajectoryWriter, OptLog, FinalGeometry).
+- `cpu/minimizer/` — `Minimize` user-facing preset, `LBFGS` / `CG` Optimizer components, minimizer-bound Zero* infra, optimization recorders (TrajectoryWriter, OptLog, FinalGeometry).
 - `cpu/observer/` — pure compute observers (RDF, Mulliken, density helpers, thermo_component).
 - `cpu/recorder/` — I/O sinks (XYZ via molrs, Trajectory, Thermo, cube / density-cube / orbital-cube writers).
 - `cpu/scf/` — public SCF surface: `SCFSolver` inner solver (NOT a Driver), `SCFEvaluator` Evaluator component, `SCFConfig` / `SCFResult`, free entry points `scf_solve` / `rhf_solve` / `uhf_solve` / `uks_solve`, integrals (one-electron, two-electron, native, Rys ERI, shell-pair), basis sets (STO3G, 6-31G[*], def2-SVP, def2-TZVP), MINAO initial guess, KS grid + Lebedev quadrature + XC (`xc_functional`, `xc_grid_engine`, `xc_libxc`), unified `scf_gradient`, ASPC predictor, libcint bridge.
 - `cpu/scf/internal/` — facade-private SCF step helpers (`HamiltonianBuilder`, `EigenSolver`, `DensityBuilder`, `DIISMixer`, `DualConvergenceCheck`). Owned by `SCFSolver`. Never `cpu::ComponentBase` subclasses, never registered into any Plan, never included from facade-public production headers (tests may include directly).
-- `cuda/` (root) — same shape as `cpu/`: `Frame` (device pointers + host-cached metadata + `SCFWorkspace`), `Box`, `Context`, `ComponentBase`, `to_cpu` transfer, `Timer`, `AsyncBridge`, `NeighborList`. Diverges from CLAUDE.md as follows: there is no `cuda::CUDADriver<PhaseEnum>` layer and no per-category `cuda::EvaluateDriver` / `DynamicsDriver` / `OptimizeDriver` siblings yet; the CUDA migration to the three-category taxonomy is tracked in `.claude/specs/cuda-driver-taxonomy.md`.
+- `cuda/` (root) — same shape as `cpu/`: `Frame` (device pointers + host-cached metadata + `SCFWorkspace`), `Box`, `Context`, `ComponentBase`, `to_cpu` transfer, `Timer`, `AsyncBridge`, `NeighborList`. `cuda::CUDADriver<PhaseEnum>` is the CUDA loop node (mirroring `cpu::CPUDriver<PhaseEnum>`), with `cuda::LoopHandler` + `cuda::ForceConverged` / `cuda::StopOnNaN`; the presets `cuda::Evaluate`, `cuda::md::MD` and `cuda::minimizer::Minimize` derive it directly. As on CPU there are no category base classes.
 - `cuda/md/` — domain components, but the `MD` driver itself still subclasses `Driver<Phase>` directly (algorithm-as-driver). Components live in `ATV::md` namespace rather than `ATV::cuda::md`. Diverges from the CPU naming convention.
 - `cuda/potentials/` — device-side LJ, harmonic-bond, harmonic-angle, multi-harmonic-dihedral evaluators. Note: bonded evaluators live in `cuda/potentials/` rather than a `cuda/bonded/` (diverges from the CPU split).
 - `cuda/minimizer/` — `CG` and `SD` are still driver subclasses; `SteepestDescentStep` is the only component class. Diverges from CPU's "algorithm = component" rule.

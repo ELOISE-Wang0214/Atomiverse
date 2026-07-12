@@ -18,14 +18,14 @@ files under [`examples/`](https://github.com/MolCrafts/Atomiverse/blob/dev/examp
 filename each chapter names, not the number).
 
 Completely new to the codebase? [Chapter 0](ch00-architecture.md) is the
-orientation chapter — it explains the driver categories and the role/capability
-split before any physics is introduced.
+orientation chapter — it explains the drivers, their termination handlers, and
+the role/capability split before any physics is introduced.
 
 ## I. Foundations
 
-- [Chapter 0: A Tour of the CPU Backend](ch00-architecture.md) — the three
-  driver categories, the Driver/Component/Frame pillars, and the role/capability
-  split. The map for everything that follows.
+- [Chapter 0: A Tour of the CPU Backend](ch00-architecture.md) — the driver
+  presets and their loops, the Driver/Component/Frame pillars, and the
+  role/capability split. The map for everything that follows.
 - [Chapter 1: Systems, Units, Precision, and Validation](ch01-foundations.md) —
   the `cpu::Box`/`Atom`/units model, LAMMPS-style tiered precision
   (`StorageReal`/`WorkReal`/`AccReal`, `LocalInt`/`TagInt`/`ImageInt`/`BigInt`),

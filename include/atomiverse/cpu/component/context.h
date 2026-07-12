@@ -2,10 +2,11 @@
 /// @brief cpu::Context -- CPU execution context: flat core state plus
 /// per-workflow service slices (arch-refactor-05-context).
 ///
-/// The core execution state (threads, MPI identity, timer, outer status)
+/// The core execution state (threads, MPI identity, timer, the borrowed
+/// `loop` slice)
 /// stays flat — it is read by every component. Workflow-specific services
 /// are grouped into nested plain-aggregate slices, each filled only by its
-/// owning category driver: `md` (classical force pipeline), `mc`
+/// owning preset: `md` (classical force pipeline), `mc`
 /// (Metropolis sampling), `opt` (optimizer line search), `analysis`
 /// (async analysis executor). Unfilled slice fields stay `nullptr` =
 /// service unavailable; components check before use. Cross-slice reads
@@ -47,7 +48,7 @@ struct Transaction;
 } // namespace mc
 
 /// @brief Classical force-pipeline services (publishers: `Backend`,
-///        `NeighborList`, `DynamicsDriver`).
+///        `NeighborList`, `cpu::md::MD`).
 struct DynamicsServices {
     /// @brief Non-owning handle to the MD spatial decomposition.
     /// Allocated by `Backend::init()`, populated by `Backend::set_frame()`.
@@ -104,7 +105,7 @@ struct DynamicsServices {
     bool is_last_step = false;
 };
 
-/// @brief Metropolis-sampling services (publisher: `SamplingDriver::run`).
+/// @brief Metropolis-sampling services (publisher: `cpu::mc::MC::run`).
 struct SamplingServices {
     /// @brief Non-owning handle to the active MC trial-move changeset.
     /// Address-stable for the run; a `Mover` records its proposed
@@ -119,12 +120,12 @@ struct SamplingServices {
     std::mt19937_64* rng = nullptr;
 };
 
-/// @brief Optimizer line-search services (publishers: `OptimizeDriver::run`
+/// @brief Optimizer line-search services (publishers: `cpu::minimizer::Minimize::run`
 ///        and the active Optimizer component).
 struct OptimizeServices {
     /// @brief Re-entrant force re-evaluation handle.
     ///
-    /// Published by `cpu::OptimizeDriver::run` after `setup_pass`; null on
+    /// Published by `cpu::minimizer::Minimize::run` after `setup_pass`; null on
     /// every other driver. Invoking it re-runs the driver's force-phase
     /// bindings (ZeroForces/ZeroEnergy → evaluator → MPI reduce) on the
     /// frame's *current* geometry. An Optimizer component calls it during

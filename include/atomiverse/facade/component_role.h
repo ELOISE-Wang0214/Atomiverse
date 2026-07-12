@@ -66,12 +66,14 @@ enum class ComponentRole : uint8_t {
                 ///< and velocities back onto the constraint manifold after the
                 ///< integrator has moved them. It is NOT an Integrator — tagging it
                 ///< as one would let a Plan carrying a constraint but no actual
-                ///< integrator pass DynamicsDriver's "at least one Integrator"
-                ///< validation, i.e. run with nothing propagating the equations of
-                ///< motion. It also REDUCES the system's degrees of freedom, which
+                ///< integrator pass `cpu::md::MD::validate_components()`'s "at least one
+                ///< Integrator" check, i.e. run with nothing propagating the
+                ///< equations of motion. It also REDUCES the system's degrees of freedom, which
                 ///< the driver must publish before any thermostat caches Ndof.
     Mover, ///< Proposes a trial state change for a sampling driver (TranslateMove, ...).
-    ConvergenceCheck, ///< Reports loop convergence to the outer driver via outer_status.
+    ConvergenceCheck, ///< Publishes convergence METRICS onto the loop's LoopMetrics
+                      ///< (max/rms force, displacement, energy change). It does not
+                      ///< decide: a LoopHandler judges the metrics. @see loop_handler.h
     Recorder, ///< Writes I/O (XYZ, Zarr, thermo).
     Observer, ///< Computes derived diagnostics (RDF, density, orbital info).
 };

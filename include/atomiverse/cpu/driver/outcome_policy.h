@@ -92,11 +92,15 @@ class Metropolis : public OutcomePolicy {
             throw std::invalid_argument("Metropolis: temperature must be > 0 K");
     }
 
+    /// @brief Stable identifier, for diagnostics.
+    /// @return `"metropolis"`.
     const char* name() const override { return "metropolis"; }
 
     /// @brief Bootstrap invariant: seed the reference energy from the INITIAL
     ///        configuration, before any trial move. Without this the first ΔE is
     ///        measured against zero and is meaningless.
+    /// @param s Loop state after the bootstrap pass; `s.frame.scalars.energy` [eV] is
+    ///        the initial configuration's energy.
     void on_start(const cpu::LoopState& s) override {
         e_cur_ = s.frame.scalars.energy;
     }
@@ -116,13 +120,16 @@ class Metropolis : public OutcomePolicy {
         return Outcome::Rollback;
     }
 
-    /// @brief Energy [eV] of the current (last-accepted) configuration.
+    /// @brief Energy of the current (last-accepted) configuration.
+    /// @return Energy [eV].
     AccReal current_energy() const { return e_cur_; }
 
     /// @brief Total trial moves attempted (lifetime).
+    /// @return Attempt count.
     long long attempts() const { return n_attempts_; }
 
     /// @brief Total trial moves accepted (lifetime).
+    /// @return Accept count.
     long long accepts() const { return n_accepts_; }
 
     /// @brief Accepted fraction of attempted moves, in [0,1] (0 if none attempted).
@@ -133,7 +140,9 @@ class Metropolis : public OutcomePolicy {
     }
 
   private:
-    /// @brief The test itself. @param dE Trial energy change [eV].
+    /// @brief The test itself.
+    /// @param dE Trial energy change [eV].
+    /// @return True to accept the trial move.
     bool accept_(AccReal dE) {
         if (dE <= AccReal(0))
             return true;

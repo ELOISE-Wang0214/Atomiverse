@@ -86,29 +86,47 @@ compiles a sorted **plan** of `(phase, order, component)` triples, and
 then iterates that plan with the right termination condition for the
 job at hand.
 
-There are exactly three CPU driver categories, and they differ in *how
-they decide to stop*, not in *what algorithm they run*.
+There is exactly **one** driver class in each backend — the *loop node*,
+`cpu::CPUDriver<PhaseEnum>` — and the classes you actually construct are
+**presets** over it. A preset is a class whose constructor attaches the
+default policy and infrastructure a given kind of run wants. It is a
+convenience, not a layer of the architecture.
 
-| Driver category | Loop semantics | Concrete CPU class |
+| Preset | Loop semantics | Phase enum |
 |---|---|---|
-| **Evaluate** | exactly one pass | `cpu::Evaluate` |
-| **Dynamics** | full step budget; honours an early-stop request | `cpu::md::MD` |
-| **Optimize** | early-stop when *converged* is signalled | `cpu::minimizer::Minimize` |
+| `cpu::Evaluate` | exactly one pass | `evaluate::Phase` |
+| `cpu::md::MD` | the step budget you pass to `run()` | `md::Phase` |
+| `cpu::minimizer::Minimize` | stop early when converged | `minimizer::Phase` |
+| `cpu::vib::Hessian` | a fixed 6N-displacement schedule, then finalize | `vib::Phase` |
+| `cpu::mc::MC` | a trial-move budget | `sampling::Phase` |
+| `cpu::PathDriver` | stop when every replica of a chain has converged | `path::Phase` |
+
+The three you will meet in this tutorial are the first three; the rest
+appear in the later chapters.
+
+*How the loop decides to stop* is not a property of the class at all.
+It is a **handler** — a small policy object (`cpu::LoopHandler`) the
+driver asks once per iteration, which answers `Continue`, `Converged`,
+or `Stop`. `Minimize` attaches a `ForceConverged` handler in its
+constructor; `MD` attaches none and simply runs its budget. You can
+attach your own, and you can attach several — their verdicts compose by
+severity (`Stop` beats `Converged` beats `Continue`). We come back to
+this at the end of the chapter.
 
 Algorithm choice (velocity-Verlet vs leapfrog, L-BFGS vs CG vs FIRE,
 RHF vs UKS) lives in components, not in driver subclasses. There will
-never be an `cpu::minimizer::LBFGS` driver class — there is a *component*
+never be a `cpu::minimizer::LBFGS` driver class — there is a *component*
 called `LBFGS` that plugs into the `Minimize` driver. The same goes for
 integrators and thermostats.
 
 The reason for this layout is that algorithm choice is something you
-want to swap mid-experiment. Termination semantics are something the
-runtime needs to know structurally. The split keeps both clean.
+want to swap mid-experiment, and so is the stopping rule. Neither is
+worth a class hierarchy.
 
 ## A Single Step, Phase by Phase
 
-Each driver category compiles its plan against a fixed, named **phase
-order** ([`facade/stage.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/stage.h)).
+Each preset compiles its plan against a fixed, named **phase order**
+([`facade/stage.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/stage.h)).
 
 For `cpu::md::MD` the phase order matches LAMMPS:
 
@@ -157,10 +175,11 @@ loop for n_steps:
     end_of_step        ← KineticEnergy, Thermo, Recorder, RDF observer
 ```
 
-`MD::run(frame, n_steps)` exits after `n_steps` iterations unless an
-early-stop component (NaN detector, future stop condition) sets
-`outer_status.stop_requested`. There is no convergence concept — time
-evolution does not "succeed" and "fail", it just runs.
+`MD::run(frame, n_steps)` exits after `n_steps` iterations. There is no
+convergence concept — time evolution does not "succeed" and "fail", it
+just runs — so `MD` attaches no handler by default. If you want it to
+bail out early (energy has gone to NaN, the box has melted), attach a
+handler: `sim.add_handler(cpu::StopOnNaN{})`.
 
 ### Geometry minimization — `cpu::minimizer::Minimize`
 
@@ -169,15 +188,25 @@ loop until converged or max_iter:
     search_direction   ← LBFGS / CG computes a descent direction
     line_search        ← (optional Armijo backtracking)
     force              ← PairLJCut / SCFEvaluator / … (same evaluators as MD!)
-    convergence_check  ← LBFGS / CG: did force + displacement + ΔE meet tolerance?
+    convergence_check  ← LBFGS / CG *measure*: max force, displacement, ΔE
     end_of_step        ← OptLog, FinalGeometry, TrajectoryWriter
 ```
 
-`Minimize::run(frame, max_iter)` exits as soon as a `ConvergenceCheck`-
-tagged component sets `outer_status.converged = true`. The optimizer
-component plays both roles — it computes the direction *and* publishes
-the convergence verdict — which is why a single `LBFGS{...}` instance is
-all the user has to add to wire optimization end to end.
+`Minimize::run(frame, max_iter)` exits as soon as its handler says
+`Converged`. Note the division of labour, because it is the one thing
+newcomers get backwards: at the `convergence_check` phase the optimizer
+**measures** (it publishes max force, RMS force, displacement and ΔE
+into the loop's `LoopMetrics`), and the **handler decides** whether
+those numbers are good enough. `Minimize` attaches `cpu::ForceConverged`
+— the five-criteria test — for you, so a single `LBFGS{...}` instance is
+still all you have to add. But the tolerances live on the handler, and
+you ask the *driver* for the verdict afterwards:
+
+```cpp
+opt.run(frame, 100);
+if (opt.converged()) { /* … */ }
+std::cout << opt.stop_reason() << "\n";   // which handler ended the loop
+```
 
 ### Single-point evaluation — `cpu::Evaluate`
 
@@ -261,13 +290,37 @@ math; an `xsimd` batched overload (`min_image_batch<B>`) lives in
 loops. You will rarely call these directly; force kernels and
 thermostats use them on your behalf.
 
+[`LoopMetrics`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/loop.h)
+is how a component tells the loop what it measured: energy, max force,
+RMS force, the displacement since the previous iteration, |ΔE|. The
+optimizer writes it; the handler reads it; the driver records the
+resulting verdict in an
 [`IterationStatus`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/iteration_status.h)
-is the single channel through which inner components signal "stop the
-outer loop". It carries `converged`, `stop_requested`, and a
-human-readable `reason`. The driver category decides what to do with
-each bit: an Optimize driver breaks on `converged`, a Dynamics driver
-ignores it, both honour `stop_requested`. SCF internals manage their
-own internal convergence and never touch this status object.
+(`converged`, `stop_requested`, and a human-readable `reason`) that it
+**owns**. A component may *request* a stop; only a handler can declare
+convergence. And because each loop owns its own status rather than
+sharing one on the Context, a loop nested inside another cannot
+accidentally stop its parent. SCF internals manage their own internal
+convergence and never touch any of this.
+
+That is the whole termination story, and it is why writing your own
+stopping rule takes about ten lines:
+
+```cpp
+class StopWhenTooHot : public cpu::LoopHandler {
+  public:
+    explicit StopWhenTooHot(double t_max) : t_max_(t_max) {}
+    const char* name() const override { return "stop_when_too_hot"; }
+    ATV::Verdict after_iteration(const cpu::LoopState& s) override {
+        return (s.frame.scalars.temperature > t_max_) ? ATV::Verdict::Stop
+                                                      : ATV::Verdict::Continue;
+    }
+  private:
+    double t_max_;
+};
+
+sim.add_handler(StopWhenTooHot{2000.0});   // LAMMPS's `fix halt`, from outside the library
+```
 
 ## What Each Later Chapter Adds
 

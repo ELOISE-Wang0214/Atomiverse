@@ -89,6 +89,8 @@ class SubDriver : public cpu::ComponentBase {
     ///        parent's `build()`.
     ///
     /// Nothing is allocated per outer iteration: `launch()` only loops.
+    /// @param ctx Build context; its `exec.runtime` is the parent's Backend, on which
+    ///        the child's Plan is built.
     void build(const cpu::BuildContext& ctx) override {
         inner_->compile(); // the child's Plan: install_defaults + validate + compile
         ctx.runtime.exec.runtime->build_plan(inner_->plan());
@@ -96,11 +98,14 @@ class SubDriver : public cpu::ComponentBase {
     }
 
     /// @brief Run the child's whole loop, once, as one operation of the parent's.
+    /// @param ctx Launch context; supplies the frame and the Context (carrying the
+    ///        parent's Runtime) the child loop borrows.
     void launch(const cpu::LaunchContext& ctx) override {
         last_iterations_ = inner_->run_nested(ctx.runtime, ctx.frame, budget_);
     }
 
     /// @brief Destroy the child's components, in reverse Plan order.
+    /// @param ctx Destroy context; its `exec.runtime` is the parent's Backend.
     void destroy(const cpu::DestroyContext& ctx) override {
         if (!built_)
             return;
@@ -109,6 +114,7 @@ class SubDriver : public cpu::ComponentBase {
     }
 
     /// @brief Iterations the child ran on its most recent `launch()`.
+    /// @return Iteration count (≤ the configured budget).
     int last_iterations() const { return last_iterations_; }
 
   private:

@@ -212,20 +212,19 @@ int main(int argc, char** argv) {
     // inner loop).
     opt.set_pair(cpu::PairLJCut{1.0, 2.5, args.cutoff}.set_compute_stress(false));
     opt.set_neighbor(cpu::md::NeighborList<>{args.cutoff, args.skin});
+    if (args.opt == "lbfgs") {
+        opt.set_optimizer(
+            cpu::minimizer::LBFGS{/*memory=*/5, args.alpha0, /*max_ls=*/10});
+    } else {
+        opt.set_optimizer(cpu::minimizer::CG{args.alpha0});
+    }
     // All five convergence tolerances = 0: no criterion can ever be met, so
     // run() exhausts the full --iters budget — fixed work per rank count,
-    // the LAMMPS `minimize 0 0 N M` benchmark convention.
-    if (args.opt == "lbfgs") {
-        opt.set_optimizer(cpu::minimizer::LBFGS{
-            /*memory=*/5, args.alpha0, /*ftol=*/0.0, /*max_ls=*/10,
-            /*rms_ftol=*/0.0, /*max_dtol=*/0.0, /*rms_dtol=*/0.0,
-            /*etol=*/0.0});
-    } else {
-        opt.set_optimizer(cpu::minimizer::CG{args.alpha0, /*ftol=*/0.0,
-                                             /*rms_ftol=*/0.0,
-                                             /*max_dtol=*/0.0,
-                                             /*rms_dtol=*/0.0, /*etol=*/0.0});
-    }
+    // the LAMMPS `minimize 0 0 N M` benchmark convention. Attaching this
+    // handler also suppresses the preset's default ForceConverged{}.
+    opt.add_handler(cpu::ForceConverged{/*ftol=*/0.0, /*rms_ftol=*/0.0,
+                                        /*max_dtol=*/0.0, /*rms_dtol=*/0.0,
+                                        /*etol=*/0.0});
     opt.set_migrate_every(args.migrate);
     opt.build();
 

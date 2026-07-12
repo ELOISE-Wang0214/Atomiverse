@@ -1,5 +1,5 @@
 /// @file cpu/minimizer/cg.cpp
-/// @brief Polak-Ribière+ CG step + multi-criteria convergence (mirrors LBFGS).
+/// @brief Polak-Ribière+ CG step; publishes LoopMetrics (mirrors LBFGS).
 ///        MPI-aware: owned-row loops + cross-rank reductions.
 
 #include "atomiverse/cpu/minimizer/cg.h"
@@ -16,10 +16,7 @@ namespace ATV {
 namespace cpu {
 namespace minimizer {
 
-CG::CG(double alpha0, double ftol, double rms_ftol, double max_dtol,
-       double rms_dtol, double etol)
-    : alpha0_(alpha0), ftol_(ftol), rms_ftol_(rms_ftol), max_dtol_(max_dtol),
-      rms_dtol_(rms_dtol), etol_(etol) {}
+CG::CG(double alpha0) : alpha0_(alpha0) {}
 
 CG& CG::line_search(LineSearchMode mode, double c1, double c2, double max_step,
                     double min_alpha) {

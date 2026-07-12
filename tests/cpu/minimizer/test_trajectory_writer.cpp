@@ -71,7 +71,8 @@ TEST_F(MinimizerRecordersTest, TrajectoryFileIsAppendedEveryStep) {
 
     const auto traj_path = tmpdir_ / "traj.xyz";
     cpu::minimizer::Minimize opt;
-    opt.add(cpu::minimizer::LBFGS{5, 0.01, 0.5, 10});
+    opt.add(cpu::minimizer::LBFGS{5, 0.01, 10});
+    opt.add_handler(cpu::ForceConverged{/*ftol=*/0.5});
     opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
     opt.on(minimizer::Phase::end_of_step)
         .add(
@@ -95,7 +96,8 @@ TEST_F(MinimizerRecordersTest, TrajectoryRespectsStride) {
 
     const auto traj_path = tmpdir_ / "traj_stride.xyz";
     cpu::minimizer::Minimize opt;
-    opt.add(cpu::minimizer::LBFGS{5, 0.01, 0.5, 10});
+    opt.add(cpu::minimizer::LBFGS{5, 0.01, 10});
+    opt.add_handler(cpu::ForceConverged{/*ftol=*/0.5});
     opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
     opt.on(minimizer::Phase::end_of_step)
         .add(
@@ -118,7 +120,8 @@ TEST_F(MinimizerRecordersTest, OptLogTSVHasOneRowPerStep) {
 
     const auto log_path = tmpdir_ / "opt.tsv";
     cpu::minimizer::Minimize opt;
-    opt.add(cpu::minimizer::LBFGS{5, 0.01, 0.5, 10});
+    opt.add(cpu::minimizer::LBFGS{5, 0.01, 10});
+    opt.add_handler(cpu::ForceConverged{/*ftol=*/0.5});
     opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
     opt.on(minimizer::Phase::end_of_step)
         .add(cpu::minimizer::OptLog{log_path.string()});
@@ -147,7 +150,8 @@ TEST_F(MinimizerRecordersTest, FinalGeometryContainsOneFrame) {
 
     const auto final_path = tmpdir_ / "final.xyz";
     cpu::minimizer::Minimize opt;
-    opt.add(cpu::minimizer::LBFGS{5, 0.01, 0.5, 10});
+    opt.add(cpu::minimizer::LBFGS{5, 0.01, 10});
+    opt.add_handler(cpu::ForceConverged{/*ftol=*/0.5});
     opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
     opt.on(minimizer::Phase::end_of_step)
         .add(cpu::minimizer::FinalGeometry{final_path.string()});

@@ -3,7 +3,7 @@
 ///
 /// Frame purity is preserved by NOT adding a Hessian field to
 /// `cpu::Frame`. Instead `cpu::vib::Hessian::run()` returns this plain
-/// struct by value (mirroring `OptimizeDriver::run()` returning `int`).
+/// struct by value (mirroring `cpu::minimizer::Minimize::run()` returning `int`).
 /// Vibrational-frequency and thermochemistry links extend this struct
 /// with mass-weighted frequencies / normal modes / thermo quantities.
 #pragma once

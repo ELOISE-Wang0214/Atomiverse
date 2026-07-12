@@ -33,11 +33,8 @@ double dot_local(const std::vector<double>& a, const std::vector<double>& b,
 
 } // namespace
 
-LBFGS::LBFGS(int memory, double alpha0, double ftol, int max_ls,
-             double rms_ftol, double max_dtol, double rms_dtol, double etol)
-    : memory_(memory), alpha0_(alpha0), ftol_(ftol), max_ls_(max_ls),
-      rms_ftol_(rms_ftol), max_dtol_(max_dtol), rms_dtol_(rms_dtol),
-      etol_(etol) {}
+LBFGS::LBFGS(int memory, double alpha0, int max_ls)
+    : memory_(memory), alpha0_(alpha0), max_ls_(max_ls) {}
 
 double LBFGS::reduce_(double v) const {
     // `hist_` must not know MPI exists — that coupling is exactly what welded the
@@ -88,11 +85,8 @@ void LBFGS::build(const cpu::BuildContext& ctx) {
                                 ? "strong_wolfe"
                             : (ls_mode_ == LineSearchMode::Armijo) ? "armijo"
                                                                    : "fixed";
-    ATV_INFO(
-        "[lbfgs] build memory={} alpha0={:.6f} ftol={:.6f} rms_ftol={:.6f} "
-        "max_dtol={:.4f} rms_dtol={:.4f} etol={:.6e} line_search={}",
-        memory_, alpha0_, ftol_, rms_ftol_, max_dtol_, rms_dtol_, etol_,
-        mode_name);
+    ATV_INFO("[lbfgs] build memory={} alpha0={:.6f} max_ls={} line_search={}",
+             memory_, alpha0_, max_ls_, mode_name);
 }
 
 void LBFGS::launch(const cpu::LaunchContext& ctx) {

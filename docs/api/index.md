@@ -33,6 +33,20 @@ Start with these facade headers:
 - [`Driver`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/driver.h)
 - [`Plan`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/plan.h)
 - [`Phase` enums](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/stage.h)
+- [`Verdict` / `LoopMetrics`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/loop.h) — the vocabulary termination is decided in
+
+### Decide when a run stops
+
+The loop node (`cpu::CPUDriver<P>`, which every CPU driver derives from) has two
+policy slots. Both are user-definable from outside the library:
+
+- [`cpu::LoopHandler`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/driver/loop_handler.h) —
+  *should the loop stop?* `driver.add_handler(h)`, plural. Ships `ForceConverged`,
+  `AllReplicasConverged`, `StopOnNaN`.
+- [`cpu::OutcomePolicy`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/driver/outcome_policy.h) —
+  *does this iteration count?* `driver.set_outcome(p)`, singular. Ships `Metropolis`.
+- [`cpu::SubDriver`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/driver/sub_driver.h) —
+  put one driver in another's plan; the child runs on the parent's runtime.
 
 ### Run molecular dynamics and minimization
 

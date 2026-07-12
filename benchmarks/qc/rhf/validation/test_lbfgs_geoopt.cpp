@@ -33,7 +33,8 @@ TEST_F(LBFGSTest, H2RHFGeometryOptimization) {
     auto config = cpu::scf::rhf_config(integrals);
 
     cpu::minimizer::Minimize opt;
-    opt.add(cpu::minimizer::LBFGS{5, double(0.01), double(0.5), 10});
+    opt.add(cpu::minimizer::LBFGS{5, double(0.01), 10});
+    opt.add_handler(cpu::ForceConverged{/*ftol=*/0.5});
     opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
     opt.build();
     opt.run(frame, 50);
@@ -51,7 +52,8 @@ TEST_F(LBFGSTest, H2LSDAGeometryOptimization) {
     auto config = cpu::scf::uks_config(integrals, 1, 1, cpu::scf::XCType::LSDA);
 
     cpu::minimizer::Minimize opt;
-    opt.add(cpu::minimizer::LBFGS{5, double(0.01), double(0.5), 10});
+    opt.add(cpu::minimizer::LBFGS{5, double(0.01), 10});
+    opt.add_handler(cpu::ForceConverged{/*ftol=*/0.5});
     opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
     opt.build();
     opt.run(frame, 50);
@@ -69,7 +71,8 @@ TEST_F(LBFGSTest, CompressedH2Expands) {
     auto config = cpu::scf::rhf_config(integrals);
 
     cpu::minimizer::Minimize opt;
-    opt.add(cpu::minimizer::LBFGS{5, double(0.01), double(0.5), 10});
+    opt.add(cpu::minimizer::LBFGS{5, double(0.01), 10});
+    opt.add_handler(cpu::ForceConverged{/*ftol=*/0.5});
     opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
     opt.build();
     opt.run(frame, 30);
@@ -87,16 +90,15 @@ TEST_F(LBFGSTest, H2RHFArmijoLineSearchReachesTightForce) {
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals);
 
-    cpu::minimizer::LBFGS step{/*memory=*/5,        /*alpha0=*/0.05,
-                               /*ftol=*/0.001, // eV/Å
-                               /*max_ls=*/20,
-                               /*rms_ftol=*/0.0005,
-                               /*max_dtol=*/0.001,
-                               /*rms_dtol=*/0.0005,
-                               /*etol=*/1e-7};
+    cpu::minimizer::LBFGS step{/*memory=*/5, /*alpha0=*/0.05, /*max_ls=*/20};
     step.line_search(); // Armijo default constants.
     cpu::minimizer::Minimize opt;
     opt.add(std::move(step));
+    opt.add_handler(cpu::ForceConverged{/*ftol=*/0.001, // eV/Å
+                                        /*rms_ftol=*/0.0005,
+                                        /*max_dtol=*/0.001,
+                                        /*rms_dtol=*/0.0005,
+                                        /*etol=*/1e-7});
     opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
     opt.build();
     opt.run(frame, 80);
@@ -114,10 +116,10 @@ TEST_F(LBFGSTest, FixedStepFallbackStillContracts) {
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals);
 
-    cpu::minimizer::LBFGS step{5, double(0.01), double(0.05), 10};
+    cpu::minimizer::LBFGS step{5, double(0.01), 10};
     step.line_search(cpu::minimizer::LineSearchMode::Fixed);
     cpu::minimizer::Minimize opt;
-    opt.add(std::move(step));
+    opt.add(std::move(step)); // ForceConverged{} default handler (ftol=0.05).
     opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
     opt.build();
     opt.run(frame, 50);

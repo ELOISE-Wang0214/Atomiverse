@@ -12,69 +12,137 @@ The chapter assumes you have read the
 mental model — Frame, Component, Driver — is repeated here only when
 the developer-level rules require it.
 
-## Why Driver Categories Exist
+## Why There Is No Driver Category
 
-User-facing simulation in Atomiverse comes in five flavours, and the
-clean way to think about them is: **the algorithm does not pick the
-category — the termination rule does.**
+There used to be five "category" base classes here — `EvaluateDriver`,
+`DynamicsDriver`, `OptimizeDriver`, `ResponseDriver`, `SamplingDriver`
+— one per kind of run. They are **deleted**, and so are their headers.
+They differed from one another by a single `if`: *when does the loop
+stop?* Evaluate ran one pass, Dynamics ran a budget, Optimize stopped
+on convergence. Every new method wanted a sixth, and no user could
+write a seventh, because that `if` was private to a driver class.
 
-| Category | Termination | Concrete CPU class |
+Stripped to the bone, a Driver is three things: **stages** (a typed
+phase enum), **iteration** (walk them repeatedly), and **termination**
+(when to stop). Only the third was welded into the hierarchy. Hand it
+to a policy object and there is nothing left for a category to be. The
+CPU backend now has three collaborating pieces:
+
+| | What it is | How many |
 |---|---|---|
-| `cpu::EvaluateDriver` | exactly one pass | `cpu::Evaluate` |
-| `cpu::DynamicsDriver` | full step budget; honours `outer_status.stop_requested` | `cpu::md::MD` |
-| `cpu::OptimizeDriver` | early-stop when `outer_status.converged` | `cpu::minimizer::Minimize` |
-| `cpu::ResponseDriver` | fixed 6N-displacement budget, then finalize; no early stop | `cpu::vib::Hessian` |
-| `cpu::SamplingDriver` | trial-move budget with inline Metropolis accept/reject | `cpu::mc::MC` |
+| **Runtime** (`cpu::Backend`) | frame binding, plan execution, timing, MPI, domain decomposition | one per run, shared by the whole driver tree |
+| **Driver** (`cpu::CPUDriver<P>`) | one **loop node**: stages + plan + handlers | any number, nestable |
+| **Handler** (`cpu::LoopHandler`) | asked once per iteration: stop or not? | any number, composable, user-definable |
 
-If you ever want to add a new category, the test is whether the new
-loop has a *genuinely distinct* termination semantic. NEB qualifies —
-the loop terminates when *every image* of a coupled chain has
-converged, a coupled-convergence rule none of the existing categories
-model. Sampling and Response each earned their row exactly this way
-(mid-run rejection logic; a fixed displacement schedule). A new
-"molecular mechanics" driver, however, is *not* a new category — it is
-a Dynamics driver with a different evaluator at the force phase.
+What survives of the old table is the list of **presets** — the classes
+users actually construct. A preset is *not* an architectural layer: it
+is a class whose **constructor** attaches the default handler and the
+infrastructure a given kind of run wants. It contributes defaults, not
+semantics, and every one of them can be overridden.
+
+| Preset | Phase enum | Default policy | Termination |
+|---|---|---|---|
+| `cpu::Evaluate` | `evaluate::Phase` | — | exactly one pass |
+| `cpu::md::MD` | `md::Phase` | — | the step budget |
+| `cpu::minimizer::Minimize` | `minimizer::Phase` | handler `ForceConverged` | convergence, or the budget |
+| `cpu::vib::Hessian` | `vib::Phase` | — | fixed 6N displacements, then finalize |
+| `cpu::mc::MC` | `sampling::Phase` | **outcome** `Metropolis` | the trial budget |
+| `cpu::PathDriver` | `path::Phase` | handler `AllReplicasConverged` | every replica converged |
 
 The wrong reflex is to subclass `Driver<>` for every algorithm
 ("LBFGSDriver", "CGDriver", "FIREDriver"). The right reflex is to
 implement the algorithm as a Component and plug it into the existing
 `Minimize` driver. The CPU codebase already paid this price once when
 the original `cpu::minimizer::LBFGS` *driver class* was renamed to
-`Minimize`, and `LBFGSStep` became `LBFGS`.
+`Minimize`, and `LBFGSStep` became `LBFGS`. The second-wrong reflex is
+to reach for a new driver class because your run stops differently.
+That is a `LoopHandler`, and it is about ten lines.
 
 ## The Hierarchy in One Diagram
 
 ```text
 Driver<PhaseEnum, DeviceTag>            facade/driver.h — Plan/Backend ownership
-    └─ cpu::CPUDriver<PhaseEnum>        cpu/driver/cpu_driver.h — CPU backend layer
-         ├─ cpu::EvaluateDriver         cpu/driver/evaluate_driver.h
-         │     └─ cpu::Evaluate         cpu/driver/evaluate.h
-         ├─ cpu::DynamicsDriver         cpu/driver/dynamics_driver.h
-         │     └─ cpu::md::MD           cpu/md/md.h
-         └─ cpu::OptimizeDriver         cpu/driver/optimize_driver.h
-               └─ cpu::minimizer::Minimize  cpu/minimizer/minimize.h
+    └─ cpu::CPUDriver<PhaseEnum>        cpu/driver/cpu_driver.h — THE loop node
+         ├─ cpu::Evaluate               cpu/driver/evaluate.h
+         ├─ cpu::md::MD                 cpu/md/md.h
+         ├─ cpu::minimizer::Minimize    cpu/minimizer/minimize.h
+         ├─ cpu::vib::Hessian           cpu/vib/hessian.h
+         ├─ cpu::mc::MC                 cpu/mc/mc.h
+         └─ cpu::PathDriver             cpu/driver/path_driver.h
 ```
 
-`Driver<>` is the underlying primitive — it owns the `Plan` and the
-`Backend`. `cpu::CPUDriver<P>` adds CPU-specific glue:
+Two levels, not four. `Driver<>` is the underlying primitive — it owns
+the `Plan` and the `Backend`. `cpu::CPUDriver<P>` is the loop node, and
+provides:
 
 1. A `build()` override that runs `validate_components()` *before* the
-   plan is compiled. Subclasses override `validate_components()` to
-   enforce their required role + capability set.
-2. `setup_pass(frame)`, `step_once(iter_idx)`, `teardown_pass()` —
-   protected helpers each category's `run(...)` calls in the right
-   pattern.
-3. Read/write access to `cpu::Context::outer_status` so the category
-   loop can poll `converged` / `stop_requested`.
+   plan is compiled. Each preset overrides `validate_components()` to
+   enforce its required role + capability set.
+2. `setup_pass(frame)`, `step_once(iter_idx)`, `poll_handlers_(iter)`,
+   `teardown_pass()` — the loop primitives each preset's `run(...)`
+   composes, plus the continuation machinery (`begin_run_` /
+   `flush_live_`) that MD and MC share.
+3. **This loop's own** `IterationStatus` and `LoopMetrics` — owned by
+   the node, borrowed by the Context (see below).
+4. The two policy slots: `add_handler(...)` (plural, termination) and
+   `set_outcome(...)` (singular, commit/rollback).
+5. The categorical setter API (`set_pair`, `set_bond`, …, `set_thermo`).
 
-User-facing CPU drivers (`Evaluate`, `MD`, `Minimize`) are thin: their
-constructors auto-add infrastructure components (zeroing, kinetic
-accumulator, snapshot publisher) and add nothing else. They do *not*
-override `run()`; the category base owns the termination semantics.
-This is the load-bearing rule. If you find yourself wanting to override
-`run()` in a user-facing class, you almost certainly want a new
-*category* base, not a new concrete driver — and you should think hard
-about whether the existing three already cover your case.
+The presets are thin: their constructors auto-add infrastructure
+components (zeroing, kinetic accumulator, snapshot publisher) and
+attach a default policy, and add nothing else. They each own a `run()`
+that composes the primitives above — but the termination decision
+inside it is delegated to whatever handlers are attached, which is why
+adding a stopping rule never means adding a class.
+
+## Termination Is a Handler
+
+A `LoopHandler` ([`cpu/driver/loop_handler.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/driver/loop_handler.h))
+is asked once per iteration and answers with an `ATV::Verdict`:
+`Continue`, `Converged`, or `Stop`. Handlers are **plural** — several
+can be attached, and their verdicts compose by severity, **Stop >
+Converged > Continue**, so a run that has gone numerically insane
+cannot report success by also happening to satisfy a force tolerance.
+
+The handler sees a `cpu::LoopState` — iteration index, frame, Context,
+metrics — and deliberately **never a phase**. That is what lets one
+handler serve MD, Minimize, MC and Path alike. Three ship in-tree:
+`ForceConverged` (the five-criteria geometry test), `AllReplicasConverged`,
+and `StopOnNaN`. A user writes their own from outside the library:
+
+```cpp
+class StopWhenTooHot : public cpu::LoopHandler {
+  public:
+    explicit StopWhenTooHot(double t_max) : t_max_(t_max) {}
+    const char* name() const override { return "stop_when_too_hot"; }
+    ATV::Verdict after_iteration(const cpu::LoopState& s) override {
+        return (s.frame.scalars.temperature > t_max_) ? ATV::Verdict::Stop
+                                                      : ATV::Verdict::Continue;
+    }
+  private:
+    double t_max_;
+};
+
+sim.add_handler(StopWhenTooHot{2000.0});
+```
+
+This is LAMMPS's `fix halt`, and it was impossible to write before.
+
+Under MPI the driver all-reduces the verdict across ranks, once, before
+acting on it. Handler authors write `after_iteration` as if the process
+were alone; ranks that disagreed about when to stop would deadlock at
+the next collective, and that is not a hazard a handler author should
+have to know about.
+
+The loop's *other* policy slot is the `OutcomePolicy`
+([`cpu/driver/outcome_policy.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/driver/outcome_policy.h)),
+set with `set_outcome(...)` and **singular**. It answers a different
+question — *does this iteration count?* — with `Commit` or `Rollback`.
+Monte Carlo's accept/reject is the reason it exists: rejecting a trial
+move does not end the run, it discards one iteration's work and keeps
+going. `Metropolis` is one implementation; `MC` attaches it in its
+constructor. Swapping in a GCMC or REMD acceptance rule is a
+`set_outcome` call, not a new driver class.
 
 ## Two Tagging Axes, Not One
 
@@ -110,8 +178,8 @@ contexts, the right answer to different validation questions.
     off and the driver still validates: it just needs an Evaluator with
     *any* non-empty capability set.
   - In `cpu::md::MD`, the same class with `with_gradient(true)` passes
-    Dynamics's "something must produce `Capability::Force`" check.
-  - In `cpu::minimizer::Minimize`, the same class passes Optimize's
+    MD's "something must produce `Capability::Force`" check.
+  - In `cpu::minimizer::Minimize`, the same class passes Minimize's
     "Energy or Force" check.
 
 If role and capability were collapsed into a single tag, this class
@@ -123,7 +191,7 @@ A second example: `cpu::md::FixLangevin` declares
 `capabilities()` is `Capability::Force` because its `launch()` writes
 additive friction + random forces into `fx/fy/fz`. That one bit is what
 lets a *pure* Langevin run — diffusion in a featureless box, no LJ at
-all — satisfy `DynamicsDriver`'s "something writes forces" build-time
+all — satisfy `cpu::md::MD`'s "something writes forces" build-time
 check. Roles describe structure; capabilities describe data flow.
 
 When you write a new component, ask both questions independently: what
@@ -185,9 +253,12 @@ Two practical consequences:
 
 ## The Iteration Status Channel
 
-`cpu::Context` carries one piece of structured cross-component state:
-`outer_status` of type `ATV::IterationStatus`
-([`facade/iteration_status.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/iteration_status.h)).
+Two small structs carry the loop's verdict and the evidence for it.
+`ATV::IterationStatus`
+([`facade/iteration_status.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/iteration_status.h))
+is the verdict; `ATV::LoopMetrics`
+([`facade/loop.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/facade/loop.h))
+is the evidence.
 
 ```cpp
 struct IterationStatus {
@@ -196,35 +267,48 @@ struct IterationStatus {
     std::string reason;
     void reset() noexcept;
 };
+
+struct LoopMetrics {          // what the components measured this iteration
+    double energy, max_force, rms_force;
+    double max_displacement, rms_displacement, energy_change;
+    bool   has_displacement;
+    double replicas_converged;   // fraction in [0,1]; only a band writes it
+};
 ```
+
+**Status belongs to the loop, not to the Context.** Each loop node owns
+its own `IterationStatus` and `LoopMetrics` as members
+(`CPUDriver::status_`, `CPUDriver::metrics_`); the Context only
+*borrows* the active loop's, through the non-owning `ctx.loop`
+(`LoopServices{status, metrics}`). A nested driver re-points `ctx.loop`
+at its own on entry and restores the parent's on exit, so **an inner
+loop cannot stop its enclosing loop** — there is no pointer from here
+to there. That is not a rule to remember; it is the reason a bug that
+shipped twice (an optimizer writing `converged` unconditionally; the
+first converged NEB image stopping the whole band) is now unwritable.
 
 Ownership rules:
 
-- The **outer category driver** owns the status. It calls `reset()` at
-  the start of every iteration and polls it at the end of every
-  iteration.
-- **`ConvergenceCheck`-tagged components** (in practice, the optimizer
-  components — `LBFGS` and `CG`) *write* to it. Their convention is to
-  set `outer_status.converged = true` when their five-criterion check
-  passes.
-- **Anyone** can write `outer_status.stop_requested = true` and a
-  `reason` string. NaN detectors, wall-clock guards, and future
-  `StopCondition` components are the typical clients.
-- **SCF internals never touch `outer_status`.** The SCF cycle's own
+- The **loop node** owns the status. It calls `reset()` at the start of
+  every iteration and polls its handlers at the end of every iteration.
+- **Components measure, they do not judge.** `LBFGS` and `CG` publish
+  `max_force`, `rms_force`, the displacements and ΔE into
+  `ctx.loop.metrics`. They do not decide whether those numbers mean
+  convergence — a `LoopHandler` does. `LBFGS::converged()` and
+  `CG::converged()` are deleted; ask the driver: `opt.converged()` and
+  `opt.stop_reason()`.
+- A component may **request** a stop (`stop_requested = true` with a
+  `reason`), but it **cannot declare convergence** — there is no field
+  left for it to write. `converged` is set by the driver, and only when
+  a handler returns `Verdict::Converged`.
+- **SCF internals never touch any of this.** The SCF cycle's own
   convergence is internal to `cpu::scf::SCFSolver` — it has its own
-  `DualConvergenceCheck` helper and its own loop. The outer status
-  channel is for the *outer* driver's loop.
+  `DualConvergenceCheck` helper and its own loop.
 
-The two flags are interpreted differently by category:
-
-| Category | Reads `converged` | Reads `stop_requested` |
-|---|---|---|
-| Evaluate | (one pass; no loop) | (irrelevant) |
-| Dynamics | **ignored** (time evolution doesn't "succeed") | breaks the loop |
-| Optimize | breaks the loop | breaks the loop |
-
-That is the smallest possible specification of "what does an outer loop
-do?" If you are adding a new category, write down the same row.
+There is no per-category table of "who reads which flag" any more,
+because there are no categories: every loop node runs the same
+`poll_handlers_` reduction, and what differs between an MD run and a
+minimization is only which handlers happen to be attached.
 
 ## Why SCF Is an Inner Solver, Not a Driver
 
@@ -356,8 +440,8 @@ order" goes through these stages:
    `pending_` vector. `driver.on(p).add(c, ord)` skips the defaults and
    adds one explicit triple.
 2. **Validation.** `cpu::CPUDriver::build()` calls
-   `validate_components()` (overridden by each category base) which
-   walks `pending_` and checks role + capability requirements.
+   `validate_components()` (overridden by each preset) which walks
+   `pending_` and checks role + capability requirements.
 3. **Plan compilation.** The base `Driver<>::build()` then asks the
    `PlanBuilder` to sort `pending_` by `(phase, order, insertion_index)`
    and emit a compact `Plan` of `StageSlot`s — one slot per phase, each
@@ -408,14 +492,22 @@ A short rubric, with examples:
   `Evaluator`, capability `Energy | Force | Stress` (whichever it
   produces). Plugs into `cpu::md::MD` *and* `cpu::minimizer::Minimize`
   *and* `cpu::Evaluate`.
-- **New runtime semantic** (e.g. NEB, REMD, MC): potentially a new
-  category base. Must be justified by a *termination rule* that does
-  not fit Evaluate / Dynamics / Optimize.
+- **New stopping rule** (e.g. "halt above 2000 K", "give up after an
+  hour", "stop when the band is flat"): new `cpu::LoopHandler`,
+  attached with `add_handler(...)`. No new driver class, and no edit to
+  any algorithm.
+- **New acceptance rule** (e.g. GCMC insertion, a REMD exchange): new
+  `cpu::OutcomePolicy`, attached with `set_outcome(...)`. No new driver
+  class.
+- **New loop shape** (a genuinely different stage sequence — a new
+  phase enum): subclass `cpu::CPUDriver<YourPhase>` and specialize
+  `cpu::PhaseTraits` for it. This is rare, and it is the *only* case
+  that justifies a new driver class.
 
 When the right answer is "new component", do not invent a new driver
-class. The validation rules in the existing categories already enforce
-the structural pieces — your new component's role and capability tags
-will plug into them automatically.
+class. The validation rules in the existing presets already enforce the
+structural pieces — your new component's role and capability tags will
+plug into them automatically.
 
 ## Things to Read Next
 

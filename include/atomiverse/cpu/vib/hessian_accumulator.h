@@ -31,7 +31,7 @@ namespace vib {
 ///        differencing the evaluator-produced forces.
 ///
 /// `role() == None`; `capabilities() == Capability::Hessian` — it is the
-/// canonical Hessian-producing component that `ResponseDriver`'s
+/// canonical Hessian-producing component that `cpu::vib::Hessian`'s
 /// build-time validation requires.
 class HessianAccumulator : public cpu::ComponentBase {
   public:
@@ -42,7 +42,7 @@ class HessianAccumulator : public cpu::ComponentBase {
     std::string name() const override { return "vib_hessian_accumulator"; }
     ComponentRole role() const override { return ComponentRole::None; }
 
-    /// @brief Advertises `Capability::Hessian` — the bit `ResponseDriver`
+    /// @brief Advertises `Capability::Hessian` — the bit `cpu::vib::Hessian`
     ///        requires exactly one component to carry.
     /// @return `Capability::Hessian`.
     Capability capabilities() const override { return Capability::Hessian; }

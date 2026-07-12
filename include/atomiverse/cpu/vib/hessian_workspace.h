@@ -2,7 +2,7 @@
 /// @brief cpu::vib::HessianWorkspace — shared scratch for the four
 ///        numerical-Hessian structural components.
 ///
-/// The four Response-category components (`ReferenceGeometry`,
+/// The four numerical-Hessian components (`ReferenceGeometry`,
 /// `DisplaceStep`, `HessianAccumulator`, `Symmetrize`) cooperate on one
 /// `[3N,3N]` matrix plus the equilibrium-geometry cache. The driver
 /// (`cpu::vib::Hessian`) owns one `HessianWorkspace` and hands each

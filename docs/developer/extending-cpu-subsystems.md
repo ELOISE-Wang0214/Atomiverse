@@ -4,7 +4,7 @@ This page is a practical handbook. It walks through three specific
 extensions — adding an MD integrator, adding a minimizer, and adding an
 SCF inner-step helper — at the level of "what file do I create, what do
 I inherit, what do I register, what does the test look like?" The
-rationale behind the three driver categories and the role/capability
+rationale behind the loop node, its presets, and the role/capability
 split is in [CPU Internals](cpu-internals.md). The general rules of
 component design are in
 [Extending Components](extending-components.md). This page picks up
@@ -12,10 +12,10 @@ where they leave off.
 
 The three case studies are deliberately chosen to span the layering:
 
-1. **A new MD integrator** — a Component plugged into
-   `cpu::md::MD` (Dynamics driver).
-2. **A new minimizer** — a Component plugged into
-   `cpu::minimizer::Minimize` (Optimize driver).
+1. **A new MD integrator** — a Component plugged into the
+   `cpu::md::MD` preset.
+2. **A new minimizer** — a Component plugged into the
+   `cpu::minimizer::Minimize` preset.
 3. **A new SCF inner-step helper** — a non-component class owned by
    `cpu::scf::SCFSolver` (inner solver, not a driver).
 
@@ -97,7 +97,7 @@ in `build()` (sized to `frame.atoms.size()`), not in `launch()`. The
 zero-allocation invariant in `launch()` is verified by
 `tests/cpu/test_md_no_alloc.cpp`, and breaking it will fail review.
 
-**Validation comes for free.** `cpu::DynamicsDriver::validate_components`
+**Validation comes for free.** `cpu::md::MD::validate_components`
 walks the registered set and requires at least one component with
 `role() == Integrator`. By tagging Beeman with `ComponentRole::Integrator`
 in the header above, you make the new integrator a valid replacement
@@ -116,7 +116,7 @@ asserts:
   flip velocities, propagate $N$ more, compare positions.
 
 Hot-swap testing is the right way to validate "this integrator
-implements the Dynamics contract correctly". If your integrator passes
+implements the MD contract correctly". If your integrator passes
 the same fixtures `VelocityVerlet` already passes, the wiring is
 correct.
 
@@ -131,9 +131,8 @@ PRL 97, 170201, 2006) optimizer alongside the existing
 components live under `cpu/minimizer/`.
 
 **The skeleton.** FIRE is structurally similar to LBFGS — it computes a
-search direction *and* publishes a convergence verdict. Both
-responsibilities are bound into the same component, and that is what
-the existing `LBFGS` and `CG` already do. Mirror their pattern:
+search direction *and* publishes the numbers by which the loop will be
+judged. It does **not** judge them itself. Mirror the existing pattern:
 
 ```cpp
 #pragma once
@@ -155,10 +154,7 @@ public:
          double f_inc,         // dt growth factor
          double f_dec,         // dt shrink factor on P<0
          double alpha0,        // initial mixing coefficient
-         double f_alpha,       // alpha decay factor
-         double ftol, double rms_ftol,
-         double max_dtol, double rms_dtol,
-         double etol);
+         double f_alpha);      // alpha decay factor
 
     std::string   name() const override { return "fire"; }
     ComponentRole role() const override { return ComponentRole::Optimizer; }
@@ -171,8 +167,6 @@ public:
     void build (const cpu::BuildContext&)  override;
     void launch(const cpu::LaunchContext&) override;
 
-    bool   converged() const { return converged_; }
-    double max_force() const { return max_force_; }
     const std::vector<OptRecord>& trace() const { return trace_; }
 
 private:
@@ -180,10 +174,7 @@ private:
     std::vector<double> v_;             // pseudo-velocity, length 3N
     double dt_, dt_max_, alpha_, alpha0_, f_alpha_, f_inc_, f_dec_;
     int    n_min_, n_pos_steps_ = 0;
-    // Convergence (mirror LBFGS five-criterion contract)
-    double ftol_, rms_ftol_, max_dtol_, rms_dtol_, etol_;
-    bool   converged_ = false;
-    double max_force_ = 0;
+    // Measurement state (to difference against the previous iteration)
     double energy_prev_ = 0;
     int    step_ = 0;
     std::vector<double> x_prev_;
@@ -193,25 +184,46 @@ private:
 }}}
 ```
 
-The five-criterion convergence rule is *not* a property of the L-BFGS
-algorithm; it is the contract `cpu::minimizer::Minimize` works against.
-`LBFGS` and `CG` both implement it, and the hot-swap test in
-`tests/cpu/test_minimize_driver_swap_optimizer.cpp` verifies that they
-agree on what "converged" means. Your FIRE component must do the same:
-write `outer_status.converged = true` only when *all five* checks pass.
-If you cannot match the five-criterion rule (e.g. you have an exotic
-convergence definition), you have a different optimizer that needs its
-own convergence component — and that is a deeper architectural change
-that should be discussed in a spec before coding.
+Notice what is *not* there: no `ftol`, no `rms_dtol`, no `etol`, and no
+`converged()` accessor. **An algorithm never judges itself.** At its
+`convergence_check` binding, FIRE *measures* — max force, RMS force,
+max and RMS displacement since the previous iteration, |ΔE| — and
+publishes them into `ctx.loop.metrics` (`ATV::LoopMetrics`):
+
+```cpp
+if (ATV::LoopMetrics* m = ctx.runtime.loop.metrics) {
+    m->energy            = e;
+    m->max_force         = fmax;
+    m->rms_force         = frms;
+    m->max_displacement  = dmax;
+    m->rms_displacement  = drms;
+    m->energy_change     = std::abs(e - energy_prev_);
+    m->has_displacement  = (step_ > 0);   // no previous geometry on the first step
+}
+```
+
+Whether those numbers mean "converged" is decided by a `LoopHandler`.
+`cpu::minimizer::Minimize` attaches `cpu::ForceConverged` by default,
+which is the five-criteria test (max force, RMS force, max displacement,
+RMS displacement, ΔE — **all five** must hold), with the tolerances now
+living on the handler where the policy belongs. A user who wants
+different tolerances writes `opt.add_handler(cpu::ForceConverged{0.01})`
+and never touches the optimizer; a user who wants a genuinely different
+criterion writes their own handler. `LBFGS::converged()` and
+`CG::converged()` used to exist and are deleted — ask the loop:
+`opt.converged()`, `opt.stop_reason()`.
+
+This is why FIRE is easier to add than it used to be: the exotic
+convergence definition that once demanded "its own convergence
+component" is now just a handler, and it is about ten lines.
 
 **Lifecycle.** `build()` allocates `v_`, `x_prev_`, and `trace_` to
 sizes proportional to `frame.atoms.size()`. `launch()` reads forces
 from the frame, applies the FIRE update rules to `v_`, computes the new
-positions, writes them back, computes the dual-criterion verdict, and
-sets `outer_status.converged` if all five thresholds pass.
+positions, writes them back, and publishes the metrics above.
 
-**Validation.** `cpu::OptimizeDriver::validate_components` requires at
-least one `Optimizer` component and at least one `Evaluator` with
+**Validation.** `cpu::minimizer::Minimize::validate_components` requires
+at least one `Optimizer` component and at least one `Evaluator` with
 `Capability::Energy` or `Capability::Force`. By tagging FIRE with
 `ComponentRole::Optimizer`, you make it a valid drop-in for `LBFGS` /
 `CG`. The driver does not have to change.
@@ -364,8 +376,13 @@ Three questions, in order:
    *algorithm*?**
    - Algorithm change: Component, plug in. (FIRE replacing L-BFGS;
      ADIIS replacing Pulay; CSVR replacing Nose-Hoover.)
-   - Termination change: new outer driver category. Write a spec
-     before writing code. (Sampling, NEB, finite-difference Hessian.)
+   - Termination change: a `cpu::LoopHandler`, attached with
+     `add_handler(...)`. Not a driver class. ("Stop above 2000 K",
+     "give up after an hour", "stop when every replica is converged".)
+   - Accept/reject change: a `cpu::OutcomePolicy`, attached with
+     `set_outcome(...)`. (A GCMC insertion rule, a REMD exchange.) Only
+     a genuinely new *stage sequence* — a new phase enum — justifies a
+     new driver class, and that is worth a spec before code.
 3. **Does the extension cross the host/device boundary?**
    - If yes: read [Architecture](architecture.md) and consider whether
      the right home is the CUDA backend, the CPU backend, or a small

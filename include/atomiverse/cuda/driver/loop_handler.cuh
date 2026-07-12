@@ -60,6 +60,7 @@
 /// exactly as on the CPU, and no handler changes.
 #pragma once
 
+#include <cmath>
 #include <memory>
 #include <string>
 
@@ -112,6 +113,7 @@ class LoopHandler {
 /// nothing.
 class ForceConverged : public LoopHandler {
   public:
+    /// @brief Construct the convergence test from its five tolerances.
     /// @param ftol Max force [eV/Å].
     /// @param rms_ftol RMS force [eV/Å].
     /// @param max_dtol Max displacement [Å].
@@ -123,8 +125,13 @@ class ForceConverged : public LoopHandler {
         : ftol_(ftol), rms_ftol_(rms_ftol), max_dtol_(max_dtol), rms_dtol_(rms_dtol),
           etol_(etol) {}
 
+    /// @brief Identifier reported as the stop reason.
+    /// @return `"force_converged"`.
     const char* name() const override { return "force_converged"; }
 
+    /// @brief Declare convergence when all five criteria hold.
+    /// @param s Iteration index, frame, context, metrics.
+    /// @return `Converged` if every criterion holds, else `Continue`.
     Verdict after_iteration(const LoopState& s) override {
         const LoopMetrics& m = s.metrics;
         // Judge the METRICS — never the iteration counter. Whether a displacement is
@@ -140,7 +147,6 @@ class ForceConverged : public LoopHandler {
                                  && m.rms_displacement < rms_dtol_);
         const bool ok = m.max_force < ftol_ && m.rms_force < rms_ftol_ && disp_ok
                         && m.energy_change < etol_;
-        (void)s.iteration;
         return ok ? Verdict::Converged : Verdict::Continue;
     }
 
@@ -158,10 +164,16 @@ class ForceConverged : public LoopHandler {
 /// host. It does not — and on this backend must not — read the device frame.
 class StopOnNaN : public LoopHandler {
   public:
+    /// @brief Identifier reported as the stop reason.
+    /// @return `"stop_on_nan"`.
     const char* name() const override { return "stop_on_nan"; }
+
+    /// @brief Abandon the run when the measured energy is not finite.
+    /// @param s Iteration index, frame, context, metrics.
+    /// @return `Stop` if `metrics.energy` [eV] is NaN or infinite, else `Continue`.
     Verdict after_iteration(const LoopState& s) override {
         const double e = s.metrics.energy;
-        return (e != e || e > 1e300 || e < -1e300) ? Verdict::Stop : Verdict::Continue;
+        return std::isfinite(e) ? Verdict::Continue : Verdict::Stop;
     }
 };
 

@@ -69,7 +69,7 @@ structural `role()`:
 | `Barostat` | Barostat | Berendsen isotropic pressure coupling |
 | `NoseHooverNPT` | Integrator | MTK integrator that *is* thermostat + barostat + integration in one |
 
-The role tag is what the driver validates against: `DynamicsDriver` requires
+The role tag is what the driver validates against: `cpu::md::MD` requires
 *something* that produces forces and *an* integrator, and it schedules each
 component at the LAMMPS-style phase its physics belongs to (thermostat
 half-steps interleave with the velocity-Verlet kicks; the Berendsen barostat

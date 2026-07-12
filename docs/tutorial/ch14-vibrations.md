@@ -15,15 +15,15 @@ The six questions:
 
 1. **The concept.** Why the Hessian's eigenvalues are frequencies, and what
    they tell you.
-2. **The Atomiverse representation.** The Response-category driver
-   `cpu::vib::Hessian` and its finite-difference machinery.
+2. **The Atomiverse representation.** The `cpu::vib::Hessian` driver and its
+   finite-difference machinery.
 3. **The C++ API.** `cpu::vib::Hessian`, `HessianResult`, and
    `Thermochem::Config`.
 4. **The expected result.** `3N−6` real frequencies at a minimum, and a
    Gibbs free-energy correction.
 5. **The validation.** Frequencies and thermochemistry against PySCF.
-6. **The recurring pattern.** A fourth driver category that reuses any force
-   evaluator, exactly like MD and minimization.
+6. **The recurring pattern.** Another loop that reuses any force evaluator,
+   exactly like MD and minimization.
 
 This chapter assumes the `SCFEvaluator`-at-the-force-phase pattern from
 Tutorials 6 and 8.
@@ -66,7 +66,7 @@ vibrations at all — they are the rigid translations and rotations, which have
 zero restoring force. A correct analysis projects those out, leaving $3N-6$
 (or $3N-5$) genuine vibrational modes.
 
-## The Representation: A Response Driver Over Finite Differences
+## The Representation: A Fixed-Budget Loop Over Finite Differences
 
 Computing an *analytic* Hessian is possible but involves second-derivative
 integrals; Atomiverse instead takes the numerically robust route of
@@ -76,14 +76,12 @@ and the central difference of the force gives one row of the Hessian. For $N$
 atoms that is $6N$ force evaluations plus one reference — a fixed budget with
 no convergence loop.
 
-That fixed-budget, no-early-stop structure is a *distinct* driver category.
-Alongside Evaluate (one pass), Dynamics (a step budget), Optimize
-(early-stop on convergence), and Sampling (trial moves with Metropolis
-accept/reject), Atomiverse has the **Response** category,
-whose loop runs a fixed number of displacement passes and then finalizes.
-Its concrete driver is
-[`cpu::vib::Hessian`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/vib/hessian.h), which
-subclasses `cpu::ResponseDriver`. Its phase order —
+That fixed-budget, no-early-stop structure is what
+[`cpu::vib::Hessian`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/vib/hessian.h)
+is: a preset over the CPU loop node (`cpu::CPUDriver<vib::Phase>`), like
+`MD` and `Minimize`, but with its own phase enum and **no termination
+handler at all** — the displacement schedule *is* the budget, and there is
+nothing to converge. Its phase order —
 
 ```text
 setup → displace → force → accumulate → diagonalize → thermochem → end_of_step
@@ -235,14 +233,13 @@ Both suites also assert structural exactness (**exact** class): the projected
 mode count is exactly `3N−6` for a nonlinear molecule, a bit-precise property
 that no tolerance applies to.
 
-## The Recurring Pattern: Another Category, Same Evaluator
+## The Recurring Pattern: Another Loop, Same Evaluator
 
 Vibrational analysis is the clearest proof that Atomiverse's "swap the
 evaluator, keep the driver" architecture is not confined to MD. `cpu::vib::
-Hessian` is its own driver category (Response), distinguished from the
-others only by its termination semantics — a fixed $6N$-displacement budget
-with no early stop — yet it consumes the *identical* `SCFEvaluator{config}`
-that:
+Hessian` is its own loop — its own phase enum, its own fixed
+$6N$-displacement schedule, no termination handler — yet it consumes the
+*identical* `SCFEvaluator{config}` that:
 
 - MD ([Chapter 15](ch15-cross-method.md)) plugs into `cpu::md::MD` for AIMD,
 - the minimizer ([Chapter 12](ch12-geometry-optimization.md)) plugs into

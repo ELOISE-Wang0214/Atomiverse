@@ -224,7 +224,7 @@ class NoseHooverNPT : public cpu::ComponentBase {
     /// @brief Role tag — Integrator. Although this component subsumes
     /// VelocityVerlet + NoseHoover + Barostat in one Trotter splitting,
     /// only one structural role is exposed; the integrator role is the
-    /// load-bearing one for `DynamicsDriver` validation.
+    /// load-bearing one for `cpu::md::MD::validate_components()`.
     ComponentRole role() const override { return ComponentRole::Integrator; }
     /// @brief Write-set: MTK: propagates x and v, and scales the cell.
     Capability capabilities() const override { return Capability::Position | Capability::Velocity; }

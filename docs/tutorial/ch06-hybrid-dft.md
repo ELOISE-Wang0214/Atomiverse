@@ -228,7 +228,8 @@ provides B3LYP forces to whichever driver it is plugged into.
 ```cpp
 // B3LYP geometry optimization: hybrid forces into the Minimize driver
 cpu::minimizer::Minimize opt;
-opt.add(cpu::minimizer::LBFGS{/* tolerances */});
+opt.add(cpu::minimizer::LBFGS{/* memory, alpha0, max_ls */});
+opt.add_handler(cpu::ForceConverged{/* the five tolerances */});
 opt.on(minimizer::Phase::force)
    .add(cpu::scf::SCFEvaluator{cpu::scf::b3lyp_config(integrals),
                                cpu::scf::BasisSet::Pople631Gs});

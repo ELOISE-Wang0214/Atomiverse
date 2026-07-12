@@ -228,7 +228,7 @@ class MD : public cuda::CUDADriver<ATV::md::Phase> {
     ///        Bound at the dedicated `md::Phase::neighbor @ -10`, which
     ///        runs just before `pre_force` (force/energy zeroing) and the
     ///        `force` phase — mirroring the CPU `cpu::md::MD` neighbor
-    ///        placement (`CategoryTraits<md::Phase>::neighbor_phase`).
+    ///        placement (`PhaseTraits<md::Phase>::neighbor_phase`).
     template <typename N>
     MD& set_neighbor(N&& n_comp) {
         set_singular_at_(std::forward<N>(n_comp), neighbor_set_, "set_neighbor",

@@ -54,7 +54,8 @@ define the public execution skeleton:
 - `Driver` owns user-registered components
 - `PhaseBuilder` supports the fluent `.on(phase).add(...)` syntax
 - `PlanBuilder` compiles unordered registrations into a sorted execution plan
-- `stage.h` defines the phase order for each driver category (MD, minimization, evaluation, vibrational analysis, and Monte Carlo sampling) plus the `kind_of(Phase)` overloads behind `make_binding`
+- `stage.h` defines the phase order for each workflow (MD, minimization, evaluation, vibrational analysis, Monte Carlo sampling, and coupled-replica paths) plus the `kind_of(Phase)` overloads behind `make_binding`
+- `loop.h` defines `Verdict` and `LoopMetrics` — the vocabulary a loop's termination is decided in (a `LoopHandler` judges the metrics and returns a verdict; the driver reduces the verdicts across handlers and across MPI ranks)
 
 The facade is deliberately CUDA-free. Its job is to collect intent, not to run
 the algorithm itself.

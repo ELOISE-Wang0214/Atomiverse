@@ -12,9 +12,10 @@ way it is, not to assume domain knowledge.
 
 - **[Architecture](architecture.md)** — start here. One facade API, two
   execution backends, a host-side `cpu::Frame` throughout.
-- **[CPU Backend Internals](cpu-internals.md)** — *why* the CPU side is split
-  into driver categories, why role and capability are orthogonal axes, why SCF
-  is an inner solver rather than a driver subclass, and how the
+- **[CPU Backend Internals](cpu-internals.md)** — *why* the CPU side has one
+  loop node and a handful of presets rather than a driver-category hierarchy,
+  why termination is a handler, why role and capability are orthogonal axes,
+  why SCF is an inner solver rather than a driver subclass, and how the
   iteration-status channel signals convergence.
 - **[MD Execution Model](md-execution-model.md)** — one timestep as a fixed
   sequence of named **phases**, and the `(phase, order)` binding model a

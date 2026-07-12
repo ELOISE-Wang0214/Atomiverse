@@ -7,18 +7,35 @@ any evaluator can be bound to any driver, which is how the same
 
 ## Drivers — what kind of job
 
-A driver category is decided by *termination semantics*, nothing else.
+Each driver below is a **preset**: an ordinary loop whose constructor
+pre-attaches the policy and infrastructure that kind of job wants. There is
+no category hierarchy behind them — one loop-node class (`cpu::CPUDriver<P>`)
+serves them all, and *when the loop stops* is a policy object you can replace.
 
 | Driver | Job type | Stops when |
 |---|---|---|
 | `cpu::Evaluate` | single point | after exactly one pass |
 | `cpu::md::MD` | molecular dynamics | the step budget is exhausted |
-| `cpu::minimizer::Minimize` | geometry optimization | forces converge |
+| `cpu::minimizer::Minimize` | geometry optimization | the `ForceConverged` handler says so |
 | `cpu::vib::Hessian` | vibrational analysis | all 6N displacements are done |
 | `cpu::mc::MC` | Monte Carlo sampling | the trial-move budget is exhausted |
+| `cpu::PathDriver` | transition path (CI-NEB) | every replica of the band has converged |
 
 `cuda::Evaluate`, `cuda::md::MD`, and `cuda::minimizer::Minimize` mirror the
 first three on the GPU with the same API.
+
+Two policy slots let you change *when* a run ends without writing a driver:
+
+- `driver.add_handler(h)` — **plural**. A `cpu::LoopHandler` is asked once per
+  iteration and returns `Continue`, `Converged`, or `Stop`; several compose,
+  most-severe-wins. In-tree: `ForceConverged`, `AllReplicasConverged`,
+  `StopOnNaN`. Writing your own (LAMMPS's `fix halt`: "stop above 2000 K") is
+  about ten lines, from outside the library. Ask the driver for the outcome:
+  `driver.converged()`, `driver.stop_reason()`.
+- `driver.set_outcome(p)` — **singular**. A `cpu::OutcomePolicy` decides
+  whether the iteration that just ran is kept (`Commit`) or undone
+  (`Rollback`). `MC` attaches `cpu::Metropolis`; a GCMC or REMD acceptance
+  rule goes here too.
 
 ## Evaluators — how the energy is computed
 
@@ -105,7 +122,10 @@ over *any* force provider — classical or quantum.
 
 ```cpp
 cpu::minimizer::Minimize opt;
-opt.set_optimizer(cpu::minimizer::LBFGS{5, 0.01, 0.05});
+opt.set_optimizer(cpu::minimizer::LBFGS{5, 0.01, 10});  // memory, alpha0, max_ls
+// Convergence is the handler's, not the optimizer's. Omit it and Minimize
+// attaches cpu::ForceConverged{} with its defaults.
+opt.add_handler(cpu::ForceConverged{/*ftol=*/0.05});
 opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{cfg});
 opt.build();
 opt.run(frame, 100);

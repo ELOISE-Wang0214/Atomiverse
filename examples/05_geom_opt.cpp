@@ -16,6 +16,7 @@
 #include <cmath>
 
 #include "atomiverse/core/log.h"
+#include "atomiverse/cpu/driver/loop_handler.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h"
 #include "atomiverse/cpu/scf/integrals.h"
@@ -121,28 +122,31 @@ int main() {
     config.max_iter = 200;
     config.force_native_two_electron_deriv = true;
 
-    // Set up L-BFGS optimizer. L-BFGS uses a strong-Wolfe line search by
-    // default (the quasi-Newton step length is chosen to satisfy the Wolfe
-    // conditions), so the displacement tolerances can be tight — they no
-    // longer have to absorb a fixed step size. Convergence requires ALL
-    // criteria simultaneously:
+    // Set up L-BFGS optimizer. The component carries ALGORITHM parameters only
+    // — curvature depth, initial step, line-search trial cap. L-BFGS uses a
+    // strong-Wolfe line search by default (the quasi-Newton step length is
+    // chosen to satisfy the Wolfe conditions).
+    cpu::minimizer::Minimize opt;
+    opt.add(cpu::minimizer::LBFGS{
+        5,            // memory
+        double(0.01), // alpha0 [Å²/eV] (only the Fixed-mode / step-0 fallback)
+        20            // max_ls (line-search trial cap)
+    });
+    opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
+
+    // Convergence is a POLICY, not an algorithm parameter: it lives on a
+    // LoopHandler, not on the optimizer. `ForceConverged` requires ALL five
+    // criteria simultaneously. These are looser than the built-in defaults,
+    // which is the point of stating them — a tutorial that must finish in 25
+    // steps cannot ask for a 0.002 Å displacement tolerance.
     //   ftol=0.05 eV/Å   (max force)   — typical quantum-chemistry threshold
     //   rms_ftol=0.03    (RMS force)
     //   max_dtol=0.05 Å  (max disp)
     //   rms_dtol=0.02 Å  (RMS disp)
     //   etol=1e-3 eV     (energy diff)
-    cpu::minimizer::Minimize opt;
-    opt.add(cpu::minimizer::LBFGS{
-        5,            // memory
-        double(0.01), // alpha0 [Å²/eV] (only the Fixed-mode / step-0 fallback)
-        double(0.05), // ftol [eV/Å]
-        20,           // max_ls (line-search trial cap)
-        double(0.03), // rms_ftol [eV/Å]
-        double(0.05), // max_dtol [Å]
-        double(0.02), // rms_dtol [Å]
-        double(1e-3)  // etol [eV]
-    });
-    opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
+    opt.add_handler(cpu::ForceConverged{
+        /*ftol=*/0.05, /*rms_ftol=*/0.03, /*max_dtol=*/0.05,
+        /*rms_dtol=*/0.02, /*etol=*/1e-3});
     ATV_INFO("[example] optimizer build start");
     opt.build();
     ATV_INFO("[example] optimizer build done");

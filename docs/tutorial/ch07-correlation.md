@@ -124,7 +124,7 @@ virtual molecular orbitals, their orbital energies, and the two-electron
 integrals transformed into the MO basis — and returns a correlation energy (and,
 in principle, a correlated density and gradient).
 
-In Atomiverse's vocabulary that is not a new `Driver` category. The Gaussian SCF
+In Atomiverse's vocabulary that is not a new `Driver` at all. The Gaussian SCF
 engine already exposes exactly the inputs such a method needs:
 
 - `cpu::scf::build_integrals(frame, basis, charge, /*compute_eri=*/true)`

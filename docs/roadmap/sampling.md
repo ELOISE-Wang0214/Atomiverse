@@ -2,12 +2,12 @@
 
 Legend and caveats: [Roadmap index](index.md).
 
-Monte Carlo exists as a first-class Driver category (`cpu::mc::MC` on
-`SamplingDriver`) with the inline Metropolis accept/reject test and a
-transaction/rollback mechanism for trial moves — but it ships exactly one
-ensemble (NVT) and one mover (single-particle translation), and it is CPU-only.
-It reuses the MD force pipeline for trial energies, with the neighbor list in
-always-rebuild mode. Validated against NIST LJ reference data
+Monte Carlo exists as the `cpu::mc::MC` preset: a driver loop whose constructor
+attaches the `cpu::Metropolis` **outcome policy** (accept/reject → `Commit` or
+`Rollback`) over a transaction/rollback mechanism for trial moves. It ships
+exactly one ensemble (NVT) and one mover (single-particle translation), and it
+is CPU-only. It reuses the MD force pipeline for trial energies, with the
+neighbor list in always-rebuild mode. Validated against NIST LJ reference data
 (`benchmarks/mc/lj/validation/`).
 
 Enhanced sampling and free-energy machinery do not exist at all. Neither does
@@ -41,6 +41,17 @@ The missing ensembles are mover-shaped, not architecture-shaped: NPT-MC needs a
 volume mover, GCMC an insertion/deletion mover. The `Transaction` proposal
 channel (`ctx.mc.proposal`) was designed for exactly that, but only
 `TranslateMove` is written.
+
+The driver-handler refactor made the *acceptance* half of these rows cheaper
+than this roadmap assumed when it was written. An acceptance rule is now an
+`OutcomePolicy` — a `set_outcome()` call, not a driver class — so GCMC's
+insertion/deletion criterion, a Gibbs-ensemble exchange, and a replica-exchange
+swap each become one small policy object plus their mover, with nothing new in
+the loop. Likewise, "N coupled replicas" is a nesting question (a driver is a
+node in another driver's plan, and `cpu/replica/` already supplies `ReplicaSet`
+/ `ReplicaExpansion`), not a new category. The scoring above is unchanged —
+none of these are written — but the estimate behind several of them is now
+smaller, and none of them should motivate a new driver class.
 
 ## 2. Enhanced-Sampling Methods
 

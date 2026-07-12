@@ -117,8 +117,8 @@ class FixLangevin : public cpu::ComponentBase {
     /// @brief Langevin's role is Thermostat, but it functionally writes
     /// drag + random forces into fx/fy/fz — so it advertises
     /// Capability::Force. This lets a pure Langevin run (no LJ / bonded
-    /// evaluator) satisfy `DynamicsDriver`'s "something writes forces"
-    /// contract.
+    /// evaluator) satisfy `cpu::md::MD::validate_components()`'s "something
+    /// writes forces" contract.
     Capability capabilities() const override { return Capability::Force; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::post_force, +500)};

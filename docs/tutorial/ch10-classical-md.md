@@ -195,7 +195,7 @@ A bookkeeping note on Langevin: its role is `Thermostat`, but because
 its `launch()` writes additive forces into `fx/fy/fz`, its capability
 set advertises `Capability::Force`. That lets a *pure* Langevin run
 (diffusion in a featureless box, no LJ at all) still satisfy
-`DynamicsDriver`'s "something must produce forces" build-time check.
+`cpu::md::MD`'s "something must produce forces" build-time check.
 Roles describe structure; capabilities describe data flow.
 
 ## Adding a Barostat (NPT)

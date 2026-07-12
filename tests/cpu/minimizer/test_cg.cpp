@@ -35,11 +35,12 @@ TEST(CGTest, H2RHFStrongWolfeReachesMinimum) {
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
     auto config = cpu::scf::rhf_config(integrals);
 
-    cpu::minimizer::CG cg{/*alpha0=*/0.05, /*ftol=*/0.01,
-                          /*rms_ftol=*/0.005, /*max_dtol=*/0.01,
-                          /*rms_dtol=*/0.005, /*etol=*/1e-7};
+    cpu::minimizer::CG cg{/*alpha0=*/0.05};
     cpu::minimizer::Minimize opt;
     opt.set_optimizer(cg);
+    opt.add_handler(cpu::ForceConverged{/*ftol=*/0.01, /*rms_ftol=*/0.005,
+                                        /*max_dtol=*/0.01, /*rms_dtol=*/0.005,
+                                        /*etol=*/1e-7});
     opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
     opt.build();
     opt.run(frame, 100);

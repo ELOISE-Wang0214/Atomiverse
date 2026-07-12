@@ -2,9 +2,9 @@
 /// @brief internal::ConvergenceCheck — density-change SCF convergence test.
 ///
 /// Facade-private step helper owned by `cpu::pw::PWSolver`. NOT a
-/// `cpu::ComponentBase` subclass; it never touches
-/// `cpu::Context::outer_status` — the plane-wave SCF manages its own
-/// internal convergence, exactly like `cpu::scf::SCFSolver`.
+/// `cpu::ComponentBase` subclass; it never touches the driver loop's
+/// `IterationStatus` (borrowed by the Context as `ctx.loop`) — the plane-wave
+/// SCF manages its own internal convergence, exactly like `cpu::scf::SCFSolver`.
 #pragma once
 
 #include "atomiverse/cpu/pw/internal/pw_workspace.h"

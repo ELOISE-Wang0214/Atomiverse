@@ -152,7 +152,7 @@ constexpr PhaseKind kind_of(Phase phase_tag) {
 ///       carries no component in the numerical-Hessian link.
 namespace vib {
 
-/// @brief Phase order for one Response-category pass.
+/// @brief Phase order for one numerical-Hessian pass.
 enum class Phase {
     setup, ///< Cache the equilibrium geometry (ReferenceGeometry).
     displace, ///< Apply +/-h displacement for the current coordinate (DisplaceStep).
@@ -226,20 +226,20 @@ constexpr PhaseKind kind_of(Phase phase_tag) {
 
 } // namespace sampling
 
-/// @brief Path phases — N coupled replicas advanced together (Path category).
+/// @brief Path phases — N coupled replicas advanced together.
 ///
-/// Used by `cpu::PathDriver` / `cpu::path::NEB`. The Path category terminates
-/// when **every** replica of a coupled chain has converged, which is what makes
-/// it a category rather than an algorithm: it is a termination semantic no
-/// existing category expresses (Optimize converges *one* system; Dynamics and
-/// Sampling run a budget).
+/// Used by `cpu::PathDriver`, whose default handler (`cpu::AllReplicasConverged`)
+/// stops the loop only when **every** replica of a coupled chain has converged —
+/// an AND over the band, judged from the `LoopMetrics::replicas_converged`
+/// fraction the driver publishes each iteration.
 ///
 /// @note **These names are deliberately generic, and that is load-bearing.**
 ///       There is no `tangent` phase, no `spring` phase, and no `climb` phase —
-///       naming one would weld the category to NEB, exactly the mistake the
-///       Driver taxonomy exists to prevent (a *method* is never a category).
-///       The NEB tangent estimator, the spring force and the climbing-image
-///       flip are all **components** bound at `couple`.
+///       naming one would weld this phase enum to NEB, exactly the mistake the
+///       architecture exists to prevent (a *method* is never a workflow). The
+///       NEB tangent estimator (`cpu::path::NebCoupling`), the spring force and
+///       the climbing-image flip are all **components** bound at `couple`, and
+///       the band optimizer (`cpu::path::BandLBFGS`) is a component too.
 ///
 ///       `couple` is the slot where a replica sees its neighbours in the chain.
 ///       The same slot hosts PIMD's ring-polymer spring (mathematically the very
@@ -256,7 +256,7 @@ enum class Phase {
                        ///< climbing-image flip; later, PIMD's ring-polymer spring.
     search_direction,  ///< Per-replica descent direction from the coupled force.
     line_search,       ///< Reserved — line search along the direction.
-    convergence_check, ///< Per-replica stopping criteria → its own outer_status.
+    convergence_check, ///< Per-replica stopping criteria → LoopMetrics.
     end_of_step,       ///< Per-iteration observers / recorders.
     COUNT              ///< Sentinel -- total number of phases.
 };
@@ -287,7 +287,7 @@ constexpr PhaseKind kind_of(Phase phase_tag) {
 /// asking "is this my stage?", a driver replaying a phase, a binding being declared —
 /// goes through a typed entry point that calls this. The rule is enforceable by grep,
 /// which is the point: `static_cast<int>` applied to a Phase enum anywhere else is a
-/// bug, because the five Phase enums all start at 0 and an `int` cannot tell them apart.
+/// bug, because the six Phase enums all start at 0 and an `int` cannot tell them apart.
 ///
 /// @tparam PhaseEnum One of the six workflow Phase enums in this header.
 /// @param p Typed phase value.

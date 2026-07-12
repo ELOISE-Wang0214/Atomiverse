@@ -1,17 +1,17 @@
 /// @file cpu/driver/path_driver.h
-/// @brief cpu::PathDriver — the 6th category: N coupled replicas, all must converge.
+/// @brief cpu::PathDriver — the coupled-replica preset: N replicas, all must converge.
 ///
-/// The category CLAUDE.md predicted ("Path for NEB — terminate when every image of a
-/// coupled chain has converged"). The prediction was half right: the termination rule is
-/// indeed new, but "N coupled replicas" turned out to be a **second axis** of the
-/// taxonomy rather than a sixth point on the first one — see `cpu/replica/replica_set.h`,
-/// which is where the replica machinery lives so that a future budget-terminating
-/// replica category (REMD) reuses it instead of cloning it.
+/// "N coupled replicas" is a **second axis**, orthogonal to termination — see
+/// `cpu/replica/replica_set.h`, which is where the replica machinery lives so that a
+/// future budget-terminating replica preset (REMD) reuses it instead of cloning it.
 ///
 /// ## Termination
 ///
-/// `ReplicaSet::all_converged()` — an AND over every replica. One unconverged image
-/// keeps the whole chain running.
+/// The driver publishes `ReplicaSet::converged_fraction()` onto
+/// `LoopMetrics::replicas_converged`, and the `cpu::AllReplicasConverged` handler this
+/// preset attaches applies the AND (converged at exactly 1.0). One unconverged image
+/// keeps the whole chain running. The rule is a policy object, so a user can compose or
+/// replace it (`neb.add_handler(StopOnNaN{})`) without touching a driver class.
 ///
 /// ## The loop
 ///
@@ -29,7 +29,7 @@
 /// ## Why ONE backend and not N
 ///
 /// The spec for this probe called for a Backend (and therefore a Context, and therefore
-/// an `outer_status`) **per replica**, which would have given collective termination for
+/// an `IterationStatus`) **per replica**, which would have given collective termination for
 /// free. It is not implementable, and finding that out is one of this probe's results:
 /// **components cannot be cloned.** `Driver::add()` *moves* a component into
 /// `owned_components_`, and there is no `clone()` anywhere in the tree — so N backends
@@ -41,7 +41,8 @@
 /// So: one backend, one plan, and the band reached through `ctx.path`. The `force` phase
 /// is replayed once per replica by re-pointing the backend's frame; the band-wide phases
 /// run once and see everything. Per-replica convergence lives on `ReplicaSet`, not on N
-/// copies of `IterationStatus`, and `PathDriver` ANDs it into the one `outer_status`.
+/// copies of `IterationStatus`; `PathDriver` publishes it as a fraction onto
+/// `LoopMetrics` and the handler applies the AND.
 ///
 /// Known ceiling of the one-backend route: force-phase components that cache per-frame
 /// state (a neighbor list's bins) get invalidated on every replica switch and rebuild N
@@ -67,8 +68,7 @@ class PathDriver : public CPUDriver<ATV::path::Phase> {
     ///
     /// `AllReplicasConverged` reads `LoopMetrics::replicas_converged` (the fraction of
     /// the band that has met its criterion) and stops the loop only at 1 — the AND over
-    /// every image that this driver used to spell out by hand as
-    /// `if (band.all_converged()) mutable_outer_status().converged = true;`.
+    /// every image that this driver used to spell out by hand inside its own `run()`.
     ///
     /// That hand-written `if` is exactly the shape probe 3 was forced into, and exactly
     /// what a category makes unavoidable: the termination rule could not be named, so it
@@ -124,9 +124,9 @@ class PathDriver : public CPUDriver<ATV::path::Phase> {
             ++iters;
 
             // PUBLISH what the band measured; let the handler DECIDE. The driver used to
-            // write `converged = true` itself the moment `band.all_converged()` went
-            // true — the same "the algorithm judges itself" mistake LBFGS made, and the
-            // reason the replica table had to exist in the first place.
+            // write `converged = true` itself the moment every replica had settled — the
+            // same "the algorithm judges itself" mistake LBFGS made, and the reason the
+            // replica table had to exist in the first place.
             metrics().replicas_converged = band.converged_fraction();
 
             if (poll_handlers_(s) != Verdict::Continue)

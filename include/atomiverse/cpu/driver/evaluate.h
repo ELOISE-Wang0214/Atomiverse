@@ -1,10 +1,10 @@
 /// @file cpu/driver/evaluate.h
 /// @brief cpu::Evaluate — concrete one-pass evaluator driver.
 ///
-/// `cpu::Evaluate` is the user-facing CPU outer-driver under the
-/// `EvaluateDriver` category. It runs the registered evaluator
-/// components exactly once on the current `cpu::Frame` and returns —
-/// no time advance, no minimization loop.
+/// `cpu::Evaluate` is the user-facing CPU single-point preset — a
+/// `CPUDriver<evaluate::Phase>` that runs the registered evaluator components
+/// exactly once on the current `cpu::Frame` and returns. One pass IS the
+/// termination: no time advance, no minimization loop.
 ///
 /// Single-point energy / force / property workflows go here. Exposes
 /// the same LAMMPS-shaped categorical setter API as `cpu::md::MD`

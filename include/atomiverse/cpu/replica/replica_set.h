@@ -10,17 +10,18 @@
 ///
 /// That is one axis. "N coupled replicas" is a **second, orthogonal** axis:
 ///
-/// |                  | terminate on convergence | terminate on a budget          |
-/// |------------------|--------------------------|--------------------------------|
-/// | **one Frame**    | `OptimizeDriver`         | `DynamicsDriver` / `Sampling`  |
-/// | **N replicas**   | **`PathDriver`** (NEB)   | REMD / PIMD / umbrella (later) |
+/// |                  | terminate on convergence   | terminate on a budget          |
+/// |------------------|----------------------------|--------------------------------|
+/// | **one Frame**    | `cpu::minimizer::Minimize` | `cpu::md::MD` / `cpu::mc::MC`  |
+/// | **N replicas**   | **`cpu::PathDriver`** (NEB)| REMD / PIMD / umbrella (later) |
 ///
-/// Read one-dimensionally, REMD and PIMD would each eventually demand their own driver
-/// category, and each would re-implement ~90 % of the replica machinery that NEB already
+/// Read one-dimensionally, REMD and PIMD would each eventually demand a driver class of
+/// their own, and each would re-implement ~90 % of the replica machinery that NEB already
 /// needed. So the replica machinery lives HERE, reusable, and `PathDriver` contributes
-/// exactly one thing on top of it: the termination rule "every replica has converged".
+/// exactly one thing on top of it: it publishes `converged_fraction()` onto
+/// `LoopMetrics`, where `cpu::AllReplicasConverged` judges it.
 ///
-/// A budget-terminating replica category (REMD) would reuse this class unchanged and
+/// A budget-terminating replica preset (REMD) would reuse this class unchanged and
 /// contribute *its* one thing (the exchange attempt). That is the test of whether this
 /// split was drawn in the right place.
 #pragma once
@@ -64,30 +65,22 @@ class ReplicaSet {
     /// @brief Record whether replica `i` has met its stopping criterion.
     ///
     /// Per-replica, not global — because a chain is not converged when its *easiest*
-    /// image is. Before this existed, an optimizer wrote convergence straight onto the
-    /// single shared `Context::outer_status` (`lbfgs.cpp` still does, for the
-    /// single-frame `Minimize` it serves), and the first image to settle would have
-    /// stopped the whole band.
+    /// image is. When an optimizer could write convergence straight onto a single shared
+    /// status, the first image to settle would have stopped the whole band.
+    /// @param i Replica index.
+    /// @param c True if replica `i` has met its stopping criterion.
     void set_converged(int i, bool c) { converged_[i] = c; }
-
-    /// @brief Collective termination: **all** replicas converged.
-    ///
-    /// AND, not OR, and not "the climbing image converged". A band whose saddle image
-    /// is converged but whose neighbours are still sliding has not found a path — the
-    /// tangent that defines the saddle is computed FROM those neighbours.
-    bool all_converged() const {
-        for (const bool c : converged_)
-            if (!c) return false;
-        return !converged_.empty();
-    }
 
     /// @brief Fraction of the band that has converged, in [0,1]. Empty band → 0.
     ///
-    /// The measurable form of `all_converged()`, published each iteration onto
-    /// `LoopMetrics::replicas_converged` so that a *handler* can apply the AND (the band
-    /// is converged at exactly 1.0) instead of the driver hardcoding it. A metric is
-    /// something you measure; a verdict is something you decide, and those are different
-    /// jobs. @see cpu::AllReplicasConverged
+    /// Published each iteration onto `LoopMetrics::replicas_converged` so that a
+    /// *handler* applies the AND (the band is converged at exactly 1.0) instead of the
+    /// driver hardcoding it. AND, not OR, and not "the climbing image converged": a band
+    /// whose saddle image is converged but whose neighbours are still sliding has not
+    /// found a path — the tangent that defines the saddle is computed FROM those
+    /// neighbours. A metric is something you measure; a verdict is something you decide,
+    /// and those are different jobs. @see cpu::AllReplicasConverged
+    /// @return Converged fraction in [0,1] (dimensionless).
     double converged_fraction() const {
         if (converged_.empty())
             return 0.0;

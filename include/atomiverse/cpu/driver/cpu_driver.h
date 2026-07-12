@@ -85,76 +85,77 @@
 namespace ATV {
 namespace cpu {
 
-/// @brief Phase traits for each driver category.
+/// @brief Phase traits for each workflow's phase enum.
 ///
 /// Maps PhaseEnum → the eval phase (where pair/bonded forces run) and
-/// the end-of-step phase (where thermo output runs). Specializations
-/// below for md, minimizer, and evaluate drivers.
+/// the end-of-step phase (where thermo output runs). One specialization
+/// below for each of the six workflows (md, minimizer, evaluate, vib,
+/// sampling, path).
 template <typename PhaseEnum>
-struct CategoryTraits;
+struct PhaseTraits;
 
 /// `neighbor_phase` is where the neighbor-list rebuild binds. MD has a
-/// dedicated `neighbor` phase (LAMMPS-granular skeleton); the other drivers
+/// dedicated `neighbor` phase (LAMMPS-granular skeleton); the other workflows
 /// have no separate phase, so it folds into `eval_phase` just before the
 /// force evaluators (order -10).
 template <>
-struct CategoryTraits<ATV::md::Phase> {
+struct PhaseTraits<ATV::md::Phase> {
     static constexpr auto eval_phase = ATV::md::Phase::force;
     static constexpr auto neighbor_phase = ATV::md::Phase::neighbor;
     static constexpr auto end_phase = ATV::md::Phase::end_of_step;
 };
 
 template <>
-struct CategoryTraits<ATV::minimizer::Phase> {
+struct PhaseTraits<ATV::minimizer::Phase> {
     static constexpr auto eval_phase = ATV::minimizer::Phase::force;
     static constexpr auto neighbor_phase = ATV::minimizer::Phase::force;
     static constexpr auto end_phase = ATV::minimizer::Phase::end_of_step;
 };
 
 template <>
-struct CategoryTraits<ATV::evaluate::Phase> {
+struct PhaseTraits<ATV::evaluate::Phase> {
     static constexpr auto eval_phase = ATV::evaluate::Phase::evaluate;
     static constexpr auto neighbor_phase = ATV::evaluate::Phase::evaluate;
     static constexpr auto end_phase = ATV::evaluate::Phase::finalize;
 };
 
 template <>
-struct CategoryTraits<ATV::vib::Phase> {
+struct PhaseTraits<ATV::vib::Phase> {
     static constexpr auto eval_phase = ATV::vib::Phase::force;
     static constexpr auto neighbor_phase = ATV::vib::Phase::force;
     static constexpr auto end_phase = ATV::vib::Phase::end_of_step;
 };
 
-/// Monte Carlo (Sampling category): the energy evaluator + neighbor list bind
+/// Monte Carlo (`cpu::mc::MC`): the energy evaluator + neighbor list bind
 /// in the `energy` phase (the trial-state recompute), and thermo/observers in
 /// `end_of_step`. There is no separate neighbor phase, so it folds into
 /// `energy` just ahead of the evaluator (order -10, before ZeroEnergy at -999
 /// runs first and the evaluator at 0 last).
 template <>
-struct CategoryTraits<ATV::sampling::Phase> {
+struct PhaseTraits<ATV::sampling::Phase> {
     static constexpr auto eval_phase = ATV::sampling::Phase::energy;
     static constexpr auto neighbor_phase = ATV::sampling::Phase::energy;
     static constexpr auto end_phase = ATV::sampling::Phase::end_of_step;
 };
 
-/// Path category: force evaluators bind at `force` (as in Minimize), the
-/// neighbor list folds in just ahead of them, and thermo/observers at
+/// Path (`cpu::PathDriver`): force evaluators bind at `force` (as in Minimize),
+/// the neighbor list folds in just ahead of them, and thermo/observers at
 /// `end_of_step`. Without this specialization the categorical setters
 /// inherited from CPUDriver do not instantiate — the whole reason the
 /// specialization exists as a separate step from adding the enum.
 template <>
-struct CategoryTraits<ATV::path::Phase> {
+struct PhaseTraits<ATV::path::Phase> {
     static constexpr auto eval_phase = ATV::path::Phase::force;
     static constexpr auto neighbor_phase = ATV::path::Phase::force;
     static constexpr auto end_phase = ATV::path::Phase::end_of_step;
 };
 
-/// @brief CPU-backend driver layer — shared by all three CPU category bases.
+/// @brief CPU-backend loop node — the one class every CPU preset derives from.
 template <typename PhaseEnum>
 class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
   public:
     using Base = Driver<PhaseEnum, cpu::device_tag>;
-    using Traits = CategoryTraits<PhaseEnum>;
+    using Traits = PhaseTraits<PhaseEnum>;
 
     /// @brief Compile the Plan after installing infrastructure and
     /// validating the required role + capability set.
@@ -195,11 +196,11 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     /// Eagerly creates the backend so the flag survives into `run()`; call before
     /// `run()`. Also enabled by the `ATV_TIMER` env var.
     ///
-    /// Lives on the category base, not on one concrete driver: the timing registry
-    /// is Backend infrastructure and every category has one. (It sat on
-    /// `cpu::md::MD` alone until an out-of-library regression case needed to quiet
-    /// a chain of `Evaluate` single points and found it missing — the second caller
-    /// that justifies hoisting it.)
+    /// Lives on the loop node, not on one preset: the timing registry is Backend
+    /// infrastructure and every loop has one. (It sat on `cpu::md::MD` alone until
+    /// an out-of-library regression case needed to quiet a chain of `Evaluate`
+    /// single points and found it missing — the second caller that justifies
+    /// hoisting it.)
     /// @param on True to record per-component timings.
     void enable_timing(bool on = true) {
         if (!this->backend_)
@@ -319,6 +320,7 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     }
 
     /// @brief Single iteration through the compiled Plan.
+    /// @param iter_index Index of the iteration to execute (0-based).
     void step_once(int iter_index) { this->backend_->step(iter_index); }
 
     // ── Continuation (MD and MC; the other presets run fresh each call) ─────
@@ -404,10 +406,10 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     }
 
     /// @brief Emit the built-in end-of-run summary — the LAMMPS-style time +
-    /// memory breakdown every driver reports. Called by the category driver's
-    /// `run()` after the loop (all ranks, in lockstep — the reduction is
-    /// collective). Default no-op; concrete drivers override to render their
-    /// own category taxonomy. @see cpu/md/timing_report.h
+    /// memory breakdown every driver reports. Called by the preset's `run()`
+    /// after the loop (all ranks, in lockstep — the reduction is collective).
+    /// Default no-op; a preset overrides it to render its own stage breakdown.
+    /// @see cpu/md/timing_report.h
     virtual void emit_run_summary(std::string_view /*stage*/) {}
 
     /// @brief Tear down — destroy components + shut down backend.
@@ -416,10 +418,8 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
         this->backend_->shutdown();
     }
 
-    /// @brief This loop's iteration status. **Owned here, not on the Context.**
-    const IterationStatus& outer_status() const { return status_; }
-
-    /// @brief Mutable handle to this loop's status (for the per-iteration `reset()`).
+    /// @brief Mutable handle to this loop's iteration status (for the per-iteration
+    /// `reset()`). **Owned here, not on the Context.**
     IterationStatus& mutable_outer_status() { return status_; }
 
     /// @brief This loop's metrics — what its components measured, for handlers to judge.
@@ -550,9 +550,6 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
         return iters;
     }
 
-  protected:
-
-  public:
     // ─── Categorical setter API ─────────────────────────────────────
     //
     // These are the LAMMPS-shaped setters shared across MD, Minimize,
@@ -740,6 +737,29 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
             neighbor_consumer_cutoff; ///< Set when it declares a cutoff > 0.
     };
 
+    /// @brief Compute and publish the global DOF count — the single owner.
+    ///
+    /// `Ndof = 3N - 3 - n_constraints`. Runs between `set_frame()` and
+    /// `build_components()`, and that ordering is load-bearing: thermostats cache
+    /// Ndof in their own `build()`, so a count published any later would be ignored
+    /// by exactly the components that most need it.
+    ///
+    /// Until constraints arrived, five separate sites each hardcoded `3N - 3`
+    /// (Thermo, InitVelocity, NoseHoover, NoseHooverNPT, FixCSVR). That formula is
+    /// simply wrong once anything is constrained, and the failure is silent: rigid
+    /// water reports T ~33 % low and every thermostat drives to the wrong setpoint.
+    /// @param frame The frame whose atom count sets `3N`.
+    void publish_dof_(cpu::Frame& frame) {
+        int n_con = 0;
+        for (const cpu::ConstraintProvider* cp : constraint_providers_)
+            n_con += cp->n_constraints(this->backend_->context(), frame);
+        cpu::publish_global_dof(this->backend_->context(), frame, n_con);
+    }
+
+    /// Constraint components, captured at `build()` while the pending list still
+    /// exists. Non-owning: the Plan owns the components.
+    std::vector<const cpu::ConstraintProvider*> constraint_providers_;
+
     /// @brief Walk the pending list once, collect everything install_defaults
     /// rules might need.
     ///
@@ -752,28 +772,7 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     /// in auto-injection whatever their `name()`. Same pattern as
     /// `cuda::md::MD::install_infra_`. Non-const because the halo probe is
     /// non-const (its other caller, the bind pass, mutates endpoints).
-    /// @brief Compute and publish the global DOF count — the single owner.
-    ///
-    /// `Ndof = 3N - 3 - n_constraints`. Runs between `set_frame()` and
-    /// `build_components()`, and that ordering is load-bearing: thermostats cache
-    /// Ndof in their own `build()`, so a count published any later would be ignored
-    /// by exactly the components that most need it.
-    ///
-    /// Until constraints arrived, five separate sites each hardcoded `3N - 3`
-    /// (Thermo, InitVelocity, NoseHoover, NoseHooverNPT, FixCSVR). That formula is
-    /// simply wrong once anything is constrained, and the failure is silent: rigid
-    /// water reports T ~33 % low and every thermostat drives to the wrong setpoint.
-    void publish_dof_(cpu::Frame& frame) {
-        int n_con = 0;
-        for (const cpu::ConstraintProvider* cp : constraint_providers_)
-            n_con += cp->n_constraints(this->backend_->context(), frame);
-        cpu::publish_global_dof(this->backend_->context(), frame, n_con);
-    }
-
-    /// Constraint components, captured at `build()` while the pending list still
-    /// exists. Non-owning: the Plan owns the components.
-    std::vector<const cpu::ConstraintProvider*> constraint_providers_;
-
+    /// @return The collected facts about the pending component set.
     InfraScan scan_pending_infra_() {
         InfraScan s;
         for_each_pending_mut([&](cpu::ComponentBase& c) {

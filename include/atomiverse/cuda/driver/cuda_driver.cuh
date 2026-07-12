@@ -238,14 +238,9 @@ class CUDADriver : public Driver<PhaseEnum, cuda::device_tag> {
         return v;
     }
 
-    /// @brief This loop's iteration status. **Owned here, not on the Context.**
-    const IterationStatus& outer_status() const { return status_; }
-
-    /// @brief Mutable handle to this loop's status (for the per-iteration `reset()`).
+    /// @brief Mutable handle to this loop's iteration status (for the per-iteration
+    /// `reset()`). **Owned here, not on the Context.**
     IterationStatus& mutable_outer_status() { return status_; }
-
-    /// @brief This loop's metrics — what its components measured, for handlers to judge.
-    LoopMetrics& metrics() { return metrics_; }
 
     /// @brief Throw a clear exception when a required role or capability
     ///        is absent at `validate_components()` time.

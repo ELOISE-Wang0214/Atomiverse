@@ -54,13 +54,14 @@ around it.
 
 ## The Representation: One Pluggable Degree of Freedom
 
-The three CPU driver categories share the `force` phase as a common socket:
+The CPU presets have different phase enums, but they share the `force`
+phase as a common socket:
 
 ```text
-Evaluate     : prepare → evaluate → finalize
-Dynamics (MD): initial_integrate → pre_force → force → post_force → final_integrate → end_of_step
-Optimize     : search_direction → line_search → force → convergence_check → end_of_step
-Response     : setup → displace → force → accumulate → diagonalize → thermochem → end_of_step
+cpu::Evaluate            : prepare → evaluate → finalize
+cpu::md::MD              : initial_integrate → pre_force → force → post_force → final_integrate → end_of_step
+cpu::minimizer::Minimize : search_direction → line_search → force → convergence_check → end_of_step
+cpu::vib::Hessian        : setup → displace → force → accumulate → diagonalize → thermochem → end_of_step
 ```
 
 Any component with `role() == Evaluator` and `Capability::Force` (or, for
@@ -123,7 +124,8 @@ one-line change:
 
 ```cpp
 cpu::minimizer::Minimize opt;
-opt.add(cpu::minimizer::LBFGS{5, 0.01, 0.05, 10, 0.03, 0.1, 0.05, 1e-3});
+opt.add(cpu::minimizer::LBFGS{5, 0.01, 10});
+opt.add_handler(cpu::ForceConverged{0.05, 0.03, 0.1, 0.05, 1e-3});
 
 // Classical relaxation:
 opt.on(minimizer::Phase::force).add(make_classical());
@@ -321,8 +323,8 @@ buildable code that shares one `cpu::Frame`, one component contract, and one
 set of units. Adding a ninth workflow does not mean writing a ninth program;
 it means writing one new evaluator (a new functional, a new force field, a
 machine-learned potential) and dropping it into the socket, or adding one new
-driver category (a Monte-Carlo sampler, a nudged-elastic-band path) that
-reuses every evaluator that already exists.
+preset (the Monte-Carlo sampler `cpu::mc::MC`, the nudged-elastic-band
+`cpu::PathDriver`) that reuses every evaluator that already exists.
 
 That factorization — *one loop, many physics* — is the whole thesis of
 Atomiverse, and the reason a single manual could teach classical mechanics

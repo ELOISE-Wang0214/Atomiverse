@@ -16,24 +16,41 @@ to read alongside this chapter is
 
 ## What the Minimize Driver Actually Does
 
-`cpu::minimizer::Minimize` is a thin subclass of
-[`cpu::OptimizeDriver`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/driver/optimize_driver.h).
-The base class owns the loop:
+`cpu::minimizer::Minimize`
+([`cpu/minimizer/minimize.h`](https://github.com/MolCrafts/Atomiverse/blob/dev/include/atomiverse/cpu/minimizer/minimize.h))
+is a **preset** over the CPU loop node, `cpu::CPUDriver<minimizer::Phase>`.
+"Preset" means: it is an ordinary driver whose constructor pre-attaches
+the pieces a geometry optimization wants — the zeroing components, and a
+termination policy. It owns the loop:
 
 ```text
-loop until converged or max_iter reached:
-    outer_status.reset()                 // clear convergence flag
+loop until a handler says stop, or max_iter reached:
+    status.reset()                       // clear last iteration's verdict
     run one pass of the compiled plan    // search_direction → line_search →
-                                          // force → convergence_check → end_of_step
-    if outer_status.converged:  break    // normal success
-    if outer_status.stop_requested: break // explicit early stop
+                                         // force → convergence_check → end_of_step
+    ask the handlers                     // Continue / Converged / Stop
 ```
 
 The driver does not know about L-BFGS, conjugate-gradient, FIRE, or any
-specific algorithm. All it knows is to break the loop when an
-`outer_status.converged` flag has been set. The flag is set by whichever
-component is bound at `convergence_check` — by convention, the optimizer
-component itself.
+specific algorithm — and, just as importantly, it does not know what
+"converged" means either. That is the job of a **handler**
+(`cpu::LoopHandler`), a small policy object asked once per iteration.
+`Minimize` attaches `cpu::ForceConverged` — the five-criteria test
+described below — for you. You can replace it:
+
+```cpp
+opt.add_handler(cpu::ForceConverged{/*ftol=*/0.01, /*rms_ftol=*/0.005,
+                                    /*max_dtol=*/0.002, /*rms_dtol=*/0.001,
+                                    /*etol=*/1e-5});
+```
+
+The optimizer component bound at `convergence_check` does not decide
+anything. It **measures** — max force, RMS force, the displacement since
+the last iteration, |ΔE| — and publishes those numbers into the loop's
+`LoopMetrics`. The handler reads them and returns a verdict. That split
+is why you ask the *driver*, never the optimizer, whether the run
+succeeded: `opt.converged()` and `opt.stop_reason()`.
+(`LBFGS::converged()` used to exist; it is gone.)
 
 Build-time validation at `Minimize::build()` checks that:
 
@@ -53,20 +70,23 @@ are.
 search_direction → line_search → force → convergence_check → end_of_step
 ```
 
-The `Minimize` driver auto-adds two infrastructure components in its
-constructor:
+The `Minimize` preset auto-adds three infrastructure components in its
+constructor, plus its default handler:
 
-- `cpu::minimizer::ZeroForces` at `force @ -1000`
-- `cpu::minimizer::ZeroEnergy` at `force @ -999`
-- `cpu::SnapshotPublisher` at `end_of_step @ +10`
+- `cpu::ZeroForces` at `force @ -1000`
+- `cpu::ZeroEnergy` at `force @ -999`
+- `cpu::Publish` (the async-analysis snapshot publisher) at `end_of_step @ +10`
+- `cpu::ForceConverged{}` as the loop's termination handler
 
 Note that `force` is the same logical phase as in MD — same evaluator
-components plug into both drivers. The `cpu::minimizer::ZeroForces`
-component is a separate class from `cpu::md::ZeroForces` only because
-its default binding is `minimizer::Phase::force`, not `md::Phase::pre_force`.
+components plug into both drivers. The `Zero*` components are
+phase-agnostic and are bound explicitly by each driver, which is why the
+same class serves `minimizer::Phase::force` here and `md::Phase::pre_force`
+there.
 
-The optimizer component is bound at *two* phases: `search_direction` (it
-computes a step) and `convergence_check` (it publishes the verdict).
+The optimizer component is bound at *three* phases: `search_direction`
+(it computes a step), `line_search` (it evaluates trial geometries), and
+`convergence_check` (it publishes the metrics the handler will judge).
 That is why a single `LBFGS{...}` registration is enough for the entire
 algorithm.
 
@@ -92,14 +112,26 @@ The constructor takes:
 cpu::minimizer::LBFGS{
     /*memory=*/   5,         // history size m
     /*alpha0=*/   0.01,      // initial step length [Å²/eV]
-    /*ftol=*/     0.05,      // max-force tol      [eV/Å]
-    /*max_ls=*/   10,        // backtracking attempts (only used when line search is on)
-    /*rms_ftol=*/ 0.03,      // rms-force tol      [eV/Å]
-    /*max_dtol=*/ 0.002,     // max-disp tol       [Å]
-    /*rms_dtol=*/ 0.001,     // rms-disp tol       [Å]
-    /*etol=*/     1e-5       // |ΔE| tol           [eV]
+    /*max_ls=*/   10         // backtracking attempts (only used when line search is on)
 };
 ```
+
+**Algorithm parameters only — no tolerances.** Those three arguments are
+the whole constructor, and that is deliberate: an L-BFGS *algorithm* has
+a curvature depth, an initial step and a line-search cap. It does not
+have a convergence criterion. Stopping is the loop's business, and the
+loop's stopping criteria are the handler's — `cpu::ForceConverged`,
+which `Minimize` attaches for you with the defaults `ftol` 0.05 eV/Å,
+`rms_ftol` 0.03 eV/Å, `max_dtol` 0.002 Å, `rms_dtol` 0.001 Å, `etol`
+1e-5 eV. To change a tolerance, change the handler — never the
+optimizer:
+
+```cpp
+opt.add_handler(cpu::ForceConverged{0.05, 0.03, 0.1, 0.05, 1e-3});
+```
+
+Attaching any handler suppresses the default one, so the five values
+above are the ones that judge the run.
 
 Convergence requires *all five* criteria — max force, RMS force, max
 displacement, RMS displacement, and energy change — to be below their
@@ -113,8 +145,7 @@ By default `LBFGS` uses a fixed step length `alpha0`. You can opt into
 backtracking line search:
 
 ```cpp
-auto step = cpu::minimizer::LBFGS{m, alpha0, ftol, max_ls,
-                                   rms_ftol, max_dtol, rms_dtol, etol}
+auto step = cpu::minimizer::LBFGS{m, alpha0, max_ls}
               .line_search(/*c1=*/1e-4, /*contract=*/0.5,
                            /*min_alpha=*/1e-6);
 opt.add(std::move(step));
@@ -133,8 +164,8 @@ pathological evaluation.
 ## Conjugate Gradient as an Alternative
 
 `cpu::minimizer::CG` is a Polak-Ribière+ conjugate-gradient optimizer.
-It uses the same convergence channel and the same five-criterion rule
-as `LBFGS`. The only thing that changes is the direction:
+It publishes the same metrics as `LBFGS`, and is judged by the same
+handler. The only thing that changes is the direction:
 
 $$\beta_k = \max\!\left(0,\; \frac{g_k \cdot (g_k - g_{k-1})}{g_{k-1} \cdot g_{k-1}}\right), \qquad d_k = -g_k + \beta_k d_{k-1}.$$
 
@@ -145,15 +176,14 @@ periodic-restart parameter.
 To swap CG in for L-BFGS, change one line:
 
 ```cpp
-opt.add(cpu::minimizer::CG{/*alpha0=*/0.01, /*ftol=*/0.05,
-                           /*rms_ftol=*/0.03, /*max_dtol=*/0.002,
-                           /*rms_dtol=*/0.001, /*etol=*/1e-5});
+opt.add(cpu::minimizer::CG{/*alpha0=*/0.01});
 ```
 
 The rest of the driver setup is unchanged. The hot-swap is exercised in
 [`tests/cpu/test_minimize_driver_swap_optimizer.cpp`](https://github.com/MolCrafts/Atomiverse/blob/dev/tests/cpu/test_minimize_driver_swap_optimizer.cpp),
 which builds the same molecule twice and checks that both optimizers
-report convergence under the same tolerances.
+converge under the same handler — the same `ForceConverged` object, not
+two copies of the same five numbers.
 
 In practice, L-BFGS converges in fewer iterations than CG on
 well-conditioned problems (rigid molecules near minimum), and the
@@ -182,30 +212,37 @@ config.max_iter = 200;
 config.force_native_two_electron_deriv = true;
 
 cpu::minimizer::Minimize opt;
-opt.add(cpu::minimizer::LBFGS{
-    5,        // memory
-    0.01,     // alpha0  [Å²/eV]
-    0.05,     // ftol    [eV/Å]
-    10,       // max_ls
-    0.03,     // rms_ftol
-    0.1,      // max_dtol  [Å]   — slightly looser; fixed-step L-BFGS takes ~0.05–0.2 Å steps
-    0.05,     // rms_dtol  [Å]
-    1e-3      // etol      [eV]
+opt.set_optimizer(cpu::minimizer::LBFGS{5, /*alpha0=*/0.01, /*max_ls=*/10});
+opt.add_handler(cpu::ForceConverged{
+    /*ftol=*/     0.05,   // [eV/Å]
+    /*rms_ftol=*/ 0.03,   // [eV/Å]
+    /*max_dtol=*/ 0.1,    // [Å] — slightly looser; fixed-step L-BFGS takes ~0.05–0.2 Å steps
+    /*rms_dtol=*/ 0.05,   // [Å]
+    /*etol=*/     1e-3    // [eV]
 });
 opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
 opt.build();
 
 int iters = opt.run(frame, /*max_iter=*/100);
+if (opt.converged())
+    std::cout << "converged in " << iters << " iterations\n";
+else
+    std::cout << "stopped: " << opt.stop_reason() << "\n";  // empty ⇒ ran out of budget
 ```
+
+Because you attached a handler explicitly, `Minimize` does *not* also
+attach its default one — the preset supplies `ForceConverged{}` only
+when you have supplied no handler of your own.
 
 The single line that does *all* the chemistry is
 `opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config})`.
 The evaluator's `launch()` rebuilds the integrals at the current
 geometry, runs the SCF cycle, computes the analytic nuclear gradient
 ($\partial E / \partial R_A$), and writes the negative gradient into
-`frame.atoms.fx/fy/fz`. The optimizer then reads those forces from the
-frame in its `convergence_check` pass, decides the new geometry, and
-writes the updated coordinates back.
+`frame.atoms.fx/fy/fz`. The optimizer reads those forces at its
+`search_direction` pass, decides the new geometry and writes the updated
+coordinates back; at `convergence_check` it publishes the force,
+displacement and energy metrics that `ForceConverged` will judge.
 
 `Minimize::run` returns the number of iterations actually executed
 (≤ `max_iter`). On a converged run that number is your iteration count.

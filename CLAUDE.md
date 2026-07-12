@@ -681,7 +681,8 @@ aimd.build();  aimd.run(frame, 100);
 
 // Geometry optimization
 cpu::minimizer::Minimize opt;
-opt.set_optimizer(cpu::minimizer::LBFGS{5, 0.01, 0.05});
+opt.set_optimizer(cpu::minimizer::LBFGS{5, 0.01, 10});   // memory, alpha0, max_ls
+opt.add_handler(cpu::ForceConverged{0.05, 0.03, 0.1, 0.05, 1e-3});  // the tolerances
 opt.on(minimizer::Phase::force).add(cpu::scf::SCFEvaluator{cfg});
 opt.build();  opt.run(frame, 100);
 
@@ -718,7 +719,7 @@ sim.stop_reason();                            // which handler ended it
 
 // A Driver is a node: nest one in another, on ONE shared Runtime
 cpu::minimizer::Minimize inner;                     // its own phases + handlers
-inner.set_optimizer(cpu::minimizer::LBFGS{5, 0.01, 0.05});
+inner.set_optimizer(cpu::minimizer::LBFGS{5, 0.01, 10});
 inner.on(minimizer::Phase::force).add(forces);
 cpu::md::MD outer;                                  // a DIFFERENT phase enum
 outer.set_integrator(cpu::md::VelocityVerlet{0.5});

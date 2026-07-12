@@ -348,15 +348,15 @@ TEST(HybridGradient, B3LYPGeometryOptimizationMatchesPySCF) {
     // A small alpha0 would cap every step at a tiny fraction of the Newton
     // step and stall progress with a ~(1-alpha0) geometric decay. Force
     // tolerances are tight so the optimizer drives onto the true minimum.
-    cpu::minimizer::LBFGS step{/*memory=*/8,       /*alpha0=*/1.0,
-                               /*ftol=*/0.01, // eV/Angstrom (~2e-4 Ha/Bohr)
-                               /*max_ls=*/20,
-                               /*rms_ftol=*/0.005,
-                               /*max_dtol=*/0.005,
-                               /*rms_dtol=*/0.002,
-                               /*etol=*/1e-5};
+    cpu::minimizer::LBFGS step{/*memory=*/8, /*alpha0=*/1.0, /*max_ls=*/20};
     step.line_search();
     opt.add(std::move(step));
+    opt.add_handler(
+        cpu::ForceConverged{/*ftol=*/0.01, // eV/Angstrom (~2e-4 Ha/Bohr)
+                            /*rms_ftol=*/0.005,
+                            /*max_dtol=*/0.005,
+                            /*rms_dtol=*/0.002,
+                            /*etol=*/1e-5});
     opt.on(ATV::minimizer::Phase::force)
         .add(cpu::scf::SCFEvaluator{config, BasisSet::Pople631Gs});
     opt.build();

@@ -141,6 +141,6 @@ TEST(MCScaffold, ValidatePassesWithMoverAndEnergy) {
 
 /// The temperature guard moved from `SamplingDriver`'s ctor to `cpu::Metropolis`'s;
 /// `cpu::mc::MC` forwards to it, so constructing the preset with T <= 0 must still throw.
-TEST(MCScaffold, SamplingDriverRejectsNonPositiveTemperature) {
+TEST(MCScaffold, MetropolisRejectsNonPositiveTemperature) {
     EXPECT_THROW((cpu::mc::MC{0.0, 1u}), std::invalid_argument);
 }

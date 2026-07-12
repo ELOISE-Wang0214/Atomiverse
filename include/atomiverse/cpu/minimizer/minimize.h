@@ -1,10 +1,11 @@
 /// @file cpu/minimizer/minimize.h
 /// @brief cpu::minimizer::Minimize — concrete energy-minimizer driver.
 ///
-/// `Minimize` is the user-facing CPU outer-driver under the
-/// `OptimizeDriver` category. It iterates an optimizer component
-/// (LBFGS / CG / future FIRE) until the optimizer reports convergence
-/// through `outer_status`, or until `max_iter` is reached.
+/// `Minimize` is the user-facing CPU geometry-optimization preset — a
+/// `CPUDriver<minimizer::Phase>` whose constructor attaches `cpu::ForceConverged`.
+/// It iterates an optimizer component (LBFGS / CG / future FIRE), which publishes
+/// force/displacement/energy metrics onto `LoopMetrics`, until a handler judges
+/// them converged or `max_iter` is reached.
 ///
 /// Exposes the same LAMMPS-shaped categorical setter API as
 /// `cpu::md::MD` (minus the time-evolution setters): set_pair,
@@ -67,9 +68,9 @@ namespace minimizer {
 /// see snapshots. `install_defaults()` injects the MPI infrastructure
 /// documented in the file header (single-rank: structural no-ops).
 ///
-/// Validation rules inherited from `OptimizeDriver`: requires ≥ 1
-/// `Optimizer` component (e.g. `LBFGS`, `CG`) and ≥ 1 `Evaluator`
-/// with `Capability::Energy` or `Capability::Force` (e.g. `SCFEvaluator`).
+/// `validate_components()` requires ≥ 1 `Optimizer` component (e.g. `LBFGS`,
+/// `CG`) and ≥ 1 `Evaluator` with `Capability::Energy` or `Capability::Force`
+/// (e.g. `SCFEvaluator`).
 ///
 /// Inheritance: Minimize → CPUDriver<minimizer::Phase> →
 /// Driver<minimizer::Phase, cpu::device_tag>. There is no `OptimizeDriver` category in

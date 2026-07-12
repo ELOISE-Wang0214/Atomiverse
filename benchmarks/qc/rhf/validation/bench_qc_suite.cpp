@@ -219,18 +219,18 @@ RunResult run_molecule(const std::string& stem, const fs::path& xyz_path,
     auto ints = cpu::scf::build_integrals(frame, basis_id);
     auto cfg = make_config(ints, ref);
 
-    cpu::minimizer::LBFGS step{
-        /*memory=*/5,      /*alpha0=*/0.01,
-        /*ftol=*/5e-4,     /*max_ls=*/20,
-        /*rms_ftol=*/3e-4,
-        /*max_dtol=*/5e-3,
-        /*rms_dtol=*/3e-3,
-        /*etol=*/1e-6,
-    };
+    cpu::minimizer::LBFGS step{/*memory=*/5, /*alpha0=*/0.01, /*max_ls=*/20};
     step.line_search();
 
     cpu::minimizer::Minimize opt;
     opt.add(std::move(step));
+    opt.add_handler(cpu::ForceConverged{
+        /*ftol=*/5e-4,
+        /*rms_ftol=*/3e-4,
+        /*max_dtol=*/5e-3,
+        /*rms_dtol=*/3e-3,
+        /*etol=*/1e-6,
+    });
     opt.on(ATV::minimizer::Phase::force)
         .add(cpu::scf::SCFEvaluator{cfg, basis_id});
     opt.build();

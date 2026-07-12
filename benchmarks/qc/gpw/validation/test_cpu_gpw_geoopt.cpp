@@ -66,7 +66,10 @@ TEST(GpwGeoOpt, H2RelaxesTowardEquilibrium) {
     ASSERT_NEAR(bond0, 1.0, 1e-6);
 
     ATV::cpu::minimizer::Minimize opt;
-    opt.add(ATV::cpu::minimizer::LBFGS{5, 0.01, 0.05, 10, 0.03, 0.1, 0.05, 1e-3});
+    opt.add(ATV::cpu::minimizer::LBFGS{5, 0.01, 10});
+    opt.add_handler(ATV::cpu::ForceConverged{/*ftol=*/0.05, /*rms_ftol=*/0.03,
+                                             /*max_dtol=*/0.1, /*rms_dtol=*/0.05,
+                                             /*etol=*/1e-3});
     opt.on(ATV::minimizer::Phase::force).add(GPWEvaluator{cfg});
     opt.build();
     // 30 steps, not 8: the assertion below is about WHERE the optimizer settles, so

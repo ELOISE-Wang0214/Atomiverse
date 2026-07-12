@@ -47,7 +47,7 @@ class Symmetrize : public cpu::ComponentBase {
 
     /// @brief Replace the workspace Hessian with `(H + H^T) / 2`.
     ///
-    /// The `diagonalize` phase runs on every Response-category pass, but
+    /// The `diagonalize` phase runs on every displacement pass, but
     /// symmetrization is only meaningful once every Hessian row has been
     /// written — i.e. on the final finalize pass (`ctx.step == 6N`).
     /// Running it on a partially-filled matrix would mix real rows with

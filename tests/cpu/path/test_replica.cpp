@@ -115,11 +115,13 @@ TEST(ReplicaExpansion, LinearInterpolationCollapsesToTheHighestEnergyImage) {
     EXPECT_NEAR(out.scalars.energy, 2.5, 1e-14);
 }
 
-/// THE termination rule of the Path category: AND, not OR.
+/// THE termination rule of a coupled band: AND, not OR.
 ///
-/// Before this, an optimizer wrote convergence straight onto the single shared
-/// Context::outer_status — so the first image to settle would have stopped the entire
-/// chain, leaving the rest of the band wherever it happened to be.
+/// The band publishes `converged_fraction()` onto LoopMetrics and
+/// `cpu::AllReplicasConverged` applies the AND — the band is converged at exactly 1.0.
+/// If a component could write convergence straight onto a single shared status, the
+/// first image to settle would have stopped the entire chain, leaving the rest of the
+/// band wherever it happened to be.
 TEST(ReplicaSetTest, OneUnconvergedImageKeepsTheChainRunning) {
     cpu::Frame initial = two_atoms(0.0, 1.0);
     cpu::Frame final_state = two_atoms(0.0, 5.0);
@@ -127,16 +129,17 @@ TEST(ReplicaSetTest, OneUnconvergedImageKeepsTheChainRunning) {
     cpu::ReplicaSet band{initial, expand};
 
     ASSERT_EQ(band.size(), 5);
-    EXPECT_FALSE(band.all_converged()) << "a fresh band cannot already be converged";
+    EXPECT_LT(band.converged_fraction(), 1.0)
+        << "a fresh band cannot already be converged";
 
     for (int i = 0; i < 5; ++i)
         band.set_converged(i, true);
-    EXPECT_TRUE(band.all_converged());
+    EXPECT_GE(band.converged_fraction(), 1.0);
 
     // Image 3 backslides — the chain is NOT converged, however happy image 0 is.
     band.set_converged(3, false);
-    EXPECT_FALSE(band.all_converged());
+    EXPECT_LT(band.converged_fraction(), 1.0);
 
     band.set_converged(3, true);
-    EXPECT_TRUE(band.all_converged());
+    EXPECT_GE(band.converged_fraction(), 1.0);
 }

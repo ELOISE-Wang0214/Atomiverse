@@ -1,5 +1,6 @@
 /// @file cpu/md/md.h
-/// @brief cpu::md::MD — concrete time-advance driver under DynamicsDriver.
+/// @brief cpu::md::MD — the classical time-advance preset. Its termination is the
+///        step budget: it runs every step it was asked for, unless a handler stops it.
 #pragma once
 
 #include <cstdlib>

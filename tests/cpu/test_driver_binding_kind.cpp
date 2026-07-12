@@ -147,7 +147,7 @@ TEST(DriverBindingKind, MdAddSameKindVelocityVerletNoThrow) {
 
 TEST(DriverBindingKind, MinimizeAddSameKindLbfgsNoThrow) {
     ATV::cpu::minimizer::Minimize opt;
-    EXPECT_NO_THROW(opt.add(ATV::cpu::minimizer::LBFGS{5, 0.01, 0.05}));
+    EXPECT_NO_THROW(opt.add(ATV::cpu::minimizer::LBFGS{5, 0.01, 10}));
 }
 
 // ─── Plan-shape regression anchors (six driver categories) ──────────────
@@ -217,7 +217,7 @@ TEST(DriverBindingKind, MdPlanShapeUnchanged) {
 
 TEST(DriverBindingKind, MinimizePlanShapeUnchanged) {
     ATV::cpu::minimizer::Minimize opt;
-    opt.add(ATV::cpu::minimizer::LBFGS{5, 0.01, 0.05});
+    opt.add(ATV::cpu::minimizer::LBFGS{5, 0.01, 10});
     atv_test::StubForceEvaluator force;
     opt.on(ATV::minimizer::Phase::force).add(force);
     opt.build();

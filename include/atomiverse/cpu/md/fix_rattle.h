@@ -123,7 +123,7 @@ class FixRattle : public cpu::ComponentBase, public cpu::ConstraintProvider {
 
     /// @brief Structural slot: a Constraint, NOT an Integrator. Tagging it as an
     /// Integrator would let a Plan with a constraint and no integrator pass
-    /// `DynamicsDriver`'s validation and run with nothing propagating the motion.
+    /// `cpu::md::MD::validate_components()` and run with nothing propagating the motion.
     ComponentRole role() const override { return ComponentRole::Constraint; }
 
     /// @brief Write-set: it projects both coordinates and velocities.

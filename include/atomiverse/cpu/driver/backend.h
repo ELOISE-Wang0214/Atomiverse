@@ -3,7 +3,7 @@
 ///
 /// Operates directly on the user's cpu::Frame (zero-copy, zero transfer).
 /// Manages OpenMP thread configuration, MPI awareness, and the MD spatial
-/// `DomainDecomposition` published through `Context::dd`.
+/// `DomainDecomposition` published through `Context::md.dd`.
 ///
 /// @see Driver for the user-facing facade that delegates to Backend
 #pragma once

@@ -20,7 +20,8 @@
 /// Usage:
 /// @code
 ///   cpu::minimizer::Minimize opt;
-///   opt.add(cpu::minimizer::LBFGS{memory, alpha, ftol, max_ls});
+///   opt.add(cpu::minimizer::LBFGS{memory, alpha, max_ls});
+///   opt.add_handler(cpu::ForceConverged{});   // the convergence policy
 ///   opt.on(ATV::minimizer::Phase::force).add(cpu::scf::SCFEvaluator{config});
 ///   opt.on(ATV::minimizer::Phase::end_of_step).add(Thermo{1});
 ///   opt.build();
@@ -67,14 +68,16 @@ struct OptRecord {
 ///
 /// Implements the two-loop recursion to compute search direction, then
 /// performs a backtracking line search with Armijo condition.
-/// Binds to search_direction + convergence_check phases.
+/// Binds to search_direction + line_search + convergence_check phases.
 ///
-/// Convergence requires ALL five criteria to be satisfied:
-///   - max force < ftol
-///   - RMS force < rms_ftol
-///   - max displacement < max_dtol
-///   - RMS displacement < rms_dtol
-///   - |energy change| < etol
+/// At the `convergence_check` phase it **publishes** force / displacement /
+/// energy metrics onto `LoopMetrics`; it never judges them. The convergence
+/// *policy* is a `LoopHandler` — by default `cpu::ForceConverged`, which owns
+/// the five tolerances (`ftol`, `rms_ftol`, `max_dtol`, `rms_dtol`, `etol`).
+/// Changing a tolerance therefore never touches the algorithm:
+/// @code
+///   opt.add_handler(cpu::ForceConverged{/*ftol=*/0.02, /*rms_ftol=*/0.01});
+/// @endcode
 ///
 /// At step 0: steepest descent (no history). From step 1: L-BFGS direction.
 class LBFGS : public cpu::ComponentBase {
@@ -82,15 +85,8 @@ class LBFGS : public cpu::ComponentBase {
     /// @brief Construct L-BFGS step.
     /// @param memory    Number of correction pairs to store (default 5).
     /// @param alpha0    Initial step size [Angstrom^2/eV] (default 0.01).
-    /// @param ftol      Max force convergence tolerance [eV/Angstrom] (default 0.05).
     /// @param max_ls    Maximum backtracking attempts per step (default 10).
-    /// @param rms_ftol  RMS force tolerance [eV/Angstrom] (default 0.03).
-    /// @param max_dtol  Max displacement tolerance [Angstrom] (default 0.002).
-    /// @param rms_dtol  RMS displacement tolerance [Angstrom] (default 0.001).
-    /// @param etol      Energy change tolerance [eV] (default 1e-5).
-    LBFGS(int memory = 5, double alpha0 = 0.01, double ftol = 0.05,
-          int max_ls = 10, double rms_ftol = 0.03, double max_dtol = 0.002,
-          double rms_dtol = 0.001, double etol = 1e-5);
+    LBFGS(int memory = 5, double alpha0 = 0.01, int max_ls = 10);
 
     /// @brief Select the line-search policy used at the `line_search` phase.
     ///
@@ -136,12 +132,7 @@ class LBFGS : public cpu::ComponentBase {
   private:
     int memory_;
     double alpha0_;
-    double ftol_;
     int max_ls_;
-    double rms_ftol_;
-    double max_dtol_;
-    double rms_dtol_;
-    double etol_;
 
     /// @brief Curvature history + the two-loop recursion.
     ///
