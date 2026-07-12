@@ -456,7 +456,7 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     void publish_dof_(cpu::Frame& frame) {
         int n_con = 0;
         for (const cpu::ConstraintProvider* cp : constraint_providers_)
-            n_con += cp->n_constraints(frame);
+            n_con += cp->n_constraints(this->backend_->context(), frame);
         cpu::publish_global_dof(this->backend_->context(), frame, n_con);
     }
 

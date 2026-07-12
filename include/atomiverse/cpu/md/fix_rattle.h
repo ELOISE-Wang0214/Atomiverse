@@ -71,13 +71,32 @@ namespace md {
 /// gone. So the component keeps its own shadow copy, taken at `initial_integrate`
 /// @ −500, ahead of every integrator.
 ///
-/// ## Single-rank only
+/// ## Multi-rank
 ///
-/// Throws under MPI. The velocity stage needs the velocities of every atom in a
-/// cluster, and the forward halo carries **positions only** — ghost velocities do
-/// not exist. This is the same wall EAM hit from the other side (it needs a derived
-/// per-atom quantity on ghosts), and it is being fixed once, in `comm/`, rather than
-/// twice, here and there.
+/// Works, by the LAMMPS route: **every rank holding any atom of a cluster solves that
+/// cluster redundantly** and applies the corrections to its own rows. Identical inputs
+/// give identical Lagrange multipliers, so each owner ends up with exactly the
+/// correction its owning rank computed, and no reverse exchange is needed.
+///
+/// Two things that route needs, and that the engine did not have:
+///
+/// 1. **A global constraint table.** A water's bonds and angle all live on the oxygen
+///    (smallest tag / centre atom), so the rank owning the O discovers the cluster and
+///    a rank owning only an H discovers *nothing* — yet that rank is the one
+///    responsible for correcting that H. The table is therefore gathered once at
+///    `build()`; it is tiny and static. Inverse masses ride along, because a ghost row
+///    carries x/y/z/tag/charge only and its `mass` is never communicated.
+///
+/// 2. **Fresh ghost positions AND velocities at the two stages.** The engine's single
+///    forward halo fires at `pre_neighbor` and carries positions only, so at
+///    `post_integrate` the ghost data is a step stale and ghost velocities never exist
+///    at all. `comm::HaloRefresh` supplies both, bound wherever they are needed. Users
+///    must add them:
+///
+/// @code
+///   md.on(md::Phase::post_integrate).add(comm::HaloRefresh{Field::positions}, -100);
+///   md.on(md::Phase::final_integrate).add(comm::HaloRefresh{Field::velocities}, +150);
+/// @endcode
 class FixRattle : public cpu::ComponentBase, public cpu::ConstraintProvider {
   public:
     /// @param dt Timestep [fs] — the position stage feeds its correction back into
@@ -114,8 +133,9 @@ class FixRattle : public cpu::ComponentBase, public cpu::ConstraintProvider {
 
     const cpu::ConstraintProvider* as_constraint() const override { return this; }
 
-    /// @brief Number of scalar constraints (one per held distance).
-    int n_constraints(const cpu::Frame& frame) const override;
+    /// @brief Number of scalar constraints, globally (one per held distance).
+    int n_constraints(const cpu::Context& ctx,
+                      const cpu::Frame& frame) const override;
 
     std::vector<DefaultBinding> default_bindings() const override {
         return {
@@ -134,11 +154,23 @@ class FixRattle : public cpu::ComponentBase, public cpu::ConstraintProvider {
     int last_velocity_iters() const { return last_vel_iters_; }
 
   private:
-    /// One held distance between two local rows.
+    /// A constraint as discovered from the topology: two global TAGS and a distance.
+    struct Spec {
+        TagInt ti = 0;
+        TagInt tj = 0;
+        double distance = 0.0;
+    };
+
+    /// One held distance, keyed by global tag.
+    ///
+    /// Tags, not rows: the table is GLOBAL (every rank holding any atom of a cluster
+    /// needs the whole cluster), and rows are a per-rank, per-rebuild accident. The
+    /// inverse masses are baked in because a ghost row carries x/y/z/tag/charge only —
+    /// a ghost's `mass` is never communicated.
     struct Constraint {
-        int i = 0;
-        int j = 0;
-        double d2 = 0.0;    ///< target squared distance [A^2]
+        TagInt ti = 0;
+        TagInt tj = 0;
+        double d2 = 0.0;     ///< target squared distance [A^2]
         double inv_mi = 0.0; ///< 1/m_i [1/amu]
         double inv_mj = 0.0;
     };
@@ -149,18 +181,21 @@ class FixRattle : public cpu::ComponentBase, public cpu::ConstraintProvider {
         double distance = 0.0;
     };
 
-    /// @brief Walk the topology and emit one Constraint per matching bond/angle.
-    ///
-    /// Two callers — `n_constraints()` (before build, so the driver can publish Ndof)
-    /// and `build()` — which is what makes it a function rather than inline code.
-    std::vector<Constraint> discover_(const cpu::Frame& frame) const;
+    /// @brief Walk THIS RANK's owned topology and emit one Spec per matching
+    ///        bond/angle. Two callers: `n_constraints()` and `build()`.
+    std::vector<Spec> discover_local_(const cpu::Context& ctx,
+                                      const cpu::Frame& frame) const;
+
+    /// @brief Map every constraint's tags to current local rows (-1 = not here).
+    void resolve_rows_(const cpu::LaunchContext& ctx);
 
     double dt_;
     double tol_;
     int max_iter_;
     std::vector<Rule> bond_rules_;
     std::vector<Rule> angle_rules_;
-    std::vector<Constraint> constraints_;
+    std::vector<Constraint> constraints_; ///< global table, keyed by tag
+    std::vector<int> rows_;               ///< resolved rows, 2 per constraint
 
     /// Reference (constraint-satisfying) positions, snapshotted before the
     /// integrator moves anything. Component-owned: `frame.atoms` is not a safe place

@@ -17,6 +17,7 @@
 #endif
 
 #include "atomiverse/core/mat3.h"
+#include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/md/fix_rattle.h"
 #include "atomiverse/cpu/md/md.h"
@@ -134,7 +135,8 @@ TEST(FixRattle, ReportsThreeConstraintsPerWater) {
     cpu::md::FixRattle r{1.0};
     r.constrain_bond(0, kROH);
     r.constrain_angle(0, kDHH);
-    EXPECT_EQ(r.n_constraints(f), 3 * 8);
+    const cpu::Context rt{}; // single-rank
+    EXPECT_EQ(r.n_constraints(rt, f), 3 * 8);
 }
 
 /// The gate the ComponentRole::Constraint entry exists to keep shut: a Plan with a
@@ -162,9 +164,17 @@ TEST(FixRattle, ThrowsOnUnresolvableConstraint) {
     f.atoms.bond_atom(0, 0) = 999999; // a tag that is not in the frame
     f.atoms.map_set(0, f.atoms.size());
 
-    cpu::md::FixRattle r{1.0};
-    r.constrain_bond(0, kROH);
-    EXPECT_THROW(r.n_constraints(f), std::runtime_error);
+    cpu::md::MD sim;
+    sim.set_pair(cpu::PairLJCut{0.0067, 3.15, 6.0}.set_special_bonds(0.0, 0.0, 0.0));
+    sim.set_neighbor(cpu::md::NeighborList<>{6.0, 0.5});
+    sim.set_integrator(cpu::md::VelocityVerlet{1.0});
+    cpu::md::FixRattle rattle{1.0};
+    rattle.constrain_bond(0, kROH);
+    sim.add(rattle);
+    sim.enable_timing(false);
+    sim.build();
+    // The tag has no mass in the (global) table: no rank owns such an atom.
+    EXPECT_THROW(sim.run(f, 1), std::runtime_error);
 }
 
 /// THE INVARIANT: the geometry stays rigid for the whole trajectory.

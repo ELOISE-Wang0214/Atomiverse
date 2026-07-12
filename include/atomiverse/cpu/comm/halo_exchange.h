@@ -226,6 +226,66 @@ class HaloSend : public cpu::ComponentBase, public cpu::HaloParticipant {
 /// must either (a) extend this payload list and update `pack_face`/
 /// `unpack_face` in `halo_exchange.cpp`, or (b) operate on owners only
 /// and reduce the per-rank totals globally via `Reduce`.
+/// @brief Re-send owner positions or velocities into the EXISTING ghost slots, at a
+///        phase of the caller's choosing.
+///
+/// **The capability the step model was missing.** The engine performs exactly one
+/// forward halo (`pre_neighbor`) and one reverse halo (`post_force`) per step, and the
+/// forward payload carries POSITIONS ONLY. That is enough for every force style — a
+/// pair kernel reads ghost positions and writes ghost forces, and both directions are
+/// served. It is NOT enough for a **constraint**: RATTLE's velocity stage runs at
+/// `final_integrate`, after the second half-kick, and needs the *current* velocities of
+/// every atom in a cluster — including its ghosts. No communication happens anywhere
+/// near that point, and ghost velocities are never shipped at all.
+///
+/// `HaloRefresh` closes that hole without disturbing the two exchanges that already
+/// exist. It rebuilds nothing: it reuses the send lists, per-face receive counts and
+/// ghost-slot layout that `HaloSend` established at the last reneighbor, and simply
+/// re-packs one field triple into the same slots. Bind it wherever the data is needed:
+///
+/// @code
+///   md.on(md::Phase::post_integrate).add(comm::HaloRefresh{Field::positions}, -100);
+///   md.on(md::Phase::final_integrate).add(comm::HaloRefresh{Field::velocities}, +150);
+/// @endcode
+///
+/// It is a pure refresh, so it is idempotent and safe to run more than once per step —
+/// unlike `HaloRecv`, whose reverse accumulation must run exactly once or it
+/// double-applies ghost forces to their owners.
+///
+/// **Positions take the PBC shift; velocities do not.** A ghost across a periodic
+/// boundary sits at `x - L` in the receiver's frame, but its velocity is unchanged.
+/// Shifting velocities would be an exquisitely silent bug: energies stay finite, the
+/// geometry stays rigid, and only the constrained dynamics is wrong.
+class HaloRefresh : public cpu::ComponentBase {
+  public:
+    /// @brief Which per-atom field triple to refresh.
+    enum class Field {
+        positions,  ///< x, y, z — carries the periodic shift.
+        velocities, ///< vx, vy, vz — no shift; a boost is not a translation.
+    };
+
+    /// @param field Field triple to re-send to the ghosts.
+    explicit HaloRefresh(Field field) : field_(field) {}
+
+    std::string name() const override {
+        return field_ == Field::positions ? "halo_refresh_x" : "halo_refresh_v";
+    }
+
+    /// @brief Write-set: it writes ghost rows of the chosen field.
+    Capability capabilities() const override {
+        return field_ == Field::positions ? Capability::Position
+                                          : Capability::Velocity;
+    }
+
+    /// @brief No default binding — the caller decides the phase, because only the
+    /// caller knows when its data is stale.
+    void build(const cpu::BuildContext& ctx) override;
+    void launch(const cpu::LaunchContext& ctx) override;
+
+  private:
+    Field field_;
+};
+
 class HaloRecv : public cpu::ComponentBase, public cpu::HaloParticipant {
   public:
     HaloRecv();

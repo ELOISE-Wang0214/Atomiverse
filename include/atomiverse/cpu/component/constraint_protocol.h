@@ -12,6 +12,7 @@ namespace ATV {
 namespace cpu {
 
 class Frame;
+struct Context;
 
 /// @brief A component that constrains the system, and therefore removes degrees
 ///        of freedom from it.
@@ -31,10 +32,20 @@ class ConstraintProvider {
   public:
     virtual ~ConstraintProvider() = default;
 
-    /// @brief Number of scalar constraints this component imposes.
-    /// @param frame The bound system state (the count scales with it).
+    /// @brief Number of scalar constraints this component imposes, GLOBALLY.
+    ///
+    /// The count must be the whole system's, not this rank's share: `Ndof` is a
+    /// global quantity, and the thermostats that consume it are driving a global
+    /// kinetic target. The Context is passed because under domain decomposition the
+    /// implementation has to know which rows of the frame are actually this rank's
+    /// (`frame.atoms.size()` is NOT the owner count — the tail is ghost slack) and
+    /// which communicator to reduce over.
+    ///
+    /// @param ctx Execution context (decomposition, MPI size).
+    /// @param frame The bound system state.
     /// @return Count of independent scalar constraints (e.g. 3 per rigid water).
-    virtual int n_constraints(const cpu::Frame& frame) const = 0;
+    virtual int n_constraints(const cpu::Context& ctx,
+                              const cpu::Frame& frame) const = 0;
 };
 
 } // namespace cpu

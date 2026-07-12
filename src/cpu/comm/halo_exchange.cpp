@@ -819,6 +819,92 @@ void HaloSend::launch(const cpu::LaunchContext& ctx) {
     zero_ghost_forces(frame, *dd, rev_fields_);
 }
 
+// ── HaloRefresh — a forward field refresh at an arbitrary phase ───────
+
+void HaloRefresh::build(const cpu::BuildContext& /*ctx*/) {}
+
+void HaloRefresh::launch(const cpu::LaunchContext& ctx) {
+    auto* dd = ctx.runtime.md.dd;
+    if (!dd || ctx.runtime.mpi_size <= 1 || dd->cart_comm == MPI_COMM_NULL)
+        return;
+    // NO early return on `n_ghost == 0`. Every rank must reach the Sendrecv below: a
+    // rank with no ghosts of its own is still a NEIGHBOUR that some other rank is
+    // waiting to hear from, and bailing out here deadlocks the whole run. (It did.)
+    // Ranks with nothing to send simply exchange zero-length messages.
+
+    Frame& frame = ctx.frame;
+    auto& a = frame.atoms;
+    const bool pos = (field_ == Field::positions);
+
+    // Source arrays. Positions carry the periodic shift; velocities must NOT — a
+    // ghost across the boundary lives at x - L, but it moves at the same v.
+    double* sx = pos ? a.x.data() : a.vx.data();
+    double* sy = pos ? a.y.data() : a.vy.data();
+    double* sz = pos ? a.z.data() : a.vz.data();
+
+    // Replay the cascade EXACTLY as the last full rebuild laid it out: axis 0,1,2;
+    // within an axis, the -face then the +face; ghost slots appended from n_local.
+    // Reusing dd->send_lists and dd->recv_counts is what makes this a refresh rather
+    // than a second, conflicting halo.
+    // Both faces of an axis go out CONCURRENTLY (Isend/Irecv + Waitall), never as two
+    // sequential Sendrecv calls. With two ranks the lo and hi neighbour of an axis are
+    // the SAME rank, and a sequential pair crosses its tags — each side blocks sending
+    // face 0 while waiting to receive face 1. It deadlocks, and it deadlocked. The
+    // rebuild path already does it this way, for exactly this reason.
+    std::array<std::vector<double>, 2> sbuf, rbuf;
+    int slot = dd->n_local;
+    const int me = ctx.runtime.mpi_rank;
+
+    for (int dim = 0; dim < 3; ++dim) {
+        const int face[2] = {2 * dim, 2 * dim + 1};
+        const double L = frame.box.length(dim);
+
+        MPI_Request reqs[4];
+        int n_req = 0;
+
+        for (int s = 0; s < 2; ++s) {
+            const int f = face[s];
+            const int nbr = dd->face_neighbors[static_cast<std::size_t>(f)];
+            const auto& list = dd->send_lists[static_cast<std::size_t>(f)];
+            const int n_send = static_cast<int>(list.size());
+            const int n_recv = dd->recv_counts[static_cast<std::size_t>(f)];
+
+            const double shift = pos ? pbc_shift_for_face(*dd, f, L) : 0.0;
+            auto& sb = sbuf[static_cast<std::size_t>(s)];
+            auto& rb = rbuf[static_cast<std::size_t>(s)];
+            sb.resize(static_cast<std::size_t>(n_send) * 3);
+            for (int k = 0; k < n_send; ++k) {
+                const int i = list[static_cast<std::size_t>(k)];
+                sb[static_cast<std::size_t>(3 * k) + 0] = sx[i] + shift;
+                sb[static_cast<std::size_t>(3 * k) + 1] = sy[i];
+                sb[static_cast<std::size_t>(3 * k) + 2] = sz[i];
+            }
+            rb.assign(static_cast<std::size_t>(n_recv) * 3, 0.0);
+
+            if (nbr == MPI_PROC_NULL || nbr == me) continue;
+            MPI_Isend(sb.data(), n_send * 3, MPI_DOUBLE, nbr, f, dd->cart_comm,
+                      &reqs[n_req++]);
+            MPI_Irecv(rb.data(), n_recv * 3, MPI_DOUBLE, nbr, opposite_face(f),
+                      dd->cart_comm, &reqs[n_req++]);
+        }
+        if (n_req > 0) MPI_Waitall(n_req, reqs, MPI_STATUSES_IGNORE);
+
+        // Unpack in face order lo, hi — the slot layout the rebuild established.
+        for (int s = 0; s < 2; ++s) {
+            const int f = face[s];
+            const int n_recv = dd->recv_counts[static_cast<std::size_t>(f)];
+            const auto& rb = rbuf[static_cast<std::size_t>(s)];
+            for (int k = 0; k < n_recv; ++k) {
+                const std::size_t off = static_cast<std::size_t>(3 * k);
+                sx[slot] = rb[off + 0];
+                sy[slot] = rb[off + 1];
+                sz[slot] = rb[off + 2];
+                ++slot;
+            }
+        }
+    }
+}
+
 void HaloRecv::build(const cpu::BuildContext& ctx) {
     auto* dd = ctx.runtime.md.dd;
     if (!dd || ctx.runtime.mpi_size <= 1)
@@ -979,6 +1065,8 @@ void HaloRecv::launch(const cpu::LaunchContext& ctx) {
 
 void HaloSend::build(const cpu::BuildContext& /*ctx*/) {}
 void HaloSend::launch(const cpu::LaunchContext& /*ctx*/) {}
+void HaloRefresh::build(const cpu::BuildContext& /*ctx*/) {}
+void HaloRefresh::launch(const cpu::LaunchContext& /*ctx*/) {}
 void HaloRecv::build(const cpu::BuildContext& /*ctx*/) {}
 void HaloRecv::launch(const cpu::LaunchContext& /*ctx*/) {}
 
