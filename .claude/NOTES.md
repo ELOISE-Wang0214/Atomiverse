@@ -268,3 +268,108 @@ Tests are structured as `tests/{cpu,cuda,torch,facade}/...` mirroring the `src/`
 **CMake naming convention:** `test_{backend}_{domain}_{component}`, e.g. `test_cpu_scf_gradient`, `test_cuda_md_thermostat`. Helper functions `atv_add_test(name, source_path)` and `atv_add_cpp_test(name, source_path)` take explicit source paths.
 
 **Rule**: New test files go in the directory matching their source module. Use `TEST_F` fixtures to group tests by component. Each fixture class = one component or driver.
+
+---
+
+## Probe 1 verdict — many-body potentials (EAM + Stillinger-Weber), 2026-07-12
+
+Breadth-first architecture campaign, probe #1. Spec `manybody-potentials`. The
+deliverable is this verdict as much as the two potentials.
+
+### The headline: `potentials/` was never the obstacle
+
+The hypothesis was "the pair abstraction will break". It did not — **it simply does
+not apply**, and that is a different finding:
+
+- `facade/potentials/pair_kernel.h` (`PairKernel`/`SumKernel`) models `fpair(r^2)`
+  and carries **no per-atom state**. A many-body style is not an extension of it;
+  it is a sibling. Do not try to grow it.
+- `cpu::Pair` marks `launch()`/`role()` `final` and `set_pair` is a singular slot,
+  so an EAM cannot be a `Pair` even cosmetically. The blessed route already existed:
+  `CoulLong`'s pattern — a plain `ComponentBase + NeighborConsumer` registered with
+  `.on(md::Phase::force).add(...)`. **Both EAM and SW took it, and needed nothing new
+  from the Component layer.**
+- The `force` phase's `order` mechanism was never needed either: EAM's two passes
+  (accumulate `rho_i`, then use `F'(rho_i)`) live inside one `launch()`, because they
+  share a per-atom array and nothing else consumes `rho`.
+
+**What actually broke is `neighbor/` and `comm/`.**
+
+### `neighbor/`: the half list, and dead code that was already right
+
+`CellList::refresh_full`/`build_full` had been written, documented and compiled since
+the neighbor rewrite — **and called by nothing**. `NeighborList` only ever asked for
+the half list. Both many-body styles need the full one (EAM's `rho_i` is a sum over
+*all* neighbours of `i`; SW's angular term enumerates `(j,k)` from `i`'s complete
+neighbour set), so the fix was to switch the flag on, not to write an algorithm:
+`cpu::DynamicsServices::full_list_requested` (b0b6d9b).
+
+Two things worth remembering:
+
+1. **The flag must be resolved in `launch()`, not `build()`** — components build in
+   Plan order and the neighbor phase precedes force, so the *requester's* `build()`
+   always lands **after** the *provider's*. The CUDA neighbor list carries a comment
+   saying exactly this about its own `flat_pairs_requested` export. Same trap,
+   discovered independently on two backends.
+2. CUDA was **ahead** of CPU here: its `PairList` was already full, and it already had
+   the request-flag pattern. When a capability exists on one backend only, check
+   whether the *other* one is the one that is behind.
+
+### `comm/`: the real wall, and it is shared with probe 2
+
+The step runs **exactly one forward halo** (`pre_neighbor`) and **one reverse halo**
+(`post_force`), and the reverse payload is audited to `fx/fy/fz` — the header even
+predicts this exact situation ("Any future kernel that writes to additional ghost-row
+fields must either extend this payload list … or operate on owners only").
+
+EAM pass 2 needs `F'(rho_j)` for a **ghost** `j`, and a ghost's `rho` cannot be
+completed locally unless the halo reaches `2*cutoff` (ghost-of-ghost). **There is no
+mid-`force` communication point.** Three routes, none free:
+
+- (a) two extra halo passes inside `force` — breaks the one-forward/one-reverse
+  invariant; `HaloSend::launch` is not re-entrant (it mutates `ago_`, rebuild
+  generations, send lists).
+- (b) full list + halo widened to `2*r_c` — no mid-force comm at all, at the cost of a
+  fatter halo. **This is the recommended route.**
+- (c) declare `rho` as a forward `CommField` — **wrong**: the forward pass fires at
+  `pre_neighbor`, so it would ship the *previous step's* `rho`, silently stale by one
+  timestep.
+
+**Current state: EAM and SW THROW under MPI**, with the reason in the exception text.
+Computing silently-wrong forces at rank boundaries was never an option. Closing this is
+deliberately deferred to its own spec, because **probe 2 (constraints) hits the same
+wall from the other side** — it needs *ghost velocities*, which the forward payload
+(positions only) also does not carry. One comm redesign serves both; doing it twice
+inside two probes would be the duplication the campaign exists to avoid.
+
+`HaloParticipant::CommField` (the declarative extra-payload channel) therefore **still
+has no production user** — its first one will be that shared comm spec.
+
+### Force accounting under a full list (a real bug the FD oracle caught)
+
+The full list visits each **pair** twice. Energy and virial are therefore halved. **The
+force is not** — each visit writes only atom `i`, so the `i`-visit must deposit the whole
+force that the pair exerts on `i`. My first EAM draft halved `fpair` by analogy with the
+energy; the energy stayed *correct*, so nothing but the FD oracle could have seen it.
+
+A **triplet** is different: it is enumerated once per vertex, so the three-body term is
+not halved at all — a triplet has a distinguished atom, a pair does not.
+
+**Standing rule reaffirmed: every force gets a finite-difference oracle against the
+energy the component actually reports.** This is the gate GPW lacked when it shipped a
+force that was the gradient of a *different* functional and hid for 17 commits behind
+energy-only tests.
+
+### Data: no parser, and no generator either
+
+Static C++ tables + `EAMPotential(Element, name)` / `SWPotential(Element, name)` lookup
+constructors that throw on an unknown pair (GPW precedent). Deliberately **no generator
+under `tools/`**: unlike the GPW tables, these are five-to-ten numbers per element read
+off a printed table, so a generator would be a program with no second caller.
+
+### API gap found by an out-of-library consumer
+
+`enable_timing()` existed on `cpu::md::MD` alone; `Evaluate` had none, so a regression
+case could not quiet a chain of single points. Hoisted to `CPUDriver` — the timing
+registry is Backend infrastructure every category owns. This is precisely what the
+`regressions/` "public API only" rule is for.

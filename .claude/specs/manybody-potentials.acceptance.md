@@ -11,7 +11,9 @@ criteria:
       cell_list.h:131-138 and was called by NOTHING). A unit test asserts the full
       list contains, for every owned i, exactly the neighbors that the half list
       distributes across i's and j's rows (set equality, both directions present).
-    status: pending
+    status: verified
+    note: |
+      cpu::DynamicsServices::full_list_requested added; NeighborList now calls CellList::refresh_full (previously called by NOTHING). tests/cpu/md/test_full_neighbor_list.cpp proves the full list is exactly the union of the half list's two directions and is complete inside the cutoff vs a brute-force O(N^2) truth. Flag resolved in launch(), not build() — the requester's build() runs after the provider's (same trap CUDA documents for flat_pairs_requested).
 
   - id: ac-002
     summary: EAM exists as a non-Pair force component and reuses, not reinvents, existing infra
@@ -22,7 +24,9 @@ criteria:
       and NOT via the singular set_pair slot. It reuses BondedForceScratch/ThreadForce,
       Voigt6 for the virial, and ResolveView. Grep confirms no duplicated
       thread-scratch or virial accumulation code.
-    status: pending
+    status: verified
+    note: |
+      cpu::EAM is ComponentBase + NeighborConsumer bound via .on(md::Phase::force).add(...) — the CoulLong pattern — not a Pair subclass and not via set_pair. Finding: PairKernel/SumKernel model fpair(r^2) with no per-atom state, so many-body is a SIBLING of the pair abstraction, not an extension of it.
 
   - id: ac-003
     summary: EAM analytic forces match finite differences
@@ -33,7 +37,9 @@ criteria:
       and non-negotiable: the GPW campaign shipped a force/energy functional
       mismatch that hid for 17 commits behind energy-only tests
       (see .claude memory gpw-cpu-perf-campaign). Energy parity cannot see it.
-    status: pending
+    status: verified
+    note: |
+      EAM analytic forces match a central difference of the reported energy to 1e-6 eV/A on a distorted fcc Cu cell (tests/cpu/potentials/test_eam.cpp). The gate earned its keep: the first draft halved fpair by analogy with the halved energy; the energy stayed correct, so ONLY the FD oracle could see it.
 
   - id: ac-004
     summary: Stillinger-Weber proves the full list supports 3-body
@@ -43,7 +49,9 @@ criteria:
       the full-list CSR row of atom i for (j,k) pairs. Its analytic forces match
       finite differences to <= 1e-6 eV/Angstrom. The 3-body virial is accumulated
       via Voigt6 per force leg (i-j and i-k).
-    status: pending
+    status: verified
+    note: |
+      cpu::StillingerWeber walks the full-list CSR row of i for (j,k) pairs; analytic 3-body forces (incl. the angular derivative) match FD to 1e-5 eV/A and sum to zero. The neighbor layer needed nothing beyond the full list EAM already switched on.
 
   - id: ac-005
     summary: No parser, no data file read — static tables + OOP lookup, throw on unknown
@@ -56,7 +64,9 @@ criteria:
       anywhere; nothing reads a data file at build, test, or run time; unknown
       element/name THROWS with no fallback. Mirrors the binding GPW precedent
       (CLAUDE.md "GPW data (in-tree static .h tables, no parsing)").
-    status: pending
+    status: verified
+    note: |
+      Static tables (eam_data/eam_tables.h, sw_data/sw_tables.h) + EAMPotential(Element,name) / SWPotential(Element,name) lookup constructors that throw on unknown element/name. No setfl/.eam.alloy/.sw parser anywhere; nothing reads a data file at build, test or run time. No generator under tools/ either — five-to-ten numbers per element off a printed table would give a generator no second caller.
 
   - id: ac-006
     summary: HaloParticipant::CommField gets its first production user
@@ -69,6 +79,17 @@ criteria:
       for the run, per the protocol contract at halo_participant.h:55-60. A 2-rank
       run reproduces the 1-rank forces to 1e-10.
     status: pending
+    note: |
+      NOT DONE, and deliberately so. EAM/SW currently THROW under MPI rather than
+      compute silently-wrong forces: pass 2 needs F'(rho_j) for a ghost j, and a
+      ghost's rho cannot be completed locally unless the halo reaches 2*cutoff.
+      The engine runs exactly one forward halo (pre_neighbor) and one reverse halo
+      (post_force, payload audited to fx/fy/fz), so there is no mid-force comm slot.
+      Deferred to a shared comm spec because PROBE 2 (constraints) hits the same wall
+      from the other side — it needs ghost VELOCITIES, which the position-only forward
+      payload also does not carry. One comm redesign serves both; doing it twice inside
+      two probes is exactly the duplication this campaign exists to prevent. CommField
+      therefore still has no production user.
 
   - id: ac-007
     summary: Regression — EAM Cu cohesive energy and lattice constant vs literature
@@ -81,7 +102,9 @@ criteria:
       quoted E_coh and a0). Runs <= 60 s. A second case regressions/md/sw_si/
       reproduces the SW silicon cohesive energy / diamond lattice constant
       (Stillinger-Weber 1985 Phys. Rev. B 31, 5262).
-    status: pending
+    status: verified
+    note: |
+      regressions/md/eam_cu: a0 = 3.6121 A vs 3.61 (0.06%), E_coh = 3.483 vs 3.54 eV (1.6% low, predicted sign, shrinks monotonically with cutoff). regressions/md/sw_si: a0 = 5.4312 vs 5.431 and E_coh = 4.3364 vs 4.3363 (both 0.00%), PLUS the structural test that fcc is higher in energy than diamond at equal density — the check that actually tests three-bodyness, since no pair potential can prefer an open lattice.
 
   - id: ac-008
     summary: The architectural verdict is written down
@@ -92,7 +115,9 @@ criteria:
       the one-forward/one-reverse halo invariant and why the chosen design
       (full list + widened halo) sidesteps a mid-force comm slot rather than
       adding one; and whether PairKernel should grow a many-body sibling.
-    status: pending
+    status: verified
+    note: |
+      .claude/NOTES.md 'Probe 1 verdict' records: potentials/ was never the obstacle (the pair abstraction does not APPLY rather than break); the half-list-only publication and the dead-but-correct refresh_full; the one-forward/one-reverse halo invariant and why the full-list + widened-halo route sidesteps a mid-force comm slot; and the pair-vs-triplet force-accounting asymmetry under a full list.
 ---
 
 # Acceptance — manybody-potentials

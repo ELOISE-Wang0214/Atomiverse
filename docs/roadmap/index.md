@@ -164,8 +164,11 @@ watch out for in the ones that do.
 - **The pair-style catalogue is thin**: LJ 12-6, a demo Morse (O(N²),
   neighbor-list-opting-out), and the real-space Ewald `coul/long`. LJ carries a
   single ε/σ, not a per-type table.
-- **No impropers**, no many-body potentials (EAM, Tersoff, Stillinger–Weber),
-  no reactive potentials (ReaxFF, AIREBO), no coarse-grained models.
+- **No impropers**, no reactive potentials (ReaxFF, AIREBO), no coarse-grained models.
+- **Many-body: EAM and Stillinger–Weber now exist** (CPU, single-element,
+  single-rank; see [Chapter 16](../tutorial/ch16-many-body-potentials.md)). They
+  **throw under MPI** — a many-body style needs a derived per-atom quantity at ghost
+  atoms, and there is no mid-force communication point. Tersoff/MEAM remain absent.
 - **The torch backend is not a machine-learning potential.** It is a
   differentiable classical force field: LJ and harmonic bond with autograd
   backward passes w.r.t. positions *and* parameters (ε, σ, K, r₀) — a

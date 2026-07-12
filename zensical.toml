@@ -38,6 +38,7 @@ nav = [
     "tutorial/ch13-observables.md",
     "tutorial/ch14-vibrations.md",
     "tutorial/ch15-cross-method.md",
+    "tutorial/ch16-many-body-potentials.md",
   ] },
   { "Roadmap" = [
     "roadmap/index.md",

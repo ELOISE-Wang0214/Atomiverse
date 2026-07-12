@@ -114,10 +114,10 @@ Notes:
 
 | Method                         | CPU | CUDA |
 | ------------------------------ | :-: | :--: |
-| Embedded-atom method           |  ○  |   ○  |
+| Embedded-atom method           |  ✓  |   ○  |
 | Modified embedded-atom method  |  ○  |   ○  |
 | Finnis–Sinclair potential      |  ○  |   ○  |
-| Stillinger–Weber potential     |  ○  |   ○  |
+| Stillinger–Weber potential     |  ✓  |   ○  |
 | Tersoff potential              |  ○  |   ○  |
 | Brenner REBO|  ⊘  |   ⊘  |
 | AIREBO                         |  ○  |   ○  |
@@ -130,9 +130,18 @@ Notes:
 | Three-body tabulated potential |  ○  |   ○  |
 | Many-body tabulated potential  |  ○  |   ○  |
 
-Nothing in this class exists. Metals and covalent solids are therefore out of
-reach classically — for those, the quantum-mechanical route (GPW, plane waves)
-is currently the only option.
+**EAM** (analytic Sutton-Chen, `cpu::EAM`) and **Stillinger-Weber** (`cpu::StillingerWeber`)
+are implemented on CPU, single-element and single-rank; both are FD-force-gated and
+carry literature regressions (`regressions/md/eam_cu`, `regressions/md/sw_si`). See
+[Chapter 16](../tutorial/ch16-many-body-potentials.md).
+
+They **throw under MPI**: a many-body force needs a derived per-atom quantity (EAM's
+embedding density) at ghost atoms, and the engine has exactly one forward halo
+(`pre_neighbor`) and one reverse halo (`post_force`, forces only) — no mid-force
+communication point. Fixing that is a `comm/` change, not a potentials change.
+
+Alloy cross-terms, MEAM, Tersoff and the reactive potentials remain ○ — for those,
+the quantum-mechanical route (GPW, plane waves) is still the only option.
 
 ## 5. Coarse-Grained Methods
 

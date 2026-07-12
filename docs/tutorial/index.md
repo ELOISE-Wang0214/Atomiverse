@@ -99,6 +99,15 @@ split before any physics is introduced.
   the *ab initio* MD (AIMD) deep-dive — ASPC, ensembles, and pitfalls
   (`examples/06_aimd.cpp`).
 
+## IX. Beyond Pair Potentials
+
+- [Chapter 16: Many-Body Potentials — Metals and Covalent Solids](ch16-many-body-potentials.md)
+  — why a pair potential is *qualitatively* wrong for a metal or a covalent solid
+  (close packing, the Cauchy relation, the vacancy paradox), and the two potentials
+  that fix it: the embedded-atom method (`cpu::EAM`, Sutton-Chen copper) and
+  Stillinger-Weber silicon (`cpu::StillingerWeber`). Covers the full neighbor list,
+  the two-pass force, and why every force needs a finite-difference oracle.
+
 ---
 
 The validation policy — what each acceptance check proves, and against which reference engine — lives in
