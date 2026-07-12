@@ -8,10 +8,15 @@ evaluator — LJ, bonded, SCF, GPW — can be relaxed by any minimizer. What is
 missing is breadth of algorithm (no FIRE, no quasi-Newton beyond L-BFGS) and,
 more consequentially, **any notion of relaxing the cell**.
 
-Transition states and reaction paths are entirely absent. NEB in particular
-would need a new Driver category (a coupled chain of images terminating when
-every image converges), which the architecture anticipates but does not
-implement.
+**Climbing-image NEB runs** (`cpu::PathDriver` + `cpu::path::NebCoupling` +
+`cpu::path::BandLBFGS`). It is the Path category — a coupled chain of images
+terminating when *every* image has converged — and it is the engine's only
+multi-replica driver. The replicas are generated from one Frame by a
+`ReplicaExpansion` strategy, so `run()` still takes one Frame and returns one
+(for CI-NEB, the saddle configuration).
+
+What is still absent is every *other* transition-state method: no dimer, no
+eigenvector-following, no string method, and no IRC.
 
 ## 1. Geometry Optimization
 
@@ -57,12 +62,12 @@ Notes:
 | Eigenvector-following transition-state search |  ○  |   ○  |
 | Partitioned-RFO transition-state search       |  ○  |   ○  |
 | Dimer method                                  |  ○  |   ○  |
-| Climbing-image nudged elastic band            |  ○  |   ○  |
+| Climbing-image nudged elastic band            |  ✓  |   ○  |
 | Adaptive nudged elastic band                  |  ○  |   ○  |
 | Growing string method                         |  ○  |   ○  |
 | Freezing string method                        |  ○  |   ○  |
 | Intrinsic reaction coordinate                 |  ○  |   ○  |
-| Minimum-energy path optimization              |  ○  |   ○  |
+| Minimum-energy path optimization              |  ✓  |   ○  |
 | Minimum-energy crossing point search          |  ○  |   ○  |
 | Conical-intersection optimization             |  ○  |   ○  |
 | Basin hopping                                 |  ○  |   ○  |

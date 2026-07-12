@@ -158,6 +158,12 @@ watch out for in the ones that do.
 - **Many-body: EAM and Stillinger–Weber now exist** (CPU, single-element, MPI-parallel
   via a ghost-of-ghost halo; see [Chapter 16](../tutorial/ch16-many-body-potentials.md)).
   Tersoff/MEAM remain absent, as does any CUDA mirror.
+- **Transition states: CI-NEB runs** (`cpu::PathDriver`, the 6th driver category —
+  N coupled replicas, terminate when all converge). It is CPU-only and single-replica-
+  per-rank (the band is replicated; the spatial decomposition lives inside each image).
+  No dimer, no string method, no IRC. The replica infrastructure (`ReplicaSet`,
+  `ReplicaExpansion`) is deliberately general — REMD/PIMD/umbrella would reuse it — but
+  none of those exist.
 - **Constraints: RATTLE runs** (`cpu::md::FixRattle`, CPU, MPI-parallel). SETTLE and
   LINCS are deliberately not written — they are optimizations of a solver that already
   holds rigid geometry to 5 × 10⁻¹¹. No rigid bodies, no virtual sites.
