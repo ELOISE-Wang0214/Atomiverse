@@ -26,14 +26,11 @@ int main() {
     const double theta_deg = 104.52;
     const double d_hh = 2.0 * r_oh * std::sin(0.5 * theta_deg * M_PI / 180.0);
 
-    const int n_side = 5;                       // 125 molecules
-    // Dilute, NOT liquid density — and that is forced on us, not chosen. PairLJCut
-    // carries a single eps/sigma for ALL atoms (no per-type mixing table), so the H
-    // atoms wear the O's sigma = 3.15 A. At liquid spacing (3.10 A) neighbouring
-    // molecules then overlap catastrophically and no constraint solver can hold them.
-    // A real TIP3P box is not expressible in the engine today. Equipartition — which
-    // is what this case actually pins — does not care about the density.
-    const double spacing = 4.6;
+    const int n_side = 7;        // 343 molecules; box 21.7 A > 2 * cutoff
+    // LIQUID density now. The LJ site sits on oxygen ONLY (TIP3P), which needs a
+    // per-type coefficient table; before PairLJCut had one, the hydrogens were forced
+    // to wear the oxygen's sigma = 3.15 A and a box at this spacing tore itself apart.
+    const double spacing = 3.10; // ~ liquid water number density
     const double cutoff = 8.0, skin = 1.0;      // [A]
     const double dt = 2.0;                      // [fs] — only a RIGID water survives this
     const double t_target = 300.0;              // [K]
@@ -88,7 +85,10 @@ int main() {
     frame.atoms.build_special_list(); // intramolecular pairs are NOT LJ neighbours
 
     cpu::md::MD sim;
-    sim.set_pair(cpu::PairLJCut{0.1521 * 0.04336, 3.1507, cutoff} // TIP3P O-O LJ
+    // TIP3P: the Lennard-Jones site is on OXYGEN only. Hydrogen has none, so the
+    // (H,H) and (O,H) pairs mix to eps = 0 and do not interact at all.
+    sim.set_pair(cpu::PairLJCut{0.0, 1.0, cutoff}
+                     .set_type_coeffs(8, 8, 0.1521 * 0.04336, 3.1507) // O-O [eV, A]
                      .set_special_bonds(0.0, 0.0, 0.0));
     sim.set_neighbor(cpu::md::NeighborList<>{cutoff, skin});
     sim.set_integrator(cpu::md::VelocityVerlet{dt});

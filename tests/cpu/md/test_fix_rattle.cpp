@@ -12,9 +12,6 @@
 
 #include <gtest/gtest.h>
 
-#ifdef _OPENMP
-#include <omp.h>
-#endif
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/component/context.h"
@@ -30,23 +27,6 @@
 using namespace ATV;
 
 namespace {
-
-/// Pin the thread count. These are 24-atom systems, and on a 48-core node the
-/// OpenMP fork/join overhead alone costs ~4 s per test while the physics costs
-/// ~2 ms (measured: 48 threads 3974 ms, 4 threads 5 ms, 1 thread 2 ms). A unit
-/// test must not be at the mercy of the machine's core count.
-///
-/// Noted as an API gap: the engine takes its thread count from
-/// `omp_get_max_threads()` and exposes no public setter, so a user with a small
-/// system has no in-code way to ask for fewer threads.
-struct PinThreads {
-    PinThreads() {
-#ifdef _OPENMP
-        omp_set_num_threads(2);
-#endif
-    }
-};
-const PinThreads kPinThreads;
 
 // TIP3P geometry: r(OH) = 0.9572 A, theta(HOH) = 104.52 deg.
 constexpr double kROH = 0.9572;
@@ -171,6 +151,7 @@ TEST(FixRattle, ThrowsOnUnresolvableConstraint) {
     cpu::md::FixRattle rattle{1.0};
     rattle.constrain_bond(0, kROH);
     sim.add(rattle);
+    sim.set_threads(2); // 24 atoms: OpenMP fork/join would dwarf the physics
     sim.enable_timing(false);
     sim.build();
     // The tag has no mass in the (global) table: no rank owns such an atom.
@@ -191,6 +172,7 @@ TEST(FixRattle, GeometryStaysRigidOverATrajectory) {
     rattle.constrain_bond(0, kROH);
     rattle.constrain_angle(0, kDHH);
     sim.add(rattle);
+    sim.set_threads(2); // 24 atoms: OpenMP fork/join would dwarf the physics
     sim.enable_timing(false);
     sim.build();
 
@@ -226,6 +208,7 @@ TEST(FixRattle, RelativeVelocityAlongBondsVanishes) {
     rattle.constrain_bond(0, kROH);
     rattle.constrain_angle(0, kDHH);
     sim.add(rattle);
+    sim.set_threads(2); // 24 atoms: OpenMP fork/join would dwarf the physics
     sim.enable_timing(false);
     sim.build();
 

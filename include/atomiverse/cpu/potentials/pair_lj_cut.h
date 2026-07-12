@@ -37,6 +37,49 @@ class PairLJCut : public Pair {
     /// @param cutoff  Cutoff distance [Å].
     PairLJCut(double epsilon, double sigma, double cutoff);
 
+    /// @brief Set the LJ coefficients for one type pair (LAMMPS `pair_coeff i j`).
+    ///
+    /// Without this, `PairLJCut` applies ONE epsilon/sigma to every atom in the system.
+    /// That is fine for argon and useless for anything with more than one element: in
+    /// TIP3P the Lennard-Jones site sits on oxygen only, so a single-sigma run forces
+    /// the hydrogens to wear the oxygen's sigma = 3.15 A, and at liquid density
+    /// neighbouring waters overlap so violently that no constraint solver can hold a
+    /// molecule together. (That is not a hypothetical either — it is why
+    /// regressions/md/rigid_water has to run dilute.)
+    ///
+    /// Types are the frame's `atoms.type[i]` values. Calling this at all switches the
+    /// component to the per-type table; the off-diagonal entries you do not set are
+    /// filled by **Lorentz-Berthelot** mixing from the diagonal:
+    ///
+    ///     sigma_ij = (sigma_ii + sigma_jj) / 2       eps_ij = sqrt(eps_ii * eps_jj)
+    ///
+    /// so setting only the like-pairs (i,i) is usually enough. An explicit (i,j) call
+    /// overrides the mixed value.
+    ///
+    /// **Performance note.** The single-epsilon path keeps the hoisted xsimd ket loop —
+    /// that is the kernel benchmarked against LAMMPS, and it is untouched. A per-type
+    /// table cannot hoist its coefficients out of the inner loop, so the multi-type
+    /// path is SCALAR. It is correct and it is not fast; vectorizing it needs a SIMD
+    /// gather over the coefficient table, which nobody has needed yet.
+    ///
+    /// @param type_i First atom type.
+    /// @param type_j Second atom type.
+    /// @param epsilon Well depth [eV].
+    /// @param sigma Length scale [Angstrom].
+    PairLJCut& set_type_coeffs(int type_i, int type_j, double epsilon, double sigma) &;
+    PairLJCut set_type_coeffs(int type_i, int type_j, double epsilon,
+                              double sigma) &&;
+
+    /// @brief True when a per-type coefficient table is active (scalar path).
+    bool is_multi_type() const { return n_types_ > 0; }
+
+  private:
+    /// @brief Complete the table by Lorentz-Berthelot mixing and precompute
+    ///        sigma^6 + the per-pair energy shift. Called once from build().
+    void finalize_type_table_();
+
+  public:
+
     std::string name() const override { return "lj"; }
 
     /// @brief Enable/disable LAMMPS-style "special bonds" exclusions.
@@ -90,6 +133,16 @@ class PairLJCut : public Pair {
     void refresh_exclusion_map(const Frame& frame, int n_owners);
 
     double epsilon_, sigma_;
+
+    /// Per-type coefficient tables, flattened `n_types_ x n_types_`. Empty = the
+    /// single-epsilon fast path. Filled lazily by `set_type_coeffs`, then completed by
+    /// Lorentz-Berthelot mixing at `build()`.
+    int n_types_ = 0;
+    std::vector<double> eps_tab_;   ///< eps_ij [eV]
+    std::vector<double> sigma_tab_; ///< sigma_ij [A]
+    std::vector<double> sig6_tab_;  ///< sigma_ij^6 [A^6]
+    std::vector<double> shift_tab_; ///< energy shift at the cutoff, per pair [eV]
+    std::vector<char> set_tab_;     ///< 1 = explicitly set by the user
     double sigma6_, cutoff_sq_, v_shift_;
 
     // Special-bonds: when any of these is < 1, the corresponding bonded

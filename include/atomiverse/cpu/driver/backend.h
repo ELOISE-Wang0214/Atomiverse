@@ -118,6 +118,15 @@ class Backend {
     /// @brief Access the CPU context.
     Context& context() { return context_; }
 
+    /// @brief Cap the OpenMP thread count. Must be called before `init()`.
+    ///
+    /// `init()` already honours `context_.n_threads` when it is positive (it calls
+    /// `omp_set_num_threads`) — the plumbing was there all along; there was simply no
+    /// public way in, so an in-process caller with a small system had no answer to
+    /// OpenMP fork/join overhead except the OMP_NUM_THREADS env var.
+    /// @param n Thread count (>= 1).
+    void set_threads(int n) { context_.n_threads = (n < 1) ? 0 : n; }
+
     /// @brief Access the Frame.
     Frame& frame() { return *frame_; }
 

@@ -183,6 +183,26 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
         if (this->backend_) this->backend_->reset_timing();
     }
 
+    /// @brief Cap the OpenMP thread count for this driver.
+    ///
+    /// The engine otherwise takes whatever `omp_get_max_threads()` reports, which on a
+    /// fat node is every core — and for a small system the fork/join overhead then
+    /// dwarfs the physics by orders of magnitude. Measured on a 24-atom rigid-water
+    /// test on a 48-core node: 3974 ms at 48 threads, 5 ms at 4, 2 ms at 1. The
+    /// physics costs microseconds; the threads cost seconds.
+    ///
+    /// Until now the only way out was the `OMP_NUM_THREADS` environment variable, which
+    /// an in-process consumer (a library user, a test, a regression case) cannot set for
+    /// itself after startup. Call before `build()`.
+    ///
+    /// @param n Thread count; values < 1 are ignored.
+    void set_threads(int n) {
+        if (n < 1) return;
+        if (!this->backend_)
+            this->backend_ = std::make_unique<typename Base::BackendT>();
+        this->backend_->set_threads(n);
+    }
+
   protected:
     /// @brief Subclass hook — install opt-in infrastructure components
     /// derived from declared user state (e.g. `NoseHooverNPT::reads()

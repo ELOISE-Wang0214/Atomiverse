@@ -66,6 +66,7 @@ PairLJCut PairLJCut::set_compute_stress(bool on) && {
 }
 
 void PairLJCut::build(const BuildContext& ctx) {
+    finalize_type_table_();
     n_threads_ = 1;
 #ifdef _OPENMP
     n_threads_ = omp_get_max_threads();
@@ -225,6 +226,100 @@ void PairLJCut::rebuild_filtered_list(const Frame& f,
     }
 }
 
+namespace {
+/// Lorentz-Berthelot: arithmetic mean of sigma, geometric mean of epsilon. The
+/// standard combining rule, and the one LAMMPS uses by default (`pair_modify mix
+/// geometric` is the alternative; this is `mix arithmetic`).
+inline void lorentz_berthelot(double eii, double sii, double ejj, double sjj,
+                              double& eij, double& sij) {
+    eij = std::sqrt(eii * ejj);
+    sij = 0.5 * (sii + sjj);
+}
+} // namespace
+
+PairLJCut& PairLJCut::set_type_coeffs(int type_i, int type_j, double epsilon,
+                                      double sigma) & {
+    if (type_i < 0 || type_j < 0)
+        throw std::invalid_argument("PairLJCut::set_type_coeffs: types must be >= 0");
+    if (sigma <= 0.0)
+        throw std::invalid_argument("PairLJCut::set_type_coeffs: sigma must be > 0");
+
+    const int need = std::max(type_i, type_j) + 1;
+    if (need > n_types_) {
+        // Grow the (square) tables, preserving what is already set.
+        std::vector<double> e(static_cast<std::size_t>(need) * need, 0.0);
+        std::vector<double> s(static_cast<std::size_t>(need) * need, 0.0);
+        std::vector<char> f(static_cast<std::size_t>(need) * need, 0);
+        for (int a = 0; a < n_types_; ++a)
+            for (int b = 0; b < n_types_; ++b) {
+                const std::size_t old = static_cast<std::size_t>(a) * n_types_ + b;
+                const std::size_t nw = static_cast<std::size_t>(a) * need + b;
+                e[nw] = eps_tab_[old];
+                s[nw] = sigma_tab_[old];
+                f[nw] = set_tab_[old];
+            }
+        eps_tab_.swap(e);
+        sigma_tab_.swap(s);
+        set_tab_.swap(f);
+        n_types_ = need;
+    }
+
+    const std::size_t ij = static_cast<std::size_t>(type_i) * n_types_ + type_j;
+    const std::size_t ji = static_cast<std::size_t>(type_j) * n_types_ + type_i;
+    eps_tab_[ij] = eps_tab_[ji] = epsilon;
+    sigma_tab_[ij] = sigma_tab_[ji] = sigma;
+    set_tab_[ij] = set_tab_[ji] = 1;
+    return *this;
+}
+
+PairLJCut PairLJCut::set_type_coeffs(int type_i, int type_j, double epsilon,
+                                     double sigma) && {
+    set_type_coeffs(type_i, type_j, epsilon, sigma);
+    return std::move(*this);
+}
+
+/// Fill the off-diagonal from the diagonal by Lorentz-Berthelot, and precompute
+/// sigma^6 and the per-pair energy shift. Called once, from build().
+void PairLJCut::finalize_type_table_() {
+    if (n_types_ == 0) return;
+    const double rc = static_cast<double>(this->pair_cutoff());
+
+    sig6_tab_.assign(static_cast<std::size_t>(n_types_) * n_types_, 0.0);
+    shift_tab_.assign(static_cast<std::size_t>(n_types_) * n_types_, 0.0);
+
+    for (int a = 0; a < n_types_; ++a) {
+        for (int b = 0; b < n_types_; ++b) {
+            const std::size_t ab = static_cast<std::size_t>(a) * n_types_ + b;
+            double e = eps_tab_[ab], s = sigma_tab_[ab];
+
+            if (!set_tab_[ab]) {
+                const std::size_t aa = static_cast<std::size_t>(a) * n_types_ + a;
+                const std::size_t bb = static_cast<std::size_t>(b) * n_types_ + b;
+                if (set_tab_[aa] && set_tab_[bb]) {
+                    lorentz_berthelot(eps_tab_[aa], sigma_tab_[aa], eps_tab_[bb],
+                                      sigma_tab_[bb], e, s);
+                    eps_tab_[ab] = e;
+                    sigma_tab_[ab] = s;
+                } else {
+                    // No diagonal to mix from: this type pair simply does not
+                    // interact. eps = 0 is the honest encoding (TIP3P hydrogens have
+                    // no LJ site at all), NOT a fallback to the single-sigma value —
+                    // which would silently reintroduce the very bug this exists to fix.
+                    e = 0.0;
+                    s = 1.0;
+                }
+            }
+            const double s2 = s * s;
+            const double s6 = s2 * s2 * s2;
+            sig6_tab_[ab] = s6;
+
+            const double r2inv = 1.0 / (rc * rc);
+            const double r6inv = r2inv * r2inv * r2inv * s6;
+            shift_tab_[ab] = 4.0 * e * (r6inv * r6inv - r6inv);
+        }
+    }
+}
+
 void PairLJCut::compute(const LaunchContext& ctx) {
     auto& f = ctx.frame;
     if (!ctx.runtime.md.pair_list) {
@@ -358,6 +453,17 @@ void PairLJCut::compute(const LaunchContext& ctx) {
         const double sig6 = sigma6_;
         const double eps4 = double(4) * epsilon_;
         const double eps24 = double(24) * epsilon_;
+
+        // Per-type coefficients. When the table is active the coefficients depend on
+        // (type_i, type_j) and cannot be hoisted out of the inner loop, so the SIMD ket
+        // loop is skipped entirely and every neighbour goes down the scalar path. The
+        // single-epsilon path — the one benchmarked against LAMMPS — is untouched.
+        const bool k_multi = (n_types_ > 0);
+        const int k_ntypes = n_types_;
+        const double* k_eps = k_multi ? eps_tab_.data() : nullptr;
+        const double* k_sig6 = k_multi ? sig6_tab_.data() : nullptr;
+        const double* k_shift = k_multi ? shift_tab_.data() : nullptr;
+        const int* k_type = f.atoms.type.data();
         const double vshift = v_shift_;
 
         // Raw pointers to the per-thread force arenas; indexing via
@@ -454,7 +560,9 @@ void PairLJCut::compute(const LaunchContext& ctx) {
 
             int jj = 0;
             // ── SIMD ket loop: W neighbors per iteration ────────────
-            for (; jj + static_cast<int>(W) <= jnum;
+            // Skipped wholesale under a per-type table: the coefficients vary per pair,
+            // so nothing hoists and the scalar tail below handles every neighbour.
+            for (; !k_multi && jj + static_cast<int>(W) <= jnum;
                  jj += static_cast<int>(W)) {
                 // Manual gather: pack the next W neighbor coords into the
                 // aligned stack buffers. j-indices are non-contiguous (NL
@@ -631,10 +739,27 @@ void PairLJCut::compute(const LaunchContext& ctx) {
                 if (r2 >= rc_sq)
                     continue;
 
+                // Per-pair coefficients under a type table; the hoisted scalars
+                // otherwise. An eps of exactly 0 (a type pair with no LJ site, e.g.
+                // TIP3P hydrogens) contributes no force and no energy — which is the
+                // point, and is why an unset pair mixes to eps = 0 rather than silently
+                // falling back to the single-sigma value.
+                double p_sig6 = sig6, p_eps24 = eps24, p_eps4 = eps4, p_shift = vshift;
+                if (k_multi) {
+                    const int ti = k_type[i], tj = k_type[j];
+                    const std::size_t ab =
+                        static_cast<std::size_t>(ti) * k_ntypes + tj;
+                    p_sig6 = k_sig6[ab];
+                    const double e = k_eps[ab];
+                    p_eps24 = double(24) * e;
+                    p_eps4 = double(4) * e;
+                    p_shift = k_shift[ab];
+                }
+
                 const double r2inv = double(1) / r2;
-                const double r6inv = r2inv * r2inv * r2inv * sig6;
+                const double r6inv = r2inv * r2inv * r2inv * p_sig6;
                 const double fpair =
-                    eps24 * r2inv * (double(2) * r6inv * r6inv - r6inv);
+                    p_eps24 * r2inv * (double(2) * r6inv * r6inv - r6inv);
 
                 const double fxp = fpair * dx;
                 const double fyp = fpair * dy;
@@ -655,7 +780,7 @@ void PairLJCut::compute(const LaunchContext& ctx) {
                     v_yz += dy * fzp;
                 }
 
-                energy_total += eps4 * (r6inv * r6inv - r6inv) - vshift;
+                energy_total += p_eps4 * (r6inv * r6inv - r6inv) - p_shift;
             }
             fxt_ptr[i] += fi_x;
             fyt_ptr[i] += fi_y;

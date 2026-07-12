@@ -40,12 +40,13 @@ Ndof = 6 N_mol - 3        NOT   3 N_atoms - 3 = 9 N_mol - 3
 So the assertion is: thermostat the box at 300 K, and the temperature computed with the
 **correct** Ndof must come back at 300 K.
 
-Measured, 125 rigid waters, CSVR thermostat at 300 K, averaged over 6 ps:
+Measured, 343 rigid waters at liquid density, CSVR thermostat at 300 K, averaged over
+6 ps:
 
 ```
-Ndof (rigid, 6/mol) = 747      [3N-3 would be 1122]
-<T>                 = 295.97 K   vs  300 K setpoint   (1.3 %, tol 3 %)
-<T> with naive Ndof = 197.05 K   <- 33 % cold
+Ndof (rigid, 6/mol) = 2055     [3N-3 would be 3084]
+<T>                 = 300.08 K   vs  300 K setpoint   (0.03 %, tol 3 %)
+<T> with naive Ndof = 199.96 K   <- 33 % cold
 ```
 
 **That last line is the bug this case exists to prevent.** Before this work, five
@@ -56,29 +57,30 @@ would have *driven the system to the wrong temperature* and reported success. No
 crashes. The trajectory is simply wrong.
 
 The 3 % tolerance is the statistical spread of a thermostatted mean over 6 ps of a
-125-molecule box, not a fudge factor: a broken DOF count misses by 33 %, an order of
+343-molecule box, not a fudge factor: a broken DOF count misses by 33 %, an order of
 magnitude outside it.
 
 ## What this case is NOT
 
-**It is not a TIP3P water simulation, and it cannot be one today.** Two engine
-limitations force that, and they are worth stating plainly rather than papering over:
+**It is still not a TIP3P water simulation — but it is no longer a caricature of one.**
 
-1. **`PairLJCut` carries a single ε/σ for all atoms** — there is no per-type mixing
-   table. In TIP3P the Lennard-Jones site sits on oxygen *only*; here the hydrogens are
-   forced to wear the oxygen's σ = 3.15 Å too. At liquid density (O–O spacing 3.1 Å)
-   neighbouring molecules then overlap catastrophically, and no constraint solver can
-   hold a molecule that is being blown apart. The box here is therefore **dilute**
-   (4.6 Å spacing), which equipartition does not care about — it holds at any density.
+The box now runs at **liquid density** (O–O spacing 3.10 Å, 343 molecules), with the
+Lennard-Jones site on **oxygen only**, exactly as TIP3P specifies. That became possible
+when `PairLJCut` gained a per-type coefficient table: before it had one, a single ε/σ
+applied to every atom, the hydrogens were forced to wear the oxygen's σ = 3.15 Å, and a
+box at this spacing tore itself apart — no constraint solver can hold a molecule that is
+being blown apart. Earlier versions of this case had to run dilute for that reason. They
+no longer do.
 
-2. **No charges.** TIP3P is mostly electrostatics; the engine's PME exists but is not
-   wired into this case. Without charges there are no hydrogen bonds and this is not
-   liquid water — it is a fluid of rigid rotors.
+What is still missing is **charges**. TIP3P is mostly electrostatics; the engine's PME
+exists but is not wired into this case. Without charges there are no hydrogen bonds, so
+this is a fluid of rigid LJ rotors at water's density, not liquid water.
 
-Neither limitation weakens what the case actually pins. Rigidity is a property of the
-constraint solver, and equipartition is a property of the DOF bookkeeping; both are
-independent of how good the force field is. A real water benchmark belongs in
-`benchmarks/`, against an external engine, once per-type LJ and charges are wired.
+That does not weaken what the case pins. Rigidity is a property of the constraint solver
+and equipartition is a property of the DOF bookkeeping; both hold at any density and
+under any force field. A real water benchmark — structure, diffusion, the O–O radial
+distribution — belongs in `benchmarks/`, against an external engine, once charges are
+wired.
 
 ## Cross-references
 
