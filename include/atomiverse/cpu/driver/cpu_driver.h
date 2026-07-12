@@ -481,11 +481,19 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
                     s.has_halo_recv = true;
             }
             if (const cpu::NeighborConsumer* nc = c.as_neighbor_consumer()) {
-                if (s.neighbor_consumer_name.empty()) {
+                if (s.neighbor_consumer_name.empty())
                     s.neighbor_consumer_name = c.name();
-                    if (nc->neighbor_cutoff() > Real(0))
-                        s.neighbor_consumer_cutoff = nc->neighbor_cutoff();
-                }
+                // MAX over every consumer, not the first one that happens to be
+                // scanned. The halo has to satisfy all of them at once: a plan with
+                // PairLJCut (8 A) and CoulLong (12 A) used to size its ghost shell
+                // from whichever landed first in the pending list. And a many-body
+                // style asks for MORE than its interaction cutoff — EAM needs a
+                // ghost-of-ghost shell of 2 r_c to complete rho on ghosts (see
+                // NeighborConsumer::halo_cutoff).
+                const Real hc = nc->halo_cutoff();
+                if (hc > Real(0)
+                    && (!s.neighbor_consumer_cutoff || hc > *s.neighbor_consumer_cutoff))
+                    s.neighbor_consumer_cutoff = hc;
             }
         });
         return s;

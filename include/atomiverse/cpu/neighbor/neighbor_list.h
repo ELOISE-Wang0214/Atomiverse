@@ -248,6 +248,7 @@ class NeighborList : public cpu::ComponentBase, public cpu::NeighborProvider {
                                    is_multi_rank(rt) ? rt.md.dd->n_local : -1);
         }
         built_full_ = want_full;
+        pairs_.n_rows = n_active; // owners + ghosts; `inum` is trimmed to owners later
     }
 
     /// @brief (Re-)initialise the underlying spatial-index strategy from

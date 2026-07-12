@@ -37,14 +37,16 @@ namespace cpu {
 /// its own CSR row. The component sets `ctx.md.full_list_requested` in `build()`,
 /// and `NeighborList` switches to `CellList::refresh_full`.
 ///
-/// **Single-rank only, and it throws otherwise.** Pass 2 needs `F'(rho_j)` where
-/// `j` may be a ghost, and a ghost's own `rho` cannot be completed locally unless
-/// the halo reaches `2 * cutoff` (ghost-of-ghost). The engine runs exactly one
-/// forward halo (at `pre_neighbor`) and one reverse halo (at `post_force`, payload
-/// audited to fx/fy/fz), so there is no mid-`force` slot in which to exchange a
-/// derived per-atom quantity. Rather than silently compute wrong forces on rank
-/// boundaries, `build()` throws under MPI. Closing this is the next step of the
-/// probe, and the finding is the point.
+/// **Multi-rank works, via a wider halo rather than an extra message.** Pass 2 needs
+/// `F'(rho_j)` where `j` may be a ghost, and a ghost's own `rho` is a sum over *its*
+/// neighbours — so it can only be completed locally if the ghost shell reaches
+/// `2 * cutoff`. The component declares exactly that through
+/// `NeighborConsumer::halo_cutoff()`. The alternative — exchanging `rho` in the middle
+/// of the force phase — is not available: the engine runs exactly one forward halo
+/// (`pre_neighbor`) and one reverse halo (`post_force`, payload audited to fx/fy/fz),
+/// with no communication point inside `force`. The wide halo sidesteps that hole
+/// instead of punching a new one through it; it costs memory and a fatter ghost
+/// exchange, and it costs no new invariant.
 class EAM : public cpu::ComponentBase, public cpu::NeighborConsumer {
   public:
     /// @param potential Analytic EAM parameterization (constructed by lookup).
@@ -62,6 +64,17 @@ class EAM : public cpu::ComponentBase, public cpu::NeighborConsumer {
 
     /// @brief Cutoff the neighbor list must cover [Angstrom].
     Real neighbor_cutoff() const override { return cutoff_; }
+
+    /// @brief The halo must reach 2 * cutoff — a GHOST-OF-GHOST shell.
+    ///
+    /// Pass 2 needs `F'(rho_j)` for a ghost `j`, and `rho_j` sums over *j's*
+    /// neighbours. With a ghost shell of only `r_c`, a ghost's own neighbour list is
+    /// truncated and its density is silently too small. Widening the shell to `2 r_c`
+    /// makes every ghost's rho locally computable, and buys multi-rank EAM without a
+    /// single extra message — which matters, because the engine has exactly one
+    /// forward halo (pre_neighbor) and one reverse halo (post_force) per step, and no
+    /// communication point at all inside the force phase.
+    Real halo_cutoff() const override { return 2.0 * cutoff_; }
     const cpu::NeighborConsumer* as_neighbor_consumer() const override {
         return this;
     }

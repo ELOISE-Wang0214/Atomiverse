@@ -470,6 +470,34 @@ void HaloSend::build(const cpu::BuildContext& ctx) {
     }
 #endif
 
+    // The ghost shell cannot be wider than the subdomain it is grown from: the halo
+    // exchanges with IMMEDIATE neighbour ranks only, so a shell deeper than one
+    // subdomain would need atoms from a rank two hops away, and those simply never
+    // arrive. Until now that failed SILENTLY — the ghost region was quietly truncated
+    // and the forces came out wrong. It surfaced the first time a component asked for
+    // a ghost-of-ghost halo (EAM, halo = 2*cutoff): on a box that was big enough for
+    // a normal pair halo but not for a doubled one, the decomposed forces differed
+    // from a brute-force reference by 1.6 eV/A, with no diagnostic of any kind.
+    //
+    // Refuse instead. A user who hits this needs a bigger box, fewer ranks, or a
+    // smaller cutoff — and must be told so, not handed wrong physics.
+    const double need = halo_cutoff();
+    for (int d = 0; d < 3; ++d) {
+        if (dd->dims[d] <= 1) continue; // not decomposed along this axis
+        const double sub = dd->subhi[d] - dd->sublo[d];
+        if (need > sub) {
+            throw std::runtime_error(
+                "HaloSend: the requested ghost shell (" + std::to_string(need)
+                + " A) is wider than this rank's subdomain along axis "
+                + std::to_string(d) + " (" + std::to_string(sub)
+                + " A). The halo only exchanges with immediate neighbour ranks, so a "
+                  "deeper shell cannot be filled and the ghost region would be "
+                  "silently truncated. Use a larger box, fewer ranks along that axis, "
+                  "or a smaller cutoff. (A many-body style such as EAM asks for a "
+                  "ghost-of-ghost shell of 2*cutoff.)");
+        }
+    }
+
     if (!bufs_)
         bufs_ = std::make_unique<detail::FaceBufs>();
     // Each face ships only the boundary layer (cutoff-deep slab, typically

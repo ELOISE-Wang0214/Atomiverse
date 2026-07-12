@@ -39,13 +39,6 @@ SWPotential::SWPotential(Element element, std::string_view name) {
 StillingerWeber::StillingerWeber(SWPotential potential) : pot_(potential) {}
 
 void StillingerWeber::build(const cpu::BuildContext& ctx) {
-    if (ctx.runtime.mpi_size > 1) {
-        throw std::runtime_error(
-            "StillingerWeber: multi-rank is not supported yet. A triplet with its "
-            "vertex on a ghost needs that ghost's own complete neighbour set, which "
-            "requires the halo to reach 2*cutoff. Refusing to compute "
-            "silently-wrong forces at rank boundaries.");
-    }
     // The angular term enumerates every (j,k) pair of i's neighbours. A half list
     // shows i only half of them, so most triplets at i would be invisible.
     ctx.runtime.md.full_list_requested = true;
@@ -57,7 +50,6 @@ void StillingerWeber::launch(const cpu::LaunchContext& ctx) {
     if (pl == nullptr)
         throw std::runtime_error("StillingerWeber: no neighbor list published");
 
-    const int n = f.atoms.size();
     const double rc = pot_.cutoff();
     const double rc2 = rc * rc;
     const double cos0 = pot_.cos_theta0();
@@ -66,7 +58,13 @@ void StillingerWeber::launch(const cpu::LaunchContext& ctx) {
     double e_total = 0.0;
     double v[6] = {0, 0, 0, 0, 0, 0};
 
-    for (int i = 0; i < n; ++i) {
+    // Owners only. Unlike EAM, SW needs NO ghost-of-ghost shell: every triplet is
+    // enumerated at its VERTEX, and a triplet whose vertex is a ghost belongs to the
+    // rank that owns that vertex. A ghost shell of one cutoff supplies every j and k
+    // an owned vertex can reach; forces landing on ghost j/k ride home on the
+    // existing reverse halo, which already carries exactly fx/fy/fz.
+    for (int ii = 0; ii < pl->inum; ++ii) {
+        const int i = pl->ilist[ii];
         const int off = pl->firstneigh[i];
         const int nn = pl->numneigh[i];
 

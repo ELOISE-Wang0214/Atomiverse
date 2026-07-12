@@ -44,16 +44,6 @@ EAM::EAM(EAMPotential potential, double cutoff)
 }
 
 void EAM::build(const cpu::BuildContext& ctx) {
-    if (ctx.runtime.mpi_size > 1) {
-        throw std::runtime_error(
-            "EAM: multi-rank is not supported yet. Pass 2 needs F'(rho_j) for "
-            "ghost j, and a ghost's rho cannot be completed locally unless the "
-            "halo reaches 2*cutoff; the engine exchanges exactly one forward halo "
-            "(pre_neighbor) and one reverse halo (post_force, payload fx/fy/fz), "
-            "so there is no mid-force slot for a derived per-atom quantity. "
-            "Refusing to compute silently-wrong forces at rank boundaries.");
-    }
-
     // rho_i is a sum over ALL neighbours of i. A half list gives each atom only
     // the half of them that landed in its own row, so ask for the full list.
     ctx.runtime.md.full_list_requested = true;
@@ -69,19 +59,20 @@ void EAM::launch(const cpu::LaunchContext& ctx) {
     if (pl == nullptr)
         throw std::runtime_error("EAM: no neighbor list published");
 
-    const int n = f.atoms.size();
-    if (static_cast<int>(rho_.size()) < n) { // the frame grew under us
-        rho_.assign(static_cast<std::size_t>(n), 0.0);
-        dF_.assign(static_cast<std::size_t>(n), 0.0);
+    // Rows carrying neighbour data: owners AND ghosts. Pass 1 must cover the ghosts
+    // too, because pass 2 reads F'(rho_j) with j on the other end of each pair, and j
+    // may be a ghost. Their rows are complete because the component declares a
+    // ghost-of-ghost halo (halo_cutoff() = 2*cutoff).
+    const int n_rows = pl->n_rows;
+    if (static_cast<int>(rho_.size()) < n_rows) {
+        rho_.assign(static_cast<std::size_t>(n_rows), 0.0);
+        dF_.assign(static_cast<std::size_t>(n_rows), 0.0);
     }
 
     const double rc2 = cutoff_ * cutoff_;
 
-    // ── Pass 1: rho_i = sum_{j != i} f(r_ij) ────────────────────────────
-    // Every atom is an i here (not just pl->ilist), because pass 2 needs
-    // F'(rho_j) for j on the other end of each pair. Single-rank, so every row
-    // of the full list is complete.
-    for (int i = 0; i < n; ++i) {
+    // ── Pass 1: rho_i = sum_{j != i} f(r_ij), for owners AND ghosts ─────
+    for (int i = 0; i < n_rows; ++i) {
         double rho = 0.0;
         const int off = pl->firstneigh[i];
         const int nn = pl->numneigh[i];
@@ -109,7 +100,10 @@ void EAM::launch(const cpu::LaunchContext& ctx) {
     double e_total = 0.0;
     double v[6] = {0, 0, 0, 0, 0, 0};
 
-    for (int i = 0; i < n; ++i) {
+    // Owners only (pl->ilist / inum). A ghost's forces and energy belong to the rank
+    // that owns it; adding them here would double-count both.
+    for (int ii = 0; ii < pl->inum; ++ii) {
+        const int i = pl->ilist[ii];
         e_total += pot_.F(rho_[static_cast<std::size_t>(i)]);
 
         const int off = pl->firstneigh[i];

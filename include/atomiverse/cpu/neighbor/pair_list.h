@@ -31,6 +31,16 @@ namespace md {
 /// never enter the allocator once capacity has stabilised.
 struct PairList {
     int inum = 0;              ///< Number of I atoms with neighbor lists.
+
+    /// @brief Rows that actually carry neighbour data — owners AND ghosts.
+    ///
+    /// `inum` is trimmed to the OWNER count so a force kernel iterates only atoms it
+    /// is responsible for. But the CSR is built for every active row, ghosts included,
+    /// and a many-body style needs those: EAM's second pass reads `F'(rho_j)` for a
+    /// ghost `j`, so its first pass must fill `rho` for ghost rows too. Without this
+    /// field there was no way to ask "how many rows are populated?" without
+    /// second-guessing the decomposition.
+    int n_rows = 0;
     std::vector<int> ilist;    ///< I atom indices [capacity].
     std::vector<int> numneigh; ///< Number of neighbors per atom [capacity].
     std::vector<int>
