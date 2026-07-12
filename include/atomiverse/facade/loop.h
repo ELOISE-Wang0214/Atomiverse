@@ -1,0 +1,61 @@
+/// @file facade/loop.h
+/// @brief Verdict + LoopMetrics — the vocabulary a loop's termination is decided in.
+///        Backend-agnostic, CUDA-free.
+///
+/// Termination used to be a **class**. `OptimizeDriver` stopped on convergence,
+/// `DynamicsDriver` ran a budget, `SamplingDriver` ran trials, `PathDriver` waited for
+/// every replica — six classes differing by one `if`, and a seventh required the moment
+/// anyone wanted "stop when the temperature runs away" or "stop after an hour".
+///
+/// It is a **policy**. This header is the vocabulary it is written in.
+#pragma once
+
+namespace ATV {
+
+/// @brief What a handler says after an iteration. Ordered by severity.
+///
+/// Composition rule, and it is not negotiable: **Stop > Converged > Continue**. With
+/// several handlers attached, the most severe verdict wins. `Stop` outranks `Converged`
+/// because a run that has gone numerically insane must not be able to report success by
+/// also happening to satisfy a force tolerance.
+enum class Verdict {
+    Continue = 0,  ///< Keep looping.
+    Converged = 1, ///< Terminate — successfully. The answer is the current state.
+    Stop = 2       ///< Terminate — without success (budget, NaN, wall clock, interrupt).
+};
+
+/// @brief The most severe of two verdicts.
+constexpr Verdict worse_of(Verdict a, Verdict b) {
+    return (static_cast<int>(a) >= static_cast<int>(b)) ? a : b;
+}
+
+/// @brief What the loop's components measured this iteration, for handlers to judge.
+///
+/// **The split this struct exists to enforce**: an optimizer *measures*; a handler
+/// *decides*. Until now `LBFGS` did both — it carried five convergence tolerances in its
+/// constructor and wrote `outer_status.converged = true` itself. So changing the
+/// stopping criteria meant editing the optimizer, two algorithms had to duplicate the
+/// same five-criteria test, and — the part that actually shipped as a bug, twice — a
+/// nested optimizer's convergence stopped the *enclosing* loop.
+///
+/// Fields not written this iteration keep their previous value; `has_displacement` says
+/// whether the displacement pair is meaningful yet (it is not, on iteration 0, when
+/// there is no previous geometry to difference against).
+struct LoopMetrics {
+    double energy = 0.0;             ///< Total energy [eV].
+    double max_force = 0.0;          ///< Max atomic force magnitude [eV/Å].
+    double rms_force = 0.0;          ///< RMS force [eV/Å].
+    double max_displacement = 0.0;   ///< Max displacement since last iteration [Å].
+    double rms_displacement = 0.0;   ///< RMS displacement [Å].
+    double energy_change = 0.0;      ///< |ΔE| since last iteration [eV].
+    bool has_displacement = false;   ///< False on iteration 0 / after a migration reset.
+
+    /// @brief Fraction of coupled replicas that have met their criterion, in [0,1].
+    ///
+    /// A band is converged only when this is 1 — the AND that `PathDriver` used to spell
+    /// out by hand. Left at 0 by every non-replica loop, which is why
+    /// `AllReplicasConverged` is the only handler that reads it.
+    double replicas_converged = 0.0;
+};
+
+} // namespace ATV

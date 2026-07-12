@@ -108,17 +108,25 @@ TEST(ContextSlices, CoreFieldsStayFlatWithDefaults) {
     static_assert(std::is_same_v<decltype(cpu::Context::mpi_size), int>);
     static_assert(
         std::is_same_v<decltype(cpu::Context::timer), ATV::TimerRegistry*>);
-    static_assert(std::is_same_v<decltype(cpu::Context::outer_status),
-                                 ATV::IterationStatus>);
+    // The Context does NOT own an IterationStatus any more — it BORROWS the active
+    // loop's. That indirection is the whole fix for a bug that shipped twice: with one
+    // status on the Context, a nested loop's convergence stopped its parent (probe 2:
+    // LBFGS wrote `converged` unconditionally; probe 3: the first converged NEB image
+    // would have stopped the chain). A pointer that points at the loop cannot reach the
+    // loop above it.
+    static_assert(std::is_same_v<decltype(cpu::Context::loop), cpu::LoopServices>);
+    static_assert(
+        std::is_same_v<decltype(cpu::LoopServices::status), ATV::IterationStatus*>);
+    static_assert(std::is_same_v<decltype(cpu::LoopServices::metrics), ATV::LoopMetrics*>);
 
     cpu::Context ctx;
     EXPECT_EQ(ctx.n_threads, 0);
     EXPECT_EQ(ctx.mpi_rank, 0);
     EXPECT_EQ(ctx.mpi_size, 1);
     EXPECT_EQ(ctx.timer, nullptr);
-    EXPECT_FALSE(ctx.outer_status.converged);
-    EXPECT_FALSE(ctx.outer_status.stop_requested);
-    EXPECT_TRUE(ctx.outer_status.reason.empty());
+    // Null until a Driver runs: a bare Context is attached to no loop at all.
+    EXPECT_EQ(ctx.loop.status, nullptr);
+    EXPECT_EQ(ctx.loop.metrics, nullptr);
 }
 
 // ── Default-constructed slices: all-null / all-false ───────────────────────

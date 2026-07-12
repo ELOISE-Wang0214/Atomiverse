@@ -57,7 +57,11 @@ class OptimizeDriver : public CPUDriver<ATV::minimizer::Phase> {
             mutable_outer_status().reset();
             step_once(s);
             ++iters;
-            if (outer_status().converged || outer_status().stop_requested)
+            // The optimizer PUBLISHED its metrics during the step; the handlers judge
+            // them here. Neither LBFGS nor CG decides its own convergence any more —
+            // which is why a nested optimizer can no longer stop this loop.
+            const Verdict v = poll_handlers_(s);
+            if (v != Verdict::Continue)
                 break;
         }
         teardown_pass();

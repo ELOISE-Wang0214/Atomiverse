@@ -183,6 +183,7 @@ atv_add_cpp_test(test_cpu_pair_lj_types  cpu/potentials/test_pair_lj_types.cpp)
 atv_add_cpp_test(test_cpu_md_fix_rattle  cpu/md/test_fix_rattle.cpp)
 atv_add_cpp_test(test_cpu_md_write_sets  cpu/md/test_write_sets.cpp)
 atv_add_cpp_test(test_cpu_path_replica    cpu/path/test_replica.cpp)
+atv_add_cpp_test(test_cpu_loop_handler    cpu/driver/test_loop_handler.cpp)
 # test_cpu_md_pe_nvt relocated to benchmarks/md/pe/validation/ (val_md_pe_nvt) —
 # a full NVT equilibration of the bonded PE melt, not a ms unit test.
 atv_add_cpp_test(test_cpu_md_frame_tag_image      cpu/md/test_frame_tag_image.cpp)

@@ -23,6 +23,7 @@
 #include <type_traits>
 
 #include "atomiverse/facade/iteration_status.h"
+#include "atomiverse/facade/loop.h"
 
 namespace ATV {
 
@@ -160,6 +161,20 @@ struct PathServices {
     int active = -1;
 };
 
+/// @brief The active loop node's status + metrics (publisher: the running Driver).
+///
+/// Non-owning: a Driver owns its own IterationStatus and LoopMetrics and points these
+/// here for the duration of its loop, restoring the previous pair on exit. So a nested
+/// driver's components write to the NESTED loop's status, never the parent's.
+struct LoopServices {
+    /// @brief Stop channel. A component may set `stop_requested`; it must NOT set
+    /// `converged` — declaring success is a LoopHandler's job, not a component's.
+    IterationStatus* status = nullptr;
+
+    /// @brief Where components publish what they measured, for handlers to judge.
+    LoopMetrics* metrics = nullptr;
+};
+
 /// @brief Async-analysis services (publisher: `AnalysisExecutor::install`).
 struct AnalysisServices {
     /// @brief Non-owning handle to the per-rank analysis executor.
@@ -180,14 +195,21 @@ struct Context {
     /// default so timing is opt-in and zero-cost when off. @see core/timer.h
     ATV::TimerRegistry* timer = nullptr;
 
-    /// @brief Outer-driver-loop status — owned by the category driver,
-    ///        reset before each iteration, consulted at the end of each
-    ///        iteration to decide early stop.
+    /// @brief The **active loop node's** status and metrics.
     ///
-    /// Only `ConvergenceCheck`-tagged components write to this. SCF
-    /// internals manage their own internal convergence and never touch
-    /// the outer status. See facade/iteration_status.h for the contract.
-    IterationStatus outer_status{};
+    /// Both are OWNED BY THE LOOP, not by the Context — the Context only points at
+    /// whichever loop is currently running. That indirection is the entire fix for a bug
+    /// that shipped twice:
+    ///
+    ///   - probe 2: `LBFGS` wrote `converged = true` onto the one shared status;
+    ///   - probe 3: so the first NEB image to converge would have stopped the whole chain.
+    ///
+    /// With the status living on the loop node, a nested loop physically cannot reach its
+    /// parent's — it is not a rule to remember, it is a pointer that does not go there.
+    ///
+    /// A component **measures** into `metrics` and may **request a stop** via `status`.
+    /// It does not declare convergence: that is a `LoopHandler`'s job.
+    LoopServices loop;
 
     DynamicsServices md;       ///< Classical force-pipeline slice.
     SamplingServices mc;       ///< Metropolis-sampling slice.
@@ -203,6 +225,7 @@ struct Context {
 static_assert(std::is_trivially_copyable_v<DynamicsServices>);
 static_assert(std::is_trivially_copyable_v<SamplingServices>);
 static_assert(std::is_trivially_copyable_v<PathServices>);
+static_assert(std::is_trivially_copyable_v<LoopServices>);
 static_assert(std::is_trivially_copyable_v<AnalysisServices>);
 static_assert(!std::is_polymorphic_v<Context>);
 

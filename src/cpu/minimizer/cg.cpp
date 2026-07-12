@@ -43,7 +43,6 @@ void CG::build(const cpu::BuildContext& ctx) {
     d_ws_.assign(dim, 0.0);
     has_prev_ = false;
     x_prev_valid_ = false;
-    converged_ = false;
     step_ = 0;
     last_generation_ = ~std::uint64_t{0};
     trace_.clear();
@@ -140,21 +139,24 @@ void CG::launch(const cpu::LaunchContext& ctx) {
         rec.energy_change = energy_change;
         trace_.push_back(rec);
 
-        converged_ = (max_force_ < ftol_) && (rms_force < rms_ftol_)
-                     && (step_ == 0 || !disp_valid || max_disp < max_dtol_)
-                     && (step_ == 0 || !disp_valid || rms_disp < rms_dtol_)
-                     && (step_ == 0 || energy_change < etol_);
+        // PUBLISH, do not decide — see the same note in lbfgs.cpp. This five-way test
+        // existed here TOO, character for character. One policy, two copies, and no way
+        // for a user to supply a third: that is what a handler replaces.
+        if (LoopMetrics* m = ctx.runtime.loop.metrics) {
+            m->energy = f.scalars.energy;
+            m->max_force = max_force_;
+            m->rms_force = rms_force;
+            m->max_displacement = max_disp;
+            m->rms_displacement = rms_disp;
+            m->energy_change = energy_change;
+            m->has_displacement = disp_valid;
+        }
 
         ATV_INFO("[cg] step={} energy_eV={:.6f} max_force_eVA={:.6f} "
                  "rms_force_eVA={:.6f} max_disp_A={:.6e} rms_disp_A={:.6e} "
-                 "dE_eV={:.6e} converged={}",
+                 "dE_eV={:.6e}",
                  step_, f.scalars.energy, max_force_, rms_force, max_disp,
-                 rms_disp, energy_change, converged_);
-
-        if (converged_) {
-            ctx.runtime.outer_status.converged = true;
-            ctx.runtime.outer_status.reason = "cg multi-criteria convergence";
-        }
+                 rms_disp, energy_change);
 
         energy_prev_ = f.scalars.energy;
         return;

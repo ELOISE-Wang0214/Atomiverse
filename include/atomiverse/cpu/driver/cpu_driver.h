@@ -41,6 +41,7 @@
 /// `OptimizeDriver` / `ResponseDriver` / `SamplingDriver`) do.
 #pragma once
 
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -53,16 +54,19 @@
 #include "atomiverse/core/device.h"
 #include "atomiverse/core/real.h"
 #include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/component/constraint_protocol.h"
 #include "atomiverse/cpu/component/halo_participant.h"
 #include "atomiverse/cpu/component/neighbor_protocol.h"
 #include "atomiverse/cpu/component/pair_evaluator.h"
 #include "atomiverse/cpu/driver/backend_traits.h"
 #include "atomiverse/cpu/driver/dof.h"
+#include "atomiverse/cpu/driver/loop_handler.h"
 #include "atomiverse/cpu/recorder/thermo.h"
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/driver.h"
 #include "atomiverse/facade/iteration_status.h"
+#include "atomiverse/facade/loop.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -290,8 +294,15 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
         this->backend_->load(this->plan_);
         this->backend_->set_frame(frame);
         publish_dof_(frame);
+        // Point the Context at THIS loop's status + metrics. The loop owns them; the
+        // Context only borrows. A nested driver will re-point them at its own and
+        // restore ours on exit, which is what makes a nested loop physically unable to
+        // stop its parent.
+        this->backend_->context().loop.status = &status_;
+        this->backend_->context().loop.metrics = &metrics_;
         this->backend_->build_components();
-        mutable_outer_status().reset();
+        status_.reset();
+        metrics_ = LoopMetrics{};
     }
 
     /// @brief Single iteration through the compiled Plan.
@@ -310,15 +321,44 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
         this->backend_->shutdown();
     }
 
-    /// @brief Read the outer-driver iteration status (set by ConvergenceCheck
-    /// components during the most recent `step_once`).
-    const IterationStatus& outer_status() const {
-        return this->backend_->context().outer_status;
-    }
+    /// @brief This loop's iteration status. **Owned here, not on the Context.**
+    const IterationStatus& outer_status() const { return status_; }
 
-    /// @brief Mutable handle to outer status (for per-iteration `reset()`).
-    IterationStatus& mutable_outer_status() {
-        return this->backend_->context().outer_status;
+    /// @brief Mutable handle to this loop's status (for the per-iteration `reset()`).
+    IterationStatus& mutable_outer_status() { return status_; }
+
+    /// @brief This loop's metrics — what its components measured, for handlers to judge.
+    LoopMetrics& metrics() { return metrics_; }
+
+    /// @brief Ask every handler about the iteration just completed, and reduce.
+    ///
+    /// Composition: **Stop > Converged > Continue** — the most severe verdict wins, so a
+    /// run that has gone numerically insane cannot report success by also happening to
+    /// satisfy a force tolerance.
+    ///
+    /// The verdict is all-reduced across ranks HERE, once, rather than in each handler.
+    /// Ranks that disagree about when to stop deadlock at the next collective, and that
+    /// is not a hazard a handler author should have to know about. `Verdict` is ordered
+    /// by severity precisely so the reduction is a `MAX`.
+    ///
+    /// @param iteration Index of the iteration just completed.
+    /// @return The reduced verdict; also folds `stop_requested` (which a *component* may
+    ///         set — components request stops, they never declare convergence).
+    Verdict poll_handlers_(int iteration) {
+        const cpu::LoopState st{iteration, this->backend_->frame(),
+                                this->backend_->context(), metrics_};
+        Verdict v = status_.stop_requested ? Verdict::Stop : Verdict::Continue;
+        for (auto& h : handlers_) {
+            const Verdict hv = h->after_iteration(st);
+            if (hv != Verdict::Continue && worse_of(v, hv) == hv && v != hv) {
+                status_.reason = h->name();
+            }
+            v = worse_of(v, hv);
+        }
+        v = reduce_verdict_(v);
+        if (v == Verdict::Converged) status_.converged = true;
+        if (v == Verdict::Stop) status_.stop_requested = true;
+        return v;
     }
 
     /// @brief Convenience: throw a clear exception when a required role or
@@ -390,6 +430,37 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     void set_record(R&& r) {
         this->add(std::forward<R>(r));
     }
+
+    /// @brief Attach a termination policy. Plural — handlers compose.
+    ///
+    /// `opt.add_handler(ForceConverged{0.01});`
+    /// `sim.add_handler(StopOnNaN{}).add_handler(StopWhenTooHot{2000});`
+    ///
+    /// This is the seam that used to be a class hierarchy. @see cpu/driver/loop_handler.h
+    /// @param h A LoopHandler subclass, moved in.
+    /// @return Reference to self, for chaining.
+    template <typename H>
+    CPUDriver& add_handler(H&& h) {
+        using D = std::decay_t<H>;
+        static_assert(std::is_base_of_v<cpu::LoopHandler, D>,
+                      "add_handler requires a cpu::LoopHandler subclass");
+        handlers_.push_back(std::make_unique<D>(std::forward<H>(h)));
+        return *this;
+    }
+
+    /// @brief Whether any handler is attached (a preset injects a default if not).
+    bool has_handler() const { return !handlers_.empty(); }
+
+    /// @brief Did this loop terminate because a handler declared success?
+    ///
+    /// **The loop knows; the algorithm does not.** `LBFGS::converged()` and
+    /// `CG::converged()` are deleted: an optimizer that publishes metrics and does not
+    /// judge them has no business claiming to know the verdict, and asking it was how
+    /// the policy got welded to the algorithm in the first place.
+    bool converged() const { return status_.converged; }
+
+    /// @brief Which handler ended the loop (empty if it simply ran out of budget).
+    const std::string& stop_reason() const { return status_.reason; }
 
     /// @brief Configure the thermo print cadence (LAMMPS `thermo N`).
     /// Singular: re-call with a different cadence throws.
@@ -550,6 +621,31 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
                                      + setter_help);
         }
     }
+
+    /// @brief Reduce a verdict across ranks (MAX by severity). @see poll_handlers_
+    ///
+    /// Severity is the enum's integer value, so "the most severe verdict any rank
+    /// reached" is a plain MPI_MAX. Every rank therefore leaves the loop on the same
+    /// iteration — the alternative is a rank that keeps looping into a collective nobody
+    /// else will ever enter.
+    Verdict reduce_verdict_(Verdict v) const {
+#ifdef ATV_HAS_MPI
+        const auto* dd = this->backend_->context().md.dd;
+        if (this->backend_->context().mpi_size > 1 && dd
+            && dd->cart_comm != MPI_COMM_NULL) {
+            int sev = static_cast<int>(v);
+            MPI_Allreduce(MPI_IN_PLACE, &sev, 1, MPI_INT, MPI_MAX, dd->cart_comm);
+            return static_cast<Verdict>(sev);
+        }
+#endif
+        return v;
+    }
+
+  protected:
+    /// This loop's own status and metrics. **Not on the Context** — see LoopServices.
+    IterationStatus status_{};
+    LoopMetrics metrics_{};
+    std::vector<std::unique_ptr<cpu::LoopHandler>> handlers_;
 
   private:
     // ── Categorical setter slots ────────────────────────────────────

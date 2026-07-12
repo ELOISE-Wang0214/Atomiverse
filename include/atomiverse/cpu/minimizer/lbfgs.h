@@ -128,9 +128,6 @@ class LBFGS : public cpu::ComponentBase {
     void build(const cpu::BuildContext& ctx) override;
     void launch(const cpu::LaunchContext& ctx) override;
 
-    /// @brief Check if optimization has converged.
-    bool converged() const { return converged_; }
-
     /// @brief Current max force magnitude.
     double max_force() const { return max_force_; }
 
@@ -173,7 +170,6 @@ class LBFGS : public cpu::ComponentBase {
     /// @brief Last observed `dd->neighbor_generation`; a bump means atom
     /// migration reshuffled local rows → history must be discarded.
     std::uint64_t last_generation_ = ~std::uint64_t{0};
-    bool converged_ = false;
     double max_force_ = 0;
     double energy_prev_ = 0;
     int step_ = 0;

@@ -131,7 +131,9 @@ TEST(MinimizeLj, LbfgsRelaxesPerturbedLatticeAnyRankCount) {
     EXPECT_LT(iters, budget) << "LBFGS failed to converge in " << budget
                              << " iterations (max_force="
                              << lbfgs.max_force() << ")";
-    EXPECT_TRUE(lbfgs.converged());
+    // The LOOP knows it converged, not the optimizer: LBFGS publishes metrics, a
+    // ForceConverged handler judges them. `LBFGS::converged()` is gone.
+    EXPECT_TRUE(opt.converged());
     EXPECT_LT(e_min, e_start) << "energy did not decrease";
     EXPECT_LT(std::abs(e_min - e_ref) / std::abs(e_ref), 1e-3)
         << "minimized energy " << e_min
@@ -159,7 +161,7 @@ TEST(MinimizeLj, CgRelaxesPerturbedLatticeAnyRankCount) {
     EXPECT_LT(iters, budget) << "CG failed to converge in " << budget
                              << " iterations (max_force=" << cg.max_force()
                              << ")";
-    EXPECT_TRUE(cg.converged());
+    EXPECT_TRUE(opt.converged());
     EXPECT_LT(e_min, e_start) << "energy did not decrease";
     EXPECT_LT(std::abs(e_min - e_ref) / std::abs(e_ref), 1e-3)
         << "minimized energy " << e_min

@@ -109,6 +109,17 @@ class Minimize : public OptimizeDriver {
 
   protected:
     void install_defaults() override {
+        // A Minimize with no handler would never stop early — the optimizer publishes
+        // metrics and nobody judges them. So the PRESET supplies the policy it is a
+        // preset for. This is what "MD-style pipelines become a default-constructed
+        // driver + handler" means in practice: the class contributes a default, not a
+        // category.
+        //
+        // Textbook LAMMPS/ASE-ish defaults; override wholesale with
+        // `opt.add_handler(cpu::ForceConverged{ftol, ...})` before build().
+        if (!this->has_handler())
+            this->add_handler(cpu::ForceConverged{});
+
         const auto s = this->scan_pending_infra_();
 
         // Owner migration + global scalar reduction, explicitly bound to

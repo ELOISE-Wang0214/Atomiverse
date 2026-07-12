@@ -76,7 +76,6 @@ void LBFGS::build(const cpu::BuildContext& ctx) {
     g_ws_.assign(dim, 0);
 
     x_prev_valid_ = false;
-    converged_ = false;
     energy_prev_ = 0;
     step_ = 0;
     ls_phi0_ = 0;
@@ -193,22 +192,27 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
         rec.energy_change = energy_change;
         trace_.push_back(rec);
 
-        converged_ = (max_force_ < ftol_) && (rms_force < rms_ftol_)
-                     && (step_ == 0 || !disp_valid || max_disp < max_dtol_)
-                     && (step_ == 0 || !disp_valid || rms_disp < rms_dtol_)
-                     && (step_ == 0 || energy_change < etol_);
+        // PUBLISH, do not decide. The optimizer measures; a LoopHandler judges
+        // (cpu/driver/loop_handler.h). Until this line, LBFGS carried five convergence
+        // tolerances in its constructor and wrote `outer_status.converged = true`
+        // itself — so the criteria could not be changed without touching the algorithm,
+        // CG had to duplicate the identical five-way test, and a nested optimizer's
+        // convergence stopped the ENCLOSING loop. That last one shipped twice.
+        if (LoopMetrics* m = ctx.runtime.loop.metrics) {
+            m->energy = f.scalars.energy;
+            m->max_force = max_force_;
+            m->rms_force = rms_force;
+            m->max_displacement = max_disp;
+            m->rms_displacement = rms_disp;
+            m->energy_change = energy_change;
+            m->has_displacement = disp_valid;
+        }
 
         ATV_INFO("[lbfgs] step={} energy_eV={:.6f} max_force_eVA={:.6f} "
                  "rms_force_eVA={:.6f} max_disp_A={:.6e} rms_disp_A={:.6e} "
-                 "dE_eV={:.6e} converged={}",
+                 "dE_eV={:.6e}",
                  step_, f.scalars.energy, max_force_, rms_force, max_disp,
-                 rms_disp, energy_change, converged_);
-
-        if (converged_) {
-            ctx.runtime.outer_status.converged = true;
-            ctx.runtime.outer_status.reason =
-                "lbfgs multi-criteria convergence";
-        }
+                 rms_disp, energy_change);
 
         energy_prev_ = f.scalars.energy;
         return;

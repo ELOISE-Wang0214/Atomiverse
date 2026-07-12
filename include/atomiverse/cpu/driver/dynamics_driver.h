@@ -75,9 +75,14 @@ class DynamicsDriver : public CPUDriver<ATV::md::Phase> {
             // globally-reduced scalars before run() returns.
             this->backend_->context().md.is_last_step = (s == n_steps - 1);
             step_once(step_counter_++);
-            if (outer_status().stop_requested)
+            // Dynamics used to *ignore* convergence, deliberately — a shield against any
+            // component being able to write `converged` onto the one shared status. That
+            // hole is closed: components publish metrics and may request a stop, but only
+            // a handler decides. So MD now honours whatever policy the user attached, and
+            // by default has none — the budget is the termination. This is what makes
+            // `sim.add_handler(StopOnNaN{})` possible at all.
+            if (poll_handlers_(s) != Verdict::Continue)
                 break;
-            // Dynamics deliberately ignores outer_status().converged.
         }
         this->backend_->context().md.is_last_step = false;
         // Drain async-analysis workers so every snapshot from this

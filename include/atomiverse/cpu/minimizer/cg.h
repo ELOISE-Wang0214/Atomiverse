@@ -84,7 +84,6 @@ class CG : public cpu::ComponentBase {
     void build(const cpu::BuildContext& ctx) override;
     void launch(const cpu::LaunchContext& ctx) override;
 
-    bool converged() const { return converged_; }
     double max_force() const { return max_force_; }
     const std::vector<OptRecord>& trace() const { return trace_; }
 
@@ -111,7 +110,6 @@ class CG : public cpu::ComponentBase {
     std::vector<double> d_prev_; ///< Previous CG search direction.
     bool has_prev_ = false;
     bool x_prev_valid_ = false; ///< False after migration reshuffles rows.
-    bool converged_ = false;
     double max_force_ = 0;
     double energy_prev_ = 0;
     int step_ = 0;

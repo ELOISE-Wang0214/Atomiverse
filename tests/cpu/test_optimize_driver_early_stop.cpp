@@ -9,6 +9,7 @@
 
 #include <gtest/gtest.h>
 
+#include "atomiverse/cpu/driver/loop_handler.h"
 #include "atomiverse/cpu/driver/optimize_driver.h"
 #include "atomiverse/facade/stage.h"
 
@@ -33,9 +34,17 @@ struct ConvergeAtStep : ATV::cpu::ComponentBase {
     }
     void launch(const ATV::cpu::LaunchContext& ctx) override {
         ++launch_count;
-        if (ctx.step >= converge_at_step) {
-            ctx.runtime.outer_status.converged = true;
-            ctx.runtime.outer_status.reason = "stub-converged";
+        // A component no longer declares convergence — it publishes what it measured.
+        // Here: pretend the force collapses to zero once the target step is reached, and
+        // let a ForceConverged handler draw the conclusion. That separation IS the fix.
+        if (ATV::LoopMetrics* m = ctx.runtime.loop.metrics) {
+            const bool done = ctx.step >= converge_at_step;
+            m->max_force = done ? 0.0 : 1.0;
+            m->rms_force = done ? 0.0 : 1.0;
+            m->max_displacement = 0.0;
+            m->rms_displacement = 0.0;
+            m->energy_change = 0.0;
+            m->has_displacement = true;
         }
     }
 };
@@ -52,6 +61,10 @@ TEST(OptimizeEarlyStop, BreaksAtConvergeStep) {
     opt.on(minimizer::Phase::search_direction).add(optimizer);
     opt.on(minimizer::Phase::force).add(energy);
     opt.on(minimizer::Phase::convergence_check).add(converge);
+    // A BARE OptimizeDriver has no termination policy — that is the point of the
+    // refactor. The `Minimize` preset injects ForceConverged{} for you; here we are
+    // below the preset, so we say what convergence means ourselves.
+    opt.add_handler(cpu::ForceConverged{});
     opt.build();
 
     auto frame = make_trivial_frame();
@@ -74,6 +87,10 @@ TEST(OptimizeEarlyStop, RunsToBudgetWhenNeverConverged) {
     opt.on(minimizer::Phase::search_direction).add(optimizer);
     opt.on(minimizer::Phase::force).add(energy);
     opt.on(minimizer::Phase::convergence_check).add(never);
+    // A BARE OptimizeDriver has no termination policy — that is the point of the
+    // refactor. The `Minimize` preset injects ForceConverged{} for you; here we are
+    // below the preset, so we say what convergence means ourselves.
+    opt.add_handler(cpu::ForceConverged{});
     opt.build();
 
     auto frame = make_trivial_frame();
