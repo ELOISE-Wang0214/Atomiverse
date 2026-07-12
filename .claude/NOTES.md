@@ -610,3 +610,146 @@ inline while `Minimize` was the only caller.
   LAMMPS-style one-partition-per-replica layout would **deadlock** today —
   `minimizer/global_reduce.h` reduces over the spatial `cart_comm` and no replica
   communicator exists anywhere in the tree.
+
+---
+
+## Driver-handler verdict — the Driver category is deleted, 2026-07-12
+
+Three probes walked into the same wall. The wall was called **category**.
+
+- **probe 1** (many-body potentials) — fine; no driver pressure.
+- **probe 2** (RATTLE constraints) — `LBFGS` wrote `ctx.outer_status.converged`
+  **unconditionally**. A convergence criterion (a *policy*) was buried inside an
+  optimizer (an *algorithm*).
+- **probe 3** (CI-NEB) — so the first image to converge would have stopped the whole
+  band. To dodge it, `ReplicaSet` grew a second, private per-replica convergence table:
+  a workaround for a status it could not trust.
+- **probe 3, again** — expressing "N coupled replicas" needed a *second axis* on a
+  one-dimensional taxonomy. Read one-dimensionally, REMD and PIMD would each have
+  demanded a category of their own and each re-implemented ~90 % of what NEB needed.
+
+**One disease.** Termination semantics was welded into a class hierarchy, so it could not
+be reused, could not be composed, and grew a new class per method.
+
+### What a Driver actually is
+
+Strip it to the bone and there are three things:
+
+1. **Stages** — a typed phase sequence (an enum); the Plan binds nodes to it.
+2. **Iteration** — walk the stages, repeatedly.
+3. **Termination** — when to stop.
+
+Only (3) was in the class hierarchy, and (3) is the *only* thing the six category classes
+disagreed about. Take it out and hand it to a policy object and there is nothing left for
+a category to be. Eight classes deleted (`EvaluateDriver`, `DynamicsDriver`,
+`OptimizeDriver`, `ResponseDriver`, `SamplingDriver` on CPU; the three CUDA mirrors),
+four inheritance levels collapsed to two.
+
+### The replacement triple
+
+| | what it is | how many |
+|---|---|---|
+| **Runtime** (`cpu::Backend`) | frame binding, node storage, timing, MPI, DD | **one per run**, shared by the whole driver tree |
+| **Driver** (`cpu::CPUDriver<P>`) | **one loop node**: stages + plan + handlers | any number, **nestable** |
+| **Handler** (`cpu::LoopHandler`) | asked once per iteration | any number, composable, **user-definable** |
+
+Two structural decisions carry the whole design:
+
+- **A Driver does not own a Runtime — it is handed to one to execute** (`ctx.exec.runtime`,
+  `run_nested`). Nesting therefore does not double the Backend, rebuild the domain
+  decomposition, re-bind the frame, or split the communicator.
+- **A Driver is itself an executable node** (build/launch/destroy — a component's
+  lifecycle), so a Plan slot holds a component *or* a sub-driver (`cpu::SubDriver`). "Can
+  a driver call a driver?" stops being a question: a Driver is a node in a node tree.
+
+A second policy slot falls out, orthogonal to termination: **`OutcomePolicy`** —
+*does this iteration count?* (`Commit`/`Rollback`). MC's accept/reject was never a
+termination; rejecting a trial move discards one iteration's work and keeps going.
+`Metropolis` is one implementation, and `SamplingDriver` — a class whose entire
+contribution was that hardcoded `if` — had nothing left to be.
+
+### Type erasure belongs at the NODE boundary, never at the stage boundary
+
+This is the load-bearing rule and it is worth stating on its own.
+
+The six Phase enums all start at 0, so an `int` phase cannot be told apart across
+workflows: `stage == 1` is simultaneously `md::pre_force`, `minimizer::line_search` and
+`evaluate::evaluate`. `Backend::run_phase(int)` took a raw int, and both of its callers
+reached it by writing `run_phase(static_cast<int>(some::Phase::force), s)`. There was
+nothing to catch a value from the wrong workflow.
+
+So stages stay **typed enums all the way down**. `ATV::slot_of` is the one conversion in
+the codebase and `test_stage_typing_scrub` fails the build on any other. The typed entry
+points are `slot_of` / `slot_count<P>()` / `ctx.at(phase)` / `run_stage(phase, step)` /
+`make_binding(phase, order)`.
+
+Erasure happens exactly twice, and in both places it is the *point*, not a leak:
+
+- at the **policy** boundary — `LoopHandler` is deliberately **not** a template. It sees a
+  `LoopState` and *never a phase*, which is precisely what lets ONE handler serve MD,
+  Minimize, MC and Path alike. A handler that knew `md::Phase` could only ever serve MD.
+- at the **node** boundary — a sub-driver enters its parent's Plan as a `ComponentBase*`.
+  The child keeps its own Phase enum; parent and child never have to agree about stages.
+
+`DefaultBinding` still carries `{PhaseKind, int phase, int order}`. That pair IS the
+erasure: `ComponentBase` is not a template, so `default_bindings()` must return one
+concrete type for every workflow. `PhaseKind` travelling beside the int is what makes the
+int safe, `make_binding` is the only way to build the pair, and no caller ever types it.
+
+### The bug that shipped twice is now unwritable
+
+Each loop node **owns** its `IterationStatus` + `LoopMetrics`; the Context only *borrows*
+the active loop's (`ctx.loop`, a `LoopServices` slice). `run_nested` re-points them at the
+child for the duration of the inner loop and restores the parent's on exit.
+
+A pointer that points at the current loop cannot reach the loop above it. `LBFGS` and `CG`
+no longer decide anything: they **publish metrics** (`max_force`, `rms_force`,
+displacement, ΔE), and a **handler judges** them. `LBFGS::converged()` is deleted —
+`Driver::converged()` replaces it, because the *loop* knows and the algorithm does not.
+
+`tests/cpu/driver/test_sub_driver.cpp` pins it, and it **bites**: with the `ctx.loop`
+re-point removed it fails (the child's zero-force metrics land on the parent's, the
+parent's `ForceConverged` fires, and the outer loop stops after one iteration having moved
+nothing). Verified by deliberately sabotaging the fix and watching the test go red.
+
+The CUDA port surfaced the same class of landmine live: `SteepestDescent` published
+**nothing**, so once `Minimize` attached a default `ForceConverged`, an all-zero
+`LoopMetrics` satisfies every criterion — SD would have declared an untouched system
+converged at iteration 0. Fixed by making SD *measure*, not by weakening the handler.
+**A handler that lies in order to pass is worse than no handler.**
+
+### The replica axis was never an axis
+
+Probe 3's "two-dimensional taxonomy" folds away. **Replica count is not an axis of the
+category — it is a layer of nested loop.** REMD and PIMD therefore need no new category
+at all: they are "a replica loop + a budget handler + a different `couple` component".
+
+### What this does NOT solve — and makes sharper
+
+**Components cannot be cloned.** Running one inner Driver body over N replicas needs N
+independent component states (N L-BFGS curvature histories), and there is no `clone()` on
+`ComponentBase`. Nesting makes this **sharper**, not softer: today a `SubDriver` holds ONE
+inner driver with ONE component set. Three routes remain unvalidated:
+
+  (i) one sub-driver instance per replica — needs `clone()`;
+  (ii) component state keyed by loop instance — dirty;
+  (iii) band-level components (what NEB does today) — works, but does not use nesting.
+
+This spec deliberately does not decide it. It only promises not to have made it worse.
+
+### Honest deviations from the spec's own criteria
+
+- **`cpu::PathDriver` keeps its name.** ac-007 listed it for deletion and called the
+  replacement `NEB`; but `regressions/path/neb_muller_brown` constructs `cpu::PathDriver`
+  directly, and ac-008 forbids editing a regression. ac-008 is the stronger signal (the
+  spec says so itself). PathDriver was already *both* base and concrete driver ("used
+  directly"), so it simply **became** the preset. Renaming it would have meant editing the
+  acceptance gate in order to pass the acceptance gate.
+- **No `StepBudget` / `TrialBudget` / `FixedBudget` / `SinglePass` handlers.** The spec's
+  table proposed them. The budget is the `run(frame, n)` argument — the loop bound — and a
+  `TrialBudget{n}` handler whose `n` must agree with `run(frame, n)` is a second source of
+  truth for one number. Handlers exist for policies the loop bound *cannot* express
+  (`ForceConverged`, `AllReplicasConverged`, `StopOnNaN`, and whatever the user writes).
+- **Nested loops are not timed.** `Backend::op_handle_` is dense over the *bound* Plan's
+  slots; a nested Plan's ops have no entry. `step_plan` takes the untimed path
+  deliberately — a per-plan handle table is a follow-up, not a silent wrong answer.

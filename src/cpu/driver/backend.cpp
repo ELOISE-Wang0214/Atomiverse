@@ -122,6 +122,10 @@ void Backend::init() {
             timing_.set_enabled(true);
     }
     context_.timer = &timing_;
+    // Publish the Runtime. A Driver does not own a Backend — it is handed to one to
+    // execute — so a node reached through a LaunchContext asks the Runtime here to run
+    // its own Plan. This is what lets a sub-driver nest without doubling the Backend.
+    context_.exec.runtime = this;
 
     if (!dd_)
         dd_ = std::make_unique<md::mpi::DomainDecomposition>();
@@ -287,6 +291,51 @@ void Backend::step(int step_idx) {
     }
 }
 
+// ── Nested plans ─────────────────────────────────────────────────────────────
+//
+// A sub-driver runs its own Plan on ITS PARENT'S Backend — this one. No second Backend,
+// no second Context, no rebuilt domain decomposition, no re-bound frame. That is what
+// makes a Driver cheap enough to be a node in another Driver's Plan.
+//
+// No timing: `op_handle_` is dense over the BOUND plan's slots, and a nested Plan's ops
+// have no entry in it. Timing a nested loop needs a per-plan handle table, which is a
+// follow-up, not a silent wrong answer — so these take the untimed path deliberately.
+
+void Backend::build_plan(const Plan<cpu::ComponentBase>& plan) {
+    BuildContext ctx{context_, *frame_};
+    for (const auto& slot : plan.slots) {
+        for (const auto& op : slot.ops) {
+            ATV_DEBUG("building nested component '{}'", op.component->name());
+            op.component->build(ctx);
+        }
+    }
+}
+
+void Backend::step_plan(const Plan<cpu::ComponentBase>& plan, int step_idx) {
+    for (const auto& slot : plan.slots) {
+        if (slot.ops.empty())
+            continue;
+        for (const auto& op : slot.ops) {
+            if (op.frequency > 0 && step_idx % op.frequency != 0)
+                continue;
+            LaunchContext ctx{context_, *frame_, slot.phase, step_idx};
+            op.component->launch(ctx);
+        }
+    }
+}
+
+void Backend::destroy_plan(const Plan<cpu::ComponentBase>& plan) {
+    DestroyContext ctx{context_, *frame_};
+    for (int s = static_cast<int>(plan.slots.size()) - 1; s >= 0; --s) {
+        const auto& slot = plan.slots[s];
+        for (int o = static_cast<int>(slot.ops.size()) - 1; o >= 0; --o) {
+            ATV_DEBUG("destroying nested component '{}'",
+                      slot.ops[o].component->name());
+            slot.ops[o].component->destroy(ctx);
+        }
+    }
+}
+
 void Backend::run_slot_(int slot_index, int step_idx) {
     // Replay every binding of one phase on the current frame — used for
     // line-search trial evaluations. Re-entrant: this runs inside an op's
@@ -373,6 +422,7 @@ void Backend::shutdown() {
         executor_.reset();
     }
     context_.analysis.executor = nullptr;
+    context_.exec.runtime = nullptr; // the Runtime is gone; no node may reach it
 
 #ifdef ATV_HAS_MPI
     if (dd_) {

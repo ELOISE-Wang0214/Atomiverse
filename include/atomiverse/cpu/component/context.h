@@ -33,6 +33,7 @@ namespace cpu {
 
 class AnalysisExecutor;
 class ReplicaSet;
+class Backend; ///< The Runtime; published on `Context::exec`. @see ExecServices
 
 namespace md {
 struct PairList;
@@ -175,6 +176,22 @@ struct LoopServices {
     LoopMetrics* metrics = nullptr;
 };
 
+/// @brief The Runtime executing this node tree (publisher: `Backend::init()`).
+///
+/// **A Driver does not own a Runtime — it is handed to one to execute.** That is what
+/// makes nesting cheap: a sub-driver runs its own Plan on its PARENT's Backend, so the
+/// Backend does not double, the domain decomposition is not rebuilt, the frame is not
+/// re-bound, and MPI does not split. One Runtime, one Context, one DD — however deep the
+/// loop tree goes.
+///
+/// Non-owning, and deliberately a back-pointer: the Backend owns the Context, and
+/// publishes itself here in `init()` so a node reached through a `LaunchContext` can ask
+/// the Runtime to execute a Plan. @see cpu::SubDriver
+struct ExecServices {
+    /// @brief The Backend running this node tree. Null outside a run.
+    Backend* runtime = nullptr;
+};
+
 /// @brief Async-analysis services (publisher: `AnalysisExecutor::install`).
 struct AnalysisServices {
     /// @brief Non-owning handle to the per-rank analysis executor.
@@ -211,6 +228,7 @@ struct Context {
     /// It does not declare convergence: that is a `LoopHandler`'s job.
     LoopServices loop;
 
+    ExecServices exec;         ///< The Runtime executing this node tree.
     DynamicsServices md;       ///< Classical force-pipeline slice.
     SamplingServices mc;       ///< Metropolis-sampling slice.
     OptimizeServices opt;      ///< Optimizer line-search slice.
@@ -226,6 +244,7 @@ static_assert(std::is_trivially_copyable_v<DynamicsServices>);
 static_assert(std::is_trivially_copyable_v<SamplingServices>);
 static_assert(std::is_trivially_copyable_v<PathServices>);
 static_assert(std::is_trivially_copyable_v<LoopServices>);
+static_assert(std::is_trivially_copyable_v<ExecServices>);
 static_assert(std::is_trivially_copyable_v<AnalysisServices>);
 static_assert(!std::is_polymorphic_v<Context>);
 

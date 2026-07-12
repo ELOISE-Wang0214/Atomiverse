@@ -440,8 +440,23 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     /// @return The reduced verdict; also folds `stop_requested` (which a *component* may
     ///         set — components request stops, they never declare convergence).
     Verdict poll_handlers_(int iteration) {
-        const cpu::LoopState st{iteration, this->backend_->frame(),
-                                this->backend_->context(), metrics_};
+        return poll_handlers_(iteration, this->backend_->frame(),
+                              this->backend_->context());
+    }
+
+    /// @brief Poll on a BORROWED runtime — the nested form.
+    ///
+    /// A sub-driver has no `backend_` of its own (it runs on its parent's Runtime), so
+    /// the frame and Context are passed in rather than reached through a Backend this
+    /// node does not have. @see run_nested
+    ///
+    /// @param iteration Index of the iteration just completed.
+    /// @param frame The system state as it now stands.
+    /// @param ctx The Context of the Runtime executing this loop.
+    /// @return The reduced verdict.
+    Verdict poll_handlers_(int iteration, const cpu::Frame& frame,
+                           const cpu::Context& ctx) {
+        const cpu::LoopState st{iteration, frame, ctx, metrics_};
         Verdict v = status_.stop_requested ? Verdict::Stop : Verdict::Continue;
         for (auto& h : handlers_) {
             const Verdict hv = h->after_iteration(st);
@@ -450,7 +465,7 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
             }
             v = worse_of(v, hv);
         }
-        v = reduce_verdict_(v);
+        v = reduce_verdict_(v, ctx);
         if (v == Verdict::Converged) status_.converged = true;
         if (v == Verdict::Stop) status_.stop_requested = true;
         return v;
@@ -462,6 +477,80 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
         throw std::runtime_error(std::string("driver build: missing required ")
                                  + what);
     }
+
+  public:
+    // ── A Driver is an executable node ───────────────────────────────────────
+    //
+    // Same lifecycle as a component: build → launch × N → destroy. So a Plan slot holds
+    // a component OR a sub-driver, and "can a driver call a driver?" stops being a
+    // question — a Driver is a node in a node tree.
+    //
+    // Type erasure happens at the NODE boundary, never at the stage boundary: the child
+    // keeps its own Phase ENUM, distinct from its parent's, and the two never have to
+    // agree about anything. @see cpu::SubDriver, which is the adapter that puts one in a
+    // slot.
+
+    /// @brief Compile this loop's Plan without running it. The nested `build()`.
+    ///
+    /// A sub-driver is built once, when its PARENT is built, and it allocates nothing
+    /// per outer iteration. Identical to `build()` — it *is* `build()` — and named for
+    /// the call site so a reader of `SubDriver::build` can see that the child's Plan is
+    /// compiled exactly once.
+    void compile() { this->build(); }
+
+    /// @brief Run this loop on a BORROWED Runtime — the nested entry point.
+    ///
+    /// The child does not own a Backend. It executes its own Plan on its parent's, so
+    /// there is no second Backend, no second Context, no rebuilt domain decomposition and
+    /// no re-bound frame — one Runtime, however deep the tree.
+    ///
+    /// ## The structural fix, in three lines
+    ///
+    /// It saves the parent's `ctx.loop`, points the Context at ITS OWN status + metrics,
+    /// and restores the parent's on exit. So while the child runs, a component that
+    /// writes convergence writes the CHILD's — and when the child converges, the verdict
+    /// lands on the child's `IterationStatus`, which the parent's loop never reads.
+    ///
+    /// **An inner loop cannot stop its enclosing loop.** Not a rule to remember: there is
+    /// no pointer from here to there. That bug shipped twice (probe 2: LBFGS wrote
+    /// `converged` unconditionally; probe 3: so the first converged NEB image would have
+    /// stopped the whole band) and this is what makes it unwritable.
+    ///
+    /// @param ctx The Runtime's Context, borrowed for the duration of this loop.
+    /// @param frame The system state, borrowed.
+    /// @param budget Iteration budget for this inner loop.
+    /// @return Iterations actually executed (≤ `budget`).
+    /// @throws std::runtime_error if no Runtime is published (the driver was not nested
+    ///         under a running parent).
+    int run_nested(cpu::Context& ctx, cpu::Frame& frame, int budget) {
+        cpu::Backend* runtime = ctx.exec.runtime;
+        if (!runtime)
+            throw std::runtime_error(
+                "Driver::run_nested: no Runtime on the Context. A sub-driver runs on "
+                "its parent's Backend; this one was not nested under a running parent.");
+
+        // Point the Context at THIS loop's status + metrics, and remember the parent's.
+        const LoopServices parent_loop = ctx.loop;
+        ctx.loop.status = &status_;
+        ctx.loop.metrics = &metrics_;
+        status_.reset();
+        metrics_ = LoopMetrics{};
+
+        int iters = 0;
+        for (int s = 0; s < budget; ++s) {
+            status_.reset();
+            runtime->step_plan(this->plan_, s);
+            ++iters;
+            if (poll_handlers_(s, frame, ctx) != Verdict::Continue)
+                break;
+        }
+
+        // Hand the Context back to the parent. The child's verdict stays on the child.
+        ctx.loop = parent_loop;
+        return iters;
+    }
+
+  protected:
 
   public:
     // ─── Categorical setter API ─────────────────────────────────────
@@ -745,15 +834,16 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     /// reached" is a plain MPI_MAX. Every rank therefore leaves the loop on the same
     /// iteration — the alternative is a rank that keeps looping into a collective nobody
     /// else will ever enter.
-    Verdict reduce_verdict_(Verdict v) const {
+    Verdict reduce_verdict_(Verdict v, const cpu::Context& ctx) const {
 #ifdef ATV_HAS_MPI
-        const auto* dd = this->backend_->context().md.dd;
-        if (this->backend_->context().mpi_size > 1 && dd
-            && dd->cart_comm != MPI_COMM_NULL) {
+        const auto* dd = ctx.md.dd;
+        if (ctx.mpi_size > 1 && dd && dd->cart_comm != MPI_COMM_NULL) {
             int sev = static_cast<int>(v);
             MPI_Allreduce(MPI_IN_PLACE, &sev, 1, MPI_INT, MPI_MAX, dd->cart_comm);
             return static_cast<Verdict>(sev);
         }
+#else
+        (void)ctx;
 #endif
         return v;
     }

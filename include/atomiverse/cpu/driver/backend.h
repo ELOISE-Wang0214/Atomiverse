@@ -86,6 +86,31 @@ class Backend {
     /// @param step_idx Zero-based step index.
     void step(int step_idx);
 
+    // ── Nested plans: the Runtime executes a node tree, not one Plan ──────────
+    //
+    // A Driver is itself an executable node, so a Plan slot may hold a sub-driver. The
+    // sub-driver has its own Plan (over its own Phase enum — type erasure happens at the
+    // NODE boundary, never at the stage boundary), and it runs that Plan on THIS
+    // Backend: one Context, one frame binding, one domain decomposition, one MPI
+    // communicator, however deep the loop tree goes.
+    //
+    // These take the Plan explicitly rather than using the bound `plan_`. They do not
+    // record timing: the `op_handle_` table is dense over the bound Plan's slots, and a
+    // nested Plan's ops are not in it. @see cpu::SubDriver
+
+    /// @brief Build the components of an arbitrary Plan (a sub-driver's).
+    /// @param plan Plan whose components to build, in Plan order.
+    void build_plan(const Plan<cpu::ComponentBase>& plan);
+
+    /// @brief Walk one iteration of an arbitrary Plan (a sub-driver's).
+    /// @param plan Plan to execute.
+    /// @param step_idx Iteration index forwarded to the LaunchContext.
+    void step_plan(const Plan<cpu::ComponentBase>& plan, int step_idx);
+
+    /// @brief Destroy the components of an arbitrary Plan, in reverse Plan order.
+    /// @param plan Plan whose components to destroy.
+    void destroy_plan(const Plan<cpu::ComponentBase>& plan);
+
     /// @brief Re-run only the bindings of a single phase on the current frame.
     ///
     /// Used for line-search trial evaluations: an Optimizer component, mid
