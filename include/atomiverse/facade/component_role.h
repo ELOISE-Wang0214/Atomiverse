@@ -6,7 +6,16 @@
 ///   1. **Role** (structural): what slot does this component fill in the
 ///      outer driver loop? (Integrator, Optimizer, Thermostat, Evaluator, ...)
 ///   2. **Capability** (data-producing): what fields can this component write
-///      to the frame? (Energy, Force, Stress, DensityMatrix, ...)
+///      to the frame? (Energy, Force, Stress, DensityMatrix, Position, Velocity, ...)
+///
+/// **Capability is the write-set, and it means it.** The bitset originally carried
+/// only the fields an *Evaluator* produces, so every component that moved atoms —
+/// VelocityVerlet, NoseHoover, Deform, ZeroLinearMomentum, the whole integrator and
+/// thermostat population — declared `Capability::None` while writing the two most
+/// fundamental fields in the frame. The doc said write-set; the code meant
+/// evaluator-output. `Position` and `Velocity` close that hole: a component now
+/// declares what it actually touches, which is the only basis on which a future
+/// engine could detect two components fighting over `v` in the same phase.
 ///
 /// Splitting them is what lets a single `SCFEvaluator` class be valid as
 /// energy-only (in `Evaluate`), energy+density (single-point), and
@@ -49,6 +58,14 @@ enum class ComponentRole : uint8_t {
     Optimizer,  ///< Optimization step (LBFGS, CG, FIRE, ...).
     Thermostat, ///< Temperature controller (NoseHoover, Langevin, ...).
     Barostat,   ///< Pressure controller (Berendsen, MTK, ...).
+    Constraint, ///< Holds a geometric constraint (SETTLE, RATTLE): projects positions
+                ///< and velocities back onto the constraint manifold after the
+                ///< integrator has moved them. It is NOT an Integrator — tagging it
+                ///< as one would let a Plan carrying a constraint but no actual
+                ///< integrator pass DynamicsDriver's "at least one Integrator"
+                ///< validation, i.e. run with nothing propagating the equations of
+                ///< motion. It also REDUCES the system's degrees of freedom, which
+                ///< the driver must publish before any thermostat caches Ndof.
     Mover, ///< Proposes a trial state change for a sampling driver (TranslateMove, ...).
     ConvergenceCheck, ///< Reports loop convergence to the outer driver via outer_status.
     Recorder, ///< Writes I/O (XYZ, Zarr, thermo).
@@ -71,6 +88,9 @@ enum class Capability : uint32_t {
     Orbitals = 1u << 6,
     Hessian =
         1u << 7, ///< Second-derivative matrix d2E/dRdR (Response category).
+    Position = 1u << 8, ///< Atom coordinates x/y/z (integrators, constraints, Deform).
+    Velocity =
+        1u << 9, ///< Atom velocities vx/vy/vz (integrators, thermostats, constraints).
 };
 
 constexpr Capability operator|(Capability a, Capability b) noexcept {

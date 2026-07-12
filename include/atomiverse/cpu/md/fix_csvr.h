@@ -51,6 +51,8 @@ class FixCSVR : public cpu::ComponentBase {
 
     std::string name() const override { return "fix_csvr"; }
     ComponentRole role() const override { return ComponentRole::Thermostat; }
+    /// @brief Write-set: stochastic velocity rescale.
+    Capability capabilities() const override { return Capability::Velocity; }
     /// @brief Applied once per step, after the velocity-Verlet step.
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::end_of_step, +100)};

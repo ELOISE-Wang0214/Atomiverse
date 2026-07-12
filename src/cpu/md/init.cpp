@@ -180,7 +180,9 @@ void InitVelocity::build(const cpu::BuildContext& ctx) {
         n_global = ng;
     }
 #endif
-    const long long ndof = 3 * n_global - 3;
+    // Ndof: single owner, constraint-aware. @see CPUDriver::publish_dof_
+    const long long ndof = ctx.runtime.md.n_dof_global;
+    (void)n_global;
     if (ndof > 0 && sum_mv2 > 0.0) {
         const double ke = 0.5 * kMvv2e * sum_mv2;
         const double t_measured =

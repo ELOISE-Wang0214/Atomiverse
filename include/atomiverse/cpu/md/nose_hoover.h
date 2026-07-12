@@ -84,6 +84,8 @@ class NoseHoover : public cpu::ComponentBase {
 
     std::string name() const override { return "nose_hoover"; }
     ComponentRole role() const override { return ComponentRole::Thermostat; }
+    /// @brief Write-set: rescales velocities by the thermostat factor.
+    Capability capabilities() const override { return Capability::Velocity; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::initial_integrate, +100),
                 ATV::make_binding(ATV::md::Phase::final_integrate, +100)};

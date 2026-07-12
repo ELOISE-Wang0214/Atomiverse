@@ -122,7 +122,9 @@ void NoseHooverNPT::build(const cpu::BuildContext& ctx) {
                       ctx.runtime.md.dd->cart_comm);
     }
 #endif
-    n_dof_ = 3 * N - 3;
+    // Ndof: single owner, constraint-aware. @see CPUDriver::publish_dof_
+    n_dof_ = ctx.runtime.md.n_dof_global;
+    (void)N;
     kT_ = kBoltzmann * T_target_;
 
     // Standard MTK masses (Tuckerman 2006 §III).

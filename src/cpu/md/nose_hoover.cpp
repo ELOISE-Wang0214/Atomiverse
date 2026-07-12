@@ -49,7 +49,10 @@ void NoseHoover::build(const cpu::BuildContext& ctx) {
                       ctx.runtime.md.dd->cart_comm);
     }
 #endif
-    n_dof_global_ = 3 * n_global - 3; // 3N - 3 (COM removal)
+    // Ndof is published by CPUDriver::publish_dof_ before any component builds,
+    // and already accounts for constraints (3N - 3 - n_constraints).
+    n_dof_global_ = ctx.runtime.md.n_dof_global;
+    (void)n_global;
     // Initial chain mass at the ramp anchor `T_start_`; `launch()`
     // retunes it each step to the live setpoint (LAMMPS recomputes
     // `eta_mass[0] = tdof·boltz·t_target/t_freq²` in nhc_temp_integrate).

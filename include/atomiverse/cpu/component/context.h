@@ -79,6 +79,20 @@ struct DynamicsServices {
     /// CUDA flat-pairs export.
     bool full_list_requested = false;
 
+    /// @brief Global degrees of freedom, `3N - 3 - n_constraints`.
+    ///
+    /// **The single owner.** Published by `CPUDriver::setup_pass()` after the frame
+    /// is bound and BEFORE any component builds, because thermostats cache it in
+    /// their own `build()`. Every consumer of Ndof reads it from here — Thermo,
+    /// InitVelocity, NoseHoover, NoseHooverNPT, FixCSVR — instead of each
+    /// recomputing `3N - 3` for itself, which is what they all did until constraints
+    /// arrived and made that formula wrong.
+    ///
+    /// Temperature is `T = 2 KE / (Ndof kB)`, so an Ndof that ignores constraints
+    /// does not merely mis-report T: it makes every thermostat drive the system to
+    /// the wrong setpoint. Rigid water would run ~33 % cold.
+    int n_dof_global = 0;
+
     /// @brief True only while the final step of the current `run(n_steps)`
     /// call is executing. Set by the Dynamics driver loop before the last
     /// `step_once`, cleared otherwise. Lets cadence-gated end-of-step

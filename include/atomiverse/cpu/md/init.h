@@ -50,6 +50,8 @@ class ZeroLinearMomentum : public cpu::ComponentBase {
     explicit ZeroLinearMomentum(int freq = 1) : freq_(freq) {}
 
     std::string name() const override { return "zero_linear_momentum"; }
+    /// @brief Write-set: subtracts the drift from every velocity.
+    Capability capabilities() const override { return Capability::Velocity; }
     std::vector<DefaultBinding> default_bindings() const override {
         // +25 = after KineticEnergy (@-100) / Reduce (@-50) /
         // NoseHooverNPT (@-40) so we only touch post-integration
@@ -124,6 +126,8 @@ class InitVelocity : public cpu::ComponentBase {
                  VelocityDist dist = VelocityDist::gaussian);
 
     std::string name() const override { return "init_velocity"; }
+    /// @brief Write-set: seeds the Maxwell distribution into v (at build).
+    Capability capabilities() const override { return Capability::Velocity; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::initial_integrate, -999)};
     }

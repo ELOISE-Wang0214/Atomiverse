@@ -59,7 +59,9 @@ void FixCSVR::build(const cpu::BuildContext& ctx) {
                       ctx.runtime.md.dd->cart_comm);
     }
 #endif
-    n_dof_global_ = 3 * n_global - 3; // 3N - 3 (COM removal)
+    // Ndof: single owner, constraint-aware. @see CPUDriver::publish_dof_
+    n_dof_global_ = ctx.runtime.md.n_dof_global;
+    (void)n_global;
 }
 
 double FixCSVR::compute_temp_target(std::int64_t step) const {

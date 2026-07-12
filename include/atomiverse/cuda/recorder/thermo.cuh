@@ -75,7 +75,8 @@ class Thermo : public AsyncBridge {
     }
 
     void on_data_ready(const LaunchContext& ctx, int slot) override {
-        cpu::thermo_print(ctx.step, *h_pe_[slot], *h_ke_[slot], n_atoms_,
+        // CUDA has no constraint components yet, so Ndof is still 3N - 3 here.
+        cpu::thermo_print(ctx.step, *h_pe_[slot], *h_ke_[slot], 3 * n_atoms_ - 3,
                           header_printed_, file_);
     }
 

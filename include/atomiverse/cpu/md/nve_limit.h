@@ -61,6 +61,8 @@ class NVELimit : public cpu::ComponentBase {
 
     std::string name() const override { return "nve_limit"; }
     ComponentRole role() const override { return ComponentRole::Integrator; }
+    /// @brief Write-set: velocity Verlet with a per-step displacement cap.
+    Capability capabilities() const override { return Capability::Position | Capability::Velocity; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::initial_integrate, 0),
                 ATV::make_binding(ATV::md::Phase::final_integrate, 0)};

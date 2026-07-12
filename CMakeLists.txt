@@ -165,6 +165,7 @@ if(NOT ATV_DOCS_ONLY)
         # CPU backend infrastructure
         src/cpu/frame/atom.cpp
         src/cpu/driver/backend.cpp
+        src/cpu/driver/dof.cpp
         src/cpu/frame/box.cpp
         src/cpu/component/zero.cpp
         src/cpu/frame/materialize.cpp

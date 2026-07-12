@@ -43,7 +43,7 @@ class Thermo : public cpu::ComponentBase {
 /// @param n_atoms        Number of atoms (used to compute degrees of freedom).
 /// @param header_printed Guard flag; set to true after the first call.
 /// @param file           Optional open output stream (may be a closed fstream).
-void thermo_print(int step, double pe, double ke, int n_atoms,
+void thermo_print(int step, double pe, double ke, int n_dof,
                   bool& header_printed, std::ofstream& file);
 
 } // namespace cpu

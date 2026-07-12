@@ -82,6 +82,8 @@ class Deform : public cpu::ComponentBase {
 
     std::string name() const override { return "deform"; }
     ComponentRole role() const override { return ComponentRole::Integrator; }
+    /// @brief Write-set: affine remap of coordinates as the box strains.
+    Capability capabilities() const override { return Capability::Position; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::initial_integrate, 200)};
     }

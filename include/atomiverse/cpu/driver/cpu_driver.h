@@ -53,10 +53,12 @@
 #include "atomiverse/core/device.h"
 #include "atomiverse/core/real.h"
 #include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/constraint_protocol.h"
 #include "atomiverse/cpu/component/halo_participant.h"
 #include "atomiverse/cpu/component/neighbor_protocol.h"
 #include "atomiverse/cpu/component/pair_evaluator.h"
 #include "atomiverse/cpu/driver/backend_traits.h"
+#include "atomiverse/cpu/driver/dof.h"
 #include "atomiverse/cpu/recorder/thermo.h"
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/driver.h"
@@ -235,6 +237,7 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
         this->backend_->init();
         this->backend_->load(this->plan_);
         this->backend_->set_frame(frame);
+        publish_dof_(frame);
         this->backend_->build_components();
         mutable_outer_status().reset();
     }
@@ -419,6 +422,26 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     /// in auto-injection whatever their `name()`. Same pattern as
     /// `cuda::md::MD::install_infra_`. Non-const because the halo probe is
     /// non-const (its other caller, the bind pass, mutates endpoints).
+    /// @brief Compute and publish the global DOF count — the single owner.
+    ///
+    /// `Ndof = 3N - 3 - n_constraints`. Runs between `set_frame()` and
+    /// `build_components()`, and that ordering is load-bearing: thermostats cache
+    /// Ndof in their own `build()`, so a count published any later would be ignored
+    /// by exactly the components that most need it.
+    ///
+    /// Until constraints arrived, five separate sites each hardcoded `3N - 3`
+    /// (Thermo, InitVelocity, NoseHoover, NoseHooverNPT, FixCSVR). That formula is
+    /// simply wrong once anything is constrained, and the failure is silent: rigid
+    /// water reports T ~33 % low and every thermostat drives to the wrong setpoint.
+    void publish_dof_(cpu::Frame& frame) {
+        int n_con = 0;
+        for_each_pending([&](const cpu::ComponentBase& c) {
+            if (const cpu::ConstraintProvider* cp = c.as_constraint())
+                n_con += cp->n_constraints(frame);
+        });
+        cpu::publish_global_dof(this->backend_->context(), frame, n_con);
+    }
+
     InfraScan scan_pending_infra_() {
         InfraScan s;
         for_each_pending_mut([&](cpu::ComponentBase& c) {

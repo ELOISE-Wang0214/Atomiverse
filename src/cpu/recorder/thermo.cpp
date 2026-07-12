@@ -20,7 +20,10 @@ void Thermo::launch(const cpu::LaunchContext& ctx) {
 
     auto& f = ctx.frame;
     int n = f.atoms.size();
-    int n_dof = 3 * n - 3;
+    // Ndof has ONE owner (CPUDriver::publish_dof_): 3N - 3 - n_constraints. This
+    // used to be hardcoded as 3N - 3 here, which is simply wrong the moment
+    // anything is constrained — a rigid-water box would report T ~33% low.
+    int n_dof = ctx.runtime.md.n_dof_global;
 
     double temperature = 0;
     if (n_dof > 0)
@@ -51,10 +54,11 @@ void Thermo::launch(const cpu::LaunchContext& ctx) {
 
 // ── thermo_print free function ─────────────────────────────────────
 
-void thermo_print(int step, double pe, double ke, int n_atoms,
+void thermo_print(int step, double pe, double ke, int n_dof,
                   bool& header_printed, std::ofstream& file) {
-    // Temperature: T = 2*KE / (ndof * kB),  ndof = 3N - 3
-    const int ndof = 3 * n_atoms - 3;
+    // Temperature: T = 2*KE / (Ndof * kB). Ndof is supplied by the caller — it is
+    // owned by CPUDriver::publish_dof_ and accounts for constraints.
+    const int ndof = n_dof;
     const double temp =
         (ndof > 0) ? 2.0 * ke / (static_cast<double>(ndof) * kBoltzmann) : 0.0;
     const double total = pe + ke;

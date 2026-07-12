@@ -41,6 +41,8 @@ class VelocityVerlet : public cpu::ComponentBase {
 
     std::string name() const override { return "velocity_verlet"; }
     ComponentRole role() const override { return ComponentRole::Integrator; }
+    /// @brief Write-set: half-kick (v) + drift (x).
+    Capability capabilities() const override { return Capability::Position | Capability::Velocity; }
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::initial_integrate, 0),
                 ATV::make_binding(ATV::md::Phase::final_integrate, 0)};

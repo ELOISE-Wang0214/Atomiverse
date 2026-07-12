@@ -21,6 +21,7 @@ namespace ATV {
 namespace cpu {
 
 class HaloParticipant;  // opt-in halo protocol (halo_participant.h)
+class ConstraintProvider; // opt-in DOF protocol (constraint_protocol.h)
 class NeighborConsumer; // opt-in neighbor protocols (neighbor_protocol.h)
 class NeighborProvider;
 
@@ -113,6 +114,11 @@ class ComponentBase {
     virtual const NeighborProvider* as_neighbor_provider() const {
         return nullptr;
     }
+
+    /// @brief Opt-in `ConstraintProvider` protocol (constraint_protocol.h) — a
+    /// component that removes degrees of freedom returns `this`. The driver probes
+    /// this to compute the global DOF count before any thermostat builds.
+    virtual const ConstraintProvider* as_constraint() const { return nullptr; }
 
     /// @brief Typed accessor for the opt-in halo protocol.
     ///
