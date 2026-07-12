@@ -87,7 +87,7 @@ int main() {
     cpu::md::MD sim;
     // TIP3P: the Lennard-Jones site is on OXYGEN only. Hydrogen has none, so the
     // (H,H) and (O,H) pairs mix to eps = 0 and do not interact at all.
-    sim.set_pair(cpu::PairLJCut{0.0, 1.0, cutoff}
+    sim.set_pair(cpu::PairLJCut{cutoff}
                      .set_type_coeffs(8, 8, 0.1521 * 0.04336, 3.1507) // O-O [eV, A]
                      .set_special_bonds(0.0, 0.0, 0.0));
     sim.set_neighbor(cpu::md::NeighborList<>{cutoff, skin});

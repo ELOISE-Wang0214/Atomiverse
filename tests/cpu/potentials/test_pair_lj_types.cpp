@@ -78,7 +78,7 @@ TEST(PairLJTypes, UnlikePairsMixByLorentzBerthelot) {
 
     // Only the like-pairs are given; the (0,1) entry must be mixed.
     auto make = [&]() {
-        return cpu::PairLJCut{0.0, 1.0, rc}
+        return cpu::PairLJCut{rc}
             .set_type_coeffs(0, 0, e1, s1)
             .set_type_coeffs(1, 1, e2, s2);
     };
@@ -100,7 +100,7 @@ TEST(PairLJTypes, UnlikePairsMixByLorentzBerthelot) {
 /// An explicit off-diagonal overrides the mixed value.
 TEST(PairLJTypes, ExplicitCrossTermOverridesMixing) {
     const double rc = 9.0, r = 4.2;
-    auto pair = cpu::PairLJCut{0.0, 1.0, rc}
+    auto pair = cpu::PairLJCut{rc}
                     .set_type_coeffs(0, 0, 0.1, 3.0)
                     .set_type_coeffs(1, 1, 0.4, 4.0)
                     .set_type_coeffs(0, 1, 0.9, 5.0); // nothing like the mix
@@ -117,10 +117,12 @@ TEST(PairLJTypes, ExplicitCrossTermOverridesMixing) {
 TEST(PairLJTypes, TypeWithoutAnLJSiteDoesNotInteract) {
     const double rc = 9.0;
     // Type 8 = O carries the LJ site; type 1 = H has none.
-    auto pair = cpu::PairLJCut{99.0, 99.0, rc} // deliberately absurd single values
-                    .set_type_coeffs(8, 8, 0.1521 * 0.04336, 3.1507);
+    // Per-type mode: there IS no system-wide sigma to leak into the hydrogens.
+    auto pair = cpu::PairLJCut{rc}.set_type_coeffs(8, 8, 0.1521 * 0.04336, 3.1507);
 
-    // H-H at a distance that would be a catastrophic overlap under sigma = 99.
+    // H-H at 0.96 A — an intramolecular distance. Under the old single-sigma design
+    // the hydrogens wore the oxygen's sigma = 3.15 A and this pair was a catastrophic
+    // overlap; that is what tore a liquid-density water box apart.
     cpu::Frame hh = dimer(1, 1, 0.96);
     EXPECT_NEAR(energy_of(hh, pair, rc), 0.0, 1e-14)
         << "hydrogens are interacting — they have no LJ site";
@@ -134,4 +136,16 @@ TEST(PairLJTypes, TypeWithoutAnLJSiteDoesNotInteract) {
     EXPECT_NEAR(energy_of(oo, pair, rc),
                 lj_ref(0.1521 * 0.04336, 3.1507, 3.5, rc), 1e-12);
     EXPECT_LT(energy_of(oo, pair, rc), 0.0) << "O-O should be bound at 3.5 A";
+}
+
+/// The cutoff-only constructor demands coefficients — it does not invent them.
+TEST(PairLJTypes, PerTypeModeThrowsIfNoCoefficientsWereSet) {
+    cpu::Frame f = dimer(0, 0, 4.0);
+    cpu::Evaluate eval;
+    eval.set_neighbor(cpu::md::NeighborList<>{8.0, 0.3, 1, 0, true});
+    eval.set_pair(cpu::PairLJCut{8.0}); // no set_type_coeffs call
+    eval.build();
+    // Component build() runs at setup_pass, i.e. inside run() — that is where the
+    // missing coefficients are caught.
+    EXPECT_THROW(eval.run(f), std::runtime_error);
 }

@@ -37,6 +37,24 @@ class PairLJCut : public Pair {
     /// @param cutoff  Cutoff distance [Å].
     PairLJCut(double epsilon, double sigma, double cutoff);
 
+    /// @brief Per-type mode: the coefficients come from `set_type_coeffs`.
+    ///
+    /// Use this constructor when the system has more than one element. It takes NO
+    /// epsilon/sigma, because there is no such thing as a system-wide one — supplying
+    /// dummy values that the type table then overrides would be a fallback value, and
+    /// this engine does not have those. `build()` throws if no coefficients were set.
+    ///
+    /// @code
+    ///   // TIP3P: the LJ site is on oxygen only.
+    ///   sim.set_pair(cpu::PairLJCut{cutoff}
+    ///                    .set_type_coeffs(8, 8, eps_OO, sigma_OO));
+    ///   // Hydrogen has no diagonal, so (H,H) and (O,H) mix to eps = 0 and never
+    ///   // interact — which is exactly right, and is checked, not assumed.
+    /// @endcode
+    ///
+    /// @param cutoff Interaction cutoff [Angstrom].
+    explicit PairLJCut(double cutoff);
+
     /// @brief Set the LJ coefficients for one type pair (LAMMPS `pair_coeff i j`).
     ///
     /// Without this, `PairLJCut` applies ONE epsilon/sigma to every atom in the system.
@@ -137,6 +155,7 @@ class PairLJCut : public Pair {
     /// Per-type coefficient tables, flattened `n_types_ x n_types_`. Empty = the
     /// single-epsilon fast path. Filled lazily by `set_type_coeffs`, then completed by
     /// Lorentz-Berthelot mixing at `build()`.
+    bool per_type_mode_ = false; ///< Constructed with the cutoff-only ctor.
     int n_types_ = 0;
     std::vector<double> eps_tab_;   ///< eps_ij [eV]
     std::vector<double> sigma_tab_; ///< sigma_ij [A]

@@ -41,6 +41,25 @@ PairLJCut::PairLJCut(double epsilon, double sigma, double cutoff)
     v_shift_ = double(4) * epsilon_ * (r6inv * r6inv - r6inv);
 }
 
+PairLJCut::PairLJCut(double cutoff)
+    : Pair(static_cast<Real>(cutoff)), epsilon_(0.0), sigma_(0.0) {
+    if (cutoff <= 0.0)
+        throw std::invalid_argument("PairLJCut: cutoff must be positive");
+    // Per-type mode. epsilon_/sigma_ are never read — finalize_type_table_ fills every
+    // coefficient from the table, and build() throws if the table is empty. The point
+    // of this constructor is that there is nothing sensible to put in them.
+    //
+    // But the cutoff-derived caches ARE read, by the hot loop, and a constructor's job
+    // is to establish EVERY invariant of the object — not the ones it happens to care
+    // about. Forgetting cutoff_sq_ here left it at zero, so `r2 >= rc_sq` was true for
+    // every pair and the kernel silently computed nothing at all: every energy came
+    // back as 0.0.
+    sigma6_ = 0.0;
+    v_shift_ = 0.0;
+    cutoff_sq_ = cutoff * cutoff;
+    per_type_mode_ = true;
+}
+
 PairLJCut& PairLJCut::set_special_bonds(double s12, double s13, double s14) & {
     s12_ = s12;
     s13_ = s13;
@@ -66,6 +85,11 @@ PairLJCut PairLJCut::set_compute_stress(bool on) && {
 }
 
 void PairLJCut::build(const BuildContext& ctx) {
+    if (per_type_mode_ && n_types_ == 0)
+        throw std::runtime_error(
+            "PairLJCut: constructed in per-type mode but no coefficients were set. "
+            "Call set_type_coeffs(i, j, epsilon, sigma) at least once — there is no "
+            "system-wide epsilon/sigma to fall back on, deliberately.");
     finalize_type_table_();
     n_threads_ = 1;
 #ifdef _OPENMP
