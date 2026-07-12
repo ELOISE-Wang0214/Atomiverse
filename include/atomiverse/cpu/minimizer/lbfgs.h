@@ -34,6 +34,7 @@
 
 #include <cstdint>
 #include <string>
+#include <memory>
 #include <vector>
 
 #include "atomiverse/core/device.h"
@@ -44,6 +45,7 @@
 #include "atomiverse/cpu/minimizer/line_search.h"
 #include "atomiverse/cpu/minimizer/minimize.h"
 #include "atomiverse/facade/stage.h"
+#include "atomiverse/cpu/minimizer/lbfgs_history.h"
 
 namespace ATV {
 namespace cpu {
@@ -145,26 +147,28 @@ class LBFGS : public cpu::ComponentBase {
     double rms_dtol_;
     double etol_;
 
-    // L-BFGS history (circular buffer)
-    std::vector<std::vector<double>> s_history_; // position differences
-    std::vector<std::vector<double>> y_history_; // gradient differences
-    std::vector<double> rho_history_;            // 1 / (y^T s)
-    int n_stored_ = 0;
-    int oldest_ = 0;
+    /// @brief Curvature history + the two-loop recursion.
+    ///
+    /// The algorithm itself, on a plain vector, knowing nothing about atoms. It used to
+    /// be inlined in `launch()` against `ctx.frame`; the band optimizer in `cpu/path/`
+    /// is its second caller, which is when extraction is due — not before.
+    std::unique_ptr<LbfgsHistory> hist_;
 
-    // Previous step state
-    std::vector<double> x_prev_;
-    std::vector<double> g_prev_;
-    std::vector<double> direction_; // search direction
-    bool has_prev_ = false;
-    bool x_prev_valid_ = false; ///< False after migration reshuffles rows.
+    std::vector<double> direction_; ///< Search direction (this component's own).
+    bool x_prev_valid_ = false;     ///< False after migration reshuffles rows.
 
     // Per-step workspaces, sized once in build() — no launch() allocation.
     std::vector<double> x_ws_;
     std::vector<double> g_ws_;
-    std::vector<double> q_ws_;
-    std::vector<double> r_ws_;
-    std::vector<double> alpha_ws_;
+
+    /// @brief The active LaunchContext, re-pointed every `launch()`.
+    ///
+    /// Exists solely so `reduce_()` can reach MPI on behalf of `hist_`, whose Reducer
+    /// must not know what a Context is. Never outlives the launch that set it.
+    const cpu::LaunchContext* ls_ctx_ = nullptr;
+
+    /// @brief The all-reduce handed to `LbfgsHistory` — MPI under DD, identity serial.
+    double reduce_(double v) const;
 
     /// @brief Last observed `dd->neighbor_generation`; a bump means atom
     /// migration reshuffled local rows → history must be discarded.

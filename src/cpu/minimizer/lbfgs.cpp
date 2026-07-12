@@ -9,6 +9,7 @@
 #include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/component/owned_range.h"
 #include "atomiverse/cpu/minimizer/global_reduce.h"
+#include "atomiverse/cpu/minimizer/lbfgs_history.h"
 
 #include <algorithm>
 #include <cmath>
@@ -38,6 +39,13 @@ LBFGS::LBFGS(int memory, double alpha0, double ftol, int max_ls,
       rms_ftol_(rms_ftol), max_dtol_(max_dtol), rms_dtol_(rms_dtol),
       etol_(etol) {}
 
+double LBFGS::reduce_(double v) const {
+    // `hist_` must not know MPI exists — that coupling is exactly what welded the
+    // two-loop recursion to the frame. So the all-reduce is bound here, where a
+    // LaunchContext is in scope, and handed to the history as a plain double->double.
+    return ls_ctx_ ? global_sum(*ls_ctx_, v) : v;
+}
+
 LBFGS& LBFGS::line_search(LineSearchMode mode, double c1, double c2,
                           double max_step, double min_alpha) {
     ls_mode_ = mode;
@@ -56,26 +64,17 @@ void LBFGS::build(const cpu::BuildContext& ctx) {
     const int n = ctx.frame.atoms.size();
     const int dim = n * 3;
 
-    s_history_.resize(memory_);
-    y_history_.resize(memory_);
-    rho_history_.assign(memory_, 0);
-    for (int i = 0; i < memory_; ++i) {
-        s_history_[i].assign(dim, 0);
-        y_history_[i].assign(dim, 0);
-    }
+    // The curvature history + two-loop recursion live in LbfgsHistory, which knows
+    // nothing about atoms — the band optimizer in cpu/path/ is its second caller.
+    // The Reducer is bound HERE, at the one place that has an MPI-aware LaunchContext:
+    // the recursion itself must not know MPI exists, which is what made it extractable.
+    hist_ = std::make_unique<LbfgsHistory>(
+        memory_, dim, [this](double v) { return reduce_(v); });
 
-    x_prev_.assign(dim, 0);
-    g_prev_.assign(dim, 0);
     direction_.assign(dim, 0);
     x_ws_.assign(dim, 0);
     g_ws_.assign(dim, 0);
-    q_ws_.assign(dim, 0);
-    r_ws_.assign(dim, 0);
-    alpha_ws_.assign(memory_, 0);
 
-    n_stored_ = 0;
-    oldest_ = 0;
-    has_prev_ = false;
     x_prev_valid_ = false;
     converged_ = false;
     energy_prev_ = 0;
@@ -99,23 +98,20 @@ void LBFGS::build(const cpu::BuildContext& ctx) {
 
 void LBFGS::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
+    // The history's Reducer closes over `this` and reads this pointer: the recursion
+    // needs an all-reduce but must not know what a LaunchContext is. Re-pointed every
+    // launch because the context is a per-call reference, never a stored one.
+    ls_ctx_ = &ctx;
     const int n = owned_count(ctx);
     const int dim = n * 3;
 
     // Capacity growth (driver-level rebuild_frame after a migration influx)
     // is the one legal re-allocation point.
     if (dim > static_cast<int>(x_ws_.size())) {
-        for (auto& h : s_history_)
-            h.resize(dim, 0);
-        for (auto& h : y_history_)
-            h.resize(dim, 0);
-        x_prev_.resize(dim, 0);
-        g_prev_.resize(dim, 0);
+        hist_->grow(dim);
         direction_.resize(dim, 0);
         x_ws_.resize(dim, 0);
         g_ws_.resize(dim, 0);
-        q_ws_.resize(dim, 0);
-        r_ws_.resize(dim, 0);
     }
 
     // Atom migration reshuffles local row indexing: curvature history and
@@ -128,9 +124,7 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
             (dd && ctx.runtime.mpi_size > 1) ? dd->neighbor_generation : 0;
         if (gen != last_generation_) {
             if (last_generation_ != ~std::uint64_t{0}) {
-                n_stored_ = 0;
-                oldest_ = 0;
-                has_prev_ = false;
+                hist_->reset();
                 x_prev_valid_ = false;
                 ATV_DEBUG("[lbfgs] migration detected (gen {}) — history "
                           "reset, restarting as steepest descent",
@@ -157,15 +151,16 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
         }
 
         const bool disp_valid = step_ > 0 && x_prev_valid_;
+        const auto& xp = hist_->x_prev();
         double local_max_disp = 0;
         double sum_d2 = 0;
         if (disp_valid) {
 #pragma omp parallel for schedule(static) reduction(+ : sum_d2)                \
     reduction(max : local_max_disp)
             for (int i = 0; i < n; ++i) {
-                const double dx = f.atoms.x(i) - x_prev_[i * 3 + 0];
-                const double dy = f.atoms.y(i) - x_prev_[i * 3 + 1];
-                const double dz = f.atoms.z(i) - x_prev_[i * 3 + 2];
+                const double dx = f.atoms.x(i) - xp[i * 3 + 0];
+                const double dy = f.atoms.y(i) - xp[i * 3 + 1];
+                const double dz = f.atoms.z(i) - xp[i * 3 + 2];
                 sum_d2 += dx * dx + dy * dy + dz * dz;
                 local_max_disp = std::max(
                     local_max_disp,
@@ -228,6 +223,7 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
     // phase (next) recomputes forces/energy at that geometry for the
     // convergence check, so we do not re-evaluate after committing alpha.
     if (phase == static_cast<int>(ATV::minimizer::Phase::line_search)) {
+        const auto& xp = hist_->x_prev();
         // Displacement cap: bound the trial step so a wild move cannot blow up
         // an expensive (SCF) evaluator. alpha is dimensionless on direction_.
         const double cap =
@@ -243,11 +239,11 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
 #pragma omp parallel for schedule(static)
             for (int i = 0; i < n; ++i) {
                 f.atoms.x(i) =
-                    x_prev_[i * 3 + 0] + alpha * direction_[i * 3 + 0];
+                    xp[i * 3 + 0] + alpha * direction_[i * 3 + 0];
                 f.atoms.y(i) =
-                    x_prev_[i * 3 + 1] + alpha * direction_[i * 3 + 1];
+                    xp[i * 3 + 1] + alpha * direction_[i * 3 + 1];
                 f.atoms.z(i) =
-                    x_prev_[i * 3 + 2] + alpha * direction_[i * 3 + 2];
+                    xp[i * 3 + 2] + alpha * direction_[i * 3 + 2];
             }
             return;
         }
@@ -264,11 +260,11 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
 #pragma omp parallel for schedule(static)
             for (int i = 0; i < n; ++i) {
                 f.atoms.x(i) =
-                    x_prev_[i * 3 + 0] + alpha * direction_[i * 3 + 0];
+                    xp[i * 3 + 0] + alpha * direction_[i * 3 + 0];
                 f.atoms.y(i) =
-                    x_prev_[i * 3 + 1] + alpha * direction_[i * 3 + 1];
+                    xp[i * 3 + 1] + alpha * direction_[i * 3 + 1];
                 f.atoms.z(i) =
-                    x_prev_[i * 3 + 2] + alpha * direction_[i * 3 + 2];
+                    xp[i * 3 + 2] + alpha * direction_[i * 3 + 2];
             }
             ctx.runtime.opt.reeval_forces(need_slope);
             LsSample s;
@@ -305,9 +301,9 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
         const double alpha = lr.alpha;
 #pragma omp parallel for schedule(static)
         for (int i = 0; i < n; ++i) {
-            f.atoms.x(i) = x_prev_[i * 3 + 0] + alpha * direction_[i * 3 + 0];
-            f.atoms.y(i) = x_prev_[i * 3 + 1] + alpha * direction_[i * 3 + 1];
-            f.atoms.z(i) = x_prev_[i * 3 + 2] + alpha * direction_[i * 3 + 2];
+            f.atoms.x(i) = xp[i * 3 + 0] + alpha * direction_[i * 3 + 0];
+            f.atoms.y(i) = xp[i * 3 + 1] + alpha * direction_[i * 3 + 1];
+            f.atoms.z(i) = xp[i * 3 + 2] + alpha * direction_[i * 3 + 2];
         }
         ATV_DEBUG("[lbfgs] line_search step={} mode={} alpha={:.6e} ok={} "
                   "n_eval={}",
@@ -332,100 +328,19 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
     }
 
     ATV_DEBUG("[lbfgs] search_direction step={} stored_history={}", step_,
-              n_stored_);
+              hist_->stored());
 
-    // Update L-BFGS history with the previous step's accepted move. The
-    // strong-Wolfe line search guarantees y^T s > 0 automatically (N&W §3.1);
-    // we still assert it before committing the pair so a degenerate step
-    // (Armijo/Fixed mode, or a search that bailed) cannot push a non-positive
-    // curvature pair that would break the inverse-Hessian update.
-    if (has_prev_) {
-        const int idx = (n_stored_ < memory_) ? n_stored_ : oldest_;
-        auto& s = s_history_[idx];
-        auto& y = y_history_[idx];
-        double ys_local = 0;
-        double ss_local = 0;
-        double yy_local = 0;
-#pragma omp parallel for schedule(static)                                      \
-    reduction(+ : ys_local, ss_local, yy_local)
-        for (int j = 0; j < dim; ++j) {
-            s[j] = x[j] - x_prev_[j];
-            y[j] = g[j] - g_prev_[j];
-            ys_local += y[j] * s[j];
-            ss_local += s[j] * s[j];
-            yy_local += y[j] * y[j];
-        }
-        double red[3] = {ys_local, ss_local, yy_local};
-        global_sum(ctx, red, 3);
-        const double ys = red[0];
-        const double snorm = std::sqrt(red[1]);
-        const double ynorm = std::sqrt(red[2]);
+    // Fold the step just taken into the curvature history, then recover the
+    // quasi-Newton direction from it. Both the (s,y) update and Nocedal's two-loop
+    // recursion now live in LbfgsHistory (cpu/minimizer/lbfgs_history.h) — they were
+    // inlined here, reading ctx.frame directly, until the band optimizer became their
+    // second caller and the algorithm had to stop being about atoms.
+    hist_->push(x.data(), g.data(), dim);
+    hist_->direction(g.data(), direction_.data(), dim);
 
-        // Curvature condition y^T s > eps*||s||*||y|| keeps H positive definite.
-        if (ys > double(1e-12) * snorm * ynorm && ys > double(0)) {
-            rho_history_[idx] = double(1) / ys;
-            if (n_stored_ < memory_)
-                ++n_stored_;
-            else
-                oldest_ = (oldest_ + 1) % memory_;
-        } else {
-            ATV_DEBUG("[lbfgs] skipped curvature pair step={} ys={:.3e} "
-                      "(non-positive — keeps H PD)",
-                      step_, ys);
-        }
-    }
-
-    // Two-loop recursion → direction = -H g. Each inner product is a per-rank
-    // partial reduced with global_sum so every rank shares the identical
-    // direction for its owned rows.
-    auto& q = q_ws_;
-    std::copy(g.begin(), g.begin() + dim, q.begin());
-
-    for (int k = n_stored_ - 1; k >= 0; --k) {
-        const int idx = (oldest_ + k) % memory_;
-        const double sq = global_sum(ctx, dot_local(s_history_[idx], q, dim));
-        const double a = rho_history_[idx] * sq;
-        alpha_ws_[k] = a;
-        const auto& yk = y_history_[idx];
-#pragma omp parallel for schedule(static)
-        for (int j = 0; j < dim; ++j)
-            q[j] -= a * yk[j];
-    }
-
-    double gamma = 1;
-    if (n_stored_ > 0) {
-        const int newest = (oldest_ + n_stored_ - 1) % memory_;
-        const double yy = global_sum(
-            ctx, dot_local(y_history_[newest], y_history_[newest], dim));
-        if (yy > double(1e-30))
-            gamma = double(1) / (rho_history_[newest] * yy);
-    }
-
-    auto& r = r_ws_;
-#pragma omp parallel for schedule(static)
-    for (int j = 0; j < dim; ++j)
-        r[j] = gamma * q[j];
-
-    for (int k = 0; k < n_stored_; ++k) {
-        const int idx = (oldest_ + k) % memory_;
-        const double yr = global_sum(ctx, dot_local(y_history_[idx], r, dim));
-        const double b = rho_history_[idx] * yr;
-        const auto& sk = s_history_[idx];
-        const double coeff = alpha_ws_[k] - b;
-#pragma omp parallel for schedule(static)
-        for (int j = 0; j < dim; ++j)
-            r[j] += sk[j] * coeff;
-    }
-
-    // direction = -H g (descent direction).
-#pragma omp parallel for schedule(static)
-    for (int j = 0; j < dim; ++j)
-        direction_[j] = -r[j];
-
-    // Save the pre-step state for the next history update.
-    std::copy(x.begin(), x.begin() + dim, x_prev_.begin());
-    std::copy(g.begin(), g.begin() + dim, g_prev_.begin());
-    has_prev_ = true;
+    // Save the pre-step state for the next history update. It doubles as the line
+    // search's base point: the trial geometry is x_prev + alpha*direction.
+    hist_->save(x.data(), g.data(), dim);
     x_prev_valid_ = true;
 
     // Descent precheck (N&W §3.1 / Alg PR+): the quasi-Newton direction is a

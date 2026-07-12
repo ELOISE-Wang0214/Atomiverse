@@ -11,11 +11,11 @@ namespace ATV {
 /// told apart across workflows. `PhaseKind` records which workflow's enum a
 /// binding was built from, letting `Driver::add()` reject a component whose
 /// default bindings target a different workflow at registration time.
-enum class PhaseKind { MD, Minimizer, Evaluate, Vib, Sampling };
+enum class PhaseKind { MD, Minimizer, Evaluate, Vib, Sampling, Path };
 
 /// @brief Human-readable workflow name for a PhaseKind.
 /// @param k Workflow discriminant.
-/// @return Static string: "MD", "Minimizer", "Evaluate", "Vib" or "Sampling".
+/// @return Static string: "MD", "Minimizer", "Evaluate", "Vib", "Sampling" or "Path".
 constexpr const char* phase_kind_name(PhaseKind k) {
     switch (k) {
     case PhaseKind::MD:
@@ -28,6 +28,8 @@ constexpr const char* phase_kind_name(PhaseKind k) {
         return "Vib";
     case PhaseKind::Sampling:
         return "Sampling";
+    case PhaseKind::Path:
+        return "Path";
     }
     return "unknown";
 }

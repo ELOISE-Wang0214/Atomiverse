@@ -225,6 +225,60 @@ constexpr PhaseKind kind_of(Phase phase_tag) {
 
 } // namespace sampling
 
+/// @brief Path phases — N coupled replicas advanced together (Path category).
+///
+/// Used by `cpu::PathDriver` / `cpu::path::NEB`. The Path category terminates
+/// when **every** replica of a coupled chain has converged, which is what makes
+/// it a category rather than an algorithm: it is a termination semantic no
+/// existing category expresses (Optimize converges *one* system; Dynamics and
+/// Sampling run a budget).
+///
+/// @note **These names are deliberately generic, and that is load-bearing.**
+///       There is no `tangent` phase, no `spring` phase, and no `climb` phase —
+///       naming one would weld the category to NEB, exactly the mistake the
+///       Driver taxonomy exists to prevent (a *method* is never a category).
+///       The NEB tangent estimator, the spring force and the climbing-image
+///       flip are all **components** bound at `couple`.
+///
+///       `couple` is the slot where a replica sees its neighbours in the chain.
+///       The same slot hosts PIMD's ring-polymer spring (mathematically the very
+///       same k±1 harmonic coupling) and REMD's exchange operator, neither of
+///       which is in scope here — but both of which would have needed a new
+///       phase enum had this one been named after NEB.
+namespace path {
+
+/// @brief Phase order for one Path iteration (one advance of the whole chain).
+enum class Phase {
+    force,             ///< Per-replica force evaluation (any Capability::Force
+                       ///< evaluator — the same ones MD and Minimize use).
+    couple,            ///< Inter-replica coupling: NEB tangent + spring + the
+                       ///< climbing-image flip; later, PIMD's ring-polymer spring.
+    search_direction,  ///< Per-replica descent direction from the coupled force.
+    line_search,       ///< Reserved — line search along the direction.
+    convergence_check, ///< Per-replica stopping criteria → its own outer_status.
+    end_of_step,       ///< Per-iteration observers / recorders.
+    COUNT              ///< Sentinel -- total number of phases.
+};
+
+/// @brief Human-readable names for the path phases.
+/// @param phase_tag Tag value used only for overload selection.
+/// @return Phase names in the same order as the enum values, excluding `COUNT`.
+inline std::vector<std::string> phase_names(Phase phase_tag) {
+    (void)phase_tag;
+    return {"force",             "couple",      "search_direction",
+            "line_search",       "convergence_check", "end_of_step"};
+}
+
+/// @brief Workflow discriminant for `path::Phase` (ADL tag dispatch).
+/// @param phase_tag Tag value used only for overload selection.
+/// @return `PhaseKind::Path`.
+constexpr PhaseKind kind_of(Phase phase_tag) {
+    (void)phase_tag;
+    return PhaseKind::Path;
+}
+
+} // namespace path
+
 /// @brief Build a workflow-tagged DefaultBinding from a typed Phase value.
 ///
 /// The single sanctioned way for a component to declare a default binding:

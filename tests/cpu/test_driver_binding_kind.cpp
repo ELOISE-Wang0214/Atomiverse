@@ -12,9 +12,11 @@
 ///     Evaluate-kind probe component (lvalue `add()` branch);
 ///   - same-kind `add()` is unchanged (MD + VelocityVerlet,
 ///     Minimize + LBFGS);
-///   - plan-shape regression anchors for all five driver categories
-///     (Evaluate / MD / Minimize / Hessian / MC): the compiled Plan's
-///     per-phase component-name sequences must not change.
+///   - plan-shape regression anchors for all six driver categories
+///     (Evaluate / MD / Minimize / Hessian / MC / Path): the compiled Plan's
+///     per-phase component-name sequences must not change;
+///   - the kind gate holds for the newest category too: a Path driver rejects an
+///     md::Phase binding, and MD rejects a path::Phase one.
 ///
 /// Tests use the FINAL API (`ATV::PhaseKind`, `ATV::make_binding`) directly.
 /// On the pre-refactor tree this file fails to COMPILE — that is the
@@ -36,7 +38,9 @@
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
 #include "atomiverse/cpu/minimizer/lbfgs.h"
+#include "atomiverse/cpu/driver/path_driver.h"
 #include "atomiverse/cpu/minimizer/minimize.h"
+#include "atomiverse/cpu/path/neb.h"
 #include "atomiverse/cpu/semiempirical/am1_evaluator.h"
 #include "atomiverse/cpu/vib/hessian.h"
 #include "atomiverse/facade/component_role.h"
@@ -146,7 +150,7 @@ TEST(DriverBindingKind, MinimizeAddSameKindLbfgsNoThrow) {
     EXPECT_NO_THROW(opt.add(ATV::cpu::minimizer::LBFGS{5, 0.01, 0.05}));
 }
 
-// ─── Plan-shape regression anchors (five driver categories) ─────────────
+// ─── Plan-shape regression anchors (six driver categories) ──────────────
 //
 // The sequences below were MEASURED on the pre-refactor tree (dev,
 // 2026-07-10) by compiling each minimal driver and walking
@@ -280,6 +284,55 @@ TEST(DriverBindingKind, McPlanShapeUnchanged) {
               (std::vector<std::string>{"zero_energy", "stub_energy"}));
     EXPECT_TRUE(
         slot_names(plan, static_cast<std::size_t>(P::end_of_step)).empty());
+}
+
+/// The 6th category is wired into the same kind gate as the other five: a component
+/// whose default bindings are Path-kind cannot be registered on an MD driver. Adding a
+/// category is not done until this holds — the gate is what makes the phase enums'
+/// overlapping integer values safe.
+TEST(DriverBindingKind, MdAddPathKindNebCouplingThrows) {
+    ATV::cpu::md::MD sim;
+    try {
+        sim.add(ATV::cpu::path::NebCoupling{1.0});
+        FAIL() << "MD accepted a Path-kind component";
+    } catch (const std::exception& e) {
+        const std::string msg = e.what();
+        EXPECT_NE(msg.find("Path"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("MD"), std::string::npos) << msg;
+    }
+}
+
+/// ... and the reverse: a Path driver rejects an MD-kind integrator.
+TEST(DriverBindingKind, PathAddMdKindVelocityVerletThrows) {
+    ATV::cpu::PathDriver neb;
+    try {
+        neb.add(ATV::cpu::md::VelocityVerlet{1.0});
+        FAIL() << "Path accepted an MD-kind component";
+    } catch (const std::exception& e) {
+        const std::string msg = e.what();
+        EXPECT_NE(msg.find("MD"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("Path"), std::string::npos) << msg;
+    }
+}
+
+/// Plan-shape anchor for the Path category.
+TEST(DriverBindingKind, PathPlanShapeUnchanged) {
+    ATV::cpu::PathDriver neb;
+    atv_test::StubForceEvaluator force;
+    neb.on(ATV::path::Phase::force).add(force);
+    neb.add(ATV::cpu::path::NebCoupling{1.0});
+    neb.add(ATV::cpu::path::BandLBFGS{});
+    neb.build();
+
+    const auto& plan = neb.plan();
+    ASSERT_EQ(plan.slots.size(), static_cast<std::size_t>(ATV::path::Phase::COUNT));
+    using P = ATV::path::Phase;
+    EXPECT_EQ(slot_names(plan, static_cast<std::size_t>(P::couple)),
+              (std::vector<std::string>{"neb_coupling"}));
+    EXPECT_EQ(slot_names(plan, static_cast<std::size_t>(P::search_direction)),
+              (std::vector<std::string>{"band_lbfgs"}));
+    EXPECT_EQ(slot_names(plan, static_cast<std::size_t>(P::convergence_check)),
+              (std::vector<std::string>{"band_lbfgs"}));
 }
 
 } // namespace

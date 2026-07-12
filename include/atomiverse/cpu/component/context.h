@@ -31,6 +31,7 @@ class TimerRegistry;
 namespace cpu {
 
 class AnalysisExecutor;
+class ReplicaSet;
 
 namespace md {
 struct PairList;
@@ -140,6 +141,25 @@ struct OptimizeServices {
     bool line_search_trial = false;
 };
 
+/// @brief Coupled-replica (band) services — publisher: `cpu::PathDriver::run`.
+///
+/// The slice through which a coupling component reaches the replicas it is
+/// coupling to. Null on every other driver, exactly like `md.pair_list` and
+/// `mc.proposal`. @see cpu/replica/replica_set.h
+struct PathServices {
+    /// @brief Non-owning handle to the band. Address-stable for the run.
+    cpu::ReplicaSet* replicas = nullptr;
+
+    /// @brief Which replica the backend's active frame currently IS.
+    ///
+    /// The Path driver runs the `force` phase once per replica, re-pointing the
+    /// backend at each replica's Frame in turn; during those passes this says
+    /// which one. In the band-wide phases (`couple`, `search_direction`,
+    /// `convergence_check`) it is -1: those components see the whole set through
+    /// `replicas`, not the one active frame.
+    int active = -1;
+};
+
 /// @brief Async-analysis services (publisher: `AnalysisExecutor::install`).
 struct AnalysisServices {
     /// @brief Non-owning handle to the per-rank analysis executor.
@@ -172,6 +192,7 @@ struct Context {
     DynamicsServices md;       ///< Classical force-pipeline slice.
     SamplingServices mc;       ///< Metropolis-sampling slice.
     OptimizeServices opt;      ///< Optimizer line-search slice.
+    PathServices path;         ///< Coupled-replica (band) slice.
     AnalysisServices analysis; ///< Async-analysis slice.
 };
 
@@ -181,6 +202,7 @@ struct Context {
 // its std::function predates this grouping.
 static_assert(std::is_trivially_copyable_v<DynamicsServices>);
 static_assert(std::is_trivially_copyable_v<SamplingServices>);
+static_assert(std::is_trivially_copyable_v<PathServices>);
 static_assert(std::is_trivially_copyable_v<AnalysisServices>);
 static_assert(!std::is_polymorphic_v<Context>);
 

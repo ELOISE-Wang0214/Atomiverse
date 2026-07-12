@@ -211,6 +211,9 @@ if(NOT ATV_DOCS_ONLY)
         # The minimizer is a general optimizer (it minimizes any Force-capable
         # evaluator, classical or QM) — it does NOT depend on ATV_BUILD_RHF.
         src/cpu/minimizer/lbfgs.cpp
+        src/cpu/minimizer/lbfgs_history.cpp
+        src/cpu/replica/replica_expansion.cpp
+        src/cpu/path/neb.cpp
         src/cpu/minimizer/cg.cpp
         src/cpu/minimizer/trajectory_writer.cpp
         src/cpu/minimizer/opt_log.cpp

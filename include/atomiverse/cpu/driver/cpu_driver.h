@@ -120,6 +120,18 @@ struct CategoryTraits<ATV::sampling::Phase> {
     static constexpr auto end_phase = ATV::sampling::Phase::end_of_step;
 };
 
+/// Path category: force evaluators bind at `force` (as in Minimize), the
+/// neighbor list folds in just ahead of them, and thermo/observers at
+/// `end_of_step`. Without this specialization the categorical setters
+/// inherited from CPUDriver do not instantiate — the whole reason the
+/// specialization exists as a separate step from adding the enum.
+template <>
+struct CategoryTraits<ATV::path::Phase> {
+    static constexpr auto eval_phase = ATV::path::Phase::force;
+    static constexpr auto neighbor_phase = ATV::path::Phase::force;
+    static constexpr auto end_phase = ATV::path::Phase::end_of_step;
+};
+
 /// @brief CPU-backend driver layer — shared by all three CPU category bases.
 template <typename PhaseEnum>
 class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
