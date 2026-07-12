@@ -68,7 +68,7 @@ cpu::Frame make_static_lj_lattice(int n_side, double density) {
 }
 
 /// Run a handful of MD steps with a dt = 0 fs VelocityVerlet (satisfies the
-/// DynamicsDriver Force-capability check while keeping every frame identical)
+/// cuda::md::MD Force-capability check while keeping every frame identical)
 /// and the cuda::RDF observer; RDF::destroy at teardown writes the g(r) file.
 void run_static_rdf_md(cpu::Frame& frame, const std::string& filename) {
     cuda::md::MD sim;

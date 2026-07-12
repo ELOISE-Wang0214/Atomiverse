@@ -3,7 +3,7 @@
 ///        `cpu::minimizer::Minimize` driver (declared in `minimize.h`).
 ///
 /// Two-loop L-BFGS recursion with optional Armijo line search.
-/// `Minimize` is the OptimizeDriver subclass; `LBFGS` is the Optimizer
+/// `Minimize` is the preset that drives the loop; `LBFGS` is the Optimizer
 /// component plugged into it.
 ///
 /// **MPI / domain decomposition.** Under multi-rank the component
@@ -41,7 +41,6 @@
 #include "atomiverse/cpu/async/snapshot_publisher.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/driver/backend_traits.h"
-#include "atomiverse/cpu/driver/optimize_driver.h"
 #include "atomiverse/cpu/minimizer/line_search.h"
 #include "atomiverse/cpu/minimizer/minimize.h"
 #include "atomiverse/facade/stage.h"

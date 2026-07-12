@@ -1,30 +1,38 @@
 /// @file facade/iteration_status.h
-/// @brief IterationStatus — outer-driver-loop control channel.
+/// @brief IterationStatus — one loop's outcome. **Owned by the loop, not the Context.**
 ///
-/// Replaces an earlier draft's `std::atomic<bool> Context::converged` with
-/// a structured object that distinguishes:
+///   - **converged** — the loop terminated successfully. Written ONLY by the driver,
+///     from the reduced verdict of its `LoopHandler`s. A component cannot write it:
+///     there is no path from a component to this field, by construction.
+///   - **stop_requested** — explicit early termination. A component MAY request this
+///     (a NaN detector, a wall-time guard, a user interrupt); a handler may too.
+///   - **reason** — which handler ended the loop, for logs and diagnostics.
 ///
-///   - **converged** — Optimizer-style normal successful termination.
-///     `OptimizeDriver` breaks the loop when this is set.
-///     `DynamicsDriver` ignores this bit (time evolution doesn't "converge").
-///   - **stop_requested** — explicit early termination from any source
-///     (NaN detector, wall-time guard, future StopCondition components,
-///     user-injected interrupts). All looping drivers honour this bit.
-///   - **reason** — human-readable detail surfaced in error messages
-///     and logs.
+/// ## The ownership rule, and the bug it kills
 ///
-/// Ownership rule: only the **outer** category driver holds and resets the
-/// status (per iteration). `ConvergenceCheck`-tagged components write to
-/// it; SCF internals never touch it (they manage their own internal
-/// convergence inside `SCFSolver`).
+/// Each loop node owns its own `IterationStatus` as a member. The Context merely
+/// *borrows* a pointer to the active loop's (`Context::loop`, a `LoopServices` slice).
+///
+/// It used to live on the Context by value, and that shipped a bug twice:
+///
+///   - probe 2: `LBFGS` wrote `converged = true` unconditionally, because the optimizer
+///     owned the stopping criterion.
+///   - probe 3: so the first NEB image to converge would have stopped the entire band —
+///     and `ReplicaSet` had to grow a second, private convergence table to work around
+///     a status it could not trust.
+///
+/// A pointer that points at the current loop cannot reach the loop above it. The
+/// inner-loop-stops-the-outer-loop bug is now unwritable rather than merely forbidden.
+///
+/// SCF/PW internals never touch this — they own their own convergence, inside their own
+/// solver.
 #pragma once
 
 #include <string>
 
 namespace ATV {
 
-/// @brief Outer-driver loop status, owned by the category driver, written by
-///        `ConvergenceCheck` components, polled at the end of each iteration.
+/// @brief One loop's iteration status. Owned by the loop node; borrowed by the Context.
 struct IterationStatus {
     bool converged = false;      ///< Optimizer normal success.
     bool stop_requested = false; ///< Explicit early termination.

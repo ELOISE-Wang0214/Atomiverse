@@ -115,15 +115,14 @@ void CG::build(const BuildContext& ctx) {
     cudaMemset(d_pr_, 0, 3 * sizeof(work_t));
 
     step_ = 0;
-    converged_ = false;
     trace_.clear();
     conv_.build(n_);
 }
 
 void CG::launch(const LaunchContext& ctx) {
     if (ctx.at(ATV::minimizer::Phase::convergence_check)) {
-        converged_ = conv_.check(ctx, d_xprev_, step_, tols_,
-                                 "cg multi-criteria convergence", trace_);
+        // Measure and publish. The Verdict is the loop's, through its handlers.
+        conv_.measure(ctx, d_xprev_, step_, trace_);
         return;
     }
 

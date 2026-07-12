@@ -1,13 +1,15 @@
 /// @file cuda/md/md.cuh
-/// @brief cuda::md::MD -- molecular dynamics driver with LAMMPS-style phases.
+/// @brief cuda::md::MD -- molecular dynamics preset with LAMMPS-style phases.
 ///
-/// `MD` is the concrete CUDA molecular-dynamics driver. It is a
-/// `cuda::DynamicsDriver` — the time-advance outer category — and so
-/// inherits that base's continuable `run(frame, n_steps)` (full step
-/// budget, honours `outer_status.stop_requested`, ignores
-/// `outer_status.converged`) and its build-time `validate_components()`
-/// contract (≥ 1 `Integrator`-role component and ≥ 1 component carrying
-/// `Capability::Force`).
+/// `MD` is the CUDA molecular-dynamics preset: a `cuda::CUDADriver<md::Phase>` that owns
+/// a continuable `run(frame, n_steps)` and a build-time `validate_components()` contract
+/// (≥ 1 `Integrator`-role component and ≥ 1 component carrying `Capability::Force`).
+///
+/// There is no `cuda::DynamicsDriver` category above it any more. **The step budget IS
+/// the termination**, so MD attaches no default `LoopHandler` — but it honours every
+/// handler the user attaches (`sim.add_handler(cuda::StopOnNaN{})`, a wall-clock guard,
+/// a temperature halt), which is a thing that could not be expressed at all while "stop
+/// or not" was a private `if` inside a driver class.
 ///
 /// The constructor adds only infrastructure components — it contributes
 /// no runtime behaviour beyond the base. The Zero* initializers are
@@ -48,11 +50,10 @@
 ///
 /// ## Auto-injection at build()
 ///
-/// `MD::build()` runs an `install_infra_()` pass *before* the
-/// `CUDADriver::build()` chain (so auto-injected components reach
-/// `validate_components()`). Single-GPU subset of the CPU rules,
-/// keyed on capability-typed virtuals (no string proxies, no
-/// RTTI casts):
+/// `MD::install_defaults()` runs *before* `validate_components()` (the order
+/// `CUDADriver::build()` fixes), so auto-injected components count toward validation.
+/// Single-GPU subset of the CPU rules, keyed on capability-typed virtuals (no string
+/// proxies, no RTTI casts):
 ///
 /// - **Virial** — if any pending component declares
 ///   `(reads() & Capability::Stress) != None` and no pending component
@@ -85,7 +86,7 @@
 /// sim.run(frame, 10000);
 /// @endcode
 ///
-/// @see cuda::DynamicsDriver for the inherited loop + validation
+/// @see cuda::CUDADriver for the loop primitives + the handler slot
 /// @see md::Phase for the LAMMPS-style phase sequence
 /// @see cpu::md::MD for the CPU sibling driver with the same API surface
 #pragma once
@@ -96,7 +97,9 @@
 #include <type_traits>
 #include <utility>
 
-#include "atomiverse/cuda/driver/dynamics_driver.cuh"
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cuda/component/component.cuh"
+#include "atomiverse/cuda/driver/cuda_driver.cuh"
 #include "atomiverse/cuda/md/init.cuh"
 #include "atomiverse/cuda/md/kinetic_energy.cuh"
 #include "atomiverse/cuda/observer/stress.cuh"
@@ -108,18 +111,16 @@ namespace ATV {
 namespace cuda {
 namespace md {
 
-/// @brief CUDA MD driver — a `cuda::DynamicsDriver` with LAMMPS-style
-///        phase sequence and the 11-method categorical setter API
-///        that mirrors `cpu::md::MD`.
+/// @brief CUDA MD preset — a `cuda::CUDADriver<md::Phase>` with the LAMMPS-style
+///        phase sequence and the 11-method categorical setter API that mirrors
+///        `cpu::md::MD`.
 ///
-/// Inherits the time-advance loop and `validate_components()` from
-/// `cuda::DynamicsDriver`; the constructor binds the zeroing and
-/// kinetic-energy infrastructure components, then user code feeds the
-/// rest of the simulation in via the categorical setters (or the raw
+/// The constructor binds the zeroing and kinetic-energy infrastructure components, then
+/// user code feeds the rest of the simulation in via the categorical setters (or the raw
 /// `add()` / `on(phase).add()` escape hatch).
 ///
-/// @see cuda::minimizer::Minimize for the energy minimizer driver
-class MD : public cuda::DynamicsDriver {
+/// @see cuda::minimizer::Minimize for the energy minimizer preset
+class MD : public cuda::CUDADriver<ATV::md::Phase> {
   public:
     /// @brief Construct MD driver, binding the phase-agnostic Zero* and
     ///        KineticEnergy infrastructure components to `md::Phase`.
@@ -128,6 +129,59 @@ class MD : public cuda::DynamicsDriver {
         on(ATV::md::Phase::pre_force).add(ZeroEnergy{}, -999);
         on(ATV::md::Phase::end_of_step).add(ZeroKinetic{}, -1000);
         on(ATV::md::Phase::end_of_step).add(KineticEnergy{}, -100);
+    }
+
+    /// @brief Advance the system for `n_steps` MD steps.
+    ///
+    /// **Continuable.** Consecutive `run()` calls on the same `frame` extend one
+    /// trajectory — components are built once on the first call, and the step index
+    /// passed to components is cumulative across calls. This matches `cpu::md::MD` so
+    /// that:
+    ///   - `FixLangevin`'s per-step RNG keying (which mixes the cumulative `ctx.step`
+    ///     into `base_seed`) does NOT repeat the same z-stream every `run()` call — a
+    ///     critical FDT-correctness requirement; if `s` reset to 0 each call, the
+    ///     Gaussian impulse sequence repeats with period `n_steps`, breaking
+    ///     equipartition (T_eq diverges to ~3.5× target observed in the `Thermalises`
+    ///     test).
+    ///   - `NoseHoover`/`NoseHooverNPT` extended variables persist.
+    ///   - Recorder cadence keys (modulo `frequency`) stay continuous.
+    /// A different `frame` ⇒ genuinely independent simulation: tear the previous run
+    /// down and restart the counter.
+    ///
+    /// **Termination.** The step budget is the termination — MD attaches no default
+    /// handler. Any handler the user attached is polled after every step, and the loop
+    /// breaks on anything but `Verdict::Continue` (that includes a component having set
+    /// `status.stop_requested`, which `poll_handlers_` folds in).
+    ///
+    /// @param frame Host-resident system state; transferred H2D, advanced
+    ///        on the device, retrieved D2H, updated in place.
+    /// @param n_steps Step budget [dimensionless step count].
+    void run(cpu::Frame& frame, int n_steps) {
+        if (live_ && frame_ptr_ != &frame) {
+            teardown_pass(*frame_ptr_);
+            live_ = false;
+        }
+        if (!live_) {
+            setup_pass(frame);
+            frame_ptr_ = &frame;
+            step_counter_ = 0;
+            live_ = true;
+        }
+        for (int s = 0; s < n_steps; ++s) {
+            this->mutable_outer_status().reset();
+            step_once(step_counter_++);
+            if (this->poll_handlers_(s) != Verdict::Continue)
+                break;
+        }
+        // Pull device state back to the host frame so the caller can inspect
+        // intermediate observables between chunks. Components remain alive on the
+        // device for subsequent `run()` calls.
+        this->backend_->retrieve(frame);
+    }
+
+    ~MD() {
+        if (live_ && frame_ptr_)
+            teardown_pass(*frame_ptr_);
     }
 
     // ─── Categorical setter API (LAMMPS-shaped) ─────────────────────
@@ -242,27 +296,35 @@ class MD : public cuda::DynamicsDriver {
         return *this;
     }
 
-    /// @brief Override `CUDADriver::build()` so the auto-injection pass
-    ///        runs *before* `validate_components()` sees pending_.
+  protected:
+    /// @brief Require at least one `Integrator`-role component and at
+    ///        least one component carrying `Capability::Force`.
     ///
-    /// `install_infra_()` may add a `cuda::Virial{}` if any pending
-    /// component declares `(reads() & Capability::Stress) != None`
-    /// (covers both `cuda::md::Barostat` and `cuda::md::NoseHooverNPT`).
-    /// After the install pass we chain to `cuda::DynamicsDriver::build()`
-    /// (which calls `validate_components()` + `Base::build()` in that
-    /// order — see `cuda/cuda_driver.cuh`).
-    void build() {
-        install_infra_();
-        cuda::DynamicsDriver::build();
+    /// Folded down from the deleted `cuda::DynamicsDriver`: it is the *validation* of
+    /// an MD plan, and MD is the only thing that ever wanted it.
+    void validate_components() const override {
+        bool has_integrator = false;
+        bool has_force_writer = false;
+        for_each_pending([&](const cuda::ComponentBase& c) {
+            if (c.role() == ComponentRole::Integrator)
+                has_integrator = true;
+            // Force capability is the load-bearing predicate — any component that
+            // writes forces satisfies "the integrator has something to integrate".
+            if (has_capability(c.capabilities(), Capability::Force))
+                has_force_writer = true;
+        });
+        if (!has_integrator)
+            throw_missing("Integrator");
+        if (!has_force_writer)
+            throw_missing("Component with Capability::Force");
     }
 
-  protected:
     /// @brief Auto-injection pass — single-GPU subset of the CPU rules.
     ///
-    /// Two checks, both keyed on capability-typed probes (`reads()`,
-    /// `capabilities()`, and the `as_neighbor_consumer()` /
-    /// `as_neighbor_provider()` protocol accessors) — no `name()`
-    /// string matching, no RTTI cast:
+    /// Runs before `validate_components()` (see `CUDADriver::build()`). Two checks,
+    /// both keyed on capability-typed probes (`reads()`, `capabilities()`, and the
+    /// `as_neighbor_consumer()` / `as_neighbor_provider()` protocol accessors) — no
+    /// `name()` string matching, no RTTI cast:
     ///   1. If any pending component declares `(reads() & Stress) != None`
     ///      AND no pending component already declares
     ///      `(capabilities() & Stress) != None && role()==Observer`,
@@ -270,7 +332,10 @@ class MD : public cuda::DynamicsDriver {
     ///   2. If any pending component is a `NeighborConsumer` without any
     ///      pending component being a `NeighborProvider`, throw naming
     ///      the first offender.
-    void install_infra_() {
+    ///
+    /// **No default handler.** A time budget is not a policy — MD stops when the steps
+    /// run out, and anything else the user wants is a `LoopHandler` they attach.
+    void install_defaults() override {
         bool needs_stress_input = false;
         bool has_stress_producer = false;
         bool has_neighbor_list = false;
@@ -371,6 +436,16 @@ class MD : public cuda::DynamicsDriver {
     std::optional<std::string> neighbor_set_;
     std::optional<std::string> integrator_set_;
     std::optional<int> thermo_every_;
+
+    // ── Continuation bookkeeping (folded down from cuda::DynamicsDriver) ──
+
+    /// @brief True between first `run()` and driver destruction —
+    /// components are live on the device, must not be rebuilt.
+    bool live_ = false;
+    /// @brief Frame bound by the live run; a different frame restarts.
+    cpu::Frame* frame_ptr_ = nullptr;
+    /// @brief Cumulative MD step index across all `run()` calls.
+    int step_counter_ = 0;
 };
 
 } // namespace md

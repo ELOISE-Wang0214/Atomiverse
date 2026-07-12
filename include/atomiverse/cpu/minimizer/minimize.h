@@ -52,7 +52,8 @@
 #include "atomiverse/cpu/comm/reduce.h"
 #include "atomiverse/cpu/component/pair_evaluator.h"
 #include "atomiverse/cpu/component/zero.h"
-#include "atomiverse/cpu/driver/optimize_driver.h"
+#include "atomiverse/cpu/driver/cpu_driver.h"
+#include "atomiverse/cpu/frame/materialize.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
@@ -70,11 +71,61 @@ namespace minimizer {
 /// `Optimizer` component (e.g. `LBFGS`, `CG`) and ≥ 1 `Evaluator`
 /// with `Capability::Energy` or `Capability::Force` (e.g. `SCFEvaluator`).
 ///
-/// Inheritance: Minimize → OptimizeDriver → CPUDriver<minimizer::Phase> →
-/// Driver<minimizer::Phase, cpu::device_tag>.
+/// Inheritance: Minimize → CPUDriver<minimizer::Phase> →
+/// Driver<minimizer::Phase, cpu::device_tag>. There is no `OptimizeDriver` category in
+/// between any more: "stop when converged" is a `ForceConverged` handler this preset
+/// attaches in `install_defaults()`, and the user can replace it without touching a
+/// driver class or an optimizer.
 /// CPUDriver provides the shared categorical setters and slot variables.
-class Minimize : public OptimizeDriver {
+class Minimize : public CPUDriver<ATV::minimizer::Phase> {
   public:
+    /// @brief Iterate to convergence, or up to `max_iter` iterations.
+    ///
+    /// Unlike MD (continuable: consecutive calls extend one trajectory), each `run()`
+    /// here is a complete, self-contained optimization — `setup_pass` re-runs component
+    /// `build()`, wiping the optimizer's curvature history, and `teardown_pass` runs
+    /// before returning. That is deliberate: a converged geometry has no useful
+    /// "continuation state", so re-running means re-optimizing (possibly after the caller
+    /// perturbed the system) and stale L-BFGS history would be wrong to keep.
+    ///
+    /// @param frame Host-resident system state, updated in place.
+    /// @param max_iter Iteration budget.
+    /// @return Number of iterations actually executed (≤ `max_iter`).
+    int run(cpu::Frame& frame, int max_iter) {
+        setup_pass(frame);
+        // Publish the re-entrant force re-eval handle so an Optimizer component can
+        // evaluate trial geometries during the line_search phase. Replays the force
+        // phase (zeroing → evaluator → reduce) on the frame's current geometry.
+        // Captures `this`; valid for the run.
+        this->backend_->context().opt.reeval_forces = [this](bool /*need_grad*/) {
+            this->backend_->run_stage(Traits::eval_phase, /*step_idx=*/0);
+        };
+        int iters = 0;
+        for (int s = 0; s < max_iter; ++s) {
+            mutable_outer_status().reset();
+            step_once(s);
+            ++iters;
+            // The optimizer PUBLISHED its metrics during the step; the handlers judge
+            // them here. Neither LBFGS nor CG decides its own convergence any more —
+            // which is why a nested optimizer can no longer stop this loop.
+            if (poll_handlers_(s) != Verdict::Continue)
+                break;
+        }
+        teardown_pass();
+        return iters;
+    }
+
+    /// @brief User-facing entry — optimize the system stored in a molrs.Frame.
+    /// @param frame molrs.Frame handle (input geometry + output sink).
+    /// @param max_iter Iteration budget.
+    /// @return Number of iterations actually executed (≤ `max_iter`).
+    int run(molrs::FrameRef& frame, int max_iter) {
+        cpu::Frame work = cpu::materialize(frame);
+        const int iters = run(work, max_iter);
+        cpu::write_back(work, frame);
+        return iters;
+    }
+
     Minimize() {
         // Phase-agnostic backend-root Zero*, bound to minimizer phases.
         this->on(ATV::minimizer::Phase::force)
@@ -108,6 +159,25 @@ class Minimize : public OptimizeDriver {
     }
 
   protected:
+    /// @brief An Optimizer, and an Evaluator that provides Energy or Force.
+    void validate_components() const override {
+        bool has_optimizer = false;
+        bool has_energy_or_force_evaluator = false;
+        for_each_pending([&](const cpu::ComponentBase& c) {
+            if (c.role() == ComponentRole::Optimizer)
+                has_optimizer = true;
+            if (c.role() == ComponentRole::Evaluator
+                && (has_capability(c.capabilities(), Capability::Energy)
+                    || has_capability(c.capabilities(), Capability::Force)))
+                has_energy_or_force_evaluator = true;
+        });
+        if (!has_optimizer)
+            throw_missing("Optimizer");
+        if (!has_energy_or_force_evaluator)
+            throw_missing(
+                "Evaluator with Capability::Energy or Capability::Force");
+    }
+
     void install_defaults() override {
         // A Minimize with no handler would never stop early — the optimizer publishes
         // metrics and nobody judges them. So the PRESET supplies the policy it is a

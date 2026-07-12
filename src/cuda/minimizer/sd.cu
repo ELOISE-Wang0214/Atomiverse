@@ -62,7 +62,24 @@ __global__ void sd_step(real_t* __restrict__ x, real_t* __restrict__ y,
 
 } // anonymous namespace
 
+void SteepestDescent::build(const BuildContext& ctx) {
+    step_ = 0;
+    trace_.clear();
+    conv_.build(ctx.frame.n_atoms());
+}
+
 void SteepestDescent::launch(const LaunchContext& ctx) {
+    // ── Convergence-metric publish phase ─────────────────────────────
+    //
+    // No previous geometry is kept (the step is applied in place), so no displacement
+    // is measured: `x_prev = nullptr` tells ConvCheck to publish
+    // `has_displacement = false`, and the handler leaves the displacement criteria out
+    // of its test rather than judging a zero it was never given.
+    if (ctx.at(ATV::minimizer::Phase::convergence_check)) {
+        conv_.measure(ctx, /*x_prev=*/nullptr, step_, trace_);
+        return;
+    }
+
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& frame = ctx.frame;
     int n = ctx.frame.n_atoms();
@@ -72,6 +89,12 @@ void SteepestDescent::launch(const LaunchContext& ctx) {
         frame.atoms.x, frame.atoms.y, frame.atoms.z, frame.atoms.fx,
         frame.atoms.fy, frame.atoms.fz, frame.atoms.mass,
         ctx.runtime.host_box, alpha_, n);
+    ++step_;
+}
+
+void SteepestDescent::destroy(const DestroyContext& ctx) {
+    (void)ctx;
+    conv_.destroy();
 }
 
 } // namespace minimizer

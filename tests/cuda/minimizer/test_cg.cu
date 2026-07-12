@@ -3,13 +3,19 @@
 ///        energy descent, five-criteria early stop, and optimizer
 ///        hot-swap parity inside the single `Minimize` driver (the CUDA
 ///        mirror of tests/cpu/test_minimize_driver_swap_optimizer.cpp).
+///
+/// The five convergence tolerances used to be constructor arguments of `CG`. They are
+/// now the state of the `cuda::ForceConverged` LoopHandler — the component measures,
+/// the handler decides — so every tolerance below is expressed with
+/// `min.add_handler(cuda::ForceConverged{…})`, which also suppresses the default
+/// handler `Minimize` would otherwise attach. Same numbers, same intent.
 
 #include <cmath>
 #include <cstdlib>
 #include <gtest/gtest.h>
 #include <type_traits>
 
-#include "atomiverse/cuda/driver/optimize_driver.cuh"
+#include "atomiverse/cuda/driver/loop_handler.cuh"
 #include "atomiverse/cuda/minimizer/cg.cuh"
 #include "atomiverse/cuda/minimizer/lbfgs.cuh"
 #include "atomiverse/cuda/minimizer/minimize.cuh"
@@ -106,8 +112,10 @@ TEST(MinimizerCG, EnergyDecreases) {
 
     cuda::minimizer::Minimize min;
     // Tight tolerances: exercise the full 50-iteration budget.
-    min.add(cuda::minimizer::CG{kStableAlpha, double(1e-8), double(1e-8),
-                                double(1e-10), double(1e-10), double(1e-12)});
+    min.add(cuda::minimizer::CG{kStableAlpha});
+    min.add_handler(cuda::ForceConverged{/*ftol=*/1e-8, /*rms_ftol=*/1e-8,
+                                         /*max_dtol=*/1e-10, /*rms_dtol=*/1e-10,
+                                         /*etol=*/1e-12});
     min.on(minimizer::Phase::force)
         .add(cuda::NeighborList{cutoff}, -10)
         .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
@@ -124,15 +132,17 @@ TEST(MinimizerCG, ConvergesAndStopsEarly) {
 
     cuda::minimizer::Minimize min;
     // Loose tolerances so the five-criteria rule trips well inside the
-    // budget — verifies the convergence verdict reaches outer_status
-    // and OptimizeDriver::run breaks early.
-    // Lvalue registration stores a reference, so the component remains
-    // inspectable after run() (the documented add() lvalue contract).
-    cuda::minimizer::CG cg{kStableAlpha,      /*ftol=*/10.0,
-                           /*rms_ftol=*/10.0,
-                           /*max_dtol=*/1.0,  /*rms_dtol=*/1.0,
-                           /*etol=*/10.0};
+    // budget — verifies that CG's published metrics reach the handler, that the
+    // handler's Converged verdict reaches the loop, and that Minimize::run breaks
+    // early. The verdict is the LOOP's now (`min.converged()`); `CG::converged()` is
+    // deleted, because an optimizer that only measures has no business claiming to know
+    // it. Lvalue registration stores a reference, so the component remains inspectable
+    // after run() (the documented add() lvalue contract).
+    cuda::minimizer::CG cg{kStableAlpha};
     min.add(cg);
+    min.add_handler(cuda::ForceConverged{/*ftol=*/10.0, /*rms_ftol=*/10.0,
+                                         /*max_dtol=*/1.0, /*rms_dtol=*/1.0,
+                                         /*etol=*/10.0});
     min.on(minimizer::Phase::force)
         .add(cuda::NeighborList{cutoff}, -10)
         .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
@@ -140,7 +150,8 @@ TEST(MinimizerCG, ConvergesAndStopsEarly) {
     int iters = min.run(frame, 200);
 
     EXPECT_LT(iters, 200) << "loose tolerances must stop the loop early";
-    EXPECT_TRUE(cg.converged());
+    EXPECT_TRUE(min.converged());
+    EXPECT_EQ(min.stop_reason(), "force_converged");
     EXPECT_FALSE(cg.trace().empty());
     EXPECT_EQ(cg.trace().back().step, iters);
 }

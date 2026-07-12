@@ -55,7 +55,7 @@ TEST(CudaFixLangevin, ContractRoleCapabilityBindings) {
     EXPECT_EQ(lang.role(), ComponentRole::Thermostat);
     EXPECT_EQ(lang.name(), "fix_langevin");
     // Capability::Force advertised so a pure-Langevin driver satisfies
-    // DynamicsDriver's "≥1 Force-capable component" gate.
+    // cuda::md::MD's "≥1 Force-capable component" gate.
     EXPECT_TRUE(has_capability(lang.capabilities(), Capability::Force));
     auto bindings = lang.default_bindings();
     ASSERT_EQ(bindings.size(), 1u);
@@ -100,7 +100,7 @@ TEST(CudaFixLangevin, TemperatureRampHonouredAtMidpoint) {
 TEST(CudaFixLangevin, PureLangevinDriverBuildsAndRuns) {
     // No physical-force evaluator — only NVELimit + Langevin. The
     // Force-capable advertisement on Langevin (capabilities() ==
-    // Capability::Force) must let DynamicsDriver's validate_components()
+    // Capability::Force) must let cuda::md::MD's validate_components()
     // pass.
     auto frame = make_thermal_box(4);
     cuda::md::MD sim;
@@ -158,7 +158,7 @@ TEST(CudaFixLangevin, RandomForceVarianceMatchesFDT) {
 // warm-up) must lie in [270 K, 330 K] (±10% target).
 //
 // REGRESSION GUARD: this test catches the
-// `cuda::DynamicsDriver::run()` step-counter-reset bug (the driver
+// `cuda::md::MD::run()` step-counter-reset bug (the driver
 // previously passed `s = 0..n_steps-1` per `run()` call, not a
 // cumulative index). With the bug, FixLangevin's `base_seed` repeats
 // per `run()` chunk, the per-atom Gaussian stream becomes periodic,

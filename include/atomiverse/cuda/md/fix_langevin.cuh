@@ -90,7 +90,7 @@ class FixLangevin : public ComponentBase {
     /// @brief Langevin's role is Thermostat, but it functionally writes
     /// drag + random forces into fx/fy/fz — so it advertises
     /// `Capability::Force` so a pure-Langevin driver (no LJ / bonded)
-    /// satisfies `DynamicsDriver`'s "something writes forces" contract.
+    /// satisfies `cuda::md::MD`'s "something writes forces" contract.
     Capability capabilities() const override { return Capability::Force; }
 
     std::vector<DefaultBinding> default_bindings() const override {

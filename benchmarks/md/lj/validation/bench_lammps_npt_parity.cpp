@@ -40,7 +40,7 @@
 ///     NPT ensemble is well conditioned.
 ///
 ///  2. **The load-bearing bug was driver-level, not Trotter ordering.**
-///     `DynamicsDriver::run()` called `setup_pass()` (component
+///     `cpu::md::MD::run()` called `setup_pass()` (component
 ///     `build()`) on *every* invocation, so a chunked
 ///     `run(burn_in); run(sample)…` wiped `NoseHooverNPT`'s NHC-chain
 ///     state and re-randomised `InitVelocity` between chunks. `run()`

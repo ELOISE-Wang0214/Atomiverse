@@ -14,7 +14,8 @@
 #include "atomiverse/cpu/comm/reduce.h"
 #include "atomiverse/cpu/component/pair_evaluator.h"
 #include "atomiverse/cpu/driver/backend.h"
-#include "atomiverse/cpu/driver/dynamics_driver.h"
+#include "atomiverse/cpu/driver/cpu_driver.h"
+#include "atomiverse/cpu/frame/materialize.h"
 #include "atomiverse/cpu/md/fix_csvr.h"
 #include "atomiverse/cpu/md/init.h"
 #include "atomiverse/cpu/md/nose_hoover.h"
@@ -46,12 +47,19 @@ namespace md {
 ///     registered without a corresponding `set_neighbor()` →
 ///     `build()` throws naming the offending component.
 ///
-/// Inheritance: MD → DynamicsDriver → CPUDriver<md::Phase> →
-/// Driver<md::Phase, cpu::device_tag>.
+/// Inheritance: MD → CPUDriver<md::Phase> → Driver<md::Phase, cpu::device_tag>.
+/// There is no `DynamicsDriver` category in between any more: "run a step budget" is a
+/// loop bound, not a taxonomy.
 /// CPUDriver provides the shared categorical setter API (set_pair,
 /// set_bond, set_angle, set_dihedral, set_neighbor, set_observer,
 /// set_record, set_thermo) and the slot variables. MD adds
 /// driver-specific setters (set_integrator, set_thermostat, set_barostat).
+///
+/// **No default handler.** The step budget IS the termination, and time evolution has no
+/// convergence success path. But MD is a loop like any other, so a user can now attach
+/// one: `sim.add_handler(cpu::StopOnNaN{})`, or their own `StopWhenTooHot{2000}` —
+/// LAMMPS's `fix halt`, which was impossible to write when "stop or not" was a private
+/// `if` inside DynamicsDriver.
 ///
 /// `add()` and `on(phase).add()` from the underlying `Driver<>`
 /// remain public — they are the documented escape hatch for
@@ -77,8 +85,54 @@ namespace md {
 /// sim.build();
 /// sim.run(frame, 1000);
 /// @endcode
-class MD : public DynamicsDriver {
+class MD : public CPUDriver<ATV::md::Phase> {
   public:
+    /// @brief Flush the deferred component `destroy()` of a live continuable run.
+    ~MD() { this->flush_live_(); }
+
+    /// @brief Advance the system for `n_steps` MD steps.
+    ///
+    /// **Continuable.** Consecutive calls extend one trajectory — the standard
+    /// `run(burn_in); run(sample); …` pattern. @see CPUDriver::begin_run_
+    ///
+    /// @param frame Host-resident system state, updated in place.
+    /// @param n_steps Step budget.
+    void run(cpu::Frame& frame, int n_steps) {
+        this->begin_run_(frame);
+        for (int s = 0; s < n_steps; ++s) {
+            this->mutable_outer_status().reset();
+            // Flag the final step so cadence-gated end-of-step collectives
+            // (mpi::Reduce under set_scalar_reduce_every > 1) always publish
+            // globally-reduced scalars before run() returns.
+            this->backend_->context().md.is_last_step = (s == n_steps - 1);
+            this->step_once(this->next_step_());
+            if (this->poll_handlers_(s) != Verdict::Continue)
+                break;
+        }
+        this->backend_->context().md.is_last_step = false;
+        // Drain async-analysis workers so every snapshot from this segment reaches its
+        // subscribers before `run()` returns — continuation defers full teardown, so the
+        // barrier is made explicit here.
+        this->backend_->drain_analysis();
+        // Built-in end-of-run report (time + memory), like LAMMPS's loop summary.
+        // Collective + rank-0 render; always emitted.
+        this->emit_run_summary("md");
+    }
+
+    /// @brief User-facing entry — advance the system stored in a molrs.Frame.
+    ///
+    /// Each call to this overload materializes a fresh `cpu::Frame`, so consecutive
+    /// `run(molrs::FrameRef&, …)` calls are independent simulations (no trajectory
+    /// continuation). For a continued trajectory materialize once and use the
+    /// `cpu::Frame&` overload.
+    /// @param frame molrs.Frame handle (input geometry + output sink).
+    /// @param n_steps Step budget.
+    void run(molrs::FrameRef& frame, int n_steps) {
+        cpu::Frame work = cpu::materialize(frame);
+        run(work, n_steps);
+        cpu::write_back(work, frame);
+    }
+
     MD() {
         // Always-on zero / kinetic infrastructure. Phase-agnostic
         // Zero* classes are bound explicitly to MD phases.
@@ -254,6 +308,26 @@ class MD : public DynamicsDriver {
     }
 
   protected:
+    /// @brief An Integrator, and something that writes forces for it to integrate.
+    ///
+    /// Capability is the load-bearing predicate on the second one, not role: *any*
+    /// component that writes forces (Evaluator-role LJ, Thermostat-role Langevin)
+    /// satisfies "the integrator has something to integrate".
+    void validate_components() const override {
+        bool has_integrator = false;
+        bool has_force_writer = false;
+        for_each_pending([&](const cpu::ComponentBase& c) {
+            if (c.role() == ComponentRole::Integrator)
+                has_integrator = true;
+            if (has_capability(c.capabilities(), Capability::Force))
+                has_force_writer = true;
+        });
+        if (!has_integrator)
+            throw_missing("Integrator");
+        if (!has_force_writer)
+            throw_missing("Component with Capability::Force");
+    }
+
     void install_defaults() override {
         const auto s = this->scan_pending_infra_();
 

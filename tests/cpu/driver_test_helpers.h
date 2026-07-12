@@ -7,7 +7,7 @@
 /// components (Stub{Integrator,ForceEvaluator,EnergyEvaluator,
 /// Optimizer,BareInfra} + a 1-atom `make_trivial_frame`). Phase 5
 /// added three async-infrastructure harness tests that each defined
-/// the same `NoOpForce` component to satisfy `DynamicsDriver`'s
+/// the same `NoOpForce` component to satisfy `cpu::md::MD`'s
 /// "≥ 1 component with Capability::Force" rule. This header
 /// consolidates all of those stubs.
 ///
@@ -34,7 +34,7 @@ namespace atv_test {
 
 // ─── Generic component stubs ────────────────────────────────────────
 
-/// @brief No-op force evaluator. Satisfies `DynamicsDriver`'s
+/// @brief No-op force evaluator. Satisfies `cpu::md::MD`'s
 /// "≥ 1 component with Capability::Force" requirement so that
 /// infrastructure tests can use `cpu::md::MD` purely as a tick driver.
 /// Default-binds to `md::Phase::force` so callers can use plain
@@ -68,7 +68,7 @@ class StubIntegrator : public ATV::cpu::ComponentBase {
 };
 
 /// @brief Evaluator stub advertising `Energy | Force` — satisfies both
-/// `DynamicsDriver` and `OptimizeDriver` validation. No-op launch.
+/// `cpu::md::MD` and `cpu::minimizer::Minimize` validation. No-op launch.
 class StubForceEvaluator : public ATV::cpu::ComponentBase {
   public:
     std::string name() const override { return "stub_force"; }
@@ -82,7 +82,7 @@ class StubForceEvaluator : public ATV::cpu::ComponentBase {
 };
 
 /// @brief Evaluator stub advertising only `Energy` — accepted by
-/// `EvaluateDriver` and `OptimizeDriver`, rejected by `DynamicsDriver`
+/// `cpu::Evaluate` and `cpu::minimizer::Minimize`, rejected by `cpu::md::MD`
 /// (no `Force`). Used to test the capability-axis validation contract.
 class StubEnergyEvaluator : public ATV::cpu::ComponentBase {
   public:

@@ -3,7 +3,8 @@
 ///        system through the migrated `Minimize + SteepestDescent` shape.
 ///
 /// Post driver-taxonomy migration the CUDA minimizer is a single
-/// `cuda::minimizer::Minimize` driver (subclassing `cuda::OptimizeDriver`)
+/// `cuda::minimizer::Minimize` preset (a `cuda::CUDADriver<minimizer::Phase>` — the
+/// `cuda::OptimizeDriver` category base is deleted; termination is a `LoopHandler`)
 /// with a hot-swappable `cuda::minimizer::SteepestDescent` Optimizer
 /// component — the legacy `cuda::minimizer::SD` / `CG` driver classes and
 /// the old `SteepestDescentStep` component name no longer exist. This
@@ -16,7 +17,7 @@
 #include "atomiverse/cuda/minimizer/minimize.cuh"
 #include "atomiverse/cuda/minimizer/sd.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
-#include "atomiverse/cuda/driver/optimize_driver.cuh"
+#include "atomiverse/cuda/driver/cuda_driver.cuh"
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/cuda/potentials/pair_lj_cut.cuh"
 #include "atomiverse/cuda/recorder/thermo.cuh"
@@ -65,13 +66,18 @@ cpu::Frame make_displaced_system(int n_side, double density,
 
 // ── Compile-time shape guard ────────────────────────────────────────
 //
-// `Minimize` must subclass `cuda::OptimizeDriver`, and `SteepestDescent`
-// must be a `cuda::ComponentBase` tagged with `role()==Optimizer`. These
-// static checks fail to compile against the deleted `SD` / `CG` driver
-// classes or the old `SteepestDescentStep` name.
+// `Minimize` must be a loop node over `minimizer::Phase`, and `SteepestDescent` must be
+// a `cuda::ComponentBase` tagged with `role()==Optimizer`. These static checks fail to
+// compile against the deleted `SD` / `CG` driver classes or the old
+// `SteepestDescentStep` name.
+//
+// The old assertion was `is_base_of<cuda::OptimizeDriver, Minimize>` — "Minimize is in
+// the Optimize category". The category is gone, so the assertion with content left is
+// the stage domain: Minimize is a CUDADriver over minimizer::Phase.
 static_assert(
-    std::is_base_of<cuda::OptimizeDriver, cuda::minimizer::Minimize>::value,
-    "cuda::minimizer::Minimize must subclass cuda::OptimizeDriver");
+    std::is_base_of<cuda::CUDADriver<ATV::minimizer::Phase>,
+                    cuda::minimizer::Minimize>::value,
+    "cuda::minimizer::Minimize must be a CUDADriver over minimizer::Phase");
 static_assert(
     std::is_base_of<cuda::ComponentBase, cuda::minimizer::SteepestDescent>::value,
     "cuda::minimizer::SteepestDescent must be a cuda::ComponentBase");
@@ -87,7 +93,7 @@ TEST(Minimizer, SDEnergyDecreases) {
 
     // Get initial energy with a single force evaluation. Even the
     // single-evaluation run needs an Optimizer component to satisfy
-    // OptimizeDriver validation; at step 0 forces are zero so the
+    // Minimize::validate_components(); at step 0 forces are zero so the
     // SteepestDescent update is a no-op.
     cpu::Frame frame_init = frame;
     {
@@ -149,8 +155,8 @@ TEST(Minimizer, BuildThrowsWithoutOptimizer) {
     double cutoff = double(3.0);
 
     // A Minimize with only a force evaluator (no SteepestDescent
-    // Optimizer component) must fail OptimizeDriver build-time
-    // validation: ≥ 1 Optimizer-role component is required.
+    // Optimizer component) must fail `Minimize::validate_components()`:
+    // ≥ 1 Optimizer-role component is required.
     cuda::minimizer::Minimize min;
     min.on(minimizer::Phase::force)
         .add(cuda::NeighborList{cutoff}, -10)

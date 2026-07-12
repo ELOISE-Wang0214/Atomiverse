@@ -47,7 +47,7 @@ class VelocityVerlet : public ComponentBase {
 
     /// @brief Structural role — the time-step integrator.
     ///
-    /// Mirrors `cpu::md::VelocityVerlet`. `cuda::DynamicsDriver`
+    /// Mirrors `cpu::md::VelocityVerlet`. `cuda::md::MD::validate_components()`
     /// requires ≥ 1 `Integrator`-role component at build time.
     /// @return ComponentRole::Integrator.
     ComponentRole role() const override { return ComponentRole::Integrator; }

@@ -20,7 +20,6 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame/frame.h"
-#include "atomiverse/cpu/driver/response_driver.h"
 #include "atomiverse/cpu/scf/gradient.h"
 #include "atomiverse/cpu/scf/integrals.h"
 #include "atomiverse/cpu/scf/scf_evaluator.h"
@@ -237,7 +236,7 @@ TEST(NumericalHessian, TranslationalSumRule) {
         }
 }
 
-// ── ac-007: ResponseDriver validates required components ─────────────────
+// ── ac-007: cpu::vib::Hessian validates required components ──────────────
 
 TEST(NumericalHessian, ValidateThrowsWithoutForceEvaluator) {
     // No Capability::Force component registered → build() must throw.

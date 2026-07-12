@@ -20,9 +20,10 @@
 /// remain public for user-defined hooks (e.g. SCF evaluators
 /// registered via `add(SCFEvaluator{...})`).
 ///
-/// Inheritance: Evaluate → EvaluateDriver → CPUDriver<evaluate::Phase> →
-/// Driver<evaluate::Phase, cpu::device_tag>.
-/// CPUDriver provides the shared categorical setters and slot variables.
+/// Inheritance: Evaluate → CPUDriver<evaluate::Phase> →
+/// Driver<evaluate::Phase, cpu::device_tag>. There is no `EvaluateDriver` category in
+/// between any more — a class whose whole contribution was "loop exactly once" is a
+/// *budget of one*, not a taxonomy.
 ///
 /// @code{.cpp}
 ///   // SCF energy + forces (default)
@@ -40,23 +41,50 @@
 /// @endcode
 #pragma once
 
+#include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/pair_evaluator.h"
 #include "atomiverse/cpu/component/zero.h"
-#include "atomiverse/cpu/driver/evaluate_driver.h"
+#include "atomiverse/cpu/driver/cpu_driver.h"
+#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/cpu/frame/materialize.h"
+#include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
 
 namespace ATV {
 namespace cpu {
 
-/// @brief One-pass evaluator driver.
+/// @brief One-pass evaluator preset — "compute these quantities at this geometry".
 ///
-/// Categorical setters (set_pair, set_bond, set_angle, set_dihedral,
-/// set_neighbor, set_observer, set_record) are inherited from CPUDriver.
-class Evaluate : public EvaluateDriver {
+/// Single-point energy, force, density, dipole, charge. Categorical setters (set_pair,
+/// set_bond, set_angle, set_dihedral, set_neighbor, set_observer, set_record) come from
+/// CPUDriver.
+///
+/// **No handler.** One pass is not a termination policy — there is no loop to terminate.
+class Evaluate : public CPUDriver<ATV::evaluate::Phase> {
   public:
     Evaluate() {
         this->on(ATV::evaluate::Phase::prepare).add(cpu::ZeroForces{}, -1000);
         this->on(ATV::evaluate::Phase::prepare).add(cpu::ZeroEnergy{}, -999);
+    }
+
+    /// @brief Run a single evaluation pass through the compiled Plan.
+    /// @param frame Host-resident system state, updated in place.
+    void run(cpu::Frame& frame) {
+        setup_pass(frame);
+        step_once(0);
+        teardown_pass();
+    }
+
+    /// @brief User-facing entry — evaluate the system stored in a molrs.Frame.
+    ///
+    /// Materializes the molrs.Frame into a transient `cpu::Frame`, runs one evaluation
+    /// pass on it, and writes the results back into the *same* molrs.Frame. The borrow
+    /// window is strictly this one call.
+    /// @param frame molrs.Frame handle (input geometry + output sink).
+    void run(molrs::FrameRef& frame) {
+        cpu::Frame work = cpu::materialize(frame);
+        run(work);
+        cpu::write_back(work, frame);
     }
 
   protected:
@@ -65,6 +93,19 @@ class Evaluate : public EvaluateDriver {
         this->throw_if_missing_neighbor_list_(
             s, "Evaluate",
             "Add `eval.set_neighbor(cpu::md::NeighborList<>{cutoff, skin})`.");
+    }
+
+    /// @brief At least one Evaluator with a non-empty capability set. Energy-only,
+    ///        property-only and force-providing evaluators are all valid here.
+    void validate_components() const override {
+        bool found_evaluator = false;
+        for_each_pending([&](const cpu::ComponentBase& c) {
+            if (c.role() == ComponentRole::Evaluator
+                && !is_none(c.capabilities()))
+                found_evaluator = true;
+        });
+        if (!found_evaluator)
+            throw_missing("Evaluator with non-empty capabilities()");
     }
 };
 

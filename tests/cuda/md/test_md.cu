@@ -9,7 +9,7 @@
 #include <type_traits>
 
 #include "atomiverse/core/units.h"
-#include "atomiverse/cuda/driver/dynamics_driver.cuh"
+#include "atomiverse/cuda/driver/cuda_driver.cuh"
 #include "atomiverse/cuda/md/init.cuh"
 #include "atomiverse/cuda/md/md.cuh"
 #include "atomiverse/cuda/md/velocity_verlet.cuh"
@@ -80,12 +80,17 @@ cpu::Frame make_lj_system(int n_side, double density) {
 
 // ── Structural / taxonomy tests (link 02-md reparent) ────────────────
 
-/// cuda::md::MD must derive from the cuda::DynamicsDriver category base,
-/// inheriting its continuable run() and validate_components().
-TEST(MDTaxonomy, IsADynamicsDriver) {
-    static_assert(std::is_base_of_v<cuda::DynamicsDriver, cuda::md::MD>,
-                  "cuda::md::MD must inherit cuda::DynamicsDriver");
-    EXPECT_TRUE((std::is_base_of_v<cuda::DynamicsDriver, cuda::md::MD>));
+/// cuda::md::MD is a loop node over the MD phase domain.
+///
+/// It used to assert `is_base_of<cuda::DynamicsDriver, MD>` — "MD is in the Dynamics
+/// category". The category is gone (termination is a LoopHandler, not a class), so that
+/// assertion now asserts nothing. What still has content is the stage domain: MD is a
+/// `CUDADriver` over `md::Phase`, which is what makes an `md::Phase`-bound component
+/// dispatchable in it and what a cross-workflow misbind is checked against.
+TEST(MDTaxonomy, IsALoopNodeOverMDPhase) {
+    static_assert(std::is_base_of_v<cuda::CUDADriver<ATV::md::Phase>, cuda::md::MD>,
+                  "cuda::md::MD must be a CUDADriver over md::Phase");
+    EXPECT_TRUE((std::is_base_of_v<cuda::CUDADriver<ATV::md::Phase>, cuda::md::MD>));
 }
 
 /// The Zero* infrastructure components are phase-agnostic: they expose no
@@ -98,7 +103,7 @@ TEST(MDTaxonomy, ZeroComponentsArePhaseAgnostic) {
 }
 
 /// An MD setup with a Force-capable evaluator but no Integrator-role
-/// component must be rejected at build() by DynamicsDriver validation.
+/// component must be rejected by `MD::validate_components()` at build().
 TEST(MDTaxonomy, ThrowsOnMissingIntegrator) {
     double cutoff = double(3.0);
     cuda::md::MD sim;
@@ -109,7 +114,7 @@ TEST(MDTaxonomy, ThrowsOnMissingIntegrator) {
 }
 
 /// An MD setup with an Integrator but no Force-capable evaluator must be
-/// rejected at build() by DynamicsDriver validation.
+/// rejected by `MD::validate_components()` at build().
 TEST(MDTaxonomy, ThrowsOnMissingForceWriter) {
     cuda::md::MD sim;
     sim.add(cuda::md::VelocityVerlet{double(0.001)});

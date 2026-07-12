@@ -201,11 +201,10 @@ class Driver {
     void shutdown();
 
   protected:
-    // Internals are protected (not private) so category-driver bases
-    // (cpu::EvaluateDriver / DynamicsDriver / OptimizeDriver) can drive
-    // the per-iteration loop themselves with category-correct termination
-    // semantics. User code should not subclass `Driver<>` directly — use
-    // one of the category bases.
+    // Internals are protected (not private) so the backend loop node
+    // (cpu::CPUDriver / cuda::CUDADriver) can drive the per-iteration loop itself.
+    // User code does not subclass `Driver<>` directly — it uses a preset
+    // (cpu::md::MD, cpu::minimizer::Minimize, …) or subclasses the loop node.
     std::vector<detail::PendingBinding<Component>> pending_;
     std::vector<std::unique_ptr<Component>> owned_components_;
     Plan<Component> plan_;

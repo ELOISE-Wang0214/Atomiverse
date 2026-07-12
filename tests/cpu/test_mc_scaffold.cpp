@@ -2,11 +2,11 @@
 /// @brief Reference-free unit tests for the Monte Carlo sampling scaffold
 ///        (sub-spec mc-sampling-01-scaffold): sampling::Phase shape, the
 ///        ComponentRole::Mover tag, the pure-data mc::Transaction, the two
-///        new cpu::Context handles, and SamplingDriver::validate_components.
+///        new cpu::Context handles, and cpu::mc::MC's component validation.
 ///
 /// No physics and no accept/reject dynamics are exercised here — there is no
 /// Mover yet (that lands in mc-sampling-02-move). These tests only pin the
-/// dormant machinery so the fifth (Sampling) driver category is green.
+/// dormant machinery so the Monte Carlo preset is green.
 
 #include <gtest/gtest.h>
 
@@ -15,7 +15,7 @@
 
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/context.h"
-#include "atomiverse/cpu/driver/sampling_driver.h"
+#include "atomiverse/cpu/mc/mc.h"
 #include "atomiverse/cpu/mc/transaction.h"
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
@@ -94,7 +94,7 @@ TEST(MCScaffold, ContextHandlesDefaultNull) {
     EXPECT_EQ(ctx.mc.rng, nullptr);
 }
 
-// ── SamplingDriver::validate_components gate ───────────────────────────────
+// ── cpu::mc::MC component-validation gate ──────────────────────────────────
 
 namespace {
 
@@ -113,42 +113,34 @@ struct StubEnergy : cpu::ComponentBase {
     void launch(const cpu::LaunchContext&) override {}
 };
 
-/// @brief Exposes the protected validate_components() for direct testing.
-class TestSampling : public cpu::SamplingDriver {
-  public:
-    TestSampling()
-        : cpu::SamplingDriver(/*temperature_K=*/300.0, /*seed=*/12345u) {}
-    using cpu::SamplingDriver::validate_components;
-};
-
 } // namespace
 
+// `validate_components()` is protected on the preset, and it is `build()` that calls it
+// — so these drive the gate through the public entry point rather than reaching past it.
+
 TEST(MCScaffold, ValidateThrowsWithoutMover) {
-    TestSampling d;
+    cpu::mc::MC d{/*temperature_K=*/300.0, /*seed=*/12345u};
     d.on(sampling::Phase::energy).add(StubEnergy{});
-    EXPECT_THROW(d.validate_components(), std::runtime_error);
+    EXPECT_THROW(d.build(), std::runtime_error);
 }
 
 TEST(MCScaffold, ValidateThrowsWithoutEnergyWriter) {
-    TestSampling d;
+    // The MC ctor auto-adds ZeroEnergy at `energy` @ -999; it is `role() == None` with
+    // no capabilities, so it must NOT satisfy the Capability::Energy requirement.
+    cpu::mc::MC d{/*temperature_K=*/300.0, /*seed=*/12345u};
     d.on(sampling::Phase::propose).add(StubMover{});
-    EXPECT_THROW(d.validate_components(), std::runtime_error);
+    EXPECT_THROW(d.build(), std::runtime_error);
 }
 
 TEST(MCScaffold, ValidatePassesWithMoverAndEnergy) {
-    TestSampling d;
+    cpu::mc::MC d{/*temperature_K=*/300.0, /*seed=*/12345u};
     d.on(sampling::Phase::propose).add(StubMover{});
     d.on(sampling::Phase::energy).add(StubEnergy{});
-    EXPECT_NO_THROW(d.validate_components());
+    EXPECT_NO_THROW(d.build());
 }
 
+/// The temperature guard moved from `SamplingDriver`'s ctor to `cpu::Metropolis`'s;
+/// `cpu::mc::MC` forwards to it, so constructing the preset with T <= 0 must still throw.
 TEST(MCScaffold, SamplingDriverRejectsNonPositiveTemperature) {
-    EXPECT_THROW(
-        {
-            struct D : cpu::SamplingDriver {
-                D() : cpu::SamplingDriver(0.0, 1u) {}
-            } d;
-            (void)d;
-        },
-        std::invalid_argument);
+    EXPECT_THROW((cpu::mc::MC{0.0, 1u}), std::invalid_argument);
 }

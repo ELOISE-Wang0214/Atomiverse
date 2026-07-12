@@ -88,7 +88,7 @@ TEST(CudaNVELimit, CapClampsSingleAtom) {
     const double x0 = frame.atoms.x[0];
     cuda::md::MD sim;
     sim.add(cuda::md::NVELimit{1.0, 0.05});
-    // Need a Force-capable component to satisfy DynamicsDriver. Use a
+    // Need a Force-capable component to satisfy cuda::md::MD. Use a
     // disposable LJ + NeighborList that won't trigger meaningful force
     // on the single isolated atom.
     sim.on(ATV::md::Phase::force).add(cuda::NeighborList{3.0}, -10);

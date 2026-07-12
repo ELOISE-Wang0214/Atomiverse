@@ -62,8 +62,7 @@ Hessian::Hessian(const Thermochem::Config& tc, const OutputConfig& out) {
 
 Hessian::Hessian(WithoutAccumulator /*tag*/) {
     // Test-only configuration: omit HessianAccumulator so the build-time
-    // validation in ResponseDriver throws for the missing
-    // Capability::Hessian component.
+    // validation throws for the missing Capability::Hessian component.
     add(ReferenceGeometry{workspace_.get()});
     add(DisplaceStep{workspace_.get()});
     add(Symmetrize{workspace_.get()});
@@ -75,8 +74,17 @@ HessianResult Hessian::run(cpu::Frame& frame) {
     const int n_atoms = frame.atoms.size();
     workspace_->allocate(n_atoms);
 
-    // Drive the 6N-displacement Response-category loop.
-    ResponseDriver::run(frame);
+    // The 6N-displacement loop: two displacements per Cartesian coordinate. A fixed
+    // budget, not a policy — every displacement must complete for the Hessian to be
+    // defined, so there is nothing for a handler to decide and none is polled.
+    const int n_disp = 6 * n_atoms;
+    setup_pass(frame);
+    for (int d = 0; d < n_disp; ++d)
+        step_once(d);
+    // The finalize pass: Symmetrize, MassWeighting and the diagonalizer run here;
+    // DisplaceStep restores the equilibrium geometry.
+    step_once(n_disp);
+    teardown_pass();
 
     // Publish the assembled, symmetrized Hessian, the vibrational
     // frequencies (MassWeighting + HessianDiagonalizer), and the harmonic

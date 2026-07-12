@@ -2,10 +2,10 @@
 /// @brief Phase 1 (driver-infra-auto-injection) — assert the foundation:
 ///        (a) `ComponentBase::reads()` defaults to `Capability::None`;
 ///        (b) the neighbor contract is an opt-in protocol — see (g)/(h);
-///        (c) a CPU category-driver subclass can override
-///            `install_defaults()` to inject a component, and the hook fires
-///            *before* `validate_components()` so an injection can satisfy
-///            an otherwise-unsatisfied validation rule.
+///        (c) a CPU driver subclass can override `install_defaults()` to inject
+///            a component, and the hook fires *before* `validate_components()`
+///            so an injection can satisfy an otherwise-unsatisfied validation
+///            rule.
 ///
 /// Acceptance: T1 + T2 of `.claude/specs/driver-infra-auto-injection.md`.
 ///
@@ -44,7 +44,6 @@
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/halo_participant.h"
 #include "atomiverse/cpu/component/neighbor_protocol.h"
-#include "atomiverse/cpu/driver/dynamics_driver.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/neighbor/neighbor_list.h"
@@ -81,7 +80,12 @@ TEST(InstallInfraHook, AsNeighborProviderDefaultsToNull) {
 // ─── install_defaults() hook fires before validate_components() ────────
 
 /// @brief Counts how often `install_defaults()` is called per `build()`.
-class HookCounterDynamics : public ATV::cpu::DynamicsDriver {
+///
+/// Subclasses the `cpu::md::MD` preset (the category bases are gone). MD *itself*
+/// overrides `install_defaults()` — it injects `mpi::Reduce`, the halo pair and the
+/// neighbor-list guard — so the override must chain to `MD::install_defaults()`, not to
+/// `CPUDriver`'s empty base hook, or that infrastructure silently disappears.
+class HookCounterDynamics : public ATV::cpu::md::MD {
   public:
     int install_calls = 0;
     StubIntegrator integ;
@@ -89,6 +93,7 @@ class HookCounterDynamics : public ATV::cpu::DynamicsDriver {
   protected:
     void install_defaults() override {
         ++install_calls;
+        ATV::cpu::md::MD::install_defaults();
         // Inject the integrator from inside the hook — driver's
         // `validate_components()` must see this component on the
         // pending list, otherwise validation throws "missing Integrator".
@@ -117,13 +122,14 @@ TEST(InstallInfraHook, HookFiresExactlyOncePerBuild) {
     EXPECT_EQ(d.install_calls, 1);
 }
 
-// ─── Default install_defaults is no-op (existing tests still pass) ─────
+// ─── install_defaults injects infrastructure, never a required role ────
 
 TEST(InstallInfraHook, DefaultInstallInfraIsNoOp) {
-    // The plain `cpu::DynamicsDriver` (no subclass override) must still
-    // throw on missing Integrator — proves the base `install_defaults()` does
-    // not silently inject anything.
-    ATV::cpu::DynamicsDriver d;
+    // The plain `cpu::md::MD` (no subclass override) must still throw on missing
+    // Integrator. Its own `install_defaults()` injects INFRASTRUCTURE (Reduce, halo,
+    // …) — proves it never silently fabricates a component that satisfies a required
+    // role, which is what would make the validation rule vacuous.
+    ATV::cpu::md::MD d;
     StubForceEvaluator force;
     d.on(ATV::md::Phase::force).add(force);
     EXPECT_THROW(d.build(), std::runtime_error);

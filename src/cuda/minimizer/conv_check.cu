@@ -95,9 +95,8 @@ void ConvCheck::destroy() {
     h_energy_ = nullptr;
 }
 
-bool ConvCheck::check(const LaunchContext& ctx, const work_t* x_prev, int step,
-                      const ConvTols& tols, const char* reason,
-                      std::vector<OptRecord>& trace) {
+void ConvCheck::measure(const LaunchContext& ctx, const work_t* x_prev, int step,
+                        std::vector<OptRecord>& trace) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
     auto& frame = ctx.frame;
     const int n = n_;
@@ -105,27 +104,36 @@ bool ConvCheck::check(const LaunchContext& ctx, const work_t* x_prev, int step,
     int grid = cuda::grid_size(n);
     int shmem = cuda::warps_per_block(block) * sizeof(work_t);
 
+    // A displacement is measurable only when the optimizer kept the pre-step geometry
+    // (SteepestDescent does not) AND has actually taken a step. The component knows;
+    // the handler is told, through `has_displacement`. It must never guess from the
+    // iteration counter.
+    const bool has_disp = (x_prev != nullptr) && (step > 0);
+
     cudaMemsetAsync(d_metrics_, 0, 4 * sizeof(work_t), stream);
     conv_metrics<<<grid, block, shmem, stream>>>(
         frame.atoms.fx, frame.atoms.fy, frame.atoms.fz, frame.atoms.x,
-        frame.atoms.y, frame.atoms.z, (step > 0) ? x_prev : nullptr,
+        frame.atoms.y, frame.atoms.z, has_disp ? x_prev : nullptr,
         ctx.runtime.host_box, d_metrics_, n);
     cudaMemcpyAsync(h_metrics_, d_metrics_, 4 * sizeof(work_t),
                     cudaMemcpyDeviceToHost, stream);
     cudaMemcpyAsync(h_energy_, &frame.scalars->energy, sizeof(double),
                     cudaMemcpyDeviceToHost, stream);
-    // The one host sync of the minimizer iteration: the verdict must land
-    // in the host-side outer_status the driver polls after step_once().
+    // The one host sync of the minimizer iteration: the metrics must land on the host,
+    // where the driver polls its handlers after step_once().
     cudaStreamSynchronize(stream);
 
     max_force_ = static_cast<double>(h_metrics_[0]);
     const double rms_force =
         std::sqrt(static_cast<double>(h_metrics_[1]) / (3.0 * n));
-    const double max_disp = static_cast<double>(h_metrics_[2]);
+    const double max_disp = has_disp ? static_cast<double>(h_metrics_[2]) : 0.0;
     const double rms_disp =
-        (step > 0) ? std::sqrt(static_cast<double>(h_metrics_[3]) / (3.0 * n))
-                   : 0.0;
+        has_disp ? std::sqrt(static_cast<double>(h_metrics_[3]) / (3.0 * n))
+                 : 0.0;
     const double energy = *h_energy_;
+    // No previous energy at step 0: publish a sentinel so that no handler can call a
+    // run converged before it has moved (|ΔE| < etol would otherwise be trivially
+    // true). Same value, same reason, as the CPU optimizers.
     const double energy_change =
         (step > 0) ? std::abs(energy - energy_prev_) : 1e30;
 
@@ -139,20 +147,23 @@ bool ConvCheck::check(const LaunchContext& ctx, const work_t* x_prev, int step,
     rec.energy_change = energy_change;
     trace.push_back(rec);
 
-    const bool converged = (max_force_ < tols.ftol)
-                           && (rms_force < tols.rms_ftol)
-                           && (step == 0 || max_disp < tols.max_dtol)
-                           && (step == 0 || rms_disp < tols.rms_dtol)
-                           && (step == 0 || energy_change < tols.etol);
-
-    if (converged) {
-        ctx.runtime.outer_status.converged = true;
-        ctx.runtime.outer_status.reason = reason;
+    // PUBLISH, do not decide. `cuda::ForceConverged` (cuda/driver/loop_handler.cuh)
+    // owns the tolerances and returns the Verdict; this class owns the reduction.
+    // Until this line, ConvCheck wrote `outer_status.converged = true` itself, so the
+    // criteria could not be changed without touching the optimizer — and a nested
+    // loop's convergence could stop the loop above it.
+    if (LoopMetrics* m = ctx.runtime.loop.metrics) {
+        m->energy = energy;
+        m->max_force = max_force_;
+        m->rms_force = rms_force;
+        m->max_displacement = max_disp;
+        m->rms_displacement = rms_disp;
+        m->energy_change = energy_change;
+        m->has_displacement = has_disp;
     }
 
     energy_prev_ = energy;
     last_energy_ = energy;
-    return converged;
 }
 
 } // namespace minimizer

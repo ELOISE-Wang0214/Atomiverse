@@ -36,7 +36,11 @@ using namespace ATV;
 namespace {
 
 /// @brief 1 Hartree expressed in electron-volts (PySCF-consistent).
-const double kHartree2eV = cpu::vib::nist::HARTREE2EV;
+///
+/// Named distinctly from `ATV::kHartree2eV` (core/units.h): `using namespace ATV;` above
+/// makes a same-named local an ambiguous reference, and this test deliberately wants the
+/// NIST value PySCF uses, not the engine's own.
+const double kNistHartree2eV = cpu::vib::nist::HARTREE2EV;
 
 /// @brief 1 Hartree expressed in kilojoules per mole.
 ///
@@ -108,7 +112,7 @@ TEST(VibThermochemVsPyscf, ZeroPointEnergy) {
         const auto result = run_thermo(r);
 
         const double dev_eV =
-            std::abs(result.zpe - r.zpe_hartree) * kHartree2eV;
+            std::abs(result.zpe - r.zpe_hartree) * kNistHartree2eV;
         std::cout << "[ zpe ] " << name << " atomiverse=" << result.zpe
                   << " Ha  pyscf=" << r.zpe_hartree << " Ha  dev=" << dev_eV
                   << " eV\n";

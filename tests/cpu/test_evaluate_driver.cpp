@@ -1,6 +1,6 @@
 /// @file tests/cpu/test_evaluate_driver.cpp
 /// @brief Phase 5 — `cpu::Evaluate` driver behaves correctly under the
-///        EvaluateDriver category contract:
+///        one-pass evaluate contract:
 ///
 ///   1. Energy-only `SCFEvaluator(.with_gradient(false))` is accepted by
 ///      `Evaluate` (capability check passes) but rejected by `Dynamics`
@@ -23,8 +23,8 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/units.h"
-#include "atomiverse/cpu/driver/dynamics_driver.h"
 #include "atomiverse/cpu/driver/evaluate.h"
+#include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/driver/single_point.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/md/velocity_verlet.h"
@@ -74,12 +74,12 @@ TEST(EvaluateDriver, EnergyOnlyEvaluatorRejectedByDynamics) {
     cpu::scf::SCFEvaluator scf{cfg};
     scf.with_gradient(false);
 
-    cpu::DynamicsDriver d;
+    cpu::md::MD d;
     d.on(ATV::md::Phase::initial_integrate).add(cpu::md::VelocityVerlet{0.5});
     d.on(ATV::md::Phase::force).add(scf);
     try {
         d.build();
-        FAIL() << "DynamicsDriver should reject an evaluator without Force "
+        FAIL() << "cpu::md::MD should reject an evaluator without Force "
                   "capability";
     } catch (const std::runtime_error& e) {
         EXPECT_NE(std::string(e.what()).find("Force"), std::string::npos)

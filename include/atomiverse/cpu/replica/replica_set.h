@@ -81,6 +81,22 @@ class ReplicaSet {
         return !converged_.empty();
     }
 
+    /// @brief Fraction of the band that has converged, in [0,1]. Empty band → 0.
+    ///
+    /// The measurable form of `all_converged()`, published each iteration onto
+    /// `LoopMetrics::replicas_converged` so that a *handler* can apply the AND (the band
+    /// is converged at exactly 1.0) instead of the driver hardcoding it. A metric is
+    /// something you measure; a verdict is something you decide, and those are different
+    /// jobs. @see cpu::AllReplicasConverged
+    double converged_fraction() const {
+        if (converged_.empty())
+            return 0.0;
+        int n = 0;
+        for (const bool c : converged_)
+            if (c) ++n;
+        return static_cast<double>(n) / static_cast<double>(converged_.size());
+    }
+
     /// @brief Fold the band back into the caller's single Frame. Frame in, Frame out.
     void collapse_into(cpu::Frame& out, const ReplicaExpansion& expansion) const {
         expansion.collapse(replicas_, out);

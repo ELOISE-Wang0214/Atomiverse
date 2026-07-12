@@ -121,7 +121,7 @@ TEST(FixRattle, ReportsThreeConstraintsPerWater) {
 
 /// The gate the ComponentRole::Constraint entry exists to keep shut: a Plan with a
 /// constraint but NO integrator must not run. Before Constraint existed, tagging the
-/// component as an Integrator would have satisfied DynamicsDriver's validation and
+/// component as an Integrator would have satisfied cpu::md::MD's validation and
 /// the system would have "run" with nothing propagating the equations of motion.
 TEST(FixRattle, ConstraintDoesNotSatisfyTheIntegratorRequirement) {
     cpu::Frame f = water_box(2, 6.0);

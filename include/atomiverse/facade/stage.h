@@ -96,7 +96,7 @@ constexpr PhaseKind kind_of(Phase phase_tag) {
 
 /// @brief One-shot evaluation phases.
 ///
-/// Used by `cpu::EvaluateDriver`. There is no `end_of_step` — Evaluate
+/// Used by `cpu::Evaluate`. There is no `end_of_step` — Evaluate
 /// does not have a step concept. The three phases give callers slots to
 /// place pre-evaluation setup (zeroing forces / preparing buffers),
 /// the evaluator components themselves, and post-evaluation
@@ -136,11 +136,12 @@ constexpr PhaseKind kind_of(Phase phase_tag) {
 // phase enum. The historical `scf::Phase` was deleted with the
 // `cpu::pw` migration onto the PWSolver/PWEvaluator shape.
 
-/// @brief Vibrational-analysis (Response category) phases.
+/// @brief Vibrational-analysis (finite-difference response) phases.
 ///
-/// Used by `cpu::ResponseDriver` / `cpu::vib::Hessian`. The Response
-/// category runs a fixed `6N` displacement budget (no convergence /
-/// stop-request polling) followed by one finalize pass. The phase
+/// Used by `cpu::vib::Hessian`, which runs a fixed `6N` displacement budget
+/// followed by one finalize pass. Every displacement must complete for the
+/// Hessian to be defined, so there is nothing for a handler to decide and
+/// none is attached — the budget IS the termination. The phase
 /// ordering reflects what runs within a single displacement pass
 /// (`setup` → `displace` → `force` → `accumulate`) plus the
 /// finalize-only phases (`diagonalize`, `thermochem`, `end_of_step`).
@@ -182,10 +183,10 @@ constexpr PhaseKind kind_of(Phase phase_tag) {
 
 } // namespace vib
 
-/// @brief Monte Carlo sampling phases (Sampling driver category).
+/// @brief Monte Carlo sampling phases.
 ///
-/// Used by `cpu::SamplingDriver` / `cpu::mc::MC`. The Sampling category runs
-/// a fixed sweep budget of stochastic trial moves; each sweep walks
+/// Used by `cpu::mc::MC`, which runs a budget of stochastic trial moves;
+/// each sweep walks
 /// `propose` → `energy` → `end_of_step`, and every phase is always walked
 /// (an empty phase is an explicit "nothing happens here", not an absence to
 /// infer). Within a phase, components order by a small integer as elsewhere.
@@ -194,10 +195,10 @@ namespace sampling {
 /// @brief Phase order for one Monte Carlo sweep (one trial move).
 ///
 /// @note There is deliberately **no** `accept` phase. Accept/reject is not a
-///       per-phase component slot but the driver's outer-loop control inside
-///       `SamplingDriver::run()` — the Metropolis test decides whether the
-///       proposed state survives — exactly as MD's step-budget termination is
-///       not a phase. See `cpu/driver/sampling_driver.h`.
+///       per-phase component slot: it is an `OutcomePolicy` (`Metropolis`),
+///       asked once after the stages have run, and it decides whether the
+///       proposed state survives — not whether the loop ends. Exactly as MD's
+///       step budget is not a phase. See `cpu/driver/outcome_policy.h`.
 enum class Phase {
     propose,     ///< Mover mutates the frame in place and records the changeset
                  ///< into `Context::proposal`.

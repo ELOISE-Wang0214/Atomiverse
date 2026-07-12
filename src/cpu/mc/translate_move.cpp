@@ -27,12 +27,12 @@ void TranslateMove::launch(const cpu::LaunchContext& ctx) {
 
     std::mt19937_64* rng = ctx.runtime.mc.rng;
     mc::Transaction* txn = ctx.runtime.mc.proposal;
-    // Both are published by SamplingDriver::run(); a null here means the move
-    // was driven outside a sampling driver, which is a usage error.
+    // Both are published by cpu::mc::MC::run(); a null here means the move was driven
+    // outside an MC run, which is a usage error.
     if (rng == nullptr || txn == nullptr) {
         throw std::runtime_error(
-            "TranslateMove::launch: Context::rng / Context::proposal not "
-            "published — TranslateMove must run under a SamplingDriver");
+            "TranslateMove::launch: ctx.mc.rng / ctx.mc.proposal not "
+            "published — TranslateMove must run under cpu::mc::MC");
     }
 
     const int n = ctx.frame.atoms.nlocal;

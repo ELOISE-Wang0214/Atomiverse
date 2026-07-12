@@ -8,8 +8,8 @@
 #include <type_traits>
 
 #include "atomiverse/cpu/scf/solve.h"
+#include "atomiverse/cuda/driver/cuda_driver.cuh"
 #include "atomiverse/cuda/driver/evaluate.cuh"
-#include "atomiverse/cuda/driver/evaluate_driver.cuh"
 #include "atomiverse/cuda/driver/single_point.cuh"
 #include "atomiverse/cuda/scf/internal/convergence_check.cuh"
 #include "atomiverse/cuda/scf/internal/density_builder.cuh"
@@ -104,10 +104,15 @@ TEST(SCF, InternalHelpersAreNotComponents) {
     SUCCEED();
 }
 
-TEST(SCF, EvaluateIsAnEvaluateDriver) {
-    // ac-004: cuda::Evaluate derives from cuda::EvaluateDriver.
-    static_assert(std::is_base_of_v<cuda::EvaluateDriver, cuda::Evaluate>,
-                  "cuda::Evaluate must derive from cuda::EvaluateDriver");
+TEST(SCF, EvaluateIsALoopNodeOverTheEvaluatePhase) {
+    // ac-004, restated after the category bases were deleted. "cuda::Evaluate is in the
+    // Evaluate CATEGORY" is now a statement about nothing — there is no category. What
+    // still has content, and is what the SCF single point actually depends on, is that
+    // Evaluate is a loop node over the `evaluate::Phase` stage domain: that is what lets
+    // an SCFEvaluator bind `evaluate::Phase::evaluate` and be dispatched.
+    static_assert(
+        std::is_base_of_v<cuda::CUDADriver<ATV::evaluate::Phase>, cuda::Evaluate>,
+        "cuda::Evaluate must be a CUDADriver over evaluate::Phase");
     SUCCEED();
 }
 
@@ -230,7 +235,8 @@ TEST(SCF, CUDAMaxIterCap) {
 
 TEST(SCF, EvaluateRejectsFrameWithNoEvaluator) {
     // cuda::Evaluate validation rejects a frame with no Evaluator-role
-    // component (inherited cuda::EvaluateDriver behaviour).
+    // component (`Evaluate::validate_components()`, folded down from the deleted
+    // cuda::EvaluateDriver).
     cuda::Evaluate eval;
     EXPECT_THROW(eval.build(), std::runtime_error);
 }

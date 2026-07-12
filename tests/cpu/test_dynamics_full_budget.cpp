@@ -11,7 +11,8 @@
 /// metrics*, and a handler does the judging. So Dynamics no longer needs to ignore
 /// anything:
 ///
-///   A) with no handler attached, an MD run has no early exit — it runs its budget;
+///   A) with no handler attached, an MD run has no early exit — it runs its budget
+///      (`cpu::md::MD`, unlike `Minimize`, attaches no default handler);
 ///   B) a component that requests a stop still stops it;
 ///   C) a user-supplied handler that returns `Converged` DOES stop it — which is new,
 ///      and is the point. "Run until the temperature settles" is a thing a user is
@@ -19,8 +20,8 @@
 
 #include <gtest/gtest.h>
 
-#include "atomiverse/cpu/driver/dynamics_driver.h"
 #include "atomiverse/cpu/driver/loop_handler.h"
+#include "atomiverse/cpu/md/md.h"
 #include "atomiverse/facade/stage.h"
 
 #include "cpu/driver_test_helpers.h"
@@ -67,13 +68,13 @@ class ConvergeAtIteration : public ATV::cpu::LoopHandler {
 /// A) No handler ⇒ no early exit. The budget is the only termination.
 TEST(DynamicsTermination, NoHandlerRunsTheFullBudget) {
     using namespace ATV;
-    // Components BEFORE the driver: DynamicsDriver is continuable, so the component
-    // destroy() pass is deferred to ~DynamicsDriver — the driver must be destroyed first
-    // (declared last), else its destructor calls virtuals on already-destructed stack
-    // components (pure-virtual abort).
+    // Components BEFORE the driver: `cpu::md::MD` is continuable, so the component
+    // destroy() pass is deferred to ~MD — the driver must be destroyed first (declared
+    // last), else its destructor calls virtuals on already-destructed stack components
+    // (pure-virtual abort).
     StubIntegrator integ;
     StubForceEvaluator force;
-    cpu::DynamicsDriver d;
+    cpu::md::MD d;
 
     d.on(md::Phase::initial_integrate).add(integ);
     d.on(md::Phase::force).add(force);
@@ -90,7 +91,7 @@ TEST(DynamicsTermination, BreaksOnStopRequested) {
     StubIntegrator integ;
     StubForceEvaluator force;
     StopAtStep stopper{/*stop_at=*/3};
-    cpu::DynamicsDriver d;
+    cpu::md::MD d;
 
     d.on(md::Phase::initial_integrate).add(integ);
     d.on(md::Phase::force).add(force);
@@ -111,7 +112,7 @@ TEST(DynamicsTermination, AUserHandlerCanHaltAnMdRun) {
     using namespace ATV;
     StubIntegrator integ;
     StubForceEvaluator force;
-    cpu::DynamicsDriver d;
+    cpu::md::MD d;
 
     d.on(md::Phase::initial_integrate).add(integ);
     d.on(md::Phase::force).add(force);

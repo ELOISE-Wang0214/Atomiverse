@@ -14,7 +14,7 @@
 /// `Deform` is driven directly through its component lifecycle
 /// (`build()` + repeated `launch()`) rather than through a full
 /// `cpu::md::MD` driver. This isolates the box-deformation semantics
-/// under test from the unrelated `DynamicsDriver` requirement that a
+/// under test from the unrelated `cpu::md::MD` requirement that a
 /// Force-capable evaluator be present.
 
 #include "bench_check.h"

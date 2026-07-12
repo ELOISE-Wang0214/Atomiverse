@@ -1,44 +1,56 @@
 /// @file cpu/driver/cpu_driver.h
-/// @brief cpu::CPUDriver — the CPU-backend layer of the driver hierarchy.
+/// @brief cpu::CPUDriver — a loop node: stages + plan + handlers. **Not a category.**
 ///
-/// Hierarchy (two orthogonal axes — backend & category):
+/// ## There is no category any more
+///
+/// There used to be six classes here — `EvaluateDriver`, `DynamicsDriver`,
+/// `OptimizeDriver`, `ResponseDriver`, `SamplingDriver`, `PathDriver` — one per "task
+/// type", and they differed from one another by an `if`. Evaluate ran one pass. Dynamics
+/// ran a budget. Optimize stopped on convergence. Sampling ran trials and kept or
+/// discarded each. Every new method demanded a seventh, and no user could write an
+/// eighth, because "when do we stop" was a private `if` inside a driver class.
+///
+/// Stripped to the bone, a Driver is only three things:
+///
+///   1. **Stages**      — a typed phase sequence (an enum); the Plan binds nodes to it.
+///   2. **Iteration**   — walk the stages, repeatedly.
+///   3. **Termination** — when to stop.
+///
+/// (3) was the one welded into the class hierarchy, and it is the only thing the six
+/// classes disagreed about. Take it out and hand it to a policy object, and there is
+/// nothing left for a category to be. So:
 ///
 /// @code
-///   Driver<PhaseEnum, DeviceTag>          ← plan / dispatch primitive
-///     ├─ cpu::CPUDriver<PhaseEnum>         ← CPU backend layer  (this file)
-///     │    ├─ cpu::EvaluateDriver
-///     │    ├─ cpu::DynamicsDriver
-///     │    ├─ cpu::OptimizeDriver
-///     │    ├─ cpu::ResponseDriver
-///     │    └─ cpu::SamplingDriver
-///     └─ cuda::CUDADriver<PhaseEnum>       ← CUDA backend layer
-///          ├─ cuda::EvaluateDriver           (cuda_driver.cuh)
-///          ├─ cuda::DynamicsDriver
-///          └─ cuda::OptimizeDriver
+///   Driver<PhaseEnum, DeviceTag>      ← plan / dispatch primitive (facade/driver.h)
+///     └─ cpu::CPUDriver<PhaseEnum>    ← THE loop node             (this file)
+///          └─ {MD, Minimize, MC, Evaluate, Hessian, PathDriver}   ← presets
 /// @endcode
 ///
-/// `CPUDriver<P>` inherits the underlying `Driver<P, cpu::device_tag>`
-/// (which holds the Plan and Backend ownership) and adds the
-/// CPU-specific machinery the five category bases share:
+/// Four levels became two. A **preset** is not an architectural layer: it is a class
+/// whose *constructor* attaches the default handler and infrastructure that a given kind
+/// of run wants (`Minimize` attaches `ForceConverged`, `MC` attaches `Metropolis`). It
+/// contributes defaults, not semantics, and a user can override every one of them.
 ///
-///   1. A `build()` override that runs `validate_components()` before
-///      the Plan is compiled. Subclasses override
-///      `validate_components()` to enforce their required role +
-///      capability set.
-///   2. Protected helpers `setup_pass`, `step_once`, `teardown_pass`
-///      that subclass `run(...)` implementations use to drive the
-///      per-iteration loop with category-correct termination.
-///   3. Read/write access to the outer-driver `IterationStatus`
-///      (`cpu::Context::outer_status`), which `OptimizeDriver` polls
-///      for `converged` and `DynamicsDriver` polls for
-///      `stop_requested`.
-///   4. Unified categorical setter API (set_pair, set_bond, set_angle,
-///      set_dihedral, set_neighbor, set_observer, set_record, set_thermo)
-///      shared across MD / Minimize / Evaluate via `CategoryTraits`.
+/// ## The two policy slots
 ///
-/// User code does not subclass this directly — the five concrete CPU
-/// category bases (`cpu::EvaluateDriver` / `DynamicsDriver` /
-/// `OptimizeDriver` / `ResponseDriver` / `SamplingDriver`) do.
+/// Both are plain objects, both are user-definable, and they are orthogonal:
+///
+///   - `LoopHandler`   — *should the loop stop?*      `add_handler(…)`, plural, composed
+///                       by severity: **Stop > Converged > Continue**. @see loop_handler.h
+///   - `OutcomePolicy` — *does this iteration count?* `set_outcome(…)`, singular.
+///                       @see outcome_policy.h
+///
+/// ## What this class provides
+///
+///   1. `build()` — installs infrastructure, then validates the component set.
+///   2. The loop primitives every preset composes its `run()` from: `setup_pass`,
+///      `step_once`, `poll_handlers_`, `teardown_pass`, plus the continuation
+///      machinery (`begin_run_` / `flush_live_`) that MD and MC share.
+///   3. **This loop's own** `IterationStatus` + `LoopMetrics` — owned here, borrowed by
+///      the Context. A nested loop cannot reach the loop above it. @see LoopServices.
+///   4. The MPI contract: a handler's verdict is all-reduced by the driver, once, so a
+///      handler author never has to think about ranks disagreeing on when to stop.
+///   5. The categorical setter API (set_pair / set_bond / … / set_thermo).
 #pragma once
 
 #include <memory>
@@ -62,6 +74,7 @@
 #include "atomiverse/cpu/driver/backend_traits.h"
 #include "atomiverse/cpu/driver/dof.h"
 #include "atomiverse/cpu/driver/loop_handler.h"
+#include "atomiverse/cpu/driver/outcome_policy.h"
 #include "atomiverse/cpu/recorder/thermo.h"
 #include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/driver.h"
@@ -308,6 +321,88 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     /// @brief Single iteration through the compiled Plan.
     void step_once(int iter_index) { this->backend_->step(iter_index); }
 
+    // ── Continuation (MD and MC; the other presets run fresh each call) ─────
+    //
+    // `run()` is continuable for the time-like loops: consecutive calls extend ONE
+    // trajectory / Markov chain — the standard `run(burn_in); run(sample); …` pattern.
+    // Component `build()` fires once, on the first `run()`, and the matching `destroy()`
+    // is deferred to the preset's destructor, so the build → launch×N → destroy
+    // lifecycle spans every `run()` call. Rebuilding per call would wipe the
+    // extended-variable state of stateful integrators (Nosé–Hoover chains, Langevin
+    // RNG) and re-randomise InitVelocity, silently corrupting any chunked run.
+    //
+    // DynamicsDriver and SamplingDriver each carried a private copy of this. It is one
+    // mechanism, so it lives in one place — the second caller is what justifies the
+    // extraction (CLAUDE.md: extract on the second caller, not the first).
+
+    /// @brief Start a fresh run, or continue the live one.
+    ///
+    /// A *different* frame means a genuinely independent simulation: the previous run is
+    /// torn down and a new one begins. The same frame continues.
+    ///
+    /// @param frame The frame this call will run on.
+    /// @return True if this call started a fresh run (so the caller can do its
+    ///         once-per-run seeding, e.g. MC's bootstrap energy pass).
+    bool begin_run_(cpu::Frame& frame) {
+        if (live_ && frame_ptr_ != &frame) {
+            this->backend_->destroy_components();
+            live_ = false;
+        }
+        if (live_)
+            return false;
+        setup_pass(frame);
+        frame_ptr_ = &frame;
+        step_counter_ = 0;
+        live_ = true;
+        return true;
+    }
+
+    /// @brief Flush the deferred component `destroy()` of a live continuable run.
+    ///        Called from a continuable preset's destructor; the base `~Driver()` shuts
+    ///        the backend down afterwards.
+    void flush_live_() {
+        if (live_ && this->backend_)
+            this->backend_->destroy_components();
+        live_ = false;
+    }
+
+    /// @brief The cumulative step index across every `run()` call, then advance it.
+    ///
+    /// Cumulative — not per-call — so frequency-gated components (Thermo, Migrate,
+    /// recorders) keep a continuous cadence across a chunked run.
+    int next_step_() { return step_counter_++; }
+
+    // ── Outcome policy ─────────────────────────────────────────────────────
+
+    /// @brief Ask the outcome policy what becomes of the iteration that just ran.
+    ///
+    /// `Commit` when no policy is attached — which is every loop except MC, and is why
+    /// the other five presets never mention outcomes at all.
+    ///
+    /// The policy decides; the *caller* undoes. A policy that could reach into the frame
+    /// would have to know what kind of move it was undoing. @see outcome_policy.h
+    ///
+    /// @param frame Frame carrying the trial state.
+    /// @param iteration Index of the iteration just completed.
+    /// @return The policy's decision.
+    Outcome decide_outcome_(const cpu::Frame& frame, int iteration) {
+        if (!outcome_)
+            return Outcome::Commit;
+        const cpu::LoopState st{iteration, frame, this->backend_->context(),
+                                metrics_};
+        return outcome_->after_stages(st);
+    }
+
+    /// @brief Let the outcome policy seed itself from the initial configuration.
+    ///        Called once per fresh run, after the bootstrap pass. @see Metropolis
+    /// @param frame Frame carrying the initial (bootstrap-evaluated) state.
+    void start_outcome_(const cpu::Frame& frame) {
+        if (!outcome_)
+            return;
+        const cpu::LoopState st{-1, frame, this->backend_->context(), metrics_};
+        outcome_->on_start(st);
+    }
+
     /// @brief Emit the built-in end-of-run summary — the LAMMPS-style time +
     /// memory breakdown every driver reports. Called by the category driver's
     /// `run()` after the loop (all ranks, in lockstep — the reduction is
@@ -450,6 +545,28 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
 
     /// @brief Whether any handler is attached (a preset injects a default if not).
     bool has_handler() const { return !handlers_.empty(); }
+
+    /// @brief Attach the per-iteration commit/rollback policy. Singular — replaces.
+    ///
+    /// The loop's *other* policy slot, orthogonal to `add_handler`: a handler says
+    /// whether to stop, an outcome policy says whether the iteration that just ran
+    /// counts. `MC` attaches `Metropolis{T, seed}` in its constructor; swapping in a
+    /// GCMC or REMD acceptance rule is a `set_outcome` call, not a new driver class.
+    ///
+    /// @tparam P An OutcomePolicy subclass.
+    /// @param p Policy instance, moved in.
+    /// @return Reference to the policy, so a preset can query its state
+    ///         (`MC::current_energy()` reads Metropolis's cached energy).
+    template <typename P>
+    std::decay_t<P>& set_outcome(P&& p) {
+        using D = std::decay_t<P>;
+        static_assert(std::is_base_of_v<cpu::OutcomePolicy, D>,
+                      "set_outcome requires a cpu::OutcomePolicy subclass");
+        auto owned = std::make_unique<D>(std::forward<P>(p));
+        D* raw = owned.get();
+        outcome_ = std::move(owned);
+        return *raw;
+    }
 
     /// @brief Did this loop terminate because a handler declared success?
     ///
@@ -645,7 +762,15 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
     /// This loop's own status and metrics. **Not on the Context** — see LoopServices.
     IterationStatus status_{};
     LoopMetrics metrics_{};
+    /// Termination policies — plural, composed by severity. @see poll_handlers_
     std::vector<std::unique_ptr<cpu::LoopHandler>> handlers_;
+    /// Commit/rollback policy — singular, null on every loop but MC.
+    std::unique_ptr<cpu::OutcomePolicy> outcome_;
+
+    // Continuation bookkeeping — shared by the time-like presets (MD, MC).
+    bool live_ = false;               ///< Backend live between first run() and teardown.
+    cpu::Frame* frame_ptr_ = nullptr; ///< Frame bound by the live run.
+    int step_counter_ = 0;            ///< Cumulative step index across run() calls.
 
   private:
     // ── Categorical setter slots ────────────────────────────────────

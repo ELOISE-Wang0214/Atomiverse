@@ -22,23 +22,27 @@
 /// energy+force (in `MD` / `Minimize`) — by adjusting its
 /// `capabilities()` at construction time.
 ///
-/// Driver category bases validate the registered component set at
-/// `build()` time using these tags:
+/// Each **preset** validates the registered component set at `build()` time using these
+/// tags — a run that cannot possibly do what was asked of it fails at build, not after
+/// an hour of wall clock:
 ///
-///   - `EvaluateDriver` requires ≥ 1 component with role==Evaluator and
+///   - `cpu::Evaluate` requires ≥ 1 component with role==Evaluator and
 ///     capabilities() != None.
-///   - `DynamicsDriver` requires ≥ 1 Integrator AND ≥ 1 Evaluator that
-///     advertises `Capability::Force`.
-///   - `OptimizeDriver` requires ≥ 1 Optimizer AND ≥ 1 Evaluator that
+///   - `cpu::md::MD` requires ≥ 1 Integrator AND ≥ 1 component advertising
+///     `Capability::Force` (capability, not role: a Thermostat-role Langevin that writes
+///     forces satisfies "the integrator has something to integrate").
+///   - `cpu::minimizer::Minimize` requires ≥ 1 Optimizer AND ≥ 1 Evaluator that
 ///     advertises `Capability::Energy` or `Capability::Force`.
-///   - `ResponseDriver` requires ≥ 1 Evaluator that advertises
-///     `Capability::Force` (it fills finite-difference Hessian rows over a
-///     fixed 6N-displacement budget, no early stop).
-///   - `SamplingDriver` requires ≥ 1 component with role==Mover AND ≥ 1
-///     component advertising `Capability::Energy` (the trial-energy
-///     pipeline for the inline Metropolis test).
+///   - `cpu::vib::Hessian` requires `Capability::Force` AND `Capability::Hessian`.
+///   - `cpu::mc::MC` requires ≥ 1 component with role==Mover AND ≥ 1 component
+///     advertising `Capability::Energy` (the trial-energy pipeline).
+///   - `cpu::PathDriver` requires an Optimizer AND a Force evaluator.
 ///
-/// @see cpu/cpu_driver.h (and the per-category bases under cpu/*_driver.h)
+/// These are *requirements*, not a taxonomy. There are no driver "category" base classes
+/// any more: a driver is a staged loop, and termination is a `LoopHandler`.
+///
+/// @see cpu/driver/cpu_driver.h — the loop node the presets derive
+/// @see cpu/driver/loop_handler.h — termination as a policy
 #pragma once
 
 #include <cstdint>

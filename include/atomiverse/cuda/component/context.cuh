@@ -1,22 +1,25 @@
 /// @file cuda/component/context.cuh
 /// @brief cuda::Context -- CUDA execution context: flat core state (streams
-/// + host-side box + outer status) plus the classical force-pipeline slice
-/// (arch-refactor-05-context).
+/// + host-side box + the active loop's status/metrics) plus the classical
+/// force-pipeline slice (arch-refactor-05-context).
 ///
 /// Holds stream handles as void* to keep this header CUDA-free.
 /// Components cast to cudaStream_t in their .cu implementations.
 ///
 /// Homomorphic with `cpu::Context`: same-named slices carry the same
-/// semantics. CUDA has no Sampling / Optimize driver and no analysis
+/// semantics. CUDA has no Sampling / Path driver and no analysis
 /// executor (async observation goes through `AsyncBridge`), so only the
-/// `md` slice exists on this backend — homomorphism means "same slice,
-/// same meaning", not "same field set".
+/// `loop` and `md` slices exist on this backend — homomorphism means
+/// "same slice, same meaning", not "same field set".
 ///
 /// @see cuda::Frame for the device-side data
 #pragma once
 
+#include <type_traits>
+
 #include "atomiverse/cuda/frame/box.cuh"
 #include "atomiverse/facade/iteration_status.h"
+#include "atomiverse/facade/loop.h"
 
 namespace ATV {
 namespace cuda {
@@ -89,6 +92,21 @@ struct DynamicsServices {
     const int* force_rows = nullptr;
 };
 
+/// @brief The active loop node's status + metrics (publisher: the running Driver).
+///
+/// Non-owning: a Driver owns its own `IterationStatus` and `LoopMetrics` and points
+/// these here for the duration of its loop. So a nested driver's components write to
+/// the NESTED loop's status, never the parent's. Mirrors `cpu::LoopServices`.
+struct LoopServices {
+    /// @brief Stop channel. A component may set `stop_requested`; it must NOT set
+    /// `converged` — declaring success is a LoopHandler's job, not a component's.
+    IterationStatus* status = nullptr;
+
+    /// @brief Where components publish what they measured, for handlers to judge.
+    /// `cuda::minimizer::ConvCheck` writes it after its one pinned D2H per iteration.
+    LoopMetrics* metrics = nullptr;
+};
+
 /// @brief CUDA execution context passed to components via
 ///        build/launch/destroy contexts.
 ///
@@ -99,14 +117,20 @@ struct Context {
     void* defer_stream =
         nullptr; ///< Secondary stream for deferrable operations.
 
-    /// @brief Outer-driver loop status, owned by the category driver.
+    /// @brief The **active loop node's** status and metrics.
     ///
-    /// Reset before each outer iteration; written by
-    /// `ConvergenceCheck`-tagged components; polled by `cuda::CUDADriver`
-    /// subclasses (`OptimizeDriver` for `converged`, `DynamicsDriver`
-    /// for `stop_requested`). Mirrors `cpu::Context::outer_status`.
-    /// @see facade/iteration_status.h
-    ATV::IterationStatus outer_status;
+    /// Both are OWNED BY THE LOOP (`cuda::CUDADriver` holds them as members), not by
+    /// the Context — the Context only points at whichever loop is currently running.
+    /// It used to be an `IterationStatus` here BY VALUE, and that is the shape of a bug
+    /// that shipped twice on the CPU side: a component (there `LBFGS`, here
+    /// `ConvCheck`) wrote `converged = true` onto the one shared status, so an inner
+    /// loop's convergence could stop the loop ABOVE it. A pointer that points at the
+    /// current loop cannot reach the loop above it.
+    ///
+    /// A component **measures** into `metrics` and may **request a stop** via `status`.
+    /// It does not declare convergence: that is a `cuda::LoopHandler`'s job.
+    /// @see cuda/driver/loop_handler.cuh
+    LoopServices loop;
 
     /// @brief Host-resident snapshot of the simulation cell, passed by
     ///        value into integrator + bonded + pair kernels so they
@@ -125,6 +149,13 @@ struct Context {
 
     DynamicsServices md; ///< Classical force-pipeline slice.
 };
+
+// Slices are plain aggregates and the Context stays non-polymorphic — components
+// receive it by reference in every lifecycle hook, and a vtable here would mean the
+// Context could be subclassed into carrying behaviour. Mirrors the CPU asserts.
+static_assert(std::is_trivially_copyable_v<DynamicsServices>);
+static_assert(std::is_trivially_copyable_v<LoopServices>);
+static_assert(!std::is_polymorphic_v<Context>);
 
 } // namespace cuda
 } // namespace ATV

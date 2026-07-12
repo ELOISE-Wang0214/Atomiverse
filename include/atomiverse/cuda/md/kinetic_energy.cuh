@@ -42,7 +42,7 @@ namespace md {
 /// kinetic energy is written to `frame.scalars->kinetic`, which is **not** one of
 /// the `Capability` bits (those cover potential `Energy`, `Force`,
 /// `Stress`, charge / density / orbital fields). It is a structural
-/// diagnostic, not a force/energy producer, so `DynamicsDriver`
+/// diagnostic, not a force/energy producer, so `cuda::md::MD`
 /// validation does not count it toward the `Capability::Force`
 /// requirement.
 class KineticEnergy : public ComponentBase {

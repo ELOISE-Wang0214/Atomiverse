@@ -1,8 +1,7 @@
 /// @file tests/cpu/test_optimize_driver_early_stop.cpp
-/// @brief Phase 1.7 — OptimizeDriver breaks the loop when a
-///        ConvergenceCheck-tagged component sets
-///        `outer_status.converged = true`. Returns the iteration count
-///        actually run.
+/// @brief Phase 1.7 — `cpu::minimizer::Minimize` breaks the loop when the metrics a
+///        ConvergenceCheck-tagged component publishes satisfy the attached
+///        `ForceConverged` handler. Returns the iteration count actually run.
 ///
 /// Acceptance: ac-005 (Optimize half) in
 /// `.claude/specs/cpu-driver-taxonomy.acceptance.md`.
@@ -10,7 +9,7 @@
 #include <gtest/gtest.h>
 
 #include "atomiverse/cpu/driver/loop_handler.h"
-#include "atomiverse/cpu/driver/optimize_driver.h"
+#include "atomiverse/cpu/minimizer/minimize.h"
 #include "atomiverse/facade/stage.h"
 
 #include "cpu/driver_test_helpers.h"
@@ -53,7 +52,7 @@ struct ConvergeAtStep : ATV::cpu::ComponentBase {
 
 TEST(OptimizeEarlyStop, BreaksAtConvergeStep) {
     using namespace ATV;
-    cpu::OptimizeDriver opt;
+    cpu::minimizer::Minimize opt;
     StubOptimizer optimizer;
     StubEnergyEvaluator energy;
     ConvergeAtStep converge{/*step=*/3};
@@ -61,9 +60,10 @@ TEST(OptimizeEarlyStop, BreaksAtConvergeStep) {
     opt.on(minimizer::Phase::search_direction).add(optimizer);
     opt.on(minimizer::Phase::force).add(energy);
     opt.on(minimizer::Phase::convergence_check).add(converge);
-    // A BARE OptimizeDriver has no termination policy — that is the point of the
-    // refactor. The `Minimize` preset injects ForceConverged{} for you; here we are
-    // below the preset, so we say what convergence means ourselves.
+    // Termination is a POLICY, not a class — that is the point of the refactor. The
+    // `Minimize` preset would inject `ForceConverged{}` itself if we attached nothing;
+    // we attach it explicitly so this test pins the tolerances it judges against
+    // instead of inheriting whatever the preset's defaults happen to be.
     opt.add_handler(cpu::ForceConverged{});
     opt.build();
 
@@ -79,7 +79,7 @@ TEST(OptimizeEarlyStop, BreaksAtConvergeStep) {
 
 TEST(OptimizeEarlyStop, RunsToBudgetWhenNeverConverged) {
     using namespace ATV;
-    cpu::OptimizeDriver opt;
+    cpu::minimizer::Minimize opt;
     StubOptimizer optimizer;
     StubEnergyEvaluator energy;
     ConvergeAtStep never{/*step=*/9999}; // far beyond max_iter
@@ -87,9 +87,10 @@ TEST(OptimizeEarlyStop, RunsToBudgetWhenNeverConverged) {
     opt.on(minimizer::Phase::search_direction).add(optimizer);
     opt.on(minimizer::Phase::force).add(energy);
     opt.on(minimizer::Phase::convergence_check).add(never);
-    // A BARE OptimizeDriver has no termination policy — that is the point of the
-    // refactor. The `Minimize` preset injects ForceConverged{} for you; here we are
-    // below the preset, so we say what convergence means ourselves.
+    // Termination is a POLICY, not a class — that is the point of the refactor. The
+    // `Minimize` preset would inject `ForceConverged{}` itself if we attached nothing;
+    // we attach it explicitly so this test pins the tolerances it judges against
+    // instead of inheriting whatever the preset's defaults happen to be.
     opt.add_handler(cpu::ForceConverged{});
     opt.build();
 

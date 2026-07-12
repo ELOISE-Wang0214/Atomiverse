@@ -1513,7 +1513,7 @@ void run_cuda_pipeline(const Args& a, cpu::Frame& frame,
         log_stage(1, steps, a.dt_stage1, now_seconds() - ts0);
         // DIAG: dump per-atom forces right after stage 1 step `steps`.
         // For step-0 comparison with LAMMPS, run with `--scale 0.0001`
-        // (1 step). The frame is now host-synced (DynamicsDriver retrieves
+        // (1 step). The frame is now host-synced (cpu::md::MD retrieves
         // on every run()), so the host-side fx/fy/fz hold device forces
         // from the LAST evaluated step.
         if (std::getenv("ATV_DUMP_FORCES")) {

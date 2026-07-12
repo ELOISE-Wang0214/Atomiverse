@@ -33,8 +33,10 @@
 #include <memory>
 #include <string>
 
-#include "atomiverse/cpu/driver/response_driver.h"
+#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/driver/cpu_driver.h"
 #include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/facade/component_role.h"
 #include "atomiverse/cpu/vib/displace_step.h"
 #include "atomiverse/cpu/vib/hessian_accumulator.h"
 #include "atomiverse/cpu/vib/hessian_result.h"
@@ -48,14 +50,22 @@ namespace ATV {
 namespace cpu {
 namespace vib {
 
-/// @brief Finite-difference numerical-Hessian driver.
-class Hessian : public cpu::ResponseDriver {
+/// @brief Finite-difference numerical-Hessian preset.
+///
+/// Termination is a **fixed `6N`-displacement budget** followed by one finalize pass —
+/// every displacement must complete for the Hessian to be defined, so there is no
+/// convergence path and no early stop. `6N` is derived from the frame inside `run()`,
+/// never passed in. The budget is the loop bound; no handler is attached.
+///
+/// Inheritance: Hessian → CPUDriver<vib::Phase> → Driver<vib::Phase, cpu::device_tag>.
+/// There is no `ResponseDriver` category in between any more.
+class Hessian : public CPUDriver<ATV::vib::Phase> {
   public:
     /// @brief Tag type to construct a driver WITHOUT the HessianAccumulator.
     ///
-    /// Exists only so tests can verify `ResponseDriver::validate_components()`
-    /// throws when no `Capability::Hessian` component is present. Production
-    /// code uses the default constructor.
+    /// Exists only so tests can verify `validate_components()` throws when no
+    /// `Capability::Hessian` component is present. Production code uses the default
+    /// constructor.
     struct WithoutAccumulator {};
 
     /// @brief Output paths for the two auto-injected Recorder components.
@@ -126,6 +136,23 @@ class Hessian : public cpu::ResponseDriver {
     /// @pre `run()` has completed at least once.
     /// @return The cached Hessian result.
     const HessianResult& last_result() const { return last_result_; }
+
+  protected:
+    /// @brief A force evaluator to displace against, and an accumulator to build into.
+    void validate_components() const override {
+        bool has_force_writer = false;
+        bool has_hessian_writer = false;
+        for_each_pending([&](const cpu::ComponentBase& c) {
+            if (has_capability(c.capabilities(), Capability::Force))
+                has_force_writer = true;
+            if (has_capability(c.capabilities(), Capability::Hessian))
+                has_hessian_writer = true;
+        });
+        if (!has_force_writer)
+            throw_missing("Component with Capability::Force");
+        if (!has_hessian_writer)
+            throw_missing("Component with Capability::Hessian");
+    }
 
   private:
     /// @brief Shared scratch for the four structural components.

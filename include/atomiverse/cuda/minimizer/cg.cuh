@@ -6,7 +6,8 @@
 /// `cuda::minimizer::LBFGS` / `SteepestDescent` inside
 /// `cuda::minimizer::Minimize`. Same outer contract as the CPU class —
 /// binds `search_direction` (computes and applies the step) and
-/// `convergence_check` (reports `outer_status.converged` to the driver).
+/// `convergence_check` (PUBLISHES its metrics into `ctx.runtime.loop.metrics`;
+/// a `cuda::LoopHandler` judges them — the component decides nothing).
 ///
 /// Algorithm (Polak-Ribière+):
 ///   d_0 = -g_0
@@ -23,8 +24,12 @@
 /// The `convergence_check` phase is the shared `ConvCheck`
 /// host-dependent bridge (one pinned D2H + sync per iteration).
 ///
-/// Convergence rule is identical to `LBFGS` (and to both CPU
-/// optimizers): max/RMS force, max/RMS displacement, energy change.
+/// **Tolerances are not here.** They belong to the termination policy —
+/// `cuda::ForceConverged`, which `cuda::minimizer::Minimize` attaches by default and
+/// which the user replaces with `min.add_handler(cuda::ForceConverged{ftol, …})`. This
+/// component measures; it does not decide. That is why it no longer carries five of its
+/// six constructor arguments, and why `CG::converged()` is gone: ask the loop
+/// (`min.converged()`), which is the thing that actually knows.
 ///
 /// @note Like its CPU mirror, CG applies a FIXED step `x += α₀·d` with
 /// no per-atom displacement cap (`LBFGS` caps at 0.1 Å, CG does not).
@@ -63,17 +68,9 @@ namespace minimizer {
 /// moving step is plain steepest descent.
 class CG : public ComponentBase {
   public:
-    /// @brief Construct CG optimizer (CPU-default tolerances).
+    /// @brief Construct CG optimizer.
     /// @param alpha0    Step size [Angstrom^2/eV] (default 0.01).
-    /// @param ftol      Max force convergence tolerance [eV/Angstrom] (default 0.05).
-    /// @param rms_ftol  RMS force tolerance [eV/Angstrom] (default 0.03).
-    /// @param max_dtol  Max displacement tolerance [Angstrom] (default 0.002).
-    /// @param rms_dtol  RMS displacement tolerance [Angstrom] (default 0.001).
-    /// @param etol      Energy change tolerance [eV] (default 1e-5).
-    explicit CG(double alpha0 = 0.01, double ftol = 0.05,
-                double rms_ftol = 0.03, double max_dtol = 0.002,
-                double rms_dtol = 0.001, double etol = 1e-5)
-        : alpha0_(alpha0), tols_{ftol, rms_ftol, max_dtol, rms_dtol, etol} {}
+    explicit CG(double alpha0 = 0.01) : alpha0_(alpha0) {}
 
     /// @brief Component name.
     /// @return "cg".
@@ -98,9 +95,6 @@ class CG : public ComponentBase {
     /// @brief Release all device buffers.
     void destroy(const DestroyContext& ctx) override;
 
-    /// @brief Check if optimization has converged.
-    bool converged() const { return converged_; }
-
     /// @brief Max force magnitude at the latest convergence check.
     double max_force() const { return conv_.max_force(); }
 
@@ -109,11 +103,9 @@ class CG : public ComponentBase {
 
   private:
     double alpha0_; ///< Step size [Angstrom^2/eV].
-    ConvTols tols_; ///< Five-criteria convergence tolerances.
 
     int n_ = 0;    ///< Atom count.
     int step_ = 0; ///< Optimizer step counter.
-    bool converged_ = false;
 
     // Planar [x:0..n, y:n..2n, z:2n..3n] device state, work_t precision
     // (position/gradient differences of nearly-equal values would lose

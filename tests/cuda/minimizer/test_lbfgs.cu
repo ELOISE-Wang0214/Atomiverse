@@ -2,13 +2,19 @@
 /// @brief Integration tests: cuda::minimizer::LBFGS Optimizer component —
 ///        energy descent (two-loop direction), five-criteria early stop,
 ///        and the Armijo backtracking line-search path.
+///
+/// The five convergence tolerances used to be constructor arguments of `LBFGS`. They
+/// are now the state of the `cuda::ForceConverged` LoopHandler — the component
+/// measures, the handler decides — so every tolerance below is expressed with
+/// `min.add_handler(cuda::ForceConverged{…})`, which also suppresses the default
+/// handler `Minimize` would otherwise attach. Same numbers, same intent.
 
 #include <cmath>
 #include <cstdlib>
 #include <gtest/gtest.h>
 #include <type_traits>
 
-#include "atomiverse/cuda/driver/optimize_driver.cuh"
+#include "atomiverse/cuda/driver/loop_handler.cuh"
 #include "atomiverse/cuda/minimizer/lbfgs.cuh"
 #include "atomiverse/cuda/minimizer/minimize.cuh"
 #include "atomiverse/cuda/neighbor/neighbor_list.cuh"
@@ -98,9 +104,10 @@ TEST(MinimizerLBFGS, EnergyDecreases) {
     cuda::minimizer::Minimize min;
     // Tight tolerances: exercise the two-loop direction over the full
     // budget (history fills past the default memory of 5 pairs).
-    min.add(cuda::minimizer::LBFGS{5, double(0.01), double(1e-8), 10,
-                                   double(1e-8), double(1e-10), double(1e-10),
-                                   double(1e-12)});
+    min.add(cuda::minimizer::LBFGS{5, double(0.01), 10});
+    min.add_handler(cuda::ForceConverged{/*ftol=*/1e-8, /*rms_ftol=*/1e-8,
+                                         /*max_dtol=*/1e-10, /*rms_dtol=*/1e-10,
+                                         /*etol=*/1e-12});
     min.on(minimizer::Phase::force)
         .add(cuda::NeighborList{cutoff}, -10)
         .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
@@ -116,17 +123,15 @@ TEST(MinimizerLBFGS, ConvergesAndStopsEarly) {
     double cutoff = double(3.0);
 
     cuda::minimizer::Minimize min;
-    // Loose tolerances trip the shared five-criteria rule well inside
-    // the budget; lvalue registration keeps the component inspectable.
-    cuda::minimizer::LBFGS lbfgs{5,
-                                 double(0.01),
-                                 /*ftol=*/10.0,
-                                 10,
-                                 /*rms_ftol=*/10.0,
-                                 /*max_dtol=*/1.0,
-                                 /*rms_dtol=*/1.0,
-                                 /*etol=*/10.0};
+    // Loose tolerances trip the five-criteria rule well inside the budget; lvalue
+    // registration keeps the component inspectable. The verdict belongs to the LOOP
+    // (`min.converged()`) — `LBFGS::converged()` is deleted, because an optimizer that
+    // only publishes metrics does not know the verdict.
+    cuda::minimizer::LBFGS lbfgs{5, double(0.01), 10};
     min.add(lbfgs);
+    min.add_handler(cuda::ForceConverged{/*ftol=*/10.0, /*rms_ftol=*/10.0,
+                                         /*max_dtol=*/1.0, /*rms_dtol=*/1.0,
+                                         /*etol=*/10.0});
     min.on(minimizer::Phase::force)
         .add(cuda::NeighborList{cutoff}, -10)
         .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});
@@ -134,7 +139,8 @@ TEST(MinimizerLBFGS, ConvergesAndStopsEarly) {
     int iters = min.run(frame, 200);
 
     EXPECT_LT(iters, 200) << "loose tolerances must stop the loop early";
-    EXPECT_TRUE(lbfgs.converged());
+    EXPECT_TRUE(min.converged());
+    EXPECT_EQ(min.stop_reason(), "force_converged");
     EXPECT_FALSE(lbfgs.trace().empty());
     EXPECT_EQ(lbfgs.trace().back().step, iters);
 }
@@ -144,18 +150,14 @@ TEST(MinimizerLBFGS, ArmijoLineSearchEnergyDecreases) {
     double cutoff = double(3.0);
     double e0 = initial_energy(frame, cutoff);
 
-    cuda::minimizer::LBFGS step{5,
-                                double(0.05),
-                                double(1e-8),
-                                20,
-                                double(1e-8),
-                                double(1e-10),
-                                double(1e-10),
-                                double(1e-12)};
+    cuda::minimizer::LBFGS step{5, double(0.05), 20};
     step.line_search(); // Armijo default constants.
 
     cuda::minimizer::Minimize min;
     min.add(std::move(step));
+    min.add_handler(cuda::ForceConverged{/*ftol=*/1e-8, /*rms_ftol=*/1e-8,
+                                         /*max_dtol=*/1e-10, /*rms_dtol=*/1e-10,
+                                         /*etol=*/1e-12});
     min.on(minimizer::Phase::force)
         .add(cuda::NeighborList{cutoff}, -10)
         .add(cuda::PairLJCut{double(1.0), double(1.0), cutoff});

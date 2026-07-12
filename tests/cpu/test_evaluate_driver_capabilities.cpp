@@ -1,7 +1,7 @@
 /// @file tests/cpu/test_evaluate_driver_capabilities.cpp
 /// @brief Phase 1.6 — Evaluate accepts evaluators *by capability*, not by
 ///        ForceProvider role. An energy-only evaluator (no Force capability)
-///        is valid in EvaluateDriver and rejected by DynamicsDriver.
+///        is valid in `cpu::Evaluate` and rejected by `cpu::md::MD`.
 ///
 /// Acceptance: ac-004 in `.claude/specs/cpu-driver-taxonomy.acceptance.md`.
 
@@ -9,8 +9,8 @@
 
 #include <string>
 
-#include "atomiverse/cpu/driver/dynamics_driver.h"
-#include "atomiverse/cpu/driver/evaluate_driver.h"
+#include "atomiverse/cpu/driver/evaluate.h"
+#include "atomiverse/cpu/md/md.h"
 #include "atomiverse/facade/stage.h"
 
 #include "cpu/driver_test_helpers.h"
@@ -40,7 +40,7 @@ struct EnergyOnlyEvaluator : ATV::cpu::ComponentBase {
 
 TEST(EvaluateCapabilities, EnergyOnlyAcceptedByEvaluate) {
     using namespace ATV;
-    cpu::EvaluateDriver e;
+    cpu::Evaluate e;
     EnergyOnlyEvaluator energy;
     e.on(evaluate::Phase::evaluate).add(energy);
     EXPECT_NO_THROW(e.build());
@@ -53,7 +53,7 @@ TEST(EvaluateCapabilities, EnergyOnlyAcceptedByEvaluate) {
 
 TEST(EvaluateCapabilities, EnergyOnlyRejectedByDynamics) {
     using namespace ATV;
-    cpu::DynamicsDriver d;
+    cpu::md::MD d;
     StubIntegrator integ;
     EnergyOnlyEvaluator energy;
     d.on(md::Phase::initial_integrate).add(integ);

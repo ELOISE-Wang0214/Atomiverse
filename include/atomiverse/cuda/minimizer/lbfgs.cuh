@@ -16,13 +16,16 @@
 ///     history bookkeeping that determines how many two-loop kernels
 ///     are launched.
 ///   - `convergence_check` runs the shared `ConvCheck` bridge (the
-///     verdict must reach the host-side `outer_status` the driver
-///     polls). Line-search scalars (applied α, g·d) ride this sync as
+///     metrics must reach the host, where the driver polls its
+///     handlers). Line-search scalars (applied α, g·d) ride this sync as
 ///     batched pinned D2H copies — no extra synchronize.
 ///
-/// Convergence requires ALL five criteria (identical to the CPU class
-/// and to `cuda::minimizer::CG`): max/RMS force, max/RMS displacement,
-/// energy change.
+/// **Tolerances are not here.** They belong to the termination policy —
+/// `cuda::ForceConverged`, which `cuda::minimizer::Minimize` attaches by default and
+/// which the user replaces with `min.add_handler(cuda::ForceConverged{ftol, …})`. This
+/// component measures (all five metrics: max/RMS force, max/RMS displacement, energy
+/// change) and publishes them; it does not decide. Hence five fewer constructor
+/// arguments, and no `LBFGS::converged()` — ask the loop (`min.converged()`).
 ///
 /// At step 0: steepest descent (no history). From step 1: L-BFGS
 /// direction. Step length is capped so no atom moves more than 0.1
@@ -51,21 +54,12 @@ namespace minimizer {
 /// @brief L-BFGS Optimizer component (two-loop recursion on device).
 class LBFGS : public ComponentBase {
   public:
-    /// @brief Construct L-BFGS step (CPU-default parameters).
+    /// @brief Construct L-BFGS step.
     /// @param memory    Number of correction pairs to store (default 5).
     /// @param alpha0    Initial step size [Angstrom^2/eV] (default 0.01).
-    /// @param ftol      Max force convergence tolerance [eV/Angstrom] (default 0.05).
     /// @param max_ls    Maximum backtracking attempts per step (default 10).
-    /// @param rms_ftol  RMS force tolerance [eV/Angstrom] (default 0.03).
-    /// @param max_dtol  Max displacement tolerance [Angstrom] (default 0.002).
-    /// @param rms_dtol  RMS displacement tolerance [Angstrom] (default 0.001).
-    /// @param etol      Energy change tolerance [eV] (default 1e-5).
-    explicit LBFGS(int memory = 5, double alpha0 = 0.01, double ftol = 0.05,
-                   int max_ls = 10, double rms_ftol = 0.03,
-                   double max_dtol = 0.002, double rms_dtol = 0.001,
-                   double etol = 1e-5)
-        : memory_(memory), alpha0_(alpha0), max_ls_(max_ls),
-          tols_{ftol, rms_ftol, max_dtol, rms_dtol, etol} {}
+    explicit LBFGS(int memory = 5, double alpha0 = 0.01, int max_ls = 10)
+        : memory_(memory), alpha0_(alpha0), max_ls_(max_ls) {}
 
     /// @brief Enable the backtracking line search (Armijo condition).
     ///
@@ -111,9 +105,6 @@ class LBFGS : public ComponentBase {
     /// @brief Release all device + pinned buffers.
     void destroy(const DestroyContext& ctx) override;
 
-    /// @brief Check if optimization has converged.
-    bool converged() const { return converged_; }
-
     /// @brief Max force magnitude at the latest convergence check.
     double max_force() const { return conv_.max_force(); }
 
@@ -124,7 +115,6 @@ class LBFGS : public ComponentBase {
     int memory_;    ///< Correction-pair capacity.
     double alpha0_; ///< Initial step size [Angstrom^2/eV].
     int max_ls_;    ///< Backtracking budget (parity with the CPU signature).
-    ConvTols tols_; ///< Five-criteria convergence tolerances.
 
     int n_ = 0;  ///< Atom count.
     int n3_ = 0; ///< 3 * n_.
@@ -153,7 +143,6 @@ class LBFGS : public ComponentBase {
     int oldest_ = 0;
     int step_ = 0;
     bool has_prev_ = false;
-    bool converged_ = false;
 
     // Line search (optional; off by default, as on the CPU).
     bool ls_enabled_ = false;

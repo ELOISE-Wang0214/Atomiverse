@@ -78,11 +78,10 @@ class ComponentBase {
     /// @return Stable identifier used in summaries and diagnostics.
     virtual std::string name() const = 0;
 
-    /// @brief Structural role within an outer driver loop.
+    /// @brief Structural role within a driver loop.
     ///
-    /// Drives validation in `cpu::EvaluateDriver` / `DynamicsDriver` /
-    /// `OptimizeDriver` at `build()` time. Defaults to `None` for
-    /// "structural infrastructure" components (Zero*, KineticEnergy, ...).
+    /// Drives each preset's `validate_components()` at `build()` time. Defaults to
+    /// `None` for "structural infrastructure" components (Zero*, KineticEnergy, ...).
     /// Concrete components override to declare their loop position
     /// (Integrator / Optimizer / Evaluator / Thermostat / ...).
     /// @see facade/component_role.h
@@ -90,9 +89,8 @@ class ComponentBase {
 
     /// @brief Bitset of frame fields this component may write.
     ///
-    /// Used by the category drivers to validate that, e.g., a
-    /// `DynamicsDriver` carries at least one evaluator with
-    /// `Capability::Force`. Defaults to `None`.
+    /// Used by each preset's `validate_components()` to check that, e.g., `cpu::md::MD`
+    /// carries at least one component with `Capability::Force`. Defaults to `None`.
     virtual Capability capabilities() const { return Capability::None; }
 
     /// @brief Bitset of frame fields this component READS each launch.

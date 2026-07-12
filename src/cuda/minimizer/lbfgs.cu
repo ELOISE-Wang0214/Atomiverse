@@ -241,7 +241,6 @@ void LBFGS::build(const BuildContext& ctx) {
     oldest_ = 0;
     step_ = 0;
     has_prev_ = false;
-    converged_ = false;
     ls_had_trial_ = false;
     ls_fetch_pending_ = false;
     ls_alpha_ = 0;
@@ -260,8 +259,8 @@ void LBFGS::launch(const LaunchContext& ctx) {
         if (ls_fetch_pending_)
             cudaMemcpyAsync(h_ls_, d_ls_, 2 * sizeof(work_t),
                             cudaMemcpyDeviceToHost, stream);
-        converged_ = conv_.check(ctx, d_xprev_, step_, tols_,
-                                 "lbfgs multi-criteria convergence", trace_);
+        // Measure and publish. The Verdict is the loop's, through its handlers.
+        conv_.measure(ctx, d_xprev_, step_, trace_);
         if (ls_fetch_pending_) {
             ls_alpha_ = static_cast<double>(h_ls_[0]);
             ls_gd_ = static_cast<double>(h_ls_[1]);

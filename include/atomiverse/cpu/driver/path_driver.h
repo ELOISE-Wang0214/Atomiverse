@@ -63,6 +63,20 @@ namespace cpu {
 
 class PathDriver : public CPUDriver<ATV::path::Phase> {
   public:
+    /// @brief The coupled-replica preset. Attaches its default termination policy.
+    ///
+    /// `AllReplicasConverged` reads `LoopMetrics::replicas_converged` (the fraction of
+    /// the band that has met its criterion) and stops the loop only at 1 — the AND over
+    /// every image that this driver used to spell out by hand as
+    /// `if (band.all_converged()) mutable_outer_status().converged = true;`.
+    ///
+    /// That hand-written `if` is exactly the shape probe 3 was forced into, and exactly
+    /// what a category makes unavoidable: the termination rule could not be named, so it
+    /// could not be replaced. Now it can — `neb.add_handler(StopOnNaN{})` composes with
+    /// it, and a user who wants "stop when the barrier estimate settles" writes that
+    /// handler instead of a seventh driver class.
+    PathDriver() { this->add_handler(cpu::AllReplicasConverged{}); }
+
     /// @brief Advance the band until every replica converges, or `max_iter` runs out.
     ///
     /// @param frame Initial state. Expanded into the band on the way in; **overwritten**
@@ -108,11 +122,14 @@ class PathDriver : public CPUDriver<ATV::path::Phase> {
             }
 
             ++iters;
-            if (band.all_converged()) {
-                mutable_outer_status().converged = true;
-                break;
-            }
-            if (outer_status().stop_requested)
+
+            // PUBLISH what the band measured; let the handler DECIDE. The driver used to
+            // write `converged = true` itself the moment `band.all_converged()` went
+            // true — the same "the algorithm judges itself" mistake LBFGS made, and the
+            // reason the replica table had to exist in the first place.
+            metrics().replicas_converged = band.converged_fraction();
+
+            if (poll_handlers_(s) != Verdict::Continue)
                 break;
         }
 

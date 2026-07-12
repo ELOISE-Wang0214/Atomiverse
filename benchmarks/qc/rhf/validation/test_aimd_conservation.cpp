@@ -203,7 +203,7 @@ TEST(AIMDConservation, ASPCMatchesFreshSinglePointMidTrajectory) {
     cpu::Evaluate eval;
     eval.on(ATV::evaluate::Phase::evaluate).add(fresh);
     eval.build();
-    eval.run(snapshot); // EvaluateDriver runs exactly one pass
+    eval.run(snapshot); // cpu::Evaluate runs exactly one pass
 
     const double fx0_fresh = static_cast<double>(snapshot.atoms.fx(0));
     const double fx1_fresh = static_cast<double>(snapshot.atoms.fx(1));

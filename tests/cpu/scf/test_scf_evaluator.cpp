@@ -229,7 +229,7 @@ TEST_F(BOMDTest, RHFLangevinNVT) {
     const double damp = 100.0;
 
     // Both SCFEvaluator and FixLangevin advertise Capability::Force —
-    // DynamicsDriver must accept this (multiple Force-capable components
+    // cpu::md::MD must accept this (multiple Force-capable components
     // on the force / post_force phases).
     cpu::md::MD sim;
     sim.add(cpu::md::InitVelocity{T_target, /*seed=*/7u});
