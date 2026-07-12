@@ -87,7 +87,7 @@ TEST(Backend, KernelDispatch) {
     AddOne adder;
     PlanBuilder<cuda::ComponentBase> builder;
     builder.add({0, 0, &adder});
-    auto plan = builder.build(static_cast<int>(md::Phase::COUNT));
+    auto plan = builder.build(ATV::slot_count<md::Phase>());
     backend.load(plan);
 
     cuda::BuildContext bctx{backend.context(), backend.frame()};
@@ -120,9 +120,9 @@ TEST(Backend, BlockingDeferrable) {
     DoubleVel doubler;
 
     PlanBuilder<cuda::ComponentBase> builder;
-    builder.add({static_cast<int>(md::Phase::force), 0, &adder});
-    builder.add({static_cast<int>(md::Phase::end_of_step), 0, &doubler});
-    auto plan = builder.build(static_cast<int>(md::Phase::COUNT));
+    builder.add({ATV::slot_of(md::Phase::force), 0, &adder});
+    builder.add({ATV::slot_of(md::Phase::end_of_step), 0, &doubler});
+    auto plan = builder.build(ATV::slot_count<md::Phase>());
     backend.load(plan);
 
     cuda::BuildContext bctx{backend.context(), backend.frame()};
@@ -157,8 +157,8 @@ TEST(Backend, ConditionalExecution) {
 
     FreqDoubler freq;
     PlanBuilder<cuda::ComponentBase> builder;
-    builder.add({static_cast<int>(md::Phase::end_of_step), 0, &freq});
-    auto plan = builder.build(static_cast<int>(md::Phase::COUNT));
+    builder.add({ATV::slot_of(md::Phase::end_of_step), 0, &freq});
+    auto plan = builder.build(ATV::slot_count<md::Phase>());
     backend.load(plan);
 
     cuda::BuildContext bctx{backend.context(), backend.frame()};

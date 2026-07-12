@@ -109,8 +109,8 @@ void NoseHoover::launch(const cpu::LaunchContext& ctx) {
     // rebuilds it was even smaller than n_local.
     const int n_dof = n_dof_global_;
 
-    if (ctx.stage == static_cast<int>(ATV::md::Phase::initial_integrate)
-        || ctx.stage == static_cast<int>(ATV::md::Phase::final_integrate)) {
+    if (ctx.at(ATV::md::Phase::initial_integrate)
+        || ctx.at(ATV::md::Phase::final_integrate)) {
 
         // Live thermostat setpoint for this step (Tstart→Tstop ramp).
         // `Q_` is retuned to the live temperature so the coupling

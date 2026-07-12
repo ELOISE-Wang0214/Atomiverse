@@ -75,7 +75,7 @@ double FixCSVR::compute_temp_target(std::int64_t step) const {
 }
 
 void FixCSVR::launch(const cpu::LaunchContext& ctx) {
-    if (ctx.stage != static_cast<int>(ATV::md::Phase::end_of_step))
+    if (!ctx.at(ATV::md::Phase::end_of_step))
         return;
 
     auto& f = ctx.frame;

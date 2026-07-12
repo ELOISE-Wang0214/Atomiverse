@@ -90,7 +90,7 @@ class PathDriver : public CPUDriver<ATV::path::Phase> {
             for (int i = 0; i < band.size(); ++i) {
                 ctx.path.active = i;
                 this->backend_->set_frame(band.frame(i));
-                this->backend_->run_phase(static_cast<int>(ATV::path::Phase::force), s);
+                this->backend_->run_stage(ATV::path::Phase::force, s);
             }
             ctx.path.active = -1;
 
@@ -104,7 +104,7 @@ class PathDriver : public CPUDriver<ATV::path::Phase> {
                                  ATV::path::Phase::line_search,
                                  ATV::path::Phase::convergence_check,
                                  ATV::path::Phase::end_of_step}) {
-                this->backend_->run_phase(static_cast<int>(p), s);
+                this->backend_->run_stage(p, s);
             }
 
             ++iters;

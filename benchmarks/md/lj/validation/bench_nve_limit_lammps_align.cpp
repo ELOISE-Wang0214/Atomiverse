@@ -37,8 +37,8 @@ using namespace ATV;
 
 namespace {
 
-constexpr int kInitial = static_cast<int>(ATV::md::Phase::initial_integrate);
-constexpr int kFinal = static_cast<int>(ATV::md::Phase::final_integrate);
+constexpr int kInitial = ATV::slot_of(ATV::md::Phase::initial_integrate);
+constexpr int kFinal = ATV::slot_of(ATV::md::Phase::final_integrate);
 
 double speed(const cpu::Frame& f, int i) {
     return std::sqrt(f.atoms.vx[i] * f.atoms.vx[i]

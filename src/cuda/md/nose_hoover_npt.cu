@@ -724,7 +724,7 @@ double NoseHooverNPT::extended_hamiltonian_(const LaunchContext& /*ctx*/) const 
 void NoseHooverNPT::launch(const LaunchContext& ctx) {
     const double half_dt = 0.5 * dt_;
 
-    if (ctx.stage == static_cast<int>(ATV::md::Phase::initial_integrate)) {
+    if (ctx.at(ATV::md::Phase::initial_integrate)) {
         compute_temp_target_(ctx.step);
         const double tau_T2 = tau_T_ * tau_T_;
         Q_t_[0] = static_cast<double>(n_dof_) * kT_ * tau_T2;
@@ -738,11 +738,10 @@ void NoseHooverNPT::launch(const LaunchContext& ctx) {
         kick_v_by_force_(ctx, half_dt);   // P5
         propagate_x_and_box_(ctx);        // P6
 
-    } else if (ctx.stage
-               == static_cast<int>(ATV::md::Phase::final_integrate)) {
+    } else if (ctx.at(ATV::md::Phase::final_integrate)) {
         kick_v_by_force_(ctx, half_dt);   // P7
 
-    } else if (ctx.stage == static_cast<int>(ATV::md::Phase::end_of_step)) {
+    } else if (ctx.at(ATV::md::Phase::end_of_step)) {
         // Reduce has run (single-GPU: no-op, but the order matches CPU).
         KE_global_ = compute_global_KE_(ctx);
 

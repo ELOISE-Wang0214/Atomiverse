@@ -756,7 +756,7 @@ NoseHooverNPT::extended_hamiltonian(const cpu::LaunchContext& ctx) const {
 void NoseHooverNPT::launch(const cpu::LaunchContext& ctx) {
     const double half_dt = 0.5 * dt_;
 
-    if (ctx.stage == static_cast<int>(ATV::md::Phase::initial_integrate)) {
+    if (ctx.at(ATV::md::Phase::initial_integrate)) {
         // Interpolate the live thermostat setpoint for this step before
         // the chain integrates, mirroring LAMMPS `FixNH::initial_integrate`
         // calling `compute_temp_target()` ahead of `nhc_temp_integrate()`.
@@ -788,11 +788,11 @@ void NoseHooverNPT::launch(const cpu::LaunchContext& ctx) {
         kick_v_by_force(ctx, half_dt);
         propagate_x_and_box(ctx);
 
-    } else if (ctx.stage == static_cast<int>(ATV::md::Phase::final_integrate)) {
+    } else if (ctx.at(ATV::md::Phase::final_integrate)) {
         // Force has been recomputed; second half-kick (P7).
         kick_v_by_force(ctx, half_dt);
 
-    } else if (ctx.stage == static_cast<int>(ATV::md::Phase::end_of_step)) {
+    } else if (ctx.at(ATV::md::Phase::end_of_step)) {
         // Reduce has run (frame.scalars.stress globally reduced).
         // Recompute KE_global_ from CURRENT v before pressure step.
         KE_global_ = compute_global_KE(ctx);

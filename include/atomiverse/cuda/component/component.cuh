@@ -22,6 +22,7 @@
 #include "atomiverse/cuda/component/context.cuh"
 #include "atomiverse/cuda/frame/frame.cuh"
 #include "atomiverse/facade/component_role.h"
+#include "atomiverse/facade/stage.h"
 
 namespace ATV {
 namespace cuda {
@@ -50,8 +51,17 @@ struct BuildContext {
 struct LaunchContext {
     cuda::Context& runtime; ///< CUDA execution context (streams).
     cuda::Frame& frame;     ///< Device-resident system state + host metadata.
-    int stage;              ///< Current phase index within the step.
+    int stage;              ///< Current Plan slot index (erased — compare via `at()`).
     int step;               ///< Current simulation step index (0-based).
+
+    /// @brief Is the component running in `phase` right now? @see cpu::LaunchContext::at
+    /// @tparam PhaseEnum The workflow Phase enum the component is bound in.
+    /// @param phase The phase to test against.
+    /// @return True when the current stage is that phase.
+    template <typename PhaseEnum>
+    bool at(PhaseEnum phase) const {
+        return stage == ATV::slot_of(phase);
+    }
 };
 
 /// @brief Context for component resource cleanup.

@@ -254,8 +254,7 @@ void LBFGS::launch(const LaunchContext& ctx) {
     auto stream = static_cast<cudaStream_t>(ctx.runtime.stream);
 
     // ── Convergence check phase ──────────────────────────────────────
-    if (ctx.stage
-        == static_cast<int>(ATV::minimizer::Phase::convergence_check)) {
+    if (ctx.at(ATV::minimizer::Phase::convergence_check)) {
         // Batch the line-search scalars produced by this iteration's
         // search_direction onto the ConvCheck sync — zero extra host blocks.
         if (ls_fetch_pending_)

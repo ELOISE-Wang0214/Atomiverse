@@ -171,7 +171,7 @@ TEST(MDPlanEquivalence, CustomHookViaOnAddCoexistsWithSetters) {
     }
     EXPECT_TRUE(found) << "custom hook missing from compiled Plan:\n"
                        << render(sig);
-    EXPECT_EQ(found_phase, static_cast<int>(md::Phase::end_of_step));
+    EXPECT_EQ(found_phase, ATV::slot_of(md::Phase::end_of_step));
 }
 
 } // namespace

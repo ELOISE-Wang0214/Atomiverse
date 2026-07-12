@@ -65,12 +65,12 @@ class PhaseBuilder {
     PhaseBuilder& add(Comp&& comp, int order = 0) {
         using C = std::remove_reference_t<Comp>;
         if constexpr (std::is_lvalue_reference_v<Comp>) {
-            bindings_->push_back({static_cast<int>(phase_), order, &comp});
+            bindings_->push_back({ATV::slot_of(phase_), order, &comp});
         } else {
             auto ptr = std::make_unique<C>(std::forward<Comp>(comp));
             auto* raw = ptr.get();
             owned_->push_back(std::move(ptr));
-            bindings_->push_back({static_cast<int>(phase_), order, raw});
+            bindings_->push_back({ATV::slot_of(phase_), order, raw});
         }
         return *this;
     }
@@ -182,7 +182,7 @@ class Driver {
         for (auto& pb : pending_)
             builder.add({pb.phase, pb.order, pb.component});
         pending_.clear();
-        plan_ = builder.build(static_cast<int>(PhaseEnum::COUNT));
+        plan_ = builder.build(ATV::slot_count<PhaseEnum>());
     }
 
     /// @brief Run the full simulation lifecycle.

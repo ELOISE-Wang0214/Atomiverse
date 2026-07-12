@@ -287,7 +287,7 @@ void Backend::step(int step_idx) {
     }
 }
 
-void Backend::run_phase(int phase_value, int step_idx) {
+void Backend::run_slot_(int slot_index, int step_idx) {
     // Replay every binding of one phase on the current frame — used for
     // line-search trial evaluations. Re-entrant: this runs inside an op's
     // launch() during step(), so it must not touch the timing registry
@@ -295,7 +295,7 @@ void Backend::run_phase(int phase_value, int step_idx) {
     // Frequency gating is bypassed: a trial is not a simulation step, so
     // every force-phase op (zeroing, evaluator, reduce) runs each call.
     for (auto& slot : plan_->slots) {
-        if (slot.phase != phase_value)
+        if (slot.phase != slot_index)
             continue;
         for (auto& op : slot.ops) {
             LaunchContext ctx{context_, *frame_, slot.phase, step_idx};

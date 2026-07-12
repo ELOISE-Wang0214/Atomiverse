@@ -25,9 +25,9 @@ TEST(Plan, LayerSeparation) {
     DummyComponent comp("test");
     PlanBuilder<cuda::ComponentBase> builder;
     builder.add({0, 0, &comp});
-    auto plan = builder.build(static_cast<int>(md::Phase::COUNT));
+    auto plan = builder.build(ATV::slot_count<md::Phase>());
 
-    EXPECT_EQ(plan.slots.size(), static_cast<int>(md::Phase::COUNT));
+    EXPECT_EQ(plan.slots.size(), ATV::slot_of(md::Phase::COUNT));
     EXPECT_EQ(plan.slots[0].ops.size(), 1u);
     EXPECT_EQ(plan.slots[0].ops[0].component->name(), "test");
 }
@@ -37,11 +37,11 @@ TEST(Plan, OrderBasedScheduling) {
     DummyComponent a("A");
 
     PlanBuilder<cuda::ComponentBase> builder;
-    int force = static_cast<int>(md::Phase::force);
+    int force = ATV::slot_of(md::Phase::force);
     builder.add({force, 10, &b});
     builder.add({force, 1, &a});
 
-    auto plan = builder.build(static_cast<int>(md::Phase::COUNT));
+    auto plan = builder.build(ATV::slot_count<md::Phase>());
     auto& slot = plan.slots[force];
     ASSERT_EQ(slot.ops.size(), 2u);
     EXPECT_EQ(slot.ops[0].component->name(), "A");
@@ -52,6 +52,6 @@ TEST(Plan, InvalidPhaseThrows) {
     DummyComponent comp("bad");
     PlanBuilder<cuda::ComponentBase> builder;
     builder.add({999, 0, &comp});
-    EXPECT_THROW(builder.build(static_cast<int>(md::Phase::COUNT)),
+    EXPECT_THROW(builder.build(ATV::slot_count<md::Phase>()),
                  std::runtime_error);
 }

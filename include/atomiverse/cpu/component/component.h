@@ -16,6 +16,7 @@
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/facade/component_role.h"
+#include "atomiverse/facade/stage.h"
 
 namespace ATV {
 namespace cpu {
@@ -37,8 +38,25 @@ struct BuildContext {
 struct LaunchContext {
     cpu::Context& runtime; ///< CPU execution context.
     cpu::Frame& frame;     ///< Host-resident system state.
-    int stage;             ///< Current phase index within the step.
+    int stage;             ///< Current Plan slot index (erased — compare via `at()`).
     int step;              ///< Current simulation step index (0-based).
+
+    /// @brief Is the component running in `phase` right now?
+    ///
+    /// The typed way to ask, and the only way a component should: a component bound in
+    /// several phases dispatches on this. The raw `stage` int is the erasure the Plan
+    /// needs (one dense array, six different Phase enums), and it is *not* comparable
+    /// across workflows — all six enums start at 0, so `stage == 1` is simultaneously
+    /// `md::pre_force`, `minimizer::line_search` and `evaluate::evaluate`. Going through
+    /// `slot_of` keeps the type on the comparison, where the reader can see it.
+    ///
+    /// @tparam PhaseEnum The workflow Phase enum the component is bound in.
+    /// @param phase The phase to test against.
+    /// @return True when the current stage is that phase.
+    template <typename PhaseEnum>
+    bool at(PhaseEnum phase) const {
+        return stage == ATV::slot_of(phase);
+    }
 };
 
 /// @brief Context for component resource cleanup on CPU.

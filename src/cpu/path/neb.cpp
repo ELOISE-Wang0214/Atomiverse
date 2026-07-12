@@ -192,7 +192,7 @@ void BandLBFGS::launch(const cpu::LaunchContext& ctx) {
         image_max_force_.assign(n_img, 0.0);
     }
 
-    if (ctx.stage == static_cast<int>(ATV::path::Phase::convergence_check)) {
+    if (ctx.at(ATV::path::Phase::convergence_check)) {
         // Judged on the forces evaluated this iteration — i.e. on the geometry as it was
         // BEFORE search_direction moved it. Endpoints are frozen and so are converged by
         // construction; if they were counted by force magnitude they would be converged

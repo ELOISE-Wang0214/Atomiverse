@@ -19,6 +19,7 @@
 #include "atomiverse/cpu/component/context.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/facade/plan.h"
+#include "atomiverse/facade/stage.h"
 
 namespace ATV {
 namespace cpu {
@@ -93,9 +94,20 @@ class Backend {
     /// evaluator → MPI reduce). Every op in matching slots is launched
     /// unconditionally (frequency gating is bypassed — a trial is not a step)
     /// and timing is not recorded (this runs re-entrantly inside `step()`).
-    /// @param phase_value Phase index to replay (e.g. minimizer force phase).
-    /// @param step_idx    Step index forwarded to the LaunchContext.
-    void run_phase(int phase_value, int step_idx);
+    ///
+    /// **Stage-typed.** The predecessor took a raw `int phase_value`, and the two
+    /// callers reached it by writing `static_cast<int>(some::Phase::force)` — which is
+    /// exactly the hole this signature closes: the six Phase enums all start at 0, so an
+    /// `int` phase silently accepts a value from the wrong workflow and runs the wrong
+    /// slot. The enum→slot conversion now happens once, in `ATV::slot_of`.
+    ///
+    /// @tparam PhaseEnum The workflow Phase enum this Backend's Plan was compiled from.
+    /// @param phase Phase to replay (e.g. `minimizer::Phase::force`).
+    /// @param step_idx Step index forwarded to the LaunchContext.
+    template <typename PhaseEnum>
+    void run_stage(PhaseEnum phase, int step_idx) {
+        run_slot_(ATV::slot_of(phase), step_idx);
+    }
 
     /// @brief Execute multiple simulation steps.
     /// @param n_steps Number of steps to execute.
@@ -180,6 +192,11 @@ class Backend {
     std::unique_ptr<md::mpi::DomainDecomposition> release_dd();
 
   private:
+    /// @brief Replay one compiled Plan slot. The erased half of `run_stage`.
+    /// @param slot Dense Plan slot index (from `ATV::slot_of`).
+    /// @param step_idx Step index forwarded to the LaunchContext.
+    void run_slot_(int slot, int step_idx);
+
     Context context_{};
     cpu::Frame* frame_ = nullptr;
     const Plan<cpu::ComponentBase>* plan_ = nullptr;

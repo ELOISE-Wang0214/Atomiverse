@@ -121,8 +121,7 @@ void CG::build(const BuildContext& ctx) {
 }
 
 void CG::launch(const LaunchContext& ctx) {
-    if (ctx.stage
-        == static_cast<int>(ATV::minimizer::Phase::convergence_check)) {
+    if (ctx.at(ATV::minimizer::Phase::convergence_check)) {
         converged_ = conv_.check(ctx, d_xprev_, step_, tols_,
                                  "cg multi-criteria convergence", trace_);
         return;

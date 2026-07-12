@@ -87,7 +87,7 @@ TEST(NeighborListSkinGating, FrozenLatticeStaysAtOneRebuild) {
     cuda::NeighborList nl{cutoff, skin};
     PlanBuilder<cuda::ComponentBase> builder;
     builder.add({0, 0, &nl});
-    auto plan = builder.build(static_cast<int>(md::Phase::COUNT));
+    auto plan = builder.build(ATV::slot_count<md::Phase>());
     backend.load(plan);
 
     cuda::BuildContext bctx{backend.context(), backend.frame()};
@@ -141,7 +141,7 @@ TEST(NeighborListSkinGating, RebuildsWhenDisplacementExceedsHalfSkin) {
     cuda::NeighborList nl{cutoff, skin};
     PlanBuilder<cuda::ComponentBase> builder;
     builder.add({0, 0, &nl});
-    auto plan = builder.build(static_cast<int>(md::Phase::COUNT));
+    auto plan = builder.build(ATV::slot_count<md::Phase>());
     backend.load(plan);
 
     cuda::BuildContext bctx{backend.context(), backend.frame()};

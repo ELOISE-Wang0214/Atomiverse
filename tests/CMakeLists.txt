@@ -499,6 +499,16 @@ add_test(
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cuda/scf_phase_scrub.sh
             ${CMAKE_SOURCE_DIR})
 
+# Grep gate: no hand-written static_cast<int> on a Phase enum. The six workflow
+# Phase enums all start at 0, so an int phase cannot be told apart across
+# workflows; ATV::slot_of is the one sanctioned conversion and the typed entry
+# points (slot_of / slot_count / ctx.at / run_stage / make_binding) are the only
+# way in. Pure grep — runs in every build configuration.
+add_test(
+    NAME test_stage_typing_scrub
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/facade/stage_typing_scrub.sh
+            ${CMAKE_SOURCE_DIR})
+
 # Grep gate: the CUDA SCF inner solver must not see the component layer
 # (arch-refactor-04-engines) — everything under cuda/scf/ except the
 # SCFEvaluator wrapper is component-free by construction; the solver's

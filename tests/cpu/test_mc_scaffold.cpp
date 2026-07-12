@@ -25,10 +25,10 @@ using namespace ATV;
 // ── sampling::Phase execution skeleton ────────────────────────────────────
 
 TEST(MCScaffold, SamplingPhaseShape) {
-    EXPECT_EQ(static_cast<int>(sampling::Phase::propose), 0);
-    EXPECT_EQ(static_cast<int>(sampling::Phase::energy), 1);
-    EXPECT_EQ(static_cast<int>(sampling::Phase::end_of_step), 2);
-    EXPECT_EQ(static_cast<int>(sampling::Phase::COUNT), 3);
+    EXPECT_EQ(ATV::slot_of(sampling::Phase::propose), 0);
+    EXPECT_EQ(ATV::slot_of(sampling::Phase::energy), 1);
+    EXPECT_EQ(ATV::slot_of(sampling::Phase::end_of_step), 2);
+    EXPECT_EQ(ATV::slot_of(sampling::Phase::COUNT), 3);
 
     const auto names = sampling::phase_names(sampling::Phase{});
     ASSERT_EQ(names.size(), 3u);

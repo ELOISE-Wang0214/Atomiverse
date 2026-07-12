@@ -74,7 +74,7 @@ void VelocityVerlet::launch(const LaunchContext& ctx) {
     int n = ctx.frame.n_atoms();
     int block = cuda::kDefaultBlock;
     int grid = cuda::grid_size(static_cast<int>(n));
-    if (ctx.stage == static_cast<int>(ATV::md::Phase::initial_integrate)) {
+    if (ctx.at(ATV::md::Phase::initial_integrate)) {
         initial_integrate<<<grid, block, 0, stream>>>(
             frame.atoms.x, frame.atoms.y, frame.atoms.z, frame.atoms.vx,
             frame.atoms.vy, frame.atoms.vz, frame.atoms.fx, frame.atoms.fy,

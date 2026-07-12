@@ -279,6 +279,31 @@ constexpr PhaseKind kind_of(Phase phase_tag) {
 
 } // namespace path
 
+/// @brief Phase enum → Plan slot index. **The one conversion in the codebase.**
+///
+/// A Plan is a dense array of slots, so somewhere the typed phase has to become an
+/// index. That "somewhere" is here, and nowhere else: every other site — a component
+/// asking "is this my stage?", a driver replaying a phase, a binding being declared —
+/// goes through a typed entry point that calls this. The rule is enforceable by grep,
+/// which is the point: `static_cast<int>` applied to a Phase enum anywhere else is a
+/// bug, because the five Phase enums all start at 0 and an `int` cannot tell them apart.
+///
+/// @tparam PhaseEnum One of the six workflow Phase enums in this header.
+/// @param p Typed phase value.
+/// @return Its dense slot index within that workflow's Plan.
+template <typename PhaseEnum>
+constexpr int slot_of(PhaseEnum p) {
+    return static_cast<int>(p);
+}
+
+/// @brief Number of Plan slots a workflow's Phase enum declares (its COUNT sentinel).
+/// @tparam PhaseEnum One of the six workflow Phase enums in this header.
+/// @return `PhaseEnum::COUNT` as a slot count.
+template <typename PhaseEnum>
+constexpr int slot_count() {
+    return slot_of(PhaseEnum::COUNT);
+}
+
 /// @brief Build a workflow-tagged DefaultBinding from a typed Phase value.
 ///
 /// The single sanctioned way for a component to declare a default binding:
@@ -287,14 +312,19 @@ constexpr PhaseKind kind_of(Phase phase_tag) {
 /// `{kind, phase, order}` triples would reintroduce the transcription errors
 /// this helper exists to prevent.
 ///
-/// @tparam PhaseEnum One of the five workflow Phase enums in this header.
+/// The `int phase` that comes out is **the erasure itself**, not a leak:
+/// `ComponentBase` is not a template, so `default_bindings()` has to return one
+/// concrete type for every workflow. The `PhaseKind` travelling beside it is what
+/// makes the int safe, and `make_binding` is the only way to make the pair.
+///
+/// @tparam PhaseEnum One of the six workflow Phase enums in this header.
 /// @param p Typed phase value the component wants to run in.
 /// @param order Ordering within the phase (lower runs earlier; negative =
 ///        infrastructure, 0 = the op, positive = consumers).
 /// @return A DefaultBinding carrying the workflow discriminant of `PhaseEnum`.
 template <typename PhaseEnum>
 constexpr DefaultBinding make_binding(PhaseEnum p, int order = 0) {
-    return {kind_of(p), static_cast<int>(p), order};
+    return {kind_of(p), slot_of(p), order};
 }
 
 } // namespace ATV

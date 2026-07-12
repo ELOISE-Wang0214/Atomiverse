@@ -52,7 +52,6 @@ void CG::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
     const int n = owned_count(ctx);
     const int dim = n * 3;
-    const int phase = ctx.stage;
 
     // Capacity growth is the one legal re-allocation point.
     if (dim > static_cast<int>(x_ws_.size())) {
@@ -84,7 +83,7 @@ void CG::launch(const cpu::LaunchContext& ctx) {
     }
 
     // ── Convergence check ──────────────────────────────────────────────
-    if (phase == static_cast<int>(ATV::minimizer::Phase::convergence_check)) {
+    if (ctx.at(ATV::minimizer::Phase::convergence_check)) {
         double local_max_force = 0;
         double sum_f2 = 0;
 #pragma omp parallel for schedule(static) reduction(+ : sum_f2)                \
@@ -168,7 +167,7 @@ void CG::launch(const cpu::LaunchContext& ctx) {
     // origin geometry in x_prev_, and the descent slope/origin energy. Here we
     // pick the step length and write x_prev_ + alpha*d_prev_; the driver's
     // force phase (next) recomputes forces/energy at that geometry.
-    if (phase == static_cast<int>(ATV::minimizer::Phase::line_search)) {
+    if (ctx.at(ATV::minimizer::Phase::line_search)) {
         const double cap =
             (ls_dir_max_ > 1e-20) ? ls_max_step_ / ls_dir_max_ : 1.0;
 

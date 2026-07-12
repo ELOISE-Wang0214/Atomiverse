@@ -259,7 +259,7 @@ void FixRattle::launch(const cpu::LaunchContext& ctx) {
     // Taken BEFORE any integrator moves anything. SHAKE/RATTLE corrects along the
     // reference bond vector, and VelocityVerlet fuses kick+drift and then wraps, so by
     // post_integrate the pre-move positions are unrecoverable from the frame.
-    if (ctx.stage == static_cast<int>(ATV::md::Phase::initial_integrate)) {
+    if (ctx.at(ATV::md::Phase::initial_integrate)) {
         resolve_rows_(ctx);
         if (static_cast<int>(ref_x_.size()) < n_rows) {
             ref_x_.assign(static_cast<std::size_t>(n_rows), 0.0);
@@ -280,7 +280,7 @@ void FixRattle::launch(const cpu::LaunchContext& ctx) {
     // writes are local scratch, discarded at the next refresh, while each owner ends up
     // with exactly the correction its owning rank computed. No extra reverse exchange
     // is needed — this is LAMMPS's replicated-cluster route.
-    if (ctx.stage == static_cast<int>(ATV::md::Phase::post_integrate)) {
+    if (ctx.at(ATV::md::Phase::post_integrate)) {
         const double inv_dt = 1.0 / dt_;
         int iter = 0;
         for (; iter < max_iter_; ++iter) {
@@ -345,7 +345,7 @@ void FixRattle::launch(const cpu::LaunchContext& ctx) {
     // The relative velocity must have NO component along the bond. Skip this and the
     // bond lengths stay right while the molecule quietly absorbs energy along its own
     // bonds.
-    if (ctx.stage == static_cast<int>(ATV::md::Phase::final_integrate)) {
+    if (ctx.at(ATV::md::Phase::final_integrate)) {
         // Re-resolve. `HaloSend` runs at pre_neighbor (phase 3), between the position
         // stage (1) and this one (8), and a full rebuild RESHUFFLES the ghost slots —
         // so the rows resolved at initial_integrate are stale by now, and the velocity

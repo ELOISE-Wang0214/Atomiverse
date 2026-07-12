@@ -34,7 +34,7 @@ void NVELimit::launch(const cpu::LaunchContext& ctx) {
     const double vmax_sq = vmax * vmax;
     const double dtf = 0.5 * dt_ * kFtm2v;
 
-    if (ctx.stage == static_cast<int>(ATV::md::Phase::initial_integrate)) {
+    if (ctx.at(ATV::md::Phase::initial_integrate)) {
 #pragma omp parallel for schedule(static)
         for (int i = 0; i < n; ++i) {
             const double dtfm = dtf / f.atoms.mass[i];
@@ -57,7 +57,7 @@ void NVELimit::launch(const cpu::LaunchContext& ctx) {
         }
         wrap_orthorhombic(f, n);
 
-    } else if (ctx.stage == static_cast<int>(ATV::md::Phase::final_integrate)) {
+    } else if (ctx.at(ATV::md::Phase::final_integrate)) {
 #pragma omp parallel for schedule(static)
         for (int i = 0; i < n; ++i) {
             const double dtfm = dtf / f.atoms.mass[i];

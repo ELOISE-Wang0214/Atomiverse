@@ -542,7 +542,7 @@ TEST_F(CpuMdTest, NveLimitCapsHotVelocity) {
 
     cpu::Context ctx;
     cpu::LaunchContext lctx_init{
-        ctx, frame, static_cast<int>(ATV::md::Phase::initial_integrate), 0};
+        ctx, frame, ATV::slot_of(ATV::md::Phase::initial_integrate), 0};
     limit.launch(lctx_init);
 
     const double vmax = xmax / dt;
@@ -562,7 +562,7 @@ TEST_F(CpuMdTest, NveLimitNoCapBelowThreshold) {
     cpu::md::NVELimit limit(0.5, 0.05);
     cpu::Context ctx;
     cpu::LaunchContext lctx{
-        ctx, frame, static_cast<int>(ATV::md::Phase::final_integrate), 0};
+        ctx, frame, ATV::slot_of(ATV::md::Phase::final_integrate), 0};
     limit.launch(lctx);
     EXPECT_NEAR(static_cast<double>(frame.atoms.vx[0]), 0.05, 1e-12);
 }

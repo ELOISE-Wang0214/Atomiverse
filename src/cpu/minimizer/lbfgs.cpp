@@ -133,10 +133,8 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
         }
     }
 
-    const int phase = ctx.stage;
-
     // ── Convergence check phase ──────────────────────────────────────
-    if (phase == static_cast<int>(ATV::minimizer::Phase::convergence_check)) {
+    if (ctx.at(ATV::minimizer::Phase::convergence_check)) {
         double local_max_force = 0;
         double sum_f2 = 0;
 #pragma omp parallel for schedule(static) reduction(+ : sum_f2)                \
@@ -226,7 +224,7 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
     // the accepted geometry x_prev_ + alpha*direction_. The driver's force
     // phase (next) recomputes forces/energy at that geometry for the
     // convergence check, so we do not re-evaluate after committing alpha.
-    if (phase == static_cast<int>(ATV::minimizer::Phase::line_search)) {
+    if (ctx.at(ATV::minimizer::Phase::line_search)) {
         const auto& xp = hist_->x_prev();
         // Displacement cap: bound the trial step so a wild move cannot blow up
         // an expensive (SCF) evaluator. alpha is dimensionless on direction_.

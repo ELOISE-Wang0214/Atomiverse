@@ -24,7 +24,7 @@ void VelocityVerlet::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
     const int n = owned_count(ctx);
 
-    if (ctx.stage == static_cast<int>(ATV::md::Phase::initial_integrate)) {
+    if (ctx.at(ATV::md::Phase::initial_integrate)) {
         const double dtf = double(0.5) * dt_ * kFtm2v;
 
 #pragma omp parallel for schedule(static)
@@ -40,7 +40,7 @@ void VelocityVerlet::launch(const cpu::LaunchContext& ctx) {
 
         wrap_orthorhombic(f, n);
 
-    } else if (ctx.stage == static_cast<int>(ATV::md::Phase::final_integrate)) {
+    } else if (ctx.at(ATV::md::Phase::final_integrate)) {
         const double dtf = double(0.5) * dt_ * kFtm2v;
 
 #pragma omp parallel for schedule(static)

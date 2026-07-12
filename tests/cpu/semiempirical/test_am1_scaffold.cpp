@@ -848,7 +848,7 @@ TEST(AM1Evaluator, LaunchWritesClosedShellChargesToFrame) {
 
     ATV::cpu::BuildContext build{runtime, frame};
     ATV::cpu::LaunchContext launch{
-        runtime, frame, static_cast<int>(ATV::evaluate::Phase::evaluate), 0};
+        runtime, frame, ATV::slot_of(ATV::evaluate::Phase::evaluate), 0};
     evaluator.build(build);
     evaluator.launch(launch);
 

@@ -129,7 +129,7 @@ void NVELimit::launch(const LaunchContext& ctx) {
     int grid = cuda::grid_size(n);
     work_t vmax = static_cast<work_t>(xmax_) / static_cast<work_t>(dt_);
     work_t vmax_sq = vmax * vmax;
-    if (ctx.stage == static_cast<int>(ATV::md::Phase::initial_integrate)) {
+    if (ctx.at(ATV::md::Phase::initial_integrate)) {
         initial_integrate_limit<<<grid, block, 0, stream>>>(
             frame.atoms.x, frame.atoms.y, frame.atoms.z, frame.atoms.vx,
             frame.atoms.vy, frame.atoms.vz, frame.atoms.fx, frame.atoms.fy,

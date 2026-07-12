@@ -157,7 +157,7 @@ TEST(Frame, ZeroForces) {
     cuda::md::ZeroForces zf;
     PlanBuilder<cuda::ComponentBase> builder;
     builder.add({0, 0, &zf});
-    auto plan = builder.build(static_cast<int>(md::Phase::COUNT));
+    auto plan = builder.build(ATV::slot_count<md::Phase>());
     backend.load(plan);
 
     cuda::BuildContext bctx{backend.context(), d_frame};
