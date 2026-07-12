@@ -183,6 +183,20 @@ void Backend::set_frame(cpu::Frame& frame) {
             dd_->init_topology(MPI_COMM_WORLD, frame.box.length(0),
                                frame.box.length(1), frame.box.length(2));
             dd_->partition_atoms(frame);
+
+            // Drop `atoms.map`. Under decomposition the authoritative tag->row map is
+            // `dd->tag_to_local`; `atoms.map` still holds the PRE-partition identity
+            // mapping, and `partition_atoms` has just compacted the owners to the front
+            // and left the tail as ghost slack. So every entry in it now points at a
+            // DIFFERENT atom than the one it names.
+            //
+            // Reading it is therefore not merely unsupported — it silently returns the
+            // wrong row. That is a trap, and it sprang: a multi-rank RATTLE test
+            // "failed" by 9.5 A while the physics was fine, purely because the test
+            // resolved tags through `atoms.map`. Releasing it turns a wrong answer into
+            // no answer (`find()` returns `end()`), which callers already handle as
+            // "not on this rank".
+            frame.atoms.map_release();
         } else {
             dd_->compute_sublo_subhi(frame.box);
             // Carry-over preserves the partition (no re-scan — see above), but

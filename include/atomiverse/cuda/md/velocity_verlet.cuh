@@ -51,6 +51,8 @@ class VelocityVerlet : public ComponentBase {
     /// requires ≥ 1 `Integrator`-role component at build time.
     /// @return ComponentRole::Integrator.
     ComponentRole role() const override { return ComponentRole::Integrator; }
+    /// @brief Write-set: half-kick (v) + drift (x).
+    Capability capabilities() const override { return Capability::Position | Capability::Velocity; }
 
     /// @brief Default bindings: initial_integrate (order 0) and final_integrate (order 0).
     /// @return Two DefaultBinding entries.

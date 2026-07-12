@@ -35,6 +35,8 @@ class Deform : public ComponentBase {
     /// slot.
     /// @return ComponentRole::Integrator.
     ComponentRole role() const override { return ComponentRole::Integrator; }
+    /// @brief Write-set: affine remap of coordinates as the box strains.
+    Capability capabilities() const override { return Capability::Position; }
 
     std::vector<DefaultBinding> default_bindings() const override;
     void build(const BuildContext& ctx) override;

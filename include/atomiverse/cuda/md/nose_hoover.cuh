@@ -38,6 +38,8 @@ class NoseHoover : public ComponentBase {
     /// Mirrors `cpu::md::NoseHoover`.
     /// @return ComponentRole::Thermostat.
     ComponentRole role() const override { return ComponentRole::Thermostat; }
+    /// @brief Write-set: rescales velocities by the thermostat factor.
+    Capability capabilities() const override { return Capability::Velocity; }
 
     std::vector<DefaultBinding> default_bindings() const override;
     void build(const BuildContext& ctx) override;

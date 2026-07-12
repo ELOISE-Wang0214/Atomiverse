@@ -134,6 +134,8 @@ class ZeroMomentum : public ComponentBase {
     ///        (Thermostat / Integrator / …).
     /// @return ComponentRole::None.
     ComponentRole role() const override { return ComponentRole::None; }
+    /// @brief Write-set: subtracts the drift from every velocity.
+    Capability capabilities() const override { return Capability::Velocity; }
 
     /// @brief Default binding: `end_of_step @ +25` — after thermo/recorder
     ///        writers (`+20`) and the integrator's `end_of_step` slot.
@@ -177,11 +179,16 @@ class ZeroMomentum : public ComponentBase {
 ///
 /// One-time initialization in build(). launch() is a no-op.
 ///
-/// `role()` stays `None` and `capabilities()` stays `None` (the
-/// `ComponentBase` defaults), mirroring `cpu::md::InitVelocity`: it is a
-/// structural one-shot setup component, neither a loop slot (Integrator
-/// / Thermostat / …) nor a per-step writer of a `Capability` field — it
-/// touches velocities once in `build()`, not in `launch()`.
+/// `role()` stays `None` — it is a one-shot setup component, not a loop slot
+/// (Integrator / Thermostat / …).
+///
+/// `capabilities()` is `Velocity`, mirroring `cpu::md::InitVelocity`. It seeds the
+/// Maxwell distribution in `build()` rather than in `launch()`, and that used to be
+/// the argument for declaring `None` — but Capability is the WRITE-SET, not a
+/// per-step-writer flag. A component that writes `v` declares `v`, whichever
+/// lifecycle hook it does the writing in. (Both backends declared `None` here while
+/// writing the most fundamental field in the frame; that hole is what the
+/// Position/Velocity bits closed.)
 ///
 /// @par Units
 /// Temperature in Kelvin. Velocities in Angstrom/fs.
@@ -204,6 +211,9 @@ class InitVelocity : public ComponentBase {
     /// @brief Component name.
     /// @return "init_velocity".
     std::string name() const override { return "init_velocity"; }
+
+    /// @brief Write-set: seeds the Maxwell distribution into v (at build).
+    Capability capabilities() const override { return Capability::Velocity; }
 
     /// @brief Default bindings: initial_integrate at order -2000 (before integrator).
     /// @return Single binding to initial_integrate.

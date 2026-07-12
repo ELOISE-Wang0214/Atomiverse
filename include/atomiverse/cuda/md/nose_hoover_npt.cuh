@@ -82,6 +82,8 @@ class NoseHooverNPT : public ComponentBase {
 
     std::string name() const override { return "nose_hoover_npt"; }
     ComponentRole role() const override { return ComponentRole::Integrator; }
+    /// @brief Write-set: MTK: propagates x and v, and scales the cell.
+    Capability capabilities() const override { return Capability::Position | Capability::Velocity; }
     /// @brief Reads — consumes `Stress` to drive ε̇ via `update_eps_dot_`.
     ///        Triggers `cuda::md::MD::install_infra_` to auto-inject
     ///        `cuda::Virial` if none is registered. The Integrator
