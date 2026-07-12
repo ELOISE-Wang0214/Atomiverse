@@ -99,15 +99,12 @@ TEST(RattleMultiRank, GeometryStaysRigidAcrossRanks) {
     rattle.constrain_angle(0, kDHH);
     sim.add(rattle);
 
-    // The two exchanges a constraint needs and the step model never had: ghost
-    // positions refreshed after the drift (the built-in halo fires later, at
-    // pre_neighbor), and ghost VELOCITIES after the second half-kick (which nothing
-    // has ever communicated).
-    sim.on(md::Phase::post_integrate)
-        .add(cpu::comm::HaloRefresh{cpu::comm::HaloRefresh::Field::positions}, -100);
-    sim.on(md::Phase::final_integrate)
-        .add(cpu::comm::HaloRefresh{cpu::comm::HaloRefresh::Field::velocities}, +150);
-
+    // NOTE: no HaloRefresh is registered here. The driver auto-injects the two the
+    // constraint needs (ghost positions after the drift, ghost velocities after the
+    // second half-kick) the moment it sees a ComponentRole::Constraint. Making the user
+    // remember them would mean that forgetting one line yields constraints that are
+    // silently wrong at rank boundaries — no throw, no crash, just a molecule that is
+    // not rigid on one side of a cut. This test passing WITHOUT them is the assertion.
     sim.enable_timing(false);
     sim.build();
 

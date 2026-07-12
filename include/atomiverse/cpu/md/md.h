@@ -299,6 +299,24 @@ class MD : public DynamicsDriver {
             if (!s.has_halo_recv)
                 this->add(comm::HaloRecv{});
         }
+
+        // A constraint needs ghost positions AFTER the drift and ghost velocities
+        // AFTER the second half-kick. The built-in forward halo fires once, at
+        // pre_neighbor, and carries positions only — so at the position stage the
+        // ghost data is a step stale, and ghost velocities never exist at all.
+        //
+        // Auto-inject the two refreshes rather than documenting them. Requiring the
+        // user to remember them would mean that forgetting one line produces
+        // constraints that are silently wrong at rank boundaries — no throw, no crash,
+        // just a molecule that is not rigid on one side of a cut. That is exactly the
+        // failure mode this engine keeps trying to make impossible, and it is not a
+        // thing to leave to a doc comment.
+        if (s.has_constraint) {
+            this->on(ATV::md::Phase::post_integrate)
+                .add(comm::HaloRefresh{comm::HaloRefresh::Field::positions}, -100);
+            this->on(ATV::md::Phase::final_integrate)
+                .add(comm::HaloRefresh{comm::HaloRefresh::Field::velocities}, +150);
+        }
 #endif
 
         this->throw_if_missing_neighbor_list_(

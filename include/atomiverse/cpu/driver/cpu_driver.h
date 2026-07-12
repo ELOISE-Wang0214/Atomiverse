@@ -423,6 +423,7 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
         bool has_virial_stress =
             false; ///< Canonical Stress provider already there.
         bool has_neighbor_list = false; ///< NeighborList already there.
+        bool has_constraint = false;    ///< A Constraint component is registered.
         bool has_halo_send = false;     ///< A HaloSend is already registered.
         bool has_halo_recv = false;     ///< A HaloRecv is already registered.
         std::string neighbor_consumer_name; ///< First `NeighborConsumer`.
@@ -474,6 +475,8 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
                 s.has_virial_stress = true;
             if (c.as_neighbor_provider())
                 s.has_neighbor_list = true;
+            if (c.role() == ComponentRole::Constraint)
+                s.has_constraint = true;
             if (cpu::HaloParticipant* hp = c.halo_participant()) {
                 if (hp->halo_endpoint() == cpu::HaloParticipant::Endpoint::send)
                     s.has_halo_send = true;

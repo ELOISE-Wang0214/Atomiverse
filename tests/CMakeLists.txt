@@ -294,6 +294,10 @@ if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
     atv_add_mpi_run(test_mpi_rattle_multirank_n2 test_mpi_rattle_multirank 2)
     atv_add_mpi_run(test_mpi_rattle_multirank_n4 test_mpi_rattle_multirank 4)
 
+    atv_add_mpi_exec(test_mpi_sw_multirank mpi/test_sw_multirank.cpp)
+    atv_add_mpi_run(test_mpi_sw_multirank_n2 test_mpi_sw_multirank 2)
+    atv_add_mpi_run(test_mpi_sw_multirank_n4 test_mpi_sw_multirank 4)
+
     atv_add_mpi_exec(test_mpi_pe_msu_pipeline mpi/test_pe_msu_pipeline.cpp)
     atv_add_mpi_run(test_mpi_pe_msu_pipeline_n8 test_mpi_pe_msu_pipeline 8)
 
