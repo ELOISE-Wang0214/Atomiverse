@@ -54,23 +54,17 @@ Bonded forces are cross-validated against LAMMPS in
 | Method                              | CPU | CUDA |
 | ----------------------------------- | :-: | :--: |
 | Lennard–Jones 12-6 potential        |  ⚡  |   ⚡  |
-| Lennard–Jones 9-6 potential|  ⊘  |   ⊘  |
 | Mie n-m potential                   |  ○  |   ○  |
 | Buckingham potential                |  ○  |   ○  |
-| Born–Mayer potential|  ⊘  |   ⊘  |
-| Weeks–Chandler–Andersen potential|  ⊘  |   ⊘  |
 | Morse nonbonded potential           |  ✓  |   ○  |
 | Tabulated pair potential            |  ○  |   ○  |
 | Coulomb potential                   |  ○  |   ○  |
 | Reaction-field electrostatics       |  ○  |   ○  |
-| Shifted-potential electrostatics|  ⊘  |   ⊘  |
-| Shifted-force electrostatics|  ⊘  |   ⊘  |
 | Damped-shifted-force electrostatics |  ○  |   ○  |
 | Wolf summation                      |  ○  |   ○  |
 | Direct Ewald summation              |  ✓  |   ✓  |
 | Particle Mesh Ewald                 |  ✓  |   ✓  |
 | Smooth Particle Mesh Ewald          |  ✓  |   ✓  |
-| Particle–particle particle–mesh|  ⊘  |   ⊘  |
 | Lennard–Jones PME                   |  ○  |   ○  |
 | Fast multipole electrostatics       |  ○  |   ○  |
 | Multilevel summation method         |  ○  |   ○  |
@@ -119,7 +113,6 @@ Notes:
 | Finnis–Sinclair potential      |  ○  |   ○  |
 | Stillinger–Weber potential     |  ✓  |   ○  |
 | Tersoff potential              |  ○  |   ○  |
-| Brenner REBO|  ⊘  |   ⊘  |
 | AIREBO                         |  ○  |   ○  |
 | AIREBO-M                       |  ○  |   ○  |
 | EDIP                           |  ○  |   ○  |
@@ -131,14 +124,16 @@ Notes:
 | Many-body tabulated potential  |  ○  |   ○  |
 
 **EAM** (analytic Sutton-Chen, `cpu::EAM`) and **Stillinger-Weber** (`cpu::StillingerWeber`)
-are implemented on CPU, single-element and single-rank; both are FD-force-gated and
-carry literature regressions (`regressions/md/eam_cu`, `regressions/md/sw_si`). See
+are implemented on CPU, single-element, and run **under MPI**; both are FD-force-gated
+and carry literature regressions (`regressions/md/eam_cu`, `regressions/md/sw_si`). See
 [Chapter 16](../tutorial/ch16-many-body-potentials.md).
 
-They **throw under MPI**: a many-body force needs a derived per-atom quantity (EAM's
-embedding density) at ghost atoms, and the engine has exactly one forward halo
-(`pre_neighbor`) and one reverse halo (`post_force`, forces only) — no mid-force
-communication point. Fixing that is a `comm/` change, not a potentials change.
+A many-body force needs a derived per-atom quantity (EAM's embedding density) at *ghost*
+atoms, and the engine has exactly one forward halo (`pre_neighbor`) and one reverse halo
+(`post_force`, forces only) — no mid-force communication slot to publish it in. Rather
+than add one, EAM declares `halo_cutoff() = 2 × cutoff`: with a ghost-of-ghost shell,
+every ghost's density completes **locally** and nothing has to be communicated mid-force.
+Comm traded for halo width, which is the standard trade.
 
 Alloy cross-terms, MEAM, Tersoff and the reactive potentials remain ○ — for those,
 the quantum-mechanical route (GPW, plane waves) is still the only option.
@@ -163,8 +158,6 @@ the quantum-mechanical route (GPW, plane waves) is still the only option.
 | ------------------------------------------ | :-: | :--: |
 | Behler–Parrinello neural-network potential |  ○  |   ○  |
 | ANI potential                              |  ○  |   ○  |
-| SchNet|  ⊘  |   ⊘  |
-| DimeNet|  ⊘  |   ⊘  |
 | DimeNet++                                  |  ○  |   ○  |
 | PaiNN                                      |  ○  |   ○  |
 | GemNet                                     |  ○  |   ○  |
@@ -189,19 +182,3 @@ builds a *differentiable classical* force field: LJ and harmonic bond as
 **and** the force-field parameters (ε, σ, K, r₀). It is a parameter-fitting
 surface — there is no network architecture, no descriptor, no integrator, and
 no driver on that backend.
-
-## Superseded (⊘)
-
-| Method | Dominated by |
-| ------ | ------------ |
-| Lennard–Jones 9-6 | Mie n-m, which contains every (n, m) pair including 9-6 and 12-6 as special cases. |
-| Born–Mayer | Buckingham — Born–Mayer *is* Buckingham without the r⁻⁶ attraction. |
-| Weeks–Chandler–Andersen | The implemented LJ 12-6: WCA is exactly LJ truncated and shifted at 2^(1/6)σ, expressible today. |
-| Shifted-potential, shifted-force electrostatics | Damped-shifted-force (DSF), which is the same idea done correctly — both energy and force continuous at the cutoff. |
-| Particle–particle particle–mesh (PPPM) | The implemented smooth PME. Same O(N log N) mesh-Ewald family, same accuracy; no reason to carry a second one. |
-| Brenner REBO | AIREBO — REBO plus the LJ and torsion terms it is missing. |
-| SchNet, DimeNet | The equivariant generation (PaiNN, NequIP, MACE) and DimeNet++ respectively — strictly better accuracy per parameter and per FLOP. |
-
-Kept ○ deliberately: **Wolf summation** and **reaction-field** are not ⊘ despite
-being less accurate than PME — they are O(N), which PME is not, so they win in a
-regime PME cannot reach.

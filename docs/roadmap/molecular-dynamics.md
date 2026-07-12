@@ -4,33 +4,23 @@ Legend and caveats: [Roadmap index](index.md).
 
 The Dynamics driver (`cpu::md::MD`, `cuda::md::MD`) is the most complete part of
 the engine: NVE/NVT/NPT all run on both backends, with MPI domain decomposition,
-halo exchange, and migration on CPU, and multi-GPU support on CUDA. The gaps are
-specific rather than structural — no constraints, no NPH, only uniaxial
-deformation, and no rigid bodies.
+halo exchange, and migration on CPU, and multi-GPU support on CUDA. Constraints
+(RATTLE) run on CPU under MPI. The gaps are specific rather than structural — no NPH,
+only uniaxial deformation, and no rigid bodies.
 
 ## 1. Molecular-Dynamics Integrators
 
 | Method                            | CPU | CUDA |
 | --------------------------------- | :-: | :--: |
-| Position Verlet|  ⊘  |   ⊘  |
 | Velocity Verlet                   |  ✓  |   ✓  |
-| Leapfrog|  ⊘  |   ⊘  |
-| Beeman integrator|  ⊘  |   ⊘  |
-| Symplectic Euler|  ⊘  |   ⊘  |
 | Forest–Ruth integrator            |  ○  |   ○  |
-| Multiple-time-step Verlet|  ⊘  |   ⊘  |
-| RESPA|  ⊘  |   ⊘  |
 | Reversible RESPA                  |  ○  |   ○  |
 | Langevin dynamics                 |  ✓  |   ✓  |
-| BBK Langevin integrator|  ⊘  |   ⊘  |
 | BAOAB Langevin integrator         |  ○  |   ○  |
 | GJF Langevin integrator           |  ○  |   ○  |
-| VRORV Langevin integrator|  ⊘  |   ⊘  |
 | Langevin-middle integrator        |  ○  |   ○  |
 | Brownian dynamics                 |  ○  |   ○  |
-| Overdamped Langevin dynamics|  ⊘  |   ⊘  |
 | Generalized Langevin equation     |  ○  |   ○  |
-| Colored-noise Langevin dynamics|  ⊘  |   ⊘  |
 | Rigid-body quaternion integration |  ○  |   ○  |
 
 Langevin dynamics is the Schneider–Stoll additive-force form (`FixLangevin`),
@@ -42,11 +32,7 @@ overlapping start configurations.
 
 | Method                                   | CPU | CUDA |
 | ---------------------------------------- | :-: | :--: |
-| Direct velocity rescaling|  ⊘  |   ⊘  |
-| Berendsen thermostat|  ⊘  |   ⊘  |
-| Andersen thermostat|  ⊘  |   ⊘  |
 | Langevin thermostat                      |  ✓  |   ✓  |
-| Nosé thermostat|  ⊘  |   ⊘  |
 | Nosé–Hoover thermostat                   |  ✓  |   ✓  |
 | Nosé–Hoover chain thermostat             |  ✓  |   ✓  |
 | Bussi stochastic velocity rescaling      |  ✓  |   ○  |
@@ -72,7 +58,6 @@ Bussi/CSVR (`FixCSVR`) is CPU-only.
 | Method                              | CPU | CUDA |
 | ----------------------------------- | :-: | :--: |
 | Berendsen barostat                  |  ✓  |   ✓  |
-| Andersen barostat|  ⊘  |   ⊘  |
 | Parrinello–Rahman barostat          |  ○  |   ○  |
 | Martyna–Tobias–Klein barostat       |  ✓  |   ✓  |
 | Langevin piston                     |  ○  |   ○  |
@@ -116,22 +101,31 @@ driving the ramp yourself, but the engine ships no annealing schedule.
 
 | Method                       | CPU | CUDA |
 | ---------------------------- | :-: | :--: |
-| SHAKE|  ⊘  |   ⊘  |
-| RATTLE                       |  ○  |   ○  |
-| LINCS|  ⊘  |   ⊘  |
+| RATTLE                       |  ✓  |   ○  |
 | P-LINCS                      |  ○  |   ○  |
 | SETTLE                       |  ○  |   ○  |
 | CCMA                         |  ○  |   ○  |
-| Distance constraints         |  ○  |   ○  |
-| Angle constraints            |  ○  |   ○  |
+| Distance constraints         |  ✓  |   ○  |
+| Angle constraints            |  ✓  |   ○  |
 | Rigid-water dynamics         |  ○  |   ○  |
 | General rigid-body dynamics  |  ○  |   ○  |
 | Virtual-site dynamics        |  ○  |   ○  |
 | Hydrogen-mass repartitioning |  ○  |   ○  |
 
-**Nothing in this class exists.** Every molecule is fully flexible, so water
-models must be flexible variants and the timestep is bounded by the fastest
-X–H stretch. This is the single largest gap for biomolecular work.
+`cpu::md::FixRattle` (Andersen 1983) holds distance and 1–3 (angle) constraints, runs
+under MPI, and throws rather than return a molecule that is merely *nearly* rigid. It
+holds TIP3P geometry to 5 × 10⁻¹¹ relative over 5 ps at `dt = 2 fs`
+(`regressions/md/rigid_water`).
+
+**SETTLE** is listed and unwritten. It is a closed-form solution for exactly one cluster
+shape — a three-site rigid water — so it is an *optimization* of the general solver rather
+than a replacement for it: worth a few percent of step time on water, worth nothing to any
+molecule that is not water. It gets written when a profile asks for it.
+
+Before RATTLE, every molecule was fully flexible: water models had to be flexible
+variants and the timestep was bounded by the fastest X–H stretch (~9 fs period for O–H,
+so ~0.5 fs steps). Constrained water runs at `dt = 2 fs`. What is still missing for
+biomolecular work is **rigid bodies** and **virtual sites**.
 
 ## 6. Nonequilibrium Molecular Dynamics
 
@@ -236,25 +230,3 @@ it is what stands in for every "analytic Hessian" row in this roadmap.
 `cpu::vib::Hessian` displaces each Cartesian degree of freedom and differences
 the analytic forces, so it works with any force-providing evaluator — classical
 or SCF. It is molecular: there is no supercell/q-point phonon machinery.
-
-## Superseded (⊘)
-
-| Method | Dominated by |
-| ------ | ------------ |
-| Position Verlet, Leapfrog, Beeman | Velocity Verlet (implemented). All are the same second-order symplectic trajectory; velocity Verlet is the one with synchronized positions and velocities. |
-| Symplectic Euler | Velocity Verlet — first order vs second, at the same cost. |
-| Multiple-time-step Verlet, RESPA | Reversible RESPA (r-RESPA), which is time-reversible and hence stable over long runs. |
-| BBK, VRORV Langevin | BAOAB / GJF — demonstrably better configurational sampling at finite timestep. |
-| Overdamped Langevin | Brownian dynamics — the same equation of motion, listed twice in the taxonomy. |
-| Colored-noise Langevin | The generalized Langevin equation (GLE), of which colored noise is one parameterization. |
-| Direct velocity rescaling, Berendsen thermostat | Bussi CSVR (implemented). Neither of the two samples the canonical ensemble — Berendsen suppresses kinetic-energy fluctuations and causes the flying-ice-cube artefact. CSVR is Berendsen *plus* the noise term that makes it correct, at identical cost. |
-| Andersen thermostat | Langevin / CSVR (both implemented) — same stochastic purpose, without Andersen's velocity-randomization disruption of dynamics. |
-| Nosé thermostat | Nosé–Hoover (implemented) — the real-time reformulation of exactly this thermostat. |
-| Andersen barostat | MTK Nosé–Hoover NPT (implemented). |
-| SHAKE | RATTLE (constrains velocities too) and LINCS/P-LINCS (non-iterative, parallel). |
-| LINCS | P-LINCS — the same algorithm, parallelized; implementing P-LINCS yields LINCS. |
-
-Kept ○ deliberately: **Brownian dynamics** is different physics (no inertia), not
-a worse Langevin integrator. **Massive NHC** is not ⊘ under NHC — it is what PIMD
-requires. **Parrinello–Rahman** is not ⊘ under MTK: MTK as implemented couples
-only the cell diagonal, so PR still buys shear.

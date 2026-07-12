@@ -373,3 +373,116 @@ off a printed table, so a generator would be a program with no second caller.
 case could not quiet a chain of single points. Hoisted to `CPUDriver` — the timing
 registry is Backend infrastructure every category owns. This is precisely what the
 `regressions/` "public API only" rule is for.
+
+---
+
+## Probe 2 verdict — MD constraints (RATTLE rigid water), 2026-07-12
+
+Breadth-first campaign, probe #2. Spec `md-constraints`. Serialized behind probe 1
+because both touch `comm/`. They hit the **same wall from opposite sides**, which is the
+single most useful thing this probe produced.
+
+### The write-set was a lie, and nothing noticed
+
+`Capability` is documented as "what frame fields may `launch()` write". Before this,
+`VelocityVerlet` rewrote every position and velocity in the system and declared
+`Capability::None`. So did the entire integrator/thermostat family. Nothing broke —
+because **nothing read the bits**. That is the failure mode of a declaration nobody
+consumes: it rots silently, and the first feature to trust it is the one that gets hurt.
+
+Decision: **`Capability` IS the write-set**, stated in the header, and the mutators now
+declare `Position`/`Velocity` (new bits 8, 9). `tests/cpu/md/test_write_sets.cpp` keeps
+it honest, and pins the *other* direction too — `FixLangevin` must **not** claim
+`Velocity`: it writes friction+noise into the **force** and lets the integrator move the
+atoms. An over-broad write-set is as wrong as an empty one, just less obviously so.
+
+Corollary: a constraint is **not** an Integrator. `ComponentRole::Constraint` exists, and
+`DynamicsDriver` still demands ≥ 1 real Integrator — otherwise a Plan of "constraint, no
+integrator" validates fine, nothing moves, every constraint is trivially satisfied, and
+the tests are green.
+
+### `post_integrate` was already there
+
+The LAMMPS-shaped phase enum already reserved `post_integrate` — exactly where SHAKE runs
+in LAMMPS. **No new phase was needed.** The phase design was right before we had a user
+for it, which is worth recording precisely because the *rest* of this probe is a list of
+places where it wasn't.
+
+### Ndof: one owner, and a build-order trap that bit twice
+
+`Ndof = 3N − 3` was hardcoded at **five** sites. It is now published once
+(`src/cpu/driver/dof.cpp` → `ctx.md.n_dof_global`) in `setup_pass()`, between
+`set_frame()` and `build_components()` — i.e. **before any thermostat caches it**, since
+thermostats read Ndof in their own `build()`.
+
+Two bugs, both from build **order**, both invisible to the unit tests:
+
+1. **The owner count is `ctx.md.dd->n_local`, not `frame.atoms.size()`.** After
+   `partition_atoms`, the frame's `nlocal` is still the *full* allocation on every rank
+   (the tail is ghost slack). Summing it across 8 ranks gave an 8× Ndof, and NPT
+   equilibrated at **2404 K** against a 300 K setpoint.
+2. **Constraint providers must be captured in `build()`**, not scanned from `pending_` in
+   `setup_pass()` — `Base::build()` has already consumed `pending_` by then. Ndof got
+   published with **zero** constraints: geometry perfectly rigid, thermostat driving the
+   box to 447 K. The unit test couldn't see it (it called `n_constraints()` directly);
+   only the **regression** could. Then `for_each_pending` turned out to walk *bindings*,
+   not components, so `FixRattle`'s 3 bindings counted 3× → "no degrees of freedom left
+   (−3)". Dedup by pointer.
+
+A thermostat with a wrong Ndof does not crash. It *drives the system to the wrong
+temperature and reports success.*
+
+### The kick+drift/wrap trap
+
+`VelocityVerlet` fuses the half-kick and the drift and then **wraps** into the box. A
+constraint needs the *unconstrained* post-drift positions and the pre-wrap ones are gone,
+so `FixRattle` keeps its own shadow of `x_unc`. This is the one place the Frame-purity
+rule bends: the shadow is **component-owned**, not a Frame field.
+
+### The finding that spans both probes: nobody wants `CommField`
+
+Probe 1 (EAM) needed ghost **densities**; probe 2 (RATTLE) needed ghost **velocities**.
+The engine ran exactly one forward halo (`pre_neighbor`, positions only) and one reverse
+(`post_force`, payload audited to forces). Both probes needed data that neither message
+carried. `HaloParticipant::CommField` — the protocol *designed* for exactly this — was
+used by **neither**, and still has **no production user** outside a test.
+
+- **EAM** widened the shell instead: `NeighborConsumer::halo_cutoff() = 2·cutoff`, so
+  every ghost's ρ completes **locally** from its own ghost-of-ghost shell and no F′(ρ) is
+  ever communicated. Comm traded for halo width — the standard trade. One-forward /
+  one-reverse invariant intact.
+- **RATTLE** couldn't widen anything: its velocity stage runs at `final_integrate`, where
+  **no message exists to ride**. It needed a genuinely new exchange —
+  `comm::HaloRefresh`, a forward halo bindable at an *arbitrary* phase, auto-injected by
+  the driver on sight of a `ComponentRole::Constraint`. Honest cost: **+2 forward halos
+  per step**. Paid knowingly.
+
+Two independent probes, two different escapes, zero uses of the protocol built for this.
+`CommField` should be read as **on probation**: the next probe that needs ghost data is
+the third vote on whether it earns its keep, or gets deleted.
+
+### Bugs the multi-rank path surfaced in `comm/`
+
+All three were latent, and none was a constraint bug:
+
+- A **collective guarded by `if (n_ghost == 0) return;`** — a rank with no ghosts is still
+  somebody's *neighbour*. Deadlock.
+- **Two sequential `MPI_Sendrecv`**, one per face of an axis. On 2 ranks the lo and hi
+  neighbour are the **same rank**, so the tags cross. Deadlock. Fixed with concurrent
+  Isend/Irecv + Waitall.
+- **A halo shell wider than the subdomain was silently truncated** — which is how EAM's
+  multi-rank forces came out 0.67 eV/Å wrong. `HaloSend::build` now **throws**. A halo
+  that cannot be filled is not a smaller halo; it is a wrong answer.
+
+Also: under MPI, `frame.atoms.map` still held the *pre-partition* identity mapping, so
+looking a tag up there read the wrong row entirely. `partition_atoms` now calls
+`map_release()`. (This first presented as a "failing" test that was off by 9.5 Å while the
+physics was fine — the test was reading the wrong atoms.)
+
+### Verdict
+
+Same as probe 1: **the domain directory was never the problem.** `md/` took RATTLE
+without a fight; `potentials/` took EAM/SW without a fight. Both probes broke in `comm/`
+and `neighbor/` — the *infrastructure* layers, which had been built against a single
+implicit consumer (pair forces, half list, positions forward, forces back) and quietly
+assumed it was the only one.

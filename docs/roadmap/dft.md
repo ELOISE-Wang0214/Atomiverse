@@ -49,7 +49,6 @@ Kohn–Sham path on CUDA at all — the device SCF solver is restricted HF only.
 | Slater exchange      |  ✓  |   ✓  |
 | VWN correlation      |  ✓  |   ○  |
 | SVWN                 |  ✓  |   ○  |
-| Perdew–Zunger LDA|  ⊘  |   ⊘  |
 | Perdew–Wang 1992 LDA |  ✓  |   ✓  |
 | Spin-polarized LDA   |  ✓  |   ○  |
 
@@ -68,7 +67,6 @@ XC on the device in the Gaussian path.
 | PBEsol     |  ○  |   ○  |
 | revPBE     |  ○  |   ○  |
 | RPBE       |  ○  |   ○  |
-| PW91|  ⊘  |   ⊘  |
 | BLYP       |  ○  |   ○  |
 | BP86       |  ○  |   ○  |
 | B97        |  ○  |   ○  |
@@ -86,7 +84,6 @@ components — BLYP is not exposed as a selector.
 | ---------- | :-: | :--: |
 | TPSS       |  ○  |   ○  |
 | revTPSS    |  ○  |   ○  |
-| SCAN|  ⊘  |   ⊘  |
 | r2SCAN     |  ○  |   ○  |
 | M06-L      |  ○  |   ○  |
 | MN12-L     |  ○  |   ○  |
@@ -160,7 +157,6 @@ The ingredients exist separately (hybrid KS + MP2), but nothing composes them.
 
 | Method                           | CPU | CUDA |
 | -------------------------------- | :-: | :--: |
-| DFT-D2|  ⊘  |   ⊘  |
 | DFT-D3 zero damping              |  ✓  |   ○  |
 | DFT-D3 Becke–Johnson damping     |  ○  |   ○  |
 | DFT-D4                           |  ○  |   ○  |
@@ -275,12 +271,3 @@ Which engine backs which ✓:
 On CUDA the plane-wave hot path (Davidson H·ψ, cuFFT, Poisson, V_eff, LDA,
 density accumulation) is device-resident; Rayleigh–Ritz subspace bookkeeping and
 the SCF control loop stay on the host.
-
-## Superseded (⊘)
-
-| Method | Dominated by |
-| ------ | ------------ |
-| Perdew–Zunger LDA | VWN5 and PW92 — the same LDA correlation, better parameterized. Both are implemented. |
-| PW91 | PBE, its own simplified and better-behaved successor (implemented). Perdew rederived PW91 *as* PBE. |
-| SCAN | r2SCAN — same functional, regularized to remove SCAN's numerical instability on coarse grids. |
-| DFT-D2 | DFT-D3 (implemented), which supersedes it outright: coordination-dependent C₆, C₈ term, wider element coverage. |

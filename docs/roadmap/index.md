@@ -12,38 +12,27 @@ method is reachable from the public API and validated.
 | ○      | Not implemented                         |
 | ✓      | Implemented and numerically correct     |
 | ⚡      | Numerically correct and fully optimized |
-| ⊘      | Superseded — will not be implemented    |
 
 A CUDA implementation must execute its principal computation on CUDA. A CPU
 fallback is not considered CUDA support.
 
-### Supersession (⊘)
+### What this roadmap does not list
 
-A method is ⊘ when a **strictly better algorithm dominates it** — same purpose,
-same or lower cost, no regime where the older one wins. We do not implement the
-dominated method, and we do not intend to. L-BFGS is the canonical example: it
-matches BFGS's convergence at a fraction of the memory, so **BFGS is ⊘, not ○**.
-Marking it ○ would falsely imply it is on the way.
+A method that a **strictly better algorithm dominates** — same purpose, same or lower
+cost, no regime where the older one wins — is simply **not in these tables**. It is not
+marked, not tracked, and not planned. Listing it, even as "will not implement", would
+suggest the roadmap has an opinion worth reading about it; it does not.
 
-⊘ is a claim about the *algorithm*, not about our schedule. It is used only when
-the dominance is uncontroversial:
+So there is no BFGS row (L-BFGS matches its convergence at O(mN) memory instead of
+O(N²)), no Fletcher–Reeves row (Polak–Ribière⁺ restarts strictly better at the same
+cost), no Berendsen-thermostat row (CSVR samples the canonical ensemble; Berendsen does
+not sample it at all).
 
-- the successor is a strict generalization (Mie n-m contains LJ 9-6; Buckingham
-  contains Born–Mayer),
-- the successor is the same method done correctly (VWN5/PW92 vs the older
-  Perdew–Zunger LDA; DFT-D3 vs D2; CSVR vs the Berendsen thermostat, which does
-  not sample the canonical ensemble at all),
-- or the predecessor is a strictly lower-order/less-stable variant of the
-  successor (symplectic Euler vs velocity Verlet; shifted-potential vs
-  damped-shifted-force).
-
-Where a "worse" method survives because it occupies a genuinely different
-cost/accuracy niche, it stays ○. Steepest descent is ○ on CPU — it is dominated
-by CG for minimization, but it is the robust first-resort for a badly broken
-start geometry, and it is implemented on CUDA. Likewise Brownian dynamics is not
-⊘ under Langevin: it is different physics, not a worse integrator.
-
-The dominating method is named in each chapter's notes, so every ⊘ is auditable.
+This is only about *dominance*, never about our schedule. A method that survives because
+it occupies a genuinely different cost/accuracy niche stays ○ and stays listed — steepest
+descent is dominated by CG for minimization proper, but it is the robust first resort on a
+badly broken start geometry, so it keeps its row. Brownian dynamics keeps its row too: it
+is different physics from Langevin, not a worse integrator.
 
 ### How the symbols are assigned here
 
@@ -162,13 +151,16 @@ watch out for in the ones that do.
 ### Classical force fields
 
 - **The pair-style catalogue is thin**: LJ 12-6, a demo Morse (O(N²),
-  neighbor-list-opting-out), and the real-space Ewald `coul/long`. LJ carries a
-  single ε/σ, not a per-type table.
+  neighbor-list-opting-out), and the real-space Ewald `coul/long`. LJ now carries a
+  per-type ε/σ table with Lorentz–Berthelot mixing, but the per-type path is scalar —
+  only the single-type path takes the xsimd ket loop.
 - **No impropers**, no reactive potentials (ReaxFF, AIREBO), no coarse-grained models.
-- **Many-body: EAM and Stillinger–Weber now exist** (CPU, single-element,
-  single-rank; see [Chapter 16](../tutorial/ch16-many-body-potentials.md)). They
-  **throw under MPI** — a many-body style needs a derived per-atom quantity at ghost
-  atoms, and there is no mid-force communication point. Tersoff/MEAM remain absent.
+- **Many-body: EAM and Stillinger–Weber now exist** (CPU, single-element, MPI-parallel
+  via a ghost-of-ghost halo; see [Chapter 16](../tutorial/ch16-many-body-potentials.md)).
+  Tersoff/MEAM remain absent, as does any CUDA mirror.
+- **Constraints: RATTLE runs** (`cpu::md::FixRattle`, CPU, MPI-parallel). SETTLE and
+  LINCS are deliberately not written — they are optimizations of a solver that already
+  holds rigid geometry to 5 × 10⁻¹¹. No rigid bodies, no virtual sites.
 - **The torch backend is not a machine-learning potential.** It is a
   differentiable classical force field: LJ and harmonic bond with autograd
   backward passes w.r.t. positions *and* parameters (ε, σ, K, r₀) — a

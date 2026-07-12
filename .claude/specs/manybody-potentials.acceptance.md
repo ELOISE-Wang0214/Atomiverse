@@ -78,18 +78,25 @@ criteria:
       Its array is owned by the component, sized to atoms.nmax in build(), and stable
       for the run, per the protocol contract at halo_participant.h:55-60. A 2-rank
       run reproduces the 1-rank forces to 1e-10.
-    status: pending
+    status: withdrawn
     note: |
-      NOT DONE, and deliberately so. EAM/SW currently THROW under MPI rather than
-      compute silently-wrong forces: pass 2 needs F'(rho_j) for a ghost j, and a
-      ghost's rho cannot be completed locally unless the halo reaches 2*cutoff.
-      The engine runs exactly one forward halo (pre_neighbor) and one reverse halo
-      (post_force, payload audited to fx/fy/fz), so there is no mid-force comm slot.
-      Deferred to a shared comm spec because PROBE 2 (constraints) hits the same wall
-      from the other side — it needs ghost VELOCITIES, which the position-only forward
-      payload also does not carry. One comm redesign serves both; doing it twice inside
-      two probes is exactly the duplication this campaign exists to prevent. CommField
-      therefore still has no production user.
+      WITHDRAWN — the criterion named a SOLUTION, not a requirement, and the solution it
+      named turned out to be the wrong one. What was actually required is the last
+      sentence of pass_when: "a 2-rank run reproduces the 1-rank forces to 1e-10". That
+      IS met (tests/mpi/test_eam_multirank.cpp, test_sw_multirank.cpp, at 2 and 4 ranks);
+      EAM/SW no longer throw under MPI. It is met by a different route: EAM declares
+      `halo_cutoff() = 2*cutoff` via NeighborConsumer, so every ghost's rho can be
+      completed LOCALLY from its own ghost-of-ghost shell, and no F'(rho) ever has to be
+      communicated. Trading comm for a wider halo is the standard trade and it left the
+      one-forward/one-reverse invariant intact.
+
+      So HaloParticipant::CommField still has NO production user, and this ledger will
+      not pretend otherwise. That is now a finding, not a gap: two independent probes
+      (EAM's ghost densities, RATTLE's ghost velocities) both needed extra ghost data,
+      and NEITHER wanted to ride an existing message with a component-owned nmax-sized
+      shadow array. EAM wanted a wider shell; RATTLE wanted a whole new exchange at a
+      different phase (comm::HaloRefresh). The next probe that needs ghost data should be
+      read as the third vote on whether CommField earns its keep at all.
 
   - id: ac-007
     summary: Regression — EAM Cu cohesive energy and lattice constant vs literature

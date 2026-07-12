@@ -18,19 +18,14 @@ implement.
 | Method                                     | CPU | CUDA |
 | ------------------------------------------ | :-: | :--: |
 | Steepest descent                           |  ○  |   ✓  |
-| Fletcher–Reeves conjugate gradient|  ⊘  |   ⊘  |
 | Polak–Ribière conjugate gradient           |  ✓  |   ✓  |
 | Nonlinear conjugate gradient               |  ✓  |   ✓  |
-| BFGS|  ⊘  |   ⊘  |
 | L-BFGS                                     |  ✓  |   ✓  |
 | Trust-region optimization                  |  ○  |   ○  |
-| Newton–Raphson optimization|  ⊘  |   ⊘  |
 | Rational-function optimization             |  ○  |   ○  |
 | Partitioned rational-function optimization |  ○  |   ○  |
 | Augmented-Hessian optimization             |  ○  |   ○  |
 | FIRE minimization                          |  ○  |   ○  |
-| Quick-min minimization|  ⊘  |   ⊘  |
-| Damped-dynamics minimization|  ⊘  |   ⊘  |
 | Cartesian-coordinate optimization          |  ✓  |   ✓  |
 | Internal-coordinate optimization           |  ○  |   ○  |
 | Redundant-internal-coordinate optimization |  ○  |   ○  |
@@ -62,10 +57,8 @@ Notes:
 | Eigenvector-following transition-state search |  ○  |   ○  |
 | Partitioned-RFO transition-state search       |  ○  |   ○  |
 | Dimer method                                  |  ○  |   ○  |
-| Nudged elastic band|  ⊘  |   ⊘  |
 | Climbing-image nudged elastic band            |  ○  |   ○  |
 | Adaptive nudged elastic band                  |  ○  |   ○  |
-| String method|  ⊘  |   ⊘  |
 | Growing string method                         |  ○  |   ○  |
 | Freezing string method                        |  ○  |   ○  |
 | Intrinsic reaction coordinate                 |  ○  |   ○  |
@@ -74,18 +67,3 @@ Notes:
 | Conical-intersection optimization             |  ○  |   ○  |
 | Basin hopping                                 |  ○  |   ○  |
 | Minima hopping                                |  ○  |   ○  |
-
-## Superseded (⊘)
-
-| Method | Dominated by |
-| ------ | ------------ |
-| BFGS | L-BFGS (implemented) — same superlinear convergence, O(mN) memory instead of O(N²). The dense inverse Hessian buys nothing at simulation sizes. |
-| Fletcher–Reeves CG | Polak–Ribière⁺ (implemented) — same cost, strictly better restart behaviour on non-quadratic surfaces. |
-| Newton–Raphson | Trust-region / RFO — raw Newton steps toward *any* stationary point, including saddles, and diverge far from the minimum. The regularized variants are the ones worth having. |
-| Quick-min, damped dynamics | FIRE — the same damped-MD idea with the adaptive timestep that makes it competitive. |
-| Nudged elastic band | Climbing-image NEB — plain NEB does not converge on the saddle itself, which is the point of running it. |
-| String method | Growing / freezing string — same path, without needing a good initial guess for the whole chain. |
-
-**Steepest descent stays ○ on CPU** rather than ⊘: it is dominated by CG for
-minimization proper, but it is the robust first-resort on a badly broken start
-geometry, and it is already implemented on CUDA.

@@ -40,7 +40,6 @@ Coupled cluster and multireference theory are entirely absent.
 | MP3                                |  ○  |   ○  |
 | SCS-MP3                            |  ○  |   ○  |
 | Orbital-optimized MP3              |  ○  |   ○  |
-| MP4(SDQ)|  ⊘  |   ⊘  |
 | MP4(SDTQ)                          |  ○  |   ○  |
 | Full MP4                           |  ○  |   ○  |
 
@@ -54,10 +53,6 @@ fitting/RI, no gradients. It requires the full in-memory ERI tensor
 | Method                                 | CPU | CUDA |
 | -------------------------------------- | :-: | :--: |
 | Configuration interaction singles, CIS |  ○  |   ○  |
-| Configuration interaction doubles, CID|  ⊘  |   ⊘  |
-| CISD|  ⊘  |   ⊘  |
-| CISDT|  ⊘  |   ⊘  |
-| CISDTQ|  ⊘  |   ⊘  |
 | Full configuration interaction, FCI    |  ✓  |   ○  |
 | Direct CI                              |  ○  |   ○  |
 | Determinant-driven CI                  |  ✓  |   ○  |
@@ -68,8 +63,6 @@ fitting/RI, no gradients. It requires the full in-memory ERI tensor
 | Semistochastic heat-bath CI            |  ○  |   ○  |
 | Adaptive sampling CI                   |  ○  |   ○  |
 | CIS analytic gradient                  |  ○  |   ○  |
-| CISD analytic gradient|  ⊘  |   ⊘  |
-| Davidson-corrected CISD|  ⊘  |   ⊘  |
 
 FCI is determinant-driven (Slater–Condon assembly, Jordan–Wigner phases) with a
 **dense** CI matrix and `eigh` diagonalization — so it is explicitly *not* a
@@ -81,13 +74,11 @@ correlate real ones.
 
 | Method                       | CPU | CUDA |
 | ---------------------------- | :-: | :--: |
-| Linearized CCD, LCCD|  ⊘  |   ⊘  |
 | Coupled-cluster doubles, CCD |  ○  |   ○  |
 | Brueckner doubles, BD        |  ○  |   ○  |
 | CC2                          |  ○  |   ○  |
 | CCSD                         |  ○  |   ○  |
 | CCSD(T)                      |  ○  |   ○  |
-| CCSD[T]|  ⊘  |   ⊘  |
 | CCSDT-1a                     |  ○  |   ○  |
 | CCSDT-1b                     |  ○  |   ○  |
 | CCSDT-2                      |  ○  |   ○  |
@@ -95,8 +86,6 @@ correlate real ones.
 | CCSDT                        |  ○  |   ○  |
 | CCSDT(Q)                     |  ○  |   ○  |
 | CCSDTQ                       |  ○  |   ○  |
-| QCISD|  ⊘  |   ⊘  |
-| QCISD(T)|  ⊘  |   ⊘  |
 | CEPA/0                       |  ○  |   ○  |
 | ACPF                         |  ○  |   ○  |
 | AQCC                         |  ○  |   ○  |
@@ -166,23 +155,3 @@ active-space selection or orbital optimization exists on top of it.
 | MRMP2                                             |  ○  |   ○  |
 | Multiconfiguration pair-density functional theory |  ○  |   ○  |
 | Multireference analytic gradient                  |  ○  |   ○  |
-
-## Superseded (⊘)
-
-Truncated CI is the big one. **CID, CISD, CISDT, CISDTQ** (and the Davidson
-correction that patches them, and the CISD gradient) are all ⊘ because truncated
-CI is **not size-extensive** — its error grows with system size, which coupled
-cluster at the same excitation level fixes by construction, at the same cost
-scaling. CCSD dominates CISD, CCSDT dominates CISDT, and so on down the ladder.
-Only FCI (untruncated, hence exact and size-extensive) survives — and it is
-implemented.
-
-| Method | Dominated by |
-| ------ | ------------ |
-| CID | CISD, and both by CCSD (size-extensivity). |
-| CISD / CISDT / CISDTQ | CCSD / CCSDT / CCSDTQ at equal cost scaling. |
-| Davidson-corrected CISD, CISD analytic gradient | CCSD and its gradient. |
-| MP4(SDQ) | Full MP4 (SDTQ); and the whole MP4 tier by CCSD(T), which is cheaper and more accurate. |
-| Linearized CCD, LCCD | CCD — the linearization only removes terms. |
-| CCSD[T] | CCSD(T) — the standard fifth-order correction; `[T]` is the older, less accurate variant. |
-| QCISD, QCISD(T) | CCSD, CCSD(T) — QCISD is a partial approximation to CCSD with no compensating advantage. |

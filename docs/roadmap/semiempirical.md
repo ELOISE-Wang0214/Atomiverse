@@ -15,19 +15,10 @@ There is no DFTB and no extended tight binding (xTB/GFN-n) anywhere in the tree.
 
 | Method                          | CPU | CUDA |
 | ------------------------------- | :-: | :--: |
-| Hückel molecular orbital theory|  ⊘  |   ⊘  |
-| Extended Hückel theory|  ⊘  |   ⊘  |
-| CNDO/2|  ⊘  |   ⊘  |
-| INDO|  ⊘  |   ⊘  |
-| MINDO/3|  ⊘  |   ⊘  |
-| MNDO|  ⊘  |   ⊘  |
 | AM1                             |  ✓  |   ○  |
 | RM1                             |  ○  |   ○  |
-| PM3|  ⊘  |   ⊘  |
 | PM6                             |  ○  |   ○  |
 | PM7                             |  ○  |   ○  |
-| OM1|  ⊘  |   ⊘  |
-| OM2|  ⊘  |   ⊘  |
 | OM3                             |  ○  |   ○  |
 | Semiempirical analytic gradient |  ○  |   ○  |
 | Semiempirical analytic Hessian  |  ○  |   ○  |
@@ -42,7 +33,6 @@ semiempirical MD and optimization.
 
 | Method                    | CPU | CUDA |
 | ------------------------- | :-: | :--: |
-| Non-self-consistent DFTB0|  ⊘  |   ⊘  |
 | SCC-DFTB / DFTB2          |  ○  |   ○  |
 | DFTB3                     |  ○  |   ○  |
 | Spin-polarized DFTB       |  ○  |   ○  |
@@ -60,7 +50,6 @@ semiempirical MD and optimization.
 | Method                    | CPU | CUDA |
 | ------------------------- | :-: | :--: |
 | GFN0-xTB                  |  ○  |   ○  |
-| GFN1-xTB|  ⊘  |   ⊘  |
 | GFN2-xTB                  |  ○  |   ○  |
 | Spin-polarized GFN-xTB    |  ○  |   ○  |
 | IPEA-xTB                  |  ○  |   ○  |
@@ -69,22 +58,3 @@ semiempirical MD and optimization.
 | GFN-xTB analytic Hessian  |  ○  |   ○  |
 | GFN-FF                    |  ○  |   ○  |
 | sTDA-xTB                  |  ○  |   ○  |
-
-## Superseded (⊘)
-
-The pre-NDDO approximations are all dominated by the NDDO/AM1 core that is
-already implemented — they neglect strictly more two-electron integrals for no
-gain in cost that matters today.
-
-| Method | Dominated by |
-| ------ | ------------ |
-| Hückel, Extended Hückel | Any self-consistent method; these carry no two-electron terms at all. |
-| CNDO/2, INDO, MINDO/3 | NDDO — retains the differential overlap these discard. |
-| MNDO | AM1 (implemented) — AM1 *is* MNDO plus the corrected core repulsion. |
-| PM3 | PM6/PM7 — the same NDDO Hamiltonian, better parameterized and far broader element coverage. |
-| OM1, OM2 | OM3 — the same orthogonalization-corrected family, latest parameterization. |
-| Non-self-consistent DFTB0 | SCC-DFTB (DFTB2) — charge self-consistency is what makes DFTB usable for anything polar. |
-| GFN1-xTB | GFN2-xTB — same cost tier, better Hamiltonian (multipole electrostatics, D4). |
-
-PM6, PM7, RM1, OM3, DFTB2/DFTB3 and GFN0/GFN2-xTB stay ○: each is the *top* of
-its family, and each occupies a distinct cost/accuracy niche.

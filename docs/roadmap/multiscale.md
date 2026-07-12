@@ -49,7 +49,6 @@ component Capabilities (`Capability::Charge`), never Drivers — there is no
 | Conductor-like PCM                 |  ○  |   ○  |
 | COSMO                              |  ○  |   ○  |
 | SMD                                |  ○  |   ○  |
-| SM8|  ⊘  |   ⊘  |
 | SM12                               |  ○  |   ○  |
 | Generalized Born                   |  ○  |   ○  |
 | GBSA                               |  ○  |   ○  |
@@ -110,7 +109,6 @@ not-started.
 | Scalar-relativistic effective core potentials |  ○  |   ○  |
 | Spin-orbit effective core potentials          |  ○  |   ○  |
 | Douglas–Kroll–Hess second order               |  ○  |   ○  |
-| Higher-order Douglas–Kroll–Hess|  ⊘  |   ⊘  |
 | Scalar ZORA                                   |  ○  |   ○  |
 | Spin-orbit ZORA                               |  ○  |   ○  |
 | Scalar X2C                                    |  ○  |   ○  |
@@ -171,14 +169,3 @@ sidestep this through the UPF/GTH pseudopotentials.
 Blocked upstream on two counts: there is no ML potential (the torch backend is a
 differentiable *classical* force field, not a network — see
 [Force Fields](force-fields.md#6-machine-learning-potentials)), and no QM/MM.
-
-## Superseded (⊘)
-
-| Method | Dominated by |
-| ------ | ------------ |
-| SM8 | SM12 / SMD — the same continuum-solvation family, later parameterization and broader coverage. |
-| Higher-order Douglas–Kroll–Hess | X2C — exact two-component decoupling in one step, so the DKH order-by-order expansion has nothing left to converge toward. |
-
-Kept ○: **Mulliken is implemented but is a poor charge model** — that is a ✓, not
-an endorsement. Löwdin, Hirshfeld, and RESP all dominate it for real use, and are
-the ones worth building.
