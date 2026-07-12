@@ -39,6 +39,19 @@ nav = [
     "tutorial/ch14-vibrations.md",
     "tutorial/ch15-cross-method.md",
   ] },
+  { "Roadmap" = [
+    "roadmap/index.md",
+    "roadmap/hartree-fock.md",
+    "roadmap/dft.md",
+    "roadmap/post-hf.md",
+    "roadmap/excited-states.md",
+    "roadmap/semiempirical.md",
+    "roadmap/force-fields.md",
+    "roadmap/molecular-dynamics.md",
+    "roadmap/optimization.md",
+    "roadmap/sampling.md",
+    "roadmap/multiscale.md",
+  ] },
   { "Developer" = [
     "developer/index.md",
     "developer/architecture.md",
@@ -66,7 +79,6 @@ link = "https://github.com/MolCrafts/Atomiverse"
 [project.markdown_extensions.admonition]
 [project.markdown_extensions.attr_list]
 [project.markdown_extensions.def_list]
-[project.markdown_extensions.md_in_html]
 [project.markdown_extensions.tables]
 [project.markdown_extensions.toc]
 permalink = true

@@ -142,15 +142,26 @@ Performance: `-march=native` is required for the CPU SCF ERI kernels.
 ```
 include/atomiverse/ + src/   mirrored header/impl trees (architecture below)
 tests/                       unit tests ONLY — each exercises one function or
-                             method at ms-scale. No end-to-end runs (a full
-                             SCF/MD/vib solve or MC equilibration to
-                             convergence), no timing, no external-engine
-                             comparison, and no third-party package read at
-                             build or test time. There is no opt-in switch to
-                             run e2e from ctest: if it is registered, it runs.
+                             method, and the WHOLE SUITE runs in seconds (it is
+                             the fast-iteration loop). E2E IS STRICTLY
+                             FORBIDDEN here: no full SCF/MD/vib solve, no MC
+                             equilibration to convergence, no timing, no
+                             external-engine comparison, no third-party package
+                             read at build or test time. There is no opt-in
+                             switch to run e2e from ctest: if it is registered,
+                             it runs.
+regressions/                 <domain>/<case>/ — the ONLY home of end-to-end.
+                             One minimal textbook case per delivered feature,
+                             written as an OUT-OF-LIBRARY consumer (public
+                             headers + link atomiverse, nothing else), checked
+                             against a cited LITERATURE value, <= 60 s. Built
+                             behind ATV_BUILD_REGRESSIONS; run via the
+                             `regressions` target, never by default ctest.
+                             Every feature ships one. See regressions/README.md.
 benchmarks/                  <domain>/<case>/{validation,performance} — see benchmarks/README.md
-                             Home of every e2e / parity check (val_*), run at
-                             acceptance time, never by ctest.
+                             Parity against an external ENGINE (LAMMPS/PySCF/
+                             CP2K) + speed/scaling. Run at acceptance time,
+                             never by ctest.
 examples/                    flat numbered tutorial sequence — see examples/README.md
 docs/                        narrative docs (user-guide / tutorial / developer / api)
 tools/                       data generators + debug harnesses
@@ -452,8 +463,28 @@ grep-gated by `test_cuda_rdf_molrs_migration`); the one g(r) file emitter is
   (`cpu::EvaluateDriver`/`DynamicsDriver`/`OptimizeDriver`/`ResponseDriver`/
   `SamplingDriver` or the CUDA equivalents), never `Driver<>` directly.
   Driver subclass headers include the matching `backend_traits.h`.
-- **No factory functions** — components are classes with constructors.
+- **OOP, not free-function soup.** Atomiverse is object-oriented: behaviour lives
+  on classes, state is constructed, invariants are established in constructors.
+  - **No factory functions.** Components, potentials, basis/PP data, config —
+    all are classes with constructors. Never `make_X()` / `builtin_X()` /
+    `resolve_X()` / `parse_X()` free functions, and never a new config-builder
+    overload where a constructor would do. A lookup is a constructor:
+    `GthPotential(Element, name)`, `EAMPotential(Element, name)`.
+  - **Do not extract single-use code into a function.** If a block runs exactly
+    once, from exactly one call site, it stays inline where it runs. A function
+    exists to be called from more than one place, or to be tested on its own —
+    not to give a paragraph a name. Premature extraction is what turns a solver
+    into a maze of one-shot helpers that must each be read before the algorithm
+    is visible. Extract on the *second* caller, not the first.
 - **No fallback values** — lookup tables throw on unsupported input.
+- **Three test tiers, and they never mix** (layout above):
+  - `tests/` — unit only. One function or method per test. The whole suite runs
+    in **seconds**; it is the fast-iteration loop. **E2E is strictly forbidden.**
+  - `regressions/` — **every delivered feature ships exactly one** minimal
+    textbook end-to-end case here, as an out-of-library consumer of the public
+    API, checked against a **cited literature value** (not a golden snapshot of
+    our own output), `<= 60 s`. Never in `tests/`.
+  - `benchmarks/` — external-engine parity and performance, at acceptance time.
 - **Phase naming:** Evaluate `prepare, evaluate, finalize`; MD LAMMPS-style
   (`initial_integrate, pre_force, force, post_force, final_integrate,
   end_of_step`); Minimizer `search_direction, line_search, force,

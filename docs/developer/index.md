@@ -75,6 +75,15 @@ uv run --with zensical --with molcrafts-zensical-theme zensical build   # → si
 Adding a page means two edits: the markdown file under `docs/`, and its entry in
 the `nav` table of `zensical.toml`. A page absent from `nav` is not published.
 
+**Product docs carry no custom CSS or HTML.** Write plain markdown; all styling
+and layout — including the home-page hero, which is rendered from the `hero:`
+front-matter block in `docs/index.md` — belongs to the MolCrafts theme. Do not
+add stylesheets, `extra_css`/`extra_javascript`, a `custom_dir`, raw HTML
+elements, or hand-written theme class names (`molcrafts-*`) to any page. If a
+page needs a visual treatment the theme lacks, the fix goes in the theme, not
+here. Per-product brand colour is the one exception, and it is configuration,
+not markup: `[project.extra.molcrafts].accent` in `zensical.toml`.
+
 The generated C++ API reference is still produced by Doxygen (`doxygen Doxyfile`
 → `build/doxygen/html`) and is not yet part of this site; `docs/api/index.md` is
 the hand-written map into it.
