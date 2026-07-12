@@ -102,9 +102,7 @@ class NeighborList : public cpu::ComponentBase, public cpu::NeighborProvider {
         // the allocator. `pairs_.neighbors` is a `std::vector<int>` and
         // amortises growth itself -- leave it empty, the first refresh
         // reaches the correct size within one resize.
-        strategy_.refresh_half(
-            ctx.frame, n_active, pairs_,
-            is_multi_rank(ctx.runtime) ? ctx.runtime.md.dd->n_local : -1);
+        refresh_(ctx.runtime, ctx.frame, n_active);
         ++pairs_.version;
         trim_inum_to_local(ctx.runtime, pairs_);
         ctx.runtime.md.pair_list = &pairs_;
@@ -146,6 +144,13 @@ class NeighborList : public cpu::ComponentBase, public cpu::NeighborProvider {
         //   every gate:  ago % every != 0 → no rebuild attempt (LAMMPS `every`)
         //   check yes:   max_disp * 2 > skin → rebuild (half-skin trigger)
         //   check no:    rebuild unconditionally once the every/delay gate opens
+        //   mode_stale:  a consumer asked for a FULL list (ctx.md.full_list_requested)
+        //               after we had already built a half list — or vice versa.
+        //               Component build() runs in Plan order and the neighbor
+        //               phase precedes force, so the requester's build() lands
+        //               after ours; resolving the mode lazily here is the same
+        //               deal the CUDA flat-pairs export strikes.
+        const bool mode_stale = ctx.runtime.md.full_list_requested != built_full_;
         const bool size_stale = n_active != strategy_.n_at_last_build();
         const bool halo_stale =
             is_multi_rank(ctx.runtime)
@@ -158,11 +163,9 @@ class NeighborList : public cpu::ComponentBase, public cpu::NeighborProvider {
         const bool disp_rebuild =
             delay_ok && every_ok
             && (!check_ || strategy_.needs_rebuild(ctx.frame, n_active));
-        if (size_stale || halo_stale || disp_rebuild) {
+        if (mode_stale || size_stale || halo_stale || disp_rebuild) {
             strategy_.build(ctx.frame, n_active);
-            strategy_.refresh_half(
-                ctx.frame, n_active, pairs_,
-                is_multi_rank(ctx.runtime) ? ctx.runtime.md.dd->n_local : -1);
+            refresh_(ctx.runtime, ctx.frame, n_active);
             ++pairs_.version;
             ago_ = 0;
             ++n_rebuilds_;
@@ -225,6 +228,28 @@ class NeighborList : public cpu::ComponentBase, public cpu::NeighborProvider {
         }
     }
 
+    /// @brief Rebuild the CSR in the mode the consumers asked for.
+    ///
+    /// Half list (the default) or full list (`ctx.md.full_list_requested` — set by
+    /// an EAM/3-body style that needs every neighbour of `i`, both directions).
+    /// The full path takes no owner count: the half list needs the `tag[j] < tag[i]`
+    /// dedup so an owner-ghost pair is counted on exactly one rank, but a full list
+    /// carries both directions by construction and each rank keeps only the legs
+    /// incident on its own owners, so there is nothing to deduplicate.
+    ///
+    /// Two call sites (`build()` and `launch()`) — which is why this is a function
+    /// at all.
+    void refresh_(const cpu::Context& rt, cpu::Frame& f, int n_active) {
+        const bool want_full = rt.md.full_list_requested;
+        if (want_full) {
+            strategy_.refresh_full(f, n_active, pairs_);
+        } else {
+            strategy_.refresh_half(f, n_active, pairs_,
+                                   is_multi_rank(rt) ? rt.md.dd->n_local : -1);
+        }
+        built_full_ = want_full;
+    }
+
     /// @brief (Re-)initialise the underlying spatial-index strategy from
     /// the current frame.box.  Called from `build()` (one-time setup)
     /// and from `launch()` whenever `frame.box` has drifted enough that
@@ -239,6 +264,9 @@ class NeighborList : public cpu::ComponentBase, public cpu::NeighborProvider {
 
     Strategy strategy_;
     PairList pairs_;
+    /// @brief Mode the currently-published CSR was built in. A mismatch against
+    /// `ctx.md.full_list_requested` forces a rebuild (see `launch()`).
+    bool built_full_ = false;
     double cutoff_;
     int every_ = 1;
     int delay_ = 10;

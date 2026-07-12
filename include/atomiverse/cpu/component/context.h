@@ -59,6 +59,26 @@ struct DynamicsServices {
     /// confined to fundamental physical quantities.
     const md::PairList* pair_list = nullptr;
 
+    /// @brief Opt-in: publish a FULL neighbor list instead of the half list.
+    ///
+    /// A consumer that cannot work from a half list sets this in its `build()`;
+    /// `NeighborList` then calls `CellList::refresh_full` and the published
+    /// `pair_list` carries, for every owned `i`, *all* of its neighbours in both
+    /// directions. Mirrors `cuda::DynamicsServices::flat_pairs_requested`.
+    ///
+    /// Who needs it: any style whose per-atom term is not a sum over *unordered*
+    /// pairs — the EAM embedding density `rho_i = sum_j phi(r_ij)` (which must see
+    /// every neighbour of `i`, not the half of them that happen to sit in `i`'s
+    /// row), and every 3-body style (Stillinger-Weber, Tersoff), whose angular
+    /// term enumerates `(j,k)` pairs drawn from `i`'s complete neighbour set.
+    ///
+    /// Read in `NeighborList::launch()`, not `build()`: component `build()` runs
+    /// in Plan order, and the neighbor phase precedes the force phase, so the
+    /// requester's `build()` runs *after* the provider's. The provider therefore
+    /// treats a mode change as a rebuild trigger — same lazy resolution as the
+    /// CUDA flat-pairs export.
+    bool full_list_requested = false;
+
     /// @brief True only while the final step of the current `run(n_steps)`
     /// call is executing. Set by the Dynamics driver loop before the last
     /// `step_once`, cleared otherwise. Lets cadence-gated end-of-step
