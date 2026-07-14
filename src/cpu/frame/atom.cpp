@@ -26,6 +26,13 @@ void Atom::grow(int target_nmax) {
     // capacity, so the waste multiplied: measured ~2x per-atom RSS vs
     // LAMMPS in multi-rank runs whose ghost influx (~20-35% of owners)
     // pushed the frame just past its initial exact capacity.
+    //
+    // The reallocation itself is set_capacity's explicit copy-into-fresh-
+    // storage. grow() used to trust xt::xtensor::resize to preserve the
+    // prefix; it does NOT — the first GCMC insertion past the initial
+    // capacity zeroed every live atom, collapsed them onto the origin, and
+    // froze the Markov chain on a NaN energy. Pinned by
+    // AtomCopyRow/AtomGrow tests in tests/cpu/test_atom_variable_n.cpp.
     int new_nmax;
     if (nmax == 0) {
         new_nmax = std::max(target_nmax, 64);
@@ -33,76 +40,7 @@ void Atom::grow(int target_nmax) {
         const int step = std::max(nmax / 8, 4096);
         new_nmax = std::max(target_nmax, nmax + step);
     }
-
-    const std::size_t n = static_cast<std::size_t>(new_nmax);
-
-    // Helper to resize a 1D xtensor preserving the first `nmax` entries
-    // and zero-initialising the trailing rows. xt::xtensor::resize does
-    // NOT zero-initialise on growth, so we explicitly zero the tail.
-    auto resize1d = [&](auto& arr) {
-        using value_t = typename std::decay_t<decltype(arr)>::value_type;
-        arr.resize({n});
-        // Zero-init [nmax, new_nmax). On first grow nmax==0 so this is
-        // the entire array.
-        for (std::size_t i = static_cast<std::size_t>(nmax); i < n; ++i)
-            arr[i] = value_t{0};
-    };
-    auto resize2d = [&](auto& arr, std::size_t cols) {
-        using value_t = typename std::decay_t<decltype(arr)>::value_type;
-        arr.resize({n, cols});
-        for (std::size_t i = static_cast<std::size_t>(nmax) * cols;
-             i < n * cols; ++i)
-            arr.data()[i] = value_t{0};
-    };
-
-    resize1d(x);
-    resize1d(y);
-    resize1d(z);
-    resize1d(vx);
-    resize1d(vy);
-    resize1d(vz);
-    resize1d(fx);
-    resize1d(fy);
-    resize1d(fz);
-    resize1d(mass);
-    resize1d(charge);
-    resize1d(type);
-
-    // tag default = identity (row index): preserves the legacy
-    // `cpu::Frame::Atoms` ctor invariant `tag(i) == i` so callers that
-    // skip materialize and write directly into [0, nlocal) still get
-    // sensible tags. Downstream `materialize` / `unpack_*` overwrite tag
-    // for rows they touch.
-    resize1d(tag);
-    for (std::size_t i = static_cast<std::size_t>(nmax); i < n; ++i)
-        tag[i] = static_cast<TagInt>(i);
-
-    resize2d(image, 3);
-
-    // Count arrays stay allocated-and-zeroed always (cheap, ~24 B/atom) so
-    // every reader bounded by them is a safe no-op on a bonded-free system.
-    // (resize2d zeroes the tail [nmax, new), so these run while nmax is still
-    // the OLD capacity — nmax is updated last.)
-    resize1d(num_bond);
-    resize1d(num_angle);
-    resize1d(num_dihedral);
-    resize2d(nspecial, 3);
-
-    // The wide partner/type/special arrays (~0.5 KB/atom) are grown only once
-    // bonded topology exists (lazy atom_style molecular). A bonded-free system
-    // leaves them empty and pays nothing.
-    if (has_bonded_topology_) {
-        resize2d(bond_atom, static_cast<std::size_t>(bond_per_atom));
-        resize2d(bond_type, static_cast<std::size_t>(bond_per_atom));
-        resize2d(angle_atom, static_cast<std::size_t>(2 * angle_per_atom));
-        resize2d(angle_type, static_cast<std::size_t>(angle_per_atom));
-        resize2d(dihedral_atom,
-                 static_cast<std::size_t>(3 * dihedral_per_atom));
-        resize2d(dihedral_type, static_cast<std::size_t>(dihedral_per_atom));
-        resize2d(special, static_cast<std::size_t>(maxspecial));
-    }
-
-    nmax = new_nmax;
+    set_capacity(new_nmax);
 }
 
 void Atom::set_capacity(int new_nmax) {
@@ -253,6 +191,64 @@ void Atom::reserve_topology(int bond, int angle, int dihedral, int special_n) {
     grow_angle_per_atom(angle);
     grow_dihedral_per_atom(dihedral);
     grow_maxspecial(special_n);
+}
+
+void Atom::copy_row(int dst, int src) {
+    if (dst == src)
+        return;
+    x[dst] = x[src];
+    y[dst] = y[src];
+    z[dst] = z[src];
+    vx[dst] = vx[src];
+    vy[dst] = vy[src];
+    vz[dst] = vz[src];
+    fx[dst] = fx[src];
+    fy[dst] = fy[src];
+    fz[dst] = fz[src];
+    mass[dst] = mass[src];
+    charge[dst] = charge[src];
+    type[dst] = type[src];
+    tag[dst] = tag[src];
+    image(dst, 0) = image(src, 0);
+    image(dst, 1) = image(src, 1);
+    image(dst, 2) = image(src, 2);
+
+    // Per-atom topology — must follow the row. Count arrays are always
+    // present; the wide partner/type/special arrays exist only for
+    // atom_style-molecular systems (lazy bonded storage), so guard their
+    // row-move on has_bonded().
+    num_bond(dst) = num_bond(src);
+    num_angle(dst) = num_angle(src);
+    num_dihedral(dst) = num_dihedral(src);
+    nspecial(dst, 0) = nspecial(src, 0);
+    nspecial(dst, 1) = nspecial(src, 1);
+    nspecial(dst, 2) = nspecial(src, 2);
+    if (has_bonded()) {
+        for (int m = 0; m < bond_per_atom; ++m) {
+            bond_atom(dst, m) = bond_atom(src, m);
+            bond_type(dst, m) = bond_type(src, m);
+        }
+        for (int m = 0; m < 2 * angle_per_atom; ++m)
+            angle_atom(dst, m) = angle_atom(src, m);
+        for (int m = 0; m < angle_per_atom; ++m)
+            angle_type(dst, m) = angle_type(src, m);
+        for (int m = 0; m < 3 * dihedral_per_atom; ++m)
+            dihedral_atom(dst, m) = dihedral_atom(src, m);
+        for (int m = 0; m < dihedral_per_atom; ++m)
+            dihedral_type(dst, m) = dihedral_type(src, m);
+        for (int m = 0; m < maxspecial; ++m)
+            special(dst, m) = special(src, m);
+    }
+}
+
+TagInt Atom::acquire_tag() {
+    if (next_tag_ < 0) {
+        TagInt top = -1;
+        for (int i = 0; i < n_total(); ++i)
+            top = tag[i] > top ? tag[i] : top;
+        next_tag_ = top + 1;
+    }
+    return next_tag_++;
 }
 
 void Atom::map_set(int begin, int end) {

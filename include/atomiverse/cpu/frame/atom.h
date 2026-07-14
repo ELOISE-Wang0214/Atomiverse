@@ -184,6 +184,21 @@ class Atom {
     /// Default-initialized to identity (`tag(i) == i`) on `grow()`.
     xt::xtensor<TagInt, 1> tag;
 
+    /// @brief Allocate a fresh, never-used global tag (LAMMPS `tag_extend`).
+    ///
+    /// Required by any path that CREATES atoms (GCMC insertion): after a
+    /// delete-compaction the identity seeding of `grow()`/`set_capacity()`
+    /// would hand a new row a tag some surviving atom already carries.
+    /// Lazily seeds a monotonic counter at `max(live tags) + 1` on first
+    /// call; deleted tags are never reused, so uniqueness holds across any
+    /// interleaving of inserts and deletes. Single-rank only (no MPI
+    /// allreduce over the max) — matching MC's v1 single-rank contract.
+    /// @return A tag no live (or previously live) atom carries.
+    TagInt acquire_tag();
+
+    /// @brief Next tag `acquire_tag()` hands out; `< 0` = not yet seeded.
+    TagInt next_tag_ = -1;
+
     /// @brief Per-atom PBC crossing counts, shape `[nmax, 3]`.
     /// `image(i, d) += ±1` each time atom `i` crosses the box face along
     /// dimension `d`. Used to reconstruct unwrapped trajectories (MSD,
@@ -324,6 +339,18 @@ class Atom {
     /// @brief Build the 1-2 / 1-3 / 1-4 `nspecial` + `special` exclusion
     /// list by BFS over the per-atom bond graph.
     void build_special_list();
+
+    /// @brief Copy one full per-atom row — every SoA field plus the per-atom
+    ///        bonded topology — from row `src` into row `dst` (no-op when
+    ///        `dst == src`).
+    ///
+    /// The single row-move primitive: MPI migration compacts survivors with
+    /// it, and Monte Carlo insert/delete reuses it (a GCMC deletion is
+    /// `copy_row(i, nlocal - 1); --nlocal;`). Does NOT touch `nlocal` or the
+    /// tag→row `map` — callers own the population count and rebuild the map.
+    /// @param dst Destination row index (must be `< nmax`).
+    /// @param src Source row index (must be `< nmax`).
+    void copy_row(int dst, int src);
 
     /// @brief Reorder per-atom topology rows to match the current `tag`
     ///        permutation.

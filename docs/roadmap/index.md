@@ -171,8 +171,6 @@ watch out for in the ones that do.
   differentiable classical force field: LJ and harmonic bond with autograd
   backward passes w.r.t. positions *and* parameters (ε, σ, K, r₀) — a
   parameter-fitting surface. It has no integrator, no driver, no thermostat.
-- **No constraints at all** — no SHAKE/RATTLE/LINCS/SETTLE, no rigid bodies, no
-  virtual sites. Water must be flexible.
 
 ### Molecular dynamics
 
@@ -191,11 +189,16 @@ watch out for in the ones that do.
 
 ### Sampling
 
-- Monte Carlo is CPU-only, canonical (NVT) Metropolis, with exactly one mover
-  (single-particle translation). No NPT-MC, GCMC, CBMC, or Widom insertion.
+- Monte Carlo is CPU-only, **three ensembles**: NVT (`mc::MC`), NPT
+  (`mc::NptMc`, isotropic volume moves), and μVT GCMC (`mc::Gcmc`,
+  single-species insert/delete, single rank). Mixed-move ensembles compose via
+  `MoveSelector`. Trial energy is a deliberate O(N) full recompute
+  (`energy_of_rows()` is the follow-up performance lever). No CBMC, no Widom
+  insertion, no Gibbs ensemble.
 - There is **no enhanced sampling and no free-energy machinery** — no umbrella
   sampling, metadynamics, FEP, TI, or BAR.
-- There are **no transition-state or reaction-path methods** — no NEB, no dimer.
+- Transition states: **CI-NEB runs** (`cpu::PathDriver`; see Force Fields
+  above). No dimer, no string method.
 
 ### Optimization
 

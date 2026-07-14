@@ -46,44 +46,43 @@ TEST(MCScaffold, MoverRoleIsDistinct) {
     EXPECT_NE(ComponentRole::Mover, ComponentRole::Evaluator);
 }
 
-// ── mc::Transaction: pure-data round-trip + validation ─────────────────────
+// ── mc::Transaction: Frame-patch record + guards ────────────────────────────
 
-TEST(MCScaffold, TransactionRoundTrip) {
-    std::vector<LocalInt> moved{2, 5};
-    std::vector<StorageReal> ox{1, 2}, oy{3, 4}, oz{5, 6};
-    std::vector<StorageReal> nx{7, 8}, ny{9, 10}, nz{11, 12};
-    cpu::mc::Transaction t{moved, ox, oy, oz, nx, ny, nz};
+TEST(MCScaffold, TransactionRecordsPatchRows) {
+    cpu::Frame frame(6);
+    frame.atoms.x[2] = 1.5;
+    frame.atoms.x[5] = 2.5;
+
+    cpu::mc::Transaction t;
+    t.begin(cpu::mc::Transaction::Verb::Displace, frame);
+    t.record_touch(frame, 2);
+    t.record_touch(frame, 5);
 
     ASSERT_EQ(t.size(), 2u);
-    EXPECT_EQ(t.moved[0], LocalInt(2));
-    EXPECT_EQ(t.moved[1], LocalInt(5));
-    EXPECT_EQ(t.old_x[0], StorageReal(1));
-    EXPECT_EQ(t.old_z[1], StorageReal(6));
-    EXPECT_EQ(t.new_x[0], StorageReal(7));
-    EXPECT_EQ(t.new_z[1], StorageReal(12));
+    EXPECT_EQ(t.verb, cpu::mc::Transaction::Verb::Displace);
+    EXPECT_EQ(t.touched(0), LocalInt(2));
+    EXPECT_EQ(t.touched(1), LocalInt(5));
+    EXPECT_EQ(t.patch().atoms.nlocal, 2);
+    EXPECT_EQ(t.patch().atoms.x[0], StorageReal(1.5));
+    EXPECT_EQ(t.patch().atoms.x[1], StorageReal(2.5));
 }
 
-TEST(MCScaffold, TransactionRejectsMismatchedLengths) {
-    std::vector<LocalInt> moved{0};
-    std::vector<StorageReal> ok{1};
-    std::vector<StorageReal> bad{1, 2}; // one element too many
-    EXPECT_THROW((cpu::mc::Transaction{moved, ok, ok, ok, bad, ok, ok}),
-                 std::invalid_argument);
+TEST(MCScaffold, TransactionRollbackWithoutBeginThrows) {
+    cpu::Frame frame(2);
+    cpu::mc::Transaction t;
+    EXPECT_THROW(t.rollback(frame), std::logic_error);
 }
 
 TEST(MCScaffold, TransactionClearEmpties) {
+    cpu::Frame frame(3);
     cpu::mc::Transaction t;
-    t.moved = {1};
-    t.old_x = {1};
-    t.old_y = {2};
-    t.old_z = {3};
-    t.new_x = {4};
-    t.new_y = {5};
-    t.new_z = {6};
+    t.begin(cpu::mc::Transaction::Verb::Delete, frame);
+    t.record_touch(frame, 1);
     ASSERT_EQ(t.size(), 1u);
     t.clear();
     EXPECT_EQ(t.size(), 0u);
-    EXPECT_TRUE(t.new_z.empty());
+    EXPECT_EQ(t.verb, cpu::mc::Transaction::Verb::None);
+    EXPECT_THROW(t.rollback(frame), std::logic_error); // begin state gone too
 }
 
 // ── cpu::Context: the two new handles default to null ──────────────────────

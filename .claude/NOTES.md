@@ -753,3 +753,134 @@ This spec deliberately does not decide it. It only promises not to have made it 
 - **Nested loops are not timed.** `Backend::op_handle_` is dense over the *bound* Plan's
   slots; a nested Plan's ops have no entry. `step_plan` takes the untimed path
   deliberately — a per-plan handle table is a follow-up, not a silent wrong answer.
+
+## Probe 4 verdict — GCMC + NPT-MC, 2026-07-14
+
+### The headline: the Frame's "fixed-N assumption" was a myth
+
+The probe's founding hypothesis — "Frame assumes fixed N, GCMC will break it" — was
+**false**, and proving it false was the probe's real payoff. Variable N already existed
+end to end; it was just walled off inside `comm/`:
+
+- `Atom::grow` / `set_capacity` were always dynamic-capacity (LAMMPS DELTA growth).
+  **N belongs to `Atom` (`nlocal`), not to `Frame`** — the "fixed N" lived only in
+  `Frame`'s constructor.
+- `comm::pack_exchange` / `unpack_exchange` / `max_exchange_doubles` already serialized a
+  complete atom row (SoA fields + bonded topology + special lists), public and MPI-free.
+- MPI migration already did insertion (grow → write at `nlocal` → `++nlocal`) and
+  deletion (compact-survivors-forward) every exchange.
+- `NeighborList`'s `size_stale` trigger (added for migration) already forced a full
+  rebuild on any N change; `CellList::bin_atoms` already grew its arrays on demand.
+
+What GCMC needed was **lifting, not building**: `move_row` (static, `#ifdef ATV_HAS_MPI`,
+inside `atom_migration.cpp`) became the public `Atom::copy_row`; the exchange serializers
+became the Frame-patch payload. `mc/` contains no row serializer and no array-growth code
+of its own.
+
+### What was actually missing — four small, sharp things
+
+1. **A tag allocator.** `grow()` seeds identity tags; after delete-compaction + insert,
+   the new row inherits a survivor's tag. `Atom::acquire_tag()` (LAMMPS `tag_extend`
+   shape: lazy max-scan seed + monotonic counter, never reused) is the whole fix.
+2. **Planck's constant.** `units.h` had no `h`, so Λ (needed by every μVT prefactor) was
+   uncomputable. `h_planck_ev_fs` + `lambda_thermal(m, T)`.
+3. **`CellList::grid_stale` compared only the x edge** (`box_at_last_build_` was one
+   scalar). An anisotropic volume change silently kept a stale grid and dropped pairs —
+   the exact NPT blow-up mode documented in the file. Now all three edges.
+4. **`mc::Transaction` was seven parallel coordinate arrays** (`moved` + `old_*`/`new_*`)
+   — a position diff with no verbs, structurally unable to record an insert, a delete, or
+   a box change. Rewritten as a **Frame patch** per the standing directive (Frame is the
+   only I/O currency): the touched atoms' original rows in a small `cpu::Frame` + the
+   original `Box` + the pre-trial `nlocal`. All four verbs collapse into ONE rollback:
+   restore `nlocal`, splice the rows back (via `pack_exchange`/`unpack_exchange`),
+   restore the box. Delete resurrects topology a bare xyz array could never carry;
+   volume-move rollback is bitwise (s·x/s ≠ x in floating point — only a stored row
+   passes).
+
+### GCMC needed no new driver category — confirmed twice over
+
+The spec predicted "subclass `SamplingDriver`"; by implementation time the
+driver-handler refactor had **deleted the category layer entirely**, and the prediction
+got stronger, not weaker: the μVT/NPT acceptance rules are `OutcomePolicy`
+implementations (`GcmcMetropolis`, `NptMetropolis` — the seam's first real users beyond
+`Metropolis`), and `Gcmc`/`NptMc` are presets whose constructors attach them. The shared
+trial loop lives once, in `mc::McBase` (extracted when the third preset appeared —
+second-caller rule): bootstrap energy pass → propose → energy → policy → rollback-via-
+patch, plus per-verb attempt/accept tallies.
+
+The `Verb` enum on the proposal is how a policy learns what it is judging **without
+touching the frame** — the policy decides, the Transaction that recorded undoes. An
+empty proposal (`Verb::None` — deletion drawn at N = 0, volume draw clamped at V ≤ 0)
+is "simply rejected": no Boltzmann draw, no undo.
+
+### One trial per sweep is an API decision, not a convention
+
+All Movers bound at `propose` fire every sweep — correct for MD-style pipelines, wrong
+for MC's one-trial-per-iteration contract. `MoveSelector` (a Mover of Movers: weighted
+draw, fires exactly one child, forwards build/destroy) is the composition point.
+Children are held by `shared_ptr` only so the selector survives the driver's forwarding
+setters as a copy — configured once, never mutated after registration.
+
+### Deliberate ceilings (v1)
+
+- **O(N) full-recompute per trial** stands (the only energy form valid for all
+  potentials, incl. kspace). `PairEvaluator::energy_of_rows()` is the follow-up
+  performance spec; GCMC at N ~ 10³ is fine, N ~ 10⁵ is not.
+- **Single rank.** Multi-rank GCMC needs a rank-safe tag allocator + DD-aware
+  insert/delete placement.
+- **Volume-move patch is O(N)** (every row snapshotted for bitwise rollback) — the cost
+  of exactness, invisible next to the O(N) energy recompute.
+- **Single species** (`InsertDeleteMove{type, mass}`, one Λ in the policy).
+
+### Reference-data lesson for the regression tier
+
+The engine's `PairLJCut` is cut-AND-shifted; NIST SRSW's μVT tables are rc = 3σ **with
+long-range corrections** (or linear-force-shifted) — a different Hamiltonian. Rather
+than compare across conventions, both regressions anchor to **analytic statistical
+mechanics evaluated for exactly the sampled potential**: B₂ by quadrature (McQuarrie
+eq. 12-30) feeding the Mayer activity expansion ⟨N⟩(z) = V(z − 2B₂z²) for μVT (two
+activities — the spec's own detailed-balance criterion) and the exact finite-N
+⟨V⟩ = (N+1)k_BT/P + NB₂ for NPT (F&S §5.4 — the N+1 is the fingerprint of the V^N
+weight). Convention-exact, and sharper than a table lookup.
+
+### A real bug the probe caught: `Driver::add`'s lvalue branch is a dangling trap
+
+`facade::Driver::add(Comp&&)` stores an **lvalue** argument as a NON-OWNING raw pointer
+("caller retains lifetime") and only move-owns rvalues. A builder-style component whose
+chained setter returns `*this` — `MoveSelector{}.add(…).add(…)` — turns the temporary
+into an *lvalue* reference, so the driver silently kept a pointer into an object that
+died at the end of the full expression. Debug: `role()` read a trashed vtable →
+"Mover missing". Release: virtual call through the dead vtable → jump to address 0.
+
+Fix pattern (applied to `MoveSelector`, worth repeating on any future chained builder):
+**ref-qualified overloads** — `add(…) &` returns `MoveSelector&`, `add(…) &&` returns
+`MoveSelector&&` — so a temporary chain stays an rvalue into `set_mover` and takes the
+owning branch. Pinned by `MoveSelector.TemporaryChainIsOwnedByTheDriver`.
+
+The deeper lesson: the lvalue/non-owning convenience is a foot-gun whose failure mode
+(release-mode jump to 0, no diagnostic) is far from its cause. Candidate follow-up:
+require an explicit `add_ref(comp&)` for non-owning registration and make `add` always
+own. Not done in this probe — it touches every driver call site.
+
+### The heaviest find: `Atom::grow` silently destroyed every live atom
+
+`grow()` trusted `xt::xtensor::resize` to preserve the array prefix. **It does not.**
+The first chunked reallocation with live data below `nlocal` — GCMC's first insertion
+past the initial capacity (64 → 4160) — zeroed every per-atom array: all atoms collapsed
+onto the origin, the LJ energy went NaN (inf − inf), and the Markov chain froze solid
+(every trial rejected forever, `<N>` pinned at wherever the corruption struck).
+
+Why three probes and years of MPI runs never saw it: `materialize` pre-allocates the
+GLOBAL atom count and then *shrinks* via `set_capacity` (which always did an explicit
+copy-into-fresh-storage), and the halo/migration overflow path also calls
+`set_capacity`. `grow()`'s chunked path had **never run with live data** — it only ever
+initialized fresh frames (where zeroing is invisible) — until variable-N MC became its
+first real consumer. A latent data-loss bug sat on the hottest allocation path in the
+engine, reachable the whole time, and only a new *method* walked into it.
+
+Fix: `grow()` keeps its chunk policy and delegates the reallocation to `set_capacity`.
+Pinned by `AtomGrow.ChunkedGrowPreservesEveryLiveRow`. The regression harness also
+gained frozen-chain guards (a chain whose acceptance ratio is ~0 FAILS instead of
+coasting through on its start configuration — the NPT case initially "passed" with a
+dead chain sitting on its initial volume, which is why both cases now start deliberately
+off-prediction).

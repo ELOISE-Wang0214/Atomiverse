@@ -129,56 +129,6 @@ std::size_t unpack_atom(const std::vector<char>& buf, std::size_t offset,
     return offset + payload_bytes;
 }
 
-// Move owner row `oi` into slot `ni` (no-op when `oi == ni`). Handles
-// both SoA fields and per-atom topology.
-void move_row(Frame& frame, int ni, int oi) {
-    if (ni == oi)
-        return;
-    auto& a = frame.atoms;
-    a.x[ni] = a.x[oi];
-    a.y[ni] = a.y[oi];
-    a.z[ni] = a.z[oi];
-    a.vx[ni] = a.vx[oi];
-    a.vy[ni] = a.vy[oi];
-    a.vz[ni] = a.vz[oi];
-    a.fx[ni] = a.fx[oi];
-    a.fy[ni] = a.fy[oi];
-    a.fz[ni] = a.fz[oi];
-    a.mass[ni] = a.mass[oi];
-    a.charge[ni] = a.charge[oi];
-    a.type[ni] = a.type[oi];
-    a.tag[ni] = a.tag[oi];
-    a.image(ni, 0) = a.image(oi, 0);
-    a.image(ni, 1) = a.image(oi, 1);
-    a.image(ni, 2) = a.image(oi, 2);
-
-    // Per-atom topology — must follow the row. Count arrays are always present;
-    // the wide partner/type/special arrays exist only for atom_style-molecular
-    // systems (lazy bonded storage), so guard their row-move on has_bonded().
-    a.num_bond(ni) = a.num_bond(oi);
-    a.num_angle(ni) = a.num_angle(oi);
-    a.num_dihedral(ni) = a.num_dihedral(oi);
-    a.nspecial(ni, 0) = a.nspecial(oi, 0);
-    a.nspecial(ni, 1) = a.nspecial(oi, 1);
-    a.nspecial(ni, 2) = a.nspecial(oi, 2);
-    if (a.has_bonded()) {
-        for (int m = 0; m < a.bond_per_atom; ++m) {
-            a.bond_atom(ni, m) = a.bond_atom(oi, m);
-            a.bond_type(ni, m) = a.bond_type(oi, m);
-        }
-        for (int m = 0; m < 2 * a.angle_per_atom; ++m)
-            a.angle_atom(ni, m) = a.angle_atom(oi, m);
-        for (int m = 0; m < a.angle_per_atom; ++m)
-            a.angle_type(ni, m) = a.angle_type(oi, m);
-        for (int m = 0; m < 3 * a.dihedral_per_atom; ++m)
-            a.dihedral_atom(ni, m) = a.dihedral_atom(oi, m);
-        for (int m = 0; m < a.dihedral_per_atom; ++m)
-            a.dihedral_type(ni, m) = a.dihedral_type(oi, m);
-        for (int m = 0; m < a.maxspecial; ++m)
-            a.special(ni, m) = a.special(oi, m);
-    }
-}
-
 // Append owned atom `i`'s fixed-stride payload to the back of `buf`.
 inline void pack_to(std::vector<char>& buf, const Frame& frame, int i,
                     std::size_t payload_bytes) {
@@ -226,7 +176,7 @@ void exchange_along_dim(Frame& frame, md::mpi::DomainDecomposition* dd, int dim,
             } else if (qi >= subhi) {
                 pack_to(send_hi, frame, i, payload_bytes); // exits +dim face
             } else {
-                move_row(frame, keep, i); // stays; compact to front
+                frame.atoms.copy_row(keep, i); // stays; compact to front
                 ++keep;
             }
         }

@@ -1,7 +1,7 @@
 ---
 title: GCMC + NPT-MC — stress-test the Frame's fixed-N assumption and the MC transaction
 slug: mc-gcmc-npt
-status: approved
+status: code-complete
 science_required: true
 created: 2026-07-12
 acceptance: mc-gcmc-npt.acceptance.md
@@ -40,12 +40,12 @@ depends_on: regressions-harness
 外部够不着。必须提升为公开的 `cpu::Atom::copy_row(int dst, int src)`，并让
 `atom_migration.cpp` 改调它（单一定义，不许复制代码到 `mc/`）。**
 
-**真正破的地方：**
+**真正破的地方（2026-07-14 对照 driver-handler 重构后的树刷新）：**
 
-- **(A) `mc::Transaction` 只是个位置差分**（`cpu/mc/transaction.h:31-83`：`moved` +
-  `old_xyz` + `new_xyz`），**没有动词**。拒绝一次插入 → `nlocal` 已加上收不回；
-  拒绝一次删除 → 原子救不回；box 改动完全没记录。`SamplingDriver::rollback_`
-  （`sampling_driver.h:197-204`）只会还原 x/y/z。
+- **(A) `mc::Transaction` 只是个位置差分**（`cpu/mc/transaction.h:32-38`：`moved` +
+  `old_xyz` + `new_xyz` 七个平行数组），**没有动词**。拒绝一次插入 → `nlocal` 已加上
+  收不回；拒绝一次删除 → 原子救不回；box 改动完全没记录。`MC::rollback_`
+  （`cpu/mc/mc.h:190-197`）只会还原 x/y/z。
 
   **用户指令（2026-07-12）：「我们的输入输出尽可能是 Frame，所以不应该有 old_xyz
   *_xyz 这种东西。」**
@@ -63,27 +63,35 @@ depends_on: regressions-harness
 
   行的搬进搬出复用**提升后的 `Atom::copy_row`**，序列化（若需要）复用已有的
   `comm::pack_exchange`。**`mc/` 里不再出现任何裸坐标数组。**
-- **(B) `metropolis_accept_(dE)` 把正则 Metropolis 写死了**（`sampling_driver.h:182-193`）。
-  GCMC 需要 N/V/μ/Λ，NPT 需要 `P·ΔV − N k_BT ln(V'/V)`。
-  **代码里已经有一句 `// ponytail:` 注释在 `:183-185` 预留了这个 seam** —— 兑现它。
-- **(C) 没有全局 tag 分配器**：`grow()` 给的是 identity tag（`atom.cpp:76-78`）。
-  删除压缩 + 插入之后，新行会继承落点行的**陈旧 tag** → tag 重复。需要一个"下一个可用
-  tag"计数器（LAMMPS 的 `tag_extend`）。
+- **(B) ~~acceptance seam~~ — driver-handler 重构已经兑现了它。** 写死的
+  `metropolis_accept_` 和整个 `SamplingDriver` 类都已删除；seam 现在叫
+  **`OutcomePolicy`**（`cpu/driver/outcome_policy.h`），`Metropolis` 是它的 NVT 实现，
+  换接受准则 = 一个 `set_outcome()` 调用。**剩余工作只是两个新 policy 实现**：
+  μVT 需要 N/V/μ/Λ，NPT 需要 `P·ΔV − N k_BT ln(V'/V)` —— 二者都能从
+  `LoopState.frame` 读到 N 和 V，不需要动 seam 本身。注意 `MC` preset 把
+  `metropolis_&` 存成成员来回读 `current_energy()`（`mc/mc.h:212`）；新 preset
+  同样各自持有自己 policy 的引用。RNG 走 `ctx.mc.rng`（与 Mover 共用一条流，
+  可复现性 load-bearing —— 见 `outcome_policy.h:79-88` 的注释）。
+- **(C) 没有全局 tag 分配器**：`grow()` / `set_capacity()` 给的是 identity tag
+  （`atom.cpp:71-78`、`:151-154`）。删除压缩 + 插入之后，新行会继承落点行的
+  **陈旧 tag** → tag 重复。需要一个"下一个可用 tag"计数器（LAMMPS 的 `tag_extend`）。
 - **(D) `units.h` 里没有普朗克常数** → 热德布罗意波长 Λ 算不出来（GCMC 接受率必需）。
-- **(E) `CellList::grid_stale()` 只比较 x 方向边长**（`cell_list.cpp:279-280`）→
-  **各向异性**体积移动会静默丢 pair（该失效模式的注释就在 `:251-264`，曾导致 NPT 炸掉）。
+- **(E) `CellList::grid_stale()` 只比较 x 方向边长**（`cell_list.cpp:131`，
+  `box_at_last_build_` 本身就只是一个标量）→ **各向异性**体积移动会静默丢 pair
+  （该失效模式的注释就在 `cell_list.cpp:253-266`，曾导致 NPT 炸掉）。
   各向异性体积移动之前必须修。
-- **(F) 没有任何单粒子能量通路**：`PairLJCut` 只写两个聚合标量
-  （`pair_lj_cut.cpp:679-680`），没有 `eatom[]`、没有 `energy_of(i)`。
-  ⇒ 每次 trial 都是 **O(N) 全量重算**。这是 `SamplingDriver` 的**刻意契约**
-  （`:17-20`：全量重算是"对所有势都成立的唯一形式，含长程/kspace"）。
+- **(F) 没有任何单粒子能量通路**：`PairLJCut` 只写聚合标量，没有 `eatom[]`、没有
+  `energy_of(i)`。⇒ 每次 trial 都是 **O(N) 全量重算**。这是 `MC` 的**刻意契约**
+  （`mc/mc.h:96-99` 的 run() 文档：全量重算是"对所有势都成立的唯一形式，含长程/kspace"）。
   **v1 接受它**（正确但慢）；`PairEvaluator::energy_of_rows()` 是后续性能 spec。
 
-**架构判断：GCMC 不需要新的 Driver category。** 终止语义没变（还是 trial-move 预算），
-按 CLAUDE.md"第六个 category 必须有真正不同的外层循环语义"的规矩，**子类化
-`SamplingDriver` 即可**。
+**架构判断：GCMC 不需要新的 Driver category —— 这一点已被 driver-handler 重构
+彻底坐实：category 本身都没了。** 终止语义没变（还是 trial-move 预算）。GCMC/NPT-MC
+各是一个 **preset**（构造函数里装上自己的 mover + `OutcomePolicy`，与 `cpu::mc::MC`
+同型，直接派生 `CPUDriver<sampling::Phase>`）；是派生 `MC` 还是与它并列，实现时定，
+不在 spec 层面锁死。
 
-**v1 单 rank。** `cpu::mc::MC::install_defaults`（`mc/mc.h:79-85`）从不安装 DD，
+**v1 单 rank。** `cpu::mc::MC::install_defaults`（`mc/mc.h:160-166`）从不安装 DD，
 `ctx.md.dd` 在 MC 下是 null。多 rank GCMC 需要全局 tag 分配器 + DD，留给后续。
 
 ## Design
@@ -91,10 +99,14 @@ depends_on: regressions-harness
 先 **NPT-MC**（体积移动，不改 N —— 先把 Transaction 的 verb 和 acceptance seam 跑通），
 再 **GCMC**（插入/删除 —— 压变长 N）。
 
-多个 mover 并存有个真实的 API 问题：`SamplingDriver::validate_components` 只要求 ≥1 个
-Mover，而所有绑在 `propose` 槽的 mover **每个 sweep 都会全部触发**。所以需要一个
-**选择器 mover**（按概率抽本轮做哪种移动），而不是把 `TranslateMove` 和
+多个 mover 并存有个真实的 API 问题：`MC::validate_components`（`mc/mc.h:169-182`）
+只要求 ≥1 个 Mover，而所有绑在 `propose` 槽的 mover **每个 sweep 都会全部触发**。
+所以需要一个**选择器 mover**（按概率抽本轮做哪种移动），而不是把 `TranslateMove` 和
 `InsertDeleteMove` 并排注册。这是本 spec 最大的 API 设计决策。
+
+注意 Frame-patch 重写会连带改 `MC::rollback_` 与 run() 里
+`frame.scalars.energy = metropolis_.current_energy()` 的恢复逻辑（`mc/mc.h:125-129`）
+—— 回滚从"还原 x/y/z"变成"把补丁 Frame 拼回去"。
 
 ## Files
 
@@ -102,25 +114,27 @@ Mover，而所有绑在 `propose` 槽的 mover **每个 sweep 都会全部触发
 - `frame/atom.h` — 全局 tag 分配器（下一个可用 tag）
 - `core/units.h` — 普朗克常数 / `lambda_thermal(mass, T)`
 - `cpu/mc/transaction.h` — **重写为 Frame 补丁**（删掉 `old_xyz`/`new_xyz` 平行数组）
-- `cpu/driver/sampling_driver.h` — 可替换的 acceptance policy（兑现已有的 seam 注释）
+- `cpu/driver/outcome_policy.h`（或 `cpu/mc/` 下新文件）— **μVT / NPT 两个
+  `OutcomePolicy` 实现**（seam 已由 driver-handler 兑现，`Metropolis` 是现成范本）
 - `cpu/mc/volume_move.h`、`cpu/mc/insert_delete_move.h`、`cpu/mc/move_selector.h` + `src/…`
-- `cpu/mc/npt_mc.h`、`cpu/mc/gcmc.h`（`SamplingDriver` 子类，持 μ/T/P 状态）
+- `cpu/mc/npt_mc.h`、`cpu/mc/gcmc.h`（preset：构造函数装 mover + outcome policy，
+  与 `cpu::mc::MC` 同型，持 μ/T/P 状态）
 - `cpu/neighbor/cell_list.cpp` — `grid_stale` 检查三个轴，不只 x
 - `regressions/mc/gcmc_lj/`
 
 ## Tasks
 
-- [ ] `Atom::copy_row` 提升 + `atom_migration.cpp` 去重（**不许复制代码**）
-- [ ] `Transaction` 重写为 **Frame 补丁**（删除 `old_xyz`/`new_xyz`）+ `rollback_` 全面支持
-- [ ] acceptance policy seam（兑现 `sampling_driver.h:183-185` 的预留）
-- [ ] 全局 tag 分配器（删除+插入后 tag 唯一性单测）
-- [ ] `units.h` 普朗克常数 + Λ
-- [ ] `grid_stale` 修成三轴
-- [ ] `VolumeMove` + `NptMC`（先跑通 Box 回滚）
-- [ ] `InsertDeleteMove` + `Gcmc`（变长 N）
-- [ ] `MoveSelector`（多 mover 的正确语义）
-- [ ] regressions 用例
-- [ ] 架构结论写回 `.claude/NOTES.md`
+- [x] `Atom::copy_row` 提升 + `atom_migration.cpp` 去重（**不许复制代码**）
+- [x] `Transaction` 重写为 **Frame 补丁**（删除 `old_xyz`/`new_xyz`）+ `MC::rollback_` 全面支持
+- [x] μVT / NPT `OutcomePolicy` 实现（seam 已存在 —— `set_outcome()` 即插即用）
+- [x] 全局 tag 分配器（删除+插入后 tag 唯一性单测）
+- [x] `units.h` 普朗克常数 + Λ
+- [x] `grid_stale` 修成三轴
+- [x] `VolumeMove` + `NptMC`（先跑通 Box 回滚）
+- [x] `InsertDeleteMove` + `Gcmc`（变长 N）
+- [x] `MoveSelector`（多 mover 的正确语义）
+- [x] regressions 用例
+- [x] 架构结论写回 `.claude/NOTES.md`
 
 ## Testing
 

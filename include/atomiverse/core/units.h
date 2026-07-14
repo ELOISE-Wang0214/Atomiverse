@@ -25,6 +25,8 @@
 /// bit-for-bit.
 #pragma once
 
+#include <cmath>
+
 namespace ATV {
 namespace units {
 
@@ -127,6 +129,26 @@ inline constexpr double mass_v2_to_energy = 103.6427;
 //
 // Equals 1/(4πε₀) · e²/Å expressed in eV (CODATA): 14.399645 eV·Å/e².
 inline constexpr double coulomb = 14.399645;
+
+/// Planck constant in MD-internal units: eV·fs (CODATA 2018 exact value,
+/// 4.135667696e-15 eV·s). Needed by the thermal de Broglie wavelength in
+/// grand-canonical acceptance rules.
+inline constexpr double h_planck_ev_fs = 4.135667696;
+
+/// @brief Thermal de Broglie wavelength `Λ = h / sqrt(2π m k_B T)` [Å].
+///
+/// The `mass_v2_to_energy` factor inside the root converts the amu·eV
+/// product into the Å/fs-consistent mass–energy coupling, so the result
+/// lands directly in Å (H at 300 K → 1.008 Å).
+/// @param mass_amu Particle mass [amu].
+/// @param temperature_K Temperature [K].
+/// @return Λ [Å].
+[[nodiscard]] inline double lambda_thermal(double mass_amu,
+                                           double temperature_K) {
+    return h_planck_ev_fs
+           / std::sqrt(2.0 * pi * mass_amu * kB_ev_per_k * temperature_K
+                       * mass_v2_to_energy);
+}
 
 } // namespace units
 

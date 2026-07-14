@@ -30,6 +30,8 @@ function(atv_add_regression domain case)
 endfunction()
 
 atv_add_regression(md lj_argon)
+atv_add_regression(mc gcmc_lj)
+atv_add_regression(mc npt_lj)
 atv_add_regression(md eam_cu)
 atv_add_regression(md sw_si)
 atv_add_regression(md rigid_water)

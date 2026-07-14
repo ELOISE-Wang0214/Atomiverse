@@ -40,12 +40,13 @@ void TranslateMove::launch(const cpu::LaunchContext& ctx) {
     std::uniform_real_distribution<double> disp(-delta_, delta_);
 
     const int i = pick(*rng);
-    const StorageReal ox = ctx.frame.atoms.x[i];
-    const StorageReal oy = ctx.frame.atoms.y[i];
-    const StorageReal oz = ctx.frame.atoms.z[i];
-    double nx = static_cast<double>(ox) + disp(*rng);
-    double ny = static_cast<double>(oy) + disp(*rng);
-    double nz = static_cast<double>(oz) + disp(*rng);
+    // Snapshot the row into the patch BEFORE mutating it.
+    txn->begin(Transaction::Verb::Displace, ctx.frame);
+    txn->record_touch(ctx.frame, i);
+
+    double nx = static_cast<double>(ctx.frame.atoms.x[i]) + disp(*rng);
+    double ny = static_cast<double>(ctx.frame.atoms.y[i]) + disp(*rng);
+    double nz = static_cast<double>(ctx.frame.atoms.z[i]) + disp(*rng);
 
     // Wrap the displaced atom back into the primary cell so coordinates stay
     // bounded over long runs — the COM otherwise random-walks off to infinity
@@ -55,21 +56,9 @@ void TranslateMove::launch(const cpu::LaunchContext& ctx) {
     // degenerate (zero-length) box is left as-is (wrap_axis is a no-op).
     ctx.frame.box.wrap_into(nx, ny, nz);
 
-    const StorageReal wx = static_cast<StorageReal>(nx);
-    const StorageReal wy = static_cast<StorageReal>(ny);
-    const StorageReal wz = static_cast<StorageReal>(nz);
-    ctx.frame.atoms.x[i] = wx;
-    ctx.frame.atoms.y[i] = wy;
-    ctx.frame.atoms.z[i] = wz;
-
-    txn->clear();
-    txn->moved.push_back(static_cast<LocalInt>(i));
-    txn->old_x.push_back(ox);
-    txn->old_y.push_back(oy);
-    txn->old_z.push_back(oz);
-    txn->new_x.push_back(wx);
-    txn->new_y.push_back(wy);
-    txn->new_z.push_back(wz);
+    ctx.frame.atoms.x[i] = static_cast<StorageReal>(nx);
+    ctx.frame.atoms.y[i] = static_cast<StorageReal>(ny);
+    ctx.frame.atoms.z[i] = static_cast<StorageReal>(nz);
 }
 
 } // namespace mc

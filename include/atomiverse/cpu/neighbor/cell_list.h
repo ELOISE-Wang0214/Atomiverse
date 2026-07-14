@@ -215,11 +215,12 @@ class CellList {
     /// `n_active` and produce out-of-bounds reads in `build_half`.
     int n_at_last_build_ = -1;
 
-    /// @brief `frame.box(0,0)` at last build. `needs_rebuild` triggers a
-    /// rebuild when the box edge changes (e.g. NPT barostat scaled it),
-    /// because the cell grid (`csx_/csy_/csz_`) was sized for the old box
-    /// and would otherwise miss pair candidates after the box grows.
-    double box_at_last_build_ = 0.0;
+    /// @brief All three box edge lengths at last build. `needs_rebuild`
+    /// triggers a rebuild when ANY edge changes (e.g. an NPT barostat or an
+    /// anisotropic MC volume move scaled it), because the cell grid
+    /// (`csx_/csy_/csz_`) was sized for the old box and would otherwise
+    /// silently drop pair candidates after the box grows.
+    double box_at_last_build_[3] = {0.0, 0.0, 0.0};
 
     /// @brief Per-rebuild scratch state — promoted to member variables
     /// to honour the "no allocation in `launch()`" component contract

@@ -53,24 +53,23 @@ TEST(TranslateMoveUnit, DisplacesOneAtomAndRecordsChangeset) {
     cpu::LaunchContext lctx{ctx, frame, /*stage=*/0, /*step=*/0};
     mv.launch(lctx);
 
-    // Exactly one atom recorded, index in range.
+    // Exactly one atom recorded, index in range, verb stamped.
     ASSERT_EQ(txn.size(), 1u);
-    const int i = txn.moved[0];
+    EXPECT_EQ(txn.verb, cpu::mc::Transaction::Verb::Displace);
+    const int i = txn.touched(0);
     ASSERT_GE(i, 0);
     ASSERT_LT(i, 3);
 
-    // old_* is the pre-move position; new_* is the (current) post-move position.
-    EXPECT_EQ(txn.old_x[0], before.atoms.x[i]);
-    EXPECT_EQ(txn.old_y[0], before.atoms.y[i]);
-    EXPECT_EQ(txn.old_z[0], before.atoms.z[i]);
-    EXPECT_EQ(txn.new_x[0], frame.atoms.x[i]);
-    EXPECT_EQ(txn.new_y[0], frame.atoms.y[i]);
-    EXPECT_EQ(txn.new_z[0], frame.atoms.z[i]);
+    // The patch holds the pre-move row; the frame holds the post-move one.
+    EXPECT_EQ(txn.patch().atoms.x[0], before.atoms.x[i]);
+    EXPECT_EQ(txn.patch().atoms.y[0], before.atoms.y[i]);
+    EXPECT_EQ(txn.patch().atoms.z[0], before.atoms.z[i]);
 
-    // Displacement is within the symmetric box [-δ, δ] per axis.
-    EXPECT_LE(std::abs(txn.new_x[0] - txn.old_x[0]), 0.5);
-    EXPECT_LE(std::abs(txn.new_y[0] - txn.old_y[0]), 0.5);
-    EXPECT_LE(std::abs(txn.new_z[0] - txn.old_z[0]), 0.5);
+    // Displacement is within the symmetric box [-δ, δ] per axis (the box is
+    // degenerate here, so no wrap interferes with the bound).
+    EXPECT_LE(std::abs(frame.atoms.x[i] - before.atoms.x[i]), 0.5);
+    EXPECT_LE(std::abs(frame.atoms.y[i] - before.atoms.y[i]), 0.5);
+    EXPECT_LE(std::abs(frame.atoms.z[i] - before.atoms.z[i]), 0.5);
 
     // Only atom i moved; the others are untouched.
     for (int k = 0; k < 3; ++k) {

@@ -758,11 +758,21 @@ VirialStress. **LAMMPS-style names are canonical** — the old
 deleted (the torch backend keeps its own `LJ`/`HarmonicBond`).
 
 ### MC components (CPU)
-`TranslateMove` (Mover — single-particle random displacement, max step δ [Å]);
-the trial changeset is `mc::Transaction`, published on `ctx.mc.proposal`
-(Mover writes the proposal, the driver commits or rolls back per the inline
-Metropolis test). Reuses the MD force pipeline for trial energies
-(`set_pair`/`set_neighbor`); `NeighborList` runs in always-rebuild mode.
+Three presets over one shared loop (`mc::McBase`): `mc::MC` (NVT), `mc::NptMc`
+(NPT), `mc::Gcmc` (μVT) — each attaches its `OutcomePolicy` (`Metropolis`,
+`NptMetropolis`, `GcmcMetropolis`) in its constructor. Movers: `TranslateMove`
+(single-particle displacement δ [Å]), `VolumeMove` (isotropic, uniform-in-V),
+`InsertDeleteMove` (single species; tags from `Atom::acquire_tag`), composed
+one-trial-per-sweep by `MoveSelector{}.add(mover, weight)…` (ref-qualified
+chaining — a temporary chain stays an rvalue so the driver owns the copy). The
+trial changeset is `mc::Transaction`, a **Frame patch** (touched atoms'
+original rows + box + pre-trial `nlocal`; rows travel via
+`comm::pack/unpack_exchange`), published on `ctx.mc.proposal`: the Mover
+records before mutating, the policy decides, `Transaction::rollback` splices
+the patch back bitwise (topology included). Per-verb attempt/accept tallies on
+`McBase::attempts/accepts(verb)`. Reuses the MD force pipeline for trial
+energies (`set_pair`/`set_neighbor`); `NeighborList` runs in always-rebuild
+mode; trial energy is a deliberate O(N) full recompute. Single-rank v1.
 
 ### Path components (CPU)
 `cpu::path::NebCoupling` (Evaluator|Force, bound at `couple`) — Henkelman improved

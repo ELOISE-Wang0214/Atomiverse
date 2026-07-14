@@ -98,6 +98,9 @@ atv_add_cpp_test(test_cpu_box cpu/test_box.cpp)
 atv_add_cpp_test(test_cpu_component_context_slices cpu/component/test_context_slices.cpp)
 atv_add_cpp_test(test_cpu_mc_scaffold cpu/test_mc_scaffold.cpp)
 atv_add_cpp_test(test_cpu_mc_move cpu/mc/test_mc_move.cpp)
+atv_add_cpp_test(test_cpu_mc_transaction_rollback cpu/mc/test_transaction_rollback.cpp)
+atv_add_cpp_test(test_cpu_mc_ensemble_policies cpu/mc/test_ensemble_policies.cpp)
+atv_add_cpp_test(test_cpu_mc_gcmc_npt_movers cpu/mc/test_gcmc_npt_movers.cpp)
 # The MC physics-validation gates (pair_distribution / acceptance_ratio /
 # lj_nist) drive MC::run over many sweeps — e2e, not unit. They now live in
 # benchmarks/mc/lj/validation/ and run at acceptance time, never in ctest.
@@ -177,6 +180,8 @@ target_compile_definitions(test_cpu_md_pe_tension_protocol PRIVATE
 atv_add_cpp_test(test_cpu_md_neighbor_list_arena  cpu/md/test_neighbor_list_arena.cpp)
 atv_add_cpp_test(test_cpu_md_neighbor_list_rebuild  cpu/md/test_neighbor_list_rebuild.cpp)
 atv_add_cpp_test(test_cpu_md_full_neighbor_list  cpu/md/test_full_neighbor_list.cpp)
+atv_add_cpp_test(test_cpu_md_cell_list_grid_stale  cpu/md/test_cell_list_grid_stale.cpp)
+atv_add_cpp_test(test_cpu_atom_variable_n  cpu/test_atom_variable_n.cpp)
 atv_add_cpp_test(test_cpu_eam  cpu/potentials/test_eam.cpp)
 atv_add_cpp_test(test_cpu_sw  cpu/potentials/test_sw.cpp)
 atv_add_cpp_test(test_cpu_pair_lj_types  cpu/potentials/test_pair_lj_types.cpp)

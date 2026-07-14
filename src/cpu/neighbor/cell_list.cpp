@@ -128,8 +128,9 @@ void CellList::compute_grid(const cpu::Frame& frame) {
 }
 
 bool CellList::grid_stale(const cpu::Frame& frame) const {
-    if (frame.box.length(0) != box_at_last_build_)
-        return true;
+    for (int d = 0; d < 3; ++d)
+        if (frame.box.length(d) != box_at_last_build_[d])
+            return true;
     if (dd_ != nullptr) {
         for (int d = 0; d < 3; ++d) {
             if (!axis_extended_[d])
@@ -271,7 +272,8 @@ void CellList::build(const cpu::Frame& frame, int n_active) {
     bin_atoms(frame, n_active);
     save_positions(frame, n_active);
     n_at_last_build_ = (n_active < 0) ? frame.atoms.size() : n_active;
-    box_at_last_build_ = frame.box.length(0);
+    for (int d = 0; d < 3; ++d)
+        box_at_last_build_[d] = frame.box.length(d);
 }
 
 bool CellList::needs_rebuild(const cpu::Frame& frame, int n_active) const {

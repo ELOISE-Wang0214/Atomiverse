@@ -2,13 +2,22 @@
 
 Legend and caveats: [Roadmap index](index.md).
 
-Monte Carlo exists as the `cpu::mc::MC` preset: a driver loop whose constructor
-attaches the `cpu::Metropolis` **outcome policy** (accept/reject → `Commit` or
-`Rollback`) over a transaction/rollback mechanism for trial moves. It ships
-exactly one ensemble (NVT) and one mover (single-particle translation), and it
-is CPU-only. It reuses the MD force pipeline for trial energies, with the
-neighbor list in always-rebuild mode. Validated against NIST LJ reference data
-(`benchmarks/mc/lj/validation/`).
+Monte Carlo exists as three CPU **presets** over one shared trial loop
+(`cpu::mc::McBase`): `MC` (NVT), `NptMc` (NPT), and `Gcmc` (μVT) — each is a
+constructor that attaches its **outcome policy** (`Metropolis`,
+`NptMetropolis`, `GcmcMetropolis`; accept/reject → `Commit`/`Rollback`). The
+trial changeset is a **Frame patch** (`mc::Transaction`: the touched atoms'
+original rows + box + pre-trial `nlocal`), so displacement, insertion,
+deletion, and volume moves all roll back through one splice — bitwise, with
+topology. Movers: `TranslateMove`, `VolumeMove`, `InsertDeleteMove` (single
+species), composed one-trial-per-sweep by `MoveSelector`. Variable N reuses
+the migration primitives (`Atom::copy_row`, `pack/unpack_exchange`,
+`acquire_tag`). Single-rank; trial energy is an O(N) full recompute by design
+(the only form valid for all potentials — `energy_of_rows()` is the follow-up
+performance lever). NVT is validated against NIST LJ reference data
+(`benchmarks/mc/lj/validation/`); μVT and NPT against the analytic Mayer
+activity expansion / finite-N ⟨V⟩ relation for the exact cut-shifted
+potential (`regressions/mc/gcmc_lj`, `regressions/mc/npt_lj`).
 
 Enhanced sampling and free-energy machinery do not exist at all. Neither does
 any biasing/collective-variable infrastructure to build them on — there is no
@@ -20,8 +29,8 @@ CV layer, no bias component, no PLUMED interface.
 | ------------------------------------------- | :-: | :--: |
 | Metropolis Monte Carlo                      |  ✓  |   ○  |
 | Canonical Monte Carlo, NVT                  |  ✓  |   ○  |
-| Isothermal–isobaric Monte Carlo, NPT        |  ○  |   ○  |
-| Grand-canonical Monte Carlo                 |  ○  |   ○  |
+| Isothermal–isobaric Monte Carlo, NPT        |  ✓  |   ○  |
+| Grand-canonical Monte Carlo                 |  ✓  |   ○  |
 | Gibbs-ensemble Monte Carlo                  |  ○  |   ○  |
 | Semi-grand-canonical Monte Carlo            |  ○  |   ○  |
 | Configurational-bias Monte Carlo            |  ○  |   ○  |
@@ -37,21 +46,15 @@ CV layer, no bias component, no PLUMED interface.
 | Rejection-free kinetic Monte Carlo          |  ○  |   ○  |
 | Reaction-ensemble Monte Carlo               |  ○  |   ○  |
 
-The missing ensembles are mover-shaped, not architecture-shaped: NPT-MC needs a
-volume mover, GCMC an insertion/deletion mover. The `Transaction` proposal
-channel (`ctx.mc.proposal`) was designed for exactly that, but only
-`TranslateMove` is written.
-
-The driver-handler refactor made the *acceptance* half of these rows cheaper
-than this roadmap assumed when it was written. An acceptance rule is now an
-`OutcomePolicy` — a `set_outcome()` call, not a driver class — so GCMC's
-insertion/deletion criterion, a Gibbs-ensemble exchange, and a replica-exchange
-swap each become one small policy object plus their mover, with nothing new in
-the loop. Likewise, "N coupled replicas" is a nesting question (a driver is a
-node in another driver's plan, and `cpu/replica/` already supplies `ReplicaSet`
-/ `ReplicaExpansion`), not a new category. The scoring above is unchanged —
-none of these are written — but the estimate behind several of them is now
-smaller, and none of them should motivate a new driver class.
+NPT-MC and GCMC confirmed the prediction this roadmap made before they were
+written: each was a small `OutcomePolicy` plus its mover, with **nothing new
+in the loop** — no driver class, no category. The remaining ensembles keep
+that shape: a Gibbs-ensemble exchange and a replica-exchange swap are each one
+policy object plus a mover (REMD additionally a nesting question —
+`cpu/replica/` already supplies `ReplicaSet`/`ReplicaExpansion`). GCMC's known
+ceilings: single rank, single insertable species, O(N) trial energy
+(`energy_of_rows()` is the performance follow-up), no CBMC (molecular
+insertion needs the topology loaders re-run per trial).
 
 ## 2. Enhanced-Sampling Methods
 

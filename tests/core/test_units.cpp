@@ -24,3 +24,13 @@ TEST(Units, RoundtripAngstromBohr) {
     Real back = b * kBohr2Ang;
     EXPECT_NEAR(static_cast<double>(back), static_cast<double>(a), 1e-6);
 }
+
+TEST(Units, ThermalDeBroglieHydrogenAt300K) {
+    // Λ = h/sqrt(2π m kB T): H (1.008 amu) at 300 K → 1.0037 Å
+    // (h = 4.135667696e-15 eV·s, kB = 8.617333262e-5 eV/K, CODATA 2018).
+    const double lambda = units::lambda_thermal(1.008, 300.0);
+    EXPECT_NEAR(lambda, 1.0038, 2e-3);
+    // Heavier + hotter shrinks it: Λ ~ 1/sqrt(mT).
+    EXPECT_NEAR(units::lambda_thermal(4.032, 300.0), lambda / 2.0, 1e-12);
+    EXPECT_NEAR(units::lambda_thermal(1.008, 1200.0), lambda / 2.0, 1e-12);
+}
