@@ -508,6 +508,25 @@ if(NOT ATV_DOCS_ONLY)
     endif()
 
     if(ATV_BUILD_TORCH)
+        # The torch backend is CUDA-only: every source hardcodes
+        # `::torch::kCUDA` and test_transfer.cu calls cudaStreamCreate. With
+        # CUDA disabled, `enable_language(CUDA)` never ran, and CMake then
+        # SILENTLY DROPS every .cu source from the build — no warning, no
+        # error. The library ends up with zero torch objects, every
+        # test_torch_* binary links to an empty gtest_main, runs "0 tests from
+        # 0 test suites", exits 0, and ctest reports a full green. A build
+        # configuration that cannot possibly work must fail at configure time,
+        # not hand back a passing test suite that tested nothing.
+        if(NOT ATV_BUILD_CUDA)
+            message(FATAL_ERROR
+                "ATV_BUILD_TORCH=ON requires ATV_BUILD_CUDA=ON: the torch "
+                "backend is a CUDA-only differentiable layer (it hardcodes "
+                "torch::kCUDA and calls the CUDA runtime), and with the CUDA "
+                "language disabled CMake silently excludes every .cu source — "
+                "producing a library with no torch code and test binaries with "
+                "no tests, which then report PASS. Build it on the GPU node "
+                "with a CUDA-enabled LibTorch.")
+        endif()
         find_package(Torch REQUIRED)
         target_sources(atomiverse PRIVATE
             src/torch/frame/transfer.cu

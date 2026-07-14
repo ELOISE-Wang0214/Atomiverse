@@ -927,3 +927,31 @@ mapping 化的副作用是它让这条契约变得可执行。**
 LJ ⚡ 门：1.107→1.066 ms/step（50k 原子）。原因不是 mapping 本身，而是迁移**强制**把散布的
 `atoms.x[i]`（每次经 xtensor `operator[]`）提升成了循环外的裸指针——这是 mapping 纪律的
 副产品。**"解析停在 launch 边界"这条纪律，本身就是一次全库范围的手工提升。**
+
+## torch 后端的测试是假绿——CMake 静默丢弃 .cu（2026-07-14）
+
+frame-block-03 的调研（构建并测试 cuda/torch 后端）第一件事就撞到这个：
+
+`ATV_BUILD_TORCH=ON` + `ATV_BUILD_CUDA=OFF` 时，`enable_language(CUDA)` 从未执行，CMake
+于是把**每一个 `.cu` 源文件静默排除出构建**——不警告、不报错。结果：
+
+- `libatomiverse.a` 里 **0 个** torch 对象文件
+- 6 个 `test_torch_*` 二进制各自链接一个空的 `gtest_main`
+- 运行输出 `Running 0 tests from 0 test suites` / `[ PASSED ] 0 tests`，退出码 0
+- **ctest 报告 "100% tests passed, 0 tests failed out of 6"**
+
+也就是说：torch 后端的 6 个测试从**未真正运行过一次**，而 CI 会给它盖满绿章。
+
+叠加事实：torch 后端本身是 **CUDA-only** 的（每个源文件硬编码 `::torch::kCUDA`，
+`test_transfer.cu` 直接调 `cudaStreamCreate`），CPU-only 的 libtorch 根本跑不了它。所以
+"torch 在 CPU 节点上全绿"这件事，从第一天起就是纯粹的幻觉。
+
+**修法（已落地）**：
+1. `ATV_BUILD_TORCH=ON` 且 `ATV_BUILD_CUDA=OFF` → **configure 阶段 FATAL_ERROR**，附解释。
+   一个不可能工作的配置必须当场失败，而不是回赠一份"什么都没测"的绿色报告。
+2. 测试宏加同类守卫（`atv_guard_cuda_sources`）：任何 `.cu` 测试在 CUDA 关闭时注册 → 报错。
+   这条更通用——防的是"往 CPU target 里塞 .cu"这个同型陷阱再次发生。
+
+**教训：绿色的 ctest 不等于代码被执行过。** 一个测试二进制里有几个 test case，是需要
+独立验证的事实。凡是"某个开关关掉后某类源文件被跳过"的构建系统，都有产出空测试二进制的
+能力——而空二进制永远是 PASS。

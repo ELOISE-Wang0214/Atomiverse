@@ -584,3 +584,63 @@ TEST(WriteBackContract, MinimalFrameWriteBackDoesNotThrow) {
 
     EXPECT_NO_THROW(write_back(cf, *fr));
 }
+
+// ── The molrs boundary vs the frame-block mapping facade ────────────────────
+//
+// frame-block-01 gave cpu::Frame two things molrs has no place for: registry-
+// owned EXTENSION COLUMNS (`insert("rho", …)` — a per-atom payload a component
+// attaches at runtime) and OWNED META entries. Both are engine-local by
+// design: an extension column is method scratch (EAM's rho), and the exchange
+// schema is the schema — the FFI boundary carries the schema columns and
+// nothing else. That is a contract, not an accident, so it is pinned here: a
+// silent change in either direction (an extra suddenly exported, or a schema
+// column suddenly dropped because an extra confused the loop) fails this test.
+
+TEST(WriteBackContract, ExtensionColumnsAndMetaStayEngineLocal) {
+    auto fr = make_contract_frame();
+    Frame cf = materialize(*fr);
+    ASSERT_EQ(cf.atoms.size(), 3);
+
+    // Attach an extension column and an owned meta entry, then write back.
+    cf.insert("rho", ATV::ColDType::Storage, 1);
+    auto rho = cf.span(ATV::ColKey<ATV::StorageReal>{"atoms", "rho"});
+    rho[0] = 1.5;
+    rho[1] = 2.5;
+    rho[2] = 3.5;
+    cf.set_meta("annealing_stage", ATV::cpu::MetaValue{std::string("quench")});
+
+    // A contract field still carries across — the extras do not disturb it.
+    cf.atoms.x[1] = 6.75;
+    write_back(cf, *fr);
+
+    auto rx = molrs::frame_column_f64(*fr, "atoms", "x");
+    ASSERT_EQ(static_cast<int>(rx.size()), 3);
+    EXPECT_DOUBLE_EQ(rx[1], 6.75);
+
+    // The extension column is NOT exported: molrs has no "rho" column.
+    auto exported_rho = molrs::frame_column_f64(*fr, "atoms", "rho");
+    EXPECT_EQ(exported_rho.size(), 0u)
+        << "an extension column leaked across the FFI boundary — extras are "
+           "engine-local scratch; the exchange schema is the schema";
+
+    // …and it is still intact on the engine side (write_back is a read-only
+    // export; it must not disturb the frame).
+    auto rho_after = cf.span(ATV::ColKey<ATV::StorageReal>{"atoms", "rho"});
+    EXPECT_EQ(rho_after[1], ATV::StorageReal(2.5));
+    EXPECT_TRUE(cf.has_meta("annealing_stage"));
+}
+
+TEST(Materialize, MaterializedFrameCarriesNoExtras) {
+    // The reverse direction: materialize builds a frame with the schema
+    // columns only — no extension columns are invented from stray molrs
+    // columns, and the mapping facade reports exactly that.
+    auto fr = make_contract_frame();
+    Frame cf = materialize(*fr);
+
+    EXPECT_EQ(cf.atoms.n_extra_columns(), 0);
+    EXPECT_TRUE(cf.has("atoms", "x"));
+    EXPECT_FALSE(cf.has("atoms", "rho"));
+
+    // Bookkeeping meta views are live off the materialized frame.
+    EXPECT_EQ(std::get<std::int64_t>(cf.meta("nlocal")), 3);
+}

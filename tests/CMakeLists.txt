@@ -33,7 +33,23 @@ set(ATV_TEST_MPI_OMP_THREADS 1 CACHE STRING
 # no opt-in switch to run e2e from ctest.
 
 # CUDA test: compiled as .cu with separable compilation.
+# A .cu source registered while the CUDA language is disabled is silently
+# dropped by CMake — the binary links, runs zero tests, and reports PASS.
+# Refuse the configuration instead of shipping a green that tested nothing.
+function(atv_guard_cuda_sources name)
+    foreach(src ${ARGN})
+        if(src MATCHES "\\.cu$" AND NOT ATV_BUILD_CUDA)
+            message(FATAL_ERROR
+                "test '${name}' has a CUDA source (${src}) but ATV_BUILD_CUDA "
+                "is OFF: CMake would silently drop it and the test binary "
+                "would report PASS with zero tests. Enable CUDA or do not "
+                "register this test.")
+        endif()
+    endforeach()
+endfunction()
+
 function(atv_add_test name)
+    atv_guard_cuda_sources(${name} ${ARGN})
     add_executable(${name} ${ARGN})
     target_link_libraries(${name} PRIVATE atomiverse GTest::gtest_main)
     set_target_properties(${name} PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
@@ -45,6 +61,7 @@ endfunction()
 
 # C++ test: compiled as .cpp, no CUDA required.
 function(atv_add_cpp_test name)
+    atv_guard_cuda_sources(${name} ${ARGN})
     add_executable(${name} ${ARGN})
     target_link_libraries(${name} PRIVATE atomiverse GTest::gtest_main)
     set_target_properties(${name} PROPERTIES CXX_STANDARD 17)
