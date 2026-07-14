@@ -11,6 +11,7 @@ storage) via the staged variant-C route.
 
 | slug | status | summary |
 |---|---|---|
+| [frame-block-01-registry](frame-block-01-registry.md) | draft | 变体 C 第一步：字段注册表 + ColKey + mapping API，成员不删，热路径零改动；消灭 7+ 处手抄字段清单 |
 
 ## Standing user directives (2026-07-12/14) — binding on every spec
 
