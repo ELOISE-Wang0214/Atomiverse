@@ -88,143 +88,115 @@ void unpack_border(Atom& atom, int n, int first, const double* buf) {
 }
 
 int pack_exchange(const Atom& atom, int i, double* buf) {
+    // Registry-driven structural encoder (frame-block-01). The wire format is
+    // unchanged — schema order IS wire order (core/frame_schema.h): the Core
+    // scalars flat, then each counted topology group as `count` followed by
+    // `count` items of its payload columns interleaved (partner tags + type),
+    // then the nspecial-prefixed special list; exchanged extension columns
+    // ride at the very end.
+    ColumnRef cols[kMaxExchangeColumns];
+    const int n_cols = atom.collect_columns(cols, kMaxExchangeColumns);
+
     int m = 0;
-    // Continuous fields
-    buf[m++] = atom.x[i];
-    buf[m++] = atom.y[i];
-    buf[m++] = atom.z[i];
-    buf[m++] = atom.vx[i];
-    buf[m++] = atom.vy[i];
-    buf[m++] = atom.vz[i];
-    buf[m++] = atom.fx[i];
-    buf[m++] = atom.fy[i];
-    buf[m++] = atom.fz[i];
-    buf[m++] = atom.mass[i];
-    buf[m++] = atom.charge[i];
-
-    // Integer-cast-as-double fields
-    buf[m++] = static_cast<double>(atom.type[i]);
-    buf[m++] = static_cast<double>(atom.tag[i]);
-    buf[m++] = static_cast<double>(atom.image(i, 0));
-    buf[m++] = static_cast<double>(atom.image(i, 1));
-    buf[m++] = static_cast<double>(atom.image(i, 2));
-
-    // Per-atom topology — bonds
-    const int nb = atom.num_bond[i];
-    buf[m++] = static_cast<double>(nb);
-    for (int b = 0; b < nb; ++b) {
-        buf[m++] = static_cast<double>(atom.bond_atom(i, b));
-        buf[m++] = static_cast<double>(atom.bond_type(i, b));
+    // Core section (schema columns only — extras follow the topology).
+    for (int k = 0; k < kAtomFieldCount; ++k) {
+        const ColumnRef& col = cols[k];
+        if (col.group != ColGroup::Core)
+            continue;
+        for (int c = 0; c < col.cols; ++c)
+            buf[m++] = col.get(i, c);
     }
-
-    // Angles
-    const int na = atom.num_angle[i];
-    buf[m++] = static_cast<double>(na);
-    for (int a = 0; a < na; ++a) {
-        buf[m++] = static_cast<double>(atom.angle_atom(i, 2 * a + 0));
-        buf[m++] = static_cast<double>(atom.angle_atom(i, 2 * a + 1));
-        buf[m++] = static_cast<double>(atom.angle_type(i, a));
+    // Counted groups, in wire order.
+    for (const ColGroup g :
+         {ColGroup::Bond, ColGroup::Angle, ColGroup::Dihedral,
+          ColGroup::Special}) {
+        int count = 0;
+        for (int k = 0; k < kAtomFieldCount; ++k) {
+            const ColumnRef& col = cols[k];
+            if (col.group != g || !(col.flags & kColCount))
+                continue;
+            for (int c = 0; c < col.cols; ++c)
+                buf[m++] = col.get(i, c);
+            // The last count component is the item count (nspecial's
+            // cumulative 1-2/1-3/1-4 triple ends in the total).
+            count = static_cast<int>(col.get(i, col.cols - 1));
+        }
+        for (int item = 0; item < count; ++item)
+            for (int k = 0; k < kAtomFieldCount; ++k) {
+                const ColumnRef& col = cols[k];
+                if (col.group != g || (col.flags & kColCount))
+                    continue;
+                for (int e = 0; e < col.epi; ++e)
+                    buf[m++] = col.get(i, item * col.epi + e);
+            }
     }
-
-    // Dihedrals
-    const int nd = atom.num_dihedral[i];
-    buf[m++] = static_cast<double>(nd);
-    for (int d = 0; d < nd; ++d) {
-        buf[m++] = static_cast<double>(atom.dihedral_atom(i, 3 * d + 0));
-        buf[m++] = static_cast<double>(atom.dihedral_atom(i, 3 * d + 1));
-        buf[m++] = static_cast<double>(atom.dihedral_atom(i, 3 * d + 2));
-        buf[m++] = static_cast<double>(atom.dihedral_type(i, d));
-    }
-
-    // Special-neighbor list. nspecial[i][2] is the total length.
-    const int ns0 = atom.nspecial(i, 0);
-    const int ns1 = atom.nspecial(i, 1);
-    const int ns2 = atom.nspecial(i, 2);
-    buf[m++] = static_cast<double>(ns0);
-    buf[m++] = static_cast<double>(ns1);
-    buf[m++] = static_cast<double>(ns2);
-    for (int s = 0; s < ns2; ++s) {
-        buf[m++] = static_cast<double>(atom.special(i, s));
-    }
+    // Exchanged extension columns.
+    for (int k = kAtomFieldCount; k < n_cols; ++k)
+        for (int c = 0; c < cols[k].cols; ++c)
+            buf[m++] = cols[k].get(i, c);
     return m;
 }
 
 int unpack_exchange(Atom& atom, int slot, const double* buf) {
+    // Mirror of pack_exchange, with the defensive stride growth: a migrating
+    // atom may arrive with more topology items than the local stride holds,
+    // so each group's stride is grown to the incoming count BEFORE its
+    // payload is written — and the column views are re-collected afterwards
+    // (growth reallocates the wide arrays).
+    ColumnRef cols[kMaxExchangeColumns];
+    int n_cols = atom.collect_columns(cols, kMaxExchangeColumns);
+
     int m = 0;
-    atom.x[slot] = buf[m++];
-    atom.y[slot] = buf[m++];
-    atom.z[slot] = buf[m++];
-    atom.vx[slot] = buf[m++];
-    atom.vy[slot] = buf[m++];
-    atom.vz[slot] = buf[m++];
-    atom.fx[slot] = buf[m++];
-    atom.fy[slot] = buf[m++];
-    atom.fz[slot] = buf[m++];
-    atom.mass[slot] = buf[m++];
-    atom.charge[slot] = buf[m++];
-
-    atom.type[slot] = static_cast<int>(buf[m++]);
-    atom.tag[slot] = static_cast<std::int64_t>(buf[m++]);
-    atom.image(slot, 0) = static_cast<std::int8_t>(buf[m++]);
-    atom.image(slot, 1) = static_cast<std::int8_t>(buf[m++]);
-    atom.image(slot, 2) = static_cast<std::int8_t>(buf[m++]);
-
-    // Defensive stride growth: strides converge to identical values on every
-    // rank at load time (each rank scans the full global topology), so these
-    // are no-ops in practice — they only fire if a frame was populated
-    // rank-locally with heterogeneous valence.
-    const int nb = static_cast<int>(buf[m++]);
-    atom.grow_bond_per_atom(nb);
-    atom.num_bond[slot] = nb;
-    for (int b = 0; b < nb; ++b) {
-        atom.bond_atom(slot, b) = static_cast<std::int64_t>(buf[m++]);
-        atom.bond_type(slot, b) = static_cast<int>(buf[m++]);
+    for (int k = 0; k < kAtomFieldCount; ++k) {
+        const ColumnRef& col = cols[k];
+        if (col.group != ColGroup::Core)
+            continue;
+        for (int c = 0; c < col.cols; ++c)
+            col.set(slot, c, buf[m++]);
     }
-
-    const int na = static_cast<int>(buf[m++]);
-    atom.grow_angle_per_atom(na);
-    atom.num_angle[slot] = na;
-    for (int a = 0; a < na; ++a) {
-        atom.angle_atom(slot, 2 * a + 0) =
-            static_cast<std::int64_t>(buf[m++]);
-        atom.angle_atom(slot, 2 * a + 1) =
-            static_cast<std::int64_t>(buf[m++]);
-        atom.angle_type(slot, a) = static_cast<int>(buf[m++]);
+    for (const ColGroup g :
+         {ColGroup::Bond, ColGroup::Angle, ColGroup::Dihedral,
+          ColGroup::Special}) {
+        int count = 0;
+        for (int k = 0; k < kAtomFieldCount; ++k) {
+            const ColumnRef& col = cols[k];
+            if (col.group != g || !(col.flags & kColCount))
+                continue;
+            for (int c = 0; c < col.cols; ++c)
+                col.set(slot, c, buf[m++]);
+            count = static_cast<int>(col.get(slot, col.cols - 1));
+        }
+        if (count > atom.group_capacity(g)) {
+            atom.grow_group(g, count);
+            n_cols = atom.collect_columns(cols, kMaxExchangeColumns); // growth moved the storage
+        }
+        for (int item = 0; item < count; ++item)
+            for (int k = 0; k < kAtomFieldCount; ++k) {
+                const ColumnRef& col = cols[k];
+                if (col.group != g || (col.flags & kColCount))
+                    continue;
+                for (int e = 0; e < col.epi; ++e)
+                    col.set(slot, item * col.epi + e, buf[m++]);
+            }
     }
-
-    const int nd = static_cast<int>(buf[m++]);
-    atom.grow_dihedral_per_atom(nd);
-    atom.num_dihedral[slot] = nd;
-    for (int d = 0; d < nd; ++d) {
-        atom.dihedral_atom(slot, 3 * d + 0) =
-            static_cast<std::int64_t>(buf[m++]);
-        atom.dihedral_atom(slot, 3 * d + 1) =
-            static_cast<std::int64_t>(buf[m++]);
-        atom.dihedral_atom(slot, 3 * d + 2) =
-            static_cast<std::int64_t>(buf[m++]);
-        atom.dihedral_type(slot, d) = static_cast<int>(buf[m++]);
-    }
-
-    const int ns0 = static_cast<int>(buf[m++]);
-    const int ns1 = static_cast<int>(buf[m++]);
-    const int ns2 = static_cast<int>(buf[m++]);
-    atom.grow_maxspecial(ns2);
-    atom.nspecial(slot, 0) = ns0;
-    atom.nspecial(slot, 1) = ns1;
-    atom.nspecial(slot, 2) = ns2;
-    for (int s = 0; s < ns2; ++s) {
-        atom.special(slot, s) = static_cast<std::int64_t>(buf[m++]);
-    }
+    for (int k = kAtomFieldCount; k < n_cols; ++k)
+        for (int c = 0; c < cols[k].cols; ++c)
+            cols[k].set(slot, c, buf[m++]);
     return m;
 }
 
 int max_exchange_doubles(const Atom& atom) {
-    return 11                            // x/y/z, v, f, mass, charge
-           + 5                           // type + tag + image[3]
-           + 1 + 2 * atom.bond_per_atom  // num_bond + (partner, type) pairs
-           + 1 + 3 * atom.angle_per_atom // num_angle + (i, k, type) triples
-           + 1 + 4 * atom.dihedral_per_atom // num_dihedral + (i,k,l,type)
-           + 3 + atom.maxspecial;        // nspecial[3] + special list
+    ColumnRef cols[kMaxExchangeColumns];
+    const int n_cols = atom.collect_columns(cols, kMaxExchangeColumns);
+    int m = 0;
+    for (int k = 0; k < n_cols; ++k) {
+        const ColumnRef& col = cols[k];
+        if (col.group == ColGroup::Core || (col.flags & kColCount))
+            m += col.cols; // flat values (extras land here too)
+        else
+            m += col.epi * atom.group_capacity(col.group); // worst-case items
+    }
+    return m;
 }
 
 double compute_bonded_extension_local(const Atom& atom, const Box& box) {

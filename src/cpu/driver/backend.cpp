@@ -271,6 +271,10 @@ void Backend::step(int step_idx) {
             if (op.frequency > 0 && step_idx % op.frequency != 0)
                 continue;
             LaunchContext ctx{context_, *frame_, slot.phase, step_idx};
+            // Resolution-discipline window (frame-block-01): a component that
+            // looks mapping keys up inside a loop blows the budget and throws
+            // — the 13.7x cliff is machine-checked, not reviewed.
+            frame_->begin_resolution_window(kResolveBudgetPerLaunch);
             if (timing && have_handles) {
                 const auto t0 = std::chrono::steady_clock::now();
                 op.component->launch(ctx);
@@ -280,6 +284,7 @@ void Backend::step(int step_idx) {
             } else {
                 op.component->launch(ctx); // zero-overhead path when off
             }
+            frame_->end_resolution_window(op.component->name().c_str());
         }
     }
     if (timing) {
@@ -319,7 +324,9 @@ void Backend::step_plan(const Plan<cpu::ComponentBase>& plan, int step_idx) {
             if (op.frequency > 0 && step_idx % op.frequency != 0)
                 continue;
             LaunchContext ctx{context_, *frame_, slot.phase, step_idx};
+            frame_->begin_resolution_window(kResolveBudgetPerLaunch);
             op.component->launch(ctx);
+            frame_->end_resolution_window(op.component->name().c_str());
         }
     }
 }

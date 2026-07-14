@@ -29,11 +29,14 @@
 
 #include <cstdint>
 #include <unordered_map>
+#include <vector>
 
 #include <xtensor/containers/xtensor.hpp>
 #include <xtensor/generators/xbuilder.hpp>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/precision.h"
+#include "atomiverse/cpu/frame/column.h"
 
 namespace ATV {
 namespace cpu {
@@ -339,6 +342,109 @@ class Atom {
     /// @brief Build the 1-2 / 1-3 / 1-4 `nspecial` + `special` exclusion
     /// list by BFS over the per-atom bond graph.
     void build_special_list();
+
+    // ── The frame-block registry (frame-block-01) ──────────────────────────
+    //
+    // THE binding between the schema (core/frame_schema.h, the single field
+    // enumeration) and this backend's storage. Everything that used to
+    // hand-copy the field list — grow / set_capacity / copy_row /
+    // pack_exchange / unpack_exchange — iterates one of these instead.
+
+    /// @brief Apply `v(const FieldSpec&, array&)` to every schema column, in
+    ///        schema (= exchange wire) order. The ONLY place members are
+    ///        enumerated.
+    template <typename V>
+    void for_each_column(V&& v) {
+        int idx = 0;
+#define ATV_FIELD_BIND(member, key, Elem, DTag, Stride, Group, epi, flags)     \
+    v(kAtomFieldSpecs[idx++], member);
+        ATV_ATOM_FIELDS(ATV_FIELD_BIND)
+#undef ATV_FIELD_BIND
+    }
+
+    /// @brief Const overload of `for_each_column`.
+    template <typename V>
+    void for_each_column(V&& v) const {
+        int idx = 0;
+#define ATV_FIELD_BIND(member, key, Elem, DTag, Stride, Group, epi, flags)     \
+    v(kAtomFieldSpecs[idx++], member);
+        ATV_ATOM_FIELDS(ATV_FIELD_BIND)
+#undef ATV_FIELD_BIND
+    }
+
+    /// @brief Runtime column count of a stride kind (the schema is static;
+    ///        topology strides are per-run values owned here).
+    int cols_of(ColStride s) const noexcept {
+        switch (s) {
+        case ColStride::One: return 1;
+        case ColStride::Fixed3: return 3;
+        case ColStride::BondPA: return bond_per_atom;
+        case ColStride::AnglePA2: return 2 * angle_per_atom;
+        case ColStride::AnglePA: return angle_per_atom;
+        case ColStride::DihedralPA3: return 3 * dihedral_per_atom;
+        case ColStride::DihedralPA: return dihedral_per_atom;
+        case ColStride::MaxSpecial: return maxspecial;
+        }
+        return 0; // unreachable
+    }
+
+    /// @brief Fill `out` with a type-erased view of every schema column (in
+    ///        wire order) followed by the exchanged extension columns;
+    ///        returns the count. `out` must hold at least `kAtomFieldCount +
+    ///        n_extra_columns()` entries. The structural encoders
+    ///        (pack/unpack, copy_row) run over this.
+    /// @param out Destination array. @param cap Its capacity.
+    /// @throws std::length_error if schema + exchanged extras exceed `cap`.
+    int collect_columns(ColumnRef* out, int cap) const;
+
+    /// @brief Per-atom item capacity of a counted exchange group (how many
+    ///        bonds/angles/dihedrals/special partners one row can hold).
+    int group_capacity(ColGroup g) const noexcept {
+        switch (g) {
+        case ColGroup::Bond: return bond_per_atom;
+        case ColGroup::Angle: return angle_per_atom;
+        case ColGroup::Dihedral: return dihedral_per_atom;
+        case ColGroup::Special: return maxspecial;
+        case ColGroup::Core: return 0;
+        }
+        return 0; // unreachable
+    }
+
+    /// @brief Grow a counted group's per-atom stride to at least `count`
+    ///        items (the defensive growth `unpack_exchange` relies on when a
+    ///        migrating atom arrives wider than the local stride).
+    void grow_group(ColGroup g, int count) {
+        switch (g) {
+        case ColGroup::Bond: grow_bond_per_atom(count); break;
+        case ColGroup::Angle: grow_angle_per_atom(count); break;
+        case ColGroup::Dihedral: grow_dihedral_per_atom(count); break;
+        case ColGroup::Special: grow_maxspecial(count); break;
+        case ColGroup::Core: break;
+        }
+    }
+
+    /// @brief Registry-owned extension columns (`Frame::insert` forwards
+    ///        here). Sized/zeroed with the frame; ride copy_row and the
+    ///        exchange payload per their tags.
+    std::vector<ExtraColumn> extras;
+
+    /// @brief Add a registry-owned per-atom extension column, sized to the
+    ///        current capacity (zero-filled).
+    /// @param key Column name (block "atoms"). Must not collide with a
+    ///        schema key or an existing extra.
+    /// @param dtype Element tier.
+    /// @param cols Columns per row (>= 1).
+    /// @param migrates Rides `copy_row` (default true).
+    /// @param exchanged Rides `pack_exchange`/`unpack_exchange`
+    ///        (default false).
+    /// @throws std::invalid_argument on a key collision or `cols < 1`.
+    ExtraColumn& add_column(const std::string& key, ColDType dtype, int cols,
+                            bool migrates = true, bool exchanged = false);
+
+    /// @brief Number of extension columns.
+    int n_extra_columns() const noexcept {
+        return static_cast<int>(extras.size());
+    }
 
     /// @brief Copy one full per-atom row — every SoA field plus the per-atom
     ///        bonded topology — from row `src` into row `dst` (no-op when

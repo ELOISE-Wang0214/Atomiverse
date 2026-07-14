@@ -5,13 +5,15 @@ one decision, all closed (history in git log; findings in `.claude/NOTES.md`;
 the Frame verdict and its research report live durably at
 `docs/developer/frame-block-redesign.md`).
 
-Next campaign: **frame-block** — execute the signed Frame verdict
-(Frame = mapping[string, Block], molrs-aligned schema, independent per-backend
-storage) via the staged variant-C route.
+Campaign **frame-block** — executing the signed Frame verdict (Frame =
+mapping[string, Block], molrs-aligned schema, independent per-backend storage)
+via the staged variant-C route. **Step 01 (registry + ColKey + mapping API +
+typed meta) is done** (git log). Next: 02+ blockify directory by directory
+(torch -> cuda -> cpu/md, minimizer, path -> cpu/potentials), deleting each
+member once its directory is clear.
 
 | slug | status | summary |
 |---|---|---|
-| [frame-block-01-registry](frame-block-01-registry.md) | draft | 变体 C 第一步：字段注册表 + ColKey + mapping API，成员不删，热路径零改动；消灭 7+ 处手抄字段清单 |
 
 ## Standing user directives (2026-07-12/14) — binding on every spec
 

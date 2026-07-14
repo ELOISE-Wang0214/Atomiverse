@@ -182,6 +182,7 @@ atv_add_cpp_test(test_cpu_md_neighbor_list_rebuild  cpu/md/test_neighbor_list_re
 atv_add_cpp_test(test_cpu_md_full_neighbor_list  cpu/md/test_full_neighbor_list.cpp)
 atv_add_cpp_test(test_cpu_md_cell_list_grid_stale  cpu/md/test_cell_list_grid_stale.cpp)
 atv_add_cpp_test(test_cpu_atom_variable_n  cpu/test_atom_variable_n.cpp)
+atv_add_cpp_test(test_cpu_frame_registry  cpu/frame/test_frame_registry.cpp)
 atv_add_cpp_test(test_cpu_eam  cpu/potentials/test_eam.cpp)
 atv_add_cpp_test(test_cpu_sw  cpu/potentials/test_sw.cpp)
 atv_add_cpp_test(test_cpu_pair_lj_types  cpu/potentials/test_pair_lj_types.cpp)
@@ -510,6 +511,15 @@ add_test(
 # workflows; ATV::slot_of is the one sanctioned conversion and the typed entry
 # points (slot_of / slot_count / ctx.at / run_stage / make_binding) are the only
 # way in. Pure grep — runs in every build configuration.
+# Grep gate: the frame-block registry is THE single per-atom field
+# enumeration (frame-block-01, ac-001). set_capacity / copy_row /
+# pack_exchange / unpack_exchange / max_exchange_doubles iterate the
+# registry; a hand-written member name inside any of them fails the build.
+add_test(
+    NAME test_frame_field_list_scrub
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cpu/frame/field_list_scrub.sh
+            ${CMAKE_SOURCE_DIR})
+
 add_test(
     NAME test_stage_typing_scrub
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/facade/stage_typing_scrub.sh

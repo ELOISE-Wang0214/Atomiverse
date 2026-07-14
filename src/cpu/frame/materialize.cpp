@@ -2,6 +2,9 @@
 /// @brief Implementation of cpu::materialize / cpu::write_back.
 
 #include "atomiverse/cpu/frame/materialize.h"
+
+#include <cstring>
+#include <type_traits>
 #include <limits>
 
 #include <cstdint>
@@ -101,14 +104,23 @@ Frame materialize(const molrs::FrameRef& src) {
     }
 
     // ── Optional per-atom fields (silent zero when absent) ─────────────
-    copy_optional_f64(src, "atoms", "vx", frame.atoms.vx, n);
-    copy_optional_f64(src, "atoms", "vy", frame.atoms.vy, n);
-    copy_optional_f64(src, "atoms", "vz", frame.atoms.vz, n);
-    copy_optional_f64(src, "atoms", "fx", frame.atoms.fx, n);
-    copy_optional_f64(src, "atoms", "fy", frame.atoms.fy, n);
-    copy_optional_f64(src, "atoms", "fz", frame.atoms.fz, n);
-    copy_optional_f64(src, "atoms", "mass", frame.atoms.mass, n);
-    copy_optional_f64(src, "atoms", "charge", frame.atoms.charge, n);
+    //
+    // Registry-driven (frame-block-01): every plain float column of the
+    // schema rides the generic key copy — the required x/y/z trio (read
+    // above, with the row-count check) and the non-column specials (tag
+    // narrowing, the 3-column image split, topology) stay structural.
+    frame.atoms.for_each_column([&](const FieldSpec& spec, auto& arr) {
+        using arr_t = std::decay_t<decltype(arr)>;
+        if constexpr (std::is_same_v<typename arr_t::value_type, double>) {
+            if (spec.stride != ColStride::One)
+                return;
+            if (std::strcmp(spec.key, "x") == 0
+                || std::strcmp(spec.key, "y") == 0
+                || std::strcmp(spec.key, "z") == 0)
+                return; // the required trio, already materialized
+            copy_optional_f64(src, "atoms", spec.key, arr, n);
+        }
+    });
 
     // Optional global tag (i32 in molrs -> i64 in cpu::Frame). When absent
     // the Frame ctor's identity default (tag(i) == i) is kept.
@@ -220,17 +232,19 @@ void write_back(const Frame& src, molrs::FrameRef& dst) {
     };
 
     // ── Per-atom results ───────────────────────────────────────────────
-    molrs::frame_set_column_f64(dst, "atoms", "x", slice(src.atoms.x));
-    molrs::frame_set_column_f64(dst, "atoms", "y", slice(src.atoms.y));
-    molrs::frame_set_column_f64(dst, "atoms", "z", slice(src.atoms.z));
-    molrs::frame_set_column_f64(dst, "atoms", "vx", slice(src.atoms.vx));
-    molrs::frame_set_column_f64(dst, "atoms", "vy", slice(src.atoms.vy));
-    molrs::frame_set_column_f64(dst, "atoms", "vz", slice(src.atoms.vz));
-    molrs::frame_set_column_f64(dst, "atoms", "fx", slice(src.atoms.fx));
-    molrs::frame_set_column_f64(dst, "atoms", "fy", slice(src.atoms.fy));
-    molrs::frame_set_column_f64(dst, "atoms", "fz", slice(src.atoms.fz));
-    molrs::frame_set_column_f64(dst, "atoms", "charge",
-                                slice(src.atoms.charge));
+    //
+    // Registry-driven (frame-block-01): the write-back contract set is the
+    // schema's kColWriteBack columns (x/v/f + charge; mass/type/topology are
+    // per-run static inputs and deliberately absent). tag and image keep
+    // their structural sections below (i32 narrowing / 3-column split).
+    src.atoms.for_each_column([&](const FieldSpec& spec, auto& arr) {
+        using arr_t = std::decay_t<decltype(arr)>;
+        if constexpr (std::is_same_v<typename arr_t::value_type, double>) {
+            if (spec.flags & kColWriteBack)
+                molrs::frame_set_column_f64(dst, "atoms", spec.key,
+                                            slice(arr));
+        }
+    });
 
     // ── Per-atom identity + PBC crossing counts (contract fields) ──────
     //

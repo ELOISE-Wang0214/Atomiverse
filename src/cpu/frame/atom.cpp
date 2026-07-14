@@ -5,9 +5,21 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <type_traits>
+#include <variant>
 
 namespace ATV {
 namespace cpu {
+
+namespace detail {
+/// @brief Static rank of the two xtensor shapes the registry binds.
+template <class A>
+struct xrank;
+template <class T>
+struct xrank<xt::xtensor<T, 1>> : std::integral_constant<int, 1> {};
+template <class T>
+struct xrank<xt::xtensor<T, 2>> : std::integral_constant<int, 2> {};
+} // namespace detail
 
 Atom::Atom(int initial_nmax) {
     if (initial_nmax > 0)
@@ -54,57 +66,43 @@ void Atom::set_capacity(int new_nmax) {
         std::min(static_cast<std::size_t>(nmax), n); // rows to preserve
 
     // Reallocate into fresh zeroed storage and copy the preserved prefix
-    // explicitly — independent of whether xt::xtensor::resize preserves data,
-    // and correct for shrink as well as grow.
-    auto realloc1d = [&](auto& arr) {
+    // explicitly -- independent of whether xt::xtensor::resize preserves data,
+    // and correct for shrink as well as grow. One generic body over the
+    // registry; the identity-tag tail seeding comes from the schema flag.
+    for_each_column([&](const FieldSpec& spec, auto& arr) {
         using arr_t = std::decay_t<decltype(arr)>;
         using value_t = typename arr_t::value_type;
-        arr_t fresh = xt::zeros<value_t>({n});
-        for (std::size_t i = 0; i < keep; ++i)
-            fresh(i) = arr(i);
-        arr = std::move(fresh);
-    };
-    auto realloc2d = [&](auto& arr, std::size_t cols) {
-        using arr_t = std::decay_t<decltype(arr)>;
-        using value_t = typename arr_t::value_type;
-        arr_t fresh = xt::zeros<value_t>({n, cols});
-        const std::size_t row_keep = keep * cols;
-        for (std::size_t i = 0; i < row_keep; ++i)
-            fresh.data()[i] = arr.data()[i];
-        arr = std::move(fresh);
-    };
-
-    realloc1d(x);
-    realloc1d(y);
-    realloc1d(z);
-    realloc1d(vx);
-    realloc1d(vy);
-    realloc1d(vz);
-    realloc1d(fx);
-    realloc1d(fy);
-    realloc1d(fz);
-    realloc1d(mass);
-    realloc1d(charge);
-    realloc1d(type);
-    realloc1d(tag);
-    // tag default = identity for any newly-added rows (matches grow()).
-    for (std::size_t i = keep; i < n; ++i)
-        tag(i) = static_cast<TagInt>(i);
-    realloc2d(image, 3);
-    // Count arrays always present; wide bonded arrays only when topology exists.
-    realloc1d(num_bond);
-    realloc1d(num_angle);
-    realloc1d(num_dihedral);
-    realloc2d(nspecial, 3);
-    if (has_bonded_topology_) {
-        realloc2d(bond_atom, static_cast<std::size_t>(bond_per_atom));
-        realloc2d(bond_type, static_cast<std::size_t>(bond_per_atom));
-        realloc2d(angle_atom, static_cast<std::size_t>(2 * angle_per_atom));
-        realloc2d(angle_type, static_cast<std::size_t>(angle_per_atom));
-        realloc2d(dihedral_atom,
-                  static_cast<std::size_t>(3 * dihedral_per_atom));
-        realloc2d(dihedral_type, static_cast<std::size_t>(dihedral_per_atom));
-        realloc2d(special, static_cast<std::size_t>(maxspecial));
+        const std::size_t cols =
+            static_cast<std::size_t>(cols_of(spec.stride));
+        if constexpr (detail::xrank<arr_t>::value == 1) {
+            arr_t fresh = xt::zeros<value_t>({n});
+            for (std::size_t i = 0; i < keep; ++i)
+                fresh(i) = arr(i);
+            if (spec.flags & kColIdentityTail)
+                for (std::size_t i = keep; i < n; ++i)
+                    fresh(i) = static_cast<value_t>(i);
+            arr = std::move(fresh);
+        } else {
+            arr_t fresh = xt::zeros<value_t>({n, cols});
+            const std::size_t flat_keep = keep * cols;
+            for (std::size_t i = 0; i < flat_keep; ++i)
+                fresh.data()[i] = arr.data()[i];
+            arr = std::move(fresh);
+        }
+    });
+    for (auto& e : extras) {
+        const std::size_t cols = static_cast<std::size_t>(e.cols);
+        std::visit(
+            [&](auto& arr) {
+                using arr_t = std::decay_t<decltype(arr)>;
+                using value_t = typename arr_t::value_type;
+                arr_t fresh = xt::zeros<value_t>({n, cols});
+                const std::size_t flat_keep = keep * cols;
+                for (std::size_t i = 0; i < flat_keep; ++i)
+                    fresh.data()[i] = arr.data()[i];
+                arr = std::move(fresh);
+            },
+            e.data);
     }
 
     nmax = new_nmax;
@@ -196,49 +194,103 @@ void Atom::reserve_topology(int bond, int angle, int dihedral, int special_n) {
 void Atom::copy_row(int dst, int src) {
     if (dst == src)
         return;
-    x[dst] = x[src];
-    y[dst] = y[src];
-    z[dst] = z[src];
-    vx[dst] = vx[src];
-    vy[dst] = vy[src];
-    vz[dst] = vz[src];
-    fx[dst] = fx[src];
-    fy[dst] = fy[src];
-    fz[dst] = fz[src];
-    mass[dst] = mass[src];
-    charge[dst] = charge[src];
-    type[dst] = type[src];
-    tag[dst] = tag[src];
-    image(dst, 0) = image(src, 0);
-    image(dst, 1) = image(src, 1);
-    image(dst, 2) = image(src, 2);
-
-    // Per-atom topology — must follow the row. Count arrays are always
-    // present; the wide partner/type/special arrays exist only for
-    // atom_style-molecular systems (lazy bonded storage), so guard their
-    // row-move on has_bonded().
-    num_bond(dst) = num_bond(src);
-    num_angle(dst) = num_angle(src);
-    num_dihedral(dst) = num_dihedral(src);
-    nspecial(dst, 0) = nspecial(src, 0);
-    nspecial(dst, 1) = nspecial(src, 1);
-    nspecial(dst, 2) = nspecial(src, 2);
-    if (has_bonded()) {
-        for (int m = 0; m < bond_per_atom; ++m) {
-            bond_atom(dst, m) = bond_atom(src, m);
-            bond_type(dst, m) = bond_type(src, m);
+    for_each_column([&](const FieldSpec& spec, auto& arr) {
+        using arr_t = std::decay_t<decltype(arr)>;
+        // Wide topology arrays exist only for atom_style-molecular systems
+        // (lazy bonded storage); their strides are 0 until then, but guard
+        // explicitly so an untouched array is never indexed.
+        if ((spec.flags & kColTopology) && !has_bonded())
+            return;
+        if constexpr (detail::xrank<arr_t>::value == 1) {
+            arr(dst) = arr(src);
+        } else {
+            const int cols = cols_of(spec.stride);
+            for (int c = 0; c < cols; ++c)
+                arr(dst, c) = arr(src, c);
         }
-        for (int m = 0; m < 2 * angle_per_atom; ++m)
-            angle_atom(dst, m) = angle_atom(src, m);
-        for (int m = 0; m < angle_per_atom; ++m)
-            angle_type(dst, m) = angle_type(src, m);
-        for (int m = 0; m < 3 * dihedral_per_atom; ++m)
-            dihedral_atom(dst, m) = dihedral_atom(src, m);
-        for (int m = 0; m < dihedral_per_atom; ++m)
-            dihedral_type(dst, m) = dihedral_type(src, m);
-        for (int m = 0; m < maxspecial; ++m)
-            special(dst, m) = special(src, m);
+    });
+    for (auto& e : extras) {
+        if (!e.migrates)
+            continue;
+        std::visit(
+            [&](auto& arr) {
+                for (int c = 0; c < e.cols; ++c)
+                    arr(dst, c) = arr(src, c);
+            },
+            e.data);
     }
+}
+
+int Atom::collect_columns(ColumnRef* out, int cap) const {
+    int needed = kAtomFieldCount;
+    for (const auto& e : extras)
+        if (e.exchanged)
+            ++needed;
+    if (needed > cap)
+        throw std::length_error(
+            "Atom::collect_columns: too many exchanged columns for the "
+            "caller's scratch array");
+    int n = 0;
+    // The registry view is read/write plumbing for the structural encoders;
+    // const Atom& callers (pack_exchange) only read through it.
+    const_cast<Atom*>(this)->for_each_column(
+        [&](const FieldSpec& spec, auto& arr) {
+            out[n++] = ColumnRef{spec.key,
+                                 spec.dtype,
+                                 spec.group,
+                                 spec.epi,
+                                 spec.flags,
+                                 static_cast<void*>(arr.data()),
+                                 cols_of(spec.stride)};
+        });
+    for (auto& e : extras) {
+        if (!e.exchanged)
+            continue;
+        std::visit(
+            [&](auto& arr) {
+                out[n++] = ColumnRef{
+                    e.key.c_str(),  e.dtype, ColGroup::Core, 0, kColNone,
+                    const_cast<void*>(static_cast<const void*>(arr.data())),
+                    e.cols};
+            },
+            e.data);
+    }
+    return n;
+}
+
+ExtraColumn& Atom::add_column(const std::string& key, ColDType dtype, int cols,
+                              bool migrates, bool exchanged) {
+    if (cols < 1)
+        throw std::invalid_argument("Atom::add_column: cols must be >= 1");
+    for (const auto& spec : kAtomFieldSpecs)
+        if (key == spec.key)
+            throw std::invalid_argument("Atom::add_column: '" + key
+                                        + "' collides with a schema column");
+    for (const auto& e : extras)
+        if (e.key == key)
+            throw std::invalid_argument("Atom::add_column: '" + key
+                                        + "' already exists");
+
+    ExtraColumn e;
+    e.key = key;
+    e.dtype = dtype;
+    e.cols = cols;
+    e.migrates = migrates;
+    e.exchanged = exchanged;
+    const std::size_t n = static_cast<std::size_t>(nmax);
+    const std::size_t c = static_cast<std::size_t>(cols);
+    // emplace by INDEX: StorageReal and AccReal are both double in the
+    // default build, so the variant holds two identical alternatives and a
+    // converting assignment would be ambiguous.
+    switch (dtype) {
+    case ColDType::Storage: e.data.emplace<0>(xt::zeros<StorageReal>({n, c})); break;
+    case ColDType::Acc:     e.data.emplace<1>(xt::zeros<AccReal>({n, c})); break;
+    case ColDType::Tag:     e.data.emplace<2>(xt::zeros<TagInt>({n, c})); break;
+    case ColDType::Int:     e.data.emplace<3>(xt::zeros<int>({n, c})); break;
+    case ColDType::Int8:    e.data.emplace<4>(xt::zeros<std::int8_t>({n, c})); break;
+    }
+    extras.push_back(std::move(e));
+    return extras.back();
 }
 
 TagInt Atom::acquire_tag() {
