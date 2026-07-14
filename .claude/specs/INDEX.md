@@ -10,7 +10,6 @@ case under `regressions/`.
 | [manybody-potentials](manybody-potentials.md) | approved | Probe 1 (Component/Neighbor): EAM + SW. Wires up the dead `refresh_full`; first production user of `CommField` |
 | [md-constraints](md-constraints.md) | approved | Probe 2 (Phase/Tagging): SETTLE + RATTLE. Closes the `Capability` write-set hole, adds `ComponentRole::Constraint`, gives Ndof one owner |
 | [path-driver-neb](path-driver-neb.md) | approved | Probe 3 (Driver taxonomy): CI-NEB + the 6th category. Extracts a reusable `ReplicaSet`; de-welds L-BFGS from the Frame |
-| [mc-gcmc-npt](mc-gcmc-npt.md) | approved | Probe 4 (Frame): GCMC + NPT-MC. Lifts variable-N out of `comm/` instead of reinventing it |
 | [frame-organization](frame-organization.md) | draft | **决策 spec**：Frame 按后端分类 vs 后端×领域分类。刻意排在四个探针之后 —— 探针就是证据 |
 
 ## Ordering
