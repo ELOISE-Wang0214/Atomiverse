@@ -194,3 +194,21 @@ B 去掉"删除命名成员"这最后一步。路线：
    Block——dtype variant 里两种 float 列并存，接受？
 4. 键常量的命名域：`"atoms"/"x"` 沿用 molrs 交换 schema（建议，零迁移），
    还是另立 ATV 命名空间？
+
+## 9. 裁决后修订（2026-07-14，用户指令）
+
+**簿记不设独立的 typed-attrs 区——并入 `meta` 这一个区域，扩展 molrs 原有
+定义。** 即开放问题 1 的答案不是"接受偏差"也不是"等 molrs"，而是第三条路：
+
+- ATV Frame 形状与 molrs **完全同构**：`Frame = { blocks: string→Block,
+  meta: string→MetaValue, simbox }`。没有第二个簿记区域。
+- `MetaValue` 是 molrs `meta: string→string` 的**类型扩展**（typed variant：
+  string / int / float / Mat3 / SystemScalars / 引擎侧索引对象），每个 meta
+  条目带语义标签区分**可交换**（入 FFI：counts、scalars；box 走 simbox）与
+  **引擎本地**（tag→row 派生索引——可重建，永不序列化）。
+- 上游对齐项：推动 molrs 侧把 `meta` 从 `HashMap<String,String>` 扩展为
+  typed meta（molcrafts 自有仓，非阻塞——ATV 侧先行，FFI 交换时 typed→string
+  降级导出兼容现状）。
+- **性能纪律同样覆盖 meta**：`nlocal` 等热簿记的读取遵守 launch 边界解析
+  （meta 条目地址稳定，span/引用一次解析），debug 解析计数断言把 meta 查键
+  一并计入。

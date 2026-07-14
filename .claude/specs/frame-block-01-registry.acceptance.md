@@ -21,8 +21,12 @@ criteria:
       access work; keys reuse the molrs exchange schema names 1:1; an extension
       column can be inserted at runtime, is registry-owned, survives
       grow/set_capacity, and rides copy_row/pack_exchange when its semantic
-      tags say so. Bookkeeping (nlocal/nghost/nmax, tag map, SystemScalars,
-      Box) stays typed attrs — NOT reachable via string keys.
+      tags say so. Bookkeeping lives in ONE region: a typed `meta`
+      (string→MetaValue, the extension of molrs's string→string meta) holding
+      counts + SystemScalars + the engine-local tag→row index (tagged
+      never-serialized); Box rides the simbox slot. No second bookkeeping
+      area exists. Hot bookkeeping reads (nlocal) resolve once at the launch
+      boundary and count toward the debug resolution assertion.
     status: pending
 
   - id: ac-003

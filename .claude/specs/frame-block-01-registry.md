@@ -32,8 +32,13 @@ mapping 语义（存在性检查、类型化取列、扩展列）。所有"每�
 - **CPU 视图注册**：`cpu::Atom` 构造时把成员注册进映射（非拥有）；扩展列
   （未来的 per-atom 载荷）由注册表拥有——`has_bonded_topology_`/
   `ensure_bonded_storage()` 语义并入"拓扑 lazy 组"的存在性。
-- **簿记不动**：nlocal/nghost/nmax、tag→map、SystemScalars、Box 保持
-  typed attrs（裁决第 2 条）。
+- **簿记 = typed meta，一个区域**（2026-07-14 裁决修订）：Frame 形状与 molrs
+  完全同构 `{ blocks, meta, simbox }`；`meta` 是 molrs `string→string` 的类型
+  扩展（`string→MetaValue` variant），装 nlocal/nghost/nmax、SystemScalars、
+  tag→row 索引（引擎本地标签，永不序列化）；Box 走 simbox 槽。没有第二个
+  簿记区域。本步（01）先定义 `MetaValue` + meta 骨架并把 SystemScalars/counts
+  迁入；热读取（`nlocal` 等）经 launch 边界一次解析的引用，meta 查键计入
+  debug 解析计数断言。上游（molrs typed meta）非阻塞，FFI 导出降级 string 兼容。
 - **单清单派生**：`grow`/`set_capacity`/`copy_row`/`pack_exchange`/
   `unpack_exchange`/`materialize`/`write_back` 改为遍历注册表；每站点的
   手抄字段列表删除。CUDA/torch 的镜像迁移在 02+。

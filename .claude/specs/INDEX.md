@@ -17,8 +17,9 @@ storage) via the staged variant-C route.
 
 1. **Frame is the only input/output currency.** No bare parallel scalar arrays.
 2. **Frame = mapping[string, Block]** (signed 2026-07-14): molrs-aligned schema
-   and keys, independent per-backend Column storage, fixed typed attrs
-   (box/scalars/pop/tag-map), dtype follows ATV precision tiers. Resolution
+   and keys, independent per-backend Column storage, bookkeeping in ONE typed
+   `meta` region (string→MetaValue, extending molrs's string→string; Box rides
+   simbox; revised 2026-07-14), dtype follows ATV precision tiers. Resolution
    stops at the launch boundary — in-loop key lookup is forbidden (13.7x) and
    machine-checked (debug resolution-count assertion + LJ ⚡ gate).
 3. **N replicas come from an expansion strategy, not from the user.**
