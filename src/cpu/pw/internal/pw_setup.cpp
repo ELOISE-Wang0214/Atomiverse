@@ -4,6 +4,7 @@
 
 #include "atomiverse/cpu/pw/internal/pw_setup.h"
 #include "atomiverse/core/box.h"
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/log.h"
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/units.h"
@@ -167,10 +168,13 @@ void setup_toy_vloc(PWWorkspace& ws, const internal::GVectorList& gv,
 std::vector<Vec3> pos_to_bohr(const cpu::Frame& frame) {
     Real a2b = Real(1.8897259886);
     std::vector<Vec3> pos;
+    const StorageReal* __restrict sp_x = frame.span(kAtom_x);
+    const StorageReal* __restrict sp_y = frame.span(kAtom_y);
+    const StorageReal* __restrict sp_z = frame.span(kAtom_z);
     for (size_t i = 0; i < frame.atoms.size(); ++i)
-        pos.push_back({static_cast<Real>(frame.atoms.x[i]) * a2b,
-                       static_cast<Real>(frame.atoms.y[i]) * a2b,
-                       static_cast<Real>(frame.atoms.z[i]) * a2b});
+        pos.push_back({static_cast<Real>(sp_x[i]) * a2b,
+                       static_cast<Real>(sp_y[i]) * a2b,
+                       static_cast<Real>(sp_z[i]) * a2b});
     return pos;
 }
 
@@ -457,8 +461,9 @@ void setup_pw_problem(const cpu::Frame& frame, const std::string& upf_path,
 
     int n_elec = 0;
     std::vector<Real> valence_charges, nuclear_Z;
+    const int* __restrict sp_type = frame.span(kAtom_type);
     for (int i = 0; i < n_atoms; ++i) {
-        int z = frame.atoms.type[i];
+        int z = sp_type[i];
         int v = valence_from_z(z);
         n_elec += v;
         valence_charges.push_back(static_cast<Real>(v));
@@ -478,10 +483,13 @@ void setup_pw_problem(const cpu::Frame& frame, const std::string& upf_path,
 
     // === Ewald ===
     std::vector<Vec3> pos_ang;
+    const StorageReal* __restrict sp_x = frame.span(kAtom_x);
+    const StorageReal* __restrict sp_y = frame.span(kAtom_y);
+    const StorageReal* __restrict sp_z = frame.span(kAtom_z);
     for (int i = 0; i < n_atoms; ++i)
-        pos_ang.push_back({static_cast<Real>(frame.atoms.x[i]),
-                           static_cast<Real>(frame.atoms.y[i]),
-                           static_cast<Real>(frame.atoms.z[i])});
+        pos_ang.push_back({static_cast<Real>(sp_x[i]),
+                           static_cast<Real>(sp_y[i]),
+                           static_cast<Real>(sp_z[i])});
     // Ewald: use same charges as V_loc (nuclear for toy, valence for UPF)
     auto& ewald_charges = has_upf ? valence_charges : nuclear_Z;
     internal::EwaldSummation ewald(pos_ang, ewald_charges, box_ang, ecut_ht);

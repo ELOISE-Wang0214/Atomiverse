@@ -13,6 +13,7 @@
 
 #include "atomiverse/cpu/scf/scf_evaluator.h"
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/log.h"
 #include "atomiverse/core/units.h"
 
@@ -44,14 +45,29 @@ namespace {
 /// @return Snapshot of the wrapped positions so the caller can restore
 ///         them before launch returns (downstream observers expect
 ///         wrapped positions in `frame.atoms.x/y/z`).
+/// Wrapped positions saved for restoration after the SCF unwrap.
+///
+/// Plain vectors, restored by an ELEMENT-WISE COPY back into the frame's
+/// existing columns — never by swapping a whole array into `frame.atoms.x`.
+/// Swapping frees the frame's storage mid-force-phase, dangling every raw
+/// pointer a component resolved at its launch boundary (LBFGS's line search
+/// replays the force phase and holds exactly such pointers — ASAN caught the
+/// use-after-free). Only `grow`/`set_capacity` may reallocate a frame column,
+/// and only at `pre_force`; see cpu/frame/atom.h.
 struct WrappedPositionsSnapshot {
-    xt::xtensor<double, 1> x, y, z;
+    std::vector<ATV::StorageReal> x, y, z;
 };
 
 WrappedPositionsSnapshot unwrap_for_scf(ATV::cpu::Frame& frame) {
     using namespace ATV;
     const int n = static_cast<int>(frame.atoms.size());
-    WrappedPositionsSnapshot snap{frame.atoms.x, frame.atoms.y, frame.atoms.z};
+    const StorageReal* __restrict px = frame.span(kAtom_x);
+    const StorageReal* __restrict py = frame.span(kAtom_y);
+    const StorageReal* __restrict pz = frame.span(kAtom_z);
+    WrappedPositionsSnapshot snap{
+        std::vector<ATV::StorageReal>(px, px + n),
+        std::vector<ATV::StorageReal>(py, py + n),
+        std::vector<ATV::StorageReal>(pz, pz + n)};
 
     if (n <= 1)
         return snap;
@@ -62,26 +78,39 @@ WrappedPositionsSnapshot unwrap_for_scf(ATV::cpu::Frame& frame) {
         || frame.box.length(2) <= 0.0)
         return snap;
 
-    const double x0 = frame.atoms.x(0);
-    const double y0 = frame.atoms.y(0);
-    const double z0 = frame.atoms.z(0);
+    StorageReal* __restrict sp_x = frame.span(kAtom_x);
+    StorageReal* __restrict sp_y = frame.span(kAtom_y);
+    StorageReal* __restrict sp_z = frame.span(kAtom_z);
+
+    const double x0 = sp_x[0];
+    const double y0 = sp_y[0];
+    const double z0 = sp_z[0];
 
     for (int i = 1; i < n; ++i) {
-        double dx = frame.atoms.x(i) - x0;
-        double dy = frame.atoms.y(i) - y0;
-        double dz = frame.atoms.z(i) - z0;
+        double dx = sp_x[i] - x0;
+        double dy = sp_y[i] - y0;
+        double dz = sp_z[i] - z0;
         frame.box.min_image(dx, dy, dz);
-        frame.atoms.x(i) = x0 + dx;
-        frame.atoms.y(i) = y0 + dy;
-        frame.atoms.z(i) = z0 + dz;
+        sp_x[i] = x0 + dx;
+        sp_y[i] = y0 + dy;
+        sp_z[i] = z0 + dz;
     }
     return snap;
 }
 
 void restore_wrapped(ATV::cpu::Frame& frame, WrappedPositionsSnapshot&& snap) {
-    frame.atoms.x = std::move(snap.x);
-    frame.atoms.y = std::move(snap.y);
-    frame.atoms.z = std::move(snap.z);
+    using namespace ATV;
+    // Copy back IN PLACE — the frame's column storage keeps its identity, so
+    // pointers other components resolved at their launch boundary stay valid.
+    StorageReal* __restrict px = frame.span(kAtom_x);
+    StorageReal* __restrict py = frame.span(kAtom_y);
+    StorageReal* __restrict pz = frame.span(kAtom_z);
+    const int n = static_cast<int>(snap.x.size());
+    for (int i = 0; i < n; ++i) {
+        px[i] = snap.x[static_cast<std::size_t>(i)];
+        py[i] = snap.y[static_cast<std::size_t>(i)];
+        pz[i] = snap.z[static_cast<std::size_t>(i)];
+    }
 }
 
 } // namespace
@@ -279,10 +308,13 @@ void SCFEvaluator::launch(const cpu::LaunchContext& ctx) {
                   elapsed_ms(t_gradient));
 
         double max_force = 0.0;
+        AccReal* __restrict sp_fx = frame.span(kAtom_fx);
+        AccReal* __restrict sp_fy = frame.span(kAtom_fy);
+        AccReal* __restrict sp_fz = frame.span(kAtom_fz);
         for (int A = 0; A < natm; ++A) {
-            frame.atoms.fx(A) = grad.forces(A, 0);
-            frame.atoms.fy(A) = grad.forces(A, 1);
-            frame.atoms.fz(A) = grad.forces(A, 2);
+            sp_fx[A] = grad.forces(A, 0);
+            sp_fy[A] = grad.forces(A, 1);
+            sp_fz[A] = grad.forces(A, 2);
             const double fx = grad.forces(A, 0);
             const double fy = grad.forces(A, 1);
             const double fz = grad.forces(A, 2);

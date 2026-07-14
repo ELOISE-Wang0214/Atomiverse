@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <string>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/semiempirical/am1_parameters.h"
 #include "atomiverse/cpu/semiempirical/nddo_overlap.h"
 
@@ -327,10 +328,10 @@ double core_core_repulsion_ev(const AM1Parameter& pi, const AM1Parameter& pj,
     return enuclr + gaussian;
 }
 
-std::array<double, 3> atom_xyz(const cpu::Frame& frame, int atom) {
-    return {static_cast<double>(frame.atoms.x[atom]),
-            static_cast<double>(frame.atoms.y[atom]),
-            static_cast<double>(frame.atoms.z[atom])};
+std::array<double, 3> atom_xyz(const StorageReal* sp_x, const StorageReal* sp_y,
+                               const StorageReal* sp_z, int atom) {
+    return {static_cast<double>(sp_x[atom]), static_cast<double>(sp_y[atom]),
+            static_cast<double>(sp_z[atom])};
 }
 
 double distance(const std::array<double, 3>& a,
@@ -353,6 +354,10 @@ NDDOHCoreResult NDDOHCoreBuilder::build(const NDDOSystem& system,
     auto result = build_one_center(system);
     result.includes_two_center_terms = true;
 
+    const StorageReal* __restrict sp_x = frame.span(kAtom_x);
+    const StorageReal* __restrict sp_y = frame.span(kAtom_y);
+    const StorageReal* __restrict sp_z = frame.span(kAtom_z);
+
     for (std::size_t i = 0; i < system.atoms.size(); ++i) {
         const auto& atom_i = system.atoms[i];
         if (atom_i.n_orbitals > 4) {
@@ -364,7 +369,7 @@ NDDOHCoreResult NDDOHCoreBuilder::build(const NDDOSystem& system,
             throw std::runtime_error(
                 "AM1 parameters unavailable for Hcore atom");
         }
-        const auto xi = atom_xyz(frame, static_cast<int>(i));
+        const auto xi = atom_xyz(sp_x, sp_y, sp_z, static_cast<int>(i));
         for (std::size_t j = 0; j < i; ++j) {
             const auto& atom_j = system.atoms[j];
             if (atom_j.n_orbitals > 4) {
@@ -377,7 +382,7 @@ NDDOHCoreResult NDDOHCoreBuilder::build(const NDDOSystem& system,
                 throw std::runtime_error(
                     "AM1 parameters unavailable for Hcore atom");
             }
-            const auto xj = atom_xyz(frame, static_cast<int>(j));
+            const auto xj = atom_xyz(sp_x, sp_y, sp_z, static_cast<int>(j));
             const double rij = distance(xi, xj);
             if (rij < 1.0e-12) {
                 continue;

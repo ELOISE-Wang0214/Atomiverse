@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "atomiverse/core/constants.h"
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/scf/basis_data/def2_svp.h"
 #include "atomiverse/cpu/scf/basis_data/def2_tzvp.h"
 #include "atomiverse/cpu/scf/basis_data/pople_631g.h"
@@ -70,18 +71,19 @@ AtomList make_atom_list(const Frame& frame, int charge) {
     AtomList out;
     out.atoms.resize(natm);
     int n_electrons = -charge;
+    const int* __restrict sp_type = frame.span(kAtom_type);
+    const StorageReal* __restrict sp_x = frame.span(kAtom_x);
+    const StorageReal* __restrict sp_y = frame.span(kAtom_y);
+    const StorageReal* __restrict sp_z = frame.span(kAtom_z);
     for (int i = 0; i < natm; ++i) {
-        const int Z = static_cast<int>(frame.atoms.type[i]);
+        const int Z = sp_type[i];
         out.atoms[i].Z = Z;
         // Frame positions are in Angstrom; SCF integrals live in Bohr.
         using units::convert;
         using units::Length;
-        out.atoms[i].pos[0] =
-            convert(frame.atoms.x[i], Length::Angstrom, Length::Bohr);
-        out.atoms[i].pos[1] =
-            convert(frame.atoms.y[i], Length::Angstrom, Length::Bohr);
-        out.atoms[i].pos[2] =
-            convert(frame.atoms.z[i], Length::Angstrom, Length::Bohr);
+        out.atoms[i].pos[0] = convert(sp_x[i], Length::Angstrom, Length::Bohr);
+        out.atoms[i].pos[1] = convert(sp_y[i], Length::Angstrom, Length::Bohr);
+        out.atoms[i].pos[2] = convert(sp_z[i], Length::Angstrom, Length::Bohr);
         n_electrons += Z;
     }
     out.n_electrons = n_electrons;

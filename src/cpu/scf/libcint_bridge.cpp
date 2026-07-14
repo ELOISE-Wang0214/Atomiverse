@@ -10,6 +10,7 @@ extern "C" {
 }
 
 #include "atomiverse/core/constants.h"
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/gto.h"
 #include "atomiverse/cpu/scf/basis_data/sto3g.h"
 
@@ -96,15 +97,17 @@ LibcintContext build_libcint_context(const Frame& frame) {
     ctx.atm.resize(ctx.natm * ATM_SLOTS, 0);
     ctx.env.resize(PTR_ENV_START, 0.0);
 
+    const int* __restrict sp_type = frame.span(kAtom_type);
+    const StorageReal* __restrict sp_x = frame.span(kAtom_x);
+    const StorageReal* __restrict sp_y = frame.span(kAtom_y);
+    const StorageReal* __restrict sp_z = frame.span(kAtom_z);
+
     for (int a = 0; a < ctx.natm; ++a) {
-        const int Z = static_cast<int>(frame.atoms.type[a]);
+        const int Z = sp_type[a];
         const int coord_ptr = static_cast<int>(ctx.env.size());
-        ctx.env.push_back(static_cast<double>(frame.atoms.x[a])
-                          * kAngstromToBohr);
-        ctx.env.push_back(static_cast<double>(frame.atoms.y[a])
-                          * kAngstromToBohr);
-        ctx.env.push_back(static_cast<double>(frame.atoms.z[a])
-                          * kAngstromToBohr);
+        ctx.env.push_back(static_cast<double>(sp_x[a]) * kAngstromToBohr);
+        ctx.env.push_back(static_cast<double>(sp_y[a]) * kAngstromToBohr);
+        ctx.env.push_back(static_cast<double>(sp_z[a]) * kAngstromToBohr);
 
         ctx.atm[a * ATM_SLOTS + CHARGE_OF] = Z;
         ctx.atm[a * ATM_SLOTS + PTR_COORD] = coord_ptr;

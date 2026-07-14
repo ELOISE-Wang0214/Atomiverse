@@ -55,6 +55,16 @@ void StillingerWeber::launch(const cpu::LaunchContext& ctx) {
     const double cos0 = pot_.cos_theta0();
     const double le = pot_.lambda_eps();
 
+    // Resolve every schema column ONCE at the launch boundary; the triple
+    // loop below (owners x neighbors x neighbors) touches nothing but these
+    // raw pointers.
+    const StorageReal* __restrict x_ptr = f.span(kAtom_x);
+    const StorageReal* __restrict y_ptr = f.span(kAtom_y);
+    const StorageReal* __restrict z_ptr = f.span(kAtom_z);
+    AccReal* __restrict fx_ptr = f.span(kAtom_fx);
+    AccReal* __restrict fy_ptr = f.span(kAtom_fy);
+    AccReal* __restrict fz_ptr = f.span(kAtom_fz);
+
     double e_total = 0.0;
     double v[6] = {0, 0, 0, 0, 0, 0};
 
@@ -73,9 +83,9 @@ void StillingerWeber::launch(const cpu::LaunchContext& ctx) {
         // halved and the force is not: this visit writes only atom i.
         for (int jj = 0; jj < nn; ++jj) {
             const int j = pl->neighbors[off + jj];
-            double dx = f.atoms.x[i] - f.atoms.x[j];
-            double dy = f.atoms.y[i] - f.atoms.y[j];
-            double dz = f.atoms.z[i] - f.atoms.z[j];
+            double dx = x_ptr[i] - x_ptr[j];
+            double dy = y_ptr[i] - y_ptr[j];
+            double dz = z_ptr[i] - z_ptr[j];
             f.box.min_image(dx, dy, dz);
             const double r2 = dx * dx + dy * dy + dz * dz;
             if (r2 >= rc2) continue;
@@ -84,9 +94,9 @@ void StillingerWeber::launch(const cpu::LaunchContext& ctx) {
             e_total += 0.5 * pot_.phi2(r);
             const double fpair = -pot_.dphi2(r) / r;
 
-            f.atoms.fx[i] += fpair * dx;
-            f.atoms.fy[i] += fpair * dy;
-            f.atoms.fz[i] += fpair * dz;
+            fx_ptr[i] += fpair * dx;
+            fy_ptr[i] += fpair * dy;
+            fz_ptr[i] += fpair * dz;
 
             v[0] += 0.5 * dx * fpair * dx;
             v[1] += 0.5 * dy * fpair * dy;
@@ -107,9 +117,9 @@ void StillingerWeber::launch(const cpu::LaunchContext& ctx) {
         // and r2 alone can express it.
         for (int jj = 0; jj < nn; ++jj) {
             const int j = pl->neighbors[off + jj];
-            double ax = f.atoms.x[i] - f.atoms.x[j];
-            double ay = f.atoms.y[i] - f.atoms.y[j];
-            double az = f.atoms.z[i] - f.atoms.z[j];
+            double ax = x_ptr[i] - x_ptr[j];
+            double ay = y_ptr[i] - y_ptr[j];
+            double az = z_ptr[i] - z_ptr[j];
             f.box.min_image(ax, ay, az);
             const double r1sq = ax * ax + ay * ay + az * az;
             if (r1sq >= rc2) continue;
@@ -117,9 +127,9 @@ void StillingerWeber::launch(const cpu::LaunchContext& ctx) {
 
             for (int kk = jj + 1; kk < nn; ++kk) {
                 const int k = pl->neighbors[off + kk];
-                double bx = f.atoms.x[i] - f.atoms.x[k];
-                double by = f.atoms.y[i] - f.atoms.y[k];
-                double bz = f.atoms.z[i] - f.atoms.z[k];
+                double bx = x_ptr[i] - x_ptr[k];
+                double by = y_ptr[i] - y_ptr[k];
+                double bz = z_ptr[i] - z_ptr[k];
                 f.box.min_image(bx, by, bz);
                 const double r2sq = bx * bx + by * by + bz * bz;
                 if (r2sq >= rc2) continue;
@@ -162,15 +172,15 @@ void StillingerWeber::launch(const cpu::LaunchContext& ctx) {
                 // Translation invariance fixes the vertex force — it is not an
                 // independent derivative, and computing it as one would be a
                 // second chance to get a sign wrong.
-                f.atoms.fx[j] += fjx;
-                f.atoms.fy[j] += fjy;
-                f.atoms.fz[j] += fjz;
-                f.atoms.fx[k] += fkx;
-                f.atoms.fy[k] += fky;
-                f.atoms.fz[k] += fkz;
-                f.atoms.fx[i] -= fjx + fkx;
-                f.atoms.fy[i] -= fjy + fky;
-                f.atoms.fz[i] -= fjz + fkz;
+                fx_ptr[j] += fjx;
+                fy_ptr[j] += fjy;
+                fz_ptr[j] += fjz;
+                fx_ptr[k] += fkx;
+                fy_ptr[k] += fky;
+                fz_ptr[k] += fkz;
+                fx_ptr[i] -= fjx + fkx;
+                fy_ptr[i] -= fjy + fky;
+                fz_ptr[i] -= fjz + fkz;
 
                 // Virial of a three-body term, decomposed onto its two legs
                 // (LAMMPS `ThreeBody::threebody` convention): with

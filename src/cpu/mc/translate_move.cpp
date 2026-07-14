@@ -6,6 +6,7 @@
 #include <random>
 #include <stdexcept>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/precision.h"
 #include "atomiverse/cpu/mc/transaction.h"
 
@@ -35,6 +36,12 @@ void TranslateMove::launch(const cpu::LaunchContext& ctx) {
             "published — TranslateMove must run under cpu::mc::MC");
     }
 
+    // Hoisted once at the launch boundary (the 13.7x rule) -- dominates both
+    // the read below and the wrapped write-back.
+    StorageReal* __restrict sp_x = ctx.frame.span(kAtom_x);
+    StorageReal* __restrict sp_y = ctx.frame.span(kAtom_y);
+    StorageReal* __restrict sp_z = ctx.frame.span(kAtom_z);
+
     const int n = ctx.frame.atoms.nlocal;
     std::uniform_int_distribution<int> pick(0, n - 1);
     std::uniform_real_distribution<double> disp(-delta_, delta_);
@@ -44,9 +51,9 @@ void TranslateMove::launch(const cpu::LaunchContext& ctx) {
     txn->begin(Transaction::Verb::Displace, ctx.frame);
     txn->record_touch(ctx.frame, i);
 
-    double nx = static_cast<double>(ctx.frame.atoms.x[i]) + disp(*rng);
-    double ny = static_cast<double>(ctx.frame.atoms.y[i]) + disp(*rng);
-    double nz = static_cast<double>(ctx.frame.atoms.z[i]) + disp(*rng);
+    double nx = static_cast<double>(sp_x[i]) + disp(*rng);
+    double ny = static_cast<double>(sp_y[i]) + disp(*rng);
+    double nz = static_cast<double>(sp_z[i]) + disp(*rng);
 
     // Wrap the displaced atom back into the primary cell so coordinates stay
     // bounded over long runs — the COM otherwise random-walks off to infinity
@@ -56,9 +63,9 @@ void TranslateMove::launch(const cpu::LaunchContext& ctx) {
     // degenerate (zero-length) box is left as-is (wrap_axis is a no-op).
     ctx.frame.box.wrap_into(nx, ny, nz);
 
-    ctx.frame.atoms.x[i] = static_cast<StorageReal>(nx);
-    ctx.frame.atoms.y[i] = static_cast<StorageReal>(ny);
-    ctx.frame.atoms.z[i] = static_cast<StorageReal>(nz);
+    sp_x[i] = static_cast<StorageReal>(nx);
+    sp_y[i] = static_cast<StorageReal>(ny);
+    sp_z[i] = static_cast<StorageReal>(nz);
 }
 
 } // namespace mc

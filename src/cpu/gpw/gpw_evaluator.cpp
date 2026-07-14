@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <stdexcept>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/gpw/internal/gpw_forces.h"
 
@@ -31,15 +32,18 @@ namespace {
 /// Assemble the GpwAtom set at the frame's current geometry (Å → Bohr).
 std::vector<GpwAtom> assemble_atoms(const cpu::Frame& frame,
                                     const GpwEvaluatorConfig& config) {
-    const auto& a = frame.atoms;
-    const int n = a.size();
+    const int n = frame.atoms.size();
+    const int* __restrict sp_type = frame.span(kAtom_type);
+    const StorageReal* __restrict sp_x = frame.span(kAtom_x);
+    const StorageReal* __restrict sp_y = frame.span(kAtom_y);
+    const StorageReal* __restrict sp_z = frame.span(kAtom_z);
     std::vector<GpwAtom> atoms;
     atoms.reserve(static_cast<std::size_t>(n));
     for (int i = 0; i < n; ++i) {
-        const Kind& k = find_kind(config.kinds, a.type(i));
-        const double pos[3] = {a.x(i) * kAng2Bohr, a.y(i) * kAng2Bohr,
-                               a.z(i) * kAng2Bohr};
-        atoms.push_back(GpwAtom(pos, k.basis, k.pot, a.type(i)));
+        const Kind& k = find_kind(config.kinds, sp_type[i]);
+        const double pos[3] = {sp_x[i] * kAng2Bohr, sp_y[i] * kAng2Bohr,
+                               sp_z[i] * kAng2Bohr};
+        atoms.push_back(GpwAtom(pos, k.basis, k.pot, sp_type[i]));
     }
     return atoms;
 }
@@ -48,11 +52,12 @@ std::vector<GpwAtom> assemble_atoms(const cpu::Frame& frame,
 void GPWEvaluator::build(const cpu::BuildContext& ctx) {
     // Validate that every atom in the frame has a configured element, and
     // count valence electrons for the closed-shell occupation.
-    const auto& a = ctx.frame.atoms;
+    const int n_build = ctx.frame.atoms.size();
+    const int* __restrict sp_type_build = ctx.frame.span(kAtom_type);
     double z_val_total = 0.0;
-    for (int i = 0; i < a.size(); ++i)
+    for (int i = 0; i < n_build; ++i)
         z_val_total += static_cast<double>(
-            find_kind(config_.kinds, a.type(i)).pot.zion);
+            find_kind(config_.kinds, sp_type_build[i]).pot.zion);
 
     // Assemble the solver configuration from the build-time frame. The
     // ATV_GPW_OT diagnostic switch is read once here — re-reading an
@@ -104,13 +109,13 @@ void GPWEvaluator::launch(const cpu::LaunchContext& ctx) {
     if (config_.compute_forces) {
         const auto F = gpw_forces_analytic(atoms, solver_->config());
         // [Hartree/Bohr]; one SCF + gradient (was 6N+1 FD)
+        AccReal* __restrict sp_fx = frame.span(kAtom_fx);
+        AccReal* __restrict sp_fy = frame.span(kAtom_fy);
+        AccReal* __restrict sp_fz = frame.span(kAtom_fz);
         for (int i = 0; i < n; ++i) {
-            frame.atoms.fx(i) =
-                F[static_cast<std::size_t>(i)][0] * ATV::kForceAU2Metal;
-            frame.atoms.fy(i) =
-                F[static_cast<std::size_t>(i)][1] * ATV::kForceAU2Metal;
-            frame.atoms.fz(i) =
-                F[static_cast<std::size_t>(i)][2] * ATV::kForceAU2Metal;
+            sp_fx[i] = F[static_cast<std::size_t>(i)][0] * ATV::kForceAU2Metal;
+            sp_fy[i] = F[static_cast<std::size_t>(i)][1] * ATV::kForceAU2Metal;
+            sp_fz[i] = F[static_cast<std::size_t>(i)][2] * ATV::kForceAU2Metal;
         }
     }
 }

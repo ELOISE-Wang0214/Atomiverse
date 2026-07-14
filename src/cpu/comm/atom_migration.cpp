@@ -162,10 +162,11 @@ void exchange_along_dim(Frame& frame, md::mpi::DomainDecomposition* dd, int dim,
 
     std::vector<char> send_lo, send_hi, recv_lo, recv_hi;
     while (true) {
-        // Re-fetch each round: set_capacity below may have reallocated the SoA.
-        const auto* q = (dim == 0)   ? frame.atoms.x.data()
-                        : (dim == 1) ? frame.atoms.y.data()
-                                     : frame.atoms.z.data();
+        // Re-fetch each round: set_capacity below may have reallocated the SoA,
+        // invalidating any span resolved in a previous round.
+        const StorageReal* __restrict q = (dim == 0)   ? frame.span(kAtom_x)
+                                          : (dim == 1) ? frame.span(kAtom_y)
+                                                       : frame.span(kAtom_z);
         send_lo.clear();
         send_hi.clear();
         int keep = 0;
@@ -269,12 +270,16 @@ void Migrate::launch(const cpu::LaunchContext& ctx) {
     // skip the exchange entirely (cheap 1-int LOR Allreduce). dest_rank_for
     // wraps defensively, matching the per-dim [sublo,subhi) classification.
     int any_local = 0;
-    for (int i = 0; i < dd->n_local; ++i) {
-        if (dest_rank_for(*dd, frame.atoms.x[i], frame.atoms.y[i],
-                          frame.atoms.z[i], frame.box)
-            != my_rank) {
-            any_local = 1;
-            break;
+    {
+        const StorageReal* __restrict sp_x = frame.span(kAtom_x);
+        const StorageReal* __restrict sp_y = frame.span(kAtom_y);
+        const StorageReal* __restrict sp_z = frame.span(kAtom_z);
+        for (int i = 0; i < dd->n_local; ++i) {
+            if (dest_rank_for(*dd, sp_x[i], sp_y[i], sp_z[i], frame.box)
+                != my_rank) {
+                any_local = 1;
+                break;
+            }
         }
     }
     int any_global = 0;
@@ -303,8 +308,9 @@ void Migrate::launch(const cpu::LaunchContext& ctx) {
     dd->tag_to_local.clear();
     if (frame.atoms.has_bonded()) {
         dd->tag_to_local.reserve(static_cast<std::size_t>(dd->n_local));
+        const TagInt* __restrict sp_tag = frame.span(kAtom_tag);
         for (int i = 0; i < dd->n_local; ++i) {
-            dd->tag_to_local.emplace(frame.atoms.tag[i], i);
+            dd->tag_to_local.emplace(sp_tag[i], i);
         }
     }
 
@@ -349,10 +355,14 @@ void scatter_atoms_from_root(cpu::Frame& frame) {
     // 3. Bucket every locally-held atom by owner (rank 0: all; others: none).
     const int n = frame.atoms.size();
     std::vector<std::vector<int>> by_dest(static_cast<std::size_t>(world_size));
-    for (int i = 0; i < n; ++i) {
-        const int dest = dest_rank_for(dd, frame.atoms.x[i], frame.atoms.y[i],
-                                       frame.atoms.z[i], frame.box);
-        by_dest[static_cast<std::size_t>(dest)].push_back(i);
+    {
+        const StorageReal* __restrict sp_x = frame.span(kAtom_x);
+        const StorageReal* __restrict sp_y = frame.span(kAtom_y);
+        const StorageReal* __restrict sp_z = frame.span(kAtom_z);
+        for (int i = 0; i < n; ++i) {
+            const int dest = dest_rank_for(dd, sp_x[i], sp_y[i], sp_z[i], frame.box);
+            by_dest[static_cast<std::size_t>(dest)].push_back(i);
+        }
     }
 
     // 4. Pack per destination (fixed stride) + Alltoallv. Counts/displacements

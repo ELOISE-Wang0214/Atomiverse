@@ -6,6 +6,7 @@
 #include <random>
 #include <stdexcept>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/precision.h"
 #include "atomiverse/cpu/mc/transaction.h"
 
@@ -41,35 +42,52 @@ void InsertDeleteMove::launch(const cpu::LaunchContext& ctx) {
         txn->begin(Transaction::Verb::Insert, ctx.frame);
         if (a.nlocal + 1 > a.nmax)
             a.grow(a.nlocal + 1);
+        // Resolved AFTER grow() -- grow() invalidates any span/pointer taken
+        // before it (cached `.data()` contract, cpu/frame/atom.h).
+        StorageReal* __restrict sp_x = ctx.frame.span(kAtom_x);
+        StorageReal* __restrict sp_y = ctx.frame.span(kAtom_y);
+        StorageReal* __restrict sp_z = ctx.frame.span(kAtom_z);
+        StorageReal* __restrict sp_vx = ctx.frame.span(kAtom_vx);
+        StorageReal* __restrict sp_vy = ctx.frame.span(kAtom_vy);
+        StorageReal* __restrict sp_vz = ctx.frame.span(kAtom_vz);
+        AccReal* __restrict sp_fx = ctx.frame.span(kAtom_fx);
+        AccReal* __restrict sp_fy = ctx.frame.span(kAtom_fy);
+        AccReal* __restrict sp_fz = ctx.frame.span(kAtom_fz);
+        StorageReal* __restrict sp_charge = ctx.frame.span(kAtom_charge);
+        Span<std::int8_t> sp_image = ctx.frame.span(kAtom_image);
+        StorageReal* __restrict sp_mass = ctx.frame.span(kAtom_mass);
+        int* __restrict sp_type = ctx.frame.span(kAtom_type);
+        TagInt* __restrict sp_tag = ctx.frame.span(kAtom_tag);
+
         const int slot = a.nlocal;
         const double u0 = u01(*rng), u1 = u01(*rng), u2 = u01(*rng);
         const auto& c = ctx.frame.box.cell();
-        a.x[slot] = static_cast<StorageReal>(u0 * c(0, 0) + u1 * c(1, 0)
-                                             + u2 * c(2, 0));
-        a.y[slot] = static_cast<StorageReal>(u0 * c(0, 1) + u1 * c(1, 1)
-                                             + u2 * c(2, 1));
-        a.z[slot] = static_cast<StorageReal>(u0 * c(0, 2) + u1 * c(1, 2)
-                                             + u2 * c(2, 2));
+        sp_x[slot] = static_cast<StorageReal>(u0 * c(0, 0) + u1 * c(1, 0)
+                                              + u2 * c(2, 0));
+        sp_y[slot] = static_cast<StorageReal>(u0 * c(0, 1) + u1 * c(1, 1)
+                                              + u2 * c(2, 1));
+        sp_z[slot] = static_cast<StorageReal>(u0 * c(0, 2) + u1 * c(1, 2)
+                                              + u2 * c(2, 2));
         // Zero everything else — this slot may hold a stale deleted row.
-        a.vx[slot] = 0;
-        a.vy[slot] = 0;
-        a.vz[slot] = 0;
-        a.fx[slot] = 0;
-        a.fy[slot] = 0;
-        a.fz[slot] = 0;
-        a.charge[slot] = 0;
-        a.image(slot, 0) = 0;
-        a.image(slot, 1) = 0;
-        a.image(slot, 2) = 0;
+        sp_vx[slot] = 0;
+        sp_vy[slot] = 0;
+        sp_vz[slot] = 0;
+        sp_fx[slot] = 0;
+        sp_fy[slot] = 0;
+        sp_fz[slot] = 0;
+        sp_charge[slot] = 0;
+        sp_image(slot, 0) = 0;
+        sp_image(slot, 1) = 0;
+        sp_image(slot, 2) = 0;
         a.num_bond[slot] = 0;
         a.num_angle[slot] = 0;
         a.num_dihedral[slot] = 0;
         a.nspecial(slot, 0) = 0;
         a.nspecial(slot, 1) = 0;
         a.nspecial(slot, 2) = 0;
-        a.mass[slot] = static_cast<StorageReal>(mass_amu_);
-        a.type[slot] = type_;
-        a.tag[slot] = a.acquire_tag();
+        sp_mass[slot] = static_cast<StorageReal>(mass_amu_);
+        sp_type[slot] = type_;
+        sp_tag[slot] = a.acquire_tag();
         ++a.nlocal;
     } else {
         // ── Delete a uniformly chosen atom ──────────────────────────────

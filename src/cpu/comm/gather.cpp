@@ -31,20 +31,34 @@ namespace {
 void copy_owners_into(GatheredFrame& out, const Frame& frame, int n_local) {
     out.n_total = n_local;
     out.box = frame.box.cell();
-    out.x.assign(frame.atoms.x.data(), frame.atoms.x.data() + n_local);
-    out.y.assign(frame.atoms.y.data(), frame.atoms.y.data() + n_local);
-    out.z.assign(frame.atoms.z.data(), frame.atoms.z.data() + n_local);
-    out.vx.assign(frame.atoms.vx.data(), frame.atoms.vx.data() + n_local);
-    out.vy.assign(frame.atoms.vy.data(), frame.atoms.vy.data() + n_local);
-    out.vz.assign(frame.atoms.vz.data(), frame.atoms.vz.data() + n_local);
-    out.fx.assign(frame.atoms.fx.data(), frame.atoms.fx.data() + n_local);
-    out.fy.assign(frame.atoms.fy.data(), frame.atoms.fy.data() + n_local);
-    out.fz.assign(frame.atoms.fz.data(), frame.atoms.fz.data() + n_local);
-    out.mass.assign(frame.atoms.mass.data(), frame.atoms.mass.data() + n_local);
-    out.type.assign(frame.atoms.type.data(), frame.atoms.type.data() + n_local);
-    out.tag.assign(frame.atoms.tag.data(), frame.atoms.tag.data() + n_local);
-    out.image.assign(frame.atoms.image.data(),
-                     frame.atoms.image.data() + 3 * n_local);
+    // Hoisted once at this launch-boundary function's entry (single-rank
+    // fallback path — no loop over atoms here, one assign() per field).
+    const StorageReal* __restrict sp_x = frame.span(kAtom_x);
+    const StorageReal* __restrict sp_y = frame.span(kAtom_y);
+    const StorageReal* __restrict sp_z = frame.span(kAtom_z);
+    const StorageReal* __restrict sp_vx = frame.span(kAtom_vx);
+    const StorageReal* __restrict sp_vy = frame.span(kAtom_vy);
+    const StorageReal* __restrict sp_vz = frame.span(kAtom_vz);
+    const AccReal* __restrict sp_fx = frame.span(kAtom_fx);
+    const AccReal* __restrict sp_fy = frame.span(kAtom_fy);
+    const AccReal* __restrict sp_fz = frame.span(kAtom_fz);
+    const StorageReal* __restrict sp_mass = frame.span(kAtom_mass);
+    const int* __restrict sp_type = frame.span(kAtom_type);
+    const TagInt* __restrict sp_tag = frame.span(kAtom_tag);
+    const std::int8_t* __restrict sp_image = frame.span(kAtom_image);
+    out.x.assign(sp_x, sp_x + n_local);
+    out.y.assign(sp_y, sp_y + n_local);
+    out.z.assign(sp_z, sp_z + n_local);
+    out.vx.assign(sp_vx, sp_vx + n_local);
+    out.vy.assign(sp_vy, sp_vy + n_local);
+    out.vz.assign(sp_vz, sp_vz + n_local);
+    out.fx.assign(sp_fx, sp_fx + n_local);
+    out.fy.assign(sp_fy, sp_fy + n_local);
+    out.fz.assign(sp_fz, sp_fz + n_local);
+    out.mass.assign(sp_mass, sp_mass + n_local);
+    out.type.assign(sp_type, sp_type + n_local);
+    out.tag.assign(sp_tag, sp_tag + n_local);
+    out.image.assign(sp_image, sp_image + 3 * n_local);
 }
 
 // Reorder all per-atom fields in `g` so that `g.tag` is ascending. Stable so
@@ -181,34 +195,40 @@ GatheredFrame gather_to_root(const cpu::Frame& frame,
                     dd.cart_comm);
     };
 
-    gather_double(frame.atoms.x.data(),
-                  my_rank == root ? out.x.data() : nullptr);
-    gather_double(frame.atoms.y.data(),
-                  my_rank == root ? out.y.data() : nullptr);
-    gather_double(frame.atoms.z.data(),
-                  my_rank == root ? out.z.data() : nullptr);
-    gather_double(frame.atoms.vx.data(),
-                  my_rank == root ? out.vx.data() : nullptr);
-    gather_double(frame.atoms.vy.data(),
-                  my_rank == root ? out.vy.data() : nullptr);
-    gather_double(frame.atoms.vz.data(),
-                  my_rank == root ? out.vz.data() : nullptr);
-    gather_double(frame.atoms.fx.data(),
-                  my_rank == root ? out.fx.data() : nullptr);
-    gather_double(frame.atoms.fy.data(),
-                  my_rank == root ? out.fy.data() : nullptr);
-    gather_double(frame.atoms.fz.data(),
-                  my_rank == root ? out.fz.data() : nullptr);
-    gather_double(frame.atoms.mass.data(),
-                  my_rank == root ? out.mass.data() : nullptr);
+    // Hoisted once at the launch boundary; every gather call below reads
+    // through these instead of re-resolving per field.
+    const StorageReal* __restrict sp_x = frame.span(kAtom_x);
+    const StorageReal* __restrict sp_y = frame.span(kAtom_y);
+    const StorageReal* __restrict sp_z = frame.span(kAtom_z);
+    const StorageReal* __restrict sp_vx = frame.span(kAtom_vx);
+    const StorageReal* __restrict sp_vy = frame.span(kAtom_vy);
+    const StorageReal* __restrict sp_vz = frame.span(kAtom_vz);
+    const AccReal* __restrict sp_fx = frame.span(kAtom_fx);
+    const AccReal* __restrict sp_fy = frame.span(kAtom_fy);
+    const AccReal* __restrict sp_fz = frame.span(kAtom_fz);
+    const StorageReal* __restrict sp_mass = frame.span(kAtom_mass);
+    const int* __restrict sp_type = frame.span(kAtom_type);
+    const TagInt* __restrict sp_tag = frame.span(kAtom_tag);
+    const std::int8_t* __restrict sp_image = frame.span(kAtom_image);
 
-    MPI_Gatherv(frame.atoms.type.data(), n_local, MPI_INT,
+    gather_double(sp_x, my_rank == root ? out.x.data() : nullptr);
+    gather_double(sp_y, my_rank == root ? out.y.data() : nullptr);
+    gather_double(sp_z, my_rank == root ? out.z.data() : nullptr);
+    gather_double(sp_vx, my_rank == root ? out.vx.data() : nullptr);
+    gather_double(sp_vy, my_rank == root ? out.vy.data() : nullptr);
+    gather_double(sp_vz, my_rank == root ? out.vz.data() : nullptr);
+    gather_double(sp_fx, my_rank == root ? out.fx.data() : nullptr);
+    gather_double(sp_fy, my_rank == root ? out.fy.data() : nullptr);
+    gather_double(sp_fz, my_rank == root ? out.fz.data() : nullptr);
+    gather_double(sp_mass, my_rank == root ? out.mass.data() : nullptr);
+
+    MPI_Gatherv(sp_type, n_local, MPI_INT,
                 my_rank == root ? out.type.data() : nullptr,
                 my_rank == root ? recv_counts.data() : nullptr,
                 my_rank == root ? displs.data() : nullptr, MPI_INT, root,
                 dd.cart_comm);
 
-    MPI_Gatherv(frame.atoms.tag.data(), n_local, MPI_INT64_T,
+    MPI_Gatherv(sp_tag, n_local, MPI_INT64_T,
                 my_rank == root ? out.tag.data() : nullptr,
                 my_rank == root ? recv_counts.data() : nullptr,
                 my_rank == root ? displs.data() : nullptr, MPI_INT64_T, root,
@@ -227,7 +247,7 @@ GatheredFrame gather_to_root(const cpu::Frame& frame,
                 3 * displs[static_cast<std::size_t>(r)];
         }
     }
-    MPI_Gatherv(frame.atoms.image.data(), 3 * n_local, MPI_INT8_T,
+    MPI_Gatherv(sp_image, 3 * n_local, MPI_INT8_T,
                 my_rank == root ? out.image.data() : nullptr,
                 my_rank == root ? img_counts.data() : nullptr,
                 my_rank == root ? img_displs.data() : nullptr, MPI_INT8_T, root,
@@ -255,19 +275,33 @@ cpu::Frame to_frame(const GatheredFrame& g) {
     const int n = static_cast<int>(g.x.size());
     cpu::Frame f(n);
     f.box.set_cell(g.box);
+    // Hoisted after `f`'s construction (dominates the loop below), never
+    // before -- f is constructed here, not passed in.
+    StorageReal* __restrict sp_x = f.span(kAtom_x);
+    StorageReal* __restrict sp_y = f.span(kAtom_y);
+    StorageReal* __restrict sp_z = f.span(kAtom_z);
+    StorageReal* __restrict sp_vx = f.span(kAtom_vx);
+    StorageReal* __restrict sp_vy = f.span(kAtom_vy);
+    StorageReal* __restrict sp_vz = f.span(kAtom_vz);
+    AccReal* __restrict sp_fx = f.span(kAtom_fx);
+    AccReal* __restrict sp_fy = f.span(kAtom_fy);
+    AccReal* __restrict sp_fz = f.span(kAtom_fz);
+    StorageReal* __restrict sp_mass = f.span(kAtom_mass);
+    int* __restrict sp_type = f.span(kAtom_type);
+    TagInt* __restrict sp_tag = f.span(kAtom_tag);
     for (int i = 0; i < n; ++i) {
-        f.atoms.x[i] = g.x[i];
-        f.atoms.y[i] = g.y[i];
-        f.atoms.z[i] = g.z[i];
-        f.atoms.vx[i] = g.vx[i];
-        f.atoms.vy[i] = g.vy[i];
-        f.atoms.vz[i] = g.vz[i];
-        f.atoms.fx[i] = g.fx[i];
-        f.atoms.fy[i] = g.fy[i];
-        f.atoms.fz[i] = g.fz[i];
-        f.atoms.mass[i] = g.mass[i];
-        f.atoms.type[i] = g.type[i];
-        f.atoms.tag[i] = g.tag[i];
+        sp_x[i] = static_cast<StorageReal>(g.x[i]);
+        sp_y[i] = static_cast<StorageReal>(g.y[i]);
+        sp_z[i] = static_cast<StorageReal>(g.z[i]);
+        sp_vx[i] = static_cast<StorageReal>(g.vx[i]);
+        sp_vy[i] = static_cast<StorageReal>(g.vy[i]);
+        sp_vz[i] = static_cast<StorageReal>(g.vz[i]);
+        sp_fx[i] = static_cast<AccReal>(g.fx[i]);
+        sp_fy[i] = static_cast<AccReal>(g.fy[i]);
+        sp_fz[i] = static_cast<AccReal>(g.fz[i]);
+        sp_mass[i] = static_cast<StorageReal>(g.mass[i]);
+        sp_type[i] = g.type[i];
+        sp_tag[i] = static_cast<TagInt>(g.tag[i]);
     }
     return f;
 }

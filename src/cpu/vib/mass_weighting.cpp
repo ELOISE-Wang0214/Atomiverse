@@ -6,6 +6,7 @@
 
 #include <cmath>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/vib/atomic_masses.h"
 #include "atomiverse/cpu/vib/nist_constants.h"
 
@@ -21,8 +22,10 @@ void MassWeighting::launch(const cpu::LaunchContext& ctx) {
 
     // Fetch IUPAC-2013 atomic masses from each atom's atomic number.
     // mass_amu() throws on an unsupported element (no fallback).
+    // Hoisted once before the loop -- the 13.7x rule.
+    const int* __restrict sp_type = ctx.frame.span(kAtom_type);
     for (int i = 0; i < n; ++i)
-        ws_->mass_amu[i] = vib::mass_amu(ctx.frame.atoms.type(i));
+        ws_->mass_amu[i] = vib::mass_amu(sp_type[i]);
 
     // Per-atom inverse-sqrt mass (PySCF's `mass**-.5`).
     std::vector<double> inv_sqrt_m(n);

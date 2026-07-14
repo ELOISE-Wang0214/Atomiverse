@@ -3,6 +3,7 @@
 
 #include "atomiverse/cpu/md/nose_hoover.h"
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/component/owned_range.h"
@@ -112,6 +113,13 @@ void NoseHoover::launch(const cpu::LaunchContext& ctx) {
     if (ctx.at(ATV::md::Phase::initial_integrate)
         || ctx.at(ATV::md::Phase::final_integrate)) {
 
+        // Hoisted once for both loops in this branch -- the
+        // launch-boundary rule.
+        const StorageReal* __restrict sp_mass = f.span(kAtom_mass);
+        StorageReal* __restrict sp_vx = f.span(kAtom_vx);
+        StorageReal* __restrict sp_vy = f.span(kAtom_vy);
+        StorageReal* __restrict sp_vz = f.span(kAtom_vz);
+
         // Live thermostat setpoint for this step (Tstart→Tstop ramp).
         // `Q_` is retuned to the live temperature so the coupling
         // frequency `ω = 1/tau_T` stays constant across the ramp,
@@ -124,10 +132,10 @@ void NoseHoover::launch(const cpu::LaunchContext& ctx) {
         double ke_local = 0;
 #pragma omp parallel for schedule(static) reduction(+ : ke_local)
         for (int i = 0; i < n; ++i) {
-            double v2 = f.atoms.vx[i] * f.atoms.vx[i]
-                        + f.atoms.vy[i] * f.atoms.vy[i]
-                        + f.atoms.vz[i] * f.atoms.vz[i];
-            ke_local += f.atoms.mass[i] * v2;
+            double v2 = sp_vx[i] * sp_vx[i]
+                        + sp_vy[i] * sp_vy[i]
+                        + sp_vz[i] * sp_vz[i];
+            ke_local += sp_mass[i] * v2;
         }
         ke_local *= double(0.5) * kMvv2e;
 
@@ -155,9 +163,9 @@ void NoseHoover::launch(const cpu::LaunchContext& ctx) {
         double scale = std::exp(-dt_ * double(0.5) * xi_);
 #pragma omp parallel for schedule(static)
         for (int i = 0; i < n; ++i) {
-            f.atoms.vx[i] *= scale;
-            f.atoms.vy[i] *= scale;
-            f.atoms.vz[i] *= scale;
+            sp_vx[i] *= scale;
+            sp_vy[i] *= scale;
+            sp_vz[i] *= scale;
         }
     }
 }

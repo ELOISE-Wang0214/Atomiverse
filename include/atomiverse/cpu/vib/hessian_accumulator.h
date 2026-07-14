@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/vib/hessian_workspace.h"
 #include "atomiverse/facade/component_role.h"
@@ -62,21 +63,26 @@ class HessianAccumulator : public cpu::ComponentBase {
         if (s >= 2 * dim)
             return; // finalize pass carries no force data.
 
+        // Hoisted once, dominating both mutually-exclusive branches below.
+        const AccReal* __restrict sp_fx = ctx.frame.span(kAtom_fx);
+        const AccReal* __restrict sp_fy = ctx.frame.span(kAtom_fy);
+        const AccReal* __restrict sp_fz = ctx.frame.span(kAtom_fz);
+
         if (s % 2 == 0) {
             // +h evaluation: snapshot the force vector for later pairing.
             for (int i = 0; i < n; ++i) {
-                ws_->f_plus[3 * i + 0] = ctx.frame.atoms.fx(i);
-                ws_->f_plus[3 * i + 1] = ctx.frame.atoms.fy(i);
-                ws_->f_plus[3 * i + 2] = ctx.frame.atoms.fz(i);
+                ws_->f_plus[3 * i + 0] = sp_fx[i];
+                ws_->f_plus[3 * i + 1] = sp_fy[i];
+                ws_->f_plus[3 * i + 2] = sp_fz[i];
             }
         } else {
             // -h evaluation: write Hessian row for coordinate c = s/2.
             const int coord = s / 2;
             const double inv_2h = 1.0 / (2.0 * kHessianStepAngstrom);
             for (int j = 0; j < n; ++j) {
-                const double fmx = ctx.frame.atoms.fx(j);
-                const double fmy = ctx.frame.atoms.fy(j);
-                const double fmz = ctx.frame.atoms.fz(j);
+                const double fmx = sp_fx[j];
+                const double fmy = sp_fy[j];
+                const double fmz = sp_fz[j];
                 ws_->hessian(coord, 3 * j + 0) =
                     -(ws_->f_plus[3 * j + 0] - fmx) * inv_2h;
                 ws_->hessian(coord, 3 * j + 1) =

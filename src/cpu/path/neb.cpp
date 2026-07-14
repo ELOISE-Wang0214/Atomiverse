@@ -7,6 +7,7 @@
 #include <cmath>
 #include <stdexcept>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/replica/replica_set.h"
 
 namespace ATV {
@@ -56,17 +57,38 @@ void NebCoupling::launch(const cpu::LaunchContext& ctx) {
     // Endpoints are the given reactant and product: frozen.
     for (const int e : {0, n_img - 1}) {
         auto& f = band.frame(e);
+        AccReal* __restrict sp_fx = f.span(kAtom_fx);
+        AccReal* __restrict sp_fy = f.span(kAtom_fy);
+        AccReal* __restrict sp_fz = f.span(kAtom_fz);
         for (int i = 0; i < n; ++i) {
-            f.atoms.fx(i) = 0.0;
-            f.atoms.fy(i) = 0.0;
-            f.atoms.fz(i) = 0.0;
+            sp_fx[i] = 0.0;
+            sp_fy[i] = 0.0;
+            sp_fz[i] = 0.0;
         }
     }
 
     for (int im = 1; im < n_img - 1; ++im) {
-        const auto& prev = band.frame(im - 1);
+        // Three DISTINCT frames this iteration — each gets its own uniquely-named
+        // span pointers below. Never share a pointer name across prev/cur/next: doing
+        // so would silently turn e.g. `next.x[i] - cur.x[i]` into `p[i] - p[i]` == 0.
+        auto& prev = band.frame(im - 1);
         auto& cur = band.frame(im);
-        const auto& next = band.frame(im + 1);
+        auto& next = band.frame(im + 1);
+
+        // Hoisted once per image iteration (this loop's launch boundary — the frame
+        // identity changes every iteration).
+        const StorageReal* __restrict prev_x = prev.span(kAtom_x);
+        const StorageReal* __restrict prev_y = prev.span(kAtom_y);
+        const StorageReal* __restrict prev_z = prev.span(kAtom_z);
+        const StorageReal* __restrict cur_x = cur.span(kAtom_x);
+        const StorageReal* __restrict cur_y = cur.span(kAtom_y);
+        const StorageReal* __restrict cur_z = cur.span(kAtom_z);
+        AccReal* __restrict cur_fx = cur.span(kAtom_fx);
+        AccReal* __restrict cur_fy = cur.span(kAtom_fy);
+        AccReal* __restrict cur_fz = cur.span(kAtom_fz);
+        const StorageReal* __restrict next_x = next.span(kAtom_x);
+        const StorageReal* __restrict next_y = next.span(kAtom_y);
+        const StorageReal* __restrict next_z = next.span(kAtom_z);
 
         const double v_prev = prev.scalars.energy;
         const double v_cur = cur.scalars.energy;
@@ -81,15 +103,15 @@ void NebCoupling::launch(const cpu::LaunchContext& ctx) {
         double norm = 0.0;
         if (v_next > v_cur && v_cur > v_prev) {
             for (int i = 0; i < n; ++i) {
-                tangent_[i * 3 + 0] = next.atoms.x[i] - cur.atoms.x[i];
-                tangent_[i * 3 + 1] = next.atoms.y[i] - cur.atoms.y[i];
-                tangent_[i * 3 + 2] = next.atoms.z[i] - cur.atoms.z[i];
+                tangent_[i * 3 + 0] = next_x[i] - cur_x[i];
+                tangent_[i * 3 + 1] = next_y[i] - cur_y[i];
+                tangent_[i * 3 + 2] = next_z[i] - cur_z[i];
             }
         } else if (v_next < v_cur && v_cur < v_prev) {
             for (int i = 0; i < n; ++i) {
-                tangent_[i * 3 + 0] = cur.atoms.x[i] - prev.atoms.x[i];
-                tangent_[i * 3 + 1] = cur.atoms.y[i] - prev.atoms.y[i];
-                tangent_[i * 3 + 2] = cur.atoms.z[i] - prev.atoms.z[i];
+                tangent_[i * 3 + 0] = cur_x[i] - prev_x[i];
+                tangent_[i * 3 + 1] = cur_y[i] - prev_y[i];
+                tangent_[i * 3 + 2] = cur_z[i] - prev_z[i];
             }
         } else {
             // At an extremum of the energy along the band, neither neighbour is
@@ -101,12 +123,12 @@ void NebCoupling::launch(const cpu::LaunchContext& ctx) {
             const double w_next = (v_next > v_prev) ? dv_max : dv_min;
             const double w_prev = (v_next > v_prev) ? dv_min : dv_max;
             for (int i = 0; i < n; ++i) {
-                tangent_[i * 3 + 0] = w_next * (next.atoms.x[i] - cur.atoms.x[i])
-                                      + w_prev * (cur.atoms.x[i] - prev.atoms.x[i]);
-                tangent_[i * 3 + 1] = w_next * (next.atoms.y[i] - cur.atoms.y[i])
-                                      + w_prev * (cur.atoms.y[i] - prev.atoms.y[i]);
-                tangent_[i * 3 + 2] = w_next * (next.atoms.z[i] - cur.atoms.z[i])
-                                      + w_prev * (cur.atoms.z[i] - prev.atoms.z[i]);
+                tangent_[i * 3 + 0] = w_next * (next_x[i] - cur_x[i])
+                                      + w_prev * (cur_x[i] - prev_x[i]);
+                tangent_[i * 3 + 1] = w_next * (next_y[i] - cur_y[i])
+                                      + w_prev * (cur_y[i] - prev_y[i]);
+                tangent_[i * 3 + 2] = w_next * (next_z[i] - cur_z[i])
+                                      + w_prev * (cur_z[i] - prev_z[i]);
             }
         }
         for (const double t : tangent_) norm += t * t;
@@ -117,9 +139,9 @@ void NebCoupling::launch(const cpu::LaunchContext& ctx) {
         // ── Project the true force ──────────────────────────────────────────────
         double f_dot_tau = 0.0;
         for (int i = 0; i < n; ++i) {
-            f_dot_tau += cur.atoms.fx(i) * tangent_[i * 3 + 0]
-                         + cur.atoms.fy(i) * tangent_[i * 3 + 1]
-                         + cur.atoms.fz(i) * tangent_[i * 3 + 2];
+            f_dot_tau += cur_fx[i] * tangent_[i * 3 + 0]
+                         + cur_fy[i] * tangent_[i * 3 + 1]
+                         + cur_fz[i] * tangent_[i * 3 + 2];
         }
 
         if (im == climb_idx_) {
@@ -127,9 +149,9 @@ void NebCoupling::launch(const cpu::LaunchContext& ctx) {
             // path uphill while relaxing perpendicular to it — converging ONTO the
             // saddle, which is the one point a plain band never reaches.
             for (int i = 0; i < n; ++i) {
-                cur.atoms.fx(i) -= 2.0 * f_dot_tau * tangent_[i * 3 + 0];
-                cur.atoms.fy(i) -= 2.0 * f_dot_tau * tangent_[i * 3 + 1];
-                cur.atoms.fz(i) -= 2.0 * f_dot_tau * tangent_[i * 3 + 2];
+                cur_fx[i] -= 2.0 * f_dot_tau * tangent_[i * 3 + 0];
+                cur_fy[i] -= 2.0 * f_dot_tau * tangent_[i * 3 + 1];
+                cur_fz[i] -= 2.0 * f_dot_tau * tangent_[i * 3 + 2];
             }
             continue;
         }
@@ -138,23 +160,23 @@ void NebCoupling::launch(const cpu::LaunchContext& ctx) {
         // perpendicular to it. This split is the "nudging" the method is named for.
         double d_next = 0.0, d_prev = 0.0;
         for (int i = 0; i < n; ++i) {
-            const double ax = next.atoms.x[i] - cur.atoms.x[i];
-            const double ay = next.atoms.y[i] - cur.atoms.y[i];
-            const double az = next.atoms.z[i] - cur.atoms.z[i];
+            const double ax = next_x[i] - cur_x[i];
+            const double ay = next_y[i] - cur_y[i];
+            const double az = next_z[i] - cur_z[i];
             d_next += ax * ax + ay * ay + az * az;
-            const double bx = cur.atoms.x[i] - prev.atoms.x[i];
-            const double by = cur.atoms.y[i] - prev.atoms.y[i];
-            const double bz = cur.atoms.z[i] - prev.atoms.z[i];
+            const double bx = cur_x[i] - prev_x[i];
+            const double by = cur_y[i] - prev_y[i];
+            const double bz = cur_z[i] - prev_z[i];
             d_prev += bx * bx + by * by + bz * bz;
         }
         const double f_spring = k_ * (std::sqrt(d_next) - std::sqrt(d_prev));
 
         for (int i = 0; i < n; ++i) {
-            cur.atoms.fx(i) +=
+            cur_fx[i] +=
                 (f_spring - f_dot_tau) * tangent_[i * 3 + 0];
-            cur.atoms.fy(i) +=
+            cur_fy[i] +=
                 (f_spring - f_dot_tau) * tangent_[i * 3 + 1];
-            cur.atoms.fz(i) +=
+            cur_fz[i] +=
                 (f_spring - f_dot_tau) * tangent_[i * 3 + 2];
         }
     }
@@ -208,22 +230,29 @@ void BandLBFGS::launch(const cpu::LaunchContext& ctx) {
     // ── search_direction ───────────────────────────────────────────────────────
     max_force_ = 0.0;
     for (int im = 0; im < n_img; ++im) {
-        const auto& f = band.frame(im);
+        auto& f = band.frame(im);
+        // Hoisted once per image iteration (the frame identity changes every im).
+        const StorageReal* __restrict f_x = f.span(kAtom_x);
+        const StorageReal* __restrict f_y = f.span(kAtom_y);
+        const StorageReal* __restrict f_z = f.span(kAtom_z);
+        const AccReal* __restrict f_fx = f.span(kAtom_fx);
+        const AccReal* __restrict f_fy = f.span(kAtom_fy);
+        const AccReal* __restrict f_fz = f.span(kAtom_fz);
         double im_max = 0.0;
         for (int i = 0; i < n; ++i) {
             const int b = (im * n + i) * 3;
-            x_[b + 0] = f.atoms.x[i];
-            x_[b + 1] = f.atoms.y[i];
-            x_[b + 2] = f.atoms.z[i];
+            x_[b + 0] = f_x[i];
+            x_[b + 1] = f_y[i];
+            x_[b + 2] = f_z[i];
             // Gradient = -force. The "force" here is the NEB force the coupling
             // component wrote, not the gradient of any energy — which is why there is no
             // line search below: there is no phi(alpha) to search on.
-            g_[b + 0] = -f.atoms.fx(i);
-            g_[b + 1] = -f.atoms.fy(i);
-            g_[b + 2] = -f.atoms.fz(i);
-            const double fm = std::sqrt(f.atoms.fx(i) * f.atoms.fx(i)
-                                        + f.atoms.fy(i) * f.atoms.fy(i)
-                                        + f.atoms.fz(i) * f.atoms.fz(i));
+            g_[b + 0] = -f_fx[i];
+            g_[b + 1] = -f_fy[i];
+            g_[b + 2] = -f_fz[i];
+            const double fm = std::sqrt(f_fx[i] * f_fx[i]
+                                        + f_fy[i] * f_fy[i]
+                                        + f_fz[i] * f_fz[i]);
             im_max = std::max(im_max, fm);
         }
         image_max_force_[im] = im_max;
@@ -245,11 +274,14 @@ void BandLBFGS::launch(const cpu::LaunchContext& ctx) {
 
     for (int im = 1; im < n_img - 1; ++im) { // endpoints stay put
         auto& f = band.frame(im);
+        StorageReal* __restrict f_x = f.span(kAtom_x);
+        StorageReal* __restrict f_y = f.span(kAtom_y);
+        StorageReal* __restrict f_z = f.span(kAtom_z);
         for (int i = 0; i < n; ++i) {
             const int b = (im * n + i) * 3;
-            f.atoms.x[i] = x_[b + 0] + scale * dir_[b + 0];
-            f.atoms.y[i] = x_[b + 1] + scale * dir_[b + 1];
-            f.atoms.z[i] = x_[b + 2] + scale * dir_[b + 2];
+            f_x[i] = x_[b + 0] + scale * dir_[b + 0];
+            f_y[i] = x_[b + 1] + scale * dir_[b + 1];
+            f_z[i] = x_[b + 2] + scale * dir_[b + 2];
         }
     }
 }

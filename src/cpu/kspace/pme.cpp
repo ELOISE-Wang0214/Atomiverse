@@ -9,6 +9,7 @@
 
 #include <fftw3.h>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/component/owned_range.h"
 #include "atomiverse/cpu/frame/frame.h"
@@ -172,10 +173,13 @@ void KSpacePME::compute(const LaunchContext& ctx) {
     const int ntot = K0 * K1 * K2;
     const int n = order_;
 
-    const auto* __restrict x = f.atoms.x.data();
-    const auto* __restrict y = f.atoms.y.data();
-    const auto* __restrict z = f.atoms.z.data();
-    const auto* __restrict q = f.atoms.charge.data();
+    const StorageReal* __restrict x = f.span(kAtom_x);
+    const StorageReal* __restrict y = f.span(kAtom_y);
+    const StorageReal* __restrict z = f.span(kAtom_z);
+    const StorageReal* __restrict q = f.span(kAtom_charge);
+    AccReal* __restrict sp_fx = f.span(kAtom_fx);
+    AccReal* __restrict sp_fy = f.span(kAtom_fy);
+    AccReal* __restrict sp_fz = f.span(kAtom_fz);
 
     const auto& ic =
         f.box.inv_cell(); // fractional coord: s_d = Σ_b ic(b,d) r_b
@@ -314,9 +318,9 @@ void KSpacePME::compute(const LaunchContext& ctx) {
             fy += gk * ic(1, d);
             fz += gk * ic(2, d);
         }
-        f.atoms.fx[i] += -fscale * qi * fx;
-        f.atoms.fy[i] += -fscale * qi * fy;
-        f.atoms.fz[i] += -fscale * qi * fz;
+        sp_fx[i] += -fscale * qi * fx;
+        sp_fy[i] += -fscale * qi * fy;
+        sp_fz[i] += -fscale * qi * fz;
     }
 
     // ── Self energy (per-rank owned) + net-charge (rank 0) ─────────────

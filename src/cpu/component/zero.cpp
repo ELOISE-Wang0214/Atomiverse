@@ -3,6 +3,7 @@
 
 #include "atomiverse/cpu/component/zero.h"
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/component/owned_range.h"
 
 namespace ATV {
@@ -22,11 +23,16 @@ void ZeroForces::launch(const cpu::LaunchContext& ctx) {
     // Single-rank: `owned_count` == atoms.size() and n_ghost == 0, so this is
     // the full (and only) array. See owned_range.h for the row-range contract.
     const int n = owned_count(ctx);
+    // Hoisted once before the OMP region -- never span() inside a parallel
+    // region (data race + the runtime resolution-budget assertion).
+    AccReal* __restrict sp_fx = f.span(kAtom_fx);
+    AccReal* __restrict sp_fy = f.span(kAtom_fy);
+    AccReal* __restrict sp_fz = f.span(kAtom_fz);
 #pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
-        f.atoms.fx[i] = 0;
-        f.atoms.fy[i] = 0;
-        f.atoms.fz[i] = 0;
+        sp_fx[i] = 0;
+        sp_fy[i] = 0;
+        sp_fz[i] = 0;
     }
 }
 

@@ -3,6 +3,7 @@
 ///        MPI-aware: owned-row loops + cross-rank reductions.
 
 #include "atomiverse/cpu/minimizer/cg.h"
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/log.h"
 #include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/component/owned_range.h"
@@ -50,6 +51,15 @@ void CG::launch(const cpu::LaunchContext& ctx) {
     const int n = owned_count(ctx);
     const int dim = n * 3;
 
+    // Hoisted once for all three phases below (convergence_check, line_search,
+    // search_direction) -- the launch-boundary rule.
+    StorageReal* __restrict sp_x = f.span(kAtom_x);
+    StorageReal* __restrict sp_y = f.span(kAtom_y);
+    StorageReal* __restrict sp_z = f.span(kAtom_z);
+    const AccReal* __restrict sp_fx = f.span(kAtom_fx);
+    const AccReal* __restrict sp_fy = f.span(kAtom_fy);
+    const AccReal* __restrict sp_fz = f.span(kAtom_fz);
+
     // Capacity growth is the one legal re-allocation point.
     if (dim > static_cast<int>(x_ws_.size())) {
         x_prev_.resize(dim, 0.0);
@@ -86,9 +96,9 @@ void CG::launch(const cpu::LaunchContext& ctx) {
 #pragma omp parallel for schedule(static) reduction(+ : sum_f2)                \
     reduction(max : local_max_force)
         for (int i = 0; i < n; ++i) {
-            const double fx = f.atoms.fx(i);
-            const double fy = f.atoms.fy(i);
-            const double fz = f.atoms.fz(i);
+            const double fx = sp_fx[i];
+            const double fy = sp_fy[i];
+            const double fz = sp_fz[i];
             const double f2 = fx * fx + fy * fy + fz * fz;
             sum_f2 += f2;
             local_max_force = std::max(local_max_force, std::sqrt(f2));
@@ -100,9 +110,9 @@ void CG::launch(const cpu::LaunchContext& ctx) {
 #pragma omp parallel for schedule(static) reduction(+ : sum_d2)                \
     reduction(max : local_max_disp)
             for (int i = 0; i < n; ++i) {
-                const double dx = f.atoms.x(i) - x_prev_[i * 3 + 0];
-                const double dy = f.atoms.y(i) - x_prev_[i * 3 + 1];
-                const double dz = f.atoms.z(i) - x_prev_[i * 3 + 2];
+                const double dx = sp_x[i] - x_prev_[i * 3 + 0];
+                const double dy = sp_y[i] - x_prev_[i * 3 + 1];
+                const double dz = sp_z[i] - x_prev_[i * 3 + 2];
                 sum_d2 += dx * dx + dy * dy + dz * dz;
                 local_max_disp = std::max(
                     local_max_disp,
@@ -173,11 +183,11 @@ void CG::launch(const cpu::LaunchContext& ctx) {
             || !ctx.runtime.opt.reeval_forces) {
 #pragma omp parallel for schedule(static)
             for (int i = 0; i < n; ++i) {
-                f.atoms.x(i) =
+                sp_x[i] =
                     x_prev_[i * 3 + 0] + alpha0_ * d_prev_[i * 3 + 0];
-                f.atoms.y(i) =
+                sp_y[i] =
                     x_prev_[i * 3 + 1] + alpha0_ * d_prev_[i * 3 + 1];
-                f.atoms.z(i) =
+                sp_z[i] =
                     x_prev_[i * 3 + 2] + alpha0_ * d_prev_[i * 3 + 2];
             }
             return;
@@ -188,9 +198,9 @@ void CG::launch(const cpu::LaunchContext& ctx) {
         auto phi = [&](double alpha, bool need_slope) -> LsSample {
 #pragma omp parallel for schedule(static)
             for (int i = 0; i < n; ++i) {
-                f.atoms.x(i) = x_prev_[i * 3 + 0] + alpha * d_prev_[i * 3 + 0];
-                f.atoms.y(i) = x_prev_[i * 3 + 1] + alpha * d_prev_[i * 3 + 1];
-                f.atoms.z(i) = x_prev_[i * 3 + 2] + alpha * d_prev_[i * 3 + 2];
+                sp_x[i] = x_prev_[i * 3 + 0] + alpha * d_prev_[i * 3 + 0];
+                sp_y[i] = x_prev_[i * 3 + 1] + alpha * d_prev_[i * 3 + 1];
+                sp_z[i] = x_prev_[i * 3 + 2] + alpha * d_prev_[i * 3 + 2];
             }
             ctx.runtime.opt.reeval_forces(need_slope);
             LsSample s;
@@ -198,9 +208,9 @@ void CG::launch(const cpu::LaunchContext& ctx) {
             double gd_local = 0;
 #pragma omp parallel for schedule(static) reduction(+ : gd_local)
             for (int i = 0; i < n; ++i) {
-                gd_local += -f.atoms.fx(i) * d_prev_[i * 3 + 0]
-                            + -f.atoms.fy(i) * d_prev_[i * 3 + 1]
-                            + -f.atoms.fz(i) * d_prev_[i * 3 + 2];
+                gd_local += -sp_fx[i] * d_prev_[i * 3 + 0]
+                            + -sp_fy[i] * d_prev_[i * 3 + 1]
+                            + -sp_fz[i] * d_prev_[i * 3 + 2];
             }
             s.dphi = global_sum(ctx, gd_local);
             return s;
@@ -224,9 +234,9 @@ void CG::launch(const cpu::LaunchContext& ctx) {
         const double alpha = lr.alpha;
 #pragma omp parallel for schedule(static)
         for (int i = 0; i < n; ++i) {
-            f.atoms.x(i) = x_prev_[i * 3 + 0] + alpha * d_prev_[i * 3 + 0];
-            f.atoms.y(i) = x_prev_[i * 3 + 1] + alpha * d_prev_[i * 3 + 1];
-            f.atoms.z(i) = x_prev_[i * 3 + 2] + alpha * d_prev_[i * 3 + 2];
+            sp_x[i] = x_prev_[i * 3 + 0] + alpha * d_prev_[i * 3 + 0];
+            sp_y[i] = x_prev_[i * 3 + 1] + alpha * d_prev_[i * 3 + 1];
+            sp_z[i] = x_prev_[i * 3 + 2] + alpha * d_prev_[i * 3 + 2];
         }
         return;
     }
@@ -236,12 +246,12 @@ void CG::launch(const cpu::LaunchContext& ctx) {
     auto& x = x_ws_;
 #pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
-        x[i * 3 + 0] = f.atoms.x(i);
-        x[i * 3 + 1] = f.atoms.y(i);
-        x[i * 3 + 2] = f.atoms.z(i);
-        g[i * 3 + 0] = -f.atoms.fx(i);
-        g[i * 3 + 1] = -f.atoms.fy(i);
-        g[i * 3 + 2] = -f.atoms.fz(i);
+        x[i * 3 + 0] = sp_x[i];
+        x[i * 3 + 1] = sp_y[i];
+        x[i * 3 + 2] = sp_z[i];
+        g[i * 3 + 0] = -sp_fx[i];
+        g[i * 3 + 1] = -sp_fy[i];
+        g[i * 3 + 2] = -sp_fz[i];
     }
 
     auto& d = d_ws_;

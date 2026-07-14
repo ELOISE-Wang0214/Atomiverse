@@ -7,6 +7,7 @@
 #include <cmath>
 #include <stdexcept>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/semiempirical/am1_parameters.h"
 
 namespace ATV {
@@ -23,10 +24,10 @@ struct PairRotation {
     std::array<std::array<std::array<double, 3>, 3>, 6> pp{};
 };
 
-std::array<double, 3> atom_xyz(const cpu::Frame& frame, int atom) {
-    return {static_cast<double>(frame.atoms.x[atom]),
-            static_cast<double>(frame.atoms.y[atom]),
-            static_cast<double>(frame.atoms.z[atom])};
+std::array<double, 3> atom_xyz(const StorageReal* sp_x, const StorageReal* sp_y,
+                               const StorageReal* sp_z, int atom) {
+    return {static_cast<double>(sp_x[atom]), static_cast<double>(sp_y[atom]),
+            static_cast<double>(sp_z[atom])};
 }
 
 double distance(const std::array<double, 3>& a,
@@ -417,8 +418,11 @@ NDDOTwoCenterIntegralBlock build_two_center_integral_block(
             "AM1 parameters unavailable for two-center integrals");
     }
 
-    const auto xi = atom_xyz(frame, atom_i);
-    const auto xj = atom_xyz(frame, atom_j);
+    const StorageReal* __restrict sp_x = frame.span(kAtom_x);
+    const StorageReal* __restrict sp_y = frame.span(kAtom_y);
+    const StorageReal* __restrict sp_z = frame.span(kAtom_z);
+    const auto xi = atom_xyz(sp_x, sp_y, sp_z, atom_i);
+    const auto xj = atom_xyz(sp_x, sp_y, sp_z, atom_j);
     const double rij = distance(xi, xj);
     if (rij < 1.0e-12) {
         throw std::runtime_error(

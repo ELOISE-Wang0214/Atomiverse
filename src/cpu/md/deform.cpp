@@ -15,6 +15,7 @@
 
 #include <cmath>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/component/owned_range.h"
@@ -88,9 +89,14 @@ void Deform::launch(const cpu::LaunchContext& ctx) {
     f.box.scale_axis(axis_, scale);
 
     const int n = owned_count(ctx);
-    auto& coord = (axis_ == 0)   ? f.atoms.x
-                  : (axis_ == 1) ? f.atoms.y
-                                 : f.atoms.z;
+    // Resolve only the deformed axis's column -- matches the original
+    // single-array selection (never resolve all three just to pick one).
+    StorageReal* __restrict coord;
+    switch (axis_) {
+    case 0: coord = f.span(kAtom_x); break;
+    case 1: coord = f.span(kAtom_y); break;
+    default: coord = f.span(kAtom_z); break;
+    }
 #pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
         coord[i] *= scale;

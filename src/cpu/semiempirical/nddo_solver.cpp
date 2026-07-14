@@ -8,6 +8,7 @@
 #include <limits>
 #include <stdexcept>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/semiempirical/am1_parameters.h"
 #include "atomiverse/cpu/semiempirical/nddo_density.h"
 #include "atomiverse/cpu/semiempirical/nddo_fock.h"
@@ -153,8 +154,9 @@ void NDDOSolver::validate_supported_atoms_(const cpu::Frame& frame) const {
             "NDDOSolver: unsupported semiempirical method");
     }
     const auto& atoms = frame.atoms;
+    const int* __restrict sp_type = frame.span(kAtom_type);
     for (int i = 0; i < atoms.size(); ++i) {
-        const int z = atoms.type(i);
+        const int z = sp_type[i];
         if (!am1_has_parameter(z)) {
             throw std::runtime_error(
                 "AM1 parameters unavailable for atomic number "

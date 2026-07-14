@@ -3,6 +3,7 @@
 
 #include "atomiverse/cpu/md/fix_langevin.h"
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/component/owned_range.h"
@@ -119,13 +120,24 @@ void FixLangevin::launch(const cpu::LaunchContext& ctx) {
     const double gfactor2_pre =
         std::sqrt(2.0 * kBoltzmann * T_live_ / (damp_ * dt_ * kMvv2e)) / kFtm2v;
 
+    // Hoisted once before the parallel region -- never span() inside
+    // #pragma omp parallel.
+    const TagInt* __restrict sp_tag = f.span(kAtom_tag);
+    const StorageReal* __restrict sp_mass = f.span(kAtom_mass);
+    const StorageReal* __restrict sp_vx = f.span(kAtom_vx);
+    const StorageReal* __restrict sp_vy = f.span(kAtom_vy);
+    const StorageReal* __restrict sp_vz = f.span(kAtom_vz);
+    AccReal* __restrict sp_fx = f.span(kAtom_fx);
+    AccReal* __restrict sp_fy = f.span(kAtom_fy);
+    AccReal* __restrict sp_fz = f.span(kAtom_fz);
+
 #pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
         GaussStream g{base
-                      + static_cast<std::uint64_t>(f.atoms.tag[i])
+                      + static_cast<std::uint64_t>(sp_tag[i])
                             * 0xD6E8FEB86659FD93ULL};
 
-        const double m = f.atoms.mass[i];
+        const double m = sp_mass[i];
         const double gfactor1 = -m * inv_damp_ftm2v;
         const double gfactor2 = gfactor2_pre * std::sqrt(m);
 
@@ -133,9 +145,9 @@ void FixLangevin::launch(const cpu::LaunchContext& ctx) {
         const double ry = g.next();
         const double rz = g.next();
 
-        f.atoms.fx[i] += gfactor1 * f.atoms.vx[i] + gfactor2 * rx;
-        f.atoms.fy[i] += gfactor1 * f.atoms.vy[i] + gfactor2 * ry;
-        f.atoms.fz[i] += gfactor1 * f.atoms.vz[i] + gfactor2 * rz;
+        sp_fx[i] += gfactor1 * sp_vx[i] + gfactor2 * rx;
+        sp_fy[i] += gfactor1 * sp_vy[i] + gfactor2 * ry;
+        sp_fz[i] += gfactor1 * sp_vz[i] + gfactor2 * rz;
     }
 }
 

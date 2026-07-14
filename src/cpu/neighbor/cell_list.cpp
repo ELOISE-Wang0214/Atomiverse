@@ -186,14 +186,20 @@ void CellList::bin_atoms(const cpu::Frame& frame, int n_active) {
     // Clear cell counts
     std::fill(cell_count_.begin(), cell_count_.end(), int(0));
 
+    // Hoisted once at the launch boundary — never resolve a span inside the
+    // `#pragma omp parallel` region below (data race + the 13.7x rule).
+    const StorageReal* __restrict sp_x = frame.span(kAtom_x);
+    const StorageReal* __restrict sp_y = frame.span(kAtom_y);
+    const StorageReal* __restrict sp_z = frame.span(kAtom_z);
+
 // Assign atoms to cells. Single-rank axes wrap into [0, L); extended
 // axes leave the position alone so PBC-shifted ghost coordinates land
 // in the dedicated halo cells around the slab.
 #pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
-        double xi = frame.atoms.x[i];
-        double yi = frame.atoms.y[i];
-        double zi = frame.atoms.z[i];
+        double xi = sp_x[i];
+        double yi = sp_y[i];
+        double zi = sp_z[i];
         if (!axis_extended_[0]) {
             xi -= lx * std::floor(xi / lx);
         }
@@ -242,10 +248,13 @@ void CellList::bin_atoms(const cpu::Frame& frame, int n_active) {
 
 void CellList::save_positions(const cpu::Frame& frame, int n_active) {
     int n = (n_active < 0) ? frame.atoms.size() : n_active;
+    const StorageReal* __restrict sp_x = frame.span(kAtom_x);
+    const StorageReal* __restrict sp_y = frame.span(kAtom_y);
+    const StorageReal* __restrict sp_z = frame.span(kAtom_z);
     for (int i = 0; i < n; ++i) {
-        x_save_[i] = frame.atoms.x[i];
-        y_save_[i] = frame.atoms.y[i];
-        z_save_[i] = frame.atoms.z[i];
+        x_save_[i] = sp_x[i];
+        y_save_[i] = sp_y[i];
+        z_save_[i] = sp_z[i];
     }
 }
 
@@ -295,10 +304,14 @@ bool CellList::needs_rebuild(const cpu::Frame& frame, int n_active) const {
 
     double max_disp_sq = 0;
 
+    const StorageReal* __restrict sp_x = frame.span(kAtom_x);
+    const StorageReal* __restrict sp_y = frame.span(kAtom_y);
+    const StorageReal* __restrict sp_z = frame.span(kAtom_z);
+
     for (int i = 0; i < n; ++i) {
-        double dx = frame.atoms.x[i] - x_save_[i];
-        double dy = frame.atoms.y[i] - y_save_[i];
-        double dz = frame.atoms.z[i] - z_save_[i];
+        double dx = sp_x[i] - x_save_[i];
+        double dy = sp_y[i] - y_save_[i];
+        double dz = sp_z[i] - z_save_[i];
         // Use minimum-image convention so atom wrapping across PBC
         // boundaries doesn't falsely signal a ~box-length displacement.
         frame.box.min_image(dx, dy, dz);
@@ -339,9 +352,18 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
     // pure local-index filter. `n_local >= 0` → owner-ghost pairs are
     // deduplicated by tag, mirroring LAMMPS `newton on` convention.
     const bool tag_dedup = (n_local >= 0);
-    const auto* __restrict tag_ptr =
-        tag_dedup ? frame.atoms.tag.data() : nullptr;
+    const TagInt* __restrict tag_ptr =
+        tag_dedup ? static_cast<const TagInt*>(frame.span(kAtom_tag))
+                  : nullptr;
     const double rc_sq = cutoff_skin_ * cutoff_skin_;
+
+    // Hoisted ONCE at the launch boundary, dominating both the serial and
+    // multi-thread branches below (the multi-thread branch opens a
+    // `#pragma omp parallel` region — span() may never be resolved inside
+    // one, per the 13.7x rule).
+    const StorageReal* __restrict x_ptr = frame.span(kAtom_x);
+    const StorageReal* __restrict y_ptr = frame.span(kAtom_y);
+    const StorageReal* __restrict z_ptr = frame.span(kAtom_z);
 
     ensure_at_least(result.ilist, static_cast<std::size_t>(n));
     ensure_at_least(result.numneigh, static_cast<std::size_t>(n));
@@ -400,9 +422,8 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
         // no-op on owner-ghost pairs (multi-rank stays correct).
         result.has_shifts = false;
 
-        const auto* __restrict x_ptr = frame.atoms.x.data();
-        const auto* __restrict y_ptr = frame.atoms.y.data();
-        const auto* __restrict z_ptr = frame.atoms.z.data();
+        // x_ptr/y_ptr/z_ptr hoisted at function entry (shared with the
+        // multi-thread branch below).
         const double lx = frame.box.length(0);
         const double ly = frame.box.length(1);
         const double lz = frame.box.length(2);
@@ -735,9 +756,9 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
                         && tag_ptr[j] < tag_ptr[i])
                         continue;
 
-                    double dx = frame.atoms.x[i] - frame.atoms.x[j];
-                    double dy = frame.atoms.y[i] - frame.atoms.y[j];
-                    double dz = frame.atoms.z[i] - frame.atoms.z[j];
+                    double dx = x_ptr[i] - x_ptr[j];
+                    double dy = y_ptr[i] - y_ptr[j];
+                    double dz = z_ptr[i] - z_ptr[j];
                     frame.box.min_image(dx, dy, dz);
 
                     double r2 = dx * dx + dy * dy + dz * dz;
@@ -792,6 +813,12 @@ void CellList::refresh_full(const cpu::Frame& frame, int n_active,
     const int n =
         (n_active < 0) ? static_cast<int>(frame.atoms.size()) : n_active;
     const double rc_sq = cutoff_skin_ * cutoff_skin_;
+
+    // Hoisted ONCE at the launch boundary, dominating the `#pragma omp
+    // parallel` region below (span() may never be resolved inside one).
+    const StorageReal* __restrict x_ptr = frame.span(kAtom_x);
+    const StorageReal* __restrict y_ptr = frame.span(kAtom_y);
+    const StorageReal* __restrict z_ptr = frame.span(kAtom_z);
 
     ensure_at_least(result.ilist, static_cast<std::size_t>(n));
     ensure_at_least(result.numneigh, static_cast<std::size_t>(n));
@@ -903,9 +930,9 @@ void CellList::refresh_full(const cpu::Frame& frame, int n_active,
                     if (j == i)
                         continue;
 
-                    double dx = frame.atoms.x[i] - frame.atoms.x[j];
-                    double dy = frame.atoms.y[i] - frame.atoms.y[j];
-                    double dz = frame.atoms.z[i] - frame.atoms.z[j];
+                    double dx = x_ptr[i] - x_ptr[j];
+                    double dy = y_ptr[i] - y_ptr[j];
+                    double dz = z_ptr[i] - z_ptr[j];
                     frame.box.min_image(dx, dy, dz);
 
                     double r2 = dx * dx + dy * dy + dz * dz;

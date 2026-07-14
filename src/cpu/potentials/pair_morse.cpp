@@ -23,12 +23,12 @@ void PairMorse::compute(const LaunchContext& ctx) {
     const int n = static_cast<int>(f.atoms.size());
 
     double energy = 0.0;
-    const auto* __restrict x = f.atoms.x.data();
-    const auto* __restrict y = f.atoms.y.data();
-    const auto* __restrict z = f.atoms.z.data();
-    double* __restrict fx = f.atoms.fx.data();
-    double* __restrict fy = f.atoms.fy.data();
-    double* __restrict fz = f.atoms.fz.data();
+    const StorageReal* __restrict x = f.span(kAtom_x);
+    const StorageReal* __restrict y = f.span(kAtom_y);
+    const StorageReal* __restrict z = f.span(kAtom_z);
+    AccReal* __restrict fx = f.span(kAtom_fx);
+    AccReal* __restrict fy = f.span(kAtom_fy);
+    AccReal* __restrict fz = f.span(kAtom_fz);
 
     for (int i = 0; i < n; ++i) {
         for (int j = i + 1; j < n; ++j) {

@@ -3,6 +3,7 @@
 
 #include "atomiverse/cpu/md/fix_csvr.h"
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/component/owned_range.h"
@@ -86,14 +87,21 @@ void FixCSVR::launch(const cpu::LaunchContext& ctx) {
 
     T_live_ = compute_temp_target(ctx.step);
 
+    // Hoisted once for both the KE-accumulation and rescale loops below --
+    // never span() inside #pragma omp parallel.
+    const StorageReal* __restrict sp_mass = f.span(kAtom_mass);
+    StorageReal* __restrict sp_vx = f.span(kAtom_vx);
+    StorageReal* __restrict sp_vy = f.span(kAtom_vy);
+    StorageReal* __restrict sp_vz = f.span(kAtom_vz);
+
     // Global kinetic energy [eV] over owned atoms (MPI-reduced).
     double ke_local = 0.0;
 #pragma omp parallel for schedule(static) reduction(+ : ke_local)
     for (int i = 0; i < n; ++i) {
-        const double v2 = f.atoms.vx[i] * f.atoms.vx[i]
-                          + f.atoms.vy[i] * f.atoms.vy[i]
-                          + f.atoms.vz[i] * f.atoms.vz[i];
-        ke_local += f.atoms.mass[i] * v2;
+        const double v2 = sp_vx[i] * sp_vx[i]
+                          + sp_vy[i] * sp_vy[i]
+                          + sp_vz[i] * sp_vz[i];
+        ke_local += sp_mass[i] * v2;
     }
     ke_local *= 0.5 * kMvv2e;
 
@@ -141,9 +149,9 @@ void FixCSVR::launch(const cpu::LaunchContext& ctx) {
     // Rescale owned velocities by the single global factor.
 #pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
-        f.atoms.vx[i] *= alpha;
-        f.atoms.vy[i] *= alpha;
-        f.atoms.vz[i] *= alpha;
+        sp_vx[i] *= alpha;
+        sp_vy[i] *= alpha;
+        sp_vz[i] *= alpha;
     }
 
     // Conserved-quantity bookkeeping (Bussi Eq. 15): the thermostat did work

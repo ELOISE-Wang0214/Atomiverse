@@ -78,10 +78,15 @@ void CoulLong::launch(const LaunchContext& ctx) {
     const double* __restrict shy = has_shifts ? pairs.shift_y.data() : nullptr;
     const double* __restrict shz = has_shifts ? pairs.shift_z.data() : nullptr;
 
-    const auto* __restrict x_ptr = f.atoms.x.data();
-    const auto* __restrict y_ptr = f.atoms.y.data();
-    const auto* __restrict z_ptr = f.atoms.z.data();
-    const auto* __restrict q_ptr = f.atoms.charge.data();
+    // Resolve every schema column ONCE, before the OMP parallel region opens
+    // (never inside it — the span resolution counter is not thread-safe).
+    const StorageReal* __restrict x_ptr = f.span(kAtom_x);
+    const StorageReal* __restrict y_ptr = f.span(kAtom_y);
+    const StorageReal* __restrict z_ptr = f.span(kAtom_z);
+    const StorageReal* __restrict q_ptr = f.span(kAtom_charge);
+    AccReal* __restrict fx_ptr = f.span(kAtom_fx);
+    AccReal* __restrict fy_ptr = f.span(kAtom_fy);
+    AccReal* __restrict fz_ptr = f.span(kAtom_fz);
 
     const double alpha = alpha_;
     const double rc_sq = cutoff_sq_;
@@ -179,9 +184,9 @@ void CoulLong::launch(const LaunchContext& ctx) {
 #pragma omp for schedule(static)
         for (int i = 0; i < n_force; ++i) {
             for (int t = 0; t < n_threads_; ++t) {
-                f.atoms.fx[i] += fx_thr_[t][i];
-                f.atoms.fy[i] += fy_thr_[t][i];
-                f.atoms.fz[i] += fz_thr_[t][i];
+                fx_ptr[i] += fx_thr_[t][i];
+                fy_ptr[i] += fy_thr_[t][i];
+                fz_ptr[i] += fz_thr_[t][i];
             }
         }
     }

@@ -3,6 +3,7 @@
 
 #include "atomiverse/cpu/observer/virial_stress.h"
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/component/owned_range.h"
@@ -15,16 +16,24 @@ void Virial::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
     const int n = owned_count(ctx);
 
+    // Hoisted once before the OMP region -- span() is not safe to call from
+    // inside a parallel region (data race + the runtime resolution-budget
+    // assertion).
+    const StorageReal* __restrict sp_mass = f.span(kAtom_mass);
+    const StorageReal* __restrict sp_vx = f.span(kAtom_vx);
+    const StorageReal* __restrict sp_vy = f.span(kAtom_vy);
+    const StorageReal* __restrict sp_vz = f.span(kAtom_vz);
+
     double v_xx = 0, v_yy = 0, v_zz = 0, v_xy = 0, v_xz = 0, v_yz = 0;
 
 #pragma omp parallel for schedule(static) reduction(+ : v_xx)                  \
     reduction(+ : v_yy) reduction(+ : v_zz) reduction(+ : v_xy)                \
     reduction(+ : v_xz) reduction(+ : v_yz)
     for (int i = 0; i < n; ++i) {
-        const double m = f.atoms.mass[i];
-        const double vxi = f.atoms.vx[i];
-        const double vyi = f.atoms.vy[i];
-        const double vzi = f.atoms.vz[i];
+        const double m = sp_mass[i];
+        const double vxi = sp_vx[i];
+        const double vyi = sp_vy[i];
+        const double vzi = sp_vz[i];
         v_xx += m * vxi * vxi;
         v_yy += m * vyi * vyi;
         v_zz += m * vzi * vzi;

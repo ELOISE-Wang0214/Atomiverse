@@ -9,6 +9,7 @@
 
 #include <cmath>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/frame/frame.h"
 
 namespace ATV {
@@ -27,11 +28,14 @@ inline void wrap_orthorhombic(cpu::Frame& frame, int n_owned) {
     const double lx = frame.box.length(0);
     const double ly = frame.box.length(1);
     const double lz = frame.box.length(2);
+    StorageReal* __restrict sp_x = frame.span(kAtom_x);
+    StorageReal* __restrict sp_y = frame.span(kAtom_y);
+    StorageReal* __restrict sp_z = frame.span(kAtom_z);
 #pragma omp parallel for schedule(static)
     for (int i = 0; i < n_owned; ++i) {
-        frame.atoms.x[i] -= lx * std::floor(frame.atoms.x[i] / lx);
-        frame.atoms.y[i] -= ly * std::floor(frame.atoms.y[i] / ly);
-        frame.atoms.z[i] -= lz * std::floor(frame.atoms.z[i] / lz);
+        sp_x[i] -= lx * std::floor(sp_x[i] / lx);
+        sp_y[i] -= ly * std::floor(sp_y[i] / ly);
+        sp_z[i] -= lz * std::floor(sp_z[i] / lz);
     }
 }
 

@@ -8,6 +8,7 @@
 
 #include "atomiverse/cpu/scf/gradient.h"
 #include "atomiverse/core/constants.h"
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/log.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/scf/basis_eval.h"
@@ -648,21 +649,27 @@ GradientResult scf_finite_difference_gradient(const Frame& frame,
     for (int A = 0; A < natm; ++A) {
         for (int d = 0; d < 3; ++d) {
             Frame fwd = frame;
+            StorageReal* __restrict fwd_x = fwd.span(kAtom_x);
+            StorageReal* __restrict fwd_y = fwd.span(kAtom_y);
+            StorageReal* __restrict fwd_z = fwd.span(kAtom_z);
             if (d == 0)
-                fwd.atoms.x(A) += h;
+                fwd_x[A] += h;
             else if (d == 1)
-                fwd.atoms.y(A) += h;
+                fwd_y[A] += h;
             else
-                fwd.atoms.z(A) += h;
+                fwd_z[A] += h;
             double e_fwd = energy_fn(fwd);
 
             Frame bwd = frame;
+            StorageReal* __restrict bwd_x = bwd.span(kAtom_x);
+            StorageReal* __restrict bwd_y = bwd.span(kAtom_y);
+            StorageReal* __restrict bwd_z = bwd.span(kAtom_z);
             if (d == 0)
-                bwd.atoms.x(A) -= h;
+                bwd_x[A] -= h;
             else if (d == 1)
-                bwd.atoms.y(A) -= h;
+                bwd_y[A] -= h;
             else
-                bwd.atoms.z(A) -= h;
+                bwd_z[A] -= h;
             double e_bwd = energy_fn(bwd);
 
             // FD uses Å step, so dE/dr is already in eV/Å once the Hartree

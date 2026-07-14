@@ -81,9 +81,13 @@ void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
     // invariant. Each term is one Voigt6::add_pair.
     md::Voigt6 vir;
 
-    const auto* __restrict x_ptr = a.x.data();
-    const auto* __restrict y_ptr = a.y.data();
-    const auto* __restrict z_ptr = a.z.data();
+    const StorageReal* __restrict x_ptr = f.span(kAtom_x);
+    const StorageReal* __restrict y_ptr = f.span(kAtom_y);
+    const StorageReal* __restrict z_ptr = f.span(kAtom_z);
+
+    // Resolve the frame's force spans ONCE, before the parallel region opens
+    // (never inside it — see BondedForceScratch::bind).
+    scratch_.bind(f);
 
 // Thread-private virial combined under a critical section (no per-step heap
 // alloc, unlike an OMP user-defined reduction on Voigt6).
@@ -93,7 +97,7 @@ void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
 #ifdef _OPENMP
         tid = omp_get_thread_num();
 #endif
-        const md::ThreadForce tf = scratch_.begin_thread(tid, n_force, f);
+        const md::ThreadForce tf = scratch_.begin_thread(tid, n_force);
         md::Voigt6 vir_local;
 
         // Hot loop over pre-resolved tuples: atom `i2` (2nd of the
@@ -230,7 +234,7 @@ void DihedralMultiHarmonic::compute(const LaunchContext& ctx) {
         vir += vir_local;
     }
 
-    scratch_.reduce_into(f, n_force);
+    scratch_.reduce_into(n_force);
 
     f.scalars.energy += energy_total;
     f.scalars.energy_dihedral += energy_total;

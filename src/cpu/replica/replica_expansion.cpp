@@ -6,6 +6,8 @@
 #include <stdexcept>
 #include <string>
 
+#include "atomiverse/core/frame_schema.h"
+
 namespace ATV {
 namespace cpu {
 
@@ -29,6 +31,16 @@ std::vector<Replica> LinearInterpolation::expand(const cpu::Frame& initial) cons
             + std::to_string(n) + " — a band between different systems is not a band");
     }
 
+    // Three DISTINCT frames are read/written below (initial / final_ / r.frame) — each
+    // keeps its own uniquely-named pointers. Sharing a name across them would silently
+    // collapse the interpolation into a copy.
+    const StorageReal* __restrict init_x = initial.span(kAtom_x);
+    const StorageReal* __restrict init_y = initial.span(kAtom_y);
+    const StorageReal* __restrict init_z = initial.span(kAtom_z);
+    const StorageReal* __restrict fin_x = final_.span(kAtom_x);
+    const StorageReal* __restrict fin_y = final_.span(kAtom_y);
+    const StorageReal* __restrict fin_z = final_.span(kAtom_z);
+
     std::vector<Replica> replicas;
     replicas.reserve(n_images_);
     for (int im = 0; im < n_images_; ++im) {
@@ -38,10 +50,15 @@ std::vector<Replica> LinearInterpolation::expand(const cpu::Frame& initial) cons
         const double t = double(im) / double(n_images_ - 1);
 
         Replica r{initial, t}; // copies topology, masses, types, box — all shared
+        // r.frame is a fresh frame each iteration: its spans resolve here, at this
+        // loop's boundary.
+        StorageReal* __restrict r_x = r.frame.span(kAtom_x);
+        StorageReal* __restrict r_y = r.frame.span(kAtom_y);
+        StorageReal* __restrict r_z = r.frame.span(kAtom_z);
         for (int i = 0; i < n; ++i) {
-            r.frame.atoms.x[i] = (1.0 - t) * initial.atoms.x[i] + t * final_.atoms.x[i];
-            r.frame.atoms.y[i] = (1.0 - t) * initial.atoms.y[i] + t * final_.atoms.y[i];
-            r.frame.atoms.z[i] = (1.0 - t) * initial.atoms.z[i] + t * final_.atoms.z[i];
+            r_x[i] = (1.0 - t) * init_x[i] + t * fin_x[i];
+            r_y[i] = (1.0 - t) * init_y[i] + t * fin_y[i];
+            r_z[i] = (1.0 - t) * init_z[i] + t * fin_z[i];
         }
         replicas.push_back(std::move(r));
     }
@@ -59,10 +76,18 @@ void LinearInterpolation::collapse(const std::vector<Replica>& replicas,
             best = i;
     }
     const cpu::Frame& saddle = replicas[best].frame;
-    for (int i = 0; i < out.atoms.size(); ++i) {
-        out.atoms.x[i] = saddle.atoms.x[i];
-        out.atoms.y[i] = saddle.atoms.y[i];
-        out.atoms.z[i] = saddle.atoms.z[i];
+    const int n = out.atoms.size();
+    // Two DISTINCT frames (saddle / out) — separate pointer names, never shared.
+    const StorageReal* __restrict sad_x = saddle.span(kAtom_x);
+    const StorageReal* __restrict sad_y = saddle.span(kAtom_y);
+    const StorageReal* __restrict sad_z = saddle.span(kAtom_z);
+    StorageReal* __restrict out_x = out.span(kAtom_x);
+    StorageReal* __restrict out_y = out.span(kAtom_y);
+    StorageReal* __restrict out_z = out.span(kAtom_z);
+    for (int i = 0; i < n; ++i) {
+        out_x[i] = sad_x[i];
+        out_y[i] = sad_y[i];
+        out_z[i] = sad_z[i];
     }
     out.scalars = saddle.scalars;
 }
@@ -90,10 +115,18 @@ void IdentityReplication::collapse(const std::vector<Replica>& replicas,
     if (replicas.empty())
         throw std::logic_error("IdentityReplication::collapse: no replicas");
     const cpu::Frame& r0 = replicas[0].frame;
-    for (int i = 0; i < out.atoms.size(); ++i) {
-        out.atoms.x[i] = r0.atoms.x[i];
-        out.atoms.y[i] = r0.atoms.y[i];
-        out.atoms.z[i] = r0.atoms.z[i];
+    const int n = out.atoms.size();
+    // Two DISTINCT frames (r0 / out) — separate pointer names, never shared.
+    const StorageReal* __restrict r0_x = r0.span(kAtom_x);
+    const StorageReal* __restrict r0_y = r0.span(kAtom_y);
+    const StorageReal* __restrict r0_z = r0.span(kAtom_z);
+    StorageReal* __restrict out_x = out.span(kAtom_x);
+    StorageReal* __restrict out_y = out.span(kAtom_y);
+    StorageReal* __restrict out_z = out.span(kAtom_z);
+    for (int i = 0; i < n; ++i) {
+        out_x[i] = r0_x[i];
+        out_y[i] = r0_y[i];
+        out_z[i] = r0_z[i];
     }
     out.scalars = r0.scalars;
 }

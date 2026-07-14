@@ -6,6 +6,7 @@
 #include <cmath>
 #include <stdexcept>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/semiempirical/am1_parameters.h"
 
 namespace ATV {
@@ -34,8 +35,9 @@ NDDOSystem build_am1_system(const cpu::Frame& frame, int charge,
 
     int next_ao = 0;
     double electron_count = -static_cast<double>(charge);
+    const int* __restrict sp_type = frame.span(kAtom_type);
     for (int i = 0; i < frame.atoms.size(); ++i) {
-        const int z = frame.atoms.type(i);
+        const int z = sp_type[i];
         if (!am1_has_parameter(z)) {
             throw std::runtime_error(
                 "AM1 parameters unavailable for atomic number "

@@ -3,6 +3,7 @@
 
 #include "atomiverse/cpu/md/barostat.h"
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/component/owned_range.h"
@@ -69,11 +70,15 @@ void Barostat::launch(const cpu::LaunchContext& ctx) {
 
     // Affine-rescale owned atom positions.
     const int n = owned_count(ctx);
+    // Hoisted once for both the owned and ghost rescale loops below.
+    StorageReal* __restrict sp_x = f.span(kAtom_x);
+    StorageReal* __restrict sp_y = f.span(kAtom_y);
+    StorageReal* __restrict sp_z = f.span(kAtom_z);
 #pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
-        f.atoms.x[i] *= mu;
-        f.atoms.y[i] *= mu;
-        f.atoms.z[i] *= mu;
+        sp_x[i] *= mu;
+        sp_y[i] *= mu;
+        sp_z[i] *= mu;
     }
 
     // Ghost rows must also track the box transform. The next
@@ -88,9 +93,9 @@ void Barostat::launch(const cpu::LaunchContext& ctx) {
     if (n_total > n) {
 #pragma omp parallel for schedule(static)
         for (int i = n; i < n_total; ++i) {
-            f.atoms.x[i] *= mu;
-            f.atoms.y[i] *= mu;
-            f.atoms.z[i] *= mu;
+            sp_x[i] *= mu;
+            sp_y[i] *= mu;
+            sp_z[i] *= mu;
         }
     }
 

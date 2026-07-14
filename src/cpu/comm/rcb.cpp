@@ -56,21 +56,24 @@ void build_local_histogram(const Frame& frame, int n_local, int axis,
     if (L <= 0.0 || n_local <= 0)
         return;
     const double inv_bin = static_cast<double>(n_bins) / L;
+    // Hoisted ONCE per call (axis is fixed for the whole loop below) --
+    // never resolve a span inside the per-atom loop.
+    const StorageReal* __restrict q_ptr = nullptr;
+    switch (axis) {
+    case 0:
+        q_ptr = frame.span(kAtom_x);
+        break;
+    case 1:
+        q_ptr = frame.span(kAtom_y);
+        break;
+    case 2:
+        q_ptr = frame.span(kAtom_z);
+        break;
+    default:
+        break;
+    }
     for (int i = 0; i < n_local; ++i) {
-        double q = 0.0;
-        switch (axis) {
-        case 0:
-            q = frame.atoms.x[i];
-            break;
-        case 1:
-            q = frame.atoms.y[i];
-            break;
-        case 2:
-            q = frame.atoms.z[i];
-            break;
-        default:
-            break;
-        }
+        const double q = (q_ptr != nullptr) ? q_ptr[i] : 0.0;
         const double wrapped = box.wrap_axis(q, axis);
         int bin = static_cast<int>(wrapped * inv_bin);
         if (bin < 0)

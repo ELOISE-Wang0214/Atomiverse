@@ -3,6 +3,7 @@
 
 #include "atomiverse/cpu/md/nose_hoover_npt.h"
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/comm/domain.h"
@@ -199,15 +200,21 @@ void NoseHooverNPT::compute_temp_target(int step) {
 }
 
 double NoseHooverNPT::compute_global_KE(const cpu::LaunchContext& ctx) const {
+    // `ctx.frame` is a reference member, so it stays mutable through a
+    // const `ctx` -- bind non-const to call the (non-const) `span()`.
     const auto& f = ctx.frame;
     const int n = owned_count(ctx);
+    const StorageReal* __restrict sp_mass = f.span(kAtom_mass);
+    const StorageReal* __restrict sp_vx = f.span(kAtom_vx);
+    const StorageReal* __restrict sp_vy = f.span(kAtom_vy);
+    const StorageReal* __restrict sp_vz = f.span(kAtom_vz);
     double ke_local = 0.0;
 #pragma omp parallel for schedule(static) reduction(+ : ke_local)
     for (int i = 0; i < n; ++i) {
-        const double v2 = f.atoms.vx[i] * f.atoms.vx[i]
-                          + f.atoms.vy[i] * f.atoms.vy[i]
-                          + f.atoms.vz[i] * f.atoms.vz[i];
-        ke_local += f.atoms.mass[i] * v2;
+        const double v2 = sp_vx[i] * sp_vx[i]
+                          + sp_vy[i] * sp_vy[i]
+                          + sp_vz[i] * sp_vz[i];
+        ke_local += sp_mass[i] * v2;
     }
     ke_local *= 0.5 * kMvv2e;
 
@@ -226,15 +233,21 @@ double NoseHooverNPT::compute_global_KE(const cpu::LaunchContext& ctx) const {
 ///      for the anisotropic barostat's per-axis driving pressure.
 std::array<double, 3>
 NoseHooverNPT::compute_axis_KE(const cpu::LaunchContext& ctx) const {
+    // `ctx.frame` is a reference member, so it stays mutable through a
+    // const `ctx` -- bind non-const to call the (non-const) `span()`.
     const auto& f = ctx.frame;
     const int n = owned_count(ctx);
+    const StorageReal* __restrict sp_mass = f.span(kAtom_mass);
+    const StorageReal* __restrict sp_vx = f.span(kAtom_vx);
+    const StorageReal* __restrict sp_vy = f.span(kAtom_vy);
+    const StorageReal* __restrict sp_vz = f.span(kAtom_vz);
     double kx = 0.0, ky = 0.0, kz = 0.0;
 #pragma omp parallel for schedule(static) reduction(+ : kx, ky, kz)
     for (int i = 0; i < n; ++i) {
-        const double m = f.atoms.mass[i];
-        kx += m * f.atoms.vx[i] * f.atoms.vx[i];
-        ky += m * f.atoms.vy[i] * f.atoms.vy[i];
-        kz += m * f.atoms.vz[i] * f.atoms.vz[i];
+        const double m = sp_mass[i];
+        kx += m * sp_vx[i] * sp_vx[i];
+        ky += m * sp_vy[i] * sp_vy[i];
+        kz += m * sp_vz[i] * sp_vz[i];
     }
     double ke[3] = {0.5 * kMvv2e * kx, 0.5 * kMvv2e * ky, 0.5 * kMvv2e * kz};
 #ifdef ATV_HAS_MPI
@@ -294,11 +307,14 @@ void NoseHooverNPT::nhc_atoms_half(const cpu::LaunchContext& ctx,
 
     // Scale atom velocities by the innermost thermostat momentum.
     const double scale = std::exp(-eta_t_dot_[0] * half_dt);
+    StorageReal* __restrict sp_vx = f.span(kAtom_vx);
+    StorageReal* __restrict sp_vy = f.span(kAtom_vy);
+    StorageReal* __restrict sp_vz = f.span(kAtom_vz);
 #pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
-        f.atoms.vx[i] *= scale;
-        f.atoms.vy[i] *= scale;
-        f.atoms.vz[i] *= scale;
+        sp_vx[i] *= scale;
+        sp_vy[i] *= scale;
+        sp_vz[i] *= scale;
     }
     KE_global_ *= scale * scale;
 
@@ -557,11 +573,14 @@ void NoseHooverNPT::scale_v_by_baro(const cpu::LaunchContext& ctx,
     const double sy = std::exp(-(eps_dot_[1] + mtk_term2) * half_dt);
     const double sz = std::exp(-(eps_dot_[2] + mtk_term2) * half_dt);
 
+    StorageReal* __restrict sp_vx = f.span(kAtom_vx);
+    StorageReal* __restrict sp_vy = f.span(kAtom_vy);
+    StorageReal* __restrict sp_vz = f.span(kAtom_vz);
 #pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
-        f.atoms.vx[i] *= sx;
-        f.atoms.vy[i] *= sy;
-        f.atoms.vz[i] *= sz;
+        sp_vx[i] *= sx;
+        sp_vy[i] *= sy;
+        sp_vz[i] *= sz;
     }
 
     // KE bookkeeping. Isotropic fast-path: when all three scale factors
@@ -588,12 +607,19 @@ void NoseHooverNPT::kick_v_by_force(const cpu::LaunchContext& ctx,
     const int n = owned_count(ctx);
     const double dtf = half_dt * kFtm2v;
 
+    const StorageReal* __restrict sp_mass = f.span(kAtom_mass);
+    StorageReal* __restrict sp_vx = f.span(kAtom_vx);
+    StorageReal* __restrict sp_vy = f.span(kAtom_vy);
+    StorageReal* __restrict sp_vz = f.span(kAtom_vz);
+    const AccReal* __restrict sp_fx = f.span(kAtom_fx);
+    const AccReal* __restrict sp_fy = f.span(kAtom_fy);
+    const AccReal* __restrict sp_fz = f.span(kAtom_fz);
 #pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
-        const double dtfm = dtf / f.atoms.mass[i];
-        f.atoms.vx[i] += dtfm * f.atoms.fx[i];
-        f.atoms.vy[i] += dtfm * f.atoms.fy[i];
-        f.atoms.vz[i] += dtfm * f.atoms.fz[i];
+        const double dtfm = dtf / sp_mass[i];
+        sp_vx[i] += dtfm * sp_fx[i];
+        sp_vy[i] += dtfm * sp_fy[i];
+        sp_vz[i] += dtfm * sp_fz[i];
     }
     // KE invalidated; will be recomputed at end_of_step.
 }
@@ -630,11 +656,20 @@ void NoseHooverNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
     const double ax = a[0], ay = a[1], az = a[2];
     const double dx = drift[0], dy = drift[1], dz = drift[2];
 
+    // Hoisted once for both the owned drift loop and the ghost rescale
+    // loop below.
+    StorageReal* __restrict sp_x = f.span(kAtom_x);
+    StorageReal* __restrict sp_y = f.span(kAtom_y);
+    StorageReal* __restrict sp_z = f.span(kAtom_z);
+    const StorageReal* __restrict sp_vx = f.span(kAtom_vx);
+    const StorageReal* __restrict sp_vy = f.span(kAtom_vy);
+    const StorageReal* __restrict sp_vz = f.span(kAtom_vz);
+
 #pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
-        f.atoms.x[i] = f.atoms.x[i] * ax + f.atoms.vx[i] * dt_ * dx;
-        f.atoms.y[i] = f.atoms.y[i] * ay + f.atoms.vy[i] * dt_ * dy;
-        f.atoms.z[i] = f.atoms.z[i] * az + f.atoms.vz[i] * dt_ * dz;
+        sp_x[i] = sp_x[i] * ax + sp_vx[i] * dt_ * dx;
+        sp_y[i] = sp_y[i] * ay + sp_vy[i] * dt_ * dy;
+        sp_z[i] = sp_z[i] * az + sp_vz[i] * dt_ * dz;
     }
 
     // Ghost rows must also track the box scaling. Between this call and
@@ -667,9 +702,9 @@ void NoseHooverNPT::propagate_x_and_box(const cpu::LaunchContext& ctx) {
     if (n_total > n) {
 #pragma omp parallel for schedule(static)
         for (int i = n; i < n_total; ++i) {
-            f.atoms.x[i] *= ax;
-            f.atoms.y[i] *= ay;
-            f.atoms.z[i] *= az;
+            sp_x[i] *= ax;
+            sp_y[i] *= ay;
+            sp_z[i] *= az;
         }
     }
 

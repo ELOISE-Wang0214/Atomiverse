@@ -520,6 +520,16 @@ add_test(
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cpu/frame/field_list_scrub.sh
             ${CMAKE_SOURCE_DIR})
 
+# Grep gate: the direct `atoms.<field>[` / `atoms.<field>(` per-atom column
+# access shape (frame-block-02, ac-001) must not remain in src/cpu/ or
+# include/atomiverse/cpu/ -- every consumer resolves a typed
+# `Frame::span(kAtom_*)` once at the launch boundary instead. Pure grep —
+# runs in every build configuration.
+add_test(
+    NAME test_frame_direct_access_scrub
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/cpu/frame/direct_access_scrub.sh
+            ${CMAKE_SOURCE_DIR})
+
 add_test(
     NAME test_stage_typing_scrub
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/facade/stage_typing_scrub.sh

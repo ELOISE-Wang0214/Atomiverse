@@ -11,6 +11,7 @@
 /// cleaner than fighting that heuristic.
 
 #include "atomiverse/cpu/io/lammps_data.h"
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame/frame.h"
 
@@ -153,6 +154,13 @@ Frame load_lammps_data(const std::string& path) {
         }
         if (is_section("Atoms")) {
             // atom_style=molecular: id mol-id type x y z
+            // Resolved once before the per-row lambda -- the 13.7x rule (the
+            // lambda below runs n_atoms times via consume_n).
+            StorageReal* __restrict sp_x = frame.span(kAtom_x);
+            StorageReal* __restrict sp_y = frame.span(kAtom_y);
+            StorageReal* __restrict sp_z = frame.span(kAtom_z);
+            int* __restrict sp_type = frame.span(kAtom_type);
+            StorageReal* __restrict sp_mass = frame.span(kAtom_mass);
             consume_n(n_atoms, [&](const std::string& l) {
                 std::istringstream iss(l);
                 int id, mol_id, atype;
@@ -162,13 +170,13 @@ Frame load_lammps_data(const std::string& path) {
                 }
                 const int idx = next_idx++;
                 id_to_idx[id] = idx;
-                frame.atoms.x[idx] = x;
-                frame.atoms.y[idx] = y;
-                frame.atoms.z[idx] = z;
-                frame.atoms.type[idx] = atype - 1; // 0-indexed
+                sp_x[idx] = static_cast<StorageReal>(x);
+                sp_y[idx] = static_cast<StorageReal>(y);
+                sp_z[idx] = static_cast<StorageReal>(z);
+                sp_type[idx] = atype - 1; // 0-indexed
                 auto it = type_to_mass.find(atype);
-                frame.atoms.mass[idx] =
-                    (it != type_to_mass.end()) ? it->second : 0.0;
+                sp_mass[idx] = static_cast<StorageReal>(
+                    (it != type_to_mass.end()) ? it->second : 0.0);
             });
             // Fetch next header.
             if (!next_data_line(in, line))

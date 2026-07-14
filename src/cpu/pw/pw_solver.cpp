@@ -19,6 +19,7 @@
 
 #include "atomiverse/cpu/pw/pw_solver.h"
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/log.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/pw/internal/convergence.h"
@@ -102,8 +103,9 @@ void PWSolver::build(const cpu::Frame& reference) {
     } else {
         // Validate the toy valence table covers every atom type up front
         // (throws on unsupported Z — no silent 0-electron fallback).
+        const int* __restrict sp_type = reference.span(kAtom_type);
         for (size_t i = 0; i < reference.atoms.size(); ++i)
-            (void)internal::valence_from_z(reference.atoms.type[i]);
+            (void)internal::valence_from_z(sp_type[i]);
     }
     built_ = true;
 }

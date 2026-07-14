@@ -9,6 +9,7 @@
 #include <limits>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/vib/atomic_masses.h"
 #include "atomiverse/cpu/vib/nist_constants.h"
 
@@ -25,9 +26,11 @@ void NormalModeWriter::launch(const cpu::LaunchContext& ctx) {
         return; // not the finalize pass yet.
 
     // Atom symbols from each atom's atomic number (no-fallback table).
+    // Hoisted once before the loop -- the 13.7x rule.
+    const int* __restrict sp_type = ctx.frame.span(kAtom_type);
     std::vector<std::string> symbol(n);
     for (int i = 0; i < n; ++i)
-        symbol[i] = element_symbol(ctx.frame.atoms.type(i));
+        symbol[i] = element_symbol(sp_type[i]);
 
     // Per-atom inverse-sqrt mass: the workspace eigenvectors are
     // mass-weighted, so the Cartesian displacement is dx_i = q_i /

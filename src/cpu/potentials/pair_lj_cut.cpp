@@ -206,9 +206,13 @@ void PairLJCut::refresh_exclusion_map(const Frame& f, int n_owners) {
         excluded_by_tag_[b].push_back(a);
     };
 
+    // `nspecial`/`special` are per-atom TOPOLOGY arrays (not schema scalar
+    // columns), so they stay on the direct `at` accessor; only `tag` is a
+    // schema column and goes through `span`.
     const auto& at = f.atoms;
+    const TagInt* __restrict tag_ptr = f.span(kAtom_tag);
     for (int i = 0; i < n_owners; ++i) {
-        const std::int64_t ti = at.tag[i];
+        const std::int64_t ti = tag_ptr[i];
         const int n12 = at.nspecial(i, 0);
         const int n13 = at.nspecial(i, 1);
         const int n14 = at.nspecial(i, 2);
@@ -267,7 +271,7 @@ void PairLJCut::rebuild_filtered_list(const Frame& f,
     const double* sx = filtered_has_shifts_ ? pairs.shift_x.data() : nullptr;
     const double* sy = filtered_has_shifts_ ? pairs.shift_y.data() : nullptr;
     const double* sz = filtered_has_shifts_ ? pairs.shift_z.data() : nullptr;
-    const auto* tag = f.atoms.tag.data();
+    const TagInt* __restrict tag = f.span(kAtom_tag);
 
     for (int i = 0; i < n; ++i) {
         const std::int64_t i_tag = tag[i];
@@ -439,6 +443,17 @@ void PairLJCut::compute(const LaunchContext& ctx) {
     // compiler unswitches the inner loop; forces/energy are unaffected.
     const bool do_virial = compute_stress_;
 
+    // Resolve every schema column ONCE, before the OMP parallel region opens
+    // (never inside it — the span resolution counter is not thread-safe, and
+    // every thread would otherwise resolve the same key).
+    const StorageReal* __restrict x_ptr = f.span(kAtom_x);
+    const StorageReal* __restrict y_ptr = f.span(kAtom_y);
+    const StorageReal* __restrict z_ptr = f.span(kAtom_z);
+    const int* __restrict k_type = f.span(kAtom_type);
+    AccReal* __restrict fx_ptr = f.span(kAtom_fx);
+    AccReal* __restrict fy_ptr = f.span(kAtom_fy);
+    AccReal* __restrict fz_ptr = f.span(kAtom_fz);
+
 #pragma omp parallel reduction(+ : energy_total) reduction(+ : v_xx)           \
     reduction(+ : v_yy) reduction(+ : v_zz) reduction(+ : v_xy)                \
     reduction(+ : v_xz) reduction(+ : v_yz)
@@ -458,9 +473,9 @@ void PairLJCut::compute(const LaunchContext& ctx) {
         double* __restrict fyt_ptr;
         double* __restrict fzt_ptr;
         if (direct) {
-            fxt_ptr = f.atoms.fx.data();
-            fyt_ptr = f.atoms.fy.data();
-            fzt_ptr = f.atoms.fz.data();
+            fxt_ptr = fx_ptr;
+            fyt_ptr = fy_ptr;
+            fzt_ptr = fz_ptr;
         } else {
             auto& fxt = fx_thr_[tid];
             auto& fyt = fy_thr_[tid];
@@ -494,16 +509,11 @@ void PairLJCut::compute(const LaunchContext& ctx) {
         const double* k_eps = k_multi ? eps_tab_.data() : nullptr;
         const double* k_sig6 = k_multi ? sig6_tab_.data() : nullptr;
         const double* k_shift = k_multi ? shift_tab_.data() : nullptr;
-        const int* k_type = f.atoms.type.data();
         const double vshift = v_shift_;
 
-        // Raw pointers to the per-thread force arenas; indexing via
-        // `operator[]` on xtensor goes through a strided stride check on
-        // every access even for contiguous 1-D storage. `.data()` drops to
-        // a plain `double*` the compiler keeps in a register.
-        const auto* __restrict x_ptr = f.atoms.x.data();
-        const auto* __restrict y_ptr = f.atoms.y.data();
-        const auto* __restrict z_ptr = f.atoms.z.data();
+        // x_ptr/y_ptr/z_ptr are the schema spans resolved once above, before
+        // the parallel region opened (the 13.7x rule) — every thread shares
+        // the same read-only pointers.
 
         // Track B.2 — xsimd ket-loop vectorization of the inner pair loop.
         //
@@ -824,9 +834,9 @@ void PairLJCut::compute(const LaunchContext& ctx) {
 #pragma omp for schedule(static)
             for (int i = 0; i < n_force; ++i) {
                 for (int t = 0; t < n_threads_; ++t) {
-                    f.atoms.fx[i] += fx_thr_[t][i];
-                    f.atoms.fy[i] += fy_thr_[t][i];
-                    f.atoms.fz[i] += fz_thr_[t][i];
+                    fx_ptr[i] += fx_thr_[t][i];
+                    fy_ptr[i] += fy_thr_[t][i];
+                    fz_ptr[i] += fz_thr_[t][i];
                 }
             }
         }

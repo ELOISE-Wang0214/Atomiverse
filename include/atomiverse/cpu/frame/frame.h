@@ -157,6 +157,25 @@ class Frame {
         return out;
     }
 
+    /// @brief Const overload: resolve a typed column read-only. Same
+    ///        launch-boundary contract as the mutable form.
+    ///
+    /// Read-only consumers (the neighbor list, gather, recorders) hold a
+    /// `const Frame&` and must not be forced to widen their signatures to
+    /// reach a column.
+    /// @tparam T Element type carried by the key.
+    /// @param key Schema key constant or an extension-column key.
+    /// @return `{data, cols}` view with a const-qualified pointer.
+    /// @throws column_error on an unknown key or an element-type mismatch.
+    template <typename T>
+    Span<const T> span(const ColKey<T>& key) const {
+        // One resolver: the mutable one, on a non-const alias, with constness
+        // restored on the way out. The frame is not modified — the resolution
+        // counter is `mutable` by design.
+        const Span<T> mut = const_cast<Frame*>(this)->span(key);
+        return Span<const T>{mut.data, mut.cols};
+    }
+
     /// @brief Presence check. Schema columns are always present except the
     ///        lazy wide-topology group, which exists once the system carries
     ///        bonded topology; extension columns exist once inserted.
@@ -274,6 +293,26 @@ class Frame {
                 + std::to_string(budget)
                 + ") — key lookups belong at the launch boundary, never "
                   "inside a loop (the 13.7x rule)");
+    }
+
+    /// @brief The open window's state — saved and restored around a NESTED
+    ///        component launch (a line-search force replay, a sub-driver step)
+    ///        so an inner component's resolutions are attributed to IT, not to
+    ///        the outer component whose window is still open.
+    struct ResolveWindow {
+        int count;  ///< Resolutions counted so far.
+        int budget; ///< Budget of the open window (0 = none armed).
+    };
+
+    /// @brief Capture the open window's state.
+    ResolveWindow resolution_window() const {
+        return ResolveWindow{resolve_count_, resolve_budget_};
+    }
+
+    /// @brief Restore a previously captured window (see `ResolveWindow`).
+    void restore_resolution_window(ResolveWindow w) const {
+        resolve_count_ = w.count;
+        resolve_budget_ = w.budget;
     }
 
     /// @brief Resolutions since the window opened (tests / diagnostics).

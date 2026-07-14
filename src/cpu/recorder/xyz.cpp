@@ -2,6 +2,7 @@
 /// @brief XYZ writer + Zarr reader — delegating to molrs FFI, one frame at a time.
 
 #include "atomiverse/cpu/recorder/xyz.h"
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/io/frame_writer.h"
@@ -16,6 +17,8 @@ namespace ATV {
 namespace cpu {
 
 namespace {
+/// @brief Stopgap launch-boundary span resolution for a `const cpu::Frame&`.
+///
 /// Extract one frame's raw arrays (type_id, x, y, z, box) for the molrs writer.
 void extract(const Frame& frame, std::vector<int>& type_id,
              std::vector<double>& x, std::vector<double>& y,
@@ -25,11 +28,16 @@ void extract(const Frame& frame, std::vector<int>& type_id,
     x.resize(n);
     y.resize(n);
     z.resize(n);
+    // Hoisted once before the loop -- the 13.7x rule.
+    const int* __restrict sp_type = frame.span(kAtom_type);
+    const StorageReal* __restrict sp_x = frame.span(kAtom_x);
+    const StorageReal* __restrict sp_y = frame.span(kAtom_y);
+    const StorageReal* __restrict sp_z = frame.span(kAtom_z);
     for (int i = 0; i < n; ++i) {
-        type_id[i] = static_cast<int>(frame.atoms.type[i]);
-        x[i] = static_cast<double>(frame.atoms.x[i]);
-        y[i] = static_cast<double>(frame.atoms.y[i]);
-        z[i] = static_cast<double>(frame.atoms.z[i]);
+        type_id[i] = sp_type[i];
+        x[i] = static_cast<double>(sp_x[i]);
+        y[i] = static_cast<double>(sp_y[i]);
+        z[i] = static_cast<double>(sp_z[i]);
     }
     const auto& cell = frame.box.cell();
     for (int i = 0; i < 3; ++i)
@@ -107,19 +115,30 @@ int ZarrReader::read_into(Frame& frame) {
             cell(r, c) = box_h[r * 3 + c];
     frame.box.set_cell(cell);
 
+    // Hoisted once before the loop -- the 13.7x rule.
+    StorageReal* __restrict sp_x = frame.span(kAtom_x);
+    StorageReal* __restrict sp_y = frame.span(kAtom_y);
+    StorageReal* __restrict sp_z = frame.span(kAtom_z);
+    StorageReal* __restrict sp_vx = frame.span(kAtom_vx);
+    StorageReal* __restrict sp_vy = frame.span(kAtom_vy);
+    StorageReal* __restrict sp_vz = frame.span(kAtom_vz);
+    StorageReal* __restrict sp_mass = frame.span(kAtom_mass);
+    int* __restrict sp_type = frame.span(kAtom_type);
+    TagInt* __restrict sp_tag = frame.span(kAtom_tag);
+    Span<std::int8_t> sp_image = frame.span(kAtom_image);
     for (int i = 0; i < n; ++i) {
-        frame.atoms.x[i] = x[i];
-        frame.atoms.y[i] = y[i];
-        frame.atoms.z[i] = z[i];
-        frame.atoms.vx[i] = vx[i];
-        frame.atoms.vy[i] = vy[i];
-        frame.atoms.vz[i] = vz[i];
-        frame.atoms.mass[i] = mass[i];
-        frame.atoms.type[i] = static_cast<int>(type[i]);
-        frame.atoms.tag[i] = static_cast<std::int64_t>(tag[i]);
-        frame.atoms.image(i, 0) = static_cast<std::int8_t>(img_x[i]);
-        frame.atoms.image(i, 1) = static_cast<std::int8_t>(img_y[i]);
-        frame.atoms.image(i, 2) = static_cast<std::int8_t>(img_z[i]);
+        sp_x[i] = static_cast<StorageReal>(x[i]);
+        sp_y[i] = static_cast<StorageReal>(y[i]);
+        sp_z[i] = static_cast<StorageReal>(z[i]);
+        sp_vx[i] = static_cast<StorageReal>(vx[i]);
+        sp_vy[i] = static_cast<StorageReal>(vy[i]);
+        sp_vz[i] = static_cast<StorageReal>(vz[i]);
+        sp_mass[i] = static_cast<StorageReal>(mass[i]);
+        sp_type[i] = static_cast<int>(type[i]);
+        sp_tag[i] = static_cast<TagInt>(static_cast<std::int64_t>(tag[i]));
+        sp_image(i, 0) = static_cast<std::int8_t>(img_x[i]);
+        sp_image(i, 1) = static_cast<std::int8_t>(img_y[i]);
+        sp_image(i, 2) = static_cast<std::int8_t>(img_z[i]);
     }
     return n;
 }

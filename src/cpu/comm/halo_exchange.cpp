@@ -147,10 +147,17 @@ double compute_bonded_extension_local(const Frame& frame,
     double max_sq = 0.0;
     const auto& a = frame.atoms;
 
+    // Hoisted ONCE at the launch boundary; `pair_d2` below only ever reads
+    // through these (topology arrays num_bond/bond_atom/... stay direct
+    // member access -- they are not migrated per the frame-block-02 scope).
+    const StorageReal* __restrict sp_x = frame.span(kAtom_x);
+    const StorageReal* __restrict sp_y = frame.span(kAtom_y);
+    const StorageReal* __restrict sp_z = frame.span(kAtom_z);
+
     auto pair_d2 = [&](int i, int j) {
-        double dx = a.x[i] - a.x[j];
-        double dy = a.y[i] - a.y[j];
-        double dz = a.z[i] - a.z[j];
+        double dx = sp_x[i] - sp_x[j];
+        double dy = sp_y[i] - sp_y[j];
+        double dz = sp_z[i] - sp_z[j];
         frame.box.min_image(dx, dy, dz);
         return dx * dx + dy * dy + dz * dz;
     };
@@ -167,9 +174,10 @@ double compute_bonded_extension_local(const Frame& frame,
     // pre-partition topology that would resolve to current rows whose
     // positions belong to entirely different atoms — giving spurious
     // 50+ Å bond distances and an astronomically wrong bonded extent.
+    const TagInt* __restrict sp_tag = frame.span(kAtom_tag);
     const int nlocal_iter = (dd != nullptr) ? dd->n_local : a.nlocal;
     for (int i_owner = 0; i_owner < nlocal_iter; ++i_owner) {
-        const std::int64_t ti = a.tag[i_owner];
+        const std::int64_t ti = sp_tag[i_owner];
         // Bonds: owner is the smaller-tag atom; partner stored in
         // bond_atom[i][m].
         const int nb = a.num_bond[i_owner];
@@ -277,9 +285,9 @@ void rebuild_send_lists_for_axis(const Frame& frame,
     dd.send_lists[static_cast<std::size_t>(f_lo)].clear();
     dd.send_lists[static_cast<std::size_t>(f_hi)].clear();
 
-    const auto* q = (dim == 0)   ? frame.atoms.x.data()
-                    : (dim == 1) ? frame.atoms.y.data()
-                                 : frame.atoms.z.data();
+    const StorageReal* __restrict q = (dim == 0)   ? frame.span(kAtom_x)
+                                      : (dim == 1) ? frame.span(kAtom_y)
+                                                   : frame.span(kAtom_z);
     const double lo = dd.sublo[dim];
     const double hi = dd.subhi[dim];
 
@@ -367,11 +375,11 @@ void pack_positions_for_face(const Frame& frame,
     const int dim = face_dim(f);
     const double shift = pbc_shift_for_face(dd, f, frame.box.length(dim));
 
-    const auto* x = frame.atoms.x.data();
-    const auto* y = frame.atoms.y.data();
-    const auto* z = frame.atoms.z.data();
-    const auto* tag = frame.atoms.tag.data();
-    const auto* q = frame.atoms.charge.data();
+    const StorageReal* __restrict x = frame.span(kAtom_x);
+    const StorageReal* __restrict y = frame.span(kAtom_y);
+    const StorageReal* __restrict z = frame.span(kAtom_z);
+    const TagInt* __restrict tag = frame.span(kAtom_tag);
+    const StorageReal* __restrict q = frame.span(kAtom_charge);
 
     for (int k = 0; k < n; ++k) {
         const int i = list[static_cast<std::size_t>(k)];
@@ -408,9 +416,9 @@ void pack_positions_only_for_face(const Frame& frame,
     const int dim = face_dim(f);
     const double shift = pbc_shift_for_face(dd, f, frame.box.length(dim));
 
-    const auto* x = frame.atoms.x.data();
-    const auto* y = frame.atoms.y.data();
-    const auto* z = frame.atoms.z.data();
+    const StorageReal* __restrict x = frame.span(kAtom_x);
+    const StorageReal* __restrict y = frame.span(kAtom_y);
+    const StorageReal* __restrict z = frame.span(kAtom_z);
 
     for (int k = 0; k < n; ++k) {
         const int i = list[static_cast<std::size_t>(k)];
@@ -650,6 +658,15 @@ inline void forward_axis_stage(Frame& frame, md::mpi::DomainDecomposition& dd,
     // Unpack into ghost slots — for full rebuilds register tags too. The
     // unpack order ALSO defines the slot layout that `Reverse` mirrors
     // via `dd->recv_counts`.
+    //
+    // Hoisted AFTER the capacity guard above (a `set_capacity` there would
+    // invalidate any span resolved before it) and dominating both the
+    // full_rebuild and refresh unpack loops below.
+    StorageReal* __restrict sp_x = frame.span(kAtom_x);
+    StorageReal* __restrict sp_y = frame.span(kAtom_y);
+    StorageReal* __restrict sp_z = frame.span(kAtom_z);
+    TagInt* __restrict sp_tag = frame.span(kAtom_tag);
+    StorageReal* __restrict sp_charge = frame.span(kAtom_charge);
     int slot = slot_in_out;
     // Ghost tag→slot tracking exists solely for bonded-tuple resolution
     // (ResolveView / select_owned_tuples). Pure pairwise systems never
@@ -666,14 +683,14 @@ inline void forward_axis_stage(Frame& frame, md::mpi::DomainDecomposition& dd,
                 const std::size_t off =
                     static_cast<std::size_t>(k)
                     * static_cast<std::size_t>(per_atom_doubles);
-                frame.atoms.x[slot] = rbuf[off + 0];
-                frame.atoms.y[slot] = rbuf[off + 1];
-                frame.atoms.z[slot] = rbuf[off + 2];
+                sp_x[slot] = static_cast<StorageReal>(rbuf[off + 0]);
+                sp_y[slot] = static_cast<StorageReal>(rbuf[off + 1]);
+                sp_z[slot] = static_cast<StorageReal>(rbuf[off + 2]);
                 const std::int64_t tag =
                     static_cast<std::int64_t>(rbuf[off + 3]);
-                frame.atoms.tag[slot] = tag;
-                frame.atoms.charge[slot] =
-                    rbuf[off + 4]; // ghost charge (border)
+                sp_tag[slot] = static_cast<TagInt>(tag);
+                sp_charge[slot] =
+                    static_cast<StorageReal>(rbuf[off + 4]); // ghost charge (border)
                 unpack_extra_fields(xfields, slot, rbuf,
                                     off + kBorderDoublesPerAtom);
                 if (track_tags) {
@@ -688,9 +705,9 @@ inline void forward_axis_stage(Frame& frame, md::mpi::DomainDecomposition& dd,
                 const std::size_t off =
                     static_cast<std::size_t>(k)
                     * static_cast<std::size_t>(per_atom_doubles);
-                frame.atoms.x[slot] = rbuf[off + 0];
-                frame.atoms.y[slot] = rbuf[off + 1];
-                frame.atoms.z[slot] = rbuf[off + 2];
+                sp_x[slot] = static_cast<StorageReal>(rbuf[off + 0]);
+                sp_y[slot] = static_cast<StorageReal>(rbuf[off + 1]);
+                sp_z[slot] = static_cast<StorageReal>(rbuf[off + 2]);
                 unpack_extra_fields(xfields, slot, rbuf,
                                     off + kPosOnlyDoublesPerAtom);
                 ++slot;
@@ -709,10 +726,13 @@ void zero_ghost_forces(Frame& frame, const md::mpi::DomainDecomposition& dd,
                        const std::vector<CommField>& reverse_fields) {
     const int lo = dd.n_local;
     const int hi = dd.n_local + dd.n_ghost;
+    AccReal* __restrict sp_fx = frame.span(kAtom_fx);
+    AccReal* __restrict sp_fy = frame.span(kAtom_fy);
+    AccReal* __restrict sp_fz = frame.span(kAtom_fz);
     for (int i = lo; i < hi; ++i) {
-        frame.atoms.fx[i] = 0.0;
-        frame.atoms.fy[i] = 0.0;
-        frame.atoms.fz[i] = 0.0;
+        sp_fx[i] = 0.0;
+        sp_fy[i] = 0.0;
+        sp_fz[i] = 0.0;
     }
     // Reverse extra fields share the force semantics: ghost rows are
     // partial-sum accumulators and must start each step at zero.
@@ -833,14 +853,13 @@ void HaloRefresh::launch(const cpu::LaunchContext& ctx) {
     // Ranks with nothing to send simply exchange zero-length messages.
 
     Frame& frame = ctx.frame;
-    auto& a = frame.atoms;
     const bool pos = (field_ == Field::positions);
 
     // Source arrays. Positions carry the periodic shift; velocities must NOT — a
     // ghost across the boundary lives at x - L, but it moves at the same v.
-    double* sx = pos ? a.x.data() : a.vx.data();
-    double* sy = pos ? a.y.data() : a.vy.data();
-    double* sz = pos ? a.z.data() : a.vz.data();
+    StorageReal* __restrict sx = pos ? frame.span(kAtom_x) : frame.span(kAtom_vx);
+    StorageReal* __restrict sy = pos ? frame.span(kAtom_y) : frame.span(kAtom_vy);
+    StorageReal* __restrict sz = pos ? frame.span(kAtom_z) : frame.span(kAtom_vz);
 
     // Replay the cascade EXACTLY as the last full rebuild laid it out: axis 0,1,2;
     // within an axis, the -face then the +face; ghost slots appended from n_local.
@@ -926,6 +945,13 @@ void HaloRecv::launch(const cpu::LaunchContext& ctx) {
     Frame& frame = ctx.frame;
     FaceBufs& bufs = *bufs_;
 
+    // Hoisted ONCE at the launch boundary; no `set_capacity`/`grow` happens
+    // anywhere in this function (only HaloSend grows the frame), so these
+    // stay valid across the whole reverse cascade below.
+    AccReal* __restrict sp_fx = frame.span(kAtom_fx);
+    AccReal* __restrict sp_fy = frame.span(kAtom_fy);
+    AccReal* __restrict sp_fz = frame.span(kAtom_fz);
+
     // One-time flatten of bound participants' reverse-field declarations
     // (see HaloSend::launch for why this is deferred to first launch).
     if (!fields_cached_) {
@@ -986,9 +1012,9 @@ void HaloRecv::launch(const cpu::LaunchContext& ctx) {
             for (int k = 0; k < n; ++k) {
                 std::size_t off = static_cast<std::size_t>(k)
                                   * static_cast<std::size_t>(per_ghost_doubles);
-                sbuf[off + 0] = frame.atoms.fx[slot];
-                sbuf[off + 1] = frame.atoms.fy[slot];
-                sbuf[off + 2] = frame.atoms.fz[slot];
+                sbuf[off + 0] = sp_fx[slot];
+                sbuf[off + 1] = sp_fy[slot];
+                sbuf[off + 2] = sp_fz[slot];
                 pack_extra_fields(rev_fields_, slot, sbuf,
                                   off + kForceDoublesPerAtom);
                 ++slot;
@@ -1042,9 +1068,9 @@ void HaloRecv::launch(const cpu::LaunchContext& ctx) {
                 const int i = list[static_cast<std::size_t>(k)];
                 std::size_t off = static_cast<std::size_t>(k)
                                   * static_cast<std::size_t>(per_ghost_doubles);
-                frame.atoms.fx[i] += rbuf[off + 0];
-                frame.atoms.fy[i] += rbuf[off + 1];
-                frame.atoms.fz[i] += rbuf[off + 2];
+                sp_fx[i] += rbuf[off + 0];
+                sp_fy[i] += rbuf[off + 1];
+                sp_fz[i] += rbuf[off + 2];
                 // Reverse extra fields: ACCUMULATE (exactly-once partial
                 // sums), mirroring the intrinsic force semantics.
                 off += 3;

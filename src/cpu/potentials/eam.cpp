@@ -71,6 +71,15 @@ void EAM::launch(const cpu::LaunchContext& ctx) {
 
     const double rc2 = cutoff_ * cutoff_;
 
+    // Resolve every schema column ONCE at the launch boundary; both passes
+    // below touch nothing but these raw pointers.
+    const StorageReal* __restrict x_ptr = f.span(kAtom_x);
+    const StorageReal* __restrict y_ptr = f.span(kAtom_y);
+    const StorageReal* __restrict z_ptr = f.span(kAtom_z);
+    AccReal* __restrict fx_ptr = f.span(kAtom_fx);
+    AccReal* __restrict fy_ptr = f.span(kAtom_fy);
+    AccReal* __restrict fz_ptr = f.span(kAtom_fz);
+
     // ── Pass 1: rho_i = sum_{j != i} f(r_ij), for owners AND ghosts ─────
     for (int i = 0; i < n_rows; ++i) {
         double rho = 0.0;
@@ -78,9 +87,9 @@ void EAM::launch(const cpu::LaunchContext& ctx) {
         const int nn = pl->numneigh[i];
         for (int jj = 0; jj < nn; ++jj) {
             const int j = pl->neighbors[off + jj];
-            double dx = f.atoms.x[i] - f.atoms.x[j];
-            double dy = f.atoms.y[i] - f.atoms.y[j];
-            double dz = f.atoms.z[i] - f.atoms.z[j];
+            double dx = x_ptr[i] - x_ptr[j];
+            double dy = y_ptr[i] - y_ptr[j];
+            double dz = z_ptr[i] - z_ptr[j];
             f.box.min_image(dx, dy, dz);
             const double r2 = dx * dx + dy * dy + dz * dz;
             if (r2 >= rc2) continue; // the list is a Verlet list; screen here
@@ -110,9 +119,9 @@ void EAM::launch(const cpu::LaunchContext& ctx) {
         const int nn = pl->numneigh[i];
         for (int jj = 0; jj < nn; ++jj) {
             const int j = pl->neighbors[off + jj];
-            double dx = f.atoms.x[i] - f.atoms.x[j];
-            double dy = f.atoms.y[i] - f.atoms.y[j];
-            double dz = f.atoms.z[i] - f.atoms.z[j];
+            double dx = x_ptr[i] - x_ptr[j];
+            double dy = y_ptr[i] - y_ptr[j];
+            double dz = z_ptr[i] - z_ptr[j];
             f.box.min_image(dx, dy, dz);
             const double r2 = dx * dx + dy * dy + dz * dz;
             if (r2 >= rc2) continue;
@@ -134,9 +143,9 @@ void EAM::launch(const cpu::LaunchContext& ctx) {
             // here was the first draft's bug; the FD oracle caught it immediately.)
             const double fpair = -dE_dr / r;
 
-            f.atoms.fx[i] += fpair * dx;
-            f.atoms.fy[i] += fpair * dy;
-            f.atoms.fz[i] += fpair * dz;
+            fx_ptr[i] += fpair * dx;
+            fy_ptr[i] += fpair * dy;
+            fz_ptr[i] += fpair * dz;
 
             // Virial: each visit contributes its half of dx (x) f.
             v[0] += 0.5 * dx * fpair * dx;

@@ -324,9 +324,11 @@ void Backend::step_plan(const Plan<cpu::ComponentBase>& plan, int step_idx) {
             if (op.frequency > 0 && step_idx % op.frequency != 0)
                 continue;
             LaunchContext ctx{context_, *frame_, slot.phase, step_idx};
+            const auto saved = frame_->resolution_window();
             frame_->begin_resolution_window(kResolveBudgetPerLaunch);
             op.component->launch(ctx);
             frame_->end_resolution_window(op.component->name().c_str());
+            frame_->restore_resolution_window(saved);
         }
     }
 }
@@ -355,7 +357,17 @@ void Backend::run_slot_(int slot_index, int step_idx) {
             continue;
         for (auto& op : slot.ops) {
             LaunchContext ctx{context_, *frame_, slot.phase, step_idx};
+            // This replay runs INSIDE the caller's launch (an optimizer's line
+            // search). Give each replayed component its own resolution window
+            // and restore the caller's afterwards — otherwise the inner
+            // components' key resolutions are charged to the optimizer, whose
+            // window is still open, and a long line search trips the guard on
+            // work it never did.
+            const auto saved = frame_->resolution_window();
+            frame_->begin_resolution_window(kResolveBudgetPerLaunch);
             op.component->launch(ctx);
+            frame_->end_resolution_window(op.component->name().c_str());
+            frame_->restore_resolution_window(saved);
         }
     }
 }

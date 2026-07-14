@@ -20,6 +20,7 @@
 #include <string>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/vib/hessian_workspace.h"
 #include "atomiverse/facade/component_role.h"
@@ -54,12 +55,18 @@ class DisplaceStep : public cpu::ComponentBase {
         const int n = ws_->n_atoms;
         const int dim = 3 * n;
 
+        // Hoisted once at the top of launch() -- dominates both the restore
+        // loop below and the single-coordinate shift.
+        StorageReal* __restrict sp_x = ctx.frame.span(kAtom_x);
+        StorageReal* __restrict sp_y = ctx.frame.span(kAtom_y);
+        StorageReal* __restrict sp_z = ctx.frame.span(kAtom_z);
+
         // Restore every coordinate to R0 first — this both clears the
         // previous displacement and handles the final (s == 6N) restore pass.
         for (int i = 0; i < n; ++i) {
-            ctx.frame.atoms.x(i) = ws_->r0[3 * i + 0];
-            ctx.frame.atoms.y(i) = ws_->r0[3 * i + 1];
-            ctx.frame.atoms.z(i) = ws_->r0[3 * i + 2];
+            sp_x[i] = ws_->r0[3 * i + 0];
+            sp_y[i] = ws_->r0[3 * i + 1];
+            sp_z[i] = ws_->r0[3 * i + 2];
         }
 
         const int s = ctx.step;
@@ -73,11 +80,11 @@ class DisplaceStep : public cpu::ComponentBase {
         const double shift = sign * kHessianStepAngstrom;
 
         if (axis == 0)
-            ctx.frame.atoms.x(atom) += shift;
+            sp_x[atom] += shift;
         else if (axis == 1)
-            ctx.frame.atoms.y(atom) += shift;
+            sp_y[atom] += shift;
         else
-            ctx.frame.atoms.z(atom) += shift;
+            sp_z[atom] += shift;
     }
 
   private:

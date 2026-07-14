@@ -5,6 +5,7 @@
 #include <cmath>
 #include <stdexcept>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/component/owned_range.h"
 #include "atomiverse/cpu/frame/frame.h"
@@ -101,10 +102,13 @@ void KSpaceEwald::compute(const LaunchContext& ctx) {
     const int n_local = mpi ? dd->n_local : f.atoms.size();
     const bool first_rank = !mpi || ctx.runtime.mpi_rank == 0;
 
-    const auto* __restrict x = f.atoms.x.data();
-    const auto* __restrict y = f.atoms.y.data();
-    const auto* __restrict z = f.atoms.z.data();
-    const auto* __restrict q = f.atoms.charge.data();
+    const StorageReal* __restrict x = f.span(kAtom_x);
+    const StorageReal* __restrict y = f.span(kAtom_y);
+    const StorageReal* __restrict z = f.span(kAtom_z);
+    const StorageReal* __restrict q = f.span(kAtom_charge);
+    AccReal* __restrict sp_fx = f.span(kAtom_fx);
+    AccReal* __restrict sp_fy = f.span(kAtom_fy);
+    AccReal* __restrict sp_fz = f.span(kAtom_fz);
 
     const double* __restrict kx = kx_.data();
     const double* __restrict ky = ky_.data();
@@ -152,9 +156,9 @@ void KSpaceEwald::compute(const LaunchContext& ctx) {
             fy += fac * ky[k];
             fz += fac * kz[k];
         }
-        f.atoms.fx[i] += fx;
-        f.atoms.fy[i] += fy;
-        f.atoms.fz[i] += fz;
+        sp_fx[i] += fx;
+        sp_fy[i] += fy;
+        sp_fz[i] += fz;
     }
 
     // ── Self energy (partitions across ranks: owned atoms only) ────────

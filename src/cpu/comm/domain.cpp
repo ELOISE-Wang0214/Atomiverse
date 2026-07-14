@@ -32,8 +32,9 @@ void DomainDecomposition::bind(const Frame& frame) {
     // prior buckets) saves ~50 B/atom of hash-node heap.
     if (frame.atoms.has_bonded()) {
         tag_to_local.reserve(static_cast<std::size_t>(n));
+        const TagInt* __restrict sp_tag = frame.span(kAtom_tag);
         for (int i = 0; i < n; ++i) {
-            tag_to_local.emplace(frame.atoms.tag(i), i);
+            tag_to_local.emplace(sp_tag[i], i);
         }
     } else {
         std::unordered_map<TagInt, int>{}.swap(tag_to_local);
@@ -226,15 +227,24 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
     if (first_partition)
         seen_tags.reserve(static_cast<std::size_t>(n_to_iterate));
 
+    // Hoisted ONCE at the launch boundary: no grow/set_capacity happens
+    // between here and the compaction pass below (the first reallocation in
+    // this function is the post-compaction shrink further down), so these
+    // stay valid across both the eligibility scan and the compaction.
+    TagInt* __restrict sp_tag = frame.span(kAtom_tag);
+    StorageReal* __restrict sp_x = frame.span(kAtom_x);
+    StorageReal* __restrict sp_y = frame.span(kAtom_y);
+    StorageReal* __restrict sp_z = frame.span(kAtom_z);
+
     for (int i = 0; i < n_to_iterate; ++i) {
         if (first_partition) {
-            const std::int64_t t = frame.atoms.tag(i);
+            const std::int64_t t = sp_tag[i];
             if (!seen_tags.insert(t).second)
                 continue; // duplicate tag from stale tail — keep first
         }
-        const double xw = frame.box.wrap_axis(frame.atoms.x(i), 0);
-        const double yw = frame.box.wrap_axis(frame.atoms.y(i), 1);
-        const double zw = frame.box.wrap_axis(frame.atoms.z(i), 2);
+        const double xw = frame.box.wrap_axis(sp_x[i], 0);
+        const double yw = frame.box.wrap_axis(sp_y[i], 1);
+        const double zw = frame.box.wrap_axis(sp_z[i], 2);
         const int cx = rank_along_dim(xw, Lx, dims[0]);
         const int cy = rank_along_dim(yw, Ly, dims[1]);
         const int cz = rank_along_dim(zw, Lz, dims[2]);
@@ -251,50 +261,46 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
     // Compact owned atoms to the front of every per-atom array. Iterating
     // in increasing `new_i` guarantees we read `old_i >= new_i` so the
     // destination has not yet been overwritten.
-    // Generic over the storage tier: called with StorageReal (x/y/z, v*) and
-    // AccReal (f*) arrays alike; the element move is type-agnostic.
-    auto compact_1d_d = [&](auto& arr) {
+    // Generic over the element tier (StorageReal x/y/z/v*, AccReal f*, int
+    // type, TagInt tag): span pointer indexing is type-agnostic.
+    auto compact_1d = [&](auto* arr_ptr) {
         for (int ni = 0; ni < n_local; ++ni) {
             const int oi = owned_indices[static_cast<std::size_t>(ni)];
             if (oi != ni)
-                arr(ni) = arr(oi);
-        }
-    };
-    auto compact_1d_i = [&](xt::xtensor<int, 1>& arr) {
-        for (int ni = 0; ni < n_local; ++ni) {
-            const int oi = owned_indices[static_cast<std::size_t>(ni)];
-            if (oi != ni)
-                arr(ni) = arr(oi);
-        }
-    };
-    // Generic over the tag tier (TagInt is int32 under smallbig, int64 under
-    // bigbig); the element move is type-agnostic.
-    auto compact_1d_i64 = [&](auto& arr) {
-        for (int ni = 0; ni < n_local; ++ni) {
-            const int oi = owned_indices[static_cast<std::size_t>(ni)];
-            if (oi != ni)
-                arr(ni) = arr(oi);
+                arr_ptr[ni] = arr_ptr[oi];
         }
     };
 
-    compact_1d_d(frame.atoms.x);
-    compact_1d_d(frame.atoms.y);
-    compact_1d_d(frame.atoms.z);
-    compact_1d_d(frame.atoms.vx);
-    compact_1d_d(frame.atoms.vy);
-    compact_1d_d(frame.atoms.vz);
-    compact_1d_d(frame.atoms.fx);
-    compact_1d_d(frame.atoms.fy);
-    compact_1d_d(frame.atoms.fz);
-    compact_1d_d(frame.atoms.mass);
-    compact_1d_i(frame.atoms.type);
-    compact_1d_i64(frame.atoms.tag);
+    // sp_x/sp_y/sp_z/sp_tag already resolved above (no reallocation since);
+    // the rest resolved here, once, before the compaction calls below.
+    StorageReal* __restrict sp_vx = frame.span(kAtom_vx);
+    StorageReal* __restrict sp_vy = frame.span(kAtom_vy);
+    StorageReal* __restrict sp_vz = frame.span(kAtom_vz);
+    AccReal* __restrict sp_fx = frame.span(kAtom_fx);
+    AccReal* __restrict sp_fy = frame.span(kAtom_fy);
+    AccReal* __restrict sp_fz = frame.span(kAtom_fz);
+    StorageReal* __restrict sp_mass = frame.span(kAtom_mass);
+    int* __restrict sp_type = frame.span(kAtom_type);
+    Span<std::int8_t> sp_image = frame.span(kAtom_image);
+
+    compact_1d(sp_x);
+    compact_1d(sp_y);
+    compact_1d(sp_z);
+    compact_1d(sp_vx);
+    compact_1d(sp_vy);
+    compact_1d(sp_vz);
+    compact_1d(sp_fx);
+    compact_1d(sp_fy);
+    compact_1d(sp_fz);
+    compact_1d(sp_mass);
+    compact_1d(sp_type);
+    compact_1d(sp_tag);
     for (int ni = 0; ni < n_local; ++ni) {
         const int oi = owned_indices[static_cast<std::size_t>(ni)];
         if (oi != ni) {
-            frame.atoms.image(ni, 0) = frame.atoms.image(oi, 0);
-            frame.atoms.image(ni, 1) = frame.atoms.image(oi, 1);
-            frame.atoms.image(ni, 2) = frame.atoms.image(oi, 2);
+            sp_image(ni, 0) = sp_image(oi, 0);
+            sp_image(ni, 1) = sp_image(oi, 1);
+            sp_image(ni, 2) = sp_image(oi, 2);
         }
     }
 
@@ -359,8 +365,11 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
     // Bonded-resolution map only — pure pairwise systems skip it (see bind()).
     if (frame.atoms.has_bonded()) {
         tag_to_local.reserve(static_cast<std::size_t>(n_local));
+        // Re-resolved: `set_capacity` just above may have reallocated the
+        // SoA, invalidating the `sp_tag` resolved earlier in this function.
+        const TagInt* __restrict sp_tag2 = frame.span(kAtom_tag);
         for (int i = 0; i < n_local; ++i) {
-            tag_to_local.emplace(frame.atoms.tag(i), i);
+            tag_to_local.emplace(sp_tag2[i], i);
         }
     } else {
         std::unordered_map<TagInt, int>{}.swap(tag_to_local);

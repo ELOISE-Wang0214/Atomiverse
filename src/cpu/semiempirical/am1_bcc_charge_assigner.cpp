@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <string>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/molrs.hpp"
 
@@ -43,11 +44,15 @@ cpu::Frame build_am1_frame(const molrs::FrameRef& frame) {
     }
 
     cpu::Frame work(n);
+    int* __restrict sp_type = work.span(kAtom_type);
+    StorageReal* __restrict sp_x = work.span(kAtom_x);
+    StorageReal* __restrict sp_y = work.span(kAtom_y);
+    StorageReal* __restrict sp_z = work.span(kAtom_z);
     for (int i = 0; i < n; ++i) {
-        work.atoms.type[i] = atomic_numbers[static_cast<std::size_t>(i)];
-        work.atoms.x[i] = x[static_cast<std::size_t>(i)];
-        work.atoms.y[i] = y[static_cast<std::size_t>(i)];
-        work.atoms.z[i] = z[static_cast<std::size_t>(i)];
+        sp_type[i] = atomic_numbers[static_cast<std::size_t>(i)];
+        sp_x[i] = x[static_cast<std::size_t>(i)];
+        sp_y[i] = y[static_cast<std::size_t>(i)];
+        sp_z[i] = z[static_cast<std::size_t>(i)];
     }
 
     auto h = molrs::frame_simbox(frame);

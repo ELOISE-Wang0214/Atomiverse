@@ -4,6 +4,7 @@
 
 #include "atomiverse/cpu/minimizer/opt_log.h"
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/component/owned_range.h"
 #include "atomiverse/cpu/minimizer/global_reduce.h"
@@ -45,6 +46,14 @@ void OptLog::launch(const cpu::LaunchContext& ctx) {
     const auto& f = ctx.frame;
     const int n = owned_count(ctx);
 
+    // Hoisted once for the whole launch -- the launch-boundary rule.
+    const StorageReal* __restrict sp_x = f.span(kAtom_x);
+    const StorageReal* __restrict sp_y = f.span(kAtom_y);
+    const StorageReal* __restrict sp_z = f.span(kAtom_z);
+    const AccReal* __restrict sp_fx = f.span(kAtom_fx);
+    const AccReal* __restrict sp_fy = f.span(kAtom_fy);
+    const AccReal* __restrict sp_fz = f.span(kAtom_fz);
+
     // Migration reshuffles local rows: the position reference is stale.
     {
         const auto* dd = ctx.runtime.md.dd;
@@ -67,9 +76,9 @@ void OptLog::launch(const cpu::LaunchContext& ctx) {
 #pragma omp parallel for schedule(static) reduction(+ : sumsq)                 \
     reduction(max : maxsq)
     for (int i = 0; i < n; ++i) {
-        const double fx = f.atoms.fx(i);
-        const double fy = f.atoms.fy(i);
-        const double fz = f.atoms.fz(i);
+        const double fx = sp_fx[i];
+        const double fy = sp_fy[i];
+        const double fz = sp_fz[i];
         const double m2 = fx * fx + fy * fy + fz * fz;
         sumsq += m2;
         maxsq = std::max(maxsq, m2);
@@ -79,9 +88,9 @@ void OptLog::launch(const cpu::LaunchContext& ctx) {
     if (has_prev_) {
 #pragma omp parallel for schedule(static) reduction(+ : step_acc)
         for (int i = 0; i < n; ++i) {
-            const double dx = f.atoms.x(i) - x_prev_[i];
-            const double dy = f.atoms.y(i) - y_prev_[i];
-            const double dz = f.atoms.z(i) - z_prev_[i];
+            const double dx = sp_x[i] - x_prev_[i];
+            const double dy = sp_y[i] - y_prev_[i];
+            const double dz = sp_z[i] - z_prev_[i];
             step_acc += dx * dx + dy * dy + dz * dz;
         }
     }
@@ -98,9 +107,9 @@ void OptLog::launch(const cpu::LaunchContext& ctx) {
 
 #pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
-        x_prev_[i] = f.atoms.x(i);
-        y_prev_[i] = f.atoms.y(i);
-        z_prev_[i] = f.atoms.z(i);
+        x_prev_[i] = sp_x[i];
+        y_prev_[i] = sp_y[i];
+        z_prev_[i] = sp_z[i];
     }
     has_prev_ = true;
 

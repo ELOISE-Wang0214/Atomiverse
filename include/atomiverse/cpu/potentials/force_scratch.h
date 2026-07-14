@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <stdexcept>
 #include <vector>
 
 #include "atomiverse/core/log.h"
@@ -74,14 +75,34 @@ public:
 
     int n_threads() const noexcept { return n_threads_; }
 
+    /// @brief Resolve the frame's fx/fy/fz spans ONCE per launch, before the
+    ///        OMP parallel region opens (never inside it — the span resolution
+    ///        counter is not thread-safe, and every thread would otherwise
+    ///        resolve the same key). Call at the top of `compute()`, after any
+    ///        `n_force`-growth check and before `#pragma omp parallel`.
+    void bind(cpu::Frame& f) {
+        fx_frame_ = f.span(kAtom_fx);
+        fy_frame_ = f.span(kAtom_fy);
+        fz_frame_ = f.span(kAtom_fz);
+    }
+
     /// @brief Begin thread `tid`'s accumulation over `[0, n_force)` and return
     ///        its force pointers. Single-thread direct mode returns the frame's
-    ///        own force arrays (no zeroing — already cleared upstream); the
-    ///        multi-thread path zeros this thread's private buffer first. Call
-    ///        once per thread at the top of the parallel region.
-    ThreadForce begin_thread(int tid, int n_force, cpu::Frame& f) {
-        if (direct_)
-            return {f.atoms.fx.data(), f.atoms.fy.data(), f.atoms.fz.data()};
+    ///        own force arrays (already resolved by `bind`, no zeroing — the
+    ///        arrays are already cleared upstream); the multi-thread path
+    ///        zeros this thread's private buffer first. Call once per thread
+    ///        at the top of the parallel region, after `bind()`.
+    ThreadForce begin_thread(int tid, int n_force) {
+        if (direct_) {
+            // A caller that forgot `bind(f)` would otherwise get null force
+            // pointers and silently drop every bonded force. Fail loudly.
+            if (fx_frame_.data == nullptr)
+                throw std::logic_error(
+                    "BondedForceScratch: begin_thread() before bind(frame) — "
+                    "resolve the frame's force columns once, outside the "
+                    "parallel region");
+            return {fx_frame_.data, fy_frame_.data, fz_frame_.data};
+        }
         auto& fx = fx_[static_cast<std::size_t>(tid)];
         auto& fy = fy_[static_cast<std::size_t>(tid)];
         auto& fz = fz_[static_cast<std::size_t>(tid)];
@@ -102,16 +123,17 @@ public:
     }
 
     /// @brief Reduce all threads' `[0, n_force)` contributions into frame
-    ///        forces. Call after the parallel region. The owned + ghost rows
-    ///        are both reduced (ghost forces ship home via HaloRecv).
-    void reduce_into(cpu::Frame& f, int n_force) const {
+    ///        forces. Call after the parallel region, using the same spans
+    ///        `bind()` resolved at the top of this launch. The owned + ghost
+    ///        rows are both reduced (ghost forces ship home via HaloRecv).
+    void reduce_into(int n_force) const {
         // Single-thread direct mode wrote straight into the frame — nothing to
         // gather.
         if (direct_)
             return;
-        double* __restrict fx = f.atoms.fx.data();
-        double* __restrict fy = f.atoms.fy.data();
-        double* __restrict fz = f.atoms.fz.data();
+        double* __restrict fx = fx_frame_.data;
+        double* __restrict fy = fy_frame_.data;
+        double* __restrict fz = fz_frame_.data;
         // Parallelize over rows (each row independent — no cross-thread write
         // hazard), gathering every thread's contribution for row i.
 #pragma omp parallel for schedule(static)
@@ -134,12 +156,17 @@ public:
         fz_.clear();
         n_threads_ = 0;
         direct_ = false;
+        fx_frame_ = Span<AccReal>{};
+        fy_frame_ = Span<AccReal>{};
+        fz_frame_ = Span<AccReal>{};
     }
 
 private:
     int n_threads_ = 0;
     bool direct_ = false; ///< single-thread: accumulate straight into frame.
     std::vector<std::vector<double>> fx_, fy_, fz_;
+    /// Frame fx/fy/fz spans, resolved once per launch by `bind()`.
+    Span<AccReal> fx_frame_{}, fy_frame_{}, fz_frame_{};
 };
 
 /// @brief Voigt-order (xx yy zz xy xz yz) virial accumulator. Supports

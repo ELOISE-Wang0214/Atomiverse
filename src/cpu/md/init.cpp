@@ -4,6 +4,7 @@
 
 #include "atomiverse/cpu/md/init.h"
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/comm/domain.h"
 #include "atomiverse/cpu/component/owned_range.h"
@@ -30,12 +31,16 @@ void KineticEnergy::launch(const cpu::LaunchContext& ctx) {
     const int n = owned_count(ctx); // owned only -- ghosts duplicate owners' KE
     double ke = 0;
 
+    const StorageReal* __restrict sp_mass = f.span(kAtom_mass);
+    const StorageReal* __restrict sp_vx = f.span(kAtom_vx);
+    const StorageReal* __restrict sp_vy = f.span(kAtom_vy);
+    const StorageReal* __restrict sp_vz = f.span(kAtom_vz);
 #pragma omp parallel for schedule(static) reduction(+ : ke)
     for (int i = 0; i < n; ++i) {
-        double v2 = f.atoms.vx[i] * f.atoms.vx[i]
-                    + f.atoms.vy[i] * f.atoms.vy[i]
-                    + f.atoms.vz[i] * f.atoms.vz[i];
-        ke += f.atoms.mass[i] * v2;
+        double v2 = sp_vx[i] * sp_vx[i]
+                    + sp_vy[i] * sp_vy[i]
+                    + sp_vz[i] * sp_vz[i];
+        ke += sp_mass[i] * v2;
     }
 
     f.scalars.kinetic = double(0.5) * kMvv2e * ke;
@@ -50,13 +55,20 @@ void ZeroLinearMomentum::launch(const cpu::LaunchContext& ctx) {
     auto& f = ctx.frame;
     const int n = owned_count(ctx);
 
+    // Hoisted once for both the accumulation loop and the subtraction
+    // loop below.
+    const StorageReal* __restrict sp_mass = f.span(kAtom_mass);
+    StorageReal* __restrict sp_vx = f.span(kAtom_vx);
+    StorageReal* __restrict sp_vy = f.span(kAtom_vy);
+    StorageReal* __restrict sp_vz = f.span(kAtom_vz);
+
     double p[3] = {0.0, 0.0, 0.0};
     double mtot = 0.0;
     for (int i = 0; i < n; ++i) {
-        const double m = f.atoms.mass[i];
-        p[0] += m * f.atoms.vx[i];
-        p[1] += m * f.atoms.vy[i];
-        p[2] += m * f.atoms.vz[i];
+        const double m = sp_mass[i];
+        p[0] += m * sp_vx[i];
+        p[1] += m * sp_vy[i];
+        p[2] += m * sp_vz[i];
         mtot += m;
     }
 
@@ -82,9 +94,9 @@ void ZeroLinearMomentum::launch(const cpu::LaunchContext& ctx) {
 
 #pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
-        f.atoms.vx[i] -= vx;
-        f.atoms.vy[i] -= vy;
-        f.atoms.vz[i] -= vz;
+        sp_vx[i] -= vx;
+        sp_vy[i] -= vy;
+        sp_vz[i] -= vz;
     }
 }
 
@@ -112,6 +124,14 @@ void InitVelocity::build(const cpu::BuildContext& ctx) {
     auto& f = ctx.frame;
     const int n = owned_count(ctx);
 
+    // Hoisted once for the whole function -- every step below (draw,
+    // COM removal, rescale) reads/writes the same mass/v columns, and
+    // both the gaussian and uniform branches need them.
+    const StorageReal* __restrict sp_mass = f.span(kAtom_mass);
+    StorageReal* __restrict sp_vx = f.span(kAtom_vx);
+    StorageReal* __restrict sp_vy = f.span(kAtom_vy);
+    StorageReal* __restrict sp_vz = f.span(kAtom_vz);
+
     // ── 1. draw velocities from the chosen distribution ──────────────
     // LAMMPS scales the raw draw by `1/sqrt(m)` (velocity.cpp:287-291);
     // the absolute scale is then fixed by the temperature rescale in
@@ -120,38 +140,38 @@ void InitVelocity::build(const cpu::BuildContext& ctx) {
     if (dist_ == VelocityDist::gaussian) {
         std::normal_distribution<double> draw(0.0, 1.0); // N(0,1)
         for (int i = 0; i < n; ++i) {
-            const double s = 1.0 / std::sqrt(f.atoms.mass[i]);
-            f.atoms.vx[i] = draw(rng) * s;
-            f.atoms.vy[i] = draw(rng) * s;
-            f.atoms.vz[i] = draw(rng) * s;
+            const double s = 1.0 / std::sqrt(sp_mass[i]);
+            sp_vx[i] = draw(rng) * s;
+            sp_vy[i] = draw(rng) * s;
+            sp_vz[i] = draw(rng) * s;
         }
     } else { // VelocityDist::uniform
         // LAMMPS draws `random->uniform() - 0.5` → U(-0.5, 0.5).
         std::uniform_real_distribution<double> draw(-0.5, 0.5);
         for (int i = 0; i < n; ++i) {
-            const double s = 1.0 / std::sqrt(f.atoms.mass[i]);
-            f.atoms.vx[i] = draw(rng) * s;
-            f.atoms.vy[i] = draw(rng) * s;
-            f.atoms.vz[i] = draw(rng) * s;
+            const double s = 1.0 / std::sqrt(sp_mass[i]);
+            sp_vx[i] = draw(rng) * s;
+            sp_vy[i] = draw(rng) * s;
+            sp_vz[i] = draw(rng) * s;
         }
     }
 
     // ── 2. local COM velocity removal (LAMMPS `mom yes` default) ─────
     double vcm_x = 0, vcm_y = 0, vcm_z = 0, mtot = 0;
     for (int i = 0; i < n; ++i) {
-        vcm_x += f.atoms.mass[i] * f.atoms.vx[i];
-        vcm_y += f.atoms.mass[i] * f.atoms.vy[i];
-        vcm_z += f.atoms.mass[i] * f.atoms.vz[i];
-        mtot += f.atoms.mass[i];
+        vcm_x += sp_mass[i] * sp_vx[i];
+        vcm_y += sp_mass[i] * sp_vy[i];
+        vcm_z += sp_mass[i] * sp_vz[i];
+        mtot += sp_mass[i];
     }
     if (mtot > 0) {
         vcm_x /= mtot;
         vcm_y /= mtot;
         vcm_z /= mtot;
         for (int i = 0; i < n; ++i) {
-            f.atoms.vx[i] -= vcm_x;
-            f.atoms.vy[i] -= vcm_y;
-            f.atoms.vz[i] -= vcm_z;
+            sp_vx[i] -= vcm_x;
+            sp_vy[i] -= vcm_y;
+            sp_vz[i] -= vcm_z;
         }
     }
 
@@ -161,10 +181,10 @@ void InitVelocity::build(const cpu::BuildContext& ctx) {
     // Ndof = 3N - 3 (COM removed), matching `compute temp` extra_dof.
     double sum_mv2 = 0.0;
     for (int i = 0; i < n; ++i) {
-        const double v2 = f.atoms.vx[i] * f.atoms.vx[i]
-                          + f.atoms.vy[i] * f.atoms.vy[i]
-                          + f.atoms.vz[i] * f.atoms.vz[i];
-        sum_mv2 += f.atoms.mass[i] * v2;
+        const double v2 = sp_vx[i] * sp_vx[i]
+                          + sp_vy[i] * sp_vy[i]
+                          + sp_vz[i] * sp_vz[i];
+        sum_mv2 += sp_mass[i] * v2;
     }
     long long n_global = n;
 #ifdef ATV_HAS_MPI
@@ -189,9 +209,9 @@ void InitVelocity::build(const cpu::BuildContext& ctx) {
             2.0 * ke / (static_cast<double>(ndof) * kBoltzmann);
         const double factor = std::sqrt(temperature_ / t_measured);
         for (int i = 0; i < n; ++i) {
-            f.atoms.vx[i] *= factor;
-            f.atoms.vy[i] *= factor;
-            f.atoms.vz[i] *= factor;
+            sp_vx[i] *= factor;
+            sp_vy[i] *= factor;
+            sp_vz[i] *= factor;
         }
     }
 }

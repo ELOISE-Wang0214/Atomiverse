@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/vib/hessian_workspace.h"
 #include "atomiverse/facade/component_role.h"
@@ -45,10 +46,14 @@ class ReferenceGeometry : public cpu::ComponentBase {
         if (ws_->r0_ready)
             return;
         const int n = ctx.frame.atoms.size();
+        // Hoisted once before the loop -- the 13.7x rule.
+        const StorageReal* __restrict sp_x = ctx.frame.span(kAtom_x);
+        const StorageReal* __restrict sp_y = ctx.frame.span(kAtom_y);
+        const StorageReal* __restrict sp_z = ctx.frame.span(kAtom_z);
         for (int i = 0; i < n; ++i) {
-            ws_->r0[3 * i + 0] = ctx.frame.atoms.x(i);
-            ws_->r0[3 * i + 1] = ctx.frame.atoms.y(i);
-            ws_->r0[3 * i + 2] = ctx.frame.atoms.z(i);
+            ws_->r0[3 * i + 0] = sp_x[i];
+            ws_->r0[3 * i + 1] = sp_y[i];
+            ws_->r0[3 * i + 2] = sp_z[i];
         }
         ws_->r0_ready = true;
     }

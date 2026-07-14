@@ -4,6 +4,7 @@
 ///        cross-rank reductions.
 
 #include "atomiverse/cpu/minimizer/lbfgs.h"
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/log.h"
 #include "atomiverse/core/units.h"
 #include "atomiverse/cpu/comm/domain.h"
@@ -98,6 +99,15 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
     const int n = owned_count(ctx);
     const int dim = n * 3;
 
+    // Hoisted once for all three phases below (convergence_check, line_search,
+    // search_direction) -- the launch-boundary rule.
+    StorageReal* __restrict sp_x = f.span(kAtom_x);
+    StorageReal* __restrict sp_y = f.span(kAtom_y);
+    StorageReal* __restrict sp_z = f.span(kAtom_z);
+    const AccReal* __restrict sp_fx = f.span(kAtom_fx);
+    const AccReal* __restrict sp_fy = f.span(kAtom_fy);
+    const AccReal* __restrict sp_fz = f.span(kAtom_fz);
+
     // Capacity growth (driver-level rebuild_frame after a migration influx)
     // is the one legal re-allocation point.
     if (dim > static_cast<int>(x_ws_.size())) {
@@ -134,8 +144,8 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
 #pragma omp parallel for schedule(static) reduction(+ : sum_f2)                \
     reduction(max : local_max_force)
         for (int i = 0; i < n; ++i) {
-            const double fx = f.atoms.fx(i), fy = f.atoms.fy(i),
-                         fz = f.atoms.fz(i);
+            const double fx = sp_fx[i], fy = sp_fy[i],
+                         fz = sp_fz[i];
             const double f2 = fx * fx + fy * fy + fz * fz;
             sum_f2 += f2;
             local_max_force = std::max(local_max_force, std::sqrt(f2));
@@ -149,9 +159,9 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
 #pragma omp parallel for schedule(static) reduction(+ : sum_d2)                \
     reduction(max : local_max_disp)
             for (int i = 0; i < n; ++i) {
-                const double dx = f.atoms.x(i) - xp[i * 3 + 0];
-                const double dy = f.atoms.y(i) - xp[i * 3 + 1];
-                const double dz = f.atoms.z(i) - xp[i * 3 + 2];
+                const double dx = sp_x[i] - xp[i * 3 + 0];
+                const double dy = sp_y[i] - xp[i * 3 + 1];
+                const double dz = sp_z[i] - xp[i * 3 + 2];
                 sum_d2 += dx * dx + dy * dy + dz * dz;
                 local_max_disp = std::max(
                     local_max_disp,
@@ -234,11 +244,11 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
                     std::min(alpha0_, 0.1 / ls_dir_max_); // legacy 0.1 Å cap
 #pragma omp parallel for schedule(static)
             for (int i = 0; i < n; ++i) {
-                f.atoms.x(i) =
+                sp_x[i] =
                     xp[i * 3 + 0] + alpha * direction_[i * 3 + 0];
-                f.atoms.y(i) =
+                sp_y[i] =
                     xp[i * 3 + 1] + alpha * direction_[i * 3 + 1];
-                f.atoms.z(i) =
+                sp_z[i] =
                     xp[i * 3 + 2] + alpha * direction_[i * 3 + 2];
             }
             return;
@@ -255,11 +265,11 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
         auto phi = [&](double alpha, bool need_slope) -> LsSample {
 #pragma omp parallel for schedule(static)
             for (int i = 0; i < n; ++i) {
-                f.atoms.x(i) =
+                sp_x[i] =
                     xp[i * 3 + 0] + alpha * direction_[i * 3 + 0];
-                f.atoms.y(i) =
+                sp_y[i] =
                     xp[i * 3 + 1] + alpha * direction_[i * 3 + 1];
-                f.atoms.z(i) =
+                sp_z[i] =
                     xp[i * 3 + 2] + alpha * direction_[i * 3 + 2];
             }
             ctx.runtime.opt.reeval_forces(need_slope);
@@ -268,9 +278,9 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
             double gd_local = 0;
 #pragma omp parallel for schedule(static) reduction(+ : gd_local)
             for (int i = 0; i < n; ++i) {
-                gd_local += -f.atoms.fx(i) * direction_[i * 3 + 0]
-                            + -f.atoms.fy(i) * direction_[i * 3 + 1]
-                            + -f.atoms.fz(i) * direction_[i * 3 + 2];
+                gd_local += -sp_fx[i] * direction_[i * 3 + 0]
+                            + -sp_fy[i] * direction_[i * 3 + 1]
+                            + -sp_fz[i] * direction_[i * 3 + 2];
             }
             s.dphi = global_sum(ctx, gd_local);
             return s;
@@ -297,9 +307,9 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
         const double alpha = lr.alpha;
 #pragma omp parallel for schedule(static)
         for (int i = 0; i < n; ++i) {
-            f.atoms.x(i) = xp[i * 3 + 0] + alpha * direction_[i * 3 + 0];
-            f.atoms.y(i) = xp[i * 3 + 1] + alpha * direction_[i * 3 + 1];
-            f.atoms.z(i) = xp[i * 3 + 2] + alpha * direction_[i * 3 + 2];
+            sp_x[i] = xp[i * 3 + 0] + alpha * direction_[i * 3 + 0];
+            sp_y[i] = xp[i * 3 + 1] + alpha * direction_[i * 3 + 1];
+            sp_z[i] = xp[i * 3 + 2] + alpha * direction_[i * 3 + 2];
         }
         ATV_DEBUG("[lbfgs] line_search step={} mode={} alpha={:.6e} ok={} "
                   "n_eval={}",
@@ -315,12 +325,12 @@ void LBFGS::launch(const cpu::LaunchContext& ctx) {
     auto& g = g_ws_;
 #pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
-        x[i * 3 + 0] = f.atoms.x(i);
-        x[i * 3 + 1] = f.atoms.y(i);
-        x[i * 3 + 2] = f.atoms.z(i);
-        g[i * 3 + 0] = -f.atoms.fx(i);
-        g[i * 3 + 1] = -f.atoms.fy(i);
-        g[i * 3 + 2] = -f.atoms.fz(i);
+        x[i * 3 + 0] = sp_x[i];
+        x[i * 3 + 1] = sp_y[i];
+        x[i * 3 + 2] = sp_z[i];
+        g[i * 3 + 0] = -sp_fx[i];
+        g[i * 3 + 1] = -sp_fy[i];
+        g[i * 3 + 2] = -sp_fz[i];
     }
 
     ATV_DEBUG("[lbfgs] search_direction step={} stored_history={}", step_,

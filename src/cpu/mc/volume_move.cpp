@@ -7,6 +7,7 @@
 #include <random>
 #include <stdexcept>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/precision.h"
 #include "atomiverse/cpu/mc/transaction.h"
 
@@ -46,11 +47,15 @@ void VolumeMove::launch(const cpu::LaunchContext& ctx) {
     txn->begin(Transaction::Verb::Box, ctx.frame);
     txn->record_box(ctx.frame);
     auto& a = ctx.frame.atoms;
+    // Hoisted once before the loop -- the 13.7x rule.
+    StorageReal* __restrict sp_x = ctx.frame.span(kAtom_x);
+    StorageReal* __restrict sp_y = ctx.frame.span(kAtom_y);
+    StorageReal* __restrict sp_z = ctx.frame.span(kAtom_z);
     for (int i = 0; i < a.nlocal; ++i) {
         txn->record_touch(ctx.frame, i); // snapshot BEFORE rescaling the row
-        a.x[i] = static_cast<StorageReal>(static_cast<double>(a.x[i]) * s);
-        a.y[i] = static_cast<StorageReal>(static_cast<double>(a.y[i]) * s);
-        a.z[i] = static_cast<StorageReal>(static_cast<double>(a.z[i]) * s);
+        sp_x[i] = static_cast<StorageReal>(static_cast<double>(sp_x[i]) * s);
+        sp_y[i] = static_cast<StorageReal>(static_cast<double>(sp_y[i]) * s);
+        sp_z[i] = static_cast<StorageReal>(static_cast<double>(sp_z[i]) * s);
     }
     ctx.frame.box.scale_isotropic(s);
 }

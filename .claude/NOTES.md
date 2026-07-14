@@ -884,3 +884,46 @@ gained frozen-chain guards (a chain whose acceptance ratio is ~0 FAILS instead o
 coasting through on its start configuration — the NPT case initially "passed" with a
 dead chain sitting on its initial volume, which is why both cases now start deliberately
 off-prediction).
+
+## frame-block-02 — 迁移把两颗雷踩了出来（2026-07-14）
+
+CPU 消费面（59 文件、~570 访问点）从 `atoms.x[i]` 迁到 launch 边界的 `span()` 惯用法。
+六个并行 agent 分片改，主 agent 统一构建 + 全套门。**迁移本身是机械的；价值在于它把两个
+潜伏隐患变成了硬失败。**
+
+### 雷一：SCF evaluator 在 force 阶段偷换 Frame 的列（heap-use-after-free）
+
+`scf_evaluator.cpp` 的 `restore_wrapped()` 做的是 `frame.atoms.x = std::move(snap.x)`
+—— **整个数组换掉**，旧缓冲区释放。这违反 Frame 的既定契约：per-atom 列只有
+`grow`/`set_capacity` 可以重分配，且只在 `pre_force`（`cpu/frame/atom.h` 白纸黑字）。
+
+迁移前没人看得见：所有消费者每次都经 xtensor 成员访问，换了缓冲区也照样读到新的。迁移后
+LBFGS 在 launch 顶部提升裸指针、line-search 重放 force 阶段（→ SCFEvaluator →
+`restore_wrapped`），指针当场悬垂。ASAN 一枪命中 `lbfgs.cpp:310` heap-use-after-free。
+
+修法：快照存 `std::vector`，恢复走**逐元素拷回**，列存储身份不变。
+**教训："换整个数组"和"写数组内容"在 xtensor 成员访问下长得一模一样，在裸指针下是天壤之别。
+mapping 化的副作用是它让这条契约变得可执行。**
+
+### 雷二：解析计数窗口不可嵌套（我自己的仪表化 bug）
+
+01 步的解析计数守卫按 launch 开窗。但 `Backend::run_slot_`（line-search 的 force 重放）
+在**调用方的窗口还开着**的时候启动内层组件——ZeroForces/Pair/Halo/Reduce 各自的解析全被
+记在了 CG 头上，10 次试探后 65 > 64 预算，守卫抛异常。
+
+守卫没错，归因错了。修法：`run_slot_` 与 `step_plan`（子驱动）为每个内层 launch **存/恢复
+外层窗口**，内层组件的解析记在它自己名下。
+**教训：任何"按调用计费"的仪表，遇到重入/嵌套就必须显式栈化——否则它会指控无辜者。**
+
+### 并行分片的意外收益
+
+`Frame::span()` 缺 const 重载这件事，被两个独立 agent 在几分钟内**分别撞到**（一个放宽了
+函数签名，一个干脆留下 5 处没迁，还有一个自造了 `const_cast` 权宜函数）。顺序开发时我自己
+只会撞一次、随手补上、不留痕迹；并行时同一个 API 缺口被三种不同的绕行方案同时暴露，反而
+让"这是个真缺口"变得无可辩驳。
+
+### 性能：mapping 化不但没慢，反而快了 ~4%
+
+LJ ⚡ 门：1.107→1.066 ms/step（50k 原子）。原因不是 mapping 本身，而是迁移**强制**把散布的
+`atoms.x[i]`（每次经 xtensor `operator[]`）提升成了循环外的裸指针——这是 mapping 纪律的
+副产品。**"解析停在 launch 边界"这条纪律，本身就是一次全库范围的手工提升。**
