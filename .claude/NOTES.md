@@ -955,3 +955,36 @@ frame-block-03 的调研（构建并测试 cuda/torch 后端）第一件事就�
 **教训：绿色的 ctest 不等于代码被执行过。** 一个测试二进制里有几个 test case，是需要
 独立验证的事实。凡是"某个开关关掉后某类源文件被跳过"的构建系统，都有产出空测试二进制的
 能力——而空二进制永远是 PASS。
+
+## frame-block-03 侦察结论：三后端的转换边界都没坏，坏的是测试基础设施（2026-07-14）
+
+问题："frame-block-01/02 之后，cuda/torch 的 Frame 和各后端 ⇄ molrs.Frame 的转换还对吗？"
+
+### 答案：转换全对 —— 因为它们都是**逐字段具名拷贝**
+
+| 后端 | 构建 | 测试 | 转换机制 | 结论 |
+|---|---|---|---|---|
+| cpu | ✅ | 153/153 | `materialize`/`write_back`（注册表驱动） | 金标契约未改一字 |
+| cuda | ✅ GH200 | **175/175**（含 test_cuda_frame / materialize / multi_gpu） | `to_cuda`/`to_cpu`：逐列 `cudaMemcpy` | **没坏**（首次真验证） |
+| torch | ❌ 不可构建 | ❌ **从未运行过** | 逐字段具名拷贝 | 静态安全，但从未被验证 |
+
+关键原因：frame-block-02 **保留了 `cpu::Atom` 的全部命名成员**（删除是终态步骤），而
+cuda/torch 的转换从不做 `sizeof(Frame)` / 结构体 memcpy —— 它们逐个成员名拷贝。所以
+frame-block-01 新增的 `extras` / `owned_meta_` / 解析计数器成员对它们完全透明。
+`cuda::to_cpu` 的写回集合（x/v/f + tag + charge + image）与 CPU 金标契约**逐字段一致**。
+
+### 真正的发现：torch 的测试是假绿（见上一节），CUDA 的测试很少被跑
+
+- torch：6 个测试从未执行过一次（CMake 静默丢 `.cu`）。已修为 configure 阶段 FATAL。
+- cuda：需要 GPU 节点排队（本次队列 2778 个作业），所以**平时根本没人跑**。本次是
+  frame-block 之后的第一次。8 分钟跑完，全绿。
+
+**教训：一个后端"没坏"这件事，必须被证明，不能被推定。** 而证明的代价（GPU 排队、
+LibTorch 环境）恰恰是它长期无人验证的原因——这两者互为因果。CUDA 的 GPU 作业配方已
+沉淀在 `~/.claude/jobs/atv-cuda-frame-block/job.sh`，下次直接复用。
+
+### molrs 边界的新契约（已钉测试）
+
+扩展列（`insert("rho")`）与用户 meta **不跨 FFI**：它们是引擎本地 scratch，交换 schema
+就是交换 schema。`write_back` 不导出它们、不被它们干扰；`materialize` 不凭空造它们。
+以前这是 `write_back` 循环的一个无人知晓的副作用，现在是 `test_materialize.cpp` 里的契约。

@@ -83,13 +83,15 @@ int main() {
 
     atorch::Frame frame;
     frame.n_atoms_ = 2;
-    frame.x = ::torch::tensor({0.0, 1.5}, real_opts).requires_grad_(true);
-    frame.y = ::torch::zeros({2}, real_opts);
-    frame.z = ::torch::zeros({2}, real_opts);
-    frame.fx = ::torch::zeros({2}, real_opts);
-    frame.fy = ::torch::zeros({2}, real_opts);
-    frame.fz = ::torch::zeros({2}, real_opts);
-    frame.type_id = ::torch::zeros({2}, int_opts);
+    // Per-atom tensors live in the `atoms` sub-struct (mirroring cpu::Frame
+    // and the molrs "atoms" block); the system scalars sit at the top level.
+    frame.atoms.x = ::torch::tensor({0.0, 1.5}, real_opts).requires_grad_(true);
+    frame.atoms.y = ::torch::zeros({2}, real_opts);
+    frame.atoms.z = ::torch::zeros({2}, real_opts);
+    frame.atoms.fx = ::torch::zeros({2}, real_opts);
+    frame.atoms.fy = ::torch::zeros({2}, real_opts);
+    frame.atoms.fz = ::torch::zeros({2}, real_opts);
+    frame.atoms.type = ::torch::zeros({2}, int_opts);
     frame.energy = ::torch::zeros({1}, real_opts);
     frame.box = ::torch::tensor(
         {20.0, 0.0, 0.0,
