@@ -1,6 +1,6 @@
 ---
 title: MPI launcher — rank-0 embedded CPython executable (chain 04-embed)
-status: approved
+status: code-complete
 created: 2026-07-15
 revised: 2026-07-15
 ---
@@ -24,16 +24,17 @@ revised: 2026-07-15
 
 ## Design
 
-**⚠ 03 实施时的发现（2026-07-15，须在本环实施前裁决）**：`Backend::init` 无条件创建
-DomainDecomposition，`Backend::set_frame` 在 `mpi_size>1` 时无条件 `partition_atoms`
-（src/cpu/driver/backend.cpp:131,165-206）——**Evaluate 也不例外**。因此 AM1 单点任务在
-多 rank 下会被切片：每个 rank 的 AM1 只解到自己 slab 的子分子，结果错误。本环的 AM1
-parity 腿（ac-011）会暴露它。两条候选修复（实施本环前小幅修订本 spec 选定其一）：
-(a) 给 Backend/CPUDriver 加 "serial-on-replica" 开关——mpi_size>1 时跳过拓扑与分解，
-每 rank 在完整副本上冗余求解（AM1 毫秒级，冗余成本可忽略；lockstep 平凡）；
-(b) 02 的 TaskMaterializer 单点路径绕过 Evaluate 直调 `AM1Solver`（无 Backend、无分解），
-代价是复制 AM1Evaluator::launch 的 frame 写回逻辑（重复代码风险）。倾向 (a)：修在
-基础设施层，未来 PW/SCF 单点任务同样受益。
+**✅ 已裁决（2026-07-15，方案 a）——serial-on-replica 开关**：`Backend::init` 无条件创建
+DomainDecomposition 并在 `mpi_size>1` 时 `init_topology`，`set_frame` 随之
+`partition_atoms`（backend.cpp:131,165-206）——Evaluate 也不例外，AM1 单点在多 rank 下
+会被切成 slab 子分子。修复落在基础设施层：`CPUDriver::set_serial_on_replica()`（转发
+Backend 标志）——置位后 `init()` 跳过 `dd_->init_topology`（cart_comm 保持
+MPI_COMM_NULL，`set_frame` 的分解条件自然不满足），每个 rank 在完整副本上独立求解；
+molecular 全体系方法（AM1，将来 SCF/PW 单点）冗余但正确、lockstep 平凡（无集体调用被
+跳过的不对称——所有 rank 由同一 TaskSpec 驱动同一标志）。02 的 `TaskMaterializer`
+SinglePoint 路径在 `build()` 前调用它（一行）；MD 路径不受影响。本环实施该开关
+（backend.h/.cpp + cpu_driver.h + task_materializer.cpp，各一小段）+ 一个单元测试
+（多 rank 下置位的 Evaluate 不分解：nlocal 不变）。
 
 **前置依赖（诚实声明）**：本环消费四个先行 spec 的产物——`cpu::comm::bcast_frame`（01）、`cpu/task/` 下的 `TaskSpec` + codec + 物化器（02，**本日并行修订**：`TaskSpec` 增加 `TaskKind {MD, SinglePoint}` 判别子 + `AM1EvaluatorParams`（镜像 `cpu::semiempirical::AM1Config` = `NDDOConfig`：`charge, multiplicity, max_iter, density_tol, energy_tol`，method 不入线），物化器接口改为任务类型无关的 `run(frame)`）、`task_protocol.h` 的 RUN_TASK/SHUTDOWN + `WorkerLoop` + `TaskDispatcher`（03）、以及 **`python-api-namespaces-am1`**（Python 包重构为深层规范命名空间 `atv.potentials.pair.LJCut` / `atv.md.integrator.VelocityVerlet` / `atv.semiempirical.AM1Evaluator` + 顶层再导出，删除旧平铺布局，新增 `bind_semiempirical.cpp` 与可从 Python 调用的 AM1 单点入口）。**这些符号在当前 dev checkout 中尚未全部出现**；本环实现必须在上述四者合入 dev 之后启动，并以合入后的真实头文件/绑定文件路径为准。
 
@@ -64,6 +65,9 @@ parity 腿（ac-011）会暴露它。两条候选修复（实施本环前小幅�
 - `app/atomiverse/launcher_args.h` (new) — header-only `LauncherArgs`
 - `app/atomiverse/python_host.h` (new)
 - `app/atomiverse/python_host.cpp` (new)
+- `include/atomiverse/cpu/driver/backend.h` + `src/cpu/driver/backend.cpp` — serial-on-replica 标志（init 跳过 init_topology）
+- `include/atomiverse/cpu/driver/cpu_driver.h` — `set_serial_on_replica()` 转发
+- `src/cpu/task/task_materializer.cpp` — SinglePoint 路径 build 前置位
 - `include/atomiverse/cpu/task/launcher_gate.h` (new)
 - `src/cpu/task/launcher_gate.cpp` (new)
 - `python/src/bindings/bind_md.cpp` — MdHandle holder + TaskSpec 镜像记录 + `run()` 分发分支（以 `python-api-namespaces-am1` 合入后的实际路径为准）
@@ -79,16 +83,18 @@ parity 腿（ac-011）会暴露它。两条候选修复（实施本环前小幅�
 
 ## Tasks
 
-- [ ] Write failing tests for LauncherGate and LauncherArgs (tests/cpu/task/test_launcher_gate.cpp: 无标记→inactive；标记为**他进程 PID** ∧ MPI 未初始化→静默 inactive、**不抛**（子进程形态）；标记为**本进程 PID** ∧ MPI 未初始化→inactive + 一次性警告、**不抛**；tests/app/test_launcher_args.cpp: 缺参/不存在/不可读→throw、可读文件→ok；接入 tests/CMakeLists.txt) *(rework: gate 契约从"宿主不一致抛出"改为"PID 限定 + 降级不抛"，测试重写)*
-- [ ] Implement LauncherGate in include/atomiverse/cpu/task/launcher_gate.h + src/cpu/task/launcher_gate.cpp (校验构造函数：读 ATV_LAUNCHER 并解析 PID + MPI_Initialized/size 探测；active() ⇔ 标记∧PID 匹配∧MPI 已初始化∧size>1；一切不一致降级 inactive，PID 匹配而 MPI 未初始化时打一次性 stderr 警告，绝不抛出) *(rework: 同上契约变更)*
-- [ ] Implement LauncherArgs in app/atomiverse/launcher_args.h (header-only 校验构造函数)
-- [ ] Implement PythonHost in app/atomiverse/python_host.h + python_host.cpp (Py_Initialize 前 setenv ATV_LAUNCHER=<本进程 PID>；PyConfig + Py_RunMain 以 __main__ 执行脚本；返回退出码，异常时 traceback 由 CPython 打印) *(rework: 标记值从 "1" 改为 PID)*
-- [ ] Implement main.cpp in app/atomiverse/ (MPI_Init_thread(MPI_THREAD_MULTIPLE)/MPI_Finalize 括号；rank 0 = PythonHost + 无条件 SHUTDOWN 广播；rank>0 = 03 的 WorkerLoop；用法错误所有 rank 干净非零退出)
-- [ ] Add ATV_BUILD_LAUNCHER wiring: 根 CMakeLists.txt 选项 + FATAL_ERROR 守卫 + add_subdirectory；编写 app/atomiverse/CMakeLists.txt（target `atomiverse_launcher`、`OUTPUT_NAME atomiverse`，仅可执行目标链接 Python3 Embed，libatomiverse 与 _atomiverse.so 不变）
-- [ ] Implement dispatch seam for both task kinds in python/src/bindings/bind_md.cpp and bind_semiempirical.cpp (MD：MdHandle holder + 注册期 TaskSpec 镜像，run() 中 gate 活跃→TaskKind::MD 经 TaskDispatcher 分发（释放 GIL），codec 不覆盖的组件抛出并点名；AM1：单点入口 gate 活跃→TaskKind::SinglePoint（AM1EvaluatorParams）分发，能量+逐原子电荷经 Frame gather 写回；两处 gate 不活跃→原路径不变) *(rework: 缝落在重构后的绑定层并扩展到 SinglePoint)*
-- [ ] Write regression case regressions/launcher/lj_parity/ (atv_lj.py 固定种子分段采样、atv_am1.py 小分子单点输出能量+电荷、compare.py 双腿公差、reg_lj_parity.sh 四腿编排；在 ~/work/.x86_64 venv + buildenv-gcc/2026.03-mpich + LD_LIBRARY_PATH 镜像下运行；接入 regressions/CMakeLists.txt 的 regressions target，ATV_BUILD_LAUNCHER 门控) *(rework: 同案例新增 AM1 单点 parity 腿)*
-- [ ] Verify parity and serial no-op: LJ——串行 `python atv_lj.py` vs `mpirun -np 2 atomiverse atv_lj.py`，逐采样点能量相对偏差 ≤ 1e-9、末位置 ≤ 1e-8 Å；AM1——能量相对偏差 ≤ 1e-10、逐原子电荷 ≤ 1e-10 e；整案 ≤ 60 s；并确认无标记时两个 run 入口都走原路径 *(rework: 增加 AM1 腿判据)*
-- [ ] Run full check + test suite
+- [x] Write failing tests for LauncherGate and LauncherArgs (tests/cpu/task/test_launcher_gate.cpp: 无标记→inactive；标记为**他进程 PID** ∧ MPI 未初始化→静默 inactive、**不抛**（子进程形态）；标记为**本进程 PID** ∧ MPI 未初始化→inactive + 一次性警告、**不抛**；tests/app/test_launcher_args.cpp: 缺参/不存在/不可读→throw、可读文件→ok；接入 tests/CMakeLists.txt) *(rework: gate 契约从"宿主不一致抛出"改为"PID 限定 + 降级不抛"，测试重写)*
+- [x] Implement the serial-on-replica seam (Backend flag + CPUDriver::set_serial_on_replica + materializer SinglePoint call + tests/mpi unit: multi-rank Evaluate with the flag keeps nlocal == n)
+- [x] Implement LauncherGate in include/atomiverse/cpu/task/launcher_gate.h + src/cpu/task/launcher_gate.cpp (校验构造函数：读 ATV_LAUNCHER 并解析 PID + MPI_Initialized/size 探测；active() ⇔ 标记∧PID 匹配∧MPI 已初始化∧size>1；一切不一致降级 inactive，PID 匹配而 MPI 未初始化时打一次性 stderr 警告，绝不抛出) *(rework: 同上契约变更)*
+- [x] Implement LauncherArgs in app/atomiverse/launcher_args.h (header-only 校验构造函数)
+- [x] Implement PythonHost in app/atomiverse/python_host.h + python_host.cpp (Py_Initialize 前 setenv ATV_LAUNCHER=<本进程 PID>；PyConfig + Py_RunMain 以 __main__ 执行脚本；返回退出码，异常时 traceback 由 CPython 打印) *(rework: 标记值从 "1" 改为 PID)*
+- [x] Implement main.cpp in app/atomiverse/ (MPI_Init_thread(MPI_THREAD_MULTIPLE)/MPI_Finalize 括号；rank 0 = PythonHost + 无条件 SHUTDOWN 广播；rank>0 = 03 的 WorkerLoop；用法错误所有 rank 干净非零退出)
+- [x] Add ATV_BUILD_LAUNCHER wiring: 根 CMakeLists.txt 选项 + FATAL_ERROR 守卫 + add_subdirectory；编写 app/atomiverse/CMakeLists.txt（target `atomiverse_launcher`、`OUTPUT_NAME atomiverse`，仅可执行目标链接 Python3 Embed，libatomiverse 与 _atomiverse.so 不变）
+- [x] Implement dispatch seam for both task kinds in python/src/bindings/bind_md.cpp and bind_semiempirical.cpp (MD：MdHandle holder + 注册期 TaskSpec 镜像，run() 中 gate 活跃→TaskKind::MD 经 TaskDispatcher 分发（释放 GIL），codec 不覆盖的组件抛出并点名；AM1：单点入口 gate 活跃→TaskKind::SinglePoint（AM1EvaluatorParams）分发，能量+逐原子电荷经 Frame gather 写回；两处 gate 不活跃→原路径不变) *(rework: 缝落在重构后的绑定层并扩展到 SinglePoint)*
+- [x] Write regression case regressions/launcher/lj_parity/ (atv_lj.py 固定种子分段采样、atv_am1.py 小分子单点输出能量+电荷、compare.py 双腿公差、reg_lj_parity.sh 四腿编排；在 ~/work/.x86_64 venv + buildenv-gcc/2026.03-mpich + LD_LIBRARY_PATH 镜像下运行；接入 regressions/CMakeLists.txt 的 regressions target，ATV_BUILD_LAUNCHER 门控) *(rework: 同案例新增 AM1 单点 parity 腿)*
+- [x] Verify parity and serial no-op: LJ——串行 `python atv_lj.py` vs `mpirun -np 2 atomiverse atv_lj.py`，逐采样点能量相对偏差 ≤ 1e-9、末位置 ≤ 1e-8 Å；AM1——能量相对偏差 ≤ 1e-10、逐原子电荷 ≤ 1e-10 e；整案 ≤ 60 s；并确认无标记时两个 run 入口都走原路径 *(rework: 增加 AM1 腿判据)*
+- [x] Hygiene cleanup（/mol:simplify: 12 fixes incl. compare.py assert→sys.exit + SHUTDOWN-on-every-path guarantee; suite + parity green after batch）
+- [x] Run full check + test suite（C++ 166 tests green, pytest 125/1skip, parity REGRESSION PASSED: LJ 7e-16, AM1 exact）
 
 ## Testing strategy
 

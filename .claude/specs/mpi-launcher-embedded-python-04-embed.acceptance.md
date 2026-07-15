@@ -11,7 +11,8 @@ criteria:
       dependency, and neither bind_md.cpp nor bind_semiempirical.cpp
       adds a Python-C-API (embedding) include beyond what nanobind
       already provides.
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-002
     summary: LauncherGate never throws; child-process-shaped state is inactive
     type: runtime
@@ -23,7 +24,8 @@ criteria:
       set to the OWN pid with MPI uninitialized -> inactive plus exactly
       one stderr warning, no throw; LauncherArgs: missing / nonexistent /
       unreadable script argv -> throws; readable -> ok.
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-003
     summary: Configure-time guard rejects incoherent launcher builds
     type: runtime
@@ -32,7 +34,8 @@ criteria:
       ATV_BUILD_PYTHON=OFF) fails at configure with a FATAL_ERROR naming
       the missing prerequisite; default configure (option OFF) is
       byte-identical in generated targets to pre-change.
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-004
     summary: 2-rank happy path terminates cleanly with SHUTDOWN
     type: runtime
@@ -41,7 +44,8 @@ criteria:
       exits 0 within the 60 s budget with no hung rank; worker rank
       returns from WorkerLoop via the SHUTDOWN broadcast (run completes
       without manual kill).
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-005
     summary: Script exception releases workers and propagates nonzero exit
     type: runtime
@@ -49,7 +53,8 @@ criteria:
       Under mpirun -np 2, a script that raises prints a Python traceback
       on rank 0, mpirun exits nonzero, and both ranks terminate (no
       hang) — SHUTDOWN is still broadcast after Py_RunMain returns.
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-006
     summary: Usage errors exit nonzero on all ranks without hanging
     type: runtime
@@ -57,7 +62,8 @@ criteria:
       `mpirun -np 2 ./atomiverse` (missing script) and `... ./atomiverse
       /no/such/file.py` both exit nonzero on every rank with a clear
       message and a clean MPI_Finalize (no deadlock, no abort file spam).
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-007
     summary: Plain `python atv.py` serial path is an exact no-op of the seam
     type: runtime
@@ -68,7 +74,8 @@ criteria:
       `python` with no MPI and succeed), and the Python package layer as
       restructured by python-api-namespaces-am1 needs zero changes from
       this link (seam is C++-binding-side only).
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-008
     summary: Serial vs 2-rank launcher parity on the LJ MD leg within tight tolerance
     type: scientific
@@ -94,7 +101,8 @@ criteria:
       std::runtime_error naming the component or entry type for anything
       else registered or requested; there is no silent serial fallback
       in the gate-active path of either entry.
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-010
     summary: Doxygen on all new public symbols
     type: docs

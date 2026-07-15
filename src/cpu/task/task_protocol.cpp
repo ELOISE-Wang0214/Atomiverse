@@ -186,7 +186,8 @@ void WorkerLoop::run() {
 
 // ── TaskDispatcher ────────────────────────────────────────────────────────
 
-TaskDispatcher::TaskDispatcher(MPI_Comm comm, std::int32_t version)
+TaskDispatcher::TaskDispatcher(MPI_Comm comm, std::int32_t version,
+                               bool do_handshake)
     : comm_(comm), version_(version) {
     validate_common(comm_);
     int rank = 0;
@@ -194,7 +195,8 @@ TaskDispatcher::TaskDispatcher(MPI_Comm comm, std::int32_t version)
     if (rank != 0)
         throw std::runtime_error(
             "task_protocol: TaskDispatcher must be constructed on rank 0");
-    handshake(comm_, version_);
+    if (do_handshake)
+        handshake(comm_, version_);
 }
 
 cpu::Frame TaskDispatcher::dispatch(const TaskSpec& spec, cpu::Frame frame) {

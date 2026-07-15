@@ -87,6 +87,10 @@ TaskMaterializer::TaskMaterializer(const TaskSpec& spec)
     cfg.density_tol = p.density_tol;
     cfg.energy_tol = p.energy_tol;
     eval_.emplace();
+    // AM1 is a molecular whole-system solve: under multi-rank MPI the
+    // Backend must NOT spatially decompose the replica (each rank solves
+    // the full molecule redundantly; lockstep-trivial).
+    eval_->set_serial_on_replica();
     eval_->on(ATV::evaluate::Phase::evaluate)
         .add(semiempirical::AM1Evaluator{cfg});
     eval_->build();

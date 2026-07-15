@@ -240,6 +240,18 @@ atv_add_cpp_test(test_cpu_materialize                     cpu/test_materialize.c
 atv_add_cpp_test(test_cpu_task_codec                      cpu/test_task_codec.cpp)
 atv_add_cpp_test(test_cpu_task_materializer               cpu/test_task_materializer.cpp)
 
+# LauncherGate (mpi-launcher-embedded-python-04, ac-002): the PID-qualified
+# ATV_LAUNCHER marker probe. Serial gtest — MPI is never initialized in this
+# binary, which is exactly the state the degradation contract is about.
+atv_add_cpp_test(test_cpu_launcher_gate                   cpu/task/test_launcher_gate.cpp)
+
+# LauncherArgs (same link, ac-002/ac-006): header-only class in
+# app/atomiverse/, which is NOT part of libatomiverse — the test compiles the
+# header directly via this include dir.
+atv_add_cpp_test(test_app_launcher_args                   app/test_launcher_args.cpp)
+target_include_directories(test_app_launcher_args PRIVATE
+    ${CMAKE_SOURCE_DIR}/app/atomiverse)
+
 # ExtXYZ loading through molrs — inline fixtures only, no external file.
 atv_add_cpp_test(test_cpu_io_extxyz                       cpu/io/test_cpu_io_extxyz.cpp)
 
@@ -354,6 +366,14 @@ if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
     atv_add_mpi_run(test_mpi_task_protocol_n1 test_mpi_task_protocol 1)
     atv_add_mpi_run(test_mpi_task_protocol_n2 test_mpi_task_protocol 2)
     atv_add_mpi_run(test_mpi_task_protocol_n4 test_mpi_task_protocol 4)
+
+    # serial-on-replica seam (mpi-launcher-embedded-python-04): a driver with
+    # set_serial_on_replica() must NOT decompose — every rank solves the full
+    # replica (AM1 H2 single point) and lands on the identical energy.
+    atv_add_mpi_exec(test_mpi_serial_on_replica mpi/test_serial_on_replica.cpp)
+    atv_add_mpi_run(test_mpi_serial_on_replica_n1 test_mpi_serial_on_replica 1)
+    atv_add_mpi_run(test_mpi_serial_on_replica_n2 test_mpi_serial_on_replica 2)
+    atv_add_mpi_run(test_mpi_serial_on_replica_n4 test_mpi_serial_on_replica 4)
 endif()
 
 # ── PW infrastructure tests (require ATV_BUILD_PW) ─────────────────────

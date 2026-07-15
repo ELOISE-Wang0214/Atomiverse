@@ -117,10 +117,18 @@ class TaskDispatcher {
     ///             rank 0 — this rank must BE rank 0.
     /// @param version Protocol version (test seam); defaults to
     ///                `kProtocolVersion`.
+    /// @param do_handshake Join the collective version handshake (default).
+    ///        The launcher's `main` constructs THE handshaking dispatcher
+    ///        (pairing with every WorkerLoop ctor); the bindings' dispatch
+    ///        seam — a separate copy of this library inside the extension
+    ///        module — constructs with `handshake = false`, because the
+    ///        workers are already blocked in their command loop and a
+    ///        second handshake would misalign the collectives.
     /// @throws std::runtime_error if this rank is not rank 0 of `comm`, or
     ///         on handshake mismatch (every rank throws).
     explicit TaskDispatcher(MPI_Comm comm,
-                            std::int32_t version = kProtocolVersion);
+                            std::int32_t version = kProtocolVersion,
+                            bool do_handshake = true);
 
     /// @brief Run one task on every rank; return the result Frame.
     ///

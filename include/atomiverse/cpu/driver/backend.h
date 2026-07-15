@@ -216,6 +216,18 @@ class Backend {
     /// Returns nullptr if no DD is owned.
     std::unique_ptr<md::mpi::DomainDecomposition> release_dd();
 
+    /// @brief Run this Backend serially on a full-replica frame even under
+    ///        multi-rank MPI: `init()` skips `dd->init_topology`, so
+    ///        `cart_comm` stays null and `set_frame` never partitions.
+    ///
+    /// For molecular whole-system evaluators (AM1 single point; future
+    /// SCF/PW single points) that cannot run under spatial decomposition —
+    /// every rank solves its own full replica redundantly. Call before
+    /// `init()`/`build()`. Lockstep-safe: no collective is skipped
+    /// asymmetrically because every rank derives the flag from the same
+    /// task description.
+    void set_serial_on_replica() noexcept { serial_on_replica_ = true; }
+
   private:
     /// @brief Replay one compiled Plan slot. The erased half of `run_stage`.
     /// @param slot Dense Plan slot index (from `ATV::slot_of`).
@@ -232,6 +244,7 @@ class Backend {
     /// @brief Desired timing-enabled state, re-applied by `init()`. Default
     /// true (built-in summary always-on); `enable_timing()` updates it.
     bool timing_pref_ = true;
+    bool serial_on_replica_ = false; ///< init() skips DD topology when set.
     /// Per-slot, per-op dense timing handles into `timing_`, precomputed in
     /// `build_components()` so the hot `step()` loop never calls
     /// `component->name()`. Mirrors `plan_->slots[s].ops` order.

@@ -85,6 +85,8 @@ if(NOT ATV_DOCS_ONLY)
         "Build end-to-end textbook regression cases (regressions/)" OFF)
     option(ATV_BUILD_BENCHMARKS "Build benchmarks" OFF)
     option(ATV_BUILD_EXAMPLES "Build examples" OFF)
+    option(ATV_BUILD_LAUNCHER
+           "Build the atomiverse MPI launcher executable (rank-0 embedded CPython)" OFF)
     option(ATV_USE_MATPLOT "Enable matplotplusplus for plotting in examples (requires gnuplot)" OFF)
 
     list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/deps")
@@ -193,6 +195,7 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/task/task_codec.cpp
         src/cpu/task/task_materializer.cpp
         src/cpu/task/task_protocol.cpp
+        src/cpu/task/launcher_gate.cpp
         # CPU Monte Carlo (Sampling category)
         src/cpu/mc/translate_move.cpp
         src/cpu/mc/transaction.cpp
@@ -771,6 +774,25 @@ if(NOT ATV_DOCS_ONLY)
             target_link_libraries(_atomiverse PRIVATE ${FFTW3_LIB})
         endif()
         install(TARGETS _atomiverse LIBRARY DESTINATION atomiverse)
+    endif()
+
+    # ── MPI launcher executable (rank-0 embedded CPython) ──
+    if(ATV_BUILD_LAUNCHER)
+        if(NOT ATV_USE_MPI)
+            message(FATAL_ERROR
+                "ATV_BUILD_LAUNCHER=ON requires ATV_USE_MPI=ON: the launcher "
+                "is the MPI process model (rank 0 embeds Python, workers run "
+                "the task protocol). Configure with -DATV_USE_MPI=ON or drop "
+                "-DATV_BUILD_LAUNCHER.")
+        endif()
+        if(NOT ATV_BUILD_PYTHON)
+            message(FATAL_ERROR
+                "ATV_BUILD_LAUNCHER=ON requires ATV_BUILD_PYTHON=ON: the "
+                "launcher hosts the Python bindings built from this tree. "
+                "Configure with -DATV_BUILD_PYTHON=ON or drop "
+                "-DATV_BUILD_LAUNCHER.")
+        endif()
+        add_subdirectory(app/atomiverse)
     endif()
 
     # ctest is used by both the unit-test suite and the benchmark validation

@@ -132,7 +132,10 @@ void Backend::init() {
     context_.md.dd = dd_.get();
 
 #ifdef ATV_HAS_MPI
-    if (context_.mpi_size > 1) {
+    // serial_on_replica_: molecular whole-system evaluators opt out of
+    // spatial decomposition — leaving cart_comm null means set_frame's
+    // partition condition never fires and every rank keeps its replica.
+    if (context_.mpi_size > 1 && !serial_on_replica_) {
         dd_->init_topology(MPI_COMM_WORLD);
     }
 #endif

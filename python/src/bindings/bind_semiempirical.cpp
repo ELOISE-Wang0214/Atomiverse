@@ -1,4 +1,4 @@
-/// @file python/bind_semiempirical.cpp
+/// @file python/src/bindings/bind_semiempirical.cpp
 /// @brief AM1 semiempirical single-point bindings: AM1Config, AM1Evaluator,
 ///        AM1Result, and the `single_point` entry.
 ///
@@ -10,12 +10,22 @@
 
 #include "molrs_frame_bridge.h"
 
+#include <utility>
+
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 
 #include "atomiverse/cpu/driver/single_point.h"
 #include "atomiverse/cpu/frame/materialize.h"
 #include "atomiverse/cpu/semiempirical/am1_evaluator.h"
+#include "atomiverse/cpu/task/launcher_gate.h"
+#include "atomiverse/cpu/task/task_spec.h"
+
+#ifdef ATV_HAS_MPI
+#include <mpi.h>
+
+#include "atomiverse/cpu/task/task_protocol.h"
+#endif
 
 using namespace ATV;
 
@@ -89,20 +99,49 @@ void bind_semiempirical(nb::module_& m) {
     m.def(
         "single_point",
         [](nb::object frame_obj, AM1Evaluator& evaluator) {
+            const cpu::task::LauncherGate gate;
             auto fref = borrow_molrs_frame(frame_obj);
             cpu::Frame work = cpu::materialize(*fref);
+            if (!gate.active()) {
+                {
+                    nb::gil_scoped_release release;
+                    cpu::single_point(work, evaluator);
+                }
+                // Unlike the PW path, AM1 declares Capability::Charge —
+                // the per-atom charges must return to the SAME molrs.Frame
+                // via the pinned write_back round-trip contract.
+                cpu::write_back(work, *fref);
+                return;
+            }
+#ifdef ATV_HAS_MPI
+            // Launcher-hosted rank 0: dispatch a SinglePoint task. Results
+            // (energy [eV] + charges [e]) come back through the Frame;
+            // NOTE the borrowed evaluator's last_result() is NOT populated
+            // on this path — the solve ran inside the per-rank
+            // materializers.
+            cpu::task::AM1EvaluatorParams p{};
+            const AM1Config& cfg = evaluator.config();
+            p.charge = cfg.charge;
+            p.multiplicity = cfg.multiplicity;
+            p.max_iter = cfg.max_iter;
+            p.density_tol = cfg.density_tol;
+            p.energy_tol = cfg.energy_tol;
+            cpu::task::TaskSpec spec{p};
+            cpu::Frame result(0);
             {
                 nb::gil_scoped_release release;
-                cpu::single_point(work, evaluator);
+                cpu::task::TaskDispatcher dispatcher(
+                    MPI_COMM_WORLD, cpu::task::kProtocolVersion,
+                    /*handshake=*/false); // main's dispatcher handshook
+                result = dispatcher.dispatch(spec, std::move(work));
             }
-            // Unlike the PW path, AM1 declares Capability::Charge — the
-            // per-atom charges must return to the SAME molrs.Frame via the
-            // pinned write_back round-trip contract.
-            cpu::write_back(work, *fref);
+            cpu::write_back(result, *fref);
+#endif
         },
         nb::arg("frame"), nb::arg("evaluator"),
         "Run one AM1 single-point on a molrs.Frame: energy [eV] onto the "
         "frame scalars, Mulliken charges [e] onto the atoms charge column. "
         "GIL released during compute; read evaluator.last_result() for "
-        "Hartree/kcal-mol detail.");
+        "Hartree/kcal-mol detail (serial path only — under the MPI "
+        "launcher the results arrive via the Frame).");
 }

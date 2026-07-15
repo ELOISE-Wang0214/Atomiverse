@@ -233,6 +233,17 @@ class CPUDriver : public Driver<PhaseEnum, cpu::device_tag> {
         this->backend_->set_threads(n);
     }
 
+    /// @brief Run serially on a full-replica frame even under multi-rank
+    /// MPI (Backend::set_serial_on_replica passthrough): the Backend skips
+    /// DD topology, so `set_frame` never partitions. For molecular
+    /// whole-system evaluators (AM1/SCF/PW single points). Call before
+    /// `build()`.
+    void set_serial_on_replica() {
+        if (!this->backend_)
+            this->backend_ = std::make_unique<typename Base::BackendT>();
+        this->backend_->set_serial_on_replica();
+    }
+
   protected:
     /// @brief Subclass hook — install opt-in infrastructure components
     /// derived from declared user state (e.g. `NoseHooverNPT::reads()
