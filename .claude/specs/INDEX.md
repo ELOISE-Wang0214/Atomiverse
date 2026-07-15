@@ -21,16 +21,16 @@ Frame) to worker ranks, no on-disk IR; the wheel ships both `_atomiverse.so`
 and `bin/atomiverse`. Implementation order: 01 → 02 → 03 →
 python-api-namespaces-am1 → 04 → 05. **Steps 01 (bcast_frame, done+deleted)
 and 03 (protocol, done+deleted) are complete; 02 is code-complete** (git
-log, 2026-07-15). python-api-namespaces-am1 and 04-embed are code-complete (the launcher
-runs: `mpirun -np 2 atomiverse atv.py` ≡ `python atv.py`, LJ+AM1 parity
-regression green). Next: `/mol:impl mpi-launcher-embedded-python-05-packaging`.
+log, 2026-07-15). **Campaign COMPLETE (2026-07-15)**: all six specs done and deleted (01-bcast,
+02-codec, 03-protocol, python-api-namespaces-am1, 04-embed, 05-packaging;
+history in git log). Delivered: `mpirun -np N atomiverse atv.py` ≡
+`python atv.py` (LJ parity 7e-16, AM1 bitwise), namespaced Python API + AM1
+single-point bindings, wheel ships `bin/atomiverse` with runtime interpreter
+discovery. Plus one library fix en route: dual-image ghost double-counting
+in the full-stencil neighbor path (fix(neighbor), f8c35b2).
 
 | slug | status | summary |
 |---|---|---|
-| [mpi-launcher-embedded-python-02-codec](mpi-launcher-embedded-python-02-codec.md) | code-complete | new `cpu/task/` cluster: versioned TaskSpec with TaskKind{MD, SinglePoint} (9 MD components + AM1EvaluatorParams), MPI-free pack/unpack, TaskMaterializer with task-kind-agnostic run(frame) |
-| [python-api-namespaces-am1](python-api-namespaces-am1.md) | code-complete | deep canonical Python namespaces (atv.potentials.pair.LJCut) + 16-name top-level re-exports, flat layout deleted, AM1 single-point bindings, device= parameter (cpu-only v1), molpy interop in ~/work/.x86_64 venv |
-| [mpi-launcher-embedded-python-04-embed](mpi-launcher-embedded-python-04-embed.md) | code-complete | `app/atomiverse/` executable (ATV_BUILD_LAUNCHER), rank-0 embedded CPython, PID-qualified LauncherGate (never throws), MD + AM1 single-point dispatch, LJ+AM1 parity regression |
-| [mpi-launcher-embedded-python-05-packaging](mpi-launcher-embedded-python-05-packaging.md) | approved | wheel ships native `bin/atomiverse` via SKBUILD_SCRIPTS_DIR, plain cmake --install, runtime InterpreterLocator + ATV_PYTHON |
 
 ## Standing user directives (2026-07-12/14) — binding on every spec
 

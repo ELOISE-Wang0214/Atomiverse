@@ -165,6 +165,10 @@ benchmarks/                  <domain>/<case>/{validation,performance} — see be
 examples/                    flat numbered tutorial sequence — see examples/README.md
 docs/                        narrative docs (user-guide / tutorial / developer / api)
 tools/                       data generators + debug harnesses
+app/                         installable executables (one subdir each; only
+                             consumers of public headers + link atomiverse;
+                             app/atomiverse = the MPI launcher, the ONLY
+                             target that links libpython)
 python/                      scikit-build-core + nanobind wheel (drives root CMake)
 cmake/                       CMake helper modules
 ```
