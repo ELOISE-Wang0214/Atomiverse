@@ -9,7 +9,8 @@ criteria:
       and src/cpu/task/{task_spec.cpp,task_codec.cpp,task_materializer.cpp} exist,
       compiled into the atomiverse target; no new loose file appears directly at
       include/atomiverse/cpu/ or src/cpu/ root.
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-002
     summary: MD pack→unpack roundtrip is field-exact over the full bindable set
     type: runtime
@@ -20,7 +21,8 @@ criteria:
       NoseHoover, Thermo), mixing default-binding and explicit {phase, order}
       entries plus n_steps, satisfies unpack(pack(spec)) == spec field-by-field
       (vectors, optional binding, phase, order, n_steps, kind included).
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-003
     summary: unknown wire version throws, message names the version
     type: runtime
@@ -28,7 +30,8 @@ criteria:
       In test_cpu_task_codec, a packed buffer whose version field is tampered to
       kWireVersion+1 makes cpu::task::unpack throw std::runtime_error whose
       what() contains the offending version number.
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-004
     summary: unknown component id throws, message names the id
     type: runtime
@@ -36,14 +39,16 @@ criteria:
       In test_cpu_task_codec, a buffer carrying a component_id outside the
       enumerated set makes unpack throw, and what() contains the offending id
       value; a truncated buffer also throws (no partial TaskSpec is returned).
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-005
     summary: TaskSpec ctor validates n_steps
     type: runtime
     pass_when: |
       In test_cpu_task_codec, constructing an MD-kind TaskSpec with
       n_steps == 0 throws std::invalid_argument.
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-006
     summary: materialized MD driver matches a directly-built one bitwise
     type: runtime
@@ -54,7 +59,8 @@ criteria:
       run 5 steps and agree bitwise on frame.scalars.energy and every
       atoms.x/y/z entry; a second case adds BondHarmonic + NoseHoover and
       passes the same check.
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-007
     summary: OOP shape — materializer is a class, no factory functions
     type: code
@@ -64,7 +70,8 @@ criteria:
       cpu/task/ finds no make_*/builtin_*/resolve_* free function; codec free
       functions are limited to the pack/unpack pair (comm::pack_exchange
       precedent).
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-008
     summary: TaskSpec is Frame-pure and the cluster is MPI-free
     type: code
@@ -73,7 +80,8 @@ criteria:
       header; grep for '<mpi.h>' and 'MPI_' over include/atomiverse/cpu/task/
       and src/cpu/task/ returns nothing; both new tests run under plain serial
       ctest in seconds.
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-009
     summary: phase wire encoding respects the stage-typing gate
     type: code
@@ -81,7 +89,8 @@ criteria:
       The codec encodes ExplicitBinding.phase via ATV::slot_of and decodes with
       an ATV::slot_count<md::Phase>() range check that throws on out-of-range;
       test_stage_typing_scrub still passes with the new sources in the tree.
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-010
     summary: Doxygen complete on all public cpu/task symbols
     type: docs
@@ -100,7 +109,8 @@ criteria:
       Release configure + build succeeds and ctest --test-dir build passes with
       test_cpu_task_codec and test_cpu_task_materializer registered and green,
       with no regression elsewhere in the suite.
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-012
     summary: SinglePoint pack→unpack roundtrip is field-exact
     type: runtime
@@ -110,7 +120,8 @@ criteria:
       max_iter, density_tol, energy_tol all set away from NDDOConfig defaults)
       satisfies unpack(pack(spec)) == spec, including kind() == SinglePoint and
       all five AM1 fields; kWireVersion remains 1.
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-013
     summary: task-kind invariants are enforced at construction and on decode
     type: runtime
@@ -121,7 +132,8 @@ criteria:
       entries, or with one non-AM1 entry, makes unpack throw; a buffer whose
       task_kind byte is outside the TaskKind enum makes unpack throw with
       what() containing the offending value.
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-014
     summary: materialized AM1 single point matches a directly-built one bitwise
     type: runtime
@@ -133,7 +145,8 @@ criteria:
       AM1Evaluator bound at evaluate::Phase::evaluate with the same AM1Config,
       on frame.scalars.energy and every atoms.charge entry; the test completes
       in well under a second (serial ctest).
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-015
     summary: single task-kind-agnostic consumption entry for chain 03
     type: code
@@ -143,7 +156,8 @@ criteria:
       Evaluate pass) plus a TaskKind kind() accessor; no driver()/n_steps()
       pair remains in the public interface, so 03's WorkerLoop needs no
       per-kind branch.
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-016
     summary: AM1EvaluatorParams mirrors AM1Config exactly
     type: code
@@ -154,7 +168,8 @@ criteria:
       types/defaults and method deliberately absent (pinned to AM1 by the
       variant alternative and AM1Solver::normalize_); AM1EvaluatorParams is the
       10th variant alternative so the first nine component_ids are unchanged.
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
 ---
 
 # Acceptance criteria

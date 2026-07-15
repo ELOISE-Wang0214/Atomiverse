@@ -181,6 +181,10 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/semiempirical/nddo_solver.cpp
         src/cpu/semiempirical/am1_evaluator.cpp
         src/cpu/semiempirical/am1_bcc_charge_assigner.cpp
+        # CPU task infrastructure (TaskSpec + codec + materializer)
+        src/cpu/task/task_spec.cpp
+        src/cpu/task/task_codec.cpp
+        src/cpu/task/task_materializer.cpp
         # CPU Monte Carlo (Sampling category)
         src/cpu/mc/translate_move.cpp
         src/cpu/mc/transaction.cpp

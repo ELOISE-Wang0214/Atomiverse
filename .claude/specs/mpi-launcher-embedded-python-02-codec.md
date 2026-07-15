@@ -1,6 +1,6 @@
 ---
 title: cpu/task 基础设施集群 — TaskSpec 数据模型（MD + AM1 单点）、无 MPI 字节编解码与任务物化器
-status: approved
+status: code-complete
 created: 2026-07-15
 revised: 2026-07-15
 ---
@@ -71,14 +71,15 @@ revised: 2026-07-15
 
 ## Tasks
 
-- [ ] Write failing tests for the TaskSpec codec (MD all-9-component roundtrip equality; SinglePoint AM1 roundtrip equality incl. kind + all five AM1 fields; version mismatch throws; unknown task_kind throws; unknown component id throws; truncated buffer throws; `n_steps < 1` MD ctor throws; MD spec carrying an AM1 entry throws; wire-decoded SinglePoint with ≠1 entries or a non-AM1 entry throws) in `tests/cpu/test_task_codec.cpp`, registered as `test_cpu_task_codec` via `atv_add_cpp_test` in `tests/CMakeLists.txt`
-- [ ] Implement the TaskSpec data model (`TaskKind`, ten `*Params` structs incl. `AM1EvaluatorParams` mirroring `AM1Config` + `operator==`, `ComponentParams` variant with AM1 appended as the 10th alternative, `ComponentEntry`/`ExplicitBinding`, the two validating `TaskSpec` ctors, `kWireVersion = 1`) in `include/atomiverse/cpu/task/task_spec.h` + `src/cpu/task/task_spec.cpp`, and register `src/cpu/task/*.cpp` in the root `CMakeLists.txt`
-- [ ] Implement `cpu::task::pack`/`unpack` (versioned header + `task_kind` byte, `slot_of`-based phase encoding with `slot_count` range check on decode, decode-through-validating-ctors, value-naming error messages) in `include/atomiverse/cpu/task/task_codec.h` + `src/cpu/task/task_codec.cpp`
-- [ ] Write failing tests for `TaskMaterializer` (MD: materialized driver runs 5 steps on a ~10-atom LJ frame via `run(frame)` and matches a directly-built `cpu::md::MD` bitwise on `scalars.energy` and all positions, bonded + thermostat variant included; SinglePoint: materialized AM1 task on the H2 fixture from `tests/cpu/semiempirical/test_am1_scaffold.cpp` matches a directly-built `cpu::Evaluate` + `AM1Evaluator` bitwise on `frame.scalars.energy` and every `atoms.charge` entry) in `tests/cpu/test_task_materializer.cpp`, registered as `test_cpu_task_materializer` in `tests/CMakeLists.txt`
-- [ ] Implement `TaskMaterializer` (ctor dispatches on `kind()`: MD replays registrations per entry then `build()`; SinglePoint binds `AM1Evaluator` at `evaluate::Phase::evaluate` on a `cpu::Evaluate` member then `build()`; exposes the task-kind-agnostic `run(cpu::Frame&)` plus `kind()`) in `include/atomiverse/cpu/task/task_materializer.h` + `src/cpu/task/task_materializer.cpp`
-- [ ] Add docstring per doxygen with units (`@brief`/`@param` [eV, Å, fs, K; AM1 tolerances dimensionless / Hartree]/`@return` on every public symbol in `cpu/task/`, incl. the single-point results contract: energy [eV] on `scalars.energy`, charges [e] on `atoms.charge`)
-- [ ] Verify against the fidelity contract: field-by-field diff of the materializer's replay sequence vs `bind_md.cpp`'s bindable set, and of `AM1EvaluatorParams` vs `NDDOConfig` in `include/atomiverse/cpu/semiempirical/nddo_solver.h` (every ctor arg represented, nothing unbindable representable, `method` deliberately absent)
-- [ ] Run full check + test suite
+- [x] Write failing tests for the TaskSpec codec (MD all-9-component roundtrip equality; SinglePoint AM1 roundtrip equality incl. kind + all five AM1 fields; version mismatch throws; unknown task_kind throws; unknown component id throws; truncated buffer throws; `n_steps < 1` MD ctor throws; MD spec carrying an AM1 entry throws; wire-decoded SinglePoint with ≠1 entries or a non-AM1 entry throws) in `tests/cpu/test_task_codec.cpp`, registered as `test_cpu_task_codec` via `atv_add_cpp_test` in `tests/CMakeLists.txt`
+- [x] Implement the TaskSpec data model (`TaskKind`, ten `*Params` structs incl. `AM1EvaluatorParams` mirroring `AM1Config` + `operator==`, `ComponentParams` variant with AM1 appended as the 10th alternative, `ComponentEntry`/`ExplicitBinding`, the two validating `TaskSpec` ctors, `kWireVersion = 1`) in `include/atomiverse/cpu/task/task_spec.h` + `src/cpu/task/task_spec.cpp`, and register `src/cpu/task/*.cpp` in the root `CMakeLists.txt`
+- [x] Implement `cpu::task::pack`/`unpack` (versioned header + `task_kind` byte, `slot_of`-based phase encoding with `slot_count` range check on decode, decode-through-validating-ctors, value-naming error messages) in `include/atomiverse/cpu/task/task_codec.h` + `src/cpu/task/task_codec.cpp`
+- [x] Write failing tests for `TaskMaterializer` (MD: materialized driver runs 5 steps on a ~10-atom LJ frame via `run(frame)` and matches a directly-built `cpu::md::MD` bitwise on `scalars.energy` and all positions, bonded + thermostat variant included; SinglePoint: materialized AM1 task on the H2 fixture from `tests/cpu/semiempirical/test_am1_scaffold.cpp` matches a directly-built `cpu::Evaluate` + `AM1Evaluator` bitwise on `frame.scalars.energy` and every `atoms.charge` entry) in `tests/cpu/test_task_materializer.cpp`, registered as `test_cpu_task_materializer` in `tests/CMakeLists.txt`
+- [x] Implement `TaskMaterializer` (ctor dispatches on `kind()`: MD replays registrations per entry then `build()`; SinglePoint binds `AM1Evaluator` at `evaluate::Phase::evaluate` on a `cpu::Evaluate` member then `build()`; exposes the task-kind-agnostic `run(cpu::Frame&)` plus `kind()`) in `include/atomiverse/cpu/task/task_materializer.h` + `src/cpu/task/task_materializer.cpp`
+- [x] Add docstring per doxygen with units (`@brief`/`@param` [eV, Å, fs, K; AM1 tolerances dimensionless / Hartree]/`@return` on every public symbol in `cpu/task/`, incl. the single-point results contract: energy [eV] on `scalars.energy`, charges [e] on `atoms.charge`)
+- [x] Verify against the fidelity contract: field-by-field diff of the materializer's replay sequence vs `bind_md.cpp`'s bindable set, and of `AM1EvaluatorParams` vs `NDDOConfig` in `include/atomiverse/cpu/semiempirical/nddo_solver.h` (every ctor arg represented, nothing unbindable representable, `method` deliberately absent)
+- [x] Run full check + test suite
+- [x] Hygiene cleanup（/mol:simplify ran clean: 10 fixes — checked int narrowing on n_steps, kNames static_assert, OMP-pin convention alignment, include hygiene, cast style, doxygen sweep; 158/158 green after batch）
 
 ## Testing strategy
 

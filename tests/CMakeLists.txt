@@ -233,6 +233,13 @@ atv_add_cpp_test(test_cpu_md_plan_equivalence             cpu/md/test_md_plan_eq
 atv_add_cpp_test(test_cpu_minimize_evaluate_set_api       cpu/test_minimize_evaluate_set_api.cpp)
 atv_add_cpp_test(test_cpu_materialize                     cpu/test_materialize.cpp)
 
+# cpu/task infrastructure cluster (mpi-launcher-embedded-python-02-codec):
+# TaskSpec data model + MPI-free byte codec + rank-agnostic materializer.
+# Serial, no mpirun; the AM1 single point is the ms-scale H2 solve already
+# established by test_cpu_am1_scaffold.
+atv_add_cpp_test(test_cpu_task_codec                      cpu/test_task_codec.cpp)
+atv_add_cpp_test(test_cpu_task_materializer               cpu/test_task_materializer.cpp)
+
 # ExtXYZ loading through molrs — inline fixtures only, no external file.
 atv_add_cpp_test(test_cpu_io_extxyz                       cpu/io/test_cpu_io_extxyz.cpp)
 
