@@ -12,8 +12,23 @@ typed meta) is done** (git log). Next: 02+ blockify directory by directory
 (torch -> cuda -> cpu/md, minimizer, path -> cpu/potentials), deleting each
 member once its directory is clear.
 
+Campaign **mpi-launcher-embedded-python** (2026-07-15; 02/03/04 revised
+2026-07-15 per user directives: AM1 single-point coverage, namespaced Python
+API, ~/work/.x86_64 venv + molpy interop) — native MPI launcher: all ranks
+start a native `atomiverse` executable, rank 0 alone embeds CPython and runs
+`atv.py`; each `run()` is ONE task-granular in-memory broadcast (TaskSpec +
+Frame) to worker ranks, no on-disk IR; the wheel ships both `_atomiverse.so`
+and `bin/atomiverse`. Implementation order: 01 → 02 → 03 →
+python-api-namespaces-am1 → 04 → 05. **Step 01 (bcast_frame) is done**
+(2026-07-15, git log); next: `/mol:impl mpi-launcher-embedded-python-02-codec`.
+
 | slug | status | summary |
 |---|---|---|
+| [mpi-launcher-embedded-python-02-codec](mpi-launcher-embedded-python-02-codec.md) | approved | new `cpu/task/` cluster: versioned TaskSpec with TaskKind{MD, SinglePoint} (9 MD components + AM1EvaluatorParams), MPI-free pack/unpack, TaskMaterializer with task-kind-agnostic run(frame) |
+| [mpi-launcher-embedded-python-03-protocol](mpi-launcher-embedded-python-03-protocol.md) | approved | two-verb RUN_TASK/SHUTDOWN protocol, WorkerLoop + TaskDispatcher, lockstep error propagation via status allreduce |
+| [python-api-namespaces-am1](python-api-namespaces-am1.md) | approved | deep canonical Python namespaces (atv.potentials.pair.LJCut) + 16-name top-level re-exports, flat layout deleted, AM1 single-point bindings, device= parameter (cpu-only v1), molpy interop in ~/work/.x86_64 venv |
+| [mpi-launcher-embedded-python-04-embed](mpi-launcher-embedded-python-04-embed.md) | approved | `app/atomiverse/` executable (ATV_BUILD_LAUNCHER), rank-0 embedded CPython, PID-qualified LauncherGate (never throws), MD + AM1 single-point dispatch, LJ+AM1 parity regression |
+| [mpi-launcher-embedded-python-05-packaging](mpi-launcher-embedded-python-05-packaging.md) | approved | wheel ships native `bin/atomiverse` via SKBUILD_SCRIPTS_DIR, plain cmake --install, runtime InterpreterLocator + ATV_PYTHON |
 
 ## Standing user directives (2026-07-12/14) — binding on every spec
 

@@ -245,6 +245,11 @@ if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
     atv_add_mpi_run(test_mpi_topology_n4 test_mpi_topology 4)
     atv_add_mpi_run(test_mpi_topology_n8 test_mpi_topology 8)
 
+    atv_add_mpi_exec(test_mpi_bcast_frame mpi/test_bcast_frame.cpp)
+    atv_add_mpi_run(test_mpi_bcast_frame_n1 test_mpi_bcast_frame 1)
+    atv_add_mpi_run(test_mpi_bcast_frame_n2 test_mpi_bcast_frame 2)
+    atv_add_mpi_run(test_mpi_bcast_frame_n4 test_mpi_bcast_frame 4)
+
     atv_add_mpi_exec(test_mpi_halo_exchange mpi/test_halo_exchange.cpp)
     atv_add_mpi_run(test_mpi_halo_exchange_n1 test_mpi_halo_exchange 1)
     atv_add_mpi_run(test_mpi_halo_exchange_n2 test_mpi_halo_exchange 2)
