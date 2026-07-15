@@ -21,14 +21,14 @@ Frame) to worker ranks, no on-disk IR; the wheel ships both `_atomiverse.so`
 and `bin/atomiverse`. Implementation order: 01 → 02 → 03 →
 python-api-namespaces-am1 → 04 → 05. **Steps 01 (bcast_frame, done+deleted)
 and 03 (protocol, done+deleted) are complete; 02 is code-complete** (git
-log, 2026-07-15). In flight: python-api-namespaces-am1. Next after that:
+log, 2026-07-15). python-api-namespaces-am1 is code-complete. Next:
 `/mol:impl mpi-launcher-embedded-python-04-embed` (note the ⚠ AM1-under-DD
 finding recorded in its Design — needs a small spec revision first).
 
 | slug | status | summary |
 |---|---|---|
 | [mpi-launcher-embedded-python-02-codec](mpi-launcher-embedded-python-02-codec.md) | code-complete | new `cpu/task/` cluster: versioned TaskSpec with TaskKind{MD, SinglePoint} (9 MD components + AM1EvaluatorParams), MPI-free pack/unpack, TaskMaterializer with task-kind-agnostic run(frame) |
-| [python-api-namespaces-am1](python-api-namespaces-am1.md) | approved | deep canonical Python namespaces (atv.potentials.pair.LJCut) + 16-name top-level re-exports, flat layout deleted, AM1 single-point bindings, device= parameter (cpu-only v1), molpy interop in ~/work/.x86_64 venv |
+| [python-api-namespaces-am1](python-api-namespaces-am1.md) | code-complete | deep canonical Python namespaces (atv.potentials.pair.LJCut) + 16-name top-level re-exports, flat layout deleted, AM1 single-point bindings, device= parameter (cpu-only v1), molpy interop in ~/work/.x86_64 venv |
 | [mpi-launcher-embedded-python-04-embed](mpi-launcher-embedded-python-04-embed.md) | approved | `app/atomiverse/` executable (ATV_BUILD_LAUNCHER), rank-0 embedded CPython, PID-qualified LauncherGate (never throws), MD + AM1 single-point dispatch, LJ+AM1 parity regression |
 | [mpi-launcher-embedded-python-05-packaging](mpi-launcher-embedded-python-05-packaging.md) | approved | wheel ships native `bin/atomiverse` via SKBUILD_SCRIPTS_DIR, plain cmake --install, runtime InterpreterLocator + ATV_PYTHON |
 

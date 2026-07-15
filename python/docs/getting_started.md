@@ -89,6 +89,40 @@ ke = float(np.asarray(frame["scalars"]["kinetic"])[0])
 print(f"PE = {pe:.4f} eV,  KE = {ke:.4f} eV,  x[0] = {x[0]:.3f} Å")
 ```
 
+## Namespaces: canonical deep paths + top-level convenience
+
+The deep paths are canonical and mirror the C++ backend directory layout;
+the top level re-exports the SAME classes under LAMMPS-style compound
+names (`av.PairLJCut is av.potentials.pair.LJCut`). The quickstart above
+uses the convenience names; the same driver in canonical style:
+
+```python
+sim = av.md.MD(dt=0.001)
+sim.add(av.md.InitVelocity(temperature=10.0, seed=42))
+sim.on("force").add(av.neighbor.NeighborList(cutoff), order=-10) \
+               .add(av.potentials.pair.LJCut(epsilon, sigma, cutoff))
+sim.on("end_of_step").add(av.recorder.Thermo(100))
+```
+
+The full mapping table lives in `help(atomiverse)`.
+
+Backend selection is a `device=` constructor parameter (PyTorch-style),
+never a namespace: `av.md.MD(dt=0.001, device="cpu")` is the default;
+`device="cuda"` raises `ValueError` until the CUDA bindings land.
+
+## AM1 semiempirical single point
+
+`AM1Evaluator` computes energy [eV] and Mulliken charges [e] in one
+`single_point` pass (`type` column = atomic number Z; no AM1 forces yet):
+
+```python
+ev = av.AM1Evaluator(av.AM1Config(charge=0))
+av.single_point(frame, ev)                     # energy + charges onto frame
+q = np.asarray(frame["atoms"]["charge"])       # Mulliken charges [e]
+res = ev.last_result()                         # Hartree / kcal-mol detail
+print(res.heat_of_formation_kcal_mol, res.iterations)
+```
+
 ## Key concepts
 
 ### molrs.Frame in, molrs.Frame out

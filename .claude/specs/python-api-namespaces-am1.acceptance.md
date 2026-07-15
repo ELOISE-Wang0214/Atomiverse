@@ -9,7 +9,8 @@ criteria:
       neighbor.py, potentials/{__init__,pair,bond,angle,dihedral}.py,
       recorder.py, driver.py, semiempirical/__init__.py; the flat file
       python/src/atomiverse/md.py no longer exists.
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-002
     summary: Top-level names are identity re-exports of deep canonical paths
     type: runtime
@@ -18,7 +19,8 @@ criteria:
       mapping table (16 entries), `atv.<TopName> is <deep.path.Name>` is True
       (e.g. atv.PairLJCut is atv.potentials.pair.LJCut,
       atv.VelocityVerlet is atv.md.integrator.VelocityVerlet).
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-003
     summary: __all__ equals exactly the 16-name honest top-level surface
     type: runtime
@@ -28,7 +30,8 @@ criteria:
       NeighborList, BondHarmonic, AngleHarmonic, DihedralMultiHarmonic,
       Thermo, pw_scf, PWResult, AM1Config, AM1Evaluator, AM1Result,
       single_point}; dead-symbol and fail-loud gates still pass.
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-004
     summary: device= parameter — "cpu" default works, "cuda" raises clear error
     type: runtime
@@ -37,7 +40,8 @@ criteria:
       conftest LJ smoke; atv.md.MD(device="cuda") and
       atv.driver.single_point(frame, ev, device="cuda") raise ValueError whose
       message states CUDA bindings are not yet available.
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-005
     summary: AM1 single_point plumbing — energy on scalars, charges written back
     type: runtime
@@ -46,7 +50,8 @@ criteria:
       leaves frame scalars energy finite and < 0 [eV], and the frame's atoms
       charge column plus evaluator.last_result().mulliken_charges both carry
       5 charges; last_result().converged is True.
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-006
     summary: AM1 CH4 Mulliken charges match the pinned AM1 reference oracle
     type: scientific
@@ -63,7 +68,8 @@ criteria:
     pass_when: |
       single_point on a frame containing Z=99 raises RuntimeError in Python
       (no crash, no fallback), per the no-fallback rule.
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-008
     summary: Existing Python MD suite green on the restructured package
     type: runtime
@@ -72,7 +78,8 @@ criteria:
       extension: conftest.py, test_md.py (deep-path rewrite + one top-level
       convenience case), test_namespaces.py, test_semiempirical.py,
       test_surface.py all green.
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-009
     summary: molpy + atomiverse interop check in the x86_64 venv
     type: runtime
@@ -83,7 +90,8 @@ criteria:
       a molpy-built system is handed to atv via the shared molrs Frame, a
       10-step LJ MD runs, and the written-back energy is finite. The test
       skips (importorskip) where molpy is absent.
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-010
     summary: C++ build and full unit suite unaffected; bind_md.cpp untouched
     type: code
@@ -92,7 +100,8 @@ criteria:
       ctest --test-dir build is fully green with no new/modified tests under
       tests/; git diff for python/src/bindings/bind_md.cpp is empty (each
       add_* remains a discrete lambda site for chain link 04-embed).
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-011
     summary: Mapping table and canonical paths documented
     type: docs

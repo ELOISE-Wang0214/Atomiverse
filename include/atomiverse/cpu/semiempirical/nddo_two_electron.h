@@ -4,7 +4,7 @@
 
 #include <vector>
 
-#include "atomiverse/cpu/frame/frame.h"
+#include "atomiverse/core/precision.h"
 #include "atomiverse/cpu/semiempirical/nddo_system.h"
 
 namespace ATV {
@@ -22,8 +22,15 @@ struct NDDOTwoCenterIntegralBlock {
 };
 
 /// @brief Port of AM1 reference `reppd/rotatd/w2mat` for AM1 s/p atoms.
+///
+/// Takes the caller-hoisted coordinate spans (x/y/z [Angstrom]) instead of
+/// the Frame: this runs per atom PAIR per SCF iteration, and resolving
+/// frame keys here blew the per-launch resolution budget (the 13.7x rule
+/// — resolution belongs at the launch boundary). Callers hoist
+/// `frame.span(kAtom_x)` etc. once per build.
 NDDOTwoCenterIntegralBlock build_two_center_integral_block(
-    const NDDOSystem& system, const cpu::Frame& frame, int atom_i, int atom_j);
+    const NDDOSystem& system, const StorageReal* sp_x, const StorageReal* sp_y,
+    const StorageReal* sp_z, int atom_i, int atom_j);
 
 } // namespace semiempirical
 } // namespace cpu

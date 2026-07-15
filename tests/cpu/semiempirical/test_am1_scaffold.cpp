@@ -621,7 +621,8 @@ TEST(NDDOTwoElectron, H2TwoCenterIntegralMatchesReferenceHcorePrint) {
 
     const auto system = ATV::cpu::semiempirical::build_am1_system(frame, 0, 1);
     const auto w = ATV::cpu::semiempirical::build_two_center_integral_block(
-        system, frame, 1, 0);
+        system, frame.span(ATV::kAtom_x), frame.span(ATV::kAtom_y),
+        frame.span(ATV::kAtom_z), 1, 0);
 
     ASSERT_EQ(w.n_pairs_i, 1);
     ASSERT_EQ(w.n_pairs_j, 1);

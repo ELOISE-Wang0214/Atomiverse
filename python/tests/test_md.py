@@ -6,6 +6,10 @@ and writes positions / velocities / energy back into that same frame.
 
 Also asserts ac-001's structural deliverable from the Python side: no
 legacy C++ frame type is exposed and atomiverse._convert no longer exists.
+
+Imports use the deep canonical namespaces (spec python-api-namespaces-am1);
+``TestTopLevelConvenience`` keeps ONE full run on the top-level re-exports
+to prove the two spellings drive the same objects.
 """
 
 import importlib
@@ -15,32 +19,38 @@ import pytest
 import molrs
 
 import atomiverse as av
+from atomiverse.md import MD, InitVelocity
+from atomiverse.md.integrator import VelocityVerlet
+from atomiverse.md.thermostat import NoseHoover
+from atomiverse.neighbor import NeighborList
+from atomiverse.potentials.pair import LJCut
+from atomiverse.recorder import Thermo
 
 
-# ── Component construction ──────────────────────────────────────────
+# ── Component construction (deep canonical paths) ───────────────────
 
 
 class TestComponentConstruction:
     def test_velocity_verlet(self):
-        assert av.VelocityVerlet(0.001) is not None
+        assert VelocityVerlet(0.001) is not None
 
     def test_init_velocity(self):
-        assert av.InitVelocity(300.0, 42) is not None
+        assert InitVelocity(300.0, 42) is not None
 
     def test_nose_hoover(self):
-        assert av.NoseHoover(300.0, 100.0, 0.001) is not None
+        assert NoseHoover(300.0, 100.0, 0.001) is not None
 
     def test_pair_lj_cut(self):
-        assert av.PairLJCut(0.0104, 3.4, 8.5) is not None
+        assert LJCut(0.0104, 3.4, 8.5) is not None
 
     def test_neighbor_list(self):
-        assert av.NeighborList(8.5) is not None
+        assert NeighborList(8.5) is not None
 
     def test_neighbor_list_with_skin(self):
-        assert av.NeighborList(8.5, 0.5) is not None
+        assert NeighborList(8.5, 0.5) is not None
 
     def test_thermo(self):
-        assert av.Thermo(100) is not None
+        assert Thermo(100) is not None
 
 
 # ── Driver build ────────────────────────────────────────────────────
@@ -51,23 +61,19 @@ class TestMDDriverBuild:
         full_lj_md.build()
 
     def test_phase_builder_chain(self):
-        sim = av.MD(dt=0.001)
-        sim.on("force").add(av.NeighborList(8.5), order=-10).add(
-            av.PairLJCut(0.0104, 3.4, 8.5)
-        )
+        sim = MD(dt=0.001)
+        sim.on("force").add(NeighborList(8.5), order=-10).add(LJCut(0.0104, 3.4, 8.5))
         sim.build()
 
     def test_invalid_phase_raises(self):
-        sim = av.MD()
+        sim = MD()
         with pytest.raises(ValueError, match="Unknown phase"):
             sim.on("nonexistent")
 
     def test_repr(self):
-        sim = av.MD(dt=0.001)
+        sim = MD(dt=0.001)
         assert "not built" in repr(sim)
-        sim.on("force").add(av.NeighborList(8.5), order=-10).add(
-            av.PairLJCut(0.0104, 3.4, 8.5)
-        )
+        sim.on("force").add(NeighborList(8.5), order=-10).add(LJCut(0.0104, 3.4, 8.5))
         sim.build()
         assert "built" in repr(sim)
 
@@ -118,10 +124,8 @@ class TestMDRunOnMolrsFrame:
     def test_missing_required_field_raises(self):
         """A molrs.Frame without atom positions fails loud."""
         frame = molrs.Frame()
-        sim = av.MD(dt=0.001)
-        sim.on("force").add(av.NeighborList(8.5), order=-10).add(
-            av.PairLJCut(0.0104, 3.4, 8.5)
-        )
+        sim = MD(dt=0.001)
+        sim.on("force").add(NeighborList(8.5), order=-10).add(LJCut(0.0104, 3.4, 8.5))
         with pytest.raises(RuntimeError, match="atoms"):
             sim.run(frame, 1)
 
@@ -129,6 +133,31 @@ class TestMDRunOnMolrsFrame:
         """Passing a non-molrs.Frame object fails with a clear message."""
         with pytest.raises(RuntimeError, match="molrs.Frame"):
             full_lj_md.run(object(), 1)
+
+
+# ── Top-level convenience spelling: same objects, same physics ──────
+
+
+class TestTopLevelConvenience:
+    def test_full_run_via_top_level_names(self, argon_frame):
+        """One complete LJ run built entirely from the top-level
+        re-exports (av.MD, av.PairLJCut, ...) — proving the convenience
+        spelling drives the same identity-re-exported classes as the
+        deep canonical paths used everywhere else in this file."""
+        assert av.MD is MD
+        assert av.PairLJCut is LJCut
+        cutoff = 8.5
+        sim = av.MD(dt=0.001)
+        sim.add(av.InitVelocity(10.0, 42))
+        sim.on("force").add(av.NeighborList(cutoff), order=-10).add(
+            av.PairLJCut(0.0104, 3.4, cutoff)
+        )
+        x_before = np.asarray(argon_frame["atoms"]["x"]).copy()
+        sim.run(argon_frame, 10)
+        x_after = np.asarray(argon_frame["atoms"]["x"])
+        assert not np.allclose(x_before, x_after)
+        energy = float(np.asarray(argon_frame["scalars"]["energy"])[0])
+        assert np.isfinite(energy)
 
 
 # ── ac-001: no legacy frame binding / no _convert on the surface ────

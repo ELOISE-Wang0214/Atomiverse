@@ -1,11 +1,16 @@
-"""Honest Python binding surface tests (spec: arch-refactor-08-python).
+"""Honest Python binding surface tests (specs: arch-refactor-08-python,
+python-api-namespaces-am1).
 
-The atomiverse wheel must expose exactly the honest MD + PW surface:
+The atomiverse wheel must expose exactly the honest MD + PW + AM1 surface
+— 16 top-level names, each an identity re-export of its deep canonical
+namespace (pinned per row in test_namespaces.py):
 
 * Canonical LAMMPS-style component names (``PairLJCut``, ``BondHarmonic``,
   ``AngleHarmonic``, ``DihedralMultiHarmonic``) with no legacy aliases
   (``LJ``, ``HarmonicBond``, ``HarmonicAngle``, ``MultiHarmonicDihedral``)
   and no deprecation shims.
+* The AM1 semiempirical single-point trio (``AM1Config``, ``AM1Evaluator``,
+  ``AM1Result``) plus the ``single_point`` entry point.
 * The dead SCF / geometry-optimizer facade is gone and FAILS LOUD:
   ``atomiverse.scf`` / ``atomiverse.optimizer`` no longer import, dead
   package attributes raise ``AttributeError``, and the ``_cpp`` extension
@@ -45,6 +50,8 @@ _CANONICAL_NEW_NAMES: tuple[str, ...] = (
     "DihedralMultiHarmonic",
 )
 
+# Exactly the 16-name honest top-level surface (python-api-namespaces-am1
+# mapping table, right column + single_point).
 _CANONICAL_ALL: frozenset[str] = frozenset(
     {
         "MD",
@@ -59,6 +66,10 @@ _CANONICAL_ALL: frozenset[str] = frozenset(
         "Thermo",
         "pw_scf",
         "PWResult",
+        "AM1Config",
+        "AM1Evaluator",
+        "AM1Result",
+        "single_point",
     }
 )
 
@@ -133,7 +144,8 @@ class TestCanonicalSurface:
         assert hasattr(av, name), f"canonical component atomiverse.{name} is missing"
 
     def test_all_is_exactly_the_honest_surface(self) -> None:
-        """__all__ equals exactly the honest MD + PW export set."""
+        """__all__ equals exactly the 16-name MD + PW + AM1 export set."""
+        assert len(_CANONICAL_ALL) == 16
         assert set(av.__all__) == set(_CANONICAL_ALL)
 
 

@@ -178,6 +178,11 @@ NDDOFockBuilder::add_two_center(const NDDOSystem& system,
     validate_packed_size("spin_density", system.n_orbitals, spin_density);
 
     std::vector<double> fock = one_center_fock;
+    // Hoisted ONCE at this build boundary; the two-center block builder
+    // runs per atom pair per SCF iteration (the 13.7x rule).
+    const StorageReal* __restrict sp_x = frame.span(kAtom_x);
+    const StorageReal* __restrict sp_y = frame.span(kAtom_y);
+    const StorageReal* __restrict sp_z = frame.span(kAtom_z);
     for (std::size_t i = 0; i < system.atoms.size(); ++i) {
         const auto& atom_i = system.atoms[i];
         const auto pairs_i = local_pairs(atom_i.n_orbitals);
@@ -185,7 +190,8 @@ NDDOFockBuilder::add_two_center(const NDDOSystem& system,
             const auto& atom_j = system.atoms[j];
             const auto pairs_j = local_pairs(atom_j.n_orbitals);
             const auto w = build_two_center_integral_block(
-                system, frame, static_cast<int>(i), static_cast<int>(j));
+                system, sp_x, sp_y, sp_z, static_cast<int>(i),
+                static_cast<int>(j));
 
             for (std::size_t pi = 0; pi < pairs_i.size(); ++pi) {
                 const auto [li_a, li_b] = pairs_i[pi];

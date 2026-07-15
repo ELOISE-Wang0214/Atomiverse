@@ -74,6 +74,9 @@ class MD:
     dt : float, optional
         Timestep in fs.  If provided, a ``VelocityVerlet`` integrator
         is added automatically.
+    device : str, optional
+        Execution backend, PyTorch-style.  v1 accepts only ``"cpu"``;
+        any other value raises ``ValueError`` before any compute.
 
     Example::
 
@@ -94,7 +97,15 @@ class MD:
         sim.run(frame, 1000)
     """
 
-    def __init__(self, dt: float | None = None) -> None:
+    def __init__(self, dt: float | None = None, device: str = "cpu") -> None:
+        if device != "cpu":
+            raise ValueError(
+                f"device={device!r}: CUDA bindings are not yet available; "
+                "only device='cpu' is supported (backend selection is a "
+                "constructor parameter, not a namespace — see the package "
+                "docstring)"
+            )
+        self.device = device
         self._cpp = _cpp.MD()
         self._built = False
         if dt is not None:
@@ -181,13 +192,7 @@ class MD:
         return f"MD({state})"
 
 
-# Re-export the C++ component classes so users can build them via ``av.*``.
-VelocityVerlet = _cpp.VelocityVerlet
+# InitVelocity's canonical home is ``atomiverse.md`` (cpu/md/init.h has no
+# finer category); integrators and thermostats live in the sibling modules
+# ``atomiverse.md.integrator`` / ``atomiverse.md.thermostat``.
 InitVelocity = _cpp.InitVelocity
-NoseHoover = _cpp.NoseHoover
-PairLJCut = _cpp.PairLJCut
-NeighborList = _cpp.NeighborList
-BondHarmonic = _cpp.BondHarmonic
-AngleHarmonic = _cpp.AngleHarmonic
-DihedralMultiHarmonic = _cpp.DihedralMultiHarmonic
-Thermo = _cpp.Thermo

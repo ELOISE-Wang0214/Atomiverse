@@ -7,7 +7,6 @@
 #include <cmath>
 #include <stdexcept>
 
-#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/semiempirical/am1_parameters.h"
 
 namespace ATV {
@@ -398,7 +397,8 @@ double NDDOTwoCenterIntegralBlock::at(int pair_i, int pair_j) const {
 }
 
 NDDOTwoCenterIntegralBlock build_two_center_integral_block(
-    const NDDOSystem& system, const cpu::Frame& frame, int atom_i, int atom_j) {
+    const NDDOSystem& system, const StorageReal* sp_x, const StorageReal* sp_y,
+    const StorageReal* sp_z, int atom_i, int atom_j) {
     if (atom_i < 0 || atom_j < 0
         || atom_i >= static_cast<int>(system.atoms.size())
         || atom_j >= static_cast<int>(system.atoms.size())) {
@@ -418,9 +418,6 @@ NDDOTwoCenterIntegralBlock build_two_center_integral_block(
             "AM1 parameters unavailable for two-center integrals");
     }
 
-    const StorageReal* __restrict sp_x = frame.span(kAtom_x);
-    const StorageReal* __restrict sp_y = frame.span(kAtom_y);
-    const StorageReal* __restrict sp_z = frame.span(kAtom_z);
     const auto xi = atom_xyz(sp_x, sp_y, sp_z, atom_i);
     const auto xj = atom_xyz(sp_x, sp_y, sp_z, atom_j);
     const double rij = distance(xi, xj);

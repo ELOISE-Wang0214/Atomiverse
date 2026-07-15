@@ -763,6 +763,7 @@ if(NOT ATV_DOCS_ONLY)
             python/src/bindings/bind.cpp
             python/src/bindings/bind_md.cpp
             python/src/bindings/bind_pw.cpp
+            python/src/bindings/bind_semiempirical.cpp
         )
         target_link_libraries(_atomiverse PRIVATE atomiverse)
         target_include_directories(_atomiverse PRIVATE include python/src/bindings)

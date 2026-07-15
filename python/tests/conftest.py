@@ -2,13 +2,19 @@
 
 Atomiverse drivers operate directly on a ``molrs.Frame`` — there is no
 separate Atomiverse Frame type. Fixtures build ``molrs.Frame`` instances.
+
+Fixtures import from the deep canonical namespaces (the single source of
+truth per spec python-api-namespaces-am1); the top-level convenience
+re-exports are exercised separately in test_md.py / test_namespaces.py.
 """
 
 import numpy as np
 import pytest
 import molrs
 
-import atomiverse as av
+from atomiverse.md import MD, InitVelocity
+from atomiverse.neighbor import NeighborList
+from atomiverse.potentials.pair import LJCut
 
 
 def _argon_columns(n_atoms: int):
@@ -53,12 +59,11 @@ def argon_frame(n_atoms: int) -> "molrs.Frame":
 
 
 @pytest.fixture
-def full_lj_md() -> av.MD:
-    """Full LJ MD: VelocityVerlet + InitVelocity + NeighborList + PairLJCut."""
+def full_lj_md() -> MD:
+    """Full LJ MD via deep canonical paths: md.MD + md.InitVelocity +
+    neighbor.NeighborList + potentials.pair.LJCut."""
     cutoff = 8.5
-    sim = av.MD(dt=0.001)
-    sim.add(av.InitVelocity(10.0, 42))
-    sim.on("force").add(av.NeighborList(cutoff), order=-10).add(
-        av.PairLJCut(0.0104, 3.4, cutoff)
-    )
+    sim = MD(dt=0.001)
+    sim.add(InitVelocity(10.0, 42))
+    sim.on("force").add(NeighborList(cutoff), order=-10).add(LJCut(0.0104, 3.4, cutoff))
     return sim

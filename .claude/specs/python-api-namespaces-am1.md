@@ -1,6 +1,6 @@
 ---
 title: Python API 命名空间化重构 + AM1 半经验单点绑定
-status: approved
+status: code-complete
 created: 2026-07-15
 ---
 
@@ -88,16 +88,17 @@ Python 侧既有 pytest 于 `python/tests/`（conftest + test_md + test_surface�
 
 ## Tasks
 
-- [ ] Write failing tests for the namespaced package（python/tests/test_namespaces.py：全映射表逐条 `is` 身份断言、深层模块可 import、`atomiverse/md.py` 扁平实现不再是类定义处、`MD(device="cpu")` 默认可跑 / `device="cuda"` 抛 ValueError 且消息点名 CUDA 绑定不可用；同步更新 python/tests/test_surface.py 的 `__all__`==16 名契约）
-- [ ] Implement the namespaced package layout（新建 md/{__init__,integrator,thermostat}.py、neighbor.py、potentials/{__init__,pair,bond,angle,dihedral}.py、recorder.py、driver.py；删除扁平 md.py；重写顶层 __init__.py 再导出 + 映射表 docstring）
-- [ ] Implement the device= parameter in atv.md.MD and atv.driver.single_point（默认 "cpu"，其余值抛 ValueError 并说明 CUDA 绑定为未来 spec；纯 Python 层校验）
-- [ ] Write failing tests for the AM1 Python surface（python/tests/test_semiempirical.py：AM1Config kwargs 构造与字段、single_point 后 CH₄ 电荷 vs 钉死 oracle（容差 2.5e-3 e，frame charge 列与 last_result().mulliken_charges 两处）、frame.scalars.energy 为有限负 eV、不支持元素 Z=99 抛 RuntimeError、device="cuda" 抛 ValueError）
-- [ ] Implement bind_semiempirical.cpp（AM1Config/AM1Evaluator/AM1Result 绑定 + single_point lambda：borrow → materialize → GIL 释放计算 → write_back；bind.cpp 注册 bind_semiempirical(m)；CMakeLists.txt 源列表接线）
-- [ ] Implement atomiverse/semiempirical/__init__.py and wire the top-level re-exports（AM1Config/AM1Evaluator/AM1Result/single_point 进顶层 __all__）
-- [ ] Add docstring per doxygen with units（bind_semiempirical.cpp 全部新公开绑定符号：@brief/@param 带单位 [e, Hartree, kcal/mol, eV]/@return；Python 模块 docstring 同步）
-- [ ] Update existing Python tests and docs to the canonical deep paths（python/tests/conftest.py、python/tests/test_md.py、python/docs/getting_started.md；顶层便捷名用例保留一组证明再导出等价）
-- [ ] Write the molpy interop check and verify in the ~/work/.x86_64 venv（python/tests/test_molpy_interop.py：importorskip("molpy")，molpy 建体系 → 取共同包装的 molrs Frame → atv 跑 10 步 LJ MD，能量有限；在 venv 内实跑 `pytest python/tests` 全绿）
-- [ ] Run full check + test suite（C++ 侧 cmake build + ctest 不受影响地全绿；确认 git diff 中 bind_md.cpp 零改动）
+- [x] Write failing tests for the namespaced package（python/tests/test_namespaces.py：全映射表逐条 `is` 身份断言、深层模块可 import、`atomiverse/md.py` 扁平实现不再是类定义处、`MD(device="cpu")` 默认可跑 / `device="cuda"` 抛 ValueError 且消息点名 CUDA 绑定不可用；同步更新 python/tests/test_surface.py 的 `__all__`==16 名契约）
+- [x] Implement the namespaced package layout（新建 md/{__init__,integrator,thermostat}.py、neighbor.py、potentials/{__init__,pair,bond,angle,dihedral}.py、recorder.py、driver.py；删除扁平 md.py；重写顶层 __init__.py 再导出 + 映射表 docstring）
+- [x] Implement the device= parameter in atv.md.MD and atv.driver.single_point（默认 "cpu"，其余值抛 ValueError 并说明 CUDA 绑定为未来 spec；纯 Python 层校验）
+- [x] Write failing tests for the AM1 Python surface（python/tests/test_semiempirical.py：AM1Config kwargs 构造与字段、single_point 后 CH₄ 电荷 vs 钉死 oracle（容差 2.5e-3 e，frame charge 列与 last_result().mulliken_charges 两处）、frame.scalars.energy 为有限负 eV、不支持元素 Z=99 抛 RuntimeError、device="cuda" 抛 ValueError）
+- [x] Implement bind_semiempirical.cpp（AM1Config/AM1Evaluator/AM1Result 绑定 + single_point lambda：borrow → materialize → GIL 释放计算 → write_back；bind.cpp 注册 bind_semiempirical(m)；CMakeLists.txt 源列表接线）
+- [x] Implement atomiverse/semiempirical/__init__.py and wire the top-level re-exports（AM1Config/AM1Evaluator/AM1Result/single_point 进顶层 __all__）
+- [x] Add docstring per doxygen with units（bind_semiempirical.cpp 全部新公开绑定符号：@brief/@param 带单位 [e, Hartree, kcal/mol, eV]/@return；Python 模块 docstring 同步）
+- [x] Update existing Python tests and docs to the canonical deep paths（python/tests/conftest.py、python/tests/test_md.py、python/docs/getting_started.md；顶层便捷名用例保留一组证明再导出等价）
+- [x] Write the molpy interop check and verify in the ~/work/.x86_64 venv（python/tests/test_molpy_interop.py：importorskip("molpy")，molpy 建体系 → 取共同包装的 molrs Frame → atv 跑 10 步 LJ MD，能量有限；在 venv 内实跑 `pytest python/tests` 全绿）
+- [x] Hygiene cleanup（/mol:simplify ran clean: 2 dead includes, RST ruler, ruff format ×3; both suites green after batch）
+- [x] Run full check + test suite（C++ 161/161 + pytest 125 passed/1 skipped in ~/work/.x86_64 venv）（C++ 侧 cmake build + ctest 不受影响地全绿；确认 git diff 中 bind_md.cpp 零改动）
 
 ## Testing strategy
 
