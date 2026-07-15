@@ -7,7 +7,8 @@ criteria:
     pass_when: |
       python/pyproject.toml 的 [tool.scikit-build.cmake.define] 含
       ATV_BUILD_LAUNCHER = {env = "ATV_BUILD_LAUNCHER", default = "OFF"}。
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-002
     summary: launcher install 规则 SKBUILD/BINDIR 双路且 RPATH 就位
     type: code
@@ -16,7 +17,8 @@ criteria:
       DESTINATION ...) 在 SKBUILD 下指向 ${SKBUILD_SCRIPTS_DIR}、否则指向
       ${CMAKE_INSTALL_BINDIR}，且 target 带 INSTALL_RPATH "$ORIGIN/../lib"；
       不存在任何 console-script / [project.scripts] 入口指向 launcher。
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-003
     summary: 纯 CMake install 覆盖库与头文件且 wheel 构建不携带
     type: code
@@ -24,7 +26,8 @@ criteria:
       根 CMakeLists.txt 在 NOT SKBUILD 守卫下 install atomiverse 库与
       include/atomiverse 头目录；ATV_BUILD_LAUNCHER=ON 且 MPI 未找到时
       configure 以 FATAL_ERROR 终止并点名两个开关。
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-004
     summary: InterpreterLocator 单元测试通过且零解释器执行
     type: code
@@ -33,7 +36,8 @@ criteria:
       PATH 搜索、缺失 throw、版本不匹配 throw；测试源与
       interpreter_locator.{h,cpp} 均不含 Python.h/popen/exec 调用，
       测试期无任何第三方包读取。
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-005
     summary: 无静默回退——发现失败与 ABI 不匹配均清晰致命
     type: code
@@ -41,7 +45,8 @@ criteria:
       python_host.cpp / interpreter_locator.cpp 中不存在编译期烘焙的
       解释器/前缀路径作为运行时回退；缺 python3 与 minor 版本不匹配两条
       路径均产生含 ATV_PYTHON 提示（后者含两个版本号）的错误并非零退出。
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-006
     summary: fresh venv pip 安装后 PATH 上出现真实 ELF 原生 atomiverse
     type: runtime
@@ -50,7 +55,8 @@ criteria:
       全新 venv 内 ATV_BUILD_LAUNCHER=ON pip install . 成功；wheel 解包可见
       *.data/scripts/atomiverse；安装后 command -v atomiverse 落在 venv/bin
       且 file 判定为 ELF 可执行（非文本脚本）。
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-007
     summary: atomiverse script.py 单 rank 使用 venv 的 site-packages
     type: runtime
@@ -58,7 +64,8 @@ criteria:
     pass_when: |
       atomiverse script.py（单 rank）执行的脚本打印的 sys.prefix 等于该 venv
       前缀且成功 import atomiverse（模块路径位于 venv 的 site-packages）。
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-008
     summary: cmake --install 落出可用布局
     type: runtime
@@ -66,7 +73,8 @@ criteria:
     pass_when: |
       ATV_BUILD_LAUNCHER=ON 配置后 cmake --install build --prefix <scratch>
       产生 bin/atomiverse（ELF）、lib/ 下 atomiverse 库、include/atomiverse/ 头树。
-    status: pending
+    status: verified
+    last_checked: 2026-07-15
   - id: ac-009
     summary: user-guide 启动器文档齐备并入索引
     type: docs

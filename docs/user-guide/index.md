@@ -32,9 +32,12 @@ by swapping a component, never by switching to a different program.
    chapters fit together, if quantum chemistry is what brought you here.
 4. **[Tutorial](../tutorial/index.md)** — the long-form book; each chapter pairs
    with a runnable program under `examples/`.
-5. **[Switching Backends](backend-switching.md)** — moving the same problem
+5. **[The MPI Launcher](launcher.md)** — running the same Python script at
+   scale: `mpirun -np N atomiverse atv.py`, interpreter discovery, install
+   routes.
+6. **[Switching Backends](backend-switching.md)** — moving the same problem
    between CPU and CUDA.
-6. **[LibTorch Backend](libtorch-backend.md)** — only if you need differentiable
+7. **[LibTorch Backend](libtorch-backend.md)** — only if you need differentiable
    operators or PyTorch interop.
 
 ## When to switch manuals

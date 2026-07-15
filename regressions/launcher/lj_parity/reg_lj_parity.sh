@@ -10,6 +10,9 @@ set -euo pipefail
 PYTHON="${1:?usage: reg_lj_parity.sh <python> <atomiverse-launcher>}"
 LAUNCHER="${2:?usage: reg_lj_parity.sh <python> <atomiverse-launcher>}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# Runtime interpreter discovery (05): pin the launcher to the SAME venv
+# interpreter the serial legs use.
+export ATV_PYTHON="$PYTHON"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 

@@ -7,22 +7,34 @@
 
 find_package(Python3 3.9 REQUIRED COMPONENTS Interpreter Development.Embed)
 
+include(GNUInstallDirs)
+
 add_executable(atomiverse_launcher
     main.cpp
     python_host.cpp
+    interpreter_locator.cpp
 )
 set_target_properties(atomiverse_launcher PROPERTIES
     OUTPUT_NAME atomiverse
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
-    # 05-packaging: conda/venv layouts keep libpython next to ../lib.
-    INSTALL_RPATH "$ORIGIN/../lib")
+    # 05-packaging: conda/prefix layouts keep libpython at ../lib; uv-managed
+    # python-build-standalone venvs have NO lib/ dir, so also carry the
+    # build-time libpython dir absolutely — the wheel is environment-bound
+    # by design (never manylinux), so an absolute toolchain path is fair.
+    INSTALL_RPATH "$ORIGIN/../lib;${Python3_LIBRARY_DIRS}")
 target_link_libraries(atomiverse_launcher PRIVATE
     atomiverse
     Python3::Python
     MPI::MPI_CXX)
-# 04's build-time interpreter identity (runtime discovery is chain link 05):
-# PyConfig.executable is set to the interpreter this build was configured
-# against, so its environment (venv/conda) resolves stdlib + site-packages.
-target_compile_definitions(atomiverse_launcher PRIVATE
-    ATV_LAUNCHER_BUILD_PYTHON="${Python3_EXECUTABLE}")
+# Install: wheel builds land the REAL ELF in the wheel's scripts dir
+# (pip copies binaries verbatim — the patchelf precedent — so it reaches
+# the environment's bin/ on PATH, never a console-script shim); plain
+# `cmake --install` uses the conventional bindir.
+if(SKBUILD)
+    install(TARGETS atomiverse_launcher
+            RUNTIME DESTINATION "${SKBUILD_SCRIPTS_DIR}")
+else()
+    install(TARGETS atomiverse_launcher
+            RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+endif()

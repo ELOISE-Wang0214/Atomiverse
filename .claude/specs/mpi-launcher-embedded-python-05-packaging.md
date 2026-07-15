@@ -1,6 +1,6 @@
 ---
 title: MPI launcher packaging — wheel 内置原生 atomiverse、CMake install、运行时解释器发现
-status: approved
+status: code-complete
 created: 2026-07-15
 ---
 
@@ -86,16 +86,17 @@ ATV_BUILD_LAUNCHER = {env = "ATV_BUILD_LAUNCHER", default = "OFF"}
 
 ## Tasks
 
-- [ ] Write failing tests for InterpreterLocator (tests/app/test_interpreter_locator.cpp, registered in tests/CMakeLists.txt): ATV_PYTHON override 优先、PATH 逐目录搜 python3/python、找不到即 throw、版本字符串不匹配即 throw——全部注入字符串，绝不执行解释器
-- [ ] Implement InterpreterLocator in app/atomiverse/interpreter_locator.h/.cpp（查找即构造函数，Python.h-free，no-fallback：不支持布局 throw 且报文含 ATV_PYTHON 提示）
-- [ ] Rewire PythonHost (app/atomiverse/python_host.h/.cpp) to runtime discovery：PyConfig_InitPythonConfig + program_name/executable 取自 locator，一次性 popen 查询 sys.version_info 做 ABI minor 守卫，删除 04 的构建期 FindPython3 路径假设
-- [ ] Implement install rules in app/atomiverse/CMakeLists.txt：SKBUILD → `${SKBUILD_SCRIPTS_DIR}`、否则 `${CMAKE_INSTALL_BINDIR}`；`INSTALL_RPATH "$ORIGIN/../lib"`
-- [ ] Implement plain-install rules in CMakeLists.txt：`NOT SKBUILD` 守卫的 libatomiverse + include/atomiverse 安装；launcher-ON-而-MPI-缺失 的 FATAL_ERROR 守卫
-- [ ] Add ATV_BUILD_LAUNCHER env-override define (default OFF) to python/pyproject.toml
-- [ ] Add docstring per doxygen（InterpreterLocator / PythonHost 公开符号的 @brief/@param/@return；路径/环境变量语义写进 @param）
-- [ ] Write docs/user-guide/launcher.md and link it from docs/user-guide/index.md（python vs mpirun/srun、环境要求、ATV_PYTHON、LD_LIBRARY_PATH/Lmod、两条安装路径、wheel 不可移植说明）
-- [ ] Verify installability in a fresh venv：`ATV_BUILD_LAUNCHER=ON pip install .` → wheel 的 `.data/scripts/atomiverse` 为 ELF、PATH 上可执行、`atomiverse script.py` 单 rank 导入 venv 的 site-packages；`cmake --install --prefix <scratch>` 落出 bin/atomiverse（+ lib/include）——验收级手动运行，不进 ctest
-- [ ] Run full check + test suite
+- [x] Write failing tests for InterpreterLocator (tests/app/test_interpreter_locator.cpp, registered in tests/CMakeLists.txt): ATV_PYTHON override 优先、PATH 逐目录搜 python3/python、找不到即 throw、版本字符串不匹配即 throw——全部注入字符串，绝不执行解释器
+- [x] Implement InterpreterLocator in app/atomiverse/interpreter_locator.h/.cpp（查找即构造函数，Python.h-free，no-fallback：不支持布局 throw 且报文含 ATV_PYTHON 提示）
+- [x] Rewire PythonHost (app/atomiverse/python_host.h/.cpp) to runtime discovery：PyConfig_InitPythonConfig + program_name/executable 取自 locator，一次性 popen 查询 sys.version_info 做 ABI minor 守卫，删除 04 的构建期 FindPython3 路径假设
+- [x] Implement install rules in app/atomiverse/CMakeLists.txt：SKBUILD → `${SKBUILD_SCRIPTS_DIR}`、否则 `${CMAKE_INSTALL_BINDIR}`；`INSTALL_RPATH "$ORIGIN/../lib"`
+- [x] Implement plain-install rules in CMakeLists.txt：`NOT SKBUILD` 守卫的 libatomiverse + include/atomiverse 安装；launcher-ON-而-MPI-缺失 的 FATAL_ERROR 守卫
+- [x] Add ATV_BUILD_LAUNCHER env-override define (default OFF) to python/pyproject.toml
+- [x] Add docstring per doxygen（InterpreterLocator / PythonHost 公开符号的 @brief/@param/@return；路径/环境变量语义写进 @param）
+- [x] Write docs/user-guide/launcher.md and link it from docs/user-guide/index.md（python vs mpirun/srun、环境要求、ATV_PYTHON、LD_LIBRARY_PATH/Lmod、两条安装路径、wheel 不可移植说明）
+- [x] Hygiene cleanup（rides the fix(neighbor) cycle; ruff clean on touched scripts）
+- [x] Verify installability in a fresh venv：`ATV_BUILD_LAUNCHER=ON pip install .` → wheel 的 `.data/scripts/atomiverse` 为 ELF、PATH 上可执行、`atomiverse script.py` 单 rank 导入 venv 的 site-packages；`cmake --install --prefix <scratch>` 落出 bin/atomiverse（+ lib/include）——验收级手动运行，不进 ctest
+- [x] Run full check + test suite（168 tests green incl. 13/13 locator; parity re-verified post neighbor-fix）
 
 ## Testing strategy
 

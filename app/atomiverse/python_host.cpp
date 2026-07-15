@@ -5,17 +5,16 @@
 
 #include <Python.h>
 
-// POSIX getpid/setenv: the launcher process model is Linux-only by charter.
+// POSIX getpid/setenv/popen: the launcher process model is Linux-only by charter.
 #include <unistd.h>
 
+#include <cstdio>
 #include <cstdlib>
 #include <stdexcept>
 #include <string>
 #include <utility>
 
-#ifndef ATV_LAUNCHER_BUILD_PYTHON
-#error "ATV_LAUNCHER_BUILD_PYTHON must carry the build-time interpreter path"
-#endif
+#include "interpreter_locator.h"
 
 namespace ATV {
 namespace app {
@@ -30,16 +29,48 @@ PythonHost::PythonHost(std::string script, int argc, char** argv)
     ::setenv("ATV_LAUNCHER", pid.c_str(), /*overwrite=*/1);
 }
 
+namespace {
+
+/// Probe the resolved interpreter's MAJOR.MINOR once (rank 0, before
+/// Py_Initialize). One popen; the launcher is Linux-only by charter.
+std::string probe_major_minor(const std::string& python) {
+    const std::string cmd =
+        python + " -c \"import sys;print('%d.%d'%sys.version_info[:2])\"";
+    FILE* pipe = ::popen(cmd.c_str(), "r");
+    if (pipe == nullptr)
+        throw std::runtime_error("atomiverse: cannot probe interpreter '" +
+                                 python + "'");
+    char buf[32] = {};
+    const bool got = std::fgets(buf, sizeof(buf), pipe) != nullptr;
+    ::pclose(pipe);
+    if (!got)
+        throw std::runtime_error("atomiverse: interpreter '" + python +
+                                 "' did not report its version");
+    std::string v(buf);
+    while (!v.empty() && (v.back() == '\n' || v.back() == '\r'))
+        v.pop_back();
+    return v;
+}
+
+} // namespace
+
 int PythonHost::run() {
+    // Runtime interpreter discovery (chain link 05): the environment the
+    // launcher runs in — an activated venv/conda env or ATV_PYTHON —
+    // decides which Python is embedded. PyConfig's getpath then computes
+    // sys.prefix / site-packages from THAT interpreter (pyvenv.cfg
+    // honoured). No fallback to build-time paths.
+    const InterpreterLocator locator;
+    const std::string built = std::to_string(PY_MAJOR_VERSION) + "." +
+                              std::to_string(PY_MINOR_VERSION);
+    InterpreterLocator::check_abi(probe_major_minor(locator.executable()),
+                                  built);
+
     PyConfig config;
     PyConfig_InitPythonConfig(&config);
 
-    // 04's build-time interpreter identity: PyConfig's getpath computes
-    // sys.prefix / site-packages from this executable's environment
-    // (pyvenv.cfg honoured), which is exactly the venv the wheel was
-    // installed into. Runtime discovery replaces this in chain link 05.
     PyStatus status = PyConfig_SetBytesString(
-        &config, &config.executable, ATV_LAUNCHER_BUILD_PYTHON);
+        &config, &config.executable, locator.executable().c_str());
     if (PyStatus_Exception(status)) {
         PyConfig_Clear(&config);
         throw std::runtime_error("atomiverse: PyConfig executable setup "

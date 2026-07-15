@@ -776,6 +776,16 @@ if(NOT ATV_DOCS_ONLY)
         install(TARGETS _atomiverse LIBRARY DESTINATION atomiverse)
     endif()
 
+    # ── Plain `cmake --install` layout (wheel builds carry none of this;
+    #    scikit-build-core owns their install tree) ──
+    if(NOT SKBUILD)
+        include(GNUInstallDirs)
+        install(TARGETS atomiverse
+                ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+                LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+        install(DIRECTORY include/atomiverse TYPE INCLUDE)
+    endif()
+
     # ── MPI launcher executable (rank-0 embedded CPython) ──
     if(ATV_BUILD_LAUNCHER)
         if(NOT ATV_USE_MPI)
