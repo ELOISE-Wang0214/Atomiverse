@@ -171,6 +171,27 @@ class CellList {
     /// @brief Per-axis flag: `true` if grid is extended for multi-rank ghosts
     /// (skip PBC wrap during binning); `false` for single-rank (wrap into `[0, L)`).
     bool axis_extended_[3] = {false, false, false};
+
+    /// @brief Minimum-image `d{x,y,z}` on the NON-extended axes only.
+    ///
+    /// Halo-extended axes carry ghosts pre-placed at their true periodic
+    /// image; wrapping them folds a dims==2 overlap band's two images of
+    /// the same atom onto one separation and double-counts the pair. Raw
+    /// separations are exact there (owners span <= L/2 per rank).
+    void min_image_unextended_(const cpu::Box& box, double& dx, double& dy,
+                               double& dz) const noexcept {
+        for (int d = 0; d < 3; ++d) {
+            if (axis_extended_[d])
+                continue;
+            const double L = box.length(d);
+            const double half = 0.5 * L;
+            double& v = d == 0 ? dx : (d == 1 ? dy : dz);
+            while (v > half)
+                v -= L;
+            while (v < -half)
+                v += L;
+        }
+    }
     /// @brief Bookkeeping capacity. Per-atom arrays sized to this; ≥ any
     /// `n_active` ever passed.
     int capacity_ = 0;

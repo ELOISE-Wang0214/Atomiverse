@@ -605,23 +605,39 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
                         dx = xi - x_ptr[j];
                         dy = yi - y_ptr[j];
                         dz = zi - z_ptr[j];
-                        // Multi-wrap (see Box::min_image): cross-PBC ghosts
-                        // can be ±2L from owners on small Cartesian grids
-                        // (e.g. 2×2×2 where +x and -x neighbors are the same
-                        // rank). Single-wrap silently drops legitimate
-                        // cross-PBC LJ pairs from the half-list.
-                        while (dx > half_lx)
-                            dx -= lx;
-                        while (dx < -half_lx)
-                            dx += lx;
-                        while (dy > half_ly)
-                            dy -= ly;
-                        while (dy < -half_ly)
-                            dy += ly;
-                        while (dz > half_lz)
-                            dz -= lz;
-                        while (dz < -half_lz)
-                            dz += lz;
+                        // Multi-wrap (see Box::min_image) — but ONLY on
+                        // axes the halo did NOT extend. Ghosts sit at
+                        // their true periodic image already; min-imaging
+                        // an extended axis folds the two images a dims==2
+                        // overlap band imports (same tag through both
+                        // faces) onto ONE separation and double-counts
+                        // the pair (observed: silent 16% LJ energy error,
+                        // 2026-07-15). The raw dx rejects the far image
+                        // by its true distance. Owner-owner pairs never
+                        // span half the global box on a decomposed axis
+                        // (sub <= L/2), so skipping the wrap there is
+                        // exact. Cross-PBC ghosts on small grids (the
+                        // 2x2x2 case this multi-wrap was added for) are
+                        // ALSO extended-axis ghosts pre-placed at true
+                        // images — covered by the same rule.
+                        if (!axis_extended_[0]) {
+                            while (dx > half_lx)
+                                dx -= lx;
+                            while (dx < -half_lx)
+                                dx += lx;
+                        }
+                        if (!axis_extended_[1]) {
+                            while (dy > half_ly)
+                                dy -= ly;
+                            while (dy < -half_ly)
+                                dy += ly;
+                        }
+                        if (!axis_extended_[2]) {
+                            while (dz > half_lz)
+                                dz -= lz;
+                            while (dz < -half_lz)
+                                dz += lz;
+                        }
                     }
 
                     double r2 = dx * dx + dy * dy + dz * dz;
@@ -759,7 +775,10 @@ void CellList::refresh_half(const cpu::Frame& frame, int n_active,
                     double dx = x_ptr[i] - x_ptr[j];
                     double dy = y_ptr[i] - y_ptr[j];
                     double dz = z_ptr[i] - z_ptr[j];
-                    frame.box.min_image(dx, dy, dz);
+                    // Extended-axis-aware min-image (see the serial
+                    // full-stencil comment): never wrap axes the halo
+                    // extended, or dual-image ghosts double-count.
+                    min_image_unextended_(frame.box, dx, dy, dz);
 
                     double r2 = dx * dx + dy * dy + dz * dz;
                     if (r2 < rc_sq) {
@@ -933,7 +952,10 @@ void CellList::refresh_full(const cpu::Frame& frame, int n_active,
                     double dx = x_ptr[i] - x_ptr[j];
                     double dy = y_ptr[i] - y_ptr[j];
                     double dz = z_ptr[i] - z_ptr[j];
-                    frame.box.min_image(dx, dy, dz);
+                    // Extended-axis-aware min-image (see the serial
+                    // full-stencil comment): never wrap axes the halo
+                    // extended, or dual-image ghosts double-count.
+                    min_image_unextended_(frame.box, dx, dy, dz);
 
                     double r2 = dx * dx + dy * dy + dz * dz;
                     if (r2 < rc_sq) {

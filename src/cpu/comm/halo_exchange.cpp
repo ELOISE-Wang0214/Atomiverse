@@ -789,6 +789,23 @@ void HaloSend::launch(const cpu::LaunchContext& ctx) {
     int frame_cap = static_cast<int>(frame.atoms.tag.size());
 
     if (full_rebuild) {
+        // Re-check the build-time geometry guards: an NPT/deform run can
+        // shrink the subdomain AFTER build() validated it (both the
+        // shell-width and the dims==2 self-overlap condition are
+        // box-dependent). Same fail-loud contract as build().
+        for (int d = 0; d < 3; ++d) {
+            if (dd->dims[d] <= 1)
+                continue;
+            const double sub = dd->subhi[d] - dd->sublo[d];
+            if (halo_cut > sub)
+                throw std::runtime_error(
+                    "HaloSend: the box shrank until the ghost shell (" +
+                    std::to_string(halo_cut) + " A) no longer fits axis " +
+                    std::to_string(d) + "'s subdomain (" +
+                    std::to_string(sub) + " A). See HaloSend::build for "
+                    "the geometry contract.");
+        }
+
         // Effective halo = max(pair cutoff, bonded skin): the wider of
         // the two is sufficient for both pair partners and bonded-tuple
         // members near the boundary.

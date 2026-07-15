@@ -252,6 +252,16 @@ atv_add_cpp_test(test_app_launcher_args                   app/test_launcher_args
 target_include_directories(test_app_launcher_args PRIVATE
     ${CMAKE_SOURCE_DIR}/app/atomiverse)
 
+# InterpreterLocator (mpi-launcher-embedded-python-05, ac-004/ac-005): pure
+# path-resolution + version-string logic — Python.h-free, no popen/exec, no
+# interpreter ever executed. The TU lives in app/atomiverse/ (NOT part of
+# libatomiverse), so this target compiles it directly as a second source.
+atv_add_cpp_test(test_app_interpreter_locator
+    app/test_interpreter_locator.cpp
+    ${CMAKE_SOURCE_DIR}/app/atomiverse/interpreter_locator.cpp)
+target_include_directories(test_app_interpreter_locator PRIVATE
+    ${CMAKE_SOURCE_DIR}/app/atomiverse)
+
 # ExtXYZ loading through molrs — inline fixtures only, no external file.
 atv_add_cpp_test(test_cpu_io_extxyz                       cpu/io/test_cpu_io_extxyz.cpp)
 
@@ -263,6 +273,10 @@ if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
     atv_add_mpi_run(test_mpi_topology_n2 test_mpi_topology 2)
     atv_add_mpi_run(test_mpi_topology_n4 test_mpi_topology 4)
     atv_add_mpi_run(test_mpi_topology_n8 test_mpi_topology 8)
+
+    atv_add_mpi_exec(test_mpi_halo_dual_image_ghosts mpi/test_halo_dual_image_ghosts.cpp)
+    atv_add_mpi_run(test_mpi_halo_dual_image_ghosts_n1 test_mpi_halo_dual_image_ghosts 1)
+    atv_add_mpi_run(test_mpi_halo_dual_image_ghosts_n2 test_mpi_halo_dual_image_ghosts 2)
 
     atv_add_mpi_exec(test_mpi_bcast_frame mpi/test_bcast_frame.cpp)
     atv_add_mpi_run(test_mpi_bcast_frame_n1 test_mpi_bcast_frame 1)
