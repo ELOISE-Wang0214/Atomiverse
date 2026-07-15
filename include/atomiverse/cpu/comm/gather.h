@@ -62,6 +62,10 @@ struct GatheredFrame {
     std::vector<double> fz;
     /// @brief Atomic masses, ordered by global tag [amu].
     std::vector<double> mass;
+    /// @brief Per-atom charges, ordered by global tag [e]. Result data for
+    /// charge-writing evaluators (Capability::Charge), not just a static
+    /// input -- the task-protocol result path returns it to rank 0.
+    std::vector<double> charge;
     /// @brief Atom types, ordered by global tag.
     std::vector<int> type;
     /// @brief Global atom tags. Ascending: `tag[i] == i` after a clean run.
@@ -94,8 +98,10 @@ GatheredFrame gather_to_root(const cpu::Frame& frame,
 
 /// @brief Materialize a `GatheredFrame` into a host `cpu::Frame` (root-side
 /// I/O convenience for recorders that consume `Frame`-shaped geometry, e.g.
-/// `cpu::XYZ::write`). Copies positions, velocities, forces, mass,
-/// type, and tag in the gathered (global-tag) order and sets the box.
+/// `cpu::XYZ::write`, and the task-protocol result path). Copies positions,
+/// velocities, forces, mass, charge, type, tag, and image in the gathered
+/// (global-tag) order and sets the box. Bonded topology does NOT travel
+/// through the gather (a per-run static input by the write_back contract).
 /// Called on a non-root rank (empty buffers) it returns a 0-atom Frame.
 cpu::Frame to_frame(const GatheredFrame& gathered);
 

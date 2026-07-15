@@ -349,6 +349,11 @@ if(ATV_USE_MPI AND MPIEXEC_EXECUTABLE)
     atv_add_mpi_exec(test_mpi_rcb mpi/test_rcb.cpp)
     atv_add_mpi_run(test_mpi_rcb_n1 test_mpi_rcb 1)
     atv_add_mpi_run(test_mpi_rcb_n8 test_mpi_rcb 8)
+
+    atv_add_mpi_exec(test_mpi_task_protocol mpi/test_task_protocol.cpp)
+    atv_add_mpi_run(test_mpi_task_protocol_n1 test_mpi_task_protocol 1)
+    atv_add_mpi_run(test_mpi_task_protocol_n2 test_mpi_task_protocol 2)
+    atv_add_mpi_run(test_mpi_task_protocol_n4 test_mpi_task_protocol 4)
 endif()
 
 # ── PW infrastructure tests (require ATV_BUILD_PW) ─────────────────────

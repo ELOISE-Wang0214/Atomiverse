@@ -280,6 +280,7 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
     AccReal* __restrict sp_fy = frame.span(kAtom_fy);
     AccReal* __restrict sp_fz = frame.span(kAtom_fz);
     StorageReal* __restrict sp_mass = frame.span(kAtom_mass);
+    StorageReal* __restrict sp_charge = frame.span(kAtom_charge);
     int* __restrict sp_type = frame.span(kAtom_type);
     Span<std::int8_t> sp_image = frame.span(kAtom_image);
 
@@ -293,6 +294,12 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
     compact_1d(sp_fy);
     compact_1d(sp_fz);
     compact_1d(sp_mass);
+    // charge was MISSING from this compaction until the task-protocol
+    // result path first consumed it post-partition (2026-07-15): every
+    // multi-rank run left stale slot values in the owner rows' charge
+    // column. Silent until then because no in-tree consumer read owner
+    // charges after partition.
+    compact_1d(sp_charge);
     compact_1d(sp_type);
     compact_1d(sp_tag);
     for (int ni = 0; ni < n_local; ++ni) {
@@ -338,6 +345,27 @@ void DomainDecomposition::partition_atoms(ATV::cpu::Frame& frame) {
             for (int m = 0; m < a.maxspecial; ++m)
                 a.special(ni, m) = a.special(oi, m);
         }
+    }
+
+    // Registry extras with migrates=true must compact too (the same latent
+    // class as the charge column above, found 2026-07-15): copy_row's
+    // contract says migrating extras travel with the row, and this
+    // compaction is a bulk row move.
+    for (auto& e : frame.atoms.extras) {
+        if (!e.migrates)
+            continue;
+        std::visit(
+            [&](auto& arr) {
+                for (int ni = 0; ni < n_local; ++ni) {
+                    const int oi =
+                        owned_indices[static_cast<std::size_t>(ni)];
+                    if (oi == ni)
+                        continue;
+                    for (int c = 0; c < e.cols; ++c)
+                        arr(ni, c) = arr(oi, c);
+                }
+            },
+            e.data);
     }
 
     // Release the global-N backing store. Each rank loaded the whole file

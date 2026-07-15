@@ -24,6 +24,17 @@ revised: 2026-07-15
 
 ## Design
 
+**⚠ 03 实施时的发现（2026-07-15，须在本环实施前裁决）**：`Backend::init` 无条件创建
+DomainDecomposition，`Backend::set_frame` 在 `mpi_size>1` 时无条件 `partition_atoms`
+（src/cpu/driver/backend.cpp:131,165-206）——**Evaluate 也不例外**。因此 AM1 单点任务在
+多 rank 下会被切片：每个 rank 的 AM1 只解到自己 slab 的子分子，结果错误。本环的 AM1
+parity 腿（ac-011）会暴露它。两条候选修复（实施本环前小幅修订本 spec 选定其一）：
+(a) 给 Backend/CPUDriver 加 "serial-on-replica" 开关——mpi_size>1 时跳过拓扑与分解，
+每 rank 在完整副本上冗余求解（AM1 毫秒级，冗余成本可忽略；lockstep 平凡）；
+(b) 02 的 TaskMaterializer 单点路径绕过 Evaluate 直调 `AM1Solver`（无 Backend、无分解），
+代价是复制 AM1Evaluator::launch 的 frame 写回逻辑（重复代码风险）。倾向 (a)：修在
+基础设施层，未来 PW/SCF 单点任务同样受益。
+
 **前置依赖（诚实声明）**：本环消费四个先行 spec 的产物——`cpu::comm::bcast_frame`（01）、`cpu/task/` 下的 `TaskSpec` + codec + 物化器（02，**本日并行修订**：`TaskSpec` 增加 `TaskKind {MD, SinglePoint}` 判别子 + `AM1EvaluatorParams`（镜像 `cpu::semiempirical::AM1Config` = `NDDOConfig`：`charge, multiplicity, max_iter, density_tol, energy_tol`，method 不入线），物化器接口改为任务类型无关的 `run(frame)`）、`task_protocol.h` 的 RUN_TASK/SHUTDOWN + `WorkerLoop` + `TaskDispatcher`（03）、以及 **`python-api-namespaces-am1`**（Python 包重构为深层规范命名空间 `atv.potentials.pair.LJCut` / `atv.md.integrator.VelocityVerlet` / `atv.semiempirical.AM1Evaluator` + 顶层再导出，删除旧平铺布局，新增 `bind_semiempirical.cpp` 与可从 Python 调用的 AM1 单点入口）。**这些符号在当前 dev checkout 中尚未全部出现**；本环实现必须在上述四者合入 dev 之后启动，并以合入后的真实头文件/绑定文件路径为准。
 
 **`app/atomiverse/` 可执行程序（新顶层）**：

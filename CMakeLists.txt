@@ -73,6 +73,13 @@ if(NOT ATV_DOCS_ONLY)
            OFF)
     set(ATV_MOLRS_PATH "${CMAKE_SOURCE_DIR}/../molrs" CACHE PATH "Path to molrs source tree")
     option(ATV_BUILD_PYTHON "Build Python bindings (nanobind)" OFF)
+    # The nanobind module is a shared object linking the static atomiverse
+    # and fetched-dependency archives (spdlog, ...): everything must be PIC.
+    # Set BEFORE FetchContent so the fetched targets inherit it. macOS
+    # compiles PIC by default, which is why this was never needed there.
+    if(ATV_BUILD_PYTHON)
+        set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+    endif()
     option(ATV_BUILD_TESTS "Build tests" OFF)
     option(ATV_BUILD_REGRESSIONS
         "Build end-to-end textbook regression cases (regressions/)" OFF)
@@ -181,10 +188,11 @@ if(NOT ATV_DOCS_ONLY)
         src/cpu/semiempirical/nddo_solver.cpp
         src/cpu/semiempirical/am1_evaluator.cpp
         src/cpu/semiempirical/am1_bcc_charge_assigner.cpp
-        # CPU task infrastructure (TaskSpec + codec + materializer)
+        # CPU task infrastructure (TaskSpec + codec + materializer + protocol)
         src/cpu/task/task_spec.cpp
         src/cpu/task/task_codec.cpp
         src/cpu/task/task_materializer.cpp
+        src/cpu/task/task_protocol.cpp
         # CPU Monte Carlo (Sampling category)
         src/cpu/mc/translate_move.cpp
         src/cpu/mc/transaction.cpp

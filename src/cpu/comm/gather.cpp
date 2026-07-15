@@ -43,6 +43,7 @@ void copy_owners_into(GatheredFrame& out, const Frame& frame, int n_local) {
     const AccReal* __restrict sp_fy = frame.span(kAtom_fy);
     const AccReal* __restrict sp_fz = frame.span(kAtom_fz);
     const StorageReal* __restrict sp_mass = frame.span(kAtom_mass);
+    const StorageReal* __restrict sp_charge = frame.span(kAtom_charge);
     const int* __restrict sp_type = frame.span(kAtom_type);
     const TagInt* __restrict sp_tag = frame.span(kAtom_tag);
     const std::int8_t* __restrict sp_image = frame.span(kAtom_image);
@@ -56,6 +57,7 @@ void copy_owners_into(GatheredFrame& out, const Frame& frame, int n_local) {
     out.fy.assign(sp_fy, sp_fy + n_local);
     out.fz.assign(sp_fz, sp_fz + n_local);
     out.mass.assign(sp_mass, sp_mass + n_local);
+    out.charge.assign(sp_charge, sp_charge + n_local);
     out.type.assign(sp_type, sp_type + n_local);
     out.tag.assign(sp_tag, sp_tag + n_local);
     out.image.assign(sp_image, sp_image + 3 * n_local);
@@ -101,6 +103,7 @@ void sort_by_tag(GatheredFrame& g) {
     apply_perm_double(g.fy);
     apply_perm_double(g.fz);
     apply_perm_double(g.mass);
+    apply_perm_double(g.charge);
     apply_perm_int(g.type);
     apply_perm_int64(g.tag);
 
@@ -178,6 +181,7 @@ GatheredFrame gather_to_root(const cpu::Frame& frame,
         out.fy.assign(static_cast<std::size_t>(n_total), 0.0);
         out.fz.assign(static_cast<std::size_t>(n_total), 0.0);
         out.mass.assign(static_cast<std::size_t>(n_total), 0.0);
+        out.charge.assign(static_cast<std::size_t>(n_total), 0.0);
         out.type.assign(static_cast<std::size_t>(n_total), 0);
         out.tag.assign(static_cast<std::size_t>(n_total), 0);
         out.image.assign(static_cast<std::size_t>(3 * n_total), 0);
@@ -207,6 +211,7 @@ GatheredFrame gather_to_root(const cpu::Frame& frame,
     const AccReal* __restrict sp_fy = frame.span(kAtom_fy);
     const AccReal* __restrict sp_fz = frame.span(kAtom_fz);
     const StorageReal* __restrict sp_mass = frame.span(kAtom_mass);
+    const StorageReal* __restrict sp_charge = frame.span(kAtom_charge);
     const int* __restrict sp_type = frame.span(kAtom_type);
     const TagInt* __restrict sp_tag = frame.span(kAtom_tag);
     const std::int8_t* __restrict sp_image = frame.span(kAtom_image);
@@ -221,6 +226,7 @@ GatheredFrame gather_to_root(const cpu::Frame& frame,
     gather_double(sp_fy, my_rank == root ? out.fy.data() : nullptr);
     gather_double(sp_fz, my_rank == root ? out.fz.data() : nullptr);
     gather_double(sp_mass, my_rank == root ? out.mass.data() : nullptr);
+    gather_double(sp_charge, my_rank == root ? out.charge.data() : nullptr);
 
     MPI_Gatherv(sp_type, n_local, MPI_INT,
                 my_rank == root ? out.type.data() : nullptr,
@@ -287,8 +293,10 @@ cpu::Frame to_frame(const GatheredFrame& g) {
     AccReal* __restrict sp_fy = f.span(kAtom_fy);
     AccReal* __restrict sp_fz = f.span(kAtom_fz);
     StorageReal* __restrict sp_mass = f.span(kAtom_mass);
+    StorageReal* __restrict sp_charge = f.span(kAtom_charge);
     int* __restrict sp_type = f.span(kAtom_type);
     TagInt* __restrict sp_tag = f.span(kAtom_tag);
+    std::int8_t* __restrict sp_image = f.span(kAtom_image);
     for (int i = 0; i < n; ++i) {
         sp_x[i] = static_cast<StorageReal>(g.x[i]);
         sp_y[i] = static_cast<StorageReal>(g.y[i]);
@@ -300,8 +308,12 @@ cpu::Frame to_frame(const GatheredFrame& g) {
         sp_fy[i] = static_cast<AccReal>(g.fy[i]);
         sp_fz[i] = static_cast<AccReal>(g.fz[i]);
         sp_mass[i] = static_cast<StorageReal>(g.mass[i]);
+        sp_charge[i] = static_cast<StorageReal>(g.charge[i]);
         sp_type[i] = g.type[i];
         sp_tag[i] = static_cast<TagInt>(g.tag[i]);
+        sp_image[3 * i + 0] = g.image[3 * i + 0];
+        sp_image[3 * i + 1] = g.image[3 * i + 1];
+        sp_image[3 * i + 2] = g.image[3 * i + 2];
     }
     return f;
 }

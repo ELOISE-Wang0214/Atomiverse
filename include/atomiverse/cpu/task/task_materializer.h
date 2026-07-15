@@ -26,6 +26,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 
 #include "atomiverse/cpu/driver/evaluate.h"
@@ -51,6 +52,15 @@ class TaskMaterializer {
     /// @brief The kind of task this materializer runs.
     /// @return TaskKind::MD or TaskKind::SinglePoint.
     TaskKind kind() const noexcept { return kind_; }
+
+    /// @brief Release the MD driver's domain decomposition (the
+    ///        `MD::release_dd` passthrough the task protocol uses for the
+    ///        post-run `gather_to_root`; the `test_eam_multirank` pattern).
+    ///        Call only after the last `run()` — the driver is not
+    ///        continuable afterwards.
+    /// @return The decomposition for an MD task; nullptr for SinglePoint
+    ///         (its frame is a full replica, nothing to gather).
+    std::unique_ptr<md::mpi::DomainDecomposition> release_dd();
 
   private:
     TaskKind kind_;

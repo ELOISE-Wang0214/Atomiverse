@@ -99,6 +99,10 @@ void TaskMaterializer::run(cpu::Frame& frame) {
         eval_->run(frame);
 }
 
+std::unique_ptr<md::mpi::DomainDecomposition> TaskMaterializer::release_dd() {
+    return kind_ == TaskKind::MD ? md_->release_dd() : nullptr;
+}
+
 } // namespace task
 } // namespace cpu
 } // namespace ATV
