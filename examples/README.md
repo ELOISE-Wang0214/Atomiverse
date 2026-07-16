@@ -7,11 +7,11 @@ order.
 | # | File | Concept | Requires |
 |---|------|---------|----------|
 | 01 | `01_scf.cpp` | The bare SCF loop on raw xtensor arrays (no atomiverse link) | — |
-| 02 | `02_rhf.cpp` / `02_rhf.cu` | First real chemistry: RHF single-point (CPU via `scf::rhf_solve`; CUDA twin via `single_point + cuda::scf::SCFEvaluator`) | `ATV_BUILD_RHF` (+`ATV_BUILD_CUDA` for the twin) |
-| 03 | `03_uhf.cpp` | Open-shell UHF (`scf::uhf_solve`) + spin contamination | `ATV_BUILD_RHF` |
-| 04 | `04_uks.cpp` | DFT (UKS-LSDA) with the native XC stack (`scf::uks_solve`) | `ATV_BUILD_RHF` |
-| 05 | `05_geom_opt.cpp` | Geometry optimization: `Minimize + LBFGS + scf::SCFEvaluator` (DFT/PBE forces) | `ATV_BUILD_RHF` |
-| 06 | `06_aimd.cpp` | Ab-initio MD: `MD + VelocityVerlet + NoseHoover + scf::SCFEvaluator` | `ATV_BUILD_RHF` |
+| 02 | `02_rhf.cpp` / `02_rhf.cu` | First real chemistry: RHF single-point (CPU via `scf::SCFSolver`; CUDA twin via `single_point + cuda::scf::SCF`) | `ATV_BUILD_RHF` (+`ATV_BUILD_CUDA` for the twin) |
+| 03 | `03_uhf.cpp` | Open-shell UHF (`scf::SCFSolver`) + spin contamination | `ATV_BUILD_RHF` |
+| 04 | `04_uks.cpp` | DFT (UKS-LSDA) with the native XC stack (`scf::SCFSolver`) | `ATV_BUILD_RHF` |
+| 05 | `05_geom_opt.cpp` | Geometry optimization: `Minimize + LBFGS + scf::SCF` (DFT/PBE forces) | `ATV_BUILD_RHF` |
+| 06 | `06_aimd.cpp` | Ab-initio MD: `MD + VelocityVerlet + NoseHoover + scf::SCF` | `ATV_BUILD_RHF` |
 | 07 | `07_md_lj.cpp` / `07_md_lj.cu` | Classical MD (NVE LJ argon): `md::MD + NeighborList + PairLJCut` (CPU canonical; CUDA twin = `07_md_lj_cuda`) | — (`.cu` needs `ATV_BUILD_CUDA`) |
 | 08 | `08_pw.cpp` | Plane-wave DFT for a periodic crystal: `Evaluate + pw::PWEvaluator` (silicon) | `ATV_BUILD_PW` |
 | 09 | `09_gpw.cpp` | Gaussian-and-plane-waves DFT single point: `gpw::GPWSolver` | `ATV_BUILD_GPW` |
@@ -19,6 +19,7 @@ order.
 | 12 | `12_delta_scf.cpp` | ΔSCF ionization energies beyond Koopmans: neutral RHF vs `SCFInitialGuess`-seeded cation UHF | `ATV_BUILD_RHF` |
 | 13 | `13_mp2.cpp` | Closed-shell MP2 correlation energy (`scf::mp2_energy`, AO→MO ovov transform) | `ATV_BUILD_RHF` |
 | 14 | `14_fci.cpp` | Exact correlation via tiny full CI (`scf::fci_energy`) on H2/STO-3G | `ATV_BUILD_RHF` |
+| 15 | `15_am1.cpp` | AM1 semiempirical: energy, ΔHf, forces, Minimize (`AM1Evaluator`) | — |
 
 ## Rules for adding an example
 

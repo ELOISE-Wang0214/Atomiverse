@@ -230,7 +230,10 @@ NDDOResult& NDDOSolver::compute_forces(cpu::Frame& frame,
         return energy_at_fixed_density_ev_(x.data(), y.data(), z.data());
     };
 
-    for (int i = 0; i < n_atoms_; ++i) {
+    // Translational invariance: F_N = −Σ_{i<N} F_i, so only 3(N−1) independent
+    // central differences when N ≥ 2 (exact for isolated-molecule AM1).
+    const int n_fd = n_atoms_ >= 2 ? n_atoms_ - 1 : n_atoms_;
+    for (int i = 0; i < n_fd; ++i) {
         for (int d = 0; d < 3; ++d) {
             StorageReal* coord =
                 d == 0 ? x.data() : (d == 1 ? y.data() : z.data());
@@ -246,6 +249,18 @@ NDDOResult& NDDOSolver::compute_forces(cpu::Frame& frame,
             result_.forces_ev_a[static_cast<std::size_t>(3 * i + d)] =
                 -(e_plus - e_minus) / two_h;
         }
+    }
+    if (n_atoms_ >= 2) {
+        double sx = 0.0, sy = 0.0, sz = 0.0;
+        for (int i = 0; i < n_atoms_ - 1; ++i) {
+            sx += result_.forces_ev_a[static_cast<std::size_t>(3 * i + 0)];
+            sy += result_.forces_ev_a[static_cast<std::size_t>(3 * i + 1)];
+            sz += result_.forces_ev_a[static_cast<std::size_t>(3 * i + 2)];
+        }
+        const int last = n_atoms_ - 1;
+        result_.forces_ev_a[static_cast<std::size_t>(3 * last + 0)] = -sx;
+        result_.forces_ev_a[static_cast<std::size_t>(3 * last + 1)] = -sy;
+        result_.forces_ev_a[static_cast<std::size_t>(3 * last + 2)] = -sz;
     }
     return result_;
 }

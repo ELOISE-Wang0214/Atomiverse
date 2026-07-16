@@ -10,6 +10,11 @@ nuclear forces** (SCF Hellmann–Feynman / fixed-density integral derivatives).
 Minimize; `with_gradient(false)` is energy-only. Launch unwraps an isolated
 fragment for molecular AM1 under PBC wrap (same pattern as Gaussian SCF).
 Regressions: `am1_water_force`, `am1_water_minimize`, `am1_water_bomd`.
+Tutorial: [Chapter 17](../tutorial/ch17-semiempirical-am1.md) +
+`examples/15_am1.cpp`. Heat of formation is MOPAC-style on `AM1Result`.
+Force gradients use fixed-density central differences with translational
+invariance (last atom \(F_N=-\sum_{i<N} F_i\)); closed-form multipole
+derivatives remain a performance follow-up.
 AM1-BCC charge assignment still uses the energy/charge path (see
 [Multiscale and Properties](multiscale.md)).
 

@@ -108,6 +108,13 @@ the role/capability split before any physics is introduced.
   Stillinger-Weber silicon (`cpu::StillingerWeber`). Covers the full neighbor list,
   the two-pass force, and why every force needs a finite-difference oracle.
 
+## X. Semiempirical Quantum Chemistry
+
+- [Chapter 17: Semiempirical AM1 — Cheap Quantum Forces](ch17-semiempirical-am1.md)
+  — NDDO/AM1 as `Semiempirical` kind + `NDDOSolver` (not a Driver): single-point,
+  ΔHf, analytic forces, Minimize, and short BOMD (`examples/15_am1.cpp`).
+  DFTB/xTB stay out of family.
+
 ---
 
 The validation policy — what each acceptance check proves, and against which reference engine — lives in

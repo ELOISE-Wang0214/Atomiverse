@@ -50,6 +50,9 @@ if(ATV_BUILD_RHF)
     endif()
 endif()
 
+# 15 — AM1 semiempirical (always in the CPU library; no RHF/PW gate).
+atv_add_cpp_example(15_am1)
+
 # 07 — classical MD. CPU .cpp is the canonical lesson (always built);
 # the .cu is the CUDA twin (target 07_md_lj_cuda).
 atv_add_cpp_example(07_md_lj)
