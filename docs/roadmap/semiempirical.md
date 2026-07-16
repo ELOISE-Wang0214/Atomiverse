@@ -28,6 +28,7 @@ never a new Driver, and not under `NDDOSolver`.
 | OM3                             |  ○  |   ○  |
 | Semiempirical analytic gradient |  ✓  |   ○  |
 | Semiempirical analytic Hessian  |  ○  |   ○  |
+| AM1 heat of formation (MOPAC-style ΔHf) |  ✓  |   ○  |
 
 The NDDO core (overlap, one-electron core Hamiltonian, two-electron integrals,
 Fock build, density, SCF, forces) is parameterization-agnostic in structure, but

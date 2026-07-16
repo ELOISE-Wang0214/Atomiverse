@@ -65,6 +65,18 @@ const AM1Parameter* am1_parameter(int z) noexcept;
 /// @brief True when this build carries AM1 parameters for atomic number `z`.
 bool am1_has_parameter(int z) noexcept;
 
+/// @brief Experimental gas-phase atomic heat of formation [kcal/mol] at 298 K.
+///
+/// Used with `eisol` to convert the NDDO total energy into a MOPAC-style
+/// heat of formation. Throws if `z` has AM1 electronic parameters but no
+/// tabulated atomic heat (no silent fallback).
+/// @param z Atomic number.
+/// @return ΔHf(atom, gas, 298 K) [kcal/mol].
+double am1_atomic_heat_kcal_mol(int z);
+
+/// @brief eV → kcal/mol factor used by MOPAC/AM1 thermochemistry (23.061).
+inline constexpr double kAm1EvToKcalMol = 23.061;
+
 } // namespace semiempirical
 } // namespace cpu
 } // namespace ATV

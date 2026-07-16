@@ -48,10 +48,14 @@ ATV::cpu::Frame make_water() {
     return f;
 }
 
-double total_energy_ev(ATV::cpu::Frame frame) {
+ATV::cpu::semiempirical::AM1Result run_am1(ATV::cpu::Frame frame) {
     ATV::cpu::semiempirical::AM1Solver solver;
     solver.build(frame);
-    return solver.run(frame).total_energy_ev;
+    return solver.run(frame);
+}
+
+double total_energy_ev(ATV::cpu::Frame frame) {
+    return run_am1(std::move(frame)).total_energy_ev;
 }
 
 } // namespace
@@ -102,6 +106,22 @@ int main() {
         }
         std::printf("Evaluate path: E=%.6f eV  |F|=%.6f eV/Å  netF ok\n", e,
                     std::sqrt(f2));
+    }
+
+    // MOPAC-style heat of formation (Dewar AM1; openmopac calc_of_hof).
+    {
+        const auto r = run_am1(make_water());
+        const double hof = r.heat_of_formation_kcal_mol;
+        // Expt. H2O(g) ΔHf ≈ −57.8 kcal/mol; AM1 is typically within a few
+        // kcal/mol at near-experimental geometry.
+        if (!std::isfinite(hof) || std::abs(hof + 59.0) > 8.0) {
+            std::fprintf(stderr,
+                         "FAIL: AM1 water ΔHf = %g kcal/mol outside "
+                         "[-67, -51] (expect ~-59)\n",
+                         hof);
+            return 1;
+        }
+        std::printf("ΔHf(H2O) = %.3f kcal/mol (AM1, MOPAC-style)\n", hof);
     }
 
     // Analytic vs re-SCF energy finite difference (literature identity:

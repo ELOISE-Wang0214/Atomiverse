@@ -3,6 +3,9 @@
 
 #include "atomiverse/cpu/semiempirical/am1_parameters.h"
 
+#include <stdexcept>
+#include <string>
+
 namespace ATV {
 namespace cpu {
 namespace semiempirical {
@@ -1748,6 +1751,39 @@ const AM1Parameter* am1_parameter(int z) noexcept {
 }
 
 bool am1_has_parameter(int z) noexcept { return am1_parameter(z) != nullptr; }
+
+double am1_atomic_heat_kcal_mol(int z) {
+    // Gas-phase atomic heats of formation [kcal/mol] at 298 K, as used by
+    // MOPAC / Dewar AM1 thermochemistry (standard elemental reference states).
+    // Values match the conventional MOPAC `atheat` table for these Z.
+    struct Entry {
+        int z;
+        double kcal_mol;
+    };
+    static constexpr Entry kTable[] = {
+        {1, 52.102}, {2, 0.0},    {3, 38.410}, {4, 76.960},  {5, 135.70},
+        {6, 170.89}, {7, 113.00}, {8, 59.559}, {9, 18.86},   {10, 0.0},
+        {11, 25.85}, {12, 35.00}, {13, 79.49}, {14, 108.39}, {15, 75.57},
+        {16, 66.40}, {17, 28.99}, {18, 0.0},   {19, 21.42},  {20, 42.6},
+        {30, 31.17}, {31, 65.4},  {32, 90.0},  {33, 72.3},   {34, 54.3},
+        {35, 26.74}, {36, 0.0},   {37, 19.6},  {38, 39.1},   {42, 157.30},
+        {49, 58.0},  {50, 72.2},  {51, 63.2},  {52, 47.0},   {53, 25.517},
+        {54, 0.0},   {55, 18.7},  {56, 42.5},  {80, 14.69},  {81, 43.55},
+        {82, 46.62}, {83, 50.1},
+    };
+    for (const auto& e : kTable) {
+        if (e.z == z)
+            return e.kcal_mol;
+    }
+    if (am1_has_parameter(z)) {
+        throw std::runtime_error(
+            "AM1 atomic heat of formation not tabulated for Z="
+            + std::to_string(z));
+    }
+    throw std::runtime_error(
+        "AM1 atomic heat requested for unsupported atomic number "
+        + std::to_string(z));
+}
 
 } // namespace semiempirical
 } // namespace cpu

@@ -1020,3 +1020,40 @@ TEST(AM1Evaluator, MultiLaunchWarmStartOnWater) {
         EXPECT_LT(frame.meta.get(ATV::kEnergy), 0.0) << "step " << i;
     }
 }
+
+TEST(AM1Parameters, AtomicHeatsMatchMopacConvention) {
+    EXPECT_NEAR(ATV::cpu::semiempirical::am1_atomic_heat_kcal_mol(1), 52.102,
+                1e-12);
+    EXPECT_NEAR(ATV::cpu::semiempirical::am1_atomic_heat_kcal_mol(6), 170.89,
+                1e-12);
+    EXPECT_NEAR(ATV::cpu::semiempirical::am1_atomic_heat_kcal_mol(8), 59.559,
+                1e-12);
+    EXPECT_THROW(ATV::cpu::semiempirical::am1_atomic_heat_kcal_mol(99),
+                 std::runtime_error);
+}
+
+TEST(AM1Solver, WaterHeatOfFormationNearAm1Literature) {
+    // Experimental-like geometry (Å). Dewar AM1 water ΔHf is typically near
+    // −59 kcal/mol (expt. −57.8); pin within a few kcal/mol of the AM1 regime.
+    auto frame = make_frame({{8, 0.0, 0.0, 0.0},
+                             {1, 0.9572, 0.0, 0.0},
+                             {1, -0.239987, 0.926627, 0.0}});
+    ATV::cpu::semiempirical::AM1Solver solver;
+    solver.build(frame);
+    const auto& r = solver.run(frame);
+    ASSERT_TRUE(r.converged);
+    // Sanity: formula recovers roughly experimental water heat of formation.
+    EXPECT_NEAR(r.heat_of_formation_kcal_mol, -59.0, 8.0)
+        << "ΔHf=" << r.heat_of_formation_kcal_mol;
+    // Cross-check explicit formula against result field.
+    double sum_eisol = 0.0;
+    double sum_at = 0.0;
+    for (int z : {8, 1, 1}) {
+        sum_eisol += ATV::cpu::semiempirical::am1_parameter(z)->eisol;
+        sum_at += ATV::cpu::semiempirical::am1_atomic_heat_kcal_mol(z);
+    }
+    const double expect = (r.total_energy_ev - sum_eisol)
+                              * ATV::cpu::semiempirical::kAm1EvToKcalMol
+                          + sum_at;
+    EXPECT_NEAR(r.heat_of_formation_kcal_mol, expect, 1e-9);
+}

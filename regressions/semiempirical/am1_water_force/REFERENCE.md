@@ -10,7 +10,10 @@ AM1 (Austin Model 1), Dewar et al., *J. Am. Chem. Soc.* **107**, 3902 (1985).
    `with_gradient(true)` writes a negative bound total energy [eV] and non-zero
    nuclear forces [eV/Å] on a slightly distorted water geometry; net force ≈ 0
    (translational invariance).
-2. **SCF gradient identity:** NDDO analytic forces (Hellmann–Feynman contraction
+2. **Heat of formation:** MOPAC-style
+   `ΔHf = (E_tot − Σ eisol)·23.061 + Σ E_atom` [kcal/mol] near the AM1 water
+   regime (~−59 kcal/mol; expt. −57.8). See openmopac calc_of_hof.
+3. **SCF gradient identity:** NDDO analytic forces (Hellmann–Feynman contraction
    of the fixed SCF density with integral derivatives) match re-SCF central
    finite-difference of the total energy to `5×10⁻³` eV/Å.
 

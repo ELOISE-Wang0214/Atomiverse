@@ -158,7 +158,21 @@ NDDOResult& NDDOSolver::run(const cpu::Frame& frame) {
         if (delta <= config_.density_tol
             || energy_delta <= config_.energy_tol) {
             result_.converged = true;
-            result_.heat_of_formation_kcal_mol = 0.0;
+            // MOPAC ΔHf: (E_elec + E_nuc − Σ eisol)·(eV→kcal) + Σ atomic ΔHf
+            // (openmopac.net/Manual/calc_of_hof.html).
+            double sum_eisol = 0.0;
+            double sum_atheat = 0.0;
+            for (const auto& atom : system_.atoms) {
+                const auto* p = am1_parameter(atom.atomic_number);
+                if (p == nullptr) {
+                    throw std::runtime_error(
+                        "AM1 parameters missing during heat-of-formation");
+                }
+                sum_eisol += p->eisol;
+                sum_atheat += am1_atomic_heat_kcal_mol(atom.atomic_number);
+            }
+            result_.heat_of_formation_kcal_mol =
+                (total_ev - sum_eisol) * kAm1EvToKcalMol + sum_atheat;
             density_ = std::move(density);
             spin_density_ = std::move(spin_density);
             has_density_ = true;
