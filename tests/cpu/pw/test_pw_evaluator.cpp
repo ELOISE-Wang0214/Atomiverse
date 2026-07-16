@@ -7,6 +7,7 @@
 /// the component path reproduces the direct solver path bit-for-bit.
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/component/plane_wave.h"
 #include "atomiverse/cpu/driver/evaluate.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/pw/pw_evaluator.h"
@@ -65,11 +66,10 @@ PWConfig small_config() {
 }
 } // namespace
 
-TEST(PWEvaluator, RoleAndCapabilities) {
+TEST(PWEvaluator, IsPlaneWaveKind) {
     PWEvaluator pwe{small_config()};
-    EXPECT_EQ(pwe.role(), /*Potential*/);
-    EXPECT_TRUE(has_capability(pwe.capabilities(), Capability::Energy));
-    EXPECT_FALSE(has_capability(pwe.capabilities(), Capability::Force));
+    EXPECT_NE(dynamic_cast<const cpu::PlaneWave*>(&pwe), nullptr);
+    EXPECT_EQ(pwe.role(), 0); // main-loop required
 }
 
 TEST(PWEvaluator, EvaluateDriverWritesFrameEnergyInEv) {

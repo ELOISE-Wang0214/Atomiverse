@@ -1,23 +1,21 @@
 /// @file tests/cpu/test_mc_scaffold.cpp
-/// @brief Reference-free unit tests for the Monte Carlo sampling scaffold
-///        (sub-spec mc-sampling-01-scaffold): sampling::Phase shape, the
-///        ComponentRole::Mover tag, the pure-data mc::Transaction, the two
-///        new cpu::Context handles, and cpu::mc::MC's component validation.
-///
-/// No physics and no accept/reject dynamics are exercised here — there is no
-/// Mover yet (that lands in mc-sampling-02-move). These tests only pin the
-/// dormant machinery so the Monte Carlo preset is green.
+/// @brief Reference-free unit tests for the Monte Carlo sampling scaffold:
+///        sampling::Phase shape, Mover/Potential kind tags, the pure-data
+///        mc::Transaction, the SamplingServices handles, and cpu::mc::MC
+///        component validation.
 
 #include <gtest/gtest.h>
 
 #include <stdexcept>
+#include <type_traits>
 #include <vector>
 
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/context.h"
+#include "atomiverse/cpu/component/mover.h"
+#include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/mc/mc.h"
 #include "atomiverse/cpu/mc/transaction.h"
-#include "atomiverse/facade/component_role.h"
 #include "atomiverse/facade/stage.h"
 
 using namespace ATV;
@@ -37,13 +35,15 @@ TEST(MCScaffold, SamplingPhaseShape) {
     EXPECT_EQ(names[2], "end_of_step");
 }
 
-// ── ComponentRole::Mover structural tag ───────────────────────────────────
+// ── Kind tags: Mover and Potential are distinct types (no ComponentRole enum)
 
-TEST(MCScaffold, MoverRoleIsDistinct) {
-    EXPECT_NE(ComponentRole::Mover, ComponentRole::None);
-    EXPECT_NE(ComponentRole::Mover, ComponentRole::Barostat);
-    EXPECT_NE(ComponentRole::Mover, ComponentRole::Integrator);
-    EXPECT_NE(ComponentRole::Mover, /*Potential*/);
+TEST(MCScaffold, MoverKindIsDistinct) {
+    static_assert(std::is_base_of_v<cpu::Component, cpu::Mover>);
+    static_assert(std::is_base_of_v<cpu::Component, cpu::Potential>);
+    static_assert(!std::is_base_of_v<cpu::Mover, cpu::Potential>);
+    static_assert(!std::is_base_of_v<cpu::Potential, cpu::Mover>);
+    EXPECT_TRUE((std::is_base_of_v<cpu::Component, cpu::Mover>));
+    EXPECT_TRUE((std::is_base_of_v<cpu::Component, cpu::Potential>));
 }
 
 // ── mc::Transaction: Frame-patch record + guards ────────────────────────────
@@ -97,17 +97,15 @@ TEST(MCScaffold, ContextHandlesDefaultNull) {
 
 namespace {
 
-/// @brief Minimal Mover-role stub (no proposal logic) for validation tests.
-struct StubMover : cpu::Component {
+/// @brief Minimal Mover-kind stub (no proposal logic) for validation tests.
+struct StubMover : cpu::Mover {
     std::string name() const override { return "stub_mover"; }
-    /* role via Mover base */
     void launch(const cpu::LaunchContext&) override {}
 };
 
-/// @brief Minimal Energy-writing evaluator stub for validation tests.
-struct StubEnergy : cpu::Component {
+/// @brief Minimal Potential-kind energy stub for validation tests.
+struct StubEnergy : cpu::Potential {
     std::string name() const override { return "stub_energy"; }
-    /* role via Potential/kind base */
     void launch(const cpu::LaunchContext&) override {}
 };
 
@@ -123,8 +121,8 @@ TEST(MCScaffold, ValidateThrowsWithoutMover) {
 }
 
 TEST(MCScaffold, ValidateThrowsWithoutEnergyWriter) {
-    // The MC ctor auto-adds ZeroEnergy at `energy` @ -999; it is `role() == None` with
-    // no capabilities, so it must NOT satisfy the Capability::Energy requirement.
+    // The MC ctor auto-adds ZeroEnergy at `energy` @ -999; it is not a
+    // Potential kind, so it must NOT satisfy the energy-source requirement.
     cpu::mc::MC d{/*temperature_K=*/300.0, /*seed=*/12345u};
     d.on(sampling::Phase::propose).add(StubMover{});
     EXPECT_THROW(d.build(), std::runtime_error);

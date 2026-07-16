@@ -23,6 +23,7 @@
 
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/core/units.h"
+#include "atomiverse/cpu/component/hf.h"
 #include "atomiverse/cpu/driver/evaluate.h"
 #include "atomiverse/cpu/driver/single_point.h"
 #include "atomiverse/cpu/frame/frame.h"
@@ -67,15 +68,18 @@ TEST(EvaluateDriver, EnergyOnlyEvaluatorAcceptedByEvaluate) {
 
     cpu::scf::SCF scf{cfg};
     scf.with_gradient(false);
-    EXPECT_FALSE(has_capability(scf.capabilities(), Capability::Force))
-        << "with_gradient(false) must drop the Force capability bit";
+    // Kind HF is enough for Evaluate; Capability write-sets are gone.
+    EXPECT_NE(dynamic_cast<const cpu::HF*>(&scf), nullptr);
 
     cpu::Evaluate eval;
     eval.on(ATV::evaluate::Phase::evaluate).add_ref(scf);
     EXPECT_NO_THROW(eval.build());
 }
 
-TEST(EvaluateDriver, EnergyOnlyEvaluatorRejectedByDynamics) {
+TEST(EvaluateDriver, EnergyOnlyEvaluatorAcceptedByDynamicsAsHFKind) {
+    // MD validates energy/force *kinds* (Potential/HF/…), not a Force bit.
+    // Energy-only SCF still satisfies the kind gate; forces_requested is a
+    // launch-time channel, not a build-time Capability.
     auto frame = make_h2o();
     auto integrals =
         cpu::scf::build_integrals(frame, cpu::scf::BasisSet::STO3G);
@@ -87,14 +91,7 @@ TEST(EvaluateDriver, EnergyOnlyEvaluatorRejectedByDynamics) {
     cpu::md::MD d;
     d.on(ATV::md::Phase::initial_integrate).add(cpu::md::VelocityVerlet{0.5});
     d.on(ATV::md::Phase::force).add_ref(scf);
-    try {
-        d.build();
-        FAIL() << "cpu::md::MD should reject an evaluator without Force "
-                  "capability";
-    } catch (const std::runtime_error& e) {
-        EXPECT_NE(std::string(e.what()).find("Force"), std::string::npos)
-            << e.what();
-    }
+    EXPECT_NO_THROW(d.build());
 }
 
 TEST(EvaluateDriver, MatchesSCFSolverDirectOnH2O) {

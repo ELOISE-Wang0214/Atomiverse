@@ -70,8 +70,7 @@ std::vector<std::string> slot_names(const ATV::Plan<ATV::cpu::Component>& plan,
 class EvaluateKindProbe : public ATV::cpu::Component {
   public:
     std::string name() const override { return "evaluate_kind_probe"; }
-    ATV::ComponentRole role() const override { return ATV::/*Potential*/; }
-    Role role() const override { return 0; }
+    ATV::Role role() const override { return 0; }
     std::vector<ATV::DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::evaluate::Phase::evaluate, 0)};
     }

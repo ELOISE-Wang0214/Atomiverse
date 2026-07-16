@@ -38,9 +38,6 @@ struct StopAtStep : ATV::cpu::Component {
     int stop_at;
     explicit StopAtStep(int s) : stop_at(s) {}
     std::string name() const override { return "stop_at_step"; }
-    ATV::ComponentRole role() const override {
-        return ATV::ComponentRole::ConvergenceCheck;
-    }
     void launch(const ATV::cpu::LaunchContext& ctx) override {
         if (ctx.step >= stop_at && ctx.runtime.loop.status) {
             ctx.runtime.loop.status->stop_requested = true;

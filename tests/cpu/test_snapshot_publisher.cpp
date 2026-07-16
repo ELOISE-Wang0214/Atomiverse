@@ -25,6 +25,7 @@
 #include "atomiverse/cpu/async/snapshot_publisher.h"
 #include "atomiverse/cpu/component/component.h"
 #include "atomiverse/cpu/component/context.h"
+#include "atomiverse/cpu/component/integrator.h"
 #include "atomiverse/cpu/driver/backend.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/md/md.h"
@@ -86,10 +87,9 @@ class PositionCapture : public cpu::md::AsyncObserver {
 /// @brief Integrator that stamps positions with an analytic trajectory
 /// `x_i(step) = tag_i + step` at `initial_integrate`, so a torn or
 /// mis-stamped snapshot is detectable per-atom on the consumer side.
-class StepStamper : public cpu::Component {
+class StepStamper : public cpu::Integrator {
   public:
     std::string name() const override { return "step_stamper"; }
-    /* role via Integrator base */
     std::vector<DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::initial_integrate, 0)};
     }

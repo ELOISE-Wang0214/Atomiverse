@@ -1,6 +1,6 @@
 /// @file tests/cpu/test_install_infra_hook.cpp
 /// @brief Phase 1 (driver-infra-auto-injection) — assert the foundation:
-///        (a) `Component::reads()` defaults to `Capability::None`;
+///        (a) `Component::requires_system_stress()` defaults to false;
 ///        (b) the neighbor contract is an opt-in protocol — see (g)/(h);
 ///        (c) a CPU driver subclass can override `install_defaults()` to inject
 ///            a component, and the hook fires *before* `validate_components()`
@@ -62,9 +62,10 @@ namespace {
 
 // ─── Foundation virtuals: defaults ──────────────────────────────────
 
-TEST(InstallInfraHook, ReadsDefaultsToNone) {
+TEST(InstallInfraHook, RequiresSystemStressDefaultsFalse) {
     StubIntegrator c;
-    EXPECT_EQ(c.reads(), ATV::Capability::None);
+    EXPECT_FALSE(c.requires_system_stress());
+    EXPECT_FALSE(c.provides_system_stress());
 }
 
 TEST(InstallInfraHook, AsNeighborConsumerDefaultsToNull) {

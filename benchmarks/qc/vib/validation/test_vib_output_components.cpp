@@ -12,6 +12,8 @@
 /// It also verifies the structural-role tags of all three new
 /// components (ac-006).
 
+#include "atomiverse/cpu/component/observer.h"
+#include "atomiverse/cpu/component/recorder.h"
 #include <gtest/gtest.h>
 
 #include <cmath>
@@ -91,9 +93,13 @@ TEST(VibOutputComponents, ComponentRoles) {
     cpu::vib::FrequencyReport fr{std::string("frequencies.tsv")};
     cpu::vib::NormalModeWriter nm{std::string("mode")};
 
-    EXPECT_EQ(tc.role(), ComponentRole::Observer);
-    EXPECT_EQ(fr.role(), ComponentRole::Recorder);
-    EXPECT_EQ(nm.role(), ComponentRole::Recorder);
+    EXPECT_TRUE(has_role(tc.role(), RoleFlag::FrameImmutable));
+    EXPECT_TRUE(has_role(tc.role(), RoleFlag::Deferred));
+    EXPECT_TRUE(has_role(fr.role(), RoleFlag::ExternalIO));
+    EXPECT_TRUE(has_role(nm.role(), RoleFlag::ExternalIO));
+    EXPECT_NE(dynamic_cast<const cpu::Observer*>(&tc), nullptr);
+    EXPECT_NE(dynamic_cast<const cpu::Recorder*>(&fr), nullptr);
+    EXPECT_NE(dynamic_cast<const cpu::Recorder*>(&nm), nullptr);
 }
 
 // ── ac-004: FrequencyReport writes a parseable TSV ──────────────────────

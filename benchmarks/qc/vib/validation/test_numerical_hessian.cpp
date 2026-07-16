@@ -298,8 +298,9 @@ TEST(NumericalHessian, SingleAtomFrame) {
             EXPECT_TRUE(std::isfinite(result.hessian(i, j)));
 }
 
-// ── Capability bit static presence (ac-001 support) ─────────────────────
+// ── Hessian is a loop-node preset, not a Capability write-set ───────────
 
-TEST(NumericalHessian, HessianCapabilityBitIsDistinct) {
-    EXPECT_EQ(static_cast<uint32_t>(Capability::Hessian), 1u << 7);
+TEST(NumericalHessian, HessianDriverIsConstructible) {
+    cpu::vib::Hessian driver;
+    EXPECT_NO_THROW(static_cast<void>(driver));
 }

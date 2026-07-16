@@ -278,9 +278,12 @@ TEST(PmeLifecycle, SeparatesBuildCellRefreshAndCapacityRebuild) {
     EXPECT_EQ(pme.memory_bytes(), 0u);
 }
 
-TEST(PmeLifecycle, ClaimsReciprocalStress) {
+TEST(PmeLifecycle, IsReciprocalLongRangeParticipant) {
     cpu::KSpacePME pme(0.4, 1.0, 6);
-    EXPECT_TRUE(has_capability(pme.capabilities(), Capability::Stress));
+    const auto* lr = pme.as_long_range_participant();
+    ASSERT_NE(lr, nullptr);
+    EXPECT_EQ(lr->long_range_contract().role,
+              cpu::LongRangeRole::ReciprocalSpace);
 }
 
 // ac-008: after warmup, same-shape cell refresh is replan-free and does not

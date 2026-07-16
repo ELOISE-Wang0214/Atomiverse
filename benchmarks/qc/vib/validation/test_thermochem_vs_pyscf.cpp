@@ -11,6 +11,8 @@
 /// SAME optimized geometry and the SAME harmonic frequencies, so the
 /// only gap measured here is the thermochemistry port itself.
 
+#include "atomiverse/cpu/component/observer.h"
+#include "atomiverse/cpu/component/recorder.h"
 #include <gtest/gtest.h>
 
 #include <cmath>
@@ -180,5 +182,7 @@ TEST(VibThermochemVsPyscf, ReferenceProvenance) {
 
 TEST(VibThermochemVsPyscf, ComponentRoleIsObserver) {
     cpu::vib::Thermochem tc{cpu::vib::Thermochem::Config{}};
-    EXPECT_EQ(tc.role(), ComponentRole::Observer);
+    EXPECT_TRUE(has_role(tc.role(), RoleFlag::FrameImmutable));
+    EXPECT_TRUE(has_role(tc.role(), RoleFlag::Deferred));
+    EXPECT_NE(dynamic_cast<const cpu::Observer*>(&tc), nullptr);
 }

@@ -29,6 +29,7 @@
 #include "atomiverse/core/precision.h"
 #include "atomiverse/cpu/component/long_range_protocol.h"
 #include "atomiverse/cpu/component/neighbor_protocol.h"
+#include "atomiverse/cpu/component/potential.h"
 #include "atomiverse/cpu/md/barostat.h"
 #include "atomiverse/cpu/md/md.h"
 #include "atomiverse/cpu/md/nose_hoover_npt.h"
@@ -70,17 +71,17 @@ constexpr double kP = 0.0;
 
 /// Test-only participant: proves the Driver keys on the typed protocol rather
 /// than concrete CoulLong/Ewald classes or component names.
-class LongRangeStub final : public ATV::cpu::Component,
+class LongRangeStub final : public ATV::cpu::Potential,
                             public ATV::cpu::LongRangeParticipant {
   public:
     LongRangeStub(std::string name, ATV::cpu::LongRangeRole role, double alpha,
-                  ATV::Capability capabilities = ATV::Capability::Force)
+                  bool provides_stress = false)
         : name_(std::move(name)), contract_{role, alpha, 0, 0},
-          capabilities_(capabilities) {}
+          provides_stress_(provides_stress) {}
 
     std::string name() const override { return name_; }
-    ATV::ComponentRole role() const override { return ATV::/*Potential*/; }
-    Role role() const override { return 0; }
+    ATV::Role role() const override { return 0; }
+    bool provides_system_stress() const override { return provides_stress_; }
     const ATV::cpu::LongRangeParticipant*
     as_long_range_participant() const override {
         return this;
@@ -96,13 +97,13 @@ class LongRangeStub final : public ATV::cpu::Component,
   private:
     std::string name_;
     ATV::cpu::LongRangeContract contract_;
-    ATV::Capability capabilities_;
+    bool provides_stress_ = false;
 };
 
 class StressConsumerStub final : public ATV::cpu::Component {
   public:
     std::string name() const override { return "stress-consumer"; }
-    ATV::Capability reads() const override { return ATV::Capability::Stress; }
+    bool requires_system_stress() const override { return true; }
     std::vector<ATV::DefaultBinding> default_bindings() const override {
         return {ATV::make_binding(ATV::md::Phase::final_integrate)};
     }
@@ -125,18 +126,18 @@ std::string build_error(ATV::cpu::md::MD& sim) {
 
 // ─── Component-level overrides ──────────────────────────────────────
 
-TEST(MDSetApi, NPTReadsStress) {
+TEST(MDSetApi, NPTRequiresSystemStress) {
     ATV::cpu::md::NoseHooverNPT npt({.T_target = kT,
                                      .tau_T = 100.0,
                                      .P_target = kP,
                                      .tau_P = 1000.0,
                                      .dt = kDt});
-    EXPECT_NE(static_cast<int>(npt.reads() & ATV::Capability::Stress), 0);
+    EXPECT_TRUE(npt.requires_system_stress());
 }
 
-TEST(MDSetApi, BarostatReadsStress) {
+TEST(MDSetApi, BarostatRequiresSystemStress) {
     ATV::cpu::md::Barostat baro(kP, 1000.0, kDt);
-    EXPECT_NE(static_cast<int>(baro.reads() & ATV::Capability::Stress), 0);
+    EXPECT_TRUE(baro.requires_system_stress());
 }
 
 // ─── NeighborConsumer/NeighborProvider protocol (arch-refactor-03) ──
@@ -273,17 +274,17 @@ TEST(MDSetApi, MultiPhaseBindingDoesNotDuplicateLongRangeParticipant) {
     EXPECT_NO_THROW(sim.build());
 }
 
-TEST(MDSetApi, StressConsumerRequiresStressFromReciprocalHalf) {
+TEST(MDSetApi, StressConsumerWithMatchedLongRangePairBuilds) {
+    // Stress requirement is satisfied by auto-injected Virial (or any
+    // provides_system_stress provider). Long-range halves only need alpha match.
     ATV::cpu::md::MD sim;
     add_test_integrator(sim);
     sim.add(LongRangeStub{"real", ATV::cpu::LongRangeRole::RealSpace, 0.3});
-    sim.add(LongRangeStub{"reciprocal-no-stress",
+    sim.add(LongRangeStub{"reciprocal",
                           ATV::cpu::LongRangeRole::ReciprocalSpace, 0.3,
-                          ATV::Capability::Force});
+                          /*provides_stress=*/false});
     sim.add(StressConsumerStub{});
-    const std::string error = build_error(sim);
-    EXPECT_NE(error.find("consumes Stress"), std::string::npos);
-    EXPECT_NE(error.find("reciprocal-no-stress"), std::string::npos);
+    EXPECT_NO_THROW(sim.build());
 }
 
 // ─── Singular setter discipline ─────────────────────────────────────
