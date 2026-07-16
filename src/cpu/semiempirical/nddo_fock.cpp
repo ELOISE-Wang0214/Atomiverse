@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <utility>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/cpu/semiempirical/am1_parameters.h"
 #include "atomiverse/cpu/semiempirical/nddo_two_electron.h"
 
@@ -173,16 +174,27 @@ NDDOFockBuilder::add_two_center(const NDDOSystem& system,
                                 const std::vector<double>& one_center_fock,
                                 const std::vector<double>& total_density,
                                 const std::vector<double>& spin_density) const {
+    return add_two_center(system, frame.span(kAtom_x), frame.span(kAtom_y),
+                          frame.span(kAtom_z), one_center_fock, total_density,
+                          spin_density);
+}
+
+std::vector<double> NDDOFockBuilder::add_two_center(
+    const NDDOSystem& system, const StorageReal* sp_x, const StorageReal* sp_y,
+    const StorageReal* sp_z, const std::vector<double>& one_center_fock,
+    const std::vector<double>& total_density,
+    const std::vector<double>& spin_density) const {
     validate_packed_size("one_center_fock", system.n_orbitals, one_center_fock);
     validate_packed_size("total_density", system.n_orbitals, total_density);
     validate_packed_size("spin_density", system.n_orbitals, spin_density);
+    if (sp_x == nullptr || sp_y == nullptr || sp_z == nullptr) {
+        throw std::runtime_error(
+            "NDDOFockBuilder::add_two_center requires non-null coordinates");
+    }
 
     std::vector<double> fock = one_center_fock;
-    // Hoisted ONCE at this build boundary; the two-center block builder
-    // runs per atom pair per SCF iteration (the 13.7x rule).
-    const StorageReal* __restrict sp_x = frame.span(kAtom_x);
-    const StorageReal* __restrict sp_y = frame.span(kAtom_y);
-    const StorageReal* __restrict sp_z = frame.span(kAtom_z);
+    // Coordinates are hoisted by the caller (run / force) so the per-pair
+    // two-center block path never re-resolves Frame keys (13.7× rule).
     for (std::size_t i = 0; i < system.atoms.size(); ++i) {
         const auto& atom_i = system.atoms[i];
         const auto pairs_i = local_pairs(atom_i.n_orbitals);
@@ -233,8 +245,19 @@ NDDOFockBuilder::build(const NDDOSystem& system, const cpu::Frame& frame,
                        const std::vector<double>& packed_hcore,
                        const std::vector<double>& total_density,
                        const std::vector<double>& spin_density) const {
+    return build(system, frame.span(kAtom_x), frame.span(kAtom_y),
+                 frame.span(kAtom_z), packed_hcore, total_density,
+                 spin_density);
+}
+
+std::vector<double>
+NDDOFockBuilder::build(const NDDOSystem& system, const StorageReal* sp_x,
+                       const StorageReal* sp_y, const StorageReal* sp_z,
+                       const std::vector<double>& packed_hcore,
+                       const std::vector<double>& total_density,
+                       const std::vector<double>& spin_density) const {
     return add_two_center(
-        system, frame,
+        system, sp_x, sp_y, sp_z,
         add_one_center(system, packed_hcore, total_density, spin_density),
         total_density, spin_density);
 }

@@ -8,7 +8,7 @@
 #include <string>
 #include <utility>
 
-#include "atomiverse/cpu/component/component.h"
+#include "atomiverse/cpu/component/semiempirical.h"
 #include "atomiverse/cpu/semiempirical/am1_solver.h"
 
 namespace ATV {
@@ -16,7 +16,10 @@ namespace cpu {
 namespace semiempirical {
 
 /// @brief AM1 semiempirical Evaluator component (wraps an `AM1Solver`).
-class AM1Evaluator : public cpu::ComponentBase {
+///
+/// Kind: `cpu::Semiempirical`. Inner solver: `AM1Solver` → `NDDOSolver`.
+/// Bind explicitly with `.on(phase).add(...)` (no default_bindings).
+class AM1Evaluator : public cpu::Semiempirical {
   public:
     /// @brief Construct with an AM1 configuration.
     /// @param config Solver configuration (charge, SCF tolerance, ...).
@@ -25,38 +28,43 @@ class AM1Evaluator : public cpu::ComponentBase {
     /// @brief Component name.
     /// @return "am1_evaluator".
     std::string name() const override { return "am1_evaluator"; }
-    /// @brief Structural role of this component.
-    /// @return ComponentRole::Evaluator.
-    ComponentRole role() const override { return ComponentRole::Evaluator; }
-    /// @brief Frame fields this component writes each launch.
-    /// @return `Energy | Charge | DensityMatrix`.
-    Capability capabilities() const override {
-        return Capability::Energy | Capability::Charge
-               | Capability::DensityMatrix;
+
+    /// @brief Toggle nuclear force writes (default on, like `cpu::scf::SCF`).
+    ///
+    /// When enabled and `ctx.forces_requested`, `launch()` runs the NDDO
+    /// analytic gradient and writes `kAtom_fx/fy/fz` [eV/Å].
+    /// @param enabled Whether to compute forces after SCF.
+    /// @return `*this` for chaining.
+    AM1Evaluator& with_gradient(bool enabled) & noexcept {
+        compute_force_ = enabled;
+        return *this;
     }
-    // Deliberately no default_bindings(): like SCFEvaluator/PWEvaluator/
-    // GPWEvaluator, this evaluator is reusable across workflows (Evaluate,
-    // MD, Minimize), so the target phase must be chosen explicitly with
-    // .on(phase).add() — a hardcoded evaluate::Phase would misbind when
-    // added to another driver.
+    /// @copydoc with_gradient(bool) &
+    AM1Evaluator&& with_gradient(bool enabled) && noexcept {
+        compute_force_ = enabled;
+        return std::move(*this);
+    }
 
     /// @brief Build the owned solver against the reference frame (one-time).
     /// @param ctx Build context (runtime services + frame).
     void build(const cpu::BuildContext& ctx) override;
-    /// @brief Run the AM1 SCF cycle; writes energy [eV] and per-atom
-    ///        charges [e] onto the frame.
+    /// @brief Run AM1 SCF; write energy [eV], charges [e], optional forces
+    ///        [eV/Å].
     /// @param ctx Launch context (runtime services + frame + stage/step).
     void launch(const cpu::LaunchContext& ctx) override;
 
     /// @brief Converged result of the most recent launch.
-    /// @return The solver's last `AM1Result` (energies, charges, density).
+    /// @return The solver's last `AM1Result` (energies, charges, forces).
     const AM1Result& last_result() const { return solver_.last_result(); }
     /// @brief Solver configuration in effect.
     /// @return The `AM1Config` this evaluator was constructed with.
     const AM1Config& config() const { return solver_.config(); }
+    /// @brief Whether force computation is enabled.
+    bool gradient_enabled() const noexcept { return compute_force_; }
 
   private:
     AM1Solver solver_;
+    bool compute_force_ = true;
 };
 
 } // namespace semiempirical

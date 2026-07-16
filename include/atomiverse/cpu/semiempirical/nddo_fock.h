@@ -4,6 +4,7 @@
 
 #include <vector>
 
+#include "atomiverse/core/precision.h"
 #include "atomiverse/cpu/frame/frame.h"
 #include "atomiverse/cpu/semiempirical/nddo_system.h"
 
@@ -40,7 +41,22 @@ class NDDOFockBuilder {
                    const std::vector<double>& total_density,
                    const std::vector<double>& spin_density) const;
 
+    /// @brief Two-center Fock with caller-hoisted coords [Å] (SCF / force loops).
+    std::vector<double>
+    add_two_center(const NDDOSystem& system, const StorageReal* sp_x,
+                   const StorageReal* sp_y, const StorageReal* sp_z,
+                   const std::vector<double>& one_center_fock,
+                   const std::vector<double>& total_density,
+                   const std::vector<double>& spin_density) const;
+
     std::vector<double> build(const NDDOSystem& system, const cpu::Frame& frame,
+                              const std::vector<double>& packed_hcore,
+                              const std::vector<double>& total_density,
+                              const std::vector<double>& spin_density) const;
+
+    /// @brief Full Fock with caller-hoisted coords [Å].
+    std::vector<double> build(const NDDOSystem& system, const StorageReal* sp_x,
+                              const StorageReal* sp_y, const StorageReal* sp_z,
                               const std::vector<double>& packed_hcore,
                               const std::vector<double>& total_density,
                               const std::vector<double>& spin_density) const;

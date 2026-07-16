@@ -142,11 +142,13 @@ watch out for in the ones that do.
 
 ### Semiempirical
 
-- AM1 is the only parameterization (no MNDO/PM3/PM6/PM7/RM1), and it has
-  **no gradients** — `AM1Evaluator` advertises `Energy | Charge | DensityMatrix`
-  and the driver *throws* if you bind it to an MD force phase. There is no
-  semiempirical MD.
+- AM1 is the only parameterization (no MNDO/PM3/PM6/PM7/RM1). **Analytic
+  nuclear forces** are available via `AM1Evaluator` (`with_gradient`, default
+  on) on the shared `NDDOSolver` path, so AM1 can drive Evaluate / MD / Minimize
+  force phases. Hessian remains finite-difference (`cpu::vib::Hessian`).
 - AM1-BCC charges are implemented on top of it (AM1 Mulliken + molrs BCC typing).
+- DFTB / xTB are not implemented; when they are, they get their own Solver +
+  Evaluator (+ kind), not a new Driver and not `NDDOSolver`.
 
 ### Classical force fields
 

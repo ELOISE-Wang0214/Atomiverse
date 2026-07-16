@@ -162,7 +162,7 @@ tension) and nothing more — no shear, no flow, no heat flux.
 | --------------------------------------- | :-: | :--: |
 | Hartree–Fock Born–Oppenheimer MD        |  ✓  |   ○  |
 | Kohn–Sham Born–Oppenheimer MD           |  ✓  |   ○  |
-| Semiempirical Born–Oppenheimer MD       |  ○  |   ○  |
+| Semiempirical Born–Oppenheimer MD       |  ✓  |   ○  |
 | DFTB molecular dynamics                 |  ○  |   ○  |
 | xTB molecular dynamics                  |  ○  |   ○  |
 | Car–Parrinello molecular dynamics       |  ○  |   ○  |
@@ -173,13 +173,14 @@ AIMD works by binding a force-providing Evaluator to `md::Phase::force`. Which
 evaluators qualify is decided by one thing — whether they declare
 `Capability::Force`:
 
-- `cpu::scf::SCFEvaluator` with `with_gradient(true)` → **HF and KS BOMD** (both
+- `cpu::scf::SCF` with `with_gradient(true)` → **HF and KS BOMD** (both
   restricted and unrestricted), with an ASPC density predictor for warm starts.
 - `cpu::gpw::GPWEvaluator` with `compute_forces` → **periodic KS BOMD** (Γ-point,
   closed-shell).
 - `cpu::pw::PWEvaluator` is **energy-only** — plane waves cannot drive MD.
-- `cpu::semiempirical::AM1Evaluator` has no gradient; the driver *throws* if you
-  bind it to a force phase. No semiempirical MD.
+- `cpu::semiempirical::AM1Evaluator` with `with_gradient(true)` (default) writes
+  nuclear forces [eV/Å] (validated vs re-SCF FD). Semiempirical BOMD is
+  pinned by `regressions/semiempirical/am1_water_bomd` (short NVE-style smoke).
 - `cuda::scf::SCFEvaluator` has no gradient kernel — **there is no GPU AIMD**.
 
 ASPC is a density *predictor* (warm start), not an extended-Lagrangian

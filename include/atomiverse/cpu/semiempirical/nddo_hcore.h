@@ -4,6 +4,7 @@
 
 #include <vector>
 
+#include "atomiverse/core/precision.h"
 #include "atomiverse/cpu/semiempirical/nddo_system.h"
 
 namespace ATV {
@@ -20,8 +21,15 @@ struct NDDOHCoreResult {
 class NDDOHCoreBuilder {
   public:
     /// @brief Port of hcore.F90 for AM1 one-center plus s/p two-center terms.
+    ///
+    /// Resolves x/y/z once then delegates to the raw-pointer overload (13.7×).
     NDDOHCoreResult build(const NDDOSystem& system,
                           const cpu::Frame& frame) const;
+
+    /// @brief Same as `build(system, frame)` with caller-hoisted coords [Å].
+    NDDOHCoreResult build(const NDDOSystem& system, const StorageReal* sp_x,
+                          const StorageReal* sp_y,
+                          const StorageReal* sp_z) const;
 
     /// @brief Port of hcore.F90's same-atom `uspd` diagonal initialization.
     NDDOHCoreResult build_one_center(const NDDOSystem& system) const;

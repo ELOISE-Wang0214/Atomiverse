@@ -3,13 +3,19 @@
 Legend and caveats: [Roadmap index](index.md).
 
 Atomiverse ships one semiempirical method: **AM1**, on the NDDO framework
-(`cpu::semiempirical::NDDOSolver` + `AM1Evaluator`). It computes energies,
-Mulliken charges, and the density matrix — and it has **no gradients**. The MD
-driver rejects it: binding `AM1Evaluator` to a force phase throws. Its main
-production use today is as the base for AM1-BCC charge assignment (see
+(`cpu::semiempirical::NDDOSolver` + `AM1Evaluator` of kind `cpu::Semiempirical`).
+It computes energies, Mulliken charges, the density matrix, and **analytic
+nuclear forces** (SCF Hellmann–Feynman / fixed-density integral derivatives).
+`AM1Evaluator::with_gradient(true)` (default) writes forces for Evaluate / MD /
+Minimize; `with_gradient(false)` is energy-only. Launch unwraps an isolated
+fragment for molecular AM1 under PBC wrap (same pattern as Gaussian SCF).
+Regressions: `am1_water_force`, `am1_water_minimize`, `am1_water_bomd`.
+AM1-BCC charge assignment still uses the energy/charge path (see
 [Multiscale and Properties](multiscale.md)).
 
 There is no DFTB and no extended tight binding (xTB/GFN-n) anywhere in the tree.
+Those are **separate method families** (own Solver + Evaluator + kind later) —
+never a new Driver, and not under `NDDOSolver`.
 
 ## 1. Semiempirical Quantum Methods
 
@@ -20,14 +26,14 @@ There is no DFTB and no extended tight binding (xTB/GFN-n) anywhere in the tree.
 | PM6                             |  ○  |   ○  |
 | PM7                             |  ○  |   ○  |
 | OM3                             |  ○  |   ○  |
-| Semiempirical analytic gradient |  ○  |   ○  |
+| Semiempirical analytic gradient |  ✓  |   ○  |
 | Semiempirical analytic Hessian  |  ○  |   ○  |
 
 The NDDO core (overlap, one-electron core Hamiltonian, two-electron integrals,
-Fock build, density, SCF) is parameterization-agnostic in structure, but only
-the AM1 parameter set is transcribed. MNDO/PM3/PM6 are parameter tables away in
-principle — the missing gradient is the larger gap, since it is what blocks
-semiempirical MD and optimization.
+Fock build, density, SCF, forces) is parameterization-agnostic in structure, but
+only the AM1 parameter set is transcribed. MNDO/PM3/PM6 are parameter tables
+away in principle. Analytic Hessian remains finite-difference via
+`cpu::vib::Hessian` over AM1 forces.
 
 ## 2. Density-Functional Tight Binding
 

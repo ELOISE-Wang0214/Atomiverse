@@ -36,6 +36,17 @@ atv_add_regression(md eam_cu)
 atv_add_regression(md sw_si)
 atv_add_regression(md rigid_water)
 atv_add_regression(path neb_muller_brown)
+atv_add_regression(architecture harmonic_driver_matrix)
+atv_add_regression(minimizer lj_dimer)
+atv_add_regression(forcefield tip3p_two_water)
+atv_add_regression(path remd_harmonic)
+atv_add_regression(sampling umbrella_harmonic)
+atv_add_regression(semiempirical am1_water_force)
+atv_add_regression(semiempirical am1_water_minimize)
+atv_add_regression(semiempirical am1_water_bomd)
+if(ATV_BUILD_KSPACE)
+    atv_add_regression(md npt_pme_nacl)
+endif()
 
 # ── launcher parity (mpi-launcher-embedded-python-04) ─────────────────────
 # Not an atv_add_regression() case: it needs mpirun + a Python environment

@@ -3,17 +3,21 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <initializer_list>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
+#include "atomiverse/core/frame_schema.h"
 #include "atomiverse/core/mat3.h"
 #include "atomiverse/cpu/driver/evaluate.h"
 #include "atomiverse/cpu/semiempirical/am1_bcc_charge_assigner.h"
 #include "atomiverse/cpu/semiempirical/am1_evaluator.h"
 #include "atomiverse/cpu/semiempirical/am1_parameters.h"
+#include "atomiverse/cpu/semiempirical/am1_solver.h"
 #include "atomiverse/cpu/semiempirical/nddo_density.h"
 #include "atomiverse/cpu/semiempirical/nddo_fock.h"
 #include "atomiverse/cpu/semiempirical/nddo_hcore.h"
@@ -37,97 +41,97 @@ ATV::cpu::Frame make_frame(std::initializer_list<AtomSpec> atoms) {
     ATV::cpu::Frame f(static_cast<int>(atoms.size()));
     int i = 0;
     for (const auto& atom : atoms) {
-        f.atoms.type[i] = atom.atomic_number;
-        f.atoms.x[i] = atom.x;
-        f.atoms.y[i] = atom.y;
-        f.atoms.z[i] = atom.z;
+        f.span(ATV::kAtom_type)[i] = atom.atomic_number;
+        f.span(ATV::kAtom_x)[i] = atom.x;
+        f.span(ATV::kAtom_y)[i] = atom.y;
+        f.span(ATV::kAtom_z)[i] = atom.z;
         ++i;
     }
-    f.box = ATV::Mat3::cubic(20.0);
+    f.simbox = ATV::cpu::Box::cubic(20.0);
     return f;
 }
 
 ATV::cpu::Frame make_h_atom_frame() {
     ATV::cpu::Frame f(1);
-    f.atoms.type[0] = 1;
-    f.atoms.x[0] = 0.0;
-    f.atoms.y[0] = 0.0;
-    f.atoms.z[0] = 0.0;
-    f.box = ATV::Mat3::cubic(20.0);
+    f.span(ATV::kAtom_type)[0] = 1;
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.simbox = ATV::cpu::Box::cubic(20.0);
     return f;
 }
 
 ATV::cpu::Frame make_methane_frame() {
     ATV::cpu::Frame f(5);
-    f.atoms.type[0] = 6;
-    f.atoms.x[0] = 0.0;
-    f.atoms.y[0] = 0.0;
-    f.atoms.z[0] = 0.0;
+    f.span(ATV::kAtom_type)[0] = 6;
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
     for (int i = 1; i < 5; ++i) {
-        f.atoms.type[i] = 1;
-        f.atoms.x[i] = static_cast<double>(i);
-        f.atoms.y[i] = 0.0;
-        f.atoms.z[i] = 0.0;
+        f.span(ATV::kAtom_type)[i] = 1;
+        f.span(ATV::kAtom_x)[i] = static_cast<double>(i);
+        f.span(ATV::kAtom_y)[i] = 0.0;
+        f.span(ATV::kAtom_z)[i] = 0.0;
     }
-    f.box = ATV::Mat3::cubic(20.0);
+    f.simbox = ATV::cpu::Box::cubic(20.0);
     return f;
 }
 
 ATV::cpu::Frame make_tetrahedral_methane_frame() {
     ATV::cpu::Frame f(5);
-    f.atoms.type[0] = 6;
-    f.atoms.x[0] = 0.0;
-    f.atoms.y[0] = 0.0;
-    f.atoms.z[0] = 0.0;
+    f.span(ATV::kAtom_type)[0] = 6;
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
 
     const double h = 0.629118;
-    f.atoms.type[1] = 1;
-    f.atoms.x[1] = h;
-    f.atoms.y[1] = h;
-    f.atoms.z[1] = h;
-    f.atoms.type[2] = 1;
-    f.atoms.x[2] = -h;
-    f.atoms.y[2] = -h;
-    f.atoms.z[2] = h;
-    f.atoms.type[3] = 1;
-    f.atoms.x[3] = -h;
-    f.atoms.y[3] = h;
-    f.atoms.z[3] = -h;
-    f.atoms.type[4] = 1;
-    f.atoms.x[4] = h;
-    f.atoms.y[4] = -h;
-    f.atoms.z[4] = -h;
-    f.box = ATV::Mat3::cubic(20.0);
+    f.span(ATV::kAtom_type)[1] = 1;
+    f.span(ATV::kAtom_x)[1] = h;
+    f.span(ATV::kAtom_y)[1] = h;
+    f.span(ATV::kAtom_z)[1] = h;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.span(ATV::kAtom_x)[2] = -h;
+    f.span(ATV::kAtom_y)[2] = -h;
+    f.span(ATV::kAtom_z)[2] = h;
+    f.span(ATV::kAtom_type)[3] = 1;
+    f.span(ATV::kAtom_x)[3] = -h;
+    f.span(ATV::kAtom_y)[3] = h;
+    f.span(ATV::kAtom_z)[3] = -h;
+    f.span(ATV::kAtom_type)[4] = 1;
+    f.span(ATV::kAtom_x)[4] = h;
+    f.span(ATV::kAtom_y)[4] = -h;
+    f.span(ATV::kAtom_z)[4] = -h;
+    f.simbox = ATV::cpu::Box::cubic(20.0);
     return f;
 }
 
 ATV::cpu::Frame make_methanol_frame() {
     ATV::cpu::Frame f(6);
-    f.atoms.type[0] = 6;
-    f.atoms.x[0] = 0.0;
-    f.atoms.y[0] = 0.0;
-    f.atoms.z[0] = 0.0;
-    f.atoms.type[1] = 8;
-    f.atoms.x[1] = 1.43;
-    f.atoms.y[1] = 0.0;
-    f.atoms.z[1] = 0.0;
-    f.atoms.type[2] = 1;
-    f.atoms.x[2] = 1.76;
-    f.atoms.y[2] = 0.9;
-    f.atoms.z[2] = 0.0;
-    f.atoms.type[3] = 1;
-    f.atoms.x[3] = -0.36;
-    f.atoms.y[3] = 1.02;
-    f.atoms.z[3] = 0.0;
-    f.atoms.type[4] = 1;
-    f.atoms.x[4] = -0.36;
-    f.atoms.y[4] = -0.51;
-    f.atoms.z[4] = 0.883346;
-    f.atoms.type[5] = 1;
-    f.atoms.x[5] = -0.36;
-    f.atoms.y[5] = -0.51;
-    f.atoms.z[5] = -0.883346;
-    f.box = ATV::Mat3::cubic(20.0);
+    f.span(ATV::kAtom_type)[0] = 6;
+    f.span(ATV::kAtom_x)[0] = 0.0;
+    f.span(ATV::kAtom_y)[0] = 0.0;
+    f.span(ATV::kAtom_z)[0] = 0.0;
+    f.span(ATV::kAtom_type)[1] = 8;
+    f.span(ATV::kAtom_x)[1] = 1.43;
+    f.span(ATV::kAtom_y)[1] = 0.0;
+    f.span(ATV::kAtom_z)[1] = 0.0;
+    f.span(ATV::kAtom_type)[2] = 1;
+    f.span(ATV::kAtom_x)[2] = 1.76;
+    f.span(ATV::kAtom_y)[2] = 0.9;
+    f.span(ATV::kAtom_z)[2] = 0.0;
+    f.span(ATV::kAtom_type)[3] = 1;
+    f.span(ATV::kAtom_x)[3] = -0.36;
+    f.span(ATV::kAtom_y)[3] = 1.02;
+    f.span(ATV::kAtom_z)[3] = 0.0;
+    f.span(ATV::kAtom_type)[4] = 1;
+    f.span(ATV::kAtom_x)[4] = -0.36;
+    f.span(ATV::kAtom_y)[4] = -0.51;
+    f.span(ATV::kAtom_z)[4] = 0.883346;
+    f.span(ATV::kAtom_type)[5] = 1;
+    f.span(ATV::kAtom_x)[5] = -0.36;
+    f.span(ATV::kAtom_y)[5] = -0.51;
+    f.span(ATV::kAtom_z)[5] = -0.883346;
+    f.simbox = ATV::cpu::Box::cubic(20.0);
     return f;
 }
 
@@ -145,7 +149,8 @@ void expect_am1_sqm_single_point_charges(ATV::cpu::Frame frame,
     }
 }
 
-::rust::Box<molrs::FrameRef> make_molrs_methane_graph_frame() {
+::rust::Box<molrs::FrameRef>
+make_molrs_methane_graph_frame(bool include_atomic_numbers = true) {
     auto frame = molrs::frame_new();
 
     rust::Vec<rust::String> elements;
@@ -157,6 +162,12 @@ void expect_am1_sqm_single_point_charges(ATV::cpu::Frame frame,
     molrs::frame_set_column_str(
         *frame, "atoms", "element",
         ::rust::Slice<const rust::String>(elements.data(), elements.size()));
+    if (include_atomic_numbers) {
+        const std::vector<std::int32_t> type = {6, 1, 1, 1, 1};
+        molrs::frame_set_column_i32(
+            *frame, "atoms", "type",
+            ::rust::Slice<const std::int32_t>(type.data(), type.size()));
+    }
 
     const std::vector<double> x = {0.0, 0.629118, -0.629118, -0.629118,
                                    0.629118};
@@ -272,19 +283,16 @@ TEST(AM1Parameters, CarriesReferenceCalparDerivedMetadata) {
     EXPECT_NEAR(br->eisol, -352.3142090000, 1.0e-10);
 }
 
-TEST(AM1Evaluator, CapabilityShapeMatchesEvaluatorContract) {
+TEST(AM1Evaluator, ExplicitBindContractAndGradientToggle) {
     ATV::cpu::semiempirical::AM1Evaluator eval;
-    EXPECT_EQ(eval.role(), ATV::ComponentRole::Evaluator);
-    EXPECT_TRUE(
-        ATV::has_capability(eval.capabilities(), ATV::Capability::Energy));
-    EXPECT_TRUE(
-        ATV::has_capability(eval.capabilities(), ATV::Capability::Charge));
-    EXPECT_TRUE(ATV::has_capability(eval.capabilities(),
-                                    ATV::Capability::DensityMatrix));
-    EXPECT_FALSE(
-        ATV::has_capability(eval.capabilities(), ATV::Capability::Force));
+    EXPECT_EQ(eval.role(), 0); // Semiempirical: main-loop required
+    EXPECT_TRUE(eval.gradient_enabled());
+    eval.with_gradient(false);
+    EXPECT_FALSE(eval.gradient_enabled());
+    eval.with_gradient(true);
+    EXPECT_TRUE(eval.gradient_enabled());
 
-    // Explicit-bind convention (like SCFEvaluator/PWEvaluator/GPWEvaluator):
+    // Explicit-bind convention (like SCF/PWEvaluator/GPWEvaluator):
     // no default bindings — the evaluator must be attached with
     // .on(phase).add().
     EXPECT_TRUE(eval.default_bindings().empty());
@@ -308,10 +316,26 @@ TEST(AM1BCCChargeAssigner, AssignsChargesThroughMolrsTypifier) {
         EXPECT_NEAR(charges[i], 0.0262, 5.0e-3) << "atom " << i;
 }
 
+TEST(AM1BCCChargeAssigner, RejectsSymbolOnlyAtomicNumberFallback) {
+    auto frame = make_molrs_methane_graph_frame(false);
+    ATV::cpu::semiempirical::AM1BCCChargeAssigner assigner;
+    EXPECT_THROW(
+        {
+            try {
+                (void)assigner.assign(*frame);
+            } catch (const std::runtime_error& error) {
+                EXPECT_NE(std::string(error.what()).find("atoms.type"),
+                          std::string::npos);
+                throw;
+            }
+        },
+        std::runtime_error);
+}
+
 TEST(AM1Solver, BuildRejectsElementsWithoutPortedParameters) {
     ATV::cpu::semiempirical::AM1Solver solver;
     ATV::cpu::Frame frame(1);
-    frame.atoms.type[0] = 99;
+    frame.span(ATV::kAtom_type)[0] = 99;
     EXPECT_THROW(solver.build(frame), std::runtime_error);
 }
 
@@ -344,8 +368,8 @@ TEST(NDDOSystem, MethaneMatchesReferenceOrbitalAndElectronBookkeeping) {
 
 TEST(NDDOSystem, DOrbitalBookkeepingComesFromReferenceButFockIsGuarded) {
     ATV::cpu::Frame frame(1);
-    frame.atoms.type[0] = 42;
-    frame.box = ATV::Mat3::cubic(20.0);
+    frame.span(ATV::kAtom_type)[0] = 42;
+    frame.simbox = ATV::cpu::Box::cubic(20.0);
 
     const auto system = ATV::cpu::semiempirical::build_am1_system(frame, 0, 1);
     ASSERT_EQ(system.atoms.size(), 1u);
@@ -581,15 +605,15 @@ TEST(NDDOOverlap, H1ElecMatchesReferenceH2HcoreOffDiagonal) {
 
 TEST(NDDOHCoreBuilder, SPHcoreMatchesReferenceH2HcoreMatrix) {
     ATV::cpu::Frame frame(2);
-    frame.atoms.type[0] = 1;
-    frame.atoms.type[1] = 1;
-    frame.atoms.x[0] = 0.0;
-    frame.atoms.y[0] = 0.0;
-    frame.atoms.z[0] = 0.0;
-    frame.atoms.x[1] = 0.0;
-    frame.atoms.y[1] = 0.0;
-    frame.atoms.z[1] = 0.74;
-    frame.box = ATV::Mat3::cubic(20.0);
+    frame.span(ATV::kAtom_type)[0] = 1;
+    frame.span(ATV::kAtom_type)[1] = 1;
+    frame.span(ATV::kAtom_x)[0] = 0.0;
+    frame.span(ATV::kAtom_y)[0] = 0.0;
+    frame.span(ATV::kAtom_z)[0] = 0.0;
+    frame.span(ATV::kAtom_x)[1] = 0.0;
+    frame.span(ATV::kAtom_y)[1] = 0.0;
+    frame.span(ATV::kAtom_z)[1] = 0.74;
+    frame.simbox = ATV::cpu::Box::cubic(20.0);
 
     const auto system = ATV::cpu::semiempirical::build_am1_system(frame, 0, 1);
     const auto hcore =
@@ -609,15 +633,15 @@ TEST(NDDOHCoreBuilder, SPHcoreMatchesReferenceH2HcoreMatrix) {
 
 TEST(NDDOTwoElectron, H2TwoCenterIntegralMatchesReferenceHcorePrint) {
     ATV::cpu::Frame frame(2);
-    frame.atoms.type[0] = 1;
-    frame.atoms.type[1] = 1;
-    frame.atoms.x[0] = 0.0;
-    frame.atoms.y[0] = 0.0;
-    frame.atoms.z[0] = 0.0;
-    frame.atoms.x[1] = 0.0;
-    frame.atoms.y[1] = 0.0;
-    frame.atoms.z[1] = 0.74;
-    frame.box = ATV::Mat3::cubic(20.0);
+    frame.span(ATV::kAtom_type)[0] = 1;
+    frame.span(ATV::kAtom_type)[1] = 1;
+    frame.span(ATV::kAtom_x)[0] = 0.0;
+    frame.span(ATV::kAtom_y)[0] = 0.0;
+    frame.span(ATV::kAtom_z)[0] = 0.0;
+    frame.span(ATV::kAtom_x)[1] = 0.0;
+    frame.span(ATV::kAtom_y)[1] = 0.0;
+    frame.span(ATV::kAtom_z)[1] = 0.74;
+    frame.simbox = ATV::cpu::Box::cubic(20.0);
 
     const auto system = ATV::cpu::semiempirical::build_am1_system(frame, 0, 1);
     const auto w = ATV::cpu::semiempirical::build_two_center_integral_block(
@@ -633,15 +657,15 @@ TEST(NDDOTwoElectron, H2TwoCenterIntegralMatchesReferenceHcorePrint) {
 
 TEST(NDDOFockBuilder, H2FinalDensityFockMatchesReferenceEigenvalues) {
     ATV::cpu::Frame frame(2);
-    frame.atoms.type[0] = 1;
-    frame.atoms.type[1] = 1;
-    frame.atoms.x[0] = 0.0;
-    frame.atoms.y[0] = 0.0;
-    frame.atoms.z[0] = 0.0;
-    frame.atoms.x[1] = 0.0;
-    frame.atoms.y[1] = 0.0;
-    frame.atoms.z[1] = 0.74;
-    frame.box = ATV::Mat3::cubic(20.0);
+    frame.span(ATV::kAtom_type)[0] = 1;
+    frame.span(ATV::kAtom_type)[1] = 1;
+    frame.span(ATV::kAtom_x)[0] = 0.0;
+    frame.span(ATV::kAtom_y)[0] = 0.0;
+    frame.span(ATV::kAtom_z)[0] = 0.0;
+    frame.span(ATV::kAtom_x)[1] = 0.0;
+    frame.span(ATV::kAtom_y)[1] = 0.0;
+    frame.span(ATV::kAtom_z)[1] = 0.74;
+    frame.simbox = ATV::cpu::Box::cubic(20.0);
 
     const auto system = ATV::cpu::semiempirical::build_am1_system(frame, 0, 1);
     const auto hcore =
@@ -728,15 +752,15 @@ TEST(AM1Solver, BuildCreatesReferenceScfInitialState) {
 TEST(AM1Solver, RunConvergesClosedShellH2AgainstReferenceChargeOracle) {
     ATV::cpu::semiempirical::AM1Solver solver;
     ATV::cpu::Frame frame(2);
-    frame.atoms.type[0] = 1;
-    frame.atoms.type[1] = 1;
-    frame.atoms.x[0] = 0.0;
-    frame.atoms.y[0] = 0.0;
-    frame.atoms.z[0] = 0.0;
-    frame.atoms.x[1] = 0.0;
-    frame.atoms.y[1] = 0.0;
-    frame.atoms.z[1] = 0.74;
-    frame.box = ATV::Mat3::cubic(20.0);
+    frame.span(ATV::kAtom_type)[0] = 1;
+    frame.span(ATV::kAtom_type)[1] = 1;
+    frame.span(ATV::kAtom_x)[0] = 0.0;
+    frame.span(ATV::kAtom_y)[0] = 0.0;
+    frame.span(ATV::kAtom_z)[0] = 0.0;
+    frame.span(ATV::kAtom_x)[1] = 0.0;
+    frame.span(ATV::kAtom_y)[1] = 0.0;
+    frame.span(ATV::kAtom_z)[1] = 0.74;
+    frame.simbox = ATV::cpu::Box::cubic(20.0);
 
     solver.build(frame);
     const auto& result = solver.run(frame);
@@ -846,6 +870,7 @@ TEST(AM1Evaluator, LaunchWritesClosedShellChargesToFrame) {
     ATV::cpu::Context runtime;
     auto frame = make_tetrahedral_methane_frame();
     ATV::cpu::semiempirical::AM1Evaluator evaluator;
+    evaluator.with_gradient(false);
 
     ATV::cpu::BuildContext build{runtime, frame};
     ATV::cpu::LaunchContext launch{
@@ -853,9 +878,145 @@ TEST(AM1Evaluator, LaunchWritesClosedShellChargesToFrame) {
     evaluator.build(build);
     evaluator.launch(launch);
 
-    EXPECT_NEAR(frame.atoms.charge(0), -0.262125, 5.0e-5);
+    EXPECT_NEAR(frame.span(ATV::kAtom_charge)[0], -0.262125, 5.0e-5);
     for (int i = 1; i < 5; ++i) {
-        EXPECT_NEAR(frame.atoms.charge(i), 0.065531, 5.0e-5);
+        EXPECT_NEAR(frame.span(ATV::kAtom_charge)[i], 0.065531, 5.0e-5);
     }
-    EXPECT_LT(frame.scalars.energy, 0.0);
+    EXPECT_LT(frame.meta.get(ATV::kEnergy), 0.0);
+}
+
+TEST(NDDOSolver, AnalyticForceMatchesRescfEnergyFiniteDifference) {
+    // Slightly stretched water so residual forces are non-zero.
+    auto frame = make_frame(
+        {{8, 0.0, 0.0, 0.0}, {1, 1.05, 0.0, 0.0}, {1, -0.26, 1.0, 0.0}});
+
+    ATV::cpu::semiempirical::AM1Solver solver;
+    solver.build(frame);
+    const auto& scf = solver.run(frame);
+    ASSERT_TRUE(scf.converged);
+    solver.compute_forces(frame, 1.0e-4);
+    const auto& forces = solver.last_result().forces_ev_a;
+    ASSERT_EQ(forces.size(), 9u);
+
+    // Re-SCF central FD of total energy vs analytic (fixed-P) force.
+    constexpr double h = 5.0e-4; // Å
+    auto energy = [&](ATV::cpu::Frame f) {
+        ATV::cpu::semiempirical::AM1Solver s;
+        s.build(f);
+        return s.run(f).total_energy_ev;
+    };
+
+    double max_abs_err = 0.0;
+    double net_fx = 0.0;
+    double net_fy = 0.0;
+    double net_fz = 0.0;
+    for (int i = 0; i < 3; ++i) {
+        for (int d = 0; d < 3; ++d) {
+            auto fp = frame;
+            auto fm = frame;
+            ATV::StorageReal* cp = d == 0 ? fp.span(ATV::kAtom_x)
+                                          : (d == 1 ? fp.span(ATV::kAtom_y)
+                                                    : fp.span(ATV::kAtom_z));
+            ATV::StorageReal* cm = d == 0 ? fm.span(ATV::kAtom_x)
+                                          : (d == 1 ? fm.span(ATV::kAtom_y)
+                                                    : fm.span(ATV::kAtom_z));
+            cp[i] =
+                static_cast<ATV::StorageReal>(static_cast<double>(cp[i]) + h);
+            cm[i] =
+                static_cast<ATV::StorageReal>(static_cast<double>(cm[i]) - h);
+            const double fd = -(energy(fp) - energy(fm)) / (2.0 * h);
+            const double an = forces[static_cast<std::size_t>(3 * i + d)];
+            max_abs_err = std::max(max_abs_err, std::abs(an - fd));
+            EXPECT_NEAR(an, fd, 5.0e-3)
+                << "atom " << i << " dim " << d << " analytic=" << an
+                << " re-SCF FD=" << fd;
+        }
+        net_fx += forces[static_cast<std::size_t>(3 * i + 0)];
+        net_fy += forces[static_cast<std::size_t>(3 * i + 1)];
+        net_fz += forces[static_cast<std::size_t>(3 * i + 2)];
+    }
+    EXPECT_LT(max_abs_err, 5.0e-3);
+    EXPECT_NEAR(net_fx, 0.0, 1.0e-6);
+    EXPECT_NEAR(net_fy, 0.0, 1.0e-6);
+    EXPECT_NEAR(net_fz, 0.0, 1.0e-6);
+}
+
+TEST(AM1Evaluator, LaunchWritesForcesWhenGradientEnabled) {
+    ATV::cpu::Context runtime;
+    auto frame = make_frame(
+        {{8, 0.0, 0.0, 0.0}, {1, 1.05, 0.0, 0.0}, {1, -0.26, 1.0, 0.0}});
+    // Zero forces so we can detect writes.
+    for (int i = 0; i < 3; ++i) {
+        frame.span(ATV::kAtom_fx)[i] = 0;
+        frame.span(ATV::kAtom_fy)[i] = 0;
+        frame.span(ATV::kAtom_fz)[i] = 0;
+    }
+
+    ATV::cpu::semiempirical::AM1Evaluator evaluator; // gradient on by default
+    ATV::cpu::BuildContext build{runtime, frame};
+    ATV::cpu::LaunchContext launch{
+        runtime, frame, ATV::slot_of(ATV::evaluate::Phase::evaluate), 0};
+    evaluator.build(build);
+    evaluator.launch(launch);
+
+    EXPECT_LT(frame.meta.get(ATV::kEnergy), 0.0);
+    double f2 = 0.0;
+    for (int i = 0; i < 3; ++i) {
+        f2 += static_cast<double>(frame.span(ATV::kAtom_fx)[i])
+              * static_cast<double>(frame.span(ATV::kAtom_fx)[i]);
+        f2 += static_cast<double>(frame.span(ATV::kAtom_fy)[i])
+              * static_cast<double>(frame.span(ATV::kAtom_fy)[i]);
+        f2 += static_cast<double>(frame.span(ATV::kAtom_fz)[i])
+              * static_cast<double>(frame.span(ATV::kAtom_fz)[i]);
+    }
+    EXPECT_GT(f2, 1.0e-8);
+
+    // Energy-only launch leaves forces untouched when gradient disabled.
+    for (int i = 0; i < 3; ++i) {
+        frame.span(ATV::kAtom_fx)[i] = 42.0;
+        frame.span(ATV::kAtom_fy)[i] = 42.0;
+        frame.span(ATV::kAtom_fz)[i] = 42.0;
+    }
+    evaluator.with_gradient(false);
+    evaluator.launch(launch);
+    for (int i = 0; i < 3; ++i) {
+        EXPECT_DOUBLE_EQ(static_cast<double>(frame.span(ATV::kAtom_fx)[i]),
+                         42.0);
+        EXPECT_DOUBLE_EQ(static_cast<double>(frame.span(ATV::kAtom_fy)[i]),
+                         42.0);
+        EXPECT_DOUBLE_EQ(static_cast<double>(frame.span(ATV::kAtom_fz)[i]),
+                         42.0);
+    }
+}
+
+TEST(AM1Solver, ExperimentalWaterGeometryConverges) {
+    auto frame = make_frame({{8, 0.0, 0.0, 0.0},
+                             {1, 0.9572, 0.0, 0.0},
+                             {1, -0.239987, 0.926627, 0.0}});
+    ATV::cpu::semiempirical::AM1Solver solver;
+    solver.build(frame);
+    const auto& r = solver.run(frame);
+    EXPECT_TRUE(r.converged);
+    EXPECT_LT(r.total_energy_ev, 0.0);
+    solver.compute_forces(frame);
+    EXPECT_EQ(solver.last_result().forces_ev_a.size(), 9u);
+}
+
+TEST(AM1Evaluator, MultiLaunchWarmStartOnWater) {
+    ATV::cpu::Context runtime;
+    auto frame = make_frame({{8, 0.0, 0.0, 0.0},
+                             {1, 0.9572, 0.0, 0.0},
+                             {1, -0.239987, 0.926627, 0.0}});
+    ATV::cpu::semiempirical::AM1Evaluator eval;
+    ATV::cpu::BuildContext build{runtime, frame};
+    eval.build(build);
+    ATV::cpu::LaunchContext launch{
+        runtime, frame, ATV::slot_of(ATV::evaluate::Phase::evaluate), 0};
+    for (int i = 0; i < 5; ++i) {
+        // small random-ish displacement of H
+        frame.span(ATV::kAtom_x)[1] =
+            static_cast<ATV::StorageReal>(0.9572 + 0.001 * i);
+        eval.launch(launch);
+        EXPECT_LT(frame.meta.get(ATV::kEnergy), 0.0) << "step " << i;
+    }
 }

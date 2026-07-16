@@ -346,17 +346,25 @@ double distance(const std::array<double, 3>& a,
 
 NDDOHCoreResult NDDOHCoreBuilder::build(const NDDOSystem& system,
                                         const cpu::Frame& frame) const {
-    if (frame.atoms.size() != static_cast<int>(system.atoms.size())) {
+    if (frame.nlocal() != static_cast<int>(system.atoms.size())) {
         throw std::runtime_error(
             "NDDOHCoreBuilder::build requires matching frame/system atoms");
+    }
+    return build(system, frame.span(kAtom_x), frame.span(kAtom_y),
+                 frame.span(kAtom_z));
+}
+
+NDDOHCoreResult NDDOHCoreBuilder::build(const NDDOSystem& system,
+                                        const StorageReal* sp_x,
+                                        const StorageReal* sp_y,
+                                        const StorageReal* sp_z) const {
+    if (sp_x == nullptr || sp_y == nullptr || sp_z == nullptr) {
+        throw std::runtime_error(
+            "NDDOHCoreBuilder::build requires non-null coordinate spans");
     }
 
     auto result = build_one_center(system);
     result.includes_two_center_terms = true;
-
-    const StorageReal* __restrict sp_x = frame.span(kAtom_x);
-    const StorageReal* __restrict sp_y = frame.span(kAtom_y);
-    const StorageReal* __restrict sp_z = frame.span(kAtom_z);
 
     for (std::size_t i = 0; i < system.atoms.size(); ++i) {
         const auto& atom_i = system.atoms[i];
